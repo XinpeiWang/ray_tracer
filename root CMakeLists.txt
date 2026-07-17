@@ -1,0 +1,32 @@
+cmake_minimum_required(VERSION 3.1.0...4.0.0)
+
+project(RayTracer LANGUAGES CXX)
+
+# Set to C++11
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Add the existing raytracing.github.io directory as a subdirectory
+add_subdirectory(raytracing.github.io)
+
+# Set default build type to Debug if not specified
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE "Debug")
+endif()
+
+# Set output directory for executables
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+# Configure compiler flags for Visual Studio
+if(MSVC)
+    # Enable level-4 warnings
+    add_compile_options("/W4")
+    
+    # Treat specific warnings as errors
+    add_compile_options("/we 4265") # Class has virtual functions, but its non-trivial destructor is not virtual
+    add_compile_options("/we 5204") # Class has virtual functions, but its trivial destructor is not virtual
+    
+    # Disable specific warnings
+    add_compile_options("/wd 4100") # unreferenced formal parameter
+endif()
