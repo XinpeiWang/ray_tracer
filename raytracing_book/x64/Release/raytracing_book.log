@@ -1,0 +1,25 @@
+﻿  main.cc
+C:\Users\xinpe\source\repos\ray_tracer\src\TheRestOfYourLife\camera.h(129,40): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  (compiling source file '../src/TheRestOfYourLife/main.cc')
+  
+C:\Users\xinpe\source\repos\ray_tracer\src\TheRestOfYourLife\camera.h(57,35): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  (compiling source file '../src/TheRestOfYourLife/main.cc')
+  
+C:\Users\xinpe\source\repos\ray_tracer\src\TheRestOfYourLife\camera.h(59,42): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  (compiling source file '../src/TheRestOfYourLife/main.cc')
+  
+C:\Users\xinpe\source\repos\ray_tracer\src\TheRestOfYourLife\camera.h(71,44): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  (compiling source file '../src/TheRestOfYourLife/main.cc')
+  
+C:\Users\xinpe\source\repos\ray_tracer\src\TheRestOfYourLife\camera.h(101,40): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  (compiling source file '../src/TheRestOfYourLife/main.cc')
+  
+C:\Users\xinpe\source\repos\ray_tracer\src\TheRestOfYourLife\camera.h(103,48): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  (compiling source file '../src/TheRestOfYourLife/main.cc')
+  
+  Generating code
+  2 of 1193 functions ( 0.2%) were compiled, the rest were copied from previous compilation.
+    0 functions were new in current compilation
+    10 functions had inline decision re-evaluated but remain unchanged
+  Finished generating code
+  raytracing_book.vcxproj -> C:\Users\xinpe\source\repos\ray_tracer\x64\Release\raytracing_book.exe
