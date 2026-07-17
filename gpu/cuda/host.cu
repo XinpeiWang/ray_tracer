@@ -8,6 +8,7 @@
 #include <string>
 #include <iostream>
 #include <cuda_runtime.h>
+#include <ctime>
 
 #define CUDA_CHECK(call) do { \
 	cudaError_t err = call; \
@@ -41,7 +42,22 @@ __device__ float hit_sphere(const Vec3& center, float radius, const Ray& r) {
 	return -1.0f;
 }
 
-__global__ void render_kernel(unsigned char* img, int image_width, int image_height) {
+// Simple xorshift32 PRNG for device
+__device__ unsigned int xor_shift32(unsigned int &state) {
+	// state must be non-zero
+	state ^= state << 13;
+	state ^= state >> 17;
+	state ^= state << 5;
+	return state;
+}
+
+__device__ float rand01(unsigned int &state) {
+	unsigned int v = xor_shift32(state);
+	// take lower 24 bits for good fraction
+	return (v & 0x00FFFFFF) / 16777216.0f;
+}
+
+__global__ void render_kernel(unsigned char* img, int image_width, int image_height, int samples_per_pixel, unsigned int seed) {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	int j = blockIdx.y * blockDim.y + threadIdx.y;
 	if (i >= image_width || j >= image_height) return;
@@ -55,36 +71,57 @@ __global__ void render_kernel(unsigned char* img, int image_width, int image_hei
 	Vec3 vertical(0.0f, viewport_height, 0.0f);
 	Vec3 lower_left = origin - horizontal/2.0f - vertical/2.0f - Vec3(0,0,1);
 
-	float u = (float(i) + 0.5f) / float(image_width);
-	float v = (float(j) + 0.5f) / float(image_height);
-	Vec3 dir = lower_left + horizontal * u + vertical * v - origin;
-	dir = unit_vector(dir);
-	Ray r(origin, dir);
+	// accumulate samples in floating point
+	float accum_r = 0.0f;
+	float accum_g = 0.0f;
+	float accum_b = 0.0f;
+	unsigned int state = (unsigned int)(i * 1973u + j * 9277u + seed);
+	if (state == 0) state = 1;
 
-	// simple sphere scene
-	Vec3 sphere_center(0.0f, 0.0f, -1.0f);
-	float sphere_r = 0.5f;
-	int idx = (j * image_width + i) * 3;
-	float t = hit_sphere(sphere_center, sphere_r, r);
-	if (t > 0.0f) {
-		Vec3 p = r.at(t);
-		Vec3 n = unit_vector(p - sphere_center);
-		float rr = 0.5f * (n.x + 1.0f);
-		float gg = 0.5f * (n.y + 1.0f);
-		float bb = 0.5f * (n.z + 1.0f);
-		img[idx+0] = (unsigned char)(fminf(fmaxf(rr,0.0f),1.0f)*255.999f);
-		img[idx+1] = (unsigned char)(fminf(fmaxf(gg,0.0f),1.0f)*255.999f);
-		img[idx+2] = (unsigned char)(fminf(fmaxf(bb,0.0f),1.0f)*255.999f);
-	} else {
-		// background gradient
-		float tbg = 0.5f*(dir.y + 1.0f);
-		float rr = (1.0f - tbg) * 1.0f + tbg * 0.5f;
-		float gg = (1.0f - tbg) * 1.0f + tbg * 0.7f;
-		float bb = 1.0f;
-		img[idx+0] = (unsigned char)(fminf(fmaxf(rr,0.0f),1.0f)*255.999f);
-		img[idx+1] = (unsigned char)(fminf(fmaxf(gg,0.0f),1.0f)*255.999f);
-		img[idx+2] = (unsigned char)(fminf(fmaxf(bb,0.0f),1.0f)*255.999f);
+	for (int s = 0; s < samples_per_pixel; ++s) {
+		float ru = rand01(state);
+		float rv = rand01(state);
+		float u = (float(i) + ru) / float(image_width - 1);
+		float v = (float(j) + rv) / float(image_height - 1);
+		Vec3 dir = lower_left + horizontal * u + vertical * v - origin;
+		dir = unit_vector(dir);
+		Ray r(origin, dir);
+
+		// simple sphere scene
+		Vec3 sphere_center(0.0f, 0.0f, -1.0f);
+		float sphere_r = 0.5f;
+		float t = hit_sphere(sphere_center, sphere_r, r);
+		if (t > 0.0f) {
+			Vec3 p = r.at(t);
+			Vec3 n = unit_vector(p - sphere_center);
+			float rr = 0.5f * (n.x + 1.0f);
+			float gg = 0.5f * (n.y + 1.0f);
+			float bb = 0.5f * (n.z + 1.0f);
+			accum_r += rr;
+			accum_g += gg;
+			accum_b += bb;
+		} else {
+			// background gradient
+			float tbg = 0.5f*(dir.y + 1.0f);
+			float rr = (1.0f - tbg) * 1.0f + tbg * 0.5f;
+			float gg = (1.0f - tbg) * 1.0f + tbg * 0.7f;
+			float bb = 1.0f;
+			accum_r += rr;
+			accum_g += gg;
+			accum_b += bb;
+		}
 	}
+
+	// average and gamma-correct (gamma=2)
+	float inv_samples = 1.0f / float(samples_per_pixel);
+	float out_r = sqrtf(accum_r * inv_samples);
+	float out_g = sqrtf(accum_g * inv_samples);
+	float out_b = sqrtf(accum_b * inv_samples);
+
+	int idx = (j * image_width + i) * 3;
+	img[idx+0] = (unsigned char)(fminf(fmaxf(out_r,0.0f),1.0f)*255.999f);
+	img[idx+1] = (unsigned char)(fminf(fmaxf(out_g,0.0f),1.0f)*255.999f);
+	img[idx+2] = (unsigned char)(fminf(fmaxf(out_b,0.0f),1.0f)*255.999f);
 }
 
 int main(int argc, char** argv) {
@@ -111,10 +148,15 @@ int main(int argc, char** argv) {
 	CUDA_CHECK(cudaMalloc(&d_img, bytes));
 	CUDA_CHECK(cudaMemset(d_img, 0, bytes));
 
+	int samples_per_pixel = 4;
+	// allow override from argv
+	if (argc >= 4) samples_per_pixel = std::atoi(argv[3]);
+
 	dim3 block(16, 16);
 	dim3 grid((image_width + block.x - 1) / block.x, (image_height + block.y - 1) / block.y);
 
-	render_kernel<<<grid, block>>>(d_img, image_width, image_height);
+	unsigned int seed = (unsigned int)std::time(nullptr);
+	render_kernel<<<grid, block>>>(d_img, image_width, image_height, samples_per_pixel, seed);
 	CUDA_CHECK(cudaGetLastError());
 	CUDA_CHECK(cudaDeviceSynchronize());
 
