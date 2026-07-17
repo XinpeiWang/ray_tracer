@@ -18,7 +18,7 @@
 #include "sphere.h"
 
 
-int main() {
+int main(int argc, char** argv) {
     hittable_list world;
 
     auto red   = make_shared<lambertian>(color(.65, .05, .05));
@@ -56,9 +56,26 @@ int main() {
     camera cam;
 
     cam.aspect_ratio      = 1.0;
+    // Default settings
     cam.image_width       = 600;
     cam.samples_per_pixel = 100;
     cam.max_depth         = 50;
+
+    // Allow overriding via command-line: <image_width> <samples_per_pixel> <max_depth>
+    if (argc >= 4) {
+        try {
+            int w = std::stoi(argv[1]);
+            int spp = std::stoi(argv[2]);
+            int md = std::stoi(argv[3]);
+            if (w > 0) cam.image_width = w;
+            if (spp > 0) cam.samples_per_pixel = spp;
+            if (md > 0) cam.max_depth = md;
+            std::clog << "Using command-line settings: width=" << cam.image_width
+                      << " spp=" << cam.samples_per_pixel << " max_depth=" << cam.max_depth << std::endl;
+        } catch (const std::exception& e) {
+            std::clog << "Invalid command-line arguments, using defaults: " << e.what() << std::endl;
+        }
+    }
     cam.background        = color(0,0,0);
 
     cam.vfov     = 40;

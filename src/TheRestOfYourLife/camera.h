@@ -14,6 +14,20 @@
 #include "hittable.h"
 #include "pdf.h"
 #include "material.h"
+#include <fstream>
+#include <iostream>
+#include <cstdlib>
+#include <string>
+#include <filesystem>
+#include <thread>
+#include <vector>
+#include <atomic>
+#include <sstream>
+#include <mutex>
+#include <chrono>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 
 class camera {
@@ -35,23 +49,170 @@ class camera {
     void render(const hittable& world, const hittable& lights) {
         initialize();
 
-        std::cout << "P3\n" << image_width << ' ' << image_height << "\n255\n";
+        // Try writing image to the user's Desktop. If that fails, fall back to
+        // the current working directory, then to the system temp directory.
+        std::string out_path;
+        // Prefer OneDrive Desktop when available (common on Windows). Fall back to
+        // %USERPROFILE%\OneDrive\Desktop, then %USERPROFILE%\Desktop, then HOME/Desktop.
+        if (const char* od = std::getenv("OneDrive")) {
+            out_path = std::string(od) + "\\Desktop\\image.ppm";
+        } else if (const char* up = std::getenv("USERPROFILE")) {
+            // If OneDrive folder exists under the user profile prefer it, otherwise use Desktop
+            std::string od_candidate = std::string(up) + "\\OneDrive\\Desktop\\image.ppm";
+            try {
+                if (std::filesystem::exists(std::filesystem::path(std::string(up) + "\\OneDrive"))) {
+                    out_path = od_candidate;
+                } else {
+                    out_path = std::string(up) + "\\Desktop\\image.ppm";
+                }
+            } catch (...) {
+                out_path = std::string(up) + "\\Desktop\\image.ppm";
+            }
+        } else if (const char* home = std::getenv("HOME")) {
+            out_path = std::string(home) + "/Desktop/image.ppm";
+        } else {
+            out_path = "image.ppm";
+        }
 
-        for (int j = 0; j < image_height; j++) {
-            std::clog << "\rScanlines remaining: " << (image_height - j) << ' ' << std::flush;
-            for (int i = 0; i < image_width; i++) {
-                color pixel_color(0,0,0);
-                for (int s_j = 0; s_j < sqrt_spp; s_j++) {
-                    for (int s_i = 0; s_i < sqrt_spp; s_i++) {
-                        ray r = get_ray(i, j, s_i, s_j);
-                        pixel_color += ray_color(r, max_depth, world, lights);
+        std::clog << "Attempting to write image to: " << out_path << std::endl;
+
+        // Try to create parent directory if it doesn't exist (Desktop/ray_tracer)
+        try {
+            std::filesystem::path p(out_path);
+            auto parent = p.parent_path();
+            if (!parent.empty() && !std::filesystem::exists(parent)) {
+                std::filesystem::create_directories(parent);
+                std::clog << "Created directory: " << parent.string() << std::endl;
+            }
+        } catch (const std::exception& e) {
+            std::clog << "Could not create Desktop subdirectory: " << e.what() << std::endl;
+        }
+
+        std::ofstream out(out_path, std::ios::out);
+        if (!out) {
+            // Fallback to current directory
+            out_path = "image.ppm";
+            std::clog << "Desktop write failed, falling back to: " << out_path << std::endl;
+            out.open(out_path, std::ios::out);
+        }
+
+        if (!out) {
+            // Fallback to TEMP
+            if (const char* tmp = std::getenv("TEMP")) {
+                out_path = std::string(tmp) + "\\image.ppm";
+            } else if (const char* tmp2 = std::getenv("TMP")) {
+                out_path = std::string(tmp2) + "\\image.ppm";
+            }
+            std::clog << "Attempting temp path: " << out_path << std::endl;
+            out.open(out_path, std::ios::out);
+        }
+
+        if (!out) {
+            std::cerr << "Failed to open any output file (tried Desktop subfolder, cwd, TEMP)" << std::endl;
+            return;
+        }
+
+        std::clog << "Writing image to: " << out_path << std::endl;
+        out << "P3\n" << image_width << ' ' << image_height << "\n255\n";
+
+        // Multithreaded rendering: each worker renders scanlines into a buffer
+        std::vector<std::string> scanlines(image_height);
+        std::atomic<int> next_j(image_height - 1);
+        std::atomic<int> completed_lines(0);
+        std::mutex log_mutex;
+
+        auto determine_thread_count = [&]() -> unsigned int {
+            unsigned int hw = std::thread::hardware_concurrency();
+            if (hw == 0) hw = 4;
+
+            // Respect explicit override via env var RAY_TRACER_THREADS
+            if (const char* env = std::getenv("RAY_TRACER_THREADS")) {
+                std::string s(env);
+                if (s == "auto") {
+                    // fallthrough to auto-detect below
+                } else {
+                    try {
+                        int v = std::stoi(s);
+                        if (v > 0) return static_cast<unsigned int>(v);
+                    } catch (...) {
+                        // ignore parse errors
                     }
                 }
-                write_color(std::cout, pixel_samples_scale * pixel_color);
             }
+
+            // Auto-detect free cores by sampling system idle fraction (Windows only).
+#ifdef _WIN32
+            FILETIME idle1, kernel1, user1;
+            FILETIME idle2, kernel2, user2;
+            if (GetSystemTimes(&idle1, &kernel1, &user1)) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                if (GetSystemTimes(&idle2, &kernel2, &user2)) {
+                    auto toULL = [](const FILETIME &ft) -> unsigned long long {
+                        ULARGE_INTEGER ui; ui.LowPart = ft.dwLowDateTime; ui.HighPart = ft.dwHighDateTime; return ui.QuadPart;
+                    };
+                    unsigned long long idleDiff = toULL(idle2) - toULL(idle1);
+                    unsigned long long kernelDiff = toULL(kernel2) - toULL(kernel1);
+                    unsigned long long userDiff = toULL(user2) - toULL(user1);
+                    unsigned long long total = kernelDiff + userDiff;
+                    if (total == 0) total = 1;
+                    double busy = double(total - idleDiff) / double(total);
+                    // estimate free cores = hw * (1 - busy)
+                    int recommend = int(std::round(hw * (1.0 - busy)));
+                    if (recommend < 1) recommend = 1;
+                    if (recommend > (int)hw) recommend = hw;
+                    return static_cast<unsigned int>(recommend);
+                }
+            }
+#endif
+            // Fallback: use all logical cores
+            return hw;
+        };
+
+        unsigned int nthreads = determine_thread_count();
+        std::clog << "Using " << nthreads << " threads for rendering" << std::endl;
+
+        auto worker = [&](unsigned int tid) {
+            std::ostringstream ss;
+            while (true) {
+                int j = next_j.fetch_sub(1);
+                if (j < 0) break;
+
+                // render scanline j
+                ss.str(""); ss.clear();
+                for (int i = 0; i < image_width; i++) {
+                    color pixel_color(0,0,0);
+                    for (int s_j = 0; s_j < sqrt_spp; s_j++) {
+                        for (int s_i = 0; s_i < sqrt_spp; s_i++) {
+                            ray r = get_ray(i, j, s_i, s_j);
+                            pixel_color += ray_color(r, max_depth, world, lights);
+                        }
+                    }
+                    write_color(ss, pixel_samples_scale * pixel_color);
+                }
+
+                scanlines[j] = ss.str();
+                int done = ++completed_lines;
+                if ((done % 10) == 0 || done == image_height) {
+                    std::lock_guard<std::mutex> lg(log_mutex);
+                    std::clog << "\rScanlines remaining: " << (image_height - done) << ' ' << std::flush;
+                }
+            }
+        };
+
+        std::vector<std::thread> threads;
+        threads.reserve(nthreads);
+        for (unsigned int t = 0; t < nthreads; ++t)
+            threads.emplace_back(worker, t);
+
+        for (auto &th : threads) th.join();
+
+        // Write buffered scanlines in order
+        for (int j = 0; j < image_height; ++j) {
+            out << scanlines[j];
         }
 
         std::clog << "\rDone.                 \n";
+        out.close();
     }
 
   private:
