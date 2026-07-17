@@ -17,23 +17,74 @@
 	} \
 } while(0)
 
+// Minimal vector and ray helpers for device
+struct Vec3 { float x, y, z; __device__ Vec3(){} __device__ Vec3(float a,float b,float c):x(a),y(b),z(c){} __device__ Vec3 operator-(const Vec3& o) const { return Vec3(x-o.x,y-o.y,z-o.z); } __device__ Vec3 operator+(const Vec3& o) const { return Vec3(x+o.x,y+o.y,z+o.z); } __device__ Vec3 operator*(float s) const { return Vec3(x*s,y*s,z*s); } __device__ Vec3 operator/(float s) const { float inv = 1.0f/s; return Vec3(x*inv,y*inv,z*inv); } };
+
+__device__ float dot(const Vec3 &a, const Vec3 &b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
+__device__ Vec3 unit_vector(const Vec3 &v) { float len = sqrtf(dot(v,v)); return v / (len>0?len:1.0f); }
+
+struct Ray { Vec3 orig; Vec3 dir; __device__ Ray(){} __device__ Ray(const Vec3&o,const Vec3&d):orig(o),dir(d){} __device__ Vec3 at(float t) const { return orig + dir * t; } };
+
+// Sphere intersection: returns t if hit, else -1
+__device__ float hit_sphere(const Vec3& center, float radius, const Ray& r) {
+	Vec3 oc = r.orig - center;
+	float a = dot(r.dir, r.dir);
+	float b = 2.0f * dot(oc, r.dir);
+	float c = dot(oc, oc) - radius*radius;
+	float disc = b*b - 4*a*c;
+	if (disc < 0.0f) return -1.0f;
+	float sqrtd = sqrtf(disc);
+	float t = (-b - sqrtd) / (2.0f*a);
+	if (t > 0.001f) return t;
+	t = (-b + sqrtd) / (2.0f*a);
+	if (t > 0.001f) return t;
+	return -1.0f;
+}
+
 __global__ void render_kernel(unsigned char* img, int image_width, int image_height) {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	int j = blockIdx.y * blockDim.y + threadIdx.y;
 	if (i >= image_width || j >= image_height) return;
 
-	float u = float(i) / float(image_width - 1);
-	float v = float(j) / float(image_height - 1);
+	// camera
+	float aspect = float(image_width) / float(image_height);
+	float viewport_height = 2.0f;
+	float viewport_width = aspect * viewport_height;
+	Vec3 origin(0.0f, 0.0f, 0.0f);
+	Vec3 horizontal(viewport_width, 0.0f, 0.0f);
+	Vec3 vertical(0.0f, viewport_height, 0.0f);
+	Vec3 lower_left = origin - horizontal/2.0f - vertical/2.0f - Vec3(0,0,1);
 
-	// simple gradient
-	float r = 0.5f * (1.0f - u) + u;
-	float g = 0.7f * (1.0f - v) + v * 0.4f;
-	float b = 1.0f * (1.0f - u) + 0.5f * v;
+	float u = (float(i) + 0.5f) / float(image_width);
+	float v = (float(j) + 0.5f) / float(image_height);
+	Vec3 dir = lower_left + horizontal * u + vertical * v - origin;
+	dir = unit_vector(dir);
+	Ray r(origin, dir);
 
+	// simple sphere scene
+	Vec3 sphere_center(0.0f, 0.0f, -1.0f);
+	float sphere_r = 0.5f;
 	int idx = (j * image_width + i) * 3;
-	img[idx + 0] = (unsigned char)(fminf(fmaxf(r, 0.0f), 1.0f) * 255.999f);
-	img[idx + 1] = (unsigned char)(fminf(fmaxf(g, 0.0f), 1.0f) * 255.999f);
-	img[idx + 2] = (unsigned char)(fminf(fmaxf(b, 0.0f), 1.0f) * 255.999f);
+	float t = hit_sphere(sphere_center, sphere_r, r);
+	if (t > 0.0f) {
+		Vec3 p = r.at(t);
+		Vec3 n = unit_vector(p - sphere_center);
+		float rr = 0.5f * (n.x + 1.0f);
+		float gg = 0.5f * (n.y + 1.0f);
+		float bb = 0.5f * (n.z + 1.0f);
+		img[idx+0] = (unsigned char)(fminf(fmaxf(rr,0.0f),1.0f)*255.999f);
+		img[idx+1] = (unsigned char)(fminf(fmaxf(gg,0.0f),1.0f)*255.999f);
+		img[idx+2] = (unsigned char)(fminf(fmaxf(bb,0.0f),1.0f)*255.999f);
+	} else {
+		// background gradient
+		float tbg = 0.5f*(dir.y + 1.0f);
+		float rr = (1.0f - tbg) * 1.0f + tbg * 0.5f;
+		float gg = (1.0f - tbg) * 1.0f + tbg * 0.7f;
+		float bb = 1.0f;
+		img[idx+0] = (unsigned char)(fminf(fmaxf(rr,0.0f),1.0f)*255.999f);
+		img[idx+1] = (unsigned char)(fminf(fmaxf(gg,0.0f),1.0f)*255.999f);
+		img[idx+2] = (unsigned char)(fminf(fmaxf(bb,0.0f),1.0f)*255.999f);
+	}
 }
 
 int main(int argc, char** argv) {
