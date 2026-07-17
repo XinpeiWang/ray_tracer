@@ -9,6 +9,7 @@
 #include <iostream>
 #include <cuda_runtime.h>
 #include <ctime>
+#include <ctime>
 
 #define CUDA_CHECK(call) do { \
 	cudaError_t err = call; \
@@ -156,9 +157,20 @@ int main(int argc, char** argv) {
 	dim3 grid((image_width + block.x - 1) / block.x, (image_height + block.y - 1) / block.y);
 
 	unsigned int seed = (unsigned int)std::time(nullptr);
+
+	// Timing: measure kernel and copy durations with cudaEvent
+	cudaEvent_t kstart, kend, cstart, cend;
+	CUDA_CHECK(cudaEventCreate(&kstart));
+	CUDA_CHECK(cudaEventCreate(&kend));
+	CUDA_CHECK(cudaEventCreate(&cstart));
+	CUDA_CHECK(cudaEventCreate(&cend));
+
+	CUDA_CHECK(cudaEventRecord(kstart));
 	render_kernel<<<grid, block>>>(d_img, image_width, image_height, samples_per_pixel, seed);
 	CUDA_CHECK(cudaGetLastError());
 	CUDA_CHECK(cudaDeviceSynchronize());
+	CUDA_CHECK(cudaEventRecord(kend));
+	CUDA_CHECK(cudaEventSynchronize(kend));
 
 	unsigned char* h_img = (unsigned char*)malloc(bytes);
 	if (!h_img) {
@@ -167,7 +179,22 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 
+	CUDA_CHECK(cudaEventRecord(cstart));
 	CUDA_CHECK(cudaMemcpy(h_img, d_img, bytes, cudaMemcpyDeviceToHost));
+	CUDA_CHECK(cudaEventRecord(cend));
+	CUDA_CHECK(cudaEventSynchronize(cend));
+
+	float kernel_ms = 0.0f, copy_ms = 0.0f;
+	CUDA_CHECK(cudaEventElapsedTime(&kernel_ms, kstart, kend));
+	CUDA_CHECK(cudaEventElapsedTime(&copy_ms, cstart, cend));
+
+	std::printf("[CUDA LOG] image=%dx%d samples=%d bytes=%zu kernel=%.3fms memcpy=%.3fms\n",
+				image_width, image_height, samples_per_pixel, bytes, kernel_ms, copy_ms);
+
+	CUDA_CHECK(cudaEventDestroy(kstart));
+	CUDA_CHECK(cudaEventDestroy(kend));
+	CUDA_CHECK(cudaEventDestroy(cstart));
+	CUDA_CHECK(cudaEventDestroy(cend));
 
 	// Write PPM (P6 binary for smaller files)
 	FILE* f = std::fopen(out_path.c_str(), "wb");
