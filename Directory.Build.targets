@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <!-- Automatically import custom CUDA build targets for projects in this repository -->
+  <Import Project="$(MSBuildThisFileDirectory)build_cuda.targets" Condition="Exists('$(MSBuildThisFileDirectory)build_cuda.targets')" />
+</Project>

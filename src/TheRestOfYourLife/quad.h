@@ -80,6 +80,12 @@ class quad : public hittable {
         return true;
     }
 
+    // Accessors for serialization
+    point3 get_Q() const { return Q; }
+    vec3 get_u() const { return u; }
+    vec3 get_v() const { return v; }
+    shared_ptr<material> get_material() const { return mat; }
+
     double pdf_value(const point3& origin, const vec3& direction) const override {
         hit_record rec;
         if (!this->hit(ray(origin, direction), interval(0.001, infinity), rec))
