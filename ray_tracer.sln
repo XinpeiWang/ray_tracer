@@ -2,7 +2,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
 VisualStudioVersion = 18.8.0
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ray_tracer", "ray_tracer\\ray_tracer.vcxproj", "{747a5785-180c-4ad2-9319-8f87a30ab987}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "launcher", "launcher\\launcher.vcxproj", "{747a5785-180c-4ad2-9319-8f87a30ab987}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "raytracing_book", "raytracing_book\\raytracing_book.vcxproj", "{5F2A8E6C-9B3F-4A1D-B7A7-2F9C9E2B4A11}"
 EndProject
