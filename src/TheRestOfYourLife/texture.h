@@ -33,6 +33,9 @@ class solid_color : public texture {
         return albedo;
     }
 
+    // Accessor for serializer
+    color color_value() const { return albedo; }
+
   private:
     color albedo;
 };

@@ -2,3 +2,7 @@
 bin/
 obj/
 *.slnx
+
+# CUDA object files
+gpu/cuda/obj/
+*.obj

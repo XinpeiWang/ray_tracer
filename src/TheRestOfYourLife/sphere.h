@@ -69,6 +69,13 @@ class sphere : public hittable {
 
     aabb bounding_box() const override { return bbox; }
 
+    // Accessors for serialization
+    point3 center_at_time0() const { return center.at(0); }
+    double get_radius() const { return radius; }
+    shared_ptr<material> get_material() const { return mat; }
+    // For transforms we may need to move points; provide setter
+    void set_center(const point3 &p) { center = ray(p, vec3(0,0,0)); bbox = aabb(p - vec3(radius,radius,radius), p + vec3(radius,radius,radius)); }
+
     double pdf_value(const point3& origin, const vec3& direction) const override {
         // This method only works for stationary spheres.
 

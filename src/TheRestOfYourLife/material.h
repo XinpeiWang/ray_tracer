@@ -64,6 +64,9 @@ class lambertian : public material {
         return cos_theta < 0 ? 0 : cos_theta/pi;
     }
 
+    // Accessor for serialization
+    shared_ptr<texture> get_texture() const { return tex; }
+
   private:
     shared_ptr<texture> tex;
 };
@@ -117,6 +120,9 @@ class dielectric : public material {
         return true;
     }
 
+    // Accessor for serialization
+    double get_refraction_index() const { return refraction_index; }
+
   private:
     // Refractive index in vacuum or air, or the ratio of the material's refractive index over
     // the refractive index of the enclosing media
@@ -142,6 +148,8 @@ class diffuse_light : public material {
             return color(0,0,0);
         return tex->value(u, v, p);
     }
+
+    shared_ptr<texture> get_texture() const { return tex; }
 
   private:
     shared_ptr<texture> tex;

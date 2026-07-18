@@ -83,6 +83,10 @@ class translate : public hittable {
     shared_ptr<hittable> object;
     vec3 offset;
     aabb bbox;
+  public:
+    // Accessors for serialization
+    shared_ptr<hittable> get_object() const { return object; }
+    vec3 get_offset() const { return offset; }
 };
 
 
@@ -92,6 +96,7 @@ class rotate_y : public hittable {
         auto radians = degrees_to_radians(angle);
         sin_theta = std::sin(radians);
         cos_theta = std::cos(radians);
+        this->angle = radians;
         bbox = object->bounding_box();
 
         point3 min( infinity,  infinity,  infinity);
@@ -167,6 +172,11 @@ class rotate_y : public hittable {
     double sin_theta;
     double cos_theta;
     aabb bbox;
+    double angle = 0.0;
+  public:
+    // Accessors for serialization
+    shared_ptr<hittable> get_object() const { return object; }
+    double get_angle() const { return angle; }
 };
 
 
