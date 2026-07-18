@@ -1,25 +1,85 @@
-﻿  main.cc
-C:\Users\xinpe\source\repos\ray_tracer\src\TheRestOfYourLife\camera.h(129,40): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
-  (compiling source file '../src/TheRestOfYourLife/main.cc')
+﻿  [build_cuda] raytracing_book: Acquired CUDA build lock
+  [build_cuda] raytracing_book: Building CUDA sources...
+  [build_cuda] raytracing_book: Building CUDA sources...
+  [build_cuda] Using MSVC compiler: C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.51.36231\bin\Hostx64\x64
+  [build_cuda] raytracing_book: Compiling cuda_interface.cu
+  cuda_interface.cu
+  tmpxft_00006650_00000000-10_cuda_interface.cudafe1.cpp
+  [build_cuda] nvcc exit code: 0
+  [build_cuda] Verifying output file exists: C:\Users\xinpe\source\repos\ray_tracer\gpu\cuda\cuda_interface.obj
+  [build_cuda] File exists: True
+  [build_cuda] raytracing_book: Compiling host.cu
+C:\Users\xinpe\source\repos\ray_tracer\gpu\cuda\host.cu(353): warning #550-D: variable "isQuad" was set but never used
+    			bool isQuad = false;
+    			     ^
   
-C:\Users\xinpe\source\repos\ray_tracer\src\TheRestOfYourLife\camera.h(57,35): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
-  (compiling source file '../src/TheRestOfYourLife/main.cc')
+  Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
   
-C:\Users\xinpe\source\repos\ray_tracer\src\TheRestOfYourLife\camera.h(59,42): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
-  (compiling source file '../src/TheRestOfYourLife/main.cc')
-  
-C:\Users\xinpe\source\repos\ray_tracer\src\TheRestOfYourLife\camera.h(71,44): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
-  (compiling source file '../src/TheRestOfYourLife/main.cc')
-  
-C:\Users\xinpe\source\repos\ray_tracer\src\TheRestOfYourLife\camera.h(101,40): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
-  (compiling source file '../src/TheRestOfYourLife/main.cc')
-  
-C:\Users\xinpe\source\repos\ray_tracer\src\TheRestOfYourLife\camera.h(103,48): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
-  (compiling source file '../src/TheRestOfYourLife/main.cc')
-  
+  host.cu
+  tmpxft_0000c6f8_00000000-10_host.cudafe1.cpp
+  [build_cuda] nvcc exit code: 0
+  [build_cuda] Verifying output file exists: C:\Users\xinpe\source\repos\ray_tracer\gpu\cuda\host.obj
+  [build_cuda] File exists: True
+  [build_cuda] raytracing_book: Compiling scene_serializer.cpp
+  scene_serializer.cpp
+  [build_cuda] cl.exe exit code: 0
+  [build_cuda] Verifying output file exists: C:\Users\xinpe\source\repos\ray_tracer\gpu\cuda\scene_serializer.obj
+  [build_cuda] File exists: True
+  [build_cuda] raytracing_book: CUDA compilation complete
+  [build_cuda] raytracing_book: CUDA compilation complete
+  [build_cuda] raytracing_book: Released CUDA build lock
+main.obj : warning LNK4006: "public: static class aabb const aabb::empty" (?empty@aabb@@2V1@B) already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: "public: static class interval const interval::universe" (?universe@interval@@2V1@B) already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: "public: static class interval const interval::empty" (?empty@interval@@2V1@B) already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: "public: static class aabb const aabb::universe" (?universe@aabb@@2V1@B) already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_info_from_callbacks already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_info_from_memory already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_info_from_file already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_info already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_convert_iphone_png_to_rgb already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_set_unpremultiply_on_load already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_zlib_decode_noheader_buffer already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_zlib_decode_noheader_malloc already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_zlib_decode_buffer already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_zlib_decode_malloc_guesssize_headerflag already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_zlib_decode_malloc already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_zlib_decode_malloc_guesssize already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_hdr_to_ldr_scale already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_hdr_to_ldr_gamma already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_ldr_to_hdr_scale already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_ldr_to_hdr_gamma already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_is_hdr_from_callbacks already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_is_hdr_from_file already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_is_hdr already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_is_hdr_from_memory already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_loadf_from_file already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_loadf already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_loadf_from_callbacks already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_loadf_from_memory already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_load_from_callbacks already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_load_from_memory already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_load_from_file already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_load already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_set_flip_vertically_on_load already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_image_free already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: stbi_failure_reason already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: "class aabb __cdecl operator+(class vec3 const &,class aabb const &)" (??H@YA?AVaabb@@AEBVvec3@@AEBV0@@Z) already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: "class aabb __cdecl operator+(class aabb const &,class vec3 const &)" (??H@YA?AVaabb@@AEBV0@AEBVvec3@@@Z) already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: "void __cdecl write_color(class std::basic_ostream<char,struct std::char_traits<char> > &,class vec3 const &)" (?write_color@@YAXAEAV?$basic_ostream@DU?$char_traits@D@std@@@std@@AEBVvec3@@@Z) already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: "class interval __cdecl operator+(double,class interval const &)" (??H@YA?AVinterval@@NAEBV0@@Z) already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: "class interval __cdecl operator+(class interval const &,double)" (??H@YA?AVinterval@@AEBV0@N@Z) already defined in scene_serializer.obj; second definition ignored
+C:\Users\xinpe\source\repos\ray_tracer\x64\Release\raytracing_book.exe : warning LNK4088: image being generated due to /FORCE option; image may not run
   Generating code
-  2 of 1193 functions ( 0.2%) were compiled, the rest were copied from previous compilation.
+  0 of 1207 functions ( 0.0%) were compiled, the rest were copied from previous compilation.
     0 functions were new in current compilation
-    10 functions had inline decision re-evaluated but remain unchanged
+    0 functions had inline decision re-evaluated but remain unchanged
   Finished generating code
+main.obj : warning LNK4006: "class aabb __cdecl operator+(class aabb const &,class vec3 const &)" (??H@YA?AVaabb@@AEBV0@AEBVvec3@@@Z) already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: "class interval __cdecl operator+(class interval const &,double)" (??H@YA?AVinterval@@AEBV0@N@Z) already defined in scene_serializer.obj; second definition ignored
+main.obj : warning LNK4006: "void __cdecl write_color(class std::basic_ostream<char,struct std::char_traits<char> > &,class vec3 const &)" (?write_color@@YAXAEAV?$basic_ostream@DU?$char_traits@D@std@@@std@@AEBVvec3@@@Z) already defined in scene_serializer.obj; second definition ignored
+* CIL library *(* CIL module *) : warning LNK4006: "public: static class aabb const aabb::empty" (?empty@aabb@@2V1@B) already defined in scene_serializer.obj; second definition ignored
+* CIL library *(* CIL module *) : warning LNK4006: "public: static class interval const interval::universe" (?universe@interval@@2V1@B) already defined in scene_serializer.obj; second definition ignored
+* CIL library *(* CIL module *) : warning LNK4006: "public: static class interval const interval::empty" (?empty@interval@@2V1@B) already defined in scene_serializer.obj; second definition ignored
+* CIL library *(* CIL module *) : warning LNK4006: "public: static class aabb const aabb::universe" (?universe@aabb@@2V1@B) already defined in scene_serializer.obj; second definition ignored
+C:\Users\xinpe\source\repos\ray_tracer\x64\Release\raytracing_book.exe : warning LNK4088: image being generated due to /FORCE option; image may not run
   raytracing_book.vcxproj -> C:\Users\xinpe\source\repos\ray_tracer\x64\Release\raytracing_book.exe

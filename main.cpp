@@ -1,6 +1,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
+#include <vector>
 #include <filesystem>
 #include "gpu/cuda/cuda_interface.h"
 
@@ -18,21 +19,49 @@ int main(int argc, char** argv) {
             use_gpu = true;
             force_cpu = false;
         } else if (arg == "--help" || arg == "-h") {
-            std::cout << "Usage: " << argv[0] << " [--cpu|--gpu]\n";
-            std::cout << "  --cpu  : Force CPU rendering\n";
-            std::cout << "  --gpu  : Force GPU rendering (default)\n";
-            std::cout << "  --help : Show this help message\n";
+            std::cout << "Usage: " << argv[0] << " [--cpu|--gpu] [width] [spp] [max_depth]\n";
+            std::cout << "  --cpu      : Force CPU rendering\n";
+            std::cout << "  --gpu      : Force GPU rendering (default)\n";
+            std::cout << "  --help     : Show this help message\n";
+            std::cout << "  width      : Image width (default 600, square aspect)\n";
+            std::cout << "  spp        : Samples per pixel (default 500)\n";
+            std::cout << "  max_depth  : Max ray depth (default 20)\n";
             return 0;
         }
     }
 
     std::cout << "Launching renderer (" << (use_gpu ? "GPU" : "CPU") << " mode)..." << std::endl;
 
-    // Hard-coded rendering settings: <image_width> <samples_per_pixel> <max_depth>
-    const int hard_width = 600;    // Cornell box is square, so use same width
-    const int hard_height = 600;   // Cornell box should be 1:1 aspect ratio
-    const int hard_spp   = 500;    // samples per pixel
-    const int hard_depth = 20;     // max ray bounces
+    // Default rendering settings
+    int hard_width = 600;    // Cornell box is square, so use same width
+    int hard_height = 600;   // Cornell box should be 1:1 aspect ratio
+    int hard_spp   = 500;    // samples per pixel
+    int hard_depth = 20;     // max ray bounces
+
+    // Parse numeric arguments (after mode flags)
+    std::vector<int> numeric_args;
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg[0] != '-') {
+            try {
+                numeric_args.push_back(std::stoi(arg));
+            } catch (...) {
+                // Ignore non-numeric args
+            }
+        }
+    }
+
+    // Apply numeric arguments in order: width, spp, max_depth
+    if (numeric_args.size() >= 1 && numeric_args[0] > 0) {
+        hard_width = numeric_args[0];
+        hard_height = numeric_args[0]; // Keep square aspect ratio
+    }
+    if (numeric_args.size() >= 2 && numeric_args[1] > 0) {
+        hard_spp = numeric_args[1];
+    }
+    if (numeric_args.size() >= 3 && numeric_args[2] > 0) {
+        hard_depth = numeric_args[2];
+    }
 
     // Setup output path (repo-local)
     std::filesystem::path repoRoot = "C:/Users/xinpe/source/repos/ray_tracer";

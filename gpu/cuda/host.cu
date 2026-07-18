@@ -156,7 +156,7 @@ __global__ void render_kernel_path(const SpherePOD* spheres, int nspheres, const
 				SpherePOD sp = spheres[k];
 				Vec3 center(sp.cx, sp.cy, sp.cz);
 				float t = hit_sphere(center, sp.radius, ray);
-				if (t > 0.0f && t < closest_t) { closest_t = t; hit_idx = k; hit_point = ray.at(t); hit_normal = unit_vector(hit_point - center); hit_is_quad = false; }
+				if (t > 0.001f && t < closest_t) { closest_t = t; hit_idx = k; hit_point = ray.at(t); hit_normal = unit_vector(hit_point - center); hit_is_quad = false; }
 			}
 			// quads
 			for (int qidx = 0; qidx < nquads; ++qidx) {
@@ -180,10 +180,8 @@ __global__ void render_kernel_path(const SpherePOD* spheres, int nspheres, const
 			}
 
 			if (hit_idx == -1) {
-				// environment/background
-				float tbg = 0.5f*(ray.dir.y + 1.0f);
-				Vec3 env((1.0f - tbg) * 1.0f + tbg * 0.5f, (1.0f - tbg) * 1.0f + tbg * 0.7f, 1.0f);
-				radiance = radiance + throughput * env;
+				// Cornell box has black background (closed room)
+				// No environment light contribution
 				break;
 			}
 
@@ -207,7 +205,7 @@ __global__ void render_kernel_path(const SpherePOD* spheres, int nspheres, const
 				Vec3 vvec = cross(w_normal, uvec);
 				Vec3 d = random_cosine_direction(state);
 				Vec3 scatter_dir = unit_vector(uvec * d.x + vvec * d.y + w_normal * d.z);
-				ray = Ray(hit_point + scatter_dir * 0.001f, scatter_dir);
+				ray = Ray(hit_point + scatter_dir * 0.01f, scatter_dir);
 				throughput = throughput * Vec3(mm.r, mm.g, mm.b);
 				continue;
 			}
@@ -216,7 +214,7 @@ __global__ void render_kernel_path(const SpherePOD* spheres, int nspheres, const
 			if (mm.type == 1) {
 				Vec3 reflected = reflect(unit_vector(ray.dir), hit_normal);
 				Vec3 scatter_dir = unit_vector(reflected + Vec3((rand01(state)-0.5f)*2.0f, (rand01(state)-0.5f)*2.0f, (rand01(state)-0.5f)*2.0f) * mm.fuzz);
-				ray = Ray(hit_point + scatter_dir * 0.001f, scatter_dir);
+				ray = Ray(hit_point + scatter_dir * 0.01f, scatter_dir);
 				throughput = throughput * Vec3(mm.r, mm.g, mm.b);
 				continue;
 			}
@@ -231,19 +229,19 @@ __global__ void render_kernel_path(const SpherePOD* spheres, int nspheres, const
 				if (etai_over_etat * sin_theta > 1.0f) {
 					// total internal reflection
 					Vec3 reflected = reflect(unit_dir, hit_normal);
-					ray = Ray(hit_point + reflected * 0.001f, reflected);
+					ray = Ray(hit_point + reflected * 0.01f, reflected);
 					continue;
 				}
 				float reflect_prob = schlick(cos_theta, mm.ref_idx);
 				if (rand01(state) < reflect_prob) {
 					Vec3 reflected = reflect(unit_dir, hit_normal);
-					ray = Ray(hit_point + reflected * 0.001f, reflected);
+					ray = Ray(hit_point + reflected * 0.01f, reflected);
 				} else {
 					if (refract(unit_dir, hit_normal, etai_over_etat, refracted)) {
-						ray = Ray(hit_point + refracted * 0.001f, refracted);
+						ray = Ray(hit_point + refracted * 0.01f, refracted);
 					} else {
 						Vec3 reflected = reflect(unit_dir, hit_normal);
-						ray = Ray(hit_point + reflected * 0.001f, reflected);
+						ray = Ray(hit_point + reflected * 0.01f, reflected);
 					}
 				}
 				continue;

@@ -121,9 +121,9 @@ ray_tracer/
 │   ├── TheRestOfYourLife/       # Book 3 implementation
 │   └── external/                # Third-party headers (stb_image, etc.)
 │
-├── ray_tracer/                   # Main application project
-│   ├── main.cpp                 # Entry point with CPU/GPU switching
-│   └── book_bridge.cpp          # Scene setup and CPU rendering
+├── launcher/                     # Main launcher application
+│   ├── main.cpp                 # Entry point with CPU/GPU mode switching
+│   └── book_bridge.cpp          # Scene setup and CPU rendering interface
 │
 ├── raytracing_book/             # Standalone examples from books
 │   └── main.cc                  # Book example runner
