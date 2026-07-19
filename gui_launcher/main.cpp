@@ -146,14 +146,18 @@ void RenderThread(RenderSettings settings) {
 
 		// Format time string
 		char timeStr[128];
+		wchar_t wTimeStr[128];
 		if (seconds < 1.0) {
 			sprintf_s(timeStr, "%.0f ms", duration.count());
+			swprintf_s(wTimeStr, L"%.0f ms", duration.count());
 		} else if (seconds < 60.0) {
 			sprintf_s(timeStr, "%.2f seconds", seconds);
+			swprintf_s(wTimeStr, L"%.2f seconds", seconds);
 		} else {
 			int minutes = (int)(seconds / 60);
 			double remainingSeconds = seconds - (minutes * 60);
 			sprintf_s(timeStr, "%d min %.1f sec", minutes, remainingSeconds);
+			swprintf_s(wTimeStr, L"%d min %.1f sec", minutes, remainingSeconds);
 		}
 
 		std::string statusMsg = "✅ Render complete! Time: ";
@@ -164,16 +168,16 @@ void RenderThread(RenderSettings settings) {
 
 		UpdateStatusText(statusMsg.c_str());
 
-		std::string msgText = "🎉 Render completed successfully!\n\n";
-		msgText += "⏱️ Render time: ";
-		msgText += timeStr;
-		msgText += "\n\n📦 Saved formats:\n";
-		if (pngOk) msgText += "✓ PNG (lossless)\n";
-		msgText += "✓ PPM (raw)\n\n📂 Opening output folder...";
+		std::wstring msgText = L"🎉 Render completed successfully!\n\n";
+		msgText += L"⏱️ Render time: ";
+		msgText += wTimeStr;
+		msgText += L"\n\n📦 Saved formats:\n";
+		if (pngOk) msgText += L"✓ PNG (lossless)\n";
+		msgText += L"✓ PPM (raw)\n\n📂 Opening output folder...";
 
-		MessageBoxA(g_hDlg, 
+		MessageBoxW(g_hDlg, 
 			msgText.c_str(),
-			"🎨 Render Complete", 
+			L"🎨 Render Complete", 
 			MB_OK | MB_ICONINFORMATION);
 
 		// Optionally open the output folder
@@ -185,7 +189,7 @@ void RenderThread(RenderSettings settings) {
 	} else {
 		SetProgressBar(0);
 		UpdateStatusText("❌ Render failed!");
-		MessageBoxA(g_hDlg, "❌ Rendering failed. Please check if you have sufficient GPU memory or try CPU mode.", "Error", MB_OK | MB_ICONERROR);
+		MessageBoxW(g_hDlg, L"❌ Rendering failed. Please check if you have sufficient GPU memory or try CPU mode.", L"Error", MB_OK | MB_ICONERROR);
 	}
 }
 
@@ -355,7 +359,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 			}
 			if (LOWORD(wParam) == IDCANCEL) {
 				if (g_rendering) {
-					MessageBoxA(hDlg, "Please wait for rendering to complete.", "Busy", MB_OK | MB_ICONWARNING);
+					MessageBoxW(hDlg, L"⏳ Please wait for rendering to complete.", L"Busy", MB_OK | MB_ICONWARNING);
 					return TRUE;
 				}
 				EndDialog(hDlg, 0);
@@ -366,7 +370,7 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 
 		case WM_CLOSE: {
 			if (g_rendering) {
-				MessageBoxA(hDlg, "Please wait for rendering to complete.", "Busy", MB_OK | MB_ICONWARNING);
+				MessageBoxW(hDlg, L"⏳ Please wait for rendering to complete.", L"Busy", MB_OK | MB_ICONWARNING);
 				return TRUE;
 			}
 			// Clean up resources
