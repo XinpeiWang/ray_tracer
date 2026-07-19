@@ -7,6 +7,23 @@ A high-performance ray tracing renderer with both **CPU** and **GPU (CUDA)** imp
 ![CUDA](https://img.shields.io/badge/CUDA-13.2%2B-green.svg)
 ![C++](https://img.shields.io/badge/C%2B%2B-17-blue.svg)
 
+## 📦 Download & Use (No Build Required!)
+
+**Want to try it without building?** Download the portable release:
+
+1. [Download RayTracer_v1.0_Portable.zip](../../releases) from the Releases page
+2. Extract to any folder
+3. Double-click `launcher.bat` or `RayTracer.exe`
+4. Follow the interactive prompts to render your first Cornell Box scene!
+
+The portable version includes:
+- ✅ All required runtime dependencies (CUDA, Visual C++)
+- ✅ Automatic GPU/CPU detection
+- ✅ Interactive parameter selection
+- ✅ No installation needed - fully portable!
+
+See [INSTALL.md](INSTALL.md) for detailed usage instructions.
+
 ## 🎯 Features
 
 ### Core Rendering
@@ -46,7 +63,13 @@ A high-performance ray tracing renderer with both **CPU** and **GPU (CUDA)** imp
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### For End Users (No Build Required)
+
+Download the portable package and run it directly - see the [📦 Download section](#-download--use-no-build-required) above.
+
+### For Developers
+
+#### Prerequisites
 
 **Required:**
 - **Windows 10/11** (64-bit)
@@ -91,25 +114,50 @@ nvcc host.cu -DBUILD_CUDA_STANDALONE=1 -O3 -o cuda_renderer.exe
 
 See [gpu/cuda/README.md](gpu/cuda/README.md) for detailed CUDA build instructions.
 
-### Running
+### Running (Development)
 
-#### CPU Rendering (Default if no GPU)
+#### Interactive Mode (Recommended)
 ```cmd
-ray_tracer.exe --cpu
+ray_tracer.exe
+```
+The app will auto-detect your GPU and prompt for rendering settings interactively.
+
+#### CPU Rendering
+```cmd
+ray_tracer.exe --cpu [width] [samples] [max_depth]
 ```
 
 #### GPU Rendering (CUDA)
 ```cmd
-ray_tracer.exe --gpu
+ray_tracer.exe --gpu [width] [samples] [max_depth]
 ```
 
-#### Standalone GPU Renderer
+**Examples:**
 ```cmd
-cd gpu\cuda
-cuda_renderer.exe 1920 1080 10
+ray_tracer.exe --gpu 800 1000 20   # GPU, 800x800, 1000 samples
+ray_tracer.exe --cpu 600 100 15    # CPU, 600x600, 100 samples
 ```
 
-**Output**: Generates `image.ppm` (CPU) or `image_cuda.ppm` (GPU) on your Desktop.
+**Output**: Generates `image.ppm` in the `output/` folder next to the executable.
+
+### Creating a Distribution Package
+
+After building in Release mode, you can create a portable package:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\package.ps1
+```
+
+This will:
+- Copy the executable and rename it to `RayTracer.exe`
+- Bundle all required runtime DLLs (CUDA, Visual C++)
+- Include launcher scripts and documentation
+- Create a `RayTracer_Package` folder ready for distribution
+
+Then create a ZIP for easy distribution:
+```powershell
+Compress-Archive -Path .\RayTracer_Package\* -DestinationPath RayTracer_Portable.zip
+```
 
 ## 📁 Project Structure
 
