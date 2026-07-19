@@ -1,0 +1,62 @@
+# CMake build artifacts
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.cmake
+
+# Test executables and outputs
+*.exe
+*.pdb
+*.ilk
+*.obj
+*.o
+
+# Test output files (PPM images from render tests)
+*.ppm
+*.png
+*.jpg
+
+# Google Test downloaded files
+_deps/
+googletest-*/
+
+# Visual Studio files
+.vs/
+*.vcxproj.user
+*.suo
+*.sdf
+*.opensdf
+*.db
+*.opendb
+*.VC.db
+*.VC.VC.opendb
+
+# Test results
+TestResults/
+test_detail.xml
+*.trx
+
+# Temporary test files
+test_*.tmp
+temp_*.dat
+
+# Benchmark outputs
+benchmark_*.txt
+
+# CTest files
+Testing/
+CTestTestfile.cmake
+DartConfiguration.tcl
+
+# IDE files
+.vscode/
+.idea/
+
+# Misc
+*.log
+*.tmp
+*.bak
+*~
