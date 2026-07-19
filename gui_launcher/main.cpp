@@ -61,8 +61,8 @@ QualityPreset g_presets[] = {
 	{ L"💫 Extreme (Ultra Quality)", L"Best quality, very slow (2048x2048, 2000 samples)", 2048, 2000, 50 }
 };
 
-void UpdateStatusText(const char* text) {
-	SetDlgItemTextA(g_hDlg, IDC_STATIC_STATUS, text);
+void UpdateStatusText(const wchar_t* text) {
+	SetDlgItemTextW(g_hDlg, IDC_STATIC_STATUS, text);
 }
 
 void SetProgressBar(int percent) {
@@ -115,12 +115,12 @@ void RenderThread(RenderSettings settings) {
 
 	int result = 0;
 	if (settings.useGPU) {
-		UpdateStatusText("⚡ Rendering with GPU (CUDA)...");
+		UpdateStatusText(L"⚡ Rendering with GPU (CUDA)...");
 		SetProgressBar(30);
 		result = gpu_render_main(settings.width, settings.height, settings.samples, settings.maxDepth, outputStr.c_str());
 		SetProgressBar(80);
 	} else {
-		UpdateStatusText("🔧 Rendering with CPU (multi-threaded)...");
+		UpdateStatusText(L"🔧 Rendering with CPU (multi-threaded)...");
 		SetProgressBar(30);
 		result = cpu_render_main(settings.width, settings.height, settings.samples, settings.maxDepth, outputStr.c_str());
 		SetProgressBar(80);
@@ -137,7 +137,7 @@ void RenderThread(RenderSettings settings) {
 	if (result == 0) {
 		// Convert PPM to PNG
 		SetProgressBar(90);
-		UpdateStatusText("🎨 Converting to PNG...");
+		UpdateStatusText(L"🎨 Converting to PNG...");
 		std::filesystem::path pngPath = outputPath.parent_path() / "image.png";
 
 		bool pngOk = convert_ppm_to_png(outputStr.c_str(), pngPath.string().c_str());
@@ -160,11 +160,11 @@ void RenderThread(RenderSettings settings) {
 			swprintf_s(wTimeStr, L"%d min %.1f sec", minutes, remainingSeconds);
 		}
 
-		std::string statusMsg = "✅ Render complete! Time: ";
-		statusMsg += timeStr;
-		statusMsg += "\nSaved:\n";
-		if (pngOk) statusMsg += "✓ image.png\n";
-		statusMsg += "✓ image.ppm";
+		std::wstring statusMsg = L"✅ Render complete! Time: ";
+		statusMsg += wTimeStr;
+		statusMsg += L"\nSaved:\n";
+		if (pngOk) statusMsg += L"✓ image.png\n";
+		statusMsg += L"✓ image.ppm";
 
 		UpdateStatusText(statusMsg.c_str());
 
@@ -188,7 +188,7 @@ void RenderThread(RenderSettings settings) {
 		SetProgressBar(0);
 	} else {
 		SetProgressBar(0);
-		UpdateStatusText("❌ Render failed!");
+		UpdateStatusText(L"❌ Render failed!");
 		MessageBoxW(g_hDlg, L"❌ Rendering failed. Please check if you have sufficient GPU memory or try CPU mode.", L"Error", MB_OK | MB_ICONERROR);
 	}
 }
@@ -285,11 +285,11 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 			// Check GPU availability and set default
 			if (gpu_is_available()) {
 				CheckDlgButton(hDlg, IDC_RADIO_GPU, BST_CHECKED);
-				SetDlgItemTextA(hDlg, IDC_STATIC_STATUS, "🚀 GPU detected! Ready to render.");
+				SetDlgItemTextW(hDlg, IDC_STATIC_STATUS, L"🚀 GPU detected! Ready to render.");
 			} else {
 				CheckDlgButton(hDlg, IDC_RADIO_CPU, BST_CHECKED);
 				EnableWindow(GetDlgItem(hDlg, IDC_RADIO_GPU), FALSE);
-				SetDlgItemTextA(hDlg, IDC_STATIC_STATUS, "⚙️ No GPU detected. CPU mode selected.");
+				SetDlgItemTextW(hDlg, IDC_STATIC_STATUS, L"⚙️ No GPU detected. CPU mode selected.");
 			}
 
 			// Setup tab control
