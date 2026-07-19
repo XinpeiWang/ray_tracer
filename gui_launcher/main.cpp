@@ -3,6 +3,7 @@
 #include <string>
 #include <thread>
 #include <filesystem>
+#include <chrono>
 #include "resource.h"
 
 // Image writer utilities
@@ -94,6 +95,9 @@ void RenderThread(RenderSettings settings) {
 
 	std::string outputStr = outputPath.string();
 
+	// Start timing
+	auto start_time = std::chrono::high_resolution_clock::now();
+
 	// Start progress animation
 	SetProgressBar(10);
 
@@ -110,6 +114,11 @@ void RenderThread(RenderSettings settings) {
 		SetProgressBar(80);
 	}
 
+	// Calculate elapsed time
+	auto end_time = std::chrono::high_resolution_clock::now();
+	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+	double seconds = duration.count() / 1000.0;
+
 	g_rendering = false;
 	EnableWindow(GetDlgItem(g_hDlg, IDC_BUTTON_RENDER), TRUE);
 
@@ -123,13 +132,30 @@ void RenderThread(RenderSettings settings) {
 
 		SetProgressBar(100);
 
-		std::string statusMsg = "Render complete! Saved:\n";
+		// Format time string
+		char timeStr[128];
+		if (seconds < 1.0) {
+			sprintf_s(timeStr, "%.0f ms", duration.count());
+		} else if (seconds < 60.0) {
+			sprintf_s(timeStr, "%.2f seconds", seconds);
+		} else {
+			int minutes = (int)(seconds / 60);
+			double remainingSeconds = seconds - (minutes * 60);
+			sprintf_s(timeStr, "%d min %.1f sec", minutes, remainingSeconds);
+		}
+
+		std::string statusMsg = "Render complete! Time: ";
+		statusMsg += timeStr;
+		statusMsg += "\nSaved:\n";
 		if (pngOk) statusMsg += "✓ image.png\n";
 		statusMsg += "✓ image.ppm";
 
 		UpdateStatusText(statusMsg.c_str());
 
-		std::string msgText = "Render completed successfully!\n\nSaved formats:\n";
+		std::string msgText = "Render completed successfully!\n\n";
+		msgText += "Render time: ";
+		msgText += timeStr;
+		msgText += "\n\nSaved formats:\n";
 		if (pngOk) msgText += "• PNG (lossless)\n";
 		msgText += "• PPM (raw)\n\nOpening output folder...";
 

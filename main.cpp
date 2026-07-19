@@ -1,8 +1,10 @@
 #include <cstdlib>
 #include <iostream>
+#include <iomanip>
 #include <string>
 #include <vector>
 #include <filesystem>
+#include <chrono>
 #include "gpu/cuda/gpu_interface.h"
 #include "cpu_renderer/cpu_interface.h"
 #include "src/external/image_writer.h"
@@ -164,6 +166,9 @@ int main(int argc, char** argv) {
     std::cout << "Using command-line settings: width=" << hard_width << " height=" << hard_height << " spp=" << hard_spp << " max_depth=" << hard_depth << std::endl;
     std::cout << "Writing output to: " << out_path << std::endl;
 
+    // Start timing
+    auto start_time = std::chrono::high_resolution_clock::now();
+
     // Use GPU or CPU based on flag
     int render_result = -1;
     if (use_gpu) {
@@ -189,6 +194,25 @@ int main(int argc, char** argv) {
             return render_result;
         }
     }
+
+    // Calculate elapsed time
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+    double seconds = duration.count() / 1000.0;
+
+    // Print render time
+    std::cout << "\n========================================" << std::endl;
+    std::cout << "RENDER TIME: ";
+    if (seconds < 1.0) {
+        std::cout << duration.count() << " ms" << std::endl;
+    } else if (seconds < 60.0) {
+        std::cout << std::fixed << std::setprecision(2) << seconds << " seconds" << std::endl;
+    } else {
+        int minutes = (int)(seconds / 60);
+        double remainingSeconds = seconds - (minutes * 60);
+        std::cout << minutes << " min " << std::fixed << std::setprecision(1) << remainingSeconds << " sec" << std::endl;
+    }
+    std::cout << "========================================" << std::endl;
 
     // Convert PPM to PNG and BMP
     if (render_result == 0) {
