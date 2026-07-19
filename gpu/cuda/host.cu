@@ -509,8 +509,9 @@ int main(int argc, char** argv) {
 	// allow override from argv
 	if (argc >= 4) samples_per_pixel = std::atoi(argv[3]);
 
-	// Optimized block size: 32x32 = 1024 threads/block for better GPU occupancy
-	dim3 block(32, 32);
+	// Optimized block size: 24x24 = 576 threads/block
+	// Balanced for register-heavy path tracing kernels
+	dim3 block(24, 24);
 	dim3 grid((image_width + block.x - 1) / block.x, (image_height + block.y - 1) / block.y);
 
 	unsigned int seed = (unsigned int)std::time(nullptr);
