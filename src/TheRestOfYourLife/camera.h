@@ -88,12 +88,12 @@ class camera {
             std::clog << "Could not create Desktop subdirectory: " << e.what() << std::endl;
         }
 
-        std::ofstream out(out_path, std::ios::out);
+        std::ofstream out(out_path, std::ios::out | std::ios::binary);
         if (!out) {
             // Fallback to current directory
             out_path = "image.ppm";
             std::clog << "Desktop write failed, falling back to: " << out_path << std::endl;
-            out.open(out_path, std::ios::out);
+            out.open(out_path, std::ios::out | std::ios::binary);
         }
 
         if (!out) {
@@ -104,7 +104,7 @@ class camera {
                 out_path = std::string(tmp2) + "\\image.ppm";
             }
             std::clog << "Attempting temp path: " << out_path << std::endl;
-            out.open(out_path, std::ios::out);
+            out.open(out_path, std::ios::out | std::ios::binary);
         }
 
         if (!out) {
