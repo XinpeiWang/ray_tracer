@@ -34,6 +34,10 @@ void UpdateStatusText(const char* text) {
 	SetDlgItemTextA(g_hDlg, IDC_STATIC_STATUS, text);
 }
 
+void SetProgressBar(int percent) {
+	SendDlgItemMessage(g_hDlg, IDC_PROGRESS, PBM_SETPOS, percent, 0);
+}
+
 void RenderThread(RenderSettings settings) {
 	// Get executable directory for output path
 	char exePath[MAX_PATH];
@@ -46,13 +50,20 @@ void RenderThread(RenderSettings settings) {
 
 	std::string outputStr = outputPath.string();
 
+	// Start progress animation
+	SetProgressBar(10);
+
 	int result = 0;
 	if (settings.useGPU) {
 		UpdateStatusText("Rendering with GPU (CUDA)...");
+		SetProgressBar(30);
 		result = gpu_render_main(settings.width, settings.height, settings.samples, settings.maxDepth, outputStr.c_str());
+		SetProgressBar(80);
 	} else {
 		UpdateStatusText("Rendering with CPU (multi-threaded)...");
+		SetProgressBar(30);
 		result = cpu_render_main(settings.width, settings.height, settings.samples, settings.maxDepth, outputStr.c_str());
+		SetProgressBar(80);
 	}
 
 	g_rendering = false;
@@ -60,9 +71,13 @@ void RenderThread(RenderSettings settings) {
 
 	if (result == 0) {
 		// Convert PPM to PNG
+		SetProgressBar(90);
+		UpdateStatusText("Converting to PNG...");
 		std::filesystem::path pngPath = outputPath.parent_path() / "image.png";
 
 		bool pngOk = convert_ppm_to_png(outputStr.c_str(), pngPath.string().c_str());
+
+		SetProgressBar(100);
 
 		std::string statusMsg = "Render complete! Saved:\n";
 		if (pngOk) statusMsg += "✓ image.png\n";
@@ -82,7 +97,11 @@ void RenderThread(RenderSettings settings) {
 		// Optionally open the output folder
 		std::string outputDir = outputPath.parent_path().string();
 		ShellExecuteA(NULL, "explore", outputDir.c_str(), NULL, NULL, SW_SHOWNORMAL);
+
+		// Reset progress bar
+		SetProgressBar(0);
 	} else {
+		SetProgressBar(0);
 		UpdateStatusText("Render failed!");
 		MessageBoxA(g_hDlg, "Rendering failed. Please check if you have sufficient GPU memory or try CPU mode.", "Error", MB_OK | MB_ICONERROR);
 	}
@@ -102,7 +121,8 @@ void StartRender() {
 		case 0: settings.width = 400; settings.height = 400; break;
 		case 1: settings.width = 600; settings.height = 600; break;
 		case 2: settings.width = 800; settings.height = 800; break;
-		case 3: settings.width = 1920; settings.height = 1080; break;
+		case 3: settings.width = 1080; settings.height = 1080; break;
+		case 4: settings.width = 2048; settings.height = 2048; break;
 		default: settings.width = 600; settings.height = 600; break;
 	}
 
@@ -113,6 +133,9 @@ void StartRender() {
 	// Disable render button
 	g_rendering = true;
 	EnableWindow(GetDlgItem(g_hDlg, IDC_BUTTON_RENDER), FALSE);
+
+	// Reset progress bar
+	SetProgressBar(0);
 
 	// Start rendering thread
 	std::thread renderThread(RenderThread, settings);
@@ -152,10 +175,11 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 			}
 
 			// Populate resolution combo
-			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)"400 x 400 (Quick Preview)");
-			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)"600 x 600 (Balanced)");
-			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)"800 x 800 (High Quality)");
-			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)"1920 x 1080 (Full HD)");
+			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)L"400 x 400 (Quick Preview)");
+			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)L"600 x 600 (Balanced)");
+			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)L"800 x 800 (High Quality)");
+			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)L"1080 x 1080 (Very High)");
+			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)L"2048 x 2048 (2K Ultra)");
 			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_SETCURSEL, 1, 0); // Default: 600x600
 
 			// Setup samples slider (10-2000)
@@ -167,6 +191,10 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 			SendDlgItemMessage(hDlg, IDC_SLIDER_DEPTH, TBM_SETRANGE, TRUE, MAKELONG(5, 50));
 			SendDlgItemMessage(hDlg, IDC_SLIDER_DEPTH, TBM_SETPOS, TRUE, 20);
 			SendDlgItemMessage(hDlg, IDC_SLIDER_DEPTH, TBM_SETTICFREQ, 5, 0);
+
+			// Initialize progress bar
+			SendDlgItemMessage(hDlg, IDC_PROGRESS, PBM_SETRANGE, 0, MAKELPARAM(0, 100));
+			SendDlgItemMessage(hDlg, IDC_PROGRESS, PBM_SETPOS, 0, 0);
 
 			UpdateSliderLabels();
 

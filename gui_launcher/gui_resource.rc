@@ -23,7 +23,7 @@ LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 // Dialog
 //
 
-IDD_MAIN_DIALOG DIALOGEX 0, 0, 340, 320
+IDD_MAIN_DIALOG DIALOGEX 0, 0, 340, 340
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Ray Tracer - Cornell Box Renderer"
 FONT 9, "Segoe UI", 400, 0, 0x0
@@ -41,7 +41,8 @@ BEGIN
 	CONTROL         "",IDC_SLIDER_DEPTH,"msctls_trackbar32",TBS_AUTOTICKS | WS_TABSTOP,20,176,300,20
 	LTEXT           "Higher samples = better quality but slower render.\nGPU recommended for fast rendering with high samples.",IDC_STATIC,20,200,300,30
 	DEFPUSHBUTTON   "RENDER",IDC_BUTTON_RENDER,130,255,80,30,BS_CENTER
-	LTEXT           "Ready to render. Select your settings and click RENDER.",IDC_STATIC_STATUS,10,295,320,15,SS_CENTER
+	CONTROL         "",IDC_PROGRESS,"msctls_progress32",WS_BORDER,10,295,320,15
+	LTEXT           "Ready to render. Select your settings and click RENDER.",IDC_STATIC_STATUS,10,315,320,15,SS_CENTER
 END
 
 /////////////////////////////////////////////////////////////////////////////
