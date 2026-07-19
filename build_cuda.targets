@@ -28,8 +28,8 @@
 
 	<Target Name="BuildCudaObjects" 
 			BeforeTargets="ClCompile"
-			Inputs="$(CudaRootDir)gpu\cuda\cuda_interface.cu;$(CudaRootDir)gpu\cuda\host.cu;$(CudaRootDir)gpu\cuda\cuda_scene.h;$(CudaRootDir)gpu\cuda\scene_serializer.h;$(CudaRootDir)gpu\cuda\scene_serializer.cpp"
-			Outputs="$(CudaObjDir)cuda_interface.obj;$(CudaObjDir)host.obj;$(CudaObjDir)scene_serializer.obj">
+			Inputs="$(CudaRootDir)gpu\cuda\gpu_interface.cu;$(CudaRootDir)gpu\cuda\host.cu;$(CudaRootDir)gpu\cuda\cuda_scene.h;$(CudaRootDir)gpu\cuda\scene_serializer.h;$(CudaRootDir)gpu\cuda\scene_serializer.cpp"
+			Outputs="$(CudaObjDir)gpu_interface.obj;$(CudaObjDir)host.obj;$(CudaObjDir)scene_serializer.obj">
 	<Message Text="[build_cuda] $(MSBuildProjectName): Building CUDA sources..." Importance="high" />
 	<Message Text="[build_cuda] $(MSBuildProjectName): Building CUDA sources..." Importance="high" />
 	<!-- Find MSVC x64 compiler path for CUDA -->
@@ -39,9 +39,9 @@
 	</PropertyGroup>
 	<Message Text="[build_cuda] Using MSVC compiler: $(MsvcX64Path)" Importance="high" />
 
-	<!-- Compile cuda_interface.cu -->
-	<Message Text="[build_cuda] $(MSBuildProjectName): Compiling cuda_interface.cu" Importance="high" />
-	<Exec Command="&quot;$(CudaPath)\bin\nvcc.exe&quot; &quot;$(CudaRootDir)gpu\cuda\cuda_interface.cu&quot; -c -o &quot;$(CudaObjDir)cuda_interface.obj&quot; -ccbin &quot;$(MsvcX64Path)&quot; -Xcompiler=/MD -std=c++17" 
+	<!-- Compile gpu_interface.cu -->
+	<Message Text="[build_cuda] $(MSBuildProjectName): Compiling gpu_interface.cu" Importance="high" />
+	<Exec Command="&quot;$(CudaPath)\bin\nvcc.exe&quot; &quot;$(CudaRootDir)gpu\cuda\gpu_interface.cu&quot; -c -o &quot;$(CudaObjDir)gpu_interface.obj&quot; -ccbin &quot;$(MsvcX64Path)&quot; -Xcompiler=/MD -std=c++17"
 		  IgnoreExitCode="false"
 		  ConsoleToMSBuild="true">
 	  <Output TaskParameter="ExitCode" PropertyName="NvccExitCode1" />
@@ -51,10 +51,10 @@
 	<!-- Wait a moment for file system to catch up -->
 	<Exec Command="ping 127.0.0.1 -n 2 &gt; nul" Condition=" '$(NvccExitCode1)' == '0' " IgnoreExitCode="true" />
 
-	<Message Text="[build_cuda] Verifying output file exists: $(CudaObjDir)cuda_interface.obj" Importance="high" />
-	<Message Text="[build_cuda] File exists: $([System.IO.File]::Exists('$(CudaObjDir)cuda_interface.obj'))" Importance="high" />
-	<Error Condition="'$(NvccExitCode1)' != '0'" Text="NVCC compilation of cuda_interface.cu failed with exit code $(NvccExitCode1)" />
-	<Error Condition="!Exists('$(CudaObjDir)cuda_interface.obj')" Text="NVCC failed to produce $(CudaObjDir)cuda_interface.obj. Check build output for errors." />
+	<Message Text="[build_cuda] Verifying output file exists: $(CudaObjDir)gpu_interface.obj" Importance="high" />
+	<Message Text="[build_cuda] File exists: $([System.IO.File]::Exists('$(CudaObjDir)gpu_interface.obj'))" Importance="high" />
+	<Error Condition="'$(NvccExitCode1)' != '0'" Text="NVCC compilation of gpu_interface.cu failed with exit code $(NvccExitCode1)" />
+	<Error Condition="!Exists('$(CudaObjDir)gpu_interface.obj')" Text="NVCC failed to produce $(CudaObjDir)gpu_interface.obj. Check build output for errors." />
 
 	<!-- Compile host.cu -->
 	<Message Text="[build_cuda] $(MSBuildProjectName): Compiling host.cu" Importance="high" />
@@ -100,13 +100,13 @@
 			  <Message Text="[build_cuda] $(MSBuildProjectName): Released CUDA build lock" Importance="high" />
 		  </Target>
 
-		  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-		  <Link>
-			  <AdditionalDependencies>$(CudaObjDir)cuda_interface.obj;$(CudaObjDir)host.obj;$(CudaObjDir)scene_serializer.obj;cudart.lib;cudadevrt.lib;%(AdditionalDependencies)</AdditionalDependencies>
-			<AdditionalLibraryDirectories>$(CudaLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-			<AdditionalOptions>/FORCE:MULTIPLE %(AdditionalOptions)</AdditionalOptions>
-		  </Link>
-		</ItemDefinitionGroup>
+			<ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+			<Link>
+				<AdditionalDependencies>$(CudaObjDir)gpu_interface.obj;$(CudaObjDir)host.obj;$(CudaObjDir)scene_serializer.obj;cudart.lib;cudadevrt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+			  <AdditionalLibraryDirectories>$(CudaLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+			  <AdditionalOptions>/FORCE:MULTIPLE %(AdditionalOptions)</AdditionalOptions>
+			</Link>
+		  </ItemDefinitionGroup>
 
 		<!-- Ensure .cu files and scene_serializer.cpp are not treated as C++ source by MSBuild -->
 		<ItemGroup>

@@ -18,7 +18,7 @@ ray_tracer/
 │   └── cpu_renderer.vcxproj    # Builds as StaticLibrary → cpu_renderer.lib
 │
 ├── gpu/cuda/                   # GPU renderer (custom build) ⚙️
-│   ├── cuda_interface.h        # C API: gpu_render_main()
+│   ├── gpu_interface.h        # C API: gpu_render_main()
 │   ├── host.cu                 # CUDA implementation
 │   ├── scene_serializer.cpp    # Scene conversion
 │   └── (compiled via build_cuda.targets)
@@ -55,7 +55,7 @@ int cpu_render_main(int width, int height, int spp, int max_depth, const char* o
 
 ### GPU Renderer Library
 
-**Header:** `gpu/cuda/cuda_interface.h`  
+**Header:** `gpu/cuda/gpu_interface.h`  
 **Function:**
 ```c
 int gpu_render_main(int width, int height, int spp, int max_depth, const char* output_path);

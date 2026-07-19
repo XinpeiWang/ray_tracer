@@ -1,4 +1,4 @@
-#include "cuda_interface.h"
+#include "gpu_interface.h"
 #include "scene_serializer.h"
 #include "cuda_scene.h"
 #include <cstdio>

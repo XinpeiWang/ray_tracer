@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <PropertyGroup>
+	<!-- Hint that launcher is the main executable -->
+	<IsStartupProject Condition="'$(MSBuildProjectName)' == 'launcher'">true</IsStartupProject>
+  </PropertyGroup>
+</Project>
