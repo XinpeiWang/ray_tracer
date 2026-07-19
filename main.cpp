@@ -11,8 +11,16 @@ int main(int argc, char** argv) {
     std::cout << "RAY TRACER LAUNCHER (Unified GPU/CPU)" << std::endl;
     std::cout << "========================================" << std::endl;
 
+    // Detect GPU availability
+    bool gpu_available = (gpu_is_available() == 1);
+    if (gpu_available) {
+        std::cout << "✓ CUDA-capable GPU detected" << std::endl;
+    } else {
+        std::cout << "⚠ No CUDA GPU detected - CPU mode only" << std::endl;
+    }
+
     // Parse command-line arguments for CPU/GPU switch
-    bool use_gpu = true; // Default to GPU
+    bool use_gpu = gpu_available; // Default to GPU if available
     bool force_cpu = false;
 
     for (int i = 1; i < argc; ++i) {
@@ -21,8 +29,14 @@ int main(int argc, char** argv) {
             force_cpu = true;
             use_gpu = false;
         } else if (arg == "--gpu" || arg == "-gpu") {
-            use_gpu = true;
-            force_cpu = false;
+            if (!gpu_available) {
+                std::cout << "ERROR: GPU mode requested but no CUDA GPU detected!" << std::endl;
+                std::cout << "Falling back to CPU mode..." << std::endl;
+                use_gpu = false;
+            } else {
+                use_gpu = true;
+                force_cpu = false;
+            }
         } else if (arg == "--help" || arg == "-h") {
             std::cout << "Usage: " << argv[0] << " [--cpu|--gpu] [width] [spp] [max_depth]\n";
             std::cout << "  --cpu      : Force CPU rendering\n";
@@ -35,13 +49,63 @@ int main(int argc, char** argv) {
         }
     }
 
-    std::cout << "Launching renderer (" << (use_gpu ? "GPU" : "CPU") << " mode)..." << std::endl;
-
     // Default rendering settings
     int hard_width = 600;    // Cornell box is square, so use same width
     int hard_height = 600;   // Cornell box should be 1:1 aspect ratio
     int hard_spp   = 500;    // samples per pixel
     int hard_depth = 20;     // max ray bounces
+
+    // If no arguments provided, enter interactive mode
+    if (argc == 1) {
+        std::cout << "\n========================================" << std::endl;
+        std::cout << "INTERACTIVE MODE" << std::endl;
+        std::cout << "========================================" << std::endl;
+        std::cout << "Current settings:" << std::endl;
+        std::cout << "  Renderer: " << (use_gpu ? "GPU" : "CPU") << std::endl;
+        std::cout << "  Resolution: " << hard_width << "x" << hard_height << std::endl;
+        std::cout << "  Samples per pixel: " << hard_spp << std::endl;
+        std::cout << "  Max ray depth: " << hard_depth << std::endl;
+        std::cout << "\nPress ENTER to render with these settings, or type 'custom' to change: ";
+
+        std::string response;
+        std::getline(std::cin, response);
+
+        if (response == "custom" || response == "c") {
+            // Mode selection
+            if (gpu_available) {
+                std::cout << "\nRenderer mode (gpu/cpu) [" << (use_gpu ? "gpu" : "cpu") << "]: ";
+                std::getline(std::cin, response);
+                if (response == "cpu" || response == "c") {
+                    use_gpu = false;
+                } else if (response == "gpu" || response == "g" || response.empty()) {
+                    use_gpu = true;
+                }
+            }
+
+            // Resolution
+            std::cout << "Image width [" << hard_width << "]: ";
+            std::getline(std::cin, response);
+            if (!response.empty()) {
+                try { hard_width = std::stoi(response); hard_height = hard_width; } catch(...) {}
+            }
+
+            // Samples
+            std::cout << "Samples per pixel [" << hard_spp << "]: ";
+            std::getline(std::cin, response);
+            if (!response.empty()) {
+                try { hard_spp = std::stoi(response); } catch(...) {}
+            }
+
+            // Depth
+            std::cout << "Max ray depth [" << hard_depth << "]: ";
+            std::getline(std::cin, response);
+            if (!response.empty()) {
+                try { hard_depth = std::stoi(response); } catch(...) {}
+            }
+        }
+    }
+
+    std::cout << "\nLaunching renderer (" << (use_gpu ? "GPU" : "CPU") << " mode)..." << std::endl;
 
     // Parse numeric arguments (after mode flags)
     std::vector<int> numeric_args;
@@ -68,9 +132,10 @@ int main(int argc, char** argv) {
         hard_depth = numeric_args[2];
     }
 
-    // Setup output path (repo-local)
-    std::filesystem::path repoRoot = "C:/Users/xinpe/source/repos/ray_tracer";
-    std::filesystem::path outPath = repoRoot / "x64" / "Release" / "image.ppm";
+    // Setup output path (use executable directory for portability)
+    std::filesystem::path exe_path = std::filesystem::absolute(argv[0]);
+    std::filesystem::path exe_dir = exe_path.parent_path();
+    std::filesystem::path outPath = exe_dir / "output" / "image.ppm";
 
     // Ensure the directory exists
     try {

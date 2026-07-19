@@ -29,6 +29,25 @@ extern __global__ void render_kernel_path(
 } while(0)
 #endif
 
+// Check if a CUDA-capable GPU is available
+int gpu_is_available() {
+	int device_count = 0;
+	cudaError_t err = cudaGetDeviceCount(&device_count);
+	if (err != cudaSuccess || device_count == 0) {
+		return 0; // No GPU available
+	}
+
+	// Check if at least one device has compute capability >= 3.0
+	for (int i = 0; i < device_count; i++) {
+		cudaDeviceProp prop;
+		err = cudaGetDeviceProperties(&prop, i);
+		if (err == cudaSuccess && prop.major >= 3) {
+			return 1; // GPU available
+		}
+	}
+	return 0;
+}
+
 int gpu_render_main(int image_width, int image_height, int samples_per_pixel, int max_depth, const char* out_path) {
 	std::printf("[cuda_interface] gpu_render_main start: %dx%d spp=%d out=%s\n", image_width, image_height, samples_per_pixel, out_path);
 	std::fflush(stdout);
