@@ -25,6 +25,7 @@ int main(int argc, char** argv) {
     // Parse command-line arguments for CPU/GPU switch
     bool use_gpu = gpu_available; // Default to GPU if available
     bool force_cpu = false;
+    std::string custom_output_path = "";
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -40,10 +41,14 @@ int main(int argc, char** argv) {
                 use_gpu = true;
                 force_cpu = false;
             }
+        } else if ((arg == "--output" || arg == "-o") && i + 1 < argc) {
+            custom_output_path = argv[i + 1];
+            i++; // Skip next argument as it's the output path
         } else if (arg == "--help" || arg == "-h") {
-            std::cout << "Usage: " << argv[0] << " [--cpu|--gpu] [width] [spp] [max_depth]\n";
+            std::cout << "Usage: " << argv[0] << " [--cpu|--gpu] [--output PATH] [width] [spp] [max_depth]\n";
             std::cout << "  --cpu      : Force CPU rendering\n";
             std::cout << "  --gpu      : Force GPU rendering (default)\n";
+            std::cout << "  --output,-o: Output file path (default: ./output/image.ppm)\n";
             std::cout << "  --help     : Show this help message\n";
             std::cout << "  width      : Image width (default 600, square aspect)\n";
             std::cout << "  spp        : Samples per pixel (default 500)\n";
@@ -136,19 +141,28 @@ int main(int argc, char** argv) {
     }
 
     // Setup output path (use executable directory for portability)
-    std::filesystem::path exe_path = std::filesystem::absolute(argv[0]);
-    std::filesystem::path exe_dir = exe_path.parent_path();
-    std::filesystem::path outPath = exe_dir / "output" / "image.ppm";
+    std::string out_path;
+
+    if (!custom_output_path.empty()) {
+        // Use custom output path from command line
+        out_path = custom_output_path;
+    } else {
+        // Default: use executable directory
+        std::filesystem::path exe_path = std::filesystem::absolute(argv[0]);
+        std::filesystem::path exe_dir = exe_path.parent_path();
+        std::filesystem::path outPath = exe_dir / "output" / "image.ppm";
+        out_path = outPath.string();
+    }
 
     // Ensure the directory exists
     try {
-        if (!outPath.parent_path().empty() && !std::filesystem::exists(outPath.parent_path())) {
-            std::filesystem::create_directories(outPath.parent_path());
+        std::filesystem::path out_path_obj(out_path);
+        if (!out_path_obj.parent_path().empty() && !std::filesystem::exists(out_path_obj.parent_path())) {
+            std::filesystem::create_directories(out_path_obj.parent_path());
         }
     } catch (...) {
         // Ignore directory creation errors
     }
-    std::string out_path = outPath.string();
 
     // Write a simple runtime marker next to the output image to prove this binary is being executed
     try {
