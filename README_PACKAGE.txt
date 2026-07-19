@@ -1,13 +1,36 @@
 ================================================================================
-					RAY TRACER - Cornell Box Renderer
-						 GPU & CPU Path Tracer
+						RAY TRACER - Cornell Box Renderer
+							 GPU & CPU Path Tracer
+							 Version 1.3
 ================================================================================
 
 DESCRIPTION
 -----------
 A high-performance path tracer that renders the classic Cornell box scene
 with a glass sphere. Supports both GPU (CUDA) and CPU rendering modes with
-automatic hardware detection.
+automatic hardware detection. Now with an easy-to-use GUI featuring Basic
+and Advanced modes!
+
+WHAT'S NEW IN v1.3
+------------------
+✨ Basic/Advanced Tab Interface
+   - Basic Mode: Simple quality presets for beginners
+   - Advanced Mode: Full manual control for experts
+
+✨ Quality Presets (Basic Mode)
+   - Low: Fast preview (400×400, 50 samples)
+   - Medium: Balanced quality (600×600, 200 samples)
+   - High: Recommended (800×800, 500 samples)
+   - Very High: Excellent (1080×1080, 1000 samples)
+   - Extreme: Production quality (2048×2048, 2000 samples)
+
+✨ Visual Progress Bar
+   - Real-time rendering progress feedback
+
+✅ Bug Fixes
+   - Fixed text display issues in GUI
+   - All resolutions now square format
+   - Added 2K resolution option
 
 SYSTEM REQUIREMENTS
 -------------------
@@ -31,12 +54,16 @@ INSTALLATION
 
 QUICK START
 -----------
-Double-click "RayTracer.exe" to launch in interactive mode.
+🖱️ GUI Mode (Recommended):
+   1. Double-click "RayTracerGUI.exe"
+   2. Choose "Basic" tab for simple presets OR "Advanced" for full control
+   3. Select your preferred quality/settings
+   4. Click "RENDER"
+   5. Watch the progress bar!
+   6. Output folder opens automatically when done
 
-The application will:
-  1. Auto-detect if you have a CUDA-capable GPU
-  2. Show current rendering settings
-  3. Prompt you to press ENTER or customize settings
+⌨️ Console Mode:
+   Double-click "RayTracer.exe" for interactive command-line mode
 
 Output images are saved to the "output" folder in two formats:
   - image.png (PNG format - lossless, widely supported)
