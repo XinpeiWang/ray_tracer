@@ -38,7 +38,9 @@ The application will:
   2. Show current rendering settings
   3. Prompt you to press ENTER or customize settings
 
-Output images are saved to the "output" folder as "image.ppm"
+Output images are saved to the "output" folder in two formats:
+  - image.png (PNG format - lossless, widely supported)
+  - image.ppm (PPM format - raw pixel data)
 
 COMMAND-LINE USAGE
 ------------------
@@ -77,10 +79,14 @@ Note: GPU requires more samples than CPU due to different rendering algorithms
 
 OUTPUT FORMAT
 -------------
-Images are saved in PPM (Portable Pixmap) format. To view:
-  - Windows: Use IrfanView, GIMP, or Photoshop
-  - Convert to PNG: Use ImageMagick or online converters
-  - Many image viewers support PPM natively
+Images are automatically saved in two formats:
+  - PNG (image.png): Lossless, widely supported - opens in any image viewer
+  - PPM (image.ppm): Raw pixel data - for advanced use or debugging
+
+No conversion needed! PNG files can be opened with:
+  - Windows Photos (built-in)
+  - Any web browser
+  - Any image editing software (Photoshop, GIMP, etc.)
 
 TROUBLESHOOTING
 ---------------

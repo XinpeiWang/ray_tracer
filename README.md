@@ -139,7 +139,16 @@ ray_tracer.exe --gpu 800 1000 20   # GPU, 800x800, 1000 samples
 ray_tracer.exe --cpu 600 100 15    # CPU, 600x600, 100 samples
 ```
 
-**Output**: Generates `image.ppm` in the `output/` folder next to the executable.
+**Output**: Generates both `image.ppm` (raw) and `image.png` (lossless) in the `output/` folder next to the executable.
+
+### Image Format Support
+
+The ray tracer automatically generates multiple output formats for convenience:
+
+- **PNG Format**: `image.png` - Lossless, widely supported, smaller file size (created automatically)
+- **PPM Format**: `image.ppm` - Raw pixel data, useful for debugging and further processing
+
+Both formats are generated after each render completes.
 
 ## 📦 Distribution & Release Process
 

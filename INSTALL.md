@@ -54,15 +54,16 @@ RayTracer.exe --cpu 600 100 15   # CPU, 600x600, 100 samples
 
 ## Viewing Output Images
 
-The rendered image is saved as `output\image.ppm` in PPM format.
+The rendered image is automatically saved in two formats in the `output\` folder:
+- **image.png** - PNG format (lossless, widely supported) - Open with any image viewer
+- **image.ppm** - PPM format (raw pixel data, for advanced use)
 
-**Windows viewers:**
-- Download IrfanView (free): https://www.irfanview.com/
-- Or convert to PNG using online tools
+**Opening the image:**
+- Windows Photos (built-in) opens PNG files  automatically
+- Any modern image viewer or web browser can display PNG files
+- The PPM file can be viewed with specialized tools like IrfanView
 
-**Convert to PNG:**
-- Use ImageMagick: `magick output\image.ppm output\image.png`
-- Or use online converter: https://convertio.co/ppm-png/
+No conversion needed! The app automatically generates PNG files for easy viewing.
 
 ## Troubleshooting
 

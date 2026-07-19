@@ -143,6 +143,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\main.cpp" />
+    <ClCompile Include="..\src\external\image_writer.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\cpu_renderer\cpu_renderer.vcxproj">
