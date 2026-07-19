@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 #include <filesystem>
-#include "gpu/cuda/cuda_interface.h"
+#include "gpu/cuda/gpu_interface.h"
 #include "cpu_renderer/cpu_interface.h"
 
 int main(int argc, char** argv) {

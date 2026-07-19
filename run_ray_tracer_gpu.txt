@@ -1,0 +1,6 @@
+Launching renderer (prefers GPU if available)...
+Using GPU renderer: C:\Users\xinpe\source\repos\ray_tracer\gpu\cuda\cuda_renderer.exe
+Using command-line settings: width=500 spp=500 max_depth=20
+Executing: "C:\Users\xinpe\source\repos\ray_tracer\gpu\cuda\cuda_renderer.exe" 500 500 20
+[CUDA LOG] image=500x500 samples=20 bytes=750000 kernel=8.669ms memcpy=0.165ms
+Wrote C:\Users\xinpe\OneDrive\Desktop\image_cuda.ppm (750000 bytes)
