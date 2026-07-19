@@ -20,6 +20,10 @@ HEADERS += \
 win32 {
 	# Windows specific flags - removed /std:c++17 as it's MSVC-specific
 	# MinGW uses -std=c++17 automatically from CONFIG += c++17
+
+	# Add application icon
+	RC_ICONS = app_icon.ico
+	RC_FILE = app_icon.rc
 }
 
 # Default rules for deployment

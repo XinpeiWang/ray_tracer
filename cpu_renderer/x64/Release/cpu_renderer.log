@@ -1,23 +1,22 @@
-﻿C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Microsoft\VC\v180\Microsoft.CppBuild.targets(551,5): warning MSB8028: The intermediate directory (x64\Release\) contains files shared from another project (raytracing_book.vcxproj).  This can lead to incorrect clean and rebuild behavior.
-  [build_cuda] cpu_renderer: Acquired CUDA build lock
+﻿  [build_cuda] cpu_renderer: Acquired CUDA build lock
   [build_cuda] cpu_renderer: Building CUDA sources...
   [build_cuda] cpu_renderer: Building CUDA sources...
   [build_cuda] Using MSVC compiler: C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.51.36231\bin\Hostx64\x64
   [build_cuda] cpu_renderer: Compiling gpu_interface.cu
   gpu_interface.cu
-  tmpxft_00006be0_00000000-10_gpu_interface.cudafe1.cpp
+  tmpxft_00001734_00000000-10_gpu_interface.cudafe1.cpp
   [build_cuda] nvcc exit code: 0
   [build_cuda] Verifying output file exists: C:\Users\xinpe\source\repos\ray_tracer\gpu\cuda\gpu_interface.obj
   [build_cuda] File exists: True
   [build_cuda] cpu_renderer: Compiling host.cu
-C:\Users\xinpe\source\repos\ray_tracer\gpu\cuda\host.cu(353): warning #550-D: variable "isQuad" was set but never used
+C:\Users\xinpe\source\repos\ray_tracer\gpu\cuda\host.cu(359): warning #550-D: variable "isQuad" was set but never used
     			bool isQuad = false;
     			     ^
   
   Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
   
   host.cu
-  tmpxft_00008694_00000000-10_host.cudafe1.cpp
+  tmpxft_000096dc_00000000-10_host.cudafe1.cpp
   [build_cuda] nvcc exit code: 0
   [build_cuda] Verifying output file exists: C:\Users\xinpe\source\repos\ray_tracer\gpu\cuda\host.obj
   [build_cuda] File exists: True
@@ -28,5 +27,28 @@ C:\Users\xinpe\source\repos\ray_tracer\gpu\cuda\host.cu(353): warning #550-D: va
   [build_cuda] File exists: True
   [build_cuda] cpu_renderer: CUDA compilation complete
   [build_cuda] cpu_renderer: CUDA compilation complete
+  [build_cuda] cpu_renderer: Creating gpu_renderer.lib (CUDA-only code)
+  [build_cuda] cpu_renderer: gpu_renderer.lib created successfully
   [build_cuda] cpu_renderer: Released CUDA build lock
+  cpu_interface.cpp
+C:\Users\xinpe\source\repos\ray_tracer\src\TheRestOfYourLife\camera.h(129,40): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  (compiling source file 'cpu_interface.cpp')
+  
+C:\Users\xinpe\source\repos\ray_tracer\src\TheRestOfYourLife\camera.h(57,35): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  (compiling source file 'cpu_interface.cpp')
+  
+C:\Users\xinpe\source\repos\ray_tracer\src\TheRestOfYourLife\camera.h(59,42): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  (compiling source file 'cpu_interface.cpp')
+  
+C:\Users\xinpe\source\repos\ray_tracer\src\TheRestOfYourLife\camera.h(71,44): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  (compiling source file 'cpu_interface.cpp')
+  
+C:\Users\xinpe\source\repos\ray_tracer\src\TheRestOfYourLife\camera.h(101,40): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  (compiling source file 'cpu_interface.cpp')
+  
+C:\Users\xinpe\source\repos\ray_tracer\src\TheRestOfYourLife\camera.h(103,48): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  (compiling source file 'cpu_interface.cpp')
+  
+C:\Users\xinpe\source\repos\ray_tracer\cpu_renderer\cpu_interface.cpp(102,29): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\xinpe\source\repos\ray_tracer\cpu_renderer\cpu_interface.cpp(104,36): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
   cpu_renderer.vcxproj -> C:\Users\xinpe\source\repos\ray_tracer\x64\Release\cpu_renderer.lib

@@ -48,8 +48,10 @@ int gpu_is_available() {
 	return 0;
 }
 
-int gpu_render_main(int image_width, int image_height, int samples_per_pixel, int max_depth, const char* out_path) {
-	std::printf("[cuda_interface] gpu_render_main start: %dx%d spp=%d out=%s\n", image_width, image_height, samples_per_pixel, out_path);
+int gpu_render_main(int image_width, int image_height, int samples_per_pixel, int max_depth, const char* out_path,
+					double cam_x, double cam_y, double cam_z) {
+	std::printf("[cuda_interface] gpu_render_main start: %dx%d spp=%d camera=(%.1f,%.1f,%.1f) out=%s\n", 
+				image_width, image_height, samples_per_pixel, cam_x, cam_y, cam_z, out_path);
 	std::fflush(stdout);
 
 	// Serialize the C++ scene (Cornell box) into POD structures
@@ -60,7 +62,7 @@ int gpu_render_main(int image_width, int image_height, int samples_per_pixel, in
 	int ns, nq, nm;
 
 	serialize_scene_arrays(image_width, image_height, samples_per_pixel, max_depth,
-		&spheres, &ns, &quads, &nq, &materials, &nm, &camera);
+		&spheres, &ns, &quads, &nq, &materials, &nm, &camera, cam_x, cam_y, cam_z);
 
 	std::printf("[cuda_interface] Launching GPU render: %d spheres, %d quads, %d materials\n", ns, nq, nm);
 	std::fflush(stdout);

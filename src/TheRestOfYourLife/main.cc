@@ -34,7 +34,12 @@ int main(int argc, char** argv) {
     cam.samples_per_pixel = 100;
     cam.max_depth         = 50;
 
-    // Allow overriding via command-line: <image_width> <samples_per_pixel> <max_depth>
+    // Default camera position
+    double cam_x = 278.0;
+    double cam_y = 278.0;
+    double cam_z = -800.0;
+
+    // Allow overriding via command-line: <image_width> <samples_per_pixel> <max_depth> [cam_x cam_y cam_z]
     if (argc >= 4) {
         try {
             int w = std::stoi(argv[1]);
@@ -43,8 +48,17 @@ int main(int argc, char** argv) {
             if (w > 0) cam.image_width = w;
             if (spp > 0) cam.samples_per_pixel = spp;
             if (md > 0) cam.max_depth = md;
+
+            // Optional camera position arguments
+            if (argc >= 7) {
+                cam_x = std::stod(argv[4]);
+                cam_y = std::stod(argv[5]);
+                cam_z = std::stod(argv[6]);
+            }
+
             std::clog << "Using command-line settings: width=" << cam.image_width
-                      << " spp=" << cam.samples_per_pixel << " max_depth=" << cam.max_depth << std::endl;
+                      << " spp=" << cam.samples_per_pixel << " max_depth=" << cam.max_depth
+                      << " camera=(" << cam_x << ", " << cam_y << ", " << cam_z << ")" << std::endl;
         } catch (const std::exception& e) {
             std::clog << "Invalid command-line arguments, using defaults: " << e.what() << std::endl;
         }
@@ -52,8 +66,8 @@ int main(int argc, char** argv) {
     cam.background        = color(0,0,0);
 
     cam.vfov     = 40;
-    cam.lookfrom = point3(278, 278, -800);
-    cam.lookat   = point3(278, 278, 0);
+    cam.lookfrom = point3(cam_x, cam_y, cam_z);
+    cam.lookat   = point3(278, 278, 278);  // Look at center of Cornell box
     cam.vup      = vec3(0, 1, 0);
 
     cam.defocus_angle = 0;

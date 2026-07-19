@@ -19,7 +19,7 @@ CXXFLAGS      = -fno-keep-inline-dllexport -g -std=gnu++1z -Wall -Wextra -Wextra
 INCPATH       = -I. -IC:/Qt/6.11.1/mingw_64/include -IC:/Qt/6.11.1/mingw_64/include/QtWidgets -IC:/Qt/6.11.1/mingw_64/include/QtGui -IC:/Qt/6.11.1/mingw_64/include/QtCore -Idebug -I/include -IC:/Qt/6.11.1/mingw_64/mkspecs/win32-g++ 
 LINKER      =        g++
 LFLAGS        =        -Wl,-subsystem,windows -mthreads
-LIBS        =        C:\Qt\6.11.1\mingw_64\lib\libQt6Widgets.a C:\Qt\6.11.1\mingw_64\lib\libQt6Gui.a C:\Qt\6.11.1\mingw_64\lib\libQt6Core.a -lmingw32 C:\Qt\6.11.1\mingw_64\lib\libQt6EntryPoint.a -lshell32  
+LIBS        =        C:\Qt\6.11.1\mingw_64\lib\libQt6Widgets.a C:\Qt\6.11.1\mingw_64\lib\libQt6Gui.a C:\Qt\6.11.1\mingw_64\lib\libQt6Core.a debug\app_icon_res.o -lmingw32 C:\Qt\6.11.1\mingw_64\lib\libQt6EntryPoint.a -lshell32  
 QMAKE         = C:\Qt\6.11.1\mingw_64\bin\qmake.exe
 DEL_FILE      = del
 CHK_DIR_EXISTS= if not exist
@@ -40,7 +40,7 @@ IDC           = idc
 IDL           = midl
 ZIP           = zip -r -9
 DEF_FILE      = 
-RES_FILE      = 
+RES_FILE      = debug\app_icon_res.o
 SED           = $(QMAKE) -install sed
 MOVE          = move
 
@@ -68,8 +68,11 @@ DESTDIR_TARGET = ..\RayTracer_Package\RayTracerGUI.exe
 first: all
 all: Makefile.Debug  ../RayTracer_Package/RayTracerGUI.exe
 
-../RayTracer_Package/RayTracerGUI.exe: C:/Qt/6.11.1/mingw_64/lib/libQt6Widgets.a C:/Qt/6.11.1/mingw_64/lib/libQt6Gui.a C:/Qt/6.11.1/mingw_64/lib/libQt6Core.a C:/Qt/6.11.1/mingw_64/lib/libQt6EntryPoint.a $(OBJECTS) 
+../RayTracer_Package/RayTracerGUI.exe: C:/Qt/6.11.1/mingw_64/lib/libQt6Widgets.a C:/Qt/6.11.1/mingw_64/lib/libQt6Gui.a C:/Qt/6.11.1/mingw_64/lib/libQt6Core.a C:/Qt/6.11.1/mingw_64/lib/libQt6EntryPoint.a $(OBJECTS) debug/app_icon_res.o
 	$(LINKER) $(LFLAGS) -o $(DESTDIR_TARGET) $(OBJECTS) $(LIBS)
+
+debug/app_icon_res.o: app_icon.rc
+	windres -i app_icon.rc -o debug\app_icon_res.o --include-dir=. $(DEFINES)
 
 qmake: FORCE
 	@$(QMAKE) -o Makefile.Debug RayTracerGUI.pro
@@ -81,6 +84,7 @@ dist:
 
 clean: compiler_clean 
 	-$(DEL_FILE) debug\main.o debug\mainwindow.o debug\moc_mainwindow.o
+	-$(DEL_FILE) debug\app_icon_res.o
 
 distclean: clean 
 	-$(DEL_FILE) .qmake.stash
