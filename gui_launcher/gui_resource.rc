@@ -1,0 +1,73 @@
+// Microsoft Visual C++ generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "winres.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// English (United States) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_MAIN_DIALOG DIALOGEX 0, 0, 340, 320
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Ray Tracer - Cornell Box Renderer"
+FONT 9, "Segoe UI", 400, 0, 0x0
+BEGIN
+	LTEXT           "Cornell Box Path Tracer",IDC_STATIC_TITLE,10,10,320,20,SS_CENTER
+	GROUPBOX        "Renderer",IDC_GROUPBOX_RENDERER,10,35,150,45
+	AUTORADIOBUTTON "GPU (CUDA)",IDC_RADIO_GPU,20,50,130,15
+	AUTORADIOBUTTON "CPU (Multi-threaded)",IDC_RADIO_CPU,20,65,130,15
+	GROUPBOX        "Render Settings",IDC_GROUPBOX_SETTINGS,10,85,320,160
+	LTEXT           "Resolution:",IDC_STATIC,20,105,60,10
+	COMBOBOX        IDC_COMBO_RESOLUTION,90,103,230,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+	LTEXT           "Samples per pixel: 500",IDC_LABEL_SAMPLES,20,125,300,10
+	CONTROL         "",IDC_SLIDER_SAMPLES,"msctls_trackbar32",TBS_AUTOTICKS | WS_TABSTOP,20,138,300,20
+	LTEXT           "Max ray depth: 20",IDC_LABEL_DEPTH,20,163,300,10
+	CONTROL         "",IDC_SLIDER_DEPTH,"msctls_trackbar32",TBS_AUTOTICKS | WS_TABSTOP,20,176,300,20
+	LTEXT           "Higher samples = better quality but slower render.\nGPU recommended for fast rendering with high samples.",IDC_STATIC,20,200,300,30
+	DEFPUSHBUTTON   "RENDER",IDC_BUTTON_RENDER,130,255,80,30,BS_CENTER
+	LTEXT           "Ready to render. Select your settings and click RENDER.",IDC_STATIC_STATUS,10,295,320,15,SS_CENTER
+END
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+IDI_APP_ICON            ICON                    "../resources/app_icon.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO
+BEGIN
+	IDD_MAIN_DIALOG, DIALOG
+	BEGIN
+		LEFTMARGIN, 7
+		RIGHTMARGIN, 333
+		TOPMARGIN, 7
+		BOTTOMMARGIN, 313
+	END
+END
+#endif    // APSTUDIO_INVOKED
+
+#endif    // English (United States) resources
+/////////////////////////////////////////////////////////////////////////////

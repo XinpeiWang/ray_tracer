@@ -32,6 +32,12 @@ if (-not (Test-Path "$OutputDir\RayTracer.exe")) {
 }
 Write-Host "OK RayTracer.exe" -ForegroundColor Green
 
+# Copy GUI executable if it exists
+if (Test-Path "$BuildDir\RayTracerGUI.exe") {
+	Copy-Item "$BuildDir\RayTracerGUI.exe" "$OutputDir\RayTracerGUI.exe" -Force
+	Write-Host "OK RayTracerGUI.exe" -ForegroundColor Green
+}
+
 # Copy launcher batch file
 if (Test-Path "$ProjectRoot\launcher.bat") {
 	Copy-Item "$ProjectRoot\launcher.bat" "$OutputDir\launcher.bat" -Force

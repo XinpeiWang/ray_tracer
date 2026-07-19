@@ -13,13 +13,14 @@ A high-performance ray tracing renderer with both **CPU** and **GPU (CUDA)** imp
 
 1. [Download RayTracer_v1.0_Portable.zip](../../releases) from the Releases page
 2. Extract to any folder
-3. Double-click `launcher.bat` or `RayTracer.exe`
-4. Follow the interactive prompts to render your first Cornell Box scene!
+3. **GUI Version:** Double-click `RayTracerGUI.exe` for a graphical interface
+   - OR **Console Version:** Double-click `launcher.bat` or `RayTracer.exe` for interactive command-line
 
 The portable version includes:
+- ✅ **Graphical User Interface** - Easy point-and-click rendering
 - ✅ All required runtime dependencies (CUDA, Visual C++)
 - ✅ Automatic GPU/CPU detection
-- ✅ Interactive parameter selection
+- ✅ Interactive parameter selection (GUI or console)
 - ✅ No installation needed - fully portable!
 
 See [INSTALL.md](INSTALL.md) for detailed usage instructions.
