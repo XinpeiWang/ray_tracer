@@ -97,9 +97,9 @@ int gpu_render_main(int image_width, int image_height, int samples_per_pixel, in
 	CUDA_CHECK(cudaMemcpy(d_cam, &camera, sizeof(CameraPOD), cudaMemcpyHostToDevice));
 
 	// Launch kernel with optimized block size for better GPU occupancy
-	// 32x32 = 1024 threads per block (maximum for most GPUs)
-	// This improves occupancy from ~70% to ~90%+ for better performance
-	dim3 block(32, 32);
+	// 24x24 = 576 threads per block (balanced for register-heavy kernels)
+	// Better than 16x16 (256) but safer than 32x32 (1024) for path tracing
+	dim3 block(24, 24);
 	dim3 grid((image_width + block.x - 1) / block.x, (image_height + block.y - 1) / block.y);
 	unsigned int seed = (unsigned int)time(nullptr);
 
