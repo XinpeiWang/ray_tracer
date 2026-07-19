@@ -45,33 +45,56 @@ extern "C" void serialize_scene_arrays(
 	SpherePOD** out_spheres, int* out_num_spheres,
 	QuadPOD** out_quads, int* out_num_quads,
 	MaterialPOD** out_materials, int* out_num_materials,
-	CameraPOD* out_camera
+	CameraPOD* out_camera,
+	double cam_x, double cam_y, double cam_z
 ) {
+	// Host-side vectors for collecting POD data before GPU transfer
 	std::vector<SpherePOD> spheres;
 	std::vector<QuadPOD> quads;
 	std::vector<MaterialPOD> materials;
 
-	// Build the Cornell box scene using the shared scene builder
+	// ========================================================================
+	// Scene Construction
+	// ========================================================================
+	// Build the Cornell box scene using shared scene definition
+	// This ensures GPU and CPU renderers produce identical scenes
+
 	hittable_list world = build_cornell_box_scene();
 
-	// Setup camera
-	camera cam;
-	cam.aspect_ratio = 1.0;
-	cam.image_width = image_width;
-	cam.samples_per_pixel = samples_per_pixel;
-	cam.max_depth = max_depth;
-	cam.background = color(0,0,0);
-	cam.vfov = 40;
-	cam.lookfrom = point3(278, 278, -800);
-	cam.lookat = point3(278, 278, 0);
-	cam.vup = vec3(0,1,0);
-	cam.defocus_angle = 0;
+	// ========================================================================
+	// Camera Configuration
+	// ========================================================================
+	// Set up camera with user-specified position and fixed target
+	// The camera will be converted to CameraPOD for GPU consumption
 
+	camera cam;
+	cam.aspect_ratio = 1.0;                     // Square aspect ratio for Cornell box
+	cam.image_width = image_width;
+	cam.samples_per_pixel = samples_per_pixel;  // GPU needs ~100x more samples than CPU
+	cam.max_depth = max_depth;                  // Max ray bounce depth
+	cam.background = color(0,0,0);              // Black background (closed room)
+	cam.vfov = 40;                              // Vertical field of view (degrees)
+
+	cam.lookfrom = point3(cam_x, cam_y, cam_z); // Camera position (user-specified)
+	cam.lookat = point3(278, 278, 278);         // Look at center of Cornell box (fixed)
+	cam.vup = vec3(0,1,0);                      // Up direction is +Y (fixed)
+	cam.defocus_angle = 0;                      // No depth of field blur
+
+	// Convert camera to POD struct for GPU
 	CameraPOD cam_pod = CameraToPOD(cam);
 
-	// Recursive flattening: walk hittable_list, unwrap translate and rotate_y, and collect spheres/quads
+	// ========================================================================
+	// Scene Flattening
+	// ========================================================================
+	// Recursively walk the scene graph and extract primitive geometry
+	// - Unwrap transforms (translate, rotate_y)
+	// - Collect spheres and quads with applied transforms
+	// - Build material array with unique material IDs
+	// This converts the C++ object-oriented scene to flat POD arrays
+
 	std::function<void(shared_ptr<hittable>, const vec3&, double)> walk =
 		[&](shared_ptr<hittable> o, const vec3& acc_offset, double acc_angle) {
+			// If hittable_list, recursively walk children
 			if (auto hl = std::dynamic_pointer_cast<hittable_list>(o)) {
 				for (const auto& child : hl->objects) {
 					walk(child, acc_offset, acc_angle);
@@ -79,22 +102,26 @@ extern "C" void serialize_scene_arrays(
 				return;
 			}
 
+			// If translate wrapper, accumulate offset and recurse
 			if (auto tr = std::dynamic_pointer_cast<translate>(o)) {
 				walk(tr->get_object(), acc_offset + tr->get_offset(), acc_angle);
 				return;
 			}
 
+			// If rotate_y wrapper, accumulate rotation and recurse
 			if (auto ry = std::dynamic_pointer_cast<rotate_y>(o)) {
 				walk(ry->get_object(), acc_offset, acc_angle + ry->get_angle());
 				return;
 			}
 
+			// Helper: apply accumulated Y-axis rotation to a vector
 			auto rotate_y_vec = [&](const vec3& v) -> vec3 {
 				double c = std::cos(acc_angle);
 				double s = std::sin(acc_angle);
 				return vec3(c * v.x() + s * v.z(), v.y(), -s * v.x() + c * v.z());
 			};
 
+			// If sphere, apply transforms and add to POD array
 			if (auto sp = std::dynamic_pointer_cast<sphere>(o)) {
 				SpherePOD sph{};
 				auto c = sp->center_at_time0();
