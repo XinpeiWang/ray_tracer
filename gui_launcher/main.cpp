@@ -21,6 +21,7 @@ extern "C" {
 // Global variables
 HWND g_hDlg = NULL;
 bool g_rendering = false;
+int g_currentTab = 0; // 0 = Basic, 1 = Advanced
 
 struct RenderSettings {
 	bool useGPU;
@@ -30,12 +31,55 @@ struct RenderSettings {
 	int maxDepth;
 };
 
+struct QualityPreset {
+	const wchar_t* name;
+	const wchar_t* description;
+	int width;
+	int samples;
+	int depth;
+};
+
+// Quality presets for basic mode
+QualityPreset g_presets[] = {
+	{ L"Low (Fast Preview)", L"Quick renders for testing (400x400, 50 samples)", 400, 50, 10 },
+	{ L"Medium (Balanced)", L"Good quality with reasonable time (600x600, 200 samples)", 600, 200, 20 },
+	{ L"High (Recommended)", L"High quality for most uses (800x800, 500 samples)", 800, 500, 30 },
+	{ L"Very High (Slow)", L"Excellent quality, takes time (1080x1080, 1000 samples)", 1080, 1000, 40 },
+	{ L"Extreme (Production)", L"Best quality, very slow (2048x2048, 2000 samples)", 2048, 2000, 50 }
+};
+
 void UpdateStatusText(const char* text) {
 	SetDlgItemTextA(g_hDlg, IDC_STATIC_STATUS, text);
 }
 
 void SetProgressBar(int percent) {
 	SendDlgItemMessage(g_hDlg, IDC_PROGRESS, PBM_SETPOS, percent, 0);
+}
+
+void ShowBasicControls(bool show) {
+	ShowWindow(GetDlgItem(g_hDlg, IDC_COMBO_QUALITY), show ? SW_SHOW : SW_HIDE);
+	ShowWindow(GetDlgItem(g_hDlg, IDC_STATIC_QUALITY_DESC), show ? SW_SHOW : SW_HIDE);
+}
+
+void ShowAdvancedControls(bool show) {
+	ShowWindow(GetDlgItem(g_hDlg, IDC_COMBO_RESOLUTION), show ? SW_SHOW : SW_HIDE);
+	ShowWindow(GetDlgItem(g_hDlg, IDC_SLIDER_SAMPLES), show ? SW_SHOW : SW_HIDE);
+	ShowWindow(GetDlgItem(g_hDlg, IDC_SLIDER_DEPTH), show ? SW_SHOW : SW_HIDE);
+	ShowWindow(GetDlgItem(g_hDlg, IDC_LABEL_SAMPLES), show ? SW_SHOW : SW_HIDE);
+	ShowWindow(GetDlgItem(g_hDlg, IDC_LABEL_DEPTH), show ? SW_SHOW : SW_HIDE);
+}
+
+void SwitchTab(int tabIndex) {
+	g_currentTab = tabIndex;
+	if (tabIndex == 0) {
+		// Basic mode
+		ShowBasicControls(true);
+		ShowAdvancedControls(false);
+	} else {
+		// Advanced mode
+		ShowBasicControls(false);
+		ShowAdvancedControls(true);
+	}
 }
 
 void RenderThread(RenderSettings settings) {
@@ -115,20 +159,37 @@ void StartRender() {
 	// Get renderer selection
 	settings.useGPU = (IsDlgButtonChecked(g_hDlg, IDC_RADIO_GPU) == BST_CHECKED);
 
-	// Get resolution
-	int resIdx = SendDlgItemMessage(g_hDlg, IDC_COMBO_RESOLUTION, CB_GETCURSEL, 0, 0);
-	switch (resIdx) {
-		case 0: settings.width = 400; settings.height = 400; break;
-		case 1: settings.width = 600; settings.height = 600; break;
-		case 2: settings.width = 800; settings.height = 800; break;
-		case 3: settings.width = 1080; settings.height = 1080; break;
-		case 4: settings.width = 2048; settings.height = 2048; break;
-		default: settings.width = 600; settings.height = 600; break;
-	}
+	if (g_currentTab == 0) {
+		// Basic mode: use quality preset
+		int qualityIdx = SendDlgItemMessage(g_hDlg, IDC_COMBO_QUALITY, CB_GETCURSEL, 0, 0);
+		if (qualityIdx >= 0 && qualityIdx < 5) {
+			settings.width = g_presets[qualityIdx].width;
+			settings.height = g_presets[qualityIdx].width;
+			settings.samples = g_presets[qualityIdx].samples;
+			settings.maxDepth = g_presets[qualityIdx].depth;
+		} else {
+			// Default to Medium
+			settings.width = 600;
+			settings.height = 600;
+			settings.samples = 200;
+			settings.maxDepth = 20;
+		}
+	} else {
+		// Advanced mode: use manual settings
+		int resIdx = SendDlgItemMessage(g_hDlg, IDC_COMBO_RESOLUTION, CB_GETCURSEL, 0, 0);
+		switch (resIdx) {
+			case 0: settings.width = 400; settings.height = 400; break;
+			case 1: settings.width = 600; settings.height = 600; break;
+			case 2: settings.width = 800; settings.height = 800; break;
+			case 3: settings.width = 1080; settings.height = 1080; break;
+			case 4: settings.width = 2048; settings.height = 2048; break;
+			default: settings.width = 600; settings.height = 600; break;
+		}
 
-	// Get samples and depth from sliders
-	settings.samples = SendDlgItemMessage(g_hDlg, IDC_SLIDER_SAMPLES, TBM_GETPOS, 0, 0);
-	settings.maxDepth = SendDlgItemMessage(g_hDlg, IDC_SLIDER_DEPTH, TBM_GETPOS, 0, 0);
+		// Get samples and depth from sliders
+		settings.samples = SendDlgItemMessage(g_hDlg, IDC_SLIDER_SAMPLES, TBM_GETPOS, 0, 0);
+		settings.maxDepth = SendDlgItemMessage(g_hDlg, IDC_SLIDER_DEPTH, TBM_GETPOS, 0, 0);
+	}
 
 	// Disable render button
 	g_rendering = true;
@@ -174,7 +235,22 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 				SetDlgItemTextA(hDlg, IDC_STATIC_STATUS, "No GPU detected. CPU mode selected.");
 			}
 
-			// Populate resolution combo
+			// Setup tab control
+			HWND hTab = GetDlgItem(hDlg, IDC_TAB_CONTROL);
+			TCITEM tie;
+			tie.mask = TCIF_TEXT;
+			tie.pszText = (LPWSTR)L"Basic";
+			TabCtrl_InsertItem(hTab, 0, &tie);
+			tie.pszText = (LPWSTR)L"Advanced";
+			TabCtrl_InsertItem(hTab, 1, &tie);
+
+			// Populate quality presets (Basic tab)
+			for (int i = 0; i < 5; i++) {
+				SendDlgItemMessage(hDlg, IDC_COMBO_QUALITY, CB_ADDSTRING, 0, (LPARAM)g_presets[i].name);
+			}
+			SendDlgItemMessage(hDlg, IDC_COMBO_QUALITY, CB_SETCURSEL, 2, 0); // Default: High
+
+			// Populate resolution combo (Advanced tab)
 			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)L"400 x 400 (Quick Preview)");
 			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)L"600 x 600 (Balanced)");
 			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)L"800 x 800 (High Quality)");
@@ -198,6 +274,18 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 
 			UpdateSliderLabels();
 
+			// Show Basic tab by default
+			SwitchTab(0);
+
+			return TRUE;
+		}
+
+		case WM_NOTIFY: {
+			LPNMHDR pnmhdr = (LPNMHDR)lParam;
+			if (pnmhdr->idFrom == IDC_TAB_CONTROL && pnmhdr->code == TCN_SELCHANGE) {
+				int tabIndex = TabCtrl_GetCurSel(GetDlgItem(hDlg, IDC_TAB_CONTROL));
+				SwitchTab(tabIndex);
+			}
 			return TRUE;
 		}
 
