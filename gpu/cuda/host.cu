@@ -222,28 +222,34 @@ __global__ void render_kernel_path(const SpherePOD* spheres, int nspheres, const
 			// dielectric
 			if (mm.type == 2) {
 				Vec3 unit_dir = unit_vector(ray.dir);
-				float cos_theta = fminf(dot(-unit_dir, hit_normal), 1.0f);
+				// Determine if ray is entering or exiting
+				Vec3 outward_normal = hit_normal;
+				bool front_face = dot(ray.dir, outward_normal) < 0.0f;
+				Vec3 normal = front_face ? outward_normal : (outward_normal * -1.0f);
+				float etai_over_etat = front_face ? (1.0f / mm.ref_idx) : mm.ref_idx;
+
+				float cos_theta = fminf(dot(-unit_dir, normal), 1.0f);
 				float sin_theta = sqrtf(1.0f - cos_theta * cos_theta);
-				float etai_over_etat = 1.0f / mm.ref_idx;
 				Vec3 refracted;
 				if (etai_over_etat * sin_theta > 1.0f) {
 					// total internal reflection
-					Vec3 reflected = reflect(unit_dir, hit_normal);
+					Vec3 reflected = reflect(unit_dir, normal);
 					ray = Ray(hit_point + reflected * 0.01f, reflected);
 					continue;
 				}
 				float reflect_prob = schlick(cos_theta, mm.ref_idx);
 				if (rand01(state) < reflect_prob) {
-					Vec3 reflected = reflect(unit_dir, hit_normal);
+					Vec3 reflected = reflect(unit_dir, normal);
 					ray = Ray(hit_point + reflected * 0.01f, reflected);
 				} else {
-					if (refract(unit_dir, hit_normal, etai_over_etat, refracted)) {
+					if (refract(unit_dir, normal, etai_over_etat, refracted)) {
 						ray = Ray(hit_point + refracted * 0.01f, refracted);
 					} else {
-						Vec3 reflected = reflect(unit_dir, hit_normal);
+						Vec3 reflected = reflect(unit_dir, normal);
 						ray = Ray(hit_point + reflected * 0.01f, reflected);
 					}
 				}
+				// Glass is clear, throughput stays (1,1,1)
 				continue;
 			}
 		}
@@ -503,7 +509,8 @@ int main(int argc, char** argv) {
 	// allow override from argv
 	if (argc >= 4) samples_per_pixel = std::atoi(argv[3]);
 
-	dim3 block(16, 16);
+	// Optimized block size: 32x32 = 1024 threads/block for better GPU occupancy
+	dim3 block(32, 32);
 	dim3 grid((image_width + block.x - 1) / block.x, (image_height + block.y - 1) / block.y);
 
 	unsigned int seed = (unsigned int)std::time(nullptr);
