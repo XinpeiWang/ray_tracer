@@ -5,6 +5,9 @@
 #include <filesystem>
 #include "resource.h"
 
+// Image writer utilities
+#include "../src/external/image_writer.h"
+
 // Forward declarations of the render APIs
 extern "C" {
 	int gpu_is_available();
@@ -56,9 +59,23 @@ void RenderThread(RenderSettings settings) {
 	EnableWindow(GetDlgItem(g_hDlg, IDC_BUTTON_RENDER), TRUE);
 
 	if (result == 0) {
-		UpdateStatusText("Render complete! Image saved to output/image.ppm");
+		// Convert PPM to PNG
+		std::filesystem::path pngPath = outputPath.parent_path() / "image.png";
+
+		bool pngOk = convert_ppm_to_png(outputStr.c_str(), pngPath.string().c_str());
+
+		std::string statusMsg = "Render complete! Saved:\n";
+		if (pngOk) statusMsg += "✓ image.png\n";
+		statusMsg += "✓ image.ppm";
+
+		UpdateStatusText(statusMsg.c_str());
+
+		std::string msgText = "Render completed successfully!\n\nSaved formats:\n";
+		if (pngOk) msgText += "• PNG (lossless)\n";
+		msgText += "• PPM (raw)\n\nOpening output folder...";
+
 		MessageBoxA(g_hDlg, 
-			"Render completed successfully!\n\nOutput: output\\image.ppm\n\nYou can open this file with image viewers like IrfanView or convert to PNG.",
+			msgText.c_str(),
 			"Render Complete", 
 			MB_OK | MB_ICONINFORMATION);
 

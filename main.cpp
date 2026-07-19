@@ -5,6 +5,7 @@
 #include <filesystem>
 #include "gpu/cuda/gpu_interface.h"
 #include "cpu_renderer/cpu_interface.h"
+#include "src/external/image_writer.h"
 
 int main(int argc, char** argv) {
     std::cout << "========================================" << std::endl;
@@ -164,29 +165,50 @@ int main(int argc, char** argv) {
     std::cout << "Writing output to: " << out_path << std::endl;
 
     // Use GPU or CPU based on flag
+    int render_result = -1;
     if (use_gpu) {
         // Try GPU in-process call
         std::cout << "Calling gpu_render_main(...) in-process..." << std::endl;
-        int gpuRc = gpu_render_main(hard_width, hard_height, hard_spp, hard_depth, out_path.c_str());
-        std::cout << "gpu_render_main returned: " << gpuRc << std::endl;
-        if (gpuRc == 0) {
+        render_result = gpu_render_main(hard_width, hard_height, hard_spp, hard_depth, out_path.c_str());
+        std::cout << "gpu_render_main returned: " << render_result << std::endl;
+        if (render_result == 0) {
             std::cout << "Rendered with in-process GPU renderer, output: " << out_path << std::endl;
-            return 0;
         } else {
             std::cout << "In-process GPU renderer failed." << std::endl;
-            return gpuRc;
+            return render_result;
         }
     } else {
         // Use CPU renderer (in-process library call)
         std::cout << "Calling cpu_render_main(...) in-process..." << std::endl;
-        int cpuRc = cpu_render_main(hard_width, hard_height, hard_spp, hard_depth, out_path.c_str());
-        std::cout << "cpu_render_main returned: " << cpuRc << std::endl;
-        if (cpuRc == 0) {
+        render_result = cpu_render_main(hard_width, hard_height, hard_spp, hard_depth, out_path.c_str());
+        std::cout << "cpu_render_main returned: " << render_result << std::endl;
+        if (render_result == 0) {
             std::cout << "Rendered with in-process CPU renderer, output: " << out_path << std::endl;
-            return 0;
         } else {
             std::cout << "In-process CPU renderer failed." << std::endl;
-            return cpuRc;
+            return render_result;
         }
     }
+
+    // Convert PPM to PNG and BMP
+    if (render_result == 0) {
+        std::cout << "\nConverting to PNG format..." << std::endl;
+
+        // Generate output paths
+        std::filesystem::path ppm_path_obj(out_path);
+        std::filesystem::path png_path = ppm_path_obj.parent_path() / (ppm_path_obj.stem().string() + ".png");
+
+        // Convert to PNG
+        if (convert_ppm_to_png(out_path.c_str(), png_path.string().c_str())) {
+            std::cout << "✓ PNG saved: " << png_path << std::endl;
+        } else {
+            std::cout << "✗ PNG conversion failed" << std::endl;
+        }
+
+        std::cout << "\nRender complete! You can now open:" << std::endl;
+        std::cout << "  - " << png_path.filename() << " (PNG - lossless, widely supported)" << std::endl;
+        std::cout << "  - " << ppm_path_obj.filename() << " (PPM - raw data)" << std::endl;
+    }
+
+    return render_result;
 }
