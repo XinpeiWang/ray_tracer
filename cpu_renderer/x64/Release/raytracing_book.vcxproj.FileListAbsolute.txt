@@ -1,0 +1,1 @@
+C:\Users\xinpe\source\repos\ray_tracer\raytracing_book\x64\Release\raytracing_book.lib

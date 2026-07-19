@@ -73,7 +73,7 @@
   <PropertyGroup>
     <TargetName>ray_tracer</TargetName>
   </PropertyGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'"
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
@@ -143,10 +143,13 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\main.cpp" />
-    <ClCompile Include="book_bridge.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\cpu_renderer\cpu_renderer.vcxproj">
+      <Project>{5F2A8E6C-9B3F-4A1D-B7A7-2F9C9E2B4A11}</Project>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
 </Project>
-

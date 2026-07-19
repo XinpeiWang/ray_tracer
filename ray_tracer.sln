@@ -2,9 +2,12 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
 VisualStudioVersion = 18.8.0
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "launcher", "launcher\\launcher.vcxproj", "{747a5785-180c-4ad2-9319-8f87a30ab987}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "launcher", "launcher\launcher.vcxproj", "{747A5785-180C-4AD2-9319-8F87A30AB987}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "raytracing_book", "raytracing_book\\raytracing_book.vcxproj", "{5F2A8E6C-9B3F-4A1D-B7A7-2F9C9E2B4A11}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cuda_renderer", "gpu\cuda\cuda_renderer.vcxproj", "{3F5B9E2A-9D4F-4C3A-A123-1D2E3F4A5B6C}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "cpu_renderer", "cpu_renderer\\cpu_renderer.vcxproj", "{5F2A8E6C-9B3F-4A1D-B7A7-2F9C9E2B4A11}"
+EndProject
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -12,16 +15,22 @@ Global
 		Release|x64 = Release|x64
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{747a5785-180c-4ad2-9319-8f87a30ab987}.Debug|x64.ActiveCfg = Debug|x64
-		{747a5785-180c-4ad2-9319-8f87a30ab987}.Debug|x64.Build.0 = Debug|x64
-		{747a5785-180c-4ad2-9319-8f87a30ab987}.Release|x64.ActiveCfg = Release|x64
-		{747a5785-180c-4ad2-9319-8f87a30ab987}.Release|x64.Build.0 = Release|x64
+		{747A5785-180C-4AD2-9319-8F87A30AB987}.Debug|x64.ActiveCfg = Debug|x64
+		{747A5785-180C-4AD2-9319-8F87A30AB987}.Debug|x64.Build.0 = Debug|x64
+		{747A5785-180C-4AD2-9319-8F87A30AB987}.Release|x64.ActiveCfg = Release|x64
+		{747A5785-180C-4AD2-9319-8F87A30AB987}.Release|x64.Build.0 = Release|x64
 		{5F2A8E6C-9B3F-4A1D-B7A7-2F9C9E2B4A11}.Debug|x64.ActiveCfg = Debug|x64
 		{5F2A8E6C-9B3F-4A1D-B7A7-2F9C9E2B4A11}.Debug|x64.Build.0 = Debug|x64
 		{5F2A8E6C-9B3F-4A1D-B7A7-2F9C9E2B4A11}.Release|x64.ActiveCfg = Release|x64
-		{5F2A8E6C-9B3F-4A1D-B7A7-2F9C9E2B4A11}.Release|x64.Build.0 = Release|x64
-	EndGlobalSection
+		{5F2A8E6C-9B3F-4A1D-B7A7-2F9C9E2B4A11}.Release|x64.Build.0 = Release|x64EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {B5C8F3A0-7C9D-4E2A-8B1E-9F3D2E1A4C7B}
+	EndGlobalSection
 EndGlobal
+
+
+
+

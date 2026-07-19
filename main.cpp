@@ -4,8 +4,13 @@
 #include <vector>
 #include <filesystem>
 #include "gpu/cuda/cuda_interface.h"
+#include "cpu_renderer/cpu_interface.h"
 
 int main(int argc, char** argv) {
+    std::cout << "========================================" << std::endl;
+    std::cout << "RAY TRACER LAUNCHER (Unified GPU/CPU)" << std::endl;
+    std::cout << "========================================" << std::endl;
+
     // Parse command-line arguments for CPU/GPU switch
     bool use_gpu = true; // Default to GPU
     bool force_cpu = false;
@@ -107,21 +112,16 @@ int main(int argc, char** argv) {
             return gpuRc;
         }
     } else {
-        // Use CPU renderer (external executable)
-        std::filesystem::path cpuExePath = repoRoot / "x64" / "Release" / "raytracing_book.exe";
-        if (!std::filesystem::exists(cpuExePath)) {
-            std::cout << "CPU renderer not found at: " << cpuExePath << std::endl;
-            return 1;
+        // Use CPU renderer (in-process library call)
+        std::cout << "Calling cpu_render_main(...) in-process..." << std::endl;
+        int cpuRc = cpu_render_main(hard_width, hard_height, hard_spp, hard_depth, out_path.c_str());
+        std::cout << "cpu_render_main returned: " << cpuRc << std::endl;
+        if (cpuRc == 0) {
+            std::cout << "Rendered with in-process CPU renderer, output: " << out_path << std::endl;
+            return 0;
+        } else {
+            std::cout << "In-process CPU renderer failed." << std::endl;
+            return cpuRc;
         }
-
-        std::string args = " " + std::to_string(hard_width) + " " + std::to_string(hard_spp) + " " + std::to_string(hard_depth);
-        std::string cmd = std::string("\"") + cpuExePath.string() + "\"" + args;
-        std::cout << "Executing CPU renderer: " << cmd << std::endl;
-
-        int rc = std::system(cmd.c_str());
-        if (rc == 0) {
-            std::cout << "CPU renderer completed successfully." << std::endl;
-        }
-        return rc;
     }
 }

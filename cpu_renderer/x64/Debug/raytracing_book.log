@@ -1,0 +1,14 @@
+﻿  main.cc
+C:\Users\xinpe\source\repos\ray_tracer\src\TheRestOfYourLife\camera.h(46,35): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  (compiling source file '../src/TheRestOfYourLife/main.cc')
+  
+C:\Users\xinpe\source\repos\ray_tracer\src\TheRestOfYourLife\camera.h(49,44): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  (compiling source file '../src/TheRestOfYourLife/main.cc')
+  
+C:\Users\xinpe\source\repos\ray_tracer\src\TheRestOfYourLife\camera.h(79,40): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  (compiling source file '../src/TheRestOfYourLife/main.cc')
+  
+C:\Users\xinpe\source\repos\ray_tracer\src\TheRestOfYourLife\camera.h(81,48): warning C4996: 'getenv': This function or variable may be unsafe. Consider using _dupenv_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  (compiling source file '../src/TheRestOfYourLife/main.cc')
+  
+  raytracing_book.vcxproj -> C:\Users\xinpe\source\repos\ray_tracer\x64\Debug\raytracing_book.exe
