@@ -140,6 +140,8 @@ ray_tracer.exe --cpu 600 100 15    # CPU, 600x600, 100 samples
 
 **Output**: Generates `image.ppm` in the `output/` folder next to the executable.
 
+## 📦 Distribution & Release Process
+
 ### Creating a Distribution Package
 
 After building in Release mode, you can create a portable package:
@@ -156,8 +158,140 @@ This will:
 
 Then create a ZIP for easy distribution:
 ```powershell
-Compress-Archive -Path .\RayTracer_Package\* -DestinationPath RayTracer_Portable.zip
+Compress-Archive -Path .\RayTracer_Package\* -DestinationPath RayTracer_v1.0_Portable.zip
 ```
+
+### Creating a GitHub Release
+
+**Prerequisites:**
+- Build successful in Release|x64 configuration
+- All tests passing
+- Documentation updated
+- Version number decided (e.g., `v1.0`, `v1.1`)
+
+**Step-by-Step Process:**
+
+1. **Build the Release**
+   ```cmd
+   # From VS Developer Command Prompt
+   msbuild ray_tracer.sln /p:Configuration=Release /p:Platform=x64
+   ```
+
+2. **Create the Package**
+   ```powershell
+   # Run packaging script
+   powershell -ExecutionPolicy Bypass -File .\package.ps1
+
+   # Verify package contents
+   dir RayTracer_Package
+
+   # Test the package
+   cd RayTracer_Package
+   .\launcher.bat
+   cd ..
+   ```
+
+3. **Create Distribution ZIP**
+   ```powershell
+   # Update version number in the filename
+   Compress-Archive -Path .\RayTracer_Package\* -DestinationPath RayTracer_v1.0_Portable.zip
+   ```
+
+4. **Create GitHub Release**
+
+   a. Go to your repository: https://github.com/XinpeiWang/ray_tracer
+
+   b. Click **Releases** → **Draft a new release**
+
+   c. Fill in release details:
+   - **Tag version**: `v1.0` (or your version number)
+   - **Release title**: `Ray Tracer v1.0 - Portable Edition`
+   - **Description** (example):
+   ```markdown
+   ## Ray Tracer v1.0 - Cornell Box Path Tracer
+
+   First official release of the GPU/CPU hybrid ray tracer!
+
+   ### Features
+   - ✅ Automatic GPU detection with CPU fallback
+   - ✅ Interactive parameter selection
+   - ✅ CUDA-accelerated path tracing
+   - ✅ Multi-threaded CPU renderer
+   - ✅ Cornell Box scene included
+   - ✅ Portable - no installation required
+
+   ### What's Included
+   - RayTracer.exe - Main application
+   - launcher.bat - Easy double-click launcher
+   - Full documentation (README.txt, INSTALL.md)
+   - All runtime dependencies (CUDA, Visual C++)
+
+   ### System Requirements
+   - Windows 10/11 (64-bit)
+   - 4 GB RAM minimum
+   - NVIDIA GPU with CUDA support (optional, for GPU mode)
+
+   ### Quick Start
+   1. Download `RayTracer_v1.0_Portable.zip`
+   2. Extract to any folder
+   3. Double-click `launcher.bat`
+   4. Follow the prompts and enjoy!
+
+   ### Performance
+   - GPU Mode: ~5-15 seconds for high-quality renders
+   - CPU Mode: ~1-5 minutes for good quality
+
+   See [INSTALL.md](INSTALL.md) for detailed instructions.
+   ```
+
+   d. **Attach the ZIP file**: Drag and drop `RayTracer_v1.0_Portable.zip`
+
+   e. Click **Publish release**
+
+5. **Update README Link**
+
+   Once published, update the README download link:
+   ```markdown
+   [Download RayTracer_v1.0_Portable.zip](https://github.com/XinpeiWang/ray_tracer/releases/download/v1.0/RayTracer_v1.0_Portable.zip)
+   ```
+
+6. **Verify the Release**
+   - Download the ZIP from the release page
+   - Extract and test on a clean machine (or VM)
+   - Verify GPU detection works
+   - Test both interactive and command-line modes
+   - Check documentation is complete
+
+### Release Checklist
+
+Before publishing a release:
+
+- [ ] Build successful in Release configuration
+- [ ] GPU renderer tested and working
+- [ ] CPU renderer tested and working
+- [ ] Interactive mode tested
+- [ ] All dependencies included in package
+- [ ] Documentation up to date (README.md, INSTALL.md)
+- [ ] Version number updated in release materials
+- [ ] Package tested on clean system
+- [ ] Release notes written
+- [ ] ZIP file created and named correctly
+- [ ] GitHub release created with proper tag
+- [ ] Download link in README updated
+
+### Versioning Guidelines
+
+Follow semantic versioning: `vMAJOR.MINOR.PATCH`
+
+- **MAJOR**: Breaking changes, major new features
+- **MINOR**: New features, backward compatible
+- **PATCH**: Bug fixes, small improvements
+
+Examples:
+- `v1.0` - Initial release
+- `v1.1` - Added denoising feature
+- `v1.1.1` - Fixed GPU memory leak
+- `v2.0` - Switched to Vulkan backend (breaking change)
 
 ## 📁 Project Structure
 
