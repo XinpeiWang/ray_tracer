@@ -1,37 +1,69 @@
-# Emoji Display Fix
+# Emoji Display Fix - Complete
 
 ## Problem
-The completion dialog showed random characters instead of emojis:
+The UI showed random characters instead of emojis in:
+1. **Message boxes**: Completion dialog, error dialog, busy dialog
+2. **Status text**: Below the progress bar
+
+Example of broken display:
 ```
 ð Render completed successfully!
-
 âï¸ Render time: 2.45 seconds
+
+Below progress bar showed:
+â Render complete! Time: 2.45 seconds
+Saved:
+â image.png
+â image.ppm
 ```
 
 ## Root Cause
-- Using `MessageBoxA` (ANSI version) with UTF-8 emoji strings
-- ANSI API doesn't support Unicode characters properly
+- Using **ANSI APIs** (`MessageBoxA`, `SetDlgItemTextA`) with UTF-8 emoji strings
+- ANSI APIs don't support Unicode characters properly
 - Emojis were being mis-interpreted as random characters
 
 ## Solution
-Changed all message boxes to use **Unicode (wide string) APIs**:
+Converted **all text APIs to Unicode (wide string)**:
 
-### Before:
+### 1. Message Boxes
+**Before:**
 ```cpp
-std::string msgText = "🎉 Render completed successfully!\n\n";
-msgText += "⏱️ Render time: ";
-msgText += timeStr;
-// ...
-MessageBoxA(g_hDlg, msgText.c_str(), "🎨 Render Complete", MB_OK);
+MessageBoxA(g_hDlg, msgText.c_str(), "Title", MB_OK);
 ```
 
-### After:
+**After:**
 ```cpp
-std::wstring msgText = L"🎉 Render completed successfully!\n\n";
-msgText += L"⏱️ Render time: ";
-msgText += wTimeStr;  // Also converted to wide string
-// ...
-MessageBoxW(g_hDlg, msgText.c_str(), L"🎨 Render Complete", MB_OK);
+MessageBoxW(g_hDlg, msgText.c_str(), L"Title", MB_OK);
+```
+
+### 2. Status Text
+**Before:**
+```cpp
+void UpdateStatusText(const char* text) {
+    SetDlgItemTextA(g_hDlg, IDC_STATIC_STATUS, text);
+}
+// Called with:
+UpdateStatusText("✅ Render complete!");
+```
+
+**After:**
+```cpp
+void UpdateStatusText(const wchar_t* text) {
+    SetDlgItemTextW(g_hDlg, IDC_STATIC_STATUS, text);
+}
+// Called with:
+UpdateStatusText(L"✅ Render complete!");
+```
+
+### 3. Initial Status Messages
+**Before:**
+```cpp
+SetDlgItemTextA(hDlg, IDC_STATIC_STATUS, "🚀 GPU detected! Ready to render.");
+```
+
+**After:**
+```cpp
+SetDlgItemTextW(hDlg, IDC_STATIC_STATUS, L"🚀 GPU detected! Ready to render.");
 ```
 
 ## Changes Made
@@ -52,10 +84,39 @@ if (seconds < 1.0) {
 ```
 
 ### 2. Message Box Calls
-Updated all message boxes:
+Updated all message boxes to use `MessageBoxW`:
 - ✅ **Completion dialog**: `MessageBoxW` with `std::wstring`
 - ✅ **Error dialog**: `MessageBoxW` with wide string
 - ✅ **Busy dialog**: `MessageBoxW` with wide string
+
+### 3. Status Text Function
+Changed function signature and implementation:
+```cpp
+void UpdateStatusText(const wchar_t* text) {
+	SetDlgItemTextW(g_hDlg, IDC_STATIC_STATUS, text);
+}
+```
+
+### 4. All Status Messages
+Converted to wide string literals:
+- ✅ `L"⚡ Rendering with GPU (CUDA)..."`
+- ✅ `L"🔧 Rendering with CPU (multi-threaded)..."`
+- ✅ `L"🎨 Converting to PNG..."`
+- ✅ `L"✅ Render complete! Time: ..."`
+- ✅ `L"❌ Render failed!"`
+- ✅ `L"🚀 GPU detected! Ready to render."`
+- ✅ `L"⚙️ No GPU detected. CPU mode selected."`
+
+### 5. Completion Status Text
+Changed to wide string:
+```cpp
+std::wstring statusMsg = L"✅ Render complete! Time: ";
+statusMsg += wTimeStr;
+statusMsg += L"\nSaved:\n";
+if (pngOk) statusMsg += L"✓ image.png\n";
+statusMsg += L"✓ image.ppm";
+UpdateStatusText(statusMsg.c_str());
+```
 
 ### 3. Emoji Support
 All emojis now display correctly:
@@ -69,7 +130,15 @@ All emojis now display correctly:
 
 ## Result
 
-### Completion Dialog Now Shows:
+### Status Text Below Progress Bar:
+```
+✅ Render complete! Time: 2.45 seconds
+Saved:
+✓ image.png
+✓ image.ppm
+```
+
+### Completion Dialog:
 ```
 🎉 Render completed successfully!
 
@@ -82,15 +151,38 @@ All emojis now display correctly:
 📂 Opening output folder...
 ```
 
-### Error Dialog Now Shows:
+### Error Dialog:
 ```
 ❌ Rendering failed. Please check if you have sufficient 
 GPU memory or try CPU mode.
 ```
 
-### Busy Dialog Now Shows:
+### Busy Dialog:
 ```
 ⏳ Please wait for rendering to complete.
+```
+
+### Initial Status Messages:
+```
+🚀 GPU detected! Ready to render.
+```
+or
+```
+⚙️ No GPU detected. CPU mode selected.
+```
+
+### During Rendering:
+```
+⚡ Rendering with GPU (CUDA)...
+```
+or
+```
+🔧 Rendering with CPU (multi-threaded)...
+```
+
+During conversion:
+```
+🎨 Converting to PNG...
 ```
 
 ## Technical Notes
@@ -112,17 +204,22 @@ GPU memory or try CPU mode.
 - No functional changes, just proper encoding
 
 ## Files Modified
-- `gui_launcher/main.cpp` - All MessageBox calls converted to Unicode
+- `gui_launcher/main.cpp` - All text output converted to Unicode
+  - `UpdateStatusText()` function changed to use `wchar_t*`
+  - All `MessageBox` calls changed to `MessageBoxW`
+  - All `SetDlgItemText` calls changed to `SetDlgItemTextW`
+  - All string literals changed to wide literals with `L"..."` prefix
 
 ## Testing
 ✅ Rebuilt successfully  
 ✅ Emojis render correctly in all dialogs  
+✅ Emojis render correctly in status text  
 ✅ Time formatting works with wide strings  
-✅ No random characters  
+✅ No random characters anywhere  
 ✅ Package updated  
 
 ## Summary
-**Before**: Random chars (�ð âï¸ ðð)  
-**After**: Perfect emojis (🎉⏱️📦📂)
+**Before**: Random chars everywhere (�ð âï¸ ðð â)  
+**After**: Perfect emojis everywhere (🎉⏱️📦📂✅✓)
 
-The UI now displays all emojis correctly! 🎉
+**Complete Unicode support achieved!** All UI text now displays emojis perfectly. 🎉
