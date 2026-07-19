@@ -94,19 +94,31 @@
 		  <Message Text="[build_cuda] $(MSBuildProjectName): CUDA compilation complete" Importance="high" />
 		</Target>
 
+		<!-- Create static library from CUDA object files (excluding scene_serializer) -->
+		<Target Name="ArchiveCudaLibrary"
+				AfterTargets="BuildCudaObjects"
+				Inputs="$(CudaObjDir)gpu_interface.obj;$(CudaObjDir)host.obj"
+				Outputs="$(CudaObjDir)gpu_renderer.lib">
+			<Message Text="[build_cuda] $(MSBuildProjectName): Creating gpu_renderer.lib (CUDA-only code)" Importance="high" />
+			<Exec Command="&quot;$(MsvcX64Path)\lib.exe&quot; /OUT:&quot;$(CudaObjDir)gpu_renderer.lib&quot; &quot;$(CudaObjDir)gpu_interface.obj&quot; &quot;$(CudaObjDir)host.obj&quot; /NOLOGO" 
+				  IgnoreExitCode="false" />
+			<Message Text="[build_cuda] $(MSBuildProjectName): gpu_renderer.lib created successfully" Importance="high" />
+		</Target>
+
 		  <!-- Release the build lock after compilation -->
 		  <Target Name="ReleaseCudaBuildLock" AfterTargets="BuildCudaObjects">
 			  <Delete Files="$(CudaRootDir)gpu\cuda\.build_lock" />
 			  <Message Text="[build_cuda] $(MSBuildProjectName): Released CUDA build lock" Importance="high" />
 		  </Target>
 
-			<ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-			<Link>
-				<AdditionalDependencies>$(CudaObjDir)gpu_interface.obj;$(CudaObjDir)host.obj;$(CudaObjDir)scene_serializer.obj;cudart.lib;cudadevrt.lib;%(AdditionalDependencies)</AdditionalDependencies>
-			  <AdditionalLibraryDirectories>$(CudaLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-			  <AdditionalOptions>/FORCE:MULTIPLE %(AdditionalOptions)</AdditionalOptions>
-			</Link>
-		  </ItemDefinitionGroup>
+							<!-- Link CUDA objects directly (original working approach) -->
+							<ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64' AND ('$(MSBuildProjectName)'=='launcher' OR '$(MSBuildProjectName)'=='RayTracerGUI')">
+							<Link>
+								<AdditionalDependencies>$(CudaObjDir)gpu_interface.obj;$(CudaObjDir)host.obj;$(CudaObjDir)scene_serializer.obj;cudart.lib;cudadevrt.lib;%(AdditionalDependencies)</AdditionalDependencies>
+							  <AdditionalLibraryDirectories>$(CudaLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+							  <AdditionalOptions>/FORCE:MULTIPLE %(AdditionalOptions)</AdditionalOptions>
+							</Link>
+						  </ItemDefinitionGroup>
 
 		<!-- Ensure .cu files and scene_serializer.cpp are not treated as C++ source by MSBuild -->
 		<ItemGroup>

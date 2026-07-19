@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ray Tracer v1.6 - Download</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            background: rgba(30, 30, 50, 0.9);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            border: 2px solid rgba(100, 150, 255, 0.3);
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #00ffff, #ff00ff, #ffff00);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-align: center;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #888;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 30px 0;
+        }
+
+        .feature {
+            background: rgba(50, 50, 80, 0.6);
+            padding: 15px;
+            border-radius: 10px;
+            border-left: 3px solid #00ffff;
+        }
+
+        .feature h3 {
+            color: #00ffff;
+            margin-bottom: 5px;
+            font-size: 1.1em;
+        }
+
+        .download-btn {
+            display: block;
+            width: 100%;
+            padding: 20px;
+            margin: 30px 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-align: center;
+            text-decoration: none;
+            border-radius: 15px;
+            font-size: 1.5em;
+            font-weight: bold;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        .download-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(102, 126, 234, 0.6);
+        }
+
+        .info-box {
+            background: rgba(255, 200, 0, 0.1);
+            border: 2px solid rgba(255, 200, 0, 0.5);
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .info-box h3 {
+            color: #ffcc00;
+            margin-bottom: 10px;
+        }
+
+        .requirements {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 20px 0;
+        }
+
+        .req-badge {
+            background: rgba(100, 150, 255, 0.2);
+            padding: 8px 15px;
+            border-radius: 20px;
+            border: 1px solid rgba(100, 150, 255, 0.5);
+            font-size: 0.9em;
+        }
+
+        .screenshot {
+            width: 100%;
+            border-radius: 10px;
+            margin: 20px 0;
+            border: 2px solid rgba(100, 150, 255, 0.3);
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        a {
+            color: #00ffff;
+            text-decoration: none;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🌟 Ray Tracer v1.6</h1>
+        <p class="subtitle">Path Tracing Renderer with Modern GUI</p>
+
+        <div class="features">
+            <div class="feature">
+                <h3>🎮 Gaming UI</h3>
+                <p>Modern dark theme with custom icon</p>
+            </div>
+            <div class="feature">
+                <h3>⚡ Dual Mode</h3>
+                <p>CPU & GPU (CUDA) rendering</p>
+            </div>
+            <div class="feature">
+                <h3>💎 6 Quality Presets</h3>
+                <p>25 to 5,000 samples</p>
+            </div>
+            <div class="feature">
+                <h3>📐 15 Resolutions</h3>
+                <p>100x100 to 4K (4096x4096)</p>
+            </div>
+            <div class="feature">
+                <h3>⏸️ Stop Control</h3>
+                <p>Cancel renders anytime</p>
+            </div>
+            <div class="feature">
+                <h3>🖼️ Auto-open</h3>
+                <p>Results open automatically</p>
+            </div>
+        </div>
+
+        <a href="RayTracer_v1.6_Distribution.zip" class="download-btn">
+            ⬇️ Download Now (23 MB)
+        </a>
+
+        <div class="info-box">
+            <h3>📦 What's Included</h3>
+            <ul style="margin-left: 20px; line-height: 1.8;">
+                <li>RayTracerGUI.exe - Modern GUI application</li>
+                <li>ray_tracer.exe - Rendering engine</li>
+                <li>All required libraries (Qt6, CUDA)</li>
+                <li>Complete documentation</li>
+                <li>Ready to run - no installation!</li>
+            </ul>
+        </div>
+
+        <h3 style="margin: 20px 0 10px;">System Requirements</h3>
+        <div class="requirements">
+            <span class="req-badge">💻 Windows 10/11 (64-bit)</span>
+            <span class="req-badge">🧠 4GB RAM (8GB recommended)</span>
+            <span class="req-badge">🎮 NVIDIA GPU (optional)</span>
+            <span class="req-badge">💾 50MB disk space</span>
+        </div>
+
+        <div class="info-box">
+            <h3>🚀 Quick Start</h3>
+            <ol style="margin-left: 20px; line-height: 1.8;">
+                <li>Extract the ZIP file to any folder</li>
+                <li>Open the <code>RayTracer_Package</code> folder</li>
+                <li>Double-click <code>RayTracerGUI.exe</code></li>
+                <li>Select "Preview" quality and "800x800" resolution</li>
+                <li>Click "Start Render" and wait ~30 seconds</li>
+                <li>Your image opens automatically!</li>
+            </ol>
+        </div>
+
+        <h3 style="margin: 20px 0 10px;">Quality Presets</h3>
+        <table style="width: 100%; border-collapse: collapse; margin: 10px 0;">
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                <th style="padding: 10px; text-align: left; color: #00ffff;">Preset</th>
+                <th style="padding: 10px; text-align: left; color: #00ffff;">Samples</th>
+                <th style="padding: 10px; text-align: left; color: #00ffff;">Speed</th>
+            </tr>
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td style="padding: 10px;">⚡ Draft</td>
+                <td style="padding: 10px;">25</td>
+                <td style="padding: 10px;">Very Fast</td>
+            </tr>
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td style="padding: 10px;">🚀 Preview</td>
+                <td style="padding: 10px;">50</td>
+                <td style="padding: 10px;">Fast</td>
+            </tr>
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td style="padding: 10px;">📷 Good</td>
+                <td style="padding: 10px;">100</td>
+                <td style="padding: 10px;">Balanced</td>
+            </tr>
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td style="padding: 10px;">💎 High</td>
+                <td style="padding: 10px;">500</td>
+                <td style="padding: 10px;">Slow</td>
+            </tr>
+            <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                <td style="padding: 10px;">✨ Ultra</td>
+                <td style="padding: 10px;">1,000</td>
+                <td style="padding: 10px;">Very Slow</td>
+            </tr>
+            <tr>
+                <td style="padding: 10px;">🌟 Maximum</td>
+                <td style="padding: 10px;">5,000</td>
+                <td style="padding: 10px;">Extreme</td>
+            </tr>
+        </table>
+
+        <footer>
+            <p>Open Source | Version 1.6 | Built with Qt6 & CUDA</p>
+            <p style="margin-top: 10px;">
+                <a href="https://github.com/XinpeiWang/ray_tracer" target="_blank">GitHub Repository</a>
+            </p>
+        </footer>
+    </div>
+</body>
+</html>

@@ -20,6 +20,7 @@
 #define IDC_TAB_CONTROL                 1014
 #define IDC_COMBO_QUALITY               1015
 #define IDC_STATIC_QUALITY_DESC         1016
+#define IDC_STATIC_ADVANCED_DESC        1017
 
 // Next default values for new objects
 // 

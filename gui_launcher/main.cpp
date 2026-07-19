@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <commctrl.h>
+#include <richedit.h>
 #include <string>
 #include <thread>
 #include <filesystem>
@@ -24,14 +25,16 @@ HWND g_hDlg = NULL;
 bool g_rendering = false;
 int g_currentTab = 0; // 0 = Basic, 1 = Advanced
 
-// Dark theme colors
+// Modern UI colors (inspired by VS Code / Discord)
 HBRUSH g_hBackgroundBrush = NULL;
 HBRUSH g_hLightBackgroundBrush = NULL;
-COLORREF g_colorBackground = RGB(30, 30, 30);
-COLORREF g_colorLightBackground = RGB(45, 45, 48);
-COLORREF g_colorText = RGB(220, 220, 220);
-COLORREF g_colorAccent = RGB(0, 120, 212);
-COLORREF g_colorAccentHover = RGB(0, 150, 240);
+HBRUSH g_hAccentBrush = NULL;
+COLORREF g_colorBackground = RGB(32, 32, 36);          // Deep dark grey
+COLORREF g_colorLightBackground = RGB(47, 49, 54);    // Lighter surface
+COLORREF g_colorText = RGB(236, 236, 236);            // Almost white
+COLORREF g_colorAccent = RGB(88, 101, 242);           // Discord blurple
+COLORREF g_colorAccentHover = RGB(109, 120, 255);    // Lighter blurple
+COLORREF g_colorSuccess = RGB(87, 242, 135);          // Green accent
 
 HFONT g_hTitleFont = NULL;
 HFONT g_hNormalFont = NULL;
@@ -265,31 +268,78 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 			// Create dark theme brushes
 			g_hBackgroundBrush = CreateSolidBrush(g_colorBackground);
 			g_hLightBackgroundBrush = CreateSolidBrush(g_colorLightBackground);
+			g_hAccentBrush = CreateSolidBrush(g_colorAccent);
 
-			// Create fonts
-			g_hTitleFont = CreateFont(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+			// Create modern fonts
+			g_hTitleFont = CreateFont(22, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
 				DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
 				CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-			g_hNormalFont = CreateFont(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+			g_hNormalFont = CreateFont(10, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
 				DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
 				CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
 
-			// Set title font
+			// Set emoji font to all controls FIRST (before setting text)
 			SendDlgItemMessage(hDlg, IDC_STATIC_TITLE, WM_SETFONT, (WPARAM)g_hTitleFont, TRUE);
+			SendDlgItemMessage(hDlg, IDC_GROUPBOX_RENDERER, WM_SETFONT, (WPARAM)g_hNormalFont, TRUE);
+			SendDlgItemMessage(hDlg, IDC_RADIO_GPU, WM_SETFONT, (WPARAM)g_hNormalFont, TRUE);
+			SendDlgItemMessage(hDlg, IDC_RADIO_CPU, WM_SETFONT, (WPARAM)g_hNormalFont, TRUE);
+			SendDlgItemMessage(hDlg, IDC_BUTTON_RENDER, WM_SETFONT, (WPARAM)g_hNormalFont, TRUE);
+			SendDlgItemMessage(hDlg, IDC_STATIC_QUALITY_DESC, WM_SETFONT, (WPARAM)g_hNormalFont, TRUE);
+			SendDlgItemMessage(hDlg, IDC_STATIC_ADVANCED_DESC, WM_SETFONT, (WPARAM)g_hNormalFont, TRUE);
+			SendDlgItemMessage(hDlg, IDC_STATIC_STATUS, WM_SETFONT, (WPARAM)g_hNormalFont, TRUE);
+
+			// NOW set emoji text using escaped Unicode sequences
+			SetDlgItemTextW(hDlg, IDC_STATIC_TITLE, L"\U0001F3A8 RAY TRACER");
+			SetDlgItemTextW(hDlg, IDC_GROUPBOX_RENDERER, L"\U0001F5A5\uFE0F Rendering Engine");
+			SetDlgItemTextW(hDlg, IDC_RADIO_GPU, L"\u26A1 GPU (CUDA) - Recommended");
+			SetDlgItemTextW(hDlg, IDC_RADIO_CPU, L"\U0001F527 CPU (Multi-threaded)");
+			SetDlgItemTextW(hDlg, IDC_BUTTON_RENDER, L"\u25B6\uFE0F RENDER");
+			SetDlgItemTextW(hDlg, IDC_STATIC_QUALITY_DESC, L"Select a quality preset based on your needs.\nHigher quality = better image quality but longer render time.\n\n\U0001F4A1 Tip: Start with Medium or High for best results.");
+			SetDlgItemTextW(hDlg, IDC_STATIC_ADVANCED_DESC, L"\U0001F4A1 Higher samples = better quality but slower render.\n\u26A1 GPU recommended for high sample counts.");
 
 			// Set icon
 			HICON hIcon = LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_APP_ICON));
 			SendMessage(hDlg, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
 			SendMessage(hDlg, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
 
+			// Configure RichEdit controls for colored emoji support
+			HWND richEditControls[] = {
+				GetDlgItem(hDlg, IDC_STATIC_TITLE),
+				GetDlgItem(hDlg, IDC_STATIC_QUALITY_DESC),
+				GetDlgItem(hDlg, IDC_STATIC_ADVANCED_DESC),
+				GetDlgItem(hDlg, IDC_STATIC_STATUS)
+			};
+
+			for (int i = 0; i < 4; i++) {
+				HWND hRichEdit = richEditControls[i];
+				if (hRichEdit) {
+					// Enable transparent background
+					LONG style = GetWindowLong(hRichEdit, GWL_EXSTYLE);
+					SetWindowLong(hRichEdit, GWL_EXSTYLE, style | WS_EX_TRANSPARENT);
+
+					// Set background color for dark theme
+					SendMessage(hRichEdit, EM_SETBKGNDCOLOR, 0, (LPARAM)g_colorBackground);
+
+					// Disable selection hiding and enable auto URL detection
+					SendMessage(hRichEdit, EM_SETOPTIONS, ECOOP_OR, ECO_NOHIDESEL);
+
+					// Set text color to white for dark theme
+					CHARFORMAT2W cf = { 0 };
+					cf.cbSize = sizeof(CHARFORMAT2W);
+					cf.dwMask = CFM_COLOR;
+					cf.crTextColor = g_colorText;
+					SendMessage(hRichEdit, EM_SETCHARFORMAT, SCF_ALL, (LPARAM)&cf);
+				}
+			}
+
 			// Check GPU availability and set default
 			if (gpu_is_available()) {
 				CheckDlgButton(hDlg, IDC_RADIO_GPU, BST_CHECKED);
-				SetDlgItemTextW(hDlg, IDC_STATIC_STATUS, L"🚀 GPU detected! Ready to render.");
+				SetDlgItemTextW(hDlg, IDC_STATIC_STATUS, L"\U0001F680 GPU detected! Ready to render.");
 			} else {
 				CheckDlgButton(hDlg, IDC_RADIO_CPU, BST_CHECKED);
 				EnableWindow(GetDlgItem(hDlg, IDC_RADIO_GPU), FALSE);
-				SetDlgItemTextW(hDlg, IDC_STATIC_STATUS, L"⚙️ No GPU detected. CPU mode selected.");
+				SetDlgItemTextW(hDlg, IDC_STATIC_STATUS, L"\u2699\uFE0F No GPU detected. CPU mode selected.");
 			}
 
 			// Setup tab control
@@ -383,7 +433,8 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 		}
 
 		case WM_CTLCOLORDLG:
-		case WM_CTLCOLORSTATIC: {
+		case WM_CTLCOLORSTATIC:
+		case WM_CTLCOLOREDIT: {  // Handle RichEdit controls for dark theme
 			HDC hdcStatic = (HDC)wParam;
 			SetTextColor(hdcStatic, g_colorText);
 			SetBkColor(hdcStatic, g_colorBackground);
@@ -403,7 +454,19 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
 	InitCommonControls();
 
+	// Load RichEdit library for colored emoji support
+	HMODULE hRichEdit = LoadLibraryW(L"msftedit.dll");
+	if (!hRichEdit) {
+		MessageBoxW(NULL, L"Failed to load RichEdit library (msftedit.dll).\nColored emoji may not display correctly.", 
+			L"Warning", MB_OK | MB_ICONWARNING);
+	}
+
 	DialogBox(hInstance, MAKEINTRESOURCE(IDD_MAIN_DIALOG), NULL, DialogProc);
+
+	// Cleanup
+	if (hRichEdit) {
+		FreeLibrary(hRichEdit);
+	}
 
 	return 0;
 }

@@ -1,8 +1,6 @@
-﻿C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Microsoft\VC\v180\Microsoft.CppBuild.targets(551,5): warning MSB8028: The intermediate directory (x64\Release\) contains files shared from another project (ray_tracer.vcxproj).  This can lead to incorrect clean and rebuild behavior.
-C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Microsoft\VC\v180\Microsoft.CppBuild.targets(551,5): warning MSB8028: The intermediate directory (x64\Release\) contains files shared from another project (raytracing_book.vcxproj).  This can lead to incorrect clean and rebuild behavior.
-  [build_cuda] launcher: Acquired CUDA build lock
+﻿  [build_cuda] launcher: Acquired CUDA build lock
   [build_cuda] launcher: Released CUDA build lock
-  image_writer.cpp
+  main.cpp
 cpu_renderer.lib(cpu_interface.obj) : warning LNK4006: "public: static class aabb const aabb::empty" (?empty@aabb@@2V1@B) already defined in scene_serializer.obj; second definition ignored
 cpu_renderer.lib(cpu_interface.obj) : warning LNK4006: "public: static class interval const interval::universe" (?universe@interval@@2V1@B) already defined in scene_serializer.obj; second definition ignored
 cpu_renderer.lib(cpu_interface.obj) : warning LNK4006: "public: static class interval const interval::empty" (?empty@interval@@2V1@B) already defined in scene_serializer.obj; second definition ignored
@@ -45,9 +43,9 @@ cpu_renderer.lib(cpu_interface.obj) : warning LNK4006: "class interval __cdecl o
 cpu_renderer.lib(cpu_interface.obj) : warning LNK4006: "class interval __cdecl operator+(class interval const &,double)" (??H@YA?AVinterval@@AEBV0@N@Z) already defined in scene_serializer.obj; second definition ignored
 C:\Users\xinpe\source\repos\ray_tracer\x64\Release\ray_tracer.exe : warning LNK4088: image being generated due to /FORCE option; image may not run
   Generating code
-  0 of 1431 functions ( 0.0%) were compiled, the rest were copied from previous compilation.
+  6 of 1434 functions ( 0.4%) were compiled, the rest were copied from previous compilation.
     0 functions were new in current compilation
-    0 functions had inline decision re-evaluated but remain unchanged
+    2 functions had inline decision re-evaluated but remain unchanged
   Finished generating code
 cpu_renderer.lib(cpu_interface.obj) : warning LNK4006: "class aabb __cdecl operator+(class aabb const &,class vec3 const &)" (??H@YA?AVaabb@@AEBV0@AEBVvec3@@@Z) already defined in scene_serializer.obj; second definition ignored
 cpu_renderer.lib(cpu_interface.obj) : warning LNK4006: "class interval __cdecl operator+(class interval const &,double)" (??H@YA?AVinterval@@AEBV0@N@Z) already defined in scene_serializer.obj; second definition ignored
