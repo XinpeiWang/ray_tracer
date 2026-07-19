@@ -96,20 +96,54 @@ int gpu_render_main(int image_width, int image_height, int samples_per_pixel, in
 	CUDA_CHECK(cudaMalloc(&d_cam, sizeof(CameraPOD)));
 	CUDA_CHECK(cudaMemcpy(d_cam, &camera, sizeof(CameraPOD), cudaMemcpyHostToDevice));
 
-	// Launch kernel with optimized block size for better GPU occupancy
-	// 24x24 = 576 threads per block (balanced for register-heavy kernels)
-	// Better than 16x16 (256) but safer than 32x32 (1024) for path tracing
-	dim3 block(24, 24);
-	dim3 grid((image_width + block.x - 1) / block.x, (image_height + block.y - 1) / block.y);
-	unsigned int seed = (unsigned int)time(nullptr);
+	// Adaptive block size: Try optimal sizes with fallback for compatibility
+	// Path tracing kernels are register-heavy and may fail on older/lower-end GPUs
+	const int block_sizes[] = { 24, 20, 16, 12 };  // 576, 400, 256, 144 threads
+	const int num_sizes = sizeof(block_sizes) / sizeof(block_sizes[0]);
 
-	if (ns > 0 || nq > 0) {
-		render_kernel_path<<<grid, block>>>(d_spheres, (int)ns, d_quads, (int)nq, d_materials, d_cam, d_img, image_width, image_height, samples_per_pixel, max_depth, seed);
-	} else {
-		render_kernel<<<grid, block>>>(d_img, image_width, image_height, samples_per_pixel, seed);
+	unsigned int seed = (unsigned int)time(nullptr);
+	cudaError_t launch_error = cudaSuccess;
+	bool kernel_launched = false;
+
+	for (int i = 0; i < num_sizes && !kernel_launched; i++) {
+		int bs = block_sizes[i];
+		dim3 block(bs, bs);
+		dim3 grid((image_width + block.x - 1) / block.x, (image_height + block.y - 1) / block.y);
+
+		// Try to launch with this block size
+		if (ns > 0 || nq > 0) {
+			render_kernel_path<<<grid, block>>>(d_spheres, (int)ns, d_quads, (int)nq, d_materials, d_cam, d_img, image_width, image_height, samples_per_pixel, max_depth, seed);
+		} else {
+			render_kernel<<<grid, block>>>(d_img, image_width, image_height, samples_per_pixel, seed);
+		}
+
+		launch_error = cudaGetLastError();
+
+		if (launch_error == cudaSuccess) {
+			// Launch succeeded, wait for completion
+			std::fprintf(stderr, "[cuda_interface] Using block size %dx%d (%d threads)\n", bs, bs, bs * bs);
+			CUDA_CHECK(cudaDeviceSynchronize());
+			kernel_launched = true;
+		} else if (launch_error == cudaErrorInvalidConfiguration || 
+				   launch_error == cudaErrorLaunchOutOfResources) {
+			// This block size doesn't work, try smaller
+			std::fprintf(stderr, "[cuda_interface] Block size %dx%d failed, trying smaller...\n", bs, bs);
+			cudaGetLastError(); // Clear error
+		} else {
+			// Real error, not just block size issue
+			CUDA_CHECK(launch_error);
+		}
 	}
-	CUDA_CHECK(cudaGetLastError());
-	CUDA_CHECK(cudaDeviceSynchronize());
+
+	if (!kernel_launched) {
+		std::fprintf(stderr, "[cuda_interface] All block sizes failed\n");
+		cudaFree(d_img);
+		if (d_spheres) cudaFree(d_spheres);
+		if (d_quads) cudaFree(d_quads);
+		if (d_materials) cudaFree(d_materials);
+		if (d_cam) cudaFree(d_cam);
+		return -1;
+	}
 
 	// Copy result back to host
 	unsigned char* h_img = (unsigned char*)malloc(bytes);
