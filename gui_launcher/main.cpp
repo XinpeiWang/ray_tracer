@@ -24,6 +24,18 @@ HWND g_hDlg = NULL;
 bool g_rendering = false;
 int g_currentTab = 0; // 0 = Basic, 1 = Advanced
 
+// Dark theme colors
+HBRUSH g_hBackgroundBrush = NULL;
+HBRUSH g_hLightBackgroundBrush = NULL;
+COLORREF g_colorBackground = RGB(30, 30, 30);
+COLORREF g_colorLightBackground = RGB(45, 45, 48);
+COLORREF g_colorText = RGB(220, 220, 220);
+COLORREF g_colorAccent = RGB(0, 120, 212);
+COLORREF g_colorAccentHover = RGB(0, 150, 240);
+
+HFONT g_hTitleFont = NULL;
+HFONT g_hNormalFont = NULL;
+
 struct RenderSettings {
 	bool useGPU;
 	int width;
@@ -42,11 +54,11 @@ struct QualityPreset {
 
 // Quality presets for basic mode
 QualityPreset g_presets[] = {
-	{ L"Low (Fast Preview)", L"Quick renders for testing (400x400, 50 samples)", 400, 50, 10 },
-	{ L"Medium (Balanced)", L"Good quality with reasonable time (600x600, 200 samples)", 600, 200, 20 },
-	{ L"High (Recommended)", L"High quality for most uses (800x800, 500 samples)", 800, 500, 30 },
-	{ L"Very High (Slow)", L"Excellent quality, takes time (1080x1080, 1000 samples)", 1080, 1000, 40 },
-	{ L"Extreme (Production)", L"Best quality, very slow (2048x2048, 2000 samples)", 2048, 2000, 50 }
+	{ L"⚡ Low (Fast Preview)", L"Quick renders for testing (400x400, 50 samples)", 400, 50, 10 },
+	{ L"💎 Medium (Balanced)", L"Good quality with reasonable time (600x600, 200 samples)", 600, 200, 20 },
+	{ L"🌟 High (Recommended)", L"High quality for most uses (800x800, 500 samples)", 800, 500, 30 },
+	{ L"🔥 Very High (Impressive)", L"Excellent quality, takes time (1080x1080, 1000 samples)", 1080, 1000, 40 },
+	{ L"💫 Extreme (Ultra Quality)", L"Best quality, very slow (2048x2048, 2000 samples)", 2048, 2000, 50 }
 };
 
 void UpdateStatusText(const char* text) {
@@ -103,12 +115,12 @@ void RenderThread(RenderSettings settings) {
 
 	int result = 0;
 	if (settings.useGPU) {
-		UpdateStatusText("Rendering with GPU (CUDA)...");
+		UpdateStatusText("⚡ Rendering with GPU (CUDA)...");
 		SetProgressBar(30);
 		result = gpu_render_main(settings.width, settings.height, settings.samples, settings.maxDepth, outputStr.c_str());
 		SetProgressBar(80);
 	} else {
-		UpdateStatusText("Rendering with CPU (multi-threaded)...");
+		UpdateStatusText("🔧 Rendering with CPU (multi-threaded)...");
 		SetProgressBar(30);
 		result = cpu_render_main(settings.width, settings.height, settings.samples, settings.maxDepth, outputStr.c_str());
 		SetProgressBar(80);
@@ -125,7 +137,7 @@ void RenderThread(RenderSettings settings) {
 	if (result == 0) {
 		// Convert PPM to PNG
 		SetProgressBar(90);
-		UpdateStatusText("Converting to PNG...");
+		UpdateStatusText("🎨 Converting to PNG...");
 		std::filesystem::path pngPath = outputPath.parent_path() / "image.png";
 
 		bool pngOk = convert_ppm_to_png(outputStr.c_str(), pngPath.string().c_str());
@@ -144,7 +156,7 @@ void RenderThread(RenderSettings settings) {
 			sprintf_s(timeStr, "%d min %.1f sec", minutes, remainingSeconds);
 		}
 
-		std::string statusMsg = "Render complete! Time: ";
+		std::string statusMsg = "✅ Render complete! Time: ";
 		statusMsg += timeStr;
 		statusMsg += "\nSaved:\n";
 		if (pngOk) statusMsg += "✓ image.png\n";
@@ -152,16 +164,16 @@ void RenderThread(RenderSettings settings) {
 
 		UpdateStatusText(statusMsg.c_str());
 
-		std::string msgText = "Render completed successfully!\n\n";
-		msgText += "Render time: ";
+		std::string msgText = "🎉 Render completed successfully!\n\n";
+		msgText += "⏱️ Render time: ";
 		msgText += timeStr;
-		msgText += "\n\nSaved formats:\n";
-		if (pngOk) msgText += "• PNG (lossless)\n";
-		msgText += "• PPM (raw)\n\nOpening output folder...";
+		msgText += "\n\n📦 Saved formats:\n";
+		if (pngOk) msgText += "✓ PNG (lossless)\n";
+		msgText += "✓ PPM (raw)\n\n📂 Opening output folder...";
 
 		MessageBoxA(g_hDlg, 
 			msgText.c_str(),
-			"Render Complete", 
+			"🎨 Render Complete", 
 			MB_OK | MB_ICONINFORMATION);
 
 		// Optionally open the output folder
@@ -172,8 +184,8 @@ void RenderThread(RenderSettings settings) {
 		SetProgressBar(0);
 	} else {
 		SetProgressBar(0);
-		UpdateStatusText("Render failed!");
-		MessageBoxA(g_hDlg, "Rendering failed. Please check if you have sufficient GPU memory or try CPU mode.", "Error", MB_OK | MB_ICONERROR);
+		UpdateStatusText("❌ Render failed!");
+		MessageBoxA(g_hDlg, "❌ Rendering failed. Please check if you have sufficient GPU memory or try CPU mode.", "Error", MB_OK | MB_ICONERROR);
 	}
 }
 
@@ -246,6 +258,21 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 		case WM_INITDIALOG: {
 			g_hDlg = hDlg;
 
+			// Create dark theme brushes
+			g_hBackgroundBrush = CreateSolidBrush(g_colorBackground);
+			g_hLightBackgroundBrush = CreateSolidBrush(g_colorLightBackground);
+
+			// Create fonts
+			g_hTitleFont = CreateFont(18, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+				DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+				CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+			g_hNormalFont = CreateFont(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+				DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+				CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+
+			// Set title font
+			SendDlgItemMessage(hDlg, IDC_STATIC_TITLE, WM_SETFONT, (WPARAM)g_hTitleFont, TRUE);
+
 			// Set icon
 			HICON hIcon = LoadIcon(GetModuleHandle(NULL), MAKEINTRESOURCE(IDI_APP_ICON));
 			SendMessage(hDlg, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
@@ -254,11 +281,11 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 			// Check GPU availability and set default
 			if (gpu_is_available()) {
 				CheckDlgButton(hDlg, IDC_RADIO_GPU, BST_CHECKED);
-				SetDlgItemTextA(hDlg, IDC_STATIC_STATUS, "GPU detected! Ready to render.");
+				SetDlgItemTextA(hDlg, IDC_STATIC_STATUS, "🚀 GPU detected! Ready to render.");
 			} else {
 				CheckDlgButton(hDlg, IDC_RADIO_CPU, BST_CHECKED);
 				EnableWindow(GetDlgItem(hDlg, IDC_RADIO_GPU), FALSE);
-				SetDlgItemTextA(hDlg, IDC_STATIC_STATUS, "No GPU detected. CPU mode selected.");
+				SetDlgItemTextA(hDlg, IDC_STATIC_STATUS, "⚙️ No GPU detected. CPU mode selected.");
 			}
 
 			// Setup tab control
@@ -277,11 +304,11 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 			SendDlgItemMessage(hDlg, IDC_COMBO_QUALITY, CB_SETCURSEL, 2, 0); // Default: High
 
 			// Populate resolution combo (Advanced tab)
-			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)L"400 x 400 (Quick Preview)");
-			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)L"600 x 600 (Balanced)");
-			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)L"800 x 800 (High Quality)");
-			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)L"1080 x 1080 (Very High)");
-			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)L"2048 x 2048 (2K Ultra)");
+			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)L"⚡ 400 x 400 (Quick Preview)");
+			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)L"💎 600 x 600 (Balanced)");
+			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)L"🌟 800 x 800 (High Quality)");
+			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)L"🔥 1080 x 1080 (Very High)");
+			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_ADDSTRING, 0, (LPARAM)L"💫 2048 x 2048 (2K Ultra)");
 			SendDlgItemMessage(hDlg, IDC_COMBO_RESOLUTION, CB_SETCURSEL, 1, 0); // Default: 600x600
 
 			// Setup samples slider (10-2000)
@@ -342,8 +369,28 @@ INT_PTR CALLBACK DialogProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPara
 				MessageBoxA(hDlg, "Please wait for rendering to complete.", "Busy", MB_OK | MB_ICONWARNING);
 				return TRUE;
 			}
+			// Clean up resources
+			if (g_hBackgroundBrush) DeleteObject(g_hBackgroundBrush);
+			if (g_hLightBackgroundBrush) DeleteObject(g_hLightBackgroundBrush);
+			if (g_hTitleFont) DeleteObject(g_hTitleFont);
+			if (g_hNormalFont) DeleteObject(g_hNormalFont);
 			EndDialog(hDlg, 0);
 			return TRUE;
+		}
+
+		case WM_CTLCOLORDLG:
+		case WM_CTLCOLORSTATIC: {
+			HDC hdcStatic = (HDC)wParam;
+			SetTextColor(hdcStatic, g_colorText);
+			SetBkColor(hdcStatic, g_colorBackground);
+			return (INT_PTR)g_hBackgroundBrush;
+		}
+
+		case WM_CTLCOLORBTN: {
+			HDC hdcButton = (HDC)wParam;
+			SetTextColor(hdcButton, g_colorText);
+			SetBkColor(hdcButton, g_colorLightBackground);
+			return (INT_PTR)g_hLightBackgroundBrush;
 		}
 	}
 	return FALSE;
