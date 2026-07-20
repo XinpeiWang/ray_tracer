@@ -61,13 +61,14 @@ int gpu_is_available();
  * @param samples_per_pixel Samples per pixel (GPU needs ~100x more than CPU)
  * @param max_depth         Maximum ray bounce depth
  * @param out_path          Output PPM file path (e.g., "C:/path/to/image.ppm")
+ * @param scene_id          Scene selector (0=Cornell Box, 1-8=other scenes - currently only Cornell Box supported on GPU)
  * @param cam_x             Camera position X coordinate (default: 278)
  * @param cam_y             Camera position Y coordinate (default: 278)
  * @param cam_z             Camera position Z coordinate (default: -800)
  * @return 0 on success, non-zero on failure
  */
 int gpu_render_main(int image_width, int image_height, int samples_per_pixel, int max_depth, const char* out_path,
-                    double cam_x, double cam_y, double cam_z);
+                    int scene_id, double cam_x, double cam_y, double cam_z);
 
 #ifdef __cplusplus
 }

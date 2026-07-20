@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "error_handler.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -27,16 +28,17 @@
 // RenderThread Implementation
 RenderThread::RenderThread(QObject *parent)
 	: QThread(parent), m_useGPU(true), m_width(800), m_height(800), m_samples(100), m_maxDepth(50),
-	  m_camX(278), m_camY(278), m_camZ(-800), m_renderProcess(nullptr) {
+	  m_sceneId(0), m_camX(278), m_camY(278), m_camZ(-800), m_renderProcess(nullptr) {
 }
 
 void RenderThread::setParameters(bool useGPU, int width, int height, int samples, int maxDepth,
-								  double camX, double camY, double camZ, const QString &outputPath) {
+								  int sceneId, double camX, double camY, double camZ, const QString &outputPath) {
 	m_useGPU = useGPU;
 	m_width = width;
 	m_height = height;
 	m_samples = samples;
 	m_maxDepth = maxDepth;
+	m_sceneId = sceneId;
 	m_camX = camX;
 	m_camY = camY;
 	m_camZ = camZ;
@@ -85,12 +87,14 @@ void RenderThread::run() {
 	// 1. width: image width in pixels (height = width for square aspect ratio)
 	// 2. samples: samples per pixel for anti-aliasing and noise reduction
 	// 3. depth: maximum ray bounce depth for recursive ray tracing
-	// 4. cam_x: camera X position (lookfrom X coordinate)
-	// 5. cam_y: camera Y position (lookfrom Y coordinate)
-	// 6. cam_z: camera Z position (lookfrom Z coordinate)
+	// 4. scene_id: scene selector (0=Cornell Box, 1=Bouncing Spheres, etc.)
+	// 5. cam_x: camera X position (lookfrom X coordinate)
+	// 6. cam_y: camera Y position (lookfrom Y coordinate)
+	// 7. cam_z: camera Z position (lookfrom Z coordinate)
 	args << QString::number(m_width);
 	args << QString::number(m_samples);
 	args << QString::number(m_maxDepth);
+	args << QString::number(m_sceneId);  // Scene ID
 	args << QString::number(m_camX);   // Camera position X
 	args << QString::number(m_camY);   // Camera position Y
 	args << QString::number(m_camZ);   // Camera position Z
@@ -165,32 +169,57 @@ void RenderThread::run() {
 		}
 	}
 
-	// Wait for process to finish (with timeout in case of issues)
+	// Wait for process to finish
+	// Use -1 (infinite timeout) because complex scenes can take a long time
+	// The progress updates will keep the GUI responsive
 	if (m_renderProcess->state() != QProcess::NotRunning) {
-		m_renderProcess->waitForFinished(5000); // 5 second timeout
+		m_renderProcess->waitForFinished(-1); // Wait indefinitely
 	}
 
 	QTime endTime = QTime::currentTime();
 	double totalTime = startTime.msecsTo(endTime) / 1000.0;
 
 	int exitCode = m_renderProcess->exitCode();
+	QProcess::ExitStatus exitStatus = m_renderProcess->exitStatus();
 	QString finalOutput = m_renderProcess->readAll();
 
-	emit logMessage(QString("Process exited with code %1").arg(exitCode));
+	// Detailed logging for debugging
+	emit logMessage(QString("=== Process Exit Details ==="));
+	emit logMessage(QString("Exit Code: %1").arg(exitCode));
+	emit logMessage(QString("Exit Status: %1").arg(exitStatus == QProcess::NormalExit ? "NormalExit" : "CrashExit"));
+	emit logMessage(QString("Total Time: %1 seconds").arg(totalTime, 0, 'f', 2));
 	if (!finalOutput.isEmpty()) {
 		emit logMessage("Final output: " + finalOutput);
 	}
 
 	// Check if process was killed (user stopped it)
-	bool wasKilled = (m_renderProcess->exitStatus() == QProcess::CrashExit);
+	// Only treat as "stopped by user" if it crashed AND had a non-zero exit code
+	// Normal exits with code 0 should be treated as success, even if the exit status is CrashExit
+	bool wasKilled = (exitStatus == QProcess::CrashExit && exitCode != 0);
+
+	emit logMessage(QString("wasKilled determination: exitStatus=%1, exitCode=%2, wasKilled=%3")
+		.arg(exitStatus == QProcess::NormalExit ? "NormalExit" : "CrashExit")
+		.arg(exitCode)
+		.arg(wasKilled ? "TRUE" : "FALSE"));
 
 	// Clean up process
 	m_renderProcess->deleteLater();
 	m_renderProcess = nullptr;
 
 	if (wasKilled) {
+		emit logMessage("Result: STOPPED BY USER");
+
+		// Show user-friendly error dialog for crashes
+		QString errorTitle = ErrorHandler::getErrorTitle(exitCode);
+		QString errorMessage = ErrorHandler::getErrorMessage(exitCode);
+		QString hint = ErrorHandler::getTroubleshootingHint(exitCode);
+
+		emit logMessage(QString("Error Category: %1").arg(ErrorHandler::getCategoryName(exitCode)));
+		emit logMessage(QString("Error: %1").arg(errorTitle));
+
 		emit renderComplete(false, "Render stopped by user", totalTime, QString());
 	} else if (exitCode == 0) {
+		emit logMessage("Result: SUCCESS");
 		emit progressUpdate(100);
 
 		// Determine actual output path (default if not specified)
@@ -206,11 +235,32 @@ void RenderThread::run() {
 
 		emit renderComplete(true, "Render completed successfully!", totalTime, actualOutputPath);
 	} else {
-		QString errorMsg = QString("Render failed with exit code %1").arg(exitCode);
-		if (!finalOutput.isEmpty()) {
-			errorMsg += "\n\nOutput:\n" + finalOutput;
+		// Render failed with specific error code
+		emit logMessage(QString("Result: FAILED (exit code %1)").arg(exitCode));
+
+		QString errorTitle = ErrorHandler::getErrorTitle(exitCode);
+		QString errorMessage = ErrorHandler::getErrorMessage(exitCode);
+		QString hint = ErrorHandler::getTroubleshootingHint(exitCode);
+		QString category = ErrorHandler::getCategoryName(exitCode);
+
+		emit logMessage(QString("=== ERROR DETAILS ==="));
+		emit logMessage(QString("Category: %1").arg(category));
+		emit logMessage(QString("Error: %1").arg(errorTitle));
+		emit logMessage(QString("Message: %1").arg(errorMessage));
+		if (!hint.isEmpty() && hint != "Check the Log Output tab for detailed error information.") {
+			emit logMessage(QString("Troubleshooting:\n%1").arg(hint));
 		}
-		emit renderComplete(false, errorMsg, totalTime, QString());
+
+		// Build comprehensive error message for user
+		QString fullErrorMsg = QString("<b>%1</b><br><br>%2").arg(errorTitle, errorMessage);
+		if (!hint.isEmpty() && hint != "Check the Log Output tab for detailed error information.") {
+			fullErrorMsg += QString("<br><br><b>Troubleshooting:</b><br>%1").arg(hint.replace("\n", "<br>"));
+		}
+		fullErrorMsg += QString("<br><br><small>Error Code: %1 | Category: %2</small>").arg(exitCode).arg(category);
+		if (!finalOutput.isEmpty()) {
+			fullErrorMsg += "\n\nOutput:\n" + finalOutput;
+		}
+		emit renderComplete(false, fullErrorMsg, totalTime, QString());
 	}
 }
 
@@ -260,6 +310,7 @@ void MainWindow::setupUI() {
 	m_tabWidget = new QTabWidget(this);
 	createBasicTab();
 	createAdvancedTab();
+	createLogTab();
 
 	mainLayout->addWidget(m_tabWidget);
 
@@ -437,6 +488,58 @@ void MainWindow::createAdvancedTab() {
 	layout->addWidget(advancedGroup);
 
 	// ============================================================================
+	// Scene Selection Group
+	// ============================================================================
+	// Choose from different pre-built scenes from the Ray Tracing book series
+	// Each scene has different complexity, performance characteristics, and features
+	// ============================================================================
+
+	QGroupBox *sceneGroup = new QGroupBox("Scene Selection", advancedTab);
+	QVBoxLayout *sceneLayout = new QVBoxLayout(sceneGroup);
+	sceneLayout->setSpacing(10);
+	sceneLayout->setContentsMargins(15, 25, 15, 15);
+
+	// Scene selector combo box
+	m_sceneCombo = new QComboBox(advancedTab);
+	m_sceneCombo->addItem("Cornell Box", 0);
+	m_sceneCombo->addItem("Bouncing Spheres", 1);
+	m_sceneCombo->addItem("Checkered Spheres", 2);
+	m_sceneCombo->addItem("Earth (requires earthmap.jpg)", 3);
+	m_sceneCombo->addItem("Perlin Spheres", 4);
+	m_sceneCombo->addItem("Colored Quads", 5);
+	m_sceneCombo->addItem("Simple Light", 6);
+	m_sceneCombo->addItem("Cornell Smoke", 7);
+	m_sceneCombo->addItem("Final Scene (very slow!)", 8);
+	styleComboBox(m_sceneCombo);
+
+	// Scene info label - shows description and performance info
+	m_sceneInfoLabel = new QLabel(advancedTab);
+	m_sceneInfoLabel->setWordWrap(true);
+	m_sceneInfoLabel->setStyleSheet(
+		"QLabel {"
+		"  color: #B0B0B0;"
+		"  background-color: #2E2E2E;"
+		"  border: 1px solid #404040;"
+		"  border-radius: 4px;"
+		"  padding: 10px;"
+		"  font-size: 11px;"
+		"}"
+	);
+
+	sceneLayout->addWidget(new QLabel("Scene:"));
+	sceneLayout->addWidget(m_sceneCombo);
+	sceneLayout->addWidget(m_sceneInfoLabel);
+
+	// Connect scene change handler
+	connect(m_sceneCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+			this, &MainWindow::onSceneChanged);
+
+	// Initialize with default scene (Cornell Box)
+	onSceneChanged(0);
+
+	layout->addWidget(sceneGroup);
+
+	// ============================================================================
 	// Camera Position Group
 	// ============================================================================
 	// The Cornell box scene has fixed geometry:
@@ -530,6 +633,27 @@ void MainWindow::createAdvancedTab() {
 	scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
 	m_tabWidget->addTab(scrollArea, "Advanced Settings");
+}
+
+void MainWindow::createLogTab() {
+	QWidget *logWidget = new QWidget();
+	QVBoxLayout *layout = new QVBoxLayout(logWidget);
+
+	// Log output text area
+	m_logTextEdit = new QTextEdit();
+	m_logTextEdit->setReadOnly(true);
+	m_logTextEdit->setFont(QFont("Consolas", 9));
+	m_logTextEdit->setLineWrapMode(QTextEdit::NoWrap);
+
+	layout->addWidget(m_logTextEdit);
+
+	// Clear button
+	QPushButton *clearButton = new QPushButton("Clear Log");
+	clearButton->setMaximumWidth(120);
+	connect(clearButton, &QPushButton::clicked, m_logTextEdit, &QTextEdit::clear);
+	layout->addWidget(clearButton, 0, Qt::AlignRight);
+
+	m_tabWidget->addTab(logWidget, "Log Output");
 }
 
 void MainWindow::applyDarkTheme() {
@@ -976,13 +1100,16 @@ void MainWindow::styleComboBox(QComboBox *combo) {
 	double camY = m_cameraPosY->value();
 	double camZ = m_cameraPosZ->value();
 
+	// Scene selection - determines which scene to render
+	int sceneId = m_sceneCombo->currentData().toInt();
+
 	// ========================================================================
 	// Launch Render Thread
 	// ========================================================================
 	// RenderThread spawns ray_tracer.exe as a subprocess with all parameters
 	// The executable will call either CPU or GPU renderer based on useGPU flag
 	m_renderThread = new RenderThread(this);
-	m_renderThread->setParameters(useGPU, width, height, samples, maxDepth, camX, camY, camZ, outputPath);
+	m_renderThread->setParameters(useGPU, width, height, samples, maxDepth, sceneId, camX, camY, camZ, outputPath);
 
 	connect(m_renderThread, &RenderThread::progressUpdate, this, &MainWindow::onProgressUpdate);
 	connect(m_renderThread, SIGNAL(renderComplete(bool,QString,double,QString)), 
@@ -1056,6 +1183,53 @@ void MainWindow::onCameraPresetChanged(int index) {
 	}
 }
 
+void MainWindow::onSceneChanged(int index) {
+	// Scene metadata with descriptions and recommendations
+	struct SceneInfo {
+		const char* description;
+		const char* performance;
+		int recommendedSpp;
+		bool requiresFiles;
+		bool gpuCompatible;
+	};
+
+	static const SceneInfo sceneInfos[] = {
+		{"Classic Cornell box with glass sphere and white box", "Medium", 100, false, true},
+		{"Random spheres with checker ground (In One Weekend final)", "Slow", 100, false, false},
+		{"Two spheres with procedural checker texture", "Fast", 100, false, false},
+		{"Globe with earth texture mapping (requires earthmap.jpg)", "Fast", 100, true, false},
+		{"Spheres with Perlin noise marble texture", "Fast", 100, false, false},
+		{"Five colored quad primitives", "Fast", 100, false, false},
+		{"Perlin spheres with emissive light sources", "Fast", 100, false, false},
+		{"Cornell box with volumetric fog", "Slow", 200, false, false},
+		{"Complex scene from The Next Week (very slow!)", "Very Slow", 500, false, false}
+	};
+
+	if (index >= 0 && index < 9) {
+		const SceneInfo& info = sceneInfos[index];
+
+		QString infoText = QString("<b>Description:</b> %1<br>").arg(info.description);
+		infoText += QString("<b>Performance:</b> %1<br>").arg(info.performance);
+		infoText += QString("<b>Recommended SPP:</b> %1<br>").arg(info.recommendedSpp);
+		infoText += QString("<b>GPU Support:</b> %1<br>").arg(info.gpuCompatible ? "Yes" : "CPU only");
+
+		if (info.requiresFiles) {
+			infoText += "<br><b style='color: #FFD700;'>⚠ Requires external files</b>";
+		}
+
+		if (!info.gpuCompatible) {
+			infoText += "<br><b style='color: #FF6B6B;'>⚠ CPU renderer only</b>";
+		}
+
+		m_sceneInfoLabel->setText(infoText);
+
+		// Update recommended samples if user hasn't manually changed it
+		if (m_samplesSpinBox->value() == 100 || m_samplesSpinBox->value() == 200 || m_samplesSpinBox->value() == 500) {
+			m_samplesSpinBox->setValue(info.recommendedSpp);
+		}
+	}
+}
+
 void MainWindow::onProgressUpdate(int percentage) {
 	m_progressBar->setValue(percentage);
 	m_statusLabel->setText(QString("Rendering... %1%").arg(percentage));
@@ -1094,6 +1268,8 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 }
 
 void MainWindow::onLogMessage(const QString &message) {
-	// Could add a log window in the future
+	if (m_logTextEdit) {
+		m_logTextEdit->append(message);
+	}
 	qDebug() << message;
 }

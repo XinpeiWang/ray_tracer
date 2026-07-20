@@ -1,6 +1,7 @@
 #include "gpu_interface.h"
 #include "scene_serializer.h"
 #include "cuda_scene.h"
+#include "../../src/TheRestOfYourLife/error_codes.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -19,12 +20,33 @@ extern __global__ void render_kernel_path(
 	unsigned int seed
 );
 
+// Map CUDA error to RenderErrorCode
+inline int map_cuda_error_to_render_error(cudaError_t cuda_err) {
+	switch (cuda_err) {
+		case cudaSuccess:
+			return SUCCESS;
+		case cudaErrorMemoryAllocation:
+			return ERR_GPU_MEMORY_ALLOCATION;
+		case cudaErrorLaunchOutOfResources:
+		case cudaErrorInvalidConfiguration:
+			return ERR_GPU_INVALID_CONFIGURATION;
+		case cudaErrorLaunchFailure:
+			return ERR_GPU_KERNEL_LAUNCH_FAILED;
+		default:
+			return ERR_GPU_DEVICE_INIT_FAILED;
+	}
+}
+
 #ifndef CUDA_CHECK
 #define CUDA_CHECK(call) do { \
 	cudaError_t err = call; \
 	if (err != cudaSuccess) { \
-		std::fprintf(stderr, "CUDA error at %s:%d: %s\n", __FILE__, __LINE__, cudaGetErrorString(err)); \
-		return -1; \
+		int error_code = map_cuda_error_to_render_error(err); \
+		ErrorInfo err_info(error_code); \
+		std::fprintf(stderr, "[GPU] %s\n  CUDA: %s at %s:%d\n", \
+					 err_info.to_string().c_str(), \
+					 cudaGetErrorString(err), __FILE__, __LINE__); \
+		return error_code; \
 	} \
 } while(0)
 #endif
@@ -34,7 +56,7 @@ int gpu_is_available() {
 	int device_count = 0;
 	cudaError_t err = cudaGetDeviceCount(&device_count);
 	if (err != cudaSuccess || device_count == 0) {
-		return 0; // No GPU available
+		return ERR_GPU_NO_DEVICE; // No GPU available
 	}
 
 	// Check if at least one device has compute capability >= 3.0
@@ -42,17 +64,47 @@ int gpu_is_available() {
 		cudaDeviceProp prop;
 		err = cudaGetDeviceProperties(&prop, i);
 		if (err == cudaSuccess && prop.major >= 3) {
-			return 1; // GPU available
+			return SUCCESS; // GPU available
 		}
 	}
-	return 0;
+	return ERR_GPU_NO_DEVICE;
 }
 
 int gpu_render_main(int image_width, int image_height, int samples_per_pixel, int max_depth, const char* out_path,
-					double cam_x, double cam_y, double cam_z) {
-	std::printf("[cuda_interface] gpu_render_main start: %dx%d spp=%d camera=(%.1f,%.1f,%.1f) out=%s\n", 
-				image_width, image_height, samples_per_pixel, cam_x, cam_y, cam_z, out_path);
+					int scene_id, double cam_x, double cam_y, double cam_z) {
+	std::printf("[cuda_interface] gpu_render_main start: %dx%d spp=%d scene_id=%d camera=(%.1f,%.1f,%.1f) out=%s\n", 
+				image_width, image_height, samples_per_pixel, scene_id, cam_x, cam_y, cam_z, out_path);
 	std::fflush(stdout);
+
+	// ====================================================================
+	// Parameter Validation
+	// ====================================================================
+
+	if (image_width <= 0 || image_height <= 0) {
+		ErrorInfo err(ERR_INVALID_DIMENSIONS);
+		std::fprintf(stderr, "%s\n", err.to_string().c_str());
+		return ERR_INVALID_DIMENSIONS;
+	}
+
+	if (samples_per_pixel <= 0) {
+		ErrorInfo err(ERR_INVALID_SAMPLE_COUNT);
+		std::fprintf(stderr, "%s\n", err.to_string().c_str());
+		return ERR_INVALID_SAMPLE_COUNT;
+	}
+
+	if (max_depth <= 0) {
+		ErrorInfo err(ERR_INVALID_MAX_DEPTH);
+		std::fprintf(stderr, "%s\n", err.to_string().c_str());
+		return ERR_INVALID_MAX_DEPTH;
+	}
+
+	// GPU currently only supports Cornell Box (scene_id 0)
+	if (scene_id != 0) {
+		ErrorInfo err(ERR_GPU_UNSUPPORTED_SCENE);
+		std::fprintf(stderr, "[cuda_interface] %s\n", err.to_string().c_str());
+		std::printf("[cuda_interface] Falling back to Cornell Box for GPU rendering.\n");
+		std::fflush(stdout);
+	}
 
 	// Serialize the C++ scene (Cornell box) into POD structures
 	SpherePOD* spheres = nullptr;
@@ -138,25 +190,27 @@ int gpu_render_main(int image_width, int image_height, int samples_per_pixel, in
 	}
 
 	if (!kernel_launched) {
-		std::fprintf(stderr, "[cuda_interface] All block sizes failed\n");
+		ErrorInfo err(ERR_GPU_KERNEL_LAUNCH_FAILED);
+		std::fprintf(stderr, "[cuda_interface] %s - All block sizes failed\n", err.to_string().c_str());
 		cudaFree(d_img);
 		if (d_spheres) cudaFree(d_spheres);
 		if (d_quads) cudaFree(d_quads);
 		if (d_materials) cudaFree(d_materials);
 		if (d_cam) cudaFree(d_cam);
-		return -1;
+		return ERR_GPU_KERNEL_LAUNCH_FAILED;
 	}
 
 	// Copy result back to host
 	unsigned char* h_img = (unsigned char*)malloc(bytes);
 	if (!h_img) {
-		std::fprintf(stderr, "Out of host memory\n");
+		ErrorInfo err(ERR_GPU_MEMORY_ALLOCATION);
+		std::fprintf(stderr, "[cuda_interface] %s - Out of host memory\n", err.to_string().c_str());
 		cudaFree(d_img);
 		if (d_spheres) cudaFree(d_spheres);
 		if (d_quads) cudaFree(d_quads);
 		if (d_materials) cudaFree(d_materials);
 		if (d_cam) cudaFree(d_cam);
-		return 1;
+		return ERR_GPU_MEMORY_ALLOCATION;
 	}
 
 	CUDA_CHECK(cudaMemcpy(h_img, d_img, bytes, cudaMemcpyDeviceToHost));
@@ -164,6 +218,8 @@ int gpu_render_main(int image_width, int image_height, int samples_per_pixel, in
 	// Write output file
 	FILE* f = std::fopen(out_path, "wb");
 	if (!f) {
+		ErrorInfo err(ERR_FILE_WRITE_FAILED);
+		std::fprintf(stderr, "[cuda_interface] %s - %s\n", err.to_string().c_str(), out_path);
 		std::perror("fopen");
 		free(h_img);
 		cudaFree(d_img);
@@ -171,7 +227,7 @@ int gpu_render_main(int image_width, int image_height, int samples_per_pixel, in
 		if (d_quads) cudaFree(d_quads);
 		if (d_materials) cudaFree(d_materials);
 		if (d_cam) cudaFree(d_cam);
-		return 1;
+		return ERR_FILE_WRITE_FAILED;
 	}
 	std::fprintf(f, "P6\n%d %d\n255\n", image_width, image_height);
 	std::fwrite(h_img, 1, bytes, f);
@@ -191,5 +247,5 @@ int gpu_render_main(int image_width, int image_height, int samples_per_pixel, in
 	if (d_materials) cudaFree(d_materials);
 	if (d_cam) cudaFree(d_cam);
 
-	return 0;
+	return SUCCESS;
 }

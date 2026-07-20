@@ -13,6 +13,7 @@
 #include <QLineEdit>
 #include <QProcess>
 #include <QVector3D>
+#include <QTextEdit>
 
 // ============================================================================
 // RenderThread
@@ -30,8 +31,9 @@ public:
 	// Set all render parameters before starting the thread
 	// Camera parameters (camX, camY, camZ) define the camera position (lookfrom)
 	// The camera always looks at the Cornell box center (278, 278, 278) - lookat is fixed
+	// sceneId selects which scene to render (0=Cornell Box, 1=Bouncing Spheres, etc.)
 	void setParameters(bool useGPU, int width, int height, int samples, int maxDepth, 
-					   double camX, double camY, double camZ, const QString &outputPath = QString());
+					   int sceneId, double camX, double camY, double camZ, const QString &outputPath = QString());
 
 	// Request the render process to stop (sends terminate signal)
 	void stopRender();
@@ -52,6 +54,7 @@ private:
 	int m_height;           // Image height in pixels
 	int m_samples;          // Samples per pixel (anti-aliasing quality)
 	int m_maxDepth;         // Max ray bounce depth (lighting quality)
+	int m_sceneId;          // Scene selector ID (0=Cornell Box, 1=Bouncing Spheres, etc.)
 
 	// Camera position (lookfrom) - always looking at center (278, 278, 278)
 	double m_camX;          // Camera X coordinate
@@ -81,6 +84,7 @@ private slots:
 	void onStopClicked();
 	void onQualityPresetChanged(int index);
 	void onCameraPresetChanged(int index);  // Updates camera spinboxes when preset changes
+	void onSceneChanged(int index);         // Updates UI when scene selection changes
 	void onProgressUpdate(int percentage);
 	void onRenderComplete(bool success, const QString &message, double totalTime, const QString &outputPath);
 	void onLogMessage(const QString &message);
@@ -89,6 +93,7 @@ private:
 	void setupUI();
 	void createBasicTab();
 	void createAdvancedTab();
+	void createLogTab();
 	void applyDarkTheme();
 	void styleComboBox(QComboBox *combo);
 	void styleSpinBox(QSpinBox *spinBox);
@@ -120,6 +125,13 @@ private:
 	QDoubleSpinBox *m_cameraPosX;       // Camera X position (enabled only for "Custom" preset)
 	QDoubleSpinBox *m_cameraPosY;       // Camera Y position (enabled only for "Custom" preset)
 	QDoubleSpinBox *m_cameraPosZ;       // Camera Z position (enabled only for "Custom" preset)
+
+	// Scene selection
+	QComboBox *m_sceneCombo;            // Scene selector dropdown (Cornell Box, Bouncing Spheres, etc.)
+	QLabel *m_sceneInfoLabel;           // Scene description and performance info
+
+	// Log output
+	QTextEdit *m_logTextEdit;           // Log output display
 
 	// Render thread
 	RenderThread *m_renderThread;       // Background render thread (nullptr when not rendering)

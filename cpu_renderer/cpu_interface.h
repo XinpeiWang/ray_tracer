@@ -45,13 +45,14 @@ extern "C" {
  * @param spp           Samples per pixel (higher = less noise, slower render)
  * @param max_depth     Maximum ray bounce depth (higher = more realistic lighting)
  * @param output_path   Output PPM file path (e.g., "C:/path/to/image.ppm")
+ * @param scene_id      Scene selector (0=Cornell Box, 1=Bouncing Spheres, etc.)
  * @param cam_x         Camera position X coordinate (default: 278)
  * @param cam_y         Camera position Y coordinate (default: 278)
  * @param cam_z         Camera position Z coordinate (default: -800)
  * @return 0 on success, non-zero on failure
  */
 int cpu_render_main(int width, int height, int spp, int max_depth, const char* output_path, 
-                    double cam_x, double cam_y, double cam_z);
+                    int scene_id, double cam_x, double cam_y, double cam_z);
 
 #ifdef __cplusplus
 }

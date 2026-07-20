@@ -33,6 +33,7 @@
 #include "gpu/cuda/gpu_interface.h"     // GPU renderer interface (CUDA)
 #include "cpu_renderer/cpu_interface.h" // CPU renderer interface (multithreaded C++)
 #include "src/external/image_writer.h"  // PPM to PNG conversion utilities
+#include "src/TheRestOfYourLife/error_codes.h" // Centralized error code system
 
 int main(int argc, char** argv) {
     std::cout << "========================================" << std::endl;
@@ -44,7 +45,8 @@ int main(int argc, char** argv) {
     // ========================================================================
     // Check if a CUDA-capable GPU is available at runtime
     // gpu_is_available() is implemented in gpu/cuda/gpu_interface.cu
-    bool gpu_available = (gpu_is_available() == 1);
+    int gpu_check_result = gpu_is_available();
+    bool gpu_available = (gpu_check_result == SUCCESS);
     if (gpu_available) {
         std::cout << "✓ CUDA-capable GPU detected" << std::endl;
     } else {
@@ -87,7 +89,7 @@ int main(int argc, char** argv) {
         }
         // Help message
         else if (arg == "--help" || arg == "-h") {
-            std::cout << "Usage: " << argv[0] << " [--cpu|--gpu] [--output PATH] [width] [spp] [max_depth] [cam_x] [cam_y] [cam_z]\n";
+            std::cout << "Usage: " << argv[0] << " [--cpu|--gpu] [--output PATH] [width] [spp] [max_depth] [scene_id] [cam_x] [cam_y] [cam_z]\n";
             std::cout << "  --cpu      : Force CPU rendering\n";
             std::cout << "  --gpu      : Force GPU rendering (default)\n";
             std::cout << "  --output,-o: Output file path (default: ./output/image.ppm)\n";
@@ -95,6 +97,7 @@ int main(int argc, char** argv) {
             std::cout << "  width      : Image width (default 600, square aspect)\n";
             std::cout << "  spp        : Samples per pixel (default 500)\n";
             std::cout << "  max_depth  : Max ray depth (default 20)\n";
+            std::cout << "  scene_id   : Scene selector (0=Cornell Box, 1=Bouncing Spheres, etc., default 0)\n";
             std::cout << "  cam_x      : Camera X position (default 278)\n";
             std::cout << "  cam_y      : Camera Y position (default 278)\n";
             std::cout << "  cam_z      : Camera Z position (default -800)\n";
@@ -112,6 +115,7 @@ int main(int argc, char** argv) {
     int hard_height = 600;   // Image height (1:1 aspect for Cornell box)
     int hard_spp   = 500;    // Samples per pixel (anti-aliasing quality)
     int hard_depth = 20;     // Max ray bounce depth (lighting quality)
+    int scene_id   = 0;      // Scene selector (0=Cornell Box, 1=Bouncing Spheres, etc.)
 
     // ========================================================================
     // Interactive Mode (if no arguments provided)
@@ -195,9 +199,10 @@ int main(int argc, char** argv) {
     // [0] = width (also sets height for square aspect)
     // [1] = samples per pixel
     // [2] = max ray depth
-    // [3] = camera X position
-    // [4] = camera Y position
-    // [5] = camera Z position
+    // [3] = scene ID
+    // [4] = camera X position
+    // [5] = camera Y position
+    // [6] = camera Z position
 
     if (numeric_args.size() >= 1 && numeric_args[0] > 0) {
         hard_width = (int)numeric_args[0];
@@ -208,6 +213,9 @@ int main(int argc, char** argv) {
     }
     if (numeric_args.size() >= 3 && numeric_args[2] > 0) {
         hard_depth = (int)numeric_args[2];
+    }
+    if (numeric_args.size() >= 4 && numeric_args[3] >= 0) {
+        scene_id = (int)numeric_args[3];
     }
 
     // ========================================================================
@@ -222,10 +230,13 @@ int main(int argc, char** argv) {
     double cam_z = -800.0;  // Default Z: outside the box looking in
 
     // Override with command-line camera coordinates if provided
-    if (numeric_args.size() >= 6) {
-        cam_x = numeric_args[3];
-        cam_y = numeric_args[4];
-        cam_z = numeric_args[5];
+    if (numeric_args.size() >= 7) {
+        cam_x = numeric_args[4];
+        cam_y = numeric_args[5];
+        cam_z = numeric_args[6];
+        std::cout << "[DEBUG] Parsed camera from args[4-6]: (" << cam_x << ", " << cam_y << ", " << cam_z << ")" << std::endl;
+    } else {
+        std::cout << "[DEBUG] Not enough args for camera, using defaults. numeric_args.size()=" << numeric_args.size() << std::endl;
     }
 
     // ========================================================================
@@ -273,7 +284,7 @@ int main(int argc, char** argv) {
 
     // Print configuration summary before rendering
     std::cout << "Using command-line settings: width=" << hard_width << " height=" << hard_height << " spp=" << hard_spp << " max_depth=" << hard_depth 
-              << " camera=(" << cam_x << "," << cam_y << "," << cam_z << ")" << std::endl;
+              << " scene_id=" << scene_id << " camera=(" << cam_x << "," << cam_y << "," << cam_z << ")" << std::endl;
     std::cout << "Writing output to: " << out_path << std::endl;
 
     // ========================================================================
@@ -292,24 +303,34 @@ int main(int argc, char** argv) {
         // GPU Renderer (CUDA-based)
         // Implemented in gpu/cuda/gpu_interface.cu
         std::cout << "Calling gpu_render_main(...) in-process..." << std::endl;
-        render_result = gpu_render_main(hard_width, hard_height, hard_spp, hard_depth, out_path.c_str(), cam_x, cam_y, cam_z);
+        render_result = gpu_render_main(hard_width, hard_height, hard_spp, hard_depth, out_path.c_str(), scene_id, cam_x, cam_y, cam_z);
         std::cout << "gpu_render_main returned: " << render_result << std::endl;
-        if (render_result == 0) {
+        if (render_result == SUCCESS) {
             std::cout << "Rendered with in-process GPU renderer, output: " << out_path << std::endl;
         } else {
-            std::cout << "In-process GPU renderer failed." << std::endl;
+            ErrorInfo err(render_result);
+            std::cerr << "\n" << std::string(60, '=') << std::endl;
+            std::cerr << "GPU RENDER FAILED" << std::endl;
+            std::cerr << std::string(60, '=') << std::endl;
+            std::cerr << err.to_string() << std::endl;
+            std::cerr << std::string(60, '=') << "\n" << std::endl;
             return render_result;
         }
     } else {
         // CPU Renderer (multithreaded C++)
         // Implemented in cpu_renderer/cpu_interface.cpp
         std::cout << "Calling cpu_render_main(...) in-process..." << std::endl;
-        render_result = cpu_render_main(hard_width, hard_height, hard_spp, hard_depth, out_path.c_str(), cam_x, cam_y, cam_z);
+        render_result = cpu_render_main(hard_width, hard_height, hard_spp, hard_depth, out_path.c_str(), scene_id, cam_x, cam_y, cam_z);
         std::cout << "cpu_render_main returned: " << render_result << std::endl;
-        if (render_result == 0) {
+        if (render_result == SUCCESS) {
             std::cout << "Rendered with in-process CPU renderer, output: " << out_path << std::endl;
         } else {
-            std::cout << "In-process CPU renderer failed." << std::endl;
+            ErrorInfo err(render_result);
+            std::cerr << "\n" << std::string(60, '=') << std::endl;
+            std::cerr << "CPU RENDER FAILED" << std::endl;
+            std::cerr << std::string(60, '=') << std::endl;
+            std::cerr << err.to_string() << std::endl;
+            std::cerr << std::string(60, '=') << "\n" << std::endl;
             return render_result;
         }
     }
