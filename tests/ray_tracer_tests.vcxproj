@@ -13,7 +13,7 @@
 
   <PropertyGroup Label="Globals">
 	<VCProjectVersion>17.0</VCProjectVersion>
-	<ProjectGuid>{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}</ProjectGuid>
+	<ProjectGuid>{A1B2C3D4-E5F6-4A5B-6C7D-8E9F0A1B2C3D}</ProjectGuid>
 	<Keyword>Win32Proj</Keyword>
 	<RootNamespace>RayTracerTests</RootNamespace>
 	<WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
@@ -24,14 +24,14 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
 	<ConfigurationType>Application</ConfigurationType>
 	<UseDebugLibraries>true</UseDebugLibraries>
-	<PlatformToolset>v143</PlatformToolset>
+	<PlatformToolset>v144</PlatformToolset>
 	<CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
 	<ConfigurationType>Application</ConfigurationType>
 	<UseDebugLibraries>false</UseDebugLibraries>
-	<PlatformToolset>v143</PlatformToolset>
+	<PlatformToolset>v144</PlatformToolset>
 	<WholeProgramOptimization>true</WholeProgramOptimization>
 	<CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
@@ -68,8 +68,8 @@
 	  <SDLCheck>true</SDLCheck>
 	  <PreprocessorDefinitions>_DEBUG;_CONSOLE;NOMINMAX;_USE_MATH_DEFINES;%(PreprocessorDefinitions)</PreprocessorDefinitions>
 	  <ConformanceMode>true</ConformanceMode>
-	  <LanguageStandard>stdcpp17</LanguageStstandard>
-	  <AdditionalIncludeDirectories>$(SolutionDir)src;$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\cuda;$(SolutionDir)tests\googletest\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+	  <LanguageStandard>stdcpp17</LanguageStandard>
+	  <AdditionalIncludeDirectories>$(SolutionDir)src;$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\optix;$(SolutionDir)tests\googletest\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
 	</ClCompile>
 	<Link>
 	  <SubSystem>Console</SubSystem>
@@ -86,7 +86,7 @@
 	  <PreprocessorDefinitions>NDEBUG;_CONSOLE;NOMINMAX;_USE_MATH_DEFINES;%(PreprocessorDefinitions)</PreprocessorDefinitions>
 	  <ConformanceMode>true</ConformanceMode>
 	  <LanguageStandard>stdcpp17</LanguageStandard>
-	  <AdditionalIncludeDirectories>$(SolutionDir)src;$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\cuda;$(SolutionDir)tests\googletest\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+	  <AdditionalIncludeDirectories>$(SolutionDir)src;$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\optix;$(SolutionDir)tests\googletest\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
 	</ClCompile>
 	<Link>
 	  <SubSystem>Console</SubSystem>
@@ -110,7 +110,10 @@
 
   <ItemGroup>
 	<ProjectReference Include="..\cpu_renderer\cpu_renderer.vcxproj">
-	  <Project>{YOUR_CPU_RENDERER_GUID}</Project>
+	  <Project>{5F2A8E6C-9B3F-4A1D-B7A7-2F9C9E2B4A11}</Project>
+	</ProjectReference>
+	<ProjectReference Include="..\optix_renderer\optix_renderer.vcxproj">
+	  <Project>{9A3B9C2D-4E5F-6A7B-8C9D-0E1F2A3B4C5D}</Project>
 	</ProjectReference>
   </ItemGroup>
 

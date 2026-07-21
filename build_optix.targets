@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+  <!--
+	OptiX Build Targets
+	Compiles OptiX .cu device programs to PTX at build time
+  -->
+
+  <PropertyGroup>
+	<!-- Prefer MSBuild property override, then environment variables, then repository-defaults -->
+	<OptixSdkPath Condition="'$(OptixSdkPath)'=='' and '$(OPTIX_SDK_PATH)' != ''">$(OPTIX_SDK_PATH)</OptixSdkPath>
+	<OptixSdkPath Condition="'$(OptixSdkPath)'==''">C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.1.0</OptixSdkPath>
+
+	<CudaToolkitPath Condition="'$(CudaToolkitPath)'=='' and '$(CUDA_TOOLKIT_PATH)' != ''">$(CUDA_TOOLKIT_PATH)</CudaToolkitPath>
+	<CudaToolkitPath Condition="'$(CudaToolkitPath)'=='' and '$(CUDA_PATH)' != ''">$(CUDA_PATH)</CudaToolkitPath>
+	<CudaToolkitPath Condition="'$(CudaToolkitPath)'==''">C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2</CudaToolkitPath>
+
+	<OptixOutputDir>$(MSBuildThisFileDirectory)\gpu\optix</OptixOutputDir>
+  </PropertyGroup>
+
+  <!-- OptiX source file (repository-root path) -->
+	<ItemGroup>
+	<!-- Use MSBuildProjectDirectory\..\gpu\optix to reference repository root when building from optix_renderer project -->
+	<OptixSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\optix_programs.cu" />
+  </ItemGroup>
+
+  <!-- Compile OptiX .cu to .ptx (run once as part of optix_renderer project build) -->
+  <Target Name="CompileOptixPrograms"
+		  Condition="'$(SolutionDir)' != '' and '$(MSBuildProjectName)' == 'optix_renderer'"
+		  BeforeTargets="Build"
+		  Inputs="@(OptixSource)"
+		  Outputs="$(SolutionDir)gpu\optix\%(OptixSource.Filename).ptx">
+
+	<Message Text="[OptiX] Compiling %(OptixSource.Filename).cu to PTX..." Importance="High" />
+
+	<PropertyGroup>
+	  <NvccPath>$(CudaToolkitPath)\bin\nvcc.exe</NvccPath>
+	  <OptixInclude>$(OptixSdkPath)\include</OptixInclude>
+	  <CudaInclude>$(CudaToolkitPath)\include</CudaInclude>
+
+	  <!-- OptiX compilation flags -->
+	  <OptixFlags>--ptx</OptixFlags>
+	  <OptixFlags>$(OptixFlags) -O3</OptixFlags>
+	  <OptixFlags>$(OptixFlags) --use_fast_math</OptixFlags>
+	  <OptixFlags>$(OptixFlags) --relocatable-device-code=true</OptixFlags>
+	  <!-- OptiX PTX: use single compute arch for PTX output (will work on all >= sm_86 devices) -->
+	  <OptixFlags>$(OptixFlags) -arch=sm_86</OptixFlags>
+	  <OptixFlags>$(OptixFlags) -I"$(OptixInclude)"</OptixFlags>
+	  <OptixFlags>$(OptixFlags) -I"$(CudaInclude)"</OptixFlags>
+		<OptixFlags>$(OptixFlags) -I"$(MSBuildProjectDirectory)\..\gpu\optix"</OptixFlags>
+
+	  <OptixSourcePath>$(MSBuildProjectDirectory)\..\gpu\optix\%(OptixSource.Filename)%(OptixSource.Extension)</OptixSourcePath>
+	  <OptixOutput>$(MSBuildProjectDirectory)\..\gpu\optix\%(OptixSource.Filename).ptx</OptixOutput>
+	</PropertyGroup>
+
+	<!-- Execute nvcc -->
+	<Exec Command='"$(NvccPath)" $(OptixFlags) "$(OptixSourcePath)" -o "$(OptixOutput)"'
+		  WorkingDirectory="$(MSBuildThisFileDirectory)"
+		  IgnoreExitCode="false"
+		  ConsoleToMSBuild="true" />
+
+	<Message Text="[OptiX] Generated PTX: $(OptixOutput)" Importance="High" />
+  </Target>
+
+  <!-- Clean OptiX outputs -->
+  <Target Name="CleanOptixPrograms" AfterTargets="Clean">
+	<ItemGroup>
+	  <OptixPtxFiles Include="$(OptixOutputDir)\*.ptx" />
+	</ItemGroup>
+	<Delete Files="@(OptixPtxFiles)" />
+	<Message Text="[OptiX] Cleaned PTX files" Importance="High" />
+  </Target>
+
+</Project>
