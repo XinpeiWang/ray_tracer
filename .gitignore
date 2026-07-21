@@ -142,6 +142,12 @@ RayTracer_Package/styles/
 test_*.ppm
 test_*.png
 test_build.*
+*.run_marker.txt
+
+# Output directories
+output/
+qt_gui/output/
+RayTracer_Package/output/
 
 ##############################################################################
 # Visual Studio Code
@@ -198,3 +204,27 @@ commit_message.txt
 
 # Directory.Build.targets modifications (tracked separately)
 # Directory.Build.targets
+
+##############################################################################
+# Work-in-progress Documentation
+##############################################################################
+
+# Temporary development/debugging notes (keep main docs only)
+BUILD_COMPLETE.md
+BUILD_STRUCTURE_FIX.md
+DECISION_GUIDE.md
+DIAGNOSTIC_BUILD_INSTRUCTIONS.md
+EXIT_STATUS_FIX.md
+FIX_*.md
+GPU_*.md
+LOG_TAB_ADDED.md
+OPTIX_*.md
+ROOT_CAUSE_ANALYSIS.md
+
+# Test/debug build scripts
+REBUILD_*.bat
+build_test_*.bat
+check_*.bat
+run_build.bat
+test_*.cpp
+test_*.vcxproj
