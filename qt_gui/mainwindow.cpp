@@ -154,6 +154,7 @@ void RenderThread::run() {
 	int lastProgress = 0;
 	QRegularExpression scanlinesRegex("Scanlines remaining:\\s*(\\d+)");
 	QRegularExpression videoFrameRegex("\\[(\\d+)/(\\d+)\\] Rendering frame_");  // Matches "[5/60] Rendering frame_"
+	QRegularExpression assemblyProgressRegex("Progress:\\s*(\\d+)/(\\d+)\\s*frames written");  // Matches "Progress: 10/60 frames written"
 	int totalScanlines = m_height; // Track total height for percentage calculation
 	QString accumulatedOutput;
 
@@ -170,14 +171,28 @@ void RenderThread::run() {
 			// Handle both \r and \n line endings
 			QStringList lines = output.split(QRegularExpression("[\r\n]"), Qt::SkipEmptyParts);
 			for (const QString& line : lines) {
-				// Video mode: look for "[X/Y] Rendering frame_" pattern
+				// Video mode: look for "[X/Y] Rendering frame_" pattern (0-90%)
 				if (m_videoMode) {
 					QRegularExpressionMatch frameMatch = videoFrameRegex.match(line);
 					if (frameMatch.hasMatch()) {
 						int currentFrame = frameMatch.captured(1).toInt();
 						int totalFrames = frameMatch.captured(2).toInt();
-						int progress = (totalFrames > 0) ? (currentFrame * 100) / totalFrames : 0;
-						progress = std::max(0, std::min(progress, 100)); // Clamp to 0-100
+						// Scale rendering to 0-90%
+						int progress = (totalFrames > 0) ? (currentFrame * 90) / totalFrames : 0;
+						progress = std::max(0, std::min(progress, 90)); // Clamp to 0-90
+						if (progress != lastProgress && progress >= lastProgress) {
+							emit progressUpdate(progress);
+							lastProgress = progress;
+						}
+					}
+					// Also check for assembly progress (90-100%)
+					QRegularExpressionMatch assemblyMatch = assemblyProgressRegex.match(line);
+					if (assemblyMatch.hasMatch()) {
+						int writtenFrames = assemblyMatch.captured(1).toInt();
+						int totalFrames = assemblyMatch.captured(2).toInt();
+						// Scale assembly to 90-100%
+						int progress = 90 + ((totalFrames > 0) ? (writtenFrames * 10) / totalFrames : 0);
+						progress = std::max(90, std::min(progress, 100)); // Clamp to 90-100
 						if (progress != lastProgress && progress >= lastProgress) {
 							emit progressUpdate(progress);
 							lastProgress = progress;
