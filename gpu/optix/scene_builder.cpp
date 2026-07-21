@@ -5,6 +5,7 @@
 #include "optix_math_helpers.h"
 #include <cmath>
 #include <cassert>
+#include <iostream>
 
 namespace {
 	// Constants for Cornell Box dimensions
@@ -17,9 +18,103 @@ namespace {
 		assert(value <= static_cast<size_t>(INT_MAX) && "Material index overflow");
 		return static_cast<int>(value);
 	}
+
+	// Helper to rotate a point around Y axis
+	inline float3 rotate_y(const float3& p, float angle_degrees) {
+		const float radians = angle_degrees * (3.14159265358979323846f / 180.0f);
+		const float cos_theta = std::cos(radians);
+		const float sin_theta = std::sin(radians);
+		return make_float3(
+			cos_theta * p.x + sin_theta * p.z,
+			p.y,
+			-sin_theta * p.x + cos_theta * p.z
+		);
+	}
+
+	// Helper to translate a point
+	inline float3 translate(const float3& p, const float3& offset) {
+		return make_float3(p.x + offset.x, p.y + offset.y, p.z + offset.z);
+	}
+
+	// Helper to add a quad with optional rotation and translation
+	inline void add_transformed_quad(
+		SceneData& scene,
+		const float3& Q,
+		const float3& u,
+		const float3& v,
+		int material_idx,
+		float rotation_y_degrees = 0.0f,
+		const float3& translation = make_float3(0, 0, 0))
+	{
+		// Apply rotation first, then translation (matching CPU transform order)
+		float3 Q_transformed = Q;
+		float3 u_transformed = u;
+		float3 v_transformed = v;
+
+		if (rotation_y_degrees != 0.0f) {
+			Q_transformed = rotate_y(Q, rotation_y_degrees);
+			u_transformed = rotate_y(u, rotation_y_degrees);
+			v_transformed = rotate_y(v, rotation_y_degrees);
+		}
+
+		Q_transformed = translate(Q_transformed, translation);
+
+		// Build the quad
+		QuadData quad{};
+		quad.Q = Q_transformed;
+		quad.u = u_transformed;
+		quad.v = v_transformed;
+		const float3 quad_cross = cross(quad.u, quad.v);
+		quad.w = quad_cross;
+		quad.normal = normalize(quad_cross);
+		quad.D = dot(quad.normal, quad.Q);
+		quad.materialIdx = material_idx;
+		scene.quads.push_back(quad);
+	}
+
+	// Helper to add a box (6 quads) with rotation and translation
+	// Matches CPU box() function from src/TheRestOfYourLife/quad.h
+	inline void add_box(
+		SceneData& scene,
+		const float3& corner_a,
+		const float3& corner_b,
+		int material_idx,
+		float rotation_y_degrees = 0.0f,
+		const float3& translation = make_float3(0, 0, 0))
+	{
+		// Construct min and max corners
+		const float3 min_corner = make_float3(
+			fminf(corner_a.x, corner_b.x),
+			fminf(corner_a.y, corner_b.y),
+			fminf(corner_a.z, corner_b.z)
+		);
+		const float3 max_corner = make_float3(
+			fmaxf(corner_a.x, corner_b.x),
+			fmaxf(corner_a.y, corner_b.y),
+			fmaxf(corner_a.z, corner_b.z)
+		);
+
+		const float3 dx = make_float3(max_corner.x - min_corner.x, 0, 0);
+		const float3 dy = make_float3(0, max_corner.y - min_corner.y, 0);
+		const float3 dz = make_float3(0, 0, max_corner.z - min_corner.z);
+
+		// Six faces matching CPU box() in quad.h:
+		// Front face (min.x, min.y, max.z)
+		add_transformed_quad(scene, make_float3(min_corner.x, min_corner.y, max_corner.z), dx, dy, material_idx, rotation_y_degrees, translation);
+		// Right face (max.x, min.y, max.z)
+		add_transformed_quad(scene, make_float3(max_corner.x, min_corner.y, max_corner.z), make_float3(-dz.z, 0, 0), dy, material_idx, rotation_y_degrees, translation);
+		// Back face (max.x, min.y, min.z)
+		add_transformed_quad(scene, make_float3(max_corner.x, min_corner.y, min_corner.z), make_float3(-dx.x, 0, 0), dy, material_idx, rotation_y_degrees, translation);
+		// Left face (min.x, min.y, min.z)
+		add_transformed_quad(scene, make_float3(min_corner.x, min_corner.y, min_corner.z), dz, dy, material_idx, rotation_y_degrees, translation);
+		// Top face (min.x, max.y, max.z)
+		add_transformed_quad(scene, make_float3(min_corner.x, max_corner.y, max_corner.z), dx, make_float3(0, 0, -dz.z), material_idx, rotation_y_degrees, translation);
+		// Bottom face (min.x, min.y, min.z)
+		add_transformed_quad(scene, make_float3(min_corner.x, min_corner.y, min_corner.z), dx, dz, material_idx, rotation_y_degrees, translation);
+	}
 }
 
-/// @brief Build the Cornell Box scene with spheres
+/// @brief Build the Cornell Box scene with box primitive
 /// @param scene Output scene data container
 static void build_cornell_box(SceneData& scene) {
 	// Materials
@@ -144,12 +239,14 @@ static void build_cornell_box(SceneData& scene) {
 	glass_sphere.materialIdx = mat_glass;
 	scene.spheres.push_back(glass_sphere);
 
-	// White sphere (right, placeholder for box - TODO: add box primitive support)
-	SphereData box_sphere{};
-	box_sphere.center = make_float3(350.0f, 82.5f, 351.0f);
-	box_sphere.radius = 82.5f;
-	box_sphere.materialIdx = mat_white;
-	scene.spheres.push_back(box_sphere);
+	// White rotated box (right) - matching CPU scene definition
+	// box(point3(0,0,0), point3(165,330,165), white) rotated 15° then translated (265,0,295)
+	add_box(scene,
+		make_float3(0.0f, 0.0f, 0.0f),
+		make_float3(165.0f, 330.0f, 165.0f),
+		mat_white,
+		15.0f,  // rotation angle in degrees
+		make_float3(265.0f, 0.0f, 295.0f));  // translation offset
 }
 
 /// @brief Build a scene and configure the camera
