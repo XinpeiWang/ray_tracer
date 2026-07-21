@@ -119,11 +119,11 @@ msbuild ray_tracer.sln /p:Configuration=Release /p:Platform=x64
 
 **From VS Developer Command Prompt:**
 ```cmd
-cd gpu\cuda
-nvcc host.cu -DBUILD_CUDA_STANDALONE=1 -O3 -o cuda_renderer.exe
+# Build the entire solution (includes OptiX renderer)
+build_all.bat
 ```
 
-See [gpu/cuda/README.md](gpu/cuda/README.md) for detailed CUDA build instructions.
+See [BUILD.md](BUILD.md) for detailed build instructions.
 
 ### Running (Development)
 
@@ -419,13 +419,16 @@ cuda_renderer.exe 1920 1080 100
 
 ## 🐛 Troubleshooting
 
-### CUDA Build Issues
+### OptiX Build Issues
 
-**Problem:** `cudafe++ died with status 0xC0000005`
+**Problem:** `OptiX SDK not found` or missing PTX file
 
-**Solution:** Use Visual Studio Developer Command Prompt, not regular PowerShell.
+**Solution:** 
+1. Ensure OptiX SDK 9.1+ is installed
+2. Run `setup_env.bat` to configure environment variables
+3. Check that `gpu/optix/optix_programs.ptx` exists after build
 
-See [gpu/cuda/README.md](gpu/cuda/README.md) for detailed troubleshooting.
+See [BUILD.md](BUILD.md) for detailed troubleshooting.
 
 ### Black or Incorrect Output
 
@@ -553,7 +556,7 @@ See individual source files for specific attributions.
 
 ---
 
-**Last Updated:** July 18, 2026  
-**Version:** 1.0.0
+**Last Updated:** July 20, 2026  
+**Version:** 2.0.0 (OptiX)
 
-View the [GPU documentation](gpu/cuda/README.md) for detailed CUDA build instructions.
+View the [OptiX GPU documentation](gpu/optix/README.md) for detailed OptiX build instructions.
