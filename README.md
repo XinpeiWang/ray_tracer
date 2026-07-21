@@ -46,6 +46,13 @@ For detailed build instructions, see **[BUILD.md](BUILD.md)**.
 - ✅ **Gamma correction** (gamma=2.0)
 - ✅ **Cornell box** and custom scene support
 
+### Video Generation 🎬
+- ✅ **Animated camera paths**: orbit, linear, figure-8, spiral
+- ✅ **Multi-frame rendering** with automatic frame numbering
+- ✅ **Direct MP4 video encoding** using OpenCV (no FFmpeg required!)
+- ✅ **Configurable FPS and quality** settings
+- 📖 See [VIDEO_GENERATION.md](docs/VIDEO_GENERATION.md) for detailed usage
+
 ### Dual Rendering Modes
 - **CPU Renderer**: Multi-threaded, portable, debugging-friendly
 - **GPU Renderer**: OptiX-accelerated ray tracing, **10-100x faster** for complex scenes
@@ -148,6 +155,19 @@ ray_tracer.exe --gpu [width] [samples] [max_depth]
 ray_tracer.exe --gpu 800 1000 20   # GPU, 800x800, 1000 samples
 ray_tracer.exe --cpu 600 100 15    # CPU, 600x600, 100 samples
 ```
+
+#### Video Generation 🎬
+```cmd
+# Render 60 frames with orbit camera path (video auto-assembled with OpenCV)
+ray_tracer.exe --video --frames 60 --fps 30 --camera-path orbit 600 100 50
+
+# Output: output/image_video.mp4 (created automatically, no separate assembly step needed!)
+```
+
+**NEW**: Video generation now uses OpenCV for direct video encoding - **no FFmpeg required!** 🎉  
+The launcher automatically assembles frames into an MP4 video file during rendering.
+
+See [VIDEO_GENERATION.md](docs/VIDEO_GENERATION.md) for complete video generation guide.
 
 **Output**: Generates both `image.ppm` (raw) and `image.png` (lossless) in the `output/` folder next to the executable.
 

@@ -24,11 +24,13 @@
 #include <QPixmap>
 #include <QScrollArea>
 #include <QScreen>
+#include <QTimer>
 
 // RenderThread Implementation
 RenderThread::RenderThread(QObject *parent)
 	: QThread(parent), m_useGPU(true), m_width(800), m_height(800), m_samples(100), m_maxDepth(50),
-	  m_sceneId(0), m_camX(278), m_camY(278), m_camZ(-800), m_renderProcess(nullptr) {
+	  m_sceneId(0), m_camX(278), m_camY(278), m_camZ(-800), m_renderProcess(nullptr),
+	  m_videoMode(false), m_videoFrames(60), m_videoFPS(30), m_cameraPath("orbit") {
 }
 
 void RenderThread::setParameters(bool useGPU, int width, int height, int samples, int maxDepth,
@@ -43,6 +45,13 @@ void RenderThread::setParameters(bool useGPU, int width, int height, int samples
 	m_camY = camY;
 	m_camZ = camZ;
 	m_outputPath = outputPath;
+}
+
+void RenderThread::setVideoParameters(bool enabled, int frames, int fps, const QString &cameraPath) {
+	m_videoMode = enabled;
+	m_videoFrames = frames;
+	m_videoFPS = fps;
+	m_cameraPath = cameraPath;
 }
 
 void RenderThread::stopRender() {
@@ -78,9 +87,22 @@ void RenderThread::run() {
 		args << "--cpu";
 	}
 
-	// Output file path (optional, has default)
-	if (!m_outputPath.isEmpty()) {
-		args << "--output" << m_outputPath;
+	// Video mode flags (if enabled)
+	if (m_videoMode) {
+		args << "--video";
+		args << "--frames" << QString::number(m_videoFrames);
+		args << "--fps" << QString::number(m_videoFPS);
+		args << "--camera-path" << m_cameraPath;
+
+		// In video mode, explicitly set output path to ensure frames go to the right directory
+		// The launcher will create frames in <output_dir>/frames/
+		QString videoOutputPath = QCoreApplication::applicationDirPath() + "/output/video.ppm";
+		args << "--output" << videoOutputPath;
+	} else {
+		// Image mode: use custom output path if provided
+		if (!m_outputPath.isEmpty()) {
+			args << "--output" << m_outputPath;
+		}
 	}
 
 	// Numeric positional arguments (order matters!):
@@ -88,16 +110,21 @@ void RenderThread::run() {
 	// 2. samples: samples per pixel for anti-aliasing and noise reduction
 	// 3. depth: maximum ray bounce depth for recursive ray tracing
 	// 4. scene_id: scene selector (0=Cornell Box, 1=Bouncing Spheres, etc.)
-	// 5. cam_x: camera X position (lookfrom X coordinate)
-	// 6. cam_y: camera Y position (lookfrom Y coordinate)
-	// 7. cam_z: camera Z position (lookfrom Z coordinate)
+	// 5. cam_x: camera X position (lookfrom X coordinate) - only used in single-image mode
+	// 6. cam_y: camera Y position (lookfrom Y coordinate) - only used in single-image mode
+	// 7. cam_z: camera Z position (lookfrom Z coordinate) - only used in single-image mode
 	args << QString::number(m_width);
 	args << QString::number(m_samples);
 	args << QString::number(m_maxDepth);
-	args << QString::number(m_sceneId);  // Scene ID
-	args << QString::number(m_camX);   // Camera position X
-	args << QString::number(m_camY);   // Camera position Y
-	args << QString::number(m_camZ);   // Camera position Z
+
+	// Camera position only applies to single-image mode
+	// In video mode, camera path animation overrides these values
+	if (!m_videoMode) {
+		args << QString::number(m_sceneId);  // Scene ID
+		args << QString::number(m_camX);     // Camera position X
+		args << QString::number(m_camY);     // Camera position Y
+		args << QString::number(m_camZ);     // Camera position Z
+	}
 
 	emit logMessage(QString("Command: %1 %2").arg(exePath, args.join(" ")));
 
@@ -108,6 +135,11 @@ void RenderThread::run() {
 	// ========================================================================
 	m_renderProcess = new QProcess();
 	m_renderProcess->setProcessChannelMode(QProcess::MergedChannels);
+
+	// Set working directory to the application directory (RayTracer_Package)
+	// This ensures output/frames directories are created in the correct location
+	m_renderProcess->setWorkingDirectory(QCoreApplication::applicationDirPath());
+
 	m_renderProcess->start(exePath, args);
 
 	if (!m_renderProcess->waitForStarted()) {
@@ -121,6 +153,7 @@ void RenderThread::run() {
 	// Read output and parse progress
 	int lastProgress = 0;
 	QRegularExpression scanlinesRegex("Scanlines remaining:\\s*(\\d+)");
+	QRegularExpression videoFrameRegex("\\[(\\d+)/(\\d+)\\] Rendering frame_");  // Matches "[5/60] Rendering frame_"
 	int totalScanlines = m_height; // Track total height for percentage calculation
 	QString accumulatedOutput;
 
@@ -137,32 +170,51 @@ void RenderThread::run() {
 			// Handle both \r and \n line endings
 			QStringList lines = output.split(QRegularExpression("[\r\n]"), Qt::SkipEmptyParts);
 			for (const QString& line : lines) {
-				QRegularExpressionMatch scanlinesMatch = scanlinesRegex.match(line);
-				if (scanlinesMatch.hasMatch()) {
-					int remaining = scanlinesMatch.captured(1).toInt();
-					int completed = totalScanlines - remaining;
-					int progress = (totalScanlines > 0) ? (completed * 100) / totalScanlines : 0;
-					progress = std::max(0, std::min(progress, 100)); // Clamp to 0-100
-					if (progress != lastProgress && progress >= lastProgress) { // Only update forward
-						emit progressUpdate(progress);
-						lastProgress = progress;
+				// Video mode: look for "[X/Y] Rendering frame_" pattern
+				if (m_videoMode) {
+					QRegularExpressionMatch frameMatch = videoFrameRegex.match(line);
+					if (frameMatch.hasMatch()) {
+						int currentFrame = frameMatch.captured(1).toInt();
+						int totalFrames = frameMatch.captured(2).toInt();
+						int progress = (totalFrames > 0) ? (currentFrame * 100) / totalFrames : 0;
+						progress = std::max(0, std::min(progress, 100)); // Clamp to 0-100
+						if (progress != lastProgress && progress >= lastProgress) {
+							emit progressUpdate(progress);
+							lastProgress = progress;
+						}
+					}
+				}
+				// Single-image mode: look for "Scanlines remaining: X"
+				else {
+					QRegularExpressionMatch scanlinesMatch = scanlinesRegex.match(line);
+					if (scanlinesMatch.hasMatch()) {
+						int remaining = scanlinesMatch.captured(1).toInt();
+						int completed = totalScanlines - remaining;
+						int progress = (totalScanlines > 0) ? (completed * 100) / totalScanlines : 0;
+						progress = std::max(0, std::min(progress, 100)); // Clamp to 0-100
+						if (progress != lastProgress && progress >= lastProgress) { // Only update forward
+							emit progressUpdate(progress);
+							lastProgress = progress;
+						}
 					}
 				}
 			}
 
-			// Also check the accumulated buffer for the last scanline message
-			int lastCR = accumulatedOutput.lastIndexOf('\r');
-			if (lastCR >= 0) {
-				QString lastLine = accumulatedOutput.mid(lastCR + 1);
-				QRegularExpressionMatch match = scanlinesRegex.match(lastLine);
-				if (match.hasMatch()) {
-					int remaining = match.captured(1).toInt();
-					int completed = totalScanlines - remaining;
-					int progress = (totalScanlines > 0) ? (completed * 100) / totalScanlines : 0;
-					progress = std::max(0, std::min(progress, 100));
-					if (progress != lastProgress && progress >= lastProgress) {
-						emit progressUpdate(progress);
-						lastProgress = progress;
+			// Also check the accumulated buffer for the last scanline message (single-image mode only)
+			if (!m_videoMode) {
+				int lastCR = accumulatedOutput.lastIndexOf('\r');
+				if (lastCR >= 0) {
+					QString lastLine = accumulatedOutput.mid(lastCR + 1);
+					QRegularExpressionMatch match = scanlinesRegex.match(lastLine);
+					if (match.hasMatch()) {
+						int remaining = match.captured(1).toInt();
+						int completed = totalScanlines - remaining;
+						int progress = (totalScanlines > 0) ? (completed * 100) / totalScanlines : 0;
+						progress = std::max(0, std::min(progress, 100));
+						if (progress != lastProgress && progress >= lastProgress) {
+							emit progressUpdate(progress);
+							lastProgress = progress;
+						}
 					}
 				}
 			}
@@ -266,7 +318,7 @@ void RenderThread::run() {
 
 // MainWindow Implementation
 MainWindow::MainWindow(QWidget *parent)
-	: QMainWindow(parent), m_renderThread(nullptr), m_isRendering(false) {
+	: QMainWindow(parent), m_renderThread(nullptr), m_isRendering(false), m_videoMode(false) {
 
 	setWindowTitle("Ray Tracer - Path Tracing Renderer");
 	setMinimumSize(600, 500);
@@ -306,10 +358,29 @@ void MainWindow::setupUI() {
 	QWidget *centralWidget = new QWidget(this);
 	QVBoxLayout *mainLayout = new QVBoxLayout(centralWidget);
 
+	// Mode selector (Image vs Video)
+	QGroupBox *modeGroup = new QGroupBox("Render Mode", this);
+	QHBoxLayout *modeLayout = new QHBoxLayout(modeGroup);
+
+	QLabel *modeLabel = new QLabel("Mode:", this);
+	m_modeCombo = new QComboBox(this);
+	m_modeCombo->addItem("🖼️ Render Single Image");
+	m_modeCombo->addItem("🎬 Generate Video");
+	m_modeCombo->setCurrentIndex(0);
+	styleComboBox(m_modeCombo);
+	connect(m_modeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), 
+			this, &MainWindow::onModeChanged);
+
+	modeLayout->addWidget(modeLabel);
+	modeLayout->addWidget(m_modeCombo, 1);
+
+	mainLayout->addWidget(modeGroup);
+
 	// Create tab widget
 	m_tabWidget = new QTabWidget(this);
 	createBasicTab();
 	createAdvancedTab();
+	createVideoTab();
 	createLogTab();
 
 	mainLayout->addWidget(m_tabWidget);
@@ -655,6 +726,116 @@ void MainWindow::createLogTab() {
 	layout->addWidget(clearButton, 0, Qt::AlignRight);
 
 	m_tabWidget->addTab(logWidget, "Log Output");
+}
+
+void MainWindow::createVideoTab() {
+	QWidget *videoTab = new QWidget();
+	QVBoxLayout *layout = new QVBoxLayout(videoTab);
+
+	// Video parameters group
+	QGroupBox *videoGroup = new QGroupBox("Video Generation Settings", videoTab);
+	QFormLayout *videoLayout = new QFormLayout(videoGroup);
+
+	// Camera path selector
+	m_cameraPathCombo = new QComboBox();
+	m_cameraPathCombo->addItem("🔄 Orbit (Circular rotation)", "orbit");
+	m_cameraPathCombo->addItem("➡️ Linear (Straight path)", "linear");
+	m_cameraPathCombo->addItem("∞ Figure-8 (Lemniscate)", "figure8");
+	m_cameraPathCombo->addItem("🌀 Spiral (Zoom-in)", "spiral");
+	m_cameraPathCombo->setCurrentIndex(0);
+	styleComboBox(m_cameraPathCombo);
+	videoLayout->addRow("Camera Path:", m_cameraPathCombo);
+
+	// Frame count
+	m_videoFramesSpinBox = new QSpinBox();
+	m_videoFramesSpinBox->setRange(10, 1000);
+	m_videoFramesSpinBox->setValue(60);
+	m_videoFramesSpinBox->setSuffix(" frames");
+	styleSpinBox(m_videoFramesSpinBox);
+	videoLayout->addRow("Frame Count:", m_videoFramesSpinBox);
+
+	// FPS (frames per second)
+	m_videoFPSSpinBox = new QSpinBox();
+	m_videoFPSSpinBox->setRange(15, 120);
+	m_videoFPSSpinBox->setValue(30);
+	m_videoFPSSpinBox->setSuffix(" fps");
+	styleSpinBox(m_videoFPSSpinBox);
+	videoLayout->addRow("Frames Per Second:", m_videoFPSSpinBox);
+
+	// Video duration info (calculated from frames/fps)
+	m_videoInfoLabel = new QLabel();
+	m_videoInfoLabel->setWordWrap(true);
+	m_videoInfoLabel->setStyleSheet("QLabel { color: #00FFFF; font-style: italic; padding: 10px; }");
+
+	// Update duration display when frames or FPS changes
+	auto updateVideoDuration = [this]() {
+		int frames = m_videoFramesSpinBox->value();
+		int fps = m_videoFPSSpinBox->value();
+		double duration = static_cast<double>(frames) / fps;
+		QString cameraPath = m_cameraPathCombo->currentData().toString();
+
+		m_videoInfoLabel->setText(QString(
+			"<b>Video Duration:</b> %1 seconds<br>"
+			"<b>Camera Path:</b> %2<br>"
+			"<b>Output:</b> Frames will be saved to <code>output/frames/</code>"
+		).arg(QString::number(duration, 'f', 1), cameraPath));
+	};
+
+	connect(m_videoFramesSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), updateVideoDuration);
+	connect(m_videoFPSSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), updateVideoDuration);
+	connect(m_cameraPathCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), updateVideoDuration);
+	updateVideoDuration();
+
+	videoLayout->addRow("", m_videoInfoLabel);
+
+	layout->addWidget(videoGroup);
+
+	// Requirements info
+	QGroupBox *requirementsGroup = new QGroupBox("ℹ️ Requirements", videoTab);
+	QVBoxLayout *requirementsLayout = new QVBoxLayout(requirementsGroup);
+
+	QLabel *requirementsInfo = new QLabel(
+		"<b>Built-in Video Encoding:</b> Videos are automatically created using OpenCV (MP4V codec).<br>"
+		"<small>No external tools required!</small><br><br>"
+		"<b>Automatic Assembly:</b> After rendering all frames, the video will be automatically assembled and opened."
+	);
+	requirementsInfo->setOpenExternalLinks(true);
+	requirementsInfo->setWordWrap(true);
+	requirementsInfo->setStyleSheet("QLabel { color: #00FFFF; padding: 10px; }");
+	requirementsLayout->addWidget(requirementsInfo);
+
+	layout->addWidget(requirementsGroup);
+
+	// Usage instructions
+	QGroupBox *usageGroup = new QGroupBox("📖 Usage Instructions", videoTab);
+	QVBoxLayout *usageLayout = new QVBoxLayout(usageGroup);
+
+	QLabel *usageText = new QLabel(
+		"<b>Step 1:</b> Configure video settings (camera path, frames, FPS)<br>"
+		"<b>Step 2:</b> Configure quality settings in Basic/Advanced tabs<br>"
+		"<b>Step 3:</b> Click START VIDEO RENDER and wait<br>"
+		"<b>Step 4:</b> Video automatically assembles and opens when done!<br><br>"
+		"<b>Tips:</b><br>"
+		"• Use GPU mode for faster rendering<br>"
+		"• Lower samples/pixel for quick previews (10-50)<br>"
+		"• Higher samples/pixel for production quality (100-500)<br>"
+		"• Typical render time: 1-5 minutes (GPU), 15-60 minutes (CPU)"
+	);
+	usageText->setWordWrap(true);
+	usageText->setStyleSheet("QLabel { color: #00FFFF; padding: 10px; line-height: 1.5; }");
+	usageLayout->addWidget(usageText);
+
+	layout->addWidget(usageGroup);
+
+	layout->addStretch();
+
+	// Scroll area for video tab
+	QScrollArea *scrollArea = new QScrollArea();
+	scrollArea->setWidget(videoTab);
+	scrollArea->setWidgetResizable(true);
+	scrollArea->setFrameShape(QFrame::NoFrame);
+
+	m_tabWidget->addTab(scrollArea, "Video Settings");
 }
 
 void MainWindow::applyDarkTheme() {
@@ -1112,6 +1293,16 @@ void MainWindow::styleComboBox(QComboBox *combo) {
 	m_renderThread = new RenderThread(this);
 	m_renderThread->setParameters(useGPU, width, height, samples, maxDepth, sceneId, camX, camY, camZ, outputPath);
 
+	// Set video parameters if in video mode
+	if (m_videoMode) {
+		int videoFrames = m_videoFramesSpinBox->value();
+		int videoFPS = m_videoFPSSpinBox->value();
+		QString cameraPath = m_cameraPathCombo->currentData().toString();
+		m_renderThread->setVideoParameters(true, videoFrames, videoFPS, cameraPath);
+	} else {
+		m_renderThread->setVideoParameters(false, 0, 0, "");
+	}
+
 	connect(m_renderThread, &RenderThread::progressUpdate, this, &MainWindow::onProgressUpdate);
 	connect(m_renderThread, SIGNAL(renderComplete(bool,QString,double,QString)), 
 			this, SLOT(onRenderComplete(bool,QString,double,QString)));
@@ -1122,7 +1313,7 @@ void MainWindow::styleComboBox(QComboBox *combo) {
 	m_renderButton->setEnabled(false);
 	m_stopButton->setEnabled(true);
 	m_progressBar->setValue(0);
-	m_statusLabel->setText("Rendering...");
+	m_statusLabel->setText(m_videoMode ? "Rendering video frames..." : "Rendering...");
 
 	m_renderThread->start();
 }
@@ -1245,15 +1436,24 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 		m_progressBar->setValue(100);
 		m_statusLabel->setText(QString("✅ %1 - Total time: %2 seconds").arg(message).arg(totalTime, 0, 'f', 2));
 
-		// Auto-open the output file if it exists
-		if (!outputPath.isEmpty()) {
-			QFileInfo fileInfo(outputPath);
+		// If video mode, automatically assemble the video
+		if (m_videoMode) {
+			onLogMessage("Video frames rendered successfully. Starting video assembly...");
+			m_statusLabel->setText("⚙️ Assembling video from frames...");
 
-			if (fileInfo.exists()) {
-				QDesktopServices::openUrl(QUrl::fromLocalFile(outputPath));
-			} else {
-				m_statusLabel->setText(QString("✅ Render complete (%1s) - Warning: output file not found at %2")
-					.arg(totalTime, 0, 'f', 2).arg(outputPath));
+			// Trigger automatic video assembly
+			QTimer::singleShot(500, this, &MainWindow::assembleVideoAutomatically);
+		} else {
+			// Image mode: Auto-open the output file if it exists
+			if (!outputPath.isEmpty()) {
+				QFileInfo fileInfo(outputPath);
+
+				if (fileInfo.exists()) {
+					QDesktopServices::openUrl(QUrl::fromLocalFile(outputPath));
+				} else {
+					m_statusLabel->setText(QString("✅ Render complete (%1s) - Warning: output file not found at %2")
+						.arg(totalTime, 0, 'f', 2).arg(outputPath));
+				}
 			}
 		}
 	} else {
@@ -1273,4 +1473,86 @@ void MainWindow::onLogMessage(const QString &message) {
 		m_logTextEdit->append(message);
 	}
 	qDebug() << message;
+}
+
+void MainWindow::onModeChanged(int index) {
+	m_videoMode = (index == 1); // 0 = Image, 1 = Video
+
+	// Update render button text based on mode
+	if (m_videoMode) {
+		m_renderButton->setText("🎬 START VIDEO RENDER");
+		m_statusLabel->setText("Ready to render video frames");
+	} else {
+		m_renderButton->setText("▶ START RENDER");
+		m_statusLabel->setText("Ready to render");
+	}
+
+	// Log mode change
+	onLogMessage(QString("Mode changed to: %1").arg(m_videoMode ? "Video Generation" : "Single Image"));
+}
+
+void MainWindow::assembleVideoAutomatically() {
+	// With OpenCV integration, the video is assembled directly by ray_tracer.exe
+	// We just need to find and open the video file
+
+	// Wait a moment for file to be fully written
+	QThread::msleep(500);
+
+	// Search for any *_video.mp4 file in the output directory
+	QString outputDir = QCoreApplication::applicationDirPath() + "/output";
+	QDir dir(outputDir);
+	QStringList filters;
+	filters << "*_video.mp4" << "video.mp4";
+	QFileInfoList videoFiles = dir.entryInfoList(filters, QDir::Files, QDir::Time);
+
+	QString videoPath;
+	QFileInfo videoInfo;
+
+	// Get the most recently modified video file
+	if (!videoFiles.isEmpty()) {
+		videoInfo = videoFiles.first();
+		videoPath = videoInfo.absoluteFilePath();
+	}
+
+	if (videoPath.isEmpty()) {
+		m_statusLabel->setText("⚠️ Video file not found, checking for frames...");
+		onLogMessage("WARNING: Video file not found at any of the expected locations");
+
+		// Check if frames exist (fallback diagnostic)
+		QString framesDir = QCoreApplication::applicationDirPath() + "/output/frames";
+		QDir framesDirObj(framesDir);
+
+		if (framesDirObj.exists()) {
+			QStringList frames = framesDirObj.entryList(QStringList() << "frame_*.ppm", QDir::Files);
+			if (!frames.isEmpty()) {
+				m_statusLabel->setText(QString("⚠️ Found %1 frames but no video file").arg(frames.count()));
+				onLogMessage(QString("Frames were rendered (%1 files) but video assembly may have failed.").arg(frames.count()));
+				QMessageBox::warning(this, "Video Not Created", 
+					QString("Frames were rendered successfully (%1 files), but the video file was not created.\n\n"
+							"Expected video in: %2\n"
+							"with pattern: *_video.mp4 or video.mp4\n\n"
+							"Please check the render log for OpenCV errors.").arg(frames.count()).arg(outputDir));
+			} else {
+				m_statusLabel->setText("❌ No frames or video found");
+				onLogMessage("ERROR: No frames or video file found");
+				QMessageBox::critical(this, "Render Failed", 
+					"Neither frames nor video file were created.\n\nPlease check the render log for errors.");
+			}
+		} else {
+			m_statusLabel->setText("❌ Frames directory not found");
+			onLogMessage(QString("ERROR: Frames directory not found: %1").arg(framesDir));
+			QMessageBox::critical(this, "Directory Not Found", 
+				QString("Frames directory not found:\n%1\n\nThe render may have failed to create output.").arg(framesDir));
+		}
+		return;
+	}
+
+	// Video file found! Open it
+	m_statusLabel->setText("✅ Video created successfully!");
+	onLogMessage(QString("✅ Video assembled successfully: %1").arg(videoPath));
+	onLogMessage(QString("Video size: %1 MB").arg(videoInfo.size() / (1024.0 * 1024.0), 0, 'f', 2));
+
+	// Auto-open the video
+	onLogMessage(QString("Opening video: %1").arg(videoPath));
+	QDesktopServices::openUrl(QUrl::fromLocalFile(videoPath));
 }
