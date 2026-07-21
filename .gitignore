@@ -1,8 +1,200 @@
+##############################################################################
+# Visual Studio / MSBuild Build Artifacts
+##############################################################################
+
+# Visual Studio user-specific files
 .vs/
-bin/
-obj/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
 *.slnx
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# MSBuild Binary and Structured Log
+*.binlog
+
+# Build directories under project folders
+*/x64/
+*/Win32/
+*/ARM/
+*/ARM64/
+cpu_renderer/cpu_renderer/x64/
+cpu_renderer/cpu_renderer/Win32/
+
+##############################################################################
+# C/C++ Build Artifacts
+##############################################################################
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Debug symbols
+*.pdb
+*.ilk
+*.idb
+
+##############################################################################
+# CUDA / OptiX Build Artifacts
+##############################################################################
+
+# CUDA compiled files
+*.ptx
+*.cubin
+*.fatbin
+
+# OptiX PTX (keep the checked-in version for deployment)
+!gpu/optix/optix_programs.ptx
 
 # CUDA object files
 gpu/cuda/obj/
-*.obj
+*.cu.obj
+
+##############################################################################
+# Qt Build Artifacts
+##############################################################################
+
+# Qt MOC/UIC/RCC generated files
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+
+# Qt Makefiles
+Makefile*
+!Makefile.am
+
+# Qt Creator
+*.autosave
+*.pro.user
+*.pro.user.*
+CMakeLists.txt.user*
+
+##############################################################################
+# Package / Deployment Directory (except tracked files)
+##############################################################################
+
+# RayTracer deployment package build outputs
+RayTracer_Package/*.exe
+RayTracer_Package/*.dll
+RayTracer_Package/output/
+RayTracer_Package/platforms/
+RayTracer_Package/styles/
+
+# Keep deployment script
+!RayTracer_Package/*.ps1
+
+##############################################################################
+# Test / Render Output
+##############################################################################
+
+# Generated images
+*.ppm
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.tga
+
+# Keep example/reference images if needed
+!docs/*.png
+!docs/*.jpg
+
+# Test output
+test_*.ppm
+test_*.png
+test_build.*
+
+##############################################################################
+# Visual Studio Code
+##############################################################################
+
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+
+##############################################################################
+# Temporary / Editor Files
+##############################################################################
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# Log files
+*.log
+
+# OS-specific
+.DS_Store
+Thumbs.db
+desktop.ini
+
+##############################################################################
+# Profiling / Performance Analysis
+##############################################################################
+
+*.vsp
+*.psess
+*.sap
+
+##############################################################################
+# NuGet Packages (if used)
+##############################################################################
+
+*.nupkg
+packages/
+!packages/repositories.config
+
+##############################################################################
+# Custom Build Scripts Output
+##############################################################################
+
+# Commit message temp files
+commit_message.txt
+
+# Directory.Build.targets modifications (tracked separately)
+# Directory.Build.targets

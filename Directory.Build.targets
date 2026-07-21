@@ -2,4 +2,7 @@
 <Project>
   <!-- Automatically import custom CUDA build targets for projects in this repository -->
   <Import Project="$(MSBuildThisFileDirectory)build_cuda.targets" Condition="Exists('$(MSBuildThisFileDirectory)build_cuda.targets')" />
+
+  <!-- Automatically import OptiX build targets -->
+  <Import Project="$(MSBuildThisFileDirectory)build_optix.targets" Condition="Exists('$(MSBuildThisFileDirectory)build_optix.targets')" />
 </Project>
