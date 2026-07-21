@@ -309,6 +309,25 @@ class camera {
         return center + (p[0] * defocus_disk_u) + (p[1] * defocus_disk_v);
     }
 
+    // Multiple Importance Sampling: Balance heuristic weight calculation
+    // Given PDFs from two sampling strategies, returns the weight for the first strategy
+    static double mis_balance_heuristic(double pdf_a, double pdf_b) {
+        // Balance heuristic: w_a = pdf_a / (pdf_a + pdf_b)
+        // Handles edge cases: if pdf_a is 0, weight is 0; if both are 0, avoid NaN
+        if (pdf_a <= 0.0) return 0.0;
+        if (pdf_b <= 0.0) return 1.0;
+        return pdf_a / (pdf_a + pdf_b);
+    }
+
+    // Power heuristic with exponent β=2 (optional, usually better than balance)
+    static double mis_power_heuristic(double pdf_a, double pdf_b) {
+        if (pdf_a <= 0.0) return 0.0;
+        if (pdf_b <= 0.0) return 1.0;
+        double a2 = pdf_a * pdf_a;
+        double b2 = pdf_b * pdf_b;
+        return a2 / (a2 + b2);
+    }
+
     color ray_color(const ray& r, int depth, const hittable& world, const hittable& lights)
     const {
         // If we've exceeded the ray bounce limit, no more light is gathered.
@@ -331,17 +350,48 @@ class camera {
             return srec.attenuation * ray_color(srec.skip_pdf_ray, depth-1, world, lights);
         }
 
+        // Multiple Importance Sampling (MIS) implementation
+        // Sample both BRDF and light strategies, then combine with balance heuristic
         auto light_ptr = make_shared<hittable_pdf>(lights, rec.p);
-        mixture_pdf p(light_ptr, srec.pdf_ptr);
 
-        ray scattered = ray(rec.p, p.generate(), r.time());
-        auto pdf_value = p.value(scattered.direction());
+        // Strategy 1: Sample from BRDF
+        vec3 brdf_direction = srec.pdf_ptr->generate();
+        ray brdf_scattered = ray(rec.p, brdf_direction, r.time());
 
-        double scattering_pdf = rec.mat->scattering_pdf(r, rec, scattered);
+        double pdf_brdf = srec.pdf_ptr->value(brdf_direction);
+        double pdf_light_at_brdf = light_ptr->value(brdf_direction);
+        double scattering_pdf_brdf = rec.mat->scattering_pdf(r, rec, brdf_scattered);
 
-        color sample_color = ray_color(scattered, depth-1, world, lights);
-        color color_from_scatter =
-            (srec.attenuation * scattering_pdf * sample_color) / pdf_value;
+        // Strategy 2: Sample from light
+        vec3 light_direction = light_ptr->generate();
+        ray light_scattered = ray(rec.p, light_direction, r.time());
+
+        double pdf_light = light_ptr->value(light_direction);
+        double pdf_brdf_at_light = srec.pdf_ptr->value(light_direction);
+        double scattering_pdf_light = rec.mat->scattering_pdf(r, rec, light_scattered);
+
+        // Compute MIS weights using power heuristic (β=2)
+        double weight_brdf = mis_power_heuristic(pdf_brdf, pdf_light_at_brdf);
+        double weight_light = mis_power_heuristic(pdf_light, pdf_brdf_at_light);
+
+        // Recursively trace both rays
+        color sample_color_brdf = ray_color(brdf_scattered, depth - 1, world, lights);
+        color sample_color_light = ray_color(light_scattered, depth - 1, world, lights);
+
+        // Combine contributions with MIS weights
+        color contribution_brdf = color(0,0,0);
+        if (pdf_brdf > 0.0 && scattering_pdf_brdf > 0.0) {
+            contribution_brdf = 
+                weight_brdf * (srec.attenuation * scattering_pdf_brdf * sample_color_brdf) / pdf_brdf;
+        }
+
+        color contribution_light = color(0,0,0);
+        if (pdf_light > 0.0 && scattering_pdf_light > 0.0) {
+            contribution_light = 
+                weight_light * (srec.attenuation * scattering_pdf_light * sample_color_light) / pdf_light;
+        }
+
+        color color_from_scatter = contribution_brdf + contribution_light;
 
         return color_from_emission + color_from_scatter;
     }

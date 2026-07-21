@@ -39,11 +39,15 @@ public:
 	/// @param spheres Vector of sphere geometry data
 	/// @param quads Vector of quad geometry data 
 	/// @param materials Vector of material data
+	/// @param lightIndices Vector of light primitive indices
+	/// @param isLightSphere Vector of flags (true=sphere, false=quad)
 	/// @return true if scene was built successfully, false otherwise
 	bool buildScene(
 		const std::vector<SphereData>& spheres,
 		const std::vector<QuadData>& quads,
-		const std::vector<MaterialData>& materials
+		const std::vector<MaterialData>& materials,
+		const std::vector<int>& lightIndices,
+		const std::vector<bool>& isLightSphere
 	);
 
 	/// @brief Render a frame using path tracing
@@ -119,6 +123,11 @@ private:
 	unsigned int numSpheres_ = 0;     ///< Number of spheres
 	CUdeviceptr d_quads_ = 0;         ///< Device quad array
 	unsigned int numQuads_ = 0;       ///< Number of quads
+
+	// Light sampling support for MIS
+	CUdeviceptr d_lightIndices_ = 0;  ///< Device light primitive indices
+	CUdeviceptr d_isLightSphere_ = 0; ///< Device light type flags (sphere/quad)
+	unsigned int numLights_ = 0;      ///< Number of emissive lights
 
 	// -------------------------------------------------------------------
 	// Launch Parameters

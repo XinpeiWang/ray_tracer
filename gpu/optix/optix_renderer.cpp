@@ -390,7 +390,9 @@ bool OptiXRenderer::linkPipeline() {
 bool OptiXRenderer::buildScene(
 	const std::vector<SphereData>& spheres,
 	const std::vector<QuadData>& quads,
-	const std::vector<MaterialData>& materials
+	const std::vector<MaterialData>& materials,
+	const std::vector<int>& lightIndices,
+	const std::vector<bool>& isLightSphere
 ) {
 	// Store material data on device
 	numMaterials_ = static_cast<unsigned int>(materials.size());
@@ -445,6 +447,55 @@ bool OptiXRenderer::buildScene(
 	));
 
 	std::cout << "[OptiX] Uploaded " << quads.size() << " quads to GPU\n";
+
+	// Store light data on device for MIS
+	numLights_ = static_cast<unsigned int>(lightIndices.size());
+
+	if (numLights_ > 0) {
+		// Upload light indices
+		size_t lightIndexSize = lightIndices.size() * sizeof(int);
+		if (d_lightIndices_) {
+			cudaFree(reinterpret_cast<void*>(d_lightIndices_));
+		}
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_lightIndices_), lightIndexSize));
+		CUDA_CHECK(cudaMemcpy(
+			reinterpret_cast<void*>(d_lightIndices_),
+			lightIndices.data(),
+			lightIndexSize,
+			cudaMemcpyHostToDevice
+		));
+
+		// Upload light type flags (convert bool to int for better GPU alignment)
+		std::vector<int> lightFlags(isLightSphere.size());
+		for (size_t i = 0; i < isLightSphere.size(); ++i) {
+			lightFlags[i] = isLightSphere[i] ? 1 : 0;
+		}
+
+		size_t lightFlagSize = lightFlags.size() * sizeof(int);
+		if (d_isLightSphere_) {
+			cudaFree(reinterpret_cast<void*>(d_isLightSphere_));
+		}
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_isLightSphere_), lightFlagSize));
+		CUDA_CHECK(cudaMemcpy(
+			reinterpret_cast<void*>(d_isLightSphere_),
+			lightFlags.data(),
+			lightFlagSize,
+			cudaMemcpyHostToDevice
+		));
+
+		std::cout << "[OptiX] Uploaded " << numLights_ << " light sources for MIS\n";
+	} else {
+		// No lights in scene
+		if (d_lightIndices_) {
+			cudaFree(reinterpret_cast<void*>(d_lightIndices_));
+			d_lightIndices_ = 0;
+		}
+		if (d_isLightSphere_) {
+			cudaFree(reinterpret_cast<void*>(d_isLightSphere_));
+			d_isLightSphere_ = 0;
+		}
+		std::cout << "[OptiX] No emissive lights in scene\n";
+	}
 
 	// Build acceleration structure for custom primitives
 	// We'll use AABB (axis-aligned bounding box) custom primitives
@@ -731,6 +782,11 @@ bool OptiXRenderer::render(
 	params.quads = reinterpret_cast<QuadData*>(d_quads_);
 	params.numQuads = numQuads_;
 
+	// Light sampling for MIS
+	params.lightIndices = reinterpret_cast<int*>(d_lightIndices_);
+	params.numLights = numLights_;
+	params.isLightSphere = reinterpret_cast<bool*>(d_isLightSphere_);
+
 	// Upload launch params
 	CUDA_CHECK(cudaMemcpy(
 		reinterpret_cast<void*>(d_launchParams_),
@@ -783,6 +839,8 @@ void OptiXRenderer::cleanup() noexcept {
 	if (d_materials_) cudaFree(reinterpret_cast<void*>(d_materials_));
 	if (d_spheres_) cudaFree(reinterpret_cast<void*>(d_spheres_));
 	if (d_quads_) cudaFree(reinterpret_cast<void*>(d_quads_));
+	if (d_lightIndices_) cudaFree(reinterpret_cast<void*>(d_lightIndices_));
+	if (d_isLightSphere_) cudaFree(reinterpret_cast<void*>(d_isLightSphere_));
 
 	// Free launch params
 	if (d_launchParams_) cudaFree(reinterpret_cast<void*>(d_launchParams_));

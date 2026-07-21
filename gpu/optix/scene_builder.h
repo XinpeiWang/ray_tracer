@@ -11,6 +11,10 @@ struct SceneData {
 	std::vector<SphereData> spheres;
 	std::vector<QuadData> quads;
 	std::vector<MaterialData> materials;
+
+	// Light tracking for MIS
+	std::vector<int> lightIndices;      // Indices into sphere/quad arrays
+	std::vector<bool> isLightSphere;    // True if sphere, false if quad
 };
 
 // Build a scene and return geometry + camera

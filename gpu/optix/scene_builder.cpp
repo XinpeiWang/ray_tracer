@@ -36,6 +36,14 @@ namespace {
 		return make_float3(p.x + offset.x, p.y + offset.y, p.z + offset.z);
 	}
 
+	// Helper to check if a material is emissive
+	inline bool is_emissive(const SceneData& scene, int material_idx) {
+		if (material_idx < 0 || material_idx >= static_cast<int>(scene.materials.size()))
+			return false;
+		const auto& mat = scene.materials[material_idx];
+		return mat.type == MaterialType::DiffuseLight;
+	}
+
 	// Helper to add a quad with optional rotation and translation
 	inline void add_transformed_quad(
 		SceneData& scene,
@@ -70,6 +78,12 @@ namespace {
 		quad.D = dot(quad.normal, quad.Q);
 		quad.materialIdx = material_idx;
 		scene.quads.push_back(quad);
+
+		// Track if this quad is a light
+		if (is_emissive(scene, material_idx)) {
+			scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+			scene.isLightSphere.push_back(false); // false = quad
+		}
 	}
 
 	// Helper to add a box (6 quads) with rotation and translation
@@ -171,6 +185,10 @@ static void build_cornell_box(SceneData& scene) {
 	wall_right.D = dot(wall_right.normal, wall_right.Q);
 	wall_right.materialIdx = mat_green;
 	scene.quads.push_back(wall_right);
+	if (is_emissive(scene, mat_green)) {
+		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+		scene.isLightSphere.push_back(false);
+	}
 
 	// Red wall (left - origin face at x=0)
 	QuadData wall_left{};
@@ -183,6 +201,10 @@ static void build_cornell_box(SceneData& scene) {
 	wall_left.D = dot(wall_left.normal, wall_left.Q);
 	wall_left.materialIdx = mat_red;
 	scene.quads.push_back(wall_left);
+	if (is_emissive(scene, mat_red)) {
+		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+		scene.isLightSphere.push_back(false);
+	}
 
 	// Light (matching CPU: Q=(213,554,227), u=(130,0,0), v=(0,0,105))
 	QuadData light_quad{};
@@ -196,6 +218,10 @@ static void build_cornell_box(SceneData& scene) {
 	light_quad.materialIdx = mat_light;
 	scene.quads.push_back(light_quad);
 
+	// Track this light for MIS
+	scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+	scene.isLightSphere.push_back(false); // false = quad
+
 	// White ceiling (+Y face at y=555)
 	QuadData ceiling{};
 	ceiling.Q = make_float3(0.0f, kBoxSize, 0.0f);
@@ -207,6 +233,10 @@ static void build_cornell_box(SceneData& scene) {
 	ceiling.D = dot(ceiling.normal, ceiling.Q);
 	ceiling.materialIdx = mat_white;
 	scene.quads.push_back(ceiling);
+	if (is_emissive(scene, mat_white)) {
+		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+		scene.isLightSphere.push_back(false);
+	}
 
 	// White floor (origin, XZ plane at y=0)
 	QuadData floor{};
@@ -219,6 +249,10 @@ static void build_cornell_box(SceneData& scene) {
 	floor.D = dot(floor.normal, floor.Q);
 	floor.materialIdx = mat_white;
 	scene.quads.push_back(floor);
+	if (is_emissive(scene, mat_white)) {
+		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+		scene.isLightSphere.push_back(false);
+	}
 
 	// White back wall (+Z face at z=555)
 	QuadData back_wall{};
@@ -231,6 +265,10 @@ static void build_cornell_box(SceneData& scene) {
 	back_wall.D = dot(back_wall.normal, back_wall.Q);
 	back_wall.materialIdx = mat_white;
 	scene.quads.push_back(back_wall);
+	if (is_emissive(scene, mat_white)) {
+		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+		scene.isLightSphere.push_back(false);
+	}
 
 	// Glass sphere (left)
 	SphereData glass_sphere{};
@@ -238,6 +276,12 @@ static void build_cornell_box(SceneData& scene) {
 	glass_sphere.radius = 90.0f;
 	glass_sphere.materialIdx = mat_glass;
 	scene.spheres.push_back(glass_sphere);
+
+	// Track if this sphere is a light (glass is not)
+	if (is_emissive(scene, mat_glass)) {
+		scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+		scene.isLightSphere.push_back(true); // true = sphere
+	}
 
 	// White rotated box (right) - matching CPU scene definition
 	// box(point3(0,0,0), point3(165,330,165), white) rotated 15° then translated (265,0,295)
@@ -268,6 +312,10 @@ void build_checkered_spheres(SceneData& scene) {
 	sphere1.radius = 10.0f;
 	sphere1.materialIdx = mat1;
 	scene.spheres.push_back(sphere1);
+	if (is_emissive(scene, mat1)) {
+		scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+		scene.isLightSphere.push_back(true);
+	}
 
 	// Top sphere (lighter)
 	const int mat2 = safe_cast_to_int(scene.materials.size());
@@ -283,6 +331,10 @@ void build_checkered_spheres(SceneData& scene) {
 	sphere2.radius = 10.0f;
 	sphere2.materialIdx = mat2;
 	scene.spheres.push_back(sphere2);
+	if (is_emissive(scene, mat2)) {
+		scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+		scene.isLightSphere.push_back(true);
+	}
 }
 
 /**
@@ -314,6 +366,12 @@ void build_quads_scene(SceneData& scene) {
 		quad.D = dot(quad.normal, quad.Q);
 		quad.materialIdx = mat_idx;
 		scene.quads.push_back(quad);
+
+		// Track if emissive
+		if (is_emissive(scene, mat_idx)) {
+			scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+			scene.isLightSphere.push_back(false);
+		}
 	};
 
 	// Left red quad
