@@ -106,4 +106,21 @@
   </ItemGroup>
 
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+
+  <!-- Post-Build Event: Auto-deploy PTX to RayTracer_Package -->
+  <Target Name="PostBuild" AfterTargets="Build">
+    <PropertyGroup>
+      <PtxSource>$(MSBuildProjectDirectory)\..\gpu\optix\optix_programs.ptx</PtxSource>
+      <PackageDir>$(MSBuildProjectDirectory)\..\RayTracer_Package</PackageDir>
+    </PropertyGroup>
+
+    <!-- Create package directory if it doesn't exist -->
+    <MakeDir Directories="$(PackageDir)" Condition="!Exists('$(PackageDir)')" />
+
+    <!-- Copy PTX shader to package directory -->
+    <Message Text="[Post-Build] Copying optix_programs.ptx to RayTracer_Package..." Importance="high" />
+    <Copy SourceFiles="$(PtxSource)" DestinationFiles="$(PackageDir)\optix_programs.ptx" SkipUnchangedFiles="false" Condition="Exists('$(PtxSource)')" />
+    <Message Text="[Post-Build] Deployed: $(PackageDir)\optix_programs.ptx" Importance="high" Condition="Exists('$(PtxSource)')" />
+    <Warning Text="[Post-Build] PTX not found at $(PtxSource). Run PTX compile step first." Condition="!Exists('$(PtxSource)')" />
+  </Target>
 </Project>

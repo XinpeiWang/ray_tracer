@@ -160,6 +160,21 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
+
+  <!-- Post-Build Event: Auto-deploy to RayTracer_Package -->
+  <Target Name="PostBuild" AfterTargets="Build">
+    <PropertyGroup>
+      <PackageDir>$(SolutionDir)RayTracer_Package</PackageDir>
+    </PropertyGroup>
+
+    <!-- Create package directory if it doesn't exist -->
+    <MakeDir Directories="$(PackageDir)" Condition="!Exists('$(PackageDir)')" />
+
+    <!-- Copy ray_tracer.exe to package directory -->
+    <Message Text="[Post-Build] Copying ray_tracer.exe to RayTracer_Package..." Importance="high" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFiles="$(PackageDir)\ray_tracer.exe" SkipUnchangedFiles="false" />
+    <Message Text="[Post-Build] Deployed: $(PackageDir)\ray_tracer.exe" Importance="high" />
+  </Target>
 </Project>
 
 

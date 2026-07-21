@@ -79,7 +79,12 @@ For more control, use the PowerShell script:
 4. Select platform: `x64`
 5. Build → Build Solution (Ctrl+Shift+B)
 
-**Note:** Building from Visual Studio IDE does not automatically deploy Qt dependencies. Use `.\deploy_qt_gui.ps1` or `.\build_and_deploy.ps1` after IDE builds to create a complete package.
+**Automatic Deployment:** The `launcher` and `optix_renderer` projects now include post-build events that automatically copy:
+- `ray_tracer.exe` → `RayTracer_Package/`
+- `optix_programs.ptx` → `RayTracer_Package/`
+
+**Qt GUI:** To complete the package, build the Qt GUI separately (see Qt GUI Build section) and run `.\deploy_qt_gui.ps1` to add Qt dependencies.
+
 ## Project Structure
 
 The solution contains the following projects:
@@ -151,30 +156,33 @@ The solution contains the following projects:
 
 ## Build Outputs
 
-After a successful build:
+After a successful build, the following files are automatically deployed:
 
+**Build Artifacts:**
 ```
-x64\Release\
-  ├─ ray_tracer.exe              # Main launcher executable
-  └─ optix_renderer.lib          # OptiX renderer static library
+launcher\x64\Release\
+  └─ ray_tracer.exe              # Main launcher (PRIMARY BUILD OUTPUT)
 
 cpu_renderer\x64\Release\
   └─ cpu_renderer.lib            # CPU renderer static library
+
+optix_renderer\x64\Release\
+  └─ optix_renderer.lib          # OptiX renderer static library
 
 gpu\optix\
   └─ optix_programs.ptx          # OptiX shader (compiled from .cu)
 
 tests\x64\Release\
   └─ ray_tracer_tests.exe        # Test suite
+```
 
-qt_gui\
-  └─ (build directory varies based on Qt toolchain)
-
-RayTracer_Package\              # Deployment package (after running deploy script)
-  ├─ RayTracerGUI.exe           # Qt GUI application
-  ├─ ray_tracer.exe             # Console launcher
-  ├─ optix_programs.ptx         # GPU shader
-  ├─ Qt6Core.dll                # Qt dependencies (auto-deployed)
+**Auto-Deployed Package (via MSBuild post-build events):**
+```
+RayTracer_Package\              # Canonical deployment directory
+  ├─ ray_tracer.exe             # Auto-copied from launcher build
+  ├─ optix_programs.ptx         # Auto-copied from optix_renderer build
+  ├─ RayTracerGUI.exe           # Added by Qt build + deploy_qt_gui.ps1
+  ├─ Qt6Core.dll                # Qt dependencies (via deploy_qt_gui.ps1)
   ├─ Qt6Gui.dll
   ├─ Qt6Widgets.dll
   ├─ Qt6Network.dll
@@ -184,6 +192,8 @@ RayTracer_Package\              # Deployment package (after running deploy scrip
   ├─ libwinpthread-1.dll
   └─ [Qt plugins in subdirectories]
 ```
+
+**Note:** Backend executables and shaders are now automatically copied to `RayTracer_Package/` by MSBuild post-build events. You only need to run `deploy_qt_gui.ps1` to add Qt dependencies after building the GUI.
 
 ## Deployment
 
@@ -196,10 +206,27 @@ The easiest way to create a complete, ready-to-run package:
 ```
 
 This automatically:
-1. Builds all components
-2. Copies executables and shaders to `RayTracer_Package\`
-3. Runs `windeployqt` to include all Qt DLLs
-4. Validates the package completeness
+1. Builds all C++ components (launcher auto-deploys `ray_tracer.exe` and `optix_programs.ptx` to `RayTracer_Package/`)
+2. Builds Qt GUI application
+3. Copies `RayTracerGUI.exe` to `RayTracer_Package/`
+4. Runs `windeployqt` to include all Qt DLLs
+5. Validates the package completeness
+
+### Build System Flow
+
+**MSBuild Post-Build Events (Automatic):**
+- `launcher` project → deploys `ray_tracer.exe` to `RayTracer_Package/`
+- `optix_renderer` project → deploys `optix_programs.ptx` to `RayTracer_Package/`
+
+**Manual Qt Deployment (after Qt build):**
+```powershell
+.\deploy_qt_gui.ps1
+```
+
+This script:
+- Verifies backend files are present (auto-deployed by MSBuild)
+- Copies `RayTracerGUI.exe` to `RayTracer_Package/`
+- Runs `windeployqt` to add Qt dependencies
 
 ### Manual Deployment
 

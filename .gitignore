@@ -115,6 +115,7 @@ CMakeLists.txt.user*
 # RayTracer deployment package build outputs
 RayTracer_Package/*.exe
 RayTracer_Package/*.dll
+RayTracer_Package/*.ptx
 RayTracer_Package/output/
 RayTracer_Package/platforms/
 RayTracer_Package/styles/
