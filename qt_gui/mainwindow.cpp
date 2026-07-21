@@ -1195,14 +1195,14 @@ void MainWindow::onSceneChanged(int index) {
 
 	static const SceneInfo sceneInfos[] = {
 		{"Classic Cornell box with glass sphere and white box", "Medium", 100, false, true},
-		{"Random spheres with checker ground (In One Weekend final)", "Slow", 100, false, false},
-		{"Two spheres with procedural checker texture", "Fast", 100, false, false},
-		{"Globe with earth texture mapping (requires earthmap.jpg)", "Fast", 100, true, false},
-		{"Spheres with Perlin noise marble texture", "Fast", 100, false, false},
-		{"Five colored quad primitives", "Fast", 100, false, false},
-		{"Perlin spheres with emissive light sources", "Fast", 100, false, false},
-		{"Cornell box with volumetric fog", "Slow", 200, false, false},
-		{"Complex scene from The Next Week (very slow!)", "Very Slow", 500, false, false}
+		{"Random spheres with checker ground (In One Weekend final)", "Slow", 100, false, true},
+		{"Two spheres with procedural checker texture", "Fast", 100, false, true},
+		{"Globe with earth texture mapping (requires earthmap.jpg)", "Fast", 100, true, true},
+		{"Spheres with Perlin noise marble texture", "Fast", 100, false, true},
+		{"Five colored quad primitives", "Fast", 100, false, true},
+		{"Perlin spheres with emissive light sources", "Fast", 100, false, true},
+		{"Cornell box with volumetric fog", "Slow", 200, false, true},
+		{"Complex scene from The Next Week (very slow!)", "Very Slow", 500, false, true}
 	};
 
 	if (index >= 0 && index < 9) {
