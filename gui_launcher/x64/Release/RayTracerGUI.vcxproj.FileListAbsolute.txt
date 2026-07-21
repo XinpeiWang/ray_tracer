@@ -1,1 +1,0 @@
-C:\Users\xinpe\source\repos\ray_tracer\gui_launcher\x64\Release\RayTracerGUI.exe
