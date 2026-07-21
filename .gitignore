@@ -179,6 +179,11 @@ RayTracer_Package/output/
 Thumbs.db
 desktop.ini
 
+# AI coding assistants
+.aider/
+.aider.tags.cache.v4/
+.aider.*
+
 ##############################################################################
 # Profiling / Performance Analysis
 ##############################################################################
@@ -228,3 +233,17 @@ check_*.bat
 run_build.bat
 test_*.cpp
 test_*.vcxproj
+
+##############################################################################
+# Deployment / Release Packages
+##############################################################################
+
+# Portable release packages
+RayTracer_Package/
+RayTracer_v1.0_Portable/
+*_Portable/
+releases/*.zip
+
+# Distribution builds (keep source, ignore binaries)
+RayTracer_Package/*.exe
+RayTracer_Package/*.dll
