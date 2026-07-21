@@ -88,6 +88,11 @@ struct LaunchParams {
 	// Material data
 	MaterialData* materials;
 	unsigned int numMaterials;
+
+	// Light sampling support (indices into sphere/quad arrays)
+	int* lightIndices;          // Array of light primitive indices
+	unsigned int numLights;     // Number of emissive lights in scene
+	bool* isLightSphere;        // True if lightIndices[i] is sphere, false if quad
 };
 
 // Hit group data (per-geometry instance in SBT)

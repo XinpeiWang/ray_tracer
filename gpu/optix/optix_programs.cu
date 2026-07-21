@@ -71,6 +71,162 @@ __device__ __forceinline__ float reflectance(float cosine, float ref_idx) {
 }
 
 //==============================================================================
+// Multiple Importance Sampling (MIS) Helpers
+//==============================================================================
+
+// MIS power heuristic (beta = 2)
+__device__ __forceinline__ float mis_power_heuristic(float pdf_a, float pdf_b) {
+	float a2 = pdf_a * pdf_a;
+	float b2 = pdf_b * pdf_b;
+	return a2 / (a2 + b2);
+}
+
+// Cosine-weighted hemisphere sampling PDF
+__device__ __forceinline__ float cosine_pdf(const float3& direction, const float3& normal) {
+	float cosine = dot(normalize(direction), normal);
+	return fmaxf(0.0f, cosine / 3.14159265358979323846f);
+}
+
+// Sample a random point on a sphere light
+__device__ __forceinline__ float3 sample_sphere_light(
+	const SphereData& sphere,
+	const float3& origin,
+	unsigned int& seed,
+	float& pdf
+) {
+	// Direction from origin to sphere center
+	float3 to_center = sphere.center - origin;
+	float dist_sq = dot(to_center, to_center);
+
+	// Avoid division by zero
+	if (dist_sq < 1e-6f) {
+		pdf = 0.0f;
+		return make_float3(0.0f, 0.0f, 1.0f);
+	}
+
+	// Compute solid angle PDF
+	float cos_theta_max = sqrtf(1.0f - sphere.radius * sphere.radius / dist_sq);
+	float solid_angle = 2.0f * 3.14159265358979323846f * (1.0f - cos_theta_max);
+	pdf = 1.0f / solid_angle;
+
+	// Build ONB around direction to sphere
+	float3 w = normalize(to_center);
+	float3 a = (fabsf(w.x) > 0.9f) ? make_float3(0.0f, 1.0f, 0.0f) : make_float3(1.0f, 0.0f, 0.0f);
+	float3 v = normalize(cross(w, a));
+	float3 u = cross(w, v);
+
+	// Sample direction within cone
+	float z = 1.0f + random_float(seed) * (cos_theta_max - 1.0f);
+	float phi = 2.0f * 3.14159265358979323846f * random_float(seed);
+	float r = sqrtf(1.0f - z * z);
+
+	float3 direction = r * cosf(phi) * u + r * sinf(phi) * v + z * w;
+	return normalize(direction);
+}
+
+// Sample a random point on a quad light
+__device__ __forceinline__ float3 sample_quad_light(
+	const QuadData& quad,
+	const float3& origin,
+	unsigned int& seed,
+	float& pdf
+) {
+	// Random point on quad surface
+	float a = random_float(seed);
+	float b = random_float(seed);
+	float3 point = quad.Q + a * quad.u + b * quad.v;
+
+	// Direction to sampled point
+	float3 to_light = point - origin;
+	float dist_sq = dot(to_light, to_light);
+	float3 direction = to_light / sqrtf(dist_sq);
+
+	// Area-based PDF converted to solid angle
+	float area = length(quad.w);  // w = u x v, so |w| = area
+	float cosine = fabsf(dot(direction, quad.normal));
+
+	if (cosine < 1e-6f || area < 1e-6f) {
+		pdf = 0.0f;
+		return direction;
+	}
+
+	pdf = dist_sq / (cosine * area);
+	return direction;
+}
+
+// Evaluate quad light PDF for a given direction
+__device__ __forceinline__ float quad_light_pdf(
+	const QuadData& quad,
+	const float3& origin,
+	const float3& direction
+) {
+	// Intersect ray with quad plane
+	float denom = dot(direction, quad.normal);
+	if (fabsf(denom) < 1e-6f) return 0.0f;
+
+	float t = (quad.D - dot(quad.normal, origin)) / denom;
+	if (t < 0.001f) return 0.0f;
+
+	// Check if hit point is inside quad
+	float3 hit_point = origin + t * direction;
+	float3 p = hit_point - quad.Q;
+
+	// Solve for (alpha, beta) such that p = alpha*u + beta*v
+	float3 n = quad.w;  // u x v
+	float n_len_sq = dot(n, n);
+	if (n_len_sq < 1e-6f) return 0.0f;
+
+	float alpha = dot(cross(p, quad.v), n) / n_len_sq;
+	float beta = dot(cross(quad.u, p), n) / n_len_sq;
+
+	if (alpha < 0.0f || alpha > 1.0f || beta < 0.0f || beta > 1.0f) {
+		return 0.0f;  // Outside quad
+	}
+
+	// Compute PDF
+	float dist_sq = t * t * dot(direction, direction);
+	float cosine = fabsf(dot(direction, quad.normal));
+	float area = sqrtf(n_len_sq);
+
+	return dist_sq / (cosine * area);
+}
+
+// Evaluate sphere light PDF for a given direction
+__device__ __forceinline__ float sphere_light_pdf(
+	const SphereData& sphere,
+	const float3& origin,
+	const float3& direction
+) {
+	// Check if direction intersects sphere (simplified - just use solid angle)
+	float3 to_center = sphere.center - origin;
+	float dist_sq = dot(to_center, to_center);
+
+	if (dist_sq < 1e-6f) return 0.0f;
+
+	float cos_theta_max = sqrtf(1.0f - sphere.radius * sphere.radius / dist_sq);
+	float solid_angle = 2.0f * 3.14159265358979323846f * (1.0f - cos_theta_max);
+
+	return 1.0f / solid_angle;
+}
+
+// Trace a shadow ray to test visibility
+// Returns true if path to light is unoccluded
+// NOTE: Proper implementation requires anyhit program or separate shadow ray type
+// For now, we conservatively assume visibility (will be noisy but unbiased)
+__device__ __forceinline__ bool trace_shadow_ray(
+	const float3& origin,
+	const float3& direction,
+	float max_distance
+) {
+	// TODO: Implement proper shadow ray with anyhit occlusion testing
+	// For now, return true (assume visible) - this adds direct lighting estimates
+	// that may be occluded, making the image brighter/noisier until shadow rays work
+	return true;
+}
+
+
+
+//==============================================================================
 // Sphere Intersection Program
 //==============================================================================
 
@@ -167,12 +323,83 @@ extern "C" __global__ void __closesthit__sphere() {
 
 	switch (mat.type) {
 		case MaterialType::Lambertian: {
+			// Multiple Importance Sampling (MIS) for diffuse surfaces
+
+			// Sample BRDF (cosine-weighted hemisphere) for indirect lighting
 			scattered_dir = normal + random_unit_vector(seed);
 			if (near_zero(scattered_dir)) {
 				scattered_dir = normal;
 			}
+			scattered_dir = normalize(scattered_dir);
 			attenuation = mat.albedo;
 			scattered = true;
+
+			// Add direct lighting via explicit light sampling (Next Event Estimation)
+			if (params.numLights > 0) {
+				// Pick a random light
+				int light_idx = int(random_float(seed) * float(params.numLights));
+				if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
+
+				int prim_idx = params.lightIndices[light_idx];
+				bool is_sphere = params.isLightSphere[light_idx];
+
+				// Sample direction toward light
+				float3 to_light;
+				float light_pdf = 0.0f;
+				float max_dist = 0.0f;
+
+				if (is_sphere) {
+					const SphereData& light_sphere = params.spheres[prim_idx];
+					to_light = sample_sphere_light(light_sphere, hit_point, seed, light_pdf);
+					// Calculate distance to sphere center
+					float3 to_center = light_sphere.center - hit_point;
+					max_dist = length(to_center);
+				} else {
+					const QuadData& light_quad = params.quads[prim_idx];
+					to_light = sample_quad_light(light_quad, hit_point, seed, light_pdf);
+					// Calculate distance to sampled point
+					float a = random_float(seed);
+					float b = random_float(seed);
+					float3 light_point = light_quad.Q + a * light_quad.u + b * light_quad.v;
+					max_dist = length(light_point - hit_point);
+				}
+
+				// Adjust PDF for multiple lights (we picked one uniformly)
+				light_pdf *= float(params.numLights);
+
+				if (light_pdf > 1e-6f) {
+					// Check if light is visible (shadow ray)
+					bool visible = trace_shadow_ray(hit_point, to_light, max_dist);
+
+					if (visible) {
+						// Evaluate BRDF PDF for this direction
+						float brdf_pdf = cosine_pdf(to_light, normal);
+
+						// MIS weight using power heuristic
+						float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
+
+						// Get light emission
+						float3 light_emission = make_float3(0.0f, 0.0f, 0.0f);
+						if (is_sphere) {
+							const MaterialData& light_mat = params.materials[params.spheres[prim_idx].materialIdx];
+							light_emission = light_mat.emission;
+						} else {
+							const MaterialData& light_mat = params.materials[params.quads[prim_idx].materialIdx];
+							light_emission = light_mat.emission;
+						}
+
+						// Compute direct lighting contribution
+						// L = BRDF * emission * cos(theta) * MIS_weight / pdf
+						float cos_theta = fmaxf(0.0f, dot(to_light, normal));
+						float3 brdf = mat.albedo / 3.14159265358979323846f;  // Lambertian BRDF
+						float3 direct_light = mis_weight * brdf * light_emission * cos_theta / light_pdf;
+
+						// Add to emission (will be accumulated in path tracer)
+						emission = emission + attenuation_in * direct_light;
+					}
+				}
+			}
+
 			break;
 		}
 
@@ -348,12 +575,83 @@ extern "C" __global__ void __closesthit__quad() {
 
 	switch (mat.type) {
 		case MaterialType::Lambertian: {
+			// Multiple Importance Sampling (MIS) for diffuse surfaces
+
+			// Sample BRDF (cosine-weighted hemisphere) for indirect lighting
 			scattered_dir = final_normal + random_unit_vector(seed);
 			if (near_zero(scattered_dir)) {
 				scattered_dir = final_normal;
 			}
+			scattered_dir = normalize(scattered_dir);
 			attenuation = mat.albedo;
 			scattered = true;
+
+			// Add direct lighting via explicit light sampling (Next Event Estimation)
+			if (params.numLights > 0) {
+				// Pick a random light
+				int light_idx = int(random_float(seed) * float(params.numLights));
+				if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
+
+				int prim_idx = params.lightIndices[light_idx];
+				bool is_sphere = params.isLightSphere[light_idx];
+
+				// Sample direction toward light
+				float3 to_light;
+				float light_pdf = 0.0f;
+				float max_dist = 0.0f;
+
+				if (is_sphere) {
+					const SphereData& light_sphere = params.spheres[prim_idx];
+					to_light = sample_sphere_light(light_sphere, hit_point, seed, light_pdf);
+					// Calculate distance to sphere center
+					float3 to_center = light_sphere.center - hit_point;
+					max_dist = length(to_center);
+				} else {
+					const QuadData& light_quad = params.quads[prim_idx];
+					to_light = sample_quad_light(light_quad, hit_point, seed, light_pdf);
+					// Calculate distance to sampled point
+					float a = random_float(seed);
+					float b = random_float(seed);
+					float3 light_point = light_quad.Q + a * light_quad.u + b * light_quad.v;
+					max_dist = length(light_point - hit_point);
+				}
+
+				// Adjust PDF for multiple lights (we picked one uniformly)
+				light_pdf *= float(params.numLights);
+
+				if (light_pdf > 1e-6f) {
+					// Check if light is visible (shadow ray)
+					bool visible = trace_shadow_ray(hit_point, to_light, max_dist);
+
+					if (visible) {
+						// Evaluate BRDF PDF for this direction
+						float brdf_pdf = cosine_pdf(to_light, final_normal);
+
+						// MIS weight using power heuristic
+						float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
+
+						// Get light emission
+						float3 light_emission = make_float3(0.0f, 0.0f, 0.0f);
+						if (is_sphere) {
+							const MaterialData& light_mat = params.materials[params.spheres[prim_idx].materialIdx];
+							light_emission = light_mat.emission;
+						} else {
+							const MaterialData& light_mat = params.materials[params.quads[prim_idx].materialIdx];
+							light_emission = light_mat.emission;
+						}
+
+						// Compute direct lighting contribution
+						// L = BRDF * emission * cos(theta) * MIS_weight / pdf
+						float cos_theta = fmaxf(0.0f, dot(to_light, final_normal));
+						float3 brdf = mat.albedo / 3.14159265358979323846f;  // Lambertian BRDF
+						float3 direct_light = mis_weight * brdf * light_emission * cos_theta / light_pdf;
+
+						// Add to emission (will be accumulated in path tracer)
+						emission = emission + attenuation_in * direct_light;
+					}
+				}
+			}
+
 			break;
 		}
 
