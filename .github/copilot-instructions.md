@@ -12,9 +12,8 @@
 - The Qt-based GUI is located in `qt_gui/` and built using Qt 6.11.1 with MinGW 64-bit.
 - The GUI executable is `RayTracerGUI.exe` and is deployed to the `RayTracer_Package/` directory.
 - The GUI spawns the console launcher `ray_tracer.exe` as a subprocess to perform rendering.
-- **Deployment requirements**: After building changes, run `.\deploy_qt_gui.ps1` to copy:
-  - `launcher\x64\Release\ray_tracer.exe` → `RayTracer_Package\ray_tracer.exe`
-  - `gpu\optix\optix_programs.ptx` → `RayTracer_Package\optix_programs.ptx`
+- **Deployment**: MSBuild automatically deploys `ray_tracer.exe` and `optix_programs.ptx` to `RayTracer_Package/` via post-build events when you build the launcher or optix_renderer projects. No manual copying needed.
+- **Verification**: Run `.\deploy_launcher.ps1` to verify deployment succeeded after building.
 - **Qt dependencies**: Run `windeployqt.exe RayTracerGUI.exe --no-translations` in the `RayTracer_Package` directory to deploy Qt6 DLLs if missing.
 
 ## Rendering Guidelines
