@@ -1,5 +1,7 @@
-// OptiX Renderer Implementation
-// Host-side OptiX context, pipeline, and rendering orchestration
+/// @file optix_renderer.cpp
+/// @brief OptiX Renderer Implementation
+/// @details Host-side OptiX context, pipeline, and rendering orchestration.
+///          Manages CUDA/OptiX resources and executes path tracing on GPU.
 
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -13,27 +15,46 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <array>
+
+namespace {
+	/// Constants for OptiX configuration
+	constexpr unsigned int kDefaultLogLevel = 3;  ///< OptiX log level (0=off, 4=verbose)
+	constexpr int kDefaultCudaDevice = 0;         ///< Default CUDA device index
+	constexpr size_t kMaxDeviceNameLength = 256;  ///< Max length for device name buffer
+}
 
 // ============================================================================
 // SBT Record Structures (file scope for use across multiple functions)
 // ============================================================================
 
+/// @brief Generic SBT record with aligned header and user data
+/// @tparam T User data type for this record
 template<typename T>
 struct alignas(OPTIX_SBT_RECORD_ALIGNMENT) SbtRecord {
 	__align__(OPTIX_SBT_RECORD_ALIGNMENT) char header[OPTIX_SBT_RECORD_HEADER_SIZE];
 	T data;
 };
 
-typedef SbtRecord<int> RaygenRecord;
-typedef SbtRecord<int> MissRecord;
-typedef SbtRecord<HitGroupData> HitGroupRecord;
+using RaygenRecord = SbtRecord<int>;         ///< Raygen program record
+using MissRecord = SbtRecord<int>;           ///< Miss program record  
+using HitGroupRecord = SbtRecord<HitGroupData>; ///< Hit group record
 
 // ============================================================================
 // Logging and Initialization
 // ============================================================================
 
-// Logging callback for OptiX
-static void contextLogCallback(unsigned int level, const char* tag, const char* message, void* /*cbdata*/) {
+/// @brief Logging callback for OptiX messages
+/// @param level Message severity level
+/// @param tag Message category tag
+/// @param message The log message
+/// @param cbdata User callback data (unused)
+static void contextLogCallback(
+	unsigned int level,
+	const char* tag,
+	const char* message,
+	void* /*cbdata*/
+) {
 	fprintf(stderr, "[OptiX][%u][%s]: %s\n", level, tag, message);
 }
 
@@ -44,55 +65,57 @@ OptiXRenderer::~OptiXRenderer() {
 	cleanup();
 }
 
-bool OptiXRenderer::isAvailable() {
-	// Step 1: Check CUDA device count
+bool OptiXRenderer::isAvailable() noexcept {
+	// Step 1: Check CUDA device availability
 	int deviceCount = 0;
-	cudaError_t cudaErr = cudaGetDeviceCount(&deviceCount);
+	const cudaError_t cudaErr = cudaGetDeviceCount(&deviceCount);
 	if (cudaErr != cudaSuccess || deviceCount == 0) {
-		std::cerr << "[OptiX] No CUDA devices found\n";
+		std::cerr << "[OptiX] No CUDA devices found. Error: "
+				  << cudaGetErrorString(cudaErr) << "\n";
 		return false;
 	}
 
-	// Step 2: Set CUDA device FIRST (like minimal test and pbrt)
-	cudaErr = cudaSetDevice(0);
-	if (cudaErr != cudaSuccess) {
-		std::cerr << "[OptiX] cudaSetDevice failed: " << cudaGetErrorString(cudaErr) << "\n";
+	// Step 2: Set CUDA device
+	if (const cudaError_t setErr = cudaSetDevice(kDefaultCudaDevice); setErr != cudaSuccess) {
+		std::cerr << "[OptiX] cudaSetDevice(" << kDefaultCudaDevice << ") failed: "
+				  << cudaGetErrorString(setErr) << "\n";
 		return false;
 	}
 
-	// Step 3: Initialize OptiX (this loads the OptiX DLL)
-	OptixResult res = optixInit();
-	if (res != OPTIX_SUCCESS) {
-		std::cerr << "[OptiX] optixInit failed: " << optixGetErrorString(res) << "\n";
+	// Step 3: Initialize OptiX library (loads OptiX DLL)
+	if (const OptixResult initRes = optixInit(); initRes != OPTIX_SUCCESS) {
+		std::cerr << "[OptiX] optixInit failed: "
+				  << optixGetErrorString(initRes) << "\n";
 		return false;
 	}
 
-	// Step 4: Test creating an OptiX context
-	CUresult cuErr = cuInit(0);
-	if (cuErr != CUDA_SUCCESS) {
+	// Step 4: Test OptiX context creation
+	if (const CUresult cuInitErr = cuInit(0); cuInitErr != CUDA_SUCCESS) {
+		std::cerr << "[OptiX] cuInit failed\n";
 		return false;
 	}
 
 	CUdevice cuDevice;
-	cuErr = cuDeviceGet(&cuDevice, 0);
-	if (cuErr != CUDA_SUCCESS) {
+	if (const CUresult devErr = cuDeviceGet(&cuDevice, kDefaultCudaDevice); devErr != CUDA_SUCCESS) {
+		std::cerr << "[OptiX] cuDeviceGet failed\n";
 		return false;
 	}
 
 	CUcontext cuCtx = nullptr;
-	cuErr = cuDevicePrimaryCtxRetain(&cuCtx, cuDevice);
-	if (cuErr != CUDA_SUCCESS) {
+	if (const CUresult ctxErr = cuDevicePrimaryCtxRetain(&cuCtx, cuDevice); ctxErr != CUDA_SUCCESS) {
+		std::cerr << "[OptiX] cuDevicePrimaryCtxRetain failed\n";
 		return false;
 	}
 
-	OptixDeviceContext context;
-	OptixDeviceContextOptions options = {};
+	// Attempt to create OptiX device context
+	OptixDeviceContext context = nullptr;
+	OptixDeviceContextOptions options{};
 	options.logCallbackFunction = &contextLogCallback;
-	options.logCallbackLevel = 3;
+	options.logCallbackLevel = kDefaultLogLevel;
 
-	res = optixDeviceContextCreate(cuCtx, &options, &context);
+	const OptixResult ctxCreateRes = optixDeviceContextCreate(cuCtx, &options, &context);
 
-	// Cleanup
+	// Cleanup temporary resources
 	if (context) {
 		optixDeviceContextDestroy(context);
 	}
@@ -100,12 +123,13 @@ bool OptiXRenderer::isAvailable() {
 		cuDevicePrimaryCtxRelease(cuDevice);
 	}
 
-	if (res != OPTIX_SUCCESS) {
-		std::cerr << "[OptiX] optixDeviceContextCreate failed: " << optixGetErrorString(res) << "\n";
+	if (ctxCreateRes != OPTIX_SUCCESS) {
+		std::cerr << "[OptiX] optixDeviceContextCreate failed: "
+				  << optixGetErrorString(ctxCreateRes) << "\n";
 		return false;
 	}
 
-	std::cout << "[OptiX] OptiX is available!\n";
+	std::cout << "[OptiX] OptiX is available and functional!\n";
 	return true;
 }
 
@@ -137,41 +161,45 @@ bool OptiXRenderer::initialize() {
 	return true;
 }
 
+/// @brief Create OptiX context and initialize CUDA resources
+/// @return true if context created successfully, false otherwise
 bool OptiXRenderer::createContext() {
-	// Initialize CUDA
+	// Initialize CUDA Driver API
 	CU_CHECK(cuInit(0));
 
 	// Get CUDA device
 	CUdevice cuDevice;
-	CU_CHECK(cuDeviceGet(&cuDevice, 0));
+	CU_CHECK(cuDeviceGet(&cuDevice, kDefaultCudaDevice));
 
-	// Get device name
-	char deviceName[256];
-	cuDeviceGetName(deviceName, 256, cuDevice);
-	std::cout << "[OptiX] Using device: " << deviceName << "\n";
+	// Query and display device name
+	std::array<char, kMaxDeviceNameLength> deviceName{};
+	cuDeviceGetName(deviceName.data(), static_cast<int>(deviceName.size()), cuDevice);
+	std::cout << "[OptiX] Using GPU: " << deviceName.data() << "\n";
 
-	// Retain primary context (modern approach, compatible with CUDA 13.2+)
+	// Retain primary CUDA context (modern approach for CUDA 13.2+)
 	CU_CHECK(cuDevicePrimaryCtxRetain(&cudaContext_, cuDevice));
 
-	// Create CUDA stream
+	// Create CUDA stream for asynchronous operations
 	CUDA_CHECK(cudaStreamCreate(&stream_));
 
 	// Initialize OptiX function table
 	OPTIX_CHECK(optixInit());
 
-	// Create OptiX context
-	OptixDeviceContextOptions options = {};
+	// Create OptiX device context with logging
+	OptixDeviceContextOptions options{};
 	options.logCallbackFunction = &contextLogCallback;
-	options.logCallbackLevel = 3;  // INFO level
+	options.logCallbackLevel = kDefaultLogLevel;
 
 	OPTIX_CHECK(optixDeviceContextCreate(cudaContext_, &options, &context_));
 
 	return true;
 }
 
+/// @brief Load PTX shader and create OptiX module
+/// @return true if module created successfully, false otherwise
 bool OptiXRenderer::createModule() {
-	// Load PTX from file
-	std::string ptx = loadPTX("optix_programs.ptx");
+	// Load PTX shader code from file
+	const std::string ptx = loadPTX("optix_programs.ptx");
 	if (ptx.empty()) {
 		std::cerr << "Failed to load PTX\n";
 		return false;
@@ -626,7 +654,7 @@ bool OptiXRenderer::buildSBT(
 	return true;
 }
 
-std::string OptiXRenderer::loadPTX(const char* filename) {
+std::string OptiXRenderer::loadPTX(const char* filename) const {
 	// Try loading from build output directory
 	std::string paths[] = {
 		std::string("gpu/optix/") + filename,
@@ -727,7 +755,7 @@ bool OptiXRenderer::render(
 	return true;
 }
 
-void OptiXRenderer::cleanup() {
+void OptiXRenderer::cleanup() noexcept {
 	// Free SBT records
 	if (d_raygenRecord_) cudaFree(reinterpret_cast<void*>(d_raygenRecord_));
 	if (d_missRecord_) cudaFree(reinterpret_cast<void*>(d_missRecord_));
