@@ -123,7 +123,7 @@ if (Test-Path $exePath) {
 	$size = (Get-Item $exePath).Length / 1MB
 	Write-Success "Launcher: $exePath ($([math]::Round($size, 2)) MB)"
 } else {
-	Write-Error-Message "Launcher executable not found: $exePath"
+	Write-Error "Launcher executable not found: $exePath"
 }
 
 $cpuLib = "cpu_renderer\x64\$Configuration\cpu_renderer.lib"
@@ -160,45 +160,89 @@ if (-not $SkipTests) {
 if (-not $SkipGui) {
 	Write-Header "Building Qt GUI"
 
+	# Find Qt installation
+	$qtPaths = @(
+		"C:\Qt\6.11.1\mingw_64\bin",
+		"C:\Qt\6.10.0\mingw_64\bin",
+		"C:\Qt\6.9.0\mingw_64\bin"
+	)
+
+	$qtBinPath = $null
+	foreach ($path in $qtPaths) {
+		if (Test-Path "$path\qmake.exe") {
+			$qtBinPath = $path
+			break
+		}
+	}
+
 	# Check if Qt is available
 	$qmake = Get-Command qmake -ErrorAction SilentlyContinue
-	if (-not $qmake) {
-		Write-Warning-Message "qmake not found. Skipping Qt GUI build."
-		Write-Host "To build Qt GUI, ensure Qt is in PATH or run from Qt command prompt."
+	if (-not $qmake -and -not $qtBinPath) {
+		Write-Warning-Message "Qt not found in PATH or common locations. Skipping Qt GUI build."
+		Write-Host "To build Qt GUI, ensure Qt is in PATH or install Qt to C:\Qt\"
 	} else {
-		Push-Location qt_gui
-		try {
-			# Clean old build
-			if (Test-Path Makefile) {
-				if ($Clean) {
-					& $qmake.Source -r "CONFIG+=$($Configuration.ToLower())"
-					nmake clean 2>$null
-				}
+		if (-not $qmake) {
+			$qmake = Get-Command "$qtBinPath\qmake.exe"
+		}
+
+		# Find MinGW
+		$mingwPaths = @(
+			"C:\Qt\Tools\mingw1310_64\bin",
+			"C:\Qt\Tools\mingw1120_64\bin",
+			"C:\Qt\Tools\mingw_64\bin"
+		)
+
+		$mingwBinPath = $null
+		foreach ($path in $mingwPaths) {
+			if (Test-Path "$path\mingw32-make.exe") {
+				$mingwBinPath = $path
+				break
 			}
+		}
 
-			# Generate makefiles
-			& $qmake.Source -r "CONFIG+=$($Configuration.ToLower())"
-			if ($LASTEXITCODE -ne 0) {
-				Write-Error-Message "qmake failed"
-			} else {
-				# Build
-				nmake
-				if ($LASTEXITCODE -ne 0) {
-					Write-Error-Message "Qt GUI build failed"
-				} else {
-					Write-Success "Qt GUI build completed"
+		if (-not $mingwBinPath) {
+			Write-Warning-Message "MinGW not found. Skipping Qt GUI build."
+			Write-Host "Expected MinGW at C:\Qt\Tools\mingw*_64\bin\"
+		} else {
+			Write-Success "Qt: $($qmake.Source)"
+			Write-Success "MinGW: $mingwBinPath"
 
-					# Check output
-					$guiExe = "$($Configuration.ToLower())\RayTracerGUI.exe"
-					if (Test-Path $guiExe) {
-						Write-Success "Qt GUI: qt_gui\$guiExe"
-					} else {
-						Write-Warning-Message "Qt GUI executable not found"
+			Push-Location qt_gui
+			try {
+				# Add Qt and MinGW to PATH for this session
+				$env:PATH = "$qtBinPath;$mingwBinPath;$env:PATH"
+
+				# Clean old build
+				if (Test-Path Makefile) {
+					if ($Clean) {
+						& "$mingwBinPath\mingw32-make.exe" clean 2>$null
 					}
 				}
+
+				# Generate makefiles
+				& $qmake.Source "RayTracerGUI.pro" -spec win32-g++ "CONFIG+=$($Configuration.ToLower())"
+				if ($LASTEXITCODE -ne 0) {
+					Write-Error-Message "qmake failed"
+				} else {
+					# Build
+					& "$mingwBinPath\mingw32-make.exe" -j8
+					if ($LASTEXITCODE -ne 0) {
+						Write-Error-Message "Qt GUI build failed"
+					} else {
+						Write-Success "Qt GUI build completed"
+
+						# Check output (Qt builds directly to ../RayTracer_Package)
+						$guiExe = "..\RayTracer_Package\RayTracerGUI.exe"
+						if (Test-Path $guiExe) {
+							Write-Success "Qt GUI: $guiExe"
+						} else {
+							Write-Warning-Message "Qt GUI executable not found at expected location"
+						}
+					}
+				}
+			} finally {
+				Pop-Location
 			}
-		} finally {
-			Pop-Location
 		}
 	}
 }
@@ -208,15 +252,21 @@ if ($Deploy -and -not $SkipGui) {
 	Write-Header "Deploying Qt GUI Package"
 
 	if (Test-Path "deploy_qt_gui.ps1") {
-		.\deploy_qt_gui.ps1 -Configuration $Configuration
+		# Run deployment script with Configuration parameter
+		$deployArgs = @("-Configuration", $Configuration)
+		& "$PSScriptRoot\deploy_qt_gui.ps1" @deployArgs
+
 		if ($LASTEXITCODE -eq 0) {
 			Write-Success "Deployment completed"
 		} else {
-			Write-Warning-Message "Deployment had issues"
+			Write-Warning-Message "Deployment had issues (exit code: $LASTEXITCODE)"
 		}
 	} else {
 		Write-Warning-Message "deploy_qt_gui.ps1 not found. Skipping deployment."
 	}
+} elseif (-not $SkipGui -and -not $Deploy) {
+	Write-Host ""
+	Write-Host "Tip: Use -Deploy flag to automatically package Qt GUI with all dependencies" -ForegroundColor Cyan
 }
 
 # Summary
@@ -229,14 +279,31 @@ if ($script:BuildFailed) {
 	Write-Host "All builds completed successfully!" -ForegroundColor Green
 	Write-Host ""
 	Write-Host "Next steps:" -ForegroundColor Cyan
-	Write-Host "  - Run launcher:    .\launcher\x64\$Configuration\ray_tracer.exe --help"
+
+	# Find launcher path
+	$launcherPath = $null
+	if (Test-Path "x64\$Configuration\ray_tracer.exe") {
+		$launcherPath = "x64\$Configuration\ray_tracer.exe"
+	} elseif (Test-Path "launcher\x64\$Configuration\ray_tracer.exe") {
+		$launcherPath = "launcher\x64\$Configuration\ray_tracer.exe"
+	}
+
+	if ($launcherPath) {
+		Write-Host "  - Run launcher:    .\$launcherPath --help"
+	}
+
 	if (-not $SkipTests) {
 		Write-Host "  - Run tests:       .\tests\x64\$Configuration\ray_tracer_tests.exe"
 	}
 	if (-not $SkipGui) {
-		Write-Host "  - Run Qt GUI:      .\qt_gui\$($Configuration.ToLower())\RayTracerGUI.exe"
 		if ($Deploy) {
-			Write-Host "  - Run deployed:    .\RayTracer_Package\RayTracerGUI.exe"
+			Write-Host "  - Run GUI:         .\RayTracer_Package\RayTracerGUI.exe" -ForegroundColor Green
+			Write-Host ""
+			Write-Host "Ready-to-run package deployed to: .\RayTracer_Package\" -ForegroundColor Green
+		} else {
+			Write-Host "  - Run Qt GUI:      .\qt_gui\$($Configuration.ToLower())\RayTracerGUI.exe"
+			Write-Host ""
+			Write-Host "Tip: Use '.\build_all.ps1 -Deploy' to create a complete package with all dependencies" -ForegroundColor Yellow
 		}
 	}
 }
