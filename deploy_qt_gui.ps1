@@ -65,6 +65,11 @@ Copy-Item $launcherExe "$packageDir\ray_tracer.exe" -Force
 $launcherInfo = Get-Item "$packageDir\ray_tracer.exe"
 Write-Host "      => ray_tracer.exe ($([math]::Round($launcherInfo.Length/1KB)) KB, $($launcherInfo.LastWriteTime))`n" -ForegroundColor Gray
 
+# Also copy to other locations for consistency
+Copy-Item $launcherExe "$repoRoot\qt_gui\ray_tracer.exe" -Force -ErrorAction SilentlyContinue
+Copy-Item $launcherExe "$repoRoot\x64\$Configuration\ray_tracer.exe" -Force -ErrorAction SilentlyContinue
+Write-Host "      (Also copied to qt_gui\ and x64\$Configuration\ for consistency)`n" -ForegroundColor DarkGray
+
 Write-Host "[Step 2/4] Copying OptiX shader (PTX)..." -ForegroundColor Cyan
 Copy-Item $ptxFile "$packageDir\optix_programs.ptx" -Force
 $ptxInfo = Get-Item "$packageDir\optix_programs.ptx"

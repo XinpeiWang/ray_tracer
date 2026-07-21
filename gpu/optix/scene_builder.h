@@ -20,5 +20,8 @@ bool build_scene(
 	int image_width,
 	int image_height,
 	SceneData& scene,
-	float* camera_params
+	float* camera_params,
+	double cam_x = 278.0,
+	double cam_y = 278.0,
+	double cam_z = -800.0  // Far back view
 );

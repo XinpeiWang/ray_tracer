@@ -35,6 +35,23 @@
 #include "src/external/image_writer.h"  // PPM to PNG conversion utilities
 #include "src/TheRestOfYourLife/error_codes.h" // Centralized error code system
 
+namespace {
+	/// Default rendering parameters
+	constexpr int kDefaultWidth = 600;
+	constexpr int kDefaultHeight = 600;
+	constexpr int kDefaultSamplesPerPixel = 500;
+	constexpr int kDefaultMaxDepth = 20;
+	constexpr int kDefaultSceneId = 0;  // Cornell Box
+
+	/// Cornell box center coordinates
+	constexpr double kCornellBoxCenter = 278.0;
+
+	/// Default camera position (outside front of Cornell box)
+	constexpr double kDefaultCameraX = 278.0;
+	constexpr double kDefaultCameraY = 278.0;
+	constexpr double kDefaultCameraZ = -800.0;  // Far back view for full scene
+}
+
 int main(int argc, char** argv) {
     std::cout << "========================================" << std::endl;
     std::cout << "RAY TRACER LAUNCHER (Unified GPU/CPU)" << std::endl;
@@ -48,10 +65,10 @@ int main(int argc, char** argv) {
 
     bool use_gpu = true; // Default to GPU (OptiX)
     bool force_cpu = false;
-    std::string custom_output_path = "";
+    std::string custom_output_path;
 
     for (int i = 1; i < argc; ++i) {
-        std::string arg = argv[i];
+        const std::string arg = argv[i];
 
         // Force CPU rendering
         if (arg == "--cpu" || arg == "-cpu") {
@@ -66,7 +83,7 @@ int main(int argc, char** argv) {
         // Custom output path
         else if ((arg == "--output" || arg == "-o") && i + 1 < argc) {
             custom_output_path = argv[i + 1];
-            i++; // Skip next argument as it's the output path
+            ++i; // Skip next argument as it's the output path
         }
         // Help message
         else if (arg == "--help" || arg == "-h") {
@@ -75,15 +92,15 @@ int main(int argc, char** argv) {
             std::cout << "  --gpu      : Force GPU rendering (default)\n";
             std::cout << "  --output,-o: Output file path (default: ./output/image.ppm)\n";
             std::cout << "  --help,-h  : Show this help message\n";
-            std::cout << "  width      : Image width (default 600, square aspect)\n";
-            std::cout << "  spp        : Samples per pixel (default 500)\n";
-            std::cout << "  max_depth  : Max ray depth (default 20)\n";
-            std::cout << "  scene_id   : Scene selector (0=Cornell Box, 1=Bouncing Spheres, etc., default 0)\n";
-            std::cout << "  cam_x      : Camera X position (default 278)\n";
-            std::cout << "  cam_y      : Camera Y position (default 278)\n";
-            std::cout << "  cam_z      : Camera Z position (default -800)\n";
-            std::cout << "\nCamera always looks at Cornell box center: (278, 278, 278)\n";
-            return 0;
+            std::cout << "  width      : Image width (default " << kDefaultWidth << ", square aspect)\n";
+            std::cout << "  spp        : Samples per pixel (default " << kDefaultSamplesPerPixel << ")\n";
+            std::cout << "  max_depth  : Max ray depth (default " << kDefaultMaxDepth << ")\n";
+            std::cout << "  scene_id   : Scene selector (0=Cornell Box, 1=Bouncing Spheres, etc., default " << kDefaultSceneId << ")\n";
+            std::cout << "  cam_x      : Camera X position (default " << kDefaultCameraX << ")\n";
+            std::cout << "  cam_y      : Camera Y position (default " << kDefaultCameraY << ")\n";
+            std::cout << "  cam_z      : Camera Z position (default " << kDefaultCameraZ << ")\n";
+            std::cout << "\nCamera always looks at Cornell box center: (" << kCornellBoxCenter << ", " << kCornellBoxCenter << ", " << kCornellBoxCenter << ")\n";
+            return EXIT_SUCCESS;
         }
     }
 
@@ -92,11 +109,11 @@ int main(int argc, char** argv) {
     // ========================================================================
     // Cornell box is 555x555x555 units, so square aspect ratio is appropriate
 
-    int hard_width = 600;    // Image width in pixels
-    int hard_height = 600;   // Image height (1:1 aspect for Cornell box)
-    int hard_spp   = 500;    // Samples per pixel (anti-aliasing quality)
-    int hard_depth = 20;     // Max ray bounce depth (lighting quality)
-    int scene_id   = 0;      // Scene selector (0=Cornell Box, 1=Bouncing Spheres, etc.)
+    int image_width = kDefaultWidth;    // Image width in pixels
+    int image_height = kDefaultHeight;  // Image height (1:1 aspect for Cornell box)
+    int samples_per_pixel = kDefaultSamplesPerPixel;  // Samples per pixel (anti-aliasing quality)
+    int max_ray_depth = kDefaultMaxDepth;  // Max ray bounce depth (lighting quality)
+    int scene_id = kDefaultSceneId;  // Scene selector (0=Cornell Box, 1=Bouncing Spheres, etc.)
 
     // ========================================================================
     // Interactive Mode (if no arguments provided)
@@ -109,9 +126,9 @@ int main(int argc, char** argv) {
         std::cout << "========================================" << std::endl;
         std::cout << "Current settings:" << std::endl;
         std::cout << "  Renderer: " << (use_gpu ? "GPU" : "CPU") << std::endl;
-        std::cout << "  Resolution: " << hard_width << "x" << hard_height << std::endl;
-        std::cout << "  Samples per pixel: " << hard_spp << std::endl;
-        std::cout << "  Max ray depth: " << hard_depth << std::endl;
+        std::cout << "  Resolution: " << image_width << "x" << image_height << std::endl;
+        std::cout << "  Samples per pixel: " << samples_per_pixel << std::endl;
+        std::cout << "  Max ray depth: " << max_ray_depth << std::endl;
         std::cout << "\nPress ENTER to render with these settings, or type 'custom' to change: ";
 
         std::string response;
@@ -130,24 +147,37 @@ int main(int argc, char** argv) {
             }
 
             // Resolution (square aspect ratio maintained)
-            std::cout << "Image width [" << hard_width << "]: ";
+            std::cout << "Image width [" << image_width << "]: ";
             std::getline(std::cin, response);
             if (!response.empty()) {
-                try { hard_width = std::stoi(response); hard_height = hard_width; } catch(...) {}
+                try {
+                    image_width = std::stoi(response);
+                    image_height = image_width; // Maintain square aspect
+                } catch (const std::exception&) {
+                    std::cerr << "Invalid width, using default\n";
+                }
             }
 
             // Samples per pixel
-            std::cout << "Samples per pixel [" << hard_spp << "]: ";
+            std::cout << "Samples per pixel [" << samples_per_pixel << "]: ";
             std::getline(std::cin, response);
             if (!response.empty()) {
-                try { hard_spp = std::stoi(response); } catch(...) {}
+                try {
+                    samples_per_pixel = std::stoi(response);
+                } catch (const std::exception&) {
+                    std::cerr << "Invalid sample count, using default\n";
+                }
             }
 
             // Max ray depth
-            std::cout << "Max ray depth [" << hard_depth << "]: ";
+            std::cout << "Max ray depth [" << max_ray_depth << "]: ";
             std::getline(std::cin, response);
             if (!response.empty()) {
-                try { hard_depth = std::stoi(response); } catch(...) {}
+                try {
+                    max_ray_depth = std::stoi(response);
+                } catch (const std::exception&) {
+                    std::cerr << "Invalid depth, using default\n";
+                }
             }
         }
     }
@@ -157,13 +187,13 @@ int main(int argc, char** argv) {
     // ========================================================================
     // Parse Numeric Positional Arguments
     // ========================================================================
-    // Command-line format: width spp depth cam_x cam_y cam_z
+    // Command-line format: width spp depth scene_id cam_x cam_y cam_z
     // All numeric arguments are collected into a vector for ordered parsing
     // Uses std::stod() for floating-point camera coordinate support
 
     std::vector<double> numeric_args;
     for (int i = 1; i < argc; ++i) {
-        std::string arg = argv[i];
+        const std::string arg = argv[i];
         // Skip flag arguments (those starting with '--')
         // But allow negative numbers like -800 (check if it's a number)
         if (arg.size() >= 2 && arg[0] == '-' && arg[1] == '-') {
@@ -172,7 +202,7 @@ int main(int argc, char** argv) {
         // Try to parse as number (including negative numbers like -800)
         try {
             numeric_args.push_back(std::stod(arg));
-        } catch (...) {
+        } catch (const std::exception&) {
             // Ignore non-numeric args (e.g., output path after --output)
         }
     }
@@ -187,17 +217,17 @@ int main(int argc, char** argv) {
     // [6] = camera Z position
 
     if (numeric_args.size() >= 1 && numeric_args[0] > 0) {
-        hard_width = (int)numeric_args[0];
-        hard_height = (int)numeric_args[0]; // Keep square aspect ratio
+        image_width = static_cast<int>(numeric_args[0]);
+        image_height = static_cast<int>(numeric_args[0]); // Keep square aspect ratio
     }
     if (numeric_args.size() >= 2 && numeric_args[1] > 0) {
-        hard_spp = (int)numeric_args[1];
+        samples_per_pixel = static_cast<int>(numeric_args[1]);
     }
     if (numeric_args.size() >= 3 && numeric_args[2] > 0) {
-        hard_depth = (int)numeric_args[2];
+        max_ray_depth = static_cast<int>(numeric_args[2]);
     }
     if (numeric_args.size() >= 4 && numeric_args[3] >= 0) {
-        scene_id = (int)numeric_args[3];
+        scene_id = static_cast<int>(numeric_args[3]);
     }
 
     // ========================================================================
@@ -207,9 +237,9 @@ int main(int argc, char** argv) {
     // lookat target is fixed at (278, 278, 278) in the renderer code
     // User can override position via command-line args
 
-    double cam_x = 278.0;   // Default X: horizontally centered
-    double cam_y = 278.0;   // Default Y: vertically centered
-    double cam_z = -800.0;  // Default Z: outside the box looking in
+    double cam_x = kDefaultCameraX;
+    double cam_y = kDefaultCameraY;
+    double cam_z = kDefaultCameraZ;
 
     // Override with command-line camera coordinates if provided
     if (numeric_args.size() >= 7) {
@@ -265,7 +295,7 @@ int main(int argc, char** argv) {
     }
 
     // Print configuration summary before rendering
-    std::cout << "Using command-line settings: width=" << hard_width << " height=" << hard_height << " spp=" << hard_spp << " max_depth=" << hard_depth 
+    std::cout << "Using command-line settings: width=" << image_width << " height=" << image_height << " spp=" << samples_per_pixel << " max_depth=" << max_ray_depth 
               << " scene_id=" << scene_id << " camera=(" << cam_x << "," << cam_y << "," << cam_z << ")" << std::endl;
     std::cout << "Writing output to: " << out_path << std::endl;
 
@@ -286,7 +316,17 @@ int main(int argc, char** argv) {
         if (optix_is_available()) {
             std::cout << "[OptiX] OptiX is available!" << std::endl;
             std::cout << "Calling optix_render_main(...) in-process (OptiX)..." << std::endl;
-            render_result = optix_render_main(hard_width, hard_height, hard_spp, hard_depth, out_path.c_str());
+            std::cout << "[DEBUG] Camera: (" << cam_x << ", " << cam_y << ", " << cam_z << ")" << std::endl;
+            render_result = optix_render_main(
+                image_width,
+                image_height,
+                samples_per_pixel,
+                max_ray_depth,
+                out_path.c_str(),
+                cam_x,
+                cam_y,
+                cam_z
+            );
             std::cout << "optix_render_main returned: " << render_result << std::endl;
             if (render_result == SUCCESS) {
                 std::cout << "Rendered with OptiX renderer, output: " << out_path << std::endl;
@@ -307,7 +347,7 @@ int main(int argc, char** argv) {
         // CPU Renderer (multithreaded C++)
         // Implemented in cpu_renderer/cpu_interface.cpp
         std::cout << "Calling cpu_render_main(...) in-process..." << std::endl;
-        render_result = cpu_render_main(hard_width, hard_height, hard_spp, hard_depth, out_path.c_str(), scene_id, cam_x, cam_y, cam_z);
+        render_result = cpu_render_main(image_width, image_height, samples_per_pixel, max_ray_depth, out_path.c_str(), scene_id, cam_x, cam_y, cam_z);
         std::cout << "cpu_render_main returned: " << render_result << std::endl;
         if (render_result == SUCCESS) {
             std::cout << "Rendered with in-process CPU renderer, output: " << out_path << std::endl;

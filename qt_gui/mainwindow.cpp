@@ -570,7 +570,8 @@ void MainWindow::createAdvancedTab() {
 	m_cameraPresetCombo = new QComboBox(advancedTab);
 
 	// Default view: outside the box looking in through the open front (Z=0)
-	m_cameraPresetCombo->addItem("Front View (Outside)", QVariant::fromValue(QVector3D(278, 278, -300)));
+	// Far back view for full scene visibility
+	m_cameraPresetCombo->addItem("Front View (Outside)", QVariant::fromValue(QVector3D(278, 278, -800)));
 
 	// Inside views: camera positioned near walls, all looking toward center
 	m_cameraPresetCombo->addItem("Inside Front", QVariant::fromValue(QVector3D(278, 278, 50)));    // Near Z=0 opening
@@ -583,7 +584,7 @@ void MainWindow::createAdvancedTab() {
 	m_cameraPresetCombo->addItem("Ceiling Corner", QVariant::fromValue(QVector3D(450, 500, 450))); // High angle, near ceiling
 
 	// Custom: allows manual X/Y/Z input via spinboxes below
-	m_cameraPresetCombo->addItem("Custom", QVariant::fromValue(QVector3D(278, 278, -300)));
+	m_cameraPresetCombo->addItem("Custom", QVariant::fromValue(QVector3D(278, 278, -800)));
 
 	styleComboBox(m_cameraPresetCombo);
 	cameraLayout->addRow("Preset:", m_cameraPresetCombo);
@@ -608,7 +609,7 @@ void MainWindow::createAdvancedTab() {
 
 	m_cameraPosZ = new QDoubleSpinBox(advancedTab);
 	m_cameraPosZ->setRange(-2000, 2000);
-	m_cameraPosZ->setValue(-300);  // Default Z: outside front, matches default preset
+	m_cameraPosZ->setValue(-800);  // Default Z: far back view to match default preset
 	m_cameraPosZ->setSingleStep(10);
 	m_cameraPosZ->setEnabled(false);  // Disabled until "Custom" is selected
 	cameraLayout->addRow("Camera Z:", m_cameraPosZ);

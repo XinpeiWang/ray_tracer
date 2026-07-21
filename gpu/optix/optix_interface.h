@@ -17,7 +17,10 @@ int optix_render_main(
 	int image_height,
 	int samples_per_pixel,
 	int max_depth,
-	const char* output_path
+	const char* output_path,
+	double cam_x,
+	double cam_y,
+	double cam_z
 );
 
 #ifdef __cplusplus
