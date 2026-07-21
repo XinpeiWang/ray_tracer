@@ -22,6 +22,7 @@ extern "C" int optix_render_main(
 	int samples_per_pixel,
 	int max_depth,
 	const char* output_path,
+	int scene_id,
 	double cam_x,
 	double cam_y,
 	double cam_z
@@ -37,14 +38,14 @@ extern "C" int optix_render_main(
 			}
 		}
 
-		// Build Cornell Box scene (scene_id=0)
-		std::cout << "[OptiX] Building Cornell Box scene...\n";
+		// Build scene with specified scene_id
+		std::cout << "[OptiX] Building scene " << scene_id << "...\n";
 		std::cout << "[OptiX] Camera position: (" << cam_x << ", " << cam_y << ", " << cam_z << ")\n";
 
 		SceneData scene;
 		float camera_params[12];  // origin(3) + lower_left(3) + horizontal(3) + vertical(3)
 
-		if (!build_scene(0, image_width, image_height, scene, camera_params, cam_x, cam_y, cam_z)) {
+		if (!build_scene(scene_id, image_width, image_height, scene, camera_params, cam_x, cam_y, cam_z)) {
 			std::cerr << "[OptiX] Failed to build scene\n";
 			return 101;  // Scene build error
 		}

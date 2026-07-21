@@ -501,6 +501,7 @@ int main(int argc, char** argv) {
                         samples_per_pixel,
                         max_ray_depth,
                         frame_path.string().c_str(),
+                        scene_id,
                         cam_pos.lookfrom_x,
                         cam_pos.lookfrom_y,
                         cam_pos.lookfrom_z
@@ -620,6 +621,7 @@ int main(int argc, char** argv) {
                 samples_per_pixel,
                 max_ray_depth,
                 out_path.c_str(),
+                scene_id,
                 cam_x,
                 cam_y,
                 cam_z
