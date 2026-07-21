@@ -249,6 +249,89 @@ static void build_cornell_box(SceneData& scene) {
 		make_float3(265.0f, 0.0f, 295.0f));  // translation offset
 }
 
+/**
+ * Build checkered spheres scene (scene 2)
+ * Two spheres with different albedos
+ */
+void build_checkered_spheres(SceneData& scene) {
+	// Bottom sphere (darker)
+	const int mat1 = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({
+		MaterialType::Lambertian,
+		make_float3(0.2f, 0.3f, 0.1f),  // albedo
+		0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f)  // no emission
+	});
+
+	SphereData sphere1{};
+	sphere1.center = make_float3(0.0f, -10.0f, 0.0f);
+	sphere1.radius = 10.0f;
+	sphere1.materialIdx = mat1;
+	scene.spheres.push_back(sphere1);
+
+	// Top sphere (lighter)
+	const int mat2 = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({
+		MaterialType::Lambertian,
+		make_float3(0.9f, 0.9f, 0.9f),  // albedo
+		0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f)  // no emission
+	});
+
+	SphereData sphere2{};
+	sphere2.center = make_float3(0.0f, 10.0f, 0.0f);
+	sphere2.radius = 10.0f;
+	sphere2.materialIdx = mat2;
+	scene.spheres.push_back(sphere2);
+}
+
+/**
+ * Build colored quads scene (scene 5)
+ * Five colored quads arranged in 3D space
+ */
+void build_quads_scene(SceneData& scene) {
+	// Helper lambda to add a quad with its material
+	auto add_quad = [&scene](float Qx, float Qy, float Qz,
+							  float ux, float uy, float uz,
+							  float vx, float vy, float vz,
+							  float r, float g, float b) {
+		// Add material
+		const int mat_idx = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({
+			MaterialType::Lambertian,
+			make_float3(r, g, b),
+			0.0f, 0.0f,
+			make_float3(0.0f, 0.0f, 0.0f)
+		});
+
+		// Add quad
+		QuadData quad{};
+		quad.Q = make_float3(Qx, Qy, Qz);
+		quad.u = make_float3(ux, uy, uz);
+		quad.v = make_float3(vx, vy, vz);
+		const float3 cross_prod = cross(quad.u, quad.v);
+		quad.normal = normalize(cross_prod);
+		quad.D = dot(quad.normal, quad.Q);
+		quad.materialIdx = mat_idx;
+		scene.quads.push_back(quad);
+	};
+
+	// Left red quad
+	add_quad(-3.0f, -2.0f, 5.0f, 0.0f, 0.0f, -4.0f, 0.0f, 4.0f, 0.0f, 1.0f, 0.2f, 0.2f);
+
+	// Back green quad
+	add_quad(-2.0f, -2.0f, 0.0f, 4.0f, 0.0f, 0.0f, 0.0f, 4.0f, 0.0f, 0.2f, 1.0f, 0.2f);
+
+	// Right blue quad
+	add_quad(3.0f, -2.0f, 1.0f, 0.0f, 0.0f, 4.0f, 0.0f, 4.0f, 0.0f, 0.2f, 0.2f, 1.0f);
+
+	// Upper orange quad
+	add_quad(-2.0f, 3.0f, 1.0f, 4.0f, 0.0f, 0.0f, 0.0f, 0.0f, 4.0f, 1.0f, 0.5f, 0.0f);
+
+	// Lower teal quad
+	add_quad(-2.0f, -3.0f, 5.0f, 4.0f, 0.0f, 0.0f, 0.0f, 0.0f, -4.0f, 0.2f, 0.8f, 0.8f);
+}
+
 /// @brief Build a scene and configure the camera
 /// @param scene_id Scene identifier (0 = Cornell Box)
 /// @param image_width Output image width in pixels
@@ -339,13 +422,95 @@ bool build_scene(
 
 				// Pack camera parameters: [origin(3), lower_left(3), horizontal(3), vertical(3)]
 				pack_float3(camera_params, 0, lookfrom);
-				pack_float3(camera_params, 3, lower_left_corner);
-				pack_float3(camera_params, 6, horizontal);
-				pack_float3(camera_params, 9, vertical);
-			}
-			break;
+						pack_float3(camera_params, 3, lower_left_corner);
+						pack_float3(camera_params, 6, horizontal);
+						pack_float3(camera_params, 9, vertical);
+					}
+					break;
 
-		default:
+				case 2:  // Checkered Spheres
+					build_checkered_spheres(scene);
+
+					// Configure camera
+					{
+						constexpr float kPi = 3.14159265358979323846f;
+						const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
+						const float3 lookat = make_float3(0.0f, 0.0f, 0.0f);
+						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
+						constexpr float vfov = 20.0f;
+						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+
+						const float theta = vfov * kPi / 180.0f;
+						const float h = tanf(theta / 2.0f);
+						const float viewport_height = 2.0f * h;
+						const float viewport_width = aspect * viewport_height;
+
+						const float3 view_direction = make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z);
+						const float3 w = normalize(view_direction);
+						const float3 u = normalize(cross(vup, w));
+						const float3 v = cross(w, u);
+
+						const float3 horizontal = make_float3(viewport_width * u.x, viewport_width * u.y, viewport_width * u.z);
+						const float3 vertical = make_float3(viewport_height * v.x, viewport_height * v.y, viewport_height * v.z);
+						const float3 lower_left_corner = make_float3(
+							lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - w.x,
+							lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - w.y,
+							lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - w.z
+						);
+
+						auto pack_float3 = [](float* dest, int offset, const float3& v) {
+							dest[offset] = v.x; dest[offset + 1] = v.y; dest[offset + 2] = v.z;
+						};
+
+						pack_float3(camera_params, 0, lookfrom);
+						pack_float3(camera_params, 3, lower_left_corner);
+						pack_float3(camera_params, 6, horizontal);
+						pack_float3(camera_params, 9, vertical);
+					}
+					break;
+
+				case 5:  // Colored Quads
+					build_quads_scene(scene);
+
+					// Configure camera
+					{
+						constexpr float kPi = 3.14159265358979323846f;
+						const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
+						const float3 lookat = make_float3(0.0f, 0.0f, 0.0f);
+						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
+						constexpr float vfov = 80.0f;  // Wide angle for quads
+						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+
+						const float theta = vfov * kPi / 180.0f;
+						const float h = tanf(theta / 2.0f);
+						const float viewport_height = 2.0f * h;
+						const float viewport_width = aspect * viewport_height;
+
+						const float3 view_direction = make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z);
+						const float3 w = normalize(view_direction);
+						const float3 u = normalize(cross(vup, w));
+						const float3 v = cross(w, u);
+
+						const float3 horizontal = make_float3(viewport_width * u.x, viewport_width * u.y, viewport_width * u.z);
+						const float3 vertical = make_float3(viewport_height * v.x, viewport_height * v.y, viewport_height * v.z);
+						const float3 lower_left_corner = make_float3(
+							lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - w.x,
+							lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - w.y,
+							lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - w.z
+						);
+
+						auto pack_float3 = [](float* dest, int offset, const float3& v) {
+							dest[offset] = v.x; dest[offset + 1] = v.y; dest[offset + 2] = v.z;
+						};
+
+						pack_float3(camera_params, 0, lookfrom);
+						pack_float3(camera_params, 3, lower_left_corner);
+						pack_float3(camera_params, 6, horizontal);
+						pack_float3(camera_params, 9, vertical);
+					}
+					break;
+
+				default:
 			return false;  // Unknown scene ID
 	}
 

@@ -523,7 +523,22 @@ bool OptiXRenderer::buildScene(
 
 	// Combine build inputs
 	OptixBuildInput buildInputs[2] = { sphereBuildInput, quadBuildInput };
-	unsigned int numBuildInputs = (quads.empty() ? 1 : 2);
+	unsigned int numBuildInputs = 0;
+
+	// Only include non-empty geometry types
+	if (!spheres.empty() && !quads.empty()) {
+		numBuildInputs = 2;  // Both
+	} else if (!spheres.empty()) {
+		buildInputs[0] = sphereBuildInput;
+		numBuildInputs = 1;  // Spheres only
+	} else if (!quads.empty()) {
+		buildInputs[0] = quadBuildInput;
+		numBuildInputs = 1;  // Quads only
+	} else {
+		// Empty scene
+		std::cerr << "[OptiX] Error: Scene contains no geometry" << std::endl;
+		return false;
+	}
 
 	// Accel build options
 	OptixAccelBuildOptions accelOptions = {};
