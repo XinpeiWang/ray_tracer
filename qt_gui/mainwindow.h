@@ -35,6 +35,9 @@ public:
 	void setParameters(bool useGPU, int width, int height, int samples, int maxDepth, 
 					   int sceneId, double camX, double camY, double camZ, const QString &outputPath = QString());
 
+	// Set video generation parameters
+	void setVideoParameters(bool enabled, int frames, int fps, const QString &cameraPath);
+
 	// Request the render process to stop (sends terminate signal)
 	void stopRender();
 
@@ -63,6 +66,12 @@ private:
 
 	QString m_outputPath;   // Output file path for rendered image
 	QProcess *m_renderProcess; // Subprocess handle for ray_tracer.exe
+
+	// Video generation parameters
+	bool m_videoMode;       // true = video generation, false = single image
+	int m_videoFrames;      // Number of frames to render
+	int m_videoFPS;         // Target frames per second
+	QString m_cameraPath;   // Camera animation path (orbit, linear, figure8, spiral)
 };
 
 // ============================================================================
@@ -85,6 +94,7 @@ private slots:
 	void onQualityPresetChanged(int index);
 	void onCameraPresetChanged(int index);  // Updates camera spinboxes when preset changes
 	void onSceneChanged(int index);         // Updates UI when scene selection changes
+	void onModeChanged(int index);          // Switches between Image and Video modes
 	void onProgressUpdate(int percentage);
 	void onRenderComplete(bool success, const QString &message, double totalTime, const QString &outputPath);
 	void onLogMessage(const QString &message);
@@ -93,13 +103,18 @@ private:
 	void setupUI();
 	void createBasicTab();
 	void createAdvancedTab();
+	void createVideoTab();
 	void createLogTab();
 	void applyDarkTheme();
 	void styleComboBox(QComboBox *combo);
 	void styleSpinBox(QSpinBox *spinBox);
+	void assembleVideoAutomatically();  // Automatically assembles video after frames are rendered
 
 	// UI Components
 	QTabWidget *m_tabWidget;
+
+	// Mode selector (Image vs Video)
+	QComboBox *m_modeCombo;             // Render mode: Image or Video
 
 	// Basic Tab
 	QComboBox *m_renderModeCombo;       // GPU vs CPU selection
@@ -130,6 +145,12 @@ private:
 	QComboBox *m_sceneCombo;            // Scene selector dropdown (Cornell Box, Bouncing Spheres, etc.)
 	QLabel *m_sceneInfoLabel;           // Scene description and performance info
 
+	// Video Tab
+	QComboBox *m_cameraPathCombo;       // Camera animation path selector
+	QSpinBox *m_videoFramesSpinBox;     // Number of frames to render
+	QSpinBox *m_videoFPSSpinBox;        // Target FPS for video
+	QLabel *m_videoInfoLabel;           // Video duration and path info
+
 	// Log output
 	QTextEdit *m_logTextEdit;           // Log output display
 
@@ -138,6 +159,7 @@ private:
 
 	// State
 	bool m_isRendering;                 // true when a render is in progress
+	bool m_videoMode;                   // true = video generation mode, false = single image mode
 };
 
 #endif // MAINWINDOW_H
