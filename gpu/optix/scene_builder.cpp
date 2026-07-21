@@ -160,35 +160,35 @@ static void build_cornell_box(SceneData& scene) {
 	});
 
 	// Cornell Box quads (walls, floor, ceiling)
-	// Green wall (left - +X face)
-	QuadData wall_left{};
-	wall_left.Q = make_float3(kBoxSize, 0.0f, 0.0f);
-	wall_left.u = make_float3(0.0f, kBoxSize, 0.0f);
-	wall_left.v = make_float3(0.0f, 0.0f, kBoxSize);
-	const float3 wall_left_cross = cross(wall_left.u, wall_left.v);
-	wall_left.w = wall_left_cross;
-	wall_left.normal = normalize(wall_left_cross);
-	wall_left.D = dot(wall_left.normal, wall_left.Q);
-	wall_left.materialIdx = mat_green;
-	scene.quads.push_back(wall_left);
-
-	// Red wall (right - origin face)
+	// Green wall (right - +X face at x=555)
 	QuadData wall_right{};
-	wall_right.Q = make_float3(0.0f, 0.0f, 0.0f);
-	wall_right.u = make_float3(0.0f, kBoxSize, 0.0f);
-	wall_right.v = make_float3(0.0f, 0.0f, kBoxSize);
+	wall_right.Q = make_float3(kBoxSize, 0.0f, 0.0f);
+	wall_right.u = make_float3(0.0f, 0.0f, kBoxSize);
+	wall_right.v = make_float3(0.0f, kBoxSize, 0.0f);
 	const float3 wall_right_cross = cross(wall_right.u, wall_right.v);
 	wall_right.w = wall_right_cross;
 	wall_right.normal = normalize(wall_right_cross);
 	wall_right.D = dot(wall_right.normal, wall_right.Q);
-	wall_right.materialIdx = mat_red;
+	wall_right.materialIdx = mat_green;
 	scene.quads.push_back(wall_right);
 
-	// Light (ceiling, centered)
+	// Red wall (left - origin face at x=0)
+	QuadData wall_left{};
+	wall_left.Q = make_float3(0.0f, 0.0f, kBoxSize);
+	wall_left.u = make_float3(0.0f, 0.0f, -kBoxSize);
+	wall_left.v = make_float3(0.0f, kBoxSize, 0.0f);
+	const float3 wall_left_cross = cross(wall_left.u, wall_left.v);
+	wall_left.w = wall_left_cross;
+	wall_left.normal = normalize(wall_left_cross);
+	wall_left.D = dot(wall_left.normal, wall_left.Q);
+	wall_left.materialIdx = mat_red;
+	scene.quads.push_back(wall_left);
+
+	// Light (matching CPU: Q=(213,554,227), u=(130,0,0), v=(0,0,105))
 	QuadData light_quad{};
-	light_quad.Q = make_float3(343.0f, 554.0f, 332.0f);
-	light_quad.u = make_float3(-130.0f, 0.0f, 0.0f);
-	light_quad.v = make_float3(0.0f, 0.0f, -105.0f);
+	light_quad.Q = make_float3(213.0f, 554.0f, 227.0f);
+	light_quad.u = make_float3(130.0f, 0.0f, 0.0f);
+	light_quad.v = make_float3(0.0f, 0.0f, 105.0f);
 	const float3 light_cross = cross(light_quad.u, light_quad.v);
 	light_quad.w = light_cross;
 	light_quad.normal = normalize(light_cross);
@@ -196,7 +196,7 @@ static void build_cornell_box(SceneData& scene) {
 	light_quad.materialIdx = mat_light;
 	scene.quads.push_back(light_quad);
 
-	// White ceiling (+Y face)
+	// White ceiling (+Y face at y=555)
 	QuadData ceiling{};
 	ceiling.Q = make_float3(0.0f, kBoxSize, 0.0f);
 	ceiling.u = make_float3(kBoxSize, 0.0f, 0.0f);
@@ -208,11 +208,11 @@ static void build_cornell_box(SceneData& scene) {
 	ceiling.materialIdx = mat_white;
 	scene.quads.push_back(ceiling);
 
-	// White floor (origin, XZ plane)
+	// White floor (origin, XZ plane at y=0)
 	QuadData floor{};
-	floor.Q = make_float3(0.0f, 0.0f, 0.0f);
+	floor.Q = make_float3(0.0f, 0.0f, kBoxSize);
 	floor.u = make_float3(kBoxSize, 0.0f, 0.0f);
-	floor.v = make_float3(0.0f, 0.0f, kBoxSize);
+	floor.v = make_float3(0.0f, 0.0f, -kBoxSize);
 	const float3 floor_cross = cross(floor.u, floor.v);
 	floor.w = floor_cross;
 	floor.normal = normalize(floor_cross);
@@ -220,10 +220,10 @@ static void build_cornell_box(SceneData& scene) {
 	floor.materialIdx = mat_white;
 	scene.quads.push_back(floor);
 
-	// White back wall (+Z face)
+	// White back wall (+Z face at z=555)
 	QuadData back_wall{};
-	back_wall.Q = make_float3(0.0f, 0.0f, kBoxSize);
-	back_wall.u = make_float3(kBoxSize, 0.0f, 0.0f);
+	back_wall.Q = make_float3(kBoxSize, 0.0f, kBoxSize);
+	back_wall.u = make_float3(-kBoxSize, 0.0f, 0.0f);
 	back_wall.v = make_float3(0.0f, kBoxSize, 0.0f);
 	const float3 back_cross = cross(back_wall.u, back_wall.v);
 	back_wall.w = back_cross;
