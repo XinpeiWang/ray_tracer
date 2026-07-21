@@ -1,5 +1,6 @@
 # Deploy Ray Tracer Qt GUI with all dependencies
-# This script copies the console launcher, PTX shader, and Qt dependencies to the package directory
+# This script focuses on Qt GUI and its dependencies.
+# Backend (ray_tracer.exe) and PTX are now auto-deployed by MSBuild post-build events.
 
 param(
 	[ValidateSet("Debug", "Release")]
@@ -16,42 +17,20 @@ Write-Host "========================================`n" -ForegroundColor Cyan
 $repoRoot = $PSScriptRoot
 $packageDir = "$repoRoot\RayTracer_Package"
 
-# Find launcher executable (try multiple locations)
-$launcherPaths = @(
-	"$repoRoot\x64\$Configuration\ray_tracer.exe",
-	"$repoRoot\launcher\x64\$Configuration\ray_tracer.exe"
-)
+# Verify backend files exist (they should be auto-deployed by MSBuild)
+$backendExe = "$packageDir\ray_tracer.exe"
+$ptxFile = "$packageDir\optix_programs.ptx"
 
-$launcherExe = $null
-foreach ($path in $launcherPaths) {
-	if (Test-Path $path) {
-		$launcherExe = $path
-		break
-	}
-}
-
-if (-not $launcherExe) {
-	Write-Host "[ERROR] Launcher executable not found in any of these locations:" -ForegroundColor Red
-	foreach ($path in $launcherPaths) {
-		Write-Host "  - $path" -ForegroundColor Yellow
-	}
-	Write-Host "`nPlease build the launcher project first:" -ForegroundColor Yellow
-	Write-Host "  msbuild launcher\launcher.vcxproj /p:Configuration=$Configuration /p:Platform=x64" -ForegroundColor Yellow
-	exit 1
-}
-
-# Find PTX file
-$ptxFile = "$repoRoot\gpu\optix\optix_programs.ptx"
-if (-not (Test-Path $ptxFile)) {
-	Write-Host "[ERROR] PTX shader file not found: $ptxFile" -ForegroundColor Red
-	Write-Host "Please build the optix_renderer project first." -ForegroundColor Yellow
-	exit 1
+if (-not (Test-Path $backendExe)) {
+	Write-Host "[WARNING] Backend launcher not found at: $backendExe" -ForegroundColor Yellow
+	Write-Host "          The launcher post-build event should auto-deploy it." -ForegroundColor Yellow
+	Write-Host "          Make sure you build the launcher project." -ForegroundColor Yellow
 }
 
 if (-not (Test-Path $ptxFile)) {
-	Write-Host "[ERROR] PTX shader file not found: $ptxFile" -ForegroundColor Red
-	Write-Host "Please build the optix_renderer project first." -ForegroundColor Yellow
-	exit 1
+	Write-Host "[WARNING] PTX shader not found at: $ptxFile" -ForegroundColor Yellow
+	Write-Host "          The optix_renderer post-build event should auto-deploy it." -ForegroundColor Yellow
+	Write-Host "          Make sure you build the optix_renderer project." -ForegroundColor Yellow
 }
 
 if (-not (Test-Path $packageDir)) {
@@ -59,23 +38,7 @@ if (-not (Test-Path $packageDir)) {
 	Write-Host "[INFO] Created package directory: $packageDir`n" -ForegroundColor Green
 }
 
-# Copy files
-Write-Host "[Step 1/4] Copying console launcher..." -ForegroundColor Cyan
-Copy-Item $launcherExe "$packageDir\ray_tracer.exe" -Force
-$launcherInfo = Get-Item "$packageDir\ray_tracer.exe"
-Write-Host "      => ray_tracer.exe ($([math]::Round($launcherInfo.Length/1KB)) KB, $($launcherInfo.LastWriteTime))`n" -ForegroundColor Gray
-
-# Also copy to other locations for consistency
-Copy-Item $launcherExe "$repoRoot\qt_gui\ray_tracer.exe" -Force -ErrorAction SilentlyContinue
-Copy-Item $launcherExe "$repoRoot\x64\$Configuration\ray_tracer.exe" -Force -ErrorAction SilentlyContinue
-Write-Host "      (Also copied to qt_gui\ and x64\$Configuration\ for consistency)`n" -ForegroundColor DarkGray
-
-Write-Host "[Step 2/4] Copying OptiX shader (PTX)..." -ForegroundColor Cyan
-Copy-Item $ptxFile "$packageDir\optix_programs.ptx" -Force
-$ptxInfo = Get-Item "$packageDir\optix_programs.ptx"
-Write-Host "      => optix_programs.ptx ($([math]::Round($ptxInfo.Length/1KB)) KB, $($ptxInfo.LastWriteTime))`n" -ForegroundColor Gray
-
-Write-Host "[Step 3/4] Copying Qt GUI executable..." -ForegroundColor Cyan
+Write-Host "[Step 1/2] Copying Qt GUI executable..." -ForegroundColor Cyan
 $qtGuiBuildDir = "$repoRoot\qt_gui\$($Configuration.ToLower())"
 $qtGuiSourceExe = "$qtGuiBuildDir\RayTracerGUI.exe"
 
@@ -97,8 +60,7 @@ if (-not (Test-Path $qtGuiSourceExe)) {
 	Write-Host "      => RayTracerGUI.exe ($([math]::Round($guiInfo.Length/1KB)) KB)`n" -ForegroundColor Gray
 }
 
-Write-Host "[Step 4/4] Deploying Qt dependencies with windeployqt..." -ForegroundColor Cyan
-Write-Host "[Step 4/4] Deploying Qt dependencies with windeployqt..." -ForegroundColor Cyan
+Write-Host "[Step 2/2] Deploying Qt dependencies with windeployqt..." -ForegroundColor Cyan
 
 $qtGuiExe = "$packageDir\RayTracerGUI.exe"
 if (-not (Test-Path $qtGuiExe)) {
