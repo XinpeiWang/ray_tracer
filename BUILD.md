@@ -10,7 +10,7 @@ The easiest way to build everything and create a ready-to-run package:
 
 ```powershell
 # From Visual Studio Developer PowerShell:
-.\build_and_deploy.ps1
+.\scripts\build_and_deploy.ps1
 ```
 
 This single command:
@@ -37,7 +37,7 @@ This single command:
 Open a **Visual Studio Developer Command Prompt** or **Developer PowerShell** and run:
 
 ```batch
-build_all.bat
+scripts\build_all.bat
 ```
 
 This builds everything in Release mode by default (without deployment).
@@ -48,25 +48,25 @@ For more control, use the PowerShell script:
 
 ```powershell
 # Build everything (default: Release)
-.\build_all.ps1
+.\scripts\build_all.ps1
 
 # Build in Debug mode
-.\build_all.ps1 -Configuration Debug
+.\scripts\build_all.ps1 -Configuration Debug
 
 # Skip tests
-.\build_all.ps1 -SkipTests
+.\scripts\build_all.ps1 -SkipTests
 
 # Skip Qt GUI
-.\build_all.ps1 -SkipGui
+.\scripts\build_all.ps1 -SkipGui
 
 # Build and deploy Qt GUI package with all dependencies
-.\build_all.ps1 -Deploy
+.\scripts\build_all.ps1 -Deploy
 
 # Clean and rebuild
-.\build_all.ps1 -Clean
+.\scripts\build_all.ps1 -Clean
 
 # Convenience: One-step build + deploy
-.\build_and_deploy.ps1
+.\scripts\build_and_deploy.ps1
 ```
 
 ### Visual Studio IDE
@@ -83,7 +83,7 @@ For more control, use the PowerShell script:
 - `ray_tracer.exe` → `RayTracer_Package/`
 - `optix_programs.ptx` → `RayTracer_Package/`
 
-**Qt GUI:** To complete the package, build the Qt GUI separately (see Qt GUI Build section) and run `.\deploy_qt_gui.ps1` to add Qt dependencies.
+**Qt GUI:** To complete the package, build the Qt GUI separately (see Qt GUI Build section) and run `.\scripts\deploy_qt_gui.ps1` to add Qt dependencies.
 
 ## Project Structure
 
@@ -193,7 +193,7 @@ RayTracer_Package\              # Canonical deployment directory
   └─ [Qt plugins in subdirectories]
 ```
 
-**Note:** Backend executables and shaders are now automatically copied to `RayTracer_Package/` by MSBuild post-build events. You only need to run `deploy_qt_gui.ps1` to add Qt dependencies after building the GUI.
+**Note:** Backend executables and shaders are now automatically copied to `RayTracer_Package/` by MSBuild post-build events. You only need to run `scripts\deploy_qt_gui.ps1` to add Qt dependencies after building the GUI.
 
 ## Deployment
 
@@ -220,7 +220,7 @@ This automatically:
 
 **Manual Qt Deployment (after Qt build):**
 ```powershell
-.\deploy_qt_gui.ps1
+.\scripts\deploy_qt_gui.ps1
 ```
 
 This script:
@@ -234,11 +234,11 @@ If you've already built the project and want to deploy separately:
 
 ```powershell
 # Deploy with auto-detection of Qt dependencies
-.\deploy_qt_gui.ps1
+.\scripts\deploy_qt_gui.ps1
 
 # Deploy specific configuration
-.\deploy_qt_gui.ps1 -Configuration Release
-.\deploy_qt_gui.ps1 -Configuration Debug
+.\scripts\deploy_qt_gui.ps1 -Configuration Release
+.\scripts\deploy_qt_gui.ps1 -Configuration Debug
 ```
 
 The deployment script:
@@ -374,7 +374,7 @@ After building:
 
 4. **Deploy Qt package:**
    ```powershell
-   .\deploy_qt_gui.ps1
+   .\scripts\deploy_qt_gui.ps1
    .\RayTracer_Package\RayTracerGUI.exe
    ```
 

@@ -30,7 +30,7 @@ See [INSTALL.md](INSTALL.md) for detailed usage instructions.
 **Quick build:**
 ```batch
 # From Visual Studio Developer Command Prompt
-build_all.bat
+scripts\build_and_deploy.ps1
 ```
 
 For detailed build instructions, see **[BUILD.md](BUILD.md)**.
@@ -120,10 +120,10 @@ msbuild ray_tracer.sln /p:Configuration=Release /p:Platform=x64
 **From VS Developer Command Prompt:**
 ```cmd
 # Build the entire solution (includes OptiX renderer)
-build_all.bat
+scripts\build_all.bat
 ```
 
-See [BUILD.md](BUILD.md) for detailed build instructions.
+See [BUILD.md](BUILD.md) for detailed build instructions and [Project Structure](#-project-structure) for directory layout.
 
 ### Running (Development)
 
@@ -317,28 +317,66 @@ Examples:
 
 ```
 ray_tracer/
-├── src/                          # Ray tracing library (based on "Ray Tracing in One Weekend")
-│   ├── InOneWeekend/            # Book 1 implementation
-│   ├── TheNextWeek/             # Book 2 implementation
-│   ├── TheRestOfYourLife/       # Book 3 implementation
+├── src/                          # Ray tracing library (based on "Ray Tracing in One Weekend" series)
+│   ├── InOneWeekend/            # Book 1: Basic ray tracer
+│   ├── TheNextWeek/             # Book 2: BVH, textures, volumes
+│   ├── TheRestOfYourLife/       # Book 3: Path tracing, PDFs (ACTIVE CODEBASE)
 │   └── external/                # Third-party headers (stb_image, etc.)
 │
-├── launcher/                     # Main launcher application
+├── launcher/                     # Main executable project
 │   ├── main.cpp                 # Entry point with CPU/GPU mode switching
-│   └── book_bridge.cpp          # Scene setup and CPU rendering interface
+│   └── launcher.vcxproj         # Visual Studio project (auto-deploys to RayTracer_Package/)
 │
-├── raytracing_book/             # Standalone examples from books
-│   └── main.cc                  # Book example runner
+├── cpu_renderer/                 # CPU path tracer (static library)
+│   ├── cpu_interface.cpp/.h     # C API for CPU rendering
+│   └── cpu_renderer.vcxproj     # Visual Studio project
 │
-├── gpu/cuda/                    # CUDA GPU renderer
-│   ├── host.cu                  # GPU kernels (3 variants)
-│   ├── cuda_interface.cu        # C API wrapper
-│   ├── cuda_scene.h             # POD structures for GPU data
-│   ├── scene_serializer.cpp     # Scene conversion to GPU format
-│   └── README.md                # Detailed GPU documentation
+├── optix_renderer/               # OptiX GPU renderer (static library)
+│   └── optix_renderer.vcxproj   # Visual Studio project (auto-deploys PTX)
 │
-└── README.md                    # This file
+├── gpu/optix/                    # OptiX GPU implementation
+│   ├── optix_programs.cu        # OptiX ray tracing kernels (compiled to PTX)
+│   ├── optix_renderer.cpp/.h    # OptiX host-side renderer
+│   ├── optix_interface.cpp/.h   # C API wrapper
+│   ├── scene_builder.cpp/.h     # Scene conversion to OptiX format
+│   └── optix_types.h            # Shared structures
+│
+├── qt_gui/                       # Qt 6 graphical interface
+│   ├── RayTracerGUI.pro         # Qt project file
+│   ├── mainwindow.cpp/.h        # Main GUI window
+│   └── (Qt build output)        # Builds to RayTracer_Package/
+│
+├── tests/                        # Google Test suite
+│   ├── unit/                    # Unit tests
+│   └── integration/             # Integration tests
+│
+├── scripts/                      # Build and deployment scripts
+│   ├── build_all.bat/.ps1       # Build all components
+│   ├── build_and_deploy.ps1     # One-command build + deploy
+│   ├── deploy_qt_gui.ps1        # Qt dependency deployment
+│   └── setup_env.bat/.ps1       # Environment setup
+│
+├── docs/                         # Documentation (fixes, guides, migration notes)
+│   └── (21 historical .md files moved here for organization)
+│
+├── RayTracer_Package/            # Deployment output (single canonical location)
+│   ├── RayTracerGUI.exe         # Qt GUI (built from qt_gui/)
+│   ├── ray_tracer.exe           # Console launcher (auto-deployed from launcher/)
+│   ├── optix_programs.ptx       # GPU shader (auto-deployed from optix_renderer/)
+│   └── Qt6*.dll + plugins       # Qt dependencies (deployed by scripts/deploy_qt_gui.ps1)
+│
+├── README.md                     # This file
+├── BUILD.md                      # Detailed build instructions
+├── INSTALL.md                    # Installation and usage guide
+├── CODING_STANDARDS.md           # Code style guidelines
+└── ray_tracer.sln                # Visual Studio solution
 ```
+
+**Key Directories:**
+- **src/TheRestOfYourLife/** - Active production codebase (Cornell box, path tracing, PDFs)
+- **RayTracer_Package/** - Single canonical deployment directory (auto-populated by builds)
+- **scripts/** - All build/deploy automation
+- **docs/** - Historical documentation and migration guides
 
 ## 🎨 Rendering Modes
 
