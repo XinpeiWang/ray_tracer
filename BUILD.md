@@ -4,7 +4,35 @@ This document describes how to build the entire Ray Tracer project.
 
 ## Quick Start
 
-### Windows - Simple Build
+### Windows - One-Command Build & Deploy (Recommended)
+
+The easiest way to build everything and create a ready-to-run package:
+
+```powershell
+# From Visual Studio Developer PowerShell:
+.\build_and_deploy.ps1
+```
+
+This single command:
+- ✅ Builds all C++ components (CPU renderer, OptiX GPU renderer, launcher)
+- ✅ Builds Qt GUI application
+- ✅ Deploys everything to `RayTracer_Package\` with all dependencies
+- ✅ Automatically runs `windeployqt` to include Qt DLLs
+- ✅ Validates the package is complete and ready to run
+
+**The output package includes:**
+- `RayTracerGUI.exe` - Main Qt GUI application
+- `ray_tracer.exe` - Console renderer backend
+- `optix_programs.ptx` - GPU shader
+- All Qt6 DLLs (Core, Gui, Widgets, Network, Svg)
+- Qt plugins (platforms, styles, imageformats, etc.)
+
+**Launch the GUI:**
+```powershell
+.\RayTracer_Package\RayTracerGUI.exe
+```
+
+### Windows - Traditional Build
 
 Open a **Visual Studio Developer Command Prompt** or **Developer PowerShell** and run:
 
@@ -12,9 +40,9 @@ Open a **Visual Studio Developer Command Prompt** or **Developer PowerShell** an
 build_all.bat
 ```
 
-This builds everything in Release mode by default.
+This builds everything in Release mode by default (without deployment).
 
-### Windows - Advanced Build
+### Windows - Advanced Build Options
 
 For more control, use the PowerShell script:
 
@@ -31,11 +59,14 @@ For more control, use the PowerShell script:
 # Skip Qt GUI
 .\build_all.ps1 -SkipGui
 
-# Build and deploy Qt GUI package
+# Build and deploy Qt GUI package with all dependencies
 .\build_all.ps1 -Deploy
 
 # Clean and rebuild
 .\build_all.ps1 -Clean
+
+# Convenience: One-step build + deploy
+.\build_and_deploy.ps1
 ```
 
 ### Visual Studio IDE
@@ -48,6 +79,7 @@ For more control, use the PowerShell script:
 4. Select platform: `x64`
 5. Build → Build Solution (Ctrl+Shift+B)
 
+**Note:** Building from Visual Studio IDE does not automatically deploy Qt dependencies. Use `.\deploy_qt_gui.ps1` or `.\build_and_deploy.ps1` after IDE builds to create a complete package.
 ## Project Structure
 
 The solution contains the following projects:
@@ -122,20 +154,83 @@ The solution contains the following projects:
 After a successful build:
 
 ```
-launcher\x64\Release\
-  └─ ray_tracer.exe              # Main launcher executable
+x64\Release\
+  ├─ ray_tracer.exe              # Main launcher executable
+  └─ optix_renderer.lib          # OptiX renderer static library
 
 cpu_renderer\x64\Release\
   └─ cpu_renderer.lib            # CPU renderer static library
-
-x64\Release\
-  └─ optix_renderer.lib          # OptiX renderer static library
 
 gpu\optix\
   └─ optix_programs.ptx          # OptiX shader (compiled from .cu)
 
 tests\x64\Release\
   └─ ray_tracer_tests.exe        # Test suite
+
+qt_gui\
+  └─ (build directory varies based on Qt toolchain)
+
+RayTracer_Package\              # Deployment package (after running deploy script)
+  ├─ RayTracerGUI.exe           # Qt GUI application
+  ├─ ray_tracer.exe             # Console launcher
+  ├─ optix_programs.ptx         # GPU shader
+  ├─ Qt6Core.dll                # Qt dependencies (auto-deployed)
+  ├─ Qt6Gui.dll
+  ├─ Qt6Widgets.dll
+  ├─ Qt6Network.dll
+  ├─ Qt6Svg.dll
+  ├─ libgcc_s_seh-1.dll
+  ├─ libstdc++-6.dll
+  ├─ libwinpthread-1.dll
+  └─ [Qt plugins in subdirectories]
+```
+
+## Deployment
+
+### Automatic Deployment (Recommended)
+
+The easiest way to create a complete, ready-to-run package:
+
+```powershell
+.\build_and_deploy.ps1
+```
+
+This automatically:
+1. Builds all components
+2. Copies executables and shaders to `RayTracer_Package\`
+3. Runs `windeployqt` to include all Qt DLLs
+4. Validates the package completeness
+
+### Manual Deployment
+
+If you've already built the project and want to deploy separately:
+
+```powershell
+# Deploy with auto-detection of Qt dependencies
+.\deploy_qt_gui.ps1
+
+# Deploy specific configuration
+.\deploy_qt_gui.ps1 -Configuration Release
+.\deploy_qt_gui.ps1 -Configuration Debug
+```
+
+The deployment script:
+- ✅ Finds launcher executable automatically (checks multiple paths)
+- ✅ Copies PTX shader
+- ✅ Auto-detects and runs `windeployqt.exe`
+- ✅ Validates all critical dependencies are present
+
+### What Gets Deployed
+
+The `RayTracer_Package\` directory becomes a self-contained package with:
+- Main Qt GUI application
+- Console renderer backend
+- OptiX GPU shader
+- All Qt6 runtime DLLs
+- Qt plugins (platform integration, styles, image formats)
+- MinGW runtime libraries
+
+**This package can be zipped and distributed without requiring Qt installation on target machines.**
 
 qt_gui\release\
   └─ RayTracerGUI.exe            # Qt GUI (if built)
