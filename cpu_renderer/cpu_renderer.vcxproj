@@ -34,7 +34,7 @@
 	<ClCompile>
 	  <WarningLevel>Level3</WarningLevel>
 	  <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-	  <LanguageStandard>stdcpp20</LanguageStandard>
+	  <LanguageStandard>stdcpp17</LanguageStandard>
 		<AdditionalIncludeDirectories>..\src;..\src\TheRestOfYourLife;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
 	</ClCompile>
 	<Link>
@@ -46,7 +46,7 @@
 	<ClCompile>
 	  <WarningLevel>Level3</WarningLevel>
 	  <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-	  <LanguageStandard>stdcpp20</LanguageStandard>
+	  <LanguageStandard>stdcpp17</LanguageStandard>
 		<AdditionalIncludeDirectories>..\src;..\src\TheRestOfYourLife;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
 	</ClCompile>
 	<Link>
@@ -60,6 +60,7 @@
   <ItemGroup>
 	<ClInclude Include="cpu_interface.h" />
 	<ClInclude Include="..\src\TheRestOfYourLife\*.h" />
+    <ClCompile Include="..\src\external\stb_image_impl.cpp" />
 	<ClInclude Include="..\src\external\*.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

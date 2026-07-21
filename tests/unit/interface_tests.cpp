@@ -4,8 +4,8 @@
  * 
  * Tests the external C interfaces:
  * - cpu_render_main() parameter handling
- * - gpu_render_main() parameter handling
- * - gpu_is_available() detection
+ * - optix_render_main() parameter handling
+ * - optix_is_available() detection
  * - Return code validation
  */
 
@@ -18,7 +18,7 @@
 // Include the C interfaces
 extern "C" {
 	#include "cpu_interface.h"
-	#include "gpu_interface.h"
+	#include "optix_interface.h"
 }
 
 // ============================================================================
@@ -118,15 +118,15 @@ TEST(CPUInterfaceTest, LargerParameters) {
  * Test GPU availability detection
  */
 TEST(GPUInterfaceTest, GPUAvailability) {
-	int available = gpu_is_available();
+	int available = optix_is_available();
 
-	// Should return 0 (no GPU) or 1 (GPU available)
+	// Should return 0 (no OptiX) or 1 (OptiX available)
 	EXPECT_TRUE(available == 0 || available == 1);
 
 	if (available) {
-		std::cout << "GPU detected and available for testing" << std::endl;
+		std::cout << "OptiX detected and available for testing" << std::endl;
 	} else {
-		std::cout << "No GPU detected - GPU tests will be skipped" << std::endl;
+		std::cout << "OptiX not available - GPU tests will be skipped" << std::endl;
 	}
 }
 
@@ -134,23 +134,18 @@ TEST(GPUInterfaceTest, GPUAvailability) {
  * Test GPU renderer with valid parameters (if GPU available)
  */
 TEST(GPUInterfaceTest, ValidParameters) {
-	if (!gpu_is_available()) {
-		GTEST_SKIP() << "GPU not available, skipping test";
+	if (!optix_is_available()) {
+		GTEST_SKIP() << "OptiX not available, skipping test";
 	}
 
-	// Small test render: 100x100, 10 samples (GPU needs more samples)
+	// Small test render: 100x100, 100 samples
 	int width = 100;
 	int height = 100;
-	int spp = 10;
+	int spp = 100;
 	int max_depth = 5;
 	const char* output_path = "test_gpu_output.ppm";
 
-	// Default camera position
-	double cam_x = 278.0;
-	double cam_y = 278.0;
-	double cam_z = -800.0;
-
-	int result = gpu_render_main(width, height, spp, max_depth, output_path, cam_x, cam_y, cam_z);
+	int result = optix_render_main(width, height, spp, max_depth, output_path);
 
 	// Should return 0 for success
 	EXPECT_EQ(result, 0);
@@ -161,37 +156,10 @@ TEST(GPUInterfaceTest, ValidParameters) {
 
 /**
  * Test GPU renderer with different camera positions (if GPU available)
+ * Note: OptiX interface uses fixed Cornell box scene, so this test is skipped
  */
 TEST(GPUInterfaceTest, DifferentCameraPositions) {
-	if (!gpu_is_available()) {
-		GTEST_SKIP() << "GPU not available, skipping test";
-	}
-
-	struct TestCase {
-		const char* name;
-		double cam_x, cam_y, cam_z;
-	};
-
-	TestCase cases[] = {
-		{"Front View", 278, 278, -800},
-		{"Left Wall", 50, 278, 278},
-		{"Right Wall", 506, 278, 278},
-	};
-
-	for (const auto& test : cases) {
-		std::string output_path = std::string("test_gpu_") + test.name + ".ppm";
-
-		int result = gpu_render_main(
-			50, 50, 10, 3,  // Small, fast render
-			output_path.c_str(),
-			test.cam_x, test.cam_y, test.cam_z
-		);
-
-		EXPECT_EQ(result, 0) << "Failed for: " << test.name;
-
-		// Clean up
-		std::remove(output_path.c_str());
-	}
+	GTEST_SKIP() << "OptiX interface uses fixed Cornell box scene";
 }
 
 // ============================================================================

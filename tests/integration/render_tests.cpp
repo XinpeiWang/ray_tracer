@@ -21,7 +21,7 @@
 
 extern "C" {
 	#include "cpu_interface.h"
-	#include "gpu_interface.h"
+	#include "optix_interface.h"
 }
 
 // ============================================================================
@@ -173,16 +173,15 @@ TEST(RenderIntegrationTest, CPUCameraPositionsDifferent) {
  * Test basic GPU rendering (if available)
  */
 TEST(RenderIntegrationTest, BasicGPURender) {
-	if (!gpu_is_available()) {
-		GTEST_SKIP() << "GPU not available";
+	if (!optix_is_available()) {
+		GTEST_SKIP() << "OptiX not available";
 	}
 
 	const char* output = "test_render_gpu_basic.ppm";
 
-	int result = gpu_render_main(
-		100, 100, 50, 5,  // GPU needs more samples
-		output,
-		278, 278, -800
+	int result = optix_render_main(
+		100, 100, 1000, 5,  // OptiX needs more samples for quality
+		output
 	);
 
 	EXPECT_EQ(result, 0);
@@ -200,8 +199,8 @@ TEST(RenderIntegrationTest, BasicGPURender) {
  * Test GPU rendering with different resolutions (if available)
  */
 TEST(RenderIntegrationTest, GPUDifferentResolutions) {
-	if (!gpu_is_available()) {
-		GTEST_SKIP() << "GPU not available";
+	if (!optix_is_available()) {
+		GTEST_SKIP() << "OptiX not available";
 	}
 
 	struct TestCase {
@@ -218,10 +217,9 @@ TEST(RenderIntegrationTest, GPUDifferentResolutions) {
 	for (const auto& test : cases) {
 		std::string output = std::string("test_gpu_res_") + test.name + ".ppm";
 
-		int result = gpu_render_main(
-			test.width, test.height, 10, 3,
-			output.c_str(),
-			278, 278, -800
+		int result = optix_render_main(
+			test.width, test.height, 100, 3,
+			output.c_str()
 		);
 
 		EXPECT_EQ(result, 0) << "Failed for: " << test.name;
@@ -234,21 +232,26 @@ TEST(RenderIntegrationTest, GPUDifferentResolutions) {
 		std::remove(output.c_str());
 	}
 }
+		EXPECT_EQ(h, test.height) << "Failed for: " << test.name;
+
+		std::remove(output.c_str());
+	}
+}
 
 /**
  * Test that GPU and CPU produce similar results (rough check)
  */
 TEST(RenderIntegrationTest, GPUvsCPUSimilarity) {
-	if (!gpu_is_available()) {
-		GTEST_SKIP() << "GPU not available";
+	if (!optix_is_available()) {
+		GTEST_SKIP() << "OptiX not available";
 	}
 
 	const char* cpu_output = "test_compare_cpu.ppm";
 	const char* gpu_output = "test_compare_gpu.ppm";
 
 	// Render small image with both
-	cpu_render_main(50, 50, 100, 10, cpu_output, 278, 278, -800);
-	gpu_render_main(50, 50, 1000, 10, gpu_output, 278, 278, -800);
+	cpu_render_main(50, 50, 100, 10, cpu_output, 0, 278, 278, -800);
+	optix_render_main(50, 50, 10000, 10, gpu_output);
 
 	// Both should exist and have valid headers
 	EXPECT_TRUE(file_exists(cpu_output));

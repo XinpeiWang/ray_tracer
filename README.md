@@ -1,10 +1,10 @@
 # Ray Tracer
 
-A high-performance ray tracing renderer with both **CPU** and **GPU (CUDA)** implementations. This project demonstrates physically-based rendering techniques including path tracing, material systems, and image-based lighting.
+A high-performance ray tracing renderer with both **CPU** and **GPU (OptiX)** implementations. This project demonstrates physically-based rendering techniques including path tracing, material systems, and physically-based lighting.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
-![CUDA](https://img.shields.io/badge/CUDA-13.2%2B-green.svg)
+![OptiX](https://img.shields.io/badge/OptiX-9.1%2B-green.svg)
 ![C++](https://img.shields.io/badge/C%2B%2B-17-blue.svg)
 
 ## 📦 Download & Use (No Build Required!)
@@ -25,6 +25,16 @@ The portable version includes:
 
 See [INSTALL.md](INSTALL.md) for detailed usage instructions.
 
+## 🔨 Building from Source
+
+**Quick build:**
+```batch
+# From Visual Studio Developer Command Prompt
+build_all.bat
+```
+
+For detailed build instructions, see **[BUILD.md](BUILD.md)**.
+
 ## 🎯 Features
 
 ### Core Rendering
@@ -38,7 +48,7 @@ See [INSTALL.md](INSTALL.md) for detailed usage instructions.
 
 ### Dual Rendering Modes
 - **CPU Renderer**: Multi-threaded, portable, debugging-friendly
-- **GPU Renderer**: CUDA-accelerated, **10-100x faster** for complex scenes
+- **GPU Renderer**: OptiX-accelerated ray tracing, **10-100x faster** for complex scenes
 
 ### Scene Primitives
 - Spheres with arbitrary center/radius

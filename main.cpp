@@ -30,8 +30,8 @@
 #include <vector>
 #include <filesystem>
 #include <chrono>
-#include "gpu/cuda/gpu_interface.h"     // GPU renderer interface (CUDA)
 #include "cpu_renderer/cpu_interface.h" // CPU renderer interface (multithreaded C++)
+#include "gpu/optix/optix_interface.h"  // OptiX renderer interface (OptiX)
 #include "src/external/image_writer.h"  // PPM to PNG conversion utilities
 #include "src/TheRestOfYourLife/error_codes.h" // Centralized error code system
 
@@ -41,25 +41,12 @@ int main(int argc, char** argv) {
     std::cout << "========================================" << std::endl;
 
     // ========================================================================
-    // GPU Detection
-    // ========================================================================
-    // Check if a CUDA-capable GPU is available at runtime
-    // gpu_is_available() is implemented in gpu/cuda/gpu_interface.cu
-    int gpu_check_result = gpu_is_available();
-    bool gpu_available = (gpu_check_result == SUCCESS);
-    if (gpu_available) {
-        std::cout << "✓ CUDA-capable GPU detected" << std::endl;
-    } else {
-        std::cout << "⚠ No CUDA GPU detected - CPU mode only" << std::endl;
-    }
-
-    // ========================================================================
     // Command-Line Argument Parsing
     // ========================================================================
     // Parse flags: --gpu, --cpu, --output, --help
-    // Default to GPU if available, fall back to CPU if not
+    // Default to GPU mode (OptiX)
 
-    bool use_gpu = gpu_available; // Default to GPU if available
+    bool use_gpu = true; // Default to GPU (OptiX)
     bool force_cpu = false;
     std::string custom_output_path = "";
 
@@ -71,16 +58,10 @@ int main(int argc, char** argv) {
             force_cpu = true;
             use_gpu = false;
         }
-        // Force GPU rendering (with availability check)
+        // Force GPU rendering
         else if (arg == "--gpu" || arg == "-gpu") {
-            if (!gpu_available) {
-                std::cout << "ERROR: GPU mode requested but no CUDA GPU detected!" << std::endl;
-                std::cout << "Falling back to CPU mode..." << std::endl;
-                use_gpu = false;
-            } else {
-                use_gpu = true;
-                force_cpu = false;
-            }
+            use_gpu = true;
+            force_cpu = false;
         }
         // Custom output path
         else if ((arg == "--output" || arg == "-o") && i + 1 < argc) {
@@ -139,15 +120,13 @@ int main(int argc, char** argv) {
         // User typed 'custom' - enter customization prompts
         if (response == "custom" || response == "c") {
 
-            // Renderer mode selection (if GPU available)
-            if (gpu_available) {
-                std::cout << "\nRenderer mode (gpu/cpu) [" << (use_gpu ? "gpu" : "cpu") << "]: ";
-                std::getline(std::cin, response);
-                if (response == "cpu" || response == "c") {
-                    use_gpu = false;
-                } else if (response == "gpu" || response == "g" || response.empty()) {
-                    use_gpu = true;
-                }
+            // Renderer mode selection
+            std::cout << "\nRenderer mode (gpu/cpu) [" << (use_gpu ? "gpu" : "cpu") << "]: ";
+            std::getline(std::cin, response);
+            if (response == "cpu" || response == "c") {
+                use_gpu = false;
+            } else if (response == "gpu" || response == "g" || response.empty()) {
+                use_gpu = true;
             }
 
             // Resolution (square aspect ratio maintained)
@@ -185,13 +164,16 @@ int main(int argc, char** argv) {
     std::vector<double> numeric_args;
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-        // Skip flag arguments (those starting with '-')
-        if (arg[0] != '-') {
-            try {
-                numeric_args.push_back(std::stod(arg));
-            } catch (...) {
-                // Ignore non-numeric args (e.g., output path after --output)
-            }
+        // Skip flag arguments (those starting with '--')
+        // But allow negative numbers like -800 (check if it's a number)
+        if (arg.size() >= 2 && arg[0] == '-' && arg[1] == '-') {
+            continue; // Skip flags like --gpu, --cpu, --output
+        }
+        // Try to parse as number (including negative numbers like -800)
+        try {
+            numeric_args.push_back(std::stod(arg));
+        } catch (...) {
+            // Ignore non-numeric args (e.g., output path after --output)
         }
     }
 
@@ -300,21 +282,26 @@ int main(int argc, char** argv) {
     int render_result = -1; // 0 = success, non-zero = error
 
     if (use_gpu) {
-        // GPU Renderer (CUDA-based)
-        // Implemented in gpu/cuda/gpu_interface.cu
-        std::cout << "Calling gpu_render_main(...) in-process..." << std::endl;
-        render_result = gpu_render_main(hard_width, hard_height, hard_spp, hard_depth, out_path.c_str(), scene_id, cam_x, cam_y, cam_z);
-        std::cout << "gpu_render_main returned: " << render_result << std::endl;
-        if (render_result == SUCCESS) {
-            std::cout << "Rendered with in-process GPU renderer, output: " << out_path << std::endl;
+        // GPU Renderer (OptiX)
+        if (optix_is_available()) {
+            std::cout << "[OptiX] OptiX is available!" << std::endl;
+            std::cout << "Calling optix_render_main(...) in-process (OptiX)..." << std::endl;
+            render_result = optix_render_main(hard_width, hard_height, hard_spp, hard_depth, out_path.c_str());
+            std::cout << "optix_render_main returned: " << render_result << std::endl;
+            if (render_result == SUCCESS) {
+                std::cout << "Rendered with OptiX renderer, output: " << out_path << std::endl;
+            } else {
+                ErrorInfo err(render_result);
+                std::cerr << "\n" << std::string(60, '=') << std::endl;
+                std::cerr << "OptiX RENDER FAILED" << std::endl;
+                std::cerr << std::string(60, '=') << std::endl;
+                std::cerr << err.to_string() << std::endl;
+                std::cerr << std::string(60, '=') << "\n" << std::endl;
+                return render_result;
+            }
         } else {
-            ErrorInfo err(render_result);
-            std::cerr << "\n" << std::string(60, '=') << std::endl;
-            std::cerr << "GPU RENDER FAILED" << std::endl;
-            std::cerr << std::string(60, '=') << std::endl;
-            std::cerr << err.to_string() << std::endl;
-            std::cerr << std::string(60, '=') << "\n" << std::endl;
-            return render_result;
+            std::cerr << "ERROR: OptiX is not available!" << std::endl;
+            return ERR_GPU_NO_DEVICE;
         }
     } else {
         // CPU Renderer (multithreaded C++)
