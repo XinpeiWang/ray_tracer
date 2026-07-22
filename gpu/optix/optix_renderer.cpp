@@ -28,17 +28,7 @@ namespace {
 // SBT Record Structures (file scope for use across multiple functions)
 // ============================================================================
 
-/// @brief Generic SBT record with aligned header and user data
-/// @tparam T User data type for this record
-template<typename T>
-struct alignas(OPTIX_SBT_RECORD_ALIGNMENT) SbtRecord {
-	__align__(OPTIX_SBT_RECORD_ALIGNMENT) char header[OPTIX_SBT_RECORD_HEADER_SIZE];
-	T data;
-};
-
-using RaygenRecord = SbtRecord<int>;         ///< Raygen program record
-using MissRecord = SbtRecord<int>;           ///< Miss program record  
-using HitGroupRecord = SbtRecord<HitGroupData>; ///< Hit group record
+// SBT record types are defined in optix_types.h
 
 // ============================================================================
 // Logging and Initialization

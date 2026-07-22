@@ -125,6 +125,22 @@ enum {
 	RAY_TYPE_COUNT = 2
 };
 
+// ============================================================================
+// Shader Binding Table (SBT) Record Types
+// Shared between OptixRenderer and all PathTracingStrategy implementations
+// ============================================================================
+
+/// @brief Generic SBT record with aligned header and user data
+template<typename T>
+struct alignas(OPTIX_SBT_RECORD_ALIGNMENT) SbtRecord {
+	__align__(OPTIX_SBT_RECORD_ALIGNMENT) char header[OPTIX_SBT_RECORD_HEADER_SIZE];
+	T data;
+};
+
+using RaygenRecord   = SbtRecord<int>;           ///< Raygen program record
+using MissRecord     = SbtRecord<int>;           ///< Miss program record
+using HitGroupRecord = SbtRecord<HitGroupData>;  ///< Hit group record
+
 // OptiX error checking macro
 #define OPTIX_CHECK(call)                                                      \
 	do {                                                                       \

@@ -85,6 +85,7 @@
     <ClCompile Include="..\gpu\optix\scene_builder.cpp" />
     <ClCompile Include="..\gpu\optix\renderer_config.cpp" />
     <ClCompile Include="..\gpu\optix\recursive_path_tracer.cpp" />
+    <ClCompile Include="..\gpu\optix\path_tracing_strategy.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\gpu\optix\optix_renderer.h" />
@@ -94,6 +95,7 @@
     <ClInclude Include="..\gpu\optix\renderer_config.h" />
     <ClInclude Include="..\gpu\optix\path_tracing_strategy.h" />
     <ClInclude Include="..\gpu\optix\recursive_path_tracer.h" />
+    <ClInclude Include="..\gpu\optix\wavefront_path_tracer.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\gpu\optix\optix_programs.cu" />
