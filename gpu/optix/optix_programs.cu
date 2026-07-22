@@ -210,18 +210,33 @@ __device__ __forceinline__ float sphere_light_pdf(
 }
 
 // Trace a shadow ray to test visibility
-// Returns true if path to light is unoccluded
-// NOTE: Proper implementation requires anyhit program or separate shadow ray type
-// For now, we conservatively assume visibility (will be noisy but unbiased)
+// Returns true if path to light is unoccluded (false if occluded)
 __device__ __forceinline__ bool trace_shadow_ray(
 	const float3& origin,
 	const float3& direction,
 	float max_distance
 ) {
-	// TODO: Implement proper shadow ray with anyhit occlusion testing
-	// For now, return true (assume visible) - this adds direct lighting estimates
-	// that may be occluded, making the image brighter/noisier until shadow rays work
-	return true;
+	// Pack shadow payload (single bool: occluded)
+	unsigned int occluded = 1;  // Default to occluded (will be set to 0 if miss)
+
+	// Trace shadow ray with occlusion testing
+	optixTrace(
+		params.traversable,           // Acceleration structure
+		origin,                        // Ray origin
+		direction,                     // Ray direction
+		0.001f,                        // tmin (avoid self-intersection)
+		max_distance,                  // tmax
+		0.0f,                          // rayTime
+		OptixVisibilityMask(255),      // Visibility mask
+		OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT,  // Flags
+		RAY_TYPE_SHADOW,               // SBT offset (shadow ray type)
+		RAY_TYPE_COUNT,                // SBT stride (number of ray types)
+		RAY_TYPE_SHADOW,               // Miss SBT index
+		occluded                       // Payload (single unsigned int)
+	);
+
+	// Return true if NOT occluded (path is clear)
+	return (occluded == 0);
 }
 
 
@@ -394,8 +409,9 @@ extern "C" __global__ void __closesthit__sphere() {
 						float3 brdf = mat.albedo / 3.14159265358979323846f;  // Lambertian BRDF
 						float3 direct_light = mis_weight * brdf * light_emission * cos_theta / light_pdf;
 
-						// Add to emission (will be accumulated in path tracer)
-						emission = emission + attenuation_in * direct_light;
+						// Add to emission (will be weighted by throughput in raygen loop)
+						// NOTE: Do NOT multiply by attenuation_in here - raygen will apply throughput
+						emission = emission + direct_light;
 					}
 				}
 			}
@@ -458,12 +474,12 @@ extern "C" __global__ void __closesthit__sphere() {
 	optixSetPayload_9(seed);
 
 	if (scattered) {
-		float3 new_attenuation = attenuation_in * attenuation;
+		// Return surface attenuation ONLY (raygen will multiply with throughput)
 		float t_hit = optixGetRayTmax();  // Hit distance
 
-		optixSetPayload_0(__float_as_uint(new_attenuation.x));
-		optixSetPayload_1(__float_as_uint(new_attenuation.y));
-		optixSetPayload_2(__float_as_uint(new_attenuation.z));
+		optixSetPayload_0(__float_as_uint(attenuation.x));
+		optixSetPayload_1(__float_as_uint(attenuation.y));
+		optixSetPayload_2(__float_as_uint(attenuation.z));
 		optixSetPayload_6(__float_as_uint(scattered_dir.x));  // Scatter direction
 		optixSetPayload_7(__float_as_uint(scattered_dir.y));
 		optixSetPayload_8(__float_as_uint(scattered_dir.z));
@@ -646,8 +662,8 @@ extern "C" __global__ void __closesthit__quad() {
 						float3 brdf = mat.albedo / 3.14159265358979323846f;  // Lambertian BRDF
 						float3 direct_light = mis_weight * brdf * light_emission * cos_theta / light_pdf;
 
-						// Add to emission (will be accumulated in path tracer)
-						emission = emission + attenuation_in * direct_light;
+						// Add to emission (raygen will apply throughput)
+						emission = emission + direct_light;
 					}
 				}
 			}
@@ -697,7 +713,7 @@ extern "C" __global__ void __closesthit__quad() {
 
 	// Pack updated payload back into registers
 	// For ALL hits, we return emission in p3-p5 (CPU adds emission at every bounce)
-	// p0-p2: new attenuation (throughput for next bounce)
+	// p0-p2: surface attenuation (BRDF albedo - raygen multiplies with throughput)
 	// p3-p5: emission from this surface hit
 	// p6-p8: scatter direction (if scattered)
 	// p9: updated seed
@@ -710,12 +726,12 @@ extern "C" __global__ void __closesthit__quad() {
 	optixSetPayload_9(seed);
 
 	if (scattered) {
-		float3 new_attenuation = attenuation_in * attenuation;
+		// Return surface attenuation ONLY (raygen will multiply with throughput)
 		float t_hit = optixGetRayTmax();  // Hit distance
 
-		optixSetPayload_0(__float_as_uint(new_attenuation.x));
-		optixSetPayload_1(__float_as_uint(new_attenuation.y));
-		optixSetPayload_2(__float_as_uint(new_attenuation.z));
+		optixSetPayload_0(__float_as_uint(attenuation.x));
+		optixSetPayload_1(__float_as_uint(attenuation.y));
+		optixSetPayload_2(__float_as_uint(attenuation.z));
 		optixSetPayload_6(__float_as_uint(scattered_dir.x));  // Scatter direction
 		optixSetPayload_7(__float_as_uint(scattered_dir.y));
 		optixSetPayload_8(__float_as_uint(scattered_dir.z));
@@ -726,6 +742,54 @@ extern "C" __global__ void __closesthit__quad() {
 	} else {
 		optixSetPayload_10(0);  // absorbed
 	}
+}
+
+//==============================================================================
+// Shadow Any-Hit Programs
+//==============================================================================
+
+// Shadow any-hit for spheres
+// For opaque geometry, any hit means occlusion - terminate immediately
+extern "C" __global__ void __anyhit__shadow_sphere() {
+	// Get primitive and material
+	const unsigned int primIdx = optixGetPrimitiveIndex();
+	const SphereData& sphere = params.spheres[primIdx];
+	const MaterialData& mat = params.materials[sphere.materialIdx];
+
+	// IMPORTANT: When hitting light source, set NOT occluded and terminate
+	// This allows the shadow ray to "see" the light
+	if (mat.type == MaterialType::DiffuseLight) {
+		optixSetPayload_0(0);  // NOT occluded - light is visible
+		optixTerminateRay();
+		return;
+	}
+
+	// For other materials, treat as opaque (occludes light)
+	// TODO: Add alpha-testing for transparent materials (e.g., glass)
+	optixSetPayload_0(1);  // occluded = true
+	optixTerminateRay();   // Stop traversal (found occlusion)
+}
+
+// Shadow any-hit for quads
+// For opaque geometry, any hit means occlusion - terminate immediately
+extern "C" __global__ void __anyhit__shadow_quad() {
+	// Get primitive and material
+	const unsigned int primIdx = optixGetPrimitiveIndex();
+	const QuadData& quad = params.quads[primIdx];
+	const MaterialData& mat = params.materials[quad.materialIdx];
+
+	// IMPORTANT: When hitting a light source, set NOT occluded and terminate
+	// This allows the shadow ray to "see" the light
+	if (mat.type == MaterialType::DiffuseLight) {
+		optixSetPayload_0(0);  // NOT occluded - light is visible
+		optixTerminateRay();
+		return;
+	}
+
+	// For other materials, treat as opaque (occludes light)
+	// TODO: Add alpha-testing for transparent materials (e.g., glass)
+	optixSetPayload_0(1);  // occluded = true
+	optixTerminateRay();   // Stop traversal (found occlusion)
 }
 
 //==============================================================================
@@ -755,6 +819,15 @@ extern "C" __global__ void __miss__ms() {
 }
 
 //==============================================================================
+// Shadow Miss Program
+//==============================================================================
+
+extern "C" __global__ void __miss__shadow() {
+	// Shadow ray missed all geometry - path is clear (not occluded)
+	optixSetPayload_0(0);  // occluded = false
+}
+
+//==============================================================================
 // Ray Generation Program (will implement with path tracing loop)
 //==============================================================================
 
@@ -770,7 +843,7 @@ extern "C" __global__ void __raygen__rg() {
 	// Initialize random seed from pixel + frame
 	unsigned int seed = (py * params.width + px) + params.frameNumber * 719393;
 
-	// Accumulate samples
+	//Accumulate samples
 	float3 pixel_color = make_float3(0.0f, 0.0f, 0.0f);
 
 	for (unsigned int s = 0; s < params.samplesPerPixel; ++s) {
@@ -800,76 +873,77 @@ extern "C" __global__ void __raygen__rg() {
 			payload.depth = depth;
 			payload.scattered = false;
 
-					// Trace ray - pack 12 payload registers
-					unsigned int p0 = __float_as_uint(payload.attenuation.x);
-					unsigned int p1 = __float_as_uint(payload.attenuation.y);
-					unsigned int p2 = __float_as_uint(payload.attenuation.z);
-					unsigned int p3 = 0;  // emission (will be set by hit/miss)
-					unsigned int p4 = 0;
-					unsigned int p5 = 0;
-					unsigned int p6 = 0;  // scatter direction
-					unsigned int p7 = 0;
-					unsigned int p8 = 0;
-					unsigned int p9 = payload.seed;
-					unsigned int p10 = 0;  // scattered flag
-					unsigned int p11 = 0;  // hit distance 't'
+			// Trace ray - pack 12 payload registers
+			unsigned int p0 = __float_as_uint(payload.attenuation.x);
+			unsigned int p1 = __float_as_uint(payload.attenuation.y);
+			unsigned int p2 = __float_as_uint(payload.attenuation.z);
+			unsigned int p3 = 0;  // emission (will be set by hit/miss)
+			unsigned int p4 = 0;
+			unsigned int p5 = 0;
+			unsigned int p6 = 0;  // scatter direction
+			unsigned int p7 = 0;
+			unsigned int p8 = 0;
+			unsigned int p9 = payload.seed;
+			unsigned int p10 = 0;  // scattered flag
+			unsigned int p11 = 0;  // hit distance 't'
 
-					optixTrace(
-						params.traversable,     // Acceleration structure
-						ray_origin,             // Ray origin
-						ray_direction,          // Ray direction
-						0.001f,                 // tmin
-						1e16f,                  // tmax
-						0.0f,                   // rayTime
-						OptixVisibilityMask(255),
-						OPTIX_RAY_FLAG_NONE,
-						RAY_TYPE_RADIANCE,      // SBT offset
-						RAY_TYPE_COUNT,         // SBT stride
-						RAY_TYPE_RADIANCE,      // missSBTIndex
-						p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11
-					);
+			optixTrace(
+				params.traversable,     // Acceleration structure
+				ray_origin,             // Ray origin
+				ray_direction,          // Ray direction
+				0.001f,                 // tmin
+				1e16f,                  // tmax
+				0.0f,                   // rayTime
+				OptixVisibilityMask(255),
+				OPTIX_RAY_FLAG_NONE,
+				RAY_TYPE_RADIANCE,      // SBT offset
+				RAY_TYPE_COUNT,         // SBT stride
+				RAY_TYPE_RADIANCE,      // missSBTIndex
+				p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11
+			);
 
-					// Unpack payload (12 registers)
-					payload.attenuation.x = __uint_as_float(p0);
-					payload.attenuation.y = __uint_as_float(p1);
-					payload.attenuation.z = __uint_as_float(p2);
-					payload.emission.x = __uint_as_float(p3);  // Emission from this hit
-					payload.emission.y = __uint_as_float(p4);
-					payload.emission.z = __uint_as_float(p5);
-					payload.scatterDir.x = __uint_as_float(p6);
-					payload.scatterDir.y = __uint_as_float(p7);
-					payload.scatterDir.z = __uint_as_float(p8);
-					payload.seed = p9;
-					unsigned int flag = p10;
-					float t_hit = __uint_as_float(p11);  // Hit distance
+			// Unpack payload (12 registers)
+			payload.attenuation.x = __uint_as_float(p0);
+			payload.attenuation.y = __uint_as_float(p1);
+			payload.attenuation.z = __uint_as_float(p2);
+			payload.emission.x = __uint_as_float(p3);  // Emission from this hit
+			payload.emission.y = __uint_as_float(p4);
+			payload.emission.z = __uint_as_float(p5);
+			payload.scatterDir.x = __uint_as_float(p6);
+			payload.scatterDir.y = __uint_as_float(p7);
+			payload.scatterDir.z = __uint_as_float(p8);
+			payload.seed = p9;
+			unsigned int flag = p10;
+			float t_hit = __uint_as_float(p11);  // Hit distance
 
-					// Add emission from this hit (weighted by throughput)
-					radiance = radiance + throughput * payload.emission;
+			// Add emission from this hit (weighted by throughput)
+			radiance = radiance + throughput * payload.emission;
 
-							// Decode flag: 0=absorbed, 1=scattered, 2=hit_light
-							if (flag == 2) {
-								// Hit a light - terminate path
-								break;
-							} else if (flag == 1) {
-								// Scattered - compute scatter origin and update for next bounce
-								float3 hit_point = ray_origin + t_hit * ray_direction;
-								float3 scatter_origin = hit_point + 0.01f * normalize(payload.scatterDir);
+			// Decode flag: 0=absorbed, 1=scattered, 2=hit_light
+			if (flag == 2) {
+				// Hit a light - terminate path
+				break;
+			} else if (flag == 1) {
+				// Scattered - compute scatter origin and update for next bounce
+				float3 hit_point = ray_origin + t_hit * ray_direction;
+				float3 scatter_origin = hit_point + 0.01f * normalize(payload.scatterDir);
 
-											throughput = payload.attenuation;
-											ray_origin = scatter_origin;
-											ray_direction = normalize(payload.scatterDir);  // MUST normalize!
-											seed = payload.seed;
-										} else {
-											// Absorbed
-											break;
-										}
-									}
+				// Multiply throughput by surface BRDF (attenuation from hit program)
+				throughput = throughput * payload.attenuation;
+				ray_origin = scatter_origin;
+				ray_direction = normalize(payload.scatterDir);  // MUST normalize!
+				seed = payload.seed;
+			} else {
+				// Absorbed
+				break;
+			}
+		}  // end depth loop
 
-									pixel_color = pixel_color + radiance;
-								}
+		pixel_color = pixel_color + radiance;
+	}  // end sample loop
 
-								// Average samples
-								pixel_color = pixel_color / float(params.samplesPerPixel);
+	// Average samples
+	pixel_color = pixel_color / float(params.samplesPerPixel);
 
 	// Write to framebuffer
 	const unsigned int idx_flat = py * params.width + px;

@@ -95,9 +95,12 @@ private:
 
 	// Program groups
 	OptixProgramGroup raygenPG_ = nullptr;        ///< Ray generation program
-	OptixProgramGroup missPG_ = nullptr;          ///< Miss program
-	OptixProgramGroup hitgroupSpherePG_ = nullptr;///< Sphere hit group
-	OptixProgramGroup hitgroupQuadPG_ = nullptr;  ///< Quad hit group
+	OptixProgramGroup missPG_ = nullptr;          ///< Miss program (radiance)
+	OptixProgramGroup shadowMissPG_ = nullptr;    ///< Shadow miss program
+	OptixProgramGroup hitgroupSpherePG_ = nullptr;///< Sphere hit group (radiance)
+	OptixProgramGroup hitgroupQuadPG_ = nullptr;  ///< Quad hit group (radiance)
+	OptixProgramGroup shadowHitgroupSpherePG_ = nullptr; ///< Sphere shadow hit group
+	OptixProgramGroup shadowHitgroupQuadPG_ = nullptr;   ///< Quad shadow hit group
 
 	// -------------------------------------------------------------------
 	// Shader Binding Table (SBT)

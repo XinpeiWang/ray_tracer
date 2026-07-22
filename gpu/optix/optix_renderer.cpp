@@ -279,6 +279,23 @@ bool OptiXRenderer::createProgramGroups() {
 		&missPG_
 	));
 
+	// Shadow miss program
+	OptixProgramGroupDesc shadowMissDesc = {};
+	shadowMissDesc.kind = OPTIX_PROGRAM_GROUP_KIND_MISS;
+	shadowMissDesc.miss.module = module_;
+	shadowMissDesc.miss.entryFunctionName = "__miss__shadow";
+
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(
+		context_,
+		&shadowMissDesc,
+		1,
+		&pgOptions,
+		log,
+		&logSize,
+		&shadowMissPG_
+	));
+
 	// Sphere hit group (intersection + closest-hit)
 	OptixProgramGroupDesc sphereHitDesc = {};
 	sphereHitDesc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
@@ -317,17 +334,58 @@ bool OptiXRenderer::createProgramGroups() {
 		&hitgroupQuadPG_
 	));
 
-	std::cout << "[OptiX] Created program groups: raygen, miss, sphere hit, quad hit\n";
+	// Shadow hit group for spheres (any-hit only, no closest-hit)
+	OptixProgramGroupDesc shadowSphereHitDesc = {};
+	shadowSphereHitDesc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	shadowSphereHitDesc.hitgroup.moduleIS = module_;
+	shadowSphereHitDesc.hitgroup.entryFunctionNameIS = "__intersection__sphere";
+	shadowSphereHitDesc.hitgroup.moduleAH = module_;
+	shadowSphereHitDesc.hitgroup.entryFunctionNameAH = "__anyhit__shadow_sphere";
+
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(
+		context_,
+		&shadowSphereHitDesc,
+		1,
+		&pgOptions,
+		log,
+		&logSize,
+		&shadowHitgroupSpherePG_
+	));
+
+	// Shadow hit group for quads (any-hit only, no closest-hit)
+	OptixProgramGroupDesc shadowQuadHitDesc = {};
+	shadowQuadHitDesc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	shadowQuadHitDesc.hitgroup.moduleIS = module_;
+	shadowQuadHitDesc.hitgroup.entryFunctionNameIS = "__intersection__quad";
+	shadowQuadHitDesc.hitgroup.moduleAH = module_;
+	shadowQuadHitDesc.hitgroup.entryFunctionNameAH = "__anyhit__shadow_quad";
+
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(
+		context_,
+		&shadowQuadHitDesc,
+		1,
+		&pgOptions,
+		log,
+		&logSize,
+		&shadowHitgroupQuadPG_
+	));
+
+	std::cout << "[OptiX] Created program groups: raygen, miss (radiance + shadow), sphere hit (radiance + shadow), quad hit (radiance + shadow)\n";
 	return true;
 }
 
 bool OptiXRenderer::linkPipeline() {
-	// Collect all program groups
+	// Collect all program groups (radiance + shadow)
 	OptixProgramGroup programGroups[] = {
 		raygenPG_,
 		missPG_,
+		shadowMissPG_,
 		hitgroupSpherePG_,
-		hitgroupQuadPG_
+		hitgroupQuadPG_,
+		shadowHitgroupSpherePG_,
+		shadowHitgroupQuadPG_
 	};
 
 	// Pipeline link options
@@ -669,34 +727,54 @@ bool OptiXRenderer::buildSBT(
 		cudaMemcpyHostToDevice
 	));
 
-	// Miss record
-	MissRecord missRecord;
-	OPTIX_CHECK(optixSbtRecordPackHeader(missPG_, &missRecord));
-	missRecord.data = 0;  // No data
+	// Miss records (radiance + shadow)
+	std::vector<MissRecord> missRecords(2);
+
+	// Radiance miss
+	OPTIX_CHECK(optixSbtRecordPackHeader(missPG_, &missRecords[0]));
+	missRecords[0].data = 0;
+
+	// Shadow miss
+	OPTIX_CHECK(optixSbtRecordPackHeader(shadowMissPG_, &missRecords[1]));
+	missRecords[1].data = 0;
 
 	if (d_missRecord_) cudaFree(reinterpret_cast<void*>(d_missRecord_));
-	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_missRecord_), sizeof(MissRecord)));
+	size_t missRecordSize = missRecords.size() * sizeof(MissRecord);
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_missRecord_), missRecordSize));
 	CUDA_CHECK(cudaMemcpy(
 		reinterpret_cast<void*>(d_missRecord_),
-		&missRecord,
-		sizeof(MissRecord),
+		missRecords.data(),
+		missRecordSize,
 		cudaMemcpyHostToDevice
 	));
 
-	// Hit group records - ONE per geometry TYPE, not per instance
-	// Geometry data will be fetched from device arrays using primitiveIndex
-	std::vector<HitGroupRecord> hitGroupRecords(2);  // One for spheres, one for quads
+	// Hit group records - radiance + shadow for each geometry type
+	// OptiX SBT layout: index = (build_input_index * RAY_TYPE_COUNT) + ray_type_index
+	// With 2 build inputs (sphere=0, quad=1) and 2 ray types (radiance=0, shadow=1):
+	// [0]: sphere + radiance (0*2+0=0)
+	// [1]: sphere + shadow   (0*2+1=1)
+	// [2]: quad + radiance   (1*2+0=2)
+	// [3]: quad + shadow     (1*2+1=3)
+	std::vector<HitGroupRecord> hitGroupRecords(4);
 
-	// Sphere hit record (all spheres use this)
+	// [0] Sphere radiance hit record
 	OPTIX_CHECK(optixSbtRecordPackHeader(hitgroupSpherePG_, &hitGroupRecords[0]));
-	hitGroupRecords[0].data = {};  // No per-record data; will use device arrays
+	hitGroupRecords[0].data = {};
 
-	// Quad hit record (all quads use this)
-	OPTIX_CHECK(optixSbtRecordPackHeader(hitgroupQuadPG_, &hitGroupRecords[1]));
-	hitGroupRecords[1].data = {};  // No per-record data; will use device arrays
+	// [1] Sphere shadow hit record
+	OPTIX_CHECK(optixSbtRecordPackHeader(shadowHitgroupSpherePG_, &hitGroupRecords[1]));
+	hitGroupRecords[1].data = {};
+
+	// [2] Quad radiance hit record
+	OPTIX_CHECK(optixSbtRecordPackHeader(hitgroupQuadPG_, &hitGroupRecords[2]));
+	hitGroupRecords[2].data = {};
+
+	// [3] Quad shadow hit record
+	OPTIX_CHECK(optixSbtRecordPackHeader(shadowHitgroupQuadPG_, &hitGroupRecords[3]));
+	hitGroupRecords[3].data = {};
 
 	if (d_hitgroupRecords_) cudaFree(reinterpret_cast<void*>(d_hitgroupRecords_));
-	size_t hitRecordSize = 2 * sizeof(HitGroupRecord);
+	size_t hitRecordSize = hitGroupRecords.size() * sizeof(HitGroupRecord);
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_hitgroupRecords_), hitRecordSize));
 	CUDA_CHECK(cudaMemcpy(
 		reinterpret_cast<void*>(d_hitgroupRecords_),
@@ -705,18 +783,18 @@ bool OptiXRenderer::buildSBT(
 		cudaMemcpyHostToDevice
 	));
 
-	numHitRecords_ = 2;
+	numHitRecords_ = 4;
 
 	// Configure SBT
 	sbt_.raygenRecord = d_raygenRecord_;
 	sbt_.missRecordBase = d_missRecord_;
 	sbt_.missRecordStrideInBytes = sizeof(MissRecord);
-	sbt_.missRecordCount = 1;
+	sbt_.missRecordCount = 2;  // radiance + shadow
 	sbt_.hitgroupRecordBase = d_hitgroupRecords_;
 	sbt_.hitgroupRecordStrideInBytes = sizeof(HitGroupRecord);
-	sbt_.hitgroupRecordCount = 2;  // One per geometry type
+	sbt_.hitgroupRecordCount = 4;  // 2 geometry types × 2 ray types
 
-	std::cout << "[OptiX] Built SBT: 2 hit records (1 sphere type, 1 quad type)\n";
+	std::cout << "[OptiX] Built SBT: 2 miss records (radiance + shadow), 4 hit records (2 geom types × 2 ray types)\n";
 	return true;
 }
 
