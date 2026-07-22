@@ -21,6 +21,11 @@ struct PathTracingPayload {
 	bool scattered;       // True if ray scattered (not absorbed)
 };
 
+// Shadow ray payload (minimal - just occlusion result)
+struct ShadowPayload {
+	bool occluded;  // True if ray hit anything (path is blocked)
+};
+
 // Sphere geometry data (custom primitive)
 struct SphereData {
 	float3 center;
@@ -116,7 +121,8 @@ struct HitGroupData {
 // Ray types
 enum {
 	RAY_TYPE_RADIANCE = 0,
-	RAY_TYPE_COUNT
+	RAY_TYPE_SHADOW = 1,
+	RAY_TYPE_COUNT = 2
 };
 
 // OptiX error checking macro
