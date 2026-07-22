@@ -252,6 +252,18 @@ RayTracer_Package/output/*.ppm
 RayTracer_Package/output/*.png
 RayTracer_Package/output/*.mp4
 RayTracer_Package/output/*.run_marker.txt
+RayTracer_Package/output/frames/
+
+# Debug render files scattered in package root
+RayTracer_Package/*.png
+RayTracer_Package/*.ppm
+RayTracer_Package/*.mp4
+RayTracer_Package/*.txt
+RayTracer_Package/test_*
+RayTracer_Package/verify_*
+RayTracer_Package/working_*
+RayTracer_Package/debug_*
+RayTracer_Package/cornell_*
 
 ##############################################################################
 # Deployment / Release Packages
