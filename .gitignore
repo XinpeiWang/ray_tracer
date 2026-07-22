@@ -218,14 +218,22 @@ commit_message.txt
 # Temporary development/debugging notes (keep main docs only)
 BUILD_COMPLETE.md
 BUILD_STRUCTURE_FIX.md
+BUILD_VERIFICATION_*.md
 DECISION_GUIDE.md
 DIAGNOSTIC_BUILD_INSTRUCTIONS.md
+END_TO_END_TEST_SUMMARY.md
 EXIT_STATUS_FIX.md
 FIX_*.md
 GPU_*.md
 LOG_TAB_ADDED.md
+MIS_ADOPTION_STATUS.md
 OPTIX_*.md
+PBRT4_*.md
 ROOT_CAUSE_ANALYSIS.md
+SHADOW_RAY_EXPLANATION.md
+
+# Temporary git helpers
+.git_commit_msg.txt
 
 # Test/debug build scripts
 REBUILD_*.bat
@@ -234,6 +242,16 @@ check_*.bat
 run_build.bat
 test_*.cpp
 test_*.vcxproj
+
+##############################################################################
+# Render Output Files
+##############################################################################
+
+# Debug/test render outputs (accumulated during development)
+RayTracer_Package/output/*.ppm
+RayTracer_Package/output/*.png
+RayTracer_Package/output/*.mp4
+RayTracer_Package/output/*.run_marker.txt
 
 ##############################################################################
 # Deployment / Release Packages
