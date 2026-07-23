@@ -15,7 +15,12 @@
 // Shading-frame helpers (local frame: surface normal = +Z)
 template<typename T> CPU_GPU T GGX_Cos2Theta(T,T y,T z){return z*z;}
 template<typename T> CPU_GPU T GGX_Sin2Theta(T x,T y,T z){T c=z*z;return c<T(1)?T(1)-c:T(0);}
-template<typename T> CPU_GPU T GGX_Tan2Theta(T x,T y,T z){T c2=GGX_Cos2Theta(x,y,z);return c2>T(0)?GGX_Sin2Theta(x,y,z)/c2:T(0);}
+// Mirrors pbrt-v4 Tan2Theta: at grazing (cos2==0) IEEE 754 yields +inf naturally,
+// which D() and Lambda() already guard via isinf(). No std::numeric_limits needed.
+template<typename T> CPU_GPU T GGX_Tan2Theta(T x,T y,T z){
+  T c2=GGX_Cos2Theta(x,y,z);
+  return GGX_Sin2Theta(x,y,z)/c2;  // c2==0 -> +inf (IEEE 754, valid on both CPU and GPU)
+}
 template<typename T> CPU_GPU T GGX_SinTheta(T x,T y,T z){
 #if defined(__CUDACC__)
   return sqrtf(GGX_Sin2Theta(x,y,z));
@@ -185,8 +190,9 @@ struct TrowbridgeReitz {
 
   // Regularize (pbrt-v4: void Regularize()) -- bump low alphas for subsurface use
   CPU_GPU void Regularize(){
-    if(alpha_x<T(0.3))alpha_x=alpha_x<T(0.1)?T(0.1):T(0.3);
-    if(alpha_y<T(0.3))alpha_y=alpha_y<T(0.1)?T(0.1):T(0.3);
+    // pbrt-v4: Clamp(2*alpha, 0.1, 0.3)
+    if(alpha_x<T(0.3)){alpha_x*=T(2); if(alpha_x<T(0.1))alpha_x=T(0.1); else if(alpha_x>T(0.3))alpha_x=T(0.3);}
+    if(alpha_y<T(0.3)){alpha_y*=T(2); if(alpha_y<T(0.1))alpha_y=T(0.1); else if(alpha_y>T(0.3))alpha_y=T(0.3);}
   }
 
   CPU_GPU static T RoughnessToAlpha(T r){
