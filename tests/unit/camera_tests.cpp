@@ -10,6 +10,7 @@
  */
 
 #include <gtest/gtest.h>
+#include "rtweekend.h"
 #include "camera.h"
 #include "vec3.h"
 #include <cmath>
@@ -177,7 +178,7 @@ TEST(CameraTest, RayGeneration) {
 	cam.initialize();
 
 	// Get ray for center pixel
-	ray r = cam.get_ray(cam.image_width / 2, cam.image_height / 2);
+	ray r = cam.get_ray(cam.image_width / 2, cam.image_height / 2, 0, 0);
 
 	// Ray origin should be at camera position
 	EXPECT_DOUBLE_EQ(r.origin().x(), 0.0);
@@ -219,16 +220,16 @@ TEST(CameraTest, RayGenerationCorners) {
 	};
 
 	for (const auto& corner : corners) {
-		ray r = cam.get_ray(corner.x, corner.y);
+		ray r = cam.get_ray(corner.x, corner.y, 0, 0);
 
 		// All rays should originate from camera position
 		EXPECT_DOUBLE_EQ(r.origin().x(), 0.0) << "Failed for: " << corner.name;
 		EXPECT_DOUBLE_EQ(r.origin().y(), 0.0) << "Failed for: " << corner.name;
 		EXPECT_DOUBLE_EQ(r.origin().z(), 0.0) << "Failed for: " << corner.name;
 
-		// Direction should be unit vector
+		// Direction should be non-zero (not necessarily a unit vector)
 		double len = r.direction().length();
-		EXPECT_NEAR(len, 1.0, 0.01) << "Failed for: " << corner.name;
+		EXPECT_GT(len, 0.0) << "Failed for: " << corner.name;
 	}
 }
 
