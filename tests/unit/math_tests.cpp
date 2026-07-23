@@ -13,6 +13,7 @@
 #include "vec3.h"
 #include "color.h"
 #include "interval.h"
+#include "material.h"
 #include <cmath>
 
 // ============================================================================
@@ -450,4 +451,128 @@ TEST(PCG32Test, RandomIntCoversRange) {
 	}
 	for (int v = lo; v <= hi; ++v)
 		EXPECT_TRUE(seen[v]) << "Value " << v << " never generated";
+}
+
+// ============================================================================
+// Exact Fresnel (FrDielectric) Tests
+// ============================================================================
+
+// Normal incidence (cos_theta = 1.0): reflectance from air into glass (eta=1.5)
+// Analytic value: ((eta-1)/(eta+1))^2 = (0.5/2.5)^2 = 0.04
+TEST(FresnelTest, NormalIncidenceGlass) {
+	double r = FrDielectric(1.0, 1.5);
+	EXPECT_NEAR(r, 0.04, 1e-6) << "Normal incidence glass should reflect exactly 4%";
+}
+
+// Normal incidence into water (eta=1.333)
+// Analytic: ((1.333-1)/(1.333+1))^2 = (0.333/2.333)^2 ≈ 0.02040
+TEST(FresnelTest, NormalIncidenceWater) {
+	double r = FrDielectric(1.0, 1.333);
+	double expected = ((1.333 - 1.0) / (1.333 + 1.0));
+	expected = expected * expected;
+	EXPECT_NEAR(r, expected, 1e-4);
+}
+
+// Grazing incidence (cos_theta → 0): reflectance must approach 1.0 for any eta
+TEST(FresnelTest, GrazingIncidenceApproachesOne) {
+	EXPECT_NEAR(FrDielectric(0.001, 1.5),   1.0, 0.01);
+	EXPECT_NEAR(FrDielectric(0.001, 2.4),   1.0, 0.01);
+	EXPECT_NEAR(FrDielectric(0.001, 1.333), 1.0, 0.01);
+}
+
+// Total internal reflection: ray inside glass (eta=1.5) beyond critical angle
+// Critical angle = arcsin(1/eta) = arcsin(1/1.5) ≈ 41.8°, cos ≈ 0.745
+// At cos=0.5 (60°) we are past the critical angle → must return exactly 1.0
+TEST(FresnelTest, TotalInternalReflection) {
+	// From inside glass (pass negative cos to indicate inside medium)
+	double r = FrDielectric(-0.5, 1.5);
+	EXPECT_DOUBLE_EQ(r, 1.0) << "Beyond critical angle must give TIR = 1.0";
+}
+
+// Reciprocity at normal incidence: FrDielectric(1, eta) == FrDielectric(1, 1/eta)
+// At normal incidence the Fresnel formula reduces to ((eta-1)/(eta+1))^2,
+// which is symmetric: ((eta-1)/(eta+1))^2 == ((1/eta-1)/(1/eta+1))^2.
+TEST(FresnelTest, Reciprocity) {
+	for (double eta : {1.333, 1.5, 2.4}) {
+		double r_forward = FrDielectric(1.0, eta);
+		double r_reverse = FrDielectric(1.0, 1.0 / eta);
+		EXPECT_NEAR(r_forward, r_reverse, 1e-9)
+			<< "Normal-incidence Fresnel must be symmetric for eta=" << eta;
+	}
+}
+
+// Output must always be in [0, 1] for any valid input
+TEST(FresnelTest, AlwaysInValidRange) {
+	double etas[] = {1.0, 1.333, 1.5, 2.4, 0.5};
+	for (double eta : etas) {
+		for (int i = 0; i <= 100; ++i) {
+			double cos = -1.0 + 2.0 * i / 100.0;
+			double r = FrDielectric(cos, eta);
+			EXPECT_GE(r, 0.0) << "eta=" << eta << " cos=" << cos;
+			EXPECT_LE(r, 1.0) << "eta=" << eta << " cos=" << cos;
+		}
+	}
+}
+
+// Schlick vs exact: at normal incidence they must agree (both reduce to r0^2)
+// At 45° they should diverge — exact Fresnel gives higher reflectance than Schlick
+TEST(FresnelTest, MoreAccurateThanSchlickAt45Degrees) {
+	double eta = 1.5;
+	double cos45 = std::sqrt(2.0) / 2.0;
+
+	double r_exact = FrDielectric(cos45, eta);
+
+	// Schlick approximation
+	double r0 = (1.0 - eta) / (1.0 + eta);
+	r0 = r0 * r0;
+	double r_schlick = r0 + (1.0 - r0) * std::pow(1.0 - cos45, 5.0);
+
+	// Both should be in [0,1]
+	EXPECT_GE(r_exact,   0.0);
+	EXPECT_LE(r_exact,   1.0);
+	EXPECT_GE(r_schlick, 0.0);
+	EXPECT_LE(r_schlick, 1.0);
+
+	// At 45° the exact Fresnel is measurably different from Schlick
+	// (they should not be identical — if they are, exact Fresnel wasn't implemented)
+	EXPECT_GT(std::abs(r_exact - r_schlick), 1e-4)
+		<< "Exact Fresnel and Schlick should differ at 45 degrees — same value suggests Schlick is still in use";
+}
+
+// Vacuum-to-vacuum (eta=1.0): no interface, reflectance must be effectively 0.0
+// (floating-point arithmetic yields ~1e-32, not bit-exact 0; EXPECT_NEAR with tight tol)
+TEST(FresnelTest, VacuumToVacuumIsZero) {
+	for (int i = 1; i <= 10; ++i) {
+		double cos = i / 10.0;
+		EXPECT_NEAR(FrDielectric(cos, 1.0), 0.0, 1e-28)
+			<< "eta=1 should give near-zero reflectance at cos=" << cos;
+	}
+}
+
+// Brewster's angle: at theta_B = arctan(eta), r_parl = 0, so total reflectance = r_perp^2 / 2.
+// r_perp = (cos_i - eta*cos_t) / (cos_i + eta*cos_t)
+// Verified analytically for eta=1.5: cos_B = 1/sqrt(1+eta^2)
+TEST(FresnelTest, BrewstersAngle) {
+	double eta = 1.5;
+	double cos_B = 1.0 / std::sqrt(1.0 + eta * eta);
+	double sin2_t = (1.0 - cos_B * cos_B) / (eta * eta);
+	double cos_t  = std::sqrt(1.0 - sin2_t);
+	double r_perp  = (cos_B - eta * cos_t) / (cos_B + eta * cos_t);
+	double expected = (r_perp * r_perp) / 2.0;  // r_parl = 0 at Brewster's angle
+
+	EXPECT_NEAR(FrDielectric(cos_B, eta), expected, 1e-9)
+		<< "At Brewster's angle r_parl=0, reflectance should equal r_perp^2/2";
+}
+
+// Input clamping: cos values outside [-1, 1] should be silently clamped, not NaN/crash
+TEST(FresnelTest, InputClampingOutOfRange) {
+	// Values beyond unit range should behave the same as the boundary values
+	EXPECT_DOUBLE_EQ(FrDielectric(1.5,  1.5), FrDielectric(1.0,  1.5));
+	EXPECT_DOUBLE_EQ(FrDielectric(-1.5, 1.5), FrDielectric(-1.0, 1.5));
+
+	// And must still be in [0, 1]
+	EXPECT_GE(FrDielectric(2.0,  2.4), 0.0);
+	EXPECT_LE(FrDielectric(2.0,  2.4), 1.0);
+	EXPECT_GE(FrDielectric(-2.0, 2.4), 0.0);
+	EXPECT_LE(FrDielectric(-2.0, 2.4), 1.0);
 }
