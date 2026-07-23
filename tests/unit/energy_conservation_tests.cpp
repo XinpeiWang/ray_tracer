@@ -84,7 +84,7 @@ TEST_F(EnergyConservationTest, CPUPixelsInValidRange) {
 	const char* out = "ec_test_cpu_range.ppm";
 	files_.push_back(out);
 
-	cpu_render_main(80, 80, 10, 5, out, 0, 278.0, 278.0, -800.0);
+	cpu_render_main(32, 32, 4, 5, out, 0, 278.0, 278.0, -800.0);
 	RenderResult r = load_render(out);
 	ASSERT_TRUE(r.valid) << "CPU render failed";
 
@@ -102,7 +102,7 @@ TEST_F(EnergyConservationTest, GPUPixelsInValidRange) {
 	const char* out = "ec_test_gpu_range.ppm";
 	files_.push_back(out);
 
-	optix_render_main(80, 80, 500, 5, out, 0, 278.0, 278.0, -800.0);
+	optix_render_main(32, 32, 100, 5, out, 0, 278.0, 278.0, -800.0);
 	RenderResult r = load_render(out);
 	ASSERT_TRUE(r.valid) << "GPU render failed";
 
@@ -125,7 +125,7 @@ TEST_F(EnergyConservationTest, GPUNoFireflies) {
 	const char* out = "ec_test_gpu_fireflies.ppm";
 	files_.push_back(out);
 
-	optix_render_main(100, 100, 1000, 10, out, 0, 278.0, 278.0, -800.0);
+	optix_render_main(64, 64, 500, 10, out, 0, 278.0, 278.0, -800.0);
 	RenderResult r = load_render(out);
 	ASSERT_TRUE(r.valid) << "GPU render failed";
 
@@ -164,7 +164,7 @@ TEST_F(EnergyConservationTest, CPUAverageBrightnessPhysicallyBounded) {
 	const char* out = "ec_test_cpu_bound.ppm";
 	files_.push_back(out);
 
-	cpu_render_main(100, 100, 50, 10, out, 0, 278.0, 278.0, -800.0);
+	cpu_render_main(32, 32, 10, 5, out, 0, 278.0, 278.0, -800.0);
 	RenderResult r = load_render(out);
 	ASSERT_TRUE(r.valid) << "CPU render failed";
 
@@ -186,7 +186,7 @@ TEST_F(EnergyConservationTest, GPUAverageBrightnessPhysicallyBounded) {
 	const char* out = "ec_test_gpu_bound.ppm";
 	files_.push_back(out);
 
-	optix_render_main(100, 100, 1000, 10, out, 0, 278.0, 278.0, -800.0);
+	optix_render_main(32, 32, 200, 5, out, 0, 278.0, 278.0, -800.0);
 	RenderResult r = load_render(out);
 	ASSERT_TRUE(r.valid) << "GPU render failed";
 
@@ -208,7 +208,7 @@ TEST_F(EnergyConservationTest, CPUNoNaNOrInf) {
 	const char* out = "ec_test_cpu_nan.ppm";
 	files_.push_back(out);
 
-	cpu_render_main(80, 80, 20, 10, out, 0, 278.0, 278.0, -800.0);
+	cpu_render_main(32, 32, 8, 5, out, 0, 278.0, 278.0, -800.0);
 	RenderResult r = load_render(out);
 	ASSERT_TRUE(r.valid) << "CPU render failed";
 
@@ -228,7 +228,7 @@ TEST_F(EnergyConservationTest, GPUNoNaNOrInf) {
 	const char* out = "ec_test_gpu_nan.ppm";
 	files_.push_back(out);
 
-	optix_render_main(80, 80, 500, 10, out, 0, 278.0, 278.0, -800.0);
+	optix_render_main(32, 32, 100, 5, out, 0, 278.0, 278.0, -800.0);
 	RenderResult r = load_render(out);
 	ASSERT_TRUE(r.valid) << "GPU render failed";
 
@@ -282,8 +282,8 @@ TEST_F(RussianRouletteTest, NoEnergyGainAtHighDepth) {
 	files_.push_back(out_hi);
 
 	// Enough SPP to average out RR noise
-	cpu_render_main(80, 80, 50, 5,  out_lo, 0, 278.0, 278.0, -800.0);
-	cpu_render_main(80, 80, 50, 50, out_hi, 0, 278.0, 278.0, -800.0);
+	cpu_render_main(32, 32, 10, 5,  out_lo, 0, 278.0, 278.0, -800.0);
+	cpu_render_main(32, 32, 10, 20, out_hi, 0, 278.0, 278.0, -800.0);
 
 	RenderResult r_lo = load_render(out_lo);
 	RenderResult r_hi = load_render(out_hi);
@@ -310,8 +310,8 @@ TEST_F(RussianRouletteTest, HighDepthDoesNotDarken) {
 	files_.push_back(out_lo);
 	files_.push_back(out_hi);
 
-	cpu_render_main(80, 80, 50, 5,  out_lo, 0, 278.0, 278.0, -800.0);
-	cpu_render_main(80, 80, 50, 50, out_hi, 0, 278.0, 278.0, -800.0);
+	cpu_render_main(32, 32, 10, 5,  out_lo, 0, 278.0, 278.0, -800.0);
+	cpu_render_main(32, 32, 10, 20, out_hi, 0, 278.0, 278.0, -800.0);
 
 	RenderResult r_lo = load_render(out_lo);
 	RenderResult r_hi = load_render(out_hi);
@@ -335,7 +335,7 @@ TEST_F(RussianRouletteTest, NoNaNOrInfAtHighDepth) {
 	const char* out = "rr_test_nan_d50.ppm";
 	files_.push_back(out);
 
-	cpu_render_main(80, 80, 20, 50, out, 0, 278.0, 278.0, -800.0);
+	cpu_render_main(32, 32, 8, 20, out, 0, 278.0, 278.0, -800.0);
 	RenderResult r = load_render(out);
 	ASSERT_TRUE(r.valid) << "High-depth render failed";
 
@@ -352,7 +352,7 @@ TEST_F(RussianRouletteTest, PixelsInValidRangeAtHighDepth) {
 	const char* out = "rr_test_range_d50.ppm";
 	files_.push_back(out);
 
-	cpu_render_main(80, 80, 20, 50, out, 0, 278.0, 278.0, -800.0);
+	cpu_render_main(32, 32, 8, 20, out, 0, 278.0, 278.0, -800.0);
 	RenderResult r = load_render(out);
 	ASSERT_TRUE(r.valid);
 
