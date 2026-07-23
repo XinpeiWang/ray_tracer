@@ -803,3 +803,62 @@ TEST(GGXTest, RougherMeansLargerSpread) {
 	double d_rough  = rough.D(0.0, 0.0, 1.0);
 	EXPECT_GT(d_smooth, d_rough);
 }
+
+// D_visible must be non-negative
+TEST(GGXTest, DVisibleNonNegative) {
+	TrowbridgeReitz<double> dist(0.4, 0.4);
+	double dv = dist.D_visible(0.3,0.1,0.9, 0.0,0.0,1.0);
+	EXPECT_GE(dv, 0.0);
+}
+
+// PDF(w,wm) == D_visible(w,wm) (they are the same function)
+TEST(GGXTest, PDFEqualsD_visible) {
+	TrowbridgeReitz<double> dist(0.3, 0.3);
+	double wx=0.2,wy=0.1,wz=0.9, wmx=0.1,wmy=0.0,wmz=1.0;
+	// normalize wm
+	double wml=std::sqrt(wmx*wmx+wmy*wmy+wmz*wmz);
+	wmx/=wml; wmy/=wml; wmz/=wml;
+	EXPECT_NEAR(dist.PDF(wx,wy,wz,wmx,wmy,wmz),
+				dist.D_visible(wx,wy,wz,wmx,wmy,wmz), 1e-12);
+}
+
+// Sample_wm must return a unit vector
+TEST(GGXTest, SampleWmIsUnitVector) {
+	TrowbridgeReitz<double> dist(0.4, 0.4);
+	for (int i = 0; i < 100; ++i) {
+		double wmx, wmy, wmz;
+		dist.Sample_wm(0.3, 0.1, 0.9,
+					   random_double(), random_double(),
+					   wmx, wmy, wmz);
+		double len = std::sqrt(wmx*wmx + wmy*wmy + wmz*wmz);
+		EXPECT_NEAR(len, 1.0, 1e-10) << "Sample " << i << " not unit length";
+	}
+}
+
+// Sample_wm must always return wm in the upper hemisphere (wm.z > 0)
+TEST(GGXTest, SampleWmUpperHemisphere) {
+	TrowbridgeReitz<double> dist(0.5, 0.5);
+	for (int i = 0; i < 200; ++i) {
+		double wmx, wmy, wmz;
+		dist.Sample_wm(0.3, 0.1, 0.9,
+					   random_double(), random_double(),
+					   wmx, wmy, wmz);
+		EXPECT_GT(wmz, 0.0) << "Sample " << i << " below hemisphere";
+	}
+}
+
+// Regularize: alphas below 0.3 should be bumped up
+TEST(GGXTest, RegularizeBumpsLowAlpha) {
+	TrowbridgeReitz<double> dist(0.05, 0.15);
+	dist.Regularize();
+	EXPECT_GE(dist.alpha_x, 0.1);
+	EXPECT_GE(dist.alpha_y, 0.1);
+}
+
+// Regularize: alphas already >= 0.3 should be unchanged
+TEST(GGXTest, RegularizeDoesNotChangeHighAlpha) {
+	TrowbridgeReitz<double> dist(0.5, 0.8);
+	dist.Regularize();
+	EXPECT_NEAR(dist.alpha_x, 0.5, 1e-12);
+	EXPECT_NEAR(dist.alpha_y, 0.8, 1e-12);
+}
