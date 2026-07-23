@@ -576,3 +576,128 @@ TEST(FresnelTest, InputClampingOutOfRange) {
 	EXPECT_GE(FrDielectric(-2.0, 2.4), 0.0);
 	EXPECT_LE(FrDielectric(-2.0, 2.4), 1.0);
 }
+
+// ============================================================================
+// Shared Math Utils Tests  (src/shared/math_utils.h)
+// cpu_gpu_reflect, cpu_gpu_refract, PowerHeuristic
+// ============================================================================
+
+// --- cpu_gpu_reflect ---
+
+// Reflect a vector straight back along the normal (normal incidence).
+// v = (0,0,1) hitting n = (0,0,-1): result must be (0,0,1) reflected = (0,0,-1).
+// General formula: r = v - 2*dot(v,n)*n
+TEST(SharedReflectTest, NormalIncidence) {
+	vec3 v(0, 0, 1);
+	vec3 n(0, 0, -1);
+	vec3 r = cpu_gpu_reflect(v, n);
+	// dot(v,n) = -1, so r = (0,0,1) - 2*(-1)*(0,0,-1) = (0,0,1) - (0,0,2) = (0,0,-1)
+	EXPECT_NEAR(r.x(), 0.0, 1e-12);
+	EXPECT_NEAR(r.y(), 0.0, 1e-12);
+	EXPECT_NEAR(r.z(), -1.0, 1e-12);
+}
+
+// Reflect off a horizontal surface: incoming at 45 degrees, outgoing at 45 degrees.
+TEST(SharedReflectTest, FortyFiveDegrees) {
+	vec3 v = unit_vector(vec3(1, 0, -1));   // incoming down-right
+	vec3 n(0, 0, 1);                         // upward normal
+	vec3 r = cpu_gpu_reflect(v, n);
+	vec3 expected = unit_vector(vec3(1, 0, 1));
+	EXPECT_NEAR(r.x(), expected.x(), 1e-12);
+	EXPECT_NEAR(r.y(), expected.y(), 1e-12);
+	EXPECT_NEAR(r.z(), expected.z(), 1e-12);
+}
+
+// Reflected vector must have the same length as the incident vector.
+TEST(SharedReflectTest, PreservesLength) {
+	vec3 v(1.5, -0.7, 0.3);
+	vec3 n = unit_vector(vec3(0.2, 0.9, 0.4));
+	vec3 r = cpu_gpu_reflect(v, n);
+	EXPECT_NEAR(r.length(), v.length(), 1e-10);
+}
+
+// --- cpu_gpu_refract ---
+
+// At normal incidence (straight in), refraction doesn't bend the ray.
+TEST(SharedRefractTest, NormalIncidenceNoBending) {
+	vec3 uv(0, 0, 1);       // straight down
+	vec3 n(0, 0, -1);       // surface normal pointing up
+	double eta = 1.5;        // air -> glass: etai/etat = 1/1.5
+	vec3 r = cpu_gpu_refract<vec3, double>(uv, n, 1.0 / eta);
+	// At normal incidence the refracted ray is parallel to incident
+	EXPECT_NEAR(r.x(), 0.0, 1e-10);
+	EXPECT_NEAR(r.y(), 0.0, 1e-10);
+	EXPECT_NEAR(r.z(), 1.0, 1e-10);
+}
+
+// Snell's law: verify sin(theta_t) = sin(theta_i) / eta for 30 deg incidence.
+TEST(SharedRefractTest, SnellsLaw) {
+	double theta_i = 30.0 * pi / 180.0;
+	double eta = 1.5;  // air -> glass
+	vec3 uv = unit_vector(vec3(std::sin(theta_i), 0, std::cos(theta_i)));
+	vec3 n(0, 0, -1);
+	vec3 r = cpu_gpu_refract<vec3, double>(uv, n, 1.0 / eta);
+	// sin(theta_t) = sin(theta_i) / eta
+	double sin_t = std::sqrt(r.x()*r.x() + r.y()*r.y());
+	double expected_sin_t = std::sin(theta_i) / eta;
+	EXPECT_NEAR(sin_t, expected_sin_t, 1e-10);
+}
+
+// Refracted ray must be a unit vector (same as incident unit vector).
+TEST(SharedRefractTest, OutputIsUnitVector) {
+	vec3 uv = unit_vector(vec3(0.5, 0, 0.866));
+	vec3 n(0, 0, -1);
+	vec3 r = cpu_gpu_refract<vec3, double>(uv, n, 1.0 / 1.5);
+	EXPECT_NEAR(r.length(), 1.0, 1e-10);
+}
+
+// --- PowerHeuristic ---
+
+// Equal PDFs: weight should be 0.5
+TEST(SharedPowerHeuristicTest, EqualPDFsGiveHalf) {
+	EXPECT_NEAR(PowerHeuristic(1.0, 1.0), 0.5, 1e-12);
+}
+
+// First PDF dominates: weight approaches 1
+TEST(SharedPowerHeuristicTest, DominantPDFApproachesOne) {
+	double w = PowerHeuristic(1000.0, 0.001);
+	EXPECT_GT(w, 0.999);
+}
+
+// Second PDF dominates: weight approaches 0
+TEST(SharedPowerHeuristicTest, SubdominantPDFApproachesZero) {
+	double w = PowerHeuristic(0.001, 1000.0);
+	EXPECT_LT(w, 0.001);
+}
+
+// pdf_a = 0: weight must be 0
+TEST(SharedPowerHeuristicTest, ZeroPdfAIsZero) {
+	EXPECT_DOUBLE_EQ(PowerHeuristic(0.0, 1.0), 0.0);
+}
+
+// pdf_b = 0: weight must be 1
+TEST(SharedPowerHeuristicTest, ZeroPdfBIsOne) {
+	EXPECT_DOUBLE_EQ(PowerHeuristic(1.0, 0.0), 1.0);
+}
+
+// Output always in [0, 1] for a wide range of inputs
+TEST(SharedPowerHeuristicTest, AlwaysInValidRange) {
+	double vals[] = {0.0, 1e-10, 0.001, 0.1, 1.0, 10.0, 1e6};
+	for (double a : vals) {
+		for (double b : vals) {
+			double w = PowerHeuristic(a, b);
+			EXPECT_GE(w, 0.0) << "a=" << a << " b=" << b;
+			EXPECT_LE(w, 1.0) << "a=" << a << " b=" << b;
+		}
+	}
+}
+
+// Symmetry check: PowerHeuristic(a,b) + PowerHeuristic(b,a) == 1 for a,b > 0
+TEST(SharedPowerHeuristicTest, ComplementSumsToOne) {
+	double pairs[][2] = {{0.5, 0.3}, {1.0, 2.0}, {0.01, 100.0}};
+	for (auto& p : pairs) {
+		double wa = PowerHeuristic(p[0], p[1]);
+		double wb = PowerHeuristic(p[1], p[0]);
+		EXPECT_NEAR(wa + wb, 1.0, 1e-12) << "a=" << p[0] << " b=" << p[1];
+	}
+}
