@@ -4,6 +4,7 @@
 #include <optix.h>
 #include "optix_types.h"
 #include "optix_math_helpers.h"
+#include "../../src/shared/fresnel.h"   // Shared exact Fresnel (CPU+GPU)
 
 // Launch parameters (constant across all threads)
 extern "C" { __constant__ LaunchParams params; }
@@ -63,12 +64,7 @@ __device__ __forceinline__ float3 refract(const float3& uv, const float3& n, flo
 	return r_out_perp + r_out_parallel;
 }
 
-__device__ __forceinline__ float reflectance(float cosine, float ref_idx) {
-	// Schlick's approximation
-	float r0 = (1.0f - ref_idx) / (1.0f + ref_idx);
-	r0 = r0 * r0;
-	return r0 + (1.0f - r0) * powf((1.0f - cosine), 5.0f);
-}
+// Schlick's approximation removed — FrDielectric<float> from shared/fresnel.h is used instead.
 
 //==============================================================================
 // Multiple Importance Sampling (MIS) Helpers
@@ -436,7 +432,8 @@ extern "C" __global__ void __closesthit__sphere() {
 
 			bool cannot_refract = ri * sin_theta > 1.0f;
 
-			if (cannot_refract || reflectance(cos_theta, ri) > random_float(seed)) {
+			// FrDielectric expects eta_t/eta_i; ri = eta_i/eta_t, so pass 1/ri
+			if (cannot_refract || FrDielectric(cos_theta, 1.0f / ri) > random_float(seed)) {
 				scattered_dir = reflect(unit_direction, normal);
 			} else {
 				scattered_dir = refract(unit_direction, normal, ri);
@@ -688,7 +685,8 @@ extern "C" __global__ void __closesthit__quad() {
 
 			bool cannot_refract = ri * sin_theta > 1.0f;
 
-			if (cannot_refract || reflectance(cos_theta, ri) > random_float(seed)) {
+			// FrDielectric expects eta_t/eta_i; ri = eta_i/eta_t, so pass 1/ri
+			if (cannot_refract || FrDielectric(cos_theta, 1.0f / ri) > random_float(seed)) {
 				scattered_dir = reflect(unit_direction, final_normal);
 			} else {
 				scattered_dir = refract(unit_direction, final_normal, ri);
