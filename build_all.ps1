@@ -1,7 +1,7 @@
 param([string]$Config = 'Release', [switch]$Rebuild)
 $RepoRoot   = $PSScriptRoot
 $SlnPath    = Join-Path $RepoRoot 'ray_tracer.sln'
-$QtBuildDir = Join-Path $RepoRoot 'qt_gui\build'
+$QtBuildDir = Join-Path $RepoRoot 'qt_gui'
 $MinGWBin   = 'C:\Qt\Tools\mingw1310_64\bin'
 $PackageDir = Join-Path $RepoRoot 'RayTracer_Package'
 function OK   { param($m) Write-Host "  [OK]  $m" -ForegroundColor Green  }
