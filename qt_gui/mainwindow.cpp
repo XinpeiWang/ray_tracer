@@ -391,6 +391,50 @@ void MainWindow::setupUI() {
 
 	mainLayout->addWidget(modeGroup);
 
+	// Scene selection -- global setting, lives at top level
+	QGroupBox *sceneGroup = new QGroupBox("Scene", this);
+	QHBoxLayout *sceneTopLayout = new QHBoxLayout(sceneGroup);
+	sceneTopLayout->setContentsMargins(10, 8, 10, 8);
+	sceneTopLayout->setSpacing(10);
+
+	m_sceneCombo = new QComboBox(this);
+	m_sceneCombo->addItem("Cornell Box", 0);
+	m_sceneCombo->addItem("Bouncing Spheres", 1);
+	m_sceneCombo->addItem("Checkered Spheres", 2);
+	m_sceneCombo->addItem("Earth (requires earthmap.jpg)", 3);
+	m_sceneCombo->addItem("Perlin Spheres", 4);
+	m_sceneCombo->addItem("Colored Quads", 5);
+	m_sceneCombo->addItem("Simple Light", 6);
+	m_sceneCombo->addItem("Cornell Smoke", 7);
+	m_sceneCombo->addItem("Final Scene (very slow!)", 8);
+	m_sceneCombo->addItem("Rough Metal Spheres (GGX)", 9);
+	m_sceneCombo->addItem("Cornell Rough Metal (GGX)", 10);
+	styleComboBox(m_sceneCombo);
+
+	m_sceneInfoLabel = new QLabel(this);
+	m_sceneInfoLabel->setWordWrap(true);
+	m_sceneInfoLabel->setMinimumWidth(200);
+	m_sceneInfoLabel->setStyleSheet(
+		"QLabel {"
+		"  color: #B0B0B0;"
+		"  background-color: #2E2E2E;"
+		"  border: 1px solid #404040;"
+		"  border-radius: 4px;"
+		"  padding: 6px 10px;"
+		"  font-size: 11px;"
+		"}"
+	);
+
+	sceneTopLayout->addWidget(new QLabel("Scene:"));
+	sceneTopLayout->addWidget(m_sceneCombo, 1);
+	sceneTopLayout->addWidget(m_sceneInfoLabel, 2);
+
+	connect(m_sceneCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+			this, &MainWindow::onSceneChanged);
+	onSceneChanged(0);
+
+	mainLayout->addWidget(sceneGroup);
+
 	// Create tab widget
 	m_tabWidget = new QTabWidget(this);
 	createBasicTab();
@@ -572,60 +616,6 @@ void MainWindow::createAdvancedTab() {
 	formLayout->addRow("Max Ray Depth:", m_maxDepthSpinBox);
 
 	layout->addWidget(advancedGroup);
-
-	// ============================================================================
-	// Scene Selection Group
-	// ============================================================================
-	// Choose from different pre-built scenes from the Ray Tracing book series
-	// Each scene has different complexity, performance characteristics, and features
-	// ============================================================================
-
-	QGroupBox *sceneGroup = new QGroupBox("Scene Selection", advancedTab);
-	QVBoxLayout *sceneLayout = new QVBoxLayout(sceneGroup);
-	sceneLayout->setSpacing(10);
-	sceneLayout->setContentsMargins(15, 25, 15, 15);
-
-	// Scene selector combo box
-	m_sceneCombo = new QComboBox(advancedTab);
-	m_sceneCombo->addItem("Cornell Box", 0);
-	m_sceneCombo->addItem("Bouncing Spheres", 1);
-	m_sceneCombo->addItem("Checkered Spheres", 2);
-	m_sceneCombo->addItem("Earth (requires earthmap.jpg)", 3);
-	m_sceneCombo->addItem("Perlin Spheres", 4);
-	m_sceneCombo->addItem("Colored Quads", 5);
-	m_sceneCombo->addItem("Simple Light", 6);
-	m_sceneCombo->addItem("Cornell Smoke", 7);
-	m_sceneCombo->addItem("Final Scene (very slow!)", 8);
-	m_sceneCombo->addItem("Rough Metal Spheres (GGX)", 9);
-	m_sceneCombo->addItem("Cornell Rough Metal (GGX)", 10);
-	styleComboBox(m_sceneCombo);
-
-	// Scene info label - shows description and performance info
-	m_sceneInfoLabel = new QLabel(advancedTab);
-	m_sceneInfoLabel->setWordWrap(true);
-	m_sceneInfoLabel->setStyleSheet(
-		"QLabel {"
-		"  color: #B0B0B0;"
-		"  background-color: #2E2E2E;"
-		"  border: 1px solid #404040;"
-		"  border-radius: 4px;"
-		"  padding: 10px;"
-		"  font-size: 11px;"
-		"}"
-	);
-
-	sceneLayout->addWidget(new QLabel("Scene:"));
-	sceneLayout->addWidget(m_sceneCombo);
-	sceneLayout->addWidget(m_sceneInfoLabel);
-
-	// Connect scene change handler
-	connect(m_sceneCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-			this, &MainWindow::onSceneChanged);
-
-	// Initialize with default scene (Cornell Box)
-	onSceneChanged(0);
-
-	layout->addWidget(sceneGroup);
 
 	// ============================================================================
 	// Camera Position Group
