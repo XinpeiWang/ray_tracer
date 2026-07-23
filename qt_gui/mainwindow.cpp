@@ -431,7 +431,6 @@ void MainWindow::setupUI() {
 
 	connect(m_sceneCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
 			this, &MainWindow::onSceneChanged);
-	onSceneChanged(0);
 
 	mainLayout->addWidget(sceneGroup);
 
@@ -441,6 +440,9 @@ void MainWindow::setupUI() {
 	createAdvancedTab();
 	createVideoTab();
 	createLogTab();
+
+	// Initialize scene info AFTER tabs are created (onSceneChanged uses m_samplesSpinBox)
+	onSceneChanged(0);
 
 	mainLayout->addWidget(m_tabWidget);
 
