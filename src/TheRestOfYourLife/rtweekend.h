@@ -68,12 +68,12 @@ struct PCG32 {
     }
 };
 
-// Thread-local PCG32 instance seeded once per thread from a hardware source.
-// Provides fast, independent random streams on each render thread.
+// Thread-local PCG32 — one instance per render thread, initialized once.
+// Declared as a macro-free inline to ensure the compiler can inline the
+// state access and avoid any function-call overhead per sample.
 inline PCG32& thread_rng() {
-    thread_local static PCG32 rng = []() {
+    thread_local PCG32 rng = []() {
         PCG32 r;
-        // Use thread id + hardware entropy for a unique sequence per thread.
         uint64_t tid = std::hash<std::thread::id>{}(std::this_thread::get_id());
         uint64_t hw  = static_cast<uint64_t>(std::random_device{}());
         r.seed(tid ^ hw, hw);
@@ -82,18 +82,20 @@ inline PCG32& thread_rng() {
     return rng;
 }
 
-// Thread-safe random utilities — backed by PCG32.
+// Random utilities — all inlined, no virtual dispatch, no heap allocation.
 inline double random_double() {
-    return thread_rng().uniform_double();
+    thread_local PCG32& rng = thread_rng();
+    return rng.uniform_double();
 }
 
 inline double random_double(double min, double max) {
-    return min + (max - min) * thread_rng().uniform_double();
+    thread_local PCG32& rng = thread_rng();
+    return min + (max - min) * rng.uniform_double();
 }
 
 inline int random_int(int min, int max) {
-    // Returns a random integer in [min,max].
-    return static_cast<int>(min + (max - min + 1) * thread_rng().uniform_double());
+    thread_local PCG32& rng = thread_rng();
+    return static_cast<int>(min + (max - min + 1) * rng.uniform_double());
 }
 
 
