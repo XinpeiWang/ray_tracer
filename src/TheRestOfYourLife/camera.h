@@ -321,13 +321,9 @@ class camera {
         return pdf_a / (pdf_a + pdf_b);
     }
 
-    // Power heuristic with exponent β=2 (optional, usually better than balance)
+    // Power heuristic beta=2 -- delegates to shared PowerHeuristic (pbrt-v4 pattern)
     static double mis_power_heuristic(double pdf_a, double pdf_b) {
-        if (pdf_a <= 0.0) return 0.0;
-        if (pdf_b <= 0.0) return 1.0;
-        double a2 = pdf_a * pdf_a;
-        double b2 = pdf_b * pdf_b;
-        return a2 / (a2 + b2);
+        return PowerHeuristic(pdf_a, pdf_b);
     }
 
     color ray_color(const ray& r, int depth, const hittable& world, const hittable& lights,

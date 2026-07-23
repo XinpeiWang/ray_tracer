@@ -53,16 +53,10 @@ __device__ __forceinline__ bool near_zero(const float3& v) {
 	return (fabsf(v.x) < s) && (fabsf(v.y) < s) && (fabsf(v.z) < s);
 }
 
-__device__ __forceinline__ float3 reflect(const float3& v, const float3& n) {
-	return v - 2.0f * dot(v, n) * n;
-}
-
-__device__ __forceinline__ float3 refract(const float3& uv, const float3& n, float etai_over_etat) {
-	float cos_theta = fminf(dot(-uv, n), 1.0f);
-	float3 r_out_perp = etai_over_etat * (uv + cos_theta * n);
-	float3 r_out_parallel = -sqrtf(fabsf(1.0f - dot(r_out_perp, r_out_perp))) * n;
-	return r_out_perp + r_out_parallel;
-}
+// reflect/refract from shared CPU/GPU header (pbrt-v4 pattern)
+#include "../../src/shared/math_utils.h"
+__device__ __forceinline__ float3 reflect(const float3& v, const float3& n) { return cpu_gpu_reflect(v, n); }
+__device__ __forceinline__ float3 refract(const float3& uv, const float3& n, float e) { return cpu_gpu_refract<float3,float>(uv, n, e); }
 
 // Schlick's approximation removed — FrDielectric<float> from shared/fresnel.h is used instead.
 
@@ -70,11 +64,9 @@ __device__ __forceinline__ float3 refract(const float3& uv, const float3& n, flo
 // Multiple Importance Sampling (MIS) Helpers
 //==============================================================================
 
-// MIS power heuristic (beta = 2)
+// MIS power heuristic (beta=2) -- delegates to shared PowerHeuristic (pbrt-v4 pattern)
 __device__ __forceinline__ float mis_power_heuristic(float pdf_a, float pdf_b) {
-	float a2 = pdf_a * pdf_a;
-	float b2 = pdf_b * pdf_b;
-	return a2 / (a2 + b2);
+	return PowerHeuristic(pdf_a, pdf_b);
 }
 
 // Cosine-weighted hemisphere sampling PDF
