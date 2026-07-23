@@ -27,7 +27,9 @@ enum class SceneType {
 	QUADS = 5,              // Five colored quads
 	SIMPLE_LIGHT = 6,       // Perlin spheres with lights
 	CORNELL_SMOKE = 7,      // Cornell box with volumetric fog
-	FINAL_SCENE = 8         // Complex final scene from "The Next Week"
+	FINAL_SCENE = 8,        // Complex final scene from "The Next Week"
+	ROUGH_METAL_SPHERES = 9, // GGX roughness progression showcase
+	CORNELL_ROUGH_METAL = 10 // Cornell box with rough metal objects
 };
 
 /// Scene configuration structure
@@ -75,9 +77,17 @@ static const SceneConfig SCENE_CONFIGS[] = {
 	  "Cornell box with volumetric fog", 
 	  false, false, 200, "Slow" },
 
-	{ SceneType::FINAL_SCENE, "Final Scene", 
-	  "Complex scene from The Next Week (very slow!)", 
-	  false, false, 500, "Very Slow" }
+	{ SceneType::FINAL_SCENE, "Final Scene",
+	  "Complex scene from The Next Week (very slow!)",
+	  false, false, 500, "Very Slow" },
+
+	{ SceneType::ROUGH_METAL_SPHERES, "Rough Metal Spheres",
+	  "Five GGX spheres with roughness 0.05 to 0.8 -- showcases microfacet BRDF",
+	  false, false, 200, "Medium" },
+
+	{ SceneType::CORNELL_ROUGH_METAL, "Cornell Rough Metal",
+	  "Cornell box with rough aluminum box and rough gold sphere (GGX microfacet)",
+	  false, false, 200, "Medium" }
 };
 
 static const int NUM_SCENES = sizeof(SCENE_CONFIGS) / sizeof(SCENE_CONFIGS[0]);
@@ -342,6 +352,74 @@ inline hittable_list build_final_scene() {
 		make_shared<rotate_y>(make_shared<bvh_node>(boxes2), 15),
 		vec3(-100,270,395)
 	));
+
+	return world;
+}
+
+/**
+ * Rough Metal Spheres -- GGX roughness progression showcase
+ * Five spheres in a row, roughness 0.05 -> 0.2 -> 0.4 -> 0.6 -> 0.8
+ * Lit from a large area light above; sky background for ambient fill.
+ */
+inline hittable_list build_rough_metal_spheres() {
+	hittable_list world;
+
+	// Ground plane
+	auto ground = make_shared<lambertian>(color(0.2, 0.2, 0.2));
+	world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, ground));
+
+	// Five rough-metal spheres with increasing roughness
+	const double roughnesses[] = { 0.05, 0.2, 0.4, 0.6, 0.8 };
+	// Gold-ish tint
+	auto albedo = color(0.95, 0.85, 0.55);
+	for (int i = 0; i < 5; i++) {
+		double x = (i - 2) * 2.5;
+		world.add(make_shared<sphere>(
+			point3(x, 1.0, 0), 1.0,
+			make_shared<rough_metal>(albedo, roughnesses[i])
+		));
+	}
+
+	// Large area light above
+	auto light = make_shared<diffuse_light>(color(6, 6, 6));
+	world.add(make_shared<quad>(point3(-6, 6, -4), vec3(12, 0, 0), vec3(0, 0, 8), light));
+
+	return world;
+}
+
+/**
+ * Cornell box with rough metal objects (GGX microfacet showcase)
+ * Replaces the white diffuse box with rough aluminum and the glass sphere
+ * with a rough gold sphere -- directly shows the GGX BRDF in a familiar scene.
+ */
+inline hittable_list build_cornell_rough_metal() {
+	hittable_list world;
+
+	auto red   = make_shared<lambertian>(color(.65, .05, .05));
+	auto white = make_shared<lambertian>(color(.73, .73, .73));
+	auto green = make_shared<lambertian>(color(.12, .45, .15));
+	auto light = make_shared<diffuse_light>(color(15, 15, 15));
+
+	// Cornell box walls
+	world.add(make_shared<quad>(point3(555,0,0),   vec3(0,0,555),  vec3(0,555,0), green));
+	world.add(make_shared<quad>(point3(0,0,555),   vec3(0,0,-555), vec3(0,555,0), red));
+	world.add(make_shared<quad>(point3(0,555,0),   vec3(555,0,0),  vec3(0,0,555), white));
+	world.add(make_shared<quad>(point3(0,0,555),   vec3(555,0,0),  vec3(0,0,-555), white));
+	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), white));
+
+	// Ceiling light
+	world.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), light));
+
+	// Rough aluminum box (roughness 0.15 -- brushed metal look)
+	auto alum = make_shared<rough_metal>(color(0.8, 0.85, 0.88), 0.15);
+	shared_ptr<hittable> box1 = box(point3(0,0,0), point3(165,330,165), alum);
+	box1 = make_shared<rotate_y>(box1, 15);
+	box1 = make_shared<translate>(box1, vec3(265,0,295));
+	world.add(box1);
+
+	// Rough gold sphere (roughness 0.3 -- warm brushed gold)
+	auto gold = make_shared<rough_metal>(color(0.95, 0.78, 0.28), 0.3);
+	world.add(make_shared<sphere>(point3(190, 90, 190), 90, gold));
 
 	return world;
 }
