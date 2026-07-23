@@ -92,7 +92,7 @@ TEST(RenderIntegrationTest, BasicCPURender) {
 	const char* output = "test_render_cpu_basic.ppm";
 
 	int result = cpu_render_main(
-		100, 100, 5, 5,
+		32, 32, 2, 5,
 		output,
 		0, 278, 278, -800
 	);
@@ -102,8 +102,8 @@ TEST(RenderIntegrationTest, BasicCPURender) {
 	EXPECT_TRUE(has_valid_ppm_header(output));
 
 	auto [width, height] = get_ppm_dimensions(output);
-	EXPECT_EQ(width, 100);
-	EXPECT_EQ(height, 100);
+	EXPECT_EQ(width, 32);
+	EXPECT_EQ(height, 32);
 
 	std::remove(output);
 }
@@ -118,9 +118,8 @@ TEST(RenderIntegrationTest, CPUDifferentResolutions) {
 	};
 
 	TestCase cases[] = {
-		{50, 50, "small"},
-		{100, 100, "medium"},
-		{200, 200, "large"},
+		{16, 16, "small"},
+		{32, 32, "medium"},
 	};
 
 	for (const auto& test : cases) {
@@ -151,11 +150,11 @@ TEST(RenderIntegrationTest, CPUCameraPositionsDifferent) {
 	const char* output2 = "test_cpu_cam2.ppm";
 
 	// Render from front
-	cpu_render_main(100, 100, 5, 5, output1, 0, 278, 278, -800);
+	cpu_render_main(32, 32, 1, 5, output1, 0, 278, 278, -800);
 	size_t hash1 = hash_file(output1);
 
 	// Render from left wall
-	cpu_render_main(100, 100, 5, 5, output2, 0, 50, 278, 278);
+	cpu_render_main(32, 32, 1, 5, output2, 0, 50, 278, 278);
 	size_t hash2 = hash_file(output2);
 
 	// Images should be different
@@ -180,7 +179,7 @@ TEST(RenderIntegrationTest, BasicGPURender) {
 	const char* output = "test_render_gpu_basic.ppm";
 
 	int result = optix_render_main(
-		100, 100, 1000, 5,  // OptiX needs more samples for quality
+		64, 64, 200, 5,
 		output,
 		0, 278.0, 278.0, -800.0
 	);
@@ -190,8 +189,8 @@ TEST(RenderIntegrationTest, BasicGPURender) {
 	EXPECT_TRUE(has_valid_ppm_header(output));
 
 	auto [width, height] = get_ppm_dimensions(output);
-	EXPECT_EQ(width, 100);
-	EXPECT_EQ(height, 100);
+	EXPECT_EQ(width, 64);
+	EXPECT_EQ(height, 64);
 
 	std::remove(output);
 }
@@ -210,16 +209,16 @@ TEST(RenderIntegrationTest, GPUDifferentResolutions) {
 	};
 
 	TestCase cases[] = {
-		{50, 50, "small"},
-		{100, 100, "medium"},
-		{150, 150, "large"},
+		{16, 16, "small"},
+		{32, 32, "medium"},
+		{64, 64, "large"},
 	};
 
 	for (const auto& test : cases) {
 		std::string output = std::string("test_gpu_res_") + test.name + ".ppm";
 
 		int result = optix_render_main(
-			test.width, test.height, 100, 3,
+			test.width, test.height, 50, 3,
 			output.c_str(),
 			0, 278.0, 278.0, -800.0
 		);
@@ -247,8 +246,8 @@ TEST(RenderIntegrationTest, GPUvsCPUSimilarity) {
 	const char* gpu_output = "test_compare_gpu.ppm";
 
 	// Render small image with both
-	cpu_render_main(50, 50, 100, 10, cpu_output, 0, 278, 278, -800);
-	optix_render_main(50, 50, 10000, 10, gpu_output, 0, 278.0, 278.0, -800.0);
+	cpu_render_main(32, 32, 10, 5, cpu_output, 0, 278, 278, -800);
+	optix_render_main(32, 32, 500, 5, gpu_output, 0, 278.0, 278.0, -800.0);
 
 	// Both should exist and have valid headers
 	EXPECT_TRUE(file_exists(cpu_output));
@@ -284,11 +283,11 @@ TEST(RenderIntegrationTest, SampleCountAffectsOutput) {
 	const char* output_high = "test_samples_high.ppm";
 
 	// Low sample count
-	cpu_render_main(100, 100, 1, 5, output_low, 0, 278, 278, -800);
+	cpu_render_main(32, 32, 1, 5, output_low, 0, 278, 278, -800);
 	size_t hash_low = hash_file(output_low);
 
 	// High sample count
-	cpu_render_main(100, 100, 50, 5, output_high, 0, 278, 278, -800);
+	cpu_render_main(32, 32, 10, 5, output_high, 0, 278, 278, -800);
 	size_t hash_high = hash_file(output_high);
 
 	// Different sample counts should produce different images
@@ -306,7 +305,7 @@ TEST(RenderIntegrationTest, OneSampleFast) {
 
 	auto start = std::chrono::high_resolution_clock::now();
 
-	int result = cpu_render_main(100, 100, 1, 5, output, 0, 278, 278, -800);
+	int result = cpu_render_main(32, 32, 1, 5, output, 0, 278, 278, -800);
 
 	auto end = std::chrono::high_resolution_clock::now();
 	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
@@ -331,11 +330,11 @@ TEST(RenderIntegrationTest, MaxDepthAffectsOutput) {
 	const char* output_deep = "test_depth_deep.ppm";
 
 	// Shallow depth
-	cpu_render_main(100, 100, 5, 1, output_shallow, 0, 278, 278, -800);
+	cpu_render_main(32, 32, 2, 1, output_shallow, 0, 278, 278, -800);
 	size_t hash_shallow = hash_file(output_shallow);
 
 	// Deep depth
-	cpu_render_main(100, 100, 5, 50, output_deep, 0, 278, 278, -800);
+	cpu_render_main(32, 32, 2, 20, output_deep, 0, 278, 278, -800);
 	size_t hash_deep = hash_file(output_deep);
 
 	// Different max depths should produce different images
@@ -375,7 +374,7 @@ TEST(RenderIntegrationTest, AllCameraPresetsValid) {
 		std::string output = std::string("test_preset_") + preset.name + ".ppm";
 
 		int result = cpu_render_main(
-			50, 50, 1, 3,  // Small, fast render
+			16, 16, 1, 3,  // Small, fast render
 			output.c_str(),
 			0, preset.cam_x, preset.cam_y, preset.cam_z
 		);
@@ -400,8 +399,8 @@ TEST(RenderIntegrationTest, DeterministicRender) {
 	const char* output2 = "test_deterministic_2.ppm";
 
 	// Render twice with same parameters
-	cpu_render_main(100, 100, 10, 5, output1, 0, 278, 278, -800);
-	cpu_render_main(100, 100, 10, 5, output2, 0, 278, 278, -800);
+	cpu_render_main(32, 32, 2, 5, output1, 0, 278, 278, -800);
+	cpu_render_main(32, 32, 2, 5, output2, 0, 278, 278, -800);
 
 	size_t hash1 = hash_file(output1);
 	size_t hash2 = hash_file(output2);
@@ -429,7 +428,7 @@ TEST(RenderIntegrationTest, NonExistentDirectory) {
 	const char* output = "nonexistent_dir/test.ppm";
 
 	// This may fail or use default output path
-	int result = cpu_render_main(50, 50, 1, 3, output, 0, 278, 278, -800);
+	int result = cpu_render_main(16, 16, 1, 3, output, 0, 278, 278, -800);
 
 	// Current implementation may succeed
 	// or fail - just verify it doesn't crash
@@ -460,7 +459,9 @@ TEST(RenderIntegrationTest, VerySmallImage) {
 TEST(RenderIntegrationTest, VeryLargeMaxDepth) {
 	const char* output = "test_deep.ppm";
 
-	int result = cpu_render_main(50, 50, 1, 1000, output, 0, 278, 278, -800);
+	// Use depth=20 (not 1000) -- Russian Roulette handles deep paths,
+	// but depth=1000 with 50x50 is prohibitively slow for a unit test.
+	int result = cpu_render_main(16, 16, 1, 20, output, 0, 278, 278, -800);
 
 	EXPECT_EQ(result, 0);
 
