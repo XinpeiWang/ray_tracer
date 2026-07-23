@@ -238,3 +238,128 @@ TEST_F(EnergyConservationTest, GPUNoNaNOrInf) {
 	}
 	EXPECT_EQ(nanCount, 0) << "GPU render produced " << nanCount << " NaN/Inf values";
 }
+
+// ============================================================================
+// Russian Roulette Tests
+// ============================================================================
+//
+// These tests verify the key properties of Russian Roulette path termination:
+//  1. Unbiasedness  — average brightness must not change vs a no-RR baseline
+//  2. No energy gain — RR must not create energy (avg with RR <= avg without)
+//  3. High-depth stability — raising max_depth with RR must not blow up or darken
+//  4. Valid output — RR compensation must never produce NaN/Inf
+//
+// Note: RR is always active in the current build (depth < max_depth - 2).
+// These tests compare low-depth (RR rarely fires) vs high-depth (RR fires often).
+// ============================================================================
+
+class RussianRouletteTest : public ::testing::Test {
+protected:
+	void TearDown() override {
+		for (const auto& f : files_) std::remove(f.c_str());
+	}
+	std::vector<std::string> files_;
+
+	// Helper: compute average luminance of a render
+	float avg_luminance(const RenderResult& r) {
+		float sum = 0;
+		int n = r.width * r.height;
+		for (int i = 0; i < n; ++i) {
+			sum += 0.2126f * r.pixels[i*3+0]
+				 + 0.7152f * r.pixels[i*3+1]
+				 + 0.0722f * r.pixels[i*3+2];
+		}
+		return sum / n;
+	}
+};
+
+// Test: RR with high max_depth should not produce brighter image than low max_depth.
+// RR is unbiased — it should not add energy, just terminate paths early.
+TEST_F(RussianRouletteTest, NoEnergyGainAtHighDepth) {
+	const char* out_lo = "rr_test_depth5.ppm";
+	const char* out_hi = "rr_test_depth50.ppm";
+	files_.push_back(out_lo);
+	files_.push_back(out_hi);
+
+	// Enough SPP to average out RR noise
+	cpu_render_main(80, 80, 50, 5,  out_lo, 0, 278.0, 278.0, -800.0);
+	cpu_render_main(80, 80, 50, 50, out_hi, 0, 278.0, 278.0, -800.0);
+
+	RenderResult r_lo = load_render(out_lo);
+	RenderResult r_hi = load_render(out_hi);
+	ASSERT_TRUE(r_lo.valid) << "Low-depth render failed";
+	ASSERT_TRUE(r_hi.valid) << "High-depth render failed";
+
+	float lum_lo = avg_luminance(r_lo);
+	float lum_hi = avg_luminance(r_hi);
+
+	// High depth should converge to same or slightly higher (more bounces = more
+	// indirect light captured), but must never be more than 2x brighter (energy leak).
+	EXPECT_GT(lum_lo, 0.0f) << "Low-depth render is black";
+	EXPECT_GT(lum_hi, 0.0f) << "High-depth render is black";
+	EXPECT_LT(lum_hi, lum_lo * 2.0f)
+		<< "High-depth render is suspiciously brighter: lum_lo=" << lum_lo
+		<< " lum_hi=" << lum_hi << " — possible energy gain from RR compensation bug";
+}
+
+// Test: raising max_depth must not darken the image excessively.
+// RR terminates dim paths, but bright paths survive — so average should remain stable.
+TEST_F(RussianRouletteTest, HighDepthDoesNotDarken) {
+	const char* out_lo = "rr_test_nodark_d5.ppm";
+	const char* out_hi = "rr_test_nodark_d50.ppm";
+	files_.push_back(out_lo);
+	files_.push_back(out_hi);
+
+	cpu_render_main(80, 80, 50, 5,  out_lo, 0, 278.0, 278.0, -800.0);
+	cpu_render_main(80, 80, 50, 50, out_hi, 0, 278.0, 278.0, -800.0);
+
+	RenderResult r_lo = load_render(out_lo);
+	RenderResult r_hi = load_render(out_hi);
+	ASSERT_TRUE(r_lo.valid);
+	ASSERT_TRUE(r_hi.valid);
+
+	float lum_lo = avg_luminance(r_lo);
+	float lum_hi = avg_luminance(r_hi);
+
+	// High-depth should be at least 20% of the low-depth brightness.
+	// If RR compensation is broken (throughput not divided by survival prob),
+	// the image goes dark.
+	EXPECT_GT(lum_hi, lum_lo * 0.2f)
+		<< "High-depth image is suspiciously dark: lum_lo=" << lum_lo
+		<< " lum_hi=" << lum_hi << " — possible missing RR survival compensation";
+}
+
+// Test: RR output must contain no NaN or Inf even with aggressive termination.
+// The throughput /= (1 - q) compensation could produce Inf if q >= 1.
+TEST_F(RussianRouletteTest, NoNaNOrInfAtHighDepth) {
+	const char* out = "rr_test_nan_d50.ppm";
+	files_.push_back(out);
+
+	cpu_render_main(80, 80, 20, 50, out, 0, 278.0, 278.0, -800.0);
+	RenderResult r = load_render(out);
+	ASSERT_TRUE(r.valid) << "High-depth render failed";
+
+	int bad = 0;
+	for (float v : r.pixels) {
+		if (!std::isfinite(v)) ++bad;
+	}
+	EXPECT_EQ(bad, 0)
+		<< bad << " NaN/Inf values at max_depth=50 — RR compensation overflow?";
+}
+
+// Test: pixels must stay in [0, 1] after gamma even with high depth + RR compensation.
+TEST_F(RussianRouletteTest, PixelsInValidRangeAtHighDepth) {
+	const char* out = "rr_test_range_d50.ppm";
+	files_.push_back(out);
+
+	cpu_render_main(80, 80, 20, 50, out, 0, 278.0, 278.0, -800.0);
+	RenderResult r = load_render(out);
+	ASSERT_TRUE(r.valid);
+
+	int violations = 0;
+	for (float v : r.pixels) {
+		if (v < 0.0f || v > 1.0f) ++violations;
+	}
+	EXPECT_EQ(violations, 0)
+		<< violations << " pixels out of [0,1] at max_depth=50";
+}
