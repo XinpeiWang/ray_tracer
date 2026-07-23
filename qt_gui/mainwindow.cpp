@@ -596,6 +596,8 @@ void MainWindow::createAdvancedTab() {
 	m_sceneCombo->addItem("Simple Light", 6);
 	m_sceneCombo->addItem("Cornell Smoke", 7);
 	m_sceneCombo->addItem("Final Scene (very slow!)", 8);
+	m_sceneCombo->addItem("Rough Metal Spheres (GGX)", 9);
+	m_sceneCombo->addItem("Cornell Rough Metal (GGX)", 10);
 	styleComboBox(m_sceneCombo);
 
 	// Scene info label - shows description and performance info
@@ -1409,10 +1411,12 @@ void MainWindow::onSceneChanged(int index) {
 		{"Five colored quad primitives", "Fast", 100, false, true},
 		{"Perlin spheres with emissive light sources", "Fast", 100, false, true},
 		{"Cornell box with volumetric fog", "Slow", 200, false, true},
-		{"Complex scene from The Next Week (very slow!)", "Very Slow", 500, false, true}
+		{"Complex scene from The Next Week (very slow!)", "Very Slow", 500, false, true},
+		{"Five GGX spheres roughness 0.05->0.8 -- showcases microfacet BRDF", "Medium", 200, false, false},
+		{"Cornell box with rough aluminum box and rough gold sphere (GGX)", "Medium", 200, false, false}
 	};
 
-	if (index >= 0 && index < 9) {
+	if (index >= 0 && index < 11) {
 		const SceneInfo& info = sceneInfos[index];
 
 		QString infoText = QString("<b>Description:</b> %1<br>").arg(info.description);
