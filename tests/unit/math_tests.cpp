@@ -13,6 +13,7 @@
 #include "vec3.h"
 #include "color.h"
 #include "interval.h"
+#include "../shared/microfacet.h"
 #include "material.h"
 #include <cmath>
 
@@ -700,4 +701,105 @@ TEST(SharedPowerHeuristicTest, ComplementSumsToOne) {
 		double wb = PowerHeuristic(p[1], p[0]);
 		EXPECT_NEAR(wa + wb, 1.0, 1e-12) << "a=" << p[0] << " b=" << p[1];
 	}
+}
+
+// ============================================================================
+// GGX Microfacet (TrowbridgeReitz) Tests  -- src/shared/microfacet.h
+// Mirrors pbrt-v4 TrowbridgeReitzDistribution (util/scattering.h)
+// ============================================================================
+
+// D(wm) must be non-negative everywhere
+TEST(GGXTest, DNonNegative) {
+	double alphas[] = {0.01, 0.1, 0.3, 0.5, 1.0};
+	for (double a : alphas) {
+		TrowbridgeReitz<double> dist(a, a);
+		// Normal pointing straight up (wm = z-axis)
+		EXPECT_GE(dist.D(0.0, 0.0, 1.0), 0.0) << "alpha=" << a;
+		// Tilted 45 degrees
+		double s = std::sqrt(0.5);
+		EXPECT_GE(dist.D(s, 0.0, s), 0.0) << "alpha=" << a;
+	}
+}
+
+// D(wm) at normal incidence (wm = +Z): must equal 1 / (pi * alpha^2)
+// GGX isotropic: D(0,0,1) = 1/(pi*ax*ay*(1+0)^2) = 1/(pi*a^2)
+TEST(GGXTest, DNormalIncidenceAnalytic) {
+	double a = 0.5;
+	TrowbridgeReitz<double> dist(a, a);
+	double expected = 1.0 / (3.14159265358979323846 * a * a);
+	EXPECT_NEAR(dist.D(0.0, 0.0, 1.0), expected, 1e-10);
+}
+
+// Lambda(wm pointing straight up) = 0  (no masking at normal incidence)
+TEST(GGXTest, LambdaZeroAtNormal) {
+	TrowbridgeReitz<double> dist(0.5, 0.5);
+	EXPECT_NEAR(dist.Lambda(0.0, 0.0, 1.0), 0.0, 1e-12);
+}
+
+// G1 at normal incidence = 1/(1+Lambda) = 1/(1+0) = 1.0
+TEST(GGXTest, G1OneAtNormal) {
+	TrowbridgeReitz<double> dist(0.3, 0.3);
+	EXPECT_NEAR(dist.G1(0.0, 0.0, 1.0), 1.0, 1e-12);
+}
+
+// G(wo,wi) <= G1(wo) and G(wo,wi) <= G1(wi)  (combined masking <= individual)
+TEST(GGXTest, GLeqG1) {
+	TrowbridgeReitz<double> dist(0.4, 0.4);
+	double s = std::sqrt(0.5);
+	double wo_x=0.3, wo_y=0.1, wo_z=0.9;  // outgoing
+	double wi_x=0.1, wi_y=0.4, wi_z=0.8;  // incoming (both upper hemisphere)
+	double g  = dist.G(wo_x,wo_y,wo_z, wi_x,wi_y,wi_z);
+	double g1o = dist.G1(wo_x,wo_y,wo_z);
+	double g1i = dist.G1(wi_x,wi_y,wi_z);
+	EXPECT_LE(g, g1o + 1e-12);
+	EXPECT_LE(g, g1i + 1e-12);
+}
+
+// G is symmetric: G(wo,wi) == G(wi,wo)
+TEST(GGXTest, GSymmetry) {
+	TrowbridgeReitz<double> dist(0.5, 0.5);
+	double gab = dist.G(0.3,0.1,0.9, 0.2,0.4,0.8);
+	double gba = dist.G(0.2,0.4,0.8, 0.3,0.1,0.9);
+	EXPECT_NEAR(gab, gba, 1e-12);
+}
+
+// EffectivelySmooth: alpha < 1e-3 should be detected
+TEST(GGXTest, EffectivelySmooth) {
+	EXPECT_TRUE(TrowbridgeReitz<double>(0.0005, 0.0005).EffectivelySmooth());
+	EXPECT_FALSE(TrowbridgeReitz<double>(0.5, 0.5).EffectivelySmooth());
+}
+
+// RoughnessToAlpha: alpha = sqrt(roughness)
+TEST(GGXTest, RoughnessToAlpha) {
+	EXPECT_NEAR(TrowbridgeReitz<double>::RoughnessToAlpha(0.25), 0.5, 1e-12);
+	EXPECT_NEAR(TrowbridgeReitz<double>::RoughnessToAlpha(1.0),  1.0, 1e-12);
+	EXPECT_NEAR(TrowbridgeReitz<double>::RoughnessToAlpha(0.0),  0.0, 1e-12);
+}
+
+// GGX_conductor_brdf must be non-negative
+TEST(GGXTest, ConductorBRDFNonNegative) {
+	double alphas[] = {0.1, 0.3, 0.5, 0.9};
+	for (double a : alphas) {
+		double brdf = GGX_conductor_brdf(0.3,0.1,0.9, 0.2,0.4,0.8, a, a);
+		EXPECT_GE(brdf, 0.0) << "alpha=" << a;
+	}
+}
+
+// GGX_conductor_brdf is symmetric in wo/wi (reciprocity)
+TEST(GGXTest, ConductorBRDFReciprocity) {
+	double a = 0.4;
+	double fab = GGX_conductor_brdf(0.3,0.1,0.9, 0.2,0.4,0.8, a, a);
+	double fba = GGX_conductor_brdf(0.2,0.4,0.8, 0.3,0.1,0.9, a, a);
+	EXPECT_NEAR(fab, fba, 1e-10);
+}
+
+// At alpha->0 (smooth limit) D is very large (mirror-like spike)
+// At alpha=1 (very rough) D at normal is much smaller than at alpha=0.1
+TEST(GGXTest, RougherMeansLargerSpread) {
+	TrowbridgeReitz<double> smooth(0.05, 0.05);
+	TrowbridgeReitz<double> rough(0.9,  0.9);
+	// At normal incidence, smoother surface has higher NDF peak
+	double d_smooth = smooth.D(0.0, 0.0, 1.0);
+	double d_rough  = rough.D(0.0, 0.0, 1.0);
+	EXPECT_GT(d_smooth, d_rough);
 }
