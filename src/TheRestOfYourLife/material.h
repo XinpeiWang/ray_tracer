@@ -94,6 +94,35 @@ class metal : public material {
 };
 
 
+// Exact Fresnel reflectance for dielectric interfaces (pbrt-v4 FrDielectric).
+// Returns the fraction of light reflected at an interface with relative IOR eta.
+// cos_theta_i is the cosine of the angle of incidence (can be negative for
+// rays hitting from inside — the function handles both cases correctly).
+inline double FrDielectric(double cos_theta_i, double eta) {
+    cos_theta_i = std::fmax(-1.0, std::fmin(1.0, cos_theta_i));
+
+    if (cos_theta_i < 0.0) {
+        eta = 1.0 / eta;
+        cos_theta_i = -cos_theta_i;
+    }
+
+    double sin2_theta_i = 1.0 - cos_theta_i * cos_theta_i;
+    double sin2_theta_t = sin2_theta_i / (eta * eta);
+
+    if (sin2_theta_t >= 1.0)
+        return 1.0;  // Total internal reflection
+
+    double cos_theta_t = std::sqrt(std::fmax(0.0, 1.0 - sin2_theta_t));  // SafeSqrt: clamp to avoid NaN from float rounding
+
+    double r_parl = (eta * cos_theta_i - cos_theta_t)
+                  / (eta * cos_theta_i + cos_theta_t);
+    double r_perp = (cos_theta_i - eta * cos_theta_t)
+                  / (cos_theta_i + eta * cos_theta_t);
+
+    return (r_parl * r_parl + r_perp * r_perp) / 2.0;
+}
+
+
 class dielectric : public material {
   public:
     dielectric(double refraction_index) : refraction_index(refraction_index) {}
@@ -111,7 +140,9 @@ class dielectric : public material {
         bool cannot_refract = ri * sin_theta > 1.0;
         vec3 direction;
 
-        if (cannot_refract || reflectance(cos_theta, ri) > random_double())
+        // FrDielectric expects eta = eta_t/eta_i, but ri = eta_i/eta_t (used by refract()).
+        // Pass the reciprocal so the Fresnel equations use the correct ratio.
+        if (cannot_refract || reflectance(cos_theta, 1.0/ri) > random_double())
             direction = reflect(unit_direction, rec.normal);
         else
             direction = refract(unit_direction, rec.normal, ri);
@@ -128,11 +159,8 @@ class dielectric : public material {
     // the refractive index of the enclosing media
     double refraction_index;
 
-    static double reflectance(double cosine, double refraction_index) {
-        // Use Schlick's approximation for reflectance.
-        auto r0 = (1 - refraction_index) / (1 + refraction_index);
-        r0 = r0*r0;
-        return r0 + (1-r0)*std::pow((1 - cosine),5);
+    static double reflectance(double cos_theta_i, double eta) {
+        return FrDielectric(cos_theta_i, eta);
     }
 };
 
