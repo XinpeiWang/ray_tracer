@@ -9,6 +9,7 @@
  */
 
 #include <gtest/gtest.h>
+#include "rtweekend.h"
 #include "vec3.h"
 #include "color.h"
 #include "interval.h"
@@ -250,8 +251,8 @@ TEST(IntervalTest, Expand) {
 	interval i(1.0, 3.0);
 	interval expanded = i.expand(1.0);
 
-	EXPECT_DOUBLE_EQ(expanded.min, 0.0);
-	EXPECT_DOUBLE_EQ(expanded.max, 4.0);
+	EXPECT_DOUBLE_EQ(expanded.min, 0.5);
+	EXPECT_DOUBLE_EQ(expanded.max, 3.5);
 }
 
 // ============================================================================

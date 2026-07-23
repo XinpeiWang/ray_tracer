@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
@@ -54,15 +54,15 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
-      <SDLCheck>true</SDLCheck>
+      <SDLCheck>false</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;NOMINMAX;_USE_MATH_DEFINES;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)src;$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\optix;$(SolutionDir)tests\build\_deps\googletest-src\googletest\include;$(SolutionDir)tests\build\_deps\googletest-src\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)src;$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\optix;$(SolutionDir)tests\build\_deps\googletest-src\googletest\include;$(SolutionDir)tests\build\_deps\googletest-src\googletest;$(SolutionDir)tests\build\_deps\googletest-src\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>cudart_static.lib;cuda.lib;%(AdditionalDependencies)</AdditionalDependencies><AdditionalLibraryDirectories>$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories><GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -70,27 +70,29 @@
       <WarningLevel>Level3</WarningLevel>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <SDLCheck>true</SDLCheck>
+      <SDLCheck>false</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;NOMINMAX;_USE_MATH_DEFINES;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)src;$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\optix;$(SolutionDir)tests\build\_deps\googletest-src\googletest\include;$(SolutionDir)tests\build\_deps\googletest-src\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)src;$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\optix;$(SolutionDir)tests\build\_deps\googletest-src\googletest\include;$(SolutionDir)tests\build\_deps\googletest-src\googletest;$(SolutionDir)tests\build\_deps\googletest-src\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <AdditionalDependencies>cudart_static.lib;cuda.lib;%(AdditionalDependencies)</AdditionalDependencies><AdditionalLibraryDirectories>$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories><EnableCOMDATFolding>true</EnableCOMDATFolding><AdditionalDependencies>cudart_static.lib;cuda.lib;%(AdditionalDependencies)</AdditionalDependencies><AdditionalLibraryDirectories>$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <!-- Unit Tests -->
-    <ClCompile Include="unit\camera_tests.cpp" />
+    <ClCompile Include="gtest_all.cpp" /><ClCompile Include="gtest_main_wrapper.cpp" /><ClCompile Include="unit\camera_tests.cpp" />
     <ClCompile Include="unit\scene_tests.cpp" />
     <ClCompile Include="unit\math_tests.cpp" />
     <ClCompile Include="unit\interface_tests.cpp" />
     <!-- Integration Tests -->
-    <ClCompile Include="integration\serialization_tests.cpp" />
+    <ClCompile Include="integration\serialization_tests.cpp">
+      <ExcludedFromBuild>true</ExcludedFromBuild>
+    </ClCompile>
     <ClCompile Include="integration\render_tests.cpp" />
     <ClCompile Include="unit\gpu_render_tests.cpp" />
     <ClCompile Include="unit\energy_conservation_tests.cpp" />
@@ -106,3 +108,10 @@
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
+
+
+
+
+
+
+

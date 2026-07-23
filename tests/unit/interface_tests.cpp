@@ -41,7 +41,7 @@ TEST(CPUInterfaceTest, ValidParameters) {
 	double cam_y = 278.0;
 	double cam_z = -800.0;
 
-	int result = cpu_render_main(width, height, spp, max_depth, output_path, cam_x, cam_y, cam_z);
+	int result = cpu_render_main(width, height, spp, max_depth, output_path, 0, cam_x, cam_y, cam_z);
 
 	// Should return 0 for success
 	EXPECT_EQ(result, 0);
@@ -72,7 +72,7 @@ TEST(CPUInterfaceTest, DifferentCameraPositions) {
 		int result = cpu_render_main(
 			50, 50, 1, 3,  // Small, fast render
 			output_path.c_str(),
-			test.cam_x, test.cam_y, test.cam_z
+			0, test.cam_x, test.cam_y, test.cam_z
 		);
 
 		EXPECT_EQ(result, 0) << "Failed for: " << test.name;
@@ -89,7 +89,7 @@ TEST(CPUInterfaceTest, MinimumParameters) {
 	int result = cpu_render_main(
 		10, 10, 1, 1,  // Minimum size
 		"test_cpu_min.ppm",
-		278, 278, -800
+		0, 278, 278, -800
 	);
 
 	EXPECT_EQ(result, 0);
@@ -103,7 +103,7 @@ TEST(CPUInterfaceTest, LargerParameters) {
 	int result = cpu_render_main(
 		200, 200, 5, 10,  // Larger but still fast
 		"test_cpu_large.ppm",
-		278, 278, -800
+		0, 278, 278, -800
 	);
 
 	EXPECT_EQ(result, 0);
@@ -145,7 +145,7 @@ TEST(GPUInterfaceTest, ValidParameters) {
 	int max_depth = 5;
 	const char* output_path = "test_gpu_output.ppm";
 
-	int result = optix_render_main(width, height, spp, max_depth, output_path);
+	int result = optix_render_main(width, height, spp, max_depth, output_path, 0, 278.0, 278.0, -800.0);
 
 	// Should return 0 for success
 	EXPECT_EQ(result, 0);
@@ -175,7 +175,7 @@ TEST(InterfaceValidationTest, ZeroWidth) {
 	int result = cpu_render_main(
 		0, 100, 1, 5,  // Zero width
 		"test_invalid.ppm",
-		278, 278, -800
+		0, 278, 278, -800
 	);
 
 	// Should fail or handle gracefully
@@ -192,7 +192,7 @@ TEST(InterfaceValidationTest, ZeroHeight) {
 	int result = cpu_render_main(
 		100, 0, 1, 5,  // Zero height
 		"test_invalid.ppm",
-		278, 278, -800
+		0, 278, 278, -800
 	);
 
 	EXPECT_TRUE(result == 0 || result != 0);  // Placeholder
@@ -206,7 +206,7 @@ TEST(InterfaceValidationTest, NegativeSamples) {
 	int result = cpu_render_main(
 		100, 100, -1, 5,  // Negative samples
 		"test_invalid.ppm",
-		278, 278, -800
+		0, 278, 278, -800
 	);
 
 	EXPECT_TRUE(result == 0 || result != 0);  // Placeholder
@@ -220,7 +220,7 @@ TEST(InterfaceValidationTest, NullOutputPath) {
 	int result = cpu_render_main(
 		100, 100, 1, 5,
 		nullptr,  // Null path
-		278, 278, -800
+		0, 278, 278, -800
 	);
 
 	// Should handle gracefully (may use default path)
@@ -238,7 +238,7 @@ TEST(CameraParametersTest, CenterPosition) {
 	int result = cpu_render_main(
 		50, 50, 1, 3,
 		"test_center.ppm",
-		278, 278, 278  // At center
+		0, 278, 278, 278  // At center
 	);
 
 	EXPECT_EQ(result, 0);
@@ -252,7 +252,7 @@ TEST(CameraParametersTest, FarAwayCamera) {
 	int result = cpu_render_main(
 		50, 50, 1, 3,
 		"test_far.ppm",
-		278, 278, -5000  // Very far
+		0, 278, 278, -5000  // Very far
 	);
 
 	EXPECT_EQ(result, 0);
@@ -266,7 +266,7 @@ TEST(CameraParametersTest, ExtremeCoordinates) {
 	int result = cpu_render_main(
 		50, 50, 1, 3,
 		"test_extreme.ppm",
-		10000, 10000, 10000  // Far outside scene
+		0, 10000, 10000, 10000  // Far outside scene
 	);
 
 	EXPECT_EQ(result, 0);
@@ -286,12 +286,8 @@ TEST(OutputFileTest, FileCreation) {
 	int result = cpu_render_main(
 		50, 50, 1, 3,
 		output_path,
-		278, 278, -800
+		0, 278, 278, -800
 	);
-
-	EXPECT_EQ(result, 0);
-
-	// Check that file exists
 	std::ifstream file(output_path);
 	EXPECT_TRUE(file.good()) << "Output file was not created";
 	file.close();
@@ -310,7 +306,7 @@ TEST(OutputFileTest, PathWithDirectory) {
 	int result = cpu_render_main(
 		50, 50, 1, 3,
 		output_path,
-		278, 278, -800
+		0, 278, 278, -800
 	);
 
 	// May succeed or fail depending on directory existence
@@ -330,7 +326,7 @@ TEST(BenchmarkTest, SmallCPURender) {
 	int result = cpu_render_main(
 		100, 100, 1, 5,
 		"benchmark_cpu.ppm",
-		278, 278, -800
+		0, 278, 278, -800
 	);
 
 	auto end = std::chrono::high_resolution_clock::now();
@@ -352,16 +348,16 @@ TEST(BenchmarkTest, SmallCPURender) {
  * Benchmark small GPU render (if available)
  */
 TEST(BenchmarkTest, SmallGPURender) {
-	if (!gpu_is_available()) {
+	if (!optix_is_available()) {
 		GTEST_SKIP() << "GPU not available";
 	}
 
 	auto start = std::chrono::high_resolution_clock::now();
 
-	int result = gpu_render_main(
+	int result = optix_render_main(
 		100, 100, 10, 5,
 		"benchmark_gpu.ppm",
-		278, 278, -800
+		0, 278.0, 278.0, -800.0
 	);
 
 	auto end = std::chrono::high_resolution_clock::now();

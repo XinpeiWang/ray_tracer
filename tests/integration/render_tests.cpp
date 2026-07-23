@@ -94,7 +94,7 @@ TEST(RenderIntegrationTest, BasicCPURender) {
 	int result = cpu_render_main(
 		100, 100, 5, 5,
 		output,
-		278, 278, -800
+		0, 278, 278, -800
 	);
 
 	EXPECT_EQ(result, 0);
@@ -129,7 +129,7 @@ TEST(RenderIntegrationTest, CPUDifferentResolutions) {
 		int result = cpu_render_main(
 			test.width, test.height, 1, 3,
 			output.c_str(),
-			278, 278, -800
+			0, 278, 278, -800
 		);
 
 		EXPECT_EQ(result, 0) << "Failed for: " << test.name;
@@ -151,11 +151,11 @@ TEST(RenderIntegrationTest, CPUCameraPositionsDifferent) {
 	const char* output2 = "test_cpu_cam2.ppm";
 
 	// Render from front
-	cpu_render_main(100, 100, 5, 5, output1, 278, 278, -800);
+	cpu_render_main(100, 100, 5, 5, output1, 0, 278, 278, -800);
 	size_t hash1 = hash_file(output1);
 
 	// Render from left wall
-	cpu_render_main(100, 100, 5, 5, output2, 50, 278, 278);
+	cpu_render_main(100, 100, 5, 5, output2, 0, 50, 278, 278);
 	size_t hash2 = hash_file(output2);
 
 	// Images should be different
@@ -181,7 +181,8 @@ TEST(RenderIntegrationTest, BasicGPURender) {
 
 	int result = optix_render_main(
 		100, 100, 1000, 5,  // OptiX needs more samples for quality
-		output
+		output,
+		0, 278.0, 278.0, -800.0
 	);
 
 	EXPECT_EQ(result, 0);
@@ -219,7 +220,8 @@ TEST(RenderIntegrationTest, GPUDifferentResolutions) {
 
 		int result = optix_render_main(
 			test.width, test.height, 100, 3,
-			output.c_str()
+			output.c_str(),
+			0, 278.0, 278.0, -800.0
 		);
 
 		EXPECT_EQ(result, 0) << "Failed for: " << test.name;
@@ -227,11 +229,6 @@ TEST(RenderIntegrationTest, GPUDifferentResolutions) {
 
 		auto [w, h] = get_ppm_dimensions(output.c_str());
 		EXPECT_EQ(w, test.width) << "Failed for: " << test.name;
-		EXPECT_EQ(h, test.height) << "Failed for: " << test.name;
-
-		std::remove(output.c_str());
-	}
-}
 		EXPECT_EQ(h, test.height) << "Failed for: " << test.name;
 
 		std::remove(output.c_str());
@@ -251,7 +248,7 @@ TEST(RenderIntegrationTest, GPUvsCPUSimilarity) {
 
 	// Render small image with both
 	cpu_render_main(50, 50, 100, 10, cpu_output, 0, 278, 278, -800);
-	optix_render_main(50, 50, 10000, 10, gpu_output);
+	optix_render_main(50, 50, 10000, 10, gpu_output, 0, 278.0, 278.0, -800.0);
 
 	// Both should exist and have valid headers
 	EXPECT_TRUE(file_exists(cpu_output));
@@ -287,11 +284,11 @@ TEST(RenderIntegrationTest, SampleCountAffectsOutput) {
 	const char* output_high = "test_samples_high.ppm";
 
 	// Low sample count
-	cpu_render_main(100, 100, 1, 5, output_low, 278, 278, -800);
+	cpu_render_main(100, 100, 1, 5, output_low, 0, 278, 278, -800);
 	size_t hash_low = hash_file(output_low);
 
 	// High sample count
-	cpu_render_main(100, 100, 50, 5, output_high, 278, 278, -800);
+	cpu_render_main(100, 100, 50, 5, output_high, 0, 278, 278, -800);
 	size_t hash_high = hash_file(output_high);
 
 	// Different sample counts should produce different images
@@ -309,7 +306,7 @@ TEST(RenderIntegrationTest, OneSampleFast) {
 
 	auto start = std::chrono::high_resolution_clock::now();
 
-	int result = cpu_render_main(100, 100, 1, 5, output, 278, 278, -800);
+	int result = cpu_render_main(100, 100, 1, 5, output, 0, 278, 278, -800);
 
 	auto end = std::chrono::high_resolution_clock::now();
 	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
@@ -334,11 +331,11 @@ TEST(RenderIntegrationTest, MaxDepthAffectsOutput) {
 	const char* output_deep = "test_depth_deep.ppm";
 
 	// Shallow depth
-	cpu_render_main(100, 100, 5, 1, output_shallow, 278, 278, -800);
+	cpu_render_main(100, 100, 5, 1, output_shallow, 0, 278, 278, -800);
 	size_t hash_shallow = hash_file(output_shallow);
 
 	// Deep depth
-	cpu_render_main(100, 100, 5, 50, output_deep, 278, 278, -800);
+	cpu_render_main(100, 100, 5, 50, output_deep, 0, 278, 278, -800);
 	size_t hash_deep = hash_file(output_deep);
 
 	// Different max depths should produce different images
@@ -380,7 +377,7 @@ TEST(RenderIntegrationTest, AllCameraPresetsValid) {
 		int result = cpu_render_main(
 			50, 50, 1, 3,  // Small, fast render
 			output.c_str(),
-			preset.cam_x, preset.cam_y, preset.cam_z
+			0, preset.cam_x, preset.cam_y, preset.cam_z
 		);
 
 		EXPECT_EQ(result, 0) << "Failed for preset: " << preset.name;
@@ -403,8 +400,8 @@ TEST(RenderIntegrationTest, DeterministicRender) {
 	const char* output2 = "test_deterministic_2.ppm";
 
 	// Render twice with same parameters
-	cpu_render_main(100, 100, 10, 5, output1, 278, 278, -800);
-	cpu_render_main(100, 100, 10, 5, output2, 278, 278, -800);
+	cpu_render_main(100, 100, 10, 5, output1, 0, 278, 278, -800);
+	cpu_render_main(100, 100, 10, 5, output2, 0, 278, 278, -800);
 
 	size_t hash1 = hash_file(output1);
 	size_t hash2 = hash_file(output2);
@@ -432,9 +429,9 @@ TEST(RenderIntegrationTest, NonExistentDirectory) {
 	const char* output = "nonexistent_dir/test.ppm";
 
 	// This may fail or use default output path
-	int result = cpu_render_main(50, 50, 1, 3, output, 278, 278, -800);
+	int result = cpu_render_main(50, 50, 1, 3, output, 0, 278, 278, -800);
 
-	// Current implementation may succeed (using default Desktop path)
+	// Current implementation may succeed
 	// or fail - just verify it doesn't crash
 	EXPECT_TRUE(result == 0 || result != 0);
 }
@@ -445,7 +442,7 @@ TEST(RenderIntegrationTest, NonExistentDirectory) {
 TEST(RenderIntegrationTest, VerySmallImage) {
 	const char* output = "test_tiny.ppm";
 
-	int result = cpu_render_main(10, 10, 1, 3, output, 278, 278, -800);
+	int result = cpu_render_main(10, 10, 1, 3, output, 0, 278, 278, -800);
 
 	EXPECT_EQ(result, 0);
 
@@ -463,7 +460,7 @@ TEST(RenderIntegrationTest, VerySmallImage) {
 TEST(RenderIntegrationTest, VeryLargeMaxDepth) {
 	const char* output = "test_deep.ppm";
 
-	int result = cpu_render_main(50, 50, 1, 1000, output, 278, 278, -800);
+	int result = cpu_render_main(50, 50, 1, 1000, output, 0, 278, 278, -800);
 
 	EXPECT_EQ(result, 0);
 
