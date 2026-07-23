@@ -139,16 +139,10 @@ inline vec3 random_on_hemisphere(const vec3& normal) {
         return -on_unit_sphere;
 }
 
-inline vec3 reflect(const vec3& v, const vec3& n) {
-    return v - 2*dot(v,n)*n;
-}
-
-inline vec3 refract(const vec3& uv, const vec3& n, double etai_over_etat) {
-    auto cos_theta = std::fmin(dot(-uv, n), 1.0);
-    vec3 r_out_perp =  etai_over_etat * (uv + cos_theta*n);
-    vec3 r_out_parallel = -std::sqrt(std::fabs(1.0 - r_out_perp.length_squared())) * n;
-    return r_out_perp + r_out_parallel;
-}
+// reflect and refract from shared CPU/GPU header (pbrt-v4 pattern)
+#include "../shared/math_utils.h"
+inline vec3 reflect(const vec3& v, const vec3& n) { return cpu_gpu_reflect(v, n); }
+inline vec3 refract(const vec3& uv, const vec3& n, double e) { return cpu_gpu_refract<vec3,double>(uv, n, e); }
 
 inline vec3 random_cosine_direction() {
     auto r1 = random_double();
