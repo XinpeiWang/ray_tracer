@@ -212,43 +212,27 @@ class rough_metal : public material {
 
         if (wi_z <= 0.0) return false;  // ray from inside -- no scatter
 
-        // Sample a microfacet normal via GGX visible-normal heuristic.
-        // For simplicity we use cosine-weighted hemisphere sampling here;
-        // VNDF importance sampling can be added as a follow-up.
-        vec3 scatter_dir;
-        int attempts = 0;
-        do {
-            // Sample random half-vector in local frame (cosine-weighted upper hemi)
-            double r1 = random_double(), r2 = random_double();
-            double phi   = 2.0 * pi * r1;
-            double cos_t = std::sqrt(1.0 - r2);
-            double sin_t = std::sqrt(r2);
-            double hx = sin_t * std::cos(phi);
-            double hy = sin_t * std::sin(phi);
-            double hz = cos_t;
+        // Sample microfacet normal using VNDF (pbrt-v4 Sample_wm)
+        TrowbridgeReitz<double> dist(alpha, alpha);
+        double wm_x, wm_y, wm_z;
+        dist.Sample_wm(wi_x, wi_y, wi_z,
+                       random_double(), random_double(),
+                       wm_x, wm_y, wm_z);
 
-            // Reflect wi about this half-vector (all in local frame)
-            double dot_wi_h = wi_x*hx + wi_y*hy + wi_z*hz;
-            double wo_x = 2.0*dot_wi_h*hx - wi_x;
-            double wo_y = 2.0*dot_wi_h*hy - wi_y;
-            double wo_z = 2.0*dot_wi_h*hz - wi_z;
+        // Reflect wi about the sampled microfacet normal
+        double dot_wi_wm = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
+        double wo_x = 2.0*dot_wi_wm*wm_x - wi_x;
+        double wo_y = 2.0*dot_wi_wm*wm_y - wi_y;
+        double wo_z = 2.0*dot_wi_wm*wm_z - wi_z;
 
-            if (wo_z > 0.0) {
-                // Transform back to world frame
-                scatter_dir = wo_x * tangent + wo_y * bitangent + wo_z * normal;
-                break;
-            }
-            ++attempts;
-        } while (attempts < 32);
+        if (wo_z <= 0.0) return false;  // reflection below surface
 
-        if (attempts >= 32) return false;
+        // Transform back to world frame
+        vec3 scatter_dir = wo_x * tangent + wo_y * bitangent + wo_z * normal;
 
-        // GGX BRDF weight = D*G/(4*cosO*cosI) * cosI / pdf
-        // Using cosine-weighted sampling: pdf = cos_o / pi
-        // We fold the weight into attenuation; importance sampling handles the rest.
-        srec.attenuation = albedo;
-        srec.pdf_ptr     = nullptr;
-        srec.skip_pdf    = true;
+        srec.attenuation  = albedo;
+        srec.pdf_ptr      = nullptr;
+        srec.skip_pdf     = true;
         srec.skip_pdf_ray = ray(rec.p, unit_vector(scatter_dir), r_in.time());
         return true;
     }
