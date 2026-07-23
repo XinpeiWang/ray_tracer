@@ -330,9 +330,10 @@ class camera {
         return a2 / (a2 + b2);
     }
 
-    color ray_color(const ray& r, int depth, const hittable& world, const hittable& lights)
+    color ray_color(const ray& r, int depth, const hittable& world, const hittable& lights,
+                    color throughput = color(1,1,1))
     const {
-        // If we've exceeded the ray bounce limit, no more light is gathered.
+        // Hard depth cap (safety net — Russian Roulette handles most termination).
         if (depth <= 0)
             return color(0,0,0);
 
@@ -348,12 +349,26 @@ class camera {
         if (!rec.mat->scatter(r, rec, srec))
             return color_from_emission;
 
-        if (srec.skip_pdf) {
-            return srec.attenuation * ray_color(srec.skip_pdf_ray, depth-1, world, lights);
+        // Russian Roulette — start after bounce 3 to avoid bias on short paths.
+        // Survival probability is proportional to the path's luminance so that
+        // bright paths are always kept while dark ones are cheaply terminated.
+        // Surviving paths are boosted by 1/q to keep the estimator unbiased.
+        if (depth < max_depth - 2) {
+            double lum = 0.2126 * throughput.x()
+                       + 0.7152 * throughput.y()
+                       + 0.0722 * throughput.z();
+            double q = std::fmax(0.05, 1.0 - lum);
+            if (random_double() < q)
+                return color_from_emission;
+            throughput /= (1.0 - q);
         }
 
-        // Multiple Importance Sampling (MIS) implementation
-        // Sample both BRDF and light strategies, then combine with balance heuristic
+        if (srec.skip_pdf) {
+            return srec.attenuation * ray_color(srec.skip_pdf_ray, depth-1, world, lights,
+                                                throughput * srec.attenuation);
+        }
+
+        // Multiple Importance Sampling (MIS) — BRDF + light strategies.
         auto light_ptr = make_shared<hittable_pdf>(lights, rec.p);
 
         // Strategy 1: Sample from BRDF
@@ -376,20 +391,23 @@ class camera {
         double weight_brdf = mis_power_heuristic(pdf_brdf, pdf_light_at_brdf);
         double weight_light = mis_power_heuristic(pdf_light, pdf_brdf_at_light);
 
-        // Recursively trace both rays
-        color sample_color_brdf = ray_color(brdf_scattered, depth - 1, world, lights);
-        color sample_color_light = ray_color(light_scattered, depth - 1, world, lights);
+        // Propagate updated throughput to child rays
+        color child_throughput_brdf  = throughput * srec.attenuation;
+        color child_throughput_light = throughput * srec.attenuation;
+
+        color sample_color_brdf  = ray_color(brdf_scattered,  depth - 1, world, lights, child_throughput_brdf);
+        color sample_color_light = ray_color(light_scattered, depth - 1, world, lights, child_throughput_light);
 
         // Combine contributions with MIS weights
         color contribution_brdf = color(0,0,0);
         if (pdf_brdf > 0.0 && scattering_pdf_brdf > 0.0) {
-            contribution_brdf = 
+            contribution_brdf =
                 weight_brdf * (srec.attenuation * scattering_pdf_brdf * sample_color_brdf) / pdf_brdf;
         }
 
         color contribution_light = color(0,0,0);
         if (pdf_light > 0.0 && scattering_pdf_light > 0.0) {
-            contribution_light = 
+            contribution_light =
                 weight_light * (srec.attenuation * scattering_pdf_light * sample_color_light) / pdf_light;
         }
 
