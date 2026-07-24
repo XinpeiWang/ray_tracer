@@ -952,18 +952,18 @@ void MainWindow::applyDarkTheme() {
 		QGroupBox {
 			border: 3px solid #00FFFF;
 			border-radius: 8px;
-			margin-top: 12px;
+			margin-top: 22px;
 			margin-bottom: 8px;
-			padding: 20px 10px 10px 10px;
+			padding: 16px 10px 10px 10px;
 			color: #00FFFF;
 			font-size: 12pt;
 		}
 		QGroupBox::title {
 			subcontrol-origin: margin;
 			subcontrol-position: top left;
-			padding: 2px 15px;
+			padding: 4px 15px;
 			left: 10px;
-			top: -10px;
+			top: -14px;
 			color: #FF00FF;
 			font-size: 13pt;
 			font-weight: bold;
