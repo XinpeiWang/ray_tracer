@@ -397,6 +397,7 @@ void MainWindow::setupUI() {
 
 	// Progress section
 	QGroupBox *progressGroup = new QGroupBox("Progress", this);
+	progressGroup->setContentsMargins(0, 16, 0, 0);
 	QVBoxLayout *progressLayout = new QVBoxLayout(progressGroup);
 
 	m_progressBar = new QProgressBar(this);
