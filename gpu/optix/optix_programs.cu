@@ -925,6 +925,19 @@ extern "C" __global__ void __raygen__rg() {
 
 				// Multiply throughput by surface BRDF (attenuation from hit program)
 				throughput = throughput * payload.attenuation;
+
+				// Russian Roulette (pbrt-v4 PathIntegrator pattern)
+				// Start after depth > 1 so the primary ray and first bounce always survive.
+				// q = max(0, 1 - MaxComponent(throughput)); terminate if rand < q, else reweight.
+				if (depth > 1) {
+					float rr_max = fmaxf(throughput.x, fmaxf(throughput.y, throughput.z));
+					if (rr_max < 1.0f) {
+						float q = fmaxf(0.0f, 1.0f - rr_max);
+						if (random_float(seed) < q) break;   // terminate path
+						throughput = throughput / (1.0f - q); // unbiased reweight
+					}
+				}
+
 				ray_origin = scatter_origin;
 				ray_direction = normalize(payload.scatterDir);  // MUST normalize!
 				seed = payload.seed;

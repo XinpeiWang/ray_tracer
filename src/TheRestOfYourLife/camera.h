@@ -326,7 +326,8 @@ class camera {
         return PowerHeuristic(pdf_a, pdf_b);
     }
 
-    color ray_color(const ray& r, int depth, const hittable& world, const hittable& lights)
+    color ray_color(const ray& r, int depth, const hittable& world, const hittable& lights,
+                    const color& throughput = color(1.0, 1.0, 1.0))
     const {
         // Terminate path at max depth.
         if (depth <= 0)
@@ -345,7 +346,21 @@ class camera {
             return color_from_emission;
 
         if (srec.skip_pdf) {
-            return srec.attenuation * ray_color(srec.skip_pdf_ray, depth-1, world, lights);
+            color new_throughput = throughput * srec.attenuation;
+            double rr_scale = 1.0;
+
+            // Russian Roulette (pbrt-v4 PathIntegrator pattern, starts after bounce > 1)
+            if ((max_depth - depth) > 1) {
+                double rr_max = (std::max)(new_throughput.x(), (std::max)(new_throughput.y(), new_throughput.z()));
+                if (rr_max < 1.0) {
+                    double q = (std::max)(0.0, 1.0 - rr_max);
+                    if (random_double() < q) return color(0, 0, 0);
+                    rr_scale = 1.0 / (1.0 - q);   // unbiased reweight
+                    new_throughput = new_throughput * rr_scale;
+                }
+            }
+
+            return srec.attenuation * rr_scale * ray_color(srec.skip_pdf_ray, depth-1, world, lights, new_throughput);
         }
 
         // Multiple Importance Sampling (MIS) — BRDF + light strategies.
@@ -371,20 +386,35 @@ class camera {
         double weight_brdf = mis_power_heuristic(pdf_brdf, pdf_light_at_brdf);
         double weight_light = mis_power_heuristic(pdf_light, pdf_brdf_at_light);
 
-        color sample_color_brdf  = ray_color(brdf_scattered,  depth - 1, world, lights);
-        color sample_color_light = ray_color(light_scattered, depth - 1, world, lights);
+        // Russian Roulette (pbrt-v4 pattern): estimate next-bounce throughput via attenuation.
+        // Both MIS strategies share the same surface, so one RR decision covers both.
+        color next_throughput = throughput * srec.attenuation;
+        double rr_scale = 1.0;
+        if ((max_depth - depth) > 1) {
+            double rr_max = (std::max)(next_throughput.x(), (std::max)(next_throughput.y(), next_throughput.z()));
+            if (rr_max < 1.0) {
+                double q = (std::max)(0.0, 1.0 - rr_max);
+                if (random_double() < q)
+                    return color_from_emission;  // path terminated — return only emission at this hit
+                rr_scale = 1.0 / (1.0 - q);     // unbiased reweight for survivors
+                next_throughput = next_throughput * rr_scale;
+            }
+        }
+
+        color sample_color_brdf  = ray_color(brdf_scattered,  depth - 1, world, lights, next_throughput);
+        color sample_color_light = ray_color(light_scattered, depth - 1, world, lights, next_throughput);
 
         // Combine contributions with MIS weights
         color contribution_brdf = color(0,0,0);
         if (pdf_brdf > 0.0 && scattering_pdf_brdf > 0.0) {
             contribution_brdf =
-                weight_brdf * (srec.attenuation * scattering_pdf_brdf * sample_color_brdf) / pdf_brdf;
+                weight_brdf * (srec.attenuation * rr_scale * scattering_pdf_brdf * sample_color_brdf) / pdf_brdf;
         }
 
         color contribution_light = color(0,0,0);
         if (pdf_light > 0.0 && scattering_pdf_light > 0.0) {
             contribution_light =
-                weight_light * (srec.attenuation * scattering_pdf_light * sample_color_light) / pdf_light;
+                weight_light * (srec.attenuation * rr_scale * scattering_pdf_light * sample_color_light) / pdf_light;
         }
 
         color color_from_scatter = contribution_brdf + contribution_light;

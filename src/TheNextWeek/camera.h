@@ -131,7 +131,8 @@ class camera {
         return center + (p[0] * defocus_disk_u) + (p[1] * defocus_disk_v);
     }
 
-    color ray_color(const ray& r, int depth, const hittable& world) const {
+    color ray_color(const ray& r, int depth, const hittable& world,
+                    const color& throughput = color(1.0, 1.0, 1.0)) const {
         // If we've exceeded the ray bounce limit, no more light is gathered.
         if (depth <= 0)
             return color(0,0,0);
@@ -149,7 +150,20 @@ class camera {
         if (!rec.mat->scatter(r, rec, attenuation, scattered))
             return color_from_emission;
 
-        color color_from_scatter = attenuation * ray_color(scattered, depth-1, world);
+        color new_throughput = throughput * attenuation;
+
+        // Russian Roulette (pbrt-v4 pattern, starts after bounce > 1)
+        if ((max_depth - depth) > 1) {
+            double rr_max = (std::max)(new_throughput.x(), (std::max)(new_throughput.y(), new_throughput.z()));
+            if (rr_max < 1.0) {
+                double q = (std::max)(0.0, 1.0 - rr_max);
+                if (random_double() < q) return color_from_emission;
+                new_throughput = new_throughput / (1.0 - q);
+                attenuation = attenuation / (1.0 - q);
+            }
+        }
+
+        color color_from_scatter = attenuation * ray_color(scattered, depth-1, world, new_throughput);
 
         return color_from_emission + color_from_scatter;
     }
