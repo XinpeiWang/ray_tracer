@@ -70,9 +70,9 @@ void MainWindow::applyDarkTheme() {
 		QGroupBox {
 			border: 3px solid #00FFFF;
 			border-radius: 8px;
-			margin-top: 32px;
+			margin-top: 20px;
 			margin-bottom: 8px;
-			padding: 16px 10px 12px 10px;
+			padding: 20px 10px 12px 10px;
 			background-color: #1A1A2E;
 			color: #00FFFF;
 			font-size: 12pt;
@@ -80,12 +80,13 @@ void MainWindow::applyDarkTheme() {
 		QGroupBox::title {
 			subcontrol-origin: margin;
 			subcontrol-position: top left;
-			padding: 4px 15px;
-			left: 10px;
-			top: -6px;
+			padding: 2px 12px;
+			left: 12px;
+			top: -12px;
 			color: #FF00FF;
 			font-size: 13pt;
 			font-weight: bold;
+			background-color: #1A1A2E;
 		}
 		QPushButton {
 			background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
