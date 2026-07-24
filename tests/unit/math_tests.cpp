@@ -870,9 +870,11 @@ TEST(GGXTest, RegularizeDoesNotChangeHighAlpha) {
 //
 // Validates the low-discrepancy radical inverse used for pixel jitter.
 // These are exact arithmetic checks — the values are deterministic.
+// Aligned with pbrt-v4 lowdiscrepancy.h::RadicalInverse() behavior.
 // ============================================================================
 
-// halton2 (base-2): known values from radical inverse definition
+// halton2 (base-2): known values at px=0,py=0 (no pixel offset)
+// pixel_index(n,0,0) = n, so these are plain radical-inverse checks.
 TEST(HaltonSamplerTest, Base2KnownValues) {
 	// n=1: binary "1"    -> mirror: "0.1"    = 0.5
 	EXPECT_FLOAT_EQ(halton2(1u), 0.5f);
@@ -886,7 +888,7 @@ TEST(HaltonSamplerTest, Base2KnownValues) {
 	EXPECT_FLOAT_EQ(halton2(0u), 0.0f);
 }
 
-// halton3 (base-3): known values
+// halton3 (base-3): known values at px=0,py=0
 TEST(HaltonSamplerTest, Base3KnownValues) {
 	// n=1: base3 "1"    -> mirror: "0.1"    = 1/3
 	EXPECT_NEAR(halton3(1u), 1.0f/3.0f, 1e-6f);
@@ -898,11 +900,11 @@ TEST(HaltonSamplerTest, Base3KnownValues) {
 	EXPECT_FLOAT_EQ(halton3(0u), 0.0f);
 }
 
-// All values must be in [0, 1)
+// All values must be in [0, 1) — matches pbrt-v4 OneMinusEpsilon clamping
 TEST(HaltonSamplerTest, ValuesInUnitInterval) {
 	for (unsigned int i = 0; i < 256; ++i) {
-		float h2 = halton2(i);
-		float h3 = halton3(i);
+		float h2 = halton2(i, i % 64, i / 64);  // vary pixel coords too
+		float h3 = halton3(i, i % 64, i / 64);
 		EXPECT_GE(h2, 0.0f) << "halton2(" << i << ") < 0";
 		EXPECT_LT(h2, 1.0f) << "halton2(" << i << ") >= 1";
 		EXPECT_GE(h3, 0.0f) << "halton3(" << i << ") < 0";
@@ -910,27 +912,46 @@ TEST(HaltonSamplerTest, ValuesInUnitInterval) {
 	}
 }
 
-// Low-discrepancy property: 16 Halton samples should cover [0,1) more
-// uniformly than expected from pure random. We verify this by checking that
-// the max gap between sorted base-2 samples is smaller than the theoretical
-// worst-case for pure random at the same count (1/sqrt(N) heuristic).
-// For N=16, Halton base-2 has max gap exactly 1/16 = 0.0625 (perfect tiling).
+// Low-discrepancy property: 16 Halton samples must cover [0,1) uniformly.
+// For N=16 (2^4), base-2 radical inverse tiles the unit interval exactly
+// with max gap = 1/16 = 0.0625 (matches pbrt-v4 RadicalInverse guarantee).
 TEST(HaltonSamplerTest, LowDiscrepancyBase2) {
 	const int N = 16;
 	std::vector<float> samples(N);
 	for (int i = 0; i < N; ++i)
-		samples[i] = halton2((unsigned int)i);
+		samples[i] = halton2((unsigned int)i);  // px=0,py=0: pure sequence
 
 	std::sort(samples.begin(), samples.end());
 
 	// Max gap between consecutive sorted samples (including wrap-around)
-	float max_gap = samples[0];  // gap from 0 to first sample
+	float max_gap = samples[0];
 	for (int i = 1; i < N; ++i)
 		max_gap = std::max(max_gap, samples[i] - samples[i-1]);
-	max_gap = std::max(max_gap, 1.0f - samples[N-1]);  // wrap
+	max_gap = std::max(max_gap, 1.0f - samples[N-1]);
 
-	// Halton base-2 with N=2^k tiles exactly: max gap = 1/N = 0.0625
+	// Halton base-2 with N=2^k tiles exactly: max gap = 1/N
 	EXPECT_LE(max_gap, 1.0f / float(N) + 1e-5f)
 		<< "Halton base-2 max gap " << max_gap
 		<< " exceeds 1/N=" << (1.0f/N) << " — sequence is not low-discrepancy";
+}
+
+// Per-pixel decorrelation: adjacent pixels must produce different offsets
+// for the same sample index (pbrt-v4 StartPixelSample pattern).
+TEST(HaltonSamplerTest, PerPixelDecorrelation) {
+	// Sample 0 should differ across different pixel positions
+	float s00 = halton2(0u, 0u, 0u);
+	float s10 = halton2(0u, 1u, 0u);
+	float s01 = halton2(0u, 0u, 1u);
+	float s11 = halton2(0u, 1u, 1u);
+
+	// All four should be different (hash collision would be a bug)
+	EXPECT_NE(s00, s10) << "Pixels (0,0) and (1,0) share the same halton2 offset";
+	EXPECT_NE(s00, s01) << "Pixels (0,0) and (0,1) share the same halton2 offset";
+	EXPECT_NE(s10, s11) << "Pixels (1,0) and (1,1) share the same halton2 offset";
+
+	// All values still in [0,1)
+	EXPECT_GE(s00, 0.0f); EXPECT_LT(s00, 1.0f);
+	EXPECT_GE(s10, 0.0f); EXPECT_LT(s10, 1.0f);
+	EXPECT_GE(s01, 0.0f); EXPECT_LT(s01, 1.0f);
+	EXPECT_GE(s11, 0.0f); EXPECT_LT(s11, 1.0f);
 }

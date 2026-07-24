@@ -907,10 +907,12 @@ extern "C" __global__ void __raygen__rg() {
 
 	for (unsigned int s = 0; s < params.samplesPerPixel; ++s) {
 		// Halton low-discrepancy pixel offset (pbrt-v4 HaltonSampler pattern)
-		// base-2 for x, base-3 for y — replaces random_float() for pixel jitter only.
+		// base-2 for x, base-3 for y. Pixel coords (px,py) are mixed into the
+		// sample index for per-pixel decorrelation — adjacent pixels use different
+		// sub-sequences, avoiding a structured grid artifact across the image.
 		// Bounce RNG (seed) keeps using PCG32 for scatter/light directions.
-		float u = (float(px) + halton2(s)) / float(params.width - 1);
-		float v = (float(params.height - 1 - py) + halton3(s)) / float(params.height - 1);  // Flip Y
+		float u = (float(px) + halton2(s, px, py)) / float(params.width - 1);
+		float v = (float(params.height - 1 - py) + halton3(s, px, py)) / float(params.height - 1);  // Flip Y
 
 		// Generate camera ray
 		float3 ray_origin = params.camera.origin;

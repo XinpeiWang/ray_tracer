@@ -51,36 +51,71 @@ CPU_GPU Scalar PowerHeuristic(Scalar pdf_a, Scalar pdf_b) {
 }
 
 // ---------------------------------------------------------------------------
-// Halton low-discrepancy sampler (pbrt-v4 HaltonSampler pattern)
+// Halton low-discrepancy sampler (pbrt-v4 HaltonSampler / RadicalInverse pattern)
 //
-// halton_radical_inverse(n, base): maps integer n to [0,1) by writing n in
-//   the given base and mirroring the digits around the decimal point.
-//   e.g. n=6, base=2: 6 = 1*4+1*2+0*1 = "110" -> "0.011" = 0.375
+// halton_radical_inverse(n, base): maps integer n to [0,1) using the radical
+//   inverse construction: write n in the given base, mirror around the decimal
+//   point, then convert to float.
 //
-// halton2(n): base-2  sequence for pixel sub-pixel offset x
-// halton3(n): base-3  sequence for pixel sub-pixel offset y
+//   Implementation follows pbrt-v4 lowdiscrepancy.h::RadicalInverse():
+//   - integer digit accumulation (avoids float precision drift)
+//   - clamped to < 1.0 via OneMinusEpsilon equivalent
+//   - overflow guard: stops when reversedDigits approaches uint64 limit
 //
-// Usage: replace random pixel jitter with halton2(sampleIndex) / halton3(sampleIndex).
-// Bounce RNG (scatter directions, light sampling) keeps using PCG32/random_double().
+// halton2(n, px, py): base-2 with per-pixel offset so adjacent pixels get
+//   different sub-sequences (pbrt-v4 StartPixelSample pattern).
+// halton3(n, px, py): base-3 with per-pixel offset.
+//
+// Usage:
+//   pixel x offset = halton2(sampleIndex, pixelX, pixelY)
+//   pixel y offset = halton3(sampleIndex, pixelX, pixelY)
+//   Bounce RNG keeps using PCG32/random_double().
 // ---------------------------------------------------------------------------
+
 CPU_GPU inline float halton_radical_inverse(unsigned int n, unsigned int base) {
-    float result = 0.0f;
-    float invBase = 1.0f / float(base);
-    float factor  = invBase;
-    while (n > 0) {
-        result += float(n % base) * factor;
-        n      /= base;
-        factor *= invBase;
+    // pbrt-v4 pattern: integer accumulation then single float conversion.
+    // Overflow guard: stop when reversedDigits approaches uint64 limit.
+    const unsigned long long limit = (~0ull) / base - base;
+    unsigned long long reversedDigits = 0;
+    float invBase   = 1.0f / float(base);
+    float invBaseM  = 1.0f;
+    while (n > 0 && reversedDigits < limit) {
+        unsigned int digit = n % base;
+        n /= base;
+        reversedDigits = reversedDigits * base + digit;
+        invBaseM *= invBase;
     }
-    return result;
+    // Clamp to < 1.0 (matches pbrt-v4 std::min(..., OneMinusEpsilon))
+    // 0x1.fffffep-1f is the largest float strictly less than 1.0
+    float result = float(reversedDigits) * invBaseM;
+    return result < 0x1.fffffep-1f ? result : 0x1.fffffep-1f;
 }
 
-// Base-2 radical inverse (pixel x offset)
-CPU_GPU inline float halton2(unsigned int n) {
-    return halton_radical_inverse(n, 2u);
+// Per-pixel sample offset: mix pixel coordinates into the sample index so
+// adjacent pixels use different sub-sequences of the Halton sequence.
+// This replicates pbrt-v4 HaltonSampler::StartPixelSample() intent without
+// its full pixel-stride machinery — a lightweight pixel hash offset.
+CPU_GPU inline unsigned int halton_pixel_index(unsigned int sampleIndex,
+                                               unsigned int px,
+                                               unsigned int py) {
+    // Simple but effective: offset sample index by a pixel-unique constant.
+    // Uses pbrt-v4-style mixing: different primes so base-2 and base-3
+    // sequences decorrelate independently across pixel dimensions.
+    return sampleIndex + px * 0x9e3779b9u + py * 0x6c62272eu;
 }
 
-// Base-3 radical inverse (pixel y offset)
-CPU_GPU inline float halton3(unsigned int n) {
-    return halton_radical_inverse(n, 3u);
+// Base-2 radical inverse (pixel x offset), per-pixel decorrelated
+CPU_GPU inline float halton2(unsigned int sampleIndex,
+                             unsigned int px = 0u,
+                             unsigned int py = 0u) {
+    return halton_radical_inverse(halton_pixel_index(sampleIndex, px, py), 2u);
+}
+
+// Base-3 radical inverse (pixel y offset), per-pixel decorrelated
+CPU_GPU inline float halton3(unsigned int sampleIndex,
+                             unsigned int px = 0u,
+                             unsigned int py = 0u) {
+    return halton_radical_inverse(halton_pixel_index(sampleIndex, py, px), 3u);
+    // Note: halton3 swaps (py,px) so y-axis pixel correlation uses
+    // a different offset pattern than x-axis, further reducing correlation.
 }
