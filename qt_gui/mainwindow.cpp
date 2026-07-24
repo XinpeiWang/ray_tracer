@@ -373,75 +373,6 @@ void MainWindow::setupUI() {
 	QWidget *centralWidget = new QWidget(this);
 	QVBoxLayout *mainLayout = new QVBoxLayout(centralWidget);
 
-	// Mode selector (Image vs Video)
-	QGroupBox *modeGroup = new QGroupBox("Render Mode", this);
-	QHBoxLayout *modeLayout = new QHBoxLayout(modeGroup);
-
-	QLabel *modeLabel = new QLabel("Mode:", this);
-	m_modeCombo = new QComboBox(this);
-	m_modeCombo->addItem("🖼️ Render Single Image");
-	m_modeCombo->addItem("🎬 Generate Video");
-	m_modeCombo->setCurrentIndex(0);
-	styleComboBox(m_modeCombo);
-	connect(m_modeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), 
-			this, &MainWindow::onModeChanged);
-
-	modeLayout->addWidget(modeLabel);
-	modeLayout->addWidget(m_modeCombo, 1);
-
-	mainLayout->addWidget(modeGroup);
-
-	// Scene selection -- global setting, lives at top level
-	QGroupBox *sceneGroup = new QGroupBox("Scene", this);
-	QHBoxLayout *sceneTopLayout = new QHBoxLayout(sceneGroup);
-	sceneTopLayout->setContentsMargins(10, 8, 10, 8);
-	sceneTopLayout->setSpacing(10);
-
-	// Scene table -- mirrors scene_registry.h (single edit point on the GUI side).
-	// When adding a scene: add one entry here AND one SceneDescriptor in scene_registry.h.
-	struct GuiScene { int id; const char* name; const char* desc; const char* perf; int spp; bool files; bool gpu; };
-	static const GuiScene kScenes[] = {
-		{ 0,  "Cornell Box",               "Classic Cornell box with glass sphere and aluminum box",          "Medium",    100, false, true  },
-		{ 1,  "Bouncing Spheres",           "Random spheres with checker ground (In One Weekend final)",       "Slow",      100, false, false },
-		{ 2,  "Checkered Spheres",          "Two spheres with procedural checker texture",                     "Fast",      100, false, false },
-		{ 3,  "Earth",                      "Globe with earth texture mapping (requires earthmap.jpg)",         "Fast",      100, true,  false },
-		{ 4,  "Perlin Spheres",             "Spheres with Perlin noise marble texture",                        "Fast",      100, false, false },
-		{ 5,  "Colored Quads",              "Five colored quad primitives",                                    "Fast",      100, false, false },
-		{ 6,  "Simple Light",               "Perlin spheres with emissive light sources",                      "Fast",      100, false, false },
-		{ 7,  "Cornell Smoke",              "Cornell box with volumetric fog",                                 "Slow",      200, false, false },
-		{ 8,  "Final Scene (very slow!)",   "Complex scene from The Next Week",                                "Very Slow", 500, false, false },
-		{ 9,  "Rough Metal Spheres (GGX)",  "Five GGX spheres roughness 0.05->0.8 -- showcases microfacet",   "Medium",    200, false, false },
-		{ 10, "Cornell Rough Metal (GGX)",  "Cornell box with rough aluminum box and rough gold sphere",        "Medium",    200, false, false },
-	};
-
-	m_sceneCombo = new QComboBox(this);
-	for (const auto& s : kScenes)
-		m_sceneCombo->addItem(s.name, s.id);
-	styleComboBox(m_sceneCombo);
-
-	m_sceneInfoLabel = new QLabel(this);
-	m_sceneInfoLabel->setWordWrap(true);
-	m_sceneInfoLabel->setMinimumWidth(200);
-	m_sceneInfoLabel->setStyleSheet(
-		"QLabel {"
-		"  color: #B0B0B0;"
-		"  background-color: #2E2E2E;"
-		"  border: 1px solid #404040;"
-		"  border-radius: 4px;"
-		"  padding: 6px 10px;"
-		"  font-size: 11px;"
-		"}"
-	);
-
-	sceneTopLayout->addWidget(new QLabel("Scene:"));
-	sceneTopLayout->addWidget(m_sceneCombo, 1);
-	sceneTopLayout->addWidget(m_sceneInfoLabel, 2);
-
-	connect(m_sceneCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-			this, &MainWindow::onSceneChanged);
-
-	mainLayout->addWidget(sceneGroup);
-
 	// Create tab widget
 	m_tabWidget = new QTabWidget(this);
 	createBasicTab();
@@ -495,19 +426,87 @@ void MainWindow::createBasicTab() {
 	QWidget *basicTab = new QWidget();
 	QVBoxLayout *layout = new QVBoxLayout(basicTab);
 
-	// Render settings group
+	// --- Scene selection ---
+	QGroupBox *sceneGroup = new QGroupBox("Scene", basicTab);
+	QVBoxLayout *sceneGroupLayout = new QVBoxLayout(sceneGroup);
+	sceneGroupLayout->setContentsMargins(10, 8, 10, 8);
+	sceneGroupLayout->setSpacing(8);
+
+	struct GuiScene { int id; const char* name; const char* desc; const char* perf; int spp; bool files; bool gpu; };
+	static const GuiScene kScenes[] = {
+		{ 0,  "Cornell Box",               "Classic Cornell box with glass sphere and aluminum box",          "Medium",    100, false, true  },
+		{ 1,  "Bouncing Spheres",           "Random spheres with checker ground (In One Weekend final)",       "Slow",      100, false, false },
+		{ 2,  "Checkered Spheres",          "Two spheres with procedural checker texture",                     "Fast",      100, false, false },
+		{ 3,  "Earth",                      "Globe with earth texture mapping (requires earthmap.jpg)",         "Fast",      100, true,  false },
+		{ 4,  "Perlin Spheres",             "Spheres with Perlin noise marble texture",                        "Fast",      100, false, false },
+		{ 5,  "Colored Quads",              "Five colored quad primitives",                                    "Fast",      100, false, false },
+		{ 6,  "Simple Light",               "Perlin spheres with emissive light sources",                      "Fast",      100, false, false },
+		{ 7,  "Cornell Smoke",              "Cornell box with volumetric fog",                                 "Slow",      200, false, false },
+		{ 8,  "Final Scene (very slow!)",   "Complex scene from The Next Week",                                "Very Slow", 500, false, false },
+		{ 9,  "Rough Metal Spheres (GGX)",  "Five GGX spheres roughness 0.05->0.8 -- showcases microfacet",   "Medium",    200, false, false },
+		{ 10, "Cornell Rough Metal (GGX)",  "Cornell box with rough aluminum box and rough gold sphere",        "Medium",    200, false, false },
+	};
+
+	QHBoxLayout *sceneRow = new QHBoxLayout();
+	m_sceneCombo = new QComboBox(basicTab);
+	for (const auto& s : kScenes)
+		m_sceneCombo->addItem(s.name, s.id);
+	styleComboBox(m_sceneCombo);
+	sceneRow->addWidget(new QLabel("Scene:"));
+	sceneRow->addWidget(m_sceneCombo, 1);
+	sceneGroupLayout->addLayout(sceneRow);
+
+	m_sceneInfoLabel = new QLabel(basicTab);
+	m_sceneInfoLabel->setWordWrap(true);
+	m_sceneInfoLabel->setStyleSheet(
+		"QLabel {"
+		"  color: #B0B0B0;"
+		"  background-color: #2E2E2E;"
+		"  border: 1px solid #404040;"
+		"  border-radius: 4px;"
+		"  padding: 6px 10px;"
+		"  font-size: 11px;"
+		"}"
+	);
+	sceneGroupLayout->addWidget(m_sceneInfoLabel);
+
+	connect(m_sceneCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+			this, &MainWindow::onSceneChanged);
+
+	layout->addWidget(sceneGroup);
+
+	// --- Render mode (Image vs Video) + GPU/CPU ---
+	QGroupBox *modeGroup = new QGroupBox("Render Mode", basicTab);
+	QFormLayout *modeFormLayout = new QFormLayout(modeGroup);
+	modeFormLayout->setVerticalSpacing(12);
+	modeFormLayout->setHorizontalSpacing(10);
+	modeFormLayout->setContentsMargins(15, 15, 15, 15);
+
+	m_modeCombo = new QComboBox(basicTab);
+	m_modeCombo->addItem("🖼️ Render Single Image");
+	m_modeCombo->addItem("🎬 Generate Video");
+	m_modeCombo->setCurrentIndex(0);
+	styleComboBox(m_modeCombo);
+	connect(m_modeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+			this, &MainWindow::onModeChanged);
+	modeFormLayout->addRow("Output Mode:", m_modeCombo);
+
+	m_renderModeCombo = new QComboBox(basicTab);
+	m_renderModeCombo->addItem("🎮 GPU (CUDA) - Fast", true);
+	m_renderModeCombo->addItem("🖥️ CPU - High Quality", false);
+	styleComboBox(m_renderModeCombo);
+	modeFormLayout->addRow("Renderer:", m_renderModeCombo);
+
+	layout->addWidget(modeGroup);
+
+	// --- Render settings (quality / resolution / samples) ---
 	QGroupBox *renderGroup = new QGroupBox("Render Settings", basicTab);
 	QFormLayout *renderLayout = new QFormLayout(renderGroup);
 	renderLayout->setVerticalSpacing(15);
 	renderLayout->setHorizontalSpacing(10);
 	renderLayout->setContentsMargins(15, 20, 15, 15);
 
-	// Render mode
-	m_renderModeCombo = new QComboBox(basicTab);
-	m_renderModeCombo->addItem("🎮 GPU (CUDA) - Fast", true);
-	m_renderModeCombo->addItem("🖥️ CPU - High Quality", false);
-	styleComboBox(m_renderModeCombo);
-	renderLayout->addRow("Render Mode:", m_renderModeCombo);
+	// (Render Mode row already moved above — skip re-adding it)
 
 	// Quality preset
 	m_qualityPresetCombo = new QComboBox(basicTab);
