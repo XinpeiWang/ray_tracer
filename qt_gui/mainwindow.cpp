@@ -1197,14 +1197,15 @@ void MainWindow::applyDarkTheme() {
 void MainWindow::styleComboBox(QComboBox *combo) {
 	QAbstractItemView *view = combo->view();
 
-	// Enable mouse tracking so hover events fire on the popup list
+	// Force Fusion style on the popup so Qt honours the stylesheet
+	// instead of deferring to the Windows native list-box renderer.
+	view->setStyle(QStyleFactory::create("Fusion"));
+
 	view->setMouseTracking(true);
 	view->viewport()->setMouseTracking(true);
 	view->setAttribute(Qt::WA_Hover, true);
 	view->viewport()->setAttribute(Qt::WA_Hover, true);
 
-	// The popup is a top-level window on Windows and does NOT inherit the
-	// app stylesheet, so set it directly on the view.
 	view->setStyleSheet(R"(
 		QAbstractItemView {
 			background-color: #0A0A0F;
