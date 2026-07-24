@@ -439,8 +439,8 @@ void MainWindow::createBasicTab() {
 	// --- Scene selection ---
 	QGroupBox *sceneGroup = new QGroupBox("Scene", basicTab);
 	QVBoxLayout *sceneGroupLayout = new QVBoxLayout(sceneGroup);
-	sceneGroupLayout->setContentsMargins(10, 8, 10, 8);
-	sceneGroupLayout->setSpacing(8);
+	sceneGroupLayout->setContentsMargins(12, 24, 12, 12);
+	sceneGroupLayout->setSpacing(10);
 
 	QHBoxLayout *sceneRow = new QHBoxLayout();
 	m_sceneCombo = new QComboBox(basicTab);
@@ -477,9 +477,9 @@ void MainWindow::createBasicTab() {
 	// --- Render mode (Image vs Video) + GPU/CPU ---
 	QGroupBox *modeGroup = new QGroupBox("Render Mode", basicTab);
 	QFormLayout *modeFormLayout = new QFormLayout(modeGroup);
-	modeFormLayout->setVerticalSpacing(12);
+	modeFormLayout->setVerticalSpacing(14);
 	modeFormLayout->setHorizontalSpacing(10);
-	modeFormLayout->setContentsMargins(15, 15, 15, 15);
+	modeFormLayout->setContentsMargins(15, 28, 15, 15);
 
 	m_modeCombo = new QComboBox(basicTab);
 	m_modeCombo->addItem("🖼️ Render Single Image");
@@ -503,7 +503,7 @@ void MainWindow::createBasicTab() {
 	QFormLayout *renderLayout = new QFormLayout(renderGroup);
 	renderLayout->setVerticalSpacing(15);
 	renderLayout->setHorizontalSpacing(10);
-	renderLayout->setContentsMargins(15, 20, 15, 15);
+	renderLayout->setContentsMargins(15, 28, 15, 15);
 
 	// (Render Mode row already moved above — skip re-adding it)
 
@@ -549,7 +549,7 @@ void MainWindow::createBasicTab() {
 	QGroupBox *outputGroup = new QGroupBox("Output", basicTab);
 	QVBoxLayout *outputLayout = new QVBoxLayout(outputGroup);
 	outputLayout->setSpacing(10);
-	outputLayout->setContentsMargins(15, 20, 15, 15);
+	outputLayout->setContentsMargins(15, 28, 15, 15);
 
 	QHBoxLayout *pathLayout = new QHBoxLayout();
 	// Use timestamped filename to avoid caching issues
@@ -794,6 +794,9 @@ void MainWindow::createVideoTab() {
 	// Video parameters group
 	QGroupBox *videoGroup = new QGroupBox("Video Generation Settings", videoTab);
 	QFormLayout *videoLayout = new QFormLayout(videoGroup);
+	videoLayout->setVerticalSpacing(14);
+	videoLayout->setHorizontalSpacing(10);
+	videoLayout->setContentsMargins(15, 28, 15, 15);
 
 	// Camera path selector
 	m_cameraPathCombo = new QComboBox();
