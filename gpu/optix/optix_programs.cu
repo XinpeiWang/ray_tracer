@@ -325,6 +325,7 @@ extern "C" __global__ void __closesthit__sphere() {
 	float3 attenuation;
 	float3 scattered_dir;
 	bool scattered = false;
+	bool is_specular = false;  // pbrt-v4 specularBounce: MIS is skipped for specular events
 
 	switch (mat.type) {
 		case MaterialType::Lambertian: {
@@ -419,6 +420,7 @@ extern "C" __global__ void __closesthit__sphere() {
 			scattered_dir = reflected + mat.fuzz * random_in_unit_sphere(seed);
 			attenuation = mat.albedo;
 			scattered = (dot(scattered_dir, normal) > 0.0f);
+			is_specular = true;  // specular bounce: next hit adds full emission, no MIS
 			break;
 		}
 
@@ -438,6 +440,7 @@ extern "C" __global__ void __closesthit__sphere() {
 				scattered_dir = refract(unit_direction, normal, ri);
 			}
 			scattered = true;
+			is_specular = true;  // specular bounce: next hit adds full emission, no MIS
 			break;
 		}
 
@@ -456,12 +459,13 @@ extern "C" __global__ void __closesthit__sphere() {
 	}
 
 	// Pack updated payload back into registers
-	// For ALL hits, we return emission in p3-p5 (CPU adds emission at every bounce)
 	// p0-p2: new attenuation (throughput for next bounce)
 	// p3-p5: emission from this surface hit
 	// p6-p8: scatter direction (if scattered)
 	// p9: updated seed
 	// p10: scattered flag (0=absorbed, 1=scattered, 2=hit_light)
+	// p11: hit distance 't'
+	// p12: brdf_pdf of scattered dir (flag==1) OR light NEE pdf of incoming dir (flag==2) for MIS
 
 	// Always set emission (for all material types - non-lights have emission=0)
 	optixSetPayload_3(__float_as_uint(emission.x));
@@ -472,6 +476,10 @@ extern "C" __global__ void __closesthit__sphere() {
 	if (scattered) {
 		// Return surface attenuation ONLY (raygen will multiply with throughput)
 		float t_hit = optixGetRayTmax();  // Hit distance
+		// p12: BRDF PDF for MIS on the next bounce.
+		// Specular (Metal/Dielectric): 0 = no MIS (pbrt-v4 specularBounce pattern).
+		// Lambertian: cosine_pdf of the sampled direction.
+		float brdf_pdf_out = is_specular ? 0.0f : cosine_pdf(scattered_dir, normal);
 
 		optixSetPayload_0(__float_as_uint(attenuation.x));
 		optixSetPayload_1(__float_as_uint(attenuation.y));
@@ -480,11 +488,36 @@ extern "C" __global__ void __closesthit__sphere() {
 		optixSetPayload_7(__float_as_uint(scattered_dir.y));
 		optixSetPayload_8(__float_as_uint(scattered_dir.z));
 		optixSetPayload_10(1);  // scattered
-		optixSetPayload_11(__float_as_uint(t_hit));  // Hit distance
+		optixSetPayload_11(__float_as_uint(t_hit));
+		optixSetPayload_12(__float_as_uint(brdf_pdf_out));
 	} else if (mat.type == MaterialType::DiffuseLight) {
+		// p12: NEE PDF for the incoming ray direction reaching this sphere light.
+		// This is the solid-angle PDF used by the NEE sampler, enabling MIS in raygen.
+		float light_pdf_for_incoming = 0.0f;
+		if (params.aliasTable && params.numLights > 0) {
+			// Find selection PMF for this sphere in the alias table
+			int prim_idx = (int)primIdx;
+			float sel_pdf = 0.0f;
+			for (unsigned int li = 0; li < params.numLights; ++li) {
+				if (params.lightIndices[li] == prim_idx && params.isLightSphere[li]) {
+					sel_pdf = params.aliasTable[li].pdf;
+					break;
+				}
+			}
+			// Solid-angle PDF: 1 / (2*pi*(1 - cos_theta_max))
+			float3 to_center = sphere_center - ray_orig;
+			float dist_sq = dot(to_center, to_center);
+			if (dist_sq > sphere_radius * sphere_radius) {
+				float cos_theta_max = sqrtf(1.0f - sphere_radius * sphere_radius / dist_sq);
+				float solid_angle = 2.0f * 3.14159265f * (1.0f - cos_theta_max);
+				light_pdf_for_incoming = sel_pdf / solid_angle;
+			}
+		}
 		optixSetPayload_10(2);  // hit_light
+		optixSetPayload_12(__float_as_uint(light_pdf_for_incoming));
 	} else {
 		optixSetPayload_10(0);  // absorbed
+		optixSetPayload_12(0);
 	}
 }
 
@@ -584,6 +617,7 @@ extern "C" __global__ void __closesthit__quad() {
 	float3 attenuation;
 	float3 scattered_dir;
 	bool scattered = false;
+	bool is_specular = false;  // pbrt-v4 specularBounce: MIS is skipped for specular events
 
 	switch (mat.type) {
 		case MaterialType::Lambertian: {
@@ -670,6 +704,7 @@ extern "C" __global__ void __closesthit__quad() {
 			scattered_dir = reflected + mat.fuzz * random_in_unit_sphere(seed);
 			attenuation = mat.albedo;
 			scattered = (dot(scattered_dir, final_normal) > 0.0f);
+			is_specular = true;  // specular bounce: next hit adds full emission, no MIS
 			break;
 		}
 
@@ -689,6 +724,7 @@ extern "C" __global__ void __closesthit__quad() {
 				scattered_dir = refract(unit_direction, final_normal, ri);
 			}
 			scattered = true;
+			is_specular = true;  // specular bounce: next hit adds full emission, no MIS
 			break;
 		}
 
@@ -707,12 +743,13 @@ extern "C" __global__ void __closesthit__quad() {
 	}
 
 	// Pack updated payload back into registers
-	// For ALL hits, we return emission in p3-p5 (CPU adds emission at every bounce)
 	// p0-p2: surface attenuation (BRDF albedo - raygen multiplies with throughput)
 	// p3-p5: emission from this surface hit
 	// p6-p8: scatter direction (if scattered)
 	// p9: updated seed
 	// p10: scattered flag (0=absorbed, 1=scattered, 2=hit_light)
+	// p11: hit distance 't'
+	// p12: brdf_pdf of scattered dir (flag==1) OR light NEE pdf of incoming dir (flag==2) for MIS
 
 	// Always set emission (for all material types - non-lights have emission=0)
 	optixSetPayload_3(__float_as_uint(emission.x));
@@ -723,6 +760,10 @@ extern "C" __global__ void __closesthit__quad() {
 	if (scattered) {
 		// Return surface attenuation ONLY (raygen will multiply with throughput)
 		float t_hit = optixGetRayTmax();  // Hit distance
+		// p12: BRDF PDF for MIS on the next bounce.
+		// Specular (Metal/Dielectric): 0 = no MIS (pbrt-v4 specularBounce pattern).
+		// Lambertian: cosine_pdf of the sampled direction.
+		float brdf_pdf_out = is_specular ? 0.0f : cosine_pdf(scattered_dir, final_normal);
 
 		optixSetPayload_0(__float_as_uint(attenuation.x));
 		optixSetPayload_1(__float_as_uint(attenuation.y));
@@ -731,11 +772,33 @@ extern "C" __global__ void __closesthit__quad() {
 		optixSetPayload_7(__float_as_uint(scattered_dir.y));
 		optixSetPayload_8(__float_as_uint(scattered_dir.z));
 		optixSetPayload_10(1);  // scattered
-		optixSetPayload_11(__float_as_uint(t_hit));  // Hit distance
+		optixSetPayload_11(__float_as_uint(t_hit));
+		optixSetPayload_12(__float_as_uint(brdf_pdf_out));
 	} else if (mat.type == MaterialType::DiffuseLight) {
+		// p12: NEE PDF for the incoming ray direction reaching this quad light.
+		float light_pdf_for_incoming = 0.0f;
+		if (params.aliasTable && params.numLights > 0) {
+			int prim_idx = (int)primIdx;
+			float sel_pdf = 0.0f;
+			for (unsigned int li = 0; li < params.numLights; ++li) {
+				if (params.lightIndices[li] == prim_idx && !params.isLightSphere[li]) {
+					sel_pdf = params.aliasTable[li].pdf;
+					break;
+				}
+			}
+			// Solid-angle PDF for quad: dist^2 / (cos * area)
+			float3 to_light = hit_point - ray_orig;
+			float dist_sq = dot(to_light, to_light);
+			float area = length(quad.w);  // |u x v|
+			float cos_theta = fabsf(dot(normalize(ray_dir), quad.normal));
+			if (cos_theta > 1e-6f && area > 1e-6f && dist_sq > 1e-6f)
+				light_pdf_for_incoming = sel_pdf * dist_sq / (cos_theta * area);
+		}
 		optixSetPayload_10(2);  // hit_light
+		optixSetPayload_12(__float_as_uint(light_pdf_for_incoming));
 	} else {
 		optixSetPayload_10(0);  // absorbed
+		optixSetPayload_12(0);
 	}
 }
 
@@ -811,6 +874,7 @@ extern "C" __global__ void __miss__ms() {
 	optixSetPayload_5(__float_as_uint(emission.z));
 	optixSetPayload_9(seed);
 	optixSetPayload_10(0);  // absorbed (terminate path with no emission)
+	optixSetPayload_12(0);  // no brdf_pdf (path terminated)
 }
 
 //==============================================================================
@@ -858,6 +922,7 @@ extern "C" __global__ void __raygen__rg() {
 		// Path tracing loop
 		float3 throughput = make_float3(1.0f, 1.0f, 1.0f);
 		float3 radiance = make_float3(0.0f, 0.0f, 0.0f);
+		float  prev_brdf_pdf = 0.0f;  // BRDF PDF of the ray that arrived at this bounce (0 = primary)
 
 		for (unsigned int depth = 0; depth < params.maxDepth; ++depth) {
 			// Initialize payload
@@ -868,7 +933,7 @@ extern "C" __global__ void __raygen__rg() {
 			payload.depth = depth;
 			payload.scattered = false;
 
-			// Trace ray - pack 12 payload registers
+			// Trace ray - pack 13 payload registers
 			unsigned int p0 = __float_as_uint(payload.attenuation.x);
 			unsigned int p1 = __float_as_uint(payload.attenuation.y);
 			unsigned int p2 = __float_as_uint(payload.attenuation.z);
@@ -881,6 +946,7 @@ extern "C" __global__ void __raygen__rg() {
 			unsigned int p9 = payload.seed;
 			unsigned int p10 = 0;  // scattered flag
 			unsigned int p11 = 0;  // hit distance 't'
+			unsigned int p12 = 0;  // brdf_pdf of scattered direction (for MIS on next bounce)
 
 			optixTrace(
 				params.traversable,     // Acceleration structure
@@ -894,10 +960,10 @@ extern "C" __global__ void __raygen__rg() {
 				RAY_TYPE_RADIANCE,      // SBT offset
 				RAY_TYPE_COUNT,         // SBT stride
 				RAY_TYPE_RADIANCE,      // missSBTIndex
-				p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11
+				p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12
 			);
 
-			// Unpack payload (12 registers)
+			// Unpack payload (13 registers)
 			payload.attenuation.x = __uint_as_float(p0);
 			payload.attenuation.y = __uint_as_float(p1);
 			payload.attenuation.z = __uint_as_float(p2);
@@ -909,17 +975,38 @@ extern "C" __global__ void __raygen__rg() {
 			payload.scatterDir.z = __uint_as_float(p8);
 			payload.seed = p9;
 			unsigned int flag = p10;
-			float t_hit = __uint_as_float(p11);  // Hit distance
-
-			// Add emission from this hit (weighted by throughput)
-			radiance = radiance + throughput * payload.emission;
+			float t_hit = __uint_as_float(p11);
+			float scatter_brdf_pdf = __uint_as_float(p12);  // BRDF PDF of the new scatter direction
 
 			// Decode flag: 0=absorbed, 1=scattered, 2=hit_light
 			if (flag == 2) {
-				// Hit a light - terminate path
+				// Hit an emissive surface via a BRDF-sampled bounce.
+				// Apply MIS weight (pbrt-v4 PathIntegrator pattern):
+				//   w_b = PowerHeuristic(p_b, p_l)  where:
+				//     p_b = prev_brdf_pdf  (BRDF PDF of the direction that arrived here)
+				//     p_l = p12            (NEE selection*geometry PDF for this light+direction)
+				// Special cases: depth==0 (primary ray) or prev_brdf_pdf==0 (specular bounce)
+				//   -> add full Le, no MIS.
+				float3 Le = payload.emission;
+				if (depth > 0 && prev_brdf_pdf > 0.0f &&
+					(Le.x > 0.0f || Le.y > 0.0f || Le.z > 0.0f)) {
+					float p_l = scatter_brdf_pdf;  // hit program writes light NEE pdf into p12 for flag==2
+					if (p_l > 0.0f) {
+						float w_b = mis_power_heuristic(prev_brdf_pdf, p_l);
+						radiance = radiance + throughput * w_b * Le;
+					} else {
+						radiance = radiance + throughput * Le;
+					}
+				} else {
+					radiance = radiance + throughput * Le;
+				}
 				break;
 			} else if (flag == 1) {
 				// Scattered - compute scatter origin and update for next bounce
+
+				// Add NEE direct-light emission from this surface hit (already MIS-weighted inside hit program)
+				radiance = radiance + throughput * payload.emission;
+
 				float3 hit_point = ray_origin + t_hit * ray_direction;
 				float3 scatter_origin = hit_point + 0.01f * normalize(payload.scatterDir);
 
@@ -938,11 +1025,15 @@ extern "C" __global__ void __raygen__rg() {
 					}
 				}
 
+				// Carry BRDF PDF of the new scatter direction for MIS at the next bounce
+				prev_brdf_pdf = scatter_brdf_pdf;
+
 				ray_origin = scatter_origin;
 				ray_direction = normalize(payload.scatterDir);  // MUST normalize!
 				seed = payload.seed;
 			} else {
-				// Absorbed
+				// Absorbed — add any surface emission (e.g. background hit) then stop
+				radiance = radiance + throughput * payload.emission;
 				break;
 			}
 		}  // end depth loop

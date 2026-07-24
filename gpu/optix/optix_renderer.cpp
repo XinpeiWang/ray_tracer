@@ -204,7 +204,7 @@ bool OptiXRenderer::createModule() {
 	// Pipeline compile options (store as member for use in linkPipeline)
 	pipelineCompileOptions_.usesMotionBlur = false;
 	pipelineCompileOptions_.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
-	pipelineCompileOptions_.numPayloadValues = 12;  // attenuation(3) + emission(3) + dir(3) + seed(1) + flag(1) + t(1)
+	pipelineCompileOptions_.numPayloadValues = 13;  // attenuation(3) + emission(3) + dir(3) + seed(1) + flag(1) + t(1) + brdf_or_light_pdf(1)
 	pipelineCompileOptions_.numAttributeValues = 4;  // Sphere: center.xyz + radius (4 attrs)
 	pipelineCompileOptions_.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
 	pipelineCompileOptions_.pipelineLaunchParamsVariableName = "params";
