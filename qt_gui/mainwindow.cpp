@@ -1018,14 +1018,14 @@ void MainWindow::applyDarkTheme() {
 		}
 		QTabWidget::pane {
 			border: 3px solid #FF00FF;
-			border-radius: 8px;
+			border-radius: 0px 8px 8px 8px;
 			background-color: #0A0A0F;
 			top: -3px;
 		}
 		QTabBar::tab {
 			background-color: #1E0832;
 			border: 3px solid #FF00FF;
-			border-bottom: none;
+			border-bottom: 3px solid #FF00FF;
 			border-top-left-radius: 8px;
 			border-top-right-radius: 8px;
 			padding: 12px 20px;
@@ -1037,6 +1037,7 @@ void MainWindow::applyDarkTheme() {
 		QTabBar::tab:selected {
 			background-color: #3A1050;
 			border-color: #00FFFF;
+			border-bottom-color: #0A0A0F;
 			color: #00FFFF;
 			margin-bottom: -3px;
 			padding-bottom: 15px;
