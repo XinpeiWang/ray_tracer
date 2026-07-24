@@ -1195,64 +1195,18 @@ void MainWindow::applyDarkTheme() {
 }
 
 void MainWindow::styleComboBox(QComboBox *combo) {
-	// Get the view (popup list) of the combo box
 	QAbstractItemView *view = combo->view();
 
-	// CRITICAL: Enable mouse tracking for hover events
+	// Enable mouse tracking so hover events fire on the popup list
 	view->setMouseTracking(true);
 	view->viewport()->setMouseTracking(true);
-
-	// Force the view to update on hover
 	view->setAttribute(Qt::WA_Hover, true);
 	view->viewport()->setAttribute(Qt::WA_Hover, true);
 
-	// Set up custom palette for the dropdown with bright hover colors
-	QPalette viewPalette;
-	viewPalette.setColor(QPalette::Base, QColor(10, 10, 15));              // Background
-	viewPalette.setColor(QPalette::Text, QColor(0, 255, 255));             // Text - cyan
-	viewPalette.setColor(QPalette::AlternateBase, QColor(20, 15, 25));
-
-	// IMPORTANT: Set highlight colors for hover state
-	viewPalette.setColor(QPalette::Highlight, QColor(255, 0, 255));        // Hover background - BRIGHT MAGENTA
-	viewPalette.setColor(QPalette::HighlightedText, QColor(255, 255, 255)); // Hover text - WHITE for contrast
-
-	// Disabled inactive states
-	viewPalette.setColor(QPalette::Inactive, QPalette::Highlight, QColor(255, 0, 255));
-	viewPalette.setColor(QPalette::Inactive, QPalette::HighlightedText, QColor(255, 255, 255));
-
-	view->setPalette(viewPalette);
-
-	// Simple stylesheet focusing on palette usage
-	QString itemStyle = R"(
-		QAbstractItemView {
-			background-color: rgb(10, 10, 15);
-			border: 3px solid rgb(255, 0, 255);
-			border-radius: 5px;
-			outline: none;
-			show-decoration-selected: 1;
-			color: rgb(0, 255, 255);
-		}
-		QAbstractItemView::item {
-			padding: 10px 12px;
-			min-height: 36px;
-			border: none;
-			color: rgb(0, 255, 255);
-		}
-		QAbstractItemView::item:hover {
-			background-color: rgb(60, 0, 80);
-			color: rgb(255, 255, 255);
-			border-left: 3px solid rgb(255, 0, 255);
-		}
-		QAbstractItemView::item:selected {
-			background-color: rgb(100, 0, 130);
-			color: rgb(255, 255, 255);
-			border-left: 3px solid rgb(0, 255, 255);
-		}
-		)";
-				view->setStyleSheet(itemStyle);
-				view->setStyleSheet(itemStyle);
-				combo->installEventFilter(m_wheelFilter);
-			}
+	// The global app stylesheet (QComboBox QAbstractItemView::item:hover etc.)
+	// handles all hover/selected colours — no per-view stylesheet needed.
+	combo->installEventFilter(m_wheelFilter);
+}
 
 			void MainWindow::styleSpinBox(QSpinBox *spinBox) {
 				// Apply custom stylesheet with CSS triangle arrows
