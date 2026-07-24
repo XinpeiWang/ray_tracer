@@ -14,6 +14,30 @@
 #include <QProcess>
 #include <QVector3D>
 #include <QTextEdit>
+#include <QEvent>
+
+// ============================================================================
+// WheelIgnoreFilter
+// ============================================================================
+// Prevents accidental value changes when the user scrolls the page.
+// Install on any QComboBox / QSpinBox / QDoubleSpinBox to block wheel events
+// unless the widget already has keyboard focus.
+// ============================================================================
+class WheelIgnoreFilter : public QObject {
+    Q_OBJECT
+public:
+    explicit WheelIgnoreFilter(QObject *parent = nullptr) : QObject(parent) {}
+protected:
+    bool eventFilter(QObject *obj, QEvent *event) override {
+        if (event->type() == QEvent::Wheel) {
+            // Only allow scroll if the widget has focus (user clicked it first)
+            QWidget *w = qobject_cast<QWidget*>(obj);
+            if (w && !w->hasFocus())
+                return true;  // consume / block the wheel event
+        }
+        return QObject::eventFilter(obj, event);
+    }
+};
 
 // ============================================================================
 // RenderThread
@@ -160,6 +184,9 @@ private:
 	// State
 	bool m_isRendering;                 // true when a render is in progress
 	bool m_videoMode;                   // true = video generation mode, false = single image mode
+
+	// Shared event filter that blocks accidental wheel-scroll on controls
+	WheelIgnoreFilter *m_wheelFilter;
 };
 
 #endif // MAINWINDOW_H

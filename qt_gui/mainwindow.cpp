@@ -342,6 +342,9 @@ void RenderThread::run() {
 MainWindow::MainWindow(QWidget *parent)
 	: QMainWindow(parent), m_renderThread(nullptr), m_isRendering(false), m_videoMode(false) {
 
+	// Create shared wheel filter (blocks accidental scroll on all controls)
+	m_wheelFilter = new WheelIgnoreFilter(this);
+
 	setWindowTitle("Ray Tracer - Path Tracing Renderer");
 	setMinimumSize(600, 500);
 
@@ -681,6 +684,7 @@ void MainWindow::createAdvancedTab() {
 	m_cameraPosX->setValue(278);  // Default X: centered horizontally
 	m_cameraPosX->setSingleStep(10);
 	m_cameraPosX->setEnabled(false);  // Disabled until "Custom" is selected
+	m_cameraPosX->installEventFilter(m_wheelFilter);
 	cameraLayout->addRow("Camera X:", m_cameraPosX);
 
 	m_cameraPosY = new QDoubleSpinBox(advancedTab);
@@ -688,6 +692,7 @@ void MainWindow::createAdvancedTab() {
 	m_cameraPosY->setValue(278);  // Default Y: centered vertically
 	m_cameraPosY->setSingleStep(10);
 	m_cameraPosY->setEnabled(false);  // Disabled until "Custom" is selected
+	m_cameraPosY->installEventFilter(m_wheelFilter);
 	cameraLayout->addRow("Camera Y:", m_cameraPosY);
 
 	m_cameraPosZ = new QDoubleSpinBox(advancedTab);
@@ -695,6 +700,7 @@ void MainWindow::createAdvancedTab() {
 	m_cameraPosZ->setValue(-800);  // Default Z: far back view to match default preset
 	m_cameraPosZ->setSingleStep(10);
 	m_cameraPosZ->setEnabled(false);  // Disabled until "Custom" is selected
+	m_cameraPosZ->installEventFilter(m_wheelFilter);
 	cameraLayout->addRow("Camera Z:", m_cameraPosZ);
 
 	// Connect preset combo to handler that updates spinboxes and enables/disables manual input
@@ -1229,6 +1235,7 @@ void MainWindow::styleComboBox(QComboBox *combo) {
 				}
 				)";
 				view->setStyleSheet(itemStyle);
+				combo->installEventFilter(m_wheelFilter);
 			}
 
 			void MainWindow::styleSpinBox(QSpinBox *spinBox) {
@@ -1293,6 +1300,7 @@ void MainWindow::styleComboBox(QComboBox *combo) {
 					}
 				)";
 				spinBox->setStyleSheet(spinBoxStyle);
+				spinBox->installEventFilter(m_wheelFilter);
 			}
 
 			void MainWindow::onRenderClicked() {
