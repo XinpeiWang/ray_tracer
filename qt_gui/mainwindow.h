@@ -29,12 +29,8 @@ public:
     explicit WheelIgnoreFilter(QObject *parent = nullptr) : QObject(parent) {}
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override {
-        if (event->type() == QEvent::Wheel) {
-            // Only allow scroll if the widget has focus (user clicked it first)
-            QWidget *w = qobject_cast<QWidget*>(obj);
-            if (w && !w->hasFocus())
-                return true;  // consume / block the wheel event
-        }
+        if (event->type() == QEvent::Wheel)
+            return true;  // always block wheel on these controls
         return QObject::eventFilter(obj, event);
     }
 };
