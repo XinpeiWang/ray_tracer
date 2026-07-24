@@ -31,9 +31,6 @@
 #include <set>
 #include <filesystem>
 #include <chrono>
-#include <opencv2/core.hpp>
-#include <opencv2/videoio.hpp>
-#include <opencv2/imgproc.hpp>
 #include "cpu_renderer/cpu_interface.h" // CPU renderer interface (multithreaded C++)
 #include "gpu/optix/optix_interface.h"  // OptiX renderer interface (OptiX)
 #include "src/external/image_writer.h"  // PPM to PNG conversion utilities
@@ -56,73 +53,7 @@ namespace {
 	constexpr double kDefaultCameraY = 278.0;
 	constexpr double kDefaultCameraZ = -800.0;  // Far back view for full scene
 
-	/// Helper function to load PPM file into OpenCV Mat
-	/// Supports both P3 (ASCII) and P6 (binary) PPM formats
-	/// Returns empty Mat on failure
-	cv::Mat load_ppm_to_mat(const std::string& filepath) {
-		FILE* file = std::fopen(filepath.c_str(), "rb");
-		if (!file) {
-			std::cerr << "ERROR: Cannot open PPM file: " << filepath << std::endl;
-			return cv::Mat();
-		}
-
-		// Read PPM header
-		char format[3];
-		int width, height, maxval;
-		if (std::fscanf(file, "%2s\n%d %d\n%d\n", format, &width, &height, &maxval) != 4) {
-			std::cerr << "ERROR: Invalid PPM header in: " << filepath << std::endl;
-			std::fclose(file);
-			return cv::Mat();
-		}
-
-		bool isP3 = (format[0] == 'P' && format[1] == '3');  // ASCII
-		bool isP6 = (format[0] == 'P' && format[1] == '6');  // Binary
-
-		if (!isP3 && !isP6) {
-			std::cerr << "ERROR: Unsupported PPM format in: " << filepath << " (expected P3 or P6, got " << format << ")" << std::endl;
-			std::fclose(file);
-			return cv::Mat();
-		}
-
-		// Read pixel data (PPM is RGB, OpenCV uses BGR)
-		cv::Mat img(height, width, CV_8UC3);
-
-		if (isP3) {
-			// ASCII format - read integers
-			for (int y = 0; y < height; ++y) {
-				for (int x = 0; x < width; ++x) {
-					int r, g, b;
-					if (std::fscanf(file, "%d %d %d", &r, &g, &b) != 3) {
-						std::cerr << "ERROR: Incomplete pixel data in: " << filepath << std::endl;
-						std::fclose(file);
-						return cv::Mat();
-					}
-					// Convert RGB to BGR
-					img.at<cv::Vec3b>(y, x) = cv::Vec3b(static_cast<unsigned char>(b), 
-														static_cast<unsigned char>(g), 
-														static_cast<unsigned char>(r));
-				}
-			}
-		} else {
-			// Binary format (P6)
-			for (int y = 0; y < height; ++y) {
-				for (int x = 0; x < width; ++x) {
-					unsigned char rgb[3];
-					if (std::fread(rgb, 1, 3, file) != 3) {
-						std::cerr << "ERROR: Incomplete pixel data in: " << filepath << std::endl;
-						std::fclose(file);
-						return cv::Mat();
-					}
-					// Convert RGB to BGR
-					img.at<cv::Vec3b>(y, x) = cv::Vec3b(rgb[2], rgb[1], rgb[0]);
-				}
-			}
-		}
-
-		std::fclose(file);
-		return img;
 	}
-}
 
 int main(int argc, char** argv) {
     std::cout << "========================================" << std::endl;
@@ -550,50 +481,30 @@ int main(int argc, char** argv) {
             return ERR_FILE_WRITE_FAILED;
         }
 
-        // Initialize OpenCV VideoWriter
-        // Codec: MP4V (MPEG-4), FourCC code
-        int fourcc = cv::VideoWriter::fourcc('m', 'p', '4', 'v');
-        cv::VideoWriter video_writer(
-            video_path.string(),
-            fourcc,
-            static_cast<double>(video_fps),
-            cv::Size(image_width, image_height),
-            true  // isColor
-        );
-
-        if (!video_writer.isOpened()) {
-            std::cerr << "ERROR: Failed to open video writer for: " << video_path << std::endl;
-            return ERR_FILE_WRITE_FAILED;
-        }
-
-        std::cout << "Writing frames to video..." << std::endl;
-
-        // Load and write each rendered frame
+        // Convert each PPM frame to PNG
+        std::cout << "Converting frames to PNG..." << std::endl;
+        int converted = 0;
         for (size_t i = 0; i < frame_paths.size(); ++i) {
-            cv::Mat frame = load_ppm_to_mat(frame_paths[i]);
-            if (frame.empty()) {
-                std::cerr << "\nERROR: Failed to load frame: " << frame_paths[i] << std::endl;
-                video_writer.release();
-                return ERR_FILE_WRITE_FAILED;
+            std::filesystem::path ppm_p(frame_paths[i]);
+            std::filesystem::path png_p = ppm_p.parent_path() / (ppm_p.stem().string() + ".png");
+            if (convert_ppm_to_png(frame_paths[i].c_str(), png_p.string().c_str())) {
+                ++converted;
+            } else {
+                std::cerr << "WARNING: PNG conversion failed for " << frame_paths[i] << std::endl;
             }
-
-            video_writer.write(frame);
-
-            // Progress indicator
             if ((i + 1) % 10 == 0 || i == frame_paths.size() - 1) {
-                std::cout << "  Progress: " << (i + 1) << "/" << frame_paths.size() << " frames written" << std::endl;
+                std::cout << "  Progress: " << (i + 1) << "/" << frame_paths.size() << " frames converted" << std::endl;
             }
         }
-
-        video_writer.release();
 
         std::cout << "\n========================================" << std::endl;
-        std::cout << "VIDEO COMPLETE!" << std::endl;
+        std::cout << "FRAMES COMPLETE!" << std::endl;
         std::cout << "========================================" << std::endl;
-        std::cout << "Output: " << video_path << std::endl;
+        std::cout << "Frames directory: " << frames_dir << std::endl;
+        std::cout << "Rendered: " << successful_frames << " frames, converted: " << converted << " PNG files" << std::endl;
         std::cout << "Resolution: " << image_width << "x" << image_height << std::endl;
-        std::cout << "FPS: " << video_fps << std::endl;
-        std::cout << "Duration: " << (static_cast<double>(successful_frames) / video_fps) << " seconds" << std::endl;
+        std::cout << "To assemble video, run:" << std::endl;
+        std::cout << "  ffmpeg -r " << video_fps << " -i " << frames_dir.string() << "\\frame_%04d.png -c:v libx264 -pix_fmt yuv420p " << video_path.string() << std::endl;
         std::cout << "========================================" << std::endl;
 
         return SUCCESS;
