@@ -749,8 +749,12 @@ void MainWindow::createLogTab() {
 	QHBoxLayout *btnLayout = new QHBoxLayout();
 	btnLayout->setContentsMargins(0, 4, 0, 0);
 
+	QString logBtnStyle =
+		"QPushButton { min-height: 28px; max-height: 28px; min-width: 160px; padding: 0px 20px; font-size: 11pt; }"
+		"QPushButton:hover { background-color: #3A1050; border-color: #00FFFF; color: #00FFFF; }";
+
 	QPushButton *copyButton = new QPushButton("📋 Copy All");
-	copyButton->setMaximumWidth(120);
+	copyButton->setStyleSheet(logBtnStyle);
 	connect(copyButton, &QPushButton::clicked, [this]() {
 		m_logTextEdit->selectAll();
 		m_logTextEdit->copy();
@@ -758,7 +762,7 @@ void MainWindow::createLogTab() {
 	});
 
 	QPushButton *saveButton = new QPushButton("💾 Save Log");
-	saveButton->setMaximumWidth(120);
+	saveButton->setStyleSheet(logBtnStyle);
 	connect(saveButton, &QPushButton::clicked, [this]() {
 		QString path = QFileDialog::getSaveFileName(this, "Save Log",
 			QDir::homePath() + "/render_log.txt",
@@ -775,7 +779,7 @@ void MainWindow::createLogTab() {
 	});
 
 	QPushButton *clearButton = new QPushButton("🗑 Clear Log");
-	clearButton->setMaximumWidth(120);
+	clearButton->setStyleSheet(logBtnStyle);
 	connect(clearButton, &QPushButton::clicked, m_logTextEdit, &QTextEdit::clear);
 
 	btnLayout->addWidget(copyButton);
