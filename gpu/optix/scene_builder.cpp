@@ -293,6 +293,61 @@ static void build_cornell_box(SceneData& scene) {
 		make_float3(265.0f, 0.0f, 295.0f));  // translation offset
 }
 
+/// @brief Build Cornell Rough Metal scene (scene 10)
+/// Matches CPU build_cornell_rough_metal(): same walls/light, rough aluminum box + rough gold sphere
+static void build_cornell_rough_metal(SceneData& scene) {
+    // Materials
+    const int mat_red = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    const int mat_white = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    const int mat_green = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    const int mat_light = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(kLightIntensity, kLightIntensity, kLightIntensity) });
+
+    // Rough aluminum box material (roughness 0.15)
+    const int mat_alum = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Metal, make_float3(0.8f, 0.85f, 0.88f), 0.15f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    // Rough gold sphere material (roughness 0.3)
+    const int mat_gold = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Metal, make_float3(0.95f, 0.78f, 0.28f), 0.3f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    // Cornell Box walls (same geometry as build_cornell_box)
+    // Green wall (right, +X)
+    { QuadData q{}; q.Q = make_float3(kBoxSize,0,0); q.u = make_float3(0,0,kBoxSize); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_green; scene.quads.push_back(q); }
+    // Red wall (left, -X)
+    { QuadData q{}; q.Q = make_float3(0,0,kBoxSize); q.u = make_float3(0,0,-kBoxSize); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_red; scene.quads.push_back(q); }
+    // Light
+    { QuadData q{}; q.Q = make_float3(213,554,227); q.u = make_float3(130,0,0); q.v = make_float3(0,0,105); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_light; scene.quads.push_back(q);
+      scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1); scene.isLightSphere.push_back(false); }
+    // White ceiling
+    { QuadData q{}; q.Q = make_float3(0,kBoxSize,0); q.u = make_float3(kBoxSize,0,0); q.v = make_float3(0,0,kBoxSize); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+    // White floor
+    { QuadData q{}; q.Q = make_float3(0,0,kBoxSize); q.u = make_float3(kBoxSize,0,0); q.v = make_float3(0,0,-kBoxSize); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+    // White back wall
+    { QuadData q{}; q.Q = make_float3(kBoxSize,0,kBoxSize); q.u = make_float3(-kBoxSize,0,0); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+
+    // Rough gold sphere (center 190, 90, 190), radius 90
+    SphereData sphere{};
+    sphere.center = make_float3(190.0f, 90.0f, 190.0f);
+    sphere.radius = 90.0f;
+    sphere.materialIdx = mat_gold;
+    scene.spheres.push_back(sphere);
+
+    // Rough aluminum box: box(0,0,0 -> 165,330,165), rotated 15 deg, translated (265,0,295)
+    add_box(scene,
+        make_float3(0.0f, 0.0f, 0.0f),
+        make_float3(165.0f, 330.0f, 165.0f),
+        mat_alum,
+        15.0f,
+        make_float3(265.0f, 0.0f, 295.0f));
+}
+
 /**
  * Build checkered spheres scene (scene 2)
  * Two spheres with different albedos
@@ -561,17 +616,58 @@ bool build_scene(
 							dest[offset] = v.x; dest[offset + 1] = v.y; dest[offset + 2] = v.z;
 						};
 
-						pack_float3(camera_params, 0, lookfrom);
-						pack_float3(camera_params, 3, lower_left_corner);
-						pack_float3(camera_params, 6, horizontal);
-						pack_float3(camera_params, 9, vertical);
-					}
-					break;
+									pack_float3(camera_params, 0, lookfrom);
+									pack_float3(camera_params, 3, lower_left_corner);
+									pack_float3(camera_params, 6, horizontal);
+									pack_float3(camera_params, 9, vertical);
+								}
+								break;
 
-				default:
-			return false;  // Unknown scene ID
-	}
+							case 10:  // Cornell Rough Metal (GGX)
+								build_cornell_rough_metal(scene);
 
-	return true;
-}
+								// Same camera as Cornell Box (lookat center of box)
+								{
+									constexpr float kPi = 3.14159265358979323846f;
+									const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
+									const float3 lookat = make_float3(278.0f, 278.0f, 278.0f);
+									const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
+									constexpr float vfov = 40.0f;
+									const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+
+									const float theta = vfov * kPi / 180.0f;
+									const float h = tanf(theta / 2.0f);
+									const float viewport_height = 2.0f * h;
+									const float viewport_width = aspect * viewport_height;
+
+									const float3 view_direction = make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z);
+									const float3 w = normalize(view_direction);
+									const float3 u = normalize(cross(vup, w));
+									const float3 v = cross(w, u);
+
+									const float3 horizontal = make_float3(viewport_width * u.x, viewport_width * u.y, viewport_width * u.z);
+									const float3 vertical   = make_float3(viewport_height * v.x, viewport_height * v.y, viewport_height * v.z);
+									const float3 lower_left_corner = make_float3(
+										lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - w.x,
+										lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - w.y,
+										lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - w.z
+									);
+
+									auto pack_float3 = [](float* dest, int offset, const float3& v) {
+										dest[offset] = v.x; dest[offset + 1] = v.y; dest[offset + 2] = v.z;
+									};
+
+									pack_float3(camera_params, 0, lookfrom);
+									pack_float3(camera_params, 3, lower_left_corner);
+									pack_float3(camera_params, 6, horizontal);
+									pack_float3(camera_params, 9, vertical);
+								}
+								break;
+
+							default:
+								return false;  // Unknown scene ID
+							}
+
+							return true;
+						}
 
