@@ -1555,12 +1555,12 @@ void MainWindow::onLogMessage(const QString &message) {
 			   msg.contains("Render completed", Qt::CaseInsensitive)) {
 		colour = "#51CF66";   // green
 		label  = " OK ";
-	} else if (msg.startsWith("===") || msg.startsWith("---")) {
-		// Section separator — render in a muted accent colour, bold
-		m_logTextEdit->insertHtml(
-			QString("<div style='color:#888888;font-family:Consolas,monospace;font-size:9pt;'>"
-					"<b>%1</b></div>").arg(escaped));
-		m_logTextEdit->ensureCursorVisible();
+	} else if (msg.startsWith("===") || msg.startsWith("---") ||
+			   msg.startsWith("\u2500")) {
+		// Section separator — bold, muted
+		m_logTextEdit->append(
+			QString("<span style='color:#888888;font-family:Consolas,monospace;font-size:9pt;'>"
+					"<b>%1</b></span>").arg(escaped));
 		qDebug() << msg;
 		return;
 	} else if (msg.startsWith("[cpu_interface]")) {
@@ -1577,15 +1577,14 @@ void MainWindow::onLogMessage(const QString &message) {
 		label  = "INFO";
 	}
 
-	// Format: HH:mm:ss [LABL] message
-	m_logTextEdit->insertHtml(
-		QString("<div style='color:%1;font-family:Consolas,monospace;font-size:9pt;'>"
+	// Format: HH:mm:ss [LABL] message  — use append() so each call is its own line
+	m_logTextEdit->append(
+		QString("<span style='color:%1;font-family:Consolas,monospace;font-size:9pt;'>"
 				"<span style='color:#555555;'>%2</span> "
 				"<span style='color:%1;'>[%3]</span> %4"
-				"</div>")
+				"</span>")
 		.arg(colour, ts, label, escaped));
 
-	m_logTextEdit->ensureCursorVisible();
 	qDebug() << msg;
 }
 

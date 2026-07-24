@@ -47,6 +47,7 @@ template <> constexpr inline auto RenderThread::qt_create_metaobjectdata<qt_meta
         "success",
         "message",
         "totalTime",
+        "outputPath",
         "logMessage"
     };
 
@@ -56,11 +57,11 @@ template <> constexpr inline auto RenderThread::qt_create_metaobjectdata<qt_meta
             { QMetaType::Int, 3 },
         }}),
         // Signal 'renderComplete'
-        QtMocHelpers::SignalData<void(bool, const QString &, double)>(4, 2, QMC::AccessPublic, QMetaType::Void, {{
-            { QMetaType::Bool, 5 }, { QMetaType::QString, 6 }, { QMetaType::Double, 7 },
+        QtMocHelpers::SignalData<void(bool, const QString &, double, const QString &)>(4, 2, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::Bool, 5 }, { QMetaType::QString, 6 }, { QMetaType::Double, 7 }, { QMetaType::QString, 8 },
         }}),
         // Signal 'logMessage'
-        QtMocHelpers::SignalData<void(const QString &)>(8, 2, QMC::AccessPublic, QMetaType::Void, {{
+        QtMocHelpers::SignalData<void(const QString &)>(9, 2, QMC::AccessPublic, QMetaType::Void, {{
             { QMetaType::QString, 6 },
         }}),
     };
@@ -87,7 +88,7 @@ void RenderThread::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id
     if (_c == QMetaObject::InvokeMetaMethod) {
         switch (_id) {
         case 0: _t->progressUpdate((*reinterpret_cast<std::add_pointer_t<int>>(_a[1]))); break;
-        case 1: _t->renderComplete((*reinterpret_cast<std::add_pointer_t<bool>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2])),(*reinterpret_cast<std::add_pointer_t<double>>(_a[3]))); break;
+        case 1: _t->renderComplete((*reinterpret_cast<std::add_pointer_t<bool>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2])),(*reinterpret_cast<std::add_pointer_t<double>>(_a[3])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[4]))); break;
         case 2: _t->logMessage((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
         default: ;
         }
@@ -95,7 +96,7 @@ void RenderThread::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id
     if (_c == QMetaObject::IndexOfMethod) {
         if (QtMocHelpers::indexOfMethod<void (RenderThread::*)(int )>(_a, &RenderThread::progressUpdate, 0))
             return;
-        if (QtMocHelpers::indexOfMethod<void (RenderThread::*)(bool , const QString & , double )>(_a, &RenderThread::renderComplete, 1))
+        if (QtMocHelpers::indexOfMethod<void (RenderThread::*)(bool , const QString & , double , const QString & )>(_a, &RenderThread::renderComplete, 1))
             return;
         if (QtMocHelpers::indexOfMethod<void (RenderThread::*)(const QString & )>(_a, &RenderThread::logMessage, 2))
             return;
@@ -140,9 +141,9 @@ void RenderThread::progressUpdate(int _t1)
 }
 
 // SIGNAL 1
-void RenderThread::renderComplete(bool _t1, const QString & _t2, double _t3)
+void RenderThread::renderComplete(bool _t1, const QString & _t2, double _t3, const QString & _t4)
 {
-    QMetaObject::activate<void>(this, &staticMetaObject, 1, nullptr, _t1, _t2, _t3);
+    QMetaObject::activate<void>(this, &staticMetaObject, 1, nullptr, _t1, _t2, _t3, _t4);
 }
 
 // SIGNAL 2
@@ -161,35 +162,54 @@ template <> constexpr inline auto MainWindow::qt_create_metaobjectdata<qt_meta_t
         "MainWindow",
         "onRenderClicked",
         "",
+        "onStopClicked",
         "onQualityPresetChanged",
         "index",
+        "onCameraPresetChanged",
+        "onSceneChanged",
+        "onModeChanged",
         "onProgressUpdate",
         "percentage",
         "onRenderComplete",
         "success",
         "message",
         "totalTime",
+        "outputPath",
         "onLogMessage"
     };
 
     QtMocHelpers::UintData qt_methods {
         // Slot 'onRenderClicked'
         QtMocHelpers::SlotData<void()>(1, 2, QMC::AccessPrivate, QMetaType::Void),
+        // Slot 'onStopClicked'
+        QtMocHelpers::SlotData<void()>(3, 2, QMC::AccessPrivate, QMetaType::Void),
         // Slot 'onQualityPresetChanged'
-        QtMocHelpers::SlotData<void(int)>(3, 2, QMC::AccessPrivate, QMetaType::Void, {{
-            { QMetaType::Int, 4 },
+        QtMocHelpers::SlotData<void(int)>(4, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::Int, 5 },
+        }}),
+        // Slot 'onCameraPresetChanged'
+        QtMocHelpers::SlotData<void(int)>(6, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::Int, 5 },
+        }}),
+        // Slot 'onSceneChanged'
+        QtMocHelpers::SlotData<void(int)>(7, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::Int, 5 },
+        }}),
+        // Slot 'onModeChanged'
+        QtMocHelpers::SlotData<void(int)>(8, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::Int, 5 },
         }}),
         // Slot 'onProgressUpdate'
-        QtMocHelpers::SlotData<void(int)>(5, 2, QMC::AccessPrivate, QMetaType::Void, {{
-            { QMetaType::Int, 6 },
+        QtMocHelpers::SlotData<void(int)>(9, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::Int, 10 },
         }}),
         // Slot 'onRenderComplete'
-        QtMocHelpers::SlotData<void(bool, const QString &, double)>(7, 2, QMC::AccessPrivate, QMetaType::Void, {{
-            { QMetaType::Bool, 8 }, { QMetaType::QString, 9 }, { QMetaType::Double, 10 },
+        QtMocHelpers::SlotData<void(bool, const QString &, double, const QString &)>(11, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::Bool, 12 }, { QMetaType::QString, 13 }, { QMetaType::Double, 14 }, { QMetaType::QString, 15 },
         }}),
         // Slot 'onLogMessage'
-        QtMocHelpers::SlotData<void(const QString &)>(11, 2, QMC::AccessPrivate, QMetaType::Void, {{
-            { QMetaType::QString, 9 },
+        QtMocHelpers::SlotData<void(const QString &)>(16, 2, QMC::AccessPrivate, QMetaType::Void, {{
+            { QMetaType::QString, 13 },
         }}),
     };
     QtMocHelpers::UintData qt_properties {
@@ -215,10 +235,14 @@ void MainWindow::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, 
     if (_c == QMetaObject::InvokeMetaMethod) {
         switch (_id) {
         case 0: _t->onRenderClicked(); break;
-        case 1: _t->onQualityPresetChanged((*reinterpret_cast<std::add_pointer_t<int>>(_a[1]))); break;
-        case 2: _t->onProgressUpdate((*reinterpret_cast<std::add_pointer_t<int>>(_a[1]))); break;
-        case 3: _t->onRenderComplete((*reinterpret_cast<std::add_pointer_t<bool>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2])),(*reinterpret_cast<std::add_pointer_t<double>>(_a[3]))); break;
-        case 4: _t->onLogMessage((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
+        case 1: _t->onStopClicked(); break;
+        case 2: _t->onQualityPresetChanged((*reinterpret_cast<std::add_pointer_t<int>>(_a[1]))); break;
+        case 3: _t->onCameraPresetChanged((*reinterpret_cast<std::add_pointer_t<int>>(_a[1]))); break;
+        case 4: _t->onSceneChanged((*reinterpret_cast<std::add_pointer_t<int>>(_a[1]))); break;
+        case 5: _t->onModeChanged((*reinterpret_cast<std::add_pointer_t<int>>(_a[1]))); break;
+        case 6: _t->onProgressUpdate((*reinterpret_cast<std::add_pointer_t<int>>(_a[1]))); break;
+        case 7: _t->onRenderComplete((*reinterpret_cast<std::add_pointer_t<bool>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2])),(*reinterpret_cast<std::add_pointer_t<double>>(_a[3])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[4]))); break;
+        case 8: _t->onLogMessage((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
         default: ;
         }
     }
@@ -243,14 +267,14 @@ int MainWindow::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 5)
+        if (_id < 9)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 5;
+        _id -= 9;
     }
     if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 5)
+        if (_id < 9)
             *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType();
-        _id -= 5;
+        _id -= 9;
     }
     return _id;
 }
