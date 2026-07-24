@@ -58,6 +58,38 @@ int cpu_render_main(
     double cam_z
 );
 
+/// Scene metadata C API -- lets the GUI query the registry without C++ headers
+/// @return total number of registered scenes
+int cpu_scene_count();
+
+/// @param index  position in registry (0..cpu_scene_count()-1)
+/// @return scene id, or -1 if index out of range
+int cpu_scene_id(int index);
+
+/// @param index  position in registry
+/// @return scene name string, or "" if out of range
+const char* cpu_scene_name(int index);
+
+/// @param index  position in registry
+/// @return short description string
+const char* cpu_scene_description(int index);
+
+/// @param index  position in registry
+/// @return performance hint: "Fast", "Medium", "Slow", "Very Slow"
+const char* cpu_scene_performance(int index);
+
+/// @param index  position in registry
+/// @return recommended samples-per-pixel
+int cpu_scene_recommended_spp(int index);
+
+/// @param index  position in registry
+/// @return 1 if scene requires external files (earthmap.jpg etc), else 0
+int cpu_scene_requires_files(int index);
+
+/// @param index  position in registry
+/// @return 1 if GPU compatible, else 0
+int cpu_scene_gpu_compatible(int index);
+
 #ifdef __cplusplus
 }
 #endif
