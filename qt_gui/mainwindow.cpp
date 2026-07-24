@@ -556,6 +556,9 @@ void MainWindow::createBasicTab() {
 	QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss");
 	QString defaultPath = QDir::homePath() + "/Desktop/render_" + timestamp + ".png";
 	m_outputPathEdit = new QLineEdit(QDir::toNativeSeparators(defaultPath), basicTab);
+	m_outputPathEdit->setStyleSheet(
+		"QLineEdit { font-size: 11pt; padding: 6px 8px; min-height: 32px; }"
+	);
 	m_browseButton = new QPushButton("Browse...", basicTab);
 	connect(m_browseButton, &QPushButton::clicked, [this]() {
 		QString path = QFileDialog::getSaveFileName(this, "Save Render Output",
