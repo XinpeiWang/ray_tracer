@@ -16,6 +16,8 @@
 #include <QScreen>
 #include <QTimer>
 #include <QAbstractItemView>
+#include <QPainter>
+#include <QFontMetrics>
 
 
 void MainWindow::applyDarkTheme() {
@@ -313,6 +315,71 @@ void MainWindow::applyDarkTheme() {
 		}
 	)";
 	qApp->setStyleSheet(stylesheet);
+}
+
+// ---------------------------------------------------------------------------
+// GroupBoxPainter — event filter that draws a thick rounded border + fill
+// directly via QPainter, bypassing the broken QGroupBox CSS on Windows/Qt6.
+// ---------------------------------------------------------------------------
+class GroupBoxPainter : public QObject {
+public:
+	explicit GroupBoxPainter(QObject *parent = nullptr) : QObject(parent) {}
+
+protected:
+	bool eventFilter(QObject *obj, QEvent *event) override {
+		if (event->type() == QEvent::Paint) {
+			QGroupBox *box = qobject_cast<QGroupBox*>(obj);
+			if (!box) return false;
+
+			QPainter p(box);
+			p.setRenderHint(QPainter::Antialiasing);
+
+			const int margin = 18;       // space above box for title
+			QRect r = box->rect().adjusted(1, margin, -1, -1);
+
+			// Fill
+			p.fillRect(r, QColor(0x1A, 0x1A, 0x2E));
+
+			// Border — thick cyan rounded rect
+			QPen pen(QColor(0x00, 0xFF, 0xFF), 3);
+			p.setPen(pen);
+			p.setBrush(Qt::NoBrush);
+			p.drawRoundedRect(r, 8, 8);
+
+			// Title text
+			QString title = box->title();
+			if (!title.isEmpty()) {
+				QFont f = box->font();
+				f.setPointSize(11);
+				f.setBold(true);
+				p.setFont(f);
+
+				QFontMetrics fm(f);
+				int tw = fm.horizontalAdvance(title) + 20;
+				int th = fm.height() + 6;
+				QRect titleRect(22, margin - th / 2, tw, th);
+
+				// Title background (punches through the border line)
+				p.fillRect(titleRect, QColor(0x1A, 0x1A, 0x2E));
+
+				// Title text in magenta
+				p.setPen(QColor(0xFF, 0x00, 0xFF));
+				p.drawText(titleRect, Qt::AlignCenter, title);
+			}
+
+			return true;   // we handled the paint
+		}
+		return QObject::eventFilter(obj, event);
+	}
+};
+
+void MainWindow::styleGroupBox(QGroupBox *box) {
+	// Remove CSS title/border — we paint it ourselves
+	box->setStyleSheet("QGroupBox { border: none; background: transparent; }");
+	// Install our custom painter
+	box->installEventFilter(new GroupBoxPainter(box));
+	// Must be set so the widget repaints on resize
+	box->setAttribute(Qt::WA_OpaquePaintEvent, false);
 }
 
 void MainWindow::styleComboBox(QComboBox *combo) {

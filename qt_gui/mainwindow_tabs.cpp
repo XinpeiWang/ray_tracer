@@ -23,6 +23,7 @@ void MainWindow::createBasicTab() {
 
 	// --- Scene selection ---
 	QGroupBox *sceneGroup = new QGroupBox("Scene", basicTab);
+	styleGroupBox(sceneGroup);
 	QVBoxLayout *sceneGroupLayout = new QVBoxLayout(sceneGroup);
 	sceneGroupLayout->setContentsMargins(12, 24, 12, 12);
 	sceneGroupLayout->setSpacing(10);
@@ -61,6 +62,7 @@ void MainWindow::createBasicTab() {
 
 	// --- Render mode (Image vs Video) + GPU/CPU ---
 	QGroupBox *modeGroup = new QGroupBox("Render Mode", basicTab);
+	styleGroupBox(modeGroup);
 	QFormLayout *modeFormLayout = new QFormLayout(modeGroup);
 	modeFormLayout->setVerticalSpacing(14);
 	modeFormLayout->setHorizontalSpacing(10);
@@ -85,6 +87,7 @@ void MainWindow::createBasicTab() {
 
 	// --- Render settings (quality / resolution / samples) ---
 	QGroupBox *renderGroup = new QGroupBox("Render Settings", basicTab);
+	styleGroupBox(renderGroup);
 	QFormLayout *renderLayout = new QFormLayout(renderGroup);
 	renderLayout->setVerticalSpacing(15);
 	renderLayout->setHorizontalSpacing(10);
@@ -132,6 +135,7 @@ void MainWindow::createBasicTab() {
 
 	// Output group
 	QGroupBox *outputGroup = new QGroupBox("Output", basicTab);
+	styleGroupBox(outputGroup);
 	QVBoxLayout *outputLayout = new QVBoxLayout(outputGroup);
 	outputLayout->setSpacing(10);
 	outputLayout->setContentsMargins(15, 28, 15, 15);
@@ -178,6 +182,7 @@ void MainWindow::createAdvancedTab() {
 	layout->setContentsMargins(15, 15, 15, 15);
 
 	QGroupBox *advancedGroup = new QGroupBox("Advanced Parameters", advancedTab);
+	styleGroupBox(advancedGroup);
 	QFormLayout *formLayout = new QFormLayout(advancedGroup);
 	formLayout->setVerticalSpacing(15);
 	formLayout->setHorizontalSpacing(10);
@@ -233,6 +238,7 @@ void MainWindow::createAdvancedTab() {
 	// ============================================================================
 
 	QGroupBox *cameraGroup = new QGroupBox("Camera Position", advancedTab);
+	styleGroupBox(cameraGroup);
 	QFormLayout *cameraLayout = new QFormLayout(cameraGroup);
 	cameraLayout->setVerticalSpacing(15);
 	cameraLayout->setHorizontalSpacing(10);
@@ -385,6 +391,7 @@ void MainWindow::createVideoTab() {
 
 	// Video parameters group
 	QGroupBox *videoGroup = new QGroupBox("Video Generation Settings", videoTab);
+	styleGroupBox(videoGroup);
 	QFormLayout *videoLayout = new QFormLayout(videoGroup);
 	videoLayout->setVerticalSpacing(14);
 	videoLayout->setHorizontalSpacing(10);

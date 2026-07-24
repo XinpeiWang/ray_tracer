@@ -10,6 +10,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QThread>
+#include <QGroupBox>
 #include <QLineEdit>
 #include <QProcess>
 #include <QVector3D>
@@ -128,6 +129,7 @@ private:
 	void applyDarkTheme();
 	void styleComboBox(QComboBox *combo);
 	void styleSpinBox(QSpinBox *spinBox);
+	void styleGroupBox(QGroupBox *box);
 	void assembleVideoAutomatically();  // Automatically assembles video after frames are rendered
 
 	// UI Components
