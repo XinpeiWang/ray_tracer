@@ -1230,13 +1230,26 @@ void MainWindow::styleComboBox(QComboBox *combo) {
 			border-radius: 5px;
 			outline: none;
 			show-decoration-selected: 1;
+			color: rgb(0, 255, 255);
 		}
 		QAbstractItemView::item {
-					padding: 12px;
-					min-height: 40px;
-					border: none;
-				}
-				)";
+			padding: 10px 12px;
+			min-height: 36px;
+			border: none;
+			color: rgb(0, 255, 255);
+		}
+		QAbstractItemView::item:hover {
+			background-color: rgb(60, 0, 80);
+			color: rgb(255, 255, 255);
+			border-left: 3px solid rgb(255, 0, 255);
+		}
+		QAbstractItemView::item:selected {
+			background-color: rgb(100, 0, 130);
+			color: rgb(255, 255, 255);
+			border-left: 3px solid rgb(0, 255, 255);
+		}
+		)";
+				view->setStyleSheet(itemStyle);
 				view->setStyleSheet(itemStyle);
 				combo->installEventFilter(m_wheelFilter);
 			}
