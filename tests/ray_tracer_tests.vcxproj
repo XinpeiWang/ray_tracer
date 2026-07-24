@@ -62,7 +62,9 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalDependencies>cudart_static.lib;cuda.lib;%(AdditionalDependencies)</AdditionalDependencies><AdditionalLibraryDirectories>$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories><GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>cudart_static.lib;cuda.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -78,15 +80,24 @@
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalDependencies>cudart_static.lib;cuda.lib;%(AdditionalDependencies)</AdditionalDependencies><AdditionalLibraryDirectories>$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories><EnableCOMDATFolding>true</EnableCOMDATFolding><AdditionalDependencies>cpu_renderer.lib;optix_renderer.lib;cudart_static.lib;cuda.lib;%(AdditionalDependencies)</AdditionalDependencies><AdditionalLibraryDirectories>$(SolutionDir)x64\$(Configuration);$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>cudart_static.lib;cuda.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <AdditionalDependencies>cpu_renderer.lib;optix_renderer.lib;cudart_static.lib;cuda.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>$(SolutionDir)x64\$(Configuration);$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <!-- Unit Tests -->
-    <ClCompile Include="gtest_all.cpp" /><ClCompile Include="gtest_main_wrapper.cpp" /><ClCompile Include="unit\camera_tests.cpp" />
-    <ClCompile Include="unit\scene_tests.cpp" /><ClCompile Include="unit\scene_registry_tests.cpp" />
+    <ClCompile Include="gtest_all.cpp" />
+    <ClCompile Include="gtest_main_wrapper.cpp" />
+    <ClCompile Include="unit\bvh_tests.cpp" />
+    <ClCompile Include="unit\camera_tests.cpp" />
+    <ClCompile Include="unit\power_light_sampler_tests.cpp" />
+    <ClCompile Include="unit\scene_tests.cpp" />
+    <ClCompile Include="unit\scene_registry_tests.cpp" />
     <ClCompile Include="unit\math_tests.cpp" />
     <ClCompile Include="unit\interface_tests.cpp" />
     <!-- Integration Tests -->
@@ -108,14 +119,3 @@
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
-
-
-
-
-
-
-
-
-
-
-

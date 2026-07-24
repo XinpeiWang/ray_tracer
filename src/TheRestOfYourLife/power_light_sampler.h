@@ -90,7 +90,7 @@ class AliasTable {
     int size() const { return (int)bins.size(); }
 
   private:
-    struct Bin { double q, p; int alias; };
+    struct Bin { double q = 1.0, p = 1.0; int alias = -1; };
     std::vector<Bin> bins;
 };
 
