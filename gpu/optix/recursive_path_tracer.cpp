@@ -269,6 +269,7 @@ bool RecursivePathTracer::render(
 	CUdeviceptr d_quads,
 	CUdeviceptr d_light_indices,
 	CUdeviceptr d_is_light_sphere,
+	CUdeviceptr d_alias_table,
 	unsigned int num_materials,
 	unsigned int num_spheres,
 	unsigned int num_quads,
@@ -307,6 +308,7 @@ bool RecursivePathTracer::render(
 	params.lightIndices = reinterpret_cast<int*>(d_light_indices);
 	params.numLights = num_lights;
 	params.isLightSphere = reinterpret_cast<bool*>(d_is_light_sphere);
+	params.aliasTable = reinterpret_cast<GpuAliasEntry*>(d_alias_table);
 
 	// Allocate launch params on device if needed
 	if (!d_launchParams_) {

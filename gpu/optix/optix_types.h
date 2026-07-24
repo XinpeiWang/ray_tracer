@@ -61,6 +61,14 @@ struct MaterialData {
 	float3 emission;    // For diffuse_light
 };
 
+// Alias table entry for power-weighted light sampling (pbrt-v4 PowerLightSampler pattern)
+// Stored in GPU memory; sampled in O(1) by the device code.
+struct GpuAliasEntry {
+	float  q;      // Acceptance probability in [0,1]
+	int    alias;  // Fallback index if rejected
+	float  pdf;    // Probability mass for this entry (= power_i / total_power)
+};
+
 // Launch parameters (passed to all OptiX programs)
 struct LaunchParams {
 	// Output
@@ -98,6 +106,9 @@ struct LaunchParams {
 	int* lightIndices;          // Array of light primitive indices
 	unsigned int numLights;     // Number of emissive lights in scene
 	bool* isLightSphere;        // True if lightIndices[i] is sphere, false if quad
+
+	// Power-weighted alias table for light selection (pbrt-v4 PowerLightSampler)
+	GpuAliasEntry* aliasTable;  // Device pointer to alias table (numLights entries)
 };
 
 // Hit group data (per-geometry instance in SBT)

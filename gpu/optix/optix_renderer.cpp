@@ -532,6 +532,67 @@ bool OptiXRenderer::buildScene(
 		));
 
 		std::cout << "[OptiX] Uploaded " << numLights_ << " light sources for MIS\n";
+
+		// Build power-weighted alias table (pbrt-v4 PowerLightSampler / Vose method)
+		// phi_i = area * luminance(emission) * pi  (matches CPU power_light_sampler.h)
+		std::vector<float> powers(numLights_);
+		for (unsigned int i = 0; i < numLights_; ++i) {
+			int prim_idx = lightIndices[i];
+			float3 emission = make_float3(0.f, 0.f, 0.f);
+			float area = 1.0f;
+			if (isLightSphere[i]) {
+				const SphereData& s = spheres[prim_idx];
+				const MaterialData& m = materials[s.materialIdx];
+				emission = m.emission;
+				area = 4.0f * 3.14159265f * s.radius * s.radius;  // surface area of sphere
+			} else {
+				const QuadData& q = quads[prim_idx];
+				const MaterialData& m = materials[q.materialIdx];
+				emission = m.emission;
+				// area = |u x v|
+				float3 cr = make_float3(
+					q.u.y*q.v.z - q.u.z*q.v.y,
+					q.u.z*q.v.x - q.u.x*q.v.z,
+					q.u.x*q.v.y - q.u.y*q.v.x);
+				area = sqrtf(cr.x*cr.x + cr.y*cr.y + cr.z*cr.z);
+			}
+			float lum = 0.2126f*emission.x + 0.7152f*emission.y + 0.0722f*emission.z;
+			powers[i] = area * lum * 3.14159265f;  // phi = area * Le * pi
+			if (powers[i] <= 0.f) powers[i] = 1e-6f;  // geometry-only target
+		}
+
+		// Vose alias method
+		float total = 0.f;
+		for (float p : powers) total += p;
+		std::vector<GpuAliasEntry> table(numLights_);
+		for (unsigned int i = 0; i < numLights_; ++i) {
+			table[i].pdf = powers[i] / total;
+			table[i].q   = powers[i] / total * float(numLights_);
+			table[i].alias = (int)i;
+		}
+		std::vector<int> small_idx, large_idx;
+		for (unsigned int i = 0; i < numLights_; ++i) {
+			if (table[i].q < 1.f) small_idx.push_back(i);
+			else                  large_idx.push_back(i);
+		}
+		while (!small_idx.empty() && !large_idx.empty()) {
+			int s = small_idx.back(); small_idx.pop_back();
+			int l = large_idx.back(); large_idx.pop_back();
+			table[s].alias = l;
+			table[l].q -= (1.f - table[s].q);
+			if (table[l].q < 1.f) small_idx.push_back(l);
+			else                  large_idx.push_back(l);
+		}
+		// Residuals: floating-point rounding may leave items in either list; set q=1 (pbrt-v4 pattern)
+		while (!large_idx.empty()) { int l = large_idx.back(); large_idx.pop_back(); table[l].q = 1.f; table[l].alias = l; }
+		while (!small_idx.empty()) { int s = small_idx.back(); small_idx.pop_back(); table[s].q = 1.f; table[s].alias = s; }
+
+		size_t aliasTableSize = table.size() * sizeof(GpuAliasEntry);
+		if (d_aliasTable_) cudaFree(reinterpret_cast<void*>(d_aliasTable_));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_aliasTable_), aliasTableSize));
+		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_aliasTable_),
+			table.data(), aliasTableSize, cudaMemcpyHostToDevice));
+		std::cout << "[OptiX] Uploaded alias table (" << numLights_ << " entries) for power-weighted sampling\n";
 	} else {
 		// No lights in scene
 		if (d_lightIndices_) {
@@ -541,6 +602,10 @@ bool OptiXRenderer::buildScene(
 		if (d_isLightSphere_) {
 			cudaFree(reinterpret_cast<void*>(d_isLightSphere_));
 			d_isLightSphere_ = 0;
+		}
+		if (d_aliasTable_) {
+			cudaFree(reinterpret_cast<void*>(d_aliasTable_));
+			d_aliasTable_ = 0;
 		}
 		std::cout << "[OptiX] No emissive lights in scene\n";
 	}
@@ -854,6 +919,7 @@ bool OptiXRenderer::render(
 	params.lightIndices = reinterpret_cast<int*>(d_lightIndices_);
 	params.numLights = numLights_;
 	params.isLightSphere = reinterpret_cast<bool*>(d_isLightSphere_);
+	params.aliasTable = reinterpret_cast<GpuAliasEntry*>(d_aliasTable_);
 
 	// Upload launch params
 	CUDA_CHECK(cudaMemcpy(
@@ -909,6 +975,7 @@ void OptiXRenderer::cleanup() noexcept {
 	if (d_quads_) cudaFree(reinterpret_cast<void*>(d_quads_));
 	if (d_lightIndices_) cudaFree(reinterpret_cast<void*>(d_lightIndices_));
 	if (d_isLightSphere_) cudaFree(reinterpret_cast<void*>(d_isLightSphere_));
+	if (d_aliasTable_) cudaFree(reinterpret_cast<void*>(d_aliasTable_));
 
 	// Free launch params
 	if (d_launchParams_) cudaFree(reinterpret_cast<void*>(d_launchParams_));

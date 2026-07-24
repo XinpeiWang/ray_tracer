@@ -93,6 +93,7 @@ public:
 	 * @param d_quads Device pointer to quad array
 	 * @param d_light_indices Device pointer to light index array
 	 * @param d_is_light_sphere Device pointer to light type flags
+	 * @param d_alias_table Device pointer to power-weighted alias table
 	 * @param num_materials Number of materials
 	 * @param num_spheres Number of spheres
 	 * @param num_quads Number of quads
@@ -115,6 +116,7 @@ public:
 		CUdeviceptr d_quads,
 		CUdeviceptr d_light_indices,
 		CUdeviceptr d_is_light_sphere,
+		CUdeviceptr d_alias_table,
 		unsigned int num_materials,
 		unsigned int num_spheres,
 		unsigned int num_quads,

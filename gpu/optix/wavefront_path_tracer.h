@@ -83,7 +83,7 @@ public:
 	bool render(int, int, int, int,
 		const float*, const float*, const float*, const float*,
 		float*, OptixTraversableHandle,
-		CUdeviceptr, CUdeviceptr, CUdeviceptr, CUdeviceptr, CUdeviceptr,
+		CUdeviceptr, CUdeviceptr, CUdeviceptr, CUdeviceptr, CUdeviceptr, CUdeviceptr,
 		unsigned int, unsigned int, unsigned int, unsigned int) override {
 		return false;  // Not yet implemented
 	}

@@ -117,7 +117,8 @@ __device__ __forceinline__ float3 sample_quad_light(
 	const QuadData& quad,
 	const float3& origin,
 	unsigned int& seed,
-	float& pdf
+	float& pdf,
+	float& out_dist
 ) {
 	// Random point on quad surface
 	float a = random_float(seed);
@@ -127,7 +128,8 @@ __device__ __forceinline__ float3 sample_quad_light(
 	// Direction to sampled point
 	float3 to_light = point - origin;
 	float dist_sq = dot(to_light, to_light);
-	float3 direction = to_light / sqrtf(dist_sq);
+	out_dist = sqrtf(dist_sq);
+	float3 direction = to_light / out_dist;
 
 	// Area-based PDF converted to solid angle
 	float area = length(quad.w);  // w = u x v, so |w| = area
@@ -339,36 +341,43 @@ extern "C" __global__ void __closesthit__sphere() {
 
 			// Add direct lighting via explicit light sampling (Next Event Estimation)
 			if (params.numLights > 0) {
-				// Pick a random light
-				int light_idx = int(random_float(seed) * float(params.numLights));
-				if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
+				// Power-weighted light selection via alias table (pbrt-v4 PowerLightSampler pattern)
+				int light_idx;
+				float selection_pdf;
+				if (params.aliasTable) {
+					// O(1) alias-table sample: pick slot, accept or redirect
+					int slot = int(random_float(seed) * float(params.numLights));
+					if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
+					const GpuAliasEntry& entry = params.aliasTable[slot];
+					light_idx = (random_float(seed) < entry.q) ? slot : entry.alias;
+					selection_pdf = params.aliasTable[light_idx].pdf;
+				} else {
+					// Fallback: uniform selection
+					light_idx = int(random_float(seed) * float(params.numLights));
+					if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
+					selection_pdf = 1.0f / float(params.numLights);
+				}
 
 				int prim_idx = params.lightIndices[light_idx];
 				bool is_sphere = params.isLightSphere[light_idx];
 
 				// Sample direction toward light
 				float3 to_light;
-				float light_pdf = 0.0f;
+				float geom_pdf = 0.0f;  // PDF of the sampled direction (geometry term)
 				float max_dist = 0.0f;
 
 				if (is_sphere) {
 					const SphereData& light_sphere = params.spheres[prim_idx];
-					to_light = sample_sphere_light(light_sphere, hit_point, seed, light_pdf);
-					// Calculate distance to sphere center
+					to_light = sample_sphere_light(light_sphere, hit_point, seed, geom_pdf);
 					float3 to_center = light_sphere.center - hit_point;
 					max_dist = length(to_center);
 				} else {
 					const QuadData& light_quad = params.quads[prim_idx];
-					to_light = sample_quad_light(light_quad, hit_point, seed, light_pdf);
-					// Calculate distance to sampled point
-					float a = random_float(seed);
-					float b = random_float(seed);
-					float3 light_point = light_quad.Q + a * light_quad.u + b * light_quad.v;
-					max_dist = length(light_point - hit_point);
+					to_light = sample_quad_light(light_quad, hit_point, seed, geom_pdf, max_dist);
 				}
 
-				// Adjust PDF for multiple lights (we picked one uniformly)
-				light_pdf *= float(params.numLights);
+				// Combined PDF = selection_pdf * geometric_pdf
+				float light_pdf = selection_pdf * geom_pdf;
 
 				if (light_pdf > 1e-6f) {
 					// Check if light is visible (shadow ray)
@@ -391,14 +400,12 @@ extern "C" __global__ void __closesthit__sphere() {
 							light_emission = light_mat.emission;
 						}
 
-						// Compute direct lighting contribution
 						// L = BRDF * emission * cos(theta) * MIS_weight / pdf
 						float cos_theta = fmaxf(0.0f, dot(to_light, normal));
 						float3 brdf = mat.albedo / 3.14159265358979323846f;  // Lambertian BRDF
 						float3 direct_light = mis_weight * brdf * light_emission * cos_theta / light_pdf;
 
-						// Add to emission (will be weighted by throughput in raygen loop)
-						// NOTE: Do NOT multiply by attenuation_in here - raygen will apply throughput
+						// Add to emission (raygen will apply throughput)
 						emission = emission + direct_light;
 					}
 				}
@@ -593,49 +600,49 @@ extern "C" __global__ void __closesthit__quad() {
 
 			// Add direct lighting via explicit light sampling (Next Event Estimation)
 			if (params.numLights > 0) {
-				// Pick a random light
-				int light_idx = int(random_float(seed) * float(params.numLights));
-				if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
+				// Power-weighted light selection via alias table (pbrt-v4 PowerLightSampler pattern)
+				int light_idx;
+				float selection_pdf;
+				if (params.aliasTable) {
+					int slot = int(random_float(seed) * float(params.numLights));
+					if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
+					const GpuAliasEntry& entry = params.aliasTable[slot];
+					light_idx = (random_float(seed) < entry.q) ? slot : entry.alias;
+					selection_pdf = params.aliasTable[light_idx].pdf;
+				} else {
+					light_idx = int(random_float(seed) * float(params.numLights));
+					if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
+					selection_pdf = 1.0f / float(params.numLights);
+				}
 
 				int prim_idx = params.lightIndices[light_idx];
 				bool is_sphere = params.isLightSphere[light_idx];
 
 				// Sample direction toward light
 				float3 to_light;
-				float light_pdf = 0.0f;
+				float geom_pdf = 0.0f;
 				float max_dist = 0.0f;
 
 				if (is_sphere) {
 					const SphereData& light_sphere = params.spheres[prim_idx];
-					to_light = sample_sphere_light(light_sphere, hit_point, seed, light_pdf);
-					// Calculate distance to sphere center
+					to_light = sample_sphere_light(light_sphere, hit_point, seed, geom_pdf);
 					float3 to_center = light_sphere.center - hit_point;
 					max_dist = length(to_center);
 				} else {
 					const QuadData& light_quad = params.quads[prim_idx];
-					to_light = sample_quad_light(light_quad, hit_point, seed, light_pdf);
-					// Calculate distance to sampled point
-					float a = random_float(seed);
-					float b = random_float(seed);
-					float3 light_point = light_quad.Q + a * light_quad.u + b * light_quad.v;
-					max_dist = length(light_point - hit_point);
+					to_light = sample_quad_light(light_quad, hit_point, seed, geom_pdf, max_dist);
 				}
 
-				// Adjust PDF for multiple lights (we picked one uniformly)
-				light_pdf *= float(params.numLights);
+				// Combined PDF = selection_pdf * geometric_pdf
+				float light_pdf = selection_pdf * geom_pdf;
 
 				if (light_pdf > 1e-6f) {
-					// Check if light is visible (shadow ray)
 					bool visible = trace_shadow_ray(hit_point, to_light, max_dist);
 
 					if (visible) {
-						// Evaluate BRDF PDF for this direction
 						float brdf_pdf = cosine_pdf(to_light, final_normal);
-
-						// MIS weight using power heuristic
 						float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
 
-						// Get light emission
 						float3 light_emission = make_float3(0.0f, 0.0f, 0.0f);
 						if (is_sphere) {
 							const MaterialData& light_mat = params.materials[params.spheres[prim_idx].materialIdx];
@@ -645,13 +652,11 @@ extern "C" __global__ void __closesthit__quad() {
 							light_emission = light_mat.emission;
 						}
 
-						// Compute direct lighting contribution
 						// L = BRDF * emission * cos(theta) * MIS_weight / pdf
 						float cos_theta = fmaxf(0.0f, dot(to_light, final_normal));
 						float3 brdf = mat.albedo / 3.14159265358979323846f;  // Lambertian BRDF
 						float3 direct_light = mis_weight * brdf * light_emission * cos_theta / light_pdf;
 
-						// Add to emission (raygen will apply throughput)
 						emission = emission + direct_light;
 					}
 				}

@@ -130,6 +130,7 @@ private:
 	// Light sampling support for MIS
 	CUdeviceptr d_lightIndices_ = 0;  ///< Device light primitive indices
 	CUdeviceptr d_isLightSphere_ = 0; ///< Device light type flags (sphere/quad)
+	CUdeviceptr d_aliasTable_ = 0;    ///< Device alias table for power-weighted light sampling
 	unsigned int numLights_ = 0;      ///< Number of emissive lights
 
 	// -------------------------------------------------------------------
