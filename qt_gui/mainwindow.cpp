@@ -1203,8 +1203,38 @@ void MainWindow::styleComboBox(QComboBox *combo) {
 	view->setAttribute(Qt::WA_Hover, true);
 	view->viewport()->setAttribute(Qt::WA_Hover, true);
 
-	// The global app stylesheet (QComboBox QAbstractItemView::item:hover etc.)
-	// handles all hover/selected colours — no per-view stylesheet needed.
+	// The popup is a top-level window on Windows and does NOT inherit the
+	// app stylesheet, so set it directly on the view.
+	view->setStyleSheet(R"(
+		QAbstractItemView {
+			background-color: #0A0A0F;
+			border: 3px solid #FF00FF;
+			border-radius: 5px;
+			outline: none;
+			color: #00FFFF;
+			padding: 2px;
+		}
+		QAbstractItemView::item {
+			padding: 8px 12px;
+			min-height: 32px;
+			border: none;
+			color: #00FFFF;
+		}
+		QAbstractItemView::item:hover {
+			background-color: #5A1570;
+			color: #FF00FF;
+			border-left: 3px solid #FF00FF;
+		}
+		QAbstractItemView::item:selected {
+			background-color: #FF00FF;
+			color: #000000;
+		}
+		QAbstractItemView::item:selected:hover {
+			background-color: #00FFFF;
+			color: #000000;
+		}
+	)");
+
 	combo->installEventFilter(m_wheelFilter);
 }
 
