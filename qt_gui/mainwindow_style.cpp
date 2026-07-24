@@ -68,8 +68,8 @@ void MainWindow::applyDarkTheme() {
 	// Apply cyberpunk stylesheet for enhanced neon effects
 	QString stylesheet = R"(
 		QGroupBox {
-			border: 3px solid #00FFFF;
-			border-radius: 8px;
+			border: 2px solid #00FFFF;
+			border-radius: 0px;
 			margin-top: 20px;
 			margin-bottom: 8px;
 			padding: 20px 10px 12px 10px;
