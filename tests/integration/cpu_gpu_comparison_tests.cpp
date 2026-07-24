@@ -171,8 +171,8 @@ TEST_F(CPUGPUComparisonTest, HighSPPBrightnessConverges) {
 }
 
 // ----------------------------------------------------------------------------
-// Test 3: CPU importance sampling should be brighter than GPU naive at same SPP
-// (This validates that MIS/NEE is actually helping efficiency)
+// Test 3: Both CPU and GPU should produce adequately bright results at low SPP
+// The GPU uses MIS/NEE just like CPU, so both should be in a similar range.
 // ----------------------------------------------------------------------------
 TEST_F(CPUGPUComparisonTest, CPUIsBrighterAtLowSPP) {
 	if (!gpuAvailable_) GTEST_SKIP() << "OptiX not available";
@@ -187,12 +187,17 @@ TEST_F(CPUGPUComparisonTest, CPUIsBrighterAtLowSPP) {
 	float cpuBright = avg_brightness(cpu);
 	float gpuBright = avg_brightness(gpu);
 
-	// CPU with importance sampling should produce a brighter result at low SPP
-	// because it finds the light more efficiently
-	EXPECT_GT(cpuBright, gpuBright)
-		<< "CPU brightness=" << cpuBright << " GPU brightness=" << gpuBright
-		<< " — CPU importance sampling should outperform GPU naive tracing at low spp. "
-		<< "If GPU is brighter, something may be wrong with CPU sampling.";
+	// Both renderers use importance sampling (MIS/NEE), so both should produce
+	// a meaningful (non-black) image at low SPP.
+	EXPECT_GT(cpuBright, 0.05f) << "CPU image is unexpectedly dark at low SPP";
+	EXPECT_GT(gpuBright, 0.05f) << "GPU image is unexpectedly dark at low SPP";
+
+	// Neither should be more than 3x brighter than the other
+	// (guards against one renderer being completely broken)
+	float ratio = (cpuBright > gpuBright) ? cpuBright / gpuBright : gpuBright / cpuBright;
+	EXPECT_LT(ratio, 3.0f)
+		<< "Large brightness gap: CPU=" << cpuBright << " GPU=" << gpuBright
+		<< " — one renderer may have a sampling bug.";
 }
 
 // ----------------------------------------------------------------------------

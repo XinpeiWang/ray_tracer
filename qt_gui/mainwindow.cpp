@@ -397,18 +397,26 @@ void MainWindow::setupUI() {
 	sceneTopLayout->setContentsMargins(10, 8, 10, 8);
 	sceneTopLayout->setSpacing(10);
 
+	// Scene table -- mirrors scene_registry.h (single edit point on the GUI side).
+	// When adding a scene: add one entry here AND one SceneDescriptor in scene_registry.h.
+	struct GuiScene { int id; const char* name; const char* desc; const char* perf; int spp; bool files; bool gpu; };
+	static const GuiScene kScenes[] = {
+		{ 0,  "Cornell Box",               "Classic Cornell box with glass sphere and aluminum box",          "Medium",    100, false, true  },
+		{ 1,  "Bouncing Spheres",           "Random spheres with checker ground (In One Weekend final)",       "Slow",      100, false, false },
+		{ 2,  "Checkered Spheres",          "Two spheres with procedural checker texture",                     "Fast",      100, false, false },
+		{ 3,  "Earth",                      "Globe with earth texture mapping (requires earthmap.jpg)",         "Fast",      100, true,  false },
+		{ 4,  "Perlin Spheres",             "Spheres with Perlin noise marble texture",                        "Fast",      100, false, false },
+		{ 5,  "Colored Quads",              "Five colored quad primitives",                                    "Fast",      100, false, false },
+		{ 6,  "Simple Light",               "Perlin spheres with emissive light sources",                      "Fast",      100, false, false },
+		{ 7,  "Cornell Smoke",              "Cornell box with volumetric fog",                                 "Slow",      200, false, false },
+		{ 8,  "Final Scene (very slow!)",   "Complex scene from The Next Week",                                "Very Slow", 500, false, false },
+		{ 9,  "Rough Metal Spheres (GGX)",  "Five GGX spheres roughness 0.05->0.8 -- showcases microfacet",   "Medium",    200, false, false },
+		{ 10, "Cornell Rough Metal (GGX)",  "Cornell box with rough aluminum box and rough gold sphere",        "Medium",    200, false, false },
+	};
+
 	m_sceneCombo = new QComboBox(this);
-	m_sceneCombo->addItem("Cornell Box", 0);
-	m_sceneCombo->addItem("Bouncing Spheres", 1);
-	m_sceneCombo->addItem("Checkered Spheres", 2);
-	m_sceneCombo->addItem("Earth (requires earthmap.jpg)", 3);
-	m_sceneCombo->addItem("Perlin Spheres", 4);
-	m_sceneCombo->addItem("Colored Quads", 5);
-	m_sceneCombo->addItem("Simple Light", 6);
-	m_sceneCombo->addItem("Cornell Smoke", 7);
-	m_sceneCombo->addItem("Final Scene (very slow!)", 8);
-	m_sceneCombo->addItem("Rough Metal Spheres (GGX)", 9);
-	m_sceneCombo->addItem("Cornell Rough Metal (GGX)", 10);
+	for (const auto& s : kScenes)
+		m_sceneCombo->addItem(s.name, s.id);
 	styleComboBox(m_sceneCombo);
 
 	m_sceneInfoLabel = new QLabel(this);
@@ -1385,52 +1393,37 @@ void MainWindow::onCameraPresetChanged(int index) {
 }
 
 void MainWindow::onSceneChanged(int index) {
-	// Scene metadata with descriptions and recommendations
-	struct SceneInfo {
-		const char* description;
-		const char* performance;
-		int recommendedSpp;
-		bool requiresFiles;
-		bool gpuCompatible;
+	struct GuiScene { int id; const char* desc; const char* perf; int spp; bool files; bool gpu; };
+	static const GuiScene kScenes[] = {
+		{ 0,  "Classic Cornell box with glass sphere and aluminum box",          "Medium",    100, false, true  },
+		{ 1,  "Random spheres with checker ground (In One Weekend final)",       "Slow",      100, false, false },
+		{ 2,  "Two spheres with procedural checker texture",                     "Fast",      100, false, false },
+		{ 3,  "Globe with earth texture mapping (requires earthmap.jpg)",        "Fast",      100, true,  false },
+		{ 4,  "Spheres with Perlin noise marble texture",                        "Fast",      100, false, false },
+		{ 5,  "Five colored quad primitives",                                    "Fast",      100, false, false },
+		{ 6,  "Perlin spheres with emissive light sources",                      "Fast",      100, false, false },
+		{ 7,  "Cornell box with volumetric fog",                                 "Slow",      200, false, false },
+		{ 8,  "Complex scene from The Next Week (very slow!)",                   "Very Slow", 500, false, false },
+		{ 9,  "Five GGX spheres roughness 0.05 to 0.8 -- showcases microfacet", "Medium",    200, false, false },
+		{ 10, "Cornell box rough aluminum box and rough gold sphere (GGX)",      "Medium",    200, false, false },
 	};
-
-	static const SceneInfo sceneInfos[] = {
-		{"Classic Cornell box with glass sphere and white box", "Medium", 100, false, true},
-		{"Random spheres with checker ground (In One Weekend final)", "Slow", 100, false, true},
-		{"Two spheres with procedural checker texture", "Fast", 100, false, true},
-		{"Globe with earth texture mapping (requires earthmap.jpg)", "Fast", 100, true, true},
-		{"Spheres with Perlin noise marble texture", "Fast", 100, false, true},
-		{"Five colored quad primitives", "Fast", 100, false, true},
-		{"Perlin spheres with emissive light sources", "Fast", 100, false, true},
-		{"Cornell box with volumetric fog", "Slow", 200, false, true},
-		{"Complex scene from The Next Week (very slow!)", "Very Slow", 500, false, true},
-		{"Five GGX spheres roughness 0.05->0.8 -- showcases microfacet BRDF", "Medium", 200, false, false},
-		{"Cornell box with rough aluminum box and rough gold sphere (GGX)", "Medium", 200, false, false}
-	};
-
-	if (index >= 0 && index < 11) {
-		const SceneInfo& info = sceneInfos[index];
-
-		QString infoText = QString("<b>Description:</b> %1<br>").arg(info.description);
-		infoText += QString("<b>Performance:</b> %1<br>").arg(info.performance);
-		infoText += QString("<b>Recommended SPP:</b> %1<br>").arg(info.recommendedSpp);
-		infoText += QString("<b>GPU Support:</b> %1<br>").arg(info.gpuCompatible ? "Yes" : "CPU only");
-
-		if (info.requiresFiles) {
-			infoText += "<br><b style='color: #FFD700;'>⚠ Requires external files</b>";
-		}
-
-		if (!info.gpuCompatible) {
-			infoText += "<br><b style='color: #FF6B6B;'>⚠ CPU renderer only</b>";
-		}
-
-		m_sceneInfoLabel->setText(infoText);
-
-		// Update recommended samples if user hasn't manually changed it
-		if (m_samplesSpinBox->value() == 100 || m_samplesSpinBox->value() == 200 || m_samplesSpinBox->value() == 500) {
-			m_samplesSpinBox->setValue(info.recommendedSpp);
-		}
-	}
+	static const int kSceneCount = (int)(sizeof(kScenes)/sizeof(kScenes[0]));
+	int scene_id = (m_sceneCombo && index >= 0) ? m_sceneCombo->itemData(index).toInt() : index;
+	const GuiScene* info = nullptr;
+	for (int i = 0; i < kSceneCount; ++i)
+		if (kScenes[i].id == scene_id) { info = &kScenes[i]; break; }
+	if (!info) return;
+	QString infoText = QString("<b>Description:</b> %1<br>").arg(info->desc);
+	infoText += QString("<b>Performance:</b> %1<br>").arg(info->perf);
+	infoText += QString("<b>Recommended SPP:</b> %1<br>").arg(info->spp);
+	infoText += QString("<b>GPU Support:</b> %1<br>").arg(info->gpu ? "Yes" : "CPU only");
+	if (info->files)
+		infoText += "<br><b style='color: #FFD700;'>&#9888; Requires external files</b>";
+	if (!info->gpu)
+		infoText += "<br><b style='color: #FF6B6B;'>&#9888; CPU renderer only</b>";
+	m_sceneInfoLabel->setText(infoText);
+	if (m_samplesSpinBox->value() == 100 || m_samplesSpinBox->value() == 200 || m_samplesSpinBox->value() == 500)
+		m_samplesSpinBox->setValue(info->spp);
 }
 
 void MainWindow::onProgressUpdate(int percentage) {

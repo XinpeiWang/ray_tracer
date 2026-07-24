@@ -58,7 +58,7 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;NOMINMAX;_USE_MATH_DEFINES;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)src;$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\optix;$(SolutionDir)tests\build\_deps\googletest-src\googletest\include;$(SolutionDir)tests\build\_deps\googletest-src\googletest;$(SolutionDir)tests\build\_deps\googletest-src\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\optix;$(SolutionDir)tests\build\_deps\googletest-src\googletest\include;$(SolutionDir)tests\build\_deps\googletest-src\googletest;$(SolutionDir)tests\build\_deps\googletest-src\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -74,11 +74,11 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;NOMINMAX;_USE_MATH_DEFINES;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)src;$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\optix;$(SolutionDir)tests\build\_deps\googletest-src\googletest\include;$(SolutionDir)tests\build\_deps\googletest-src\googletest;$(SolutionDir)tests\build\_deps\googletest-src\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\optix;$(SolutionDir)tests\build\_deps\googletest-src\googletest\include;$(SolutionDir)tests\build\_deps\googletest-src\googletest;$(SolutionDir)tests\build\_deps\googletest-src\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
-      <AdditionalDependencies>cudart_static.lib;cuda.lib;%(AdditionalDependencies)</AdditionalDependencies><AdditionalLibraryDirectories>$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories><EnableCOMDATFolding>true</EnableCOMDATFolding><AdditionalDependencies>cudart_static.lib;cuda.lib;%(AdditionalDependencies)</AdditionalDependencies><AdditionalLibraryDirectories>$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>cudart_static.lib;cuda.lib;%(AdditionalDependencies)</AdditionalDependencies><AdditionalLibraryDirectories>$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories><EnableCOMDATFolding>true</EnableCOMDATFolding><AdditionalDependencies>cpu_renderer.lib;optix_renderer.lib;cudart_static.lib;cuda.lib;%(AdditionalDependencies)</AdditionalDependencies><AdditionalLibraryDirectories>$(SolutionDir)x64\$(Configuration);$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
@@ -86,7 +86,7 @@
   <ItemGroup>
     <!-- Unit Tests -->
     <ClCompile Include="gtest_all.cpp" /><ClCompile Include="gtest_main_wrapper.cpp" /><ClCompile Include="unit\camera_tests.cpp" />
-    <ClCompile Include="unit\scene_tests.cpp" />
+    <ClCompile Include="unit\scene_tests.cpp" /><ClCompile Include="unit\scene_registry_tests.cpp" />
     <ClCompile Include="unit\math_tests.cpp" />
     <ClCompile Include="unit\interface_tests.cpp" />
     <!-- Integration Tests -->
@@ -108,6 +108,10 @@
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
+
+
+
+
 
 
 

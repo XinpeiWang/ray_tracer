@@ -22,8 +22,7 @@
 #include "cpu_interface.h"
 #include "../src/TheRestOfYourLife/rtweekend.h"
 #include "../src/TheRestOfYourLife/camera.h"
-#include "../src/TheRestOfYourLife/cornell_box_scene.h"
-#include "../src/TheRestOfYourLife/scenes.h"
+#include "../src/TheRestOfYourLife/scene_registry.h"
 #include "../src/TheRestOfYourLife/hittable_list.h"
 #include "../src/TheRestOfYourLife/error_codes.h"
 #include <iostream>
@@ -62,8 +61,9 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 			return ERR_INVALID_MAX_DEPTH;
 		}
 
-		// Validate scene ID
-		if (scene_id < 0 || scene_id > 8) {
+		// Validate scene ID against registry
+		const SceneDescriptor* scene_desc = find_scene(scene_id);
+		if (!scene_desc) {
 			std::cerr << ErrorInfo(ERR_INVALID_SCENE_ID).to_string() << " (received: " << scene_id << ")" << std::endl;
 			return ERR_INVALID_SCENE_ID;
 		}
@@ -77,82 +77,10 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		// ====================================================================
 		// Build the selected scene using the centralized scene library
 
-		hittable_list world;
-		hittable_list lights;
-
-		std::cout << "[cpu_interface] Building scene " << scene_id << "..." << std::endl;
-
-		// Dispatch to the appropriate scene builder based on scene_id
-		switch (scene_id) {
-			case 0:  // Cornell Box
-				std::cout << "[cpu_interface] Calling build_cornell_box()..." << std::endl;
-				world = build_cornell_box();
-				std::cout << "[cpu_interface] Calling build_cornell_box_lights()..." << std::endl;
-				lights = build_cornell_box_lights();
-				std::cout << "[cpu_interface] Cornell Box scene built successfully" << std::endl;
-				break;
-			case 1:  // Bouncing Spheres
-				std::cout << "[cpu_interface] Calling build_bouncing_spheres()..." << std::endl;
-				world = build_bouncing_spheres();
-				std::cout << "[cpu_interface] Bouncing Spheres scene built successfully" << std::endl;
-				// No explicit lights, but add a dummy "sky" light for PDF sampling
-				{
-					auto empty_mat = shared_ptr<material>();
-					lights.add(make_shared<sphere>(point3(0, 1000, 0), 500, empty_mat));
-				}
-				break;
-			case 2:  // Checkered Spheres
-				world = build_checkered_spheres();
-				// Add dummy light for PDF sampling
-				{
-					auto empty_mat = shared_ptr<material>();
-					lights.add(make_shared<sphere>(point3(0, 1000, 0), 500, empty_mat));
-				}
-				break;
-			case 3:  // Earth
-				world = build_earth();
-				// Add dummy light for PDF sampling
-				{
-					auto empty_mat = shared_ptr<material>();
-					lights.add(make_shared<sphere>(point3(0, 1000, 0), 500, empty_mat));
-				}
-				break;
-			case 4:  // Perlin Spheres
-				world = build_perlin_spheres();
-				// Add dummy light for PDF sampling
-				{
-					auto empty_mat = shared_ptr<material>();
-					lights.add(make_shared<sphere>(point3(0, 1000, 0), 500, empty_mat));
-				}
-				break;
-			case 5:  // Quads
-				world = build_quads();
-				// Add dummy light for PDF sampling
-				{
-					auto empty_mat = shared_ptr<material>();
-					lights.add(make_shared<sphere>(point3(0, 1000, 0), 500, empty_mat));
-				}
-				break;
-			case 6:  // Simple Light
-				world = build_simple_light();
-				// TODO: Add light sources for importance sampling if needed
-				break;
-			case 7:  // Cornell Smoke
-				world = build_cornell_smoke();
-				lights = build_cornell_box_lights();
-				break;
-			case 8:  // Final Scene
-				world = build_final_scene();
-				// Add dummy light for PDF sampling
-				{
-					auto empty_mat = shared_ptr<material>();
-					lights.add(make_shared<sphere>(point3(0, 1000, 0), 500, empty_mat));
-				}
-				break;
-				default:
-					std::cerr << "[cpu_interface] " << ErrorInfo(ERR_INVALID_SCENE_ID).to_string() << " (received: " << scene_id << ")" << std::endl;
-					return ERR_INVALID_SCENE_ID;
-			}
+		// Build world and lights via registry -- no switch needed
+		std::cout << "[cpu_interface] Building scene " << scene_id << " (" << scene_desc->name << ")..." << std::endl;
+		hittable_list world  = scene_desc->build_world();
+		hittable_list lights = scene_desc->build_lights();
 
 			// Validate that scene was built successfully
 			if (world.objects.size() == 0) {
@@ -173,88 +101,20 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		cam.vup               = vec3(0, 1, 0);  // Up direction is +Y
 		cam.defocus_angle     = 0;              // No depth of field blur
 
-		// Scene-specific camera settings
-		switch (scene_id) {
-			case 0:  // Cornell Box
-				cam.background = color(0, 0, 0);           // Black background
-				cam.vfov       = 40;
-				cam.lookfrom   = point3(cam_x, cam_y, cam_z);
-				cam.lookat     = point3(278, 278, 278);    // Cornell box center
-				std::cout << "[cpu_interface] Cornell Box camera: lookfrom=(" << cam_x << "," << cam_y << "," << cam_z << ") lookat=(278,278,278)" << std::endl;
-				break;
-
-			case 1:  // Bouncing Spheres
-				cam.background = color(0.70, 0.80, 1.00);  // Sky gradient
-				cam.vfov       = 20;
-				cam.lookfrom   = point3(13, 2, 3);         // Default position
-				cam.lookat     = point3(0, 0, 0);          // Look at origin
-				std::cout << "[cpu_interface] Bouncing Spheres camera: lookfrom=(13,2,3) lookat=(0,0,0)" << std::endl;
-				break;
-
-			case 2:  // Checkered Spheres
-				cam.background = color(0.70, 0.80, 1.00);  // Sky gradient
-				cam.vfov       = 20;
-				cam.lookfrom   = point3(13, 2, 3);
-				cam.lookat     = point3(0, 0, 0);
-				std::cout << "[cpu_interface] Checkered Spheres camera: lookfrom=(13,2,3) lookat=(0,0,0)" << std::endl;
-				break;
-
-			case 3:  // Earth
-				cam.background = color(0.70, 0.80, 1.00);  // Sky gradient
-				cam.vfov       = 20;
-				cam.lookfrom   = point3(0, 0, 12);
-				cam.lookat     = point3(0, 0, 0);
-				std::cout << "[cpu_interface] Earth camera: lookfrom=(0,0,12) lookat=(0,0,0)" << std::endl;
-				break;
-
-			case 4:  // Perlin Spheres
-				cam.background = color(0.70, 0.80, 1.00);  // Sky gradient
-				cam.vfov       = 20;
-				cam.lookfrom   = point3(13, 2, 3);
-				cam.lookat     = point3(0, 0, 0);
-				std::cout << "[cpu_interface] Perlin Spheres camera: lookfrom=(13,2,3) lookat=(0,0,0)" << std::endl;
-				break;
-
-			case 5:  // Quads
-				cam.background = color(0.70, 0.80, 1.00);  // Sky gradient
-				cam.vfov       = 80;
-				cam.lookfrom   = point3(0, 0, 9);
-				cam.lookat     = point3(0, 0, 0);
-				std::cout << "[cpu_interface] Quads camera: lookfrom=(0,0,9) lookat=(0,0,0)" << std::endl;
-				break;
-
-			case 6:  // Simple Light
-				cam.background = color(0, 0, 0);           // Black background
-				cam.vfov       = 20;
-				cam.lookfrom   = point3(26, 3, 6);
-				cam.lookat     = point3(0, 2, 0);
-				std::cout << "[cpu_interface] Simple Light camera: lookfrom=(26,3,6) lookat=(0,2,0)" << std::endl;
-				break;
-
-			case 7:  // Cornell Smoke
-				cam.background = color(0, 0, 0);           // Black background
-				cam.vfov       = 40;
-				cam.lookfrom   = point3(cam_x, cam_y, cam_z);
-				cam.lookat     = point3(278, 278, 278);
-				std::cout << "[cpu_interface] Cornell Smoke camera: lookfrom=(" << cam_x << "," << cam_y << "," << cam_z << ") lookat=(278,278,278)" << std::endl;
-				break;
-
-			case 8:  // Final Scene
-				cam.background = color(0, 0, 0);           // Black background
-				cam.vfov       = 40;
-				cam.lookfrom   = point3(478, 278, -600);
-				cam.lookat     = point3(278, 278, 0);
-				std::cout << "[cpu_interface] Final Scene camera: lookfrom=(478,278,-600) lookat=(278,278,0)" << std::endl;
-				break;
-
-			default:  // Fallback to Cornell Box
-				cam.background = color(0, 0, 0);
-				cam.vfov       = 40;
-				cam.lookfrom   = point3(cam_x, cam_y, cam_z);
-				cam.lookat     = point3(278, 278, 278);
-				std::cout << "[cpu_interface] Default camera (Cornell Box style): lookfrom=(" << cam_x << "," << cam_y << "," << cam_z << ") lookat=(278,278,278)" << std::endl;
-				break;
+		// Apply camera config from registry
+		const CameraConfig& cc = scene_desc->camera;
+		cam.vfov       = cc.vfov;
+		cam.background = color(cc.bg_r, cc.bg_g, cc.bg_b);
+		if (cc.mode == CameraMode::UserControlled) {
+			// Let caller override lookfrom (camera presets in UI)
+			cam.lookfrom = point3(cam_x, cam_y, cam_z);
+		} else {
+			cam.lookfrom = point3(cc.lookfrom_x, cc.lookfrom_y, cc.lookfrom_z);
 		}
+		cam.lookat = point3(cc.lookat_x, cc.lookat_y, cc.lookat_z);
+		std::cout << "[cpu_interface] Camera: vfov=" << cc.vfov
+				  << " lookfrom=(" << cam.lookfrom.x() << "," << cam.lookfrom.y() << "," << cam.lookfrom.z() << ")"
+				  << " lookat=(" << cc.lookat_x << "," << cc.lookat_y << "," << cc.lookat_z << ")" << std::endl;
 
 		// ====================================================================
 		// Output Path Handling
@@ -326,4 +186,54 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		std::cerr << "[cpu_interface] " << ErrorInfo(ERR_UNKNOWN).to_string() << std::endl;
 		return ERR_UNKNOWN;
 	}
+}
+
+// ============================================================================
+// Scene metadata C API -- read from the registry, safe to call from C / Qt
+// ============================================================================
+
+extern "C" int cpu_scene_count() {
+	return scene_count();
+}
+
+extern "C" int cpu_scene_id(int index) {
+	const auto& reg = get_scene_registry();
+	if (index < 0 || index >= (int)reg.size()) return -1;
+	return reg[index].id;
+}
+
+extern "C" const char* cpu_scene_name(int index) {
+	const auto& reg = get_scene_registry();
+	if (index < 0 || index >= (int)reg.size()) return "";
+	return reg[index].name;
+}
+
+extern "C" const char* cpu_scene_description(int index) {
+	const auto& reg = get_scene_registry();
+	if (index < 0 || index >= (int)reg.size()) return "";
+	return reg[index].description;
+}
+
+extern "C" const char* cpu_scene_performance(int index) {
+	const auto& reg = get_scene_registry();
+	if (index < 0 || index >= (int)reg.size()) return "";
+	return reg[index].performance;
+}
+
+extern "C" int cpu_scene_recommended_spp(int index) {
+	const auto& reg = get_scene_registry();
+	if (index < 0 || index >= (int)reg.size()) return 100;
+	return reg[index].recommended_spp;
+}
+
+extern "C" int cpu_scene_requires_files(int index) {
+	const auto& reg = get_scene_registry();
+	if (index < 0 || index >= (int)reg.size()) return 0;
+	return reg[index].requires_files ? 1 : 0;
+}
+
+extern "C" int cpu_scene_gpu_compatible(int index) {
+	const auto& reg = get_scene_registry();
+	if (index < 0 || index >= (int)reg.size()) return 0;
+	return reg[index].gpu_compatible ? 1 : 0;
 }
