@@ -962,6 +962,7 @@ void MainWindow::applyDarkTheme() {
 			margin-top: 32px;
 			margin-bottom: 8px;
 			padding: 16px 10px 12px 10px;
+			background-color: #0D0D18;
 			color: #00FFFF;
 			font-size: 12pt;
 		}
