@@ -67,24 +67,38 @@ inline hittable_list build_cornell_box_lights() {
 	return lights;
 }
 
-// Build a power_light_list with correct power weights for the Cornell box lights.
-// power = area * luminance(emission)
-//   - Main ceiling quad: 130*105 area * luminance(15,15,15) = 13650 * 15 = 204750
-//   - Glass sphere:      pi*90^2 area * 0 emission => use 1 (geometry sampling target)
-//   - Accent wall quad:  150*200 area * luminance(4,2,1) = 30000 * 2.8 = 84000  (approx)
+// Build a power_light_list with power weights computed from geometry + emission.
+// Mirrors pbrt-v4 PowerLightSampler: phi = light.Phi() = area * Le_avg * pi
+// For a quad area light:  phi = |u x v| * luminance(emission) * pi
+// For a sphere geometry target (glass, no emission): phi = pi*r^2 * 1 (geometry weight)
 inline power_light_list build_cornell_box_power_lights() {
 	power_light_list lights;
 	auto empty_material = shared_ptr<material>();
 
+	// Helper: quad area = |u x v|, luminance from emission color
+	auto quad_phi = [](vec3 u, vec3 v, color emission) -> double {
+		double area = cross(u, v).length();
+		double lum = 0.2126 * emission.x() + 0.7152 * emission.y() + 0.0722 * emission.z();
+		return area * lum * pi;  // pbrt-v4: phi = area * Le * pi
+	};
+	auto sphere_phi = [](double radius) -> double {
+		return pi * radius * radius;  // geometry-only target (no emission)
+	};
+
+	// Main ceiling light: emission (15,15,15), area = 130*105
 	lights.add(
 		make_shared<quad>(point3(343,554,332), vec3(-130,0,0), vec3(0,0,-105), empty_material),
-		204750.0);   // bright ceiling light
+		quad_phi(vec3(-130,0,0), vec3(0,0,-105), color(15,15,15)));
+
+	// Glass sphere: geometry sampling target, no emission
 	lights.add(
 		make_shared<sphere>(point3(190, 90, 190), 90, empty_material),
-		1000.0);     // glass sphere (geometry target, low power)
+		sphere_phi(90));
+
+	// Accent wall light: emission (4,2,1), area = 150*200
 	lights.add(
 		make_shared<quad>(point3(554,100,200), vec3(0,0,150), vec3(0,200,0), empty_material),
-		84000.0);    // dim warm accent light
+		quad_phi(vec3(0,0,150), vec3(0,200,0), color(4,2,1)));
 
 	return lights;
 }

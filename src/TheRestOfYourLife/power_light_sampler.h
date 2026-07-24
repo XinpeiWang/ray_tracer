@@ -3,12 +3,18 @@
 //==============================================================================================
 // power_light_sampler.h -- Power-weighted light sampler (pbrt-v4 PowerLightSampler pattern)
 //
-// Instead of selecting lights uniformly (1/N), this sampler uses a CDF weighted by each
-// light's emitted power.  Power must be supplied at add() time via add(object, power).
-// Use build_cornell_box_lights() (in cornell_box_scene.h) as the reference implementation.
+// Mirrors pbrt-v4 PowerLightSampler design:
+//   phi_i = area_i * Le_avg_i * pi   (light's emitted power, same as light.Phi() in pbrt-v4)
+//   P(light_i) = phi_i / sum(phi_j)  (selection probability)
 //
-// pdf_value() returns the correctly weighted PDF so the estimator stays unbiased.
-// Drop-in replacement for hittable_list as the `lights` parameter in ray_color().
+// Differences from pbrt-v4:
+//   - pbrt-v4 uses an AliasTable for O(1) sampling; we use a linear CDF (fine for few lights)
+//   - pbrt-v4 uses spectral Phi(); we use RGB luminance: lum = 0.2126R + 0.7152G + 0.0722B
+//   - Power must be supplied at add() time (computed via quad_phi / sphere_phi helpers)
+//
+// pdf_value() returns the correctly weighted marginal PDF over all lights so the
+// Monte Carlo estimator in ray_color() stays unbiased:
+//   p(ω) = Σ_i  P(light_i) * p_i(ω | light_i)
 //==============================================================================================
 
 #include "hittable.h"
