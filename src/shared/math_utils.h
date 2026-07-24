@@ -49,3 +49,38 @@ CPU_GPU Scalar PowerHeuristic(Scalar pdf_a, Scalar pdf_b) {
 #endif
     return a2 / (a2 + b2);
 }
+
+// ---------------------------------------------------------------------------
+// Halton low-discrepancy sampler (pbrt-v4 HaltonSampler pattern)
+//
+// halton_radical_inverse(n, base): maps integer n to [0,1) by writing n in
+//   the given base and mirroring the digits around the decimal point.
+//   e.g. n=6, base=2: 6 = 1*4+1*2+0*1 = "110" -> "0.011" = 0.375
+//
+// halton2(n): base-2  sequence for pixel sub-pixel offset x
+// halton3(n): base-3  sequence for pixel sub-pixel offset y
+//
+// Usage: replace random pixel jitter with halton2(sampleIndex) / halton3(sampleIndex).
+// Bounce RNG (scatter directions, light sampling) keeps using PCG32/random_double().
+// ---------------------------------------------------------------------------
+CPU_GPU inline float halton_radical_inverse(unsigned int n, unsigned int base) {
+    float result = 0.0f;
+    float invBase = 1.0f / float(base);
+    float factor  = invBase;
+    while (n > 0) {
+        result += float(n % base) * factor;
+        n      /= base;
+        factor *= invBase;
+    }
+    return result;
+}
+
+// Base-2 radical inverse (pixel x offset)
+CPU_GPU inline float halton2(unsigned int n) {
+    return halton_radical_inverse(n, 2u);
+}
+
+// Base-3 radical inverse (pixel y offset)
+CPU_GPU inline float halton3(unsigned int n) {
+    return halton_radical_inverse(n, 3u);
+}

@@ -15,7 +15,9 @@
 #include "interval.h"
 #include "../shared/microfacet.h"
 #include "material.h"
+#include <algorithm>
 #include <cmath>
+#include <vector>
 
 // ============================================================================
 // Vector Construction Tests
@@ -861,4 +863,74 @@ TEST(GGXTest, RegularizeDoesNotChangeHighAlpha) {
 	dist.Regularize();
 	EXPECT_NEAR(dist.alpha_x, 0.5, 1e-12);
 	EXPECT_NEAR(dist.alpha_y, 0.8, 1e-12);
+}
+
+// ============================================================================
+// Halton Sampler Tests (src/shared/math_utils.h)
+//
+// Validates the low-discrepancy radical inverse used for pixel jitter.
+// These are exact arithmetic checks — the values are deterministic.
+// ============================================================================
+
+// halton2 (base-2): known values from radical inverse definition
+TEST(HaltonSamplerTest, Base2KnownValues) {
+	// n=1: binary "1"    -> mirror: "0.1"    = 0.5
+	EXPECT_FLOAT_EQ(halton2(1u), 0.5f);
+	// n=2: binary "10"   -> mirror: "0.01"   = 0.25
+	EXPECT_FLOAT_EQ(halton2(2u), 0.25f);
+	// n=3: binary "11"   -> mirror: "0.11"   = 0.75
+	EXPECT_FLOAT_EQ(halton2(3u), 0.75f);
+	// n=4: binary "100"  -> mirror: "0.001"  = 0.125
+	EXPECT_FLOAT_EQ(halton2(4u), 0.125f);
+	// n=0 -> 0.0
+	EXPECT_FLOAT_EQ(halton2(0u), 0.0f);
+}
+
+// halton3 (base-3): known values
+TEST(HaltonSamplerTest, Base3KnownValues) {
+	// n=1: base3 "1"    -> mirror: "0.1"    = 1/3
+	EXPECT_NEAR(halton3(1u), 1.0f/3.0f, 1e-6f);
+	// n=2: base3 "2"    -> mirror: "0.2"    = 2/3
+	EXPECT_NEAR(halton3(2u), 2.0f/3.0f, 1e-6f);
+	// n=3: base3 "10"   -> mirror: "0.01"   = 1/9
+	EXPECT_NEAR(halton3(3u), 1.0f/9.0f, 1e-6f);
+	// n=0 -> 0.0
+	EXPECT_FLOAT_EQ(halton3(0u), 0.0f);
+}
+
+// All values must be in [0, 1)
+TEST(HaltonSamplerTest, ValuesInUnitInterval) {
+	for (unsigned int i = 0; i < 256; ++i) {
+		float h2 = halton2(i);
+		float h3 = halton3(i);
+		EXPECT_GE(h2, 0.0f) << "halton2(" << i << ") < 0";
+		EXPECT_LT(h2, 1.0f) << "halton2(" << i << ") >= 1";
+		EXPECT_GE(h3, 0.0f) << "halton3(" << i << ") < 0";
+		EXPECT_LT(h3, 1.0f) << "halton3(" << i << ") >= 1";
+	}
+}
+
+// Low-discrepancy property: 16 Halton samples should cover [0,1) more
+// uniformly than expected from pure random. We verify this by checking that
+// the max gap between sorted base-2 samples is smaller than the theoretical
+// worst-case for pure random at the same count (1/sqrt(N) heuristic).
+// For N=16, Halton base-2 has max gap exactly 1/16 = 0.0625 (perfect tiling).
+TEST(HaltonSamplerTest, LowDiscrepancyBase2) {
+	const int N = 16;
+	std::vector<float> samples(N);
+	for (int i = 0; i < N; ++i)
+		samples[i] = halton2((unsigned int)i);
+
+	std::sort(samples.begin(), samples.end());
+
+	// Max gap between consecutive sorted samples (including wrap-around)
+	float max_gap = samples[0];  // gap from 0 to first sample
+	for (int i = 1; i < N; ++i)
+		max_gap = std::max(max_gap, samples[i] - samples[i-1]);
+	max_gap = std::max(max_gap, 1.0f - samples[N-1]);  // wrap
+
+	// Halton base-2 with N=2^k tiles exactly: max gap = 1/N = 0.0625
+	EXPECT_LE(max_gap, 1.0f / float(N) + 1e-5f)
+		<< "Halton base-2 max gap " << max_gap
+		<< " exceeds 1/N=" << (1.0f/N) << " — sequence is not low-discrepancy";
 }

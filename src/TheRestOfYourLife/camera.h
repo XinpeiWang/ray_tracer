@@ -185,11 +185,13 @@ class camera {
                 for (int i = 0; i < image_width; i++) {
                     color pixel_color(0,0,0);
                     for (int s_j = 0; s_j < sqrt_spp; s_j++) {
-                        for (int s_i = 0; s_i < sqrt_spp; s_i++) {
-                            ray r = get_ray(i, j, s_i, s_j);
-                            pixel_color += ray_color(r, max_depth, world, lights);
+                            for (int s_i = 0; s_i < sqrt_spp; s_i++) {
+                                // Sample index for Halton: unique per (s_i, s_j) stratum
+                                int sample_idx = s_j * sqrt_spp + s_i;
+                                ray r = get_ray(i, j, s_i, s_j, sample_idx);
+                                pixel_color += ray_color(r, max_depth, world, lights);
+                            }
                         }
-                    }
                     write_color(ss, pixel_samples_scale * pixel_color);
                 }
 
@@ -269,11 +271,12 @@ class camera {
         defocus_disk_v = v * defocus_radius;
     }
 
-    ray get_ray(int i, int j, int s_i, int s_j) const {
+    ray get_ray(int i, int j, int s_i, int s_j, int sample_idx = 0) const {
         // Construct a camera ray originating from the defocus disk and directed at a randomly
         // sampled point around the pixel location i, j for stratified sample square s_i, s_j.
+        // sample_idx drives Halton low-discrepancy pixel jitter (pbrt-v4 HaltonSampler pattern).
 
-        auto offset = sample_square_stratified(s_i, s_j);
+        auto offset = sample_square_stratified(s_i, s_j, sample_idx);
         auto pixel_sample = pixel00_loc
                           + ((i + offset.x()) * pixel_delta_u)
                           + ((j + offset.y()) * pixel_delta_v);
@@ -285,12 +288,16 @@ class camera {
         return ray(ray_origin, ray_direction, ray_time);
     }
 
-    vec3 sample_square_stratified(int s_i, int s_j) const {
+    vec3 sample_square_stratified(int s_i, int s_j, int sample_idx = 0) const {
         // Returns the vector to a random point in the square sub-pixel specified by grid
         // indices s_i and s_j, for an idealized unit square pixel [-.5,-.5] to [+.5,+.5].
-
-        auto px = ((s_i + random_double()) * recip_sqrt_spp) - 0.5;
-        auto py = ((s_j + random_double()) * recip_sqrt_spp) - 0.5;
+        //
+        // Jitter uses Halton low-discrepancy sequences (pbrt-v4 HaltonSampler pattern):
+        //   x <- base-2 radical inverse of sample_idx
+        //   y <- base-3 radical inverse of sample_idx
+        // This fills the stratum more uniformly than random_double() at low SPP.
+        auto px = ((s_i + (double)halton2((unsigned int)sample_idx)) * recip_sqrt_spp) - 0.5;
+        auto py = ((s_j + (double)halton3((unsigned int)sample_idx)) * recip_sqrt_spp) - 0.5;
 
         return vec3(px, py, 0);
     }
