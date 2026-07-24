@@ -45,18 +45,18 @@ function Write-Header {
 
 function Write-Success {
 	param([string]$Message)
-	Write-Host "✓ $Message" -ForegroundColor Green
+	Write-Host "[OK] $Message" -ForegroundColor Green
 }
 
 function Write-Error-Message {
 	param([string]$Message)
-	Write-Host "✗ $Message" -ForegroundColor Red
+	Write-Host "[FAIL] $Message" -ForegroundColor Red
 	$script:BuildFailed = $true
 }
 
 function Write-Warning-Message {
 	param([string]$Message)
-	Write-Host "⚠ $Message" -ForegroundColor Yellow
+	Write-Host "[WARN] $Message" -ForegroundColor Yellow
 }
 
 # Check prerequisites
