@@ -31,7 +31,8 @@ inline hittable_list build_cornell_box() {
 	auto red   = make_shared<lambertian>(color(.65, .05, .05));
 	auto white = make_shared<lambertian>(color(.73, .73, .73));
 	auto green = make_shared<lambertian>(color(.12, .45, .15));
-	auto light = make_shared<diffuse_light>(color(15, 15, 15));
+	auto light       = make_shared<diffuse_light>(color(15, 15, 15));  // bright white light
+	auto light_warm  = make_shared<diffuse_light>(color(4, 2, 1));     // dim warm accent light
 
 	// Cornell box walls (matching original cornell_box_scene.h)
 	world.add(make_shared<quad>(point3(555,0,0), vec3(0,0,555), vec3(0,555,0), green));  // right (green)
@@ -40,8 +41,10 @@ inline hittable_list build_cornell_box() {
 	world.add(make_shared<quad>(point3(0,0,555), vec3(555,0,0), vec3(0,0,-555), white)); // floor (white)
 	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), white)); // back (white)
 
-	// Light
+	// Main ceiling light (bright)
 	world.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), light));
+	// Secondary accent light on the right wall (dim warm)
+	world.add(make_shared<quad>(point3(554,100,200), vec3(0,0,150), vec3(0,200,0), light_warm));
 
 	// Rotated box (white diffuse, not metal)
 	shared_ptr<hittable> box1 = box(point3(0,0,0), point3(165,330,165), white);

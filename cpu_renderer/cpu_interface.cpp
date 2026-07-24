@@ -24,6 +24,7 @@
 #include "../src/TheRestOfYourLife/camera.h"
 #include "../src/TheRestOfYourLife/scene_registry.h"
 #include "../src/TheRestOfYourLife/hittable_list.h"
+#include "../src/TheRestOfYourLife/power_light_sampler.h"
 #include "../src/TheRestOfYourLife/error_codes.h"
 #include <iostream>
 #include <fstream>
@@ -79,8 +80,17 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 
 		// Build world and lights via registry -- no switch needed
 		std::cout << "[cpu_interface] Building scene " << scene_id << " (" << scene_desc->name << ")..." << std::endl;
-		hittable_list world  = scene_desc->build_world();
-		hittable_list lights = scene_desc->build_lights();
+		hittable_list world      = scene_desc->build_world();
+		hittable_list lights_raw = scene_desc->build_lights();
+
+		// For Cornell box scenes use explicitly-weighted power_light_list;
+		// for all others wrap uniformly (equal weights = same as old hittable_list).
+		power_light_list lights;
+		if (scene_id == 0 || scene_id == 7 || scene_id == 10) {
+			lights = build_cornell_box_power_lights();
+		} else {
+			lights = power_light_list(lights_raw);
+		}
 
 			// Validate that scene was built successfully
 			if (world.objects.size() == 0) {
