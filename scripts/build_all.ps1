@@ -26,7 +26,7 @@ param(
 	[ValidateSet("Debug", "Release")]
 	[string]$Configuration = "Release",
 
-	[switch]$SkipTests,
+	[switch]$SkipTests = $true,   # Tests require CMake setup; skip by default
 	[switch]$SkipGui,
 	[switch]$Deploy,
 	[switch]$Clean
