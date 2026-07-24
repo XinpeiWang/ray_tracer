@@ -7,14 +7,15 @@
 //   phi_i = area_i * Le_avg_i * pi   (light's emitted power, same as light.Phi() in pbrt-v4)
 //   P(light_i) = phi_i / sum(phi_j)  (selection probability)
 //
-// Differences from pbrt-v4:
-//   - pbrt-v4 uses an AliasTable for O(1) sampling; we use a linear CDF (fine for few lights)
-//   - pbrt-v4 uses spectral Phi(); we use RGB luminance: lum = 0.2126R + 0.7152G + 0.0722B
-//   - Power must be supplied at add() time (computed via quad_phi / sphere_phi helpers)
+// Sampling uses an AliasTable (O(1)) -- direct port of pbrt-v4 AliasTable.
+// Power must be supplied at add() time via add(object, power).
+// See build_cornell_box_power_lights() in cornell_box_scene.h for the reference usage.
 //
-// pdf_value() returns the correctly weighted marginal PDF over all lights so the
-// Monte Carlo estimator in ray_color() stays unbiased:
-//   p(ω) = Σ_i  P(light_i) * p_i(ω | light_i)
+// Intentional differences from pbrt-v4:
+//   - Spectral Phi(): we use RGB luminance (0.2126R + 0.7152G + 0.0722B); no spectral yet
+//
+// pdf_value() returns the correctly weighted marginal PDF over all lights:
+//   p(omega) = sum_i  P(light_i) * p_i(omega | light_i)
 //==============================================================================================
 
 #include "hittable.h"
@@ -23,89 +24,144 @@
 
 #include <vector>
 #include <numeric>
+#include <algorithm>
 
 
-class power_light_list : public hittable {
+// ---------------------------------------------------------------------------
+// AliasTable -- O(1) weighted sampling, direct port of pbrt-v4 AliasTable
+// ---------------------------------------------------------------------------
+class AliasTable {
   public:
-	power_light_list() {}
+    AliasTable() = default;
 
-	// Build from an existing hittable_list with equal (uniform) weights
-	explicit power_light_list(const hittable_list& list) {
-		for (const auto& obj : list.objects)
-			add(obj, 1.0);
-	}
+    explicit AliasTable(const std::vector<double>& weights) {
+        int n = (int)weights.size();
+        bins.resize(n);
 
-	// Register a light with a power estimate (area * luminance for area lights)
-	void add(shared_ptr<hittable> object, double power = 1.0) {
-		objects.push_back(object);
-		raw_powers.push_back(power > 1e-6 ? power : 1e-6);
-		bbox = aabb(bbox, object->bounding_box());
-		rebuild_cdf();
-	}
+        // Normalize weights -> PMF stored in bins[i].p
+        double sum = std::accumulate(weights.begin(), weights.end(), 0.0);
+        if (sum <= 0.0) sum = 1.0;
+        for (int i = 0; i < n; ++i)
+            bins[i].p = weights[i] / sum;
 
-	bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
-		hit_record temp_rec;
-		bool hit_anything = false;
-		auto closest_so_far = ray_t.max;
-		for (const auto& obj : objects) {
-			if (obj->hit(r, interval(ray_t.min, closest_so_far), temp_rec)) {
-				hit_anything = true;
-				closest_so_far = temp_rec.t;
-				rec = temp_rec;
-			}
-		}
-		return hit_anything;
-	}
+        // Build alias table using Vose's algorithm (pbrt-v4 pattern)
+        struct Outcome { double pHat; int index; };
+        std::vector<Outcome> under, over;
+        for (int i = 0; i < n; ++i) {
+            double pHat = bins[i].p * n;
+            if (pHat < 1.0)
+                under.push_back({pHat, i});
+            else
+                over.push_back({pHat, i});
+        }
 
-	aabb bounding_box() const override { return bbox; }
+        while (!under.empty() && !over.empty()) {
+            Outcome un = under.back(); under.pop_back();
+            Outcome ov = over.back();  over.pop_back();
 
-	// Power-weighted random direction toward a sampled light
-	vec3 random(const point3& origin) const override {
-		if (objects.empty()) return vec3(1, 0, 0);
-		return objects[sample_light_index()]->random(origin);
-	}
+            bins[un.index].q     = un.pHat;
+            bins[un.index].alias = ov.index;
 
-	// Power-weighted PDF: weighted sum of each light's PDF
-	double pdf_value(const point3& origin, const vec3& direction) const override {
-		if (objects.empty()) return 0.0;
-		double sum = 0.0;
-		for (int i = 0; i < (int)objects.size(); ++i)
-			sum += weights[i] * objects[i]->pdf_value(origin, direction);
-		return sum;
-	}
+            double pExcess = un.pHat + ov.pHat - 1.0;
+            if (pExcess < 1.0)
+                under.push_back({pExcess, ov.index});
+            else
+                over.push_back({pExcess, ov.index});
+        }
+        // Remaining items have full probability in their own bin
+        while (!over.empty())  { auto ov = over.back();  over.pop_back();  bins[ov.index].q = 1.0; bins[ov.index].alias = -1; }
+        while (!under.empty()) { auto un = under.back(); under.pop_back(); bins[un.index].q = 1.0; bins[un.index].alias = -1; }
+    }
 
-	int light_count() const { return (int)objects.size(); }
+    // Sample a bin index in O(1) given a uniform random u in [0,1)
+    int sample(double u) const {
+        int n = (int)bins.size();
+        int offset = (int)(u * n);
+        if (offset >= n) offset = n - 1;
+        double up = u * n - offset;
+        if (up < bins[offset].q)
+            return offset;
+        return bins[offset].alias;
+    }
 
-	std::vector<shared_ptr<hittable>> objects;
+    // PMF for bin index i
+    double pmf(int i) const { return bins[i].p; }
+
+    int size() const { return (int)bins.size(); }
 
   private:
-	aabb bbox;
-	std::vector<double> raw_powers;
-	std::vector<double> weights;
-	std::vector<double> cdf;
+    struct Bin { double q, p; int alias; };
+    std::vector<Bin> bins;
+};
 
-	void rebuild_cdf() {
-		int n = (int)raw_powers.size();
-		double total = std::accumulate(raw_powers.begin(), raw_powers.end(), 0.0);
-		if (total <= 0.0) total = 1.0;
-		weights.resize(n);
-		cdf.resize(n);
-		for (int i = 0; i < n; ++i)
-			weights[i] = raw_powers[i] / total;
-		cdf[0] = weights[0];
-		for (int i = 1; i < n; ++i)
-			cdf[i] = cdf[i-1] + weights[i];
-		cdf.back() = 1.0;
-	}
 
-	int sample_light_index() const {
-		double xi = random_double();
-		for (int i = 0; i < (int)cdf.size(); ++i)
-			if (xi <= cdf[i]) return i;
-		return (int)objects.size() - 1;
-	}
+// ---------------------------------------------------------------------------
+// power_light_list -- drop-in replacement for hittable_list used as
+// the `lights` parameter in ray_color().
+// ---------------------------------------------------------------------------
+class power_light_list : public hittable {
+  public:
+    power_light_list() {}
+
+    // Build from an existing hittable_list with equal (uniform) weights
+    explicit power_light_list(const hittable_list& list) {
+        for (const auto& obj : list.objects)
+            add(obj, 1.0);
+    }
+
+    // Register a light with its emitted-power estimate phi = area * Le * pi
+    void add(shared_ptr<hittable> object, double power = 1.0) {
+        objects.push_back(object);
+        raw_powers.push_back(power > 1e-6 ? power : 1e-6);
+        bbox = aabb(bbox, object->bounding_box());
+        rebuild_alias_table();
+    }
+
+    bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
+        hit_record temp_rec;
+        bool hit_anything = false;
+        auto closest_so_far = ray_t.max;
+        for (const auto& obj : objects) {
+            if (obj->hit(r, interval(ray_t.min, closest_so_far), temp_rec)) {
+                hit_anything = true;
+                closest_so_far = temp_rec.t;
+                rec = temp_rec;
+            }
+        }
+        return hit_anything;
+    }
+
+    aabb bounding_box() const override { return bbox; }
+
+    // Power-weighted O(1) random direction toward a sampled light
+    vec3 random(const point3& origin) const override {
+        if (objects.empty()) return vec3(1, 0, 0);
+        int idx = alias.sample(random_double());
+        return objects[idx]->random(origin);
+    }
+
+    // Power-weighted PDF: sum_i P(light_i) * p_i(omega | light_i)
+    double pdf_value(const point3& origin, const vec3& direction) const override {
+        if (objects.empty()) return 0.0;
+        double sum = 0.0;
+        for (int i = 0; i < (int)objects.size(); ++i)
+            sum += alias.pmf(i) * objects[i]->pdf_value(origin, direction);
+        return sum;
+    }
+
+    int light_count() const { return (int)objects.size(); }
+
+    std::vector<shared_ptr<hittable>> objects;
+
+  private:
+    aabb bbox;
+    std::vector<double> raw_powers;
+    AliasTable alias;
+
+    void rebuild_alias_table() {
+        alias = AliasTable(raw_powers);
+    }
 };
 
 
 #endif
-
