@@ -63,7 +63,20 @@ void RenderThread::stopRender() {
 }
 
 void RenderThread::run() {
-	emit logMessage("Starting render...");
+	emit logMessage(QString("Starting render..."));
+
+	// Emit a separator so each render is visually distinct in the log
+	QString sep = QString("─").repeated(60);
+	emit logMessage(sep);
+	emit logMessage(QString("▶ RENDER START  %1")
+		.arg(QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss")));
+	emit logMessage(QString("  Scene: %1 | %2x%3 | %4 spp | depth %5 | %6")
+		.arg(m_sceneId)
+		.arg(m_width).arg(m_height)
+		.arg(m_samples)
+		.arg(m_maxDepth)
+		.arg(m_useGPU ? "GPU" : "CPU"));
+	emit logMessage(sep);
 
 	// ========================================================================
 	// Build Command Line for ray_tracer.exe
@@ -250,24 +263,17 @@ void RenderThread::run() {
 	QProcess::ExitStatus exitStatus = m_renderProcess->exitStatus();
 	QString finalOutput = m_renderProcess->readAll();
 
-	// Detailed logging for debugging
-	emit logMessage(QString("=== Process Exit Details ==="));
-	emit logMessage(QString("Exit Code: %1").arg(exitCode));
-	emit logMessage(QString("Exit Status: %1").arg(exitStatus == QProcess::NormalExit ? "NormalExit" : "CrashExit"));
-	emit logMessage(QString("Total Time: %1 seconds").arg(totalTime, 0, 'f', 2));
+	// Clean summary line
+	emit logMessage(QString("Process finished: exit=%1  status=%2  time=%3s")
+		.arg(exitCode)
+		.arg(exitStatus == QProcess::NormalExit ? "Normal" : "Crash")
+		.arg(totalTime, 0, 'f', 1));
 	if (!finalOutput.isEmpty()) {
-		emit logMessage("Final output: " + finalOutput);
+		emit logMessage("Trailing output: " + finalOutput);
 	}
 
 	// Check if process was killed (user stopped it)
-	// Only treat as "stopped by user" if it crashed AND had a non-zero exit code
-	// Normal exits with code 0 should be treated as success, even if the exit status is CrashExit
 	bool wasKilled = (exitStatus == QProcess::CrashExit && exitCode != 0);
-
-	emit logMessage(QString("wasKilled determination: exitStatus=%1, exitCode=%2, wasKilled=%3")
-		.arg(exitStatus == QProcess::NormalExit ? "NormalExit" : "CrashExit")
-		.arg(exitCode)
-		.arg(wasKilled ? "TRUE" : "FALSE"));
 
 	// Clean up process
 	m_renderProcess->deleteLater();
@@ -732,14 +738,55 @@ void MainWindow::createLogTab() {
 	m_logTextEdit->setReadOnly(true);
 	m_logTextEdit->setFont(QFont("Consolas", 9));
 	m_logTextEdit->setLineWrapMode(QTextEdit::NoWrap);
+	// Dark background matches the app theme
+	m_logTextEdit->setStyleSheet(
+		"QTextEdit {"
+		"  background-color: #1A1A1A;"
+		"  border: 1px solid #404040;"
+		"  border-radius: 4px;"
+		"}"
+	);
 
 	layout->addWidget(m_logTextEdit);
 
-	// Clear button
-	QPushButton *clearButton = new QPushButton("Clear Log");
+	// Button bar: Copy | Save Log | Clear Log
+	QHBoxLayout *btnLayout = new QHBoxLayout();
+	btnLayout->setContentsMargins(0, 4, 0, 0);
+
+	QPushButton *copyButton = new QPushButton("📋 Copy All");
+	copyButton->setMaximumWidth(120);
+	connect(copyButton, &QPushButton::clicked, [this]() {
+		m_logTextEdit->selectAll();
+		m_logTextEdit->copy();
+		m_logTextEdit->moveCursor(QTextCursor::End);
+	});
+
+	QPushButton *saveButton = new QPushButton("💾 Save Log");
+	saveButton->setMaximumWidth(120);
+	connect(saveButton, &QPushButton::clicked, [this]() {
+		QString path = QFileDialog::getSaveFileName(this, "Save Log",
+			QDir::homePath() + "/render_log.txt",
+			"Text Files (*.txt);;All Files (*.*)");
+		if (!path.isEmpty()) {
+			QFile file(path);
+			if (file.open(QFile::WriteOnly | QFile::Text)) {
+				QTextStream out(&file);
+				out << m_logTextEdit->toPlainText();
+				file.close();
+				onLogMessage(QString("[INFO] Log saved to %1").arg(path));
+			}
+		}
+	});
+
+	QPushButton *clearButton = new QPushButton("🗑 Clear Log");
 	clearButton->setMaximumWidth(120);
 	connect(clearButton, &QPushButton::clicked, m_logTextEdit, &QTextEdit::clear);
-	layout->addWidget(clearButton, 0, Qt::AlignRight);
+
+	btnLayout->addWidget(copyButton);
+	btnLayout->addWidget(saveButton);
+	btnLayout->addStretch();
+	btnLayout->addWidget(clearButton);
+	layout->addLayout(btnLayout);
 
 	m_tabWidget->addTab(logWidget, "Log Output");
 }
@@ -1331,6 +1378,9 @@ void MainWindow::styleComboBox(QComboBox *combo) {
 	m_progressBar->setValue(0);
 	m_statusLabel->setText(m_videoMode ? "Rendering video frames..." : "Rendering...");
 
+	// Auto-switch to Log tab so user sees live output immediately
+	m_tabWidget->setCurrentIndex(m_tabWidget->count() - 1);
+
 	m_renderThread->start();
 }
 
@@ -1472,10 +1522,71 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 }
 
 void MainWindow::onLogMessage(const QString &message) {
-	if (m_logTextEdit) {
-		m_logTextEdit->append(message);
+	if (!m_logTextEdit) return;
+
+	// Trim and skip truly empty lines (but preserve intentional blank separators)
+	QString msg = message.trimmed();
+
+	// Timestamp prefix (HH:mm:ss)
+	QString ts = QTime::currentTime().toString("HH:mm:ss");
+
+	// Determine colour and label by content
+	QString colour;
+	QString label;
+
+	// HTML-escape the message so < > & don't break the rich-text display
+	QString escaped = msg.toHtmlEscaped();
+
+	if (msg.contains("error", Qt::CaseInsensitive) ||
+		msg.contains("ERROR", Qt::CaseSensitive)   ||
+		msg.contains("FAILED", Qt::CaseSensitive)  ||
+		msg.contains("fatal", Qt::CaseInsensitive) ||
+		msg.contains("ERR_", Qt::CaseSensitive)) {
+		colour = "#FF6B6B";   // red
+		label  = "ERR ";
+	} else if (msg.contains("warning", Qt::CaseInsensitive) ||
+			   msg.contains("WARN",    Qt::CaseSensitive)   ||
+			   msg.contains("Requires external files", Qt::CaseInsensitive)) {
+		colour = "#FFD700";   // yellow
+		label  = "WARN";
+	} else if (msg.startsWith("Result: SUCCESS") ||
+			   msg.startsWith("✅") ||
+			   msg.contains("render complete", Qt::CaseInsensitive) ||
+			   msg.contains("Render completed", Qt::CaseInsensitive)) {
+		colour = "#51CF66";   // green
+		label  = " OK ";
+	} else if (msg.startsWith("===") || msg.startsWith("---")) {
+		// Section separator — render in a muted accent colour, bold
+		m_logTextEdit->insertHtml(
+			QString("<div style='color:#888888;font-family:Consolas,monospace;font-size:9pt;'>"
+					"<b>%1</b></div>").arg(escaped));
+		m_logTextEdit->ensureCursorVisible();
+		qDebug() << msg;
+		return;
+	} else if (msg.startsWith("[cpu_interface]")) {
+		colour = "#74C0FC";   // light blue — CPU renderer
+		label  = "CPU ";
+	} else if (msg.startsWith("[OptiX]") || msg.startsWith("[optix]")) {
+		colour = "#A9E34B";   // lime — GPU renderer
+		label  = "GPU ";
+	} else if (msg.startsWith("Command:")) {
+		colour = "#CCC";
+		label  = "CMD ";
+	} else {
+		colour = "#D0D0D0";   // default light grey
+		label  = "INFO";
 	}
-	qDebug() << message;
+
+	// Format: HH:mm:ss [LABL] message
+	m_logTextEdit->insertHtml(
+		QString("<div style='color:%1;font-family:Consolas,monospace;font-size:9pt;'>"
+				"<span style='color:#555555;'>%2</span> "
+				"<span style='color:%1;'>[%3]</span> %4"
+				"</div>")
+		.arg(colour, ts, label, escaped));
+
+	m_logTextEdit->ensureCursorVisible();
+	qDebug() << msg;
 }
 
 void MainWindow::onModeChanged(int index) {
