@@ -116,7 +116,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             8, "Final Scene",
             "Complex scene from The Next Week (very slow!)",
             "Very Slow", 500, false, false,
-            { 40, 478, 278, -600,  278, 278, 0,  0.70, 0.80, 1.00 },
+            { 40, 478, 278, -600,  278, 278, 0,  0, 0, 0 },
             build_final_scene,
             build_final_scene_lights
         },
