@@ -180,6 +180,49 @@ TEST_F(EnergyConservationTest, CPUAverageBrightnessPhysicallyBounded) {
 		<< "CPU average brightness " << avg << " near zero — scene is too dark";
 }
 
+// ----------------------------------------------------------------------------
+// Test: CPU indirect illumination (walls/floor must be lit by scattered paths)
+//
+// The Cornell box ceiling light illuminates walls via scattered bounces.
+// If ray_color() prematurely returns (e.g. duplicate return statement),
+// only direct light-source pixels are bright; all diffuse surfaces stay black.
+// We check the bottom half of the image (floor + lower walls) which cannot
+// be directly illuminated by the ceiling light — brightness there requires
+// at least one successful scattered bounce.
+// ----------------------------------------------------------------------------
+TEST_F(EnergyConservationTest, CPUIndirectIlluminationPresent) {
+	const char* out = "ec_test_cpu_indirect.ppm";
+	files_.push_back(out);
+
+	// 64x64, 30 spp, depth 8: enough to get stable indirect illumination signal
+	cpu_render_main(64, 64, 30, 8, out, 0, 278.0, 278.0, -800.0);
+	RenderResult r = load_render(out);
+	ASSERT_TRUE(r.valid) << "CPU render failed";
+	ASSERT_EQ(r.width, 64);
+	ASSERT_EQ(r.height, 64);
+
+	// Sample the bottom quarter rows (floor / lower walls — no direct light)
+	int startRow = r.height * 3 / 4;  // bottom 25% of image
+	float sum = 0.0f;
+	int count = 0;
+	for (int row = startRow; row < r.height; ++row) {
+		for (int col = 0; col < r.width; ++col) {
+			int base = (row * r.width + col) * 3;
+			sum += r.pixels[base] + r.pixels[base+1] + r.pixels[base+2];
+			count += 3;
+		}
+	}
+	float bottom_avg = sum / static_cast<float>(count);
+
+	// If scattered paths are broken, the floor is pitch black (avg < 0.002).
+	// With correct indirect illumination the floor avg is typically > 0.05.
+	// Threshold 0.02 gives wide safety margin while catching the black-floor bug.
+	EXPECT_GT(bottom_avg, 0.02f)
+		<< "CPU bottom-quarter avg brightness " << bottom_avg
+		<< " — floor/lower walls appear black, indicating scattered paths are broken "
+		<< "(check ray_color for premature return before scatter contribution)";
+}
+
 TEST_F(EnergyConservationTest, GPUAverageBrightnessPhysicallyBounded) {
 	if (!optix_is_available()) GTEST_SKIP() << "OptiX not available";
 
