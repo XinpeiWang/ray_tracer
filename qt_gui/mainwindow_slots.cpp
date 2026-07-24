@@ -1,0 +1,360 @@
+#include "mainwindow.h"
+#include "scene_descriptor.h"
+#include <QFileDialog>
+#include <QMessageBox>
+#include <QProcess>
+#include <QDir>
+#include <QTimer>
+#include <QDateTime>
+#include <QDesktopServices>
+#include <QUrl>
+#include <QScrollBar>
+#include <QCoreApplication>
+
+void MainWindow::onRenderClicked() {
+	if (m_isRendering) {
+		QMessageBox::warning(this, "Render In Progress", "A render is already in progress!");
+		return;
+	}
+
+	// ========================================================================
+	// Collect Render Parameters
+	// ========================================================================
+
+	// Render mode: GPU (true) or CPU (false)
+	bool useGPU = m_renderModeCombo->currentData().toBool();
+
+	// Resolution: either from preset dropdown or custom values from Advanced tab
+	int width, height;
+	if (m_qualityPresetCombo->currentIndex() == 6) {
+		// Custom quality preset - use manual width/height from Advanced tab
+		width = m_widthSpinBox->value();
+		height = m_heightSpinBox->value();
+	} else {
+		// Standard quality preset - use resolution from dropdown
+		QSize res = m_resolutionCombo->currentData().toSize();
+		width = res.width();
+		height = res.height();
+	}
+
+	// Ray tracing quality parameters
+	int samples = m_samplesSpinBox->value();    // Samples per pixel (higher = smoother but slower)
+	int maxDepth = m_maxDepthSpinBox->value();  // Max ray bounce depth (higher = more realistic lighting)
+
+	// Output file path (timestamped by default to avoid overwriting)
+	QString outputPath = m_outputPathEdit->text();
+
+	// Camera position (lookfrom) - read from spinboxes
+	// These reflect either the selected preset or custom user input
+	// The camera will always look toward the center (278, 278, 278) - lookat is fixed in renderer
+	double camX = m_cameraPosX->value();
+	double camY = m_cameraPosY->value();
+	double camZ = m_cameraPosZ->value();
+
+	// Scene selection - determines which scene to render
+	int sceneId = m_sceneCombo->currentData().toInt();
+
+	// ========================================================================
+	// Launch Render Thread
+	// ========================================================================
+	// RenderThread spawns ray_tracer.exe as a subprocess with all parameters
+	// The executable will call either CPU or GPU renderer based on useGPU flag
+	m_renderThread = new RenderThread(this);
+	m_renderThread->setParameters(useGPU, width, height, samples, maxDepth, sceneId, camX, camY, camZ, outputPath);
+
+	// Set video parameters if in video mode
+	if (m_videoMode) {
+		int videoFrames = m_videoFramesSpinBox->value();
+		int videoFPS = m_videoFPSSpinBox->value();
+		QString cameraPath = m_cameraPathCombo->currentData().toString();
+		m_renderThread->setVideoParameters(true, videoFrames, videoFPS, cameraPath);
+	} else {
+		m_renderThread->setVideoParameters(false, 0, 0, "");
+	}
+
+	connect(m_renderThread, &RenderThread::progressUpdate, this, &MainWindow::onProgressUpdate);
+	connect(m_renderThread, SIGNAL(renderComplete(bool,QString,double,QString)), 
+			this, SLOT(onRenderComplete(bool,QString,double,QString)));
+	connect(m_renderThread, &RenderThread::logMessage, this, &MainWindow::onLogMessage);
+	connect(m_renderThread, &QThread::finished, m_renderThread, &QObject::deleteLater);
+
+	m_isRendering = true;
+	m_renderButton->setEnabled(false);
+	m_stopButton->setEnabled(true);
+	m_progressBar->setValue(0);
+	m_statusLabel->setText(m_videoMode ? "Rendering video frames..." : "Rendering...");
+
+	// Auto-switch to Log tab so user sees live output immediately
+	m_tabWidget->setCurrentIndex(m_tabWidget->count() - 1);
+
+	m_renderThread->start();
+}
+
+void MainWindow::onStopClicked() {
+	if (!m_isRendering || !m_renderThread) {
+		return;
+	}
+
+	m_statusLabel->setText("Stopping render...");
+	m_stopButton->setEnabled(false);
+
+	// Stop the render process - this will cause the thread to finish
+	m_renderThread->stopRender();
+
+	// The thread will emit renderComplete when done, which will reset the UI
+}
+
+void MainWindow::onQualityPresetChanged(int index) {
+	// Draft: 25 samples, Preview: 50 samples, Good: 100 samples, High: 500 samples, Ultra: 1000 samples, Maximum: 5000 samples
+	const int presetSamples[] = {25, 50, 100, 500, 1000, 5000, m_samplesSpinBox->value()};
+	const int presetDepth[] = {10, 20, 50, 50, 100, 100, m_maxDepthSpinBox->value()};
+
+	if (index >= 0 && index < 7) {
+		m_samplesSpinBox->setValue(presetSamples[index]);
+		m_maxDepthSpinBox->setValue(presetDepth[index]);
+	}
+}
+
+// ============================================================================
+// Camera Preset Change Handler
+// ============================================================================
+// Called when user selects a different camera preset from the dropdown
+// or when initializing the GUI with the default preset
+// 
+// Behavior:
+//   - If "Custom" is selected (index 7): enables X/Y/Z spinboxes for manual input
+//   - Otherwise: disables spinboxes but updates them to show the preset's position
+//   - The spinbox values are always visible to show where the camera is positioned
+// ============================================================================
+void MainWindow::onCameraPresetChanged(int index) {
+	// Check if "Custom" preset is selected (index 7 = 8th item in the combo box)
+	// Custom preset allows user to manually adjust camera position via spinboxes
+	bool isCustom = (index == 7); // "Custom" is the 8th item (index 7)
+
+	// Enable spinboxes only for Custom preset; disable for all other presets
+	m_cameraPosX->setEnabled(isCustom);
+	m_cameraPosY->setEnabled(isCustom);
+	m_cameraPosZ->setEnabled(isCustom);
+
+	// Update spinbox values to reflect the selected preset's camera position
+	// This happens even when spinboxes are disabled, so user can see the coordinates
+	// QVector3D is stored in each combo box item's data as a QVariant
+	if (index >= 0 && index < m_cameraPresetCombo->count()) {
+		QVector3D pos = m_cameraPresetCombo->itemData(index).value<QVector3D>();
+		m_cameraPosX->setValue(pos.x());
+		m_cameraPosY->setValue(pos.y());
+		m_cameraPosZ->setValue(pos.z());
+	}
+}
+
+void MainWindow::onSceneChanged(int index) {
+	int scene_id = (m_sceneCombo && index >= 0) ? m_sceneCombo->itemData(index).toInt() : index;
+	const SceneDesc* info = find_scene_desc(scene_id);
+	if (!info) return;
+	QString infoText = QString("<b>Description:</b> %1<br>").arg(info->description);
+	infoText += QString("<b>Performance:</b> %1<br>").arg(info->performance);
+	infoText += QString("<b>Recommended SPP:</b> %1<br>").arg(info->recommended_spp);
+	infoText += QString("<b>GPU Support:</b> %1<br>").arg(info->gpu_supported ? "Yes" : "CPU only");
+	if (info->requires_files)
+		infoText += "<br><b style='color: #FFD700;'>&#9888; Requires external files</b>";
+	if (!info->gpu_supported)
+		infoText += "<br><b style='color: #FF6B6B;'>&#9888; CPU renderer only</b>";
+	m_sceneInfoLabel->setText(infoText);
+	if (m_samplesSpinBox->value() == 100 || m_samplesSpinBox->value() == 200 || m_samplesSpinBox->value() == 500)
+		m_samplesSpinBox->setValue(info->recommended_spp);
+}
+
+void MainWindow::onProgressUpdate(int percentage) {
+	m_progressBar->setValue(percentage);
+	m_statusLabel->setText(QString("Rendering... %1%").arg(percentage));
+}
+
+void MainWindow::onRenderComplete(bool success, const QString &message, double totalTime, const QString &outputPath) {
+	m_isRendering = false;
+	m_renderButton->setEnabled(true);
+	m_stopButton->setEnabled(false);
+
+	if (success) {
+		m_progressBar->setValue(100);
+		m_statusLabel->setText(QString("✅ %1 - Total time: %2 seconds").arg(message).arg(totalTime, 0, 'f', 2));
+
+		// If video mode, automatically assemble the video
+		if (m_videoMode) {
+			onLogMessage("Video frames rendered successfully. Starting video assembly...");
+			m_statusLabel->setText("⚙️ Assembling video from frames...");
+
+			// Trigger automatic video assembly
+			QTimer::singleShot(500, this, &MainWindow::assembleVideoAutomatically);
+		} else {
+			// Image mode: Auto-open the output file if it exists
+			if (!outputPath.isEmpty()) {
+				QFileInfo fileInfo(outputPath);
+
+				if (fileInfo.exists()) {
+					QDesktopServices::openUrl(QUrl::fromLocalFile(outputPath));
+				} else {
+					m_statusLabel->setText(QString("✅ Render complete (%1s) - Warning: output file not found at %2")
+						.arg(totalTime, 0, 'f', 2).arg(outputPath));
+				}
+			}
+		}
+	} else {
+		// Reset progress bar on failure/stop
+		m_progressBar->setValue(0);
+		m_statusLabel->setText(QString("❌ %1").arg(message));
+
+		// Only show error popup for actual failures, not for user-stopped renders
+		if (!message.contains("stopped by user", Qt::CaseInsensitive)) {
+			QMessageBox::critical(this, "Render Failed", message);
+		}
+	}
+}
+
+void MainWindow::onLogMessage(const QString &message) {
+	if (!m_logTextEdit) return;
+
+	// Trim and skip truly empty lines (but preserve intentional blank separators)
+	QString msg = message.trimmed();
+
+	// Timestamp prefix (HH:mm:ss)
+	QString ts = QTime::currentTime().toString("HH:mm:ss");
+
+	// Determine colour and label by content
+	QString colour;
+	QString label;
+
+	// HTML-escape the message so < > & don't break the rich-text display
+	QString escaped = msg.toHtmlEscaped();
+
+	if (msg.contains("error", Qt::CaseInsensitive) ||
+		msg.contains("ERROR", Qt::CaseSensitive)   ||
+		msg.contains("FAILED", Qt::CaseSensitive)  ||
+		msg.contains("fatal", Qt::CaseInsensitive) ||
+		msg.contains("ERR_", Qt::CaseSensitive)) {
+		colour = "#FF6B6B";   // red
+		label  = "ERR ";
+	} else if (msg.contains("warning", Qt::CaseInsensitive) ||
+			   msg.contains("WARN",    Qt::CaseSensitive)   ||
+			   msg.contains("Requires external files", Qt::CaseInsensitive)) {
+		colour = "#FFD700";   // yellow
+		label  = "WARN";
+	} else if (msg.startsWith("Result: SUCCESS") ||
+			   msg.startsWith("✅") ||
+			   msg.contains("render complete", Qt::CaseInsensitive) ||
+			   msg.contains("Render completed", Qt::CaseInsensitive)) {
+		colour = "#51CF66";   // green
+		label  = " OK ";
+	} else if (msg.startsWith("===") || msg.startsWith("---") ||
+			   msg.startsWith("\u2500")) {
+		// Section separator — bold, muted
+		m_logTextEdit->append(
+			QString("<span style='color:#888888;font-family:Consolas,monospace;font-size:9pt;'>"
+					"<b>%1</b></span>").arg(escaped));
+		qDebug() << msg;
+		return;
+	} else if (msg.startsWith("[cpu_interface]")) {
+		colour = "#74C0FC";   // light blue — CPU renderer
+		label  = "CPU ";
+	} else if (msg.startsWith("[OptiX]") || msg.startsWith("[optix]")) {
+		colour = "#A9E34B";   // lime — GPU renderer
+		label  = "GPU ";
+	} else if (msg.startsWith("Command:")) {
+		colour = "#CCC";
+		label  = "CMD ";
+	} else {
+		colour = "#D0D0D0";   // default light grey
+		label  = "INFO";
+	}
+
+	// Format: HH:mm:ss [LABL] message  — use append() so each call is its own line
+	m_logTextEdit->append(
+		QString("<span style='color:%1;font-family:Consolas,monospace;font-size:9pt;'>"
+				"<span style='color:#555555;'>%2</span> "
+				"<span style='color:%1;'>[%3]</span> %4"
+				"</span>")
+		.arg(colour, ts, label, escaped));
+
+	qDebug() << msg;
+}
+
+void MainWindow::onModeChanged(int index) {
+	m_videoMode = (index == 1); // 0 = Image, 1 = Video
+
+	// Update render button text based on mode
+	if (m_videoMode) {
+		m_renderButton->setText("🎬 START VIDEO RENDER");
+		m_statusLabel->setText("Ready to render video frames");
+	} else {
+		m_renderButton->setText("▶ START RENDER");
+		m_statusLabel->setText("Ready to render");
+	}
+
+	// Log mode change
+	onLogMessage(QString("Mode changed to: %1").arg(m_videoMode ? "Video Generation" : "Single Image"));
+}
+
+void MainWindow::assembleVideoAutomatically() {
+	// With OpenCV integration, the video is assembled directly by ray_tracer.exe
+	// We just need to find and open the video file
+
+	// Wait a moment for file to be fully written
+	QThread::msleep(500);
+
+	// Search for any *_video.mp4 file in the output directory
+	QString outputDir = QCoreApplication::applicationDirPath() + "/output";
+	QDir dir(outputDir);
+	QStringList filters;
+	filters << "*_video.mp4" << "video.mp4";
+	QFileInfoList videoFiles = dir.entryInfoList(filters, QDir::Files, QDir::Time);
+
+	QString videoPath;
+	QFileInfo videoInfo;
+
+	// Get the most recently modified video file
+	if (!videoFiles.isEmpty()) {
+		videoInfo = videoFiles.first();
+		videoPath = videoInfo.absoluteFilePath();
+	}
+
+	if (videoPath.isEmpty()) {
+		m_statusLabel->setText("⚠️ Video file not found, checking for frames...");
+		onLogMessage("WARNING: Video file not found at any of the expected locations");
+
+		// Check if frames exist (fallback diagnostic)
+		QString framesDir = QCoreApplication::applicationDirPath() + "/output/frames";
+		QDir framesDirObj(framesDir);
+
+		if (framesDirObj.exists()) {
+			QStringList frames = framesDirObj.entryList(QStringList() << "frame_*.ppm", QDir::Files);
+			if (!frames.isEmpty()) {
+				m_statusLabel->setText(QString("⚠️ Found %1 frames but no video file").arg(frames.count()));
+				onLogMessage(QString("Frames were rendered (%1 files) but video assembly may have failed.").arg(frames.count()));
+				QMessageBox::warning(this, "Video Not Created", 
+					QString("Frames were rendered successfully (%1 files), but the video file was not created.\n\n"
+							"Expected video in: %2\n"
+							"with pattern: *_video.mp4 or video.mp4\n\n"
+							"Please check the render log for OpenCV errors.").arg(frames.count()).arg(outputDir));
+			} else {
+				m_statusLabel->setText("❌ No frames or video found");
+				onLogMessage("ERROR: No frames or video file found");
+				QMessageBox::critical(this, "Render Failed", 
+					"Neither frames nor video file were created.\n\nPlease check the render log for errors.");
+			}
+		} else {
+			m_statusLabel->setText("❌ Frames directory not found");
+			onLogMessage(QString("ERROR: Frames directory not found: %1").arg(framesDir));
+			QMessageBox::critical(this, "Directory Not Found", 
+				QString("Frames directory not found:\n%1\n\nThe render may have failed to create output.").arg(framesDir));
+		}
+		return;
+	}
+
+	// Video file found! Open it
+	m_statusLabel->setText("✅ Video created successfully!");
+	onLogMessage(QString("✅ Video assembled successfully: %1").arg(videoPath));
+	onLogMessage(QString("Video size: %1 MB").arg(videoInfo.size() / (1024.0 * 1024.0), 0, 'f', 2));
+
+	// Auto-open the video
+	onLogMessage(QString("Opening video: %1").arg(videoPath));
+	QDesktopServices::openUrl(QUrl::fromLocalFile(videoPath));
+}

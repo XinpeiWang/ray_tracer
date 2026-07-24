@@ -14,7 +14,10 @@ INCLUDEPATH += $$PWD/../src/shared
 # Source files
 SOURCES += \
 	main.cpp \
-	mainwindow.cpp
+	mainwindow.cpp \
+	mainwindow_tabs.cpp \
+	mainwindow_style.cpp \
+	mainwindow_slots.cpp
 
 HEADERS += \
 	mainwindow.h
