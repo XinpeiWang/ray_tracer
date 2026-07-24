@@ -285,6 +285,17 @@ inline hittable_list build_final_scene() {
 }
 
 /**
+ * Light list for the final scene -- the single area light quad used for NEE.
+ */
+inline hittable_list build_final_scene_lights() {
+	hittable_list lights;
+	auto empty_mat = std::shared_ptr<material>();
+	// Same geometry as the light quad in build_final_scene()
+	lights.add(make_shared<quad>(point3(123,554,147), vec3(300,0,0), vec3(0,0,265), empty_mat));
+	return lights;
+}
+
+/**
  * Rough Metal Spheres -- GGX roughness progression showcase
  * Five spheres in a row, roughness 0.05 -> 0.2 -> 0.4 -> 0.6 -> 0.8
  * Lit from a large area light above; sky background for ambient fill.
