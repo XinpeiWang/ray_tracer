@@ -117,8 +117,8 @@ inline QString getTroubleshootingHint(int errorCode) {
 			"• For final renders, use 100-500 samples\n"
 			"• More samples = better quality but slower"},
 
-		{11, "• Valid scenes are 0-8 (Cornell Box, Bouncing Spheres, etc.)\n"
-			"• Check the Advanced Settings tab for scene selection"},
+		{11, "• Valid scenes are 0-10 (Cornell Box through Cornell Rough Metal)\n"
+			"• Check the Basic Settings tab for scene selection"},
 
 		{100, "• Some scenes require texture files (e.g., earthmap.jpg)\n"
 			 "• Make sure all required files are in the correct location"},
@@ -143,9 +143,9 @@ inline QString getTroubleshootingHint(int errorCode) {
 			  "• Try fewer samples (e.g., 50)\n"
 			  "• Switch to CPU mode for large scenes"},
 
-		{211, "• GPU currently only supports Cornell Box (scene 0)\n"
-			  "• Switch to CPU mode for other scenes\n"
-			  "• CPU mode supports all 9 scenes"}
+		{211, "• GPU supports scenes: 0 (Cornell Box), 2 (Checkered Spheres), 5 (Colored Quads), 10 (Cornell Rough Metal)\n"
+			  "• Switch to CPU mode for all other scenes\n"
+			  "• CPU mode supports all 11 scenes"}
 	};
 
 	if (hints.contains(errorCode)) {
