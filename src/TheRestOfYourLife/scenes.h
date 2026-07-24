@@ -55,7 +55,7 @@ static const SceneConfig SCENE_CONFIGS[] = {
 
 	{ SceneType::CHECKERED_SPHERES, "Checkered Spheres", 
 	  "Two spheres with procedural checker texture", 
-	  false, false, 100, "Fast" },
+	  false, true, 100, "Fast" },
 
 	{ SceneType::EARTH, "Earth", 
 	  "Globe with earth texture mapping (requires earthmap.jpg)", 
@@ -67,7 +67,7 @@ static const SceneConfig SCENE_CONFIGS[] = {
 
 	{ SceneType::QUADS, "Colored Quads", 
 	  "Five colored quad primitives", 
-	  false, false, 100, "Fast" },
+	  false, true, 100, "Fast" },
 
 	{ SceneType::SIMPLE_LIGHT, "Simple Light", 
 	  "Perlin spheres with emissive light sources", 
@@ -87,7 +87,7 @@ static const SceneConfig SCENE_CONFIGS[] = {
 
 	{ SceneType::CORNELL_ROUGH_METAL, "Cornell Rough Metal",
 	  "Cornell box with rough aluminum box and rough gold sphere (GGX microfacet)",
-	  false, false, 200, "Medium" }
+	  false, true, 200, "Medium" }
 };
 
 static const int NUM_SCENES = sizeof(SCENE_CONFIGS) / sizeof(SCENE_CONFIGS[0]);

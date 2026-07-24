@@ -8,6 +8,9 @@ TEMPLATE = app
 # Output directory
 DESTDIR = $$PWD/../RayTracer_Package
 
+# Shared scene descriptor (single source of truth for all scene metadata)
+INCLUDEPATH += $$PWD/../src/shared
+
 # Source files
 SOURCES += \
 	main.cpp \

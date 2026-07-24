@@ -3,6 +3,7 @@
 
 #include "scene_builder.h"
 #include "optix_math_helpers.h"
+#include "../../src/shared/scene_descriptor.h"
 #include <cmath>
 #include <cassert>
 #include <iostream>
@@ -664,8 +665,17 @@ bool build_scene(
 								}
 								break;
 
-							default:
-								return false;  // Unknown scene ID
+							default: {
+									const SceneDesc* desc = find_scene_desc(scene_id);
+									if (desc) {
+										std::cerr << "[OptiX] Scene '" << desc->name
+											  << "' (id=" << scene_id << ") is not implemented for GPU rendering.\n"
+											  << "[OptiX] Use CPU renderer for this scene.\n";
+									} else {
+										std::cerr << "[OptiX] Unknown scene id=" << scene_id << ".\n";
+									}
+									return false;
+								}
 							}
 
 							return true;
