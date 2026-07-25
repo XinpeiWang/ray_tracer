@@ -229,10 +229,16 @@ class rough_metal : public material {
 
         if (wo_z <= 0.0) return false;  // reflection below surface
 
+        // VNDF sampling weight: f * cosI / pdf = G(wo,wi) / G1(wi) (Fresnel=albedo)
+        // (same cancellation as pbrt-v4 ConductorBxDF::Sample_f when F=constant)
+        double G1_wi  = dist.G1(wi_x, wi_y, wi_z);
+        double G_wo_wi = dist.G(wo_x, wo_y, wo_z, wi_x, wi_y, wi_z);
+        double weight = (G1_wi > 1e-8) ? G_wo_wi / G1_wi : 0.0;
+
         // Transform back to world frame
         vec3 scatter_dir = wo_x * tangent + wo_y * bitangent + wo_z * normal;
 
-        srec.attenuation  = albedo;
+        srec.attenuation  = albedo * weight;
         srec.pdf_ptr      = nullptr;
         srec.skip_pdf     = true;
         srec.skip_pdf_ray = ray(rec.p, unit_vector(scatter_dir), r_in.time());
@@ -302,11 +308,18 @@ class conductor : public material {
 
         if (wo_z <= 0.0) return false;  // reflected below surface
 
+        // VNDF sampling weight = f * cosI / pdf = F * G(wo,wi) / G1(wi)
+        // (pbrt-v4 ConductorBxDF::Sample_f returns f/pdf with this cancellation)
+        // G1(wi) and G(wo,wi) use the Smith height-correlated shadowing-masking.
+        double G1_wi = dist.G1(wi_x, wi_y, wi_z);
+        double G_wo_wi = dist.G(wo_x, wo_y, wo_z, wi_x, wi_y, wi_z);
+        double weight = (G1_wi > 1e-8) ? G_wo_wi / G1_wi : 0.0;
+
         // FrComplex per RGB channel (pbrt-v4 ConductorBxDF::Sample_f)
-        // cos_theta = |dot(wi, wm)| = dot_wi_wm (both in upper hemisphere)
-        double F_r = FrComplex(dot_wi_wm, eta_r, k_r);
-        double F_g = FrComplex(dot_wi_wm, eta_g, k_g);
-        double F_b = FrComplex(dot_wi_wm, eta_b, k_b);
+        // cos_theta = dot(wi, wm) = dot_wi_wm (both in upper hemisphere)
+        double F_r = FrComplex(dot_wi_wm, eta_r, k_r) * weight;
+        double F_g = FrComplex(dot_wi_wm, eta_g, k_g) * weight;
+        double F_b = FrComplex(dot_wi_wm, eta_b, k_b) * weight;
 
         vec3 scatter_dir = wo_x*tangent + wo_y*bitangent + wo_z*normal;
 

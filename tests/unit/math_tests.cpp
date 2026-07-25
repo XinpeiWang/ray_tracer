@@ -1149,7 +1149,8 @@ TEST(ConductorMaterialTest, ScatterReturnsTrueForNormalIncidence) {
 	EXPECT_TRUE(mat.scatter(r_in, rec, srec));
 }
 
-// Attenuation should be in [0,1] per channel (energy conservation).
+// Attenuation (F * G/G1) should be in [0,1] per channel (energy conservation).
+// The G/G1 weight is the VNDF sampling correction from pbrt-v4 ConductorBxDF::Sample_f.
 TEST(ConductorMaterialTest, AttenuationInRange) {
 	conductor mat(kConductorAu, 0.1);
 	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
@@ -1215,4 +1216,26 @@ TEST(ConductorMaterialTest, GoldYellowTint) {
 	double F_r = FrComplex(1.0, (double)kConductorAu.eta_r, (double)kConductorAu.k_r);
 	double F_b = FrComplex(1.0, (double)kConductorAu.eta_b, (double)kConductorAu.k_b);
 	EXPECT_GT(F_r, F_b) << "Gold should reflect more red than blue (yellow tint)";
+}
+
+// G/G1 masking-shadowing weight stays in [0,1] for all angles.
+// This is the VNDF sampling correction factor from pbrt-v4 ConductorBxDF::Sample_f.
+TEST(ConductorMaterialTest, VNDFWeightInRange) {
+	// Test at several roughness levels with a fixed normal-incidence direction
+	for (double roughness : {0.05, 0.1, 0.3, 0.6}) {
+		double alpha = TrowbridgeReitz<double>::RoughnessToAlpha(roughness);
+		TrowbridgeReitz<double> dist(alpha, alpha);
+
+		// wi pointing straight up in the local frame
+		double wi_x = 0.0, wi_y = 0.0, wi_z = 1.0;
+		// reflect to get wo
+		double wo_x = 0.0, wo_y = 0.0, wo_z = 1.0;
+
+		double G1 = dist.G1(wi_x, wi_y, wi_z);
+		double G  = dist.G(wo_x, wo_y, wo_z, wi_x, wi_y, wi_z);
+		double weight = (G1 > 1e-8) ? G / G1 : 0.0;
+
+		EXPECT_GE(weight, 0.0) << "G/G1 weight must be >= 0 (roughness=" << roughness << ")";
+		EXPECT_LE(weight, 1.0 + 1e-6) << "G/G1 weight must be <= 1 (roughness=" << roughness << ")";
+	}
 }

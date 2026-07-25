@@ -534,9 +534,15 @@ extern "C" __global__ void __closesthit__sphere() {
 					float cwo_z = 2.0f*c_dot*cwm_z - cwi_z;
 					if (cwo_z <= 0.0f) { scattered = false; break; }
 
-					attenuation = FrConductorRGB(c_dot,
-												 mat.eta_c.x, mat.eta_c.y, mat.eta_c.z,
-												 mat.k_c.x,   mat.k_c.y,   mat.k_c.z);
+						// VNDF weight: F * G(wo,wi) / G1(wi)  (pbrt-v4 ConductorBxDF::Sample_f)
+						float c_G1_wi  = c_dist.G1(cwi_x, cwi_y, cwi_z);
+						float c_G_wowi = c_dist.G(cwo_x, cwo_y, cwo_z, cwi_x, cwi_y, cwi_z);
+						float c_weight = (c_G1_wi > 1e-8f) ? c_G_wowi / c_G1_wi : 0.0f;
+
+						float3 c_F = FrConductorRGB(c_dot,
+													 mat.eta_c.x, mat.eta_c.y, mat.eta_c.z,
+													 mat.k_c.x,   mat.k_c.y,   mat.k_c.z);
+						attenuation = make_float3(c_F.x * c_weight, c_F.y * c_weight, c_F.z * c_weight);
 
 					scattered_dir = normalize(cwo_x*ctan + cwo_y*cbitan + cwo_z*cn);
 					scattered     = true;
@@ -912,9 +918,15 @@ extern "C" __global__ void __closesthit__quad() {
 					float cwo_z = 2.0f*c_dot*cwm_z - cwi_z;
 					if (cwo_z <= 0.0f) { scattered = false; break; }
 
-					attenuation = FrConductorRGB(c_dot,
+					// VNDF weight: F * G(wo,wi) / G1(wi)  (pbrt-v4 ConductorBxDF::Sample_f)
+					float c_G1_wi  = c_dist.G1(cwi_x, cwi_y, cwi_z);
+					float c_G_wowi = c_dist.G(cwo_x, cwo_y, cwo_z, cwi_x, cwi_y, cwi_z);
+					float c_weight = (c_G1_wi > 1e-8f) ? c_G_wowi / c_G1_wi : 0.0f;
+
+					float3 c_F = FrConductorRGB(c_dot,
 											   mat.eta_c.x, mat.eta_c.y, mat.eta_c.z,
 											   mat.k_c.x,   mat.k_c.y,   mat.k_c.z);
+					attenuation = make_float3(c_F.x * c_weight, c_F.y * c_weight, c_F.z * c_weight);
 
 					scattered_dir = normalize(cwo_x*ctan + cwo_y*cbitan + cwo_z*cn);
 					scattered     = true;
