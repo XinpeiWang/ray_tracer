@@ -63,6 +63,18 @@ inline const SceneDesc* get_all_scenes(int* out_count = nullptr) {
 		{ 11, "Cornell Rough Glass (GGX)",
 		   "Cornell box with a GGX rough-dielectric sphere (pbrt-v4 RoughDielectricBxDF)",
 		   "Medium",    200, false, true  },
+		{ 12, "Cornell Conductor (pbrt-v4 ConductorBxDF)",
+		   "Cornell box with polished gold sphere and aluminium box using GGX VNDF + complex Fresnel",
+		   "Medium",    200, false, true  },
+		{ 13, "Cornell Coated Diffuse (pbrt-v4 CoatedDiffuseBxDF)",
+		   "Cornell box with blue coated-diffuse sphere and red coated-diffuse box (rough dielectric coat over Lambertian base)",
+		   "Medium",    200, false, true  },
+		{ 14, "Cornell Thin Glass (pbrt-v4 ThinDielectricBxDF)",
+		   "Cornell box with a vertical thin-glass panel (zero-thickness slab, analytic multi-bounce Fresnel)",
+		   "Medium",    200, false, true  },
+		{ 15, "Cornell Coated Conductor (pbrt-v4 CoatedConductorBxDF)",
+		   "Cornell box with lacquered-gold sphere and lacquered-copper box (rough dielectric coat over GGX conductor base)",
+		   "Medium",    200, false, true  },
 	};
 	static const int kCount = (int)(sizeof(kScenes) / sizeof(kScenes[0]));
 	if (out_count) *out_count = kCount;
