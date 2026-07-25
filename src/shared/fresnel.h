@@ -157,3 +157,19 @@ CPU_GPU inline float3 FrConductorRGB(float cos_theta_i,
 					   FrComplex(cos_theta_i, eta_b, k_b));
 }
 #endif  // __CUDACC__
+
+// ---------------------------------------------------------------------------
+// FresnelMoment1 -- first Fresnel moment integral (pbrt-v4 scattering.cpp)
+// Used by NormalizedFresnelBxDF: c = 1 - 2 * FresnelMoment1(1/eta)
+// Polynomial fit in two branches (eta < 1 and eta >= 1).
+// ---------------------------------------------------------------------------
+template <typename T>
+CPU_GPU T FresnelMoment1(T eta) {
+	T eta2 = eta * eta, eta3 = eta2 * eta, eta4 = eta3 * eta, eta5 = eta4 * eta;
+	if (eta < T(1))
+		return T(0.45966f) - T(1.73965f)*eta + T(3.37668f)*eta2
+			 - T(3.904945f)*eta3 + T(2.49277f)*eta4 - T(0.68441f)*eta5;
+	else
+		return T(-4.61686f) + T(11.1136f)*eta - T(10.4646f)*eta2
+			 + T(5.11455f)*eta3 - T(1.27198f)*eta4 + T(0.12746f)*eta5;
+}

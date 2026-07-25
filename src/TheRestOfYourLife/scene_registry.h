@@ -189,6 +189,14 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_wax_slab,
             build_cornell_box_lights
         },
+        {
+            17, "Cornell Crystal (pbrt-v4 NormalizedFresnelBxDF)",
+            "Cornell box with a crystal sphere using Fresnel-weighted diffuse reflection (pbrt-v4 NormalizedFresnelBxDF)",
+            "Medium", 200, false, true,
+            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
+            build_cornell_crystal,
+            build_cornell_box_lights
+        },
     };
     return registry;
 }

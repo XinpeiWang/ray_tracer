@@ -32,9 +32,9 @@ TEST(SceneRegistryTest, RegistryIsNonEmpty) {
 }
 
 TEST(SceneRegistryTest, RegistryHasExpectedCount) {
-	// We currently register 17 scenes (ids 0-16).
+	// We currently register 18 scenes (ids 0-17).
 	// This test will fail if a scene is accidentally removed.
-	EXPECT_EQ(scene_count(), 17);
+	EXPECT_EQ(scene_count(), 18);
 }
 
 TEST(SceneRegistryTest, AllIDsAreUnique) {
@@ -143,8 +143,8 @@ TEST(FindSceneTest, BouncingSpheresIsNotGpuCompatible) {
 }
 
 TEST(FindSceneTest, PbrtV4ScenesAreGpuCompatible) {
-	// Scenes 10-16 all have GPU implementations in scene_builder.cpp
-	for (int id : {10, 11, 12, 13, 14, 15, 16}) {
+	// Scenes 10-17 all have GPU implementations in scene_builder.cpp
+	for (int id : {10, 11, 12, 13, 14, 15, 16, 17}) {
 		const SceneDescriptor* s = find_scene(id);
 		ASSERT_NE(s, nullptr) << "Missing scene id: " << id;
 		EXPECT_TRUE(s->gpu_compatible) << "Scene " << id << " should be gpu_compatible";

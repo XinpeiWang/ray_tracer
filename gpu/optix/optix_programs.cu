@@ -712,6 +712,28 @@ extern "C" __global__ void __closesthit__sphere() {
 			break;
 		}
 
+		case MaterialType::NormalizedFresnel: {
+			// pbrt-v4 NormalizedFresnelBxDF -- sphere version
+			// mat.ior = eta; cosine-weighted hemisphere sample,
+			// weight = (1 - FrDielectric(cos_wi, eta)) / c
+			// where c = 1 - 2*FresnelMoment1(1/eta)
+			float nf_eta = mat.ior;
+			float inv_eta = 1.0f / nf_eta;
+			float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
+			if (nf_c <= 0.0f) nf_c = 1e-6f;
+
+			scattered_dir = normalize(normal + random_unit_vector(seed));
+			if (near_zero(scattered_dir)) scattered_dir = normal;
+
+			float cos_wi = fmaxf(dot(scattered_dir, normal), 1e-6f);
+			float fr     = FrDielectric(cos_wi, nf_eta);
+			float weight = (1.0f - fr) / nf_c;
+			attenuation  = make_float3(weight, weight, weight);
+			scattered    = true;
+			is_specular  = false;
+			break;
+		}
+
 		case MaterialType::DiffuseLight: {
 			// Emissive material - no scattering
 			scattered = false;
@@ -1265,6 +1287,25 @@ extern "C" __global__ void __closesthit__quad() {
 				}
 				scattered   = true;
 				is_specular = false;
+				break;
+			}
+
+				case MaterialType::NormalizedFresnel: {
+				// pbrt-v4 NormalizedFresnelBxDF -- quad version
+				float nf_eta = mat.ior;
+				float inv_eta = 1.0f / nf_eta;
+				float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
+				if (nf_c <= 0.0f) nf_c = 1e-6f;
+
+				scattered_dir = normalize(final_normal + random_unit_vector(seed));
+				if (near_zero(scattered_dir)) scattered_dir = final_normal;
+
+				float cos_wi = fmaxf(dot(scattered_dir, final_normal), 1e-6f);
+				float fr     = FrDielectric(cos_wi, nf_eta);
+				float weight = (1.0f - fr) / nf_c;
+				attenuation  = make_float3(weight, weight, weight);
+				scattered    = true;
+				is_specular  = false;
 				break;
 			}
 

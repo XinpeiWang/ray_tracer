@@ -716,6 +716,60 @@ static void build_cornell_wax_slab(SceneData& scene) {
         make_float3(265.0f, 0.0f, 295.0f));
 }
 
+/// @brief Build Cornell Crystal scene (scene 17)
+/// Matches CPU build_cornell_crystal(): Cornell box with NormalizedFresnelBxDF crystal sphere.
+/// ior stored in mat.ior; normalization constant c computed on GPU via FresnelMoment1.
+static void build_cornell_crystal(SceneData& scene) {
+    const int mat_red   = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    const int mat_white = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    const int mat_green = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    const int mat_light = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f,
+                                 make_float3(kLightIntensity, kLightIntensity, kLightIntensity) });
+
+    // Crystal sphere: NormalizedFresnelBxDF, IOR 1.5 (glass/crystal)
+    const int mat_crystal = safe_cast_to_int(scene.materials.size());
+    {
+        MaterialData md{};
+        md.type    = MaterialType::NormalizedFresnel;
+        md.albedo  = make_float3(1.0f, 1.0f, 1.0f);  // unused -- weight computed from Fresnel
+        md.ior     = 1.5f;
+        md.fuzz    = 0.0f;
+        md.emission = make_float3(0.0f, 0.0f, 0.0f);
+        scene.materials.push_back(md);
+    }
+
+    // Cornell Box walls
+    { QuadData q{}; q.Q=make_float3(kBoxSize,0,0); q.u=make_float3(0,0,kBoxSize); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_green; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q=make_float3(0,0,kBoxSize); q.u=make_float3(0,0,-kBoxSize); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_red; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q=make_float3(213,554,227); q.u=make_float3(130,0,0); q.v=make_float3(0,0,105); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_light; scene.quads.push_back(q);
+      scene.lightIndices.push_back(static_cast<int>(scene.quads.size())-1); scene.isLightSphere.push_back(false); }
+    { QuadData q{}; q.Q=make_float3(0,kBoxSize,0); q.u=make_float3(kBoxSize,0,0); q.v=make_float3(0,0,kBoxSize); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q=make_float3(0,0,kBoxSize); q.u=make_float3(kBoxSize,0,0); q.v=make_float3(0,0,-kBoxSize); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q=make_float3(kBoxSize,0,kBoxSize); q.u=make_float3(-kBoxSize,0,0); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+
+    // Crystal sphere (left)
+    SphereData crystal_sphere{};
+    crystal_sphere.center    = make_float3(190.0f, 90.0f, 190.0f);
+    crystal_sphere.radius    = 90.0f;
+    crystal_sphere.materialIdx = mat_crystal;
+    scene.spheres.push_back(crystal_sphere);
+
+    // White diffuse box (right)
+    add_box(scene,
+        make_float3(0.0f, 0.0f, 0.0f),
+        make_float3(165.0f, 330.0f, 165.0f),
+        mat_white,
+        15.0f,
+        make_float3(265.0f, 0.0f, 295.0f));
+}
+
 /// @brief Build Cornell Rough Glass scene (scene 11)
 /// Matches CPU build_cornell_rough_glass(): same walls/light, diffuse box + rough-glass sphere
 static void build_cornell_rough_glass(SceneData& scene) {
@@ -1094,6 +1148,10 @@ bool build_scene(
 
 														case 16:  // Cornell Wax Slab (pbrt-v4 DiffuseTransmissionBxDF)
 														if (scene_id == 16) build_cornell_wax_slab(scene);
+														// fallthrough
+
+														case 17:  // Cornell Crystal (pbrt-v4 NormalizedFresnelBxDF)
+														if (scene_id == 17) build_cornell_crystal(scene);
 													{
 									constexpr float kPi = 3.14159265358979323846f;
 									const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));

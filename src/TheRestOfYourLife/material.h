@@ -801,5 +801,60 @@ class diffuse_transmission : public material {
     color T;  // transmittance (opposite-hemisphere diffuse)
 };
 
+// ---------------------------------------------------------------------------
+// normalized_fresnel -- pbrt-v4 NormalizedFresnelBxDF
+// Fresnel-weighted diffuse reflection used at BSSRDF exit boundaries.
+// Models crystal, gem, or subsurface-entry surfaces.
+//
+// BSDF:  f(wi) = (1 - FrDielectric(cos(wi), eta)) / (c * pi)
+// where: c = 1 - 2 * FresnelMoment1(1/eta)
+//
+// Sample weight = f(wi) * cos(wi) / pdf(wi)
+//              = (1-Fr(cos_wi)) / (c*pi) * cos_wi / (cos_wi/pi) = (1-Fr) / c
+// We use skip_pdf=true and generate wi in scatter() to compute the exact weight.
+// ---------------------------------------------------------------------------
+class normalized_fresnel : public material {
+  public:
+    explicit normalized_fresnel(double ior) : eta(ior) {
+        double inv_eta = 1.0 / eta;
+        c = 1.0 - 2.0 * FresnelMoment1(inv_eta);
+        if (c <= 0.0) c = 1e-6;
+    }
+
+    bool scatter(const ray& r_in, const hit_record& rec,
+                 scatter_record& srec) const override {
+        // Cosine-weighted hemisphere sample (pbrt-v4 SampleCosineHemisphere)
+        vec3 wi = rec.normal + random_unit_vector();
+        if (wi.near_zero()) wi = rec.normal;
+        wi = unit_vector(wi);
+
+        double cos_wi = dot(rec.normal, wi);
+        if (cos_wi <= 0.0) cos_wi = 1e-6;
+
+        // Sample weight: (1 - Fr(cos_wi, eta)) / c
+        double fr     = FrDielectric(cos_wi, eta);
+        double weight = (1.0 - fr) / c;
+
+        srec.attenuation  = color(weight, weight, weight);
+        srec.pdf_ptr      = nullptr;
+        srec.skip_pdf     = true;
+        srec.skip_pdf_ray = ray(rec.p, wi, r_in.time());
+        return true;
+    }
+
+    double scattering_pdf(const ray& r_in, const hit_record& rec,
+                          const ray& scattered) const override {
+        double cos_theta = dot(rec.normal, unit_vector(scattered.direction()));
+        return cos_theta > 0.0 ? cos_theta / pi : 0.0;
+    }
+
+    double get_ior() const { return eta; }
+    double get_c()   const { return c; }
+
+  private:
+    double eta;
+    double c;  // 1 - 2*FresnelMoment1(1/eta)
+};
+
 
 #endif

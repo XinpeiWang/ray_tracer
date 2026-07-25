@@ -1711,3 +1711,108 @@ TEST(DiffuseTransmissionMaterialTest, AccessorsReturnCorrectColors) {
 	EXPECT_DOUBLE_EQ(mat.get_reflectance().x(),  R.x());
 	EXPECT_DOUBLE_EQ(mat.get_transmittance().x(), T.x());
 }
+
+// ===========================================================================
+// NormalizedFresnelMaterialTest
+// Mirrors pbrt-v4 NormalizedFresnelBxDF: Fresnel-weighted diffuse reflection.
+// BSDF f(wi) = (1 - FrDielectric(cos_wi, eta)) / (c * pi)
+// c = 1 - 2 * FresnelMoment1(1/eta)
+// Sample weight = (1 - Fr(cos_wi)) / c  (via skip_pdf=true cosine sampling)
+// ===========================================================================
+
+static hit_record make_nf_hit() {
+	hit_record rec;
+	rec.p      = point3(0, 0, 0);
+	rec.normal = vec3(0, 1, 0);   // surface normal pointing up
+	rec.t      = 1.0;
+	rec.front_face = true;
+	return rec;
+}
+
+TEST(NormalizedFresnelMaterialTest, ScatterAlwaysSucceeds) {
+	normalized_fresnel mat(1.5);
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_nf_hit();
+	for (int i = 0; i < 50; ++i) {
+		scatter_record srec;
+		EXPECT_TRUE(mat.scatter(r_in, rec, srec)) << "scatter must always return true";
+	}
+}
+
+TEST(NormalizedFresnelMaterialTest, UsesSkipPdf) {
+	// NormalizedFresnel uses skip_pdf=true (pre-sampled ray, like specular/metal)
+	normalized_fresnel mat(1.5);
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_nf_hit();
+	scatter_record srec;
+	mat.scatter(r_in, rec, srec);
+	EXPECT_TRUE(srec.skip_pdf) << "NormalizedFresnel must use skip_pdf=true";
+	EXPECT_EQ(srec.pdf_ptr, nullptr) << "pdf_ptr must be null when skip_pdf=true";
+}
+
+TEST(NormalizedFresnelMaterialTest, ScatteredRayInUpperHemisphere) {
+	// NormalizedFresnelBxDF is reflection-only: scattered ray must be in same hemisphere as normal
+	normalized_fresnel mat(1.5);
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_nf_hit();
+	for (int i = 0; i < 100; ++i) {
+		scatter_record srec;
+		mat.scatter(r_in, rec, srec);
+		vec3 d = unit_vector(srec.skip_pdf_ray.direction());
+		EXPECT_GT(dot(d, rec.normal), 0.0) << "Scattered ray must be in upper hemisphere";
+	}
+}
+
+TEST(NormalizedFresnelMaterialTest, AttenuationInValidRange) {
+	// Sample weight = (1-Fr)/c; Fr in [0,1], c in (0,1] => weight in [0, 1/c]
+	// For IOR=1.5, c ~ 0.596 => weight <= ~1.68; all positive
+	normalized_fresnel mat(1.5);
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_nf_hit();
+	for (int i = 0; i < 200; ++i) {
+		scatter_record srec;
+		mat.scatter(r_in, rec, srec);
+		double w = srec.attenuation.x();
+		EXPECT_GE(w, 0.0) << "Weight must be non-negative";
+		EXPECT_LT(w, 5.0) << "Weight should be bounded";
+	}
+}
+
+TEST(NormalizedFresnelMaterialTest, FresnelMoment1IOR1IsZero) {
+	// At eta=1 (no interface), verify the normalization constant c is positive.
+	normalized_fresnel mat_eta1(1.0);
+	EXPECT_GT(mat_eta1.get_c(), 0.0) << "Normalization constant c must be positive";
+}
+
+TEST(NormalizedFresnelMaterialTest, FresnelMoment1NormalizationPositive) {
+	// c = 1 - 2*FresnelMoment1(1/eta) must be > 0 for typical IOR values
+	for (double eta : {1.0, 1.3, 1.5, 1.8, 2.0, 2.5}) {
+		normalized_fresnel mat(eta);
+		EXPECT_GT(mat.get_c(), 0.0) << "c must be positive for eta=" << eta;
+	}
+}
+
+TEST(NormalizedFresnelMaterialTest, AccessorGetIor) {
+	normalized_fresnel mat(1.5);
+	EXPECT_DOUBLE_EQ(mat.get_ior(), 1.5);
+}
+
+TEST(NormalizedFresnelMaterialTest, ScatteringPdfPositiveAboveSurface) {
+	normalized_fresnel mat(1.5);
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_nf_hit();
+	// scattered ray in same hemisphere
+	ray scattered(point3(0,0,0), vec3(0.3, 0.7, 0.2));
+	double pdf = mat.scattering_pdf(r_in, rec, scattered);
+	EXPECT_GT(pdf, 0.0) << "scattering_pdf must be positive for upper hemisphere direction";
+}
+
+TEST(NormalizedFresnelMaterialTest, ScatteringPdfZeroBelowSurface) {
+	normalized_fresnel mat(1.5);
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_nf_hit();
+	// scattered ray in opposite hemisphere
+	ray scattered(point3(0,0,0), vec3(0.3, -0.7, 0.2));
+	double pdf = mat.scattering_pdf(r_in, rec, scattered);
+	EXPECT_DOUBLE_EQ(pdf, 0.0) << "scattering_pdf must be 0 for below-surface direction";
+}
