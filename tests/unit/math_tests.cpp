@@ -1239,3 +1239,132 @@ TEST(ConductorMaterialTest, VNDFWeightInRange) {
 		EXPECT_LE(weight, 1.0 + 1e-6) << "G/G1 weight must be <= 1 (roughness=" << roughness << ")";
 	}
 }
+
+// ===========================================================================
+// CoatedDiffuseMaterial tests
+// Mirrors the pbrt-v4 CoatedDiffuseBxDF (LayeredBxDF<DielectricBxDF, DiffuseBxDF>)
+// ===========================================================================
+
+static hit_record make_coated_hit() {
+	hit_record rec;
+	rec.p = point3(0, 0, 0);
+	rec.normal = vec3(0, 1, 0);
+	rec.front_face = true;
+	rec.t = 1.0;
+	return rec;
+}
+
+// scatter() must return true for a non-grazing ray.
+TEST(CoatedDiffuseMaterialTest, ScatterReturnsTrueForNormalIncidence) {
+	coated_diffuse mat(color(0.2, 0.3, 0.9), 1.5, 0.1);
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));  // straight down
+	hit_record rec = make_coated_hit();
+	scatter_record srec;
+	EXPECT_TRUE(mat.scatter(r_in, rec, srec));
+}
+
+// Attenuation must be in [0,1] per channel for both coat-reflect and diffuse paths.
+TEST(CoatedDiffuseMaterialTest, AttenuationInRange) {
+	coated_diffuse mat(color(0.8, 0.1, 0.1), 1.5, 0.2);
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_coated_hit();
+
+	for (int trial = 0; trial < 200; ++trial) {
+		scatter_record srec;
+		if (mat.scatter(r_in, rec, srec)) {
+			EXPECT_GE(srec.attenuation.x(), 0.0) << "R channel must be >= 0";
+			EXPECT_LE(srec.attenuation.x(), 1.0 + 1e-6) << "R channel must be <= 1";
+			EXPECT_GE(srec.attenuation.y(), 0.0);
+			EXPECT_LE(srec.attenuation.y(), 1.0 + 1e-6);
+			EXPECT_GE(srec.attenuation.z(), 0.0);
+			EXPECT_LE(srec.attenuation.z(), 1.0 + 1e-6);
+		}
+	}
+}
+
+// Scattered direction must stay in the upper hemisphere (dot > 0 with normal).
+TEST(CoatedDiffuseMaterialTest, ScatteredDirectionInUpperHemisphere) {
+	coated_diffuse mat(color(0.2, 0.3, 0.9), 1.5, 0.15);
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_coated_hit();
+	vec3 normal = rec.normal;
+
+	int successes = 0;
+	for (int trial = 0; trial < 200; ++trial) {
+		scatter_record srec;
+		if (mat.scatter(r_in, rec, srec)) {
+			++successes;
+			vec3 dir = srec.skip_pdf_ray.direction();
+			EXPECT_GT(dot(dir, normal), 0.0)
+				<< "Scattered direction must stay in upper hemisphere";
+		}
+	}
+	EXPECT_GT(successes, 150) << "High scatter success rate expected for non-grazing incidence";
+}
+
+// skip_pdf must always be true (coated_diffuse always uses skip_pdf path).
+TEST(CoatedDiffuseMaterialTest, SkipPdfIsTrue) {
+	coated_diffuse mat(color(0.5, 0.5, 0.5), 1.5, 0.1);
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_coated_hit();
+	for (int trial = 0; trial < 50; ++trial) {
+		scatter_record srec;
+		if (mat.scatter(r_in, rec, srec)) {
+			EXPECT_TRUE(srec.skip_pdf) << "coated_diffuse must always set skip_pdf=true";
+		}
+	}
+}
+
+// A white-albedo coat should produce higher average attenuation than a dark one
+// (diffuse path is albedo-weighted; average over many samples should reflect this).
+TEST(CoatedDiffuseMaterialTest, BrighterAlbedoProducesMoreLight) {
+	coated_diffuse bright(color(0.9, 0.9, 0.9), 1.5, 0.2);
+	coated_diffuse dark(color(0.1, 0.1, 0.1), 1.5, 0.2);
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_coated_hit();
+
+	double sum_bright = 0.0, sum_dark = 0.0;
+	int n = 500;
+	for (int i = 0; i < n; ++i) {
+		scatter_record srec_b, srec_d;
+		if (bright.scatter(r_in, rec, srec_b))
+			sum_bright += (srec_b.attenuation.x() + srec_b.attenuation.y() + srec_b.attenuation.z()) / 3.0;
+		if (dark.scatter(r_in, rec, srec_d))
+			sum_dark += (srec_d.attenuation.x() + srec_d.attenuation.y() + srec_d.attenuation.z()) / 3.0;
+	}
+	EXPECT_GT(sum_bright, sum_dark) << "White base should produce more average throughput than dark base";
+}
+
+// Higher roughness should produce broader highlight: reflected directions should
+// have more variance (not all near-specular).  Just verifies both paths are sampled.
+TEST(CoatedDiffuseMaterialTest, RougherCoatStillScatters) {
+	coated_diffuse rough(color(0.5, 0.5, 0.5), 1.5, 0.8);
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_coated_hit();
+
+	int ok = 0;
+	for (int i = 0; i < 100; ++i) {
+		scatter_record srec;
+		if (rough.scatter(r_in, rec, srec)) ++ok;
+	}
+	EXPECT_GT(ok, 80) << "High-roughness coat should still scatter most rays";
+}
+
+// Coat IOR=1.0 (no coat) should give zero coat reflectance -> all energy in diffuse path.
+// attenuation should equal albedo (T_in=1, T_out=1 for IOR=1).
+TEST(CoatedDiffuseMaterialTest, UnitIorMeansNoCoatReflection) {
+	color alb(0.6, 0.3, 0.8);
+	coated_diffuse mat(alb, 1.0, 0.1);
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_coated_hit();
+
+	// With IOR=1, FrDielectric=0 so always diffuse path; attenuation = albedo.
+	for (int i = 0; i < 50; ++i) {
+		scatter_record srec;
+		if (mat.scatter(r_in, rec, srec)) {
+			EXPECT_NEAR(srec.attenuation.x(), alb.x(), 0.01);
+			EXPECT_NEAR(srec.attenuation.y(), alb.y(), 0.01);
+			EXPECT_NEAR(srec.attenuation.z(), alb.z(), 0.01);
+		}
+	}
+}
