@@ -1368,3 +1368,112 @@ TEST(CoatedDiffuseMaterialTest, UnitIorMeansNoCoatReflection) {
 		}
 	}
 }
+
+// ===========================================================================
+// ThinDielectricMaterialTest
+// Mirrors pbrt-v4 ThinDielectricBxDF: zero-thickness slab, analytic R_eff.
+// ===========================================================================
+
+static hit_record make_thin_hit() {
+	hit_record rec;
+	rec.p = point3(0, 0, 0);
+	rec.normal = vec3(0, 1, 0);
+	rec.front_face = true;
+	rec.t = 1.0;
+	return rec;
+}
+
+// scatter() must always return true.
+TEST(ThinDielectricMaterialTest, ScatterAlwaysSucceeds) {
+	thin_dielectric mat(1.5);
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_thin_hit();
+	for (int i = 0; i < 100; ++i) {
+		scatter_record srec;
+		EXPECT_TRUE(mat.scatter(r_in, rec, srec));
+	}
+}
+
+// Attenuation must always be (1,1,1) -- thin glass is achromatic.
+TEST(ThinDielectricMaterialTest, AttenuationIsWhite) {
+	thin_dielectric mat(1.5);
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_thin_hit();
+	for (int i = 0; i < 100; ++i) {
+		scatter_record srec;
+		mat.scatter(r_in, rec, srec);
+		EXPECT_NEAR(srec.attenuation.x(), 1.0, 1e-6);
+		EXPECT_NEAR(srec.attenuation.y(), 1.0, 1e-6);
+		EXPECT_NEAR(srec.attenuation.z(), 1.0, 1e-6);
+	}
+}
+
+// skip_pdf must always be true (specular bounce).
+TEST(ThinDielectricMaterialTest, SkipPdfIsTrue) {
+	thin_dielectric mat(1.5);
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_thin_hit();
+	for (int i = 0; i < 50; ++i) {
+		scatter_record srec;
+		mat.scatter(r_in, rec, srec);
+		EXPECT_TRUE(srec.skip_pdf);
+	}
+}
+
+// At normal incidence with IOR=1.5, R_eff > 0 so both paths are sampled.
+// Over many samples, expect both reflection and transmission to occur.
+TEST(ThinDielectricMaterialTest, BothReflectionAndTransmissionOccur) {
+	thin_dielectric mat(1.5);
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_thin_hit();
+	vec3 normal = rec.normal;
+
+	int reflections = 0, transmissions = 0;
+	for (int i = 0; i < 500; ++i) {
+		scatter_record srec;
+		mat.scatter(r_in, rec, srec);
+		vec3 d = srec.skip_pdf_ray.direction();
+		// Reflected: dot(d, normal) > 0
+		// Transmitted: dot(d, normal) < 0 (straight-through, same as incident)
+		if (dot(d, normal) > 0.0) ++reflections;
+		else ++transmissions;
+	}
+	EXPECT_GT(reflections,   10) << "Some reflection expected at IOR=1.5";
+	EXPECT_GT(transmissions, 400) << "Most rays should transmit straight through";
+}
+
+// Transmission direction must equal the original incident direction (no bending).
+TEST(ThinDielectricMaterialTest, TransmissionIsUnbent) {
+	thin_dielectric mat(1.5);
+	vec3 incident = unit_vector(vec3(0.3, -0.9, 0.2));
+	ray r_in(point3(0, 1, 0), incident);
+	hit_record rec = make_thin_hit();
+
+	int checked = 0;
+	for (int i = 0; i < 500 && checked < 20; ++i) {
+		scatter_record srec;
+		mat.scatter(r_in, rec, srec);
+		vec3 d = unit_vector(srec.skip_pdf_ray.direction());
+		if (dot(d, rec.normal) < 0.0) {  // transmission path
+			EXPECT_NEAR(d.x(), incident.x(), 1e-5) << "Transmitted ray must be unbent";
+			EXPECT_NEAR(d.y(), incident.y(), 1e-5);
+			EXPECT_NEAR(d.z(), incident.z(), 1e-5);
+			++checked;
+		}
+	}
+}
+
+// R_eff analytic formula: at normal incidence IOR=1.5,
+// R0 = FrDielectric(1, 1.5) ≈ 0.04; R_eff = R0 + (1-R0)^2*R0/(1-R0^2)
+// which is ≈ 0.0769. Verify the multi-bounce formula matches manually.
+TEST(ThinDielectricMaterialTest, AnalyticReffFormula) {
+	double eta = 1.5;
+	double R = FrDielectric(1.0, eta);   // cos=1, normal incidence
+	double T = 1.0 - R;
+	double R_eff = R + T * T * R / (1.0 - R * R);
+	// For IOR=1.5: R≈0.04, R_eff≈0.0769
+	EXPECT_GT(R_eff, R)       << "R_eff must be greater than single-interface R";
+	EXPECT_LT(R_eff, 1.0)    << "R_eff must be < 1";
+	EXPECT_GT(R_eff, 0.07)   << "R_eff at IOR=1.5 normal incidence should be ~0.077";
+	EXPECT_LT(R_eff, 0.09);
+}

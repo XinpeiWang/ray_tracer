@@ -533,6 +533,69 @@ static void build_cornell_coated_diffuse(SceneData& scene) {
         make_float3(265.0f, 0.0f, 295.0f));
 }
 
+/// @brief Build Cornell Thin Glass scene (scene 14)
+/// Matches CPU build_cornell_thin_glass(): Cornell box with a vertical thin-glass panel
+/// using pbrt-v4 ThinDielectricBxDF (analytic multi-bounce Fresnel, no bending).
+static void build_cornell_thin_glass(SceneData& scene) {
+    const int mat_red   = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    const int mat_white = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    const int mat_green = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    const int mat_light = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f,
+                                 make_float3(kLightIntensity, kLightIntensity, kLightIntensity) });
+
+    // White diffuse box
+    const int mat_box = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    // Thin-glass panel (IOR 1.5)
+    const int mat_panel = safe_cast_to_int(scene.materials.size());
+    {
+        MaterialData md{};
+        md.type = MaterialType::ThinDielectric;
+        md.ior  = 1.5f;
+        scene.materials.push_back(md);
+    }
+
+    // Cornell Box walls
+    { QuadData q{}; q.Q = make_float3(kBoxSize,0,0); q.u = make_float3(0,0,kBoxSize); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_green; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q = make_float3(0,0,kBoxSize); q.u = make_float3(0,0,-kBoxSize); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_red; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q = make_float3(213,554,227); q.u = make_float3(130,0,0); q.v = make_float3(0,0,105); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_light; scene.quads.push_back(q);
+      scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1); scene.isLightSphere.push_back(false); }
+    { QuadData q{}; q.Q = make_float3(0,kBoxSize,0); q.u = make_float3(kBoxSize,0,0); q.v = make_float3(0,0,kBoxSize); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q = make_float3(0,0,kBoxSize); q.u = make_float3(kBoxSize,0,0); q.v = make_float3(0,0,-kBoxSize); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q = make_float3(kBoxSize,0,kBoxSize); q.u = make_float3(-kBoxSize,0,0); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+
+    // White diffuse box (right side)
+    add_box(scene,
+        make_float3(0.0f, 0.0f, 0.0f),
+        make_float3(165.0f, 330.0f, 165.0f),
+        mat_box,
+        15.0f,
+        make_float3(265.0f, 0.0f, 295.0f));
+
+    // Thin-glass panel: vertical slab spanning box interior
+    // Q=(100,0,200), u=(0,555,0), v=(355,0,0)  -- horizontal quad lying in xz plane rotated
+    {
+        QuadData q{};
+        q.Q = make_float3(100.0f, 0.0f, 200.0f);
+        q.u = make_float3(0.0f, 555.0f, 0.0f);
+        q.v = make_float3(355.0f, 0.0f, 0.0f);
+        const float3 c = cross(q.u, q.v);
+        q.w      = c;
+        q.normal = normalize(c);
+        q.D      = dot(q.normal, q.Q);
+        q.materialIdx = mat_panel;
+        scene.quads.push_back(q);
+    }
+}
+
 /// @brief Build Cornell Rough Glass scene (scene 11)
 /// Matches CPU build_cornell_rough_glass(): same walls/light, diffuse box + rough-glass sphere
 static void build_cornell_rough_glass(SceneData& scene) {
@@ -894,12 +957,16 @@ bool build_scene(
 											cornell_box_camera:
 
 											case 12:  // Cornell Conductor (GGX + complex Fresnel, pbrt-v4 ConductorBxDF)
-											if (scene_id == 12) build_cornell_conductor(scene);
-											// fallthrough
+												if (scene_id == 12) build_cornell_conductor(scene);
+												// fallthrough
 
-											case 13:  // Cornell Coated Diffuse (pbrt-v4 CoatedDiffuseBxDF)
-											if (scene_id == 13) build_cornell_coated_diffuse(scene);
-										{
+												case 13:  // Cornell Coated Diffuse (pbrt-v4 CoatedDiffuseBxDF)
+												if (scene_id == 13) build_cornell_coated_diffuse(scene);
+												// fallthrough
+
+												case 14:  // Cornell Thin Glass (pbrt-v4 ThinDielectricBxDF)
+												if (scene_id == 14) build_cornell_thin_glass(scene);
+											{
 									constexpr float kPi = 3.14159265358979323846f;
 									const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
 									const float3 lookat = make_float3(278.0f, 278.0f, 278.0f);

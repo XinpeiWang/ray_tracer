@@ -547,4 +547,57 @@ class coated_diffuse : public material {
 };
 
 
+// ---------------------------------------------------------------------------
+// thin_dielectric -- pbrt-v4 ThinDielectricBxDF
+//
+// Models a zero-thickness flat slab of glass (window pane, soap bubble).
+// Because the slab has no volume, the transmitted ray exits on the same side
+// it entered (wi = -wo, not refracted).
+//
+// Multiple internal bounces are folded analytically:
+//   R_eff = R + T^2 * R / (1 - R^2)   (geometric series of internal bounces)
+//   T_eff = 1 - R_eff
+//
+// Reference: pbrt-v4 src/pbrt/bxdfs.h ThinDielectricBxDF::Sample_f
+// ---------------------------------------------------------------------------
+class thin_dielectric : public material {
+  public:
+    thin_dielectric(double ior) : ior(ior) {}
+
+    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec) const override {
+        double cos_theta = std::fabs(dot(unit_vector(r_in.direction()), rec.normal));
+        double R = FrDielectric(cos_theta, ior);
+        // Account for internal multiple bounces: R_eff = R + T^2*R/(1-R^2)
+        if (R < 1.0) {
+            double T = 1.0 - R;
+            R += T * T * R / (1.0 - R * R);
+        }
+        double T_eff = 1.0 - R;
+
+        srec.attenuation  = color(1.0, 1.0, 1.0);
+        srec.pdf_ptr      = nullptr;
+        srec.skip_pdf     = true;
+
+        if (random_double() < R) {
+            // Specular reflection
+            srec.skip_pdf_ray = ray(rec.p,
+                                    reflect(unit_vector(r_in.direction()), rec.normal),
+                                    r_in.time());
+        } else {
+            // Straight-through transmission (no bending — zero thickness)
+            (void)T_eff;
+            srec.skip_pdf_ray = ray(rec.p,
+                                    unit_vector(r_in.direction()),
+                                    r_in.time());
+        }
+        return true;
+    }
+
+    double get_ior() const { return ior; }
+
+  private:
+    double ior;
+};
+
+
 #endif

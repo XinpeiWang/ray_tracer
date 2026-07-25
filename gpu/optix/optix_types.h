@@ -52,7 +52,8 @@ enum class MaterialType : int {
 	DiffuseLight = 3,
 	RoughDielectric = 4,
 	Conductor = 5,           // GGX VNDF + complex Fresnel (pbrt-v4 ConductorBxDF)
-	CoatedDiffuse = 6        // rough dielectric coat over Lambertian (pbrt-v4 CoatedDiffuseBxDF)
+	CoatedDiffuse = 6,       // rough dielectric coat over Lambertian (pbrt-v4 CoatedDiffuseBxDF)
+	ThinDielectric = 7       // zero-thickness glass slab (pbrt-v4 ThinDielectricBxDF)
 };
 
 // Material data (packed for SBT)

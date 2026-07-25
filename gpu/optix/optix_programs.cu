@@ -448,6 +448,28 @@ extern "C" __global__ void __closesthit__sphere() {
 			break;
 		}
 
+		case MaterialType::ThinDielectric: {
+			// Zero-thickness glass slab (pbrt-v4 ThinDielectricBxDF) -- sphere version
+			// Transmission goes straight through (no bending); reflection is specular.
+			// Multiple internal bounces folded analytically: R_eff = R + T^2*R/(1-R^2)
+			float3 unit_direction = normalize(ray_dir);
+			float cos_theta = fabsf(dot(unit_direction, normal));
+			float R = FrDielectric(cos_theta, mat.ior);
+			if (R < 1.0f) {
+				float T = 1.0f - R;
+				R += T * T * R / (1.0f - R * R);
+			}
+			attenuation = make_float3(1.0f, 1.0f, 1.0f);
+			if (random_float(seed) < R) {
+				scattered_dir = reflect(unit_direction, normal);
+			} else {
+				scattered_dir = unit_direction;  // straight through
+			}
+			scattered   = true;
+			is_specular = true;
+			break;
+		}
+
 		case MaterialType::RoughDielectric: {
 			// GGX microfacet BSDF (pbrt-v4 RoughDielectricBxDF)
 			// fuzz field stores GGX roughness; ior = index of refraction
@@ -866,6 +888,26 @@ extern "C" __global__ void __closesthit__quad() {
 			}
 			scattered = true;
 			is_specular = true;  // specular bounce: next hit adds full emission, no MIS
+			break;
+		}
+
+		case MaterialType::ThinDielectric: {
+			// Zero-thickness glass slab (pbrt-v4 ThinDielectricBxDF) -- quad version
+			float3 unit_direction = normalize(ray_dir);
+			float cos_theta = fabsf(dot(unit_direction, final_normal));
+			float R = FrDielectric(cos_theta, mat.ior);
+			if (R < 1.0f) {
+				float T = 1.0f - R;
+				R += T * T * R / (1.0f - R * R);
+			}
+			attenuation = make_float3(1.0f, 1.0f, 1.0f);
+			if (random_float(seed) < R) {
+				scattered_dir = reflect(unit_direction, final_normal);
+			} else {
+				scattered_dir = unit_direction;  // straight through
+			}
+			scattered   = true;
+			is_specular = true;
 			break;
 		}
 
