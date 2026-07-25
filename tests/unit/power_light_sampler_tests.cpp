@@ -243,3 +243,110 @@ TEST(CornellBoxPhiTest, AccentLightPhiFormula) {
 	double ceiling_phi = 13650.0 * 15.0 * M_PI;
 	EXPECT_GT(ceiling_phi, phi);
 }
+
+// ============================================================================
+// Power light sampler: multi-light proportionality
+// Mirrors pbrt-v4 lightsamplers_test.cpp BVHLightSampling.Point pattern:
+// verify that each light is selected with frequency proportional to its power.
+// ============================================================================
+
+// Three lights with weights 1:2:7. Selection frequency should match PMF.
+// Mirrors pbrt-v4's check that "sampledLight->p == pmf" for each light.
+//
+// Geometry: three quads placed far away in distinct angular directions.
+// QuadA (+x), QuadB (-x), QuadC (-z) -- all facing the origin so
+// origin is on the FRONT side of every quad (visible from origin).
+TEST(PowerLightProportionalityTest, ThreeLightFrequencyMatchesPMF) {
+	auto empty = std::shared_ptr<material>();
+	// QuadA: at x=+995, facing -x (normal = -x), origin on front side
+	auto quadA = std::make_shared<quad>(point3(1005, -5, -5), vec3(0,10,0), vec3(0,0,10), empty);
+	// QuadB: at x=-995, facing +x (normal = +x), origin on front side
+	// cross((0,10,0),(0,0,-10)) = (-100,0,0) → normal -x, so use v=(0,0,-10)
+	auto quadB = std::make_shared<quad>(point3(-995, -5,  5), vec3(0,10,0), vec3(0,0,-10), empty);
+	// QuadC: at z=-995, facing +z (normal = +z), origin on front side
+	// cross((10,0,0),(0,10,0)) = (0,0,100) → normal +z ✓  origin at z=0 > z=-995
+	auto quadC = std::make_shared<quad>(point3( -5, -5,-995), vec3(10,0,0), vec3(0,10,0), empty);
+
+	const double pA = 1.0, pB = 2.0, pC = 7.0;
+	const double total = pA + pB + pC;
+
+	power_light_list lights;
+	lights.add(quadA, pA);
+	lights.add(quadB, pB);
+	lights.add(quadC, pC);
+
+	const int N = 200000;
+	int cA = 0, cB = 0, cC = 0;
+	point3 origin(0, 0, 0);
+
+	for (int i = 0; i < N; ++i) {
+		vec3 raw = lights.random(origin);
+		// quad::random() returns p-origin (unnormalized). Normalize before
+		// classifying so small transverse components don't trigger wrong branch.
+		vec3 dir = unit_vector(raw);
+		// Each quad is ~1000 units away so the normalized direction strongly
+		// points toward it; threshold 0.9 gives ~26 degree half-angle margin.
+		if      (dir.x() > 0.9)   ++cA;
+		else if (dir.x() < -0.9)  ++cB;
+		else if (dir.z() < -0.9)  ++cC;
+	}
+
+	// Allow 2% absolute tolerance
+	EXPECT_NEAR((double)cA / N, pA / total, 0.02) << "Light A frequency";
+	EXPECT_NEAR((double)cB / N, pB / total, 0.02) << "Light B frequency";
+	EXPECT_NEAR((double)cC / N, pC / total, 0.02) << "Light C frequency";
+}
+
+// High power ratio: one light 10x brighter must be selected ~10x more often.
+// Mirrors pbrt-v4's validation that PMF p == selection probability.
+TEST(PowerLightProportionalityTest, HighPowerRatioDominance) {
+	auto empty = std::shared_ptr<material>();
+	// Dim light at negative x, bright light (10x) at positive x
+	auto dim    = std::make_shared<quad>(point3(-20, 10, 0), vec3(10,0,0), vec3(0,0,10), empty);
+	auto bright = std::make_shared<quad>(point3( 10, 10, 0), vec3(10,0,0), vec3(0,0,10), empty);
+
+	const double pDim = 1.0, pBright = 10.0;
+	power_light_list lights;
+	lights.add(dim,    pDim);
+	lights.add(bright, pBright);
+
+	point3 origin(0, 0, 5);
+	const int N = 100000;
+	int count_bright = 0;
+	for (int i = 0; i < N; ++i) {
+		vec3 dir = lights.random(origin);
+		if (dir.x() > 0.0) ++count_bright;
+	}
+
+	// Bright should be selected ~10/(1+10) = 90.9% of the time
+	double expected = pBright / (pDim + pBright);
+	EXPECT_NEAR((double)count_bright / N, expected, 0.02)
+		<< "Bright light not selected proportionally";
+}
+
+// PDF value consistency: pdf_value() must equal weighted sum of per-light PDFs.
+// This directly mirrors pbrt-v4 lightsamplers_test.cpp's PMF consistency check.
+TEST(PowerLightProportionalityTest, PDFValueConsistentWithPMF) {
+	auto empty = std::shared_ptr<material>();
+	auto q1 = std::make_shared<quad>(point3(0, 10, 0), vec3(10,0,0), vec3(0,0,10), empty);
+	auto q2 = std::make_shared<quad>(point3(20,10, 0), vec3(10,0,0), vec3(0,0,10), empty);
+	auto q3 = std::make_shared<quad>(point3(40,10, 0), vec3(10,0,0), vec3(0,0,10), empty);
+
+	const double w1 = 3.0, w2 = 1.0, w3 = 6.0, total = w1 + w2 + w3;
+	power_light_list lights;
+	lights.add(q1, w1);
+	lights.add(q2, w2);
+	lights.add(q3, w3);
+
+	point3 origin(20, 0, 5);
+	vec3   dir = unit_vector(vec3(0, 1, 0));
+
+	// Manual weighted sum
+	double pdf1 = lights.objects[0]->pdf_value(origin, dir);
+	double pdf2 = lights.objects[1]->pdf_value(origin, dir);
+	double pdf3 = lights.objects[2]->pdf_value(origin, dir);
+	double expected_pdf = (w1/total)*pdf1 + (w2/total)*pdf2 + (w3/total)*pdf3;
+
+	EXPECT_NEAR(lights.pdf_value(origin, dir), expected_pdf, 1e-10)
+		<< "pdf_value != weighted sum of per-light PDFs";
+}

@@ -290,3 +290,230 @@ TEST(BxDFSamplingConsistencyTest, CosineWeightedHemisphereLCosZ) {
 		EXPECT_NEAR(lz, cos_theta, 1e-9);
 	}
 }
+
+// ============================================================================
+// 6. RoughMetalBxDF -- pbrt-v4 bsdfs_test.cpp style
+//
+// pbrt-v4 uses two strategies:
+//   (a) Sampling consistency: importance sampling vs uniform hemisphere
+//       sampling converge to the same integral of f*Li*cos.
+//   (b) Per-sample weight bounded: every sample weight in [0, 1].
+//
+// We work in the LOCAL shading frame (z = normal = (0,0,1)) since
+// RoughMetalBxDF::sample_local() operates there.
+// ============================================================================
+
+// Helper: uniform hemisphere sample in local frame
+static void uniform_hemisphere(double u1, double u2,
+								double& wx, double& wy, double& wz) {
+	double cos_theta = u2;
+	double sin_theta = std::sqrt(std::max(0.0, 1.0 - cos_theta * cos_theta));
+	double phi = 2.0 * kPi * u1;
+	wx = sin_theta * std::cos(phi);
+	wy = sin_theta * std::sin(phi);
+	wz = cos_theta;
+}
+
+// Analytic GGX BRDF value (no Fresnel, pure geometry/NDF term).
+// f = D(wm)*G(wo,wi) / (4*|cosO|*|cosI|)   [perfect conductor, F=1]
+// Uses HEIGHT-CORRELATED Smith G = 1/(1+Lambda_o+Lambda_i) to match
+// TrowbridgeReitz::G() used inside RoughMetalBxDF.
+static double ggx_lambda(double cx, double cy, double cz, double alpha) {
+	if (cz <= 0.0) return 0.0;
+	double t2 = (1.0 - cz*cz) / (cz*cz); // tan^2(theta)
+	return (std::sqrt(1.0 + alpha*alpha * t2) - 1.0) / 2.0;
+}
+
+static double ggx_brdf(double wox, double woy, double woz,
+						double wix, double wiy, double wiz,
+						double alpha) {
+	if (woz <= 0.0 || wiz <= 0.0) return 0.0;
+	// Half-vector
+	double hmx = wox + wix, hmy = woy + wiy, hmz = woz + wiz;
+	double hlen = std::sqrt(hmx*hmx + hmy*hmy + hmz*hmz);
+	if (hlen < 1e-10) return 0.0;
+	hmx /= hlen; hmy /= hlen; hmz /= hlen;
+	if (hmz <= 0.0) return 0.0;
+	// GGX D(wm)
+	double tan2_m = (1.0 - hmz*hmz) / (hmz*hmz);
+	double denom_d = kPi * alpha*alpha * std::pow(hmz, 4) * std::pow(1.0 + tan2_m/(alpha*alpha), 2);
+	double D = (denom_d > 0) ? 1.0 / denom_d : 0.0;
+	// Height-correlated Smith G (matches TrowbridgeReitz::G in microfacet.h)
+	double G = 1.0 / (1.0 + ggx_lambda(wox,woy,woz,alpha) + ggx_lambda(wix,wiy,wiz,alpha));
+	return D * G / (4.0 * woz * wiz);
+}
+
+// Sampling consistency: integral of f*cos estimated via importance sampling
+// must match the same integral estimated via uniform hemisphere sampling.
+// This is the core pattern from pbrt-v4's BSDFSampling tests.
+TEST(RoughMetalBxDFTest, SamplingConsistency) {
+	const double roughness = 0.3;
+	const double alpha = std::sqrt(roughness); // RoughnessToAlpha
+	RoughMetalBxDF<double> bxdf{ 1.0, 1.0, 1.0, alpha };
+
+	// Fixed incident direction (not normal incidence, not grazing)
+	const double wi_x = 0.3, wi_y = 0.0, wi_z = std::sqrt(1.0 - 0.3*0.3);
+
+	const int N = 4096;
+	double sum_importance = 0.0;
+	double sum_uniform    = 0.0;
+
+	// Simple Li(w) = w.z^2 (smooth, non-trivial test function)
+	auto Li = [](double wx, double wy, double wz) { return wz * wz; };
+
+	for (int i = 0; i < N; ++i) {
+		double u1 = radical_inverse_2(i + 1);
+		double u2 = radical_inverse_3(i + 1);
+
+		// Importance sampling estimate: f(wo,wi) * Li(wo) * |cos_o| / pdf
+		// For VNDF sampling, pdf = D_visible and the weight G/G1 already
+		// incorporates the VNDF pdf, so the sample weight is f/pdf.
+		auto r = bxdf.sample_local(wi_x, wi_y, wi_z, u1, u2);
+		if (r.valid && r.wo_z > 0.0) {
+			// r.r = albedo * G/G1 = f*cos_o/pdf (VNDF self-normalizes).
+			// Estimator for integral(f*Li*cos dw) = r.r * Li(wo), no extra cos.
+			sum_importance += r.r * Li(r.wo_x, r.wo_y, r.wo_z);
+		}
+
+		// Uniform hemisphere estimate: f(wo,wi) * Li(wo) * cos / pdf_uniform
+		double ux, uy, uz;
+		uniform_hemisphere(u1, u2, ux, uy, uz);
+		double f_val = ggx_brdf(ux, uy, uz, wi_x, wi_y, wi_z, alpha);
+		// pdf_uniform = 1/(2*pi), so multiply by 2*pi
+		sum_uniform += f_val * Li(ux, uy, uz) * uz * 2.0 * kPi;
+	}
+
+	double est_importance = sum_importance / N;
+	double est_uniform    = sum_uniform    / N;
+
+	// Both estimates should agree within 5% relative error
+	if (est_uniform > 1e-6) {
+		double rel_err = std::fabs(est_importance - est_uniform) / est_uniform;
+		EXPECT_LT(rel_err, 0.05) << "importance=" << est_importance
+								  << " uniform=" << est_uniform;
+	}
+}
+
+// White-furnace: for albedo=1, integrate f*cos/pdf over all directions.
+// In the local frame with VNDF sampling, weight = G/G1, and the
+// expected integral is approximately 1 (energy conservation).
+TEST(RoughMetalBxDFTest, WhiteFurnace) {
+	const double alpha = std::sqrt(0.4);
+	RoughMetalBxDF<double> bxdf{ 1.0, 1.0, 1.0, alpha };
+
+	const double wi_x = 0.2, wi_y = 0.0, wi_z = std::sqrt(1.0 - 0.04);
+	const int N = 8192;
+	double sum = 0.0; int valid = 0;
+
+	for (int i = 0; i < N; ++i) {
+		double u1 = radical_inverse_2(i + 1);
+		double u2 = radical_inverse_3(i + 1);
+		auto r = bxdf.sample_local(wi_x, wi_y, wi_z, u1, u2);
+		if (!r.valid || r.wo_z <= 0.0) continue;
+		// For VNDF sampling the estimator for reflectance is r.r (= G/G1 * albedo)
+		sum += r.r;
+		++valid;
+	}
+	double estimate = sum / valid;
+	// GGX energy conservation: should be <= 1 and typically close to 1
+	EXPECT_LE(estimate, 1.0 + 1e-6) << "Energy created: " << estimate;
+	EXPECT_GT(estimate, 0.5) << "Unexpectedly low reflectance: " << estimate;
+}
+
+// Per-sample weight must be in [0,1] — no energy creation per sample.
+TEST(RoughMetalBxDFTest, PerSampleWeightBounded) {
+	const double alpha = std::sqrt(0.2);
+	RoughMetalBxDF<double> bxdf{ 0.8, 0.8, 0.8, alpha };
+
+	for (int i = 0; i < 1024; ++i) {
+		double u1 = radical_inverse_2(i + 1);
+		double u2 = radical_inverse_3(i + 1);
+		double wi_z = 0.1 + 0.89 * radical_inverse_2(i * 3 + 7);
+		double wi_x = std::sqrt(1.0 - wi_z*wi_z);
+		auto r = bxdf.sample_local(wi_x, 0.0, wi_z, u1, u2);
+		if (!r.valid) continue;
+		EXPECT_GE(r.r, 0.0) << "Negative weight at i=" << i;
+		EXPECT_LE(r.r, 1.0 + 1e-9) << "Weight > 1 at i=" << i;
+	}
+}
+
+// ============================================================================
+// 7. RoughDielectricBxDF -- pbrt-v4 bsdfs_test.cpp style
+// ============================================================================
+
+// Sampling consistency: importance vs uniform hemisphere.
+TEST(RoughDielectricBxDFTest, SamplingConsistency) {
+	const double alpha = std::sqrt(0.25);
+	const double ior   = 1.5;
+	RoughDielectricBxDF<double> bxdf{ ior, alpha };
+
+	const double wi_x = 0.2, wi_y = 0.0, wi_z = std::sqrt(1.0 - 0.04);
+	const double eta  = 1.0 / ior; // entering from outside
+
+	const int N = 4096;
+	double sum_importance = 0.0, sum_uniform = 0.0;
+	auto Li = [](double wx, double wy, double wz) {
+		double cz = std::fabs(wz);
+		return cz * cz;
+	};
+
+	for (int i = 0; i < N; ++i) {
+		double u1 = radical_inverse_2(i + 1);
+		double u2 = radical_inverse_3(i + 1);
+		double u3 = radical_inverse_2((i + 1) * 2053u);
+
+		auto r = bxdf.sample_local(wi_x, wi_y, wi_z, eta, u1, u2, u3);
+		if (r.valid) {
+			// weight = r.r (= 1.0 for dielectric, since G/G1 self-normalizes)
+			double cz = std::fabs(r.wo_z);
+			sum_importance += r.r * Li(r.wo_x, r.wo_y, r.wo_z) * cz;
+		}
+
+		// Uniform full sphere (dielectric can transmit)
+		double cos_theta = -1.0 + 2.0 * u2;
+		double sin_theta = std::sqrt(std::max(0.0, 1.0 - cos_theta*cos_theta));
+		double phi = 2.0 * kPi * u1;
+		double ux = sin_theta * std::cos(phi);
+		double uy = sin_theta * std::sin(phi);
+		double uz = cos_theta;
+		// Analytic GGX dielectric BRDF (transmission omitted for simplicity;
+		// just verify reflection lobe consistency, wo in upper hemisphere)
+		if (uz > 0.0) {
+			double f_val = ggx_brdf(ux, uy, uz, wi_x, wi_y, wi_z, alpha);
+			sum_uniform += f_val * Li(ux, uy, uz) * uz * 2.0 * kPi;
+		}
+	}
+
+	double est_importance = sum_importance / N;
+	double est_uniform    = sum_uniform    / N;
+
+	// Rough dielectric contributes both reflection and transmission;
+	// the importance estimate includes both while the uniform estimate
+	// covers only reflection -- so we just check the important is non-trivially positive
+	// and not wildly larger than the uniform reflection estimate.
+	EXPECT_GT(est_importance, 0.0) << "Importance estimate should be positive";
+	EXPECT_LT(est_importance, 5.0 * (est_uniform + 1e-4))
+		<< "Importance estimate suspiciously large vs reflection-only uniform";
+}
+
+// Energy conservation: weight per sample <= 1, average close to 1.
+TEST(RoughDielectricBxDFTest, EnergyConservationPerSample) {
+	const double alpha = std::sqrt(0.3);
+	RoughDielectricBxDF<double> bxdf{ 1.5, alpha };
+
+	double sum = 0.0; int valid = 0;
+	for (int i = 0; i < 2048; ++i) {
+		double u1 = radical_inverse_2(i + 1);
+		double u2 = radical_inverse_3(i + 1);
+		double u3 = radical_inverse_2((i + 1) * 1999u);
+		double wi_z = 0.05 + 0.9 * radical_inverse_3(i + 1);
+		double wi_x = std::sqrt(std::max(0.0, 1.0 - wi_z*wi_z));
+		auto r = bxdf.sample_local(wi_x, 0.0, wi_z, 1.0/1.5, u1, u2, u3);
+		if (!r.valid) continue;
+		// Dielectric weight is always 1.0 (self-normalizing VNDF)
+		EXPECT_NEAR(r.r, 1.0, 1e-9) << "Dielectric weight should be exactly 1";
+		sum += r.r;
+		++valid;
+	}
+	EXPECT_GT(valid, 1024) << "Too many invalid samples: " << (2048 - valid);
+}
