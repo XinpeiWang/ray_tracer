@@ -340,100 +340,165 @@ class camera {
         return PowerHeuristic(pdf_a, pdf_b);
     }
 
+    // ray_color -- pbrt-v4 PathIntegrator pattern
+    //
+    // prev_bsdf_pdf: the BSDF PDF that generated ray `r` on the previous
+    // bounce (0 for the camera ray).  Used to compute the MIS weight when
+    // this ray hits an emissive surface (area light).  Mirrors pbrt-v4's
+    // p_b / w_l pattern in PathIntegrator::Li().
     color ray_color(const ray& r, int depth, const hittable& world, const hittable& lights,
-                    const color& throughput = color(1.0, 1.0, 1.0))
+                    const color& throughput    = color(1.0, 1.0, 1.0),
+                    double       prev_bsdf_pdf = 0.0)
     const {
         // Terminate path at max depth.
         if (depth <= 0)
-            return color(0,0,0);
+            return color(0, 0, 0);
 
         hit_record rec;
 
-        // If the ray hits nothing, return the background color.
+        // Miss — return background.
         if (!world.hit(r, interval(0.001, infinity), rec))
             return background;
 
-        scatter_record srec;
-        color color_from_emission = rec.mat->emitted(r, rec, rec.u, rec.v, rec.p);
+        // ----------------------------------------------------------------
+        // Emission at this surface.
+        // pbrt-v4: if we arrived here via a specular bounce (prev_bsdf_pdf==0
+        // signals camera ray or specular) we take the full emission.
+        // If we arrived via a BSDF sample that was part of a MIS pair, we
+        // apply the power-heuristic weight w_b so we don't double-count with
+        // the NEE contribution from the previous bounce.
+        // ----------------------------------------------------------------
+        color Le = rec.mat->emitted(r, rec, rec.u, rec.v, rec.p);
+        color color_from_emission = color(0, 0, 0);
+        if (Le.x() > 0 || Le.y() > 0 || Le.z() > 0) {
+            if (prev_bsdf_pdf <= 0.0) {
+                // Camera ray or specular: take full emission.
+                color_from_emission = Le;
+            } else {
+                // Non-specular BSDF bounce: apply MIS weight against NEE.
+                hittable_pdf light_pdf_for_mis(lights, rec.p);
+                double pdf_light = light_pdf_for_mis.value(r.direction());
+                double w_b = mis_power_heuristic(prev_bsdf_pdf, pdf_light);
+                color_from_emission = w_b * Le;
+            }
+        }
 
+        scatter_record srec;
         if (!rec.mat->scatter(r, rec, srec))
             return color_from_emission;
 
+        // ----------------------------------------------------------------
+        // Specular bounce (delta BxDF) -- no direct light sampling possible.
+        // Mirrors pbrt-v4 specularBounce path: single recursive call, no NEE.
+        // ----------------------------------------------------------------
         if (srec.skip_pdf) {
             color new_throughput = throughput * srec.attenuation;
             double rr_scale = 1.0;
 
-            // Russian Roulette (pbrt-v4 PathIntegrator pattern, starts after bounce > 1)
+            // Russian Roulette after bounce > 1 (pbrt-v4 pattern).
             if ((max_depth - depth) > 1) {
-                double rr_max = (std::max)(new_throughput.x(), (std::max)(new_throughput.y(), new_throughput.z()));
+                double rr_max = (std::max)(new_throughput.x(),
+                                (std::max)(new_throughput.y(), new_throughput.z()));
                 if (rr_max < 1.0) {
                     double q = (std::max)(0.0, 1.0 - rr_max);
-                    if (random_double() < q) return color(0, 0, 0);
-                    rr_scale = 1.0 / (1.0 - q);   // unbiased reweight
+                    if (random_double() < q) return color_from_emission;
+                    rr_scale = 1.0 / (1.0 - q);
                     new_throughput = new_throughput * rr_scale;
                 }
             }
 
-            return srec.attenuation * rr_scale * ray_color(srec.skip_pdf_ray, depth-1, world, lights, new_throughput);
+            // prev_bsdf_pdf = 0 signals specular to the next bounce
+            // (full emission, no MIS weight needed).
+            return color_from_emission +
+                   srec.attenuation * rr_scale *
+                   ray_color(srec.skip_pdf_ray, depth - 1, world, lights,
+                             new_throughput, /*prev_bsdf_pdf=*/0.0);
         }
 
-        // Multiple Importance Sampling (MIS) — BRDF + light strategies.
-        auto light_ptr = make_shared<hittable_pdf>(lights, rec.p);
+        // ----------------------------------------------------------------
+        // Non-specular surface: NEE (direct light) + BSDF continuation.
+        // Mirrors pbrt-v4 PathIntegrator::Li():
+        //   L += beta * SampleLd(...)          <- NEE, non-recursive
+        //   ray = SpawnRay(bsdf_sample)        <- single BSDF recursive call
+        // ----------------------------------------------------------------
+        hittable_pdf light_pdf(lights, rec.p);
 
-        // Strategy 1: Sample from BRDF
-        vec3 brdf_direction = srec.pdf_ptr->generate();
-        ray brdf_scattered = ray(rec.p, brdf_direction, r.time());
+        // --- Strategy A: NEE / direct-light sample (non-recursive) ---
+        // Sample a point on a light, test visibility, evaluate f*Le*w/pdf.
+        color nee_contribution = color(0, 0, 0);
+        {
+            vec3 light_dir = light_pdf.generate();
+            double pdf_l   = light_pdf.value(light_dir);
 
-        double pdf_brdf = srec.pdf_ptr->value(brdf_direction);
-        double pdf_light_at_brdf = light_ptr->value(brdf_direction);
-        double scattering_pdf_brdf = rec.mat->scattering_pdf(r, rec, brdf_scattered);
+            if (pdf_l > 0.0) {
+                ray shadow_ray(rec.p, light_dir, r.time());
+                double f_pdf = rec.mat->scattering_pdf(r, rec, shadow_ray);
 
-        // Strategy 2: Sample from light
-        vec3 light_direction = light_ptr->generate();
-        ray light_scattered = ray(rec.p, light_direction, r.time());
+                if (f_pdf > 0.0) {
+                    // MIS weight: light sample vs BSDF sample.
+                    double pdf_b_at_l = srec.pdf_ptr->value(light_dir);
+                    double w_l = mis_power_heuristic(pdf_l, pdf_b_at_l);
 
-        double pdf_light = light_ptr->value(light_direction);
-        double pdf_brdf_at_light = srec.pdf_ptr->value(light_direction);
-        double scattering_pdf_light = rec.mat->scattering_pdf(r, rec, light_scattered);
+                    // Evaluate Le at the light by tracing the shadow ray.
+                    // We only want the emitted radiance; if hit returns false
+                    // (escaped scene) or no emission, contribution is zero.
+                    hit_record light_rec;
+                    color Le_direct = color(0, 0, 0);
+                    if (world.hit(shadow_ray, interval(0.001, infinity), light_rec)) {
+                        // Evaluate emission on the light surface.
+                        Le_direct = light_rec.mat->emitted(
+                            shadow_ray, light_rec, light_rec.u, light_rec.v, light_rec.p);
+                    }
 
-        // Compute MIS weights using power heuristic (β=2)
-        double weight_brdf = mis_power_heuristic(pdf_brdf, pdf_light_at_brdf);
-        double weight_light = mis_power_heuristic(pdf_light, pdf_brdf_at_light);
-
-        // Russian Roulette (pbrt-v4 pattern): estimate next-bounce throughput via attenuation.
-        // Both MIS strategies share the same surface, so one RR decision covers both.
-        color next_throughput = throughput * srec.attenuation;
-        double rr_scale = 1.0;
-        if ((max_depth - depth) > 1) {
-            double rr_max = (std::max)(next_throughput.x(), (std::max)(next_throughput.y(), next_throughput.z()));
-            if (rr_max < 1.0) {
-                double q = (std::max)(0.0, 1.0 - rr_max);
-                if (random_double() < q)
-                    return color_from_emission;  // path terminated — return only emission at this hit
-                rr_scale = 1.0 / (1.0 - q);     // unbiased reweight for survivors
-                next_throughput = next_throughput * rr_scale;
+                    if (Le_direct.x() > 0 || Le_direct.y() > 0 || Le_direct.z() > 0) {
+                        nee_contribution =
+                            w_l * srec.attenuation * f_pdf * Le_direct / pdf_l;
+                    }
+                }
             }
         }
 
-        color sample_color_brdf  = ray_color(brdf_scattered,  depth - 1, world, lights, next_throughput);
-        color sample_color_light = ray_color(light_scattered, depth - 1, world, lights, next_throughput);
+        // --- Strategy B: BSDF sample (single recursive call) ---
+        // Sample outgoing direction from BSDF, recurse.  The MIS weight for
+        // any emitter hit by this ray is applied inside the recursive call
+        // via prev_bsdf_pdf.
+        color bsdf_contribution = color(0, 0, 0);
+        {
+            vec3 bsdf_dir = srec.pdf_ptr->generate();
+            double pdf_b  = srec.pdf_ptr->value(bsdf_dir);
 
-        // Combine contributions with MIS weights
-        color contribution_brdf = color(0,0,0);
-        if (pdf_brdf > 0.0 && scattering_pdf_brdf > 0.0) {
-            contribution_brdf =
-                weight_brdf * (srec.attenuation * rr_scale * scattering_pdf_brdf * sample_color_brdf) / pdf_brdf;
+            if (pdf_b > 0.0) {
+                ray bsdf_ray(rec.p, bsdf_dir, r.time());
+                double f_pdf = rec.mat->scattering_pdf(r, rec, bsdf_ray);
+
+                if (f_pdf > 0.0) {
+                    // Russian Roulette: based on throughput after this bounce.
+                    color next_throughput = throughput * srec.attenuation;
+                    double rr_scale = 1.0;
+                    if ((max_depth - depth) > 1) {
+                        double rr_max = (std::max)(next_throughput.x(),
+                                        (std::max)(next_throughput.y(), next_throughput.z()));
+                        if (rr_max < 1.0) {
+                            double q = (std::max)(0.0, 1.0 - rr_max);
+                            if (random_double() < q) {
+                                // Path terminated by RR — only return emission + NEE.
+                                return color_from_emission + nee_contribution;
+                            }
+                            rr_scale = 1.0 / (1.0 - q);
+                            next_throughput = next_throughput * rr_scale;
+                        }
+                    }
+
+                    color incoming = ray_color(bsdf_ray, depth - 1, world, lights,
+                                               next_throughput, /*prev_bsdf_pdf=*/pdf_b);
+
+                    bsdf_contribution =
+                        rr_scale * srec.attenuation * f_pdf * incoming / pdf_b;
+                }
+            }
         }
 
-        color contribution_light = color(0,0,0);
-        if (pdf_light > 0.0 && scattering_pdf_light > 0.0) {
-            contribution_light =
-                weight_light * (srec.attenuation * rr_scale * scattering_pdf_light * sample_color_light) / pdf_light;
-        }
-
-        color color_from_scatter = contribution_brdf + contribution_light;
-
-        return color_from_emission + color_from_scatter;
+        return color_from_emission + nee_contribution + bsdf_contribution;
     }
 };
 
