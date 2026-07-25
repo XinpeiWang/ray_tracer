@@ -141,6 +141,14 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_rough_metal,
             build_cornell_box_lights
         },
+        {
+            11, "Cornell Rough Glass (GGX)",
+            "Cornell box with a GGX rough-dielectric sphere (pbrt-v4 RoughDielectricBxDF)",
+            "Medium", 200, false, false,
+            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
+            build_cornell_rough_glass,
+            build_cornell_box_lights
+        },
     };
     return registry;
 }

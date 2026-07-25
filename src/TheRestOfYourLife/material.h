@@ -246,4 +246,102 @@ class rough_metal : public material {
 };
 
 
+// ---------------------------------------------------------------------------
+// rough_dielectric -- GGX microfacet BSDF for rough glass (pbrt-v4 RoughDielectricBxDF)
+// Samples a microfacet normal from the GGX VNDF, then stochastically reflects
+// or refracts based on the Fresnel weight FrDielectric(dot(wi,wm), eta).
+// roughness in [0,1]: 0 = perfect smooth glass, 1 = fully diffuse-like frosted glass
+// ---------------------------------------------------------------------------
+class rough_dielectric : public material {
+  public:
+    rough_dielectric(double refraction_index, double roughness)
+        : ior(refraction_index),
+          alpha(TrowbridgeReitz<double>::RoughnessToAlpha(
+              std::fmax(roughness, 1e-4))) {}
+
+    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec) const override {
+        // Build local shading frame: z_axis = shading normal
+        vec3 normal = rec.normal;
+        bool entering = rec.front_face;
+        double eta = entering ? (1.0 / ior) : ior;  // eta_i / eta_t
+
+        vec3 up        = std::fabs(normal.x()) > 0.9 ? vec3(0,1,0) : vec3(1,0,0);
+        vec3 tangent   = unit_vector(cross(up, normal));
+        vec3 bitangent = cross(normal, tangent);
+
+        // Incident direction in local frame (pointing away from surface)
+        vec3 wi_world = unit_vector(-r_in.direction());
+        double wi_x = dot(wi_world, tangent);
+        double wi_y = dot(wi_world, bitangent);
+        double wi_z = dot(wi_world, normal);
+
+        // If ray comes from inside, flip local frame so wi_z > 0
+        if (wi_z < 0.0) {
+            wi_z = -wi_z; wi_x = -wi_x; wi_y = -wi_y;
+        }
+
+        // Sample microfacet normal from GGX VNDF (pbrt-v4 Sample_wm)
+        TrowbridgeReitz<double> dist(alpha, alpha);
+        double wm_x, wm_y, wm_z;
+        dist.Sample_wm(wi_x, wi_y, wi_z,
+                       random_double(), random_double(),
+                       wm_x, wm_y, wm_z);
+
+        // Fresnel: F = probability of reflection (pbrt-v4 FrDielectric)
+        double cos_theta_i = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
+        // FrDielectric takes (cos_theta_i, eta_t/eta_i); eta = eta_i/eta_t so pass 1/eta
+        double F = FrDielectric(cos_theta_i, 1.0 / eta);
+
+        vec3 scatter_dir;
+        if (random_double() < F) {
+            // Reflect about microfacet normal
+            double dot_wi_wm = cos_theta_i;
+            double wo_x = 2.0*dot_wi_wm*wm_x - wi_x;
+            double wo_y = 2.0*dot_wi_wm*wm_y - wi_y;
+            double wo_z = 2.0*dot_wi_wm*wm_z - wi_z;
+            if (wo_z <= 0.0) return false;  // below surface
+            scatter_dir = wo_x*tangent + wo_y*bitangent + wo_z*normal;
+        } else {
+            // Refract about microfacet normal
+            // wm must point into same hemisphere as wi
+            if (wm_z < 0.0) { wm_x=-wm_x; wm_y=-wm_y; wm_z=-wm_z; }
+            // Snell's law in local frame
+            double sin2_theta_t = eta*eta * (1.0 - cos_theta_i*cos_theta_i);
+            if (sin2_theta_t >= 1.0) {
+                // TIR fallback: reflect instead
+                double dot_wi_wm = cos_theta_i;
+                double wo_x = 2.0*dot_wi_wm*wm_x - wi_x;
+                double wo_y = 2.0*dot_wi_wm*wm_y - wi_y;
+                double wo_z = 2.0*dot_wi_wm*wm_z - wi_z;
+                if (wo_z <= 0.0) return false;
+                scatter_dir = wo_x*tangent + wo_y*bitangent + wo_z*normal;
+            } else {
+                double cos_theta_t = std::sqrt(1.0 - sin2_theta_t);
+                // Transmitted direction (pbrt-v4 Refract formula in local frame):
+                //   wo = -eta*wi + (eta*dot(wi,wm) - cos_t)*wm
+                // wo_z < 0: ray crosses through the surface boundary
+                double wo_x = eta*(-wi_x) + (eta*cos_theta_i - cos_theta_t)*wm_x;
+                double wo_y = eta*(-wi_y) + (eta*cos_theta_i - cos_theta_t)*wm_y;
+                double wo_z = -(eta*wi_z  - (eta*cos_theta_i - cos_theta_t)*wm_z);
+                // Transform back to world space (wo_z is negative for transmission)
+                scatter_dir = wo_x*tangent + wo_y*bitangent + wo_z*normal;
+            }
+        }
+
+        srec.attenuation  = color(1.0, 1.0, 1.0);
+        srec.pdf_ptr      = nullptr;
+        srec.skip_pdf     = true;
+        srec.skip_pdf_ray = ray(rec.p, unit_vector(scatter_dir), r_in.time());
+        return true;
+    }
+
+    double get_ior()       const { return ior; }
+    double get_roughness() const { return alpha * alpha; }
+
+  private:
+    double ior;    // index of refraction
+    double alpha;  // GGX alpha = RoughnessToAlpha(roughness)
+};
+
+
 #endif

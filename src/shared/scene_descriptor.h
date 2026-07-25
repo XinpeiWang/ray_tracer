@@ -60,6 +60,9 @@ inline const SceneDesc* get_all_scenes(int* out_count = nullptr) {
 		{ 10, "Cornell Rough Metal (GGX)",
 		   "Cornell box with rough aluminum box and rough gold sphere",
 		   "Medium",    200, false, true  },
+		{ 11, "Cornell Rough Glass (GGX)",
+		   "Cornell box with a GGX rough-dielectric sphere (pbrt-v4 RoughDielectricBxDF)",
+		   "Medium",    200, false, true  },
 	};
 	static const int kCount = (int)(sizeof(kScenes) / sizeof(kScenes[0]));
 	if (out_count) *out_count = kCount;

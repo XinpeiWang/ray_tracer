@@ -49,15 +49,16 @@ enum class MaterialType : int {
 	Lambertian = 0,
 	Metal = 1,
 	Dielectric = 2,
-	DiffuseLight = 3
+	DiffuseLight = 3,
+	RoughDielectric = 4
 };
 
 // Material data (packed for SBT)
 struct MaterialData {
 	MaterialType type;
 	float3 albedo;      // For lambertian, metal
-	float fuzz;         // For metal (roughness)
-	float ior;          // For dielectric (index of refraction)
+	float fuzz;         // For metal (roughness); also GGX alpha for RoughDielectric
+	float ior;          // For dielectric / rough_dielectric (index of refraction)
 	float3 emission;    // For diffuse_light
 };
 

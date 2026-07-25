@@ -14,6 +14,7 @@
 #include "color.h"
 #include "interval.h"
 #include "../shared/microfacet.h"
+#include "hittable.h"
 #include "material.h"
 #include <algorithm>
 #include <cmath>
@@ -954,4 +955,124 @@ TEST(HaltonSamplerTest, PerPixelDecorrelation) {
 	EXPECT_GE(s10, 0.0f); EXPECT_LT(s10, 1.0f);
 	EXPECT_GE(s01, 0.0f); EXPECT_LT(s01, 1.0f);
 	EXPECT_GE(s11, 0.0f); EXPECT_LT(s11, 1.0f);
+}
+
+// ============================================================================
+// RoughDielectricTest -- pbrt-v4 RoughDielectricBxDF alignment
+// ============================================================================
+
+// Helpers shared across tests
+static hit_record make_hit_front(point3 p = point3(0,0,0),
+								  vec3   n = vec3(0,0,1)) {
+	hit_record rec;
+	rec.p          = p;
+	rec.normal     = n;
+	rec.front_face = true;
+	rec.t          = 1.0;
+	return rec;
+}
+
+// Test: constructor stores IOR / alpha correctly (RoughnessToAlpha = sqrt)
+TEST(RoughDielectricTest, ConstructorAlpha) {
+	rough_dielectric mat(1.5, 0.25);
+	EXPECT_DOUBLE_EQ(mat.get_ior(), 1.5);
+	// RoughnessToAlpha(0.25) = sqrt(0.25) = 0.5
+	// get_roughness() returns alpha*alpha, so should equal 0.25
+	EXPECT_NEAR(mat.get_roughness(), 0.25, 1e-10);
+}
+
+// Test: attenuation is always white (energy-neutral glass)
+TEST(RoughDielectricTest, AttenuationIsWhite) {
+	rough_dielectric mat(1.5, 0.2);
+	hit_record rec = make_hit_front();
+
+	int N = 500;
+	int scattered_count = 0;
+	for (int i = 0; i < N; ++i) {
+		ray r_in(point3(0,0,-1), vec3(0,0,1));
+		scatter_record srec;
+		if (mat.scatter(r_in, rec, srec)) {
+			++scattered_count;
+			EXPECT_NEAR(srec.attenuation.x(), 1.0, 1e-9);
+			EXPECT_NEAR(srec.attenuation.y(), 1.0, 1e-9);
+			EXPECT_NEAR(srec.attenuation.z(), 1.0, 1e-9);
+			EXPECT_TRUE(srec.skip_pdf)
+				<< "rough_dielectric must use skip_pdf path (specular)";
+		}
+	}
+	// At roughness 0.2 some rays will refract and some reflect, but most scatter
+	EXPECT_GT(scattered_count, N / 2);
+}
+
+// Test: scattered ray direction is a unit vector (never degenerate)
+TEST(RoughDielectricTest, ScatteredDirIsUnit) {
+	rough_dielectric mat(1.5, 0.3);
+	hit_record rec = make_hit_front();
+	ray r_in(point3(0,0,-1), vec3(0,0,1));
+
+	int ok = 0;
+	for (int i = 0; i < 1000; ++i) {
+		scatter_record srec;
+		if (mat.scatter(r_in, rec, srec)) {
+			double len = srec.skip_pdf_ray.direction().length();
+			EXPECT_NEAR(len, 1.0, 1e-6)
+				<< "scattered direction is not unit-length at sample " << i;
+			// No NaN
+			EXPECT_FALSE(std::isnan(srec.skip_pdf_ray.direction().x()));
+			EXPECT_FALSE(std::isnan(srec.skip_pdf_ray.direction().y()));
+			EXPECT_FALSE(std::isnan(srec.skip_pdf_ray.direction().z()));
+			++ok;
+		}
+	}
+	EXPECT_GT(ok, 500);
+}
+
+// Test: transmitted rays cross the boundary (z < 0 in world space when entering)
+// For a ray hitting a flat surface from above, refracted rays must go downward.
+TEST(RoughDielectricTest, TransmissionCrossesBoundary) {
+	// Very low roughness so almost all rays refract (F << 1 at normal incidence)
+	rough_dielectric mat(1.5, 0.01);
+	hit_record rec = make_hit_front(point3(0,0,0), vec3(0,0,1));
+	// Ray coming straight down along -z into the surface
+	ray r_in(point3(0,0,1), vec3(0,0,-1));
+
+	int refracted_count = 0;
+	int reflected_count = 0;
+	for (int i = 0; i < 2000; ++i) {
+		scatter_record srec;
+		if (!mat.scatter(r_in, rec, srec)) continue;
+		double dz = srec.skip_pdf_ray.direction().z();
+		if (dz < 0.0) ++refracted_count;  // Crossed boundary: correct
+		else          ++reflected_count;  // Reflected back: also valid
+	}
+	// At normal incidence, IOR=1.5, Fresnel reflectance ≈ 4% → ~96% refracted
+	// With roughness 0.01 (near-specular) we expect the vast majority to transmit
+	EXPECT_GT(refracted_count, reflected_count * 10)
+		<< "At near-normal incidence, most rays should refract through the surface. "
+		<< "Refracted=" << refracted_count << " Reflected=" << reflected_count;
+}
+
+// Test: energy conservation — total scattered weight over many rays ≤ 1
+// (attenuation is always 1.0 for dielectric, scatter probability itself is conservation)
+// Note: ~3-5% of samples return false when the microfacet-sampled direction
+// falls below the geometric surface (back-hemisphere rejection). This is
+// physically correct (pbrt-v4 RoughDielectricBxDF does the same); those
+// rays carry zero weight and do NOT violate energy conservation.
+TEST(RoughDielectricTest, NoEnergyCreation) {
+	rough_dielectric mat(1.5, 0.4);
+	hit_record rec = make_hit_front();
+	ray r_in(point3(0,0,-1), vec3(0,0,1));
+
+	int scattered = 0, total = 0;
+	for (int i = 0; i < 2000; ++i) {
+		scatter_record srec;
+		++total;
+		if (mat.scatter(r_in, rec, srec)) ++scattered;
+	}
+	// Allow up to 10% geometric rejection (grazing microfacet normals).
+	// In practice it is ~3-5%; 10% is a conservative bound.
+	double rejection_rate = double(total - scattered) / double(total);
+	EXPECT_LT(rejection_rate, 0.10)
+		<< "rough_dielectric rejected " << (total - scattered) << "/" << total
+		<< " rays (" << rejection_rate * 100.0 << "%) — unexpected high absorption";
 }

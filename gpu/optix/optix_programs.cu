@@ -4,7 +4,8 @@
 #include <optix.h>
 #include "optix_types.h"
 #include "optix_math_helpers.h"
-#include "../../src/shared/fresnel.h"   // Shared exact Fresnel (CPU+GPU)
+#include "../../src/shared/fresnel.h"    // Shared exact Fresnel (CPU+GPU)
+#include "../../src/shared/microfacet.h" // GGX TrowbridgeReitz (CPU+GPU)
 
 // Launch parameters (constant across all threads)
 extern "C" { __constant__ LaunchParams params; }
@@ -444,6 +445,70 @@ extern "C" __global__ void __closesthit__sphere() {
 			break;
 		}
 
+		case MaterialType::RoughDielectric: {
+			// GGX microfacet BSDF (pbrt-v4 RoughDielectricBxDF)
+			// fuzz field stores GGX roughness; ior = index of refraction
+			float rd_alpha = mat.fuzz;
+			rd_alpha = sqrtf(rd_alpha);  // RoughnessToAlpha: alpha = sqrt(roughness)
+			float rd_ri    = front_face ? (1.0f / mat.ior) : mat.ior;
+
+			// Local shading frame (n = +Z)
+			float3 n = normal;
+			float3 up_v = (fabsf(n.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
+			float3 tan  = normalize(cross(up_v, n));
+			float3 bitan = cross(n, tan);
+
+			float3 wi_w = normalize(-ray_dir);
+			float wi_x = dot(wi_w, tan), wi_y = dot(wi_w, bitan), wi_z = dot(wi_w, n);
+			if (wi_z < 0.0f) { wi_z=-wi_z; wi_x=-wi_x; wi_y=-wi_y; }
+
+			TrowbridgeReitz<float> rd_dist(rd_alpha, rd_alpha);
+			float wm_x, wm_y, wm_z;
+			rd_dist.Sample_wm(wi_x, wi_y, wi_z,
+							  random_float(seed), random_float(seed),
+							  wm_x, wm_y, wm_z);
+
+			float cos_i = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
+			float F = FrDielectric(cos_i, 1.0f / rd_ri);
+
+			float3 wo_local;
+			if (random_float(seed) < F) {
+				// Reflect
+				float wo_x = 2.0f*cos_i*wm_x - wi_x;
+				float wo_y = 2.0f*cos_i*wm_y - wi_y;
+				float wo_z = 2.0f*cos_i*wm_z - wi_z;
+				if (wo_z <= 0.0f) { scattered = false; break; }
+				wo_local = make_float3(wo_x, wo_y, wo_z);
+			} else {
+				// Refract
+				if (wm_z < 0.0f) { wm_x=-wm_x; wm_y=-wm_y; wm_z=-wm_z; }
+				float sin2_t = rd_ri*rd_ri * (1.0f - cos_i*cos_i);
+				if (sin2_t >= 1.0f) {
+					// TIR: reflect
+					float wo_x = 2.0f*cos_i*wm_x - wi_x;
+					float wo_y = 2.0f*cos_i*wm_y - wi_y;
+					float wo_z = 2.0f*cos_i*wm_z - wi_z;
+					if (wo_z <= 0.0f) { scattered = false; break; }
+					wo_local = make_float3(wo_x, wo_y, wo_z);
+				} else {
+					// Transmitted direction (pbrt-v4 Refract in local frame):
+					//   wo = -eta*wi + (eta*dot(wi,wm) - cos_t)*wm
+					// wo_z < 0: ray crosses through the surface boundary
+					float cos_t = sqrtf(1.0f - sin2_t);
+					float wo_x = rd_ri*(-wi_x) + (rd_ri*cos_i - cos_t)*wm_x;
+					float wo_y = rd_ri*(-wi_y) + (rd_ri*cos_i - cos_t)*wm_y;
+					float wo_z = -(rd_ri*wi_z  - (rd_ri*cos_i - cos_t)*wm_z);
+					wo_local = make_float3(wo_x, wo_y, wo_z);
+				}
+			}
+
+			scattered_dir = normalize(wo_local.x*tan + wo_local.y*bitan + wo_local.z*n);
+			attenuation   = make_float3(1.0f, 1.0f, 1.0f);
+			scattered     = true;
+			is_specular   = true;
+			break;
+		}
+
 		case MaterialType::DiffuseLight: {
 			// Emissive material - no scattering
 			// Emission already set from mat.emission above
@@ -459,7 +524,7 @@ extern "C" __global__ void __closesthit__sphere() {
 	}
 
 	// Pack updated payload back into registers
-	// p0-p2: new attenuation (throughput for next bounce)
+
 	// p3-p5: emission from this surface hit
 	// p6-p8: scatter direction (if scattered)
 	// p9: updated seed
@@ -725,6 +790,65 @@ extern "C" __global__ void __closesthit__quad() {
 			}
 			scattered = true;
 			is_specular = true;  // specular bounce: next hit adds full emission, no MIS
+			break;
+		}
+
+		case MaterialType::RoughDielectric: {
+			// GGX microfacet BSDF (pbrt-v4 RoughDielectricBxDF) — quad version
+			float rd_alpha = mat.fuzz;
+			rd_alpha = sqrtf(rd_alpha);  // RoughnessToAlpha: alpha = sqrt(roughness)
+			float rd_ri    = front_face ? (1.0f / mat.ior) : mat.ior;
+
+			float3 n = final_normal;
+			float3 up_v = (fabsf(n.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
+			float3 tan   = normalize(cross(up_v, n));
+			float3 bitan = cross(n, tan);
+
+			float3 wi_w = normalize(-ray_dir);
+			float wi_x = dot(wi_w, tan), wi_y = dot(wi_w, bitan), wi_z = dot(wi_w, n);
+			if (wi_z < 0.0f) { wi_z=-wi_z; wi_x=-wi_x; wi_y=-wi_y; }
+
+			TrowbridgeReitz<float> rd_dist(rd_alpha, rd_alpha);
+			float wm_x, wm_y, wm_z;
+			rd_dist.Sample_wm(wi_x, wi_y, wi_z,
+							  random_float(seed), random_float(seed),
+							  wm_x, wm_y, wm_z);
+
+			float cos_i = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
+			float F = FrDielectric(cos_i, 1.0f / rd_ri);
+
+			float3 wo_local;
+			if (random_float(seed) < F) {
+				float wo_x = 2.0f*cos_i*wm_x - wi_x;
+				float wo_y = 2.0f*cos_i*wm_y - wi_y;
+				float wo_z = 2.0f*cos_i*wm_z - wi_z;
+				if (wo_z <= 0.0f) { scattered = false; break; }
+				wo_local = make_float3(wo_x, wo_y, wo_z);
+			} else {
+				if (wm_z < 0.0f) { wm_x=-wm_x; wm_y=-wm_y; wm_z=-wm_z; }
+				float sin2_t = rd_ri*rd_ri * (1.0f - cos_i*cos_i);
+				if (sin2_t >= 1.0f) {
+					float wo_x = 2.0f*cos_i*wm_x - wi_x;
+					float wo_y = 2.0f*cos_i*wm_y - wi_y;
+					float wo_z = 2.0f*cos_i*wm_z - wi_z;
+					if (wo_z <= 0.0f) { scattered = false; break; }
+					wo_local = make_float3(wo_x, wo_y, wo_z);
+				} else {
+					// Transmitted direction (pbrt-v4 Refract in local frame):
+					//   wo = -eta*wi + (eta*dot(wi,wm) - cos_t)*wm
+					// wo_z < 0: ray crosses through the surface boundary
+					float cos_t = sqrtf(1.0f - sin2_t);
+					float wo_x = rd_ri*(-wi_x) + (rd_ri*cos_i - cos_t)*wm_x;
+					float wo_y = rd_ri*(-wi_y) + (rd_ri*cos_i - cos_t)*wm_y;
+					float wo_z = -(rd_ri*wi_z  - (rd_ri*cos_i - cos_t)*wm_z);
+					wo_local = make_float3(wo_x, wo_y, wo_z);
+				}
+			}
+
+			scattered_dir = normalize(wo_local.x*tan + wo_local.y*bitan + wo_local.z*n);
+			attenuation   = make_float3(1.0f, 1.0f, 1.0f);
+			scattered     = true;
+			is_specular   = true;
 			break;
 		}
 

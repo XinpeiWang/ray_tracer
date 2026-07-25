@@ -32,9 +32,9 @@ TEST(SceneRegistryTest, RegistryIsNonEmpty) {
 }
 
 TEST(SceneRegistryTest, RegistryHasExpectedCount) {
-	// We currently register 11 scenes (ids 0-10).
+	// We currently register 12 scenes (ids 0-11).
 	// This test will fail if a scene is accidentally removed.
-	EXPECT_EQ(scene_count(), 11);
+	EXPECT_EQ(scene_count(), 12);
 }
 
 TEST(SceneRegistryTest, AllIDsAreUnique) {
