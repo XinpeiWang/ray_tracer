@@ -502,28 +502,63 @@ extern "C" __global__ void __closesthit__sphere() {
 				}
 			}
 
-			scattered_dir = normalize(wo_local.x*tan + wo_local.y*bitan + wo_local.z*n);
-			attenuation   = make_float3(1.0f, 1.0f, 1.0f);
-			scattered     = true;
-			is_specular   = true;
-			break;
-		}
+					scattered_dir = normalize(wo_local.x*tan + wo_local.y*bitan + wo_local.z*n);
+					attenuation   = make_float3(1.0f, 1.0f, 1.0f);
+					scattered     = true;
+					is_specular   = true;
+					break;
+				}
 
-		case MaterialType::DiffuseLight: {
-			// Emissive material - no scattering
-			// Emission already set from mat.emission above
-			scattered = false;
-			break;
-		}
+				case MaterialType::Conductor: {
+					// GGX VNDF + complex Fresnel (pbrt-v4 ConductorBxDF) -- sphere version
+					float c_alpha = sqrtf(mat.fuzz);
 
-		default: {
-			// Unknown material - absorb
-			scattered = false;
-			break;
-		}
-	}
+					float3 cn = normal;
+					float3 cup = (fabsf(cn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
+					float3 ctan  = normalize(cross(cup, cn));
+					float3 cbitan = cross(cn, ctan);
 
-	// Pack updated payload back into registers
+					float3 cwi = normalize(-ray_dir);
+					float cwi_x = dot(cwi, ctan), cwi_y = dot(cwi, cbitan), cwi_z = dot(cwi, cn);
+					if (cwi_z <= 0.0f) { scattered = false; break; }
+
+					TrowbridgeReitz<float> c_dist(c_alpha, c_alpha);
+					float cwm_x, cwm_y, cwm_z;
+					c_dist.Sample_wm(cwi_x, cwi_y, cwi_z,
+									 random_float(seed), random_float(seed),
+									 cwm_x, cwm_y, cwm_z);
+
+					float c_dot = cwi_x*cwm_x + cwi_y*cwm_y + cwi_z*cwm_z;
+					float cwo_x = 2.0f*c_dot*cwm_x - cwi_x;
+					float cwo_y = 2.0f*c_dot*cwm_y - cwi_y;
+					float cwo_z = 2.0f*c_dot*cwm_z - cwi_z;
+					if (cwo_z <= 0.0f) { scattered = false; break; }
+
+					attenuation = FrConductorRGB(c_dot,
+												 mat.eta_c.x, mat.eta_c.y, mat.eta_c.z,
+												 mat.k_c.x,   mat.k_c.y,   mat.k_c.z);
+
+					scattered_dir = normalize(cwo_x*ctan + cwo_y*cbitan + cwo_z*cn);
+					scattered     = true;
+					is_specular   = true;
+					break;
+				}
+
+				case MaterialType::DiffuseLight: {
+					// Emissive material - no scattering
+					// Emission already set from mat.emission above
+					scattered = false;
+					break;
+				}
+
+				default: {
+					// Unknown material - absorb
+					scattered = false;
+					break;
+				}
+			}
+
+				// Pack updated payload back into registers
 
 	// p3-p5: emission from this surface hit
 	// p6-p8: scatter direction (if scattered)
@@ -845,29 +880,64 @@ extern "C" __global__ void __closesthit__quad() {
 				}
 			}
 
-			scattered_dir = normalize(wo_local.x*tan + wo_local.y*bitan + wo_local.z*n);
-			attenuation   = make_float3(1.0f, 1.0f, 1.0f);
-			scattered     = true;
-			is_specular   = true;
-			break;
-		}
+				scattered_dir = normalize(wo_local.x*tan + wo_local.y*bitan + wo_local.z*n);
+					attenuation   = make_float3(1.0f, 1.0f, 1.0f);
+					scattered     = true;
+					is_specular   = true;
+					break;
+				}
 
-		case MaterialType::DiffuseLight: {
-			// Emissive material - no scattering
-			// Emission already set from mat.emission above
-			scattered = false;
-			break;
-		}
+				case MaterialType::Conductor: {
+					// GGX VNDF + complex Fresnel (pbrt-v4 ConductorBxDF) -- quad version
+					float c_alpha = sqrtf(mat.fuzz);
 
-		default: {
-			// Unknown material - absorb
-			scattered = false;
-			break;
-		}
-	}
+					float3 cn = final_normal;
+					float3 cup = (fabsf(cn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
+					float3 ctan  = normalize(cross(cup, cn));
+					float3 cbitan = cross(cn, ctan);
 
-	// Pack updated payload back into registers
-	// p0-p2: surface attenuation (BRDF albedo - raygen multiplies with throughput)
+					float3 cwi = normalize(-ray_dir);
+					float cwi_x = dot(cwi, ctan), cwi_y = dot(cwi, cbitan), cwi_z = dot(cwi, cn);
+					if (cwi_z <= 0.0f) { scattered = false; break; }
+
+					TrowbridgeReitz<float> c_dist(c_alpha, c_alpha);
+					float cwm_x, cwm_y, cwm_z;
+					c_dist.Sample_wm(cwi_x, cwi_y, cwi_z,
+									 random_float(seed), random_float(seed),
+									 cwm_x, cwm_y, cwm_z);
+
+					float c_dot = cwi_x*cwm_x + cwi_y*cwm_y + cwi_z*cwm_z;
+					float cwo_x = 2.0f*c_dot*cwm_x - cwi_x;
+					float cwo_y = 2.0f*c_dot*cwm_y - cwi_y;
+					float cwo_z = 2.0f*c_dot*cwm_z - cwi_z;
+					if (cwo_z <= 0.0f) { scattered = false; break; }
+
+					attenuation = FrConductorRGB(c_dot,
+											   mat.eta_c.x, mat.eta_c.y, mat.eta_c.z,
+											   mat.k_c.x,   mat.k_c.y,   mat.k_c.z);
+
+					scattered_dir = normalize(cwo_x*ctan + cwo_y*cbitan + cwo_z*cn);
+					scattered     = true;
+					is_specular   = true;
+					break;
+				}
+
+				case MaterialType::DiffuseLight: {
+					// Emissive material - no scattering
+					// Emission already set from mat.emission above
+					scattered = false;
+					break;
+				}
+
+				default: {
+					// Unknown material - absorb
+					scattered = false;
+					break;
+				}
+			}
+
+			// Pack updated payload back into registers
+			// p0-p2: surface attenuation (BRDF albedo - raygen multiplies with throughput)
 	// p3-p5: emission from this surface hit
 	// p6-p8: scatter direction (if scattered)
 	// p9: updated seed

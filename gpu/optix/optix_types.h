@@ -50,16 +50,20 @@ enum class MaterialType : int {
 	Metal = 1,
 	Dielectric = 2,
 	DiffuseLight = 3,
-	RoughDielectric = 4
+	RoughDielectric = 4,
+	Conductor = 5           // GGX VNDF + complex Fresnel (pbrt-v4 ConductorBxDF)
 };
 
 // Material data (packed for SBT)
 struct MaterialData {
 	MaterialType type;
 	float3 albedo;      // For lambertian, metal
-	float fuzz;         // For metal (roughness); also GGX alpha for RoughDielectric
+	float fuzz;         // For metal (roughness); also GGX alpha for RoughDielectric / Conductor
 	float ior;          // For dielectric / rough_dielectric (index of refraction)
 	float3 emission;    // For diffuse_light
+	// Conductor complex IOR per RGB channel (pbrt-v4 ConductorBxDF: eta, k)
+	float3 eta_c;       // Real part η per R/G/B channel (Conductor only)
+	float3 k_c;         // Imaginary part k per R/G/B channel (Conductor only)
 };
 
 // Alias table entry for power-weighted light sampling (pbrt-v4 PowerLightSampler pattern)

@@ -149,6 +149,14 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_rough_glass,
             build_cornell_box_lights
         },
+        {
+            12, "Cornell Conductor (pbrt-v4 ConductorBxDF)",
+            "Cornell box with polished gold sphere and aluminium box using GGX VNDF + complex Fresnel",
+            "Medium", 200, false, false,
+            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
+            build_cornell_conductor,
+            build_cornell_box_lights
+        },
     };
     return registry;
 }

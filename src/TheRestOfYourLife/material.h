@@ -14,6 +14,8 @@
 #include "hittable.h"
 #include "pdf.h"
 #include "texture.h"
+#include "../shared/fresnel.h"
+#include "../shared/conductor_data.h"
 
 
 class scatter_record {
@@ -243,6 +245,90 @@ class rough_metal : public material {
   private:
     color  albedo;
     double alpha;   // GGX alpha = sqrt(roughness)
+};
+
+
+// ---------------------------------------------------------------------------
+// conductor -- GGX microfacet BRDF with complex Fresnel (pbrt-v4 ConductorBxDF)
+// Uses real metal optical constants (η + i·k) per RGB channel for physically
+// accurate angle-varying, wavelength-dependent reflectance.
+// roughness in [0,1]: 0 = mirror, 1 = fully rough
+// ---------------------------------------------------------------------------
+class conductor : public material {
+  public:
+    // Construct from explicit per-channel optical constants
+    conductor(double eta_r, double eta_g, double eta_b,
+              double k_r,   double k_g,   double k_b,
+              double roughness)
+        : eta_r(eta_r), eta_g(eta_g), eta_b(eta_b),
+          k_r(k_r),     k_g(k_g),     k_b(k_b),
+          alpha(TrowbridgeReitz<double>::RoughnessToAlpha(
+              std::fmax(roughness, 1e-4))) {}
+
+    // Construct from a named preset (e.g. "Au", "Ag", "Al", "Cu")
+    conductor(const ConductorPreset& preset, double roughness)
+        : eta_r(preset.eta_r), eta_g(preset.eta_g), eta_b(preset.eta_b),
+          k_r(preset.k_r),     k_g(preset.k_g),     k_b(preset.k_b),
+          alpha(TrowbridgeReitz<double>::RoughnessToAlpha(
+              std::fmax(roughness, 1e-4))) {}
+
+    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec) const override {
+        // Build local shading frame
+        vec3 normal    = rec.normal;
+        vec3 up        = std::fabs(normal.x()) > 0.9 ? vec3(0,1,0) : vec3(1,0,0);
+        vec3 tangent   = unit_vector(cross(up, normal));
+        vec3 bitangent = cross(normal, tangent);
+
+        // Incident direction in local frame
+        vec3 wi_world = unit_vector(-r_in.direction());
+        double wi_x = dot(wi_world, tangent);
+        double wi_y = dot(wi_world, bitangent);
+        double wi_z = dot(wi_world, normal);
+
+        if (wi_z <= 0.0) return false;  // ray from inside
+
+        // Sample microfacet normal (GGX VNDF, pbrt-v4 Sample_wm)
+        TrowbridgeReitz<double> dist(alpha, alpha);
+        double wm_x, wm_y, wm_z;
+        dist.Sample_wm(wi_x, wi_y, wi_z,
+                       random_double(), random_double(),
+                       wm_x, wm_y, wm_z);
+
+        // Reflect wi about wm
+        double dot_wi_wm = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
+        double wo_x = 2.0*dot_wi_wm*wm_x - wi_x;
+        double wo_y = 2.0*dot_wi_wm*wm_y - wi_y;
+        double wo_z = 2.0*dot_wi_wm*wm_z - wi_z;
+
+        if (wo_z <= 0.0) return false;  // reflected below surface
+
+        // FrComplex per RGB channel (pbrt-v4 ConductorBxDF::Sample_f)
+        // cos_theta = |dot(wi, wm)| = dot_wi_wm (both in upper hemisphere)
+        double F_r = FrComplex(dot_wi_wm, eta_r, k_r);
+        double F_g = FrComplex(dot_wi_wm, eta_g, k_g);
+        double F_b = FrComplex(dot_wi_wm, eta_b, k_b);
+
+        vec3 scatter_dir = wo_x*tangent + wo_y*bitangent + wo_z*normal;
+
+        srec.attenuation  = color(F_r, F_g, F_b);
+        srec.pdf_ptr      = nullptr;
+        srec.skip_pdf     = true;
+        srec.skip_pdf_ray = ray(rec.p, unit_vector(scatter_dir), r_in.time());
+        return true;
+    }
+
+    double get_roughness()  const { return alpha * alpha; }
+    color  get_fresnel_normal() const {
+        // Approximate F0 (normal incidence reflectance) per channel
+        return color(FrComplex(1.0, eta_r, k_r),
+                     FrComplex(1.0, eta_g, k_g),
+                     FrComplex(1.0, eta_b, k_b));
+    }
+
+  private:
+    double eta_r, eta_g, eta_b;  // real IOR per RGB channel
+    double k_r,   k_g,   k_b;   // extinction coefficient per RGB channel
+    double alpha;                 // GGX alpha = sqrt(roughness)
 };
 
 

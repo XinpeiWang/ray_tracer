@@ -8,6 +8,8 @@
 #include <cassert>
 #include <iostream>
 
+#include "../../src/shared/conductor_data.h"
+
 namespace {
 	// Constants for Cornell Box dimensions
 	constexpr float kBoxSize = 555.0f;
@@ -349,6 +351,70 @@ static void build_cornell_rough_metal(SceneData& scene) {
         make_float3(265.0f, 0.0f, 295.0f));
 }
 
+/// @brief Build Cornell Conductor scene (scene 12)
+/// Matches CPU build_cornell_conductor(): Cornell box with a gold sphere and
+/// aluminium box using GGX VNDF + complex Fresnel (pbrt-v4 ConductorBxDF).
+static void build_cornell_conductor(SceneData& scene) {
+    const int mat_red   = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    const int mat_white = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    const int mat_green = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    const int mat_light = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f,
+                                 make_float3(kLightIntensity, kLightIntensity, kLightIntensity) });
+
+    // Gold sphere material (conductor, roughness 0.1 -- polished gold)
+    const int mat_gold = safe_cast_to_int(scene.materials.size());
+    {
+        MaterialData md{};
+        md.type  = MaterialType::Conductor;
+        md.fuzz  = 0.1f;   // roughness; alpha = sqrt(0.1)
+        md.eta_c = make_float3(kConductorAu.eta_r, kConductorAu.eta_g, kConductorAu.eta_b);
+        md.k_c   = make_float3(kConductorAu.k_r,   kConductorAu.k_g,   kConductorAu.k_b);
+        scene.materials.push_back(md);
+    }
+
+    // Aluminium box material (conductor, roughness 0.05 -- polished aluminium)
+    const int mat_alum = safe_cast_to_int(scene.materials.size());
+    {
+        MaterialData md{};
+        md.type  = MaterialType::Conductor;
+        md.fuzz  = 0.05f;
+        md.eta_c = make_float3(kConductorAl.eta_r, kConductorAl.eta_g, kConductorAl.eta_b);
+        md.k_c   = make_float3(kConductorAl.k_r,   kConductorAl.k_g,   kConductorAl.k_b);
+        scene.materials.push_back(md);
+    }
+
+    // Cornell Box walls
+    { QuadData q{}; q.Q=make_float3(kBoxSize,0,0); q.u=make_float3(0,0,kBoxSize); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_green; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q=make_float3(0,0,kBoxSize); q.u=make_float3(0,0,-kBoxSize); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_red; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q=make_float3(213,554,227); q.u=make_float3(130,0,0); q.v=make_float3(0,0,105); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_light; scene.quads.push_back(q);
+      scene.lightIndices.push_back(static_cast<int>(scene.quads.size())-1); scene.isLightSphere.push_back(false); }
+    { QuadData q{}; q.Q=make_float3(0,kBoxSize,0); q.u=make_float3(kBoxSize,0,0); q.v=make_float3(0,0,kBoxSize); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q=make_float3(0,0,kBoxSize); q.u=make_float3(kBoxSize,0,0); q.v=make_float3(0,0,-kBoxSize); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q=make_float3(kBoxSize,0,kBoxSize); q.u=make_float3(-kBoxSize,0,0); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+
+    // Gold sphere
+    SphereData sphere{};
+    sphere.center = make_float3(190.0f, 90.0f, 190.0f);
+    sphere.radius = 90.0f;
+    sphere.materialIdx = mat_gold;
+    scene.spheres.push_back(sphere);
+
+    // Polished aluminium box
+    add_box(scene,
+        make_float3(0.0f, 0.0f, 0.0f),
+        make_float3(165.0f, 330.0f, 165.0f),
+        mat_alum,
+        15.0f,
+        make_float3(265.0f, 0.0f, 295.0f));
+}
+
 /// @brief Build Cornell Rough Glass scene (scene 11)
 /// Matches CPU build_cornell_rough_glass(): same walls/light, diffuse box + rough-glass sphere
 static void build_cornell_rough_glass(SceneData& scene) {
@@ -677,8 +743,11 @@ bool build_scene(
 								goto cornell_box_camera;
 
 							case 11:  // Cornell Rough Glass (GGX)
-								build_cornell_rough_glass(scene);
-								cornell_box_camera:
+										build_cornell_rough_glass(scene);
+										cornell_box_camera:
+
+										case 12:  // Cornell Conductor (GGX + complex Fresnel, pbrt-v4 ConductorBxDF)
+										if (scene_id == 12) build_cornell_conductor(scene);
 								{
 									constexpr float kPi = 3.14159265358979323846f;
 									const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));

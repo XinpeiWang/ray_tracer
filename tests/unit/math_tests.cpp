@@ -14,6 +14,8 @@
 #include "color.h"
 #include "interval.h"
 #include "../shared/microfacet.h"
+#include "../shared/fresnel.h"
+#include "../shared/conductor_data.h"
 #include "hittable.h"
 #include "material.h"
 #include <algorithm>
@@ -1075,4 +1077,142 @@ TEST(RoughDielectricTest, NoEnergyCreation) {
 	EXPECT_LT(rejection_rate, 0.10)
 		<< "rough_dielectric rejected " << (total - scattered) << "/" << total
 		<< " rays (" << rejection_rate * 100.0 << "%) — unexpected high absorption";
+}
+
+// ============================================================================
+// FrComplex (conductor Fresnel) tests — mirrors pbrt-v4 scattering.h
+// ============================================================================
+
+// At normal incidence (cos_theta = 1), FrComplex should match the analytic
+// formula: F = |(eta - 1) / (eta + 1)|^2 for purely real eta (k = 0).
+TEST(ConductorFresnelTest, NormalIncidencePurelyReal) {
+	// For k=0, FrComplex reduces to FrDielectric.
+	// eta = 1.5 (glass-like): F0 = |(1.5-1)/(1.5+1)|^2 = (0.5/2.5)^2 = 0.04
+	const double eta = 1.5, k = 0.0;
+	const double F = FrComplex(1.0, eta, k);
+	const double expected = (eta - 1.0) * (eta - 1.0) / ((eta + 1.0) * (eta + 1.0));
+	EXPECT_NEAR(F, expected, 1e-6) << "FrComplex with k=0 should match real Fresnel reflectance";
+}
+
+// FrComplex must return values in [0, 1] (energy conservation).
+TEST(ConductorFresnelTest, OutputInRange) {
+	// Gold IOR (R channel): eta=0.184, k=3.070
+	for (int i = 0; i <= 10; ++i) {
+		double cos_theta = i / 10.0;
+		double F = FrComplex(cos_theta, 0.184, 3.070);
+		EXPECT_GE(F, 0.0) << "FrComplex must be >= 0";
+		EXPECT_LE(F, 1.0) << "FrComplex must be <= 1";
+	}
+}
+
+// Metals (high k) should have high reflectance (> 0.5) at all angles.
+TEST(ConductorFresnelTest, HighReflectanceForHighK) {
+	// Gold R channel: typical F > 0.9 for most angles
+	double F_normal = FrComplex(1.0, 0.184, 3.070);
+	EXPECT_GT(F_normal, 0.5) << "Gold (R channel) should have high reflectance at normal incidence";
+}
+
+// Grazing incidence (cos_theta -> 0) approaches 1 for conductors.
+TEST(ConductorFresnelTest, GrazingIncidenceApproachesOne) {
+	double F = FrComplex(0.001, 0.184, 3.070);
+	EXPECT_GT(F, 0.99) << "FrComplex should approach 1 at grazing incidence";
+}
+
+// FrComplex with k=0 and cos_theta in [-1,0] is clamped to cos_theta=0.
+TEST(ConductorFresnelTest, NegativeCosineClampedToZero) {
+	// Negative cos_theta is clamped to 0 in FrComplex, should equal value at 0.
+	double F_neg = FrComplex(-0.5, 1.5, 0.0);
+	double F_zero = FrComplex(0.0, 1.5, 0.0);
+	EXPECT_NEAR(F_neg, F_zero, 1e-10);
+}
+
+// ============================================================================
+// conductor material tests (CPU)
+// ============================================================================
+
+// Helper: create a front-face hit record pointing straight up (+Y normal).
+static hit_record make_conductor_hit() {
+	hit_record rec;
+	rec.p = point3(0, 0, 0);
+	rec.normal = vec3(0, 1, 0);
+	rec.front_face = true;
+	rec.t = 1.0;
+	return rec;
+}
+
+// conductor::scatter should always return true for non-grazing rays.
+TEST(ConductorMaterialTest, ScatterReturnsTrueForNormalIncidence) {
+	conductor mat(kConductorAu, 0.1);
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));  // straight down
+	hit_record rec = make_conductor_hit();
+	scatter_record srec;
+	EXPECT_TRUE(mat.scatter(r_in, rec, srec));
+}
+
+// Attenuation should be in [0,1] per channel (energy conservation).
+TEST(ConductorMaterialTest, AttenuationInRange) {
+	conductor mat(kConductorAu, 0.1);
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_conductor_hit();
+
+	for (int trial = 0; trial < 100; ++trial) {
+		scatter_record srec;
+		if (mat.scatter(r_in, rec, srec)) {
+			EXPECT_GE(srec.attenuation.x(), 0.0) << "R channel must be >= 0";
+			EXPECT_LE(srec.attenuation.x(), 1.0) << "R channel must be <= 1";
+			EXPECT_GE(srec.attenuation.y(), 0.0);
+			EXPECT_LE(srec.attenuation.y(), 1.0);
+			EXPECT_GE(srec.attenuation.z(), 0.0);
+			EXPECT_LE(srec.attenuation.z(), 1.0);
+		}
+	}
+}
+
+// Scattered direction should stay in the upper hemisphere (dot > 0 with normal).
+TEST(ConductorMaterialTest, ScatteredDirectionInUpperHemisphere) {
+	conductor mat(kConductorAl, 0.2);
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_conductor_hit();
+	vec3 normal = rec.normal;
+
+	int successes = 0;
+	for (int trial = 0; trial < 200; ++trial) {
+		scatter_record srec;
+		if (mat.scatter(r_in, rec, srec)) {
+			++successes;
+			vec3 dir = srec.skip_pdf_ray.direction();
+			EXPECT_GT(dot(dir, normal), 0.0)
+				<< "Scattered direction must stay in upper hemisphere";
+		}
+	}
+	EXPECT_GT(successes, 150) << "High scatter success rate expected for non-grazing incidence";
+}
+
+// skip_pdf must be true (conductor is always a specular bounce).
+TEST(ConductorMaterialTest, SkipPdfIsTrue) {
+	conductor mat(kConductorCu, 0.15);
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_conductor_hit();
+	scatter_record srec;
+	if (mat.scatter(r_in, rec, srec)) {
+		EXPECT_TRUE(srec.skip_pdf) << "conductor must always set skip_pdf=true";
+	}
+}
+
+// kConductorAg (silver) should produce near-achromatic reflectance at normal incidence.
+TEST(ConductorMaterialTest, SilverNearAchromaticAtNormalIncidence) {
+	// At normal incidence, gold has wavelength-varying F, silver is near-neutral.
+	double F_r = FrComplex(1.0, (double)kConductorAg.eta_r, (double)kConductorAg.k_r);
+	double F_g = FrComplex(1.0, (double)kConductorAg.eta_g, (double)kConductorAg.k_g);
+	double F_b = FrComplex(1.0, (double)kConductorAg.eta_b, (double)kConductorAg.k_b);
+	// Silver channels should be within 0.15 of each other (near-neutral)
+	EXPECT_NEAR(F_r, F_g, 0.15) << "Silver R/G channels should be similar";
+	EXPECT_NEAR(F_g, F_b, 0.15) << "Silver G/B channels should be similar";
+}
+
+// kConductorAu (gold) should have lower blue reflectance than red (yellow tint).
+TEST(ConductorMaterialTest, GoldYellowTint) {
+	double F_r = FrComplex(1.0, (double)kConductorAu.eta_r, (double)kConductorAu.k_r);
+	double F_b = FrComplex(1.0, (double)kConductorAu.eta_b, (double)kConductorAu.k_b);
+	EXPECT_GT(F_r, F_b) << "Gold should reflect more red than blue (yellow tint)";
 }
