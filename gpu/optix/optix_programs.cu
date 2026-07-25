@@ -600,7 +600,15 @@ extern "C" __global__ void __closesthit__sphere() {
 				}
 			}
 			scattered_dir = normalize(wo_local.x*tan + wo_local.y*bitan + wo_local.z*n);
-			attenuation   = make_float3(1.0f, 1.0f, 1.0f);
+			// pbrt-v4 RoughDielectricBxDF: BSDF weight with VNDF sampling = G(wo,wi)/G1(wi)
+			// (the D, cos, and pdf terms cancel; only shadow-masking ratio remains)
+			{
+				float wo_x = wo_local.x, wo_y = wo_local.y, wo_z = fabsf(wo_local.z);
+				float G2 = rd_dist.G(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z);
+				float G1_wi = rd_dist.G1(wi_x, wi_y, wi_z);
+				float w = (G1_wi > 1e-8f) ? (G2 / G1_wi) : 0.0f;
+				attenuation = make_float3(w, w, w);
+			}
 			scattered     = true;
 			is_specular   = true;
 			break;
@@ -1105,12 +1113,19 @@ extern "C" __global__ void __closesthit__quad() {
 				}
 			}
 
-				scattered_dir = normalize(wo_local.x*tan + wo_local.y*bitan + wo_local.z*n);
-					attenuation   = make_float3(1.0f, 1.0f, 1.0f);
-					scattered     = true;
-					is_specular   = true;
-					break;
-				}
+			scattered_dir = normalize(wo_local.x*tan + wo_local.y*bitan + wo_local.z*n);
+			// pbrt-v4 RoughDielectricBxDF: BSDF weight with VNDF sampling = G(wo,wi)/G1(wi)
+			{
+				float wo_x = wo_local.x, wo_y = wo_local.y, wo_z = fabsf(wo_local.z);
+				float G2 = rd_dist.G(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z);
+				float G1_wi = rd_dist.G1(wi_x, wi_y, wi_z);
+				float w = (G1_wi > 1e-8f) ? (G2 / G1_wi) : 0.0f;
+				attenuation = make_float3(w, w, w);
+			}
+			scattered     = true;
+			is_specular   = true;
+			break;
+		}
 
 				case MaterialType::Conductor: {
 					// GGX VNDF + complex Fresnel (pbrt-v4 ConductorBxDF) -- quad version
