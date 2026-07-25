@@ -136,7 +136,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             10, "Cornell Rough Metal (GGX)",
             "Cornell box with rough aluminum box and rough gold sphere",
-            "Medium", 200, false, false,
+            "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_cornell_rough_metal,
             build_cornell_box_lights
@@ -144,7 +144,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             11, "Cornell Rough Glass (GGX)",
             "Cornell box with a GGX rough-dielectric sphere (pbrt-v4 RoughDielectricBxDF)",
-            "Medium", 200, false, false,
+            "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_cornell_rough_glass,
             build_cornell_box_lights
@@ -152,7 +152,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             12, "Cornell Conductor (pbrt-v4 ConductorBxDF)",
             "Cornell box with polished gold sphere and aluminium box using GGX VNDF + complex Fresnel",
-            "Medium", 200, false, false,
+            "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_cornell_conductor,
             build_cornell_box_lights
@@ -160,7 +160,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             13, "Cornell Coated Diffuse (pbrt-v4 CoatedDiffuseBxDF)",
             "Cornell box with blue coated-diffuse sphere and red coated-diffuse box (rough dielectric coat over Lambertian base)",
-            "Medium", 200, false, false,
+            "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_cornell_coated_diffuse,
             build_cornell_box_lights
@@ -168,7 +168,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             14, "Cornell Thin Glass (pbrt-v4 ThinDielectricBxDF)",
             "Cornell box with a vertical thin-glass panel (zero-thickness slab, analytic multi-bounce Fresnel)",
-            "Medium", 200, false, false,
+            "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_cornell_thin_glass,
             build_cornell_box_lights
@@ -176,7 +176,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             15, "Cornell Coated Conductor (pbrt-v4 CoatedConductorBxDF)",
             "Cornell box with a lacquered-gold sphere and lacquered-copper box (rough dielectric coat over GGX conductor base)",
-            "Medium", 200, false, false,
+            "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_cornell_coated_conductor,
             build_cornell_box_lights

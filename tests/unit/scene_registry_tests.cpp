@@ -142,6 +142,15 @@ TEST(FindSceneTest, BouncingSpheresIsNotGpuCompatible) {
 	EXPECT_FALSE(s->gpu_compatible);
 }
 
+TEST(FindSceneTest, PbrtV4ScenesAreGpuCompatible) {
+	// Scenes 10-15 all have GPU implementations in scene_builder.cpp
+	for (int id : {10, 11, 12, 13, 14, 15}) {
+		const SceneDescriptor* s = find_scene(id);
+		ASSERT_NE(s, nullptr) << "Missing scene id: " << id;
+		EXPECT_TRUE(s->gpu_compatible) << "Scene " << id << " should be gpu_compatible";
+	}
+}
+
 // ===========================================================================
 // C API tests
 // ===========================================================================
