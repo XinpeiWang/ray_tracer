@@ -763,24 +763,34 @@ class diffuse_transmission : public material {
 
         if (random_double() < pr / (pr + pt)) {
             // Diffuse reflection: cosine-weighted same hemisphere as normal
-            vec3 dir = rec.normal + random_unit_vector();
-            if (dir.near_zero()) dir = rec.normal;
             srec.attenuation  = R;
             srec.pdf_ptr      = make_shared<cosine_pdf>(rec.normal);
             srec.skip_pdf     = false;
-            srec.skip_pdf_ray = ray(rec.p, unit_vector(dir), r_in.time());
         } else {
             // Diffuse transmission: cosine-weighted opposite hemisphere
-            vec3 neg_normal = -rec.normal;
-            vec3 dir = neg_normal + random_unit_vector();
-            if (dir.near_zero()) dir = neg_normal;
-            // Use skip_pdf with fixed direction (non-light-sampled transmission)
+            // Use cosine_pdf around -normal so MIS and PDF evaluation are correct,
+            // matching pbrt-v4 where transmission PDF = pt/(pr+pt) * cos/pi
             srec.attenuation  = T;
-            srec.pdf_ptr      = nullptr;
-            srec.skip_pdf     = true;
-            srec.skip_pdf_ray = ray(rec.p, unit_vector(dir), r_in.time());
+            srec.pdf_ptr      = make_shared<cosine_pdf>(-rec.normal);
+            srec.skip_pdf     = false;
         }
         return true;
+    }
+
+    double scattering_pdf(const ray& r_in, const hit_record& rec,
+                          const ray& scattered) const override {
+        // pbrt-v4 DiffuseTransmissionBxDF::PDF:
+        //   same hemisphere  -> pr/(pr+pt) * cos(theta)/pi
+        //   opposite hemisphere -> pt/(pr+pt) * cos(theta)/pi
+        double pr = std::fmax(std::fmax(R.x(), R.y()), R.z());
+        double pt = std::fmax(std::fmax(T.x(), T.y()), T.z());
+        if (pr + pt <= 0.0) return 0.0;
+
+        double cos_theta = dot(rec.normal, unit_vector(scattered.direction()));
+        if (cos_theta > 0.0)
+            return (pr / (pr + pt)) * (cos_theta / pi);   // reflection
+        else
+            return (pt / (pr + pt)) * (-cos_theta / pi);  // transmission
     }
 
     color get_reflectance()   const { return R; }

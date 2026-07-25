@@ -1598,6 +1598,7 @@ TEST(CoatedConductorMaterialTest, GoldF0RedDominatesBlue) {
 // DiffuseTransmissionMaterialTest
 // pbrt-v4 DiffuseTransmissionBxDF: stochastic R/T selection,
 // reflection same hemisphere, transmission opposite hemisphere.
+// Both paths use MIS-compatible cosine_pdf (no skip_pdf).
 // =============================================================================
 
 static hit_record make_dt_hit() {
@@ -1621,33 +1622,49 @@ TEST(DiffuseTransmissionMaterialTest, ScatterAlwaysSucceeds) {
 	EXPECT_EQ(successes, 100) << "DiffuseTransmission should always scatter";
 }
 
-TEST(DiffuseTransmissionMaterialTest, ReflectionsInUpperHemisphere) {
-	// T=0 => always reflect; reflected dir must be above surface (y>0)
-	diffuse_transmission mat(color(0.6, 0.5, 0.3), color(0.0, 0.0, 0.0));
+TEST(DiffuseTransmissionMaterialTest, NeverUsesSkipPdf) {
+	// Both reflection and transmission paths use MIS-compatible cosine_pdf
+	diffuse_transmission mat(color(0.6, 0.5, 0.3), color(0.8, 0.6, 0.3));
 	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
 	hit_record rec = make_dt_hit();
-	for (int i = 0; i < 50; ++i) {
+	for (int i = 0; i < 100; ++i) {
 		scatter_record srec;
-		if (mat.scatter(r_in, rec, srec)) {
-			vec3 d = srec.skip_pdf_ray.direction();
-			EXPECT_GT(d.y(), 0.0) << "Reflected direction must be above surface";
-		}
+		if (mat.scatter(r_in, rec, srec))
+			EXPECT_FALSE(srec.skip_pdf) << "DiffuseTransmission should use pdf_ptr, not skip_pdf";
 	}
 }
 
-TEST(DiffuseTransmissionMaterialTest, TransmissionsInLowerHemisphere) {
-	// R=0 => always transmit; transmitted dir must be below surface (y<0)
-	diffuse_transmission mat(color(0.0, 0.0, 0.0), color(0.8, 0.6, 0.3));
+TEST(DiffuseTransmissionMaterialTest, HasValidPdfPtr) {
+	diffuse_transmission mat(color(0.6, 0.5, 0.3), color(0.8, 0.6, 0.3));
 	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
 	hit_record rec = make_dt_hit();
-	for (int i = 0; i < 50; ++i) {
+	for (int i = 0; i < 20; ++i) {
 		scatter_record srec;
-		if (mat.scatter(r_in, rec, srec)) {
-			EXPECT_TRUE(srec.skip_pdf) << "Transmission path uses skip_pdf";
-			EXPECT_LT(srec.skip_pdf_ray.direction().y(), 0.0)
-				<< "Transmitted direction must be below surface";
-		}
+		if (mat.scatter(r_in, rec, srec))
+			EXPECT_NE(srec.pdf_ptr, nullptr) << "pdf_ptr must be set for MIS";
 	}
+}
+
+TEST(DiffuseTransmissionMaterialTest, ReflectionPdfPositiveAboveSurface) {
+	// T=0 => always reflect; scattering_pdf above surface should be > 0
+	diffuse_transmission mat(color(0.6, 0.5, 0.3), color(0.0, 0.0, 0.0));
+	hit_record rec = make_dt_hit();
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	// A ray going straight up from the surface
+	ray scattered(point3(0,0,0), vec3(0, 1, 0));
+	double pdf = mat.scattering_pdf(r_in, rec, scattered);
+	EXPECT_GT(pdf, 0.0) << "Reflected direction (y>0) should have positive scattering_pdf";
+}
+
+TEST(DiffuseTransmissionMaterialTest, TransmissionPdfPositiveBelowSurface) {
+	// R=0 => always transmit; scattering_pdf below surface should be > 0
+	diffuse_transmission mat(color(0.0, 0.0, 0.0), color(0.8, 0.6, 0.3));
+	hit_record rec = make_dt_hit();
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	// A ray going straight down (transmitted direction)
+	ray scattered(point3(0,0,0), vec3(0, -1, 0));
+	double pdf = mat.scattering_pdf(r_in, rec, scattered);
+	EXPECT_GT(pdf, 0.0) << "Transmitted direction (y<0) should have positive scattering_pdf";
 }
 
 TEST(DiffuseTransmissionMaterialTest, AttenuationMatchesInputColors) {
@@ -1668,15 +1685,19 @@ TEST(DiffuseTransmissionMaterialTest, AttenuationMatchesInputColors) {
 }
 
 TEST(DiffuseTransmissionMaterialTest, BothPathsSampledStatistically) {
-	diffuse_transmission mat(color(0.5, 0.5, 0.5), color(0.5, 0.5, 0.5));
+	// Equal R and T maxComponent => ~50% each; distinguish by attenuation color
+	color R(0.5, 0.5, 0.5);
+	color T(0.5, 0.4, 0.3);  // different from R so we can tell them apart
+	diffuse_transmission mat(R, T);
 	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
 	hit_record rec = make_dt_hit();
 	int reflections = 0, transmissions = 0;
 	for (int i = 0; i < 2000; ++i) {
 		scatter_record srec;
 		if (mat.scatter(r_in, rec, srec)) {
-			if (srec.skip_pdf) ++transmissions;
-			else               ++reflections;
+			// T has distinct blue channel (0.3) vs R (0.5)
+			if (std::fabs(srec.attenuation.z() - T.z()) < 1e-9) ++transmissions;
+			else                                                  ++reflections;
 		}
 	}
 	EXPECT_GT(reflections,   700) << "Should have significant reflections";
