@@ -741,5 +741,55 @@ class coated_conductor : public material {
     double alpha;
 };
 
+// ---------------------------------------------------------------------------
+// diffuse_transmission -- pbrt-v4 DiffuseTransmissionBxDF
+// Models materials like wax, skin (cheap SSS), leaves, and frosted panels
+// that scatter transmitted light diffusely into the opposite hemisphere.
+// R = reflectance color (diffuse reflection), T = transmittance color.
+// Stochastically chooses reflection (cosine-weighted same hemisphere) or
+// transmission (cosine-weighted opposite hemisphere) weighted by max(R)/max(T).
+// ---------------------------------------------------------------------------
+class diffuse_transmission : public material {
+  public:
+    diffuse_transmission(const color& reflectance, const color& transmittance)
+        : R(reflectance), T(transmittance) {}
+
+    bool scatter(const ray& r_in, const hit_record& rec,
+                 scatter_record& srec) const override {
+        // Probabilities proportional to max component (pbrt-v4 pattern)
+        double pr = std::fmax(std::fmax(R.x(), R.y()), R.z());
+        double pt = std::fmax(std::fmax(T.x(), T.y()), T.z());
+        if (pr + pt <= 0.0) return false;
+
+        if (random_double() < pr / (pr + pt)) {
+            // Diffuse reflection: cosine-weighted same hemisphere as normal
+            vec3 dir = rec.normal + random_unit_vector();
+            if (dir.near_zero()) dir = rec.normal;
+            srec.attenuation  = R;
+            srec.pdf_ptr      = make_shared<cosine_pdf>(rec.normal);
+            srec.skip_pdf     = false;
+            srec.skip_pdf_ray = ray(rec.p, unit_vector(dir), r_in.time());
+        } else {
+            // Diffuse transmission: cosine-weighted opposite hemisphere
+            vec3 neg_normal = -rec.normal;
+            vec3 dir = neg_normal + random_unit_vector();
+            if (dir.near_zero()) dir = neg_normal;
+            // Use skip_pdf with fixed direction (non-light-sampled transmission)
+            srec.attenuation  = T;
+            srec.pdf_ptr      = nullptr;
+            srec.skip_pdf     = true;
+            srec.skip_pdf_ray = ray(rec.p, unit_vector(dir), r_in.time());
+        }
+        return true;
+    }
+
+    color get_reflectance()   const { return R; }
+    color get_transmittance() const { return T; }
+
+  private:
+    color R;  // reflectance (same-hemisphere diffuse)
+    color T;  // transmittance (opposite-hemisphere diffuse)
+};
+
 
 #endif

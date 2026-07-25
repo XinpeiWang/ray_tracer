@@ -663,6 +663,59 @@ static void build_cornell_coated_conductor(SceneData& scene) {
         make_float3(265.0f, 0.0f, 295.0f));
 }
 
+/// Matches CPU build_cornell_wax_slab(): Cornell box with a wax sphere (DiffuseTransmissionBxDF).
+/// albedo = reflectance R, emission field = transmittance T.
+static void build_cornell_wax_slab(SceneData& scene) {
+    const int mat_red   = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    const int mat_white = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    const int mat_green = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    const int mat_light = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f,
+                                 make_float3(kLightIntensity, kLightIntensity, kLightIntensity) });
+
+    // Wax sphere: albedo = R (reflectance), emission = T (transmittance)
+    const int mat_wax = safe_cast_to_int(scene.materials.size());
+    {
+        MaterialData md{};
+        md.type    = MaterialType::DiffuseTransmission;
+        md.albedo  = make_float3(0.6f, 0.5f, 0.3f);   // R: reflected diffuse color
+        md.emission = make_float3(0.8f, 0.6f, 0.3f);  // T: transmitted diffuse color
+        md.fuzz    = 0.0f;
+        md.ior     = 0.0f;
+        scene.materials.push_back(md);
+    }
+
+    // Cornell Box walls
+    { QuadData q{}; q.Q=make_float3(kBoxSize,0,0); q.u=make_float3(0,0,kBoxSize); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_green; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q=make_float3(0,0,kBoxSize); q.u=make_float3(0,0,-kBoxSize); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_red; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q=make_float3(213,554,227); q.u=make_float3(130,0,0); q.v=make_float3(0,0,105); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_light; scene.quads.push_back(q);
+      scene.lightIndices.push_back(static_cast<int>(scene.quads.size())-1); scene.isLightSphere.push_back(false); }
+    { QuadData q{}; q.Q=make_float3(0,kBoxSize,0); q.u=make_float3(kBoxSize,0,0); q.v=make_float3(0,0,kBoxSize); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q=make_float3(0,0,kBoxSize); q.u=make_float3(kBoxSize,0,0); q.v=make_float3(0,0,-kBoxSize); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q=make_float3(kBoxSize,0,kBoxSize); q.u=make_float3(-kBoxSize,0,0); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+
+    // Wax sphere (left)
+    SphereData wax_sphere{};
+    wax_sphere.center    = make_float3(190.0f, 90.0f, 190.0f);
+    wax_sphere.radius    = 90.0f;
+    wax_sphere.materialIdx = mat_wax;
+    scene.spheres.push_back(wax_sphere);
+
+    // White diffuse box (right)
+    add_box(scene,
+        make_float3(0.0f, 0.0f, 0.0f),
+        make_float3(165.0f, 330.0f, 165.0f),
+        mat_white,
+        15.0f,
+        make_float3(265.0f, 0.0f, 295.0f));
+}
+
 /// @brief Build Cornell Rough Glass scene (scene 11)
 /// Matches CPU build_cornell_rough_glass(): same walls/light, diffuse box + rough-glass sphere
 static void build_cornell_rough_glass(SceneData& scene) {
@@ -1035,9 +1088,13 @@ bool build_scene(
 													if (scene_id == 14) build_cornell_thin_glass(scene);
 													// fallthrough
 
-													case 15:  // Cornell Coated Conductor (pbrt-v4 CoatedConductorBxDF)
-													if (scene_id == 15) build_cornell_coated_conductor(scene);
-												{
+														case 15:  // Cornell Coated Conductor (pbrt-v4 CoatedConductorBxDF)
+														if (scene_id == 15) build_cornell_coated_conductor(scene);
+														// fallthrough
+
+														case 16:  // Cornell Wax Slab (pbrt-v4 DiffuseTransmissionBxDF)
+														if (scene_id == 16) build_cornell_wax_slab(scene);
+													{
 									constexpr float kPi = 3.14159265358979323846f;
 									const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
 									const float3 lookat = make_float3(278.0f, 278.0f, 278.0f);

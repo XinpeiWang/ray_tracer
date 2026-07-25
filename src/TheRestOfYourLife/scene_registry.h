@@ -181,6 +181,14 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_coated_conductor,
             build_cornell_box_lights
         },
+        {
+            16, "Cornell Wax Slab (pbrt-v4 DiffuseTransmissionBxDF)",
+            "Cornell box with a wax sphere that diffusely reflects and transmits light (pbrt-v4 DiffuseTransmissionBxDF)",
+            "Medium", 200, false, true,
+            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
+            build_cornell_wax_slab,
+            build_cornell_box_lights
+        },
     };
     return registry;
 }

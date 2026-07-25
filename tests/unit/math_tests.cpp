@@ -1593,3 +1593,100 @@ TEST(CoatedConductorMaterialTest, GoldF0RedDominatesBlue) {
 	EXPECT_GT(f0.x(), 0.8)    << "Au F0 red channel should be high (>0.8)";
 	EXPECT_LT(f0.z(), 0.5)    << "Au F0 blue channel should be lower (<0.5)";
 }
+
+// =============================================================================
+// DiffuseTransmissionMaterialTest
+// pbrt-v4 DiffuseTransmissionBxDF: stochastic R/T selection,
+// reflection same hemisphere, transmission opposite hemisphere.
+// =============================================================================
+
+static hit_record make_dt_hit() {
+	hit_record rec;
+	rec.p          = point3(0, 0, 0);
+	rec.normal     = vec3(0, 1, 0);
+	rec.front_face = true;
+	rec.t          = 1.0;
+	return rec;
+}
+
+TEST(DiffuseTransmissionMaterialTest, ScatterAlwaysSucceeds) {
+	diffuse_transmission mat(color(0.6, 0.5, 0.3), color(0.8, 0.6, 0.3));
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_dt_hit();
+	int successes = 0;
+	for (int i = 0; i < 100; ++i) {
+		scatter_record srec;
+		if (mat.scatter(r_in, rec, srec)) ++successes;
+	}
+	EXPECT_EQ(successes, 100) << "DiffuseTransmission should always scatter";
+}
+
+TEST(DiffuseTransmissionMaterialTest, ReflectionsInUpperHemisphere) {
+	// T=0 => always reflect; reflected dir must be above surface (y>0)
+	diffuse_transmission mat(color(0.6, 0.5, 0.3), color(0.0, 0.0, 0.0));
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_dt_hit();
+	for (int i = 0; i < 50; ++i) {
+		scatter_record srec;
+		if (mat.scatter(r_in, rec, srec)) {
+			vec3 d = srec.skip_pdf_ray.direction();
+			EXPECT_GT(d.y(), 0.0) << "Reflected direction must be above surface";
+		}
+	}
+}
+
+TEST(DiffuseTransmissionMaterialTest, TransmissionsInLowerHemisphere) {
+	// R=0 => always transmit; transmitted dir must be below surface (y<0)
+	diffuse_transmission mat(color(0.0, 0.0, 0.0), color(0.8, 0.6, 0.3));
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_dt_hit();
+	for (int i = 0; i < 50; ++i) {
+		scatter_record srec;
+		if (mat.scatter(r_in, rec, srec)) {
+			EXPECT_TRUE(srec.skip_pdf) << "Transmission path uses skip_pdf";
+			EXPECT_LT(srec.skip_pdf_ray.direction().y(), 0.0)
+				<< "Transmitted direction must be below surface";
+		}
+	}
+}
+
+TEST(DiffuseTransmissionMaterialTest, AttenuationMatchesInputColors) {
+	color R(0.6, 0.5, 0.3);
+	color T(0.8, 0.6, 0.3);
+	diffuse_transmission mat(R, T);
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_dt_hit();
+	for (int i = 0; i < 100; ++i) {
+		scatter_record srec;
+		if (mat.scatter(r_in, rec, srec)) {
+			color a = srec.attenuation;
+			bool is_R = (std::fabs(a.x() - R.x()) < 1e-9);
+			bool is_T = (std::fabs(a.x() - T.x()) < 1e-9);
+			EXPECT_TRUE(is_R || is_T) << "Attenuation must match R or T";
+		}
+	}
+}
+
+TEST(DiffuseTransmissionMaterialTest, BothPathsSampledStatistically) {
+	diffuse_transmission mat(color(0.5, 0.5, 0.5), color(0.5, 0.5, 0.5));
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_dt_hit();
+	int reflections = 0, transmissions = 0;
+	for (int i = 0; i < 2000; ++i) {
+		scatter_record srec;
+		if (mat.scatter(r_in, rec, srec)) {
+			if (srec.skip_pdf) ++transmissions;
+			else               ++reflections;
+		}
+	}
+	EXPECT_GT(reflections,   700) << "Should have significant reflections";
+	EXPECT_GT(transmissions, 700) << "Should have significant transmissions";
+}
+
+TEST(DiffuseTransmissionMaterialTest, AccessorsReturnCorrectColors) {
+	color R(0.6, 0.5, 0.3);
+	color T(0.8, 0.6, 0.3);
+	diffuse_transmission mat(R, T);
+	EXPECT_DOUBLE_EQ(mat.get_reflectance().x(),  R.x());
+	EXPECT_DOUBLE_EQ(mat.get_transmittance().x(), T.x());
+}

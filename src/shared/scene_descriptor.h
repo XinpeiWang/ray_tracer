@@ -75,6 +75,9 @@ inline const SceneDesc* get_all_scenes(int* out_count = nullptr) {
 		{ 15, "Cornell Coated Conductor (pbrt-v4 CoatedConductorBxDF)",
 		   "Cornell box with lacquered-gold sphere and lacquered-copper box (rough dielectric coat over GGX conductor base)",
 		   "Medium",    200, false, true  },
+		{ 16, "Cornell Wax Slab (pbrt-v4 DiffuseTransmissionBxDF)",
+		   "Cornell box with a wax sphere that diffusely reflects and transmits light",
+		   "Medium",    200, false, true  },
 	};
 	static const int kCount = (int)(sizeof(kScenes) / sizeof(kScenes[0]));
 	if (out_count) *out_count = kCount;

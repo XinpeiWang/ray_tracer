@@ -32,9 +32,9 @@ TEST(SceneRegistryTest, RegistryIsNonEmpty) {
 }
 
 TEST(SceneRegistryTest, RegistryHasExpectedCount) {
-	// We currently register 16 scenes (ids 0-15).
+	// We currently register 17 scenes (ids 0-16).
 	// This test will fail if a scene is accidentally removed.
-	EXPECT_EQ(scene_count(), 16);
+	EXPECT_EQ(scene_count(), 17);
 }
 
 TEST(SceneRegistryTest, AllIDsAreUnique) {
@@ -143,8 +143,8 @@ TEST(FindSceneTest, BouncingSpheresIsNotGpuCompatible) {
 }
 
 TEST(FindSceneTest, PbrtV4ScenesAreGpuCompatible) {
-	// Scenes 10-15 all have GPU implementations in scene_builder.cpp
-	for (int id : {10, 11, 12, 13, 14, 15}) {
+	// Scenes 10-16 all have GPU implementations in scene_builder.cpp
+	for (int id : {10, 11, 12, 13, 14, 15, 16}) {
 		const SceneDescriptor* s = find_scene(id);
 		ASSERT_NE(s, nullptr) << "Missing scene id: " << id;
 		EXPECT_TRUE(s->gpu_compatible) << "Scene " << id << " should be gpu_compatible";
@@ -284,7 +284,7 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // The GUI hardcodes a kScenes array with 11 entries matching the registry.
 // This static assertion fires at compile time if the registry grows
 // without the test being updated, reminding the developer to sync the GUI too.
-static_assert(16 == 16,
+static_assert(17 == 17,
 	"If you changed scene_count(), update kScenes in qt_gui/mainwindow.cpp "
 	"AND update this constant.");
 

@@ -686,6 +686,32 @@ extern "C" __global__ void __closesthit__sphere() {
 			break;
 		}
 
+		case MaterialType::DiffuseTransmission: {
+			// pbrt-v4 DiffuseTransmissionBxDF -- sphere version
+			// albedo = reflectance R (same hemisphere), emission = transmittance T (reused field)
+			float3 R = mat.albedo;
+			float3 T_col = mat.emission;  // transmittance packed into emission field
+			float pr = fmaxf(R.x, fmaxf(R.y, R.z));
+			float pt = fmaxf(T_col.x, fmaxf(T_col.y, T_col.z));
+			if (pr + pt <= 0.0f) { scattered = false; break; }
+
+			if (random_float(seed) < pr / (pr + pt)) {
+				// Diffuse reflection: cosine-weighted same hemisphere
+				scattered_dir = normalize(normal + random_unit_vector(seed));
+				if (near_zero(scattered_dir)) scattered_dir = normal;
+				attenuation   = R;
+			} else {
+				// Diffuse transmission: cosine-weighted opposite hemisphere
+				float3 neg_n  = -normal;
+				scattered_dir = normalize(neg_n + random_unit_vector(seed));
+				if (near_zero(scattered_dir)) scattered_dir = neg_n;
+				attenuation   = T_col;
+			}
+			scattered   = true;
+			is_specular = false;
+			break;
+		}
+
 		case MaterialType::DiffuseLight: {
 			// Emissive material - no scattering
 			scattered = false;
@@ -1219,6 +1245,29 @@ extern "C" __global__ void __closesthit__quad() {
 					break;
 				}
 
+				case MaterialType::DiffuseTransmission: {
+				// pbrt-v4 DiffuseTransmissionBxDF -- quad version
+				float3 R = mat.albedo;
+				float3 T_col = mat.emission;
+				float pr = fmaxf(R.x, fmaxf(R.y, R.z));
+				float pt = fmaxf(T_col.x, fmaxf(T_col.y, T_col.z));
+				if (pr + pt <= 0.0f) { scattered = false; break; }
+
+				if (random_float(seed) < pr / (pr + pt)) {
+					scattered_dir = normalize(final_normal + random_unit_vector(seed));
+					if (near_zero(scattered_dir)) scattered_dir = final_normal;
+					attenuation   = R;
+				} else {
+					float3 neg_n  = -final_normal;
+					scattered_dir = normalize(neg_n + random_unit_vector(seed));
+					if (near_zero(scattered_dir)) scattered_dir = neg_n;
+					attenuation   = T_col;
+				}
+				scattered   = true;
+				is_specular = false;
+				break;
+			}
+
 				case MaterialType::DiffuseLight: {
 					// Emissive material - no scattering
 					// Emission already set from mat.emission above
@@ -1315,7 +1364,8 @@ extern "C" __global__ void __anyhit__shadow_sphere() {
 	// Transmissive materials let light through -- ignore them in shadow rays
 	if (mat.type == MaterialType::Dielectric ||
 		mat.type == MaterialType::RoughDielectric ||
-		mat.type == MaterialType::ThinDielectric) {
+		mat.type == MaterialType::ThinDielectric ||
+		mat.type == MaterialType::DiffuseTransmission) {
 		optixIgnoreIntersection();  // continue traversal (not an occluder)
 		return;
 	}
@@ -1344,7 +1394,8 @@ extern "C" __global__ void __anyhit__shadow_quad() {
 	// Transmissive materials let light through -- ignore them in shadow rays
 	if (mat.type == MaterialType::Dielectric ||
 		mat.type == MaterialType::RoughDielectric ||
-		mat.type == MaterialType::ThinDielectric) {
+		mat.type == MaterialType::ThinDielectric ||
+		mat.type == MaterialType::DiffuseTransmission) {
 		optixIgnoreIntersection();  // continue traversal (not an occluder)
 		return;
 	}
@@ -1355,7 +1406,7 @@ extern "C" __global__ void __anyhit__shadow_quad() {
 }
 
 //==============================================================================
-// Miss Program (will implement with sky background)
+// Miss Program
 //==============================================================================
 
 extern "C" __global__ void __miss__ms() {
