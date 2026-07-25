@@ -173,6 +173,14 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_thin_glass,
             build_cornell_box_lights
         },
+        {
+            15, "Cornell Coated Conductor (pbrt-v4 CoatedConductorBxDF)",
+            "Cornell box with a lacquered-gold sphere and lacquered-copper box (rough dielectric coat over GGX conductor base)",
+            "Medium", 200, false, false,
+            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
+            build_cornell_coated_conductor,
+            build_cornell_box_lights
+        },
     };
     return registry;
 }

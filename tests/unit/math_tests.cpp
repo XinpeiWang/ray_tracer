@@ -1477,3 +1477,118 @@ TEST(ThinDielectricMaterialTest, AnalyticReffFormula) {
 	EXPECT_GT(R_eff, 0.07)   << "R_eff at IOR=1.5 normal incidence should be ~0.077";
 	EXPECT_LT(R_eff, 0.09);
 }
+
+// ===========================================================================
+// CoatedConductorMaterialTest
+// Mirrors pbrt-v4 CoatedConductorBxDF: rough dielectric coat over GGX conductor.
+// Path A: coat specular reflection (achromatic).
+// Path B: transmit into layer -> conductor GGX + FrComplex -> exit coat.
+// ===========================================================================
+
+static coated_conductor make_gold_lacquer() {
+	// Gold (kConductorAu), IOR-1.5 coat, roughness 0.1
+	return coated_conductor(
+		kConductorAu.eta_r, kConductorAu.eta_g, kConductorAu.eta_b,
+		kConductorAu.k_r,   kConductorAu.k_g,   kConductorAu.k_b,
+		1.5, 0.1);
+}
+
+static hit_record make_cc_hit() {
+	hit_record rec;
+	rec.p = point3(0, 0, 0);
+	rec.normal = vec3(0, 1, 0);
+	rec.front_face = true;
+	rec.t = 1.0;
+	return rec;
+}
+
+// scatter() must succeed for a ray coming from above the surface.
+TEST(CoatedConductorMaterialTest, ScatterSucceedsFromAbove) {
+	auto mat = make_gold_lacquer();
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_cc_hit();
+	int successes = 0;
+	for (int i = 0; i < 100; ++i) {
+		scatter_record srec;
+		if (mat.scatter(r_in, rec, srec)) ++successes;
+	}
+	EXPECT_GE(successes, 90) << "Most rays from above should scatter";
+}
+
+// skip_pdf must always be true (specular path).
+TEST(CoatedConductorMaterialTest, SkipPdfIsTrue) {
+	auto mat = make_gold_lacquer();
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_cc_hit();
+	for (int i = 0; i < 50; ++i) {
+		scatter_record srec;
+		if (mat.scatter(r_in, rec, srec)) {
+			EXPECT_TRUE(srec.skip_pdf);
+		}
+	}
+}
+
+// Attenuation must be >= 0 and <= ~1.5 per channel (energy is not amplified).
+TEST(CoatedConductorMaterialTest, AttenuationIsNonNegativeAndBounded) {
+	auto mat = make_gold_lacquer();
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_cc_hit();
+	for (int i = 0; i < 100; ++i) {
+		scatter_record srec;
+		if (mat.scatter(r_in, rec, srec)) {
+			EXPECT_GE(srec.attenuation.x(), 0.0);
+			EXPECT_GE(srec.attenuation.y(), 0.0);
+			EXPECT_GE(srec.attenuation.z(), 0.0);
+			EXPECT_LE(srec.attenuation.x(), 1.5);
+			EXPECT_LE(srec.attenuation.y(), 1.5);
+			EXPECT_LE(srec.attenuation.z(), 1.5);
+		}
+	}
+}
+
+// Scattered direction must stay in the upper hemisphere (normal = (0,1,0)).
+TEST(CoatedConductorMaterialTest, ScatteredDirectionIsInUpperHemisphere) {
+	auto mat = make_gold_lacquer();
+	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
+	hit_record rec = make_cc_hit();
+	for (int i = 0; i < 200; ++i) {
+		scatter_record srec;
+		if (mat.scatter(r_in, rec, srec)) {
+			EXPECT_GT(dot(srec.skip_pdf_ray.direction(), rec.normal), 0.0)
+				<< "Scattered ray must be in the upper hemisphere";
+		}
+	}
+}
+
+// Gold (Au) has a warm yellow tint: R channel should be highest, B lowest.
+// Over many conductor-bounce samples (path B), expect mean(R) > mean(B).
+TEST(CoatedConductorMaterialTest, GoldTintRChannelDominates) {
+	auto mat = make_gold_lacquer();
+	ray r_in(point3(0, 1, 0), vec3(0.2, -0.98, 0.0));  // off-normal incidence
+	hit_record rec = make_cc_hit();
+
+	double sum_r = 0, sum_b = 0;
+	int n = 0;
+	for (int i = 0; i < 2000; ++i) {
+		scatter_record srec;
+		if (mat.scatter(r_in, rec, srec)) {
+			sum_r += srec.attenuation.x();
+			sum_b += srec.attenuation.z();
+			++n;
+		}
+	}
+	if (n > 0) {
+		double mean_r = sum_r / n;
+		double mean_b = sum_b / n;
+		EXPECT_GT(mean_r, mean_b) << "Gold should be warmer (more red) than blue";
+	}
+}
+
+// F0 normal-incidence reflectance: for gold, R channel >> B channel.
+TEST(CoatedConductorMaterialTest, GoldF0RedDominatesBlue) {
+	auto mat = make_gold_lacquer();
+	color f0 = mat.get_conductor_f0();
+	EXPECT_GT(f0.x(), f0.z()) << "Au F0: red > blue";
+	EXPECT_GT(f0.x(), 0.8)    << "Au F0 red channel should be high (>0.8)";
+	EXPECT_LT(f0.z(), 0.5)    << "Au F0 blue channel should be lower (<0.5)";
+}

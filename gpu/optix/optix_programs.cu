@@ -470,6 +470,79 @@ extern "C" __global__ void __closesthit__sphere() {
 			break;
 		}
 
+		case MaterialType::CoatedConductor: {
+			// Rough dielectric coat over GGX conductor (pbrt-v4 CoatedConductorBxDF) -- sphere version
+			// coat: ior=mat.ior, roughness=mat.fuzz; conductor: eta_c, k_c per RGB
+			float cc_alpha = sqrtf(mat.fuzz);
+			float3 cc_n   = normal;
+			float3 cc_up  = (fabsf(cc_n.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
+			float3 cc_tan  = normalize(cross(cc_up, cc_n));
+			float3 cc_bit  = cross(cc_n, cc_tan);
+
+			float3 cc_wi_w = normalize(-ray_dir);
+			float cc_wi_x = dot(cc_wi_w, cc_tan);
+			float cc_wi_y = dot(cc_wi_w, cc_bit);
+			float cc_wi_z = dot(cc_wi_w, cc_n);
+			if (cc_wi_z <= 0.0f) { scattered = false; break; }
+
+			TrowbridgeReitz<float> cc_dist(cc_alpha, cc_alpha);
+
+			// Coat top interface: GGX VNDF + FrDielectric
+			float cwm_x, cwm_y, cwm_z;
+			cc_dist.Sample_wm(cc_wi_x, cc_wi_y, cc_wi_z,
+							  random_float(seed), random_float(seed),
+							  cwm_x, cwm_y, cwm_z);
+			float cc_cos_i = cc_wi_x*cwm_x + cc_wi_y*cwm_y + cc_wi_z*cwm_z;
+			float F_in     = FrDielectric(cc_cos_i, mat.ior);
+
+			float3 cc_wo;
+			if (random_float(seed) < F_in) {
+				// Path A: coat specular reflection
+				float wo_x = 2.0f*cc_cos_i*cwm_x - cc_wi_x;
+				float wo_y = 2.0f*cc_cos_i*cwm_y - cc_wi_y;
+				float wo_z = 2.0f*cc_cos_i*cwm_z - cc_wi_z;
+				if (wo_z <= 0.0f) { scattered = false; break; }
+				float G1 = cc_dist.G1(cc_wi_x, cc_wi_y, cc_wi_z);
+				float G  = cc_dist.G(wo_x, wo_y, wo_z, cc_wi_x, cc_wi_y, cc_wi_z);
+				float w  = (G1 > 1e-8f) ? G / G1 : 0.0f;
+				float fv = F_in * w;
+				attenuation = make_float3(fv, fv, fv);
+				cc_wo = make_float3(wo_x, wo_y, wo_z);
+			} else {
+				// Path B: transmit into layer -> conductor bounce -> exit coat
+				float bwm_x, bwm_y, bwm_z;
+				cc_dist.Sample_wm(cc_wi_x, cc_wi_y, cc_wi_z,
+								  random_float(seed), random_float(seed),
+								  bwm_x, bwm_y, bwm_z);
+				float cos_c = cc_wi_x*bwm_x + cc_wi_y*bwm_y + cc_wi_z*bwm_z;
+				float wo_x  = 2.0f*cos_c*bwm_x - cc_wi_x;
+				float wo_y  = 2.0f*cos_c*bwm_y - cc_wi_y;
+				float wo_z  = 2.0f*cos_c*bwm_z - cc_wi_z;
+				if (wo_z <= 0.0f) { scattered = false; break; }
+
+				float G1_c = cc_dist.G1(cc_wi_x, cc_wi_y, cc_wi_z);
+				float G_c  = cc_dist.G(wo_x, wo_y, wo_z, cc_wi_x, cc_wi_y, cc_wi_z);
+				float wt_c = (G1_c > 1e-8f) ? G_c / G1_c : 0.0f;
+
+				float F_r = FrComplex(cos_c, mat.eta_c.x, mat.k_c.x) * wt_c;
+				float F_g = FrComplex(cos_c, mat.eta_c.y, mat.k_c.y) * wt_c;
+				float F_b = FrComplex(cos_c, mat.eta_c.z, mat.k_c.z) * wt_c;
+
+				float F_out = FrDielectric(fabsf(wo_z), 1.0f / mat.ior);
+				float T_out = 1.0f - F_out;
+				float T_in  = 1.0f - F_in;
+
+				attenuation = make_float3(F_r * T_in * T_out,
+										 F_g * T_in * T_out,
+										 F_b * T_in * T_out);
+				cc_wo = make_float3(wo_x, wo_y, wo_z);
+			}
+			scattered_dir = normalize(cc_wo.x*cc_tan + cc_wo.y*cc_bit + cc_wo.z*cc_n);
+			scattered   = true;
+			is_specular = true;
+			break;
+		}
+
 		case MaterialType::RoughDielectric: {
 			// GGX microfacet BSDF (pbrt-v4 RoughDielectricBxDF)
 			// fuzz field stores GGX roughness; ior = index of refraction
@@ -906,6 +979,75 @@ extern "C" __global__ void __closesthit__quad() {
 			} else {
 				scattered_dir = unit_direction;  // straight through
 			}
+			scattered   = true;
+			is_specular = true;
+			break;
+		}
+
+		case MaterialType::CoatedConductor: {
+			// Rough dielectric coat over GGX conductor (pbrt-v4 CoatedConductorBxDF) -- quad version
+			float cc_alpha = sqrtf(mat.fuzz);
+			float3 cc_n   = final_normal;
+			float3 cc_up  = (fabsf(cc_n.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
+			float3 cc_tan  = normalize(cross(cc_up, cc_n));
+			float3 cc_bit  = cross(cc_n, cc_tan);
+
+			float3 cc_wi_w = normalize(-ray_dir);
+			float cc_wi_x = dot(cc_wi_w, cc_tan);
+			float cc_wi_y = dot(cc_wi_w, cc_bit);
+			float cc_wi_z = dot(cc_wi_w, cc_n);
+			if (cc_wi_z <= 0.0f) { scattered = false; break; }
+
+			TrowbridgeReitz<float> cc_dist(cc_alpha, cc_alpha);
+
+			float cwm_x, cwm_y, cwm_z;
+			cc_dist.Sample_wm(cc_wi_x, cc_wi_y, cc_wi_z,
+							  random_float(seed), random_float(seed),
+							  cwm_x, cwm_y, cwm_z);
+			float cc_cos_i = cc_wi_x*cwm_x + cc_wi_y*cwm_y + cc_wi_z*cwm_z;
+			float F_in     = FrDielectric(cc_cos_i, mat.ior);
+
+			float3 cc_wo;
+			if (random_float(seed) < F_in) {
+				float wo_x = 2.0f*cc_cos_i*cwm_x - cc_wi_x;
+				float wo_y = 2.0f*cc_cos_i*cwm_y - cc_wi_y;
+				float wo_z = 2.0f*cc_cos_i*cwm_z - cc_wi_z;
+				if (wo_z <= 0.0f) { scattered = false; break; }
+				float G1 = cc_dist.G1(cc_wi_x, cc_wi_y, cc_wi_z);
+				float G  = cc_dist.G(wo_x, wo_y, wo_z, cc_wi_x, cc_wi_y, cc_wi_z);
+				float w  = (G1 > 1e-8f) ? G / G1 : 0.0f;
+				float fv = F_in * w;
+				attenuation = make_float3(fv, fv, fv);
+				cc_wo = make_float3(wo_x, wo_y, wo_z);
+			} else {
+				float bwm_x, bwm_y, bwm_z;
+				cc_dist.Sample_wm(cc_wi_x, cc_wi_y, cc_wi_z,
+								  random_float(seed), random_float(seed),
+								  bwm_x, bwm_y, bwm_z);
+				float cos_c = cc_wi_x*bwm_x + cc_wi_y*bwm_y + cc_wi_z*bwm_z;
+				float wo_x  = 2.0f*cos_c*bwm_x - cc_wi_x;
+				float wo_y  = 2.0f*cos_c*bwm_y - cc_wi_y;
+				float wo_z  = 2.0f*cos_c*bwm_z - cc_wi_z;
+				if (wo_z <= 0.0f) { scattered = false; break; }
+
+				float G1_c = cc_dist.G1(cc_wi_x, cc_wi_y, cc_wi_z);
+				float G_c  = cc_dist.G(wo_x, wo_y, wo_z, cc_wi_x, cc_wi_y, cc_wi_z);
+				float wt_c = (G1_c > 1e-8f) ? G_c / G1_c : 0.0f;
+
+				float F_r = FrComplex(cos_c, mat.eta_c.x, mat.k_c.x) * wt_c;
+				float F_g = FrComplex(cos_c, mat.eta_c.y, mat.k_c.y) * wt_c;
+				float F_b = FrComplex(cos_c, mat.eta_c.z, mat.k_c.z) * wt_c;
+
+				float F_out = FrDielectric(fabsf(wo_z), 1.0f / mat.ior);
+				float T_out = 1.0f - F_out;
+				float T_in  = 1.0f - F_in;
+
+				attenuation = make_float3(F_r * T_in * T_out,
+										 F_g * T_in * T_out,
+										 F_b * T_in * T_out);
+				cc_wo = make_float3(wo_x, wo_y, wo_z);
+			}
+			scattered_dir = normalize(cc_wo.x*cc_tan + cc_wo.y*cc_bit + cc_wo.z*cc_n);
 			scattered   = true;
 			is_specular = true;
 			break;

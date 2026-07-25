@@ -596,6 +596,73 @@ static void build_cornell_thin_glass(SceneData& scene) {
     }
 }
 
+/// @brief Build Cornell Coated Conductor scene (scene 15)
+/// Matches CPU build_cornell_coated_conductor(): Cornell box with a lacquered-gold sphere
+/// and a lacquered-copper box using pbrt-v4 CoatedConductorBxDF.
+/// coat: IOR=1.5, roughness=0.1/0.2; conductor: Au sphere, Cu box.
+static void build_cornell_coated_conductor(SceneData& scene) {
+    const int mat_red   = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    const int mat_white = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    const int mat_green = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    const int mat_light = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f,
+                                 make_float3(kLightIntensity, kLightIntensity, kLightIntensity) });
+
+    // Lacquered-gold sphere (Au conductor, IOR-1.5 coat, roughness 0.1)
+    const int mat_gold_lacquer = safe_cast_to_int(scene.materials.size());
+    {
+        MaterialData md{};
+        md.type  = MaterialType::CoatedConductor;
+        md.fuzz  = 0.1f;   // coat roughness
+        md.ior   = 1.5f;   // coat IOR
+        md.eta_c = make_float3(kConductorAu.eta_r, kConductorAu.eta_g, kConductorAu.eta_b);
+        md.k_c   = make_float3(kConductorAu.k_r,   kConductorAu.k_g,   kConductorAu.k_b);
+        scene.materials.push_back(md);
+    }
+
+    // Lacquered-copper box (Cu conductor, IOR-1.5 coat, roughness 0.2)
+    const int mat_copper_lacquer = safe_cast_to_int(scene.materials.size());
+    {
+        MaterialData md{};
+        md.type  = MaterialType::CoatedConductor;
+        md.fuzz  = 0.2f;
+        md.ior   = 1.5f;
+        md.eta_c = make_float3(kConductorCu.eta_r, kConductorCu.eta_g, kConductorCu.eta_b);
+        md.k_c   = make_float3(kConductorCu.k_r,   kConductorCu.k_g,   kConductorCu.k_b);
+        scene.materials.push_back(md);
+    }
+
+    // Cornell Box walls
+    { QuadData q{}; q.Q=make_float3(kBoxSize,0,0); q.u=make_float3(0,0,kBoxSize); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_green; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q=make_float3(0,0,kBoxSize); q.u=make_float3(0,0,-kBoxSize); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_red; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q=make_float3(213,554,227); q.u=make_float3(130,0,0); q.v=make_float3(0,0,105); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_light; scene.quads.push_back(q);
+      scene.lightIndices.push_back(static_cast<int>(scene.quads.size())-1); scene.isLightSphere.push_back(false); }
+    { QuadData q{}; q.Q=make_float3(0,kBoxSize,0); q.u=make_float3(kBoxSize,0,0); q.v=make_float3(0,0,kBoxSize); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q=make_float3(0,0,kBoxSize); q.u=make_float3(kBoxSize,0,0); q.v=make_float3(0,0,-kBoxSize); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q=make_float3(kBoxSize,0,kBoxSize); q.u=make_float3(-kBoxSize,0,0); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+
+    // Lacquered-gold sphere
+    SphereData sphere{};
+    sphere.center = make_float3(190.0f, 90.0f, 190.0f);
+    sphere.radius = 90.0f;
+    sphere.materialIdx = mat_gold_lacquer;
+    scene.spheres.push_back(sphere);
+
+    // Lacquered-copper box
+    add_box(scene,
+        make_float3(0.0f, 0.0f, 0.0f),
+        make_float3(165.0f, 330.0f, 165.0f),
+        mat_copper_lacquer,
+        15.0f,
+        make_float3(265.0f, 0.0f, 295.0f));
+}
+
 /// @brief Build Cornell Rough Glass scene (scene 11)
 /// Matches CPU build_cornell_rough_glass(): same walls/light, diffuse box + rough-glass sphere
 static void build_cornell_rough_glass(SceneData& scene) {
@@ -964,9 +1031,13 @@ bool build_scene(
 												if (scene_id == 13) build_cornell_coated_diffuse(scene);
 												// fallthrough
 
-												case 14:  // Cornell Thin Glass (pbrt-v4 ThinDielectricBxDF)
-												if (scene_id == 14) build_cornell_thin_glass(scene);
-											{
+													case 14:  // Cornell Thin Glass (pbrt-v4 ThinDielectricBxDF)
+													if (scene_id == 14) build_cornell_thin_glass(scene);
+													// fallthrough
+
+													case 15:  // Cornell Coated Conductor (pbrt-v4 CoatedConductorBxDF)
+													if (scene_id == 15) build_cornell_coated_conductor(scene);
+												{
 									constexpr float kPi = 3.14159265358979323846f;
 									const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
 									const float3 lookat = make_float3(278.0f, 278.0f, 278.0f);

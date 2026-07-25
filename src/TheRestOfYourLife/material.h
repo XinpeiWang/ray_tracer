@@ -600,4 +600,146 @@ class thin_dielectric : public material {
 };
 
 
+// ---------------------------------------------------------------------------
+// coated_conductor -- rough dielectric coat over a GGX conductor base
+// Mirrors pbrt-v4 CoatedConductorBxDF = LayeredBxDF<DielectricBxDF, ConductorBxDF>
+//
+// Physical model (single-bounce, no medium scattering):
+//   1. Ray hits coat (top interface, GGX + FrDielectric):
+//      a. Reflects with probability F_in  -> attenuation = F_in (achromatic coat)
+//      b. Transmits into layer (1-F_in) -- reaches conductor
+//   2. Conductor micro-facet bounce (GGX VNDF + complex Fresnel FrComplex per RGB):
+//      weight_c = FrComplex * G(wo,wi) / G1(wi)
+//   3. Attempts to exit through coat again:
+//      - Fresnel at exit angle: F_out (FrDielectric)
+//      - Transmits with weight (1-F_out)
+//      - Total attenuation = weight_c * (1-F_in) * (1-F_out)
+//
+// Parameters:
+//   eta_r/g/b  -- real part of conductor IOR per RGB channel
+//   k_r/g/b    -- extinction coefficient per RGB channel
+//   coat_ior   -- coat index of refraction (1.5 = glass-like lacquer)
+//   coat_roughness -- GGX roughness of coat AND conductor surfaces [0,1]
+// ---------------------------------------------------------------------------
+class coated_conductor : public material {
+  public:
+    coated_conductor(double eta_r, double eta_g, double eta_b,
+                     double k_r,   double k_g,   double k_b,
+                     double coat_ior, double coat_roughness)
+        : eta_r(eta_r), eta_g(eta_g), eta_b(eta_b),
+          k_r(k_r),     k_g(k_g),     k_b(k_b),
+          coat_ior(coat_ior),
+          alpha(TrowbridgeReitz<double>::RoughnessToAlpha(
+              std::fmax(coat_roughness, 1e-4))) {}
+
+    coated_conductor(const ConductorPreset& preset, double coat_ior, double coat_roughness)
+        : eta_r(preset.eta_r), eta_g(preset.eta_g), eta_b(preset.eta_b),
+          k_r(preset.k_r),     k_g(preset.k_g),     k_b(preset.k_b),
+          coat_ior(coat_ior),
+          alpha(TrowbridgeReitz<double>::RoughnessToAlpha(
+              std::fmax(coat_roughness, 1e-4))) {}
+
+    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec) const override {
+        // Local shading frame
+        vec3 n   = rec.normal;
+        vec3 up  = std::fabs(n.x()) > 0.9 ? vec3(0,1,0) : vec3(1,0,0);
+        vec3 tan = unit_vector(cross(up, n));
+        vec3 bit = cross(n, tan);
+
+        vec3 wi_w = unit_vector(-r_in.direction());
+        double wi_x = dot(wi_w, tan);
+        double wi_y = dot(wi_w, bit);
+        double wi_z = dot(wi_w, n);
+        if (wi_z <= 0.0) return false;
+
+        TrowbridgeReitz<double> dist(alpha, alpha);
+
+        // ── Coat top interface: GGX VNDF + FrDielectric ───────────────────
+        double cwm_x, cwm_y, cwm_z;
+        dist.Sample_wm(wi_x, wi_y, wi_z,
+                       random_double(), random_double(),
+                       cwm_x, cwm_y, cwm_z);
+
+        double cos_i = wi_x*cwm_x + wi_y*cwm_y + wi_z*cwm_z;
+        double F_in  = FrDielectric(cos_i, coat_ior);
+
+        if (random_double() < F_in) {
+            // ── Path A: coat specular reflection ──────────────────────────
+            double wo_x = 2.0*cos_i*cwm_x - wi_x;
+            double wo_y = 2.0*cos_i*cwm_y - wi_y;
+            double wo_z = 2.0*cos_i*cwm_z - wi_z;
+            if (wo_z <= 0.0) return false;
+
+            double G1 = dist.G1(wi_x, wi_y, wi_z);
+            double G  = dist.G(wo_x, wo_y, wo_z, wi_x, wi_y, wi_z);
+            double w  = (G1 > 1e-8) ? G / G1 : 0.0;
+
+            double fval = F_in * w;
+            srec.attenuation  = color(fval, fval, fval);
+            srec.pdf_ptr      = nullptr;
+            srec.skip_pdf     = true;
+            srec.skip_pdf_ray = ray(rec.p,
+                                    unit_vector(wo_x*tan + wo_y*bit + wo_z*n),
+                                    r_in.time());
+            return true;
+        }
+
+        // ── Path B: transmit into layer, conductor bounce, exit coat ──────
+        // Conductor GGX VNDF sample
+        double bwm_x, bwm_y, bwm_z;
+        dist.Sample_wm(wi_x, wi_y, wi_z,
+                       random_double(), random_double(),
+                       bwm_x, bwm_y, bwm_z);
+
+        double cos_c = wi_x*bwm_x + wi_y*bwm_y + wi_z*bwm_z;
+
+        // Reflect off conductor microfacet
+        double wo_x = 2.0*cos_c*bwm_x - wi_x;
+        double wo_y = 2.0*cos_c*bwm_y - wi_y;
+        double wo_z = 2.0*cos_c*bwm_z - wi_z;
+        if (wo_z <= 0.0) return false;
+
+        // VNDF weight for conductor bounce
+        double G1_c = dist.G1(wi_x, wi_y, wi_z);
+        double G_c  = dist.G(wo_x, wo_y, wo_z, wi_x, wi_y, wi_z);
+        double wt_c = (G1_c > 1e-8) ? G_c / G1_c : 0.0;
+
+        // Complex Fresnel per channel
+        double F_r = FrComplex(cos_c, eta_r, k_r) * wt_c;
+        double F_g = FrComplex(cos_c, eta_g, k_g) * wt_c;
+        double F_b = FrComplex(cos_c, eta_b, k_b) * wt_c;
+
+        // Coat exit Fresnel (light exiting from inside the coat)
+        double cos_out = std::fabs(wo_z);
+        double F_out   = FrDielectric(cos_out, 1.0 / coat_ior);
+        double T_out   = 1.0 - F_out;
+        double T_in    = 1.0 - F_in;
+
+        srec.attenuation  = color(F_r * T_in * T_out,
+                                  F_g * T_in * T_out,
+                                  F_b * T_in * T_out);
+        srec.pdf_ptr      = nullptr;
+        srec.skip_pdf     = true;
+        srec.skip_pdf_ray = ray(rec.p,
+                                unit_vector(wo_x*tan + wo_y*bit + wo_z*n),
+                                r_in.time());
+        return true;
+    }
+
+    double get_coat_ior()       const { return coat_ior; }
+    double get_coat_roughness() const { return alpha * alpha; }
+    color  get_conductor_f0()   const {
+        return color(FrComplex(1.0, eta_r, k_r),
+                     FrComplex(1.0, eta_g, k_g),
+                     FrComplex(1.0, eta_b, k_b));
+    }
+
+  private:
+    double eta_r, eta_g, eta_b;
+    double k_r,   k_g,   k_b;
+    double coat_ior;
+    double alpha;
+};
+
+
 #endif
