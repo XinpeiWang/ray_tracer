@@ -157,6 +157,14 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_conductor,
             build_cornell_box_lights
         },
+        {
+            13, "Cornell Coated Diffuse (pbrt-v4 CoatedDiffuseBxDF)",
+            "Cornell box with blue coated-diffuse sphere and red coated-diffuse box (rough dielectric coat over Lambertian base)",
+            "Medium", 200, false, false,
+            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
+            build_cornell_coated_diffuse,
+            build_cornell_box_lights
+        },
     };
     return registry;
 }

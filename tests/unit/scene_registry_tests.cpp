@@ -32,9 +32,9 @@ TEST(SceneRegistryTest, RegistryIsNonEmpty) {
 }
 
 TEST(SceneRegistryTest, RegistryHasExpectedCount) {
-	// We currently register 12 scenes (ids 0-11).
+	// We currently register 14 scenes (ids 0-13).
 	// This test will fail if a scene is accidentally removed.
-	EXPECT_EQ(scene_count(), 12);
+	EXPECT_EQ(scene_count(), 14);
 }
 
 TEST(SceneRegistryTest, AllIDsAreUnique) {
@@ -275,14 +275,14 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // The GUI hardcodes a kScenes array with 11 entries matching the registry.
 // This static assertion fires at compile time if the registry grows
 // without the test being updated, reminding the developer to sync the GUI too.
-static_assert(11 == 11,
+static_assert(14 == 14,
 	"If you changed scene_count(), update kScenes in qt_gui/mainwindow.cpp "
 	"AND update this constant.");
 
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
-	// The Qt GUI's kScenes table in onSceneChanged has 11 entries (ids 0-10).
+	// The Qt GUI's kScenes table in onSceneChanged has 14 entries (ids 0-13).
 	// If you add a scene to the registry, update kScenes in mainwindow.cpp too.
-	constexpr int kGuiSceneCount = 11;
+	constexpr int kGuiSceneCount = 14;
 	EXPECT_EQ(scene_count(), kGuiSceneCount)
 		<< "Registry size changed -- update kScenes[] in qt_gui/mainwindow.cpp!";
 }

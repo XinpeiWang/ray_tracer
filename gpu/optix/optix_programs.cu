@@ -1,4 +1,4 @@
-// OptiX Device Programs
+﻿// OptiX Device Programs
 // Ray generation, intersection, closest-hit, and miss programs
 
 #include <optix.h>
@@ -59,7 +59,7 @@ __device__ __forceinline__ bool near_zero(const float3& v) {
 __device__ __forceinline__ float3 reflect(const float3& v, const float3& n) { return cpu_gpu_reflect(v, n); }
 __device__ __forceinline__ float3 refract(const float3& uv, const float3& n, float e) { return cpu_gpu_refract<float3,float>(uv, n, e); }
 
-// Schlick's approximation removed — FrDielectric<float> from shared/fresnel.h is used instead.
+// Schlick's approximation removed â€” FrDielectric<float> from shared/fresnel.h is used instead.
 
 //==============================================================================
 // Multiple Importance Sampling (MIS) Helpers
@@ -501,70 +501,99 @@ extern "C" __global__ void __closesthit__sphere() {
 					wo_local = make_float3(wo_x, wo_y, wo_z);
 				}
 			}
+			scattered_dir = normalize(wo_local.x*tan + wo_local.y*bitan + wo_local.z*n);
+			attenuation   = make_float3(1.0f, 1.0f, 1.0f);
+			scattered     = true;
+			is_specular   = true;
+			break;
+		}
 
-					scattered_dir = normalize(wo_local.x*tan + wo_local.y*bitan + wo_local.z*n);
-					attenuation   = make_float3(1.0f, 1.0f, 1.0f);
-					scattered     = true;
-					is_specular   = true;
-					break;
-				}
+		case MaterialType::Conductor: {
+			// GGX VNDF + complex Fresnel (pbrt-v4 ConductorBxDF) -- sphere version
+			float c_alpha = sqrtf(mat.fuzz);
+			float3 cn = normal;
+			float3 cup = (fabsf(cn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
+			float3 ctan   = normalize(cross(cup, cn));
+			float3 cbitan = cross(cn, ctan);
+			float3 cwi = normalize(-ray_dir);
+			float cwi_x = dot(cwi, ctan), cwi_y = dot(cwi, cbitan), cwi_z = dot(cwi, cn);
+			if (cwi_z <= 0.0f) { scattered = false; break; }
+			TrowbridgeReitz<float> c_dist(c_alpha, c_alpha);
+			float cwm_x, cwm_y, cwm_z;
+			c_dist.Sample_wm(cwi_x, cwi_y, cwi_z, random_float(seed), random_float(seed), cwm_x, cwm_y, cwm_z);
+			float c_dot = cwi_x*cwm_x + cwi_y*cwm_y + cwi_z*cwm_z;
+			float cwo_x = 2.0f*c_dot*cwm_x - cwi_x;
+			float cwo_y = 2.0f*c_dot*cwm_y - cwi_y;
+			float cwo_z = 2.0f*c_dot*cwm_z - cwi_z;
+			if (cwo_z <= 0.0f) { scattered = false; break; }
+			float c_G1_wi  = c_dist.G1(cwi_x, cwi_y, cwi_z);
+			float c_G_wowi = c_dist.G(cwo_x, cwo_y, cwo_z, cwi_x, cwi_y, cwi_z);
+			float c_weight = (c_G1_wi > 1e-8f) ? c_G_wowi / c_G1_wi : 0.0f;
+			float3 c_F = FrConductorRGB(c_dot, mat.eta_c.x, mat.eta_c.y, mat.eta_c.z, mat.k_c.x, mat.k_c.y, mat.k_c.z);
+			attenuation = make_float3(c_F.x * c_weight, c_F.y * c_weight, c_F.z * c_weight);
+			scattered_dir = normalize(cwo_x*ctan + cwo_y*cbitan + cwo_z*cn);
+			scattered     = true;
+			is_specular   = true;
+			break;
+		}
 
-				case MaterialType::Conductor: {
-					// GGX VNDF + complex Fresnel (pbrt-v4 ConductorBxDF) -- sphere version
-					float c_alpha = sqrtf(mat.fuzz);
-
-					float3 cn = normal;
-					float3 cup = (fabsf(cn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
-					float3 ctan  = normalize(cross(cup, cn));
-					float3 cbitan = cross(cn, ctan);
-
-					float3 cwi = normalize(-ray_dir);
-					float cwi_x = dot(cwi, ctan), cwi_y = dot(cwi, cbitan), cwi_z = dot(cwi, cn);
-					if (cwi_z <= 0.0f) { scattered = false; break; }
-
-					TrowbridgeReitz<float> c_dist(c_alpha, c_alpha);
-					float cwm_x, cwm_y, cwm_z;
-					c_dist.Sample_wm(cwi_x, cwi_y, cwi_z,
-									 random_float(seed), random_float(seed),
-									 cwm_x, cwm_y, cwm_z);
-
-					float c_dot = cwi_x*cwm_x + cwi_y*cwm_y + cwi_z*cwm_z;
-					float cwo_x = 2.0f*c_dot*cwm_x - cwi_x;
-					float cwo_y = 2.0f*c_dot*cwm_y - cwi_y;
-					float cwo_z = 2.0f*c_dot*cwm_z - cwi_z;
-					if (cwo_z <= 0.0f) { scattered = false; break; }
-
-						// VNDF weight: F * G(wo,wi) / G1(wi)  (pbrt-v4 ConductorBxDF::Sample_f)
-						float c_G1_wi  = c_dist.G1(cwi_x, cwi_y, cwi_z);
-						float c_G_wowi = c_dist.G(cwo_x, cwo_y, cwo_z, cwi_x, cwi_y, cwi_z);
-						float c_weight = (c_G1_wi > 1e-8f) ? c_G_wowi / c_G1_wi : 0.0f;
-
-						float3 c_F = FrConductorRGB(c_dot,
-													 mat.eta_c.x, mat.eta_c.y, mat.eta_c.z,
-													 mat.k_c.x,   mat.k_c.y,   mat.k_c.z);
-						attenuation = make_float3(c_F.x * c_weight, c_F.y * c_weight, c_F.z * c_weight);
-
-					scattered_dir = normalize(cwo_x*ctan + cwo_y*cbitan + cwo_z*cn);
-					scattered     = true;
-					is_specular   = true;
-					break;
-				}
-
-				case MaterialType::DiffuseLight: {
-					// Emissive material - no scattering
-					// Emission already set from mat.emission above
-					scattered = false;
-					break;
-				}
-
-				default: {
-					// Unknown material - absorb
-					scattered = false;
-					break;
-				}
+		case MaterialType::CoatedDiffuse: {
+			// Rough dielectric coat over Lambertian base (pbrt-v4 CoatedDiffuseBxDF) -- sphere version
+			float cd_alpha = sqrtf(mat.fuzz);
+			float3 cdn  = normal;
+			float3 cdup = (fabsf(cdn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
+			float3 cdtan = normalize(cross(cdup, cdn));
+			float3 cdbit = cross(cdn, cdtan);
+			float3 cdwi  = normalize(-ray_dir);
+			float cdwi_x = dot(cdwi, cdtan), cdwi_y = dot(cdwi, cdbit), cdwi_z = dot(cdwi, cdn);
+			if (cdwi_z <= 0.0f) { scattered = false; break; }
+			TrowbridgeReitz<float> cd_dist(cd_alpha, cd_alpha);
+			float cdwm_x, cdwm_y, cdwm_z;
+			cd_dist.Sample_wm(cdwi_x, cdwi_y, cdwi_z, random_float(seed), random_float(seed), cdwm_x, cdwm_y, cdwm_z);
+			float cd_cosi = cdwi_x*cdwm_x + cdwi_y*cdwm_y + cdwi_z*cdwm_z;
+			float F_in = FrDielectric(cd_cosi, mat.ior);
+			if (random_float(seed) < F_in) {
+				float cwo_x2 = 2.0f*cd_cosi*cdwm_x - cdwi_x;
+				float cwo_y2 = 2.0f*cd_cosi*cdwm_y - cdwi_y;
+				float cwo_z2 = 2.0f*cd_cosi*cdwm_z - cdwi_z;
+				if (cwo_z2 <= 0.0f) { scattered = false; break; }
+				float G1 = cd_dist.G1(cdwi_x, cdwi_y, cdwi_z);
+				float G  = cd_dist.G(cwo_x2, cwo_y2, cwo_z2, cdwi_x, cdwi_y, cdwi_z);
+				float wt = (G1 > 1e-8f) ? G / G1 : 0.0f;
+				float fw = F_in * wt;
+				attenuation   = make_float3(fw, fw, fw);
+				scattered_dir = normalize(cwo_x2*cdtan + cwo_y2*cdbit + cwo_z2*cdn);
+				scattered     = true;
+				is_specular   = true;
+			} else {
+				float3 diff_dir = cdn + random_in_unit_sphere(seed);
+				if (dot(diff_dir, diff_dir) < 1e-12f) diff_dir = cdn;
+				diff_dir = normalize(diff_dir);
+				float cos_out = fabsf(dot(diff_dir, cdn));
+				float F_out   = FrDielectric(cos_out, 1.0f / mat.ior);
+				float T       = (1.0f - F_in) * (1.0f - F_out);
+				attenuation   = make_float3(mat.albedo.x*T, mat.albedo.y*T, mat.albedo.z*T);
+				scattered_dir = diff_dir;
+				scattered     = true;
+				is_specular   = false;
 			}
+			break;
+		}
 
-				// Pack updated payload back into registers
+		case MaterialType::DiffuseLight: {
+			// Emissive material - no scattering
+			scattered = false;
+			break;
+		}
+
+		default: {
+			// Unknown material - absorb
+			scattered = false;
+			break;
+		}
+	}
+
+	// Pack updated payload back into registers
 
 	// p3-p5: emission from this surface hit
 	// p6-p8: scatter direction (if scattered)
@@ -835,7 +864,7 @@ extern "C" __global__ void __closesthit__quad() {
 		}
 
 		case MaterialType::RoughDielectric: {
-			// GGX microfacet BSDF (pbrt-v4 RoughDielectricBxDF) — quad version
+			// GGX microfacet BSDF (pbrt-v4 RoughDielectricBxDF) â€” quad version
 			float rd_alpha = mat.fuzz;
 			rd_alpha = sqrtf(rd_alpha);  // RoughnessToAlpha: alpha = sqrt(roughness)
 			float rd_ri    = front_face ? (1.0f / mat.ior) : mat.ior;
@@ -934,6 +963,57 @@ extern "C" __global__ void __closesthit__quad() {
 					break;
 				}
 
+
+				case MaterialType::CoatedDiffuse: {
+					// Rough dielectric coat over Lambertian base (pbrt-v4 CoatedDiffuseBxDF) -- quad version
+					float cd_alpha = sqrtf(mat.fuzz);
+
+					float3 cdn = final_normal;
+					float3 cdup = (fabsf(cdn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
+					float3 cdtan  = normalize(cross(cdup, cdn));
+					float3 cdbit  = cross(cdn, cdtan);
+
+					float3 cdwi = normalize(-ray_dir);
+					float cdwi_x = dot(cdwi, cdtan), cdwi_y = dot(cdwi, cdbit), cdwi_z = dot(cdwi, cdn);
+					if (cdwi_z <= 0.0f) { scattered = false; break; }
+
+					TrowbridgeReitz<float> cd_dist(cd_alpha, cd_alpha);
+					float cdwm_x, cdwm_y, cdwm_z;
+					cd_dist.Sample_wm(cdwi_x, cdwi_y, cdwi_z,
+									  random_float(seed), random_float(seed),
+									  cdwm_x, cdwm_y, cdwm_z);
+
+					float cd_cosi = cdwi_x*cdwm_x + cdwi_y*cdwm_y + cdwi_z*cdwm_z;
+					float F_in    = FrDielectric(cd_cosi, mat.ior);
+
+					if (random_float(seed) < F_in) {
+						float cwo_x = 2.0f*cd_cosi*cdwm_x - cdwi_x;
+						float cwo_y = 2.0f*cd_cosi*cdwm_y - cdwi_y;
+						float cwo_z = 2.0f*cd_cosi*cdwm_z - cdwi_z;
+						if (cwo_z <= 0.0f) { scattered = false; break; }
+						float G1 = cd_dist.G1(cdwi_x, cdwi_y, cdwi_z);
+						float G  = cd_dist.G(cwo_x, cwo_y, cwo_z, cdwi_x, cdwi_y, cdwi_z);
+						float wt = (G1 > 1e-8f) ? G / G1 : 0.0f;
+						float fw = F_in * wt;
+						attenuation   = make_float3(fw, fw, fw);
+						scattered_dir = normalize(cwo_x*cdtan + cwo_y*cdbit + cwo_z*cdn);
+						scattered     = true;
+						is_specular   = true;
+					} else {
+						float3 diff_dir = cdn + random_in_unit_sphere(seed);
+						if (dot(diff_dir, diff_dir) < 1e-12f) diff_dir = cdn;
+						diff_dir = normalize(diff_dir);
+						float cos_out = fabsf(dot(diff_dir, cdn));
+						float F_out   = FrDielectric(cos_out, 1.0f / mat.ior);
+						float T       = (1.0f - F_in) * (1.0f - F_out);
+						attenuation   = make_float3(mat.albedo.x*T, mat.albedo.y*T, mat.albedo.z*T);
+						scattered_dir = diff_dir;
+						scattered     = true;
+						is_specular   = false;
+					}
+					break;
+				}
+
 				case MaterialType::DiffuseLight: {
 					// Emissive material - no scattering
 					// Emission already set from mat.emission above
@@ -947,7 +1027,6 @@ extern "C" __global__ void __closesthit__quad() {
 					break;
 				}
 			}
-
 			// Pack updated payload back into registers
 			// p0-p2: surface attenuation (BRDF albedo - raygen multiplies with throughput)
 	// p3-p5: emission from this surface hit
@@ -1114,7 +1193,7 @@ extern "C" __global__ void __raygen__rg() {
 	for (unsigned int s = 0; s < params.samplesPerPixel; ++s) {
 		// Halton low-discrepancy pixel offset (pbrt-v4 HaltonSampler pattern)
 		// base-2 for x, base-3 for y. Pixel coords (px,py) are mixed into the
-		// sample index for per-pixel decorrelation — adjacent pixels use different
+		// sample index for per-pixel decorrelation â€” adjacent pixels use different
 		// sub-sequences, avoiding a structured grid artifact across the image.
 		// Bounce RNG (seed) keeps using PCG32 for scatter/light directions.
 		float u = (float(px) + halton2(s, px, py)) / float(params.width - 1);
@@ -1242,7 +1321,7 @@ extern "C" __global__ void __raygen__rg() {
 				ray_direction = normalize(payload.scatterDir);  // MUST normalize!
 				seed = payload.seed;
 			} else {
-				// Absorbed — add any surface emission (e.g. background hit) then stop
+				// Absorbed â€” add any surface emission (e.g. background hit) then stop
 				radiance = radiance + throughput * payload.emission;
 				break;
 			}

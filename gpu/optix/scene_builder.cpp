@@ -469,6 +469,70 @@ static void build_cornell_conductor(SceneData& scene) {
         make_float3(265.0f, 0.0f, 295.0f));
 }
 
+/// @brief Build Cornell Coated Diffuse scene (scene 13)
+/// Matches CPU build_cornell_coated_diffuse(): Cornell box with a blue coated sphere
+/// and a red coated box (rough dielectric coat over Lambertian base, pbrt-v4 CoatedDiffuseBxDF)
+static void build_cornell_coated_diffuse(SceneData& scene) {
+    const int mat_red   = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    const int mat_white = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    const int mat_green = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    const int mat_light = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f,
+                                 make_float3(kLightIntensity, kLightIntensity, kLightIntensity) });
+
+    // Blue coated-diffuse sphere (IOR 1.5, roughness 0.1)
+    const int mat_coated_blue = safe_cast_to_int(scene.materials.size());
+    {
+        MaterialData md{};
+        md.type   = MaterialType::CoatedDiffuse;
+        md.albedo = make_float3(0.2f, 0.3f, 0.9f);  // diffuse base colour
+        md.fuzz   = 0.1f;                            // coat roughness (RoughnessToAlpha done in shader)
+        md.ior    = 1.5f;                            // coat IOR (glass-like)
+        scene.materials.push_back(md);
+    }
+
+    // Red coated-diffuse box (IOR 1.5, roughness 0.2)
+    const int mat_coated_red = safe_cast_to_int(scene.materials.size());
+    {
+        MaterialData md{};
+        md.type   = MaterialType::CoatedDiffuse;
+        md.albedo = make_float3(0.8f, 0.1f, 0.1f);
+        md.fuzz   = 0.2f;
+        md.ior    = 1.5f;
+        scene.materials.push_back(md);
+    }
+
+    // Cornell Box walls
+    { QuadData q{}; q.Q = make_float3(kBoxSize,0,0); q.u = make_float3(0,0,kBoxSize); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_green; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q = make_float3(0,0,kBoxSize); q.u = make_float3(0,0,-kBoxSize); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_red; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q = make_float3(213,554,227); q.u = make_float3(130,0,0); q.v = make_float3(0,0,105); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_light; scene.quads.push_back(q);
+      scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1); scene.isLightSphere.push_back(false); }
+    { QuadData q{}; q.Q = make_float3(0,kBoxSize,0); q.u = make_float3(kBoxSize,0,0); q.v = make_float3(0,0,kBoxSize); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q = make_float3(0,0,kBoxSize); q.u = make_float3(kBoxSize,0,0); q.v = make_float3(0,0,-kBoxSize); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+    { QuadData q{}; q.Q = make_float3(kBoxSize,0,kBoxSize); q.u = make_float3(-kBoxSize,0,0); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+
+    // Blue coated-diffuse sphere
+    SphereData sph{};
+    sph.center    = make_float3(190.0f, 90.0f, 190.0f);
+    sph.radius    = 90.0f;
+    sph.materialIdx = mat_coated_blue;
+    scene.spheres.push_back(sph);
+
+    // Red coated-diffuse box
+    add_box(scene,
+        make_float3(0.0f, 0.0f, 0.0f),
+        make_float3(165.0f, 330.0f, 165.0f),
+        mat_coated_red,
+        15.0f,
+        make_float3(265.0f, 0.0f, 295.0f));
+}
+
 /// @brief Build Cornell Rough Glass scene (scene 11)
 /// Matches CPU build_cornell_rough_glass(): same walls/light, diffuse box + rough-glass sphere
 static void build_cornell_rough_glass(SceneData& scene) {
@@ -826,12 +890,16 @@ bool build_scene(
 								goto cornell_box_camera;
 
 							case 11:  // Cornell Rough Glass (GGX)
-										build_cornell_rough_glass(scene);
-										cornell_box_camera:
+											build_cornell_rough_glass(scene);
+											cornell_box_camera:
 
-										case 12:  // Cornell Conductor (GGX + complex Fresnel, pbrt-v4 ConductorBxDF)
-										if (scene_id == 12) build_cornell_conductor(scene);
-								{
+											case 12:  // Cornell Conductor (GGX + complex Fresnel, pbrt-v4 ConductorBxDF)
+											if (scene_id == 12) build_cornell_conductor(scene);
+											// fallthrough
+
+											case 13:  // Cornell Coated Diffuse (pbrt-v4 CoatedDiffuseBxDF)
+											if (scene_id == 13) build_cornell_coated_diffuse(scene);
+										{
 									constexpr float kPi = 3.14159265358979323846f;
 									const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
 									const float3 lookat = make_float3(278.0f, 278.0f, 278.0f);

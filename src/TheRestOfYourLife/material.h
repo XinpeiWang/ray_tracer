@@ -443,4 +443,108 @@ class rough_dielectric : public material {
 };
 
 
+// ---------------------------------------------------------------------------
+// coated_diffuse -- rough dielectric coat over a Lambertian base
+// Mirrors pbrt-v4 CoatedDiffuseBxDF = LayeredBxDF<DielectricBxDF, DiffuseBxDF>
+//
+// Physical model (single-bounce, no medium scattering):
+//   1. Ray hits coat (top interface, GGX + FrDielectric):
+//      a. Reflects with probability F_in  -> attenuation = F_in, specular bounce
+//      b. Transmits into layer (1-F_in)
+//   2. Lambertian bounce at diffuse base -> cosine-weighted direction
+//   3. Attempts to exit through coat again:
+//      - Transmits with weight (1-F_out) -> attenuation = albedo * (1-F_in) * (1-F_out)
+//      - Otherwise absorbed (energy lost inside layer)
+//
+// Parameters:
+//   albedo     -- diffuse base colour
+//   ior        -- coat index of refraction (1.5 = glass-like plastic)
+//   roughness  -- GGX roughness of the coat surface [0,1]
+// ---------------------------------------------------------------------------
+class coated_diffuse : public material {
+  public:
+    coated_diffuse(const color& albedo, double ior, double roughness)
+        : albedo(albedo),
+          ior(ior),
+          alpha(TrowbridgeReitz<double>::RoughnessToAlpha(
+              std::fmax(roughness, 1e-4))) {}
+
+    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec) const override {
+        // Local shading frame
+        vec3 n   = rec.normal;
+        vec3 up  = std::fabs(n.x()) > 0.9 ? vec3(0,1,0) : vec3(1,0,0);
+        vec3 tan = unit_vector(cross(up, n));
+        vec3 bit = cross(n, tan);
+
+        // Incident direction (pointing away from surface)
+        vec3 wi_w = unit_vector(-r_in.direction());
+        double wi_x = dot(wi_w, tan);
+        double wi_y = dot(wi_w, bit);
+        double wi_z = dot(wi_w, n);
+        if (wi_z <= 0.0) return false;
+
+        // ── Coat top interface: GGX VNDF + FrDielectric ──────────────────
+        TrowbridgeReitz<double> dist(alpha, alpha);
+        double wm_x, wm_y, wm_z;
+        dist.Sample_wm(wi_x, wi_y, wi_z,
+                       random_double(), random_double(),
+                       wm_x, wm_y, wm_z);
+
+        double cos_i = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
+        // FrDielectric(cos_i, eta_t/eta_i): coat IOR=ior, air IOR=1 -> eta_t/eta_i = ior
+        double F_in = FrDielectric(cos_i, ior);
+
+        if (random_double() < F_in) {
+            // ── Path A: reflect off coat (glossy specular) ────────────────
+            double wo_x = 2.0*cos_i*wm_x - wi_x;
+            double wo_y = 2.0*cos_i*wm_y - wi_y;
+            double wo_z = 2.0*cos_i*wm_z - wi_z;
+            if (wo_z <= 0.0) return false;
+
+            // VNDF weight: G(wo,wi)/G1(wi)
+            double G1 = dist.G1(wi_x, wi_y, wi_z);
+            double G  = dist.G(wo_x, wo_y, wo_z, wi_x, wi_y, wi_z);
+            double w  = (G1 > 1e-8) ? G / G1 : 0.0;
+
+            srec.attenuation  = color(F_in * w, F_in * w, F_in * w);
+            srec.pdf_ptr      = nullptr;
+            srec.skip_pdf     = true;
+            srec.skip_pdf_ray = ray(rec.p,
+                                    unit_vector(wo_x*tan + wo_y*bit + wo_z*n),
+                                    r_in.time());
+            return true;
+        }
+
+        // ── Path B: transmit into layer, diffuse bounce, exit through coat ─
+        // Cosine-weighted diffuse direction at the base (Lambertian)
+        vec3 diff_dir = rec.normal + random_unit_vector();
+        if (diff_dir.near_zero()) diff_dir = rec.normal;
+        diff_dir = unit_vector(diff_dir);
+
+        // Fresnel at exit: angle between diff_dir and surface normal
+        double cos_out = std::fabs(dot(diff_dir, n));
+        // Same IOR (air→coat) -- light exits coat into air: eta_t/eta_i = 1/ior
+        double F_out = FrDielectric(cos_out, 1.0 / ior);
+
+        // Throughput: albedo * (1-F_in) * (1-F_out)
+        double T_in  = 1.0 - F_in;
+        double T_out = 1.0 - F_out;
+        srec.attenuation  = albedo * (T_in * T_out);
+        srec.pdf_ptr      = nullptr;
+        srec.skip_pdf     = true;
+        srec.skip_pdf_ray = ray(rec.p, diff_dir, r_in.time());
+        return true;
+    }
+
+    double get_ior()       const { return ior; }
+    double get_roughness() const { return alpha * alpha; }
+    const color& get_albedo() const { return albedo; }
+
+  private:
+    color  albedo;  // diffuse base colour
+    double ior;     // coat index of refraction
+    double alpha;   // GGX alpha
+};
+
+
 #endif
