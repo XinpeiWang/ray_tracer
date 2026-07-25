@@ -7172,7 +7172,7 @@ $L__BB3_274:
 	// .globl	__anyhit__shadow_sphere
 .visible .entry __anyhit__shadow_sphere()
 {
-	.reg .pred 	%p<2>;
+	.reg .pred 	%p<6>;
 	.reg .b32 	%r<8>;
 	.reg .b64 	%rd<9>;
 
@@ -7186,42 +7186,61 @@ $L__BB3_274:
 	cvta.to.global.u64 	%rd4, %rd3;
 	mul.wide.u32 	%rd5, %r1, 20;
 	add.s64 	%rd6, %rd2, %rd5;
-	ld.global.u32 	%r2, [%rd6+16];
-	mul.wide.s32 	%rd7, %r2, 60;
+	ld.global.u32 	%r3, [%rd6+16];
+	mul.wide.s32 	%rd7, %r3, 60;
 	add.s64 	%rd8, %rd4, %rd7;
-	ld.global.u32 	%r3, [%rd8];
-	setp.eq.s32 	%p1, %r3, 3;
-	@%p1 bra 	$L__BB4_2;
-	bra.uni 	$L__BB4_1;
+	ld.global.u32 	%r2, [%rd8];
+	setp.gt.s32 	%p1, %r2, 3;
+	@%p1 bra 	$L__BB4_4;
 
-$L__BB4_2:
-	mov.u32 	%r7, 0;
-	// begin inline asm
-	call _optix_set_payload, (%r7, %r7);
-	// end inline asm
-	// begin inline asm
-	call _optix_terminate_ray, ();
-	// end inline asm
-	bra.uni 	$L__BB4_3;
+	setp.eq.s32 	%p4, %r2, 2;
+	@%p4 bra 	$L__BB4_6;
 
-$L__BB4_1:
-	mov.u32 	%r4, 0;
-	mov.u32 	%r5, 1;
-	// begin inline asm
-	call _optix_set_payload, (%r4, %r5);
-	// end inline asm
-	// begin inline asm
-	call _optix_terminate_ray, ();
-	// end inline asm
+	setp.eq.s32 	%p5, %r2, 3;
+	@%p5 bra 	$L__BB4_3;
+	bra.uni 	$L__BB4_7;
 
 $L__BB4_3:
+	mov.u32 	%r5, 0;
+	// begin inline asm
+	call _optix_set_payload, (%r5, %r5);
+	// end inline asm
+	// begin inline asm
+	call _optix_terminate_ray, ();
+	// end inline asm
+	bra.uni 	$L__BB4_8;
+
+$L__BB4_4:
+	setp.eq.s32 	%p2, %r2, 7;
+	@%p2 bra 	$L__BB4_6;
+
+	setp.ne.s32 	%p3, %r2, 4;
+	@%p3 bra 	$L__BB4_7;
+
+$L__BB4_6:
+	// begin inline asm
+	call _optix_ignore_intersection, ();
+	// end inline asm
+	bra.uni 	$L__BB4_8;
+
+$L__BB4_7:
+	mov.u32 	%r6, 0;
+	mov.u32 	%r7, 1;
+	// begin inline asm
+	call _optix_set_payload, (%r6, %r7);
+	// end inline asm
+	// begin inline asm
+	call _optix_terminate_ray, ();
+	// end inline asm
+
+$L__BB4_8:
 	ret;
 
 }
 	// .globl	__anyhit__shadow_quad
 .visible .entry __anyhit__shadow_quad()
 {
-	.reg .pred 	%p<2>;
+	.reg .pred 	%p<6>;
 	.reg .b32 	%r<8>;
 	.reg .b64 	%rd<9>;
 
@@ -7235,35 +7254,54 @@ $L__BB4_3:
 	cvta.to.global.u64 	%rd4, %rd3;
 	mul.wide.u32 	%rd5, %r1, 68;
 	add.s64 	%rd6, %rd2, %rd5;
-	ld.global.u32 	%r2, [%rd6+64];
-	mul.wide.s32 	%rd7, %r2, 60;
+	ld.global.u32 	%r3, [%rd6+64];
+	mul.wide.s32 	%rd7, %r3, 60;
 	add.s64 	%rd8, %rd4, %rd7;
-	ld.global.u32 	%r3, [%rd8];
-	setp.eq.s32 	%p1, %r3, 3;
-	@%p1 bra 	$L__BB5_2;
-	bra.uni 	$L__BB5_1;
+	ld.global.u32 	%r2, [%rd8];
+	setp.gt.s32 	%p1, %r2, 3;
+	@%p1 bra 	$L__BB5_4;
 
-$L__BB5_2:
-	mov.u32 	%r7, 0;
-	// begin inline asm
-	call _optix_set_payload, (%r7, %r7);
-	// end inline asm
-	// begin inline asm
-	call _optix_terminate_ray, ();
-	// end inline asm
-	bra.uni 	$L__BB5_3;
+	setp.eq.s32 	%p4, %r2, 2;
+	@%p4 bra 	$L__BB5_6;
 
-$L__BB5_1:
-	mov.u32 	%r4, 0;
-	mov.u32 	%r5, 1;
-	// begin inline asm
-	call _optix_set_payload, (%r4, %r5);
-	// end inline asm
-	// begin inline asm
-	call _optix_terminate_ray, ();
-	// end inline asm
+	setp.eq.s32 	%p5, %r2, 3;
+	@%p5 bra 	$L__BB5_3;
+	bra.uni 	$L__BB5_7;
 
 $L__BB5_3:
+	mov.u32 	%r5, 0;
+	// begin inline asm
+	call _optix_set_payload, (%r5, %r5);
+	// end inline asm
+	// begin inline asm
+	call _optix_terminate_ray, ();
+	// end inline asm
+	bra.uni 	$L__BB5_8;
+
+$L__BB5_4:
+	setp.eq.s32 	%p2, %r2, 7;
+	@%p2 bra 	$L__BB5_6;
+
+	setp.ne.s32 	%p3, %r2, 4;
+	@%p3 bra 	$L__BB5_7;
+
+$L__BB5_6:
+	// begin inline asm
+	call _optix_ignore_intersection, ();
+	// end inline asm
+	bra.uni 	$L__BB5_8;
+
+$L__BB5_7:
+	mov.u32 	%r6, 0;
+	mov.u32 	%r7, 1;
+	// begin inline asm
+	call _optix_set_payload, (%r6, %r7);
+	// end inline asm
+	// begin inline asm
+	call _optix_terminate_ray, ();
+	// end inline asm
+
+$L__BB5_8:
 	ret;
 
 }

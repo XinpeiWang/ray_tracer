@@ -1297,8 +1297,15 @@ extern "C" __global__ void __anyhit__shadow_sphere() {
 		return;
 	}
 
-	// For other materials, treat as opaque (occludes light)
-	// TODO: Add alpha-testing for transparent materials (e.g., glass)
+	// Transmissive materials let light through -- ignore them in shadow rays
+	if (mat.type == MaterialType::Dielectric ||
+		mat.type == MaterialType::RoughDielectric ||
+		mat.type == MaterialType::ThinDielectric) {
+		optixIgnoreIntersection();  // continue traversal (not an occluder)
+		return;
+	}
+
+	// For opaque materials, treat as occluder
 	optixSetPayload_0(1);  // occluded = true
 	optixTerminateRay();   // Stop traversal (found occlusion)
 }
@@ -1319,8 +1326,15 @@ extern "C" __global__ void __anyhit__shadow_quad() {
 		return;
 	}
 
-	// For other materials, treat as opaque (occludes light)
-	// TODO: Add alpha-testing for transparent materials (e.g., glass)
+	// Transmissive materials let light through -- ignore them in shadow rays
+	if (mat.type == MaterialType::Dielectric ||
+		mat.type == MaterialType::RoughDielectric ||
+		mat.type == MaterialType::ThinDielectric) {
+		optixIgnoreIntersection();  // continue traversal (not an occluder)
+		return;
+	}
+
+	// For opaque materials, treat as occluder
 	optixSetPayload_0(1);  // occluded = true
 	optixTerminateRay();   // Stop traversal (found occlusion)
 }
