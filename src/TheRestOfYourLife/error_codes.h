@@ -85,7 +85,7 @@ inline std::string get_error_message(int error_code) {
 		{ERR_INVALID_DIMENSIONS, "Invalid image dimensions (must be > 0)"},
 		{ERR_INVALID_SAMPLE_COUNT, "Invalid sample count (must be > 0)"},
 		{ERR_INVALID_MAX_DEPTH, "Invalid max depth (must be > 0)"},
-		{ERR_INVALID_SCENE_ID, "Invalid scene ID (must be 0-8)"},
+		{ERR_INVALID_SCENE_ID, "Invalid scene ID (not registered in scene registry)"},
 		{ERR_INVALID_CAMERA_POSITION, "Invalid camera position coordinates"},
 		{ERR_OUTPUT_PATH_INVALID, "Output path is invalid or not writable"},
 
