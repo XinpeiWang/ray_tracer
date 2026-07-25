@@ -327,6 +327,7 @@ extern "C" __global__ void __closesthit__sphere() {
 	float3 scattered_dir;
 	bool scattered = false;
 	bool is_specular = false;  // pbrt-v4 specularBounce: MIS is skipped for specular events
+	float brdf_pdf_override = -1.0f;  // if >= 0, overrides cosine_pdf in payload packing
 
 	switch (mat.type) {
 		case MaterialType::Lambertian: {
@@ -714,9 +715,11 @@ extern "C" __global__ void __closesthit__sphere() {
 
 		case MaterialType::NormalizedFresnel: {
 			// pbrt-v4 NormalizedFresnelBxDF -- sphere version
-			// mat.ior = eta; cosine-weighted hemisphere sample,
-			// weight = (1 - FrDielectric(cos_wi, eta)) / c
+			// f(wi) = (1 - FrDielectric(cos_wi, eta)) / (c * pi)
 			// where c = 1 - 2*FresnelMoment1(1/eta)
+			// Diffuse BSDF: participates in MIS (is_specular=false).
+			// attenuation = BRDF weight for BRDF-sampled direction.
+			// NEE: direct light with BSDF-evaluated brdf factor.
 			float nf_eta = mat.ior;
 			float inv_eta = 1.0f / nf_eta;
 			float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
@@ -731,6 +734,67 @@ extern "C" __global__ void __closesthit__sphere() {
 			attenuation  = make_float3(weight, weight, weight);
 			scattered    = true;
 			is_specular  = false;
+			// p12: correct BSDF PDF for MIS on next bounce: (1-Fr)*cos/(c*pi)
+			brdf_pdf_override = (1.0f - fr) * cos_wi / (nf_c * 3.14159265358979323846f);
+			if (params.numLights > 0) {
+				int light_idx;
+				float selection_pdf;
+				if (params.aliasTable) {
+					int slot = int(random_float(seed) * float(params.numLights));
+					if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
+					const GpuAliasEntry& entry = params.aliasTable[slot];
+					light_idx = (random_float(seed) < entry.q) ? slot : entry.alias;
+					selection_pdf = params.aliasTable[light_idx].pdf;
+				} else {
+					light_idx = int(random_float(seed) * float(params.numLights));
+					if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
+					selection_pdf = 1.0f / float(params.numLights);
+				}
+
+				int prim_idx = params.lightIndices[light_idx];
+				bool is_sphere_light = params.isLightSphere[light_idx];
+
+				float3 to_light;
+				float geom_pdf = 0.0f;
+				float max_dist = 0.0f;
+
+				if (is_sphere_light) {
+					const SphereData& light_sphere = params.spheres[prim_idx];
+					to_light = sample_sphere_light(light_sphere, hit_point, seed, geom_pdf);
+					float3 to_center = light_sphere.center - hit_point;
+					max_dist = length(to_center);
+				} else {
+					const QuadData& light_quad = params.quads[prim_idx];
+					to_light = sample_quad_light(light_quad, hit_point, seed, geom_pdf, max_dist);
+				}
+
+				float light_pdf = selection_pdf * geom_pdf;
+				if (light_pdf > 1e-6f) {
+					bool visible = trace_shadow_ray(hit_point, to_light, max_dist);
+					if (visible) {
+						float cos_to_light = fmaxf(dot(to_light, normal), 0.0f);
+						if (cos_to_light > 0.0f) {
+							// BSDF value at the light direction
+							float fr_l  = FrDielectric(cos_to_light, nf_eta);
+							float brdf_val = (1.0f - fr_l) / (nf_c * 3.14159265358979323846f);
+							float brdf_pdf_l = brdf_val * cos_to_light;  // cosine_pdf * brdf * pi cancel
+							float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf_l);
+
+							float3 light_emission = make_float3(0.0f, 0.0f, 0.0f);
+							if (is_sphere_light) {
+								const MaterialData& light_mat = params.materials[params.spheres[prim_idx].materialIdx];
+								light_emission = light_mat.emission;
+							} else {
+								const MaterialData& light_mat = params.materials[params.quads[prim_idx].materialIdx];
+								light_emission = light_mat.emission;
+							}
+
+							float3 direct_light = mis_weight * brdf_val * light_emission * cos_to_light / light_pdf;
+							emission = emission + direct_light;
+						}
+					}
+				}
+			}
 			break;
 		}
 
@@ -768,7 +832,9 @@ extern "C" __global__ void __closesthit__sphere() {
 		// p12: BRDF PDF for MIS on the next bounce.
 		// Specular (Metal/Dielectric): 0 = no MIS (pbrt-v4 specularBounce pattern).
 		// Lambertian: cosine_pdf of the sampled direction.
-		float brdf_pdf_out = is_specular ? 0.0f : cosine_pdf(scattered_dir, normal);
+		// NormalizedFresnel: (1-Fr)*cos/(c*pi) stored in brdf_pdf_override.
+		float brdf_pdf_out = is_specular ? 0.0f
+						  : (brdf_pdf_override >= 0.0f ? brdf_pdf_override : cosine_pdf(scattered_dir, normal));
 
 		optixSetPayload_0(__float_as_uint(attenuation.x));
 		optixSetPayload_1(__float_as_uint(attenuation.y));
@@ -907,6 +973,7 @@ extern "C" __global__ void __closesthit__quad() {
 	float3 scattered_dir;
 	bool scattered = false;
 	bool is_specular = false;  // pbrt-v4 specularBounce: MIS is skipped for specular events
+	float brdf_pdf_override = -1.0f;  // if >= 0, overrides cosine_pdf in payload packing
 
 	switch (mat.type) {
 		case MaterialType::Lambertian: {
@@ -1292,6 +1359,8 @@ extern "C" __global__ void __closesthit__quad() {
 
 				case MaterialType::NormalizedFresnel: {
 				// pbrt-v4 NormalizedFresnelBxDF -- quad version
+				// f(wi) = (1 - FrDielectric(cos_wi, eta)) / (c * pi)
+				// Diffuse BSDF: participates in MIS (is_specular=false).
 				float nf_eta = mat.ior;
 				float inv_eta = 1.0f / nf_eta;
 				float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
@@ -1306,8 +1375,70 @@ extern "C" __global__ void __closesthit__quad() {
 				attenuation  = make_float3(weight, weight, weight);
 				scattered    = true;
 				is_specular  = false;
+				// p12: correct BSDF PDF for MIS on next bounce: (1-Fr)*cos/(c*pi)
+				brdf_pdf_override = (1.0f - fr) * cos_wi / (nf_c * 3.14159265358979323846f);
+
+				// NEE direct lighting
+				if (params.numLights > 0) {
+					int light_idx;
+					float selection_pdf;
+					if (params.aliasTable) {
+						int slot = int(random_float(seed) * float(params.numLights));
+						if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
+						const GpuAliasEntry& entry = params.aliasTable[slot];
+						light_idx = (random_float(seed) < entry.q) ? slot : entry.alias;
+						selection_pdf = params.aliasTable[light_idx].pdf;
+					} else {
+						light_idx = int(random_float(seed) * float(params.numLights));
+						if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
+						selection_pdf = 1.0f / float(params.numLights);
+					}
+
+					int prim_idx = params.lightIndices[light_idx];
+					bool is_sphere_light = params.isLightSphere[light_idx];
+
+					float3 to_light;
+					float geom_pdf = 0.0f;
+					float max_dist = 0.0f;
+
+					if (is_sphere_light) {
+						const SphereData& light_sphere = params.spheres[prim_idx];
+						to_light = sample_sphere_light(light_sphere, hit_point, seed, geom_pdf);
+						float3 to_center = light_sphere.center - hit_point;
+						max_dist = length(to_center);
+					} else {
+						const QuadData& light_quad = params.quads[prim_idx];
+						to_light = sample_quad_light(light_quad, hit_point, seed, geom_pdf, max_dist);
+					}
+
+					float light_pdf = selection_pdf * geom_pdf;
+					if (light_pdf > 1e-6f) {
+						bool visible = trace_shadow_ray(hit_point, to_light, max_dist);
+						if (visible) {
+							float cos_to_light = fmaxf(dot(to_light, final_normal), 0.0f);
+							if (cos_to_light > 0.0f) {
+								float fr_l     = FrDielectric(cos_to_light, nf_eta);
+								float brdf_val = (1.0f - fr_l) / (nf_c * 3.14159265358979323846f);
+								float brdf_pdf_l = brdf_val * cos_to_light;
+								float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf_l);
+
+								float3 light_emission = make_float3(0.0f, 0.0f, 0.0f);
+								if (is_sphere_light) {
+									const MaterialData& light_mat = params.materials[params.spheres[prim_idx].materialIdx];
+									light_emission = light_mat.emission;
+								} else {
+									const MaterialData& light_mat = params.materials[params.quads[prim_idx].materialIdx];
+									light_emission = light_mat.emission;
+								}
+
+								float3 direct_light = mis_weight * brdf_val * light_emission * cos_to_light / light_pdf;
+								emission = emission + direct_light;
+							}
+						}
+					}
+				}
 				break;
-			}
+				}
 
 				case MaterialType::DiffuseLight: {
 					// Emissive material - no scattering
@@ -1343,7 +1474,8 @@ extern "C" __global__ void __closesthit__quad() {
 		// p12: BRDF PDF for MIS on the next bounce.
 		// Specular (Metal/Dielectric): 0 = no MIS (pbrt-v4 specularBounce pattern).
 		// Lambertian: cosine_pdf of the sampled direction.
-		float brdf_pdf_out = is_specular ? 0.0f : cosine_pdf(scattered_dir, final_normal);
+		float brdf_pdf_out = is_specular ? 0.0f
+						  : (brdf_pdf_override >= 0.0f ? brdf_pdf_override : cosine_pdf(scattered_dir, final_normal));
 
 		optixSetPayload_0(__float_as_uint(attenuation.x));
 		optixSetPayload_1(__float_as_uint(attenuation.y));

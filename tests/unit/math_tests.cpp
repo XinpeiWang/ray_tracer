@@ -1739,42 +1739,42 @@ TEST(NormalizedFresnelMaterialTest, ScatterAlwaysSucceeds) {
 	}
 }
 
-TEST(NormalizedFresnelMaterialTest, UsesSkipPdf) {
-	// NormalizedFresnel uses skip_pdf=true (pre-sampled ray, like specular/metal)
+TEST(NormalizedFresnelMaterialTest, UsesMIS) {
+	// NormalizedFresnel is diffuse (DiffuseReflection in pbrt-v4 terms)
+	// so it uses skip_pdf=false and a cosine_pdf for MIS integration.
 	normalized_fresnel mat(1.5);
 	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
 	hit_record rec = make_nf_hit();
 	scatter_record srec;
 	mat.scatter(r_in, rec, srec);
-	EXPECT_TRUE(srec.skip_pdf) << "NormalizedFresnel must use skip_pdf=true";
-	EXPECT_EQ(srec.pdf_ptr, nullptr) << "pdf_ptr must be null when skip_pdf=true";
+	EXPECT_FALSE(srec.skip_pdf) << "NormalizedFresnel must use skip_pdf=false (participates in MIS)";
+	EXPECT_NE(srec.pdf_ptr, nullptr) << "pdf_ptr must be set for MIS";
 }
 
 TEST(NormalizedFresnelMaterialTest, ScatteredRayInUpperHemisphere) {
-	// NormalizedFresnelBxDF is reflection-only: scattered ray must be in same hemisphere as normal
+	// NormalizedFresnelBxDF is reflection-only: sampled directions must be in upper hemisphere.
 	normalized_fresnel mat(1.5);
 	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
 	hit_record rec = make_nf_hit();
 	for (int i = 0; i < 100; ++i) {
 		scatter_record srec;
 		mat.scatter(r_in, rec, srec);
-		vec3 d = unit_vector(srec.skip_pdf_ray.direction());
-		EXPECT_GT(dot(d, rec.normal), 0.0) << "Scattered ray must be in upper hemisphere";
+		vec3 d = unit_vector(srec.pdf_ptr->generate());
+		EXPECT_GT(dot(d, rec.normal), 0.0) << "Sampled direction must be in upper hemisphere";
 	}
 }
 
-TEST(NormalizedFresnelMaterialTest, AttenuationInValidRange) {
-	// Sample weight = (1-Fr)/c; Fr in [0,1], c in (0,1] => weight in [0, 1/c]
-	// For IOR=1.5, c ~ 0.596 => weight <= ~1.68; all positive
+TEST(NormalizedFresnelMaterialTest, AttenuationIsWhite) {
+	// attenuation=white: BSDF weight is carried via scattering_pdf in MIS path.
 	normalized_fresnel mat(1.5);
 	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
 	hit_record rec = make_nf_hit();
-	for (int i = 0; i < 200; ++i) {
+	for (int i = 0; i < 20; ++i) {
 		scatter_record srec;
 		mat.scatter(r_in, rec, srec);
-		double w = srec.attenuation.x();
-		EXPECT_GE(w, 0.0) << "Weight must be non-negative";
-		EXPECT_LT(w, 5.0) << "Weight should be bounded";
+		EXPECT_DOUBLE_EQ(srec.attenuation.x(), 1.0) << "attenuation must be white (1,1,1)";
+		EXPECT_DOUBLE_EQ(srec.attenuation.y(), 1.0);
+		EXPECT_DOUBLE_EQ(srec.attenuation.z(), 1.0);
 	}
 }
 
@@ -1801,10 +1801,17 @@ TEST(NormalizedFresnelMaterialTest, ScatteringPdfPositiveAboveSurface) {
 	normalized_fresnel mat(1.5);
 	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
 	hit_record rec = make_nf_hit();
-	// scattered ray in same hemisphere
-	ray scattered(point3(0,0,0), vec3(0.3, 0.7, 0.2));
+	// wi at 45 degrees: cos_wi = 1/sqrt(2)
+	vec3 wi_dir = unit_vector(vec3(1.0, 1.0, 0.0));  // 45 deg from normal (0,1,0)
+	ray scattered(point3(0,0,0), wi_dir);
 	double pdf = mat.scattering_pdf(r_in, rec, scattered);
 	EXPECT_GT(pdf, 0.0) << "scattering_pdf must be positive for upper hemisphere direction";
+	// Analytic check: (1 - Fr(cos45, 1.5)) * cos45 / (c * pi)
+	double cos45  = 1.0 / std::sqrt(2.0);
+	double fr45   = FrDielectric(cos45, 1.5);
+	double c      = mat.get_c();
+	double expect = (1.0 - fr45) * cos45 / (c * 3.14159265358979323846);
+	EXPECT_NEAR(pdf, expect, 1e-10) << "scattering_pdf must equal pbrt-v4 BSDF*cos formula";
 }
 
 TEST(NormalizedFresnelMaterialTest, ScatteringPdfZeroBelowSurface) {
