@@ -296,6 +296,60 @@ static void build_cornell_box(SceneData& scene) {
 		make_float3(265.0f, 0.0f, 295.0f));  // translation offset
 }
 
+/// @brief Build Rough Metal Spheres scene (scene 9)
+/// Matches CPU build_rough_metal_spheres(): large ground sphere, 5 rough-metal
+/// spheres with roughness 0.05..0.8, and a large quad area light above.
+static void build_rough_metal_spheres(SceneData& scene) {
+    // Ground (large dark-grey Lambertian sphere)
+    const int mat_ground = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.2f, 0.2f, 0.2f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+    // Area light quad material
+    constexpr float kRMSLightIntensity = 6.0f;
+    const int mat_light = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f,
+                                 make_float3(kRMSLightIntensity, kRMSLightIntensity, kRMSLightIntensity) });
+
+    // Five rough-metal sphere materials: roughness 0.05, 0.2, 0.4, 0.6, 0.8
+    const float roughnesses[5] = { 0.05f, 0.2f, 0.4f, 0.6f, 0.8f };
+    int mat_metal[5];
+    for (int i = 0; i < 5; ++i) {
+        mat_metal[i] = safe_cast_to_int(scene.materials.size());
+        scene.materials.push_back({ MaterialType::Metal, make_float3(0.95f, 0.85f, 0.55f),
+                                     roughnesses[i], 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+    }
+
+    // Ground sphere: center (0,-1000,0), radius 1000
+    SphereData ground{};
+    ground.center = make_float3(0.0f, -1000.0f, 0.0f);
+    ground.radius = 1000.0f;
+    ground.materialIdx = mat_ground;
+    scene.spheres.push_back(ground);
+
+    // Five metal spheres at x = (i-2)*2.5, y=1, z=0, radius=1
+    for (int i = 0; i < 5; ++i) {
+        SphereData s{};
+        s.center = make_float3((i - 2) * 2.5f, 1.0f, 0.0f);
+        s.radius = 1.0f;
+        s.materialIdx = mat_metal[i];
+        scene.spheres.push_back(s);
+    }
+
+    // Area light quad: Q=(-6,6,-4), u=(12,0,0), v=(0,0,8)
+    QuadData lq{};
+    lq.Q = make_float3(-6.0f, 6.0f, -4.0f);
+    lq.u = make_float3(12.0f, 0.0f, 0.0f);
+    lq.v = make_float3(0.0f, 0.0f, 8.0f);
+    const float3 lc = cross(lq.u, lq.v);
+    lq.w = lc;
+    lq.normal = normalize(lc);
+    lq.D = dot(lq.normal, lq.Q);
+    lq.materialIdx = mat_light;
+    scene.quads.push_back(lq);
+    scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+    scene.isLightSphere.push_back(false);
+}
+
 /// @brief Build Cornell Rough Metal scene (scene 10)
 /// Matches CPU build_cornell_rough_metal(): same walls/light, rough aluminum box + rough gold sphere
 static void build_cornell_rough_metal(SceneData& scene) {
@@ -694,9 +748,9 @@ bool build_scene(
 					break;
 
 				case 5:  // Colored Quads
-					build_quads_scene(scene);
+						build_quads_scene(scene);
 
-					// Configure camera
+						// Configure camera
 					{
 						constexpr float kPi = 3.14159265358979323846f;
 						const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
@@ -727,14 +781,43 @@ bool build_scene(
 							dest[offset] = v.x; dest[offset + 1] = v.y; dest[offset + 2] = v.z;
 						};
 
-									pack_float3(camera_params, 0, lookfrom);
-									pack_float3(camera_params, 3, lower_left_corner);
-									pack_float3(camera_params, 6, horizontal);
-									pack_float3(camera_params, 9, vertical);
-								}
-								break;
+										pack_float3(camera_params, 0, lookfrom);
+											pack_float3(camera_params, 3, lower_left_corner);
+											pack_float3(camera_params, 6, horizontal);
+											pack_float3(camera_params, 9, vertical);
+										}
+										break;
 
-							case 10:  // Cornell Rough Metal (GGX)
+									case 9: {  // Rough Metal Spheres (GGX)
+										build_rough_metal_spheres(scene);
+
+										// Camera: vfov=35, lookfrom=(cam_x,cam_y,cam_z), lookat=(0,1,0)
+										constexpr float kPi9 = 3.14159265358979323846f;
+										const float3 lookfrom9 = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
+										const float3 lookat9   = make_float3(0.0f, 1.0f, 0.0f);
+										const float3 vup9      = make_float3(0.0f, 1.0f, 0.0f);
+										constexpr float vfov9  = 35.0f;
+										const float aspect9    = static_cast<float>(image_width) / static_cast<float>(image_height);
+										const float h9         = tanf((vfov9 * kPi9 / 180.0f) / 2.0f);
+										const float vh9        = 2.0f * h9;
+										const float vw9        = aspect9 * vh9;
+										const float3 wd9 = normalize(make_float3(lookfrom9.x - lookat9.x, lookfrom9.y - lookat9.y, lookfrom9.z - lookat9.z));
+										const float3 u9  = normalize(cross(vup9, wd9));
+										const float3 v9  = cross(wd9, u9);
+										const float3 horiz9 = make_float3(vw9*u9.x, vw9*u9.y, vw9*u9.z);
+										const float3 vert9  = make_float3(vh9*v9.x, vh9*v9.y, vh9*v9.z);
+										const float3 llc9   = make_float3(
+											lookfrom9.x - horiz9.x/2.0f - vert9.x/2.0f - wd9.x,
+											lookfrom9.y - horiz9.y/2.0f - vert9.y/2.0f - wd9.y,
+											lookfrom9.z - horiz9.z/2.0f - vert9.z/2.0f - wd9.z);
+										camera_params[0]=lookfrom9.x; camera_params[1]=lookfrom9.y; camera_params[2]=lookfrom9.z;
+										camera_params[3]=llc9.x;      camera_params[4]=llc9.y;      camera_params[5]=llc9.z;
+										camera_params[6]=horiz9.x;    camera_params[7]=horiz9.y;    camera_params[8]=horiz9.z;
+										camera_params[9]=vert9.x;     camera_params[10]=vert9.y;    camera_params[11]=vert9.z;
+										break;
+									}
+
+									case 10:  // Cornell Rough Metal (GGX)
 								build_cornell_rough_metal(scene);
 
 								// Same camera as Cornell Box (lookat center of box)
