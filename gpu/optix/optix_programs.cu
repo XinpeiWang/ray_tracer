@@ -418,9 +418,12 @@ extern "C" __global__ void __closesthit__sphere() {
 
 		case MaterialType::Metal: {
 			float3 reflected = reflect(normalize(ray_dir), normal);
-			scattered_dir = reflected + mat.fuzz * random_in_unit_sphere(seed);
+			scattered_dir = normalize(reflected) + mat.fuzz * random_in_unit_sphere(seed);
+			// Clamp to hemisphere: if fuzz pushes below surface, use pure reflection
+			if (dot(scattered_dir, normal) <= 0.0f)
+				scattered_dir = reflected;
 			attenuation = mat.albedo;
-			scattered = (dot(scattered_dir, normal) > 0.0f);
+			scattered = true;
 			is_specular = true;  // specular bounce: next hit adds full emission, no MIS
 			break;
 		}
@@ -836,9 +839,12 @@ extern "C" __global__ void __closesthit__quad() {
 
 		case MaterialType::Metal: {
 			float3 reflected = reflect(normalize(ray_dir), final_normal);
-			scattered_dir = reflected + mat.fuzz * random_in_unit_sphere(seed);
+			scattered_dir = normalize(reflected) + mat.fuzz * random_in_unit_sphere(seed);
+			// Clamp to hemisphere: if fuzz pushes below surface, use pure reflection
+			if (dot(scattered_dir, final_normal) <= 0.0f)
+				scattered_dir = reflected;
 			attenuation = mat.albedo;
-			scattered = (dot(scattered_dir, final_normal) > 0.0f);
+			scattered = true;
 			is_specular = true;  // specular bounce: next hit adds full emission, no MIS
 			break;
 		}
