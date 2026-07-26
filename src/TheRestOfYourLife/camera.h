@@ -366,8 +366,9 @@ class camera {
         color  beta         = color(1, 1, 1);
         ray    current_ray  = r;
         int    bounces_left = depth;
-        double prev_bsdf_pdf   = 0.0;
-        bool   specular_bounce = true;
+        double prev_bsdf_pdf      = 0.0;
+        bool   specular_bounce    = true;
+        bool   any_nonspecular    = false;  // pbrt-v4: anyNonSpecularBounces
 
         while (bounces_left > 0) {
             hit_record rec;
@@ -392,9 +393,11 @@ class camera {
                 }
             }
 
-            // No scatter (pure emitter / absorber)
+            // No scatter (pure emitter / absorber).
+            // Pass any_nonspecular as do_regularize so rough materials widen their GGX
+            // lobe on a thread-local copy -- mirrors pbrt-v4 "Possibly regularize the BSDF".
             scatter_record srec;
-            if (!rec.mat->scatter(current_ray, rec, srec))
+            if (!rec.mat->scatter(current_ray, rec, srec, any_nonspecular))
                 break;
 
             // Specular bounce: no NEE, update beta and advance ray
@@ -418,11 +421,6 @@ class camera {
 
             // Non-specular: NEE shadow ray + BSDF path continuation
             // Mirrors pbrt-v4: L += beta * SampleLd(...)  then SpawnRay(bsdf_sample)
-
-            // BSDF regularization (pbrt-v4): after the first non-specular bounce,
-            // widen rough lobes on subsequent hits to reduce indirect variance.
-            if (specular_bounce)
-                rec.mat->regularize();
             hittable_pdf light_pdf(lights, rec.p);
 
             // Strategy A: NEE (non-recursive shadow test)
@@ -470,6 +468,7 @@ class camera {
                 current_ray     = bsdf_ray;
                 prev_bsdf_pdf   = pdf_b;
                 specular_bounce = false;
+                any_nonspecular = true;   // pbrt-v4: anyNonSpecularBounces |= true
                 --bounces_left;
             }
         }

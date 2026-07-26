@@ -3,19 +3,21 @@
 // path_sampler.h -- Halton path sampler (pbrt-v4 HaltonSampler-inspired, CPU-only)
 //
 // Provides per-path, per-dimension low-discrepancy samples using the Halton sequence.
-// Each "dimension" of a path (lens, time, scatter u/v, NEE u/v, ...) gets its own
-// radical-inverse base, exactly as pbrt-v4 assigns scrambled Halton dimensions to
-// individual path decisions.
+// Each "dimension" corresponds to one random decision along a path; currently used
+// for Russian Roulette decisions in the integrator.  Material scatter() calls
+// still use random_double() internally -- threading full LD sampling through
+// scatter() would require a larger interface change and is left as future work.
+//
+// Each dimension uses a different Halton base (first 16 primes), exactly as
+// pbrt-v4 assigns scrambled Halton dimensions to individual path decisions.
+// Per-pixel scramble seeds prevent structured correlation between pixels.
 //
 // Usage:
 //   PathSampler ps(sample_index, pixel_x, pixel_y);
-//   double u = ps.get();   // dimension 0
-//   double v = ps.get();   // dimension 1
-//   // ... one call per random decision along the path
+//   double u = ps.get();   // dimension 0 (e.g., RR at bounce 1)
+//   double v = ps.get();   // dimension 1 (e.g., RR at bounce 2)
+//   // ... one call per integrator-level random decision
 //
-// This replaces independent random_double() calls in the integrator with
-// low-discrepancy, path-correlated samples, reducing variance.
-//==============================================================================================
 
 #include <cstdint>
 #include <cmath>

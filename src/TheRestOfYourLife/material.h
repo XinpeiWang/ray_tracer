@@ -41,7 +41,8 @@ class material {
         return color(0,0,0);
     }
 
-    virtual bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec) const {
+    virtual bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
+                         bool do_regularize = false) const {
         return false;
     }
 
@@ -49,10 +50,6 @@ class material {
     const {
         return 0;
     }
-
-    // BSDF regularization (pbrt-v4 style): widen rough lobes to reduce fireflies.
-    // Called by the integrator after the first non-specular bounce.
-    virtual void regularize() {}
 };
 
 
@@ -75,7 +72,8 @@ class lambertian : public material {
         return BxDF{};
     }
 
-    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec) const override {
+    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
+                 bool do_regularize = false) const override {
         srec.attenuation = tex->value(rec.u, rec.v, rec.p);
         srec.pdf_ptr = make_shared<cosine_pdf>(rec.normal);
         srec.skip_pdf = false;
@@ -106,7 +104,8 @@ class metal : public material {
         return BxDF{ albedo.x(), albedo.y(), albedo.z(), fuzz };
     }
 
-    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec) const override {
+    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
+                 bool do_regularize = false) const override {
         auto ctx = MaterialContext<double>::from_hit(rec, r_in);
         auto bxdf = get_bxdf(ctx);
         vec3 in_dir = unit_vector(r_in.direction());
@@ -141,7 +140,8 @@ class dielectric : public material {
         return BxDF{ refraction_index };
     }
 
-    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec) const override {
+    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
+                 bool do_regularize = false) const override {
         auto ctx = MaterialContext<double>::from_hit(rec, r_in);
         auto bxdf = get_bxdf(ctx);
         vec3 in_dir = unit_vector(r_in.direction());
@@ -188,7 +188,8 @@ class isotropic : public material {
     isotropic(const color& albedo) : tex(make_shared<solid_color>(albedo)) {}
     isotropic(shared_ptr<texture> tex) : tex(tex) {}
 
-    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec) const override {
+    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
+                 bool do_regularize = false) const override {
         srec.attenuation = tex->value(rec.u, rec.v, rec.p);
         srec.pdf_ptr = make_shared<sphere_pdf>();
         srec.skip_pdf = false;
@@ -236,9 +237,11 @@ class rough_metal : public material {
         return BxDF{ albedo.x(), albedo.y(), albedo.z(), alpha };
     }
 
-    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec) const override {
+    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
+                 bool do_regularize = false) const override {
         auto ctx  = MaterialContext<double>::from_hit(rec, r_in);
-        auto bxdf = get_bxdf(ctx);
+        double eff_alpha = do_regularize ? regularize_alpha(alpha) : alpha;
+        BxDF bxdf{ albedo.x(), albedo.y(), albedo.z(), eff_alpha };
         auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
 
         double wi_x, wi_y, wi_z;
@@ -258,8 +261,6 @@ class rough_metal : public material {
 
     double get_roughness() const { return alpha * alpha; }
     const color& get_albedo() const { return albedo; }
-
-    void regularize() override { alpha = regularize_alpha(alpha); }
 
   private:
     color  albedo;
@@ -295,9 +296,11 @@ class conductor : public material {
         return BxDF{ eta_r, eta_g, eta_b, k_r, k_g, k_b, alpha };
     }
 
-    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec) const override {
+    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
+                 bool do_regularize = false) const override {
         auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
-        auto bxdf  = get_bxdf(ctx);
+        double eff_alpha = do_regularize ? regularize_alpha(alpha) : alpha;
+        BxDF bxdf{ eta_r, eta_g, eta_b, k_r, k_g, k_b, eff_alpha };
         auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
 
         double wi_x, wi_y, wi_z;
@@ -321,8 +324,6 @@ class conductor : public material {
                      FrComplex(1.0, eta_g, k_g),
                      FrComplex(1.0, eta_b, k_b));
     }
-
-    void regularize() override { alpha = regularize_alpha(alpha); }
 
   private:
     double eta_r, eta_g, eta_b;
@@ -350,9 +351,11 @@ class rough_dielectric : public material {
         return BxDF{ ior, alpha };
     }
 
-    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec) const override {
+    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
+                 bool do_regularize = false) const override {
         auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
-        auto bxdf  = get_bxdf(ctx);
+        double eff_alpha = do_regularize ? regularize_alpha(alpha) : alpha;
+        BxDF bxdf{ ior, eff_alpha };
         auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
 
         double eta = ctx.front_face ? (1.0 / ior) : ior;
@@ -376,8 +379,6 @@ class rough_dielectric : public material {
 
     double get_ior()       const { return ior; }
     double get_roughness() const { return alpha * alpha; }
-
-    void regularize() override { alpha = regularize_alpha(alpha); }
 
   private:
     double ior;
@@ -417,9 +418,11 @@ class coated_diffuse : public material {
         return BxDF{ albedo.x(), albedo.y(), albedo.z(), ior, alpha };
     }
 
-    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec) const override {
+    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
+                 bool do_regularize = false) const override {
         auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
-        auto bxdf  = get_bxdf(ctx);
+        double eff_alpha = do_regularize ? regularize_alpha(alpha) : alpha;
+        BxDF bxdf{ albedo.x(), albedo.y(), albedo.z(), ior, eff_alpha };
         auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
 
         double wi_x, wi_y, wi_z;
@@ -444,8 +447,6 @@ class coated_diffuse : public material {
     double get_ior()       const { return ior; }
     double get_roughness() const { return alpha * alpha; }
     const color& get_albedo() const { return albedo; }
-
-    void regularize() override { alpha = regularize_alpha(alpha); }
 
   private:
     color  albedo;
@@ -477,7 +478,8 @@ class thin_dielectric : public material {
         return BxDF{ ior };
     }
 
-    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec) const override {
+    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
+                 bool do_regularize = false) const override {
         auto ctx = MaterialContext<double>::from_hit(rec, r_in);
         auto bxdf = get_bxdf(ctx);
         vec3 in_dir = unit_vector(r_in.direction());
@@ -543,9 +545,11 @@ class coated_conductor : public material {
         return BxDF{ eta_r, eta_g, eta_b, k_r, k_g, k_b, coat_ior, alpha };
     }
 
-    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec) const override {
+    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
+                 bool do_regularize = false) const override {
         auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
-        auto bxdf  = get_bxdf(ctx);
+        double eff_alpha = do_regularize ? regularize_alpha(alpha) : alpha;
+        BxDF bxdf{ eta_r, eta_g, eta_b, k_r, k_g, k_b, coat_ior, eff_alpha };
         auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
 
         double wi_x, wi_y, wi_z;
@@ -575,8 +579,6 @@ class coated_conductor : public material {
                      FrComplex(1.0, eta_b, k_b));
     }
 
-    void regularize() override { alpha = regularize_alpha(alpha); }
-
   private:
     double eta_r, eta_g, eta_b;
     double k_r,   k_g,   k_b;
@@ -604,7 +606,7 @@ class diffuse_transmission : public material {
     }
 
     bool scatter(const ray& r_in, const hit_record& rec,
-                 scatter_record& srec) const override {
+                 scatter_record& srec, bool do_regularize = false) const override {
         // Probabilities proportional to max component (pbrt-v4 pattern)
         double pr = std::fmax(std::fmax(R.x(), R.y()), R.z());
         double pt = std::fmax(std::fmax(T.x(), T.y()), T.z());
@@ -681,7 +683,7 @@ class normalized_fresnel : public material {
     }
 
     bool scatter(const ray& r_in, const hit_record& rec,
-                 scatter_record& srec) const override {
+                 scatter_record& srec, bool do_regularize = false) const override {
         // attenuation=white; scattering_pdf carries the Fresnel-weighted BSDF value.
         // The MIS integrator divides by cosine_pdf internally, giving (1-Fr)/c.
         srec.attenuation = color(1.0, 1.0, 1.0);
