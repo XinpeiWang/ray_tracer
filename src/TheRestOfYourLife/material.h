@@ -28,6 +28,8 @@ class scatter_record {
     shared_ptr<pdf> pdf_ptr;
     bool skip_pdf;
     ray skip_pdf_ray;
+    double eta;           // IOR ratio (1.0 unless refraction; pbrt-v4 bs->eta)
+    bool is_transmission; // true when a refraction occurred (drives etaScale in integrator)
 };
 
 
@@ -153,6 +155,8 @@ class dielectric : public material {
         srec.pdf_ptr      = nullptr;
         srec.skip_pdf     = true;
         srec.skip_pdf_ray = ray(rec.p, vec3(res.wo_x, res.wo_y, res.wo_z), r_in.time());
+        srec.eta           = res.is_transmission ? (double)res.eta : 1.0;
+        srec.is_transmission = res.is_transmission;
         return true;
     }
 

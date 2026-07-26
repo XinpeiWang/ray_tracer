@@ -393,6 +393,7 @@ class camera {
         ray    current_ray  = r;
         int    bounces_left = depth;
         double prev_bsdf_pdf      = 0.0;
+        double eta_scale          = 1.0;  // pbrt-v4: etaScale = product of Sqr(bs->eta) per transmission
         bool   specular_bounce    = true;
         bool   any_nonspecular    = false;  // pbrt-v4: anyNonSpecularBounces
         point3 prev_surface_p     = r.origin(); // pbrt-v4: prevIntrCtx shading point
@@ -434,13 +435,18 @@ class camera {
             if (srec.skip_pdf) {
                 color new_beta = beta * srec.attenuation;
                 if (bounces_left < depth) {
-                    double rr_max = std::max(new_beta.x(), std::max(new_beta.y(), new_beta.z()));
+                    // pbrt-v4: rrBeta = beta * etaScale to avoid killing transmission paths
+                    color rr_beta = new_beta * eta_scale;
+                    double rr_max = std::max(rr_beta.x(), std::max(rr_beta.y(), rr_beta.z()));
                     if (rr_max < 1.0) {
                         double q = std::max(0.0, 1.0 - rr_max);
                         if (sampler.get() < q) break;
                         new_beta = new_beta / (1.0 - q);
                     }
                 }
+                // Update etaScale for transmission bounces (pbrt-v4: etaScale *= Sqr(bs->eta))
+                if (srec.is_transmission)
+                    eta_scale *= srec.eta * srec.eta;
                 beta            = new_beta;
                 current_ray     = srec.skip_pdf_ray;
                 specular_bounce = true;
@@ -487,7 +493,9 @@ class camera {
                 // Russian Roulette after first bounce
                 color new_beta = beta * srec.attenuation * f_pdf / pdf_b;
                 if (bounces_left < depth) {
-                    double rr_max = std::max(new_beta.x(), std::max(new_beta.y(), new_beta.z()));
+                    // pbrt-v4: rrBeta = beta * etaScale
+                    color rr_beta = new_beta * eta_scale;
+                    double rr_max = std::max(rr_beta.x(), std::max(rr_beta.y(), rr_beta.z()));
                     if (rr_max < 1.0) {
                         double q = std::max(0.0, 1.0 - rr_max);
                         if (sampler.get() < q) break;

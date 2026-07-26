@@ -47,7 +47,9 @@ template<typename T>
 struct BxDFSampleResult {
 	T wo_x, wo_y, wo_z;  // sampled outgoing direction (world/local space as caller chooses)
 	T r, g, b;            // attenuation (BRDF weight)
+	T eta;                // IOR ratio eta_i/eta_t (1.0 for non-transmissive; pbrt-v4 bs->eta)
 	bool is_specular;     // true -> skip MIS next bounce
+	bool is_transmission; // true -> refraction occurred (update etaScale in integrator)
 	bool valid;           // false -> reject sample (below-surface, etc.)
 };
 
@@ -246,7 +248,9 @@ struct DielectricBxDF {
 	{
 		BxDFSampleResult<T> res{};
 		res.r = T(1); res.g = T(1); res.b = T(1);
+		res.eta = T(1);
 		res.is_specular = true;
+		res.is_transmission = false;
 		res.valid = true;
 
 		T ri = front_face ? (T(1) / ior) : ior;  // eta_i / eta_t
@@ -270,11 +274,14 @@ struct DielectricBxDF {
 			// Reflect
 			reflect_dir(wix, wiy, wiz, nx, ny, nz, res.wo_x, res.wo_y, res.wo_z);
 		} else {
-			// Refract
+			// Refract -- record eta for integrator etaScale (pbrt-v4: bs->eta)
 			if (!refract_dir(wix, wiy, wiz, nx, ny, nz, ri,
 							 res.wo_x, res.wo_y, res.wo_z)) {
 				// TIR fallback
 				reflect_dir(wix, wiy, wiz, nx, ny, nz, res.wo_x, res.wo_y, res.wo_z);
+			} else {
+				res.eta = ri;
+				res.is_transmission = true;
 			}
 		}
 		normalize3(res.wo_x, res.wo_y, res.wo_z);
@@ -283,7 +290,7 @@ struct DielectricBxDF {
 };
 
 // ===========================================================================
-// 4. ThinDielectricBxDF  (zero-thickness glass slab)
+
 //    Mirrors pbrt-v4 ThinDielectricBxDF::Sample_f
 //    R_eff = R + T^2*R/(1-R^2)  (multi-bounce geometric series)
 // ===========================================================================
