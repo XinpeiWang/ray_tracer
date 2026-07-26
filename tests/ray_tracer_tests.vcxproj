@@ -98,6 +98,7 @@
     <ClCompile Include="unit\bvh_tests.cpp" />
     <ClCompile Include="unit\bxdf_tests.cpp" />
     <ClCompile Include="unit\camera_tests.cpp" />
+    <ClCompile Include="unit\filter_tests.cpp" />
     <ClCompile Include="unit\path_sampler_tests.cpp" />
     <ClCompile Include="unit\power_light_sampler_tests.cpp" />
     <ClCompile Include="unit\scene_tests.cpp" />

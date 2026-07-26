@@ -16,6 +16,7 @@
 #include <cmath>
 #include "material.h"
 #include "../shared/path_sampler.h"
+#include "../shared/filter.h"
 #include <fstream>
 #include <iostream>
 #include <cstdlib>
@@ -188,11 +189,15 @@ class camera {
                 // render scanline j
                 ss.str(""); ss.clear();
                 for (int i = 0; i < image_width; i++) {
-                    color pixel_color(0,0,0);
+                    color  weighted_color(0,0,0);
+                    double weight_sum = 0.0;
+                    MitchellFilter filter;   // B=1/3, C=1/3, radius=0.5 (pbrt-v4 defaults)
                     for (int s_j = 0; s_j < sqrt_spp; s_j++) {
                             for (int s_i = 0; s_i < sqrt_spp; s_i++) {
                                 // Sample index for Halton: unique per (s_i, s_j) stratum
                                     int sample_idx = s_j * sqrt_spp + s_i;
+                                    // Get sub-pixel offset for filter weight computation
+                                    vec3 offset = sample_square_stratified(s_i, s_j, sample_idx, i, j);
                                     ray r = get_ray(i, j, s_i, s_j, sample_idx, i, j);
                                     PathSampler ps(sample_idx, i, j);
                                 color sample = ray_color(r, max_depth, world, lights, ps);
@@ -200,10 +205,17 @@ class camera {
                                 if (std::isnan(sample.x()) || std::isnan(sample.y()) || std::isnan(sample.z()) ||
                                     std::isinf(sample.x()) || std::isinf(sample.y()) || std::isinf(sample.z()))
                                     sample = color(0, 0, 0);
-                                pixel_color += sample;
+                                // Mitchell-Netravali filter weight (pbrt-v4 reconstruction filter)
+                                double w = filter.evaluate(offset.x(), offset.y());
+                                weighted_color += w * sample;
+                                weight_sum    += w;
                             }
                         }
-                    write_color(ss, pixel_samples_scale * pixel_color);
+                    // Normalize by filter weight sum (replaces pixel_samples_scale * box sum)
+                    color pixel_color = (weight_sum > 0.0)
+                        ? weighted_color / weight_sum
+                        : color(0, 0, 0);
+                    write_color(ss, pixel_color);
                 }
 
                 scanlines[j] = ss.str();
