@@ -191,27 +191,33 @@ class camera {
                 for (int i = 0; i < image_width; i++) {
                     color  weighted_color(0,0,0);
                     double weight_sum = 0.0;
-                    MitchellFilter filter;   // B=1/3, C=1/3, radius=0.5 (pbrt-v4 defaults)
+                    // Mitchell-Netravali reconstruction filter (pbrt-v4 style).
+                    // radius=0.5 keeps the footprint within one pixel so we don't
+                    // need a film buffer for cross-pixel splatting (pbrt-v4 uses
+                    // radius=2 with a full film; we approximate with within-pixel).
+                    static const MitchellFilter filter(0.5, 1.0/3.0, 1.0/3.0);
                     for (int s_j = 0; s_j < sqrt_spp; s_j++) {
                             for (int s_i = 0; s_i < sqrt_spp; s_i++) {
                                 // Sample index for Halton: unique per (s_i, s_j) stratum
                                     int sample_idx = s_j * sqrt_spp + s_i;
-                                    // Get sub-pixel offset for filter weight computation
+                                    // Compute sub-pixel offset once; use for both the ray
+                                    // origin and the filter weight (pbrt-v4: FilterSample).
                                     vec3 offset = sample_square_stratified(s_i, s_j, sample_idx, i, j);
-                                    ray r = get_ray(i, j, s_i, s_j, sample_idx, i, j);
+                                    ray r = get_ray(i, j, s_i, s_j, offset);
                                     PathSampler ps(sample_idx, i, j);
                                 color sample = ray_color(r, max_depth, world, lights, ps);
                                 // NaN/Inf firefly guard (pbrt-v4 style)
                                 if (std::isnan(sample.x()) || std::isnan(sample.y()) || std::isnan(sample.z()) ||
                                     std::isinf(sample.x()) || std::isinf(sample.y()) || std::isinf(sample.z()))
                                     sample = color(0, 0, 0);
-                                // Mitchell-Netravali filter weight (pbrt-v4 reconstruction filter)
+                                // Mitchell-Netravali filter weight (pbrt-v4 filterWeight)
                                 double w = filter.evaluate(offset.x(), offset.y());
                                 weighted_color += w * sample;
                                 weight_sum    += w;
                             }
                         }
-                    // Normalize by filter weight sum (replaces pixel_samples_scale * box sum)
+                    // Normalize by filter weight sum -- mirrors pbrt-v4 film:
+                    //   pixel.rgbSum / pixel.weightSum
                     color pixel_color = (weight_sum > 0.0)
                         ? weighted_color / weight_sum
                         : color(0, 0, 0);
@@ -298,8 +304,13 @@ class camera {
         // Construct a camera ray originating from the defocus disk and directed at a randomly
         // sampled point around the pixel location i, j for stratified sample square s_i, s_j.
         // sample_idx + pixel coords drive Halton per-pixel decorrelation (pbrt-v4 pattern).
-
         auto offset = sample_square_stratified(s_i, s_j, sample_idx, px, py);
+        return get_ray(i, j, s_i, s_j, offset);
+    }
+
+    // Overload accepting a pre-computed sub-pixel offset (avoids double Halton evaluation
+    // when the caller already has the offset for filter weight computation).
+    ray get_ray(int i, int j, int /*s_i*/, int /*s_j*/, const vec3& offset) const {
         auto pixel_sample = pixel00_loc
                           + ((i + offset.x()) * pixel_delta_u)
                           + ((j + offset.y()) * pixel_delta_v);
