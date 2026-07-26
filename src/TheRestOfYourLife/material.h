@@ -49,6 +49,10 @@ class material {
     const {
         return 0;
     }
+
+    // BSDF regularization (pbrt-v4 style): widen rough lobes to reduce fireflies.
+    // Called by the integrator after the first non-specular bounce.
+    virtual void regularize() {}
 };
 
 
@@ -201,6 +205,17 @@ class isotropic : public material {
 };
 
 
+// Shared helper: regularize a GGX alpha value (pbrt-v4 Regularize() semantics).
+// Widens the lobe for near-specular surfaces to reduce variance on subsequent bounces.
+inline double regularize_alpha(double a) {
+    if (a < 0.3) {
+        a *= 2.0;
+        if (a < 0.1) a = 0.1;
+        else if (a > 0.3) a = 0.3;
+    }
+    return a;
+}
+
 // ---------------------------------------------------------------------------
 // rough_metal -- GGX microfacet BRDF (pbrt-v4 TrowbridgeReitzDistribution)
 // Physically-based rough conductor; replaces simple fuzz-sphere metal for
@@ -243,6 +258,8 @@ class rough_metal : public material {
 
     double get_roughness() const { return alpha * alpha; }
     const color& get_albedo() const { return albedo; }
+
+    void regularize() override { alpha = regularize_alpha(alpha); }
 
   private:
     color  albedo;
@@ -305,6 +322,8 @@ class conductor : public material {
                      FrComplex(1.0, eta_b, k_b));
     }
 
+    void regularize() override { alpha = regularize_alpha(alpha); }
+
   private:
     double eta_r, eta_g, eta_b;
     double k_r,   k_g,   k_b;
@@ -358,6 +377,8 @@ class rough_dielectric : public material {
     double get_ior()       const { return ior; }
     double get_roughness() const { return alpha * alpha; }
 
+    void regularize() override { alpha = regularize_alpha(alpha); }
+
   private:
     double ior;
     double alpha;
@@ -365,7 +386,7 @@ class rough_dielectric : public material {
 
 
 // ---------------------------------------------------------------------------
-// coated_diffuse -- rough dielectric coat over a Lambertian base
+// coated_diffuse
 // Mirrors pbrt-v4 CoatedDiffuseBxDF = LayeredBxDF<DielectricBxDF, DiffuseBxDF>
 //
 // Physical model (single-bounce, no medium scattering):
@@ -424,6 +445,8 @@ class coated_diffuse : public material {
     double get_roughness() const { return alpha * alpha; }
     const color& get_albedo() const { return albedo; }
 
+    void regularize() override { alpha = regularize_alpha(alpha); }
+
   private:
     color  albedo;
     double ior;
@@ -432,7 +455,7 @@ class coated_diffuse : public material {
 
 
 // ---------------------------------------------------------------------------
-// thin_dielectric -- pbrt-v4 ThinDielectricBxDF
+// thin_dielectric
 //
 // Models a zero-thickness flat slab of glass (window pane, soap bubble).
 // Because the slab has no volume, the transmitted ray exits on the same side
@@ -551,6 +574,8 @@ class coated_conductor : public material {
                      FrComplex(1.0, eta_g, k_g),
                      FrComplex(1.0, eta_b, k_b));
     }
+
+    void regularize() override { alpha = regularize_alpha(alpha); }
 
   private:
     double eta_r, eta_g, eta_b;

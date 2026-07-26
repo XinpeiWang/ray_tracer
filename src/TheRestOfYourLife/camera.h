@@ -13,7 +13,9 @@
 
 #include "hittable.h"
 #include "pdf.h"
+#include <cmath>
 #include "material.h"
+#include "../shared/path_sampler.h"
 #include <fstream>
 #include <iostream>
 #include <cstdlib>
@@ -189,7 +191,13 @@ class camera {
                                 // Sample index for Halton: unique per (s_i, s_j) stratum
                                     int sample_idx = s_j * sqrt_spp + s_i;
                                     ray r = get_ray(i, j, s_i, s_j, sample_idx, i, j);
-                                pixel_color += ray_color(r, max_depth, world, lights);
+                                    PathSampler ps(sample_idx, i, j);
+                                color sample = ray_color(r, max_depth, world, lights, ps);
+                                // NaN/Inf firefly guard (pbrt-v4 style)
+                                if (std::isnan(sample.x()) || std::isnan(sample.y()) || std::isnan(sample.z()) ||
+                                    std::isinf(sample.x()) || std::isinf(sample.y()) || std::isinf(sample.z()))
+                                    sample = color(0, 0, 0);
+                                pixel_color += sample;
                             }
                         }
                     write_color(ss, pixel_samples_scale * pixel_color);
@@ -351,7 +359,8 @@ class camera {
     //   prev_bsdf_pdf  -- BSDF PDF of the ray that arrived here (0=camera/specular)
     //                     used to MIS-weight emitter hits (mirrors pbrt-v4 p_b)
     //   specular_bounce -- true after a delta-BxDF bounce; suppresses MIS on emitters
-    color ray_color(const ray& r, int depth, const hittable& world, const hittable& lights)
+    color ray_color(const ray& r, int depth, const hittable& world, const hittable& lights,
+                    PathSampler& sampler)
     const {
         color  L            = color(0, 0, 0);
         color  beta         = color(1, 1, 1);
@@ -395,7 +404,7 @@ class camera {
                     double rr_max = std::max(new_beta.x(), std::max(new_beta.y(), new_beta.z()));
                     if (rr_max < 1.0) {
                         double q = std::max(0.0, 1.0 - rr_max);
-                        if (random_double() < q) break;
+                        if (sampler.get() < q) break;
                         new_beta = new_beta / (1.0 - q);
                     }
                 }
@@ -409,6 +418,11 @@ class camera {
 
             // Non-specular: NEE shadow ray + BSDF path continuation
             // Mirrors pbrt-v4: L += beta * SampleLd(...)  then SpawnRay(bsdf_sample)
+
+            // BSDF regularization (pbrt-v4): after the first non-specular bounce,
+            // widen rough lobes on subsequent hits to reduce indirect variance.
+            if (specular_bounce)
+                rec.mat->regularize();
             hittable_pdf light_pdf(lights, rec.p);
 
             // Strategy A: NEE (non-recursive shadow test)
@@ -448,7 +462,7 @@ class camera {
                     double rr_max = std::max(new_beta.x(), std::max(new_beta.y(), new_beta.z()));
                     if (rr_max < 1.0) {
                         double q = std::max(0.0, 1.0 - rr_max);
-                        if (random_double() < q) break;
+                        if (sampler.get() < q) break;
                         new_beta = new_beta / (1.0 - q);
                     }
                 }
