@@ -36,12 +36,28 @@
 
 // ---------------------------------------------------------------------------
 // sRGB OETF  (linear float -> display-encoded float in [0,1])
+//
+// Aligned with pbrt-v4 LinearToSRGB (util/color.h):
+//   - Linear segment: 12.92 * x  for x <= 0.0031308  (identical constants)
+//   - Power segment:  minimax rational polynomial approximation (from enoki)
+//     instead of std::pow(x, 1/2.4), which avoids a slow transcendental call
+//     while matching the IEC 61966-2-1 sRGB standard to within float precision.
 // ---------------------------------------------------------------------------
 inline double linear_to_srgb(double x) {
-	if (x <= 0.0)           return 0.0;
-	if (x >= 1.0)           return 1.0;
-	if (x <= 0.0031308)     return 12.92 * x;
-	return 1.055 * std::pow(x, 1.0 / 2.4) - 0.055;
+	if (x <= 0.0)       return 0.0;
+	if (x >= 1.0)       return 1.0;
+	if (x <= 0.0031308) return 12.92 * x;
+	// Minimax rational approximation -- mirrors pbrt-v4's enoki-derived polynomial.
+	// Evaluated in double for consistency with the rest of our double pipeline.
+	// EvaluatePolynomial(s, c0, c1, ..., cn) = c0 + s*(c1 + s*(...))
+	double s = std::sqrt(x);
+	double p = -0.0016829072605308378 + s * ( 0.03453868659826638
+			 + s * ( 0.7642611304733891   + s * ( 2.0041169284241644
+			 + s * ( 0.7551545191665577   + s * (-0.016202083165206348)))));
+	double q =  4.178892964897981e-7  + s * (-0.00004375359692957097
+			 + s * ( 0.03467195408529984  + s * ( 0.6085338522168684
+			 + s * ( 1.8970238036421054   + s))));
+	return p / q * x;
 }
 
 // ---------------------------------------------------------------------------

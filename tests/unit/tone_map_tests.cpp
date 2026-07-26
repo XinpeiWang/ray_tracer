@@ -37,10 +37,13 @@ TEST(LinearToSRGB, LowLinearUsesLinearSegment) {
 }
 
 TEST(LinearToSRGB, MidLinearUsesPowerSegment) {
-	// For x > 0.0031308 the curve must be above the linear segment
-	double x = 0.5;
-	double expected = 1.055 * std::pow(x, 1.0 / 2.4) - 0.055;
-	EXPECT_NEAR(linear_to_srgb(x), expected, 1e-10);
+	// Our implementation uses a minimax polynomial aligned with pbrt-v4's
+	// enoki-derived approximation.  Verify it matches the IEC 61966-2-1
+	// reference formula to within 1e-5 (the polynomial's documented error).
+	for (double x : {0.01, 0.1, 0.5, 0.9}) {
+		double ref = 1.055 * std::pow(x, 1.0 / 2.4) - 0.055;
+		EXPECT_NEAR(linear_to_srgb(x), ref, 1e-5) << "Mismatch at x=" << x;
+	}
 }
 
 TEST(LinearToSRGB, ContinuousAtKnee) {
