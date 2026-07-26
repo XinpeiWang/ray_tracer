@@ -412,10 +412,10 @@ class camera {
                         // Camera ray or post-specular: full contribution (no MIS needed)
                         L += beta * Le;
                     } else {
-                        // MIS: balance BSDF-sample weight against uniform-sphere sky PDF
+                        // MIS: balance BSDF-sample weight against sky PDF at this direction
                         // pbrt-v4: p_l = lightSampler.PMF(prevIntrCtx, light) * light.PDF_Li(...);
                         //          w_b = PowerHeuristic(1, p_b, 1, p_l);
-                        double p_l = sky->pdf_Li();
+                        double p_l = sky->pdf_Li(unit_vector(current_ray.direction()));
                         double w_b = mis_power_heuristic(prev_bsdf_pdf, p_l);
                         L += beta * w_b * Le;
                     }
@@ -499,11 +499,12 @@ class camera {
             }
 
             // Strategy A-2: NEE toward sky (pbrt-v4 SampleLd for infinite lights)
-            // Sample a direction toward the env map; if the shadow ray escapes the scene
-            // the sky contributes MIS-weighted radiance.
+            // Uses importance-sampled direction when HDR distribution is available,
+            // falling back to uniform sphere for solid-color skies.
             if (sky) {
-                vec3   sky_dir  = sky->sample_Li();
-                double pdf_sky  = sky->pdf_Li();
+                SkyLiSample sky_smp = sky->sample_Le();
+                vec3   sky_dir  = sky_smp.direction;
+                double pdf_sky  = sky_smp.pdf;
                 if (pdf_sky > 0.0) {
                     ray    sky_shadow(rec.p, sky_dir, current_ray.time());
                     double f_pdf = rec.mat->scattering_pdf(current_ray, rec, sky_shadow);
@@ -511,7 +512,6 @@ class camera {
                         double pdf_b_at_sky = srec.pdf_ptr->value(sky_dir);
                         double w_sky        = mis_power_heuristic(pdf_sky, pdf_b_at_sky);
                         hit_record sky_rec;
-                        // Sky is visible only if shadow ray escapes all geometry
                         if (!world.hit(sky_shadow, interval(0.001, infinity), sky_rec)) {
                             color Le_sky = sky->Le(unit_vector(sky_dir));
                             L += beta * w_sky * srec.attenuation * f_pdf * Le_sky / pdf_sky;
