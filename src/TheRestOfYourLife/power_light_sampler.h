@@ -151,6 +151,9 @@ class power_light_list : public hittable {
 
     int light_count() const { return (int)objects.size(); }
 
+    // Expose per-light selection PMF for testing (mirrors pbrt-v4 lightSampler.PMF())
+    double alias_pmf(int i) const { return alias.pmf(i); }
+
     std::vector<shared_ptr<hittable>> objects;
 
   private:

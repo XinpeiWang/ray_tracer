@@ -395,6 +395,7 @@ class camera {
         double prev_bsdf_pdf      = 0.0;
         bool   specular_bounce    = true;
         bool   any_nonspecular    = false;  // pbrt-v4: anyNonSpecularBounces
+        point3 prev_surface_p     = r.origin(); // pbrt-v4: prevIntrCtx shading point
 
         while (bounces_left > 0) {
             hit_record rec;
@@ -412,7 +413,10 @@ class camera {
                 if (specular_bounce) {
                     L += beta * Le;
                 } else {
-                    hittable_pdf light_pdf_mis(lights, rec.p);
+                    // Use prev_surface_p as the PDF origin -- mirrors pbrt-v4 prevIntrCtx.
+                    // The light PDF must be evaluated from where the BSDF ray was *spawned*
+                    // (the previous surface), not from the emitter hit point (rec.p).
+                    hittable_pdf light_pdf_mis(lights, prev_surface_p);
                     double pdf_l = light_pdf_mis.value(current_ray.direction());
                     double w_b   = mis_power_heuristic(prev_bsdf_pdf, pdf_l);
                     L += beta * w_b * Le;
@@ -493,6 +497,7 @@ class camera {
                 beta            = new_beta;
                 current_ray     = bsdf_ray;
                 prev_bsdf_pdf   = pdf_b;
+                prev_surface_p  = rec.p;   // pbrt-v4: prevIntrCtx = si->intr
                 specular_bounce = false;
                 any_nonspecular = true;   // pbrt-v4: anyNonSpecularBounces |= true
                 --bounces_left;
