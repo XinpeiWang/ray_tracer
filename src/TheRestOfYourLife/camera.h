@@ -17,6 +17,7 @@
 #include "material.h"
 #include "sky_light.h"
 #include "../shared/path_sampler.h"
+#include "../shared/sobol_sampler.h"
 #include "../shared/filter.h"
 #include <fstream>
 #include <iostream>
@@ -206,7 +207,7 @@ class camera {
                                     // origin and the filter weight (pbrt-v4: FilterSample).
                                     vec3 offset = sample_square_stratified(s_i, s_j, sample_idx, i, j);
                                     ray r = get_ray(i, j, s_i, s_j, offset);
-                                    PathSampler ps(sample_idx, i, j);
+                                    SobolSampler ps(sample_idx, i, j);  // pbrt-v4 Sobol+FastOwen
                                 color sample = ray_color(r, max_depth, world, lights, ps);
                                 // NaN/Inf firefly guard (pbrt-v4 style)
                                 if (std::isnan(sample.x()) || std::isnan(sample.y()) || std::isnan(sample.z()) ||
@@ -387,8 +388,9 @@ class camera {
     //   prev_bsdf_pdf  -- BSDF PDF of the ray that arrived here (0=camera/specular)
     //                     used to MIS-weight emitter hits (mirrors pbrt-v4 p_b)
     //   specular_bounce -- true after a delta-BxDF bounce; suppresses MIS on emitters
+    template <typename Sampler>
     color ray_color(const ray& r, int depth, const hittable& world, const hittable& lights,
-                    PathSampler& sampler)
+                    Sampler& sampler)
     const {
         color  L            = color(0, 0, 0);
         color  beta         = color(1, 1, 1);
