@@ -15,6 +15,7 @@
 #include "pdf.h"
 #include <cmath>
 #include "material.h"
+#include "sky_light.h"
 #include "../shared/path_sampler.h"
 #include "../shared/filter.h"
 #include <fstream>
@@ -42,7 +43,8 @@ class camera {
     int    image_width       = 100;  // Rendered image width in pixel count
     int    samples_per_pixel = 10;   // Count of random samples for each pixel
     int    max_depth         = 10;   // Maximum number of ray bounces into scene
-    color  background;               // Scene background color
+    color  background;               // Scene background color (used when sky==nullptr)
+    shared_ptr<sky_light> sky;        // HDR env map (pbrt-v4 ImageInfiniteLight); nullptr = flat background
 
     double vfov     = 90;              // Vertical view angle (field of view)
     point3 lookfrom = point3(0,0,0);   // Point camera is looking from
@@ -401,9 +403,25 @@ class camera {
         while (bounces_left > 0) {
             hit_record rec;
 
-            // Miss
+            // Miss -- query sky (HDR env map) or fall back to flat background.
+            // Mirrors pbrt-v4: "Incorporate emission from infinite lights for escaped ray"
             if (!world.hit(current_ray, interval(0.001, infinity), rec)) {
-                L += beta * background;
+                if (sky) {
+                    color Le = sky->Le(unit_vector(current_ray.direction()));
+                    if (specular_bounce) {
+                        // Camera ray or post-specular: full contribution (no MIS needed)
+                        L += beta * Le;
+                    } else {
+                        // MIS: balance BSDF-sample weight against uniform-sphere sky PDF
+                        // pbrt-v4: p_l = lightSampler.PMF(prevIntrCtx, light) * light.PDF_Li(...);
+                        //          w_b = PowerHeuristic(1, p_b, 1, p_l);
+                        double p_l = sky->pdf_Li();
+                        double w_b = mis_power_heuristic(prev_bsdf_pdf, p_l);
+                        L += beta * w_b * Le;
+                    }
+                } else {
+                    L += beta * background;
+                }
                 break;
             }
 
@@ -459,7 +477,7 @@ class camera {
             // Mirrors pbrt-v4: L += beta * SampleLd(...)  then SpawnRay(bsdf_sample)
             hittable_pdf light_pdf(lights, rec.p);
 
-            // Strategy A: NEE (non-recursive shadow test)
+            // Strategy A-1: NEE toward area lights (non-recursive shadow test)
             {
                 vec3   light_dir = light_pdf.generate();
                 double pdf_l     = light_pdf.value(light_dir);
@@ -475,6 +493,28 @@ class camera {
                                 shadow_ray, light_rec, light_rec.u, light_rec.v, light_rec.p);
                             if (Le_d.x() > 0 || Le_d.y() > 0 || Le_d.z() > 0)
                                 L += beta * w_l * srec.attenuation * f_pdf * Le_d / pdf_l;
+                        }
+                    }
+                }
+            }
+
+            // Strategy A-2: NEE toward sky (pbrt-v4 SampleLd for infinite lights)
+            // Sample a direction toward the env map; if the shadow ray escapes the scene
+            // the sky contributes MIS-weighted radiance.
+            if (sky) {
+                vec3   sky_dir  = sky->sample_Li();
+                double pdf_sky  = sky->pdf_Li();
+                if (pdf_sky > 0.0) {
+                    ray    sky_shadow(rec.p, sky_dir, current_ray.time());
+                    double f_pdf = rec.mat->scattering_pdf(current_ray, rec, sky_shadow);
+                    if (f_pdf > 0.0) {
+                        double pdf_b_at_sky = srec.pdf_ptr->value(sky_dir);
+                        double w_sky        = mis_power_heuristic(pdf_sky, pdf_b_at_sky);
+                        hit_record sky_rec;
+                        // Sky is visible only if shadow ray escapes all geometry
+                        if (!world.hit(sky_shadow, interval(0.001, infinity), sky_rec)) {
+                            color Le_sky = sky->Le(unit_vector(sky_dir));
+                            L += beta * w_sky * srec.attenuation * f_pdf * Le_sky / pdf_sky;
                         }
                     }
                 }
