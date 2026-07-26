@@ -96,7 +96,9 @@
     <ClCompile Include="gtest_all.cpp" />
     <ClCompile Include="gtest_main_wrapper.cpp" />
     <ClCompile Include="unit\bvh_tests.cpp" />
+    <ClCompile Include="unit\bxdf_tests.cpp" />
     <ClCompile Include="unit\camera_tests.cpp" />
+    <ClCompile Include="unit\path_sampler_tests.cpp" />
     <ClCompile Include="unit\power_light_sampler_tests.cpp" />
     <ClCompile Include="unit\scene_tests.cpp" />
     <ClCompile Include="unit\scene_registry_tests.cpp" />
