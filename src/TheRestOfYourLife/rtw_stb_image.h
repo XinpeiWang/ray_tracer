@@ -91,6 +91,17 @@ class rtw_image {
         return bdata + y*bytes_per_scanline + x*bytes_per_pixel;
     }
 
+    // Return the raw float RGB triplet at (x,y) -- preserves HDR values > 1.
+    // Returns nullptr if the image was not loaded.
+    const float* float_pixel_data(int x, int y) const {
+        if (fdata == nullptr) return nullptr;
+
+        x = clamp(x, 0, image_width);
+        y = clamp(y, 0, image_height);
+
+        return fdata + (y * image_width + x) * bytes_per_pixel;
+    }
+
   private:
     const int      bytes_per_pixel = 3;
     float         *fdata = nullptr;         // Linear floating point pixel data

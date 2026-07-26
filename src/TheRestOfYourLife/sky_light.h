@@ -31,9 +31,10 @@ class sky_light {
 	explicit sky_light(const color& c)
 		: env_tex(make_shared<solid_color>(c)), scale(1.0) {}
 
-	// Convenience: HDR file
+	// Convenience: HDR file -- uses hdr_image_texture to preserve float values > 1.
+	// Equivalent to pbrt-v4 ImageInfiniteLight loading an HDR latlong map.
 	explicit sky_light(const char* hdr_filename, double brightness = 1.0)
-		: env_tex(make_shared<image_texture>(hdr_filename)), scale(brightness) {}
+		: env_tex(make_shared<hdr_image_texture>(hdr_filename)), scale(brightness) {}
 
 	// Radiance arriving from world direction `dir` (unit vector expected)
 	color Le(const vec3& dir) const {

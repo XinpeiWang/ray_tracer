@@ -91,6 +91,34 @@ class image_texture : public texture {
 };
 
 
+// HDR-preserving image texture -- reads raw float pixels so values > 1 are retained.
+// Use this for environment maps / sky lights loaded from .hdr files.
+// Mirrors pbrt-v4: image data is kept in linear floating-point throughout.
+class hdr_image_texture : public texture {
+  public:
+    hdr_image_texture(const char* filename) : image(filename) {}
+
+    color value(double u, double v, const point3& p) const override {
+        if (image.height() <= 0) return color(0, 1, 1); // cyan debug fallback
+
+        u = interval(0,1).clamp(u);
+        v = 1.0 - interval(0,1).clamp(v); // flip V: image origin is top-left
+
+        int i = int(u * image.width());
+        int j = int(v * image.height());
+
+        const float* pixel = image.float_pixel_data(i, j);
+        if (!pixel) return color(0, 1, 1); // no float data
+
+        // Return raw HDR values -- no clamping, no divide-by-255
+        return color(pixel[0], pixel[1], pixel[2]);
+    }
+
+  private:
+    rtw_image image;
+};
+
+
 class noise_texture : public texture {
   public:
     noise_texture(double scale) : scale(scale) {}
