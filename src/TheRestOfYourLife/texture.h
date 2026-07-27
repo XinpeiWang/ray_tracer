@@ -133,4 +133,102 @@ class noise_texture : public texture {
 };
 
 
+// ---------------------------------------------------------------------------
+// fbm_texture
+// Fractional Brownian motion texture using pbrt-v4 FBm.
+// Maps the signed FBm value [-1,1] to a greyscale color via (1+v)/2.
+// pbrt-v4 reference: FBmTexture (textures.h / textures.cpp)
+// ---------------------------------------------------------------------------
+class fbm_texture : public texture {
+  public:
+    // scale:    spatial frequency multiplier for the input point
+    // octaves:  number of octaves of noise
+    // omega:    persistence (roughness), 0 < omega < 1; pbrt-v4 default = 0.5
+    fbm_texture(double scale, int octaves = 8, double omega = 0.5)
+        : scale(scale), octaves(octaves), omega(omega) {}
+
+    color value(double /*u*/, double /*v*/, const point3& p) const override {
+        // pbrt-v4 FBmTexture: Evaluate = FBm(c.p, c.dpdx, c.dpdy, omega, octaves)
+        // We use the simple (non-antialiased) variant with no footprint info.
+        double v = fbm_simple<double>(p.x()*scale, p.y()*scale, p.z()*scale,
+                                      omega, octaves);
+        // Map [-~1, ~1] to [0,1] greyscale
+        double t = 0.5 + 0.5 * v;
+        t = t < 0.0 ? 0.0 : (t > 1.0 ? 1.0 : t);
+        return color(t, t, t);
+    }
+
+  private:
+    double scale;
+    int    octaves;
+    double omega;
+};
+
+
+// ---------------------------------------------------------------------------
+// marble_texture
+// Procedural marble using pbrt-v4 MarbleTexture formula:
+//   marble = scale*p.y + variation * FBm(scale*p, ...)
+//   t = 0.5 + 0.5 * sin(marble)
+//   rgb = CubicBezier spline over pbrt-v4 marble colour knots * 1.5
+//
+// pbrt-v4 reference: MarbleTexture::Evaluate (textures.cpp lines 480-504)
+// ---------------------------------------------------------------------------
+class marble_texture : public texture {
+  public:
+    // scale:     spatial frequency
+    // octaves:   FBm octaves
+    // omega:     persistence
+    // variation: amplitude of FBm displacement (pbrt-v4 default = 5)
+    marble_texture(double scale = 1.0, int octaves = 8,
+                   double omega = 0.5, double variation = 5.0)
+        : scale(scale), octaves(octaves), omega(omega), variation(variation) {}
+
+    color value(double /*u*/, double /*v*/, const point3& p) const override {
+        // pbrt-v4: c.p *= scale; marble = c.p.y + variation * FBm(c.p, ...)
+        double px = p.x() * scale, py = p.y() * scale, pz = p.z() * scale;
+        double fbm_val = fbm_simple<double>(px, py, pz, omega, octaves);
+        double marble = py + variation * fbm_val;
+        double t = 0.5 + 0.5 * std::sin(marble);
+
+        // pbrt-v4 marble colour spline (9 RGB control points)
+        // EvaluateCubicBezier over segments; 1.5 * result
+        static const double knots[9][3] = {
+            {.58,.58,.60}, {.58,.58,.60}, {.58,.58,.60},
+            {.50,.50,.50}, {.60,.59,.58}, {.58,.58,.60},
+            {.58,.58,.60}, {.20,.20,.33}, {.58,.58,.60}
+        };
+        int n_seg = 6; // nSeg = sizeof(colors)/sizeof(colors[0]) - 3 = 9 - 3 = 6
+        int first = (int)(t * n_seg);
+        if (first >= n_seg) first = n_seg - 1;
+        double lt = t * n_seg - first;
+
+        // Cubic Bezier over 4 control points starting at knots[first]
+        color rgb = cubic_bezier4(knots[first], knots[first+1],
+                                  knots[first+2], knots[first+3], lt);
+        // pbrt-v4: rgb *= 1.5f
+        return color(
+            std::min(rgb.x() * 1.5, 1.0),
+            std::min(rgb.y() * 1.5, 1.0),
+            std::min(rgb.z() * 1.5, 1.0));
+    }
+
+  private:
+    double scale;
+    int    octaves;
+    double omega;
+    double variation;
+
+    // De Casteljau cubic Bezier evaluation at t in [0,1]
+    static color cubic_bezier4(const double p0[3], const double p1[3],
+                                const double p2[3], const double p3[3], double t) {
+        double s = 1.0 - t;
+        double r = s*s*s*p0[0] + 3*s*s*t*p1[0] + 3*s*t*t*p2[0] + t*t*t*p3[0];
+        double g = s*s*s*p0[1] + 3*s*s*t*p1[1] + 3*s*t*t*p2[1] + t*t*t*p3[1];
+        double b = s*s*s*p0[2] + 3*s*s*t*p1[2] + 3*s*t*t*p2[2] + t*t*t*p3[2];
+        return color(r, g, b);
+    }
+};
+
+
 #endif

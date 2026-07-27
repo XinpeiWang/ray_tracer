@@ -9,97 +9,39 @@
 //
 // You should have received a copy (see file COPYING.txt) of the CC0 Public Domain Dedication
 // along with this software. If not, see <http://creativecommons.org/publicdomain/zero/1.0/>.
+//
+// pbrt-v4 upgrades (util/noise.cpp):
+//   - Quintic C2 interpolation weight: 6t^5 - 15t^4 + 10t^3  (was cubic 3t^2-2t^3)
+//   - Fixed permutation table identical to pbrt-v4 (no random re-seeding)
+//   - noise() delegates to shared perlin_noise<double> from noise.h
+//   - turb() delegates to shared turbulence_simple<double>
+//   - fbm()  delegates to shared fbm_simple<double>
 //==============================================================================================
+
+#include "../shared/noise.h"
 
 
 class perlin {
   public:
-    perlin() {
-        for (int i = 0; i < point_count; i++) {
-            randvec[i] = unit_vector(vec3::random(-1,1));
-        }
+    perlin() {}  // stateless: permutation table is in shared noise.h
 
-        perlin_generate_perm(perm_x);
-        perlin_generate_perm(perm_y);
-        perlin_generate_perm(perm_z);
-    }
-
+    // Scalar gradient noise in [-1, 1].
+    // Uses pbrt-v4 fixed permutation table + quintic C2 weight.
     double noise(const point3& p) const {
-        auto u = p.x() - std::floor(p.x());
-        auto v = p.y() - std::floor(p.y());
-        auto w = p.z() - std::floor(p.z());
-
-        auto i = int(std::floor(p.x()));
-        auto j = int(std::floor(p.y()));
-        auto k = int(std::floor(p.z()));
-        vec3 c[2][2][2];
-
-        for (int di=0; di < 2; di++)
-            for (int dj=0; dj < 2; dj++)
-                for (int dk=0; dk < 2; dk++)
-                    c[di][dj][dk] = randvec[
-                        perm_x[(i+di) & 255] ^
-                        perm_y[(j+dj) & 255] ^
-                        perm_z[(k+dk) & 255]
-                    ];
-
-        return perlin_interp(c, u, v, w);
+        return perlin_noise<double>(p.x(), p.y(), p.z());
     }
 
-    double turb(const point3& p, int depth) const {
-        auto accum = 0.0;
-        auto temp_p = p;
-        auto weight = 1.0;
-
-        for (int i = 0; i < depth; i++) {
-            accum += weight * noise(temp_p);
-            weight *= 0.5;
-            temp_p *= 2;
-        }
-
-        return std::fabs(accum);
+    // Turbulence: sum of |noise| octaves.
+    // Delegates to shared turbulence_simple<double> (no antialiasing).
+    // omega=0.5 reproduces Book-3 behaviour; depth matches old API.
+    double turb(const point3& p, int depth = 7, double omega = 0.5) const {
+        return turbulence_simple<double>(p.x(), p.y(), p.z(), omega, depth);
     }
 
-  private:
-    static const int point_count = 256;
-    vec3 randvec[point_count];
-    int perm_x[point_count];
-    int perm_y[point_count];
-    int perm_z[point_count];
-
-    static void perlin_generate_perm(int* p) {
-        for (int i = 0; i < point_count; i++)
-            p[i] = i;
-
-        permute(p, point_count);
-    }
-
-    static void permute(int* p, int n) {
-        for (int i = n-1; i > 0; i--) {
-            int target = random_int(0, i);
-            int tmp = p[i];
-            p[i] = p[target];
-            p[target] = tmp;
-        }
-    }
-
-    static double perlin_interp(const vec3 c[2][2][2], double u, double v, double w) {
-        auto uu = u*u*(3-2*u);
-        auto vv = v*v*(3-2*v);
-        auto ww = w*w*(3-2*w);
-        auto accum = 0.0;
-
-        for (int i=0; i < 2; i++)
-            for (int j=0; j < 2; j++)
-                for (int k=0; k < 2; k++) {
-                    vec3 weight_v(u-i, v-j, w-k);
-                    accum += (i*uu + (1-i)*(1-uu))
-                           * (j*vv + (1-j)*(1-vv))
-                           * (k*ww + (1-k)*(1-ww))
-                           * dot(c[i][j][k], weight_v);
-                }
-
-        return accum;
+    // FBm: signed sum of noise octaves.
+    // New addition — not in original perlin.h.
+    double fbm(const point3& p, int octaves = 7, double omega = 0.5) const {
+        return fbm_simple<double>(p.x(), p.y(), p.z(), omega, octaves);
     }
 };
 
