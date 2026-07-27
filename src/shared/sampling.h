@@ -126,7 +126,7 @@ struct Frame {
 //
 // Returns solid angle in steradians, or 0 if degenerate.
 // ---------------------------------------------------------------------------
-CPU_GPU inline double SphericalRectangleSolidAngle(
+CPU_GPU double SphericalRectangleSolidAngle(
 		double px, double py, double pz,
 		double sx, double sy, double sz,
 		double ex_x, double ex_y, double ex_z,
@@ -168,7 +168,7 @@ CPU_GPU inline double SphericalRectangleSolidAngle(
 // SphericalRectanglePDF
 // Returns 1/solidAngle (constant over the whole quad), or 0 if degenerate.
 // ---------------------------------------------------------------------------
-CPU_GPU inline double SphericalRectanglePDF(
+CPU_GPU double SphericalRectanglePDF(
 		double px, double py, double pz,
 		double sx, double sy, double sz,
 		double ex_x, double ex_y, double ex_z,
@@ -194,7 +194,7 @@ CPU_GPU inline double SphericalRectanglePDF(
 // Returns: sampled point on the rectangle in world space.
 //          Falls back to uniform area sample if solid angle is degenerate.
 // ---------------------------------------------------------------------------
-CPU_GPU inline void SampleSphericalRectangle(
+CPU_GPU void SampleSphericalRectangle(
 		double  px,  double  py,  double  pz,     // reference point
 		double  sx,  double  sy,  double  sz,     // rectangle corner s
 		double ex_x, double ex_y, double ex_z,    // edge ex
@@ -295,7 +295,7 @@ CPU_GPU inline void SampleSphericalRectangle(
 // Mirrors pbrt-v4: A = alpha + beta + gamma - Pi  (spherical excess)
 // Returns 0 if degenerate.
 // ---------------------------------------------------------------------------
-CPU_GPU inline double SphericalTriangleSolidAngle(
+CPU_GPU double SphericalTriangleSolidAngle(
 		double v0x, double v0y, double v0z,
 		double v1x, double v1y, double v1z,
 		double v2x, double v2y, double v2z,
@@ -334,7 +334,7 @@ CPU_GPU inline double SphericalTriangleSolidAngle(
 //   out_b0..b2 : barycentric coordinates of the sampled point
 //   out_pdf    : 1/solidAngle, or 0 if degenerate
 // ---------------------------------------------------------------------------
-CPU_GPU inline void SampleSphericalTriangle(
+CPU_GPU void SampleSphericalTriangle(
 		double v0x, double v0y, double v0z,
 		double v1x, double v1y, double v1z,
 		double v2x, double v2y, double v2z,

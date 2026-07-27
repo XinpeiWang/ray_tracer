@@ -72,7 +72,7 @@ CPU_GPU Scalar PowerHeuristic(Scalar pdf_a, Scalar pdf_b) {
 //   Bounce RNG keeps using PCG32/random_double().
 // ---------------------------------------------------------------------------
 
-CPU_GPU inline float halton_radical_inverse(unsigned int n, unsigned int base) {
+CPU_GPU float halton_radical_inverse(unsigned int n, unsigned int base) {
     // pbrt-v4 pattern: integer accumulation then single float conversion.
     // Overflow guard: stop when reversedDigits approaches uint64 limit.
     const unsigned long long limit = (~0ull) / base - base;
@@ -95,7 +95,7 @@ CPU_GPU inline float halton_radical_inverse(unsigned int n, unsigned int base) {
 // adjacent pixels use different sub-sequences of the Halton sequence.
 // This replicates pbrt-v4 HaltonSampler::StartPixelSample() intent without
 // its full pixel-stride machinery — a lightweight pixel hash offset.
-CPU_GPU inline unsigned int halton_pixel_index(unsigned int sampleIndex,
+CPU_GPU unsigned int halton_pixel_index(unsigned int sampleIndex,
                                                unsigned int px,
                                                unsigned int py) {
     // Simple but effective: offset sample index by a pixel-unique constant.
@@ -105,14 +105,14 @@ CPU_GPU inline unsigned int halton_pixel_index(unsigned int sampleIndex,
 }
 
 // Base-2 radical inverse (pixel x offset), per-pixel decorrelated
-CPU_GPU inline float halton2(unsigned int sampleIndex,
+CPU_GPU float halton2(unsigned int sampleIndex,
                              unsigned int px = 0u,
                              unsigned int py = 0u) {
     return halton_radical_inverse(halton_pixel_index(sampleIndex, px, py), 2u);
 }
 
 // Base-3 radical inverse (pixel y offset), per-pixel decorrelated
-CPU_GPU inline float halton3(unsigned int sampleIndex,
+CPU_GPU float halton3(unsigned int sampleIndex,
                              unsigned int px = 0u,
                              unsigned int py = 0u) {
     return halton_radical_inverse(halton_pixel_index(sampleIndex, py, px), 3u);
