@@ -13,7 +13,7 @@ static constexpr int BlueNoiseResolution  = 128;
 static constexpr int NumBlueNoiseTextures = 48;
 
 // clang-format off
-const uint16_t BlueNoiseTextures
+inline const uint16_t BlueNoiseTextures
     [NumBlueNoiseTextures][BlueNoiseResolution][BlueNoiseResolution] = {
         {
             {

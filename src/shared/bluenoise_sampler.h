@@ -70,13 +70,6 @@ inline double radical_inverse(int base_idx, uint64_t a) {
 	return std::min(reversed * inv_base_m, OneMinusEpsilon);
 }
 
-// Fast 32-bit hash for per-pixel scramble seed.
-inline uint32_t pixel_hash(int px, int py, int dim) {
-	uint32_t h = (uint32_t)(px * 73856093 ^ py * 19349663 ^ dim * 83492791);
-	h ^= h >> 16; h *= 0x45d9f3b; h ^= h >> 16;
-	return h;
-}
-
 } // namespace bns_detail
 
 // ---------------------------------------------------------------------------
