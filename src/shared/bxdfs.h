@@ -957,34 +957,40 @@ struct PrincipledBxDF {
 		if (wo_out_lz <= T(0)) return res;
 
 		// Compute multi-lobe BSDF value and PDF
-		T cos_wi_l = wo_out_lz; // wi in local frame after bounce
-		T cos_wo_l = wo_lz;
+		T cos_wi_l = wo_out_lz; // sampled direction cos with normal
 
-		// Fresnel at wi direction
-		T F_wi = schlick_fresnel(cos_wi_l, F0_d);
-		T F_met_wi_r = schlick_fresnel(cos_wi_l, F0_metal_r);
-		T F_met_wi_g = schlick_fresnel(cos_wi_l, F0_metal_g);
-		T F_met_wi_b = schlick_fresnel(cos_wi_l, F0_metal_b);
+		// Half-vector in local frame (pbrt-v4: Fresnel evaluated at AbsDot(wo, wm))
+		T hx = wo_lx + wo_out_lx, hy = wo_ly + wo_out_ly, hz = wo_lz + wo_out_lz;
+#if defined(__CUDACC__)
+		T hlen = sqrtf(hx*hx + hy*hy + hz*hz);
+#else
+		T hlen = std::sqrt(hx*hx + hy*hy + hz*hz);
+#endif
+		T cos_wm = (hlen > T(1e-8)) ? (wo_lx*(hx/hlen) + wo_ly*(hy/hlen) + wo_lz*(hz/hlen)) : wo_lz;
 
-		// Diffuse contribution: Lambertian * (1-metallic) * (1-F)
+		// Diffuse: Lambertian * (1-metallic) * (1-F_diffuse); F at wi·n per Disney
+		T F_wi_diff = schlick_fresnel(cos_wi_l, F0_d);
 		const T inv_pi = T(1) / T(3.14159265358979323846);
-		T diff_r = base_r * inv_pi * (T(1) - metallic) * (T(1) - F_wi);
-		T diff_g = base_g * inv_pi * (T(1) - metallic) * (T(1) - F_wi);
-		T diff_b = base_b * inv_pi * (T(1) - metallic) * (T(1) - F_wi);
+		T diff_r = base_r * inv_pi * (T(1) - metallic) * (T(1) - F_wi_diff);
+		T diff_g = base_g * inv_pi * (T(1) - metallic) * (T(1) - F_wi_diff);
+		T diff_b = base_b * inv_pi * (T(1) - metallic) * (T(1) - F_wi_diff);
 
-		// Specular contribution: GGX BRDF
+		// Specular: GGX BRDF with Fresnel at half-vector angle (pbrt-v4 ConductorBxDF alignment)
 		T spec_val = ggx_brdf(wo_lx, wo_ly, wo_lz, wo_out_lx, wo_out_ly, wo_out_lz, alpha);
-		// Schlick Fresnel blend: lerp between dielectric and conductor Fresnel
-		T F_r = (T(1)-metallic)*F_spec + metallic*F_met_r;
-		T F_g = (T(1)-metallic)*F_spec + metallic*F_met_g;
-		T F_b = (T(1)-metallic)*F_spec + metallic*F_met_b;
+		T F_spec_wm = schlick_fresnel(cos_wm, F0_d);
+		T F_met_wm_r = schlick_fresnel(cos_wm, F0_metal_r);
+		T F_met_wm_g = schlick_fresnel(cos_wm, F0_metal_g);
+		T F_met_wm_b = schlick_fresnel(cos_wm, F0_metal_b);
+		T F_r = (T(1)-metallic)*F_spec_wm + metallic*F_met_wm_r;
+		T F_g = (T(1)-metallic)*F_spec_wm + metallic*F_met_wm_g;
+		T F_b = (T(1)-metallic)*F_spec_wm + metallic*F_met_wm_b;
 		T spec_r = F_r * spec_val;
 		T spec_g = F_g * spec_val;
 		T spec_b = F_b * spec_val;
 
-		// Clearcoat: GGX with IOR=1.5 (F0=0.04)
+		// Clearcoat: GGX with IOR=1.5 (F0=0.04), Fresnel at half-vector angle
 		T cc_F0 = T(0.04);
-		T F_cc = schlick_fresnel(cos_wi_l, cc_F0);
+		T F_cc = schlick_fresnel(cos_wm, cc_F0);
 		T cc_val = ggx_brdf(wo_lx, wo_ly, wo_lz, wo_out_lx, wo_out_ly, wo_out_lz, alpha_cc);
 		T cc_r = clearcoat * T(0.25) * F_cc * cc_val;
 
