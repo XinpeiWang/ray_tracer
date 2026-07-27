@@ -156,32 +156,102 @@ TEST(HairBxDF, AbsorptionReducesAttenuation) {
 }
 
 // ---------------------------------------------------------------------------
-// Test: white-furnace — total reflectance <= 1 (energy conservation upper bound)
-//   Under white illumination (constant radiance=1), integral of f*cos / pdf
-//   should stay at or below 1 for the sampled estimator.
+// Test: White-furnace energy conservation (pbrt-v4 Hair::WhiteFurnace port)
+//
+// pbrt-v4 reference: src/pbrt/bsdfs_test.cpp  TEST(Hair, WhiteFurnace)
+//
+// Method: For zero absorption (sigma_a=0), the integral of f(wo,wi)*|cosTheta_i|
+// over the full sphere must equal 1 (energy conservation).
+//
+// We use importance sampling via sample() for numerical stability.
+// The estimator:
+//   weight_i = (f.r + f.g + f.b) / 3 * |wi_lz|
+//            = (eval_local / |wi_lz|) / pdf * |wi_lz|   [since res = f/pdf, f = eval/|lz|]
+//            = fsum / pdf
+//   => E_pdf[weight] = integral of fsum over sphere = 1 for energy conservation
+//
+// We iterate over h (cross-section offset) as a QMC parameter per sample,
+// and sweep over (beta_m, beta_n) pairs, with alpha=0 matching pbrt-v4.
 // ---------------------------------------------------------------------------
+
+// Halton radical inverse helpers for low-discrepancy sampling
+static double radical_inverse_base2(uint32_t n) {
+	uint32_t bits = (n << 16) | (n >> 16);
+	bits = ((bits & 0x55555555u) << 1) | ((bits & 0xAAAAAAAAu) >> 1);
+	bits = ((bits & 0x33333333u) << 2) | ((bits & 0xCCCCCCCCu) >> 2);
+	bits = ((bits & 0x0F0F0F0Fu) << 4) | ((bits & 0xF0F0F0F0u) >> 4);
+	bits = ((bits & 0x00FF00FFu) << 8) | ((bits & 0xFF00FF00u) >> 8);
+	return bits * 2.3283064365386963e-10;
+}
+static double radical_inverse_base(int base, uint32_t n) {
+	double inv = 1.0 / base, result = 0.0, f = inv;
+	while (n > 0) { result += (n % base) * f; n /= (uint32_t)base; f *= inv; }
+	return result;
+}
+
 TEST(HairBxDF, WhiteFurnaceBound) {
-	double wix, wiy, wiz;
-	make_wi(wix, wiy, wiz);
+	// Fixed wo in world space: (1, 0, 0).
+	// With fiber tangent TZ=(0,0,1), to_local gives:
+	//   wo_lx = sinTheta_o = dot((1,0,0),(0,0,1)) = 0  => cosTheta_o = 1 (non-degenerate)
+	const double wox = 1.0, woy = 0.0, woz = 0.0;
 
-	// Use near-zero absorption so we're testing max energy
-	auto bxdf = make_hair(0.3, 0.3, 1e-6);
+	// Sweep (beta_m, beta_n) matching pbrt-v4 furnace test grid
+	for (double beta_m = 0.1; beta_m < 1.0; beta_m += 0.2) {
+		for (double beta_n = 0.1; beta_n < 1.0; beta_n += 0.2) {
 
-	double sum = 0;
-	int n = 0;
-	for (int i = 0; i < 2000; ++i) {
-		auto res = bxdf.sample(TX, TY, TZ, wix, wiy, wiz,
-							   randu(), randu(), randu(), randu());
-		if (!res.valid) continue;
-		// weight = f/pdf * cos(theta_i); for hair the BxDF already divides by
-		// cos(theta_i) so the MIS estimator weight is just (r+g+b)/3
-		double w = (res.r + res.g + res.b) / 3.0;
-		sum += w;
-		++n;
+			// Importance sampling via sample() converges well with ~5k samples
+			// even for sharp low-roughness distributions (unlike uniform sphere)
+			const int count = 5000;
+			double ySum = 0.0;
+			int n_valid = 0;
+
+			for (int i = 0; i < count; ++i) {
+				// Vary h (cross-section offset) per sample via QMC — same as pbrt-v4
+				double h_u = radical_inverse_base(3, (uint32_t)i);
+				double h = std::max(-0.999999, std::min(0.999999, -1.0 + 2.0 * h_u));
+
+				// Construct with alpha=0 matching pbrt-v4 furnace test, sigma_a=0
+				HairBxDF<double> bxdf(h, 1.55, 0.0, 0.0, 0.0, beta_m, beta_n, 0.0);
+
+				// Build the hair ONB (needed to retrieve |wi_lz| after sampling)
+				double bx, by, bz, cx, cy, cz;
+				bxdf.build_hair_onb(TX, TY, TZ, bx, by, bz, cx, cy, cz);
+
+				// Importance-sample a wi direction
+				auto res = bxdf.sample(TX, TY, TZ, wox, woy, woz,
+									   radical_inverse_base2((uint32_t)i),
+									   radical_inverse_base(5, (uint32_t)i),
+									   radical_inverse_base(7, (uint32_t)i),
+									   radical_inverse_base(11, (uint32_t)i));
+				if (!res.valid) continue;
+
+				// Convert sampled world-space direction to local to get |wi_lz|
+				double wil_x, wil_y, wil_z;
+				bxdf.to_local(TX, TY, TZ, bx, by, bz, cx, cy, cz,
+							  res.wo_x, res.wo_y, res.wo_z, wil_x, wil_y, wil_z);
+				double abs_wi_lz = std::fabs(wil_z);
+
+				// IS estimator for energy conservation:
+				//   res.r = eval_local.r / pdf = (fsum.r / |wi_lz|) / pdf
+				//   res.r * |wi_lz| = fsum.r / pdf
+				//   E_pdf[fsum.avg / pdf] = integral of fsum.avg over sphere = 1
+				double weight = (res.r + res.g + res.b) / 3.0 * abs_wi_lz;
+				if (std::isfinite(weight) && weight >= 0.0) {
+					ySum += weight;
+					++n_valid;
+				}
+			}
+
+			double avg = n_valid > 0 ? ySum / n_valid : 0.0;
+
+			// Allow [0.90, 1.10] tolerance: slightly wider than pbrt-v4's [0.95, 1.05]
+			// to account for h-averaging variance in the IS estimator
+			EXPECT_GE(avg, 0.90) << "beta_m=" << beta_m << " beta_n=" << beta_n
+								 << " avg=" << avg << " (energy conservation violated)";
+			EXPECT_LE(avg, 1.10) << "beta_m=" << beta_m << " beta_n=" << beta_n
+								 << " avg=" << avg << " (energy creation detected)";
+		}
 	}
-	double avg = n > 0 ? sum / n : 0.0;
-	EXPECT_LE(avg, 3.0) << "average weight exceeds energy conservation bound";
-	EXPECT_GE(avg, 0.0) << "average weight is negative";
 }
 
 // ---------------------------------------------------------------------------
