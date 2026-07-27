@@ -44,6 +44,10 @@
 #include <vector>
 #include <algorithm>
 #include <utility>
+#if defined(_MSC_VER)
+#  include <intrin.h>   // _BitScanReverse
+#endif
+#include <utility>
 
 #include "pmj02_data.h"   // 5 x 65536 x 2 uint32_t table
 #include "bluenoise.h"    // blue_noise(dim, px, py)
@@ -117,39 +121,45 @@ inline uint32_t permutation_element(uint32_t i, uint32_t l, uint32_t p) {
 	return (i + p) % l;
 }
 
-// IsPowerOf4 / Log4Int / RoundUpPow4 -- pbrt-v4 src/pbrt/util/math.h
-inline bool is_power_of4(int v) {
-	return v > 0 && (v & (v - 1)) == 0 && (v & 0xAAAAAAAA) == 0;
+// IsPowerOf4 / Log4Int / RoundUpPow4 -- exact port of pbrt-v4 src/pbrt/util/math.h
+
+// Count trailing zeros = floor(log2(v)) for v > 0  (pbrt-v4 Log2Int)
+inline int log2_int(uint32_t v) {
+	if (v == 0) return 0;
+	// count leading zeros via bit scan
+	unsigned long idx = 0;
+#if defined(_MSC_VER)
+	_BitScanReverse(&idx, v);
+	return (int)idx;
+#else
+	return 31 - __builtin_clz(v);
+#endif
 }
 
-// log base-4 of a power-of-4 integer
+// Floor(log4(v)) -- matches pbrt-v4 Log4Int(v) = Log2Int(v)/2
 inline int log4_int(int v) {
-	int n = 0;
-	while (v > 1) { v >>= 2; ++n; }
-	return n;
+	return log2_int((uint32_t)v) / 2;
 }
 
-// Round up to next power of 4
+// Is v an exact power of 4? -- matches pbrt-v4 IsPowerOf4
+inline bool is_power_of4(int v) {
+	return v > 0 && v == (1 << (2 * log4_int(v)));
+}
+
+// Smallest power of 4 >= v -- matches pbrt-v4 RoundUpPow4
 inline int round_up_pow4(int v) {
-	// round up to power of 2, then ensure it's also a power of 4
-	v--;
-	v |= v >> 1; v |= v >> 2; v |= v >> 4; v |= v >> 8; v |= v >> 16;
-	v++;
-	// if log2(v) is odd, double it
-	if (v > 1 && (v & (v >> 1))) v <<= 1;
-	return v;
+	return is_power_of4(v) ? v : (1 << (2 * (1 + log4_int(v))));
 }
 
 // Convert fixed-point uint32 pair to float2 (pbrt-v4 GetPMJ02BNSample)
 // Uses double precision for better pixel-sorting accuracy (matching pbrt-v4).
+// GetPMJ02BNSample -- verbatim port of pbrt-v4 GetPMJ02BNSample (non-GPU path).
+// Double precision scaling is key for accurate pixel-sorting in the constructor.
 inline std::pair<float, float> get_pmj02bn_sample(int setIndex, int sampleIndex) {
-	using namespace pmj02_detail;
-	using namespace pmj02_detail;  // for constants from pmj02_data.h
-	setIndex    %= pmj02_detail::nPMJ02bnSets;
-	sampleIndex %= pmj02_detail::nPMJ02bnSamples;
-	// Double precision scaling matches pbrt-v4's non-GPU path
-	double x = pmj02_detail::pmj02bnSamples[setIndex][sampleIndex][0] * 0x1p-32;
-	double y = pmj02_detail::pmj02bnSamples[setIndex][sampleIndex][1] * 0x1p-32;
+	setIndex    %= nPMJ02bnSets;
+	sampleIndex %= nPMJ02bnSamples;
+	double x = pmj02bnSamples[setIndex][sampleIndex][0] * 0x1p-32;
+	double y = pmj02bnSamples[setIndex][sampleIndex][1] * 0x1p-32;
 	return { (float)x, (float)y };
 }
 
