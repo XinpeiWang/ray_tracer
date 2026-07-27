@@ -58,7 +58,9 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;NOMINMAX;_USE_MATH_DEFINES;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\optix;$(SolutionDir)tests\build\_deps\googletest-src\googletest\include;$(SolutionDir)tests\build\_deps\googletest-src\googletest;$(SolutionDir)tests\build\_deps\googletest-src\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <DebugInformationFormat>OldStyle</DebugInformationFormat>
+      <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)src\shared;$(SolutionDir)src;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\optix;$(SolutionDir)tests\build\_deps\googletest-src\googletest\include;$(SolutionDir)tests\build\_deps\googletest-src\googletest;$(SolutionDir)tests\build\_deps\googletest-src\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -77,7 +79,9 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;NOMINMAX;_USE_MATH_DEFINES;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-      <AdditionalIncludeDirectories>$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\optix;$(SolutionDir)tests\build\_deps\googletest-src\googletest\include;$(SolutionDir)tests\build\_deps\googletest-src\googletest;$(SolutionDir)tests\build\_deps\googletest-src\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <DebugInformationFormat>OldStyle</DebugInformationFormat>
+      <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalIncludeDirectories>$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)src\shared;$(SolutionDir)src;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\optix;$(SolutionDir)tests\build\_deps\googletest-src\googletest\include;$(SolutionDir)tests\build\_deps\googletest-src\googletest;$(SolutionDir)tests\build\_deps\googletest-src\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -96,16 +100,25 @@
     <ClCompile Include="gtest_all.cpp" />
     <ClCompile Include="gtest_main_wrapper.cpp" />
     <ClCompile Include="unit\bsdf_chi2_tests.cpp" />
+    <ClCompile Include="unit\bvh_light_sampler_tests.cpp" />
     <ClCompile Include="unit\bvh_tests.cpp" />
     <ClCompile Include="unit\bxdf_tests.cpp" />
     <ClCompile Include="unit\camera_tests.cpp" />
     <ClCompile Include="unit\filter_tests.cpp" />
+    <ClCompile Include="unit\hair_bxdf_tests.cpp" />
+    <ClCompile Include="unit\halton_sampler_tests.cpp" />
+    <ClCompile Include="unit\loop_subdivide_tests.cpp" />
+    <ClCompile Include="unit\mipmap_tests.cpp" />
+    <ClCompile Include="unit\blue_noise_tests.cpp" />
     <ClCompile Include="unit\mis_tests.cpp" />
-    <ClCompile Include="unit\normal_bump_tests.cpp" />
+    <ClCompile Include="unit\noise_tests.cpp" />
     <ClCompile Include="unit\normal_map_tests.cpp" />
     <ClCompile Include="unit\path_sampler_tests.cpp" />
     <ClCompile Include="unit\piecewise_dist_tests.cpp" />
     <ClCompile Include="unit\power_light_sampler_tests.cpp" />
+    <ClCompile Include="unit\principled_bsdf_tests.cpp" />
+    <ClCompile Include="unit\punctual_light_tests.cpp" />
+    <ClCompile Include="unit\sampling_tests.cpp" />
     <ClCompile Include="unit\scene_tests.cpp" />
     <ClCompile Include="unit\scene_registry_tests.cpp" />
     <ClCompile Include="unit\math_tests.cpp" />
@@ -122,6 +135,8 @@
     <ClCompile Include="unit\sobol_sampler_tests.cpp" />
     <ClCompile Include="unit\sobol_strat_tests.cpp" />
     <ClCompile Include="unit\tone_map_tests.cpp" />
+    <ClCompile Include="unit\triangle_tests.cpp" />
+    <ClCompile Include="unit\volume_scattering_tests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\cpu_renderer\cpu_renderer.vcxproj">
