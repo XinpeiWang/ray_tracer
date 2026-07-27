@@ -111,6 +111,8 @@
     <ClCompile Include="unit\mipmap_tests.cpp" />
     <ClCompile Include="unit\blue_noise_tests.cpp" />
     <ClCompile Include="unit\pmj02_sampler_tests.cpp" />
+    <ClCompile Include="unit\filter_sampler_tests.cpp" />
+    <ClCompile Include="unit\power_light_sampler_tests.cpp" />
     <ClCompile Include="unit\mis_tests.cpp" />
     <ClCompile Include="unit\noise_tests.cpp" />
     <ClCompile Include="unit\normal_map_tests.cpp" />

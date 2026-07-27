@@ -21,7 +21,11 @@
 // BoxFilter -- uniform weight 1 for all samples (current default, baseline)
 // ---------------------------------------------------------------------------
 struct BoxFilter {
+	explicit BoxFilter(double radius = 0.5) : radius_(radius) {}
 	double evaluate(double /*ox*/, double /*oy*/) const { return 1.0; }
+	double radius() const { return radius_; }
+  private:
+	double radius_;
 };
 
 // ---------------------------------------------------------------------------
