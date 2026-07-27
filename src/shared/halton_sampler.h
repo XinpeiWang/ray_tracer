@@ -31,6 +31,7 @@
 
 #include <cstdint>
 #include <cmath>
+#include <cstring>
 #include <vector>
 #include <algorithm>
 #include <cassert>
@@ -97,22 +98,89 @@ inline uint64_t inverse_radical_inverse(uint64_t inv, int base, int n_digits) {
 }
 
 // ---------------------------------------------------------------------------
+// Hashing utilities -- verbatim port of pbrt-v4 MixBits, MurmurHash64A, Hash
+// (src/pbrt/util/hash.h)
+// ---------------------------------------------------------------------------
+
+inline uint64_t mix_bits(uint64_t v) {
+	v ^= (v >> 31); v *= 0x7fb5d329728ea185ull;
+	v ^= (v >> 27); v *= 0x81dadef4bc2dd44dull;
+	v ^= (v >> 33);
+	return v;
+}
+
+inline uint64_t murmur_hash64a(const unsigned char* key, size_t len, uint64_t seed) {
+	const uint64_t m = 0xc6a4a7935bd1e995ull;
+	const int r = 47;
+	uint64_t h = seed ^ (len * m);
+	const unsigned char* end = key + 8 * (len / 8);
+	while (key != end) {
+		uint64_t k;
+		std::memcpy(&k, key, sizeof(uint64_t));
+		key += 8;
+		k *= m; k ^= k >> r; k *= m;
+		h ^= k; h *= m;
+	}
+	switch (len & 7) {
+		case 7: h ^= uint64_t(key[6]) << 48; [[fallthrough]];
+		case 6: h ^= uint64_t(key[5]) << 40; [[fallthrough]];
+		case 5: h ^= uint64_t(key[4]) << 32; [[fallthrough]];
+		case 4: h ^= uint64_t(key[3]) << 24; [[fallthrough]];
+		case 3: h ^= uint64_t(key[2]) << 16; [[fallthrough]];
+		case 2: h ^= uint64_t(key[1]) << 8;  [[fallthrough]];
+		case 1: h ^= uint64_t(key[0]); h *= m;
+	}
+	h ^= h >> r; h *= m; h ^= h >> r;
+	return h;
+}
+
+template <typename... Args>
+inline uint64_t halton_hash(Args... args) {
+	constexpr size_t sz = (sizeof(Args) + ... + 0);
+	constexpr size_t n  = (sz + 7) / 8;
+	uint64_t buf[n];
+	// pack args into buf
+	char* p = reinterpret_cast<char*>(buf);
+	auto pack = [&](auto v) { std::memcpy(p, &v, sizeof(v)); p += sizeof(v); };
+	(pack(args), ...);
+	return murmur_hash64a(reinterpret_cast<const unsigned char*>(buf), sz, 0);
+}
+
+// ---------------------------------------------------------------------------
+// PermutationElement -- Feistel-cipher bijection over {0..n-1}
+// Verbatim port of pbrt-v4 PermutationElement (src/pbrt/util/math.h)
+// ---------------------------------------------------------------------------
+inline uint32_t permutation_element(uint32_t i, uint32_t l, uint32_t p) {
+	uint32_t w = l - 1;
+	w |= w >> 1; w |= w >> 2; w |= w >> 4; w |= w >> 8; w |= w >> 16;
+	do {
+		i ^= p;           i *= 0xe170893d;
+		i ^= p >> 16;     i ^= (i & w) >> 4;
+		i ^= p >> 8;      i *= 0x0929eb3f;
+		i ^= p >> 23;     i ^= (i & w) >> 1;
+		i *= 1 | p >> 27; i *= 0x6935fa69;
+		i ^= (i & w) >> 11; i *= 0x74dcb303;
+		i ^= (i & w) >> 2;  i *= 0x9e501cc3;
+		i ^= (i & w) >> 2;  i *= 0xc860a3df;
+		i &= w;           i ^= i >> 5;
+	} while (i >= l);
+	return (i + p) % l;
+}
+
+// ---------------------------------------------------------------------------
 // DigitPermutation -- per-dimension scrambling table
-// pbrt-v4: src/pbrt/util/lowdiscrepancy.h  DigitPermutation
-//
-// We replace pbrt-v4's allocator-based approach with std::vector.
-// The permutation is built with a simple LCG hash to shuffle each digit slot,
-// which faithfully reproduces the "PermuteDigits" randomization strategy.
+// Exact port of pbrt-v4 DigitPermutation (src/pbrt/util/lowdiscrepancy.h)
+// Uses Hash(base, digitIndex, seed) + PermutationElement for each slot.
 // ---------------------------------------------------------------------------
 struct DigitPermutation {
-	int base = 0;
+	int base     = 0;
 	int n_digits = 0;
 	std::vector<uint16_t> permutations; // [n_digits * base]
 
 	DigitPermutation() = default;
 
 	DigitPermutation(int b, uint32_t seed) : base(b) {
-		// Compute how many base-b digits fit in a double
+		// Compute how many base-b digits fit in a double (matching pbrt-v4)
 		double inv_base = 1.0 / b, inv_base_m = 1.0;
 		n_digits = 0;
 		while (1.0 - (b - 1) * inv_base_m < 1.0) {
@@ -121,35 +189,19 @@ struct DigitPermutation {
 		}
 		permutations.resize(n_digits * base);
 
-		// Fill each digit slot with a seeded shuffle
-		for (int di = 0; di < n_digits; ++di) {
-			// Seed for this digit index
-			uint64_t dseed = mix_bits(uint64_t(seed) ^ (uint64_t(b) << 32) ^ uint64_t(di));
-			// Fill with identity then Fisher-Yates
-			for (int v = 0; v < base; ++v)
-				permutations[di * base + v] = (uint16_t)v;
-			for (int v = base - 1; v > 0; --v) {
-				dseed = lcg_step(dseed);
-				int j = (int)(dseed % (uint64_t)(v + 1));
-				std::swap(permutations[di * base + v],
-						  permutations[di * base + j]);
+		// Compute random permutations: verbatim pbrt-v4 logic
+		for (int digit_index = 0; digit_index < n_digits; ++digit_index) {
+			uint64_t dseed = halton_hash(b, digit_index, seed);
+			for (int digit_value = 0; digit_value < base; ++digit_value) {
+				int index = digit_index * base + digit_value;
+				permutations[index] = (uint16_t)permutation_element(
+					(uint32_t)digit_value, (uint32_t)base, (uint32_t)dseed);
 			}
 		}
 	}
 
 	int permute(int digit_index, int digit_value) const {
 		return permutations[digit_index * base + digit_value];
-	}
-
-private:
-	static uint64_t mix_bits(uint64_t v) {
-		v ^= (v >> 31); v *= 0x7fb5d329728ea185ull;
-		v ^= (v >> 27); v *= 0x81dadef4bc2dd44dull;
-		v ^= (v >> 33);
-		return v;
-	}
-	static uint64_t lcg_step(uint64_t v) {
-		return v * 6364136223846793005ull + 1442695040888963407ull;
 	}
 };
 
