@@ -70,29 +70,47 @@ public:
 
 	// Sample a filter position given two uniform [0,1) variates.
 	// Returns a FilterSample with position in [-radius,+radius]² and weight = f/pdf.
+	//
+	// Mirrors pbrt-v4 FilterSampler::Sample + PiecewiseConstant1D::Sample:
+	// after selecting the cell via CDF inversion, we linearly interpolate within
+	// the cell using the fractional overshoot  du = (u - cdf_prev) / (cdf_curr - cdf_prev)
+	// to produce a continuous position, exactly as pbrt-v4 does with:
+	//   return Lerp((o + du) / size(), min, max)
 	CPU_GPU FilterSample<T> sample(T u1, T u2) const {
-		// u2 → row (y), u1 → column (x) within that row
-		// Binary search marginal CDF for row
+		// u2 → row (y) via marginal CDF, u1 → column (x) via conditional CDF
 		int row = lower_bound_cdf(marginal_cdf_, N, u2);
-
-		// Binary search row CDF for column
 		int col = lower_bound_cdf(conditional_cdf_[row], N, u1);
 
-		// Map (col, row) to continuous filter-domain position (cell center)
 		T cell_w = T(2) * radius_ / T(N);
 		T cell_h = T(2) * radius_ / T(N);
-		T px = -radius_ + (T(col) + T(0.5)) * cell_w;
-		T py = -radius_ + (T(row) + T(0.5)) * cell_h;
 
+		// Intra-cell interpolation (pbrt-v4 PiecewiseConstant1D::Sample)
+		// du/dv ∈ [0,1): fractional position within the selected cell
+		T cdf_col_prev = (col > 0) ? conditional_cdf_[row][col - 1] : T(0);
+		T cdf_col_curr = conditional_cdf_[row][col];
+		T du = (cdf_col_curr > cdf_col_prev)
+				   ? (u1 - cdf_col_prev) / (cdf_col_curr - cdf_col_prev)
+				   : T(0.5);
+
+		T cdf_row_prev = (row > 0) ? marginal_cdf_[row - 1] : T(0);
+		T cdf_row_curr = marginal_cdf_[row];
+		T dv = (cdf_row_curr > cdf_row_prev)
+				   ? (u2 - cdf_row_prev) / (cdf_row_curr - cdf_row_prev)
+				   : T(0.5);
+
+		// Continuous position: pbrt-v4 Lerp((o + du) / size(), min, max)
+		T px = -radius_ + (T(col) + du) * cell_w;
+		T py = -radius_ + (T(row) + dv) * cell_h;
+
+		// weight = f(p) / pdf(p) = f_cell / (f_cell / integral) = integral
+		// (constant for importance sampling from pdf ∝ f, same as pbrt-v4)
 		T fval = f_[row][col];
 		T pdf  = pdf_[row][col];
-
-		// Avoid division by near-zero (degenerate filter region)
 		T w = (pdf > T(1e-14)) ? fval / pdf : T(0);
 
 		FilterSample<T> s;
-		s.p_x   = px;
-		s.p_y   = py;
+		s.p_x    = px;
+		s.p_y    = py;
 		s.weight = w;
 		return s;
 	}

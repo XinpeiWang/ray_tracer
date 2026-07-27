@@ -246,3 +246,27 @@ TEST(FilterSampler, HighResolutionIntegralAccuracy) {
 	EXPECT_LT(err_hi, err_lo * 2.0)
 		<< "Higher resolution should give comparable or better integral accuracy";
 }
+
+// ---------------------------------------------------------------------------
+// Test: Intra-cell interpolation produces continuous, non-quantized positions
+//   pbrt-v4 uses fractional CDF interpolation so that two nearby u values give
+//   nearby positions (not always snapped to the same cell center).
+//   We verify: for N=4, distinct u values in the same cell give distinct px.
+// ---------------------------------------------------------------------------
+TEST(FilterSampler, SampledPositionsAreContinuous) {
+	BoxFilter f(0.5);
+	FilterSampler<double, 4> fs(f);  // coarse grid to make quantization obvious
+
+	// Two u1 values very close but distinct, same u2
+	auto s1 = fs.sample(0.0,   0.5);
+	auto s2 = fs.sample(0.001, 0.5);
+	auto s3 = fs.sample(0.499, 0.5);
+	auto s4 = fs.sample(0.500, 0.5);
+
+	// With cell-center snapping they'd all return -0.375 or -0.125.
+	// With interpolation, s1.p_x < s2.p_x < s3.p_x and s4 may be in the next cell.
+	EXPECT_LT(s1.p_x, s2.p_x)
+		<< "Interpolated positions should be strictly ordered within a cell";
+	EXPECT_LT(s2.p_x, s3.p_x)
+		<< "Interpolated positions should increase with u1 within a cell";
+}
