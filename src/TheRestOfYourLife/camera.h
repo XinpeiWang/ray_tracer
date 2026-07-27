@@ -16,6 +16,7 @@
 #include <cmath>
 #include "material.h"
 #include "sky_light.h"
+#include "punctual_light_objects.h"
 #include "../shared/path_sampler.h"
 #include "../shared/sobol_sampler.h"
 #include "../shared/filter.h"
@@ -45,7 +46,8 @@ class camera {
     int    samples_per_pixel = 10;   // Count of random samples for each pixel
     int    max_depth         = 10;   // Maximum number of ray bounces into scene
     color  background;               // Scene background color (used when sky==nullptr)
-    shared_ptr<sky_light> sky;        // HDR env map (pbrt-v4 ImageInfiniteLight); nullptr = flat background
+    shared_ptr<sky_light> sky;               // HDR env map (pbrt-v4 ImageInfiniteLight); nullptr = flat background
+    shared_ptr<punctual_light_list> punct_lights; // pbrt-v4 PointLight/SpotLight/DistantLight (delta); nullptr = none
 
     double vfov     = 90;              // Vertical view angle (field of view)
     point3 lookfrom = point3(0,0,0);   // Point camera is looking from
@@ -520,6 +522,25 @@ class camera {
                         }
                     }
                 }
+            }
+
+            // Strategy A-3: NEE toward punctual (delta) lights
+            // pbrt-v4: DeltaPosition/DeltaDirection lights bypass MIS -- PDF=1 (delta),
+            // contribution = beta * BSDF * Li (no MIS weight needed since PDF=1).
+            if (punct_lights && !punct_lights->empty()) {
+                punct_lights->for_each_sample(rec.p, [&](const PunctualLiSample& ps) {
+                    if (ps.Li.x() <= 0 && ps.Li.y() <= 0 && ps.Li.z() <= 0) return;
+                    double f_pdf = rec.mat->scattering_pdf(current_ray, rec,
+                                                           ray(rec.p, ps.wi, current_ray.time()));
+                    if (f_pdf <= 0.0) return;
+                    hit_record shadow_rec;
+                    interval shadow_t(0.001, ps.t_max - 0.001);
+                    if (ps.t_max == infinity) shadow_t = interval(0.001, infinity);
+                    if (!world.hit(ray(rec.p, ps.wi, current_ray.time()), shadow_t, shadow_rec)) {
+                        // delta light: pdf=1, no MIS weight needed
+                        L += beta * srec.attenuation * f_pdf * ps.Li;
+                    }
+                });
             }
 
             // Strategy B: BSDF sample becomes next path ray
