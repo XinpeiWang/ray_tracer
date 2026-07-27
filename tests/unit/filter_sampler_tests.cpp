@@ -1,6 +1,7 @@
 // filter_sampler_tests.cpp
 // Unit tests for FilterSampler<T,N> (src/shared/filter_sampler.h)
-// Mirrors pbrt-v4 FilterSampler validation approach.
+// and LanczosSincFilter (src/shared/filter.h)
+// Mirrors pbrt-v4 FilterSampler / LanczosSincFilter validation approach.
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -269,4 +270,116 @@ TEST(FilterSampler, SampledPositionsAreContinuous) {
 		<< "Interpolated positions should be strictly ordered within a cell";
 	EXPECT_LT(s2.p_x, s3.p_x)
 		<< "Interpolated positions should increase with u1 within a cell";
+}
+
+// ===========================================================================
+// LanczosSincFilter tests
+// pbrt-v4 reference: filters.h LanczosSincFilter, math.h WindowedSinc/Sinc
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Test: evaluate(0,0) == 1  (sinc(0)*sinc(0) = 1*1 = 1)
+// ---------------------------------------------------------------------------
+TEST(LanczosSincFilter, PeakAtOriginIsOne) {
+	LanczosSincFilter f(4.0, 3.0);
+	EXPECT_NEAR(f.evaluate(0.0, 0.0), 1.0, 1e-12);
+}
+
+// ---------------------------------------------------------------------------
+// Test: evaluate returns 0 outside [-radius, +radius]
+// ---------------------------------------------------------------------------
+TEST(LanczosSincFilter, ZeroOutsideRadius) {
+	LanczosSincFilter f(4.0, 3.0);
+	EXPECT_EQ(f.evaluate(4.001, 0.0), 0.0);
+	EXPECT_EQ(f.evaluate(0.0, -4.001), 0.0);
+	EXPECT_EQ(f.evaluate(5.0, 5.0), 0.0);
+}
+
+// ---------------------------------------------------------------------------
+// Test: evaluate is symmetric (even function)
+// ---------------------------------------------------------------------------
+TEST(LanczosSincFilter, Symmetric) {
+	LanczosSincFilter f(4.0, 3.0);
+	for (double x : {0.5, 1.0, 1.5, 2.0, 3.0, 3.9}) {
+		EXPECT_NEAR(f.evaluate(x, 1.0), f.evaluate(-x, 1.0), 1e-12)
+			<< "Filter should be symmetric in x at x=" << x;
+		EXPECT_NEAR(f.evaluate(1.0, x), f.evaluate(1.0, -x), 1e-12)
+			<< "Filter should be symmetric in y at y=" << x;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Test: evaluate is separable: f(x,y) == f(x,0)*f(0,y) / f(0,0)
+//   WindowedSinc(x)*WindowedSinc(y), and since f(0,0)=1, f(x,y)=f1d(x)*f1d(y)
+// ---------------------------------------------------------------------------
+TEST(LanczosSincFilter, Separable) {
+	LanczosSincFilter f(4.0, 3.0);
+	for (double x : {0.3, 1.2, 2.5, 3.7}) {
+		for (double y : {0.1, 0.9, 2.0, 3.5}) {
+			double fx = f.evaluate(x, 0.0);
+			double fy = f.evaluate(0.0, y);
+			EXPECT_NEAR(f.evaluate(x, y), fx * fy, 1e-12)
+				<< "Separability failed at (" << x << "," << y << ")";
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Test: tau parameter changes the filter (wider tau = more lobes = sharper)
+// ---------------------------------------------------------------------------
+TEST(LanczosSincFilter, TauAffectsFilterShape) {
+	LanczosSincFilter f1(4.0, 1.0);  // narrow: 1 lobe
+	LanczosSincFilter f3(4.0, 3.0);  // default: 3 lobes
+	// At x=1.5 (first negative lobe region), tau=1 differs from tau=3
+	double v1 = f1.evaluate(1.5, 0.0);
+	double v3 = f3.evaluate(1.5, 0.0);
+	EXPECT_NE(v1, v3) << "Different tau should produce different filter values";
+}
+
+// ---------------------------------------------------------------------------
+// Test: radius() and tau() accessors return the constructed values
+// ---------------------------------------------------------------------------
+TEST(LanczosSincFilter, AccessorsCorrect) {
+	LanczosSincFilter f(3.5, 2.5);
+	EXPECT_NEAR(f.radius(), 3.5, 1e-12);
+	EXPECT_NEAR(f.tau(),    2.5, 1e-12);
+}
+
+// ---------------------------------------------------------------------------
+// Test: LanczosSinc works with FilterSampler — IS normalisation check
+//   E[f/pdf] = integral  (same identity as for other filter types)
+// ---------------------------------------------------------------------------
+TEST(LanczosSincFilter, FilterSamplerISNormalised) {
+	// Use small radius so the 32x32 grid is dense enough
+	LanczosSincFilter f(2.0, 3.0);
+	FilterSampler<double> fs(f);
+
+	EXPECT_GT(fs.integral(), 0.0) << "Lanczos integral should be positive";
+
+	double sumW = 0.0;
+	const int N = 3000;
+	for (int i = 0; i < N; ++i) {
+		auto s = fs.sample(radical_inverse2((uint32_t)i),
+						   radical_inverse3((uint32_t)i));
+		sumW += s.weight;
+	}
+	double avg = sumW / N;
+	EXPECT_NEAR(avg, fs.integral(), fs.integral() * 0.05)
+		<< "Lanczos IS avg=" << avg << " integral=" << fs.integral();
+}
+
+// ---------------------------------------------------------------------------
+// Test: Sampled positions stay within [-radius, +radius] for Lanczos
+// ---------------------------------------------------------------------------
+TEST(LanczosSincFilter, FilterSamplerPositionsInDomain) {
+	LanczosSincFilter f(2.0, 3.0);
+	FilterSampler<double> fs(f);
+
+	for (uint32_t i = 0; i < 300; ++i) {
+		auto s = fs.sample(radical_inverse2(i), radical_inverse3(i));
+		EXPECT_GE(s.p_x, -2.0 - 1e-9);
+		EXPECT_LE(s.p_x,  2.0 + 1e-9);
+		EXPECT_GE(s.p_y, -2.0 - 1e-9);
+		EXPECT_LE(s.p_y,  2.0 + 1e-9);
+	}
 }

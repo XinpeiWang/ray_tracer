@@ -481,39 +481,154 @@ struct RoughDielectricBxDF {
 };
 
 // ===========================================================================
+// ===========================================================================
+// layered_detail -- internal helpers for LayeredBxDF random walk
+//
+// pbrt-v4 reference: LayeredBxDF (bxdfs.h), RNG (util/rng.h), Tr (bxdfs.h)
+// ===========================================================================
+namespace layered_detail {
+
+// Inline PCG32 RNG -- minimal port of pbrt-v4 RNG (util/rng.h)
+// Seeded per-path from caller-supplied (seed0, seed1) pair.
+struct PCG32 {
+	uint64_t state, inc;
+	static constexpr uint64_t MULT = 6364136223846793005ULL;
+
+	CPU_GPU PCG32(uint64_t seq, uint64_t seed) {
+		state = 0; inc = (seq << 1u) | 1u;
+		step(); state += seed; step();
+	}
+
+	CPU_GPU uint32_t step() {
+		uint64_t old = state;
+		state = old * MULT + inc;
+		uint32_t xs  = (uint32_t)(((old >> 18u) ^ old) >> 27u);
+		uint32_t rot = (uint32_t)(old >> 59u);
+		return (xs >> rot) | (xs << ((~rot + 1u) & 31u));
+	}
+
+	// uniform float in [0, 1)
+	CPU_GPU float uf() {
+		// Use 24-bit mantissa for float precision
+		return (step() >> 8) * (1.0f / 16777216.0f);
+	}
+};
+
+// Tr(thickness, w) -- Beer-Lambert transmittance through slab of unit extinction
+// sigma_t = 1 (normalised); pbrt-v4: Tr = exp(-sigma_t * dz / |w.z|)
+template<typename T>
+CPU_GPU T Tr(T thickness, T wz) {
+#if defined(__CUDACC__)
+	return expf(-thickness / fabsf(wz));
+#else
+	return std::exp(-thickness / std::fabs(wz));
+#endif
+}
+
+// SampleExponential(u, rate) -- pbrt-v4 SampleExponential
+template<typename T>
+CPU_GPU T SampleExponential(T u, T rate) {
+#if defined(__CUDACC__)
+	return -logf(T(1) - u) / rate;
+#else
+	return -std::log(T(1) - u) / rate;
+#endif
+}
+
+// safe_sqrt
+template<typename T>
+CPU_GPU T safe_sqrt(T x) {
+#if defined(__CUDACC__)
+	return sqrtf(x > T(0) ? x : T(0));
+#else
+	return std::sqrt(x > T(0) ? x : T(0));
+#endif
+}
+
+// cosine-weighted hemisphere sample in local frame (z = normal)
+template<typename T>
+CPU_GPU void cosine_sample(T u1, T u2, T& ox, T& oy, T& oz) {
+	const T pi2 = T(6.28318530717958647692);
+#if defined(__CUDACC__)
+	T phi = pi2 * u1;
+	T r   = sqrtf(u2);
+	ox    = r * cosf(phi);
+	oy    = r * sinf(phi);
+	oz    = sqrtf(T(1) - u2);
+#else
+	T phi = pi2 * u1;
+	T r   = std::sqrt(u2);
+	ox    = r * std::cos(phi);
+	oy    = r * std::sin(phi);
+	oz    = std::sqrt(T(1) - u2);
+#endif
+}
+
+// HenyeyGreenstein phase sample and eval (inline, no world-frame)
+// Returns new wz component after scattering in 1D (azimuth handled separately)
+template<typename T>
+CPU_GPU T hg_sample_cos(T g, T u) {
+	if (g * g < T(1e-6)) return T(1) - T(2) * u;  // isotropic
+	T gc  = g;
+	T sq  = (T(1) - gc*gc) / (T(1) + gc - T(2)*gc*u);
+	return -T(1) / (T(2)*gc) * (T(1) + gc*gc - sq*sq);
+}
+
+template<typename T>
+CPU_GPU T hg_eval(T cos_theta, T g) {
+	const T inv4pi = T(1) / (T(4) * T(3.14159265358979323846));
+	T denom = T(1) + g*g + T(2)*g*cos_theta;
+	return inv4pi * (T(1) - g*g) / (denom * safe_sqrt(denom));
+}
+
+} // namespace layered_detail
+
+// ===========================================================================
 // 8. CoatedDiffuseBxDF  (rough dielectric coat over Lambertian base)
-//    Mirrors pbrt-v4 CoatedDiffuseBxDF = LayeredBxDF<DielectricBxDF, DiffuseBxDF>
+//    Mirrors pbrt-v4 CoatedDiffuseBxDF = LayeredBxDF<DielectricBxDF, DiffuseBxDF, true>
 //
-//    Path A (u3 < F_in): coat GGX specular reflection
-//      attenuation = F_in * G/G1  (achromatic coat)
-//    Path B: transmit into layer -> Lambertian -> exit coat
-//      attenuation = albedo * (1-F_in) * (1-F_out)
+//    Full random-walk evaluation (pbrt-v4 LayeredBxDF::Sample_f):
+//      - Top interface: GGX dielectric (coat_ior)
+//      - Bottom interface: Lambertian (albedo)
+//      - Optional medium albedo and HG phase (set albedo_medium > 0)
+//      - maxDepth bounces; terminates via Russian roulette after depth 3
 //
-//    u1,u2: VNDF sample; u3: coat reflect/transmit; u4,u5: cosine sample (Path B)
+//    sample_local(wi_x,wi_y,wi_z, seed0, seed1):
+//      - Returns the sampled exit direction + throughput weight (no pdf division)
+//      - seed0/seed1 are 64-bit values from the caller's RNG state
 //    All in local frame (z = surface normal).
 // ===========================================================================
 template<typename T>
 struct CoatedDiffuseBxDF {
-	T albedo_r, albedo_g, albedo_b;
-	T coat_ior;
-	T alpha;
+	T albedo_r, albedo_g, albedo_b;   // Lambertian base color
+	T coat_ior;                        // dielectric coat IOR (>1, e.g. 1.5)
+	T alpha;                           // GGX roughness of coat surface
+	T thickness = T(0.01);             // layer thickness (pbrt-v4 default 0.01)
+	T g         = T(0);               // HG phase function asymmetry (0=none)
+	T medium_albedo = T(0);           // scattering albedo of medium (0=vacuum)
+	int maxDepth  = 10;               // max random-walk bounces
+	int nSamples  = 1;                // samples per call (averaged)
 
 	CPU_GPU BxDFSampleResult<T> sample_local(
 		T wi_x, T wi_y, T wi_z,
-		T u1, T u2, T u3, T u4, T u5) const
+		uint64_t seed0, uint64_t seed1 = 0) const
 	{
 		BxDFSampleResult<T> res{};
 		if (wi_z <= T(0)) { res.valid = false; return res; }
 
 		TrowbridgeReitz<T> dist(alpha, alpha);
+		layered_detail::PCG32 rng(seed0, seed1 ^ 0xdeadbeefull);
+
+		// pbrt-v4: Sample entrance (top) interface
+		T u1 = (T)rng.uf(), u2 = (T)rng.uf(), uc = (T)rng.uf();
+
 		T wm_x, wm_y, wm_z;
 		dist.Sample_wm(wi_x, wi_y, wi_z, u1, u2, wm_x, wm_y, wm_z);
-
 		T cos_i = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
 		T F_in  = FrDielectric(cos_i, coat_ior);
 
-		if (u3 < F_in) {
-			// Path A: coat specular reflection
+		if (uc < F_in) {
+			// Reflect off the coat top -- specular (same as single-bounce)
 			T wo_x = T(2)*cos_i*wm_x - wi_x;
 			T wo_y = T(2)*cos_i*wm_y - wi_y;
 			T wo_z = T(2)*cos_i*wm_z - wi_z;
@@ -531,84 +646,179 @@ struct CoatedDiffuseBxDF {
 			return res;
 		}
 
-		// Path B: cosine-weighted Lambertian direction (in local frame: z=normal)
-		// Cosine sample in local frame
-#if defined(__CUDACC__)
-		T phi    = T(2) * T(3.14159265358979323846f) * u4;
-		T r_sq   = sqrtf(u5);
-		T lx     = r_sq * cosf(phi);
-		T ly     = r_sq * sinf(phi);
-		T lz     = sqrtf(T(1) - u5);
-#else
-		T phi    = T(2) * T(3.14159265358979323846) * u4;
-		T r_sq   = std::sqrt(u5);
-		T lx     = r_sq * std::cos(phi);
-		T ly     = r_sq * std::sin(phi);
-		T lz     = std::sqrt(T(1) - u5);
-#endif
-		// wo in local frame (z = normal)
-		T wo_x = lx, wo_y = ly, wo_z = lz;
-		if (wo_z <= T(0)) { res.valid = false; return res; }
+		// Transmitted into the layer -- start random walk toward bottom
+		// w is the current direction (travels downward after transmission)
+		T w_x = T(2)*cos_i*wm_x - wi_x;
+		T w_y = T(2)*cos_i*wm_y - wi_y;
+		T w_z = -(T(2)*cos_i*wm_z - wi_z);   // flip z: now going downward
+		if (w_z == T(0)) { res.valid = false; return res; }
+		// Ensure traveling downward (-z in layer)
+		if (w_z > T(0)) w_z = -w_z;
 
-#if defined(__CUDACC__)
-		T cos_out = fabsf(wo_z);
-#else
-		T cos_out = std::fabs(wo_z);
-#endif
-		T F_out = FrDielectric(cos_out, T(1) / coat_ior);
-		T T_in  = T(1) - F_in;
-		T T_out = T(1) - F_out;
-		T throughput = T_in * T_out;
+		T beta_r = T(1), beta_g = T(1), beta_b = T(1);
+		T z = thickness;   // started at top (z=thickness), going to bottom (z=0)
 
-		res.wo_x = wo_x; res.wo_y = wo_y; res.wo_z = wo_z;
-		res.r = albedo_r * throughput;
-		res.g = albedo_g * throughput;
-		res.b = albedo_b * throughput;
-		res.is_specular = false;
-		res.valid = true;
+		for (int depth = 0; depth < maxDepth; ++depth) {
+			// Russian roulette after depth 3
+			if (depth > 3) {
+#if defined(__CUDACC__)
+				T rrq = T(1) - fmaxf(beta_r, fmaxf(beta_g, beta_b));
+#else
+				T rrq = T(1) - std::max(beta_r, std::max(beta_g, beta_b));
+#endif
+				if (rrq > T(0) && (T)rng.uf() < rrq) { res.valid = false; return res; }
+				if (rrq > T(0)) { beta_r /= T(1)-rrq; beta_g /= T(1)-rrq; beta_b /= T(1)-rrq; }
+			}
+
+			// Medium scattering or direct boundary hit
+			if (medium_albedo > T(0)) {
+				T dz = layered_detail::SampleExponential((T)rng.uf(), T(1) / (w_z < T(0) ? -w_z : w_z));
+				T zp = (w_z > T(0)) ? z + dz : z - dz;
+				if (zp > T(0) && zp < thickness) {
+					// Scatter inside medium using HG phase function
+					T cos_theta = layered_detail::hg_sample_cos(g, (T)rng.uf());
+					T ph_val = layered_detail::hg_eval(cos_theta, g);
+					T ph_pdf = ph_val;
+					beta_r *= medium_albedo * ph_val / ph_pdf;
+					beta_g *= medium_albedo * ph_val / ph_pdf;
+					beta_b *= medium_albedo * ph_val / ph_pdf;
+					// Update direction (simplified: only wz updated, wxy randomised)
+					T phi_s = T(6.28318530717958647692) * (T)rng.uf();
+					T sin_theta = layered_detail::safe_sqrt(T(1) - cos_theta*cos_theta);
+#if defined(__CUDACC__)
+					w_x = sin_theta * cosf(phi_s);
+					w_y = sin_theta * sinf(phi_s);
+#else
+					w_x = sin_theta * std::cos(phi_s);
+					w_y = sin_theta * std::sin(phi_s);
+#endif
+					w_z = cos_theta;
+					z   = zp;
+					continue;
+				}
+#if defined(__CUDACC__)
+				z = fmaxf(T(0), fminf(zp, thickness));
+#else
+				z = std::max(T(0), std::min(zp, thickness));
+#endif
+			} else {
+				// No medium: advance directly to the other interface
+				beta_r *= layered_detail::Tr(thickness, w_z);
+				beta_g *= layered_detail::Tr(thickness, w_z);
+				beta_b *= layered_detail::Tr(thickness, w_z);
+				z = (w_z < T(0)) ? T(0) : thickness;
+			}
+
+			if (z <= T(0)) {
+				// Hit bottom: Lambertian bounce
+				layered_detail::cosine_sample((T)rng.uf(), (T)rng.uf(), w_x, w_y, w_z);
+				// w_z is positive (going up toward top)
+				beta_r *= albedo_r;
+				beta_g *= albedo_g;
+				beta_b *= albedo_b;
+				z = T(0);
+				// Next iteration will hit top interface
+			} else {
+				// Hit top interface from inside: try to exit
+				T wm2_x, wm2_y, wm2_z;
+				dist.Sample_wm(w_x, w_y, w_z, (T)rng.uf(), (T)rng.uf(), wm2_x, wm2_y, wm2_z);
+				T cos2 = w_x*wm2_x + w_y*wm2_y + w_z*wm2_z;
+				T F_out = FrDielectric(cos2, coat_ior);
+				if ((T)rng.uf() < F_out) {
+					// Internal reflection: continue walk downward
+					T rx = T(2)*cos2*wm2_x - w_x;
+					T ry = T(2)*cos2*wm2_y - w_y;
+					T rz = T(2)*cos2*wm2_z - w_z;
+					w_x = rx; w_y = ry; w_z = rz;
+					if (w_z > T(0)) w_z = -w_z; // keep traveling downward
+					z = thickness;
+					continue;
+				}
+				// Exit through coat top
+				T out_x = T(2)*cos2*wm2_x - w_x;
+				T out_y = T(2)*cos2*wm2_y - w_y;
+				T out_z = T(2)*cos2*wm2_z - w_z;
+				if (out_z <= T(0)) { res.valid = false; return res; }
+
+				res.wo_x = out_x; res.wo_y = out_y; res.wo_z = out_z;
+				res.r    = beta_r * (T(1) - F_out);
+				res.g = beta_g * (T(1) - F_out);
+				res.b    = beta_b * (T(1) - F_out);
+				res.is_specular = false;
+				res.valid = true;
+				return res;
+			}
+		}
+		res.valid = false;
 		return res;
+	}
+
+	// Backward-compat 5-float overload: derives a seed from the 5 input values
+	CPU_GPU BxDFSampleResult<T> sample_local(
+		T wi_x, T wi_y, T wi_z,
+		T u1, T u2, T u3, T u4, T u5) const
+	{
+		// Combine random inputs into a seed pair for the random walk
+		uint32_t s0, s1, s2, s3, s4;
+		s0 = (uint32_t)(u1 * 16777216.0f);
+		s1 = (uint32_t)(u2 * 16777216.0f);
+		s2 = (uint32_t)(u3 * 16777216.0f);
+		s3 = (uint32_t)(u4 * 16777216.0f);
+		s4 = (uint32_t)(u5 * 16777216.0f);
+		uint64_t seed0 = ((uint64_t)s0 << 32) | (uint64_t)s1;
+		uint64_t seed1 = ((uint64_t)s2 << 32) | ((uint64_t)s3 * 0x9e3779b97f4a7c15ULL + s4);
+		return sample_local(wi_x, wi_y, wi_z, seed0, seed1);
 	}
 };
 
 // ===========================================================================
 // 9. CoatedConductorBxDF  (rough dielectric coat over GGX conductor)
-//    Mirrors pbrt-v4 CoatedConductorBxDF = LayeredBxDF<DielectricBxDF, ConductorBxDF>
+//    Mirrors pbrt-v4 CoatedConductorBxDF = LayeredBxDF<DielectricBxDF, ConductorBxDF, true>
 //
-//    Path A (u3 < F_in): coat GGX specular reflection (achromatic)
-//      attenuation = F_in * G/G1
-//    Path B: conductor GGX + complex Fresnel + coat exit Fresnel
-//      attenuation = FrComplex * G_c/G1_c * (1-F_in) * (1-F_out)
+//    Full random-walk evaluation (pbrt-v4 LayeredBxDF::Sample_f):
+//      - Top interface: GGX dielectric (coat_ior)
+//      - Bottom interface: GGX conductor (complex Fresnel per RGB channel)
+//      - Optional medium scattering (medium_albedo + HG phase g)
+//      - maxDepth bounces; Russian roulette after depth 3
 //
-//    u1,u2: coat VNDF; u3: coat reflect/transmit; u4,u5: conductor VNDF
+//    sample_local(wi_x,wi_y,wi_z, seed0, seed1):
+//      - Returns sampled exit direction + throughput (no pdf division)
 //    All in local frame (z = surface normal).
 // ===========================================================================
 template<typename T>
 struct CoatedConductorBxDF {
-	T eta_r, eta_g, eta_b;  // conductor real IOR
-	T k_r,   k_g,   k_b;   // conductor extinction
-	T coat_ior;
-	T alpha;
+	T eta_r, eta_g, eta_b;   // conductor real IOR
+	T k_r,   k_g,   k_b;    // conductor extinction
+	T coat_ior;              // dielectric coat IOR
+	T alpha;                 // GGX roughness (shared for coat and conductor)
+	T thickness = T(0.01);
+	T g         = T(0);
+	T medium_albedo = T(0);
+	int maxDepth  = 10;
+	int nSamples  = 1;
 
 	CPU_GPU BxDFSampleResult<T> sample_local(
 		T wi_x, T wi_y, T wi_z,
-		T u1, T u2, T u3, T u4, T u5) const
+		uint64_t seed0, uint64_t seed1 = 0) const
 	{
 		BxDFSampleResult<T> res{};
 		if (wi_z <= T(0)) { res.valid = false; return res; }
 
 		TrowbridgeReitz<T> dist(alpha, alpha);
+		layered_detail::PCG32 rng(seed0, seed1 ^ 0xdeadbeefull);
 
-		// Coat top VNDF sample
-		T cwm_x, cwm_y, cwm_z;
-		dist.Sample_wm(wi_x, wi_y, wi_z, u1, u2, cwm_x, cwm_y, cwm_z);
-		T cos_i = wi_x*cwm_x + wi_y*cwm_y + wi_z*cwm_z;
+		T u1 = (T)rng.uf(), u2 = (T)rng.uf(), uc = (T)rng.uf();
+
+		T wm_x, wm_y, wm_z;
+		dist.Sample_wm(wi_x, wi_y, wi_z, u1, u2, wm_x, wm_y, wm_z);
+		T cos_i = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
 		T F_in  = FrDielectric(cos_i, coat_ior);
 
-		if (u3 < F_in) {
-			// Path A: coat specular reflection
-			T wo_x = T(2)*cos_i*cwm_x - wi_x;
-			T wo_y = T(2)*cos_i*cwm_y - wi_y;
-			T wo_z = T(2)*cos_i*cwm_z - wi_z;
+		if (uc < F_in) {
+			// Reflect off the coat top (achromatic)
+			T wo_x = T(2)*cos_i*wm_x - wi_x;
+			T wo_y = T(2)*cos_i*wm_y - wi_y;
+			T wo_z = T(2)*cos_i*wm_z - wi_z;
 			if (wo_z <= T(0)) { res.valid = false; return res; }
 
 			T G1 = dist.G1(wi_x, wi_y, wi_z);
@@ -623,40 +833,132 @@ struct CoatedConductorBxDF {
 			return res;
 		}
 
-		// Path B: conductor GGX bounce
-		T bwm_x, bwm_y, bwm_z;
-		dist.Sample_wm(wi_x, wi_y, wi_z, u4, u5, bwm_x, bwm_y, bwm_z);
-		T cos_c = wi_x*bwm_x + wi_y*bwm_y + wi_z*bwm_z;
+		// Transmitted into the layer: random walk
+		T w_x = T(2)*cos_i*wm_x - wi_x;
+		T w_y = T(2)*cos_i*wm_y - wi_y;
+		T w_z = -(T(2)*cos_i*wm_z - wi_z);
+		if (w_z == T(0)) { res.valid = false; return res; }
+		if (w_z > T(0)) w_z = -w_z;
 
-		T wo_x = T(2)*cos_c*bwm_x - wi_x;
-		T wo_y = T(2)*cos_c*bwm_y - wi_y;
-		T wo_z = T(2)*cos_c*bwm_z - wi_z;
-		if (wo_z <= T(0)) { res.valid = false; return res; }
+		T beta_r = T(1) - F_in;
+		T beta_g = T(1) - F_in;
+		T beta_b = T(1) - F_in;
+		T z = thickness;
 
-		T G1_c = dist.G1(wi_x, wi_y, wi_z);
-		T G_c  = dist.G(wo_x, wo_y, wo_z, wi_x, wi_y, wi_z);
-		T wt_c = (G1_c > T(1e-8)) ? G_c / G1_c : T(0);
-
-		T F_r = FrComplex(cos_c, eta_r, k_r) * wt_c;
-		T F_g = FrComplex(cos_c, eta_g, k_g) * wt_c;
-		T F_b = FrComplex(cos_c, eta_b, k_b) * wt_c;
-
+		for (int depth = 0; depth < maxDepth; ++depth) {
+			if (depth > 3) {
 #if defined(__CUDACC__)
-		T cos_out = fabsf(wo_z);
+				T rrq = T(1) - fmaxf(beta_r, fmaxf(beta_g, beta_b));
 #else
-		T cos_out = std::fabs(wo_z);
+				T rrq = T(1) - std::max(beta_r, std::max(beta_g, beta_b));
 #endif
-		T F_out = FrDielectric(cos_out, T(1) / coat_ior);
-		T T_in  = T(1) - F_in;
-		T T_out = T(1) - F_out;
+				if (rrq > T(0) && (T)rng.uf() < rrq) { res.valid = false; return res; }
+				if (rrq > T(0)) { beta_r /= T(1)-rrq; beta_g /= T(1)-rrq; beta_b /= T(1)-rrq; }
+			}
 
-		res.wo_x = wo_x; res.wo_y = wo_y; res.wo_z = wo_z;
-		res.r = F_r * T_in * T_out;
-		res.g = F_g * T_in * T_out;
-		res.b = F_b * T_in * T_out;
-		res.is_specular = true;
-		res.valid = true;
+			if (medium_albedo > T(0)) {
+				T dz = layered_detail::SampleExponential((T)rng.uf(), T(1) / (w_z < T(0) ? -w_z : w_z));
+				T zp = (w_z > T(0)) ? z + dz : z - dz;
+				if (zp > T(0) && zp < thickness) {
+					T cos_theta = layered_detail::hg_sample_cos(g, (T)rng.uf());
+					T ph_val = layered_detail::hg_eval(cos_theta, g);
+					beta_r *= medium_albedo; beta_g *= medium_albedo; beta_b *= medium_albedo;
+					T phi_s = T(6.28318530717958647692) * (T)rng.uf();
+					T sin_theta = layered_detail::safe_sqrt(T(1) - cos_theta*cos_theta);
+#if defined(__CUDACC__)
+					w_x = sin_theta * cosf(phi_s);
+					w_y = sin_theta * sinf(phi_s);
+#else
+					w_x = sin_theta * std::cos(phi_s);
+					w_y = sin_theta * std::sin(phi_s);
+#endif
+					w_z = cos_theta;
+					z   = zp;
+					continue;
+				}
+#if defined(__CUDACC__)
+				z = fmaxf(T(0), fminf(zp, thickness));
+#else
+				z = std::max(T(0), std::min(zp, thickness));
+#endif
+			} else {
+				beta_r *= layered_detail::Tr(thickness, w_z);
+				beta_g *= layered_detail::Tr(thickness, w_z);
+				beta_b *= layered_detail::Tr(thickness, w_z);
+				z = (w_z < T(0)) ? T(0) : thickness;
+			}
+
+			if (z <= T(0)) {
+				// Hit conductor bottom: GGX VNDF + complex Fresnel
+				// Flip to local frame of bottom interface (z points upward into layer)
+				T fw_x = -w_x, fw_y = -w_y, fw_z = -w_z;  // now fw_z > 0 (incoming from top)
+				T bwm_x, bwm_y, bwm_z;
+				dist.Sample_wm(fw_x, fw_y, fw_z, (T)rng.uf(), (T)rng.uf(), bwm_x, bwm_y, bwm_z);
+				T cos_c = fw_x*bwm_x + fw_y*bwm_y + fw_z*bwm_z;
+				T rwo_x = T(2)*cos_c*bwm_x - fw_x;
+				T rwo_y = T(2)*cos_c*bwm_y - fw_y;
+				T rwo_z = T(2)*cos_c*bwm_z - fw_z;
+
+				T G1_c = dist.G1(fw_x, fw_y, fw_z);
+				T G_c  = dist.G(rwo_x, rwo_y, rwo_z, fw_x, fw_y, fw_z);
+				T wt_c = (G1_c > T(1e-8)) ? G_c / G1_c : T(0);
+
+				beta_r *= FrComplex(cos_c, eta_r, k_r) * wt_c;
+				beta_g *= FrComplex(cos_c, eta_g, k_g) * wt_c;
+				beta_b *= FrComplex(cos_c, eta_b, k_b) * wt_c;
+
+				// Reflected direction goes upward (+z in layer frame -> -bottom frame -> +layer)
+				w_x = rwo_x; w_y = rwo_y;
+				w_z = (rwo_z < T(0)) ? -rwo_z : rwo_z; // going upward toward top
+				z = T(0);
+			} else {
+				// Hit top interface from inside: attempt exit
+				T wm2_x, wm2_y, wm2_z;
+				dist.Sample_wm(w_x, w_y, w_z, (T)rng.uf(), (T)rng.uf(), wm2_x, wm2_y, wm2_z);
+				T cos2  = w_x*wm2_x + w_y*wm2_y + w_z*wm2_z;
+				T F_out = FrDielectric(cos2, coat_ior);
+				if ((T)rng.uf() < F_out) {
+					// Internal reflection
+					T rx = T(2)*cos2*wm2_x - w_x;
+					T ry = T(2)*cos2*wm2_y - w_y;
+					T rz = T(2)*cos2*wm2_z - w_z;
+					w_x = rx; w_y = ry; w_z = rz;
+					if (w_z > T(0)) w_z = -w_z;
+					z = thickness;
+					continue;
+				}
+				// Exit through coat
+				T out_x = T(2)*cos2*wm2_x - w_x;
+				T out_y = T(2)*cos2*wm2_y - w_y;
+				T out_z = T(2)*cos2*wm2_z - w_z;
+				if (out_z <= T(0)) { res.valid = false; return res; }
+
+				res.wo_x = out_x; res.wo_y = out_y; res.wo_z = out_z;
+				res.r    = beta_r * (T(1) - F_out);
+				res.g = beta_g * (T(1) - F_out);
+				res.b    = beta_b * (T(1) - F_out);
+				res.is_specular = false;
+				res.valid = true;
+				return res;
+			}
+		}
+		res.valid = false;
 		return res;
+	}
+
+	// Backward-compat 5-float overload
+	CPU_GPU BxDFSampleResult<T> sample_local(
+		T wi_x, T wi_y, T wi_z,
+		T u1, T u2, T u3, T u4, T u5) const
+	{
+		uint32_t s0 = (uint32_t)(u1 * 16777216.0f);
+		uint32_t s1 = (uint32_t)(u2 * 16777216.0f);
+		uint32_t s2 = (uint32_t)(u3 * 16777216.0f);
+		uint32_t s3 = (uint32_t)(u4 * 16777216.0f);
+		uint32_t s4 = (uint32_t)(u5 * 16777216.0f);
+		uint64_t seed0 = ((uint64_t)s0 << 32) | (uint64_t)s1;
+		uint64_t seed1 = ((uint64_t)s2 << 32) | ((uint64_t)s3 * 0x9e3779b97f4a7c15ULL + s4);
+		return sample_local(wi_x, wi_y, wi_z, seed0, seed1);
 	}
 };
 
@@ -1653,3 +1955,4 @@ struct HairBxDF {
 		return scattering_pdf_local(wo_loc_x, wo_loc_y, wo_loc_z, wo_lx, wo_ly, wo_lz);
 	}
 };
+

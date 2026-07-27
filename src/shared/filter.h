@@ -111,3 +111,51 @@ class GaussianFilter {
 
 	double radius_, sigma_, exp_val_;
 };
+
+// ---------------------------------------------------------------------------
+// LanczosSincFilter -- Windowed Lanczos sinc reconstruction filter
+//
+// pbrt-v4 reference: filters.h LanczosSincFilter, math.h WindowedSinc / Sinc
+//
+// The Lanczos sinc is sinc(x) * sinc(x/tau), windowed to zero outside
+// [-radius, +radius]. tau controls how many sinc lobes fit in the window:
+//   tau=3 (default) includes 3 lobes and is the pbrt-v4 default.
+//
+// Compared to Mitchell: sharper high-frequency reconstruction, slight ringing
+// for very low tau values. Excellent choice for high-quality offline rendering.
+//
+// Evaluate(x, y) = WindowedSinc(x, radius, tau) * WindowedSinc(y, radius, tau)
+// ---------------------------------------------------------------------------
+class LanczosSincFilter {
+  public:
+	// radius: half-width of the filter in pixel units (pbrt-v4 default: 4)
+	// tau:    number of sinc lobes inside the window (pbrt-v4 default: 3)
+	explicit LanczosSincFilter(double radius = 4.0, double tau = 3.0)
+		: radius_(radius), tau_(tau) {}
+
+	double evaluate(double ox, double oy) const {
+		return windowed_sinc(ox) * windowed_sinc(oy);
+	}
+
+	double radius() const { return radius_; }
+	double tau()    const { return tau_; }
+
+  private:
+	// sinc(x) = sin(pi*x) / (pi*x), with sinc(0) = 1 (pbrt-v4 Sinc / SinXOverX)
+	static double sinc(double x) {
+		const double pi = 3.14159265358979323846;
+		double px = pi * x;
+		// SinXOverX: if 1 - (px)^2 == 1, x is near zero -> return 1
+		if (1.0 - px * px == 1.0) return 1.0;
+		return std::sin(px) / px;
+	}
+
+	// WindowedSinc(x, radius, tau) = sinc(x) * sinc(x/tau), zero outside radius
+	// (pbrt-v4 WindowedSinc in math.h)
+	double windowed_sinc(double x) const {
+		if (std::fabs(x) > radius_) return 0.0;
+		return sinc(x) * sinc(x / tau_);
+	}
+
+	double radius_, tau_;
+};
