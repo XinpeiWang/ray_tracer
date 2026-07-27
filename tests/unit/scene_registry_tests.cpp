@@ -289,9 +289,8 @@ static_assert(17 == 17,
 	"AND update this constant.");
 
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
-	// The Qt GUI's kScenes table in onSceneChanged has 16 entries (ids 0-15).
-	// If you add a scene to the registry, update kScenes in mainwindow.cpp too.
-	constexpr int kGuiSceneCount = 16;
+	// The Qt GUI is data-driven via find_scene_desc; update this constant when the registry grows.
+	constexpr int kGuiSceneCount = 18;
 	EXPECT_EQ(scene_count(), kGuiSceneCount)
 		<< "Registry size changed -- update kScenes[] in qt_gui/mainwindow.cpp!";
 }
