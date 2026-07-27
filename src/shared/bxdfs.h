@@ -655,19 +655,23 @@ struct CoatedDiffuseBxDF {
 		// Ensure traveling downward (-z in layer)
 		if (w_z > T(0)) w_z = -w_z;
 
-		T beta_r = T(1), beta_g = T(1), beta_b = T(1);
+		// pbrt-v4: beta starts with transmittance through top interface (1-F_in)
+		T beta_r = T(1) - F_in, beta_g = T(1) - F_in, beta_b = T(1) - F_in;
 		T z = thickness;   // started at top (z=thickness), going to bottom (z=0)
 
 		for (int depth = 0; depth < maxDepth; ++depth) {
-			// Russian roulette after depth 3
+			// Russian roulette after depth 3 -- mirrors pbrt-v4: rrBeta = maxBeta < 0.25
 			if (depth > 3) {
 #if defined(__CUDACC__)
-				T rrq = T(1) - fmaxf(beta_r, fmaxf(beta_g, beta_b));
+				T rrBeta = fmaxf(beta_r, fmaxf(beta_g, beta_b));
 #else
-				T rrq = T(1) - std::max(beta_r, std::max(beta_g, beta_b));
+				T rrBeta = std::max(beta_r, std::max(beta_g, beta_b));
 #endif
-				if (rrq > T(0) && (T)rng.uf() < rrq) { res.valid = false; return res; }
-				if (rrq > T(0)) { beta_r /= T(1)-rrq; beta_g /= T(1)-rrq; beta_b /= T(1)-rrq; }
+				if (rrBeta < T(0.25)) {
+					T q = std::max(T(0), T(1) - rrBeta);
+					if ((T)rng.uf() < q) { res.valid = false; return res; }
+					beta_r /= T(1) - q; beta_g /= T(1) - q; beta_b /= T(1) - q;
+				}
 			}
 
 			// Medium scattering or direct boundary hit
@@ -675,13 +679,12 @@ struct CoatedDiffuseBxDF {
 				T dz = layered_detail::SampleExponential((T)rng.uf(), T(1) / (w_z < T(0) ? -w_z : w_z));
 				T zp = (w_z > T(0)) ? z + dz : z - dz;
 				if (zp > T(0) && zp < thickness) {
-					// Scatter inside medium using HG phase function
+					// pbrt-v4: beta *= albedo * ps->p / ps->pdf; for HG p/pdf=1
+					// sample phase direction
 					T cos_theta = layered_detail::hg_sample_cos(g, (T)rng.uf());
-					T ph_val = layered_detail::hg_eval(cos_theta, g);
-					T ph_pdf = ph_val;
-					beta_r *= medium_albedo * ph_val / ph_pdf;
-					beta_g *= medium_albedo * ph_val / ph_pdf;
-					beta_b *= medium_albedo * ph_val / ph_pdf;
+					beta_r *= medium_albedo;
+					beta_g *= medium_albedo;
+					beta_b *= medium_albedo;
 					// Update direction (simplified: only wz updated, wxy randomised)
 					T phi_s = T(6.28318530717958647692) * (T)rng.uf();
 					T sin_theta = layered_detail::safe_sqrt(T(1) - cos_theta*cos_theta);
@@ -840,28 +843,33 @@ struct CoatedConductorBxDF {
 		if (w_z == T(0)) { res.valid = false; return res; }
 		if (w_z > T(0)) w_z = -w_z;
 
+		// pbrt-v4: beta starts with transmittance through top interface (1-F_in)
 		T beta_r = T(1) - F_in;
 		T beta_g = T(1) - F_in;
 		T beta_b = T(1) - F_in;
 		T z = thickness;
 
 		for (int depth = 0; depth < maxDepth; ++depth) {
+			// Russian roulette after depth 3 -- mirrors pbrt-v4: rrBeta = maxBeta < 0.25
 			if (depth > 3) {
 #if defined(__CUDACC__)
-				T rrq = T(1) - fmaxf(beta_r, fmaxf(beta_g, beta_b));
+				T rrBeta = fmaxf(beta_r, fmaxf(beta_g, beta_b));
 #else
-				T rrq = T(1) - std::max(beta_r, std::max(beta_g, beta_b));
+				T rrBeta = std::max(beta_r, std::max(beta_g, beta_b));
 #endif
-				if (rrq > T(0) && (T)rng.uf() < rrq) { res.valid = false; return res; }
-				if (rrq > T(0)) { beta_r /= T(1)-rrq; beta_g /= T(1)-rrq; beta_b /= T(1)-rrq; }
+				if (rrBeta < T(0.25)) {
+					T q = std::max(T(0), T(1) - rrBeta);
+					if ((T)rng.uf() < q) { res.valid = false; return res; }
+					beta_r /= T(1) - q; beta_g /= T(1) - q; beta_b /= T(1) - q;
+				}
 			}
 
 			if (medium_albedo > T(0)) {
 				T dz = layered_detail::SampleExponential((T)rng.uf(), T(1) / (w_z < T(0) ? -w_z : w_z));
 				T zp = (w_z > T(0)) ? z + dz : z - dz;
 				if (zp > T(0) && zp < thickness) {
+					// pbrt-v4: beta *= albedo * ps->p / ps->pdf; for HG p/pdf=1
 					T cos_theta = layered_detail::hg_sample_cos(g, (T)rng.uf());
-					T ph_val = layered_detail::hg_eval(cos_theta, g);
 					beta_r *= medium_albedo; beta_g *= medium_albedo; beta_b *= medium_albedo;
 					T phi_s = T(6.28318530717958647692) * (T)rng.uf();
 					T sin_theta = layered_detail::safe_sqrt(T(1) - cos_theta*cos_theta);
