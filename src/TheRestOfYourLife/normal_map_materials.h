@@ -1,8 +1,12 @@
 #pragma once
 // normal_map_material and bump_map_material -- pbrt-v4 NormalMap / BumpMap
-// Included by material.h after all base types are defined.
-// Guard: only compile the class bodies when material.h's types are available.
-#ifdef MATERIAL_H
+//
+// Self-contained: including this header is sufficient — it pulls in material.h
+// and normal_map.h automatically.  material.h will also include this file once
+// it is saved from VS (via the in-memory #include already present there).
+
+#include "material.h"
+#include "../shared/normal_map.h"
 
 class normal_map_material : public material {
   public:
@@ -113,5 +117,3 @@ class bump_map_material : public material {
 	double scale;
 	double step;
 };
-
-#endif // MATERIAL_H
