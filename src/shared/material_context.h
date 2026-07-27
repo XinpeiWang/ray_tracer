@@ -40,6 +40,10 @@ struct MaterialContext {
 	// Outward shading normal (unit vector, world space)
 	T nx, ny, nz;
 
+	// Surface tangent along U (world space) -- for normal/bump mapping
+	// pbrt-v4: ctx.shading.dpdu
+	T dpdu_x, dpdu_y, dpdu_z;
+
 	// Outgoing direction (away from surface, world space)
 	// = -ray_direction at hit point
 	T wo_x, wo_y, wo_z;
@@ -64,6 +68,9 @@ struct MaterialContext {
 		ctx.nx         = static_cast<T>(rec.normal.x());
 		ctx.ny         = static_cast<T>(rec.normal.y());
 		ctx.nz         = static_cast<T>(rec.normal.z());
+		ctx.dpdu_x     = static_cast<T>(rec.dpdu.x());
+		ctx.dpdu_y     = static_cast<T>(rec.dpdu.y());
+		ctx.dpdu_z     = static_cast<T>(rec.dpdu.z());
 		auto wo = -r_in.direction();
 		T    wo_len = static_cast<T>(wo.length());
 		if (wo_len > T(1e-8)) wo_len = T(1) / wo_len; else wo_len = T(0);

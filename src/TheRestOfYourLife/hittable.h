@@ -22,6 +22,7 @@ class hit_record {
   public:
     point3 p;
     vec3 normal;
+    vec3 dpdu;      // surface tangent along U (world space) -- for normal/bump mapping
     shared_ptr<material> mat;
     double t;
     double u;

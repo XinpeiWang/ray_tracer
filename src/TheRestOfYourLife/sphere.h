@@ -63,6 +63,21 @@ class sphere : public hittable {
         rec.set_face_normal(r, outward_normal);
         get_sphere_uv(outward_normal, rec.u, rec.v);
         rec.mat = mat;
+        // dpdu = tangent along U for sphere UV mapping (phi direction)
+        // ∂p/∂u ∝ (-sin(phi), 0, cos(phi)) in world space ∝ (-pz, 0, px) normalised.
+        // For the equirectangular parameterization used by get_sphere_uv:
+        //   p = (sin(theta)*cos(phi), -cos(theta), -sin(theta)*sin(phi)) * radius  [shifted]
+        // A stable tangent: use the cross product of world Y and outward normal.
+        {
+            vec3 n = outward_normal;
+            vec3 world_up(0, 1, 0);
+            vec3 tangent = cross(world_up, n);
+            double tlen = tangent.length();
+            if (tlen > 1e-6)
+                rec.dpdu = tangent / tlen;
+            else
+                rec.dpdu = vec3(1, 0, 0); // fallback at poles
+        }
 
         return true;
     }
