@@ -1335,6 +1335,9 @@ struct HairBxDF {
 	}
 
 	// Evaluate BSDF: wi/wo are in hair local frame (fiber tangent = +X)
+	// wi_z = cosTheta_i * sin(phi_i)  — the z-component of wi in local frame.
+	// pbrt-v4 HairBxDF::f() divides by AbsCosTheta(wi) = |wi.z|, which equals
+	// cosTheta_i * |sin(phi_i)|.  We do the same here for alignment.
 	CPU_GPU void eval_local(T wo_x, T wo_y, T wo_z,
 							T wi_x, T wi_y, T wi_z,
 							T& fr, T& fg, T& fb) const {
@@ -1357,11 +1360,9 @@ struct HairBxDF {
 		T phi_i = std::atan2(wi_z, wi_y);
 #endif
 
-		T sinTheta_t = sinTheta_o / eta;
-		T cosTheta_t = hair_SafeSqrt(T(1) - sinTheta_t*sinTheta_t);
+		// gamma_t for azimuthal Np (etap uses cosTheta_o guard against zero)
 		T etap = hair_SafeSqrt(eta*eta - sinTheta_o*sinTheta_o) / (cosTheta_o > T(1e-6) ? cosTheta_o : T(1e-6));
 		T sinGamma_t = h / etap;
-		T cosGamma_t = hair_SafeSqrt(T(1) - sinGamma_t*sinGamma_t);
 		T gamma_t = hair_SafeAsin(sinGamma_t);
 
 		T ap_r[pMax+1], ap_g[pMax+1], ap_b[pMax+1];
@@ -1402,12 +1403,17 @@ struct HairBxDF {
 		fg += mp_rem * ap_g[pMax] / (T(2)*pi);
 		fb += mp_rem * ap_b[pMax] / (T(2)*pi);
 
-		T absCosTheta_i = cosTheta_i > T(0) ? cosTheta_i : -cosTheta_i;
-		if (absCosTheta_i > T(0)) {
-			fr /= absCosTheta_i;
-			fg /= absCosTheta_i;
-			fb /= absCosTheta_i;
-		}
+		// Divide by AbsCosTheta(wi) = |wi_z| — matches pbrt-v4 HairBxDF::f()
+		// wi_z = cosTheta_i * sin(phi_i); when near zero use cosTheta_i as fallback
+#if defined(__CUDACC__)
+		T absCosTheta_wi = fabsf(wi_z);
+#else
+		T absCosTheta_wi = std::fabs(wi_z);
+#endif
+		if (absCosTheta_wi < T(1e-6)) absCosTheta_wi = cosTheta_i > T(1e-6) ? cosTheta_i : T(1e-6);
+		fr /= absCosTheta_wi;
+		fg /= absCosTheta_wi;
+		fb /= absCosTheta_wi;
 	}
 
 	// Build hair local frame from world-space fiber tangent
