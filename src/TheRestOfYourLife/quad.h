@@ -11,6 +11,7 @@
 
 #include "hittable.h"
 #include "hittable_list.h"
+#include "../shared/sampling.h"
 
 
 class quad : public hittable {
@@ -88,20 +89,42 @@ class quad : public hittable {
     vec3 get_v() const { return v; }
     shared_ptr<material> get_material() const { return mat; }
 
+    // pdf_value: solid-angle PDF for a direction from origin toward this quad.
+    // Uses pbrt-v4 SampleSphericalRectangle solid angle (Ureña et al. 2013).
+    // Falls back to area-based PDF if solid angle is degenerate (< 1e-10 sr).
     double pdf_value(const point3& origin, const vec3& direction) const override {
+        // Verify the direction actually hits the quad
         hit_record rec;
         if (!this->hit(ray(origin, direction), interval(0.001, infinity), rec))
             return 0;
 
+        double sa = SphericalRectangleSolidAngle(
+            origin.x(), origin.y(), origin.z(),
+            Q.x(), Q.y(), Q.z(),
+            u.x(), u.y(), u.z(),
+            v.x(), v.y(), v.z());
+
+        if (sa > 1e-10)
+            return 1.0 / sa;
+
+        // Degenerate (nearly edge-on) -- fall back to area-based PDF
         auto distance_squared = rec.t * rec.t * direction.length_squared();
         auto cosine = std::fabs(dot(direction, rec.normal) / direction.length());
-
-        return distance_squared / (cosine * area);
+        return (cosine > 1e-10) ? distance_squared / (cosine * area) : 0.0;
     }
 
+    // random: sample a direction toward this quad using solid-angle sampling.
+    // PDF = 1/solidAngle (constant), dramatically reducing variance vs area sampling.
     vec3 random(const point3& origin) const override {
-        auto p = Q + (random_double() * u) + (random_double() * v);
-        return p - origin;
+        double rx, ry, rz, pdf;
+        SampleSphericalRectangle(
+            origin.x(), origin.y(), origin.z(),
+            Q.x(), Q.y(), Q.z(),
+            u.x(), u.y(), u.z(),
+            v.x(), v.y(), v.z(),
+            random_double(), random_double(),
+            &rx, &ry, &rz, &pdf);
+        return vec3(rx - origin.x(), ry - origin.y(), rz - origin.z());
     }
 
   private:

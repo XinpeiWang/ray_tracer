@@ -99,10 +99,20 @@ class sphere : public hittable {
             return 0;
 
         auto dist_squared = (center.at(0) - origin).length_squared();
-        auto cos_theta_max = std::sqrt(1 - radius*radius/dist_squared);
-        auto solid_angle = 2*pi*(1-cos_theta_max);
+        auto sin2ThetaMax = radius * radius / dist_squared;
+        auto cosThetaMax  = std::sqrt(1.0 - sin2ThetaMax > 0.0 ? 1.0 - sin2ThetaMax : 0.0);
 
-        return  1 / solid_angle;
+        // pbrt-v4: use Taylor expansion for small solid angle to avoid
+        // catastrophic cancellation in (1 - cosThetaMax) when sphere is
+        // far away (sin2ThetaMax < sin²(1.5°) ≈ 0.00068523)
+        double oneMinusCosThetaMax;
+        if (sin2ThetaMax < 0.00068523)
+            oneMinusCosThetaMax = sin2ThetaMax / 2.0;
+        else
+            oneMinusCosThetaMax = 1.0 - cosThetaMax;
+
+        auto solid_angle = 2 * pi * oneMinusCosThetaMax;
+        return 1.0 / solid_angle;
     }
 
     vec3 random(const point3& origin) const override {
