@@ -134,11 +134,12 @@ inline void SDVertex::one_ring(std::vector<point3>& ring) const {
 	}
 }
 
-// Loop beta for irregular interior vertex of valence k
+// Loop beta -- matches pbrt-v4 beta(int valence):
+//   valence == 3  ->  3/16
+//   otherwise     ->  3/(8*valence)
 inline double loop_beta(int k) {
-	const double Pi = 3.14159265358979323846;
-	double t = 3.0 + 2.0 * std::cos(2.0 * Pi / k);
-	return (1.0 / k) * (5.0/8.0 - t*t/64.0);
+	if (k == 3) return 3.0 / 16.0;
+	return 3.0 / (8.0 * k);
 }
 
 // loopGamma for limit-surface push of interior vertex (valence k)
@@ -253,8 +254,12 @@ inline std::shared_ptr<triangle_mesh_data> loop_subdivide(
 	// 2. Subdivide nLevels times
 	//    Use pools so pointers remain stable
 	// ------------------------------------------------------------------
+	// Reserve 2 entries per level (even + odd vertex pools) to prevent reallocation
+	// that would invalidate new_vbuf references taken before push_back.
 	std::vector<std::vector<SDVertex>> vertex_pools;
 	std::vector<std::vector<SDFace>>   face_pools;
+	vertex_pools.reserve(2 * nLevels);
+	face_pools.reserve(nLevels);
 
 	// Working sets (pointers into buffers)
 	std::vector<SDVertex*> cur_verts(nVerts);
