@@ -778,3 +778,288 @@ struct NormalizedFresnelBxDF {
 		return (T(1) - fr) * cos_wi / (cv * T(3.14159265358979323846));
 	}
 };
+
+// ===========================================================================
+// 12. PrincipledBxDF  (Disney/pbrt-v4 CoatedDiffuse / CoatedConductor style)
+//
+// A three-lobe artist-friendly BSDF:
+//   Lobe 0 (diffuse):   Lambertian, weight = base_color * (1-metallic) * (1-F_spec)
+//   Lobe 1 (specular):  GGX microfacet with Schlick Fresnel (dielectric blend)
+//                       or conductor Fresnel (metallic=1)
+//   Lobe 2 (clearcoat): GGX with fixed IOR=1.5 and separate low roughness
+//
+// pbrt-v4 alignment:
+//   - CoatedDiffuseBxDF  = dielectric top + diffuse bottom (metallic=0)
+//   - CoatedConductorBxDF = dielectric top + conductor bottom (metallic=1)
+//   Here metallic continuously blends the two.
+//
+// Parameters:
+//   base_r/g/b       -- base (diffuse) color
+//   metallic         -- 0=dielectric/plastic, 1=pure metal
+//   roughness        -- perceptual roughness [0,1], mapped to GGX alpha = sqrt(r)
+//   ior              -- interface IOR for dielectric Fresnel (default 1.5)
+//   clearcoat        -- clearcoat weight [0,1] (0 = off)
+//   clearcoat_rough  -- clearcoat roughness (default 0.1 = glossy)
+//
+// Caller provides 4 uniform randoms: u1 (lobe select), u2,u3 (direction), u4 (unused)
+// ===========================================================================
+template<typename T>
+struct PrincipledBxDF {
+	T base_r, base_g, base_b;
+	T metallic;
+	T roughness;
+	T ior;
+	T clearcoat;
+	T clearcoat_rough;
+
+	// Schlick Fresnel approximation: F0 + (1-F0)*(1-cos)^5
+	CPU_GPU T schlick_fresnel(T cos_theta, T F0) const {
+		T c = T(1) - cos_theta;
+		T c2 = c * c;
+		T c5 = c2 * c2 * c;
+		return F0 + (T(1) - F0) * c5;
+	}
+
+	// Specular F0 from IOR: ((ior-1)/(ior+1))^2
+	CPU_GPU T spec_F0() const {
+		T f = (ior - T(1)) / (ior + T(1));
+		return f * f;
+	}
+
+	// GGX specular BRDF value in local shading frame (z=normal)
+	CPU_GPU T ggx_brdf(T wox, T woy, T woz,
+					   T wix, T wiy, T wiz,
+					   T alpha) const {
+		if (woz <= T(0) || wiz <= T(0)) return T(0);
+		TrowbridgeReitz<T> mf(alpha, alpha);
+		// half-vector (local frame)
+		T hmx = wox + wix, hmy = woy + wiy, hmz = woz + wiz;
+#if defined(__CUDACC__)
+		T hlen = sqrtf(hmx*hmx + hmy*hmy + hmz*hmz);
+#else
+		T hlen = std::sqrt(hmx*hmx + hmy*hmy + hmz*hmz);
+#endif
+		if (hlen < T(1e-8)) return T(0);
+		hmx /= hlen; hmy /= hlen; hmz /= hlen;
+		T D = mf.D(hmx, hmy, hmz);
+		T G = mf.G(wox, woy, woz, wix, wiy, wiz);
+		return D * G / (T(4) * woz * wiz);
+	}
+
+	// GGX specular PDF in local frame (visible-normal)
+	CPU_GPU T ggx_pdf(T wox, T woy, T woz,
+					  T wix, T wiy, T wiz,
+					  T alpha) const {
+		if (woz <= T(0) || wiz <= T(0)) return T(0);
+		TrowbridgeReitz<T> mf(alpha, alpha);
+		T hmx = wox + wix, hmy = woy + wiy, hmz = woz + wiz;
+#if defined(__CUDACC__)
+		T hlen = sqrtf(hmx*hmx + hmy*hmy + hmz*hmz);
+#else
+		T hlen = std::sqrt(hmx*hmx + hmy*hmy + hmz*hmz);
+#endif
+		if (hlen < T(1e-8)) return T(0);
+		hmx /= hlen; hmy /= hlen; hmz /= hlen;
+		T pdf_wm = mf.PDF(wox, woy, woz, hmx, hmy, hmz);
+		T dot_wo_wm = wox*hmx + woy*hmy + woz*hmz;
+		if (dot_wo_wm <= T(0)) return T(0);
+		return pdf_wm / (T(4) * dot_wo_wm);
+	}
+
+	// sample() -- all directions in local shading frame (normal = +Z)
+	// u1: lobe select, u2/u3: direction sample
+	CPU_GPU BxDFSampleResult<T> sample(
+		T nx, T ny, T nz,   // world-space normal (used to build ONB)
+		T wix, T wiy, T wiz, // incident direction (world space, toward surface)
+		T u1, T u2, T u3) const
+	{
+		BxDFSampleResult<T> res{};
+		res.valid = false;
+
+		// Build local shading frame (ONB): normal=Z, tangent=X, bitangent=Y
+		T tx, ty, tz, bx, by, bz;
+		make_onb(nx, ny, nz, tx, ty, tz, bx, by, bz);
+
+		// Transform wi to local frame
+		T wi_lx = wix*tx + wiy*ty + wiz*tz;
+		T wi_ly = wix*bx + wiy*by + wiz*bz;
+		T wi_lz = wix*nx + wiy*ny + wiz*nz;
+		// wo = -wi (pointing away from surface in local frame)
+		T wo_lx = -wi_lx, wo_ly = -wi_ly, wo_lz = -wi_lz;
+		if (wo_lz <= T(0)) return res; // below surface
+
+		T alpha = TrowbridgeReitz<T>::RoughnessToAlpha(roughness);
+		T alpha_cc = TrowbridgeReitz<T>::RoughnessToAlpha(clearcoat_rough);
+
+		// Fresnel at wo for lobe weights
+		T cos_wo = wo_lz;
+		T F0_d = spec_F0();
+		T F_spec = schlick_fresnel(cos_wo, F0_d);
+		// metallic blends toward conductor: F0 = base_color for metal
+		T F0_metal_r = base_r, F0_metal_g = base_g, F0_metal_b = base_b;
+		T F_met_r = schlick_fresnel(cos_wo, F0_metal_r);
+		T F_met_g = schlick_fresnel(cos_wo, F0_metal_g);
+		T F_met_b = schlick_fresnel(cos_wo, F0_metal_b);
+
+		// Lobe weights (scalar, for selection)
+		T w_diff  = (T(1) - metallic) * (T(1) - F_spec);
+		T w_spec  = T(1); // always include specular
+		T w_coat  = clearcoat * T(0.25); // pbrt-v4 uses 0.25 clearcoat weight
+		T w_total = w_diff + w_spec + w_coat;
+		if (w_total < T(1e-8)) return res;
+		T inv_w = T(1) / w_total;
+		T p_diff = w_diff * inv_w;
+		T p_spec = w_spec * inv_w;
+		// p_coat = w_coat * inv_w  (remainder)
+
+		// Select lobe
+		T wo_out_lx, wo_out_ly, wo_out_lz;
+		TrowbridgeReitz<T> mf(alpha, alpha);
+
+		if (u1 < p_diff) {
+			// Diffuse: cosine-weighted hemisphere sample
+			const T pi = T(3.14159265358979323846);
+#if defined(__CUDACC__)
+			T r = sqrtf(u2);
+			T phi = T(2)*pi*u3;
+			wo_out_lx = r*cosf(phi);
+			wo_out_ly = r*sinf(phi);
+			T z2 = T(1)-u2;
+			wo_out_lz = z2>T(0)?sqrtf(z2):T(0);
+#else
+			T r = std::sqrt(u2);
+			T phi = T(2)*pi*u3;
+			wo_out_lx = r*std::cos(phi);
+			wo_out_ly = r*std::sin(phi);
+			T z2 = T(1)-u2;
+			wo_out_lz = z2>T(0)?std::sqrt(z2):T(0);
+#endif
+		} else if (u1 < p_diff + p_spec) {
+			// Specular: GGX VNDF sample
+			T wm_lx, wm_ly, wm_lz;
+			mf.Sample_wm(wo_lx, wo_ly, wo_lz, u2, u3, wm_lx, wm_ly, wm_lz);
+			// reflect wo around wm
+			T dot = wo_lx*wm_lx + wo_ly*wm_ly + wo_lz*wm_lz;
+			wo_out_lx = T(2)*dot*wm_lx - wo_lx;
+			wo_out_ly = T(2)*dot*wm_ly - wo_ly;
+			wo_out_lz = T(2)*dot*wm_lz - wo_lz;
+		} else {
+			// Clearcoat: GGX VNDF sample with clearcoat roughness
+			TrowbridgeReitz<T> mf_cc(alpha_cc, alpha_cc);
+			T wm_lx, wm_ly, wm_lz;
+			mf_cc.Sample_wm(wo_lx, wo_ly, wo_lz, u2, u3, wm_lx, wm_ly, wm_lz);
+			T dot = wo_lx*wm_lx + wo_ly*wm_ly + wo_lz*wm_lz;
+			wo_out_lx = T(2)*dot*wm_lx - wo_lx;
+			wo_out_ly = T(2)*dot*wm_ly - wo_ly;
+			wo_out_lz = T(2)*dot*wm_lz - wo_lz;
+		}
+
+		if (wo_out_lz <= T(0)) return res;
+
+		// Compute multi-lobe BSDF value and PDF
+		T cos_wi_l = wo_out_lz; // wi in local frame after bounce
+		T cos_wo_l = wo_lz;
+
+		// Fresnel at wi direction
+		T F_wi = schlick_fresnel(cos_wi_l, F0_d);
+		T F_met_wi_r = schlick_fresnel(cos_wi_l, F0_metal_r);
+		T F_met_wi_g = schlick_fresnel(cos_wi_l, F0_metal_g);
+		T F_met_wi_b = schlick_fresnel(cos_wi_l, F0_metal_b);
+
+		// Diffuse contribution: Lambertian * (1-metallic) * (1-F)
+		const T inv_pi = T(1) / T(3.14159265358979323846);
+		T diff_r = base_r * inv_pi * (T(1) - metallic) * (T(1) - F_wi);
+		T diff_g = base_g * inv_pi * (T(1) - metallic) * (T(1) - F_wi);
+		T diff_b = base_b * inv_pi * (T(1) - metallic) * (T(1) - F_wi);
+
+		// Specular contribution: GGX BRDF
+		T spec_val = ggx_brdf(wo_lx, wo_ly, wo_lz, wo_out_lx, wo_out_ly, wo_out_lz, alpha);
+		// Schlick Fresnel blend: lerp between dielectric and conductor Fresnel
+		T F_r = (T(1)-metallic)*F_spec + metallic*F_met_r;
+		T F_g = (T(1)-metallic)*F_spec + metallic*F_met_g;
+		T F_b = (T(1)-metallic)*F_spec + metallic*F_met_b;
+		T spec_r = F_r * spec_val;
+		T spec_g = F_g * spec_val;
+		T spec_b = F_b * spec_val;
+
+		// Clearcoat: GGX with IOR=1.5 (F0=0.04)
+		T cc_F0 = T(0.04);
+		T F_cc = schlick_fresnel(cos_wi_l, cc_F0);
+		T cc_val = ggx_brdf(wo_lx, wo_ly, wo_lz, wo_out_lx, wo_out_ly, wo_out_lz, alpha_cc);
+		T cc_r = clearcoat * T(0.25) * F_cc * cc_val;
+
+		T total_r = diff_r + spec_r + cc_r;
+		T total_g = diff_g + spec_g + cc_r; // cc is achromatic
+		T total_b = diff_b + spec_b + cc_r;
+
+		// Multi-lobe PDF (balance heuristic)
+		T pdf_diff = p_diff * cos_wi_l * inv_pi;
+		T pdf_spec = p_spec * ggx_pdf(wo_lx, wo_ly, wo_lz, wo_out_lx, wo_out_ly, wo_out_lz, alpha);
+		T p_coat_w = (w_coat * inv_w);
+		T pdf_coat = p_coat_w * ggx_pdf(wo_lx, wo_ly, wo_lz, wo_out_lx, wo_out_ly, wo_out_lz, alpha_cc);
+		T pdf = pdf_diff + pdf_spec + pdf_coat;
+		if (pdf < T(1e-12)) return res;
+
+		// Weight = BSDF * cos / pdf
+		T weight_r = total_r * cos_wi_l / pdf;
+		T weight_g = total_g * cos_wi_l / pdf;
+		T weight_b = total_b * cos_wi_l / pdf;
+
+		// Transform sampled wo back to world space
+		res.wo_x = wo_out_lx*tx + wo_out_ly*bx + wo_out_lz*nx;
+		res.wo_y = wo_out_lx*ty + wo_out_ly*by + wo_out_lz*ny;
+		res.wo_z = wo_out_lx*tz + wo_out_ly*bz + wo_out_lz*nz;
+
+		res.r = weight_r;
+		res.g = weight_g;
+		res.b = weight_b;
+		res.is_specular = false;
+		res.is_transmission = false;
+		res.eta = T(1);
+		res.valid = true;
+		return res;
+	}
+
+	// scattering_pdf in world space: multi-lobe balance heuristic
+	CPU_GPU T scattering_pdf(
+		T nx, T ny, T nz,
+		T wix, T wiy, T wiz,  // incident (toward surface)
+		T wox, T woy, T woz)  // scattered (away from surface)
+	const {
+		// Build local frame
+		T tx, ty, tz, bx, by, bz;
+		make_onb(nx, ny, nz, tx, ty, tz, bx, by, bz);
+
+		// Transform to local
+		T wo_lx = -wix*tx - wiy*ty - wiz*tz; // outgoing = -incident in BSDF convention
+		T wo_ly = -wix*bx - wiy*by - wiz*bz;
+		T wo_lz = -wix*nx - wiy*ny - wiz*nz;
+		T wi_lx = wox*tx + woy*ty + woz*tz;
+		T wi_ly = wox*bx + woy*by + woz*bz;
+		T wi_lz = wox*nx + woy*ny + woz*nz;
+
+		if (wo_lz <= T(0) || wi_lz <= T(0)) return T(0);
+
+		T alpha    = TrowbridgeReitz<T>::RoughnessToAlpha(roughness);
+		T alpha_cc = TrowbridgeReitz<T>::RoughnessToAlpha(clearcoat_rough);
+
+		T F0_d = spec_F0();
+		T F_spec = schlick_fresnel(wo_lz, F0_d);
+		T w_diff  = (T(1) - metallic) * (T(1) - F_spec);
+		T w_spec  = T(1);
+		T w_coat  = clearcoat * T(0.25);
+		T w_total = w_diff + w_spec + w_coat;
+		if (w_total < T(1e-8)) return T(0);
+		T inv_w = T(1) / w_total;
+
+		const T inv_pi = T(1) / T(3.14159265358979323846);
+		T p_diff = w_diff * inv_w;
+		T p_spec = w_spec * inv_w;
+		T p_coat = w_coat * inv_w;
+
+		T pdf_diff = p_diff * wi_lz * inv_pi;
+		T pdf_spec = p_spec * ggx_pdf(wo_lx, wo_ly, wo_lz, wi_lx, wi_ly, wi_lz, alpha);
+		T pdf_coat = p_coat * ggx_pdf(wo_lx, wo_ly, wo_lz, wi_lx, wi_ly, wi_lz, alpha_cc);
+		return pdf_diff + pdf_spec + pdf_coat;
+	}
+};
