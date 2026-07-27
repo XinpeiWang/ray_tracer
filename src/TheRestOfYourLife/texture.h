@@ -13,6 +13,7 @@
 
 #include "perlin.h"
 #include "rtw_stb_image.h"
+#include "../shared/mipmap.h"
 
 
 class texture {
@@ -228,6 +229,68 @@ class marble_texture : public texture {
         double b = s*s*s*p0[2] + 3*s*s*t*p1[2] + 3*s*t*t*p2[2] + t*t*t*p3[2];
         return color(r, g, b);
     }
+};
+
+
+// ---------------------------------------------------------------------------
+// mipmap_texture -- pbrt-v4-style MipMap-filtered image texture (§10.4)
+//
+// Builds a mip pyramid from the loaded image at construction time.
+// value() uses trilinear filtering (no UV derivatives available via the
+// basic texture interface); call value_ewa() with explicit derivatives for
+// full anisotropic quality.
+// ---------------------------------------------------------------------------
+class mipmap_texture : public texture {
+  public:
+    mipmap_texture(const char* filename,
+                   MipMapOptions opts = MipMapOptions{})
+    {
+        rtw_image img(filename);
+        if (img.height() <= 0) return;  // load failed — mip_ stays nullptr
+
+        int w = img.width(), h = img.height();
+        std::vector<color> pixels(w * h);
+        const double scale = 1.0 / 255.0;
+        for (int j = 0; j < h; ++j)
+            for (int i = 0; i < w; ++i) {
+                const unsigned char* p = img.pixel_data(i, j);
+                pixels[j * w + i] = color(p[0]*scale, p[1]*scale, p[2]*scale);
+            }
+        mip_ = std::make_shared<mipmap>(pixels, w, h, opts);
+    }
+
+    // Basic interface: trilinear with zero derivatives (LOD 0)
+    color value(double u, double v, const point3& /*p*/) const override {
+        if (!mip_) return color(0,1,1);  // cyan debug
+        u = std::max(0.0, std::min(1.0, u));
+        v = 1.0 - std::max(0.0, std::min(1.0, v));  // flip V
+        return mip_->filter((float)u, (float)v, 0,0, 0,0);
+    }
+
+    // Full EWA interface: caller provides UV screen-space derivatives
+    color value_ewa(double u, double v,
+                    double ds_dx, double dt_dx,
+                    double ds_dy, double dt_dy) const {
+        if (!mip_) return color(0,1,1);
+        u = std::max(0.0, std::min(1.0, u));
+        v = 1.0 - std::max(0.0, std::min(1.0, v));
+        return mip_->filter((float)u,    (float)v,
+                            (float)ds_dx,(float)dt_dx,
+                            (float)ds_dy,(float)dt_dy);
+    }
+
+    // LOD-explicit lookup (e.g. supplied by ray differentials)
+    color value_lod(double u, double v, double lod) const {
+        if (!mip_) return color(0,1,1);
+        u = std::max(0.0, std::min(1.0, u));
+        v = 1.0 - std::max(0.0, std::min(1.0, v));
+        return mip_->filter_lod((float)u, (float)v, (float)lod);
+    }
+
+    int mip_levels() const { return mip_ ? mip_->levels() : 0; }
+
+  private:
+    std::shared_ptr<mipmap> mip_;
 };
 
 
