@@ -10,6 +10,9 @@ class normal_map_material : public material {
 		: normal_tex(normal_tex), inner(inner) {}
 
 	// Perturb rec.normal using the tangent-space RGB normal map texture.
+	// Also recomputes rec.dpdu so the shading frame stays consistent with
+	// the perturbed normal (pbrt-v4: NormalMap() recomputes dpdu/dpdv via
+	// GramSchmidt after the normal is set).
 	hit_record apply(const hit_record& rec) const {
 		color packed = normal_tex->value(rec.u, rec.v, rec.p);
 		double ns_tx = 2.0*packed.x() - 1.0;
@@ -25,6 +28,13 @@ class normal_map_material : public material {
 			out_nx, out_ny, out_nz);
 		hit_record r2 = rec;
 		r2.normal = vec3(out_nx, out_ny, out_nz);
+		// Recompute dpdu so it stays perpendicular to the new normal
+		// (pbrt-v4: *dpdu = Normalize(GramSchmidt(shading.dpdu, ns)) * ulen)
+		double ulen = rec.dpdu.length();
+		vec3 ns_w(out_nx, out_ny, out_nz);
+		vec3 t = rec.dpdu - dot(rec.dpdu, ns_w) * ns_w;
+		if (t.length_squared() > 1e-12)
+			r2.dpdu = unit_vector(t) * ulen;
 		return r2;
 	}
 

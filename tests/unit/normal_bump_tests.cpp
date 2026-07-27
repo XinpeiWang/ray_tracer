@@ -156,9 +156,20 @@ TEST(NormalMapMaterial, ScatterSucceeds) {
 	EXPECT_TRUE(nm.scatter(r_in, rec, srec));
 }
 
-// ---------------------------------------------------------------------------
-// bump_map_material wrapper tests
-// ---------------------------------------------------------------------------
+TEST(NormalMapMaterial, DpduPerpendicularToNewNormal) {
+	// pbrt-v4 alignment: after apply(), dpdu must be perpendicular to the new normal
+	auto flat_tex = std::make_shared<solid_color>(color(0.5, 0.5, 1.0));
+	auto inner    = std::make_shared<lambertian>(color(1,1,1));
+	normal_map_material nm(flat_tex, inner);
+
+	hit_record rec = make_hit(vec3(0,1,0), vec3(1,0,0));
+	hit_record mod = nm.apply(rec);
+
+	double d = dot(mod.dpdu, mod.normal);
+	EXPECT_NEAR(d, 0.0, 1e-6);  // dpdu ⊥ shading normal
+}
+
+
 
 TEST(BumpMapMaterial, ZeroDisplacementNormalUnchanged) {
 	auto zero = std::make_shared<solid_color>(color(0,0,0));
