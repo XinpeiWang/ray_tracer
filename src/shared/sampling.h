@@ -288,3 +288,140 @@ CPU_GPU inline void SampleSphericalRectangle(
 	*out_y = world_pt.y;
 	*out_z = world_pt.z;
 }
+
+// ---------------------------------------------------------------------------
+// SphericalTriangleSolidAngle
+// Solid angle of the triangle (v0,v1,v2) as seen from reference point p.
+// Mirrors pbrt-v4: A = alpha + beta + gamma - Pi  (spherical excess)
+// Returns 0 if degenerate.
+// ---------------------------------------------------------------------------
+CPU_GPU inline double SphericalTriangleSolidAngle(
+		double v0x, double v0y, double v0z,
+		double v1x, double v1y, double v1z,
+		double v2x, double v2y, double v2z,
+		double px,  double py,  double pz) {
+
+	using namespace sampling_detail;
+	using V3 = Vec3<double>;
+
+	V3 a = V3(v0x-px, v0y-py, v0z-pz).normalized();
+	V3 b = V3(v1x-px, v1y-py, v1z-pz).normalized();
+	V3 c = V3(v2x-px, v2y-py, v2z-pz).normalized();
+
+	V3 n_ab = a.cross(b); if (n_ab.length_squared() < 1e-30) return 0.0;
+	V3 n_bc = b.cross(c); if (n_bc.length_squared() < 1e-30) return 0.0;
+	V3 n_ca = c.cross(a); if (n_ca.length_squared() < 1e-30) return 0.0;
+	n_ab = n_ab.normalized(); n_bc = n_bc.normalized(); n_ca = n_ca.normalized();
+
+	double alpha = angle_between(n_ab,     n_ca*-1);
+	double beta  = angle_between(n_bc,     n_ab*-1);
+	double gamma = angle_between(n_ca,     n_bc*-1);
+
+	double sa = alpha + beta + gamma - 3.14159265358979323846;
+	return sa > 0.0 ? sa : 0.0;
+}
+
+// ---------------------------------------------------------------------------
+// SampleSphericalTriangle
+// Direct port of pbrt-v4 SampleSphericalTriangle (util/sampling.cpp:28-110).
+// Uniformly samples a direction toward the triangle in solid-angle measure,
+// returning barycentric coordinates (b0,b1,b2) of the sampled point.
+//
+// Parameters:
+//   v0..v2  : triangle vertices in world space
+//   p       : reference (shading) point
+//   u0, u1  : uniform random numbers in [0,1)
+//   out_b0..b2 : barycentric coordinates of the sampled point
+//   out_pdf    : 1/solidAngle, or 0 if degenerate
+// ---------------------------------------------------------------------------
+CPU_GPU inline void SampleSphericalTriangle(
+		double v0x, double v0y, double v0z,
+		double v1x, double v1y, double v1z,
+		double v2x, double v2y, double v2z,
+		double px,  double py,  double pz,
+		double u0,  double u1,
+		double* out_b0, double* out_b1, double* out_b2,
+		double* out_pdf) {
+
+	using namespace sampling_detail;
+	using V3 = Vec3<double>;
+	const double Pi = 3.14159265358979323846;
+
+	if (out_pdf) *out_pdf = 0.0;
+	*out_b0 = *out_b1 = *out_b2 = 1.0/3.0;
+
+	// Direction vectors from p to each vertex, normalised
+	V3 a = V3(v0x-px, v0y-py, v0z-pz).normalized();
+	V3 b = V3(v1x-px, v1y-py, v1z-pz).normalized();
+	V3 c = V3(v2x-px, v2y-py, v2z-pz).normalized();
+
+	// Edge plane normals
+	V3 n_ab = a.cross(b); if (n_ab.length_squared() < 1e-30) return;
+	V3 n_bc = b.cross(c); if (n_bc.length_squared() < 1e-30) return;
+	V3 n_ca = c.cross(a); if (n_ca.length_squared() < 1e-30) return;
+	n_ab = n_ab.normalized(); n_bc = n_bc.normalized(); n_ca = n_ca.normalized();
+
+	// Internal angles at each vertex  (pbrt-v4: alpha, beta, gamma)
+	double alpha = angle_between(n_ab, n_ca*-1);
+	double beta  = angle_between(n_bc, n_ab*-1);
+	double gamma = angle_between(n_ca, n_bc*-1);
+
+	double A = alpha + beta + gamma - Pi;  // spherical excess = solid angle
+	if (A <= 0.0) return;
+	if (out_pdf) *out_pdf = 1.0 / A;
+
+	// Sample a sub-area Ap uniformly in [pi, alpha+beta+gamma]
+	double Ap_pi = u0 * (alpha + beta + gamma) + (1.0 - u0) * Pi;  // = Lerp(u0, Pi, A_pi)
+
+	// Compute cosBp from Ap (pbrt-v4 cosBp formula)
+	double cosAlpha = std::cos(alpha), sinAlpha = std::sin(alpha);
+	double sinPhi   = std::sin(Ap_pi) * cosAlpha - std::cos(Ap_pi) * sinAlpha;
+	double cosPhi   = std::cos(Ap_pi) * cosAlpha + std::sin(Ap_pi) * sinAlpha;
+	double cosc     = a.dot(b);  // cos(arc c) = dot(a,b)
+	double k1 = cosPhi + cosAlpha;
+	double k2 = sinPhi - sinAlpha * cosc;
+	// DifferenceOfProducts / SumOfProducts (exact)
+	double num   = k2 + (k2*cosPhi - k1*sinPhi) * cosAlpha;
+	double denom = (k2*sinPhi + k1*cosPhi) * sinAlpha;
+	double cosBp = (std::abs(denom) > 1e-30) ? num / denom : 0.0;
+	cosBp = cosBp < -1.0 ? -1.0 : (cosBp > 1.0 ? 1.0 : cosBp);
+
+	// cp = cosBp*a + sinBp * GramSchmidt(c, a)
+	double sinBp = std::sqrt(1.0 - cosBp*cosBp > 0.0 ? 1.0 - cosBp*cosBp : 0.0);
+	// GramSchmidt(c, a) = normalise(c - dot(c,a)*a)
+	V3 gs = c - a * c.dot(a);
+	double gsl = gs.length();
+	V3 gs_n = (gsl > 1e-15) ? gs * (1.0/gsl) : V3(0,0,0);
+	V3 cp = a * cosBp + gs_n * sinBp;
+
+	// Sample direction w along the arc between cp and b
+	double cosTheta = 1.0 - u1 * (1.0 - cp.dot(b));
+	double sinTheta = std::sqrt(1.0 - cosTheta*cosTheta > 0.0 ? 1.0 - cosTheta*cosTheta : 0.0);
+	// GramSchmidt(cp, b)
+	V3 gs2 = cp - b * cp.dot(b);
+	double gs2l = gs2.length();
+	V3 gs2_n = (gs2l > 1e-15) ? gs2 * (1.0/gs2l) : V3(0,0,0);
+	V3 w = b * cosTheta + gs2_n * sinTheta;
+
+	// Find barycentric coordinates for direction w via Möller-Trumbore
+	V3 p_pt(px, py, pz);
+	V3 v0(v0x,v0y,v0z), v1(v1x,v1y,v1z), v2(v2x,v2y,v2z);
+	V3 e1 = v1 - v0, e2 = v2 - v0;
+	V3 s1 = w.cross(e2);
+	double divisor = s1.dot(e1);
+	if (std::abs(divisor) < 1e-30) { *out_b0=*out_b1=*out_b2=1.0/3.0; return; }
+	double inv = 1.0 / divisor;
+	V3 s = p_pt - v0;
+	double b1 = s.dot(s1) * inv;
+	double b2 = w.dot(s.cross(e1)) * inv;
+
+	// Clamp barycentrics (pbrt-v4: Clamp + normalise if b1+b2 > 1)
+	b1 = b1 < 0.0 ? 0.0 : (b1 > 1.0 ? 1.0 : b1);
+	b2 = b2 < 0.0 ? 0.0 : (b2 > 1.0 ? 1.0 : b2);
+	if (b1 + b2 > 1.0) { double s = b1 + b2; b1 /= s; b2 /= s; }
+
+	*out_b0 = 1.0 - b1 - b2;
+	*out_b1 = b1;
+	*out_b2 = b2;
+}
+

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
@@ -95,12 +95,16 @@
     <!-- Unit Tests -->
     <ClCompile Include="gtest_all.cpp" />
     <ClCompile Include="gtest_main_wrapper.cpp" />
+    <ClCompile Include="unit\bsdf_chi2_tests.cpp" />
     <ClCompile Include="unit\bvh_tests.cpp" />
     <ClCompile Include="unit\bxdf_tests.cpp" />
     <ClCompile Include="unit\camera_tests.cpp" />
     <ClCompile Include="unit\filter_tests.cpp" />
     <ClCompile Include="unit\mis_tests.cpp" />
+    <ClCompile Include="unit\normal_bump_tests.cpp" />
+    <ClCompile Include="unit\normal_map_tests.cpp" />
     <ClCompile Include="unit\path_sampler_tests.cpp" />
+    <ClCompile Include="unit\piecewise_dist_tests.cpp" />
     <ClCompile Include="unit\power_light_sampler_tests.cpp" />
     <ClCompile Include="unit\scene_tests.cpp" />
     <ClCompile Include="unit\scene_registry_tests.cpp" />
@@ -114,6 +118,10 @@
     <ClCompile Include="unit\gpu_render_tests.cpp" />
     <ClCompile Include="unit\energy_conservation_tests.cpp" />
     <ClCompile Include="integration\cpu_gpu_comparison_tests.cpp" />
+    <ClCompile Include="unit\sky_light_tests.cpp" />
+    <ClCompile Include="unit\sobol_sampler_tests.cpp" />
+    <ClCompile Include="unit\sobol_strat_tests.cpp" />
+    <ClCompile Include="unit\tone_map_tests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\cpu_renderer\cpu_renderer.vcxproj">
