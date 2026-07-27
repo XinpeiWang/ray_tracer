@@ -69,15 +69,23 @@ struct Vec3 {
 	}
 };
 
-// AngleBetween two unit vectors -- stable across all angles
+// AngleBetween two unit vectors -- numerically stable across all angles.
+// Mirrors pbrt-v4 AngleBetween (vecmath.h line 972):
+//   dot < 0: Pi - 2*asin(|a+b|/2)   (stable near pi)
+//   dot >= 0: 2*asin(|b-a|/2)        (stable near 0)
 template<typename T>
 CPU_GPU T angle_between(Vec3<T> a, Vec3<T> b) {
-	// acos(clamp(dot)) is unstable near 0/pi; use atan2 of cross-dot
-	// atan2(|axb|, a.b) is numerically stable
-	T d = a.dot(b);
-	Vec3<T> c = a.cross(b);
-	T s = c.length();
-	return std::atan2(s, d);
+	if (a.dot(b) < T(0)) {
+		Vec3<T> s = a + b;
+		T half_len = std::sqrt(s.length_squared()) * T(0.5);
+		half_len = half_len > T(1) ? T(1) : half_len;  // SafeASin clamp
+		return T(3.14159265358979323846) - T(2) * std::asin(half_len);
+	} else {
+		Vec3<T> d = b - a;
+		T half_len = std::sqrt(d.length_squared()) * T(0.5);
+		half_len = half_len > T(1) ? T(1) : half_len;
+		return T(2) * std::asin(half_len);
+	}
 }
 
 // Minimal orthonormal Frame from two axes (pbrt-v4 Frame::FromXY)
