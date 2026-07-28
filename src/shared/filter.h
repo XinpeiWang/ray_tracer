@@ -16,6 +16,7 @@
 //==============================================================================================
 
 #include <cmath>
+#include "scalar_math.h"
 
 // ---------------------------------------------------------------------------
 // BoxFilter -- uniform weight 1 for all samples (current default, baseline)
@@ -141,14 +142,8 @@ class LanczosSincFilter {
 	double tau()    const { return tau_; }
 
   private:
-	// sinc(x) = sin(pi*x) / (pi*x), with sinc(0) = 1 (pbrt-v4 Sinc / SinXOverX)
-	static double sinc(double x) {
-		const double pi = 3.14159265358979323846;
-		double px = pi * x;
-		// SinXOverX: if 1 - (px)^2 == 1, x is near zero -> return 1
-		if (1.0 - px * px == 1.0) return 1.0;
-		return std::sin(px) / px;
-	}
+	// sinc(x) = sin(pi*x)/(pi*x), with sinc(0)=1 -- delegates to scalar_math.h Sinc
+	static double sinc(double x) { return Sinc(x); }
 
 	// WindowedSinc(x, radius, tau) = sinc(x) * sinc(x/tau), zero outside radius
 	// (pbrt-v4 WindowedSinc in math.h)

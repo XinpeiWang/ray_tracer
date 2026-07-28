@@ -28,8 +28,6 @@
 #include "../../src/TheRestOfYourLife/material.h"
 #include "../../src/TheRestOfYourLife/triangle.h"
 
-static const double Pi = 3.14159265358979323846;
-
 // Convenience: build a single-triangle mesh
 static std::shared_ptr<triangle> make_tri(
 		point3 p0, point3 p1, point3 p2,

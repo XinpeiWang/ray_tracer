@@ -32,6 +32,7 @@
 #   include <cmath>
 #   include <cstring>
 #endif
+#include "scalar_math.h"
 
 // ---------------------------------------------------------------------------
 // Internal helpers

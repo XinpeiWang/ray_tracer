@@ -34,6 +34,7 @@
 #   include <cmath>
 #   include <cstdint>
 #endif
+#include "scalar_math.h"
 
 // ---------------------------------------------------------------------------
 // pbrt-v4 fixed permutation table (noise.cpp, 512 entries = 256 doubled)
@@ -96,17 +97,6 @@ CPU_GPU T NoiseWeight(T t) {
 	T t4 = t3 * t;
 	T t5 = t4 * t;
 	return T(6)*t5 - T(15)*t4 + T(10)*t3;
-}
-
-template<typename T>
-CPU_GPU T Lerp(T t, T a, T b) { return a + t * (b - a); }
-
-template<typename T>
-CPU_GPU T SmoothStep(T x, T a, T b) {
-	if (a == b) return (x < a) ? T(0) : T(1);
-	T t = (x - a) / (b - a);
-	t = (t < T(0)) ? T(0) : (t > T(1)) ? T(1) : t;
-	return t * t * (T(3) - T(2)*t);
 }
 
 template<typename T>
@@ -249,7 +239,7 @@ CPU_GPU T turbulence(T px, T py, T pz,
 
 	// Partial octave: blend from 0.2 baseline toward |noise| using SmoothStep
 	T n_partial = n_float - T(n_int);
-	sum += o * noise_detail::Lerp(
+	sum += o * Lerp(
 			   SmoothStep(n_partial, T(0.3), T(0.7)),
 			   T(0.2),
 			   safe_abs(perlin_noise<T>(lambda*px, lambda*py, lambda*pz)));
