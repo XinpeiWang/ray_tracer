@@ -246,3 +246,155 @@ class SobolSampler {
 	uint32_t seeds_[SOBOL_DIMS];
 	uint64_t fallback_ = 0x123456789ABCDEFull;
 };
+
+// ---------------------------------------------------------------------------
+// ZSobolSampler  -- pbrt-v4 ZSobolSampler (samplers.h)
+//
+// The default production sampler in pbrt-v4.  Interleaves pixel coordinates
+// via a Morton Z-curve so that nearby pixels draw from nearby Sobol strata,
+// achieving blue-noise error distribution across the image plane.
+//
+// Key design:
+//   - pixel (px,py) + sample index -> mortonIndex via EncodeMorton2
+//   - mortonIndex is treated as a base-4 number of nBase4Digits digits
+//   - each digit is randomly permuted using one of 24 precomputed 4-way
+//     permutations selected deterministically from higherDigits ^ dimension
+//   - The permuted index is passed to SobolSample with FastOwenScrambler
+//
+// Reference: pbrt-v4 samplers.h ZSobolSampler (Apache-2.0)
+// ---------------------------------------------------------------------------
+
+// Bit helpers required by ZSobolSampler
+inline uint64_t left_shift2(uint64_t x) {
+	x &= 0xffffffff;
+	x = (x ^ (x << 16)) & 0x0000ffff0000ffff;
+	x = (x ^ (x <<  8)) & 0x00ff00ff00ff00ff;
+	x = (x ^ (x <<  4)) & 0x0f0f0f0f0f0f0f0f;
+	x = (x ^ (x <<  2)) & 0x3333333333333333;
+	x = (x ^ (x <<  1)) & 0x5555555555555555;
+	return x;
+}
+
+// Interleave bits of x and y into a 64-bit Morton code
+inline uint64_t encode_morton2(uint32_t x, uint32_t y) {
+	return (left_shift2(y) << 1) | left_shift2(x);
+}
+
+// Integer log2 (floor) for uint32
+inline int log2_int(uint32_t v) {
+	if (v == 0) return 0;
+	int r = 0;
+	while (v >>= 1) ++r;
+	return r;
+}
+
+// Round up to next power of 2 (int32)
+inline int round_up_pow2(int v) {
+	--v;
+	v |= v >> 1; v |= v >> 2; v |= v >> 4; v |= v >> 8; v |= v >> 16;
+	return v + 1;
+}
+
+// ZSobolSampler: pixel-aware Sobol sampler with Z-curve Morton ordering.
+//
+// Usage:
+//   ZSobolSampler s(spp, res_x, res_y, /*seed=*/0);
+//   s.start_pixel_sample(px, py, sample_index, /*dim=*/0);
+//   double v = s.get();   // next sample dimension
+class ZSobolSampler {
+  public:
+	// spp           -- samples per pixel (ideally a power of 2)
+	// full_res_x/y  -- full image resolution (determines nBase4Digits)
+	// seed          -- global seed for scrambling
+	ZSobolSampler(int spp, int full_res_x, int full_res_y, int seed = 0)
+		: seed_(seed)
+	{
+		log2_spp_ = log2_int(static_cast<uint32_t>(spp > 0 ? spp : 1));
+		int res = round_up_pow2(full_res_x > full_res_y ? full_res_x : full_res_y);
+		int log4_spp = (log2_spp_ + 1) / 2;
+		n_base4_digits_ = log2_int(static_cast<uint32_t>(res > 0 ? res : 1)) + log4_spp;
+	}
+
+	int samples_per_pixel() const { return 1 << log2_spp_; }
+
+	// Call once per (pixel, sample) pair before fetching dimensions.
+	void start_pixel_sample(int px, int py, int sample_idx, int start_dim = 0) {
+		dimension_    = start_dim;
+		morton_index_ = (encode_morton2(static_cast<uint32_t>(px),
+										static_cast<uint32_t>(py))
+						 << log2_spp_) | static_cast<uint64_t>(sample_idx);
+	}
+
+	// Fetch next 1D sample; advances the dimension counter.
+	double get() {
+		uint64_t si = get_sample_index();
+		uint32_t hash = static_cast<uint32_t>(mix_bits(
+			static_cast<uint64_t>(dimension_) ^ static_cast<uint64_t>(seed_) * 6364136223846793005ULL));
+		++dimension_;
+		uint32_t raw = sobol_sample_raw(si, 0);
+		return (fast_owen_scramble(raw, hash) >> 8) * 0x1p-24;
+	}
+
+	// Fetch a correlated 2D sample pair.
+	void get2d(double& u0, double& u1) {
+		uint64_t si   = get_sample_index();
+		uint64_t bits = mix_bits(static_cast<uint64_t>(dimension_)
+								 ^ static_cast<uint64_t>(seed_) * 6364136223846793005ULL);
+		uint32_t h0   = static_cast<uint32_t>(bits);
+		uint32_t h1   = static_cast<uint32_t>(bits >> 32);
+		dimension_ += 2;
+		u0 = (fast_owen_scramble(sobol_sample_raw(si, 0), h0) >> 8) * 0x1p-24;
+		u1 = (fast_owen_scramble(sobol_sample_raw(si, 1), h1) >> 8) * 0x1p-24;
+	}
+
+	void reset_dim(int d = 0) { dimension_ = d; }
+
+  private:
+	// Permute base-4 digits of morton_index to get the Sobol sample index.
+	// Direct port of pbrt-v4 ZSobolSampler::GetSampleIndex().
+	uint64_t get_sample_index() const {
+		static const uint8_t perms[24][4] = {
+			{0,1,2,3},{0,1,3,2},{0,2,1,3},{0,2,3,1},
+			{0,3,2,1},{0,3,1,2},{1,0,2,3},{1,0,3,2},
+			{1,2,0,3},{1,2,3,0},{1,3,2,0},{1,3,0,2},
+			{2,1,0,3},{2,1,3,0},{2,0,1,3},{2,0,3,1},
+			{2,3,0,1},{2,3,1,0},{3,1,2,0},{3,1,0,2},
+			{3,2,1,0},{3,2,0,1},{3,0,2,1},{3,0,1,2}
+		};
+
+		uint64_t sample_index = 0;
+		bool pow2_samples = (log2_spp_ & 1) != 0;
+		int  last_digit   = pow2_samples ? 1 : 0;
+
+		for (int i = n_base4_digits_ - 1; i >= last_digit; --i) {
+			int digit_shift = 2 * i - (pow2_samples ? 1 : 0);
+			int digit       = static_cast<int>((morton_index_ >> digit_shift) & 3);
+			uint64_t higher = morton_index_ >> (digit_shift + 2);
+			int p = static_cast<int>((mix_bits(higher ^ (0x55555555u * static_cast<uint64_t>(dimension_))) >> 24) % 24);
+			digit = perms[p][digit];
+			sample_index |= static_cast<uint64_t>(digit) << digit_shift;
+		}
+
+		if (pow2_samples) {
+			int digit = static_cast<int>(morton_index_ & 1);
+			sample_index |= static_cast<uint64_t>(
+				digit ^ (mix_bits((morton_index_ >> 1) ^ (0x55555555u * static_cast<uint64_t>(dimension_))) & 1));
+		}
+
+		return sample_index;
+	}
+
+	// Raw (unscrambled) Sobol uint32 for dimension d at sample index idx.
+	static uint32_t sobol_sample_raw(uint64_t idx, int dim) {
+		uint32_t v = 0;
+		for (int i = dim * SOBOL_MATRIX_SIZE; idx; idx >>= 1, ++i)
+			if (idx & 1) v ^= sobol_matrices[i];
+		return v;
+	}
+
+	int      seed_;
+	int      log2_spp_;
+	int      n_base4_digits_;
+	uint64_t morton_index_ = 0;
+	int      dimension_    = 0;
+};
