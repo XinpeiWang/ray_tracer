@@ -165,23 +165,15 @@ inline SquareMatrix<3> WhiteBalance(float srcX, float srcY,
 	XYZ srcXYZ = XYZ::FromxyY(srcX, srcY);
 	XYZ dstXYZ = XYZ::FromxyY(dstX, dstY);
 
-	// Transform to LMS
-	float sLMS[3] = {
-		LMSFromXYZ[0][0]*srcXYZ.X + LMSFromXYZ[0][1]*srcXYZ.Y + LMSFromXYZ[0][2]*srcXYZ.Z,
-		LMSFromXYZ[1][0]*srcXYZ.X + LMSFromXYZ[1][1]*srcXYZ.Y + LMSFromXYZ[1][2]*srcXYZ.Z,
-		LMSFromXYZ[2][0]*srcXYZ.X + LMSFromXYZ[2][1]*srcXYZ.Y + LMSFromXYZ[2][2]*srcXYZ.Z,
-	};
-	float dLMS[3] = {
-		LMSFromXYZ[0][0]*dstXYZ.X + LMSFromXYZ[0][1]*dstXYZ.Y + LMSFromXYZ[0][2]*dstXYZ.Z,
-		LMSFromXYZ[1][0]*dstXYZ.X + LMSFromXYZ[1][1]*dstXYZ.Y + LMSFromXYZ[1][2]*dstXYZ.Z,
-		LMSFromXYZ[2][0]*dstXYZ.X + LMSFromXYZ[2][1]*dstXYZ.Y + LMSFromXYZ[2][2]*dstXYZ.Z,
-	};
+	// Transform to LMS via Bradford matrix
+	XYZ srcLMS = LMSFromXYZ * srcXYZ;
+	XYZ dstLMS = LMSFromXYZ * dstXYZ;
 
 	// Diagonal correction matrix
 	SquareMatrix<3> LMScorrect = SquareMatrix<3>::Diag(
-		sLMS[0] != 0.f ? dLMS[0] / sLMS[0] : 1.f,
-		sLMS[1] != 0.f ? dLMS[1] / sLMS[1] : 1.f,
-		sLMS[2] != 0.f ? dLMS[2] / sLMS[2] : 1.f);
+		srcLMS[0] != 0.f ? dstLMS[0] / srcLMS[0] : 1.f,
+		srcLMS[1] != 0.f ? dstLMS[1] / srcLMS[1] : 1.f,
+		srcLMS[2] != 0.f ? dstLMS[2] / srcLMS[2] : 1.f);
 
 	return XYZFromLMS * LMScorrect * LMSFromXYZ;
 }
