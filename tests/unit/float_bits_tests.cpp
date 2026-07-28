@@ -25,6 +25,23 @@ TEST(FloatBitsConstants, MachineEpsilonHalfULP) {
 }
 
 // ---------------------------------------------------------------------------
+// FMA
+// ---------------------------------------------------------------------------
+TEST(FMATest, FloatFMA) {
+    // fma(a, b, c) = a*b + c, exact when representable
+    EXPECT_FLOAT_EQ(FMA(2.0f, 3.0f, 4.0f), 10.0f);
+    EXPECT_FLOAT_EQ(FMA(-1.0f, 1.0f, 1.0f), 0.0f);
+}
+TEST(FMATest, DoubleFMA) {
+    EXPECT_DOUBLE_EQ(FMA(2.0, 3.0, 4.0), 10.0);
+    EXPECT_DOUBLE_EQ(FMA(1.0/3.0, 3.0, 0.0), 1.0);
+}
+TEST(FMATest, MatchesStdFma) {
+    float a = 1.23456f, b = 7.89f, c = -0.001f;
+    EXPECT_FLOAT_EQ(FMA(a, b, c), std::fma(a, b, c));
+}
+
+// ---------------------------------------------------------------------------
 // IsNaN / IsInf / IsFinite
 // ---------------------------------------------------------------------------
 TEST(IsNaNTest, FloatNaN)    { EXPECT_TRUE(IsNaN(std::numeric_limits<float>::quiet_NaN())); }

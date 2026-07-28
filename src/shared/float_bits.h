@@ -82,6 +82,13 @@ CPU_GPU typename std::enable_if_t<std::is_integral_v<T>, bool>
 IsFinite(T) { return true; }
 
 // ===========================================================================
+// FMA -- fused multiply-add, matches pbrt-v4 float.h FMA overloads
+// ===========================================================================
+CPU_GPU float       FMA(float a,       float b,       float c)       { return std::fma(a, b, c); }
+CPU_GPU double      FMA(double a,      double b,      double c)      { return std::fma(a, b, c); }
+CPU_GPU long double FMA(long double a, long double b, long double c) { return std::fma(a, b, c); }
+
+// ===========================================================================
 // FloatToBits / BitsToFloat -- type-punning via memcpy (C++17 compliant)
 // Mirrors pbrt-v4 FloatToBits/BitsToFloat (pstd::bit_cast on CPU).
 // ===========================================================================
@@ -161,8 +168,10 @@ CPU_GPU double NextFloatDown(double v) {
 }
 
 // ===========================================================================
-// FlipSign(a, b) -- return a with the sign bit of b
-// Mirrors pbrt-v4 FlipSign (double overload).
+// FlipSign(a, b) -- XOR a's sign bit with b's sign bit
+// If b is negative (sign=1), flips a's sign. If b is positive (sign=0), a is unchanged.
+// Mirrors pbrt-v4 FlipSign (util/float.h, double version).
+// We also provide a float overload (pbrt-v4 only has double).
 // ===========================================================================
 CPU_GPU double FlipSign(double a, double b) {
 	return BitsToFloat(FloatToBits(a) ^ SignBit(b));
