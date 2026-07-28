@@ -147,6 +147,7 @@
                                     <ClCompile Include="unit\interval_tests.cpp" />
                                         <ClCompile Include="unit\compensated_float_tests.cpp" />
                                         <ClCompile Include="unit\square_matrix_tests.cpp" />
+                                        <ClCompile Include="unit\pbrt_hash_tests.cpp" />
     <ClCompile Include="unit\sobol_strat_tests.cpp" />
     <ClCompile Include="unit\tone_map_tests.cpp" />
     <ClCompile Include="unit\triangle_tests.cpp" />
