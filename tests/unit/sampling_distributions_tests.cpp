@@ -260,3 +260,24 @@ TEST(SmoothStepDistribution, RoundTrip) {
 		EXPECT_NEAR(u2, u, 1e-5) << "u=" << u;
 	}
 }
+
+TEST(SmoothStepDistribution, InvertBoundaries) {
+	// At x=a: t=0, P=0; at x=b: t=1, P=1
+	EXPECT_NEAR(InvertSmoothStepSample(0.2, 0.2, 0.8), 0.0, 1e-10);
+	EXPECT_NEAR(InvertSmoothStepSample(0.8, 0.2, 0.8), 1.0, 1e-10);
+}
+
+TEST(TwoNormal, SpreadOverManyDraws) {
+	// Gather 100 pairs; both outputs should span both sides of the mean.
+	double sumA = 0, sumB = 0;
+	for (int i = 0; i < 100; ++i) {
+		double u0 = (i + 0.5) / 100.0;
+		double u1 = std::fmod((i * 0.61803398875) + 0.1, 1.0); // golden ratio sequence
+		double a, b;
+		SampleTwoNormal(u0, u1, a, b);
+		sumA += a; sumB += b;
+	}
+	// Mean of 100 standard-normal draws should be near 0
+	EXPECT_NEAR(sumA / 100.0, 0.0, 0.4);
+	EXPECT_NEAR(sumB / 100.0, 0.0, 0.4);
+}

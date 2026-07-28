@@ -227,7 +227,11 @@ CPU_GPU inline double SampleSmoothStep(double u, double a, double b) {
 CPU_GPU inline double InvertSmoothStepSample(double x, double a, double b) {
 	double t = (x - a) / (b - a);
 	double P = 2.0 * Pow<3>(t) - Pow<4>(t);
-	return P;  // CDF at x normalised to [0,1] (P(a)=0, P(b)=1)
+	// NOTE: pbrt-v4's version wraps P in a lambda then computes (P(x)-P(a))/(P(b)-P(a)),
+	// but the lambda captures t (fixed) and ignores its argument, making the division
+	// degenerate (0/0).  The correct CDF-inverse is simply P = 2t^3 - t^4, since
+	// CDF(a)=0 and CDF(b)=1 by construction.
+	return P;
 }
 
 #if defined(_MSC_VER)
