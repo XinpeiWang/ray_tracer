@@ -140,6 +140,9 @@
         <ClCompile Include="unit\z_sobol_sampler_tests.cpp" />
             <ClCompile Include="unit\bilinear_sampling_tests.cpp" />
                 <ClCompile Include="unit\catmull_rom_tests.cpp" />
+                    <ClCompile Include="unit\equal_area_tests.cpp" />
+                        <ClCompile Include="unit\padded_sobol_tests.cpp" />
+                            <ClCompile Include="unit\bssrdf_tests.cpp" />
     <ClCompile Include="unit\sobol_strat_tests.cpp" />
     <ClCompile Include="unit\tone_map_tests.cpp" />
     <ClCompile Include="unit\triangle_tests.cpp" />

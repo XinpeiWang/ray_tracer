@@ -398,3 +398,120 @@ class ZSobolSampler {
 	uint64_t morton_index_ = 0;
 	int      dimension_    = 0;
 };
+
+// ---------------------------------------------------------------------------
+// PermutationElement -- pbrt-v4 util/math.h
+//
+// Maps index i to a pseudo-random permutation of {0, ..., l-1} seeded by p.
+// Uses a cycle-walking algorithm with a hash cascade: the inner loop maps
+// i into a bitmask-sized range (next power of 2 minus 1), then rejects
+// values >= l and repeats -- expected 2 iterations for random l.
+//
+// Usage: int j = permutation_element(i, n, seed_hash);
+// Reference: pbrt-v4 util/math.h PermutationElement
+// ---------------------------------------------------------------------------
+inline int permutation_element(uint32_t i, uint32_t l, uint32_t p) {
+	uint32_t w = l - 1;
+	w |= w >> 1; w |= w >> 2; w |= w >> 4; w |= w >> 8; w |= w >> 16;
+	do {
+		i ^= p;           i *= 0xe170893d;
+		i ^= p >> 16;
+		i ^= (i & w) >> 4;
+		i ^= p >> 8;      i *= 0x0929eb3f;
+		i ^= p >> 23;
+		i ^= (i & w) >> 1;
+		i *= 1 | p >> 27; i *= 0x6935fa69;
+		i ^= (i & w) >> 11;
+		i *= 0x74dcb303;
+		i ^= (i & w) >> 2;
+		i *= 0x9e501cc3;
+		i ^= (i & w) >> 2;
+		i *= 0xc860a3df;
+		i &= w;
+		i ^= i >> 5;
+	} while (i >= l);
+	return static_cast<int>((i + p) % l);
+}
+
+// ---------------------------------------------------------------------------
+// PaddedSobolSampler -- pbrt-v4 samplers.h PaddedSobolSampler
+//
+// Per-pixel padded Sobol sampler: decorrelates pixels by shuffling the
+// sample index using PermutationElement (a hash-based permutation seeded
+// by pixel coordinates, dimension, and a global seed). Each dimension then
+// draws from Sobol dim-0 or dim-1 with FastOwen scrambling.
+//
+// Design:
+//   - start_pixel_sample(px, py, sample_idx, start_dim)
+//   - get()   -> next 1D sample (Sobol dim 0, permuted index, Owen scramble)
+//   - get2d() -> next 2D sample (Sobol dims 0+1, same permuted index)
+//
+// Reference: pbrt-v4 samplers.h PaddedSobolSampler (Apache-2.0)
+// ---------------------------------------------------------------------------
+class PaddedSobolSampler {
+  public:
+	PaddedSobolSampler(int spp, int seed = 0)
+		: spp_(spp > 0 ? spp : 1), seed_(seed) {}
+
+	int samples_per_pixel() const { return spp_; }
+
+	void start_pixel_sample(int px, int py, int sample_idx, int start_dim = 0) {
+		pixel_x_     = px;
+		pixel_y_     = py;
+		sample_idx_  = sample_idx;
+		dimension_   = start_dim;
+	}
+
+	// Fetch next 1D sample using Sobol dim 0 with per-(pixel,dim) permutation.
+	double get() {
+		uint64_t h   = pixel_hash(dimension_);
+		int idx      = permutation_element(static_cast<uint32_t>(sample_idx_),
+										   static_cast<uint32_t>(spp_),
+										   static_cast<uint32_t>(h));
+		uint32_t raw = sobol_sample_raw(static_cast<uint64_t>(idx), 0);
+		uint32_t scr = fast_owen_scramble(raw, static_cast<uint32_t>(h >> 32));
+		++dimension_;
+		return (scr >> 8) * 0x1p-24;
+	}
+
+	// Fetch a 2D sample pair using Sobol dims 0+1 with shared permuted index.
+	void get2d(double& u0, double& u1) {
+		uint64_t h   = pixel_hash(dimension_);
+		int idx      = permutation_element(static_cast<uint32_t>(sample_idx_),
+										   static_cast<uint32_t>(spp_),
+										   static_cast<uint32_t>(h));
+		uint32_t r0  = fast_owen_scramble(sobol_sample_raw(static_cast<uint64_t>(idx), 0),
+										  static_cast<uint32_t>(h));
+		uint32_t r1  = fast_owen_scramble(sobol_sample_raw(static_cast<uint64_t>(idx), 1),
+										  static_cast<uint32_t>(h >> 32));
+		dimension_ += 2;
+		u0 = (r0 >> 8) * 0x1p-24;
+		u1 = (r1 >> 8) * 0x1p-24;
+	}
+
+	void reset_dim(int d = 0) { dimension_ = d; }
+
+  private:
+	// Hash pixel coordinates + dimension + seed to get a per-dimension seed.
+	uint64_t pixel_hash(int dim) const {
+		return mix_bits(static_cast<uint64_t>(pixel_x_) * 2654435761ull
+					  ^ static_cast<uint64_t>(pixel_y_) * 805459861ull
+					  ^ static_cast<uint64_t>(dim)      * 2246822519ull
+					  ^ static_cast<uint64_t>(seed_)    * 6364136223846793005ull);
+	}
+
+	// Raw Sobol uint32 for dimension d at index idx (same as ZSobolSampler).
+	static uint32_t sobol_sample_raw(uint64_t idx, int dim) {
+		uint32_t v = 0;
+		for (int i = dim * SOBOL_MATRIX_SIZE; idx; idx >>= 1, ++i)
+			if (idx & 1) v ^= sobol_matrices[i];
+		return v;
+	}
+
+	int spp_;
+	int seed_;
+	int pixel_x_    = 0;
+	int pixel_y_    = 0;
+	int sample_idx_ = 0;
+	int dimension_  = 0;
+};
