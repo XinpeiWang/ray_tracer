@@ -8,9 +8,9 @@
 // Components:
 //   SquareMatrix<N>          -- N×N matrix (identity default ctor)
 //   Transpose<N>             -- generic transpose
-//   Determinant<1,2,3>       -- specializations using DifferenceOfProducts
+//   Determinant<1,2,3,4>     -- specializations using DifferenceOfProducts
 //   Inverse<3>, Inverse<4>   -- exact cofactor / Laplace expansion
-//   operator*(M,M)           -- N=3,4 use InnerProduct; generic uses FMA loop
+//   operator*(M,M)           -- N=4 uses InnerProduct; generic N uses FMA loop
 //   Mul<Tresult>(M, v)       -- matrix-vector product
 //   LinearLeastSquares<N>    -- normal-equation least-squares solver
 //
@@ -247,7 +247,10 @@ CPU_GPU double Determinant(const SquareMatrix<4>& m) {
 	double c3 = DifferenceOfProducts(m[2][1], m[3][2], m[3][1], m[2][2]);
 	double c4 = DifferenceOfProducts(m[2][1], m[3][3], m[3][1], m[2][3]);
 	double c5 = DifferenceOfProducts(m[2][2], m[3][3], m[3][2], m[2][3]);
-	return InnerProduct(s0, c5, -s1, c4, s2, c3, s3, c2, s5, c0, -s4, c1);
+	// Matches pbrt-v4: three DifferenceOfProducts pairs, not a flat InnerProduct
+	return (DifferenceOfProducts(s0, c5, s1, c4) +
+			DifferenceOfProducts(s2, c3, -s3, c2) +
+			DifferenceOfProducts(s5, c0, s4, c1));
 }
 
 // ===========================================================================
@@ -322,8 +325,10 @@ CPU_GPU std::optional<SquareMatrix<4>> Inverse(const SquareMatrix<4>& m) {
 
 // ===========================================================================
 // Matrix-matrix multiplication
-// Generic definition comes first so that explicit specializations (N=3,4)
-// are valid per-standard and accepted by MSVC.
+// Generic definition comes first so that the explicit specialization (N=4)
+// is valid per-standard and accepted by MSVC.
+// N=4: uses InnerProduct (4-term compensated dot product) — matches pbrt-v4.
+// Generic N: FMA loop (pbrt-v4 does not specialize N=3).
 // ===========================================================================
 
 template <int N>
@@ -333,17 +338,6 @@ CPU_GPU SquareMatrix<N> operator*(const SquareMatrix<N>& m1, const SquareMatrix<
 		for (int j = 0; j < N; ++j)
 			for (int k = 0; k < N; ++k)
 				r[i][j] = std::fma(m1[i][k], m2[k][j], r[i][j]);
-	return r;
-}
-
-template <>
-CPU_GPU SquareMatrix<3> operator*(const SquareMatrix<3>& m1, const SquareMatrix<3>& m2) {
-	SquareMatrix<3> r;
-	for (int i = 0; i < 3; ++i)
-		for (int j = 0; j < 3; ++j)
-			r[i][j] = InnerProduct(m1[i][0], m2[0][j],
-								   m1[i][1], m2[1][j],
-								   m1[i][2], m2[2][j]);
 	return r;
 }
 

@@ -130,6 +130,76 @@ TEST(SquareMatrixTest, DetIdentity) {
 	EXPECT_DOUBLE_EQ(Determinant(SquareMatrix<4>()), 1.0);
 }
 
+TEST(SquareMatrixTest, Det4x4Known) {
+	// A 4x4 matrix with known determinant = 24
+	// (permutation matrix of a 4-cycle: det = sign of the permutation = -1 ... let's use diagonal)
+	// Diagonal(2,3,4,1): det = 24
+	SquareMatrix<4> m(2, 0, 0, 0,
+					  0, 3, 0, 0,
+					  0, 0, 4, 0,
+					  0, 0, 0, 1);
+	EXPECT_DOUBLE_EQ(Determinant(m), 24.0);
+}
+
+TEST(SquareMatrixTest, Det4x4NonTrivial) {
+	// Specific non-diagonal matrix with hand-computed det = -24
+	// Using a well-known example:
+	// | 1  2  3  4 |
+	// | 5  6  7  8 |
+	// | 9 10 11 12 |
+	// |13 14 15 16 |
+	// This is rank-2, so det = 0
+	SquareMatrix<4> m(1,  2,  3,  4,
+					  5,  6,  7,  8,
+					  9, 10, 11, 12,
+					 13, 14, 15, 16);
+	EXPECT_DOUBLE_EQ(Determinant(m), 0.0);
+
+	// Full-rank 4x4 with known det:
+	// Rotate/scale block diagonal:
+	// [2 1 0 0]
+	// [1 3 0 0]
+	// [0 0 4 1]
+	// [0 0 2 3]
+	// det = det([2 1; 1 3]) * det([4 1; 2 3]) = (6-1)*(12-2) = 5*10 = 50
+	SquareMatrix<4> m2(2, 1, 0, 0,
+					   1, 3, 0, 0,
+					   0, 0, 4, 1,
+					   0, 0, 2, 3);
+	EXPECT_DOUBLE_EQ(Determinant(m2), 50.0);
+}
+
+TEST(SquareMatrixTest, Multiply4x4Known) {
+	// Two non-trivial 4x4 matrices with known product.
+	// Use lower-triangular L * upper-triangular U = known product.
+	// L = identity + lower offset, U = identity + upper offset:
+	// L = diag(2,3,4,5), U = diag(1,1,1,1) -> LU = L
+	SquareMatrix<4> L = SquareMatrix<4>::Diag(2.0, 3.0, 4.0, 5.0);
+	SquareMatrix<4> I;
+	auto LI = L * I;
+	EXPECT_EQ(LI, L);
+	auto IL = I * L;
+	EXPECT_EQ(IL, L);
+	// Non-trivial: verify (AB)^T = B^T A^T
+	SquareMatrix<4> A(1, 2, 0, 0,
+					  3, 4, 0, 0,
+					  0, 0, 5, 6,
+					  0, 0, 7, 8);
+	SquareMatrix<4> B(2, 0, 1, 0,
+					  0, 2, 0, 1,
+					  1, 0, 2, 0,
+					  0, 1, 0, 2);
+	auto AB  = A * B;
+	auto BtAt = Transpose(B) * Transpose(A);
+	// (AB)^T should equal B^T A^T
+	auto ABt = Transpose(AB);
+	double err = 0;
+	for (int i = 0; i < 4; ++i)
+		for (int j = 0; j < 4; ++j)
+			err = std::max(err, std::abs(ABt[i][j] - BtAt[i][j]));
+	EXPECT_LT(err, 1e-12);
+}
+
 // ---------------------------------------------------------------------------
 // Inverse
 // ---------------------------------------------------------------------------
