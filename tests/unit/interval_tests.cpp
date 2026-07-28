@@ -93,6 +93,13 @@ TEST(IntervalConstructorTest, BoundsConstructor) {
 	EXPECT_EQ(i.UpperBound(), 3.0);
 }
 
+TEST(IntervalConstructorTest, InvertedBoundsAreNormalized) {
+	// pbrt-v4: Interval(high, low) must swap so LowerBound <= UpperBound
+	Interval i(3.0, 1.0);
+	EXPECT_EQ(i.LowerBound(), 1.0);
+	EXPECT_EQ(i.UpperBound(), 3.0);
+}
+
 TEST(IntervalConstructorTest, Midpoint) {
 	Interval i(1.0, 3.0);
 	EXPECT_NEAR(i.Midpoint(), 2.0, 1e-15);

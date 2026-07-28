@@ -95,7 +95,8 @@ class Interval {
 	// Constructors
 	CPU_GPU Interval() : low_(0.0), high_(0.0) {}
 	CPU_GPU explicit Interval(double v) : low_(v), high_(v) {}
-	CPU_GPU constexpr Interval(double low, double high) : low_(low), high_(high) {}
+	CPU_GPU constexpr Interval(double low, double high)
+		: low_(low < high ? low : high), high_(low < high ? high : low) {}
 
 	// pbrt-v4: Interval::FromValueAndError(v, err)
 	CPU_GPU static Interval FromValueAndError(double v, double err) {
