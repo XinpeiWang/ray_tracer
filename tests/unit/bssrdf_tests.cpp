@@ -204,8 +204,29 @@ TEST(BSSRDFTest, SubsurfaceFromDiffuseRoundTrip) {
 	SubsurfaceFromDiffuse(t, rho_eff_target, mfp, sa, ss);
 	// Recovered rho should be close to t.rho_samples[mid]
 	double rho_recovered = ss / (sa + ss);
-	EXPECT_NEAR(rho_recovered, t.rho_samples[mid], 0.15)
+	EXPECT_NEAR(rho_recovered, t.rho_samples[mid], 0.02)
 		<< "rho_eff_target=" << rho_eff_target;
 	// sigma_a + sigma_s should equal 1/mfp
 	EXPECT_NEAR(sa + ss, 1.0 / mfp, 0.5);
+}
+
+// ---- 13. Multi-channel: each channel is evaluated independently ----------
+TEST(BSSRDFTest, MultiChannelIndependence) {
+	BSSRDFTable t;
+	BuildTestTable(t);
+	// Channel 0: low albedo (rho=0.2), channel 1: high albedo (rho=0.9)
+	double sa[2] = {0.8, 0.1};
+	double ss[2] = {0.2, 0.9};
+	TabulatedBSSRDF bssrdf(sa, ss, &t, 2);
+	double sr0 = bssrdf.sr(0, 0.5);
+	double sr1 = bssrdf.sr(1, 0.5);
+	EXPECT_GE(sr0, 0.0);
+	EXPECT_GE(sr1, 0.0);
+	// High-albedo channel has more scattering -> larger profile value
+	EXPECT_GT(sr1, sr0);
+	// Sampled radii: high-albedo material typically samples larger radius
+	double r0 = bssrdf.sample_sr(0, 0.5);
+	double r1 = bssrdf.sample_sr(1, 0.5);
+	EXPECT_GT(r0, 0.0);
+	EXPECT_GT(r1, 0.0);
 }

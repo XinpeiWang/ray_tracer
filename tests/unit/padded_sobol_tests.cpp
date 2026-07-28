@@ -161,3 +161,41 @@ TEST(PaddedSobolTest, DimensionAdvances) {
 	s.reset_dim(0);
 	EXPECT_EQ(s.get(), v0);
 }
+
+// ---- 13. Power-of-2 spp gives perfect per-stratum coverage ---------------
+// pbrt-v4 notes that non-power-of-2 spp is suboptimal for Sobol samplers.
+// With spp=pow2, the permuted sample indices cover all strata exactly once.
+TEST(PaddedSobolTest, PowerOf2PerfectStratification) {
+	const int spp = 16; // power of 2
+	PaddedSobolSampler s(spp, 42);
+	std::vector<double> vals;
+	for (int i = 0; i < spp; ++i) {
+		s.start_pixel_sample(5, 7, i, 0);
+		vals.push_back(s.get());
+	}
+	std::sort(vals.begin(), vals.end());
+	// With power-of-2 spp, all 16 strata must be covered exactly
+	int misses = 0;
+	for (int k = 0; k < spp; ++k) {
+		double lo = k / (double)spp, hi = (k+1) / (double)spp;
+		bool found = false;
+		for (double v : vals) if (v >= lo && v < hi) { found = true; break; }
+		if (!found) ++misses;
+	}
+	EXPECT_EQ(misses, 0) << "Power-of-2 spp must achieve perfect stratification";
+}
+
+// ---- 14. get2d() returns samples from two distinct Sobol dimensions ------
+TEST(PaddedSobolTest, Get2DUsesTwoDimensions) {
+	PaddedSobolSampler s(16, 0);
+	// Collect paired samples and verify they are not identical
+	int n_distinct = 0;
+	for (int i = 0; i < 16; ++i) {
+		s.start_pixel_sample(0, 0, i, 0);
+		double u0, u1;
+		s.get2d(u0, u1);
+		if (u0 != u1) ++n_distinct;
+	}
+	// Expect most 2D pairs to have distinct u0, u1 (different Sobol dims)
+	EXPECT_GE(n_distinct, 10);
+}

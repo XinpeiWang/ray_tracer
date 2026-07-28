@@ -871,7 +871,7 @@ inline double SampleCatmullRom2D(const double* nodes1, const double* nodes2,
 
 // Map (u,v) in [0,1]^2 to a unit direction on S^2 with equal-area property.
 // pbrt-v4: EqualAreaSquareToSphere (util/math.cpp)
-CPU_GPU inline void EqualAreaSquareToSphere(double u, double v,
+CPU_GPU void EqualAreaSquareToSphere(double u, double v,
 											 double& wx, double& wy, double& wz) {
 	// Transform to [-1,1]^2
 	double uu = 2.0*u - 1.0, vv = 2.0*v - 1.0;
@@ -898,7 +898,7 @@ CPU_GPU inline void EqualAreaSquareToSphere(double u, double v,
 
 // Map a unit direction to (u,v) in [0,1]^2 (inverse of EqualAreaSquareToSphere).
 // pbrt-v4: EqualAreaSphereToSquare (util/math.cpp)
-CPU_GPU inline void EqualAreaSphereToSquare(double wx, double wy, double wz,
+CPU_GPU void EqualAreaSphereToSquare(double wx, double wy, double wz,
 											 double& u, double& v) {
 	double x = std::abs(wx), y = std::abs(wy), z = std::abs(wz);
 	double r = std::sqrt(std::max(0.0, 1.0 - z));
@@ -927,7 +927,7 @@ CPU_GPU inline void EqualAreaSphereToSquare(double wx, double wy, double wz,
 
 // Wrap (u,v) outside [0,1]^2 back onto the equal-area square by mirroring.
 // pbrt-v4: WrapEqualAreaSquare (util/math.cpp)
-CPU_GPU inline void WrapEqualAreaSquare(double& u, double& v) {
+CPU_GPU void WrapEqualAreaSquare(double& u, double& v) {
 	if (u < 0.0) { u = -u;      v = 1.0 - v; }
 	else if (u > 1.0) { u = 2.0 - u; v = 1.0 - v; }
 	if (v < 0.0) { u = 1.0 - u; v = -v; }
@@ -938,7 +938,7 @@ CPU_GPU inline void WrapEqualAreaSquare(double& u, double& v) {
 // disk mapping lifted to the hemisphere: wz = 1 - r^2, xy scaled by sqrt(2-r^2).
 // Avoids the polar bunching of the naive polar method.
 // pbrt-v4: SampleUniformHemisphereConcentric (util/sampling.h)
-CPU_GPU inline void SampleUniformHemisphereConcentric(double u0, double u1,
+CPU_GPU void SampleUniformHemisphereConcentric(double u0, double u1,
 													   double& wx, double& wy, double& wz) {
 	// Map to [-1,1]^2
 	double ux = 2.0*u0 - 1.0, uy = 2.0*u1 - 1.0;

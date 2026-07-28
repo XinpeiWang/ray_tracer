@@ -92,40 +92,45 @@ inline double sample_exponential(double u, double sigma_t) {
 	return -std::log(std::max(1e-300, 1.0 - u)) / sigma_t;
 }
 
-// InvertCatmullRom -- invert a Catmull-Rom spline CDF at value u.
+// InvertCatmullRom -- find x such that f(x) = u, where f is a Catmull-Rom spline.
 // pbrt-v4: InvertCatmullRom (util/math.cpp).
-// Uses bisection to find x in [nodes[0], nodes[n-1]] such that
-// the Catmull-Rom integral of f equals u * total_integral.
-// Here we rely on the CDF array 'cdf' (built by integrate_catmull_rom).
+//
+// u is a VALUE in the range of f (not a normalized fraction).
+// Returns nodes[0] if u <= f[0], nodes[n-1] if u >= f[n-1].
+// Inverts using Newton-bisection within the identified segment.
+//
+// Used by SubsurfaceFromDiffuse to invert the rhoEff(rho) curve.
 inline double invert_catmull_rom(const double* nodes, const double* f, int n, double u) {
-	// clamp u to domain of CDF
-	u = std::max(0.0, std::min(1.0, u));
-	// build on-the-fly: find interval in cdf then bisect
-	// We call integrate_catmullrom to get the cdf, then invert.
-	// Since we don't have pre-built cdf here, we re-integrate per call.
-	// (For table building this is called O(n_rho) times -- acceptable.)
-	std::vector<double> cdf(n);
-	double total = integrate_catmull_rom(nodes, f, n, cdf.data());
-	if (total == 0.0) return nodes[0];
-	double target = u * total;
-	// find interval
-	int idx = 0;
-	for (int i = 0; i < n - 1; ++i) { if (cdf[i+1] >= target) { idx = i; break; } idx = i; }
-	// bisect within segment
-	double lo = nodes[idx], hi = nodes[idx + 1];
-	for (int iter = 0; iter < 64; ++iter) {
-		double mid = 0.5 * (lo + hi);
-		std::vector<double> cdf2(n);
-		integrate_catmull_rom(nodes, f, n, cdf2.data());
-		// interpolate CDF at mid: find its interval
-		// fast: linear scan from idx
-		double lo_val = cdf[idx], hi_val = cdf[idx + 1];
-		double frac = (mid - nodes[idx]) / (nodes[idx + 1] - nodes[idx]);
-		double val_mid = lo_val + frac * (hi_val - lo_val);
-		if (val_mid < target) lo = mid; else hi = mid;
-		if (hi - lo < 1e-12) break;
-	}
-	return 0.5 * (lo + hi);
+	// Boundary clamp (pbrt-v4: stop when u is out of bounds)
+	if (!(u > f[0]))   return nodes[0];
+	if (!(u < f[n-1])) return nodes[n-1];
+
+	// Find interval i such that f[i] <= u < f[i+1]
+	int i = 0;
+	for (int k = 0; k < n - 1; ++k) { if (f[k] <= u) i = k; else break; }
+
+	// Look up x_i, x_{i+1} and function values of spline segment i
+	double x0 = nodes[i], x1 = nodes[i + 1];
+	double f0 = f[i],     f1 = f[i + 1];
+	double width = x1 - x0;
+
+	// Approximate derivatives using finite differences (pbrt-v4 exact match)
+	double d0 = (i > 0)     ? width * (f1 - f[i-1]) / (x1 - nodes[i-1]) : (f1 - f0);
+	double d1 = (i+2 < n)   ? width * (f[i+2] - f0) / (nodes[i+2] - x0) : (f1 - f0);
+
+	// Newton-bisection: solve Fhat(t) - u = 0 where Fhat is the cubic Hermite
+	auto eval = [&](double t) -> std::pair<double, double> {
+		double t2 = t*t, t3 = t2*t;
+		// Fhat: cubic Hermite evaluated at t (pbrt-v4 formula)
+		double Fhat = (2*t3 - 3*t2 + 1)*f0 + (-2*t3 + 3*t2)*f1
+					+ (t3 - 2*t2 + t)*d0   + (t3 - t2)*d1;
+		// fhat: derivative dFhat/dt
+		double fhat = (6*t2 - 6*t)*f0 + (-6*t2 + 6*t)*f1
+					+ (3*t2 - 4*t + 1)*d0 + (3*t2 - 2*t)*d1;
+		return {Fhat - u, fhat};
+	};
+	double t = catmullrom_newton_bisection(0.0, 1.0, eval);
+	return x0 + t * width;
 }
 
 } // namespace bssrdf_detail
