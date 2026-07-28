@@ -31,27 +31,32 @@
 #   if defined(__CUDACC__)
 #       define CPU_GPU __host__ __device__ __forceinline__
 #   else
-#       define CPU_GPU inline
+#       define CPU_GPU
 #   endif
 #endif
 
 #include <cmath>
 #include <cstdint>
 #include <climits>
+#include <cstring>
 #include <utility>
 #include <type_traits>
 #include <limits>
 
 // ===========================================================================
-// Constants
+// Internal pi constant (not exported to global scope to avoid redefinition
+// conflicts with translation units that define their own Pi).
 // ===========================================================================
-static constexpr double Pi        = 3.14159265358979323846;
-static constexpr double InvPi     = 0.31830988618379067154;
-static constexpr double Inv2Pi    = 0.15915494309189533577;
-static constexpr double Inv4Pi    = 0.07957747154594766788;
-static constexpr double PiOver2   = 1.57079632679489661923;
-static constexpr double PiOver4   = 0.78539816339744830961;
-static constexpr double Sqrt2     = 1.41421356237309504880;
+namespace scalar_math_detail {
+    static constexpr double kPi      = 3.14159265358979323846;
+    static constexpr double kInvPi   = 0.31830988618379067154;
+    static constexpr double kInv2Pi  = 0.15915494309189533577;
+    static constexpr double kInv4Pi  = 0.07957747154594766788;
+    static constexpr double kPiOver2 = 1.57079632679489661923;
+    static constexpr double kPiOver4 = 0.78539816339744830961;
+    static constexpr double kSqrt2   = 1.41421356237309504880;
+} // namespace scalar_math_detail
+
 
 // ===========================================================================
 // Lerp / Clamp / Mod / Sqr
@@ -84,10 +89,10 @@ CPU_GPU constexpr T Sqr(T v) { return v * v; }
 // ===========================================================================
 // Radians / Degrees
 // ===========================================================================
-CPU_GPU inline double Radians(double deg) { return (Pi / 180.0) * deg; }
-CPU_GPU inline double Degrees(double rad) { return (180.0 / Pi) * rad; }
-CPU_GPU inline float  Radians(float  deg) { return (float(Pi) / 180.f) * deg; }
-CPU_GPU inline float  Degrees(float  rad) { return (180.f / float(Pi)) * rad; }
+CPU_GPU inline double Radians(double deg) { return (scalar_math_detail::kPi / 180.0) * deg; }
+CPU_GPU inline double Degrees(double rad) { return (180.0 / scalar_math_detail::kPi) * rad; }
+CPU_GPU inline float  Radians(float  deg) { return (float(scalar_math_detail::kPi) / 180.f) * deg; }
+CPU_GPU inline float  Degrees(float  rad) { return (180.f / float(scalar_math_detail::kPi)) * rad; }
 
 // ===========================================================================
 // Pow<n> -- compile-time integer exponentiation (pbrt-v4 Pow<n>)
@@ -136,8 +141,8 @@ CPU_GPU inline float SinXOverX(float x) {
 }
 
 // Sinc(x) = SinXOverX(Pi * x)  [normalized sinc used in filter design]
-CPU_GPU inline double Sinc(double x) { return SinXOverX(Pi * x); }
-CPU_GPU inline float  Sinc(float  x) { return SinXOverX(float(Pi) * x); }
+CPU_GPU inline double Sinc(double x) { return SinXOverX(scalar_math_detail::kPi * x); }
+CPU_GPU inline float  Sinc(float  x) { return SinXOverX(float(scalar_math_detail::kPi) * x); }
 
 // WindowedSinc(x, radius, tau): Lanczos-windowed sinc; zero outside radius
 CPU_GPU inline double WindowedSinc(double x, double radius, double tau) {
@@ -210,8 +215,8 @@ CPU_GPU inline float SmoothStep(float x, float a, float b) {
 // Gaussian / GaussianIntegral
 // ===========================================================================
 CPU_GPU inline double Gaussian(double x, double mu = 0.0, double sigma = 1.0) {
-	return 1.0 / std::sqrt(2.0 * Pi * sigma * sigma) *
-		   std::exp(-Sqr(x - mu) / (2.0 * sigma * sigma));
+	return 1.0 / std::sqrt(2.0 * scalar_math_detail::kPi * sigma * sigma) *
+		   FastExp(float(-Sqr(x - mu) / (2.0 * sigma * sigma)));
 }
 CPU_GPU inline double GaussianIntegral(double x0, double x1,
 										double mu = 0.0, double sigma = 1.0) {
@@ -278,7 +283,7 @@ CPU_GPU inline double I0(double x) {
 	// I0(x) ~= Sum_i x^(2i) / (4^i (i!)^2)
 	for (int i = 0; i < 10; ++i) {
 		if (i > 1) ifact *= i;
-		val  += x2i / (double(i4) * double(ifact) * double(ifact));
+		val  += x2i / (i4 * Sqr(double(ifact)));
 		x2i  *= x * x;
 		i4   *= 4;
 	}
@@ -286,7 +291,7 @@ CPU_GPU inline double I0(double x) {
 }
 CPU_GPU inline double LogI0(double x) {
 	if (x > 12.0)
-		return x + 0.5 * (-std::log(2.0 * Pi) + std::log(1.0 / x) + 1.0 / (8.0 * x));
+		return x + 0.5 * (-std::log(2.0 * scalar_math_detail::kPi) + std::log(1.0 / x) + 1.0 / (8.0 * x));
 	return std::log(I0(x));
 }
 

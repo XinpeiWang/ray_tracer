@@ -9,7 +9,9 @@
 #include <gtest/gtest.h>
 #include <utility>
 
-static constexpr double kPi = Pi;
+// kPi for internal use -- always comes from the detail namespace to avoid
+// redefinition issues regardless of whether scalar_math.h exports Pi globally.
+static constexpr double kPi = scalar_math_detail::kPi;
 
 // ---------------------------------------------------------------------------
 // Lerp
@@ -51,7 +53,7 @@ TEST(PowTest, NegOne) { EXPECT_FLOAT_EQ(Pow<-1>(4.f), 0.25f); }
 // Radians / Degrees
 // ---------------------------------------------------------------------------
 TEST(AngleConvTest, Radians) { EXPECT_NEAR(Radians(180.0), kPi, 1e-12); }
-TEST(AngleConvTest, Degrees) { EXPECT_NEAR(Degrees(Pi), 180.0, 1e-10); }
+TEST(AngleConvTest, Degrees) { EXPECT_NEAR(Degrees(kPi), 180.0, 1e-10); }
 TEST(AngleConvTest, RoundTrip) {
 	EXPECT_NEAR(Degrees(Radians(45.0)), 45.0, 1e-10);
 }
@@ -146,7 +148,6 @@ TEST(ErfInvTest, RoundTrip) {
 // ---------------------------------------------------------------------------
 // I0 / LogI0
 // ---------------------------------------------------------------------------
-TEST(BesselTest, I0AtZero)   { EXPECT_NEAR(I0(0.0), 1.0, 1e-10); }
 TEST(BesselTest, LogI0AtZero){ EXPECT_NEAR(LogI0(0.0), 0.0, 1e-10); }
 TEST(BesselTest, LogI0Large) {
 	// For large x, LogI0(x) ~= x (dominated by x term)
@@ -244,4 +245,56 @@ TEST(PermutationElementTest, DifferentSeedsDiffer) {
 	int a = PermutationElement(3, 16, 1);
 	int b = PermutationElement(3, 16, 2);
 	EXPECT_NE(a, b);
+}
+
+// ---------------------------------------------------------------------------
+// Gaussian uses FastExp (pbrt-v4 alignment)
+// ---------------------------------------------------------------------------
+TEST(GaussianTest, UsesApproxExp) {
+	// Gaussian(x) uses FastExp internally (like pbrt-v4).
+	// For x near 0, FastExp is very accurate: within 1e-4 of std::exp.
+	double g = Gaussian(0.5, 0.0, 1.0);
+	double g_ref = 1.0 / std::sqrt(2.0 * kPi) * std::exp(-0.125);
+	EXPECT_NEAR(g, g_ref, 1e-4);
+}
+TEST(GaussianTest, MonotonicallyDecreasing) {
+	// Gaussian falls off from peak at mu
+	for (int i = 1; i <= 5; ++i) {
+		EXPECT_GT(Gaussian(double(i - 1), 0.0, 1.0),
+				  Gaussian(double(i),     0.0, 1.0));
+	}
+}
+
+// ---------------------------------------------------------------------------
+// I0 accuracy (pbrt-v4 series, 10 terms)
+// ---------------------------------------------------------------------------
+TEST(BesselTest, I0KnownValues) {
+	// Known values from Wolfram Alpha / standard tables
+	EXPECT_NEAR(I0(0.0), 1.0,      1e-10);
+	EXPECT_NEAR(I0(1.0), 1.266066, 1e-5);   // I_0(1) = 1.2660658...
+	EXPECT_NEAR(I0(2.0), 2.279585, 1e-4);   // I_0(2) = 2.2795853...
+}
+TEST(BesselTest, LogI0KnownValues) {
+	EXPECT_NEAR(LogI0(0.0),  0.0,          1e-10);
+	EXPECT_NEAR(LogI0(1.0),  std::log(I0(1.0)), 1e-10);
+	// Large x: asymptotic formula should be close
+	EXPECT_NEAR(LogI0(15.0), 15.0 + 0.5 * (-std::log(2.0 * kPi) +
+				std::log(1.0 / 15.0) + 1.0 / (8.0 * 15.0)), 1e-4);
+}
+
+// ---------------------------------------------------------------------------
+// Log2Int round-to-nearest (pbrt-v4 alignment)
+// ---------------------------------------------------------------------------
+TEST(IntMathTest, Log2IntFloat_RoundNearest) {
+	// 2^1 = 2, 2^1.5 ~= 2.828 is the midpoint -> values below round to 1, above to 2
+	EXPECT_EQ(Log2Int(2.0f),   1);
+	EXPECT_EQ(Log2Int(2.5f),   1);   // below 2^1.5 ~ 2.828 -> rounds to 1
+	EXPECT_EQ(Log2Int(3.0f),   2);   // above 2^1.5 ~ 2.828 -> rounds to 2
+	EXPECT_EQ(Log2Int(4.0f),   2);
+}
+TEST(IntMathTest, Log2IntDouble_RoundNearest) {
+	EXPECT_EQ(Log2Int(1.0),  0);
+	EXPECT_EQ(Log2Int(2.0),  1);
+	EXPECT_EQ(Log2Int(4.0),  2);
+	EXPECT_EQ(Log2Int(0.5),  -1);
 }

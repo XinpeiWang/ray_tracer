@@ -20,6 +20,11 @@
 
 #include "../../src/shared/sampling.h"
 
+// Use kPi from the internal namespace directly so this file compiles
+// regardless of whether scalar_math.h exports Pi at global scope.
+using scalar_math_detail::kPi;
+#define Pi kPi
+
 // Also test the CPU wrappers (sphere.h / quad.h)
 #include "../../src/TheRestOfYourLife/rtweekend.h"
 #include "../../src/TheRestOfYourLife/vec3.h"
