@@ -150,6 +150,7 @@
                                         <ClCompile Include="unit\pbrt_hash_tests.cpp" />
                                         <ClCompile Include="unit\scalar_math_tests.cpp" />
                                         <ClCompile Include="unit\float_bits_tests.cpp" />
+                                        <ClCompile Include="unit\rng_tests.cpp" />
     <ClCompile Include="unit\sobol_strat_tests.cpp" />
     <ClCompile Include="unit\tone_map_tests.cpp" />
     <ClCompile Include="unit\triangle_tests.cpp" />

@@ -1,6 +1,7 @@
 #pragma once
 // ---------------------------------------------------------------------------
 // bxdfs.h -- Shared CPU/GPU BxDF math library (mirrors pbrt-v4 bxdfs.h)
+#include "rng.h"
 //
 // Each BxDF is a plain template struct marked CPU_GPU.
 // Design rules (enabling identical CPU + GPU use):
@@ -483,31 +484,8 @@ struct RoughDielectricBxDF {
 // ===========================================================================
 namespace layered_detail {
 
-// Inline PCG32 RNG -- minimal port of pbrt-v4 RNG (util/rng.h)
-// Seeded per-path from caller-supplied (seed0, seed1) pair.
-struct PCG32 {
-	uint64_t state, inc;
-	static constexpr uint64_t MULT = 6364136223846793005ULL;
-
-	CPU_GPU PCG32(uint64_t seq, uint64_t seed) {
-		state = 0; inc = (seq << 1u) | 1u;
-		step(); state += seed; step();
-	}
-
-	CPU_GPU uint32_t step() {
-		uint64_t old = state;
-		state = old * MULT + inc;
-		uint32_t xs  = (uint32_t)(((old >> 18u) ^ old) >> 27u);
-		uint32_t rot = (uint32_t)(old >> 59u);
-		return (xs >> rot) | (xs << ((~rot + 1u) & 31u));
-	}
-
-	// uniform float in [0, 1)
-	CPU_GPU float uf() {
-		// Use 24-bit mantissa for float precision
-		return (step() >> 8) * (1.0f / 16777216.0f);
-	}
-};
+// Use the shared canonical RNG (src/shared/rng.h, ported from pbrt-v4 util/rng.h).
+using PCG32 = RNG;
 
 // Tr(thickness, w) -- Beer-Lambert transmittance through slab of unit extinction
 // sigma_t = 1 (normalised); pbrt-v4: Tr = exp(-sigma_t * dz / |w.z|)
@@ -607,7 +585,7 @@ struct CoatedDiffuseBxDF {
 		layered_detail::PCG32 rng(seed0, seed1 ^ 0xdeadbeefull);
 
 		// pbrt-v4: Sample entrance (top) interface
-		T u1 = (T)rng.uf(), u2 = (T)rng.uf(), uc = (T)rng.uf();
+		T u1 = (T)rng.Uniform<float>(), u2 = (T)rng.Uniform<float>(), uc = (T)rng.Uniform<float>();
 
 		T wm_x, wm_y, wm_z;
 		dist.Sample_wm(wi_x, wi_y, wi_z, u1, u2, wm_x, wm_y, wm_z);
@@ -656,24 +634,24 @@ struct CoatedDiffuseBxDF {
 #endif
 				if (rrBeta < T(0.25)) {
 					T q = std::max(T(0), T(1) - rrBeta);
-					if ((T)rng.uf() < q) { res.valid = false; return res; }
+					if ((T)rng.Uniform<float>() < q) { res.valid = false; return res; }
 					beta_r /= T(1) - q; beta_g /= T(1) - q; beta_b /= T(1) - q;
 				}
 			}
 
 			// Medium scattering or direct boundary hit
 			if (medium_albedo > T(0)) {
-				T dz = layered_detail::SampleExponential((T)rng.uf(), T(1) / (w_z < T(0) ? -w_z : w_z));
+				T dz = layered_detail::SampleExponential((T)rng.Uniform<float>(), T(1) / (w_z < T(0) ? -w_z : w_z));
 				T zp = (w_z > T(0)) ? z + dz : z - dz;
 				if (zp > T(0) && zp < thickness) {
 					// pbrt-v4: beta *= albedo * ps->p / ps->pdf; for HG p/pdf=1
 					// sample phase direction
-					T cos_theta = layered_detail::hg_sample_cos(g, (T)rng.uf());
+					T cos_theta = layered_detail::hg_sample_cos(g, (T)rng.Uniform<float>());
 					beta_r *= medium_albedo;
 					beta_g *= medium_albedo;
 					beta_b *= medium_albedo;
 					// Update direction (simplified: only wz updated, wxy randomised)
-					T phi_s = T(6.28318530717958647692) * (T)rng.uf();
+					T phi_s = T(6.28318530717958647692) * (T)rng.Uniform<float>();
 					T sin_theta = layered_detail::safe_sqrt(T(1) - cos_theta*cos_theta);
 #if defined(__CUDACC__)
 					w_x = sin_theta * cosf(phi_s);
@@ -701,7 +679,7 @@ struct CoatedDiffuseBxDF {
 
 			if (z <= T(0)) {
 				// Hit bottom: Lambertian bounce
-				layered_detail::cosine_sample((T)rng.uf(), (T)rng.uf(), w_x, w_y, w_z);
+				layered_detail::cosine_sample((T)rng.Uniform<float>(), (T)rng.Uniform<float>(), w_x, w_y, w_z);
 				// w_z is positive (going up toward top)
 				beta_r *= albedo_r;
 				beta_g *= albedo_g;
@@ -711,10 +689,10 @@ struct CoatedDiffuseBxDF {
 			} else {
 				// Hit top interface from inside: try to exit
 				T wm2_x, wm2_y, wm2_z;
-				dist.Sample_wm(w_x, w_y, w_z, (T)rng.uf(), (T)rng.uf(), wm2_x, wm2_y, wm2_z);
+				dist.Sample_wm(w_x, w_y, w_z, (T)rng.Uniform<float>(), (T)rng.Uniform<float>(), wm2_x, wm2_y, wm2_z);
 				T cos2 = w_x*wm2_x + w_y*wm2_y + w_z*wm2_z;
 				T F_out = FrDielectric(cos2, coat_ior);
-				if ((T)rng.uf() < F_out) {
+				if ((T)rng.Uniform<float>() < F_out) {
 					// Internal reflection: continue walk downward
 					T rx = T(2)*cos2*wm2_x - w_x;
 					T ry = T(2)*cos2*wm2_y - w_y;
@@ -798,7 +776,7 @@ struct CoatedConductorBxDF {
 		TrowbridgeReitz<T> dist(alpha_x, alpha_y);
 		layered_detail::PCG32 rng(seed0, seed1 ^ 0xdeadbeefull);
 
-		T u1 = (T)rng.uf(), u2 = (T)rng.uf(), uc = (T)rng.uf();
+		T u1 = (T)rng.Uniform<float>(), u2 = (T)rng.Uniform<float>(), uc = (T)rng.Uniform<float>();
 
 		T wm_x, wm_y, wm_z;
 		dist.Sample_wm(wi_x, wi_y, wi_z, u1, u2, wm_x, wm_y, wm_z);
@@ -847,19 +825,19 @@ struct CoatedConductorBxDF {
 #endif
 				if (rrBeta < T(0.25)) {
 					T q = std::max(T(0), T(1) - rrBeta);
-					if ((T)rng.uf() < q) { res.valid = false; return res; }
+					if ((T)rng.Uniform<float>() < q) { res.valid = false; return res; }
 					beta_r /= T(1) - q; beta_g /= T(1) - q; beta_b /= T(1) - q;
 				}
 			}
 
 			if (medium_albedo > T(0)) {
-				T dz = layered_detail::SampleExponential((T)rng.uf(), T(1) / (w_z < T(0) ? -w_z : w_z));
+				T dz = layered_detail::SampleExponential((T)rng.Uniform<float>(), T(1) / (w_z < T(0) ? -w_z : w_z));
 				T zp = (w_z > T(0)) ? z + dz : z - dz;
 				if (zp > T(0) && zp < thickness) {
 					// pbrt-v4: beta *= albedo * ps->p / ps->pdf; for HG p/pdf=1
-					T cos_theta = layered_detail::hg_sample_cos(g, (T)rng.uf());
+					T cos_theta = layered_detail::hg_sample_cos(g, (T)rng.Uniform<float>());
 					beta_r *= medium_albedo; beta_g *= medium_albedo; beta_b *= medium_albedo;
-					T phi_s = T(6.28318530717958647692) * (T)rng.uf();
+					T phi_s = T(6.28318530717958647692) * (T)rng.Uniform<float>();
 					T sin_theta = layered_detail::safe_sqrt(T(1) - cos_theta*cos_theta);
 #if defined(__CUDACC__)
 					w_x = sin_theta * cosf(phi_s);
@@ -889,7 +867,7 @@ struct CoatedConductorBxDF {
 				// Flip to local frame of bottom interface (z points upward into layer)
 				T fw_x = -w_x, fw_y = -w_y, fw_z = -w_z;  // now fw_z > 0 (incoming from top)
 				T bwm_x, bwm_y, bwm_z;
-				dist.Sample_wm(fw_x, fw_y, fw_z, (T)rng.uf(), (T)rng.uf(), bwm_x, bwm_y, bwm_z);
+				dist.Sample_wm(fw_x, fw_y, fw_z, (T)rng.Uniform<float>(), (T)rng.Uniform<float>(), bwm_x, bwm_y, bwm_z);
 				T cos_c = fw_x*bwm_x + fw_y*bwm_y + fw_z*bwm_z;
 				T rwo_x = T(2)*cos_c*bwm_x - fw_x;
 				T rwo_y = T(2)*cos_c*bwm_y - fw_y;
@@ -910,10 +888,10 @@ struct CoatedConductorBxDF {
 			} else {
 				// Hit top interface from inside: attempt exit
 				T wm2_x, wm2_y, wm2_z;
-				dist.Sample_wm(w_x, w_y, w_z, (T)rng.uf(), (T)rng.uf(), wm2_x, wm2_y, wm2_z);
+				dist.Sample_wm(w_x, w_y, w_z, (T)rng.Uniform<float>(), (T)rng.Uniform<float>(), wm2_x, wm2_y, wm2_z);
 				T cos2  = w_x*wm2_x + w_y*wm2_y + w_z*wm2_z;
 				T F_out = FrDielectric(cos2, coat_ior);
-				if ((T)rng.uf() < F_out) {
+				if ((T)rng.Uniform<float>() < F_out) {
 					// Internal reflection
 					T rx = T(2)*cos2*wm2_x - w_x;
 					T ry = T(2)*cos2*wm2_y - w_y;
