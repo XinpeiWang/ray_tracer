@@ -215,17 +215,17 @@ template <int N>
 CPU_GPU double Determinant(const SquareMatrix<N>& m);
 
 template <>
-inline CPU_GPU double Determinant(const SquareMatrix<1>& m) {
+inline double Determinant(const SquareMatrix<1>& m) {
 	return m[0][0];
 }
 
 template <>
-inline CPU_GPU double Determinant(const SquareMatrix<2>& m) {
+inline double Determinant(const SquareMatrix<2>& m) {
 	return DifferenceOfProducts(m[0][0], m[1][1], m[0][1], m[1][0]);
 }
 
 template <>
-inline CPU_GPU double Determinant(const SquareMatrix<3>& m) {
+inline double Determinant(const SquareMatrix<3>& m) {
 	double minor12 = DifferenceOfProducts(m[1][1], m[2][2], m[1][2], m[2][1]);
 	double minor02 = DifferenceOfProducts(m[1][0], m[2][2], m[1][2], m[2][0]);
 	double minor01 = DifferenceOfProducts(m[1][0], m[2][1], m[1][1], m[2][0]);
@@ -234,7 +234,7 @@ inline CPU_GPU double Determinant(const SquareMatrix<3>& m) {
 }
 
 template <>
-inline CPU_GPU double Determinant(const SquareMatrix<4>& m) {
+inline double Determinant(const SquareMatrix<4>& m) {
 	double s0 = DifferenceOfProducts(m[0][0], m[1][1], m[1][0], m[0][1]);
 	double s1 = DifferenceOfProducts(m[0][0], m[1][2], m[1][0], m[0][2]);
 	double s2 = DifferenceOfProducts(m[0][0], m[1][3], m[1][0], m[0][3]);
@@ -260,7 +260,7 @@ template <int N>
 CPU_GPU std::optional<SquareMatrix<N>> Inverse(const SquareMatrix<N>&);
 
 template <>
-inline CPU_GPU std::optional<SquareMatrix<3>> Inverse(const SquareMatrix<3>& m) {
+inline std::optional<SquareMatrix<3>> Inverse(const SquareMatrix<3>& m) {
 	double det = Determinant(m);
 	if (det == 0.0) return {};
 	double invDet = 1.0 / det;
@@ -279,7 +279,7 @@ inline CPU_GPU std::optional<SquareMatrix<3>> Inverse(const SquareMatrix<3>& m) 
 }
 
 template <>
-inline CPU_GPU std::optional<SquareMatrix<4>> Inverse(const SquareMatrix<4>& m) {
+inline std::optional<SquareMatrix<4>> Inverse(const SquareMatrix<4>& m) {
 	// Laplace expansion via sub-2x2 determinants (Eberly / Google Ion method)
 	double s0 = DifferenceOfProducts(m[0][0], m[1][1], m[1][0], m[0][1]);
 	double s1 = DifferenceOfProducts(m[0][0], m[1][2], m[1][0], m[0][2]);
@@ -342,7 +342,7 @@ CPU_GPU SquareMatrix<N> operator*(const SquareMatrix<N>& m1, const SquareMatrix<
 }
 
 template <>
-inline CPU_GPU SquareMatrix<4> operator*(const SquareMatrix<4>& m1, const SquareMatrix<4>& m2) {
+inline SquareMatrix<4> operator*(const SquareMatrix<4>& m1, const SquareMatrix<4>& m2) {
 	SquareMatrix<4> r;
 	for (int i = 0; i < 4; ++i)
 		for (int j = 0; j < 4; ++j)
@@ -359,11 +359,13 @@ inline CPU_GPU SquareMatrix<4> operator*(const SquareMatrix<4>& m1, const Square
 // ===========================================================================
 template <typename Tresult, int N, typename T>
 CPU_GPU Tresult Mul(const SquareMatrix<N>& m, const T& v) {
-	Tresult result;
+	Tresult result{};
 	for (int i = 0; i < N; ++i) {
-		result[i] = 0.0;
+		double sum = 0.0;
 		for (int j = 0; j < N; ++j)
-			result[i] += m[i][j] * v[j];
+			sum += m[i][j] * static_cast<double>(v[j]);
+		using ElemType = std::remove_reference_t<decltype(result[i])>;
+		result[i] = static_cast<ElemType>(sum);
 	}
 	return result;
 }

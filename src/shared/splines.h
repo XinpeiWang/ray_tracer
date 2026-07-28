@@ -111,7 +111,6 @@ CPU_GPU inline void EvaluateCubicBezierD(const float cp[4][3], float u,
 // --------------------------------------------------------------------------
 CPU_GPU inline void SubdivideCubicBezier(const float cp[4][3], float out7[7][3]) {
 	copy3(cp[0], out7[0]);
-	lerp3(0.5f, cp[0], cp[1], out7[1]);
 
 	float m01[3], m12[3], m23[3], m012[3], m123[3];
 	lerp3(0.5f, cp[0], cp[1], m01);
@@ -120,6 +119,7 @@ CPU_GPU inline void SubdivideCubicBezier(const float cp[4][3], float out7[7][3])
 	lerp3(0.5f, m01,  m12,  m012);
 	lerp3(0.5f, m12,  m23,  m123);
 
+	copy3(m01,  out7[1]);
 	copy3(m012, out7[2]);
 	lerp3(0.5f, m012, m123, out7[3]);
 	copy3(m123, out7[4]);

@@ -19,6 +19,7 @@
 #include "square_matrix.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 
@@ -87,15 +88,14 @@ CPU_GPU inline float SRGBToLinear(float value) {
 // Reference: pbrt-v4 util/color.h SRGB8ToLinear + SRGBToLinearLUT
 // ---------------------------------------------------------------------------
 namespace color_detail {
-// Lazily initialised LUT for SRGB8ToLinear.
-inline const float* GetSRGB8ToLinearLUT() {
-	static float lut[256];
-	static bool initialised = false;
-	if (!initialised) {
+// Thread-safe LUT: C++11 static local init is thread-safe.
+inline const std::array<float, 256>& GetSRGB8ToLinearLUT() {
+	static const std::array<float, 256> lut = []() {
+		std::array<float, 256> t{};
 		for (int i = 0; i < 256; ++i)
-			lut[i] = SRGBToLinear(i / 255.f);
-		initialised = true;
-	}
+			t[i] = SRGBToLinear(i / 255.f);
+		return t;
+	}();
 	return lut;
 }
 } // namespace color_detail

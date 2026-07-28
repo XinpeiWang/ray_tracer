@@ -73,7 +73,7 @@ static constexpr ConductorPreset kConductorFe = {
 };
 
 // Lookup by name — returns nullptr if not found
-CPU_GPU inline const ConductorPreset* FindConductorPreset(const char* name) {
+CPU_GPU const ConductorPreset* FindConductorPreset(const char* name) {
 	static const ConductorPreset table[] = {
 		kConductorAu, kConductorAg, kConductorAl, kConductorCu, kConductorFe
 	};

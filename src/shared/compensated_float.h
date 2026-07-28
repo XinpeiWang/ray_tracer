@@ -57,7 +57,7 @@ struct CompensatedFloat {
 // Returns {a*b, FMA(a,b,-(a*b))} so that v + err == a*b exactly.
 // pbrt-v4: CompensatedFloat TwoProd(Float a, Float b)
 // ===========================================================================
-inline CPU_GPU CompensatedFloat TwoProd(double a, double b) {
+inline CompensatedFloat TwoProd(double a, double b) {
 	double ab = a * b;
 	return {ab, std::fma(a, b, -ab)};
 }
@@ -68,7 +68,7 @@ inline CPU_GPU CompensatedFloat TwoProd(double a, double b) {
 // Returns {a+b, rounding_error} so that v + err == a+b exactly.
 // pbrt-v4: CompensatedFloat TwoSum(Float a, Float b)
 // ===========================================================================
-inline CPU_GPU CompensatedFloat TwoSum(double a, double b) {
+inline CompensatedFloat TwoSum(double a, double b) {
 	double s = a + b, delta = s - a;
 	return {s, (a - (s - delta)) + (b - delta)};
 }
@@ -160,7 +160,7 @@ class CompensatedSum {
 // ===========================================================================
 namespace detail {
 
-CPU_GPU inline CompensatedFloat inner_product_impl(double a, double b) {
+inline CompensatedFloat inner_product_impl(double a, double b) {
 	return TwoProd(a, b);
 }
 
