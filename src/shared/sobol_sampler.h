@@ -17,7 +17,7 @@
 //     better two-dimensional projections", SIAM J. Sci. Comput. 30, 2008.
 //     (same source as pbrt-v4's sobolmatrices.cpp, Apache-2.0 / Gruenschloss MIT)
 //   - FastOwenScrambler identical to pbrt-v4's implementation.
-//   - MixBits hash identical to pbrt-v4's MixBits (util/math.h).
+//   - MixBits hash from pbrt_hash.h (pbrt-v4 util/hash.h).
 //   - ReverseBits32 identical to pbrt-v4's ReverseBits32.
 //   - SobolSampler interface matching PathSampler:
 //       SobolSampler(sample_idx, pixel_x, pixel_y)
@@ -33,6 +33,7 @@
 
 #include <cstdint>
 #include <cmath>
+#include "pbrt_hash.h"
 
 // ---------------------------------------------------------------------------
 // Bit-manipulation helpers -- identical to pbrt-v4 (util/math.h)
@@ -47,15 +48,9 @@ inline uint32_t reverse_bits_32(uint32_t v) {
 	return v;
 }
 
-// MixBits -- finalisation hash from pbrt-v4 util/math.h
-inline uint64_t mix_bits(uint64_t v) {
-	v ^= (v >> 31);
-	v *= 0x7fb5d329728ea185ull;
-	v ^= (v >> 27);
-	v *= 0x81dadef4bc2dd44dull;
-	v ^= (v >> 33);
-	return v;
-}
+// MixBits -- provided by pbrt_hash.h (pbrt-v4 util/hash.h)
+// mix_bits is a local alias kept for internal use within this file.
+namespace { inline uint64_t mix_bits(uint64_t v) { return MixBits(v); } }
 
 // ---------------------------------------------------------------------------
 // FastOwenScrambler -- pbrt-v4 FastOwenScrambler (util/lowdiscrepancy.h)

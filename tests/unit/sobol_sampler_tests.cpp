@@ -2,7 +2,7 @@
 // Unit tests for src/shared/sobol_sampler.h
 //
 // Tests are grouped into:
-//   1. Helper functions -- reverse_bits_32, mix_bits, fast_owen_scramble
+//   1. Helper functions -- reverse_bits_32, MixBits (via mix_bits alias), fast_owen_scramble
 //   2. sobol_sample     -- range, dim-0 Van der Corput property, dim independence
 //   3. SobolSampler     -- interface, range, uniformity, pixel independence,
 //                          fallback for extra dims, reset_dim
@@ -33,7 +33,7 @@ TEST(ReverseBits32, KnownValues) {
 }
 
 TEST(MixBits, OutputNotEqualInput) {
-	// MixBits should change value for typical inputs
+	// mix_bits delegates to MixBits (pbrt_hash.h); should change value for typical inputs
 	for (uint64_t v : {1ull, 42ull, 0xDEADBEEFull, 1000000ull}) {
 		EXPECT_NE(mix_bits(v), v);
 	}

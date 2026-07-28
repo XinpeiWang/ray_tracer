@@ -10,8 +10,10 @@
 // MurmurHash64A
 // ---------------------------------------------------------------------------
 TEST(MurmurHashTest, EmptyInputIsDeterministic) {
-	uint64_t h1 = MurmurHash64A(nullptr, 0, 0);
-	uint64_t h2 = MurmurHash64A(nullptr, 0, 0);
+	// Use a valid (non-null) pointer with len=0 to avoid UB.
+	const unsigned char dummy = 0;
+	uint64_t h1 = MurmurHash64A(&dummy, 0, 0);
+	uint64_t h2 = MurmurHash64A(&dummy, 0, 0);
 	EXPECT_EQ(h1, h2);
 }
 
@@ -29,13 +31,12 @@ TEST(MurmurHashTest, DifferentDataProduceDifferentHashes) {
 }
 
 TEST(MurmurHashTest, KnownValue) {
-	// Regression: fix a known output so any future change is caught.
+	// Regression: pin the exact output so any algorithm change is caught.
+	// Expected value verified against the pbrt-v4 implementation.
 	const unsigned char data[] = {0x01, 0x02, 0x03, 0x04,
 								  0x05, 0x06, 0x07, 0x08};
 	uint64_t h = MurmurHash64A(data, 8, 0);
-	// Value computed once and recorded; must remain stable.
-	EXPECT_EQ(h, MurmurHash64A(data, 8, 0));
-	EXPECT_NE(h, uint64_t(0));
+	EXPECT_EQ(h, uint64_t(0x88B2A580354486B7ULL));
 }
 
 TEST(MurmurHashTest, IncrementalLengthsDiffer) {
@@ -120,10 +121,13 @@ TEST(HashTest, MixedTypes) {
 }
 
 TEST(HashTest, OrderMatters) {
-	// Hash(a, b) != Hash(b, a) for different-type pack (bytes differ)
+	// Argument order changes the byte layout, so Hash(a,b) != Hash(b,a)
+	// when types have different sizes (uint8_t vs uint32_t = 5 vs 5 bytes
+	// but at different offsets in the buffer).
 	uint64_t hab = Hash(uint8_t(1), uint32_t(2));
 	uint64_t hba = Hash(uint32_t(2), uint8_t(1));
-	// They may differ; what's required is that the same call is deterministic.
+	EXPECT_NE(hab, hba) << "Hash should depend on argument order";
+	// Each call must also be self-consistent.
 	EXPECT_EQ(Hash(uint8_t(1), uint32_t(2)), hab);
 	EXPECT_EQ(Hash(uint32_t(2), uint8_t(1)), hba);
 }
