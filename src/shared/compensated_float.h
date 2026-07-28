@@ -87,10 +87,8 @@ CPU_GPU CompensatedFloat TwoSum(double a, double b) {
 template <typename Ta, typename Tb, typename Tc, typename Td>
 CPU_GPU auto DifferenceOfProducts(Ta a, Tb b, Tc c, Td d) {
 	auto cd   = c * d;
-	auto diff = std::fma(static_cast<double>(a), static_cast<double>(b),
-						 static_cast<double>(-cd));
-	auto err  = std::fma(static_cast<double>(-c), static_cast<double>(d),
-						 static_cast<double>(cd));
+	auto diff = std::fma(a, b, -cd);
+	auto err  = std::fma(-c, d, cd);
 	return diff + err;
 }
 
@@ -102,10 +100,8 @@ CPU_GPU auto DifferenceOfProducts(Ta a, Tb b, Tc c, Td d) {
 template <typename Ta, typename Tb, typename Tc, typename Td>
 CPU_GPU auto SumOfProducts(Ta a, Tb b, Tc c, Td d) {
 	auto cd  = c * d;
-	auto sum = std::fma(static_cast<double>(a), static_cast<double>(b),
-						static_cast<double>(cd));
-	auto err = std::fma(static_cast<double>(c), static_cast<double>(d),
-						static_cast<double>(-cd));
+	auto sum = std::fma(a, b, cd);
+	auto err = std::fma(c, d, -cd);
 	return sum + err;
 }
 
