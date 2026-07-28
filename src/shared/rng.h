@@ -91,7 +91,7 @@ class RNG {
 			uint64_t v0 = Step_(), v1 = Step_();
 			uint64_t bits = (v0 << 32) | v1;
 			double candidate = bits * 0x1p-64;
-			return candidate < (double)OneMinusEpsilon ? candidate : (double)OneMinusEpsilon;
+			return candidate < DoubleOneMinusEpsilon ? candidate : DoubleOneMinusEpsilon;
 		}
 	}
 

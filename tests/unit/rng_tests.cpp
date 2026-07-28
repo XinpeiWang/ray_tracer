@@ -3,6 +3,7 @@
 // Uniform<T> specialisations, bounded integers, Advance(), and operator-.
 
 #include "../../src/shared/rng.h"
+#include "../../src/shared/float_bits.h"
 #include <gtest/gtest.h>
 #include <cstdint>
 #include <cmath>
@@ -205,10 +206,38 @@ TEST(RNGTest, FloatMean) {
 // OneMinusEpsilon clamp — Uniform<float> must never reach 1.0f
 // -----------------------------------------------------------------------
 TEST(RNGTest, FloatNeverOne) {
-	// Seed so that the next uint32 is 0xFFFFFFFF (worst case for the clamp).
-	// We can't force this easily; instead verify that the clamped path
-	// never returns exactly 1.0f over a large sample.
 	RNG rng(12, 0);
 	for (int i = 0; i < 1000000; ++i)
 		EXPECT_LT(rng.Uniform<float>(), 1.0f);
+}
+
+// -----------------------------------------------------------------------
+// Clamp threshold correctness:
+//   float  must clamp at FloatOneMinusEpsilon  (0x1.fffffep-1f)
+//   double must clamp at DoubleOneMinusEpsilon (0x1.fffffffffffffp-1)
+//   NOT at (double)FloatOneMinusEpsilon which would be ~0.9999999403...
+// -----------------------------------------------------------------------
+TEST(RNGTest, FloatClampThreshold) {
+	// Largest float strictly less than 1.
+	EXPECT_EQ(FloatOneMinusEpsilon, 0x1.fffffep-1f);
+	// The float branch should be <= FloatOneMinusEpsilon.
+	RNG rng(13, 0);
+	for (int i = 0; i < 100000; ++i) {
+		float v = rng.Uniform<float>();
+		EXPECT_LE(v, FloatOneMinusEpsilon);
+	}
+}
+
+TEST(RNGTest, DoubleClampThreshold) {
+	// Largest double strictly less than 1.
+	EXPECT_EQ(DoubleOneMinusEpsilon, 0x1.fffffffffffffp-1);
+	// The double branch must clamp at DoubleOneMinusEpsilon, not the
+	// narrower float-cast value ~0.9999999403.
+	EXPECT_GT(DoubleOneMinusEpsilon, (double)FloatOneMinusEpsilon);
+	RNG rng(14, 0);
+	for (int i = 0; i < 100000; ++i) {
+		double v = rng.Uniform<double>();
+		EXPECT_LE(v, DoubleOneMinusEpsilon);
+		EXPECT_LT(v, 1.0);
+	}
 }
