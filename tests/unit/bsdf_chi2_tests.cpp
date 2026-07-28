@@ -306,7 +306,7 @@ static double ggx_pdf(double alpha,
 }
 
 TEST(BxDFChi2, RoughMetalAlpha05) {
-	RoughMetalBxDF<double> bxdf{1.0, 1.0, 1.0, 0.5};
+	RoughMetalBxDF<double> bxdf{1.0, 1.0, 1.0, 0.5, 0.5};
 	// Normal incidence: wi=(0,0,1) (local frame, pointing away from surface)
 	const double wix = 0, wiy = 0, wiz = 1;
 
@@ -324,8 +324,7 @@ TEST(BxDFChi2, RoughMetalAlpha05) {
 }
 
 TEST(BxDFChi2, RoughMetalAlpha02) {
-	RoughMetalBxDF<double> bxdf{1.0, 1.0, 1.0, 0.2};
-	const double wix = 0, wiy = 0, wiz = 1;
+	RoughMetalBxDF<double> bxdf{1.0, 1.0, 1.0, 0.2, 0.2};	const double wix = 0, wiy = 0, wiz = 1;
 
 	run_chi2_bxdf(
 		"RoughMetalBxDF alpha=0.2",
@@ -341,7 +340,7 @@ TEST(BxDFChi2, RoughMetalAlpha02) {
 }
 
 TEST(BxDFWhiteFurnace, RoughMetalAlpha05) {
-	RoughMetalBxDF<double> bxdf{1.0, 1.0, 1.0, 0.5};
+	RoughMetalBxDF<double> bxdf{1.0, 1.0, 1.0, 0.5, 0.5};
 	const double wix = 0, wiy = 0, wiz = 1;
 
 	run_white_furnace(
@@ -353,8 +352,7 @@ TEST(BxDFWhiteFurnace, RoughMetalAlpha05) {
 }
 
 TEST(BxDFWhiteFurnace, RoughMetalAlpha01) {
-	RoughMetalBxDF<double> bxdf{1.0, 1.0, 1.0, 0.1};
-	const double wix = 0, wiy = 0, wiz = 1;
+	RoughMetalBxDF<double> bxdf{1.0, 1.0, 1.0, 0.1, 0.1};	const double wix = 0, wiy = 0, wiz = 1;
 
 	run_white_furnace(
 		"RoughMetalBxDF alpha=0.1",

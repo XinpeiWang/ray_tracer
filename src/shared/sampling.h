@@ -115,6 +115,74 @@ struct Frame {
 } // namespace sampling_detail
 
 // ---------------------------------------------------------------------------
+// SampleUniformDiskConcentric
+// Shirley & Chiu 1997 area-preserving concentric mapping of [0,1)^2 to disk.
+// Mirrors pbrt-v4 util/sampling.h SampleUniformDiskConcentric.
+//
+// Maps (u0,u1) to (dx,dy) on the unit disk with uniform area distribution.
+// Uses the concentric mapping: every square annulus maps to a circular annulus
+// with the same fractional area, preserving stratification quality.
+//
+// Returns: (dx, dy) on the unit disk (radius <= 1).
+// ---------------------------------------------------------------------------
+template<typename T>
+CPU_GPU void SampleUniformDiskConcentric(T u0, T u1, T& dx, T& dy) {
+    // Remap to [-1, 1]^2
+    T ux = T(2) * u0 - T(1);
+    T uy = T(2) * u1 - T(1);
+
+    if (ux == T(0) && uy == T(0)) {
+        dx = T(0); dy = T(0);
+        return;
+    }
+
+    T r, theta;
+    if (std::abs(ux) > std::abs(uy)) {
+        // Map to first/fourth octant
+        r = ux;
+        theta = T(3.14159265358979323846 / 4.0) * (uy / ux);
+    } else {
+        // Map to second/third octant
+        r = uy;
+        theta = T(3.14159265358979323846 / 2.0) -
+                T(3.14159265358979323846 / 4.0) * (ux / uy);
+    }
+    dx = r * std::cos(theta);
+    dy = r * std::sin(theta);
+}
+
+// ---------------------------------------------------------------------------
+// SampleCosineHemisphere
+// Cosine-weighted hemisphere sample via concentric disk projection.
+// Mirrors pbrt-v4 util/sampling.h SampleCosineHemisphere.
+//
+// Maps (u0,u1) to a direction on the unit hemisphere with pdf = cos(theta)/pi.
+// The concentric disk mapping preserves stratification from [0,1)^2 samples.
+//
+// Returns: (wx, wy, wz) unit direction with wz >= 0; pdf via out_pdf.
+// ---------------------------------------------------------------------------
+template<typename T>
+CPU_GPU void SampleCosineHemisphere(T u0, T u1, T& wx, T& wy, T& wz, T& out_pdf) {
+    T dx, dy;
+    SampleUniformDiskConcentric(u0, u1, dx, dy);
+    T z2 = T(1) - dx*dx - dy*dy;
+    wz = (z2 > T(0)) ? std::sqrt(z2) : T(0);
+    wx = dx;
+    wy = dy;
+    // pdf = cos(theta) / pi
+    const T inv_pi = T(1.0 / 3.14159265358979323846);
+    out_pdf = wz * inv_pi;
+}
+
+// PDF for cosine-weighted hemisphere sampling.
+// pdf(theta) = cos(theta) / pi
+template<typename T>
+CPU_GPU T CosineHemispherePDF(T cos_theta) {
+    const T inv_pi = T(1.0 / 3.14159265358979323846);
+    return (cos_theta > T(0)) ? cos_theta * inv_pi : T(0);
+}
+
+// ---------------------------------------------------------------------------
 // SphericalRectangleSolidAngle
 // Compute the solid angle subtended by a planar rectangle (quad) at point p.
 //

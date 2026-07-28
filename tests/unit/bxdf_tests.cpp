@@ -349,9 +349,7 @@ static double ggx_brdf(double wox, double woy, double woz,
 TEST(RoughMetalBxDFTest, SamplingConsistency) {
 	const double roughness = 0.3;
 	const double alpha = std::sqrt(roughness); // RoughnessToAlpha
-	RoughMetalBxDF<double> bxdf{ 1.0, 1.0, 1.0, alpha };
-
-	// Fixed incident direction (not normal incidence, not grazing)
+	RoughMetalBxDF<double> bxdf{ 1.0, 1.0, 1.0, alpha, alpha };
 	const double wi_x = 0.3, wi_y = 0.0, wi_z = std::sqrt(1.0 - 0.3*0.3);
 
 	const int N = 4096;
@@ -399,7 +397,7 @@ TEST(RoughMetalBxDFTest, SamplingConsistency) {
 // expected integral is approximately 1 (energy conservation).
 TEST(RoughMetalBxDFTest, WhiteFurnace) {
 	const double alpha = std::sqrt(0.4);
-	RoughMetalBxDF<double> bxdf{ 1.0, 1.0, 1.0, alpha };
+	RoughMetalBxDF<double> bxdf{ 1.0, 1.0, 1.0, alpha, alpha };
 
 	const double wi_x = 0.2, wi_y = 0.0, wi_z = std::sqrt(1.0 - 0.04);
 	const int N = 8192;
@@ -423,7 +421,7 @@ TEST(RoughMetalBxDFTest, WhiteFurnace) {
 // Per-sample weight must be in [0,1] — no energy creation per sample.
 TEST(RoughMetalBxDFTest, PerSampleWeightBounded) {
 	const double alpha = std::sqrt(0.2);
-	RoughMetalBxDF<double> bxdf{ 0.8, 0.8, 0.8, alpha };
+	RoughMetalBxDF<double> bxdf{ 0.8, 0.8, 0.8, alpha, alpha };
 
 	for (int i = 0; i < 1024; ++i) {
 		double u1 = radical_inverse_2(i + 1);
@@ -445,7 +443,7 @@ TEST(RoughMetalBxDFTest, PerSampleWeightBounded) {
 TEST(RoughDielectricBxDFTest, SamplingConsistency) {
 	const double alpha = std::sqrt(0.25);
 	const double ior   = 1.5;
-	RoughDielectricBxDF<double> bxdf{ ior, alpha };
+	RoughDielectricBxDF<double> bxdf{ ior, alpha, alpha };
 
 	const double wi_x = 0.2, wi_y = 0.0, wi_z = std::sqrt(1.0 - 0.04);
 	const double eta  = 1.0 / ior; // entering from outside
@@ -499,7 +497,7 @@ TEST(RoughDielectricBxDFTest, SamplingConsistency) {
 // Energy conservation: weight per sample <= 1, average close to 1.
 TEST(RoughDielectricBxDFTest, EnergyConservationPerSample) {
 	const double alpha = std::sqrt(0.3);
-	RoughDielectricBxDF<double> bxdf{ 1.5, alpha };
+	RoughDielectricBxDF<double> bxdf{ 1.5, alpha, alpha };
 
 	double sum = 0.0; int valid = 0;
 	for (int i = 0; i < 2048; ++i) {

@@ -233,19 +233,26 @@ class rough_metal : public material {
     using BxDF = RoughMetalBxDF<double>;
 
     rough_metal(const color& albedo, double roughness)
+        : albedo(albedo) {
+        double a = TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(roughness, 1e-4));
+        alpha_x = alpha_y = a;
+    }
+
+    rough_metal(const color& albedo, double u_roughness, double v_roughness)
         : albedo(albedo),
-          alpha(TrowbridgeReitz<double>::RoughnessToAlpha(
-              std::fmax(roughness, 1e-4))) {}
+          alpha_x(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(u_roughness, 1e-4))),
+          alpha_y(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(v_roughness, 1e-4))) {}
 
     BxDF get_bxdf(const MaterialContext<double>& ctx) const {
-        return BxDF{ albedo.x(), albedo.y(), albedo.z(), alpha };
+        return BxDF{ albedo.x(), albedo.y(), albedo.z(), alpha_x, alpha_y };
     }
 
     bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
                  bool do_regularize = false) const override {
         auto ctx  = MaterialContext<double>::from_hit(rec, r_in);
-        double eff_alpha = do_regularize ? regularize_alpha(alpha) : alpha;
-        BxDF bxdf{ albedo.x(), albedo.y(), albedo.z(), eff_alpha };
+        double ex = do_regularize ? regularize_alpha(alpha_x) : alpha_x;
+        double ey = do_regularize ? regularize_alpha(alpha_y) : alpha_y;
+        BxDF bxdf{ albedo.x(), albedo.y(), albedo.z(), ex, ey };
         auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
 
         double wi_x, wi_y, wi_z;
@@ -263,12 +270,12 @@ class rough_metal : public material {
         return true;
     }
 
-    double get_roughness() const { return alpha * alpha; }
+    double get_roughness() const { return alpha_x * alpha_x; }
     const color& get_albedo() const { return albedo; }
 
   private:
     color  albedo;
-    double alpha;
+    double alpha_x, alpha_y;
 };
 
 
@@ -286,25 +293,42 @@ class conductor : public material {
               double k_r,   double k_g,   double k_b,
               double roughness)
         : eta_r(eta_r), eta_g(eta_g), eta_b(eta_b),
+          k_r(k_r),     k_g(k_g),     k_b(k_b) {
+        double a = TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(roughness, 1e-4));
+        alpha_x = alpha_y = a;
+    }
+
+    conductor(double eta_r, double eta_g, double eta_b,
+              double k_r,   double k_g,   double k_b,
+              double u_roughness, double v_roughness)
+        : eta_r(eta_r), eta_g(eta_g), eta_b(eta_b),
           k_r(k_r),     k_g(k_g),     k_b(k_b),
-          alpha(TrowbridgeReitz<double>::RoughnessToAlpha(
-              std::fmax(roughness, 1e-4))) {}
+          alpha_x(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(u_roughness, 1e-4))),
+          alpha_y(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(v_roughness, 1e-4))) {}
 
     conductor(const ConductorPreset& preset, double roughness)
         : eta_r(preset.eta_r), eta_g(preset.eta_g), eta_b(preset.eta_b),
+          k_r(preset.k_r),     k_g(preset.k_g),     k_b(preset.k_b) {
+        double a = TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(roughness, 1e-4));
+        alpha_x = alpha_y = a;
+    }
+
+    conductor(const ConductorPreset& preset, double u_roughness, double v_roughness)
+        : eta_r(preset.eta_r), eta_g(preset.eta_g), eta_b(preset.eta_b),
           k_r(preset.k_r),     k_g(preset.k_g),     k_b(preset.k_b),
-          alpha(TrowbridgeReitz<double>::RoughnessToAlpha(
-              std::fmax(roughness, 1e-4))) {}
+          alpha_x(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(u_roughness, 1e-4))),
+          alpha_y(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(v_roughness, 1e-4))) {}
 
     BxDF get_bxdf(const MaterialContext<double>& ctx) const {
-        return BxDF{ eta_r, eta_g, eta_b, k_r, k_g, k_b, alpha };
+        return BxDF{ eta_r, eta_g, eta_b, k_r, k_g, k_b, alpha_x, alpha_y };
     }
 
     bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
                  bool do_regularize = false) const override {
         auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
-        double eff_alpha = do_regularize ? regularize_alpha(alpha) : alpha;
-        BxDF bxdf{ eta_r, eta_g, eta_b, k_r, k_g, k_b, eff_alpha };
+        double ex = do_regularize ? regularize_alpha(alpha_x) : alpha_x;
+        double ey = do_regularize ? regularize_alpha(alpha_y) : alpha_y;
+        BxDF bxdf{ eta_r, eta_g, eta_b, k_r, k_g, k_b, ex, ey };
         auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
 
         double wi_x, wi_y, wi_z;
@@ -322,7 +346,7 @@ class conductor : public material {
         return true;
     }
 
-    double get_roughness()  const { return alpha * alpha; }
+    double get_roughness()  const { return alpha_x * alpha_x; }
     color  get_fresnel_normal() const {
         return color(FrComplex(1.0, eta_r, k_r),
                      FrComplex(1.0, eta_g, k_g),
@@ -332,7 +356,7 @@ class conductor : public material {
   private:
     double eta_r, eta_g, eta_b;
     double k_r,   k_g,   k_b;
-    double alpha;
+    double alpha_x, alpha_y;
 };
 
 
@@ -347,19 +371,26 @@ class rough_dielectric : public material {
     using BxDF = RoughDielectricBxDF<double>;
 
     rough_dielectric(double refraction_index, double roughness)
+        : ior(refraction_index) {
+        double a = TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(roughness, 1e-4));
+        alpha_x = alpha_y = a;
+    }
+
+    rough_dielectric(double refraction_index, double u_roughness, double v_roughness)
         : ior(refraction_index),
-          alpha(TrowbridgeReitz<double>::RoughnessToAlpha(
-              std::fmax(roughness, 1e-4))) {}
+          alpha_x(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(u_roughness, 1e-4))),
+          alpha_y(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(v_roughness, 1e-4))) {}
 
     BxDF get_bxdf(const MaterialContext<double>& ctx) const {
-        return BxDF{ ior, alpha };
+        return BxDF{ ior, alpha_x, alpha_y };
     }
 
     bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
                  bool do_regularize = false) const override {
         auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
-        double eff_alpha = do_regularize ? regularize_alpha(alpha) : alpha;
-        BxDF bxdf{ ior, eff_alpha };
+        double ex = do_regularize ? regularize_alpha(alpha_x) : alpha_x;
+        double ey = do_regularize ? regularize_alpha(alpha_y) : alpha_y;
+        BxDF bxdf{ ior, ex, ey };
         auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
 
         double eta = ctx.front_face ? (1.0 / ior) : ior;
@@ -382,11 +413,11 @@ class rough_dielectric : public material {
     }
 
     double get_ior()       const { return ior; }
-    double get_roughness() const { return alpha * alpha; }
+    double get_roughness() const { return alpha_x * alpha_x; }
 
   private:
     double ior;
-    double alpha;
+    double alpha_x, alpha_y;
 };
 
 
@@ -413,20 +444,26 @@ class coated_diffuse : public material {
     using BxDF = CoatedDiffuseBxDF<double>;
 
     coated_diffuse(const color& albedo, double ior, double roughness)
-        : albedo(albedo),
-          ior(ior),
-          alpha(TrowbridgeReitz<double>::RoughnessToAlpha(
-              std::fmax(roughness, 1e-4))) {}
+        : albedo(albedo), ior(ior) {
+        double a = TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(roughness, 1e-4));
+        alpha_x = alpha_y = a;
+    }
+
+    coated_diffuse(const color& albedo, double ior, double u_roughness, double v_roughness)
+        : albedo(albedo), ior(ior),
+          alpha_x(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(u_roughness, 1e-4))),
+          alpha_y(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(v_roughness, 1e-4))) {}
 
     BxDF get_bxdf(const MaterialContext<double>& ctx) const {
-        return BxDF{ albedo.x(), albedo.y(), albedo.z(), ior, alpha };
+        return BxDF{ albedo.x(), albedo.y(), albedo.z(), ior, alpha_x, alpha_y };
     }
 
     bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
                  bool do_regularize = false) const override {
         auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
-        double eff_alpha = do_regularize ? regularize_alpha(alpha) : alpha;
-        BxDF bxdf{ albedo.x(), albedo.y(), albedo.z(), ior, eff_alpha };
+        double ex = do_regularize ? regularize_alpha(alpha_x) : alpha_x;
+        double ey = do_regularize ? regularize_alpha(alpha_y) : alpha_y;
+        BxDF bxdf{ albedo.x(), albedo.y(), albedo.z(), ior, ex, ey };
         auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
 
         double wi_x, wi_y, wi_z;
@@ -449,13 +486,13 @@ class coated_diffuse : public material {
     }
 
     double get_ior()       const { return ior; }
-    double get_roughness() const { return alpha * alpha; }
+    double get_roughness() const { return alpha_x * alpha_x; }
     const color& get_albedo() const { return albedo; }
 
   private:
     color  albedo;
     double ior;
-    double alpha;
+    double alpha_x, alpha_y;
 };
 
 
@@ -534,26 +571,46 @@ class coated_conductor : public material {
                      double coat_ior, double coat_roughness)
         : eta_r(eta_r), eta_g(eta_g), eta_b(eta_b),
           k_r(k_r),     k_g(k_g),     k_b(k_b),
+          coat_ior(coat_ior) {
+        double a = TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(coat_roughness, 1e-4));
+        alpha_x = alpha_y = a;
+    }
+
+    coated_conductor(double eta_r, double eta_g, double eta_b,
+                     double k_r,   double k_g,   double k_b,
+                     double coat_ior, double u_roughness, double v_roughness)
+        : eta_r(eta_r), eta_g(eta_g), eta_b(eta_b),
+          k_r(k_r),     k_g(k_g),     k_b(k_b),
           coat_ior(coat_ior),
-          alpha(TrowbridgeReitz<double>::RoughnessToAlpha(
-              std::fmax(coat_roughness, 1e-4))) {}
+          alpha_x(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(u_roughness, 1e-4))),
+          alpha_y(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(v_roughness, 1e-4))) {}
 
     coated_conductor(const ConductorPreset& preset, double coat_ior, double coat_roughness)
         : eta_r(preset.eta_r), eta_g(preset.eta_g), eta_b(preset.eta_b),
           k_r(preset.k_r),     k_g(preset.k_g),     k_b(preset.k_b),
+          coat_ior(coat_ior) {
+        double a = TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(coat_roughness, 1e-4));
+        alpha_x = alpha_y = a;
+    }
+
+    coated_conductor(const ConductorPreset& preset, double coat_ior,
+                     double u_roughness, double v_roughness)
+        : eta_r(preset.eta_r), eta_g(preset.eta_g), eta_b(preset.eta_b),
+          k_r(preset.k_r),     k_g(preset.k_g),     k_b(preset.k_b),
           coat_ior(coat_ior),
-          alpha(TrowbridgeReitz<double>::RoughnessToAlpha(
-              std::fmax(coat_roughness, 1e-4))) {}
+          alpha_x(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(u_roughness, 1e-4))),
+          alpha_y(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(v_roughness, 1e-4))) {}
 
     BxDF get_bxdf(const MaterialContext<double>& ctx) const {
-        return BxDF{ eta_r, eta_g, eta_b, k_r, k_g, k_b, coat_ior, alpha };
+        return BxDF{ eta_r, eta_g, eta_b, k_r, k_g, k_b, coat_ior, alpha_x, alpha_y };
     }
 
     bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
                  bool do_regularize = false) const override {
         auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
-        double eff_alpha = do_regularize ? regularize_alpha(alpha) : alpha;
-        BxDF bxdf{ eta_r, eta_g, eta_b, k_r, k_g, k_b, coat_ior, eff_alpha };
+        double ex = do_regularize ? regularize_alpha(alpha_x) : alpha_x;
+        double ey = do_regularize ? regularize_alpha(alpha_y) : alpha_y;
+        BxDF bxdf{ eta_r, eta_g, eta_b, k_r, k_g, k_b, coat_ior, ex, ey };
         auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
 
         double wi_x, wi_y, wi_z;
@@ -576,7 +633,7 @@ class coated_conductor : public material {
     }
 
     double get_coat_ior()       const { return coat_ior; }
-    double get_coat_roughness() const { return alpha * alpha; }
+    double get_coat_roughness() const { return alpha_x * alpha_x; }
     color  get_conductor_f0()   const {
         return color(FrComplex(1.0, eta_r, k_r),
                      FrComplex(1.0, eta_g, k_g),
@@ -587,7 +644,7 @@ class coated_conductor : public material {
     double eta_r, eta_g, eta_b;
     double k_r,   k_g,   k_b;
     double coat_ior;
-    double alpha;
+    double alpha_x, alpha_y;
 };
 
 // ---------------------------------------------------------------------------
@@ -712,6 +769,75 @@ class normalized_fresnel : public material {
   private:
     double eta;
     double c;  // 1 - 2*FresnelMoment1(1/eta)
+};
+
+
+// ---------------------------------------------------------------------------
+// mix_material -- stochastic blend of two materials (pbrt-v4 MixMaterial)
+//
+// At each shading point, randomly selects material A with probability (1-w)
+// or material B with probability w, where w = weight texture R channel.
+// This is unbiased: expected attenuation = (1-w)*A + w*B over many samples.
+//
+// Reference: pbrt-v4 materials.h MixMaterial::GetBxDF
+//   "Stochastically select one of the two materials based on a uniform
+//    random number and the mixing weight."
+//
+// Parameters:
+//   mat_a   -- first material (weight (1-w))
+//   mat_b   -- second material (weight w)
+//   weight  -- scalar or texture in [0,1]; 0 = pure A, 1 = pure B
+// ---------------------------------------------------------------------------
+class mix_material : public material {
+  public:
+    mix_material(shared_ptr<material> mat_a,
+                 shared_ptr<material> mat_b,
+                 double weight)
+        : mat_a(mat_a), mat_b(mat_b),
+          weight_tex(make_shared<solid_color>(color(weight, weight, weight))) {}
+
+    mix_material(shared_ptr<material> mat_a,
+                 shared_ptr<material> mat_b,
+                 shared_ptr<texture> weight_tex)
+        : mat_a(mat_a), mat_b(mat_b), weight_tex(weight_tex) {}
+
+    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
+                 bool do_regularize = false) const override {
+        double w = weight_tex->value(rec.u, rec.v, rec.p).x();
+        w = w < 0.0 ? 0.0 : (w > 1.0 ? 1.0 : w);
+        // Stochastic selection (pbrt-v4 MixMaterial)
+        if (random_double() >= w)
+            return mat_a->scatter(r_in, rec, srec, do_regularize);
+        else
+            return mat_b->scatter(r_in, rec, srec, do_regularize);
+    }
+
+    color emitted(const ray& r_in, const hit_record& rec,
+                  double u, double v, const point3& p) const override {
+        double w = weight_tex->value(u, v, p).x();
+        w = w < 0.0 ? 0.0 : (w > 1.0 ? 1.0 : w);
+        color ea = mat_a->emitted(r_in, rec, u, v, p);
+        color eb = mat_b->emitted(r_in, rec, u, v, p);
+        return ea * (1.0 - w) + eb * w;
+    }
+
+    double scattering_pdf(const ray& r_in, const hit_record& rec,
+                          const ray& scattered) const override {
+        double w = weight_tex->value(rec.u, rec.v, rec.p).x();
+        w = w < 0.0 ? 0.0 : (w > 1.0 ? 1.0 : w);
+        double pa = mat_a->scattering_pdf(r_in, rec, scattered);
+        double pb = mat_b->scattering_pdf(r_in, rec, scattered);
+        return (1.0 - w) * pa + w * pb;
+    }
+
+    shared_ptr<material> get_mat_a()   const { return mat_a; }
+    shared_ptr<material> get_mat_b()   const { return mat_b; }
+    shared_ptr<texture>  get_weight()  const { return weight_tex; }
+
+  private:
+    shared_ptr<material> mat_a;
+    shared_ptr<material> mat_b;
+    shared_ptr<texture>  weight_tex;
 };
 
 

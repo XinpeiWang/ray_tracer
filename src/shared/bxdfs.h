@@ -32,6 +32,7 @@
 
 #include "fresnel.h"
 #include "microfacet.h"
+#include "sampling.h"
 
 #if defined(__CUDACC__)
 #   include <math_functions.h>
@@ -82,29 +83,20 @@ CPU_GPU void make_onb(T nx, T ny, T nz,
 	bx = ny*tz - nz*ty; by = nz*tx - nx*tz; bz = nx*ty - ny*tx;
 }
 
-// Cosine-weighted hemisphere sample in world space, given a pre-built ONB.
-// u1, u2 in [0,1). Returns normalised direction.
+// Cosine-weighted hemisphere sample in world space via concentric-disk mapping.
+// Mirrors pbrt-v4 SampleCosineHemisphere (util/sampling.h).
+// u1, u2 in [0,1). Returns normalised direction in world space.
 template<typename T>
 CPU_GPU void cosine_hemisphere_sample(
-	T nx, T ny, T nz,        // surface normal
-	T tx, T ty, T tz,        // tangent
-	T bx, T by, T bz,        // bitangent
-	T u1, T u2,              // random [0,1)
+	T nx, T ny, T nz,   // surface normal (unit)
+	T tx, T ty, T tz,   // tangent (unit)
+	T bx, T by, T bz,   // bitangent (unit)
+	T u1, T u2,         // random [0,1)
 	T& dx, T& dy, T& dz)
 {
-#if defined(__CUDACC__)
-	T phi    = T(2) * T(3.14159265358979323846f) * u1;
-	T r_sqrt = sqrtf(u2);
-	T lx     = r_sqrt * cosf(phi);
-	T ly     = r_sqrt * sinf(phi);
-	T lz     = sqrtf(T(1) - u2);
-#else
-	T phi    = T(2) * T(3.14159265358979323846) * u1;
-	T r_sqrt = std::sqrt(u2);
-	T lx     = r_sqrt * std::cos(phi);
-	T ly     = r_sqrt * std::sin(phi);
-	T lz     = std::sqrt(T(1) - u2);
-#endif
+	T lx, ly, lz;
+	T pdf_unused;
+	SampleCosineHemisphere(u1, u2, lx, ly, lz, pdf_unused);
 	dx = lx*tx + ly*bx + lz*nx;
 	dy = lx*ty + ly*by + lz*ny;
 	dz = lx*tz + ly*bz + lz*nz;
@@ -340,7 +332,8 @@ struct ThinDielectricBxDF {
 template<typename T>
 struct RoughMetalBxDF {
 	T albedo_r, albedo_g, albedo_b;
-	T alpha;  // GGX alpha (caller applies TrowbridgeReitz::RoughnessToAlpha)
+	T alpha_x;  // GGX alpha u-direction (caller applies TrowbridgeReitz::RoughnessToAlpha)
+	T alpha_y;  // GGX alpha v-direction (set equal for isotropic)
 
 	CPU_GPU BxDFSampleResult<T> sample_local(
 		T wi_x, T wi_y, T wi_z,
@@ -349,7 +342,7 @@ struct RoughMetalBxDF {
 		BxDFSampleResult<T> res{};
 		if (wi_z <= T(0)) { res.valid = false; return res; }
 
-		TrowbridgeReitz<T> dist(alpha, alpha);
+		TrowbridgeReitz<T> dist(alpha_x, alpha_y);
 		T wm_x, wm_y, wm_z;
 		dist.Sample_wm(wi_x, wi_y, wi_z, u1, u2, wm_x, wm_y, wm_z);
 
@@ -379,7 +372,8 @@ template<typename T>
 struct ConductorBxDF {
 	T eta_r, eta_g, eta_b;  // real IOR per channel
 	T k_r,   k_g,   k_b;   // extinction coefficient per channel
-	T alpha;                 // GGX alpha
+	T alpha_x;               // GGX alpha (u-direction)
+	T alpha_y;               // GGX alpha (v-direction, set equal for isotropic)
 
 	CPU_GPU BxDFSampleResult<T> sample_local(
 		T wi_x, T wi_y, T wi_z,
@@ -388,7 +382,7 @@ struct ConductorBxDF {
 		BxDFSampleResult<T> res{};
 		if (wi_z <= T(0)) { res.valid = false; return res; }
 
-		TrowbridgeReitz<T> dist(alpha, alpha);
+		TrowbridgeReitz<T> dist(alpha_x, alpha_y);
 		T wm_x, wm_y, wm_z;
 		dist.Sample_wm(wi_x, wi_y, wi_z, u1, u2, wm_x, wm_y, wm_z);
 
@@ -419,8 +413,9 @@ struct ConductorBxDF {
 // ===========================================================================
 template<typename T>
 struct RoughDielectricBxDF {
-	T ior;    // material IOR
-	T alpha;  // GGX alpha
+	T ior;     // material IOR
+	T alpha_x; // GGX alpha (u-direction)
+	T alpha_y; // GGX alpha (v-direction, set equal for isotropic)
 
 	// wi in local frame (z=normal), wi_z > 0.
 	// eta = eta_i / eta_t  (entering: 1/ior, exiting: ior)
@@ -434,7 +429,7 @@ struct RoughDielectricBxDF {
 		res.r = T(1); res.g = T(1); res.b = T(1);
 		res.is_specular = true;
 
-		TrowbridgeReitz<T> dist(alpha, alpha);
+		TrowbridgeReitz<T> dist(alpha_x, alpha_y);
 		T wm_x, wm_y, wm_z;
 		dist.Sample_wm(wi_x, wi_y, wi_z, u1, u2, wm_x, wm_y, wm_z);
 
@@ -545,23 +540,14 @@ CPU_GPU T safe_sqrt(T x) {
 #endif
 }
 
-// cosine-weighted hemisphere sample in local frame (z = normal)
+
+
+// cosine-weighted hemisphere sample in local frame (z = normal) via concentric-disk mapping.
+// Mirrors pbrt-v4 SampleCosineHemisphere.
 template<typename T>
 CPU_GPU void cosine_sample(T u1, T u2, T& ox, T& oy, T& oz) {
-	const T pi2 = T(6.28318530717958647692);
-#if defined(__CUDACC__)
-	T phi = pi2 * u1;
-	T r   = sqrtf(u2);
-	ox    = r * cosf(phi);
-	oy    = r * sinf(phi);
-	oz    = sqrtf(T(1) - u2);
-#else
-	T phi = pi2 * u1;
-	T r   = std::sqrt(u2);
-	ox    = r * std::cos(phi);
-	oy    = r * std::sin(phi);
-	oz    = std::sqrt(T(1) - u2);
-#endif
+	T pdf_unused;
+	SampleCosineHemisphere(u1, u2, ox, oy, oz, pdf_unused);
 }
 
 // HenyeyGreenstein phase sample and eval (inline, no world-frame)
@@ -602,7 +588,8 @@ template<typename T>
 struct CoatedDiffuseBxDF {
 	T albedo_r, albedo_g, albedo_b;   // Lambertian base color
 	T coat_ior;                        // dielectric coat IOR (>1, e.g. 1.5)
-	T alpha;                           // GGX roughness of coat surface
+	T alpha_x;                         // GGX roughness u-direction
+	T alpha_y;                         // GGX roughness v-direction (equal = isotropic)
 	T thickness = T(0.01);             // layer thickness (pbrt-v4 default 0.01)
 	T g         = T(0);               // HG phase function asymmetry (0=none)
 	T medium_albedo = T(0);           // scattering albedo of medium (0=vacuum)
@@ -616,7 +603,7 @@ struct CoatedDiffuseBxDF {
 		BxDFSampleResult<T> res{};
 		if (wi_z <= T(0)) { res.valid = false; return res; }
 
-		TrowbridgeReitz<T> dist(alpha, alpha);
+		TrowbridgeReitz<T> dist(alpha_x, alpha_y);
 		layered_detail::PCG32 rng(seed0, seed1 ^ 0xdeadbeefull);
 
 		// pbrt-v4: Sample entrance (top) interface
@@ -793,7 +780,8 @@ struct CoatedConductorBxDF {
 	T eta_r, eta_g, eta_b;   // conductor real IOR
 	T k_r,   k_g,   k_b;    // conductor extinction
 	T coat_ior;              // dielectric coat IOR
-	T alpha;                 // GGX roughness (shared for coat and conductor)
+	T alpha_x;               // GGX roughness u-direction
+	T alpha_y;               // GGX roughness v-direction (equal = isotropic)
 	T thickness = T(0.01);
 	T g         = T(0);
 	T medium_albedo = T(0);
@@ -807,7 +795,7 @@ struct CoatedConductorBxDF {
 		BxDFSampleResult<T> res{};
 		if (wi_z <= T(0)) { res.valid = false; return res; }
 
-		TrowbridgeReitz<T> dist(alpha, alpha);
+		TrowbridgeReitz<T> dist(alpha_x, alpha_y);
 		layered_detail::PCG32 rng(seed0, seed1 ^ 0xdeadbeefull);
 
 		T u1 = (T)rng.uf(), u2 = (T)rng.uf(), uc = (T)rng.uf();
@@ -1227,23 +1215,9 @@ struct PrincipledBxDF {
 		TrowbridgeReitz<T> mf(alpha, alpha);
 
 		if (u1 < p_diff) {
-			// Diffuse: cosine-weighted hemisphere sample
-			const T pi = T(3.14159265358979323846);
-#if defined(__CUDACC__)
-			T r = sqrtf(u2);
-			T phi = T(2)*pi*u3;
-			wo_out_lx = r*cosf(phi);
-			wo_out_ly = r*sinf(phi);
-			T z2 = T(1)-u2;
-			wo_out_lz = z2>T(0)?sqrtf(z2):T(0);
-#else
-			T r = std::sqrt(u2);
-			T phi = T(2)*pi*u3;
-			wo_out_lx = r*std::cos(phi);
-			wo_out_ly = r*std::sin(phi);
-			T z2 = T(1)-u2;
-			wo_out_lz = z2>T(0)?std::sqrt(z2):T(0);
-#endif
+			// Diffuse: cosine-weighted hemisphere sample via concentric disk (pbrt-v4)
+			T pdf_unused;
+			SampleCosineHemisphere(u2, u3, wo_out_lx, wo_out_ly, wo_out_lz, pdf_unused);
 		} else if (u1 < p_diff + p_spec) {
 			// Specular: GGX VNDF sample
 			T wm_lx, wm_ly, wm_lz;

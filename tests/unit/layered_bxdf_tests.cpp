@@ -40,7 +40,7 @@ static CoatedDiffuseBxDF<double> make_coated_diffuse(
 	double alpha = TrowbridgeReitz<double>::RoughnessToAlpha(roughness);
 	CoatedDiffuseBxDF<double> b;
 	b.albedo_r = albedo; b.albedo_g = albedo * 0.7; b.albedo_b = albedo * 0.4;
-	b.coat_ior = ior; b.alpha = alpha;
+	b.coat_ior = ior; b.alpha_x = alpha; b.alpha_y = alpha;
 	b.thickness = thickness; b.g = 0.0; b.medium_albedo = 0.0;
 	b.maxDepth = 10; b.nSamples = 1;
 	return b;
@@ -54,7 +54,7 @@ static CoatedConductorBxDF<double> make_coated_conductor(
 	// Gold IOR (approximate)
 	b.eta_r = 0.143; b.eta_g = 0.374; b.eta_b = 1.442;
 	b.k_r   = 3.981; b.k_g   = 2.386; b.k_b   = 1.599;
-	b.coat_ior = coat_ior; b.alpha = alpha;
+	b.coat_ior = coat_ior; b.alpha_x = alpha; b.alpha_y = alpha;
 	b.thickness = thickness; b.g = 0.0; b.medium_albedo = 0.0;
 	b.maxDepth = 10; b.nSamples = 1;
 	return b;

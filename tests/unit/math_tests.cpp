@@ -1382,8 +1382,8 @@ TEST(CoatedDiffuseMaterialTest, UnitIorMeansNoCoatReflection) {
 		double wi_x, wi_y, wi_z;
 		frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
 		double alpha = TrowbridgeReitz<double>::RoughnessToAlpha(0.1);
-		CoatedDiffuseBxDF<double> bxdf{ alb.x(), alb.y(), alb.z(), 1.0, alpha,
-										0.01, 0.0, 0.0, 10, 1 };
+		CoatedDiffuseBxDF<double> bxdf{ alb.x(), alb.y(), alb.z(), 1.0, alpha, alpha,
+									0.01, 0.0, 0.0, 10, 1 };
 		int valid = 0;
 		for (int i = 0; i < 100; ++i) {
 			auto res = bxdf.sample_local(wi_x, wi_y, wi_z,

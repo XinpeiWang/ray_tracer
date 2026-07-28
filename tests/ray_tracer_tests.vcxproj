@@ -141,6 +141,9 @@
     <ClCompile Include="unit\tone_map_tests.cpp" />
     <ClCompile Include="unit\triangle_tests.cpp" />
     <ClCompile Include="unit\layered_bxdf_tests.cpp" />
+    <ClCompile Include="unit\concentric_disk_tests.cpp" />
+    <ClCompile Include="unit\anisotropic_ggx_tests.cpp" />
+    <ClCompile Include="unit\mix_material_tests.cpp" />
     <ClCompile Include="unit\volume_scattering_tests.cpp" />
   </ItemGroup>
   <ItemGroup>
