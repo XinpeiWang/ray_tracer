@@ -4,10 +4,14 @@
 // Shared Fresnel functions — usable on both CPU and GPU.
 //
 // Mirrors pbrt-v4's FrDielectric and FrComplex (src/pbrt/util/scattering.h),
-// both annotated PBRT_CPU_GPU so the same code runs on CPU and GPU.
+// both annotated CPU_GPU so the same code runs on CPU and GPU.
 //
 // CPU usage  (MSVC / plain C++):  CPU_GPU is empty, T = double
 // GPU usage  (NVCC / CUDA):       CPU_GPU = __host__ __device__, T = float
+//
+// FrComplex overloads:
+//   FrComplex(cosTheta, eta_r, eta_k)      -- explicit real+imag (CPU+GPU)
+//   FrComplex(cosTheta, complex<T> eta)    -- std::complex convenience (CPU)
 // ---------------------------------------------------------------------------
 
 #if defined(__CUDACC__)
@@ -20,6 +24,7 @@
 #   include <math_functions.h>   // fmaxf, fminf, sqrtf (device)
 #else
 #   include <cmath>
+#   include <complex>
 #endif
 
 // ---------------------------------------------------------------------------
@@ -140,6 +145,18 @@ CPU_GPU T FrComplex(T cos_theta_i, T eta_r, T eta_k) {
 
 	return (r_parl_sq + r_perp_sq) / T(2);
 }
+
+// ---------------------------------------------------------------------------
+// FrComplex(cosTheta, complex<T>) -- std::complex convenience overload (CPU)
+// Matches the pbrt-v4 signature: FrComplex(Float cosTheta_i, complex<Float> eta)
+// Reference: pbrt-v4 util/scattering.h
+// ---------------------------------------------------------------------------
+#if !defined(__CUDACC__)
+template <typename T>
+inline T FrComplex(T cos_theta_i, std::complex<T> eta) {
+	return FrComplex(cos_theta_i, static_cast<T>(eta.real()), static_cast<T>(eta.imag()));
+}
+#endif
 
 // ---------------------------------------------------------------------------
 // FrConductorRGB -- evaluate FrComplex for R, G, B channels simultaneously
