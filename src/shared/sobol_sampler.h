@@ -33,41 +33,12 @@
 
 #include <cstdint>
 #include <cmath>
-#include "pbrt_hash.h"
+#include "lowdiscrepancy.h"
+#include "scalar_math.h"
 
-// ---------------------------------------------------------------------------
-// Bit-manipulation helpers -- identical to pbrt-v4 (util/math.h)
-// ---------------------------------------------------------------------------
-
-inline uint32_t reverse_bits_32(uint32_t v) {
-	v = (v << 16) | (v >> 16);
-	v = ((v & 0x00ff00ff) << 8)  | ((v & 0xff00ff00) >> 8);
-	v = ((v & 0x0f0f0f0f) << 4)  | ((v & 0xf0f0f0f0) >> 4);
-	v = ((v & 0x33333333) << 2)  | ((v & 0xcccccccc) >> 2);
-	v = ((v & 0x55555555) << 1)  | ((v & 0xaaaaaaaa) >> 1);
-	return v;
-}
-
-// MixBits -- provided by pbrt_hash.h (pbrt-v4 util/hash.h)
-// mix_bits is a local alias kept for internal use within this file.
+// MixBits from pbrt_hash.h (included transitively via lowdiscrepancy.h)
+// mix_bits local alias for internal use
 namespace { inline uint64_t mix_bits(uint64_t v) { return MixBits(v); } }
-
-// ---------------------------------------------------------------------------
-// FastOwenScrambler -- pbrt-v4 FastOwenScrambler (util/lowdiscrepancy.h)
-//
-// Maps a 32-bit Sobol sample to a scrambled 32-bit value that preserves the
-// (0,s)-sequence property in expectation.  Uses reverseBits and a multiply-
-// xor hash cascade -- ~5x faster than the full Owen tree.
-// ---------------------------------------------------------------------------
-inline uint32_t fast_owen_scramble(uint32_t v, uint32_t seed) {
-	v  = reverse_bits_32(v);
-	v ^= v * 0x3d20adea;
-	v += seed;
-	v *= (seed >> 16) | 1;
-	v ^= v * 0x05526c56;
-	v ^= v * 0x53a22864;
-	return reverse_bits_32(v);
-}
 
 // ---------------------------------------------------------------------------
 // Sobol generator matrices (Joe & Kuo 2008) -- first 8 dimensions only.
@@ -169,24 +140,13 @@ static constexpr uint32_t sobol_matrices[SOBOL_DIMS * SOBOL_MATRIX_SIZE] = {
 // ---------------------------------------------------------------------------
 // sobol_sample -- evaluate one Sobol sample for (index, dimension, seed)
 //
-// Mirrors pbrt-v4's SobolSample<FastOwenScrambler>.
-// index     -- path sample index (monotonically increasing per pixel)
-// dim       -- dimension [0, SOBOL_DIMS)
-// seed      -- per-pixel/per-dimension scramble seed
+// Delegates to the generic SobolSample<FastOwenScrambler> from
+// lowdiscrepancy.h using the local embedded matrix table.
 // ---------------------------------------------------------------------------
 inline double sobol_sample(uint64_t index, int dim, uint32_t seed) {
-	// Accumulate generator matrix columns for set bits in index.
-	uint32_t v = 0;
-	const int base = dim * SOBOL_MATRIX_SIZE;
-	for (int i = base; index != 0; index >>= 1, ++i)
-		if (index & 1)
-			v ^= sobol_matrices[i];
-
-	// Apply Fast Owen scrambling (pbrt-v4 FastOwenScrambler).
-	v = fast_owen_scramble(v, seed);
-
-	// Convert to [0, 1).  0x1p-32f = 2^{-32}.
-	return std::min(v * (1.0 / 4294967296.0), 1.0 - 1e-15);
+	const uint32_t* C = sobol_matrices + dim * SOBOL_MATRIX_SIZE;
+	return SobolSample(C, SOBOL_MATRIX_SIZE, static_cast<int64_t>(index),
+					   0, FastOwenScrambler{seed});
 }
 
 // ---------------------------------------------------------------------------
@@ -259,36 +219,14 @@ class SobolSampler {
 // Reference: pbrt-v4 samplers.h ZSobolSampler (Apache-2.0)
 // ---------------------------------------------------------------------------
 
-// Bit helpers required by ZSobolSampler
-inline uint64_t left_shift2(uint64_t x) {
-	x &= 0xffffffff;
-	x = (x ^ (x << 16)) & 0x0000ffff0000ffff;
-	x = (x ^ (x <<  8)) & 0x00ff00ff00ff00ff;
-	x = (x ^ (x <<  4)) & 0x0f0f0f0f0f0f0f0f;
-	x = (x ^ (x <<  2)) & 0x3333333333333333;
-	x = (x ^ (x <<  1)) & 0x5555555555555555;
-	return x;
-}
+// Bit helpers required by ZSobolSampler -- now from lowdiscrepancy.h / scalar_math.h
+// LeftShift2, EncodeMorton2, Log2Int, RoundUpPow2 are available from those headers.
 
-// Interleave bits of x and y into a 64-bit Morton code
-inline uint64_t encode_morton2(uint32_t x, uint32_t y) {
-	return (left_shift2(y) << 1) | left_shift2(x);
-}
-
-// Integer log2 (floor) for uint32
-inline int log2_int(uint32_t v) {
-	if (v == 0) return 0;
-	int r = 0;
-	while (v >>= 1) ++r;
-	return r;
-}
+// Integer log2 wrapper (Log2Int from scalar_math.h returns int for uint32)
+inline int log2_int(uint32_t v) { return Log2Int(v); }
 
 // Round up to next power of 2 (int32)
-inline int round_up_pow2(int v) {
-	--v;
-	v |= v >> 1; v |= v >> 2; v |= v >> 4; v |= v >> 8; v |= v >> 16;
-	return v + 1;
-}
+inline int round_up_pow2(int v) { return static_cast<int>(RoundUpPow2(static_cast<int32_t>(v))); }
 
 // ZSobolSampler: pixel-aware Sobol sampler with Z-curve Morton ordering.
 //
@@ -315,9 +253,9 @@ class ZSobolSampler {
 	// Call once per (pixel, sample) pair before fetching dimensions.
 	void start_pixel_sample(int px, int py, int sample_idx, int start_dim = 0) {
 		dimension_    = start_dim;
-		morton_index_ = (encode_morton2(static_cast<uint32_t>(px),
+		morton_index_ = (EncodeMorton2(static_cast<uint32_t>(px),
 										static_cast<uint32_t>(py))
-						 << log2_spp_) | static_cast<uint64_t>(sample_idx);
+					 << log2_spp_) | static_cast<uint64_t>(sample_idx);
 	}
 
 	// Fetch next 1D sample; advances the dimension counter.
@@ -327,7 +265,7 @@ class ZSobolSampler {
 			static_cast<uint64_t>(dimension_) ^ static_cast<uint64_t>(seed_) * 6364136223846793005ULL));
 		++dimension_;
 		uint32_t raw = sobol_sample_raw(si, 0);
-		return (fast_owen_scramble(raw, hash) >> 8) * 0x1p-24;
+		return (FastOwenScrambler{hash}(raw) >> 8) * 0x1p-24;
 	}
 
 	// Fetch a correlated 2D sample pair.
@@ -338,8 +276,8 @@ class ZSobolSampler {
 		uint32_t h0   = static_cast<uint32_t>(bits);
 		uint32_t h1   = static_cast<uint32_t>(bits >> 32);
 		dimension_ += 2;
-		u0 = (fast_owen_scramble(sobol_sample_raw(si, 0), h0) >> 8) * 0x1p-24;
-		u1 = (fast_owen_scramble(sobol_sample_raw(si, 1), h1) >> 8) * 0x1p-24;
+		u0 = (FastOwenScrambler{h0}(sobol_sample_raw(si, 0)) >> 8) * 0x1p-24;
+		u1 = (FastOwenScrambler{h1}(sobol_sample_raw(si, 1)) >> 8) * 0x1p-24;
 	}
 
 	void reset_dim(int d = 0) { dimension_ = d; }
@@ -395,37 +333,10 @@ class ZSobolSampler {
 };
 
 // ---------------------------------------------------------------------------
-// PermutationElement -- pbrt-v4 util/math.h
-//
-// Maps index i to a pseudo-random permutation of {0, ..., l-1} seeded by p.
-// Uses a cycle-walking algorithm with a hash cascade: the inner loop maps
-// i into a bitmask-sized range (next power of 2 minus 1), then rejects
-// values >= l and repeats -- expected 2 iterations for random l.
-//
-// Usage: int j = permutation_element(i, n, seed_hash);
-// Reference: pbrt-v4 util/math.h PermutationElement
-// ---------------------------------------------------------------------------
+// PermutationElement is now provided by scalar_math.h (pbrt-v4 util/math.h).
+// permutation_element: local alias for backwards compatibility within this file.
 inline int permutation_element(uint32_t i, uint32_t l, uint32_t p) {
-	uint32_t w = l - 1;
-	w |= w >> 1; w |= w >> 2; w |= w >> 4; w |= w >> 8; w |= w >> 16;
-	do {
-		i ^= p;           i *= 0xe170893d;
-		i ^= p >> 16;
-		i ^= (i & w) >> 4;
-		i ^= p >> 8;      i *= 0x0929eb3f;
-		i ^= p >> 23;
-		i ^= (i & w) >> 1;
-		i *= 1 | p >> 27; i *= 0x6935fa69;
-		i ^= (i & w) >> 11;
-		i *= 0x74dcb303;
-		i ^= (i & w) >> 2;
-		i *= 0x9e501cc3;
-		i ^= (i & w) >> 2;
-		i *= 0xc860a3df;
-		i &= w;
-		i ^= i >> 5;
-	} while (i >= l);
-	return static_cast<int>((i + p) % l);
+	return PermutationElement(i, l, p);
 }
 
 // ---------------------------------------------------------------------------
@@ -464,7 +375,7 @@ class PaddedSobolSampler {
 										   static_cast<uint32_t>(spp_),
 										   static_cast<uint32_t>(h));
 		uint32_t raw = sobol_sample_raw(static_cast<uint64_t>(idx), 0);
-		uint32_t scr = fast_owen_scramble(raw, static_cast<uint32_t>(h >> 32));
+		uint32_t scr = FastOwenScrambler{static_cast<uint32_t>(h >> 32)}(raw);
 		++dimension_;
 		return (scr >> 8) * 0x1p-24;
 	}
@@ -475,10 +386,10 @@ class PaddedSobolSampler {
 		int idx      = permutation_element(static_cast<uint32_t>(sample_idx_),
 										   static_cast<uint32_t>(spp_),
 										   static_cast<uint32_t>(h));
-		uint32_t r0  = fast_owen_scramble(sobol_sample_raw(static_cast<uint64_t>(idx), 0),
-										  static_cast<uint32_t>(h));
-		uint32_t r1  = fast_owen_scramble(sobol_sample_raw(static_cast<uint64_t>(idx), 1),
-										  static_cast<uint32_t>(h >> 32));
+		uint32_t r0  = FastOwenScrambler{static_cast<uint32_t>(h)}(
+							sobol_sample_raw(static_cast<uint64_t>(idx), 0));
+		uint32_t r1  = FastOwenScrambler{static_cast<uint32_t>(h >> 32)}(
+							sobol_sample_raw(static_cast<uint64_t>(idx), 1));
 		dimension_ += 2;
 		u0 = (r0 >> 8) * 0x1p-24;
 		u1 = (r1 >> 8) * 0x1p-24;

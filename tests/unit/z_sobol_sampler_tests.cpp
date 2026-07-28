@@ -162,13 +162,13 @@ TEST(ZSobolSamplerTest, EncodeMorton2Correctness) {
 	// Morton code of (1,0): x=1 -> bit 0, y=0 -> result bit pattern = 01b = 1
 	// Morton code of (0,1): y=1 -> bit 1, result = 10b = 2
 	// Morton code of (1,1) = 11b = 3
-	EXPECT_EQ(encode_morton2(1, 0), 1ULL);
-	EXPECT_EQ(encode_morton2(0, 1), 2ULL);
-	EXPECT_EQ(encode_morton2(1, 1), 3ULL);
-	EXPECT_EQ(encode_morton2(0, 0), 0ULL);
-	// (2,0) = 0b100 = 4; bits of 2 interleaved: 2=10b -> left_shift2 gives ..0100 -> 0x4
-	EXPECT_EQ(encode_morton2(2, 0), 4ULL);
-	EXPECT_EQ(encode_morton2(0, 2), 8ULL);
+	EXPECT_EQ(EncodeMorton2(1, 0), 1ULL);
+	EXPECT_EQ(EncodeMorton2(0, 1), 2ULL);
+	EXPECT_EQ(EncodeMorton2(1, 1), 3ULL);
+	EXPECT_EQ(EncodeMorton2(0, 0), 0ULL);
+	// (2,0) = 0b100 = 4; bits of 2 interleaved: 2=10b -> LeftShift2 gives ..0100 -> 0x4
+	EXPECT_EQ(EncodeMorton2(2, 0), 4ULL);
+	EXPECT_EQ(EncodeMorton2(0, 2), 8ULL);
 }
 
 // ---- 10. Helper function correctness ---------------------------------------

@@ -2,7 +2,7 @@
 // Unit tests for src/shared/sobol_sampler.h
 //
 // Tests are grouped into:
-//   1. Helper functions -- reverse_bits_32, MixBits (via mix_bits alias), fast_owen_scramble
+//   1. Helper functions -- ReverseBits32, MixBits, FastOwenScrambler
 //   2. sobol_sample     -- range, dim-0 Van der Corput property, dim independence
 //   3. SobolSampler     -- interface, range, uniformity, pixel independence,
 //                          fallback for extra dims, reset_dim
@@ -21,37 +21,37 @@
 TEST(ReverseBits32, Identity) {
 	// reverse twice == identity
 	for (uint32_t v : {0u, 1u, 0x80000000u, 0xDEADBEEFu, 0xFFFFFFFFu}) {
-		EXPECT_EQ(reverse_bits_32(reverse_bits_32(v)), v);
+		EXPECT_EQ(ReverseBits32(ReverseBits32(v)), v);
 	}
 }
 
 TEST(ReverseBits32, KnownValues) {
-	EXPECT_EQ(reverse_bits_32(0x00000001u), 0x80000000u);
-	EXPECT_EQ(reverse_bits_32(0x80000000u), 0x00000001u);
-	EXPECT_EQ(reverse_bits_32(0xFFFFFFFFu), 0xFFFFFFFFu);
-	EXPECT_EQ(reverse_bits_32(0x00000000u), 0x00000000u);
+	EXPECT_EQ(ReverseBits32(0x00000001u), 0x80000000u);
+	EXPECT_EQ(ReverseBits32(0x80000000u), 0x00000001u);
+	EXPECT_EQ(ReverseBits32(0xFFFFFFFFu), 0xFFFFFFFFu);
+	EXPECT_EQ(ReverseBits32(0x00000000u), 0x00000000u);
 }
 
 TEST(MixBits, OutputNotEqualInput) {
-	// mix_bits delegates to MixBits (pbrt_hash.h); should change value for typical inputs
+	// MixBits (pbrt_hash.h); should change value for typical inputs
 	for (uint64_t v : {1ull, 42ull, 0xDEADBEEFull, 1000000ull}) {
-		EXPECT_NE(mix_bits(v), v);
+		EXPECT_NE(MixBits(v), v);
 	}
 }
 
 TEST(MixBits, ZeroStable) {
 	// Not required to be 0, but must be deterministic
-	EXPECT_EQ(mix_bits(0), mix_bits(0));
+	EXPECT_EQ(MixBits(0), MixBits(0));
 }
 
 TEST(FastOwenScramble, DeterministicSameSeed) {
 	uint32_t v = 0x12345678u, seed = 0xABCDEF01u;
-	EXPECT_EQ(fast_owen_scramble(v, seed), fast_owen_scramble(v, seed));
+	EXPECT_EQ(FastOwenScrambler{seed}(v), FastOwenScrambler{seed}(v));
 }
 
 TEST(FastOwenScramble, DifferentSeedsDifferentOutput) {
 	uint32_t v = 0x12345678u;
-	EXPECT_NE(fast_owen_scramble(v, 1u), fast_owen_scramble(v, 2u));
+	EXPECT_NE(FastOwenScrambler{1u}(v), FastOwenScrambler{2u}(v));
 }
 
 TEST(FastOwenScramble, CoversBitRange) {
@@ -59,7 +59,7 @@ TEST(FastOwenScramble, CoversBitRange) {
 	// across both the high and low halves of the 32-bit range.
 	uint32_t low_count = 0, high_count = 0;
 	for (uint32_t i = 0; i < 1000; ++i) {
-		uint32_t s = fast_owen_scramble(i, i * 2654435761u + 1013904223u);
+		uint32_t s = FastOwenScrambler{i * 2654435761u + 1013904223u}(i);
 		if (s < 0x80000000u) low_count++;
 		else                  high_count++;
 	}
@@ -85,7 +85,7 @@ TEST(SobolSample, RangeAllDims) {
 TEST(SobolSample, Dim0IsVanDerCorput) {
 	// Dim 0 with seed 0 is unscrambled Van der Corput (base 2).
 	// sobol_sample(1, 0, 0) = 0.5, sobol_sample(2, 0, 0) = 0.25, etc.
-	// With seed=0, fast_owen_scramble(v, 0) may alter bits; test the
+	// With seed=0, FastOwenScrambler{0}(v) may alter bits; test the
 	// property that 2^N consecutive samples cover [0,1) uniformly.
 	std::vector<double> vals;
 	for (int i = 0; i < 16; ++i)
