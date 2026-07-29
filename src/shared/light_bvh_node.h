@@ -55,11 +55,7 @@ struct alignas(32) LightBVHNode {
 	CPU_GPU static LightBVHNode MakeLeaf(unsigned int lightIndex,
 										  const CompactLightBounds& cb)
 	{
-		LightBVHNode n;
-		n.lightBounds        = cb;
-		n.childOrLightIndex  = lightIndex;
-		n.isLeaf             = 1;
-		return n;
+		return LightBVHNode{cb, {lightIndex, 1}};
 	}
 
 	// ---------------------------------------------------------------------------
@@ -71,10 +67,6 @@ struct alignas(32) LightBVHNode {
 	CPU_GPU static LightBVHNode MakeInterior(unsigned int child1Index,
 											  const CompactLightBounds& cb)
 	{
-		LightBVHNode n;
-		n.lightBounds        = cb;
-		n.childOrLightIndex  = child1Index;
-		n.isLeaf             = 0;
-		return n;
+		return LightBVHNode{cb, {child1Index, 0}};
 	}
 };
