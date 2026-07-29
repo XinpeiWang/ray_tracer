@@ -20,7 +20,6 @@
 #pragma once
 #include <cmath>
 #include <cstdint>
-#include <cstring>  // memcpy
 #include "scalar_math.h"
 
 #ifndef CPU_GPU
@@ -139,6 +138,7 @@ struct VarianceEstimator {
 		n   += ve.n;
 	}
 
+private:
 	T       mean = T(0);
 	T       S    = T(0);
 	int64_t n    = 0;
