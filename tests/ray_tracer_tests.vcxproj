@@ -159,6 +159,7 @@
                                         <ClCompile Include="unit\octahedral_variance_tests.cpp" />
                                         <ClCompile Include="unit\direction_cone_tests.cpp" />
                                         <ClCompile Include="unit\light_bounds_tests.cpp" />
+                                        <ClCompile Include="unit\compact_light_bounds_tests.cpp" />
     <ClCompile Include="unit\sobol_strat_tests.cpp" />
     <ClCompile Include="unit\tone_map_tests.cpp" />
     <ClCompile Include="unit\triangle_tests.cpp" />
