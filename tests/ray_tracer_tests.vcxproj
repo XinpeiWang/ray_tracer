@@ -162,6 +162,7 @@
                                         <ClCompile Include="unit\compact_light_bounds_tests.cpp" />
                                         <ClCompile Include="unit\light_bvh_node_tests.cpp" />
                                         <ClCompile Include="unit\bvh_light_sampler2_tests.cpp" />
+                                        <ClCompile Include="unit\pbrt_sampling_tests.cpp" />
     <ClCompile Include="unit\sobol_strat_tests.cpp" />
     <ClCompile Include="unit\tone_map_tests.cpp" />
     <ClCompile Include="unit\triangle_tests.cpp" />
