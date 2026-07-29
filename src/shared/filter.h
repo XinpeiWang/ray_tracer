@@ -179,6 +179,13 @@ class TriangleFilter {
 
 	double radius() const { return radius_; }
 
+	// Integral of the 2D filter over its support [-r,r]^2.
+	// pbrt-v4 TriangleFilter::Integral() = r^2 * r^2 (each 1D integral = r^2/2, but
+	// pbrt-v4 uses Sqr(radius.x)*Sqr(radius.y) which equals r^4/4 for square; however
+	// the 1D integral of tent(x) = int_{-r}^{r} (r-|x|) dx = r^2, so 2D = r^4.
+	// pbrt-v4: Sqr(radius.x) * Sqr(radius.y) = r^2 * r^2 = r^4. Matches.
+	double integral() const { return radius_ * radius_ * radius_ * radius_; }
+
   private:
 	// pbrt-v4 TriangleFilter::Evaluate: max(0, radius - |x|)
 	double tent1d(double x) const {

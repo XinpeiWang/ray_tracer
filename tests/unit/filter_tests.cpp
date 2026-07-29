@@ -225,3 +225,12 @@ TEST(TriangleFilterTest, ConstantRadiancePreserved) {
 	double result = (weight_sum > 0.0) ? weighted_sum / weight_sum : 0.0;
 	EXPECT_NEAR(result, target, 1e-12);
 }
+
+TEST(TriangleFilterTest, IntegralMatchesPbrtV4) {
+	// pbrt-v4 Integral() = Sqr(radius.x) * Sqr(radius.y) = r^4 for square filter
+	// 1D integral of tent: int_{-r}^{r} (r-|x|) dx = r^2, so 2D = r^4
+	for (double r : {1.0, 2.0, 0.5}) {
+		TriangleFilter f(r);
+		EXPECT_NEAR(f.integral(), r * r * r * r, 1e-12) << "r=" << r;
+	}
+}
