@@ -128,11 +128,9 @@ CPU_GPU inline float Importance(const LightBounds& lb,
 	if (lb.twoSided) cosTheta_w = std::abs(cosTheta_w);
 	float sinTheta_w = SafeSqrt(1.f - Sqr(cosTheta_w));
 
-	// Angle subtended by the AABB bounding sphere from p
-	DirectionCone bsc = BoundSubtendedDirections(
-		lb.bMinX, lb.bMinY, lb.bMinZ, lb.bMaxX, lb.bMaxY, lb.bMaxZ, px, py, pz);
-	float cosTheta_b = bsc.cosTheta;
-	if (bsc.IsEmpty()) cosTheta_b = 1.f;  // degenerate: p == centroid
+	// Compute cosTheta_b for reference point (mirrors pbrt-v4 exactly)
+	float cosTheta_b = BoundSubtendedDirections(
+		lb.bMinX, lb.bMinY, lb.bMinZ, lb.bMaxX, lb.bMaxY, lb.bMaxZ, px, py, pz).cosTheta;
 	float sinTheta_b = SafeSqrt(1.f - Sqr(cosTheta_b));
 
 	// Compute cos(theta') = cos(theta_w - theta_o - theta_b) clamped
@@ -182,7 +180,7 @@ CPU_GPU inline LightBounds Union(const LightBounds& a, const LightBounds& b) {
 					   cu.wx, cu.wy, cu.wz,
 					   a.phi + b.phi,
 					   cu.cosTheta, cosTheta_e,
-					   a.twoSided || b.twoSided);
+					   a.twoSided | b.twoSided);
 }
 
 #if defined(_MSC_VER)
