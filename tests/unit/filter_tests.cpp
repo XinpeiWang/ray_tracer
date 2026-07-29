@@ -146,3 +146,82 @@ TEST(MitchellFilterTest, ConstantRadiancePreserved) {
 	double result = (weight_sum > 0.0) ? weighted_sum / weight_sum : 0.0;
 	EXPECT_NEAR(result, target, 1e-12);
 }
+
+// ---------------------------------------------------------------------------
+// TriangleFilter tests  (pbrt-v4 filters.h TriangleFilter)
+// ---------------------------------------------------------------------------
+
+TEST(TriangleFilterTest, CenterEqualsRadiusSquared) {
+	// w(0,0) = radius * radius  (both 1D tent values equal radius at center)
+	TriangleFilter f(2.0);
+	EXPECT_NEAR(f.evaluate(0.0, 0.0), 2.0 * 2.0, 1e-14);
+}
+
+TEST(TriangleFilterTest, ZeroAtRadius) {
+	// tent1d(radius) = max(0, radius - radius) = 0
+	TriangleFilter f(2.0);
+	EXPECT_NEAR(f.evaluate(2.0, 0.0), 0.0, 1e-14);
+	EXPECT_NEAR(f.evaluate(0.0, 2.0), 0.0, 1e-14);
+}
+
+TEST(TriangleFilterTest, ZeroBeyondRadius) {
+	// pbrt-v4: max(0, radius - |x|) -- clamps at zero outside support
+	TriangleFilter f(2.0);
+	EXPECT_DOUBLE_EQ(f.evaluate(2.5, 0.0), 0.0);
+	EXPECT_DOUBLE_EQ(f.evaluate(0.0, 3.0), 0.0);
+	EXPECT_DOUBLE_EQ(f.evaluate(-2.1, -2.1), 0.0);
+}
+
+TEST(TriangleFilterTest, IsSymmetric) {
+	TriangleFilter f(2.0);
+	EXPECT_DOUBLE_EQ(f.evaluate( 1.0,  0.5), f.evaluate(-1.0,  0.5));
+	EXPECT_DOUBLE_EQ(f.evaluate( 0.5,  1.0), f.evaluate( 0.5, -1.0));
+	EXPECT_DOUBLE_EQ(f.evaluate(-0.7, -1.2), f.evaluate( 0.7,  1.2));
+}
+
+TEST(TriangleFilterTest, LinearFalloff) {
+	// tent1d is linear in x: value at x1 and x2 should interpolate linearly
+	TriangleFilter f(2.0);
+	// Along x-axis (oy=0): w = (2-|ox|) * 2
+	double w0 = f.evaluate(0.0, 0.0);  // 2 * 2 = 4
+	double w1 = f.evaluate(1.0, 0.0);  // 1 * 2 = 2
+	double w2 = f.evaluate(2.0, 0.0);  // 0 * 2 = 0
+	EXPECT_NEAR(w0, 4.0, 1e-14);
+	EXPECT_NEAR(w1, 2.0, 1e-14);
+	EXPECT_NEAR(w2, 0.0, 1e-14);
+	// Midpoint should be exactly halfway
+	double wmid = f.evaluate(0.5, 0.0);
+	EXPECT_NEAR(wmid, 3.0, 1e-14);
+}
+
+TEST(TriangleFilterTest, SeparableEqualsProduct) {
+	// 2D weight = tent1d(ox) * tent1d(oy)
+	TriangleFilter f(2.0);
+	auto tent1d = [](double x, double r) { double v = r - std::fabs(x); return v > 0.0 ? v : 0.0; };
+	for (double ox : {0.0, 0.5, 1.0, 1.5}) {
+		for (double oy : {0.0, 0.3, 0.9, 1.8}) {
+			double expected = tent1d(ox, 2.0) * tent1d(oy, 2.0);
+			EXPECT_NEAR(f.evaluate(ox, oy), expected, 1e-14)
+				<< "at (" << ox << ", " << oy << ")";
+		}
+	}
+}
+
+TEST(TriangleFilterTest, ConstantRadiancePreserved) {
+	// Weighted average with TriangleFilter over a uniform grid equals the constant value
+	TriangleFilter f(2.0);
+	const double target = 0.6;
+	double weighted_sum = 0.0, weight_sum = 0.0;
+	const int N = 8;
+	for (int si = 0; si < N; ++si) {
+		for (int sj = 0; sj < N; ++sj) {
+			double ox = (si + 0.5) / N * 4.0 - 2.0;  // [-2, 2]
+			double oy = (sj + 0.5) / N * 4.0 - 2.0;
+			double w = f.evaluate(ox, oy);
+			weighted_sum += w * target;
+			weight_sum   += w;
+		}
+	}
+	double result = (weight_sum > 0.0) ? weighted_sum / weight_sum : 0.0;
+	EXPECT_NEAR(result, target, 1e-12);
+}

@@ -154,3 +154,37 @@ class LanczosSincFilter {
 
 	double radius_, tau_;
 };
+
+// ---------------------------------------------------------------------------
+// TriangleFilter -- linear (tent) falloff reconstruction filter
+//
+// pbrt-v4 reference: src/pbrt/filters.h TriangleFilter
+//
+// The simplest non-trivial filter: weight falls off linearly from 1 at the
+// center to 0 at the edge of the support radius.  Separable in x and y:
+//
+//   w(ox, oy) = max(0, radius - |ox|) * max(0, radius - |oy|)
+//
+// Compared to BoxFilter: softer, avoids aliasing at the cost of slight blur.
+// Compared to Mitchell/Gaussian: cheaper to evaluate, good for real-time use.
+// ---------------------------------------------------------------------------
+class TriangleFilter {
+  public:
+	explicit TriangleFilter(double radius = 2.0) : radius_(radius) {}
+
+	// Evaluate the 2D filter weight for a sample at sub-pixel offset (ox, oy).
+	double evaluate(double ox, double oy) const {
+		return tent1d(ox) * tent1d(oy);
+	}
+
+	double radius() const { return radius_; }
+
+  private:
+	// pbrt-v4 TriangleFilter::Evaluate: max(0, radius - |x|)
+	double tent1d(double x) const {
+		double v = radius_ - std::fabs(x);
+		return (v > 0.0) ? v : 0.0;
+	}
+
+	double radius_;
+};
