@@ -81,6 +81,17 @@ TEST(DirectionCone, InsideBoundary) {
 	EXPECT_TRUE(Inside(c, h44, 0.f, v44));
 }
 
+TEST(DirectionCone, InsideBoundaryExact) {
+	// A direction exactly on the boundary (dot == cosTheta) must be inside
+	// (pbrt-v4 Inside uses >=, not >)
+	float halfAngle = 30.f * kPi / 180.f;
+	float cosT = std::cos(halfAngle);
+	float sinT = std::sin(halfAngle);
+	DirectionCone c(0.f, 0.f, 1.f, cosT);
+	// Direction exactly at halfAngle from +Z in the XZ plane
+	EXPECT_TRUE(Inside(c, sinT, 0.f, cosT));
+}
+
 // ---------------------------------------------------------------------------
 // 3. BoundSubtendedDirections()
 // ---------------------------------------------------------------------------
