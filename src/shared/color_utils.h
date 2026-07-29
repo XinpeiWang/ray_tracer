@@ -1,4 +1,5 @@
 // color_utils.h -- Color conversion utilities, ported from pbrt-v4 util/color.h
+//                  and spectral utilities from pbrt-v4 util/spectrum.h
 // pbrt is Copyright(c) 1998-2020 Matt Pharr, Wenzel Jakob, and Greg Humphreys.
 // Apache License, Version 2.0.
 //
@@ -9,6 +10,9 @@
 //   SRGB8ToLinear(uint8_t)      -- uint8 sRGB -> linear (LUT)
 //   XYZ struct                  -- CIE XYZ tristimulus type with operators
 //   WhiteBalance(srcWhite, dstWhite, out3x3) -- Bradford chromatic adaptation
+//   Blackbody(lambda_nm, T_K)   -- Planck spectral radiance (pbrt-v4 spectrum.h)
+//   BlackbodySpectrum            -- normalized blackbody callable (pbrt-v4 spectrum.h)
+//   RGBSigmoidPolynomial         -- spectral upsampling polynomial (pbrt-v4 color.h)
 //
 // Note: tone_map.h contains the same LinearToSRGB for the write pipeline.
 // color_utils.h is the canonical shared version aligned with pbrt-v4.
@@ -177,3 +181,119 @@ inline SquareMatrix<3> WhiteBalance(float srcX, float srcY,
 
 	return XYZFromLMS * LMScorrect * LMSFromXYZ;
 }
+
+// ---------------------------------------------------------------------------
+// Blackbody -- Planck spectral radiance at wavelength lambda_nm and temperature T_K
+//
+// pbrt-v4 reference: util/spectrum.h Blackbody(Float lambda, Float T)
+//
+// Returns spectral radiance Le [W / (m^2 · sr · m)] for a blackbody emitter
+// at temperature T (Kelvin) and wavelength lambda (nanometres).
+// Returns 0 for T <= 0 or lambda <= 0.
+//
+// Physical constants used (CODATA 2010, matching pbrt-v4):
+//   c  = 299 792 458  m/s
+//   h  = 6.626 069 57e-34  J·s
+//   k_B = 1.380 648 8e-23  J/K
+// ---------------------------------------------------------------------------
+CPU_GPU inline float Blackbody(float lambda_nm, float T) {
+	if (T <= 0.f || lambda_nm <= 0.f) return 0.f;
+	const float c  = 299792458.f;
+	const float h  = 6.62606957e-34f;
+	const float kb = 1.3806488e-23f;
+	float l  = lambda_nm * 1e-9f;                             // nm -> m
+	float Le = (2.f * h * c * c) /
+			   (Pow<5>(l) * (FastExp((h * c) / (l * kb * T)) - 1.f));
+	return Le;
+}
+
+// ---------------------------------------------------------------------------
+// BlackbodySpectrum -- normalized blackbody callable
+//
+// pbrt-v4 reference: util/spectrum.h BlackbodySpectrum
+//
+// Wraps Blackbody() and normalises by the peak emission so that the maximum
+// value over the visible range is 1.  The peak wavelength is given by Wien's
+// displacement law: lambda_max = b / T, b = 2.897 772 1e-3 m·K.
+//
+// Usage:
+//   BlackbodySpectrum bb(6500.f);   // ~D65
+//   float v = bb(550.f);            // normalised radiance at 550 nm in [0,1]
+// ---------------------------------------------------------------------------
+struct BlackbodySpectrum {
+	// T_K: colour temperature in Kelvin
+	explicit BlackbodySpectrum(float T_K) : T(T_K) {
+		// Wien displacement: lambda_max [nm] = 2.897721e-3 / T  (in metres) * 1e9
+		float lambdaMax_nm = 2.8977721e-3f / T * 1e9f;
+		normalizationFactor = (lambdaMax_nm > 0.f)
+			? 1.f / Blackbody(lambdaMax_nm, T)
+			: 0.f;
+	}
+
+	// Evaluate normalised spectral radiance at wavelength lambda_nm.
+	// Return value is in [0, 1] (1.0 at peak wavelength).
+	// pbrt-v4: BlackbodySpectrum::operator()(Float lambda)
+	CPU_GPU float operator()(float lambda_nm) const {
+		return Blackbody(lambda_nm, T) * normalizationFactor;
+	}
+
+	// Maximum value is always 1 by construction.
+	// pbrt-v4: BlackbodySpectrum::MaxValue()
+	CPU_GPU float MaxValue() const { return 1.f; }
+
+  private:
+	float T;
+	float normalizationFactor;
+};
+
+// ---------------------------------------------------------------------------
+// RGBSigmoidPolynomial -- spectral upsampling via a quadratic sigmoid
+//
+// pbrt-v4 reference: util/color.h RGBSigmoidPolynomial
+//
+// Maps a wavelength lambda to a reflectance in [0,1] using:
+//   f(lambda) = s(c0*lambda^2 + c1*lambda + c2)
+// where s(x) = 0.5 + x / (2*sqrt(1+x^2))  is the smooth sigmoid in (0,1).
+//
+// Coefficients (c0, c1, c2) are obtained from the RGBToSpectrumTable lookup
+// (not included here) or fit analytically.  Given them, evaluation is O(1).
+//
+// Usage:
+//   RGBSigmoidPolynomial p(c0, c1, c2);
+//   float r = p(550.f);     // reflectance at 550 nm
+//   float m = p.MaxValue(); // peak reflectance over [360, 830] nm
+// ---------------------------------------------------------------------------
+struct RGBSigmoidPolynomial {
+	RGBSigmoidPolynomial() = default;
+	CPU_GPU RGBSigmoidPolynomial(float c0, float c1, float c2)
+		: c0(c0), c1(c1), c2(c2) {}
+
+	// Evaluate reflectance at wavelength lambda_nm.
+	// pbrt-v4: RGBSigmoidPolynomial::operator()(Float lambda)
+	CPU_GPU float operator()(float lambda) const {
+		return s(EvaluatePolynomial(lambda, c2, c1, c0));
+	}
+
+	// Maximum reflectance over the visible range [360, 830] nm.
+	// pbrt-v4: RGBSigmoidPolynomial::MaxValue()
+	CPU_GPU float MaxValue() const {
+		float result = std::max((*this)(360.f), (*this)(830.f));
+		// Vertex of the quadratic: lambda* = -c1 / (2*c0)
+		if (c0 != 0.f) {
+			float lambdaStar = -c1 / (2.f * c0);
+			if (lambdaStar >= 360.f && lambdaStar <= 830.f)
+				result = std::max(result, (*this)(lambdaStar));
+		}
+		return result;
+	}
+
+  private:
+	// Smooth sigmoid: s(x) = 0.5 + x/(2*sqrt(1+x^2)), maps R -> (0,1).
+	// pbrt-v4: RGBSigmoidPolynomial::s(Float x)
+	CPU_GPU static float s(float x) {
+		if (std::isinf(x)) return x > 0.f ? 1.f : 0.f;
+		return 0.5f + x / (2.f * std::sqrt(1.f + Sqr(x)));
+	}
+
+	float c0 = 0.f, c1 = 0.f, c2 = 0.f;
+};

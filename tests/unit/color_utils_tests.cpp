@@ -175,3 +175,134 @@ TEST(ColorUtilsTest, WhiteBalanceD65toD50) {
 	EXPECT_NEAR(adapted.x(), d50.x(), 0.01f);
 	EXPECT_NEAR(adapted.y(), d50.y(), 0.01f);
 }
+
+// -----------------------------------------------------------------------
+// Blackbody -- Planck spectral radiance (pbrt-v4 util/spectrum.h)
+// -----------------------------------------------------------------------
+
+TEST(BlackbodyTest, ZeroForNonPositiveTemperature) {
+	EXPECT_EQ(Blackbody(550.f, 0.f),    0.f);
+	EXPECT_EQ(Blackbody(550.f, -100.f), 0.f);
+}
+
+TEST(BlackbodyTest, ZeroForNonPositiveWavelength) {
+	EXPECT_EQ(Blackbody(0.f,   6500.f), 0.f);
+	EXPECT_EQ(Blackbody(-1.f,  6500.f), 0.f);
+}
+
+TEST(BlackbodyTest, PositiveForValidInputs) {
+	// Any valid (lambda, T) should give a positive finite radiance
+	EXPECT_GT(Blackbody(550.f, 6500.f), 0.f);
+	EXPECT_GT(Blackbody(400.f, 3000.f), 0.f);
+	EXPECT_GT(Blackbody(700.f, 5000.f), 0.f);
+}
+
+TEST(BlackbodyTest, PeakMatchesWienDisplacementLaw) {
+	// Wien: lambda_max [nm] = 2.897721e6 / T [K]
+	// At T=5000K, lambda_max ~= 579.5 nm.
+	// Blackbody(lambda_max, T) should be >= Blackbody at nearby wavelengths.
+	const float T = 5000.f;
+	const float lambdaMax = 2.8977721e6f / T;  // nm
+	float peak = Blackbody(lambdaMax, T);
+	EXPECT_GT(peak, Blackbody(lambdaMax - 20.f, T));
+	EXPECT_GT(peak, Blackbody(lambdaMax + 20.f, T));
+}
+
+TEST(BlackbodyTest, HigherTempMoreBlueShift) {
+	// Higher T -> peak moves to shorter wavelength (Wien)
+	// At 400 nm, hotter body emits more relative to longer wavelengths
+	float Le_hot  = Blackbody(400.f, 10000.f);
+	float Le_warm = Blackbody(400.f,  3000.f);
+	EXPECT_GT(Le_hot / Blackbody(700.f, 10000.f),
+			  Le_warm / Blackbody(700.f,  3000.f));
+}
+
+// -----------------------------------------------------------------------
+// BlackbodySpectrum -- normalized blackbody (pbrt-v4 util/spectrum.h)
+// -----------------------------------------------------------------------
+
+TEST(BlackbodySpectrumTest, MaxValueIsOne) {
+	BlackbodySpectrum bb(6500.f);
+	EXPECT_FLOAT_EQ(bb.MaxValue(), 1.f);
+}
+
+TEST(BlackbodySpectrumTest, PeakIsOne) {
+	// The peak wavelength (Wien) should evaluate to ~1
+	const float T = 5000.f;
+	float lambdaMax = 2.8977721e6f / T;
+	BlackbodySpectrum bb(T);
+	EXPECT_NEAR(bb(lambdaMax), 1.f, 1e-4f);
+}
+
+TEST(BlackbodySpectrumTest, ValuesInUnitRange) {
+	BlackbodySpectrum bb(6500.f);
+	for (float lambda = 360.f; lambda <= 830.f; lambda += 10.f) {
+		float v = bb(lambda);
+		EXPECT_GE(v, 0.f) << "lambda=" << lambda;
+		EXPECT_LE(v, 1.f) << "lambda=" << lambda;
+	}
+}
+
+TEST(BlackbodySpectrumTest, MonotonicallyFallsOffFromPeak) {
+	// On each side of the peak the spectrum should be <= peak
+	const float T = 6500.f;
+	float lambdaMax = 2.8977721e6f / T;
+	BlackbodySpectrum bb(T);
+	float peak = bb(lambdaMax);
+	for (float delta : {20.f, 50.f, 100.f, 200.f}) {
+		EXPECT_LE(bb(lambdaMax - delta), peak + 1e-5f);
+		EXPECT_LE(bb(lambdaMax + delta), peak + 1e-5f);
+	}
+}
+
+// -----------------------------------------------------------------------
+// RGBSigmoidPolynomial -- spectral upsampling (pbrt-v4 util/color.h)
+// -----------------------------------------------------------------------
+
+TEST(RGBSigmoidPolynomialTest, OutputInUnitRange) {
+	// For any coefficients the sigmoid maps to (0,1)
+	RGBSigmoidPolynomial p(0.001f, -0.5f, 0.3f);
+	for (float lam = 360.f; lam <= 830.f; lam += 10.f) {
+		float v = p(lam);
+		EXPECT_GT(v, 0.f) << "lambda=" << lam;
+		EXPECT_LT(v, 1.f) << "lambda=" << lam;
+	}
+}
+
+TEST(RGBSigmoidPolynomialTest, ZeroCoefficientsGiveHalf) {
+	// c0=c1=c2=0 -> s(0) = 0.5
+	RGBSigmoidPolynomial p(0.f, 0.f, 0.f);
+	EXPECT_FLOAT_EQ(p(550.f), 0.5f);
+}
+
+TEST(RGBSigmoidPolynomialTest, LargePositiveC2ApproachesOne) {
+	// c2 >> 0, c0=c1=0 -> s(c2) -> 1 as c2 -> +inf
+	RGBSigmoidPolynomial p(0.f, 0.f, 1e6f);
+	EXPECT_NEAR(p(550.f), 1.f, 1e-4f);
+}
+
+TEST(RGBSigmoidPolynomialTest, LargeNegativeC2ApproachesZero) {
+	RGBSigmoidPolynomial p(0.f, 0.f, -1e6f);
+	EXPECT_NEAR(p(550.f), 0.f, 1e-4f);
+}
+
+TEST(RGBSigmoidPolynomialTest, MaxValueAtLeastEndpoints) {
+	RGBSigmoidPolynomial p(0.001f, -0.5f, 0.3f);
+	float mx = p.MaxValue();
+	EXPECT_GE(mx, p(360.f));
+	EXPECT_GE(mx, p(830.f));
+}
+
+TEST(RGBSigmoidPolynomialTest, MaxValueLeOne) {
+	// Sigmoid is always < 1, so MaxValue should be < 1
+	RGBSigmoidPolynomial p(0.001f, -0.5f, 0.3f);
+	EXPECT_LT(p.MaxValue(), 1.f);
+	EXPECT_GT(p.MaxValue(), 0.f);
+}
+
+TEST(RGBSigmoidPolynomialTest, SigmoidSymmetry) {
+	// s(x) + s(-x) == 1 (property of the sigmoid)
+	RGBSigmoidPolynomial pos(0.f, 0.f,  2.f);
+	RGBSigmoidPolynomial neg(0.f, 0.f, -2.f);
+	EXPECT_NEAR(pos(550.f) + neg(550.f), 1.f, 1e-6f);
+}
