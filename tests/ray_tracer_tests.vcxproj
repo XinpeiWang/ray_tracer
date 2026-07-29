@@ -153,6 +153,7 @@
                                         <ClCompile Include="unit\rng_tests.cpp" />
                                         <ClCompile Include="unit\splines_tests.cpp" />
                                         <ClCompile Include="unit\color_utils_tests.cpp" />
+                                        <ClCompile Include="unit\rgb_colorspace_tests.cpp" />
                                         <ClCompile Include="unit\fresnel_tests.cpp" />
                                         <ClCompile Include="unit\lowdiscrepancy_tests.cpp" />
                                         <ClCompile Include="unit\sampling_distributions_tests.cpp" />
