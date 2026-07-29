@@ -186,14 +186,16 @@ struct CompactLightBounds {
 	}
 
 	// -----------------------------------------------------------------------
-	// Storage (mirrors pbrt-v4 private layout)
+	// Storage (mirrors pbrt-v4 private layout exactly)
 	// -----------------------------------------------------------------------
 	OctahedralVector w;          // 4 bytes
 	float phi = 0.f;             // 4 bytes
-	// Packed bitfields (32 bits total)
-	unsigned int qCosTheta_o : 15;
-	unsigned int qCosTheta_e : 15;
-	unsigned int twoSided    :  1;
+	// Anonymous struct — matches pbrt-v4 CompactLightBounds private members
+	struct {
+		unsigned int qCosTheta_o : 15;
+		unsigned int qCosTheta_e : 15;
+		unsigned int twoSided    :  1;
+	};
 	uint16_t qb[2][3];           // 12 bytes — [corner][axis]
 
 private:
