@@ -14,6 +14,8 @@
 //   TrimmedLogistic  -- SampleTrimmedLogistic, TrimmedLogisticPDF,
 //                       InvertTrimmedLogisticSample
 //   SmoothStep       -- SampleSmoothStep, SmoothStepPDF, InvertSmoothStepSample
+//   VisibleWavelengths -- SampleVisibleWavelengths, VisibleWavelengthsPDF
+//                        (no CDF-invert; the sample function IS the inverse CDF)
 //
 // Dependencies (all already in this project):
 //   scalar_math.h  -- Clamp, Lerp, Sqr, Pow<n>, SmoothStep, Gaussian, ErfInv,
@@ -22,7 +24,7 @@
 // NOTE: SampleLinear / InvertLinearSample are reproduced inline here to avoid
 // pulling in the full sampling.h (which has non-inline ODR-sensitive functions).
 //
-// References: pbrt-v4 src/pbrt/util/sampling.h  (lines 195-310, 442-459)
+// References: pbrt-v4 src/pbrt/util/sampling.h  (lines 195-310, 442-459, VisibleWavelengths)
 
 #pragma once
 #include <cmath>
@@ -232,6 +234,37 @@ CPU_GPU inline double InvertSmoothStepSample(double x, double a, double b) {
 	// degenerate (0/0).  The correct CDF-inverse is simply P = 2t^3 - t^4, since
 	// CDF(a)=0 and CDF(b)=1 by construction.
 	return P;
+}
+
+// ---------------------------------------------------------------------------
+// VisibleWavelengths -- importance-sample wavelength λ proportional to V(λ)
+//
+// pbrt-v4 reference: util/sampling.h  SampleVisibleWavelengths / VisibleWavelengthsPDF
+//
+// SampleVisibleWavelengths(u):
+//   Maps u ~ Uniform[0,1) to λ in nm, sampling proportional to the CIE
+//   photopic luminous-efficiency function V(λ).  The closed-form inverse CDF
+//   concentrates Monte Carlo samples in the 450-650 nm range where human
+//   vision is most sensitive, reducing variance in spectral rendering.
+//
+// VisibleWavelengthsPDF(λ):
+//   Returns the PDF of the distribution above.  Zero outside [360, 830] nm.
+//   PDF = 0.0039398042 / cosh²(0.0072·(λ − 538))
+// ---------------------------------------------------------------------------
+
+CPU_GPU inline double SampleVisibleWavelengths(double u) {
+	// Inverse CDF: λ = 538 − 138.888889·atanh(0.85691062 − 1.82750197·u)
+	// pbrt-v4: return 538 - 138.888889f * std::atanh(0.85691062f - 1.82750197f * u);
+	return 538.0 - 138.888889 * std::atanh(0.85691062 - 1.82750197 * u);
+}
+
+CPU_GPU inline double VisibleWavelengthsPDF(double lambda) {
+	// Zero outside the visible range [360, 830] nm.
+	if (lambda < 360.0 || lambda > 830.0)
+		return 0.0;
+	// PDF = 0.0039398042 / cosh²(0.0072·(λ − 538))
+	double c = std::cosh(0.0072 * (lambda - 538.0));
+	return 0.0039398042 / (c * c);
 }
 
 #if defined(_MSC_VER)

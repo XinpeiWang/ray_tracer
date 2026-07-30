@@ -281,3 +281,93 @@ TEST(TwoNormal, SpreadOverManyDraws) {
 	EXPECT_NEAR(sumA / 100.0, 0.0, 0.4);
 	EXPECT_NEAR(sumB / 100.0, 0.0, 0.4);
 }
+
+// ---------------------------------------------------------------------------
+// VisibleWavelengths
+// pbrt-v4 reference: util/sampling.h  SampleVisibleWavelengths / VisibleWavelengthsPDF
+// ---------------------------------------------------------------------------
+
+TEST(VisibleWavelengths, PDFIntegratesTo1) {
+	// Integrate VisibleWavelengthsPDF over [360, 830] nm; must be ~1.
+	double total = integrate([](double lam) { return VisibleWavelengthsPDF(lam); }, 360.0, 830.0, 10000);
+	EXPECT_NEAR(total, 1.0, 1e-4);
+}
+
+TEST(VisibleWavelengths, PDFZeroOutsideRange) {
+	EXPECT_EQ(VisibleWavelengthsPDF(359.9), 0.0);
+	EXPECT_EQ(VisibleWavelengthsPDF(830.1), 0.0);
+	EXPECT_EQ(VisibleWavelengthsPDF(0.0),   0.0);
+	EXPECT_EQ(VisibleWavelengthsPDF(1000.0),0.0);
+}
+
+TEST(VisibleWavelengths, PDFNonNegativeOverRange) {
+	for (int i = 360; i <= 830; ++i)
+		EXPECT_GE(VisibleWavelengthsPDF(static_cast<double>(i)), 0.0);
+}
+
+TEST(VisibleWavelengths, PDFPeakNear538nm) {
+	// V(λ) peaks near 555 nm; the fit is centred at 538 nm.
+	// PDF at 538 should exceed PDF at 400 and PDF at 700 significantly.
+	double peak  = VisibleWavelengthsPDF(538.0);
+	double blue  = VisibleWavelengthsPDF(400.0);
+	double red   = VisibleWavelengthsPDF(700.0);
+	EXPECT_GT(peak, blue * 2.0);
+	EXPECT_GT(peak, red  * 2.0);
+}
+
+TEST(VisibleWavelengths, SampleInRange) {
+	// SampleVisibleWavelengths must always produce λ in [360, 830].
+	for (int i = 0; i < 200; ++i) {
+		double u = (i + 0.5) / 200.0;
+		double lam = SampleVisibleWavelengths(u);
+		EXPECT_GE(lam, 360.0) << "u=" << u;
+		EXPECT_LE(lam, 830.0) << "u=" << u;
+	}
+}
+
+TEST(VisibleWavelengths, SampleMonotonicallyIncreasing) {
+	// Inverse CDF must be non-decreasing.
+	double prev = SampleVisibleWavelengths(0.001);
+	for (int i = 2; i < 100; ++i) {
+		double u   = i / 100.0;
+		double lam = SampleVisibleWavelengths(u);
+		EXPECT_GE(lam, prev) << "not monotone at u=" << u;
+		prev = lam;
+	}
+}
+
+TEST(VisibleWavelengths, SampleBoundaryValues) {
+	// u→0 should approach 360 nm, u→1 should approach 830 nm.
+	EXPECT_NEAR(SampleVisibleWavelengths(0.001),  360.0, 5.0);
+	EXPECT_NEAR(SampleVisibleWavelengths(0.999),  830.0, 5.0);
+}
+
+TEST(VisibleWavelengths, SampleConcentratesNearGreen) {
+	// More than 50% of samples should fall in [480, 620] nm (green-yellow band).
+	int inBand = 0;
+	const int N = 1000;
+	for (int i = 0; i < N; ++i) {
+		double lam = SampleVisibleWavelengths((i + 0.5) / N);
+		if (lam >= 480.0 && lam <= 620.0) ++inBand;
+	}
+	EXPECT_GT(inBand, N / 2);
+}
+
+TEST(VisibleWavelengths, PDFConsistentWithSampleDensity) {
+	// Estimate E[1/PDF(λ)] by sampling; should equal integral(1) = 1.
+	// i.e., sum(1/pdf(sample(u_i))) / N ≈ 1.
+	const int N = 2000;
+	double sum = 0.0;
+	for (int i = 0; i < N; ++i) {
+		double u   = (i + 0.5) / N;
+		double lam = SampleVisibleWavelengths(u);
+		double pdf = VisibleWavelengthsPDF(lam);
+		ASSERT_GT(pdf, 0.0);
+		sum += 1.0 / pdf;
+	}
+	// Each 1/pdf term ≈ (830-360)/N after weighting, so mean ≈ 1.
+	// Actually E[1/pdf(X)] where X~pdf is exactly ∫ 1 dλ... no —
+	// E[f(X)/pdf(X)] = ∫f dλ.  With f=1 => E[1/pdf] = ∫(1/pdf)*pdf dλ = 470.
+	// We check sum/N ≈ 470 (width of visible range).
+	EXPECT_NEAR(sum / N, 470.0, 5.0);
+}
