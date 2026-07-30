@@ -161,7 +161,7 @@ CPU_GPU float LinearToSRGB(float value) {
 			+ s * (  1.8970238036421054f
 			+ s))));
 	float result = p / q * value;
-	return result > 1.f ? 1.f : result;
+	return result;
 }
 
 // LinearToSRGB8: linear float -> uint8, with optional dither in [-0.5, 0.5]
@@ -178,7 +178,7 @@ CPU_GPU uint8_t LinearToSRGB8(float value, float dither = 0.f) {
 // Minimax polynomial from enoki's color.h (same as pbrt-v4).
 CPU_GPU float SRGBToLinear(float value) {
 	if (value <= 0.04045f)
-		return (value <= 0.f) ? 0.f : value * (1.f / 12.92f);
+		return value * (1.f / 12.92f);
 	float p = -0.0163933279112946f
 			+ value * (  -0.7386328024653209f
 			+ value * ( -11.199318357635072f
@@ -189,8 +189,7 @@ CPU_GPU float SRGBToLinear(float value) {
 			+ value * ( -59.096406619244426f
 			+ value * ( -18.225745396846637f
 			+ value)));
-	float result = p / q * value;
-	return result < 0.f ? 0.f : result;
+	return p / q * value;
 }
 
 // SRGB8ToLinear: sRGB uint8 -> linear float via precomputed LUT
