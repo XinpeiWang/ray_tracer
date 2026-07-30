@@ -5,12 +5,13 @@
 // Ported from pbrt-v4 src/pbrt/util/spectrum.h (Apache-2.0)
 // Copyright(c) 1998-2020 Matt Pharr, Wenzel Jakob, and Greg Humphreys.
 //
-// Provides:
-//   Blackbody(lambda, T)        -- Planck spectral radiance (W/sr/m^2/nm)
+// Provides (via color_utils.h):
+//   Blackbody(lambda, T)        -- Planck spectral radiance (Pow<5>+FastExp, pbrt-v4 aligned)
+// Provides (this file):
 //   ConstantSpectrum            -- uniform value over all wavelengths
 //   DenselySampledSpectrum      -- one sample per nm in [lambda_min, lambda_max]
 //   PiecewiseLinearSpectrum     -- tabulated (lambda, value) pairs with lerp
-//   BlackbodySpectrum           -- normalized Planckian emitter
+//   BlackbodySpectrum           -- normalized Planckian emitter (with Sample<N>())
 //
 // All types provide:
 //   float operator()(float lambda) const  -- evaluate at wavelength lambda (nm)
@@ -25,6 +26,7 @@
 //   - Lambda range constants: Lambda_min = 360, Lambda_max = 830 nm.
 //
 // Dependencies:
+//   color_utils.h        -- Blackbody() free function (canonical, uses Pow<5>+FastExp)
 //   sampled_spectrum.h   -- SampledSpectrum<N>, SampledWavelengths<N>
 // ---------------------------------------------------------------------------
 
@@ -33,7 +35,8 @@
 #include <cmath>
 #include <vector>
 
-#include "sampled_spectrum.h"
+#include "color_utils.h"      // Blackbody(), XYZ, etc.
+#include "sampled_spectrum.h" // SampledSpectrum<N>, SampledWavelengths<N>
 
 #ifndef CPU_GPU
 #  if defined(__CUDACC__)
@@ -43,30 +46,11 @@
 #  endif
 #endif
 
-// ---------------------------------------------------------------------------
-// Spectrum range constants (matching pbrt-v4)
-// ---------------------------------------------------------------------------
-static constexpr float SpectrumLambda_min = 360.f;
-static constexpr float SpectrumLambda_max = 830.f;
+// Spectrum range constants -- use kLambda_min / kLambda_max from sampled_spectrum.h
+// (360 nm .. 830 nm, matching pbrt-v4 Lambda_min / Lambda_max)
 
-// ---------------------------------------------------------------------------
-// Blackbody -- Planck spectral radiance
-//
-// pbrt-v4 reference: util/spectrum.h Blackbody()
-// Returns spectral radiance in W/(sr * m^2 * nm) for temperature T (Kelvin)
-// and wavelength lambda (nm). Returns 0 for T <= 0.
-// ---------------------------------------------------------------------------
-CPU_GPU inline float Blackbody(float lambda, float T) {
-	if (T <= 0.f)
-		return 0.f;
-	const float c  = 299792458.f;
-	const float h  = 6.62606957e-34f;
-	const float kb = 1.3806488e-23f;
-	float l  = lambda * 1e-9f;  // nm -> m
-	float Le = (2.f * h * c * c) /
-			   (std::pow(l, 5.f) * (std::exp((h * c) / (l * kb * T)) - 1.f));
-	return Le;
-}
+// Blackbody(lambda, T) free function is defined in color_utils.h.
+// It uses Pow<5> + FastExp matching pbrt-v4 util/spectrum.h exactly.
 
 // ---------------------------------------------------------------------------
 // ConstantSpectrum
@@ -99,8 +83,8 @@ struct ConstantSpectrum {
 struct DenselySampledSpectrum {
 	// Construct zero-filled spectrum over [lambda_min, lambda_max]
 	explicit DenselySampledSpectrum(
-		int lmin = static_cast<int>(SpectrumLambda_min),
-		int lmax = static_cast<int>(SpectrumLambda_max))
+		int lmin = static_cast<int>(kLambda_min),
+		int lmax = static_cast<int>(kLambda_max))
 		: lambda_min(lmin),
 		  lambda_max(lmax),
 		  values(static_cast<size_t>(lmax - lmin + 1), 0.f)
@@ -113,8 +97,8 @@ struct DenselySampledSpectrum {
 	template <typename F>
 	static DenselySampledSpectrum SampleFunction(
 		F func,
-		int lmin = static_cast<int>(SpectrumLambda_min),
-		int lmax = static_cast<int>(SpectrumLambda_max))
+		int lmin = static_cast<int>(kLambda_min),
+		int lmax = static_cast<int>(kLambda_max))
 	{
 		DenselySampledSpectrum s(lmin, lmax);
 		for (int lambda = lmin; lambda <= lmax; ++lambda)

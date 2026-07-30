@@ -3,6 +3,8 @@
 // XYZ class, and WhiteBalance against pbrt-v4 semantics.
 
 #include "../../src/shared/color_utils.h"
+// BlackbodySpectrum lives in spectrum_types.h (depends on SampledSpectrum<N>)
+#include "../../src/shared/spectrum_types.h"
 #include <gtest/gtest.h>
 #include <cmath>
 #include <cstdint>

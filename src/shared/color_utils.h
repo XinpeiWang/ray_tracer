@@ -11,8 +11,8 @@
 //   XYZ struct                  -- CIE XYZ tristimulus type with operators
 //   WhiteBalance(srcWhite, dstWhite, out3x3) -- Bradford chromatic adaptation
 //   Blackbody(lambda_nm, T_K)   -- Planck spectral radiance (pbrt-v4 spectrum.h)
-//   BlackbodySpectrum            -- normalized blackbody callable (pbrt-v4 spectrum.h)
 //   RGBSigmoidPolynomial         -- spectral upsampling polynomial (pbrt-v4 color.h)
+// Note: BlackbodySpectrum (with Sample<N>()) lives in spectrum_types.h.
 //
 // Note: tone_map.h contains the same LinearToSRGB for the write pipeline.
 // color_utils.h is the canonical shared version aligned with pbrt-v4.
@@ -206,45 +206,6 @@ CPU_GPU inline float Blackbody(float lambda_nm, float T) {
 			   (Pow<5>(l) * (FastExp((h * c) / (l * kb * T)) - 1.f));
 	return Le;
 }
-
-// ---------------------------------------------------------------------------
-// BlackbodySpectrum -- normalized blackbody callable
-//
-// pbrt-v4 reference: util/spectrum.h BlackbodySpectrum
-//
-// Wraps Blackbody() and normalises by the peak emission so that the maximum
-// value over the visible range is 1.  The peak wavelength is given by Wien's
-// displacement law: lambda_max = b / T, b = 2.897 772 1e-3 m·K.
-//
-// Usage:
-//   BlackbodySpectrum bb(6500.f);   // ~D65
-//   float v = bb(550.f);            // normalised radiance at 550 nm in [0,1]
-// ---------------------------------------------------------------------------
-struct BlackbodySpectrum {
-	// T_K: colour temperature in Kelvin
-	explicit BlackbodySpectrum(float T_K) : T(T_K) {
-		// Wien displacement: lambda_max [nm] = 2.897721e-3 / T  (in metres) * 1e9
-		float lambdaMax_nm = 2.8977721e-3f / T * 1e9f;
-		normalizationFactor = (lambdaMax_nm > 0.f)
-			? 1.f / Blackbody(lambdaMax_nm, T)
-			: 0.f;
-	}
-
-	// Evaluate normalised spectral radiance at wavelength lambda_nm.
-	// Return value is in [0, 1] (1.0 at peak wavelength).
-	// pbrt-v4: BlackbodySpectrum::operator()(Float lambda)
-	CPU_GPU float operator()(float lambda_nm) const {
-		return Blackbody(lambda_nm, T) * normalizationFactor;
-	}
-
-	// Maximum value is always 1 by construction.
-	// pbrt-v4: BlackbodySpectrum::MaxValue()
-	CPU_GPU float MaxValue() const { return 1.f; }
-
-  private:
-	float T;
-	float normalizationFactor;
-};
 
 // ---------------------------------------------------------------------------
 // RGBSigmoidPolynomial -- spectral upsampling via a quadratic sigmoid

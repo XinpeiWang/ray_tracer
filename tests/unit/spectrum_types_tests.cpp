@@ -26,38 +26,7 @@ using SWL = SampledWavelengths<kN>;
 static constexpr float kEps = 1e-5f;
 static constexpr float kRelEps = 1e-4f;  // for blackbody (uses exp)
 
-// ---------------------------------------------------------------------------
-// Blackbody() free function
-// ---------------------------------------------------------------------------
-TEST(Blackbody, ZeroForNonPositiveT) {
-	EXPECT_EQ(0.f, Blackbody(550.f, 0.f));
-	EXPECT_EQ(0.f, Blackbody(550.f, -100.f));
-}
-
-TEST(Blackbody, PositiveForValidT) {
-	float Le = Blackbody(550.f, 6500.f);
-	EXPECT_GT(Le, 0.f);
-}
-
-TEST(Blackbody, PeakAtWiensLaw) {
-	// Wien's displacement law: lambda_max (nm) = 2897772 / T
-	float T = 6000.f;
-	float lambda_peak = 2897772.f / T;  // ~483 nm
-	float Le_peak = Blackbody(lambda_peak, T);
-	// Verify values at peak are higher than at the extremes
-	EXPECT_GT(Le_peak, Blackbody(360.f, T));
-	EXPECT_GT(Le_peak, Blackbody(830.f, T));
-}
-
-TEST(Blackbody, MonotonicallyIncreasingBelowPeak) {
-	float T = 3000.f;  // peak ~966 nm, so 360-830 is ascending
-	float prev = Blackbody(360.f, T);
-	for (int lambda = 370; lambda <= 830; lambda += 10) {
-		float cur = Blackbody(static_cast<float>(lambda), T);
-		EXPECT_GE(cur, prev) << "lambda=" << lambda;
-		prev = cur;
-	}
-}
+// Blackbody() free function tests are in color_utils_tests.cpp.
 
 // ---------------------------------------------------------------------------
 // ConstantSpectrum
@@ -237,38 +206,9 @@ TEST(PiecewiseLinearSpectrum, SampleMatchesOperator) {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// BlackbodySpectrum
-// ---------------------------------------------------------------------------
-TEST(BlackbodySpectrum, MaxValueIsOne) {
-	BlackbodySpectrum bs(5000.f);
-	EXPECT_NEAR(bs.MaxValue(), 1.f, kEps);
-}
-
-TEST(BlackbodySpectrum, PeakIsOne_SunlikeT) {
-	// For T=6000K, Wien peak ~483 nm -- should be ~1 at that wavelength
-	float T = 6000.f;
-	float lambda_peak = 2897772.f / T;
-	BlackbodySpectrum bs(T);
-	EXPECT_NEAR(bs(lambda_peak), 1.f, kRelEps);
-}
-
-TEST(BlackbodySpectrum, ValuesInUnitRange) {
-	BlackbodySpectrum bs(5778.f);  // solar effective temperature
-	for (int lambda = 360; lambda <= 830; lambda += 10) {
-		float v = bs(static_cast<float>(lambda));
-		EXPECT_GE(v, 0.f);
-		EXPECT_LE(v, 1.f + kEps) << "lambda=" << lambda;
-	}
-}
-
-TEST(BlackbodySpectrum, HigherTempBluer) {
-	// A hotter blackbody peaks at shorter wavelengths
-	// So at a short wavelength like 400 nm, higher T should give higher value
-	BlackbodySpectrum hot(10000.f);
-	BlackbodySpectrum cool(3000.f);
-	EXPECT_GT(hot(400.f), cool(400.f));
-}
+// BlackbodySpectrum property tests (MaxValueIsOne, ValuesInUnitRange, etc.)
+// are in color_utils_tests.cpp. Here we test only Sample<N>() which is
+// unique to spectrum_types.h.
 
 TEST(BlackbodySpectrum, SampleMatchesOperator) {
 	BlackbodySpectrum bs(6500.f);
@@ -278,12 +218,6 @@ TEST(BlackbodySpectrum, SampleMatchesOperator) {
 		float expected = bs(swl.lambda[i]);
 		EXPECT_NEAR(s[i], expected, kRelEps) << "band " << i;
 	}
-}
-
-TEST(BlackbodySpectrum, LowTemperatureIsRedder) {
-	// Low T (3000K, incandescent) should have more energy at 800 nm than 400 nm
-	BlackbodySpectrum bs(3000.f);
-	EXPECT_GT(bs(800.f), bs(400.f));
 }
 
 // ---------------------------------------------------------------------------
