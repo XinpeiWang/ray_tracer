@@ -110,6 +110,7 @@
     <ClCompile Include="unit\loop_subdivide_tests.cpp" />
     <ClCompile Include="unit\texture_mapping_tests.cpp" />
     <ClCompile Include="unit\color_encoding_tests.cpp" />
+    <ClCompile Include="unit\sampled_spectrum_tests.cpp" />
     <ClCompile Include="unit\mipmap_tests.cpp" />
     <ClCompile Include="unit\blue_noise_tests.cpp" />
     <ClCompile Include="unit\pmj02_sampler_tests.cpp" />
