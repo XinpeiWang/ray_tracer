@@ -287,11 +287,12 @@ public:
 		float dsdx = dot(dsdp, dpdx), dsdy = dot(dsdp, dpdy);
 		float dtdx = dot(dtdp, dpdx), dtdy = dot(dtdp, dpdy);
 
-		// Spherical (s,t): s = phi/(2pi),  t = theta/pi
+		// Spherical (s,t): s = theta/pi,  t = phi/(2pi)
+		// pbrt-v4: st(SphericalTheta(vec) * InvPi, SphericalPhi(vec) * Inv2Pi)
 		TxVector3f vec = normalize({pt.x, pt.y, pt.z});
 		TxPoint2f st{
-			SphericalPhi(vec)   * (float)tx_consts::kInv2Pi,
-			SphericalTheta(vec) * (float)tx_consts::kInvPi
+			SphericalTheta(vec) * (float)tx_consts::kInvPi,
+			SphericalPhi(vec)   * (float)tx_consts::kInv2Pi
 		};
 		return TexCoord2D{st, dsdx, dsdy, dtdx, dtdy};
 	}
@@ -359,11 +360,9 @@ public:
 
 	CPU_GPU TexCoord2D Map(const TextureEvalContext& ctx) const {
 		using namespace tx_detail;
-		TxVector3f vec{
-			textureFromRender_(ctx.p).x,
-			textureFromRender_(ctx.p).y,
-			textureFromRender_(ctx.p).z
-		};
+		// pbrt-v4: Vector3f vec(textureFromRender(ctx.p)) -- transform point once
+		TxPoint3f tp = textureFromRender_(ctx.p);
+		TxVector3f vec{ tp.x, tp.y, tp.z };
 		TxVector3f dpdx = textureFromRender_(ctx.dpdx);
 		TxVector3f dpdy = textureFromRender_(ctx.dpdy);
 		float dsdx = dot(vs_, dpdx), dsdy = dot(vs_, dpdy);

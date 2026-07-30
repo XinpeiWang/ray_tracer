@@ -144,34 +144,35 @@ TEST(UVMappingTest, MixedDifferentials) {
 // ---------------------------------------------------------------------------
 
 TEST(SphericalMappingTest, NorthPoleGivesTheta0) {
-	// +z direction: theta = 0, t should be 0
+	// +z direction: theta = 0, s = theta/pi = 0  (pbrt-v4: s = SphericalTheta*InvPi)
 	SphericalMapping m(TextureTransform{});
 	auto ctx = MakeCtx({0.f, 0.f, 1.f});  // surface point on +z
 	auto tc  = m.Map(ctx);
-	EXPECT_TRUE(near(tc.st.y, 0.f, 1e-4f));  // t = theta/pi, theta=0
+	EXPECT_TRUE(near(tc.st.x, 0.f, 1e-4f));  // s = theta/pi, theta=0
 }
 
 TEST(SphericalMappingTest, SouthPoleGivesThetaPi) {
+	// -z direction: theta = pi, s = theta/pi = 1
 	SphericalMapping m(TextureTransform{});
 	auto ctx = MakeCtx({0.f, 0.f, -1.f});
 	auto tc  = m.Map(ctx);
-	EXPECT_TRUE(near(tc.st.y, 1.f, 1e-4f));  // t = theta/pi = 1
+	EXPECT_TRUE(near(tc.st.x, 1.f, 1e-4f));  // s = theta/pi = 1
 }
 
 TEST(SphericalMappingTest, PositiveXAxisPhi0) {
-	// +x: phi = 0, s = 0
+	// +x: phi = 0, t = phi/(2pi) = 0  (pbrt-v4: t = SphericalPhi*Inv2Pi)
 	SphericalMapping m(TextureTransform{});
 	auto ctx = MakeCtx({1.f, 0.f, 0.f});
 	auto tc  = m.Map(ctx);
-	EXPECT_TRUE(near(tc.st.x, 0.f, 1e-4f));
+	EXPECT_TRUE(near(tc.st.y, 0.f, 1e-4f));
 }
 
 TEST(SphericalMappingTest, PositiveYAxisPhiHalf) {
-	// +y: phi = pi/2, s = 0.25
+	// +y: phi = pi/2, t = phi/(2pi) = 0.25
 	SphericalMapping m(TextureTransform{});
 	auto ctx = MakeCtx({0.f, 1.f, 0.f});
 	auto tc  = m.Map(ctx);
-	EXPECT_TRUE(near(tc.st.x, 0.25f, 1e-4f));
+	EXPECT_TRUE(near(tc.st.y, 0.25f, 1e-4f));
 }
 
 TEST(SphericalMappingTest, STInUnitRange) {
@@ -267,7 +268,7 @@ TEST(TextureMapping2DTest, DispatchesToSphericalMapping) {
 	TextureMapping2D m{SphericalMapping(TextureTransform{})};
 	auto ctx = MakeCtx({0.f, 0.f, 1.f});
 	auto tc  = m.Map(ctx);
-	EXPECT_TRUE(near(tc.st.y, 0.f, 1e-4f));  // north pole: t=0
+	EXPECT_TRUE(near(tc.st.x, 0.f, 1e-4f));  // north pole: s = theta/pi = 0
 }
 
 TEST(TextureMapping2DTest, DispatchesToCylindricalMapping) {
