@@ -25,12 +25,14 @@ struct BoxFilter {
 	explicit BoxFilter(double radius = 0.5) : radius_(radius) {}
 	double evaluate(double /*ox*/, double /*oy*/) const { return 1.0; }
 	double radius() const { return radius_; }
+	// Integral of box filter over [-r,r]^2 = 4*r^2
+	double integral() const { return 4.0 * radius_ * radius_; }
   private:
 	double radius_;
 };
 
 // ---------------------------------------------------------------------------
-// MitchellFilter -- separable Mitchell-Netravali cubic spline filter
+// MitchellFilter
 //
 // pbrt-v4 defaults: B = 1/3, C = 1/3, radius = 0.5 pixel
 //
@@ -65,9 +67,11 @@ class MitchellFilter {
 	double radius() const { return radius_; }
 	double B()      const { return B_; }
 	double C()      const { return C_; }
+	// Integral of the 2D Mitchell filter -- pbrt-v4: radius.x * radius.y / 4
+	double integral() const { return radius_ * radius_ / 4.0; }
 
   private:
-	// pbrt-v4 Mitchell1D: piecewise cubic on x in [0,2].
+	// pbrt-v4 Mitchell1D
 	// Returns values in roughly [-0.25, 1] depending on B and C.
 	double mitchell1d(double x) const {
 		x = std::fabs(x);
@@ -103,6 +107,18 @@ class GaussianFilter {
 	}
 
 	double radius() const { return radius_; }
+	// Analytic integral -- mirrors pbrt-v4 GaussianFilter::Integral():
+	//   GaussianIntegral(a,b,mu,sigma) = 0.5*(erf((mu-a)/sqrt2sig) - erf((mu-b)/sqrt2sig))
+	//   integral = (GaussianIntegral(-r,r,0,sig) - 2*r*exp_val) ^ 2
+	double integral() const {
+		double sqrt2sig = sigma_ * 1.41421356237309504880;
+		// GaussianIntegral(-r,r,0,sig) = 0.5*(erf((0-(-r))/sqrt2sig) - erf((0-r)/sqrt2sig))
+		//                               = 0.5*(erf(r/sqrt2sig) - erf(-r/sqrt2sig))
+		double gi = 0.5 * (std::erf(radius_ / sqrt2sig) - std::erf(-radius_ / sqrt2sig));
+		// pbrt-v4: GaussianIntegral(-r,r,0,sigma) - 2*r*expVal
+		double i1d = gi - 2.0 * radius_ * exp_val_;
+		return i1d * i1d;  // 2D separable
+	}
 
   private:
 	double gauss1d(double x) const {
@@ -140,9 +156,20 @@ class LanczosSincFilter {
 
 	double radius() const { return radius_; }
 	double tau()    const { return tau_; }
+	// Numerical integral: sample 512 points per axis
+	double integral() const {
+		const int N = 512;
+		double sum = 0.0;
+		double step = 2.0 * radius_ / N;
+		for (int i = 0; i < N; ++i) {
+			double x = -radius_ + (i + 0.5) * step;
+			sum += windowed_sinc(x) * step;
+		}
+		return sum * sum;  // 2D separable
+	}
 
   private:
-	// sinc(x) = sin(pi*x)/(pi*x), with sinc(0)=1 -- delegates to scalar_math.h Sinc
+	// sinc(x) = sin(pi*x)/(pi*x)
 	static double sinc(double x) { return Sinc(x); }
 
 	// WindowedSinc(x, radius, tau) = sinc(x) * sinc(x/tau), zero outside radius

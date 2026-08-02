@@ -22,8 +22,9 @@
 //   - Uses float throughout (matching pbrt-v4 Float == float build).
 // ---------------------------------------------------------------------------
 
-#include "color_utils.h"    // XYZ, WhiteBalance
-#include "square_matrix.h"  // SquareMatrix<3>, Inverse, Mul
+#include "color_utils.h"            // XYZ, WhiteBalance
+#include "square_matrix.h"          // SquareMatrix<3>, Inverse, Mul
+#include "rgb_to_spectrum_table.h"  // RGBToSpectrumTable, RGBSigmoidPolynomial
 
 #include <optional>
 #include <string>
@@ -177,6 +178,14 @@ struct RGBColorSpace {
 		r = (float)(RGBFromXYZ[0][0]*X + RGBFromXYZ[0][1]*Y + RGBFromXYZ[0][2]*Z);
 		g = (float)(RGBFromXYZ[1][0]*X + RGBFromXYZ[1][1]*Y + RGBFromXYZ[1][2]*Z);
 		b = (float)(RGBFromXYZ[2][0]*X + RGBFromXYZ[2][1]*Y + RGBFromXYZ[2][2]*Z);
+	}
+
+	// RGB -> RGBSigmoidPolynomial spectral upsampling coefficients
+	// pbrt-v4: RGBColorSpace::ToRGBCoeffs(RGB rgb)
+	// Requires sRGB color space (uses RGBToSpectrumTable::sRGB()).
+	// Input r,g,b must be clamped to [0,1] (albedo) before calling.
+	CPU_GPU RGBSigmoidPolynomial ToRGBCoeffs(float r, float g, float b) const {
+		return RGBToSpectrumTable::sRGB()(r, g, b);
 	}
 
 	// Luminance coefficients from the second row of XYZFromRGB (Y channel)

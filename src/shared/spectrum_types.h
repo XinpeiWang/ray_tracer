@@ -12,6 +12,9 @@
 //   DenselySampledSpectrum      -- one sample per nm in [lambda_min, lambda_max]
 //   PiecewiseLinearSpectrum     -- tabulated (lambda, value) pairs with lerp
 //   BlackbodySpectrum           -- normalized Planckian emitter (with Sample<N>())
+//   RGBAlbedoSpectrum           -- reflectance in [0,1]^3 via sigmoid polynomial
+//   RGBUnboundedSpectrum        -- HDR emissive via scale + sigmoid polynomial
+//   RGBIlluminantSpectrum       -- illuminant-weighted sigmoid polynomial
 //
 // All types provide:
 //   float operator()(float lambda) const  -- evaluate at wavelength lambda (nm)
@@ -28,6 +31,7 @@
 // Dependencies:
 //   color_utils.h        -- Blackbody() free function (canonical, uses Pow<5>+FastExp)
 //   sampled_spectrum.h   -- SampledSpectrum<N>, SampledWavelengths<N>
+//   rgb_colorspace.h     -- RGBColorSpace (for RGB spectrum types)
 // ---------------------------------------------------------------------------
 
 #include <algorithm>
@@ -37,6 +41,7 @@
 
 #include "color_utils.h"      // Blackbody(), XYZ, etc.
 #include "sampled_spectrum.h" // SampledSpectrum<N>, SampledWavelengths<N>
+#include "rgb_colorspace.h"   // RGBColorSpace, RGBSigmoidPolynomial
 
 #ifndef CPU_GPU
 #  if defined(__CUDACC__)
@@ -262,3 +267,144 @@ struct BlackbodySpectrum {
 	float T;
 	float normalizationFactor;
 };
+
+// ---------------------------------------------------------------------------
+// RGBAlbedoSpectrum
+//
+// pbrt-v4 reference: util/spectrum.h class RGBAlbedoSpectrum
+//
+// Represents a reflectance spectrum for an RGB value in [0,1]^3.
+// Uses a RGBSigmoidPolynomial derived from the color space's upsampling table.
+// The polynomial maps each wavelength to a plausible spectral reflectance that
+// integrates back to the original RGB under the color space illuminant.
+//
+// Usage:
+//   RGBAlbedoSpectrum s(RGBColorSpace::sRGB(), 0.8f, 0.2f, 0.1f);
+//   float v = s(550.f);  // evaluate at 550 nm
+// ---------------------------------------------------------------------------
+struct RGBAlbedoSpectrum {
+	// Construct from a clamped RGB albedo in [0,1]^3.
+	// pbrt-v4: RGBAlbedoSpectrum(const RGBColorSpace&, RGB)
+	CPU_GPU RGBAlbedoSpectrum(const RGBColorSpace& cs, float r, float g, float b) {
+		float cr = std::max(0.f, std::min(1.f, r));
+		float cg = std::max(0.f, std::min(1.f, g));
+		float cb = std::max(0.f, std::min(1.f, b));
+		rsp = cs.ToRGBCoeffs(cr, cg, cb);
+	}
+
+	CPU_GPU float operator()(float lambda) const { return rsp(lambda); }
+	CPU_GPU float MaxValue() const { return rsp.MaxValue(); }
+
+	template <int N = 4>
+	CPU_GPU SampledSpectrum<N> Sample(const SampledWavelengths<N>& swl) const {
+		SampledSpectrum<N> s(0.f);
+		for (int i = 0; i < N; ++i)
+			s[i] = rsp(swl.lambda[i]);
+		return s;
+	}
+
+	RGBSigmoidPolynomial rsp;
+};
+
+// ---------------------------------------------------------------------------
+// RGBUnboundedSpectrum
+//
+// pbrt-v4 reference: util/spectrum.h class RGBUnboundedSpectrum
+//
+// Like RGBAlbedoSpectrum but supports HDR (values > 1).
+// Factored as scale * rsp(lambda) where scale = 2 * max(r,g,b).
+// The polynomial argument is rgb / scale, ensuring the normalised RGB is
+// still in [0,1]^3 so the upsampling table is valid.
+//
+// Usage:
+//   RGBUnboundedSpectrum s(RGBColorSpace::sRGB(), 3.f, 0.5f, 0.1f);
+// ---------------------------------------------------------------------------
+struct RGBUnboundedSpectrum {
+	CPU_GPU RGBUnboundedSpectrum() : rsp(0.f, 0.f, 0.f), scale(0.f) {}
+
+	// pbrt-v4: RGBUnboundedSpectrum(const RGBColorSpace&, RGB)
+	CPU_GPU RGBUnboundedSpectrum(const RGBColorSpace& cs, float r, float g, float b) {
+		float m = std::max({ r, g, b });
+		scale = 2.f * m;
+		if (scale > 0.f)
+			rsp = cs.ToRGBCoeffs(r / scale, g / scale, b / scale);
+		else
+			rsp = cs.ToRGBCoeffs(0.f, 0.f, 0.f);
+	}
+
+	CPU_GPU float operator()(float lambda) const { return scale * rsp(lambda); }
+	CPU_GPU float MaxValue() const { return scale * rsp.MaxValue(); }
+
+	template <int N = 4>
+	CPU_GPU SampledSpectrum<N> Sample(const SampledWavelengths<N>& swl) const {
+		SampledSpectrum<N> s(0.f);
+		for (int i = 0; i < N; ++i)
+			s[i] = scale * rsp(swl.lambda[i]);
+		return s;
+	}
+
+	float scale = 1.f;
+	RGBSigmoidPolynomial rsp;
+};
+
+// ---------------------------------------------------------------------------
+// RGBIlluminantSpectrum
+//
+// pbrt-v4 reference: util/spectrum.h class RGBIlluminantSpectrum
+//
+// An illuminant-weighted spectrum: scale * rsp(lambda) * illuminant(lambda).
+// Intended for light sources: the illuminant SPD shapes the emission and the
+// polynomial encodes the chromatic variation.
+//
+// The illuminant pointer is optional; if null all evaluations return 0.
+// In pbrt-v4 this is always cs.illuminant (a DenselySampledSpectrum).
+// In this project, pass &GetCIE_Y() or a custom DenselySampledSpectrum.
+//
+// Usage:
+//   RGBIlluminantSpectrum s(RGBColorSpace::sRGB(), 1.f, 0.9f, 0.8f, &illuminant);
+// ---------------------------------------------------------------------------
+struct RGBIlluminantSpectrum {
+	CPU_GPU RGBIlluminantSpectrum() : scale(0.f), rsp(0.f, 0.f, 0.f), illuminant(nullptr) {}
+
+	// pbrt-v4: RGBIlluminantSpectrum(const RGBColorSpace&, RGB)
+	// illuminant_ -- pointer to a DenselySampledSpectrum that shapes the SPD.
+	//               Must remain valid for the object's lifetime. May be null.
+	CPU_GPU RGBIlluminantSpectrum(const RGBColorSpace& cs,
+								   float r, float g, float b,
+								   const DenselySampledSpectrum* illuminant_ = nullptr)
+		: illuminant(illuminant_)
+	{
+		float m = std::max({ r, g, b });
+		scale = 2.f * m;
+		if (scale > 0.f)
+			rsp = cs.ToRGBCoeffs(r / scale, g / scale, b / scale);
+		else
+			rsp = cs.ToRGBCoeffs(0.f, 0.f, 0.f);
+	}
+
+	CPU_GPU float operator()(float lambda) const {
+		if (!illuminant) return 0.f;
+		return scale * rsp(lambda) * (*illuminant)(lambda);
+	}
+
+	CPU_GPU float MaxValue() const {
+		if (!illuminant) return 0.f;
+		return scale * rsp.MaxValue() * illuminant->MaxValue();
+	}
+
+	CPU_GPU const DenselySampledSpectrum* Illuminant() const { return illuminant; }
+
+	template <int N = 4>
+	CPU_GPU SampledSpectrum<N> Sample(const SampledWavelengths<N>& swl) const {
+		if (!illuminant) return SampledSpectrum<N>(0.f);
+		SampledSpectrum<N> s(0.f);
+		for (int i = 0; i < N; ++i)
+			s[i] = scale * rsp(swl.lambda[i]);
+		return s * illuminant->Sample(swl);
+	}
+
+	float scale = 0.f;
+	RGBSigmoidPolynomial rsp;
+	const DenselySampledSpectrum* illuminant = nullptr;
+};
+

@@ -29,6 +29,22 @@ struct ShadingFrame {
 	T bx, by, bz;   // bitangent (y-axis of local frame)
 	T nx, ny, nz;   // normal    (z-axis of local frame = shading normal)
 
+	// Build an orthonormal frame from an explicit tangent x and normal z.
+	// Mirrors pbrt-v4 Frame::FromXZ(x, z): t=x, b=cross(z,x), n=z.
+	// x and z must be unit and orthogonal (caller's responsibility).
+	// Used by BSDF to align the shading frame with the surface tangent dpdu.
+	CPU_GPU static ShadingFrame from_xz(T tx_, T ty_, T tz_,
+										 T nx_, T ny_, T nz_) {
+		ShadingFrame f;
+		f.tx = tx_; f.ty = ty_; f.tz = tz_;
+		// bitangent = cross(z, x)  (right-hand rule, matches pbrt-v4 FromXZ)
+		f.bx = ny_*tz_ - nz_*ty_;
+		f.by = nz_*tx_ - nx_*tz_;
+		f.bz = nx_*ty_ - ny_*tx_;
+		f.nx = nx_; f.ny = ny_; f.nz = nz_;
+		return f;
+	}
+
 	// Build an orthonormal frame from a unit outward surface normal.
 	// Uses the Frisvad / Duff et al. (2017) branch-free method, matching
 	// pbrt-v4 CoordinateSystem() in util/vecmath.h.  Numerically stable

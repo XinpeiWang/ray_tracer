@@ -21,3 +21,8 @@
 - The GPU path tracer uses naive path tracing while the CPU uses importance sampling (PDF-based). The GPU requires approximately 100x more samples (e.g., 1000 spp) to match CPU quality at low samples (e.g., 10 spp).
 - Set the ray-origin offset to 0.01f for 555-unit Cornell box scenes to prevent self-intersection.
 - Use a minimum t-value of 0.001f for sphere intersections instead of 0.0f.
+
+## File Handling Guidelines
+- Visual Studio holds exclusive write locks on open .cpp files. The `replace_string_in_file` function writes to Visual Studio's in-memory buffer (visible in the editor) but does NOT flush to disk while Visual Studio has the file open. 
+- PowerShell's `Set-Content` will fail with "file being used by another process." 
+- Workaround: Create a new file instead of editing a file that is currently open in the IDE, or verify on-disk content with `Get-Content` before trusting tool-view edits.

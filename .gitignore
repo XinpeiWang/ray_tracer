@@ -281,3 +281,23 @@ RayTracer_Package/*.dll
 
 # vcpkg package manager
 vcpkg/
+
+##############################################################################
+# CMake build directories
+##############################################################################
+tests/build_test/Debug/
+tests/build_test/lib/
+tests/build_test/CMakeFiles/
+tests/build_test/CMakeCache.txt
+tests/build_test/cmake_install.cmake
+tests/build_test/Makefile
+tests/build_test/*.vcxproj
+tests/build_test/*.vcxproj.filters
+tests/build_test/*.sln
+tests/build_test/*.json
+tests/build_test/*.txt
+tests/build_test/dda_mini.cpp
+
+# Temporary root-level scripts and logs
+*.py
+total.txt

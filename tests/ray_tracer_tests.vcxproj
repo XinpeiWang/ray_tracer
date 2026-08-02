@@ -112,6 +112,27 @@
     <ClCompile Include="unit\color_encoding_tests.cpp" />
     <ClCompile Include="unit\sampled_spectrum_tests.cpp" />
     <ClCompile Include="unit\spectrum_types_tests.cpp" />
+    <ClCompile Include="unit\cie_data_tests.cpp" />
+    <ClCompile Include="..\src\shared\rgb_spectrum_table_data.cpp" />
+    <ClCompile Include="unit\rgb_spectrum_types_tests.cpp" />
+    <ClCompile Include="unit\pixel_sensor_tests.cpp" />
+    <ClCompile Include="unit\summed_area_table_tests.cpp" />
+    <ClCompile Include="unit\piecewise_linear_2d_tests.cpp" />
+    <ClCompile Include="unit\scalar_distributions_tests.cpp" />
+    <ClCompile Include="unit\grid_medium_tests.cpp" />
+    <ClCompile Include="unit\sampled_grid_tests.cpp" />
+    <ClCompile Include="unit\rgb_grid_medium_tests.cpp" />
+    <ClCompile Include="unit\animated_transform_tests.cpp" />
+    <ClCompile Include="unit\sampling_sph_cone_tests.cpp" />
+    <ClCompile Include="unit\proc_tex_tests.cpp" />
+    <ClCompile Include="unit\shapes_tests.cpp" />
+    <ClCompile Include="unit\area_lights_tests.cpp" />
+    <ClCompile Include="unit\materials_tests.cpp" />
+    <ClCompile Include="unit\cameras_tests.cpp" />
+    <ClCompile Include="unit\film_tests.cpp" />
+    <ClCompile Include="unit\surface_interaction_tests.cpp" />
+    <ClCompile Include="unit\textures_tests.cpp" />
+    <ClCompile Include="unit\image_infinite_light_tests.cpp" />
     <ClCompile Include="unit\mipmap_tests.cpp" />
     <ClCompile Include="unit\blue_noise_tests.cpp" />
     <ClCompile Include="unit\pmj02_sampler_tests.cpp" />
@@ -176,6 +197,12 @@
     <ClCompile Include="unit\anisotropic_ggx_tests.cpp" />
     <ClCompile Include="unit\mix_material_tests.cpp" />
     <ClCompile Include="unit\volume_scattering_tests.cpp" />
+    <ClCompile Include="unit\ratio_tracking_tests.cpp" />
+    <ClCompile Include="unit\measured_bxdf_tests.cpp" />
+    <ClCompile Include="unit\bdpt_tests.cpp" />
+    <ClCompile Include="unit\mlt_tests.cpp" />
+    <ClCompile Include="unit\sppm_tests.cpp" />
+    <ClCompile Include="unit\vol_path_tests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\cpu_renderer\cpu_renderer.vcxproj">

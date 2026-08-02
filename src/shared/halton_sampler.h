@@ -280,11 +280,10 @@ public:
 		mult_inverse_[0] = (int)multiplicative_inverse(base_scales_[0], base_scales_[1]);
 		mult_inverse_[1] = (int)multiplicative_inverse(base_scales_[1], base_scales_[0]);
 
-		// Build digit permutations for all prime dimensions if scrambling enabled
+		// Store seed; digit permutations are built lazily on first use.
 		if (randomize == HaltonRandomize::PermuteDigits) {
-			digit_perms_.reserve(PrimeTableSize);
-			for (int i = 0; i < PrimeTableSize; ++i)
-				digit_perms_.emplace_back(get_primes()[i], seed);
+			perm_seed_ = seed;
+			digit_perms_.resize(PrimeTableSize); // empty DigitPermutations (base==0)
 		}
 	}
 
@@ -354,11 +353,19 @@ public:
 	}
 
 private:
+	const halton_detail::DigitPermutation& get_perm(int dim) const {
+		using namespace halton_detail;
+		auto& p = digit_perms_[dim];
+		if (p.base == 0)  // not yet built
+			p = DigitPermutation(get_primes()[dim], perm_seed_);
+		return p;
+	}
+
 	double sample_dimension(int dim) const {
 		using namespace halton_detail;
 		if (randomize_ == HaltonRandomize::None)
 			return radical_inverse(dim, halton_index_);
-		return scrambled_radical_inverse(dim, halton_index_, digit_perms_[dim]);
+		return scrambled_radical_inverse(dim, halton_index_, get_perm(dim));
 	}
 
 	// Extended Euclidean GCD
@@ -385,7 +392,8 @@ private:
 	int64_t halton_index_     = 0;
 	int     dimension_        = 0;
 
-	std::vector<halton_detail::DigitPermutation> digit_perms_;
+	uint32_t perm_seed_ = 0;
+	mutable std::vector<halton_detail::DigitPermutation> digit_perms_;
 };
 
 
