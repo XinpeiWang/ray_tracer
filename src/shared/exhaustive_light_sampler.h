@@ -56,6 +56,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 #include <algorithm>
 
@@ -141,9 +142,12 @@ public:
 			// Remap u into [0,1) for the bounded branch
 			float u_remapped = std::min((u - p_inf) / (1.f - p_inf), 1.f - 1e-7f);
 
-			// Use WeightedReservoirSampler over all bounded lights
-			// Seed deterministically from the remapped sample
-			uint64_t seed = mix_bits(uint64_t(u_remapped * float(1ULL << 32)));
+			// Use WeightedReservoirSampler over all bounded lights.
+				// Seed via bit-cast of u_remapped -- mirrors pbrt-v4 MixBits(FloatToBits(u))
+				// where FloatToBits is a bit-reinterpret (not a numeric cast).
+				uint32_t u_bits;
+				std::memcpy(&u_bits, &u_remapped, sizeof(u_bits));
+				uint64_t seed = mix_bits(uint64_t(u_bits));
 			WeightedReservoirSampler<int> wrs(seed);
 
 			for (int i = 0; i < nBounded; ++i) {
