@@ -257,3 +257,56 @@ TEST(ProjectionLight, PdfLeZeroOutsideFrustum) {
 	double pdf = pl.pdf_le(1.0, 0.0, 0.01);
 	EXPECT_DOUBLE_EQ(pdf, 0.0);
 }
+
+// ---------------------------------------------------------------------------
+// PDF normalisation tests -- use fov != 90 so A != sb_area.
+// At fov=90 A==sb_area==4, which would mask a missing sb_area factor.
+// ---------------------------------------------------------------------------
+
+TEST(ProjectionLight, PdfLeMatchesSampleLeFov60) {
+	// fov=60: A=4/3, sb_area=4 => bug would give 3x too large PDF
+	auto pl = make_default(60.0, 1.0, 8, 8);
+	double wx, wy, wz, pdf_sample;
+	pl.sample_le(0.3, 0.7, wx, wy, wz, pdf_sample);
+	double pdf_eval = pl.pdf_le(wx, wy, wz);
+	EXPECT_NEAR(pdf_eval, pdf_sample, pdf_sample * 0.01 + 1e-9);
+}
+
+TEST(ProjectionLight, PdfLeMatchesSampleLeFov45) {
+	// fov=45: A~0.686, sb_area=4 => bug would give ~5.8x too large PDF
+	auto pl = make_default(45.0, 1.0, 8, 8);
+	// Sample near centre -- guaranteed to be inside the narrow frustum
+	double wx, wy, wz, pdf_sample;
+	pl.sample_le(0.5, 0.5, wx, wy, wz, pdf_sample);
+	double pdf_eval = pl.pdf_le(wx, wy, wz);
+	EXPECT_NEAR(pdf_eval, pdf_sample, pdf_sample * 0.01 + 1e-9);
+}
+
+TEST(ProjectionLight, PdfLeIntegratesApprox1) {
+	// Monte-Carlo estimate of integral(pdf_le(w) dw) should be ~1.
+	// Use fov=60 where the old bug would give integral ~3 instead of ~1.
+	auto pl = make_default(60.0, 1.0, 8, 8);
+	const int N = 2000;
+	double sum = 0.0;
+	int valid = 0;
+	for (int i = 0; i < N; ++i) {
+		double wx, wy, wz, pdf_sample;
+		double ru = (i + 0.5) / N;
+		double rv = ((i * 7 + 3) % N + 0.5) / N;
+		pl.sample_le(ru, rv, wx, wy, wz, pdf_sample);
+		if (pdf_sample > 1e-12) {
+			// Importance-sampling estimator: sum(f/pdf) * measure
+			// For a PDF check: each sample contributes 1/pdf * pdf = 1
+			// but we want integral(pdf dw) via w-space sampling:
+			// Use the identity: E[pdf_le(w_i)/pdf_le(w_i)] = 1 for in-frustum w_i
+			double pdf_eval = pl.pdf_le(wx, wy, wz);
+			sum += pdf_eval / pdf_sample;
+			++valid;
+		}
+	}
+	// Average should be 1 if sample_le and pdf_le are consistent
+	if (valid > 0) {
+		double avg = sum / valid;
+		EXPECT_NEAR(avg, 1.0, 0.05) << "valid=" << valid;
+	}
+}

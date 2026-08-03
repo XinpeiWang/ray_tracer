@@ -335,13 +335,14 @@ struct ProjectionLight {
 		wy = (double)ld.y / len;
 		wz = (double)ld.z / len;
 
-		// Jacobian: pdfDir = pdf_image * screenBounds.Area / (A * cos^3(theta))
-		// Mirrors pbrt-v4 SampleLe lines 413-415
-		double sb_area = ((double)sb_xmax - (double)sb_xmin)
-					   * ((double)sb_ymax - (double)sb_ymin);
+		// Jacobian: pdfDir = pdf_uv / (A * cos^3(theta))
+		// Our PiecewiseConstant2D returns pdf_uv (per [0,1]^2 area).
+		// pbrt-v4 uses pdf_screen (per screen area): pdf_screen = pdf_uv / sb_area.
+		// pbrt-v4 formula: pdfDir = pdf_screen * sb_area / (A * cos3)
+		//                         = pdf_uv / (A * cos3)  <-- what we compute.
 		double cos3 = wz * wz * wz;
 		pdf_dir = (cos3 > 1e-12)
-				? pdf_img * sb_area / ((double)A * cos3)
+				? pdf_img / ((double)A * cos3)
 				: 0.0;
 	}
 
@@ -368,12 +369,11 @@ struct ProjectionLight {
 		double v = ((double)ps.y - (double)sb_ymin)
 				 / ((double)sb_ymax - (double)sb_ymin);
 
+		// Same normalisation as sample_le: pdf_uv / (A * cos3).
 		double pdf_img = distrib.empty() ? 1.0 : distrib.pdf(u, v);
-		double sb_area = ((double)sb_xmax - (double)sb_xmin)
-					   * ((double)sb_ymax - (double)sb_ymin);
 		double cos3 = wz_n * wz_n * wz_n;
 		return (cos3 > 1e-12)
-			 ? pdf_img * sb_area / ((double)A * cos3)
+			 ? pdf_img / ((double)A * cos3)
 			 : 0.0;
 	}
 };
