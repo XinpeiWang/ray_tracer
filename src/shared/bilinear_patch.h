@@ -320,8 +320,9 @@ inline bool blp_is_rectangle(const float* p00, const float* p10,
 // ---------------------------------------------------------------------------
 // blp_area
 //
-// Approximate surface area using a 3x3 grid of triangles.
-// pbrt-v4: constexpr int na = 3 grid, same formula.
+// Approximate surface area using a 3x3 grid of quads (diagonal cross product).
+// pbrt-v4: constexpr int na = 3 grid, exact same formula:
+//   area += 0.5 * |cross(p[i+1][j+1]-p[i][j], p[i+1][j]-p[i][j+1])|
 // For a rectangle: Distance(p00,p01)*Distance(p00,p10).
 // ---------------------------------------------------------------------------
 inline float blp_area(const float* p00, const float* p10,
@@ -347,16 +348,11 @@ inline float blp_area(const float* p00, const float* p10,
     using namespace blp_detail;
     for (int i = 0; i < na; ++i) {
         for (int j = 0; j < na; ++j) {
-            // Two triangles per cell
-            float e0[3], e1[3], n2[3];
-            sub(pts[i+1][j], pts[i][j], e0);
-            sub(pts[i][j+1], pts[i][j], e1);
-            cross(e0, e1, n2);
-            area += 0.5f * length(n2);
-
-            sub(pts[i+1][j+1], pts[i+1][j], e0);
-            sub(pts[i][j+1],   pts[i+1][j], e1);
-            cross(e0, e1, n2);
+            // pbrt-v4 formula: 0.5 * |cross(p[i+1][j+1]-p[i][j], p[i+1][j]-p[i][j+1])|
+            float d0[3], d1[3], n2[3];
+            sub(pts[i+1][j+1], pts[i][j],   d0);
+            sub(pts[i+1][j],   pts[i][j+1], d1);
+            cross(d0, d1, n2);
             area += 0.5f * length(n2);
         }
     }
