@@ -37,8 +37,9 @@
 #endif
 
 #include "sampling_sphere_cone.h"   // SampleUniformSphere, SampleUniformDiskConcentric,
-									// SampleUniformCone, UniformConePDF, etc.
+								// SampleUniformCone, UniformConePDF, etc.
 #include "shading_frame.h"          // ShadingFrame<T>
+#include "splines.h"                // CubicBezierControlPoints, EvaluateCubicBezierD, SubdivideCubicBezier
 
 #include <cmath>
 #include <optional>
@@ -1176,7 +1177,571 @@ struct TriangleShape {
 				T cos_theta = std::abs(dot3(hit->nx, hit->ny, hit->nz, -wix, -wiy, -wiz));
 				if (cos_theta == T(0)) return T(0);
 
-				T pdf = pdf_area() * dist2 / cos_theta;
-				return std::isfinite(pdf) ? pdf : T(0);
-			}
-		};
+					T pdf = pdf_area() * dist2 / cos_theta;
+						return std::isfinite(pdf) ? pdf : T(0);
+					}
+				};
+
+				// ===========================================================================
+				// CurveShape
+				// ===========================================================================
+				//
+				// A single cubic Bezier curve segment (hair / ribbon / cylinder).
+				// Mirrors pbrt-v4 Curve (shapes.h / shapes.cpp).
+				//
+				// Three curve types (CurveType enum):
+				//   Flat     -- always faces the ray (camera-facing ribbon).
+				//   Cylinder -- round cross-section, normal rotates around dpdu.
+				//   Ribbon   -- fixed orientation via per-endpoint normals (n0,n1).
+				//
+				// The curve stores 4 Bezier control points in world space, plus tapered
+				// widths width0 (at u=uMin) and width1 (at u=uMax).  A full hair strand
+				// is split into several CurveShape segments each covering a [uMin,uMax]
+				// sub-interval of the original spline.
+				//
+				// Intersection algorithm mirrors pbrt-v4 exactly:
+				//   1. Transform ray into a "ray-facing" frame (LookAt-style).
+				//   2. Project control points into that frame so the ray becomes +Z.
+				//   3. Recursively subdivide until the 2D bounding box test is small
+				//      enough, then test the leaf segment analytically.
+				//
+				// Reference: pbrt-v4 Curve (shapes.h / shapes.cpp)
+				//
+				// API:
+				//   intersect(rox,roy,roz, rdx,rdy,rdz, t_min, t_max, hit)
+				//   area()
+				// ===========================================================================
+
+				enum class CurveType { Flat, Cylinder, Ribbon };
+
+				template<typename T>
+				struct CurveShape {
+					// 4 cubic Bezier control points in world space
+					T cpx[4], cpy[4], cpz[4];
+					// Parametric range [uMin, uMax] within the parent strand
+					T uMin, uMax;
+					// Tapered width at uMin and uMax
+					T width0, width1;
+					// Curve type
+					CurveType type;
+					// Per-endpoint normals for Ribbon type (world space, unit length)
+					// Only valid when type == CurveType::Ribbon
+					T n0x, n0y, n0z;   // normal at uMin endpoint
+					T n1x, n1y, n1z;   // normal at uMax endpoint
+					T normalAngle;      // angle between n0 and n1
+					T invSinNormalAngle;
+
+					// ---------------------------------------------------------------
+					// Factory helpers
+					// ---------------------------------------------------------------
+
+					// Make a Flat or Cylinder curve segment (no ribbon normals needed)
+					CPU_GPU static CurveShape make(
+						const T cpx_[4], const T cpy_[4], const T cpz_[4],
+						T uMin_, T uMax_,
+						T width0_, T width1_,
+						CurveType type_ = CurveType::Flat)
+					{
+						CurveShape c;
+						for (int i = 0; i < 4; ++i) {
+							c.cpx[i] = cpx_[i]; c.cpy[i] = cpy_[i]; c.cpz[i] = cpz_[i];
+						}
+						c.uMin = uMin_; c.uMax = uMax_;
+						c.width0 = width0_; c.width1 = width1_;
+						c.type = type_;
+						c.n0x = c.n0y = c.n0z = T(0);
+						c.n1x = c.n1y = c.n1z = T(0);
+						c.normalAngle = T(0); c.invSinNormalAngle = T(0);
+						return c;
+					}
+
+					// Make a Ribbon curve segment (requires endpoint normals)
+					CPU_GPU static CurveShape make_ribbon(
+						const T cpx_[4], const T cpy_[4], const T cpz_[4],
+						T uMin_, T uMax_,
+						T width0_, T width1_,
+						T n0x_, T n0y_, T n0z_,
+						T n1x_, T n1y_, T n1z_)
+					{
+						CurveShape c = make(cpx_, cpy_, cpz_, uMin_, uMax_, width0_, width1_,
+											CurveType::Ribbon);
+						// Normalize endpoint normals
+						T len0 = std::sqrt(n0x_*n0x_ + n0y_*n0y_ + n0z_*n0z_);
+						T len1 = std::sqrt(n1x_*n1x_ + n1y_*n1y_ + n1z_*n1z_);
+						if (len0 > T(0)) { n0x_ /= len0; n0y_ /= len0; n0z_ /= len0; }
+						if (len1 > T(0)) { n1x_ /= len1; n1y_ /= len1; n1z_ /= len1; }
+						c.n0x = n0x_; c.n0y = n0y_; c.n0z = n0z_;
+						c.n1x = n1x_; c.n1y = n1y_; c.n1z = n1z_;
+						T cosAngle = n0x_*n1x_ + n0y_*n1y_ + n0z_*n1z_;
+						cosAngle = cosAngle < T(-1) ? T(-1) : (cosAngle > T(1) ? T(1) : cosAngle);
+						c.normalAngle = std::acos(cosAngle);
+						c.invSinNormalAngle = (c.normalAngle > T(1e-6))
+							? T(1) / std::sin(c.normalAngle) : T(0);
+						return c;
+					}
+
+					// ---------------------------------------------------------------
+					// area() -- approximate arc-length × average width
+					// Mirrors pbrt-v4 Curve::Area()
+					// ---------------------------------------------------------------
+					CPU_GPU T area() const {
+						// Sub-interval control points
+						float cp[4][3];
+						_sub_cp(cp);
+						T w0 = _lerp(uMin, width0, width1);
+						T w1 = _lerp(uMax, width0, width1);
+						T avgWidth = (w0 + w1) * T(0.5);
+						T approxLength = T(0);
+						for (int i = 0; i < 3; ++i) {
+							T dx = T(cp[i+1][0] - cp[i][0]);
+							T dy = T(cp[i+1][1] - cp[i][1]);
+							T dz = T(cp[i+1][2] - cp[i][2]);
+							approxLength += std::sqrt(dx*dx + dy*dy + dz*dz);
+						}
+						return approxLength * avgWidth;
+					}
+
+					// ---------------------------------------------------------------
+					// CurveHit -- result of intersect()
+					// ---------------------------------------------------------------
+					struct CurveHit {
+						T t;
+						T u, v;          // (u,v) on curve: u along strand, v across width
+						T dpdu_x, dpdu_y, dpdu_z;  // tangent along curve at hit
+						T dpdv_x, dpdv_y, dpdv_z;  // tangent across curve at hit
+						T nx, ny, nz;    // shading normal (world space)
+					};
+
+					// ---------------------------------------------------------------
+					// intersect()
+					// Returns true if the ray hits the curve within [t_min, t_max].
+					// On hit, *out is filled with hit details.
+					// Mirrors pbrt-v4 Curve::IntersectRay + RecursiveIntersect.
+					// ---------------------------------------------------------------
+					CPU_GPU bool intersect(
+						T rox, T roy, T roz,
+						T rdx, T rdy, T rdz,
+						T t_min, T t_max,
+						CurveHit* out = nullptr) const
+					{
+						// Sub-interval control points in world space (float precision)
+						float cpW[4][3];
+						_sub_cp(cpW);
+
+						// Build a "LookAt" transform that maps the ray to +Z axis.
+						// dx is a direction in the plane perpendicular to the ray, used
+						// to orient the frame. We pick Cross(ray.d, cp[3]-cp[0]).
+						float rdF[3] = { float(rdx), float(rdy), float(rdz) };
+						float diff[3] = { cpW[3][0] - cpW[0][0],
+										  cpW[3][1] - cpW[0][1],
+										  cpW[3][2] - cpW[0][2] };
+						float dx[3], dy_unused[3];
+						_cross3(rdF, diff, dx);
+						if (_dot3(dx,dx) == 0.f)
+							_coord_system(rdF, dx, dy_unused);
+
+						// Compute ray-from-object 4×4 LookAt transform
+						// (position = ray.o, forward = normalize(ray.d), up = dx)
+						float ro[3] = { float(rox), float(roy), float(roz) };
+						float M[4][4]; // row-major world-to-ray transform
+						_look_at(ro, rdF, dx, M);
+
+						// Transform control points to ray space
+						float cp[4][3];
+						for (int i = 0; i < 4; ++i)
+							_transform_point(M, cpW[i], cp[i]);
+
+						// Broad-phase AABB test in ray space
+						float maxWidth = std::max(
+							_lerp(float(uMin), float(width0), float(width1)),
+							_lerp(float(uMax), float(width0), float(width1)));
+						// Curve bounding box in ray space (union of edge midpoints)
+						float bbMin[3], bbMax[3];
+						_bound4(cp, bbMin, bbMax);
+						for (int k = 0; k < 3; ++k) {
+							bbMin[k] -= 0.5f * maxWidth;
+							bbMax[k] += 0.5f * maxWidth;
+						}
+						// Ray in ray space is origin=(0,0,0) dir=(0,0,|d|)
+						float rayLen = std::sqrt(_dot3(rdF,rdF));
+						// Ray AABB: x,y in [-w,w], z in [0, rayLen*t_max]
+						if (bbMax[0] < -0.5f*maxWidth || bbMin[0] > 0.5f*maxWidth ||
+							bbMax[1] < -0.5f*maxWidth || bbMin[1] > 0.5f*maxWidth ||
+							bbMax[2] < 0.f             || bbMin[2] > rayLen * float(t_max))
+							return false;
+
+						// Compute maximum recursion depth: mirrors pbrt-v4 log4 formula
+						float L0 = 0.f;
+						for (int i = 0; i < 2; ++i) {
+							for (int k = 0; k < 3; ++k) {
+								float v = std::abs(cp[i][k] - 2.f*cp[i+1][k] + cp[i+2][k]);
+								if (v > L0) L0 = v;
+							}
+						}
+						int maxDepth = 0;
+						if (L0 > 0.f) {
+							float maxW = std::max(float(width0), float(width1));
+							float eps  = maxW * 0.05f;
+							float arg  = 1.41421356237f * 6.f * L0 / (8.f * eps);
+							if (arg > 1.f) {
+								int r0 = (int)(std::log(arg) / std::log(4.f));
+								maxDepth = r0 < 0 ? 0 : (r0 > 10 ? 10 : r0);
+							}
+						}
+
+						// Recursive intersection in ray space
+						// objectFromRay = inverse of M (a rigid LookAt, so transpose of rotation)
+						float Minv[4][4];
+						_invert_lookat(M, Minv);
+
+						T tBest = t_max;
+						bool hit = _recursive_intersect(
+							ro, rdF, rayLen,
+							cp, Minv, cpW,
+							float(uMin), float(uMax),
+							float(t_min), float(t_max),
+							maxDepth,
+							tBest, out);
+						return hit;
+					}
+
+				private:
+					// ---------------------------------------------------------------
+					// Internal helpers
+					// ---------------------------------------------------------------
+
+					CPU_GPU static T _lerp(T t, T a, T b) { return (T(1)-t)*a + t*b; }
+					CPU_GPU static float _lerp(float t, float a, float b) { return (1.f-t)*a + t*b; }
+
+					CPU_GPU static float _dot3(const float* a, const float* b) {
+						return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+					}
+					CPU_GPU static float _len3(const float* a) {
+						return std::sqrt(_dot3(a,a));
+					}
+					CPU_GPU static void _cross3(const float* a, const float* b, float* out) {
+						out[0] = a[1]*b[2] - a[2]*b[1];
+						out[1] = a[2]*b[0] - a[0]*b[2];
+						out[2] = a[0]*b[1] - a[1]*b[0];
+					}
+					CPU_GPU static void _normalize3(float* v) {
+						float len = _len3(v);
+						if (len > 0.f) { v[0]/=len; v[1]/=len; v[2]/=len; }
+					}
+
+					// Frisvad-style orthonormal basis (Duff et al. 2017)
+					CPU_GPU static void _coord_system(const float* n, float* t, float* b) {
+						float sign = (n[2] >= 0.f) ? 1.f : -1.f;
+						float a  = -1.f / (sign + n[2]);
+						float bv = n[0] * n[1] * a;
+						t[0] = 1.f + sign * n[0]*n[0]*a;
+						t[1] = sign * bv;
+						t[2] = -sign * n[0];
+						b[0] = bv;
+						b[1] = sign + n[1]*n[1]*a;
+						b[2] = -n[1];
+					}
+
+					// Build LookAt 4×4 row-major matrix: maps world-space points so that
+					// ro -> origin, (ro + normalize(dir)) -> +Z, up guides X axis.
+					// Mirrors pbrt-v4 LookAt(pos, pos+dir, up).
+					CPU_GPU static void _look_at(const float* pos, const float* dir,
+												 const float* up, float M[4][4])
+					{
+						float fwd[3] = { dir[0], dir[1], dir[2] };
+						_normalize3(fwd);
+						float right[3];
+						float up_tmp[3] = { up[0], up[1], up[2] };
+						_normalize3(up_tmp);
+						_cross3(up_tmp, fwd, right);
+						if (_dot3(right,right) < 1e-12f) {
+							float dummy[3];
+							_coord_system(fwd, right, dummy);
+						}
+						_normalize3(right);
+						float newUp[3];
+						_cross3(fwd, right, newUp);
+
+						// Camera-to-world columns: right, newUp, fwd
+						// World-to-camera (what we want) is transpose * translate
+						// Row 0: right
+						M[0][0]=right[0]; M[0][1]=right[1]; M[0][2]=right[2];
+						M[0][3]=-(right[0]*pos[0]+right[1]*pos[1]+right[2]*pos[2]);
+						// Row 1: newUp
+						M[1][0]=newUp[0]; M[1][1]=newUp[1]; M[1][2]=newUp[2];
+						M[1][3]=-(newUp[0]*pos[0]+newUp[1]*pos[1]+newUp[2]*pos[2]);
+						// Row 2: fwd
+						M[2][0]=fwd[0]; M[2][1]=fwd[1]; M[2][2]=fwd[2];
+						M[2][3]=-(fwd[0]*pos[0]+fwd[1]*pos[1]+fwd[2]*pos[2]);
+						// Row 3: homogeneous
+						M[3][0]=0; M[3][1]=0; M[3][2]=0; M[3][3]=1;
+					}
+
+					// Invert a LookAt (rigid body): transpose rotation, re-derive translation
+					CPU_GPU static void _invert_lookat(const float M[4][4], float Minv[4][4]) {
+						// Rotation part is rows 0-2 cols 0-2; inverse = transpose
+						for (int i = 0; i < 3; ++i)
+							for (int j = 0; j < 3; ++j)
+								Minv[i][j] = M[j][i];
+						// Translation: -R^T * t
+						for (int i = 0; i < 3; ++i)
+							Minv[i][3] = -(Minv[i][0]*M[0][3] + Minv[i][1]*M[1][3] + Minv[i][2]*M[2][3]);
+						Minv[3][0]=0; Minv[3][1]=0; Minv[3][2]=0; Minv[3][3]=1;
+					}
+
+					// Apply 4×4 row-major matrix to a 3D point (w=1)
+					CPU_GPU static void _transform_point(const float M[4][4],
+														 const float p[3], float out[3]) {
+						out[0] = M[0][0]*p[0] + M[0][1]*p[1] + M[0][2]*p[2] + M[0][3];
+						out[1] = M[1][0]*p[0] + M[1][1]*p[1] + M[1][2]*p[2] + M[1][3];
+						out[2] = M[2][0]*p[0] + M[2][1]*p[1] + M[2][2]*p[2] + M[2][3];
+					}
+
+					// Apply 4×4 row-major matrix to a 3D vector (w=0)
+					CPU_GPU static void _transform_vector(const float M[4][4],
+														  const float v[3], float out[3]) {
+						out[0] = M[0][0]*v[0] + M[0][1]*v[1] + M[0][2]*v[2];
+						out[1] = M[1][0]*v[0] + M[1][1]*v[1] + M[1][2]*v[2];
+						out[2] = M[2][0]*v[0] + M[2][1]*v[1] + M[2][2]*v[2];
+					}
+
+					// AABB of 4 control points
+					CPU_GPU static void _bound4(const float cp[4][3],
+												float bbMin[3], float bbMax[3]) {
+						for (int k = 0; k < 3; ++k) {
+							bbMin[k] = cp[0][k]; bbMax[k] = cp[0][k];
+							for (int i = 1; i < 4; ++i) {
+								if (cp[i][k] < bbMin[k]) bbMin[k] = cp[i][k];
+								if (cp[i][k] > bbMax[k]) bbMax[k] = cp[i][k];
+							}
+						}
+					}
+
+					// Compute sub-interval control points via CubicBezierControlPoints
+					CPU_GPU void _sub_cp(float out[4][3]) const {
+						float src[4][3] = {
+							{float(cpx[0]),float(cpy[0]),float(cpz[0])},
+							{float(cpx[1]),float(cpy[1]),float(cpz[1])},
+							{float(cpx[2]),float(cpy[2]),float(cpz[2])},
+							{float(cpx[3]),float(cpy[3]),float(cpz[3])}
+						};
+						splines::CubicBezierControlPoints(src, float(uMin), float(uMax), out);
+					}
+
+					// Evaluate cubic Bezier point and optional derivative at parameter w ∈ [0,1]
+					// Uses the raw control points already in a given space.
+					CPU_GPU static void _eval_bezier(const float cp[4][3], float w,
+													 float p[3], float dp[3]) {
+						float src[4][3];
+						for (int i = 0; i < 4; ++i)
+							for (int k = 0; k < 3; ++k) src[i][k] = cp[i][k];
+						splines::EvaluateCubicBezierD(src, w, p, dp);
+					}
+
+					// Subdivide 4 control points into 7 (left 4 + right 4 sharing midpoint)
+					CPU_GPU static void _subdivide(const float cp[4][3], float out7[7][3]) {
+						float src[4][3];
+						for (int i = 0; i < 4; ++i)
+							for (int k = 0; k < 3; ++k) src[i][k] = cp[i][k];
+						splines::SubdivideCubicBezier(src, out7);
+					}
+
+					// Recursive intersection (ray-space, mirrors pbrt-v4 RecursiveIntersect)
+					CPU_GPU bool _recursive_intersect(
+						const float ro[3], const float rd[3], float rayLen,
+						const float cp[4][3],      // control points in ray space
+						const float Minv[4][4],    // ray-space -> world transform
+						const float cpW[4][3],     // control points in world space (for normals)
+						float u0, float u1,
+						float t_min, float t_max,
+						int depth,
+						T& tBest, CurveHit* out) const
+					{
+						if (depth > 0) {
+							// Split into two halves
+							float cpSplit[7][3];
+							_subdivide(cp, cpSplit);
+							float uMid = 0.5f * (u0 + u1);
+							float u[3] = { u0, uMid, u1 };
+							bool hit = false;
+							for (int seg = 0; seg < 2; ++seg) {
+								// Build child cp from split
+								float child[4][3];
+								for (int i = 0; i < 4; ++i)
+									for (int k = 0; k < 3; ++k)
+										child[i][k] = cpSplit[3*seg + i][k];
+
+								// Child bounding box test
+								float maxW = std::max(
+									_lerp(u[seg],   float(width0), float(width1)),
+									_lerp(u[seg+1], float(width0), float(width1)));
+								float bbMin[3], bbMax[3];
+								_bound4(child, bbMin, bbMax);
+								for (int k = 0; k < 3; ++k) {
+									bbMin[k] -= 0.5f*maxW;
+									bbMax[k] += 0.5f*maxW;
+								}
+								if (bbMax[0] < -0.5f*maxW || bbMin[0] > 0.5f*maxW ||
+									bbMax[1] < -0.5f*maxW || bbMin[1] > 0.5f*maxW ||
+									bbMax[2] < 0.f         || bbMin[2] > rayLen * float(tBest))
+									continue;
+
+								bool childHit = _recursive_intersect(
+									ro, rd, rayLen, child, Minv, cpW,
+									u[seg], u[seg+1], t_min, t_max,
+									depth - 1, tBest, out);
+								if (childHit) {
+									hit = true;
+									if (!out) return true; // shadow ray: early out
+								}
+							}
+							return hit;
+
+						} else {
+							// Leaf: analytic intersection test
+							// Test perpendicular tangent clipping planes at endpoints
+							// (mirrors pbrt-v4 RecursiveIntersect leaf case)
+							float edge0 = (cp[1][1]-cp[0][1])*(-cp[0][1])
+										+ cp[0][0]*(cp[0][0]-cp[1][0]);
+							if (edge0 < 0.f) return false;
+							float edge1 = (cp[2][1]-cp[3][1])*(-cp[3][1])
+										+ cp[3][0]*(cp[3][0]-cp[2][0]);
+							if (edge1 < 0.f) return false;
+
+							// Find parameter w minimizing distance in XY plane
+							float sx = cp[3][0] - cp[0][0];
+							float sy = cp[3][1] - cp[0][1];
+							float denom = sx*sx + sy*sy;
+							if (denom == 0.f) return false;
+							float w = (-cp[0][0]*sx - cp[0][1]*sy) / denom;
+
+							// Curve parameter and hit width
+							float u = u0 + w * (u1 - u0);
+							u = u < u0 ? u0 : (u > u1 ? u1 : u);
+							float hitWidth = _lerp(u, float(width0), float(width1));
+
+							// For ribbon: scale hitWidth by |dot(normal, ray.d)|
+							float nHitX = 0.f, nHitY = 0.f, nHitZ = 0.f;
+							if (type == CurveType::Ribbon) {
+								if (normalAngle == T(0)) {
+									nHitX = float(n0x); nHitY = float(n0y); nHitZ = float(n0z);
+								} else {
+									float uN = u;  // global u
+									float sin0 = std::sin((1.f - uN) * float(normalAngle))
+											   * float(invSinNormalAngle);
+									float sin1 = std::sin(uN * float(normalAngle))
+											   * float(invSinNormalAngle);
+									nHitX = sin0*float(n0x) + sin1*float(n1x);
+									nHitY = sin0*float(n0y) + sin1*float(n1y);
+									nHitZ = sin0*float(n0z) + sin1*float(n1z);
+								}
+								// dot(nHit, ray.d) / |ray.d|
+								float ndotd = nHitX*rd[0] + nHitY*rd[1] + nHitZ*rd[2];
+								float absNdotd = ndotd < 0.f ? -ndotd : ndotd;
+								hitWidth *= absNdotd / rayLen;
+							}
+
+							// Evaluate curve at w to find closest point
+							w = w < 0.f ? 0.f : (w > 1.f ? 1.f : w);
+							float pc[3], dpcdw[3];
+							_eval_bezier(cp, w, pc, dpcdw);
+
+							float ptCurveDist2 = pc[0]*pc[0] + pc[1]*pc[1];
+							float halfW = 0.5f * hitWidth;
+							if (ptCurveDist2 > halfW*halfW) return false;
+							if (pc[2] < 0.f || pc[2] > rayLen * float(tBest)) return false;
+
+							float tHit = pc[2] / rayLen;
+							if (tHit < float(t_min) || tHit > float(tBest)) return false;
+
+							tBest = T(tHit);
+
+							if (out) {
+								// v coordinate (position across width)
+								float ptCurveDist = std::sqrt(ptCurveDist2);
+								float edgeFunc = dpcdw[0]*(-pc[1]) + pc[0]*dpcdw[1];
+								float v = (edgeFunc > 0.f)
+									? 0.5f + ptCurveDist / hitWidth
+									: 0.5f - ptCurveDist / hitWidth;
+
+								// dpdu: tangent along curve at hit point (world space)
+								// Evaluate using world-space control points
+								float pc_w[3], dpdu_ray[3];
+								_eval_bezier(cpW, u, pc_w, dpdu_ray);
+
+								// dpdv: across-width direction
+								// Compute in ray space then transform to world
+								// objectFromRay is Minv; dpdu in ray space ≈ objectFromRay(dpdu_plane)
+								float dpduPlane[3];
+								_transform_vector(Minv, dpdu_ray, dpduPlane);
+								float len_dpdu = _len3(dpduPlane);
+								if (len_dpdu == 0.f) len_dpdu = 1.f;
+								float dpdvPlane[3] = {
+									-dpduPlane[1] / len_dpdu * hitWidth,
+									 dpduPlane[0] / len_dpdu * hitWidth,
+									 0.f
+								};
+								if (type == CurveType::Cylinder) {
+									// Rotate dpdvPlane around dpduPlane by theta = lerp(v,-90,90)
+									float theta = v * 180.f - 90.f;
+									float rad   = theta * 3.14159265358979323846f / 180.f;
+									float cosT  = std::cos(rad), sinT = std::sin(rad);
+									// Rodrigues rotation around unit dpduPlane
+									float ax = dpduPlane[0]/len_dpdu,
+										  ay = dpduPlane[1]/len_dpdu,
+										  az = dpduPlane[2]/len_dpdu;
+									float aAxis[3] = {ax, ay, az};
+									float dot = ax*dpdvPlane[0]+ay*dpdvPlane[1]+az*dpdvPlane[2];
+									float crossVec[3];
+									_cross3_s(ax,ay,az, dpdvPlane[0],dpdvPlane[1],dpdvPlane[2], crossVec);
+									for (int k = 0; k < 3; ++k)
+										dpdvPlane[k] = cosT*dpdvPlane[k]
+													 + sinT*crossVec[k]
+													 + (1.f-cosT)*dot*aAxis[k];
+								}
+
+								float dpdv_world[3];
+								if (type == CurveType::Ribbon) {
+									// dpdv = normalize(cross(nHit, dpdu)) * hitWidth
+									float nH[3] = {nHitX, nHitY, nHitZ};
+									_cross3(nH, dpdu_ray, dpdv_world);
+									float l = _len3(dpdv_world);
+									if (l > 0.f) for (int k=0; k<3; ++k) dpdv_world[k] *= hitWidth/l;
+								} else {
+									_transform_vector(Minv, dpdvPlane, dpdv_world);
+								}
+
+								// Shading normal = normalize(cross(dpdu, dpdv))
+								float nv[3];
+								_cross3_s(dpdu_ray[0],dpdu_ray[1],dpdu_ray[2],
+										  dpdv_world[0],dpdv_world[1],dpdv_world[2], nv);
+								float nl = _len3(nv);
+								if (nl > 0.f) { nv[0]/=nl; nv[1]/=nl; nv[2]/=nl; }
+
+								out->t      = T(tHit);
+								out->u      = T(u);
+								out->v      = T(v);
+								out->dpdu_x = T(dpdu_ray[0]);
+								out->dpdu_y = T(dpdu_ray[1]);
+								out->dpdu_z = T(dpdu_ray[2]);
+								out->dpdv_x = T(dpdv_world[0]);
+								out->dpdv_y = T(dpdv_world[1]);
+								out->dpdv_z = T(dpdv_world[2]);
+								out->nx     = T(nv[0]);
+								out->ny     = T(nv[1]);
+								out->nz     = T(nv[2]);
+							}
+							return true;
+						}
+					}
+
+					CPU_GPU static void _cross3_s(float ax, float ay, float az,
+												  float bx, float by, float bz,
+												  float* out) {
+						out[0] = ay*bz - az*by;
+						out[1] = az*bx - ax*bz;
+						out[2] = ax*by - ay*bx;
+					}
+				};
+
+
