@@ -34,13 +34,13 @@ static CloudMedium<double> make_cloud(double sa = 0.1, double ss = 0.9,
 // ---------------------------------------------------------------------------
 
 TEST(CloudMediumMajorant, EmptyIteratorYieldsNoSegment) {
-	HomogeneousMajorantIterator<double> it;
+	CloudMajorantIterator<double> it;
 	double t0, t1, sig;
 	EXPECT_FALSE(it.next(t0, t1, sig));
 }
 
 TEST(CloudMediumMajorant, ValidIteratorYieldsOneSegment) {
-	HomogeneousMajorantIterator<double> it(0.5, 2.5, 0.8);
+	CloudMajorantIterator<double> it(0.5, 2.5, 0.8);
 	EXPECT_TRUE(it.hit);
 	double t0, t1, sig;
 	EXPECT_TRUE(it.next(t0, t1, sig));
@@ -52,7 +52,7 @@ TEST(CloudMediumMajorant, ValidIteratorYieldsOneSegment) {
 }
 
 TEST(CloudMediumMajorant, EmptyIteratorHitFalse) {
-	HomogeneousMajorantIterator<double> it;
+	CloudMajorantIterator<double> it;
 	EXPECT_FALSE(it.hit);
 }
 

@@ -15,7 +15,7 @@
 //   - Plain template struct, CPU_GPU tagged, header-only
 //   - No virtual functions, no heap allocation in hot paths
 //   - T = double on CPU, float on GPU
-//   - Uses HomogeneousMajorantIterator<T> defined here (sigma_t is taken as
+//   - Uses CloudMajorantIterator<T> defined here (sigma_t is taken as
 //     the maximum possible, i.e. sigma_a + sigma_s, over the whole volume)
 //
 // Public interface
@@ -44,13 +44,15 @@
 #include "grid_medium.h"
 
 // ---------------------------------------------------------------------------
-// HomogeneousMajorantIterator<T>
-// Mirrors pbrt-v4 HomogeneousMajorantIterator (media.h §11.4).
+// CloudMajorantIterator<T>
+// Scalar (single-channel) homogeneous majorant iterator for CloudMedium.
+// Mirrors pbrt-v4 HomogeneousMajorantIterator (media.h §11.4) but uses a
+// single sigma_t value rather than RGB channels (ratio_tracking.h variant).
 // Yields exactly one segment [tMin, tMax] with constant majorant sigma_t,
 // then returns empty on subsequent calls.
 // ---------------------------------------------------------------------------
 template<typename T>
-struct HomogeneousMajorantIterator {
+struct CloudMajorantIterator {
 	T    tMin     = T(0);
 	T    tMax     = T(0);
 	T    sigma_t  = T(0);
@@ -58,10 +60,10 @@ struct HomogeneousMajorantIterator {
 	bool hit      = false;   // true iff ray intersected the medium bounds
 
 	// Empty iterator (no medium overlap).
-	CPU_GPU HomogeneousMajorantIterator() = default;
+	CPU_GPU CloudMajorantIterator() = default;
 
 	// Iterator with one valid segment.
-	CPU_GPU HomogeneousMajorantIterator(T tMin_, T tMax_, T sig_t)
+	CPU_GPU CloudMajorantIterator(T tMin_, T tMax_, T sig_t)
 		: tMin(tMin_), tMax(tMax_), sigma_t(sig_t), valid(true), hit(true) {}
 
 	// Returns true and fills out_tMin/tMax/sigma_t for the next segment.
@@ -232,11 +234,11 @@ struct CloudMedium {
 	}
 
 	// -----------------------------------------------------------------------
-	// sample_ray: compute ray/AABB overlap and return a HomogeneousMajorantIterator.
+	// sample_ray: compute ray/AABB overlap and return a CloudMajorantIterator.
 	// The majorant sigma_t = sigma_a + sigma_s (whole-volume upper bound).
 	// Mirrors pbrt-v4 CloudMedium::SampleRay.
 	// -----------------------------------------------------------------------
-	CPU_GPU HomogeneousMajorantIterator<T> sample_ray(
+	CPU_GPU CloudMajorantIterator<T> sample_ray(
 			const T* ray_o, const T* ray_d, T ray_tmax) const {
 		// Transform ray origin and direction to medium space.
 		T mo[3], md[3];
@@ -251,9 +253,9 @@ struct CloudMedium {
 		Bounds3<T> b(bounds_min[0], bounds_min[1], bounds_min[2],
 					 bounds_max[0], bounds_max[1], bounds_max[2]);
 		if (!b.intersect_ray(mo, md, ray_tmax, &tMin, &tMax))
-			return HomogeneousMajorantIterator<T>{};
+			return CloudMajorantIterator<T>{};
 
 		T sigma_t = sigma_a + sigma_s;
-		return HomogeneousMajorantIterator<T>(tMin, tMax, sigma_t);
+		return CloudMajorantIterator<T>(tMin, tMax, sigma_t);
 	}
 };
