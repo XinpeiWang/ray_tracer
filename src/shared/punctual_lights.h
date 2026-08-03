@@ -240,7 +240,7 @@ struct SpotLightData {
 		double p_sum = p0 + p1;
 
 		// Light-space direction (about +Z = cone axis)
-		double lx, ly, lz, pdf_section;
+		double lx, ly, lz;
 		if (ru * p_sum < p0) {
 			// Inner cone: uniform sampling
 			SampleUniformCone(rv0, rv1, cf_start, lx, ly, lz);
@@ -280,14 +280,14 @@ struct SpotLightData {
 		double ct = wx * (double)dir_x + wy * (double)dir_y + wz * (double)dir_z;
 
 		if (ct >= cf_start) {
-			// Inner cone
+			// Inner cone -- mirrors pbrt-v4 PDF_Le if branch
 			return UniformConePDF(cf_start) * (p0 / p_sum);
-		} else if (ct >= cf_end) {
-			// Falloff annulus
+		} else {
+			// Falloff annulus or outside -- SmoothStepPDF returns 0 for ct < cf_end
+			// exactly as pbrt-v4's bare else branch.
 			return SmoothStepPDF(ct, cf_end, cf_start) * (p1 / p_sum)
 				 / (2.0 * 3.14159265358979323846);
 		}
-		return 0.0;  // outside cone entirely
 	}
 };
 
