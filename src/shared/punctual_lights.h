@@ -19,6 +19,13 @@
 //   sample_wi(px,py,pz, ...) -- direction toward light (always deterministic)
 //   pdf_Li(...)              -- PDF = 0 (delta distribution)
 //   power(...)               -- approximate total emitted power (for light sampler)
+//
+// SpotLightData additionally exposes (mirrors pbrt-v4 SpotLight::SampleLe/PDF_Le):
+//   sample_le(ru,rv, wx,wy,wz, pdf_dir) -- importance-sample emitted ray direction
+//   pdf_le(wx,wy,wz)                    -- PDF for a given emitted direction
+//
+// sample_le selects stochastically between inner-cone (uniform) and falloff-annulus
+// (SmoothStep-importance-sampled) regions; mirrors pbrt-v4 exactly.
 // ---------------------------------------------------------------------------
 
 #ifndef CPU_GPU
@@ -34,6 +41,9 @@
 #else
 #   include <cmath>
 #endif
+
+#include "mis_sampling.h"           // SampleUniformCone, UniformConePDF
+#include "sampling_distributions.h" // SampleSmoothStep, SmoothStepPDF
 
 // ---------------------------------------------------------------------------
 // 1. PointLightData<T>
@@ -183,6 +193,101 @@ struct SpotLightData {
 		T avg_I = (ir + ig + ib) / T(3);
 		return scale * avg_I * two_pi *
 			   ((T(1) - cos_falloff_start) + (cos_falloff_start - cos_falloff_end) / T(2));
+	}
+
+	// -----------------------------------------------------------------------
+	// cone_frame_basis: build two tangent vectors (tx,ty) perpendicular to the
+	// cone axis (dir_x,dir_y,dir_z). Used to rotate light-space samples to
+	// world space.  Mirrors pbrt-v4's Frame::FromZ construction.
+	// -----------------------------------------------------------------------
+	CPU_GPU void cone_frame_basis(T& tx, T& ty, T& tz,
+								   T& bx, T& by, T& bz) const {
+		// Stable Frisvad / Duff et al. orthonormal basis from dir
+		double dx = (double)dir_x, dy = (double)dir_y, dz = (double)dir_z;
+		double sign = (dz >= 0.0) ? 1.0 : -1.0;
+		double a = -1.0 / (sign + dz);
+		double b = dx * dy * a;
+		tx = (T)(1.0 + sign * dx * dx * a);
+		ty = (T)(sign * b);
+		tz = (T)(-sign * dx);
+		bx = (T)(b);
+		by = (T)(sign + dy * dy * a);
+		bz = (T)(-dy);
+	}
+
+	// -----------------------------------------------------------------------
+	// sample_le: importance-sample an emitted ray direction.
+	// Mirrors pbrt-v4 SpotLight::SampleLe.
+	//
+	// ru, rv0, rv1: three independent uniform random numbers in [0,1].
+	// Returns world-space direction (wx,wy,wz) and pdf_dir.
+	//
+	// Algorithm:
+	//   p[0] = 1 - cosFalloffStart  (weight of inner cone)
+	//   p[1] = (cosFalloffStart - cosFalloffEnd) / 2  (weight of falloff annulus)
+	//   With prob p[0]/(p[0]+p[1]): sample inner cone uniformly.
+	//   Otherwise: importance-sample falloff annulus via SampleSmoothStep.
+	// -----------------------------------------------------------------------
+	void sample_le(double ru, double rv0, double rv1,
+				   double& wx, double& wy, double& wz,
+				   double& pdf_dir) const {
+		double cf_start = (double)cos_falloff_start;
+		double cf_end   = (double)cos_falloff_end;
+
+		// Region weights (mirror pbrt-v4 Float p[2])
+		double p0 = 1.0 - cf_start;
+		double p1 = (cf_start - cf_end) / 2.0;
+		double p_sum = p0 + p1;
+
+		// Light-space direction (about +Z = cone axis)
+		double lx, ly, lz, pdf_section;
+		if (ru * p_sum < p0) {
+			// Inner cone: uniform sampling
+			SampleUniformCone(rv0, rv1, cf_start, lx, ly, lz);
+			pdf_dir = UniformConePDF(cf_start) * (p0 / p_sum);
+		} else {
+			// Falloff annulus: SmoothStep importance sampling
+			double cosTheta = SampleSmoothStep(rv0, cf_end, cf_start);
+			double sinTheta = std::sqrt(std::max(0.0, 1.0 - cosTheta * cosTheta));
+			double phi = rv1 * 2.0 * 3.14159265358979323846;
+			lx = std::cos(phi) * sinTheta;
+			ly = std::sin(phi) * sinTheta;
+			lz = cosTheta;
+			pdf_dir = SmoothStepPDF(cosTheta, cf_end, cf_start) * (p1 / p_sum)
+					/ (2.0 * 3.14159265358979323846);
+		}
+
+		// Rotate from light space (+Z = dir) to world space
+		T tx, ty, tz, bx, by, bz;
+		cone_frame_basis(tx, ty, tz, bx, by, bz);
+		wx = (double)tx * lx + (double)bx * ly + (double)dir_x * lz;
+		wy = (double)ty * lx + (double)by * ly + (double)dir_y * lz;
+		wz = (double)tz * lx + (double)bz * ly + (double)dir_z * lz;
+	}
+
+	// -----------------------------------------------------------------------
+	// pdf_le: PDF of emitting in given world-space direction (wx,wy,wz).
+	// Mirrors pbrt-v4 SpotLight::PDF_Le.
+	// -----------------------------------------------------------------------
+	double pdf_le(double wx, double wy, double wz) const {
+		double cf_start = (double)cos_falloff_start;
+		double cf_end   = (double)cos_falloff_end;
+		double p0 = 1.0 - cf_start;
+		double p1 = (cf_start - cf_end) / 2.0;
+		double p_sum = p0 + p1;
+
+		// cosTheta between direction and cone axis
+		double ct = wx * (double)dir_x + wy * (double)dir_y + wz * (double)dir_z;
+
+		if (ct >= cf_start) {
+			// Inner cone
+			return UniformConePDF(cf_start) * (p0 / p_sum);
+		} else if (ct >= cf_end) {
+			// Falloff annulus
+			return SmoothStepPDF(ct, cf_end, cf_start) * (p1 / p_sum)
+				 / (2.0 * 3.14159265358979323846);
+		}
+		return 0.0;  // outside cone entirely
 	}
 };
 
