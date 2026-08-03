@@ -367,11 +367,14 @@ TEST(HairMaterialTest, DirectSigmaAProducesBxDF) {
 	mat.beta_n  = FloatTexVal<float>(0.3f);
 	mat.alpha   = FloatTexVal<float>(2.0f);
 
-	auto bxdf = mat.get_bxdf(default_ctx());
+	// default_ctx has v=0.3, so h = -1 + 2*0.3 = -0.4
+	auto ctx = default_ctx();
+	auto bxdf = mat.get_bxdf(ctx);
 	EXPECT_NEAR(bxdf.sigma_r, 0.5f, 1e-5f);
 	EXPECT_NEAR(bxdf.sigma_g, 0.3f, 1e-5f);
 	EXPECT_NEAR(bxdf.sigma_b, 0.1f, 1e-5f);
 	EXPECT_NEAR(bxdf.eta,     1.55f, 1e-5f);
+	EXPECT_NEAR(bxdf.h,       -0.4f, 1e-5f);
 }
 
 TEST(HairMaterialTest, BetaClampedToMinimum) {
@@ -425,6 +428,23 @@ TEST(HairMaterialTest, NoSourceDefaultsToBlackSigmaA) {
 	EXPECT_FLOAT_EQ(bxdf.sigma_b, 0.f);
 }
 
+TEST(HairMaterialTest, HComputedFromVTexCoord) {
+	// h = -1 + 2*ctx.v (pbrt-v4 HairMaterial::GetBxDF: h = -1 + 2*ctx.uv[1])
+	HairMaterial<float> mat;
+	mat.has_sigma_a = true;
+	mat.sigma_a_tex = SpectrumTexVal<float>(0.f, 0.f, 0.f);
+
+	auto ctx = default_ctx();
+	ctx.v = 0.0f;
+	EXPECT_NEAR(mat.get_bxdf(ctx).h, -1.0f, 1e-5f);
+
+	ctx.v = 0.5f;
+	EXPECT_NEAR(mat.get_bxdf(ctx).h, 0.0f, 1e-5f);
+
+	ctx.v = 1.0f;
+	EXPECT_NEAR(mat.get_bxdf(ctx).h, 1.0f, 1e-5f);
+}
+
 TEST(HairMaterialTest, EvaluateBxDFFinite) {
 	HairMaterial<float> mat;
 	mat.has_pigment  = true;
@@ -453,24 +473,26 @@ TEST(HairMaterialTest, EvaluateBxDFFinite) {
 
 TEST(SharedMixMaterialTest, WeightZeroAlwaysChoosesB) {
 	MixMaterial<float> mat;
-	mat.amount = FloatTexVal<float>(0.f);  // weight 0 -> always material B (index 1)
+	// pbrt-v4: (amt < u) ? mat[0] : mat[1]
+	// amt=0: 0 < u is true for all u > 0 -> always mat[0] = index 0
+	mat.amount = FloatTexVal<float>(0.f);
 
-	// Try many points — hash varies but weight=0 means u < 0 is never true
 	for (float px = -2.f; px <= 2.f; px += 0.5f) {
 		MaterialEvalContext<float> ctx{};
 		ctx.px = px; ctx.py = 0.3f; ctx.pz = -1.1f;
-		EXPECT_EQ(mat.choose(ctx), 1) << "px=" << px;
+		EXPECT_EQ(mat.choose(ctx), 0) << "px=" << px;
 	}
 }
 
 TEST(SharedMixMaterialTest, WeightOneAlwaysChoosesA) {
 	MixMaterial<float> mat;
-	mat.amount = FloatTexVal<float>(1.f);  // weight 1 -> always material A (index 0)
+	// pbrt-v4: amt=1: 1 < u is never true for u in [0,1) -> always mat[1] = index 1
+	mat.amount = FloatTexVal<float>(1.f);
 
 	for (float px = -2.f; px <= 2.f; px += 0.5f) {
 		MaterialEvalContext<float> ctx{};
 		ctx.px = px; ctx.py = 1.7f; ctx.pz = 0.4f;
-		EXPECT_EQ(mat.choose(ctx), 0) << "px=" << px;
+		EXPECT_EQ(mat.choose(ctx), 1) << "px=" << px;
 	}
 }
 

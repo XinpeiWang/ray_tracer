@@ -371,3 +371,158 @@ TEST(ShapesTriangle, GeometricNormalConsistency) {
 	EXPECT_NEAR(ny, 0.0, 1e-10);
 	EXPECT_GT(nz, 0.0);
 }
+
+// ===========================================================================
+// CylinderShape<double> tests
+// pbrt-v4 reference: Cylinder in shapes.h
+// ===========================================================================
+
+static CylinderShape<double> unit_cyl() {
+	return CylinderShape<double>::make(0.0, 0.0, -1.0, 1.0, 1.0);
+}
+
+static const double CYL_PI = 3.14159265358979323846;
+
+TEST(ShapesCylinder, AreaFullCylinder) {
+	// 2*pi * r * h = 2*pi*1*2 = 4*pi
+	auto c = unit_cyl();
+	EXPECT_NEAR(c.area(), 4.0 * CYL_PI, 1e-10);
+}
+
+TEST(ShapesCylinder, AreaPartial) {
+	// Half-sweep, r=2, h=3: pi*2*3 = 6*pi
+	auto c = CylinderShape<double>::make_partial(0, 0, 0, 3, 2, CYL_PI);
+	EXPECT_NEAR(c.area(), 6.0 * CYL_PI, 1e-10);
+}
+
+TEST(ShapesCylinder, PdfAreaIsInverseArea) {
+	auto c = unit_cyl();
+	EXPECT_NEAR(c.pdf_area(), 1.0 / c.area(), 1e-14);
+}
+
+TEST(ShapesCylinder, IntersectFrontFaceHit) {
+	// Ray along +x from (-2,0,0): hits cylinder at t=1, nx=-1
+	auto c = unit_cyl();
+	auto hit = c.intersect(-2.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1e-4, 1e6);
+	ASSERT_TRUE(hit.has_value());
+	EXPECT_NEAR(hit->t,  1.0, 1e-9);
+	EXPECT_NEAR(hit->nx, -1.0, 1e-9);
+	EXPECT_NEAR(hit->ny,  0.0, 1e-9);
+	EXPECT_NEAR(hit->nz,  0.0, 1e-9);
+}
+
+TEST(ShapesCylinder, IntersectRearFaceFromInside) {
+	// Ray from origin along +x: exits at t=1, nx=+1
+	auto c = unit_cyl();
+	auto hit = c.intersect(0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1e-4, 1e6);
+	ASSERT_TRUE(hit.has_value());
+	EXPECT_NEAR(hit->t,  1.0, 1e-9);
+	EXPECT_NEAR(hit->nx, 1.0, 1e-9);
+}
+
+TEST(ShapesCylinder, IntersectPointOnSurface) {
+	auto c = unit_cyl();
+	auto hit = c.intersect(-2.0, 0.5, 0.0, 1.0, 0.0, 0.0, 1e-4, 1e6);
+	ASSERT_TRUE(hit.has_value());
+	double hx = -2.0 + hit->t;
+	double hy = 0.5;
+	EXPECT_NEAR(std::sqrt(hx*hx + hy*hy), 1.0, 1e-9);
+}
+
+TEST(ShapesCylinder, IntersectMissFarFromAxis) {
+	auto c = unit_cyl();
+	auto hit = c.intersect(5.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1e-4, 1e6);
+	EXPECT_FALSE(hit.has_value());
+}
+
+TEST(ShapesCylinder, IntersectMissZClip) {
+	auto c = unit_cyl(); // z in [-1,1]
+	auto hit = c.intersect(-2.0, 0.0, 2.0, 1.0, 0.0, 0.0, 1e-4, 1e6);
+	EXPECT_FALSE(hit.has_value());
+}
+
+TEST(ShapesCylinder, IntersectMissPhiClip) {
+	// Quarter cylinder (phi in [0, pi/2]): both intersections land in the
+	// third/fourth quadrant (phi > pi/2) so neither should register.
+	auto c = CylinderShape<double>::make_partial(0, 0, -1, 1, 1, CYL_PI / 2);
+	// Ray traveling +x through y=-0.5 slice; both hit points have negative y
+	// giving phi in (pi, 2*pi) which is outside [0, pi/2].
+	auto hit = c.intersect(-2.0, -0.5, 0.0, 1.0, 0.0, 0.0, 1e-4, 1e6);
+	EXPECT_FALSE(hit.has_value());
+}
+
+TEST(ShapesCylinder, IntersectMissTMax) {
+	auto c = unit_cyl();
+	auto hit = c.intersect(-2.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1e-4, 0.5);
+	EXPECT_FALSE(hit.has_value());
+}
+
+TEST(ShapesCylinder, UVFrontCenter) {
+	// Ray from (-2,0,0): phi=pi -> u=0.5; z=0 -> v=0.5
+	auto c = unit_cyl();
+	auto hit = c.intersect(-2.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1e-4, 1e6);
+	ASSERT_TRUE(hit.has_value());
+	EXPECT_NEAR(hit->u, 0.5, 1e-9);
+	EXPECT_NEAR(hit->v, 0.5, 1e-9);
+}
+
+TEST(ShapesCylinder, NormalIsOutwardRadial) {
+	auto c = unit_cyl();
+	auto hit = c.intersect(-2.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1e-4, 1e6);
+	ASSERT_TRUE(hit.has_value());
+	double nlen = std::sqrt(hit->nx*hit->nx + hit->ny*hit->ny + hit->nz*hit->nz);
+	EXPECT_NEAR(nlen, 1.0, 1e-9);
+	EXPECT_NEAR(hit->nz, 0.0, 1e-9);
+}
+
+TEST(ShapesCylinder, SamplePdfIsInverseArea) {
+	auto c = unit_cyl();
+	auto s = c.sample(0.3, 0.7);
+	EXPECT_NEAR(s.pdf, 1.0 / c.area(), 1e-12);
+}
+
+TEST(ShapesCylinder, SamplePointOnSurface) {
+	auto c = unit_cyl();
+	auto s = c.sample(0.25, 0.6);
+	double dx = s.px, dy = s.py;
+	EXPECT_NEAR(std::sqrt(dx*dx + dy*dy), 1.0, 1e-9);
+	EXPECT_GE(s.pz, -1.0 - 1e-9);
+	EXPECT_LE(s.pz,  1.0 + 1e-9);
+}
+
+TEST(ShapesCylinder, SampleNormalIsOutward) {
+	auto c = unit_cyl();
+	auto s = c.sample(0.5, 0.5);
+	double nlen = std::sqrt(s.nx*s.nx + s.ny*s.ny + s.nz*s.nz);
+	EXPECT_NEAR(nlen, 1.0, 1e-9);
+	EXPECT_NEAR(s.nz, 0.0, 1e-9);
+}
+
+TEST(ShapesCylinder, SampleFromPdfConsistent) {
+	// sample_from and pdf_from should agree when the sampled point is on the
+	// near (ctx-facing) side so that pdf_from traces back to the same point.
+	// ctx is at (10,0,0); u1=0.02 -> phi?0.13 rad, clearly on the +x face.
+	auto c = unit_cyl();
+	SamplingContext<double> ctx{10.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+	auto ss = c.sample_from(ctx, 0.4, 0.02);
+	ASSERT_GT(ss.pdf, 0.0);
+	double wi_x = ss.px - ctx.px, wi_y = ss.py - ctx.py, wi_z = ss.pz - ctx.pz;
+	double pdf2 = c.pdf_from(ctx, wi_x, wi_y, wi_z);
+	EXPECT_NEAR(ss.pdf, pdf2, 0.01 * (ss.pdf + pdf2) * 0.5 + 1e-10);
+}
+
+TEST(ShapesCylinder, PdfFromZeroForMiss) {
+	auto c = unit_cyl();
+	SamplingContext<double> ctx{0.0, 0.0, 5.0, 0.0, 0.0, 0.0};
+	double pdf = c.pdf_from(ctx, 0.0, 0.0, 1.0); // pointing away
+	EXPECT_EQ(pdf, 0.0);
+}
+
+TEST(ShapesCylinder, SampleIsDeterministic) {
+	auto c = unit_cyl();
+	auto s1 = c.sample(0.123, 0.456);
+	auto s2 = c.sample(0.123, 0.456);
+	EXPECT_EQ(s1.px, s2.px);
+	EXPECT_EQ(s1.py, s2.py);
+	EXPECT_EQ(s1.pz, s2.pz);
+}

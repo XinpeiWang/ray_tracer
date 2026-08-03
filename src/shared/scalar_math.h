@@ -411,7 +411,7 @@ CPU_GPU Float NewtonBisection(Float x0, Float x1, Func f,
 	if (std::abs(fx1) < fEps) return x1;
 	bool startIsNegative = (fx0 < Float(0));
 	Float xMid = x0 + (x1 - x0) * (-fx0) / (fx1 - fx0);
-	while (true) {
+	for (int iter = 0; iter < 64; ++iter) {
 		if (!(x0 < xMid && xMid < x1))
 			xMid = (x0 + x1) / Float(2);
 		auto [fMid, dfMid] = f(xMid);
@@ -419,8 +419,9 @@ CPU_GPU Float NewtonBisection(Float x0, Float x1, Func f,
 		else                                       x1 = xMid;
 		if ((x1 - x0) < xEps || std::abs(fMid) < fEps)
 			return xMid;
-		xMid -= fMid / dfMid;
+		xMid = (dfMid != Float(0)) ? xMid - fMid / dfMid : (x0 + x1) / Float(2);
 	}
+	return (x0 + x1) / Float(2); // fallback if max iterations reached
 }
 
 // ===========================================================================

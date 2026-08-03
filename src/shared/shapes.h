@@ -953,28 +953,230 @@ struct TriangleShape {
 			p2x, p2y, p2z,
 			ctx.px, ctx.py, ctx.pz);
 
-		if (sa < solid_angle_min || sa > solid_angle_max) {
-			// Area PDF -> solid-angle: intersect ray and apply Jacobian
-			T wi_len = len3(wi_dx, wi_dy, wi_dz);
-			if (wi_len == T(0)) return T(0);
-			auto hit = intersect(ctx.px, ctx.py, ctx.pz,
-								 wi_dx/wi_len, wi_dy/wi_len, wi_dz/wi_len,
-								 T(1e-4), std::numeric_limits<T>::max());
-			if (!hit) return T(0);
-			T dist = hit->t;
-			T cos_theta_n = std::abs(dot3(hit->nx, hit->ny, hit->nz,
-										  -wi_dx/wi_len, -wi_dy/wi_len, -wi_dz/wi_len));
-			if (cos_theta_n == T(0)) return T(0);
-			return pdf_area() * dist*dist / cos_theta_n;
-		}
+			if (sa < solid_angle_min || sa > solid_angle_max) {
+					// Area PDF -> solid-angle: intersect ray and apply Jacobian
+					T wi_len = len3(wi_dx, wi_dy, wi_dz);
+					if (wi_len == T(0)) return T(0);
+					auto hit = intersect(ctx.px, ctx.py, ctx.pz,
+										 wi_dx/wi_len, wi_dy/wi_len, wi_dz/wi_len,
+										 T(1e-4), std::numeric_limits<T>::max());
+					if (!hit) return T(0);
+					T dist = hit->t;
+					T cos_theta_n = std::abs(dot3(hit->nx, hit->ny, hit->nz,
+												  -wi_dx/wi_len, -wi_dy/wi_len, -wi_dz/wi_len));
+					if (cos_theta_n == T(0)) return T(0);
+					return pdf_area() * dist*dist / cos_theta_n;
+				}
 
-		// Solid-angle sampling: verify wi hits triangle, then return 1/sa
-		T wi_len = len3(wi_dx, wi_dy, wi_dz);
-		if (wi_len == T(0)) return T(0);
-		auto hit = intersect(ctx.px, ctx.py, ctx.pz,
-							 wi_dx/wi_len, wi_dy/wi_len, wi_dz/wi_len,
-							 T(1e-4), std::numeric_limits<T>::max());
-		if (!hit) return T(0);
-		return (sa > T(0)) ? T(1) / sa : T(0);
-	}
-};
+				// Solid-angle sampling: verify wi hits triangle, then return 1/sa
+				T wi_len = len3(wi_dx, wi_dy, wi_dz);
+				if (wi_len == T(0)) return T(0);
+				auto hit = intersect(ctx.px, ctx.py, ctx.pz,
+									 wi_dx/wi_len, wi_dy/wi_len, wi_dz/wi_len,
+									 T(1e-4), std::numeric_limits<T>::max());
+				if (!hit) return T(0);
+				return (sa > T(0)) ? T(1) / sa : T(0);
+			}
+		};
+
+
+		// ===========================================================================
+		// CylinderShape<T>
+		// ===========================================================================
+		//
+		// Axis-aligned cylinder along the Z axis, centered at (cx, cy, *).
+		// Clipped to [z_min, z_max] and to an azimuthal sweep phi_max (radians).
+		//
+		// Reference: pbrt-v4 Cylinder (shapes.h / shapes.cpp)
+		//
+		// API matches SphereShape / DiskShape:
+		//   intersect(rox,roy,roz, rdx,rdy,rdz, t_min, t_max)
+		//   area()
+		//   pdf_area()
+		//   sample(u0, u1)           -- area-uniform
+		//   sample_from(ctx, u0, u1) -- solid-angle from shading point
+		//   pdf_from(ctx, wi_*)      -- solid-angle PDF
+		// ===========================================================================
+
+		template<typename T>
+		struct CylinderShape {
+			T cx, cy;       // axis center x/y (the axis runs parallel to Z through (cx,cy))
+			T z_min, z_max; // z extent
+			T radius;       // cylinder radius
+			T phi_max;      // azimuthal sweep in radians (2*pi for full cylinder)
+
+			CPU_GPU static CylinderShape make(T cx, T cy, T z_min, T z_max, T radius) {
+				const T pi2 = T(2) * T(3.14159265358979323846);
+				return CylinderShape{cx, cy, z_min, z_max, radius, pi2};
+			}
+
+			CPU_GPU static CylinderShape make_partial(T cx, T cy, T z_min, T z_max,
+													  T radius, T phi_max_rad) {
+				return CylinderShape{cx, cy, z_min, z_max, radius, phi_max_rad};
+			}
+
+			// -----------------------------------------------------------------------
+			// Area
+			// pbrt-v4: (zMax - zMin) * radius * phiMax
+			// -----------------------------------------------------------------------
+			CPU_GPU T area() const { return (z_max - z_min) * radius * phi_max; }
+			CPU_GPU T pdf_area() const { return T(1) / area(); }
+
+			// -----------------------------------------------------------------------
+			// Intersection
+			// pbrt-v4 Cylinder::BasicIntersect -- object-space quadratic:
+			//   a = dx^2 + dy^2,  b = 2*(dx*ox + dy*oy),  c = ox^2 + oy^2 - r^2
+			// Discriminant computed via stable displaced-centre formula.
+			// -----------------------------------------------------------------------
+			CPU_GPU std::optional<ShapeHit<T>>
+			intersect(T rox, T roy, T roz,
+					  T rdx, T rdy, T rdz,
+					  T t_min, T t_max) const
+			{
+				using namespace shapes_detail;
+
+				// Shift ray origin to cylinder-axis frame
+				T ox = rox - cx, oy = roy - cy, oz = roz;
+				T dx = rdx,       dy = rdy,       dz = rdz;
+
+				T a = dx*dx + dy*dy;
+				T b = T(2) * (dx*ox + dy*oy);
+				T c = ox*ox + oy*oy - radius*radius;
+
+				// Degenerate: ray parallel to cylinder axis
+				if (a == T(0)) return {};
+
+				T t0, t1;
+				if (!solve_quadratic(a, b, c, t0, t1)) return {};
+
+				// Pick the nearest valid root
+				auto try_root = [&](T t) -> std::optional<ShapeHit<T>> {
+					if (t < t_min || t > t_max) return {};
+					T hx = ox + t*dx;
+					T hy = oy + t*dy;
+					T hz = oz + t*dz;
+
+					// z-clip
+					if (hz < z_min || hz > z_max) return {};
+
+					// phi-clip
+					T phi = std::atan2(hy, hx);
+					if (phi < T(0)) phi += T(2) * T(3.14159265358979323846);
+					if (phi > phi_max) return {};
+
+					// Reproject hit point to exact cylinder surface (remove floating-point drift)
+					T hit_rad = std::sqrt(hx*hx + hy*hy);
+					if (hit_rad > T(0)) { hx *= radius/hit_rad; hy *= radius/hit_rad; }
+
+					// (u, v) parameterization matching pbrt-v4
+					T u_coord = phi / phi_max;
+					T v_coord = (hz - z_min) / (z_max - z_min);
+
+					// Outward normal in world space (cylinder axis is Z, center at cx,cy)
+					T nx = hx / radius;
+					T ny = hy / radius;
+					T nz = T(0);
+
+					ShapeHit<T> hit;
+					hit.t  = t;
+					hit.nx = nx; hit.ny = ny; hit.nz = nz;
+					hit.u  = u_coord; hit.v = v_coord;
+					return hit;
+				};
+
+				auto h = try_root(t0);
+				if (h) return h;
+				return try_root(t1);
+			}
+
+			// -----------------------------------------------------------------------
+			// Area-uniform surface sample
+			// pbrt-v4 Cylinder::Sample(Point2f u):
+			//   z   = Lerp(u[0], zMin, zMax)
+			//   phi = u[1] * phiMax
+			//   p   = (r*cos(phi), r*sin(phi), z)
+			//   n   = Normalize((px, py, 0))
+			//   pdf = 1 / Area()
+			// -----------------------------------------------------------------------
+			CPU_GPU ShapeSample<T> sample(T u0, T u1) const {
+				T z   = z_min + u0 * (z_max - z_min);   // Lerp
+				T phi = u1 * phi_max;
+
+				T lx  = radius * std::cos(phi);
+				T ly  = radius * std::sin(phi);
+
+				// Reprojection (remove drift, same as pbrt-v4)
+				T hit_rad = std::sqrt(lx*lx + ly*ly);
+				if (hit_rad > T(0)) { lx *= radius/hit_rad; ly *= radius/hit_rad; }
+
+				// World-space position
+				T px_w = cx + lx;
+				T py_w = cy + ly;
+				T pz_w = z;
+
+				// Outward normal
+				T nx = lx / radius, ny = ly / radius, nz_val = T(0);
+
+				T u_coord = phi / phi_max;
+				T v_coord = (z - z_min) / (z_max - z_min);
+
+				return ShapeSample<T>{px_w, py_w, pz_w,
+									  nx, ny, nz_val,
+									  u_coord, v_coord,
+									  pdf_area()};
+			}
+
+			// -----------------------------------------------------------------------
+			// Solid-angle sample from shading point
+			// pbrt-v4 Cylinder::Sample(const ShapeSampleContext&, Point2f u):
+			//   Sample uniformly by area, convert PDF to solid angle.
+			// -----------------------------------------------------------------------
+			CPU_GPU ShapeSample<T> sample_from(const SamplingContext<T>& ctx,
+											   T u0, T u1) const {
+				ShapeSample<T> ss = sample(u0, u1);
+
+				T wi_x = ss.px - ctx.px;
+				T wi_y = ss.py - ctx.py;
+				T wi_z = ss.pz - ctx.pz;
+				T dist2 = wi_x*wi_x + wi_y*wi_y + wi_z*wi_z;
+				if (dist2 == T(0)) { ss.pdf = T(0); return ss; }
+
+				T inv_dist = T(1) / std::sqrt(dist2);
+				T wix = wi_x * inv_dist;
+				T wiy = wi_y * inv_dist;
+				T wiz = wi_z * inv_dist;
+
+				using namespace shapes_detail;
+				T cos_theta = std::abs(dot3(ss.nx, ss.ny, ss.nz, -wix, -wiy, -wiz));
+				if (cos_theta == T(0)) { ss.pdf = T(0); return ss; }
+
+				// pdf_area * dist^2 / |cos_theta|
+				ss.pdf = pdf_area() * dist2 / cos_theta;
+				return ss;
+			}
+
+			// -----------------------------------------------------------------------
+			// Solid-angle PDF
+			// pbrt-v4 Cylinder::PDF(const ShapeSampleContext&, Vector3f wi):
+			//   Intersect ray, then pdf_area * dist^2 / |cos_theta|
+			// -----------------------------------------------------------------------
+			CPU_GPU T pdf_from(const SamplingContext<T>& ctx,
+							   T wi_dx, T wi_dy, T wi_dz) const {
+				using namespace shapes_detail;
+				T wi_len = std::sqrt(wi_dx*wi_dx + wi_dy*wi_dy + wi_dz*wi_dz);
+				if (wi_len == T(0)) return T(0);
+				T wix = wi_dx/wi_len, wiy = wi_dy/wi_len, wiz = wi_dz/wi_len;
+
+				auto hit = intersect(ctx.px, ctx.py, ctx.pz,
+									 wix, wiy, wiz,
+									 T(1e-4), std::numeric_limits<T>::max());
+				if (!hit) return T(0);
+
+				T dist2 = sq(hit->t);
+				T cos_theta = std::abs(dot3(hit->nx, hit->ny, hit->nz, -wix, -wiy, -wiz));
+				if (cos_theta == T(0)) return T(0);
+
+				T pdf = pdf_area() * dist2 / cos_theta;
+				return std::isfinite(pdf) ? pdf : T(0);
+			}
+		};

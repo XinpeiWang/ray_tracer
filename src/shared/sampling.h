@@ -960,3 +960,42 @@ CPU_GPU void SampleUniformHemisphereConcentric(double u0, double u1,
 	wy = std::sin(theta) * xy_scale;
 }
 
+// ===========================================================================
+// Cosine-weighted hemisphere sampling (no out_pdf overload)
+// SampleUniformDiskPolar, InvertUniformDiskPolarSample,
+// SampleUniformDiskConcentric, and InvertUniformDiskConcentricSample are
+// defined in sampling_sphere_cone.h.
+// pbrt-v4: SampleCosineHemisphere / CosineHemispherePDF (util/sampling.h)
+// ===========================================================================
+
+// Sample a cosine-weighted direction on the upper hemisphere via concentric disk.
+// pbrt-v4: SampleCosineHemisphere
+template<typename T>
+CPU_GPU void SampleCosineHemisphere(T u0, T u1,
+									T& wx, T& wy, T& wz) {
+	T dx, dy;
+	SampleUniformDiskConcentric(u0, u1, dx, dy);
+	T z = std::sqrt(std::max(T(0), T(1) - dx*dx - dy*dy));
+	wx = dx; wy = dy; wz = z;
+}
+
+// ===========================================================================
+// Power-heuristic for MIS (Multiple Importance Sampling)
+// pbrt-v4: PowerHeuristic (util/sampling.h)
+// ===========================================================================
+
+// Balance heuristic with beta=2: w = (n_f * f)^2 / ((n_f*f)^2 + (n_g*g)^2)
+// pbrt-v4: if (IsInf(Sqr(f))) return 1 -- handles the case where one PDF
+// dominates so heavily it overflows float.
+CPU_GPU inline float PowerHeuristic(int nf, float f_pdf, int ng, float g_pdf) {
+	float f = static_cast<float>(nf) * f_pdf;
+	float g = static_cast<float>(ng) * g_pdf;
+	float f2 = f * f;
+	if (std::isinf(f2)) return 1.f;
+	return f2 / (f2 + g * g);
+}
+
+// Note: LogisticPDF, SampleLogistic, TrimmedLogisticPDF, SampleTrimmedLogistic,
+// InvertTrimmedLogisticSample, SmoothStepPDF, SampleSmoothStep,
+// InvertSmoothStepSample, and VarianceEstimator are defined in
+// scalar_distributions.h (which includes this file).

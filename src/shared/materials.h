@@ -30,6 +30,7 @@
 #include <algorithm>
 #include "bxdfs.h"
 #include "bssrdf.h"
+#include "pbrt_hash.h"
 
 // ---------------------------------------------------------------------------
 // MaterialEvalContext
@@ -594,9 +595,8 @@ struct HairMaterial {
 	FTex beta_m  = FTex(T(0.3));
 	FTex beta_n  = FTex(T(0.3));
 	FTex alpha   = FTex(T(2.0));  // scale tilt in degrees
-
-	// Cross-section offset h in [-1,1]; 0 = center (use RNG in a real integrator)
-	T h = T(0);
+	// Note: h (cross-section offset) is computed from ctx.v at evaluation
+	// time: h = -1 + 2*v, mirroring pbrt-v4 HairMaterial::GetBxDF().
 
 	// -----------------------------------------------------------------------
 	// SigmaAFromConcentration (pbrt-v4 bxdfs.cpp HairBxDF::SigmaAFromConcentration)
@@ -654,6 +654,8 @@ struct HairMaterial {
 			sr = sg = sb = T(0);
 		}
 
+		// Offset along fiber width: pbrt-v4 h = -1 + 2 * ctx.uv[1] (v coord)
+		T h = T(-1) + T(2) * ctx.v;
 		return HairBxDF<T>(h, e, sr, sg, sb, bm, bn, a);
 	}
 
@@ -681,24 +683,21 @@ template <typename T, typename FTex = FloatTexVal<T>>
 struct MixMaterial {
 	FTex amount;   // mixing weight in [0,1]: fraction going to material A
 
-	// Simple deterministic hash from pbrt-v4 MixMaterial::ChooseMaterial
+	// Simple deterministic hash from pbrt-v4 MixMaterial::ChooseMaterial.
 	// Returns 0 to select material A, 1 to select material B.
+	//
+	// pbrt-v4: u = HashFloat(p, wo); return (amt < u) ? mat[0] : mat[1]
+	//   -> amt=0: almost always mat[0]; amt=1: always mat[1].
+	// Our mapping: index 0 = mat[0] (chosen when amount is low), 1 = mat[1].
 	int choose(const MaterialEvalContext<T>& ctx) const {
 		T w = clamp01(eval_float_tex(amount, ctx));
-		// Deterministic hash of the shading point (pbrt-v4 uses HashFloat)
-		// We use a simple float hash over px,py,pz to stay allocator-free.
-		auto hash_float = [](T px, T py, T pz) -> T {
-			// Murmur-inspired mix of three floats -> [0,1)
-			union { float f; unsigned u; } ux, uy, uz;
-			ux.f = static_cast<float>(px);
-			uy.f = static_cast<float>(py);
-			uz.f = static_cast<float>(pz);
-			unsigned h = ux.u ^ (uy.u * 2654435761u) ^ (uz.u * 805459861u);
-			h ^= h >> 17; h *= 0xbf085c78u; h ^= h >> 11;
-			return static_cast<T>(h) * static_cast<T>(1.0 / 4294967296.0);
-		};
-		T u = hash_float(ctx.px, ctx.py, ctx.pz);
-		return (u < w) ? 0 : 1;
+		// Hash position + outgoing direction, matching pbrt-v4 HashFloat(ctx.p, ctx.wo)
+		float u = HashFloat(ctx.px, ctx.py, ctx.pz,
+							ctx.wo_x, ctx.wo_y, ctx.wo_z);
+		// pbrt-v4: (amt < u) ? mat[0] : mat[1]
+		// w < u  -> index 0 (low weight selects A = mat[0])
+		// w >= u -> index 1
+		return (static_cast<float>(w) < u) ? 0 : 1;
 	}
 
 	static constexpr bool has_subsurface_scattering() { return false; }

@@ -184,16 +184,18 @@ TEST(ProceduralTextures, Checkerboard2D_CellParityAlternates) {
 }
 
 TEST(ProceduralTextures, Checkerboard2D_BlurredBoundary) {
-	// At a wide filter width, the checker should approach 0.5
+	// At a wide filter width in both s and t, the checker should approach 0.5
 	CheckerboardTexture<float> tex;
 	tex.mapping = MakeUV2D();
 	tex.tex0 = 0.f;
 	tex.tex1 = 1.f;
 	TextureEvalContext ctx = MakeCtx(0,0,0, 0.5f, 0.5f);
-	ctx.dpdx = {2.f, 0.f, 0.f};   // very large footprint
-	ctx.dpdy = {0.f, 2.f, 0.f};
+	// UVMapping maps: dsdx=su*dudx, dtdy=sv*dvdy.
+	// Set both axes wide so bf(...) converges toward 0 in both dimensions.
+	ctx.dudx = 5.f; ctx.dudy = 0.f;
+	ctx.dvdx = 0.f; ctx.dvdy = 5.f;
 	float w = tex.Evaluate(ctx);
-	// Should be near 0.5 when heavily blurred
+	// Both axes wide -> product of bf() near 0 -> weight near 0.5
 	EXPECT_NEAR(w, 0.5f, 0.1f);
 }
 

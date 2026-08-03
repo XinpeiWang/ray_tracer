@@ -12,7 +12,7 @@
 
 #include <gtest/gtest.h>
 #include <cmath>
-#include "../../src/shared/sampling.h"
+#include "../../src/shared/sampling_sphere_cone.h"
 
 static constexpr double kPi  = 3.14159265358979323846;
 static constexpr double kEps = 1e-9;
