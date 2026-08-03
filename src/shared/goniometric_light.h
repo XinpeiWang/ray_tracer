@@ -90,6 +90,9 @@ struct GoniometricLight {
 	// -----------------------------------------------------------------------
 	// Factory
 	// -----------------------------------------------------------------------
+	// NOTE: pbrt-v4 requires a square goniometric image (nu == nv) so that
+	// the equal-area sphere↔square mapping is undistorted. Providing a
+	// non-square image will silently stretch the directional profile.
 	static GoniometricLight make(
 			T px, T py, T pz,
 			const T* world_to_light_mat,   // row-major 3×3
@@ -196,18 +199,21 @@ struct GoniometricLight {
 
 	// -----------------------------------------------------------------------
 	// power: approximate total emitted power (solid-angle integral over sphere).
-	// Mirrors pbrt-v4 GoniometricLight::Phi.
-	// Power ≈ scale * avg(image) * 4π * |Iemit|
+	// Mirrors pbrt-v4 GoniometricLight::Phi:
+	//   Phi = scale * Iemit * 4π * sum(image) / (nu*nv)
+	//       = scale * Iemit * 4π * avg(image)
+	// For our scalar RGB representation we use Iavg = (ir+ig+ib)/3 as a
+	// luminance proxy, matching the spirit of pbrt-v4's per-wavelength integral.
 	// -----------------------------------------------------------------------
 	CPU_GPU T power() const {
 		if (image.empty()) return T(0);
 		double sum = 0.0;
-		for (double v : image) sum += v;
-		double avg = sum / (double)(nu * nv);
-		// |Iemit| approximated as average of RGB channels
+		for (double val : image) sum += val;
+		double avg_image = sum / (double)(nu * nv);
+		// Scalar luminance proxy for Iemit (pbrt-v4 uses per-wavelength DenselySampledSpectrum)
 		double Iavg = ((double)ir + (double)ig + (double)ib) / 3.0;
 		const double pi4 = 4.0 * 3.14159265358979323846;
-		return (T)(scale * Iavg * pi4 * avg);
+		return (T)(scale * Iavg * pi4 * avg_image);
 	}
 
 	// -----------------------------------------------------------------------
