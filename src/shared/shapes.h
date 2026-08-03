@@ -1365,8 +1365,8 @@ struct TriangleShape {
 						// Ray in ray space is origin=(0,0,0) dir=(0,0,|d|)
 						float rayLen = std::sqrt(_dot3(rdF,rdF));
 						// Ray AABB: x,y in [-w,w], z in [0, rayLen*t_max]
-						if (bbMax[0] < -0.5f*maxWidth || bbMin[0] > 0.5f*maxWidth ||
-							bbMax[1] < -0.5f*maxWidth || bbMin[1] > 0.5f*maxWidth ||
+						if (bbMax[0] < 0.f || bbMin[0] > 0.f ||
+							bbMax[1] < 0.f || bbMin[1] > 0.f ||
 							bbMax[2] < 0.f             || bbMin[2] > rayLen * float(t_max))
 							return false;
 
@@ -1397,7 +1397,7 @@ struct TriangleShape {
 						T tBest = t_max;
 						bool hit = _recursive_intersect(
 							ro, rdF, rayLen,
-							cp, Minv, cpW,
+							cp, M, Minv, cpW,
 							float(uMin), float(uMax),
 							float(t_min), float(t_max),
 							maxDepth,
@@ -1550,7 +1550,8 @@ struct TriangleShape {
 					CPU_GPU bool _recursive_intersect(
 						const float ro[3], const float rd[3], float rayLen,
 						const float cp[4][3],      // control points in ray space
-						const float Minv[4][4],    // ray-space -> world transform
+						const float M[4][4],       // world->ray transform  (rayFromObject)
+						const float Minv[4][4],    // ray->world transform  (objectFromRay)
 						const float cpW[4][3],     // control points in world space (for normals)
 						float u0, float u1,
 						float t_min, float t_max,
@@ -1581,13 +1582,13 @@ struct TriangleShape {
 									bbMin[k] -= 0.5f*maxW;
 									bbMax[k] += 0.5f*maxW;
 								}
-								if (bbMax[0] < -0.5f*maxW || bbMin[0] > 0.5f*maxW ||
-									bbMax[1] < -0.5f*maxW || bbMin[1] > 0.5f*maxW ||
+								if (bbMax[0] < 0.f || bbMin[0] > 0.f ||
+									bbMax[1] < 0.f || bbMin[1] > 0.f ||
 									bbMax[2] < 0.f         || bbMin[2] > rayLen * float(tBest))
 									continue;
 
 								bool childHit = _recursive_intersect(
-									ro, rd, rayLen, child, Minv, cpW,
+								ro, rd, rayLen, child, M, Minv, cpW,
 									u[seg], u[seg+1], t_min, t_max,
 									depth - 1, tBest, out);
 								if (childHit) {
@@ -1665,15 +1666,17 @@ struct TriangleShape {
 									: 0.5f - ptCurveDist / hitWidth;
 
 								// dpdu: tangent along curve at hit point (world space)
-								// Evaluate using world-space control points
+								// cpW covers [u0,u1]; remap global u -> local t in [0,1]
+								float uLocal = (u1 > u0) ? (u - u0) / (u1 - u0) : 0.f;
+								uLocal = uLocal < 0.f ? 0.f : (uLocal > 1.f ? 1.f : uLocal);
 								float pc_w[3], dpdu_ray[3];
-								_eval_bezier(cpW, u, pc_w, dpdu_ray);
+								_eval_bezier(cpW, uLocal, pc_w, dpdu_ray);
 
 								// dpdv: across-width direction
-								// Compute in ray space then transform to world
-								// objectFromRay is Minv; dpdu in ray space ≈ objectFromRay(dpdu_plane)
+								// pbrt-v4: dpduPlane = objectFromRay.ApplyInverse(dpdu)
+								//   ApplyInverse on vector applies forward (world->ray) M
 								float dpduPlane[3];
-								_transform_vector(Minv, dpdu_ray, dpduPlane);
+								_transform_vector(M, dpdu_ray, dpduPlane);
 								float len_dpdu = _len3(dpduPlane);
 								if (len_dpdu == 0.f) len_dpdu = 1.f;
 								float dpdvPlane[3] = {
