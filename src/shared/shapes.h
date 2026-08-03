@@ -1677,19 +1677,24 @@ struct TriangleShape {
 								//   ApplyInverse on vector applies forward (world->ray) M
 								float dpduPlane[3];
 								_transform_vector(M, dpdu_ray, dpduPlane);
-								float len_dpdu = _len3(dpduPlane);
-								if (len_dpdu == 0.f) len_dpdu = 1.f;
+								// pbrt-v4: Normalize(Vector3f(-dpduPlane.y, dpduPlane.x, 0))
+								// uses XY-only magnitude, not full 3D length
+								float len_dpduXY = std::sqrt(dpduPlane[0]*dpduPlane[0] + dpduPlane[1]*dpduPlane[1]);
+								if (len_dpduXY == 0.f) len_dpduXY = 1.f;
 								float dpdvPlane[3] = {
-									-dpduPlane[1] / len_dpdu * hitWidth,
-									 dpduPlane[0] / len_dpdu * hitWidth,
+									-dpduPlane[1] / len_dpduXY * hitWidth,
+									 dpduPlane[0] / len_dpduXY * hitWidth,
 									 0.f
 								};
 								if (type == CurveType::Cylinder) {
-									// Rotate dpdvPlane around dpduPlane by theta = lerp(v,-90,90)
+									// Rotate dpdvPlane around dpduPlane by -theta
+									// pbrt-v4: Rotate(-theta, dpduPlane) where theta = Lerp(v,-90,90)
 									float theta = v * 180.f - 90.f;
-									float rad   = theta * 3.14159265358979323846f / 180.f;
+									float rad   = -theta * 3.14159265358979323846f / 180.f;
 									float cosT  = std::cos(rad), sinT = std::sin(rad);
-									// Rodrigues rotation around unit dpduPlane
+									// Rodrigues rotation around unit axis along dpduPlane
+									float len_dpdu = _len3(dpduPlane);
+									if (len_dpdu == 0.f) len_dpdu = 1.f;
 									float ax = dpduPlane[0]/len_dpdu,
 										  ay = dpduPlane[1]/len_dpdu,
 										  az = dpduPlane[2]/len_dpdu;
