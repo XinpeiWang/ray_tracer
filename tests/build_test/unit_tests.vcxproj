@@ -486,6 +486,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="C:\Users\xinpe\source\repos\ray_tracer\tests\unit\triangle_tests_patched.cpp" />
     <ClCompile Include="C:\Users\xinpe\source\repos\ray_tracer\tests\unit\bvh_light_sampler_tests.cpp" />
     <ClCompile Include="C:\Users\xinpe\source\repos\ray_tracer\tests\unit\loop_subdivide_tests.cpp" />
+    <ClCompile Include="C:\Users\xinpe\source\repos\ray_tracer\tests\unit\bilinear_patch_tests.cpp" />
     <ClCompile Include="C:\Users\xinpe\source\repos\ray_tracer\tests\unit\texture_mapping_tests.cpp" />
     <ClCompile Include="C:\Users\xinpe\source\repos\ray_tracer\tests\unit\color_encoding_tests.cpp" />
     <ClCompile Include="C:\Users\xinpe\source\repos\ray_tracer\tests\unit\sampled_spectrum_tests.cpp" />
