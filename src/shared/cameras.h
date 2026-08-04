@@ -776,12 +776,12 @@ private:
         {
             T ro_ox, ro_oy, ro_oz, ro_dx, ro_dy, ro_dz;
             bool ok = trace_lenses_from_scene(
-                x, T(0), front_z + T(1),
+                x, T(0), front_z + T(0.001),
                 T(0), T(0), T(-1),
                 ro_ox, ro_oy, ro_oz, ro_dx, ro_dy, ro_dz);
             if (ok)
                 compute_cardinal_points(
-                    x, T(0), front_z+T(1), T(0), T(0), T(-1),
+                    x, T(0), front_z+T(0.001), T(0), T(0), T(-1),
                     ro_ox, ro_oy, ro_oz, ro_dx, ro_dy, ro_dz,
                     pz0, fz0);
         }
@@ -794,12 +794,12 @@ private:
         {
             T rs_ox, rs_oy, rs_oz, rs_dx, rs_dy, rs_dz;
             T w = trace_lenses_from_film(
-                x, T(0), orig_rear - T(1),
+                x, T(0), orig_rear - T(0.001),
                 T(0), T(0), T(1),
                 rs_ox, rs_oy, rs_oz, rs_dx, rs_dy, rs_dz);
             if (w != T(0))
                 compute_cardinal_points(
-                    x, T(0), orig_rear-T(1), T(0), T(0), T(1),
+                    x, T(0), orig_rear-T(0.001), T(0), T(0), T(1),
                     rs_ox, rs_oy, rs_oz, rs_dx, rs_dy, rs_dz,
                     pz1, fz1);
         }
@@ -851,7 +851,9 @@ private:
             }
         }
         if (!pupil.degenerate) {
-            T expand = T(2)*(projMax-projMin)/std::sqrt(T(nSamples));
+            // pbrt-v4: Expand(bounds, 2*Length(projRearBounds.Diagonal())/sqrt(nSamples))
+            // Diagonal of the projection square = sqrt(2)*(projMax-projMin).
+            T expand = T(2)*std::sqrt(T(2))*(projMax-projMin)/std::sqrt(T(nSamples));
             pupil.xMin-=expand; pupil.xMax+=expand;
             pupil.yMin-=expand; pupil.yMax+=expand;
         }
