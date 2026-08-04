@@ -175,6 +175,78 @@ TEST(CurveShape, RibbonHit) {
 }
 
 // ===========================================================================
+// Sampling API -- pdf_area, sample, sample_from, pdf_from
+// ===========================================================================
+
+TEST(CurveShape, PdfAreaIsInverseArea) {
+	CS c = make_flat_straight();
+	double a = c.area();
+	ASSERT_GT(a, 0.0);
+	EXPECT_NEAR(c.pdf_area(), 1.0 / a, 1e-10);
+}
+
+TEST(CurveShape, SampleReturnsPointNearSpine) {
+	// The sample point should lie near the curve spine (within half-width)
+	CS c = make_flat_straight(); // straight along X in [0,1], width=0.1
+	auto ss = c.sample(0.5, 0.5); // t=0.5 -> spine at (0.5,0,0), v=0.5 -> centre
+	// spine X is ~0.5; Y and Z come from dpdv offset, should be small
+	EXPECT_NEAR(ss.px, 0.5, 0.1);
+	EXPECT_GT(ss.pdf, 0.0);
+}
+
+TEST(CurveShape, SampleNormalIsUnitLength) {
+	CS c = make_flat_straight();
+	for (double t : {0.1, 0.5, 0.9}) {
+		auto ss = c.sample(t, 0.5);
+		double len2 = ss.nx*ss.nx + ss.ny*ss.ny + ss.nz*ss.nz;
+		EXPECT_NEAR(len2, 1.0, 1e-4);
+	}
+}
+
+TEST(CurveShape, SamplePdfPositive) {
+	CS c = make_flat_straight();
+	auto ss = c.sample(0.3, 0.7);
+	EXPECT_GT(ss.pdf, 0.0);
+}
+
+TEST(CurveShape, SampleFromPdfPositive) {
+	CS c = make_flat_straight();
+	// Curve is along X axis; normal points along Z, so offset context along Z
+	SamplingContext<double> ctx{0.5, 0.0, 2.0,  0.0, 0.0, 1.0};
+	auto ss = c.sample_from(ctx, 0.5, 0.5);
+	EXPECT_GT(ss.pdf, 0.0);
+}
+
+TEST(CurveShape, SampleFromConvertsToSolidAngle) {
+	// solid-angle pdf should differ from area pdf when distance > 0
+	CS c = make_flat_straight();
+	SamplingContext<double> ctx{0.5, 0.0, 2.0,  0.0, 0.0, 1.0};
+	auto ss = c.sample_from(ctx, 0.5, 0.5);
+	// area pdf
+	double area_pdf = c.pdf_area();
+	// solid angle pdf != area_pdf (they're related by dist^2/cos)
+	EXPECT_NE(ss.pdf, area_pdf);
+}
+
+TEST(CurveShape, PdfFromZeroForMiss) {
+	CS c = make_flat_straight();
+	// Ray direction pointing away from the curve entirely
+	SamplingContext<double> ctx{0.5, 5.0, 0.0,  0.0, 1.0, 0.0};
+	// Direction pointing sideways (misses the thin curve)
+	double pdf = c.pdf_from(ctx, 0.0, 0.0, 1.0);
+	// The ray (0,5,0)->(0,0,1) doesn't intersect the X-axis curve
+	EXPECT_EQ(pdf, 0.0);
+}
+
+TEST(CurveShape, SampleIsDeterministic) {
+	CS c = make_flat_straight();
+	auto ss1 = c.sample(0.4, 0.6);
+	auto ss2 = c.sample(0.4, 0.6);
+	EXPECT_EQ(ss1.px, ss2.px);
+	EXPECT_EQ(ss1.py, ss2.py);
+	EXPECT_EQ(ss1.pz, ss2.pz);
+}
+// ===========================================================================
 // Sub-interval curve (uMin != 0 or uMax != 1)
 // ===========================================================================
 
