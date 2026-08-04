@@ -42,10 +42,16 @@
 //
 //     // Sample a light for direct illumination (NEE).
 //     // Returns false if no lights. Fills BDPTLightSample<T>.
+//     // IMPORTANT: ls.pdf must be the product of the light-selection
+//     // probability and the per-light sampling PDF, i.e.
+//     //   ls.pdf = p_select * p_sample
+//     // This matches pbrt-v4's (sampledLight->p * ls->pdf) division.
 //     bool SampleLight(T u, const T ref_p[3],
 //                      BDPTLightSample<T>& ls) const;
 //
 //     // BSDF evaluation f(wo, wi) * |cos(wi, n)|.
+//     // NOTE: Unlike pbrt-v4's bsdf.f() (which returns BSDF value only),
+//     // this API pre-multiplies by |cos(wi, shading_n)| for convenience.
 //     void BSDFf(int bsdf_id, const T wo[3], const T wi[3],
 //                const T n[3], T out[3]) const;
 //
@@ -270,18 +276,18 @@ CPU_GPU void SimplePathLi(
 				new_dir[1] = lx*ty + ly*by + lz*n[1];
 				new_dir[2] = lx*tz + ly*bz + lz*n[2];
 			} else {
-				// Cosine-weighted hemisphere (local)
-				T cos_t = std::sqrt(u2);
-				T sin_t = std::sqrt(std::max(T(0), T(1) - u2));
+				// Uniform hemisphere sampling (mirrors pbrt-v4 SampleUniformHemisphere /
+				// UniformHemispherePDF). pdf = 1/(2*pi) for all directions.
+				// SampleUniformHemisphere: cos_theta = u[0] (maps [0,1) -> [0,1) upper hemi)
+				T cos_t = u2;   // in [0,1) -> upper hemisphere relative to n
+				T sin_t = std::sqrt(std::max(T(0), T(1) - cos_t * cos_t));
 				T phi   = T(2) * kPi * u1;
 				T lx = sin_t * std::cos(phi);
 				T ly = sin_t * std::sin(phi);
-				T lz = cos_t;
-				// Use geometric normal to orient hemisphere (pbrt-v4 uses shading n)
+				T lz = cos_t;           // z is "up" in local frame = shading n
+				pdf  = T(1) / (T(2) * kPi); // UniformHemispherePDF
+				// Build ONB around shading normal (same as above)
 				const T* n = hit.shading_n;
-				// Flip hemisphere if wi is on the wrong side (mirrors pbrt-v4 reflective/transmissive checks)
-				T cos_wo_n = wo[0]*n[0] + wo[1]*n[1] + wo[2]*n[2];
-				// Build ONB around n
 				T tx, ty, tz;
 				if (std::fabs(n[0]) > T(0.9)) { tx = T(0); ty = T(1); tz = T(0); }
 				else                           { tx = T(1); ty = T(0); tz = T(0); }
@@ -292,10 +298,15 @@ CPU_GPU void SimplePathLi(
 				new_dir[0] = lx*tx + ly*bx + lz*n[0];
 				new_dir[1] = lx*ty + ly*by + lz*n[1];
 				new_dir[2] = lx*tz + ly*bz + lz*n[2];
-				pdf = cos_t * kInvPi;
-				// Flip if pointing into the surface (mirrors pbrt-v4 reflective/transmissive branch)
-				T cos_wi_n = new_dir[0]*n[0] + new_dir[1]*n[1] + new_dir[2]*n[2];
-				if (cos_wo_n * cos_wi_n < T(0)) {
+				// Flip to correct hemisphere using geometric normal (mirrors pbrt-v4:
+				//   if (IsReflective && Dot(wo,isect.n)*Dot(wi,isect.n) < 0) wi=-wi;
+				//   if (IsTransmissive && Dot(wo,isect.n)*Dot(wi,isect.n) > 0) wi=-wi;
+				// Since BSDFIsReflectiveAndTransmissive==false here, the surface is
+				// either purely reflective or purely transmissive.)
+				const T* gn = hit.geo_n;
+				T cos_wo_gn = wo[0]*gn[0] + wo[1]*gn[1] + wo[2]*gn[2];
+				T cos_wi_gn = new_dir[0]*gn[0] + new_dir[1]*gn[1] + new_dir[2]*gn[2];
+				if (cos_wo_gn * cos_wi_gn < T(0)) {
 					new_dir[0] = -new_dir[0];
 					new_dir[1] = -new_dir[1];
 					new_dir[2] = -new_dir[2];
