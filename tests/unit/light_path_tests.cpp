@@ -198,7 +198,99 @@ struct LPSyntheticScene {
 		// Point light: PDF_Li = 0 (delta distribution; area-light path skipped)
 		return 0.f;
 	}
+
+	// Point light has no surface -> LightSurfaceLe is never called, but the
+	// concept requires it.  Return zero for safety.
+	void LightSurfaceLe(const BDPTHit<float>&, const float*,
+						float out[3]) const {
+		out[0] = out[1] = out[2] = 0.f;
+	}
 };
+
+// ---------------------------------------------------------------------------
+// Area-light scene: exercises les.has_surface path (LightPathIntegrator line
+// 532-549 in pbrt-v4).  The "light" is a small disc at (0, 0, 2) facing +z
+// (toward the camera at (0,0,5)).  LightPdfLi returns a positive value and
+// LightSurfaceLe returns 1.0 for directions toward the camera, so the direct
+// area-light->camera splat path fires correctly.
+// ---------------------------------------------------------------------------
+struct AreaLightScene : LPSyntheticScene {
+
+	bool SampleLightEmission(float /*u_light*/,
+							 float u0a, float u0b,
+							 float u1a, float u1b,
+							 LightEmissionSample<float>& les) const {
+		// Disc light at (0,0,2), normal = (0,0,+1), emitting toward +z (camera)
+		les.ray_o[0] = u0a * 0.2f - 0.1f;
+		les.ray_o[1] = u0b * 0.2f - 0.1f;
+		les.ray_o[2] = 2.f;
+
+		// Cosine-hemisphere emission toward +z (toward camera)
+		float cos_t = std::sqrt(u1b);
+		float sin_t = std::sqrt(std::max(0.f, 1.f - u1b));
+		float phi   = 2.f * 3.14159265358979f * u1a;
+		les.ray_d[0] =  sin_t * std::cos(phi);
+		les.ray_d[1] =  sin_t * std::sin(phi);
+		les.ray_d[2] = +cos_t;  // emits toward +z (toward camera)
+
+		les.Le[0] = les.Le[1] = les.Le[2] = 1.f;
+		les.pdf_pos       = 1.f / (0.04f + 1e-6f);  // 1/area (approx, 0.2^2)
+		les.pdf_dir       = cos_t / 3.14159265358979f;
+		les.p_light       = 1.f;
+		les.abs_cos_theta = cos_t;
+		les.has_surface   = true;
+
+		les.surface_hit.p[0] = les.ray_o[0];
+		les.surface_hit.p[1] = les.ray_o[1];
+		les.surface_hit.p[2] = les.ray_o[2];
+		les.surface_hit.geo_n[0]     = 0.f; les.surface_hit.geo_n[1]     = 0.f;
+		les.surface_hit.geo_n[2]     = 1.f;  // faces +z
+		les.surface_hit.shading_n[0] = les.surface_hit.geo_n[0];
+		les.surface_hit.shading_n[1] = les.surface_hit.geo_n[1];
+		les.surface_hit.shading_n[2] = les.surface_hit.geo_n[2];
+		les.surface_hit.bsdf_id = -1; les.surface_hit.light_id = 0;
+		les.surface_hit.area_Le[0] = les.surface_hit.area_Le[1] =
+			les.surface_hit.area_Le[2] = 1.f;
+		les.light_id = 0;
+		return (cos_t > 0.f);  // reject grazing samples
+	}
+
+	// Area light facing +z: PDF_Li(p_lens, neg_wi).
+	// neg_wi = -cc.wi = direction from camera toward light surface, i.e. roughly -z.
+	// cos(theta) at light = dot(light_normal, wi_to_cam) = dot((0,0,1), cc.wi) = cc.wi[2]
+	//                     = -neg_wi[2]
+	float LightPdfLi(int /*light_id*/, const float* /*p_lens*/,
+					 const float neg_wi[3]) const {
+		// wi_to_cam[2] = -neg_wi[2]; light normal = +z; cos = -neg_wi[2]
+		float cos_theta = std::max(0.f, -neg_wi[2]);
+		return cos_theta / 3.14159265358979f;
+	}
+
+	void LightSurfaceLe(const BDPTHit<float>& /*hit*/, const float wi_to_cam[3],
+						float out[3]) const {
+		// Light faces +z; emits toward +z. wi_to_cam points from light to camera,
+		// so cos(theta) = dot(wi_to_cam, (0,0,+1)) = wi_to_cam[2] > 0 for visible.
+		float cos_t = std::max(0.f, wi_to_cam[2]);
+		float v = (cos_t > 0.f) ? 1.f : 0.f;
+		out[0] = out[1] = out[2] = v;
+	}
+};
+
+// Area-light direct-to-camera splat: has_surface=true path produces positive splats.
+TEST(LightPath, AreaLightDirectSplat) {
+	AreaLightScene scene;
+	LPTestFilm film;
+	LPTestRNG rng(42);
+	auto rand1d = [&]() -> float { return rng(); };
+	auto rand2d = [&]() -> std::pair<float,float> { return {rng(), rng()}; };
+	for (int i = 0; i < 500; ++i)
+		LightPathTrace<float>(scene, film, 0, rand1d, rand2d);
+	// max_depth=0 means no path bounces, but the direct area->camera connection
+	// in Step 2 of LightPathTrace is independent of max_depth and should fire.
+	EXPECT_GT(film.pixels[3], 0.f);   // at least some splats occurred
+	EXPECT_GE(film.pixels[0], 0.f);
+	EXPECT_TRUE(std::isfinite(film.pixels[0]));
+}
 
 // ---------------------------------------------------------------------------
 // Scene where BSDFIsNull always returns true (medium boundary)

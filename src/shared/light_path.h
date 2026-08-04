@@ -76,8 +76,18 @@
 //
 //   // PDF of sampling the emission direction (wi_light) from a light surface.
 //   // Used to weight the direct light-to-camera splat.
-//   // (pbrt-v4: light.PDF_Li(cs.pLens, -cs.wi))
+//   // Mirrors pbrt-v4 exactly: light.PDF_Li(cs->pLens, -cs->wi)
+//   // IMPORTANT: the third argument must be the NEGATED connection direction,
+//   //   i.e.  neg_wi = -cc.wi  (direction from camera toward the light surface).
 //   T LightPdfLi(int light_id, const T p_lens[3], const T neg_wi[3]) const;
+//
+//   // Emitted radiance from a light surface point toward the camera.
+//   // Mirrors pbrt-v4: light.L(les->intr->p(), les->intr->n, les->intr->uv,
+//   //                           cs->wi, lambda)
+//   // Called only when les.has_surface == true.
+//   // wi_to_camera[3] is the unit direction from light surface toward camera.
+//   void LightSurfaceLe(const BDPTHit<T>& light_hit, const T wi_to_camera[3],
+//                        T out[3]) const;
 //
 // ---------------------------------------------------------------------------
 // Film concept required API:
@@ -205,28 +215,31 @@ CPU_GPU void LightPathTrace(
 		if (scene.SampleCameraConnection(les.surface_hit, uca, ucb, cc) &&
 			cc.pdf > T(0))
 		{
-			// PDF of sampling this direction from the light surface
-			T pdf_li = scene.LightPdfLi(les.light_id, cc.p_lens, cc.wi);
-			// Le at light surface in direction towards camera
-			// (already in les.Le for the emission direction; for the
-			//  connection direction we use the scene-provided emitted radiance)
-			if (pdf_li > T(0) && scene.Unoccluded(les.surface_hit.p, cc.p_lens)) {
-				// mirrors: L = Le * dist^2 * Wi / (p_l * pdf_li * cs.pdf)
-				// We separate the distance^2 factor:
-				//   dist^2 = (p_ref - p_lens)^2  -- already folded into Wi by convention
-				// Following pbrt-v4 exactly:
-				//   L = Le * DistanceSquared * Wi / (p_l * pdf * cs.pdf)
-				T dx = les.surface_hit.p[0] - cc.p_lens[0];
-				T dy = les.surface_hit.p[1] - cc.p_lens[1];
-				T dz = les.surface_hit.p[2] - cc.p_lens[2];
-				T dist2 = dx*dx + dy*dy + dz*dz;
-				T w = dist2 / (les.p_light * pdf_li * cc.pdf);
-				T splat[3] = {
-					les.Le[0] * cc.Wi[0] * w,
-					les.Le[1] * cc.Wi[1] * w,
-					les.Le[2] * cc.Wi[2] * w
-				};
-				film.Splat(cc.p_raster[0], cc.p_raster[1], splat);
+			// PDF of sampling the connection direction from the light surface.
+			// mirrors pbrt-v4: light.PDF_Li(cs->pLens, -cs->wi)
+			// Pass -cc.wi (direction from camera toward light) as neg_wi.
+			T neg_wi[3] = { -cc.wi[0], -cc.wi[1], -cc.wi[2] };
+			T pdf_li = scene.LightPdfLi(les.light_id, cc.p_lens, neg_wi);
+			if (pdf_li > T(0)) {
+				// Emitted radiance from light surface toward camera.
+				// mirrors pbrt-v4: Le = light.L(les->intr->p(), n, uv, cs->wi, lambda)
+				T Le_conn[3] = {};
+				scene.LightSurfaceLe(les.surface_hit, cc.wi, Le_conn);
+				if ((Le_conn[0] > T(0) || Le_conn[1] > T(0) || Le_conn[2] > T(0)) &&
+					scene.Unoccluded(les.surface_hit.p, cc.p_lens)) {
+					// mirrors: L = Le * DistanceSquared(pRef, pLens) * Wi / (p_l * pdf * cs.pdf)
+					T dx = les.surface_hit.p[0] - cc.p_lens[0];
+					T dy = les.surface_hit.p[1] - cc.p_lens[1];
+					T dz = les.surface_hit.p[2] - cc.p_lens[2];
+					T dist2 = dx*dx + dy*dy + dz*dz;
+					T w = dist2 / (les.p_light * pdf_li * cc.pdf);
+					T splat[3] = {
+						Le_conn[0] * cc.Wi[0] * w,
+						Le_conn[1] * cc.Wi[1] * w,
+						Le_conn[2] * cc.Wi[2] * w
+					};
+					film.Splat(cc.p_raster[0], cc.p_raster[1], splat);
+				}
 			}
 		}
 	}
