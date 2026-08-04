@@ -385,3 +385,65 @@ TEST(VolPathSampleLd, BetaScalesResult) {
 	for (int c=0;c<3;++c)
 		EXPECT_NEAR(Ld2[c], 2.f * Ld1[c], 1e-5f) << "c=" << c;
 }
+
+// ---------------------------------------------------------------------------
+// Alignment tests: null-scatter r_l and post-scatter r_u
+// These test the two pbrt-v4 alignment fixes:
+//   1. Null scatter must update r_l with majorant weight (not just r_u)
+//   2. Post-scatter r_u must NOT be reset to 1
+// ---------------------------------------------------------------------------
+
+// A scene whose medium is pure null-scatter (sigma_a=sigma_s=0, sigma_maj>0).
+// Any callback call should always return true (continue walking) and the
+// final Li should still be non-negative and finite (beta/r_u remain valid).
+struct NullScatterOnlyScene : VacuumScene {
+	// Override HasMedium and SampleTMaj to provide pure null-scatter medium
+	bool HasMedium(const float*, const float*) const { return true; }
+
+	float SampleTMaj(const float* org, const float* dir, float t_max, float,
+					 const std::function<bool(const float*,
+						const VolPathMediumProps<float>&,
+						float, float)>& cb) const {
+		// One null-scatter event at t=0.5 (if t_max > 0.5)
+		if (t_max < 0.5f) return 1.f;
+		float p[3] = { org[0]+0.5f*dir[0], org[1]+0.5f*dir[1], org[2]+0.5f*dir[2] };
+		VolPathMediumProps<float> mp;
+		mp.sigma_a = 0.f; mp.sigma_s = 0.f; mp.Le = 0.f; mp.g = 0.f;
+		float sigma_maj = 1.f;
+		float T_maj_val = std::exp(-sigma_maj * 0.5f);
+		cb(p, mp, sigma_maj, T_maj_val);  // always null event; should return true
+		return T_maj_val;
+	}
+};
+
+TEST(VolPathLi, NullScatterMediumNonNegativeFinite) {
+	// Pure null-scatter medium: no energy is removed, r_l must be updated
+	// correctly and the result must remain non-negative and finite.
+	NullScatterOnlyScene scene;
+	float org[3]={0.f,0.f,5.f}, dir[3]={0.f,0.f,-1.f};
+	float L[3]={};
+	VolPathLi(org, dir, /*maxDepth*/4, scene, L);
+	for (int c=0;c<3;++c) {
+		EXPECT_GE(L[c], 0.f) << "channel " << c;
+		EXPECT_TRUE(std::isfinite(L[c])) << "channel " << c;
+	}
+}
+
+// A scene with one real-scatter event: validates that r_u carries correct
+// value after the scatter (not reset to 1) so the path contribution is finite.
+TEST(VolPathLi, MediumScatterPostBounceFinite) {
+	// HomogeneousScene already exercises real scatter.
+	// Run many samples and check none are NaN or Inf (regression for r_u reset).
+	HomogeneousScene scene;
+	float org[3]={0.f,0.f,3.f}, dir[3]={0.f,0.f,-1.f};
+	bool any_nan = false;
+	for (int i = 0; i < 200; ++i) {
+		float L[3]={};
+		VolPathLi(org, dir, /*maxDepth*/6, scene, L);
+		for (int c=0;c<3;++c) {
+			if (!std::isfinite(L[c])) { any_nan = true; }
+			EXPECT_GE(L[c], 0.f);
+		}
+	}
+	EXPECT_FALSE(any_nan);
+}

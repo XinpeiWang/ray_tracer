@@ -369,22 +369,28 @@ void VolPathLi(const T org[3], const T dir[3],
 						ray_o[0]=p_med[0]; ray_o[1]=p_med[1]; ray_o[2]=p_med[2];
 						ray_d[0]=new_d[0]; ray_d[1]=new_d[1]; ray_d[2]=new_d[2];
 						specularBounce = false;
-						scattered = true;
-						return false;  // stop the majorant walk; restart outer loop
+								scattered = true;
+								return false;  // stop the majorant walk; restart outer loop
 
-					} else {
-						// Null scatter: update beta and r_u for the free flight
-						T sigma_n = std::max(T(0),
-							sigma_maj - mp.sigma_a - mp.sigma_s);
-						T pdf_n = T_maj_val * sigma_maj;
-						if (pdf_n > T(0)) {
-							for (int c = 0; c < 3; ++c)
-								beta[c] *= T_maj_val * sigma_n / pdf_n;
-							r_u *= T_maj_val * sigma_n / pdf_n;
-						}
-						return (beta[0] != T(0) || beta[1] != T(0) || beta[2] != T(0));
-					}
-				});
+							} else {
+								// Null scatter: update beta, r_u, and r_l
+								// pbrt-v4: beta *= T_maj * sigma_n / pdf
+								//          r_u  *= T_maj * sigma_n / pdf
+								//          r_l  *= T_maj * sigma_maj / pdf   <-- majorant weight
+								T sigma_n = std::max(T(0),
+									sigma_maj - mp.sigma_a - mp.sigma_s);
+								T pdf_n = T_maj_val * sigma_maj;
+								if (pdf_n > T(0)) {
+									for (int c = 0; c < 3; ++c)
+										beta[c] *= T_maj_val * sigma_n / pdf_n;
+									r_u *= T_maj_val * sigma_n / pdf_n;
+									r_l *= T_maj_val * sigma_maj / pdf_n;
+								} else {
+									// pdf==0 means sigma_maj==0: pure vacuum, no update needed
+								}
+								return (beta[0] != T(0) || beta[1] != T(0) || beta[2] != T(0));
+							}
+						});
 
 			// Apply final residual T_maj factor from the end of the segment
 			if (!scattered && !terminated && T_maj_final != T(1)) {
@@ -395,7 +401,7 @@ void VolPathLi(const T org[3], const T dir[3],
 		}
 
 		if (terminated) break;
-		if (scattered)  { r_u = T(1); continue; }
+		if (scattered)  continue;
 
 		// ---------------------------------------------------------------
 		// 3. Handle ray that missed the scene (background / infinite lights)
