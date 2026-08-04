@@ -385,3 +385,111 @@ TEST(AOIntegrator, Deterministic) {
 	EXPECT_FLOAT_EQ(L1[1], L2[1]);
 	EXPECT_FLOAT_EQ(L1[2], L2[2]);
 }
+
+// ===========================================================================
+// Additional coverage: paths mirroring pbrt-v4 code branches
+// ===========================================================================
+
+// RandomWalkLi: null BSDF at first hit -> terminate immediately after Le.
+// Mirrors pbrt-v4: "if (!bsdf) return Le" where Le=0 for non-emissive sphere.
+// With a null-BSDF scene, the first hit has no BSDF; result must be 0.
+struct NullBSDFScene : UISyntheticScene {
+	bool BSDFIsNull(int) const { return true; }
+};
+
+TEST(RandomWalk, NullBSDFTerminatesAfterLe) {
+	NullBSDFScene scene;
+	// Hit sphere at depth=0, null BSDF -> return Le (0 for non-emissive sphere)
+	float L[3] = {};
+	UITestRNG rng(42);
+	auto rand2d = [&]() -> std::pair<float,float> { return {rng(), rng()}; };
+	float org[3]={0,0,5}, dir[3]={0,0,-1};
+	RandomWalkLi<float>(org, dir, scene, 8, rand2d, L);
+	EXPECT_NEAR(L[0], 0.f, 1e-6f);
+	EXPECT_NEAR(L[1], 0.f, 1e-6f);
+	EXPECT_NEAR(L[2], 0.f, 1e-6f);
+}
+
+// AOLi: medium boundary (null BSDF) -> skip intersection and continue.
+// Mirrors pbrt-v4 AO "goto retry" loop.
+// Scene: first sphere returns null BSDF (medium boundary), second sphere
+// (radius 2) is a real surface. AO should skip the first and evaluate AO
+// from the second.
+struct MediumBoundaryScene {
+	// Inner sphere (r=0.5) is a medium boundary, outer sphere (r=2) is solid.
+	static bool sphere_hit_r(const float org[3], const float dir[3],
+							 float r, float t_max, BDPTHit<float>& hit) {
+		float a = dir[0]*dir[0] + dir[1]*dir[1] + dir[2]*dir[2];
+		float b = 2*(org[0]*dir[0] + org[1]*dir[1] + org[2]*dir[2]);
+		float c = org[0]*org[0] + org[1]*org[1] + org[2]*org[2] - r*r;
+		float disc = b*b - 4*a*c;
+		if (disc < 0.f) return false;
+		float sq = std::sqrt(disc);
+		float t  = (-b - sq) / (2*a);
+		if (t < 1e-4f) t = (-b + sq) / (2*a);
+		if (t < 1e-4f || t > t_max) return false;
+		hit.t_hit = t;
+		hit.p[0] = org[0]+t*dir[0]; hit.p[1] = org[1]+t*dir[1]; hit.p[2] = org[2]+t*dir[2];
+		float len = std::sqrt(hit.p[0]*hit.p[0]+hit.p[1]*hit.p[1]+hit.p[2]*hit.p[2]);
+		hit.geo_n[0]=hit.p[0]/len; hit.geo_n[1]=hit.p[1]/len; hit.geo_n[2]=hit.p[2]/len;
+		hit.shading_n[0]=hit.geo_n[0]; hit.shading_n[1]=hit.geo_n[1]; hit.shading_n[2]=hit.geo_n[2];
+		hit.wo[0]=-dir[0]; hit.wo[1]=-dir[1]; hit.wo[2]=-dir[2];
+		hit.uv[0]=hit.uv[1]=0.f;
+		hit.area_Le[0]=hit.area_Le[1]=hit.area_Le[2]=0.f;
+		hit.is_medium_boundary=false; hit.is_delta_bsdf=false;
+		hit.light_id=-1;
+		return true;
+	}
+
+	bool Intersect(const float org[3], const float dir[3], float t_max,
+				   BDPTHit<float>& hit) const {
+		// Always try inner sphere first (closer), then outer.
+		BDPTHit<float> h1{}, h2{};
+		bool i1 = sphere_hit_r(org, dir, 0.5f, t_max, h1);
+		bool i2 = sphere_hit_r(org, dir, 2.0f, t_max, h2);
+		if (i1 && (!i2 || h1.t_hit < h2.t_hit)) {
+			hit = h1; hit.bsdf_id = 0; return true;  // 0 = null (medium boundary)
+		}
+		if (i2) {
+			hit = h2; hit.bsdf_id = 1; return true;  // 1 = real surface
+		}
+		return false;
+	}
+
+	bool BSDFIsNull(int id) const { return id == 0; }
+
+	bool UnoccludedWithin(const float p[3], const float dir[3], float max_dist) const {
+		BDPTHit<float> tmp{};
+		return !sphere_hit_r(p, dir, 2.0f, max_dist, tmp);
+	}
+
+	void SpawnRay(const BDPTHit<float>& hit, const float dir[3],
+				  float new_o[3], float new_d[3]) const {
+		constexpr float kEps = 1e-4f;
+		// For medium boundary: spawn slightly past the boundary (same direction).
+		new_o[0] = hit.p[0] + kEps * dir[0];
+		new_o[1] = hit.p[1] + kEps * dir[1];
+		new_o[2] = hit.p[2] + kEps * dir[2];
+		new_d[0] = dir[0]; new_d[1] = dir[1]; new_d[2] = dir[2];
+	}
+};
+
+// Camera at (0,0,5), ray hits inner sphere (null BSDF), skips to outer (r=2).
+// AO shadow rays from outer sphere mostly unoccluded -> L > 0.
+TEST(AOIntegrator, MediumBoundarySkipped) {
+	MediumBoundaryScene scene;
+	float sum = 0.f;
+	const int N = 300;
+	for (int i = 0; i < N; ++i) {
+		UITestRNG rng(i + 1);
+		auto rand2d = [&]() -> std::pair<float,float> { return {rng(), rng()}; };
+		float org[3]={0,0,5}, dir[3]={0,0,-1};
+		constexpr float white[3]={1.f,1.f,1.f};
+		float L[3]={};
+		AOLi<float>(org, dir, scene, 1e10f, true, 1.f, white, rand2d, L);
+		sum += L[0];
+	}
+	// After skipping the medium boundary the outer sphere is hit -> positive AO.
+	EXPECT_GT(sum / N, 0.f);
+}
+

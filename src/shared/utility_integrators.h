@@ -41,9 +41,11 @@
 // Casts a single shadow ray from the first surface hit.  Returns
 //   illum_scale * illum_rgb * cos(wi, geo_n) / (pi * pdf)
 // when the direction is unoccluded within max_dist, zero otherwise.
-// cos_sample==true uses cosine-hemisphere sampling (pdf = cos/π → result
-// simplifies to illum_scale * illum_rgb / π regardless of wi).
-// cos_sample==false uses uniform hemisphere (pdf = 1/(2π)).
+// cos_sample==true uses cosine-hemisphere sampling via pbrt-v4's
+// SampleUniformDiskConcentric mapping (pdf = cos/π → result simplifies to
+// illum_scale * illum_rgb regardless of wi direction).
+// cos_sample==false uses uniform hemisphere, pbrt-v4 SampleUniformHemisphere
+// (z=u[0], phi=2π·u[1], pdf = 1/(2π)).
 //
 // Scene concept (subset of RandomWalkLi):
 //   bool  Intersect(const T org[3], const T dir[3], T t_max,
@@ -213,19 +215,35 @@ CPU_GPU void AOLi(
 			T wi_local[3], pdf;
 
 			if (cos_sample) {
-				// SampleCosineHemisphere: wi_z = sqrt(u2), pdf = cos/pi
-				T cos_t = std::sqrt(u2);
-				T sin_t = std::sqrt(std::max(T(0), T(1) - u2));
-				T phi   = T(2) * kPi * u1;
-				wi_local[0] = sin_t * std::cos(phi);
-				wi_local[1] = sin_t * std::sin(phi);
+				// Mirrors pbrt-v4 SampleCosineHemisphere via SampleUniformDiskConcentric(u)
+				// u = {u1, u2}, maps to concentric disk then projects up to hemisphere.
+				// pdf = cos_theta / pi  (CosineHemispherePDF)
+				T uo_x = T(2) * u1 - T(1);
+				T uo_y = T(2) * u2 - T(1);
+				T dx, dy;
+				if (uo_x == T(0) && uo_y == T(0)) {
+					dx = dy = T(0);
+				} else if (std::fabs(uo_x) > std::fabs(uo_y)) {
+					T theta = (kPi / T(4)) * (uo_y / uo_x);
+					dx = uo_x * std::cos(theta);
+					dy = uo_x * std::sin(theta);
+				} else {
+					T theta = kPi / T(2) - (kPi / T(4)) * (uo_x / uo_y);
+					dx = uo_y * std::cos(theta);
+					dy = uo_y * std::sin(theta);
+				}
+				T cos_t = std::sqrt(std::max(T(0), T(1) - dx*dx - dy*dy));
+				wi_local[0] = dx;
+				wi_local[1] = dy;
 				wi_local[2] = cos_t;
 				pdf = cos_t / kPi;   // CosineHemispherePDF(|wi.z|)
 			} else {
-				// SampleUniformHemisphere: pdf = 1/(2*pi)
-				T cos_t = u2;        // uniform in [0,1)
+				// Mirrors pbrt-v4 SampleUniformHemisphere(u):
+				//   z = u[0]  (first),  phi = 2*pi*u[1]  (second)
+				// pdf = 1/(2*pi)
+				T cos_t = u1;
 				T sin_t = std::sqrt(std::max(T(0), T(1) - cos_t * cos_t));
-				T phi   = T(2) * kPi * u1;
+				T phi   = T(2) * kPi * u2;
 				wi_local[0] = sin_t * std::cos(phi);
 				wi_local[1] = sin_t * std::sin(phi);
 				wi_local[2] = cos_t;
