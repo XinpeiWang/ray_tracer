@@ -6,6 +6,7 @@
 // Ported film models:
 //   1. RGBFilm      -- filter-weighted sample accumulation -> RGB image
 //   2. GBufferFilm  -- RGBFilm + AOV buffers (normal, albedo, depth, uv)
+//   3. SpectralFilm -- RGBFilm + per-wavelength spectral bucket accumulation
 //
 // Design notes:
 //   - Templated on scalar T (float or double) and Filter type.
@@ -31,6 +32,7 @@
 #include "pixel_sensor.h"
 #include "square_matrix.h"
 #include "rgb_colorspace.h"
+#include "sampled_spectrum.h"
 
 #include <vector>
 #include <atomic>
@@ -457,4 +459,236 @@ private:
 	float  max_component_value_;
 	SquareMatrix<3> output_rgb_from_sensor_;
 	std::vector<GBufferPixel> pixels_;
+};
+
+// ---------------------------------------------------------------------------
+// SpectralFilm<Filter, N>
+//
+// Extends RGBFilm with per-pixel spectral bucket accumulation.
+// Each pixel stores the standard RGB accumulator (for preview/output) plus
+// `nBuckets` wavelength-band accumulators covering [lambdaMin, lambdaMax].
+//
+// Mirrors pbrt-v4 SpectralFilm (src/pbrt/film.h).
+//
+// add_sample():
+//   - Converts L -> SensorRGB (identical to RGBFilm).
+//   - Also accumulates L[i] * weight * kCIE_Y_integral into the wavelength
+//     bucket that lambda[i] maps to, plus weight into the bucket weight sum.
+//     (The CIE_Y_integral factor normalises for photometric specification of
+//     light sources, matching pbrt-v4 SpectralFilm::AddSample.)
+//
+// get_pixel_spectral():
+//   Returns a std::vector<float> of length nBuckets: each entry is the
+//   weighted-average spectral radiance for that wavelength bin.
+//
+// sample_wavelengths():
+//   Convenience factory: stratified-uniform sampling of N hero wavelengths
+//   within [lambdaMin, lambdaMax] (mirrors pbrt-v4 SpectralFilm::SampleWavelengths).
+//
+// Usage:
+//   SpectralFilm<MitchellFilter> film(800, 600, filt, sensor, &cs, 32);
+//   auto swl = film.sample_wavelengths(u);    // SampledWavelengths<4>
+//   // after tracing:
+//   film.add_sample(px, py, weight, srgb, L, swl);
+//   auto spec = film.get_pixel_spectral(px, py);  // vector<float>[nBuckets]
+// ---------------------------------------------------------------------------
+
+// SpectralPixel: per-pixel storage for spectral buckets.
+struct SpectralPixel {
+	// RGB accumulation (mirrors FilmRGBPixel layout -- reused for output)
+	double rgbSum[3]      = {0., 0., 0.};
+	double weightSum      = 0.;
+	AtomicDoubleFilm rgbSplat[3];
+
+	// Per-bucket spectral accumulators
+	std::vector<double> bucketSums;
+	std::vector<double> bucketWeights;
+
+	void reset(int nBuckets) {
+		rgbSum[0] = rgbSum[1] = rgbSum[2] = 0.;
+		weightSum = 0.;
+		// atomic splat reset: store 0
+		for (int c = 0; c < 3; ++c)
+			rgbSplat[c].v.store(0.0, std::memory_order_relaxed);
+		std::fill(bucketSums.begin(),    bucketSums.end(),    0.);
+		std::fill(bucketWeights.begin(), bucketWeights.end(), 0.);
+	}
+
+	void init(int nBuckets) {
+		bucketSums.assign(nBuckets, 0.);
+		bucketWeights.assign(nBuckets, 0.);
+	}
+};
+
+template <typename Filter = MitchellFilter, int N = 4>
+class SpectralFilm {
+public:
+	// -----------------------------------------------------------------------
+	// Constructor.
+	//   res_x, res_y         -- image resolution in pixels
+	//   filter               -- reconstruction filter
+	//   sensor               -- pixel sensor (XYZ->sensorRGB matrix)
+	//   colorSpace           -- output color space
+	//   nBuckets             -- number of spectral wavelength buckets
+	//   lambdaMin, lambdaMax -- spectral range in nm (default 360-830)
+	//   maxComponentValue    -- clamp threshold (default 1e9)
+	// -----------------------------------------------------------------------
+	SpectralFilm(int res_x, int res_y,
+				 const Filter&        filter,
+				 const PixelSensor&   sensor,
+				 const RGBColorSpace* colorSpace,
+				 int nBuckets          = 32,
+				 float lambdaMin       = kLambda_min,
+				 float lambdaMax       = kLambda_max,
+				 float maxComponentValue = 1e9f)
+		: res_x_(res_x), res_y_(res_y),
+		  filter_(filter),
+		  filter_integral_(static_cast<float>(filter.integral())),
+		  nBuckets_(nBuckets > 0 ? nBuckets : 1),
+		  lambda_min_(lambdaMin),
+		  lambda_max_(lambdaMax),
+		  max_component_value_(maxComponentValue),
+		  pixels_(static_cast<size_t>(res_x) * res_y)
+	{
+		// Build outputRGBFromSensorRGB = colorSpace.RGBFromXYZ * sensor.XYZFromSensorRGB
+		// (mirrors pbrt-v4 RGBFilm constructor)
+		output_rgb_from_sensor_ =
+			colorSpace->RGBFromXYZ * sensor.XYZFromSensorRGB;
+
+		for (auto& p : pixels_) p.init(nBuckets_);
+	}
+
+	int width()  const { return res_x_; }
+	int height() const { return res_y_; }
+	int num_buckets() const { return nBuckets_; }
+	float lambda_min() const { return lambda_min_; }
+	float lambda_max() const { return lambda_max_; }
+
+	// -----------------------------------------------------------------------
+	// sample_wavelengths -- stratified-uniform hero-wavelength sampling.
+	// Mirrors pbrt-v4 SpectralFilm::SampleWavelengths().
+	// -----------------------------------------------------------------------
+	SampledWavelengths<N> sample_wavelengths(float u) const {
+		return SampledWavelengths<N>::SampleUniform(u, lambda_min_, lambda_max_);
+	}
+
+	// -----------------------------------------------------------------------
+	// add_sample -- accumulate one path-traced sample at pixel (px,py).
+	//   weight  -- filter weight (from reconstruction filter evaluation)
+	//   srgb    -- pre-converted SensorRGB from PixelSensor::to_sensor_rgb()
+	//   L       -- spectral radiance (SampledSpectrum<N>)
+	//   lambda  -- sampled wavelengths corresponding to L
+	//
+	// Mirrors pbrt-v4 SpectralFilm::AddSample().
+	// -----------------------------------------------------------------------
+	void add_sample(int px, int py, float weight,
+					const SensorRGB& srgb,
+					const SampledSpectrum<N>& L,
+					const SampledWavelengths<N>& lambda)
+	{
+		assert(px >= 0 && px < res_x_ && py >= 0 && py < res_y_);
+		SpectralPixel& pix = pixel(px, py);
+
+		// --- RGB accumulation (identical to RGBFilm) -------------------------
+		double r = srgb.r, g = srgb.g, b = srgb.b;
+		// Clamp sensor RGB
+		float m = std::max({static_cast<float>(r), static_cast<float>(g),
+							static_cast<float>(b)});
+		if (m > max_component_value_) {
+			float s = max_component_value_ / m;
+			r *= s; g *= s; b *= s;
+		}
+		pix.rgbSum[0] += weight * r;
+		pix.rgbSum[1] += weight * g;
+		pix.rgbSum[2] += weight * b;
+		pix.weightSum += weight;
+
+		// --- Spectral accumulation -------------------------------------------
+		// Clamp spectral radiance (per pbrt-v4 SpectralFilm::AddSample)
+		SampledSpectrum<N> Lc = L;
+		float lm = Lc.MaxComponentValue();
+		if (lm > max_component_value_)
+			Lc *= max_component_value_ / lm;
+
+		// Scale by CIE_Y_integral to undo photometric normalisation.
+		// Since wavelengths are sampled uniformly within [lambdaMin,lambdaMax]
+		// and all buckets have equal extent, averaging within buckets is
+		// unbiased (mirrors pbrt-v4 SpectralFilm::AddSample comment).
+		float scale = weight * kCIE_Y_integral;
+		for (int i = 0; i < N; ++i) {
+			int b = lambda_to_bucket(lambda[i]);
+			pix.bucketSums[b]    += scale * Lc[i];
+			pix.bucketWeights[b] += weight;
+		}
+	}
+
+	// -----------------------------------------------------------------------
+	// get_pixel_rgb -- resolve pixel (px,py) to output-space RGB.
+	// Matches RGBFilm::get_pixel_rgb() semantics.
+	// -----------------------------------------------------------------------
+	FilmPixelRGB get_pixel_rgb(int px, int py, float splat_scale = 1.f) const {
+		assert(px >= 0 && px < res_x_ && py >= 0 && py < res_y_);
+		const SpectralPixel& pix = pixel(px, py);
+
+		double r = pix.rgbSum[0], g = pix.rgbSum[1], b = pix.rgbSum[2];
+		double ws = pix.weightSum;
+		if (ws != 0.0) { r /= ws; g /= ws; b /= ws; }
+
+		float inv_fi = (filter_integral_ > 0.f) ? splat_scale / filter_integral_ : 0.f;
+		r += inv_fi * pix.rgbSplat[0].v.load(std::memory_order_relaxed);
+		g += inv_fi * pix.rgbSplat[1].v.load(std::memory_order_relaxed);
+		b += inv_fi * pix.rgbSplat[2].v.load(std::memory_order_relaxed);
+
+		const auto& M = output_rgb_from_sensor_;
+		FilmPixelRGB out;
+		out.r = static_cast<float>(M[0][0]*r + M[0][1]*g + M[0][2]*b);
+		out.g = static_cast<float>(M[1][0]*r + M[1][1]*g + M[1][2]*b);
+		out.b = static_cast<float>(M[2][0]*r + M[2][1]*g + M[2][2]*b);
+		return out;
+	}
+
+	// -----------------------------------------------------------------------
+	// get_pixel_spectral -- retrieve per-bucket spectral radiance for pixel.
+	// Returns a vector of nBuckets floats: weighted-average radiance per bin.
+	// Bins with zero weight return 0.
+	// -----------------------------------------------------------------------
+	std::vector<float> get_pixel_spectral(int px, int py) const {
+		assert(px >= 0 && px < res_x_ && py >= 0 && py < res_y_);
+		const SpectralPixel& pix = pixel(px, py);
+		std::vector<float> result(nBuckets_, 0.f);
+		for (int b = 0; b < nBuckets_; ++b) {
+			if (pix.bucketWeights[b] > 0.)
+				result[b] = static_cast<float>(pix.bucketSums[b] / pix.bucketWeights[b]);
+		}
+		return result;
+	}
+
+	// -----------------------------------------------------------------------
+	// bucket_lambda -- centre wavelength of bucket b (nm).
+	// -----------------------------------------------------------------------
+	float bucket_lambda(int b) const {
+		return lambda_min_ + (b + 0.5f) * (lambda_max_ - lambda_min_) / nBuckets_;
+	}
+
+	void reset_pixel(int px, int py) { pixel(px, py).reset(nBuckets_); }
+	void clear() { for (auto& p : pixels_) p.reset(nBuckets_); }
+
+private:
+	int lambda_to_bucket(float lambda) const {
+		int b = static_cast<int>(nBuckets_ * (lambda - lambda_min_) /
+											 (lambda_max_ - lambda_min_));
+		return std::max(0, std::min(nBuckets_ - 1, b));
+	}
+
+	SpectralPixel&       pixel(int x, int y)       { return pixels_[y * res_x_ + x]; }
+	const SpectralPixel& pixel(int x, int y) const { return pixels_[y * res_x_ + x]; }
+
+	int   res_x_, res_y_;
+	Filter filter_;
+	float  filter_integral_;
+	int    nBuckets_;
+	float  lambda_min_, lambda_max_;
+	float  max_component_value_;
+	SquareMatrix<3> output_rgb_from_sensor_;
+	std::vector<SpectralPixel> pixels_;
 };

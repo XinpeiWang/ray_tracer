@@ -1,5 +1,5 @@
 // film_tests.cpp -- unit tests for src/shared/film.h
-// Validates RGBFilm and GBufferFilm against expected pbrt-v4 behavior.
+// Validates RGBFilm, GBufferFilm, and SpectralFilm against expected pbrt-v4 behavior.
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -469,4 +469,166 @@ TEST(Film, RGBFilmMitchellSplatSumsToFilterIntegral) {
 
 	// Total should be positive and reasonable (filter sums > 0)
 	EXPECT_GT(totalR, 0.0);
+}
+
+// ---------------------------------------------------------------------------
+// SpectralFilm -- construction
+// ---------------------------------------------------------------------------
+TEST(Film, SpectralFilmConstructsWithCorrectDimensions) {
+	PixelSensor sensor = make_identity_sensor();
+	RGBColorSpace cs   = make_identity_colorspace();
+	BoxFilter filt(0.5);
+	SpectralFilm<BoxFilter> film(4, 3, filt, sensor, &cs, 16);
+	EXPECT_EQ(film.width(),  4);
+	EXPECT_EQ(film.height(), 3);
+	EXPECT_EQ(film.num_buckets(), 16);
+}
+
+// ---------------------------------------------------------------------------
+// SpectralFilm -- sample_wavelengths returns values in [lambdaMin, lambdaMax]
+// ---------------------------------------------------------------------------
+TEST(Film, SpectralFilmSampleWavelengthsInRange) {
+	PixelSensor sensor = make_identity_sensor();
+	RGBColorSpace cs   = make_identity_colorspace();
+	BoxFilter filt(0.5);
+	SpectralFilm<BoxFilter> film(4, 4, filt, sensor, &cs, 16);
+	auto swl = film.sample_wavelengths(0.5f);
+	for (int i = 0; i < 4; ++i) {
+		EXPECT_GE(swl[i], film.lambda_min());
+		EXPECT_LE(swl[i], film.lambda_max());
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SpectralFilm -- add_sample accumulates RGB correctly (identity sensor/cs)
+// ---------------------------------------------------------------------------
+TEST(Film, SpectralFilmAddSampleRGBPassthrough) {
+	PixelSensor sensor = make_identity_sensor();
+	RGBColorSpace cs   = make_identity_colorspace();
+	BoxFilter filt(0.5);
+	SpectralFilm<BoxFilter> film(4, 4, filt, sensor, &cs, 16);
+
+	auto swl = film.sample_wavelengths(0.3f);
+	SampledSpectrum<4> L(1.0f);
+	SensorRGB srgb{0.5f, 0.25f, 0.1f};
+
+	film.add_sample(1, 1, 1.0f, srgb, L, swl);
+
+	FilmPixelRGB px = film.get_pixel_rgb(1, 1);
+	// Identity sensor + identity cs: output ≈ srgb input
+	EXPECT_NEAR(px.r, 0.5f,  1e-4f);
+	EXPECT_NEAR(px.g, 0.25f, 1e-4f);
+	EXPECT_NEAR(px.b, 0.1f,  1e-4f);
+}
+
+// ---------------------------------------------------------------------------
+// SpectralFilm -- spectral bucket accumulation: sampled wavelengths land in
+// their expected buckets and the normalized value is positive.
+// ---------------------------------------------------------------------------
+TEST(Film, SpectralFilmSpectralBucketsPositiveAfterSample) {
+	PixelSensor sensor = make_identity_sensor();
+	RGBColorSpace cs   = make_identity_colorspace();
+	BoxFilter filt(0.5);
+	const int nBuckets = 32;
+	SpectralFilm<BoxFilter> film(4, 4, filt, sensor, &cs, nBuckets);
+
+	auto swl = film.sample_wavelengths(0.5f);
+	SampledSpectrum<4> L(2.0f);
+	SensorRGB srgb{1.0f, 1.0f, 1.0f};
+
+	film.add_sample(2, 2, 1.0f, srgb, L, swl);
+
+	auto spec = film.get_pixel_spectral(2, 2);
+	ASSERT_EQ(static_cast<int>(spec.size()), nBuckets);
+
+	// At least one bucket must be non-zero (those hit by our 4 hero wavelengths)
+	bool any_nonzero = false;
+	for (float v : spec) if (v > 0.f) { any_nonzero = true; break; }
+	EXPECT_TRUE(any_nonzero);
+}
+
+// ---------------------------------------------------------------------------
+// SpectralFilm -- unsampled pixel returns zero spectral bins
+// ---------------------------------------------------------------------------
+TEST(Film, SpectralFilmUnsampledPixelReturnsZeroBuckets) {
+	PixelSensor sensor = make_identity_sensor();
+	RGBColorSpace cs   = make_identity_colorspace();
+	BoxFilter filt(0.5);
+	SpectralFilm<BoxFilter> film(4, 4, filt, sensor, &cs, 16);
+
+	auto spec = film.get_pixel_spectral(0, 0);
+	for (float v : spec)
+		EXPECT_EQ(v, 0.f);
+}
+
+// ---------------------------------------------------------------------------
+// SpectralFilm -- bucket_lambda spans expected wavelength range
+// ---------------------------------------------------------------------------
+TEST(Film, SpectralFilmBucketLambdaCentersSpanRange) {
+	PixelSensor sensor = make_identity_sensor();
+	RGBColorSpace cs   = make_identity_colorspace();
+	BoxFilter filt(0.5);
+	const int nBuckets = 8;
+	SpectralFilm<BoxFilter> film(2, 2, filt, sensor, &cs, nBuckets);
+
+	// First bucket centre > lambdaMin
+	EXPECT_GT(film.bucket_lambda(0), film.lambda_min());
+	// Last bucket centre < lambdaMax
+	EXPECT_LT(film.bucket_lambda(nBuckets - 1), film.lambda_max());
+	// Monotonically increasing
+	for (int b = 1; b < nBuckets; ++b)
+		EXPECT_GT(film.bucket_lambda(b), film.bucket_lambda(b - 1));
+}
+
+// ---------------------------------------------------------------------------
+// SpectralFilm -- clear() resets all spectral buckets and RGB
+// ---------------------------------------------------------------------------
+TEST(Film, SpectralFilmClearResetsPixels) {
+	PixelSensor sensor = make_identity_sensor();
+	RGBColorSpace cs   = make_identity_colorspace();
+	BoxFilter filt(0.5);
+	SpectralFilm<BoxFilter> film(4, 4, filt, sensor, &cs, 16);
+
+	auto swl = film.sample_wavelengths(0.1f);
+	SampledSpectrum<4> L(3.0f);
+	SensorRGB srgb{1.0f, 0.5f, 0.25f};
+	film.add_sample(1, 1, 1.0f, srgb, L, swl);
+
+	film.clear();
+
+	// RGB should be zero after clear
+	FilmPixelRGB px = film.get_pixel_rgb(1, 1);
+	EXPECT_NEAR(px.r, 0.f, 1e-6f);
+	EXPECT_NEAR(px.g, 0.f, 1e-6f);
+	EXPECT_NEAR(px.b, 0.f, 1e-6f);
+
+	// Spectral buckets should be zero after clear
+	auto spec = film.get_pixel_spectral(1, 1);
+	for (float v : spec)
+		EXPECT_EQ(v, 0.f);
+}
+
+// ---------------------------------------------------------------------------
+// SpectralFilm -- multiple samples average correctly in spectral buckets
+// ---------------------------------------------------------------------------
+TEST(Film, SpectralFilmMultiSampleAveraging) {
+	PixelSensor sensor = make_identity_sensor();
+	RGBColorSpace cs   = make_identity_colorspace();
+	BoxFilter filt(0.5);
+	// One bucket spanning the full visible range for simplicity
+	SpectralFilm<BoxFilter> film(4, 4, filt, sensor, &cs, 1);
+
+	auto swl = film.sample_wavelengths(0.5f);
+	SampledSpectrum<4> L1(2.0f);
+	SampledSpectrum<4> L2(4.0f);
+	SensorRGB srgb{1.0f, 0.f, 0.f};
+
+	film.add_sample(0, 0, 1.0f, srgb, L1, swl);
+	film.add_sample(0, 0, 1.0f, srgb, L2, swl);
+
+	// Both samples hit the same single bucket; average of scaled values
+	// should be strictly positive
+	auto spec = film.get_pixel_spectral(0, 0);
+	ASSERT_EQ(static_cast<int>(spec.size()), 1);
+	EXPECT_GT(spec[0], 0.f);
 }
