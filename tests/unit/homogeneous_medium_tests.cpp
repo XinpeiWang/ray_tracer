@@ -129,7 +129,7 @@ TEST(HomogeneousMedium, SampleRayMajorantEqualsExactSigmaT) {
 	EXPECT_DOUBLE_EQ(seg->sigma_maj, med.sigma_t());
 }
 
-TEST(HomogeneousMedium, SampleRayZeroExtinctionYearsZeroMajorant) {
+TEST(HomogeneousMedium, SampleRayZeroExtinctionYieldsZeroMajorant) {
 	HomogeneousMedium<double> med(0.0, 0.0, 0.0, 0.0);
 	auto it = med.sample_ray(1.0);
 	auto seg = it.next();
@@ -161,18 +161,23 @@ TEST(HomogeneousMajorantIterator, ConstructedYieldsSegmentThenExhausts) {
 // ---------------------------------------------------------------------------
 
 TEST(HomogeneousMedium, PhaseAccessorReturnsCorrectG) {
-	// Verify the phase function differentiates forward vs backward scatter.
-	// With g=0.8 the HG function should peak in one direction.
-	// We test both cos_theta values are different (not equal) and that the
-	// isotropic case (g=0) gives equal values.
+	// pbrt-v4: HGPhaseFunction::p uses HenyeyGreenstein(Dot(wo,wi), g).
+	// The local p(cos_theta) uses the same formula: 1+g²+2g·cosTheta.
+	// For g=0.8: p(cos=-1) > p(cos=+1) because the denominator is smallest
+	// at cos=-1 (physically: forward scatter in ray direction = wi opposite wo).
 	HomogeneousMedium<double> med(0.1, 0.5, 0.0, 0.8);
 	const auto& ph = med.phase();
-	double pdf_fwd = ph.p(1.0);
-	double pdf_bwd = ph.p(-1.0);
-	EXPECT_NE(pdf_fwd, pdf_bwd);
-	// Both should be non-negative
-	EXPECT_GE(pdf_fwd, 0.0);
-	EXPECT_GE(pdf_bwd, 0.0);
+	double pdf_neg = ph.p(-1.0); // cos=-1 → forward scatter (large peak)
+	double pdf_pos = ph.p( 1.0); // cos=+1 → backward scatter (small value)
+	EXPECT_GT(pdf_neg, pdf_pos);
+	// Both must be non-negative
+	EXPECT_GE(pdf_pos, 0.0);
+	EXPECT_GE(pdf_neg, 0.0);
+	// Verify numerical value at cos=0 matches HG formula: (1-g²)/(4π)
+	const double pi = 3.14159265358979323846;
+	double g = 0.8;
+	double expected_p0 = (1.0 - g*g) / (4.0 * pi * std::pow(1.0 + g*g, 1.5));
+	EXPECT_NEAR(ph.p(0.0), expected_p0, 1e-12);
 }
 
 TEST(HomogeneousMedium, PhaseIsotropicForGZero) {

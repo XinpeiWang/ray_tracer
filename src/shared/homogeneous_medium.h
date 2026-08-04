@@ -102,10 +102,14 @@ struct MediumPoint {
 // ---------------------------------------------------------------------------
 template<typename T>
 struct HomogeneousMedium {
+	// MajorantIterator type alias — mirrors pbrt-v4:
+	//   using MajorantIterator = HomogeneousMajorantIterator;
+	using MajorantIterator = HomogeneousMajorantIterator<T>;
+
 	// Constructors
 	CPU_GPU HomogeneousMedium() : sigma_a_(T(0)), sigma_s_(T(0)), Le_(T(0)), g_(T(0)) {}
 
-	// Primary constructor — mirrors pbrt-v4 HomogeneousMedium::HomogeneousMedium.
+	// Primary constructor
 	// sigmaScale multiplies both sigma_a and sigma_s (matches pbrt-v4 Scale calls).
 	// LeScale multiplies Le.
 	CPU_GPU HomogeneousMedium(T sigma_a, T sigma_s, T Le, T g,
