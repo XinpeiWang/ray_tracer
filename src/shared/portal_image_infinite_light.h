@@ -147,6 +147,9 @@ struct PortalImageInfiniteLightData {
 		// Build rectified image: for each pixel (x,y), compute uv in tangent space,
 		// map to render-space direction, then to equal-area uv, bilinear sample.
 		// Mirrors pbrt-v4 ctor "Resample environment map into rectified image" block.
+		// Note: pbrt-v4 also applies renderFromLight.ApplyInverse(w) before the
+		// equal-area lookup to account for the light's world transform. This local
+		// port assumes the portal is already in render space (identity transform).
 		rectified_.resize(width * height * 3);
 		for (int y = 0; y < height; ++y) {
 			for (int x = 0; x < width; ++x) {
@@ -171,8 +174,10 @@ struct PortalImageInfiniteLightData {
 			}
 		}
 
-		// Build sampling distribution weighted by luminance * jacobian (duv_dw).
-		// Mirrors pbrt-v4: GetSamplingDistribution with duv_dw weight.
+		// Build sampling distribution weighted by channel average * jacobian (duv_dw).
+		// Mirrors pbrt-v4 GetSamplingDistribution(duv_dw):
+		//   value = GetChannels({x,y}).Average()  = (R+G+B)/3  (NOT luminance)
+		//   dist(x,y) = value * duv_dw(uv)
 		std::vector<float> lum(width * height);
 		for (int y = 0; y < height; ++y) {
 			for (int x = 0; x < width; ++x) {
@@ -181,9 +186,10 @@ struct PortalImageInfiniteLightData {
 				T duv_dw;
 				RenderFromImage_uv((T)u, (T)v, &duv_dw);
 				int idx = (y * width + x) * 3;
-				float lv = (float)pil_detail::luminance(rectified_[idx], rectified_[idx+1], rectified_[idx+2]);
+				// pbrt-v4 uses channel average (R+G+B)/3, not luminance
+				float avg = (rectified_[idx] + rectified_[idx+1] + rectified_[idx+2]) / 3.f;
 				// Weight by Jacobian as pbrt-v4 does in GetSamplingDistribution(duv_dw)
-				lum[y * width + x] = (duv_dw > T(0)) ? lv * (float)duv_dw : 0.f;
+				lum[y * width + x] = (duv_dw > T(0)) ? avg * (float)duv_dw : 0.f;
 			}
 		}
 
@@ -275,8 +281,9 @@ struct PortalImageInfiniteLightData {
 		return T(mapPDF) / duv_dw;
 	}
 
-	// power: approximate total power (luminance integral * area * scale).
-	// Mirrors pbrt-v4 Phi (without scene radius factor).
+	// power: approximate total power. Mirrors pbrt-v4 Phi.
+	// pbrt-v4 uses luminance (via RGBIlluminantSpectrum) divided by duv_dw,
+	// then scales by scale * Area / (nx * ny).
 	T power() const {
 		double sum = 0.0;
 		for (int y = 0; y < height_; ++y) {
@@ -286,6 +293,7 @@ struct PortalImageInfiniteLightData {
 				T duv_dw;
 				RenderFromImage_uv((T)u, (T)v, &duv_dw);
 				int idx = (y * width_ + x) * 3;
+				// Use luminance as pbrt-v4 uses RGBIlluminantSpectrum.Sample() -> Y
 				double lv = pil_detail::luminance(rectified_[idx], rectified_[idx+1], rectified_[idx+2]);
 				if (duv_dw > T(0)) sum += lv / (double)duv_dw;
 			}
