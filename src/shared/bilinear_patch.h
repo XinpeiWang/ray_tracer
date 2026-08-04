@@ -618,26 +618,35 @@ struct BilinearPatchShape {
         else            { nx=T(0);   ny=T(0);   nz=T(1);   }
     }
 
-    // Local differential area |dpdu x dpdv| at (u,v)
-    CPU_GPU T local_dA(T u, T v) const {
-        T dux,duy,duz,dvx,dvy,dvz;
-        dpdu_dpdv(u,v,dux,duy,duz,dvx,dvy,dvz);
-        T cx = duy*dvz-duz*dvy, cy = duz*dvx-dux*dvz, cz = dux*dvy-duy*dvx;
-        return std::sqrt(cx*cx+cy*cy+cz*cz);
-    }
-
     // -----------------------------------------------------------------------
-    // Area -- 3x3 Gaussian quadrature (same grid as pbrt-v4)
-    // Reference: pbrt-v4 BilinearPatch::Area
+    // Area -- 3x3 triangulated grid (matches pbrt-v4 BilinearPatch area)
+    // Reference: pbrt-v4 shapes.cpp BilinearPatch constructor
+    //   na=3 grid; area += 0.5 * |cross(p[i+1][j+1]-p[i][j], p[i+1][j]-p[i][j+1])|
     // -----------------------------------------------------------------------
     CPU_GPU T area() const {
-        // 3x3 midpoint rule (u,v both sampled at 1/6, 1/2, 5/6)
-        static const T pts[3] = { T(1)/T(6), T(1)/T(2), T(5)/T(6) };
+        // Build (na+1)x(na+1) = 4x4 grid of surface points
+        constexpr int na = 3;
+        T px[na+1][na+1], py[na+1][na+1], pz_[na+1][na+1];
+        for (int i = 0; i <= na; ++i) {
+            T u = T(i) / T(na);
+            for (int j = 0; j <= na; ++j) {
+                T v = T(j) / T(na);
+                lerp_point(u, v, px[i][j], py[i][j], pz_[i][j]);
+            }
+        }
         T A = T(0);
-        for (int i = 0; i < 3; ++i)
-            for (int j = 0; j < 3; ++j)
-                A += local_dA(pts[i], pts[j]);
-        return A * (T(1)/T(9));   // weight = 1/9 per cell (3x3 uniform)
+        for (int i = 0; i < na; ++i) {
+            for (int j = 0; j < na; ++j) {
+                // diagonal vectors of the quad
+                T d1x = px[i+1][j+1]-px[i][j],   d1y = py[i+1][j+1]-py[i][j],   d1z = pz_[i+1][j+1]-pz_[i][j];
+                T d2x = px[i+1][j]  -px[i][j+1], d2y = py[i+1][j]  -py[i][j+1], d2z = pz_[i+1][j]  -pz_[i][j+1];
+                T cx = d1y*d2z - d1z*d2y;
+                T cy = d1z*d2x - d1x*d2z;
+                T cz = d1x*d2y - d1y*d2x;
+                A += T(0.5) * std::sqrt(cx*cx + cy*cy + cz*cz);
+            }
+        }
+        return A;
     }
 
     CPU_GPU T pdf_area() const { return T(1) / area(); }
