@@ -1,4 +1,4 @@
-// cameras.h — pbrt-v4 camera models (simplified, header-only, CPU, templated on T)
+﻿// cameras.h — pbrt-v4 camera models (simplified, header-only, CPU, templated on T)
 // Mirrors pbrt-v4 src/pbrt/cameras.h / cameras.cpp
 //
 // Ported camera models:
@@ -811,7 +811,8 @@ private:
         T c = (pz1-z-pz0) * (pz1-z-T(4)*f-pz0);
         if (c <= T(0)) return orig_rear;
         T delta = (pz1-z+pz0 - std::sqrt(c)) / T(2);
-        return orig_rear + delta;
+        T result = orig_rear + delta;
+        return (result > T(1e-6)) ? result : orig_rear;
     }
 
     // Mirrors pbrt-v4 BoundExitPupil.
