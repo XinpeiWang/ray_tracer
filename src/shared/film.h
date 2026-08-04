@@ -500,23 +500,26 @@ struct SpectralPixel {
 	double weightSum      = 0.;
 	AtomicDoubleFilm rgbSplat[3];
 
-	// Per-bucket spectral accumulators
-	std::vector<double> bucketSums;
-	std::vector<double> bucketWeights;
+	// Per-bucket spectral accumulators (mirrors pbrt-v4 SpectralFilm::Pixel).
+	// bucketSplats uses plain double (local codebase is single-threaded for splats).
+	std::vector<double> bucketSums;    // weighted radiance sum
+	std::vector<double> bucketWeights; // weight sum
+	std::vector<double> bucketSplats;  // unweighted splat accumulator
 
 	void reset(int nBuckets) {
 		rgbSum[0] = rgbSum[1] = rgbSum[2] = 0.;
 		weightSum = 0.;
-		// atomic splat reset: store 0
 		for (int c = 0; c < 3; ++c)
 			rgbSplat[c].v.store(0.0, std::memory_order_relaxed);
 		std::fill(bucketSums.begin(),    bucketSums.end(),    0.);
 		std::fill(bucketWeights.begin(), bucketWeights.end(), 0.);
+		std::fill(bucketSplats.begin(),  bucketSplats.end(),  0.);
 	}
 
 	void init(int nBuckets) {
 		bucketSums.assign(nBuckets, 0.);
 		bucketWeights.assign(nBuckets, 0.);
+		bucketSplats.assign(nBuckets, 0.);
 	}
 };
 
@@ -623,6 +626,71 @@ public:
 	}
 
 	// -----------------------------------------------------------------------
+	// add_splat -- accumulate a light-path splat contribution at continuous
+	// position (x, y).  Distributes weighted radiance over pixels within the
+	// filter radius, accumulating into both rgbSplat and bucketSplats.
+	//
+	// Mirrors pbrt-v4 SpectralFilm::AddSplat():
+	//   - RGB splat identical to RGBFilm::add_splat().
+	//   - Spectral: L is divided by PDF and NSpectrumSamples (importance-
+	//     sampled normalisation), then each channel is binned by wavelength.
+	// -----------------------------------------------------------------------
+	void add_splat(float x, float y,
+				   const SampledSpectrum<N>& L,
+				   const SampledWavelengths<N>& lambda,
+				   const SensorRGB& srgb)
+	{
+		// Determine filter footprint in pixel space
+		double rad = filter_.radius();
+		int x0 = std::max(0,       static_cast<int>(std::floor(x - rad)));
+		int x1 = std::min(res_x_-1, static_cast<int>(std::floor(x + rad)));
+		int y0 = std::max(0,       static_cast<int>(std::floor(y - rad)));
+		int y1 = std::min(res_y_-1, static_cast<int>(std::floor(y + rad)));
+
+		// Clamp sensor RGB (mirrors pbrt-v4 AddSplat RGB path)
+		SensorRGB srgb_c = srgb;
+		{
+			float m = std::max({srgb_c.r, srgb_c.g, srgb_c.b});
+			if (m > max_component_value_) {
+				float s = max_component_value_ / m;
+				srgb_c.r *= s; srgb_c.g *= s; srgb_c.b *= s;
+			}
+		}
+
+		// Clamp and normalise spectral radiance.
+		// pbrt-v4: L = SafeDiv(L, lambda.PDF()) / NSpectrumSamples
+		SampledSpectrum<N> Ls = L;
+		{
+			float lm = Ls.MaxComponentValue();
+			if (lm > max_component_value_) Ls *= max_component_value_ / lm;
+		}
+		SampledSpectrum<N> pdf = lambda.PDF();
+		for (int i = 0; i < N; ++i)
+			Ls[i] = (pdf[i] != 0.f) ? Ls[i] / (pdf[i] * N) : 0.f;
+
+		for (int iy = y0; iy <= y1; ++iy) {
+			for (int ix = x0; ix <= x1; ++ix) {
+				double wt = filter_.evaluate(
+					static_cast<double>(x - ix - 0.5),
+					static_cast<double>(y - iy - 0.5));
+				if (wt == 0.0) continue;
+				SpectralPixel& pix = pixel(ix, iy);
+
+				// RGB splat (atomic)
+				pix.rgbSplat[0].add(wt * srgb_c.r);
+				pix.rgbSplat[1].add(wt * srgb_c.g);
+				pix.rgbSplat[2].add(wt * srgb_c.b);
+
+				// Spectral splat (per bucket, plain double)
+				for (int i = 0; i < N; ++i) {
+					int b = lambda_to_bucket(lambda[i]);
+					pix.bucketSplats[b] += wt * Ls[i];
+				}
+			}
+		}
+	}
+
+	// -----------------------------------------------------------------------
 	// get_pixel_rgb -- resolve pixel (px,py) to output-space RGB.
 	// Matches RGBFilm::get_pixel_rgb() semantics.
 	// -----------------------------------------------------------------------
@@ -649,16 +717,24 @@ public:
 
 	// -----------------------------------------------------------------------
 	// get_pixel_spectral -- retrieve per-bucket spectral radiance for pixel.
-	// Returns a vector of nBuckets floats: weighted-average radiance per bin.
-	// Bins with zero weight return 0.
+	// Returns a vector of nBuckets floats: weighted-average radiance per bin
+	// plus any splat contribution (mirrors pbrt-v4 SpectralFilm::GetImage).
+	//   result[b] = bucketSums[b] / bucketWeights[b]
+	//             + splat_scale * bucketSplats[b] / filter_integral
+	// Bins with zero weight (and no splat) return 0.
 	// -----------------------------------------------------------------------
-	std::vector<float> get_pixel_spectral(int px, int py) const {
+	std::vector<float> get_pixel_spectral(int px, int py,
+										   float splat_scale = 1.f) const {
 		assert(px >= 0 && px < res_x_ && py >= 0 && py < res_y_);
 		const SpectralPixel& pix = pixel(px, py);
 		std::vector<float> result(nBuckets_, 0.f);
+		float inv_fi = (filter_integral_ > 0.f) ? splat_scale / filter_integral_ : 0.f;
 		for (int b = 0; b < nBuckets_; ++b) {
+			double c = 0.;
 			if (pix.bucketWeights[b] > 0.)
-				result[b] = static_cast<float>(pix.bucketSums[b] / pix.bucketWeights[b]);
+				c = pix.bucketSums[b] / pix.bucketWeights[b];
+			c += inv_fi * pix.bucketSplats[b];
+			result[b] = static_cast<float>(c);
 		}
 		return result;
 	}

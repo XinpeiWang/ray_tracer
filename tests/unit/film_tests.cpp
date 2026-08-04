@@ -632,3 +632,72 @@ TEST(Film, SpectralFilmMultiSampleAveraging) {
 	ASSERT_EQ(static_cast<int>(spec.size()), 1);
 	EXPECT_GT(spec[0], 0.f);
 }
+
+// ---------------------------------------------------------------------------
+// SpectralFilm -- add_splat contributes to spectral buckets
+// ---------------------------------------------------------------------------
+TEST(Film, SpectralFilmSplatAddsToSpectralBuckets) {
+	PixelSensor sensor = make_identity_sensor();
+	RGBColorSpace cs   = make_identity_colorspace();
+	BoxFilter filt(0.5);
+	SpectralFilm<BoxFilter> film(4, 4, filt, sensor, &cs, 16);
+
+	auto swl = film.sample_wavelengths(0.5f);
+	SampledSpectrum<4> L(1.0f);
+	SensorRGB srgb{0.5f, 0.5f, 0.5f};
+
+	// Splat at centre of pixel (1,1): continuous coords (1.5, 1.5)
+	film.add_splat(1.5f, 1.5f, L, swl, srgb);
+
+	// With splat_scale=1 and BoxFilter, spectral buckets at (1,1) should be nonzero
+	auto spec = film.get_pixel_spectral(1, 1, 1.0f);
+	bool any_nonzero = false;
+	for (float v : spec) if (v > 0.f) { any_nonzero = true; break; }
+	EXPECT_TRUE(any_nonzero);
+}
+
+// ---------------------------------------------------------------------------
+// SpectralFilm -- splat_scale=0 suppresses splat but not sample contribution
+// ---------------------------------------------------------------------------
+TEST(Film, SpectralFilmSplatScaleZeroSuppressesSplatBuckets) {
+	PixelSensor sensor = make_identity_sensor();
+	RGBColorSpace cs   = make_identity_colorspace();
+	BoxFilter filt(0.5);
+	SpectralFilm<BoxFilter> film(4, 4, filt, sensor, &cs, 1);
+
+	auto swl = film.sample_wavelengths(0.5f);
+	SampledSpectrum<4> L(1.0f);
+	SensorRGB srgb{1.0f, 0.f, 0.f};
+
+	// Only a splat, no add_sample
+	film.add_splat(0.5f, 0.5f, L, swl, srgb);
+
+	// splat_scale=0 should suppress the splat contribution
+	auto spec_no_splat = film.get_pixel_spectral(0, 0, 0.0f);
+	EXPECT_NEAR(spec_no_splat[0], 0.f, 1e-6f);
+
+	// splat_scale=1 should expose it
+	auto spec_with_splat = film.get_pixel_spectral(0, 0, 1.0f);
+	EXPECT_GT(spec_with_splat[0], 0.f);
+}
+
+// ---------------------------------------------------------------------------
+// SpectralFilm -- clear() resets bucketSplats as well
+// ---------------------------------------------------------------------------
+TEST(Film, SpectralFilmClearResetsBucketSplats) {
+	PixelSensor sensor = make_identity_sensor();
+	RGBColorSpace cs   = make_identity_colorspace();
+	BoxFilter filt(0.5);
+	SpectralFilm<BoxFilter> film(4, 4, filt, sensor, &cs, 8);
+
+	auto swl = film.sample_wavelengths(0.5f);
+	SampledSpectrum<4> L(2.0f);
+	SensorRGB srgb{1.0f, 0.f, 0.f};
+
+	film.add_splat(0.5f, 0.5f, L, swl, srgb);
+	film.clear();
+
+	auto spec = film.get_pixel_spectral(0, 0, 1.0f);
+	for (float v : spec)
+		EXPECT_NEAR(v, 0.f, 1e-6f);
+}
