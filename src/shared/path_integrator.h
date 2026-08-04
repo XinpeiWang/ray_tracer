@@ -53,9 +53,15 @@
 //     T InfiniteLightPdf(const T ref_p[3], const T ref_n[3],
 //                        const T dir[3]) const;
 //
-//     // Same but for a surface area light hit at 'hit'.
-//     T AreaLightPdf(const BDPTHit<T>& prev_hit, const T prev_n[3],
-//                    const BDPTHit<T>& hit, const T wi[3]) const;
+//     // Solid-angle PDF that the light sampler would assign to direction wi
+//     // when sampling the area light that was hit at 'emissive_hit', from the
+//     // previous vertex at (prev_p, prev_n).
+//     // Corresponds to: lightSampler.PMF(prevIntrCtx, areaLight)
+//     //                 * areaLight.PDF_Li(prevIntrCtx, ray.d, true)
+//     // Return 0 if no area lights or the hit surface is not a light.
+//     T AreaLightPdf(const BDPTHit<T>& emissive_hit,
+//                    const T prev_p[3], const T prev_n[3],
+//                    const T wi[3]) const;
 //
 //     // Sample a light for direct illumination (NEE).
 //     // ls.pdf must be the combined selection * sample PDF.
@@ -74,13 +80,24 @@
 //
 //     // BSDF importance sampling; returns false if sampling fails.
 //     // f_val already includes |cos(wi, shading_n)|.
-//     // pdf is the solid-angle PDF; pdfIsProportional: if true, caller
-//     // should query BSDFPdf() for the true PDF (for MIS).
+//     // pdf is the solid-angle PDF.
+//     // is_specular:         mirrors pbrt-v4 BSDFSample::IsSpecular()
+//     // is_transmission:     mirrors pbrt-v4 BSDFSample::IsTransmission()
+//     //                      Used for etaScale: set true whenever the scatter
+//     //                      crosses the surface (refraction). Independent of
+//     //                      is_specular (diffuse transmission is also true).
+//     // pdf_is_proportional: if true, caller queries BSDFPdf() for true PDF.
+//     // eta:                 relative IOR at the boundary (1 if no refraction).
 //     bool BSDFSampleF(int bsdf_id, const T wo[3], const T n[3],
 //                      T u1, T u2,
 //                      T new_dir[3], T f_val[3], T& pdf,
-//                      bool& is_specular, bool& pdf_is_proportional,
+//                      bool& is_specular, bool& is_transmission,
+//                      bool& pdf_is_proportional,
 //                      T& eta) const;
+//
+//     // NOTE: anyNonSpecularBounces (pbrt-v4 path regularization) is tracked
+//     // internally but not exposed — path regularization is not implemented.
+//     // See pbrt-v4 PathIntegrator::Li() 'regularize' branch for the omission.
 //
 //     // True if the BSDF can scatter in both reflection and transmission.
 //     bool BSDFIsReflectiveAndTransmissive(int bsdf_id) const;
@@ -331,13 +348,14 @@ CPU_GPU void PathLi(
 			T    new_dir[3]  = {};
 			T    f_val[3]    = {};
 			T    pdf         = T(0);
-			bool is_specular = false;
-			bool pdf_is_prop = false;  // pdfIsProportional
-			T    eta         = T(1);
+			bool is_specular      = false;
+			bool is_transmission  = false;  // mirrors pbrt-v4 BSDFSample::IsTransmission()
+			bool pdf_is_prop      = false;  // pdfIsProportional
+			T    eta              = T(1);
 
 			if (!scene.BSDFSampleF(hit.bsdf_id, wo, hit.shading_n,
 								   u1, u2, new_dir, f_val, pdf,
-								   is_specular, pdf_is_prop, eta))
+								   is_specular, is_transmission, pdf_is_prop, eta))
 				break;
 			if (pdf == T(0))
 				break;
@@ -355,21 +373,12 @@ CPU_GPU void PathLi(
 			specular_bounce          = is_specular;
 			any_non_specular_bounce |= !is_specular;
 
-			// etaScale: correct RR for transmission chains
-			// (mirrors pbrt-v4: if (bs->IsTransmission()) etaScale *= Sqr(bs->eta))
-			if (!is_specular) {
-				// Diffuse/glossy: no eta correction needed
-			} else {
-				// For specular transmission, accumulate eta^2
-				// We detect transmission by checking if new_dir is on the opposite
-				// side of the geometric normal from wo.
-				T cos_wo = wo[0]*hit.geo_n[0] + wo[1]*hit.geo_n[1] + wo[2]*hit.geo_n[2];
-				T cos_wi = new_dir[0]*hit.geo_n[0] + new_dir[1]*hit.geo_n[1] + new_dir[2]*hit.geo_n[2];
-				if (cos_wo * cos_wi < T(0)) {
-					// Transmission event
-					eta_scale *= eta * eta;
-				}
-			}
+			// etaScale: correct RR for transmission chains.
+			// Mirrors pbrt-v4: if (bs->IsTransmission()) etaScale *= Sqr(bs->eta).
+			// Applied whenever the scatter crosses the surface (is_transmission),
+			// regardless of whether the BSDF is specular or diffuse.
+			if (is_transmission)
+				eta_scale *= eta * eta;
 
 			// Record current hit as prevIntrCtx for next-bounce MIS
 			prev_p[0] = hit.p[0]; prev_p[1] = hit.p[1]; prev_p[2] = hit.p[2];

@@ -133,6 +133,7 @@ struct PISyntheticScene {
 					 float u1, float u2,
 					 float new_dir[3], float f_val[3],
 					 float& pdf, bool& is_specular,
+					 bool& is_transmission,
 					 bool& pdf_is_proportional, float& eta) const {
 		// Cosine-hemisphere sampling
 		float cos_t = std::sqrt(u2);
@@ -157,6 +158,7 @@ struct PISyntheticScene {
 		f_val[0] = f_val[1] = f_val[2] = kAlbedoOverPi * cos_t;
 		pdf                  = cos_t / kPi;
 		is_specular          = false;
+		is_transmission      = false;  // purely reflective Lambertian
 		pdf_is_proportional  = false;
 		eta                  = 1.f;
 		return pdf > 0.f;
