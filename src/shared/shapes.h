@@ -1687,139 +1687,124 @@ struct TriangleShape {
 											  float* out) {
 								out[0] = ay*bz - az*by;
 								out[1] = az*bx - ax*bz;
-								out[2] = ax*by - ay*bx;
-							}
+											out[2] = ax*by - ay*bx;
+										}
 
-						public:
-							// ---------------------------------------------------------------
-							// pdf_area() -- uniform area density (1 / area())
-						// Reference: pbrt-v4 Curve PDF interface
-						// ---------------------------------------------------------------
-						CPU_GPU T pdf_area() const {
-							T a = area();
-							return (a > T(0)) ? T(1) / a : T(0);
-						}
+									public:
+										// ---------------------------------------------------------------
+										// pdf_area() -- uniform area density (1 / area())
+										// Reference: pbrt-v4 Curve PDF interface
+										// ---------------------------------------------------------------
+										CPU_GPU T pdf_area() const {
+											T a = area();
+											return (a > T(0)) ? T(1) / a : T(0);
+										}
 
-						// ---------------------------------------------------------------
-						// CurveSurfacePoint -- result of sample()
-						// (internal helper; callers receive ShapeSample<T>)
-						// ---------------------------------------------------------------
+										// ---------------------------------------------------------------
+										// sample(u0, u1) -- area-uniform surface sample
+										// Strategy (mirrors the spirit of pbrt-v4 Curve::Sample):
+										//   u0 selects a parameter t along the sub-interval [uMin,uMax],
+										//   u1 selects a position across the half-width.
+										//   The surface point is curve_point + u1*width*dpdv_hat.
+										//   The shading normal is normalize(dpdu x dpdv_hat).
+										// ---------------------------------------------------------------
+										CPU_GPU ShapeSample<T> sample(T u0, T u1) const {
+											// Sub-interval control points in world space
+											float cpW[4][3];
+											_sub_cp(cpW);
 
-						// ---------------------------------------------------------------
-						// sample(u0, u1) -- area-uniform surface sample
-						// Strategy (mirrors the spirit of pbrt-v4 Curve::Sample):
-						//   u0 selects a parameter t along the sub-interval [uMin,uMax],
-						//   u1 selects a position across the half-width.
-						//   The surface point is curve_point + u1*width*dpdv_hat.
-						//   The shading normal is normalize(dpdu x dpdv_hat).
-						// ---------------------------------------------------------------
-						CPU_GPU ShapeSample<T> sample(T u0, T u1) const {
-							// Sub-interval control points in world space
-							float cpW[4][3];
-							_sub_cp(cpW);
+											// Map u0 -> local parameter t in [0,1] within the sub-interval
+											float t = float(u0);
+											t = t < 0.f ? 0.f : (t > 1.f ? 1.f : t);
 
-							// Map u0 -> local parameter t in [0,1] within the sub-interval
-							float t = float(u0);
-							t = t < 0.f ? 0.f : (t > 1.f ? 1.f : t);
+											// Evaluate curve position and tangent (world space)
+											float p[3], dpdu[3];
+											_eval_bezier(cpW, t, p, dpdu);
 
-							// Evaluate curve position and tangent (world space)
-							float p[3], dpdu[3];
-							_eval_bezier(cpW, t, p, dpdu);
+											// Width at this parameter (global u = lerp of uMin,uMax by t)
+											float uGlobal = float(uMin) + t * (float(uMax) - float(uMin));
+											float w = _lerp(uGlobal, float(width0), float(width1));
 
-							// Width at this parameter (global u = lerp of uMin,uMax by t)
-							float uGlobal = float(uMin) + t * (float(uMax) - float(uMin));
-							float w = _lerp(uGlobal, float(width0), float(width1));
+											// Build a perpendicular dpdv direction via _coord_system.
+											// Normalize dpdu first (matches pbrt-v4 CoordinateSystem usage).
+											float dpdu_norm[3] = {dpdu[0], dpdu[1], dpdu[2]};
+											float dpdu_len = _len3(dpdu_norm);
+											if (dpdu_len > 0.f) {
+												dpdu_norm[0] /= dpdu_len;
+												dpdu_norm[1] /= dpdu_len;
+												dpdu_norm[2] /= dpdu_len;
+											}
+											float dpdv[3], dummy[3];
+											_coord_system(dpdu_norm, dpdv, dummy);
 
-							// Build a perpendicular dpdv direction
-							// Use coordinate system around dpdu
-							float up[3] = {0.f, 1.f, 0.f};
-							if (std::abs(dpdu[0]) < 0.9f) {
-								up[0]=0.f; up[1]=1.f; up[2]=0.f;
-							} else {
-								up[0]=0.f; up[1]=0.f; up[2]=1.f;
-							}
-							float dpdv[3];
-							_cross3(dpdu, up, dpdv);
-							float dpdv_len = _len3(dpdv);
-							if (dpdv_len == 0.f) {
-								// fallback: cross dpdu with X axis
-								float ax[3] = {1.f, 0.f, 0.f};
-								_cross3(dpdu, ax, dpdv);
-								dpdv_len = _len3(dpdv);
-							}
-							if (dpdv_len > 0.f) {
-								dpdv[0] /= dpdv_len;
-								dpdv[1] /= dpdv_len;
-								dpdv[2] /= dpdv_len;
-							}
+											// Surface point: offset from curve spine by v*halfWidth in dpdv direction
+											// v in [-1,1] so u1=0 -> -halfWidth side, u1=1 -> +halfWidth side
+											float v = float(u1) * 2.f - 1.f;
+											float halfW = 0.5f * w;
+											float px = p[0] + v * halfW * dpdv[0];
+											float py = p[1] + v * halfW * dpdv[1];
+											float pz = p[2] + v * halfW * dpdv[2];
 
-							// Surface point: offset from curve spine by (u1-0.5)*w in dpdv direction
-							float v = float(u1) * 2.f - 1.f; // in [-1,1]
-							float halfW = 0.5f * w;
-							float px = p[0] + v * halfW * dpdv[0];
-							float py = p[1] + v * halfW * dpdv[1];
-							float pz = p[2] + v * halfW * dpdv[2];
+											// Surface normal = normalize(dpdu x dpdv)
+											float n[3];
+											_cross3_s(dpdu[0],dpdu[1],dpdu[2], dpdv[0],dpdv[1],dpdv[2], n);
+											float nl = _len3(n);
+											if (nl > 0.f) { n[0]/=nl; n[1]/=nl; n[2]/=nl; }
 
-							// Surface normal = normalize(dpdu x dpdv)
-							float n[3];
-							_cross3_s(dpdu[0],dpdu[1],dpdu[2], dpdv[0],dpdv[1],dpdv[2], n);
-							float nl = _len3(n);
-							if (nl > 0.f) { n[0]/=nl; n[1]/=nl; n[2]/=nl; }
+											T pdf = pdf_area();
+											return ShapeSample<T>{T(px), T(py), T(pz),
+																 T(n[0]), T(n[1]), T(n[2]),
+																 T(uGlobal), T(float(u1)),
+																 pdf};
+										}
 
-							T pdf = pdf_area();
-							return ShapeSample<T>{T(px), T(py), T(pz),
-												 T(n[0]), T(n[1]), T(n[2]),
-												 T(uGlobal), T(float(u1)),
-												 pdf};
-						}
+										// ---------------------------------------------------------------
+										// sample_from(ctx, u0, u1) -- solid-angle sample from a point
+										// Delegates to area sample, then converts via dist^2/cos(theta).
+										// Reference: pbrt-v4 Cylinder::Sample(ShapeSampleContext, Point2f)
+										// ---------------------------------------------------------------
+										CPU_GPU ShapeSample<T> sample_from(const SamplingContext<T>& ctx,
+																		   T u0, T u1) const {
+											ShapeSample<T> ss = sample(u0, u1);
+											T wix = ss.px - ctx.px;
+											T wiy = ss.py - ctx.py;
+											T wiz = ss.pz - ctx.pz;
+											T dist2 = wix*wix + wiy*wiy + wiz*wiz;
+											if (dist2 == T(0)) { ss.pdf = T(0); return ss; }
+											T inv_d = T(1) / std::sqrt(dist2);
+											T cos_t = std::abs(ss.nx*(-wix*inv_d) +
+															   ss.ny*(-wiy*inv_d) +
+															   ss.nz*(-wiz*inv_d));
+											if (cos_t == T(0)) { ss.pdf = T(0); return ss; }
+											ss.pdf = pdf_area() * dist2 / cos_t;
+											return ss;
+										}
 
-						// ---------------------------------------------------------------
-						// sample_from(ctx, u0, u1) -- solid-angle sample from a point
-						// Delegates to area sample, then converts via dist^2/cos(theta).
-						// Reference: pbrt-v4 Cylinder::Sample(ShapeSampleContext, Point2f)
-						// ---------------------------------------------------------------
-						CPU_GPU ShapeSample<T> sample_from(const SamplingContext<T>& ctx,
-														   T u0, T u1) const {
-							ShapeSample<T> ss = sample(u0, u1);
-							T wix = ss.px - ctx.px;
-							T wiy = ss.py - ctx.py;
-							T wiz = ss.pz - ctx.pz;
-							T dist2 = wix*wix + wiy*wiy + wiz*wiz;
-							if (dist2 == T(0)) { ss.pdf = T(0); return ss; }
-							T inv_d = T(1) / std::sqrt(dist2);
-							T cos_t = std::abs(ss.nx*(-wix*inv_d) +
-											   ss.ny*(-wiy*inv_d) +
-											   ss.nz*(-wiz*inv_d));
-							if (cos_t == T(0)) { ss.pdf = T(0); return ss; }
-							ss.pdf = pdf_area() * dist2 / cos_t;
-							return ss;
-						}
-
-						// ---------------------------------------------------------------
-						// pdf_from(ctx, wi) -- solid-angle PDF for a given direction
-						// Shoots a ray from ctx.p in direction wi and evaluates the
-						// area-to-solid-angle Jacobian at the first intersection.
-						// Reference: pbrt-v4 Cylinder::PDF(ShapeSampleContext, Vector3f)
-						// ---------------------------------------------------------------
-						CPU_GPU T pdf_from(const SamplingContext<T>& ctx,
-										   T wi_dx, T wi_dy, T wi_dz) const {
-							T wi_len = std::sqrt(wi_dx*wi_dx + wi_dy*wi_dy + wi_dz*wi_dz);
-							if (wi_len == T(0)) return T(0);
-							T wix = wi_dx / wi_len;
-							T wiy = wi_dy / wi_len;
-							T wiz = wi_dz / wi_len;
-							CurveHit hit{};
-							bool found = intersect(ctx.px, ctx.py, ctx.pz,
-												   wix, wiy, wiz,
-												   T(1e-4), std::numeric_limits<T>::max(),
-												   &hit);
-							if (!found) return T(0);
-							T dist2 = hit.t * hit.t;
-							T cos_t = std::abs(hit.nx*(-wix) + hit.ny*(-wiy) + hit.nz*(-wiz));
-							if (cos_t == T(0)) return T(0);
-							T pdf = pdf_area() * dist2 / cos_t;
-							return std::isfinite(pdf) ? pdf : T(0);
-						}
-					};
+										// ---------------------------------------------------------------
+										// pdf_from(ctx, wi) -- solid-angle PDF for a given direction
+										// Shoots a ray from ctx.p in direction wi and evaluates the
+										// area-to-solid-angle Jacobian at the first intersection.
+										// Reference: pbrt-v4 Cylinder::PDF(ShapeSampleContext, Vector3f)
+										// ---------------------------------------------------------------
+										CPU_GPU T pdf_from(const SamplingContext<T>& ctx,
+														   T wi_dx, T wi_dy, T wi_dz) const {
+											T wi_len = std::sqrt(wi_dx*wi_dx + wi_dy*wi_dy + wi_dz*wi_dz);
+											if (wi_len == T(0)) return T(0);
+											T wix = wi_dx / wi_len;
+											T wiy = wi_dy / wi_len;
+											T wiz = wi_dz / wi_len;
+											CurveHit hit{};
+											bool found = intersect(ctx.px, ctx.py, ctx.pz,
+																   wix, wiy, wiz,
+																   T(1e-4), std::numeric_limits<T>::max(),
+																   &hit);
+											if (!found) return T(0);
+											T dist2 = hit.t * hit.t;
+											T cos_t = std::abs(hit.nx*(-wix) + hit.ny*(-wiy) + hit.nz*(-wiz));
+											if (cos_t == T(0)) return T(0);
+											T pdf = pdf_area() * dist2 / cos_t;
+											return std::isfinite(pdf) ? pdf : T(0);
+										}
+								};
 
 

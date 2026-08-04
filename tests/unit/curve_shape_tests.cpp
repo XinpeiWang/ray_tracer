@@ -211,8 +211,10 @@ TEST(CurveShape, SamplePdfPositive) {
 
 TEST(CurveShape, SampleFromPdfPositive) {
 	CS c = make_flat_straight();
-	// Curve is along X axis; normal points along Z, so offset context along Z
-	SamplingContext<double> ctx{0.5, 0.0, 2.0,  0.0, 0.0, 1.0};
+	// Curve is along X axis. dpdu=(1,0,0), _coord_system gives dpdv=(0,0,-1),
+	// so surface normal = cross(dpdu, dpdv) = (0,1,0).
+	// Place context along +Y so the solid-angle Jacobian is non-degenerate.
+	SamplingContext<double> ctx{0.5, 2.0, 0.0,  0.0, 1.0, 0.0};
 	auto ss = c.sample_from(ctx, 0.5, 0.5);
 	EXPECT_GT(ss.pdf, 0.0);
 }
@@ -220,7 +222,7 @@ TEST(CurveShape, SampleFromPdfPositive) {
 TEST(CurveShape, SampleFromConvertsToSolidAngle) {
 	// solid-angle pdf should differ from area pdf when distance > 0
 	CS c = make_flat_straight();
-	SamplingContext<double> ctx{0.5, 0.0, 2.0,  0.0, 0.0, 1.0};
+	SamplingContext<double> ctx{0.5, 2.0, 0.0,  0.0, 1.0, 0.0};
 	auto ss = c.sample_from(ctx, 0.5, 0.5);
 	// area pdf
 	double area_pdf = c.pdf_area();
