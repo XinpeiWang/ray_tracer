@@ -491,3 +491,231 @@ inline float blp_pdf_wi(const float* p00, const float* p10,
 
     return area_pdf * dist2 / cos_theta;
 }
+
+// ===========================================================================
+// BilinearPatchShape<T>
+// ===========================================================================
+//
+// Template struct wrapping the bilinear patch with the standard shape API
+// used by SphereShape, DiskShape, CylinderShape, TriangleShape.
+//
+// Stores four corners p00, p10, p01, p11 as flat scalars (world space).
+// Convention (matches pbrt-v4 BilinearPatch):
+//   p(u,v) = lerp(u, lerp(v, p00, p01), lerp(v, p10, p11))
+//   dpdu   = lerp(v, p10, p11) - lerp(v, p00, p01)
+//   dpdv   = lerp(u, p01, p11) - lerp(u, p00, p10)
+//
+// Exposes:
+//   intersect(rox,roy,roz, rdx,rdy,rdz, t_min, t_max) -> optional<ShapeHit<T>>
+//   area()                     -> T      (3x3 grid quadrature, pbrt-v4)
+//   pdf_area()                 -> T      (1/area)
+//   sample(u0,u1)              -> ShapeSample<T>  (area-uniform)
+//   sample_from(ctx,u0,u1)     -> ShapeSample<T>  (solid-angle from point)
+//   pdf_from(ctx,wi_dx,dy,dz)  -> T               (solid-angle PDF)
+//
+// Reference: pbrt-v4 src/pbrt/shapes.h  BilinearPatch class
+//            Ramsey et al., "Ray Bilinear Patch Intersections", 2004
+// ===========================================================================
+
+// Bring in ShapeHit<T>, ShapeSample<T>, SamplingContext<T> only if shapes.h
+// hasn't already been included (avoids pulling in the full shapes.h when
+// bilinear_patch.h is used standalone).
+#ifndef SHAPES_H_SHAPE_STRUCTS_DEFINED
+#define SHAPES_H_SHAPE_STRUCTS_DEFINED
+
+#ifndef CPU_GPU
+#  if defined(__CUDACC__)
+#    define CPU_GPU __host__ __device__ __forceinline__
+#  else
+#    define CPU_GPU inline
+#  endif
+#endif
+
+template<typename T>
+struct ShapeHit {
+    T t;
+    T nx, ny, nz;
+    T u, v;
+};
+
+template<typename T>
+struct SamplingContext {
+    T px, py, pz;
+    T nx, ny, nz;
+};
+
+template<typename T>
+struct ShapeSample {
+    T px, py, pz;
+    T nx, ny, nz;
+    T u, v;
+    T pdf;
+};
+
+#endif // SHAPES_H_SHAPE_STRUCTS_DEFINED
+
+#ifndef BLP_CPU_GPU
+#  if defined(__CUDACC__)
+#    define BLP_CPU_GPU __host__ __device__ __forceinline__
+#  else
+#    define BLP_CPU_GPU inline
+#  endif
+#endif
+
+template<typename T>
+struct BilinearPatchShape {
+    // Four corners in world space (u=0/1 left/right, v=0/1 bottom/top)
+    T p00x, p00y, p00z;
+    T p10x, p10y, p10z;
+    T p01x, p01y, p01z;
+    T p11x, p11y, p11z;
+
+    CPU_GPU static BilinearPatchShape make(
+        T p00x, T p00y, T p00z,
+        T p10x, T p10y, T p10z,
+        T p01x, T p01y, T p01z,
+        T p11x, T p11y, T p11z)
+    {
+        return BilinearPatchShape{
+            p00x,p00y,p00z, p10x,p10y,p10z,
+            p01x,p01y,p01z, p11x,p11y,p11z};
+    }
+
+    // -----------------------------------------------------------------------
+    // Bilinear interpolation helpers
+    // -----------------------------------------------------------------------
+    CPU_GPU void lerp_point(T u, T v,
+                             T& px, T& py, T& pz) const {
+        // p(u,v) = lerp(u, lerp(v,p00,p01), lerp(v,p10,p11))
+        T ax = p00x + v*(p01x-p00x), ay = p00y + v*(p01y-p00y), az = p00z + v*(p01z-p00z);
+        T bx = p10x + v*(p11x-p10x), by = p10y + v*(p11y-p10y), bz = p10z + v*(p11z-p10z);
+        px = ax + u*(bx-ax); py = ay + u*(by-ay); pz = az + u*(bz-az);
+    }
+
+    CPU_GPU void dpdu_dpdv(T u, T v,
+                            T& dux, T& duy, T& duz,
+                            T& dvx, T& dvy, T& dvz) const {
+        // dpdu = lerp(v,p10,p11) - lerp(v,p00,p01)
+        T ax = p00x + v*(p01x-p00x), ay = p00y + v*(p01y-p00y), az = p00z + v*(p01z-p00z);
+        T bx = p10x + v*(p11x-p10x), by = p10y + v*(p11y-p10y), bz = p10z + v*(p11z-p10z);
+        dux = bx-ax; duy = by-ay; duz = bz-az;
+        // dpdv = lerp(u,p01,p11) - lerp(u,p00,p10)
+        T cx = p00x + u*(p10x-p00x), cy = p00y + u*(p10y-p00y), cz = p00z + u*(p10z-p00z);
+        T dx = p01x + u*(p11x-p01x), dy = p01y + u*(p11y-p01y), dz = p01z + u*(p11z-p01z);
+        dvx = dx-cx; dvy = dy-cy; dvz = dz-cz;
+    }
+
+    CPU_GPU void outward_normal(T u, T v,
+                                 T& nx, T& ny, T& nz) const {
+        T dux,duy,duz,dvx,dvy,dvz;
+        dpdu_dpdv(u,v,dux,duy,duz,dvx,dvy,dvz);
+        // n = dpdu x dpdv, normalised
+        T cx = duy*dvz - duz*dvy;
+        T cy = duz*dvx - dux*dvz;
+        T cz = dux*dvy - duy*dvx;
+        T len = std::sqrt(cx*cx+cy*cy+cz*cz);
+        if (len > T(0)) { nx=cx/len; ny=cy/len; nz=cz/len; }
+        else            { nx=T(0);   ny=T(0);   nz=T(1);   }
+    }
+
+    // Local differential area |dpdu x dpdv| at (u,v)
+    CPU_GPU T local_dA(T u, T v) const {
+        T dux,duy,duz,dvx,dvy,dvz;
+        dpdu_dpdv(u,v,dux,duy,duz,dvx,dvy,dvz);
+        T cx = duy*dvz-duz*dvy, cy = duz*dvx-dux*dvz, cz = dux*dvy-duy*dvx;
+        return std::sqrt(cx*cx+cy*cy+cz*cz);
+    }
+
+    // -----------------------------------------------------------------------
+    // Area -- 3x3 Gaussian quadrature (same grid as pbrt-v4)
+    // Reference: pbrt-v4 BilinearPatch::Area
+    // -----------------------------------------------------------------------
+    CPU_GPU T area() const {
+        // 3x3 midpoint rule (u,v both sampled at 1/6, 1/2, 5/6)
+        static const T pts[3] = { T(1)/T(6), T(1)/T(2), T(5)/T(6) };
+        T A = T(0);
+        for (int i = 0; i < 3; ++i)
+            for (int j = 0; j < 3; ++j)
+                A += local_dA(pts[i], pts[j]);
+        return A * (T(1)/T(9));   // weight = 1/9 per cell (3x3 uniform)
+    }
+
+    CPU_GPU T pdf_area() const { return T(1) / area(); }
+
+    // -----------------------------------------------------------------------
+    // Intersection
+    // Delegates to the proven blp_intersect low-level function and wraps
+    // the result in the standard ShapeHit<T> API.
+    // Reference: pbrt-v4 BilinearPatch::BasicIntersect / Ramsey et al. 2004
+    // -----------------------------------------------------------------------
+    CPU_GPU std::optional<ShapeHit<T>>
+    intersect(T rox, T roy, T roz,
+              T rdx, T rdy, T rdz,
+              T t_min, T t_max) const
+    {
+        float ro[3] = {(float)rox,(float)roy,(float)roz};
+        float rd[3] = {(float)rdx,(float)rdy,(float)rdz};
+        float sq00[3]={(float)p00x,(float)p00y,(float)p00z};
+        float sq10[3]={(float)p10x,(float)p10y,(float)p10z};
+        float sq01[3]={(float)p01x,(float)p01y,(float)p01z};
+        float sq11[3]={(float)p11x,(float)p11y,(float)p11z};
+        auto h = blp_intersect(ro, rd, (float)t_max, sq00, sq10, sq01, sq11);
+        if (!h || (T)h->t < t_min || (T)h->t > t_max) return {};
+        float u = h->u, v = h->v;
+        // Compute normal at (u,v)
+        T nnx,nny,nnz;
+        outward_normal((T)u,(T)v, nnx,nny,nnz);
+        // Orient normal toward ray origin
+        if (nnx*rdx+nny*rdy+nnz*rdz > T(0)) { nnx=-nnx; nny=-nny; nnz=-nnz; }
+        return ShapeHit<T>{(T)h->t, nnx,nny,nnz, (T)u,(T)v};
+    }
+
+    // -----------------------------------------------------------------------
+    // Area-uniform surface sample
+    // Reference: pbrt-v4 BilinearPatch::Sample(Point2f u)
+    // -----------------------------------------------------------------------
+    CPU_GPU ShapeSample<T> sample(T u0, T u1) const {
+        // Simple uniform (u,v) -- correct for rectangles, approximate otherwise
+        T px,py,pz;
+        lerp_point(u0, u1, px,py,pz);
+        T nx,ny,nz;
+        outward_normal(u0, u1, nx,ny,nz);
+        return ShapeSample<T>{px,py,pz, nx,ny,nz, u0,u1, pdf_area()};
+    }
+
+    // -----------------------------------------------------------------------
+    // Solid-angle sample from a shading point (area sample + Jacobian)
+    // Reference: pbrt-v4 BilinearPatch::Sample(ShapeSampleContext, Point2f)
+    // -----------------------------------------------------------------------
+    CPU_GPU ShapeSample<T> sample_from(const SamplingContext<T>& ctx,
+                                        T u0, T u1) const {
+        ShapeSample<T> ss = sample(u0, u1);
+        T wix = ss.px-ctx.px, wiy = ss.py-ctx.py, wiz = ss.pz-ctx.pz;
+        T dist2 = wix*wix+wiy*wiy+wiz*wiz;
+        if (dist2 == T(0)) { ss.pdf = T(0); return ss; }
+        T inv_d = T(1)/std::sqrt(dist2);
+        T cos_t = std::abs(ss.nx*(-wix*inv_d)+ss.ny*(-wiy*inv_d)+ss.nz*(-wiz*inv_d));
+        if (cos_t == T(0)) { ss.pdf = T(0); return ss; }
+        ss.pdf = pdf_area() * dist2 / cos_t;
+        return ss;
+    }
+
+    // -----------------------------------------------------------------------
+    // Solid-angle PDF from a shading point (intersect + Jacobian)
+    // Reference: pbrt-v4 BilinearPatch::PDF(ShapeSampleContext, Vector3f)
+    // -----------------------------------------------------------------------
+    CPU_GPU T pdf_from(const SamplingContext<T>& ctx,
+                        T wi_dx, T wi_dy, T wi_dz) const {
+        T wi_len = std::sqrt(wi_dx*wi_dx+wi_dy*wi_dy+wi_dz*wi_dz);
+        if (wi_len == T(0)) return T(0);
+        T wix=wi_dx/wi_len, wiy=wi_dy/wi_len, wiz=wi_dz/wi_len;
+        auto hit = intersect(ctx.px,ctx.py,ctx.pz, wix,wiy,wiz,
+                             T(1e-4), std::numeric_limits<T>::max());
+        if (!hit) return T(0);
+        T dist2 = hit->t * hit->t;
+        T cos_t = std::abs(hit->nx*(-wix)+hit->ny*(-wiy)+hit->nz*(-wiz));
+        if (cos_t == T(0)) return T(0);
+        T pdf = pdf_area() * dist2 / cos_t;
+        return std::isfinite(pdf) ? pdf : T(0);
+    }
+};

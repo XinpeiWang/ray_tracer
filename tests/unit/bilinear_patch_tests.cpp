@@ -7,6 +7,9 @@
 #include <cmath>
 #include <array>
 
+// BilinearPatchShape<T> needs ShapeHit / ShapeSample / SamplingContext from shapes.h
+// (already included transitively via bilinear_patch.h -> shapes.h)
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -270,4 +273,142 @@ TEST(BilinearPatch, UVContinuous) {
             }
         }
     }
+}
+
+// ===========================================================================
+// BilinearPatchShape<T> tests (template API)
+// ===========================================================================
+
+// Unit square in XY plane: p00=(0,0,0), p10=(1,0,0), p01=(0,1,0), p11=(1,1,0)
+static BilinearPatchShape<double> unit_blp() {
+    return BilinearPatchShape<double>::make(
+        0.0,0.0,0.0,  1.0,0.0,0.0,
+        0.0,1.0,0.0,  1.0,1.0,0.0);
+}
+
+static const double BLP_PI = 3.14159265358979323846;
+
+// -----------------------------------------------------------------------
+// Area
+// -----------------------------------------------------------------------
+TEST(BilinearPatchShapeT, AreaUnitSquare) {
+    // Unit square area = 1
+    auto p = unit_blp();
+    EXPECT_NEAR(p.area(), 1.0, 1e-6);
+}
+
+TEST(BilinearPatchShapeT, AreaRectangle) {
+    // 2x3 rectangle area = 6
+    auto p = BilinearPatchShape<double>::make(
+        0,0,0,  2,0,0,
+        0,3,0,  2,3,0);
+    EXPECT_NEAR(p.area(), 6.0, 1e-5);
+}
+
+TEST(BilinearPatchShapeT, PdfAreaIsInverseArea) {
+    auto p = unit_blp();
+    EXPECT_NEAR(p.pdf_area(), 1.0 / p.area(), 1e-12);
+}
+
+// -----------------------------------------------------------------------
+// Intersection
+// -----------------------------------------------------------------------
+TEST(BilinearPatchShapeT, IntersectHitsCenter) {
+    auto p = unit_blp();
+    auto h = p.intersect(0.5,0.5,2.0, 0,0,-1, 1e-4,10.0);
+    ASSERT_TRUE(h.has_value());
+    EXPECT_NEAR(h->t, 2.0, 1e-6);
+    EXPECT_NEAR(h->u, 0.5, 1e-5);
+    EXPECT_NEAR(h->v, 0.5, 1e-5);
+}
+
+TEST(BilinearPatchShapeT, IntersectNormalPointsUp) {
+    auto p = unit_blp();
+    auto h = p.intersect(0.5,0.5,2.0, 0,0,-1, 1e-4,10.0);
+    ASSERT_TRUE(h.has_value());
+    // Normal should point toward ray origin (up, +z)
+    EXPECT_NEAR(std::abs(h->nz), 1.0, 1e-5);
+}
+
+TEST(BilinearPatchShapeT, IntersectMissOutside) {
+    auto p = unit_blp();
+    auto h = p.intersect(2.0,0.5,2.0, 0,0,-1, 1e-4,10.0);
+    EXPECT_FALSE(h.has_value());
+}
+
+TEST(BilinearPatchShapeT, IntersectMissBeyondTMax) {
+    auto p = unit_blp();
+    auto h = p.intersect(0.5,0.5,2.0, 0,0,-1, 1e-4,1.5);
+    EXPECT_FALSE(h.has_value());
+}
+
+TEST(BilinearPatchShapeT, IntersectHitPointOnSurface) {
+    auto p = unit_blp();
+    auto h = p.intersect(0.3,0.7,3.0, 0,0,-1, 1e-4,10.0);
+    ASSERT_TRUE(h.has_value());
+    // Hit point reconstructed from t should have z~0
+    double hz = 3.0 + h->t * (-1.0);
+    EXPECT_NEAR(hz, 0.0, 1e-6);
+}
+
+// -----------------------------------------------------------------------
+// Sample
+// -----------------------------------------------------------------------
+TEST(BilinearPatchShapeT, SamplePdfIsInverseArea) {
+    auto p = unit_blp();
+    auto s = p.sample(0.3, 0.7);
+    EXPECT_NEAR(s.pdf, p.pdf_area(), 1e-12);
+}
+
+TEST(BilinearPatchShapeT, SamplePointOnPatch) {
+    auto p = unit_blp();
+    auto s = p.sample(0.4, 0.6);
+    // Unit square: px in [0,1], py in [0,1], pz = 0
+    EXPECT_GE(s.px, -1e-9); EXPECT_LE(s.px, 1+1e-9);
+    EXPECT_GE(s.py, -1e-9); EXPECT_LE(s.py, 1+1e-9);
+    EXPECT_NEAR(s.pz, 0.0, 1e-9);
+}
+
+TEST(BilinearPatchShapeT, SampleNormalIsUnit) {
+    auto p = unit_blp();
+    auto s = p.sample(0.5, 0.5);
+    double nlen = std::sqrt(s.nx*s.nx + s.ny*s.ny + s.nz*s.nz);
+    EXPECT_NEAR(nlen, 1.0, 1e-9);
+}
+
+TEST(BilinearPatchShapeT, SampleIsDeterministic) {
+    auto p = unit_blp();
+    auto s1 = p.sample(0.123, 0.456);
+    auto s2 = p.sample(0.123, 0.456);
+    EXPECT_EQ(s1.px, s2.px);
+    EXPECT_EQ(s1.py, s2.py);
+    EXPECT_EQ(s1.pz, s2.pz);
+}
+
+// -----------------------------------------------------------------------
+// sample_from / pdf_from consistency
+// -----------------------------------------------------------------------
+TEST(BilinearPatchShapeT, SampleFromPdfConsistent) {
+    auto p = unit_blp();
+    SamplingContext<double> ctx{0.5, 0.5, 3.0, 0,0,0};
+    auto ss = p.sample_from(ctx, 0.4, 0.6);
+    ASSERT_GT(ss.pdf, 0.0);
+    double wix = ss.px-ctx.px, wiy = ss.py-ctx.py, wiz = ss.pz-ctx.pz;
+    double pdf2 = p.pdf_from(ctx, wix, wiy, wiz);
+    EXPECT_NEAR(ss.pdf, pdf2, 0.01*(ss.pdf+pdf2)*0.5 + 1e-10);
+}
+
+TEST(BilinearPatchShapeT, PdfFromZeroForMiss) {
+    auto p = unit_blp();
+    SamplingContext<double> ctx{0.5, 0.5, 3.0, 0,0,0};
+    // Direction pointing away (+z, patch is at z=0 below ctx)
+    double pdf = p.pdf_from(ctx, 0.0, 0.0, 1.0);
+    EXPECT_EQ(pdf, 0.0);
+}
+
+TEST(BilinearPatchShapeT, SampleFromPdfPositive) {
+    auto p = unit_blp();
+    SamplingContext<double> ctx{0.5, 0.5, 2.0, 0,0,0};
+    auto ss = p.sample_from(ctx, 0.5, 0.5);
+    EXPECT_GT(ss.pdf, 0.0);
 }
