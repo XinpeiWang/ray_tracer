@@ -2,7 +2,7 @@
 // Unit tests for RealisticCamera<T>
 // Mirrors pbrt-v4 RealisticCamera (cameras.h / cameras.cpp).
 #include <gtest/gtest.h>
-#include "../../src/shared/cameras_new.h"
+#include "../../src/shared/cameras.h"
 #include <cmath>
 #include <vector>
 
