@@ -64,7 +64,7 @@
 #ifndef SCALAR_MATH_REVERSE_BITS_DEFINED
 #define SCALAR_MATH_REVERSE_BITS_DEFINED
 
-CPU_GPU inline uint32_t ReverseBits32(uint32_t n) {
+CPU_GPU uint32_t ReverseBits32(uint32_t n) {
 #if defined(__CUDACC__)
     return __brev(n);
 #else
@@ -77,13 +77,13 @@ CPU_GPU inline uint32_t ReverseBits32(uint32_t n) {
 #endif
 }
 
-CPU_GPU inline uint64_t ReverseBits64(uint64_t n) {
+CPU_GPU uint64_t ReverseBits64(uint64_t n) {
     uint64_t n0 = ReverseBits32(static_cast<uint32_t>(n));
     uint64_t n1 = ReverseBits32(static_cast<uint32_t>(n >> 32));
     return (n0 << 32) | n1;
 }
 
-CPU_GPU inline uint64_t LeftShift2(uint64_t x) {
+CPU_GPU uint64_t LeftShift2(uint64_t x) {
     x &= 0xffffffff;
     x = (x ^ (x << 16)) & 0x0000ffff0000ffff;
     x = (x ^ (x <<  8)) & 0x00ff00ff00ff00ff;
@@ -93,7 +93,7 @@ CPU_GPU inline uint64_t LeftShift2(uint64_t x) {
     return x;
 }
 
-CPU_GPU inline uint64_t EncodeMorton2(uint32_t x, uint32_t y) {
+CPU_GPU uint64_t EncodeMorton2(uint32_t x, uint32_t y) {
     return (LeftShift2(y) << 1) | LeftShift2(x);
 }
 
@@ -191,7 +191,7 @@ enum class RandomizeStrategy {
 // This is the standard Sobol/NiederreiterXing matrix-vector product in GF(2).
 // pbrt-v4: MultiplyGenerator (util/lowdiscrepancy.h)
 // ===========================================================================
-CPU_GPU inline uint32_t MultiplyGenerator(const uint32_t* C, int matrix_size,
+CPU_GPU uint32_t MultiplyGenerator(const uint32_t* C, int matrix_size,
 										  uint32_t a) {
 	uint32_t v = 0;
 	for (int i = 0; i < matrix_size && a != 0; ++i, a >>= 1)
@@ -220,7 +220,7 @@ CPU_GPU inline uint32_t MultiplyGenerator(const uint32_t* C, int matrix_size,
 // pbrt-v4: SobolSample<R> (util/lowdiscrepancy.h)
 // ===========================================================================
 template <typename R>
-CPU_GPU inline float SobolSample(const uint32_t* matrices, int matrix_size,
+CPU_GPU float SobolSample(const uint32_t* matrices, int matrix_size,
 								 int64_t a, int dimension, R randomizer) {
 	const uint32_t* C = matrices + dimension * matrix_size;
 	uint32_t v = 0;
@@ -239,7 +239,7 @@ CPU_GPU inline float SobolSample(const uint32_t* matrices, int matrix_size,
 // fixed number of digits.
 // pbrt-v4: InverseRadicalInverse (util/lowdiscrepancy.h)
 // ===========================================================================
-CPU_GPU inline uint64_t InverseRadicalInverse(uint64_t inverse, int base,
+CPU_GPU uint64_t InverseRadicalInverse(uint64_t inverse, int base,
 											  int nDigits) {
 	uint64_t index = 0;
 	for (int i = 0; i < nDigits; ++i) {
@@ -291,7 +291,7 @@ inline const int* GetPrimes() {
 
 } // namespace lowdisc_detail
 
-CPU_GPU inline float OwenScrambledRadicalInverse(int baseIndex, uint64_t a,
+CPU_GPU float OwenScrambledRadicalInverse(int baseIndex, uint64_t a,
 												 uint32_t hash) {
 	const unsigned int base = static_cast<unsigned int>(
 		lowdisc_detail::GetPrimes()[baseIndex]);

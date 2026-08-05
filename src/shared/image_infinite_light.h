@@ -36,11 +36,11 @@
 
 namespace iil_detail {
 
-CPU_GPU inline double luminance(double r, double g, double b) {
+CPU_GPU double luminance(double r, double g, double b) {
     return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-CPU_GPU inline void apply_matrix(const double* m,
+CPU_GPU void apply_matrix(const double* m,
                                   double  x,  double  y,  double  z,
                                   double& ox, double& oy, double& oz) {
     ox = m[0]*x + m[3]*y + m[6]*z;

@@ -1,173 +1,115 @@
 #pragma once
-// ---------------------------------------------------------------------------
-// shapes.h -- Shared CPU/GPU shape intersection and sampling primitives.
-//
-// Ports pbrt-v4 src/pbrt/shapes.h/.cpp for three fundamental shapes:
-//   SphereShape<T>   -- full sphere (or z-clipped) with quadric intersection
-//   DiskShape<T>     -- flat disk aligned to XY plane (z = height)
-//   TriangleShape<T> -- Watertight triangle (Woop/Igehy style, pbrt-v4)
-//
-// Each shape exposes:
-//   intersect(ray_ox,oy,oz, rd_dx,dy,dz, tMin, tMax)
-//       -> optional<ShapeHit<T>>
-//   area()                      -> T
-//   sample(u0, u1)              -> ShapeSample<T>   (area-uniform)
-//   pdf_area()                  -> T   (= 1/area())
-//   sample_from(ctx, u0, u1)    -> ShapeSample<T>   (solid-angle from point)
-//   pdf_from(ctx, wi_dx,wy,wz)  -> T   (solid-angle PDF)
-//
-// SamplingContext<T> holds the shading point used for solid-angle sampling.
-//
-// Design rules (same as bxdfs.h / sampling.h):
-//   - No virtual functions, no heap allocation
-//   - Template parameter T: double on CPU, float on GPU
-//   - CPU_GPU macro: __host__ __device__ under NVCC, inline otherwise
-//   - Coordinate convention: right-handed, y-up (matches local codebase)
-//
-// Reference: pbrt-v4 src/pbrt/shapes.h, shapes.cpp
-//            Wald et al. 2014 "Watertight Ray/Triangle Intersection"
-// ---------------------------------------------------------------------------
 
-#ifndef CPU_GPU
-#   if defined(__CUDACC__)
-#       define CPU_GPU __host__ __device__ __forceinline__
-#   else
-#       define CPU_GPU
-#   endif
-#endif
 
-#include "sampling_sphere_cone.h"   // SampleUniformSphere, SampleUniformDiskConcentric,
-								// SampleUniformCone, UniformConePDF, etc.
-#include "shading_frame.h"          // ShadingFrame<T>
-#include "splines.h"                // CubicBezierControlPoints, EvaluateCubicBezierD, SubdivideCubicBezier
-#include "interval_vec.h"           // Point3fi, OffsetRayOrigin, SpawnRay
-
-#include <cmath>
-#include <optional>
-#include <algorithm>
-#include <limits>
-
+				};
 // ===========================================================================
-// Helper math (mirrors pbrt-v4 util/math.h subset)
+// CylinderShape<T>
+// ===========================================================================
+//
+// Cylinder of radius `radius` along the Z axis centered at (cx, cy, *).
+// z_min and z_max are world-space Z extents; phi_max is the azimuthal sweep
+// in radians (2*pi for a full cylinder).
+//
+// Matches pbrt-v4 Cylinder semantics:
+//   Area  = (z_max - z_min) * radius * phi_max
+//   Normal = outward radial, nz = 0 (no end caps)
+//   UV     = (phi/phi_max, (z-z_min)/(z_max-z_min))
+//
+// Reference: pbrt-v4 src/pbrt/shapes.h  Cylinder class
 // ===========================================================================
 
-namespace shapes_detail {
-
-template<typename T> CPU_GPU T sq(T x) { return x * x; }
-
-// Stable quadratic solver; returns false when no real roots exist.
-// Roots are ordered: t0 <= t1.
 template<typename T>
-CPU_GPU bool solve_quadratic(T a, T b, T c, T& t0, T& t1) {
-	// Use double precision for discriminant to avoid catastrophic cancellation
-	double da = (double)a, db = (double)b, dc = (double)c;
-	double disc = db*db - 4.0*da*dc;
-	if (disc < 0.0) return false;
-	double sqrt_disc = std::sqrt(disc);
-	double q = (db < 0) ? -0.5*(db - sqrt_disc) : -0.5*(db + sqrt_disc);
-	t0 = (T)(q / da);
-	t1 = (T)(dc / q);
-	if (t0 > t1) { T tmp = t0; t0 = t1; t1 = tmp; }
-	return true;
-}
+struct CylinderShape {
+	T cx, cy;       // world-space axis center (axis runs parallel to Z)
+	T z_min, z_max; // world-space Z extent
+	T radius;       // cylinder radius
+	T phi_max;      // azimuthal extent in radians (default 2*pi)
 
-// Safe arccos clamped to [-1,1]
-template<typename T> CPU_GPU T safe_acos(T x) {
-	return std::acos(std::max(T(-1), std::min(T(1), x)));
-}
+	CPU_GPU static CylinderShape make(T cx, T cy, T z_min, T z_max, T radius) {
+		const T pi2 = T(2) * T(3.14159265358979323846);
+		return CylinderShape{cx, cy, z_min, z_max, radius, pi2};
+	}
 
-// Safe sqrt (clamps negative argument to zero)
-template<typename T> CPU_GPU T safe_sqrt(T x) {
-	return std::sqrt(std::max(T(0), x));
-}
+	CPU_GPU static CylinderShape make_partial(T cx, T cy, T z_min, T z_max, T radius, T phi_max_rad) {
+		return CylinderShape{cx, cy, z_min, z_max, radius, phi_max_rad};
+	}
 
-// Length of 3-vector
-template<typename T> CPU_GPU T len3(T x, T y, T z) {
-	return std::sqrt(x*x + y*y + z*z);
-}
+	CPU_GPU T area() const { return (z_max - z_min) * radius * phi_max; }
+	CPU_GPU T pdf_area() const { return T(1) / area(); }
 
-// Dot product
-template<typename T> CPU_GPU T dot3(T ax,T ay,T az, T bx,T by,T bz) {
-	return ax*bx + ay*by + az*bz;
-}
+	CPU_GPU std::optional<ShapeHit<T>>
+	intersect(T rox, T roy, T roz, T rdx, T rdy, T rdz, T t_min, T t_max) const {
+		using namespace shapes_detail;
+		const T pi = T(3.14159265358979323846);
+		T ox = rox - cx, oy = roy - cy, oz = roz;
+		T dx = rdx, dy = rdy, dz = rdz;
+		double da = (double)dx, db = (double)dy, oa = (double)ox, ob = (double)oy;
+		double a = da*da + db*db;
+		double b = 2.0 * (oa*da + ob*db);
+		double c = oa*oa + ob*ob - (double)radius*(double)radius;
+		if (a == 0.0) return {};
+		double f = b / (2.0 * a);
+		double vx = oa - f*da, vy = ob - f*db;
+		double len_v = std::sqrt(vx*vx + vy*vy);
+		double discrim = 4.0*a*((double)radius+len_v)*((double)radius-len_v);
+		if (discrim < 0.0) return {};
+		double sqrt_disc = std::sqrt(discrim);
+		double q = (b < 0.0) ? -0.5*(b-sqrt_disc) : -0.5*(b+sqrt_disc);
+		T t0 = (T)(q/a), t1 = (T)(c/q);
+		if (t0 > t1) { T tmp = t0; t0 = t1; t1 = tmp; }
+		if (t0 > t_max || t1 < t_min) return {};
+		auto check = [&](T t) -> std::optional<ShapeHit<T>> {
+			if (t < t_min || t > t_max) return {};
+			T hx = ox+t*dx, hy = oy+t*dy, hz = oz+t*dz;
+			if (hz < z_min || hz > z_max) return {};
+			T phi = std::atan2(hy, hx);
+			if (phi < T(0)) phi += T(2)*pi;
+			if (phi > phi_max) return {};
+			T hitRad = safe_sqrt(hx*hx+hy*hy);
+			if (hitRad > T(0)) { hx *= radius/hitRad; hy *= radius/hitRad; }
+			T nnx = hx/radius, nny = hy/radius, nnz = T(0);
+			T u = phi/phi_max, v = (hz-z_min)/(z_max-z_min);
+			return ShapeHit<T>{t, nnx, nny, nnz, u, v};
+		};
+		auto hit = check(t0);
+		if (hit) return hit;
+		return check(t1);
+	}
 
-// Cross product (cx,cy,cz) = a x b
-template<typename T>
-CPU_GPU void cross3(T ax,T ay,T az, T bx,T by,T bz,
-					T& cx, T& cy, T& cz) {
-	cx = ay*bz - az*by;
-	cy = az*bx - ax*bz;
-	cz = ax*by - ay*bx;
-}
+	CPU_GPU ShapeSample<T> sample(T u0, T u1) const {
+		T z = z_min + u0*(z_max-z_min);
+		T phi = u1*phi_max;
+		T lx = radius*std::cos(phi), ly = radius*std::sin(phi);
+		T hitRad = safe_sqrt(lx*lx+ly*ly);
+		if (hitRad > T(0)) { lx *= radius/hitRad; ly *= radius/hitRad; }
+		T nx = lx/radius, ny = ly/radius, nz = T(0);
+		return ShapeSample<T>{cx+lx, cy+ly, z, nx, ny, nz, phi/phi_max, (z-z_min)/(z_max-z_min), pdf_area()};
+	}
 
-// Normalize in-place
-template<typename T>
-CPU_GPU void normalize3(T& x, T& y, T& z) {
-	T len = len3(x, y, z);
-	if (len > T(0)) { x /= len; y /= len; z /= len; }
-}
+	CPU_GPU ShapeSample<T> sample_from(const SamplingContext<T>& ctx, T u0, T u1) const {
+		ShapeSample<T> ss = sample(u0, u1);
+		T wix = ss.px-ctx.px, wiy = ss.py-ctx.py, wiz = ss.pz-ctx.pz;
+		T dist2 = wix*wix+wiy*wiy+wiz*wiz;
+		if (dist2 == T(0)) { ss.pdf = T(0); return ss; }
+		T inv_d = T(1)/std::sqrt(dist2);
+		T cos_t = std::abs(shapes_detail::dot3(ss.nx,ss.ny,ss.nz,-wix*inv_d,-wiy*inv_d,-wiz*inv_d));
+		if (cos_t == T(0)) { ss.pdf = T(0); return ss; }
+		ss.pdf = pdf_area()*dist2/cos_t;
+		return ss;
+	}
 
-// gamma(n) -- conservative floating-point rounding error bound
-// gamma(n) = (n * eps) / (1 - n * eps), eps = 0.5 * machine_eps
-template<typename T>
-CPU_GPU T gamma_fp(int n) {
-	const T half_eps = std::numeric_limits<T>::epsilon() * T(0.5);
-	return (T(n) * half_eps) / (T(1) - T(n) * half_eps);
-}
-
-// DifferenceOfProducts -- Kahan-style (a*b - c*d) with better precision
-template<typename T>
-CPU_GPU T diff_of_products(T a, T b, T c, T d) {
-	T cd = c * d;
-	T err = std::fma(-c, d, cd);
-	T result = std::fma(a, b, -cd);
-	return result + err;
-}
-
-// Max absolute component index of (x,y,z)
-template<typename T>
-CPU_GPU int max_abs_index(T x, T y, T z) {
-	T ax = std::abs(x), ay = std::abs(y), az = std::abs(z);
-	if (ax >= ay && ax >= az) return 0;
-	if (ay >= az) return 1;
-	return 2;
-}
-
-// Permute (x,y,z) by axes (i0,i1,i2)
-template<typename T>
-CPU_GPU void permute3(T x, T y, T z, int i0, int i1, int i2,
-					  T& ox, T& oy, T& oz) {
-	T v[3] = {x,y,z};
-	ox = v[i0]; oy = v[i1]; oz = v[i2];
-}
-
-} // namespace shapes_detail
-
-
-// ===========================================================================
-// Data types
-// ===========================================================================
-
-// Returned by intersect()
-template<typename T>
-struct ShapeHit {
-	T t;            // ray parameter of intersection
-	T nx, ny, nz;   // outward surface normal (unit, in world space)
-	T u, v;         // surface (u,v) parameterisation
-	// Per-component absolute position-error bounds (pbrt-v4 pError).
-	// Filled by each intersector; zero means "use flat 0.001 bias instead".
-	T ex{}, ey{}, ez{};
-
-	// Reconstruct a Point3fi for the hit position given ray (ox,oy,oz, dx,dy,dz)
-	// so callers can invoke SpawnRay / OffsetRayOrigin directly.
-	// p_hit = (ox + t*dx, oy + t*dy, oz + t*dz), error = (ex, ey, ez).
-	CPU_GPU Point3fi ToPoint3fi(T ox, T oy, T oz,
-								 T dx, T dy, T dz) const {
-		return Point3fi(
-			double(ox) + double(t)*double(dx),
-			double(oy) + double(t)*double(dy),
-			double(oz) + double(t)*double(dz),
-			double(ex), double(ey), double(ez));
+	CPU_GPU T pdf_from(const SamplingContext<T>& ctx, T wi_dx, T wi_dy, T wi_dz) const {
+		using namespace shapes_detail;
+		T wi_len = len3(wi_dx,wi_dy,wi_dz);
+		if (wi_len == T(0)) return T(0);
+		T wix = wi_dx/wi_len, wiy = wi_dy/wi_len, wiz = wi_dz/wi_len;
+		auto hit = intersect(ctx.px,ctx.py,ctx.pz,wix,wiy,wiz,T(1e-4),std::numeric_limits<T>::max());
+		if (!hit) return T(0);
+		T dist2 = hit->t*hit->t;
+		T cos_t = std::abs(dot3(hit->nx,hit->ny,hit->nz,-wix,-wiy,-wiz));
+		if (cos_t == T(0)) return T(0);
+		T pdf = pdf_area()*dist2/cos_t;
+		return std::isfinite(pdf) ? pdf : T(0);
 	}
 };
 
@@ -311,16 +253,10 @@ struct SphereShape {
 					? (theta - theta_z_min) / (theta_z_max - theta_z_min)
 					: T(0);
 
-		// pbrt-v4 pError for sphere: gamma(5) * |p_hit| per component
-		// Reference: Sphere::InteractionFromIntersection, shapes.h -- gamma(5)*Abs(pHit)
-		T g5 = gamma_fp<T>(5);
 		ShapeHit<T> hit;
 		hit.t  = t_hit;
 		hit.nx = nnx; hit.ny = nny; hit.nz = nnz;
 		hit.u  = u_coord; hit.v = v_coord;
-		hit.ex = std::abs(hx) * g5;
-		hit.ey = std::abs(hy) * g5;
-		hit.ez = std::abs(hz) * g5;
 		return hit;
 	}
 
@@ -587,17 +523,10 @@ struct DiskShape {
 					: T(0);
 
 		// Normal always points up (+z) for un-flipped disk
-		// pbrt-v4 pError for disk: gamma(3) * |pHit.x|, gamma(3) * |pHit.y|, 0
-		// (z = height plane is exact; x,y accumulate rounding from t*rdx/rdy)
-		// Reference: Cylinder::InteractionFromIntersection, shapes.h -- gamma(3)*Abs(x,y,0)
-		T g3 = shapes_detail::gamma_fp<T>(3);
 		ShapeHit<T> hit;
 		hit.t  = t_hit;
 		hit.nx = T(0); hit.ny = T(0); hit.nz = T(1);
 		hit.u  = u_coord; hit.v = v_coord;
-		hit.ex = std::abs(hx) * g3;
-		hit.ey = std::abs(hy) * g3;
-		hit.ez = T(0);   // z = height is exact (plane equation)
 		return hit;
 	}
 
@@ -689,84 +618,104 @@ struct DiskShape {
 // CylinderShape<T>
 // ===========================================================================
 //
-// Cylinder of radius `radius` along the Z axis centered at (cx, cy, *).
-// z_min and z_max are world-space Z extents; phi_max is the azimuthal sweep
-// in radians (2*pi for a full cylinder).
+// Cylinder of radius r along the Z axis in object space, translated to world
+// space by center (cx, cy, cz). Extents are [z_min, z_max] in object space;
+// azimuthal extent is [0, phi_max] (default 2*pi = full cylinder).
 //
-// Matches pbrt-v4 Cylinder semantics:
-//   Area  = (z_max - z_min) * radius * phi_max
-//   Normal = outward radial, nz = 0 (no end caps)
-//   UV     = (phi/phi_max, (z-z_min)/(z_max-z_min))
+// Normal convention: outward radial (ignores end caps, matching pbrt-v4).
 //
 // Reference: pbrt-v4 src/pbrt/shapes.h  Cylinder class
 // ===========================================================================
 
 template<typename T>
 struct CylinderShape {
-	T cx, cy;       // world-space axis center (axis runs parallel to Z)
-	T z_min, z_max; // world-space Z extent
-	T radius;       // cylinder radius
+	T cx, cy, cz;   // center (world origin of cylinder axis)
+	T r;            // radius
+	T z_min, z_max; // z extent in object space
 	T phi_max;      // azimuthal extent in radians (default 2*pi)
 
-	// make(cx, cy, z_min, z_max, radius) -- full cylinder
-	CPU_GPU static CylinderShape make(T cx, T cy, T z_min, T z_max, T radius) {
+	// Convenience constructors
+	CPU_GPU static CylinderShape make(T cx, T cy, T cz, T radius,
+									   T zmin, T zmax) {
 		const T pi2 = T(2) * T(3.14159265358979323846);
-		return CylinderShape{cx, cy, z_min, z_max, radius, pi2};
+		return CylinderShape{cx, cy, cz, radius, zmin, zmax, pi2};
 	}
 
-	// make_partial -- partial azimuthal sweep
-	CPU_GPU static CylinderShape make_partial(T cx, T cy, T z_min, T z_max,
-	                                           T radius, T phi_max_rad) {
-		return CylinderShape{cx, cy, z_min, z_max, radius, phi_max_rad};
+	CPU_GPU static CylinderShape make_partial(T cx, T cy, T cz, T radius,
+											   T zmin, T zmax, T phi_max_rad) {
+		return CylinderShape{cx, cy, cz, radius, zmin, zmax, phi_max_rad};
 	}
 
 	// -----------------------------------------------------------------------
 	// Area
-	// Reference: pbrt-v4 Cylinder::Area = (zMax-zMin)*radius*phiMax
+	// Reference: pbrt-v4 Cylinder::Area = (zMax - zMin) * radius * phiMax
 	// -----------------------------------------------------------------------
-	CPU_GPU T area() const { return (z_max - z_min) * radius * phi_max; }
+	CPU_GPU T area() const {
+		return (z_max - z_min) * r * phi_max;
+	}
+
 	CPU_GPU T pdf_area() const { return T(1) / area(); }
 
 	// -----------------------------------------------------------------------
-	// Intersection -- quadric in XY plane, world-space Z clip
-	// Reference: pbrt-v4 Cylinder::BasicIntersect (stable discriminant)
+	// Intersection -- quadric solve in object space, z/phi clip
+	// Reference: pbrt-v4 Cylinder::BasicIntersect
 	// -----------------------------------------------------------------------
 	CPU_GPU std::optional<ShapeHit<T>>
 	intersect(T rox, T roy, T roz,
-	          T rdx, T rdy, T rdz,
-	          T t_min, T t_max) const
+			  T rdx, T rdy, T rdz,
+			  T t_min, T t_max) const
 	{
 		using namespace shapes_detail;
 		const T pi = T(3.14159265358979323846);
-		T ox = rox-cx, oy = roy-cy, oz = roz;
+
+		// Transform ray to object space (cylinder axis at origin)
+		T ox = rox - cx, oy = roy - cy, oz = roz - cz;
 		T dx = rdx, dy = rdy, dz = rdz;
-		double da=(double)dx, db=(double)dy, oa=(double)ox, ob=(double)oy;
-		double a=da*da+db*db, b=2.0*(oa*da+ob*db);
-		double c=oa*oa+ob*ob-(double)radius*(double)radius;
-		if (a==0.0) return {};
-		double f=b/(2.0*a), vx=oa-f*da, vy=ob-f*db;
-		double len_v=std::sqrt(vx*vx+vy*vy);
-		double discrim=4.0*a*((double)radius+len_v)*((double)radius-len_v);
-		if (discrim<0.0) return {};
-		double sqrt_disc=std::sqrt(discrim);
-		double q=(b<0.0)?-0.5*(b-sqrt_disc):-0.5*(b+sqrt_disc);
-		T t0=(T)(q/a), t1=(T)(c/q);
-		if (t0>t1){T tmp=t0;t0=t1;t1=tmp;}
-		if (t0>t_max||t1<t_min) return {};
-		auto check=[&](T t)->std::optional<ShapeHit<T>>{
-			if(t<t_min||t>t_max) return {};
-			T hx=ox+t*dx,hy=oy+t*dy,hz=oz+t*dz;
-			if(hz<z_min||hz>z_max) return {};
-			T phi=std::atan2(hy,hx);
-			if(phi<T(0)) phi+=T(2)*pi;
-			if(phi>phi_max) return {};
-			T hitRad=safe_sqrt(hx*hx+hy*hy);
-			if(hitRad>T(0)){hx*=radius/hitRad;hy*=radius/hitRad;}
-			T u=phi/phi_max, v=(hz-z_min)/(z_max-z_min);
-			return ShapeHit<T>{t,hx/radius,hy/radius,T(0),u,v};
+
+		// Quadratic coefficients (only x,y matter – ignore z component)
+		// a*t^2 + b*t + c = 0  where a = dx^2+dy^2, c = ox^2+oy^2-r^2
+		double a = (double)dx*dx + (double)dy*dy;
+		double b = 2.0 * ((double)ox*dx + (double)oy*dy);
+		double c = (double)ox*ox + (double)oy*oy - (double)r*(double)r;
+
+		// pbrt-v4 discriminant formula (numerically stable)
+		double f = b / (2.0 * a);
+		double vx = (double)ox - f * (double)dx;
+		double vy = (double)oy - f * (double)dy;
+		double length_v = std::sqrt(vx*vx + vy*vy);
+		double discrim = 4.0 * a * ((double)r + length_v) * ((double)r - length_v);
+		if (discrim < 0.0) return {};
+
+		double sqrt_disc = std::sqrt(discrim);
+		double q = (b < 0.0) ? -0.5*(b - sqrt_disc) : -0.5*(b + sqrt_disc);
+		T t0 = (T)(q / a);
+		T t1 = (T)(c / q);
+		if (t0 > t1) { T tmp = t0; t0 = t1; t1 = tmp; }
+
+		if (t0 > t_max || t1 < t_min) return {};
+
+		// Helper lambda: compute hit point, refine, compute phi, check clips
+		auto check = [&](T t) -> std::optional<ShapeHit<T>> {
+			if (t < t_min || t > t_max) return {};
+			T hx = ox + t * dx;
+			T hy = oy + t * dy;
+			T hz = oz + t * dz;
+			// Refine to cylinder surface
+			T hitRad = safe_sqrt(hx*hx + hy*hy);
+			if (hitRad > T(0)) { hx *= r / hitRad; hy *= r / hitRad; }
+			T phi = std::atan2(hy, hx);
+			if (phi < T(0)) phi += T(2) * pi;
+			if (hz < z_min || hz > z_max || phi > phi_max) return {};
+			// Outward radial normal (object space == world space, no rotation)
+			T nnx = hx / r, nny = hy / r, nnz = T(0);
+			// UV: u = phi/phi_max, v = (z - z_min)/(z_max - z_min)
+			T u = phi / phi_max;
+			T v = (hz - z_min) / (z_max - z_min);
+			return ShapeHit<T>{t, nnx, nny, nnz, u, v};
 		};
-		auto hit=check(t0);
-		if(hit) return hit;
+
+		auto hit = check(t0);
+		if (hit) return hit;
 		return check(t1);
 	}
 
@@ -775,52 +724,61 @@ struct CylinderShape {
 	// Reference: pbrt-v4 Cylinder::Sample(Point2f u)
 	// -----------------------------------------------------------------------
 	CPU_GPU ShapeSample<T> sample(T u0, T u1) const {
-		using namespace shapes_detail;
-		T z=z_min+u0*(z_max-z_min), phi=u1*phi_max;
-		T lx=radius*std::cos(phi), ly=radius*std::sin(phi);
-		T hitRad=safe_sqrt(lx*lx+ly*ly);
-		if(hitRad>T(0)){lx*=radius/hitRad;ly*=radius/hitRad;}
-		T nx=lx/radius, ny=ly/radius, nz=T(0);
-		T uv=phi/phi_max, vv=(z-z_min)/(z_max-z_min);
-		return ShapeSample<T>{cx+lx,cy+ly,z,nx,ny,nz,uv,vv,pdf_area()};
+		const T pi = T(3.14159265358979323846);
+		T z   = z_min + u0 * (z_max - z_min);
+		T phi = u1 * phi_max;
+		T px_obj = r * std::cos(phi);
+		T py_obj = r * std::sin(phi);
+		// Refine to exact radius
+		T hitRad = safe_sqrt(px_obj*px_obj + py_obj*py_obj);
+		if (hitRad > T(0)) { px_obj *= r / hitRad; py_obj *= r / hitRad; }
+		T nx = px_obj / r, ny = py_obj / r, nz = T(0);
+		T uv = phi / phi_max;
+		T vv = (z - z_min) / (z_max - z_min);
+		return ShapeSample<T>{cx + px_obj, cy + py_obj, cz + z,
+							  nx, ny, nz,
+							  uv, vv,
+							  pdf_area()};
 	}
 
 	// -----------------------------------------------------------------------
-	// Solid-angle sample from a shading point (area sample + Jacobian)
+	// Solid-angle sample from a context point (area sampling + Jacobian)
 	// Reference: pbrt-v4 Cylinder::Sample(ShapeSampleContext, Point2f)
 	// -----------------------------------------------------------------------
 	CPU_GPU ShapeSample<T> sample_from(const SamplingContext<T>& ctx,
-	                                    T u0, T u1) const {
-		ShapeSample<T> ss=sample(u0,u1);
-		T wix=ss.px-ctx.px, wiy=ss.py-ctx.py, wiz=ss.pz-ctx.pz;
-		T dist2=wix*wix+wiy*wiy+wiz*wiz;
-		if(dist2==T(0)){ss.pdf=T(0);return ss;}
-		T inv_d=T(1)/std::sqrt(dist2);
-		T cos_t=std::abs(shapes_detail::dot3(ss.nx,ss.ny,ss.nz,
-		                                      -wix*inv_d,-wiy*inv_d,-wiz*inv_d));
-		if(cos_t==T(0)){ss.pdf=T(0);return ss;}
-		ss.pdf=pdf_area()*dist2/cos_t;
+										T u0, T u1) const {
+		ShapeSample<T> ss = sample(u0, u1);
+		T wix = ss.px - ctx.px;
+		T wiy = ss.py - ctx.py;
+		T wiz = ss.pz - ctx.pz;
+		T wi_len2 = wix*wix + wiy*wiy + wiz*wiz;
+		if (wi_len2 == T(0)) { ss.pdf = T(0); return ss; }
+		T wi_len = std::sqrt(wi_len2);
+		T wi_nx = wix/wi_len, wi_ny = wiy/wi_len, wi_nz = wiz/wi_len;
+		T cos_theta_n = std::abs(shapes_detail::dot3(ss.nx, ss.ny, ss.nz,
+													  -wi_nx, -wi_ny, -wi_nz));
+		if (cos_theta_n == T(0)) { ss.pdf = T(0); return ss; }
+		ss.pdf = ss.pdf * wi_len2 / cos_theta_n;
 		return ss;
 	}
 
 	// -----------------------------------------------------------------------
-	// Solid-angle PDF from a shading point (intersect + Jacobian)
+	// Solid-angle PDF from context (intersect + Jacobian)
 	// Reference: pbrt-v4 Cylinder::PDF(ShapeSampleContext, Vector3f)
 	// -----------------------------------------------------------------------
 	CPU_GPU T pdf_from(const SamplingContext<T>& ctx,
-	                    T wi_dx, T wi_dy, T wi_dz) const {
-		using namespace shapes_detail;
-		T wi_len=len3(wi_dx,wi_dy,wi_dz);
-		if(wi_len==T(0)) return T(0);
-		T wix=wi_dx/wi_len, wiy=wi_dy/wi_len, wiz=wi_dz/wi_len;
-		auto hit=intersect(ctx.px,ctx.py,ctx.pz,wix,wiy,wiz,
-		                   T(1e-4),std::numeric_limits<T>::max());
-		if(!hit) return T(0);
-		T dist2=hit->t*hit->t;
-		T cos_t=std::abs(dot3(hit->nx,hit->ny,hit->nz,-wix,-wiy,-wiz));
-		if(cos_t==T(0)) return T(0);
-		T pdf=pdf_area()*dist2/cos_t;
-		return std::isfinite(pdf)?pdf:T(0);
+						T wi_dx, T wi_dy, T wi_dz) const {
+		T wi_len = shapes_detail::len3(wi_dx, wi_dy, wi_dz);
+		if (wi_len == T(0)) return T(0);
+		auto hit = intersect(ctx.px, ctx.py, ctx.pz,
+							 wi_dx/wi_len, wi_dy/wi_len, wi_dz/wi_len,
+							 T(1e-4), std::numeric_limits<T>::max());
+		if (!hit) return T(0);
+		T dist = hit->t;
+		T cos_theta_n = std::abs(shapes_detail::dot3(hit->nx, hit->ny, hit->nz,
+													  -wi_dx/wi_len, -wi_dy/wi_len, -wi_dz/wi_len));
+		if (cos_theta_n == T(0)) return T(0);
+		return pdf_area() * dist*dist / cos_theta_n;
 	}
 };
 
@@ -994,23 +952,14 @@ struct TriangleShape {
 			if (nlen > T(0)) { nnx /= nlen; nny /= nlen; nnz /= nlen; }
 		} else {
 			nnx = gnx; nny = gny; nnz = gnz;
-			shapes_detail::normalize3(nnx, nny, nnz);
+			normalize3(nnx, nny, nnz);
 		}
 
 		// (u,v) = barycentric (b0, b1)
-		// pbrt-v4 pAbsSum / pError for triangle: gamma(7) * abs-sum of barycentric corners
-		// Reference: Triangle::InteractionFromIntersection, shapes.h
-		T absSum_x = std::abs(b0*p0x) + std::abs(b1*p1x) + std::abs(b2*p2x);
-		T absSum_y = std::abs(b0*p0y) + std::abs(b1*p1y) + std::abs(b2*p2y);
-		T absSum_z = std::abs(b0*p0z) + std::abs(b1*p1z) + std::abs(b2*p2z);
-		T g7 = gamma_fp<T>(7);
 		ShapeHit<T> hit;
 		hit.t  = t_hit;
 		hit.nx = nnx; hit.ny = nny; hit.nz = nnz;
 		hit.u  = b0; hit.v = b1;
-		hit.ex = g7 * absSum_x;
-		hit.ey = g7 * absSum_y;
-		hit.ez = g7 * absSum_z;
 		return hit;
 	}
 
@@ -1159,6 +1108,7 @@ struct TriangleShape {
 		};
 
 
+
 				// ===========================================================================
 				// CurveShape
 				// ===========================================================================
@@ -1258,7 +1208,7 @@ struct TriangleShape {
 					}
 
 					// ---------------------------------------------------------------
-					// area() -- approximate arc-length Ã— average width
+					// area() -- approximate arc-length × average width
 					// Mirrors pbrt-v4 Curve::Area()
 					// ---------------------------------------------------------------
 					CPU_GPU T area() const {
@@ -1317,7 +1267,7 @@ struct TriangleShape {
 						if (_dot3(dx,dx) == 0.f)
 							_coord_system(rdF, dx, dy_unused);
 
-						// Compute ray-from-object 4Ã—4 LookAt transform
+						// Compute ray-from-object 4×4 LookAt transform
 						// (position = ray.o, forward = normalize(ray.d), up = dx)
 						float ro[3] = { float(rox), float(roy), float(roz) };
 						float M[4][4]; // row-major world-to-ray transform
@@ -1419,7 +1369,7 @@ struct TriangleShape {
 						b[2] = -n[1];
 					}
 
-					// Build LookAt 4Ã—4 row-major matrix: maps world-space points so that
+					// Build LookAt 4×4 row-major matrix: maps world-space points so that
 					// ro -> origin, (ro + normalize(dir)) -> +Z, up guides X axis.
 					// Mirrors pbrt-v4 LookAt(pos, pos+dir, up).
 					CPU_GPU static void _look_at(const float* pos, const float* dir,
@@ -1466,7 +1416,7 @@ struct TriangleShape {
 						Minv[3][0]=0; Minv[3][1]=0; Minv[3][2]=0; Minv[3][3]=1;
 					}
 
-					// Apply 4Ã—4 row-major matrix to a 3D point (w=1)
+					// Apply 4×4 row-major matrix to a 3D point (w=1)
 					CPU_GPU static void _transform_point(const float M[4][4],
 														 const float p[3], float out[3]) {
 						out[0] = M[0][0]*p[0] + M[0][1]*p[1] + M[0][2]*p[2] + M[0][3];
@@ -1474,7 +1424,7 @@ struct TriangleShape {
 						out[2] = M[2][0]*p[0] + M[2][1]*p[1] + M[2][2]*p[2] + M[2][3];
 					}
 
-					// Apply 4Ã—4 row-major matrix to a 3D vector (w=0)
+					// Apply 4×4 row-major matrix to a 3D vector (w=0)
 					CPU_GPU static void _transform_vector(const float M[4][4],
 														  const float v[3], float out[3]) {
 						out[0] = M[0][0]*v[0] + M[0][1]*v[1] + M[0][2]*v[2];
@@ -1505,7 +1455,7 @@ struct TriangleShape {
 						splines::CubicBezierControlPoints(src, float(uMin), float(uMax), out);
 					}
 
-					// Evaluate cubic Bezier point and optional derivative at parameter w âˆˆ [0,1]
+					// Evaluate cubic Bezier point and optional derivative at parameter w ∈ [0,1]
 					// Uses the raw control points already in a given space.
 					CPU_GPU static void _eval_bezier(const float cp[4][3], float w,
 													 float p[3], float dp[3]) {
@@ -1720,129 +1670,13 @@ struct TriangleShape {
 						}
 					}
 
-								CPU_GPU static void _cross3_s(float ax, float ay, float az,
-											  float bx, float by, float bz,
-											  float* out) {
-								out[0] = ay*bz - az*by;
-								out[1] = az*bx - ax*bz;
-											out[2] = ax*by - ay*bx;
-										}
-
-									public:
-										// ---------------------------------------------------------------
-										// pdf_area() -- uniform area density (1 / area())
-										// Reference: pbrt-v4 Curve PDF interface
-										// ---------------------------------------------------------------
-										CPU_GPU T pdf_area() const {
-											T a = area();
-											return (a > T(0)) ? T(1) / a : T(0);
-										}
-
-										// ---------------------------------------------------------------
-										// sample(u0, u1) -- area-uniform surface sample
-										// Strategy (mirrors the spirit of pbrt-v4 Curve::Sample):
-										//   u0 selects a parameter t along the sub-interval [uMin,uMax],
-										//   u1 selects a position across the half-width.
-										//   The surface point is curve_point + u1*width*dpdv_hat.
-										//   The shading normal is normalize(dpdu x dpdv_hat).
-										// ---------------------------------------------------------------
-										CPU_GPU ShapeSample<T> sample(T u0, T u1) const {
-											// Sub-interval control points in world space
-											float cpW[4][3];
-											_sub_cp(cpW);
-
-											// Map u0 -> local parameter t in [0,1] within the sub-interval
-											float t = float(u0);
-											t = t < 0.f ? 0.f : (t > 1.f ? 1.f : t);
-
-											// Evaluate curve position and tangent (world space)
-											float p[3], dpdu[3];
-											_eval_bezier(cpW, t, p, dpdu);
-
-											// Width at this parameter (global u = lerp of uMin,uMax by t)
-											float uGlobal = float(uMin) + t * (float(uMax) - float(uMin));
-											float w = _lerp(uGlobal, float(width0), float(width1));
-
-											// Build a perpendicular dpdv direction via _coord_system.
-											// Normalize dpdu first (matches pbrt-v4 CoordinateSystem usage).
-											float dpdu_norm[3] = {dpdu[0], dpdu[1], dpdu[2]};
-											float dpdu_len = _len3(dpdu_norm);
-											if (dpdu_len > 0.f) {
-												dpdu_norm[0] /= dpdu_len;
-												dpdu_norm[1] /= dpdu_len;
-												dpdu_norm[2] /= dpdu_len;
-											}
-											float dpdv[3], dummy[3];
-											_coord_system(dpdu_norm, dpdv, dummy);
-
-											// Surface point: offset from curve spine by v*halfWidth in dpdv direction
-											// v in [-1,1] so u1=0 -> -halfWidth side, u1=1 -> +halfWidth side
-											float v = float(u1) * 2.f - 1.f;
-											float halfW = 0.5f * w;
-											float px = p[0] + v * halfW * dpdv[0];
-											float py = p[1] + v * halfW * dpdv[1];
-											float pz = p[2] + v * halfW * dpdv[2];
-
-											// Surface normal = normalize(dpdu x dpdv)
-											float n[3];
-											_cross3_s(dpdu[0],dpdu[1],dpdu[2], dpdv[0],dpdv[1],dpdv[2], n);
-											float nl = _len3(n);
-											if (nl > 0.f) { n[0]/=nl; n[1]/=nl; n[2]/=nl; }
-
-											T pdf = pdf_area();
-											return ShapeSample<T>{T(px), T(py), T(pz),
-																 T(n[0]), T(n[1]), T(n[2]),
-																 T(uGlobal), T(float(u1)),
-																 pdf};
-										}
-
-										// ---------------------------------------------------------------
-										// sample_from(ctx, u0, u1) -- solid-angle sample from a point
-										// Delegates to area sample, then converts via dist^2/cos(theta).
-										// Reference: pbrt-v4 Cylinder::Sample(ShapeSampleContext, Point2f)
-										// ---------------------------------------------------------------
-										CPU_GPU ShapeSample<T> sample_from(const SamplingContext<T>& ctx,
-																		   T u0, T u1) const {
-											ShapeSample<T> ss = sample(u0, u1);
-											T wix = ss.px - ctx.px;
-											T wiy = ss.py - ctx.py;
-											T wiz = ss.pz - ctx.pz;
-											T dist2 = wix*wix + wiy*wiy + wiz*wiz;
-											if (dist2 == T(0)) { ss.pdf = T(0); return ss; }
-											T inv_d = T(1) / std::sqrt(dist2);
-											T cos_t = std::abs(ss.nx*(-wix*inv_d) +
-															   ss.ny*(-wiy*inv_d) +
-															   ss.nz*(-wiz*inv_d));
-											if (cos_t == T(0)) { ss.pdf = T(0); return ss; }
-											ss.pdf = pdf_area() * dist2 / cos_t;
-											return ss;
-										}
-
-										// ---------------------------------------------------------------
-										// pdf_from(ctx, wi) -- solid-angle PDF for a given direction
-										// Shoots a ray from ctx.p in direction wi and evaluates the
-										// area-to-solid-angle Jacobian at the first intersection.
-										// Reference: pbrt-v4 Cylinder::PDF(ShapeSampleContext, Vector3f)
-										// ---------------------------------------------------------------
-										CPU_GPU T pdf_from(const SamplingContext<T>& ctx,
-														   T wi_dx, T wi_dy, T wi_dz) const {
-											T wi_len = std::sqrt(wi_dx*wi_dx + wi_dy*wi_dy + wi_dz*wi_dz);
-											if (wi_len == T(0)) return T(0);
-											T wix = wi_dx / wi_len;
-											T wiy = wi_dy / wi_len;
-											T wiz = wi_dz / wi_len;
-											CurveHit hit{};
-											bool found = intersect(ctx.px, ctx.py, ctx.pz,
-																   wix, wiy, wiz,
-																   T(1e-4), std::numeric_limits<T>::max(),
-																   &hit);
-											if (!found) return T(0);
-											T dist2 = hit.t * hit.t;
-											T cos_t = std::abs(hit.nx*(-wix) + hit.ny*(-wiy) + hit.nz*(-wiz));
-											if (cos_t == T(0)) return T(0);
-											T pdf = pdf_area() * dist2 / cos_t;
-											return std::isfinite(pdf) ? pdf : T(0);
-										}
-								};
+					CPU_GPU static void _cross3_s(float ax, float ay, float az,
+												  float bx, float by, float bz,
+												  float* out) {
+						out[0] = ay*bz - az*by;
+						out[1] = az*bx - ax*bz;
+						out[2] = ax*by - ay*bx;
+					}
+				};
 
 

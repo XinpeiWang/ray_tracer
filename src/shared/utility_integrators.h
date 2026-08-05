@@ -15,8 +15,8 @@
 //
 // Mirrors pbrt-v4 RandomWalkIntegrator::LiRandomWalk().
 // At each vertex the next direction is sampled uniformly over the full
-// sphere (pdf = 1/(4π)).  The path weight is accumulated as:
-//   beta *= f(wo, wi) * |cos(wi, shading_n)| * 4π
+// sphere (pdf = 1/(4Ãâ‚¬)).  The path weight is accumulated as:
+//   beta *= f(wo, wi) * |cos(wi, shading_n)| * 4Ãâ‚¬
 // which exactly corresponds to pbrt-v4's
 //   Le + fcos * Li_recursive / (1/(4*Pi))
 // converted to an iterative loop.
@@ -42,10 +42,10 @@
 //   illum_scale * illum_rgb * cos(wi, geo_n) / (pi * pdf)
 // when the direction is unoccluded within max_dist, zero otherwise.
 // cos_sample==true uses cosine-hemisphere sampling via pbrt-v4's
-// SampleUniformDiskConcentric mapping (pdf = cos/π → result simplifies to
+// SampleUniformDiskConcentric mapping (pdf = cos/Ãâ‚¬ Ã¢â€ â€™ result simplifies to
 // illum_scale * illum_rgb regardless of wi direction).
 // cos_sample==false uses uniform hemisphere, pbrt-v4 SampleUniformHemisphere
-// (z=u[0], phi=2π·u[1], pdf = 1/(2π)).
+// (z=u[0], phi=2Ãâ‚¬Ã‚Â·u[1], pdf = 1/(2Ãâ‚¬)).
 //
 // Scene concept (subset of RandomWalkLi):
 //   bool  Intersect(const T org[3], const T dir[3], T t_max,
@@ -200,7 +200,7 @@ CPU_GPU void AOLi(
 			return;  // Miss -> L = 0
 
 		if (!scene.BSDFIsNull(hit.bsdf_id)) {
-			// Valid surface hit — proceed below
+			// Valid surface hit Ã¢â‚¬â€ proceed below
 			// FaceForward geometric normal towards incoming ray
 			// mirrors: n = FaceForward(isect.n, -ray.d)
 			T wo[3]  = { -dir[0], -dir[1], -dir[2] };

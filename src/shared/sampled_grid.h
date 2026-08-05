@@ -177,13 +177,13 @@ private:
 // ---------------------------------------------------------------------------
 // GridMediumData<T>
 //
-// pbrt-v4: GridMedium (media.h) — the per-point sampling and majorant-building
+// pbrt-v4: GridMedium (media.h) Ã¢â‚¬â€ the per-point sampling and majorant-building
 // parts, adapted as a plain CPU/GPU-friendly data struct.
 //
 // Wraps:
 //   - A SampledGrid<T> density grid (normalized coords [0,1]^3)
 //   - Scalar sigma_a, sigma_s, g coefficients (callers scale by wavelength)
-//   - A MajorantGrid<T> built from the density grid (16×16×16 default)
+//   - A MajorantGrid<T> built from the density grid (16Ãƒâ€”16Ãƒâ€”16 default)
 //
 // Key operations:
 //   sample_point(px, py, pz)  -- returns density at a normalized point;
@@ -206,7 +206,7 @@ struct GridMediumData {
 	GridMediumData() : sigma_a(T(0)), sigma_s(T(0)), g(T(0)) {}
 
 	// Construct from a flat density array and world-space bounds.
-	// Automatically builds the majorant grid (16×16×16 resolution).
+	// Automatically builds the majorant grid (16Ãƒâ€”16Ãƒâ€”16 resolution).
 	// pbrt-v4: GridMedium constructor, Initialize _majorantGrid_ block.
 	GridMediumData(const T* density, size_t density_count,
 				   int nx, int ny, int nz,

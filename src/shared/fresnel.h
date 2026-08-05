@@ -1,7 +1,7 @@
 #pragma once
 
 // ---------------------------------------------------------------------------
-// Shared Fresnel functions — usable on both CPU and GPU.
+// Shared Fresnel functions Ã¢â‚¬â€ usable on both CPU and GPU.
 //
 // Mirrors pbrt-v4's FrDielectric and FrComplex (src/pbrt/util/scattering.h),
 // both annotated CPU_GPU so the same code runs on CPU and GPU.
@@ -73,7 +73,7 @@ CPU_GPU T FrDielectric(T cos_theta_i, T eta) {
 // Mirrors pbrt-v4 FrComplex(Float cosTheta_i, pstd::complex<Float> eta)
 // in src/pbrt/util/scattering.h.
 //
-// eta_r, eta_k = real and imaginary parts of complex IOR (η + i·k)
+// eta_r, eta_k = real and imaginary parts of complex IOR (ÃŽÂ· + iÃ‚Â·k)
 // Returns scalar reflectance in [0,1] for one wavelength channel.
 //
 // Implementation avoids std::complex<> for GPU compatibility:
@@ -166,7 +166,7 @@ inline T FrComplex(T cos_theta_i, std::complex<T> eta) {
 // ---------------------------------------------------------------------------
 #if defined(__CUDACC__)
 // GPU version: operates on float3
-CPU_GPU inline float3 FrConductorRGB(float cos_theta_i,
+CPU_GPU float3 FrConductorRGB(float cos_theta_i,
 									  float eta_r, float eta_g, float eta_b,
 									  float k_r,   float k_g,   float k_b) {
 	return make_float3(FrComplex(cos_theta_i, eta_r, k_r),

@@ -123,9 +123,9 @@ struct RGBGridMediumData {
 	// Each of sa_r/sa_g/sa_b etc. is a flat voxel array of length nx*ny*nz,
 	// or empty (std::vector<T>{}) to omit that channel group.
 	//
-	// When ALL three sigma_a channels are empty → sigma_a_grids = nullopt.
-	// When ALL three sigma_s channels are empty → sigma_s_grids = nullopt.
-	// When ALL three Le channels are empty      → Le_grids = nullopt.
+	// When ALL three sigma_a channels are empty Ã¢â€ â€™ sigma_a_grids = nullopt.
+	// When ALL three sigma_s channels are empty Ã¢â€ â€™ sigma_s_grids = nullopt.
+	// When ALL three Le channels are empty      Ã¢â€ â€™ Le_grids = nullopt.
 	//
 	// pbrt-v4: RGBGridMedium constructor + majorantGrid initialization
 	// -----------------------------------------------------------------------

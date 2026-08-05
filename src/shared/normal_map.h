@@ -167,8 +167,8 @@ CPU_GPU void apply_normal_map(
 //   out_nx/ny/nz -- perturbed shading normal (world space, unit)
 //
 // Math (identical to pbrt-v4):
-//   dpdu_new = dpdu + (disp_u - disp) / du * n + disp * dndu  (dndu≈0 here)
-//   dpdv_new = dpdv + (disp_v - disp) / dv * n + disp * dndv  (dndv≈0 here)
+//   dpdu_new = dpdu + (disp_u - disp) / du * n + disp * dndu  (dnduÃ¢â€°Ë†0 here)
+//   dpdv_new = dpdv + (disp_v - disp) / dv * n + disp * dndv  (dndvÃ¢â€°Ë†0 here)
 //   n_new    = normalize(cross(dpdu_new, dpdv_new))
 //
 // Note: we omit the dndu/dndv terms (normal curvature derivatives) as they

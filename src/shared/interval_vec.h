@@ -85,7 +85,7 @@ struct Vector3fi {
 		return x.Width() == 0.0 && y.Width() == 0.0 && z.Width() == 0.0;
 	}
 
-	// Arithmetic (interval × interval)
+	// Arithmetic (interval Ãƒâ€” interval)
 	CPU_GPU Vector3fi operator+(const Vector3fi& v) const {
 		return {x + v.x, y + v.y, z + v.z};
 	}
@@ -181,7 +181,7 @@ struct Point3fi {
 // Internal helper in a named namespace to avoid ADL conflicts with
 // shapes_detail::dot3 / normalize3 when both headers are included together.
 namespace interval_vec_detail {
-CPU_GPU inline double dot3(double ax, double ay, double az,
+CPU_GPU double dot3(double ax, double ay, double az,
 							double bx, double by, double bz) {
 	return ax*bx + ay*by + az*bz;
 }

@@ -40,7 +40,6 @@
 								// SampleUniformCone, UniformConePDF, etc.
 #include "shading_frame.h"          // ShadingFrame<T>
 #include "splines.h"                // CubicBezierControlPoints, EvaluateCubicBezierD, SubdivideCubicBezier
-#include "interval_vec.h"           // Point3fi, OffsetRayOrigin, SpawnRay
 
 #include <cmath>
 #include <optional>
@@ -154,21 +153,6 @@ struct ShapeHit {
 	T t;            // ray parameter of intersection
 	T nx, ny, nz;   // outward surface normal (unit, in world space)
 	T u, v;         // surface (u,v) parameterisation
-	// Per-component absolute position-error bounds (pbrt-v4 pError).
-	// Filled by each intersector; zero means "use flat 0.001 bias instead".
-	T ex{}, ey{}, ez{};
-
-	// Reconstruct a Point3fi for the hit position given ray (ox,oy,oz, dx,dy,dz)
-	// so callers can invoke SpawnRay / OffsetRayOrigin directly.
-	// p_hit = (ox + t*dx, oy + t*dy, oz + t*dz), error = (ex, ey, ez).
-	CPU_GPU Point3fi ToPoint3fi(T ox, T oy, T oz,
-								 T dx, T dy, T dz) const {
-		return Point3fi(
-			double(ox) + double(t)*double(dx),
-			double(oy) + double(t)*double(dy),
-			double(oz) + double(t)*double(dz),
-			double(ex), double(ey), double(ez));
-	}
 };
 
 // Point used as origin for solid-angle sampling
@@ -311,16 +295,10 @@ struct SphereShape {
 					? (theta - theta_z_min) / (theta_z_max - theta_z_min)
 					: T(0);
 
-		// pbrt-v4 pError for sphere: gamma(5) * |p_hit| per component
-		// Reference: Sphere::InteractionFromIntersection, shapes.h -- gamma(5)*Abs(pHit)
-		T g5 = gamma_fp<T>(5);
 		ShapeHit<T> hit;
 		hit.t  = t_hit;
 		hit.nx = nnx; hit.ny = nny; hit.nz = nnz;
 		hit.u  = u_coord; hit.v = v_coord;
-		hit.ex = std::abs(hx) * g5;
-		hit.ey = std::abs(hy) * g5;
-		hit.ez = std::abs(hz) * g5;
 		return hit;
 	}
 
@@ -587,17 +565,10 @@ struct DiskShape {
 					: T(0);
 
 		// Normal always points up (+z) for un-flipped disk
-		// pbrt-v4 pError for disk: gamma(3) * |pHit.x|, gamma(3) * |pHit.y|, 0
-		// (z = height plane is exact; x,y accumulate rounding from t*rdx/rdy)
-		// Reference: Cylinder::InteractionFromIntersection, shapes.h -- gamma(3)*Abs(x,y,0)
-		T g3 = shapes_detail::gamma_fp<T>(3);
 		ShapeHit<T> hit;
 		hit.t  = t_hit;
 		hit.nx = T(0); hit.ny = T(0); hit.nz = T(1);
 		hit.u  = u_coord; hit.v = v_coord;
-		hit.ex = std::abs(hx) * g3;
-		hit.ey = std::abs(hy) * g3;
-		hit.ez = T(0);   // z = height is exact (plane equation)
 		return hit;
 	}
 
@@ -775,7 +746,6 @@ struct CylinderShape {
 	// Reference: pbrt-v4 Cylinder::Sample(Point2f u)
 	// -----------------------------------------------------------------------
 	CPU_GPU ShapeSample<T> sample(T u0, T u1) const {
-		using namespace shapes_detail;
 		T z=z_min+u0*(z_max-z_min), phi=u1*phi_max;
 		T lx=radius*std::cos(phi), ly=radius*std::sin(phi);
 		T hitRad=safe_sqrt(lx*lx+ly*ly);
@@ -994,23 +964,14 @@ struct TriangleShape {
 			if (nlen > T(0)) { nnx /= nlen; nny /= nlen; nnz /= nlen; }
 		} else {
 			nnx = gnx; nny = gny; nnz = gnz;
-			shapes_detail::normalize3(nnx, nny, nnz);
+			normalize3(nnx, nny, nnz);
 		}
 
 		// (u,v) = barycentric (b0, b1)
-		// pbrt-v4 pAbsSum / pError for triangle: gamma(7) * abs-sum of barycentric corners
-		// Reference: Triangle::InteractionFromIntersection, shapes.h
-		T absSum_x = std::abs(b0*p0x) + std::abs(b1*p1x) + std::abs(b2*p2x);
-		T absSum_y = std::abs(b0*p0y) + std::abs(b1*p1y) + std::abs(b2*p2y);
-		T absSum_z = std::abs(b0*p0z) + std::abs(b1*p1z) + std::abs(b2*p2z);
-		T g7 = gamma_fp<T>(7);
 		ShapeHit<T> hit;
 		hit.t  = t_hit;
 		hit.nx = nnx; hit.ny = nny; hit.nz = nnz;
 		hit.u  = b0; hit.v = b1;
-		hit.ex = g7 * absSum_x;
-		hit.ey = g7 * absSum_y;
-		hit.ez = g7 * absSum_z;
 		return hit;
 	}
 
@@ -1258,7 +1219,7 @@ struct TriangleShape {
 					}
 
 					// ---------------------------------------------------------------
-					// area() -- approximate arc-length Ã— average width
+					// area() -- approximate arc-length Ãƒâ€” average width
 					// Mirrors pbrt-v4 Curve::Area()
 					// ---------------------------------------------------------------
 					CPU_GPU T area() const {
@@ -1317,7 +1278,7 @@ struct TriangleShape {
 						if (_dot3(dx,dx) == 0.f)
 							_coord_system(rdF, dx, dy_unused);
 
-						// Compute ray-from-object 4Ã—4 LookAt transform
+						// Compute ray-from-object 4Ãƒâ€”4 LookAt transform
 						// (position = ray.o, forward = normalize(ray.d), up = dx)
 						float ro[3] = { float(rox), float(roy), float(roz) };
 						float M[4][4]; // row-major world-to-ray transform
@@ -1419,7 +1380,7 @@ struct TriangleShape {
 						b[2] = -n[1];
 					}
 
-					// Build LookAt 4Ã—4 row-major matrix: maps world-space points so that
+					// Build LookAt 4Ãƒâ€”4 row-major matrix: maps world-space points so that
 					// ro -> origin, (ro + normalize(dir)) -> +Z, up guides X axis.
 					// Mirrors pbrt-v4 LookAt(pos, pos+dir, up).
 					CPU_GPU static void _look_at(const float* pos, const float* dir,
@@ -1466,7 +1427,7 @@ struct TriangleShape {
 						Minv[3][0]=0; Minv[3][1]=0; Minv[3][2]=0; Minv[3][3]=1;
 					}
 
-					// Apply 4Ã—4 row-major matrix to a 3D point (w=1)
+					// Apply 4Ãƒâ€”4 row-major matrix to a 3D point (w=1)
 					CPU_GPU static void _transform_point(const float M[4][4],
 														 const float p[3], float out[3]) {
 						out[0] = M[0][0]*p[0] + M[0][1]*p[1] + M[0][2]*p[2] + M[0][3];
@@ -1474,7 +1435,7 @@ struct TriangleShape {
 						out[2] = M[2][0]*p[0] + M[2][1]*p[1] + M[2][2]*p[2] + M[2][3];
 					}
 
-					// Apply 4Ã—4 row-major matrix to a 3D vector (w=0)
+					// Apply 4Ãƒâ€”4 row-major matrix to a 3D vector (w=0)
 					CPU_GPU static void _transform_vector(const float M[4][4],
 														  const float v[3], float out[3]) {
 						out[0] = M[0][0]*v[0] + M[0][1]*v[1] + M[0][2]*v[2];
@@ -1505,7 +1466,7 @@ struct TriangleShape {
 						splines::CubicBezierControlPoints(src, float(uMin), float(uMax), out);
 					}
 
-					// Evaluate cubic Bezier point and optional derivative at parameter w âˆˆ [0,1]
+					// Evaluate cubic Bezier point and optional derivative at parameter w Ã¢Ë†Ë† [0,1]
 					// Uses the raw control points already in a given space.
 					CPU_GPU static void _eval_bezier(const float cp[4][3], float w,
 													 float p[3], float dp[3]) {
@@ -1720,129 +1681,13 @@ struct TriangleShape {
 						}
 					}
 
-								CPU_GPU static void _cross3_s(float ax, float ay, float az,
-											  float bx, float by, float bz,
-											  float* out) {
-								out[0] = ay*bz - az*by;
-								out[1] = az*bx - ax*bz;
-											out[2] = ax*by - ay*bx;
-										}
-
-									public:
-										// ---------------------------------------------------------------
-										// pdf_area() -- uniform area density (1 / area())
-										// Reference: pbrt-v4 Curve PDF interface
-										// ---------------------------------------------------------------
-										CPU_GPU T pdf_area() const {
-											T a = area();
-											return (a > T(0)) ? T(1) / a : T(0);
-										}
-
-										// ---------------------------------------------------------------
-										// sample(u0, u1) -- area-uniform surface sample
-										// Strategy (mirrors the spirit of pbrt-v4 Curve::Sample):
-										//   u0 selects a parameter t along the sub-interval [uMin,uMax],
-										//   u1 selects a position across the half-width.
-										//   The surface point is curve_point + u1*width*dpdv_hat.
-										//   The shading normal is normalize(dpdu x dpdv_hat).
-										// ---------------------------------------------------------------
-										CPU_GPU ShapeSample<T> sample(T u0, T u1) const {
-											// Sub-interval control points in world space
-											float cpW[4][3];
-											_sub_cp(cpW);
-
-											// Map u0 -> local parameter t in [0,1] within the sub-interval
-											float t = float(u0);
-											t = t < 0.f ? 0.f : (t > 1.f ? 1.f : t);
-
-											// Evaluate curve position and tangent (world space)
-											float p[3], dpdu[3];
-											_eval_bezier(cpW, t, p, dpdu);
-
-											// Width at this parameter (global u = lerp of uMin,uMax by t)
-											float uGlobal = float(uMin) + t * (float(uMax) - float(uMin));
-											float w = _lerp(uGlobal, float(width0), float(width1));
-
-											// Build a perpendicular dpdv direction via _coord_system.
-											// Normalize dpdu first (matches pbrt-v4 CoordinateSystem usage).
-											float dpdu_norm[3] = {dpdu[0], dpdu[1], dpdu[2]};
-											float dpdu_len = _len3(dpdu_norm);
-											if (dpdu_len > 0.f) {
-												dpdu_norm[0] /= dpdu_len;
-												dpdu_norm[1] /= dpdu_len;
-												dpdu_norm[2] /= dpdu_len;
-											}
-											float dpdv[3], dummy[3];
-											_coord_system(dpdu_norm, dpdv, dummy);
-
-											// Surface point: offset from curve spine by v*halfWidth in dpdv direction
-											// v in [-1,1] so u1=0 -> -halfWidth side, u1=1 -> +halfWidth side
-											float v = float(u1) * 2.f - 1.f;
-											float halfW = 0.5f * w;
-											float px = p[0] + v * halfW * dpdv[0];
-											float py = p[1] + v * halfW * dpdv[1];
-											float pz = p[2] + v * halfW * dpdv[2];
-
-											// Surface normal = normalize(dpdu x dpdv)
-											float n[3];
-											_cross3_s(dpdu[0],dpdu[1],dpdu[2], dpdv[0],dpdv[1],dpdv[2], n);
-											float nl = _len3(n);
-											if (nl > 0.f) { n[0]/=nl; n[1]/=nl; n[2]/=nl; }
-
-											T pdf = pdf_area();
-											return ShapeSample<T>{T(px), T(py), T(pz),
-																 T(n[0]), T(n[1]), T(n[2]),
-																 T(uGlobal), T(float(u1)),
-																 pdf};
-										}
-
-										// ---------------------------------------------------------------
-										// sample_from(ctx, u0, u1) -- solid-angle sample from a point
-										// Delegates to area sample, then converts via dist^2/cos(theta).
-										// Reference: pbrt-v4 Cylinder::Sample(ShapeSampleContext, Point2f)
-										// ---------------------------------------------------------------
-										CPU_GPU ShapeSample<T> sample_from(const SamplingContext<T>& ctx,
-																		   T u0, T u1) const {
-											ShapeSample<T> ss = sample(u0, u1);
-											T wix = ss.px - ctx.px;
-											T wiy = ss.py - ctx.py;
-											T wiz = ss.pz - ctx.pz;
-											T dist2 = wix*wix + wiy*wiy + wiz*wiz;
-											if (dist2 == T(0)) { ss.pdf = T(0); return ss; }
-											T inv_d = T(1) / std::sqrt(dist2);
-											T cos_t = std::abs(ss.nx*(-wix*inv_d) +
-															   ss.ny*(-wiy*inv_d) +
-															   ss.nz*(-wiz*inv_d));
-											if (cos_t == T(0)) { ss.pdf = T(0); return ss; }
-											ss.pdf = pdf_area() * dist2 / cos_t;
-											return ss;
-										}
-
-										// ---------------------------------------------------------------
-										// pdf_from(ctx, wi) -- solid-angle PDF for a given direction
-										// Shoots a ray from ctx.p in direction wi and evaluates the
-										// area-to-solid-angle Jacobian at the first intersection.
-										// Reference: pbrt-v4 Cylinder::PDF(ShapeSampleContext, Vector3f)
-										// ---------------------------------------------------------------
-										CPU_GPU T pdf_from(const SamplingContext<T>& ctx,
-														   T wi_dx, T wi_dy, T wi_dz) const {
-											T wi_len = std::sqrt(wi_dx*wi_dx + wi_dy*wi_dy + wi_dz*wi_dz);
-											if (wi_len == T(0)) return T(0);
-											T wix = wi_dx / wi_len;
-											T wiy = wi_dy / wi_len;
-											T wiz = wi_dz / wi_len;
-											CurveHit hit{};
-											bool found = intersect(ctx.px, ctx.py, ctx.pz,
-																   wix, wiy, wiz,
-																   T(1e-4), std::numeric_limits<T>::max(),
-																   &hit);
-											if (!found) return T(0);
-											T dist2 = hit.t * hit.t;
-											T cos_t = std::abs(hit.nx*(-wix) + hit.ny*(-wiy) + hit.nz*(-wiz));
-											if (cos_t == T(0)) return T(0);
-											T pdf = pdf_area() * dist2 / cos_t;
-											return std::isfinite(pdf) ? pdf : T(0);
-										}
-								};
+					CPU_GPU static void _cross3_s(float ax, float ay, float az,
+												  float bx, float by, float bz,
+												  float* out) {
+						out[0] = ay*bz - az*by;
+						out[1] = az*bx - ax*bz;
+						out[2] = ax*by - ay*bx;
+					}
+				};
 
 

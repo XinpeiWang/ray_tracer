@@ -37,7 +37,7 @@
 // ===========================================================================
 
 struct alignas(32) LightBVHNode {
-	// Public members — matches pbrt-v4 layout exactly
+	// Public members Ã¢â‚¬â€ matches pbrt-v4 layout exactly
 	CompactLightBounds lightBounds;
 	struct {
 		unsigned int childOrLightIndex : 31;

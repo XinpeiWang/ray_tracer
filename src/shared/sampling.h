@@ -7,10 +7,10 @@
 //
 // Key addition over Book-3:
 //   SampleSphericalRectangle / SphericalRectanglePDF
-//     -- Ureña et al. 2013 "An Area-Preserving Parametrization for
+//     -- UreÃ±a et al. 2013 "An Area-Preserving Parametrization for
 //        Spherical Rectangles". Samples a point on a quad directly and
 //        uniformly in solid-angle measure from a reference point.
-//        PDF = 1 / solidAngle  (constant, no distance² / cosine conversion).
+//        PDF = 1 / solidAngle  (constant, no distanceÂ² / cosine conversion).
 //
 // Design rules (same as bxdfs.h, noise.h):
 //   - Plain structs/functions, CPU_GPU tagged
@@ -22,7 +22,7 @@
 #   if defined(__CUDACC__)
 #       define CPU_GPU __host__ __device__ __forceinline__
 #   else
-#       define CPU_GPU inline
+#       define CPU_GPU
 #   endif
 #endif
 
@@ -323,7 +323,7 @@ CPU_GPU void SampleSphericalRectangle(
 		return;
 	}
 
-	// -- Ureña et al. 2013 sampling --
+	// -- UreÃ±a et al. 2013 sampling --
 
 	// Sample cu (cosine of u-angle) by inverting solid angle CDF
 	double b0 = n0.z, b1 = n2.z;
@@ -472,7 +472,7 @@ CPU_GPU void SampleSphericalTriangle(
 	V3 gs2_n = (gs2l > 1e-15) ? gs2 * (1.0/gs2l) : V3(0,0,0);
 	V3 w = b * cosTheta + gs2_n * sinTheta;
 
-	// Find barycentric coordinates for direction w via Möller-Trumbore
+	// Find barycentric coordinates for direction w via MÃ¶ller-Trumbore
 	V3 p_pt(px, py, pz);
 	V3 v0(v0x,v0y,v0z), v1(v1x,v1y,v1z), v2(v2x,v2y,v2z);
 	V3 e1 = v1 - v0, e2 = v2 - v0;
@@ -987,7 +987,7 @@ CPU_GPU void SampleCosineHemisphere(T u0, T u1,
 // Balance heuristic with beta=2: w = (n_f * f)^2 / ((n_f*f)^2 + (n_g*g)^2)
 // pbrt-v4: if (IsInf(Sqr(f))) return 1 -- handles the case where one PDF
 // dominates so heavily it overflows float.
-CPU_GPU inline float PowerHeuristic(int nf, float f_pdf, int ng, float g_pdf) {
+CPU_GPU float PowerHeuristic(int nf, float f_pdf, int ng, float g_pdf) {
 	float f = static_cast<float>(nf) * f_pdf;
 	float g = static_cast<float>(ng) * g_pdf;
 	float f2 = f * f;

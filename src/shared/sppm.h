@@ -119,7 +119,7 @@ struct SPPMPixel {
 namespace sppm_detail {
 
 // Simple integer hash (matches pbrt-v4's Hash for Point3i)
-CPU_GPU inline uint32_t HashPoint3i(int x, int y, int z) {
+CPU_GPU uint32_t HashPoint3i(int x, int y, int z) {
 	uint32_t a = (uint32_t)x * 2654435769u;
 	uint32_t b = (uint32_t)y * 805459861u;
 	uint32_t c = (uint32_t)z * 3674653429u;
@@ -127,7 +127,7 @@ CPU_GPU inline uint32_t HashPoint3i(int x, int y, int z) {
 }
 
 // Next prime >= n (used to size hash table like pbrt-v4 NextPrime(nPixels))
-CPU_GPU inline int NextPrime(int n) {
+CPU_GPU int NextPrime(int n) {
 	if (n <= 2) return 2;
 	if (n % 2 == 0) ++n;
 	while (true) {
