@@ -85,27 +85,73 @@ static void sample_cos_hemi(double u1, double u2,
 // (one in a thousand false-positive rate per test).
 // -------------------------------------------------------------------------
 
-// Incomplete gamma function (regularised) via series expansion -- used for
-// chi-squared p-value.  Accurate enough for our df sizes.
-static double igam_series(double a, double x) {
-	if (x <= 0.0) return 0.0;
-	double sum = 1.0 / a;
-	double term = sum;
-	for (int k = 1; k < 300; ++k) {
-		term *= x / (a + k);
-		sum  += term;
-		if (std::fabs(term) < 1e-12 * std::fabs(sum)) break;
+// Regularised lower incomplete gamma function P(a, x).
+// Ported directly from pbrt-v4 bsdfs_test.cpp (RLGamma).
+// Uses the power series for x <= a and Legendre continued-fraction for x > a.
+static double RLGamma(double a, double x) {
+	const double epsilon = 1e-15;
+	const double big    = 4503599627370496.0;   // 2^52
+	const double bigInv = 2.22044604925031308085e-16;
+	if (x == 0.0) return 0.0;
+
+	double ax = a * std::log(x) - x - std::lgamma(a);
+	if (ax < -709.78271289338399)
+		return (a < x) ? 1.0 : 0.0;   // underflow
+
+	if (x <= 1.0 || x <= a) {
+		// Power series
+		double r2 = a, c2 = 1.0, ans2 = 1.0;
+		do {
+			r2  += 1.0;
+			c2  *= x / r2;
+			ans2 += c2;
+		} while (std::fabs(c2 / ans2) > epsilon);
+		return std::exp(ax) * ans2 / a;
 	}
-	return sum * std::exp(-x + a * std::log(x) - std::lgamma(a));
+
+	// Legendre continued-fraction expansion
+	int    c    = 0;
+	double y    = 1.0 - a;
+	double z    = x + y + 1.0;
+	double p3   = 1.0, q3 = x;
+	double p2   = x + 1.0, q2 = z * x;
+	double ans  = p2 / q2;
+	double err;
+	do {
+		++c;
+		y += 1.0; z += 2.0;
+		double yc  = (double)c * y;
+		double p   = p2 * z - p3 * yc;
+		double q   = q2 * z - q3 * yc;
+		if (q != 0.0) {
+			double next = p / q;
+			err = std::fabs((ans - next) / next);
+			ans = next;
+		} else {
+			err = 1.0;
+		}
+		p3 = p2; p2 = p;
+		q3 = q2; q2 = q;
+		if (std::fabs(p) > big) {
+			p3 *= bigInv; p2 *= bigInv;
+			q3 *= bigInv; q2 *= bigInv;
+		}
+	} while (err > epsilon);
+	return 1.0 - std::exp(ax) * ans;
 }
 
-// Regularised upper incomplete gamma Q(a, x) = 1 - P(a, x).
+// Chi-squared CDF: Pr[X <= x] where X ~ chi2(dof).
+// Ported from pbrt-v4 Chi2CDF.
+static double Chi2CDF(double x, int dof) {
+	if (dof < 1 || x < 0.0) return 0.0;
+	if (dof == 2) return 1.0 - std::exp(-0.5 * x);
+	return RLGamma(0.5 * dof, 0.5 * x);
+}
+
+// p-value for a chi-squared statistic: Pr[X >= chi2_stat].
 static double chi2_pvalue(double chi2_stat, int df) {
 	if (!std::isfinite(chi2_stat) || chi2_stat <= 0.0) return 1.0;
-	double a = 0.5 * df, x = 0.5 * chi2_stat;
-	// For x >> a the p-value is effectively 0 (series overflows); guard here.
-	if (x > a + 50.0 * std::sqrt(a) + 1000.0) return 0.0;
-	return 1.0 - igam_series(a, x);
+	return 1.0 - Chi2CDF(chi2_stat, df);
 }
 
 struct ChiSquaredResult { double stat; double pvalue; int df; };
@@ -115,8 +161,8 @@ struct ChiSquaredResult { double stat; double pvalue; int df; };
 static ChiSquaredResult run_chi2(
 	const TrowbridgeReitz<double>& dist,
 	double wox, double woy, double woz,
-	int n_theta = 16, int n_phi = 32,
-	int n_samples = 200000,
+	int n_theta = 32, int n_phi = 64,
+	int n_samples = 500000,
 	uint64_t seed = 42ULL)
 {
 	const int N_CELLS = n_theta * n_phi;
@@ -171,31 +217,56 @@ static ChiSquaredResult run_chi2(
 		++observed[it * n_phi + ip];
 	}
 
-	// -- Step 3: Pearson chi-squared statistic (pool tiny cells) --
-	double chi2_stat = 0.0;
-	int effective_df = 0;
-	double obs_pool  = 0.0;
-	double exp_pool  = 0.0;
+	// -- Step 3: Pearson chi-squared statistic with cell pooling --
+	// Mirrors pbrt-v4 Chi2Test: sort cells by expected count ascending, then
+	// pool cells with expected < CHI2_MINFREQ=5 until the pool reaches the
+	// threshold.  This prevents the statistic from being dominated by near-
+	// empty bins where the normal approximation breaks down.
+	struct Cell { double exp; double obs; };
+	std::vector<Cell> cells(N_CELLS);
+	for (int c = 0; c < N_CELLS; ++c)
+		cells[c] = {expected[c], (double)observed[c]};
+	std::sort(cells.begin(), cells.end(),
+			  [](const Cell& a, const Cell& b){ return a.exp < b.exp; });
 
-	for (int c = 0; c < N_CELLS; ++c) {
-		if (expected[c] < 5.0) {
-			// pool small cells
-			obs_pool += observed[c];
-			exp_pool += expected[c];
-			if (exp_pool >= 5.0) {
-				double d = obs_pool - exp_pool;
+	constexpr double kMinFreq = 5.0;
+	double chi2_stat    = 0.0;
+	int    effective_df = 0;
+	double obs_pool     = 0.0;
+	double exp_pool     = 0.0;
+
+	for (const auto& cell : cells) {
+		if (cell.exp == 0.0) {
+			// ignore truly-zero expected cells (no contribution)
+			continue;
+		} else if (cell.exp < kMinFreq) {
+			obs_pool += cell.obs;
+			exp_pool += cell.exp;
+			if (exp_pool >= kMinFreq) {
+				double d  = obs_pool - exp_pool;
+				chi2_stat += d * d / exp_pool;
+				++effective_df;
+				obs_pool = exp_pool = 0.0;
+			}
+		} else if (exp_pool > 0.0 && exp_pool < kMinFreq) {
+			// keep pooling until the pool is large enough
+			obs_pool += cell.obs;
+			exp_pool += cell.exp;
+			if (exp_pool >= kMinFreq) {
+				double d  = obs_pool - exp_pool;
 				chi2_stat += d * d / exp_pool;
 				++effective_df;
 				obs_pool = exp_pool = 0.0;
 			}
 		} else {
-			double d = observed[c] - expected[c];
-			chi2_stat += d * d / expected[c];
+			double d  = cell.obs - cell.exp;
+			chi2_stat += d * d / cell.exp;
 			++effective_df;
 		}
 	}
+	// flush leftover pool
 	if (exp_pool > 0.0) {
-		double d = obs_pool - exp_pool;
+		double d  = obs_pool - exp_pool;
 		chi2_stat += d * d / exp_pool;
 		++effective_df;
 	}
