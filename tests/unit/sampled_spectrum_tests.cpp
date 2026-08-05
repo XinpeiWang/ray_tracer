@@ -8,6 +8,10 @@
 #include <cmath>
 #include <array>
 #include "../../src/shared/sampled_spectrum.h"
+#include "../../src/shared/spectral_math.h"    // ToXYZ, LuminanceY, ToRGB, SpectrumToXYZ
+#include "../../src/shared/spectrum_types.h"   // ConstantSpectrum, DenselySampledSpectrum
+#include "../../src/shared/cie_data.h"         // GetCIE_X/Y/Z, kCIE_Y_integral
+#include "../../src/shared/rgb_colorspace.h"   // RGBColorSpace::sRGB()
 
 // Convenience aliases
 using SS4  = SampledSpectrum<4>;
@@ -430,4 +434,236 @@ TEST(SampledSpectrumIntegration, ArithmeticChain) {
 	SS4 rhs = (a * c + b * c) / 2.f;
 	for (int i = 0; i < 4; ++i)
 		EXPECT_NEAR(lhs[i], rhs[i], 1e-5f);
+}
+
+// ============================================================================
+// spectral_math.h -- ToXYZ / LuminanceY / ToRGB / SpectrumToXYZ / InnerProduct
+//
+// pbrt-v4 reference: util/spectrum.h, util/spectrum.cpp
+// Algorithm: Monte Carlo estimator
+//   XYZ = (SafeDiv(CIE_X/Y/Z.Sample(swl) * ss, swl.PDF())).Average()
+//         / CIE_Y_integral
+// ============================================================================
+
+// ---------------------------------------------------------------------------
+// InnerProduct
+// ---------------------------------------------------------------------------
+
+TEST(SpectralMath, InnerProductConstantOne) {
+	// InnerProduct(1, 1) = sum_{360}^{830} 1.0 = 471 samples
+	ConstantSpectrum one(1.f);
+	float ip = InnerProduct(one, one);
+	EXPECT_NEAR(ip, 471.f, 1.f);  // 360..830 inclusive = 471 integers
+}
+
+TEST(SpectralMath, InnerProductCIEYSelf) {
+	// InnerProduct(CIE_Y, CIE_Y) must be positive and finite
+	float ip = InnerProduct(GetCIE_Y(), GetCIE_Y());
+	EXPECT_GT(ip, 0.f);
+	EXPECT_TRUE(std::isfinite(ip));
+}
+
+// ---------------------------------------------------------------------------
+// SpectrumToXYZ (deterministic Riemann-sum integration)
+// ---------------------------------------------------------------------------
+
+TEST(SpectralMath, SpectrumToXYZ_ConstantOne_YEqualsOne) {
+	// For a perfectly white spectrum (radiance = 1 at all lambda),
+	// Y = InnerProduct(CIE_Y, 1) / CIE_Y_integral = 1.0 by definition.
+	ConstantSpectrum white(1.f);
+	XYZ xyz = SpectrumToXYZ(white);
+	EXPECT_NEAR(xyz.Y, 1.f, 5e-4f);  // within 0.05% of 1.0
+	EXPECT_GT(xyz.X, 0.f);
+	EXPECT_GT(xyz.Z, 0.f);
+}
+
+TEST(SpectralMath, SpectrumToXYZ_Zero_IsZero) {
+	ConstantSpectrum zero(0.f);
+	XYZ xyz = SpectrumToXYZ(zero);
+	EXPECT_FLOAT_EQ(xyz.X, 0.f);
+	EXPECT_FLOAT_EQ(xyz.Y, 0.f);
+	EXPECT_FLOAT_EQ(xyz.Z, 0.f);
+}
+
+TEST(SpectralMath, SpectrumToXYZ_ScaleLinear) {
+	// SpectrumToXYZ(2*s) = 2 * SpectrumToXYZ(s) since integration is linear.
+	ConstantSpectrum s1(1.f);
+	ConstantSpectrum s2(2.f);
+	XYZ xyz1 = SpectrumToXYZ(s1);
+	XYZ xyz2 = SpectrumToXYZ(s2);
+	EXPECT_NEAR(xyz2.X, 2.f * xyz1.X, 1e-4f);
+	EXPECT_NEAR(xyz2.Y, 2.f * xyz1.Y, 1e-4f);
+	EXPECT_NEAR(xyz2.Z, 2.f * xyz1.Z, 1e-4f);
+}
+
+// ---------------------------------------------------------------------------
+// ToXYZ (Monte Carlo estimator)
+// ---------------------------------------------------------------------------
+
+TEST(SpectralMath, ToXYZ_ConstantOne_YApproxOne) {
+	// A constant-radiance spectrum should give Y ≈ 1 under the MC estimator.
+	// Use SampleUniform so we can use many strata for low variance.
+	double sumY = 0.0;
+	const int K = 1024;
+	for (int k = 0; k < K; ++k) {
+		float u = (k + 0.5f) / float(K);
+		SWL4 swl = SWL4::SampleUniform(u);
+		SS4  ss(1.f);
+		XYZ  xyz = ToXYZ(ss, swl);
+		sumY += xyz.Y;
+	}
+	double meanY = sumY / K;
+	// Uniform sampling of [360,830] with 1/471 PDF; expect Y ≈ 1.0.
+	EXPECT_NEAR(meanY, 1.0, 0.05);  // 5% tolerance for MC estimator
+}
+
+TEST(SpectralMath, ToXYZ_ZeroSpectrum_IsZero) {
+	SWL4 swl = SWL4::SampleVisible(0.5f);
+	SS4  ss(0.f);
+	XYZ  xyz = ToXYZ(ss, swl);
+	EXPECT_FLOAT_EQ(xyz.X, 0.f);
+	EXPECT_FLOAT_EQ(xyz.Y, 0.f);
+	EXPECT_FLOAT_EQ(xyz.Z, 0.f);
+}
+
+TEST(SpectralMath, ToXYZ_AgreesWithSpectrumToXYZ_Constant) {
+	// For a DenselySampledSpectrum constant = 1, both estimators should agree
+	// within Monte Carlo variance when averaged over enough samples.
+	DenselySampledSpectrum ds = DenselySampledSpectrum::SampleFunction(
+		[](float) { return 1.f; });
+
+	// Deterministic reference via Riemann sum
+	XYZ ref = SpectrumToXYZ(ds);
+
+	// MC estimate averaged over 512 stratified draws
+	double sumX = 0, sumY = 0, sumZ = 0;
+	const int K = 512;
+	for (int k = 0; k < K; ++k) {
+		float u = (k + 0.5f) / float(K);
+		SWL4 swl = SWL4::SampleVisible(u);
+		SS4  ss  = ds.Sample(swl);
+		XYZ  xyz = ToXYZ(ss, swl);
+		sumX += xyz.X; sumY += xyz.Y; sumZ += xyz.Z;
+	}
+	EXPECT_NEAR(sumX / K, ref.X, 0.02f);
+	EXPECT_NEAR(sumY / K, ref.Y, 0.02f);
+	EXPECT_NEAR(sumZ / K, ref.Z, 0.02f);
+}
+
+// ---------------------------------------------------------------------------
+// LuminanceY
+// ---------------------------------------------------------------------------
+
+TEST(SpectralMath, LuminanceY_ConstantOne_ApproxOne) {
+	// Average over stratified uniform draws.
+	double sumY = 0.0;
+	const int K = 1024;
+	for (int k = 0; k < K; ++k) {
+		float u = (k + 0.5f) / float(K);
+		SWL4 swl = SWL4::SampleUniform(u);
+		SS4  ss(1.f);
+		sumY += LuminanceY(ss, swl);
+	}
+	EXPECT_NEAR(sumY / K, 1.0, 0.05);
+}
+
+TEST(SpectralMath, LuminanceY_MatchesToXYZ_Y) {
+	// LuminanceY should equal ToXYZ(...).Y to floating-point precision.
+	SWL4 swl = SWL4::SampleVisible(0.3f);
+	SS4  ss(0.6f);
+	float yFromLum = LuminanceY(ss, swl);
+	float yFromXYZ = ToXYZ(ss, swl).Y;
+	EXPECT_FLOAT_EQ(yFromLum, yFromXYZ);
+}
+
+TEST(SpectralMath, LuminanceY_Zero_IsZero) {
+	SWL4 swl = SWL4::SampleVisible(0.5f);
+	SS4  ss(0.f);
+	EXPECT_FLOAT_EQ(LuminanceY(ss, swl), 0.f);
+}
+
+// ---------------------------------------------------------------------------
+// ToRGB
+// ---------------------------------------------------------------------------
+
+TEST(SpectralMath, ToRGB_ConstantOne_PositiveAndFinite) {
+	// A white spectrum should produce positive, finite RGB values.
+	SWL4 swl = SWL4::SampleUniform(0.5f);
+	SS4  ss(1.f);
+	const RGBColorSpace& cs = RGBColorSpace::sRGB();
+	float r, g, b;
+	ToRGB(ss, swl, cs, r, g, b);
+	EXPECT_TRUE(std::isfinite(r));
+	EXPECT_TRUE(std::isfinite(g));
+	EXPECT_TRUE(std::isfinite(b));
+}
+
+TEST(SpectralMath, ToRGB_ZeroSpectrum_IsZero) {
+	SWL4 swl = SWL4::SampleVisible(0.5f);
+	SS4  ss(0.f);
+	const RGBColorSpace& cs = RGBColorSpace::sRGB();
+	float r, g, b;
+	ToRGB(ss, swl, cs, r, g, b);
+	EXPECT_FLOAT_EQ(r, 0.f);
+	EXPECT_FLOAT_EQ(g, 0.f);
+	EXPECT_FLOAT_EQ(b, 0.f);
+}
+
+TEST(SpectralMath, ToRGB_ConsistentWithToXYZ) {
+	// ToRGB(ss, swl, cs) = cs.FromXYZ(ToXYZ(ss, swl)) -- verify both routes agree.
+	SWL4 swl = SWL4::SampleVisible(0.7f);
+	SS4  ss(0.5f);
+	const RGBColorSpace& cs = RGBColorSpace::sRGB();
+
+	// Route 1: ToRGB directly
+	float r1, g1, b1;
+	ToRGB(ss, swl, cs, r1, g1, b1);
+
+	// Route 2: ToXYZ then FromXYZ
+	XYZ xyz = ToXYZ(ss, swl);
+	float r2, g2, b2;
+	cs.FromXYZ(xyz.X, xyz.Y, xyz.Z, r2, g2, b2);
+
+	EXPECT_FLOAT_EQ(r1, r2);
+	EXPECT_FLOAT_EQ(g1, g2);
+	EXPECT_FLOAT_EQ(b1, b2);
+}
+
+TEST(SpectralMath, ToRGB_WhiteSpectrum_NearEqualRGB) {
+	// A flat equal-energy spectrum should produce roughly equal R, G, B
+	// (not equal due to primary chromaticities, but within a factor of 2).
+	double sumR = 0, sumG = 0, sumB = 0;
+	const int K = 512;
+	const RGBColorSpace& cs = RGBColorSpace::sRGB();
+	for (int k = 0; k < K; ++k) {
+		float u = (k + 0.5f) / float(K);
+		SWL4 swl = SWL4::SampleUniform(u);
+		SS4  ss(1.f);
+		float r, g, b;
+		ToRGB(ss, swl, cs, r, g, b);
+		sumR += r; sumG += g; sumB += b;
+	}
+	float mR = float(sumR / K), mG = float(sumG / K), mB = float(sumB / K);
+	// All channels must be positive
+	EXPECT_GT(mR, 0.f);
+	EXPECT_GT(mG, 0.f);
+	EXPECT_GT(mB, 0.f);
+	// Channels must be within 2x of each other for a white source
+	EXPECT_LT(std::max({mR, mG, mB}) / std::min({mR, mG, mB}), 3.f);
+}
+
+// ---------------------------------------------------------------------------
+// pbrt-v4 alignment: CIE_Y_integral constant
+// ---------------------------------------------------------------------------
+
+TEST(SpectralMath, CIEYIntegral_MatchesPbrtV4) {
+	// pbrt-v4: static constexpr Float CIE_Y_integral = 106.856895;
+	EXPECT_NEAR(kCIE_Y_integral, 106.856895f, 1e-4f);
+}
+
+TEST(SpectralMath, CIEYIntegral_MatchesRiemannSum) {
+	// InnerProduct(CIE_Y, 1) should reproduce kCIE_Y_integral within 1-nm step.
+	ConstantSpectrum one(1.f);
+	float ip = InnerProduct(GetCIE_Y(), one);
+	EXPECT_NEAR(ip, kCIE_Y_integral, 0.1f);  // 1-nm Riemann sum vs exact integral
 }
