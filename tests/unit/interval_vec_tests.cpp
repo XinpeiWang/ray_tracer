@@ -240,17 +240,24 @@ TEST(SpawnRayToTest, OriginOffsetedTowardTarget) {
 }
 
 TEST(SpawnRayToTest, TwoIntervalEndpoints) {
-	// Bidirectional shadow ray
+	// Bidirectional shadow ray — mirrors pbrt-v4 SpawnRayTo(pFrom,nFrom,pTo,nTo).
+	// Step 1: pf = OffsetRayOrigin(pFrom, nFrom, pTo - pFrom)
+	// Step 2: pt = OffsetRayOrigin(pTo,   nTo,   pf  - pTo)    (uses pf, not -dir)
 	Point3fi pFrom(0.0, 0.0, 0.0, 1e-5, 1e-5, 1e-5);
 	Point3fi pTo  (5.0, 0.0, 0.0, 1e-5, 1e-5, 1e-5);
+	// Both normals pointing up (+Y)
 	double nfx = 0.0, nfy = 1.0, nfz = 0.0;
 	double ntx = 0.0, nty = 1.0, ntz = 0.0;
 	double ofx, ofy, ofz, otx, oty, otz;
 	SpawnRayTo(pFrom, nfx, nfy, nfz, pTo, ntx, nty, ntz,
 			   ofx, ofy, ofz, otx, oty, otz);
-	// Both endpoints should have been slightly offset
+	// Both offset origins should lie on the +Y side (dot(w,n) > 0 for both)
 	EXPECT_GE(ofy, 0.0);
 	EXPECT_GE(oty, 0.0);
+	// pFrom offset should be close to (0, 0, 0)
+	EXPECT_NEAR(ofx, 0.0, 1e-3);
+	// pTo offset should be close to (5, 0, 0)
+	EXPECT_NEAR(otx, 5.0, 1e-3);
 }
 
 // ===========================================================================

@@ -311,18 +311,16 @@ struct SphereShape {
 					? (theta - theta_z_min) / (theta_z_max - theta_z_min)
 					: T(0);
 
-		// pbrt-v4 pError for sphere: gamma(5) * |p_hit|
-		// (Sphere::InteractionFromIntersection uses gamma(5) * Abs(pHit))
-		T err = gamma_fp<T>(5) * std::sqrt(hx*hx + hy*hy + hz*hz);
-
+		// pbrt-v4 pError for sphere: gamma(5) * |p_hit| per component
+		// Reference: Sphere::InteractionFromIntersection, shapes.h -- gamma(5)*Abs(pHit)
+		T g5 = gamma_fp<T>(5);
 		ShapeHit<T> hit;
 		hit.t  = t_hit;
 		hit.nx = nnx; hit.ny = nny; hit.nz = nnz;
 		hit.u  = u_coord; hit.v = v_coord;
-		hit.ex = std::abs(hx) * gamma_fp<T>(5);
-		hit.ey = std::abs(hy) * gamma_fp<T>(5);
-		hit.ez = std::abs(hz) * gamma_fp<T>(5);
-		(void)err;
+		hit.ex = std::abs(hx) * g5;
+		hit.ey = std::abs(hy) * g5;
+		hit.ez = std::abs(hz) * g5;
 		return hit;
 	}
 

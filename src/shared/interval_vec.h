@@ -98,7 +98,7 @@ struct Vector3fi {
 	CPU_GPU Vector3fi operator-() const { return {-x, -y, -z}; }
 };
 
-CPU_GPU inline Vector3fi operator*(double s, const Vector3fi& v) { return v * s; }
+CPU_GPU Vector3fi operator*(double s, const Vector3fi& v) { return v * s; }
 
 // ===========================================================================
 // Point3fi -- 3D point with per-component interval error bounds
@@ -177,13 +177,7 @@ struct Point3fi {
 //   round each coordinate away from surface (NextFloatUp/Down)
 // ===========================================================================
 
-// Abs of a plain vector (component-wise)
-CPU_GPU inline void abs3(double x, double y, double z,
-						  double& ax, double& ay, double& az) {
-	ax = std::abs(x); ay = std::abs(y); az = std::abs(z);
-}
-
-CPU_GPU inline double dot3(double ax, double ay, double az,
+CPU_GPU double dot3(double ax, double ay, double az,
 							double bx, double by, double bz) {
 	return ax*bx + ay*by + az*bz;
 }
@@ -191,7 +185,7 @@ CPU_GPU inline double dot3(double ax, double ay, double az,
 /// Robust ray-origin offset from an interval-backed hit point.
 /// n = surface normal (unit, outward), w = outgoing direction.
 /// Returns the offset origin as a plain (ox, oy, oz) triple.
-CPU_GPU inline void OffsetRayOrigin(const Point3fi& pi,
+CPU_GPU void OffsetRayOrigin(const Point3fi& pi,
 									 double nx, double ny, double nz,
 									 double wx, double wy, double wz,
 									 double& ox, double& oy, double& oz)
@@ -220,7 +214,7 @@ CPU_GPU inline void OffsetRayOrigin(const Point3fi& pi,
 /// Spawn a secondary ray from a surface hit (shadow / BSDF bounce).
 /// Fills ray origin (ox,oy,oz) using robust interval-based offset.
 /// The caller supplies direction (dx, dy, dz).
-CPU_GPU inline void SpawnRay(const Point3fi& pi,
+CPU_GPU void SpawnRay(const Point3fi& pi,
 							  double nx, double ny, double nz,
 							  double dx, double dy, double dz,
 							  double& ox, double& oy, double& oz)
@@ -229,7 +223,7 @@ CPU_GPU inline void SpawnRay(const Point3fi& pi,
 }
 
 /// Shadow ray toward a point: spawn from pi toward target (tx,ty,tz).
-CPU_GPU inline void SpawnRayTo(const Point3fi& pi,
+CPU_GPU void SpawnRayTo(const Point3fi& pi,
 								double nx, double ny, double nz,
 								double tx, double ty, double tz,
 								double& ox, double& oy, double& oz)
@@ -239,17 +233,27 @@ CPU_GPU inline void SpawnRayTo(const Point3fi& pi,
 }
 
 /// Shadow ray between two interval-backed endpoints.
-/// Fills both endpoints (pf and pt) with their respective offsets.
-CPU_GPU inline void SpawnRayTo(const Point3fi& pFrom,
+/// Mirrors pbrt-v4 SpawnRayTo(Point3fi pFrom, Normal3f nFrom, Float time,
+///                            Point3fi pTo,   Normal3f nTo).
+/// Fills both offset endpoints: (ofx,ofy,ofz) for pFrom-side,
+///                              (otx,oty,otz) for pTo-side.
+CPU_GPU void SpawnRayTo(const Point3fi& pFrom,
 								double nfx, double nfy, double nfz,
 								const Point3fi& pTo,
 								double ntx, double nty, double ntz,
 								double& ofx, double& ofy, double& ofz,
 								double& otx, double& oty, double& otz)
 {
+	// Step 1: offset pFrom toward pTo (pbrt-v4: pf = OffsetRayOrigin(pFrom, nFrom, pTo-pFrom))
 	double dx = pTo.mx() - pFrom.mx();
 	double dy = pTo.my() - pFrom.my();
 	double dz = pTo.mz() - pFrom.mz();
-	OffsetRayOrigin(pFrom, nfx, nfy, nfz,  dx,  dy,  dz, ofx, ofy, ofz);
-	OffsetRayOrigin(pTo,   ntx, nty, ntz, -dx, -dy, -dz, otx, oty, otz);
+	OffsetRayOrigin(pFrom, nfx, nfy, nfz, dx, dy, dz, ofx, ofy, ofz);
+
+	// Step 2: offset pTo toward already-offset pf  (pbrt-v4: pt = OffsetRayOrigin(pTo, nTo, pf-pTo))
+	// Using pf (ofx,ofy,ofz) as the direction source matches pbrt-v4 exactly.
+	double dx2 = ofx - pTo.mx();
+	double dy2 = ofy - pTo.my();
+	double dz2 = ofz - pTo.mz();
+	OffsetRayOrigin(pTo, ntx, nty, ntz, dx2, dy2, dz2, otx, oty, otz);
 }
