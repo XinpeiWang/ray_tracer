@@ -587,10 +587,17 @@ struct DiskShape {
 					: T(0);
 
 		// Normal always points up (+z) for un-flipped disk
+		// pbrt-v4 pError for disk: gamma(3) * |pHit.x|, gamma(3) * |pHit.y|, 0
+		// (z = height plane is exact; x,y accumulate rounding from t*rdx/rdy)
+		// Reference: Cylinder::InteractionFromIntersection, shapes.h -- gamma(3)*Abs(x,y,0)
+		T g3 = shapes_detail::gamma_fp<T>(3);
 		ShapeHit<T> hit;
 		hit.t  = t_hit;
 		hit.nx = T(0); hit.ny = T(0); hit.nz = T(1);
 		hit.u  = u_coord; hit.v = v_coord;
+		hit.ex = std::abs(hx) * g3;
+		hit.ey = std::abs(hy) * g3;
+		hit.ez = T(0);   // z = height is exact (plane equation)
 		return hit;
 	}
 

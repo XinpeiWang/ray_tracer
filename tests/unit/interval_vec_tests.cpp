@@ -466,3 +466,35 @@ TEST(SurfaceInteractionOffsetTest, FullPipeline_TriangleShapeHitToSpawnRay) {
 	EXPECT_LT(std::abs(oz), 1e-4);
 }
 
+TEST(SurfaceInteractionOffsetTest, FullPipeline_DiskShapeHitFillsError) {
+	// Disk at z=0, radius=1, centered at origin
+	DiskShape<double> disk;
+	disk.cx = 0.0; disk.cy = 0.0; disk.height = 0.0;
+	disk.outer_r = 1.0; disk.inner_r = 0.0;
+	disk.phi_max = 2.0 * 3.14159265358979323846;
+
+	// Ray from above toward disk center
+	double rox = 0.3, roy = 0.4, roz = 3.0;
+	double rdx = 0.0, rdy = 0.0, rdz = -1.0;
+	auto hit = disk.intersect(rox, roy, roz, rdx, rdy, rdz, 0.0, 1e30);
+	ASSERT_TRUE(hit.has_value());
+
+	// pbrt-v4: pError = gamma(3)*|hx|, gamma(3)*|hy|, 0
+	double g3 = (3.0 * (std::numeric_limits<double>::epsilon() * 0.5))
+			  / (1.0 - 3.0 * (std::numeric_limits<double>::epsilon() * 0.5));
+	double hx = rox + hit->t * rdx;  // = 0.3 at z=0 plane
+	double hy = roy + hit->t * rdy;  // = 0.4
+	EXPECT_NEAR(hit->ex, std::abs(hx) * g3, 1e-15);
+	EXPECT_NEAR(hit->ey, std::abs(hy) * g3, 1e-15);
+	EXPECT_DOUBLE_EQ(hit->ez, 0.0);
+
+	// Spawn upward (+Z direction)
+	SurfaceInteraction<double> si;
+	si.px = hx; si.py = hy; si.pz = 0.0;
+	si.nx = 0.0; si.ny = 0.0; si.nz = 1.0;
+	si.set_error(hit->ex, hit->ey, hit->ez);
+	double ox, oy, oz;
+	si.spawn_ray_origin(ox, oy, oz, 0.0, 0.0, 1.0);
+	EXPECT_GE(oz, 0.0);          // safely on +Z side
+	EXPECT_LT(std::abs(oz), 1e-10); // z error is 0, so nudge is zero or minimal
+}
