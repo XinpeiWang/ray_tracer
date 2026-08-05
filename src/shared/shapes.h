@@ -40,6 +40,7 @@
 								// SampleUniformCone, UniformConePDF, etc.
 #include "shading_frame.h"          // ShadingFrame<T>
 #include "splines.h"                // CubicBezierControlPoints, EvaluateCubicBezierD, SubdivideCubicBezier
+#include "interval_vec.h"           // Point3fi, OffsetRayOrigin, SpawnRay
 
 #include <cmath>
 #include <optional>
@@ -153,6 +154,21 @@ struct ShapeHit {
 	T t;            // ray parameter of intersection
 	T nx, ny, nz;   // outward surface normal (unit, in world space)
 	T u, v;         // surface (u,v) parameterisation
+	// Per-component absolute position-error bounds (pbrt-v4 pError).
+	// Filled by each intersector; zero means "use flat 0.001 bias instead".
+	T ex{}, ey{}, ez{};
+
+	// Reconstruct a Point3fi for the hit position given ray (ox,oy,oz, dx,dy,dz)
+	// so callers can invoke SpawnRay / OffsetRayOrigin directly.
+	// p_hit = (ox + t*dx, oy + t*dy, oz + t*dz), error = (ex, ey, ez).
+	CPU_GPU Point3fi ToPoint3fi(T ox, T oy, T oz,
+								 T dx, T dy, T dz) const {
+		return Point3fi(
+			double(ox) + double(t)*double(dx),
+			double(oy) + double(t)*double(dy),
+			double(oz) + double(t)*double(dz),
+			double(ex), double(ey), double(ez));
+	}
 };
 
 // Point used as origin for solid-angle sampling
@@ -295,10 +311,18 @@ struct SphereShape {
 					? (theta - theta_z_min) / (theta_z_max - theta_z_min)
 					: T(0);
 
+		// pbrt-v4 pError for sphere: gamma(5) * |p_hit|
+		// (Sphere::InteractionFromIntersection uses gamma(5) * Abs(pHit))
+		T err = gamma_fp<T>(5) * std::sqrt(hx*hx + hy*hy + hz*hz);
+
 		ShapeHit<T> hit;
 		hit.t  = t_hit;
 		hit.nx = nnx; hit.ny = nny; hit.nz = nnz;
 		hit.u  = u_coord; hit.v = v_coord;
+		hit.ex = std::abs(hx) * gamma_fp<T>(5);
+		hit.ey = std::abs(hy) * gamma_fp<T>(5);
+		hit.ez = std::abs(hz) * gamma_fp<T>(5);
+		(void)err;
 		return hit;
 	}
 
@@ -969,10 +993,19 @@ struct TriangleShape {
 		}
 
 		// (u,v) = barycentric (b0, b1)
+		// pbrt-v4 pAbsSum / pError for triangle: gamma(7) * abs-sum of barycentric corners
+		// Reference: Triangle::InteractionFromIntersection, shapes.h
+		T absSum_x = std::abs(b0*p0x) + std::abs(b1*p1x) + std::abs(b2*p2x);
+		T absSum_y = std::abs(b0*p0y) + std::abs(b1*p1y) + std::abs(b2*p2y);
+		T absSum_z = std::abs(b0*p0z) + std::abs(b1*p1z) + std::abs(b2*p2z);
+		T g7 = gamma_fp<T>(7);
 		ShapeHit<T> hit;
 		hit.t  = t_hit;
 		hit.nx = nnx; hit.ny = nny; hit.nz = nnz;
 		hit.u  = b0; hit.v = b1;
+		hit.ex = g7 * absSum_x;
+		hit.ey = g7 * absSum_y;
+		hit.ez = g7 * absSum_z;
 		return hit;
 	}
 
