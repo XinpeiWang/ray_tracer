@@ -33,6 +33,7 @@
 #   include <cstring>
 #endif
 #include "scalar_math.h"
+#include "math_utils.h"
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -1342,3 +1343,87 @@ private:
 	Float   mean = Float(0), S = Float(0);
 	int64_t n    = 0;
 };
+
+// ---------------------------------------------------------------------------
+// Sample1DFunction
+// ---------------------------------------------------------------------------
+// Tabulate an arbitrary 1-D function f: [min, max] -> double into nSteps
+// cells. Each cell stores the conservative maximum of |f| over (nSamples+1)
+// uniformly-spaced sub-samples spanning the cell, including both endpoints.
+//
+// The result is a flat std::vector<double> of length nSteps, suitable for
+// directly constructing a PiecewiseConstant1D distribution.
+//
+// Mirrors pbrt-v4 util/sampling.cpp Sample1DFunction.
+// ---------------------------------------------------------------------------
+inline std::vector<double> Sample1DFunction(
+		std::function<double(double)> f,
+		int nSteps,
+		int nSamples,
+		double min,
+		double max) {
+	std::vector<double> values(nSteps, 0.0);
+	for (int i = 0; i < nSteps; ++i) {
+		double accum = 0.0;
+		// nSamples+1 samples so we hit both endpoints of the cell exactly.
+		for (int j = 0; j <= nSamples; ++j) {
+			double delta = double(j) / double(nSamples);
+			double v     = min + (max - min) * ((i + delta) / double(nSteps));
+			accum = std::max(accum, std::abs(f(v)));
+		}
+		values[i] = accum;
+	}
+	return values;
+}
+
+// ---------------------------------------------------------------------------
+// Sample2DFunction
+// ---------------------------------------------------------------------------
+// Tabulate an arbitrary 2-D function f: domain -> double into (nu x nv) cells
+// (row-major: values[v * nu + u]). Each cell stores the conservative maximum
+// of |f| over nSamples Halton(base-2, base-3) interior sub-samples plus the
+// three extra corners (0,1), (1,0), (1,1) — exactly matching pbrt-v4.
+//
+// domain is specified as (xMin, yMin, xMax, yMax).
+// The result is a flat std::vector<double> of length nu*nv, suitable for
+// constructing a PiecewiseConstant2D / PiecewiseLinear2D distribution.
+//
+// Mirrors pbrt-v4 util/sampling.cpp Sample2DFunction.
+// ---------------------------------------------------------------------------
+inline std::vector<double> Sample2DFunction(
+		std::function<double(double, double)> f,
+		int nu, int nv,
+		int nSamples,
+		double xMin, double yMin,
+		double xMax, double yMax) {
+	// Build Halton(0,i)/Halton(1,i) sub-pixel samples + mandatory corners.
+	std::vector<std::pair<double,double>> samples;
+	samples.reserve(nSamples + 3);
+	for (int i = 0; i < nSamples; ++i) {
+		samples.push_back({
+			halton_radical_inverse(i, 2u),
+			halton_radical_inverse(i, 3u)
+		});
+	}
+	// pbrt-v4 also checks corners (0,1),(1,0),(1,1); (0,0) is covered by i=0.
+	samples.push_back({0.0, 1.0});
+	samples.push_back({1.0, 0.0});
+	samples.push_back({1.0, 1.0});
+
+	std::vector<double> values(nu * nv, 0.0);
+	for (int v = 0; v < nv; ++v) {
+		for (int u = 0; u < nu; ++u) {
+			double accum = 0.0;
+			for (auto& s : samples) {
+				// Map (u + s.x, v + s.y) into normalised [0,1]^2, then into domain.
+				double nx = (u + s.first)  / double(nu);
+				double ny = (v + s.second) / double(nv);
+				double px = xMin + (xMax - xMin) * nx;
+				double py = yMin + (yMax - yMin) * ny;
+				accum = std::max(accum, std::abs(f(px, py)));
+			}
+			values[v * nu + u] = accum;
+		}
+	}
+	return values;
+}
