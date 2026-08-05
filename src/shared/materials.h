@@ -13,6 +13,7 @@
 //   8. SubsurfaceMaterial       — Rough dielectric BSDF + TabulatedBSSRDF
 //   9. HairMaterial             — HairBxDF with eumelanin/pheomelanin/reflectance sigma_a resolution
 //  10. MixMaterial              — Stochastic blend of two materials by float texture weight
+//  11. MeasuredMaterial         — Real-world measured BRDF (MeasuredBxDF via RGL database)
 //
 // Design notes:
 //   - All materials are templated on scalar type T (typically float or double).
@@ -30,6 +31,7 @@
 #include <algorithm>
 #include "bxdfs.h"
 #include "bssrdf.h"
+#include "measured_bxdf.h"
 #include "pbrt_hash.h"
 
 // ---------------------------------------------------------------------------
@@ -657,6 +659,47 @@ struct HairMaterial {
 		// Offset along fiber width: pbrt-v4 h = -1 + 2 * ctx.uv[1] (v coord)
 		T h = T(-1) + T(2) * ctx.v;
 		return HairBxDF<T>(h, e, sr, sg, sb, bm, bn, a);
+	}
+
+	static constexpr bool has_subsurface_scattering() { return false; }
+};
+
+// ---------------------------------------------------------------------------
+// 11. MeasuredMaterial
+//     Wrapper around MeasuredBxDF for real-world measured BRDFs from the
+//     RGL database (Dupuy & Jakob 2018).  Mirrors pbrt-v4 MeasuredMaterial
+//     (materials.h / materials.cpp).
+//
+//     Holds a const pointer to MeasuredBRDFData (the tabulated warp tables)
+//     plus the three wavelength sample values (R/G/B channels).
+//     get_bxdf() constructs a MeasuredBxDF by value — no allocation.
+//
+//     pbrt-v4 alignment:
+//       MeasuredMaterial::GetBxDF -> return MeasuredBxDF(brdf, lambda)
+//       HasSubsurfaceScattering() -> false
+// ---------------------------------------------------------------------------
+struct MeasuredMaterial {
+	const MeasuredBRDFData* brdf = nullptr;
+	// Wavelength samples for the 3-channel spectral interpolant (R/G/B).
+	// Defaults match the sRGB primary wavelengths used in pbrt-v4 tests.
+	float lambda_r = 612.0f;  // red   channel wavelength (nm)
+	float lambda_g = 549.0f;  // green channel wavelength (nm)
+	float lambda_b = 465.0f;  // blue  channel wavelength (nm)
+
+	// Construct from a pre-built data table and explicit wavelength samples.
+	CPU_GPU MeasuredMaterial() = default;
+	CPU_GPU MeasuredMaterial(const MeasuredBRDFData* d,
+							 float lr = 612.0f, float lg = 549.0f, float lb = 465.0f)
+		: brdf(d), lambda_r(lr), lambda_g(lg), lambda_b(lb) {}
+
+	// get_bxdf() mirrors pbrt-v4 MeasuredMaterial::GetBxDF():
+	//   return MeasuredBxDF(brdf, lambda)
+	// The MaterialEvalContext is accepted for interface uniformity but unused
+	// (same as pbrt-v4, which only uses it for texture evaluation — measured
+	// materials have no textures).
+	template <typename T>
+	CPU_GPU MeasuredBxDF<T> get_bxdf(const MaterialEvalContext<T>& /*ctx*/) const {
+		return MeasuredBxDF<T>(brdf, lambda_r, lambda_g, lambda_b);
 	}
 
 	static constexpr bool has_subsurface_scattering() { return false; }
