@@ -124,7 +124,7 @@
 #  if defined(__CUDACC__)
 #    define CPU_GPU __host__ __device__ __forceinline__
 #  else
-#    define CPU_GPU inline
+#    define CPU_GPU
 #  endif
 #endif
 

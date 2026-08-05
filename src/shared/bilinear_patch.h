@@ -527,7 +527,7 @@ inline float blp_pdf_wi(const float* p00, const float* p10,
 #  if defined(__CUDACC__)
 #    define CPU_GPU __host__ __device__ __forceinline__
 #  else
-#    define CPU_GPU inline
+#    define CPU_GPU
 #  endif
 #endif
 

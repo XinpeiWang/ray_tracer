@@ -50,7 +50,7 @@ TEST(SphericalTriangle, SolidAnglePositiveForVisibleTriangle) {
 	double sa = SphericalTriangleSolidAngle(
 		1,0,0,  0,1,0,  0,0,1,
 		0,0,0);
-	EXPECT_NEAR(sa, Pi / 2.0, 1e-8);
+	EXPECT_NEAR(sa, pi / 2.0, 1e-8);
 }
 
 TEST(SphericalTriangle, DegenerateSolidAngleIsZero) {

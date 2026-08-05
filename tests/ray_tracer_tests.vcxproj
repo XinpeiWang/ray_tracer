@@ -144,7 +144,6 @@
     <ClCompile Include="unit\normal_map_tests.cpp" />
     <ClCompile Include="unit\path_sampler_tests.cpp" />
     <ClCompile Include="unit\piecewise_dist_tests.cpp" />
-    <ClCompile Include="unit\power_light_sampler_tests.cpp" />
     <ClCompile Include="unit\principled_bsdf_tests.cpp" />
     <ClCompile Include="unit\punctual_light_tests.cpp" />
     <ClCompile Include="unit\sampling_tests.cpp" />

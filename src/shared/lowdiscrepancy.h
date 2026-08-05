@@ -39,13 +39,12 @@
 #   if defined(__CUDACC__)
 #       define CPU_GPU __host__ __device__ __forceinline__
 #   else
-#       define CPU_GPU inline
+#       define CPU_GPU
 #   endif
 #endif
 
 #ifdef _MSC_VER
 #   pragma warning(push)
-#   pragma warning(disable: 4141) // 'inline' used more than once (CPU_GPU inline)
 #endif
 
 #include "float_bits.h"

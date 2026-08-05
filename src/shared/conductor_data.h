@@ -19,7 +19,7 @@
 #   if defined(__CUDACC__)
 #       define CPU_GPU __host__ __device__ __forceinline__
 #   else
-#       define CPU_GPU inline
+#       define CPU_GPU
 #   endif
 #endif
 
@@ -73,7 +73,7 @@ static constexpr ConductorPreset kConductorFe = {
 };
 
 // Lookup by name — returns nullptr if not found
-CPU_GPU const ConductorPreset* FindConductorPreset(const char* name) {
+CPU_GPU inline const ConductorPreset* FindConductorPreset(const char* name) {
 	static const ConductorPreset table[] = {
 		kConductorAu, kConductorAg, kConductorAl, kConductorCu, kConductorFe
 	};

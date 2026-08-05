@@ -45,7 +45,6 @@
 // expands to nothing and the function is already declared inline.
 #if defined(_MSC_VER)
 #  pragma warning(push)
-#  pragma warning(disable: 4141)
 #endif
 
 // Convenience aliases for the constants used below
