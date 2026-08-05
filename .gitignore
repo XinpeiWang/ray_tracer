@@ -301,3 +301,7 @@ tests/build_test/dda_mini.cpp
 # Temporary root-level scripts and logs
 *.py
 total.txt
+
+# Build output capture files
+*.txt
+!*.md
