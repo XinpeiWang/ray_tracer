@@ -1118,6 +1118,192 @@ CPU_GPU inline float InvertSmoothStepSample(float x, float a, float b) {
 }
 
 // =============================================================================
+// InvertSphericalRectangleSample
+// Direct port of pbrt-v4 InvertSphericalRectangleSample (util/sampling.cpp:222-346).
+//
+// Recovers the uniform sample (u0, u1) in [0,1)^2 that SampleSphericalRectangle
+// would have produced for the given hit-point pRect on the rectangle.
+//
+// Parameters:
+//   px, py, pz    : reference (shading) point
+//   sx, sy, sz    : rectangle origin (corner v00)
+//   ex*, ey*      : unnormalised edge vectors (length = width/height)
+//   prx, pry, prz : the sampled point on the rectangle (world space)
+//
+// Returns (u0, u1) via out_u0, out_u1.  Returns (0,0) on degenerate input.
+// =============================================================================
+CPU_GPU void InvertSphericalRectangleSample(
+		double px,  double py,  double pz,
+		double sx,  double sy,  double sz,
+		double exx, double exy, double exz,
+		double eyx, double eyy, double eyz,
+		double prx, double pry, double prz,
+		double* out_u0, double* out_u1)
+{
+	using namespace sampling_detail;
+	using V3 = Vec3<double>;
+	const double Pi = 3.14159265358979323846;
+
+	*out_u0 = *out_u1 = 0.0;
+
+	V3 ex(exx, exy, exz), ey(eyx, eyy, eyz);
+	double exl = ex.length(), eyl = ey.length();
+	if (exl < 1e-30 || eyl < 1e-30) return;
+
+	// Build local reference frame R (identical to SampleSphericalRectangle)
+	Frame<double> R = Frame<double>::from_xy(ex * (1.0/exl), ey * (1.0/eyl));
+
+	// Compute rectangle coords in local frame
+	V3 d(sx - px, sy - py, sz - pz);
+	double z0  = R.z.dot(d);
+	if (z0 > 0.0) { R.z = R.z * -1.0; z0 = -z0; }
+	double z0sq = z0 * z0;
+	double x0  = R.x.dot(d),  x1 = x0 + exl;
+	double y0  = R.y.dot(d),  y1 = y0 + eyl;
+	double y0sq = y0 * y0,    y1sq = y1 * y1;
+
+	// Edge plane normals
+	V3 v00(x0,y0,z0), v01(x0,y1,z0), v10(x1,y0,z0), v11(x1,y1,z0);
+	V3 n0 = v00.cross(v10).normalized();
+	V3 n1 = v10.cross(v11).normalized();
+	V3 n2 = v11.cross(v01).normalized();
+	V3 n3 = v01.cross(v00).normalized();
+
+	double g0 = angle_between(n0 * -1.0, n1);
+	double g1 = angle_between(n1 * -1.0, n2);
+	double g2 = angle_between(n2 * -1.0, n3);
+	double g3 = angle_between(n3 * -1.0, n0);
+	double solidAngle = g0 + g1 + g2 + g3 - 2.0 * Pi;
+
+	if (solidAngle < 1e-3) {
+		// Degenerate: fall back to planar coordinates
+		V3 pq(prx - sx, pry - sy, prz - sz);
+		*out_u0 = pq.dot(ex) / (exl * exl);
+		*out_u1 = pq.dot(ey) / (eyl * eyl);
+		*out_u0 = *out_u0 < 0.0 ? 0.0 : (*out_u0 > 1.0 ? 1.0 : *out_u0);
+		*out_u1 = *out_u1 < 0.0 ? 0.0 : (*out_u1 > 1.0 ? 1.0 : *out_u1);
+		return;
+	}
+
+	double b0 = n0.z, b1 = n2.z;
+	double b0sq = b0 * b0;
+
+	// Transform pRect into local frame to get (xu, yv)
+	V3 pRect(prx - px, pry - py, prz - pz);
+	double xu = R.x.dot(pRect);
+	double yv = R.y.dot(pRect);
+	xu = xu < x0 ? x0 : (xu > x1 ? x1 : xu);
+	if (xu == 0.0) xu = 1e-10;
+
+	// Invert the x-direction (cu) to recover u0
+	double invcusq = 1.0 + z0sq / (xu * xu);
+	double fusq = invcusq - b0sq;
+	if (fusq < 0.0) fusq = 0.0;
+	double fu = xu > 0.0 ? std::sqrt(fusq) : -std::sqrt(fusq);
+
+	double sq_term = b0 * b0 - b1 * b1 + fusq;
+	double sqrt_val = sq_term > 0.0 ? std::sqrt(sq_term) : 0.0;
+	double au = std::atan2(-(b1 * fu) - (fu * b0 >= 0.0 ? 1.0 : -1.0) * (b0 * sqrt_val),
+							b0 * b1 - sqrt_val * std::abs(fu));
+	if (au > 0.0) au -= 2.0 * Pi;
+	if (fu == 0.0) au = Pi;
+
+	*out_u0 = (au + g2 + g3) / solidAngle;
+	*out_u0 = *out_u0 < 0.0 ? 0.0 : (*out_u0 > 1.0 ? 1.0 : *out_u0);
+
+	// Invert the y-direction (yv) to recover u1
+	double ddsq = xu * xu + z0sq;
+	double dd   = std::sqrt(ddsq);
+	double h0   = y0 / std::sqrt(ddsq + y0sq);
+	double h1_v = y1 / std::sqrt(ddsq + y1sq);
+
+	double yvsq = yv * yv;
+	double det  = (h0 - h1_v) * (h0 - h1_v);
+	if (det < 1e-30) { *out_u1 = 0.5; return; }
+
+	// Two candidate solutions; pick the one whose reconstructed y matches yv
+	double disc = std::abs(h0 - h1_v) * std::sqrt(yvsq * (ddsq + yvsq)) / (ddsq + yvsq);
+	double nom  = h0 * h0 - h0 * h1_v;  // = DifferenceOfProducts(h0,h0, h0,h1_v)
+	double u1a  = (nom - disc) / det;
+	double u1b  = (nom + disc) / det;
+
+	double hva  = h0 + u1a * (h1_v - h0);
+	double hvb  = h0 + u1b * (h1_v - h0);
+	double hvasq = hva * hva, hvbsq = hvb * hvb;
+	double yza  = (hvasq < 1.0 - 1e-6) ? hva * dd / std::sqrt(1.0 - hvasq) : y1;
+	double yzb  = (hvbsq < 1.0 - 1e-6) ? hvb * dd / std::sqrt(1.0 - hvbsq) : y1;
+
+	double u1 = (std::abs(yza - yv) < std::abs(yzb - yv)) ? u1a : u1b;
+	*out_u1 = u1 < 0.0 ? 0.0 : (u1 > 1.0 ? 1.0 : u1);
+}
+
+// =============================================================================
+// InvertSphericalTriangleSample
+// Direct port of pbrt-v4 InvertSphericalTriangleSample (util/sampling.cpp:110-160).
+// (Via Jim Arvo's SphTri.C)
+//
+// Recovers (u0, u1) in [0,1)^2 such that SampleSphericalTriangle with those
+// samples would produce a direction toward the point on the triangle closest
+// to direction w from reference point p.
+//
+// Parameters:
+//   v0..v2  : triangle vertices (world space)
+//   px,py,pz: reference (shading) point
+//   wx,wy,wz: the sampled unit direction
+//   out_u0, out_u1: recovered canonical samples
+// =============================================================================
+CPU_GPU void InvertSphericalTriangleSample(
+		double v0x, double v0y, double v0z,
+		double v1x, double v1y, double v1z,
+		double v2x, double v2y, double v2z,
+		double px,  double py,  double pz,
+		double wx,  double wy,  double wz,
+		double* out_u0, double* out_u1)
+{
+	using namespace sampling_detail;
+	using V3 = Vec3<double>;
+	const double Pi = 3.14159265358979323846;
+
+	*out_u0 = *out_u1 = 0.5;
+
+	V3 a(v0x-px, v0y-py, v0z-pz); if (a.length_squared() < 1e-30) return; a = a.normalized();
+	V3 b(v1x-px, v1y-py, v1z-pz); if (b.length_squared() < 1e-30) return; b = b.normalized();
+	V3 c(v2x-px, v2y-py, v2z-pz); if (c.length_squared() < 1e-30) return; c = c.normalized();
+
+	V3 n_ab = a.cross(b); if (n_ab.length_squared() < 1e-30) return; n_ab = n_ab.normalized();
+	V3 n_bc = b.cross(c); if (n_bc.length_squared() < 1e-30) return; n_bc = n_bc.normalized();
+	V3 n_ca = c.cross(a); if (n_ca.length_squared() < 1e-30) return; n_ca = n_ca.normalized();
+
+	double alpha = angle_between(n_ab,     n_ca * -1.0);
+	double beta  = angle_between(n_bc,     n_ab * -1.0);
+	double gamma = angle_between(n_ca,     n_bc * -1.0);
+	double A     = alpha + beta + gamma - Pi;
+	if (A <= 0.0) return;
+
+	// Find c' = intersection of plane(b,w) with arc(a,c)
+	V3 w(wx, wy, wz);
+	V3 cp = b.cross(w).cross(c.cross(a)).normalized();
+	if (cp.dot(a + c) < 0.0) cp = cp * -1.0;
+
+	double u0;
+	if (a.dot(cp) > 0.99999847691) {   // < 0.1 degrees: c' == a
+		u0 = 0.0;
+	} else {
+		V3 n_cpb = cp.cross(b);  if (n_cpb.length_squared() < 1e-30) { *out_u0 = 0.5; *out_u1 = 0.5; return; }
+		V3 n_acp = a.cross(cp);  if (n_acp.length_squared() < 1e-30) { *out_u0 = 0.5; *out_u1 = 0.5; return; }
+		n_cpb = n_cpb.normalized();
+		n_acp = n_acp.normalized();
+		double Ap = alpha + angle_between(n_ab, n_cpb) + angle_between(n_acp, n_cpb * -1.0) - Pi;
+		u0 = Ap / A;
+	}
+
+	double u1 = (1.0 - w.dot(b)) / (1.0 - cp.dot(b));
+
+	*out_u0 = u0 < 0.0 ? 0.0 : (u0 > 1.0 ? 1.0 : u0);
+	*out_u1 = u1 < 0.0 ? 0.0 : (u1 > 1.0 ? 1.0 : u1);
+}
+
+// =============================================================================
 // VarianceEstimator<Float>  --  online Welford mean/variance estimator
 // pbrt-v4: VarianceEstimator (util/sampling.h)
 // =============================================================================
