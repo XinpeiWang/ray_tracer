@@ -287,3 +287,61 @@ TEST(BvhAggregate, DirIsNeg_ChildOrderingCorrect) {
 	EXPECT_EQ(hit->prim_id, 2);
 	EXPECT_NEAR(hit->t, 4.6, 1e-9);
 }
+
+// ---------------------------------------------------------------------------
+// Regression: Aabb::expand(const Aabb&) empty-box guard (pbrt-v4 alignment)
+//
+// With 13+ well-separated spheres and SAH, many of the 12 buckets will be
+// empty. Before the fix, union-ing an empty Aabb (lo=MAX, hi=LOWEST) into
+// the sweep accumulator would set lo[i] to MAX, making surface_area() return
+// 0 (clamped), corrupting the cost and potentially choosing a degenerate
+// split. The test confirms all spheres remain reachable after SAH build.
+// ---------------------------------------------------------------------------
+TEST(BvhAggregate, SAH_SparseBuckets_AllHittable) {
+	// 13 spheres in one axis creates many empty SAH buckets (12 buckets total)
+	std::vector<MockSphere> prims;
+	for (int i = 0; i < 13; ++i)
+		prims.push_back({static_cast<double>(i) * 10.0, 0, 0, 0.4, i});
+
+	auto bvh = make_bvh(prims, BvhSplitMethod::SAH, 1);
+	for (int i = 0; i < 13; ++i) {
+		double org[3] = {static_cast<double>(i) * 10.0, 0, 5};
+		double dir[3] = {0, 0, -1};
+		auto hit = bvh.intersect(org, dir, 0.0, 1e30);
+		ASSERT_TRUE(hit.has_value()) << "SAH sparse: sphere " << i << " not hit";
+		EXPECT_EQ(hit->prim_id, i);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Regression: HLBVH split correctness — prims split across two treelets
+// When Morton codes split into two groups (different upper 12 bits), the
+// upper SAH must build a valid tree where both groups are reachable.
+// ---------------------------------------------------------------------------
+TEST(BvhAggregate, HLBVH_TwoTreeletSplit_BothGroupsHittable) {
+	// Two clusters of spheres far apart in X so they get different Morton
+	// upper-12-bit prefixes and form separate treelets.
+	std::vector<MockSphere> prims;
+	for (int i = 0; i < 8; ++i)
+		prims.push_back({static_cast<double>(i) * 0.5, 0, 0, 0.2, i});       // cluster A: x in [0,3.5]
+	for (int i = 0; i < 8; ++i)
+		prims.push_back({500.0 + static_cast<double>(i) * 0.5, 0, 0, 0.2, 100+i}); // cluster B: x in [500,503.5]
+
+	auto bvh = make_bvh(prims, BvhSplitMethod::HLBVH, 1);
+
+	for (int i = 0; i < 8; ++i) {
+		double org[3] = {static_cast<double>(i) * 0.5, 0, 5};
+		double dir[3] = {0, 0, -1};
+		auto hit = bvh.intersect(org, dir, 0.0, 1e30);
+		ASSERT_TRUE(hit.has_value()) << "HLBVH cluster A: sphere " << i << " not hit";
+		EXPECT_EQ(hit->prim_id, i);
+	}
+	for (int i = 0; i < 8; ++i) {
+		double org[3] = {500.0 + static_cast<double>(i) * 0.5, 0, 5};
+		double dir[3] = {0, 0, -1};
+		auto hit = bvh.intersect(org, dir, 0.0, 1e30);
+		ASSERT_TRUE(hit.has_value()) << "HLBVH cluster B: sphere " << i << " not hit";
+		EXPECT_EQ(hit->prim_id, 100+i);
+	}
+}
+

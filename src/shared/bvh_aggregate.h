@@ -109,7 +109,12 @@ struct Aabb {
 		}
 	}
 
+	bool is_empty() const { return lo[0] > hi[0]; }
+
 	void expand(const Aabb<T>& o) {
+		// Skip union with an empty (default-constructed) box — matches
+		// pbrt-v4 Bounds3f::Union() identity behaviour with ±INF defaults.
+		if (o.is_empty()) return;
 		expand(o.lo);
 		expand(o.hi);
 	}
@@ -317,9 +322,11 @@ public:
 		int offset = 0;
 		flatten_bvh(root, &offset);
 
-		// Release build pool
+		// Release build pools
 		build_pool_.clear();
 		build_pool_.shrink_to_fit();
+		hlbvh_treelet_pools_.clear();
+		hlbvh_treelet_pools_.shrink_to_fit();
 	}
 
 	bool empty() const { return nodes_.empty(); }
@@ -683,15 +690,16 @@ private:
 					  return a.morton_code < b.morton_code;
 				  });
 
-		// Group into treelets by upper 12 Morton bits
-		// Use a struct that owns its own storage so resizing never invalidates pointers
-		struct Treelet {
+		// Group into treelets by upper 12 Morton bits.
+		// Store node pools in the member hlbvh_treelet_pools_ so that raw pointers
+		// into them remain valid through flatten_bvh() (local vectors would be destroyed).
+		struct TreeletMeta {
 			size_t start_index{0};
 			size_t n_primitives{0};
-			std::vector<bvh_detail::BVHBuildNode<T>> node_pool;
 			bvh_detail::BVHBuildNode<T>* root{nullptr};
 		};
-		std::vector<Treelet> treelets;
+		hlbvh_treelet_pools_.clear();
+		std::vector<TreeletMeta> treelets;
 		{
 			constexpr uint32_t mask = 0b00111111111111000000000000000000;
 			for (size_t start = 0, end = 1; end <= n; ++end) {
@@ -699,11 +707,8 @@ private:
 					((morton_prims[start].morton_code & mask) !=
 					 (morton_prims[end].morton_code & mask))) {
 					size_t np = end - start;
-					Treelet t;
-					t.start_index  = start;
-					t.n_primitives = np;
-					t.node_pool.resize(2 * np);
-					treelets.push_back(std::move(t));
+					hlbvh_treelet_pools_.emplace_back(2 * np);
+					treelets.push_back({start, np, nullptr});
 					start = end;
 				}
 			}
@@ -711,9 +716,10 @@ private:
 
 		// Build LBVH for each treelet
 		int ordered_prims_offset = 0;
-		for (auto& treelet : treelets) {
+		for (size_t ti = 0; ti < treelets.size(); ++ti) {
+			auto& treelet = treelets[ti];
 			int nodes_created = 0;
-			auto* pool_begin = treelet.node_pool.data();
+			auto* pool_begin = hlbvh_treelet_pools_[ti].data();
 			treelet.root = emit_lbvh(
 				pool_begin, bvh_prims,
 				morton_prims.data() + treelet.start_index,
@@ -895,10 +901,11 @@ private:
 	// -------------------------------------------------------------------------
 	// Data members
 	// -------------------------------------------------------------------------
-	std::vector<Prim>                        primitives_;
-	std::vector<Node>                        nodes_;
-	std::vector<bvh_detail::BVHBuildNode<T>> build_pool_;
-	int                                      pool_ptr_{0};
-	int                                      max_prims_{1};
-	BvhSplitMethod                           split_method_{BvhSplitMethod::SAH};
+	std::vector<Prim>                                    primitives_;
+	std::vector<Node>                                    nodes_;
+	std::vector<bvh_detail::BVHBuildNode<T>>             build_pool_;  // recursive build nodes
+	int                                                  pool_ptr_{0};
+	std::vector<std::vector<bvh_detail::BVHBuildNode<T>>> hlbvh_treelet_pools_; // HLBVH treelet nodes
+	int                                                  max_prims_{1};
+	BvhSplitMethod                                       split_method_{BvhSplitMethod::SAH};
 };
