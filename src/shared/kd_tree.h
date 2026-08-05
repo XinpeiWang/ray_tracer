@@ -163,8 +163,9 @@ struct BoundEdge {
 
 	bool operator<(const BoundEdge& o) const {
 		if (t != o.t) return t < o.t;
-		// End before Start at the same position (matches pbrt-v4 tie(t,type))
-		return !is_start && o.is_start;
+		// Start before End at the same position.
+		// Mirrors pbrt-v4: std::tie(t, type) where Start=0 < End=1.
+		return is_start && !o.is_start;
 	}
 };
 
@@ -574,10 +575,10 @@ private:
 		build_tree(node_num + 1, bounds0_min, bounds0_max, all_bounds,
 				   prims0, n0, depth - 1, edges, prims0, prims1 + n1, bad_refines);
 
-		// Interior node stores above_child index
+		// Interior node: record above_child = nextFreeNode (mirrors pbrt-v4).
+		// build_tree(above_child,...) will allocate the slot at the top of its
+		// call, so no pre-resize is needed here.
 		int above_child = (int)nodes_.size();
-		// Ensure the above_child slot exists before we write the interior node
-		nodes_.resize(above_child + 1);
 		nodes_[node_num].init_interior(best_axis, above_child,
 									   (float)t_split);
 

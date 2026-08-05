@@ -233,3 +233,30 @@ TEST(KdTree, NumNodes_IncreasesWithMorePrims) {
 	EXPECT_LE(kd1.num_nodes(),  kd10.num_nodes());
 	EXPECT_LE(kd10.num_nodes(), kd100.num_nodes());
 }
+
+// ---------------------------------------------------------------------------
+// BoundEdge sort order: Start before End at same t (pbrt-v4 alignment)
+// Two spheres that share an exact boundary edge: [0,2] and [2,4] along X.
+// The SAH must correctly evaluate the split at x=2 with nBelow=1, nAbove=1,
+// not nBelow=0, nAbove=0 (which would happen if End were processed before Start).
+// Both spheres must still be reachable after building the tree.
+// ---------------------------------------------------------------------------
+TEST(KdTree, BoundEdge_SharedBoundary_BothReachable) {
+	// Sphere A: center x=1, r=1  => bbox [0,2]
+	// Sphere B: center x=3, r=1  => bbox [2,4]
+	// They share the exact boundary x=2.
+	MockSphere a{1,0,0, 1.0, 0};
+	MockSphere b{3,0,0, 1.0, 1};
+	KdTree<double, MockSphere> kd;
+	kd.build({a, b});
+
+	double orgA[3]={1,0,5}, dirA[3]={0,0,-1};
+	double orgB[3]={3,0,5}, dirB[3]={0,0,-1};
+	auto ha = kd.intersect(orgA, dirA, 0, 1e30);
+	auto hb = kd.intersect(orgB, dirB, 0, 1e30);
+	ASSERT_TRUE(ha.has_value()) << "Sphere A (center x=1) not found";
+	ASSERT_TRUE(hb.has_value()) << "Sphere B (center x=3) not found";
+	EXPECT_EQ(ha->prim_id, 0);
+	EXPECT_EQ(hb->prim_id, 1);
+}
+
