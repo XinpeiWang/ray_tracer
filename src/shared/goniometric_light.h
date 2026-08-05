@@ -8,23 +8,23 @@
 // direction according to a 2D goniometric diagram stored as an equal-area-
 // projected image.  This directly models IES photometric profiles.
 //
-// Algorithm (pbrt-v4 Ã‚Â§12.4):
+// Algorithm (pbrt-v4 Ãƒâ€šÃ‚Â§12.4):
 //   I(w_world, lambda) = scale * Iemit(lambda)
 //                        * image.Lookup(EqualAreaSphereToSquare(w_light))
 //   where w_light = world_to_light * w_world
 //
-//   SampleLi: delta point light Ã¢â‚¬â€ wi = normalize(pos - p), Li = I(wi) / rÃ‚Â²
+//   SampleLi: delta point light ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â wi = normalize(pos - p), Li = I(wi) / rÃƒâ€šÃ‚Â²
 //   PDF_Li  : 0 (delta distribution)
-//   Power   : scale * avg_image_value * 4Ãâ‚¬  (solid-angle integral over sphere)
+//   Power   : scale * avg_image_value * 4ÃƒÂÃ¢â€šÂ¬  (solid-angle integral over sphere)
 //   SampleLe: importance-sample a ray direction from the goniometric distribution
-//   PDF_Le  : distrib.pdf(uv) / (4Ãâ‚¬)
+//   PDF_Le  : distrib.pdf(uv) / (4ÃƒÂÃ¢â€šÂ¬)
 //
 // Design rules (same as punctual_lights.h / cloud_medium.h):
 //   - Header-only, CPU_GPU tagged, templated on scalar type T
 //   - No virtual functions, no heap allocation in hot paths
 //   - T = double on CPU, float on GPU
-//   - WorldÃ¢â€ â€™light rotation stored as row-major 3Ãƒâ€”3 matrix
-//   - Goniometric image is a flat vector<double> (nuÃƒâ€”nv, row-major)
+//   - WorldÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢light rotation stored as row-major 3ÃƒÆ’Ã¢â‚¬â€3 matrix
+//   - Goniometric image is a flat vector<double> (nuÃƒÆ’Ã¢â‚¬â€nv, row-major)
 //     supplied at construction time; the PiecewiseConstant2D sampling
 //     distribution is built from it in the constructor
 //
@@ -40,14 +40,14 @@
 //                  &wx,&wy,&wz, &pdf_dir)
 //   T   pdf_le(wx,wy,wz)          -- PDF of emitted ray in given direction
 //
-// Reference: pbrt-v4 GoniometricLight (lights.h/lights.cpp), Ã‚Â§12.4
+// Reference: pbrt-v4 GoniometricLight (lights.h/lights.cpp), Ãƒâ€šÃ‚Â§12.4
 // ---------------------------------------------------------------------------
 
 #ifndef CPU_GPU
 #   if defined(__CUDACC__)
 #       define CPU_GPU __host__ __device__ __forceinline__
 #   else
-#       define CPU_GPU
+#       define CPU_GPU inline
 #   endif
 #endif
 
@@ -65,7 +65,7 @@ struct GoniometricLight {
 	// World-space position of the light.
 	T pos_x, pos_y, pos_z;
 
-	// Affine worldÃ¢â€ â€™light rotation (3Ãƒâ€”3 row-major, no translation needed
+	// Affine worldÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢light rotation (3ÃƒÆ’Ã¢â‚¬â€3 row-major, no translation needed
 	// since we only rotate directions, not positions).
 	T world_to_light[9];
 
@@ -78,7 +78,7 @@ struct GoniometricLight {
 	// Goniometric image dimensions.
 	int nu, nv;
 
-	// Goniometric image data (nuÃƒâ€”nv, row-major).
+	// Goniometric image data (nuÃƒÆ’Ã¢â‚¬â€nv, row-major).
 	// image[v*nu + u] = relative intensity in direction
 	//   EqualAreaSquareToSphere(u/nu, v/nv).
 	std::vector<double> image;
@@ -91,11 +91,11 @@ struct GoniometricLight {
 	// Factory
 	// -----------------------------------------------------------------------
 	// NOTE: pbrt-v4 requires a square goniometric image (nu == nv) so that
-	// the equal-area sphereÃ¢â€ â€square mapping is undistorted. Providing a
+	// the equal-area sphereÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬Âsquare mapping is undistorted. Providing a
 	// non-square image will silently stretch the directional profile.
 	static GoniometricLight make(
 			T px, T py, T pz,
-			const T* world_to_light_mat,   // row-major 3Ãƒâ€”3
+			const T* world_to_light_mat,   // row-major 3ÃƒÆ’Ã¢â‚¬â€3
 			T ir_, T ig_, T ib_,
 			T scale_,
 			const std::vector<double>& image_data,
@@ -117,13 +117,13 @@ struct GoniometricLight {
 			T px, T py, T pz,
 			T ir_, T ig_, T ib_, T scale_) {
 		T id[9] = {T(1),T(0),T(0), T(0),T(1),T(0), T(0),T(0),T(1)};
-		std::vector<double> img(4*4, 1.0);  // 4Ãƒâ€”4 uniform
+		std::vector<double> img(4*4, 1.0);  // 4ÃƒÆ’Ã¢â‚¬â€4 uniform
 		return make(px, py, pz, id, ir_, ig_, ib_, scale_, img, 4, 4);
 	}
 
 	// -----------------------------------------------------------------------
 	// world_to_light_dir: rotate a world-space direction to light space.
-	// Only applies the 3Ãƒâ€”3 rotation (no translation for directions).
+	// Only applies the 3ÃƒÆ’Ã¢â‚¬â€3 rotation (no translation for directions).
 	// -----------------------------------------------------------------------
 	CPU_GPU void to_light_dir(T wx, T wy, T wz,
 							  T& lx, T& ly, T& lz) const {
@@ -200,8 +200,8 @@ struct GoniometricLight {
 	// -----------------------------------------------------------------------
 	// power: approximate total emitted power (solid-angle integral over sphere).
 	// Mirrors pbrt-v4 GoniometricLight::Phi:
-	//   Phi = scale * Iemit * 4Ãâ‚¬ * sum(image) / (nu*nv)
-	//       = scale * Iemit * 4Ãâ‚¬ * avg(image)
+	//   Phi = scale * Iemit * 4ÃƒÂÃ¢â€šÂ¬ * sum(image) / (nu*nv)
+	//       = scale * Iemit * 4ÃƒÂÃ¢â€šÂ¬ * avg(image)
 	// For our scalar RGB representation we use Iavg = (ir+ig+ib)/3 as a
 	// luminance proxy, matching the spirit of pbrt-v4's per-wavelength integral.
 	// -----------------------------------------------------------------------
@@ -222,7 +222,7 @@ struct GoniometricLight {
 	// Mirrors pbrt-v4 GoniometricLight::SampleLe.
 	// ru, rv: two uniform random numbers in [0,1].
 	// Returns: light-space direction (wx,wy,wz) and pdf_dir.
-	// Note: direction is in *light space* Ã¢â‚¬â€ caller transforms to world if needed.
+	// Note: direction is in *light space* ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â caller transforms to world if needed.
 	// -----------------------------------------------------------------------
 	void sample_le(double ru, double rv,
 				   double& wx, double& wy, double& wz,
@@ -237,7 +237,7 @@ struct GoniometricLight {
 		double pdf_image;
 		auto [u, v] = distrib.sample(ru, rv, &pdf_image);
 		EqualAreaSquareToSphere(u, v, wx, wy, wz);
-		// pdf_dir = pdf_image / (4Ãâ‚¬)  (Jacobian from imageÃ¢â€ â€™sphere)
+		// pdf_dir = pdf_image / (4ÃƒÂÃ¢â€šÂ¬)  (Jacobian from imageÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢sphere)
 		pdf_dir = pdf_image / (4.0 * 3.14159265358979323846);
 	}
 

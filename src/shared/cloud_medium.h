@@ -2,13 +2,13 @@
 // ---------------------------------------------------------------------------
 // cloud_medium.h -- Procedural cloud volume medium
 //
-// Mirrors pbrt-v4 CloudMedium (src/pbrt/media.h, Ã‚Â§11.4).
+// Mirrors pbrt-v4 CloudMedium (src/pbrt/media.h, Ãƒâ€šÃ‚Â§11.4).
 //
 // CloudMedium<T> is a procedural heterogeneous medium whose density is
 // computed from 5-octave Perlin FBm noise with optional wispiness perturbation
 // (gradient noise) and an altitude-based falloff term.  The medium lives
 // inside an axis-aligned bounding box in "medium space"; the caller supplies
-// an affine transform (3Ãƒâ€”3 matrix + translation) mapping world-space points
+// an affine transform (3ÃƒÆ’Ã¢â‚¬â€3 matrix + translation) mapping world-space points
 // into medium space.
 //
 // Key design choices (same as grid_medium.h / bxdfs.h):
@@ -23,7 +23,7 @@
 //   T    density(px, py, pz)            -- [0,1] density at medium-space point
 //   void sample_point(wx,wy,wz,         -- evaluate sigma_a/s at world point
 //                     &sigma_a, &sigma_s)
-//   bool sample_ray(ray_o,ray_d,tmax,   -- ray/AABB overlap Ã¢â€ â€™ [tMin,tMax] with
+//   bool sample_ray(ray_o,ray_d,tmax,   -- ray/AABB overlap ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ [tMin,tMax] with
 //                   &tMin,&tMax,        --   majorant sigma_t
 //                   &sigma_maj)
 //
@@ -34,7 +34,7 @@
 #   if defined(__CUDACC__)
 #       define CPU_GPU __host__ __device__ __forceinline__
 #   else
-#       define CPU_GPU
+#       define CPU_GPU inline
 #   endif
 #endif
 
@@ -46,7 +46,7 @@
 // ---------------------------------------------------------------------------
 // CloudMajorantIterator<T>
 // Scalar (single-channel) homogeneous majorant iterator for CloudMedium.
-// Mirrors pbrt-v4 HomogeneousMajorantIterator (media.h Ã‚Â§11.4) but uses a
+// Mirrors pbrt-v4 HomogeneousMajorantIterator (media.h Ãƒâ€šÃ‚Â§11.4) but uses a
 // single sigma_t value rather than RGB channels (ratio_tracking.h variant).
 // Yields exactly one segment [tMin, tMax] with constant majorant sigma_t,
 // then returns empty on subsequent calls.
@@ -112,10 +112,10 @@ struct CloudMedium {
 	T bounds_min[3];
 	T bounds_max[3];
 
-	// Affine transform: world Ã¢â€ â€™ medium space.
-	// Stored as column-major 3Ãƒâ€”3 matrix + translation.
+	// Affine transform: world ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ medium space.
+	// Stored as column-major 3ÃƒÆ’Ã¢â‚¬â€3 matrix + translation.
 	// world_to_medium(p) = mat * p + translate
-	T mat[9];        // row-major 3Ãƒâ€”3
+	T mat[9];        // row-major 3ÃƒÆ’Ã¢â‚¬â€3
 	T translate[3];
 
 	// Scattering coefficients (spectrally flat scalars here).

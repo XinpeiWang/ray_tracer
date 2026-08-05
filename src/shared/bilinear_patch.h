@@ -457,7 +457,7 @@ inline void blp_sample(const float* p00, const float* p10,
 // blp_pdf_wi
 //
 // Area-sampling solid-angle PDF from reference point ref_p toward wi.
-// pbrt-v4: BilinearPatch::PDF(ShapeSampleContext, wi) Ã¢â‚¬â€ area path.
+// pbrt-v4: BilinearPatch::PDF(ShapeSampleContext, wi) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â area path.
 //
 // = pdf_area(hit_point) * dist^2 / |cos_theta|
 // ---------------------------------------------------------------------------
@@ -527,7 +527,7 @@ inline float blp_pdf_wi(const float* p00, const float* p10,
 #  if defined(__CUDACC__)
 #    define CPU_GPU __host__ __device__ __forceinline__
 #  else
-#    define CPU_GPU
+#    define CPU_GPU inline
 #  endif
 #endif
 

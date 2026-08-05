@@ -27,7 +27,7 @@
 #   if defined(__CUDACC__)
 #       define CPU_GPU __host__ __device__ __forceinline__
 #   else
-#       define CPU_GPU
+#       define CPU_GPU inline
 #   endif
 #endif
 
@@ -105,7 +105,7 @@ CPU_GPU float InvertTrimmedExponentialSample(float x, float c, float xMax) {
 // Requires ErfInv and Gaussian from scalar_math.h.
 // -----------------------------------------------------------------------------
 CPU_GPU float NormalPDF(float x, float mu = 0.f, float sigma = 1.f) {
-	return Gaussian(x, mu, sigma);
+	return static_cast<float>(Gaussian(x, mu, sigma));
 }
 
 CPU_GPU float SampleNormal(float u, float mu = 0.f, float sigma = 1.f) {

@@ -5,8 +5,8 @@
 // Mirrors pbrt-v4 FilterSampler (src/pbrt/filters.h / filters.cpp).
 //
 // Algorithm (pbrt-v4 Sec. 8.8.1):
-//   1. Tabulate the (non-negative) filter function on an NÃƒâ€”N grid covering
-//      [-radius, +radius]Ã‚Â² in both dimensions.
+//   1. Tabulate the (non-negative) filter function on an NÃƒÆ’Ã¢â‚¬â€N grid covering
+//      [-radius, +radius]Ãƒâ€šÃ‚Â² in both dimensions.
 //   2. Build a 2D piecewise-constant distribution from the table:
 //        - Per-row 1D CDFs for sampling the column (x) given the row.
 //        - A marginal 1D CDF for sampling the row (y).
@@ -19,7 +19,7 @@
 // Design rules (same as bxdfs.h):
 //   - Header-only, no heap allocation: uses fixed-size stack arrays templated
 //     on resolution N (default 32, matching pbrt-v4's "32 * radius" grid size).
-//   - CPU_GPU tagged Ã¢â‚¬â€ usable on both CPU and GPU.
+//   - CPU_GPU tagged ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â usable on both CPU and GPU.
 //   - Double precision on CPU, float on GPU (via template T).
 //   - Works with any filter type that exposes:
 //       double evaluate(double ox, double oy) const;
@@ -28,7 +28,7 @@
 // Usage:
 //   MitchellFilter f;
 //   FilterSampler<double, 32> fs(f);
-//   auto [p, w] = fs.sample(u1, u2);   // p in [-radius,+radius]Ã‚Â², w = f/pdf
+//   auto [p, w] = fs.sample(u1, u2);   // p in [-radius,+radius]Ãƒâ€šÃ‚Â², w = f/pdf
 // ---------------------------------------------------------------------------
 
 #include <cmath>
@@ -39,7 +39,7 @@
 #   if defined(__CUDACC__)
 #       define CPU_GPU __host__ __device__ __forceinline__
 #   else
-#       define CPU_GPU
+#       define CPU_GPU inline
 #   endif
 #endif
 
@@ -61,7 +61,7 @@ template <typename T, int N = 32>
 class FilterSampler {
 public:
 	// Construct from any filter with evaluate(ox,oy) and radius() methods.
-	// Evaluates the filter on an NÃƒâ€”N grid and precomputes CDFs.
+	// Evaluates the filter on an NÃƒÆ’Ã¢â‚¬â€N grid and precomputes CDFs.
 	template <typename Filter>
 	CPU_GPU explicit FilterSampler(const Filter& filter) {
 		radius_ = T(filter.radius());
@@ -69,7 +69,7 @@ public:
 	}
 
 	// Sample a filter position given two uniform [0,1) variates.
-	// Returns a FilterSample with position in [-radius,+radius]Ã‚Â² and weight = f/pdf.
+	// Returns a FilterSample with position in [-radius,+radius]Ãƒâ€šÃ‚Â² and weight = f/pdf.
 	//
 	// Mirrors pbrt-v4 FilterSampler::Sample + PiecewiseConstant1D::Sample:
 	// after selecting the cell via CDF inversion, we linearly interpolate within
@@ -77,7 +77,7 @@ public:
 	// to produce a continuous position, exactly as pbrt-v4 does with:
 	//   return Lerp((o + du) / size(), min, max)
 	CPU_GPU FilterSample<T> sample(T u1, T u2) const {
-		// u2 Ã¢â€ â€™ row (y) via marginal CDF, u1 Ã¢â€ â€™ column (x) via conditional CDF
+		// u2 ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ row (y) via marginal CDF, u1 ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ column (x) via conditional CDF
 		int row = lower_bound_cdf(marginal_cdf_, N, u2);
 		int col = lower_bound_cdf(conditional_cdf_[row], N, u1);
 
@@ -85,7 +85,7 @@ public:
 		T cell_h = T(2) * radius_ / T(N);
 
 		// Intra-cell interpolation (pbrt-v4 PiecewiseConstant1D::Sample)
-		// du/dv Ã¢Ë†Ë† [0,1): fractional position within the selected cell
+		// du/dv ÃƒÂ¢Ã‹â€ Ã‹â€  [0,1): fractional position within the selected cell
 		T cdf_col_prev = (col > 0) ? conditional_cdf_[row][col - 1] : T(0);
 		T cdf_col_curr = conditional_cdf_[row][col];
 		T du = (cdf_col_curr > cdf_col_prev)
@@ -103,7 +103,7 @@ public:
 		T py = -radius_ + (T(row) + dv) * cell_h;
 
 		// weight = f(p) / pdf(p) = f_cell / (f_cell / integral) = integral
-		// (constant for importance sampling from pdf Ã¢Ë†Â f, same as pbrt-v4)
+		// (constant for importance sampling from pdf ÃƒÂ¢Ã‹â€ Ã‚Â f, same as pbrt-v4)
 		T fval = f_[row][col];
 		T pdf  = pdf_[row][col];
 		T w = (pdf > T(1e-14)) ? fval / pdf : T(0);

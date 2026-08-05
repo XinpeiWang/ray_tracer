@@ -44,7 +44,7 @@
 #  if defined(__CUDACC__)
 #    define CPU_GPU __host__ __device__ __forceinline__
 #  else
-#    define CPU_GPU
+#    define CPU_GPU inline
 #  endif
 #endif
 
@@ -259,7 +259,7 @@ CPU_GPU SampledSpectrum<N> Lerp(float t,
 //
 // Factory methods:
 //   SampleUniform(u, lambda_min, lambda_max)  -- stratified uniform sampling
-//   SampleVisible(u)                          -- V(ÃŽÂ»)-importance sampling
+//   SampleVisible(u)                          -- V(ÃƒÅ½Ã‚Â»)-importance sampling
 //
 // TerminateSecondary() -- zero out pdf[1..N-1] for non-fluorescent paths
 //                         (collapses to single-wavelength tracking).
@@ -308,7 +308,7 @@ public:
 		return swl;
 	}
 
-	// ---- Factory: V(ÃŽÂ»)-importance sampling ----------------------------------
+	// ---- Factory: V(ÃƒÅ½Ã‚Â»)-importance sampling ----------------------------------
 	// pbrt-v4: SampledWavelengths::SampleVisible(Float u)
 	// Uses SampleVisibleWavelengths / VisibleWavelengthsPDF from
 	// sampling_distributions.h (ported in the previous session).

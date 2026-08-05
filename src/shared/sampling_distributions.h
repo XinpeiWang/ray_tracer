@@ -37,7 +37,7 @@
 #  ifdef __CUDACC__
 #    define CPU_GPU __host__ __device__
 #  else
-#    define CPU_GPU
+#    define CPU_GPU inline
 #  endif
 #endif
 
@@ -236,23 +236,23 @@ CPU_GPU double InvertSmoothStepSample(double x, double a, double b) {
 }
 
 // ---------------------------------------------------------------------------
-// VisibleWavelengths -- importance-sample wavelength ÃŽÂ» proportional to V(ÃŽÂ»)
+// VisibleWavelengths -- importance-sample wavelength ÃƒÅ½Ã‚Â» proportional to V(ÃƒÅ½Ã‚Â»)
 //
 // pbrt-v4 reference: util/sampling.h  SampleVisibleWavelengths / VisibleWavelengthsPDF
 //
 // SampleVisibleWavelengths(u):
-//   Maps u ~ Uniform[0,1) to ÃŽÂ» in nm, sampling proportional to the CIE
-//   photopic luminous-efficiency function V(ÃŽÂ»).  The closed-form inverse CDF
+//   Maps u ~ Uniform[0,1) to ÃƒÅ½Ã‚Â» in nm, sampling proportional to the CIE
+//   photopic luminous-efficiency function V(ÃƒÅ½Ã‚Â»).  The closed-form inverse CDF
 //   concentrates Monte Carlo samples in the 450-650 nm range where human
 //   vision is most sensitive, reducing variance in spectral rendering.
 //
-// VisibleWavelengthsPDF(ÃŽÂ»):
+// VisibleWavelengthsPDF(ÃƒÅ½Ã‚Â»):
 //   Returns the PDF of the distribution above.  Zero outside [360, 830] nm.
-//   PDF = 0.0039398042 / coshÃ‚Â²(0.0072Ã‚Â·(ÃŽÂ» Ã¢Ë†â€™ 538))
+//   PDF = 0.0039398042 / coshÃƒâ€šÃ‚Â²(0.0072Ãƒâ€šÃ‚Â·(ÃƒÅ½Ã‚Â» ÃƒÂ¢Ã‹â€ Ã¢â‚¬â„¢ 538))
 // ---------------------------------------------------------------------------
 
 CPU_GPU double SampleVisibleWavelengths(double u) {
-	// Inverse CDF: ÃŽÂ» = 538 Ã¢Ë†â€™ 138.888889Ã‚Â·atanh(0.85691062 Ã¢Ë†â€™ 1.82750197Ã‚Â·u)
+	// Inverse CDF: ÃƒÅ½Ã‚Â» = 538 ÃƒÂ¢Ã‹â€ Ã¢â‚¬â„¢ 138.888889Ãƒâ€šÃ‚Â·atanh(0.85691062 ÃƒÂ¢Ã‹â€ Ã¢â‚¬â„¢ 1.82750197Ãƒâ€šÃ‚Â·u)
 	// pbrt-v4: return 538 - 138.888889f * std::atanh(0.85691062f - 1.82750197f * u);
 	return 538.0 - 138.888889 * std::atanh(0.85691062 - 1.82750197 * u);
 }
@@ -261,7 +261,7 @@ CPU_GPU double VisibleWavelengthsPDF(double lambda) {
 	// Zero outside the visible range [360, 830] nm.
 	if (lambda < 360.0 || lambda > 830.0)
 		return 0.0;
-	// PDF = 0.0039398042 / coshÃ‚Â²(0.0072Ã‚Â·(ÃŽÂ» Ã¢Ë†â€™ 538))
+	// PDF = 0.0039398042 / coshÃƒâ€šÃ‚Â²(0.0072Ãƒâ€šÃ‚Â·(ÃƒÅ½Ã‚Â» ÃƒÂ¢Ã‹â€ Ã¢â‚¬â„¢ 538))
 	double c = std::cosh(0.0072 * (lambda - 538.0));
 	return 0.0039398042 / (c * c);
 }

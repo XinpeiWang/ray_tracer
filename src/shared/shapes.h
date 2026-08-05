@@ -32,7 +32,7 @@
 #   if defined(__CUDACC__)
 #       define CPU_GPU __host__ __device__ __forceinline__
 #   else
-#       define CPU_GPU
+#       define CPU_GPU inline
 #   endif
 #endif
 
@@ -1258,7 +1258,7 @@ struct TriangleShape {
 					}
 
 					// ---------------------------------------------------------------
-					// area() -- approximate arc-length Ã— average width
+					// area() -- approximate arc-length Ãƒâ€” average width
 					// Mirrors pbrt-v4 Curve::Area()
 					// ---------------------------------------------------------------
 					CPU_GPU T area() const {
@@ -1317,7 +1317,7 @@ struct TriangleShape {
 						if (_dot3(dx,dx) == 0.f)
 							_coord_system(rdF, dx, dy_unused);
 
-						// Compute ray-from-object 4Ã—4 LookAt transform
+						// Compute ray-from-object 4Ãƒâ€”4 LookAt transform
 						// (position = ray.o, forward = normalize(ray.d), up = dx)
 						float ro[3] = { float(rox), float(roy), float(roz) };
 						float M[4][4]; // row-major world-to-ray transform
@@ -1419,7 +1419,7 @@ struct TriangleShape {
 						b[2] = -n[1];
 					}
 
-					// Build LookAt 4Ã—4 row-major matrix: maps world-space points so that
+					// Build LookAt 4Ãƒâ€”4 row-major matrix: maps world-space points so that
 					// ro -> origin, (ro + normalize(dir)) -> +Z, up guides X axis.
 					// Mirrors pbrt-v4 LookAt(pos, pos+dir, up).
 					CPU_GPU static void _look_at(const float* pos, const float* dir,
@@ -1466,7 +1466,7 @@ struct TriangleShape {
 						Minv[3][0]=0; Minv[3][1]=0; Minv[3][2]=0; Minv[3][3]=1;
 					}
 
-					// Apply 4Ã—4 row-major matrix to a 3D point (w=1)
+					// Apply 4Ãƒâ€”4 row-major matrix to a 3D point (w=1)
 					CPU_GPU static void _transform_point(const float M[4][4],
 														 const float p[3], float out[3]) {
 						out[0] = M[0][0]*p[0] + M[0][1]*p[1] + M[0][2]*p[2] + M[0][3];
@@ -1474,7 +1474,7 @@ struct TriangleShape {
 						out[2] = M[2][0]*p[0] + M[2][1]*p[1] + M[2][2]*p[2] + M[2][3];
 					}
 
-					// Apply 4Ã—4 row-major matrix to a 3D vector (w=0)
+					// Apply 4Ãƒâ€”4 row-major matrix to a 3D vector (w=0)
 					CPU_GPU static void _transform_vector(const float M[4][4],
 														  const float v[3], float out[3]) {
 						out[0] = M[0][0]*v[0] + M[0][1]*v[1] + M[0][2]*v[2];
@@ -1505,7 +1505,7 @@ struct TriangleShape {
 						splines::CubicBezierControlPoints(src, float(uMin), float(uMax), out);
 					}
 
-					// Evaluate cubic Bezier point and optional derivative at parameter w âˆˆ [0,1]
+					// Evaluate cubic Bezier point and optional derivative at parameter w Ã¢Ë†Ë† [0,1]
 					// Uses the raw control points already in a given space.
 					CPU_GPU static void _eval_bezier(const float cp[4][3], float w,
 													 float p[3], float dp[3]) {

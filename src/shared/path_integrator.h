@@ -13,7 +13,7 @@
 // with full MIS, Russian roulette, and etaScale correction:
 //
 //   Key differences from simple_path.h:
-//   1. SampleLd(): NEE uses PowerHeuristic(p_l, p_b) Ã¢â‚¬â€ combines light-sample
+//   1. SampleLd(): NEE uses PowerHeuristic(p_l, p_b) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â combines light-sample
 //      and BSDF PDFs to give unbiased, low-variance direct lighting.
 //   2. Emission MIS: when a surface/infinite light is hit by a BSDF-sampled
 //      ray, the contribution is weighted by PowerHeuristic(p_b, p_l) using
@@ -22,7 +22,7 @@
 //      is based on beta*etaScale so transmission chains are not over-terminated.
 //   4. anyNonSpecularBounces: NEE (SampleLd) is skipped on purely specular
 //      paths (mirrors pbrt-v4 IsNonSpecular check).
-//   5. specularBounce starts false (pbrt-v4 PathIntegrator) Ã¢â‚¬â€ emission at
+//   5. specularBounce starts false (pbrt-v4 PathIntegrator) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â emission at
 //      depth 0 or after a specular bounce is always added unweighted.
 //
 // Design rules (same as simple_path.h / bdpt.h / mlt.h / sppm.h / vol_path.h):
@@ -124,7 +124,7 @@
 #  if defined(__CUDACC__)
 #    define CPU_GPU __host__ __device__ __forceinline__
 #  else
-#    define CPU_GPU
+#    define CPU_GPU inline
 #  endif
 #endif
 
@@ -261,7 +261,7 @@ CPU_GPU void PathLi(
 	// Previous intersection context for emission MIS
 	// We store p (position) and n (geometric normal) of the previous vertex.
 	T prev_p[3] = { ray_o[0], ray_o[1], ray_o[2] };
-	T prev_n[3] = { T(0), T(0), T(0) };  // camera Ã¢â‚¬â€ no normal needed
+	T prev_n[3] = { T(0), T(0), T(0) };  // camera ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â no normal needed
 
 	while (true) {
 		// --- Terminate if beta is zero ---

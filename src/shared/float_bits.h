@@ -29,7 +29,7 @@
 #   if defined(__CUDACC__)
 #       define CPU_GPU __host__ __device__ __forceinline__
 #   else
-#       define CPU_GPU
+#       define CPU_GPU inline
 #   endif
 #endif
 
@@ -133,7 +133,7 @@ CPU_GPU uint64_t SignBit(double v)     { return FloatToBits(v) & 0x8000000000000
 // ===========================================================================
 // NextFloatUp / NextFloatDown -- ULP stepping
 // Advances/retreats a float by one unit in the last place.
-// Handles Ã‚Â±0, Ã‚Â±Inf, and NaN-preserving behaviour.
+// Handles Ãƒâ€šÃ‚Â±0, Ãƒâ€šÃ‚Â±Inf, and NaN-preserving behaviour.
 // Mirrors pbrt-v4 NextFloatUp/NextFloatDown.
 // ===========================================================================
 CPU_GPU float NextFloatUp(float v) {

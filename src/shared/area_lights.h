@@ -37,7 +37,7 @@
 #   if defined(__CUDACC__)
 #       define CPU_GPU __host__ __device__ __forceinline__
 #   else
-#       define CPU_GPU
+#       define CPU_GPU inline
 #   endif
 #endif
 
@@ -149,7 +149,7 @@ struct DiffuseAreaLight {
 				   T wx, T wy, T wz,       // outgoing direction (toward viewer)
 				   T& out_r, T& out_g, T& out_b) const
 	{
-		// Check for emitting side: nÃ‚Â·w > 0 (or two_sided)
+		// Check for emitting side: nÃƒâ€šÃ‚Â·w > 0 (or two_sided)
 		T cos_theta = nx*wx + ny*wy + nz*wz;
 		if (!two_sided && cos_theta < T(0)) {
 			out_r = out_g = out_b = T(0);

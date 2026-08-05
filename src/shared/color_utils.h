@@ -31,7 +31,7 @@
 #  ifdef __CUDACC__
 #    define CPU_GPU __host__ __device__
 #  else
-#    define CPU_GPU
+#    define CPU_GPU inline
 #  endif
 #endif
 
@@ -150,7 +150,7 @@ CPU_GPU XYZ Lerp(float t, const XYZ& a, const XYZ& b) {
 
 // ---------------------------------------------------------------------------
 // WhiteBalance -- Bradford chromatic adaptation matrix
-// Returns a 3Ãƒâ€”3 matrix M such that M * XYZ_src_white Ã¢â€°Ë† XYZ_dst_white.
+// Returns a 3ÃƒÆ’Ã¢â‚¬â€3 matrix M such that M * XYZ_src_white ÃƒÂ¢Ã¢â‚¬Â°Ã‹â€  XYZ_dst_white.
 // srcWhite / dstWhite are CIE xy chromaticity coordinates.
 // Reference: pbrt-v4 util/color.h WhiteBalance
 // ---------------------------------------------------------------------------
@@ -187,13 +187,13 @@ inline SquareMatrix<3> WhiteBalance(float srcX, float srcY,
 //
 // pbrt-v4 reference: util/spectrum.h Blackbody(Float lambda, Float T)
 //
-// Returns spectral radiance Le [W / (m^2 Ã‚Â· sr Ã‚Â· m)] for a blackbody emitter
+// Returns spectral radiance Le [W / (m^2 Ãƒâ€šÃ‚Â· sr Ãƒâ€šÃ‚Â· m)] for a blackbody emitter
 // at temperature T (Kelvin) and wavelength lambda (nanometres).
 // Returns 0 for T <= 0 or lambda <= 0.
 //
 // Physical constants used (CODATA 2010, matching pbrt-v4):
 //   c  = 299 792 458  m/s
-//   h  = 6.626 069 57e-34  JÃ‚Â·s
+//   h  = 6.626 069 57e-34  JÃƒâ€šÃ‚Â·s
 //   k_B = 1.380 648 8e-23  J/K
 // ---------------------------------------------------------------------------
 CPU_GPU float Blackbody(float lambda_nm, float T) {

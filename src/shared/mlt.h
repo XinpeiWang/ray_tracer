@@ -36,7 +36,7 @@
 #   if defined(__CUDACC__)
 #       define CPU_GPU __host__ __device__ __forceinline__
 #   else
-#       define CPU_GPU
+#       define CPU_GPU inline
 #   endif
 #endif
 
@@ -428,6 +428,8 @@ T MLTBootstrap(int nBootstrap, int maxDepth, T sigma, T largeStepProb,
 // Normalization: the callback receives values pre-scaled by b/nMutations so
 // the caller can simply accumulate them into a floating-point framebuffer.
 
+#pragma warning(push)
+#pragma warning(disable: 4723) // potential divide by zero: guarded by cCurrent > 0 check
 template<typename T, typename Scene, typename SplatFn>
 void MLTRenderLoop(int nBootstrap, int64_t nMutations, int maxDepth,
 				   T sigma, T largeStepProb,
@@ -488,7 +490,8 @@ void MLTRenderLoop(int nBootstrap, int64_t nMutations, int maxDepth,
 			cCurrent = cProposed;
 			sampler.Accept();
 		} else {
-			sampler.Reject();
-		}
-	}
-}
+					sampler.Reject();
+					}
+				}
+			}
+			#pragma warning(pop)

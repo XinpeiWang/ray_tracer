@@ -28,7 +28,7 @@
 #   if defined(__CUDACC__)
 #       define CPU_GPU __host__ __device__ __forceinline__
 #   else
-#       define CPU_GPU
+#       define CPU_GPU inline
 #   endif
 #endif
 
@@ -85,7 +85,7 @@ struct Vector3fi {
 		return x.Width() == 0.0 && y.Width() == 0.0 && z.Width() == 0.0;
 	}
 
-	// Arithmetic (interval Ãƒâ€” interval)
+	// Arithmetic (interval ÃƒÆ’Ã¢â‚¬â€ interval)
 	CPU_GPU Vector3fi operator+(const Vector3fi& v) const {
 		return {x + v.x, y + v.y, z + v.z};
 	}

@@ -19,7 +19,7 @@
 #   if defined(__CUDACC__)
 #       define CPU_GPU __host__ __device__ __forceinline__
 #   else
-#       define CPU_GPU
+#       define CPU_GPU inline
 #   endif
 #endif
 
@@ -28,7 +28,7 @@
 #include <limits>
 
 // ---------------------------------------------------------------------------
-// MIS heuristics (pbrt-v4 util/sampling.h Ã‚Â§13.10)
+// MIS heuristics (pbrt-v4 util/sampling.h Ãƒâ€šÃ‚Â§13.10)
 // ---------------------------------------------------------------------------
 
 // BalanceHeuristic(nf, fPdf, ng, gPdf)

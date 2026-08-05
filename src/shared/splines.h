@@ -1,4 +1,4 @@
-// splines.h -- Cubic BÃƒÂ©zier and B-spline utilities, ported from pbrt-v4 util/splines.h
+// splines.h -- Cubic BÃƒÆ’Ã‚Â©zier and B-spline utilities, ported from pbrt-v4 util/splines.h
 // pbrt is Copyright(c) 1998-2020 Matt Pharr, Wenzel Jakob, and Greg Humphreys.
 // Apache License, Version 2.0.
 //
@@ -25,7 +25,7 @@
 #  ifdef __CUDACC__
 #    define CPU_GPU __host__ __device__
 #  else
-#    define CPU_GPU
+#    define CPU_GPU inline
 #  endif
 #endif
 
@@ -49,7 +49,7 @@ CPU_GPU void copy3(const float* src, float* dst) {
 
 // --------------------------------------------------------------------------
 // BlossomCubicBezier
-// Evaluates the blossom of the cubic BÃƒÂ©zier defined by cp[4] at (u0, u1, u2).
+// Evaluates the blossom of the cubic BÃƒÆ’Ã‚Â©zier defined by cp[4] at (u0, u1, u2).
 // Result written to out[3].
 // Reference: pbrt-v4 BlossomCubicBezier
 // --------------------------------------------------------------------------
@@ -174,7 +174,7 @@ CPU_GPU void ElevateQuadraticBezierToCubic(const float cp3[3][3],
 
 // --------------------------------------------------------------------------
 // QuadraticBSplineToBezier
-// Uniform quadratic B-spline segment cp3[3] -> BÃƒÂ©zier out3[3].
+// Uniform quadratic B-spline segment cp3[3] -> BÃƒÆ’Ã‚Â©zier out3[3].
 // Reference: pbrt-v4 QuadraticBSplineToBezier
 // --------------------------------------------------------------------------
 CPU_GPU void QuadraticBSplineToBezier(const float cp3[3][3], float out3[3][3]) {
@@ -185,7 +185,7 @@ CPU_GPU void QuadraticBSplineToBezier(const float cp3[3][3], float out3[3][3]) {
 
 // --------------------------------------------------------------------------
 // CubicBSplineToBezier
-// Uniform cubic B-spline segment cp4[4] -> BÃƒÂ©zier out4[4].
+// Uniform cubic B-spline segment cp4[4] -> BÃƒÆ’Ã‚Â©zier out4[4].
 // Reference: pbrt-v4 CubicBSplineToBezier
 // --------------------------------------------------------------------------
 CPU_GPU void CubicBSplineToBezier(const float cp4[4][3], float out4[4][3]) {

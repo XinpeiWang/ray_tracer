@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 // ---------------------------------------------------------------------------
 // sampling.h -- Shared CPU/GPU sampling utilities
 //
@@ -7,10 +7,10 @@
 //
 // Key addition over Book-3:
 //   SampleSphericalRectangle / SphericalRectanglePDF
-//     -- UreÃƒÆ’Ã‚Â±a et al. 2013 "An Area-Preserving Parametrization for
+//     -- Ure├▒a et al. 2013 "An Area-Preserving Parametrization for
 //        Spherical Rectangles". Samples a point on a quad directly and
 //        uniformly in solid-angle measure from a reference point.
-//        PDF = 1 / solidAngle  (constant, no distanceÃƒâ€šÃ‚Â² / cosine conversion).
+//        PDF = 1 / solidAngle  (constant, no distance┬▓ / cosine conversion).
 //
 // Design rules (same as bxdfs.h, noise.h):
 //   - Plain structs/functions, CPU_GPU tagged
@@ -33,7 +33,6 @@
 #   include <cstring>
 #endif
 #include "scalar_math.h"
-#include "math_utils.h"
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -324,7 +323,7 @@ CPU_GPU void SampleSphericalRectangle(
 		return;
 	}
 
-	// -- UreÃƒÆ’Ã‚Â±a et al. 2013 sampling --
+	// -- Ure├▒a et al. 2013 sampling --
 
 	// Sample cu (cosine of u-angle) by inverting solid angle CDF
 	double b0 = n0.z, b1 = n2.z;
@@ -473,7 +472,7 @@ CPU_GPU void SampleSphericalTriangle(
 	V3 gs2_n = (gs2l > 1e-15) ? gs2 * (1.0/gs2l) : V3(0,0,0);
 	V3 w = b * cosTheta + gs2_n * sinTheta;
 
-	// Find barycentric coordinates for direction w via MÃƒÆ’Ã‚Â¶ller-Trumbore
+	// Find barycentric coordinates for direction w via M├╢ller-Trumbore
 	V3 p_pt(px, py, pz);
 	V3 v0(v0x,v0y,v0z), v1(v1x,v1y,v1z), v2(v2x,v2y,v2z);
 	V3 e1 = v1 - v0, e2 = v2 - v0;
@@ -961,6 +960,194 @@ CPU_GPU void SampleUniformHemisphereConcentric(double u0, double u1,
 	wy = std::sin(theta) * xy_scale;
 }
 
+// ===========================================================================
+// Uniform disk (polar parameterisation)
+// pbrt-v4: SampleUniformDiskPolar / InvertUniformDiskPolarSample (util/sampling.h)
+// ===========================================================================
+
+// Maps u=(u0,u1) in [0,1)^2 to the unit disk via polar parameterisation.
+// r = sqrt(u0), phi = 2*pi*u1
+template<typename T>
+CPU_GPU void SampleUniformDiskPolar(T u0, T u1, T& dx, T& dy) {
+	T r   = std::sqrt(u0);
+	T phi = T(2) * T(3.14159265358979323846) * u1;
+	dx = r * std::cos(phi);
+	dy = r * std::sin(phi);
+}
+
+// Invert SampleUniformDiskPolar: recover (u0,u1) from disk point (dx,dy).
+// pbrt-v4: InvertUniformDiskPolarSample
+template<typename T>
+CPU_GPU void InvertUniformDiskPolarSample(T dx, T dy, T& u0, T& u1) {
+	T phi = std::atan2(dy, dx);
+	if (phi < T(0)) phi += T(2) * T(3.14159265358979323846);
+	u0 = dx*dx + dy*dy;
+	u1 = phi / (T(2) * T(3.14159265358979323846));
+}
+
+// Invert SampleUniformDiskConcentric: recover (u0,u1) from disk point (dx,dy).
+// pbrt-v4: InvertUniformDiskConcentricSample (util/sampling.h)
+template<typename T>
+CPU_GPU void InvertUniformDiskConcentricSample(T dx, T dy, T& u0, T& u1) {
+	constexpr T Pi       = T(3.14159265358979323846);
+	constexpr T PiOver4  = Pi / T(4);
+	constexpr T PiOver2  = Pi / T(2);
+
+	T theta = std::atan2(dy, dx); // -pi..pi
+	T r     = std::sqrt(dx*dx + dy*dy);
+
+	T ox, oy; // result in [-1,1]^2
+	if (std::abs(theta) < PiOver4 || std::abs(theta) > T(3)*PiOver4) {
+		// x-dominant octants
+		ox = std::copysign(r, dx);
+		if (dx < T(0)) {
+			oy = (dy < T(0) ? Pi + theta : theta - Pi) * ox / PiOver4;
+		} else {
+			oy = (theta * ox) / PiOver4;
+		}
+	} else {
+		// y-dominant octants
+		oy = std::copysign(r, dy);
+		oy < T(0) ? ox = -(PiOver2 + theta) * oy / PiOver4
+				   : ox = (PiOver2 - theta) * oy / PiOver4;
+	}
+	u0 = (ox + T(1)) / T(2);
+	u1 = (oy + T(1)) / T(2);
+}
+
+// ===========================================================================
+// Uniform sphere / hemisphere
+// pbrt-v4: SampleUniformSphere/Hemisphere, UniformSpherePDF/HemispherePDF,
+//          InvertUniformSphereSample, InvertUniformHemisphereSample (util/sampling.h)
+// ===========================================================================
+
+// Sample a direction uniformly over the full unit sphere.
+// pdf = 1/(4*pi)
+// pbrt-v4: SampleUniformSphere
+template<typename T>
+CPU_GPU void SampleUniformSphere(T u0, T u1, T& wx, T& wy, T& wz) {
+	wz = T(1) - T(2)*u0;
+	T r   = std::sqrt(std::max(T(0), T(1) - wz*wz));
+	T phi = T(2) * T(3.14159265358979323846) * u1;
+	wx = r * std::cos(phi);
+	wy = r * std::sin(phi);
+}
+
+// PDF of SampleUniformSphere: 1/(4*pi)
+// pbrt-v4: UniformSpherePDF
+template<typename T>
+CPU_GPU inline T UniformSpherePDF() {
+	return T(1) / (T(4) * T(3.14159265358979323846));
+}
+
+// Invert SampleUniformSphere: recover (u0,u1) from direction (wx,wy,wz).
+// pbrt-v4: InvertUniformSphereSample
+template<typename T>
+CPU_GPU void InvertUniformSphereSample(T wx, T wy, T wz, T& u0, T& u1) {
+	T phi = std::atan2(wy, wx);
+	if (phi < T(0)) phi += T(2) * T(3.14159265358979323846);
+	u0 = (T(1) - wz) / T(2);
+	u1 = phi / (T(2) * T(3.14159265358979323846));
+}
+
+// Sample a direction uniformly over the upper hemisphere (wz >= 0).
+// pdf = 1/(2*pi)
+// pbrt-v4: SampleUniformHemisphere
+template<typename T>
+CPU_GPU void SampleUniformHemisphere(T u0, T u1, T& wx, T& wy, T& wz) {
+	wz = u0;
+	T r   = std::sqrt(std::max(T(0), T(1) - wz*wz));
+	T phi = T(2) * T(3.14159265358979323846) * u1;
+	wx = r * std::cos(phi);
+	wy = r * std::sin(phi);
+}
+
+// PDF of SampleUniformHemisphere: 1/(2*pi)
+// pbrt-v4: UniformHemispherePDF
+template<typename T>
+CPU_GPU inline T UniformHemispherePDF() {
+	return T(1) / (T(2) * T(3.14159265358979323846));
+}
+
+// Invert SampleUniformHemisphere: recover (u0,u1) from direction (wx,wy,wz).
+// pbrt-v4: InvertUniformHemisphereSample
+template<typename T>
+CPU_GPU void InvertUniformHemisphereSample(T wx, T wy, T wz, T& u0, T& u1) {
+	T phi = std::atan2(wy, wx);
+	if (phi < T(0)) phi += T(2) * T(3.14159265358979323846);
+	u0 = wz;
+	u1 = phi / (T(2) * T(3.14159265358979323846));
+}
+
+// ===========================================================================
+// Uniform cone
+// pbrt-v4: SampleUniformCone, UniformConePDF, InvertUniformConeSample (util/sampling.h)
+// Samples directions inside a cone of half-angle arccos(cosThetaMax)
+// around the +z axis. pdf = 1 / (2*pi*(1-cosThetaMax))
+// ===========================================================================
+
+// Sample a direction uniformly inside a cone around +z.
+// pbrt-v4: SampleUniformCone
+// Uses SphericalDirection: given sinTheta, cosTheta, phi -> (x,y,z)
+template<typename T>
+CPU_GPU void SampleUniformCone(T u0, T u1, T cosThetaMax,
+							   T& wx, T& wy, T& wz) {
+	T cosTheta  = (T(1) - u0) + u0 * cosThetaMax;
+	T sinTheta  = std::sqrt(std::max(T(0), T(1) - cosTheta*cosTheta));
+	T phi       = u1 * T(2) * T(3.14159265358979323846);
+	wx = sinTheta * std::cos(phi);
+	wy = sinTheta * std::sin(phi);
+	wz = cosTheta;
+}
+
+// PDF for SampleUniformCone.
+// pbrt-v4: UniformConePDF
+template<typename T>
+CPU_GPU inline T UniformConePDF(T cosThetaMax) {
+	return T(1) / (T(2) * T(3.14159265358979323846) * (T(1) - cosThetaMax));
+}
+
+// Invert SampleUniformCone: recover (u0,u1) from direction (wx,wy,wz).
+// pbrt-v4: InvertUniformConeSample
+template<typename T>
+CPU_GPU void InvertUniformConeSample(T wx, T wy, T wz, T cosThetaMax,
+									 T& u0, T& u1) {
+	T phi = std::atan2(wy, wx);
+	if (phi < T(0)) phi += T(2) * T(3.14159265358979323846);
+	u0 = (wz - T(1)) / (cosThetaMax - T(1));
+	u1 = phi / (T(2) * T(3.14159265358979323846));
+}
+
+// ===========================================================================
+// Invert CosineHemisphere sample
+// pbrt-v4: InvertCosineHemisphereSample (util/sampling.h)
+// Recovers (u0,u1) from a cosine-hemisphere direction by inverting the
+// concentric disk mapping applied to (wx, wy).
+// ===========================================================================
+template<typename T>
+CPU_GPU void InvertCosineHemisphereSample(T wx, T wy, T /*wz*/, T& u0, T& u1) {
+	InvertUniformDiskConcentricSample(wx, wy, u0, u1);
+}
+
+// ===========================================================================
+// Invert SampleUniformTriangle
+// pbrt-v4: InvertUniformTriangleSample (util/sampling.h)
+// Given barycentric coords (b0,b1,b2) produced by SampleUniformTriangle,
+// recover the original (u0,u1) sample.
+// ===========================================================================
+template<typename T>
+CPU_GPU void InvertUniformTriangleSample(T b0, T b1, T /*b2*/, T& u0, T& u1) {
+	if (b0 > b1) {
+		// b0 = u0 - u1/2,  b1 = u1/2
+		u0 = b0 + b1;
+		u1 = T(2) * b1;
+	} else {
+		// b1 = u1 - u0/2,  b0 = u0/2
+		u0 = T(2) * b0;
+		u1 = b1 + b0;
+	}
+}
+
 // =============================================================================
 // Scalar 1-D distribution family  --  pbrt-v4 util/sampling.h
 //
@@ -981,15 +1168,19 @@ CPU_GPU void SampleUniformHemisphereConcentric(double u0, double u1,
 // live in scalar_math.h which is already included above.
 // =============================================================================
 
-// Tent distribution  -- support [-r, r]
-// PDF(x) = 1/r - |x|/r^2
-// pbrt-v4: TentPDF / SampleTent / InvertTentSample
-CPU_GPU float TentPDF(float x, float r) {
+// -----------------------------------------------------------------------------
+// Tent distribution  -- support [-r, r],  integral = 1
+// PDF(x) = (1/r - |x|/r^2)
+// Sampled via splitting at 0 and applying InvertLinearSample on each half.
+// pbrt-v4: SampleTent / TentPDF / InvertTentSample
+// -----------------------------------------------------------------------------
+CPU_GPU inline float TentPDF(float x, float r) {
 	if (std::abs(x) >= r) return 0.f;
 	return 1.f / r - std::abs(x) / (r * r);
 }
 
-CPU_GPU float SampleTent(float u, float r) {
+CPU_GPU inline float SampleTent(float u, float r) {
+	// Split [0,1) in half: left half -> negative side, right half -> positive
 	if (u < 0.5f) {
 		u = 2.f * u;
 		return -r + r * SampleLinear(u, 0.f, 1.f);
@@ -999,318 +1190,154 @@ CPU_GPU float SampleTent(float u, float r) {
 	}
 }
 
-CPU_GPU float InvertTentSample(float x, float r) {
+CPU_GPU inline float InvertTentSample(float x, float r) {
 	if (x <= 0.f)
 		return (1.f - InvertLinearSample(-x / r, 1.f, 0.f)) * 0.5f;
 	else
 		return 0.5f + InvertLinearSample(x / r, 1.f, 0.f) * 0.5f;
 }
 
-// Exponential distribution  -- support [0, inf)
+// -----------------------------------------------------------------------------
+// Exponential distribution  -- support [0, inf),  PDF(x) = a * e^(-a*x)
 // pbrt-v4: ExponentialPDF / SampleExponential / InvertExponentialSample
-CPU_GPU float ExponentialPDF(float x, float a) {
+// -----------------------------------------------------------------------------
+CPU_GPU inline float ExponentialPDF(float x, float a) {
 	return a * std::exp(-a * x);
 }
 
-CPU_GPU float SampleExponential(float u, float a) {
+CPU_GPU inline float SampleExponential(float u, float a) {
 	return -std::log(1.f - u) / a;
 }
 
-CPU_GPU float InvertExponentialSample(float x, float a) {
+CPU_GPU inline float InvertExponentialSample(float x, float a) {
 	return 1.f - std::exp(-a * x);
 }
 
+// -----------------------------------------------------------------------------
 // TrimmedExponential -- e^(-c*x) on [0, xMax]
 // pbrt-v4: TrimmedExponentialPDF / SampleTrimmedExponential / InvertTrimmedExponentialSample
-CPU_GPU float TrimmedExponentialPDF(float x, float c, float xMax) {
+// Used by media equi-angular sampling.
+// -----------------------------------------------------------------------------
+CPU_GPU inline float TrimmedExponentialPDF(float x, float c, float xMax) {
 	if (x < 0.f || x > xMax) return 0.f;
 	return c / (1.f - std::exp(-c * xMax)) * std::exp(-c * x);
 }
 
-CPU_GPU float SampleTrimmedExponential(float u, float c, float xMax) {
+CPU_GPU inline float SampleTrimmedExponential(float u, float c, float xMax) {
 	return std::log(1.f - u * (1.f - std::exp(-c * xMax))) / -c;
 }
 
-CPU_GPU float InvertTrimmedExponentialSample(float x, float c, float xMax) {
+CPU_GPU inline float InvertTrimmedExponentialSample(float x, float c, float xMax) {
 	return (1.f - std::exp(-c * x)) / (1.f - std::exp(-c * xMax));
 }
 
+// -----------------------------------------------------------------------------
 // Normal (Gaussian) distribution
+// NormalPDF / SampleNormal / InvertNormalSample -- univariate
+// SampleTwoNormal                               -- Box-Muller pair
 // pbrt-v4: NormalPDF / SampleNormal / InvertNormalSample / SampleTwoNormal
-CPU_GPU float NormalPDF(float x, float mu = 0.f, float sigma = 1.f) {
+// Requires ErfInv from scalar_math.h.
+// -----------------------------------------------------------------------------
+CPU_GPU inline float NormalPDF(float x, float mu = 0.f, float sigma = 1.f) {
 	return Gaussian(x, mu, sigma);
 }
 
-CPU_GPU float SampleNormal(float u, float mu = 0.f, float sigma = 1.f) {
-	static constexpr float kSqrt2 = 1.41421356237f;
-	return mu + kSqrt2 * sigma * ErfInv(2.f * u - 1.f);
+CPU_GPU inline float SampleNormal(float u, float mu = 0.f, float sigma = 1.f) {
+	static constexpr float Sqrt2 = 1.41421356237f;
+	return mu + Sqrt2 * sigma * ErfInv(2.f * u - 1.f);
 }
 
-CPU_GPU float InvertNormalSample(float x, float mu = 0.f, float sigma = 1.f) {
-	static constexpr float kSqrt2 = 1.41421356237f;
-	return 0.5f * (1.f + std::erf((x - mu) / (sigma * kSqrt2)));
+CPU_GPU inline float InvertNormalSample(float x, float mu = 0.f, float sigma = 1.f) {
+	static constexpr float Sqrt2 = 1.41421356237f;
+	return 0.5f * (1.f + std::erf((x - mu) / (sigma * Sqrt2)));
 }
 
-// Box-Muller: two independent N(mu, sigma^2) samples
-CPU_GPU void SampleTwoNormal(float u0, float u1,
+// Box-Muller: two independent N(mu, sigma^2) samples from a Point2f uniform.
+CPU_GPU inline void SampleTwoNormal(float u0, float u1,
 									float& out0, float& out1,
 									float mu = 0.f, float sigma = 1.f) {
-	float r2  = -2.f * std::log(std::max(1.f - u0, std::numeric_limits<float>::min()));
-	float phi = 6.28318530717958647692f * u1;
+	float r2 = -2.f * std::log(std::max(1.f - u0, std::numeric_limits<float>::min()));
+	float phi = 2.f * 3.14159265358979323846f * u1;
 	out0 = mu + sigma * std::sqrt(r2) * std::cos(phi);
 	out1 = mu + sigma * std::sqrt(r2) * std::sin(phi);
 }
 
+// -----------------------------------------------------------------------------
 // Logistic / TrimmedLogistic distribution
+// PDF(x,s) = exp(-|x|/s) / (s*(1+exp(-|x|/s))^2)
 // pbrt-v4: LogisticPDF / SampleLogistic / InvertLogisticSample
 //          TrimmedLogisticPDF / SampleTrimmedLogistic / InvertTrimmedLogisticSample
-CPU_GPU float LogisticPDF(float x, float s) {
+// Used in hair BxDF (Marschner model).
+// -----------------------------------------------------------------------------
+CPU_GPU inline float LogisticPDF(float x, float s) {
 	x = std::abs(x);
 	float ex = std::exp(-x / s);
 	return ex / (s * (1.f + ex) * (1.f + ex));
 }
 
-CPU_GPU float SampleLogistic(float u, float s) {
+CPU_GPU inline float SampleLogistic(float u, float s) {
 	return -s * std::log(1.f / u - 1.f);
 }
 
-CPU_GPU float InvertLogisticSample(float x, float s) {
+CPU_GPU inline float InvertLogisticSample(float x, float s) {
 	return 1.f / (1.f + std::exp(-x / s));
 }
 
-CPU_GPU float TrimmedLogisticPDF(float x, float s, float a, float b) {
+CPU_GPU inline float TrimmedLogisticPDF(float x, float s, float a, float b) {
 	if (x < a || x > b) return 0.f;
 	return LogisticPDF(x, s) / (InvertLogisticSample(b, s) - InvertLogisticSample(a, s));
 }
 
-CPU_GPU float SampleTrimmedLogistic(float u, float s, float a, float b) {
+CPU_GPU inline float SampleTrimmedLogistic(float u, float s, float a, float b) {
 	float pa = InvertLogisticSample(a, s);
 	float pb = InvertLogisticSample(b, s);
 	float x  = SampleLogistic(pa + u * (pb - pa), s);
-	return std::max(a, std::min(b, x));
+	return std::max(a, std::min(b, x));   // clamp for float rounding
 }
 
-CPU_GPU float InvertTrimmedLogisticSample(float x, float s, float a, float b) {
+CPU_GPU inline float InvertTrimmedLogisticSample(float x, float s, float a, float b) {
 	float pa = InvertLogisticSample(a, s);
 	float pb = InvertLogisticSample(b, s);
 	return (InvertLogisticSample(x, s) - pa) / (pb - pa);
 }
 
+// -----------------------------------------------------------------------------
 // SmoothStep distribution  -- C1-smooth bump on [a, b]
+// PDF(x) = (2/(b-a)) * smoothstep(x, a, b)
+// CDF(x) = 2t^3 - t^4  where t = (x-a)/(b-a)
+// Sampled via hybrid Newton-bisection (no closed-form CDF inverse).
 // pbrt-v4: SmoothStepPDF / SampleSmoothStep / InvertSmoothStepSample
-CPU_GPU float SmoothStepPDF(float x, float a, float b) {
+// Requires SmoothStep and NewtonBisection from scalar_math.h.
+// -----------------------------------------------------------------------------
+CPU_GPU inline float SmoothStepPDF(float x, float a, float b) {
 	if (x < a || x > b) return 0.f;
 	return (2.f / (b - a)) * SmoothStep(x, a, b);
 }
 
-CPU_GPU float SampleSmoothStep(float u, float a, float b) {
-	auto cdfMinusU = [=](float x) -> std::pair<float,float> {
-		float t  = (x - a) / (b - a);
-		float P  = 2.f * t * t * t - t * t * t * t;
-		float dP = SmoothStepPDF(x, a, b);
+CPU_GPU inline float SampleSmoothStep(float u, float a, float b) {
+	auto cdfMinusU = [=](float x) -> std::pair<float, float> {
+		float t = (x - a) / (b - a);
+		float P = 2.f * t * t * t - t * t * t * t;          // CDF
+		float dP = SmoothStepPDF(x, a, b);                   // derivative
 		return {P - u, dP};
 	};
 	return NewtonBisection(a, b, cdfMinusU);
 }
 
-CPU_GPU float InvertSmoothStepSample(float x, float a, float b) {
+CPU_GPU inline float InvertSmoothStepSample(float x, float a, float b) {
 	float t = (x - a) / (b - a);
 	return 2.f * t * t * t - t * t * t * t;
 }
 
 // =============================================================================
-// InvertSphericalRectangleSample
-// Direct port of pbrt-v4 InvertSphericalRectangleSample (util/sampling.cpp:222-346).
-//
-// Recovers the uniform sample (u0, u1) in [0,1)^2 that SampleSphericalRectangle
-// would have produced for the given hit-point pRect on the rectangle.
-//
-// Parameters:
-//   px, py, pz    : reference (shading) point
-//   sx, sy, sz    : rectangle origin (corner v00)
-//   ex*, ey*      : unnormalised edge vectors (length = width/height)
-//   prx, pry, prz : the sampled point on the rectangle (world space)
-//
-// Returns (u0, u1) via out_u0, out_u1.  Returns (0,0) on degenerate input.
-// =============================================================================
-CPU_GPU void InvertSphericalRectangleSample(
-		double px,  double py,  double pz,
-		double sx,  double sy,  double sz,
-		double exx, double exy, double exz,
-		double eyx, double eyy, double eyz,
-		double prx, double pry, double prz,
-		double* out_u0, double* out_u1)
-{
-	using namespace sampling_detail;
-	using V3 = Vec3<double>;
-	const double Pi = 3.14159265358979323846;
-
-	*out_u0 = *out_u1 = 0.0;
-
-	V3 ex(exx, exy, exz), ey(eyx, eyy, eyz);
-	double exl = ex.length(), eyl = ey.length();
-	if (exl < 1e-30 || eyl < 1e-30) return;
-
-	// Build local reference frame R (identical to SampleSphericalRectangle)
-	Frame<double> R = Frame<double>::from_xy(ex * (1.0/exl), ey * (1.0/eyl));
-
-	// Compute rectangle coords in local frame
-	V3 d(sx - px, sy - py, sz - pz);
-	double z0  = R.z.dot(d);
-	if (z0 > 0.0) { R.z = R.z * -1.0; z0 = -z0; }
-	double z0sq = z0 * z0;
-	double x0  = R.x.dot(d),  x1 = x0 + exl;
-	double y0  = R.y.dot(d),  y1 = y0 + eyl;
-	double y0sq = y0 * y0,    y1sq = y1 * y1;
-
-	// Edge plane normals
-	V3 v00(x0,y0,z0), v01(x0,y1,z0), v10(x1,y0,z0), v11(x1,y1,z0);
-	V3 n0 = v00.cross(v10).normalized();
-	V3 n1 = v10.cross(v11).normalized();
-	V3 n2 = v11.cross(v01).normalized();
-	V3 n3 = v01.cross(v00).normalized();
-
-	double g0 = angle_between(n0 * -1.0, n1);
-	double g1 = angle_between(n1 * -1.0, n2);
-	double g2 = angle_between(n2 * -1.0, n3);
-	double g3 = angle_between(n3 * -1.0, n0);
-	double solidAngle = g0 + g1 + g2 + g3 - 2.0 * Pi;
-
-	if (solidAngle < 1e-3) {
-		// Degenerate: fall back to planar coordinates
-		V3 pq(prx - sx, pry - sy, prz - sz);
-		*out_u0 = pq.dot(ex) / (exl * exl);
-		*out_u1 = pq.dot(ey) / (eyl * eyl);
-		*out_u0 = *out_u0 < 0.0 ? 0.0 : (*out_u0 > 1.0 ? 1.0 : *out_u0);
-		*out_u1 = *out_u1 < 0.0 ? 0.0 : (*out_u1 > 1.0 ? 1.0 : *out_u1);
-		return;
-	}
-
-	double b0 = n0.z, b1 = n2.z;
-	double b0sq = b0 * b0;
-
-	// Transform pRect into local frame to get (xu, yv)
-	V3 pRect(prx - px, pry - py, prz - pz);
-	double xu = R.x.dot(pRect);
-	double yv = R.y.dot(pRect);
-	xu = xu < x0 ? x0 : (xu > x1 ? x1 : xu);
-	if (xu == 0.0) xu = 1e-10;
-
-	// Invert the x-direction (cu) to recover u0.
-	// Mirrors pbrt-v4 exactly: sqrt(DifferenceOfProducts(b0,b0,b1,b1)+fusq)
-	// then atan2 with copysign(b0*sqrt, fu*b0).
-	double invcusq = 1.0 + z0sq / (xu * xu);
-	double fusq = invcusq - b0sq;
-	if (fusq < 0.0) fusq = 0.0;
-	double fu = xu > 0.0 ? std::sqrt(fusq) : -std::sqrt(fusq);
-
-	// pbrt-v4: SafeSqrt(DifferenceOfProducts(b0,b0,b1,b1) + fusq)
-	double sq_arg = b0 * b0 - b1 * b1 + fusq;
-	double sqrt_val = sq_arg > 0.0 ? std::sqrt(sq_arg) : 0.0;
-	// pbrt-v4: atan2(-(b1*fu) - copysign(b0*sqrt, fu*b0), b0*b1 - sqrt*|fu|)
-	double au = std::atan2(-(b1 * fu) - std::copysign(b0 * sqrt_val, fu * b0),
-							b0 * b1 - sqrt_val * std::abs(fu));
-	if (au > 0.0) au -= 2.0 * Pi;
-	if (fu == 0.0) au = Pi;
-
-	*out_u0 = (au + g2 + g3) / solidAngle;
-	*out_u0 = *out_u0 < 0.0 ? 0.0 : (*out_u0 > 1.0 ? 1.0 : *out_u0);
-
-	// Invert the y-direction (yv) to recover u1
-	double ddsq = xu * xu + z0sq;
-	double dd   = std::sqrt(ddsq);
-	double h0   = y0 / std::sqrt(ddsq + y0sq);
-	double h1_v = y1 / std::sqrt(ddsq + y1sq);
-
-	double yvsq = yv * yv;
-	double det  = (h0 - h1_v) * (h0 - h1_v);
-	if (det < 1e-30) { *out_u1 = 0.5; return; }
-
-	// Two candidate solutions; pick the one whose reconstructed y matches yv
-	double disc = std::abs(h0 - h1_v) * std::sqrt(yvsq * (ddsq + yvsq)) / (ddsq + yvsq);
-	double nom  = h0 * h0 - h0 * h1_v;  // = DifferenceOfProducts(h0,h0, h0,h1_v)
-	double u1a  = (nom - disc) / det;
-	double u1b  = (nom + disc) / det;
-
-	double hva  = h0 + u1a * (h1_v - h0);
-	double hvb  = h0 + u1b * (h1_v - h0);
-	double hvasq = hva * hva, hvbsq = hvb * hvb;
-	double yza  = (hvasq < 1.0 - 1e-6) ? hva * dd / std::sqrt(1.0 - hvasq) : y1;
-	double yzb  = (hvbsq < 1.0 - 1e-6) ? hvb * dd / std::sqrt(1.0 - hvbsq) : y1;
-
-	double u1 = (std::abs(yza - yv) < std::abs(yzb - yv)) ? u1a : u1b;
-	*out_u1 = u1 < 0.0 ? 0.0 : (u1 > 1.0 ? 1.0 : u1);
-}
-
-// =============================================================================
-// InvertSphericalTriangleSample
-// Direct port of pbrt-v4 InvertSphericalTriangleSample (util/sampling.cpp:110-160).
-// (Via Jim Arvo's SphTri.C)
-//
-// Recovers (u0, u1) in [0,1)^2 such that SampleSphericalTriangle with those
-// samples would produce a direction toward the point on the triangle closest
-// to direction w from reference point p.
-//
-// Parameters:
-//   v0..v2  : triangle vertices (world space)
-//   px,py,pz: reference (shading) point
-//   wx,wy,wz: the sampled unit direction
-//   out_u0, out_u1: recovered canonical samples
-// =============================================================================
-CPU_GPU void InvertSphericalTriangleSample(
-		double v0x, double v0y, double v0z,
-		double v1x, double v1y, double v1z,
-		double v2x, double v2y, double v2z,
-		double px,  double py,  double pz,
-		double wx,  double wy,  double wz,
-		double* out_u0, double* out_u1)
-{
-	using namespace sampling_detail;
-	using V3 = Vec3<double>;
-	const double Pi = 3.14159265358979323846;
-
-	*out_u0 = *out_u1 = 0.5;
-
-	V3 a(v0x-px, v0y-py, v0z-pz); if (a.length_squared() < 1e-30) return; a = a.normalized();
-	V3 b(v1x-px, v1y-py, v1z-pz); if (b.length_squared() < 1e-30) return; b = b.normalized();
-	V3 c(v2x-px, v2y-py, v2z-pz); if (c.length_squared() < 1e-30) return; c = c.normalized();
-
-	V3 n_ab = a.cross(b); if (n_ab.length_squared() < 1e-30) return; n_ab = n_ab.normalized();
-	V3 n_bc = b.cross(c); if (n_bc.length_squared() < 1e-30) return; n_bc = n_bc.normalized();
-	V3 n_ca = c.cross(a); if (n_ca.length_squared() < 1e-30) return; n_ca = n_ca.normalized();
-
-	double alpha = angle_between(n_ab,     n_ca * -1.0);
-	double beta  = angle_between(n_bc,     n_ab * -1.0);
-	double gamma = angle_between(n_ca,     n_bc * -1.0);
-	double A     = alpha + beta + gamma - Pi;
-	if (A <= 0.0) return;
-
-	// Find c' = intersection of plane(b,w) with arc(a,c)
-	V3 w(wx, wy, wz);
-	V3 cp = b.cross(w).cross(c.cross(a)).normalized();
-	if (cp.dot(a + c) < 0.0) cp = cp * -1.0;
-
-	double u0;
-	if (a.dot(cp) > 0.99999847691) {   // < 0.1 degrees: c' == a
-		u0 = 0.0;
-	} else {
-		V3 n_cpb = cp.cross(b);  if (n_cpb.length_squared() < 1e-30) { *out_u0 = 0.5; *out_u1 = 0.5; return; }
-		V3 n_acp = a.cross(cp);  if (n_acp.length_squared() < 1e-30) { *out_u0 = 0.5; *out_u1 = 0.5; return; }
-		n_cpb = n_cpb.normalized();
-		n_acp = n_acp.normalized();
-		double Ap = alpha + angle_between(n_ab, n_cpb) + angle_between(n_acp, n_cpb * -1.0) - Pi;
-		u0 = Ap / A;
-	}
-
-	double u1 = (1.0 - w.dot(b)) / (1.0 - cp.dot(b));
-
-	*out_u0 = u0 < 0.0 ? 0.0 : (u0 > 1.0 ? 1.0 : u0);
-	*out_u1 = u1 < 0.0 ? 0.0 : (u1 > 1.0 ? 1.0 : u1);
-}
-
-// =============================================================================
 // VarianceEstimator<Float>  --  online Welford mean/variance estimator
 // pbrt-v4: VarianceEstimator (util/sampling.h)
+//
+// Usage:
+//   VarianceEstimator<float> ve;
+//   ve.Add(sample);
+//   float m = ve.Mean(), v = ve.Variance();
+//   ve.Merge(other);           -- parallel merge (Chan et al.)
 // =============================================================================
 template<typename Float>
 class VarianceEstimator {
@@ -1330,6 +1357,7 @@ public:
 		return (n < 1 || mean == Float(0)) ? Float(0) : Variance() / Mean();
 	}
 
+	// Parallel merge (Chan et al. formula) -- matches pbrt-v4 Merge()
 	void Merge(const VarianceEstimator& ve) {
 		if (ve.n == 0) return;
 		Float combined = static_cast<Float>(n + ve.n);
@@ -1344,86 +1372,3 @@ private:
 	int64_t n    = 0;
 };
 
-// ---------------------------------------------------------------------------
-// Sample1DFunction
-// ---------------------------------------------------------------------------
-// Tabulate an arbitrary 1-D function f: [min, max] -> double into nSteps
-// cells. Each cell stores the conservative maximum of |f| over (nSamples+1)
-// uniformly-spaced sub-samples spanning the cell, including both endpoints.
-//
-// The result is a flat std::vector<double> of length nSteps, suitable for
-// directly constructing a PiecewiseConstant1D distribution.
-//
-// Mirrors pbrt-v4 util/sampling.cpp Sample1DFunction.
-// ---------------------------------------------------------------------------
-inline std::vector<double> Sample1DFunction(
-		std::function<double(double)> f,
-		int nSteps,
-		int nSamples,
-		double min,
-		double max) {
-	std::vector<double> values(nSteps, 0.0);
-	for (int i = 0; i < nSteps; ++i) {
-		double accum = 0.0;
-		// nSamples+1 samples so we hit both endpoints of the cell exactly.
-		for (int j = 0; j <= nSamples; ++j) {
-			double delta = double(j) / double(nSamples);
-			double v     = min + (max - min) * ((i + delta) / double(nSteps));
-			accum = std::max(accum, std::abs(f(v)));
-		}
-		values[i] = accum;
-	}
-	return values;
-}
-
-// ---------------------------------------------------------------------------
-// Sample2DFunction
-// ---------------------------------------------------------------------------
-// Tabulate an arbitrary 2-D function f: domain -> double into (nu x nv) cells
-// (row-major: values[v * nu + u]). Each cell stores the conservative maximum
-// of |f| over nSamples Halton(base-2, base-3) interior sub-samples plus the
-// three extra corners (0,1), (1,0), (1,1) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â exactly matching pbrt-v4.
-//
-// domain is specified as (xMin, yMin, xMax, yMax).
-// The result is a flat std::vector<double> of length nu*nv, suitable for
-// constructing a PiecewiseConstant2D / PiecewiseLinear2D distribution.
-//
-// Mirrors pbrt-v4 util/sampling.cpp Sample2DFunction.
-// ---------------------------------------------------------------------------
-inline std::vector<double> Sample2DFunction(
-		std::function<double(double, double)> f,
-		int nu, int nv,
-		int nSamples,
-		double xMin, double yMin,
-		double xMax, double yMax) {
-	// Build Halton(0,i)/Halton(1,i) sub-pixel samples + mandatory corners.
-	std::vector<std::pair<double,double>> samples;
-	samples.reserve(nSamples + 3);
-	for (int i = 0; i < nSamples; ++i) {
-		samples.push_back({
-			halton_radical_inverse(i, 2u),
-			halton_radical_inverse(i, 3u)
-		});
-	}
-	// pbrt-v4 also checks corners (0,1),(1,0),(1,1); (0,0) is covered by i=0.
-	samples.push_back({0.0, 1.0});
-	samples.push_back({1.0, 0.0});
-	samples.push_back({1.0, 1.0});
-
-	std::vector<double> values(nu * nv, 0.0);
-	for (int v = 0; v < nv; ++v) {
-		for (int u = 0; u < nu; ++u) {
-			double accum = 0.0;
-			for (auto& s : samples) {
-				// Map (u + s.x, v + s.y) into normalised [0,1]^2, then into domain.
-				double nx = (u + s.first)  / double(nu);
-				double ny = (v + s.second) / double(nv);
-				double px = xMin + (xMax - xMin) * nx;
-				double py = yMin + (yMax - yMin) * ny;
-				accum = std::max(accum, std::abs(f(px, py)));
-			}
-			values[v * nu + u] = accum;
-		}
-	}
-	return values;
-}

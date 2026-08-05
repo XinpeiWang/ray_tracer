@@ -68,7 +68,7 @@
 #   if defined(__CUDACC__)
 #       define CPU_GPU __host__ __device__ __forceinline__
 #   else
-#       define CPU_GPU
+#       define CPU_GPU inline
 #   endif
 #endif
 
@@ -821,7 +821,7 @@ void BDPTConnect(BDPTVertex<T>* lightVerts, BDPTVertex<T>* cameraVerts,
 			T pdf_we;
 			if (scene.CameraSampleWi(qs.p(), nullptr, wi, pdf_we, importance, raster) &&
 				pdf_we > T(0) && importance > T(0)) {
-				T cam_p[3], cam_n[3]; T unused;
+				T cam_n[3]; T unused;
 				scene.CameraPDFWe(qs.p(), wi, unused, pdf_we);
 				T Le_cam[3] = { importance/pdf_we, importance/pdf_we, importance/pdf_we };
 				sampled = BDPTVertex<T>::MakeCamera(qs.p(), cam_n, Le_cam, pdf_we);

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 // ---------------------------------------------------------------------------
 // scalar_math.h -- Scalar math utilities
 //
@@ -31,7 +31,7 @@
 #   if defined(__CUDACC__)
 #       define CPU_GPU __host__ __device__ __forceinline__
 #   else
-#       define CPU_GPU inline
+#       define CPU_GPU
 #   endif
 #endif
 
@@ -80,8 +80,8 @@ CPU_GPU T Mod(T a, T b) {
 	return (T)((result < 0) ? result + b : result);
 }
 // Float specialization: delegate to std::fmod
-CPU_GPU float  Mod(float  a, float  b) { return std::fmod(a, b); }
-CPU_GPU double Mod(double a, double b) { return std::fmod(a, b); }
+CPU_GPU inline float  Mod(float  a, float  b) { return std::fmod(a, b); }
+CPU_GPU inline double Mod(double a, double b) { return std::fmod(a, b); }
 
 template <typename T>
 CPU_GPU constexpr T Sqr(T v) { return v * v; }
@@ -89,10 +89,10 @@ CPU_GPU constexpr T Sqr(T v) { return v * v; }
 // ===========================================================================
 // Radians / Degrees
 // ===========================================================================
-CPU_GPU double Radians(double deg) { return (scalar_math_detail::kPi / 180.0) * deg; }
-CPU_GPU double Degrees(double rad) { return (180.0 / scalar_math_detail::kPi) * rad; }
-CPU_GPU float  Radians(float  deg) { return (float(scalar_math_detail::kPi) / 180.f) * deg; }
-CPU_GPU float  Degrees(float  rad) { return (180.f / float(scalar_math_detail::kPi)) * rad; }
+CPU_GPU inline double Radians(double deg) { return (scalar_math_detail::kPi / 180.0) * deg; }
+CPU_GPU inline double Degrees(double rad) { return (180.0 / scalar_math_detail::kPi) * rad; }
+CPU_GPU inline float  Radians(float  deg) { return (float(scalar_math_detail::kPi) / 180.f) * deg; }
+CPU_GPU inline float  Degrees(float  rad) { return (180.f / float(scalar_math_detail::kPi)) * rad; }
 
 // ===========================================================================
 // Pow<n> -- compile-time integer exponentiation (pbrt-v4 Pow<n>)
@@ -118,38 +118,38 @@ template <> CPU_GPU constexpr double Pow<0>(double v) { (void)v; return 1.0; }
 // ===========================================================================
 // Safe trig / sqrt
 // ===========================================================================
-CPU_GPU float  SafeSqrt(float  x) { return std::sqrt(x > 0.f  ? x : 0.f); }
-CPU_GPU double SafeSqrt(double x) { return std::sqrt(x > 0.0  ? x : 0.0); }
+CPU_GPU inline float  SafeSqrt(float  x) { return std::sqrt(x > 0.f  ? x : 0.f); }
+CPU_GPU inline double SafeSqrt(double x) { return std::sqrt(x > 0.0  ? x : 0.0); }
 
-CPU_GPU float  SafeASin(float  x) { return std::asin(Clamp(x, -1.f, 1.f)); }
-CPU_GPU double SafeASin(double x) { return std::asin(Clamp(x, -1.0, 1.0)); }
-CPU_GPU float  SafeACos(float  x) { return std::acos(Clamp(x, -1.f, 1.f)); }
-CPU_GPU double SafeACos(double x) { return std::acos(Clamp(x, -1.0, 1.0)); }
+CPU_GPU inline float  SafeASin(float  x) { return std::asin(Clamp(x, -1.f, 1.f)); }
+CPU_GPU inline double SafeASin(double x) { return std::asin(Clamp(x, -1.0, 1.0)); }
+CPU_GPU inline float  SafeACos(float  x) { return std::acos(Clamp(x, -1.f, 1.f)); }
+CPU_GPU inline double SafeACos(double x) { return std::acos(Clamp(x, -1.0, 1.0)); }
 
 // ===========================================================================
 // SinXOverX / Sinc / WindowedSinc
 // ===========================================================================
 // SinXOverX(x) = sin(x)/x, with limit 1 at x=0 (stable)
 // http://www.plunk.org/~hatch/rightway.html
-CPU_GPU double SinXOverX(double x) {
+CPU_GPU inline double SinXOverX(double x) {
 	if (1.0 - x * x == 1.0) return 1.0;
 	return std::sin(x) / x;
 }
-CPU_GPU float SinXOverX(float x) {
+CPU_GPU inline float SinXOverX(float x) {
 	if (1.f - x * x == 1.f) return 1.f;
 	return std::sin(x) / x;
 }
 
 // Sinc(x) = SinXOverX(Pi * x)  [normalized sinc used in filter design]
-CPU_GPU double Sinc(double x) { return SinXOverX(scalar_math_detail::kPi * x); }
-CPU_GPU float  Sinc(float  x) { return SinXOverX(float(scalar_math_detail::kPi) * x); }
+CPU_GPU inline double Sinc(double x) { return SinXOverX(scalar_math_detail::kPi * x); }
+CPU_GPU inline float  Sinc(float  x) { return SinXOverX(float(scalar_math_detail::kPi) * x); }
 
 // WindowedSinc(x, radius, tau): Lanczos-windowed sinc; zero outside radius
-CPU_GPU double WindowedSinc(double x, double radius, double tau) {
+CPU_GPU inline double WindowedSinc(double x, double radius, double tau) {
 	if (std::abs(x) > radius) return 0.0;
 	return Sinc(x) * Sinc(x / tau);
 }
-CPU_GPU float WindowedSinc(float x, float radius, float tau) {
+CPU_GPU inline float WindowedSinc(float x, float radius, float tau) {
 	if (std::abs(x) > radius) return 0.f;
 	return Sinc(x) * Sinc(x / tau);
 }
@@ -171,7 +171,7 @@ CPU_GPU constexpr Float EvaluatePolynomial(Float t, C c, Args... cRemaining) {
 // FastExp -- ~4x faster than std::exp for float (pbrt-v4 FastExp)
 // https://stackoverflow.com/a/10792321
 // ===========================================================================
-CPU_GPU float FastExp(float x) {
+CPU_GPU inline float FastExp(float x) {
 	// Compute x' such that e^x = 2^x'
 	float xp = x * 1.442695041f;
 	// Find integer and fractional components of x'
@@ -200,12 +200,12 @@ CPU_GPU float FastExp(float x) {
 // ===========================================================================
 // SmoothStep
 // ===========================================================================
-CPU_GPU double SmoothStep(double x, double a, double b) {
+CPU_GPU inline double SmoothStep(double x, double a, double b) {
 	if (a == b) return (x < a) ? 0.0 : 1.0;
 	double t = Clamp((x - a) / (b - a), 0.0, 1.0);
 	return t * t * (3.0 - 2.0 * t);
 }
-CPU_GPU float SmoothStep(float x, float a, float b) {
+CPU_GPU inline float SmoothStep(float x, float a, float b) {
 	if (a == b) return (x < a) ? 0.f : 1.f;
 	float t = Clamp((x - a) / (b - a), 0.f, 1.f);
 	return t * t * (3.f - 2.f * t);
@@ -214,11 +214,11 @@ CPU_GPU float SmoothStep(float x, float a, float b) {
 // ===========================================================================
 // Gaussian / GaussianIntegral
 // ===========================================================================
-CPU_GPU double Gaussian(double x, double mu = 0.0, double sigma = 1.0) {
+CPU_GPU inline double Gaussian(double x, double mu = 0.0, double sigma = 1.0) {
 	return 1.0 / std::sqrt(2.0 * scalar_math_detail::kPi * sigma * sigma) *
 		   FastExp(float(-Sqr(x - mu) / (2.0 * sigma * sigma)));
 }
-CPU_GPU double GaussianIntegral(double x0, double x1,
+CPU_GPU inline double GaussianIntegral(double x0, double x1,
 										double mu = 0.0, double sigma = 1.0) {
 	double sigmaRoot2 = sigma * 1.4142135623730950488; // sqrt(2)
 	return 0.5 * (std::erf((mu - x0) / sigmaRoot2) -
@@ -228,14 +228,14 @@ CPU_GPU double GaussianIntegral(double x0, double x1,
 // ===========================================================================
 // Logistic / LogisticCDF / TrimmedLogistic
 // ===========================================================================
-CPU_GPU double Logistic(double x, double s) {
+CPU_GPU inline double Logistic(double x, double s) {
 	x = std::abs(x);
 	return std::exp(-x / s) / (s * Sqr(1.0 + std::exp(-x / s)));
 }
-CPU_GPU double LogisticCDF(double x, double s) {
+CPU_GPU inline double LogisticCDF(double x, double s) {
 	return 1.0 / (1.0 + std::exp(-x / s));
 }
-CPU_GPU double TrimmedLogistic(double x, double s, double a, double b) {
+CPU_GPU inline double TrimmedLogistic(double x, double s, double a, double b) {
 	return Logistic(x, s) / (LogisticCDF(b, s) - LogisticCDF(a, s));
 }
 
@@ -243,7 +243,7 @@ CPU_GPU double TrimmedLogistic(double x, double s, double a, double b) {
 // ErfInv -- inverse error function (pbrt-v4 ErfInv, float precision)
 // https://stackoverflow.com/a/49743348
 // ===========================================================================
-CPU_GPU float ErfInv(float a) {
+CPU_GPU inline float ErfInv(float a) {
 	float p;
 	float t = std::log(std::max(std::fma(a, -a, 1.f),
 								std::numeric_limits<float>::min()));
@@ -275,7 +275,7 @@ CPU_GPU float ErfInv(float a) {
 // ===========================================================================
 // I0 / LogI0 -- modified Bessel function of the first kind, order 0
 // ===========================================================================
-CPU_GPU double I0(double x) {
+CPU_GPU inline double I0(double x) {
 	double val  = 0.0;
 	double x2i  = 1.0;
 	int64_t ifact = 1;
@@ -289,7 +289,7 @@ CPU_GPU double I0(double x) {
 	}
 	return val;
 }
-CPU_GPU double LogI0(double x) {
+CPU_GPU inline double LogI0(double x) {
 	if (x > 12.0)
 		return x + 0.5 * (-std::log(2.0 * scalar_math_detail::kPi) + std::log(1.0 / x) + 1.0 / (8.0 * x));
 	return std::log(I0(x));
@@ -298,13 +298,13 @@ CPU_GPU double LogI0(double x) {
 // ===========================================================================
 // Integer math: Log2, Log2Int, Log4Int, IsPowerOf2/4, RoundUpPow2/4
 // ===========================================================================
-CPU_GPU double Log2(double x) {
+CPU_GPU inline double Log2(double x) {
 	constexpr double invLog2 = 1.4426950408889634074;
 	return std::log(x) * invLog2;
 }
 
 // Log2Int for 32-bit unsigned: returns floor(log2(v)), or 0 for v==0
-CPU_GPU int Log2Int(uint32_t v) {
+CPU_GPU inline int Log2Int(uint32_t v) {
 	if (v == 0) return 0;
 #if defined(_MSC_VER)
 	unsigned long lz = 0;
@@ -322,8 +322,8 @@ CPU_GPU int Log2Int(uint32_t v) {
 	return n;
 #endif
 }
-CPU_GPU int Log2Int(int32_t v)  { return Log2Int(static_cast<uint32_t>(v)); }
-CPU_GPU int Log2Int(uint64_t v) {
+CPU_GPU inline int Log2Int(int32_t v)  { return Log2Int(static_cast<uint32_t>(v)); }
+CPU_GPU inline int Log2Int(uint64_t v) {
 	if (v == 0) return 0;
 #if defined(_MSC_VER) && defined(_WIN64)
 	unsigned long lz = 0;
@@ -336,17 +336,17 @@ CPU_GPU int Log2Int(uint64_t v) {
 					 : Log2Int(static_cast<uint32_t>(v));
 #endif
 }
-CPU_GPU int Log2Int(int64_t v)  { return Log2Int(static_cast<uint64_t>(v)); }
+CPU_GPU inline int Log2Int(int64_t v)  { return Log2Int(static_cast<uint64_t>(v)); }
 
 // Float/double Log2Int: round-to-nearest (pbrt-v4 style using exponent bits)
-CPU_GPU int Log2Int(float v) {
+CPU_GPU inline int Log2Int(float v) {
 	if (v < 1.f) return -Log2Int(1.f / v);
 	uint32_t bits; std::memcpy(&bits, &v, 4);
 	int exp = static_cast<int>((bits >> 23) & 0xFF) - 127;
 	uint32_t midsignif = 0b00000000001101010000010011110011u;
 	return exp + (((bits & 0x7FFFFFu) >= midsignif) ? 1 : 0);
 }
-CPU_GPU int Log2Int(double v) {
+CPU_GPU inline int Log2Int(double v) {
 	if (v < 1.0) return -Log2Int(1.0 / v);
 	uint64_t bits; std::memcpy(&bits, &v, 8);
 	int exp = static_cast<int>((bits >> 52) & 0x7FF) - 1023;
@@ -363,12 +363,12 @@ CPU_GPU constexpr bool IsPowerOf2(T v) { return v && !(v & (v - 1)); }
 template <typename T>
 CPU_GPU bool IsPowerOf4(T v) { return v == (T(1) << (2 * Log4Int(v))); }
 
-CPU_GPU constexpr int32_t RoundUpPow2(int32_t v) {
+CPU_GPU inline constexpr int32_t RoundUpPow2(int32_t v) {
 	v--;
 	v |= v >> 1; v |= v >> 2; v |= v >> 4; v |= v >> 8; v |= v >> 16;
 	return v + 1;
 }
-CPU_GPU constexpr int64_t RoundUpPow2(int64_t v) {
+CPU_GPU inline constexpr int64_t RoundUpPow2(int64_t v) {
 	v--;
 	v |= v >> 1; v |= v >> 2; v |= v >> 4;
 	v |= v >> 8; v |= v >> 16; v |= v >> 32;
@@ -390,7 +390,7 @@ CPU_GPU size_t FindInterval(size_t sz, const Predicate& pred) {
 	ssize_t size = ssize_t(sz) - 2, first = 1;
 	while (size > 0) {
 		size_t half = size_t(size) >> 1, middle = size_t(first) + half;
-		bool result = pred(static_cast<int>(middle));
+		bool result = pred(middle);
 		first = result ? ssize_t(middle) + 1 : first;
 		size  = result ? size - ssize_t(half) - 1 : ssize_t(half);
 	}
@@ -429,7 +429,7 @@ CPU_GPU Float NewtonBisection(Float x0, Float x1, Func f,
 // Maps index i to a permuted index for permutation seed p.
 // Matches pbrt-v4 PermutationElement (util/math.h).
 // ===========================================================================
-CPU_GPU int PermutationElement(uint32_t i, uint32_t l, uint32_t p) {
+CPU_GPU inline int PermutationElement(uint32_t i, uint32_t l, uint32_t p) {
 	uint32_t w = l - 1;
 	w |= w >> 1; w |= w >> 2; w |= w >> 4; w |= w >> 8; w |= w >> 16;
 	do {

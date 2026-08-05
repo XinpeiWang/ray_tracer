@@ -4,7 +4,7 @@
 //
 // Mirrors pbrt-v4 PowerLightSampler (src/pbrt/lightsamplers.h/cpp).
 //
-// Algorithm: Vose alias table (1991) Ã¢â‚¬â€ O(n) build, O(1) sample.
+// Algorithm: Vose alias table (1991) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â O(n) build, O(1) sample.
 //   For n lights with powers p[0..n-1]:
 //     1. Normalise weights: q[i] = p[i] / sum(p).
 //     2. Build alias table: each slot i stores (prob[i], alias[i]) so that
@@ -14,7 +14,7 @@
 // Design rules (same as bxdfs.h, pmj02_sampler.h):
 //   - Header-only, no heap allocation: maximum light count is fixed at
 //     compile time via MaxLights (default 64).
-//   - CPU_GPU tagged Ã¢â‚¬â€ usable on both CPU and GPU.
+//   - CPU_GPU tagged ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â usable on both CPU and GPU.
 //   - Works with any collection of light structs that expose a power() method.
 //
 // Usage (with punctual_lights.h types):
@@ -38,7 +38,7 @@
 #   if defined(__CUDACC__)
 #       define CPU_GPU __host__ __device__ __forceinline__
 #   else
-#       define CPU_GPU
+#       define CPU_GPU inline
 #   endif
 #endif
 
@@ -100,7 +100,7 @@ private:
 		total_ = 0.0;
 		for (int i = 0; i < n_; ++i) total_ += powers[i];
 
-		// Handle degenerate case: all powers zero Ã¢â€ â€™ uniform
+		// Handle degenerate case: all powers zero ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ uniform
 		bool use_uniform = (total_ <= 0.0);
 		double uniform_p = 1.0 / double(n_);
 

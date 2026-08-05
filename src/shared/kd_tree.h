@@ -48,7 +48,7 @@
 //
 // Reference: pbrt-v4 src/pbrt/cpu/aggregates.h / aggregates.cpp (Apache-2.0)
 //            "Physically Based Rendering: From Theory to Implementation",
-//            Pharr, Jakob, Humphreys. 4th ed., Ã‚Â§7.3.
+//            Pharr, Jakob, Humphreys. 4th ed., Ãƒâ€šÃ‚Â§7.3.
 // ---------------------------------------------------------------------------
 
 #include <algorithm>
@@ -64,7 +64,7 @@
 #   if defined(__CUDACC__)
 #       define CPU_GPU __host__ __device__ __forceinline__
 #   else
-#       define CPU_GPU
+#       define CPU_GPU inline
 #   endif
 #endif
 
