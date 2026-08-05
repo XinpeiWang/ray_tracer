@@ -177,18 +177,23 @@ struct Point3fi {
 //   round each coordinate away from surface (NextFloatUp/Down)
 // ===========================================================================
 
-CPU_GPU double dot3(double ax, double ay, double az,
+// ===========================================================================
+// Internal helper in a named namespace to avoid ADL conflicts with
+// shapes_detail::dot3 / normalize3 when both headers are included together.
+namespace interval_vec_detail {
+CPU_GPU inline double dot3(double ax, double ay, double az,
 							double bx, double by, double bz) {
 	return ax*bx + ay*by + az*bz;
 }
+} // namespace interval_vec_detail
 
 /// Robust ray-origin offset from an interval-backed hit point.
 /// n = surface normal (unit, outward), w = outgoing direction.
 /// Returns the offset origin as a plain (ox, oy, oz) triple.
 CPU_GPU void OffsetRayOrigin(const Point3fi& pi,
-									 double nx, double ny, double nz,
-									 double wx, double wy, double wz,
-									 double& ox, double& oy, double& oz)
+								 double nx, double ny, double nz,
+								 double wx, double wy, double wz,
+								 double& ox, double& oy, double& oz)
 {
 	// d = Dot(|n|, error)
 	double anx = std::abs(nx), any = std::abs(ny), anz = std::abs(nz);
@@ -196,7 +201,7 @@ CPU_GPU void OffsetRayOrigin(const Point3fi& pi,
 
 	// offset = d * n  (or -d*n if w and n point in opposite directions)
 	double offx = d * nx, offy = d * ny, offz = d * nz;
-	if (dot3(wx, wy, wz, nx, ny, nz) < 0.0) {
+	if (interval_vec_detail::dot3(wx, wy, wz, nx, ny, nz) < 0.0) {
 		offx = -offx; offy = -offy; offz = -offz;
 	}
 

@@ -35,11 +35,20 @@
 //   20.  Sphere intersector fills ex/ey/ez > 0 for non-trivial hit
 //   21.  Triangle intersector fills ex/ey/ez > 0 for non-trivial hit
 //   22.  ShapeHit::ToPoint3fi reconstructs hit point within error bounds
+//
+//  SurfaceInteraction wiring (interval-backed spawn_ray_origin)
+//   23.  set_error() stores pex/pey/pez; to_point3fi() reflects them
+//   24.  spawn_ray_origin with error set uses OffsetRayOrigin (not eps-bias)
+//   25.  spawn_ray_origin without error falls back to eps-bias
+//   26.  Full pipeline: sphere ShapeHit -> set_error -> spawn_ray_origin
+//        produces offset consistent with OffsetRayOrigin
+//   27.  Full pipeline: triangle ShapeHit -> set_error -> spawn_ray_origin
 // ---------------------------------------------------------------------------
 
 #include <gtest/gtest.h>
 #include "../../src/shared/interval_vec.h"
 #include "../../src/shared/shapes.h"
+#include "../../src/shared/surface_interaction.h"
 #include <cmath>
 #include <limits>
 
@@ -329,3 +338,131 @@ TEST(ShapeHitErrorTest, ToPoint3fiReconstructsHit) {
 	EXPECT_LE(pi.x.LowerBound(), 1.0 + 1e-9);
 	EXPECT_GE(pi.x.UpperBound(), 1.0 - 1e-9);
 }
+
+// ===========================================================================
+// SurfaceInteraction wiring tests
+// ===========================================================================
+
+TEST(SurfaceInteractionOffsetTest, SetErrorStoresFields) {
+	SurfaceInteraction<double> si;
+	si.px = 1.0; si.py = 2.0; si.pz = 3.0;
+	si.nx = 0.0; si.ny = 1.0; si.nz = 0.0;
+	si.set_error(0.01, 0.02, 0.03);
+	EXPECT_DOUBLE_EQ(si.pex, 0.01);
+	EXPECT_DOUBLE_EQ(si.pey, 0.02);
+	EXPECT_DOUBLE_EQ(si.pez, 0.03);
+	// to_point3fi() should reflect stored error
+	Point3fi pi = si.to_point3fi();
+	EXPECT_NEAR(pi.mx(), 1.0, kEps);
+	EXPECT_NEAR(pi.my(), 2.0, kEps);
+	EXPECT_NEAR(pi.mz(), 3.0, kEps);
+	EXPECT_NEAR(pi.ex(), 0.01, 1e-9);
+	EXPECT_NEAR(pi.ey(), 0.02, 1e-9);
+	EXPECT_NEAR(pi.ez(), 0.03, 1e-9);
+}
+
+TEST(SurfaceInteractionOffsetTest, SpawnRayOriginWithError_UsesOffsetRayOrigin) {
+	// Hit at (1,0,0) on a sphere: normal = +X, outgoing = +X
+	// set_error with gamma(5)*|p| = gamma(5)*1 for x component
+	SurfaceInteraction<double> si;
+	si.px = 1.0; si.py = 0.0; si.pz = 0.0;
+	si.nx = 1.0; si.ny = 0.0; si.nz = 0.0;
+
+	double g5 = (5.0 * std::numeric_limits<double>::epsilon() * 0.5)
+			  / (1.0 - 5.0 * std::numeric_limits<double>::epsilon() * 0.5);
+	si.set_error(g5 * 1.0, 0.0, 0.0);  // matches sphere gamma(5)*|x|
+
+	double ox, oy, oz;
+	si.spawn_ray_origin(ox, oy, oz, 1.0, 0.0, 0.0);  // outgoing = +X
+
+	// Direct OffsetRayOrigin call on the same Point3fi should give same result
+	double ref_ox, ref_oy, ref_oz;
+	OffsetRayOrigin(si.to_point3fi(),
+					1.0, 0.0, 0.0,  // normal
+					1.0, 0.0, 0.0,  // direction
+					ref_ox, ref_oy, ref_oz);
+
+	EXPECT_DOUBLE_EQ(ox, ref_ox);
+	EXPECT_DOUBLE_EQ(oy, ref_oy);
+	EXPECT_DOUBLE_EQ(oz, ref_oz);
+	// And the origin should be slightly beyond the surface (>= 1.0)
+	EXPECT_GE(ox, 1.0);
+}
+
+TEST(SurfaceInteractionOffsetTest, SpawnRayOriginWithoutError_FallsBackToEps) {
+	// No set_error call -> pex=pey=pez=0 -> use eps-bias
+	SurfaceInteraction<double> si;
+	si.px = 0.0; si.py = 0.0; si.pz = 0.0;
+	si.nx = 0.0; si.ny = 1.0; si.nz = 0.0;
+	// pex/pey/pez remain zero (default)
+
+	double ox, oy, oz;
+	double eps = 1e-4;
+	si.spawn_ray_origin(ox, oy, oz, 0.0, 1.0, 0.0, eps);  // outgoing = +Y
+
+	// Eps-bias: origin = p + eps * n
+	EXPECT_NEAR(ox, 0.0,  kEps);
+	EXPECT_NEAR(oy, eps,  kEps);
+	EXPECT_NEAR(oz, 0.0,  kEps);
+}
+
+TEST(SurfaceInteractionOffsetTest, FullPipeline_SphereShapeHitToSpawnRay) {
+	// Full pipeline: sphere intersection -> set_error -> spawn_ray_origin
+	SphereShape<double> sphere = SphereShape<double>::make(0.0, 0.0, 0.0, 1.0);
+	double rox = 3.0, roy = 0.0, roz = 0.0;
+	double rdx = -1.0, rdy = 0.0, rdz = 0.0;
+	auto hit = sphere.intersect(rox, roy, roz, rdx, rdy, rdz, 0.0, 1e30);
+	ASSERT_TRUE(hit.has_value());
+
+	// Build SurfaceInteraction from ShapeHit
+	SurfaceInteraction<double> si;
+	si.px = rox + hit->t * rdx;
+	si.py = roy + hit->t * rdy;
+	si.pz = roz + hit->t * rdz;
+	si.nx = hit->nx; si.ny = hit->ny; si.nz = hit->nz;
+	si.set_error(hit->ex, hit->ey, hit->ez);  // wire shape error bounds
+
+	// Spawn a reflected ray (outgoing = +X, same side as normal)
+	double ox, oy, oz;
+	si.spawn_ray_origin(ox, oy, oz, 1.0, 0.0, 0.0);
+
+	// The spawned origin must be outside the sphere (ox >= 1.0)
+	double dist_from_center = std::sqrt(ox*ox + oy*oy + oz*oz);
+	EXPECT_GE(dist_from_center, 1.0 - 1e-9);
+
+	// It must be strictly closer than the eps-bias would produce
+	// (mathematically derived offset << 1e-4 for unit sphere)
+	double eps_offset = std::abs(ox - 1.0);
+	EXPECT_LT(eps_offset, 1e-4);
+}
+
+TEST(SurfaceInteractionOffsetTest, FullPipeline_TriangleShapeHitToSpawnRay) {
+	// Full pipeline: triangle intersection -> set_error -> spawn_ray_origin
+	TriangleShape<double> tri;
+	tri.p0x = 0.0; tri.p0y = 0.0; tri.p0z = 0.0;
+	tri.p1x = 1.0; tri.p1y = 0.0; tri.p1z = 0.0;
+	tri.p2x = 0.0; tri.p2y = 1.0; tri.p2z = 0.0;
+	tri.has_shading_normals = false;
+
+	double rox = 0.25, roy = 0.25, roz = 3.0;
+	double rdx = 0.0,  rdy = 0.0,  rdz = -1.0;
+	auto hit = tri.intersect(rox, roy, roz, rdx, rdy, rdz, 0.0, 1e30);
+	ASSERT_TRUE(hit.has_value());
+
+	SurfaceInteraction<double> si;
+	si.px = rox + hit->t * rdx;
+	si.py = roy + hit->t * rdy;
+	si.pz = roz + hit->t * rdz;
+	si.nx = hit->nx; si.ny = hit->ny; si.nz = hit->nz;
+	si.set_error(hit->ex, hit->ey, hit->ez);
+
+	// Spawn toward +Z (reflection side)
+	double ox, oy, oz;
+	si.spawn_ray_origin(ox, oy, oz, 0.0, 0.0, 1.0);
+
+	// Triangle is in z=0 plane, normal = +Z; origin should be above z=0
+	EXPECT_GE(oz, 0.0);
+	// Offset should be tiny (gamma-derived, not eps=1e-4)
+	EXPECT_LT(std::abs(oz), 1e-4);
+}
+

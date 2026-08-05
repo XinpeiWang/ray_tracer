@@ -987,7 +987,7 @@ struct TriangleShape {
 			if (nlen > T(0)) { nnx /= nlen; nny /= nlen; nnz /= nlen; }
 		} else {
 			nnx = gnx; nny = gny; nnz = gnz;
-			normalize3(nnx, nny, nnz);
+			shapes_detail::normalize3(nnx, nny, nnz);
 		}
 
 		// (u,v) = barycentric (b0, b1)

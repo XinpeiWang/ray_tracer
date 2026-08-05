@@ -25,6 +25,7 @@
 
 #include "shading_frame.h"
 #include "materials.h"   // MaterialEvalContext<T>
+#include "interval_vec.h" // Point3fi, OffsetRayOrigin
 
 #include <cmath>
 #include <optional>
@@ -83,6 +84,19 @@ struct SurfaceInteraction {
 	T t    = T(0);
 	T time = T(0);
 	int face_index = 0;
+
+	// Per-component absolute position-error bounds (pbrt-v4 pError / Point3fi).
+	// Set by shapes via set_error(); zero means fall back to eps-bias in spawn_ray_origin.
+	T pex = T(0), pey = T(0), pez = T(0);
+
+	// Set position error from a ShapeHit (or any computed gamma-bound triple).
+	void set_error(T ex, T ey, T ez) { pex = ex; pey = ey; pez = ez; }
+
+	// Build a Point3fi from the stored hit point + error (for OffsetRayOrigin).
+	Point3fi to_point3fi() const {
+		return Point3fi(double(px), double(py), double(pz),
+						double(pex), double(pey), double(pez));
+	}
 
 	// -----------------------------------------------------------------------
 	// Default constructor
@@ -288,28 +302,52 @@ struct SurfaceInteraction {
 	// geometric normal to avoid self-intersection.
 	// Mirrors pbrt-v4 Interaction::OffsetRayOrigin(Vector3f w).
 	//
-	// The offset direction is chosen by the sign of Dot(n, w):
-	//   positive w side  -> offset along +n (reflected / same-side ray)
-	//   negative w side  -> offset along -n (transmitted ray)
-	//
-	// eps: offset magnitude (default 1e-4 for unit-scale scenes).
+	// When position error bounds (pex/pey/pez) have been set by the shape
+	// intersector, uses the pbrt-v4 interval-backed OffsetRayOrigin algorithm
+	// for a mathematically tight, geometry-derived offset.
+	// Falls back to a fixed eps-bias when no error bounds are available
+	// (e.g., procedural geometry or legacy call sites).
 	void spawn_ray_origin(T& ox, T& oy, T& oz,
 						  T wx, T wy, T wz,
 						  T eps = T(1e-4)) const {
-		T sign = (nx*wx + ny*wy + nz*wz >= T(0)) ? T(1) : T(-1);
-		ox = px + sign * eps * nx;
-		oy = py + sign * eps * ny;
-		oz = pz + sign * eps * nz;
+		if (pex != T(0) || pey != T(0) || pez != T(0)) {
+			// pbrt-v4 path: interval-backed OffsetRayOrigin (always double precision)
+			double dox, doy, doz;
+			OffsetRayOrigin(to_point3fi(),
+							double(nx), double(ny), double(nz),
+							double(wx), double(wy), double(wz),
+							dox, doy, doz);
+			ox = T(dox); oy = T(doy); oz = T(doz);
+		} else {
+			// Legacy fallback: fixed eps-bias along normal
+			T sign = (nx*wx + ny*wy + nz*wz >= T(0)) ? T(1) : T(-1);
+			ox = px + sign * eps * nx;
+			oy = py + sign * eps * ny;
+			oz = pz + sign * eps * nz;
+		}
 	}
 
 	// Overload: explicit sign (+1 front-side, -1 back-side).
 	// Kept for backward compatibility with existing call sites.
+	// Uses OffsetRayOrigin when errors are set (direction = sign * n).
 	void spawn_ray_origin(T& ox, T& oy, T& oz,
 						  T sign_along_normal,
 						  T eps = T(1e-4)) const {
-		ox = px + sign_along_normal * eps * nx;
-		oy = py + sign_along_normal * eps * ny;
-		oz = pz + sign_along_normal * eps * nz;
+		if (pex != T(0) || pey != T(0) || pez != T(0)) {
+			// Direction is sign_along_normal * n
+			double dox, doy, doz;
+			OffsetRayOrigin(to_point3fi(),
+							double(nx), double(ny), double(nz),
+							double(sign_along_normal) * double(nx),
+							double(sign_along_normal) * double(ny),
+							double(sign_along_normal) * double(nz),
+							dox, doy, doz);
+			ox = T(dox); oy = T(doy); oz = T(doz);
+		} else {
+			ox = px + sign_along_normal * eps * nx;
+			oy = py + sign_along_normal * eps * ny;
+			oz = pz + sign_along_normal * eps * nz;
+		}
 	}
 
 	// -----------------------------------------------------------------------
