@@ -7,16 +7,18 @@
 //   We also check that the tabulation is non-negative and finite.
 //
 // Tests:
-//   1.  Sample1D_SinFunction       -- sin(x) on [0, pi]: known analytic max per cell
-//   2.  Sample1D_ConstantFunction  -- f(x)=C: all cells must equal C
-//   3.  Sample1D_LinearFunction    -- f(x)=x on [0,1]: cell max = right endpoint
-//   4.  Sample1D_AccuracyCheck     -- relative accuracy vs true cell max
-//   5.  Sample1D_OutputNonNegative -- no negative or NaN values in output
-//   6.  Sample1D_StepFunction      -- f=0 for x<0.5, f=1 for x>=0.5
-//   7.  Sample2D_ConstantFunction  -- f(x,y)=C: all cells = C
-//   8.  Sample2D_ProductFunction   -- f(x,y)=sin(x)*sin(y): conservative bound
-//   9.  Sample2D_RowMajorLayout    -- verify values[v*nu+u] layout
-//   10. Sample2D_OutputNonNegative -- no negative or NaN values in 2D output
+//   1.  Sample1D_SinFunction            -- sin(x) on [0, pi]: known analytic max per cell
+//   2.  Sample1D_ConstantFunction        -- f(x)=C: all cells must equal C
+//   3.  Sample1D_LinearFunction          -- f(x)=x on [0,1]: cell max = right endpoint
+//   4.  Sample1D_AccuracyCheck           -- relative accuracy vs true cell max
+//   5.  Sample1D_OutputNonNegative       -- no negative or NaN values in output
+//   6.  Sample1D_StepFunction            -- f=0 for x<0.35, f=1 for x>=0.35
+//   7.  Sample2D_ConstantFunction        -- f(x,y)=C: all cells = C
+//   8.  Sample2D_ProductFunction         -- f(x,y)=sin(x)*sin(y): accuracy bound
+//   9.  Sample2D_RowMajorLayout          -- verify values[v*nu+u] layout
+//   10. Sample2D_OutputNonNegative       -- no negative or NaN values in 2D output
+//   11. Sample1D_PbrtCanonical_LinearP1  -- pbrt-v4 test: f(x)=1+x on [-1,3], 65536 cells
+//   12. Sample2D_PbrtCanonical_XsqY      -- pbrt-v4 test: f(x,y)=x^2*y on [0,1]^2, 4x2
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -214,4 +216,55 @@ TEST(SampleFunctionTest, Sample2D_OutputNonNegative) {
 		EXPECT_GE(values[i], 0.0) << "cell " << i << " is negative";
 		EXPECT_TRUE(std::isfinite(values[i])) << "cell " << i << " is not finite";
 	}
+}
+
+// ===========================================================================
+// Tests 11-12: pbrt-v4 canonical alignment
+// These mirror the exact test cases from pbrt-v4/src/pbrt/util/sampling_test.cpp
+// to ensure our port matches pbrt-v4's expected behaviour exactly.
+// ===========================================================================
+
+// Test 11: mirrors pbrt-v4 PiecewiseConstant1D.FromFuncLInfinity
+// f(x) = 1 + x on [-1, 3]: linear, so each cell's max = right endpoint value.
+// With 65536 cells and 4 sub-samples the right-endpoint is always sampled
+// (delta=1.0 when j=nSamples), so each cell value equals f(cell_right) exactly.
+TEST(SampleFunctionTest, Sample1D_PbrtCanonical_LinearP1) {
+	auto f = [](double x) { return 1.0 + x; };
+	const int nSteps   = 65536;
+	const int nSamples = 4;
+	const double xMin  = -1.0, xMax = 3.0;
+	auto values = Sample1DFunction(f, nSteps, nSamples, xMin, xMax);
+	ASSERT_EQ((int)values.size(), nSteps);
+	for (int i = 0; i < nSteps; ++i) {
+		// Right endpoint of cell i: f is monotone increasing, so max = f(right).
+		double x_right = xMin + (xMax - xMin) * ((i + 1.0) / nSteps);
+		double expected = 1.0 + x_right;
+		EXPECT_NEAR(values[i], expected, 1e-9)
+			<< "cell " << i << ": got " << values[i] << " expected " << expected;
+	}
+}
+
+// Test 12: mirrors pbrt-v4 PiecewiseConstant2D.FromFuncLInfinity
+// f(x,y) = x^2 * y on [0,1]^2, nu=4, nv=2, nSamples=1.
+// With nSamples=1 the only interior sample is Halton(0,0)=0, Halton(1,0)=0,
+// i.e. the cell origin. The mandatory corners add (0,1),(1,0),(1,1).
+// For a monotone-increasing (in both x and y) function the max is always at
+// the top-right corner (x1, y1) of each cell.
+// Expected values match pbrt-v4's own test: Sqr(u_right) * v_top.
+TEST(SampleFunctionTest, Sample2D_PbrtCanonical_XsqY) {
+	auto f = [](double x, double y) { return x * x * y; };
+	const int nu = 4, nv = 2;
+	auto values = Sample2DFunction(f, nu, nv, 1, 0.0, 0.0, 1.0, 1.0);
+	ASSERT_EQ((int)values.size(), nu * nv);
+	// Exact expected values from pbrt-v4 sampling_test.cpp:
+	// { (0.25)^2*0.5, (0.5)^2*0.5, (0.75)^2*0.5, 1^2*0.5,
+	//   (0.25)^2*1,   (0.5)^2*1,   (0.75)^2*1,   1^2*1   }
+	const double exact[8] = {
+		0.25*0.25*0.5, 0.5*0.5*0.5, 0.75*0.75*0.5, 1.0*1.0*0.5,
+		0.25*0.25*1.0, 0.5*0.5*1.0, 0.75*0.75*1.0, 1.0*1.0*1.0
+	};
+	for (int v = 0; v < nv; ++v)
+		for (int u = 0; u < nu; ++u)
+			EXPECT_NEAR(values[v * nu + u], exact[v * nu + u], 1e-9)
+				<< "cell (" << u << "," << v << ")";
 }
