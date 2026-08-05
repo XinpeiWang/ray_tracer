@@ -371,3 +371,75 @@ TEST(SphericalInversionTest, SphericalTriInvert_ObliqueTriangle) {
 		EXPECT_NEAR(ru1, u1, kTol) << "oblique tri sample " << i << " u1";
 	}
 }
+
+// ===========================================================================
+// Test 10: SphericalRectInvert_NegativeB0Observer
+// Observer positioned so that y0 > 0 in local frame AND b0 < 0.
+// This exercises the copysign(b0*sqrt, fu*b0) path that was previously wrong.
+// Rectangle at z=2, observer ABOVE the rectangle's y-extent (oy=2) so local y0>0.
+// ===========================================================================
+TEST(SphericalInversionTest, SphericalRectInvert_NegativeB0Observer) {
+	// Rectangle: unit square at z=2, origin (0,0,2), ex=(1,0,0), ey=(0,1,0)
+	// Observer at (0.5, 2.5, 0): local y0 = 0 - 2.5 = -2.5, y1 = 1 - 2.5 = -1.5
+	// => n0, n2 have negative z-components => b0 < 0
+	LCG rng(7);
+	double obs_x = 0.5, obs_y = 2.5, obs_z = 0.0;
+	for (int i = 0; i < 100; ++i) {
+		double u0 = rng.next(), u1 = rng.next();
+		double prx, pry, prz;
+		fwd_rect(obs_x, obs_y, obs_z,
+				 kSx, kSy, kSz,
+				 kExx, kExy, kExz,
+				 kEyx, kEyy, kEyz,
+				 u0, u1, prx, pry, prz);
+		double ru0, ru1;
+		InvertSphericalRectangleSample(
+			obs_x, obs_y, obs_z,
+			kSx, kSy, kSz,
+			kExx, kExy, kExz,
+			kEyx, kEyy, kEyz,
+			prx, pry, prz, &ru0, &ru1);
+		EXPECT_NEAR(ru0, u0, kTol) << "b0<0 observer sample " << i << " u0";
+		EXPECT_NEAR(ru1, u1, kTol) << "b0<0 observer sample " << i << " u1";
+	}
+}
+
+// ===========================================================================
+// Test 11: SphericalRectInvert_WideObserverSweep
+// Sweeps observer across positions that produce both positive and negative b0/b1.
+// This is a broad regression test for the copysign / atan2 computation.
+// ===========================================================================
+TEST(SphericalInversionTest, SphericalRectInvert_WideObserverSweep) {
+	struct Pos { double x, y, z; };
+	// Positions chosen to span all quadrants of local (y0, y1) sign combinations
+	Pos observers[] = {
+		{  0.5,  0.5,  0.0 },  // centred below, y0<0, y1<0  (b0>0)
+		{  0.5,  2.5,  0.0 },  // above rect, y0<0, y1>0  (b0<0)
+		{  0.5, -1.0,  0.0 },  // far below, y0>0, y1>0  (b0>0)
+		{ -0.5,  0.5,  0.0 },  // offset left
+		{  1.5,  0.5,  1.5 },  // elevated observer
+	};
+	LCG rng(8);
+	for (auto& obs : observers) {
+		for (int i = 0; i < 80; ++i) {
+			double u0 = rng.next(), u1 = rng.next();
+			double prx, pry, prz;
+			fwd_rect(obs.x, obs.y, obs.z,
+					 kSx, kSy, kSz,
+					 kExx, kExy, kExz,
+					 kEyx, kEyy, kEyz,
+					 u0, u1, prx, pry, prz);
+			double ru0, ru1;
+			InvertSphericalRectangleSample(
+				obs.x, obs.y, obs.z,
+				kSx, kSy, kSz,
+				kExx, kExy, kExz,
+				kEyx, kEyy, kEyz,
+				prx, pry, prz, &ru0, &ru1);
+			EXPECT_NEAR(ru0, u0, kTol)
+				<< "obs(" << obs.x << "," << obs.y << "," << obs.z << ") i=" << i << " u0";
+			EXPECT_NEAR(ru1, u1, kTol)
+				<< "obs(" << obs.x << "," << obs.y << "," << obs.z << ") i=" << i << " u1";
+		}
+	}
+}

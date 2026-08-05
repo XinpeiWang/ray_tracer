@@ -1195,15 +1195,19 @@ CPU_GPU void InvertSphericalRectangleSample(
 	xu = xu < x0 ? x0 : (xu > x1 ? x1 : xu);
 	if (xu == 0.0) xu = 1e-10;
 
-	// Invert the x-direction (cu) to recover u0
+	// Invert the x-direction (cu) to recover u0.
+	// Mirrors pbrt-v4 exactly: sqrt(DifferenceOfProducts(b0,b0,b1,b1)+fusq)
+	// then atan2 with copysign(b0*sqrt, fu*b0).
 	double invcusq = 1.0 + z0sq / (xu * xu);
 	double fusq = invcusq - b0sq;
 	if (fusq < 0.0) fusq = 0.0;
 	double fu = xu > 0.0 ? std::sqrt(fusq) : -std::sqrt(fusq);
 
-	double sq_term = b0 * b0 - b1 * b1 + fusq;
-	double sqrt_val = sq_term > 0.0 ? std::sqrt(sq_term) : 0.0;
-	double au = std::atan2(-(b1 * fu) - (fu * b0 >= 0.0 ? 1.0 : -1.0) * (b0 * sqrt_val),
+	// pbrt-v4: SafeSqrt(DifferenceOfProducts(b0,b0,b1,b1) + fusq)
+	double sq_arg = b0 * b0 - b1 * b1 + fusq;
+	double sqrt_val = sq_arg > 0.0 ? std::sqrt(sq_arg) : 0.0;
+	// pbrt-v4: atan2(-(b1*fu) - copysign(b0*sqrt, fu*b0), b0*b1 - sqrt*|fu|)
+	double au = std::atan2(-(b1 * fu) - std::copysign(b0 * sqrt_val, fu * b0),
 							b0 * b1 - sqrt_val * std::abs(fu));
 	if (au > 0.0) au -= 2.0 * Pi;
 	if (fu == 0.0) au = Pi;
