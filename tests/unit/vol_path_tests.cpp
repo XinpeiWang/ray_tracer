@@ -87,7 +87,7 @@ struct VacuumScene {
 		out[0]=out[1]=out[2]=0.8f/3.14159265f;
 	}
 	bool BSDFSampleF(int, const float*, const float n[3], float u1, float u2,
-					 float nd[3], float fv[3], float& pdf, bool& is_spec) const {
+				 float nd[3], float fv[3], float& pdf, bool& is_spec, bool& is_trans) const {
 		float phi=2.f*3.14159265f*u1,ct=std::sqrt(u2),st=std::sqrt(1.f-u2);
 		float tx=1.f,ty=0.f,tz=0.f;
 		if(std::fabs(n[0])>0.9f){tx=0.f;ty=1.f;}
@@ -99,7 +99,7 @@ struct VacuumScene {
 		nd[1]=lx*ty+ly*by+ct*n[1];
 		nd[2]=lx*tz+ly*bz+ct*n[2];
 		fv[0]=fv[1]=fv[2]=0.8f/3.14159265f;
-		pdf=ct/3.14159265f; is_spec=false;
+		pdf=ct/3.14159265f; is_spec=false; is_trans=false;
 		return pdf>0.f;
 	}
 	float BSDFPdf(int, const float*, const float wi[3], const float n[3]) const {
@@ -107,6 +107,22 @@ struct VacuumScene {
 		return c>0.f?c/3.14159265f:0.f;
 	}
 	bool  BSDFIsNonSpecular(int) const { return true; }
+	void  BSDFRegularize(int) const {}  // no-op stub
+
+	// BSSRDF: no subsurface scattering in this scene
+	bool  HasBSSRDF(const BDPTHit<float>&) const { return false; }
+	bool  SampleBSSRDFProbe(const BDPTHit<float>&, float, float,
+							 BSSRDFProbeSegment<float>&) const { return false; }
+	bool  SampleBSSRDF(const BDPTHit<float>&, const BDPTHit<float>&,
+						float, BSSRDFSample<float>&) const { return false; }
+	void  SpawnRay(const BDPTHit<float>& hit, const float dir[3],
+				   float new_o[3], float new_d[3]) const {
+		constexpr float kEps = 1e-3f;
+		new_o[0]=hit.p[0]+kEps*hit.geo_n[0];
+		new_o[1]=hit.p[1]+kEps*hit.geo_n[1];
+		new_o[2]=hit.p[2]+kEps*hit.geo_n[2];
+		new_d[0]=dir[0]; new_d[1]=dir[1]; new_d[2]=dir[2];
+	}
 	bool  HasMedium(const float*, const float*) const { return false; }
 	float SampleTMaj(const float*, const float*, float, float,
 					 const std::function<bool(const float*, const VolPathMediumProps<float>&,

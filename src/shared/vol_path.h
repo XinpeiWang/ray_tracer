@@ -19,9 +19,7 @@
 //   - RGB output (no spectral wavelengths)
 //
 // Omissions vs. pbrt-v4:
-//   - BSSRDF subsurface scattering branch (not yet ported)
-//   - Path regularisation flag (scene concept can implement via its BSDFs)
-//   - Sampler jitter/stratification (callers provide u1/u2 per bounce)
+//   - Sampler jitter/stratification (callers provide random numbers)
 //
 // Scene concept (extends sppm.h / bdpt.h concept):
 //   // Basic geometry
@@ -38,19 +36,30 @@
 //   void  BSDFf(int id, const T wo[3], const T wi[3], const T n[3],
 //               T out[3]) const
 //   bool  BSDFSampleF(int id, const T wo[3], const T n[3], T u1, T u2,
-//                     T new_dir[3], T f_val[3], T& pdf, bool& is_specular) const
+//                     T new_dir[3], T f_val[3], T& pdf,
+//                     bool& is_specular, bool& is_transmission) const
 //   T     BSDFPdf(int id, const T wo[3], const T wi[3], const T n[3]) const
 //   bool  BSDFIsNonSpecular(int bsdf_id) const
+//   void  BSDFRegularize(int bsdf_id)   // only called when regularize=true
+//
+//   // BSSRDF subsurface scattering (pbrt-v4 VolPathIntegrator::Li lines 1187-1255)
+//   // Return false if this surface hit has no BSSRDF (the branch is skipped).
+//   bool  HasBSSRDF(const BDPTHit<T>& hit) const
+//   // Sample a disc probe segment from the entry point.
+//   // Fills seg.p0/p1 (world-space endpoints). Returns false on failure.
+//   bool  SampleBSSRDFProbe(const BDPTHit<T>& hit,
+//                            T u1, T u2,
+//                            BSSRDFProbeSegment<T>& seg) const
+//   // Given an exit-surface hit found along the probe segment,
+//   // fill out a BSSRDFSample<T> (Sp, pdf, exit wo, exit bsdf_id).
+//   // Returns false on failure.
+//   bool  SampleBSSRDF(const BDPTHit<T>& entry_hit,
+//                      const BDPTHit<T>& exit_hit,
+//                      T sample_prob,
+//                      BSSRDFSample<T>& out) const
 //
 //   // Medium: null-scattering (majorant) walk
-//   // Returns false if the segment has no medium (vacuum).
-//   // On entry:  org/dir/t_max define the ray segment.
-//   // Callback per null-collision event: called with (p, props, sigma_maj, T_maj_0)
-//   //   where T_maj_0 = exp(-sigma_maj * dt) for the sub-step.
-//   //   Returns true to continue, false to stop.
 //   bool  HasMedium(const T org[3], const T dir[3]) const
-//   // Walk the majorant null-scattering chain; callback returns false to stop.
-//   // Returns final residual T_maj factor after the last segment.
 //   T     SampleTMaj(const T org[3], const T dir[3], T t_max,
 //                    T u_maj,
 //                    const std::function<bool(
@@ -70,6 +79,10 @@
 //
 //   // Random numbers
 //   T     RandFloat() const
+//
+//   // Spawn an offset ray from a surface hit to avoid self-intersection
+//   void  SpawnRay(const BDPTHit<T>& hit, const T dir[3],
+//                  T new_o[3], T new_d[3]) const
 // ---------------------------------------------------------------------------
 
 #ifndef CPU_GPU
@@ -81,12 +94,43 @@
 #endif
 
 #include "bdpt.h"   // BDPTHit, BDPTLightSample, BDPTLightLeSample
+#include "reservoir_sampler.h"  // WeightedReservoirSampler
 
 #include <cmath>
 #include <functional>
 #include <algorithm>
 #include <limits>
 #include <cstdint>
+
+// ===========================================================================
+// BSSRDFProbeSegment<T> -- world-space endpoints of the BSSRDF probe disc
+//
+// Mirrors pbrt-v4 BSSRDFProbeSegment (bssrdf.h).
+// The scene adapter fills p0 (entry side) and p1 (opposite disc edge)
+// so that the integrator can walk the segment to find the exit surface.
+// ===========================================================================
+template<typename T>
+struct BSSRDFProbeSegment {
+	T p0[3] = {}; // start of probe segment (just inside the entry surface)
+	T p1[3] = {}; // end of probe segment (maximum exit point on opposite side)
+};
+
+// ===========================================================================
+// BSSRDFSample<T> -- result of sampling the subsurface exit point
+//
+// Mirrors pbrt-v4 BSSRDFSample (bssrdf.h).
+// Sp     -- profile value (RGB, i.e. one value per channel; here 3 floats)
+// pdf    -- probability density of this exit point (solid-angle measure)
+// wo     -- outgoing direction at exit point (pointing outward from surface)
+// exit_bsdf_id -- BSDF id to use for indirect scatter at exit point
+// ===========================================================================
+template<typename T>
+struct BSSRDFSample {
+	T  Sp[3]       = {};
+	T  pdf         = T(0);
+	T  wo[3]       = {};
+	int exit_bsdf_id = 0;
+};
 
 // ===========================================================================
 // Section 1 -- VolPathMediumProps<T>
@@ -268,7 +312,8 @@ template<typename T, typename Scene>
 void VolPathLi(const T org[3], const T dir[3],
 			   int maxDepth,
 			   const Scene& scene,
-			   T L_out[3]) {
+			   T L_out[3],
+			   bool regularize = false) {
 	L_out[0] = L_out[1] = L_out[2] = T(0);
 
 	// Path state (mirrors pbrt-v4 VolPathIntegrator::Li locals)
@@ -277,6 +322,7 @@ void VolPathLi(const T org[3], const T dir[3],
 	T r_u     = T(1);
 	T r_l     = T(1);
 	bool specularBounce = true;
+	bool any_non_specular_bounce = false;
 	T etaScale = T(1);
 	int depth  = 0;
 
@@ -458,7 +504,13 @@ void VolPathLi(const T org[3], const T dir[3],
 		if (depth++ >= maxDepth) break;
 
 		// ---------------------------------------------------------------
-		// 6. NEE at surface (non-specular only)
+		// 6. Path regularization (pbrt-v4 VolPathIntegrator::Li lines 1151-1153)
+		// ---------------------------------------------------------------
+		if (regularize && any_non_specular_bounce)
+			scene.BSDFRegularize(hit.bsdf_id);
+
+		// ---------------------------------------------------------------
+		// 7. NEE at surface (non-specular only)
 		// ---------------------------------------------------------------
 		if (scene.BSDFIsNonSpecular(hit.bsdf_id)) {
 			T Ld[3];
@@ -473,9 +525,10 @@ void VolPathLi(const T org[3], const T dir[3],
 		// ---------------------------------------------------------------
 		T new_dir[3], f_val[3], bsdf_pdf;
 		bool is_specular;
+		bool is_transmission = false;
 		T u1 = scene.RandFloat(), u2 = scene.RandFloat();
 		if (!scene.BSDFSampleF(hit.bsdf_id, hit.wo, hit.shading_n,
-							   u1, u2, new_dir, f_val, bsdf_pdf, is_specular))
+							   u1, u2, new_dir, f_val, bsdf_pdf, is_specular, is_transmission))
 			break;
 		if (bsdf_pdf <= T(0)) break;
 
@@ -493,12 +546,155 @@ void VolPathLi(const T org[3], const T dir[3],
 		// (it will be updated by the medium walk at the start of next iteration)
 
 		specularBounce = is_specular;
+		any_non_specular_bounce |= !is_specular;
 
 		// Transmission: accumulate eta^2 for Russian roulette
 		// (simplified: callers encode eta in the BSDF f_val weighting)
 
 		// ---------------------------------------------------------------
-		// 8. Russian roulette  (mirrors pbrt-v4: rrBeta = beta*etaScale/r_u.Average())
+		// 8. BSSRDF subsurface scattering branch
+		//    (pbrt-v4 VolPathIntegrator::Li lines 1187-1255)
+		//
+		// When the scattered direction is a transmission (entered the
+		// surface) and the hit material has a BSSRDF, we abandon the
+		// refracted ray and instead find the subsurface exit point by
+		// probing the geometry with a disc-shaped importance-sampled
+		// segment.  The exit point replaces the next surface hit.
+		// Depth is NOT incremented (mirrors pbrt-v4 "Don't increment
+		// depth this time").
+		// ---------------------------------------------------------------
+		if (is_transmission && scene.HasBSSRDF(hit)) {
+			// Sample the probe segment endpoints
+			T uc = scene.RandFloat();
+			T up1 = scene.RandFloat(), up2 = scene.RandFloat();
+			BSSRDFProbeSegment<T> seg{};
+			if (!scene.SampleBSSRDFProbe(hit, up1, up2, seg))
+				break;
+
+			// Walk the probe segment and reservoir-sample one exit hit
+			// with uniform probability (all intersecting faces of the
+			// same material are weighted equally, mirroring pbrt-v4's
+			// WeightedReservoirSampler<SubsurfaceInteraction> with weight=1).
+			uint64_t rs_seed = static_cast<uint64_t>(
+				*reinterpret_cast<const uint32_t*>(&uc) ^
+				static_cast<uint32_t>(depth * 2654435761u));
+			WeightedReservoirSampler<BDPTHit<T>> wrs(rs_seed);
+			{
+				// Segment direction and length
+				T seg_d[3] = {
+					seg.p1[0] - seg.p0[0],
+					seg.p1[1] - seg.p0[1],
+					seg.p1[2] - seg.p0[2]
+				};
+				T seg_len = std::sqrt(seg_d[0]*seg_d[0] +
+									  seg_d[1]*seg_d[1] +
+									  seg_d[2]*seg_d[2]);
+				if (seg_len < T(1e-8)) break;
+				seg_d[0] /= seg_len;
+				seg_d[1] /= seg_len;
+				seg_d[2] /= seg_len;
+
+				// Walk: intersect the probe segment repeatedly,
+				// advancing the origin past each hit, collecting
+				// exit-surface candidates.
+				T base[3] = { seg.p0[0], seg.p0[1], seg.p0[2] };
+				T remaining = seg_len;
+				while (remaining > T(1e-8)) {
+					BDPTHit<T> probe_hit{};
+					if (!scene.Intersect(base, seg_d, remaining, probe_hit))
+						break;
+					// Uniform weight = 1 for each candidate hit
+					wrs.add(probe_hit, 1.0);
+					// Advance past this hit
+					T step = probe_hit.t_hit + T(1e-4);
+					base[0] += step * seg_d[0];
+					base[1] += step * seg_d[1];
+					base[2] += step * seg_d[2];
+					remaining -= step;
+				}
+			}
+
+			if (!wrs.has_sample()) break;
+
+			// Convert the chosen exit hit to a BSSRDFSample
+			BSSRDFSample<T> bss{};
+			if (!scene.SampleBSSRDF(hit, wrs.sample(),
+									static_cast<T>(wrs.sample_probability()),
+									bss))
+				break;
+			if (bss.pdf <= T(0)) break;
+
+			// Update path throughput and unidirectional PDF ratio
+			// beta *= Sp / (sample_prob * pdf)  -- mirrors pbrt-v4
+			// r_u  *= pdf / pdf_ch0             -- multi-channel correction
+			//   (for RGB, pdf is scalar so r_u is unchanged; kept for correctness)
+			T inv_pdf = T(1) / (static_cast<T>(wrs.sample_probability()) * bss.pdf);
+			for (int c = 0; c < 3; ++c)
+				beta[c] *= bss.Sp[c] * inv_pdf;
+			// r_u unchanged for scalar pdf (bss.pdf == bss.pdf for all channels)
+
+			// Subsurface scatter is always diffuse (pbrt-v4: anyNonSpecularBounces=true)
+			any_non_specular_bounce = true;
+			specularBounce = false;
+
+			// Possibly regularize exit-point BSDF (pbrt-v4 lines 1234-1239)
+			if (regularize)
+				scene.BSDFRegularize(bss.exit_bsdf_id);
+
+			// NEE at exit point
+			if (scene.BSDFIsNonSpecular(bss.exit_bsdf_id)) {
+				T Ld[3] = {};
+				const BDPTHit<T>& exit_hit = wrs.sample();
+				VolPathSampleLd(exit_hit.p, bss.wo, exit_hit.shading_n,
+								bss.exit_bsdf_id, T(0),
+								beta, r_u, scene, Ld);
+				for (int c = 0; c < 3; ++c) L[c] += Ld[c];
+			}
+
+			// Indirect scatter at exit point (depth NOT incremented)
+			{
+				const BDPTHit<T>& exit_hit = wrs.sample();
+				T ex_u1 = scene.RandFloat(), ex_u2 = scene.RandFloat();
+				T ex_dir[3] = {}, ex_f[3] = {}, ex_pdf = T(0);
+					bool ex_spec = false, ex_trans = false;
+					if (!scene.BSDFSampleF(bss.exit_bsdf_id, bss.wo,
+										   exit_hit.shading_n,
+										   ex_u1, ex_u2,
+										   ex_dir, ex_f, ex_pdf, ex_spec, ex_trans))
+					break;
+				if (ex_pdf <= T(0)) break;
+
+				T ex_cos = std::abs(ex_dir[0]*exit_hit.shading_n[0] +
+									ex_dir[1]*exit_hit.shading_n[1] +
+									ex_dir[2]*exit_hit.shading_n[2]);
+				for (int c = 0; c < 3; ++c)
+					beta[c] *= ex_f[c] * ex_cos / ex_pdf;
+
+				r_l = r_u / ex_pdf;
+				specularBounce = ex_spec;
+
+				// Spawn ray from exit point
+				T ex_o[3], ex_d[3];
+				scene.SpawnRay(exit_hit, ex_dir, ex_o, ex_d);
+				ray_o[0] = ex_o[0]; ray_o[1] = ex_o[1]; ray_o[2] = ex_o[2];
+				ray_d[0] = ex_d[0]; ray_d[1] = ex_d[1]; ray_d[2] = ex_d[2];
+			}
+
+			// ---------------------------------------------------------------
+			// 9. Russian roulette (after BSSRDF scatter)
+			// ---------------------------------------------------------------
+			T rrBeta_ss = std::max({beta[0], beta[1], beta[2]}) * etaScale;
+			if (r_u > T(0)) rrBeta_ss /= r_u;
+			if (rrBeta_ss < T(1) && depth > 1) {
+				T q = std::max(T(0), T(1) - rrBeta_ss);
+				if (scene.RandFloat() < q) break;
+				for (int c = 0; c < 3; ++c) beta[c] /= T(1) - q;
+			}
+			continue; // restart outer loop with new ray from exit point
+		}
+
+		// ---------------------------------------------------------------
+		// 9. Russian roulette  (mirrors pbrt-v4: rrBeta = beta*etaScale/r_u.Average())
 		// ---------------------------------------------------------------
 		T rrBeta = std::max({beta[0], beta[1], beta[2]}) * etaScale;
 		if (r_u > T(0)) rrBeta /= r_u;

@@ -95,9 +95,10 @@
 //                      bool& pdf_is_proportional,
 //                      T& eta) const;
 //
-//     // NOTE: anyNonSpecularBounces (pbrt-v4 path regularization) is tracked
-//     // internally but not exposed — path regularization is not implemented.
-//     // See pbrt-v4 PathIntegrator::Li() 'regularize' branch for the omission.
+//     // Regularize the BSDF at bsdf_id by bumping low roughness alphas.
+//     // Mirrors pbrt-v4 BSDF::Regularize() called in PathIntegrator::Li().
+//     // Only called when regularize=true and any_non_specular_bounce is set.
+//     void BSDFRegularize(int bsdf_id);
 //
 //     // True if the BSDF can scatter in both reflection and transmission.
 //     bool BSDFIsReflectiveAndTransmissive(int bsdf_id) const;
@@ -115,7 +116,8 @@
 //   float L[3] = {0,0,0};
 //   PathLi<float>(org, dir, scene, /*max_depth*/8,
 //                 /*rr_threshold*/1.f,
-//                 rand2d, rand1d, L);
+//                 rand2d, rand1d, L,
+//                 /*regularize*/false);
 // ---------------------------------------------------------------------------
 
 #ifndef CPU_GPU
@@ -233,7 +235,8 @@ CPU_GPU void PathLi(
 	T               rr_threshold,
 	Rand2D          rand2d,
 	Rand1D          rand1d,
-	T               out_L[3])
+	T               out_L[3],
+	bool            regularize = false)
 {
 	static constexpr T kTMax = T(1e30);
 
@@ -316,11 +319,8 @@ CPU_GPU void PathLi(
 			}
 		}
 
-		// --- Terminate at max depth ---
-		if (depth++ == max_depth)
-			break;
-
-		// --- Skip medium boundaries ---
+		// --- Skip medium boundaries (mirrors pbrt-v4 SkipIntersection / !bsdf guard) ---
+		// Must come before regularize so we don't regularize a non-surface vertex.
 		if (hit.is_medium_boundary) {
 			specular_bounce = true;
 			T new_o[3], new_d[3];
@@ -331,6 +331,17 @@ CPU_GPU void PathLi(
 		}
 
 		T wo[3] = { -dir[0], -dir[1], -dir[2] };
+
+		// --- Path regularization (pbrt-v4 PathIntegrator::Li lines 711-714) ---
+		// Mirrors pbrt-v4 exactly: regularize fires BEFORE the max-depth break,
+		// so the roughened BSDF is visible to the upcoming NEE / BSDF sample at
+		// the maximum-depth vertex (where only NEE contributes).
+		if (regularize && any_non_specular_bounce)
+			scene.BSDFRegularize(hit.bsdf_id);
+
+		// --- Terminate at max depth ---
+		if (depth++ == max_depth)
+			break;
 
 		// --- Direct illumination (NEE) via MIS SampleLd ---
 		// Only on non-specular (diffuse/glossy) BSDFs (mirrors pbrt-v4 IsNonSpecular check)

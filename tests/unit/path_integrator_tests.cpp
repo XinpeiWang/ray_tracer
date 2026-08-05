@@ -166,6 +166,7 @@ struct PISyntheticScene {
 
 	bool BSDFIsReflectiveAndTransmissive(int) const { return false; }
 	bool BSDFIsNonSpecular(int) const { return true; }  // Lambertian is diffuse
+	void BSDFRegularize(int) const {}  // no-op stub; regularize=false by default
 
 	void SpawnRay(const BDPTHit<float>& hit, const float dir[3],
 				  float new_o[3], float new_d[3]) const {
