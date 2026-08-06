@@ -84,6 +84,14 @@ void MainWindow::onRenderClicked() {
 	m_progressBar->setValue(0);
 	m_statusLabel->setText(m_videoMode ? "Rendering video frames..." : "Rendering...");
 
+	// Start elapsed timer
+	m_renderStartTime = QDateTime::currentDateTime();
+	if (!m_elapsedTimer) {
+		m_elapsedTimer = new QTimer(this);
+		connect(m_elapsedTimer, &QTimer::timeout, this, &MainWindow::onElapsedTick);
+	}
+	m_elapsedTimer->start(1000);
+
 	// Auto-switch to Log tab so user sees live output immediately
 	m_tabWidget->setCurrentIndex(m_tabWidget->count() - 1);
 
@@ -166,13 +174,17 @@ void MainWindow::onSceneChanged(int index) {
 
 void MainWindow::onProgressUpdate(int percentage) {
 	m_progressBar->setValue(percentage);
-	m_statusLabel->setText(QString("Rendering... %1%").arg(percentage));
+	// Let onElapsedTick handle status label text during rendering;
+	// just keep the progress bar updated here.
+	if (!m_isRendering)
+		m_statusLabel->setText(QString("Rendering... %1%").arg(percentage));
 }
 
 void MainWindow::onRenderComplete(bool success, const QString &message, double totalTime, const QString &outputPath) {
 	m_isRendering = false;
 	m_renderButton->setEnabled(true);
 	m_stopButton->setEnabled(false);
+	if (m_elapsedTimer) m_elapsedTimer->stop();
 
 	if (success) {
 		m_progressBar->setValue(100);
@@ -213,60 +225,135 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 void MainWindow::onLogMessage(const QString &message) {
 	if (!m_logTextEdit) return;
 
-	// Trim and skip truly empty lines (but preserve intentional blank separators)
 	QString msg = message.trimmed();
+	if (msg.isEmpty()) return;
 
 	// Timestamp prefix (HH:mm:ss)
 	QString ts = QTime::currentTime().toString("HH:mm:ss");
 
-	// Determine colour and label by content
-	QString colour;
-	QString label;
-
-	// HTML-escape the message so < > & don't break the rich-text display
+	// HTML-escape so < > & don't break the rich-text display
 	QString escaped = msg.toHtmlEscaped();
 
-	if (msg.contains("error", Qt::CaseInsensitive) ||
-		msg.contains("ERROR", Qt::CaseSensitive)   ||
-		msg.contains("FAILED", Qt::CaseSensitive)  ||
-		msg.contains("fatal", Qt::CaseInsensitive) ||
-		msg.contains("ERR_", Qt::CaseSensitive)) {
-		colour = "#FF6B6B";   // red
-		label  = "ERR ";
-	} else if (msg.contains("warning", Qt::CaseInsensitive) ||
-			   msg.contains("WARN",    Qt::CaseSensitive)   ||
-			   msg.contains("Requires external files", Qt::CaseInsensitive)) {
-		colour = "#FFD700";   // yellow
-		label  = "WARN";
-	} else if (msg.startsWith("Result: SUCCESS") ||
-			   msg.startsWith("✅") ||
-			   msg.contains("render complete", Qt::CaseInsensitive) ||
-			   msg.contains("Render completed", Qt::CaseInsensitive)) {
-		colour = "#51CF66";   // green
-		label  = " OK ";
-	} else if (msg.startsWith("===") || msg.startsWith("---") ||
-			   msg.startsWith("\u2500")) {
-		// Section separator — bold, muted
+	// ── Separator lines ──────────────────────────────────────────────────────
+	if (msg.startsWith("═") || msg.startsWith("─") ||
+		msg.startsWith("===") || msg.startsWith("---")) {
 		m_logTextEdit->append(
-			QString("<span style='color:#888888;font-family:Consolas,monospace;font-size:9pt;'>"
+			QString("<span style='color:#555555;font-family:Consolas,monospace;font-size:9pt;'>"
 					"<b>%1</b></span>").arg(escaped));
 		qDebug() << msg;
 		return;
-	} else if (msg.startsWith("[cpu_interface]")) {
-		colour = "#74C0FC";   // light blue — CPU renderer
-		label  = "CPU ";
-	} else if (msg.startsWith("[OptiX]") || msg.startsWith("[optix]")) {
-		colour = "#A9E34B";   // lime — GPU renderer
-		label  = "GPU ";
-	} else if (msg.startsWith("Command:")) {
-		colour = "#CCC";
-		label  = "CMD ";
-	} else {
-		colour = "#D0D0D0";   // default light grey
-		label  = "INFO";
 	}
 
-	// Format: HH:mm:ss [LABL] message  — use append() so each call is its own line
+	QString colour;
+	QString label;
+
+	// ── Render start/header banners ──────────────────────────────────────────
+	if (msg.startsWith("▶ RENDER START") || msg.startsWith("Starting render")) {
+		colour = "#74C0FC"; label = "INFO";
+		m_logTextEdit->append(
+			QString("<span style='color:%1;font-family:Consolas,monospace;font-size:9pt;'>"
+					"<b><span style='color:#888888;'>%2</span> "
+					"<span style='color:%1;'>[%3]</span> %4</b></span>")
+			.arg(colour, ts, label, escaped));
+		qDebug() << msg;
+		return;
+	}
+
+	// ── Error / Fatal ────────────────────────────────────────────────────────
+	if (msg.contains("error", Qt::CaseInsensitive) ||
+		msg.contains("FAILED",  Qt::CaseSensitive)  ||
+		msg.contains("fatal",   Qt::CaseInsensitive) ||
+		msg.contains("ERR_",    Qt::CaseSensitive)   ||
+		msg.startsWith("Result: FAILED")) {
+		colour = "#FF6B6B"; label = "ERR ";
+
+	// ── Warning ──────────────────────────────────────────────────────────────
+	} else if (msg.contains("warning", Qt::CaseInsensitive) ||
+			   msg.contains("WARN",    Qt::CaseSensitive)    ||
+			   msg.contains("Requires external files", Qt::CaseInsensitive)) {
+		colour = "#FFD700"; label = "WARN";
+
+	// ── Success ───────────────────────────────────────────────────────────────
+	} else if (msg.startsWith("Result: SUCCESS") ||
+			   msg.startsWith("✅") ||
+			   msg.startsWith("✓")  ||
+			   msg.contains("Render completed",    Qt::CaseInsensitive) ||
+			   msg.contains("render complete",     Qt::CaseInsensitive) ||
+			   msg.contains("rendered successfully", Qt::CaseInsensitive) ||
+			   msg.contains("PNG saved",           Qt::CaseInsensitive)) {
+		colour = "#51CF66"; label = " OK ";
+
+	// ── GPU / OptiX ───────────────────────────────────────────────────────────
+	} else if (msg.contains("[OptiX]",         Qt::CaseSensitive) ||
+			   msg.contains("[optix]",          Qt::CaseSensitive) ||
+			   msg.contains("OptiX",            Qt::CaseSensitive) ||
+			   msg.contains("optix_render",     Qt::CaseInsensitive) ||
+			   msg.contains("GPU mode",         Qt::CaseInsensitive) ||
+			   msg.contains("NVIDIA",           Qt::CaseSensitive) ||
+			   msg.contains("RTX",              Qt::CaseSensitive) ||
+			   msg.contains("Launching renderer (GPU", Qt::CaseInsensitive)) {
+		colour = "#A9E34B"; label = "GPU ";
+
+	// ── CPU renderer ──────────────────────────────────────────────────────────
+	} else if (msg.contains("[cpu_interface]",  Qt::CaseSensitive) ||
+			   msg.contains("CPU mode",         Qt::CaseInsensitive) ||
+			   msg.contains("Launching renderer (CPU", Qt::CaseInsensitive)) {
+		colour = "#74C0FC"; label = "CPU ";
+
+	// ── Performance / timing ──────────────────────────────────────────────────
+	} else if (msg.contains("RENDER TIME",  Qt::CaseSensitive) ||
+			   msg.contains("time=",          Qt::CaseInsensitive) ||
+			   msg.contains(" ms",           Qt::CaseSensitive)   ||
+			   msg.contains(" spp",          Qt::CaseInsensitive) ||
+			   msg.contains("Rendered ",     Qt::CaseSensitive)   ||
+			   msg.contains("Pipeline stat", Qt::CaseInsensitive)) {
+		colour = "#FFA94D"; label = "PERF";
+
+	// ── Scene / build info ────────────────────────────────────────────────────
+	} else if (msg.contains("Building scene",   Qt::CaseInsensitive) ||
+			   msg.contains("Uploaded ",         Qt::CaseInsensitive) ||
+			   msg.contains("Built ",            Qt::CaseSensitive)   ||
+			   msg.contains("materials to GPU",  Qt::CaseInsensitive) ||
+			   msg.contains("spheres to GPU",    Qt::CaseInsensitive) ||
+			   msg.contains("quads to GPU",      Qt::CaseInsensitive) ||
+			   msg.contains("light sources",     Qt::CaseInsensitive) ||
+			   msg.contains("acceleration struct", Qt::CaseInsensitive)) {
+		colour = "#CC99FF"; label = "SCN ";
+
+	// ── Pipeline / init ───────────────────────────────────────────────────────
+	} else if (msg.contains("Pipeline",         Qt::CaseSensitive) ||
+			   msg.contains("Initializ",        Qt::CaseInsensitive) ||
+			   msg.contains("Loaded PTX",       Qt::CaseInsensitive) ||
+			   msg.contains("Created program",  Qt::CaseInsensitive) ||
+			   msg.contains("Using GPU:",       Qt::CaseSensitive)) {
+		colour = "#63E6BE"; label = "INIT";
+
+	// ── Technique summary
+	} else if (msg.startsWith("[TECH]")) {
+		colour = "#E599F7"; label = "TECH";
+
+	// ── Command line
+	} else if (msg.startsWith("Command:")) {
+		colour = "#CCCCCC"; label = "CMD ";
+
+	// ── Debug / settings ─────────────────────────────────────────────────────
+	} else if (msg.contains("[DEBUG]",           Qt::CaseSensitive) ||
+			   msg.contains("Parsed ",           Qt::CaseSensitive)  ||
+			   msg.contains("Using command-line",Qt::CaseInsensitive)||
+			   msg.contains("Writing output to", Qt::CaseInsensitive)) {
+		colour = "#A8A8A8"; label = "DBG ";
+
+	// ── Process finish / result ───────────────────────────────────────────────
+	} else if (msg.startsWith("Process finished") ||
+			   msg.startsWith("Result:")) {
+		colour = "#D0D0D0"; label = "INFO";
+
+	// ── Default ───────────────────────────────────────────────────────────────
+	} else {
+		colour = "#D0D0D0"; label = "INFO";
+	}
+
+	// Append: HH:mm:ss [LABL] message
 	m_logTextEdit->append(
 		QString("<span style='color:%1;font-family:Consolas,monospace;font-size:9pt;'>"
 				"<span style='color:#555555;'>%2</span> "
@@ -275,6 +362,23 @@ void MainWindow::onLogMessage(const QString &message) {
 		.arg(colour, ts, label, escaped));
 
 	qDebug() << msg;
+}
+
+void MainWindow::onElapsedTick() {
+	if (!m_isRendering) return;
+	qint64 elapsed = m_renderStartTime.secsTo(QDateTime::currentDateTime());
+	int h = (int)(elapsed / 3600);
+	int m = (int)((elapsed % 3600) / 60);
+	int s = (int)(elapsed % 60);
+	QString elapsedStr;
+	if (h > 0)
+		elapsedStr = QString("%1h %2m %3s").arg(h).arg(m, 2, 10, QChar('0')).arg(s, 2, 10, QChar('0'));
+	else if (m > 0)
+		elapsedStr = QString("%1m %2s").arg(m).arg(s, 2, 10, QChar('0'));
+	else
+		elapsedStr = QString("%1s").arg(s);
+	int pct = m_progressBar->value();
+	m_statusLabel->setText(QString("Rendering... %1% | elapsed: %2").arg(pct).arg(elapsedStr));
 }
 
 void MainWindow::onModeChanged(int index) {

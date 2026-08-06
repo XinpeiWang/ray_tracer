@@ -79,6 +79,19 @@ extern "C" int optix_render_main(
 		size_t pixelCount = image_width * image_height;
 		std::vector<float> framebuffer(pixelCount * 3);
 
+		// Technique summary
+		std::cout << "[TECH] ── Render Technique Summary ──────────────────────────" << std::endl;
+		std::cout << "[TECH] Integrator     : OptiX mega-kernel path tracer  (raygen + closest-hit + miss programs)" << std::endl;
+		std::cout << "[TECH] Sampler        : PCG hash-based pseudo-random (per-pixel seed, per-bounce offset)" << std::endl;
+		std::cout << "[TECH] Reconstruction : Box filter (1 sample per pixel sub-region, averaged in kernel)" << std::endl;
+		std::cout << "[TECH] Acceleration   : OptiX BVH  |  custom AABB primitives  (spheres + quads)" << std::endl;
+		std::cout << "[TECH] Light sampling : Power-weighted alias table (Vose method)  phi = area * Le * pi" << std::endl;
+		std::cout << "[TECH] MIS            : Power heuristic  beta=2  (BSDF sample + NEE light sample)" << std::endl;
+		std::cout << "[TECH] Path termination: fixed max_depth=" << max_depth << "  (no Russian Roulette on GPU)" << std::endl;
+		std::cout << "[TECH] Tone mapping   : sqrt gamma-2.0  (linear gamma correction, no filmic tone map)" << std::endl;
+		std::cout << "[TECH] Device         : CUDA / OptiX 7+  (NVIDIA GPU)" << std::endl;
+		std::cout << "[TECH] ─────────────────────────────────────────────────────" << std::endl;
+
 		// Render
 		std::cout << "[OptiX] Rendering...\n";
 

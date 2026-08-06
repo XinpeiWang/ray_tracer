@@ -1,11 +1,18 @@
 #pragma once
-// scene_registry.h -- Single source of truth for all scenes (pbrt-v4 SceneEntity pattern)
+// scene_registry.h -- CPU scene registry (pbrt-v4 SceneEntity pattern)
+//
+// Scene names are defined as constants in src/shared/scene_descriptor.h (SceneNames::).
+// Always use SceneNames:: constants here -- never raw string literals -- so both
+// tables can never drift out of sync.
 //
 // To add a new scene:
-//   1. Add a builder function in scenes.h
-//   2. Add one SceneDescriptor entry in get_scene_registry() below
+//   1. Add a SceneNames:: constant in scene_descriptor.h
+//   2. Add a row in scene_descriptor.h kScenes[]
+//   3. Add a builder function in scenes.h
+//   4. Add one SceneDescriptor entry in get_scene_registry() below using SceneNames::
 //   Done -- cpu_interface and GUI pick it up automatically.
 
+#include "../shared/scene_descriptor.h"
 #include "scenes.h"
 #include "cornell_box_scene.h"
 #include <functional>
@@ -49,7 +56,7 @@ static inline hittable_list no_lights() { return hittable_list{}; }
 inline const std::vector<SceneDescriptor>& get_scene_registry() {
     static const std::vector<SceneDescriptor> registry = {
         {
-            0, "Cornell Box",
+            0, SceneNames::CornellBox,
             "Classic Cornell box with glass sphere and aluminum box",
             "Medium", 100, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -57,7 +64,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_box_lights
         },
         {
-            1, "Bouncing Spheres",
+            1, SceneNames::BouncingSpheres,
             "Random spheres with checker ground (In One Weekend final)",
             "Slow", 100, false, false,
             { 20, 13, 2, 3,  0, 0, 0,  0.70, 0.80, 1.00 },
@@ -65,7 +72,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             sky_dummy_lights
         },
         {
-            2, "Checkered Spheres",
+            2, SceneNames::CheckeredSpheres,
             "Two spheres with procedural checker texture",
             "Fast", 100, false, false,
             { 20, 13, 2, 3,  0, 0, 0,  0.70, 0.80, 1.00 },
@@ -73,7 +80,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             sky_dummy_lights
         },
         {
-            3, "Earth",
+            3, SceneNames::Earth,
             "Globe with earth texture mapping (requires earthmap.jpg)",
             "Fast", 100, true, false,
             { 20, 0, 0, 12,  0, 0, 0,  0.70, 0.80, 1.00 },
@@ -81,7 +88,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             sky_dummy_lights
         },
         {
-            4, "Perlin Spheres",
+            4, SceneNames::PerlinSpheres,
             "Spheres with Perlin noise marble texture",
             "Fast", 100, false, false,
             { 20, 13, 2, 3,  0, 0, 0,  0.70, 0.80, 1.00 },
@@ -89,7 +96,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             sky_dummy_lights
         },
         {
-            5, "Colored Quads",
+            5, SceneNames::ColoredQuads,
             "Five colored quad primitives",
             "Fast", 100, false, false,
             { 80, 0, 0, 9,  0, 0, 0,  0.70, 0.80, 1.00 },
@@ -97,7 +104,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             sky_dummy_lights
         },
         {
-            6, "Simple Light",
+            6, SceneNames::SimpleLight,
             "Perlin spheres with emissive light sources",
             "Fast", 100, false, false,
             { 20, 26, 3, 6,  0, 2, 0,  0, 0, 0 },
@@ -105,7 +112,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             no_lights
         },
         {
-            7, "Cornell Smoke",
+            7, SceneNames::CornellSmoke,
             "Cornell box with volumetric fog",
             "Slow", 200, false, false,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -113,15 +120,15 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_box_lights
         },
         {
-            8, "Final Scene",
-            "Complex scene from The Next Week (very slow!)",
+            8, SceneNames::FinalScene,
+            "Complex scene from The Next Week",
             "Very Slow", 500, false, false,
             { 40, 478, 278, -600,  278, 278, 0,  0, 0, 0 },
             build_final_scene,
             build_final_scene_lights
         },
         {
-            9, "Rough Metal Spheres (GGX)",
+            9, SceneNames::RoughMetalSpheres,
             "Five GGX spheres roughness 0.05 to 0.8 -- showcases microfacet BRDF",
             "Medium", 200, false, false,
             { 35, 0, 2.5, 10,  0, 1, 0,  0.10, 0.10, 0.12 },
@@ -134,7 +141,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            10, "Cornell Rough Metal (GGX)",
+            10, SceneNames::CornellRoughMetal,
             "Cornell box with rough aluminum box and rough gold sphere",
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -142,7 +149,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_box_lights
         },
         {
-            11, "Cornell Rough Glass (GGX)",
+            11, SceneNames::CornellRoughGlass,
             "Cornell box with a GGX rough-dielectric sphere (pbrt-v4 RoughDielectricBxDF)",
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -150,39 +157,39 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_box_lights
         },
         {
-            12, "Cornell Conductor (pbrt-v4 ConductorBxDF)",
-            "Cornell box with polished gold sphere and aluminium box using GGX VNDF + complex Fresnel",
+            12, SceneNames::CornellConductor,
+            "Cornell box with polished gold sphere and aluminium box using GGX VNDF + complex Fresnel (pbrt-v4 ConductorBxDF)",
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_cornell_conductor,
             build_cornell_box_lights
         },
         {
-            13, "Cornell Coated Diffuse (pbrt-v4 CoatedDiffuseBxDF)",
-            "Cornell box with blue coated-diffuse sphere and red coated-diffuse box (rough dielectric coat over Lambertian base)",
+            13, SceneNames::CornellCoatedDiffuse,
+            "Cornell box with blue coated-diffuse sphere and red coated-diffuse box (pbrt-v4 CoatedDiffuseBxDF)",
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_cornell_coated_diffuse,
             build_cornell_box_lights
         },
         {
-            14, "Cornell Thin Glass (pbrt-v4 ThinDielectricBxDF)",
-            "Cornell box with a vertical thin-glass panel (zero-thickness slab, analytic multi-bounce Fresnel)",
+            14, SceneNames::CornellThinGlass,
+            "Cornell box with a vertical thin-glass panel, analytic multi-bounce Fresnel (pbrt-v4 ThinDielectricBxDF)",
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_cornell_thin_glass,
             build_cornell_box_lights
         },
         {
-            15, "Cornell Coated Conductor (pbrt-v4 CoatedConductorBxDF)",
-            "Cornell box with a lacquered-gold sphere and lacquered-copper box (rough dielectric coat over GGX conductor base)",
+            15, SceneNames::CornellCoatedConductor,
+            "Cornell box with lacquered-gold sphere and lacquered-copper box (pbrt-v4 CoatedConductorBxDF)",
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_cornell_coated_conductor,
             build_cornell_box_lights
         },
         {
-            16, "Cornell Wax Slab (pbrt-v4 DiffuseTransmissionBxDF)",
+            16, SceneNames::CornellWaxSlab,
             "Cornell box with a wax sphere that diffusely reflects and transmits light (pbrt-v4 DiffuseTransmissionBxDF)",
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -190,7 +197,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_box_lights
         },
         {
-            17, "Cornell Crystal (pbrt-v4 NormalizedFresnelBxDF)",
+            17, SceneNames::CornellCrystal,
             "Cornell box with a crystal sphere using Fresnel-weighted diffuse reflection (pbrt-v4 NormalizedFresnelBxDF)",
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },

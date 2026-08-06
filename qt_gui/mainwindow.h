@@ -16,6 +16,8 @@
 #include <QVector3D>
 #include <QTextEdit>
 #include <QEvent>
+#include <QTimer>
+#include <QDateTime>
 
 // ============================================================================
 // WheelIgnoreFilter
@@ -119,6 +121,7 @@ private slots:
 	void onProgressUpdate(int percentage);
 	void onRenderComplete(bool success, const QString &message, double totalTime, const QString &outputPath);
 	void onLogMessage(const QString &message);
+	void onElapsedTick();        // fires every second during render to update status label
 
 private:
 	void setupUI();
@@ -182,6 +185,10 @@ private:
 	// State
 	bool m_isRendering;                 // true when a render is in progress
 	bool m_videoMode;                   // true = video generation mode, false = single image mode
+
+	// Elapsed render timer
+	QTimer *m_elapsedTimer;             // fires every second during render
+	QDateTime m_renderStartTime;        // wall-clock time when render began
 
 	// Shared event filter that blocks accidental wheel-scroll on controls
 	WheelIgnoreFilter *m_wheelFilter;

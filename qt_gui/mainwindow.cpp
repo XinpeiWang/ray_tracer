@@ -66,13 +66,18 @@ void RenderThread::stopRender() {
 void RenderThread::run() {
 	emit logMessage(QString("Starting render..."));
 
+	// Look up scene name from the shared descriptor table
+	const SceneDesc* sceneInfo = find_scene_desc(m_sceneId);
+	QString sceneName = sceneInfo ? QString(sceneInfo->name) : QString("Scene %1").arg(m_sceneId);
+
 	// Emit a separator so each render is visually distinct in the log
 	QString sep = QString("─").repeated(60);
 	emit logMessage(sep);
 	emit logMessage(QString("▶ RENDER START  %1")
 		.arg(QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss")));
-	emit logMessage(QString("  Scene: %1 | %2x%3 | %4 spp | depth %5 | %6")
+	emit logMessage(QString("  Scene: %1 (%2) | %3x%4 | %5 spp | depth %6 | %7")
 		.arg(m_sceneId)
+		.arg(sceneName)
 		.arg(m_width).arg(m_height)
 		.arg(m_samples)
 		.arg(m_maxDepth)
@@ -179,11 +184,17 @@ void RenderThread::run() {
 		if (!rawData.isEmpty()) {
 			QString output = QString::fromLocal8Bit(rawData);
 			accumulatedOutput += output;
-			emit logMessage(output.trimmed());
 
-			// Parse progress - look for "Scanlines remaining: X" in the most recent output
-			// Handle both \r and \n line endings
+			// Split into individual lines and emit each separately so every line
+			// gets its own timestamp and category label in the log panel.
 			QStringList lines = output.split(QRegularExpression("[\r\n]"), Qt::SkipEmptyParts);
+			for (const QString& line : lines) {
+				QString trimmed = line.trimmed();
+				if (!trimmed.isEmpty())
+					emit logMessage(trimmed);
+			}
+
+			// Parse progress from same lines
 			for (const QString& line : lines) {
 				// Video mode: look for "[X/Y] Rendering frame_" pattern (0-90%)
 				if (m_videoMode) {
@@ -264,14 +275,30 @@ void RenderThread::run() {
 	QProcess::ExitStatus exitStatus = m_renderProcess->exitStatus();
 	QString finalOutput = m_renderProcess->readAll();
 
-	// Clean summary line
-	emit logMessage(QString("Process finished: exit=%1  status=%2  time=%3s")
+	// Flush any trailing lines
+	if (!finalOutput.isEmpty()) {
+		QStringList trailing = finalOutput.split(QRegularExpression("[\\r\\n]"), Qt::SkipEmptyParts);
+		for (const QString& line : trailing) {
+			QString trimmed = line.trimmed();
+			if (!trimmed.isEmpty())
+				emit logMessage(trimmed);
+		}
+	}
+
+	// Structured finish footer
+	emit logMessage(QString("─").repeated(60));
+
+	// Format elapsed time as mm:ss or Xs depending on magnitude
+	QString elapsedStr;
+	if (totalTime >= 60.0)
+		elapsedStr = QString("%1m %2s").arg((int)totalTime / 60).arg((int)totalTime % 60);
+	else
+		elapsedStr = QString("%1 ms").arg((int)(totalTime * 1000));
+
+	emit logMessage(QString("Process finished: exit=%1  status=%2  time=%3")
 		.arg(exitCode)
 		.arg(exitStatus == QProcess::NormalExit ? "Normal" : "Crash")
-		.arg(totalTime, 0, 'f', 1));
-	if (!finalOutput.isEmpty()) {
-		emit logMessage("Trailing output: " + finalOutput);
-	}
+		.arg(elapsedStr));
 
 	// Check if process was killed (user stopped it)
 	bool wasKilled = (exitStatus == QProcess::CrashExit && exitCode != 0);
@@ -293,9 +320,6 @@ void RenderThread::run() {
 
 		emit renderComplete(false, "Render stopped by user", totalTime, QString());
 	} else if (exitCode == 0) {
-		emit logMessage("Result: SUCCESS");
-		emit progressUpdate(100);
-
 		// Determine actual output path (default if not specified)
 		QString actualOutputPath = m_outputPath;
 		if (actualOutputPath.isEmpty()) {
@@ -307,6 +331,8 @@ void RenderThread::run() {
 			}
 		}
 
+		emit logMessage(QString("Result: SUCCESS  |  Output: %1").arg(actualOutputPath));
+		emit progressUpdate(100);
 		emit renderComplete(true, "Render completed successfully!", totalTime, actualOutputPath);
 	} else {
 		// Render failed with specific error code
@@ -340,7 +366,8 @@ void RenderThread::run() {
 
 // MainWindow Implementation
 MainWindow::MainWindow(QWidget *parent)
-	: QMainWindow(parent), m_renderThread(nullptr), m_isRendering(false), m_videoMode(false) {
+	: QMainWindow(parent), m_renderThread(nullptr), m_isRendering(false), m_videoMode(false),
+	  m_elapsedTimer(nullptr) {
 
 	// Create shared wheel filter (blocks accidental scroll on all controls)
 	m_wheelFilter = new WheelIgnoreFilter(this);

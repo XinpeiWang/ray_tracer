@@ -140,6 +140,22 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		}
 
 		// ====================================================================
+		// Technique Summary
+		// ====================================================================
+		std::cout << "[TECH] ── Render Technique Summary ──────────────────────────" << std::endl;
+		std::cout << "[TECH] Integrator     : Iterative path tracer  (pbrt-v4 PathIntegrator::Li style)" << std::endl;
+		std::cout << "[TECH] Sampler        : Stratified grid + Halton LDS (base-2/3, per-pixel decorrelated) + Sobol-Owen per bounce" << std::endl;
+		std::cout << "[TECH] Reconstruction : Mitchell-Netravali filter  B=1/3  C=1/3  radius=0.5 px" << std::endl;
+		std::cout << "[TECH] Acceleration   : SAH BVH  |  12 buckets  |  max 4 prims/leaf  |  C_trav=1  C_isect=2" << std::endl;
+		std::cout << "[TECH] Light sampling : Power-weighted alias table (Vose method)  phi = area * Le * pi" << std::endl;
+		std::cout << "[TECH] MIS            : Power heuristic  beta=2  (BSDF sample + NEE light sample)" << std::endl;
+		std::cout << "[TECH] Path termination: Russian Roulette per-bounce, etaScale-aware" << std::endl;
+		std::cout << "[TECH] Firefly guard  : NaN / Inf samples clamped to 0" << std::endl;
+		std::cout << "[TECH] Tone mapping   : ACES Narkowicz 2015 --> sRGB OETF (IEC 61966-2-1)" << std::endl;
+		std::cout << "[TECH] Threading      : " << std::thread::hardware_concurrency() << " logical cores (auto idle-adjusted on Windows)" << std::endl;
+		std::cout << "[TECH] ─────────────────────────────────────────────────────" << std::endl;
+
+		// ====================================================================
 		// Render Execution
 		// ====================================================================
 		// Camera class handles multithreaded rendering and writes to a default

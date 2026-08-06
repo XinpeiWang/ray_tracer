@@ -510,34 +510,52 @@ extern "C" __global__ void __closesthit__sphere() {
 				attenuation = make_float3(fv, fv, fv);
 				cc_wo = make_float3(wo_x, wo_y, wo_z);
 			} else {
-				// Path B: transmit into layer -> conductor bounce -> exit coat
-				float bwm_x, bwm_y, bwm_z;
-				cc_dist.Sample_wm(cc_wi_x, cc_wi_y, cc_wi_z,
-								  random_float(seed), random_float(seed),
-								  bwm_x, bwm_y, bwm_z);
-				float cos_c = cc_wi_x*bwm_x + cc_wi_y*bwm_y + cc_wi_z*bwm_z;
-				float wo_x  = 2.0f*cos_c*bwm_x - cc_wi_x;
-				float wo_y  = 2.0f*cos_c*bwm_y - cc_wi_y;
-				float wo_z  = 2.0f*cos_c*bwm_z - cc_wi_z;
-				if (wo_z <= 0.0f) { scattered = false; break; }
+					// Path B: transmit into layer -> conductor bounce -> exit coat
+					// Step 1: transmitted direction inside layer.
+					// The coat microfacet cwm was already sampled above; the reflected direction
+					// off cwm is (2*cc_cos_i*cwm - cc_wi). Inside the slab the ray goes downward,
+					// so we flip the z component.  (Matches CPU CoatedConductorBxDF step 1.)
+					float w_x = 2.0f*cc_cos_i*cwm_x - cc_wi_x;
+					float w_y = 2.0f*cc_cos_i*cwm_y - cc_wi_y;
+					float w_z = 2.0f*cc_cos_i*cwm_z - cc_wi_z;
+					if (w_z > 0.0f) w_z = -w_z;   // ensure pointing downward into layer
+					if (w_z == 0.0f) { scattered = false; break; }
 
-				float G1_c = cc_dist.G1(cc_wi_x, cc_wi_y, cc_wi_z);
-				float G_c  = cc_dist.G(wo_x, wo_y, wo_z, cc_wi_x, cc_wi_y, cc_wi_z);
-				float wt_c = (G1_c > 1e-8f) ? G_c / G1_c : 0.0f;
+					// Step 2: flip to conductor frame -- "incoming from above" (fw_z > 0)
+					float fw_x = -w_x, fw_y = -w_y, fw_z = -w_z;
 
-				float F_r = FrComplex(cos_c, mat.eta_c.x, mat.k_c.x) * wt_c;
-				float F_g = FrComplex(cos_c, mat.eta_c.y, mat.k_c.y) * wt_c;
-				float F_b = FrComplex(cos_c, mat.eta_c.z, mat.k_c.z) * wt_c;
+					// Sample conductor microfacet from the correct transmitted direction
+					float bwm_x, bwm_y, bwm_z;
+					cc_dist.Sample_wm(fw_x, fw_y, fw_z,
+									  random_float(seed), random_float(seed),
+									  bwm_x, bwm_y, bwm_z);
+					float cos_c = fw_x*bwm_x + fw_y*bwm_y + fw_z*bwm_z;
+					if (cos_c <= 0.0f) { scattered = false; break; }
 
-				float F_out = FrDielectric(fabsf(wo_z), 1.0f / mat.ior);
-				float T_out = 1.0f - F_out;
-				float T_in  = 1.0f - F_in;
+					// Conductor reflection direction (upward, rwo_z > 0 = exits toward coat top)
+					float rwo_x = 2.0f*cos_c*bwm_x - fw_x;
+					float rwo_y = 2.0f*cos_c*bwm_y - fw_y;
+					float rwo_z = 2.0f*cos_c*bwm_z - fw_z;
+					if (rwo_z <= 0.0f) { scattered = false; break; }
 
-				attenuation = make_float3(F_r * T_in * T_out,
-										 F_g * T_in * T_out,
-										 F_b * T_in * T_out);
-				cc_wo = make_float3(wo_x, wo_y, wo_z);
-			}
+					float G1_c = cc_dist.G1(fw_x, fw_y, fw_z);
+					float G_c  = cc_dist.G(rwo_x, rwo_y, rwo_z, fw_x, fw_y, fw_z);
+					float wt_c = (G1_c > 1e-8f) ? G_c / G1_c : 0.0f;
+
+					float F_r = FrComplex(cos_c, mat.eta_c.x, mat.k_c.x) * wt_c;
+					float F_g = FrComplex(cos_c, mat.eta_c.y, mat.k_c.y) * wt_c;
+					float F_b = FrComplex(cos_c, mat.eta_c.z, mat.k_c.z) * wt_c;
+
+					// Step 3: exit through coat top — Fresnel at exit angle (rwo_z = cos of exit)
+					float F_out = FrDielectric(rwo_z, 1.0f / mat.ior);  // inside->outside
+					float T_out = 1.0f - F_out;
+					float T_in  = 1.0f - F_in;
+
+					attenuation = make_float3(F_r * T_in * T_out,
+											 F_g * T_in * T_out,
+											 F_b * T_in * T_out);
+					cc_wo = make_float3(rwo_x, rwo_y, rwo_z);
+				}
 			scattered_dir = normalize(cc_wo.x*cc_tan + cc_wo.y*cc_bit + cc_wo.z*cc_n);
 			scattered   = true;
 			is_specular = true;
@@ -1143,33 +1161,43 @@ extern "C" __global__ void __closesthit__quad() {
 				attenuation = make_float3(fv, fv, fv);
 				cc_wo = make_float3(wo_x, wo_y, wo_z);
 			} else {
-				float bwm_x, bwm_y, bwm_z;
-				cc_dist.Sample_wm(cc_wi_x, cc_wi_y, cc_wi_z,
-								  random_float(seed), random_float(seed),
-								  bwm_x, bwm_y, bwm_z);
-				float cos_c = cc_wi_x*bwm_x + cc_wi_y*bwm_y + cc_wi_z*bwm_z;
-				float wo_x  = 2.0f*cos_c*bwm_x - cc_wi_x;
-				float wo_y  = 2.0f*cos_c*bwm_y - cc_wi_y;
-				float wo_z  = 2.0f*cos_c*bwm_z - cc_wi_z;
-				if (wo_z <= 0.0f) { scattered = false; break; }
+					float w_x = 2.0f*cc_cos_i*cwm_x - cc_wi_x;
+					float w_y = 2.0f*cc_cos_i*cwm_y - cc_wi_y;
+					float w_z = 2.0f*cc_cos_i*cwm_z - cc_wi_z;
+					if (w_z > 0.0f) w_z = -w_z;
+					if (w_z == 0.0f) { scattered = false; break; }
 
-				float G1_c = cc_dist.G1(cc_wi_x, cc_wi_y, cc_wi_z);
-				float G_c  = cc_dist.G(wo_x, wo_y, wo_z, cc_wi_x, cc_wi_y, cc_wi_z);
-				float wt_c = (G1_c > 1e-8f) ? G_c / G1_c : 0.0f;
+					float fw_x = -w_x, fw_y = -w_y, fw_z = -w_z;
 
-				float F_r = FrComplex(cos_c, mat.eta_c.x, mat.k_c.x) * wt_c;
-				float F_g = FrComplex(cos_c, mat.eta_c.y, mat.k_c.y) * wt_c;
-				float F_b = FrComplex(cos_c, mat.eta_c.z, mat.k_c.z) * wt_c;
+					float bwm_x, bwm_y, bwm_z;
+					cc_dist.Sample_wm(fw_x, fw_y, fw_z,
+									  random_float(seed), random_float(seed),
+									  bwm_x, bwm_y, bwm_z);
+					float cos_c = fw_x*bwm_x + fw_y*bwm_y + fw_z*bwm_z;
+					if (cos_c <= 0.0f) { scattered = false; break; }
 
-				float F_out = FrDielectric(fabsf(wo_z), 1.0f / mat.ior);
-				float T_out = 1.0f - F_out;
-				float T_in  = 1.0f - F_in;
+					float rwo_x = 2.0f*cos_c*bwm_x - fw_x;
+					float rwo_y = 2.0f*cos_c*bwm_y - fw_y;
+					float rwo_z = 2.0f*cos_c*bwm_z - fw_z;
+					if (rwo_z <= 0.0f) { scattered = false; break; }
 
-				attenuation = make_float3(F_r * T_in * T_out,
-										 F_g * T_in * T_out,
-										 F_b * T_in * T_out);
-				cc_wo = make_float3(wo_x, wo_y, wo_z);
-			}
+					float G1_c = cc_dist.G1(fw_x, fw_y, fw_z);
+					float G_c  = cc_dist.G(rwo_x, rwo_y, rwo_z, fw_x, fw_y, fw_z);
+					float wt_c = (G1_c > 1e-8f) ? G_c / G1_c : 0.0f;
+
+					float F_r = FrComplex(cos_c, mat.eta_c.x, mat.k_c.x) * wt_c;
+					float F_g = FrComplex(cos_c, mat.eta_c.y, mat.k_c.y) * wt_c;
+					float F_b = FrComplex(cos_c, mat.eta_c.z, mat.k_c.z) * wt_c;
+
+					float F_out = FrDielectric(rwo_z, 1.0f / mat.ior);
+					float T_out = 1.0f - F_out;
+					float T_in  = 1.0f - F_in;
+
+					attenuation = make_float3(F_r * T_in * T_out,
+											 F_g * T_in * T_out,
+											 F_b * T_in * T_out);
+					cc_wo = make_float3(rwo_x, rwo_y, rwo_z);
+				}
 			scattered_dir = normalize(cc_wo.x*cc_tan + cc_wo.y*cc_bit + cc_wo.z*cc_n);
 			scattered   = true;
 			is_specular = true;
