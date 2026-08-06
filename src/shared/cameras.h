@@ -618,26 +618,6 @@ struct RealisticCamera {
     T rear_element_radius() const { return elements_.back().apertureRadius; }
     int num_elements() const { return (int)elements_.size(); }
 
-    // effective_focal_length: returns the EFL in metres computed via the
-    // thick-lens cardinal-point formula (mirrors pbrt-v4 FocusThickLens log line).
-    // Returns 0 if the paraxial ray cannot be traced (degenerate lens).
-    T effective_focal_length() const {
-        T x = T(0.001) * film_diagonal();
-        T front_z = lens_front_z();
-        T ro_ox, ro_oy, ro_oz, ro_dx, ro_dy, ro_dz;
-        bool ok = const_cast<RealisticCamera*>(this)->trace_lenses_from_scene(
-            x, T(0), front_z + T(0.001),
-            T(0), T(0), T(-1),
-            ro_ox, ro_oy, ro_oz, ro_dx, ro_dy, ro_dz);
-        if (!ok) return T(0);
-        T pz = T(0), fz = T(0);
-        compute_cardinal_points(
-            x, T(0), front_z + T(0.001), T(0), T(0), T(-1),
-            ro_ox, ro_oy, ro_oz, ro_dx, ro_dy, ro_dz,
-            pz, fz);
-        return fz - pz;  // positive = converging lens
-    }
-
 private:
     // TraceLensesFromFilm: mirrors pbrt-v4.
     // Camera space: film at z=0, optical axis +z toward scene.

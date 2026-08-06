@@ -31,12 +31,13 @@
 #  ifdef __CUDACC__
 #    define CPU_GPU __host__ __device__
 #  else
-#    define CPU_GPU inline
+#    define CPU_GPU
 #  endif
 #endif
 
 #if defined(_MSC_VER)
 #  pragma warning(push)
+#  pragma warning(disable: 4141)
 #endif
 
 // ===========================================================================
@@ -61,7 +62,15 @@ struct LightBounds {
 	bool twoSided = false;
 
 	// Default-construct an empty (zero-power) LightBounds
-	LightBounds() = default;
+	LightBounds() {
+		bMinX = bMinY = bMinZ = 0.f;
+		bMaxX = bMaxY = bMaxZ = 0.f;
+		wx = wy = 0.f; wz = 1.f;
+		phi = 0.f;
+		cosTheta_o = 1.f;
+		cosTheta_e = 0.f;
+		twoSided = false;
+	}
 
 	CPU_GPU LightBounds(
 		float bMinX_, float bMinY_, float bMinZ_,
@@ -96,7 +105,7 @@ struct LightBounds {
 //
 // Mirrors pbrt-v4 LightBounds::Importance(Point3f p, Normal3f n).
 // ===========================================================================
-CPU_GPU float Importance(const LightBounds& lb,
+CPU_GPU inline float Importance(const LightBounds& lb,
 								 float px, float py, float pz,
 								 float nx, float ny, float nz)
 {
@@ -159,7 +168,7 @@ CPU_GPU float Importance(const LightBounds& lb,
 // Union(LightBounds, LightBounds)
 // Mirrors pbrt-v4 Union(const LightBounds &a, const LightBounds &b).
 // ===========================================================================
-CPU_GPU LightBounds Union(const LightBounds& a, const LightBounds& b) {
+CPU_GPU inline LightBounds Union(const LightBounds& a, const LightBounds& b) {
 	// If one bound has zero power, return the other
 	if (a.phi == 0.f) return b;
 	if (b.phi == 0.f) return a;

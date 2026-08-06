@@ -26,12 +26,13 @@
 #  ifdef __CUDACC__
 #    define CPU_GPU __host__ __device__
 #  else
-#    define CPU_GPU inline
+#    define CPU_GPU
 #  endif
 #endif
 
 #if defined(_MSC_VER)
 #  pragma warning(push)
+#  pragma warning(disable: 4141)
 #endif
 
 // ===========================================================================

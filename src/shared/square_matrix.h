@@ -1,12 +1,12 @@
 #pragma once
 // ---------------------------------------------------------------------------
-// square_matrix.h -- Generic NÃƒÆ’Ã¢â‚¬â€N square matrix
+// square_matrix.h -- Generic N×N square matrix
 //
 // Mirrors pbrt-v4 SquareMatrix<N> (util/math.h, Apache-2.0), adapted for
 // double-precision CPU-only use.
 //
 // Components:
-//   SquareMatrix<N>          -- NÃƒÆ’Ã¢â‚¬â€N matrix (identity default ctor)
+//   SquareMatrix<N>          -- N×N matrix (identity default ctor)
 //   Transpose<N>             -- generic transpose
 //   Determinant<1,2,3,4>     -- specializations using DifferenceOfProducts
 //   Inverse<3>, Inverse<4>   -- exact cofactor / Laplace expansion
@@ -327,7 +327,7 @@ inline std::optional<SquareMatrix<4>> Inverse(const SquareMatrix<4>& m) {
 // Matrix-matrix multiplication
 // Generic definition comes first so that the explicit specialization (N=4)
 // is valid per-standard and accepted by MSVC.
-// N=4: uses InnerProduct (4-term compensated dot product) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â matches pbrt-v4.
+// N=4: uses InnerProduct (4-term compensated dot product) — matches pbrt-v4.
 // Generic N: FMA loop (pbrt-v4 does not specialize N=3).
 // ===========================================================================
 
@@ -379,8 +379,8 @@ CPU_GPU T operator*(const SquareMatrix<N>& m, const T& v) {
 // ===========================================================================
 // LinearLeastSquares<N>
 // Solves A^T A x = A^T B using normal equations.
-// A: rowsÃƒÆ’Ã¢â‚¬â€N,  B: rowsÃƒÆ’Ã¢â‚¬â€N  (each column of B is a right-hand side)
-// Returns the NÃƒÆ’Ã¢â‚¬â€N matrix X such that A X ÃƒÂ¢Ã¢â‚¬Â°Ã‹â€  B.
+// A: rows×N,  B: rows×N  (each column of B is a right-hand side)
+// Returns the N×N matrix X such that A X ≈ B.
 // pbrt-v4: pstd::optional<SquareMatrix<N>> LinearLeastSquares(...)
 // ===========================================================================
 template <int N>

@@ -48,7 +48,7 @@
 //
 // Reference: pbrt-v4 src/pbrt/cpu/aggregates.h / aggregates.cpp (Apache-2.0)
 //            "Physically Based Rendering: From Theory to Implementation",
-//            Pharr, Jakob, Humphreys. 4th ed., Ãƒâ€šÃ‚Â§7.3.
+//            Pharr, Jakob, Humphreys. 4th ed., §7.3.
 // ---------------------------------------------------------------------------
 
 #include <algorithm>

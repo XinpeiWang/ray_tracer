@@ -1,6 +1,6 @@
-// bvh_light_sampler_tests.cpp
-// Unit tests for bvh_light_sampler and LightBounds
-// Mirrors pbrt-v4 §12.6 design validation strategy.
+﻿// bvh_light_sampler_tests.cpp
+// Unit tests for bvh_light_sampler and BvhLightBounds
+// Mirrors pbrt-v4 Â§12.6 design validation strategy.
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -22,13 +22,13 @@ static std::shared_ptr<hittable> make_quad(
 }
 
 // ---------------------------------------------------------------------------
-// LightBounds tests
+// BvhLightBounds tests
 // ---------------------------------------------------------------------------
 
-TEST(LightBounds, ImportanceDecaysWithDistance) {
+TEST(BvhLightBounds, ImportanceDecaysWithDistance) {
 	// A light facing +y at origin, queried from increasing distances
 	aabb bb(point3(-0.5,-0.5,-0.5), point3(0.5,0.5,0.5));
-	LightBounds lb(bb, vec3(0,1,0), /*phi=*/1.0,
+	BvhLightBounds lb(bb, vec3(0,1,0), /*phi=*/1.0,
 				   /*cosTheta_o=*/0.0, /*cosTheta_e=*/0.0, /*twoSided=*/false);
 
 	point3 p1(0, 2, 0);
@@ -39,12 +39,12 @@ TEST(LightBounds, ImportanceDecaysWithDistance) {
 	EXPECT_GT(i1, i2) << "Importance should decrease with distance";
 }
 
-TEST(LightBounds, ImportanceDecaysWithAngle) {
+TEST(BvhLightBounds, ImportanceDecaysWithAngle) {
 	// Light facing +z at origin. Points at varying angles from +z axis.
 	// At angle=0 (directly in front) importance should exceed angle=120 (behind).
 	aabb bb(point3(-0.5, -0.5, 0), point3(0.5, 0.5, 0.1));
 	// cosTheta_o = 0 => 90 degree emission cone; cosTheta_e = 0 => same
-	LightBounds lb(bb, vec3(0,0,1), 1.0, /*cosTheta_o=*/0.0, /*cosTheta_e=*/0.0, false);
+	BvhLightBounds lb(bb, vec3(0,0,1), 1.0, /*cosTheta_o=*/0.0, /*cosTheta_e=*/0.0, false);
 
 	// Both at same distance (5 units), one in front, one 120 degrees off-axis
 	double i_front = lb.importance(point3(0, 0, 5), vec3(0,0,0));
@@ -55,12 +55,12 @@ TEST(LightBounds, ImportanceDecaysWithAngle) {
 	EXPECT_GE(i_front, i_side) << "Point in front should have >= importance than behind";
 }
 
-TEST(LightBounds, MergeIncreasesPhiAndWidensCone) {
+TEST(BvhLightBounds, MergeIncreasesPhiAndWidensCone) {
 	aabb bb0(point3(0,0,0), point3(1,1,1));
 	aabb bb1(point3(2,0,0), point3(3,1,1));
-	LightBounds a(bb0, vec3(1,0,0), 2.0, 0.5, 0.0, false);
-	LightBounds b(bb1, vec3(0,1,0), 3.0, 0.5, 0.0, false);
-	LightBounds m = LightBounds::merge(a, b);
+	BvhLightBounds a(bb0, vec3(1,0,0), 2.0, 0.5, 0.0, false);
+	BvhLightBounds b(bb1, vec3(0,1,0), 3.0, 0.5, 0.0, false);
+	BvhLightBounds m = BvhLightBounds::merge(a, b);
 
 	EXPECT_NEAR(m.phi, 5.0, 1e-10) << "Merged phi should be sum";
 	// Merged cosTheta_o must be <= min of inputs (wider cone)
@@ -128,8 +128,8 @@ TEST(BVHLightSampler, BrightLightSelectedMoreOften) {
 	auto q0 = make_quad(point3(-3, -1, -1), vec3(2,0,0), vec3(0,2,0));
 	auto q1 = make_quad(point3( 1, -1, -1), vec3(2,0,0), vec3(0,2,0));
 
-	LightBounds lb0 = light_bounds_for(q0, 1.0);
-	LightBounds lb1 = light_bounds_for(q1, 10.0);
+	BvhLightBounds lb0 = light_bounds_for(q0, 1.0);
+	BvhLightBounds lb1 = light_bounds_for(q1, 10.0);
 
 	bvh_light_sampler ls;
 	ls.add(q0, lb0);
@@ -177,8 +177,8 @@ TEST(BVHLightSampler, RandomSelectionMatchesPMF) {
 	auto q0 = make_quad(point3(-2, -1, 3), vec3(2,0,0), vec3(0,2,0));
 	auto q1 = make_quad(point3( 1, -1, 3), vec3(2,0,0), vec3(0,2,0));
 
-	LightBounds lb0 = light_bounds_for(q0, 1.0);
-	LightBounds lb1 = light_bounds_for(q1, 9.0);
+	BvhLightBounds lb0 = light_bounds_for(q0, 1.0);
+	BvhLightBounds lb1 = light_bounds_for(q1, 9.0);
 
 	bvh_light_sampler ls;
 	ls.add(q0, lb0);

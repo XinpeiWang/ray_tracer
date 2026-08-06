@@ -41,12 +41,12 @@
 #  ifdef __CUDACC__
 #    define CPU_GPU __host__ __device__
 #  else
-#    define CPU_GPU inline
+#    define CPU_GPU
 #  endif
 #endif
 
 // ---------------------------------------------------------------------------
-// SampledLight2 ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â result of a successful Sample() call
+// SampledLight2 — result of a successful Sample() call
 // ---------------------------------------------------------------------------
 struct SampledLight2 {
 	int   lightIndex = -1;
@@ -73,7 +73,7 @@ public:
 		std::vector<std::pair<int,LightBounds>> bvhLights;
 		bvhLights.reserve(count);
 
-		// Scene-wide AABB ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â start empty (represented as inverted)
+		// Scene-wide AABB — start empty (represented as inverted)
 		allBMinX = allBMinY = allBMinZ =  1e30f;
 		allBMaxX = allBMaxY = allBMaxZ = -1e30f;
 
@@ -98,7 +98,7 @@ public:
 	bool Empty() const { return nodes_.empty(); }
 
 	// -----------------------------------------------------------------------
-	// Sample(p, n, u) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â O(log N) stochastic BVH descent
+	// Sample(p, n, u) — O(log N) stochastic BVH descent
 	// Returns empty optional when no light can contribute.
 	// u is consumed (rescaled at each level).
 	// Mirrors pbrt-v4 BVHLightSampler::Sample(LightSampleContext, Float).
@@ -133,7 +133,7 @@ public:
 				};
 				if (ci[0] == 0.f && ci[1] == 0.f) return std::nullopt;
 
-				// Pick child proportional to importance ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â mirrors pbrt-v4 SampleDiscrete
+				// Pick child proportional to importance — mirrors pbrt-v4 SampleDiscrete
 				float sum = ci[0] + ci[1];
 				float nodePMF;
 				int child;
@@ -151,7 +151,7 @@ public:
 				nodeIndex = (child == 0) ? (nodeIndex + 1)
 										 : (int)node.childOrLightIndex;
 			} else {
-				// Leaf ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â verify non-zero importance (skip root-only degenerate case)
+				// Leaf — verify non-zero importance (skip root-only degenerate case)
 				if (nodeIndex > 0 ||
 					nodes_[nodeIndex].lightBounds.Importance(
 						px,py,pz, nx,ny,nz,
@@ -165,7 +165,7 @@ public:
 	}
 
 	// -----------------------------------------------------------------------
-	// PMF(p, n, lightIndex) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â O(log N) bitTrail replay
+	// PMF(p, n, lightIndex) — O(log N) bitTrail replay
 	// Mirrors pbrt-v4 BVHLightSampler::PMF(LightSampleContext, Light).
 	// Returns 0 if the light is not in the BVH.
 	// -----------------------------------------------------------------------
@@ -216,7 +216,7 @@ public:
 
 private:
 	// -----------------------------------------------------------------------
-	// EvaluateCost ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â solid-angle ÃƒÆ’Ã¢â‚¬â€ area SAH heuristic (pbrt-v4 Ãƒâ€šÃ‚Â§12.6)
+	// EvaluateCost — solid-angle × area SAH heuristic (pbrt-v4 §12.6)
 	// -----------------------------------------------------------------------
 	static float EvaluateCost(const LightBounds& b,
 							   float bMinX, float bMinY, float bMinZ,
@@ -253,7 +253,7 @@ private:
 	}
 
 	// -----------------------------------------------------------------------
-	// buildBVH ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â recursive SAH BVH construction (mirrors pbrt-v4 exactly)
+	// buildBVH — recursive SAH BVH construction (mirrors pbrt-v4 exactly)
 	// Returns {nodeIndex, mergedLightBounds} for the subtree.
 	// -----------------------------------------------------------------------
 	std::pair<int,LightBounds> buildBVH(

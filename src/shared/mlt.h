@@ -61,7 +61,7 @@ namespace mlt_detail {
 // ErfInv: inverse error function.
 // Mirrors pbrt-v4 util/math.h ErfInv() (Winitzki polynomial approximation).
 // Reference: https://stackoverflow.com/a/49743348
-CPU_GPU float ErfInvF(float a) {
+CPU_GPU inline float ErfInvF(float a) {
 	float p;
 	float t = std::log(std::max(1.f - a*a, 1e-38f));
 	if (std::abs(t) > 6.125f) {
@@ -89,18 +89,18 @@ CPU_GPU float ErfInvF(float a) {
 	return a * p;
 }
 
-CPU_GPU double ErfInvD(double a) {
+CPU_GPU inline double ErfInvD(double a) {
 	return (double)ErfInvF((float)a);
 }
 
-template<typename T> CPU_GPU T ErfInv(T a);
-template<> CPU_GPU float  ErfInv<float> (float  a) { return ErfInvF(a); }
-template<> CPU_GPU double ErfInv<double>(double a) { return ErfInvD(a); }
+template<typename T> CPU_GPU inline T ErfInv(T a);
+template<> CPU_GPU inline float  ErfInv<float> (float  a) { return ErfInvF(a); }
+template<> CPU_GPU inline double ErfInv<double>(double a) { return ErfInvD(a); }
 
 // SampleNormal: sample N(0, sigma) via inverse CDF.
 // pbrt-v4: SampleNormal(u, mu=0, sigma) = mu + sqrt(2)*sigma*ErfInv(2u-1)
 template<typename T>
-CPU_GPU T SampleNormal(T u, T sigma) {
+CPU_GPU inline T SampleNormal(T u, T sigma) {
 	return T(1.41421356237309504880) * sigma * ErfInv<T>(T(2)*u - T(1));
 }
 
@@ -428,8 +428,6 @@ T MLTBootstrap(int nBootstrap, int maxDepth, T sigma, T largeStepProb,
 // Normalization: the callback receives values pre-scaled by b/nMutations so
 // the caller can simply accumulate them into a floating-point framebuffer.
 
-#pragma warning(push)
-#pragma warning(disable: 4723) // potential divide by zero: guarded by cCurrent > 0 check
 template<typename T, typename Scene, typename SplatFn>
 void MLTRenderLoop(int nBootstrap, int64_t nMutations, int maxDepth,
 				   T sigma, T largeStepProb,
@@ -490,8 +488,7 @@ void MLTRenderLoop(int nBootstrap, int64_t nMutations, int maxDepth,
 			cCurrent = cProposed;
 			sampler.Accept();
 		} else {
-					sampler.Reject();
-					}
-				}
-			}
-			#pragma warning(pop)
+			sampler.Reject();
+		}
+	}
+}

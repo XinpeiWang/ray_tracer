@@ -82,7 +82,7 @@ public:
 		// Integer indices into the table
 		int xi = std::min((int)x, kRes - 2);
 		int yi = std::min((int)y, kRes - 2);
-		int zi = static_cast<int>(FindInterval(kRes, [&](int i) { return zNodes_[i] < z; }));
+		int zi = FindInterval(kRes, [&](int i) { return zNodes_[i] < z; });
 		float dx = x - xi;
 		float dy = y - yi;
 		float dz = (z - zNodes_[zi]) / (zNodes_[zi + 1] - zNodes_[zi]);

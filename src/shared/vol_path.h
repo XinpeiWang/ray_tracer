@@ -219,7 +219,7 @@ void VolPathSampleLd(const T p[3], const T wo[3], const T n[3],
 
 	// Check for opaque surface occlusion first (no medium)
 	if (!scene.HasMedium(p, shadow_d)) {
-		// Vacuum shadow ray Ã¢â‚¬â€ just check geometry
+		// Vacuum shadow ray — just check geometry
 		if (!scene.Unoccluded(p, light_p)) return;
 	} else {
 		// Walk majorant through media accumulating T_ray and r_u/r_l

@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 // ---------------------------------------------------------------------------
 // float_bits.h -- IEEE 754 float/double bit-manipulation utilities
 //
@@ -33,11 +33,11 @@
 #   endif
 #endif
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <limits>
-#include <algorithm>
 #include <type_traits>
 
 // ===========================================================================
@@ -133,7 +133,7 @@ CPU_GPU uint64_t SignBit(double v)     { return FloatToBits(v) & 0x8000000000000
 // ===========================================================================
 // NextFloatUp / NextFloatDown -- ULP stepping
 // Advances/retreats a float by one unit in the last place.
-// Handles Ãƒâ€šÃ‚Â±0, Ãƒâ€šÃ‚Â±Inf, and NaN-preserving behaviour.
+// Handles Â±0, Â±Inf, and NaN-preserving behaviour.
 // Mirrors pbrt-v4 NextFloatUp/NextFloatDown.
 // ===========================================================================
 CPU_GPU float NextFloatUp(float v) {

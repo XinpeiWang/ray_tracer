@@ -128,7 +128,7 @@ public:
 			return convert(values_[(z * ny_ + y) * nx_ + x]);
 		};
 
-		auto lerp_r = [](T t, R a, R b) { return static_cast<R>(a + t * (b - a)); };
+		auto lerp_r = [](T t, R a, R b) { return a + t * (b - a); };
 
 		R d00 = lerp_r(dx, c(ix, iy,   iz  ), c(ix+1, iy,   iz  ));
 		R d10 = lerp_r(dx, c(ix, iy+1, iz  ), c(ix+1, iy+1, iz  ));
@@ -177,13 +177,13 @@ private:
 // ---------------------------------------------------------------------------
 // GridMediumData<T>
 //
-// pbrt-v4: GridMedium (media.h) ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the per-point sampling and majorant-building
+// pbrt-v4: GridMedium (media.h) — the per-point sampling and majorant-building
 // parts, adapted as a plain CPU/GPU-friendly data struct.
 //
 // Wraps:
 //   - A SampledGrid<T> density grid (normalized coords [0,1]^3)
 //   - Scalar sigma_a, sigma_s, g coefficients (callers scale by wavelength)
-//   - A MajorantGrid<T> built from the density grid (16ÃƒÆ’Ã¢â‚¬â€16ÃƒÆ’Ã¢â‚¬â€16 default)
+//   - A MajorantGrid<T> built from the density grid (16×16×16 default)
 //
 // Key operations:
 //   sample_point(px, py, pz)  -- returns density at a normalized point;
@@ -206,7 +206,7 @@ struct GridMediumData {
 	GridMediumData() : sigma_a(T(0)), sigma_s(T(0)), g(T(0)) {}
 
 	// Construct from a flat density array and world-space bounds.
-	// Automatically builds the majorant grid (16ÃƒÆ’Ã¢â‚¬â€16ÃƒÆ’Ã¢â‚¬â€16 resolution).
+	// Automatically builds the majorant grid (16×16×16 resolution).
 	// pbrt-v4: GridMedium constructor, Initialize _majorantGrid_ block.
 	GridMediumData(const T* density, size_t density_count,
 				   int nx, int ny, int nz,

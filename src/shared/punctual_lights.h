@@ -10,7 +10,7 @@
 //   - T = double on CPU, float on GPU
 //
 // Three types:
-//   PointLightData<T>   -- isotropic point light, 1/rÃƒâ€šÃ‚Â² falloff
+//   PointLightData<T>   -- isotropic point light, 1/r² falloff
 //   SpotLightData<T>    -- cone spotlight with smooth penumbra
 //   DistantLightData<T> -- parallel directional (sun-like)
 //
@@ -48,7 +48,7 @@
 // ---------------------------------------------------------------------------
 // 1. PointLightData<T>
 //    Isotropic point source at a fixed world-space position.
-//    Li(p) = intensity / distanceÃƒâ€šÃ‚Â²
+//    Li(p) = intensity / distance²
 //    pbrt-v4 PointLight::SampleLi: Li = scale * I->Sample(lambda) / DistanceSquared(p, ctx.p())
 // ---------------------------------------------------------------------------
 template<typename T>
@@ -57,7 +57,7 @@ struct PointLightData {
 	T ir, ig, ib;             // intensity (RGB, candela)
 	T scale;                  // additional scale factor
 
-	// Incident radiance at shading point p (Li = intensity / rÃƒâ€šÃ‚Â²)
+	// Incident radiance at shading point p (Li = intensity / r²)
 	CPU_GPU void eval_Li(T px, T py, T pz,
 						 T& Lr, T& Lg, T& Lb) const {
 		T dx = pos_x - px, dy = pos_y - py, dz = pos_z - pz;
@@ -156,7 +156,7 @@ struct SpotLightData {
 #else
 		T inv_r = std::sqrt(inv_r2);
 #endif
-		// from light ÃƒÂ¢Ã¢â‚¬Â Ã¢â‚¬â„¢ surface: (px-pos_x)/r, (py-pos_y)/r, (pz-pos_z)/r
+		// from light → surface: (px-pos_x)/r, (py-pos_y)/r, (pz-pos_z)/r
 		T wx = -dx * inv_r, wy = -dy * inv_r, wz = -dz * inv_r;
 
 		// Falloff evaluated with direction from light toward surface (= dx/r, ...)
@@ -319,8 +319,8 @@ struct DistantLightData {
 		wx = dir_x; wy = dir_y; wz = dir_z;
 	}
 
-	// Approximate total power = scale * avg(L) * pi * rÃƒâ€šÃ‚Â²
-	// pbrt-v4 DistantLight::Phi = scale * Lemit * pi * rÃƒâ€šÃ‚Â²
+	// Approximate total power = scale * avg(L) * pi * r²
+	// pbrt-v4 DistantLight::Phi = scale * Lemit * pi * r²
 	CPU_GPU T power() const {
 		const T pi = T(3.14159265358979323846);
 		T avg_L = (ir + ig + ib) / T(3);

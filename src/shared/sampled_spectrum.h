@@ -188,7 +188,7 @@ public:
 // ---------------------------------------------------------------------------
 
 template <int N>
-CPU_GPU SampledSpectrum<N> SafeDiv(SampledSpectrum<N> a, SampledSpectrum<N> b) {
+CPU_GPU inline SampledSpectrum<N> SafeDiv(SampledSpectrum<N> a, SampledSpectrum<N> b) {
 	SampledSpectrum<N> r;
 	for (int i = 0; i < N; ++i)
 		r[i] = (b[i] != 0.f) ? a[i] / b[i] : 0.f;
@@ -196,56 +196,56 @@ CPU_GPU SampledSpectrum<N> SafeDiv(SampledSpectrum<N> a, SampledSpectrum<N> b) {
 }
 
 template <int N>
-CPU_GPU SampledSpectrum<N> ClampZero(const SampledSpectrum<N>& s) {
+CPU_GPU inline SampledSpectrum<N> ClampZero(const SampledSpectrum<N>& s) {
 	SampledSpectrum<N> r;
 	for (int i = 0; i < N; ++i) r[i] = std::max(0.f, s[i]);
 	return r;
 }
 
 template <int N>
-CPU_GPU SampledSpectrum<N> Clamp(const SampledSpectrum<N>& s, float lo, float hi) {
+CPU_GPU inline SampledSpectrum<N> Clamp(const SampledSpectrum<N>& s, float lo, float hi) {
 	SampledSpectrum<N> r;
 	for (int i = 0; i < N; ++i) r[i] = ::Clamp(s[i], lo, hi);
 	return r;
 }
 
 template <int N>
-CPU_GPU SampledSpectrum<N> Sqrt(const SampledSpectrum<N>& s) {
+CPU_GPU inline SampledSpectrum<N> Sqrt(const SampledSpectrum<N>& s) {
 	SampledSpectrum<N> r;
 	for (int i = 0; i < N; ++i) r[i] = std::sqrt(s[i]);
 	return r;
 }
 
 template <int N>
-CPU_GPU SampledSpectrum<N> SafeSqrt(const SampledSpectrum<N>& s) {
+CPU_GPU inline SampledSpectrum<N> SafeSqrt(const SampledSpectrum<N>& s) {
 	SampledSpectrum<N> r;
 	for (int i = 0; i < N; ++i) r[i] = ::SafeSqrt(s[i]);
 	return r;
 }
 
 template <int N>
-CPU_GPU SampledSpectrum<N> Pow(const SampledSpectrum<N>& s, float e) {
+CPU_GPU inline SampledSpectrum<N> Pow(const SampledSpectrum<N>& s, float e) {
 	SampledSpectrum<N> r;
 	for (int i = 0; i < N; ++i) r[i] = std::pow(s[i], e);
 	return r;
 }
 
 template <int N>
-CPU_GPU SampledSpectrum<N> Exp(const SampledSpectrum<N>& s) {
+CPU_GPU inline SampledSpectrum<N> Exp(const SampledSpectrum<N>& s) {
 	SampledSpectrum<N> r;
 	for (int i = 0; i < N; ++i) r[i] = std::exp(s[i]);
 	return r;
 }
 
 template <int N>
-CPU_GPU SampledSpectrum<N> FastExp(const SampledSpectrum<N>& s) {
+CPU_GPU inline SampledSpectrum<N> FastExp(const SampledSpectrum<N>& s) {
 	SampledSpectrum<N> r;
 	for (int i = 0; i < N; ++i) r[i] = ::FastExp(s[i]);
 	return r;
 }
 
 template <int N>
-CPU_GPU SampledSpectrum<N> Lerp(float t,
+CPU_GPU inline SampledSpectrum<N> Lerp(float t,
 										const SampledSpectrum<N>& s1,
 										const SampledSpectrum<N>& s2) {
 	return (1.f - t) * s1 + t * s2;
@@ -259,7 +259,7 @@ CPU_GPU SampledSpectrum<N> Lerp(float t,
 //
 // Factory methods:
 //   SampleUniform(u, lambda_min, lambda_max)  -- stratified uniform sampling
-//   SampleVisible(u)                          -- V(ÃƒÅ½Ã‚Â»)-importance sampling
+//   SampleVisible(u)                          -- V(λ)-importance sampling
 //
 // TerminateSecondary() -- zero out pdf[1..N-1] for non-fluorescent paths
 //                         (collapses to single-wavelength tracking).
@@ -308,7 +308,7 @@ public:
 		return swl;
 	}
 
-	// ---- Factory: V(ÃƒÅ½Ã‚Â»)-importance sampling ----------------------------------
+	// ---- Factory: V(λ)-importance sampling ----------------------------------
 	// pbrt-v4: SampledWavelengths::SampleVisible(Float u)
 	// Uses SampleVisibleWavelengths / VisibleWavelengthsPDF from
 	// sampling_distributions.h (ported in the previous session).

@@ -165,7 +165,7 @@ class Interval {
 		return *this;
 	}
 
-	// Interval::Pi (exact double bounds around ÃƒÂÃ¢â€šÂ¬)
+	// Interval::Pi (exact double bounds around π)
 	static const Interval Pi;
 
   private:
@@ -173,7 +173,7 @@ class Interval {
 };
 
 // Initialization of static Pi (pbrt-v4: 3.1415926535897931, 3.1415926535897936)
-// These are the two consecutive doubles bracketing ÃƒÂÃ¢â€šÂ¬.
+// These are the two consecutive doubles bracketing π.
 inline const Interval Interval::Pi{3.1415926535897931, 3.1415926535897936};
 
 // ===========================================================================
@@ -276,7 +276,7 @@ CPU_GPU Interval ACos(Interval i) {
 	return Interval(std::max(0.0, next_float_down(low)), next_float_up(high));
 }
 
-// Sin -- restricted to [0, 2ÃƒÂÃ¢â€šÂ¬] per pbrt-v4 contract
+// Sin -- restricted to [0, 2π] per pbrt-v4 contract
 CPU_GPU Interval Sin(Interval i) {
 	static const double kTwoPi = 2.0 * 3.14159265358979323846;
 	double low  = std::sin(std::max(0.0, i.LowerBound()));
@@ -284,21 +284,21 @@ CPU_GPU Interval Sin(Interval i) {
 	if (low > high) std::swap(low, high);
 	low  = std::max(-1.0, next_float_down(low));
 	high = std::min( 1.0, next_float_up  (high));
-	// Peak at ÃƒÂÃ¢â€šÂ¬/2
+	// Peak at π/2
 	if (InRange(3.14159265358979323846 * 0.5, i)) high = 1.0;
-	// Trough at 3ÃƒÂÃ¢â€šÂ¬/2
+	// Trough at 3π/2
 	if (InRange(3.14159265358979323846 * 1.5, i)) low  = -1.0;
 	return Interval(low, high);
 }
 
-// Cos -- restricted to [0, 2ÃƒÂÃ¢â€šÂ¬] per pbrt-v4 contract
+// Cos -- restricted to [0, 2π] per pbrt-v4 contract
 CPU_GPU Interval Cos(Interval i) {
 	double low  = std::cos(std::max(0.0, i.LowerBound()));
 	double high = std::cos(i.UpperBound());
 	if (low > high) std::swap(low, high);
 	low  = std::max(-1.0, next_float_down(low));
 	high = std::min( 1.0, next_float_up  (high));
-	// Trough at ÃƒÂÃ¢â€šÂ¬
+	// Trough at π
 	if (InRange(3.14159265358979323846, i)) low = -1.0;
 	return Interval(low, high);
 }

@@ -144,6 +144,7 @@
     <ClCompile Include="unit\normal_map_tests.cpp" />
     <ClCompile Include="unit\path_sampler_tests.cpp" />
     <ClCompile Include="unit\piecewise_dist_tests.cpp" />
+    <ClCompile Include="unit\power_light_sampler_tests.cpp" />
     <ClCompile Include="unit\principled_bsdf_tests.cpp" />
     <ClCompile Include="unit\punctual_light_tests.cpp" />
     <ClCompile Include="unit\sampling_tests.cpp" />
@@ -211,5 +212,8 @@
       <Project>{9A3B9C2D-4E5F-6A7B-8C9D-0E1F2A3B4C5D}</Project>
     </ProjectReference>
   </ItemGroup>
+  <Target Name="CopyPTX" AfterTargets="Build;Rebuild">
+    <Copy SourceFiles="$(SolutionDir)RayTracer_Package\optix_programs.ptx" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+  </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

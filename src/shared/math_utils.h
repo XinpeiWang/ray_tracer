@@ -94,7 +94,7 @@ CPU_GPU float halton_radical_inverse(unsigned int n, unsigned int base) {
 // Per-pixel sample offset: mix pixel coordinates into the sample index so
 // adjacent pixels use different sub-sequences of the Halton sequence.
 // This replicates pbrt-v4 HaltonSampler::StartPixelSample() intent without
-// its full pixel-stride machinery Ã¢â‚¬â€ a lightweight pixel hash offset.
+// its full pixel-stride machinery � a lightweight pixel hash offset.
 CPU_GPU unsigned int halton_pixel_index(unsigned int sampleIndex,
                                                unsigned int px,
                                                unsigned int py) {

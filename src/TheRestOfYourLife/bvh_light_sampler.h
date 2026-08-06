@@ -1,12 +1,12 @@
-#ifndef BVH_LIGHT_SAMPLER_H
+﻿#ifndef BVH_LIGHT_SAMPLER_H
 #define BVH_LIGHT_SAMPLER_H
 //==============================================================================
 // bvh_light_sampler.h  -- Bounding-Cone BVH light sampler
 //
-// pbrt-v4 alignment: §12.6, lightsamplers.h BVHLightSampler.
+// pbrt-v4 alignment: Â§12.6, lightsamplers.h BVHLightSampler.
 //
 // At construction a BVH is built over the registered lights.  Each node
-// stores a LightBounds:
+// stores a BvhLightBounds:
 //   phi       -- total emitted power of the subtree (area * Le_avg * pi)
 //   w         -- mean emission direction (unit)
 //   cosTheta_o -- half-angle of directional emission cone around w
@@ -14,10 +14,10 @@
 //   bbox       -- world-space AABB of all light geometry in the subtree
 //   twoSided   -- whether the light emits from both sides
 //
-// Importance(p, n) at a shading point (pbrt-v4 §12.6.2):
+// Importance(p, n) at a shading point (pbrt-v4 Â§12.6.2):
 //   1. cosThetap = max(0, cos(angle_to_centroid - theta_o - theta_b))
 //      where theta_b = half-angle subtended by bbox from p
-//   2. importance = phi * cosThetap / d²
+//   2. importance = phi * cosThetap / dÂ²
 //   3. Optionally multiply by cos(angle_w_to_n) for surface normals
 //
 // Sample(origin, u) -- O(log N) descent:
@@ -43,9 +43,9 @@
 #include <numeric>
 
 // ---------------------------------------------------------------------------
-// LightBounds  (mirrors pbrt-v4 LightBounds / CompactLightBounds)
+// BvhLightBounds  (mirrors pbrt-v4 BvhLightBounds / CompactLightBounds)
 // ---------------------------------------------------------------------------
-struct LightBounds {
+struct BvhLightBounds {
 	aabb   bbox;          // world-space bounding box of geometry
 	vec3   w;             // mean emission direction (unit vector)
 	double phi      = 0;  // total emitted power estimate
@@ -53,19 +53,19 @@ struct LightBounds {
 	double cosTheta_e = 0;// cos of normal-facing cone half-angle (0 = pi/2)
 	bool   twoSided = false;
 
-	LightBounds() = default;
+	BvhLightBounds() = default;
 
-	LightBounds(const aabb& bb, const vec3& w_, double phi_,
+	BvhLightBounds(const aabb& bb, const vec3& w_, double phi_,
 				double cosTheta_o_, double cosTheta_e_, bool two)
 		: bbox(bb), w(unit_vector(w_)), phi(phi_),
 		  cosTheta_o(cosTheta_o_), cosTheta_e(cosTheta_e_), twoSided(two)
 	{}
 
-	// Merge two LightBounds (interior-node constructor).
+	// Merge two BvhLightBounds (interior-node constructor).
 	// phi is summed; cone is widened to enclose both.
 	// bbox is union; w is mean of both axes.
-	static LightBounds merge(const LightBounds& a, const LightBounds& b) {
-		LightBounds r;
+	static BvhLightBounds merge(const BvhLightBounds& a, const BvhLightBounds& b) {
+		BvhLightBounds r;
 		r.bbox      = aabb(a.bbox, b.bbox);
 		r.phi       = a.phi + b.phi;
 		r.twoSided  = a.twoSided || b.twoSided;
@@ -109,7 +109,7 @@ struct LightBounds {
 			(bbox.y.min + bbox.y.max) * 0.5,
 			(bbox.z.min + bbox.z.max) * 0.5);
 
-		// d² = max(distance² to centroid, half-diagonal²) to avoid d²=0
+		// dÂ² = max(distanceÂ² to centroid, half-diagonalÂ²) to avoid dÂ²=0
 		vec3 pc_p = pc - p;
 		double d2 = pc_p.length_squared();
 		double halfDiag = (bbox.x.max - bbox.x.min) * (bbox.x.max - bbox.x.min)
@@ -174,12 +174,12 @@ struct LightBounds {
 
 // ---------------------------------------------------------------------------
 // LightBoundsForHittable
-// Compute a LightBounds for a single light hittable given its emitted power.
+// Compute a BvhLightBounds for a single light hittable given its emitted power.
 // For quads/triangles: twoSided=false, w = face normal (unknown here, so we
 // use w=(0,0,0) -> widened cone = full sphere, cosTheta_o = -1).
 // Callers can supply a proper w via the overload.
 // ---------------------------------------------------------------------------
-inline LightBounds light_bounds_for(std::shared_ptr<hittable> obj,
+inline BvhLightBounds light_bounds_for(std::shared_ptr<hittable> obj,
 									double phi,
 									const vec3& w      = vec3(0,0,0),
 									double cosTheta_o  = -1.0,  // full sphere
@@ -188,7 +188,7 @@ inline LightBounds light_bounds_for(std::shared_ptr<hittable> obj,
 {
 	aabb bb = obj->bounding_box();
 	vec3 wn = (w.length_squared() > 1e-14) ? unit_vector(w) : vec3(0,1,0);
-	return LightBounds(bb, wn, phi, cosTheta_o, cosTheta_e, twoSided);
+	return BvhLightBounds(bb, wn, phi, cosTheta_o, cosTheta_e, twoSided);
 }
 
 
@@ -196,17 +196,17 @@ inline LightBounds light_bounds_for(std::shared_ptr<hittable> obj,
 // BVHLightNode -- compact BVH node (leaf or interior)
 // ---------------------------------------------------------------------------
 struct BVHLightNode {
-	LightBounds bounds;
+	BvhLightBounds bounds;
 	// isLeaf=true : child_or_light = index into lights array
 	// isLeaf=false: child_or_light = index of right child in nodes array
 	//               left child is always nodeIndex+1
 	int  child_or_light = 0;
 	bool isLeaf         = false;
 
-	static BVHLightNode make_leaf(int light_idx, const LightBounds& lb) {
+	static BVHLightNode make_leaf(int light_idx, const BvhLightBounds& lb) {
 		BVHLightNode n; n.bounds = lb; n.child_or_light = light_idx; n.isLeaf = true; return n;
 	}
-	static BVHLightNode make_interior(int right_child, const LightBounds& lb) {
+	static BVHLightNode make_interior(int right_child, const BvhLightBounds& lb) {
 		BVHLightNode n; n.bounds = lb; n.child_or_light = right_child; n.isLeaf = false; return n;
 	}
 };
@@ -220,8 +220,8 @@ class bvh_light_sampler : public hittable {
   public:
 	bvh_light_sampler() = default;
 
-	// Add a light with its LightBounds.
-	void add(std::shared_ptr<hittable> obj, const LightBounds& lb) {
+	// Add a light with its BvhLightBounds.
+	void add(std::shared_ptr<hittable> obj, const BvhLightBounds& lb) {
 		lights_.push_back(obj);
 		light_bounds_.push_back(lb);
 		bbox_ = aabb(bbox_, obj->bounding_box());
@@ -304,7 +304,7 @@ class bvh_light_sampler : public hittable {
 
   private:
 	std::vector<std::shared_ptr<hittable>> lights_;
-	std::vector<LightBounds>               light_bounds_;
+	std::vector<BvhLightBounds>               light_bounds_;
 	mutable std::vector<BVHLightNode>      nodes_;
 	mutable std::vector<uint32_t>          bit_trail_;  // per-light BVH path
 	aabb                                   bbox_;
@@ -327,9 +327,9 @@ class bvh_light_sampler : public hittable {
 		}
 
 		// Compute combined bounds for this range
-		LightBounds combined = light_bounds_[idx[begin]];
+		BvhLightBounds combined = light_bounds_[idx[begin]];
 		for (int i = begin+1; i < end; ++i)
-			combined = LightBounds::merge(combined, light_bounds_[idx[i]]);
+			combined = BvhLightBounds::merge(combined, light_bounds_[idx[i]]);
 
 		// Split along longest bbox axis at median centroid
 		int axis = longest_axis(combined.bbox);

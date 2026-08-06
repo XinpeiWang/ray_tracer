@@ -31,7 +31,7 @@
 #  ifdef __CUDACC__
 #    define CPU_GPU __host__ __device__
 #  else
-#    define CPU_GPU inline
+#    define CPU_GPU
 #  endif
 #endif
 
@@ -40,7 +40,7 @@
 // Uses the same minimax polynomial approximation as pbrt-v4 (from enoki).
 // Reference: pbrt-v4 util/color.h LinearToSRGB
 // ---------------------------------------------------------------------------
-CPU_GPU float LinearToSRGB(float value) {
+CPU_GPU inline float LinearToSRGB(float value) {
 	if (value <= 0.0031308f)
 		return 12.92f * value;
 	float sqrtValue = std::sqrt(std::max(0.f, value));
@@ -59,7 +59,7 @@ CPU_GPU float LinearToSRGB(float value) {
 // LinearToSRGB8 -- linear float -> uint8 sRGB (0..255), with optional dither
 // Reference: pbrt-v4 util/color.h LinearToSRGB8
 // ---------------------------------------------------------------------------
-CPU_GPU uint8_t LinearToSRGB8(float value, float dither = 0.f) {
+CPU_GPU inline uint8_t LinearToSRGB8(float value, float dither = 0.f) {
 	if (value <= 0.f) return 0;
 	if (value >= 1.f) return 255;
 	float encoded = LinearToSRGB(value);
@@ -73,7 +73,7 @@ CPU_GPU uint8_t LinearToSRGB8(float value, float dither = 0.f) {
 // SRGBToLinear -- sRGB float -> linear float
 // Reference: pbrt-v4 util/color.h SRGBToLinear
 // ---------------------------------------------------------------------------
-CPU_GPU float SRGBToLinear(float value) {
+CPU_GPU inline float SRGBToLinear(float value) {
 	if (value <= 0.04045f)
 		return value * (1.f / 12.92f);
 	float p = EvaluatePolynomial(value,
@@ -144,13 +144,13 @@ struct XYZ {
 	friend CPU_GPU XYZ operator*(float a, const XYZ& x) { return x * a; }
 };
 
-CPU_GPU XYZ Lerp(float t, const XYZ& a, const XYZ& b) {
+CPU_GPU inline XYZ Lerp(float t, const XYZ& a, const XYZ& b) {
 	return a * (1.f - t) + b * t;
 }
 
 // ---------------------------------------------------------------------------
 // WhiteBalance -- Bradford chromatic adaptation matrix
-// Returns a 3ÃƒÆ’Ã¢â‚¬â€3 matrix M such that M * XYZ_src_white ÃƒÂ¢Ã¢â‚¬Â°Ã‹â€  XYZ_dst_white.
+// Returns a 3×3 matrix M such that M * XYZ_src_white ≈ XYZ_dst_white.
 // srcWhite / dstWhite are CIE xy chromaticity coordinates.
 // Reference: pbrt-v4 util/color.h WhiteBalance
 // ---------------------------------------------------------------------------
@@ -187,16 +187,16 @@ inline SquareMatrix<3> WhiteBalance(float srcX, float srcY,
 //
 // pbrt-v4 reference: util/spectrum.h Blackbody(Float lambda, Float T)
 //
-// Returns spectral radiance Le [W / (m^2 Ãƒâ€šÃ‚Â· sr Ãƒâ€šÃ‚Â· m)] for a blackbody emitter
+// Returns spectral radiance Le [W / (m^2 · sr · m)] for a blackbody emitter
 // at temperature T (Kelvin) and wavelength lambda (nanometres).
 // Returns 0 for T <= 0 or lambda <= 0.
 //
 // Physical constants used (CODATA 2010, matching pbrt-v4):
 //   c  = 299 792 458  m/s
-//   h  = 6.626 069 57e-34  JÃƒâ€šÃ‚Â·s
+//   h  = 6.626 069 57e-34  J·s
 //   k_B = 1.380 648 8e-23  J/K
 // ---------------------------------------------------------------------------
-CPU_GPU float Blackbody(float lambda_nm, float T) {
+CPU_GPU inline float Blackbody(float lambda_nm, float T) {
 	if (T <= 0.f || lambda_nm <= 0.f) return 0.f;
 	const float c  = 299792458.f;
 	const float h  = 6.62606957e-34f;

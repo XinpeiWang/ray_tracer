@@ -87,7 +87,7 @@ struct PCG32 {
 };
 
 // MixBits -- pbrt-v4 util/math.h MixBits (finalizer for Murmur-style hash)
-CPU_GPU uint64_t mix_bits(uint64_t v) {
+CPU_GPU inline uint64_t mix_bits(uint64_t v) {
 	v ^= (v >> 31);
 	v *= 0x7fb5d329728ea185ULL;
 	v ^= (v >> 27);
@@ -97,10 +97,10 @@ CPU_GPU uint64_t mix_bits(uint64_t v) {
 }
 
 // Multi-arg hash -- mirrors pbrt-v4 Hash(...)
-CPU_GPU uint64_t hash2(uint64_t a, uint64_t b) {
+CPU_GPU inline uint64_t hash2(uint64_t a, uint64_t b) {
 	return pmj02_detail::pmj_hash(a, b);
 }
-CPU_GPU uint64_t hash3(uint64_t a, uint64_t b, uint64_t c) {
+CPU_GPU inline uint64_t hash3(uint64_t a, uint64_t b, uint64_t c) {
 	return pmj02_detail::pmj_hash(a, b, c);
 }
 

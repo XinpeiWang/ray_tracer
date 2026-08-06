@@ -37,7 +37,7 @@
 #  ifdef __CUDACC__
 #    define CPU_GPU __host__ __device__
 #  else
-#    define CPU_GPU inline
+#    define CPU_GPU
 #  endif
 #endif
 
@@ -45,6 +45,7 @@
 // expands to nothing and the function is already declared inline.
 #if defined(_MSC_VER)
 #  pragma warning(push)
+#  pragma warning(disable: 4141)
 #endif
 
 // Convenience aliases for the constants used below
@@ -56,7 +57,7 @@ static constexpr double kSampDistPi    = scalar_math_detail::kPi;
 // ===========================================================================
 
 template<typename T>
-CPU_GPU T SD_SampleLinear(T u, T a, T b) {
+CPU_GPU inline T SD_SampleLinear(T u, T a, T b) {
 	if (u == T(0) && a == T(0)) return T(0);
 	T sum = a + b;
 	if (sum == T(0)) return u;
@@ -68,7 +69,7 @@ CPU_GPU T SD_SampleLinear(T u, T a, T b) {
 }
 
 template<typename T>
-CPU_GPU T SD_InvertLinearSample(T x, T a, T b) {
+CPU_GPU inline T SD_InvertLinearSample(T x, T a, T b) {
 	T sum = a + b;
 	if (sum == T(0)) return x;
 	return x * (a * (T(2) - x) + b * x) / sum;
@@ -78,14 +79,14 @@ CPU_GPU T SD_InvertLinearSample(T x, T a, T b) {
 // Tent distribution  f(x) = (1/r - |x|/r^2)  on [-r, r]
 // ===========================================================================
 
-CPU_GPU double TentPDF(double x, double r) {
+CPU_GPU inline double TentPDF(double x, double r) {
 	if (std::abs(x) >= r) return 0.0;
 	return 1.0 / r - std::abs(x) / (r * r);
 }
 
 // Sample a Tent-distributed value given a uniform u in [0,1).
 // Uses the fact that the tent is the sum of two mirror-image linear pieces.
-CPU_GPU double SampleTent(double u, double r) {
+CPU_GPU inline double SampleTent(double u, double r) {
 	if (u < 0.5) {
 		u = u * 2.0;                            // re-map to [0,1)
 		return -r + r * SD_SampleLinear<double>(u, 0.0, 1.0);
@@ -95,7 +96,7 @@ CPU_GPU double SampleTent(double u, double r) {
 	}
 }
 
-CPU_GPU double InvertTentSample(double x, double r) {
+CPU_GPU inline double InvertTentSample(double x, double r) {
 	if (x <= 0.0)
 		return (1.0 - SD_InvertLinearSample<double>(-x / r, 1.0, 0.0)) / 2.0;
 	else
@@ -106,15 +107,15 @@ CPU_GPU double InvertTentSample(double x, double r) {
 // Exponential distribution  f(x) = a * e^{-a x},  x >= 0
 // ===========================================================================
 
-CPU_GPU double ExponentialPDF(double x, double a) {
+CPU_GPU inline double ExponentialPDF(double x, double a) {
 	return a * std::exp(-a * x);
 }
 
-CPU_GPU double SampleExponential(double u, double a) {
+CPU_GPU inline double SampleExponential(double u, double a) {
 	return -std::log(1.0 - u) / a;
 }
 
-CPU_GPU double InvertExponentialSample(double x, double a) {
+CPU_GPU inline double InvertExponentialSample(double x, double a) {
 	return 1.0 - std::exp(-a * x);
 }
 
@@ -122,16 +123,16 @@ CPU_GPU double InvertExponentialSample(double x, double a) {
 // Trimmed Exponential  f(x) = c*e^{-cx} / (1 - e^{-c*xMax}),  x in [0, xMax]
 // ===========================================================================
 
-CPU_GPU double TrimmedExponentialPDF(double x, double c, double xMax) {
+CPU_GPU inline double TrimmedExponentialPDF(double x, double c, double xMax) {
 	if (x < 0.0 || x > xMax) return 0.0;
 	return c / (1.0 - std::exp(-c * xMax)) * std::exp(-c * x);
 }
 
-CPU_GPU double SampleTrimmedExponential(double u, double c, double xMax) {
+CPU_GPU inline double SampleTrimmedExponential(double u, double c, double xMax) {
 	return std::log(1.0 - u * (1.0 - std::exp(-c * xMax))) / -c;
 }
 
-CPU_GPU double InvertTrimmedExponentialSample(double x, double c, double xMax) {
+CPU_GPU inline double InvertTrimmedExponentialSample(double x, double c, double xMax) {
 	return (1.0 - std::exp(-c * x)) / (1.0 - std::exp(-c * xMax));
 }
 
@@ -139,21 +140,21 @@ CPU_GPU double InvertTrimmedExponentialSample(double x, double c, double xMax) {
 // Normal (Gaussian) distribution
 // ===========================================================================
 
-CPU_GPU double NormalPDF(double x, double mu = 0.0, double sigma = 1.0) {
+CPU_GPU inline double NormalPDF(double x, double mu = 0.0, double sigma = 1.0) {
 	return Gaussian(x, mu, sigma);
 }
 
-CPU_GPU double SampleNormal(double u, double mu = 0.0, double sigma = 1.0) {
+CPU_GPU inline double SampleNormal(double u, double mu = 0.0, double sigma = 1.0) {
 	return mu + kSampDistSqrt2 * sigma * static_cast<double>(ErfInv(float(2.0 * u - 1.0)));
 }
 
-CPU_GPU double InvertNormalSample(double x, double mu = 0.0, double sigma = 1.0) {
+CPU_GPU inline double InvertNormalSample(double x, double mu = 0.0, double sigma = 1.0) {
 	return 0.5 * (1.0 + std::erf((x - mu) / (sigma * kSampDistSqrt2)));
 }
 
 // Box-Muller: generate two independent normal samples from two uniforms
 // Returns {x, y} each drawn from N(mu, sigma^2).
-CPU_GPU void SampleTwoNormal(double u0, double u1,
+CPU_GPU inline void SampleTwoNormal(double u0, double u1,
 									 double& out0, double& out1,
 									 double mu = 0.0, double sigma = 1.0) {
 	double r2 = -2.0 * std::log1p(-u0);          // robust log(1 - u0)
@@ -166,18 +167,18 @@ CPU_GPU void SampleTwoNormal(double u0, double u1,
 // Logistic distribution  f(x) = e^{-|x|/s} / (s * (1 + e^{-|x|/s})^2)
 // ===========================================================================
 
-CPU_GPU double LogisticPDF(double x, double s) {
+CPU_GPU inline double LogisticPDF(double x, double s) {
 	x = std::abs(x);
 	double e = std::exp(-x / s);
 	return e / (s * (1.0 + e) * (1.0 + e));
 }
 
 // CDF: sigma(x/s) = 1 / (1 + e^{-x/s})
-CPU_GPU double InvertLogisticSample(double x, double s) {
+CPU_GPU inline double InvertLogisticSample(double x, double s) {
 	return 1.0 / (1.0 + std::exp(-x / s));
 }
 
-CPU_GPU double SampleLogistic(double u, double s) {
+CPU_GPU inline double SampleLogistic(double u, double s) {
 	return -s * std::log(1.0 / u - 1.0);
 }
 
@@ -185,19 +186,19 @@ CPU_GPU double SampleLogistic(double u, double s) {
 // Trimmed Logistic  (logistic restricted to [a, b])
 // ===========================================================================
 
-CPU_GPU double TrimmedLogisticPDF(double x, double s, double a, double b) {
+CPU_GPU inline double TrimmedLogisticPDF(double x, double s, double a, double b) {
 	if (x < a || x > b) return 0.0;
 	return Logistic(x, s) / (InvertLogisticSample(b, s) - InvertLogisticSample(a, s));
 }
 
-CPU_GPU double SampleTrimmedLogistic(double u, double s, double a, double b) {
+CPU_GPU inline double SampleTrimmedLogistic(double u, double s, double a, double b) {
 	double Pa = InvertLogisticSample(a, s);
 	double Pb = InvertLogisticSample(b, s);
 	double x  = SampleLogistic(Lerp(u, Pa, Pb), s);
 	return Clamp(x, a, b);
 }
 
-CPU_GPU double InvertTrimmedLogisticSample(double x, double s, double a, double b) {
+CPU_GPU inline double InvertTrimmedLogisticSample(double x, double s, double a, double b) {
 	double Pa = InvertLogisticSample(a, s);
 	double Pb = InvertLogisticSample(b, s);
 	return (InvertLogisticSample(x, s) - Pa) / (Pb - Pa);
@@ -210,12 +211,12 @@ CPU_GPU double InvertTrimmedLogisticSample(double x, double s, double a, double 
 // Sampled via Newton-bisection (same as pbrt-v4).
 // ===========================================================================
 
-CPU_GPU double SmoothStepPDF(double x, double a, double b) {
+CPU_GPU inline double SmoothStepPDF(double x, double a, double b) {
 	if (x < a || x > b) return 0.0;
 	return (2.0 / (b - a)) * SmoothStep(x, a, b);
 }
 
-CPU_GPU double SampleSmoothStep(double u, double a, double b) {
+CPU_GPU inline double SampleSmoothStep(double u, double a, double b) {
 	auto cdfMinusU = [=](double x) -> std::pair<double, double> {
 		double t = (x - a) / (b - a);
 		double P = 2.0 * Pow<3>(t) - Pow<4>(t);
@@ -225,7 +226,7 @@ CPU_GPU double SampleSmoothStep(double u, double a, double b) {
 	return NewtonBisection(a, b, cdfMinusU);
 }
 
-CPU_GPU double InvertSmoothStepSample(double x, double a, double b) {
+CPU_GPU inline double InvertSmoothStepSample(double x, double a, double b) {
 	double t = (x - a) / (b - a);
 	double P = 2.0 * Pow<3>(t) - Pow<4>(t);
 	// NOTE: pbrt-v4's version wraps P in a lambda then computes (P(x)-P(a))/(P(b)-P(a)),
@@ -236,32 +237,32 @@ CPU_GPU double InvertSmoothStepSample(double x, double a, double b) {
 }
 
 // ---------------------------------------------------------------------------
-// VisibleWavelengths -- importance-sample wavelength ÃƒÅ½Ã‚Â» proportional to V(ÃƒÅ½Ã‚Â»)
+// VisibleWavelengths -- importance-sample wavelength λ proportional to V(λ)
 //
 // pbrt-v4 reference: util/sampling.h  SampleVisibleWavelengths / VisibleWavelengthsPDF
 //
 // SampleVisibleWavelengths(u):
-//   Maps u ~ Uniform[0,1) to ÃƒÅ½Ã‚Â» in nm, sampling proportional to the CIE
-//   photopic luminous-efficiency function V(ÃƒÅ½Ã‚Â»).  The closed-form inverse CDF
+//   Maps u ~ Uniform[0,1) to λ in nm, sampling proportional to the CIE
+//   photopic luminous-efficiency function V(λ).  The closed-form inverse CDF
 //   concentrates Monte Carlo samples in the 450-650 nm range where human
 //   vision is most sensitive, reducing variance in spectral rendering.
 //
-// VisibleWavelengthsPDF(ÃƒÅ½Ã‚Â»):
+// VisibleWavelengthsPDF(λ):
 //   Returns the PDF of the distribution above.  Zero outside [360, 830] nm.
-//   PDF = 0.0039398042 / coshÃƒâ€šÃ‚Â²(0.0072Ãƒâ€šÃ‚Â·(ÃƒÅ½Ã‚Â» ÃƒÂ¢Ã‹â€ Ã¢â‚¬â„¢ 538))
+//   PDF = 0.0039398042 / cosh²(0.0072·(λ − 538))
 // ---------------------------------------------------------------------------
 
-CPU_GPU double SampleVisibleWavelengths(double u) {
-	// Inverse CDF: ÃƒÅ½Ã‚Â» = 538 ÃƒÂ¢Ã‹â€ Ã¢â‚¬â„¢ 138.888889Ãƒâ€šÃ‚Â·atanh(0.85691062 ÃƒÂ¢Ã‹â€ Ã¢â‚¬â„¢ 1.82750197Ãƒâ€šÃ‚Â·u)
+CPU_GPU inline double SampleVisibleWavelengths(double u) {
+	// Inverse CDF: λ = 538 − 138.888889·atanh(0.85691062 − 1.82750197·u)
 	// pbrt-v4: return 538 - 138.888889f * std::atanh(0.85691062f - 1.82750197f * u);
 	return 538.0 - 138.888889 * std::atanh(0.85691062 - 1.82750197 * u);
 }
 
-CPU_GPU double VisibleWavelengthsPDF(double lambda) {
+CPU_GPU inline double VisibleWavelengthsPDF(double lambda) {
 	// Zero outside the visible range [360, 830] nm.
 	if (lambda < 360.0 || lambda > 830.0)
 		return 0.0;
-	// PDF = 0.0039398042 / coshÃƒâ€šÃ‚Â²(0.0072Ãƒâ€šÃ‚Â·(ÃƒÅ½Ã‚Â» ÃƒÂ¢Ã‹â€ Ã¢â‚¬â„¢ 538))
+	// PDF = 0.0039398042 / cosh²(0.0072·(λ − 538))
 	double c = std::cosh(0.0072 * (lambda - 538.0));
 	return 0.0039398042 / (c * c);
 }

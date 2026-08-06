@@ -30,12 +30,13 @@
 #  ifdef __CUDACC__
 #    define CPU_GPU __host__ __device__
 #  else
-#    define CPU_GPU inline
+#    define CPU_GPU
 #  endif
 #endif
 
 #if defined(_MSC_VER)
 #  pragma warning(push)
+#  pragma warning(disable: 4141)
 #endif
 
 // ---------------------------------------------------------------------------
@@ -45,19 +46,19 @@ namespace dc_detail {
 
 struct F3 { float x, y, z; };
 
-CPU_GPU F3  add(F3 a, F3 b)       { return {a.x+b.x, a.y+b.y, a.z+b.z}; }
-CPU_GPU F3  sub(F3 a, F3 b)       { return {a.x-b.x, a.y-b.y, a.z-b.z}; }
-CPU_GPU F3  scale(F3 a, float s)  { return {a.x*s, a.y*s, a.z*s}; }
-CPU_GPU float dot(F3 a, F3 b)     { return a.x*b.x + a.y*b.y + a.z*b.z; }
-CPU_GPU float lenSq(F3 a)         { return dot(a, a); }
-CPU_GPU float len(F3 a)           { return std::sqrt(lenSq(a)); }
-CPU_GPU F3  normalize(F3 a)       { float l = len(a); return l > 0.f ? scale(a, 1.f/l) : F3{0,0,1}; }
-CPU_GPU F3  cross(F3 a, F3 b) {
+CPU_GPU inline F3  add(F3 a, F3 b)       { return {a.x+b.x, a.y+b.y, a.z+b.z}; }
+CPU_GPU inline F3  sub(F3 a, F3 b)       { return {a.x-b.x, a.y-b.y, a.z-b.z}; }
+CPU_GPU inline F3  scale(F3 a, float s)  { return {a.x*s, a.y*s, a.z*s}; }
+CPU_GPU inline float dot(F3 a, F3 b)     { return a.x*b.x + a.y*b.y + a.z*b.z; }
+CPU_GPU inline float lenSq(F3 a)         { return dot(a, a); }
+CPU_GPU inline float len(F3 a)           { return std::sqrt(lenSq(a)); }
+CPU_GPU inline F3  normalize(F3 a)       { float l = len(a); return l > 0.f ? scale(a, 1.f/l) : F3{0,0,1}; }
+CPU_GPU inline F3  cross(F3 a, F3 b) {
 	return { a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x };
 }
 
 // Numerically stable angle between two unit vectors (pbrt-v4 AngleBetween)
-CPU_GPU float angleBetween(F3 a, F3 b) {
+CPU_GPU inline float angleBetween(F3 a, F3 b) {
 	if (dot(a, b) < 0.f) {
 		F3 s = add(a, b);
 		float hl = len(s) * 0.5f;
@@ -72,7 +73,7 @@ CPU_GPU float angleBetween(F3 a, F3 b) {
 }
 
 // Rotate unit vector v by angle theta (radians) around unit axis k (Rodrigues)
-CPU_GPU F3 rotateAround(F3 v, F3 k, float theta) {
+CPU_GPU inline F3 rotateAround(F3 v, F3 k, float theta) {
 	float cosT = std::cos(theta);
 	float sinT = std::sin(theta);
 	F3 kcv = cross(k, v);
@@ -121,7 +122,7 @@ struct DirectionCone {
 // ===========================================================================
 // Inside: is direction (vx,vy,vz) inside the cone?
 // ===========================================================================
-CPU_GPU bool Inside(const DirectionCone& d, float vx, float vy, float vz) {
+CPU_GPU inline bool Inside(const DirectionCone& d, float vx, float vy, float vz) {
 	if (d.IsEmpty()) return false;
 	float l = std::sqrt(vx*vx + vy*vy + vz*vz);
 	if (l == 0.f) return false;
@@ -134,7 +135,7 @@ CPU_GPU bool Inside(const DirectionCone& d, float vx, float vy, float vz) {
 // from point p toward the axis-aligned bounding box [bMin, bMax].
 // Mirrors pbrt-v4 BoundSubtendedDirections(Bounds3f, Point3f).
 // ===========================================================================
-CPU_GPU DirectionCone BoundSubtendedDirections(
+CPU_GPU inline DirectionCone BoundSubtendedDirections(
 	float bMinX, float bMinY, float bMinZ,
 	float bMaxX, float bMaxY, float bMaxZ,
 	float px,    float py,    float pz)
@@ -162,7 +163,7 @@ CPU_GPU DirectionCone BoundSubtendedDirections(
 // Union: smallest DirectionCone containing both a and b.
 // Mirrors pbrt-v4 Union(DirectionCone, DirectionCone) in vecmath.cpp.
 // ===========================================================================
-CPU_GPU DirectionCone Union(const DirectionCone& a, const DirectionCone& b) {
+CPU_GPU inline DirectionCone Union(const DirectionCone& a, const DirectionCone& b) {
 	// Handle empty cones
 	if (a.IsEmpty()) return b;
 	if (b.IsEmpty()) return a;
@@ -199,7 +200,7 @@ CPU_GPU DirectionCone Union(const DirectionCone& a, const DirectionCone& b) {
 // Output written to (ox, oy, oz).
 // Mirrors pbrt-v4 DirectionCone::ClosestVectorInCone(Vector3f wp).
 // ===========================================================================
-CPU_GPU void ClosestVectorInCone(
+CPU_GPU inline void ClosestVectorInCone(
 	const DirectionCone& d,
 	float wpx, float wpy, float wpz,
 	float& ox,  float& oy,  float& oz)

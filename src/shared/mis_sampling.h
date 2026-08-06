@@ -28,13 +28,13 @@
 #include <limits>
 
 // ---------------------------------------------------------------------------
-// MIS heuristics (pbrt-v4 util/sampling.h Ãƒâ€šÃ‚Â§13.10)
+// MIS heuristics (pbrt-v4 util/sampling.h §13.10)
 // ---------------------------------------------------------------------------
 
 // BalanceHeuristic(nf, fPdf, ng, gPdf)
 // Returns the balance-heuristic MIS weight for strategy f.
 // pbrt-v4: BalanceHeuristic
-CPU_GPU double BalanceHeuristic(int nf, double fPdf, int ng, double gPdf) {
+CPU_GPU inline double BalanceHeuristic(int nf, double fPdf, int ng, double gPdf) {
 	return (nf * fPdf) / (nf * fPdf + ng * gPdf);
 }
 
@@ -42,7 +42,7 @@ CPU_GPU double BalanceHeuristic(int nf, double fPdf, int ng, double gPdf) {
 // Returns the power-heuristic (beta=2) MIS weight for strategy f.
 // Numerically guarded: returns 1 if f^2 overflows to infinity.
 // pbrt-v4: PowerHeuristic
-CPU_GPU double PowerHeuristic(int nf, double fPdf, int ng, double gPdf) {
+CPU_GPU inline double PowerHeuristic(int nf, double fPdf, int ng, double gPdf) {
 	double f = nf * fPdf, g = ng * gPdf;
 	double f2 = f * f, g2 = g * g;
 	if (f2 == std::numeric_limits<double>::infinity()) return 1.0;
@@ -55,7 +55,7 @@ CPU_GPU double PowerHeuristic(int nf, double fPdf, int ng, double gPdf) {
 // pbrt-v4: SampleUniformSphere / UniformSpherePDF / InvertUniformSphereSample
 // ---------------------------------------------------------------------------
 
-CPU_GPU void SampleUniformSphere(double u0, double u1,
+CPU_GPU inline void SampleUniformSphere(double u0, double u1,
 										double& wx, double& wy, double& wz) {
 	namespace D = scalar_math_detail;
 	double z   = 1.0 - 2.0 * u0;
@@ -66,11 +66,11 @@ CPU_GPU void SampleUniformSphere(double u0, double u1,
 	wz = z;
 }
 
-CPU_GPU double UniformSpherePDF() {
+CPU_GPU inline double UniformSpherePDF() {
 	return scalar_math_detail::kInv4Pi;
 }
 
-CPU_GPU void InvertUniformSphereSample(double wx, double wy, double wz,
+CPU_GPU inline void InvertUniformSphereSample(double wx, double wy, double wz,
 											  double& u0, double& u1) {
 	namespace D = scalar_math_detail;
 	double phi = std::atan2(wy, wx);
@@ -85,7 +85,7 @@ CPU_GPU void InvertUniformSphereSample(double wx, double wy, double wz,
 // pbrt-v4: SampleUniformHemisphere / UniformHemispherePDF
 // ---------------------------------------------------------------------------
 
-CPU_GPU void SampleUniformHemisphere(double u0, double u1,
+CPU_GPU inline void SampleUniformHemisphere(double u0, double u1,
 											double& wx, double& wy, double& wz) {
 	namespace D = scalar_math_detail;
 	double z   = u0;
@@ -96,11 +96,11 @@ CPU_GPU void SampleUniformHemisphere(double u0, double u1,
 	wz = z;
 }
 
-CPU_GPU double UniformHemispherePDF() {
+CPU_GPU inline double UniformHemispherePDF() {
 	return scalar_math_detail::kInv2Pi;
 }
 
-CPU_GPU void InvertUniformHemisphereSample(double wx, double wy, double wz,
+CPU_GPU inline void InvertUniformHemisphereSample(double wx, double wy, double wz,
 												  double& u0, double& u1) {
 	namespace D = scalar_math_detail;
 	double phi = std::atan2(wy, wx);
@@ -115,12 +115,12 @@ CPU_GPU void InvertUniformHemisphereSample(double wx, double wy, double wz,
 // pbrt-v4: SampleUniformCone / UniformConePDF / InvertUniformConeSample
 // ---------------------------------------------------------------------------
 
-CPU_GPU double UniformConePDF(double cosThetaMax) {
+CPU_GPU inline double UniformConePDF(double cosThetaMax) {
 	namespace D = scalar_math_detail;
 	return 1.0 / (2.0 * D::kPi * (1.0 - cosThetaMax));
 }
 
-CPU_GPU void SampleUniformCone(double u0, double u1, double cosThetaMax,
+CPU_GPU inline void SampleUniformCone(double u0, double u1, double cosThetaMax,
 									  double& wx, double& wy, double& wz) {
 	namespace D = scalar_math_detail;
 	double cosTheta = (1.0 - u0) + u0 * cosThetaMax;
@@ -131,7 +131,7 @@ CPU_GPU void SampleUniformCone(double u0, double u1, double cosThetaMax,
 	wz = cosTheta;
 }
 
-CPU_GPU void InvertUniformConeSample(double wx, double wy, double wz,
+CPU_GPU inline void InvertUniformConeSample(double wx, double wy, double wz,
 											double cosThetaMax,
 											double& u0, double& u1) {
 	namespace D = scalar_math_detail;
@@ -147,7 +147,7 @@ CPU_GPU void InvertUniformConeSample(double wx, double wy, double wz,
 // pbrt-v4: SampleUniformTriangle / InvertUniformTriangleSample
 // ---------------------------------------------------------------------------
 
-CPU_GPU void SampleUniformTriangleD(double u0, double u1,
+CPU_GPU inline void SampleUniformTriangleD(double u0, double u1,
 										   double& b0, double& b1, double& b2) {
 	if (u0 < u1) {
 		b0 = u0 * 0.5;
@@ -159,7 +159,7 @@ CPU_GPU void SampleUniformTriangleD(double u0, double u1,
 	b2 = 1.0 - b0 - b1;
 }
 
-CPU_GPU void InvertUniformTriangleSample(double b0, double b1,
+CPU_GPU inline void InvertUniformTriangleSample(double b0, double b1,
 												double& u0, double& u1) {
 	if (b0 > b1) {
 		u0 = b0 + b1;

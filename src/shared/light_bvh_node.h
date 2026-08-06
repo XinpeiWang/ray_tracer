@@ -28,7 +28,7 @@
 #  ifdef __CUDACC__
 #    define CPU_GPU __host__ __device__
 #  else
-#    define CPU_GPU inline
+#    define CPU_GPU
 #  endif
 #endif
 
@@ -37,7 +37,7 @@
 // ===========================================================================
 
 struct alignas(32) LightBVHNode {
-	// Public members ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â matches pbrt-v4 layout exactly
+	// Public members — matches pbrt-v4 layout exactly
 	CompactLightBounds lightBounds;
 	struct {
 		unsigned int childOrLightIndex : 31;

@@ -35,13 +35,13 @@
 #  ifdef __CUDACC__
 #    define CPU_GPU __host__ __device__
 #  else
-#    define CPU_GPU inline
+#    define CPU_GPU
 #  endif
 #endif
 
 #if defined(_MSC_VER)
 #  pragma warning(push)
-#  pragma warning(disable: 4293 4244)
+#  pragma warning(disable: 4141 4293 4244)
 #endif
 
 // ===========================================================================
@@ -190,13 +190,13 @@ struct CompactLightBounds {
 	// -----------------------------------------------------------------------
 	OctahedralVector w;          // 4 bytes
 	float phi = 0.f;             // 4 bytes
-	// Anonymous struct ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â matches pbrt-v4 CompactLightBounds private members
+	// Anonymous struct — matches pbrt-v4 CompactLightBounds private members
 	struct {
 		unsigned int qCosTheta_o : 15;
 		unsigned int qCosTheta_e : 15;
 		unsigned int twoSided    :  1;
 	};
-	uint16_t qb[2][3];           // 12 bytes ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â [corner][axis]
+	uint16_t qb[2][3];           // 12 bytes — [corner][axis]
 
 private:
 	// Quantise cosine in [-1, 1] to [0, 32767]

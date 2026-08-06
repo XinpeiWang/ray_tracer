@@ -1230,7 +1230,7 @@ struct PrincipledBxDF {
 #endif
 		T cos_wm = (hlen > T(1e-8)) ? (wo_lx*(hx/hlen) + wo_ly*(hy/hlen) + wo_lz*(hz/hlen)) : wo_lz;
 
-		// Diffuse: Lambertian * (1-metallic) * (1-F_diffuse); F at wiÃƒâ€šÃ‚Â·n per Disney
+		// Diffuse: Lambertian * (1-metallic) * (1-F_diffuse); F at wi·n per Disney
 		T F_wi_diff = schlick_fresnel(cos_wi_l, F0_d);
 		const T inv_pi = T(1) / T(3.14159265358979323846);
 		T diff_r = base_r * inv_pi * (T(1) - metallic) * (T(1) - F_wi_diff);
@@ -1597,7 +1597,7 @@ struct HairBxDF {
 	}
 
 	// Evaluate BSDF: wi/wo are in hair local frame (fiber tangent = +X)
-	// wi_z = cosTheta_i * sin(phi_i)  ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â the z-component of wi in local frame.
+	// wi_z = cosTheta_i * sin(phi_i)  — the z-component of wi in local frame.
 	// pbrt-v4 HairBxDF::f() divides by AbsCosTheta(wi) = |wi.z|, which equals
 	// cosTheta_i * |sin(phi_i)|.  We do the same here for alignment.
 	CPU_GPU void eval_local(T wo_x, T wo_y, T wo_z,
@@ -1665,7 +1665,7 @@ struct HairBxDF {
 		fg += mp_rem * ap_g[pMax] / (T(2)*pi);
 		fb += mp_rem * ap_b[pMax] / (T(2)*pi);
 
-		// Divide by AbsCosTheta(wi) = |wi_z| ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â matches pbrt-v4 HairBxDF::f()
+		// Divide by AbsCosTheta(wi) = |wi_z| — matches pbrt-v4 HairBxDF::f()
 		// wi_z = cosTheta_i * sin(phi_i); when near zero use cosTheta_i as fallback
 #if defined(__CUDACC__)
 		T absCosTheta_wi = fabsf(wi_z);

@@ -75,9 +75,9 @@ struct AT_Mat44 {
 // ---------------------------------------------------------------------------
 // Matrix helpers
 // ---------------------------------------------------------------------------
-CPU_GPU AT_Mat44 at_identity() { return AT_Mat44{}; }
+CPU_GPU inline AT_Mat44 at_identity() { return AT_Mat44{}; }
 
-CPU_GPU AT_Mat44 at_mul(const AT_Mat44& a, const AT_Mat44& b) {
+CPU_GPU inline AT_Mat44 at_mul(const AT_Mat44& a, const AT_Mat44& b) {
 	AT_Mat44 r;
 	for (int i = 0; i < 4; ++i)
 		for (int j = 0; j < 4; ++j) {
@@ -88,7 +88,7 @@ CPU_GPU AT_Mat44 at_mul(const AT_Mat44& a, const AT_Mat44& b) {
 	return r;
 }
 
-CPU_GPU AT_Mat44 at_add(const AT_Mat44& a, const AT_Mat44& b) {
+CPU_GPU inline AT_Mat44 at_add(const AT_Mat44& a, const AT_Mat44& b) {
 	AT_Mat44 r;
 	for (int i = 0; i < 4; ++i)
 		for (int j = 0; j < 4; ++j)
@@ -96,7 +96,7 @@ CPU_GPU AT_Mat44 at_add(const AT_Mat44& a, const AT_Mat44& b) {
 	return r;
 }
 
-CPU_GPU AT_Mat44 at_scale_mat(const AT_Mat44& a, double s) {
+CPU_GPU inline AT_Mat44 at_scale_mat(const AT_Mat44& a, double s) {
 	AT_Mat44 r;
 	for (int i = 0; i < 4; ++i)
 		for (int j = 0; j < 4; ++j)
@@ -104,7 +104,7 @@ CPU_GPU AT_Mat44 at_scale_mat(const AT_Mat44& a, double s) {
 	return r;
 }
 
-CPU_GPU AT_Mat44 at_lerp_mat(double t, const AT_Mat44& a, const AT_Mat44& b) {
+CPU_GPU inline AT_Mat44 at_lerp_mat(double t, const AT_Mat44& a, const AT_Mat44& b) {
 	AT_Mat44 r;
 	for (int i = 0; i < 4; ++i)
 		for (int j = 0; j < 4; ++j)
@@ -112,7 +112,7 @@ CPU_GPU AT_Mat44 at_lerp_mat(double t, const AT_Mat44& a, const AT_Mat44& b) {
 	return r;
 }
 
-CPU_GPU AT_Mat44 at_transpose(const AT_Mat44& a) {
+CPU_GPU inline AT_Mat44 at_transpose(const AT_Mat44& a) {
 	AT_Mat44 r;
 	for (int i = 0; i < 4; ++i)
 		for (int j = 0; j < 4; ++j)
@@ -122,7 +122,7 @@ CPU_GPU AT_Mat44 at_transpose(const AT_Mat44& a) {
 
 // 4x4 matrix inversion via Gauss-Jordan.
 // pbrt-v4: InvertOrExit (util/vecmath.h)
-CPU_GPU bool at_invert(const AT_Mat44& src, AT_Mat44& inv) {
+CPU_GPU inline bool at_invert(const AT_Mat44& src, AT_Mat44& inv) {
 	double a[4][8];
 	for (int i = 0; i < 4; ++i) {
 		for (int j = 0; j < 4; ++j) a[i][j] = src.m[i][j];
@@ -152,7 +152,7 @@ CPU_GPU bool at_invert(const AT_Mat44& src, AT_Mat44& inv) {
 
 // Build a translation matrix.
 // pbrt-v4: Translate(Vector3f delta)
-CPU_GPU AT_Mat44 at_translate(double tx, double ty, double tz) {
+CPU_GPU inline AT_Mat44 at_translate(double tx, double ty, double tz) {
 	AT_Mat44 r;
 	r.m[0][3] = tx; r.m[1][3] = ty; r.m[2][3] = tz;
 	return r;
@@ -169,35 +169,35 @@ struct AT_Quat {
 		: x(x_), y(y_), z(z_), w(w_) {}
 };
 
-CPU_GPU double at_dot(const AT_Quat& a, const AT_Quat& b) {
+CPU_GPU inline double at_dot(const AT_Quat& a, const AT_Quat& b) {
 	return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
 }
 
-CPU_GPU AT_Quat at_normalize(const AT_Quat& q) {
+CPU_GPU inline AT_Quat at_normalize(const AT_Quat& q) {
 	double len = std::sqrt(at_dot(q, q));
 	if (len == 0.0) return AT_Quat(0, 0, 0, 1);
 	return AT_Quat(q.x / len, q.y / len, q.z / len, q.w / len);
 }
 
-CPU_GPU AT_Quat operator-(const AT_Quat& a) {
+CPU_GPU inline AT_Quat operator-(const AT_Quat& a) {
 	return AT_Quat(-a.x, -a.y, -a.z, -a.w);
 }
 
-CPU_GPU AT_Quat operator+(const AT_Quat& a, const AT_Quat& b) {
+CPU_GPU inline AT_Quat operator+(const AT_Quat& a, const AT_Quat& b) {
 	return AT_Quat(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w);
 }
 
-CPU_GPU AT_Quat operator*(double s, const AT_Quat& q) {
+CPU_GPU inline AT_Quat operator*(double s, const AT_Quat& q) {
 	return AT_Quat(s * q.x, s * q.y, s * q.z, s * q.w);
 }
 
-CPU_GPU AT_Quat operator-(const AT_Quat& a, const AT_Quat& b) {
+CPU_GPU inline AT_Quat operator-(const AT_Quat& a, const AT_Quat& b) {
 	return AT_Quat(a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w);
 }
 
 // Spherical linear interpolation (shortest arc).
 // pbrt-v4: Slerp(Float t, Quaternion q1, Quaternion q2)
-CPU_GPU AT_Quat at_slerp(double t, const AT_Quat& q1, const AT_Quat& q2) {
+CPU_GPU inline AT_Quat at_slerp(double t, const AT_Quat& q1, const AT_Quat& q2) {
 	double cosTheta = at_dot(q1, q2);
 	if (cosTheta > 0.9995) {
 		// Quaternions nearly parallel: linear interpolation
@@ -217,7 +217,7 @@ CPU_GPU AT_Quat at_slerp(double t, const AT_Quat& q1, const AT_Quat& q2) {
 
 // Convert a unit quaternion to a rotation 4x4 matrix.
 // pbrt-v4: Transform(Quaternion q)
-CPU_GPU AT_Mat44 at_quat_to_mat(const AT_Quat& q) {
+CPU_GPU inline AT_Mat44 at_quat_to_mat(const AT_Quat& q) {
 	double xx = q.x * q.x, yy = q.y * q.y, zz = q.z * q.z;
 	double xy = q.x * q.y, xz = q.x * q.z, yz = q.y * q.z;
 	double wx = q.x * q.w, wy = q.y * q.w, wz = q.z * q.w;
@@ -241,7 +241,7 @@ CPU_GPU AT_Mat44 at_quat_to_mat(const AT_Quat& q) {
 // Extract a unit quaternion from a rotation matrix.
 // Based on Shepperd's method.
 // pbrt-v4: Quaternion(Transform t) -- constructs from the m matrix
-CPU_GPU AT_Quat at_mat_to_quat(const AT_Mat44& rot) {
+CPU_GPU inline AT_Quat at_mat_to_quat(const AT_Mat44& rot) {
 	// rot.m is the forward rotation matrix
 	// pbrt-v4 stores: m = rotation_matrix, mInv = Transpose(m)
 	// So mInv[i][j] = m[j][i] = rot.m[j][i]
@@ -296,7 +296,7 @@ CPU_GPU AT_Quat at_mat_to_quat(const AT_Mat44& rot) {
 //   R_out           -- rotation as AT_Mat44 (upper-left 3x3 is the rotation)
 //   S_out           -- scale as AT_Mat44
 // ===========================================================================
-CPU_GPU void at_decompose(const AT_Mat44& mat,
+CPU_GPU inline void at_decompose(const AT_Mat44& mat,
 								  double T_out[3],
 								  AT_Mat44& R_out,
 								  AT_Mat44& S_out)
