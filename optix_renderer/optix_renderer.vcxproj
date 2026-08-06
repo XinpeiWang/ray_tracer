@@ -40,10 +40,10 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>OPTIX_RENDERER_AVAILABLE;_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <!-- Use configurable OptixSdkPath and CudaToolkitPath properties (can be set via env or MSBuild) -->
-      <AdditionalIncludeDirectories>$(OptixSdkPath)\include;$(CudaToolkitPath)\include;$(ProjectDir)gpu\optix;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(OptixSdkPath)\include;$(CudaToolkitPath)\include;$(ProjectDir)gpu\optix;$(ProjectDir)..\src\shared;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
@@ -52,7 +52,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <Lib>
-      <AdditionalDependencies>$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels.obj;$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_launch.obj;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels.obj;$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_launch.obj;$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_dlink.obj;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Lib>
   </ItemDefinitionGroup>
@@ -62,9 +62,9 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>OPTIX_RENDERER_AVAILABLE;NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(OptixSdkPath)\include;$(CudaToolkitPath)\include;$(ProjectDir)gpu\optix;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(OptixSdkPath)\include;$(CudaToolkitPath)\include;$(ProjectDir)gpu\optix;$(ProjectDir)..\src\shared;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
     <Link>
@@ -75,7 +75,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <Lib>
-      <AdditionalDependencies>$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels.obj;$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_launch.obj;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels.obj;$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_launch.obj;$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_dlink.obj;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Lib>
   </ItemDefinitionGroup>
@@ -122,4 +122,6 @@
     <Warning Text="[Post-Build] PTX not found at $(PtxSource). Run PTX compile step first." Condition="!Exists('$(PtxSource)')" />
   </Target>
 </Project>
+
+
 

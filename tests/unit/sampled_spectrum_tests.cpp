@@ -667,3 +667,97 @@ TEST(SpectralMath, CIEYIntegral_MatchesRiemannSum) {
 	float ip = InnerProduct(GetCIE_Y(), one);
 	EXPECT_NEAR(ip, kCIE_Y_integral, 0.1f);  // 1-nm Riemann sum vs exact integral
 }
+
+// ---------------------------------------------------------------------------
+// SampledSpectrumToXYZ -- raw-pointer version (used by GPU device code)
+// pbrt-v4 alignment: numerically equivalent to SampledSpectrum::ToXYZ()
+// ---------------------------------------------------------------------------
+
+TEST(SampledSpectrumToXYZ, ZeroSpectrum_IsZero) {
+	SWL4 swl = SWL4::SampleVisible(0.5f);
+	SS4  L(0.f);
+	auto xyz = SampledSpectrumToXYZ(L, swl, CIE_X, CIE_Y, CIE_Z,
+									 kCIELambda_min, kCIENSamples);
+	EXPECT_FLOAT_EQ(xyz.x, 0.f);
+	EXPECT_FLOAT_EQ(xyz.y, 0.f);
+	EXPECT_FLOAT_EQ(xyz.z, 0.f);
+}
+
+TEST(SampledSpectrumToXYZ, MatchesToXYZFreeFunction) {
+	// Both routes must agree to floating-point precision.
+	SWL4 swl = SWL4::SampleVisible(0.3f);
+	SS4  L(0.7f);
+
+	// Route 1: raw-pointer version (device-facing)
+	auto xyz1 = SampledSpectrumToXYZ(L, swl, CIE_X, CIE_Y, CIE_Z,
+									  kCIELambda_min, kCIENSamples);
+
+	// Route 2: spectral_math ToXYZ (host, uses DenselySampledSpectrum::Sample)
+	XYZ xyz2 = ToXYZ(L, swl);
+
+	EXPECT_NEAR(xyz1.x, xyz2.X, 1e-5f);
+	EXPECT_NEAR(xyz1.y, xyz2.Y, 1e-5f);
+	EXPECT_NEAR(xyz1.z, xyz2.Z, 1e-5f);
+}
+
+TEST(SampledSpectrumToXYZ, TerminatedSecondary_MatchesPrimary) {
+	// After TerminateSecondary, only lambda[0] carries weight.
+	// Both ToXYZ routes should still agree.
+	SWL4 swl = SWL4::SampleVisible(0.6f);
+	swl.TerminateSecondary();
+	SS4 L(1.f);
+
+	auto xyz1 = SampledSpectrumToXYZ(L, swl, CIE_X, CIE_Y, CIE_Z,
+									  kCIELambda_min, kCIENSamples);
+	XYZ xyz2 = ToXYZ(L, swl);
+
+	EXPECT_NEAR(xyz1.x, xyz2.X, 1e-5f);
+	EXPECT_NEAR(xyz1.y, xyz2.Y, 1e-5f);
+	EXPECT_NEAR(xyz1.z, xyz2.Z, 1e-5f);
+}
+
+// ---------------------------------------------------------------------------
+// XYZToSRGB -- linear sRGB output
+// pbrt-v4 alignment: matches sRGB standard (IEC 61966-2-1)
+// ---------------------------------------------------------------------------
+
+TEST(XYZToSRGB, BlackIsBlack) {
+	float r, g, b;
+	XYZToSRGB(0.f, 0.f, 0.f, r, g, b);
+	EXPECT_FLOAT_EQ(r, 0.f);
+	EXPECT_FLOAT_EQ(g, 0.f);
+	EXPECT_FLOAT_EQ(b, 0.f);
+}
+
+TEST(XYZToSRGB, D65WhiteIsNearGrey) {
+	// D65 white in XYZ: X=0.9504, Y=1.0, Z=1.0888
+	// sRGB(D65 white) ~ (1,1,1)
+	float r, g, b;
+	XYZToSRGB(0.9504f, 1.0f, 1.0888f, r, g, b);
+	EXPECT_NEAR(r, 1.f, 0.02f);
+	EXPECT_NEAR(g, 1.f, 0.02f);
+	EXPECT_NEAR(b, 1.f, 0.02f);
+}
+
+TEST(XYZToSRGB, NegativeXYZClampedToZero) {
+	// Negative XYZ (out of gamut) must not produce negative RGB channels.
+	float r, g, b;
+	XYZToSRGB(-0.5f, -0.5f, -0.5f, r, g, b);
+	EXPECT_GE(r, 0.f);
+	EXPECT_GE(g, 0.f);
+	EXPECT_GE(b, 0.f);
+}
+
+TEST(XYZToSRGB, GammaEncodingApplied) {
+	// For D65-neutral grey at Y=0.2, the sRGB matrix should give r≈g≈b (neutral).
+	// D65 white point: X_w=0.95047, Z_w=1.08883 normalized to Y=1.
+	// At Y=0.2: X=0.19009, Y=0.2, Z=0.21777
+	float r, g, b;
+	XYZToSRGB(0.19009f, 0.2f, 0.21777f, r, g, b);
+	// neutral grey after matrix + gamma: r≈g≈b
+	EXPECT_NEAR(r, g, 0.01f);
+	EXPECT_NEAR(g, b, 0.01f);
+	// gamma-encoded 0.2 linear ≈ 0.48 sRGB
+	EXPECT_NEAR(r, 0.48f, 0.05f);
+}
+

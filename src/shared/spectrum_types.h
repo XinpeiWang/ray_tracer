@@ -34,14 +34,20 @@
 //   rgb_colorspace.h     -- RGBColorSpace (for RGB spectrum types)
 // ---------------------------------------------------------------------------
 
+#include <cmath>
+#ifndef __CUDACC__
 #include <algorithm>
 #include <cassert>
-#include <cmath>
 #include <vector>
+#endif
 
-#include "color_utils.h"      // Blackbody(), XYZ, etc.
+#ifndef __CUDACC__
+#include "color_utils.h"      // Blackbody(), XYZ, etc. (host only)
+#endif
 #include "sampled_spectrum.h" // SampledSpectrum<N>, SampledWavelengths<N>
+#ifndef __CUDACC__
 #include "rgb_colorspace.h"   // RGBColorSpace, RGBSigmoidPolynomial
+#endif
 
 #ifndef CPU_GPU
 #  if defined(__CUDACC__)
@@ -54,8 +60,19 @@
 // Spectrum range constants -- use kLambda_min / kLambda_max from sampled_spectrum.h
 // (360 nm .. 830 nm, matching pbrt-v4 Lambda_min / Lambda_max)
 
-// Blackbody(lambda, T) free function is defined in color_utils.h.
-// It uses Pow<5> + FastExp matching pbrt-v4 util/spectrum.h exactly.
+// Blackbody(lambda, T) free function is defined in color_utils.h (host).
+// For device (nvcc), provide a device-safe inline that doesn't conflict.
+#ifdef __CUDACC__
+__host__ __device__ __forceinline__
+float Blackbody(float lambda_nm, float T) {
+	if (T <= 0.f || lambda_nm <= 0.f) return 0.f;
+	const float c  = 299792458.f;
+	const float h  = 6.62606957e-34f;
+	const float kb = 1.3806488e-23f;
+	float l = lambda_nm * 1e-9f;
+	return (2.f * h * c * c) / (l*l*l*l*l * (expf((h * c) / (l * kb * T)) - 1.f));
+}
+#endif
 
 // ---------------------------------------------------------------------------
 // ConstantSpectrum
@@ -78,13 +95,9 @@ struct ConstantSpectrum {
 };
 
 // ---------------------------------------------------------------------------
-// DenselySampledSpectrum
-//
-// pbrt-v4 reference: util/spectrum.h DenselySampledSpectrum
-// Stores one float value per integer nm in [lambda_min, lambda_max].
-// operator() snaps lambda to the nearest integer nm (std::lround) -- exact
-// pbrt-v4 behaviour (no interpolation).
+// DenselySampledSpectrum  (HOST ONLY -- uses std::vector)
 // ---------------------------------------------------------------------------
+#ifndef __CUDACC__
 struct DenselySampledSpectrum {
 	// Construct zero-filled spectrum over [lambda_min, lambda_max]
 	explicit DenselySampledSpectrum(
@@ -152,14 +165,12 @@ struct DenselySampledSpectrum {
 	int lambda_min, lambda_max;
 	std::vector<float> values;
 };
+#endif // !__CUDACC__
 
 // ---------------------------------------------------------------------------
-// PiecewiseLinearSpectrum
-//
-// pbrt-v4 reference: util/spectrum.h PiecewiseLinearSpectrum
-// Tabulated spectrum defined by sorted (lambda, value) pairs.
-// Evaluates to 0 outside the defined range; linearly interpolates within.
+// PiecewiseLinearSpectrum  (HOST ONLY -- uses std::vector)
 // ---------------------------------------------------------------------------
+#ifndef __CUDACC__
 struct PiecewiseLinearSpectrum {
 	PiecewiseLinearSpectrum() = default;
 
@@ -232,6 +243,7 @@ struct PiecewiseLinearSpectrum {
 	std::vector<float> lambdas;
 	std::vector<float> values;
 };
+#endif // !__CUDACC__
 
 // ---------------------------------------------------------------------------
 // BlackbodySpectrum
@@ -268,6 +280,7 @@ struct BlackbodySpectrum {
 	float normalizationFactor;
 };
 
+#ifndef __CUDACC__
 // ---------------------------------------------------------------------------
 // RGBAlbedoSpectrum
 //
@@ -286,9 +299,9 @@ struct RGBAlbedoSpectrum {
 	// Construct from a clamped RGB albedo in [0,1]^3.
 	// pbrt-v4: RGBAlbedoSpectrum(const RGBColorSpace&, RGB)
 	CPU_GPU RGBAlbedoSpectrum(const RGBColorSpace& cs, float r, float g, float b) {
-		float cr = std::max(0.f, std::min(1.f, r));
-		float cg = std::max(0.f, std::min(1.f, g));
-		float cb = std::max(0.f, std::min(1.f, b));
+		float cr = (r < 0.f) ? 0.f : (r > 1.f) ? 1.f : r;
+		float cg = (g < 0.f) ? 0.f : (g > 1.f) ? 1.f : g;
+		float cb = (b < 0.f) ? 0.f : (b > 1.f) ? 1.f : b;
 		rsp = cs.ToRGBCoeffs(cr, cg, cb);
 	}
 
@@ -324,7 +337,7 @@ struct RGBUnboundedSpectrum {
 
 	// pbrt-v4: RGBUnboundedSpectrum(const RGBColorSpace&, RGB)
 	CPU_GPU RGBUnboundedSpectrum(const RGBColorSpace& cs, float r, float g, float b) {
-		float m = std::max({ r, g, b });
+		float m = r > g ? (r > b ? r : b) : (g > b ? g : b);
 		scale = 2.f * m;
 		if (scale > 0.f)
 			rsp = cs.ToRGBCoeffs(r / scale, g / scale, b / scale);
@@ -371,10 +384,10 @@ struct RGBIlluminantSpectrum {
 	//               Must remain valid for the object's lifetime. May be null.
 	CPU_GPU RGBIlluminantSpectrum(const RGBColorSpace& cs,
 								   float r, float g, float b,
-								   const DenselySampledSpectrum* illuminant_ = nullptr)
+								   const void* illuminant_ = nullptr)
 		: illuminant(illuminant_)
 	{
-		float m = std::max({ r, g, b });
+		float m = r > g ? (r > b ? r : b) : (g > b ? g : b);
 		scale = 2.f * m;
 		if (scale > 0.f)
 			rsp = cs.ToRGBCoeffs(r / scale, g / scale, b / scale);
@@ -383,28 +396,51 @@ struct RGBIlluminantSpectrum {
 	}
 
 	CPU_GPU float operator()(float lambda) const {
+#ifndef __CUDACC__
 		if (!illuminant) return 0.f;
-		return scale * rsp(lambda) * (*illuminant)(lambda);
+		const auto* ill = static_cast<const DenselySampledSpectrum*>(illuminant);
+		return scale * rsp(lambda) * (*ill)(lambda);
+#else
+		return scale * rsp(lambda);
+#endif
 	}
 
 	CPU_GPU float MaxValue() const {
+#ifndef __CUDACC__
 		if (!illuminant) return 0.f;
-		return scale * rsp.MaxValue() * illuminant->MaxValue();
+		const auto* ill = static_cast<const DenselySampledSpectrum*>(illuminant);
+		return scale * rsp.MaxValue() * ill->MaxValue();
+#else
+		return scale * rsp.MaxValue();
+#endif
 	}
 
-	CPU_GPU const DenselySampledSpectrum* Illuminant() const { return illuminant; }
+#ifndef __CUDACC__
+	const DenselySampledSpectrum* Illuminant() const {
+		return static_cast<const DenselySampledSpectrum*>(illuminant);
+	}
+#endif
 
 	template <int N = 4>
 	CPU_GPU SampledSpectrum<N> Sample(const SampledWavelengths<N>& swl) const {
-		if (!illuminant) return SampledSpectrum<N>(0.f);
 		SampledSpectrum<N> s(0.f);
+#ifndef __CUDACC__
+		if (!illuminant) return s;  // null illuminant -> zero (pbrt-v4 aligned)
+		{
+			for (int i = 0; i < N; ++i)
+				s[i] = scale * rsp(swl.lambda[i]);
+			const auto* ill = static_cast<const DenselySampledSpectrum*>(illuminant);
+			s *= ill->Sample(swl);
+		}
+#else
 		for (int i = 0; i < N; ++i)
 			s[i] = scale * rsp(swl.lambda[i]);
-		return s * illuminant->Sample(swl);
+#endif
+		return s;
 	}
 
 	float scale = 0.f;
 	RGBSigmoidPolynomial rsp;
-	const DenselySampledSpectrum* illuminant = nullptr;
+	const void* illuminant = nullptr;
 };
-
+#endif // !__CUDACC__

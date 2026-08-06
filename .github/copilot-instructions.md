@@ -26,3 +26,6 @@
 - Visual Studio holds exclusive write locks on open .cpp files. The `replace_string_in_file` function writes to Visual Studio's in-memory buffer (visible in the editor) but does NOT flush to disk while Visual Studio has the file open. 
 - PowerShell's `Set-Content` will fail with "file being used by another process." 
 - Workaround: Create a new file instead of editing a file that is currently open in the IDE, or verify on-disk content with `Get-Content` before trusting tool-view edits.
+
+## Terminal Guidelines
+- Always read terminal output immediately (waitMs ~3000 or less). Never wait long durations for terminal commands.

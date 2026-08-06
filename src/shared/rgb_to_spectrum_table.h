@@ -34,7 +34,9 @@
 #include "color_utils.h"
 #include "scalar_math.h"
 
+#ifndef __CUDACC__
 #include <algorithm>
+#endif
 #include <cmath>
 
 // ---------------------------------------------------------------------------
@@ -68,7 +70,7 @@ public:
 		// pbrt-v4: (rgb[0] - .5f) / std::sqrt(rgb[0] * (1 - rgb[0]))
 		// s() handles ±inf for r=0 or r=1 (returns 0 or 1 respectively).
 		if (r == g && g == b) {
-			float v = (r - 0.5f) / std::sqrt(r * (1.f - r));
+			float v = (r - 0.5f) / sqrtf(r * (1.f - r));
 			return RGBSigmoidPolynomial(0.f, 0.f, v);
 		}
 
@@ -80,8 +82,8 @@ public:
 		float y = rgb[(maxc + 2) % 3] * (kRes - 1) / z;
 
 		// Integer indices into the table
-		int xi = std::min((int)x, kRes - 2);
-		int yi = std::min((int)y, kRes - 2);
+		int xi = (int)x < kRes - 2 ? (int)x : kRes - 2;
+		int yi = (int)y < kRes - 2 ? (int)y : kRes - 2;
 		int zi = static_cast<int>(FindInterval(kRes, [&](int i) { return zNodes_[i] < z; }));
 		float dx = x - xi;
 		float dy = y - yi;

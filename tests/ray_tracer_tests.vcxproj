@@ -60,7 +60,7 @@
       <LanguageStandard>stdcpp17</LanguageStandard>
       <DebugInformationFormat>OldStyle</DebugInformationFormat>
       <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)src\shared;$(SolutionDir)src;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\optix;$(SolutionDir)tests\build\_deps\googletest-src\googletest\include;$(SolutionDir)tests\build\_deps\googletest-src\googletest;$(SolutionDir)tests\build\_deps\googletest-src\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(OptixSdkPath)\include;$(CudaToolkitPath)\include;$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)src\shared;$(SolutionDir)src;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\optix;$(SolutionDir)tests\build\_deps\googletest-src\googletest\include;$(SolutionDir)tests\build\_deps\googletest-src\googletest;$(SolutionDir)tests\build\_deps\googletest-src\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
         </ClCompile>
         <Link>
           <SubSystem>Console</SubSystem>
@@ -81,7 +81,7 @@
       <LanguageStandard>stdcpp17</LanguageStandard>
       <DebugInformationFormat>OldStyle</DebugInformationFormat>
       <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
-      <AdditionalIncludeDirectories>$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)src\shared;$(SolutionDir)src;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\optix;$(SolutionDir)tests\build\_deps\googletest-src\googletest\include;$(SolutionDir)tests\build\_deps\googletest-src\googletest;$(SolutionDir)tests\build\_deps\googletest-src\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(OptixSdkPath)\include;$(CudaToolkitPath)\include;$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)src\shared;$(SolutionDir)src;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\optix;$(SolutionDir)tests\build\_deps\googletest-src\googletest\include;$(SolutionDir)tests\build\_deps\googletest-src\googletest;$(SolutionDir)tests\build\_deps\googletest-src\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       </ClCompile>
       <Link>
         <SubSystem>Console</SubSystem>

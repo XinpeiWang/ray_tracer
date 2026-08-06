@@ -8,7 +8,7 @@
 #include <array>
 
 // BilinearPatchShape<T> needs ShapeHit / ShapeSample / SamplingContext from shapes.h
-// (already included transitively via bilinear_patch.h -> shapes.h)
+// (included directly by bilinear_patch.h via shapes.h)
 
 // ---------------------------------------------------------------------------
 // Helpers

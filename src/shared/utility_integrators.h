@@ -90,6 +90,9 @@ CPU_GPU void RandomWalkLi(
 	// Path throughput beta
 	T beta[3] = { T(1), T(1), T(1) };
 
+	// Zero-initialize output radiance
+	out_L[0] = out_L[1] = out_L[2] = T(0);
+
 	T org[3] = { ray_o[0], ray_o[1], ray_o[2] };
 	T dir[3] = { ray_d[0], ray_d[1], ray_d[2] };
 

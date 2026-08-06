@@ -32,10 +32,12 @@
 //   sampling_distributions.h -- SampleVisibleWavelengths, VisibleWavelengthsPDF
 // ---------------------------------------------------------------------------
 
+#ifndef __CUDACC__
 #include <array>
-#include <cmath>
 #include <algorithm>
 #include <cassert>
+#endif
+#include <cmath>
 
 #include "scalar_math.h"
 #include "sampling_distributions.h"
@@ -45,6 +47,16 @@
 #    define CPU_GPU __host__ __device__ __forceinline__
 #  else
 #    define CPU_GPU inline
+#  endif
+#endif
+
+#ifndef CPU_GPU_RESTRICT
+#  if defined(__CUDACC__)
+#    define CPU_GPU_RESTRICT __restrict__
+#  elif defined(_MSC_VER)
+#    define CPU_GPU_RESTRICT __restrict
+#  else
+#    define CPU_GPU_RESTRICT __restrict__
 #  endif
 #endif
 
@@ -65,13 +77,14 @@ template <int N = 4>
 class SampledSpectrum {
 public:
 	// ---- Construction -------------------------------------------------------
-	SampledSpectrum() = default;
-
-	CPU_GPU explicit SampledSpectrum(float c) { values.fill(c); }
+	CPU_GPU explicit SampledSpectrum(float c) { for (int i = 0; i < N; ++i) values[i] = c; }
 
 	// Construct from raw array (pbrt-v4: SampledSpectrum(pstd::span<const Float>))
-	CPU_GPU explicit SampledSpectrum(const float* v, int n) {
-		assert(n == N);
+	CPU_GPU explicit SampledSpectrum(const float* v) {
+		for (int i = 0; i < N; ++i) values[i] = v[i];
+	}
+	// Compatibility overload for tests: SampledSpectrum(v, N)
+	CPU_GPU explicit SampledSpectrum(const float* v, int /*n*/) {
 		for (int i = 0; i < N; ++i) values[i] = v[i];
 	}
 
@@ -87,8 +100,11 @@ public:
 	}
 
 	// ---- Equality -----------------------------------------------------------
-	CPU_GPU bool operator==(const SampledSpectrum& s) const { return values == s.values; }
-	CPU_GPU bool operator!=(const SampledSpectrum& s) const { return values != s.values; }
+	CPU_GPU bool operator==(const SampledSpectrum& s) const {
+		for (int i = 0; i < N; ++i) if (values[i] != s.values[i]) return false;
+		return true;
+	}
+	CPU_GPU bool operator!=(const SampledSpectrum& s) const { return !(*this == s); }
 
 	// ---- Arithmetic: SampledSpectrum op SampledSpectrum ---------------------
 	CPU_GPU SampledSpectrum& operator+=(const SampledSpectrum& s) {
@@ -158,12 +174,12 @@ public:
 	// ---- Reductions ---------------------------------------------------------
 	CPU_GPU float MinComponentValue() const {
 		float m = values[0];
-		for (int i = 1; i < N; ++i) m = std::min(m, values[i]);
+		for (int i = 1; i < N; ++i) m = (m < values[i]) ? m : values[i];
 		return m;
 	}
 	CPU_GPU float MaxComponentValue() const {
 		float m = values[0];
-		for (int i = 1; i < N; ++i) m = std::max(m, values[i]);
+		for (int i = 1; i < N; ++i) m = (m > values[i]) ? m : values[i];
 		return m;
 	}
 	CPU_GPU float Average() const {
@@ -180,7 +196,13 @@ public:
 	}
 
 	// ---- Storage ------------------------------------------------------------
-	std::array<float, N> values{};
+	float values[N];
+
+private:
+	// Zero-init helper called by default constructor
+	CPU_GPU void _zero() { for (int i = 0; i < N; ++i) values[i] = 0.f; }
+public:
+	CPU_GPU SampledSpectrum() { _zero(); }
 };
 
 // ---------------------------------------------------------------------------
@@ -198,7 +220,7 @@ CPU_GPU SampledSpectrum<N> SafeDiv(SampledSpectrum<N> a, SampledSpectrum<N> b) {
 template <int N>
 CPU_GPU SampledSpectrum<N> ClampZero(const SampledSpectrum<N>& s) {
 	SampledSpectrum<N> r;
-	for (int i = 0; i < N; ++i) r[i] = std::max(0.f, s[i]);
+	for (int i = 0; i < N; ++i) r[i] = (s[i] < 0.f) ? 0.f : s[i];
 	return r;
 }
 
@@ -212,7 +234,7 @@ CPU_GPU SampledSpectrum<N> Clamp(const SampledSpectrum<N>& s, float lo, float hi
 template <int N>
 CPU_GPU SampledSpectrum<N> Sqrt(const SampledSpectrum<N>& s) {
 	SampledSpectrum<N> r;
-	for (int i = 0; i < N; ++i) r[i] = std::sqrt(s[i]);
+	for (int i = 0; i < N; ++i) r[i] = sqrtf(s[i]);
 	return r;
 }
 
@@ -226,14 +248,14 @@ CPU_GPU SampledSpectrum<N> SafeSqrt(const SampledSpectrum<N>& s) {
 template <int N>
 CPU_GPU SampledSpectrum<N> Pow(const SampledSpectrum<N>& s, float e) {
 	SampledSpectrum<N> r;
-	for (int i = 0; i < N; ++i) r[i] = std::pow(s[i], e);
+	for (int i = 0; i < N; ++i) r[i] = powf(s[i], e);
 	return r;
 }
 
 template <int N>
 CPU_GPU SampledSpectrum<N> Exp(const SampledSpectrum<N>& s) {
 	SampledSpectrum<N> r;
-	for (int i = 0; i < N; ++i) r[i] = std::exp(s[i]);
+	for (int i = 0; i < N; ++i) r[i] = expf(s[i]);
 	return r;
 }
 
@@ -269,7 +291,9 @@ class SampledWavelengths {
 public:
 	// ---- Equality -----------------------------------------------------------
 	CPU_GPU bool operator==(const SampledWavelengths& o) const {
-		return lambda == o.lambda && pdf == o.pdf;
+		for (int i = 0; i < N; ++i)
+			if (lambda[i] != o.lambda[i] || pdf[i] != o.pdf[i]) return false;
+		return true;
 	}
 	CPU_GPU bool operator!=(const SampledWavelengths& o) const {
 		return !(*this == o);
@@ -342,6 +366,80 @@ public:
 	}
 
 	// ---- Storage (public for direct access in tests) -----------------------
-	std::array<float, N> lambda{};
-	std::array<float, N> pdf{};
+	float lambda[N];
+	float pdf[N];
+
+private:
+	CPU_GPU void _zero() {
+		for (int i = 0; i < N; ++i) { lambda[i] = 0.f; pdf[i] = 0.f; }
+	}
+public:
+	CPU_GPU SampledWavelengths() { _zero(); }
 };
+
+// ---------------------------------------------------------------------------
+// SampledSpectrum -> XYZ conversion
+//
+// pbrt-v4 alignment: SampledSpectrum::ToXYZ(const SampledWavelengths&)
+//
+// Given a spectral radiance estimate L[i] for each hero wavelength lambda[i],
+// and the sampling PDF pdf[i], computes the Monte Carlo estimate of XYZ:
+//
+//   X = (1 / CIE_Y_integral) * sum_i( CIE_X(lambda[i]) * L[i] / pdf[i] ) / N
+//   (similarly for Y, Z)
+//
+// The CIE tables are passed as device-accessible pointers so this function
+// can run on GPU device code. On host, pass the global CIE_X/Y/Z arrays
+// from cie_data.h. On device, pass pointers to __constant__ copies.
+//
+// Lambda range: 360..830 nm (471 samples, 1 nm spacing), indices 0..470.
+// ---------------------------------------------------------------------------
+struct XYZResult { float x, y, z; };
+
+template <int N>
+CPU_GPU XYZResult SampledSpectrumToXYZ(
+		const SampledSpectrum<N>& L,
+		const SampledWavelengths<N>& swl,
+		const float* CPU_GPU_RESTRICT cie_x,
+			const float* CPU_GPU_RESTRICT cie_y,
+			const float* CPU_GPU_RESTRICT cie_z,
+		int cie_lambda_min = 360,
+		int cie_n_samples  = 471)
+{
+	float X = 0.f, Y = 0.f, Z = 0.f;
+	for (int i = 0; i < N; ++i) {
+		float p = swl.pdf[i];
+		if (p == 0.f) continue;
+		// CIE table index: snap to nearest integer nm
+		int idx = (int)(swl.lambda[i] + 0.5f) - cie_lambda_min;
+		if (idx < 0 || idx >= cie_n_samples) continue;
+		float w = L[i] / p;
+		X += cie_x[idx] * w;
+		Y += cie_y[idx] * w;
+		Z += cie_z[idx] * w;
+	}
+	// Average over hero wavelengths, normalize by CIE Y integral
+	constexpr float inv_N = 1.f / N;
+	constexpr float inv_Y = 1.f / 106.856895f;  // 1 / CIE_Y_integral (pbrt-v4)
+	float scale = inv_N * inv_Y;
+	return { X * scale, Y * scale, Z * scale };
+}
+
+// ---------------------------------------------------------------------------
+// XYZ -> sRGB (D65 white point, pbrt-v4 aligned)
+// ---------------------------------------------------------------------------
+CPU_GPU void XYZToSRGB(float X, float Y, float Z,
+							   float& r, float& g, float& b)
+{
+	// sRGB matrix (from pbrt-v4 RGBColorSpace::sRGB XYZ->RGB matrix)
+	r =  3.2404542f * X - 1.5371385f * Y - 0.4985314f * Z;
+	g = -0.9692660f * X + 1.8760108f * Y + 0.0415560f * Z;
+	b =  0.0556434f * X - 0.2040259f * Y + 1.0572252f * Z;
+	// Apply sRGB gamma (linear to gamma-encoded), clamp negatives
+	r = r < 0.f ? 0.f : r;
+	g = g < 0.f ? 0.f : g;
+	b = b < 0.f ? 0.f : b;
+	r = r <= 0.0031308f ? 12.92f * r : 1.055f * powf(r, 1.f / 2.4f) - 0.055f;
+	g = g <= 0.0031308f ? 12.92f * g : 1.055f * powf(g, 1.f / 2.4f) - 0.055f;
+	b = b <= 0.0031308f ? 12.92f * b : 1.055f * powf(b, 1.f / 2.4f) - 0.055f;
+}

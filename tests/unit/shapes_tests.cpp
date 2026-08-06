@@ -25,6 +25,47 @@
 
 static const double PI = 3.14159265358979323846;
 
+// Debug helper: print sphere intersect result
+TEST(ShapesSphere, DEBUG_IntersectTrace) {
+	// Verify std::optional works correctly first
+	std::optional<int> emptyOpt;
+	std::optional<int> filledOpt = 42;
+	ASSERT_FALSE(emptyOpt.has_value()) << "empty optional should report false";
+	ASSERT_TRUE(filledOpt.has_value()) << "filled optional should report true";
+
+	auto s = SphereShape<double>::make(0, 0, 0, 1.0);
+
+	// Manually compute the HIT discriminant: ray (0,0,-5) dir (0,0,1), sphere r=1
+	{
+		double ox = 0-0, oy = 0-0, oz = -5-0;
+		double dx = 0, dy = 0, dz = 1;
+		double a = dx*dx + dy*dy + dz*dz;           // 1
+		double b = 2.0*(ox*dx + oy*dy + oz*dz);     // -10
+		double c = ox*ox + oy*oy + oz*oz - 1.0*1.0; // 24
+		double disc = b*b - 4.0*a*c;
+		EXPECT_GT(disc, 0.0) << "HIT discriminant should be > 0, got: " << disc;
+	}
+	// Manually compute MISS discriminant: ray (2,0,-5) dir (0,0,1), sphere r=1
+	{
+		double ox = 2-0, oy = 0-0, oz = -5-0;
+		double dx = 0, dy = 0, dz = 1;
+		double a = dx*dx + dy*dy + dz*dz;           // 1
+		double b = 2.0*(ox*dx + oy*dy + oz*dz);     // -10
+		double c = ox*ox + oy*oy + oz*oz - 1.0*1.0; // 28
+		double disc = b*b - 4.0*a*c;
+		EXPECT_LT(disc, 0.0) << "MISS discriminant should be < 0, got: " << disc;
+	}
+
+	// Test HIT: ray from (0,0,-5) toward +z
+	auto hit = s.intersect(0.0, 0.0, -5.0, 0.0, 0.0, 1.0, 0.0, 100.0);
+	bool hitHasValue = hit.has_value();
+	// Test MISS: ray from (2,0,-5) toward +z
+	auto miss = s.intersect(2.0, 0.0, -5.0, 0.0, 0.0, 1.0, 0.0, 100.0);
+	bool missHasValue = miss.has_value();
+	EXPECT_TRUE(hitHasValue) << "HIT test should have value";
+	EXPECT_FALSE(missHasValue) << "MISS test should not have value";
+}
+
 // ===========================================================================
 // SphereShape tests
 // ===========================================================================

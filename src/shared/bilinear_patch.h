@@ -517,42 +517,10 @@ inline float blp_pdf_wi(const float* p00, const float* p10,
 //            Ramsey et al., "Ray Bilinear Patch Intersections", 2004
 // ===========================================================================
 
-// Bring in ShapeHit<T>, ShapeSample<T>, SamplingContext<T> only if shapes.h
-// hasn't already been included (avoids pulling in the full shapes.h when
-// bilinear_patch.h is used standalone).
-#ifndef SHAPES_H_SHAPE_STRUCTS_DEFINED
-#define SHAPES_H_SHAPE_STRUCTS_DEFINED
-
-#ifndef CPU_GPU
-#  if defined(__CUDACC__)
-#    define CPU_GPU __host__ __device__ __forceinline__
-#  else
-#    define CPU_GPU inline
-#  endif
-#endif
-
-template<typename T>
-struct ShapeHit {
-    T t;
-    T nx, ny, nz;
-    T u, v;
-};
-
-template<typename T>
-struct SamplingContext {
-    T px, py, pz;
-    T nx, ny, nz;
-};
-
-template<typename T>
-struct ShapeSample {
-    T px, py, pz;
-    T nx, ny, nz;
-    T u, v;
-    T pdf;
-};
-
-#endif // SHAPES_H_SHAPE_STRUCTS_DEFINED
+// Always include shapes.h so ShapeHit<T>, ShapeSample<T>, and SamplingContext<T>
+// have a single canonical definition (avoids ODR violations when bilinear_patch.h
+// and shapes.h are both compiled into the same translation unit or linked together).
+#include "shapes.h"
 
 #ifndef BLP_CPU_GPU
 #  if defined(__CUDACC__)

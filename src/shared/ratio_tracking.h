@@ -48,28 +48,14 @@
 #include "volume_scattering.h"  // HomogeneousMediumData, HenyeyGreensteinPhaseFunction
 #include "rng.h"                // RNG::Uniform<float>()
 #include "scalar_math.h"        // SafeSqrt, Sqr, etc.
+#include "grid_medium.h"        // RayMajorantSegment<T> (canonical definition)
 
 // ===========================================================================
-// 1. RayMajorantSegment
-//    A ray interval [tMin, tMax] annotated with its constant majorant.
-//    Mirrors pbrt-v4 RayMajorantSegment (media.h).
+// 1. RayMajorantSegment -- defined in grid_medium.h
 // ===========================================================================
-template <typename T>
-struct RayMajorantSegment {
-	T tMin;
-	T tMax;
-	T sigma_maj_r, sigma_maj_g, sigma_maj_b;  // per-channel majorant extinction
-};
 
 // ===========================================================================
 // 2. HomogeneousMajorantIterator
-//    Produces one segment covering [tMin, tMax] with sigma_maj = sigma_t.
-//    Mirrors pbrt-v4 HomogeneousMajorantIterator (media.h).
-//
-//    Usage:
-//      HomogeneousMajorantIterator<T> it(tMin, tMax, medium);
-//      auto seg = it.Next();  // returns the single segment, then nullopt
-// ===========================================================================
 template <typename T>
 struct HomogeneousMajorantIterator {
 	RayMajorantSegment<T> seg;
@@ -85,6 +71,7 @@ struct HomogeneousMajorantIterator {
 		seg.sigma_maj_r = medium.sigma_ar + medium.sigma_sr;
 		seg.sigma_maj_g = medium.sigma_ag + medium.sigma_sg;
 		seg.sigma_maj_b = medium.sigma_ab + medium.sigma_sb;
+		seg.sigma_maj   = seg.sigma_maj_r;  // use R-channel as representative
 	}
 
 	CPU_GPU std::optional<RayMajorantSegment<T>> Next() {

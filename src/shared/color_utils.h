@@ -20,12 +20,16 @@
 #pragma once
 
 #include "scalar_math.h"
+#ifndef __CUDACC__
 #include "square_matrix.h"
+#endif
 
-#include <algorithm>
-#include <array>
 #include <cmath>
 #include <cstdint>
+#ifndef __CUDACC__
+#include <algorithm>
+#include <array>
+#endif
 
 #ifndef CPU_GPU
 #  ifdef __CUDACC__
@@ -92,6 +96,7 @@ CPU_GPU float SRGBToLinear(float value) {
 // Reference: pbrt-v4 util/color.h SRGB8ToLinear + SRGBToLinearLUT
 // ---------------------------------------------------------------------------
 namespace color_detail {
+#ifndef __CUDACC__
 // Thread-safe LUT: C++11 static local init is thread-safe.
 inline const std::array<float, 256>& GetSRGB8ToLinearLUT() {
 	static const std::array<float, 256> lut = []() {
@@ -102,11 +107,14 @@ inline const std::array<float, 256>& GetSRGB8ToLinearLUT() {
 	}();
 	return lut;
 }
+#endif
 } // namespace color_detail
 
+#ifndef __CUDACC__
 inline float SRGB8ToLinear(uint8_t value) {
 	return color_detail::GetSRGB8ToLinearLUT()[value];
 }
+#endif
 
 // ---------------------------------------------------------------------------
 // XYZ -- CIE XYZ tristimulus type
@@ -154,6 +162,7 @@ CPU_GPU XYZ Lerp(float t, const XYZ& a, const XYZ& b) {
 // srcWhite / dstWhite are CIE xy chromaticity coordinates.
 // Reference: pbrt-v4 util/color.h WhiteBalance
 // ---------------------------------------------------------------------------
+#ifndef __CUDACC__
 inline SquareMatrix<3> WhiteBalance(float srcX, float srcY,
 									 float dstX, float dstY) {
 	// Bradford LMS-from-XYZ matrix (row-major)
@@ -181,31 +190,24 @@ inline SquareMatrix<3> WhiteBalance(float srcX, float srcY,
 
 	return XYZFromLMS * LMScorrect * LMSFromXYZ;
 }
+#endif // !__CUDACC__
 
 // ---------------------------------------------------------------------------
-// Blackbody -- Planck spectral radiance at wavelength lambda_nm and temperature T_K
-//
-// pbrt-v4 reference: util/spectrum.h Blackbody(Float lambda, Float T)
-//
-// Returns spectral radiance Le [W / (m^2 · sr · m)] for a blackbody emitter
-// at temperature T (Kelvin) and wavelength lambda (nanometres).
-// Returns 0 for T <= 0 or lambda <= 0.
-//
-// Physical constants used (CODATA 2010, matching pbrt-v4):
-//   c  = 299 792 458  m/s
-//   h  = 6.626 069 57e-34  J·s
-//   k_B = 1.380 648 8e-23  J/K
+// Blackbody -- Planck spectral radiance
+// (device version lives in spectrum_types.h to avoid double-definition with nvcc)
 // ---------------------------------------------------------------------------
-CPU_GPU float Blackbody(float lambda_nm, float T) {
+#ifndef __CUDACC__
+inline float Blackbody(float lambda_nm, float T) {
 	if (T <= 0.f || lambda_nm <= 0.f) return 0.f;
 	const float c  = 299792458.f;
 	const float h  = 6.62606957e-34f;
 	const float kb = 1.3806488e-23f;
-	float l  = lambda_nm * 1e-9f;                             // nm -> m
+	float l  = lambda_nm * 1e-9f;
 	float Le = (2.f * h * c * c) /
 			   (Pow<5>(l) * (FastExp((h * c) / (l * kb * T)) - 1.f));
 	return Le;
 }
+#endif
 
 // ---------------------------------------------------------------------------
 // RGBSigmoidPolynomial -- spectral upsampling via a quadratic sigmoid
@@ -238,22 +240,25 @@ struct RGBSigmoidPolynomial {
 	// Maximum reflectance over the visible range [360, 830] nm.
 	// pbrt-v4: RGBSigmoidPolynomial::MaxValue()
 	CPU_GPU float MaxValue() const {
-		float result = std::max((*this)(360.f), (*this)(830.f));
+		float a = (*this)(360.f), b = (*this)(830.f);
+		float result = a > b ? a : b;
 		// Vertex of the quadratic: lambda* = -c1 / (2*c0)
 		if (c0 != 0.f) {
 			float lambdaStar = -c1 / (2.f * c0);
-			if (lambdaStar >= 360.f && lambdaStar <= 830.f)
-				result = std::max(result, (*this)(lambdaStar));
+			if (lambdaStar >= 360.f && lambdaStar <= 830.f) {
+				float v = (*this)(lambdaStar);
+				if (v > result) result = v;
+			}
 		}
 		return result;
 	}
 
   private:
 	// Smooth sigmoid: s(x) = 0.5 + x/(2*sqrt(1+x^2)), maps R -> (0,1).
-	// pbrt-v4: RGBSigmoidPolynomial::s(Float x)
+	// pbrt-v4: RGBSigmoidPolynomial::s(Float x)  -- uses IsInf(x)
 	CPU_GPU static float s(float x) {
-		if (std::isinf(x)) return x > 0.f ? 1.f : 0.f;
-		return 0.5f + x / (2.f * std::sqrt(1.f + Sqr(x)));
+		if (isinf(x)) return x > 0.f ? 1.f : 0.f;
+		return 0.5f + x / (2.f * sqrtf(1.f + x * x));
 	}
 
 	float c0 = 0.f, c1 = 0.f, c2 = 0.f;

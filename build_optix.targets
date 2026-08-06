@@ -108,7 +108,9 @@
 
     <PropertyGroup>
       <NvccPath>$(CudaToolkitPath)\bin\nvcc.exe</NvccPath>
-      <WfObjFlags>-c -O3 --use_fast_math --relocatable-device-code=true -arch=sm_86</WfObjFlags>
+      <WfObjFlags>-c -O3 --use_fast_math --relocatable-device-code=true -arch=sm_86 --std=c++17</WfObjFlags>
+      <WfObjFlags Condition="'$(Configuration)'=='Debug'">$(WfObjFlags) -Xcompiler /MDd</WfObjFlags>
+      <WfObjFlags Condition="'$(Configuration)'=='Release'">$(WfObjFlags) -Xcompiler /MD</WfObjFlags>
       <WfObjFlags>$(WfObjFlags) -I"$(OptixSdkPath)\include"</WfObjFlags>
       <WfObjFlags>$(WfObjFlags) -I"$(CudaToolkitPath)\include"</WfObjFlags>
       <WfObjFlags>$(WfObjFlags) -I"$(MSBuildProjectDirectory)\..\gpu\optix"</WfObjFlags>
@@ -126,12 +128,42 @@
   </Target>
 
   <!-- ===================================================================== -->
+  <!-- Device-link wavefront .obj files -> wavefront_dlink.obj               -->
+  <!-- Resolves __cudaRegisterLinkedBinary_* for the host linker.            -->
+  <!-- This must run after both .cu -> .obj compiles and before Lib.         -->
+  <!-- ===================================================================== -->
+  <Target Name="DeviceLinkWavefront"
+          Condition="'$(SolutionDir)' != '' and '$(MSBuildProjectName)' == 'optix_renderer'"
+          AfterTargets="CompileWavefrontKernels"
+          BeforeTargets="Lib">
+
+    <Message Text="[CUDA] Device-linking wavefront objs -> wavefront_dlink.obj..." Importance="High" />
+
+    <PropertyGroup>
+      <NvccPath>$(CudaToolkitPath)\bin\nvcc.exe</NvccPath>
+      <DlinkFlags>-dlink -arch=sm_86</DlinkFlags>
+      <DlinkFlags Condition="'$(Configuration)'=='Debug'">$(DlinkFlags) -Xcompiler /MDd -G</DlinkFlags>
+      <DlinkFlags Condition="'$(Configuration)'=='Release'">$(DlinkFlags) -Xcompiler /MD</DlinkFlags>
+      <DlinkIn1>$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels.obj</DlinkIn1>
+      <DlinkIn2>$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_launch.obj</DlinkIn2>
+      <DlinkOut>$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_dlink.obj</DlinkOut>
+    </PropertyGroup>
+
+    <Exec Command='"$(NvccPath)" $(DlinkFlags) "$(DlinkIn1)" "$(DlinkIn2)" -o "$(DlinkOut)"'
+          WorkingDirectory="$(MSBuildThisFileDirectory)"
+          IgnoreExitCode="false"
+          ConsoleToMSBuild="true" />
+
+    <Message Text="[CUDA] Device-linked: $(DlinkOut)" Importance="High" />
+  </Target>
+
+  <!-- ===================================================================== -->
   <!-- Clean OptiX outputs                                                    -->
   <!-- ===================================================================== -->
   <Target Name="CleanOptixPrograms" AfterTargets="Clean">
     <ItemGroup>
       <OptixPtxFiles Include="$(OptixOutputDir)\*.ptx" />
-      <OptixObjFiles Include="$(OptixOutputDir)\wavefront_kernels.obj;$(OptixOutputDir)\wavefront_launch.obj" />
+      <OptixObjFiles Include="$(OptixOutputDir)\wavefront_kernels.obj;$(OptixOutputDir)\wavefront_launch.obj;$(OptixOutputDir)\wavefront_dlink.obj" />
     </ItemGroup>
     <Delete Files="@(OptixPtxFiles);@(OptixObjFiles)" />
     <Message Text="[OptiX] Cleaned PTX and CUDA obj files" Importance="High" />

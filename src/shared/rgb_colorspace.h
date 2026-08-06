@@ -22,13 +22,17 @@
 //   - Uses float throughout (matching pbrt-v4 Float == float build).
 // ---------------------------------------------------------------------------
 
+#ifndef __CUDACC__
 #include "color_utils.h"            // XYZ, WhiteBalance
 #include "square_matrix.h"          // SquareMatrix<3>, Inverse, Mul
+#endif
 #include "rgb_to_spectrum_table.h"  // RGBToSpectrumTable, RGBSigmoidPolynomial
 
+#ifndef __CUDACC__
 #include <optional>
 #include <string>
 #include <cstring>
+#endif
 
 #ifndef CPU_GPU
 #  ifdef __CUDACC__

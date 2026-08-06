@@ -34,12 +34,21 @@
 // ---------------------------------------------------------------------------
 // RayMajorantSegment<T>
 // pbrt-v4: struct RayMajorantSegment (base/medium.h)
+// Per-channel (RGB) majorant extinction over [tMin, tMax].
 // ---------------------------------------------------------------------------
 template<typename T>
 struct RayMajorantSegment {
     T tMin;
     T tMax;
-    T sigma_maj;
+    T sigma_maj_r, sigma_maj_g, sigma_maj_b;  // per-channel majorant
+    T sigma_maj;  // scalar representative (== all three for uniform media)
+
+    // Convenience: scalar (uniform RGB) — used by DDAMajorantIterator
+    CPU_GPU RayMajorantSegment() = default;
+    CPU_GPU RayMajorantSegment(T tMin_, T tMax_, T sigma)
+        : tMin(tMin_), tMax(tMax_),
+          sigma_maj_r(sigma), sigma_maj_g(sigma), sigma_maj_b(sigma),
+          sigma_maj(sigma) {}
 };
 
 // ---------------------------------------------------------------------------
