@@ -309,6 +309,72 @@ TEST(AnimatedTransform, StaticInterpolateIgnoresTime) {
 }
 
 // ---------------------------------------------------------------------------
+// Quaternion round-trip: mat -> quat -> mat (pbrt-v4 Quaternion::RoundTripBug)
+// ---------------------------------------------------------------------------
+
+TEST(AnimatedTransform, QuaternionRoundTripIdentity) {
+	AT_Mat44 rot = at_identity();
+	AT_Quat  q   = at_mat_to_quat(rot);
+	AT_Mat44 m2  = at_quat_to_mat(at_normalize(q));
+
+	for (int i = 0; i < 4; ++i)
+		for (int j = 0; j < 4; ++j)
+			EXPECT_NEAR(rot.m[i][j], m2.m[i][j], 1e-9) << "i=" << i << " j=" << j;
+}
+
+TEST(AnimatedTransform, QuaternionRoundTripRotZ90) {
+	AT_Mat44 rot = make_rot_z(M_PI / 2.0);
+	AT_Quat  q   = at_mat_to_quat(rot);
+	AT_Mat44 m2  = at_quat_to_mat(at_normalize(q));
+
+	for (int i = 0; i < 4; ++i)
+		for (int j = 0; j < 4; ++j)
+			EXPECT_NEAR(rot.m[i][j], m2.m[i][j], 1e-6) << "i=" << i << " j=" << j;
+}
+
+TEST(AnimatedTransform, QuaternionRoundTripArbitraryRotation) {
+	// 45° rotation about axis (1,1,1)/sqrt(3) — tests non-trivial Shepperd branch
+	double angle = M_PI / 4.0;
+	double c = std::cos(angle), s = std::sin(angle);
+	double t = 1.0 - c;
+	double ax = 1.0 / std::sqrt(3.0), ay = ax, az = ax;
+
+	AT_Mat44 rot;
+	rot.m[0][0] = t*ax*ax + c;    rot.m[0][1] = t*ax*ay - s*az; rot.m[0][2] = t*ax*az + s*ay; rot.m[0][3] = 0;
+	rot.m[1][0] = t*ax*ay + s*az; rot.m[1][1] = t*ay*ay + c;    rot.m[1][2] = t*ay*az - s*ax; rot.m[1][3] = 0;
+	rot.m[2][0] = t*ax*az - s*ay; rot.m[2][1] = t*ay*az + s*ax; rot.m[2][2] = t*az*az + c;   rot.m[2][3] = 0;
+	rot.m[3][0] = 0;              rot.m[3][1] = 0;              rot.m[3][2] = 0;              rot.m[3][3] = 1;
+
+	AT_Quat  q  = at_mat_to_quat(rot);
+	AT_Mat44 m2 = at_quat_to_mat(at_normalize(q));
+
+	for (int i = 0; i < 4; ++i)
+		for (int j = 0; j < 4; ++j)
+			EXPECT_NEAR(rot.m[i][j], m2.m[i][j], 1e-6) << "i=" << i << " j=" << j;
+}
+
+// at_slerp endpoint invariants: slerp(0,q,q2)==q and slerp(1,q,q2)==q2
+TEST(AnimatedTransform, SlerpAtZeroReturnsFirstQuaternion) {
+	AT_Quat q1 = at_normalize(AT_Quat(0.1, 0.2, 0.3, 0.9));
+	AT_Quat q2 = at_normalize(AT_Quat(0.5, 0.1, 0.1, 0.8));
+	AT_Quat r  = at_slerp(0.0, q1, q2);
+	EXPECT_NEAR(r.x, q1.x, 1e-9);
+	EXPECT_NEAR(r.y, q1.y, 1e-9);
+	EXPECT_NEAR(r.z, q1.z, 1e-9);
+	EXPECT_NEAR(r.w, q1.w, 1e-9);
+}
+
+TEST(AnimatedTransform, SlerpAtOneReturnsSecondQuaternion) {
+	AT_Quat q1 = at_normalize(AT_Quat(0.1, 0.2, 0.3, 0.9));
+	AT_Quat q2 = at_normalize(AT_Quat(0.5, 0.1, 0.1, 0.8));
+	AT_Quat r  = at_slerp(1.0, q1, q2);
+	EXPECT_NEAR(r.x, q2.x, 1e-9);
+	EXPECT_NEAR(r.y, q2.y, 1e-9);
+	EXPECT_NEAR(r.z, q2.z, 1e-9);
+	EXPECT_NEAR(r.w, q2.w, 1e-9);
+}
+
+// ---------------------------------------------------------------------------
 // TRS composed animated transform
 // ---------------------------------------------------------------------------
 

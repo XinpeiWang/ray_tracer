@@ -6,6 +6,11 @@
 #include <optix.h>
 #include <cuda_runtime.h>
 
+#ifndef __CUDACC__
+#include <stdexcept>
+#include <string>
+#endif
+
 // Forward declarations
 struct MaterialPOD;
 struct LaunchParams;
@@ -162,14 +167,15 @@ using RaygenRecord   = SbtRecord<int>;           ///< Raygen program record
 using MissRecord     = SbtRecord<int>;           ///< Miss program record
 using HitGroupRecord = SbtRecord<HitGroupData>;  ///< Hit group record
 
-// OptiX error checking macro
+// OptiX error checking macro (host-only)
+#ifndef __CUDACC__
 #define OPTIX_CHECK(call)                                                      \
 	do {                                                                       \
 		OptixResult res = call;                                                \
 		if (res != OPTIX_SUCCESS) {                                            \
 			fprintf(stderr, "OptiX call (%s) failed with code %d (line %d)\n", \
 					#call, res, __LINE__);                                     \
-			exit(1);                                                           \
+			throw std::runtime_error(std::string("OptiX error: ") + #call);   \
 		}                                                                      \
 	} while (0)
 
@@ -180,7 +186,7 @@ using HitGroupRecord = SbtRecord<HitGroupData>;  ///< Hit group record
 		if (error != cudaSuccess) {                                            \
 			fprintf(stderr, "CUDA call (%s) failed with code %d (line %d): %s\n", \
 					#call, error, __LINE__, cudaGetErrorString(error));        \
-			exit(1);                                                           \
+			throw std::runtime_error(std::string("CUDA error: ") + cudaGetErrorString(error)); \
 		}                                                                      \
 	} while (0)
 
@@ -193,6 +199,7 @@ using HitGroupRecord = SbtRecord<HitGroupData>;  ///< Hit group record
 			cuGetErrorString(error, &errorStr);                                \
 			fprintf(stderr, "CUDA driver call (%s) failed with code %d (line %d): %s\n", \
 					#call, error, __LINE__, errorStr);                         \
-			exit(1);                                                           \
+			throw std::runtime_error(std::string("CUDA driver error: ") + (errorStr ? errorStr : "unknown")); \
 		}                                                                      \
 	} while (0)
+#endif // !__CUDACC__

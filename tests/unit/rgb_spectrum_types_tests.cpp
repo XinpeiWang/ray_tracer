@@ -248,3 +248,87 @@ TEST(RGBSpectraIntegration, UnboundedSpectrum_FiniteOutputs) {
 		EXPECT_GE(ss[i], 0.f) << "band " << i;
 	}
 }
+
+// ===========================================================================
+// RGBColorSpace matrix round-trips (pbrt-v4: RGBColorSpace tests)
+// ===========================================================================
+
+// ToXYZ then FromXYZ should recover the original RGB values.
+TEST(RGBColorSpace, RoundTripRGB_sRGB) {
+	const RGBColorSpace& cs = RGBColorSpace::sRGB();
+	float testRGB[][3] = {
+		{1.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, {0.f, 0.f, 1.f},
+		{0.5f, 0.3f, 0.8f}, {0.1f, 0.9f, 0.2f}
+	};
+	for (auto& rgb : testRGB) {
+		XYZ xyz = cs.ToXYZ(rgb[0], rgb[1], rgb[2]);
+		float r2, g2, b2;
+		cs.FromXYZ(xyz.X, xyz.Y, xyz.Z, r2, g2, b2);
+		EXPECT_NEAR(r2, rgb[0], 1e-4f) << "r";
+		EXPECT_NEAR(g2, rgb[1], 1e-4f) << "g";
+		EXPECT_NEAR(b2, rgb[2], 1e-4f) << "b";
+	}
+}
+
+TEST(RGBColorSpace, RoundTripRGB_Rec2020) {
+	const RGBColorSpace& cs = RGBColorSpace::Rec2020();
+	float testRGB[][3] = {
+		{1.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, {0.f, 0.f, 1.f},
+		{0.5f, 0.3f, 0.8f}, {0.1f, 0.9f, 0.2f}
+	};
+	for (auto& rgb : testRGB) {
+		XYZ xyz = cs.ToXYZ(rgb[0], rgb[1], rgb[2]);
+		float r2, g2, b2;
+		cs.FromXYZ(xyz.X, xyz.Y, xyz.Z, r2, g2, b2);
+		EXPECT_NEAR(r2, rgb[0], 1e-4f) << "r";
+		EXPECT_NEAR(g2, rgb[1], 1e-4f) << "g";
+		EXPECT_NEAR(b2, rgb[2], 1e-4f) << "b";
+	}
+}
+
+TEST(RGBColorSpace, RoundTripRGB_ACES2065_1) {
+	const RGBColorSpace& cs = RGBColorSpace::ACES2065_1();
+	float testRGB[][3] = {
+		{1.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, {0.f, 0.f, 1.f},
+		{0.5f, 0.3f, 0.8f}, {0.1f, 0.9f, 0.2f}
+	};
+	for (auto& rgb : testRGB) {
+		XYZ xyz = cs.ToXYZ(rgb[0], rgb[1], rgb[2]);
+		float r2, g2, b2;
+		cs.FromXYZ(xyz.X, xyz.Y, xyz.Z, r2, g2, b2);
+		EXPECT_NEAR(r2, rgb[0], 1e-4f) << "r";
+		EXPECT_NEAR(g2, rgb[1], 1e-4f) << "g";
+		EXPECT_NEAR(b2, rgb[2], 1e-4f) << "b";
+	}
+}
+
+// White (1,1,1) in each color space should have Y ≈ 1 (luminance normalization)
+TEST(RGBColorSpace, WhiteHasLuminanceOne_sRGB) {
+	XYZ xyz = RGBColorSpace::sRGB().ToXYZ(1.f, 1.f, 1.f);
+	EXPECT_NEAR(xyz.Y, 1.f, 1e-4f);
+}
+
+TEST(RGBColorSpace, WhiteHasLuminanceOne_Rec2020) {
+	XYZ xyz = RGBColorSpace::Rec2020().ToXYZ(1.f, 1.f, 1.f);
+	EXPECT_NEAR(xyz.Y, 1.f, 1e-4f);
+}
+
+TEST(RGBColorSpace, WhiteHasLuminanceOne_ACES2065_1) {
+	XYZ xyz = RGBColorSpace::ACES2065_1().ToXYZ(1.f, 1.f, 1.f);
+	EXPECT_NEAR(xyz.Y, 1.f, 1e-4f);
+}
+
+// Black (0,0,0) maps to XYZ (0,0,0) in all color spaces
+TEST(RGBColorSpace, BlackIsXYZZero_Rec2020) {
+	XYZ xyz = RGBColorSpace::Rec2020().ToXYZ(0.f, 0.f, 0.f);
+	EXPECT_NEAR(xyz.X, 0.f, 1e-6f);
+	EXPECT_NEAR(xyz.Y, 0.f, 1e-6f);
+	EXPECT_NEAR(xyz.Z, 0.f, 1e-6f);
+}
+
+TEST(RGBColorSpace, BlackIsXYZZero_ACES2065_1) {
+	XYZ xyz = RGBColorSpace::ACES2065_1().ToXYZ(0.f, 0.f, 0.f);
+	EXPECT_NEAR(xyz.X, 0.f, 1e-6f);
+	EXPECT_NEAR(xyz.Y, 0.f, 1e-6f);
+	EXPECT_NEAR(xyz.Z, 0.f, 1e-6f);
+}

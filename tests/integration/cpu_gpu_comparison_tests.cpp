@@ -104,7 +104,8 @@ protected:
 
 	Image renderGPU(const char* filename, int w, int h, int spp, int depth) {
 		files_.push_back(filename);
-		optix_render_main(w, h, spp, depth, filename, 0, 278.0, 278.0, -800.0);
+		if (optix_render_main(w, h, spp, depth, filename, 0, 278.0, 278.0, -800.0) != 0)
+			return {};   // invalid image; caller should check image.valid
 		return load_image(filename);
 	}
 

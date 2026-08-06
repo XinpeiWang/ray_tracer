@@ -298,3 +298,67 @@ TEST(IntMathTest, Log2IntDouble_RoundNearest) {
 	EXPECT_EQ(Log2Int(4.0),  2);
 	EXPECT_EQ(Log2Int(0.5),  -1);
 }
+
+// ---------------------------------------------------------------------------
+// PermutationElement: uniform distribution (pbrt-v4 PermutationElement/Uniform)
+// For every starting index i in [0, n), the mapped values should be
+// approximately uniformly distributed across [0, n) over many seeds.
+// ---------------------------------------------------------------------------
+TEST(PermutationElementTest, Uniform) {
+	for (int n : {3, 5, 9, 16}) {
+		std::vector<int> count(n * n, 0);
+		const int numIters = 5000 * n;
+		for (int seed = 0; seed < numIters; ++seed) {
+			for (int i = 0; i < n; ++i) {
+				int ip = PermutationElement(static_cast<uint32_t>(i),
+											static_cast<uint32_t>(n),
+											static_cast<uint32_t>(seed * 1013904223u + 1664525u));
+				ASSERT_GE(ip, 0);
+				ASSERT_LT(ip, n);
+				++count[ip * n + i];
+			}
+		}
+		// Expect each (i -> j) mapping to appear numIters/n times, ±5%
+		const float tol = 0.05f;
+		const int lo = static_cast<int>((1.f - tol) * numIters / n);
+		const int hi = static_cast<int>((1.f + tol) * numIters / n + 1);
+		for (int i = 0; i < n; ++i) {
+			for (int j = 0; j < n; ++j) {
+				int c = count[j * n + i];
+				EXPECT_GE(c, lo) << "n=" << n << " i=" << i << " j=" << j;
+				EXPECT_LE(c, hi) << "n=" << n << " i=" << i << " j=" << j;
+			}
+		}
+	}
+}
+
+// PermutationElement: delta distribution (pbrt-v4 PermutationElement/UniformDelta)
+// For every i, the delta (ip - i) mod n should be approximately uniform over seeds.
+TEST(PermutationElementTest, UniformDelta) {
+	for (int n : {3, 5, 9, 16}) {
+		std::vector<int> count(n * n, 0);
+		const int numIters = 5000 * n;
+		for (int seed = 0; seed < numIters; ++seed) {
+			for (int i = 0; i < n; ++i) {
+				int ip = PermutationElement(static_cast<uint32_t>(i),
+											static_cast<uint32_t>(n),
+											static_cast<uint32_t>(seed * 1013904223u + 1664525u));
+				int delta = ip - i;
+				if (delta < 0) delta += n;
+				ASSERT_GE(delta, 0);
+				ASSERT_LT(delta, n);
+				++count[delta * n + i];
+			}
+		}
+		const float tol = 0.05f;
+		const int lo = static_cast<int>((1.f - tol) * numIters / n);
+		const int hi = static_cast<int>((1.f + tol) * numIters / n + 1);
+		for (int i = 0; i < n; ++i) {
+			for (int d = 0; d < n; ++d) {
+				int c = count[d * n + i];
+				EXPECT_GE(c, lo) << "n=" << n << " i=" << i << " delta=" << d;
+				EXPECT_LE(c, hi) << "n=" << n << " i=" << i << " delta=" << d;
+			}
+		}
+	}
+}

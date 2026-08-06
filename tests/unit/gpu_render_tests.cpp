@@ -111,7 +111,8 @@ protected:
 	PPMImage renderGPU(const char* filename, int w, int h, int spp, int depth,
 					   double camX = 278.0, double camY = 278.0, double camZ = -800.0) {
 		outputFiles_.push_back(filename);
-		optix_render_main(w, h, spp, depth, filename, 0, camX, camY, camZ);
+		if (optix_render_main(w, h, spp, depth, filename, 0, camX, camY, camZ) != 0)
+			return {};   // invalid image; caller should ASSERT_TRUE(img.valid)
 		return load_ppm(filename);
 	}
 
