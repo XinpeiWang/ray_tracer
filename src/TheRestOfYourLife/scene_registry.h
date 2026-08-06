@@ -28,6 +28,8 @@ struct CameraConfig {
     double lookat_x,   lookat_y,   lookat_z;
     double bg_r, bg_g, bg_b;
     CameraMode mode = CameraMode::Fixed;
+    double defocus_angle = 0.0;  // 0 = no DOF
+    double focus_dist    = 10.0;
 };
 
 struct SceneDescriptor {
@@ -202,6 +204,64 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_cornell_crystal,
+            build_cornell_box_lights
+        },
+        {
+            18, SceneNames::PrincipledShowcase,
+            "Row of spheres from matte plastic to metallic with clearcoat (pbrt-v4 PrincipledBxDF)",
+            "Medium", 200, false, false,
+            { 35, 0, 2.5, 10,  0, 1, 0,  0.10, 0.10, 0.12 },
+            build_principled_showcase,
+            []() {
+                hittable_list l;
+                auto empty_mat = std::shared_ptr<material>();
+                l.add(std::make_shared<quad>(point3(-6,6,-4), vec3(12,0,0), vec3(0,0,8), empty_mat));
+                return l;
+            }
+        },
+        {
+            19, SceneNames::HairFibers,
+            "Sphere cluster with hair/fur fiber scattering (pbrt-v4 HairBxDF)",
+            "Medium", 200, false, false,
+            { 30, 0, 2, 8,  0, 1, 0,  0.05, 0.05, 0.07 },
+            build_hair_fibers,
+            []() {
+                hittable_list l;
+                auto empty_mat = std::shared_ptr<material>();
+                l.add(std::make_shared<quad>(point3(-6,6,-4), vec3(12,0,0), vec3(0,0,8), empty_mat));
+                return l;
+            }
+        },
+        {
+            20, SceneNames::NormalMappedCornell,
+            "Cornell box with procedural bump-mapped back wall and normal-mapped sphere (pbrt-v4 NormalMap/BumpMap)",
+            "Medium", 200, false, false,
+            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
+            build_normal_mapped_cornell,
+            build_cornell_box_lights
+        },
+        {
+            21, SceneNames::SubsurfaceSlab,
+            "Cornell box with translucent wax slab and jade sphere using subsurface-like scattering",
+            "Slow", 300, false, false,
+            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
+            build_subsurface_slab,
+            build_cornell_box_lights
+        },
+        {
+            22, SceneNames::DepthOfField,
+            "Row of spheres with defocus blur showing depth-of-field from the thin-lens camera model",
+            "Medium", 200, false, false,
+            { 20, 0, 2, 9,  0, 1, 0,  0.70, 0.80, 1.00, CameraMode::Fixed, 10.0, 9.0 },
+            build_depth_of_field,
+            sky_dummy_lights
+        },
+        {
+            23, SceneNames::BilinearPatchScene,
+            "Cornell box with curved bilinear patch saddle surface (pbrt-v4 BilinearPatch shape)",
+            "Medium", 200, false, false,
+            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
+            build_bilinear_patch_scene,
             build_cornell_box_lights
         },
     };

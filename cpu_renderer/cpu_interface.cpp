@@ -109,12 +109,13 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		cam.samples_per_pixel = spp;
 		cam.max_depth         = max_depth;
 		cam.vup               = vec3(0, 1, 0);  // Up direction is +Y
-		cam.defocus_angle     = 0;              // No depth of field blur
 
 		// Apply camera config from registry
 		const CameraConfig& cc = scene_desc->camera;
-		cam.vfov       = cc.vfov;
-		cam.background = color(cc.bg_r, cc.bg_g, cc.bg_b);
+		cam.vfov          = cc.vfov;
+		cam.background    = color(cc.bg_r, cc.bg_g, cc.bg_b);
+		cam.defocus_angle = cc.defocus_angle;  // 0 = no DOF blur
+		cam.focus_dist    = cc.focus_dist;
 		if (cc.mode == CameraMode::UserControlled) {
 			// Let caller override lookfrom (camera presets in UI)
 			cam.lookfrom = point3(cam_x, cam_y, cam_z);

@@ -37,6 +37,12 @@ namespace SceneNames {
     constexpr const char* CornellCoatedConductor = "Cornell Coated Conductor";
     constexpr const char* CornellWaxSlab      = "Cornell Wax Slab";
     constexpr const char* CornellCrystal      = "Cornell Crystal";
+    constexpr const char* PrincipledShowcase   = "Principled Showcase";
+    constexpr const char* HairFibers           = "Hair Fibers";
+    constexpr const char* NormalMappedCornell  = "Normal Mapped Cornell";
+    constexpr const char* SubsurfaceSlab       = "Subsurface Slab";
+    constexpr const char* DepthOfField         = "Depth of Field";
+    constexpr const char* BilinearPatchScene   = "Bilinear Patch";
 } // namespace SceneNames
 
 struct SceneDesc {
@@ -108,6 +114,24 @@ inline const SceneDesc* get_all_scenes(int* out_count = nullptr) {
 		{ 17, SceneNames::CornellCrystal,
 		   "Cornell box with a crystal sphere using Fresnel-weighted diffuse reflection (pbrt-v4 NormalizedFresnelBxDF)",
 		   "Medium",    200, false, true  },
+		{ 18, SceneNames::PrincipledShowcase,
+		   "Row of spheres from matte plastic to metallic with clearcoat (pbrt-v4 PrincipledBxDF)",
+		   "Medium",    200, false, false },
+		{ 19, SceneNames::HairFibers,
+		   "Sphere cluster with hair/fur fiber scattering (pbrt-v4 HairBxDF)",
+		   "Medium",    200, false, false },
+		{ 20, SceneNames::NormalMappedCornell,
+		   "Cornell box with procedural bump-mapped back wall and normal-mapped sphere (pbrt-v4 NormalMap/BumpMap)",
+		   "Medium",    200, false, false },
+		{ 21, SceneNames::SubsurfaceSlab,
+		   "Cornell box with translucent wax slab and jade sphere using subsurface-like scattering",
+		   "Slow",      300, false, false },
+		{ 22, SceneNames::DepthOfField,
+		   "Row of spheres with defocus blur showing depth-of-field from the thin-lens camera model",
+		   "Medium",    200, false, false },
+		{ 23, SceneNames::BilinearPatchScene,
+		   "Cornell box with curved bilinear patch saddle surface (pbrt-v4 BilinearPatch shape)",
+		   "Medium",    200, false, false },
 	};
 	static const int kCount = (int)(sizeof(kScenes) / sizeof(kScenes[0]));
 	if (out_count) *out_count = kCount;
