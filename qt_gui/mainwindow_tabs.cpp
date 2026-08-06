@@ -33,8 +33,10 @@ void MainWindow::createBasicTab() {
 	{
 		int count = 0;
 		const SceneDesc* scenes = get_all_scenes(&count);
-		for (int i = 0; i < count; ++i)
-			m_sceneCombo->addItem(scenes[i].name, scenes[i].id);
+		for (int i = 0; i < count; ++i) {
+			QString label = QString("[%1] %2").arg(scenes[i].id).arg(scenes[i].name);
+			m_sceneCombo->addItem(label, scenes[i].id);
+		}
 	}
 	styleComboBox(m_sceneCombo);
 	sceneRow->addWidget(new QLabel("Scene:"));
