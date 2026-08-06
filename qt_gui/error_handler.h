@@ -117,8 +117,8 @@ inline QString getTroubleshootingHint(int errorCode) {
 			"• For final renders, use 100-500 samples\n"
 			"• More samples = better quality but slower"},
 
-		{11, "• Valid scenes are 0-10 (Cornell Box through Cornell Rough Metal)\n"
-			"• Check the Basic Settings tab for scene selection"},
+		{11, "• Valid scenes are 0-23 — check the Scene dropdown in the Basic Settings tab\n"
+			"• Use CPU renderer for scenes that are not GPU-supported"},
 
 		{100, "• Some scenes require texture files (e.g., earthmap.jpg)\n"
 			 "• Make sure all required files are in the correct location"},

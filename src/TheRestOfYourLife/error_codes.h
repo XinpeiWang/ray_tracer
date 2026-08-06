@@ -137,7 +137,7 @@ inline std::string get_troubleshooting_hint(int error_code) {
 		{ERR_FILE_NOT_FOUND, "Verify that required texture files (e.g., earthmap.jpg) are in the correct location."},
 		{ERR_INVALID_DIMENSIONS, "Width and height must be positive integers (recommended: 400-1920)."},
 		{ERR_INVALID_SAMPLE_COUNT, "Samples per pixel must be > 0 (recommended: 10-500)."},
-		{ERR_INVALID_SCENE_ID, "Valid scene IDs are 0-8. Check docs/SCENE_SELECTION.md for details."},
+		{ERR_INVALID_SCENE_ID, "Scene ID not found in registry. Check the Scene dropdown in the UI."},
 		{ERR_CPU_SCENE_BUILD_FAILED, "Scene construction failed. Check scene ID and texture file availability."},
 		{ERR_CPU_MEMORY_ALLOCATION, "Out of memory. Try reducing resolution, sample count, or scene complexity."},
 		{ERR_CPU_TEXTURE_LOAD_FAILED, "Texture file missing or corrupted. For Earth scene, ensure earthmap.jpg exists."},
