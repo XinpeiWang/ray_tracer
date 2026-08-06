@@ -10,6 +10,10 @@
 #include <vector>
 #include <string>
 #include <cstddef>
+#include <memory>
+
+// Forward declaration — avoid including wavefront header in all TUs
+namespace optix_renderer { class WavefrontPathTracer; }
 
 /// @class OptiXRenderer
 /// @brief Main OptiX path tracer implementation.
@@ -78,6 +82,15 @@ public:
 	/// @return true if OptiX can be used, false otherwise
 	static bool isAvailable() noexcept;
 
+	/// @brief Enable or disable wavefront GPU path tracing mode.
+	/// @details When enabled, render() uses the WavefrontPathTracer (queue-based,
+	///          pbrt-v4-style) instead of the default recursive path tracer.
+	///          Call before render(); safe to toggle between frames.
+	/// @param enable true = wavefront mode, false = recursive mode (default)
+	/// @param ptxPath Optional explicit path to wavefront_programs.ptx.
+	///                If empty, looks in the same directory as optix_programs.ptx.
+	void enableWavefront(bool enable, const std::string& ptxPath = "");
+
 private:
 	// -------------------------------------------------------------------
 	// OptiX Core Resources
@@ -85,6 +98,12 @@ private:
 	OptixDeviceContext context_ = nullptr;  ///< OptiX device context
 	CUcontext cudaContext_ = nullptr;       ///< CUDA context
 	CUstream stream_ = nullptr;             ///< CUDA stream for async operations
+
+	// -------------------------------------------------------------------
+	// Wavefront path tracer (optional mode)
+	// -------------------------------------------------------------------
+	std::unique_ptr<optix_renderer::WavefrontPathTracer> wavefrontTracer_;
+	bool useWavefront_ = false;  ///< If true, render() delegates to wavefrontTracer_
 
 	// -------------------------------------------------------------------
 	// Pipeline and Shaders

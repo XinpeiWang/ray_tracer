@@ -1,97 +1,98 @@
+// wavefront_path_tracer.h
+// WavefrontPathTracer -- pbrt-v4-style queue-based GPU path tracer.
 #pragma once
 
 #include "path_tracing_strategy.h"
+#include "wavefront_types.h"
+#include "optix_types.h"
+#include <optix.h>
+#include <cuda_runtime.h>
+#include <cuda.h>
+#include <string>
+#include <vector>
 
 namespace optix_renderer {
 
-/**
- * @brief Wavefront path tracing strategy (future implementation)
- * 
- * This is a placeholder for the pbrt-v4-style wavefront architecture.
- * When implemented, this will use queue-based batched ray processing
- * for better GPU utilization and reduced warp divergence.
- *
- * ==========================================================================
- * IMPLEMENTATION CHECKLIST (for future developer)
- * ==========================================================================
- *
- * Architecture overview:
- *   Instead of one thread tracing a full path recursively, rays are grouped
- *   into queues by operation type and processed in parallel batches:
- *
- *   Phase 1: GenerateCameraRays  - fill RayQueue with primary rays
- *   Phase 2: Intersect           - batch optixTrace for all rays
- *   Phase 3: EvaluateMaterials   - shade hits, generate shadow + scatter rays
- *   Phase 4: TraceShadowRays     - batch shadow test all queued shadow rays
- *   Phase 5: Loop back to 2      - with next bounce ray queue
- *
- * Files to create:
- *   [ ] gpu/optix/wavefront_types.h      - WorkQueue<T>, RayWorkItem, ShadowRayWorkItem
- *   [ ] gpu/optix/wavefront_kernels.cu   - CUDA kernels per phase
- *   [ ] gpu/optix/wavefront_programs.cu  - Minimal OptiX programs (intersection only)
- *
- * Key data structures (from pbrt-v4 wavefront/workitems.h):
- *   struct RayWorkItem {
- *       float3 origin, direction;
- *       float3 throughput;
- *       int    depth, pixelIndex;
- *       uint   seed;
- *   };
- *   struct ShadowRayWorkItem {
- *       float3 origin, direction;
- *       float  tMax;
- *       float3 Ld;         // Pending direct light contribution
- *       int    pixelIndex;
- *   };
- *   template<typename T>
- *   struct WorkQueue {
- *       T*           items;     // device memory
- *       atomic<int>  size;      // GPU atomic counter
- *       int          capacity;
- *   };
- *
- * Host-side loop (in render() method):
- *   while (rayQueue.size > 0):
- *       intersect_kernel<<<>>>(rayQueue, hitQueue, missQueue)
- *       evaluate_materials_kernel<<<>>>(hitQueue, shadowQueue, nextRayQueue)
- *       trace_shadow_kernel<<<>>>(shadowQueue, framebuffer)
- *       swap(rayQueue, nextRayQueue)
- *       clear(hitQueue, missQueue, shadowQueue, nextRayQueue)
- *
- * References:
- *   - pbrt-v4: src/pbrt/wavefront/integrator.cpp
- *   - pbrt-v4: src/pbrt/wavefront/workitems.h
- *   - pbrt-v4: src/pbrt/wavefront/workqueue.h
- *   - Local: C:\Users\xinpe\source\repos\pbrt-v4\src\pbrt\wavefront\
- *
- * ==========================================================================
- */
 class WavefrontPathTracer : public PathTracingStrategy {
 public:
-	WavefrontPathTracer() = default;
-	~WavefrontPathTracer() override { cleanup(); }
+    WavefrontPathTracer();
+    ~WavefrontPathTracer() override;
+    bool initialize(OptixDeviceContext context, OptixModule module, cudaStream_t stream) override;
+    bool createProgramGroups() override;
+    bool linkPipeline(unsigned int maxTraceDepth) override;
+    bool buildSBT(unsigned int numSpheres, unsigned int numQuads) override;
+    bool render(int width, int height, int samples_per_pixel, int max_depth,
+        const float* camera_origin, const float* camera_lower_left,
+        const float* camera_horizontal, const float* camera_vertical,
+        float* framebuffer, OptixTraversableHandle gas_handle,
+        CUdeviceptr d_materials, CUdeviceptr d_spheres, CUdeviceptr d_quads,
+        CUdeviceptr d_light_indices, CUdeviceptr d_is_light_sphere,
+        CUdeviceptr d_alias_table, unsigned int num_materials,
+        unsigned int num_spheres, unsigned int num_quads,
+        unsigned int num_lights) override;
+    void cleanup() override;
+    PathTracingMode getMode() const override { return PathTracingMode::WAVEFRONT; }
+    const char* getName() const override { return "WavefrontPathTracer"; }
+    void setPTXPath(const std::string& path) { ptxPath_ = path; }
 
-	bool initialize(OptixDeviceContext context, OptixModule module, CUstream stream) override {
-		(void)context; (void)module; (void)stream;
-		return false;  // Not yet implemented
-	}
+private:
+    bool loadModule();
+    void destroyProgramGroups();
+    void destroySBT();
+    bool allocateQueues(int numPixels);
+    void freeQueues();
+    void launchGenerateCameraRays(int width, int height, int sampleIdx,
+        float3 camOrigin, float3 lowerLeft, float3 horizontal, float3 vertical);
+    void launchEvaluateMaterials(int numHits, int maxDepth,
+        const SphereData* d_spheres, unsigned int numSpheres,
+        const QuadData* d_quads, unsigned int numQuads,
+        const MaterialData* d_materials, unsigned int numMaterials,
+        const int* d_lightIndices, const bool* d_isLightSphere,
+        const GpuAliasEntry* d_aliasTable, unsigned int numLights,
+        float3* d_framebuffer);
+    void launchAccumulateMiss(int numMiss, float3* d_framebuffer);
+    void launchAccumulateShadow(int numShadow, const bool* d_occluded, float3* d_framebuffer);
+    void launchNormalizeFramebuffer(unsigned int numPixels, float invSPP, float3* d_framebuffer);
+    int  readQueueSize(int* d_counter);
+    void resetQueueCounter(int* d_counter);
 
-	bool createProgramGroups() override { return false; }
-	bool linkPipeline(unsigned int) override { return false; }
-	bool buildSBT(unsigned int, unsigned int) override { return false; }
-
-	bool render(int, int, int, int,
-		const float*, const float*, const float*, const float*,
-		float*, OptixTraversableHandle,
-		CUdeviceptr, CUdeviceptr, CUdeviceptr, CUdeviceptr, CUdeviceptr, CUdeviceptr,
-		unsigned int, unsigned int, unsigned int, unsigned int) override {
-		return false;  // Not yet implemented
-	}
-
-	void cleanup() override {}
-
-	PathTracingMode getMode() const override { return PathTracingMode::WAVEFRONT; }
-	const char* getName() const override { return "WavefrontPathTracer (not implemented)"; }
+    OptixModule wfModule_ = nullptr;
+    OptixPipelineCompileOptions pipelineCompileOptions_ = {};
+    OptixProgramGroup raygenIntersectPG_ = nullptr;
+    OptixProgramGroup missRadiancePG_    = nullptr;
+    OptixProgramGroup hitSpherePG_       = nullptr;
+    OptixProgramGroup hitQuadPG_         = nullptr;
+    OptixProgramGroup raygenShadowPG_        = nullptr;
+    OptixProgramGroup missShadowPG_          = nullptr;
+    OptixProgramGroup anyhitShadowSpherePG_  = nullptr;
+    OptixProgramGroup anyhitShadowQuadPG_    = nullptr;
+    OptixPipeline intersectPipeline_ = nullptr;
+    OptixPipeline shadowPipeline_    = nullptr;
+    OptixShaderBindingTable intersectSBT_ = {};
+    OptixShaderBindingTable shadowSBT_    = {};
+    CUdeviceptr d_intersectRaygenRecord_ = 0;
+    CUdeviceptr d_intersectMissRecord_   = 0;
+    CUdeviceptr d_intersectHitRecords_   = 0;
+    CUdeviceptr d_shadowRaygenRecord_    = 0;
+    CUdeviceptr d_shadowMissRecord_      = 0;
+    CUdeviceptr d_shadowHitRecords_      = 0;
+    CUdeviceptr d_wfLaunchParams_   = 0;
+    CUdeviceptr d_rayItems_         = 0;
+    CUdeviceptr d_nextRayItems_     = 0;
+    CUdeviceptr d_hitItems_         = 0;
+    CUdeviceptr d_missItems_        = 0;
+    CUdeviceptr d_shadowItems_      = 0;
+    CUdeviceptr d_occluded_         = 0;
+    CUdeviceptr d_rayCounter_       = 0;
+    CUdeviceptr d_nextRayCounter_   = 0;
+    CUdeviceptr d_hitCounter_       = 0;
+    CUdeviceptr d_missCounter_      = 0;
+    CUdeviceptr d_shadowCounter_    = 0;
+    int          queueCapacity_ = 0;
+    std::string  ptxPath_;
+    unsigned int numSpheres_  = 0;
+    unsigned int numQuads_    = 0;
+    unsigned int frameNumber_ = 0;
 };
 
 } // namespace optix_renderer

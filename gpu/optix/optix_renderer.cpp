@@ -9,6 +9,7 @@
 
 #include "optix_renderer.h"
 #include "optix_math_helpers.h"
+#include "wavefront_path_tracer.h"
 #include <optix_function_table_definition.h>
 #include <optix_stack_size.h>
 #include <cuda.h>
@@ -886,6 +887,18 @@ bool OptiXRenderer::render(
 	const float* cameraVertical,
 	float* outputFramebuffer
 ) {
+	// Delegate to WavefrontPathTracer if enabled
+	if (useWavefront_ && wavefrontTracer_) {
+		return wavefrontTracer_->render(
+			(int)width, (int)height, (int)samplesPerPixel, (int)maxDepth,
+			cameraOrigin, cameraLowerLeft, cameraHorizontal, cameraVertical,
+			outputFramebuffer,
+			gasHandle_,
+			d_materials_, d_spheres_, d_quads_,
+			d_lightIndices_, d_isLightSphere_, d_aliasTable_,
+			numMaterials_, numSpheres_, numQuads_, numLights_);
+	}
+
 	// Allocate framebuffer on device
 	CUdeviceptr d_framebuffer;
 	size_t fbSize = width * height * sizeof(float3);
@@ -996,4 +1009,47 @@ void OptiXRenderer::cleanup() noexcept {
 	// Destroy CUDA resources
 	if (stream_) cudaStreamDestroy(stream_);
 	if (cudaContext_) cuCtxDestroy(cudaContext_);
+
+	// Destroy wavefront tracer if it was created
+	wavefrontTracer_.reset();
 }
+
+// ============================================================================
+// enableWavefront — create/configure the WavefrontPathTracer on first call
+// ============================================================================
+void OptiXRenderer::enableWavefront(bool enable, const std::string& ptxPath) {
+	useWavefront_ = enable;
+	if (!enable) return;
+
+	if (!wavefrontTracer_) {
+		wavefrontTracer_ = std::make_unique<optix_renderer::WavefrontPathTracer>();
+		if (!ptxPath.empty()) wavefrontTracer_->setPTXPath(ptxPath);
+
+		if (!wavefrontTracer_->initialize(context_, module_, stream_)) {
+			std::cerr << "[OptiXRenderer] Failed to initialize WavefrontPathTracer — falling back to recursive\n";
+			wavefrontTracer_.reset();
+			useWavefront_ = false;
+			return;
+		}
+		if (!wavefrontTracer_->createProgramGroups()) {
+			std::cerr << "[OptiXRenderer] WavefrontPathTracer::createProgramGroups failed\n";
+			wavefrontTracer_.reset();
+			useWavefront_ = false;
+			return;
+		}
+		if (!wavefrontTracer_->linkPipeline(4)) {
+			std::cerr << "[OptiXRenderer] WavefrontPathTracer::linkPipeline failed\n";
+			wavefrontTracer_.reset();
+			useWavefront_ = false;
+			return;
+		}
+		if (!wavefrontTracer_->buildSBT(numSpheres_, numQuads_)) {
+			std::cerr << "[OptiXRenderer] WavefrontPathTracer::buildSBT failed\n";
+			wavefrontTracer_.reset();
+			useWavefront_ = false;
+			return;
+		}
+		std::cout << "[OptiXRenderer] WavefrontPathTracer ready\n";
+	}
+}
+

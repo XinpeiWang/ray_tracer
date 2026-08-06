@@ -52,7 +52,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <Lib>
-      <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels.obj;$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_launch.obj;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Lib>
   </ItemDefinitionGroup>
@@ -75,7 +75,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <Lib>
-      <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels.obj;$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_launch.obj;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Lib>
   </ItemDefinitionGroup>
@@ -86,6 +86,7 @@
     <ClCompile Include="..\gpu\optix\renderer_config.cpp" />
     <ClCompile Include="..\gpu\optix\recursive_path_tracer.cpp" />
     <ClCompile Include="..\gpu\optix\path_tracing_strategy.cpp" />
+    <ClCompile Include="..\gpu\optix\wavefront_path_tracer.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\gpu\optix\optix_renderer.h" />
@@ -96,9 +97,13 @@
     <ClInclude Include="..\gpu\optix\path_tracing_strategy.h" />
     <ClInclude Include="..\gpu\optix\recursive_path_tracer.h" />
     <ClInclude Include="..\gpu\optix\wavefront_path_tracer.h" />
+    <ClInclude Include="..\gpu\optix\wavefront_types.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\gpu\optix\optix_programs.cu" />
+    <None Include="..\gpu\optix\wavefront_programs.cu" />
+    <None Include="..\gpu\optix\wavefront_kernels.cu" />
+    <None Include="..\gpu\optix\wavefront_launch.cu" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <!-- Post-Build Event: Auto-deploy PTX to RayTracer_Package -->
@@ -112,7 +117,9 @@
     <!-- Copy PTX shader to package directory -->
     <Message Text="[Post-Build] Copying optix_programs.ptx to RayTracer_Package..." Importance="high" />
     <Copy SourceFiles="$(PtxSource)" DestinationFiles="$(PackageDir)\optix_programs.ptx" SkipUnchangedFiles="false" Condition="Exists('$(PtxSource)')" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_programs.ptx" DestinationFiles="$(PackageDir)\wavefront_programs.ptx" SkipUnchangedFiles="false" Condition="Exists('$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_programs.ptx')" />
     <Message Text="[Post-Build] Deployed: $(PackageDir)\optix_programs.ptx" Importance="high" Condition="Exists('$(PtxSource)')" />
     <Warning Text="[Post-Build] PTX not found at $(PtxSource). Run PTX compile step first." Condition="!Exists('$(PtxSource)')" />
   </Target>
 </Project>
+

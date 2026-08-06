@@ -49,7 +49,7 @@ try {
     OK 'Qt GUI built'
 } finally { Pop-Location }
 HDR 'Summary'
-foreach ($fname in @('ray_tracer.exe','RayTracerGUI.exe','optix_programs.ptx')) {
+foreach ($fname in @('ray_tracer.exe','RayTracerGUI.exe','optix_programs.ptx','wavefront_programs.ptx')) {
     $full = Join-Path $PackageDir $fname
     if (Test-Path $full) {
         $t = (Get-Item $full).LastWriteTime.ToString('HH:mm:ss')

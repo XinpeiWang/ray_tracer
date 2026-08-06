@@ -8,6 +8,8 @@
 #include <fstream>
 #include <memory>
 #include <cmath>
+#include <cstdlib>
+#include <string>
 
 // Global renderer instance
 static std::unique_ptr<OptiXRenderer> g_renderer;
@@ -54,6 +56,23 @@ extern "C" int optix_render_main(
 									 scene.lightIndices, scene.isLightSphere)) {
 			std::cerr << "[OptiX] Failed to upload scene to GPU\n";
 			return 102;  // GPU upload error
+		}
+
+		// Enable wavefront mode if requested via env var RAY_TRACER_WAVEFRONT=1
+#pragma warning(suppress: 4996)
+		const char* wfEnv = std::getenv("RAY_TRACER_WAVEFRONT");
+		if (wfEnv && std::string(wfEnv) == "1") {
+			// Derive PTX path: same directory as output_path, or executable directory
+			std::string ptxPath;
+			std::string outStr(output_path);
+			size_t sep = outStr.rfind('\\');
+			if (sep == std::string::npos) sep = outStr.rfind('/');
+			if (sep != std::string::npos)
+				ptxPath = outStr.substr(0, sep + 1) + "wavefront_programs.ptx";
+			else
+				ptxPath = "wavefront_programs.ptx";
+			std::cout << "[OptiX] Wavefront mode enabled (PTX: " << ptxPath << ")\n";
+			g_renderer->enableWavefront(true, ptxPath);
 		}
 
 		// Allocate float framebuffer
