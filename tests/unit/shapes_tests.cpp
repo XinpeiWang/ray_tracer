@@ -526,3 +526,211 @@ TEST(ShapesCylinder, SampleIsDeterministic) {
 	EXPECT_EQ(s1.py, s2.py);
 	EXPECT_EQ(s1.pz, s2.pz);
 }
+
+// ===========================================================================
+// pbrt-v4 parity: reintersect / spawn-ray self-intersection tests
+// Mirrors pbrt-v4 shapes_test.cpp: Triangle.Reintersect, FullSphere.Reintersect,
+// PartialSphere.Reintersect, Cylinder.Reintersect, Triangle.BadCases
+// ===========================================================================
+
+// Helper: LCG random in [0,1)
+static double lcg_rand(uint32_t &s) {
+	s = s * 1664525u + 1013904223u;
+	return (s >> 8) * (1.0 / (1u << 24));
+}
+
+// Helper: sample a uniform direction on the unit sphere
+static void sample_sphere_dir(double u1, double u2,
+							   double &dx, double &dy, double &dz) {
+	double cos_t = 1.0 - 2.0 * u1;
+	double sin_t = std::sqrt(std::max(0.0, 1.0 - cos_t * cos_t));
+	double phi   = 2.0 * PI * u2;
+	dx = sin_t * std::cos(phi);
+	dy = sin_t * std::sin(phi);
+	dz = cos_t;
+}
+
+// pbrt-v4: Triangle.Reintersect
+// Shoot a ray at a triangle, then fire many random rays from the hit point
+// and verify none self-intersect with the same triangle.
+TEST(ShapesTriangle, Reintersect) {
+	uint32_t seed = 0u;
+	int nTests = 0, nSelfHits = 0;
+	for (int i = 0; i < 1000; ++i) {
+		// Random triangle in [-5,5]^3
+		double p0x = -5.0 + 10.0*lcg_rand(seed);
+		double p0y = -5.0 + 10.0*lcg_rand(seed);
+		double p0z = -5.0 + 10.0*lcg_rand(seed);
+		double p1x = -5.0 + 10.0*lcg_rand(seed);
+		double p1y = -5.0 + 10.0*lcg_rand(seed);
+		double p1z = -5.0 + 10.0*lcg_rand(seed);
+		double p2x = -5.0 + 10.0*lcg_rand(seed);
+		double p2y = -5.0 + 10.0*lcg_rand(seed);
+		double p2z = -5.0 + 10.0*lcg_rand(seed);
+
+		auto tri = TriangleShape<double>::make(p0x,p0y,p0z, p1x,p1y,p1z, p2x,p2y,p2z);
+		if (tri.area() < 1e-8) continue; // skip degenerate
+
+		// Fire a ray toward the centroid from a random origin
+		double cx = (p0x+p1x+p2x)/3.0, cy = (p0y+p1y+p2y)/3.0, cz = (p0z+p1z+p2z)/3.0;
+		double ox = cx + (lcg_rand(seed)-0.5)*10.0;
+		double oy = cy + (lcg_rand(seed)-0.5)*10.0;
+		double oz = cz + (lcg_rand(seed)-0.5)*10.0;
+		double dx = cx-ox, dy = cy-oy, dz = cz-oz;
+		double len = std::sqrt(dx*dx+dy*dy+dz*dz);
+		if (len < 1e-10) continue;
+		dx/=len; dy/=len; dz/=len;
+
+		auto hit = tri.intersect(ox,oy,oz, dx,dy,dz, 1e-4, 1e6);
+		if (!hit) continue;
+		++nTests;
+
+		// Build Point3fi and spawn rays from hit point
+		auto pi = hit->ToPoint3fi(ox,oy,oz, dx,dy,dz);
+
+		// Fire 50 random rays from hit point; none should hit same triangle
+		for (int j = 0; j < 50; ++j) {
+			double wdx, wdy, wdz;
+			sample_sphere_dir(lcg_rand(seed), lcg_rand(seed), wdx, wdy, wdz);
+			double sox, soy, soz;
+			SpawnRay(pi, hit->nx, hit->ny, hit->nz, wdx, wdy, wdz, sox, soy, soz);
+			auto selfHit = tri.intersect(sox,soy,soz, wdx,wdy,wdz, 1e-4, 1e6);
+			if (selfHit) ++nSelfHits;
+		}
+	}
+	EXPECT_GT(nTests, 50) << "too few valid triangles";
+	EXPECT_EQ(nSelfHits, 0) << "self-intersections from spawned rays";
+}
+
+// pbrt-v4: FullSphere.Reintersect
+// Fire random rays from a hit point on a sphere; none should self-intersect.
+TEST(ShapesSphere, Reintersect) {
+	auto s = SphereShape<double>::make(0.0, 0.0, 0.0, 1.0);
+	uint32_t seed = 111u;
+	int nSelfHits = 0;
+	for (int i = 0; i < 500; ++i) {
+		// Random ray from outside
+		double ox = -5.0 + 10.0*lcg_rand(seed);
+		double oy = -5.0 + 10.0*lcg_rand(seed);
+		double oz = -5.0 + 10.0*lcg_rand(seed);
+		// Normalize toward origin
+		double dx = -ox, dy = -oy, dz = -oz;
+		double len = std::sqrt(dx*dx+dy*dy+dz*dz);
+		if (len < 1.01) continue; // must be outside sphere
+		dx/=len; dy/=len; dz/=len;
+
+		auto hit = s.intersect(ox,oy,oz, dx,dy,dz, 1e-4, 1e6);
+		if (!hit) continue;
+
+		auto pi = hit->ToPoint3fi(ox,oy,oz, dx,dy,dz);
+
+		// Spawn random OUTGOING rays (dot with normal > 0) from hit point.
+		// Only test outgoing rays: inward rays correctly hit the far side.
+		for (int j = 0; j < 100; ++j) {
+			double wdx, wdy, wdz;
+			sample_sphere_dir(lcg_rand(seed), lcg_rand(seed), wdx, wdy, wdz);
+			// Flip if inward
+			if (wdx*hit->nx + wdy*hit->ny + wdz*hit->nz < 0) {
+				wdx = -wdx; wdy = -wdy; wdz = -wdz;
+			}
+			double sox, soy, soz;
+			SpawnRay(pi, hit->nx, hit->ny, hit->nz, wdx, wdy, wdz, sox, soy, soz);
+			auto selfHit = s.intersect(sox,soy,soz, wdx,wdy,wdz, 1e-4, 1e6);
+			if (selfHit) ++nSelfHits;
+		}
+	}
+	EXPECT_EQ(nSelfHits, 0) << "self-intersections from spawned outgoing rays on sphere";
+}
+
+// pbrt-v4: PartialSphere.Reintersect
+// Same test with a z-clipped sphere.
+TEST(ShapesSphere, PartialSphereReintersect) {
+	auto s = SphereShape<double>::make_clipped(0.0, 0.0, 0.0, 1.0, -0.5, 0.5, 2.0*PI);
+	uint32_t seed = 222u;
+	int nTests = 0, nSelfHits = 0;
+	for (int i = 0; i < 1000; ++i) {
+		double ox = -5.0 + 10.0*lcg_rand(seed);
+		double oy = -5.0 + 10.0*lcg_rand(seed);
+		double oz = -5.0 + 10.0*lcg_rand(seed);
+		double dx = -ox, dy = -oy, dz = -oz;
+		double len = std::sqrt(dx*dx+dy*dy+dz*dz);
+		if (len < 1.01) continue;
+		dx/=len; dy/=len; dz/=len;
+
+		auto hit = s.intersect(ox,oy,oz, dx,dy,dz, 1e-4, 1e6);
+		if (!hit) continue;
+		++nTests;
+
+		auto pi = hit->ToPoint3fi(ox,oy,oz, dx,dy,dz);
+		for (int j = 0; j < 30; ++j) {
+			double wdx, wdy, wdz;
+			sample_sphere_dir(lcg_rand(seed), lcg_rand(seed), wdx, wdy, wdz);
+			// Only test outgoing directions
+			if (wdx*hit->nx + wdy*hit->ny + wdz*hit->nz < 0) {
+				wdx = -wdx; wdy = -wdy; wdz = -wdz;
+			}
+			double sox, soy, soz;
+			SpawnRay(pi, hit->nx, hit->ny, hit->nz, wdx, wdy, wdz, sox, soy, soz);
+			auto selfHit = s.intersect(sox,soy,soz, wdx,wdy,wdz, 1e-4, 1e6);
+			if (selfHit) ++nSelfHits;
+		}
+	}
+	EXPECT_GT(nTests, 10) << "too few hits on partial sphere";
+	EXPECT_EQ(nSelfHits, 0) << "self-intersections on partial sphere";
+}
+
+// pbrt-v4: Cylinder.Reintersect
+TEST(ShapesCylinder, Reintersect) {
+	auto c = unit_cyl(); // radius=1, z in [-1,1]
+	uint32_t seed = 333u;
+	int nTests = 0, nSelfHits = 0;
+	for (int i = 0; i < 500; ++i) {
+		double ox = -5.0 + 10.0*lcg_rand(seed);
+		double oy = -5.0 + 10.0*lcg_rand(seed);
+		double oz = -0.5 + 1.0*lcg_rand(seed); // stay near cylinder height
+		double dx = -ox, dy = -oy, dz = 0.0;
+		double len = std::sqrt(dx*dx+dy*dy);
+		if (len < 1.01 || std::sqrt(ox*ox+oy*oy) < 1.01) continue;
+		dx/=len; dy/=len;
+
+		auto hit = c.intersect(ox,oy,oz, dx,dy,dz, 1e-4, 1e6);
+		if (!hit) continue;
+		++nTests;
+
+		auto pi = hit->ToPoint3fi(ox,oy,oz, dx,dy,dz);
+		for (int j = 0; j < 30; ++j) {
+			double wdx, wdy, wdz;
+			sample_sphere_dir(lcg_rand(seed), lcg_rand(seed), wdx, wdy, wdz);
+			// Only test outgoing directions (dot with outward normal > 0)
+			if (wdx*hit->nx + wdy*hit->ny + wdz*hit->nz < 0) {
+				wdx = -wdx; wdy = -wdy; wdz = -wdz;
+			}
+			double sox, soy, soz;
+			SpawnRay(pi, hit->nx, hit->ny, hit->nz, wdx, wdy, wdz, sox, soy, soz);
+			auto selfHit = c.intersect(sox,soy,soz, wdx,wdy,wdz, 1e-4, 1e6);
+			if (selfHit) ++nSelfHits;
+		}
+	}
+	EXPECT_GT(nTests, 20) << "too few cylinder hits";
+	EXPECT_EQ(nSelfHits, 0) << "self-intersections on cylinder";
+}
+
+// pbrt-v4: Triangle.BadCases
+// A near-degenerate triangle with known vertex coordinates that caused a
+// false intersection with the original pbrt-v3 algorithm. Our watertight
+// port must correctly return no hit.
+TEST(ShapesTriangle, BadCases) {
+	auto tri = TriangleShape<double>::make(
+		-1113.45459, -79.049614,  -56.2431908,
+		-1113.45459, -87.0922699, -56.2431908,
+		-1113.45459, -79.2090149, -56.2431908);
+
+	// Ray from pbrt-v4 Triangle.BadCases
+	double rox = -1081.47925, roy =  99.9999542, roz =  87.7701111;
+	double rdx =   -32.1072998, rdy = -183.355865, rdz = -144.607635;
+	double len = std::sqrt(rdx*rdx + rdy*rdy + rdz*rdz);
+	rdx/=len; rdy/=len; rdz/=len;
+
+	auto hit = tri.intersect(rox,roy,roz, rdx,rdy,rdz, 0.0, 1e10);
+	EXPECT_FALSE(hit.has_value());
+}

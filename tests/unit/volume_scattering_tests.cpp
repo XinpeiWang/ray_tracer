@@ -265,3 +265,98 @@ TEST(HGPhaseMaterial, ScatteringPdfNonNegative) {
 	rec.p = point3(0,0,0);
 	EXPECT_GE(mat.scattering_pdf(r_in, rec, scattered), 0.0);
 }
+
+// ============================================================
+// pbrt-v4 parity: HenyeyGreenstein media_test.cpp
+// ============================================================
+
+// pbrt-v4: TEST(HenyeyGreenstein, SamplingMatch)
+// Phase function is normalized and sampling is exact: p == pdf for sampled wi.
+TEST(HGPhaseFunction, SamplingMatch) {
+	// Simple LCG-style deterministic sequence
+	auto lcg = [](uint32_t &s) -> double {
+		s = s * 1664525u + 1013904223u;
+		return (s >> 8) * (1.0 / (1u << 24));
+	};
+	uint32_t seed = 12345u;
+	for (double g = -0.75; g <= 0.75; g += 0.25) {
+		HenyeyGreensteinPhaseFunction<double> hg(g);
+		for (int i = 0; i < 100; ++i) {
+			double wox = 0.0, woy = 0.0, woz = 1.0; // fixed wo = +z
+			double u1 = lcg(seed), u2 = lcg(seed);
+			double wi_x, wi_y, wi_z, pdf_val;
+			hg.sample(wox, woy, woz, u1, u2, wi_x, wi_y, wi_z, pdf_val);
+			double cos_theta = wox*wi_x + woy*wi_y + woz*wi_z;
+			double p_val = hg.p(cos_theta);
+			EXPECT_NEAR(pdf_val, p_val, 1e-10) << "g=" << g << " i=" << i;
+		}
+	}
+}
+
+// pbrt-v4: TEST(HenyeyGreenstein, SamplingOrientationForward)
+// With g=0.95 almost all sampled wi are in the same hemisphere as wo.
+TEST(HGPhaseFunction, SamplingOrientationForward) {
+	HenyeyGreensteinPhaseFunction<double> hg(0.95);
+	double wox = -1.0, woy = 0.0, woz = 0.0;
+	auto lcg = [](uint32_t &s) -> double {
+		s = s * 1664525u + 1013904223u;
+		return (s >> 8) * (1.0 / (1u << 24));
+	};
+	uint32_t seed = 99u;
+	int nForward = 0, nBackward = 0;
+	for (int i = 0; i < 100; ++i) {
+		double u1 = lcg(seed), u2 = lcg(seed);
+		double wi_x, wi_y, wi_z, pdf_val;
+		hg.sample(wox, woy, woz, u1, u2, wi_x, wi_y, wi_z, pdf_val);
+		// wi.x > 0 means it continued in the -wo direction (forward scatter)
+		if (wi_x > 0) ++nForward; else ++nBackward;
+	}
+	EXPECT_GE(nForward, 10 * nBackward);
+}
+
+// pbrt-v4: TEST(HenyeyGreenstein, SamplingOrientationBackward)
+// With g=-0.95 almost all sampled wi are in the back hemisphere.
+TEST(HGPhaseFunction, SamplingOrientationBackward) {
+	HenyeyGreensteinPhaseFunction<double> hg(-0.95);
+	double wox = -1.0, woy = 0.0, woz = 0.0;
+	auto lcg = [](uint32_t &s) -> double {
+		s = s * 1664525u + 1013904223u;
+		return (s >> 8) * (1.0 / (1u << 24));
+	};
+	uint32_t seed = 77u;
+	int nForward = 0, nBackward = 0;
+	for (int i = 0; i < 100; ++i) {
+		double u1 = lcg(seed), u2 = lcg(seed);
+		double wi_x, wi_y, wi_z, pdf_val;
+		hg.sample(wox, woy, woz, u1, u2, wi_x, wi_y, wi_z, pdf_val);
+		if (wi_x > 0) ++nForward; else ++nBackward;
+	}
+	EXPECT_GE(nBackward, 10 * nForward);
+}
+
+// pbrt-v4: TEST(HenyeyGreenstein, g)
+// MC estimate of mean cosine must recover the g parameter.
+// In our HG convention p uses cos_theta = Dot(wo,wi); g = -E[Dot(wo,wi)]
+// (when g>0, forward-scatter has wi near -wo, so Dot(wo,wi) is near -1).
+TEST(HGPhaseFunction, GParameterEstimate) {
+	auto lcg = [](uint32_t &s) -> double {
+		s = s * 1664525u + 1013904223u;
+		return (s >> 8) * (1.0 / (1u << 24));
+	};
+	uint32_t seed = 55555u;
+	for (double g : {-0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75}) {
+		HenyeyGreensteinPhaseFunction<double> hg(g);
+		double wox = 0.0, woy = 0.0, woz = 1.0;
+		double sum = 0.0;
+		const int N = 8192;
+		for (int i = 0; i < N; ++i) {
+			double u1 = lcg(seed), u2 = lcg(seed);
+			double wi_x, wi_y, wi_z, pdf_val;
+			hg.sample(wox, woy, woz, u1, u2, wi_x, wi_y, wi_z, pdf_val);
+			double cos_t = wox*wi_x + woy*wi_y + woz*wi_z;
+			sum += cos_t; // E[cos_theta] = -g in our convention
+		}
+		double gEst = -(sum / N); // negate to recover g
+		EXPECT_NEAR(g, gEst, 0.05) << "g=" << g;
+	}
+}
