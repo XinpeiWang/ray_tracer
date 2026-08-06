@@ -61,17 +61,17 @@
       <DebugInformationFormat>OldStyle</DebugInformationFormat>
       <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
       <AdditionalIncludeDirectories>$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)src\shared;$(SolutionDir)src;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\optix;$(SolutionDir)tests\build\_deps\googletest-src\googletest\include;$(SolutionDir)tests\build\_deps\googletest-src\googletest;$(SolutionDir)tests\build\_deps\googletest-src\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-    </ClCompile>
-    <Link>
-      <SubSystem>Console</SubSystem>
-      <AdditionalDependencies>cudart_static.lib;cuda.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <IgnoreSpecificDefaultLibraries>LIBCMT;LIBCMTD</IgnoreSpecificDefaultLibraries>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
-    </Link>
-  </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <ClCompile>
+        </ClCompile>
+        <Link>
+          <SubSystem>Console</SubSystem>
+          <AdditionalDependencies>cudart_static.lib;cuda.lib;%(AdditionalDependencies)</AdditionalDependencies>
+          <AdditionalLibraryDirectories>$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+          <IgnoreSpecificDefaultLibraries>LIBCMT;LIBCMTD</IgnoreSpecificDefaultLibraries>
+          <GenerateDebugInformation>true</GenerateDebugInformation>
+        </Link>
+      </ItemDefinitionGroup>
+      <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+        <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
@@ -82,12 +82,12 @@
       <DebugInformationFormat>OldStyle</DebugInformationFormat>
       <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
       <AdditionalIncludeDirectories>$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)src\shared;$(SolutionDir)src;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\optix;$(SolutionDir)tests\build\_deps\googletest-src\googletest\include;$(SolutionDir)tests\build\_deps\googletest-src\googletest;$(SolutionDir)tests\build\_deps\googletest-src\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-    </ClCompile>
-    <Link>
-      <SubSystem>Console</SubSystem>
-      <AdditionalDependencies>cudart_static.lib;cuda.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      </ClCompile>
+      <Link>
+        <SubSystem>Console</SubSystem>
+        <AdditionalDependencies>cudart_static.lib;cuda.lib;%(AdditionalDependencies)</AdditionalDependencies>
+        <AdditionalLibraryDirectories>$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+        <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <AdditionalDependencies>cpu_renderer.lib;optix_renderer.lib;cudart_static.lib;cuda.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(SolutionDir)x64\$(Configuration);$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <IgnoreSpecificDefaultLibraries>LIBCMT;LIBCMTD</IgnoreSpecificDefaultLibraries>

@@ -987,7 +987,7 @@ CPU_GPU void SampleCosineHemisphere(T u0, T u1,
 // Balance heuristic with beta=2: w = (n_f * f)^2 / ((n_f*f)^2 + (n_g*g)^2)
 // pbrt-v4: if (IsInf(Sqr(f))) return 1 -- handles the case where one PDF
 // dominates so heavily it overflows float.
-CPU_GPU inline float PowerHeuristic(int nf, float f_pdf, int ng, float g_pdf) {
+CPU_GPU float PowerHeuristic(int nf, float f_pdf, int ng, float g_pdf) {
 	float f = static_cast<float>(nf) * f_pdf;
 	float g = static_cast<float>(ng) * g_pdf;
 	float f2 = f * f;

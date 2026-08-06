@@ -52,25 +52,25 @@ template<typename T>
 struct Vec3 { T x, y, z; };
 
 template<typename T>
-CPU_GPU inline T dot(Vec3<T> a, Vec3<T> b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
+CPU_GPU T dot(Vec3<T> a, Vec3<T> b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
 
 template<typename T>
-CPU_GPU inline Vec3<T> cross(Vec3<T> a, Vec3<T> b) {
+CPU_GPU Vec3<T> cross(Vec3<T> a, Vec3<T> b) {
 	return { a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x };
 }
 
 template<typename T>
-CPU_GPU inline Vec3<T> normalize(Vec3<T> v) {
+CPU_GPU Vec3<T> normalize(Vec3<T> v) {
 	T len = std::sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
 	if (len == T(0)) return v;
 	return { v.x/len, v.y/len, v.z/len };
 }
 
 template<typename T>
-CPU_GPU inline Vec3<T> sub(Vec3<T> a, Vec3<T> b) { return { a.x-b.x, a.y-b.y, a.z-b.z }; }
+CPU_GPU Vec3<T> sub(Vec3<T> a, Vec3<T> b) { return { a.x-b.x, a.y-b.y, a.z-b.z }; }
 
 template<typename T>
-CPU_GPU inline T length(Vec3<T> v) { return std::sqrt(v.x*v.x + v.y*v.y + v.z*v.z); }
+CPU_GPU T length(Vec3<T> v) { return std::sqrt(v.x*v.x + v.y*v.y + v.z*v.z); }
 
 // Frame: orthonormal frame with x, y, z axes (matches pbrt-v4 Frame).
 // portalFrame = Frame::FromXY(p03, p01) where p03 = portal[3]-portal[0], p01 = portal[1]-portal[0].
@@ -110,7 +110,7 @@ inline void lookup_nearest(const std::vector<float>& img, int nx, int ny,
 	r = img[idx]; g = img[idx+1]; b = img[idx+2];
 }
 
-CPU_GPU inline double luminance(double r, double g, double b) {
+CPU_GPU double luminance(double r, double g, double b) {
 	return 0.2126*r + 0.7152*g + 0.0722*b;
 }
 

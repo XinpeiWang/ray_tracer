@@ -105,7 +105,7 @@ struct LightBounds {
 //
 // Mirrors pbrt-v4 LightBounds::Importance(Point3f p, Normal3f n).
 // ===========================================================================
-CPU_GPU inline float Importance(const LightBounds& lb,
+CPU_GPU float Importance(const LightBounds& lb,
 								 float px, float py, float pz,
 								 float nx, float ny, float nz)
 {
@@ -168,7 +168,7 @@ CPU_GPU inline float Importance(const LightBounds& lb,
 // Union(LightBounds, LightBounds)
 // Mirrors pbrt-v4 Union(const LightBounds &a, const LightBounds &b).
 // ===========================================================================
-CPU_GPU inline LightBounds Union(const LightBounds& a, const LightBounds& b) {
+CPU_GPU LightBounds Union(const LightBounds& a, const LightBounds& b) {
 	// If one bound has zero power, return the other
 	if (a.phi == 0.f) return b;
 	if (b.phi == 0.f) return a;

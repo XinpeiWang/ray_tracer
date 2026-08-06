@@ -36,14 +36,14 @@ namespace splines {
 // --------------------------------------------------------------------------
 
 // Lerp between two float[3] points: out = (1-t)*a + t*b
-CPU_GPU inline void lerp3(float t, const float* a, const float* b, float* out) {
+CPU_GPU void lerp3(float t, const float* a, const float* b, float* out) {
 	out[0] = (1.f - t) * a[0] + t * b[0];
 	out[1] = (1.f - t) * a[1] + t * b[1];
 	out[2] = (1.f - t) * a[2] + t * b[2];
 }
 
 // Copy float[3]
-CPU_GPU inline void copy3(const float* src, float* dst) {
+CPU_GPU void copy3(const float* src, float* dst) {
 	dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2];
 }
 
@@ -53,7 +53,7 @@ CPU_GPU inline void copy3(const float* src, float* dst) {
 // Result written to out[3].
 // Reference: pbrt-v4 BlossomCubicBezier
 // --------------------------------------------------------------------------
-CPU_GPU inline void BlossomCubicBezier(const float cp[4][3],
+CPU_GPU void BlossomCubicBezier(const float cp[4][3],
 										float u0, float u1, float u2,
 										float out[3]) {
 	float a[3][3], b[2][3];
@@ -68,7 +68,7 @@ CPU_GPU inline void BlossomCubicBezier(const float cp[4][3],
 // --------------------------------------------------------------------------
 // EvaluateCubicBezier  (point only)
 // --------------------------------------------------------------------------
-CPU_GPU inline void EvaluateCubicBezier(const float cp[4][3], float u, float out[3]) {
+CPU_GPU void EvaluateCubicBezier(const float cp[4][3], float u, float out[3]) {
 	BlossomCubicBezier(cp, u, u, u, out);
 }
 
@@ -77,7 +77,7 @@ CPU_GPU inline void EvaluateCubicBezier(const float cp[4][3], float u, float out
 // deriv[3] receives 3*(cp2[1] - cp2[0]).
 // Reference: pbrt-v4 EvaluateCubicBezier(Point3f, deriv*)
 // --------------------------------------------------------------------------
-CPU_GPU inline void EvaluateCubicBezierD(const float cp[4][3], float u,
+CPU_GPU void EvaluateCubicBezierD(const float cp[4][3], float u,
 										  float out[3], float deriv[3]) {
 	float cp1[3][3], cp2[2][3];
 	lerp3(u, cp[0], cp[1], cp1[0]);
@@ -109,7 +109,7 @@ CPU_GPU inline void EvaluateCubicBezierD(const float cp[4][3], float u,
 // out7[0..3] is the left half, out7[3..6] is the right half (shared midpoint).
 // Reference: pbrt-v4 SubdivideCubicBezier
 // --------------------------------------------------------------------------
-CPU_GPU inline void SubdivideCubicBezier(const float cp[4][3], float out7[7][3]) {
+CPU_GPU void SubdivideCubicBezier(const float cp[4][3], float out7[7][3]) {
 	copy3(cp[0], out7[0]);
 
 	float m01[3], m12[3], m23[3], m012[3], m123[3];
@@ -132,7 +132,7 @@ CPU_GPU inline void SubdivideCubicBezier(const float cp[4][3], float out7[7][3])
 // Reparametrizes cp[4] to the sub-interval [uMin, uMax] -> out4[4].
 // Reference: pbrt-v4 CubicBezierControlPoints
 // --------------------------------------------------------------------------
-CPU_GPU inline void CubicBezierControlPoints(const float cp[4][3],
+CPU_GPU void CubicBezierControlPoints(const float cp[4][3],
 											  float uMin, float uMax,
 											  float out4[4][3]) {
 	BlossomCubicBezier(cp, uMin, uMin, uMin, out4[0]);
@@ -147,7 +147,7 @@ CPU_GPU inline void CubicBezierControlPoints(const float cp[4][3],
 // outMin[3] and outMax[3] receive the result.
 // Reference: pbrt-v4 BoundCubicBezier
 // --------------------------------------------------------------------------
-CPU_GPU inline void BoundCubicBezierBox(const float cp[4][3],
+CPU_GPU void BoundCubicBezierBox(const float cp[4][3],
 										 float outMin[3], float outMax[3]) {
 	for (int i = 0; i < 3; ++i) {
 		float a = cp[0][i] < cp[1][i] ? cp[0][i] : cp[1][i];
@@ -164,7 +164,7 @@ CPU_GPU inline void BoundCubicBezierBox(const float cp[4][3],
 // Degree elevation: quadratic cp3[3] -> cubic out4[4].
 // Reference: pbrt-v4 ElevateQuadraticBezierToCubic
 // --------------------------------------------------------------------------
-CPU_GPU inline void ElevateQuadraticBezierToCubic(const float cp3[3][3],
+CPU_GPU void ElevateQuadraticBezierToCubic(const float cp3[3][3],
 												   float out4[4][3]) {
 	copy3(cp3[0], out4[0]);
 	lerp3(2.f / 3.f, cp3[0], cp3[1], out4[1]);
@@ -177,7 +177,7 @@ CPU_GPU inline void ElevateQuadraticBezierToCubic(const float cp3[3][3],
 // Uniform quadratic B-spline segment cp3[3] -> Bézier out3[3].
 // Reference: pbrt-v4 QuadraticBSplineToBezier
 // --------------------------------------------------------------------------
-CPU_GPU inline void QuadraticBSplineToBezier(const float cp3[3][3], float out3[3][3]) {
+CPU_GPU void QuadraticBSplineToBezier(const float cp3[3][3], float out3[3][3]) {
 	lerp3(0.5f, cp3[0], cp3[1], out3[0]);  // p11
 	copy3(cp3[1], out3[1]);                  // p12
 	lerp3(0.5f, cp3[1], cp3[2], out3[2]);  // p22
@@ -188,7 +188,7 @@ CPU_GPU inline void QuadraticBSplineToBezier(const float cp3[3][3], float out3[3
 // Uniform cubic B-spline segment cp4[4] -> Bézier out4[4].
 // Reference: pbrt-v4 CubicBSplineToBezier
 // --------------------------------------------------------------------------
-CPU_GPU inline void CubicBSplineToBezier(const float cp4[4][3], float out4[4][3]) {
+CPU_GPU void CubicBSplineToBezier(const float cp4[4][3], float out4[4][3]) {
 	float p012[3], p123[3], p234[3], p345[3];
 	copy3(cp4[0], p012);
 	copy3(cp4[1], p123);

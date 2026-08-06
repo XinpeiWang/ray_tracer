@@ -166,7 +166,7 @@ inline T FrComplex(T cos_theta_i, std::complex<T> eta) {
 // ---------------------------------------------------------------------------
 #if defined(__CUDACC__)
 // GPU version: operates on float3
-CPU_GPU inline float3 FrConductorRGB(float cos_theta_i,
+CPU_GPU float3 FrConductorRGB(float cos_theta_i,
 									  float eta_r, float eta_g, float eta_b,
 									  float k_r,   float k_g,   float k_b) {
 	return make_float3(FrComplex(cos_theta_i, eta_r, k_r),

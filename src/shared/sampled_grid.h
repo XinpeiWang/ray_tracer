@@ -128,13 +128,13 @@ public:
 			return convert(values_[(z * ny_ + y) * nx_ + x]);
 		};
 
-		auto lerp_r = [](T t, R a, R b) { return a + t * (b - a); };
+		auto lerp_r = [](R t, R a, R b) { return a + t * (b - a); };
 
-		R d00 = lerp_r(dx, c(ix, iy,   iz  ), c(ix+1, iy,   iz  ));
-		R d10 = lerp_r(dx, c(ix, iy+1, iz  ), c(ix+1, iy+1, iz  ));
-		R d01 = lerp_r(dx, c(ix, iy,   iz+1), c(ix+1, iy,   iz+1));
-		R d11 = lerp_r(dx, c(ix, iy+1, iz+1), c(ix+1, iy+1, iz+1));
-		return lerp_r(dz, lerp_r(dy, d00, d10), lerp_r(dy, d01, d11));
+		R d00 = lerp_r(R(dx), c(ix, iy,   iz  ), c(ix+1, iy,   iz  ));
+		R d10 = lerp_r(R(dx), c(ix, iy+1, iz  ), c(ix+1, iy+1, iz  ));
+		R d01 = lerp_r(R(dx), c(ix, iy,   iz+1), c(ix+1, iy,   iz+1));
+		R d11 = lerp_r(R(dx), c(ix, iy+1, iz+1), c(ix+1, iy+1, iz+1));
+		return lerp_r(R(dz), lerp_r(R(dy), d00, d10), lerp_r(R(dy), d01, d11));
 	}
 
 	// Maximum value over all voxels whose sample-space coordinates overlap
