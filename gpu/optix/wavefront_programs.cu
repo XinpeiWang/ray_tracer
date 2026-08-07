@@ -130,6 +130,88 @@ extern "C" __global__ void __raygen__wf_intersect() {
 }
 
 // ============================================================================
+// __intersection__wf_sphere / __intersection__wf_quad
+//
+// Wavefront-native duplicates of optix_intersection_{sphere,quad}.h's
+// __intersection__sphere/__intersection__quad (same math, wf_params instead
+// of the recursive path's params global). createProgramGroups() originally
+// reused those programs directly from the recursive path's module (custom
+// AABB primitives need *some* intersection program, and wavefront_programs.cu
+// never defined its own) - but OptiX rejects combining intersection/
+// closest-hit programs from two separately-compiled modules with different
+// pipelineCompileOptions.numPayloadValues (12 registers for the recursive
+// path's PathTracingPayload vs 2 here) into the same hit group: "could not
+// be resolved to a common payloadType". Compiling our own copies here, under
+// this module's own pipeline options, sidesteps the mismatch entirely -
+// neither program actually touches payload registers (attributes only), so
+// there's no behavioral difference, just no more cross-module payload
+// conflict.
+// ============================================================================
+
+extern "C" __global__ void __intersection__wf_sphere() {
+	const unsigned int primIdx = optixGetPrimitiveIndex();
+	const SphereData& sphere = wf_params.spheres[primIdx];
+
+	const float3 ray_orig = optixGetWorldRayOrigin();
+	const float3 ray_dir  = optixGetWorldRayDirection();
+	const float  ray_tmin = optixGetRayTmin();
+	const float  ray_tmax = optixGetRayTmax();
+
+	const float3 oc = ray_orig - sphere.center;
+	const float a = dot(ray_dir, ray_dir);
+	const float half_b = dot(oc, ray_dir);
+	const float c = dot(oc, oc) - sphere.radius * sphere.radius;
+	const float discriminant = half_b * half_b - a * c;
+	if (discriminant < 0.0f) return;
+
+	const float sqrtd = sqrtf(discriminant);
+	float root = (-half_b - sqrtd) / a;
+	if (root < ray_tmin || root > ray_tmax) {
+		root = (-half_b + sqrtd) / a;
+		if (root < ray_tmin || root > ray_tmax)
+			return;
+	}
+
+	optixReportIntersection(
+		root, 0,
+		__float_as_int(sphere.center.x),
+		__float_as_int(sphere.center.y),
+		__float_as_int(sphere.center.z),
+		__float_as_int(sphere.radius));
+}
+
+extern "C" __global__ void __intersection__wf_quad() {
+	const unsigned int primIdx = optixGetPrimitiveIndex();
+	const QuadData& quad = wf_params.quads[primIdx];
+
+	const float3 ray_orig = optixGetWorldRayOrigin();
+	const float3 ray_dir  = optixGetWorldRayDirection();
+	const float  ray_tmin = optixGetRayTmin();
+	const float  ray_tmax = optixGetRayTmax();
+
+	const float denom = dot(quad.normal, ray_dir);
+	if (fabsf(denom) < 1e-8f) return;
+
+	const float t = (quad.D - dot(quad.normal, ray_orig)) / denom;
+	if (t < ray_tmin || t > ray_tmax) return;
+
+	const float3 intersection = ray_orig + t * ray_dir;
+	const float3 planar_vec = intersection - quad.Q;
+
+	const float w_dot_w = dot(quad.w, quad.w);
+	const float alpha = dot(quad.w, cross(planar_vec, quad.v)) / w_dot_w;
+	const float beta  = dot(quad.w, cross(quad.u, planar_vec)) / w_dot_w;
+	if (alpha < 0.0f || alpha > 1.0f || beta < 0.0f || beta > 1.0f) return;
+
+	optixReportIntersection(
+		t, 0,
+		__float_as_int(quad.normal.x),
+		__float_as_int(quad.normal.y),
+		__float_as_int(quad.normal.z),
+		0);
+}
+
+// ============================================================================
 // __closesthit__wf_sphere
 // ============================================================================
 extern "C" __global__ void __closesthit__wf_sphere() {

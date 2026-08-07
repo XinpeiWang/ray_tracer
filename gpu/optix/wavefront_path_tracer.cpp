@@ -67,9 +67,17 @@ WavefrontPathTracer::~WavefrontPathTracer() {
 // ============================================================================
 
 bool WavefrontPathTracer::initialize(OptixDeviceContext context,
-									  OptixModule /*ignored*/,
+									  OptixModule module,
 									  cudaStream_t stream) {
 	context_ = context;
+	// Not currently read anywhere in this class (createProgramGroups() uses
+	// wfModule_ exclusively - see its comment for why cross-module reuse of
+	// the recursive path's intersection programs doesn't work). Still stored,
+	// since this parameter used to be silently dropped entirely (marked
+	// /*ignored*/) which was the first of two bugs that kept
+	// WavefrontPathTracer from ever initializing - keeping it wired up here
+	// costs nothing and avoids re-introducing a dead/misleading parameter.
+	module_  = module;
 	stream_  = stream;
 
 	pipelineCompileOptions_.usesMotionBlur        = false;
@@ -174,17 +182,20 @@ bool WavefrontPathTracer::createProgramGroups() {
 	OPTIX_CHECK(optixProgramGroupCreate(context_, &missDesc, 1, &pgOptions,
 										 log, &logSize, &missRadiancePG_));
 
-	// Sphere closesthit (re-uses intersection program from optix_programs.ptx — but
-	// we need the intersection program in the SAME module as the closesthit.
-	// Solution: the wavefront module includes __intersection__sphere/quad stubs
-	// that are identical to the recursive ones, or we borrow from the base module_.
-	// Here we use module_ (the base RecursivePathTracer module) for intersection
-	// programs and wfModule_ for the wavefront closesthit programs.
-	// This works because OptiX allows mixing modules in a hitgroup.)
+	// Sphere/quad closesthit paired with wavefront-native intersection programs
+	// (wavefront_programs.cu __intersection__wf_sphere/__intersection__wf_quad).
+	// These used to reuse __intersection__sphere/__intersection__quad from the
+	// recursive path's module_ instead of having their own copy, which OptiX
+	// rejects: combining programs from two modules compiled with different
+	// pipelineCompileOptions.numPayloadValues into one hitgroup fails payload-
+	// type resolution ("could not be resolved to a common payloadType"), even
+	// though neither intersection program actually touches payload registers.
+	// Compiling our own copies under wfModule_'s own pipeline options sidesteps
+	// the cross-module mismatch entirely - see wavefront_programs.cu for detail.
 	OptixProgramGroupDesc sphereHitDesc = {};
 	sphereHitDesc.kind                              = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
-	sphereHitDesc.hitgroup.moduleIS                 = module_;  // base module has __intersection__sphere
-	sphereHitDesc.hitgroup.entryFunctionNameIS      = "__intersection__sphere";
+	sphereHitDesc.hitgroup.moduleIS                 = wfModule_;
+	sphereHitDesc.hitgroup.entryFunctionNameIS      = "__intersection__wf_sphere";
 	sphereHitDesc.hitgroup.moduleCH                 = wfModule_;
 	sphereHitDesc.hitgroup.entryFunctionNameCH      = "__closesthit__wf_sphere";
 	logSize = sizeof(log);
@@ -193,8 +204,8 @@ bool WavefrontPathTracer::createProgramGroups() {
 
 	OptixProgramGroupDesc quadHitDesc = {};
 	quadHitDesc.kind                            = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
-	quadHitDesc.hitgroup.moduleIS               = module_;
-	quadHitDesc.hitgroup.entryFunctionNameIS    = "__intersection__quad";
+	quadHitDesc.hitgroup.moduleIS               = wfModule_;
+	quadHitDesc.hitgroup.entryFunctionNameIS    = "__intersection__wf_quad";
 	quadHitDesc.hitgroup.moduleCH               = wfModule_;
 	quadHitDesc.hitgroup.entryFunctionNameCH    = "__closesthit__wf_quad";
 	logSize = sizeof(log);
@@ -222,8 +233,8 @@ bool WavefrontPathTracer::createProgramGroups() {
 	// Shadow anyhit for sphere
 	OptixProgramGroupDesc shadowSphereDesc = {};
 	shadowSphereDesc.kind                          = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
-	shadowSphereDesc.hitgroup.moduleIS             = module_;
-	shadowSphereDesc.hitgroup.entryFunctionNameIS  = "__intersection__sphere";
+	shadowSphereDesc.hitgroup.moduleIS             = wfModule_;
+	shadowSphereDesc.hitgroup.entryFunctionNameIS  = "__intersection__wf_sphere";
 	shadowSphereDesc.hitgroup.moduleAH             = wfModule_;
 	shadowSphereDesc.hitgroup.entryFunctionNameAH  = "__anyhit__wf_shadow";
 	logSize = sizeof(log);
@@ -233,8 +244,8 @@ bool WavefrontPathTracer::createProgramGroups() {
 	// Shadow anyhit for quad
 	OptixProgramGroupDesc shadowQuadDesc = {};
 	shadowQuadDesc.kind                          = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
-	shadowQuadDesc.hitgroup.moduleIS             = module_;
-	shadowQuadDesc.hitgroup.entryFunctionNameIS  = "__intersection__quad";
+	shadowQuadDesc.hitgroup.moduleIS             = wfModule_;
+	shadowQuadDesc.hitgroup.entryFunctionNameIS  = "__intersection__wf_quad";
 	shadowQuadDesc.hitgroup.moduleAH             = wfModule_;
 	shadowQuadDesc.hitgroup.entryFunctionNameAH  = "__anyhit__wf_shadow";
 	logSize = sizeof(log);

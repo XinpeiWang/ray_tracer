@@ -593,7 +593,18 @@ extern "C" __global__ void evaluate_materials(
 		if (light_pdf > 1e-6f && dot(to_light, normal) > 0.0f) {
 			float cos_l = fmaxf(dot(to_light, normal), 0.0f);
 			float bsdf_val = 1.0f / 3.14159265f; // Lambertian default
-			if (mat.type == MaterialType::NormalizedFresnel) {
+			// Lambertian's BRDF is albedo/pi, direction-independent - `attenuation`
+			// already equals albedoSpectrum(mat.albedo) from the switch above, so
+			// reuse it here instead of leaving the NEE contribution achromatic
+			// (was previously missing entirely: every Lambertian surface
+			// contributed as if albedo were white, regardless of actual color).
+			// NormalizedFresnel's bsdf_val below is already a complete,
+			// achromatic BRDF value (no color/texture involved), so it needs
+			// no equivalent multiply.
+			SS bsdf_color(1.f);
+			if (mat.type == MaterialType::Lambertian) {
+				bsdf_color = attenuation;
+			} else if (mat.type == MaterialType::NormalizedFresnel) {
 				float nf_eta = mat.ior;
 				float inv_eta = 1.0f / nf_eta;
 				float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
@@ -605,7 +616,7 @@ extern "C" __global__ void evaluate_materials(
 			float mis_w = wf_mis(light_pdf, brdf_pdf_l);
 
 			// Spectral direct-light contribution
-			SS Ld = (mis_w * bsdf_val * cos_l / light_pdf) * throughput * light_emission_spec;
+			SS Ld = (mis_w * bsdf_val * cos_l / light_pdf) * throughput * bsdf_color * light_emission_spec;
 
 			ShadowRayWorkItem shadow;
 			shadow.origin    = hit_point + 0.001f * normal;
@@ -636,7 +647,13 @@ extern "C" __global__ void evaluate_materials(
 		if (cos_l <= 0.0f) continue;
 
 		float bsdf_val = 1.0f / 3.14159265f; // Lambertian default
-		if (mat.type == MaterialType::NormalizedFresnel) {
+		// See the area-light block above: attenuation == albedoSpectrum(mat.albedo)
+		// for Lambertian (direction-independent BRDF, safe to reuse here);
+		// NormalizedFresnel's bsdf_val is already a complete achromatic value.
+		SS bsdf_color(1.f);
+		if (mat.type == MaterialType::Lambertian) {
+			bsdf_color = attenuation;
+		} else if (mat.type == MaterialType::NormalizedFresnel) {
 			float nf_eta = mat.ior;
 			float inv_eta = 1.0f / nf_eta;
 			float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
@@ -657,7 +674,7 @@ extern "C" __global__ void evaluate_materials(
 				Li_spec[i] = sc * poly(swl.lambda[i]);
 		}
 
-		SS Ld = (bsdf_val * cos_l) * throughput * Li_spec;
+		SS Ld = (bsdf_val * cos_l) * throughput * bsdf_color * Li_spec;
 
 		ShadowRayWorkItem shadow;
 		shadow.origin    = hit_point + 0.001f * normal;

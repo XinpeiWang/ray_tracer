@@ -1001,6 +1001,16 @@ bool OptiXRenderer::render(
 }
 
 void OptiXRenderer::cleanup() noexcept {
+	// Must happen before context_ is destroyed below: wavefrontTracer_ owns
+	// its own OptiX program groups/pipelines/module, all created from
+	// context_. Without this, wavefrontTracer_'s implicit member destructor
+	// runs after this function returns - i.e. after optixDeviceContextDestroy
+	// below - and tries to destroy OptiX objects belonging to an
+	// already-destroyed context (use-after-free, reliably crashes with an
+	// access violation on process exit once wavefront mode actually gets
+	// far enough to allocate anything).
+	wavefrontTracer_.reset();
+
 	// Free SBT records
 	if (d_raygenRecord_) cudaFree(reinterpret_cast<void*>(d_raygenRecord_));
 	if (d_missRecord_) cudaFree(reinterpret_cast<void*>(d_missRecord_));
