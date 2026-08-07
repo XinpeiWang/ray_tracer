@@ -258,10 +258,7 @@ bool RecursivePathTracer::render(
 	int height,
 	int samples_per_pixel,
 	int max_depth,
-	const float* camera_origin,
-	const float* camera_lower_left,
-	const float* camera_horizontal,
-	const float* camera_vertical,
+	const GpuCameraParams& camera,
 	float* framebuffer,
 	OptixTraversableHandle gas_handle,
 	CUdeviceptr d_materials,
@@ -292,10 +289,7 @@ bool RecursivePathTracer::render(
 	params.frameNumber = 0;
 
 	// Camera setup
-	params.camera.origin = make_float3(camera_origin[0], camera_origin[1], camera_origin[2]);
-	params.camera.lower_left_corner = make_float3(camera_lower_left[0], camera_lower_left[1], camera_lower_left[2]);
-	params.camera.horizontal = make_float3(camera_horizontal[0], camera_horizontal[1], camera_horizontal[2]);
-	params.camera.vertical = make_float3(camera_vertical[0], camera_vertical[1], camera_vertical[2]);
+	params.camera = camera;
 
 	// Scene
 	params.traversable = gas_handle;

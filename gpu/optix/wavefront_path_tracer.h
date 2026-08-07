@@ -22,8 +22,7 @@ public:
     bool linkPipeline(unsigned int maxTraceDepth) override;
     bool buildSBT(unsigned int numSpheres, unsigned int numQuads) override;
     bool render(int width, int height, int samples_per_pixel, int max_depth,
-        const float* camera_origin, const float* camera_lower_left,
-        const float* camera_horizontal, const float* camera_vertical,
+        const GpuCameraParams& camera,
         float* framebuffer, OptixTraversableHandle gas_handle,
         CUdeviceptr d_materials, CUdeviceptr d_spheres, CUdeviceptr d_quads,
         CUdeviceptr d_light_indices, CUdeviceptr d_is_light_sphere,
@@ -44,7 +43,7 @@ private:
     bool allocateQueues(int numPixels);
     void freeQueues();
     void launchGenerateCameraRays(int width, int height, int sampleIdx,
-        float3 camOrigin, float3 lowerLeft, float3 horizontal, float3 vertical);
+        const GpuCameraParams& camera);
     void launchEvaluateMaterials(int numHits, int maxDepth,
         const SphereData* d_spheres, unsigned int numSpheres,
         const QuadData* d_quads, unsigned int numQuads,

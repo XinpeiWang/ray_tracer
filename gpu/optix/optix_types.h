@@ -166,6 +166,35 @@ struct GpuAliasEntry {
 	float  pdf;    // Probability mass for this entry (= power_i / total_power)
 };
 
+// Which ray-generation formula GpuCameraParams describes. Mirrors the three
+// CPU camera models this GPU camera type supports (src/shared/cameras.h's
+// OrthographicCamera/PerspectiveCamera/SphericalCamera, plus the book-style
+// default camera's defocus_angle/focus_dist thin-lens DOF extension) -
+// RealisticCamera (src/shared/cameras.h) remains CPU-only.
+enum class CameraKind : int {
+	Perspective = 0,   // pinhole, optionally with thin-lens DOF (defocus_disk_u/v)
+	Orthographic = 1,  // parallel projection, constant ray direction `w`
+	Spherical = 2      // 360-degree equirectangular panorama from a point
+};
+
+// GPU camera parameters. `origin`/`lower_left_corner`/`horizontal`/`vertical`
+// describe the perspective/orthographic viewport (same meaning as before this
+// struct existed); the remaining fields are only meaningful for their
+// respective CameraKind and are zeroed otherwise (scene_builder.cpp always
+// zero-initializes this struct, so "zero defocus disk" reliably means
+// "DOF disabled" for Perspective).
+struct GpuCameraParams {
+	CameraKind kind;
+	float3 origin;
+	float3 lower_left_corner;
+	float3 horizontal;
+	float3 vertical;
+	float3 w;               // Orthographic: constant unit ray direction
+	float3 defocus_disk_u;  // Perspective DOF: disk basis vector (zero = disabled)
+	float3 defocus_disk_v;
+	float3 su, sv, sw;      // Spherical: world-space camera basis (right, up, forward)
+};
+
 // Launch parameters (passed to all OptiX programs)
 struct LaunchParams {
 	// Output
@@ -179,12 +208,7 @@ struct LaunchParams {
 	unsigned int frameNumber;  // For random seed
 
 	// Camera
-	struct {
-		float3 origin;
-		float3 lower_left_corner;
-		float3 horizontal;
-		float3 vertical;
-	} camera;
+	GpuCameraParams camera;
 
 	// Scene
 	OptixTraversableHandle traversable;  // Acceleration structure handle

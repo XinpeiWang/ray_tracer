@@ -11,7 +11,7 @@
 // ---- forward declarations of kernels from wavefront_kernels.cu ----
 extern "C" __global__ void generate_camera_rays(
 	WorkQueue<RayWorkItem>, unsigned int, unsigned int,
-	float3, float3, float3, float3, unsigned int, unsigned int);
+	GpuCameraParams, unsigned int, unsigned int);
 extern "C" __global__ void evaluate_materials(
 	WorkQueue<HitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
@@ -31,7 +31,7 @@ extern "C" __global__ void normalize_framebuffer(float3*, unsigned int, float);
 extern "C" void wf_launch_generate_camera_rays(
 	WorkQueue<RayWorkItem> rq,
 	int width, int height, int sampleIdx,
-	float3 camOrigin, float3 lowerLeft, float3 horizontal, float3 vertical,
+	GpuCameraParams camera,
 	unsigned int frameNumber,
 	cudaStream_t stream)
 {
@@ -39,7 +39,7 @@ extern "C" void wf_launch_generate_camera_rays(
 	dim3 grid((width + 15) / 16, (height + 15) / 16);
 	generate_camera_rays<<<grid, block, 0, (cudaStream_t)stream>>>(
 		rq, (unsigned int)width, (unsigned int)height,
-		camOrigin, lowerLeft, horizontal, vertical,
+		camera,
 		(unsigned int)sampleIdx, frameNumber);
 }
 

@@ -1054,6 +1054,153 @@ static void build_projection_cornell_gpu(SceneData& scene) {
 	scene.punctualLights.push_back(light);
 }
 
+// Shared overhead area light used by scenes 22/32 below. GPU has no
+// background/miss-color model (unlike CPU, which lights these scenes purely
+// via a flat sky background color - see build_scene()'s camera-only comment
+// for scenes 22/32) - without this, either GPU scene would render fully
+// black despite the camera itself working correctly.
+static void add_overhead_area_light(SceneData& scene, float3 center, float halfSize, float intensity) {
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f,
+								 make_float3(intensity, intensity, intensity) });
+	QuadData lq{};
+	lq.Q = make_float3(center.x - halfSize, center.y, center.z - halfSize);
+	lq.u = make_float3(2.0f * halfSize, 0.0f, 0.0f);
+	lq.v = make_float3(0.0f, 0.0f, 2.0f * halfSize);
+	const float3 lc = cross(lq.u, lq.v);
+	lq.w = lc;
+	lq.normal = normalize(lc);
+	lq.D = dot(lq.normal, lq.Q);
+	lq.materialIdx = mat_light;
+	scene.quads.push_back(lq);
+	scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+	scene.isLightSphere.push_back(false);
+}
+
+/// @brief Scene 22: Depth of Field. Matches CPU build_depth_of_field() in
+/// spirit (ground + a row of spheres spanning near/far of the focus plane to
+/// show defocus blur) - simplified to solid-color materials since GPU has no
+/// checker/procedural texture support.
+static void build_depth_of_field_gpu(SceneData& scene) {
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.5f, 0.5f, 0.5f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	SphereData ground{};
+	// Modest flat ground (not the usual radius-1000 "planet" sphere used
+	// elsewhere in this file) - at this camera's close distance/narrow fov,
+	// a radius-1000 ground's curvature toward the horizon caught the
+	// overhead light at a bad grazing angle and blew out most of the frame.
+	ground.center = make_float3(0.0f, -50.0f, 0.0f);
+	ground.radius = 50.0f;
+	ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	// Five spheres spanning z = -4..+4 around the lookat point (z=0, matching
+	// CPU's focus_dist=9 from lookfrom z=9), alternating material, so the
+	// defocus blur visibly increases toward the near/far ends.
+	const float3 colors[5] = {
+		make_float3(0.8f, 0.2f, 0.2f), make_float3(0.2f, 0.8f, 0.2f), make_float3(0.9f, 0.9f, 0.9f),
+		make_float3(0.2f, 0.2f, 0.8f), make_float3(0.8f, 0.8f, 0.2f)
+	};
+	const MaterialType kinds[5] = {
+		MaterialType::Lambertian, MaterialType::Metal, MaterialType::Dielectric,
+		MaterialType::Metal, MaterialType::Lambertian
+	};
+	for (int i = 0; i < 5; ++i) {
+		const int mat = safe_cast_to_int(scene.materials.size());
+		MaterialData m{};
+		m.type = kinds[i];
+		m.albedo = colors[i];
+		m.fuzz = (kinds[i] == MaterialType::Metal) ? 0.05f : 0.0f;
+		m.ior = (kinds[i] == MaterialType::Dielectric) ? 1.5f : 0.0f;
+		scene.materials.push_back(m);
+		SphereData s{};
+		// Smaller radius than a first attempt at this scene used: at only 5
+		// world units from the camera (nearest sphere, z=+4) with a narrow
+		// 20-degree vfov, radius-1 spheres subtended more than the whole
+		// frame and blew out to a solid color filling the image.
+		s.center = make_float3(0.0f, 0.5f, (i - 2) * 2.0f);
+		s.radius = 0.5f;
+		s.materialIdx = mat;
+		scene.spheres.push_back(s);
+	}
+	add_overhead_area_light(scene, make_float3(0.0f, 15.0f, 0.0f), 8.0f, 1.0f);
+}
+
+/// @brief Scene 32: Orthographic Camera. Matches CPU build_ortho_camera_scene()
+/// in spirit (ground + a row of colored lambertian spheres) - simplified to
+/// solid-color materials, same reasoning as scene 22 above.
+static void build_ortho_camera_scene_gpu(SceneData& scene) {
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.5f, 0.5f, 0.5f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	SphereData ground{};
+	ground.center = make_float3(0.0f, -1000.0f, 0.0f);
+	ground.radius = 1000.0f;
+	ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	const float3 colors[5] = {
+		make_float3(0.8f, 0.2f, 0.2f), make_float3(0.8f, 0.6f, 0.2f), make_float3(0.2f, 0.8f, 0.3f),
+		make_float3(0.2f, 0.4f, 0.9f), make_float3(0.7f, 0.2f, 0.8f)
+	};
+	for (int i = 0; i < 5; ++i) {
+		const int mat = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({ MaterialType::Lambertian, colors[i], 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		SphereData s{};
+		s.center = make_float3((i - 2) * 2.5f, 1.0f, 0.0f);
+		s.radius = 1.0f;
+		s.materialIdx = mat;
+		scene.spheres.push_back(s);
+	}
+	add_overhead_area_light(scene, make_float3(0.0f, 15.0f, 0.0f), 8.0f, 4.0f);
+}
+
+/// @brief Scene 33: Spherical Camera. Matches CPU build_spherical_camera_scene()
+/// in spirit (ground + a ring of colored spheres + one emissive sphere) -
+/// self-illuminating, needs no extra light unlike scenes 22/32 above.
+static void build_spherical_camera_scene_gpu(SceneData& scene) {
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.5f, 0.5f, 0.5f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	SphereData ground{};
+	// CPU's SphericalCamera uses no camera_to_world (identity), so the
+	// camera sits exactly at world origin - keep the ground surface below
+	// that (top at y=-2) rather than tangent to it, matching how the row of
+	// spheres/light below are all placed comfortably above the camera.
+	ground.center = make_float3(0.0f, -1002.0f, 0.0f);
+	ground.radius = 1000.0f;
+	ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	constexpr float kPi = 3.14159265358979323846f;
+	constexpr int kRingCount = 8;
+	for (int i = 0; i < kRingCount; ++i) {
+		float ang = (2.0f * kPi * i) / (float)kRingCount;
+		float hue = (float)i / (float)kRingCount;
+		float3 col = make_float3(0.5f + 0.5f * cosf(2.0f * kPi * hue),
+								   0.5f + 0.5f * cosf(2.0f * kPi * (hue + 0.33f)),
+								   0.5f + 0.5f * cosf(2.0f * kPi * (hue + 0.67f)));
+		const int mat = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({ MaterialType::Lambertian, col, 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		SphereData s{};
+		s.center = make_float3(4.0f * cosf(ang), 1.0f, 4.0f * sinf(ang));
+		s.radius = 0.8f;
+		s.materialIdx = mat;
+		scene.spheres.push_back(s);
+	}
+
+	// Central emissive sphere, matches CPU's central diffuse_light sphere.
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	constexpr float kSphericalLightIntensity = 8.0f;
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f,
+								 make_float3(kSphericalLightIntensity, kSphericalLightIntensity, kSphericalLightIntensity) });
+	SphereData lightSphere{};
+	lightSphere.center = make_float3(0.0f, 3.0f, 0.0f);
+	lightSphere.radius = 1.0f;
+	lightSphere.materialIdx = mat_light;
+	scene.spheres.push_back(lightSphere);
+	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+	scene.isLightSphere.push_back(true);
+}
+
 /// @brief Build a scene and configure the camera
 /// @param scene_id Scene identifier (0 = Cornell Box)
 /// @param image_width Output image width in pixels
@@ -1069,7 +1216,8 @@ bool build_scene(
 	float* camera_params,
 	const double cam_x,
 	const double cam_y,
-	const double cam_z
+	const double cam_z,
+	GpuCameraParams* out_camera_extra
 ) {
 	if (camera_params == nullptr) {
 		return false;  // Invalid camera parameter buffer
@@ -1351,6 +1499,128 @@ bool build_scene(
 									pack_float3(camera_params, 9, vertical);
 								}
 								break;
+
+							case 22: {  // Depth of Field (thin-lens perspective camera)
+								build_depth_of_field_gpu(scene);
+								constexpr float kPi = 3.14159265358979323846f;
+								const float3 lookfrom = make_float3(0.0f, 2.0f, 9.0f);
+								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								constexpr float vfov = 20.0f;            // matches CPU CameraConfig row for scene 22
+								constexpr float defocus_angle = 10.0f;   // ditto
+								constexpr float focus_dist    = 9.0f;    // ditto
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+
+								const float theta = vfov * kPi / 180.0f;
+								const float h = tanf(theta / 2.0f);
+								const float viewport_height = 2.0f * h * focus_dist;
+								const float viewport_width  = aspect * viewport_height;
+
+								const float3 w = normalize(make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z));
+								const float3 u = normalize(cross(vup, w));
+								const float3 v = cross(w, u);
+
+								const float3 horizontal = make_float3(viewport_width * u.x, viewport_width * u.y, viewport_width * u.z);
+								const float3 vertical   = make_float3(viewport_height * v.x, viewport_height * v.y, viewport_height * v.z);
+								const float3 lower_left_corner = make_float3(
+									lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - focus_dist * w.x,
+									lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - focus_dist * w.y,
+									lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - focus_dist * w.z
+								);
+
+								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
+									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
+								};
+								pack_float3(camera_params, 0, lookfrom);
+								pack_float3(camera_params, 3, lower_left_corner);
+								pack_float3(camera_params, 6, horizontal);
+								pack_float3(camera_params, 9, vertical);
+
+								if (out_camera_extra) {
+									out_camera_extra->kind = CameraKind::Perspective;
+									out_camera_extra->origin = lookfrom;
+									out_camera_extra->lower_left_corner = lower_left_corner;
+									out_camera_extra->horizontal = horizontal;
+									out_camera_extra->vertical = vertical;
+									// pbrt-v4/book-style thin-lens disk basis, scaled by focus_dist and
+									// half the defocus cone angle - matches src/TheRestOfYourLife/
+									// camera.h's defocus_disk_u/v exactly.
+									const float defocus_radius = focus_dist * tanf((defocus_angle * kPi / 180.0f) / 2.0f);
+									out_camera_extra->defocus_disk_u = make_float3(u.x * defocus_radius, u.y * defocus_radius, u.z * defocus_radius);
+									out_camera_extra->defocus_disk_v = make_float3(v.x * defocus_radius, v.y * defocus_radius, v.z * defocus_radius);
+								}
+								break;
+							}
+
+							case 32: {  // Orthographic Camera (parallel projection)
+								build_ortho_camera_scene_gpu(scene);
+								const float3 lookfrom = make_float3(0.0f, 3.0f, 12.0f);
+								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+
+								// compute_screen_window-equivalent aspect-correct default, then
+								// scaled x8 - matches CPU's setup_camera lambda for scene 32.
+								float xmin, xmax, ymin, ymax;
+								if (aspect >= 1.0f) { xmin = -aspect; xmax = aspect; ymin = -1.0f; ymax = 1.0f; }
+								else                { xmin = -1.0f; xmax = 1.0f; ymin = -1.0f / aspect; ymax = 1.0f / aspect; }
+								constexpr float kScreenScale = 8.0f;
+								xmin *= kScreenScale; xmax *= kScreenScale; ymin *= kScreenScale; ymax *= kScreenScale;
+
+								const float3 w = normalize(make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z));
+								const float3 u = normalize(cross(vup, w));
+								const float3 v = cross(w, u);
+
+								const float3 horizontal = make_float3((xmax - xmin) * u.x, (xmax - xmin) * u.y, (xmax - xmin) * u.z);
+								const float3 vertical   = make_float3((ymax - ymin) * v.x, (ymax - ymin) * v.y, (ymax - ymin) * v.z);
+								const float3 lower_left_corner = make_float3(
+									lookfrom.x + xmin * u.x + ymin * v.x,
+									lookfrom.y + xmin * u.y + ymin * v.y,
+									lookfrom.z + xmin * u.z + ymin * v.z
+								);
+
+								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
+									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
+								};
+								pack_float3(camera_params, 0, lookfrom);
+								pack_float3(camera_params, 3, lower_left_corner);
+								pack_float3(camera_params, 6, horizontal);
+								pack_float3(camera_params, 9, vertical);
+
+								if (out_camera_extra) {
+									out_camera_extra->kind = CameraKind::Orthographic;
+									out_camera_extra->lower_left_corner = lower_left_corner;
+									out_camera_extra->horizontal = horizontal;
+									out_camera_extra->vertical = vertical;
+									out_camera_extra->w = make_float3(-w.x, -w.y, -w.z);  // forward = negated look-from/look-at "backward" w
+								}
+								break;
+							}
+
+							case 33: {  // Spherical (equirectangular) Camera
+								build_spherical_camera_scene_gpu(scene);
+								// Matches CPU: SphericalCamera constructed with no camera_to_world
+								// arg, defaulting to identity - camera at world origin, world-axis
+								// basis (see build_spherical_camera_scene_gpu's comment on why the
+								// ground is placed below y=0 to accommodate this).
+								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
+									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
+								};
+								const float3 zero = make_float3(0.0f, 0.0f, 0.0f);
+								pack_float3(camera_params, 0, zero);
+								pack_float3(camera_params, 3, zero);
+								pack_float3(camera_params, 6, zero);
+								pack_float3(camera_params, 9, zero);
+
+								if (out_camera_extra) {
+									out_camera_extra->kind = CameraKind::Spherical;
+									out_camera_extra->origin = zero;
+									out_camera_extra->su = make_float3(1.0f, 0.0f, 0.0f);
+									out_camera_extra->sv = make_float3(0.0f, 1.0f, 0.0f);
+									out_camera_extra->sw = make_float3(0.0f, 0.0f, 1.0f);
+								}
+								break;
+							}
 
 							default: {
 									const SceneDesc* desc = find_scene_desc(scene_id);

@@ -44,6 +44,15 @@ __device__ __forceinline__ float3 random_unit_vector(unsigned int& seed) {
 	return normalize(random_in_unit_sphere(seed));
 }
 
+// Rejection-sampled point in the unit disk (z=0). Mirrors src/TheRestOfYourLife/
+// vec3.h's random_in_unit_disk() - used by the thin-lens depth-of-field camera.
+__device__ __forceinline__ float3 random_in_unit_disk(unsigned int& seed) {
+	while (true) {
+		float3 p = make_float3(2.0f * random_float(seed) - 1.0f, 2.0f * random_float(seed) - 1.0f, 0.0f);
+		if (dot(p, p) < 1.0f) return p;
+	}
+}
+
 __device__ __forceinline__ float3 random_on_hemisphere(const float3& normal, unsigned int& seed) {
 	float3 on_unit_sphere = random_unit_vector(seed);
 	if (dot(on_unit_sphere, normal) > 0.0f)
@@ -386,7 +395,52 @@ __device__ __forceinline__ void add_punctual_lights_lambertian(
 	}
 }
 
-
+// Generate a primary camera ray for raster coordinates (u,v) in [0,1]^2,
+// dispatching on params.camera.kind. Mirrors the CPU camera models in
+// src/shared/cameras.h (OrthographicCamera/SphericalCamera::generate_ray)
+// and src/TheRestOfYourLife/camera.h's book-style defocus_angle/focus_dist
+// thin-lens DOF, which the Perspective case folds in via
+// camera.defocus_disk_u/v (both zero = DOF disabled, matching how
+// scene_builder.cpp always zero-initializes GpuCameraParams).
+__device__ __forceinline__ void generate_primary_ray(
+	float u, float v, unsigned int& seed, float3& origin, float3& direction
+) {
+	const GpuCameraParams& cam = params.camera;
+	switch (cam.kind) {
+		case CameraKind::Orthographic: {
+			origin = cam.lower_left_corner + u * cam.horizontal + v * cam.vertical;
+			direction = cam.w;
+			break;
+		}
+		case CameraKind::Spherical: {
+			// pbrt-v4 SphericalCamera::GenerateRay (EquiRectangular mapping):
+			// theta in [0,pi], phi in [0,2pi], then swap(dir.y, dir.z) - see
+			// src/shared/cameras.h for the reference this mirrors.
+			float theta = 3.14159265358979323846f * v;
+			float phi   = 2.0f * 3.14159265358979323846f * u;
+			float sin_t = sinf(theta), cos_t = cosf(theta);
+			float lx = sin_t * cosf(phi);
+			float ly = cos_t;             // swapped with lz below (pbrt-v4 convention)
+			float lz = sin_t * sinf(phi); // swapped with ly above
+			origin = cam.origin;
+			direction = normalize(lx * cam.su + ly * cam.sv + lz * cam.sw);
+			break;
+		}
+		default: { // Perspective, optionally thin-lens DOF
+			float3 pixel_sample = cam.lower_left_corner + u * cam.horizontal + v * cam.vertical;
+			bool hasDOF = (cam.defocus_disk_u.x != 0.0f || cam.defocus_disk_u.y != 0.0f || cam.defocus_disk_u.z != 0.0f ||
+						   cam.defocus_disk_v.x != 0.0f || cam.defocus_disk_v.y != 0.0f || cam.defocus_disk_v.z != 0.0f);
+			if (hasDOF) {
+				float3 p = random_in_unit_disk(seed);
+				origin = cam.origin + p.x * cam.defocus_disk_u + p.y * cam.defocus_disk_v;
+			} else {
+				origin = cam.origin;
+			}
+			direction = normalize(pixel_sample - origin);
+			break;
+		}
+	}
+}
 
 //==============================================================================
 // Sphere Intersection Program

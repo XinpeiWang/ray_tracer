@@ -46,10 +46,28 @@ extern "C" int optix_render_main(
 
 		SceneData scene;
 		float camera_params[12];  // origin(3) + lower_left(3) + horizontal(3) + vertical(3)
+		GpuCameraParams cameraExtra{};  // zero-init: kind=Perspective, DOF/spherical fields all zero
 
-		if (!build_scene(scene_id, image_width, image_height, scene, camera_params, cam_x, cam_y, cam_z)) {
+		if (!build_scene(scene_id, image_width, image_height, scene, camera_params, cam_x, cam_y, cam_z, &cameraExtra)) {
 			std::cerr << "[OptiX] Failed to build scene\n";
 			return 101;  // Scene build error
+		}
+
+		// Scenes that don't use a non-default camera model leave cameraExtra
+		// untouched by build_scene() (still zero-init'd: kind=Perspective,
+		// defocus disk zero) - fill it from the plain 12-float camera_params
+		// in that case, matching every scene's prior behavior. Scenes that
+		// DID request a non-default model (Orthographic/Spherical, or
+		// Perspective with DOF) set kind and/or a nonzero defocus disk
+		// themselves in build_scene(), so this check reliably tells the two
+		// cases apart.
+		bool defocusDiskZero = cameraExtra.defocus_disk_u.x == 0.0f && cameraExtra.defocus_disk_u.y == 0.0f &&
+								cameraExtra.defocus_disk_u.z == 0.0f;
+		if (cameraExtra.kind == CameraKind::Perspective && defocusDiskZero) {
+			cameraExtra.origin = make_float3(camera_params[0], camera_params[1], camera_params[2]);
+			cameraExtra.lower_left_corner = make_float3(camera_params[3], camera_params[4], camera_params[5]);
+			cameraExtra.horizontal = make_float3(camera_params[6], camera_params[7], camera_params[8]);
+			cameraExtra.vertical = make_float3(camera_params[9], camera_params[10], camera_params[11]);
 		}
 
 		if (!g_renderer->buildScene(scene.spheres, scene.quads, scene.materials,
@@ -101,10 +119,7 @@ extern "C" int optix_render_main(
 			image_height,
 			samples_per_pixel,
 			max_depth,
-			&camera_params[0],   // origin
-			&camera_params[3],   // lower_left
-			&camera_params[6],   // horizontal
-			&camera_params[9],   // vertical
+			cameraExtra,
 			framebuffer.data()
 		)) {
 			std::cerr << "[OptiX] Render failed\n";

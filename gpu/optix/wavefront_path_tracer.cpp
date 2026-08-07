@@ -32,7 +32,7 @@
 // Forward declarations for wavefront_launch.cu C wrappers (no <<<>>> in .cpp)
 extern "C" void wf_launch_generate_camera_rays(
 	WorkQueue<RayWorkItem>, int, int, int,
-	float3, float3, float3, float3, unsigned int, cudaStream_t);
+	GpuCameraParams, unsigned int, cudaStream_t);
 extern "C" void wf_launch_evaluate_materials(
 	WorkQueue<HitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
@@ -466,14 +466,13 @@ void WavefrontPathTracer::resetQueueCounter(int* d_counter) {
 
 void WavefrontPathTracer::launchGenerateCameraRays(
 	int width, int height, int sampleIdx,
-	float3 camOrigin, float3 lowerLeft, float3 horizontal, float3 vertical)
+	const GpuCameraParams& camera)
 {
 	WorkQueue<RayWorkItem> rq;
 	rq.items    = reinterpret_cast<RayWorkItem*>(d_rayItems_);
 	rq.counter  = reinterpret_cast<int*>(d_rayCounter_);
 	rq.capacity = queueCapacity_;
-	wf_launch_generate_camera_rays(rq, width, height, sampleIdx,
-		camOrigin, lowerLeft, horizontal, vertical, frameNumber_, stream_);
+	wf_launch_generate_camera_rays(rq, width, height, sampleIdx, camera, frameNumber_, stream_);
 }
 
 void WavefrontPathTracer::launchEvaluateMaterials(
@@ -548,8 +547,7 @@ void WavefrontPathTracer::launchNormalizeFramebuffer(
 
 bool WavefrontPathTracer::render(
 	int width, int height, int samples_per_pixel, int max_depth,
-	const float* camera_origin, const float* camera_lower_left,
-	const float* camera_horizontal, const float* camera_vertical,
+	const GpuCameraParams& camera,
 	float*  framebuffer,          // host-side output
 	OptixTraversableHandle gas_handle,
 	CUdeviceptr d_materials,
@@ -597,11 +595,6 @@ bool WavefrontPathTracer::render(
 	lp.maxDepth        = (unsigned int)max_depth;
 	lp.frameNumber     = frameNumber_++;
 
-	float3 camOrigin  = { camera_origin[0],     camera_origin[1],     camera_origin[2] };
-	float3 lowerLeft  = { camera_lower_left[0],  camera_lower_left[1],  camera_lower_left[2] };
-	float3 horizontal = { camera_horizontal[0],  camera_horizontal[1],  camera_horizontal[2] };
-	float3 vertical   = { camera_vertical[0],    camera_vertical[1],    camera_vertical[2] };
-
 	// -------------------------------------------------------------------------
 	// Outer sample loop
 	// -------------------------------------------------------------------------
@@ -609,7 +602,7 @@ bool WavefrontPathTracer::render(
 
 		// Reset ray queue counter, generate primary rays
 		resetQueueCounter(reinterpret_cast<int*>(d_rayCounter_));
-		launchGenerateCameraRays(width, height, sampleIdx, camOrigin, lowerLeft, horizontal, vertical);
+		launchGenerateCameraRays(width, height, sampleIdx, camera);
 		CUDA_CHECK(cudaStreamSynchronize(stream_));
 
 		// -------------------------------------------------------------------------

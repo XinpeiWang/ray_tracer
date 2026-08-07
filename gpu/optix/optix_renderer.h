@@ -63,10 +63,7 @@ public:
 	/// @param height Image height in pixels
 	/// @param samplesPerPixel Number of samples per pixel for anti-aliasing
 	/// @param maxDepth Maximum ray bounce depth
-	/// @param cameraOrigin Camera origin position (float[3])
-	/// @param cameraLowerLeft Lower-left corner of viewport (float[3])
-	/// @param cameraHorizontal Horizontal viewport vector (float[3])
-	/// @param cameraVertical Vertical viewport vector (float[3])
+	/// @param camera Camera parameters (viewport + optional DOF/orthographic/spherical fields)
 	/// @param outputFramebuffer Output RGB framebuffer (float[width * height * 3])
 	/// @return true if rendering succeeded, false otherwise
 	bool render(
@@ -74,10 +71,7 @@ public:
 		unsigned int height,
 		unsigned int samplesPerPixel,
 		unsigned int maxDepth,
-		const float* cameraOrigin,
-		const float* cameraLowerLeft,
-		const float* cameraHorizontal,
-		const float* cameraVertical,
+		const GpuCameraParams& camera,
 		float* outputFramebuffer
 	);
 

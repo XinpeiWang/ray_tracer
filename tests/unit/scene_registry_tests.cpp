@@ -167,6 +167,21 @@ TEST(FindSceneTest, PunctualLightScenesAreGpuCompatible) {
 	}
 }
 
+TEST(FindSceneTest, NonDefaultCameraScenesAreGpuCompatible) {
+	// Scene 9 (RoughMetalSpheres) already had a working GPU handler but a
+	// stale gpu_compatible=false flag. Scenes 22/32/33 add the three
+	// non-default GPU camera models (GpuCameraParams/CameraKind in
+	// optix_types.h): 22 DepthOfField (thin-lens perspective DOF), 32
+	// OrthographicCamera, 33 SphericalCamera (equirectangular) - see
+	// generate_primary_ray in optix_device_helpers.h (recursive path) and
+	// wf_generate_primary_ray in wavefront_kernels.cu (wavefront path).
+	for (int id : {9, 22, 32, 33}) {
+		const SceneDescriptor* s = find_scene(id);
+		ASSERT_NE(s, nullptr) << "Missing scene id: " << id;
+		EXPECT_TRUE(s->gpu_compatible) << "Scene " << id << " should be gpu_compatible";
+	}
+}
+
 // ===========================================================================
 // C API tests
 // ===========================================================================

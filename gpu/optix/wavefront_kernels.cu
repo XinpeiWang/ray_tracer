@@ -110,25 +110,52 @@ __device__ __forceinline__ void wf_xyz_to_linear_rgb(float X, float Y, float Z,
 	b =  0.0556434f * X - 0.2040259f * Y + 1.0572252f * Z;
 }
 
-// Sample a point on a sphere light; returns direction and sets geom_pdf.
+// Sample a point on a sphere light; returns direction, sets geom_pdf, and
+// sets maxDist to the distance to the ACTUAL sampled point on the sphere's
+// surface (via ray-sphere intersection along the sampled direction) - not
+// the distance to the sphere's center. Matches wf_sample_quad_light's
+// contract (maxDist = distance to the sampled surface point), needed so the
+// caller's shadow ray stops at the light's surface instead of continuing
+// past it toward the center, where it would self-intersect the light
+// sphere and register as occluded on every sample. This bug was never
+// caught before because no scene had ever registered a genuinely emissive
+// sphere as a light in wavefront mode until the spherical-camera scene.
 __device__ float3 wf_sample_sphere_light(const SphereData& sph, const float3& hit,
-										  unsigned int& seed, float& pdf) {
+										  unsigned int& seed, float& pdf, float& maxDist) {
 	float3 to_c = sph.center - hit;
 	float dist  = length(to_c);
 	float r     = sph.radius;
-	if (dist <= r) { pdf = 1.0f / (4.0f * 3.14159265f * r * r); return normalize(wf_rand_unit(seed)); }
-	float cos_max = sqrtf(fmaxf(0.0f, 1.0f - (r * r) / (dist * dist)));
-	float phi     = 2.0f * 3.14159265f * wf_rand(seed);
-	float cos_t   = 1.0f - wf_rand(seed) * (1.0f - cos_max);
-	float sin_t   = sqrtf(fmaxf(0.0f, 1.0f - cos_t * cos_t));
-	float3 w      = normalize(to_c);
-	float3 u, v;
-	if (fabsf(w.x) > 0.9f) u = normalize(cross(make_float3(0,1,0), w));
-	else                    u = normalize(cross(make_float3(1,0,0), w));
-	v = cross(w, u);
-	float3 dir = normalize(sin_t * cosf(phi) * u + sin_t * sinf(phi) * v + cos_t * w);
-	float solid = 2.0f * 3.14159265f * (1.0f - cos_max);
-	pdf = (solid > 1e-10f) ? 1.0f / solid : 1.0f;
+	float3 dir;
+	if (dist <= r) {
+		pdf = 1.0f / (4.0f * 3.14159265f * r * r);
+		dir = normalize(wf_rand_unit(seed));
+	} else {
+		float cos_max = sqrtf(fmaxf(0.0f, 1.0f - (r * r) / (dist * dist)));
+		float phi     = 2.0f * 3.14159265f * wf_rand(seed);
+		float cos_t   = 1.0f - wf_rand(seed) * (1.0f - cos_max);
+		float sin_t   = sqrtf(fmaxf(0.0f, 1.0f - cos_t * cos_t));
+		float3 w      = normalize(to_c);
+		float3 u, v;
+		if (fabsf(w.x) > 0.9f) u = normalize(cross(make_float3(0,1,0), w));
+		else                    u = normalize(cross(make_float3(1,0,0), w));
+		v = cross(w, u);
+		dir = normalize(sin_t * cosf(phi) * u + sin_t * sinf(phi) * v + cos_t * w);
+		float solid = 2.0f * 3.14159265f * (1.0f - cos_max);
+		pdf = (solid > 1e-10f) ? 1.0f / solid : 1.0f;
+	}
+	// Ray-sphere intersection along `dir` from `hit` to find the true
+	// surface distance (dir is constructed to be guaranteed to hit the
+	// sphere, so the discriminant is never negative in practice). Take the
+	// near root normally; when `hit` is inside the sphere (dist<=r above)
+	// the near root is behind the origin (negative), so fall back to the
+	// far root in that case.
+	float3 oc = hit - sph.center;
+	float b = dot(oc, dir);
+	float c = dot(oc, oc) - r * r;
+	float disc = fmaxf(0.0f, b * b - c);
+	float sq = sqrtf(disc);
+	float tNear = -b - sq;
+	maxDist = (tNear > 1e-6f) ? tNear : fmaxf(0.0f, -b + sq);
 	return dir;
 }
 
@@ -273,14 +300,54 @@ __device__ __forceinline__ bool wf_eval_punctual_light(
 //   Fills rayQueue with one primary ray per pixel for sample index `sampleIdx`.
 // ============================================================================
 
+// Generate a primary camera ray, dispatching on camera.kind. Duplicated from
+// optix_device_helpers.h's generate_primary_ray (with the wf_ prefix)
+// rather than shared, matching this file's existing pattern of not sharing
+// device helpers with the recursive path (this kernel has no access to the
+// recursive path's __constant__ params global).
+__device__ __forceinline__ void wf_generate_primary_ray(
+	const GpuCameraParams& cam, float u, float v, unsigned int& seed,
+	float3& origin, float3& direction
+) {
+	switch (cam.kind) {
+		case CameraKind::Orthographic: {
+			origin = cam.lower_left_corner + u * cam.horizontal + v * cam.vertical;
+			direction = cam.w;
+			break;
+		}
+		case CameraKind::Spherical: {
+			float theta = 3.14159265358979323846f * v;
+			float phi   = 2.0f * 3.14159265358979323846f * u;
+			float sin_t = sinf(theta), cos_t = cosf(theta);
+			float lx = sin_t * cosf(phi);
+			float ly = cos_t;
+			float lz = sin_t * sinf(phi);
+			origin = cam.origin;
+			direction = normalize(lx * cam.su + ly * cam.sv + lz * cam.sw);
+			break;
+		}
+		default: { // Perspective, optionally thin-lens DOF
+			float3 pixel_sample = cam.lower_left_corner + u * cam.horizontal + v * cam.vertical;
+			bool hasDOF = (cam.defocus_disk_u.x != 0.0f || cam.defocus_disk_u.y != 0.0f || cam.defocus_disk_u.z != 0.0f ||
+						   cam.defocus_disk_v.x != 0.0f || cam.defocus_disk_v.y != 0.0f || cam.defocus_disk_v.z != 0.0f);
+			if (hasDOF) {
+				float rx = 2.0f * wf_rand(seed) - 1.0f, ry = 2.0f * wf_rand(seed) - 1.0f;
+				while (rx*rx + ry*ry >= 1.0f) { rx = 2.0f * wf_rand(seed) - 1.0f; ry = 2.0f * wf_rand(seed) - 1.0f; }
+				origin = cam.origin + rx * cam.defocus_disk_u + ry * cam.defocus_disk_v;
+			} else {
+				origin = cam.origin;
+			}
+			direction = normalize(pixel_sample - origin);
+			break;
+		}
+	}
+}
+
 extern "C" __global__ void generate_camera_rays(
 	WorkQueue<RayWorkItem> rayQueue,
 	unsigned int width,
 	unsigned int height,
-	float3       camOrigin,
-	float3       lowerLeft,
-	float3       horizontal,
-	float3       vertical,
+	GpuCameraParams camera,
 	unsigned int sampleIdx,
 	unsigned int frameNumber
 ) {
@@ -295,8 +362,7 @@ extern "C" __global__ void generate_camera_rays(
 	float v = (float(py) + wf_rand(seed)) / float(height - 1);
 
 	RayWorkItem item;
-	item.origin     = camOrigin;
-	item.direction  = normalize(lowerLeft + u * horizontal + v * vertical - camOrigin);
+	wf_generate_primary_ray(camera, u, v, seed, item.origin, item.direction);
 	// Sample hero wavelengths for spectral rendering (pbrt-v4: SampledWavelengths::SampleVisible)
 	float lambda_u = wf_rand(seed);
 	SampledWavelengths<kWFNWavelengths> swl = SampledWavelengths<kWFNWavelengths>::SampleVisible(lambda_u);
@@ -695,8 +761,7 @@ extern "C" __global__ void evaluate_materials(
 
 		if (is_sphere_light) {
 			const SphereData& s = spheres[prim_idx];
-			to_light = wf_sample_sphere_light(s, hit_point, seed, geom_pdf);
-			max_dist = length(s.center - hit_point);
+			to_light = wf_sample_sphere_light(s, hit_point, seed, geom_pdf, max_dist);
 			light_emission_spec = liftEmission(materials[s.materialIdx].emission);
 		} else {
 			const QuadData& q = quads[prim_idx];

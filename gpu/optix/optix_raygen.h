@@ -25,14 +25,10 @@ extern "C" __global__ void __raygen__rg() {
 		float u = (float(px) + halton2(s, px, py)) / float(params.width - 1);
 		float v = (float(params.height - 1 - py) + halton3(s, px, py)) / float(params.height - 1);  // Flip Y
 
-		// Generate camera ray
-		float3 ray_origin = params.camera.origin;
-		float3 ray_direction = normalize(
-			params.camera.lower_left_corner +
-			u * params.camera.horizontal +
-			v * params.camera.vertical -
-			ray_origin
-		);
+		// Generate camera ray (perspective/orthographic/spherical, see
+		// generate_primary_ray in optix_device_helpers.h)
+		float3 ray_origin, ray_direction;
+		generate_primary_ray(u, v, seed, ray_origin, ray_direction);
 
 		// Path tracing loop
 		float3 throughput = make_float3(1.0f, 1.0f, 1.0f);

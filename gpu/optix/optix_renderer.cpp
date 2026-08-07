@@ -903,17 +903,14 @@ bool OptiXRenderer::render(
 	unsigned int height,
 	unsigned int samplesPerPixel,
 	unsigned int maxDepth,
-	const float* cameraOrigin,
-	const float* cameraLowerLeft,
-	const float* cameraHorizontal,
-	const float* cameraVertical,
+	const GpuCameraParams& camera,
 	float* outputFramebuffer
 ) {
 	// Delegate to WavefrontPathTracer if enabled
 	if (useWavefront_ && wavefrontTracer_) {
 		return wavefrontTracer_->render(
 			(int)width, (int)height, (int)samplesPerPixel, (int)maxDepth,
-			cameraOrigin, cameraLowerLeft, cameraHorizontal, cameraVertical,
+			camera,
 			outputFramebuffer,
 			gasHandle_,
 			d_materials_, d_spheres_, d_quads_,
@@ -937,10 +934,7 @@ bool OptiXRenderer::render(
 	params.frameNumber = 0;  // Could be animated
 
 	// Camera setup
-	params.camera.origin = make_float3(cameraOrigin[0], cameraOrigin[1], cameraOrigin[2]);
-	params.camera.lower_left_corner = make_float3(cameraLowerLeft[0], cameraLowerLeft[1], cameraLowerLeft[2]);
-	params.camera.horizontal = make_float3(cameraHorizontal[0], cameraHorizontal[1], cameraHorizontal[2]);
-	params.camera.vertical = make_float3(cameraVertical[0], cameraVertical[1], cameraVertical[2]);
+	params.camera = camera;
 
 	// Scene 
 	params.traversable = gasHandle_;

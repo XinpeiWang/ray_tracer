@@ -262,7 +262,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             22, SceneNames::DepthOfField,
             "Row of spheres with defocus blur showing depth-of-field from the thin-lens camera model",
-            "Medium", 200, false, false,
+            "Medium", 200, false, true,
             { 20, 0, 2, 9,  0, 1, 0,  0.70, 0.80, 1.00, CameraMode::Fixed, 10.0, 9.0 },
             build_depth_of_field,
             sky_dummy_lights
@@ -355,7 +355,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             32, SceneNames::OrthographicCamera,
             "Geometric showcase rendered with an orthographic (parallel-projection) camera (pbrt-v4 OrthographicCamera)",
-            "Fast", 100, false, false,
+            "Fast", 100, false, true,
             { 30, 0, 3, 12,  0, 1, 0,  0, 0, 0 },
             build_ortho_camera_scene,
             no_lights,
@@ -381,7 +381,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             33, SceneNames::SphericalCamera,
             "360-degree equirectangular panorama from a spherical camera (pbrt-v4 SphericalCamera)",
-            "Medium", 200, false, false,
+            "Medium", 200, false, true,
             { 90, 0, 1, 0,  0, 0, 0,  0, 0, 0 },
             build_spherical_camera_scene,
             no_lights,
