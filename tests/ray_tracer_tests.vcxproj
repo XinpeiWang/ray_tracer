@@ -113,7 +113,6 @@
     <ClCompile Include="unit\sampled_spectrum_tests.cpp" />
     <ClCompile Include="unit\spectrum_types_tests.cpp" />
     <ClCompile Include="unit\cie_data_tests.cpp" />
-    <ClCompile Include="..\src\data\rgb_spectrum_table_data.cpp" />
     <ClCompile Include="unit\rgb_spectrum_types_tests.cpp" />
     <ClCompile Include="unit\pixel_sensor_tests.cpp" />
     <ClCompile Include="unit\summed_area_table_tests.cpp" />

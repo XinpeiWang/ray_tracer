@@ -32,9 +32,10 @@ TEST(SceneRegistryTest, RegistryIsNonEmpty) {
 }
 
 TEST(SceneRegistryTest, RegistryHasExpectedCount) {
-	// We currently register 18 scenes (ids 0-17).
-	// This test will fail if a scene is accidentally removed.
-	EXPECT_EQ(scene_count(), 18);
+	// We currently register 37 scenes (ids 0-36).
+	// This test will fail if a scene is accidentally added or removed -
+	// update this count (and kGuiSceneCount below) when that's intentional.
+	EXPECT_EQ(scene_count(), 37);
 }
 
 TEST(SceneRegistryTest, AllIDsAreUnique) {
@@ -145,6 +146,18 @@ TEST(FindSceneTest, BouncingSpheresIsNotGpuCompatible) {
 TEST(FindSceneTest, PbrtV4ScenesAreGpuCompatible) {
 	// Scenes 10-17 all have GPU implementations in scene_builder.cpp
 	for (int id : {10, 11, 12, 13, 14, 15, 16, 17}) {
+		const SceneDescriptor* s = find_scene(id);
+		ASSERT_NE(s, nullptr) << "Missing scene id: " << id;
+		EXPECT_TRUE(s->gpu_compatible) << "Scene " << id << " should be gpu_compatible";
+	}
+}
+
+TEST(FindSceneTest, PunctualLightScenesAreGpuCompatible) {
+	// Scenes 25-27 (Spotlight/Distant/Point Cornell) have GPU implementations
+	// in scene_builder.cpp via build_spotlight_cornell_gpu/build_distant_light_cornell_gpu/
+	// build_point_light_cornell_gpu + PunctualLightGPU NEE in the Lambertian
+	// case of optix_intersection_{sphere,quad}.h.
+	for (int id : {25, 26, 27}) {
 		const SceneDescriptor* s = find_scene(id);
 		ASSERT_NE(s, nullptr) << "Missing scene id: " << id;
 		EXPECT_TRUE(s->gpu_compatible) << "Scene " << id << " should be gpu_compatible";
@@ -281,16 +294,14 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // GUI mirror count guard
 // ===========================================================================
 
-// The GUI hardcodes a kScenes array with 11 entries matching the registry.
-// This static assertion fires at compile time if the registry grows
-// without the test being updated, reminding the developer to sync the GUI too.
-static_assert(17 == 17,
-	"If you changed scene_count(), update kScenes in qt_gui/mainwindow.cpp "
-	"AND update this constant.");
-
+// The Qt GUI builds its scene dropdown dynamically from get_all_scenes()
+// (qt_gui/mainwindow_tabs.cpp createBasicTab()), not a hardcoded array, so it
+// can't drift out of sync with the registry on its own. This constant exists
+// as a tripwire: if it stops matching scene_count(), something changed the
+// registry size and it's worth double-checking the GUI/error-hint text that
+// mentions specific scene counts or ID ranges by hand.
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
-	// The Qt GUI is data-driven via find_scene_desc; update this constant when the registry grows.
-	constexpr int kGuiSceneCount = 18;
+	constexpr int kGuiSceneCount = 37;
 	EXPECT_EQ(scene_count(), kGuiSceneCount)
-		<< "Registry size changed -- update kScenes[] in qt_gui/mainwindow.cpp!";
+		<< "Registry size changed -- update kGuiSceneCount here to match.";
 }
