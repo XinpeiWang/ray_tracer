@@ -168,6 +168,53 @@ msbuild ray_tracer.sln /p:Configuration=Release /p:Platform=x64
 
 See [BUILD.md](BUILD.md) for full details, advanced options, and troubleshooting common issues (missing MSBuild, OptiX/CUDA errors, Qt not found).
 
+### Running Tests
+
+The test suite uses **Google Test** and covers ~2500+ unit and integration tests.
+
+#### Option A: Automated script (builds + runs in one step)
+```powershell
+cd tests
+.\build_and_run_tests.ps1
+```
+Or with the batch file:
+```cmd
+cd tests
+build_and_run_tests.bat
+```
+
+#### Option B: CMake (manual)
+```powershell
+cd tests
+mkdir build; cd build
+cmake .. -G "Visual Studio 17 2022" -A x64
+cmake --build . --config Release
+ctest -C Release --output-on-failure
+```
+
+#### Option C: Run the pre-built test binary directly
+```cmd
+tests\build\Release\unit_tests.exe
+```
+Filter to specific tests with Google Test flags:
+```cmd
+# Run only a subset by name pattern
+tests\build\Release\unit_tests.exe --gtest_filter=Camera*
+
+# List all available tests without running
+tests\build\Release\unit_tests.exe --gtest_list_tests
+
+# Show brief pass/fail summary
+tests\build\Release\unit_tests.exe --gtest_brief=1
+```
+
+#### Option D: Visual Studio Test Explorer
+Open `ray_tracer.sln`, then **Test → Test Explorer** and click **Run All**.
+
+> Tests requiring an NVIDIA GPU (OptiX) are automatically skipped if no compatible GPU is present.
+
+See [tests/TESTING_GUIDE.md](tests/TESTING_GUIDE.md) for the full guide including test structure and how to add new tests.
+
 ### Running (Development)
 
 #### Interactive Mode (Recommended)
