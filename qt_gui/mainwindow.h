@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include <QTabWidget>
 #include <QComboBox>
+#include <QAbstractSpinBox>
 #include <QSpinBox>
 #include <QDoubleSpinBox>
 #include <QProgressBar>
@@ -137,7 +138,7 @@ private:
 	void createLogTab();
 	void applyDarkTheme();
 	void styleComboBox(QComboBox *combo);
-	void styleSpinBox(QSpinBox *spinBox);
+	void styleSpinBox(QAbstractSpinBox *spinBox);
 	void styleGroupBox(QGroupBox *box);
 	void assembleVideoAutomatically();  // Automatically assembles video after frames are rendered
 

@@ -20,13 +20,15 @@
 void MainWindow::createBasicTab() {
 	QWidget *basicTab = new QWidget();
 	QVBoxLayout *layout = new QVBoxLayout(basicTab);
+	layout->setSpacing(12);
+	layout->setContentsMargins(12, 12, 12, 12);
 
 	// --- Scene selection ---
 	QGroupBox *sceneGroup = new QGroupBox("Scene", basicTab);
 	styleGroupBox(sceneGroup);
 	QVBoxLayout *sceneGroupLayout = new QVBoxLayout(sceneGroup);
-	sceneGroupLayout->setContentsMargins(12, 24, 12, 12);
-	sceneGroupLayout->setSpacing(10);
+	sceneGroupLayout->setContentsMargins(12, 20, 12, 10);
+	sceneGroupLayout->setSpacing(8);
 
 	QHBoxLayout *sceneRow = new QHBoxLayout();
 	m_sceneCombo = new QComboBox(basicTab);
@@ -62,13 +64,16 @@ void MainWindow::createBasicTab() {
 
 	layout->addWidget(sceneGroup);
 
-	// --- Render mode (Image vs Video) + GPU/CPU ---
-	QGroupBox *modeGroup = new QGroupBox("Render Mode", basicTab);
-	styleGroupBox(modeGroup);
-	QFormLayout *modeFormLayout = new QFormLayout(modeGroup);
-	modeFormLayout->setVerticalSpacing(14);
-	modeFormLayout->setHorizontalSpacing(10);
-	modeFormLayout->setContentsMargins(15, 28, 15, 15);
+	// --- Render settings: output mode, GPU/CPU, quality, resolution ---
+	// One group instead of separate "Render Mode" + "Render Settings" boxes -
+	// they're all "how do I want this rendered" and splitting them just cost
+	// an extra group box's worth of border/title chrome for no real benefit.
+	QGroupBox *renderGroup = new QGroupBox("Render Settings", basicTab);
+	styleGroupBox(renderGroup);
+	QFormLayout *renderLayout = new QFormLayout(renderGroup);
+	renderLayout->setVerticalSpacing(10);
+	renderLayout->setHorizontalSpacing(10);
+	renderLayout->setContentsMargins(15, 22, 15, 12);
 
 	m_modeCombo = new QComboBox(basicTab);
 	m_modeCombo->addItem("🖼️ Render Single Image");
@@ -77,25 +82,13 @@ void MainWindow::createBasicTab() {
 	styleComboBox(m_modeCombo);
 	connect(m_modeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
 			this, &MainWindow::onModeChanged);
-	modeFormLayout->addRow("Output Mode:", m_modeCombo);
+	renderLayout->addRow("Output Mode:", m_modeCombo);
 
 	m_renderModeCombo = new QComboBox(basicTab);
 	m_renderModeCombo->addItem("🎮 GPU (CUDA) - Fast", true);
 	m_renderModeCombo->addItem("🖥️ CPU - High Quality", false);
 	styleComboBox(m_renderModeCombo);
-	modeFormLayout->addRow("Renderer:", m_renderModeCombo);
-
-	layout->addWidget(modeGroup);
-
-	// --- Render settings (quality / resolution / samples) ---
-	QGroupBox *renderGroup = new QGroupBox("Render Settings", basicTab);
-	styleGroupBox(renderGroup);
-	QFormLayout *renderLayout = new QFormLayout(renderGroup);
-	renderLayout->setVerticalSpacing(15);
-	renderLayout->setHorizontalSpacing(10);
-	renderLayout->setContentsMargins(15, 28, 15, 15);
-
-	// (Render Mode row already moved above — skip re-adding it)
+	renderLayout->addRow("Renderer:", m_renderModeCombo);
 
 	// Quality preset
 	m_qualityPresetCombo = new QComboBox(basicTab);
@@ -139,8 +132,8 @@ void MainWindow::createBasicTab() {
 	QGroupBox *outputGroup = new QGroupBox("Output", basicTab);
 	styleGroupBox(outputGroup);
 	QVBoxLayout *outputLayout = new QVBoxLayout(outputGroup);
-	outputLayout->setSpacing(10);
-	outputLayout->setContentsMargins(15, 28, 15, 15);
+	outputLayout->setSpacing(8);
+	outputLayout->setContentsMargins(15, 20, 15, 12);
 
 	QHBoxLayout *pathLayout = new QHBoxLayout();
 	// Use timestamped filename to avoid caching issues
@@ -180,15 +173,15 @@ void MainWindow::createBasicTab() {
 void MainWindow::createAdvancedTab() {
 	QWidget *advancedTab = new QWidget();
 	QVBoxLayout *layout = new QVBoxLayout(advancedTab);
-	layout->setSpacing(25);  // Add spacing between group boxes
-	layout->setContentsMargins(15, 15, 15, 15);
+	layout->setSpacing(14);  // Space between group boxes
+	layout->setContentsMargins(12, 12, 12, 12);
 
 	QGroupBox *advancedGroup = new QGroupBox("Advanced Parameters", advancedTab);
 	styleGroupBox(advancedGroup);
 	QFormLayout *formLayout = new QFormLayout(advancedGroup);
-	formLayout->setVerticalSpacing(15);
+	formLayout->setVerticalSpacing(10);
 	formLayout->setHorizontalSpacing(10);
-	formLayout->setContentsMargins(15, 30, 15, 15);
+	formLayout->setContentsMargins(15, 22, 15, 12);
 
 	// Width
 	m_widthSpinBox = new QSpinBox(advancedTab);
@@ -242,9 +235,9 @@ void MainWindow::createAdvancedTab() {
 	QGroupBox *cameraGroup = new QGroupBox("Camera Position", advancedTab);
 	styleGroupBox(cameraGroup);
 	QFormLayout *cameraLayout = new QFormLayout(cameraGroup);
-	cameraLayout->setVerticalSpacing(15);
+	cameraLayout->setVerticalSpacing(10);
 	cameraLayout->setHorizontalSpacing(10);
-	cameraLayout->setContentsMargins(15, 30, 15, 15);
+	cameraLayout->setContentsMargins(15, 22, 15, 12);
 
 	// Camera preset combo box
 	// Each preset stores a QVector3D with the camera position (lookfrom)
@@ -280,7 +273,7 @@ void MainWindow::createAdvancedTab() {
 	m_cameraPosX->setValue(278);  // Default X: centered horizontally
 	m_cameraPosX->setSingleStep(10);
 	m_cameraPosX->setEnabled(false);  // Disabled until "Custom" is selected
-	m_cameraPosX->installEventFilter(m_wheelFilter);
+	styleSpinBox(m_cameraPosX);
 	cameraLayout->addRow("Camera X:", m_cameraPosX);
 
 	m_cameraPosY = new QDoubleSpinBox(advancedTab);
@@ -288,7 +281,7 @@ void MainWindow::createAdvancedTab() {
 	m_cameraPosY->setValue(278);  // Default Y: centered vertically
 	m_cameraPosY->setSingleStep(10);
 	m_cameraPosY->setEnabled(false);  // Disabled until "Custom" is selected
-	m_cameraPosY->installEventFilter(m_wheelFilter);
+	styleSpinBox(m_cameraPosY);
 	cameraLayout->addRow("Camera Y:", m_cameraPosY);
 
 	m_cameraPosZ = new QDoubleSpinBox(advancedTab);
@@ -296,7 +289,7 @@ void MainWindow::createAdvancedTab() {
 	m_cameraPosZ->setValue(-800);  // Default Z: far back view to match default preset
 	m_cameraPosZ->setSingleStep(10);
 	m_cameraPosZ->setEnabled(false);  // Disabled until "Custom" is selected
-	m_cameraPosZ->installEventFilter(m_wheelFilter);
+	styleSpinBox(m_cameraPosZ);
 	cameraLayout->addRow("Camera Z:", m_cameraPosZ);
 
 	// Connect preset combo to handler that updates spinboxes and enables/disables manual input
@@ -390,14 +383,16 @@ void MainWindow::createLogTab() {
 void MainWindow::createVideoTab() {
 	QWidget *videoTab = new QWidget();
 	QVBoxLayout *layout = new QVBoxLayout(videoTab);
+	layout->setSpacing(12);
+	layout->setContentsMargins(12, 12, 12, 12);
 
 	// Video parameters group
 	QGroupBox *videoGroup = new QGroupBox("Video Generation Settings", videoTab);
 	styleGroupBox(videoGroup);
 	QFormLayout *videoLayout = new QFormLayout(videoGroup);
-	videoLayout->setVerticalSpacing(14);
+	videoLayout->setVerticalSpacing(10);
 	videoLayout->setHorizontalSpacing(10);
-	videoLayout->setContentsMargins(15, 28, 15, 15);
+	videoLayout->setContentsMargins(15, 22, 15, 12);
 
 	// Camera path selector
 	m_cameraPathCombo = new QComboBox();

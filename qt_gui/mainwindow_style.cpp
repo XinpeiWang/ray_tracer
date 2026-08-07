@@ -68,12 +68,12 @@ void MainWindow::applyDarkTheme() {
 	// Apply cyberpunk stylesheet for enhanced neon effects
 	QString stylesheet = R"(
 		QGroupBox {
-			border: 3px solid #00FFFF;
+			border: 1px solid #2E5A5E;
 			border-radius: 10px;
-			margin-top: 30px;
-			margin-bottom: 8px;
-			padding: 4px 10px 12px 10px;
-			background-color: #1A1A2E;
+			margin-top: 26px;
+			margin-bottom: 6px;
+			padding: 4px 10px 10px 10px;
+			background-color: #14141F;
 			color: #00FFFF;
 			font-size: 12pt;
 		}
@@ -86,28 +86,28 @@ void MainWindow::applyDarkTheme() {
 			color: #FF00FF;
 			font-size: 13pt;
 			font-weight: bold;
-			background-color: #1A1A2E;
+			background-color: #14141F;
 		}
 		QPushButton {
 			background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
 				stop:0 #3A1050, stop:1 #1E0832);
-			border: 3px solid #FF00FF;
+			border: 2px solid #C93FE8;
 			border-radius: 8px;
 			color: #FF00FF;
-			padding: 12px 20px;
+			padding: 10px 20px;
 			font-weight: bold;
 			font-size: 13pt;
-			min-height: 45px;
+			min-height: 42px;
 		}
 		QPushButton:hover {
 			background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
 				stop:0 #5A1570, stop:1 #3E1552);
-			border: 3px solid #00FFFF;
+			border: 2px solid #00FFFF;
 			color: #00FFFF;
 		}
 		QPushButton:pressed {
 			background-color: #2A0A40;
-			border: 3px solid #C800FF;
+			border: 2px solid #C800FF;
 		}
 		QPushButton:disabled {
 			background-color: #1A0A2A;
@@ -115,13 +115,13 @@ void MainWindow::applyDarkTheme() {
 			color: #503060;
 		}
 		QProgressBar {
-			border: 3px solid #00FFFF;
+			border: 2px solid #2E5A5E;
 			border-radius: 8px;
 			text-align: center;
 			background-color: #0A0A0F;
 			color: #00FFFF;
 			font-size: 12pt;
-			min-height: 35px;
+			min-height: 32px;
 		}
 		QProgressBar::chunk {
 			background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0,
@@ -129,19 +129,19 @@ void MainWindow::applyDarkTheme() {
 			border-radius: 5px;
 		}
 		QTabWidget::pane {
-			border: 3px solid #FF00FF;
+			border: 2px solid #C93FE8;
 			border-radius: 0px 8px 8px 8px;
 			background-color: #0A0A0F;
-			top: -3px;
+			top: -2px;
 		}
 		QTabBar::tab {
 			background-color: #1E0832;
-			border: 3px solid #FF00FF;
-			border-bottom: 3px solid #FF00FF;
+			border: 2px solid #5A3A6E;
+			border-bottom: 2px solid #C93FE8;
 			border-top-left-radius: 8px;
 			border-top-right-radius: 8px;
-			padding: 12px 20px;
-			color: #FF00FF;
+			padding: 10px 18px;
+			color: #D090E8;
 			font-size: 12pt;
 			min-width: 100px;
 			margin-right: 2px;
@@ -151,52 +151,45 @@ void MainWindow::applyDarkTheme() {
 			border-color: #00FFFF;
 			border-bottom-color: #0A0A0F;
 			color: #00FFFF;
-			margin-bottom: -3px;
-			padding-bottom: 15px;
+			margin-bottom: -2px;
+			padding-bottom: 12px;
 		}
 		QTabBar::tab:hover {
 			background-color: #2A0A40;
 			color: #00FFFF;
+			border-color: #FF00FF;
 		}
 		QSpinBox, QDoubleSpinBox, QComboBox {
 			background-color: #0A0A0F;
-			border: 3px solid #00FFFF;
+			border: 2px solid #2E5A5E;
 			border-radius: 5px;
-			padding: 8px;
+			padding: 6px 8px;
 			color: #00FFFF;
 			font-size: 11pt;
-			min-height: 30px;
-			margin: 5px 2px;
+			min-height: 26px;
+			margin: 3px 2px;
 		}
 		QSpinBox:hover, QDoubleSpinBox:hover, QComboBox:hover {
 			background-color: #1A0A2A;
-			border: 3px solid #FF00FF;
+			border: 2px solid #FF00FF;
 			color: #FF00FF;
 		}
 		QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {
 			background-color: #2A1040;
-			border: 3px solid #C800FF;
+			border: 2px solid #C800FF;
 			color: #FF00FF;
 		}
-		QSpinBox, QDoubleSpinBox {
-			padding-right: 30px;
-		}
-		QComboBox::drop-down {
-			border: none;
-			padding-right: 5px;
-		}
-		QComboBox::down-arrow {
-			image: none;
-			border-left: 5px solid transparent;
-			border-right: 5px solid transparent;
-			border-top: 6px solid #FF00FF;
-		}
-		QComboBox::down-arrow:hover {
-			border-top: 6px solid #00FFFF;
-		}
+		/* No custom ::up-button/::down-button/::up-arrow/::down-arrow rules:
+		   every attempt to restyle them (custom background+border, image
+		   icons via border-triangle/data-URI/PNG resource, even native
+		   PlusMinus text) rendered as a completely empty box with this
+		   style/Qt version - something about customizing those subcontrols
+		   collapses their content area to nothing. Leaving them alone gets
+		   Qt's stock Fusion step buttons, which are the one thing
+		   confirmed to actually render. */
 		QComboBox QAbstractItemView {
 			background-color: #0A0A0F;
-			border: 3px solid #FF00FF;
+			border: 2px solid #FF00FF;
 			border-radius: 5px;
 			selection-background-color: #FF00FF;
 			selection-color: #000000;
@@ -228,7 +221,7 @@ void MainWindow::applyDarkTheme() {
 		}
 		QListView {
 			background-color: #0A0A0F;
-			border: 3px solid #FF00FF;
+			border: 2px solid #FF00FF;
 			color: #00FFFF;
 		}
 		QListView::item {
@@ -250,15 +243,15 @@ void MainWindow::applyDarkTheme() {
 		QLabel {
 			color: #00FFFF;
 			font-size: 11pt;
-			padding: 8px 5px;
-			margin: 5px 2px;
+			padding: 4px 5px;
+			margin: 3px 2px;
 		}
 		QFormLayout {
-			spacing: 15px;
+			spacing: 10px;
 		}
 		QTextEdit {
 			background-color: #0A0A0F;
-			border: 3px solid #00FFFF;
+			border: 2px solid #2E5A5E;
 			border-radius: 5px;
 			color: #00FFFF;
 			selection-background-color: #C800FF;
@@ -366,68 +359,17 @@ void MainWindow::styleComboBox(QComboBox *combo) {
 	combo->installEventFilter(m_wheelFilter);
 }
 
-			void MainWindow::styleSpinBox(QSpinBox *spinBox) {
-				// Apply custom stylesheet with CSS triangle arrows
-				QString spinBoxStyle = R"(
-					QSpinBox {
-						padding-right: 30px;
-						background-color: #0A0A0F;
-						border: 3px solid #FF00FF;
-						border-radius: 5px;
-						color: #00FFFF;
-						font-size: 12pt;
-						padding: 8px;
-					}
-					QSpinBox::up-button {
-						subcontrol-origin: border;
-						subcontrol-position: top right;
-						width: 28px;
-						border-left: 2px solid #FF00FF;
-						border-top: 2px solid #FF00FF;
-						border-right: 2px solid #FF00FF;
-						border-top-right-radius: 3px;
-						background-color: #1E0832;
-					}
-					QSpinBox::down-button {
-						subcontrol-origin: border;
-						subcontrol-position: bottom right;
-						width: 28px;
-						border-left: 2px solid #FF00FF;
-						border-bottom: 2px solid #FF00FF;
-						border-right: 2px solid #FF00FF;
-						border-bottom-right-radius: 3px;
-						background-color: #1E0832;
-					}
-					QSpinBox::up-button:hover {
-						background-color: #3A1050;
-						border-color: #00FFFF;
-					}
-					QSpinBox::down-button:hover {
-						background-color: #3A1050;
-						border-color: #00FFFF;
-					}
-					QSpinBox::up-arrow {
-						width: 0;
-						height: 0;
-						border-left: 5px solid transparent;
-						border-right: 5px solid transparent;
-						border-bottom: 7px solid #FF00FF;
-					}
-					QSpinBox::up-arrow:hover {
-						border-bottom-color: #00FFFF;
-					}
-					QSpinBox::down-arrow {
-						width: 0;
-						height: 0;
-						border-left: 5px solid transparent;
-						border-right: 5px solid transparent;
-						border-top: 7px solid #FF00FF;
-					}
-					QSpinBox::down-arrow:hover {
-						border-top-color: #00FFFF;
-					}
-				)";
-				spinBox->setStyleSheet(spinBoxStyle);
-				spinBox->installEventFilter(m_wheelFilter);
-			}
+void MainWindow::styleSpinBox(QAbstractSpinBox *spinBox) {
+	// Custom arrow icons (image:, border-triangle trick, PNG resources -
+	// tried all three) don't render for ::up-arrow/::down-arrow with this
+	// style/Qt version. PlusMinus symbols sidestep the whole arrow-image
+	// pipeline: Qt draws "+"/"-" as text instead, which reliably works.
+	spinBox->setButtonSymbols(QAbstractSpinBox::PlusMinus);
+
+	// Styling otherwise comes entirely from the global stylesheet in
+	// applyDarkTheme() now, so every QSpinBox/QDoubleSpinBox looks the
+	// same - including the Camera X/Y/Z fields, which now go through this
+	// function too instead of a bare installEventFilter() call.
+	spinBox->installEventFilter(m_wheelFilter);
+}
 
