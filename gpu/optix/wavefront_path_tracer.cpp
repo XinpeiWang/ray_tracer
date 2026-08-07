@@ -41,6 +41,7 @@ extern "C" void wf_launch_evaluate_materials(
 	const QuadData*, unsigned int,
 	const MaterialData*, unsigned int,
 	const int*, const bool*, const GpuAliasEntry*, unsigned int,
+	const PunctualLightGPU*, unsigned int,
 	int, cudaStream_t);
 extern "C" void wf_launch_accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, cudaStream_t);
 extern "C" void wf_launch_accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*, cudaStream_t);
@@ -471,6 +472,7 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 	const MaterialData*  d_materials, unsigned int numMaterials,
 	const int*           d_lightIndices, const bool* d_isLightSphere,
 	const GpuAliasEntry* d_aliasTable,  unsigned int numLights,
+	const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
 	float3*              d_framebuffer)
 {
 	if (numHits == 0) return;
@@ -495,6 +497,7 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		d_quads, numQuads,
 		d_materials, numMaterials,
 		d_lightIndices, d_isLightSphere, d_aliasTable, numLights,
+		d_punctualLights, numPunctualLights,
 		maxDepth, stream_);
 }
 
@@ -547,7 +550,9 @@ bool WavefrontPathTracer::render(
 	unsigned int num_materials,
 	unsigned int num_spheres,
 	unsigned int num_quads,
-	unsigned int num_lights)
+	unsigned int num_lights,
+	CUdeviceptr d_punctual_lights,
+	unsigned int num_punctual_lights)
 {
 	const int numPixels = width * height;
 
@@ -651,6 +656,8 @@ bool WavefrontPathTracer::render(
 				reinterpret_cast<const bool*>(d_is_light_sphere),
 				reinterpret_cast<const GpuAliasEntry*>(d_alias_table),
 				num_lights,
+				reinterpret_cast<const PunctualLightGPU*>(d_punctual_lights),
+				num_punctual_lights,
 				d_fbPtr);
 
 			// ------------------------------------------------------------------

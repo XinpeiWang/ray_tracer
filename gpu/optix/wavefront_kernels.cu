@@ -111,6 +111,48 @@ __device__ float3 wf_sample_quad_light(const QuadData& q, const float3& hit,
 	return dir;
 }
 
+// Evaluate one punctual (point/spot/distant) light at shading point p: same
+// dispatch as optix_device_helpers.h's eval_punctual_light(), duplicated here
+// (with the wf_ prefix) rather than shared, matching this file's existing
+// pattern of not sharing NEE helpers with the recursive path (this kernel
+// has no access to the recursive path's __constant__ params global, and the
+// two strategies' NEE application differs - RGB float3 here vs this file's
+// spectral radiance). PDF is always 1 (delta light) - see punctual_lights.h.
+__device__ __forceinline__ bool wf_eval_punctual_light(
+	const PunctualLightGPU& light, const float3& p,
+	float3& wi, float3& Li, float& t_max)
+{
+	float Lr = 0.0f, Lg = 0.0f, Lb = 0.0f, wx = 0.0f, wy = 0.0f, wz = 0.0f;
+	switch (light.kind) {
+		case PunctualLightKind::Point: {
+			light.point.sample_wi(p.x, p.y, p.z, wx, wy, wz);
+			light.point.eval_Li(p.x, p.y, p.z, Lr, Lg, Lb);
+			float dx = light.point.pos_x - p.x, dy = light.point.pos_y - p.y, dz = light.point.pos_z - p.z;
+			t_max = sqrtf(dx * dx + dy * dy + dz * dz);
+			break;
+		}
+		case PunctualLightKind::Spot: {
+			light.spot.sample_wi(p.x, p.y, p.z, wx, wy, wz);
+			light.spot.eval_Li(p.x, p.y, p.z, Lr, Lg, Lb);
+			float dx = light.spot.pos_x - p.x, dy = light.spot.pos_y - p.y, dz = light.spot.pos_z - p.z;
+			t_max = sqrtf(dx * dx + dy * dy + dz * dz);
+			break;
+		}
+		case PunctualLightKind::Distant: {
+			light.distant.sample_wi(wx, wy, wz);
+			light.distant.eval_Li(Lr, Lg, Lb);
+			t_max = 1e30f;
+			break;
+		}
+		default:
+			return false;
+	}
+	if (Lr <= 0.0f && Lg <= 0.0f && Lb <= 0.0f) return false;
+	wi = make_float3(wx, wy, wz);
+	Li = make_float3(Lr, Lg, Lb);
+	return true;
+}
+
 // ============================================================================
 // Kernel 1 — generate_camera_rays
 //   Fills rayQueue with one primary ray per pixel for sample index `sampleIdx`.
@@ -182,6 +224,8 @@ extern "C" __global__ void evaluate_materials(
 	const bool*         isLightSphere,
 	const GpuAliasEntry* aliasTable,
 	unsigned int numLights,
+	const PunctualLightGPU* punctualLights,
+	unsigned int numPunctualLights,
 	int maxDepth
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -504,7 +548,8 @@ extern "C" __global__ void evaluate_materials(
 	// -------------------------------------------------------------------------
 	// NEE: direct-light shadow ray (non-specular materials only)
 	// -------------------------------------------------------------------------
-	if (!is_specular && numLights > 0 && aliasTable) {
+	if (!is_specular) {
+	if (numLights > 0 && aliasTable) {
 		// Pick a light via alias table
 		int   slot = int(wf_rand(seed) * float(numLights));
 		if (slot >= (int)numLights) slot = (int)numLights - 1;
@@ -574,13 +619,63 @@ extern "C" __global__ void evaluate_materials(
 			shadow.pixelIndex = h.pixelIndex;
 			shadowQueue.push(shadow);
 		}
-
-		// Write accumulated prior-bounce radiance unconditionally
-		if ((bool)radiance) addToFramebuffer(h.pixelIndex, radiance);
-	} else if (!is_specular) {
-		// No lights: flush any accumulated radiance
-		if ((bool)radiance) addToFramebuffer(h.pixelIndex, radiance);
 	}
+
+	// -------------------------------------------------------------------------
+	// NEE: punctual (point/spot/distant) delta lights. Unlike the area-light
+	// block above (one stochastic pick via alias table), every contributing
+	// punctual light gets its own shadow ray - matches recursive path
+	// (optix_device_helpers.h add_punctual_lights_lambertian) and the CPU
+	// reference (camera.h punct_lights loop): pdf=1 by construction, so no
+	// MIS weight or pdf division, just beta * BRDF * cos_theta * Li per light.
+	// -------------------------------------------------------------------------
+	for (unsigned int pli = 0; pli < numPunctualLights; ++pli) {
+		float3 wi, Li; float t_max;
+		if (!wf_eval_punctual_light(punctualLights[pli], hit_point, wi, Li, t_max)) continue;
+		float cos_l = dot(wi, normal);
+		if (cos_l <= 0.0f) continue;
+
+		float bsdf_val = 1.0f / 3.14159265f; // Lambertian default
+		if (mat.type == MaterialType::NormalizedFresnel) {
+			float nf_eta = mat.ior;
+			float inv_eta = 1.0f / nf_eta;
+			float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
+			if (nf_c <= 0.0f) nf_c = 1e-6f;
+			float fr_l = FrDielectric(cos_l, nf_eta);
+			bsdf_val = (1.0f - fr_l) / (nf_c * 3.14159265f);
+		}
+
+		// Uplift RGB Li to spectrum (same pattern as liftEmission above)
+		float m = Li.x > Li.y ? (Li.x > Li.z ? Li.x : Li.z) : (Li.y > Li.z ? Li.y : Li.z);
+		float sc = 2.f * m;
+		SS Li_spec(0.f);
+		if (sc > 0.f) {
+			float c0, c1, c2;
+			dev_srgb_to_coeffs(Li.x / sc, Li.y / sc, Li.z / sc, c0, c1, c2);
+			RGBSigmoidPolynomial poly(c0, c1, c2);
+			for (int i = 0; i < kWFNWavelengths; ++i)
+				Li_spec[i] = sc * poly(swl.lambda[i]);
+		}
+
+		SS Ld = (bsdf_val * cos_l) * throughput * Li_spec;
+
+		ShadowRayWorkItem shadow;
+		shadow.origin    = hit_point + 0.001f * normal;
+		shadow.direction = wi;
+		shadow.tMax      = t_max - 0.002f;
+		for (int i = 0; i < kWFNWavelengths; ++i) {
+			shadow.Ld[i]              = Ld[i];
+			shadow.wavelengths[i]     = swl.lambda[i];
+			shadow.wavelength_pdfs[i] = swl.pdf[i];
+		}
+		shadow.pixelIndex = h.pixelIndex;
+		shadowQueue.push(shadow);
+	}
+
+	// Flush accumulated prior-bounce radiance (once, regardless of whether
+	// any area/punctual lights actually contributed above).
+	if ((bool)radiance) addToFramebuffer(h.pixelIndex, radiance);
+	} // if (!is_specular) - NEE (area + punctual lights)
 
 	// -------------------------------------------------------------------------
 	// Bounce: push next ray

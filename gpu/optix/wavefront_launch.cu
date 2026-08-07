@@ -18,7 +18,9 @@ extern "C" __global__ void evaluate_materials(
 	float3*,
 	const SphereData*, const QuadData*, const MaterialData*,
 	const int*, const bool*, const GpuAliasEntry*,
-	unsigned int, int);
+	unsigned int,
+	const PunctualLightGPU*, unsigned int,
+	int);
 extern "C" __global__ void accumulate_miss(WorkQueue<MissWorkItem>, int, float3*);
 extern "C" __global__ void accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*);
 extern "C" __global__ void reset_queue_counter(int*);
@@ -54,6 +56,8 @@ extern "C" void wf_launch_evaluate_materials(
 	const bool*                  d_isLightSphere,
 	const GpuAliasEntry*         d_aliasTable,
 	unsigned int                 numLights,
+	const PunctualLightGPU*      d_punctualLights,
+	unsigned int                 numPunctualLights,
 	int                          maxDepth,
 	cudaStream_t                     stream)
 {
@@ -66,7 +70,7 @@ extern "C" void wf_launch_evaluate_materials(
 		d_framebuffer,
 		d_spheres, d_quads, d_materials,
 		d_lightIndices, d_isLightSphere, d_aliasTable,
-		numLights, maxDepth);
+		numLights, d_punctualLights, numPunctualLights, maxDepth);
 }
 
 extern "C" void wf_launch_accumulate_miss(

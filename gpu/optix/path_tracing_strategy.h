@@ -98,6 +98,8 @@ public:
 	 * @param num_spheres Number of spheres
 	 * @param num_quads Number of quads
 	 * @param num_lights Number of lights
+	 * @param d_punctual_lights Device pointer to PunctualLightGPU array (point/spot/distant delta lights)
+	 * @param num_punctual_lights Number of punctual lights
 	 * @return true if rendering succeeded
 	 */
 	virtual bool render(
@@ -120,7 +122,9 @@ public:
 		unsigned int num_materials,
 		unsigned int num_spheres,
 		unsigned int num_quads,
-		unsigned int num_lights
+		unsigned int num_lights,
+		CUdeviceptr d_punctual_lights = 0,
+		unsigned int num_punctual_lights = 0
 	) = 0;
 
 	/**

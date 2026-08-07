@@ -918,7 +918,8 @@ bool OptiXRenderer::render(
 			gasHandle_,
 			d_materials_, d_spheres_, d_quads_,
 			d_lightIndices_, d_isLightSphere_, d_aliasTable_,
-			numMaterials_, numSpheres_, numQuads_, numLights_);
+			numMaterials_, numSpheres_, numQuads_, numLights_,
+			d_punctualLights_, numPunctualLights_);
 	}
 
 	// Allocate framebuffer on device

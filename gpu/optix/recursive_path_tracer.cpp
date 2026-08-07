@@ -273,7 +273,9 @@ bool RecursivePathTracer::render(
 	unsigned int num_materials,
 	unsigned int num_spheres,
 	unsigned int num_quads,
-	unsigned int num_lights
+	unsigned int num_lights,
+	CUdeviceptr d_punctual_lights,
+	unsigned int num_punctual_lights
 ) {
 	// Allocate framebuffer on device
 	CUdeviceptr d_framebuffer;
@@ -309,6 +311,10 @@ bool RecursivePathTracer::render(
 	params.numLights = num_lights;
 	params.isLightSphere = reinterpret_cast<bool*>(d_is_light_sphere);
 	params.aliasTable = reinterpret_cast<GpuAliasEntry*>(d_alias_table);
+
+	// Punctual (delta) lights
+	params.punctualLights = reinterpret_cast<PunctualLightGPU*>(d_punctual_lights);
+	params.numPunctualLights = num_punctual_lights;
 
 	// Allocate launch params on device if needed
 	if (!d_launchParams_) {

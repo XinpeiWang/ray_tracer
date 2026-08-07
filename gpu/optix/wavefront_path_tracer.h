@@ -29,7 +29,9 @@ public:
         CUdeviceptr d_light_indices, CUdeviceptr d_is_light_sphere,
         CUdeviceptr d_alias_table, unsigned int num_materials,
         unsigned int num_spheres, unsigned int num_quads,
-        unsigned int num_lights) override;
+        unsigned int num_lights,
+        CUdeviceptr d_punctual_lights = 0,
+        unsigned int num_punctual_lights = 0) override;
     void cleanup() override;
     PathTracingMode getMode() const override { return PathTracingMode::WAVEFRONT; }
     const char* getName() const override { return "WavefrontPathTracer"; }
@@ -49,6 +51,7 @@ private:
         const MaterialData* d_materials, unsigned int numMaterials,
         const int* d_lightIndices, const bool* d_isLightSphere,
         const GpuAliasEntry* d_aliasTable, unsigned int numLights,
+        const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
         float3* d_framebuffer);
     void launchAccumulateMiss(int numMiss, float3* d_framebuffer);
     void launchAccumulateShadow(int numShadow, const bool* d_occluded, float3* d_framebuffer);
