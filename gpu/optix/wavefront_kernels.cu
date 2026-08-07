@@ -75,6 +75,41 @@ __device__ __forceinline__ float wf_mis(float a, float b) {
 	return (a2 + b2 < 1e-10f) ? 1.0f : a2 / (a2 + b2);
 }
 
+// XYZ -> LINEAR sRGB (matrix only, no gamma/OETF curve).
+//
+// sampled_spectrum.h's XYZToSRGB() is a full linear-XYZ-to-display-sRGB
+// conversion, gamma-encoding included by design (see its GammaEncodingApplied
+// unit test) - correct for a caller that writes gamma-encoded pixels
+// directly. This codebase's actual output path doesn't: both GPU renderers
+// write into a shared linear-RGB framebuffer, and optix_interface.cpp
+// applies gamma exactly once, itself, when converting that framebuffer to
+// 8-bit PPM output (see its "Write pixels with gamma correction" step) -
+// correct for the recursive path, whose device code (optix_intersection_
+// {sphere,quad}.h) writes genuinely linear RGB. Using XYZToSRGB() here
+// applied gamma a second time on top of that shared step, compounding into
+// severe overexposure for anything bright enough to matter (barely visible
+// for area lights' modest emission values, blown fully to white for point/
+// spot lights' much larger radiance) - this stays in the same linear space
+// the rest of the pipeline expects.
+// No negative clamp here deliberately: this runs once per PARTIAL contribution
+// (one bounce's emission, one light's NEE term, ...), and each partial XYZ->RGB
+// step can legitimately dip slightly negative for saturated colors even though
+// every individual spectral sample is non-negative (a standard artifact of the
+// sRGB gamut being narrower than the visible-color gamut some spectra round-trip
+// through). Clamping per-contribution before the caller's atomicAdd sums them
+// into the framebuffer is a one-directional bias - each clamp can only push the
+// running total up, never down - and it compounds with every extra bounce/light,
+// which is why this was far more visible for point lights (evaluated at every
+// diffuse bounce) than area lights. The single already-correct clamp on the
+// fully summed per-pixel value lives downstream in optix_interface.cpp, right
+// before the gamma curve; let it do the clamping.
+__device__ __forceinline__ void wf_xyz_to_linear_rgb(float X, float Y, float Z,
+													   float& r, float& g, float& b) {
+	r =  3.2404542f * X - 1.5371385f * Y - 0.4985314f * Z;
+	g = -0.9692660f * X + 1.8760108f * Y + 0.0415560f * Z;
+	b =  0.0556434f * X - 0.2040259f * Y + 1.0572252f * Z;
+}
+
 // Sample a point on a sphere light; returns direction and sets geom_pdf.
 __device__ float3 wf_sample_sphere_light(const SphereData& sph, const float3& hit,
 										  unsigned int& seed, float& pdf) {
@@ -254,7 +289,7 @@ extern "C" __global__ void evaluate_materials(
 		auto xyz = SampledSpectrumToXYZ(L, swl, d_cie_x, d_cie_y, d_cie_z,
 										kDevCIEMin, kDevCIENSamples);
 		float r, g, b;
-		XYZToSRGB(xyz.x, xyz.y, xyz.z, r, g, b);
+		wf_xyz_to_linear_rgb(xyz.x, xyz.y, xyz.z, r, g, b);
 		atomicAdd(&framebuffer[pixIdx].x, r);
 		atomicAdd(&framebuffer[pixIdx].y, g);
 		atomicAdd(&framebuffer[pixIdx].z, b);
@@ -780,7 +815,7 @@ extern "C" __global__ void accumulate_shadow(
 		auto xyz = SampledSpectrumToXYZ(Ld, swl, d_cie_x, d_cie_y, d_cie_z,
 										kDevCIEMin, kDevCIENSamples);
 		float r, g, b;
-		XYZToSRGB(xyz.x, xyz.y, xyz.z, r, g, b);
+		wf_xyz_to_linear_rgb(xyz.x, xyz.y, xyz.z, r, g, b);
 		atomicAdd(&framebuffer[s.pixelIndex].x, r);
 		atomicAdd(&framebuffer[s.pixelIndex].y, g);
 		atomicAdd(&framebuffer[s.pixelIndex].z, b);
