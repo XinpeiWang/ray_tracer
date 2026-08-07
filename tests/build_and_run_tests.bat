@@ -50,14 +50,14 @@ echo.
 echo ========================================
 echo Running Debug Tests
 echo ========================================
-Debug\ray_tracer_tests.exe --gtest_color=yes
+Debug\unit_tests.exe --gtest_color=yes
 set DEBUG_RESULT=%errorlevel%
 
 echo.
 echo ========================================
 echo Running Release Tests
 echo ========================================
-Release\ray_tracer_tests.exe --gtest_color=yes
+Release\unit_tests.exe --gtest_color=yes
 set RELEASE_RESULT=%errorlevel%
 
 cd ..

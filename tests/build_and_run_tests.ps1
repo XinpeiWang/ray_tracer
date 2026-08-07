@@ -53,13 +53,13 @@ Write-Host "`n[4/4] Running tests...`n" -ForegroundColor Yellow
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Running Debug Tests" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
-& "Debug\ray_tracer_tests.exe" --gtest_color=yes
+& "Debug\unit_tests.exe" --gtest_color=yes
 $debugResult = $LASTEXITCODE
 
 Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host "Running Release Tests" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
-& "Release\ray_tracer_tests.exe" --gtest_color=yes
+& "Release\unit_tests.exe" --gtest_color=yes
 $releaseResult = $LASTEXITCODE
 
 Set-Location ..
