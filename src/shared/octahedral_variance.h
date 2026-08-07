@@ -22,13 +22,7 @@
 #include <cstdint>
 #include "scalar_math.h"
 
-#ifndef CPU_GPU
-#  ifdef __CUDACC__
-#    define CPU_GPU __host__ __device__
-#  else
-#    define CPU_GPU
-#  endif
-#endif
+#include "cpu_gpu.h"
 
 #if defined(_MSC_VER)
 #  pragma warning(push)

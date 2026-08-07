@@ -21,13 +21,7 @@
 #include <limits>
 #include <type_traits>
 
-#ifndef CPU_GPU
-#  ifdef __CUDACC__
-#    define CPU_GPU __host__ __device__
-#  else
-#    define CPU_GPU
-#  endif
-#endif
+#include "cpu_gpu.h"
 
 // PCG32 constants
 static constexpr uint64_t PCG32_DEFAULT_STATE  = 0x853c49e6748fea9bULL;

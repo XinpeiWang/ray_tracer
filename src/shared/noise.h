@@ -20,13 +20,7 @@
 //   - T = double on CPU, float on GPU
 // ---------------------------------------------------------------------------
 
-#ifndef CPU_GPU
-#   if defined(__CUDACC__)
-#       define CPU_GPU __host__ __device__ __forceinline__
-#   else
-#       define CPU_GPU inline
-#   endif
-#endif
+#include "cpu_gpu.h"
 
 #if defined(__CUDACC__)
 #   include <math_functions.h>

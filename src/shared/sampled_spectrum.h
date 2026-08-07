@@ -42,23 +42,7 @@
 #include "scalar_math.h"
 #include "sampling_distributions.h"
 
-#ifndef CPU_GPU
-#  if defined(__CUDACC__)
-#    define CPU_GPU __host__ __device__ __forceinline__
-#  else
-#    define CPU_GPU inline
-#  endif
-#endif
-
-#ifndef CPU_GPU_RESTRICT
-#  if defined(__CUDACC__)
-#    define CPU_GPU_RESTRICT __restrict__
-#  elif defined(_MSC_VER)
-#    define CPU_GPU_RESTRICT __restrict
-#  else
-#    define CPU_GPU_RESTRICT __restrict__
-#  endif
-#endif
+#include "cpu_gpu.h"
 
 // ---------------------------------------------------------------------------
 // Spectrum constants (pbrt-v4: spectrum.h)

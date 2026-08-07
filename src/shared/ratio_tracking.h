@@ -34,13 +34,7 @@
 //   - Depends on: volume_scattering.h, rng.h, scalar_math.h
 // ---------------------------------------------------------------------------
 
-#ifndef CPU_GPU
-#  if defined(__CUDACC__)
-#    define CPU_GPU __host__ __device__ __forceinline__
-#  else
-#    define CPU_GPU inline
-#  endif
-#endif
+#include "cpu_gpu.h"
 
 #include <cmath>
 #include <algorithm>

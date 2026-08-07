@@ -35,13 +35,7 @@
 //   pbrt-v4 src/pbrt/util/containers.h -- SampledGrid
 // ---------------------------------------------------------------------------
 
-#ifndef CPU_GPU
-#   if defined(__CUDACC__)
-#       define CPU_GPU __host__ __device__ __forceinline__
-#   else
-#       define CPU_GPU inline
-#   endif
-#endif
+#include "cpu_gpu.h"
 
 #include "sampled_grid.h"  // SampledGrid<T>, GridMediumData<T>
 #include "grid_medium.h"   // MajorantGrid<T>, DDAMajorantIterator<T>, Bounds3<T>

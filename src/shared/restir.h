@@ -26,13 +26,7 @@
 //   Talbot et al., "Importance Resampling for Global Illumination", EGSR 2005.
 // ---------------------------------------------------------------------------
 
-#ifndef CPU_GPU
-#  if defined(__CUDACC__)
-#    define CPU_GPU __host__ __device__ __forceinline__
-#  else
-#    define CPU_GPU inline
-#  endif
-#endif
+#include "cpu_gpu.h"
 
 #include "reservoir_sampler.h"   // WeightedReservoirSampler<T>, PCG32Rng
 #include <cstdint>

@@ -37,13 +37,7 @@
 #include "light_bvh_node.h"   // LightBVHNode -> CompactLightBounds -> LightBounds
 #include "scalar_math.h"      // SafeSqrt, Sqr, Pi (= 3.14159...)
 
-#ifndef CPU_GPU
-#  ifdef __CUDACC__
-#    define CPU_GPU __host__ __device__
-#  else
-#    define CPU_GPU
-#  endif
-#endif
+#include "cpu_gpu.h"
 
 // ---------------------------------------------------------------------------
 // SampledLight2 — result of a successful Sample() call

@@ -21,13 +21,7 @@
 //   - GPU-friendly: all scalar fields, no std:: types
 // ---------------------------------------------------------------------------
 
-#ifndef CPU_GPU
-#   if defined(__CUDACC__)
-#       define CPU_GPU __host__ __device__ __forceinline__
-#   else
-#       define CPU_GPU inline
-#   endif
-#endif
+#include "cpu_gpu.h"
 
 template<typename T>
 struct MaterialContext {

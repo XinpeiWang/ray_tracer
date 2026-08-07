@@ -33,13 +33,7 @@
 #include <variant>
 #include <optional>
 
-#ifndef CPU_GPU
-#  ifdef __CUDACC__
-#    define CPU_GPU __host__ __device__
-#  else
-#    define CPU_GPU inline
-#  endif
-#endif
+#include "cpu_gpu.h"
 
 // Pi constants local to this header (avoid dependency on scalar_math_detail namespace)
 namespace tx_consts {

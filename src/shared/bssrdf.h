@@ -26,13 +26,7 @@
 //   Grosjean, "A high accuracy approximation for the transport equation", 1956
 // ---------------------------------------------------------------------------
 
-#ifndef CPU_GPU
-#   if defined(__CUDACC__)
-#       define CPU_GPU __host__ __device__ __forceinline__
-#   else
-#       define CPU_GPU inline
-#   endif
-#endif
+#include "cpu_gpu.h"
 
 #include "sampling.h"   // catmull_rom_weights, integrate_catmull_rom, SampleCatmullRom2D, InvertCatmullRom
 #include "fresnel.h"    // FresnelMoment1, FrDielectric

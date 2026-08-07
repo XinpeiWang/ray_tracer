@@ -35,13 +35,7 @@
 #include <variant>
 #include <algorithm>
 
-#ifndef CPU_GPU
-#  ifdef __CUDACC__
-#    define CPU_GPU __host__ __device__
-#  else
-#    define CPU_GPU inline
-#  endif
-#endif
+#include "cpu_gpu.h"
 
 // ---------------------------------------------------------------------------
 // Minimal span shim (avoids requiring C++20 or including heavy headers)

@@ -49,13 +49,7 @@
 #include "rgb_colorspace.h"   // RGBColorSpace, RGBSigmoidPolynomial
 #endif
 
-#ifndef CPU_GPU
-#  if defined(__CUDACC__)
-#    define CPU_GPU __host__ __device__ __forceinline__
-#  else
-#    define CPU_GPU inline
-#  endif
-#endif
+#include "cpu_gpu.h"
 
 // Spectrum range constants -- use kLambda_min / kLambda_max from sampled_spectrum.h
 // (360 nm .. 830 nm, matching pbrt-v4 Lambda_min / Lambda_max)

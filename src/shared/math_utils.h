@@ -3,13 +3,7 @@
 // Shared math utilities -- CPU and GPU (pbrt-v4 pattern)
 // scattering.h: Reflect, Refract | sampling.h: PowerHeuristic
 
-#ifndef CPU_GPU
-#   if defined(__CUDACC__)
-#       define CPU_GPU __host__ __device__ __forceinline__
-#   else
-#       define CPU_GPU inline
-#   endif
-#endif
+#include "cpu_gpu.h"
 
 // reflect (pbrt-v4 Reflect, PBRT_CPU_GPU)
 template <typename Vec>

@@ -28,13 +28,7 @@
 //            Wald et al. 2014 "Watertight Ray/Triangle Intersection"
 // ---------------------------------------------------------------------------
 
-#ifndef CPU_GPU
-#   if defined(__CUDACC__)
-#       define CPU_GPU __host__ __device__ __forceinline__
-#   else
-#       define CPU_GPU inline
-#   endif
-#endif
+#include "cpu_gpu.h"
 
 #include "sampling_sphere_cone.h"   // SampleUniformSphere, SampleUniformDiskConcentric,
 								// SampleUniformCone, UniformConePDF, etc.

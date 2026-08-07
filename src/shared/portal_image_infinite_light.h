@@ -23,13 +23,7 @@
 //   double p = light.pdf_li(px, py, pz, wx, wy, wz);
 // ---------------------------------------------------------------------------
 
-#ifndef CPU_GPU
-#   if defined(__CUDACC__)
-#       define CPU_GPU __host__ __device__ __forceinline__
-#   else
-#       define CPU_GPU inline
-#   endif
-#endif
+#include "cpu_gpu.h"
 
 #include <array>
 #include <vector>

@@ -1,13 +1,7 @@
 #pragma once
 
 // GGX Microfacet (Trowbridge-Reitz) -- mirrors pbrt-v4 PBRT_CPU_GPU
-#ifndef CPU_GPU
-#   if defined(__CUDACC__)
-#       define CPU_GPU __host__ __device__ __forceinline__
-#   else
-#       define CPU_GPU inline
-#   endif
-#endif
+#include "cpu_gpu.h"
 #if !defined(__CUDACC__)
 #   include <cmath>
 #endif

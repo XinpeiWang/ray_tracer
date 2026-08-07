@@ -27,13 +27,7 @@
 #include <cmath>
 #include "pmj02_sampler.h"   // for pmj02_detail::permutation_element / pmj_hash
 
-#ifndef CPU_GPU
-#   if defined(__CUDACC__)
-#       define CPU_GPU __host__ __device__ __forceinline__
-#   else
-#       define CPU_GPU inline
-#   endif
-#endif
+#include "cpu_gpu.h"
 
 namespace stratified_detail {
 

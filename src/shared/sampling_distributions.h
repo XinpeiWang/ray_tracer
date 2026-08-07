@@ -33,13 +33,7 @@
 // ---------------------------------------------------------------------------
 // CPU_GPU macro guard (mirrors the convention used in lowdiscrepancy.h)
 // ---------------------------------------------------------------------------
-#ifndef CPU_GPU
-#  ifdef __CUDACC__
-#    define CPU_GPU __host__ __device__
-#  else
-#    define CPU_GPU
-#  endif
-#endif
+#include "cpu_gpu.h"
 
 // Suppress MSVC C4141 (duplicate 'inline') that can arise when CPU_GPU
 // expands to nothing and the function is already declared inline.
