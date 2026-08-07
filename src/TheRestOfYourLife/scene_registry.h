@@ -289,7 +289,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             25, SceneNames::SpotlightCornell,
             "Cornell box lit by a spotlight with smooth penumbra (pbrt-v4 SpotLight)",
-            "Medium", 200, false, false,
+            "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_spotlight_cornell,
             no_lights,
@@ -299,7 +299,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             26, SceneNames::DistantLightCornell,
             "Cornell box lit by a parallel sun-like distant light (pbrt-v4 DistantLight)",
-            "Medium", 200, false, false,
+            "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_distant_light_cornell,
             no_lights,
@@ -309,7 +309,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             27, SceneNames::PointLightCornell,
             "Cornell box lit by a single overhead point light with 1/r^2 falloff (pbrt-v4 PointLight)",
-            "Medium", 200, false, false,
+            "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_point_light_cornell,
             no_lights,

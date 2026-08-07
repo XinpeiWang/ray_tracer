@@ -441,7 +441,8 @@ bool OptiXRenderer::buildScene(
 	const std::vector<QuadData>& quads,
 	const std::vector<MaterialData>& materials,
 	const std::vector<int>& lightIndices,
-	const std::vector<bool>& isLightSphere
+	const std::vector<bool>& isLightSphere,
+	const std::vector<PunctualLightGPU>& punctualLights
 ) {
 	// Store material data on device
 	numMaterials_ = static_cast<unsigned int>(materials.size());
@@ -609,6 +610,27 @@ bool OptiXRenderer::buildScene(
 			d_aliasTable_ = 0;
 		}
 		std::cout << "[OptiX] No emissive lights in scene\n";
+	}
+
+	// Store punctual (point/spot/distant) lights on device - separate from
+	// the area-light arrays above, evaluated deterministically every hit
+	// rather than selected via the alias table (see optix_device_helpers.h
+	// eval_punctual_light / add_punctual_lights_lambertian).
+	numPunctualLights_ = static_cast<unsigned int>(punctualLights.size());
+	if (d_punctualLights_) {
+		cudaFree(reinterpret_cast<void*>(d_punctualLights_));
+		d_punctualLights_ = 0;
+	}
+	if (numPunctualLights_ > 0) {
+		size_t punctualSize = punctualLights.size() * sizeof(PunctualLightGPU);
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_punctualLights_), punctualSize));
+		CUDA_CHECK(cudaMemcpy(
+			reinterpret_cast<void*>(d_punctualLights_),
+			punctualLights.data(),
+			punctualSize,
+			cudaMemcpyHostToDevice
+		));
+		std::cout << "[OptiX] Uploaded " << numPunctualLights_ << " punctual (point/spot/distant) lights\n";
 	}
 
 	// Build acceleration structure for custom primitives
@@ -848,9 +870,9 @@ bool OptiXRenderer::buildSBT(
 	sbt_.missRecordCount = 2;  // radiance + shadow
 	sbt_.hitgroupRecordBase = d_hitgroupRecords_;
 	sbt_.hitgroupRecordStrideInBytes = sizeof(HitGroupRecord);
-	sbt_.hitgroupRecordCount = 4;  // 2 geometry types × 2 ray types
+	sbt_.hitgroupRecordCount = 4;  // 2 geometry types ï¿½ 2 ray types
 
-	std::cout << "[OptiX] Built SBT: 2 miss records (radiance + shadow), 4 hit records (2 geom types × 2 ray types)\n";
+	std::cout << "[OptiX] Built SBT: 2 miss records (radiance + shadow), 4 hit records (2 geom types ï¿½ 2 ray types)\n";
 	return true;
 }
 
@@ -934,6 +956,10 @@ bool OptiXRenderer::render(
 	params.isLightSphere = reinterpret_cast<bool*>(d_isLightSphere_);
 	params.aliasTable = reinterpret_cast<GpuAliasEntry*>(d_aliasTable_);
 
+	// Punctual (delta) lights
+	params.punctualLights = reinterpret_cast<PunctualLightGPU*>(d_punctualLights_);
+	params.numPunctualLights = numPunctualLights_;
+
 	// Upload launch params
 	CUDA_CHECK(cudaMemcpy(
 		reinterpret_cast<void*>(d_launchParams_),
@@ -989,6 +1015,7 @@ void OptiXRenderer::cleanup() noexcept {
 	if (d_lightIndices_) cudaFree(reinterpret_cast<void*>(d_lightIndices_));
 	if (d_isLightSphere_) cudaFree(reinterpret_cast<void*>(d_isLightSphere_));
 	if (d_aliasTable_) cudaFree(reinterpret_cast<void*>(d_aliasTable_));
+	if (d_punctualLights_) cudaFree(reinterpret_cast<void*>(d_punctualLights_));
 
 	// Free launch params
 	if (d_launchParams_) cudaFree(reinterpret_cast<void*>(d_launchParams_));
@@ -1015,7 +1042,7 @@ void OptiXRenderer::cleanup() noexcept {
 }
 
 // ============================================================================
-// enableWavefront — create/configure the WavefrontPathTracer on first call
+// enableWavefront ï¿½ create/configure the WavefrontPathTracer on first call
 // ============================================================================
 void OptiXRenderer::enableWavefront(bool enable, const std::string& ptxPath) {
 	useWavefront_ = enable;
@@ -1026,7 +1053,7 @@ void OptiXRenderer::enableWavefront(bool enable, const std::string& ptxPath) {
 		if (!ptxPath.empty()) wavefrontTracer_->setPTXPath(ptxPath);
 
 		if (!wavefrontTracer_->initialize(context_, module_, stream_)) {
-			std::cerr << "[OptiXRenderer] Failed to initialize WavefrontPathTracer — falling back to recursive\n";
+			std::cerr << "[OptiXRenderer] Failed to initialize WavefrontPathTracer ï¿½ falling back to recursive\n";
 			wavefrontTracer_.reset();
 			useWavefront_ = false;
 			return;

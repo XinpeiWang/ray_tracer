@@ -6,6 +6,15 @@
 #include <optix.h>
 #include <cuda_runtime.h>
 
+// Relative path (not a bare quoted include) so this resolves under both
+// compile contexts that #include this file: MSBuild .cpp compiles (which do
+// have src/shared on -I) and the recursive-path nvcc compile of
+// optix_programs.cu (whose OptixFlags in build_optix.targets does NOT add
+// src/shared to -I, unlike the wavefront compile flags). CPU_GPU-tagged and
+// templated on T, so PointLightData<float>/SpotLightData<float>/
+// DistantLightData<float> compile directly for device code - no reimplementation.
+#include "../../src/shared/punctual_lights.h"
+
 #ifndef __CUDACC__
 #include <stdexcept>
 #include <string>
@@ -76,6 +85,30 @@ struct MaterialData {
 	float3 k_c;         // Imaginary part k per R/G/B channel (Conductor only)
 };
 
+// Punctual (delta) light kinds - point/spot/distant. These are evaluated
+// deterministically at every hit (pdf=0, no MIS, not part of lightIndices/
+// aliasTable/isLightSphere at all) rather than stochastically picked like
+// the area lights, mirroring how src/TheRestOfYourLife/punctual_light_objects.h
+// handles them on the CPU.
+enum class PunctualLightKind : int {
+	Point = 0,
+	Spot = 1,
+	Distant = 2
+};
+
+// A single punctual light, tagged by kind. Only the member matching `kind`
+// is meaningful; the others are left default-constructed. Kept as three
+// inline structs rather than a union since light counts are tiny (typically
+// 1-3 per scene) and PointLightData/SpotLightData/DistantLightData are
+// already CPU_GPU-tagged, trivially-copyable PODs - no union/variant
+// plumbing needed for this scale.
+struct PunctualLightGPU {
+	PunctualLightKind kind;
+	PointLightData<float> point;
+	SpotLightData<float> spot;
+	DistantLightData<float> distant;
+};
+
 // Alias table entry for power-weighted light sampling (pbrt-v4 PowerLightSampler pattern)
 // Stored in GPU memory; sampled in O(1) by the device code.
 struct GpuAliasEntry {
@@ -124,6 +157,12 @@ struct LaunchParams {
 
 	// Power-weighted alias table for light selection (pbrt-v4 PowerLightSampler)
 	GpuAliasEntry* aliasTable;  // Device pointer to alias table (numLights entries)
+
+	// Punctual (delta) lights: point/spot/distant. Separate from the
+	// area-light arrays above - evaluated deterministically every hit,
+	// not selected via the alias table.
+	PunctualLightGPU* punctualLights;
+	unsigned int numPunctualLights;
 };
 
 // Hit group data (per-geometry instance in SBT)

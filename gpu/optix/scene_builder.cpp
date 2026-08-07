@@ -911,6 +911,84 @@ void build_quads_scene(SceneData& scene) {
 	add_quad(-2.0f, -3.0f, 5.0f, 4.0f, 0.0f, 0.0f, 0.0f, 0.0f, -4.0f, 0.2f, 0.8f, 0.8f);
 }
 
+/// @brief Cornell box walls (no light quad) + two spheres, for scenes lit by
+/// a punctual (point/spot/distant) light instead of an emissive quad.
+/// Matches CPU src/TheRestOfYourLife/scenes_advanced.h cornell_walls_no_light()
+/// exactly: same 5 walls, same two sphere positions/materials.
+static void build_punctual_light_walls(SceneData& scene) {
+	const int mat_red = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+	const int mat_white = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+	const int mat_green = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+	// Sphere materials: white lambertian + blue-tinted fuzzy metal (matches CPU)
+	const int mat_white_sphere = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+	const int mat_metal_sphere = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.8f, 0.8f, 0.9f), 0.1f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+	// Walls (green/red/ceiling/floor/back - no front, no light quad)
+	add_transformed_quad(scene, make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), make_float3(0, kBoxSize, 0), mat_green);
+	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(0, 0, -kBoxSize), make_float3(0, kBoxSize, 0), mat_red);
+	add_transformed_quad(scene, make_float3(0, kBoxSize, 0), make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), mat_white);   // ceiling
+	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(kBoxSize, 0, 0), make_float3(0, 0, -kBoxSize), mat_white);  // floor
+	add_transformed_quad(scene, make_float3(kBoxSize, 0, kBoxSize), make_float3(-kBoxSize, 0, 0), make_float3(0, kBoxSize, 0), mat_white); // back
+
+	// Two spheres (matches CPU cornell_walls_no_light exactly)
+	{ SphereData s{}; s.center = make_float3(190.0f, 90.0f, 190.0f); s.radius = 90.0f; s.materialIdx = mat_white_sphere; scene.spheres.push_back(s); }
+	{ SphereData s{}; s.center = make_float3(370.0f, 120.0f, 380.0f); s.radius = 120.0f; s.materialIdx = mat_metal_sphere; scene.spheres.push_back(s); }
+}
+
+/// @brief Scene 25: Spotlight Cornell. Matches CPU build_spotlight_punct().
+static void build_spotlight_cornell_gpu(SceneData& scene) {
+	build_punctual_light_walls(scene);
+
+	constexpr float kPi = 3.14159265358979323846f;
+	auto deg2rad = [](float d) { return d * kPi / 180.0f; };
+
+	PunctualLightGPU light{};
+	light.kind = PunctualLightKind::Spot;
+	light.spot.pos_x = 278.0f; light.spot.pos_y = 548.0f; light.spot.pos_z = 278.0f;
+	light.spot.dir_x = 0.0f;   light.spot.dir_y = -1.0f;  light.spot.dir_z = 0.0f;  // already unit
+	light.spot.ir = 1.0f; light.spot.ig = 0.95f; light.spot.ib = 0.85f;
+	light.spot.scale = 600000.0f;
+	light.spot.cos_falloff_start = cosf(deg2rad(15.0f));
+	light.spot.cos_falloff_end   = cosf(deg2rad(30.0f));
+	scene.punctualLights.push_back(light);
+}
+
+/// @brief Scene 26: Distant Light Cornell. Matches CPU build_distant_light_punct().
+static void build_distant_light_cornell_gpu(SceneData& scene) {
+	build_punctual_light_walls(scene);
+
+	float3 dir = normalize(make_float3(-0.4f, -1.0f, -0.2f));
+
+	PunctualLightGPU light{};
+	light.kind = PunctualLightKind::Distant;
+	light.distant.dir_x = dir.x; light.distant.dir_y = dir.y; light.distant.dir_z = dir.z;
+	light.distant.ir = 1.0f; light.distant.ig = 0.98f; light.distant.ib = 0.92f;
+	light.distant.scale = 800000.0f;
+	light.distant.scene_radius = 1000.0f;
+	scene.punctualLights.push_back(light);
+}
+
+/// @brief Scene 27: Point Light Cornell. Matches CPU build_point_light_punct().
+static void build_point_light_cornell_gpu(SceneData& scene) {
+	build_punctual_light_walls(scene);
+
+	PunctualLightGPU light{};
+	light.kind = PunctualLightKind::Point;
+	light.point.pos_x = 278.0f; light.point.pos_y = 540.0f; light.point.pos_z = 278.0f;
+	light.point.ir = 1.0f; light.point.ig = 0.98f; light.point.ib = 0.90f;
+	light.point.scale = 5000000.0f;
+	scene.punctualLights.push_back(light);
+}
+
 /// @brief Build a scene and configure the camera
 /// @param scene_id Scene identifier (0 = Cornell Box)
 /// @param image_width Output image width in pixels
@@ -1152,6 +1230,18 @@ bool build_scene(
 
 														case 17:  // Cornell Crystal (pbrt-v4 NormalizedFresnelBxDF)
 														if (scene_id == 17) build_cornell_crystal(scene);
+														// fallthrough
+
+														case 25:  // Spotlight Cornell (pbrt-v4 SpotLight)
+														if (scene_id == 25) build_spotlight_cornell_gpu(scene);
+														// fallthrough
+
+														case 26:  // Distant Light Cornell (pbrt-v4 DistantLight)
+														if (scene_id == 26) build_distant_light_cornell_gpu(scene);
+														// fallthrough
+
+														case 27:  // Point Light Cornell (pbrt-v4 PointLight)
+														if (scene_id == 27) build_point_light_cornell_gpu(scene);
 													{
 									constexpr float kPi = 3.14159265358979323846f;
 									const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));

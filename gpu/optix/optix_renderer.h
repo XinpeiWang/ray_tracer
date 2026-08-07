@@ -45,13 +45,17 @@ public:
 	/// @param materials Vector of material data
 	/// @param lightIndices Vector of light primitive indices
 	/// @param isLightSphere Vector of flags (true=sphere, false=quad)
+	/// @param punctualLights Vector of point/spot/distant delta lights (separate
+	///        from the area-light arrays above; evaluated deterministically,
+	///        not selected via the alias table)
 	/// @return true if scene was built successfully, false otherwise
 	bool buildScene(
 		const std::vector<SphereData>& spheres,
 		const std::vector<QuadData>& quads,
 		const std::vector<MaterialData>& materials,
 		const std::vector<int>& lightIndices,
-		const std::vector<bool>& isLightSphere
+		const std::vector<bool>& isLightSphere,
+		const std::vector<PunctualLightGPU>& punctualLights = {}
 	);
 
 	/// @brief Render a frame using path tracing
@@ -151,6 +155,11 @@ private:
 	CUdeviceptr d_isLightSphere_ = 0; ///< Device light type flags (sphere/quad)
 	CUdeviceptr d_aliasTable_ = 0;    ///< Device alias table for power-weighted light sampling
 	unsigned int numLights_ = 0;      ///< Number of emissive lights
+
+	// Punctual (delta) lights: point/spot/distant. Separate from the area
+	// lights above - evaluated deterministically, not via the alias table.
+	CUdeviceptr d_punctualLights_ = 0;
+	unsigned int numPunctualLights_ = 0;
 
 	// -------------------------------------------------------------------
 	// Launch Parameters

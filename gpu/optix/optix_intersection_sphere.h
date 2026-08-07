@@ -179,6 +179,11 @@ extern "C" __global__ void __closesthit__sphere() {
 				}
 			}
 
+			// Direct lighting from punctual (point/spot/distant) lights -
+			// deterministic delta lights, evaluated separately from the
+			// area-light alias table above (see optix_device_helpers.h).
+			add_punctual_lights_lambertian(hit_point, normal, mat.albedo, emission);
+
 			break;
 		}
 
@@ -311,7 +316,7 @@ extern "C" __global__ void __closesthit__sphere() {
 					float F_g = FrComplex(cos_c, mat.eta_c.y, mat.k_c.y) * wt_c;
 					float F_b = FrComplex(cos_c, mat.eta_c.z, mat.k_c.z) * wt_c;
 
-					// Step 3: exit through coat top — Fresnel at exit angle (rwo_z = cos of exit)
+					// Step 3: exit through coat top ï¿½ Fresnel at exit angle (rwo_z = cos of exit)
 					float F_out = FrDielectric(rwo_z, 1.0f / mat.ior);  // inside->outside
 					float T_out = 1.0f - F_out;
 					float T_in  = 1.0f - F_in;

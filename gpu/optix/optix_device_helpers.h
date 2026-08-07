@@ -233,6 +233,73 @@ __device__ __forceinline__ bool trace_shadow_ray(
 	return (occluded == 0);
 }
 
+// Evaluate one punctual (point/spot/distant) light at shading point p:
+// direction toward the light (wi), incident radiance (Li), and shadow-ray
+// max distance (t_max). Returns false if the light contributes nothing here
+// (e.g. outside a spot's cone) so the caller can skip the shadow ray.
+// Mirrors src/TheRestOfYourLife/punctual_light_objects.h's PunctualLiSample /
+// sample_direct() on the CPU - pdf is always 1 for these delta lights, so
+// callers add the contribution directly with no MIS weight or pdf division
+// (see camera.h's punct_lights NEE block for the reference formula).
+__device__ __forceinline__ bool eval_punctual_light(
+	const PunctualLightGPU& light,
+	const float3& p,
+	float3& wi,
+	float3& Li,
+	float& t_max
+) {
+	float Lr = 0.0f, Lg = 0.0f, Lb = 0.0f, wx = 0.0f, wy = 0.0f, wz = 0.0f;
+	switch (light.kind) {
+		case PunctualLightKind::Point: {
+			light.point.sample_wi(p.x, p.y, p.z, wx, wy, wz);
+			light.point.eval_Li(p.x, p.y, p.z, Lr, Lg, Lb);
+			float dx = light.point.pos_x - p.x, dy = light.point.pos_y - p.y, dz = light.point.pos_z - p.z;
+			t_max = sqrtf(dx * dx + dy * dy + dz * dz);
+			break;
+		}
+		case PunctualLightKind::Spot: {
+			light.spot.sample_wi(p.x, p.y, p.z, wx, wy, wz);
+			light.spot.eval_Li(p.x, p.y, p.z, Lr, Lg, Lb);
+			float dx = light.spot.pos_x - p.x, dy = light.spot.pos_y - p.y, dz = light.spot.pos_z - p.z;
+			t_max = sqrtf(dx * dx + dy * dy + dz * dz);
+			break;
+		}
+		case PunctualLightKind::Distant: {
+			light.distant.sample_wi(wx, wy, wz);
+			light.distant.eval_Li(Lr, Lg, Lb);
+			t_max = 1e30f;  // no finite geometric distance for a directional light
+			break;
+		}
+		default:
+			return false;
+	}
+	if (Lr <= 0.0f && Lg <= 0.0f && Lb <= 0.0f) return false;
+	wi = make_float3(wx, wy, wz);
+	Li = make_float3(Lr, Lg, Lb);
+	return true;
+}
+
+// Add every punctual light's direct contribution at a Lambertian hit to
+// `emission` (accumulated in-place). `normal` must be the shading normal
+// (front-facing). Call from the same place area-light NEE happens.
+__device__ __forceinline__ void add_punctual_lights_lambertian(
+	const float3& hit_point,
+	const float3& normal,
+	const float3& albedo,
+	float3& emission
+) {
+	for (unsigned int i = 0; i < params.numPunctualLights; ++i) {
+		float3 wi, Li; float t_max;
+		if (!eval_punctual_light(params.punctualLights[i], hit_point, wi, Li, t_max)) continue;
+		float cos_theta = dot(wi, normal);
+		if (cos_theta <= 0.0f) continue;
+		if (trace_shadow_ray(hit_point, wi, t_max)) {
+			float3 brdf = albedo / 3.14159265358979323846f;
+			emission = emission + brdf * Li * cos_theta;
+		}
+	}
+}
+
 
 
 //==============================================================================

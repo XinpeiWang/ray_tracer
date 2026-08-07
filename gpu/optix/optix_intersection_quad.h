@@ -173,6 +173,11 @@ extern "C" __global__ void __closesthit__quad() {
 				}
 			}
 
+			// Direct lighting from punctual (point/spot/distant) lights -
+			// deterministic delta lights, evaluated separately from the
+			// area-light alias table above (see optix_device_helpers.h).
+			add_punctual_lights_lambertian(hit_point, final_normal, mat.albedo, emission);
+
 			break;
 		}
 

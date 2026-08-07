@@ -52,8 +52,9 @@ extern "C" int optix_render_main(
 			return 101;  // Scene build error
 		}
 
-		if (!g_renderer->buildScene(scene.spheres, scene.quads, scene.materials, 
-									 scene.lightIndices, scene.isLightSphere)) {
+		if (!g_renderer->buildScene(scene.spheres, scene.quads, scene.materials,
+									 scene.lightIndices, scene.isLightSphere,
+									 scene.punctualLights)) {
 			std::cerr << "[OptiX] Failed to upload scene to GPU\n";
 			return 102;  // GPU upload error
 		}
