@@ -624,6 +624,17 @@ extern "C" __global__ void __closesthit__sphere() {
 			break;
 		}
 
+		case MaterialType::Hair: {
+			// Marschner/Chiang fiber scattering - see sample_hair_material's
+			// comment in optix_device_helpers.h. Matches hair_material.h's
+			// skip_pdf=true: no NEE/MIS, res.r/g/b already divides by the
+			// sample pdf (same convention as this codebase's other
+			// is_specular=true cases).
+			scattered   = sample_hair_material(ray_dir, normal, mat, seed, scattered_dir, attenuation);
+			is_specular = true;
+			break;
+		}
+
 		case MaterialType::DiffuseLight: {
 			// Emissive material - no scattering
 			scattered = false;

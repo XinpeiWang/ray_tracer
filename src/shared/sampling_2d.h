@@ -175,7 +175,8 @@ inline double catmullrom_newton_bisection(double x0, double x1, Func f,
 	for (int iter = 0; iter < 64; ++iter) {
 		if (!(x0 < xMid && xMid < x1))
 			xMid = (x0 + x1) * 0.5;
-		auto [fMid, dfMid] = f(xMid);
+		auto fMidPair = f(xMid);
+		double fMid = fMidPair.first, dfMid = fMidPair.second;
 		if (std::abs(fMid) < f_eps || x1 - x0 < x_eps) break;
 		if ((fMid < 0) == neg_start) x0 = xMid;
 		else                          x1 = xMid;

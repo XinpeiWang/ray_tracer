@@ -233,7 +233,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             19, SceneNames::HairFibers,
             "Sphere cluster with hair/fur fiber scattering (pbrt-v4 HairBxDF)",
-            "Medium", 200, false, false,
+            "Medium", 200, false, true,
             { 30, 0, 2, 8,  0, 1, 0,  0.05, 0.05, 0.07 },
             build_hair_fibers,
             []() {

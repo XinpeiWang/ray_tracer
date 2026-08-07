@@ -28,6 +28,7 @@
 #include "fresnel.h"
 #include "microfacet.h"
 #include "math_utils.h"
+#include "bxdfs.h"  // HairBxDF<T> - see MaterialType::Hair
 
 // ============================================================================
 // Device helpers (shared with optix_programs.cu logic)
@@ -80,6 +81,38 @@ __device__ __forceinline__ float3 wf_sample_henyey_greenstein(const float3& wo, 
 									  : normalize(cross(make_float3(1, 0, 0), wo));
 	float3 t2 = cross(wo, t1);
 	return normalize(sin_theta * cosf(phi) * t1 + sin_theta * sinf(phi) * t2 + cos_theta * wo);
+}
+
+// MaterialType::Hair: Marschner/Chiang fiber scattering, duplicated from
+// optix_device_helpers.h's sample_hair_material (with the wf_ prefix)
+// rather than shared, matching this file's existing pattern of not sharing
+// device helpers with the recursive path.
+__device__ __forceinline__ bool wf_sample_hair_material(
+	const float3& ray_dir, const float3& normal, const MaterialData& mat,
+	unsigned int& seed, float3& scattered_dir, float3& attenuation)
+{
+	HairBxDF<float> bxdf(
+		wf_rand(seed) * 2.0f - 1.0f,
+		mat.ior,
+		mat.albedo.x, mat.albedo.y, mat.albedo.z,
+		mat.fuzz,
+		mat.eta_c.x,
+		mat.eta_c.y);
+
+	float3 unit_dir = normalize(ray_dir);
+	float u1 = wf_rand(seed), u2 = wf_rand(seed);
+	float u3 = wf_rand(seed), u4 = wf_rand(seed);
+
+	auto res = bxdf.sample(
+		normal.x, normal.y, normal.z,
+		unit_dir.x, unit_dir.y, unit_dir.z,
+		u1, u2, u3, u4);
+
+	if (!res.valid) return false;
+
+	scattered_dir = make_float3(res.wo_x, res.wo_y, res.wo_z);
+	attenuation   = make_float3(res.r, res.g, res.b);
+	return true;
 }
 
 // reflect/refract wrappers
@@ -523,6 +556,26 @@ extern "C" __global__ void evaluate_materials(
 	auto emissionSpectrum = [&](float3 /*rgb*/) -> SS { return SS(0.f); };  // placeholder, liftEmission used inline
 	(void)emissionSpectrum;
 
+	// Uplift an unbounded-positive RGB weight (can exceed 1, unlike a plain
+	// reflectance) to spectral: same normalize-by-2*max/uplift/rescale
+	// technique as the NEE block's liftEmission lambda below - needed for
+	// MaterialType::Hair, whose HairBxDF::sample() result already divides by
+	// the sample pdf (a proper importance-sampling weight, not a [0,1]
+	// albedo), so naively clamping it into albedoSpectrum's range would bias
+	// bright/peaky fiber lobes toward black.
+	auto unboundedSpectrum = [&](float3 rgb) -> SS {
+		float m = rgb.x > rgb.y ? (rgb.x > rgb.z ? rgb.x : rgb.z) : (rgb.y > rgb.z ? rgb.y : rgb.z);
+		float sc = 2.f * m;
+		if (sc <= 0.f) return SS(0.f);
+		float c0, c1, c2;
+		dev_srgb_to_coeffs(rgb.x/sc, rgb.y/sc, rgb.z/sc, c0, c1, c2);
+		RGBSigmoidPolynomial poly(c0, c1, c2);
+		SS s(0.f);
+		for (int i = 0; i < kWFNWavelengths; ++i)
+			s[i] = sc * poly(swl.lambda[i]);
+		return s;
+	};
+
 	switch (mat.type) {
 	case MaterialType::Lambertian: {
 		scattered_dir = normalize(normal + wf_rand_unit(seed));
@@ -761,6 +814,22 @@ extern "C" __global__ void evaluate_materials(
 			attenuation   = SS(1.f);
 		}
 		scattered   = true;
+		is_specular = true;
+		break;
+	}
+	case MaterialType::Hair: {
+		// Marschner/Chiang fiber scattering - see wf_sample_hair_material's
+		// comment above. Matches hair_material.h's skip_pdf=true: no NEE/MIS
+		// (is_specular=true), and the result needs unboundedSpectrum (not
+		// albedoSpectrum) since it's already divided by the sample pdf.
+		float3 sdir, atten;
+		if (wf_sample_hair_material(h.rayDir, normal, mat, seed, sdir, atten)) {
+			scattered_dir = sdir;
+			attenuation   = unboundedSpectrum(atten);
+			scattered     = true;
+		} else {
+			scattered = false;
+		}
 		is_specular = true;
 		break;
 	}

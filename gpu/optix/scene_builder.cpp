@@ -1443,6 +1443,41 @@ static void build_bilinear_patch_scene_gpu(SceneData& scene) {
 	}
 }
 
+/// @brief Scene 19: Hair Fibers. Matches CPU build_hair_fibers() exactly - a
+/// dark-floor ground sphere plus 5 spheres shaded with MaterialType::Hair
+/// (Marschner/Chiang fiber scattering; no literal fiber geometry - see
+/// MaterialType::Hair's comment in optix_types.h).
+static void build_hair_fibers_gpu(SceneData& scene) {
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.05f, 0.05f, 0.06f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	// Hair MaterialData reuse: albedo=sigma_a(r,g,b), fuzz=beta_m, ior=eta(1.55),
+	// eta_c.x=beta_n, eta_c.y=alpha_deg.
+	struct HairSphere { float3 center; float3 sigma_a; float beta_m; float beta_n; float alpha_deg; };
+	const HairSphere hairs[5] = {
+		{ make_float3(-2.5f, 1.0f, 0.0f), make_float3(0.06f, 0.10f, 0.20f), 0.25f, 0.25f, 2.0f }, // dark brown
+		{ make_float3(-0.8f, 1.0f, 0.3f), make_float3(0.01f, 0.015f, 0.03f), 0.30f, 0.30f, 2.0f }, // blonde
+		{ make_float3(0.9f, 1.0f, -0.3f), make_float3(0.02f, 0.08f, 0.18f), 0.20f, 0.20f, 3.0f }, // auburn
+		{ make_float3(2.5f, 1.0f, 0.0f), make_float3(0.001f, 0.001f, 0.002f), 0.45f, 0.45f, 1.0f }, // white/silver fur
+		{ make_float3(0.0f, 1.0f, 1.8f), make_float3(0.50f, 0.55f, 0.60f), 0.15f, 0.15f, 2.0f }, // fine black fur
+	};
+	for (const auto& h : hairs) {
+		const int mat_idx = safe_cast_to_int(scene.materials.size());
+		MaterialData m{};
+		m.type = MaterialType::Hair;
+		m.albedo = h.sigma_a;
+		m.fuzz = h.beta_m;
+		m.ior = 1.55f;  // fiber eta, matches CPU hair_material's default
+		m.eta_c = make_float3(h.beta_n, h.alpha_deg, 0.0f);
+		scene.materials.push_back(m);
+
+		SphereData s{}; s.center = h.center; s.radius = 1.0f; s.materialIdx = mat_idx;
+		scene.spheres.push_back(s);
+	}
+}
+
 /// @brief Build a scene and configure the camera
 /// @param scene_id Scene identifier (0 = Cornell Box)
 /// @param image_width Output image width in pixels
@@ -1965,6 +2000,47 @@ bool build_scene(
 									// ONLY light source (no emissive geometry), so a missing/black
 									// background here means zero illumination anywhere in the image.
 									out_camera_extra->backgroundColor = make_float3(0.5f, 0.7f, 1.0f);
+								}
+								break;
+							}
+
+							case 19: {  // Hair Fibers (pbrt-v4 HairBxDF)
+								build_hair_fibers_gpu(scene);
+								constexpr float kPi = 3.14159265358979323846f;
+								const float3 lookfrom = make_float3(0.0f, 2.0f, 8.0f);
+								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								constexpr float vfov = 30.0f;  // matches CPU CameraConfig row for scene 19
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+
+								const float theta = vfov * kPi / 180.0f;
+								const float h = tanf(theta / 2.0f);
+								const float viewport_height = 2.0f * h;
+								const float viewport_width  = aspect * viewport_height;
+
+								const float3 w = normalize(make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z));
+								const float3 u = normalize(cross(vup, w));
+								const float3 v = cross(w, u);
+
+								const float3 horizontal = make_float3(viewport_width * u.x, viewport_width * u.y, viewport_width * u.z);
+								const float3 vertical   = make_float3(viewport_height * v.x, viewport_height * v.y, viewport_height * v.z);
+								const float3 lower_left_corner = make_float3(
+									lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - w.x,
+									lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - w.y,
+									lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - w.z
+								);
+
+								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
+									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
+								};
+								pack_float3(camera_params, 0, lookfrom);
+								pack_float3(camera_params, 3, lower_left_corner);
+								pack_float3(camera_params, 6, horizontal);
+								pack_float3(camera_params, 9, vertical);
+								if (out_camera_extra) {
+									// Matches CPU CameraConfig bg for scene 19 (dim ambient - the
+									// only light source, no emissive geometry in this scene).
+									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.07f);
 								}
 								break;
 							}

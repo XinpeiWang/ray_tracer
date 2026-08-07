@@ -133,7 +133,7 @@ inline const SceneDesc* get_all_scenes(int* out_count = nullptr) {
 		   "Medium",    200, false, false },
 		{ 19, SceneNames::HairFibers,
 		   "Sphere cluster with hair/fur fiber scattering (pbrt-v4 HairBxDF)",
-		   "Medium",    200, false, false },
+		   "Medium",    200, false, true  },
 		{ 20, SceneNames::NormalMappedCornell,
 		   "Cornell box with procedural bump-mapped back wall and normal-mapped sphere (pbrt-v4 NormalMap/BumpMap)",
 		   "Medium",    200, false, false },

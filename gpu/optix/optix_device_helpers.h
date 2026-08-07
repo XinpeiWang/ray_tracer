@@ -9,6 +9,7 @@
 #include "optix_math_helpers.h"
 #include "../../src/shared/fresnel.h"    // Shared exact Fresnel (CPU+GPU)
 #include "../../src/shared/microfacet.h" // GGX TrowbridgeReitz (CPU+GPU)
+#include "../../src/shared/bxdfs.h"      // HairBxDF<T> (CPU+GPU) - see MaterialType::Hair
 
 // Launch parameters (constant across all threads)
 extern "C" { __constant__ LaunchParams params; }
@@ -74,6 +75,40 @@ __device__ __forceinline__ float3 sample_henyey_greenstein(const float3& wo, flo
 									  : normalize(cross(make_float3(1, 0, 0), wo));
 	float3 t2 = cross(wo, t1);
 	return normalize(sin_theta * cosf(phi) * t1 + sin_theta * sinf(phi) * t2 + cos_theta * wo);
+}
+
+// MaterialType::Hair: Marschner/Chiang fiber scattering (src/shared/
+// bxdfs_hair.h's HairBxDF<T>), using the shading normal as a fiber-tangent
+// proxy - matches src/TheRestOfYourLife/hair_material.h::scatter() exactly
+// (same "no literal fiber geometry" simplification, see MaterialType::Hair's
+// comment in optix_types.h). Returns false if the sample should be rejected
+// (mirrors hair_material.h's `if (!res.valid) return false;`).
+__device__ __forceinline__ bool sample_hair_material(
+	const float3& ray_dir, const float3& normal, const MaterialData& mat,
+	unsigned int& seed, float3& scattered_dir, float3& attenuation)
+{
+	HairBxDF<float> bxdf(
+		random_float(seed) * 2.0f - 1.0f,  // h in [-1,1], sampled per-scatter like the CPU
+		mat.ior,                            // eta
+		mat.albedo.x, mat.albedo.y, mat.albedo.z,  // sigma_a (RGB absorption)
+		mat.fuzz,                           // beta_m
+		mat.eta_c.x,                        // beta_n
+		mat.eta_c.y);                       // alpha_deg
+
+	float3 unit_dir = normalize(ray_dir);
+	float u1 = random_float(seed), u2 = random_float(seed);
+	float u3 = random_float(seed), u4 = random_float(seed);
+
+	auto res = bxdf.sample(
+		normal.x, normal.y, normal.z,
+		unit_dir.x, unit_dir.y, unit_dir.z,
+		u1, u2, u3, u4);
+
+	if (!res.valid) return false;
+
+	scattered_dir = make_float3(res.wo_x, res.wo_y, res.wo_z);
+	attenuation   = make_float3(res.r, res.g, res.b);
+	return true;
 }
 
 __device__ __forceinline__ float3 random_on_hemisphere(const float3& normal, unsigned int& seed) {

@@ -230,6 +230,19 @@ TEST(FindSceneTest, BilinearPatchSceneIsGpuCompatible) {
 	EXPECT_TRUE(s->gpu_compatible);
 }
 
+TEST(FindSceneTest, HairFibersSceneIsGpuCompatible) {
+	// Scene 19 turned out not to need any new GPU geometry type at all: its
+	// "hair fibers" are MaterialType::Hair (Marschner/Chiang fiber scattering,
+	// src/shared/bxdfs_hair.h's HairBxDF, already CPU_GPU-tagged) applied
+	// directly to 5 ordinary spheres, using the shading normal as a fiber-
+	// tangent proxy - matching src/TheRestOfYourLife/hair_material.h's own
+	// simplification exactly (src/shared/shapes.h's CurveShape, literal
+	// fiber-strand geometry, is unused dead code, never wired to any scene).
+	const SceneDescriptor* s = find_scene(19);
+	ASSERT_NE(s, nullptr);
+	EXPECT_TRUE(s->gpu_compatible);
+}
+
 // ===========================================================================
 // C API tests
 // ===========================================================================

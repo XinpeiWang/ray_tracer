@@ -89,18 +89,27 @@ enum class MaterialType : int {
 	// src/shared/volume_scattering.h - only usable on sphere geometry
 	// (the boundary shape), reuses MaterialData.ior as sigma_t (extinction
 	// coefficient) and MaterialData.fuzz as the HG asymmetry g.
-	Medium = 11
+	Medium = 11,
+	// Marschner/Chiang fiber scattering (pbrt-v4 HairBxDF, src/shared/
+	// bxdfs_hair.h) - matches src/TheRestOfYourLife/hair_material.h exactly,
+	// including its "shading normal as fiber-tangent proxy" simplification
+	// (no literal fiber geometry - src/shared/shapes.h's CurveShape is unused
+	// dead code, never wired to any scene). Sphere-only, since that's the
+	// only geometry any scene ever applies it to (scene 19's 5 hair spheres).
+	// Reuses MaterialData.albedo as sigma_a (RGB absorption), .fuzz as
+	// beta_m, .ior as eta, .eta_c.x as beta_n, .eta_c.y as alpha_deg.
+	Hair = 12
 };
 
 // Material data (packed for SBT)
 struct MaterialData {
 	MaterialType type;
-	float3 albedo;      // For lambertian, metal; also single-scatter color for Medium
-	float fuzz;         // For metal (roughness); also GGX alpha for RoughDielectric / Conductor; also HG asymmetry g for Medium
-	float ior;          // For dielectric / rough_dielectric (index of refraction); also sigma_t (extinction coefficient) for Medium
+	float3 albedo;      // For lambertian, metal; also single-scatter color for Medium; also sigma_a (RGB absorption) for Hair
+	float fuzz;         // For metal (roughness); also GGX alpha for RoughDielectric / Conductor; also HG asymmetry g for Medium; also beta_m (longitudinal roughness) for Hair
+	float ior;          // For dielectric / rough_dielectric (index of refraction); also sigma_t (extinction coefficient) for Medium; also fiber eta for Hair
 	float3 emission;    // For diffuse_light
 	// Conductor complex IOR per RGB channel (pbrt-v4 ConductorBxDF: eta, k)
-	float3 eta_c;       // Real part η per R/G/B channel (Conductor only)
+	float3 eta_c;       // Real part η per R/G/B channel (Conductor only); Hair reuses .x = beta_n (azimuthal roughness), .y = alpha_deg (scale tilt)
 	float3 k_c;         // Imaginary part k per R/G/B channel (Conductor only)
 };
 
