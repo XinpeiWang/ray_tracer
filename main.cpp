@@ -27,214 +27,40 @@
 #include <iostream>
 #include <iomanip>
 #include <string>
-#include <vector>
-#include <set>
 #include <filesystem>
 #include <chrono>
-#include "cpu_renderer/cpu_interface.h" // CPU renderer interface (multithreaded C++)
-#include "gpu/optix/optix_interface.h"  // OptiX renderer interface (OptiX)
-#include "src/external/image_writer.h"  // PPM to PNG conversion utilities
-#include "src/TheRestOfYourLife/error_codes.h" // Centralized error code system
-#include "launcher/camera_path.h"        // Camera animation paths for video generation
-
-namespace {
-	/// Default rendering parameters
-	constexpr int kDefaultWidth = 600;
-	constexpr int kDefaultHeight = 600;
-	constexpr int kDefaultSamplesPerPixel = 500;
-	constexpr int kDefaultMaxDepth = 20;
-	constexpr int kDefaultSceneId = 0;  // Cornell Box
-
-	/// Cornell box center coordinates
-	constexpr double kCornellBoxCenter = 278.0;
-
-	/// Default camera position (outside front of Cornell box)
-	constexpr double kDefaultCameraX = 278.0;
-	constexpr double kDefaultCameraY = 278.0;
-	constexpr double kDefaultCameraZ = -800.0;  // Far back view for full scene
-
-	}
+#include "cpu_renderer/cpu_interface.h"
+#include "gpu/optix/optix_interface.h"
+#include "src/external/image_writer.h"
+#include "src/TheRestOfYourLife/error_codes.h"
+#include "launcher/camera_path.h"
+#include "launcher/launcher_args.h"   // Argument parsing
 
 int main(int argc, char** argv) {
-    std::cout << "========================================" << std::endl;
-    std::cout << "RAY TRACER LAUNCHER (Unified GPU/CPU)" << std::endl;
-    std::cout << "========================================" << std::endl;
+	std::cout << "========================================" << std::endl;
+	std::cout << "RAY TRACER LAUNCHER (Unified GPU/CPU)" << std::endl;
+	std::cout << "========================================" << std::endl;
 
-    // ========================================================================
-    // Command-Line Argument Parsing
-    // ========================================================================
-    // Parse flags: --gpu, --cpu, --output, --help
-    // Default to GPU mode (OptiX)
+	// Parse command-line arguments
+	LaunchArgs args;
+	if (!parse_launch_args(argc, argv, args)) {
+		return EXIT_SUCCESS;
+	}
 
-    bool use_gpu = true; // Default to GPU (OptiX)
-    bool force_cpu = false;
-    std::string custom_output_path;
-
-    // Video generation parameters
-    bool video_mode = false;
-    int video_frames = 120;  // Default: 120 frames
-    int video_fps = 30;      // Default: 30 FPS (4 second video)
-    std::string camera_path = "orbit";  // Default path type
-
-    // Track which argument indices have been consumed by flags
-    std::set<int> consumed_args;
-
-    for (int i = 1; i < argc; ++i) {
-        const std::string arg = argv[i];
-
-        // Force CPU rendering
-        if (arg == "--cpu" || arg == "-cpu") {
-            force_cpu = true;
-            use_gpu = false;
-            consumed_args.insert(i);
-        }
-        // Force GPU rendering
-        else if (arg == "--gpu" || arg == "-gpu") {
-            use_gpu = true;
-            force_cpu = false;
-            consumed_args.insert(i);
-        }
-        // Custom output path
-        else if ((arg == "--output" || arg == "-o") && i + 1 < argc) {
-            custom_output_path = argv[i + 1];
-            consumed_args.insert(i);
-            consumed_args.insert(i + 1);
-            ++i; // Skip next argument as it's the output path
-        }
-        // Video mode
-        else if (arg == "--video") {
-            video_mode = true;
-            consumed_args.insert(i);
-        }
-        // Video frames
-        else if ((arg == "--frames" || arg == "-f") && i + 1 < argc) {
-            try {
-                video_frames = std::stoi(argv[i + 1]);
-                consumed_args.insert(i);
-                consumed_args.insert(i + 1);
-                ++i;
-            } catch (const std::exception&) {
-                std::cerr << "Invalid frame count, using default\n";
-            }
-        }
-        // Video FPS
-        else if (arg == "--fps" && i + 1 < argc) {
-            try {
-                video_fps = std::stoi(argv[i + 1]);
-                consumed_args.insert(i);
-                consumed_args.insert(i + 1);
-                ++i;
-            } catch (const std::exception&) {
-                std::cerr << "Invalid FPS, using default\n";
-            }
-        }
-        // Camera path type
-        else if ((arg == "--camera-path" || arg == "-p") && i + 1 < argc) {
-            camera_path = argv[i + 1];
-            consumed_args.insert(i);
-            consumed_args.insert(i + 1);
-            ++i;
-        }
-        // Help message
-        else if (arg == "--help" || arg == "-h") {
-            std::cout << "Usage: " << argv[0] << " [--cpu|--gpu] [--output PATH] [width] [spp] [max_depth] [scene_id] [cam_x] [cam_y] [cam_z]\n";
-            std::cout << "  --cpu      : Force CPU rendering\n";
-            std::cout << "  --gpu      : Force GPU rendering (default)\n";
-            std::cout << "  --output,-o: Output file path (default: ./output/image.ppm)\n";
-            std::cout << "  --video    : Enable video generation mode (renders multiple frames)\n";
-            std::cout << "  --frames,-f: Number of frames for video (default: 120)\n";
-            std::cout << "  --fps      : Frames per second for video (default: 30)\n";
-            std::cout << "  --camera-path,-p: Camera animation path (orbit|linear|figure8|spiral, default: orbit)\n";
-            std::cout << "  --help,-h  : Show this help message\n";
-            std::cout << "  width      : Image width (default " << kDefaultWidth << ", square aspect)\n";
-            std::cout << "  spp        : Samples per pixel (default " << kDefaultSamplesPerPixel << ")\n";
-            std::cout << "  max_depth  : Max ray depth (default " << kDefaultMaxDepth << ")\n";
-            std::cout << "  scene_id   : Scene selector (0=Cornell Box, 1=Bouncing Spheres, etc., default " << kDefaultSceneId << ")\n";
-            std::cout << "  cam_x      : Camera X position (default " << kDefaultCameraX << ")\n";
-            std::cout << "  cam_y      : Camera Y position (default " << kDefaultCameraY << ")\n";
-            std::cout << "  cam_z      : Camera Z position (default " << kDefaultCameraZ << ")\n";
-            std::cout << "\nCamera always looks at Cornell box center: (" << kCornellBoxCenter << ", " << kCornellBoxCenter << ", " << kCornellBoxCenter << ")\n";
-            return EXIT_SUCCESS;
-        }
-    }
-
-    // ========================================================================
-    // Default Rendering Settings
-    // ========================================================================
-    // Cornell box is 555x555x555 units, so square aspect ratio is appropriate
-
-    int image_width = kDefaultWidth;    // Image width in pixels
-    int image_height = kDefaultHeight;  // Image height (1:1 aspect for Cornell box)
-    int samples_per_pixel = kDefaultSamplesPerPixel;  // Samples per pixel (anti-aliasing quality)
-    int max_ray_depth = kDefaultMaxDepth;  // Max ray bounce depth (lighting quality)
-    int scene_id = kDefaultSceneId;  // Scene selector (0=Cornell Box, 1=Bouncing Spheres, etc.)
-
-    // ========================================================================
-    // Interactive Mode (if no arguments provided)
-    // ========================================================================
-    // Allows user to customize settings via prompts
-
-    if (argc == 1) {
-        std::cout << "\n========================================" << std::endl;
-        std::cout << "INTERACTIVE MODE" << std::endl;
-        std::cout << "========================================" << std::endl;
-        std::cout << "Current settings:" << std::endl;
-        std::cout << "  Renderer: " << (use_gpu ? "GPU" : "CPU") << std::endl;
-        std::cout << "  Resolution: " << image_width << "x" << image_height << std::endl;
-        std::cout << "  Samples per pixel: " << samples_per_pixel << std::endl;
-        std::cout << "  Max ray depth: " << max_ray_depth << std::endl;
-        std::cout << "\nPress ENTER to render with these settings, or type 'custom' to change: ";
-
-        std::string response;
-        std::getline(std::cin, response);
-
-        // User typed 'custom' - enter customization prompts
-        if (response == "custom" || response == "c") {
-
-            // Renderer mode selection
-            std::cout << "\nRenderer mode (gpu/cpu) [" << (use_gpu ? "gpu" : "cpu") << "]: ";
-            std::getline(std::cin, response);
-            if (response == "cpu" || response == "c") {
-                use_gpu = false;
-            } else if (response == "gpu" || response == "g" || response.empty()) {
-                use_gpu = true;
-            }
-
-            // Resolution (square aspect ratio maintained)
-            std::cout << "Image width [" << image_width << "]: ";
-            std::getline(std::cin, response);
-            if (!response.empty()) {
-                try {
-                    image_width = std::stoi(response);
-                    image_height = image_width; // Maintain square aspect
-                } catch (const std::exception&) {
-                    std::cerr << "Invalid width, using default\n";
-                }
-            }
-
-            // Samples per pixel
-            std::cout << "Samples per pixel [" << samples_per_pixel << "]: ";
-            std::getline(std::cin, response);
-            if (!response.empty()) {
-                try {
-                    samples_per_pixel = std::stoi(response);
-                } catch (const std::exception&) {
-                    std::cerr << "Invalid sample count, using default\n";
-                }
-            }
-
-            // Max ray depth
-            std::cout << "Max ray depth [" << max_ray_depth << "]: ";
-            std::getline(std::cin, response);
-            if (!response.empty()) {
-                try {
-                    max_ray_depth = std::stoi(response);
-                } catch (const std::exception&) {
-                    std::cerr << "Invalid depth, using default\n";
-                }
-            }
-        }
-    }
+	// Unpack for readability in the rest of main
+	bool use_gpu            = args.use_gpu;
+	int  image_width        = args.image_width;
+	int  image_height       = args.image_height;
+	int  samples_per_pixel  = args.samples_per_pixel;
+	int  max_ray_depth      = args.max_ray_depth;
+	int  scene_id           = args.scene_id;
+	double cam_x            = args.cam_x;
+	double cam_y            = args.cam_y;
+	double cam_z            = args.cam_z;
+	bool video_mode         = args.video_mode;
+	int  video_frames       = args.video_frames;
+	int  video_fps          = args.video_fps;
+	std::string camera_path = args.camera_path;
 
     if (video_mode) {
         std::cout << "\n========================================" << std::endl;
@@ -249,79 +75,6 @@ int main(int argc, char** argv) {
     }
 
     // ========================================================================
-    // Parse Numeric Positional Arguments
-    // ========================================================================
-    // Command-line format: width spp depth scene_id cam_x cam_y cam_z
-    // All numeric arguments are collected into a vector for ordered parsing
-    // Uses std::stod() for floating-point camera coordinate support
-    // Skip arguments that were already consumed by flags
-
-    std::vector<double> numeric_args;
-    for (int i = 1; i < argc; ++i) {
-        // Skip arguments that were consumed by flags
-        if (consumed_args.count(i) > 0) {
-            continue;
-        }
-
-        const std::string arg = argv[i];
-        // Skip flag arguments (those starting with '--')
-        // But allow negative numbers like -800 (check if it's a number)
-        if (arg.size() >= 2 && arg[0] == '-' && arg[1] == '-') {
-            continue; // Skip flags like --gpu, --cpu, --output
-        }
-        // Try to parse as number (including negative numbers like -800)
-        try {
-            numeric_args.push_back(std::stod(arg));
-        } catch (const std::exception&) {
-            // Ignore non-numeric args (e.g., output path after --output)
-        }
-    }
-
-    // Apply numeric arguments in order:
-    // [0] = width (also sets height for square aspect)
-    // [1] = samples per pixel
-    // [2] = max ray depth
-    // [3] = scene ID
-    // [4] = camera X position
-    // [5] = camera Y position
-    // [6] = camera Z position
-
-    if (numeric_args.size() >= 1 && numeric_args[0] > 0) {
-        image_width = static_cast<int>(numeric_args[0]);
-        image_height = static_cast<int>(numeric_args[0]); // Keep square aspect ratio
-    }
-    if (numeric_args.size() >= 2 && numeric_args[1] > 0) {
-        samples_per_pixel = static_cast<int>(numeric_args[1]);
-    }
-    if (numeric_args.size() >= 3 && numeric_args[2] > 0) {
-        max_ray_depth = static_cast<int>(numeric_args[2]);
-    }
-    if (numeric_args.size() >= 4 && numeric_args[3] >= 0) {
-        scene_id = static_cast<int>(numeric_args[3]);
-    }
-
-    // ========================================================================
-    // Camera Position Configuration
-    // ========================================================================
-    // Default camera position: (278, 278, -800) - outside front of Cornell box
-    // lookat target is fixed at (278, 278, 278) in the renderer code
-    // User can override position via command-line args
-
-    double cam_x = kDefaultCameraX;
-    double cam_y = kDefaultCameraY;
-    double cam_z = kDefaultCameraZ;
-
-    // Override with command-line camera coordinates if provided
-    if (numeric_args.size() >= 7) {
-        cam_x = numeric_args[4];
-        cam_y = numeric_args[5];
-        cam_z = numeric_args[6];
-        std::cout << "[DEBUG] Parsed camera from args[4-6]: (" << cam_x << ", " << cam_y << ", " << cam_z << ")" << std::endl;
-    } else {
-        std::cout << "[DEBUG] Not enough args for camera, using defaults. numeric_args.size()=" << numeric_args.size() << std::endl;
-    }
-
-    // ========================================================================
     // Output Path Configuration
     // ========================================================================
     // Priority: command-line --output > default (./output/image.ppm)
@@ -329,9 +82,9 @@ int main(int argc, char** argv) {
 
     std::string out_path;
 
-    if (!custom_output_path.empty()) {
+    if (!args.custom_output_path.empty()) {
         // Use custom output path from command line
-        out_path = custom_output_path;
+        out_path = args.custom_output_path;
     } else {
         // Default: <executable_directory>/output/image.ppm
         std::filesystem::path exe_path = std::filesystem::absolute(argv[0]);

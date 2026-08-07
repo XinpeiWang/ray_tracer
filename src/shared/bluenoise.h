@@ -16,7 +16,7 @@
 //   // Use different `dimension` values for independent 1-D blue-noise samples.
 //==============================================================================
 
-#include "bluenoise_data.h"   // 48×128×128 uint16_t table
+#include "../data/bluenoise_data.h"   // 48×128×128 uint16_t table
 
 // blue_noise()
 //   tableIndex -- which of the 48 independent textures to sample (wraps mod 48)

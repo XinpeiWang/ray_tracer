@@ -13,7 +13,7 @@
 #include <gtest/gtest.h>
 #include <cmath>
 
-#include "../../src/shared/cie_data.h"
+#include "../../src/data/cie_data.h"
 #include "../../src/shared/spectral_math.h"
 
 static constexpr float kEps    = 1e-5f;

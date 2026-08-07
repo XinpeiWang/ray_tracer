@@ -33,7 +33,7 @@
 #include "sampled_spectrum.h"
 #include "spectrum_types.h"
 #include "spectral_math.h"
-#include "cie_data.h"
+#include "../data/cie_data.h"
 #include "rgb_colorspace.h"
 #include "square_matrix.h"
 #include "color_utils.h"

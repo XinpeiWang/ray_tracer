@@ -10,7 +10,7 @@
 #include "../../src/shared/sampled_spectrum.h"
 #include "../../src/shared/spectral_math.h"    // ToXYZ, LuminanceY, ToRGB, SpectrumToXYZ
 #include "../../src/shared/spectrum_types.h"   // ConstantSpectrum, DenselySampledSpectrum
-#include "../../src/shared/cie_data.h"         // GetCIE_X/Y/Z, kCIE_Y_integral
+#include "../../src/data/cie_data.h"         // GetCIE_X/Y/Z, kCIE_Y_integral
 #include "../../src/shared/rgb_colorspace.h"   // RGBColorSpace::sRGB()
 
 // Convenience aliases

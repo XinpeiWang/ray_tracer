@@ -13,7 +13,7 @@
 
 #include "../../src/shared/spectrum_types.h"
 #include "../../src/shared/spectral_math.h"
-#include "../../src/shared/cie_data.h"
+#include "../../src/data/cie_data.h"
 
 static constexpr float kEps    = 1e-5f;
 static constexpr float kRelTol = 0.01f;  // 1 % MC tolerance

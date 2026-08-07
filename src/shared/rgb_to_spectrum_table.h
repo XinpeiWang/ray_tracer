@@ -105,7 +105,7 @@ public:
 	}
 
 	// Singleton accessor for the sRGB table.
-	// Data is defined in src/shared/rgb_spectrum_table_data.cpp.
+	// Data is defined in src/data/rgb_spectrum_table_data.cpp.
 	static const RGBToSpectrumTable& sRGB();
 
 private:
@@ -115,7 +115,7 @@ private:
 
 // ---------------------------------------------------------------------------
 // External declarations for the sRGB table data defined in
-// src/shared/rgb_spectrum_table_data.cpp
+// src/data/rgb_spectrum_table_data.cpp
 // ---------------------------------------------------------------------------
 extern const float                         sRGBToSpectrumTable_Scale[RGBToSpectrumTable::kRes];
 extern const RGBToSpectrumTable::CoefficientArray sRGBToSpectrumTable_Data;

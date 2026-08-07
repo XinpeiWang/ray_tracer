@@ -49,7 +49,7 @@
 #endif
 #include <utility>
 
-#include "pmj02_data.h"   // 5 x 65536 x 2 uint32_t table
+#include "../data/pmj02_data.h"   // 5 x 65536 x 2 uint32_t table
 #include "bluenoise.h"    // blue_noise(dim, px, py)
 
 // ---------------------------------------------------------------------------
