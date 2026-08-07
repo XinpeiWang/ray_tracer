@@ -215,6 +215,7 @@
   </ItemGroup>
   <Target Name="CopyPTX" AfterTargets="Build;Rebuild">
     <Copy SourceFiles="$(SolutionDir)RayTracer_Package\optix_programs.ptx" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(SolutionDir)RayTracer_Package\wavefront_programs.ptx" DestinationFolder="$(OutDir)" SkipUnchangedFiles="true" Condition="Exists('$(SolutionDir)RayTracer_Package\wavefront_programs.ptx')" />
   </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>
