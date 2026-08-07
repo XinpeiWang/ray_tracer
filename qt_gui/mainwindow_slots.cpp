@@ -170,6 +170,11 @@ void MainWindow::onSceneChanged(int index) {
 	m_sceneInfoLabel->setText(infoText);
 	if (m_samplesSpinBox->value() == 100 || m_samplesSpinBox->value() == 200 || m_samplesSpinBox->value() == 500)
 		m_samplesSpinBox->setValue(info->recommended_spp);
+
+	// Auto-switch to CPU when scene doesn't support GPU
+	if (!info->gpu_supported && m_renderModeCombo->currentData().toBool()) {
+		m_renderModeCombo->setCurrentIndex(1); // index 1 = CPU
+	}
 }
 
 void MainWindow::onProgressUpdate(int percentage) {

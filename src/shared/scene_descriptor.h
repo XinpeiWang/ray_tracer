@@ -43,6 +43,20 @@ namespace SceneNames {
     constexpr const char* SubsurfaceSlab       = "Subsurface Slab";
     constexpr const char* DepthOfField         = "Depth of Field";
     constexpr const char* BilinearPatchScene   = "Bilinear Patch";
+    // pbrt-v4 light / camera / medium showcase scenes
+    constexpr const char* HdriSky              = "HDRI Sky";
+    constexpr const char* SpotlightCornell     = "Spotlight Cornell";
+    constexpr const char* DistantLightCornell  = "Distant Light Cornell";
+    constexpr const char* PointLightCornell    = "Point Light Cornell";
+    constexpr const char* GoniometricLight     = "Goniometric Light";
+    constexpr const char* ProjectionLight      = "Projection Light";
+    constexpr const char* HomogeneousMedium    = "Homogeneous Medium";
+    constexpr const char* CloudMedium          = "Cloud Medium";
+    constexpr const char* OrthographicCamera   = "Orthographic Camera";
+    constexpr const char* SphericalCamera      = "Spherical Camera";
+    constexpr const char* MeasuredBrdf         = "Measured BRDF";
+    constexpr const char* PortalInfiniteLight  = "Portal Infinite Light";
+    constexpr const char* RealisticCamera      = "Realistic Camera";
 } // namespace SceneNames
 
 struct SceneDesc {
@@ -131,6 +145,46 @@ inline const SceneDesc* get_all_scenes(int* out_count = nullptr) {
 		   "Medium",    200, false, false },
 		{ 23, SceneNames::BilinearPatchScene,
 		   "Cornell box with curved bilinear patch saddle surface (pbrt-v4 BilinearPatch shape)",
+		   "Medium",    200, false, false },
+		// pbrt-v4 light / camera / medium showcase scenes
+		{ 24, SceneNames::HdriSky,
+		   "Open scene lit by a procedural gradient sky (pbrt-v4 ImageInfiniteLight / sky_light)",
+		   "Medium",    200, false, false },
+		{ 25, SceneNames::SpotlightCornell,
+		   "Cornell box lit by a spotlight with smooth penumbra (pbrt-v4 SpotLight)",
+		   "Medium",    200, false, false },
+		{ 26, SceneNames::DistantLightCornell,
+		   "Cornell box lit by a parallel sun-like distant light (pbrt-v4 DistantLight)",
+		   "Medium",    200, false, false },
+		{ 27, SceneNames::PointLightCornell,
+		   "Cornell box lit by a single overhead point light with 1/r^2 falloff (pbrt-v4 PointLight)",
+		   "Medium",    200, false, false },
+		{ 28, SceneNames::GoniometricLight,
+		   "Cornell box lit by a goniometric (IES-profile) point light (pbrt-v4 GoniometricLight)",
+		   "Medium",    200, false, false },
+		{ 29, SceneNames::ProjectionLight,
+		   "Cornell box with a slide-projector beam casting a checkerboard pattern (pbrt-v4 ProjectionLight)",
+		   "Medium",    200, false, false },
+		{ 30, SceneNames::HomogeneousMedium,
+		   "Cornell box filled with a homogeneous scattering fog (pbrt-v4 HomogeneousMedium / HenyeyGreenstein)",
+		   "Slow",      300, false, false },
+		{ 31, SceneNames::CloudMedium,
+		   "Open scene with a procedural Perlin-noise cloud volume (pbrt-v4 CloudMedium)",
+		   "Slow",      300, false, false },
+		{ 32, SceneNames::OrthographicCamera,
+		   "Geometric showcase rendered with an orthographic (parallel-projection) camera (pbrt-v4 OrthographicCamera)",
+		   "Fast",      100, false, false },
+		{ 33, SceneNames::SphericalCamera,
+		   "360-degree equirectangular panorama from a spherical camera (pbrt-v4 SphericalCamera)",
+		   "Medium",    200, false, false },
+		{ 34, SceneNames::MeasuredBrdf,
+		   "Sphere cluster with measured BRDF material using tabulated RGL data (pbrt-v4 MeasuredBxDF)",
+		   "Medium",    200, false, false },
+		{ 35, SceneNames::PortalInfiniteLight,
+		   "Room scene with a portal window sampling the sky through a planar quad (pbrt-v4 PortalImageInfiniteLight)",
+		   "Slow",      300, false, false },
+		{ 36, SceneNames::RealisticCamera,
+		   "Spheres rendered through a thin-lens with realistic lens-element bokeh (pbrt-v4 RealisticCamera)",
 		   "Medium",    200, false, false },
 	};
 	static const int kCount = (int)(sizeof(kScenes) / sizeof(kScenes[0]));

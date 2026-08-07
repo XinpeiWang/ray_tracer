@@ -127,6 +127,15 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 				  << " lookfrom=(" << cam.lookfrom.x() << "," << cam.lookfrom.y() << "," << cam.lookfrom.z() << ")"
 				  << " lookat=(" << cc.lookat_x << "," << cc.lookat_y << "," << cc.lookat_z << ")" << std::endl;
 
+		// Apply optional sky light and punctual lights from scene descriptor
+		if (scene_desc->build_sky)
+			cam.sky = scene_desc->build_sky();
+		if (scene_desc->build_punct)
+			cam.punct_lights = scene_desc->build_punct();
+		// Apply optional alternate camera model from scene descriptor
+		if (scene_desc->setup_camera)
+			scene_desc->setup_camera(cam);
+
 		// ====================================================================
 		// Output Path Handling
 		// ====================================================================

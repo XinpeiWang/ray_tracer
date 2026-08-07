@@ -20,6 +20,7 @@
 #include "../shared/path_sampler.h"
 #include "../shared/sobol_sampler.h"
 #include "../shared/filter.h"
+#include "../shared/cameras.h"
 #include <fstream>
 #include <iostream>
 #include <cstdlib>
@@ -56,6 +57,11 @@ class camera {
 
     double defocus_angle = 0;  // Variation angle of rays through each pixel
     double focus_dist = 10;    // Distance from camera lookfrom point to plane of perfect focus
+
+    // Alternate camera models (pbrt-v4 cameras.h). When set, overrides default perspective.
+    shared_ptr<OrthographicCamera<double>> alt_ortho_cam;
+    shared_ptr<SphericalCamera<double>>    alt_spherical_cam;
+    shared_ptr<RealisticCamera<double>>    alt_realistic_cam;
 
     int    image_height = 0;         // Rendered image height (set by initialize())
     point3 center;                   // Camera center (set by initialize())
@@ -316,6 +322,23 @@ class camera {
     // Overload accepting a pre-computed sub-pixel offset (avoids double Halton evaluation
     // when the caller already has the offset for filter weight computation).
     ray get_ray(int i, int j, int /*s_i*/, int /*s_j*/, const vec3& offset) const {
+        // If an alternate camera model is set, delegate ray generation to it.
+        if (alt_ortho_cam || alt_spherical_cam || alt_realistic_cam) {
+            CameraSample<double> cs;
+            cs.pFilm_x = i + offset.x() + 0.5;
+            cs.pFilm_y = j + offset.y() + 0.5;
+            cs.pLens_u = random_double();
+            cs.pLens_v = random_double();
+            cs.time    = random_double();
+            CameraRayResult<double> res;
+            if (alt_ortho_cam)     res = alt_ortho_cam->generate_ray(cs);
+            else if (alt_spherical_cam) res = alt_spherical_cam->generate_ray(cs);
+            else                   res = alt_realistic_cam->generate_ray(cs);
+            point3 ro(res.origin.x, res.origin.y, res.origin.z);
+            vec3   rd(res.direction.x, res.direction.y, res.direction.z);
+            return ray(ro, rd, cs.time);
+        }
+
         auto pixel_sample = pixel00_loc
                           + ((i + offset.x()) * pixel_delta_u)
                           + ((j + offset.y()) * pixel_delta_v);

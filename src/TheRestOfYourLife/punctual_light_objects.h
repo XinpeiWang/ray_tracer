@@ -26,6 +26,8 @@
 #include "rtweekend.h"
 #include "hittable.h"
 #include "../shared/punctual_lights.h"
+#include "../shared/goniometric_light.h"
+#include "../shared/projection_light.h"
 
 #include <vector>
 #include <memory>
@@ -148,6 +150,69 @@ class distant_light_obj {
 };
 
 // ---------------------------------------------------------------------------
+// 4. CPU goniometric_light_obj  (wraps GoniometricLight<double>)
+// ---------------------------------------------------------------------------
+class goniometric_light_obj {
+  public:
+	goniometric_light_obj(const point3& pos, const color& intensity, double scale,
+						  const double id[9],
+						  const std::vector<double>& image, int nu, int nv) {
+		data = GoniometricLight<double>::make(
+			pos.x(), pos.y(), pos.z(),
+			id,
+			intensity.x(), intensity.y(), intensity.z(),
+			scale,
+			image, nu, nv
+		);
+	}
+
+	PunctualLiSample sample_direct(const point3& p) const {
+		double Lr, Lg, Lb, wx, wy, wz;
+		data.sample_li(p.x(), p.y(), p.z(), Lr, Lg, Lb, wx, wy, wz);
+		double dx = data.pos_x - p.x(), dy = data.pos_y - p.y(), dz = data.pos_z - p.z();
+		double dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+		return { color(Lr, Lg, Lb), vec3(wx, wy, wz), 1.0, dist };
+	}
+
+	double power() const { return data.power(); }
+
+  private:
+	GoniometricLight<double> data;
+};
+
+// ---------------------------------------------------------------------------
+// 5. CPU projection_light_obj  (wraps ProjectionLight<double>)
+// ---------------------------------------------------------------------------
+class projection_light_obj {
+  public:
+	projection_light_obj(const point3& pos, double scale,
+						 const double wtl[9],
+						 double fov_deg,
+						 const std::vector<double>& image_rgb, int nx, int ny) {
+		data = ProjectionLight<double>::make(
+			pos.x(), pos.y(), pos.z(),
+			wtl,
+			scale,
+			fov_deg,
+			image_rgb, nx, ny
+		);
+	}
+
+	PunctualLiSample sample_direct(const point3& p) const {
+		double Lr, Lg, Lb, wx, wy, wz;
+		data.sample_li(p.x(), p.y(), p.z(), Lr, Lg, Lb, wx, wy, wz);
+		double dx = data.pos_x - p.x(), dy = data.pos_y - p.y(), dz = data.pos_z - p.z();
+		double dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+		return { color(Lr, Lg, Lb), vec3(wx, wy, wz), 1.0, dist };
+	}
+
+	double power() const { return data.power(); }
+
+  private:
+	ProjectionLight<double> data;
+};
+
+// ---------------------------------------------------------------------------
 // punctual_light_list -- heterogeneous container of all punctual lights.
 // Call sample_all_direct() in the integrator NEE loop.
 // ---------------------------------------------------------------------------
@@ -165,18 +230,46 @@ class punctual_light_list {
 		distants.emplace_back(dir, radiance, scene_radius, scale);
 	}
 
-	bool empty() const { return points.empty() && spots.empty() && distants.empty(); }
+	// Add a goniometric (IES-profile) point light.
+	// id[9]: row-major 3x3 world-to-light rotation.
+	// ir,ig,ib: base emission colour; gonio pattern modulates this per-direction.
+	// image: nu*nv greyscale values (row-major); nullptr or empty = uniform.
+	void add_gonio(const point3& pos, const color& intensity, double scale,
+				   const double id[9],
+				   const std::vector<double>& image, int nu, int nv) {
+		gonios.emplace_back(pos, intensity, scale, id, image, nu, nv);
+	}
+
+	// Add a projection light (slide-projector frustum).
+	// wtl[9]: row-major 3x3 world-to-light rotation.
+	// fov_deg: full vertical field-of-view.
+	// image_rgb: nx*ny*3 doubles (R,G,B per pixel, row-major).
+	void add_projection(const point3& pos, double scale,
+						const double wtl[9],
+						double fov_deg,
+						const std::vector<double>& image_rgb, int nx, int ny) {
+		projections.emplace_back(pos, scale, wtl, fov_deg, image_rgb, nx, ny);
+	}
+
+	bool empty() const {
+		return points.empty() && spots.empty() && distants.empty()
+			&& gonios.empty() && projections.empty();
+	}
 
 	// Iterate all lights; integrator calls this from NEE block.
 	// Callback: void fn(const PunctualLiSample&)
 	template<typename Fn>
 	void for_each_sample(const point3& shading_p, Fn&& fn) const {
-		for (const auto& l : points)   fn(l.sample_direct(shading_p));
-		for (const auto& l : spots)    fn(l.sample_direct(shading_p));
-		for (const auto& l : distants) fn(l.sample_direct(shading_p));
+		for (const auto& l : points)      fn(l.sample_direct(shading_p));
+		for (const auto& l : spots)       fn(l.sample_direct(shading_p));
+		for (const auto& l : distants)    fn(l.sample_direct(shading_p));
+		for (const auto& l : gonios)      fn(l.sample_direct(shading_p));
+		for (const auto& l : projections) fn(l.sample_direct(shading_p));
 	}
 
 	std::vector<point_light_obj>   points;
 	std::vector<spot_light_obj>    spots;
 	std::vector<distant_light_obj> distants;
+	std::vector<goniometric_light_obj> gonios;
+	std::vector<projection_light_obj>  projections;
 };
