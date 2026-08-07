@@ -3,17 +3,45 @@
 
 #include <QString>
 #include <QMap>
+#include <QStringList>
+#include "scene_descriptor.h"
 
 // ============================================================================
 // Qt GUI Error Handler
 // ============================================================================
 // Maps numeric error codes to user-friendly messages and troubleshooting hints
 // for display in the GUI when renders fail.
-// 
+//
 // This is a Qt-compatible wrapper around the C++ error_codes.h system
 // ============================================================================
 
 namespace ErrorHandler {
+
+// Scene-count/GPU-support text below is generated from get_all_scenes()
+// rather than hardcoded, so it can't go stale the way it did previously
+// (this file said "Scene ID must be between 0 and 8" and separately
+// "0-36" for the same error code, and claimed GPU support for only 4 of
+// the 11 GPU-capable scenes while the total scene count had grown from
+// 9 to 37).
+
+// Highest valid scene ID (scene count - 1).
+inline int maxSceneId() {
+	int count = 0;
+	get_all_scenes(&count);
+	return count > 0 ? count - 1 : 0;
+}
+
+// "0 (Cornell Box), 2 (Checkered Spheres), ..." for every GPU-supported scene.
+inline QString gpuSupportedSceneList() {
+	int count = 0;
+	const SceneDesc* scenes = get_all_scenes(&count);
+	QStringList parts;
+	for (int i = 0; i < count; ++i) {
+		if (scenes[i].gpu_supported)
+			parts << QString("%1 (%2)").arg(scenes[i].id).arg(scenes[i].name);
+	}
+	return parts.join(", ");
+}
 
 // Get user-friendly error title
 inline QString getErrorTitle(int errorCode) {
@@ -74,6 +102,11 @@ inline QString getErrorTitle(int errorCode) {
 
 // Get detailed error message
 inline QString getErrorMessage(int errorCode) {
+	// Scene count grows over time, so this one is built from the live scene
+	// table instead of living in the static map below.
+	if (errorCode == 11)
+		return QString("Scene ID must be between 0 and %1. Check the scene selector.").arg(maxSceneId());
+
 	static const QMap<int, QString> messages = {
 		{0, "Render completed successfully."},
 		{1, "An unknown error occurred during rendering."},
@@ -83,7 +116,6 @@ inline QString getErrorMessage(int errorCode) {
 		{8, "Image dimensions must be positive integers (recommended: 400-1920)."},
 		{9, "Samples per pixel must be greater than 0 (recommended: 10-500)."},
 		{10, "Maximum ray depth must be greater than 0 (recommended: 10-100)."},
-		{11, "Scene ID must be between 0 and 8. Check the scene selector."},
 		{100, "Failed to construct the scene geometry."},
 		{101, "The scene contains no objects to render."},
 		{103, "An error occurred while rendering the image."},
@@ -105,6 +137,20 @@ inline QString getErrorMessage(int errorCode) {
 
 // Get troubleshooting hint
 inline QString getTroubleshootingHint(int errorCode) {
+	// Both of these depend on the live scene table (total count / which
+	// scenes are GPU-supported), so they're built here instead of hardcoded
+	// in the static map below.
+	if (errorCode == 11) {
+		return QString("• Valid scenes are 0-%1 — check the Scene dropdown in the Basic Settings tab\n"
+			"• Use CPU renderer for scenes that are not GPU-supported").arg(maxSceneId());
+	}
+	if (errorCode == 211) {
+		return QString("• GPU supports scenes: %1\n"
+			"• Switch to CPU mode for all other scenes\n"
+			"• CPU mode supports all %2 scenes")
+			.arg(gpuSupportedSceneList()).arg(maxSceneId() + 1);
+	}
+
 	static const QMap<int, QString> hints = {
 		{5, "• Check that the output directory exists and is writable\n"
 			"• Make sure you have enough disk space\n"
@@ -116,9 +162,6 @@ inline QString getTroubleshootingHint(int errorCode) {
 		{9, "• For quick previews, use 10-50 samples\n"
 			"• For final renders, use 100-500 samples\n"
 			"• More samples = better quality but slower"},
-
-		{11, "• Valid scenes are 0-36 — check the Scene dropdown in the Basic Settings tab\n"
-			"• Use CPU renderer for scenes that are not GPU-supported"},
 
 		{100, "• Some scenes require texture files (e.g., earthmap.jpg)\n"
 			 "• Make sure all required files are in the correct location"},
@@ -141,11 +184,7 @@ inline QString getTroubleshootingHint(int errorCode) {
 		{208, "• GPU ran out of memory\n"
 			  "• Try smaller resolution (e.g., 800×800)\n"
 			  "• Try fewer samples (e.g., 50)\n"
-			  "• Switch to CPU mode for large scenes"},
-
-		{211, "• GPU supports scenes: 0 (Cornell Box), 2 (Checkered Spheres), 5 (Colored Quads), 10 (Cornell Rough Metal)\n"
-			  "• Switch to CPU mode for all other scenes\n"
-			  "• CPU mode supports all 11 scenes"}
+			  "• Switch to CPU mode for large scenes"}
 	};
 
 	if (hints.contains(errorCode)) {

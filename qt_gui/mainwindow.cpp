@@ -56,11 +56,12 @@ void RenderThread::setVideoParameters(bool enabled, int frames, int fps, const Q
 }
 
 void RenderThread::stopRender() {
-	if (m_renderProcess && m_renderProcess->state() == QProcess::Running) {
-		emit logMessage("Stopping render...");
-		m_renderProcess->kill();
-		m_renderProcess->waitForFinished(3000); // Wait up to 3 seconds
-	}
+	// Called from the GUI thread. m_renderProcess is created and owned by the
+	// worker thread (see run()), so it must not be touched from here - just
+	// flag the request and let run()'s polling loop do the actual kill() on
+	// its own thread.
+	emit logMessage("Stopping render...");
+	m_stopRequested.store(true, std::memory_order_relaxed);
 }
 
 void RenderThread::run() {
@@ -178,6 +179,13 @@ void RenderThread::run() {
 	QString accumulatedOutput;
 
 	while (m_renderProcess->state() == QProcess::Running) {
+		if (m_stopRequested.load(std::memory_order_relaxed)) {
+			// This thread owns m_renderProcess (created above), so it's the
+			// only one allowed to call kill() on it.
+			m_renderProcess->kill();
+			m_renderProcess->waitForFinished(3000); // Wait up to 3 seconds
+			break;
+		}
 		m_renderProcess->waitForReadyRead(50); // Check more frequently
 		QByteArray rawData = m_renderProcess->readAll();
 
@@ -205,7 +213,7 @@ void RenderThread::run() {
 						// Scale rendering to 0-90%
 						int progress = (totalFrames > 0) ? (currentFrame * 90) / totalFrames : 0;
 						progress = std::max(0, std::min(progress, 90)); // Clamp to 0-90
-						if (progress != lastProgress && progress >= lastProgress) {
+						if (progress > lastProgress) {
 							emit progressUpdate(progress);
 							lastProgress = progress;
 						}
@@ -218,7 +226,7 @@ void RenderThread::run() {
 						// Scale assembly to 90-100%
 						int progress = 90 + ((totalFrames > 0) ? (writtenFrames * 10) / totalFrames : 0);
 						progress = std::max(90, std::min(progress, 100)); // Clamp to 90-100
-						if (progress != lastProgress && progress >= lastProgress) {
+						if (progress > lastProgress) {
 							emit progressUpdate(progress);
 							lastProgress = progress;
 						}
@@ -232,7 +240,7 @@ void RenderThread::run() {
 						int completed = totalScanlines - remaining;
 						int progress = (totalScanlines > 0) ? (completed * 100) / totalScanlines : 0;
 						progress = std::max(0, std::min(progress, 100)); // Clamp to 0-100
-						if (progress != lastProgress && progress >= lastProgress) { // Only update forward
+						if (progress > lastProgress) { // Only update forward
 							emit progressUpdate(progress);
 							lastProgress = progress;
 						}
@@ -251,7 +259,7 @@ void RenderThread::run() {
 						int completed = totalScanlines - remaining;
 						int progress = (totalScanlines > 0) ? (completed * 100) / totalScanlines : 0;
 						progress = std::max(0, std::min(progress, 100));
-						if (progress != lastProgress && progress >= lastProgress) {
+						if (progress > lastProgress) {
 							emit progressUpdate(progress);
 							lastProgress = progress;
 						}
@@ -300,8 +308,12 @@ void RenderThread::run() {
 		.arg(exitStatus == QProcess::NormalExit ? "Normal" : "Crash")
 		.arg(elapsedStr));
 
-	// Check if process was killed (user stopped it)
-	bool wasKilled = (exitStatus == QProcess::CrashExit && exitCode != 0);
+	// Whether this was a user-requested stop, tracked explicitly via
+	// m_stopRequested rather than inferred from exit status/code - a real
+	// crash (e.g. access violation) also produces CrashExit + a nonzero exit
+	// code on Windows, so that heuristic can't tell the two apart and used to
+	// mislabel genuine crashes as "stopped by user", hiding the error dialog.
+	bool wasKilled = m_stopRequested.load(std::memory_order_relaxed);
 
 	// Clean up process
 	m_renderProcess->deleteLater();
@@ -309,15 +321,6 @@ void RenderThread::run() {
 
 	if (wasKilled) {
 		emit logMessage("Result: STOPPED BY USER");
-
-		// Show user-friendly error dialog for crashes
-		QString errorTitle = ErrorHandler::getErrorTitle(exitCode);
-		QString errorMessage = ErrorHandler::getErrorMessage(exitCode);
-		QString hint = ErrorHandler::getTroubleshootingHint(exitCode);
-
-		emit logMessage(QString("Error Category: %1").arg(ErrorHandler::getCategoryName(exitCode)));
-		emit logMessage(QString("Error: %1").arg(errorTitle));
-
 		emit renderComplete(false, "Render stopped by user", totalTime, QString());
 	} else if (exitCode == 0) {
 		// Determine actual output path (default if not specified)

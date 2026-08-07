@@ -18,6 +18,7 @@
 #include <QEvent>
 #include <QTimer>
 #include <QDateTime>
+#include <atomic>
 
 // ============================================================================
 // WheelIgnoreFilter
@@ -88,7 +89,12 @@ private:
 	double m_camZ;          // Camera Z coordinate
 
 	QString m_outputPath;   // Output file path for rendered image
-	QProcess *m_renderProcess; // Subprocess handle for ray_tracer.exe
+	QProcess *m_renderProcess; // Subprocess handle for ray_tracer.exe (owned by the worker thread - run())
+
+	// Set by stopRender() (called from the GUI thread) and polled from run() (the
+	// worker thread) so the process is only ever killed by the thread that owns it,
+	// and so a genuine crash can be told apart from a user-requested stop.
+	std::atomic<bool> m_stopRequested{false};
 
 	// Video generation parameters
 	bool m_videoMode;       // true = video generation, false = single image

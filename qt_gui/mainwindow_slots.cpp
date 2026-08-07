@@ -144,10 +144,14 @@ void MainWindow::onCameraPresetChanged(int index) {
 	m_cameraPosY->setEnabled(isCustom);
 	m_cameraPosZ->setEnabled(isCustom);
 
-	// Update spinbox values to reflect the selected preset's camera position
-	// This happens even when spinboxes are disabled, so user can see the coordinates
+	// Update spinbox values to reflect the selected preset's camera position.
+	// Skip this for Custom: its stored itemData is just a fixed starting
+	// point, and overwriting the spinboxes here would silently discard
+	// whatever position the user already typed in whenever they switch away
+	// from Custom and back. Non-Custom presets always show their own fixed
+	// position, so overwriting is correct (and expected) for those.
 	// QVector3D is stored in each combo box item's data as a QVariant
-	if (index >= 0 && index < m_cameraPresetCombo->count()) {
+	if (!isCustom && index >= 0 && index < m_cameraPresetCombo->count()) {
 		QVector3D pos = m_cameraPresetCombo->itemData(index).value<QVector3D>();
 		m_cameraPosX->setValue(pos.x());
 		m_cameraPosY->setValue(pos.y());
