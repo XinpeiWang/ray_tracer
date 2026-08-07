@@ -204,6 +204,35 @@
     <ClCompile Include="unit\mlt_tests.cpp" />
     <ClCompile Include="unit\sppm_tests.cpp" />
     <ClCompile Include="unit\vol_path_tests.cpp" />
+    <ClCompile Include="unit\bilinear_patch_tests.cpp" />
+    <ClCompile Include="unit\bssrdf_vol_path_tests.cpp" />
+    <ClCompile Include="unit\bvh_aggregate_tests.cpp" />
+    <ClCompile Include="unit\cloud_medium_tests.cpp" />
+    <ClCompile Include="unit\curve_shape_tests.cpp" />
+    <ClCompile Include="unit\exhaustive_light_sampler_tests.cpp" />
+    <ClCompile Include="unit\function_integrator_tests.cpp" />
+    <ClCompile Include="unit\goniometric_light_tests.cpp" />
+    <ClCompile Include="unit\homogeneous_medium_tests.cpp" />
+    <ClCompile Include="unit\interval_vec_tests.cpp" />
+    <ClCompile Include="unit\kd_tree_tests.cpp" />
+    <ClCompile Include="unit\light_path_tests.cpp" />
+    <ClCompile Include="unit\measured_material_tests.cpp" />
+    <ClCompile Include="unit\microfacet_tests.cpp" />
+    <ClCompile Include="unit\path_integrator_tests.cpp" />
+    <ClCompile Include="unit\path_regularization_tests.cpp" />
+    <ClCompile Include="unit\portal_image_infinite_light_tests.cpp" />
+    <ClCompile Include="unit\procedural_textures_tests.cpp" />
+    <ClCompile Include="unit\projection_light_tests.cpp" />
+    <ClCompile Include="unit\punctual_lights_tests.cpp" />
+    <ClCompile Include="unit\realistic_camera_tests.cpp" />
+    <ClCompile Include="unit\restir_tests.cpp" />
+    <ClCompile Include="unit\sample_function_tests.cpp" />
+    <ClCompile Include="unit\sampling_inversion_tests.cpp" />
+    <ClCompile Include="unit\simple_path_tests.cpp" />
+    <ClCompile Include="unit\simple_vol_path_tests.cpp" />
+    <ClCompile Include="unit\sphere_cone_sampling_tests.cpp" />
+    <ClCompile Include="unit\uniform_light_sampler_tests.cpp" />
+    <ClCompile Include="unit\utility_integrators_tests.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\cpu_renderer\cpu_renderer.vcxproj">

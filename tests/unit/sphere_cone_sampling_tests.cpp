@@ -34,6 +34,8 @@
 
 #include <gtest/gtest.h>
 #include "../../src/shared/sampling.h"
+#include "../../src/shared/mis_sampling.h"
+#include "../../src/shared/sampling_sphere_cone.h"
 #include <cmath>
 #include <limits>
 
