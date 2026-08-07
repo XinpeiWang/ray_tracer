@@ -131,11 +131,21 @@ The solution contains the following projects:
 
 - **Visual Studio 2022 or 2026** with C++ development tools
 - **CUDA Toolkit 12.x+** (for OptiX runtime)
-  - Set environment variable: `CudaToolkitPath=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.x`
 - **NVIDIA OptiX SDK 9.1+**
-  - Set environment variable: `OptixSdkPath=C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.1.0`
 - **NVIDIA GPU** with OptiX support (RTX series recommended)
 - **NVIDIA Driver 595.79+** for Blackwell architecture (e.g., RTX 5080)
+
+`build_optix.targets` auto-detects both SDKs — it checks the standard
+`CUDA_PATH`/`OPTIX_SDK_PATH` environment variables the installers set, then
+falls back to their default install locations. You only need to set
+`CudaToolkitPath` / `OptixSdkPath` yourself (as MSBuild properties, e.g.
+`msbuild ... /p:CudaToolkitPath=...`) if you have multiple CUDA versions
+installed or a non-standard install path:
+```powershell
+msbuild ray_tracer.sln /p:Configuration=Release /p:Platform=x64 `
+  /p:CudaToolkitPath="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.x" `
+  /p:OptixSdkPath="C:\ProgramData\NVIDIA Corporation\OptiX SDK 9.1.0"
+```
 
 ### Optional
 

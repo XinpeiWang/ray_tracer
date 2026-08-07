@@ -4,4 +4,18 @@
 	<!-- Hint that launcher is the main executable -->
 	<IsStartupProject Condition="'$(MSBuildProjectName)' == 'launcher'">true</IsStartupProject>
   </PropertyGroup>
+
+  <!--
+    /FS (Force Synchronous PDB Writes): the solution builds multiple projects
+    in parallel (scripts\build_all.ps1 and build_all.bat both pass /m), and
+    without /FS concurrent cl.exe processes writing to a shared .pdb can
+    corrupt it (LNK1103 "debugging information corrupt", LNK4020). Applies
+    to every project by default; projects that already set their own
+    AdditionalOptions/%(AdditionalOptions) pick this up automatically.
+  -->
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+  </ItemDefinitionGroup>
 </Project>
