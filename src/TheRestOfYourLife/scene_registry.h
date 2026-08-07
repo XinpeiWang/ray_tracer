@@ -143,7 +143,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             9, SceneNames::RoughMetalSpheres,
             "Five GGX spheres roughness 0.05 to 0.8 -- showcases microfacet BRDF",
-            "Medium", 200, false, false,
+            "Medium", 200, false, true,
             { 35, 0, 2.5, 10,  0, 1, 0,  0.10, 0.10, 0.12 },
             build_rough_metal_spheres,
             []() {

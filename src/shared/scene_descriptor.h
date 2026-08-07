@@ -103,7 +103,7 @@ inline const SceneDesc* get_all_scenes(int* out_count = nullptr) {
 		   "Very Slow", 500, false, false },
 		{  9, SceneNames::RoughMetalSpheres,
 		   "Five GGX spheres roughness 0.05 to 0.8 -- showcases microfacet BRDF",
-		   "Medium",    200, false, false },
+		   "Medium",    200, false, true  },
 		{ 10, SceneNames::CornellRoughMetal,
 		   "Cornell box with rough aluminum box and rough gold sphere",
 		   "Medium",    200, false, true  },
