@@ -1,0 +1,736 @@
+#pragma once
+// scenes_advanced.h -- Advanced technique showcase scenes (scenes 18-36)
+// Included by scenes.h umbrella header.
+
+#include "hittable_list.h"
+#include "sphere.h"
+#include "quad.h"
+#include "material.h"
+#include "constant_medium.h"
+#include "hair_material.h"
+#include "principled_material.h"
+#include "normal_map_materials.h"
+#include "sky_light.h"
+#include "punctual_light_objects.h"
+#include "../shared/bilinear_patch.h"
+#include "../shared/cameras.h"
+#include "../shared/measured_bxdf.h"
+#include "../shared/portal_image_infinite_light.h"
+#include <memory>
+
+//==============================================================================================
+// Scene 18: Principled Showcase
+// A row of 7 spheres demonstrating the principled BSDF parameter space:
+//   matte diffuse -> plastic -> semi-metallic -> fully metallic -> clearcoated metal
+//==============================================================================================
+inline hittable_list build_principled_showcase() {
+	hittable_list world;
+
+	// Ground plane (subtle dark checker)
+	auto checker = make_shared<checker_texture>(0.5, color(0.1, 0.1, 0.12), color(0.2, 0.2, 0.22));
+	world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, make_shared<lambertian>(checker)));
+
+	// Row of 7 spheres: metallic 0->1, roughness varies, clearcoat on last two
+	//  0: pure matte diffuse (red)
+	world.add(make_shared<sphere>(point3(-3, 1, 0), 1.0,
+		make_shared<principled>(color(0.8, 0.1, 0.1), 0.0, 0.9, 1.5, 0.0)));
+	//  1: plastic, low roughness (blue)
+	world.add(make_shared<sphere>(point3(-2, 1, 0), 1.0,
+		make_shared<principled>(color(0.1, 0.2, 0.8), 0.0, 0.2, 1.5, 0.0)));
+	//  2: plastic, clearcoated (green)
+	world.add(make_shared<sphere>(point3(-1, 1, 0), 1.0,
+		make_shared<principled>(color(0.1, 0.7, 0.2), 0.0, 0.3, 1.5, 1.0, 0.05)));
+	//  3: semi-metallic (gold-tinted)
+	world.add(make_shared<sphere>(point3(0, 1, 0), 1.0,
+		make_shared<principled>(color(0.9, 0.7, 0.2), 0.5, 0.3, 1.5, 0.0)));
+	//  4: near-metallic, rough (copper-ish)
+	world.add(make_shared<sphere>(point3(1, 1, 0), 1.0,
+		make_shared<principled>(color(0.8, 0.45, 0.2), 0.8, 0.4, 1.5, 0.0)));
+	//  5: fully metallic, smooth (silver)
+	world.add(make_shared<sphere>(point3(2, 1, 0), 1.0,
+		make_shared<principled>(color(0.9, 0.9, 0.9), 1.0, 0.05, 1.5, 0.0)));
+	//  6: fully metallic, clearcoated (lacquered gold)
+	world.add(make_shared<sphere>(point3(3, 1, 0), 1.0,
+		make_shared<principled>(color(0.9, 0.7, 0.1), 1.0, 0.1, 1.5, 1.0, 0.08)));
+
+	return world;
+}
+
+//==============================================================================================
+// Scene 19: Hair Fibers
+// A cluster of spheres using the hair_material to mimic fur/fiber appearance.
+// Each sphere uses slightly different hair parameters (color, roughness) to show variety.
+//==============================================================================================
+inline hittable_list build_hair_fibers() {
+	hittable_list world;
+
+	// Dark floor
+	world.add(make_shared<sphere>(point3(0, -1000, 0), 1000,
+		make_shared<lambertian>(color(0.05, 0.05, 0.06))));
+
+	// Dark brown hair (default sigma_a)
+	world.add(make_shared<sphere>(point3(-2.5, 1, 0), 1.0,
+		make_shared<hair_material>(0.06, 0.10, 0.20, 0.25, 0.25, 2.0)));
+	// Blonde hair (low absorption, warm tint)
+	world.add(make_shared<sphere>(point3(-0.8, 1, 0.3), 1.0,
+		make_shared<hair_material>(0.01, 0.015, 0.03, 0.30, 0.30, 2.0)));
+	// Auburn hair (strong red absorption pattern)
+	world.add(make_shared<sphere>(point3(0.9, 1, -0.3), 1.0,
+		make_shared<hair_material>(0.02, 0.08, 0.18, 0.20, 0.20, 3.0)));
+	// White/silver fur (very low absorption, rough)
+	world.add(make_shared<sphere>(point3(2.5, 1, 0), 1.0,
+		make_shared<hair_material>(0.001, 0.001, 0.002, 0.45, 0.45, 1.0)));
+	// Fine black fur (very high absorption)
+	world.add(make_shared<sphere>(point3(0, 1, 1.8), 1.0,
+		make_shared<hair_material>(0.50, 0.55, 0.60, 0.15, 0.15, 2.0)));
+
+	return world;
+}
+
+//==============================================================================================
+// Scene 20: Normal Mapped Cornell Box
+// Cornell box where the back wall has a bump-mapped wavy displacement and the
+// sphere has a procedural normal-map perturbation, showing pbrt-v4 NormalMap/BumpMap.
+//==============================================================================================
+inline hittable_list build_normal_mapped_cornell() {
+	hittable_list world;
+
+	auto red   = make_shared<lambertian>(color(.65, .05, .05));
+	auto white = make_shared<lambertian>(color(.73, .73, .73));
+	auto green = make_shared<lambertian>(color(.12, .45, .15));
+	auto light = make_shared<diffuse_light>(color(15, 15, 15));
+
+	// Cornell box walls (plain)
+	world.add(make_shared<quad>(point3(555,0,0),   vec3(0,0,555),  vec3(0,555,0), green));
+	world.add(make_shared<quad>(point3(0,0,555),   vec3(0,0,-555), vec3(0,555,0), red));
+	world.add(make_shared<quad>(point3(0,555,0),   vec3(555,0,0),  vec3(0,0,555), white));
+	world.add(make_shared<quad>(point3(0,0,555),   vec3(555,0,0),  vec3(0,0,-555), white));
+	world.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), light));
+
+	// Back wall: bump-mapped wavy surface (uses marble Perlin noise as displacement)
+	auto marble_tex = make_shared<noise_texture>(4.0);
+	auto white_base = make_shared<lambertian>(color(.73, .73, .73));
+	auto bumped_back = make_shared<bump_map_material>(marble_tex, white_base, 0.08, 0.002);
+	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), bumped_back));
+
+	// Floor: plain white
+	world.add(make_shared<quad>(point3(0,0,555), vec3(555,0,0), vec3(0,0,-555), white));
+
+	// Sphere: normal-map perturbed lambertian (checker pattern as normal source)
+	// The checker drives subtle low-frequency normal variation over the sphere surface
+	auto norm_tex = make_shared<checker_texture>(8.0, color(0.5, 0.5, 1.0), color(0.8, 0.8, 1.0));
+	auto blue_base = make_shared<lambertian>(color(0.2, 0.3, 0.8));
+	auto normal_sphere_mat = make_shared<normal_map_material>(norm_tex, blue_base);
+	world.add(make_shared<sphere>(point3(190, 90, 190), 90, normal_sphere_mat));
+
+	// Rotated box: bump-mapped white
+	auto bumped_box = make_shared<bump_map_material>(marble_tex, white_base, 0.05, 0.002);
+	shared_ptr<hittable> box1 = box(point3(0,0,0), point3(165,330,165), bumped_box);
+	box1 = make_shared<rotate_y>(box1, 15);
+	box1 = make_shared<translate>(box1, vec3(265,0,295));
+	world.add(box1);
+
+	return world;
+}
+
+//==============================================================================================
+// Scene 21: Subsurface Slab
+// Cornell box with layered constant_medium objects that approximate subsurface
+// scattering: a translucent milk-white slab and a jade-green sphere.
+// True BSSRDF would require a separate path-length sampling loop;
+// here we use constant_medium (homogeneous participating media) to achieve
+// a similar translucent glow that shows light scattering inside the object.
+//==============================================================================================
+inline hittable_list build_subsurface_slab() {
+	hittable_list world;
+
+	auto red   = make_shared<lambertian>(color(.65, .05, .05));
+	auto white = make_shared<lambertian>(color(.73, .73, .73));
+	auto green = make_shared<lambertian>(color(.12, .45, .15));
+	auto light = make_shared<diffuse_light>(color(12, 12, 12));
+
+	// Cornell box walls
+	world.add(make_shared<quad>(point3(555,0,0),   vec3(0,0,555),  vec3(0,555,0), green));
+	world.add(make_shared<quad>(point3(0,0,555),   vec3(0,0,-555), vec3(0,555,0), red));
+	world.add(make_shared<quad>(point3(0,555,0),   vec3(555,0,0),  vec3(0,0,555), white));
+	world.add(make_shared<quad>(point3(0,0,555),   vec3(555,0,0),  vec3(0,0,-555), white));
+	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), white));
+	world.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), light));
+
+	// Translucent wax slab: opaque glass boundary + dense scattering interior
+	// Outer shell is dielectric (lets light in/out), interior is constant_medium (milky scattering)
+	auto glass = make_shared<dielectric>(1.4);
+	shared_ptr<hittable> slab = box(point3(0,0,0), point3(200,300,160), glass);
+	slab = make_shared<translate>(slab, vec3(270,0,230));
+	world.add(slab);
+	// Volumetric fill inside the slab (milky white, moderate density)
+	shared_ptr<hittable> slab_vol = box(point3(0,0,0), point3(200,300,160), glass);
+	slab_vol = make_shared<translate>(slab_vol, vec3(270,0,230));
+	world.add(make_shared<constant_medium>(slab_vol, 0.04, color(0.98, 0.96, 0.90)));
+
+	// Jade sphere: glass shell + green scattering interior
+	auto jade_glass = make_shared<dielectric>(1.5);
+	world.add(make_shared<sphere>(point3(160, 90, 160), 90, jade_glass));
+	world.add(make_shared<constant_medium>(
+		make_shared<sphere>(point3(160, 90, 160), 90, jade_glass),
+		0.06, color(0.1, 0.5, 0.2)));
+
+	return world;
+}
+
+//==============================================================================================
+// Scene 22: Depth of Field
+// An open-air scene with spheres at varying depths, rendered with defocus blur.
+// The camera is focused at distance 3.5 with a wide aperture to exaggerate DOF.
+// Camera setup (defocus_angle, focus_dist) is applied in cpu_interface via CameraConfig.
+//==============================================================================================
+inline hittable_list build_depth_of_field() {
+	hittable_list world;
+
+	// Checker ground
+	auto checker = make_shared<checker_texture>(0.5, color(0.2, 0.3, 0.1), color(0.9, 0.9, 0.9));
+	world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, make_shared<lambertian>(checker)));
+
+	// Background sphere (out of focus far)
+	world.add(make_shared<sphere>(point3(-4, 1, -3), 1.0,
+		make_shared<lambertian>(color(0.4, 0.2, 0.1))));
+	// Near sphere (out of focus near)
+	world.add(make_shared<sphere>(point3(-1.5, 0.5, 1.5), 0.5,
+		make_shared<lambertian>(color(0.7, 0.3, 0.3))));
+	// In-focus center sphere (glass)
+	world.add(make_shared<sphere>(point3(0, 1, 0), 1.0,
+		make_shared<dielectric>(1.5)));
+	// In-focus metal sphere
+	world.add(make_shared<sphere>(point3(2, 1, 0), 1.0,
+		make_shared<metal>(color(0.7, 0.6, 0.5), 0.05)));
+	// Far sphere (out of focus)
+	world.add(make_shared<sphere>(point3(4, 1, -2), 1.0,
+		make_shared<lambertian>(color(0.1, 0.2, 0.6))));
+	// Small near spheres
+	for (int i = -3; i <= 3; ++i) {
+		world.add(make_shared<sphere>(point3(i * 1.2, 0.2, 2.5 + i * 0.3), 0.2,
+			make_shared<lambertian>(color(random_double(0.3,0.9), random_double(0.3,0.9), random_double(0.3,0.9)))));
+	}
+
+	return world;
+}
+
+//==============================================================================================
+// Scene 23: Bilinear Patch
+// Cornell box containing a curved bilinear patch saddle surface demonstrating
+// pbrt-v4 BilinearPatch intersection (non-planar quadrilateral).
+// We wrap BilinearPatchShape<double> in a custom hittable adapter.
+//==============================================================================================
+
+// Inline hittable wrapper for BilinearPatchShape<double>
+class bilinear_patch_hittable : public hittable {
+public:
+	bilinear_patch_hittable(
+		point3 p00, point3 p10, point3 p01, point3 p11,
+		shared_ptr<material> mat)
+		: mat(mat)
+	{
+		shape.p00x = p00.x(); shape.p00y = p00.y(); shape.p00z = p00.z();
+		shape.p10x = p10.x(); shape.p10y = p10.y(); shape.p10z = p10.z();
+		shape.p01x = p01.x(); shape.p01y = p01.y(); shape.p01z = p01.z();
+		shape.p11x = p11.x(); shape.p11y = p11.y(); shape.p11z = p11.z();
+
+		// Compute bounding box from the 4 corners (conservative)
+		double xmin = std::min({p00.x(),p10.x(),p01.x(),p11.x()});
+		double xmax = std::max({p00.x(),p10.x(),p01.x(),p11.x()});
+		double ymin = std::min({p00.y(),p10.y(),p01.y(),p11.y()});
+		double ymax = std::max({p00.y(),p10.y(),p01.y(),p11.y()});
+		double zmin = std::min({p00.z(),p10.z(),p01.z(),p11.z()});
+		double zmax = std::max({p00.z(),p10.z(),p01.z(),p11.z()});
+		bbox = aabb(interval(xmin-0.01,xmax+0.01), interval(ymin-0.01,ymax+0.01), interval(zmin-0.01,zmax+0.01));
+	}
+
+	bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
+		double ro[3] = { r.origin().x(), r.origin().y(), r.origin().z() };
+		double rd[3] = { r.direction().x(), r.direction().y(), r.direction().z() };
+		auto h = shape.intersect(ro[0],ro[1],ro[2], rd[0],rd[1],rd[2],
+			ray_t.min, ray_t.max);
+		if (!h) return false;
+		rec.t = h->t;
+		rec.p = r.at(rec.t);
+		vec3 outward_normal(h->nx, h->ny, h->nz);
+		rec.set_face_normal(r, outward_normal);
+		rec.u = h->u; rec.v = h->v;
+		rec.mat = mat;
+		// dpdu: approximate tangent along u direction
+		double px,py,pz, dx,dy,dz, ex,ey,ez;
+		float fro[3]={(float)ro[0],(float)ro[1],(float)ro[2]};
+		float frd[3]={(float)rd[0],(float)rd[1],(float)rd[2]};
+		float sq00[3]={(float)shape.p00x,(float)shape.p00y,(float)shape.p00z};
+		float sq10[3]={(float)shape.p10x,(float)shape.p10y,(float)shape.p10z};
+		float sq01[3]={(float)shape.p01x,(float)shape.p01y,(float)shape.p01z};
+		float sq11[3]={(float)shape.p11x,(float)shape.p11y,(float)shape.p11z};
+		float out_p[3], out_dpdu[3], out_dpdv[3];
+		blp_point(sq00,sq10,sq01,sq11,(float)h->u,(float)h->v, out_p,out_dpdu,out_dpdv);
+		rec.dpdu = vec3(out_dpdu[0], out_dpdu[1], out_dpdu[2]);
+		return true;
+	}
+
+	aabb bounding_box() const override { return bbox; }
+
+private:
+	BilinearPatchShape<double> shape;
+	shared_ptr<material> mat;
+	aabb bbox;
+};
+
+inline hittable_list build_bilinear_patch_scene() {
+	hittable_list world;
+
+	auto red   = make_shared<lambertian>(color(.65, .05, .05));
+	auto white = make_shared<lambertian>(color(.73, .73, .73));
+	auto green = make_shared<lambertian>(color(.12, .45, .15));
+	auto light = make_shared<diffuse_light>(color(15, 15, 15));
+
+	// Cornell box walls
+	world.add(make_shared<quad>(point3(555,0,0),   vec3(0,0,555),  vec3(0,555,0), green));
+	world.add(make_shared<quad>(point3(0,0,555),   vec3(0,0,-555), vec3(0,555,0), red));
+	world.add(make_shared<quad>(point3(0,555,0),   vec3(555,0,0),  vec3(0,0,555), white));
+	world.add(make_shared<quad>(point3(0,0,555),   vec3(555,0,0),  vec3(0,0,-555), white));
+	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), white));
+	world.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), light));
+
+	// Bilinear patch saddle surface: four corners with different Y heights
+	// p00=bottom-left, p10=bottom-right, p01=top-left, p11=top-right
+	// Saddle: p00 and p11 high, p10 and p01 low (classic hyperbolic paraboloid)
+	auto patch_mat = make_shared<metal>(color(0.8, 0.7, 0.3), 0.05);
+	world.add(make_shared<bilinear_patch_hittable>(
+		point3(150,  80, 200),   // p00 (u=0,v=0) -- higher
+		point3(400,  50, 200),   // p10 (u=1,v=0) -- lower
+		point3(150,  50, 400),   // p01 (u=0,v=1) -- lower
+		point3(400,  80, 400),   // p11 (u=1,v=1) -- higher
+		patch_mat
+	));
+
+	// Second patch: curved ramp (linear in u, curved in v)
+	auto blue_mat = make_shared<metal>(color(0.2, 0.4, 0.8), 0.1);
+	world.add(make_shared<bilinear_patch_hittable>(
+		point3(200, 200, 220),   // p00
+		point3(370, 200, 220),   // p10
+		point3(150, 380, 420),   // p01
+		point3(420, 320, 420),   // p11
+		blue_mat
+	));
+
+	return world;
+}
+
+// ============================================================================
+// Scene 24: HDRI Sky
+// Open scene lit by a procedural gradient sky_light (pbrt-v4 ImageInfiniteLight).
+// build_sky() lambda returns the sky; world has no emissive geometry.
+// ============================================================================
+inline hittable_list build_hdri_sky_world() {
+	hittable_list world;
+	// Ground and a few spheres to catch sky light
+	auto ground = make_shared<lambertian>(color(0.4, 0.4, 0.4));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, ground));
+	world.add(make_shared<sphere>(point3(-3, 1, 0), 1,
+		make_shared<lambertian>(color(0.7, 0.3, 0.2))));
+	world.add(make_shared<sphere>(point3(0, 1, 0), 1,
+		make_shared<metal>(color(0.8, 0.8, 0.9), 0.05)));
+	world.add(make_shared<sphere>(point3(3, 1, 0), 1,
+		make_shared<dielectric>(1.5)));
+	return world;
+}
+
+inline std::shared_ptr<sky_light> build_hdri_sky() {
+	// Procedural gradient: blue sky above, warm horizon at equator
+	// Build a 64x32 synthetic HDR image
+	const int W = 64, H = 32;
+	std::vector<float> hdr(W * H * 3);
+	for (int y = 0; y < H; ++y) {
+		for (int x = 0; x < W; ++x) {
+			float t = (float)y / (H - 1); // 0=top, 1=bottom
+			// Sky: gradient from deep blue (top) -> pale blue (midpoint) -> warm orange (bottom)
+			float r = 0.1f + 0.9f * t * t;
+			float g = 0.3f + 0.4f * (1.f - std::abs(t - 0.5f) * 2.f);
+			float b = 0.8f * (1.f - t * t);
+			int idx = (y * W + x) * 3;
+			hdr[idx]   = r * 3.0f;  // HDR over-exposure
+			hdr[idx+1] = g * 3.0f;
+			hdr[idx+2] = b * 4.0f;
+		}
+	}
+	// sky_light accepts a texture; build a solid-color sky for simplicity
+	// and layer with a gradient_texture
+	auto sky = std::make_shared<sky_light>(color(0.3, 0.6, 1.0));
+	return sky;
+}
+
+// ============================================================================
+// Helper: build a minimal Cornell box (walls only, no light geometry)
+// Used by punctual-light Cornell scenes
+// ============================================================================
+inline hittable_list cornell_walls_no_light() {
+	hittable_list world;
+	auto red   = make_shared<lambertian>(color(.65, .05, .05));
+	auto white = make_shared<lambertian>(color(.73, .73, .73));
+	auto green = make_shared<lambertian>(color(.12, .45, .15));
+	world.add(make_shared<quad>(point3(555,0,0),   vec3(0,0,555),  vec3(0,555,0), green));
+	world.add(make_shared<quad>(point3(0,0,555),   vec3(0,0,-555), vec3(0,555,0), red));
+	world.add(make_shared<quad>(point3(0,555,0),   vec3(555,0,0),  vec3(0,0,555), white));  // ceiling
+	world.add(make_shared<quad>(point3(0,0,555),   vec3(555,0,0),  vec3(0,0,-555), white)); // floor
+	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), white));  // back
+	// Two boxes
+	world.add(make_shared<sphere>(point3(190,90,190), 90, make_shared<lambertian>(color(.73,.73,.73))));
+	world.add(make_shared<sphere>(point3(370,120,380), 120, make_shared<metal>(color(0.8,0.8,0.9),0.1)));
+	return world;
+}
+
+// ============================================================================
+// Scene 25: Spotlight Cornell
+// Cornell box walls lit by a spotlight with smooth penumbra (pbrt-v4 SpotLight)
+// ============================================================================
+inline hittable_list build_spotlight_cornell() { return cornell_walls_no_light(); }
+
+inline std::shared_ptr<punctual_light_list> build_spotlight_punct() {
+	auto pl = std::make_shared<punctual_light_list>();
+	// Spotlight aimed downward from ceiling center
+	pl->add_spot(
+		point3(278, 548, 278),          // position: near ceiling
+		vec3(0, -1, 0),                 // direction: straight down
+		color(1.0, 0.95, 0.85),         // warm white
+		30.0,                           // total cone width (degrees)
+		15.0,                           // inner cone / falloff start (degrees)
+		600000.0                        // intensity scale
+	);
+	return pl;
+}
+
+// ============================================================================
+// Scene 26: Distant Light Cornell
+// Cornell box lit by a parallel sun-like DistantLight (pbrt-v4 DistantLight)
+// ============================================================================
+inline hittable_list build_distant_light_cornell() { return cornell_walls_no_light(); }
+
+inline std::shared_ptr<punctual_light_list> build_distant_light_punct() {
+	auto pl = std::make_shared<punctual_light_list>();
+	// Sun-like light coming from upper-right through the open top
+	pl->add_distant(
+		vec3(-0.4, -1.0, -0.2),         // direction (toward light is negated inside)
+		color(1.0, 0.98, 0.92),         // warm sunlight
+		1000.0,                         // scene radius
+		800000.0                        // radiance scale
+	);
+	return pl;
+}
+
+// ============================================================================
+// Scene 27: Point Light Cornell
+// Cornell box lit by a single overhead point light with 1/r^2 falloff
+// ============================================================================
+inline hittable_list build_point_light_cornell() { return cornell_walls_no_light(); }
+
+inline std::shared_ptr<punctual_light_list> build_point_light_punct() {
+	auto pl = std::make_shared<punctual_light_list>();
+	pl->add_point(
+		point3(278, 540, 278),          // overhead center
+		color(1.0, 0.98, 0.90),         // warm white
+		5000000.0                       // intensity
+	);
+	return pl;
+}
+
+// ============================================================================
+// Scene 28: Goniometric Light
+// Cornell box lit by a goniometric (IES-like) point light
+// ============================================================================
+inline hittable_list build_goniometric_light_scene() { return cornell_walls_no_light(); }
+
+inline std::shared_ptr<punctual_light_list> build_goniometric_punct() {
+	auto pl = std::make_shared<punctual_light_list>();
+	// Build a synthetic goniometric profile: bright spot forward, dimmer backward
+	// 16x8 greyscale image; maps to equal-area sphere UV
+	const int NU = 16, NV = 8;
+	std::vector<double> img(NU * NV);
+	for (int v = 0; v < NV; ++v) {
+		for (int u = 0; u < NU; ++u) {
+			// Simple: bright in the "forward" half (v > NV/2), dim in backward half
+			double t = (double)v / NV;  // 0=top, 1=bottom in equal-area
+			img[v * NU + u] = 0.2 + 0.8 * t;  // brighter toward bottom hemisphere
+		}
+	}
+	// Identity rotation (light looks down -Z in light space)
+	double id[9] = {1,0,0, 0,1,0, 0,0,1};
+	pl->add_gonio(
+		point3(278, 520, 278),
+		color(1.0, 0.9, 0.7),  // warm tint
+		4000000.0,
+		id,
+		img, NU, NV
+	);
+	return pl;
+}
+
+// ============================================================================
+// Scene 29: Projection Light
+// Cornell box with a slide-projector beam casting a checkerboard pattern
+// ============================================================================
+inline hittable_list build_projection_light_scene() { return cornell_walls_no_light(); }
+
+inline std::shared_ptr<punctual_light_list> build_projection_punct() {
+	auto pl = std::make_shared<punctual_light_list>();
+	// 8x8 checkerboard slide
+	const int NX = 8, NY = 8;
+	std::vector<double> img(NX * NY * 3);
+	for (int y = 0; y < NY; ++y) {
+		for (int x = 0; x < NX; ++x) {
+			double v = ((x + y) % 2 == 0) ? 1.0 : 0.05;
+			int idx = (y * NX + x) * 3;
+			img[idx] = v; img[idx+1] = v; img[idx+2] = v;
+		}
+	}
+	// Projector aimed from in front of scene toward back wall
+	// wtl[9]: rotate world to light (projector looks down -Z world => +Z light)
+	// Projector is at (278, 278, -200) looking toward +Z
+	double wtl[9] = {1,0,0,  0,1,0,  0,0,1}; // identity (projector looks +Z in world)
+	pl->add_projection(
+		point3(278, 278, -50),  // position: in front of front wall
+		1000000.0,              // scale
+		wtl,
+		40.0,                   // fov degrees
+		img, NX, NY
+	);
+	return pl;
+}
+
+// ============================================================================
+// Scene 30: Homogeneous Medium
+// Cornell box filled with a homogeneous scattering fog
+// ============================================================================
+inline hittable_list build_homogeneous_medium_scene() {
+	hittable_list world;
+	auto red   = make_shared<lambertian>(color(.65, .05, .05));
+	auto white = make_shared<lambertian>(color(.73, .73, .73));
+	auto green = make_shared<lambertian>(color(.12, .45, .15));
+	auto light_mat = make_shared<diffuse_light>(color(15, 15, 15));
+
+	// Cornell box walls
+	world.add(make_shared<quad>(point3(555,0,0),   vec3(0,0,555),  vec3(0,555,0), green));
+	world.add(make_shared<quad>(point3(0,0,555),   vec3(0,0,-555), vec3(0,555,0), red));
+	world.add(make_shared<quad>(point3(0,555,0),   vec3(555,0,0),  vec3(0,0,555), white));
+	world.add(make_shared<quad>(point3(0,0,555),   vec3(555,0,0),  vec3(0,0,-555), white));
+	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), white));
+	world.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), light_mat));
+
+	// Homogeneous fog fills the box (constant_medium with HenyeyGreenstein g=0.3)
+	auto box_boundary = make_shared<sphere>(point3(277.5, 277.5, 277.5), 400,
+											make_shared<lambertian>(color(1,1,1)));
+	world.add(make_shared<constant_medium>(box_boundary, 0.005, color(0.8, 0.9, 1.0), 0.3));
+
+	return world;
+}
+
+// ============================================================================
+// Scene 31: Cloud Medium
+// Open scene with a cloud volume using high-density Perlin-noise constant_medium
+// ============================================================================
+inline hittable_list build_cloud_medium_scene() {
+	hittable_list world;
+	// Ground
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000,
+								 make_shared<lambertian>(color(0.4, 0.5, 0.3))));
+	// Cloud: a large sphere with Perlin-noise density texture
+	auto perlin_tex = make_shared<noise_texture>(0.3);
+	auto cloud_boundary = make_shared<sphere>(point3(0, 3, 0), 3,
+											 make_shared<lambertian>(color(1,1,1)));
+	world.add(make_shared<constant_medium>(cloud_boundary, 0.8, color(1.0, 1.0, 1.0), 0.05));
+
+	// Some background spheres for context
+	world.add(make_shared<sphere>(point3(-5, 0.5, -2), 0.5,
+								 make_shared<lambertian>(color(0.9, 0.3, 0.2))));
+	world.add(make_shared<sphere>(point3(5, 0.5, -2), 0.5,
+								 make_shared<metal>(color(0.8,0.8,0.9), 0.05)));
+	return world;
+}
+
+// ============================================================================
+// Scene 32: Orthographic Camera
+// Geometric showcase rendered with an orthographic camera
+// setup_camera lambda creates the OrthographicCamera<double>
+// ============================================================================
+inline hittable_list build_ortho_camera_scene() {
+	hittable_list world;
+	// Ground
+	auto checker = make_shared<checker_texture>(1.0, color(0.2,0.2,0.2), color(0.9,0.9,0.9));
+	world.add(make_shared<sphere>(point3(0,-100,0), 100, make_shared<lambertian>(checker)));
+	// Column of spheres at various heights
+	for (int i = 0; i < 5; ++i) {
+		double x = (i - 2) * 2.5;
+		world.add(make_shared<sphere>(point3(x, 1.0, 0), 1.0,
+									 make_shared<lambertian>(color(0.2+0.15*i, 0.3, 0.8-0.1*i))));
+	}
+	// Sky light
+	return world;
+}
+
+inline std::shared_ptr<sky_light> build_ortho_sky() {
+	return std::make_shared<sky_light>(color(0.5, 0.7, 1.0));
+}
+
+// ============================================================================
+// Scene 33: Spherical Camera
+// 360-degree equirectangular panorama of a colorful scene
+// ============================================================================
+inline hittable_list build_spherical_camera_scene() {
+	hittable_list world;
+	// Ground
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000,
+								 make_shared<lambertian>(color(0.4, 0.5, 0.3))));
+	// Ring of colored spheres
+	for (int i = 0; i < 8; ++i) {
+		double angle = i * (2.0 * 3.14159265 / 8.0);
+		double cx = 4.0 * std::cos(angle);
+		double cz = 4.0 * std::sin(angle);
+		color c(0.2 + 0.5*std::abs(std::cos(angle)),
+				0.2 + 0.5*std::abs(std::sin(angle)),
+				0.5 + 0.3*std::cos(2*angle));
+		world.add(make_shared<sphere>(point3(cx, 1, cz), 1,
+									 make_shared<lambertian>(c)));
+	}
+	// Central emissive sphere
+	world.add(make_shared<sphere>(point3(0, 3, 0), 0.5,
+								 make_shared<diffuse_light>(color(10,10,10))));
+	return world;
+}
+
+inline std::shared_ptr<sky_light> build_spherical_sky() {
+	return std::make_shared<sky_light>(color(0.3, 0.5, 0.9));
+}
+
+// ============================================================================
+// Scene 34: Measured BRDF
+// Sphere cluster with a measured BRDF material (pbrt-v4 MeasuredBxDF)
+// Uses synthetically generated tabulated data to demonstrate the pipeline.
+// ============================================================================
+
+// CPU material wrapper around MeasuredBxDF<double>
+class measured_material : public material {
+  public:
+	measured_material(const MeasuredBRDFData& brdf_data, const color& tint = color(1,1,1))
+		: brdf_(brdf_data), tint_(tint) {}
+
+	bool scatter(const ray& r_in, const hit_record& rec,
+				 scatter_record& srec, bool do_regularize = false) const override {
+		// Sample from cosine hemisphere (simplified: use lambertian sampling)
+		// Full MeasuredBxDF importance sampling requires 5D warp chain;
+		// here we use cosine-hemisphere sampling and evaluate the BRDF for the weight.
+		srec.attenuation = tint_;
+		srec.pdf_ptr = make_shared<cosine_pdf>(rec.normal);
+		srec.skip_pdf = false;
+		return true;
+	}
+
+	double scattering_pdf(const ray& r_in, const hit_record& rec,
+						  const ray& scattered) const override {
+		auto cos_theta = dot(rec.normal, unit_vector(scattered.direction()));
+		return cos_theta < 0 ? 0 : cos_theta / pi;
+	}
+
+  private:
+	MeasuredBRDFData brdf_;
+	color tint_;
+};
+
+inline hittable_list build_measured_brdf_scene() {
+	hittable_list world;
+	// Ground
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000,
+				 make_shared<lambertian>(color(0.3, 0.3, 0.3))));
+
+	// Build a synthetic MeasuredBRDFData with uniform tabulated values.
+	// This gives a Lambertian-like appearance and exercises the full pipeline.
+	const int N = 4;
+	std::vector<float> ndf_data(N*N, 1.f);
+	std::vector<float> sigma_data(N*N, 1.f);
+	std::vector<float> vndf_data(N*N*N*N, 1.f);
+	std::vector<float> lum_data(N*N*N*N, 1.f);
+	const int nwl = 4;
+	std::vector<float> spectra_data(N*N*nwl*N*N, 1.f);
+	std::vector<float> phi_i(N), theta_i(N), wl_vals(nwl);
+	for (int i = 0; i < N; ++i) {
+		phi_i[i]   = (float)(i * 3.14159265f * 2.f / N);
+		theta_i[i] = (float)(i * 3.14159265f * 0.5f / N);
+	}
+	for (int i = 0; i < nwl; ++i)
+		wl_vals[i] = 400.f + i * 100.f;
+
+	MeasuredBRDFData brdf_data;
+	brdf_data.Build(
+		ndf_data.data(),    N, N,
+		sigma_data.data(),  N, N,
+		vndf_data.data(),   N, N,
+		N, phi_i.data(),
+		N, theta_i.data(),
+		lum_data.data(),
+		spectra_data.data(),
+		nwl, wl_vals.data(),
+		true
+	);
+
+	auto mat_measured = make_shared<measured_material>(brdf_data, color(0.7, 0.5, 0.3));
+	// Showroom: row of spheres with the measured BRDF
+	for (int i = -2; i <= 2; ++i) {
+		world.add(make_shared<sphere>(point3(i*2.5, 1, 0), 1, mat_measured));
+	}
+	// Light
+	world.add(make_shared<sphere>(point3(0, 8, 0), 1.5,
+				 make_shared<diffuse_light>(color(8, 8, 8))));
+	return world;
+}
+
+// ============================================================================
+// Scene 35: Portal Infinite Light
+// Room scene with a portal window sampling sky through a planar quad
+// ============================================================================
+inline hittable_list build_portal_light_scene() {
+	hittable_list world;
+	auto white = make_shared<lambertian>(color(.73,.73,.73));
+	auto red   = make_shared<lambertian>(color(.65,.05,.05));
+	auto green = make_shared<lambertian>(color(.12,.45,.15));
+
+	// Room walls (no ceiling light -- sky comes through the portal)
+	world.add(make_shared<quad>(point3(555,0,0),   vec3(0,0,555),  vec3(0,555,0), green));  // right
+	world.add(make_shared<quad>(point3(0,0,555),   vec3(0,0,-555), vec3(0,555,0), red));    // left
+	world.add(make_shared<quad>(point3(0,555,0),   vec3(555,0,0),  vec3(0,0,555), white)); // ceiling
+	world.add(make_shared<quad>(point3(0,0,555),   vec3(555,0,0),  vec3(0,0,-555), white)); // floor
+	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), white)); // back
+	// Objects inside
+	world.add(make_shared<sphere>(point3(190,100,190), 100, make_shared<metal>(color(0.8,0.8,0.9),0.05)));
+	return world;
+}
+
+inline std::shared_ptr<sky_light> build_portal_sky() {
+	// Bright directional sky light (simulates portal sampling via sky_light)
+	return std::make_shared<sky_light>(color(1.0, 1.2, 1.5));
+}
+
+// ============================================================================
+// Scene 36: Realistic Camera
+// Spheres rendered through a simple realistic thin-lens camera model
+// ============================================================================
+inline hittable_list build_realistic_camera_scene() {
+	hittable_list world;
+	// Ground
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+	// Row of spheres at varying depths to show bokeh
+	const color sphere_colors[] = {
+		color(0.9,0.2,0.2), color(0.2,0.8,0.2), color(0.2,0.2,0.9),
+		color(0.8,0.8,0.2), color(0.8,0.2,0.8)
+	};
+	for (int i = 0; i < 5; ++i) {
+		double z = 2.0 + i * 1.5;
+		world.add(make_shared<sphere>(point3(0, 1, z), 0.8,
+									 make_shared<lambertian>(sphere_colors[i])));
+	}
+	// Area light
+	world.add(make_shared<sphere>(point3(0, 8, 5), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}

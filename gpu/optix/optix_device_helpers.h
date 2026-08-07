@@ -1,0 +1,241 @@
+// optix_device_helpers.h -- Shared device utilities for OptiX programs
+// Included by optix_programs.cu
+
+// OptiX Device Programs
+// Ray generation, intersection, closest-hit, and miss programs
+
+#include <optix.h>
+#include "optix_types.h"
+#include "optix_math_helpers.h"
+#include "../../src/shared/fresnel.h"    // Shared exact Fresnel (CPU+GPU)
+#include "../../src/shared/microfacet.h" // GGX TrowbridgeReitz (CPU+GPU)
+
+// Launch parameters (constant across all threads)
+extern "C" { __constant__ LaunchParams params; }
+
+//==============================================================================
+// Utility functions
+//==============================================================================
+
+// Random number generator (PCG)
+__device__ __forceinline__ unsigned int pcg_hash(unsigned int seed) {
+	unsigned int state = seed * 747796405u + 2891336453u;
+	unsigned int word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
+	return (word >> 22u) ^ word;
+}
+
+__device__ __forceinline__ float random_float(unsigned int& seed) {
+	seed = pcg_hash(seed);
+	return float(seed) / 4294967296.0f;
+}
+
+__device__ __forceinline__ float3 random_float3(unsigned int& seed) {
+	return make_float3(random_float(seed), random_float(seed), random_float(seed));
+}
+
+__device__ __forceinline__ float3 random_in_unit_sphere(unsigned int& seed) {
+	while (true) {
+		float3 p = 2.0f * random_float3(seed) - make_float3(1.0f, 1.0f, 1.0f);
+		if (dot(p, p) < 1.0f) return p;
+	}
+}
+
+__device__ __forceinline__ float3 random_unit_vector(unsigned int& seed) {
+	return normalize(random_in_unit_sphere(seed));
+}
+
+__device__ __forceinline__ float3 random_on_hemisphere(const float3& normal, unsigned int& seed) {
+	float3 on_unit_sphere = random_unit_vector(seed);
+	if (dot(on_unit_sphere, normal) > 0.0f)
+		return on_unit_sphere;
+	else
+		return -on_unit_sphere;
+}
+
+__device__ __forceinline__ bool near_zero(const float3& v) {
+	const float s = 1e-8f;
+	return (fabsf(v.x) < s) && (fabsf(v.y) < s) && (fabsf(v.z) < s);
+}
+
+// reflect/refract from shared CPU/GPU header (pbrt-v4 pattern)
+#include "../../src/shared/math_utils.h"
+__device__ __forceinline__ float3 reflect(const float3& v, const float3& n) { return cpu_gpu_reflect(v, n); }
+__device__ __forceinline__ float3 refract(const float3& uv, const float3& n, float e) { return cpu_gpu_refract<float3,float>(uv, n, e); }
+
+// Schlick's approximation removed — FrDielectric<float> from shared/fresnel.h is used instead.
+
+//==============================================================================
+// Multiple Importance Sampling (MIS) Helpers
+//==============================================================================
+
+// MIS power heuristic (beta=2) -- delegates to shared PowerHeuristic (pbrt-v4 pattern)
+__device__ __forceinline__ float mis_power_heuristic(float pdf_a, float pdf_b) {
+	return PowerHeuristic(pdf_a, pdf_b);
+}
+
+// Cosine-weighted hemisphere sampling PDF
+__device__ __forceinline__ float cosine_pdf(const float3& direction, const float3& normal) {
+	float cosine = dot(normalize(direction), normal);
+	return fmaxf(0.0f, cosine / 3.14159265358979323846f);
+}
+
+// Sample a random point on a sphere light
+__device__ __forceinline__ float3 sample_sphere_light(
+	const SphereData& sphere,
+	const float3& origin,
+	unsigned int& seed,
+	float& pdf
+) {
+	// Direction from origin to sphere center
+	float3 to_center = sphere.center - origin;
+	float dist_sq = dot(to_center, to_center);
+
+	// Avoid division by zero
+	if (dist_sq < 1e-6f) {
+		pdf = 0.0f;
+		return make_float3(0.0f, 0.0f, 1.0f);
+	}
+
+	// Compute solid angle PDF
+	float cos_theta_max = sqrtf(1.0f - sphere.radius * sphere.radius / dist_sq);
+	float solid_angle = 2.0f * 3.14159265358979323846f * (1.0f - cos_theta_max);
+	pdf = 1.0f / solid_angle;
+
+	// Build ONB around direction to sphere
+	float3 w = normalize(to_center);
+	float3 a = (fabsf(w.x) > 0.9f) ? make_float3(0.0f, 1.0f, 0.0f) : make_float3(1.0f, 0.0f, 0.0f);
+	float3 v = normalize(cross(w, a));
+	float3 u = cross(w, v);
+
+	// Sample direction within cone
+	float z = 1.0f + random_float(seed) * (cos_theta_max - 1.0f);
+	float phi = 2.0f * 3.14159265358979323846f * random_float(seed);
+	float r = sqrtf(1.0f - z * z);
+
+	float3 direction = r * cosf(phi) * u + r * sinf(phi) * v + z * w;
+	return normalize(direction);
+}
+
+// Sample a random point on a quad light
+__device__ __forceinline__ float3 sample_quad_light(
+	const QuadData& quad,
+	const float3& origin,
+	unsigned int& seed,
+	float& pdf,
+	float& out_dist
+) {
+	// Random point on quad surface
+	float a = random_float(seed);
+	float b = random_float(seed);
+	float3 point = quad.Q + a * quad.u + b * quad.v;
+
+	// Direction to sampled point
+	float3 to_light = point - origin;
+	float dist_sq = dot(to_light, to_light);
+	out_dist = sqrtf(dist_sq);
+	float3 direction = to_light / out_dist;
+
+	// Area-based PDF converted to solid angle
+	float area = length(quad.w);  // w = u x v, so |w| = area
+	float cosine = fabsf(dot(direction, quad.normal));
+
+	if (cosine < 1e-6f || area < 1e-6f) {
+		pdf = 0.0f;
+		return direction;
+	}
+
+	pdf = dist_sq / (cosine * area);
+	return direction;
+}
+
+// Evaluate quad light PDF for a given direction
+__device__ __forceinline__ float quad_light_pdf(
+	const QuadData& quad,
+	const float3& origin,
+	const float3& direction
+) {
+	// Intersect ray with quad plane
+	float denom = dot(direction, quad.normal);
+	if (fabsf(denom) < 1e-6f) return 0.0f;
+
+	float t = (quad.D - dot(quad.normal, origin)) / denom;
+	if (t < 0.001f) return 0.0f;
+
+	// Check if hit point is inside quad
+	float3 hit_point = origin + t * direction;
+	float3 p = hit_point - quad.Q;
+
+	// Solve for (alpha, beta) such that p = alpha*u + beta*v
+	float3 n = quad.w;  // u x v
+	float n_len_sq = dot(n, n);
+	if (n_len_sq < 1e-6f) return 0.0f;
+
+	float alpha = dot(cross(p, quad.v), n) / n_len_sq;
+	float beta = dot(cross(quad.u, p), n) / n_len_sq;
+
+	if (alpha < 0.0f || alpha > 1.0f || beta < 0.0f || beta > 1.0f) {
+		return 0.0f;  // Outside quad
+	}
+
+	// Compute PDF
+	float dist_sq = t * t * dot(direction, direction);
+	float cosine = fabsf(dot(direction, quad.normal));
+	float area = sqrtf(n_len_sq);
+
+	return dist_sq / (cosine * area);
+}
+
+// Evaluate sphere light PDF for a given direction
+__device__ __forceinline__ float sphere_light_pdf(
+	const SphereData& sphere,
+	const float3& origin,
+	const float3& direction
+) {
+	// Check if direction intersects sphere (simplified - just use solid angle)
+	float3 to_center = sphere.center - origin;
+	float dist_sq = dot(to_center, to_center);
+
+	if (dist_sq < 1e-6f) return 0.0f;
+
+	float cos_theta_max = sqrtf(1.0f - sphere.radius * sphere.radius / dist_sq);
+	float solid_angle = 2.0f * 3.14159265358979323846f * (1.0f - cos_theta_max);
+
+	return 1.0f / solid_angle;
+}
+
+// Trace a shadow ray to test visibility
+// Returns true if path to light is unoccluded (false if occluded)
+__device__ __forceinline__ bool trace_shadow_ray(
+	const float3& origin,
+	const float3& direction,
+	float max_distance
+) {
+	// Pack shadow payload (single bool: occluded)
+	unsigned int occluded = 1;  // Default to occluded (will be set to 0 if miss)
+
+	// Trace shadow ray with occlusion testing
+	optixTrace(
+		params.traversable,           // Acceleration structure
+		origin,                        // Ray origin
+		direction,                     // Ray direction
+		0.001f,                        // tmin (avoid self-intersection)
+		max_distance,                  // tmax
+		0.0f,                          // rayTime
+		OptixVisibilityMask(255),      // Visibility mask
+		OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT,  // Flags
+		RAY_TYPE_SHADOW,               // SBT offset (shadow ray type)
+		RAY_TYPE_COUNT,                // SBT stride (number of ray types)
+		RAY_TYPE_SHADOW,               // Miss SBT index
+		occluded                       // Payload (single unsigned int)
+	);
+
+	// Return true if NOT occluded (path is clear)
+	return (occluded == 0);
+}
+
+
+
+//==============================================================================
+// Sphere Intersection Program
+//==============================================================================
+
