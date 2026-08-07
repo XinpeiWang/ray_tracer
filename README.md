@@ -108,29 +108,65 @@ git clone https://github.com/XinpeiWang/ray_tracer.git
 cd ray_tracer
 ```
 
-#### 2. Build with Visual Studio
+#### 2. Prerequisites
 
-**Option A: Using Visual Studio IDE**
-1. Open `ray_tracer.sln` in Visual Studio
-2. Select **Release** configuration
-3. Build → Build Solution (Ctrl+Shift+B)
-4. Executable: `x64/Release/ray_tracer.exe`
+**Required:**
+- **Visual Studio 2022 or 2026** with C++ desktop development workload
 
-**Option B: Using MSBuild (Command Line)**
+**Optional — Qt GUI:**
+- **Qt 6.11.1** with MinGW 64-bit component
+- Add Qt to PATH: `$env:Path += ";C:\Qt\6.11.1\mingw_64\bin"`
+
+**Optional — GPU rendering:**
+- **CUDA Toolkit 12.x+** and **NVIDIA OptiX SDK 9.1+**
+- Auto-detected from the standard install locations; set `$env:CudaToolkitPath` /
+  `$env:OptixSdkPath` yourself only if you have multiple CUDA versions or a
+  non-standard install path
+
+#### 3. Build Options
+
+Open a **Visual Studio Developer PowerShell** and choose one of:
+
+**Option A: One command — build everything + deploy (Recommended)**
+```powershell
+.\scripts\build_and_deploy.ps1
+```
+Builds all components, deploys to `RayTracer_Package\` with Qt DLLs included, then run:
+```powershell
+.\RayTracer_Package\RayTracerGUI.exe
+```
+
+**Option B: PowerShell script with flags**
+```powershell
+.\scripts\build_all.ps1                         # Release (default)
+.\scripts\build_all.ps1 -Configuration Debug    # Debug build
+.\scripts\build_all.ps1 -SkipGui                # Skip Qt GUI (no Qt required)
+.\scripts\build_all.ps1 -SkipTests              # Skip test projects
+.\scripts\build_all.ps1 -Clean                  # Clean rebuild
+.\scripts\build_all.ps1 -Deploy                 # Build + deploy Qt package
+```
+
+**Option C: Visual Studio IDE**
+1. Open `ray_tracer.sln`
+2. Right-click `launcher` in Solution Explorer → **Set as Startup Project**
+3. Select **Release** / **x64**
+4. **Build → Build Solution** (`Ctrl+Shift+B`)
+
+**Option D: MSBuild directly**
 ```cmd
-"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat"
 msbuild ray_tracer.sln /p:Configuration=Release /p:Platform=x64
 ```
 
-#### 3. Build GPU Renderer (Optional)
+#### 4. Output locations
 
-**From VS Developer Command Prompt:**
-```cmd
-# Build the entire solution (includes OptiX renderer)
-scripts\build_all.bat
-```
+| Component | Path |
+|---|---|
+| Console renderer | `launcher\x64\Release\ray_tracer.exe` |
+| Qt GUI | `qt_gui\release\RayTracerGUI.exe` |
+| Tests | `tests\x64\Release\ray_tracer_tests.exe` |
+| Deployed package | `RayTracer_Package\RayTracerGUI.exe` |
 
-See [BUILD.md](BUILD.md) for detailed build instructions and [Project Structure](#-project-structure) for directory layout.
+See [BUILD.md](BUILD.md) for full details, advanced options, and troubleshooting common issues (missing MSBuild, OptiX/CUDA errors, Qt not found).
 
 ### Running (Development)
 
