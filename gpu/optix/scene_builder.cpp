@@ -1478,6 +1478,36 @@ static void build_hair_fibers_gpu(SceneData& scene) {
 	}
 }
 
+/// @brief Scene 34: Measured BRDF. Matches CPU build_measured_brdf_scene()'s
+/// ACTUAL rendered behavior, not its name: src/TheRestOfYourLife/scenes_advanced.h's
+/// `measured_material::scatter()` never reads its MeasuredBRDFData member at
+/// all (built from synthetic all-1.0 tabulated data, but the real pbrt-v4
+/// MeasuredBxDF importance-sampling chain in src/shared/measured_bxdf.h is
+/// never called) - it's byte-for-byte a Lambertian material with a flat tint,
+/// cosine-hemisphere sampling and constant attenuation. GPU parity means
+/// matching that actual behavior with MaterialType::Lambertian, not porting
+/// the unused tensor-BRDF machinery.
+static void build_measured_brdf_scene_gpu(SceneData& scene) {
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.3f, 0.3f, 0.3f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	const int mat_measured = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.7f, 0.5f, 0.3f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	for (int i = -2; i <= 2; ++i) {
+		SphereData s{}; s.center = make_float3(static_cast<float>(i) * 2.5f, 1.0f, 0.0f); s.radius = 1.0f; s.materialIdx = mat_measured;
+		scene.spheres.push_back(s);
+	}
+
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(8.0f, 8.0f, 8.0f) });
+	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 1.5f; light.materialIdx = mat_light;
+	scene.spheres.push_back(light);
+	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+	scene.isLightSphere.push_back(true);
+}
+
 /// @brief Build a scene and configure the camera
 /// @param scene_id Scene identifier (0 = Cornell Box)
 /// @param image_width Output image width in pixels
@@ -2042,6 +2072,44 @@ bool build_scene(
 									// only light source, no emissive geometry in this scene).
 									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.07f);
 								}
+								break;
+							}
+
+							case 34: {  // Measured BRDF (see build_measured_brdf_scene_gpu's comment)
+								build_measured_brdf_scene_gpu(scene);
+								constexpr float kPi = 3.14159265358979323846f;
+								const float3 lookfrom = make_float3(0.0f, 3.0f, 12.0f);
+								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								constexpr float vfov = 25.0f;  // matches CPU CameraConfig row for scene 34
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+
+								const float theta = vfov * kPi / 180.0f;
+								const float h = tanf(theta / 2.0f);
+								const float viewport_height = 2.0f * h;
+								const float viewport_width  = aspect * viewport_height;
+
+								const float3 w = normalize(make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z));
+								const float3 u = normalize(cross(vup, w));
+								const float3 v = cross(w, u);
+
+								const float3 horizontal = make_float3(viewport_width * u.x, viewport_width * u.y, viewport_width * u.z);
+								const float3 vertical   = make_float3(viewport_height * v.x, viewport_height * v.y, viewport_height * v.z);
+								const float3 lower_left_corner = make_float3(
+									lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - w.x,
+									lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - w.y,
+									lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - w.z
+								);
+
+								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
+									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
+								};
+								pack_float3(camera_params, 0, lookfrom);
+								pack_float3(camera_params, 3, lower_left_corner);
+								pack_float3(camera_params, 6, horizontal);
+								pack_float3(camera_params, 9, vertical);
+								// backgroundColor left at zero-init (matches CPU bg=(0,0,0)) - this
+								// scene has a real emissive light sphere, unlike scenes 19/31.
 								break;
 							}
 

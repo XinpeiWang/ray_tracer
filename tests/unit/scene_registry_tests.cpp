@@ -243,6 +243,21 @@ TEST(FindSceneTest, HairFibersSceneIsGpuCompatible) {
 	EXPECT_TRUE(s->gpu_compatible);
 }
 
+TEST(FindSceneTest, MeasuredBrdfSceneIsGpuCompatible) {
+	// Scene 34's "measured BRDF" is a misnomer at the CPU level, not just the
+	// GPU level: src/TheRestOfYourLife/scenes_advanced.h's measured_material::
+	// scatter() builds a MeasuredBRDFData member but never reads it - it's
+	// byte-for-byte a Lambertian material (cosine-hemisphere sampling, flat
+	// tint attenuation). The real pbrt-v4 MeasuredBxDF importance-sampling
+	// chain (src/shared/measured_bxdf.h + piecewise_linear_2d.h) is fully
+	// implemented and unit-tested elsewhere in this codebase but never wired
+	// to this scene, so the GPU port matches actual CPU behavior with plain
+	// MaterialType::Lambertian rather than porting unused tensor-BRDF math.
+	const SceneDescriptor* s = find_scene(34);
+	ASSERT_NE(s, nullptr);
+	EXPECT_TRUE(s->gpu_compatible);
+}
+
 // ===========================================================================
 // C API tests
 // ===========================================================================

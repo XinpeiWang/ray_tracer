@@ -179,7 +179,7 @@ inline const SceneDesc* get_all_scenes(int* out_count = nullptr) {
 		   "Medium",    200, false, true  },
 		{ 34, SceneNames::MeasuredBrdf,
 		   "Sphere cluster with measured BRDF material using tabulated RGL data (pbrt-v4 MeasuredBxDF)",
-		   "Medium",    200, false, false },
+		   "Medium",    200, false, true  },
 		{ 35, SceneNames::PortalInfiniteLight,
 		   "Room scene with a portal window sampling the sky through a planar quad (pbrt-v4 PortalImageInfiniteLight)",
 		   "Slow",      300, false, true  },

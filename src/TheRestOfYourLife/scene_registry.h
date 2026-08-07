@@ -398,7 +398,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             34, SceneNames::MeasuredBrdf,
             "Sphere cluster with measured BRDF material using tabulated RGL data (pbrt-v4 MeasuredBxDF)",
-            "Medium", 200, false, false,
+            "Medium", 200, false, true,
             { 25, 0, 3, 12,  0, 1, 0,  0, 0, 0 },
             build_measured_brdf_scene,
             []() {
