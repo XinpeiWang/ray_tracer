@@ -93,20 +93,69 @@ struct MaterialData {
 enum class PunctualLightKind : int {
 	Point = 0,
 	Spot = 1,
-	Distant = 2
+	Distant = 2,
+	Goniometric = 3,
+	Projection = 4
+};
+
+// Max image dimensions for goniometric/projection lights, stored inline in
+// PunctualLightGPU (see below) rather than as a separately-allocated device
+// buffer: light counts are tiny (1 per scene, matching src/TheRestOfYourLife/
+// scenes_advanced.h's scene 28/29) and the images themselves are tiny (16x8
+// and 8x8 respectively), so a fixed-size inline array avoids a second
+// device-buffer-management path (alloc/upload/free, extra SBT plumbing) for
+// data this small. Generous headroom over the actual scene data (16x8 / 8x8).
+static constexpr int kGonioImageMaxDim = 32;
+static constexpr int kProjImageMaxDim  = 32;
+
+// GPU-side goniometric (IES-profile) point light. Mirrors the *evaluation*
+// half of src/shared/goniometric_light.h's GoniometricLight<T> (sample_li +
+// eval_I) - the CPU-only sample_le/pdf_le (light-tracing/BDPT) are not
+// needed here since GPU rendering is NEE-only. image[] holds the same
+// row-major nu*nv equal-area-square greyscale data the CPU struct owns as a
+// std::vector<double>; the CPU is the source of truth for the pattern, this
+// just holds a device-uploadable copy of it.
+struct GoniometricLightGPU {
+	float pos_x, pos_y, pos_z;
+	float world_to_light[9];  // row-major 3x3 world->light rotation
+	float ir, ig, ib;         // base intensity (candela)
+	float scale;
+	int nu, nv;                // nu*nv must be <= kGonioImageMaxDim^2
+	float image[kGonioImageMaxDim * kGonioImageMaxDim];  // [v*nu+u], greyscale
+};
+
+// GPU-side projection (slide-projector) light. Mirrors the evaluation half
+// of src/shared/projection_light.h's ProjectionLight<T> (sample_li +
+// eval_I_rgb). `inv_tan` replaces the CPU struct's full 4x4 screenFromLight/
+// lightFromScreen perspective matrices: make_perspective()'s matrix reduces
+// exactly to screen_x = inv_tan*lx/lz, screen_y = inv_tan*ly/lz for a point
+// (lz is already the homogeneous w after transform, per its [0,0,1,0] bottom
+// row), so storing the one scalar 1/tan(fov/2) is sufficient and avoids
+// needing Mat4/matrix-multiply plumbing on the device.
+struct ProjectionLightGPU {
+	float pos_x, pos_y, pos_z;
+	float world_to_light[9];  // row-major 3x3 world->light rotation
+	float scale;
+	float hither;              // near-plane cutoff (pbrt-v4 default 1e-3)
+	int nx, ny;                 // nx*ny must be <= kProjImageMaxDim^2
+	float sb_xmin, sb_xmax, sb_ymin, sb_ymax;  // screen bounds
+	float inv_tan;              // 1 / tan(fov_deg/2 in radians)
+	float image_rgb[kProjImageMaxDim * kProjImageMaxDim * 3];  // [(v*nx+u)*3+c]
 };
 
 // A single punctual light, tagged by kind. Only the member matching `kind`
-// is meaningful; the others are left default-constructed. Kept as three
-// inline structs rather than a union since light counts are tiny (typically
-// 1-3 per scene) and PointLightData/SpotLightData/DistantLightData are
-// already CPU_GPU-tagged, trivially-copyable PODs - no union/variant
+// is meaningful; the others are left default-constructed. Kept as inline
+// structs rather than a union since light counts are tiny (typically 1-3
+// per scene) and the member types are already CPU_GPU-tagged (or, for the
+// two image-based kinds, trivially-copyable) PODs - no union/variant
 // plumbing needed for this scale.
 struct PunctualLightGPU {
 	PunctualLightKind kind;
 	PointLightData<float> point;
 	SpotLightData<float> spot;
 	DistantLightData<float> distant;
+	GoniometricLightGPU gonio;
+	ProjectionLightGPU proj;
 };
 
 // Alias table entry for power-weighted light sampling (pbrt-v4 PowerLightSampler pattern)

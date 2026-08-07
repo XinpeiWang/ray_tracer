@@ -156,8 +156,11 @@ TEST(FindSceneTest, PunctualLightScenesAreGpuCompatible) {
 	// Scenes 25-27 (Spotlight/Distant/Point Cornell) have GPU implementations
 	// in scene_builder.cpp via build_spotlight_cornell_gpu/build_distant_light_cornell_gpu/
 	// build_point_light_cornell_gpu + PunctualLightGPU NEE in the Lambertian
-	// case of optix_intersection_{sphere,quad}.h.
-	for (int id : {25, 26, 27}) {
+	// case of optix_intersection_{sphere,quad}.h. Scenes 28-29 (Goniometric/
+	// Projection Cornell) extend the same PunctualLightGPU NEE path with two
+	// image-based light kinds (build_goniometric_cornell_gpu/
+	// build_projection_cornell_gpu, GoniometricLightGPU/ProjectionLightGPU).
+	for (int id : {25, 26, 27, 28, 29}) {
 		const SceneDescriptor* s = find_scene(id);
 		ASSERT_NE(s, nullptr) << "Missing scene id: " << id;
 		EXPECT_TRUE(s->gpu_compatible) << "Scene " << id << " should be gpu_compatible";

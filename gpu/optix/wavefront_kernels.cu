@@ -146,13 +146,46 @@ __device__ float3 wf_sample_quad_light(const QuadData& q, const float3& hit,
 	return dir;
 }
 
-// Evaluate one punctual (point/spot/distant) light at shading point p: same
-// dispatch as optix_device_helpers.h's eval_punctual_light(), duplicated here
-// (with the wf_ prefix) rather than shared, matching this file's existing
-// pattern of not sharing NEE helpers with the recursive path (this kernel
-// has no access to the recursive path's __constant__ params global, and the
-// two strategies' NEE application differs - RGB float3 here vs this file's
-// spectral radiance). PDF is always 1 (delta light) - see punctual_lights.h.
+// Equal-area sphere->square mapping for the goniometric light's image
+// lookup. Duplicated from optix_device_helpers.h's dev_equal_area_sphere_to_square
+// (itself a local copy of src/shared/sampling_patched.h's EqualAreaSphereToSquare -
+// see that comment for why it's not shared via #include).
+__device__ __forceinline__ void wf_equal_area_sphere_to_square(
+	double wx, double wy, double wz, double& u, double& v
+) {
+	double x = fabs(wx), y = fabs(wy), z = fabs(wz);
+	double r = sqrt(fmax(0.0, 1.0 - z));
+	double a = (x > y) ? x : y;
+	double b = (x > y) ? y : x;
+	b = (a == 0.0) ? 0.0 : b / a;
+
+	const double t1 =  0.406758566246788489601959989e-5;
+	const double t2 =  0.636226545274016134946890922156;
+	const double t3 =  0.61572017898280213493197203466e-2;
+	const double t4 = -0.247333733281268944196501420480;
+	const double t5 =  0.881770664775316294736387951347e-1;
+	const double t6 =  0.419038818029165735901852432784e-1;
+	const double t7 = -0.251390972343483509333252996350e-1;
+	double phi = t1 + b*(t2 + b*(t3 + b*(t4 + b*(t5 + b*(t6 + b*t7)))));
+	if (x < y) phi = 1.0 - phi;
+
+	double vv = phi * r;
+	double uu = r - vv;
+	if (wz < 0.0) { double tmp = uu; uu = 1.0 - vv; vv = 1.0 - tmp; }
+	uu = copysign(uu, wx);
+	vv = copysign(vv, wy);
+	u = 0.5*(uu + 1.0);
+	v = 0.5*(vv + 1.0);
+}
+
+// Evaluate one punctual (point/spot/distant/goniometric/projection) light at
+// shading point p: same dispatch as optix_device_helpers.h's
+// eval_punctual_light(), duplicated here (with the wf_ prefix) rather than
+// shared, matching this file's existing pattern of not sharing NEE helpers
+// with the recursive path (this kernel has no access to the recursive
+// path's __constant__ params global, and the two strategies' NEE
+// application differs - RGB float3 here vs this file's spectral radiance).
+// PDF is always 1 (delta light) - see punctual_lights.h.
 __device__ __forceinline__ bool wf_eval_punctual_light(
 	const PunctualLightGPU& light, const float3& p,
 	float3& wi, float3& Li, float& t_max)
@@ -177,6 +210,53 @@ __device__ __forceinline__ bool wf_eval_punctual_light(
 			light.distant.sample_wi(wx, wy, wz);
 			light.distant.eval_Li(Lr, Lg, Lb);
 			t_max = 1e30f;
+			break;
+		}
+		case PunctualLightKind::Goniometric: {
+			const GoniometricLightGPU& g = light.gonio;
+			float dx = g.pos_x - p.x, dy = g.pos_y - p.y, dz = g.pos_z - p.z;
+			float r2 = dx*dx + dy*dy + dz*dz;
+			if (r2 < 1e-20f) return false;
+			t_max = sqrtf(r2);
+			float inv_r = 1.0f / t_max;
+			wx = dx * inv_r; wy = dy * inv_r; wz = dz * inv_r;
+			float lx = g.world_to_light[0]*(-wx) + g.world_to_light[1]*(-wy) + g.world_to_light[2]*(-wz);
+			float ly = g.world_to_light[3]*(-wx) + g.world_to_light[4]*(-wy) + g.world_to_light[5]*(-wz);
+			float lz = g.world_to_light[6]*(-wx) + g.world_to_light[7]*(-wy) + g.world_to_light[8]*(-wz);
+			double u, v;
+			wf_equal_area_sphere_to_square((double)lx, (double)ly, (double)lz, u, v);
+			int iu = (int)(u * g.nu); iu = iu < 0 ? 0 : (iu >= g.nu ? g.nu - 1 : iu);
+			int iv = (int)(v * g.nv); iv = iv < 0 ? 0 : (iv >= g.nv ? g.nv - 1 : iv);
+			float gonio = g.image[iv * g.nu + iu];
+			float weight = g.scale * gonio / r2;
+			Lr = g.ir * weight; Lg = g.ig * weight; Lb = g.ib * weight;
+			break;
+		}
+		case PunctualLightKind::Projection: {
+			const ProjectionLightGPU& pr = light.proj;
+			float dx = pr.pos_x - p.x, dy = pr.pos_y - p.y, dz = pr.pos_z - p.z;
+			float r2 = dx*dx + dy*dy + dz*dz;
+			if (r2 < 1e-20f) return false;
+			t_max = sqrtf(r2);
+			float inv_r = 1.0f / t_max;
+			wx = dx * inv_r; wy = dy * inv_r; wz = dz * inv_r;
+			float lx = pr.world_to_light[0]*(-wx) + pr.world_to_light[1]*(-wy) + pr.world_to_light[2]*(-wz);
+			float ly = pr.world_to_light[3]*(-wx) + pr.world_to_light[4]*(-wy) + pr.world_to_light[5]*(-wz);
+			float lz = pr.world_to_light[6]*(-wx) + pr.world_to_light[7]*(-wy) + pr.world_to_light[8]*(-wz);
+			if (lz < pr.hither) return false;
+			float sx = pr.inv_tan * lx / lz;
+			float sy = pr.inv_tan * ly / lz;
+			if (sx < pr.sb_xmin || sx > pr.sb_xmax || sy < pr.sb_ymin || sy > pr.sb_ymax) return false;
+			float u = (sx - pr.sb_xmin) / (pr.sb_xmax - pr.sb_xmin);
+			float v = (sy - pr.sb_ymin) / (pr.sb_ymax - pr.sb_ymin);
+			int iu = (int)(u * pr.nx); iu = iu < 0 ? 0 : (iu >= pr.nx ? pr.nx - 1 : iu);
+			int iv = (int)(v * pr.ny); iv = iv < 0 ? 0 : (iv >= pr.ny ? pr.ny - 1 : iv);
+			int idx = (iv * pr.nx + iu) * 3;
+			float rC = fmaxf(0.0f, pr.image_rgb[idx + 0]);
+			float gC = fmaxf(0.0f, pr.image_rgb[idx + 1]);
+			float bC = fmaxf(0.0f, pr.image_rgb[idx + 2]);
+			float inv_r2 = 1.0f / r2;
+			Lr = pr.scale * rC * inv_r2; Lg = pr.scale * gC * inv_r2; Lb = pr.scale * bC * inv_r2;
 			break;
 		}
 		default:

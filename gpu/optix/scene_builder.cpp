@@ -989,6 +989,71 @@ static void build_point_light_cornell_gpu(SceneData& scene) {
 	scene.punctualLights.push_back(light);
 }
 
+/// @brief Scene 28: Goniometric Light Cornell. Matches CPU build_goniometric_punct().
+static void build_goniometric_cornell_gpu(SceneData& scene) {
+	build_punctual_light_walls(scene);
+
+	PunctualLightGPU light{};
+	light.kind = PunctualLightKind::Goniometric;
+	GoniometricLightGPU& g = light.gonio;
+	g.pos_x = 278.0f; g.pos_y = 520.0f; g.pos_z = 278.0f;
+	// Identity rotation (matches CPU's id[9] = {1,0,0, 0,1,0, 0,0,1})
+	g.world_to_light[0] = 1.0f; g.world_to_light[1] = 0.0f; g.world_to_light[2] = 0.0f;
+	g.world_to_light[3] = 0.0f; g.world_to_light[4] = 1.0f; g.world_to_light[5] = 0.0f;
+	g.world_to_light[6] = 0.0f; g.world_to_light[7] = 0.0f; g.world_to_light[8] = 1.0f;
+	g.ir = 1.0f; g.ig = 0.9f; g.ib = 0.7f;
+	g.scale = 4000000.0f;
+	// Same synthetic profile as CPU build_goniometric_punct(): bright toward
+	// the bottom hemisphere (v > NV/2), dim toward the top.
+	g.nu = 16; g.nv = 8;
+	for (int v = 0; v < g.nv; ++v) {
+		float t = (float)v / (float)g.nv;
+		for (int u = 0; u < g.nu; ++u)
+			g.image[v * g.nu + u] = 0.2f + 0.8f * t;
+	}
+	scene.punctualLights.push_back(light);
+}
+
+/// @brief Scene 29: Projection Light Cornell. Matches CPU build_projection_punct().
+static void build_projection_cornell_gpu(SceneData& scene) {
+	build_punctual_light_walls(scene);
+
+	PunctualLightGPU light{};
+	light.kind = PunctualLightKind::Projection;
+	ProjectionLightGPU& pr = light.proj;
+	pr.pos_x = 278.0f; pr.pos_y = 278.0f; pr.pos_z = -50.0f;
+	// Identity rotation (matches CPU's wtl[9] = {1,0,0, 0,1,0, 0,0,1})
+	pr.world_to_light[0] = 1.0f; pr.world_to_light[1] = 0.0f; pr.world_to_light[2] = 0.0f;
+	pr.world_to_light[3] = 0.0f; pr.world_to_light[4] = 1.0f; pr.world_to_light[5] = 0.0f;
+	pr.world_to_light[6] = 0.0f; pr.world_to_light[7] = 0.0f; pr.world_to_light[8] = 1.0f;
+	pr.scale = 1000000.0f;
+	pr.hither = 1e-3f;
+	pr.nx = 8; pr.ny = 8;
+	constexpr float kPi = 3.14159265358979323846f;
+	const float fov_deg = 40.0f;
+	// Screen bounds (mirrors ProjectionLight<T>::make, cameras.h aspect logic)
+	const float aspect = (float)pr.nx / (float)pr.ny;
+	if (aspect >= 1.0f) {
+		pr.sb_xmin = -aspect; pr.sb_xmax = aspect;
+		pr.sb_ymin = -1.0f;   pr.sb_ymax = 1.0f;
+	} else {
+		pr.sb_xmin = -1.0f;         pr.sb_xmax = 1.0f;
+		pr.sb_ymin = -1.0f/aspect;  pr.sb_ymax = 1.0f/aspect;
+	}
+	// screenFromLight reduces to a single scalar - see ProjectionLightGPU's
+	// comment in optix_types.h for why the full 4x4 matrix isn't needed.
+	pr.inv_tan = 1.0f / tanf((kPi / 180.0f) * fov_deg / 2.0f);
+	// Same 8x8 checkerboard slide as CPU build_projection_punct().
+	for (int y = 0; y < pr.ny; ++y) {
+		for (int x = 0; x < pr.nx; ++x) {
+			float v = ((x + y) % 2 == 0) ? 1.0f : 0.05f;
+			int idx = (y * pr.nx + x) * 3;
+			pr.image_rgb[idx] = v; pr.image_rgb[idx + 1] = v; pr.image_rgb[idx + 2] = v;
+		}
+	}
+	scene.punctualLights.push_back(light);
+}
+
 /// @brief Build a scene and configure the camera
 /// @param scene_id Scene identifier (0 = Cornell Box)
 /// @param image_width Output image width in pixels
@@ -1242,6 +1307,14 @@ bool build_scene(
 
 														case 27:  // Point Light Cornell (pbrt-v4 PointLight)
 														if (scene_id == 27) build_point_light_cornell_gpu(scene);
+														// fallthrough
+
+														case 28:  // Goniometric Light Cornell (pbrt-v4 GoniometricLight)
+														if (scene_id == 28) build_goniometric_cornell_gpu(scene);
+														// fallthrough
+
+														case 29:  // Projection Light Cornell (pbrt-v4 ProjectionLight)
+														if (scene_id == 29) build_projection_cornell_gpu(scene);
 													{
 									constexpr float kPi = 3.14159265358979323846f;
 									const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));

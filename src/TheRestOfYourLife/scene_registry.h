@@ -319,7 +319,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             28, SceneNames::GoniometricLight,
             "Cornell box lit by a goniometric (IES-profile) point light (pbrt-v4 GoniometricLight)",
-            "Medium", 200, false, false,
+            "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_goniometric_light_scene,
             no_lights,
@@ -329,7 +329,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             29, SceneNames::ProjectionLight,
             "Cornell box with a slide-projector beam casting a checkerboard pattern (pbrt-v4 ProjectionLight)",
-            "Medium", 200, false, false,
+            "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_projection_light_scene,
             no_lights,
