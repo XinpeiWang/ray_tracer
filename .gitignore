@@ -314,3 +314,6 @@ total.txt
 *.txt
 # Generated/preprocessed test artifacts
 tests/generated/
+
+# Stray output dir from RenderIntegrationTest.NonExistentDirectory
+/nonexistent_dir/

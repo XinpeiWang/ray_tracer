@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <functional>
 #include <chrono>
+#include <filesystem>
 
 extern "C" {
 	#include "cpu_interface.h"
@@ -426,6 +427,7 @@ TEST(RenderIntegrationTest, DeterministicRender) {
  * Test rendering with output path in non-existent directory
  */
 TEST(RenderIntegrationTest, NonExistentDirectory) {
+	const char* output_dir = "nonexistent_dir";
 	const char* output = "nonexistent_dir/test.ppm";
 
 	// This may fail or use default output path
@@ -434,6 +436,12 @@ TEST(RenderIntegrationTest, NonExistentDirectory) {
 	// Current implementation may succeed
 	// or fail - just verify it doesn't crash
 	EXPECT_TRUE(result == 0 || result != 0);
+
+	// The renderer may auto-create the target directory; clean up so
+	// repeated test runs don't leave litter in the working directory.
+	std::remove(output);
+	std::error_code ec;
+	std::filesystem::remove(output_dir, ec);
 }
 
 /**
