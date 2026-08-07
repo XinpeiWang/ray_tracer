@@ -617,6 +617,24 @@ struct RealisticCamera {
     T lens_front_z() const { T s=T(0); for (const auto& e:elements_) s+=e.thickness; return s; }
     T rear_element_radius() const { return elements_.back().apertureRadius; }
     int num_elements() const { return (int)elements_.size(); }
+    T film_half_x() const { return film_half_x_; }
+    T film_half_y() const { return film_half_y_; }
+
+    // Convert a raster (pixel) sample coordinate to the physical film-plane
+    // coordinate (metres) that generate_ray()'s CameraSample expects (see its
+    // pfx/pfy comment - unlike OrthographicCamera/SphericalCamera::generate_ray,
+    // this one does NOT do its own raster normalization, matching pbrt-v4's
+    // RealisticCamera::GenerateRay, which normalizes pFilm by film resolution
+    // and lerps into physicalExtent itself before calling this). raster_x/y
+    // are in [0, image_width]/[0, image_height]; returns physical film coords
+    // in [-film_half_x_, film_half_x_] / [-film_half_y_, film_half_y_].
+    void raster_to_film(T raster_x, T raster_y, int image_width, int image_height,
+                        T& film_x, T& film_y) const {
+        T nx = raster_x / T(image_width);
+        T ny = raster_y / T(image_height);
+        film_x = (T(2)*nx - T(1)) * film_half_x_;
+        film_y = (T(2)*ny - T(1)) * film_half_y_;
+    }
 
 private:
     // TraceLensesFromFilm: mirrors pbrt-v4.

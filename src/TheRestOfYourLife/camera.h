@@ -333,7 +333,17 @@ class camera {
             CameraRayResult<double> res;
             if (alt_ortho_cam)     res = alt_ortho_cam->generate_ray(cs);
             else if (alt_spherical_cam) res = alt_spherical_cam->generate_ray(cs);
-            else                   res = alt_realistic_cam->generate_ray(cs);
+            else {
+                // Unlike Ortho/Spherical, RealisticCamera::generate_ray() expects
+                // physical film-plane coordinates (metres), not raster pixel
+                // coordinates - convert first (see raster_to_film's comment).
+                double film_x, film_y;
+                alt_realistic_cam->raster_to_film(cs.pFilm_x, cs.pFilm_y,
+                    image_width, image_height, film_x, film_y);
+                cs.pFilm_x = film_x;
+                cs.pFilm_y = film_y;
+                res = alt_realistic_cam->generate_ray(cs);
+            }
             point3 ro(res.origin.x, res.origin.y, res.origin.z);
             vec3   rd(res.direction.x, res.direction.y, res.direction.z);
             return ray(ro, rd, cs.time);
