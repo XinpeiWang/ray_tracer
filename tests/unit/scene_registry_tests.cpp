@@ -182,6 +182,22 @@ TEST(FindSceneTest, NonDefaultCameraScenesAreGpuCompatible) {
 	}
 }
 
+TEST(FindSceneTest, BackgroundColorScenesAreGpuCompatible) {
+	// Scenes 24 (HdriSky) and 35 (PortalInfiniteLight) both actually use a
+	// flat-color sky_light on the CPU side (scenes_advanced.h's
+	// build_hdri_sky()/build_portal_sky() - the importance-sampled-image
+	// machinery in src/shared/image_infinite_light.h is unused dead code,
+	// never wired to any scene), so the GPU port only needed a constant
+	// background color for missed rays (GpuCameraParams::backgroundColor in
+	// optix_types.h, consumed by optix_miss.h and wavefront_kernels.cu's
+	// accumulate_miss), not a full environment-map sampler.
+	for (int id : {24, 35}) {
+		const SceneDescriptor* s = find_scene(id);
+		ASSERT_NE(s, nullptr) << "Missing scene id: " << id;
+		EXPECT_TRUE(s->gpu_compatible) << "Scene " << id << " should be gpu_compatible";
+	}
+}
+
 // ===========================================================================
 // C API tests
 // ===========================================================================

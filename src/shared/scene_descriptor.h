@@ -149,7 +149,7 @@ inline const SceneDesc* get_all_scenes(int* out_count = nullptr) {
 		// pbrt-v4 light / camera / medium showcase scenes
 		{ 24, SceneNames::HdriSky,
 		   "Open scene lit by a procedural gradient sky (pbrt-v4 ImageInfiniteLight / sky_light)",
-		   "Medium",    200, false, false },
+		   "Medium",    200, false, true  },
 		{ 25, SceneNames::SpotlightCornell,
 		   "Cornell box lit by a spotlight with smooth penumbra (pbrt-v4 SpotLight)",
 		   "Medium",    200, false, true  },
@@ -182,7 +182,7 @@ inline const SceneDesc* get_all_scenes(int* out_count = nullptr) {
 		   "Medium",    200, false, false },
 		{ 35, SceneNames::PortalInfiniteLight,
 		   "Room scene with a portal window sampling the sky through a planar quad (pbrt-v4 PortalImageInfiniteLight)",
-		   "Slow",      300, false, false },
+		   "Slow",      300, false, true  },
 		{ 36, SceneNames::RealisticCamera,
 		   "Spheres rendered through a thin-lens with realistic lens-element bokeh (pbrt-v4 RealisticCamera)",
 		   "Medium",    200, false, false },

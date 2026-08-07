@@ -52,7 +52,7 @@ private:
         const GpuAliasEntry* d_aliasTable, unsigned int numLights,
         const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
         float3* d_framebuffer);
-    void launchAccumulateMiss(int numMiss, float3* d_framebuffer);
+    void launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor);
     void launchAccumulateShadow(int numShadow, const bool* d_occluded, float3* d_framebuffer);
     void launchNormalizeFramebuffer(unsigned int numPixels, float invSPP, float3* d_framebuffer);
     int  readQueueSize(int* d_counter);

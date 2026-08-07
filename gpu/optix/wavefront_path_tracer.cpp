@@ -43,7 +43,7 @@ extern "C" void wf_launch_evaluate_materials(
 	const int*, const bool*, const GpuAliasEntry*, unsigned int,
 	const PunctualLightGPU*, unsigned int,
 	int, cudaStream_t);
-extern "C" void wf_launch_accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, cudaStream_t);
+extern "C" void wf_launch_accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, cudaStream_t);
 extern "C" void wf_launch_accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*, cudaStream_t);
 extern "C" void wf_launch_normalize_framebuffer(unsigned int, float, float3*, cudaStream_t);
 extern "C" void wf_reset_queue_counter(int*, cudaStream_t);
@@ -511,7 +511,7 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		maxDepth, stream_);
 }
 
-void WavefrontPathTracer::launchAccumulateMiss(int numMiss, float3* d_framebuffer) {
+void WavefrontPathTracer::launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor) {
 	if (numMiss == 0) return;
 
 	WorkQueue<MissWorkItem> mq;
@@ -519,7 +519,7 @@ void WavefrontPathTracer::launchAccumulateMiss(int numMiss, float3* d_framebuffe
 	mq.counter  = reinterpret_cast<int*>(d_missCounter_);
 	mq.capacity = queueCapacity_;
 
-	wf_launch_accumulate_miss(mq, numMiss, d_framebuffer, stream_);
+	wf_launch_accumulate_miss(mq, numMiss, d_framebuffer, backgroundColor, stream_);
 }
 
 void WavefrontPathTracer::launchAccumulateShadow(
@@ -667,7 +667,7 @@ bool WavefrontPathTracer::render(
 			// ------------------------------------------------------------------
 			// Phase 4: Accumulate miss (escaped rays → background)
 			// ------------------------------------------------------------------
-			launchAccumulateMiss(numMiss, d_fbPtr);
+			launchAccumulateMiss(numMiss, d_fbPtr, camera.backgroundColor);
 
 			CUDA_CHECK(cudaStreamSynchronize(stream_));
 

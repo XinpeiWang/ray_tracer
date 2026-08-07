@@ -907,25 +907,62 @@ extern "C" __global__ void evaluate_materials(
 	nextRayQueue.push(next);
 }
 
+// Uplift a flat RGB color to a spectral sample at the given hero
+// wavelengths. Standalone copy of the `liftEmission` lambda used inside
+// evaluate_materials below (that one captures its `swl` by reference from
+// its own hit context; accumulate_miss needs the same math against a
+// MissWorkItem's own wavelengths instead).
+__device__ __forceinline__ SampledSpectrum<kWFNWavelengths> wf_lift_rgb_to_spectrum(
+	float3 rgb, const SampledWavelengths<kWFNWavelengths>& swl
+) {
+	using SS = SampledSpectrum<kWFNWavelengths>;
+	float m = rgb.x > rgb.y ? (rgb.x > rgb.z ? rgb.x : rgb.z) : (rgb.y > rgb.z ? rgb.y : rgb.z);
+	float sc = 2.f * m;
+	if (sc <= 0.f) return SS(0.f);
+	float c0, c1, c2;
+	dev_srgb_to_coeffs(rgb.x / sc, rgb.y / sc, rgb.z / sc, c0, c1, c2);
+	RGBSigmoidPolynomial poly(c0, c1, c2);
+	SS s(0.f);
+	for (int i = 0; i < kWFNWavelengths; ++i)
+		s[i] = sc * poly(swl.lambda[i]);
+	return s;
+}
+
 // ============================================================================
 // Kernel 3 — accumulate_miss
-//   For rays that escaped the scene, add background color (black by default;
-//   extend here for an environment map).
+//   For rays that escaped the scene, add the flat background color (black
+//   by default - see GpuCameraParams::backgroundColor in optix_types.h for
+//   why a flat color, not an environment map, matches what the CPU
+//   renderer actually does for every scene).
 // ============================================================================
 
 extern "C" __global__ void accumulate_miss(
 	WorkQueue<MissWorkItem> missQueue,
 	int                     numMiss,
-	float3*                 framebuffer
+	float3*                 framebuffer,
+	float3                  backgroundColor
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numMiss) return;
+	if (backgroundColor.x <= 0.0f && backgroundColor.y <= 0.0f && backgroundColor.z <= 0.0f) return;
 
 	const MissWorkItem& m = missQueue.items[idx];
-	// Cornell box uses a black background (closed scene) — no contribution.
-	// If throughput * background were non-zero, convert via XYZ and accumulate.
-	// For extensibility: background is black, so nothing to do here.
-	(void)m;
+	using SS  = SampledSpectrum<kWFNWavelengths>;
+	using SWL = SampledWavelengths<kWFNWavelengths>;
+	SWL swl;
+	for (int i = 0; i < kWFNWavelengths; ++i) {
+		swl.lambda[i] = m.wavelengths[i];
+		swl.pdf[i]    = m.wavelength_pdfs[i];
+	}
+	SS throughput(m.throughput);
+	SS L = throughput * wf_lift_rgb_to_spectrum(backgroundColor, swl);
+
+	auto xyz = SampledSpectrumToXYZ(L, swl, d_cie_x, d_cie_y, d_cie_z, kDevCIEMin, kDevCIENSamples);
+	float r, g, b;
+	wf_xyz_to_linear_rgb(xyz.x, xyz.y, xyz.z, r, g, b);
+	atomicAdd(&framebuffer[m.pixelIndex].x, r);
+	atomicAdd(&framebuffer[m.pixelIndex].y, g);
+	atomicAdd(&framebuffer[m.pixelIndex].z, b);
 }
 
 // ============================================================================

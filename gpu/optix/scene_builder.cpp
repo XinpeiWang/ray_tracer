@@ -1201,6 +1201,72 @@ static void build_spherical_camera_scene_gpu(SceneData& scene) {
 	scene.isLightSphere.push_back(true);
 }
 
+/// @brief Scene 24: HDRI Sky. Matches CPU build_hdri_sky_world() (ground +
+/// three spheres showcasing lambertian/metal/dielectric under sky light).
+/// The CPU "HDRI" is actually a flat-color sky_light in practice (see
+/// GpuCameraParams::backgroundColor's comment) - the caller sets that
+/// separately, this only builds the ground+spheres geometry.
+static void build_hdri_sky_world_gpu(SceneData& scene) {
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.4f, 0.4f, 0.4f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	SphereData ground{};
+	ground.center = make_float3(0.0f, -1000.0f, 0.0f);
+	ground.radius = 1000.0f;
+	ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	const int mat_lambertian = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.7f, 0.3f, 0.2f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	SphereData s1{};
+	s1.center = make_float3(-3.0f, 1.0f, 0.0f);
+	s1.radius = 1.0f;
+	s1.materialIdx = mat_lambertian;
+	scene.spheres.push_back(s1);
+
+	const int mat_metal = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.8f, 0.8f, 0.9f), 0.05f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	SphereData s2{};
+	s2.center = make_float3(0.0f, 1.0f, 0.0f);
+	s2.radius = 1.0f;
+	s2.materialIdx = mat_metal;
+	scene.spheres.push_back(s2);
+
+	const int mat_glass = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Dielectric, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 1.5f, make_float3(0.0f, 0.0f, 0.0f) });
+	SphereData s3{};
+	s3.center = make_float3(3.0f, 1.0f, 0.0f);
+	s3.radius = 1.0f;
+	s3.materialIdx = mat_glass;
+	scene.spheres.push_back(s3);
+}
+
+/// @brief Scene 35: Portal Infinite Light. Matches CPU build_portal_light_scene()
+/// (5-wall room, no front wall - "portal" for the sky to enter - + one metal
+/// sphere). Uses the same wall-quad layout as build_punctual_light_walls,
+/// duplicated here rather than shared since materials/sphere content differ.
+static void build_portal_light_scene_gpu(SceneData& scene) {
+	const int mat_red = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_white = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_green = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_metal_sphere = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.8f, 0.8f, 0.9f), 0.05f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+
+	add_transformed_quad(scene, make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), make_float3(0, kBoxSize, 0), mat_green);
+	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(0, 0, -kBoxSize), make_float3(0, kBoxSize, 0), mat_red);
+	add_transformed_quad(scene, make_float3(0, kBoxSize, 0), make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), mat_white);   // ceiling
+	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(kBoxSize, 0, 0), make_float3(0, 0, -kBoxSize), mat_white);  // floor
+	add_transformed_quad(scene, make_float3(kBoxSize, 0, kBoxSize), make_float3(-kBoxSize, 0, 0), make_float3(0, kBoxSize, 0), mat_white); // back
+
+	SphereData s{};
+	s.center = make_float3(190.0f, 100.0f, 190.0f);
+	s.radius = 100.0f;
+	s.materialIdx = mat_metal_sphere;
+	scene.spheres.push_back(s);
+}
+
 /// @brief Build a scene and configure the camera
 /// @param scene_id Scene identifier (0 = Cornell Box)
 /// @param image_width Output image width in pixels
@@ -1463,6 +1529,13 @@ bool build_scene(
 
 														case 29:  // Projection Light Cornell (pbrt-v4 ProjectionLight)
 														if (scene_id == 29) build_projection_cornell_gpu(scene);
+														// fallthrough
+
+														case 35:  // Portal Infinite Light (pbrt-v4 PortalImageInfiniteLight)
+														if (scene_id == 35) {
+															build_portal_light_scene_gpu(scene);
+															if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(1.0f, 1.2f, 1.5f);
+														}
 													{
 									constexpr float kPi = 3.14159265358979323846f;
 									const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
@@ -1618,6 +1691,49 @@ bool build_scene(
 									out_camera_extra->su = make_float3(1.0f, 0.0f, 0.0f);
 									out_camera_extra->sv = make_float3(0.0f, 1.0f, 0.0f);
 									out_camera_extra->sw = make_float3(0.0f, 0.0f, 1.0f);
+								}
+								break;
+							}
+
+							case 24: {  // HDRI Sky (flat-color background - see backgroundColor's comment)
+								build_hdri_sky_world_gpu(scene);
+								constexpr float kPi = 3.14159265358979323846f;
+								const float3 lookfrom = make_float3(0.0f, 2.0f, 10.0f);
+								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								constexpr float vfov = 30.0f;  // matches CPU CameraConfig row for scene 24
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+
+								const float theta = vfov * kPi / 180.0f;
+								const float h = tanf(theta / 2.0f);
+								const float viewport_height = 2.0f * h;
+								const float viewport_width  = aspect * viewport_height;
+
+								const float3 w = normalize(make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z));
+								const float3 u = normalize(cross(vup, w));
+								const float3 v = cross(w, u);
+
+								const float3 horizontal = make_float3(viewport_width * u.x, viewport_width * u.y, viewport_width * u.z);
+								const float3 vertical   = make_float3(viewport_height * v.x, viewport_height * v.y, viewport_height * v.z);
+								const float3 lower_left_corner = make_float3(
+									lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - w.x,
+									lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - w.y,
+									lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - w.z
+								);
+
+								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
+									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
+								};
+								pack_float3(camera_params, 0, lookfrom);
+								pack_float3(camera_params, 3, lower_left_corner);
+								pack_float3(camera_params, 6, horizontal);
+								pack_float3(camera_params, 9, vertical);
+
+								if (out_camera_extra) {
+									// Matches CPU build_hdri_sky()'s solid-color sky_light(0.3,0.6,1.0)
+									// (see GpuCameraParams::backgroundColor's comment for why this is a
+									// flat color, not an importance-sampled environment map).
+									out_camera_extra->backgroundColor = make_float3(0.3f, 0.6f, 1.0f);
 								}
 								break;
 							}

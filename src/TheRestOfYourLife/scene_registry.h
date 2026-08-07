@@ -279,7 +279,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             24, SceneNames::HdriSky,
             "Open scene lit by a procedural gradient sky (pbrt-v4 ImageInfiniteLight / sky_light)",
-            "Medium", 200, false, false,
+            "Medium", 200, false, true,
             { 30, 0, 2, 10,  0, 1, 0,  0, 0, 0 },
             build_hdri_sky_world,
             no_lights,
@@ -411,7 +411,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             35, SceneNames::PortalInfiniteLight,
             "Room scene with a portal window sampling the sky through a planar quad (pbrt-v4 PortalImageInfiniteLight)",
-            "Slow", 300, false, false,
+            "Slow", 300, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_portal_light_scene,
             no_lights,

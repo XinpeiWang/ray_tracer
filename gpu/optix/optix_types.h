@@ -193,6 +193,18 @@ struct GpuCameraParams {
 	float3 defocus_disk_u;  // Perspective DOF: disk basis vector (zero = disabled)
 	float3 defocus_disk_v;
 	float3 su, sv, sw;      // Spherical: world-space camera basis (right, up, forward)
+
+	// Flat constant-color background for missed rays (default black =
+	// existing behavior for every scene that doesn't set it). Piggybacked
+	// onto this struct (rather than a new render()/LaunchParams field of
+	// its own) since it's already threaded through the exact same call
+	// chain this struct is. See optix_miss.h for why a flat color - not
+	// full image-based env lighting - matches what the CPU renderer
+	// actually does for every scene (scenes_advanced.h's build_hdri_sky()/
+	// build_portal_sky() both return a solid-color sky_light; the
+	// importance-sampled-image machinery in image_infinite_light.h is
+	// unused dead code on the CPU side too, never wired to any scene).
+	float3 backgroundColor;
 };
 
 // Launch parameters (passed to all OptiX programs)

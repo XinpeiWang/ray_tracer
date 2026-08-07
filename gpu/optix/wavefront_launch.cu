@@ -21,7 +21,7 @@ extern "C" __global__ void evaluate_materials(
 	unsigned int,
 	const PunctualLightGPU*, unsigned int,
 	int);
-extern "C" __global__ void accumulate_miss(WorkQueue<MissWorkItem>, int, float3*);
+extern "C" __global__ void accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3);
 extern "C" __global__ void accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*);
 extern "C" __global__ void reset_queue_counter(int*);
 extern "C" __global__ void normalize_framebuffer(float3*, unsigned int, float);
@@ -75,12 +75,12 @@ extern "C" void wf_launch_evaluate_materials(
 
 extern "C" void wf_launch_accumulate_miss(
 	WorkQueue<MissWorkItem> mq, int numMiss,
-	float3* d_framebuffer, cudaStream_t stream)
+	float3* d_framebuffer, float3 backgroundColor, cudaStream_t stream)
 {
 	if (numMiss == 0) return;
 	dim3 block(256);
 	dim3 grid((numMiss + 255) / 256);
-	accumulate_miss<<<grid, block, 0, (cudaStream_t)stream>>>(mq, numMiss, d_framebuffer);
+	accumulate_miss<<<grid, block, 0, (cudaStream_t)stream>>>(mq, numMiss, d_framebuffer, backgroundColor);
 }
 
 extern "C" void wf_launch_accumulate_shadow(
