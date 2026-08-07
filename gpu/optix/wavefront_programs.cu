@@ -56,6 +56,7 @@ struct WfHitPayload {
 	int    materialIdx;
 	int    geomType;   // 0 = sphere, 1 = quad
 	bool   hit;
+	float  mediumTFar; // MaterialType::Medium only - see HitWorkItem::mediumTFar
 };
 
 struct WfShadowPayload {
@@ -103,6 +104,7 @@ extern "C" __global__ void __raygen__wf_intersect() {
 		h.t           = payload.t;
 		h.materialIdx = payload.materialIdx;
 		h.geomType    = payload.geomType;
+		h.mediumTFar  = payload.mediumTFar;
 		h.rayOrigin   = ray.origin;
 		h.rayDir      = ray.direction;
 		for (int i = 0; i < kWFNWavelengths; ++i) {
@@ -241,6 +243,29 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 	payload->materialIdx = sph.materialIdx;
 	payload->geomType    = 0;
 	payload->hit         = true;
+	payload->mediumTFar  = 0.0f;
+
+	// MaterialType::Medium: override with the entry (near) / exit (far) roots
+	// recomputed relative to the CURRENT ray origin, matching optix_intersection_
+	// sphere.h's __closesthit__sphere Medium case. optixGetRayTmax() alone isn't
+	// enough - it reports whichever single root the intersection program found
+	// valid, which is the FAR root when this ray already starts inside the
+	// sphere (e.g. continuing after a prior in-medium scatter). Recomputing both
+	// roots here handles that re-entry case the same way the recursive path does.
+	const MaterialData& sph_mat = wf_params.materials[sph.materialIdx];
+	if (sph_mat.type == MaterialType::Medium) {
+		float3 unit_dir = normalize(ray_dir);
+		float3 oc2 = ray_orig - sph.center;
+		float half_b2 = dot(oc2, unit_dir);
+		float c2 = dot(oc2, oc2) - sph.radius * sph.radius;
+		float disc2 = fmaxf(0.0f, half_b2 * half_b2 - c2);
+		float sq2 = sqrtf(disc2);
+		float t_near = fmaxf(0.0f, -half_b2 - sq2);
+		float t_far  = -half_b2 + sq2;
+		payload->t          = t_near;
+		payload->hitPoint   = ray_orig + t_near * unit_dir;
+		payload->mediumTFar = t_far;
+	}
 }
 
 // ============================================================================

@@ -53,6 +53,29 @@ __device__ __forceinline__ float3 random_in_unit_disk(unsigned int& seed) {
 	}
 }
 
+// Henyey-Greenstein phase function importance sampling. `wo` is the
+// direction of travel (incoming ray direction, forward); returns a new
+// travel direction sampled relative to it - g>0 biases toward continuing
+// forward (near wo), g<0 biases backward, g=0 is isotropic. Mirrors
+// src/shared/volume_scattering.h's HenyeyGreensteinPhaseFunction (itself a
+// port of pbrt-v4's HGPhaseFunction::Sample_p).
+__device__ __forceinline__ float3 sample_henyey_greenstein(const float3& wo, float g, unsigned int& seed) {
+	float u1 = random_float(seed), u2 = random_float(seed);
+	float cos_theta;
+	if (fabsf(g) < 1e-3f) {
+		cos_theta = 1.0f - 2.0f * u1;
+	} else {
+		float sqr = (1.0f - g * g) / (1.0f + g - 2.0f * g * u1);
+		cos_theta = -(1.0f + g * g - sqr * sqr) / (2.0f * g);
+	}
+	float sin_theta = sqrtf(fmaxf(0.0f, 1.0f - cos_theta * cos_theta));
+	float phi = 2.0f * 3.14159265358979323846f * u2;
+	float3 t1 = (fabsf(wo.x) > 0.9f) ? normalize(cross(make_float3(0, 1, 0), wo))
+									  : normalize(cross(make_float3(1, 0, 0), wo));
+	float3 t2 = cross(wo, t1);
+	return normalize(sin_theta * cosf(phi) * t1 + sin_theta * sinf(phi) * t2 + cos_theta * wo);
+}
+
 __device__ __forceinline__ float3 random_on_hemisphere(const float3& normal, unsigned int& seed) {
 	float3 on_unit_sphere = random_unit_vector(seed);
 	if (dot(on_unit_sphere, normal) > 0.0f)

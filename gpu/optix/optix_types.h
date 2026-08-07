@@ -70,15 +70,22 @@ enum class MaterialType : int {
 	ThinDielectric = 7,      // zero-thickness glass slab (pbrt-v4 ThinDielectricBxDF)
 	CoatedConductor = 8,     // rough dielectric coat over GGX conductor (pbrt-v4 CoatedConductorBxDF)
 	DiffuseTransmission = 9,  // diffuse reflection + diffuse transmission (pbrt-v4 DiffuseTransmissionBxDF)
-	NormalizedFresnel   = 10  // Fresnel-weighted diffuse reflection (pbrt-v4 NormalizedFresnelBxDF)
+	NormalizedFresnel   = 10, // Fresnel-weighted diffuse reflection (pbrt-v4 NormalizedFresnelBxDF)
+	// Homogeneous participating medium (pbrt-v4/RTIOW constant_medium):
+	// closed-form free-path (Beer-Lambert) sampling + Henyey-Greenstein
+	// phase function, matching src/TheRestOfYourLife/constant_medium.h +
+	// src/shared/volume_scattering.h - only usable on sphere geometry
+	// (the boundary shape), reuses MaterialData.ior as sigma_t (extinction
+	// coefficient) and MaterialData.fuzz as the HG asymmetry g.
+	Medium = 11
 };
 
 // Material data (packed for SBT)
 struct MaterialData {
 	MaterialType type;
-	float3 albedo;      // For lambertian, metal
-	float fuzz;         // For metal (roughness); also GGX alpha for RoughDielectric / Conductor
-	float ior;          // For dielectric / rough_dielectric (index of refraction)
+	float3 albedo;      // For lambertian, metal; also single-scatter color for Medium
+	float fuzz;         // For metal (roughness); also GGX alpha for RoughDielectric / Conductor; also HG asymmetry g for Medium
+	float ior;          // For dielectric / rough_dielectric (index of refraction); also sigma_t (extinction coefficient) for Medium
 	float3 emission;    // For diffuse_light
 	// Conductor complex IOR per RGB channel (pbrt-v4 ConductorBxDF: eta, k)
 	float3 eta_c;       // Real part η per R/G/B channel (Conductor only)

@@ -1267,6 +1267,120 @@ static void build_portal_light_scene_gpu(SceneData& scene) {
 	scene.spheres.push_back(s);
 }
 
+/// @brief Scene 7: Cornell Smoke. Matches CPU build_cornell_smoke() (full
+/// Cornell box + two constant_medium boxes, density 0.01, black/white).
+/// GPU approximates the two rotated boxes as spheres (MaterialType::Medium
+/// is sphere-only - see its comment in optix_types.h) positioned at roughly
+/// the same locations, since a box boundary would need a second, more
+/// involved AABB-slab intersection path not worth the complexity here.
+static void build_cornell_smoke_gpu(SceneData& scene) {
+	const int mat_red = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_white = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_green = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(7.0f, 7.0f, 7.0f) });
+
+	add_transformed_quad(scene, make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), make_float3(0, kBoxSize, 0), mat_green);
+	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(0, 0, -kBoxSize), make_float3(0, kBoxSize, 0), mat_red);
+	add_transformed_quad(scene, make_float3(0, kBoxSize, 0), make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), mat_white);   // ceiling
+	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(kBoxSize, 0, 0), make_float3(0, 0, -kBoxSize), mat_white);  // floor
+	add_transformed_quad(scene, make_float3(kBoxSize, 0, kBoxSize), make_float3(-kBoxSize, 0, 0), make_float3(0, kBoxSize, 0), mat_white); // back
+	{
+		QuadData lq{};
+		lq.Q = make_float3(113.0f, 554.0f, 127.0f);
+		lq.u = make_float3(330.0f, 0.0f, 0.0f);
+		lq.v = make_float3(0.0f, 0.0f, 305.0f);
+		const float3 lc = cross(lq.u, lq.v);
+		lq.w = lc;
+		lq.normal = normalize(lc);
+		lq.D = dot(lq.normal, lq.Q);
+		lq.materialIdx = mat_light;
+		scene.quads.push_back(lq);
+		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+		scene.isLightSphere.push_back(false);
+	}
+
+	// Two medium spheres approximating CPU's two rotated boxes (centered
+	// roughly where box1 [265,0,295]+165/2 and box2 [130,0,65]+82.5 sit).
+	const int mat_medium_dark = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Medium, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.01f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_medium_white = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Medium, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.01f, make_float3(0.0f, 0.0f, 0.0f) });
+
+	SphereData m1{}; m1.center = make_float3(347.0f, 165.0f, 377.0f); m1.radius = 115.0f; m1.materialIdx = mat_medium_dark;
+	scene.spheres.push_back(m1);
+	SphereData m2{}; m2.center = make_float3(212.0f, 82.0f, 147.0f); m2.radius = 82.0f; m2.materialIdx = mat_medium_white;
+	scene.spheres.push_back(m2);
+}
+
+/// @brief Scene 30: Homogeneous Medium. Matches CPU
+/// build_homogeneous_medium_scene() exactly (full Cornell box + a single
+/// medium sphere at the box's center, radius 400, density 0.005, HG g=0.3).
+static void build_homogeneous_medium_scene_gpu(SceneData& scene) {
+	const int mat_red = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_white = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_green = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(15.0f, 15.0f, 15.0f) });
+
+	add_transformed_quad(scene, make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), make_float3(0, kBoxSize, 0), mat_green);
+	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(0, 0, -kBoxSize), make_float3(0, kBoxSize, 0), mat_red);
+	add_transformed_quad(scene, make_float3(0, kBoxSize, 0), make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), mat_white);   // ceiling
+	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(kBoxSize, 0, 0), make_float3(0, 0, -kBoxSize), mat_white);  // floor
+	add_transformed_quad(scene, make_float3(kBoxSize, 0, kBoxSize), make_float3(-kBoxSize, 0, 0), make_float3(0, kBoxSize, 0), mat_white); // back
+	{
+		QuadData lq{};
+		lq.Q = make_float3(213.0f, 554.0f, 227.0f);
+		lq.u = make_float3(130.0f, 0.0f, 0.0f);
+		lq.v = make_float3(0.0f, 0.0f, 105.0f);
+		const float3 lc = cross(lq.u, lq.v);
+		lq.w = lc;
+		lq.normal = normalize(lc);
+		lq.D = dot(lq.normal, lq.Q);
+		lq.materialIdx = mat_light;
+		scene.quads.push_back(lq);
+		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+		scene.isLightSphere.push_back(false);
+	}
+
+	const int mat_medium = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Medium, make_float3(0.8f, 0.9f, 1.0f), 0.3f, 0.005f, make_float3(0.0f, 0.0f, 0.0f) });
+	SphereData fog{};
+	fog.center = make_float3(277.5f, 277.5f, 277.5f);
+	fog.radius = 400.0f;
+	fog.materialIdx = mat_medium;
+	scene.spheres.push_back(fog);
+}
+
+/// @brief Scene 31: Cloud Medium. Matches CPU build_cloud_medium_scene()
+/// (ground + one medium sphere, density 0.8, HG g=0.05) - the CPU's Perlin-
+/// noise density texture is dead code there too (constructed but never
+/// actually used by the constant_medium call, which passes a constant
+/// density), so this is a faithful, not simplified, port.
+static void build_cloud_medium_scene_gpu(SceneData& scene) {
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.4f, 0.5f, 0.3f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	SphereData ground{};
+	ground.center = make_float3(0.0f, -1000.0f, 0.0f);
+	ground.radius = 1000.0f;
+	ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	const int mat_medium = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Medium, make_float3(1.0f, 1.0f, 1.0f), 0.05f, 0.8f, make_float3(0.0f, 0.0f, 0.0f) });
+	SphereData cloud{};
+	cloud.center = make_float3(0.0f, 3.0f, 0.0f);
+	cloud.radius = 3.0f;
+	cloud.materialIdx = mat_medium;
+	scene.spheres.push_back(cloud);
+}
+
 /// @brief Build a scene and configure the camera
 /// @param scene_id Scene identifier (0 = Cornell Box)
 /// @param image_width Output image width in pixels
@@ -1536,6 +1650,14 @@ bool build_scene(
 															build_portal_light_scene_gpu(scene);
 															if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(1.0f, 1.2f, 1.5f);
 														}
+														// fallthrough
+
+														case 7:  // Cornell Smoke (constant_medium)
+														if (scene_id == 7) build_cornell_smoke_gpu(scene);
+														// fallthrough
+
+														case 30:  // Homogeneous Medium (constant_medium, HG g=0.3)
+														if (scene_id == 30) build_homogeneous_medium_scene_gpu(scene);
 													{
 									constexpr float kPi = 3.14159265358979323846f;
 									const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
@@ -1734,6 +1856,48 @@ bool build_scene(
 									// (see GpuCameraParams::backgroundColor's comment for why this is a
 									// flat color, not an importance-sampled environment map).
 									out_camera_extra->backgroundColor = make_float3(0.3f, 0.6f, 1.0f);
+								}
+								break;
+							}
+
+							case 31: {  // Cloud Medium (constant_medium, HG g=0.05)
+								build_cloud_medium_scene_gpu(scene);
+								constexpr float kPi = 3.14159265358979323846f;
+								const float3 lookfrom = make_float3(0.0f, 5.0f, 20.0f);
+								const float3 lookat   = make_float3(0.0f, 2.0f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								constexpr float vfov = 20.0f;  // matches CPU CameraConfig row for scene 31
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+
+								const float theta = vfov * kPi / 180.0f;
+								const float h = tanf(theta / 2.0f);
+								const float viewport_height = 2.0f * h;
+								const float viewport_width  = aspect * viewport_height;
+
+								const float3 w = normalize(make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z));
+								const float3 u = normalize(cross(vup, w));
+								const float3 v = cross(w, u);
+
+								const float3 horizontal = make_float3(viewport_width * u.x, viewport_width * u.y, viewport_width * u.z);
+								const float3 vertical   = make_float3(viewport_height * v.x, viewport_height * v.y, viewport_height * v.z);
+								const float3 lower_left_corner = make_float3(
+									lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - w.x,
+									lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - w.y,
+									lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - w.z
+								);
+
+								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
+									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
+								};
+								pack_float3(camera_params, 0, lookfrom);
+								pack_float3(camera_params, 3, lower_left_corner);
+								pack_float3(camera_params, 6, horizontal);
+								pack_float3(camera_params, 9, vertical);
+								if (out_camera_extra) {
+									// Matches CPU CameraConfig bg for scene 31 - this is the scene's
+									// ONLY light source (no emissive geometry), so a missing/black
+									// background here means zero illumination anywhere in the image.
+									out_camera_extra->backgroundColor = make_float3(0.5f, 0.7f, 1.0f);
 								}
 								break;
 							}

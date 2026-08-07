@@ -61,6 +61,27 @@ __device__ __forceinline__ bool wf_near_zero(const float3& v) {
 	return fabsf(v.x) < s && fabsf(v.y) < s && fabsf(v.z) < s;
 }
 
+// Henyey-Greenstein phase function direction sample. Duplicated from
+// optix_device_helpers.h's sample_henyey_greenstein (with the wf_ prefix)
+// rather than shared, matching this file's existing pattern of not sharing
+// device helpers with the recursive path.
+__device__ __forceinline__ float3 wf_sample_henyey_greenstein(const float3& wo, float g, unsigned int& seed) {
+	float u1 = wf_rand(seed), u2 = wf_rand(seed);
+	float cos_theta;
+	if (fabsf(g) < 1e-3f) {
+		cos_theta = 1.0f - 2.0f * u1;
+	} else {
+		float sqr = (1.0f - g * g) / (1.0f + g - 2.0f * g * u1);
+		cos_theta = -(1.0f + g * g - sqr * sqr) / (2.0f * g);
+	}
+	float sin_theta = sqrtf(fmaxf(0.0f, 1.0f - cos_theta * cos_theta));
+	float phi = 2.0f * 3.14159265358979323846f * u2;
+	float3 t1 = (fabsf(wo.x) > 0.9f) ? normalize(cross(make_float3(0, 1, 0), wo))
+									  : normalize(cross(make_float3(1, 0, 0), wo));
+	float3 t2 = cross(wo, t1);
+	return normalize(sin_theta * cosf(phi) * t1 + sin_theta * sinf(phi) * t2 + cos_theta * wo);
+}
+
 // reflect/refract wrappers
 __device__ __forceinline__ float3 wf_reflect(const float3& v, const float3& n) {
 	return cpu_gpu_reflect(v, n);
@@ -713,6 +734,34 @@ extern "C" __global__ void evaluate_materials(
 		scattered   = true;
 		is_specular = false;
 		brdf_pdf_override = (1.0f - fr) * cos_wi / (nf_c * 3.14159265f);
+		break;
+	}
+	case MaterialType::Medium: {
+		// Homogeneous participating medium - mirrors optix_intersection_sphere.h's
+		// closesthit Medium case. Geometry (entry/exit roots) was already
+		// recomputed in __closesthit__wf_sphere and handed over via h.t (near)
+		// and h.mediumTFar (far); here we sample the free-path distance and
+		// either scatter inside via the HG phase function or pass straight
+		// through to the exit point, matching the recursive path's
+		// is_specular=true (no NEE/MIS for volume scattering, not yet implemented).
+		float t_near = h.t;
+		float t_far  = h.mediumTFar;
+		float dist_inside = fmaxf(0.0f, t_far - t_near);
+		float sigma_t = mat.ior;
+		float free_path = (sigma_t > 1e-8f) ? (-logf(fmaxf(1e-8f, 1.0f - wf_rand(seed))) / sigma_t) : 1e30f;
+		float3 unit_dir = normalize(h.rayDir);
+		if (free_path < dist_inside) {
+			float medium_t = t_near + free_path;
+			hit_point     = h.rayOrigin + medium_t * unit_dir;
+			scattered_dir = wf_sample_henyey_greenstein(unit_dir, mat.fuzz, seed);
+			attenuation   = albedoSpectrum(mat.albedo);
+		} else {
+			hit_point     = h.rayOrigin + t_far * unit_dir;
+			scattered_dir = unit_dir;  // straight through, no interaction
+			attenuation   = SS(1.f);
+		}
+		scattered   = true;
+		is_specular = true;
 		break;
 	}
 	default:

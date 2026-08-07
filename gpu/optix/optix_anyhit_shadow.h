@@ -15,11 +15,17 @@ extern "C" __global__ void __anyhit__shadow_sphere() {
 		return;
 	}
 
-	// Transmissive materials let light through -- ignore them in shadow rays
+	// Transmissive materials let light through -- ignore them in shadow rays.
+	// Medium (participating media) is included here too: full Beer-Lambert
+	// shadow-ray transmittance isn't implemented, so it's treated as
+	// non-occluding (light passes straight through) rather than wrongly
+	// blocking NEE entirely - a reasonable simplification matching how
+	// this file already approximates other volumetric-adjacent cases.
 	if (mat.type == MaterialType::Dielectric ||
 		mat.type == MaterialType::RoughDielectric ||
 		mat.type == MaterialType::ThinDielectric ||
-		mat.type == MaterialType::DiffuseTransmission) {
+		mat.type == MaterialType::DiffuseTransmission ||
+		mat.type == MaterialType::Medium) {
 		optixIgnoreIntersection();  // continue traversal (not an occluder)
 		return;
 	}

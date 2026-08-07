@@ -127,7 +127,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             7, SceneNames::CornellSmoke,
             "Cornell box with volumetric fog",
-            "Slow", 200, false, false,
+            "Slow", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_cornell_smoke,
             build_cornell_box_lights
@@ -339,7 +339,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             30, SceneNames::HomogeneousMedium,
             "Cornell box filled with a homogeneous scattering fog (pbrt-v4 HomogeneousMedium / HenyeyGreenstein)",
-            "Slow", 300, false, false,
+            "Slow", 300, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_homogeneous_medium_scene,
             build_cornell_box_lights
@@ -347,7 +347,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             31, SceneNames::CloudMedium,
             "Open scene with a procedural Perlin-noise cloud volume (pbrt-v4 CloudMedium)",
-            "Slow", 300, false, false,
+            "Slow", 300, false, true,
             { 20, 0, 5, 20,  0, 2, 0,  0.5, 0.7, 1.0 },
             build_cloud_medium_scene,
             sky_dummy_lights

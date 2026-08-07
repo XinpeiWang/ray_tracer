@@ -93,6 +93,8 @@ extern "C" __global__ void __closesthit__sphere() {
 	bool scattered = false;
 	bool is_specular = false;  // pbrt-v4 specularBounce: MIS is skipped for specular events
 	float brdf_pdf_override = -1.0f;  // if >= 0, overrides cosine_pdf in payload packing
+	bool is_medium = false;    // MaterialType::Medium: t_hit below must use medium_t_hit,
+	float medium_t_hit = 0.0f; // not optixGetRayTmax() (which is just the sphere's entry surface)
 
 	switch (mat.type) {
 		case MaterialType::Lambertian: {
@@ -586,6 +588,42 @@ extern "C" __global__ void __closesthit__sphere() {
 			break;
 		}
 
+		case MaterialType::Medium: {
+			// Homogeneous participating medium - see MaterialType::Medium's
+			// comment in optix_types.h. Recompute both sphere-intersection
+			// roots (t here is only the near/entry root optixGetRayTmax()
+			// already reported) to find the exit distance, then sample a
+			// free-path distance via Beer-Lambert inversion; if it lands
+			// before the exit, scatter via the HG phase function, else pass
+			// straight through and continue from the exit point.
+			float3 unit_dir = normalize(ray_dir);
+			float3 oc2 = ray_orig - sphere_center;
+			float half_b2 = dot(oc2, unit_dir);
+			float c2 = dot(oc2, oc2) - sphere_radius * sphere_radius;
+			float disc2 = fmaxf(0.0f, half_b2 * half_b2 - c2);
+			float sq2 = sqrtf(disc2);
+			float t_near = fmaxf(0.0f, -half_b2 - sq2);
+			float t_far  = -half_b2 + sq2;
+			float dist_inside = fmaxf(0.0f, t_far - t_near);
+
+			float sigma_t = mat.ior;
+			float free_path = (sigma_t > 1e-8f) ? (-logf(fmaxf(1e-8f, 1.0f - random_float(seed))) / sigma_t) : 1e30f;
+
+			if (free_path < dist_inside) {
+				medium_t_hit = t_near + free_path;
+				scattered_dir = sample_henyey_greenstein(unit_dir, mat.fuzz, seed);
+				attenuation = mat.albedo;
+			} else {
+				medium_t_hit = t_far;
+				scattered_dir = unit_dir;  // straight through, no interaction
+				attenuation = make_float3(1.0f, 1.0f, 1.0f);
+			}
+			scattered    = true;
+			is_specular  = true;  // no NEE/MIS for volume scattering (not yet implemented)
+			is_medium    = true;
+			break;
+		}
+
 		case MaterialType::DiffuseLight: {
 			// Emissive material - no scattering
 			scattered = false;
@@ -616,7 +654,10 @@ extern "C" __global__ void __closesthit__sphere() {
 
 	if (scattered) {
 		// Return surface attenuation ONLY (raygen will multiply with throughput)
-		float t_hit = optixGetRayTmax();  // Hit distance
+		// Medium: the scatter/exit point is not the sphere's entry surface
+		// (optixGetRayTmax()) - use the distance computed in the Medium
+		// case above instead.
+		float t_hit = is_medium ? medium_t_hit : optixGetRayTmax();  // Hit distance
 		// p12: BRDF PDF for MIS on the next bounce.
 		// Specular (Metal/Dielectric): 0 = no MIS (pbrt-v4 specularBounce pattern).
 		// Lambertian: cosine_pdf of the sampled direction.

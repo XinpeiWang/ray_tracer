@@ -55,6 +55,14 @@ struct HitWorkItem {
 	int    materialIdx;
 	int    geomType;           // 0 = sphere, 1 = quad
 
+	// MaterialType::Medium only: `t` above holds the entry (near) root of the
+	// medium sphere's boundary; this holds the exit (far) root. Both are
+	// recomputed in closesthit relative to the CURRENT ray origin (handles a
+	// ray that already starts inside the sphere, e.g. continuing after a
+	// prior in-medium scatter event) - see __closesthit__wf_sphere. Unused
+	// (0) for all other material types.
+	float  mediumTFar;
+
 	// Incident ray (needed to evaluate material)
 	float3 rayOrigin;
 	float3 rayDir;

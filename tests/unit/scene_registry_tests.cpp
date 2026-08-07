@@ -198,6 +198,24 @@ TEST(FindSceneTest, BackgroundColorScenesAreGpuCompatible) {
 	}
 }
 
+TEST(FindSceneTest, VolumetricMediumScenesAreGpuCompatible) {
+	// Scenes 7 (CornellSmoke), 30 (HomogeneousMedium), 31 (CloudMedium) all use
+	// the CPU's closed-form constant_medium (Beer-Lambert free-path sampling +
+	// Henyey-Greenstein phase function) - the heterogeneous grid/Perlin-noise
+	// density machinery those CPU scenes construct is unused dead code (see
+	// cloud_medium.h/grid_medium.h), so the GPU port only needed the simple
+	// homogeneous case: MaterialType::Medium in optix_types.h, reusing sphere
+	// intersection to find entry/exit roots (optix_intersection_sphere.h /
+	// __closesthit__wf_sphere in wavefront_programs.cu) and
+	// sample_henyey_greenstein/wf_sample_henyey_greenstein for the scatter
+	// direction. Scene 7's two rotated boxes are approximated as spheres.
+	for (int id : {7, 30, 31}) {
+		const SceneDescriptor* s = find_scene(id);
+		ASSERT_NE(s, nullptr) << "Missing scene id: " << id;
+		EXPECT_TRUE(s->gpu_compatible) << "Scene " << id << " should be gpu_compatible";
+	}
+}
+
 // ===========================================================================
 // C API tests
 // ===========================================================================
