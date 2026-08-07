@@ -47,7 +47,7 @@ struct SphereData {
 	int materialIdx;
 };
 
-// Quad geometry data (custom primitive)  
+// Quad geometry data (custom primitive)
 struct QuadData {
 	float3 Q;  // Corner point
 	float3 u;  // First edge vector
@@ -55,6 +55,18 @@ struct QuadData {
 	float3 normal;  // Precomputed normal
 	float D;        // Plane constant
 	float3 w;       // Cross product u x v
+	int materialIdx;
+};
+
+// Bilinear patch geometry data (custom primitive) - a genuinely curved
+// (non-planar in general) ruled surface through 4 corners, NOT a flat quad.
+// p(u,v) = lerp(u, lerp(v,p00,p01), lerp(v,p10,p11)); p00=(u=0,v=0),
+// p10=(u=1,v=0), p01=(u=0,v=1), p11=(u=1,v=1) - matches pbrt-v4's
+// BilinearPatch / src/shared/bilinear_patch.h convention. See
+// optix_intersection_bilinear_patch.h for the ray-intersection algorithm
+// (Ramsey et al. 2004, ported from bilinear_patch.h's blp_intersect).
+struct BilinearPatchData {
+	float3 p00, p10, p01, p11;
 	int materialIdx;
 };
 
@@ -237,6 +249,8 @@ struct LaunchParams {
 	unsigned int numSpheres;
 	QuadData* quads;
 	unsigned int numQuads;
+	BilinearPatchData* bilinearPatches;
+	unsigned int numBilinearPatches;
 
 	// Material data
 	MaterialData* materials;

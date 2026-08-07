@@ -68,12 +68,13 @@ public:
 
 	/**
 	 * @brief Build the Shader Binding Table (SBT)
-	 * 
+	 *
 	 * @param numSpheres Number of sphere primitives in scene
 	 * @param numQuads Number of quad primitives in scene
+	 * @param numBilinearPatches Number of bilinear patch primitives in scene
 	 * @return true if SBT built successfully
 	 */
-	virtual bool buildSBT(unsigned int numSpheres, unsigned int numQuads) = 0;
+	virtual bool buildSBT(unsigned int numSpheres, unsigned int numQuads, unsigned int numBilinearPatches = 0) = 0;
 
 	/**
 	 * @brief Execute path tracing for the given parameters
@@ -100,6 +101,8 @@ public:
 	 * @param num_lights Number of lights
 	 * @param d_punctual_lights Device pointer to PunctualLightGPU array (point/spot/distant delta lights)
 	 * @param num_punctual_lights Number of punctual lights
+	 * @param d_bilinear_patches Device pointer to BilinearPatchData array (curved ruled surfaces, never lights)
+	 * @param num_bilinear_patches Number of bilinear patches
 	 * @return true if rendering succeeded
 	 */
 	virtual bool render(
@@ -121,7 +124,9 @@ public:
 		unsigned int num_quads,
 		unsigned int num_lights,
 		CUdeviceptr d_punctual_lights = 0,
-		unsigned int num_punctual_lights = 0
+		unsigned int num_punctual_lights = 0,
+		CUdeviceptr d_bilinear_patches = 0,
+		unsigned int num_bilinear_patches = 0
 	) = 0;
 
 	/**

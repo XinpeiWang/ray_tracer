@@ -41,13 +41,16 @@ public:
 
 	/// @brief Build scene acceleration structure from geometry
 	/// @param spheres Vector of sphere geometry data
-	/// @param quads Vector of quad geometry data 
+	/// @param quads Vector of quad geometry data
 	/// @param materials Vector of material data
 	/// @param lightIndices Vector of light primitive indices
 	/// @param isLightSphere Vector of flags (true=sphere, false=quad)
 	/// @param punctualLights Vector of point/spot/distant delta lights (separate
 	///        from the area-light arrays above; evaluated deterministically,
 	///        not selected via the alias table)
+	/// @param bilinearPatches Vector of bilinear patch geometry data (curved
+	///        ruled surfaces, never used as lights - see optix_types.h's
+	///        BilinearPatchData)
 	/// @return true if scene was built successfully, false otherwise
 	bool buildScene(
 		const std::vector<SphereData>& spheres,
@@ -55,7 +58,8 @@ public:
 		const std::vector<MaterialData>& materials,
 		const std::vector<int>& lightIndices,
 		const std::vector<bool>& isLightSphere,
-		const std::vector<PunctualLightGPU>& punctualLights = {}
+		const std::vector<PunctualLightGPU>& punctualLights = {},
+		const std::vector<BilinearPatchData>& bilinearPatches = {}
 	);
 
 	/// @brief Render a frame using path tracing
@@ -116,8 +120,10 @@ private:
 	OptixProgramGroup shadowMissPG_ = nullptr;    ///< Shadow miss program
 	OptixProgramGroup hitgroupSpherePG_ = nullptr;///< Sphere hit group (radiance)
 	OptixProgramGroup hitgroupQuadPG_ = nullptr;  ///< Quad hit group (radiance)
+	OptixProgramGroup hitgroupBilinearPatchPG_ = nullptr; ///< Bilinear patch hit group (radiance)
 	OptixProgramGroup shadowHitgroupSpherePG_ = nullptr; ///< Sphere shadow hit group
 	OptixProgramGroup shadowHitgroupQuadPG_ = nullptr;   ///< Quad shadow hit group
+	OptixProgramGroup shadowHitgroupBilinearPatchPG_ = nullptr; ///< Bilinear patch shadow hit group
 
 	// -------------------------------------------------------------------
 	// Shader Binding Table (SBT)
@@ -143,6 +149,8 @@ private:
 	unsigned int numSpheres_ = 0;     ///< Number of spheres
 	CUdeviceptr d_quads_ = 0;         ///< Device quad array
 	unsigned int numQuads_ = 0;       ///< Number of quads
+	CUdeviceptr d_bilinearPatches_ = 0; ///< Device bilinear patch array
+	unsigned int numBilinearPatches_ = 0; ///< Number of bilinear patches
 
 	// Light sampling support for MIS
 	CUdeviceptr d_lightIndices_ = 0;  ///< Device light primitive indices
@@ -179,7 +187,8 @@ private:
 	/// @brief Build Shader Binding Table from geometry
 	bool buildSBT(
 		const std::vector<SphereData>& spheres,
-		const std::vector<QuadData>& quads
+		const std::vector<QuadData>& quads,
+		const std::vector<BilinearPatchData>& bilinearPatches
 	);
 
 	/// @brief Release all GPU resources

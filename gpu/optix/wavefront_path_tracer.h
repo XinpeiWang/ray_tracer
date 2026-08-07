@@ -20,7 +20,7 @@ public:
     bool initialize(OptixDeviceContext context, OptixModule module, cudaStream_t stream) override;
     bool createProgramGroups() override;
     bool linkPipeline(unsigned int maxTraceDepth) override;
-    bool buildSBT(unsigned int numSpheres, unsigned int numQuads) override;
+    bool buildSBT(unsigned int numSpheres, unsigned int numQuads, unsigned int numBilinearPatches = 0) override;
     bool render(int width, int height, int samples_per_pixel, int max_depth,
         const GpuCameraParams& camera,
         float* framebuffer, OptixTraversableHandle gas_handle,
@@ -30,7 +30,9 @@ public:
         unsigned int num_spheres, unsigned int num_quads,
         unsigned int num_lights,
         CUdeviceptr d_punctual_lights = 0,
-        unsigned int num_punctual_lights = 0) override;
+        unsigned int num_punctual_lights = 0,
+        CUdeviceptr d_bilinear_patches = 0,
+        unsigned int num_bilinear_patches = 0) override;
     void cleanup() override;
     PathTracingMode getMode() const override { return PathTracingMode::WAVEFRONT; }
     const char* getName() const override { return "WavefrontPathTracer"; }
@@ -64,10 +66,12 @@ private:
     OptixProgramGroup missRadiancePG_    = nullptr;
     OptixProgramGroup hitSpherePG_       = nullptr;
     OptixProgramGroup hitQuadPG_         = nullptr;
+    OptixProgramGroup hitBilinearPatchPG_ = nullptr;
     OptixProgramGroup raygenShadowPG_        = nullptr;
     OptixProgramGroup missShadowPG_          = nullptr;
     OptixProgramGroup anyhitShadowSpherePG_  = nullptr;
     OptixProgramGroup anyhitShadowQuadPG_    = nullptr;
+    OptixProgramGroup anyhitShadowBilinearPatchPG_ = nullptr;
     OptixPipeline intersectPipeline_ = nullptr;
     OptixPipeline shadowPipeline_    = nullptr;
     OptixShaderBindingTable intersectSBT_ = {};
@@ -94,6 +98,7 @@ private:
     std::string  ptxPath_;
     unsigned int numSpheres_  = 0;
     unsigned int numQuads_    = 0;
+    unsigned int numBilinearPatches_ = 0;
     unsigned int frameNumber_ = 0;
 };
 

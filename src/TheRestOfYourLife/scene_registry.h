@@ -270,7 +270,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             23, SceneNames::BilinearPatchScene,
             "Cornell box with curved bilinear patch saddle surface (pbrt-v4 BilinearPatch shape)",
-            "Medium", 200, false, false,
+            "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_bilinear_patch_scene,
             build_cornell_box_lights

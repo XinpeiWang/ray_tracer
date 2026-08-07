@@ -53,7 +53,7 @@ struct HitWorkItem {
 
 	// Material info
 	int    materialIdx;
-	int    geomType;           // 0 = sphere, 1 = quad
+	int    geomType;           // 0 = sphere, 1 = quad, 2 = bilinear patch (unused beyond bookkeeping - not read anywhere)
 
 	// MaterialType::Medium only: `t` above holds the entry (near) root of the
 	// medium sphere's boundary; this holds the exit (far) root. Both are
@@ -173,6 +173,8 @@ struct WavefrontLaunchParams {
 	unsigned int numSpheres;
 	QuadData*    quads;
 	unsigned int numQuads;
+	BilinearPatchData* bilinearPatches;
+	unsigned int numBilinearPatches;
 
 	// Materials
 	MaterialData*  materials;

@@ -65,6 +65,30 @@ extern "C" __global__ void __anyhit__shadow_quad() {
 	optixTerminateRay();   // Stop traversal (found occlusion)
 }
 
+// Shadow any-hit for bilinear patches
+extern "C" __global__ void __anyhit__shadow_bilinear_patch() {
+	const unsigned int primIdx = optixGetPrimitiveIndex();
+	const BilinearPatchData& patch = params.bilinearPatches[primIdx];
+	const MaterialData& mat = params.materials[patch.materialIdx];
+
+	if (mat.type == MaterialType::DiffuseLight) {
+		optixSetPayload_0(0);
+		optixTerminateRay();
+		return;
+	}
+
+	if (mat.type == MaterialType::Dielectric ||
+		mat.type == MaterialType::RoughDielectric ||
+		mat.type == MaterialType::ThinDielectric ||
+		mat.type == MaterialType::DiffuseTransmission) {
+		optixIgnoreIntersection();
+		return;
+	}
+
+	optixSetPayload_0(1);  // occluded = true
+	optixTerminateRay();
+}
+
 //==============================================================================
 // Miss Program
 //==============================================================================

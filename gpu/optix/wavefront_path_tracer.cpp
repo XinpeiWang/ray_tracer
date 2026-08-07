@@ -212,6 +212,16 @@ bool WavefrontPathTracer::createProgramGroups() {
 	OPTIX_CHECK(optixProgramGroupCreate(context_, &quadHitDesc, 1, &pgOptions,
 										 log, &logSize, &hitQuadPG_));
 
+	OptixProgramGroupDesc blpHitDesc = {};
+	blpHitDesc.kind                            = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	blpHitDesc.hitgroup.moduleIS               = wfModule_;
+	blpHitDesc.hitgroup.entryFunctionNameIS    = "__intersection__wf_bilinear_patch";
+	blpHitDesc.hitgroup.moduleCH               = wfModule_;
+	blpHitDesc.hitgroup.entryFunctionNameCH    = "__closesthit__wf_bilinear_patch";
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(context_, &blpHitDesc, 1, &pgOptions,
+										 log, &logSize, &hitBilinearPatchPG_));
+
 	// ----- Shadow pipeline -----
 
 	OptixProgramGroupDesc shadowRGDesc = {};
@@ -252,7 +262,18 @@ bool WavefrontPathTracer::createProgramGroups() {
 	OPTIX_CHECK(optixProgramGroupCreate(context_, &shadowQuadDesc, 1, &pgOptions,
 										 log, &logSize, &anyhitShadowQuadPG_));
 
-	std::cout << "[WavefrontPathTracer] Created 8 program groups\n";
+	// Shadow anyhit for bilinear patch
+	OptixProgramGroupDesc shadowBlpDesc = {};
+	shadowBlpDesc.kind                          = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	shadowBlpDesc.hitgroup.moduleIS             = wfModule_;
+	shadowBlpDesc.hitgroup.entryFunctionNameIS  = "__intersection__wf_bilinear_patch";
+	shadowBlpDesc.hitgroup.moduleAH             = wfModule_;
+	shadowBlpDesc.hitgroup.entryFunctionNameAH  = "__anyhit__wf_shadow";
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(context_, &shadowBlpDesc, 1, &pgOptions,
+										 log, &logSize, &anyhitShadowBilinearPatchPG_));
+
+	std::cout << "[WavefrontPathTracer] Created 10 program groups\n";
 	return true;
 }
 
@@ -273,12 +294,13 @@ bool WavefrontPathTracer::linkPipeline(unsigned int maxTraceDepth) {
 			raygenIntersectPG_,
 			missRadiancePG_,
 			hitSpherePG_,
-			hitQuadPG_
+			hitQuadPG_,
+			hitBilinearPatchPG_
 		};
 		logSize = sizeof(log);
 		OPTIX_CHECK(optixPipelineCreate(
 			context_, &pipelineCompileOptions_, &linkOptions,
-			groups, 4, log, &logSize, &intersectPipeline_));
+			groups, 5, log, &logSize, &intersectPipeline_));
 		std::cout << "[WavefrontPathTracer] Linked intersect pipeline\n";
 	}
 
@@ -291,12 +313,13 @@ bool WavefrontPathTracer::linkPipeline(unsigned int maxTraceDepth) {
 			raygenShadowPG_,
 			missShadowPG_,
 			anyhitShadowSpherePG_,
-			anyhitShadowQuadPG_
+			anyhitShadowQuadPG_,
+			anyhitShadowBilinearPatchPG_
 		};
 		logSize = sizeof(log);
 		OPTIX_CHECK(optixPipelineCreate(
 			context_, &pipelineCompileOptions_, &shadowLinkOptions,
-			groups, 4, log, &logSize, &shadowPipeline_));
+			groups, 5, log, &logSize, &shadowPipeline_));
 		std::cout << "[WavefrontPathTracer] Linked shadow pipeline\n";
 	}
 
@@ -307,11 +330,23 @@ bool WavefrontPathTracer::linkPipeline(unsigned int maxTraceDepth) {
 // buildSBT — create two separate SBTs
 // ============================================================================
 
-bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuads) {
+bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuads, unsigned int numBilinearPatches) {
 	numSpheres_ = numSpheres;
 	numQuads_   = numQuads;
+	numBilinearPatches_ = numBilinearPatches;
 
 	destroySBT();
+
+	// Matches OptiXRenderer::buildScene()'s conditional build-input inclusion
+	// (see its comment): OptiX rejects a zero-primitive custom-primitive build
+	// input outright, so buildScene() OMITS empty geometry types from the
+	// shared GAS entirely rather than keeping a 0-count placeholder - meaning
+	// a type's position among the *present* types (not its fixed geometry-
+	// type index) determines its SBT slot. Both SBTs below must apply the
+	// exact same [sphere, quad, bilinear patch] present/absent filter.
+	const bool hasSpheres = numSpheres > 0;
+	const bool hasQuads   = numQuads > 0;
+	const bool hasBlp     = numBilinearPatches > 0;
 
 	// ---- Intersect SBT ----
 	{
@@ -331,19 +366,24 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_intersectMissRecord_), &missRec,
 							  sizeof(MissRecord), cudaMemcpyHostToDevice));
 
-		// Hit records: [sphere_radiance, quad_radiance]
-		// SBT layout: SBT_offset=0, stride=2 means we need:
-		//   primitive 0 (spheres): slot 0*2+0=0 (radiance), slot 0*2+1 unused
-		//   primitive 1 (quads):   slot 1*2+0=2 (radiance), slot 1*2+1 unused
-		// But our raygen uses SBT offset=0 stride=2 miss=0, so:
-		//   For sphere build input (instIdx=0): sbt offset = 0*2 + 0 = 0
-		//   For quad  build input (instIdx=1): sbt offset = 1*2 + 0 = 2
-		// We only need 4 records: [sph_rad, sph_unused, quad_rad, quad_unused]
-		std::vector<HitGroupRecord> hitRecs(4);
-		OPTIX_CHECK(optixSbtRecordPackHeader(hitSpherePG_,    &hitRecs[0])); hitRecs[0].data = {};
-		OPTIX_CHECK(optixSbtRecordPackHeader(hitSpherePG_,    &hitRecs[1])); hitRecs[1].data = {}; // unused slot
-		OPTIX_CHECK(optixSbtRecordPackHeader(hitQuadPG_,      &hitRecs[2])); hitRecs[2].data = {};
-		OPTIX_CHECK(optixSbtRecordPackHeader(hitQuadPG_,      &hitRecs[3])); hitRecs[3].data = {}; // unused slot
+		// Hit records: SBT offset=0, stride=2 means each PRESENT type (in
+		// [sphere, quad, bilinear patch] order, absent types omitted) needs a
+		// (radiance, unused) pair - see the hasSpheres/hasQuads/hasBlp comment
+		// above for why position among present types, not fixed geometry-type
+		// index, determines the slot.
+		std::vector<HitGroupRecord> hitRecs;
+		if (hasSpheres) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitSpherePG_, &hitRecs.back())); hitRecs.back().data = {}; // unused slot
+		}
+		if (hasQuads) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitQuadPG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitQuadPG_, &hitRecs.back())); hitRecs.back().data = {}; // unused slot
+		}
+		if (hasBlp) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitBilinearPatchPG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitBilinearPatchPG_, &hitRecs.back())); hitRecs.back().data = {}; // unused slot
+		}
 
 		size_t sz = hitRecs.size() * sizeof(HitGroupRecord);
 		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_intersectHitRecords_), sz));
@@ -375,11 +415,19 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_shadowMissRecord_), &missRec,
 							  sizeof(MissRecord), cudaMemcpyHostToDevice));
 
-		std::vector<HitGroupRecord> hitRecs(4);
-		OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowSpherePG_, &hitRecs[0])); hitRecs[0].data = {};
-		OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowSpherePG_, &hitRecs[1])); hitRecs[1].data = {};
-		OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowQuadPG_,   &hitRecs[2])); hitRecs[2].data = {};
-		OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowQuadPG_,   &hitRecs[3])); hitRecs[3].data = {};
+		std::vector<HitGroupRecord> hitRecs;
+		if (hasSpheres) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
+		}
+		if (hasQuads) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowQuadPG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowQuadPG_, &hitRecs.back())); hitRecs.back().data = {};
+		}
+		if (hasBlp) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowBilinearPatchPG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowBilinearPatchPG_, &hitRecs.back())); hitRecs.back().data = {};
+		}
 
 		size_t sz = hitRecs.size() * sizeof(HitGroupRecord);
 		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_shadowHitRecords_), sz));
@@ -396,7 +444,8 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 	}
 
 	std::cout << "[WavefrontPathTracer] Built SBTs (spheres=" << numSpheres
-			  << " quads=" << numQuads << ")\n";
+			  << " quads=" << numQuads
+			  << " bilinearPatches=" << numBilinearPatches << ")\n";
 	return true;
 }
 
@@ -561,7 +610,9 @@ bool WavefrontPathTracer::render(
 	unsigned int num_quads,
 	unsigned int num_lights,
 	CUdeviceptr d_punctual_lights,
-	unsigned int num_punctual_lights)
+	unsigned int num_punctual_lights,
+	CUdeviceptr d_bilinear_patches,
+	unsigned int num_bilinear_patches)
 {
 	const int numPixels = width * height;
 
@@ -585,6 +636,8 @@ bool WavefrontPathTracer::render(
 	lp.numSpheres    = num_spheres;
 	lp.quads         = reinterpret_cast<QuadData*>(d_quads);
 	lp.numQuads      = num_quads;
+	lp.bilinearPatches = reinterpret_cast<BilinearPatchData*>(d_bilinear_patches);
+	lp.numBilinearPatches = num_bilinear_patches;
 	lp.materials     = reinterpret_cast<MaterialData*>(d_materials);
 	lp.numMaterials  = num_materials;
 	lp.lightIndices  = reinterpret_cast<int*>(d_light_indices);
@@ -743,9 +796,9 @@ void WavefrontPathTracer::destroyProgramGroups() {
 		if (pg) { optixProgramGroupDestroy(pg); pg = nullptr; }
 	};
 	destroyPG(raygenIntersectPG_);   destroyPG(missRadiancePG_);
-	destroyPG(hitSpherePG_);         destroyPG(hitQuadPG_);
+	destroyPG(hitSpherePG_);         destroyPG(hitQuadPG_);        destroyPG(hitBilinearPatchPG_);
 	destroyPG(raygenShadowPG_);      destroyPG(missShadowPG_);
-	destroyPG(anyhitShadowSpherePG_); destroyPG(anyhitShadowQuadPG_);
+	destroyPG(anyhitShadowSpherePG_); destroyPG(anyhitShadowQuadPG_); destroyPG(anyhitShadowBilinearPatchPG_);
 }
 
 void WavefrontPathTracer::destroySBT() {

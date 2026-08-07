@@ -30,8 +30,15 @@ public:
 
 	bool createProgramGroups() override;
 	bool linkPipeline(unsigned int maxTraceDepth) override;
-	bool buildSBT(unsigned int numSpheres, unsigned int numQuads) override;
+	bool buildSBT(unsigned int numSpheres, unsigned int numQuads, unsigned int numBilinearPatches = 0) override;
 
+	// NOTE: this class is currently dead code (createPathTracingStrategy(),
+	// the only place that would instantiate it, is itself never called -
+	// OptiXRenderer implements the recursive strategy inline instead, see
+	// optix_renderer.cpp). Bilinear patches are accepted here for interface
+	// compatibility but not wired to any program groups/GAS of this class's
+	// own - matches this class's existing scope (it was already a stale
+	// duplicate of OptiXRenderer's logic before this parameter existed).
 	bool render(
 		int width,
 		int height,
@@ -51,7 +58,9 @@ public:
 		unsigned int num_quads,
 		unsigned int num_lights,
 		CUdeviceptr d_punctual_lights = 0,
-		unsigned int num_punctual_lights = 0
+		unsigned int num_punctual_lights = 0,
+		CUdeviceptr d_bilinear_patches = 0,
+		unsigned int num_bilinear_patches = 0
 	) override;
 
 	void cleanup() override;

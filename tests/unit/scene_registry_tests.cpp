@@ -216,6 +216,20 @@ TEST(FindSceneTest, VolumetricMediumScenesAreGpuCompatible) {
 	}
 }
 
+TEST(FindSceneTest, BilinearPatchSceneIsGpuCompatible) {
+	// Scene 23's two patches are genuinely curved (non-planar) ruled surfaces
+	// (verified against src/shared/bilinear_patch.h's corner coordinates - the
+	// four corners are off-plane by orders of magnitude, not a numerical-
+	// tolerance edge case), so unlike scene 7's medium boxes this needed a
+	// real bilinear-surface intersection routine (quadratic solve, Ramsey et
+	// al. 2004 / pbrt-v4 IntersectBilinearPatch) as its own GPU geometry type
+	// - see optix_intersection_bilinear_patch.h and BilinearPatchData in
+	// optix_types.h - rather than an approximation with existing shapes.
+	const SceneDescriptor* s = find_scene(23);
+	ASSERT_NE(s, nullptr);
+	EXPECT_TRUE(s->gpu_compatible);
+}
+
 // ===========================================================================
 // C API tests
 // ===========================================================================

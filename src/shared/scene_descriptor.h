@@ -145,7 +145,7 @@ inline const SceneDesc* get_all_scenes(int* out_count = nullptr) {
 		   "Medium",    200, false, true  },
 		{ 23, SceneNames::BilinearPatchScene,
 		   "Cornell box with curved bilinear patch saddle surface (pbrt-v4 BilinearPatch shape)",
-		   "Medium",    200, false, false },
+		   "Medium",    200, false, true  },
 		// pbrt-v4 light / camera / medium showcase scenes
 		{ 24, SceneNames::HdriSky,
 		   "Open scene lit by a procedural gradient sky (pbrt-v4 ImageInfiniteLight / sky_light)",

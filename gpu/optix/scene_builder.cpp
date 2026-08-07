@@ -1381,6 +1381,68 @@ static void build_cloud_medium_scene_gpu(SceneData& scene) {
 	scene.spheres.push_back(cloud);
 }
 
+/// @brief Scene 23: Bilinear Patch Scene. Matches CPU build_bilinear_patch_scene()
+/// exactly - standard Cornell box + two genuinely curved (non-planar) metal
+/// bilinear patches (see optix_intersection_bilinear_patch.h). Unlike scene 7's
+/// medium boxes, these are NOT approximated as another shape - bilinear
+/// patches have their own GPU geometry type.
+static void build_bilinear_patch_scene_gpu(SceneData& scene) {
+	const int mat_red = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_white = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_green = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(15.0f, 15.0f, 15.0f) });
+
+	add_transformed_quad(scene, make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), make_float3(0, kBoxSize, 0), mat_green);
+	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(0, 0, -kBoxSize), make_float3(0, kBoxSize, 0), mat_red);
+	add_transformed_quad(scene, make_float3(0, kBoxSize, 0), make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), mat_white);   // ceiling
+	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(kBoxSize, 0, 0), make_float3(0, 0, -kBoxSize), mat_white);  // floor
+	add_transformed_quad(scene, make_float3(kBoxSize, 0, kBoxSize), make_float3(-kBoxSize, 0, 0), make_float3(0, kBoxSize, 0), mat_white); // back
+	{
+		QuadData lq{};
+		lq.Q = make_float3(213.0f, 554.0f, 227.0f);
+		lq.u = make_float3(130.0f, 0.0f, 0.0f);
+		lq.v = make_float3(0.0f, 0.0f, 105.0f);
+		const float3 lc = cross(lq.u, lq.v);
+		lq.w = lc;
+		lq.normal = normalize(lc);
+		lq.D = dot(lq.normal, lq.Q);
+		lq.materialIdx = mat_light;
+		scene.quads.push_back(lq);
+		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+		scene.isLightSphere.push_back(false);
+	}
+
+	// Patch 1: classic hyperbolic paraboloid saddle, gold metal
+	const int mat_gold = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.8f, 0.7f, 0.3f), 0.05f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	{
+		BilinearPatchData p{};
+		p.p00 = make_float3(150.0f, 80.0f, 200.0f);
+		p.p10 = make_float3(400.0f, 50.0f, 200.0f);
+		p.p01 = make_float3(150.0f, 50.0f, 400.0f);
+		p.p11 = make_float3(400.0f, 80.0f, 400.0f);
+		p.materialIdx = mat_gold;
+		scene.bilinearPatches.push_back(p);
+	}
+
+	// Patch 2: curved ramp (linear in u, curved in v), blue metal
+	const int mat_blue = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.2f, 0.4f, 0.8f), 0.1f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	{
+		BilinearPatchData p{};
+		p.p00 = make_float3(200.0f, 200.0f, 220.0f);
+		p.p10 = make_float3(370.0f, 200.0f, 220.0f);
+		p.p01 = make_float3(150.0f, 380.0f, 420.0f);
+		p.p11 = make_float3(420.0f, 320.0f, 420.0f);
+		p.materialIdx = mat_blue;
+		scene.bilinearPatches.push_back(p);
+	}
+}
+
 /// @brief Build a scene and configure the camera
 /// @param scene_id Scene identifier (0 = Cornell Box)
 /// @param image_width Output image width in pixels
@@ -1406,6 +1468,7 @@ bool build_scene(
 	// Clear previous scene data
 	scene.spheres.clear();
 	scene.quads.clear();
+	scene.bilinearPatches.clear();
 	scene.materials.clear();
 
 	// Build requested scene
@@ -1658,6 +1721,10 @@ bool build_scene(
 
 														case 30:  // Homogeneous Medium (constant_medium, HG g=0.3)
 														if (scene_id == 30) build_homogeneous_medium_scene_gpu(scene);
+														// fallthrough
+
+														case 23:  // Bilinear Patch Scene (pbrt-v4 BilinearPatch shape)
+														if (scene_id == 23) build_bilinear_patch_scene_gpu(scene);
 													{
 									constexpr float kPi = 3.14159265358979323846f;
 									const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
