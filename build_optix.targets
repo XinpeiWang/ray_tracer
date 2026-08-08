@@ -108,7 +108,18 @@
 
     <PropertyGroup>
       <NvccPath>$(CudaToolkitPath)\bin\nvcc.exe</NvccPath>
-      <WfObjFlags>-c -O3 --use_fast_math --relocatable-device-code=true -arch=sm_86 --std=c++17</WfObjFlags>
+      <!-- Two gencode entries: native sm_86 SASS (Ampere) and native
+           sm_120 SASS (Blackwell). Plain arch=sm_86 only emits sm_86 SASS
+           with no fallback, so these plain CUDA kernels (unlike the OptiX
+           ptx modules, which are always PTX and JIT to any architecture)
+           fail with "no device code available" on any GPU that isn't
+           sm_86, including the RTX 5080 (sm_120) this was found on. Can't
+           embed compute_86 PTX instead for forward compat: these files use
+           relocatable device code, and the dlink step below only emits
+           resolved SASS, dropping any embedded PTX, so each supported
+           architecture needs its own explicit gencode entry here (and
+           below) rather than relying on JIT. -->
+      <WfObjFlags>-c -O3 --use_fast_math --relocatable-device-code=true -gencode=arch=compute_86,code=sm_86 -gencode=arch=compute_120,code=sm_120 --std=c++17</WfObjFlags>
       <WfObjFlags Condition="'$(Configuration)'=='Debug'">$(WfObjFlags) -Xcompiler /MDd</WfObjFlags>
       <WfObjFlags Condition="'$(Configuration)'=='Release'">$(WfObjFlags) -Xcompiler /MD</WfObjFlags>
       <WfObjFlags>$(WfObjFlags) -I"$(OptixSdkPath)\include"</WfObjFlags>
@@ -141,7 +152,7 @@
 
     <PropertyGroup>
       <NvccPath>$(CudaToolkitPath)\bin\nvcc.exe</NvccPath>
-      <DlinkFlags>-dlink -arch=sm_86</DlinkFlags>
+      <DlinkFlags>-dlink -gencode=arch=compute_86,code=sm_86 -gencode=arch=compute_120,code=sm_120</DlinkFlags>
       <DlinkFlags Condition="'$(Configuration)'=='Debug'">$(DlinkFlags) -Xcompiler /MDd -G</DlinkFlags>
       <DlinkFlags Condition="'$(Configuration)'=='Release'">$(DlinkFlags) -Xcompiler /MD</DlinkFlags>
       <DlinkIn1>$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels.obj</DlinkIn1>
