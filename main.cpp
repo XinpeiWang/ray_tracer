@@ -38,6 +38,7 @@
 #include "gpu/optix/optix_interface.h"
 #include "src/external/image_writer.h"
 #include "src/TheRestOfYourLife/error_codes.h"
+#include "src/TheRestOfYourLife/thread_count.h"
 #include "launcher/camera_path.h"
 #include "launcher/launcher_args.h"   // Argument parsing
 
@@ -206,6 +207,21 @@ int main(int argc, char** argv) {
                        << std::fixed << std::setprecision(1)
                        << (static_cast<double>(render_frame_count) / video_fps) << "s at " << video_fps << " fps)."
                        << std::endl;
+        }
+
+        // cam.render() (called once per CPU frame, inside cpu_render_main())
+        // auto-detects a "free core" count by sampling system idle time over
+        // 200ms - fine for a single image, but that's 200ms wasted on every
+        // single video frame for an answer that isn't going to meaningfully
+        // change between frames of the same render. Sample it once here and
+        // pin it via RAY_TRACER_THREADS so every frame's render() call hits
+        // the explicit-override fast path instead of re-sampling. Skipped
+        // entirely if the user already set RAY_TRACER_THREADS themselves.
+        if (!use_gpu && !std::getenv("RAY_TRACER_THREADS")) {
+            unsigned int nthreads = determine_render_thread_count();
+            std::string nthreads_str = std::to_string(nthreads);
+            _putenv_s("RAY_TRACER_THREADS", nthreads_str.c_str());
+            std::cout << "Pinned CPU thread count to " << nthreads << " for the whole video (skips per-frame detection)." << std::endl;
         }
 
         // Prepare output directory for temporary frames

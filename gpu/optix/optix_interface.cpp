@@ -15,6 +15,11 @@
 // Global renderer instance
 static std::unique_ptr<OptiXRenderer> g_renderer;
 
+// Which scene_id is currently uploaded to the GPU (materials/geometry/BVH/SBT
+// all live in g_renderer's device memory, keyed only by scene_id - see the
+// skip-reupload check below). -1 = nothing uploaded yet this process.
+static int g_uploaded_scene_id = -1;
+
 extern "C" bool optix_is_available() {
 	return OptiXRenderer::isAvailable();
 }
@@ -71,13 +76,25 @@ extern "C" int optix_render_main(
 			cameraExtra.vertical = make_float3(camera_params[9], camera_params[10], camera_params[11]);
 		}
 
-		if (!g_renderer->buildScene(scene.spheres, scene.quads, scene.materials,
-									 scene.lightIndices, scene.isLightSphere,
-									 scene.punctualLights, scene.bilinearPatches,
-									 scene.triangles, scene.lensElements,
-									 scene.exitPupilBounds)) {
-			std::cerr << "[OptiX] Failed to upload scene to GPU\n";
-			return ERR_GPU_MEMORY_COPY_FAILED;
+		// buildScene() only touches geometry/material/light device memory -
+		// it never sees camera state (that's render()'s cameraExtra param,
+		// computed fresh above on every call regardless) - so re-uploading
+		// and rebuilding the BVH/SBT is only actually necessary when the
+		// scene_id changes from the last call in this process. This is what
+		// makes video rendering (same scene, moving camera, many frames in
+		// one process) expensive: skip it when nothing but the camera moved.
+		if (scene_id != g_uploaded_scene_id) {
+			if (!g_renderer->buildScene(scene.spheres, scene.quads, scene.materials,
+										 scene.lightIndices, scene.isLightSphere,
+										 scene.punctualLights, scene.bilinearPatches,
+										 scene.triangles, scene.lensElements,
+										 scene.exitPupilBounds)) {
+				std::cerr << "[OptiX] Failed to upload scene to GPU\n";
+				return ERR_GPU_MEMORY_COPY_FAILED;
+			}
+			g_uploaded_scene_id = scene_id;
+		} else {
+			std::cout << "[OptiX] Reusing already-uploaded scene " << scene_id << " (skipping GPU rebuild)\n";
 		}
 
 		// Enable wavefront mode if requested via env var RAY_TRACER_WAVEFRONT=1

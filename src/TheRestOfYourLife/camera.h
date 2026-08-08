@@ -21,6 +21,7 @@
 #include "../shared/sobol_sampler.h"
 #include "../shared/filter.h"
 #include "../shared/cameras.h"
+#include "thread_count.h"
 #include <fstream>
 #include <iostream>
 #include <cstdlib>
@@ -141,54 +142,12 @@ class camera {
         std::atomic<int> completed_lines(0);
         std::mutex log_mutex;
 
-        auto determine_thread_count = [&]() -> unsigned int {
-            unsigned int hw = std::thread::hardware_concurrency();
-            if (hw == 0) hw = 4;
-
-            // Respect explicit override via env var RAY_TRACER_THREADS
-            if (const char* env = std::getenv("RAY_TRACER_THREADS")) {
-                std::string s(env);
-                if (s == "auto") {
-                    // fallthrough to auto-detect below
-                } else {
-                    try {
-                        int v = std::stoi(s);
-                        if (v > 0) return static_cast<unsigned int>(v);
-                    } catch (...) {
-                        // ignore parse errors
-                    }
-                }
-            }
-
-            // Auto-detect free cores by sampling system idle fraction (Windows only).
-#ifdef _WIN32
-            FILETIME idle1, kernel1, user1;
-            FILETIME idle2, kernel2, user2;
-            if (GetSystemTimes(&idle1, &kernel1, &user1)) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(200));
-                if (GetSystemTimes(&idle2, &kernel2, &user2)) {
-                    auto toULL = [](const FILETIME &ft) -> unsigned long long {
-                        ULARGE_INTEGER ui; ui.LowPart = ft.dwLowDateTime; ui.HighPart = ft.dwHighDateTime; return ui.QuadPart;
-                    };
-                    unsigned long long idleDiff = toULL(idle2) - toULL(idle1);
-                    unsigned long long kernelDiff = toULL(kernel2) - toULL(kernel1);
-                    unsigned long long userDiff = toULL(user2) - toULL(user1);
-                    unsigned long long total = kernelDiff + userDiff;
-                    if (total == 0) total = 1;
-                    double busy = double(total - idleDiff) / double(total);
-                    // estimate free cores = hw * (1 - busy)
-                    int recommend = int(std::round(hw * (1.0 - busy)));
-                    if (recommend < 1) recommend = 1;
-                    if (recommend > (int)hw) recommend = hw;
-                    return static_cast<unsigned int>(recommend);
-                }
-            }
-#endif
-            // Fallback: use all logical cores
-            return hw;
-        };
-
-        unsigned int nthreads = determine_thread_count();
+        // Auto-detection (when RAY_TRACER_THREADS isn't set to an explicit
+        // value) samples system idle time over 200ms - see thread_count.h.
+        // Video mode calls this once for the whole video and sets
+        // RAY_TRACER_THREADS itself so this resolves instantly on every
+        // frame instead of re-sampling per frame (main.cpp's video branch).
+        unsigned int nthreads = determine_render_thread_count();
         std::clog << "Using " << nthreads << " threads for rendering" << std::endl;
 
         auto worker = [&](unsigned int tid) {
