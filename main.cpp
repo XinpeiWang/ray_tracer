@@ -321,19 +321,23 @@ int main(int argc, char** argv) {
         std::cout << "Output video: " << video_path << std::endl;
         std::cout << "Rendering " << render_frame_count << " frames..." << std::endl;
 
-        // Scale the camera-path animation to this scene's actual coordinate
-        // scale, rather than every video using the same Cornell-Box-scale
-        // defaults (radius 800 around (278,278,278)) regardless of scene -
-        // e.g. scene 1's spheres are clustered within roughly +-15 units of
-        // the origin, so an 800-unit orbit radius would show nothing but a
-        // tiny distant speck. cpu_scene_recommended_camera() reads the same
-        // scene_registry.h CameraConfig the renderers themselves use, so
-        // Cornell-family scenes (whose own recommended distance is already
-        // ~800) get identical camera-path behavior to before this existed.
-        double path_center_x = 278.0, path_center_y = 278.0, path_center_z = 278.0, path_scale = 800.0;
-        if (cpu_scene_recommended_camera(scene_id, &path_center_x, &path_center_y, &path_center_z, &path_scale)) {
-            std::cout << "Camera path centered on (" << path_center_x << ", " << path_center_y << ", " << path_center_z
-                       << ") with scale " << path_scale << " (from scene " << scene_id << "'s recommended camera)." << std::endl;
+        // Scale and phase-align the camera-path animation to this scene's
+        // actual recommended camera, rather than every video using the same
+        // Cornell-Box-scale orbit (radius 800 around (278,278,278), starting
+        // at a fixed angle unrelated to any scene's actual default view)
+        // regardless of scene - e.g. scene 1's spheres are clustered within
+        // roughly +-15 units of the origin, so an 800-unit orbit radius
+        // would show nothing but a tiny distant speck. Frame 0 of orbit/
+        // linear/spiral lands exactly on this recommended camera position -
+        // see camera_path.h's get_camera_position() - so switching between
+        // Image and Video preview starts from the same view.
+        double path_lookfrom_x = 278.0, path_lookfrom_y = 278.0, path_lookfrom_z = -800.0;
+        double path_lookat_x = 278.0, path_lookat_y = 278.0, path_lookat_z = 278.0;
+        if (cpu_scene_recommended_camera(scene_id, &path_lookfrom_x, &path_lookfrom_y, &path_lookfrom_z,
+                                          &path_lookat_x, &path_lookat_y, &path_lookat_z)) {
+            std::cout << "Camera path starts at (" << path_lookfrom_x << ", " << path_lookfrom_y << ", " << path_lookfrom_z
+                       << ") looking at (" << path_lookat_x << ", " << path_lookat_y << ", " << path_lookat_z
+                       << ") (scene " << scene_id << "'s recommended camera)." << std::endl;
         }
 
         auto video_start_time = std::chrono::high_resolution_clock::now();
@@ -349,7 +353,8 @@ int main(int argc, char** argv) {
         for (int frame = 0; frame < render_frame_count; ++frame) {
             // Get camera position for this frame
             CameraPosition cam_pos = get_camera_position(camera_path, frame, render_frame_count,
-                                                            path_center_x, path_center_y, path_center_z, path_scale);
+                                                            path_lookfrom_x, path_lookfrom_y, path_lookfrom_z,
+                                                            path_lookat_x, path_lookat_y, path_lookat_z);
 
             // Generate frame filename (e.g., frame_0001.ppm)
             char frame_filename[256];

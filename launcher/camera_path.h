@@ -33,19 +33,23 @@ struct CameraPosition {
 
 // ============================================================================
 // Circular Orbit Path
-// Camera orbits around the lookAt point in a circle on the XZ plane
+// Camera orbits around the lookAt point in a circle on the XZ plane.
+// start_angle (radians) sets where frame 0 sits on that circle - passing the
+// angle of a specific point (see get_camera_position()) makes frame 0 land
+// exactly on that point instead of always starting at angle 0.
 // ============================================================================
 inline CameraPosition camera_path_orbit(int frame, int total_frames,
 										double radius = 800.0,
 										double center_x = 278.0,
 										double center_y = 278.0,
 										double center_z = 278.0,
-										double height = 278.0) {
+										double height = 278.0,
+										double start_angle = 0.0) {
 	CameraPosition pos;
 
 	// Compute angle (full 360° rotation over total_frames)
 	double t = static_cast<double>(frame) / static_cast<double>(total_frames);
-	double angle = 2.0 * M_PI * t;
+	double angle = start_angle + 2.0 * M_PI * t;
 
 	// Circular motion in XZ plane
 	pos.lookfrom_x = center_x + radius * std::cos(angle);
@@ -135,7 +139,8 @@ inline CameraPosition camera_path_figure8(int frame, int total_frames,
 
 // ============================================================================
 // Spiral Path
-// Camera spirals in while orbiting around the scene
+// Camera spirals in while orbiting around the scene. start_angle works the
+// same way as camera_path_orbit's.
 // ============================================================================
 inline CameraPosition camera_path_spiral(int frame, int total_frames,
 										  double start_radius = 1000.0,
@@ -144,11 +149,12 @@ inline CameraPosition camera_path_spiral(int frame, int total_frames,
 										  double center_y = 278.0,
 										  double center_z = 278.0,
 										  double start_height = 500.0,
-										  double end_height = 278.0) {
+										  double end_height = 278.0,
+										  double start_angle = 0.0) {
 	CameraPosition pos;
 
 	double t = static_cast<double>(frame) / static_cast<double>(total_frames);
-	double angle = 2.0 * M_PI * t * 2.0;  // Two full rotations
+	double angle = start_angle + 2.0 * M_PI * t * 2.0;  // Two full rotations
 
 	// Interpolate radius and height
 	double radius = start_radius + t * (end_radius - start_radius);
@@ -172,46 +178,58 @@ inline CameraPosition camera_path_spiral(int frame, int total_frames,
 // ============================================================================
 // Get Camera Position by Path Name
 // ============================================================================
-// center_x/y/z and scale let the caller adapt these paths to a scene's
-// actual coordinate scale, rather than every video using the same
-// Cornell-Box-scale defaults (radius 800 around (278,278,278)) regardless
-// of how large or small that scene's own geometry is - see main.cpp's
-// video-mode branch, which derives these from
-// cpu_scene_recommended_camera() (cpu_interface.h). The defaults below
-// exactly reproduce each path's original Cornell-scale behavior, since
-// Cornell Box's own registry distance-from-lookat happens to already be
-// 800 - so passing scale=800/center=(278,278,278) (or omitting them
-// entirely) is behaviorally identical to before this parameter existed.
+// lookfrom_x/y/z and lookat_x/y/z are the scene's actual recommended camera
+// (see cpu_interface.h's cpu_scene_recommended_camera(), which reads the
+// same scene_registry.h CameraConfig the renderers themselves use) - passed
+// through by main.cpp's video-mode branch so each path adapts to that
+// scene's real coordinate scale AND starts from that exact camera position,
+// instead of every video using the same Cornell-Box-scale orbit (radius 800
+// around (278,278,278), starting at a fixed angle unrelated to any scene's
+// actual default view) regardless of scene. The defaults below are Cornell
+// Box's own registry values, so omitting these arguments still gives a
+// sensible Cornell-scale path.
 //
-// scale_factor rescales orbit/figure8/spiral's radii proportionally,
-// preserving their relative sizes to each other (figure8 stays half of
-// orbit's implied radius, spiral's start/end stay in the same ratio) -
-// only linear's start/end don't reduce to their *exact* prior hardcoded
-// values at the Cornell defaults (those were two independently hand-picked
-// points, not derivable from a center+scale formula to begin with), though
-// they're still a reasonable, similarly-scaled sweep.
+// orbit/spiral: decomposed into an XZ-plane radius, a height (the
+// lookfrom's own Y), and a start_angle such that frame 0 lands exactly on
+// the given lookfrom - the path then sweeps a full circle (or two, for
+// spiral) from there. spiral's end_radius/end_height scale down from that
+// starting radius/height toward the lookat point, preserving its original
+// "zooms in as it spirals" character.
+// linear: starts exactly at lookfrom and ends at lookfrom's mirror image
+// through lookat (a symmetric fly-through past the subject).
+// figure8: the lemniscate's shape can't be phase-aligned to an arbitrary
+// start point with just an angle offset, so it's scaled (via the lookfrom-
+// to-lookat distance) and centered on lookat, but doesn't start exactly at
+// lookfrom the way the other three paths do.
 inline CameraPosition get_camera_position(const std::string& path_type, int frame, int total_frames,
-											double center_x = 278.0, double center_y = 278.0, double center_z = 278.0,
-											double scale = 800.0) {
-	double scale_factor = scale / 800.0;
+											double lookfrom_x = 278.0, double lookfrom_y = 278.0, double lookfrom_z = -800.0,
+											double lookat_x = 278.0, double lookat_y = 278.0, double lookat_z = 278.0) {
+	double dx = lookfrom_x - lookat_x;
+	double dy = lookfrom_y - lookat_y;
+	double dz = lookfrom_z - lookat_z;
+	double radius_xz = std::sqrt(dx * dx + dz * dz);
+	double start_angle = std::atan2(dz, dx);
+	double dist3d = std::sqrt(dx * dx + dy * dy + dz * dz);
+	double scale_factor = dist3d / 800.0;  // Cornell Box's own registry distance
 
 	if (path_type == "orbit") {
-		return camera_path_orbit(frame, total_frames, scale, center_x, center_y, center_z, center_y);
+		return camera_path_orbit(frame, total_frames, radius_xz, lookat_x, lookat_y, lookat_z, lookfrom_y, start_angle);
 	} else if (path_type == "linear") {
 		return camera_path_linear(frame, total_frames,
-			center_x, center_y, center_z - scale,
-			center_x, center_y, center_z + scale,
-			center_x, center_y, center_z);
+			lookfrom_x, lookfrom_y, lookfrom_z,
+			2.0 * lookat_x - lookfrom_x, 2.0 * lookat_y - lookfrom_y, 2.0 * lookat_z - lookfrom_z,
+			lookat_x, lookat_y, lookat_z);
 	} else if (path_type == "figure8") {
-		return camera_path_figure8(frame, total_frames, 400.0 * scale_factor, center_x, center_y, center_z, center_y);
+		return camera_path_figure8(frame, total_frames, 400.0 * scale_factor, lookat_x, lookat_y, lookat_z, lookfrom_y);
 	} else if (path_type == "spiral") {
 		return camera_path_spiral(frame, total_frames,
-			1000.0 * scale_factor, 400.0 * scale_factor,
-			center_x, center_y, center_z,
-			center_y + 222.0 * scale_factor, center_y);
+			radius_xz, radius_xz * 0.4,
+			lookat_x, lookat_y, lookat_z,
+			lookfrom_y, lookat_y,
+			start_angle);
 	} else {
 		// Default to orbit
-		return camera_path_orbit(frame, total_frames, scale, center_x, center_y, center_z, center_y);
+		return camera_path_orbit(frame, total_frames, radius_xz, lookat_x, lookat_y, lookat_z, lookfrom_y, start_angle);
 	}
 }
 

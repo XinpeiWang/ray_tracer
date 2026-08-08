@@ -295,27 +295,23 @@ extern "C" int cpu_scene_gpu_compatible(int index) {
 	return reg[index].gpu_compatible ? 1 : 0;
 }
 
-extern "C" int cpu_scene_recommended_camera(int scene_id, double* lookat_x, double* lookat_y, double* lookat_z, double* distance) {
+extern "C" int cpu_scene_recommended_camera(int scene_id,
+	double* lookfrom_x, double* lookfrom_y, double* lookfrom_z,
+	double* lookat_x, double* lookat_y, double* lookat_z) {
 	const SceneDescriptor* s = find_scene(scene_id);
 	if (!s) return 0;
 	const CameraConfig& cc = s->camera;
-	// UserControlled scenes (the Cornell-box family) don't have a single
-	// "recommended" distance - their registry lookfrom is just a starting
-	// suggestion the user (or a video's animated camera) is expected to
-	// move freely from, not a scale reference. Report "not found" so the
-	// caller falls back to its own defaults, rather than deriving a
-	// distance from that essentially-arbitrary starting point (e.g.
-	// Cornell Box's default lookfrom happens to be 1078 units from lookat,
-	// not the 800 every camera-path animation was actually tuned around).
-	if (cc.mode == CameraMode::UserControlled) return 0;
+	// Every scene, including CameraMode::UserControlled ones (the
+	// Cornell-box family), has a documented default lookfrom in the
+	// registry (e.g. Cornell Box's (278,278,-800) front view - see main.cpp's
+	// header comment) - it's a perfectly good video camera-path starting
+	// point even though single-image rendering lets the user freely move
+	// away from it, so there's no need to special-case UserControlled here.
+	if (lookfrom_x) *lookfrom_x = cc.lookfrom_x;
+	if (lookfrom_y) *lookfrom_y = cc.lookfrom_y;
+	if (lookfrom_z) *lookfrom_z = cc.lookfrom_z;
 	if (lookat_x) *lookat_x = cc.lookat_x;
 	if (lookat_y) *lookat_y = cc.lookat_y;
 	if (lookat_z) *lookat_z = cc.lookat_z;
-	if (distance) {
-		double dx = cc.lookfrom_x - cc.lookat_x;
-		double dy = cc.lookfrom_y - cc.lookat_y;
-		double dz = cc.lookfrom_z - cc.lookat_z;
-		*distance = std::sqrt(dx * dx + dy * dy + dz * dz);
-	}
 	return 1;
 }
