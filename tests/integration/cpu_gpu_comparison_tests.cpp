@@ -27,6 +27,10 @@
 #include <cmath>
 #include <numeric>
 #include <algorithm>
+#include <memory>
+#include <cctype>
+
+#include "scene_registry.h"
 
 extern "C" {
 	#include "cpu_interface.h"
@@ -266,3 +270,80 @@ TEST_F(CPUGPUComparisonTest, BothProduceSameDimensions) {
 		EXPECT_EQ(gpu.width,  w) << "GPU width incorrect";
 	}
 }
+
+// ============================================================================
+// CPU/GPU scene-definition parity: light count
+//
+// Every scene's CPU builder (src/TheRestOfYourLife/scenes*.h) and GPU builder
+// (gpu/optix/scene_builder.cpp) are independent, hand-written functions that
+// are supposed to describe the same scene - there's no shared source of
+// truth, so they can silently drift (this is exactly how scene 0's Cornell
+// box ended up with a CPU-only accent light: scenes_book.h::build_cornell_box()
+// has 2 diffuse_light emitters, scene_builder.cpp::build_cornell_box() only
+// uploads 1). Pixel-brightness comparisons (see BothProduceNonBlackOutput /
+// HighSPPBrightnessConverges above) don't catch this class of bug: a small
+// accent light easily hides inside their existing 50%/3x tolerance bands.
+// This check instead compares scene *structure* directly - number of
+// emissive primitives - which is exact, not statistical.
+// ============================================================================
+
+// Recursively counts emissive (diffuse_light-material) quad/sphere primitives
+// in a CPU hittable subtree. Descends through hittable_list/translate/
+// rotate_y, the only wrapper types this codebase's scene builders place area
+// lights inside/under. Treated as opaque (0 lights) otherwise: bvh_node,
+// constant_medium, triangle, bilinear_patch, curve, etc. - verified against
+// every current scene builder that no light is ever nested inside one of
+// these (bvh_node in particular wraps bulk non-emissive geometry piles, e.g.
+// build_triangle_mesh_scene's icosahedron, with lights always added as
+// separate top-level/translate/rotate_y siblings). If a future scene breaks
+// that assumption, this under-counts on the CPU side and the test below
+// fails loudly rather than silently passing.
+static int count_cpu_emissive_lights(const std::shared_ptr<hittable>& h);
+
+static int count_cpu_emissive_lights_list(const hittable_list& list) {
+	int n = 0;
+	for (const auto& obj : list.objects) n += count_cpu_emissive_lights(obj);
+	return n;
+}
+
+static int count_cpu_emissive_lights(const std::shared_ptr<hittable>& h) {
+	if (!h) return 0;
+	if (auto hl = std::dynamic_pointer_cast<hittable_list>(h)) return count_cpu_emissive_lights_list(*hl);
+	if (auto tr = std::dynamic_pointer_cast<translate>(h))     return count_cpu_emissive_lights(tr->get_object());
+	if (auto ry = std::dynamic_pointer_cast<rotate_y>(h))      return count_cpu_emissive_lights(ry->get_object());
+	if (auto q = std::dynamic_pointer_cast<quad>(h))
+		return std::dynamic_pointer_cast<diffuse_light>(q->get_material()) ? 1 : 0;
+	if (auto s = std::dynamic_pointer_cast<sphere>(h))
+		return std::dynamic_pointer_cast<diffuse_light>(s->get_material()) ? 1 : 0;
+	return 0;
+}
+
+class CpuGpuLightParityTest : public ::testing::TestWithParam<int> {};
+
+TEST_P(CpuGpuLightParityTest, LightCountMatches) {
+	const SceneDescriptor* s = find_scene(GetParam());
+	ASSERT_NE(s, nullptr) << "Missing scene id " << GetParam();
+	if (!s->gpu_compatible) GTEST_SKIP() << s->name << " is not GPU-compatible";
+	if (s->requires_files) GTEST_SKIP() << s->name << " requires external assets";
+
+	hittable_list world = s->build_world();
+	int cpuLights = count_cpu_emissive_lights_list(world);
+	int gpuLights = gpu_scene_light_count(s->id, 100, 100);
+
+	ASSERT_GE(gpuLights, 0) << s->name << " (id " << s->id << "): GPU scene build failed";
+	EXPECT_EQ(cpuLights, gpuLights)
+		<< s->name << " (id " << s->id << "): CPU scene has " << cpuLights
+		<< " emissive light(s), GPU scene has " << gpuLights
+		<< " - the two builders have drifted out of sync.";
+}
+
+INSTANTIATE_TEST_SUITE_P(
+	AllScenes, CpuGpuLightParityTest,
+	::testing::Range(0, static_cast<int>(get_scene_registry().size())),
+	[](const ::testing::TestParamInfo<int>& info) {
+		const SceneDescriptor* s = find_scene(info.param);
+		std::string name = s ? s->name : "Unknown";
+		std::string sanitized;
+		for (char c : name) sanitized += std::isalnum(static_cast<unsigned char>(c)) ? c : '_';
+		return "Scene" + std::to_string(info.param) + "_" + sanitized;
+	});

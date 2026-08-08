@@ -170,3 +170,18 @@ extern "C" int optix_render_main(
 		return 106;  // Unknown error
 	}
 }
+
+extern "C" int gpu_scene_light_count(int scene_id, int image_width, int image_height) {
+	try {
+		SceneData scene;
+		float camera_params[12];
+		GpuCameraParams cameraExtra{};
+		if (!build_scene(scene_id, image_width, image_height, scene, camera_params,
+						  278.0, 278.0, -800.0, &cameraExtra)) {
+			return -1;
+		}
+		return static_cast<int>(scene.lightIndices.size());
+	} catch (...) {
+		return -1;
+	}
+}
