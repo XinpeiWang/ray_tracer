@@ -180,7 +180,6 @@ void RenderThread::run() {
 	int lastProgress = 0;
 	QRegularExpression scanlinesRegex("Scanlines remaining:\\s*(\\d+)");
 	QRegularExpression videoFrameRegex("\\[(\\d+)/(\\d+)\\] Rendering frame_");  // Matches "[5/60] Rendering frame_"
-	QRegularExpression conversionProgressRegex("Progress:\\s*(\\d+)/(\\d+)\\s*frames converted");  // Matches "Progress: 10/60 frames converted"
 	int totalScanlines = m_height; // Track total height for percentage calculation
 	QString accumulatedOutput;
 
@@ -216,28 +215,21 @@ void RenderThread::run() {
 
 			// Parse progress from same lines
 			for (const QString& line : lines) {
-				// Video mode: rendering (0-80%), PNG conversion (80-95%), then a
-				// fixed bump once ffmpeg assembly starts (no per-frame progress
-				// available from ffmpeg cheaply); onRenderComplete snaps to 100%
-				// once the subprocess actually exits.
+				// Video mode: rendering (0-95%), then a fixed bump once ffmpeg
+				// assembly starts (no per-frame progress available from ffmpeg
+				// cheaply); onRenderComplete snaps to 100% once the subprocess
+				// actually exits. PNG conversion no longer gets its own
+				// reserved range - it now happens on a background thread
+				// overlapped with rendering (see main.cpp's BackgroundPngConverter)
+				// and finishes near-instantly after the last frame, so there's
+				// no distinct serial "converting" phase left to represent.
 				if (m_videoMode) {
 					QRegularExpressionMatch frameMatch = videoFrameRegex.match(line);
 					if (frameMatch.hasMatch()) {
 						int currentFrame = frameMatch.captured(1).toInt();
 						int totalFrames = frameMatch.captured(2).toInt();
-						int progress = (totalFrames > 0) ? (currentFrame * 80) / totalFrames : 0;
-						progress = std::max(0, std::min(progress, 80));
-						if (progress > lastProgress) {
-							emit progressUpdate(progress);
-							lastProgress = progress;
-						}
-					}
-					QRegularExpressionMatch conversionMatch = conversionProgressRegex.match(line);
-					if (conversionMatch.hasMatch()) {
-						int convertedFrames = conversionMatch.captured(1).toInt();
-						int totalFrames = conversionMatch.captured(2).toInt();
-						int progress = 80 + ((totalFrames > 0) ? (convertedFrames * 15) / totalFrames : 0);
-						progress = std::max(80, std::min(progress, 95));
+						int progress = (totalFrames > 0) ? (currentFrame * 95) / totalFrames : 0;
+						progress = std::max(0, std::min(progress, 95));
 						if (progress > lastProgress) {
 							emit progressUpdate(progress);
 							lastProgress = progress;
