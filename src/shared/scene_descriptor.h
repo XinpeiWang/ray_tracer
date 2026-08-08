@@ -67,7 +67,12 @@ struct SceneDesc {
 	const char* performance;   // "Fast" | "Medium" | "Slow" | "Very Slow"
 	int         recommended_spp;
 	bool        requires_files; // needs external assets (e.g. earthmap.jpg)
-	bool        gpu_supported;  // implemented in gpu/optix/scene_builder.cpp
+	// True once gpu/optix/scene_builder.cpp has a case for this scene_id.
+	// This is what the Qt GUI and error_handler.h actually read - keep it in
+	// sync by hand with src/TheRestOfYourLife/scene_registry.h's SEPARATE
+	// gpu_compatible field (that one drives the CLI's own reporting; nothing
+	// enforces the two matching, and they have drifted before).
+	bool        gpu_supported;
 };
 
 // -----------------------------------------------------------------------
@@ -80,7 +85,7 @@ inline const SceneDesc* get_all_scenes(int* out_count = nullptr) {
 		   "Medium",    100, false, true  },
 		{  1, SceneNames::BouncingSpheres,
 		   "Random spheres with checker ground (In One Weekend final)",
-		   "Slow",      100, false, false },
+		   "Slow",      100, false, true  },
 		{  2, SceneNames::CheckeredSpheres,
 		   "Two spheres with procedural checker texture",
 		   "Fast",      100, false, true  },

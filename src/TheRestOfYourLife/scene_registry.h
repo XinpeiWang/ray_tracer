@@ -47,6 +47,13 @@ struct SceneDescriptor {
     const char* performance;   // "Fast" | "Medium" | "Slow" | "Very Slow"
     int         recommended_spp;
     bool        requires_files;
+    // NOT read by the Qt GUI or qt_gui/error_handler.h - they read the
+    // separate, independently-maintained `gpu_supported` field in
+    // src/shared/scene_descriptor.h's kScenes[] table instead. Keep both
+    // flags in sync by hand when adding/removing GPU support for a scene;
+    // nothing enforces it (this exact drift happened once already: scene 1
+    // got gpu_compatible=true here without its scene_descriptor.h row being
+    // updated, so the GUI kept showing "CPU only" until fixed separately).
     bool        gpu_compatible;
     CameraConfig camera;
     std::function<hittable_list()>                       build_world;

@@ -1671,10 +1671,19 @@ bool build_scene(
 				case 1:  // Bouncing Spheres (motion blur - see build_bouncing_spheres)
 					build_bouncing_spheres(scene);
 
-					// Configure camera
+					// Configure camera. This scene's CameraConfig in
+					// scene_registry.h doesn't set CameraMode::UserControlled,
+					// so it defaults to Fixed - the CPU renderer (cpu_interface.cpp)
+					// ignores cam_x/y/z entirely for Fixed scenes and always uses
+					// the registry's own lookfrom (13,2,3). Match that here rather
+					// than forwarding cam_x/y/z verbatim: this scene's spheres are
+					// clustered within roughly +-15 units of the origin, so a
+					// leftover Cornell-Box-scale camera position (e.g. (278,278,-800),
+					// a common default/preset for other scenes) would place the
+					// camera absurdly far away, rendering an unrecognizable speck.
 					{
 						constexpr float kPi = 3.14159265358979323846f;
-						const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
+						const float3 lookfrom = make_float3(13.0f, 2.0f, 3.0f);
 						const float3 lookat = make_float3(0.0f, 0.0f, 0.0f);
 						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
 						constexpr float vfov = 20.0f;
@@ -1717,10 +1726,14 @@ bool build_scene(
 				case 2:  // Checkered Spheres
 					build_checkered_spheres(scene);
 
-					// Configure camera
+					// Configure camera. Same Fixed-mode situation as scene 1
+					// above (no CameraMode::UserControlled in this scene's
+					// registry entry) - ignore cam_x/y/z, matching CPU exactly,
+					// rather than placing the camera at whatever Cornell-Box-scale
+					// position happened to be leftover from a previous scene.
 					{
 						constexpr float kPi = 3.14159265358979323846f;
-						const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
+						const float3 lookfrom = make_float3(13.0f, 2.0f, 3.0f);
 						const float3 lookat = make_float3(0.0f, 0.0f, 0.0f);
 						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
 						constexpr float vfov = 20.0f;
@@ -1752,6 +1765,12 @@ bool build_scene(
 						pack_float3(camera_params, 3, lower_left_corner);
 						pack_float3(camera_params, 6, horizontal);
 						pack_float3(camera_params, 9, vertical);
+
+						// Flat light-blue background, matching CPU registry's
+						// bg=(0.70,0.80,1.00) for this scene (see
+						// GpuCameraParams::backgroundColor's comment) - this was
+						// previously left at the zero-init default (black).
+						if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.70f, 0.80f, 1.00f);
 					}
 					break;
 
