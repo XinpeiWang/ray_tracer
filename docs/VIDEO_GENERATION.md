@@ -75,21 +75,26 @@ The video file will be created automatically as `output/<name>_video.mp4`.
 
 ### Movement Speed
 
-`--speed` scales how much of the camera path is covered over the video - it
-does not change the video's real-time duration (still `frames / fps`), only
-how fast the camera moves through the path in that time. `1.0` (default) is
-each path's baseline traversal: one full rotation for orbit/figure8, two for
-spiral, or a full start→end sweep for linear. Values above `1.0` complete
-that baseline before the last frame and keep extrapolating past it (more
-rotations, or past the linear endpoint); values below `1.0` don't reach the
-end of the baseline path by the last frame.
+`--speed` does not change the camera path itself - the camera always
+completes the exact same full sweep (one full rotation for orbit/figure8,
+two for spiral, the whole start→end traversal for linear) no matter the
+speed, so it always swings all the way around/through the scene. Instead,
+`--speed` scales how many frames that sweep is spread across: `--frames` is
+the "1.0x" baseline frame count, and the actual number of rendered frames is
+`frames / speed` (capped at 5000). `0.5x` renders twice as many frames,
+spreading the same journey over more of them - and more real video time at
+the same `--fps` - so it looks slower without ever cutting the path short.
+`2.0x` renders half as many frames, covering the same journey faster (and
+in a shorter video).
 
 ```powershell
-# Half-speed orbit - camera only covers half a rotation over the video
-.\ray_tracer.exe --video --camera-path orbit --speed 0.5
+# Half-speed orbit - renders 2x the frames (240 instead of 120), same full
+# rotation, twice the video length at the same fps
+.\ray_tracer.exe --video --camera-path orbit --frames 120 --speed 0.5
 
-# Fast spiral - covers 6 rotations (2 baseline x 3.0) instead of 2
-.\ray_tracer.exe --video --camera-path spiral --speed 3.0
+# Double-speed spiral - renders half the frames (60 instead of 120), same
+# 2 full rotations, half the video length
+.\ray_tracer.exe --video --camera-path spiral --frames 120 --speed 2.0
 ```
 
 ## Camera Animation Paths

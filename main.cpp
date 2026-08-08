@@ -30,6 +30,7 @@
 #include <vector>
 #include <filesystem>
 #include <chrono>
+#include <cmath>
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -179,6 +180,33 @@ int main(int argc, char** argv) {
             std::cerr << "ERROR: --frames must be >= 1 (got " << video_frames << ")" << std::endl;
             return ERR_INVALID_ARGUMENTS;
         }
+        if (video_speed <= 0.0) {
+            std::cerr << "ERROR: --speed must be > 0 (got " << video_speed << ")" << std::endl;
+            return ERR_INVALID_ARGUMENTS;
+        }
+
+        // --speed does not change the camera path itself (still always one
+        // full baseline traversal - see camera_path.h) - it changes how many
+        // frames that traversal is spread across, so a slower video takes
+        // more frames (and more real time at the same fps) to cover the
+        // exact same path, instead of covering less of the path in the same
+        // frame count. --frames is the "1.0x" baseline frame count.
+        int render_frame_count = static_cast<int>(std::llround(video_frames / video_speed));
+        if (render_frame_count < 1) render_frame_count = 1;
+        const int kMaxVideoFrames = 5000;
+        if (render_frame_count > kMaxVideoFrames) {
+            std::cout << "WARNING: --speed " << video_speed << " with --frames " << video_frames
+                       << " would need " << render_frame_count << " frames; capping at "
+                       << kMaxVideoFrames << " frames." << std::endl;
+            render_frame_count = kMaxVideoFrames;
+        }
+        if (render_frame_count != video_frames) {
+            std::cout << "Speed " << video_speed << "x expands " << video_frames << " base frames to "
+                       << render_frame_count << " actual frames ("
+                       << std::fixed << std::setprecision(1)
+                       << (static_cast<double>(render_frame_count) / video_fps) << "s at " << video_fps << " fps)."
+                       << std::endl;
+        }
 
         // Prepare output directory for temporary frames
         std::filesystem::path out_path_obj(out_path);
@@ -200,16 +228,16 @@ int main(int argc, char** argv) {
 
         std::cout << "Temporary frame directory: " << frames_dir << std::endl;
         std::cout << "Output video: " << video_path << std::endl;
-        std::cout << "Rendering " << video_frames << " frames..." << std::endl;
+        std::cout << "Rendering " << render_frame_count << " frames..." << std::endl;
 
         auto video_start_time = std::chrono::high_resolution_clock::now();
         int successful_frames = 0;
         std::vector<std::string> frame_paths;
 
         // Render each frame with animated camera position
-        for (int frame = 0; frame < video_frames; ++frame) {
+        for (int frame = 0; frame < render_frame_count; ++frame) {
             // Get camera position for this frame
-            CameraPosition cam_pos = get_camera_position(camera_path, frame, video_frames, video_speed);
+            CameraPosition cam_pos = get_camera_position(camera_path, frame, render_frame_count);
 
             // Generate frame filename (e.g., frame_0001.ppm)
             char frame_filename[256];
@@ -217,8 +245,8 @@ int main(int argc, char** argv) {
             std::filesystem::path frame_path = frames_dir / frame_filename;
 
             // Progress indicator
-            std::cout << "\n[" << (frame + 1) << "/" << video_frames << "] Rendering " 
-                      << frame_filename << " (camera: " 
+            std::cout << "\n[" << (frame + 1) << "/" << render_frame_count << "] Rendering "
+                      << frame_filename << " (camera: "
                       << std::fixed << std::setprecision(1)
                       << cam_pos.lookfrom_x << ", " 
                       << cam_pos.lookfrom_y << ", " 
@@ -277,15 +305,15 @@ int main(int argc, char** argv) {
         std::cout << "\n========================================" << std::endl;
         std::cout << "CONVERTING FRAMES" << std::endl;
         std::cout << "========================================" << std::endl;
-        std::cout << "Successfully rendered: " << successful_frames << "/" << video_frames << " frames" << std::endl;
+        std::cout << "Successfully rendered: " << successful_frames << "/" << render_frame_count << " frames" << std::endl;
         std::cout << "Rendering time: " << video_duration.count() << " seconds" << std::endl;
 
         if (successful_frames == 0) {
             std::cerr << "ERROR: No frames rendered successfully!" << std::endl;
             return ERR_FILE_WRITE_FAILED;
         }
-        if (successful_frames < video_frames) {
-            std::cout << "WARNING: " << (video_frames - successful_frames) << " of " << video_frames
+        if (successful_frames < render_frame_count) {
+            std::cout << "WARNING: " << (render_frame_count - successful_frames) << " of " << render_frame_count
                        << " frames failed to render and will be skipped - the video will be shorter than requested."
                        << std::endl;
         }

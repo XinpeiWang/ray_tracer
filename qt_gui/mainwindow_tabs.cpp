@@ -16,6 +16,7 @@
 #include <QScreen>
 #include <QTimer>
 #include <QAbstractItemView>
+#include <cmath>
 
 void MainWindow::createBasicTab() {
 	QWidget *basicTab = new QWidget();
@@ -420,10 +421,14 @@ void MainWindow::createVideoTab() {
 	styleSpinBox(m_videoFPSSpinBox);
 	videoLayout->addRow("Frames Per Second:", m_videoFPSSpinBox);
 
-	// Movement speed multiplier - scales how much of the camera path is
-	// covered over the video (not the video's real-time duration, which is
-	// still frames/fps). 1.0x = the path's baseline traversal (1 full
-	// rotation for orbit/figure8, 2 for spiral, start->end for linear).
+	// Movement speed multiplier - does NOT change the camera path itself (it
+	// always completes the exact same full sweep: 1 rotation for
+	// orbit/figure8, 2 for spiral, the whole start->end traversal for
+	// linear). Instead it expands the actual number of rendered frames:
+	// speed 0.5x renders 2x the Frame Count above, spreading the same
+	// journey over more frames (and more real video time at the same fps),
+	// so it looks slower without ever cutting the path short. speed 2x
+	// renders half as many frames, covering the same journey faster.
 	m_videoSpeedSpinBox = new QDoubleSpinBox();
 	m_videoSpeedSpinBox->setRange(0.1, 5.0);
 	m_videoSpeedSpinBox->setSingleStep(0.1);
@@ -440,28 +445,30 @@ void MainWindow::createVideoTab() {
 
 	// Update duration display when frames, FPS, speed, or path changes
 	auto updateVideoDuration = [this]() {
-		int frames = m_videoFramesSpinBox->value();
+		int baseFrames = m_videoFramesSpinBox->value();
 		int fps = m_videoFPSSpinBox->value();
 		double speed = m_videoSpeedSpinBox->value();
 		QString cameraPath = m_cameraPathCombo->currentData().toString();
-		double duration = static_cast<double>(frames) / fps;
 
-		QString coverageText;
-		if (cameraPath == "linear") {
-			coverageText = QString("%1% of the start→end path").arg(QString::number(speed * 100.0, 'f', 0));
-			if (speed > 1.0) coverageText += " (overshoots the end position)";
-			else if (speed < 1.0) coverageText += " (stops short of the end position)";
-		} else {
-			double baseLoops = (cameraPath == "spiral") ? 2.0 : 1.0;
-			double loops = baseLoops * speed;
-			coverageText = QString("%1 rotation%2").arg(QString::number(loops, 'f', 2), loops == 1.0 ? "" : "s");
-		}
+		// Mirrors main.cpp's render_frame_count derivation exactly, so this
+		// preview matches what will actually be rendered.
+		int actualFrames = qMax(1, static_cast<int>(std::llround(baseFrames / speed)));
+		const int kMaxVideoFrames = 5000;
+		bool capped = actualFrames > kMaxVideoFrames;
+		if (capped) actualFrames = kMaxVideoFrames;
+		double duration = static_cast<double>(actualFrames) / fps;
+
+		QString framesLine = (actualFrames == baseFrames)
+			? QString("%1 frames").arg(actualFrames)
+			: QString("%1 frames (base %2 × 1/%3x speed)%4")
+				.arg(actualFrames).arg(baseFrames).arg(QString::number(speed, 'f', 2))
+				.arg(capped ? " - capped at 5000" : "");
 
 		m_videoInfoLabel->setText(QString(
-			"<b>Video Duration:</b> %1 seconds<br>"
-			"<b>Camera Path:</b> %2 at %3x speed → %4<br>"
+			"<b>Video Duration:</b> %1 seconds (%2)<br>"
+			"<b>Camera Path:</b> %3, always completes its full sweep regardless of speed<br>"
 			"<b>Output:</b> Frames will be saved to <code>output/frames/</code>"
-		).arg(QString::number(duration, 'f', 1), cameraPath, QString::number(speed, 'f', 2), coverageText));
+		).arg(QString::number(duration, 'f', 1), framesLine, cameraPath));
 	};
 
 	connect(m_videoFramesSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), updateVideoDuration);
