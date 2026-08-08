@@ -849,6 +849,15 @@ extern "C" __global__ void evaluate_materials(
 		break;
 	}
 	case MaterialType::CoatedConductor: {
+		// Rough dielectric coat over GGX conductor (pbrt-v4 CoatedConductorBxDF).
+		// Matches optix_intersection_sphere.h's recursive-path handling: path B
+		// (transmit into the coat, bounce off the conductor, exit back through
+		// the coat) must weight the conductor's Fresnel by T_in*T_out (how
+		// much light actually gets through the dielectric coat both ways) -
+		// the previous version here resampled a microfacet from the ORIGINAL
+		// viewing direction and skipped both the refraction-into-the-coat
+		// step and the T_in/T_out weighting entirely, making the conductor
+		// visible at full strength as if the coat weren't there.
 		float cc_alpha = sqrtf(mat.fuzz);
 		float3 ccn = normal;
 		float3 ccup = (fabsf(ccn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
@@ -861,38 +870,73 @@ extern "C" __global__ void evaluate_materials(
 		float ccwm_x, ccwm_y, ccwm_z;
 		cc_dist.Sample_wm(ccwi_x, ccwi_y, ccwi_z, wf_rand(seed), wf_rand(seed), ccwm_x, ccwm_y, ccwm_z);
 		float cc_dot = ccwi_x*ccwm_x + ccwi_y*ccwm_y + ccwi_z*ccwm_z;
-		float Fr_coat = FrDielectric(fmaxf(cc_dot, 0.0f), mat.ior);
-		if (wf_rand(seed) < Fr_coat) {
-			float ccwo_x = 2.0f*cc_dot*ccwm_x - ccwi_x;
-			float ccwo_y = 2.0f*cc_dot*ccwm_y - ccwi_y;
-			float ccwo_z = 2.0f*cc_dot*ccwm_z - ccwi_z;
-			scattered_dir = normalize(ccwo_x*cctan + ccwo_y*ccbitan + ccwo_z*ccn);
-			attenuation   = SS(1.f);
+		float F_in = FrDielectric(fmaxf(cc_dot, 0.0f), mat.ior);
+		float3 ccwo;
+		if (wf_rand(seed) < F_in) {
+			// Path A: coat specular reflection
+			float wo_x = 2.0f*cc_dot*ccwm_x - ccwi_x;
+			float wo_y = 2.0f*cc_dot*ccwm_y - ccwi_y;
+			float wo_z = 2.0f*cc_dot*ccwm_z - ccwi_z;
+			if (wo_z <= 0.0f) { scattered = false; break; }
+			float G1 = cc_dist.G1(ccwi_x, ccwi_y, ccwi_z);
+			float G  = cc_dist.G(wo_x, wo_y, wo_z, ccwi_x, ccwi_y, ccwi_z);
+			float w  = (G1 > 1e-8f) ? G / G1 : 0.0f;
+			float fv = F_in * w;
+			attenuation = SS(fv);
+			ccwo = make_float3(wo_x, wo_y, wo_z);
 		} else {
-			// Conductor layer: resample microfacet normal
-			float ccwm2_x, ccwm2_y, ccwm2_z;
-			cc_dist.Sample_wm(ccwi_x, ccwi_y, ccwi_z, wf_rand(seed), wf_rand(seed), ccwm2_x, ccwm2_y, ccwm2_z);
-			float cc_dot2 = ccwi_x*ccwm2_x + ccwi_y*ccwm2_y + ccwi_z*ccwm2_z;
-			float ccwo2_x = 2.0f*cc_dot2*ccwm2_x - ccwi_x;
-			float ccwo2_y = 2.0f*cc_dot2*ccwm2_y - ccwi_y;
-			float ccwo2_z = 2.0f*cc_dot2*ccwm2_z - ccwi_z;
-			if (ccwo2_z <= 0.0f) { scattered = false; break; }
-			float cc_G1  = cc_dist.G1(ccwi_x, ccwi_y, ccwi_z);
-			float cc_G   = cc_dist.G(ccwo2_x, ccwo2_y, ccwo2_z, ccwi_x, ccwi_y, ccwi_z);
-			float cc_w   = (cc_G1 > 1e-8f) ? cc_G / cc_G1 : 0.0f;
-			float3 c_F   = FrConductorRGB(cc_dot2, mat.eta_c.x, mat.eta_c.y, mat.eta_c.z, mat.k_c.x, mat.k_c.y, mat.k_c.z);
-			attenuation   = albedoSpectrum(make_float3(c_F.x * cc_w, c_F.y * cc_w, c_F.z * cc_w));
-			scattered_dir = normalize(ccwo2_x*cctan + ccwo2_y*ccbitan + ccwo2_z*ccn);
+			// Path B: transmit into layer -> conductor bounce -> exit coat
+			float w_x = 2.0f*cc_dot*ccwm_x - ccwi_x;
+			float w_y = 2.0f*cc_dot*ccwm_y - ccwi_y;
+			float w_z = 2.0f*cc_dot*ccwm_z - ccwi_z;
+			if (w_z > 0.0f) w_z = -w_z;   // ensure pointing downward into layer
+			if (w_z == 0.0f) { scattered = false; break; }
+
+			// Flip to conductor frame: "incoming from above" (fw_z > 0)
+			float fw_x = -w_x, fw_y = -w_y, fw_z = -w_z;
+
+			float bwm_x, bwm_y, bwm_z;
+			cc_dist.Sample_wm(fw_x, fw_y, fw_z, wf_rand(seed), wf_rand(seed), bwm_x, bwm_y, bwm_z);
+			float cos_c = fw_x*bwm_x + fw_y*bwm_y + fw_z*bwm_z;
+			if (cos_c <= 0.0f) { scattered = false; break; }
+
+			float rwo_x = 2.0f*cos_c*bwm_x - fw_x;
+			float rwo_y = 2.0f*cos_c*bwm_y - fw_y;
+			float rwo_z = 2.0f*cos_c*bwm_z - fw_z;
+			if (rwo_z <= 0.0f) { scattered = false; break; }
+
+			float G1_c = cc_dist.G1(fw_x, fw_y, fw_z);
+			float G_c  = cc_dist.G(rwo_x, rwo_y, rwo_z, fw_x, fw_y, fw_z);
+			float wt_c = (G1_c > 1e-8f) ? G_c / G1_c : 0.0f;
+
+			float3 c_F  = FrConductorRGB(cos_c, mat.eta_c.x, mat.eta_c.y, mat.eta_c.z, mat.k_c.x, mat.k_c.y, mat.k_c.z);
+
+			float F_out = FrDielectric(rwo_z, 1.0f / mat.ior);  // inside -> outside
+			float T_out = 1.0f - F_out;
+			float T_in  = 1.0f - F_in;
+
+			attenuation = albedoSpectrum(make_float3(
+				c_F.x * wt_c * T_in * T_out,
+				c_F.y * wt_c * T_in * T_out,
+				c_F.z * wt_c * T_in * T_out));
+			ccwo = make_float3(rwo_x, rwo_y, rwo_z);
 		}
+		scattered_dir = normalize(ccwo.x*cctan + ccwo.y*ccbitan + ccwo.z*ccn);
 		scattered   = (dot(scattered_dir, normal) > 0.0f);
 		is_specular = true;
 		break;
 	}
 	case MaterialType::DiffuseTransmission: {
+		// pbrt-v4 DiffuseTransmissionBxDF - matches optix_intersection_sphere.h's
+		// recursive-path handling exactly: albedo = reflectance R (same
+		// hemisphere), emission = transmittance T (reused field, not
+		// derived as 1-R), max-component probability weighting.
 		float3 R = mat.albedo;
-		float3 T_col = make_float3(1.0f - R.x, 1.0f - R.y, 1.0f - R.z);
-		float prob_r = (R.x + R.y + R.z) / 3.0f;
-		if (wf_rand(seed) < prob_r) {
+		float3 T_col = mat.emission;
+		float pr = fmaxf(R.x, fmaxf(R.y, R.z));
+		float pt = fmaxf(T_col.x, fmaxf(T_col.y, T_col.z));
+		if (pr + pt <= 0.0f) { scattered = false; break; }
+		if (wf_rand(seed) < pr / (pr + pt)) {
 			scattered_dir = normalize(normal + wf_rand_unit(seed));
 			if (wf_near_zero(scattered_dir)) scattered_dir = normal;
 			attenuation = albedoSpectrum(R);
