@@ -741,14 +741,26 @@ void build_quads_scene(SceneData& scene) {
 /// Matches CPU src/TheRestOfYourLife/scenes_advanced.h cornell_walls_no_light()
 /// exactly: same 5 walls, same two sphere positions/materials.
 static void build_punctual_light_walls(SceneData& scene) {
-	const int mat_red = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	using namespace cornell_box_data;
 
-	const int mat_white = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-	const int mat_green = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	// The 5 standard walls (green/red/ceiling/floor/back), no light quad -
+	// shares kQuads[0..4] with CPU's cornell_walls_no_light() so the two
+	// can't drift apart, same pattern as scene 0's build_cornell_box().
+	for (int i = 0; i < 5; ++i) {
+		const QuadSpec& q = kQuads[i];
+		const int mat = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({
+			MaterialType::Lambertian,
+			make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)),
+			0.0f, 0.0f,
+			make_float3(0.0f, 0.0f, 0.0f)
+		});
+		add_transformed_quad(scene,
+			make_float3(static_cast<float>(q.Q.x), static_cast<float>(q.Q.y), static_cast<float>(q.Q.z)),
+			make_float3(static_cast<float>(q.u.x), static_cast<float>(q.u.y), static_cast<float>(q.u.z)),
+			make_float3(static_cast<float>(q.v.x), static_cast<float>(q.v.y), static_cast<float>(q.v.z)),
+			mat);
+	}
 
 	// Sphere materials: white lambertian + blue-tinted fuzzy metal (matches CPU)
 	const int mat_white_sphere = safe_cast_to_int(scene.materials.size());
@@ -756,13 +768,6 @@ static void build_punctual_light_walls(SceneData& scene) {
 
 	const int mat_metal_sphere = safe_cast_to_int(scene.materials.size());
 	scene.materials.push_back({ MaterialType::Metal, make_float3(0.8f, 0.8f, 0.9f), 0.1f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-	// Walls (green/red/ceiling/floor/back - no front, no light quad)
-	add_transformed_quad(scene, make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), make_float3(0, kBoxSize, 0), mat_green);
-	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(0, 0, -kBoxSize), make_float3(0, kBoxSize, 0), mat_red);
-	add_transformed_quad(scene, make_float3(0, kBoxSize, 0), make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), mat_white);   // ceiling
-	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(kBoxSize, 0, 0), make_float3(0, 0, -kBoxSize), mat_white);  // floor
-	add_transformed_quad(scene, make_float3(kBoxSize, 0, kBoxSize), make_float3(-kBoxSize, 0, 0), make_float3(0, kBoxSize, 0), mat_white); // back
 
 	// Two spheres (matches CPU cornell_walls_no_light exactly)
 	{ SphereData s{}; s.center = make_float3(190.0f, 90.0f, 190.0f); s.radius = 90.0f; s.materialIdx = mat_white_sphere; scene.spheres.push_back(s); }

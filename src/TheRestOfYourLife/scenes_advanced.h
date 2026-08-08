@@ -14,6 +14,7 @@
 #include "punctual_light_objects.h"
 #include "../shared/bilinear_patch.h"
 #include "../shared/cameras.h"
+#include "../shared/cornell_box_data.h"
 #include "../shared/measured_bxdf.h"
 #include "../shared/portal_image_infinite_light.h"
 #include "mesh.h"
@@ -366,16 +367,22 @@ inline std::shared_ptr<sky_light> build_hdri_sky() {
 // Used by punctual-light Cornell scenes
 // ============================================================================
 inline hittable_list cornell_walls_no_light() {
+	using namespace cornell_box_data;
 	hittable_list world;
-	auto red   = make_shared<lambertian>(color(.65, .05, .05));
-	auto white = make_shared<lambertian>(color(.73, .73, .73));
-	auto green = make_shared<lambertian>(color(.12, .45, .15));
-	world.add(make_shared<quad>(point3(555,0,0),   vec3(0,0,555),  vec3(0,555,0), green));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(0,0,-555), vec3(0,555,0), red));
-	world.add(make_shared<quad>(point3(0,555,0),   vec3(555,0,0),  vec3(0,0,555), white));  // ceiling
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(555,0,0),  vec3(0,0,-555), white)); // floor
-	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), white));  // back
-	// Two boxes
+	// The 5 standard walls (green/red/ceiling/floor/back), no light quad -
+	// scenes 25-29 are lit by a punctual light instead. Shares
+	// cornell_box_data::kQuads[0..4] with GPU's build_punctual_light_walls()
+	// so the two can't drift apart, same pattern as scene 0.
+	for (int i = 0; i < 5; ++i) {
+		const QuadSpec& q = kQuads[i];
+		auto mat = make_shared<lambertian>(color(q.color.r, q.color.g, q.color.b));
+		world.add(make_shared<quad>(
+			point3(q.Q.x, q.Q.y, q.Q.z),
+			vec3(q.u.x, q.u.y, q.u.z),
+			vec3(q.v.x, q.v.y, q.v.z),
+			mat));
+	}
+	// Two spheres
 	world.add(make_shared<sphere>(point3(190,90,190), 90, make_shared<lambertian>(color(.73,.73,.73))));
 	world.add(make_shared<sphere>(point3(370,120,380), 120, make_shared<metal>(color(0.8,0.8,0.9),0.1)));
 	return world;
