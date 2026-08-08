@@ -340,6 +340,21 @@ int main(int argc, char** argv) {
                        << ") (scene " << scene_id << "'s recommended camera)." << std::endl;
         }
 
+        // If the user explicitly set a camera position (e.g. via the GUI's
+        // X/Y/Z spinboxes or "Distance from Center" control), start the path
+        // there instead of the scene's generic recommended camera - the
+        // look-at point stays the scene's own, so this still preserves
+        // get_camera_position()'s scale/height/start_angle derivation, just
+        // decomposed from the user's chosen viewpoint rather than the
+        // recommended one.
+        if (args.cam_explicit) {
+            path_lookfrom_x = cam_x;
+            path_lookfrom_y = cam_y;
+            path_lookfrom_z = cam_z;
+            std::cout << "Camera path overridden to start at (" << path_lookfrom_x << ", " << path_lookfrom_y
+                       << ", " << path_lookfrom_z << ") (explicit camera position)." << std::endl;
+        }
+
         auto video_start_time = std::chrono::high_resolution_clock::now();
         int successful_frames = 0;
 

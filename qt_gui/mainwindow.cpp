@@ -132,9 +132,9 @@ void RenderThread::run() {
 	// 2. samples: samples per pixel for anti-aliasing and noise reduction
 	// 3. depth: maximum ray bounce depth for recursive ray tracing
 	// 4. scene_id: scene selector (0=Cornell Box, 1=Bouncing Spheres, etc.)
-	// 5. cam_x: camera X position (lookfrom X coordinate) - only used in single-image mode
-	// 6. cam_y: camera Y position (lookfrom Y coordinate) - only used in single-image mode
-	// 7. cam_z: camera Z position (lookfrom Z coordinate) - only used in single-image mode
+	// 5. cam_x: camera X position (lookfrom X coordinate) - direct in image mode, path start in video mode
+	// 6. cam_y: camera Y position (lookfrom Y coordinate) - direct in image mode, path start in video mode
+	// 7. cam_z: camera Z position (lookfrom Z coordinate) - direct in image mode, path start in video mode
 	args << QString::number(m_width);
 	args << QString::number(m_samples);
 	args << QString::number(m_maxDepth);
@@ -144,13 +144,14 @@ void RenderThread::run() {
 	// regardless of what the user picked in the Scene dropdown.
 	args << QString::number(m_sceneId);
 
-	// Camera position only applies to single-image mode; in video mode the
-	// camera path animation overrides these values every frame.
-	if (!m_videoMode) {
-		args << QString::number(m_camX);     // Camera position X
-		args << QString::number(m_camY);     // Camera position Y
-		args << QString::number(m_camZ);     // Camera position Z
-	}
+	// Camera position is sent in both modes: single-image uses it directly,
+	// and video mode uses it as the camera path's starting point (see
+	// main.cpp's cam_explicit override of path_lookfrom) so that adjusting
+	// X/Y/Z or "Distance from Center" in the GUI actually changes the video,
+	// not just the single-image preview.
+	args << QString::number(m_camX);     // Camera position X
+	args << QString::number(m_camY);     // Camera position Y
+	args << QString::number(m_camZ);     // Camera position Z
 
 	emit logMessage(QString("Command: %1 %2").arg(exePath, args.join(" ")));
 
