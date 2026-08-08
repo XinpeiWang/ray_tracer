@@ -172,18 +172,46 @@ inline CameraPosition camera_path_spiral(int frame, int total_frames,
 // ============================================================================
 // Get Camera Position by Path Name
 // ============================================================================
-inline CameraPosition get_camera_position(const std::string& path_type, int frame, int total_frames) {
+// center_x/y/z and scale let the caller adapt these paths to a scene's
+// actual coordinate scale, rather than every video using the same
+// Cornell-Box-scale defaults (radius 800 around (278,278,278)) regardless
+// of how large or small that scene's own geometry is - see main.cpp's
+// video-mode branch, which derives these from
+// cpu_scene_recommended_camera() (cpu_interface.h). The defaults below
+// exactly reproduce each path's original Cornell-scale behavior, since
+// Cornell Box's own registry distance-from-lookat happens to already be
+// 800 - so passing scale=800/center=(278,278,278) (or omitting them
+// entirely) is behaviorally identical to before this parameter existed.
+//
+// scale_factor rescales orbit/figure8/spiral's radii proportionally,
+// preserving their relative sizes to each other (figure8 stays half of
+// orbit's implied radius, spiral's start/end stay in the same ratio) -
+// only linear's start/end don't reduce to their *exact* prior hardcoded
+// values at the Cornell defaults (those were two independently hand-picked
+// points, not derivable from a center+scale formula to begin with), though
+// they're still a reasonable, similarly-scaled sweep.
+inline CameraPosition get_camera_position(const std::string& path_type, int frame, int total_frames,
+											double center_x = 278.0, double center_y = 278.0, double center_z = 278.0,
+											double scale = 800.0) {
+	double scale_factor = scale / 800.0;
+
 	if (path_type == "orbit") {
-		return camera_path_orbit(frame, total_frames);
+		return camera_path_orbit(frame, total_frames, scale, center_x, center_y, center_z, center_y);
 	} else if (path_type == "linear") {
-		return camera_path_linear(frame, total_frames);
+		return camera_path_linear(frame, total_frames,
+			center_x, center_y, center_z - scale,
+			center_x, center_y, center_z + scale,
+			center_x, center_y, center_z);
 	} else if (path_type == "figure8") {
-		return camera_path_figure8(frame, total_frames);
+		return camera_path_figure8(frame, total_frames, 400.0 * scale_factor, center_x, center_y, center_z, center_y);
 	} else if (path_type == "spiral") {
-		return camera_path_spiral(frame, total_frames);
+		return camera_path_spiral(frame, total_frames,
+			1000.0 * scale_factor, 400.0 * scale_factor,
+			center_x, center_y, center_z,
+			center_y + 222.0 * scale_factor, center_y);
 	} else {
 		// Default to orbit
-		return camera_path_orbit(frame, total_frames);
+		return camera_path_orbit(frame, total_frames, scale, center_x, center_y, center_z, center_y);
 	}
 }
 

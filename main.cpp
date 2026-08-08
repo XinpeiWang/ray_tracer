@@ -321,6 +321,21 @@ int main(int argc, char** argv) {
         std::cout << "Output video: " << video_path << std::endl;
         std::cout << "Rendering " << render_frame_count << " frames..." << std::endl;
 
+        // Scale the camera-path animation to this scene's actual coordinate
+        // scale, rather than every video using the same Cornell-Box-scale
+        // defaults (radius 800 around (278,278,278)) regardless of scene -
+        // e.g. scene 1's spheres are clustered within roughly +-15 units of
+        // the origin, so an 800-unit orbit radius would show nothing but a
+        // tiny distant speck. cpu_scene_recommended_camera() reads the same
+        // scene_registry.h CameraConfig the renderers themselves use, so
+        // Cornell-family scenes (whose own recommended distance is already
+        // ~800) get identical camera-path behavior to before this existed.
+        double path_center_x = 278.0, path_center_y = 278.0, path_center_z = 278.0, path_scale = 800.0;
+        if (cpu_scene_recommended_camera(scene_id, &path_center_x, &path_center_y, &path_center_z, &path_scale)) {
+            std::cout << "Camera path centered on (" << path_center_x << ", " << path_center_y << ", " << path_center_z
+                       << ") with scale " << path_scale << " (from scene " << scene_id << "'s recommended camera)." << std::endl;
+        }
+
         auto video_start_time = std::chrono::high_resolution_clock::now();
         int successful_frames = 0;
 
@@ -333,7 +348,8 @@ int main(int argc, char** argv) {
         // Render each frame with animated camera position
         for (int frame = 0; frame < render_frame_count; ++frame) {
             // Get camera position for this frame
-            CameraPosition cam_pos = get_camera_position(camera_path, frame, render_frame_count);
+            CameraPosition cam_pos = get_camera_position(camera_path, frame, render_frame_count,
+                                                            path_center_x, path_center_y, path_center_z, path_scale);
 
             // Generate frame filename (e.g., frame_0001.ppm)
             char frame_filename[256];

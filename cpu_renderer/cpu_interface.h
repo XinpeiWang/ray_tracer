@@ -100,6 +100,18 @@ int cpu_scene_requires_files(int index);
 /// @return 1 if GPU compatible, else 0
 int cpu_scene_gpu_compatible(int index);
 
+/// Looks up scene_id (not index - a registry id, unlike the functions above)
+/// and returns its recommended camera framing: the CameraConfig's lookat
+/// point, and the distance from its lookfrom to that lookat. Used by
+/// main.cpp's video mode to scale the built-in camera-path animations
+/// (orbit/linear/figure8/spiral - see launcher/camera_path.h) to each
+/// scene's actual coordinate scale, instead of every scene's video using
+/// the same Cornell-Box-scale defaults (radius 800, center (278,278,278))
+/// regardless of how large or small that scene's own geometry actually is.
+/// Any of the four out-params may be null if that value isn't needed.
+/// @return 1 on success, 0 if scene_id isn't found (out-params left untouched)
+int cpu_scene_recommended_camera(int scene_id, double* lookat_x, double* lookat_y, double* lookat_z, double* distance);
+
 #ifdef __cplusplus
 }
 #endif

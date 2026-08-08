@@ -29,6 +29,7 @@
 #include <iostream>
 #include <fstream>
 #include <filesystem>
+#include <cmath>
 
 // ============================================================================
 // cpu_render_main - CPU Render Entry Point
@@ -292,4 +293,29 @@ extern "C" int cpu_scene_gpu_compatible(int index) {
 	const auto& reg = get_scene_registry();
 	if (index < 0 || index >= (int)reg.size()) return 0;
 	return reg[index].gpu_compatible ? 1 : 0;
+}
+
+extern "C" int cpu_scene_recommended_camera(int scene_id, double* lookat_x, double* lookat_y, double* lookat_z, double* distance) {
+	const SceneDescriptor* s = find_scene(scene_id);
+	if (!s) return 0;
+	const CameraConfig& cc = s->camera;
+	// UserControlled scenes (the Cornell-box family) don't have a single
+	// "recommended" distance - their registry lookfrom is just a starting
+	// suggestion the user (or a video's animated camera) is expected to
+	// move freely from, not a scale reference. Report "not found" so the
+	// caller falls back to its own defaults, rather than deriving a
+	// distance from that essentially-arbitrary starting point (e.g.
+	// Cornell Box's default lookfrom happens to be 1078 units from lookat,
+	// not the 800 every camera-path animation was actually tuned around).
+	if (cc.mode == CameraMode::UserControlled) return 0;
+	if (lookat_x) *lookat_x = cc.lookat_x;
+	if (lookat_y) *lookat_y = cc.lookat_y;
+	if (lookat_z) *lookat_z = cc.lookat_z;
+	if (distance) {
+		double dx = cc.lookfrom_x - cc.lookat_x;
+		double dy = cc.lookfrom_y - cc.lookat_y;
+		double dz = cc.lookfrom_z - cc.lookat_z;
+		*distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+	}
+	return 1;
 }
