@@ -35,6 +35,7 @@ enum RenderErrorCode {
 	ERR_INVALID_SCENE_ID = 11,
 	ERR_INVALID_CAMERA_POSITION = 12,
 	ERR_OUTPUT_PATH_INVALID = 13,
+	ERR_VIDEO_ASSEMBLY_FAILED = 14,
 
 	// ===== CPU RENDERER ERRORS (100-199) =====
 	ERR_CPU_SCENE_BUILD_FAILED = 100,
@@ -92,6 +93,7 @@ inline std::string get_error_message(int error_code) {
 		{ERR_INVALID_SCENE_ID, "Invalid scene ID (not registered in scene registry)"},
 		{ERR_INVALID_CAMERA_POSITION, "Invalid camera position coordinates"},
 		{ERR_OUTPUT_PATH_INVALID, "Output path is invalid or not writable"},
+		{ERR_VIDEO_ASSEMBLY_FAILED, "Failed to assemble rendered frames into a video"},
 
 		// CPU renderer errors (100-199)
 		{ERR_CPU_SCENE_BUILD_FAILED, "CPU: Failed to build scene"},
@@ -153,7 +155,8 @@ inline std::string get_troubleshooting_hint(int error_code) {
 		{ERR_GPU_OUT_OF_MEMORY, "GPU out of memory. Try reducing resolution or sample count, or use CPU mode."},
 		{ERR_GPU_UNSUPPORTED_SCENE, "GPU currently only supports Cornell Box (scene 0). Use CPU mode for other scenes."},
 		{ERR_GPU_MEMORY_ALLOCATION, "GPU memory allocation failed. Try reducing resolution or switching to CPU mode."},
-		{ERR_INVALID_ARGUMENTS, "Check command-line syntax: ray_tracer.exe [--cpu|--gpu] [--output path] <width> <spp> <depth> <scene_id> <cam_x> <cam_y> <cam_z>"}
+		{ERR_INVALID_ARGUMENTS, "Check command-line syntax: ray_tracer.exe [--cpu|--gpu] [--output path] <width> <spp> <depth> <scene_id> <cam_x> <cam_y> <cam_z>"},
+		{ERR_VIDEO_ASSEMBLY_FAILED, "Install ffmpeg (https://ffmpeg.org/download.html) and ensure it is on PATH, or assemble the rendered frames manually using the ffmpeg command printed above."}
 	};
 
 	auto it = hints.find(error_code);

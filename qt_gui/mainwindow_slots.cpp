@@ -432,8 +432,12 @@ void MainWindow::onModeChanged(int index) {
 }
 
 void MainWindow::assembleVideoAutomatically() {
-	// With OpenCV integration, the video is assembled directly by ray_tracer.exe
-	// We just need to find and open the video file
+	// ray_tracer.exe assembles the video itself (via ffmpeg) before it exits.
+	// This just finds and opens the resulting file. In the normal case
+	// ray_tracer.exe already exits non-zero if ffmpeg failed - see
+	// onRenderComplete()'s failure branch - so this is mainly a defensive
+	// fallback for the case where the process exited 0 but the expected
+	// video filename wasn't where we expect it.
 
 	// Wait a moment for file to be fully written
 	QThread::msleep(500);
@@ -467,11 +471,11 @@ void MainWindow::assembleVideoAutomatically() {
 			if (!frames.isEmpty()) {
 				m_statusLabel->setText(QString("⚠️ Found %1 frames but no video file").arg(frames.count()));
 				onLogMessage(QString("Frames were rendered (%1 files) but video assembly may have failed.").arg(frames.count()));
-				QMessageBox::warning(this, "Video Not Created", 
+				QMessageBox::warning(this, "Video Not Created",
 					QString("Frames were rendered successfully (%1 files), but the video file was not created.\n\n"
 							"Expected video in: %2\n"
 							"with pattern: *_video.mp4 or video.mp4\n\n"
-							"Please check the render log for OpenCV errors.").arg(frames.count()).arg(outputDir));
+							"Please check the render log for ffmpeg errors.").arg(frames.count()).arg(outputDir));
 			} else {
 				m_statusLabel->setText("❌ No frames or video found");
 				onLogMessage("ERROR: No frames or video file found");

@@ -453,8 +453,8 @@ void MainWindow::createVideoTab() {
 	QVBoxLayout *requirementsLayout = new QVBoxLayout(requirementsGroup);
 
 	QLabel *requirementsInfo = new QLabel(
-		"<b>Built-in Video Encoding:</b> Videos are automatically created using OpenCV (MP4V codec).<br>"
-		"<small>No external tools required!</small><br><br>"
+		"<b>Requires ffmpeg:</b> Video encoding uses ffmpeg (libx264), which must be installed and on your PATH.<br>"
+		"<small>Get it from <a href=\"https://ffmpeg.org/download.html\">ffmpeg.org</a> if the render log reports it's missing.</small><br><br>"
 		"<b>Automatic Assembly:</b> After rendering all frames, the video will be automatically assembled and opened."
 	);
 	requirementsInfo->setOpenExternalLinks(true);

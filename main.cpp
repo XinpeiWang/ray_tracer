@@ -27,14 +27,54 @@
 #include <iostream>
 #include <iomanip>
 #include <string>
+#include <vector>
 #include <filesystem>
 #include <chrono>
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
 #include "cpu_renderer/cpu_interface.h"
 #include "gpu/optix/optix_interface.h"
 #include "src/external/image_writer.h"
 #include "src/TheRestOfYourLife/error_codes.h"
 #include "launcher/camera_path.h"
 #include "launcher/launcher_args.h"   // Argument parsing
+
+// Run a subprocess with the given argv directly via CreateProcess (no shell,
+// so there's no cmd.exe quoting/percent-expansion to worry about - important
+// since ffmpeg's "%04d" frame-pattern argument would otherwise be at the
+// mercy of cmd.exe's own "%" parsing rules). Every argument is wrapped in
+// quotes; safe here since none of the arguments we build contain literal
+// quote characters. Returns the child's exit code, or -1 if it could not be
+// launched (e.g. the executable isn't found on PATH).
+static int run_subprocess(const std::vector<std::string>& argv) {
+    std::string cmdline;
+    for (size_t i = 0; i < argv.size(); ++i) {
+        if (i > 0) cmdline += ' ';
+        cmdline += '"' + argv[i] + '"';
+    }
+
+    STARTUPINFOA si{};
+    si.cb = sizeof(si);
+    PROCESS_INFORMATION pi{};
+
+    // CreateProcess may write into this buffer, so it can't be a literal/const string.
+    std::vector<char> mutableCmd(cmdline.begin(), cmdline.end());
+    mutableCmd.push_back('\0');
+
+    BOOL ok = CreateProcessA(nullptr, mutableCmd.data(), nullptr, nullptr, FALSE,
+                              0, nullptr, nullptr, &si, &pi);
+    if (!ok) {
+        return -1;
+    }
+
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD exitCode = 1;
+    GetExitCodeProcess(pi.hProcess, &exitCode);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    return static_cast<int>(exitCode);
+}
 
 int main(int argc, char** argv) {
 	std::cout << "========================================" << std::endl;
@@ -130,8 +170,13 @@ int main(int argc, char** argv) {
 
     if (video_mode) {
         std::cout << "\n========================================" << std::endl;
-        std::cout << "VIDEO RENDERING WITH OPENCV" << std::endl;
+        std::cout << "VIDEO RENDERING" << std::endl;
         std::cout << "========================================" << std::endl;
+
+        if (video_frames < 1) {
+            std::cerr << "ERROR: --frames must be >= 1 (got " << video_frames << ")" << std::endl;
+            return ERR_INVALID_ARGUMENTS;
+        }
 
         // Prepare output directory for temporary frames
         std::filesystem::path out_path_obj(out_path);
@@ -139,9 +184,13 @@ int main(int argc, char** argv) {
         std::filesystem::path video_path = out_path_obj.parent_path() / (out_path_obj.stem().string() + "_video.mp4");
 
         try {
-            if (!std::filesystem::exists(frames_dir)) {
-                std::filesystem::create_directories(frames_dir);
+            // Clear any frames left over from a previous video render - otherwise
+            // stale files can mix with (or mask) this run's sequence, especially
+            // when this run has fewer frames than the last one.
+            if (std::filesystem::exists(frames_dir)) {
+                std::filesystem::remove_all(frames_dir);
             }
+            std::filesystem::create_directories(frames_dir);
         } catch (const std::exception& e) {
             std::cerr << "ERROR: Failed to create frames directory: " << e.what() << std::endl;
             return ERR_FILE_WRITE_FAILED;
@@ -224,7 +273,7 @@ int main(int argc, char** argv) {
         auto video_duration = std::chrono::duration_cast<std::chrono::seconds>(video_end_time - video_start_time);
 
         std::cout << "\n========================================" << std::endl;
-        std::cout << "ASSEMBLING VIDEO WITH OPENCV" << std::endl;
+        std::cout << "CONVERTING FRAMES" << std::endl;
         std::cout << "========================================" << std::endl;
         std::cout << "Successfully rendered: " << successful_frames << "/" << video_frames << " frames" << std::endl;
         std::cout << "Rendering time: " << video_duration.count() << " seconds" << std::endl;
@@ -233,13 +282,23 @@ int main(int argc, char** argv) {
             std::cerr << "ERROR: No frames rendered successfully!" << std::endl;
             return ERR_FILE_WRITE_FAILED;
         }
+        if (successful_frames < video_frames) {
+            std::cout << "WARNING: " << (video_frames - successful_frames) << " of " << video_frames
+                       << " frames failed to render and will be skipped - the video will be shorter than requested."
+                       << std::endl;
+        }
 
-        // Convert each PPM frame to PNG
+        // Convert each successfully-rendered PPM frame to PNG, numbering the
+        // PNGs contiguously (0000, 0001, ...) rather than reusing the frame's
+        // original index - ffmpeg's sequential image2 demuxer stops at the
+        // first gap in a numbered sequence, so a mid-run failure would
+        // otherwise silently truncate the video at that point.
         std::cout << "Converting frames to PNG..." << std::endl;
         int converted = 0;
         for (size_t i = 0; i < frame_paths.size(); ++i) {
-            std::filesystem::path ppm_p(frame_paths[i]);
-            std::filesystem::path png_p = ppm_p.parent_path() / (ppm_p.stem().string() + ".png");
+            char enc_filename[32];
+            std::snprintf(enc_filename, sizeof(enc_filename), "enc_%04d.png", converted);
+            std::filesystem::path png_p = frames_dir / enc_filename;
             if (convert_ppm_to_png(frame_paths[i].c_str(), png_p.string().c_str())) {
                 ++converted;
             } else {
@@ -250,14 +309,52 @@ int main(int argc, char** argv) {
             }
         }
 
-        std::cout << "\n========================================" << std::endl;
-        std::cout << "FRAMES COMPLETE!" << std::endl;
-        std::cout << "========================================" << std::endl;
-        std::cout << "Frames directory: " << frames_dir << std::endl;
         std::cout << "Rendered: " << successful_frames << " frames, converted: " << converted << " PNG files" << std::endl;
+
+        if (converted == 0) {
+            std::cerr << "ERROR: No frames converted to PNG successfully!" << std::endl;
+            return ERR_FILE_WRITE_FAILED;
+        }
+
+        // Assemble the PNG sequence into an MP4 with ffmpeg
+        std::cout << "\n========================================" << std::endl;
+        std::cout << "ASSEMBLING VIDEO WITH FFMPEG" << std::endl;
+        std::cout << "========================================" << std::endl;
+
+        std::string enc_pattern = (frames_dir / "enc_%04d.png").string();
+        std::vector<std::string> ffmpeg_argv = {
+            "ffmpeg", "-y",
+            "-r", std::to_string(video_fps),
+            "-i", enc_pattern,
+            "-c:v", "libx264",
+            "-pix_fmt", "yuv420p",
+            video_path.string()
+        };
+        std::string manual_cmd = "ffmpeg -y -r " + std::to_string(video_fps) + " -i \"" + enc_pattern +
+                                  "\" -c:v libx264 -pix_fmt yuv420p \"" + video_path.string() + "\"";
+
+        std::cout << "Running: " << manual_cmd << std::endl;
+        int ffmpeg_result = run_subprocess(ffmpeg_argv);
+
+        if (ffmpeg_result == -1) {
+            std::cerr << "ERROR: Could not launch ffmpeg - is it installed and on PATH?" << std::endl;
+            std::cerr << "Install ffmpeg (https://ffmpeg.org/download.html), add it to PATH, then assemble manually:" << std::endl;
+            std::cerr << "  " << manual_cmd << std::endl;
+            return ERR_VIDEO_ASSEMBLY_FAILED;
+        }
+        if (ffmpeg_result != 0) {
+            std::cerr << "ERROR: ffmpeg exited with code " << ffmpeg_result << std::endl;
+            std::cerr << "Rendered frames are still available in: " << frames_dir << std::endl;
+            std::cerr << "You can retry assembly manually with:" << std::endl;
+            std::cerr << "  " << manual_cmd << std::endl;
+            return ERR_VIDEO_ASSEMBLY_FAILED;
+        }
+
+        std::cout << "\n========================================" << std::endl;
+        std::cout << "VIDEO COMPLETE!" << std::endl;
+        std::cout << "========================================" << std::endl;
+        std::cout << "Output video: " << video_path << std::endl;
         std::cout << "Resolution: " << image_width << "x" << image_height << std::endl;
-        std::cout << "To assemble video, run:" << std::endl;
-        std::cout << "  ffmpeg -r " << video_fps << " -i " << frames_dir.string() << "\\frame_%04d.png -c:v libx264 -pix_fmt yuv420p " << video_path.string() << std::endl;
         std::cout << "========================================" << std::endl;
 
         return SUCCESS;

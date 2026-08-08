@@ -7,19 +7,21 @@ This guide explains how to use the video generation feature to create animated r
 The video generation feature allows you to:
 - Render multiple frames with animated camera movement
 - Choose from 4 camera animation paths (orbit, linear, figure8, spiral)
-- Automatically assemble frames into an MP4 video using OpenCV (no external tools required)
+- Automatically assemble frames into an MP4 video using ffmpeg
 
 ## Prerequisites
 
 1. **Build the project** (if not already built):
    ```powershell
-   .\scripts\build_all.ps1
+   .\build_all.ps1
    ```
 
-2. **OpenCV** (built-in via vcpkg):
-   - OpenCV 4 is automatically available through vcpkg integration
-   - No manual installation or PATH configuration needed
-   - Video encoding uses the built-in MP4V codec
+2. **ffmpeg** (external dependency, not bundled):
+   - Install from https://ffmpeg.org/download.html and make sure `ffmpeg` is on PATH
+   - The launcher invokes it automatically as the last step of a video render
+     (`libx264` codec, `yuv420p` pixel format) - if it's missing, the render
+     still completes and the rendered/converted frames are kept on disk, but
+     the launcher exits with `ERR_VIDEO_ASSEMBLY_FAILED` and no video is written
 
 ## Quick Start
 
@@ -115,9 +117,8 @@ Spiraling inward while rotating around the scene.
 Fast render for testing camera paths:
 
 ```powershell
-# 30 frames, 200x200 resolution, 10 samples/pixel
+# 30 frames, 200x200 resolution, 10 samples/pixel - video assembles automatically
 .\ray_tracer.exe --video --frames 30 --fps 30 --camera-path orbit 200 10 20
-.\scripts\assemble_video.ps1 -FramesDir ".\output\frames" -FPS 30
 ```
 
 Estimated time: ~1-2 minutes (GPU), ~5-10 minutes (CPU)
@@ -128,22 +129,21 @@ Full quality video for final output:
 ```powershell
 # 120 frames, 800x800 resolution, 500 samples/pixel
 .\ray_tracer.exe --gpu --video --frames 120 --fps 30 --camera-path orbit 800 500 50
-.\scripts\assemble_video.ps1 -FramesDir ".\output\frames" -FPS 30 -Quality 18
 ```
 
 Estimated time: ~10-30 minutes (GPU), several hours (CPU)
 
 ### Example 3: Multiple Camera Paths
-Create different videos from the same scene:
+Create different videos from the same scene (each run clears and re-populates `output/frames/`, then assembles its own `output/<name>_video.mp4`):
 
 ```powershell
 # Orbit path
 .\ray_tracer.exe --video --frames 60 --camera-path orbit 600 100 50
-.\scripts\assemble_video.ps1 -FramesDir ".\output\frames" -OutputPath ".\output\orbit.mp4" -FPS 30
 
-# Spiral path (re-renders frames)
-.\ray_tracer.exe --video --frames 60 --camera-path spiral 600 100 50
-.\scripts\assemble_video.ps1 -FramesDir ".\output\frames" -OutputPath ".\output\spiral.mp4" -FPS 30
+# Spiral path (re-renders frames; --output picks the video's name/location -
+# it's derived from the output stem as <stem>_video.mp4, so without --output
+# both runs above would overwrite the same output/image_video.mp4)
+.\ray_tracer.exe --video --frames 60 --camera-path spiral --output .\output\spiral.ppm 600 100 50
 ```
 
 ## Performance Tips
@@ -180,7 +180,7 @@ Adjust FPS during rendering:
 ```
 
 ### Video file not created
-Check the render log for OpenCV errors. Ensure the renderer completed successfully and didn't crash during frame rendering.
+Check the render log for ffmpeg errors (missing from PATH, unsupported codec, etc. - the launcher prints the exact ffmpeg command it ran, which you can also run manually to debug). Also confirm the renderer completed successfully and didn't crash during frame rendering.
 
 ### Frames look different between renders
 - Video mode uses **animated camera positions**
@@ -198,12 +198,15 @@ Reduce resolution or samples per pixel:
 
 ```
 output/
-├── frames/              # Rendered frames (created by ray_tracer.exe --video)
-│   ├── frame_0001.ppm
+├── frames/                  # Cleared and repopulated by each --video run
+│   ├── frame_0001.ppm       # Rendered frames, original frame index
 │   ├── frame_0002.ppm
+│   ├── ...
+│   ├── enc_0000.png         # PNG conversions, renumbered contiguously
+│   ├── enc_0001.png         # (skips any frame that failed to render)
 │   └── ...
-├── video.mp4            # Final video (created by assemble_video.ps1)
-└── image.ppm            # Single-frame renders (normal mode)
+├── <stem>_video.mp4         # Final video, assembled by ffmpeg (<stem> from --output)
+└── image.ppm                # Single-frame renders (normal mode)
 ```
 
 ## Next Steps

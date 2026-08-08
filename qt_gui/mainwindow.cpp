@@ -137,10 +137,14 @@ void RenderThread::run() {
 	args << QString::number(m_samples);
 	args << QString::number(m_maxDepth);
 
-	// Camera position only applies to single-image mode
-	// In video mode, camera path animation overrides these values
+	// Scene ID applies in both modes - dropping it in video mode used to
+	// silently fall back to the launcher's default (scene 0/Cornell Box)
+	// regardless of what the user picked in the Scene dropdown.
+	args << QString::number(m_sceneId);
+
+	// Camera position only applies to single-image mode; in video mode the
+	// camera path animation overrides these values every frame.
 	if (!m_videoMode) {
-		args << QString::number(m_sceneId);  // Scene ID
 		args << QString::number(m_camX);     // Camera position X
 		args << QString::number(m_camY);     // Camera position Y
 		args << QString::number(m_camZ);     // Camera position Z
@@ -174,7 +178,7 @@ void RenderThread::run() {
 	int lastProgress = 0;
 	QRegularExpression scanlinesRegex("Scanlines remaining:\\s*(\\d+)");
 	QRegularExpression videoFrameRegex("\\[(\\d+)/(\\d+)\\] Rendering frame_");  // Matches "[5/60] Rendering frame_"
-	QRegularExpression assemblyProgressRegex("Progress:\\s*(\\d+)/(\\d+)\\s*frames written");  // Matches "Progress: 10/60 frames written"
+	QRegularExpression conversionProgressRegex("Progress:\\s*(\\d+)/(\\d+)\\s*frames converted");  // Matches "Progress: 10/60 frames converted"
 	int totalScanlines = m_height; // Track total height for percentage calculation
 	QString accumulatedOutput;
 
@@ -210,32 +214,36 @@ void RenderThread::run() {
 
 			// Parse progress from same lines
 			for (const QString& line : lines) {
-				// Video mode: look for "[X/Y] Rendering frame_" pattern (0-90%)
+				// Video mode: rendering (0-80%), PNG conversion (80-95%), then a
+				// fixed bump once ffmpeg assembly starts (no per-frame progress
+				// available from ffmpeg cheaply); onRenderComplete snaps to 100%
+				// once the subprocess actually exits.
 				if (m_videoMode) {
 					QRegularExpressionMatch frameMatch = videoFrameRegex.match(line);
 					if (frameMatch.hasMatch()) {
 						int currentFrame = frameMatch.captured(1).toInt();
 						int totalFrames = frameMatch.captured(2).toInt();
-						// Scale rendering to 0-90%
-						int progress = (totalFrames > 0) ? (currentFrame * 90) / totalFrames : 0;
-						progress = std::max(0, std::min(progress, 90)); // Clamp to 0-90
+						int progress = (totalFrames > 0) ? (currentFrame * 80) / totalFrames : 0;
+						progress = std::max(0, std::min(progress, 80));
 						if (progress > lastProgress) {
 							emit progressUpdate(progress);
 							lastProgress = progress;
 						}
 					}
-					// Also check for assembly progress (90-100%)
-					QRegularExpressionMatch assemblyMatch = assemblyProgressRegex.match(line);
-					if (assemblyMatch.hasMatch()) {
-						int writtenFrames = assemblyMatch.captured(1).toInt();
-						int totalFrames = assemblyMatch.captured(2).toInt();
-						// Scale assembly to 90-100%
-						int progress = 90 + ((totalFrames > 0) ? (writtenFrames * 10) / totalFrames : 0);
-						progress = std::max(90, std::min(progress, 100)); // Clamp to 90-100
+					QRegularExpressionMatch conversionMatch = conversionProgressRegex.match(line);
+					if (conversionMatch.hasMatch()) {
+						int convertedFrames = conversionMatch.captured(1).toInt();
+						int totalFrames = conversionMatch.captured(2).toInt();
+						int progress = 80 + ((totalFrames > 0) ? (convertedFrames * 15) / totalFrames : 0);
+						progress = std::max(80, std::min(progress, 95));
 						if (progress > lastProgress) {
 							emit progressUpdate(progress);
 							lastProgress = progress;
 						}
+					}
+					if (line.contains("ASSEMBLING VIDEO WITH FFMPEG") && lastProgress < 97) {
+						emit progressUpdate(97);
+						lastProgress = 97;
 					}
 				}
 				// Single-image mode: look for "Scanlines remaining: X"

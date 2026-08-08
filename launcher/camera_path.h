@@ -65,8 +65,11 @@ inline CameraPosition camera_path_linear(int frame, int total_frames,
 										  double lookat_x = 278.0, double lookat_y = 278.0, double lookat_z = 278.0) {
 	CameraPosition pos;
 
-	// Linear interpolation parameter
-	double t = static_cast<double>(frame) / static_cast<double>(total_frames - 1);
+	// Linear interpolation parameter (guard against a 1-frame "video", which
+	// would otherwise divide by zero and produce a NaN camera position)
+	double t = (total_frames > 1)
+		? static_cast<double>(frame) / static_cast<double>(total_frames - 1)
+		: 0.0;
 
 	// Lerp camera position
 	pos.lookfrom_x = start_x + t * (end_x - start_x);

@@ -1,5 +1,12 @@
 # Video Generation Feature - Implementation Summary
 
+> **NOTE**: This document describes an original design that used a separate
+> `scripts/assemble_video.ps1` script for the assembly step. That script was
+> never actually added to the repo; assembly now happens automatically,
+> in-process, at the end of `main.cpp`'s video-mode branch, which invokes
+> `ffmpeg` directly (still required on PATH). See `docs/VIDEO_GENERATION.md`
+> for the current, accurate usage guide.
+
 ## Overview
 Successfully implemented video generation capability for the ray tracer, enabling animated camera paths and video assembly from rendered frames.
 

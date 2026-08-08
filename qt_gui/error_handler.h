@@ -63,6 +63,7 @@ inline QString getErrorTitle(int errorCode) {
 		{11, "Invalid Scene ID"},
 		{12, "Invalid Camera Position"},
 		{13, "Invalid Output Path"},
+		{14, "Video Assembly Failed"},
 
 		// CPU errors (100-199)
 		{100, "Scene Build Failed (CPU)"},
@@ -120,6 +121,7 @@ inline QString getErrorMessage(int errorCode) {
 		{8, "Image dimensions must be positive integers (recommended: 400-1920)."},
 		{9, "Samples per pixel must be greater than 0 (recommended: 10-500)."},
 		{10, "Maximum ray depth must be greater than 0 (recommended: 10-100)."},
+		{14, "Frames rendered successfully, but assembling them into a video with ffmpeg failed."},
 		{100, "Failed to construct the scene geometry."},
 		{101, "The scene contains no objects to render."},
 		{103, "An error occurred while rendering the image."},
@@ -163,6 +165,10 @@ inline QString getTroubleshootingHint(int errorCode) {
 		{5, "• Check that the output directory exists and is writable\n"
 			"• Make sure you have enough disk space\n"
 			"• Try closing any programs that might be using the output file"},
+
+		{14, "• Install ffmpeg from https://ffmpeg.org/download.html and add it to your PATH\n"
+			 "• Check the render log above for the exact ffmpeg command and error output\n"
+			 "• Rendered frames are kept in output/frames/ - you can assemble the video manually"},
 
 		{8, "• Try common resolutions: 800×800, 1920×1080\n"
 			"• Width and height must be positive numbers"},

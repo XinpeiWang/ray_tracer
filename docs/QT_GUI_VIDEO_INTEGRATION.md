@@ -1,6 +1,6 @@
 # Qt GUI Video Integration - Implementation Summary
 
-> **NOTE**: This document describes the initial FFmpeg-based implementation. The system has since been updated to use OpenCV for direct MP4 encoding, eliminating the need for external tools and the separate assembly step. The current implementation automatically creates the video file during rendering.
+> **NOTE**: This document describes the FFmpeg-based implementation, which is what the codebase actually ships. (An earlier revision of this note claimed a switch to OpenCV for direct MP4 encoding; that migration was never implemented - `main.cpp`'s video path calls out to `ffmpeg` via `CreateProcess`, and there is no OpenCV dependency anywhere in the build.) `ffmpeg` must be installed and on PATH; the launcher assembles the video automatically as the last step of a video render.
 
 ## Overview
 Successfully integrated video generation capability into the Qt GUI application. Users can now switch between "Render Single Image" and "Generate Video" modes through a top-level mode selector.
