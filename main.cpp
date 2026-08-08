@@ -31,6 +31,10 @@
 #include <filesystem>
 #include <chrono>
 #include <cmath>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <queue>
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -77,6 +81,77 @@ static int run_subprocess(const std::vector<std::string>& argv) {
     CloseHandle(pi.hThread);
     return static_cast<int>(exitCode);
 }
+
+// Converts rendered PPM frames to PNG on a background thread while the main
+// thread renders the next frame, instead of converting everything in a
+// separate pass after the whole video has finished rendering. Especially
+// valuable in GPU mode, where the CPU otherwise sits idle during rendering -
+// this overlap is "free" wall-clock time. Frames are renumbered contiguously
+// (enc_0000.png, enc_0001.png, ...) in the order they're pushed, independent
+// of the original frame index, so a mid-run render failure (which just skips
+// pushing that frame) doesn't leave a gap in the sequence - ffmpeg's
+// sequential image2 demuxer stops at the first gap in a numbered sequence.
+class BackgroundPngConverter {
+public:
+    BackgroundPngConverter(std::filesystem::path frames_dir)
+        : frames_dir_(std::move(frames_dir)), worker_(&BackgroundPngConverter::run, this) {}
+
+    // Queue a successfully-rendered PPM for conversion. Safe to call from the
+    // render loop while the worker thread is running.
+    void push(std::string ppm_path) {
+        {
+            std::lock_guard<std::mutex> lock(mtx_);
+            queue_.push(std::move(ppm_path));
+        }
+        cv_.notify_one();
+    }
+
+    // Signals no more frames are coming, waits for the queue to drain, and
+    // returns how many frames converted successfully.
+    int finish() {
+        {
+            std::lock_guard<std::mutex> lock(mtx_);
+            done_ = true;
+        }
+        cv_.notify_one();
+        worker_.join();
+        return converted_;
+    }
+
+private:
+    void run() {
+        int next_index = 0;
+        while (true) {
+            std::string ppm_path;
+            {
+                std::unique_lock<std::mutex> lock(mtx_);
+                cv_.wait(lock, [&] { return !queue_.empty() || done_; });
+                if (queue_.empty() && done_) break;
+                ppm_path = std::move(queue_.front());
+                queue_.pop();
+            }
+
+            char enc_filename[32];
+            std::snprintf(enc_filename, sizeof(enc_filename), "enc_%04d.png", next_index);
+            std::filesystem::path png_path = frames_dir_ / enc_filename;
+            if (convert_ppm_to_png(ppm_path.c_str(), png_path.string().c_str())) {
+                ++next_index;
+                converted_ = next_index;
+            } else {
+                std::lock_guard<std::mutex> lock(mtx_);
+                std::cerr << "\nWARNING: PNG conversion failed for " << ppm_path << std::endl;
+            }
+        }
+    }
+
+    std::filesystem::path frames_dir_;
+    std::mutex mtx_;
+    std::condition_variable cv_;
+    std::queue<std::string> queue_;
+    bool done_ = false;
+    int converted_ = 0;
+    std::thread worker_;  // must be the last member so it's constructed last
+};
 
 int main(int argc, char** argv) {
 	std::cout << "========================================" << std::endl;
@@ -248,7 +323,12 @@ int main(int argc, char** argv) {
 
         auto video_start_time = std::chrono::high_resolution_clock::now();
         int successful_frames = 0;
-        std::vector<std::string> frame_paths;
+
+        // Converts each frame to PNG on a background thread as soon as it's
+        // rendered, instead of after the whole video finishes - overlaps
+        // conversion with the next frame's render (particularly valuable in
+        // GPU mode, where the CPU is otherwise idle while the GPU renders).
+        BackgroundPngConverter png_converter(frames_dir);
 
         // Render each frame with animated camera position
         for (int frame = 0; frame < render_frame_count; ++frame) {
@@ -308,7 +388,7 @@ int main(int argc, char** argv) {
 
             if (render_result == SUCCESS) {
                 successful_frames++;
-                frame_paths.push_back(frame_path.string());
+                png_converter.push(frame_path.string());
                 std::cout << " ✓ (" << (frame_duration.count() / 1000.0) << "s)" << std::endl;
             } else {
                 std::cerr << " ✗ FAILED (error code: " << render_result << ")" << std::endl;
@@ -334,26 +414,12 @@ int main(int argc, char** argv) {
                        << std::endl;
         }
 
-        // Convert each successfully-rendered PPM frame to PNG, numbering the
-        // PNGs contiguously (0000, 0001, ...) rather than reusing the frame's
-        // original index - ffmpeg's sequential image2 demuxer stops at the
-        // first gap in a numbered sequence, so a mid-run failure would
-        // otherwise silently truncate the video at that point.
-        std::cout << "Converting frames to PNG..." << std::endl;
-        int converted = 0;
-        for (size_t i = 0; i < frame_paths.size(); ++i) {
-            char enc_filename[32];
-            std::snprintf(enc_filename, sizeof(enc_filename), "enc_%04d.png", converted);
-            std::filesystem::path png_p = frames_dir / enc_filename;
-            if (convert_ppm_to_png(frame_paths[i].c_str(), png_p.string().c_str())) {
-                ++converted;
-            } else {
-                std::cerr << "WARNING: PNG conversion failed for " << frame_paths[i] << std::endl;
-            }
-            if ((i + 1) % 10 == 0 || i == frame_paths.size() - 1) {
-                std::cout << "  Progress: " << (i + 1) << "/" << frame_paths.size() << " frames converted" << std::endl;
-            }
-        }
+        // Most frames were already converted to PNG in the background while
+        // later frames rendered (see png_converter.push() above) - this just
+        // waits for the queue to drain (typically near-instant, since
+        // conversion is far faster than a render) and gets the final count.
+        std::cout << "Finishing PNG conversion..." << std::endl;
+        int converted = png_converter.finish();
 
         std::cout << "Rendered: " << successful_frames << " frames, converted: " << converted << " PNG files" << std::endl;
 
