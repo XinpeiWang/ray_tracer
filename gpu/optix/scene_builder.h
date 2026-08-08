@@ -39,6 +39,11 @@ struct SceneData {
 // untouched - callers should zero-init before calling and treat an
 // unmodified (still-zeroed, kind=Perspective) result as "use camera_params
 // as a plain perspective camera", matching every scene's prior behavior.
+// force_camera_override: when true, scenes that would otherwise ignore
+// cam_x/y/z and use their own fixed lookfrom (currently scenes 1 and 2 -
+// see their case blocks) honor cam_x/y/z instead. Set by main.cpp's
+// video-mode frame loop, which must animate the camera every frame
+// regardless of a scene's single-image default.
 bool build_scene(
 	int scene_id,
 	int image_width,
@@ -48,5 +53,6 @@ bool build_scene(
 	double cam_x = 278.0,
 	double cam_y = 278.0,
 	double cam_z = -800.0,  // Far back view
-	GpuCameraParams* out_camera_extra = nullptr
+	GpuCameraParams* out_camera_extra = nullptr,
+	bool force_camera_override = false
 );

@@ -12,6 +12,12 @@ bool optix_is_available();
 
 // Main OptiX rendering entry point
 // Supports multiple scenes via scene_id parameter
+// force_camera_override: 1 = always use cam_x/y/z, even for scenes that
+// otherwise ignore it and use their own fixed lookfrom (see
+// scene_builder.cpp's scene 1/2 cases). main.cpp's video-mode frame loop
+// passes 1, since a video needs to honor its per-frame animated camera
+// regardless of the scene's single-image default; single-image rendering
+// passes 0 (default).
 int optix_render_main(
 	int image_width,
 	int image_height,
@@ -21,7 +27,8 @@ int optix_render_main(
 	int scene_id,
 	double cam_x,
 	double cam_y,
-	double cam_z
+	double cam_z,
+	int force_camera_override = 0
 );
 
 // Returns the number of emissive light primitives (quads+spheres) that

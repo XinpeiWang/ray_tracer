@@ -45,6 +45,15 @@ extern "C" {
 /// @param cam_x         Camera position X coordinate (default: 278)
 /// @param cam_y         Camera position Y coordinate (default: 278)
 /// @param cam_z         Camera position Z coordinate (default: -800)
+/// @param force_camera_override
+///                      1 = always use cam_x/y/z, even for scenes whose
+///                      CameraConfig.mode isn't UserControlled (which
+///                      otherwise silently ignore cam_x/y/z and use the
+///                      scene's own fixed lookfrom - see cpu_interface.cpp).
+///                      main.cpp's video-mode frame loop passes 1, since a
+///                      video needs to honor its per-frame animated camera
+///                      regardless of the scene's single-image default;
+///                      single-image rendering passes 0 (default).
 /// @return 0 on success, non-zero error code on failure
 int cpu_render_main(
     int width,
@@ -55,7 +64,8 @@ int cpu_render_main(
     int scene_id,
     double cam_x,
     double cam_y,
-    double cam_z
+    double cam_z,
+    int force_camera_override = 0
 );
 
 /// Scene metadata C API -- lets the GUI query the registry without C++ headers

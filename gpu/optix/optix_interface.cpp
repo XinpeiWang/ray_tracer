@@ -33,7 +33,8 @@ extern "C" int optix_render_main(
 	int scene_id,
 	double cam_x,
 	double cam_y,
-	double cam_z
+	double cam_z,
+	int force_camera_override
 ) {
 	try {
 		// Initialize renderer on first call
@@ -54,7 +55,7 @@ extern "C" int optix_render_main(
 		float camera_params[12];  // origin(3) + lower_left(3) + horizontal(3) + vertical(3)
 		GpuCameraParams cameraExtra{};  // zero-init: kind=Perspective, DOF/spherical fields all zero
 
-		if (!build_scene(scene_id, image_width, image_height, scene, camera_params, cam_x, cam_y, cam_z, &cameraExtra)) {
+		if (!build_scene(scene_id, image_width, image_height, scene, camera_params, cam_x, cam_y, cam_z, &cameraExtra, force_camera_override != 0)) {
 			std::cerr << "[OptiX] Failed to build scene\n";
 			return ERR_GPU_SCENE_BUILD_FAILED;
 		}

@@ -351,7 +351,11 @@ int main(int argc, char** argv) {
             auto frame_start = std::chrono::high_resolution_clock::now();
             int render_result = -1;
 
-            // Render frame with GPU or CPU
+            // Render frame with GPU or CPU. force_camera_override=1: some
+            // scenes (currently 1 and 2) otherwise ignore cam_x/y/z and
+            // always use their own fixed single-image lookfrom - a video
+            // must honor its per-frame animated camera regardless, or it
+            // would render the same static frame video_frames times.
             if (use_gpu) {
                 if (optix_is_available()) {
                     render_result = optix_render_main(
@@ -363,7 +367,8 @@ int main(int argc, char** argv) {
                         scene_id,
                         cam_pos.lookfrom_x,
                         cam_pos.lookfrom_y,
-                        cam_pos.lookfrom_z
+                        cam_pos.lookfrom_z,
+                        1  // force_camera_override
                     );
                 } else {
                     std::cerr << "\nERROR: OptiX is not available!" << std::endl;
@@ -371,15 +376,16 @@ int main(int argc, char** argv) {
                 }
             } else {
                 render_result = cpu_render_main(
-                    image_width, 
-                    image_height, 
-                    samples_per_pixel, 
-                    max_ray_depth, 
-                    frame_path.string().c_str(), 
+                    image_width,
+                    image_height,
+                    samples_per_pixel,
+                    max_ray_depth,
+                    frame_path.string().c_str(),
                     scene_id,
                     cam_pos.lookfrom_x,
                     cam_pos.lookfrom_y,
-                    cam_pos.lookfrom_z
+                    cam_pos.lookfrom_z,
+                    1  // force_camera_override
                 );
             }
 

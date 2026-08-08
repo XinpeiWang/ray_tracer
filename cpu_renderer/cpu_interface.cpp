@@ -38,7 +38,8 @@
 // ============================================================================
 
 extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, const char* output_path,
-								 int scene_id, double cam_x, double cam_y, double cam_z) {
+								 int scene_id, double cam_x, double cam_y, double cam_z,
+								 int force_camera_override) {
 	try {
 		// ====================================================================
 		// Parameter Validation
@@ -131,8 +132,12 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		cam.background    = color(cc.bg_r, cc.bg_g, cc.bg_b);
 		cam.defocus_angle = cc.defocus_angle;  // 0 = no DOF blur
 		cam.focus_dist    = cc.focus_dist;
-		if (cc.mode == CameraMode::UserControlled) {
-			// Let caller override lookfrom (camera presets in UI)
+		if (cc.mode == CameraMode::UserControlled || force_camera_override) {
+			// Let caller override lookfrom (camera presets in UI, or a
+			// video-mode frame's animated per-frame position - the latter
+			// must be honored regardless of CameraMode, since a "video" that
+			// silently ignores its own animated camera and stays frozen
+			// defeats the point of video mode)
 			cam.lookfrom = point3(cam_x, cam_y, cam_z);
 		} else {
 			cam.lookfrom = point3(cc.lookfrom_x, cc.lookfrom_y, cc.lookfrom_z);

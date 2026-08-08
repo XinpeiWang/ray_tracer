@@ -1585,7 +1585,8 @@ bool build_scene(
 	const double cam_x,
 	const double cam_y,
 	const double cam_z,
-	GpuCameraParams* out_camera_extra
+	GpuCameraParams* out_camera_extra,
+	bool force_camera_override
 ) {
 	if (camera_params == nullptr) {
 		return false;  // Invalid camera parameter buffer
@@ -1674,16 +1675,21 @@ bool build_scene(
 					// Configure camera. This scene's CameraConfig in
 					// scene_registry.h doesn't set CameraMode::UserControlled,
 					// so it defaults to Fixed - the CPU renderer (cpu_interface.cpp)
-					// ignores cam_x/y/z entirely for Fixed scenes and always uses
-					// the registry's own lookfrom (13,2,3). Match that here rather
-					// than forwarding cam_x/y/z verbatim: this scene's spheres are
+					// ignores cam_x/y/z for Fixed scenes and always uses the
+					// registry's own lookfrom (13,2,3), UNLESS force_camera_override
+					// is set (main.cpp's video-mode frame loop, which must animate
+					// the camera every frame). Match that here rather than always
+					// forwarding cam_x/y/z verbatim: this scene's spheres are
 					// clustered within roughly +-15 units of the origin, so a
 					// leftover Cornell-Box-scale camera position (e.g. (278,278,-800),
 					// a common default/preset for other scenes) would place the
-					// camera absurdly far away, rendering an unrecognizable speck.
+					// camera absurdly far away, rendering an unrecognizable speck,
+					// for any single-image render that doesn't opt into the override.
 					{
 						constexpr float kPi = 3.14159265358979323846f;
-						const float3 lookfrom = make_float3(13.0f, 2.0f, 3.0f);
+						const float3 lookfrom = force_camera_override
+							? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z))
+							: make_float3(13.0f, 2.0f, 3.0f);
 						const float3 lookat = make_float3(0.0f, 0.0f, 0.0f);
 						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
 						constexpr float vfov = 20.0f;
@@ -1728,12 +1734,16 @@ bool build_scene(
 
 					// Configure camera. Same Fixed-mode situation as scene 1
 					// above (no CameraMode::UserControlled in this scene's
-					// registry entry) - ignore cam_x/y/z, matching CPU exactly,
-					// rather than placing the camera at whatever Cornell-Box-scale
-					// position happened to be leftover from a previous scene.
+					// registry entry, and the same force_camera_override
+					// escape hatch for video mode) - ignore cam_x/y/z by
+					// default, matching CPU exactly, rather than placing the
+					// camera at whatever Cornell-Box-scale position happened
+					// to be leftover from a previous scene.
 					{
 						constexpr float kPi = 3.14159265358979323846f;
-						const float3 lookfrom = make_float3(13.0f, 2.0f, 3.0f);
+						const float3 lookfrom = force_camera_override
+							? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z))
+							: make_float3(13.0f, 2.0f, 3.0f);
 						const float3 lookat = make_float3(0.0f, 0.0f, 0.0f);
 						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
 						constexpr float vfov = 20.0f;
