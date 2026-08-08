@@ -293,10 +293,27 @@ void MainWindow::createAdvancedTab() {
 	styleSpinBox(m_cameraPosZ);
 	cameraLayout->addRow("Camera Z:", m_cameraPosZ);
 
+	// Distance from the current scene's look-at point. Adjusting this moves
+	// the camera along its EXISTING viewing direction to the new distance
+	// (see onCameraDistanceChanged) - a quick way to zoom in/out without
+	// having to work out new X/Y/Z coordinates by hand. Only meaningful (and
+	// only enabled) alongside the X/Y/Z spinboxes for "Custom"; its value is
+	// kept in sync (not user-editable-then-stale) whenever the scene or
+	// preset changes, via refreshCameraDistanceDisplay().
+	m_cameraDistance = new QDoubleSpinBox(advancedTab);
+	m_cameraDistance->setRange(0.01, 5000);
+	m_cameraDistance->setValue(1078);  // Matches the default preset's distance from Cornell Box's lookat
+	m_cameraDistance->setSingleStep(10);
+	m_cameraDistance->setEnabled(false);  // Disabled until "Custom" is selected
+	styleSpinBox(m_cameraDistance);
+	cameraLayout->addRow("Distance from Center:", m_cameraDistance);
+
 	// Connect preset combo to handler that updates spinboxes and enables/disables manual input
 	// Connection made AFTER all widgets are created to avoid null pointer issues
 	connect(m_cameraPresetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
 			this, &MainWindow::onCameraPresetChanged);
+	connect(m_cameraDistance, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+			this, &MainWindow::onCameraDistanceChanged);
 
 	// Initialize the spinboxes with the default preset (index 0: "Front View (Outside)")
 	onCameraPresetChanged(0);

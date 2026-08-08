@@ -124,6 +124,7 @@ private slots:
 	void onStopClicked();
 	void onQualityPresetChanged(int index);
 	void onCameraPresetChanged(int index);  // Updates camera spinboxes when preset changes
+	void onCameraDistanceChanged(double distance);  // Repositions camera X/Y/Z along its current direction from lookat
 	void onSceneChanged(int index);         // Updates UI when scene selection changes
 	void onModeChanged(int index);          // Switches between Image and Video modes
 	void onProgressUpdate(int percentage);
@@ -142,6 +143,7 @@ private:
 	void styleSpinBox(QAbstractSpinBox *spinBox);
 	void styleGroupBox(QGroupBox *box);
 	void assembleVideoAutomatically();  // Automatically assembles video after frames are rendered
+	void refreshCameraDistanceDisplay(); // Recomputes m_cameraDistance's shown value from X/Y/Z and m_currentLookat*, without re-triggering onCameraDistanceChanged
 
 	// UI Components
 	QTabWidget *m_tabWidget;
@@ -167,12 +169,20 @@ private:
 	QSpinBox *m_maxDepthSpinBox;        // Max ray depth
 
 	// Camera controls
-	// Camera position (lookfrom) can be set via presets or custom X/Y/Z values
-	// All cameras look at the Cornell box center (278, 278, 278) - lookat is fixed in renderer
+	// Camera position (lookfrom) can be set via presets or custom X/Y/Z
+	// values; lookat is fixed per-scene in the renderer (not the same point
+	// for every scene - see scene_descriptor.h's SceneDesc::lookat_x/y/z,
+	// mirrored into m_currentLookatX/Y/Z below whenever the scene changes).
 	QComboBox *m_cameraPresetCombo;     // Preset camera positions (includes "Custom" option)
 	QDoubleSpinBox *m_cameraPosX;       // Camera X position (enabled only for "Custom" preset)
 	QDoubleSpinBox *m_cameraPosY;       // Camera Y position (enabled only for "Custom" preset)
 	QDoubleSpinBox *m_cameraPosZ;       // Camera Z position (enabled only for "Custom" preset)
+	QDoubleSpinBox *m_cameraDistance;   // Distance from the current scene's look-at point (enabled only for "Custom")
+	// Currently selected scene's look-at point (updated in onSceneChanged).
+	// Used by onCameraDistanceChanged to reposition the camera along its
+	// existing viewing direction from this point, rather than needing to
+	// know the scene's geometry to type new X/Y/Z values by hand.
+	double m_currentLookatX = 278.0, m_currentLookatY = 278.0, m_currentLookatZ = 278.0;
 
 	// Scene selection
 	QComboBox *m_sceneCombo;            // Scene selector dropdown (Cornell Box, Bouncing Spheres, etc.)

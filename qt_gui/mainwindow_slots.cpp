@@ -10,6 +10,8 @@
 #include <QUrl>
 #include <QScrollBar>
 #include <QCoreApplication>
+#include <QSignalBlocker>
+#include <cmath>
 
 void MainWindow::onRenderClicked() {
 	if (m_isRendering) {
@@ -144,6 +146,7 @@ void MainWindow::onCameraPresetChanged(int index) {
 	m_cameraPosX->setEnabled(isCustom);
 	m_cameraPosY->setEnabled(isCustom);
 	m_cameraPosZ->setEnabled(isCustom);
+	m_cameraDistance->setEnabled(isCustom);
 
 	// Update spinbox values to reflect the selected preset's camera position.
 	// Skip this for Custom: its stored itemData is just a fixed starting
@@ -158,6 +161,65 @@ void MainWindow::onCameraPresetChanged(int index) {
 		m_cameraPosY->setValue(pos.y());
 		m_cameraPosZ->setValue(pos.z());
 	}
+
+	// Keep the Distance display in sync with wherever X/Y/Z just landed
+	// (either the preset's fixed position, or whatever Custom was already
+	// showing) so it never displays a stale value.
+	refreshCameraDistanceDisplay();
+}
+
+// ============================================================================
+// MainWindow::onCameraDistanceChanged
+// ============================================================================
+// Called when the user edits the "Distance from Center" spinbox (only
+// enabled for the "Custom" camera preset). Repositions the camera along its
+// EXISTING viewing direction from the current scene's look-at point
+// (m_currentLookatX/Y/Z) to the new distance - i.e. a zoom control that
+// preserves viewing angle, rather than resetting to some fixed direction.
+// ============================================================================
+void MainWindow::onCameraDistanceChanged(double distance) {
+	double dx = m_cameraPosX->value() - m_currentLookatX;
+	double dy = m_cameraPosY->value() - m_currentLookatY;
+	double dz = m_cameraPosZ->value() - m_currentLookatZ;
+	double currentDist = std::sqrt(dx * dx + dy * dy + dz * dz);
+
+	// If the camera is sitting exactly on the look-at point, there's no
+	// direction to preserve - fall back to looking down -Z, matching the
+	// launcher's own generic default direction.
+	if (currentDist < 1e-6) {
+		dx = 0.0;
+		dy = 0.0;
+		dz = -1.0;
+		currentDist = 1.0;
+	}
+
+	const double scale = distance / currentDist;
+
+	// setValue() below will each fire valueChanged -> onSceneChanged is not
+	// connected to X/Y/Z directly, so no re-entrant loop here; only guard
+	// against this spinbox re-triggering itself is unnecessary since we
+	// don't write back to m_cameraDistance in this slot.
+	m_cameraPosX->setValue(m_currentLookatX + dx * scale);
+	m_cameraPosY->setValue(m_currentLookatY + dy * scale);
+	m_cameraPosZ->setValue(m_currentLookatZ + dz * scale);
+}
+
+// ============================================================================
+// MainWindow::refreshCameraDistanceDisplay
+// ============================================================================
+// Recomputes the Distance spinbox's displayed value from the current X/Y/Z
+// spinboxes and m_currentLookatX/Y/Z, without re-triggering
+// onCameraDistanceChanged (which would otherwise try to reposition X/Y/Z
+// right back, a harmless but wasteful no-op loop).
+// ============================================================================
+void MainWindow::refreshCameraDistanceDisplay() {
+	double dx = m_cameraPosX->value() - m_currentLookatX;
+	double dy = m_cameraPosY->value() - m_currentLookatY;
+	double dz = m_cameraPosZ->value() - m_currentLookatZ;
+	double dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+
+	const QSignalBlocker blocker(m_cameraDistance);
+	m_cameraDistance->setValue(dist);
 }
 
 void MainWindow::onSceneChanged(int index) {
@@ -193,9 +255,13 @@ void MainWindow::onSceneChanged(int index) {
 	// The user can still freely adjust the camera afterward, same as for
 	// every other scene.
 	m_cameraPresetCombo->setCurrentIndex(7);
+	m_currentLookatX = info->lookat_x;
+	m_currentLookatY = info->lookat_y;
+	m_currentLookatZ = info->lookat_z;
 	m_cameraPosX->setValue(info->cam_x);
 	m_cameraPosY->setValue(info->cam_y);
 	m_cameraPosZ->setValue(info->cam_z);
+	refreshCameraDistanceDisplay();
 }
 
 void MainWindow::onProgressUpdate(int percentage) {
