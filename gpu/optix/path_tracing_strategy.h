@@ -72,9 +72,10 @@ public:
 	 * @param numSpheres Number of sphere primitives in scene
 	 * @param numQuads Number of quad primitives in scene
 	 * @param numBilinearPatches Number of bilinear patch primitives in scene
+	 * @param numTriangles Number of triangle primitives in scene
 	 * @return true if SBT built successfully
 	 */
-	virtual bool buildSBT(unsigned int numSpheres, unsigned int numQuads, unsigned int numBilinearPatches = 0) = 0;
+	virtual bool buildSBT(unsigned int numSpheres, unsigned int numQuads, unsigned int numBilinearPatches = 0, unsigned int numTriangles = 0) = 0;
 
 	/**
 	 * @brief Execute path tracing for the given parameters
@@ -103,6 +104,8 @@ public:
 	 * @param num_punctual_lights Number of punctual lights
 	 * @param d_bilinear_patches Device pointer to BilinearPatchData array (curved ruled surfaces, never lights)
 	 * @param num_bilinear_patches Number of bilinear patches
+	 * @param d_triangles Device pointer to TriangleData array (flat-shaded, never lights)
+	 * @param num_triangles Number of triangles
 	 * @return true if rendering succeeded
 	 */
 	virtual bool render(
@@ -126,7 +129,9 @@ public:
 		CUdeviceptr d_punctual_lights = 0,
 		unsigned int num_punctual_lights = 0,
 		CUdeviceptr d_bilinear_patches = 0,
-		unsigned int num_bilinear_patches = 0
+		unsigned int num_bilinear_patches = 0,
+		CUdeviceptr d_triangles = 0,
+		unsigned int num_triangles = 0
 	) = 0;
 
 	/**

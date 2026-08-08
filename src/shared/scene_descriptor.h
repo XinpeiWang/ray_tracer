@@ -57,6 +57,7 @@ namespace SceneNames {
     constexpr const char* MeasuredBrdf         = "Measured BRDF";
     constexpr const char* PortalInfiniteLight  = "Portal Infinite Light";
     constexpr const char* RealisticCamera      = "Realistic Camera";
+    constexpr const char* TriangleMesh         = "Triangle Mesh";
 } // namespace SceneNames
 
 struct SceneDesc {
@@ -186,6 +187,9 @@ inline const SceneDesc* get_all_scenes(int* out_count = nullptr) {
 		{ 36, SceneNames::RealisticCamera,
 		   "Spheres rendered through a thin-lens with realistic lens-element bokeh (pbrt-v4 RealisticCamera)",
 		   "Medium",    200, false, false },
+		{ 37, SceneNames::TriangleMesh,
+		   "Procedurally-generated icosahedron showcasing real triangle-mesh geometry (watertight Moller-Trumbore intersection)",
+		   "Fast",      100, false, true  },
 	};
 	static const int kCount = (int)(sizeof(kScenes) / sizeof(kScenes[0]));
 	if (out_count) *out_count = kCount;

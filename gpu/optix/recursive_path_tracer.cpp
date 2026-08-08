@@ -171,7 +171,7 @@ bool RecursivePathTracer::linkPipeline(unsigned int maxTraceDepth) {
 	return true;
 }
 
-bool RecursivePathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuads, unsigned int /*numBilinearPatches*/) {
+bool RecursivePathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuads, unsigned int /*numBilinearPatches*/, unsigned int /*numTriangles*/) {
 	// Raygen record
 	RaygenRecord raygenRecord;
 	OPTIX_CHECK(optixSbtRecordPackHeader(raygenPG_, &raygenRecord));
@@ -274,7 +274,9 @@ bool RecursivePathTracer::render(
 	CUdeviceptr d_punctual_lights,
 	unsigned int num_punctual_lights,
 	CUdeviceptr /*d_bilinear_patches*/,
-	unsigned int /*num_bilinear_patches*/
+	unsigned int /*num_bilinear_patches*/,
+	CUdeviceptr /*d_triangles*/,
+	unsigned int /*num_triangles*/
 ) {
 	// Allocate framebuffer on device
 	CUdeviceptr d_framebuffer;

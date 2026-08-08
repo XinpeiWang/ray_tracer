@@ -348,6 +348,95 @@ extern "C" __global__ void __closesthit__wf_bilinear_patch() {
 }
 
 // ============================================================================
+// __intersection__wf_triangle / __closesthit__wf_triangle
+//
+// Wavefront-native duplicate of optix_intersection_triangle.h's
+// __intersection__triangle (same watertight Woop/Moller-Trumbore math,
+// wf_params instead of the recursive path's params global) - same cross-
+// module payload-type mismatch reason as wf_sphere/wf_quad/wf_bilinear_patch
+// above. Flat shading only (no per-vertex normals - see TriangleData).
+// ============================================================================
+
+extern "C" __global__ void __intersection__wf_triangle() {
+	const unsigned int primIdx = optixGetPrimitiveIndex();
+	const TriangleData& tri = wf_params.triangles[primIdx];
+
+	const float3 ro = optixGetWorldRayOrigin();
+	const float3 rd = optixGetWorldRayDirection();
+	const float ray_tmin = optixGetRayTmin();
+	const float ray_tmax = optixGetRayTmax();
+
+	float3 p0t = tri.p0 - ro;
+	float3 p1t = tri.p1 - ro;
+	float3 p2t = tri.p2 - ro;
+
+	const float ax = fabsf(rd.x), ay = fabsf(rd.y), az = fabsf(rd.z);
+	int kz, kx, ky;
+	if (ax >= ay && ax >= az)      { kz = 0; kx = 1; ky = 2; }
+	else if (ay >= ax && ay >= az) { kz = 1; kx = 2; ky = 0; }
+	else                            { kz = 2; kx = 0; ky = 1; }
+
+	auto comp = [](const float3& v, int k) -> float {
+		return k == 0 ? v.x : (k == 1 ? v.y : v.z);
+	};
+	const float Dx = comp(rd, kx), Dy = comp(rd, ky), Dz = comp(rd, kz);
+	float p0x = comp(p0t, kx), p0y = comp(p0t, ky), p0z = comp(p0t, kz);
+	float p1x = comp(p1t, kx), p1y = comp(p1t, ky), p1z = comp(p1t, kz);
+	float p2x = comp(p2t, kx), p2y = comp(p2t, ky), p2z = comp(p2t, kz);
+
+	const float Sx = -Dx / Dz, Sy = -Dy / Dz, Sz = 1.0f / Dz;
+	p0x += Sx * p0z; p0y += Sy * p0z;
+	p1x += Sx * p1z; p1y += Sy * p1z;
+	p2x += Sx * p2z; p2y += Sy * p2z;
+
+	const float e0 = p1x*p2y - p1y*p2x;
+	const float e1 = p2x*p0y - p2y*p0x;
+	const float e2 = p0x*p1y - p0y*p1x;
+
+	if ((e0 < 0.0f || e1 < 0.0f || e2 < 0.0f) && (e0 > 0.0f || e1 > 0.0f || e2 > 0.0f))
+		return;
+	const float det = e0 + e1 + e2;
+	if (det == 0.0f) return;
+
+	p0z *= Sz; p1z *= Sz; p2z *= Sz;
+	const float tScaled = e0*p0z + e1*p1z + e2*p2z;
+	if (det < 0.0f && (tScaled >= 0.0f || tScaled < ray_tmax * det)) return;
+	if (det > 0.0f && (tScaled <= 0.0f || tScaled > ray_tmax * det)) return;
+
+	const float invDet = 1.0f / det;
+	const float t = tScaled * invDet;
+	if (t < ray_tmin || t > ray_tmax) return;
+
+	optixReportIntersection(t, 0, 0, 0, 0, 0);
+}
+
+extern "C" __global__ void __closesthit__wf_triangle() {
+	WfHitPayload* payload = (WfHitPayload*)unpackPointer(
+		optixGetPayload_0(), optixGetPayload_1());
+
+	const int primIdx = optixGetPrimitiveIndex();
+	const TriangleData& tri = wf_params.triangles[primIdx];
+
+	const float3 ray_orig = optixGetWorldRayOrigin();
+	const float3 ray_dir  = optixGetWorldRayDirection();
+	const float  t_hit    = optixGetRayTmax();
+
+	float3 hit_point = ray_orig + t_hit * ray_dir;
+
+	float3 geom_normal = normalize(cross(tri.p1 - tri.p0, tri.p2 - tri.p0));
+	bool front_face = dot(ray_dir, geom_normal) < 0.0f;
+	float3 normal = front_face ? geom_normal : -geom_normal;
+
+	payload->hitPoint    = hit_point;
+	payload->normal      = normal;
+	payload->t           = t_hit;
+	payload->materialIdx = tri.materialIdx;
+	payload->geomType    = 3;
+	payload->hit         = true;
+	payload->mediumTFar  = 0.0f;
+}
+
+// ============================================================================
 // __closesthit__wf_sphere
 // ============================================================================
 extern "C" __global__ void __closesthit__wf_sphere() {

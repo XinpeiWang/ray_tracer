@@ -222,6 +222,16 @@ bool WavefrontPathTracer::createProgramGroups() {
 	OPTIX_CHECK(optixProgramGroupCreate(context_, &blpHitDesc, 1, &pgOptions,
 										 log, &logSize, &hitBilinearPatchPG_));
 
+	OptixProgramGroupDesc triHitDesc = {};
+	triHitDesc.kind                            = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	triHitDesc.hitgroup.moduleIS               = wfModule_;
+	triHitDesc.hitgroup.entryFunctionNameIS    = "__intersection__wf_triangle";
+	triHitDesc.hitgroup.moduleCH               = wfModule_;
+	triHitDesc.hitgroup.entryFunctionNameCH    = "__closesthit__wf_triangle";
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(context_, &triHitDesc, 1, &pgOptions,
+										 log, &logSize, &hitTrianglePG_));
+
 	// ----- Shadow pipeline -----
 
 	OptixProgramGroupDesc shadowRGDesc = {};
@@ -273,7 +283,18 @@ bool WavefrontPathTracer::createProgramGroups() {
 	OPTIX_CHECK(optixProgramGroupCreate(context_, &shadowBlpDesc, 1, &pgOptions,
 										 log, &logSize, &anyhitShadowBilinearPatchPG_));
 
-	std::cout << "[WavefrontPathTracer] Created 10 program groups\n";
+	// Shadow anyhit for triangle
+	OptixProgramGroupDesc shadowTriDesc = {};
+	shadowTriDesc.kind                          = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	shadowTriDesc.hitgroup.moduleIS             = wfModule_;
+	shadowTriDesc.hitgroup.entryFunctionNameIS  = "__intersection__wf_triangle";
+	shadowTriDesc.hitgroup.moduleAH             = wfModule_;
+	shadowTriDesc.hitgroup.entryFunctionNameAH  = "__anyhit__wf_shadow";
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(context_, &shadowTriDesc, 1, &pgOptions,
+										 log, &logSize, &anyhitShadowTrianglePG_));
+
+	std::cout << "[WavefrontPathTracer] Created 12 program groups\n";
 	return true;
 }
 
@@ -295,12 +316,13 @@ bool WavefrontPathTracer::linkPipeline(unsigned int maxTraceDepth) {
 			missRadiancePG_,
 			hitSpherePG_,
 			hitQuadPG_,
-			hitBilinearPatchPG_
+			hitBilinearPatchPG_,
+			hitTrianglePG_
 		};
 		logSize = sizeof(log);
 		OPTIX_CHECK(optixPipelineCreate(
 			context_, &pipelineCompileOptions_, &linkOptions,
-			groups, 5, log, &logSize, &intersectPipeline_));
+			groups, 6, log, &logSize, &intersectPipeline_));
 		std::cout << "[WavefrontPathTracer] Linked intersect pipeline\n";
 	}
 
@@ -314,12 +336,13 @@ bool WavefrontPathTracer::linkPipeline(unsigned int maxTraceDepth) {
 			missShadowPG_,
 			anyhitShadowSpherePG_,
 			anyhitShadowQuadPG_,
-			anyhitShadowBilinearPatchPG_
+			anyhitShadowBilinearPatchPG_,
+			anyhitShadowTrianglePG_
 		};
 		logSize = sizeof(log);
 		OPTIX_CHECK(optixPipelineCreate(
 			context_, &pipelineCompileOptions_, &shadowLinkOptions,
-			groups, 5, log, &logSize, &shadowPipeline_));
+			groups, 6, log, &logSize, &shadowPipeline_));
 		std::cout << "[WavefrontPathTracer] Linked shadow pipeline\n";
 	}
 
@@ -330,10 +353,11 @@ bool WavefrontPathTracer::linkPipeline(unsigned int maxTraceDepth) {
 // buildSBT — create two separate SBTs
 // ============================================================================
 
-bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuads, unsigned int numBilinearPatches) {
+bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuads, unsigned int numBilinearPatches, unsigned int numTriangles) {
 	numSpheres_ = numSpheres;
 	numQuads_   = numQuads;
 	numBilinearPatches_ = numBilinearPatches;
+	numTriangles_ = numTriangles;
 
 	destroySBT();
 
@@ -343,10 +367,11 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 	// shared GAS entirely rather than keeping a 0-count placeholder - meaning
 	// a type's position among the *present* types (not its fixed geometry-
 	// type index) determines its SBT slot. Both SBTs below must apply the
-	// exact same [sphere, quad, bilinear patch] present/absent filter.
+	// exact same [sphere, quad, bilinear patch, triangle] present/absent filter.
 	const bool hasSpheres = numSpheres > 0;
 	const bool hasQuads   = numQuads > 0;
 	const bool hasBlp     = numBilinearPatches > 0;
+	const bool hasTri     = numTriangles > 0;
 
 	// ---- Intersect SBT ----
 	{
@@ -383,6 +408,10 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 		if (hasBlp) {
 			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitBilinearPatchPG_, &hitRecs.back())); hitRecs.back().data = {};
 			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitBilinearPatchPG_, &hitRecs.back())); hitRecs.back().data = {}; // unused slot
+		}
+		if (hasTri) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitTrianglePG_, &hitRecs.back())); hitRecs.back().data = {}; // unused slot
 		}
 
 		size_t sz = hitRecs.size() * sizeof(HitGroupRecord);
@@ -428,6 +457,10 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowBilinearPatchPG_, &hitRecs.back())); hitRecs.back().data = {};
 			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowBilinearPatchPG_, &hitRecs.back())); hitRecs.back().data = {};
 		}
+		if (hasTri) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
+		}
 
 		size_t sz = hitRecs.size() * sizeof(HitGroupRecord);
 		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_shadowHitRecords_), sz));
@@ -445,7 +478,8 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 
 	std::cout << "[WavefrontPathTracer] Built SBTs (spheres=" << numSpheres
 			  << " quads=" << numQuads
-			  << " bilinearPatches=" << numBilinearPatches << ")\n";
+			  << " bilinearPatches=" << numBilinearPatches
+			  << " triangles=" << numTriangles << ")\n";
 	return true;
 }
 
@@ -612,7 +646,9 @@ bool WavefrontPathTracer::render(
 	CUdeviceptr d_punctual_lights,
 	unsigned int num_punctual_lights,
 	CUdeviceptr d_bilinear_patches,
-	unsigned int num_bilinear_patches)
+	unsigned int num_bilinear_patches,
+	CUdeviceptr d_triangles,
+	unsigned int num_triangles)
 {
 	const int numPixels = width * height;
 
@@ -638,6 +674,8 @@ bool WavefrontPathTracer::render(
 	lp.numQuads      = num_quads;
 	lp.bilinearPatches = reinterpret_cast<BilinearPatchData*>(d_bilinear_patches);
 	lp.numBilinearPatches = num_bilinear_patches;
+	lp.triangles     = reinterpret_cast<TriangleData*>(d_triangles);
+	lp.numTriangles  = num_triangles;
 	lp.materials     = reinterpret_cast<MaterialData*>(d_materials);
 	lp.numMaterials  = num_materials;
 	lp.lightIndices  = reinterpret_cast<int*>(d_light_indices);
@@ -796,9 +834,9 @@ void WavefrontPathTracer::destroyProgramGroups() {
 		if (pg) { optixProgramGroupDestroy(pg); pg = nullptr; }
 	};
 	destroyPG(raygenIntersectPG_);   destroyPG(missRadiancePG_);
-	destroyPG(hitSpherePG_);         destroyPG(hitQuadPG_);        destroyPG(hitBilinearPatchPG_);
+	destroyPG(hitSpherePG_);         destroyPG(hitQuadPG_);        destroyPG(hitBilinearPatchPG_); destroyPG(hitTrianglePG_);
 	destroyPG(raygenShadowPG_);      destroyPG(missShadowPG_);
-	destroyPG(anyhitShadowSpherePG_); destroyPG(anyhitShadowQuadPG_); destroyPG(anyhitShadowBilinearPatchPG_);
+	destroyPG(anyhitShadowSpherePG_); destroyPG(anyhitShadowQuadPG_); destroyPG(anyhitShadowBilinearPatchPG_); destroyPG(anyhitShadowTrianglePG_);
 }
 
 void WavefrontPathTracer::destroySBT() {

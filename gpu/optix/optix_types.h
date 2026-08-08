@@ -70,6 +70,18 @@ struct BilinearPatchData {
 	int materialIdx;
 };
 
+// Triangle geometry data (custom primitive) - flat shading only (no per-vertex
+// normals): the normal is the single geometric cross(e1,e2) direction, matching
+// scene 37's procedural faceted-icosahedron use case (see
+// src/TheRestOfYourLife/triangle.h's CPU reference, whose per-vertex-normal
+// interpolation path is unused there too since that scene builds no normals
+// array). See optix_intersection_triangle.h for the watertight Woop/
+// Moller-Trumbore intersection (same algorithm as triangle.h).
+struct TriangleData {
+	float3 p0, p1, p2;
+	int materialIdx;
+};
+
 // Material types
 enum class MaterialType : int {
 	Lambertian = 0,
@@ -260,6 +272,8 @@ struct LaunchParams {
 	unsigned int numQuads;
 	BilinearPatchData* bilinearPatches;
 	unsigned int numBilinearPatches;
+	TriangleData* triangles;
+	unsigned int numTriangles;
 
 	// Material data
 	MaterialData* materials;

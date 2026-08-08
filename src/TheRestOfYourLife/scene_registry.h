@@ -463,6 +463,19 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
                 );
             }
         },
+        {
+            37, SceneNames::TriangleMesh,
+            "Procedurally-generated icosahedron showcasing real triangle-mesh geometry (watertight Moller-Trumbore intersection)",
+            "Fast", 100, false, true,
+            { 35, 0, 4, 8,  0, 2.5, 0,  0.05, 0.05, 0.08 },
+            build_triangle_mesh_scene,
+            []() {
+                hittable_list l;
+                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
+                      std::shared_ptr<material>()));
+                return l;
+            }
+        },
     };
     return registry;
 }

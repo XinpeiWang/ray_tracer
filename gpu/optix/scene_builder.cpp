@@ -1508,6 +1508,62 @@ static void build_measured_brdf_scene_gpu(SceneData& scene) {
 	scene.isLightSphere.push_back(true);
 }
 
+/// @brief Scene 37: Triangle Mesh. Matches CPU build_triangle_mesh_scene()
+/// exactly - same golden-ratio icosahedron vertex/face construction, same
+/// gold metal material, same ground/light placement. GPU MaterialType has no
+/// procedural-texture support (no scene has ever needed it - every prior
+/// checker-textured CPU scene ported to GPU this session used a flat
+/// approximation instead), so the ground's CPU checker texture becomes a
+/// solid mid-gray here.
+static void build_triangle_mesh_scene_gpu(SceneData& scene) {
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.5f, 0.5f, 0.5f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	// Regular icosahedron: 12 vertices at golden-ratio coordinates, 20 faces.
+	// Matches src/TheRestOfYourLife/scenes_advanced.h's build_triangle_mesh_scene() exactly.
+	const float phi = (1.0f + std::sqrt(5.0f)) / 2.0f;
+	const float radius = 1.5f;
+	const float3 raw_verts[12] = {
+		make_float3(-1,  phi,  0), make_float3( 1,  phi,  0), make_float3(-1, -phi,  0), make_float3( 1, -phi,  0),
+		make_float3( 0, -1,  phi), make_float3( 0,  1,  phi), make_float3( 0, -1, -phi), make_float3( 0,  1, -phi),
+		make_float3( phi,  0, -1), make_float3( phi,  0,  1), make_float3(-phi,  0, -1), make_float3(-phi,  0,  1),
+	};
+	const float vert_len = length(raw_verts[0]);
+	const float3 center = make_float3(0.0f, 2.5f, 0.0f);
+
+	float3 verts[12];
+	for (int i = 0; i < 12; ++i) {
+		float3 v = raw_verts[i];
+		verts[i] = center + (radius / vert_len) * v;
+	}
+	const int faces[20][3] = {
+		{0,11,5}, {0,5,1}, {0,1,7}, {0,7,10}, {0,10,11},
+		{1,5,9}, {5,11,4}, {11,10,2}, {10,7,6}, {7,1,8},
+		{3,9,4}, {3,4,2}, {3,2,6}, {3,6,8}, {3,8,9},
+		{4,9,5}, {2,4,11}, {6,2,10}, {8,6,7}, {9,8,1},
+	};
+
+	const int mat_mesh = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.8f, 0.6f, 0.2f), 0.15f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	for (const auto& f : faces) {
+		TriangleData t{};
+		t.p0 = verts[f[0]];
+		t.p1 = verts[f[1]];
+		t.p2 = verts[f[2]];
+		t.materialIdx = mat_mesh;
+		scene.triangles.push_back(t);
+	}
+
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
+	scene.spheres.push_back(light);
+	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+	scene.isLightSphere.push_back(true);
+}
+
 /// @brief Build a scene and configure the camera
 /// @param scene_id Scene identifier (0 = Cornell Box)
 /// @param image_width Output image width in pixels
@@ -1534,6 +1590,7 @@ bool build_scene(
 	scene.spheres.clear();
 	scene.quads.clear();
 	scene.bilinearPatches.clear();
+	scene.triangles.clear();
 	scene.materials.clear();
 
 	// Build requested scene
@@ -2110,6 +2167,47 @@ bool build_scene(
 								pack_float3(camera_params, 9, vertical);
 								// backgroundColor left at zero-init (matches CPU bg=(0,0,0)) - this
 								// scene has a real emissive light sphere, unlike scenes 19/31.
+								break;
+							}
+
+							case 37: {  // Triangle Mesh (see build_triangle_mesh_scene_gpu's comment)
+								build_triangle_mesh_scene_gpu(scene);
+								constexpr float kPi = 3.14159265358979323846f;
+								const float3 lookfrom = make_float3(0.0f, 4.0f, 8.0f);
+								const float3 lookat   = make_float3(0.0f, 2.5f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								constexpr float vfov = 35.0f;  // matches CPU CameraConfig row for scene 37
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+
+								const float theta = vfov * kPi / 180.0f;
+								const float h = tanf(theta / 2.0f);
+								const float viewport_height = 2.0f * h;
+								const float viewport_width  = aspect * viewport_height;
+
+								const float3 w = normalize(make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z));
+								const float3 u = normalize(cross(vup, w));
+								const float3 v = cross(w, u);
+
+								const float3 horizontal = make_float3(viewport_width * u.x, viewport_width * u.y, viewport_width * u.z);
+								const float3 vertical   = make_float3(viewport_height * v.x, viewport_height * v.y, viewport_height * v.z);
+								const float3 lower_left_corner = make_float3(
+									lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - w.x,
+									lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - w.y,
+									lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - w.z
+								);
+
+								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
+									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
+								};
+								pack_float3(camera_params, 0, lookfrom);
+								pack_float3(camera_params, 3, lower_left_corner);
+								pack_float3(camera_params, 6, horizontal);
+								pack_float3(camera_params, 9, vertical);
+								if (out_camera_extra) {
+									// Matches CPU CameraConfig bg for scene 37 (dim ambient - real
+									// light sphere is the main source, matches scene 19's style).
+									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
+								}
 								break;
 							}
 

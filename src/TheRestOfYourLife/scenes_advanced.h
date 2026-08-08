@@ -16,6 +16,7 @@
 #include "../shared/cameras.h"
 #include "../shared/measured_bxdf.h"
 #include "../shared/portal_image_infinite_light.h"
+#include "mesh.h"
 #include <memory>
 
 //==============================================================================================
@@ -732,5 +733,62 @@ inline hittable_list build_realistic_camera_scene() {
 	}
 	// Area light
 	world.add(make_shared<sphere>(point3(0, 8, 5), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}
+
+// ============================================================================
+// Scene 37: Triangle Mesh
+// A procedurally-generated icosahedron (12 vertices, 20 triangular faces,
+// flat per-face geometric normals - no external .obj file needed) sitting on
+// a checkered ground, lit by an overhead area light. Exercises triangle.h's
+// real watertight Woop/Moller-Trumbore intersection (mesh.h's load_obj also
+// builds on triangle_mesh_data + triangle the same way; a procedural mesh
+// here sidesteps needing to source/commit an actual .obj asset).
+// ============================================================================
+inline hittable_list build_triangle_mesh_scene() {
+	hittable_list world;
+
+	// Ground
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	// Regular icosahedron: 12 vertices at golden-ratio coordinates, 20 faces.
+	const double phi = (1.0 + std::sqrt(5.0)) / 2.0;
+	const double radius = 1.5;
+	const point3 raw_verts[12] = {
+		point3(-1,  phi,  0), point3( 1,  phi,  0), point3(-1, -phi,  0), point3( 1, -phi,  0),
+		point3( 0, -1,  phi), point3( 0,  1,  phi), point3( 0, -1, -phi), point3( 0,  1, -phi),
+		point3( phi,  0, -1), point3( phi,  0,  1), point3(-phi,  0, -1), point3(-phi,  0,  1),
+	};
+	const double vert_len = raw_verts[0].length();  // all 12 raw verts share this length
+	const point3 center(0, 2.5, 0);
+
+	auto mesh_data = make_shared<triangle_mesh_data>();
+	mesh_data->positions.reserve(12);
+	for (const auto& v : raw_verts)
+		mesh_data->positions.push_back(center + (radius / vert_len) * v);
+	// No per-vertex normals -> triangle::hit() falls back to flat geometric
+	// normals per face (faceted look, matches a procedural low-poly showcase).
+	const int faces[20][3] = {
+		{0,11,5}, {0,5,1}, {0,1,7}, {0,7,10}, {0,10,11},
+		{1,5,9}, {5,11,4}, {11,10,2}, {10,7,6}, {7,1,8},
+		{3,9,4}, {3,4,2}, {3,2,6}, {3,6,8}, {3,8,9},
+		{4,9,5}, {2,4,11}, {6,2,10}, {8,6,7}, {9,8,1},
+	};
+	mesh_data->indices.reserve(60);
+	for (const auto& f : faces) {
+		mesh_data->indices.push_back(f[0]);
+		mesh_data->indices.push_back(f[1]);
+		mesh_data->indices.push_back(f[2]);
+	}
+
+	auto mesh_mat = make_shared<metal>(color(0.8, 0.6, 0.2), 0.15);
+	hittable_list tris;
+	for (int i = 0; i < mesh_data->num_triangles(); ++i)
+		tris.add(make_shared<triangle>(mesh_data, i, mesh_mat));
+	world.add(make_shared<bvh_node>(tris));
+
+	// Area light
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
 	return world;
 }

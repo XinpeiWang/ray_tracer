@@ -51,6 +51,8 @@ public:
 	/// @param bilinearPatches Vector of bilinear patch geometry data (curved
 	///        ruled surfaces, never used as lights - see optix_types.h's
 	///        BilinearPatchData)
+	/// @param triangles Vector of flat-shaded triangle geometry data (never
+	///        used as lights - see optix_types.h's TriangleData)
 	/// @return true if scene was built successfully, false otherwise
 	bool buildScene(
 		const std::vector<SphereData>& spheres,
@@ -59,7 +61,8 @@ public:
 		const std::vector<int>& lightIndices,
 		const std::vector<bool>& isLightSphere,
 		const std::vector<PunctualLightGPU>& punctualLights = {},
-		const std::vector<BilinearPatchData>& bilinearPatches = {}
+		const std::vector<BilinearPatchData>& bilinearPatches = {},
+		const std::vector<TriangleData>& triangles = {}
 	);
 
 	/// @brief Render a frame using path tracing
@@ -121,9 +124,11 @@ private:
 	OptixProgramGroup hitgroupSpherePG_ = nullptr;///< Sphere hit group (radiance)
 	OptixProgramGroup hitgroupQuadPG_ = nullptr;  ///< Quad hit group (radiance)
 	OptixProgramGroup hitgroupBilinearPatchPG_ = nullptr; ///< Bilinear patch hit group (radiance)
+	OptixProgramGroup hitgroupTrianglePG_ = nullptr;      ///< Triangle hit group (radiance)
 	OptixProgramGroup shadowHitgroupSpherePG_ = nullptr; ///< Sphere shadow hit group
 	OptixProgramGroup shadowHitgroupQuadPG_ = nullptr;   ///< Quad shadow hit group
 	OptixProgramGroup shadowHitgroupBilinearPatchPG_ = nullptr; ///< Bilinear patch shadow hit group
+	OptixProgramGroup shadowHitgroupTrianglePG_ = nullptr;      ///< Triangle shadow hit group
 
 	// -------------------------------------------------------------------
 	// Shader Binding Table (SBT)
@@ -151,6 +156,8 @@ private:
 	unsigned int numQuads_ = 0;       ///< Number of quads
 	CUdeviceptr d_bilinearPatches_ = 0; ///< Device bilinear patch array
 	unsigned int numBilinearPatches_ = 0; ///< Number of bilinear patches
+	CUdeviceptr d_triangles_ = 0;      ///< Device triangle array
+	unsigned int numTriangles_ = 0;    ///< Number of triangles
 
 	// Light sampling support for MIS
 	CUdeviceptr d_lightIndices_ = 0;  ///< Device light primitive indices
@@ -188,7 +195,8 @@ private:
 	bool buildSBT(
 		const std::vector<SphereData>& spheres,
 		const std::vector<QuadData>& quads,
-		const std::vector<BilinearPatchData>& bilinearPatches
+		const std::vector<BilinearPatchData>& bilinearPatches,
+		const std::vector<TriangleData>& triangles
 	);
 
 	/// @brief Release all GPU resources

@@ -11,6 +11,7 @@ struct SceneData {
 	std::vector<SphereData> spheres;
 	std::vector<QuadData> quads;
 	std::vector<BilinearPatchData> bilinearPatches;
+	std::vector<TriangleData> triangles;
 	std::vector<MaterialData> materials;
 
 	// Light tracking for MIS

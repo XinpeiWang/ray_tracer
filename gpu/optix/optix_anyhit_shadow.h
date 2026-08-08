@@ -89,6 +89,30 @@ extern "C" __global__ void __anyhit__shadow_bilinear_patch() {
 	optixTerminateRay();
 }
 
+// Shadow any-hit for triangles
+extern "C" __global__ void __anyhit__shadow_triangle() {
+	const unsigned int primIdx = optixGetPrimitiveIndex();
+	const TriangleData& tri = params.triangles[primIdx];
+	const MaterialData& mat = params.materials[tri.materialIdx];
+
+	if (mat.type == MaterialType::DiffuseLight) {
+		optixSetPayload_0(0);
+		optixTerminateRay();
+		return;
+	}
+
+	if (mat.type == MaterialType::Dielectric ||
+		mat.type == MaterialType::RoughDielectric ||
+		mat.type == MaterialType::ThinDielectric ||
+		mat.type == MaterialType::DiffuseTransmission) {
+		optixIgnoreIntersection();
+		return;
+	}
+
+	optixSetPayload_0(1);  // occluded = true
+	optixTerminateRay();
+}
+
 //==============================================================================
 // Miss Program
 //==============================================================================

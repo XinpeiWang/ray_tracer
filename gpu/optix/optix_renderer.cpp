@@ -344,6 +344,25 @@ bool OptiXRenderer::createProgramGroups() {
 		&hitgroupBilinearPatchPG_
 	));
 
+	// Triangle hit group (intersection + closest-hit)
+	OptixProgramGroupDesc triangleHitDesc = {};
+	triangleHitDesc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	triangleHitDesc.hitgroup.moduleIS = module_;
+	triangleHitDesc.hitgroup.entryFunctionNameIS = "__intersection__triangle";
+	triangleHitDesc.hitgroup.moduleCH = module_;
+	triangleHitDesc.hitgroup.entryFunctionNameCH = "__closesthit__triangle";
+
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(
+		context_,
+		&triangleHitDesc,
+		1,
+		&pgOptions,
+		log,
+		&logSize,
+		&hitgroupTrianglePG_
+	));
+
 	// Shadow hit group for spheres (any-hit only, no closest-hit)
 	OptixProgramGroupDesc shadowSphereHitDesc = {};
 	shadowSphereHitDesc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
@@ -401,7 +420,26 @@ bool OptiXRenderer::createProgramGroups() {
 		&shadowHitgroupBilinearPatchPG_
 	));
 
-	std::cout << "[OptiX] Created program groups: raygen, miss (radiance + shadow), sphere hit (radiance + shadow), quad hit (radiance + shadow), bilinear patch hit (radiance + shadow)\n";
+	// Shadow hit group for triangles (any-hit only, no closest-hit)
+	OptixProgramGroupDesc shadowTriangleHitDesc = {};
+	shadowTriangleHitDesc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	shadowTriangleHitDesc.hitgroup.moduleIS = module_;
+	shadowTriangleHitDesc.hitgroup.entryFunctionNameIS = "__intersection__triangle";
+	shadowTriangleHitDesc.hitgroup.moduleAH = module_;
+	shadowTriangleHitDesc.hitgroup.entryFunctionNameAH = "__anyhit__shadow_triangle";
+
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(
+		context_,
+		&shadowTriangleHitDesc,
+		1,
+		&pgOptions,
+		log,
+		&logSize,
+		&shadowHitgroupTrianglePG_
+	));
+
+	std::cout << "[OptiX] Created program groups: raygen, miss (radiance + shadow), sphere hit (radiance + shadow), quad hit (radiance + shadow), bilinear patch hit (radiance + shadow), triangle hit (radiance + shadow)\n";
 	return true;
 }
 
@@ -414,9 +452,11 @@ bool OptiXRenderer::linkPipeline() {
 		hitgroupSpherePG_,
 		hitgroupQuadPG_,
 		hitgroupBilinearPatchPG_,
+		hitgroupTrianglePG_,
 		shadowHitgroupSpherePG_,
 		shadowHitgroupQuadPG_,
-		shadowHitgroupBilinearPatchPG_
+		shadowHitgroupBilinearPatchPG_,
+		shadowHitgroupTrianglePG_
 	};
 
 	// Pipeline link options
@@ -483,7 +523,8 @@ bool OptiXRenderer::buildScene(
 	const std::vector<int>& lightIndices,
 	const std::vector<bool>& isLightSphere,
 	const std::vector<PunctualLightGPU>& punctualLights,
-	const std::vector<BilinearPatchData>& bilinearPatches
+	const std::vector<BilinearPatchData>& bilinearPatches,
+	const std::vector<TriangleData>& triangles
 ) {
 	// Store material data on device
 	numMaterials_ = static_cast<unsigned int>(materials.size());
@@ -559,6 +600,27 @@ bool OptiXRenderer::buildScene(
 	}
 
 	std::cout << "[OptiX] Uploaded " << bilinearPatches.size() << " bilinear patches to GPU\n";
+
+	// Store triangle data on device
+	numTriangles_ = static_cast<unsigned int>(triangles.size());
+	size_t triangleSize = triangles.size() * sizeof(TriangleData);
+
+	if (d_triangles_) {
+		cudaFree(reinterpret_cast<void*>(d_triangles_));
+		d_triangles_ = 0;
+	}
+
+	if (numTriangles_ > 0) {
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_triangles_), triangleSize));
+		CUDA_CHECK(cudaMemcpy(
+			reinterpret_cast<void*>(d_triangles_),
+			triangles.data(),
+			triangleSize,
+			cudaMemcpyHostToDevice
+		));
+	}
+
+	std::cout << "[OptiX] Uploaded " << triangles.size() << " triangles to GPU\n";
 
 	// Store light data on device for MIS
 	numLights_ = static_cast<unsigned int>(lightIndices.size());
@@ -698,12 +760,12 @@ bool OptiXRenderer::buildScene(
 	// Build acceleration structure for custom primitives
 	// We'll use AABB (axis-aligned bounding box) custom primitives
 
-	if (spheres.empty() && quads.empty() && bilinearPatches.empty()) {
+	if (spheres.empty() && quads.empty() && bilinearPatches.empty() && triangles.empty()) {
 		std::cerr << "[OptiX] Error: Scene contains no geometry" << std::endl;
 		return false;
 	}
 
-	size_t totalGeoms = spheres.size() + quads.size() + bilinearPatches.size();
+	size_t totalGeoms = spheres.size() + quads.size() + bilinearPatches.size() + triangles.size();
 	std::vector<OptixAabb> aabbs;
 	aabbs.reserve(totalGeoms);
 
@@ -752,6 +814,18 @@ bool OptiXRenderer::buildScene(
 		aabb.maxX = fmaxf(fmaxf(p.p00.x, p.p10.x), fmaxf(p.p01.x, p.p11.x));
 		aabb.maxY = fmaxf(fmaxf(p.p00.y, p.p10.y), fmaxf(p.p01.y, p.p11.y));
 		aabb.maxZ = fmaxf(fmaxf(p.p00.z, p.p10.z), fmaxf(p.p01.z, p.p11.z));
+		aabbs.push_back(aabb);
+	}
+
+	// Build AABBs for triangles
+	for (const auto& t : triangles) {
+		OptixAabb aabb;
+		aabb.minX = fminf(fminf(t.p0.x, t.p1.x), t.p2.x);
+		aabb.minY = fminf(fminf(t.p0.y, t.p1.y), t.p2.y);
+		aabb.minZ = fminf(fminf(t.p0.z, t.p1.z), t.p2.z);
+		aabb.maxX = fmaxf(fmaxf(t.p0.x, t.p1.x), t.p2.x);
+		aabb.maxY = fmaxf(fmaxf(t.p0.y, t.p1.y), t.p2.y);
+		aabb.maxZ = fmaxf(fmaxf(t.p0.z, t.p1.z), t.p2.z);
 		aabbs.push_back(aabb);
 	}
 
@@ -809,23 +883,37 @@ bool OptiXRenderer::buildScene(
 	blpBuildInput.customPrimitiveArray.sbtIndexOffsetSizeInBytes = 0;
 	blpBuildInput.customPrimitiveArray.sbtIndexOffsetStrideInBytes = 0;
 
+	// Build input for triangle geometry
+	CUdeviceptr d_tri_aabb = d_aabb + ((spheres.size() + quads.size() + bilinearPatches.size()) * sizeof(OptixAabb));
+	std::vector<uint32_t> tri_flags(triangles.size(), OPTIX_GEOMETRY_FLAG_NONE);
+	OptixBuildInput triBuildInput = {};
+	triBuildInput.type = OPTIX_BUILD_INPUT_TYPE_CUSTOM_PRIMITIVES;
+	triBuildInput.customPrimitiveArray.aabbBuffers = triangles.empty() ? nullptr : &d_tri_aabb;
+	triBuildInput.customPrimitiveArray.numPrimitives = static_cast<unsigned int>(triangles.size());
+	triBuildInput.customPrimitiveArray.flags = tri_flags.data();
+	triBuildInput.customPrimitiveArray.numSbtRecords = 1;  // Single hit group for all triangles
+	triBuildInput.customPrimitiveArray.sbtIndexOffsetBuffer = 0;
+	triBuildInput.customPrimitiveArray.sbtIndexOffsetSizeInBytes = 0;
+	triBuildInput.customPrimitiveArray.sbtIndexOffsetStrideInBytes = 0;
+
 	// Combine build inputs. OptiX validation rejects a build input with
 	// numPrimitives==0 outright (both a non-null aabbBuffers AND a null
 	// flags pointer are separately flagged as errors for a zero-count custom-
 	// primitive build input - there's no valid all-zero-count configuration
 	// to keep as a placeholder), so empty types must be omitted from this
-	// array entirely, in the same relative [sphere, quad, bilinear patch]
-	// order, rather than always including all 3. OptiX assigns each
+	// array entirely, in the same relative [sphere, quad, bilinear patch,
+	// triangle] order, rather than always including all 4. OptiX assigns each
 	// primitive's SBT hit-group record purely by its build input's POSITION
-	// in this array (sbtIndexOffsetBuffer is null for all three, so every
+	// in this array (sbtIndexOffsetBuffer is null for all four, so every
 	// primitive in build input i implicitly uses
 	// hitgroupRecordBase[i*stride+rayType]) - buildSBT() below applies this
-	// exact same conditional-inclusion logic (same 3 counts, same relative
+	// exact same conditional-inclusion logic (same 4 counts, same relative
 	// order) so its hit records line up with these positions.
 	std::vector<OptixBuildInput> buildInputVec;
 	if (!spheres.empty()) buildInputVec.push_back(sphereBuildInput);
 	if (!quads.empty()) buildInputVec.push_back(quadBuildInput);
 	if (!bilinearPatches.empty()) buildInputVec.push_back(blpBuildInput);
+	if (!triangles.empty()) buildInputVec.push_back(triBuildInput);
 	const OptixBuildInput* buildInputs = buildInputVec.data();
 	unsigned int numBuildInputs = static_cast<unsigned int>(buildInputVec.size());
 
@@ -879,10 +967,11 @@ bool OptiXRenderer::buildScene(
 	std::cout << "[OptiX] Built acceleration structure: "
 		<< spheres.size() << " spheres, "
 		<< quads.size() << " quads, "
-		<< bilinearPatches.size() << " bilinear patches\n";
+		<< bilinearPatches.size() << " bilinear patches, "
+		<< triangles.size() << " triangles\n";
 
 	// Build Shader Binding Table (SBT)
-	if (!buildSBT(spheres, quads, bilinearPatches)) {
+	if (!buildSBT(spheres, quads, bilinearPatches, triangles)) {
 		std::cerr << "Failed to build SBT\n";
 		return false;
 	}
@@ -893,7 +982,8 @@ bool OptiXRenderer::buildScene(
 bool OptiXRenderer::buildSBT(
 	const std::vector<SphereData>& spheres,
 	const std::vector<QuadData>& quads,
-	const std::vector<BilinearPatchData>& bilinearPatches
+	const std::vector<BilinearPatchData>& bilinearPatches,
+	const std::vector<TriangleData>& triangles
 ) {
 	// Raygen record
 	RaygenRecord raygenRecord;
@@ -936,8 +1026,8 @@ bool OptiXRenderer::buildSBT(
 	// POSITION among the non-empty build inputs in buildScene() (empty types
 	// are omitted from that array entirely - see its comment) - so this must
 	// emit exactly one (radiance, shadow) record pair per present type, in
-	// the same relative [sphere, quad, bilinear patch] order, with no gaps
-	// for absent types.
+	// the same relative [sphere, quad, bilinear patch, triangle] order, with
+	// no gaps for absent types.
 	std::vector<HitGroupRecord> hitGroupRecords;
 	if (!spheres.empty()) {
 		hitGroupRecords.emplace_back();
@@ -961,6 +1051,14 @@ bool OptiXRenderer::buildSBT(
 		hitGroupRecords.back().data = {};
 		hitGroupRecords.emplace_back();
 		OPTIX_CHECK(optixSbtRecordPackHeader(shadowHitgroupBilinearPatchPG_, &hitGroupRecords.back()));
+		hitGroupRecords.back().data = {};
+	}
+	if (!triangles.empty()) {
+		hitGroupRecords.emplace_back();
+		OPTIX_CHECK(optixSbtRecordPackHeader(hitgroupTrianglePG_, &hitGroupRecords.back()));
+		hitGroupRecords.back().data = {};
+		hitGroupRecords.emplace_back();
+		OPTIX_CHECK(optixSbtRecordPackHeader(shadowHitgroupTrianglePG_, &hitGroupRecords.back()));
 		hitGroupRecords.back().data = {};
 	}
 
@@ -1031,7 +1129,8 @@ bool OptiXRenderer::render(
 			d_lightIndices_, d_isLightSphere_, d_aliasTable_,
 			numMaterials_, numSpheres_, numQuads_, numLights_,
 			d_punctualLights_, numPunctualLights_,
-			d_bilinearPatches_, numBilinearPatches_);
+			d_bilinearPatches_, numBilinearPatches_,
+			d_triangles_, numTriangles_);
 	}
 
 	// Allocate framebuffer on device
@@ -1061,6 +1160,8 @@ bool OptiXRenderer::render(
 	params.numQuads = numQuads_;
 	params.bilinearPatches = reinterpret_cast<BilinearPatchData*>(d_bilinearPatches_);
 	params.numBilinearPatches = numBilinearPatches_;
+	params.triangles = reinterpret_cast<TriangleData*>(d_triangles_);
+	params.numTriangles = numTriangles_;
 
 	// Light sampling for MIS
 	params.lightIndices = reinterpret_cast<int*>(d_lightIndices_);
@@ -1135,6 +1236,7 @@ void OptiXRenderer::cleanup() noexcept {
 	if (d_spheres_) cudaFree(reinterpret_cast<void*>(d_spheres_));
 	if (d_quads_) cudaFree(reinterpret_cast<void*>(d_quads_));
 	if (d_bilinearPatches_) cudaFree(reinterpret_cast<void*>(d_bilinearPatches_));
+	if (d_triangles_) cudaFree(reinterpret_cast<void*>(d_triangles_));
 	if (d_lightIndices_) cudaFree(reinterpret_cast<void*>(d_lightIndices_));
 	if (d_isLightSphere_) cudaFree(reinterpret_cast<void*>(d_isLightSphere_));
 	if (d_aliasTable_) cudaFree(reinterpret_cast<void*>(d_aliasTable_));
@@ -1149,9 +1251,11 @@ void OptiXRenderer::cleanup() noexcept {
 	if (hitgroupSpherePG_) optixProgramGroupDestroy(hitgroupSpherePG_);
 	if (hitgroupQuadPG_) optixProgramGroupDestroy(hitgroupQuadPG_);
 	if (hitgroupBilinearPatchPG_) optixProgramGroupDestroy(hitgroupBilinearPatchPG_);
+	if (hitgroupTrianglePG_) optixProgramGroupDestroy(hitgroupTrianglePG_);
 	if (shadowHitgroupSpherePG_) optixProgramGroupDestroy(shadowHitgroupSpherePG_);
 	if (shadowHitgroupQuadPG_) optixProgramGroupDestroy(shadowHitgroupQuadPG_);
 	if (shadowHitgroupBilinearPatchPG_) optixProgramGroupDestroy(shadowHitgroupBilinearPatchPG_);
+	if (shadowHitgroupTrianglePG_) optixProgramGroupDestroy(shadowHitgroupTrianglePG_);
 
 	// Destroy module and pipeline
 	if (module_) optixModuleDestroy(module_);
@@ -1197,7 +1301,7 @@ void OptiXRenderer::enableWavefront(bool enable, const std::string& ptxPath) {
 			useWavefront_ = false;
 			return;
 		}
-		if (!wavefrontTracer_->buildSBT(numSpheres_, numQuads_, numBilinearPatches_)) {
+		if (!wavefrontTracer_->buildSBT(numSpheres_, numQuads_, numBilinearPatches_, numTriangles_)) {
 			std::cerr << "[OptiXRenderer] WavefrontPathTracer::buildSBT failed\n";
 			wavefrontTracer_.reset();
 			useWavefront_ = false;

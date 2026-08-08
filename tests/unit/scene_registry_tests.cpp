@@ -32,10 +32,10 @@ TEST(SceneRegistryTest, RegistryIsNonEmpty) {
 }
 
 TEST(SceneRegistryTest, RegistryHasExpectedCount) {
-	// We currently register 37 scenes (ids 0-36).
+	// We currently register 38 scenes (ids 0-37).
 	// This test will fail if a scene is accidentally added or removed -
 	// update this count (and kGuiSceneCount below) when that's intentional.
-	EXPECT_EQ(scene_count(), 37);
+	EXPECT_EQ(scene_count(), 38);
 }
 
 TEST(SceneRegistryTest, AllIDsAreUnique) {
@@ -258,6 +258,20 @@ TEST(FindSceneTest, MeasuredBrdfSceneIsGpuCompatible) {
 	EXPECT_TRUE(s->gpu_compatible);
 }
 
+TEST(FindSceneTest, TriangleMeshSceneIsGpuCompatible) {
+	// Scene 37 is new this session (not an existing CPU scene ported to GPU
+	// like the other 10 gaps): src/TheRestOfYourLife/triangle.h/mesh.h's real
+	// watertight Moller-Trumbore triangle intersection existed but was never
+	// wired into any scene, so there was no CPU-vs-GPU parity gap to close in
+	// the usual sense - both a CPU builder (build_triangle_mesh_scene) and a
+	// GPU port (a new TriangleData custom-primitive geometry type, mirroring
+	// the sphere/quad/bilinear-patch pattern) were added together. The scene
+	// is a procedurally-generated icosahedron (no external .obj file needed).
+	const SceneDescriptor* s = find_scene(37);
+	ASSERT_NE(s, nullptr);
+	EXPECT_TRUE(s->gpu_compatible);
+}
+
 // ===========================================================================
 // C API tests
 // ===========================================================================
@@ -395,7 +409,7 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // registry size and it's worth double-checking the GUI/error-hint text that
 // mentions specific scene counts or ID ranges by hand.
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
-	constexpr int kGuiSceneCount = 37;
+	constexpr int kGuiSceneCount = 38;
 	EXPECT_EQ(scene_count(), kGuiSceneCount)
 		<< "Registry size changed -- update kGuiSceneCount here to match.";
 }
