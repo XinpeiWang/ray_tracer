@@ -677,9 +677,17 @@ private:
                 T eta_i = (el.eta == T(0)) ? T(1) : el.eta;
                 T eta_t = (i>0 && elements_[i-1].eta != T(0)) ? elements_[i-1].eta : T(1);
                 T len = std::sqrt(ldx*ldx+ldy*ldy+ldz*ldz);
+                // realistic_detail::Refract's own doc comment says "eta = eta_i /
+                // eta_t" - trace_lenses_from_scene (below) passes eta_i/eta_t
+                // correctly using its own (direction-appropriately-swapped)
+                // eta_i/eta_t locals; this call previously passed the inverted
+                // eta_t/eta_i (apparently transcribed from pbrt-v4's own global
+                // Refract(), which uses the opposite eta_t/eta_i convention -
+                // this codebase's local Refract helper does not), causing every
+                // refraction traced from the film to bend the wrong way.
                 if (!realistic_detail::Refract(ldx/len, ldy/len, ldz/len,
                                                nx, ny, nz,
-                                               eta_t/eta_i,
+                                               eta_i/eta_t,
                                                ldx, ldy, ldz))
                     return T(0);
             }

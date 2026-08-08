@@ -454,8 +454,9 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
                 );
                 cam.alt_realistic_cam = std::make_shared<RealisticCamera<double>>(
                     ctw,
-                    35.0,   // film width mm
-                    35.0,   // film height mm
+                    18.0,   // film half-width mm (matches a real 35mm frame's
+                    12.0,   // film half-height mm  half-extents, realistic_camera_tests.cpp's
+                            // FILM_HX/FILM_HY convention)
                     7.0,    // focus distance meters
                     8.0,    // aperture diameter mm
                     lens,
