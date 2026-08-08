@@ -1144,20 +1144,30 @@ static void build_portal_light_scene_gpu(SceneData& scene) {
 /// the same locations, since a box boundary would need a second, more
 /// involved AABB-slab intersection path not worth the complexity here.
 static void build_cornell_smoke_gpu(SceneData& scene) {
-	const int mat_red = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-	const int mat_white = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-	const int mat_green = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	using namespace cornell_box_data;
+
+	// The 5 standard walls (green/red/ceiling/floor/back) - shares
+	// cornell_box_data::kQuads[0..4] with CPU's build_cornell_smoke(). This
+	// scene's own light is a different size/color than kQuads[5], so it's
+	// added separately below rather than looping through index 5.
+	for (int i = 0; i < 5; ++i) {
+		const QuadSpec& q = kQuads[i];
+		const int mat = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({
+			MaterialType::Lambertian,
+			make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)),
+			0.0f, 0.0f,
+			make_float3(0.0f, 0.0f, 0.0f)
+		});
+		add_transformed_quad(scene,
+			make_float3(static_cast<float>(q.Q.x), static_cast<float>(q.Q.y), static_cast<float>(q.Q.z)),
+			make_float3(static_cast<float>(q.u.x), static_cast<float>(q.u.y), static_cast<float>(q.u.z)),
+			make_float3(static_cast<float>(q.v.x), static_cast<float>(q.v.y), static_cast<float>(q.v.z)),
+			mat);
+	}
+
 	const int mat_light = safe_cast_to_int(scene.materials.size());
 	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(7.0f, 7.0f, 7.0f) });
-
-	add_transformed_quad(scene, make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), make_float3(0, kBoxSize, 0), mat_green);
-	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(0, 0, -kBoxSize), make_float3(0, kBoxSize, 0), mat_red);
-	add_transformed_quad(scene, make_float3(0, kBoxSize, 0), make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), mat_white);   // ceiling
-	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(kBoxSize, 0, 0), make_float3(0, 0, -kBoxSize), mat_white);  // floor
-	add_transformed_quad(scene, make_float3(kBoxSize, 0, kBoxSize), make_float3(-kBoxSize, 0, 0), make_float3(0, kBoxSize, 0), mat_white); // back
 	{
 		QuadData lq{};
 		lq.Q = make_float3(113.0f, 554.0f, 127.0f);

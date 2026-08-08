@@ -219,19 +219,26 @@ inline hittable_list build_simple_light() {
  * Build Cornell box with smoke/fog
  */
 inline hittable_list build_cornell_smoke() {
+	using namespace cornell_box_data;
 	hittable_list world;
 
-	auto red   = make_shared<lambertian>(color(.65, .05, .05));
-	auto white = make_shared<lambertian>(color(.73, .73, .73));
-	auto green = make_shared<lambertian>(color(.12, .45, .15));
-	auto light = make_shared<diffuse_light>(color(7, 7, 7));
+	// The 5 standard walls (green/red/ceiling/floor/back) - shares
+	// cornell_box_data::kQuads[0..4] with GPU's build_cornell_smoke_gpu().
+	// This scene's own light is a different size/color than kQuads[5], so
+	// it's added separately below rather than looping through index 5.
+	for (int i = 0; i < 5; ++i) {
+		const QuadSpec& q = kQuads[i];
+		auto mat = make_shared<lambertian>(color(q.color.r, q.color.g, q.color.b));
+		world.add(make_shared<quad>(
+			point3(q.Q.x, q.Q.y, q.Q.z),
+			vec3(q.u.x, q.u.y, q.u.z),
+			vec3(q.v.x, q.v.y, q.v.z),
+			mat));
+	}
 
-	world.add(make_shared<quad>(point3(555,0,0), vec3(0,555,0), vec3(0,0,555), green));
-	world.add(make_shared<quad>(point3(0,0,0), vec3(0,555,0), vec3(0,0,555), red));
+	auto white = make_shared<lambertian>(color(.73, .73, .73));  // for the boxes below
+	auto light = make_shared<diffuse_light>(color(7, 7, 7));
 	world.add(make_shared<quad>(point3(113,554,127), vec3(330,0,0), vec3(0,0,305), light));
-	world.add(make_shared<quad>(point3(0,555,0), vec3(555,0,0), vec3(0,0,555), white));
-	world.add(make_shared<quad>(point3(0,0,0), vec3(555,0,0), vec3(0,0,555), white));
-	world.add(make_shared<quad>(point3(0,0,555), vec3(555,0,0), vec3(0,555,0), white));
 
 	shared_ptr<hittable> box1 = box(point3(0,0,0), point3(165,330,165), white);
 	box1 = make_shared<rotate_y>(box1, 15);
