@@ -524,7 +524,9 @@ bool OptiXRenderer::buildScene(
 	const std::vector<bool>& isLightSphere,
 	const std::vector<PunctualLightGPU>& punctualLights,
 	const std::vector<BilinearPatchData>& bilinearPatches,
-	const std::vector<TriangleData>& triangles
+	const std::vector<TriangleData>& triangles,
+	const std::vector<GpuLensElement>& lensElements,
+	const std::vector<GpuExitPupilBounds>& exitPupilBounds
 ) {
 	// Store material data on device
 	numMaterials_ = static_cast<unsigned int>(materials.size());
@@ -621,6 +623,51 @@ bool OptiXRenderer::buildScene(
 	}
 
 	std::cout << "[OptiX] Uploaded " << triangles.size() << " triangles to GPU\n";
+
+	// Store the RealisticCamera's host-precomputed (focus-adjusted) lens
+	// table and exit-pupil bounds table on device. Both come from
+	// scene_builder.cpp directly instantiating a host-side
+	// RealisticCamera<float> - see optix_types.h's GpuLensElement/
+	// GpuExitPupilBounds and render()'s camera-pointer-injection comment.
+	numLensElements_ = static_cast<unsigned int>(lensElements.size());
+	size_t lensElementSize = lensElements.size() * sizeof(GpuLensElement);
+
+	if (d_lensElements_) {
+		cudaFree(reinterpret_cast<void*>(d_lensElements_));
+		d_lensElements_ = 0;
+	}
+
+	if (numLensElements_ > 0) {
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_lensElements_), lensElementSize));
+		CUDA_CHECK(cudaMemcpy(
+			reinterpret_cast<void*>(d_lensElements_),
+			lensElements.data(),
+			lensElementSize,
+			cudaMemcpyHostToDevice
+		));
+	}
+
+	numExitPupilBounds_ = static_cast<unsigned int>(exitPupilBounds.size());
+	size_t exitPupilBoundsSize = exitPupilBounds.size() * sizeof(GpuExitPupilBounds);
+
+	if (d_exitPupilBounds_) {
+		cudaFree(reinterpret_cast<void*>(d_exitPupilBounds_));
+		d_exitPupilBounds_ = 0;
+	}
+
+	if (numExitPupilBounds_ > 0) {
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_exitPupilBounds_), exitPupilBoundsSize));
+		CUDA_CHECK(cudaMemcpy(
+			reinterpret_cast<void*>(d_exitPupilBounds_),
+			exitPupilBounds.data(),
+			exitPupilBoundsSize,
+			cudaMemcpyHostToDevice
+		));
+	}
+
+	if (numLensElements_ > 0)
+		std::cout << "[OptiX] Uploaded " << lensElements.size() << " lens elements, "
+			<< exitPupilBounds.size() << " exit-pupil bounds to GPU\n";
 
 	// Store light data on device for MIS
 	numLights_ = static_cast<unsigned int>(lightIndices.size());
@@ -1118,11 +1165,27 @@ bool OptiXRenderer::render(
 	const GpuCameraParams& camera,
 	float* outputFramebuffer
 ) {
+	// Camera setup: inject the device pointers for the (host-precomputed,
+	// scene-build-time-uploaded) lens/exit-pupil-bounds tables into a local
+	// mutable copy. scene_builder.cpp's out_camera_extra can't know these
+	// device pointers at scene-build time (they aren't allocated until
+	// buildScene() below runs), so this is the one place both the recursive
+	// and wavefront strategies get a fully-populated GpuCameraParams from -
+	// neither WavefrontPathTracer nor the recursive raygen need any further
+	// camera wiring changes for CameraKind::Realistic.
+	GpuCameraParams gpuCam = camera;
+	if (gpuCam.kind == CameraKind::Realistic) {
+		gpuCam.lensElements = reinterpret_cast<GpuLensElement*>(d_lensElements_);
+		gpuCam.exitPupilBounds = reinterpret_cast<GpuExitPupilBounds*>(d_exitPupilBounds_);
+		gpuCam.numLensElements = static_cast<int>(numLensElements_);
+		gpuCam.numExitPupilBounds = static_cast<int>(numExitPupilBounds_);
+	}
+
 	// Delegate to WavefrontPathTracer if enabled
 	if (useWavefront_ && wavefrontTracer_) {
 		return wavefrontTracer_->render(
 			(int)width, (int)height, (int)samplesPerPixel, (int)maxDepth,
-			camera,
+			gpuCam,
 			outputFramebuffer,
 			gasHandle_,
 			d_materials_, d_spheres_, d_quads_,
@@ -1148,7 +1211,7 @@ bool OptiXRenderer::render(
 	params.frameNumber = 0;  // Could be animated
 
 	// Camera setup
-	params.camera = camera;
+	params.camera = gpuCam;
 
 	// Scene 
 	params.traversable = gasHandle_;
@@ -1237,6 +1300,8 @@ void OptiXRenderer::cleanup() noexcept {
 	if (d_quads_) cudaFree(reinterpret_cast<void*>(d_quads_));
 	if (d_bilinearPatches_) cudaFree(reinterpret_cast<void*>(d_bilinearPatches_));
 	if (d_triangles_) cudaFree(reinterpret_cast<void*>(d_triangles_));
+	if (d_lensElements_) cudaFree(reinterpret_cast<void*>(d_lensElements_));
+	if (d_exitPupilBounds_) cudaFree(reinterpret_cast<void*>(d_exitPupilBounds_));
 	if (d_lightIndices_) cudaFree(reinterpret_cast<void*>(d_lightIndices_));
 	if (d_isLightSphere_) cudaFree(reinterpret_cast<void*>(d_isLightSphere_));
 	if (d_aliasTable_) cudaFree(reinterpret_cast<void*>(d_aliasTable_));

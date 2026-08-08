@@ -636,6 +636,30 @@ struct RealisticCamera {
         film_y = (T(2)*ny - T(1)) * film_half_y_;
     }
 
+    // -----------------------------------------------------------------------
+    // GPU-port accessors: expose the (already focus-adjusted) lens table,
+    // exit-pupil bounds table, and camera-to-world basis so a caller (e.g.
+    // gpu/optix/scene_builder.cpp) can upload them as flat device buffers
+    // without re-running FocusThickLens/BoundExitPupil on the GPU - both are
+    // one-time, host-only precomputes, the same cost class as building a BVH.
+    // -----------------------------------------------------------------------
+    T lens_curvature_radius(int i) const { return elements_[i].curvatureRadius; }
+    T lens_thickness(int i)        const { return elements_[i].thickness; }
+    T lens_eta(int i)              const { return elements_[i].eta; }
+    T lens_aperture_radius(int i)  const { return elements_[i].apertureRadius; }
+
+    int num_exit_pupil_bounds() const { return (int)exit_pupil_bounds_.size(); }
+    T    exit_pupil_xmin(int i)      const { return exit_pupil_bounds_[i].xMin; }
+    T    exit_pupil_xmax(int i)      const { return exit_pupil_bounds_[i].xMax; }
+    T    exit_pupil_ymin(int i)      const { return exit_pupil_bounds_[i].yMin; }
+    T    exit_pupil_ymax(int i)      const { return exit_pupil_bounds_[i].yMax; }
+    bool exit_pupil_degenerate(int i) const { return exit_pupil_bounds_[i].degenerate; }
+
+    CamVec3<T> world_origin()  const { return camera_to_world_.transform_point(T(0), T(0), T(0)); }
+    CamVec3<T> world_right()   const { return camera_to_world_.transform_vec(T(1), T(0), T(0)); }
+    CamVec3<T> world_up()      const { return camera_to_world_.transform_vec(T(0), T(1), T(0)); }
+    CamVec3<T> world_forward() const { return camera_to_world_.transform_vec(T(0), T(0), T(1)); }
+
 private:
     // TraceLensesFromFilm: mirrors pbrt-v4.
     // Camera space: film at z=0, optical axis +z toward scene.

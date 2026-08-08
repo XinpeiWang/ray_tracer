@@ -14,6 +14,12 @@ struct SceneData {
 	std::vector<TriangleData> triangles;
 	std::vector<MaterialData> materials;
 
+	// RealisticCamera (CameraKind::Realistic) host-precomputed tables - see
+	// optix_types.h's GpuLensElement/GpuExitPupilBounds. Empty for every
+	// other scene.
+	std::vector<GpuLensElement> lensElements;
+	std::vector<GpuExitPupilBounds> exitPupilBounds;
+
 	// Light tracking for MIS
 	std::vector<int> lightIndices;      // Indices into sphere/quad arrays
 	std::vector<bool> isLightSphere;    // True if sphere, false if quad
@@ -26,7 +32,8 @@ struct SceneData {
 // Build a scene and return geometry + camera
 // camera_params: [origin(3), lower_left(3), horizontal(3), vertical(3)]
 // out_camera_extra: when non-null, scenes using a non-default camera model
-// (currently 22 DepthOfField, 32 OrthographicCamera, 33 SphericalCamera) fill
+// (currently 22 DepthOfField, 32 OrthographicCamera, 33 SphericalCamera, 36
+// RealisticCamera) fill
 // it with their CameraKind + type-specific fields (see optix_types.h's
 // GpuCameraParams). Scenes that don't need it leave *out_camera_extra
 // untouched - callers should zero-init before calling and treat an

@@ -25,13 +25,16 @@ extern "C" __global__ void __raygen__rg() {
 		float u = (float(px) + halton2(s, px, py)) / float(params.width - 1);
 		float v = (float(params.height - 1 - py) + halton3(s, px, py)) / float(params.height - 1);  // Flip Y
 
-		// Generate camera ray (perspective/orthographic/spherical, see
-		// generate_primary_ray in optix_device_helpers.h)
+		// Generate camera ray (perspective/orthographic/spherical/realistic,
+		// see generate_primary_ray in optix_device_helpers.h). `cam_weight`
+		// is the Realistic lens' cos^4(theta)/pdf vignetting term (1.0 for
+		// every other CameraKind) folded into the initial throughput.
 		float3 ray_origin, ray_direction;
-		generate_primary_ray(u, v, seed, ray_origin, ray_direction);
+		float cam_weight;
+		generate_primary_ray(u, v, seed, ray_origin, ray_direction, cam_weight);
 
 		// Path tracing loop
-		float3 throughput = make_float3(1.0f, 1.0f, 1.0f);
+		float3 throughput = make_float3(cam_weight, cam_weight, cam_weight);
 		float3 radiance = make_float3(0.0f, 0.0f, 0.0f);
 		float  prev_brdf_pdf = 0.0f;  // BRDF PDF of the ray that arrived at this bounce (0 = primary)
 

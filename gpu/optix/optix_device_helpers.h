@@ -453,17 +453,148 @@ __device__ __forceinline__ void add_punctual_lights_lambertian(
 	}
 }
 
+// Realistic multi-element lens camera (pbrt-v4 RealisticCamera, src/shared/
+// cameras.h). Host-side precompute (focus-adjusted lens table + exit-pupil
+// bounds table) happens once in scene_builder.cpp by directly constructing a
+// RealisticCamera<float> and reading its accessors - this device function
+// only ports the per-ray hot path: film-plane mapping, exit-pupil sampling,
+// and the per-element Snell's-law trace (Woop et al. watertight lens
+// intersection, mirrors cameras.h's trace_lenses_from_film/sample_exit_pupil/
+// generate_ray exactly, including the eta_i/eta_t Refract convention fix).
+// u,v are in [0,1]^2 with v already flipped by the raygen caller (matching
+// the other CameraKinds' "lower-left-origin" viewport convention) - unlike
+// those, RealisticCamera's film coordinates increase top-to-bottom matching
+// raw raster row order (see raster_to_film's comment in cameras.h), so v is
+// un-flipped back here first.
+// Returns false (weight left at 0) if the ray is fully vignetted.
+__device__ __forceinline__ bool sample_realistic_camera_ray(
+	const GpuCameraParams& cam, float u, float v, unsigned int& seed,
+	float3& out_origin, float3& out_direction, float& out_weight
+) {
+	out_weight = 0.0f;
+	if (cam.numLensElements <= 0 || cam.numExitPupilBounds <= 0) return false;
+
+	float v_raw = 1.0f - v;  // undo raygen's lower-left-origin flip
+	float pfx = -((2.0f*u - 1.0f) * cam.film_half_x);  // pbrt-v4 negates x
+	float pfy =   (2.0f*v_raw - 1.0f) * cam.film_half_y;
+
+	// sample_exit_pupil
+	float rFilm = sqrtf(pfx*pfx + pfy*pfy);
+	float film_diag = 2.0f * sqrtf(cam.film_half_x*cam.film_half_x + cam.film_half_y*cam.film_half_y);
+	int sz = cam.numExitPupilBounds;
+	int rIndex = (int)(rFilm / (film_diag*0.5f) * (float)sz);
+	if (rIndex >= sz) rIndex = sz - 1;
+	if (rIndex < 0) rIndex = 0;
+	const GpuExitPupilBounds& b = cam.exitPupilBounds[rIndex];
+	if (b.degenerate != 0) return false;
+
+	float area = (b.xMax - b.xMin) * (b.yMax - b.yMin);
+	if (area <= 0.0f) return false;
+	float ppdf = 1.0f / area;
+
+	float u0 = random_float(seed), u1 = random_float(seed);
+	float lx = b.xMin + u0*(b.xMax - b.xMin);
+	float ly = b.yMin + u1*(b.yMax - b.yMin);
+
+	float sinTheta = (rFilm > 0.0f) ? pfy/rFilm : 0.0f;
+	float cosTheta0 = (rFilm > 0.0f) ? pfx/rFilm : 1.0f;
+	float ppx = cosTheta0*lx - sinTheta*ly;
+	float ppy = sinTheta*lx + cosTheta0*ly;
+	float ppz = cam.lens_rear_z;
+
+	float rdx = ppx - pfx, rdy = ppy - pfy, rdz = ppz;
+	float rLen = sqrtf(rdx*rdx + rdy*rdy + rdz*rdz);
+
+	// trace_lenses_from_film: camera space (film z=0, +z toward scene) ->
+	// lens space (z flipped): loz=-oz, ldz=-dz.
+	float lox = pfx, loy = pfy, loz = 0.0f;
+	float ldx = rdx, ldy = rdy, ldz = -rdz;
+	float elementZ = 0.0f;
+
+	for (int i = cam.numLensElements - 1; i >= 0; --i) {
+		const GpuLensElement& el = cam.lensElements[i];
+		elementZ -= el.thickness;
+		bool isStop = (el.curvatureRadius == 0.0f);
+		float t, nx = 0.0f, ny = 0.0f, nz = 0.0f;
+
+		if (isStop) {
+			if (ldz == 0.0f) return false;
+			t = (elementZ - loz) / ldz;
+			if (t < 0.0f) return false;
+		} else {
+			// intersect_spherical
+			float zCenter = elementZ + el.curvatureRadius;
+			float cox = lox, coy = loy, coz = loz - zCenter;
+			float A = ldx*ldx + ldy*ldy + ldz*ldz;
+			float B = 2.0f*(ldx*cox + ldy*coy + ldz*coz);
+			float C = cox*cox + coy*coy + coz*coz - el.curvatureRadius*el.curvatureRadius;
+			float disc = B*B - 4.0f*A*C;
+			if (disc < 0.0f) return false;
+			float sq = sqrtf(disc);
+			float q = (B < 0.0f) ? -0.5f*(B - sq) : -0.5f*(B + sq);
+			float t0 = q / A;
+			float t1 = C / q;
+			if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
+			bool useCloserT = (ldz > 0.0f) != (el.curvatureRadius < 0.0f);
+			t = useCloserT ? fminf(t0, t1) : fmaxf(t0, t1);
+			if (t < 0.0f) return false;
+			float hx0 = lox+t*ldx, hy0 = loy+t*ldy, hz0 = loz+t*ldz;
+			nx = hx0; ny = hy0; nz = hz0 - zCenter;
+			float nlen = sqrtf(nx*nx+ny*ny+nz*nz);
+			if (nlen == 0.0f) return false;
+			nx/=nlen; ny/=nlen; nz/=nlen;
+			if (ldx*nx+ldy*ny+ldz*nz > 0.0f) { nx=-nx; ny=-ny; nz=-nz; }
+		}
+
+		float hx = lox+t*ldx, hy = loy+t*ldy, hz = loz+t*ldz;
+		if (hx*hx + hy*hy > el.apertureRadius*el.apertureRadius) return false;
+		lox = hx; loy = hy; loz = hz;
+
+		if (!isStop) {
+			float eta_i = (el.eta == 0.0f) ? 1.0f : el.eta;
+			float eta_t = (i > 0 && cam.lensElements[i-1].eta != 0.0f) ? cam.lensElements[i-1].eta : 1.0f;
+			float len = sqrtf(ldx*ldx+ldy*ldy+ldz*ldz);
+			float dxn = ldx/len, dyn = ldy/len, dzn = ldz/len;
+			float eta = eta_i/eta_t;  // matches cameras.h Refract's eta=eta_i/eta_t contract
+			float cosI = -(dxn*nx+dyn*ny+dzn*nz);
+			float sin2T = eta*eta * fmaxf(0.0f, 1.0f - cosI*cosI);
+			if (sin2T >= 1.0f) return false;
+			float cosT = sqrtf(1.0f - sin2T);
+			ldx = eta*dxn + (eta*cosI - cosT)*nx;
+			ldy = eta*dyn + (eta*cosI - cosT)*ny;
+			ldz = eta*dzn + (eta*cosI - cosT)*nz;
+		}
+	}
+
+	float lensOutOx = lox, lensOutOy = loy, lensOutOz = -loz;
+	float lensOutDx = ldx, lensOutDy = ldy, lensOutDz = -ldz;
+
+	float cosThetaW = (rLen > 0.0f) ? fabsf(rdz/rLen) : 0.0f;
+	float lrz = cam.lens_rear_z;
+	if (lrz <= 0.0f) return false;
+	float w = (cosThetaW*cosThetaW*cosThetaW*cosThetaW) / (ppdf * lrz * lrz);
+
+	// Camera space -> world space via su(right)/sv(up)/sw(forward)/origin.
+	out_origin = cam.origin + lensOutOx*cam.su + lensOutOy*cam.sv + lensOutOz*cam.sw;
+	out_direction = normalize(lensOutDx*cam.su + lensOutDy*cam.sv + lensOutDz*cam.sw);
+	out_weight = w;
+	return true;
+}
+
 // Generate a primary camera ray for raster coordinates (u,v) in [0,1]^2,
 // dispatching on params.camera.kind. Mirrors the CPU camera models in
-// src/shared/cameras.h (OrthographicCamera/SphericalCamera::generate_ray)
-// and src/TheRestOfYourLife/camera.h's book-style defocus_angle/focus_dist
-// thin-lens DOF, which the Perspective case folds in via
-// camera.defocus_disk_u/v (both zero = DOF disabled, matching how
-// scene_builder.cpp always zero-initializes GpuCameraParams).
+// src/shared/cameras.h (OrthographicCamera/SphericalCamera/RealisticCamera::
+// generate_ray) and src/TheRestOfYourLife/camera.h's book-style
+// defocus_angle/focus_dist thin-lens DOF, which the Perspective case folds
+// in via camera.defocus_disk_u/v (both zero = DOF disabled, matching how
+// scene_builder.cpp always zero-initializes GpuCameraParams). `weight`
+// applies to Realistic only (cos^4(theta)/pdf vignetting term, 1.0 for every
+// other CameraKind - fold into the caller's initial path throughput).
 __device__ __forceinline__ void generate_primary_ray(
-	float u, float v, unsigned int& seed, float3& origin, float3& direction
+	float u, float v, unsigned int& seed, float3& origin, float3& direction, float& weight
 ) {
 	const GpuCameraParams& cam = params.camera;
+	weight = 1.0f;
 	switch (cam.kind) {
 		case CameraKind::Orthographic: {
 			origin = cam.lower_left_corner + u * cam.horizontal + v * cam.vertical;
@@ -482,6 +613,14 @@ __device__ __forceinline__ void generate_primary_ray(
 			float lz = sin_t * sinf(phi); // swapped with ly above
 			origin = cam.origin;
 			direction = normalize(lx * cam.su + ly * cam.sv + lz * cam.sw);
+			break;
+		}
+		case CameraKind::Realistic: {
+			if (!sample_realistic_camera_ray(cam, u, v, seed, origin, direction, weight)) {
+				origin = cam.origin;
+				direction = cam.sw;  // arbitrary valid direction; weight=0 zeroes its contribution
+				weight = 0.0f;
+			}
 			break;
 		}
 		default: { // Perspective, optionally thin-lens DOF

@@ -9,6 +9,7 @@
 #include <iostream>
 
 #include "../../src/shared/conductor_data.h"
+#include "../../src/shared/cameras.h"
 
 namespace {
 	// Constants for Cornell Box dimensions
@@ -1201,6 +1202,46 @@ static void build_spherical_camera_scene_gpu(SceneData& scene) {
 	scene.isLightSphere.push_back(true);
 }
 
+/// @brief Scene 36: Realistic Camera. Matches CPU build_realistic_camera_scene()
+/// (ground + 5 colored spheres at increasing depth to show bokeh + one area
+/// light) - ground uses a flat gray instead of CPU's checker_texture, matching
+/// this file's established "no procedural textures on GPU" simplification
+/// used elsewhere (e.g. build_triangle_mesh_scene_gpu).
+static void build_realistic_camera_scene_gpu(SceneData& scene) {
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.5f, 0.5f, 0.5f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	SphereData ground{};
+	ground.center = make_float3(0.0f, -1000.0f, 0.0f);
+	ground.radius = 1000.0f;
+	ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	const float3 sphere_colors[5] = {
+		make_float3(0.9f, 0.2f, 0.2f), make_float3(0.2f, 0.8f, 0.2f), make_float3(0.2f, 0.2f, 0.9f),
+		make_float3(0.8f, 0.8f, 0.2f), make_float3(0.8f, 0.2f, 0.8f)
+	};
+	for (int i = 0; i < 5; ++i) {
+		const float z = 2.0f + i * 1.5f;
+		const int mat = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({ MaterialType::Lambertian, sphere_colors[i], 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		SphereData s{};
+		s.center = make_float3(0.0f, 1.0f, z);
+		s.radius = 0.8f;
+		s.materialIdx = mat;
+		scene.spheres.push_back(s);
+	}
+
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	SphereData lightSphere{};
+	lightSphere.center = make_float3(0.0f, 8.0f, 5.0f);
+	lightSphere.radius = 2.0f;
+	lightSphere.materialIdx = mat_light;
+	scene.spheres.push_back(lightSphere);
+	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+	scene.isLightSphere.push_back(true);
+}
+
 /// @brief Scene 24: HDRI Sky. Matches CPU build_hdri_sky_world() (ground +
 /// three spheres showcasing lambertian/metal/dielectric under sky light).
 /// The CPU "HDRI" is actually a flat-color sky_light in practice (see
@@ -2002,6 +2043,81 @@ bool build_scene(
 									out_camera_extra->su = make_float3(1.0f, 0.0f, 0.0f);
 									out_camera_extra->sv = make_float3(0.0f, 1.0f, 0.0f);
 									out_camera_extra->sw = make_float3(0.0f, 0.0f, 1.0f);
+								}
+								break;
+							}
+
+							case 36: {  // Realistic Camera (pbrt-v4 multi-element lens)
+								build_realistic_camera_scene_gpu(scene);
+								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
+									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
+								};
+								const float3 zero = make_float3(0.0f, 0.0f, 0.0f);
+								pack_float3(camera_params, 0, zero);
+								pack_float3(camera_params, 3, zero);
+								pack_float3(camera_params, 6, zero);
+								pack_float3(camera_params, 9, zero);
+
+								if (out_camera_extra) {
+									// Directly instantiate a host-side RealisticCamera<float> - reusing
+									// the CPU C++ class from cameras.h - so FocusThickLens/
+									// BoundExitPupil (both expensive, one-time precomputes) never need
+									// a CUDA port. Same lens table, focus distance, aperture, and
+									// camera-to-world as the CPU scene 36 (src/TheRestOfYourLife/
+									// scene_registry.h) - keep both in sync if either changes.
+									std::vector<float> lens = {
+										 35.98738f,  1.21638f, 1.54f,  23.716f,
+										 11.69718f,  9.9957f,  1.0f,   17.996f,
+										 13.08714f, 15.9948f,  1.77f,  12.364f,
+										-22.63294f,  2.7757f,  1.617f, 9.812f,
+										  0.0f,      2.75f,    0.0f,   7.4f,     // aperture stop
+										 36.3581f,   8.9722f,  1.617f, 12.7f,
+										-17.8595f,   1.2f,     1.0f,   12.7f,
+										100.0f,      2.9804f,  1.567f, 14.478f,
+										-24.5656f,   0.0f,     1.0f,   15.0f
+									};
+									Mat4<float> ctw = make_look_at<float>(
+										0.0f, 2.0f, -2.0f,   // from
+										0.0f, 1.0f,  5.0f,   // to
+										0.0f, 1.0f,  0.0f    // up
+									);
+									RealisticCamera<float> realCam(ctw, 18.0f, 12.0f, 7.0f, 8.0f, lens, 512);
+
+									scene.lensElements.clear();
+									for (int i = 0; i < realCam.num_elements(); ++i) {
+										GpuLensElement le{};
+										le.curvatureRadius = realCam.lens_curvature_radius(i);
+										le.thickness       = realCam.lens_thickness(i);
+										le.eta              = realCam.lens_eta(i);
+										le.apertureRadius   = realCam.lens_aperture_radius(i);
+										scene.lensElements.push_back(le);
+									}
+									scene.exitPupilBounds.clear();
+									for (int i = 0; i < realCam.num_exit_pupil_bounds(); ++i) {
+										GpuExitPupilBounds b{};
+										b.xMin = realCam.exit_pupil_xmin(i);
+										b.xMax = realCam.exit_pupil_xmax(i);
+										b.yMin = realCam.exit_pupil_ymin(i);
+										b.yMax = realCam.exit_pupil_ymax(i);
+										b.degenerate = realCam.exit_pupil_degenerate(i) ? 1 : 0;
+										scene.exitPupilBounds.push_back(b);
+									}
+
+									CamVec3<float> wo = realCam.world_origin();
+									CamVec3<float> wr = realCam.world_right();
+									CamVec3<float> wu = realCam.world_up();
+									CamVec3<float> wf = realCam.world_forward();
+
+									out_camera_extra->kind = CameraKind::Realistic;
+									out_camera_extra->origin = make_float3(wo.x, wo.y, wo.z);
+									out_camera_extra->su = make_float3(wr.x, wr.y, wr.z);
+									out_camera_extra->sv = make_float3(wu.x, wu.y, wu.z);
+									out_camera_extra->sw = make_float3(wf.x, wf.y, wf.z);
+									out_camera_extra->film_half_x = realCam.film_half_x();
+									out_camera_extra->film_half_y = realCam.film_half_y();
+									out_camera_extra->lens_rear_z = realCam.lens_rear_z();
+									out_camera_extra->numLensElements = static_cast<int>(scene.lensElements.size());
+									out_camera_extra->numExitPupilBounds = static_cast<int>(scene.exitPupilBounds.size());
 								}
 								break;
 							}

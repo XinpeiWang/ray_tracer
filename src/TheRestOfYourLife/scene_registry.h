@@ -420,7 +420,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             36, SceneNames::RealisticCamera,
             "Spheres rendered through a thin-lens with realistic lens-element bokeh (pbrt-v4 RealisticCamera)",
-            "Medium", 200, false, false,
+            "Medium", 200, false, true,
             { 50, 0, 2, -2,  0, 1, 5,  0, 0, 0 },
             build_realistic_camera_scene,
             []() {

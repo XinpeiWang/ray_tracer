@@ -354,15 +354,134 @@ __device__ __forceinline__ bool wf_eval_punctual_light(
 //   Fills rayQueue with one primary ray per pixel for sample index `sampleIdx`.
 // ============================================================================
 
+// Realistic multi-element lens camera, wavefront duplicate of
+// optix_device_helpers.h's sample_realistic_camera_ray (see that function's
+// doc comment for the full algorithm derivation). Unlike the recursive
+// raygen (optix_raygen.h), which flips v to `(height-1-py)/(height-1)` to
+// match the lower-left-origin viewport convention, this file's
+// generate_camera_rays kernel below computes `v = py/(height-1)` directly
+// (raw, top-to-bottom) - i.e. it is ALREADY in the raw raster-row convention
+// RealisticCamera::raster_to_film expects, so no un-flip is needed here
+// (contrast with the recursive path's `v_raw = 1.0f - v`).
+__device__ __forceinline__ bool wf_sample_realistic_camera_ray(
+	const GpuCameraParams& cam, float u, float v, unsigned int& seed,
+	float3& out_origin, float3& out_direction, float& out_weight
+) {
+	out_weight = 0.0f;
+	if (cam.numLensElements <= 0 || cam.numExitPupilBounds <= 0) return false;
+
+	float pfx = -((2.0f*u - 1.0f) * cam.film_half_x);  // pbrt-v4 negates x
+	float pfy =   (2.0f*v - 1.0f) * cam.film_half_y;
+
+	float rFilm = sqrtf(pfx*pfx + pfy*pfy);
+	float film_diag = 2.0f * sqrtf(cam.film_half_x*cam.film_half_x + cam.film_half_y*cam.film_half_y);
+	int sz = cam.numExitPupilBounds;
+	int rIndex = (int)(rFilm / (film_diag*0.5f) * (float)sz);
+	if (rIndex >= sz) rIndex = sz - 1;
+	if (rIndex < 0) rIndex = 0;
+	const GpuExitPupilBounds& b = cam.exitPupilBounds[rIndex];
+	if (b.degenerate != 0) return false;
+
+	float area = (b.xMax - b.xMin) * (b.yMax - b.yMin);
+	if (area <= 0.0f) return false;
+	float ppdf = 1.0f / area;
+
+	float u0 = wf_rand(seed), u1 = wf_rand(seed);
+	float lx = b.xMin + u0*(b.xMax - b.xMin);
+	float ly = b.yMin + u1*(b.yMax - b.yMin);
+
+	float sinTheta = (rFilm > 0.0f) ? pfy/rFilm : 0.0f;
+	float cosTheta0 = (rFilm > 0.0f) ? pfx/rFilm : 1.0f;
+	float ppx = cosTheta0*lx - sinTheta*ly;
+	float ppy = sinTheta*lx + cosTheta0*ly;
+	float ppz = cam.lens_rear_z;
+
+	float rdx = ppx - pfx, rdy = ppy - pfy, rdz = ppz;
+	float rLen = sqrtf(rdx*rdx + rdy*rdy + rdz*rdz);
+
+	float lox = pfx, loy = pfy, loz = 0.0f;
+	float ldx = rdx, ldy = rdy, ldz = -rdz;
+	float elementZ = 0.0f;
+
+	for (int i = cam.numLensElements - 1; i >= 0; --i) {
+		const GpuLensElement& el = cam.lensElements[i];
+		elementZ -= el.thickness;
+		bool isStop = (el.curvatureRadius == 0.0f);
+		float t, nx = 0.0f, ny = 0.0f, nz = 0.0f;
+
+		if (isStop) {
+			if (ldz == 0.0f) return false;
+			t = (elementZ - loz) / ldz;
+			if (t < 0.0f) return false;
+		} else {
+			float zCenter = elementZ + el.curvatureRadius;
+			float cox = lox, coy = loy, coz = loz - zCenter;
+			float A = ldx*ldx + ldy*ldy + ldz*ldz;
+			float B = 2.0f*(ldx*cox + ldy*coy + ldz*coz);
+			float C = cox*cox + coy*coy + coz*coz - el.curvatureRadius*el.curvatureRadius;
+			float disc = B*B - 4.0f*A*C;
+			if (disc < 0.0f) return false;
+			float sq = sqrtf(disc);
+			float q = (B < 0.0f) ? -0.5f*(B - sq) : -0.5f*(B + sq);
+			float t0 = q / A;
+			float t1 = C / q;
+			if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
+			bool useCloserT = (ldz > 0.0f) != (el.curvatureRadius < 0.0f);
+			t = useCloserT ? fminf(t0, t1) : fmaxf(t0, t1);
+			if (t < 0.0f) return false;
+			float hx0 = lox+t*ldx, hy0 = loy+t*ldy, hz0 = loz+t*ldz;
+			nx = hx0; ny = hy0; nz = hz0 - zCenter;
+			float nlen = sqrtf(nx*nx+ny*ny+nz*nz);
+			if (nlen == 0.0f) return false;
+			nx/=nlen; ny/=nlen; nz/=nlen;
+			if (ldx*nx+ldy*ny+ldz*nz > 0.0f) { nx=-nx; ny=-ny; nz=-nz; }
+		}
+
+		float hx = lox+t*ldx, hy = loy+t*ldy, hz = loz+t*ldz;
+		if (hx*hx + hy*hy > el.apertureRadius*el.apertureRadius) return false;
+		lox = hx; loy = hy; loz = hz;
+
+		if (!isStop) {
+			float eta_i = (el.eta == 0.0f) ? 1.0f : el.eta;
+			float eta_t = (i > 0 && cam.lensElements[i-1].eta != 0.0f) ? cam.lensElements[i-1].eta : 1.0f;
+			float len = sqrtf(ldx*ldx+ldy*ldy+ldz*ldz);
+			float dxn = ldx/len, dyn = ldy/len, dzn = ldz/len;
+			float eta = eta_i/eta_t;
+			float cosI = -(dxn*nx+dyn*ny+dzn*nz);
+			float sin2T = eta*eta * fmaxf(0.0f, 1.0f - cosI*cosI);
+			if (sin2T >= 1.0f) return false;
+			float cosT = sqrtf(1.0f - sin2T);
+			ldx = eta*dxn + (eta*cosI - cosT)*nx;
+			ldy = eta*dyn + (eta*cosI - cosT)*ny;
+			ldz = eta*dzn + (eta*cosI - cosT)*nz;
+		}
+	}
+
+	float lensOutOx = lox, lensOutOy = loy, lensOutOz = -loz;
+	float lensOutDx = ldx, lensOutDy = ldy, lensOutDz = -ldz;
+
+	float cosThetaW = (rLen > 0.0f) ? fabsf(rdz/rLen) : 0.0f;
+	float lrz = cam.lens_rear_z;
+	if (lrz <= 0.0f) return false;
+	float w = (cosThetaW*cosThetaW*cosThetaW*cosThetaW) / (ppdf * lrz * lrz);
+
+	out_origin = cam.origin + lensOutOx*cam.su + lensOutOy*cam.sv + lensOutOz*cam.sw;
+	out_direction = normalize(lensOutDx*cam.su + lensOutDy*cam.sv + lensOutDz*cam.sw);
+	out_weight = w;
+	return true;
+}
+
 // Generate a primary camera ray, dispatching on camera.kind. Duplicated from
 // optix_device_helpers.h's generate_primary_ray (with the wf_ prefix)
 // rather than shared, matching this file's existing pattern of not sharing
 // device helpers with the recursive path (this kernel has no access to the
-// recursive path's __constant__ params global).
+// recursive path's __constant__ params global). `weight` applies to
+// Realistic only (1.0 for every other CameraKind).
 __device__ __forceinline__ void wf_generate_primary_ray(
 	const GpuCameraParams& cam, float u, float v, unsigned int& seed,
-	float3& origin, float3& direction
+	float3& origin, float3& direction, float& weight
 ) {
+	weight = 1.0f;
 	switch (cam.kind) {
 		case CameraKind::Orthographic: {
 			origin = cam.lower_left_corner + u * cam.horizontal + v * cam.vertical;
@@ -378,6 +497,14 @@ __device__ __forceinline__ void wf_generate_primary_ray(
 			float lz = sin_t * sinf(phi);
 			origin = cam.origin;
 			direction = normalize(lx * cam.su + ly * cam.sv + lz * cam.sw);
+			break;
+		}
+		case CameraKind::Realistic: {
+			if (!wf_sample_realistic_camera_ray(cam, u, v, seed, origin, direction, weight)) {
+				origin = cam.origin;
+				direction = cam.sw;
+				weight = 0.0f;
+			}
 			break;
 		}
 		default: { // Perspective, optionally thin-lens DOF
@@ -416,12 +543,13 @@ extern "C" __global__ void generate_camera_rays(
 	float v = (float(py) + wf_rand(seed)) / float(height - 1);
 
 	RayWorkItem item;
-	wf_generate_primary_ray(camera, u, v, seed, item.origin, item.direction);
+	float cam_weight;
+	wf_generate_primary_ray(camera, u, v, seed, item.origin, item.direction, cam_weight);
 	// Sample hero wavelengths for spectral rendering (pbrt-v4: SampledWavelengths::SampleVisible)
 	float lambda_u = wf_rand(seed);
 	SampledWavelengths<kWFNWavelengths> swl = SampledWavelengths<kWFNWavelengths>::SampleVisible(lambda_u);
 	for (int i = 0; i < kWFNWavelengths; ++i) {
-		item.throughput[i]     = 1.0f;
+		item.throughput[i]     = cam_weight;
 		item.radiance[i]       = 0.0f;
 		item.wavelengths[i]    = swl.lambda[i];
 		item.wavelength_pdfs[i] = swl.pdf[i];

@@ -258,6 +258,20 @@ TEST(FindSceneTest, MeasuredBrdfSceneIsGpuCompatible) {
 	EXPECT_TRUE(s->gpu_compatible);
 }
 
+TEST(FindSceneTest, RealisticCameraSceneIsGpuCompatible) {
+	// Scene 36's pbrt-v4 RealisticCamera (src/shared/cameras.h) is ported by
+	// having gpu/optix/scene_builder.cpp directly instantiate a host-side
+	// RealisticCamera<float> at scene-build time - the expensive one-time
+	// precomputes (FocusThickLens, BoundExitPupil) reuse the CPU C++ class
+	// as-is rather than being re-implemented in CUDA. Only the per-ray hot
+	// path (film-plane mapping, exit-pupil sampling, per-element Snell's-law
+	// trace) is ported to device code, in both the recursive
+	// (optix_device_helpers.h) and wavefront (wavefront_kernels.cu) strategies.
+	const SceneDescriptor* s = find_scene(36);
+	ASSERT_NE(s, nullptr);
+	EXPECT_TRUE(s->gpu_compatible);
+}
+
 TEST(FindSceneTest, TriangleMeshSceneIsGpuCompatible) {
 	// Scene 37 is new this session (not an existing CPU scene ported to GPU
 	// like the other 10 gaps): src/TheRestOfYourLife/triangle.h/mesh.h's real

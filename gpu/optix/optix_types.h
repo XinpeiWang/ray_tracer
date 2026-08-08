@@ -206,15 +206,37 @@ struct GpuAliasEntry {
 	float  pdf;    // Probability mass for this entry (= power_i / total_power)
 };
 
-// Which ray-generation formula GpuCameraParams describes. Mirrors the three
-// CPU camera models this GPU camera type supports (src/shared/cameras.h's
-// OrthographicCamera/PerspectiveCamera/SphericalCamera, plus the book-style
-// default camera's defocus_angle/focus_dist thin-lens DOF extension) -
-// RealisticCamera (src/shared/cameras.h) remains CPU-only.
+// Which ray-generation formula GpuCameraParams describes. Mirrors the CPU
+// camera models this GPU camera type supports (src/shared/cameras.h's
+// OrthographicCamera/PerspectiveCamera/SphericalCamera/RealisticCamera, plus
+// the book-style default camera's defocus_angle/focus_dist thin-lens DOF
+// extension).
 enum class CameraKind : int {
 	Perspective = 0,   // pinhole, optionally with thin-lens DOF (defocus_disk_u/v)
 	Orthographic = 1,  // parallel projection, constant ray direction `w`
-	Spherical = 2      // 360-degree equirectangular panorama from a point
+	Spherical = 2,     // 360-degree equirectangular panorama from a point
+	Realistic = 3      // multi-element lens (pbrt-v4 RealisticCamera) - see GpuLensElement
+};
+
+// One spherical (or planar, for the aperture stop) lens surface - mirrors
+// src/shared/cameras.h's RealisticCamera<T>::LensElement, already in metres
+// and with the rear element's thickness already focus-adjusted (both done
+// host-side by directly reusing RealisticCamera<float>'s own constructor -
+// see scene_builder.cpp's case 36 - so device code never needs to run
+// FocusThickLens/ComputeCardinalPoints itself).
+struct GpuLensElement {
+	float curvatureRadius;  // 0 = aperture stop
+	float thickness;
+	float eta;               // 0 = no interface (air on both sides don't apply eta)
+	float apertureRadius;
+};
+
+// One radial exit-pupil bounding box slab - mirrors RealisticCamera<T>::Bounds2,
+// precomputed host-side (RealisticCamera<float>::bound_exit_pupil, run once at
+// scene-build time, same cost class as building a BVH or alias table).
+struct GpuExitPupilBounds {
+	float xMin, xMax, yMin, yMax;
+	int   degenerate;  // 1 = no valid exit-pupil sample in this radial slab
 };
 
 // GPU camera parameters. `origin`/`lower_left_corner`/`horizontal`/`vertical`
@@ -232,7 +254,20 @@ struct GpuCameraParams {
 	float3 w;               // Orthographic: constant unit ray direction
 	float3 defocus_disk_u;  // Perspective DOF: disk basis vector (zero = disabled)
 	float3 defocus_disk_v;
-	float3 su, sv, sw;      // Spherical: world-space camera basis (right, up, forward)
+	float3 su, sv, sw;      // Spherical: world-space camera basis (right, up, forward);
+	                        // also reused by Realistic for its camera-to-world rotation
+	                        // (su=right, sv=up, sw=forward) - `origin` above doubles as
+	                        // its camera-to-world translation.
+
+	// Realistic (CameraKind::Realistic): fixed scalars + device buffers for the
+	// host-precomputed (focus-adjusted) lens table and exit-pupil bounds table -
+	// see GpuLensElement/GpuExitPupilBounds. Null/zero for every other CameraKind.
+	float film_half_x, film_half_y;  // physical film half-extents, metres
+	float lens_rear_z;               // distance from film to rear lens element, metres
+	int   numLensElements;
+	int   numExitPupilBounds;
+	GpuLensElement*     lensElements;
+	GpuExitPupilBounds* exitPupilBounds;
 
 	// Flat constant-color background for missed rays (default black =
 	// existing behavior for every scene that doesn't set it). Piggybacked

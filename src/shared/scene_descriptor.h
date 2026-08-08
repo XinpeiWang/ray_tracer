@@ -186,7 +186,7 @@ inline const SceneDesc* get_all_scenes(int* out_count = nullptr) {
 		   "Slow",      300, false, true  },
 		{ 36, SceneNames::RealisticCamera,
 		   "Spheres rendered through a thin-lens with realistic lens-element bokeh (pbrt-v4 RealisticCamera)",
-		   "Medium",    200, false, false },
+		   "Medium",    200, false, true  },
 		{ 37, SceneNames::TriangleMesh,
 		   "Procedurally-generated icosahedron showcasing real triangle-mesh geometry (watertight Moller-Trumbore intersection)",
 		   "Fast",      100, false, true  },

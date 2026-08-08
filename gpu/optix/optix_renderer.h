@@ -53,6 +53,12 @@ public:
 	///        BilinearPatchData)
 	/// @param triangles Vector of flat-shaded triangle geometry data (never
 	///        used as lights - see optix_types.h's TriangleData)
+	/// @param lensElements Host-precomputed RealisticCamera lens table (see
+	///        optix_types.h's GpuLensElement); empty unless the scene uses
+	///        CameraKind::Realistic.
+	/// @param exitPupilBounds Host-precomputed RealisticCamera exit-pupil
+	///        bounds table (see optix_types.h's GpuExitPupilBounds); empty
+	///        unless the scene uses CameraKind::Realistic.
 	/// @return true if scene was built successfully, false otherwise
 	bool buildScene(
 		const std::vector<SphereData>& spheres,
@@ -62,7 +68,9 @@ public:
 		const std::vector<bool>& isLightSphere,
 		const std::vector<PunctualLightGPU>& punctualLights = {},
 		const std::vector<BilinearPatchData>& bilinearPatches = {},
-		const std::vector<TriangleData>& triangles = {}
+		const std::vector<TriangleData>& triangles = {},
+		const std::vector<GpuLensElement>& lensElements = {},
+		const std::vector<GpuExitPupilBounds>& exitPupilBounds = {}
 	);
 
 	/// @brief Render a frame using path tracing
@@ -158,6 +166,10 @@ private:
 	unsigned int numBilinearPatches_ = 0; ///< Number of bilinear patches
 	CUdeviceptr d_triangles_ = 0;      ///< Device triangle array
 	unsigned int numTriangles_ = 0;    ///< Number of triangles
+	CUdeviceptr d_lensElements_ = 0;      ///< Device RealisticCamera lens table
+	unsigned int numLensElements_ = 0;    ///< Number of lens elements
+	CUdeviceptr d_exitPupilBounds_ = 0;    ///< Device RealisticCamera exit-pupil bounds table
+	unsigned int numExitPupilBounds_ = 0;  ///< Number of exit-pupil bounds slabs
 
 	// Light sampling support for MIS
 	CUdeviceptr d_lightIndices_ = 0;  ///< Device light primitive indices
