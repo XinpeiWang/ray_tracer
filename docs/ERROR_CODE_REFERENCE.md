@@ -324,6 +324,36 @@ The ray tracer uses a comprehensive error code system to make debugging easier. 
 - CPU supports all 9 scenes
 - GPU support for other scenes is planned for future releases
 
+### 212 - ERR_GPU_SCENE_BUILD_FAILED
+**Message:** GPU: Failed to build scene  
+**Meaning:** `build_scene()` could not construct the requested scene for GPU upload  
+**Troubleshooting:**
+- Verify the scene ID is valid and GPU-supported
+- Check console output for the specific scene-building failure
+- Try CPU mode to see if the scene builds there
+
+### 213 - ERR_GPU_RENDER_FAILED
+**Message:** GPU: Rendering failed during execution  
+**Meaning:** The OptiX/CUDA render pass returned failure after scene upload succeeded  
+**Troubleshooting:**
+- Check console output for the underlying CUDA/OptiX error
+- Try reducing resolution or sample count
+- Switch to CPU mode if the issue persists
+
+### 214 - ERR_GPU_EXCEPTION
+**Message:** GPU: Exception thrown during rendering  
+**Meaning:** A C++ exception was thrown somewhere in the GPU render path  
+**Troubleshooting:**
+- Check console output for the exception message
+- Report the issue with the full log if it persists
+
+### 215 - ERR_GPU_UNKNOWN_ERROR
+**Message:** GPU: Unknown error occurred during rendering  
+**Meaning:** A non-`std::exception` error was caught in the GPU render path  
+**Troubleshooting:**
+- Check console output for any additional context
+- Report the issue with the full log if it persists
+
 ---
 
 ## User Action (999)

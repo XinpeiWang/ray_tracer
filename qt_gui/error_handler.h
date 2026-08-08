@@ -89,6 +89,10 @@ inline QString getErrorTitle(int errorCode) {
 		{209, "Invalid GPU Configuration"},
 		{210, "GPU Texture Binding Failed"},
 		{211, "Scene Not Supported on GPU"},
+		{212, "Scene Build Failed (GPU)"},
+		{213, "Rendering Failed (GPU)"},
+		{214, "Exception During Rendering (GPU)"},
+		{215, "Unknown Error (GPU)"},
 
 		// User action
 		{999, "Cancelled by User"}
@@ -126,6 +130,10 @@ inline QString getErrorMessage(int errorCode) {
 		{204, "Failed to launch GPU rendering kernel."},
 		{208, "GPU memory allocation failed."},
 		{211, "This scene is not supported on GPU. Please use CPU mode."},
+		{212, "Failed to construct the scene geometry on GPU."},
+		{213, "An error occurred while rendering the image on GPU."},
+		{214, "An exception was thrown while rendering on GPU."},
+		{215, "An unknown error occurred while rendering on GPU."},
 		{999, "The render was cancelled by the user."}
 	};
 

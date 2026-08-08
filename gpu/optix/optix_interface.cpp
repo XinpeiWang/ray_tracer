@@ -4,6 +4,7 @@
 #include "optix_interface.h"
 #include "optix_renderer.h"
 #include "scene_builder.h"
+#include "../../src/TheRestOfYourLife/error_codes.h"
 #include <iostream>
 #include <fstream>
 #include <memory>
@@ -36,7 +37,7 @@ extern "C" int optix_render_main(
 			g_renderer = std::make_unique<OptiXRenderer>();
 			if (!g_renderer->initialize()) {
 				std::cerr << "[OptiX] Failed to initialize renderer\n";
-				return 100;  // Init error
+				return ERR_GPU_DEVICE_INIT_FAILED;
 			}
 		}
 
@@ -50,7 +51,7 @@ extern "C" int optix_render_main(
 
 		if (!build_scene(scene_id, image_width, image_height, scene, camera_params, cam_x, cam_y, cam_z, &cameraExtra)) {
 			std::cerr << "[OptiX] Failed to build scene\n";
-			return 101;  // Scene build error
+			return ERR_GPU_SCENE_BUILD_FAILED;
 		}
 
 		// Scenes that don't use a non-default camera model leave cameraExtra
@@ -76,7 +77,7 @@ extern "C" int optix_render_main(
 									 scene.triangles, scene.lensElements,
 									 scene.exitPupilBounds)) {
 			std::cerr << "[OptiX] Failed to upload scene to GPU\n";
-			return 102;  // GPU upload error
+			return ERR_GPU_MEMORY_COPY_FAILED;
 		}
 
 		// Enable wavefront mode if requested via env var RAY_TRACER_WAVEFRONT=1
@@ -125,14 +126,14 @@ extern "C" int optix_render_main(
 			framebuffer.data()
 		)) {
 			std::cerr << "[OptiX] Render failed\n";
-			return 103;  // Render error
+			return ERR_GPU_RENDER_FAILED;
 		}
 
 		// Write to PPM file
 		std::ofstream outFile(output_path, std::ios::binary);
 		if (!outFile) {
 			std::cerr << "[OptiX] Failed to open output file: " << output_path << "\n";
-			return 104;  // File error
+			return ERR_FILE_WRITE_FAILED;
 		}
 
 		// PPM header
@@ -164,10 +165,10 @@ extern "C" int optix_render_main(
 
 	} catch (const std::exception& e) {
 		std::cerr << "[OptiX] Exception: " << e.what() << "\n";
-		return 105;  // Exception
+		return ERR_GPU_EXCEPTION;
 	} catch (...) {
 		std::cerr << "[OptiX] Unknown error\n";
-		return 106;  // Unknown error
+		return ERR_GPU_UNKNOWN_ERROR;
 	}
 }
 

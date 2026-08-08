@@ -243,6 +243,17 @@ void MainWindow::onLogMessage(const QString &message) {
 	// HTML-escape so < > & don't break the rich-text display
 	QString escaped = msg.toHtmlEscaped();
 
+	// ── Error-details banner ─────────────────────────────────────────────────
+	// Would otherwise match the "===" separator rule below and render as a
+	// plain grey line, burying the one banner meant to flag a render failure.
+	if (msg.contains("ERROR DETAILS")) {
+		m_logTextEdit->append(
+			QString("<span style='color:#FF6B6B;font-family:Consolas,monospace;font-size:9pt;'>"
+					"<b>%1</b></span>").arg(escaped));
+		qDebug() << msg;
+		return;
+	}
+
 	// ── Separator lines ──────────────────────────────────────────────────────
 	if (msg.startsWith("═") || msg.startsWith("─") ||
 		msg.startsWith("===") || msg.startsWith("---")) {
@@ -274,7 +285,21 @@ void MainWindow::onLogMessage(const QString &message) {
 		msg.contains("fatal",   Qt::CaseInsensitive) ||
 		msg.contains("ERR_",    Qt::CaseSensitive)   ||
 		msg.startsWith("Result: FAILED")) {
-		colour = "#FF6B6B"; label = "ERR ";
+		colour = "#FF6B6B";
+		// Keep the red "this is an error" signal, but preserve which
+		// subsystem it came from instead of collapsing every GPU/CPU line
+		// that happens to contain "error"/"failed" into the generic ERR tag.
+		if (msg.contains("[OptiX]",     Qt::CaseSensitive)   ||
+			msg.contains("[optix]",     Qt::CaseSensitive)   ||
+			msg.contains("OptiX",       Qt::CaseSensitive)   ||
+			msg.contains("GPU mode",    Qt::CaseInsensitive)) {
+			label = "GPU ";
+		} else if (msg.contains("[cpu_interface]", Qt::CaseSensitive) ||
+				   msg.contains("CPU mode",        Qt::CaseInsensitive)) {
+			label = "CPU ";
+		} else {
+			label = "ERR ";
+		}
 
 	// ── Warning ──────────────────────────────────────────────────────────────
 	} else if (msg.contains("warning", Qt::CaseInsensitive) ||

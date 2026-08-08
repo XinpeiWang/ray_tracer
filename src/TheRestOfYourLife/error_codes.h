@@ -61,6 +61,10 @@ enum RenderErrorCode {
 	ERR_GPU_INVALID_CONFIGURATION = 209,
 	ERR_GPU_TEXTURE_BINDING_FAILED = 210,
 	ERR_GPU_UNSUPPORTED_SCENE = 211,
+	ERR_GPU_SCENE_BUILD_FAILED = 212,
+	ERR_GPU_RENDER_FAILED = 213,
+	ERR_GPU_EXCEPTION = 214,
+	ERR_GPU_UNKNOWN_ERROR = 215,
 
 	// ===== USER CANCELLATION =====
 	ERR_USER_CANCELLED = 999
@@ -114,6 +118,10 @@ inline std::string get_error_message(int error_code) {
 		{ERR_GPU_INVALID_CONFIGURATION, "GPU: Invalid kernel configuration"},
 		{ERR_GPU_TEXTURE_BINDING_FAILED, "GPU: Failed to bind texture"},
 		{ERR_GPU_UNSUPPORTED_SCENE, "GPU: Scene not supported on GPU (use CPU mode)"},
+		{ERR_GPU_SCENE_BUILD_FAILED, "GPU: Failed to build scene"},
+		{ERR_GPU_RENDER_FAILED, "GPU: Rendering failed during execution"},
+		{ERR_GPU_EXCEPTION, "GPU: Exception thrown during rendering"},
+		{ERR_GPU_UNKNOWN_ERROR, "GPU: Unknown error occurred during rendering"},
 
 		// User cancellation
 		{ERR_USER_CANCELLED, "Render cancelled by user"}
