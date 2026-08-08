@@ -473,6 +473,80 @@ extern "C" __global__ void __closesthit__sphere() {
 				scattered_dir = diff_dir;
 				scattered     = true;
 				is_specular   = false;
+
+				// NEE: direct light with the coat-weighted diffuse BSDF -
+				// this branch sets is_specular=false (it's a real diffuse
+				// lobe under the coat) but was missing the light-sampling
+				// block every other is_specular=false material has
+				// (Lambertian above, NormalizedFresnel below), so it could
+				// only ever get illuminated by BSDF-sampled paths that
+				// randomly happened to hit the light - no importance
+				// sampling toward it at all. That made it render far too
+				// dark, especially for a small/hard-to-hit area light.
+				// T_in (F_in) is fixed for this scattering event (from the
+				// same coat sample drawn above); F_out is re-evaluated at
+				// the light-sampled direction, mirroring how the BSDF
+				// sample's own F_out is evaluated at diff_dir above.
+				if (params.numLights > 0) {
+					int light_idx;
+					float selection_pdf;
+					if (params.aliasTable) {
+						int slot = int(random_float(seed) * float(params.numLights));
+						if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
+						const GpuAliasEntry& entry = params.aliasTable[slot];
+						light_idx = (random_float(seed) < entry.q) ? slot : entry.alias;
+						selection_pdf = params.aliasTable[light_idx].pdf;
+					} else {
+						light_idx = int(random_float(seed) * float(params.numLights));
+						if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
+						selection_pdf = 1.0f / float(params.numLights);
+					}
+
+					int prim_idx = params.lightIndices[light_idx];
+					bool is_sphere_light = params.isLightSphere[light_idx];
+
+					float3 to_light;
+					float geom_pdf = 0.0f;
+					float max_dist = 0.0f;
+
+					if (is_sphere_light) {
+						const SphereData& light_sphere = params.spheres[prim_idx];
+						to_light = sample_sphere_light(light_sphere, hit_point, seed, geom_pdf);
+						float3 to_center = light_sphere.center - hit_point;
+						max_dist = length(to_center);
+					} else {
+						const QuadData& light_quad = params.quads[prim_idx];
+						to_light = sample_quad_light(light_quad, hit_point, seed, geom_pdf, max_dist);
+					}
+
+					float light_pdf = selection_pdf * geom_pdf;
+					if (light_pdf > 1e-6f) {
+						bool visible = trace_shadow_ray(hit_point, to_light, max_dist);
+						if (visible) {
+							float cos_to_light = fmaxf(dot(to_light, cdn), 0.0f);
+							if (cos_to_light > 0.0f) {
+								float F_out_l = FrDielectric(cos_to_light, 1.0f / mat.ior);
+								float T_l     = (1.0f - F_in) * (1.0f - F_out_l);
+								float3 brdf_val = make_float3(mat.albedo.x*T_l, mat.albedo.y*T_l, mat.albedo.z*T_l)
+												  / 3.14159265358979323846f;
+								float brdf_pdf   = cosine_pdf(to_light, cdn);
+								float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
+
+								float3 light_emission = make_float3(0.0f, 0.0f, 0.0f);
+								if (is_sphere_light) {
+									const MaterialData& light_mat = params.materials[params.spheres[prim_idx].materialIdx];
+									light_emission = light_mat.emission;
+								} else {
+									const MaterialData& light_mat = params.materials[params.quads[prim_idx].materialIdx];
+									light_emission = light_mat.emission;
+								}
+
+								float3 direct_light = mis_weight * brdf_val * light_emission * cos_to_light / light_pdf;
+								emission = emission + direct_light;
+							}
+						}
+					}
+				}
 			}
 			break;
 		}
