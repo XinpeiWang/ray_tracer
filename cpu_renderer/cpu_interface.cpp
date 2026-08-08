@@ -85,8 +85,14 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 
 		// For Cornell box scenes use explicitly-weighted power_light_list;
 		// for all others wrap uniformly (equal weights = same as old hittable_list).
+		// Scene 7 (Cornell Smoke) used to be included here too, but its light
+		// is a different size/color than build_cornell_box_power_lights()
+		// assumes and it has no glass sphere - the uniform-weight path below
+		// (scene_desc->build_lights() -> build_cornell_smoke_lights(), a
+		// single correctly-sized light) is both correct and, with only one
+		// light in the list, equivalent to power weighting anyway.
 		power_light_list lights;
-		if (scene_id == 0 || scene_id == 7 || scene_id == 10) {
+		if (scene_id == 0 || scene_id == 10) {
 			lights = build_cornell_box_power_lights();
 		} else {
 			lights = power_light_list(lights_raw);

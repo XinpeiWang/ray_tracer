@@ -67,6 +67,34 @@ inline hittable_list build_cornell_box_lights() {
 	return lights;
 }
 
+// Light list for build_cornell_smoke() (scene 7): that scene's ceiling light
+// is its own, much larger rectangle (world quad Q=(113,554,127),
+// u=(330,0,0), v=(0,0,305), emission (7,7,7) - see scenes_book.h) rather
+// than the standard Cornell-box light build_cornell_box_lights() assumes,
+// and scene 7 has neither a glass sphere nor the accent wall light - so
+// reusing build_cornell_box_lights() aimed importance sampling at a
+// mis-sized light rect plus a phantom sphere target with no real geometry
+// there. This gives scene 7 its own correctly-sized single-light list.
+inline hittable_list build_cornell_smoke_lights() {
+	hittable_list lights;
+	auto empty_material = shared_ptr<material>();
+	lights.add(
+		make_shared<quad>(point3(443,554,432), vec3(-330,0,0), vec3(0,0,-305), empty_material));
+	return lights;
+}
+
+// Light list for build_cornell_thin_glass() (scene 14): same ceiling light
+// rectangle as scene 0, but scene 14 has neither a glass sphere nor the
+// accent wall light, so build_cornell_box_lights()'s sphere entry aimed
+// samples at a phantom target with no real geometry there.
+inline hittable_list build_cornell_thin_glass_lights() {
+	hittable_list lights;
+	auto empty_material = shared_ptr<material>();
+	lights.add(
+		make_shared<quad>(point3(343,554,332), vec3(-130,0,0), vec3(0,0,-105), empty_material));
+	return lights;
+}
+
 // Build a power_light_list with power weights computed from geometry + emission.
 // Mirrors pbrt-v4 PowerLightSampler: phi = light.Phi() = area * Le_avg * pi
 // For a quad area light:  phi = |u x v| * luminance(emission) * pi

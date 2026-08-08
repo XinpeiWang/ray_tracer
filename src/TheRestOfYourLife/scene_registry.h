@@ -130,7 +130,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             "Slow", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_cornell_smoke,
-            build_cornell_box_lights
+            build_cornell_smoke_lights
         },
         {
             8, SceneNames::FinalScene,
@@ -191,7 +191,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_cornell_thin_glass,
-            build_cornell_box_lights
+            build_cornell_thin_glass_lights
         },
         {
             15, SceneNames::CornellCoatedConductor,
