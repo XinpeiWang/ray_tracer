@@ -6,6 +6,15 @@
 // ============================================================================
 // Provides parametric camera animation paths for video generation.
 // Each function takes (frame_number, total_frames) and returns camera position.
+//
+// `speed` is a multiplier (default 1.0 = unchanged) applied uniformly to each
+// path's normalized progress parameter t, so it scales however that path's
+// baseline is defined: 1 full rotation for orbit/figure8, 2 for spiral, one
+// start->end traversal for linear. speed > 1 completes the baseline path
+// before the video ends and then keeps extrapolating past it (e.g. more
+// rotations, or past the linear endpoint); speed < 1 doesn't reach the end
+// of the baseline path by the last frame. This keeps rotation/zoom/translation
+// in sync since every path derives its motion from the same scaled t.
 
 #include <cmath>
 #include <string>
@@ -25,16 +34,17 @@ struct CameraPosition {
 // Circular Orbit Path
 // Camera orbits around the lookAt point in a circle on the XZ plane
 // ============================================================================
-inline CameraPosition camera_path_orbit(int frame, int total_frames, 
-										double radius = 800.0, 
-										double center_x = 278.0, 
-										double center_y = 278.0, 
+inline CameraPosition camera_path_orbit(int frame, int total_frames,
+										double radius = 800.0,
+										double center_x = 278.0,
+										double center_y = 278.0,
 										double center_z = 278.0,
-										double height = 278.0) {
+										double height = 278.0,
+										double speed = 1.0) {
 	CameraPosition pos;
 
-	// Compute angle (full 360° rotation over total_frames)
-	double t = static_cast<double>(frame) / static_cast<double>(total_frames);
+	// Compute angle (full 360° rotation over total_frames, scaled by speed)
+	double t = static_cast<double>(frame) / static_cast<double>(total_frames) * speed;
 	double angle = 2.0 * M_PI * t;
 
 	// Circular motion in XZ plane
@@ -62,13 +72,15 @@ inline CameraPosition camera_path_orbit(int frame, int total_frames,
 inline CameraPosition camera_path_linear(int frame, int total_frames,
 										  double start_x = 278.0, double start_y = 278.0, double start_z = -800.0,
 										  double end_x = 278.0, double end_y = 278.0, double end_z = 800.0,
-										  double lookat_x = 278.0, double lookat_y = 278.0, double lookat_z = 278.0) {
+										  double lookat_x = 278.0, double lookat_y = 278.0, double lookat_z = 278.0,
+										  double speed = 1.0) {
 	CameraPosition pos;
 
 	// Linear interpolation parameter (guard against a 1-frame "video", which
-	// would otherwise divide by zero and produce a NaN camera position)
+	// would otherwise divide by zero and produce a NaN camera position),
+	// scaled by speed - values > 1 overshoot past the end position.
 	double t = (total_frames > 1)
-		? static_cast<double>(frame) / static_cast<double>(total_frames - 1)
+		? static_cast<double>(frame) / static_cast<double>(total_frames - 1) * speed
 		: 0.0;
 
 	// Lerp camera position
@@ -98,10 +110,11 @@ inline CameraPosition camera_path_figure8(int frame, int total_frames,
 										   double center_x = 278.0,
 										   double center_y = 278.0,
 										   double center_z = 278.0,
-										   double height = 278.0) {
+										   double height = 278.0,
+										   double speed = 1.0) {
 	CameraPosition pos;
 
-	double t = static_cast<double>(frame) / static_cast<double>(total_frames);
+	double t = static_cast<double>(frame) / static_cast<double>(total_frames) * speed;
 	double angle = 2.0 * M_PI * t;
 
 	// Lemniscate of Gerono (figure-8) parametric equations
@@ -134,11 +147,12 @@ inline CameraPosition camera_path_spiral(int frame, int total_frames,
 										  double center_y = 278.0,
 										  double center_z = 278.0,
 										  double start_height = 500.0,
-										  double end_height = 278.0) {
+										  double end_height = 278.0,
+										  double speed = 1.0) {
 	CameraPosition pos;
 
-	double t = static_cast<double>(frame) / static_cast<double>(total_frames);
-	double angle = 2.0 * M_PI * t * 2.0;  // Two full rotations
+	double t = static_cast<double>(frame) / static_cast<double>(total_frames) * speed;
+	double angle = 2.0 * M_PI * t * 2.0;  // Two full rotations (baseline, before speed)
 
 	// Interpolate radius and height
 	double radius = start_radius + t * (end_radius - start_radius);
@@ -162,18 +176,18 @@ inline CameraPosition camera_path_spiral(int frame, int total_frames,
 // ============================================================================
 // Get Camera Position by Path Name
 // ============================================================================
-inline CameraPosition get_camera_position(const std::string& path_type, int frame, int total_frames) {
+inline CameraPosition get_camera_position(const std::string& path_type, int frame, int total_frames, double speed = 1.0) {
 	if (path_type == "orbit") {
-		return camera_path_orbit(frame, total_frames);
+		return camera_path_orbit(frame, total_frames, 800.0, 278.0, 278.0, 278.0, 278.0, speed);
 	} else if (path_type == "linear") {
-		return camera_path_linear(frame, total_frames);
+		return camera_path_linear(frame, total_frames, 278.0, 278.0, -800.0, 278.0, 278.0, 800.0, 278.0, 278.0, 278.0, speed);
 	} else if (path_type == "figure8") {
-		return camera_path_figure8(frame, total_frames);
+		return camera_path_figure8(frame, total_frames, 400.0, 278.0, 278.0, 278.0, 278.0, speed);
 	} else if (path_type == "spiral") {
-		return camera_path_spiral(frame, total_frames);
+		return camera_path_spiral(frame, total_frames, 1000.0, 400.0, 278.0, 278.0, 278.0, 500.0, 278.0, speed);
 	} else {
 		// Default to orbit
-		return camera_path_orbit(frame, total_frames);
+		return camera_path_orbit(frame, total_frames, 800.0, 278.0, 278.0, 278.0, 278.0, speed);
 	}
 }
 

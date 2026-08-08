@@ -66,10 +66,11 @@ void MainWindow::onRenderClicked() {
 	if (m_videoMode) {
 		int videoFrames = m_videoFramesSpinBox->value();
 		int videoFPS = m_videoFPSSpinBox->value();
+		double videoSpeed = m_videoSpeedSpinBox->value();
 		QString cameraPath = m_cameraPathCombo->currentData().toString();
-		m_renderThread->setVideoParameters(true, videoFrames, videoFPS, cameraPath);
+		m_renderThread->setVideoParameters(true, videoFrames, videoFPS, cameraPath, videoSpeed);
 	} else {
-		m_renderThread->setVideoParameters(false, 0, 0, "");
+		m_renderThread->setVideoParameters(false, 0, 0, "", 1.0);
 	}
 
 	connect(m_renderThread, &RenderThread::progressUpdate, this, &MainWindow::onProgressUpdate);

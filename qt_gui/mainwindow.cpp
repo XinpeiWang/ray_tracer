@@ -31,7 +31,7 @@
 RenderThread::RenderThread(QObject *parent)
 	: QThread(parent), m_useGPU(true), m_width(800), m_height(800), m_samples(100), m_maxDepth(50),
 	  m_sceneId(0), m_camX(278), m_camY(278), m_camZ(-800), m_renderProcess(nullptr),
-	  m_videoMode(false), m_videoFrames(60), m_videoFPS(30), m_cameraPath("orbit") {
+	  m_videoMode(false), m_videoFrames(60), m_videoFPS(30), m_videoSpeed(1.0), m_cameraPath("orbit") {
 }
 
 void RenderThread::setParameters(bool useGPU, int width, int height, int samples, int maxDepth,
@@ -48,10 +48,11 @@ void RenderThread::setParameters(bool useGPU, int width, int height, int samples
 	m_outputPath = outputPath;
 }
 
-void RenderThread::setVideoParameters(bool enabled, int frames, int fps, const QString &cameraPath) {
+void RenderThread::setVideoParameters(bool enabled, int frames, int fps, const QString &cameraPath, double speed) {
 	m_videoMode = enabled;
 	m_videoFrames = frames;
 	m_videoFPS = fps;
+	m_videoSpeed = speed;
 	m_cameraPath = cameraPath;
 }
 
@@ -112,6 +113,7 @@ void RenderThread::run() {
 		args << "--video";
 		args << "--frames" << QString::number(m_videoFrames);
 		args << "--fps" << QString::number(m_videoFPS);
+		args << "--speed" << QString::number(m_videoSpeed);
 		args << "--camera-path" << m_cameraPath;
 
 		// In video mode, explicitly set output path to ensure frames go to the right directory

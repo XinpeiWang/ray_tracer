@@ -61,7 +61,7 @@ public:
 					   int sceneId, double camX, double camY, double camZ, const QString &outputPath = QString());
 
 	// Set video generation parameters
-	void setVideoParameters(bool enabled, int frames, int fps, const QString &cameraPath);
+	void setVideoParameters(bool enabled, int frames, int fps, const QString &cameraPath, double speed = 1.0);
 
 	// Request the render process to stop (sends terminate signal)
 	void stopRender();
@@ -101,6 +101,7 @@ private:
 	bool m_videoMode;       // true = video generation, false = single image
 	int m_videoFrames;      // Number of frames to render
 	int m_videoFPS;         // Target frames per second
+	double m_videoSpeed;    // Camera movement speed multiplier (1.0 = default path speed)
 	QString m_cameraPath;   // Camera animation path (orbit, linear, figure8, spiral)
 };
 
@@ -181,6 +182,7 @@ private:
 	QComboBox *m_cameraPathCombo;       // Camera animation path selector
 	QSpinBox *m_videoFramesSpinBox;     // Number of frames to render
 	QSpinBox *m_videoFPSSpinBox;        // Target FPS for video
+	QDoubleSpinBox *m_videoSpeedSpinBox; // Camera movement speed multiplier
 	QLabel *m_videoInfoLabel;           // Video duration and path info
 
 	// Log output

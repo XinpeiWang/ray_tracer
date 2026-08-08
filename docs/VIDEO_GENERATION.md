@@ -54,6 +54,7 @@ This will:
 | `--video` | Enable video generation mode | (disabled) |
 | `--frames`, `-f` | Number of frames to render | 120 |
 | `--fps` | Target frames per second | 30 |
+| `--speed` | Camera movement speed multiplier | 1.0 |
 | `--camera-path`, `-p` | Camera animation path | orbit |
 | `--gpu` | Use GPU renderer (OptiX) | ✓ |
 | `--cpu` | Use CPU renderer | |
@@ -72,6 +73,24 @@ Example:
 
 The video file will be created automatically as `output/<name>_video.mp4`.
 
+### Movement Speed
+
+`--speed` scales how much of the camera path is covered over the video - it
+does not change the video's real-time duration (still `frames / fps`), only
+how fast the camera moves through the path in that time. `1.0` (default) is
+each path's baseline traversal: one full rotation for orbit/figure8, two for
+spiral, or a full start→end sweep for linear. Values above `1.0` complete
+that baseline before the last frame and keep extrapolating past it (more
+rotations, or past the linear endpoint); values below `1.0` don't reach the
+end of the baseline path by the last frame.
+
+```powershell
+# Half-speed orbit - camera only covers half a rotation over the video
+.\ray_tracer.exe --video --camera-path orbit --speed 0.5
+
+# Fast spiral - covers 6 rotations (2 baseline x 3.0) instead of 2
+.\ray_tracer.exe --video --camera-path spiral --speed 3.0
+```
 
 ## Camera Animation Paths
 

@@ -420,27 +420,53 @@ void MainWindow::createVideoTab() {
 	styleSpinBox(m_videoFPSSpinBox);
 	videoLayout->addRow("Frames Per Second:", m_videoFPSSpinBox);
 
+	// Movement speed multiplier - scales how much of the camera path is
+	// covered over the video (not the video's real-time duration, which is
+	// still frames/fps). 1.0x = the path's baseline traversal (1 full
+	// rotation for orbit/figure8, 2 for spiral, start->end for linear).
+	m_videoSpeedSpinBox = new QDoubleSpinBox();
+	m_videoSpeedSpinBox->setRange(0.1, 5.0);
+	m_videoSpeedSpinBox->setSingleStep(0.1);
+	m_videoSpeedSpinBox->setDecimals(2);
+	m_videoSpeedSpinBox->setValue(1.0);
+	m_videoSpeedSpinBox->setSuffix("x");
+	styleSpinBox(m_videoSpeedSpinBox);
+	videoLayout->addRow("Movement Speed:", m_videoSpeedSpinBox);
+
 	// Video duration info (calculated from frames/fps)
 	m_videoInfoLabel = new QLabel();
 	m_videoInfoLabel->setWordWrap(true);
 	m_videoInfoLabel->setStyleSheet("QLabel { color: #00FFFF; font-style: italic; padding: 10px; }");
 
-	// Update duration display when frames or FPS changes
+	// Update duration display when frames, FPS, speed, or path changes
 	auto updateVideoDuration = [this]() {
 		int frames = m_videoFramesSpinBox->value();
 		int fps = m_videoFPSSpinBox->value();
-		double duration = static_cast<double>(frames) / fps;
+		double speed = m_videoSpeedSpinBox->value();
 		QString cameraPath = m_cameraPathCombo->currentData().toString();
+		double duration = static_cast<double>(frames) / fps;
+
+		QString coverageText;
+		if (cameraPath == "linear") {
+			coverageText = QString("%1% of the start→end path").arg(QString::number(speed * 100.0, 'f', 0));
+			if (speed > 1.0) coverageText += " (overshoots the end position)";
+			else if (speed < 1.0) coverageText += " (stops short of the end position)";
+		} else {
+			double baseLoops = (cameraPath == "spiral") ? 2.0 : 1.0;
+			double loops = baseLoops * speed;
+			coverageText = QString("%1 rotation%2").arg(QString::number(loops, 'f', 2), loops == 1.0 ? "" : "s");
+		}
 
 		m_videoInfoLabel->setText(QString(
 			"<b>Video Duration:</b> %1 seconds<br>"
-			"<b>Camera Path:</b> %2<br>"
+			"<b>Camera Path:</b> %2 at %3x speed → %4<br>"
 			"<b>Output:</b> Frames will be saved to <code>output/frames/</code>"
-		).arg(QString::number(duration, 'f', 1), cameraPath));
+		).arg(QString::number(duration, 'f', 1), cameraPath, QString::number(speed, 'f', 2), coverageText));
 	};
 
 	connect(m_videoFramesSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), updateVideoDuration);
 	connect(m_videoFPSSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), updateVideoDuration);
+	connect(m_videoSpeedSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), updateVideoDuration);
 	connect(m_cameraPathCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), updateVideoDuration);
 	updateVideoDuration();
 

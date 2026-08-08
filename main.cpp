@@ -100,6 +100,7 @@ int main(int argc, char** argv) {
 	bool video_mode         = args.video_mode;
 	int  video_frames       = args.video_frames;
 	int  video_fps          = args.video_fps;
+	double video_speed      = args.video_speed;
 	std::string camera_path = args.camera_path;
 
     if (video_mode) {
@@ -108,6 +109,7 @@ int main(int argc, char** argv) {
         std::cout << "========================================" << std::endl;
         std::cout << "Frames: " << video_frames << std::endl;
         std::cout << "FPS: " << video_fps << std::endl;
+        std::cout << "Speed: " << video_speed << "x" << std::endl;
         std::cout << "Camera path: " << camera_path << std::endl;
         std::cout << "Renderer: " << (use_gpu ? "GPU" : "CPU") << std::endl;
     } else {
@@ -207,7 +209,7 @@ int main(int argc, char** argv) {
         // Render each frame with animated camera position
         for (int frame = 0; frame < video_frames; ++frame) {
             // Get camera position for this frame
-            CameraPosition cam_pos = get_camera_position(camera_path, frame, video_frames);
+            CameraPosition cam_pos = get_camera_position(camera_path, frame, video_frames, video_speed);
 
             // Generate frame filename (e.g., frame_0001.ppm)
             char frame_filename[256];

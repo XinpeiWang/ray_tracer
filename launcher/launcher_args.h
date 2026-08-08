@@ -28,6 +28,7 @@ struct LaunchArgs {
 	bool video_mode         = false;
 	int  video_frames       = 120;
 	int  video_fps          = 30;
+	double video_speed      = 1.0;
 	std::string camera_path = "orbit";
 	std::string custom_output_path;
 
@@ -83,6 +84,15 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			} catch (const std::exception&) {
 				std::cerr << "Invalid FPS, using default\n";
 			}
+		} else if (arg == "--speed" && i + 1 < argc) {
+			try {
+				out.video_speed = std::stod(argv[i + 1]);
+				consumed_args.insert(i);
+				consumed_args.insert(i + 1);
+				++i;
+			} catch (const std::exception&) {
+				std::cerr << "Invalid speed, using default\n";
+			}
 		} else if ((arg == "--camera-path" || arg == "-p") && i + 1 < argc) {
 			out.camera_path = argv[i + 1];
 			consumed_args.insert(i);
@@ -97,6 +107,7 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "  --video    : Enable video generation mode\n"
 					  << "  --frames,-f: Number of frames for video (default: 120)\n"
 					  << "  --fps      : Frames per second for video (default: 30)\n"
+					  << "  --speed    : Camera movement speed multiplier for video (default: 1.0)\n"
 					  << "  --camera-path,-p: Camera animation path (orbit|linear|figure8|spiral)\n"
 					  << "  --help,-h  : Show this help message\n"
 					  << "  width      : Image width (default " << kDefaultWidth << ", square aspect)\n"
