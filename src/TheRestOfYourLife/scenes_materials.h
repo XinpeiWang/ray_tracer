@@ -7,6 +7,7 @@
 #include "quad.h"
 #include "material.h"
 #include "bvh.h"
+#include "scenes_book.h"  // add_cornell_walls_and_main_light()
 
 /**
  * Rough Metal Spheres -- GGX roughness progression showcase
@@ -46,21 +47,7 @@ inline hittable_list build_rough_metal_spheres() {
  */
 inline hittable_list build_cornell_rough_metal() {
 	hittable_list world;
-
-	auto red   = make_shared<lambertian>(color(.65, .05, .05));
-	auto white = make_shared<lambertian>(color(.73, .73, .73));
-	auto green = make_shared<lambertian>(color(.12, .45, .15));
-	auto light = make_shared<diffuse_light>(color(15, 15, 15));
-
-	// Cornell box walls
-	world.add(make_shared<quad>(point3(555,0,0),   vec3(0,0,555),  vec3(0,555,0), green));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(0,0,-555), vec3(0,555,0), red));
-	world.add(make_shared<quad>(point3(0,555,0),   vec3(555,0,0),  vec3(0,0,555), white));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(555,0,0),  vec3(0,0,-555), white));
-	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), white));
-
-	// Ceiling light
-	world.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), light));
+	add_cornell_walls_and_main_light(world);
 
 	// Rough aluminum box (roughness 0.15 -- brushed metal look)
 	auto alum = make_shared<rough_metal>(color(0.8, 0.85, 0.88), 0.15);
@@ -83,21 +70,7 @@ inline hittable_list build_cornell_rough_metal() {
  */
 inline hittable_list build_cornell_rough_glass() {
 	hittable_list world;
-
-	auto red   = make_shared<lambertian>(color(.65, .05, .05));
-	auto white = make_shared<lambertian>(color(.73, .73, .73));
-	auto green = make_shared<lambertian>(color(.12, .45, .15));
-	auto light = make_shared<diffuse_light>(color(15, 15, 15));
-
-	// Cornell box walls
-	world.add(make_shared<quad>(point3(555,0,0),   vec3(0,0,555),  vec3(0,555,0), green));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(0,0,-555), vec3(0,555,0), red));
-	world.add(make_shared<quad>(point3(0,555,0),   vec3(555,0,0),  vec3(0,0,555), white));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(555,0,0),  vec3(0,0,-555), white));
-	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), white));
-
-	// Ceiling light
-	world.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), light));
+	add_cornell_walls_and_main_light(world);
 
 	// White diffuse box (same as original Cornell box, right side)
 	auto box_mat = make_shared<lambertian>(color(.73, .73, .73));
@@ -121,21 +94,7 @@ inline hittable_list build_cornell_rough_glass() {
  */
 inline hittable_list build_cornell_conductor() {
 	hittable_list world;
-
-	auto red   = make_shared<lambertian>(color(.65, .05, .05));
-	auto white = make_shared<lambertian>(color(.73, .73, .73));
-	auto green = make_shared<lambertian>(color(.12, .45, .15));
-	auto light = make_shared<diffuse_light>(color(15, 15, 15));
-
-	// Cornell box walls
-	world.add(make_shared<quad>(point3(555,0,0),   vec3(0,0,555),  vec3(0,555,0), green));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(0,0,-555), vec3(0,555,0), red));
-	world.add(make_shared<quad>(point3(0,555,0),   vec3(555,0,0),  vec3(0,0,555), white));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(555,0,0),  vec3(0,0,-555), white));
-	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), white));
-
-	// Ceiling light
-	world.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), light));
+	add_cornell_walls_and_main_light(world);
 
 	// Polished gold sphere (conductor, roughness 0.1)
 	auto gold = make_shared<conductor>(kConductorAu, 0.1);
@@ -160,21 +119,7 @@ inline hittable_list build_cornell_conductor() {
  */
 inline hittable_list build_cornell_coated_diffuse() {
 	hittable_list world;
-
-	auto red   = make_shared<lambertian>(color(.65, .05, .05));
-	auto white = make_shared<lambertian>(color(.73, .73, .73));
-	auto green = make_shared<lambertian>(color(.12, .45, .15));
-	auto light = make_shared<diffuse_light>(color(15, 15, 15));
-
-	// Cornell box walls
-	world.add(make_shared<quad>(point3(555,0,0),   vec3(0,0,555),  vec3(0,555,0), green));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(0,0,-555), vec3(0,555,0), red));
-	world.add(make_shared<quad>(point3(0,555,0),   vec3(555,0,0),  vec3(0,0,555), white));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(555,0,0),  vec3(0,0,-555), white));
-	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), white));
-
-	// Ceiling light
-	world.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), light));
+	add_cornell_walls_and_main_light(world);
 
 	// Blue coated-diffuse sphere (IOR 1.5, roughness 0.1)
 	auto coated_blue = make_shared<coated_diffuse>(color(0.2, 0.3, 0.9), 1.5, 0.1);
@@ -239,21 +184,7 @@ inline hittable_list build_cornell_thin_glass() {
  */
 inline hittable_list build_cornell_coated_conductor() {
 	hittable_list world;
-
-	auto red   = make_shared<lambertian>(color(.65, .05, .05));
-	auto white = make_shared<lambertian>(color(.73, .73, .73));
-	auto green = make_shared<lambertian>(color(.12, .45, .15));
-	auto light = make_shared<diffuse_light>(color(15, 15, 15));
-
-	// Cornell box walls
-	world.add(make_shared<quad>(point3(555,0,0),   vec3(0,0,555),  vec3(0,555,0), green));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(0,0,-555), vec3(0,555,0), red));
-	world.add(make_shared<quad>(point3(0,555,0),   vec3(555,0,0),  vec3(0,0,555), white));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(555,0,0),  vec3(0,0,-555), white));
-	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), white));
-
-	// Ceiling light
-	world.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), light));
+	add_cornell_walls_and_main_light(world);
 
 	// Lacquered-gold sphere (Au conductor, IOR-1.5 coat, roughness 0.1)
 	auto gold_lacquer = make_shared<coated_conductor>(kConductorAu, 1.5, 0.1);
@@ -278,21 +209,8 @@ inline hittable_list build_cornell_coated_conductor() {
  */
 inline hittable_list build_cornell_wax_slab() {
 	hittable_list world;
-
-	auto red   = make_shared<lambertian>(color(.65, .05, .05));
-	auto white = make_shared<lambertian>(color(.73, .73, .73));
-	auto green = make_shared<lambertian>(color(.12, .45, .15));
-	auto light = make_shared<diffuse_light>(color(15, 15, 15));
-
-	// Cornell box walls
-	world.add(make_shared<quad>(point3(555,0,0),   vec3(0,0,555),  vec3(0,555,0), green));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(0,0,-555), vec3(0,555,0), red));
-	world.add(make_shared<quad>(point3(0,555,0),   vec3(555,0,0),  vec3(0,0,555), white));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(555,0,0),  vec3(0,0,-555), white));
-	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), white));
-
-	// Ceiling light
-	world.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), light));
+	add_cornell_walls_and_main_light(world);
+	auto white = make_shared<lambertian>(color(.73, .73, .73));  // for the box below, same albedo as the walls
 
 	// Wax sphere (left): warm ivory wax color -- more transmittance than reflectance
 	// R (reflectance) = warm ivory, T (transmittance) = warm amber
@@ -319,21 +237,8 @@ inline hittable_list build_cornell_wax_slab() {
  */
 inline hittable_list build_cornell_crystal() {
 	hittable_list world;
-
-	auto red   = make_shared<lambertian>(color(.65, .05, .05));
-	auto white = make_shared<lambertian>(color(.73, .73, .73));
-	auto green = make_shared<lambertian>(color(.12, .45, .15));
-	auto light = make_shared<diffuse_light>(color(15, 15, 15));
-
-	// Cornell box walls
-	world.add(make_shared<quad>(point3(555,0,0),   vec3(0,0,555),  vec3(0,555,0), green));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(0,0,-555), vec3(0,555,0), red));
-	world.add(make_shared<quad>(point3(0,555,0),   vec3(555,0,0),  vec3(0,0,555), white));
-	world.add(make_shared<quad>(point3(0,0,555),   vec3(555,0,0),  vec3(0,0,-555), white));
-	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), white));
-
-	// Ceiling light
-	world.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), light));
+	add_cornell_walls_and_main_light(world);
+	auto white = make_shared<lambertian>(color(.73, .73, .73));  // for the box below, same albedo as the walls
 
 	// Crystal sphere (left): NormalizedFresnelBxDF with IOR 1.5
 	auto crystal = make_shared<normalized_fresnel>(1.5);

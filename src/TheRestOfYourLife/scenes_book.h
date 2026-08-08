@@ -20,6 +20,31 @@
 //==============================================================================================
 
 /**
+ * Adds the 5 standard Cornell-box walls (red/white/green/white/white) and the
+ * main ceiling light - cornell_box_data::kQuads[0..5], skipping the dim warm
+ * accent light at index 6 - to `world`. Shared by every "Cornell family"
+ * scene (10-17 in scenes_materials.h) that keeps the standard box shell but
+ * swaps in different sphere/box materials, so those scenes stop each
+ * hand-typing the same 5 walls + light quad. Scene 0's build_cornell_box()
+ * below doesn't use this - it needs the accent light too, so it loops over
+ * the full kQuads itself.
+ */
+inline void add_cornell_walls_and_main_light(hittable_list& world) {
+	using namespace cornell_box_data;
+	for (int i = 0; i < 6; ++i) {
+		const QuadSpec& q = kQuads[i];
+		shared_ptr<material> mat = q.is_light
+			? shared_ptr<material>(make_shared<diffuse_light>(color(q.color.r, q.color.g, q.color.b)))
+			: shared_ptr<material>(make_shared<lambertian>(color(q.color.r, q.color.g, q.color.b)));
+		world.add(make_shared<quad>(
+			point3(q.Q.x, q.Q.y, q.Q.z),
+			vec3(q.u.x, q.u.y, q.u.z),
+			vec3(q.v.x, q.v.y, q.v.z),
+			mat));
+	}
+}
+
+/**
  * Build Cornell box scene with glass sphere and rotated box.
  * Geometry/material data comes from src/shared/cornell_box_data.h, shared
  * with the GPU builder (gpu/optix/scene_builder.cpp::build_cornell_box())

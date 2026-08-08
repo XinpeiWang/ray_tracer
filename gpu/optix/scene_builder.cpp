@@ -262,21 +262,56 @@ static void build_rough_metal_spheres(SceneData& scene) {
     scene.isLightSphere.push_back(false);
 }
 
+/// @brief Adds the 5 standard Cornell-box walls (red/white/green/white/white)
+/// and the main ceiling light - cornell_box_data::kQuads[0..5], skipping the
+/// dim warm accent light at index 6 - to scene. Shared by every "Cornell
+/// family" GPU builder (scenes 10-13, 15-17) that keeps the standard box
+/// shell but swaps in different sphere/box materials, mirroring CPU's
+/// add_cornell_walls_and_main_light() in scenes_book.h. Scene 0's
+/// build_cornell_box() above doesn't use this - it needs the accent light
+/// too, so it loops over the full kQuads itself.
+static void add_cornell_walls_and_main_light(SceneData& scene) {
+    using namespace cornell_box_data;
+    for (int i = 0; i < 6; ++i) {
+        const QuadSpec& q = kQuads[i];
+        const int mat = safe_cast_to_int(scene.materials.size());
+        if (q.is_light) {
+            scene.materials.push_back({
+                MaterialType::DiffuseLight,
+                make_float3(0.0f, 0.0f, 0.0f),
+                0.0f, 0.0f,
+                make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b))
+            });
+        } else {
+            scene.materials.push_back({
+                MaterialType::Lambertian,
+                make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)),
+                0.0f, 0.0f,
+                make_float3(0.0f, 0.0f, 0.0f)
+            });
+        }
+
+        QuadData quad{};
+        quad.Q = make_float3(static_cast<float>(q.Q.x), static_cast<float>(q.Q.y), static_cast<float>(q.Q.z));
+        quad.u = make_float3(static_cast<float>(q.u.x), static_cast<float>(q.u.y), static_cast<float>(q.u.z));
+        quad.v = make_float3(static_cast<float>(q.v.x), static_cast<float>(q.v.y), static_cast<float>(q.v.z));
+        const float3 quad_cross = cross(quad.u, quad.v);
+        quad.w = quad_cross;
+        quad.normal = normalize(quad_cross);
+        quad.D = dot(quad.normal, quad.Q);
+        quad.materialIdx = mat;
+        scene.quads.push_back(quad);
+        if (q.is_light) {
+            scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+            scene.isLightSphere.push_back(false);
+        }
+    }
+}
+
 /// @brief Build Cornell Rough Metal scene (scene 10)
 /// Matches CPU build_cornell_rough_metal(): same walls/light, rough aluminum box + rough gold sphere
 static void build_cornell_rough_metal(SceneData& scene) {
-    // Materials
-    const int mat_red = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-    const int mat_white = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-    const int mat_green = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-    const int mat_light = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(kLightIntensity, kLightIntensity, kLightIntensity) });
+    add_cornell_walls_and_main_light(scene);
 
     // Rough aluminum box material (roughness 0.15)
     const int mat_alum = safe_cast_to_int(scene.materials.size());
@@ -285,21 +320,6 @@ static void build_cornell_rough_metal(SceneData& scene) {
     // Rough gold sphere material (roughness 0.3)
     const int mat_gold = safe_cast_to_int(scene.materials.size());
     scene.materials.push_back({ MaterialType::Metal, make_float3(0.95f, 0.78f, 0.28f), 0.3f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-    // Cornell Box walls (same geometry as build_cornell_box)
-    // Green wall (right, +X)
-    { QuadData q{}; q.Q = make_float3(kBoxSize,0,0); q.u = make_float3(0,0,kBoxSize); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_green; scene.quads.push_back(q); }
-    // Red wall (left, -X)
-    { QuadData q{}; q.Q = make_float3(0,0,kBoxSize); q.u = make_float3(0,0,-kBoxSize); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_red; scene.quads.push_back(q); }
-    // Light
-    { QuadData q{}; q.Q = make_float3(213,554,227); q.u = make_float3(130,0,0); q.v = make_float3(0,0,105); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_light; scene.quads.push_back(q);
-      scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1); scene.isLightSphere.push_back(false); }
-    // White ceiling
-    { QuadData q{}; q.Q = make_float3(0,kBoxSize,0); q.u = make_float3(kBoxSize,0,0); q.v = make_float3(0,0,kBoxSize); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
-    // White floor
-    { QuadData q{}; q.Q = make_float3(0,0,kBoxSize); q.u = make_float3(kBoxSize,0,0); q.v = make_float3(0,0,-kBoxSize); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
-    // White back wall
-    { QuadData q{}; q.Q = make_float3(kBoxSize,0,kBoxSize); q.u = make_float3(-kBoxSize,0,0); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
 
     // Rough gold sphere (center 190, 90, 190), radius 90
     SphereData sphere{};
@@ -321,18 +341,7 @@ static void build_cornell_rough_metal(SceneData& scene) {
 /// Matches CPU build_cornell_conductor(): Cornell box with a gold sphere and
 /// aluminium box using GGX VNDF + complex Fresnel (pbrt-v4 ConductorBxDF).
 static void build_cornell_conductor(SceneData& scene) {
-    const int mat_red   = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-    const int mat_white = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-    const int mat_green = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-    const int mat_light = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f,
-                                 make_float3(kLightIntensity, kLightIntensity, kLightIntensity) });
+    add_cornell_walls_and_main_light(scene);
 
     // Gold sphere material (conductor, roughness 0.1 -- polished gold)
     const int mat_gold = safe_cast_to_int(scene.materials.size());
@@ -356,15 +365,6 @@ static void build_cornell_conductor(SceneData& scene) {
         scene.materials.push_back(md);
     }
 
-    // Cornell Box walls
-    { QuadData q{}; q.Q=make_float3(kBoxSize,0,0); q.u=make_float3(0,0,kBoxSize); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_green; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q=make_float3(0,0,kBoxSize); q.u=make_float3(0,0,-kBoxSize); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_red; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q=make_float3(213,554,227); q.u=make_float3(130,0,0); q.v=make_float3(0,0,105); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_light; scene.quads.push_back(q);
-      scene.lightIndices.push_back(static_cast<int>(scene.quads.size())-1); scene.isLightSphere.push_back(false); }
-    { QuadData q{}; q.Q=make_float3(0,kBoxSize,0); q.u=make_float3(kBoxSize,0,0); q.v=make_float3(0,0,kBoxSize); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q=make_float3(0,0,kBoxSize); q.u=make_float3(kBoxSize,0,0); q.v=make_float3(0,0,-kBoxSize); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q=make_float3(kBoxSize,0,kBoxSize); q.u=make_float3(-kBoxSize,0,0); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
-
     // Gold sphere
     SphereData sphere{};
     sphere.center = make_float3(190.0f, 90.0f, 190.0f);
@@ -385,18 +385,7 @@ static void build_cornell_conductor(SceneData& scene) {
 /// Matches CPU build_cornell_coated_diffuse(): Cornell box with a blue coated sphere
 /// and a red coated box (rough dielectric coat over Lambertian base, pbrt-v4 CoatedDiffuseBxDF)
 static void build_cornell_coated_diffuse(SceneData& scene) {
-    const int mat_red   = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-    const int mat_white = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-    const int mat_green = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-    const int mat_light = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f,
-                                 make_float3(kLightIntensity, kLightIntensity, kLightIntensity) });
+    add_cornell_walls_and_main_light(scene);
 
     // Blue coated-diffuse sphere (IOR 1.5, roughness 0.1)
     const int mat_coated_blue = safe_cast_to_int(scene.materials.size());
@@ -419,15 +408,6 @@ static void build_cornell_coated_diffuse(SceneData& scene) {
         md.ior    = 1.5f;
         scene.materials.push_back(md);
     }
-
-    // Cornell Box walls
-    { QuadData q{}; q.Q = make_float3(kBoxSize,0,0); q.u = make_float3(0,0,kBoxSize); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_green; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q = make_float3(0,0,kBoxSize); q.u = make_float3(0,0,-kBoxSize); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_red; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q = make_float3(213,554,227); q.u = make_float3(130,0,0); q.v = make_float3(0,0,105); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_light; scene.quads.push_back(q);
-      scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1); scene.isLightSphere.push_back(false); }
-    { QuadData q{}; q.Q = make_float3(0,kBoxSize,0); q.u = make_float3(kBoxSize,0,0); q.v = make_float3(0,0,kBoxSize); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q = make_float3(0,0,kBoxSize); q.u = make_float3(kBoxSize,0,0); q.v = make_float3(0,0,-kBoxSize); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q = make_float3(kBoxSize,0,kBoxSize); q.u = make_float3(-kBoxSize,0,0); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
 
     // Blue coated-diffuse sphere
     SphereData sph{};
@@ -513,18 +493,7 @@ static void build_cornell_thin_glass(SceneData& scene) {
 /// and a lacquered-copper box using pbrt-v4 CoatedConductorBxDF.
 /// coat: IOR=1.5, roughness=0.1/0.2; conductor: Au sphere, Cu box.
 static void build_cornell_coated_conductor(SceneData& scene) {
-    const int mat_red   = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-    const int mat_white = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-    const int mat_green = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-    const int mat_light = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f,
-                                 make_float3(kLightIntensity, kLightIntensity, kLightIntensity) });
+    add_cornell_walls_and_main_light(scene);
 
     // Lacquered-gold sphere (Au conductor, IOR-1.5 coat, roughness 0.1)
     const int mat_gold_lacquer = safe_cast_to_int(scene.materials.size());
@@ -550,15 +519,6 @@ static void build_cornell_coated_conductor(SceneData& scene) {
         scene.materials.push_back(md);
     }
 
-    // Cornell Box walls
-    { QuadData q{}; q.Q=make_float3(kBoxSize,0,0); q.u=make_float3(0,0,kBoxSize); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_green; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q=make_float3(0,0,kBoxSize); q.u=make_float3(0,0,-kBoxSize); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_red; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q=make_float3(213,554,227); q.u=make_float3(130,0,0); q.v=make_float3(0,0,105); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_light; scene.quads.push_back(q);
-      scene.lightIndices.push_back(static_cast<int>(scene.quads.size())-1); scene.isLightSphere.push_back(false); }
-    { QuadData q{}; q.Q=make_float3(0,kBoxSize,0); q.u=make_float3(kBoxSize,0,0); q.v=make_float3(0,0,kBoxSize); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q=make_float3(0,0,kBoxSize); q.u=make_float3(kBoxSize,0,0); q.v=make_float3(0,0,-kBoxSize); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q=make_float3(kBoxSize,0,kBoxSize); q.u=make_float3(-kBoxSize,0,0); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
-
     // Lacquered-gold sphere
     SphereData sphere{};
     sphere.center = make_float3(190.0f, 90.0f, 190.0f);
@@ -578,18 +538,7 @@ static void build_cornell_coated_conductor(SceneData& scene) {
 /// Matches CPU build_cornell_wax_slab(): Cornell box with a wax sphere (DiffuseTransmissionBxDF).
 /// albedo = reflectance R, emission field = transmittance T.
 static void build_cornell_wax_slab(SceneData& scene) {
-    const int mat_red   = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-    const int mat_white = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-    const int mat_green = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-    const int mat_light = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f,
-                                 make_float3(kLightIntensity, kLightIntensity, kLightIntensity) });
+    add_cornell_walls_and_main_light(scene);
 
     // Wax sphere: albedo = R (reflectance), emission = T (transmittance)
     const int mat_wax = safe_cast_to_int(scene.materials.size());
@@ -603,14 +552,9 @@ static void build_cornell_wax_slab(SceneData& scene) {
         scene.materials.push_back(md);
     }
 
-    // Cornell Box walls
-    { QuadData q{}; q.Q=make_float3(kBoxSize,0,0); q.u=make_float3(0,0,kBoxSize); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_green; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q=make_float3(0,0,kBoxSize); q.u=make_float3(0,0,-kBoxSize); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_red; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q=make_float3(213,554,227); q.u=make_float3(130,0,0); q.v=make_float3(0,0,105); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_light; scene.quads.push_back(q);
-      scene.lightIndices.push_back(static_cast<int>(scene.quads.size())-1); scene.isLightSphere.push_back(false); }
-    { QuadData q{}; q.Q=make_float3(0,kBoxSize,0); q.u=make_float3(kBoxSize,0,0); q.v=make_float3(0,0,kBoxSize); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q=make_float3(0,0,kBoxSize); q.u=make_float3(kBoxSize,0,0); q.v=make_float3(0,0,-kBoxSize); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q=make_float3(kBoxSize,0,kBoxSize); q.u=make_float3(-kBoxSize,0,0); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+    // White diffuse box material (same albedo as the walls, own index)
+    const int mat_box = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
 
     // Wax sphere (left)
     SphereData wax_sphere{};
@@ -623,7 +567,7 @@ static void build_cornell_wax_slab(SceneData& scene) {
     add_box(scene,
         make_float3(0.0f, 0.0f, 0.0f),
         make_float3(165.0f, 330.0f, 165.0f),
-        mat_white,
+        mat_box,
         15.0f,
         make_float3(265.0f, 0.0f, 295.0f));
 }
@@ -632,18 +576,7 @@ static void build_cornell_wax_slab(SceneData& scene) {
 /// Matches CPU build_cornell_crystal(): Cornell box with NormalizedFresnelBxDF crystal sphere.
 /// ior stored in mat.ior; normalization constant c computed on GPU via FresnelMoment1.
 static void build_cornell_crystal(SceneData& scene) {
-    const int mat_red   = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-    const int mat_white = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-    const int mat_green = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-    const int mat_light = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f,
-                                 make_float3(kLightIntensity, kLightIntensity, kLightIntensity) });
+    add_cornell_walls_and_main_light(scene);
 
     // Crystal sphere: NormalizedFresnelBxDF, IOR 1.5 (glass/crystal)
     const int mat_crystal = safe_cast_to_int(scene.materials.size());
@@ -657,14 +590,9 @@ static void build_cornell_crystal(SceneData& scene) {
         scene.materials.push_back(md);
     }
 
-    // Cornell Box walls
-    { QuadData q{}; q.Q=make_float3(kBoxSize,0,0); q.u=make_float3(0,0,kBoxSize); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_green; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q=make_float3(0,0,kBoxSize); q.u=make_float3(0,0,-kBoxSize); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_red; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q=make_float3(213,554,227); q.u=make_float3(130,0,0); q.v=make_float3(0,0,105); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_light; scene.quads.push_back(q);
-      scene.lightIndices.push_back(static_cast<int>(scene.quads.size())-1); scene.isLightSphere.push_back(false); }
-    { QuadData q{}; q.Q=make_float3(0,kBoxSize,0); q.u=make_float3(kBoxSize,0,0); q.v=make_float3(0,0,kBoxSize); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q=make_float3(0,0,kBoxSize); q.u=make_float3(kBoxSize,0,0); q.v=make_float3(0,0,-kBoxSize); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q=make_float3(kBoxSize,0,kBoxSize); q.u=make_float3(-kBoxSize,0,0); q.v=make_float3(0,kBoxSize,0); const float3 c=cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+    // White diffuse box material (same albedo as the walls, own index)
+    const int mat_box = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
 
     // Crystal sphere (left)
     SphereData crystal_sphere{};
@@ -677,7 +605,7 @@ static void build_cornell_crystal(SceneData& scene) {
     add_box(scene,
         make_float3(0.0f, 0.0f, 0.0f),
         make_float3(165.0f, 330.0f, 165.0f),
-        mat_white,
+        mat_box,
         15.0f,
         make_float3(265.0f, 0.0f, 295.0f));
 }
@@ -685,36 +613,21 @@ static void build_cornell_crystal(SceneData& scene) {
 /// @brief Build Cornell Rough Glass scene (scene 11)
 /// Matches CPU build_cornell_rough_glass(): same walls/light, diffuse box + rough-glass sphere
 static void build_cornell_rough_glass(SceneData& scene) {
-    const int mat_red   = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-    const int mat_white = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-    const int mat_green = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-
-    const int mat_light = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(kLightIntensity, kLightIntensity, kLightIntensity) });
+    add_cornell_walls_and_main_light(scene);
 
     // Rough glass sphere (roughness 0.2, IOR 1.5 -- frosted glass)
     const int mat_rough_glass = safe_cast_to_int(scene.materials.size());
     scene.materials.push_back({ MaterialType::RoughDielectric, make_float3(1.0f, 1.0f, 1.0f), 0.2f, kGlassIOR, make_float3(0.0f, 0.0f, 0.0f) });
 
-    // Cornell Box walls (same geometry as build_cornell_box)
-    { QuadData q{}; q.Q = make_float3(kBoxSize,0,0); q.u = make_float3(0,0,kBoxSize); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_green; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q = make_float3(0,0,kBoxSize); q.u = make_float3(0,0,-kBoxSize); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_red; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q = make_float3(213,554,227); q.u = make_float3(130,0,0); q.v = make_float3(0,0,105); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_light; scene.quads.push_back(q);
-      scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1); scene.isLightSphere.push_back(false); }
-    { QuadData q{}; q.Q = make_float3(0,kBoxSize,0); q.u = make_float3(kBoxSize,0,0); q.v = make_float3(0,0,kBoxSize); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q = make_float3(0,0,kBoxSize); q.u = make_float3(kBoxSize,0,0); q.v = make_float3(0,0,-kBoxSize); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
-    { QuadData q{}; q.Q = make_float3(kBoxSize,0,kBoxSize); q.u = make_float3(-kBoxSize,0,0); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
+    // White diffuse box material (same albedo as the walls, own index)
+    const int mat_box = safe_cast_to_int(scene.materials.size());
+    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
 
     // White diffuse box (right)
     add_box(scene,
         make_float3(0.0f, 0.0f, 0.0f),
         make_float3(165.0f, 330.0f, 165.0f),
-        mat_white,
+        mat_box,
         15.0f,
         make_float3(265.0f, 0.0f, 295.0f));
 
