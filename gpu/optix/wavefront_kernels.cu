@@ -356,13 +356,11 @@ __device__ __forceinline__ bool wf_eval_punctual_light(
 
 // Realistic multi-element lens camera, wavefront duplicate of
 // optix_device_helpers.h's sample_realistic_camera_ray (see that function's
-// doc comment for the full algorithm derivation). Unlike the recursive
-// raygen (optix_raygen.h), which flips v to `(height-1-py)/(height-1)` to
-// match the lower-left-origin viewport convention, this file's
-// generate_camera_rays kernel below computes `v = py/(height-1)` directly
-// (raw, top-to-bottom) - i.e. it is ALREADY in the raw raster-row convention
-// RealisticCamera::raster_to_film expects, so no un-flip is needed here
-// (contrast with the recursive path's `v_raw = 1.0f - v`).
+// doc comment for the full algorithm derivation). generate_camera_rays
+// below now flips v the same way optix_raygen.h does (py=0/top row -> v=1),
+// so - exactly like the recursive path - that flip must be undone here to
+// get back to the raw top-to-bottom raster convention
+// RealisticCamera::raster_to_film expects.
 __device__ __forceinline__ bool wf_sample_realistic_camera_ray(
 	const GpuCameraParams& cam, float u, float v, unsigned int& seed,
 	float3& out_origin, float3& out_direction, float& out_weight
@@ -370,8 +368,9 @@ __device__ __forceinline__ bool wf_sample_realistic_camera_ray(
 	out_weight = 0.0f;
 	if (cam.numLensElements <= 0 || cam.numExitPupilBounds <= 0) return false;
 
+	float v_raw = 1.0f - v;  // undo generate_camera_rays' lower-left-origin flip
 	float pfx = -((2.0f*u - 1.0f) * cam.film_half_x);  // pbrt-v4 negates x
-	float pfy =   (2.0f*v - 1.0f) * cam.film_half_y;
+	float pfy =   (2.0f*v_raw - 1.0f) * cam.film_half_y;
 
 	float rFilm = sqrtf(pfx*pfx + pfy*pfy);
 	float film_diag = 2.0f * sqrtf(cam.film_half_x*cam.film_half_x + cam.film_half_y*cam.film_half_y);
@@ -540,7 +539,13 @@ extern "C" __global__ void generate_camera_rays(
 	unsigned int seed = wf_pcg(wf_pcg(pixelIdx + sampleIdx * width * height) ^ frameNumber);
 
 	float u = (float(px) + wf_rand(seed)) / float(width  - 1);
-	float v = (float(py) + wf_rand(seed)) / float(height - 1);
+	// Flip Y to match optix_raygen.h's lower-left-origin viewport convention
+	// (py=0/top row -> v=1, matching how lower_left_corner+u*horizontal+
+	// v*vertical is constructed for Perspective/Orthographic, and how
+	// Spherical's theta=pi*v expects v=0 at the bottom). Without this flip
+	// every wavefront-mode render using those camera kinds came out
+	// vertically mirrored relative to the recursive path.
+	float v = (float(height - 1 - py) + wf_rand(seed)) / float(height - 1);
 
 	RayWorkItem item;
 	float cam_weight;
