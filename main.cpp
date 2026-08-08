@@ -504,6 +504,21 @@ int main(int argc, char** argv) {
     // ========================================================================
     // Standard single-image render (default behavior when --video is not set)
 
+    // If the caller didn't explicitly pass cam_x/y/z, cam_x/y/z are just
+    // sitting at LaunchArgs' generic Cornell-Box-scale struct defaults
+    // (278,278,-800) - forcing that onto every scene regardless of its own
+    // actual coordinate scale would misplace the camera exactly like a
+    // stale leftover GUI spinbox value would (e.g. scene 1's spheres sit
+    // within roughly +-15 units of the origin). Use the selected scene's
+    // own recommended camera instead in that case. Either way,
+    // force_camera_override=1 below makes sure the renderer actually uses
+    // whichever of these two is now in cam_x/y/z, regardless of the
+    // scene's CameraConfig.mode (Fixed scenes would otherwise silently
+    // ignore it and use their own registry lookfrom unconditionally).
+    if (!args.cam_explicit) {
+        cpu_scene_recommended_camera(scene_id, &cam_x, &cam_y, &cam_z, nullptr, nullptr, nullptr);
+    }
+
     // Start timing for performance measurement
     auto start_time = std::chrono::high_resolution_clock::now();
 
@@ -524,7 +539,8 @@ int main(int argc, char** argv) {
                 scene_id,
                 cam_x,
                 cam_y,
-                cam_z
+                cam_z,
+                1  // force_camera_override - see the comment above this section
             );
             std::cout << "optix_render_main returned: " << render_result << std::endl;
             if (render_result == SUCCESS) {
@@ -546,7 +562,7 @@ int main(int argc, char** argv) {
         // CPU Renderer (multithreaded C++)
         // Implemented in cpu_renderer/cpu_interface.cpp
         std::cout << "Calling cpu_render_main(...) in-process..." << std::endl;
-        render_result = cpu_render_main(image_width, image_height, samples_per_pixel, max_ray_depth, out_path.c_str(), scene_id, cam_x, cam_y, cam_z);
+        render_result = cpu_render_main(image_width, image_height, samples_per_pixel, max_ray_depth, out_path.c_str(), scene_id, cam_x, cam_y, cam_z, 1);  // force_camera_override
         std::cout << "cpu_render_main returned: " << render_result << std::endl;
         if (render_result == SUCCESS) {
             std::cout << "Rendered with in-process CPU renderer, output: " << out_path << std::endl;

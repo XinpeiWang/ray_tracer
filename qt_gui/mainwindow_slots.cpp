@@ -180,6 +180,22 @@ void MainWindow::onSceneChanged(int index) {
 	if (!info->gpu_supported && m_renderModeCombo->currentData().toBool()) {
 		m_renderModeCombo->setCurrentIndex(1); // index 1 = CPU
 	}
+
+	// Reset the camera position to this scene's own recommended default -
+	// every preset in m_cameraPresetCombo is Cornell-Box-scale (hundreds of
+	// units), so leaving a stale preset/position selected from a previously
+	// viewed scene could put the camera absurdly far from a much smaller
+	// scene's actual geometry (e.g. scene 1's spheres sit within roughly
+	// +-15 units of the origin). Switches to "Custom" (index 7) first so
+	// onCameraPresetChanged() enables the spinboxes for editing without
+	// also overwriting the values we're about to set (Custom is
+	// specifically exempted from that overwrite - see its own comment).
+	// The user can still freely adjust the camera afterward, same as for
+	// every other scene.
+	m_cameraPresetCombo->setCurrentIndex(7);
+	m_cameraPosX->setValue(info->cam_x);
+	m_cameraPosY->setValue(info->cam_y);
+	m_cameraPosZ->setValue(info->cam_z);
 }
 
 void MainWindow::onProgressUpdate(int percentage) {
