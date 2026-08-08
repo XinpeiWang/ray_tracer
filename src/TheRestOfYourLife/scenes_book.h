@@ -13,45 +13,48 @@
 #include "principled_material.h"
 #include "normal_map_materials.h"
 #include "../shared/bilinear_patch.h"
+#include "../shared/cornell_box_data.h"
 
 //==============================================================================================
 // Scene Builder Functions
 //==============================================================================================
 
 /**
- * Build Cornell box scene with glass sphere and rotated box
+ * Build Cornell box scene with glass sphere and rotated box.
+ * Geometry/material data comes from src/shared/cornell_box_data.h, shared
+ * with the GPU builder (gpu/optix/scene_builder.cpp::build_cornell_box())
+ * so the two can't silently drift apart - see that header's comment.
  */
 inline hittable_list build_cornell_box() {
+	using namespace cornell_box_data;
 	hittable_list world;
 
-	// Materials
-	auto red   = make_shared<lambertian>(color(.65, .05, .05));
-	auto white = make_shared<lambertian>(color(.73, .73, .73));
-	auto green = make_shared<lambertian>(color(.12, .45, .15));
-	auto light       = make_shared<diffuse_light>(color(15, 15, 15));  // bright white light
-	auto light_warm  = make_shared<diffuse_light>(color(4, 2, 1));     // dim warm accent light
-
-	// Cornell box walls (matching original cornell_box_scene.h)
-	world.add(make_shared<quad>(point3(555,0,0), vec3(0,0,555), vec3(0,555,0), green));  // right (green)
-	world.add(make_shared<quad>(point3(0,0,555), vec3(0,0,-555), vec3(0,555,0), red));   // left (red)
-	world.add(make_shared<quad>(point3(0,555,0), vec3(555,0,0), vec3(0,0,555), white));  // ceiling (white)
-	world.add(make_shared<quad>(point3(0,0,555), vec3(555,0,0), vec3(0,0,-555), white)); // floor (white)
-	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), white)); // back (white)
-
-	// Main ceiling light (bright)
-	world.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), light));
-	// Secondary accent light on the right wall (dim warm)
-	world.add(make_shared<quad>(point3(554,100,200), vec3(0,0,150), vec3(0,200,0), light_warm));
+	for (const auto& q : kQuads) {
+		shared_ptr<material> mat = q.is_light
+			? shared_ptr<material>(make_shared<diffuse_light>(color(q.color.r, q.color.g, q.color.b)))
+			: shared_ptr<material>(make_shared<lambertian>(color(q.color.r, q.color.g, q.color.b)));
+		world.add(make_shared<quad>(
+			point3(q.Q.x, q.Q.y, q.Q.z),
+			vec3(q.u.x, q.u.y, q.u.z),
+			vec3(q.v.x, q.v.y, q.v.z),
+			mat));
+	}
 
 	// Rotated box (white diffuse, not metal)
-	shared_ptr<hittable> box1 = box(point3(0,0,0), point3(165,330,165), white);
-	box1 = make_shared<rotate_y>(box1, 15);
-	box1 = make_shared<translate>(box1, vec3(265,0,295));
+	auto box_mat = make_shared<lambertian>(color(kBox.color.r, kBox.color.g, kBox.color.b));
+	shared_ptr<hittable> box1 = box(
+		point3(kBox.corner_min.x, kBox.corner_min.y, kBox.corner_min.z),
+		point3(kBox.corner_max.x, kBox.corner_max.y, kBox.corner_max.z),
+		box_mat);
+	box1 = make_shared<rotate_y>(box1, kBox.rotate_y_degrees);
+	box1 = make_shared<translate>(box1, vec3(kBox.translate.x, kBox.translate.y, kBox.translate.z));
 	world.add(box1);
 
 	// Glass sphere
-	auto glass = make_shared<dielectric>(1.5);
-	world.add(make_shared<sphere>(point3(190,90,190), 90, glass));
+	auto glass = make_shared<dielectric>(kGlassSphere.glass_ior);
+	world.add(make_shared<sphere>(
+		point3(kGlassSphere.center.x, kGlassSphere.center.y, kGlassSphere.center.z),
+		kGlassSphere.radius, glass));
 
 	return world;
 }

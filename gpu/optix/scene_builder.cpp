@@ -10,6 +10,7 @@
 
 #include "../../src/shared/conductor_data.h"
 #include "../../src/shared/cameras.h"
+#include "../../src/shared/cornell_box_data.h"
 
 namespace {
 	// Constants for Cornell Box dimensions
@@ -135,166 +136,76 @@ namespace {
 /// @brief Build the Cornell Box scene with box primitive
 /// @param scene Output scene data container
 static void build_cornell_box(SceneData& scene) {
-	// Materials
-	const int mat_red = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({
-		MaterialType::Lambertian,
-		make_float3(0.65f, 0.05f, 0.05f),  // albedo - red diffuse
-		0.0f, 0.0f,  // fuzz, ior (unused for lambertian)
-		make_float3(0.0f, 0.0f, 0.0f)  // emission
-	});
+	using namespace cornell_box_data;
 
-	const int mat_white = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({
-		MaterialType::Lambertian,
-		make_float3(0.73f, 0.73f, 0.73f),  // albedo - white diffuse
-		0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f)
-	});
+	// Walls + lights: one material and one QuadData per kQuads entry, built
+	// directly from the shared table so CPU and GPU can't disagree on count,
+	// position, color, or which quads are lights - see cornell_box_data.h.
+	for (const auto& q : kQuads) {
+		const int mat = safe_cast_to_int(scene.materials.size());
+		if (q.is_light) {
+			scene.materials.push_back({
+				MaterialType::DiffuseLight,
+				make_float3(0.0f, 0.0f, 0.0f),
+				0.0f, 0.0f,
+				make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b))
+			});
+		} else {
+			scene.materials.push_back({
+				MaterialType::Lambertian,
+				make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)),
+				0.0f, 0.0f,
+				make_float3(0.0f, 0.0f, 0.0f)
+			});
+		}
 
-	const int mat_green = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({
-		MaterialType::Lambertian,
-		make_float3(0.12f, 0.45f, 0.15f),  // albedo - green diffuse
-		0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f)
-	});
+		QuadData quad{};
+		quad.Q = make_float3(static_cast<float>(q.Q.x), static_cast<float>(q.Q.y), static_cast<float>(q.Q.z));
+		quad.u = make_float3(static_cast<float>(q.u.x), static_cast<float>(q.u.y), static_cast<float>(q.u.z));
+		quad.v = make_float3(static_cast<float>(q.v.x), static_cast<float>(q.v.y), static_cast<float>(q.v.z));
+		const float3 quad_cross = cross(quad.u, quad.v);
+		quad.w = quad_cross;
+		quad.normal = normalize(quad_cross);
+		quad.D = dot(quad.normal, quad.Q);
+		quad.materialIdx = mat;
+		scene.quads.push_back(quad);
+		if (q.is_light) {
+			scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+			scene.isLightSphere.push_back(false);
+		}
+	}
 
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({
-		MaterialType::DiffuseLight,
-		make_float3(0.0f, 0.0f, 0.0f),  // albedo (unused for emissive)
-		0.0f, 0.0f,
-		make_float3(kLightIntensity, kLightIntensity, kLightIntensity)  // emission
-	});
-
+	// Glass sphere
 	const int mat_glass = safe_cast_to_int(scene.materials.size());
 	scene.materials.push_back({
 		MaterialType::Dielectric,
 		make_float3(1.0f, 1.0f, 1.0f),  // albedo (unused for dielectric)
 		0.0f,
-		kGlassIOR,  // index of refraction
+		static_cast<float>(kGlassSphere.glass_ior),
 		make_float3(0.0f, 0.0f, 0.0f)
 	});
-
-	// Cornell Box quads (walls, floor, ceiling)
-	// Green wall (right - +X face at x=555)
-	QuadData wall_right{};
-	wall_right.Q = make_float3(kBoxSize, 0.0f, 0.0f);
-	wall_right.u = make_float3(0.0f, 0.0f, kBoxSize);
-	wall_right.v = make_float3(0.0f, kBoxSize, 0.0f);
-	const float3 wall_right_cross = cross(wall_right.u, wall_right.v);
-	wall_right.w = wall_right_cross;
-	wall_right.normal = normalize(wall_right_cross);
-	wall_right.D = dot(wall_right.normal, wall_right.Q);
-	wall_right.materialIdx = mat_green;
-	scene.quads.push_back(wall_right);
-	if (is_emissive(scene, mat_green)) {
-		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-		scene.isLightSphere.push_back(false);
-	}
-
-	// Red wall (left - origin face at x=0)
-	QuadData wall_left{};
-	wall_left.Q = make_float3(0.0f, 0.0f, kBoxSize);
-	wall_left.u = make_float3(0.0f, 0.0f, -kBoxSize);
-	wall_left.v = make_float3(0.0f, kBoxSize, 0.0f);
-	const float3 wall_left_cross = cross(wall_left.u, wall_left.v);
-	wall_left.w = wall_left_cross;
-	wall_left.normal = normalize(wall_left_cross);
-	wall_left.D = dot(wall_left.normal, wall_left.Q);
-	wall_left.materialIdx = mat_red;
-	scene.quads.push_back(wall_left);
-	if (is_emissive(scene, mat_red)) {
-		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-		scene.isLightSphere.push_back(false);
-	}
-
-	// Light (matching CPU: Q=(213,554,227), u=(130,0,0), v=(0,0,105))
-	QuadData light_quad{};
-	light_quad.Q = make_float3(213.0f, 554.0f, 227.0f);
-	light_quad.u = make_float3(130.0f, 0.0f, 0.0f);
-	light_quad.v = make_float3(0.0f, 0.0f, 105.0f);
-	const float3 light_cross = cross(light_quad.u, light_quad.v);
-	light_quad.w = light_cross;
-	light_quad.normal = normalize(light_cross);
-	light_quad.D = dot(light_quad.normal, light_quad.Q);
-	light_quad.materialIdx = mat_light;
-	scene.quads.push_back(light_quad);
-
-	// Track this light for MIS
-	scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-	scene.isLightSphere.push_back(false); // false = quad
-
-	// White ceiling (+Y face at y=555)
-	QuadData ceiling{};
-	ceiling.Q = make_float3(0.0f, kBoxSize, 0.0f);
-	ceiling.u = make_float3(kBoxSize, 0.0f, 0.0f);
-	ceiling.v = make_float3(0.0f, 0.0f, kBoxSize);
-	const float3 ceiling_cross = cross(ceiling.u, ceiling.v);
-	ceiling.w = ceiling_cross;
-	ceiling.normal = normalize(ceiling_cross);
-	ceiling.D = dot(ceiling.normal, ceiling.Q);
-	ceiling.materialIdx = mat_white;
-	scene.quads.push_back(ceiling);
-	if (is_emissive(scene, mat_white)) {
-		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-		scene.isLightSphere.push_back(false);
-	}
-
-	// White floor (origin, XZ plane at y=0)
-	QuadData floor{};
-	floor.Q = make_float3(0.0f, 0.0f, kBoxSize);
-	floor.u = make_float3(kBoxSize, 0.0f, 0.0f);
-	floor.v = make_float3(0.0f, 0.0f, -kBoxSize);
-	const float3 floor_cross = cross(floor.u, floor.v);
-	floor.w = floor_cross;
-	floor.normal = normalize(floor_cross);
-	floor.D = dot(floor.normal, floor.Q);
-	floor.materialIdx = mat_white;
-	scene.quads.push_back(floor);
-	if (is_emissive(scene, mat_white)) {
-		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-		scene.isLightSphere.push_back(false);
-	}
-
-	// White back wall (+Z face at z=555)
-	QuadData back_wall{};
-	back_wall.Q = make_float3(kBoxSize, 0.0f, kBoxSize);
-	back_wall.u = make_float3(-kBoxSize, 0.0f, 0.0f);
-	back_wall.v = make_float3(0.0f, kBoxSize, 0.0f);
-	const float3 back_cross = cross(back_wall.u, back_wall.v);
-	back_wall.w = back_cross;
-	back_wall.normal = normalize(back_cross);
-	back_wall.D = dot(back_wall.normal, back_wall.Q);
-	back_wall.materialIdx = mat_white;
-	scene.quads.push_back(back_wall);
-	if (is_emissive(scene, mat_white)) {
-		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-		scene.isLightSphere.push_back(false);
-	}
-
-	// Glass sphere (left)
 	SphereData glass_sphere{};
-	glass_sphere.center = make_float3(190.0f, 90.0f, 190.0f);
-	glass_sphere.radius = 90.0f;
+	glass_sphere.center = make_float3(
+		static_cast<float>(kGlassSphere.center.x), static_cast<float>(kGlassSphere.center.y), static_cast<float>(kGlassSphere.center.z));
+	glass_sphere.radius = static_cast<float>(kGlassSphere.radius);
 	glass_sphere.materialIdx = mat_glass;
 	scene.spheres.push_back(glass_sphere);
+	// Glass is never emissive - no lightIndices entry.
 
-	// Track if this sphere is a light (glass is not)
-	if (is_emissive(scene, mat_glass)) {
-		scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-		scene.isLightSphere.push_back(true); // true = sphere
-	}
-
-	// White rotated box (right) - matching CPU scene definition
-	// box(point3(0,0,0), point3(165,330,165), white) rotated 15° then translated (265,0,295)
+	// White rotated box
+	const int mat_box = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({
+		MaterialType::Lambertian,
+		make_float3(static_cast<float>(kBox.color.r), static_cast<float>(kBox.color.g), static_cast<float>(kBox.color.b)),
+		0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f)
+	});
 	add_box(scene,
-		make_float3(0.0f, 0.0f, 0.0f),
-		make_float3(165.0f, 330.0f, 165.0f),
-		mat_white,
-		15.0f,  // rotation angle in degrees
-		make_float3(265.0f, 0.0f, 295.0f));  // translation offset
+		make_float3(static_cast<float>(kBox.corner_min.x), static_cast<float>(kBox.corner_min.y), static_cast<float>(kBox.corner_min.z)),
+		make_float3(static_cast<float>(kBox.corner_max.x), static_cast<float>(kBox.corner_max.y), static_cast<float>(kBox.corner_max.z)),
+		mat_box,
+		static_cast<float>(kBox.rotate_y_degrees),
+		make_float3(static_cast<float>(kBox.translate.x), static_cast<float>(kBox.translate.y), static_cast<float>(kBox.translate.z)));
 }
 
 /// @brief Build Rough Metal Spheres scene (scene 9)
