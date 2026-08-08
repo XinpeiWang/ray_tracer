@@ -106,6 +106,15 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		camera cam;
 		cam.aspect_ratio      = double(width) / double(height);
 		cam.image_width       = width;
+		// image_height is normally computed by camera::initialize() (see its
+		// comment at camera.h's image_height declaration), but setup_camera()
+		// below runs before initialize() - scenes 32/33's alt-camera lambdas
+		// read cam.image_height directly (compute_screen_window,
+		// SphericalCamera's constructor), so it must already be valid here.
+		// Mirrors camera::initialize()'s exact formula so the value
+		// initialize() computes later is identical (harmless recompute).
+		cam.image_height      = int(cam.image_width / cam.aspect_ratio);
+		cam.image_height      = (cam.image_height < 1) ? 1 : cam.image_height;
 		cam.samples_per_pixel = spp;
 		cam.max_depth         = max_depth;
 		cam.vup               = vec3(0, 1, 0);  // Up direction is +Y
