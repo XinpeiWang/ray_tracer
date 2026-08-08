@@ -697,11 +697,20 @@ extern "C" __global__ void evaluate_materials(
 	// albedo), so naively clamping it into albedoSpectrum's range would bias
 	// bright/peaky fiber lobes toward black.
 	auto unboundedSpectrum = [&](float3 rgb) -> SS {
-		float m = rgb.x > rgb.y ? (rgb.x > rgb.z ? rgb.x : rgb.z) : (rgb.y > rgb.z ? rgb.y : rgb.z);
+		// Clamp negative components before normalizing - dev_srgb_to_coeffs
+		// expects each channel in [0,1] once divided by sc; a slightly
+		// negative component (numerically possible at extreme absorption or
+		// near-grazing angles in HairBxDF's Marschner model, the only caller
+		// of this lambda) would otherwise reach it unclamped, unlike
+		// albedoSpectrum above which always clamps first.
+		float rx = rgb.x < 0.f ? 0.f : rgb.x;
+		float ry = rgb.y < 0.f ? 0.f : rgb.y;
+		float rz = rgb.z < 0.f ? 0.f : rgb.z;
+		float m = rx > ry ? (rx > rz ? rx : rz) : (ry > rz ? ry : rz);
 		float sc = 2.f * m;
 		if (sc <= 0.f) return SS(0.f);
 		float c0, c1, c2;
-		dev_srgb_to_coeffs(rgb.x/sc, rgb.y/sc, rgb.z/sc, c0, c1, c2);
+		dev_srgb_to_coeffs(rx/sc, ry/sc, rz/sc, c0, c1, c2);
 		RGBSigmoidPolynomial poly(c0, c1, c2);
 		SS s(0.f);
 		for (int i = 0; i < kWFNWavelengths; ++i)
