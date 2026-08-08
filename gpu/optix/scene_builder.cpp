@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cassert>
 #include <iostream>
+#include <random>
 
 #include "../../src/shared/conductor_data.h"
 #include "../../src/shared/cameras.h"
@@ -637,6 +638,130 @@ static void build_cornell_rough_glass(SceneData& scene) {
     rg_sphere.radius    = 90.0f;
     rg_sphere.materialIdx = mat_rough_glass;
     scene.spheres.push_back(rg_sphere);
+}
+
+/**
+ * Build bouncing spheres scene (scene 1, "In One Weekend" final scene).
+ * Structurally mirrors src/TheRestOfYourLife/scenes_book.h's
+ * build_bouncing_spheres() - a checker-ground plane (approximated as flat
+ * gray, matching this file's established "GPU has no checker/procedural
+ * texture support" simplification - see build_checkered_spheres below and
+ * GpuCameraParams::backgroundColor's comment), a grid of small random
+ * spheres, and 3 large signature spheres (glass/diffuse/metal).
+ *
+ * The small diffuse spheres get real GPU motion blur: each one's center1
+ * (see SphereData's doc comment) is set to its "bounced" end-of-shutter
+ * position, exactly like the CPU's moving-sphere constructor
+ * (sphere(center1, center2, radius, mat)). This is the one GPU scene that
+ * exercises OptiXRenderer::buildScene()'s sceneHasMotion_ path.
+ *
+ * Uses a fixed-seed std::mt19937 rather than CPU's random_double() RNG, so
+ * the exact sphere layout won't pixel-match the CPU render - consistent
+ * with every other procedural GPU scene in this file (e.g. Perlin noise,
+ * random material assignment), none of which reproduce the CPU's exact
+ * random sequence either.
+ */
+void build_bouncing_spheres(SceneData& scene) {
+	// Ground sphere - checker approximated as flat gray.
+	{
+		const int mat = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({
+			MaterialType::Lambertian,
+			make_float3(0.5f, 0.5f, 0.5f),
+			0.0f, 0.0f,
+			make_float3(0.0f, 0.0f, 0.0f)
+		});
+		SphereData ground{};
+		ground.center = make_float3(0.0f, -1000.0f, 0.0f);
+		ground.center1 = ground.center;  // static
+		ground.radius = 1000.0f;
+		ground.materialIdx = mat;
+		scene.spheres.push_back(ground);
+	}
+
+	std::mt19937 rng(42u);
+	std::uniform_real_distribution<float> unit(0.0f, 1.0f);
+
+	for (int a = -11; a < 11; a++) {
+		for (int b = -11; b < 11; b++) {
+			const float choose_mat = unit(rng);
+			const float3 center = make_float3(
+				a + 0.9f * unit(rng),
+				0.2f,
+				b + 0.9f * unit(rng)
+			);
+
+			const float3 d = make_float3(center.x - 4.0f, center.y - 0.2f, center.z - 0.0f);
+			const float dist = sqrtf(d.x * d.x + d.y * d.y + d.z * d.z);
+			if (dist <= 0.9f) continue;
+
+			int mat_idx;
+			float3 center1 = center;  // default: static
+
+			if (choose_mat < 0.8f) {
+				// Diffuse - moving sphere (the "bounce": hops straight up by
+				// a random amount between t=0 and t=1, matching CPU's
+				// `center2 = center + vec3(0, random_double(0,.5), 0)`).
+				const float3 albedo = make_float3(
+					unit(rng) * unit(rng),
+					unit(rng) * unit(rng),
+					unit(rng) * unit(rng)
+				);
+				mat_idx = safe_cast_to_int(scene.materials.size());
+				scene.materials.push_back({ MaterialType::Lambertian, albedo, 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+				center1 = make_float3(center.x, center.y + unit(rng) * 0.5f, center.z);
+			} else if (choose_mat < 0.95f) {
+				// Metal
+				const float3 albedo = make_float3(0.5f + 0.5f * unit(rng), 0.5f + 0.5f * unit(rng), 0.5f + 0.5f * unit(rng));
+				const float fuzz = 0.5f * unit(rng);
+				mat_idx = safe_cast_to_int(scene.materials.size());
+				scene.materials.push_back({ MaterialType::Metal, albedo, fuzz, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+			} else {
+				// Glass
+				mat_idx = safe_cast_to_int(scene.materials.size());
+				scene.materials.push_back({ MaterialType::Dielectric, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 1.5f, make_float3(0.0f, 0.0f, 0.0f) });
+			}
+
+			SphereData sph{};
+			sph.center = center;
+			sph.center1 = center1;
+			sph.radius = 0.2f;
+			sph.materialIdx = mat_idx;
+			scene.spheres.push_back(sph);
+		}
+	}
+
+	// Three large signature spheres - static.
+	{
+		const int mat1 = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({ MaterialType::Dielectric, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 1.5f, make_float3(0.0f, 0.0f, 0.0f) });
+		SphereData s1{};
+		s1.center = make_float3(0.0f, 1.0f, 0.0f);
+		s1.center1 = s1.center;
+		s1.radius = 1.0f;
+		s1.materialIdx = mat1;
+		scene.spheres.push_back(s1);
+	}
+	{
+		const int mat2 = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.4f, 0.2f, 0.1f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		SphereData s2{};
+		s2.center = make_float3(-4.0f, 1.0f, 0.0f);
+		s2.center1 = s2.center;
+		s2.radius = 1.0f;
+		s2.materialIdx = mat2;
+		scene.spheres.push_back(s2);
+	}
+	{
+		const int mat3 = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({ MaterialType::Metal, make_float3(0.7f, 0.6f, 0.5f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		SphereData s3{};
+		s3.center = make_float3(4.0f, 1.0f, 0.0f);
+		s3.center1 = s3.center;
+		s3.radius = 1.0f;
+		s3.materialIdx = mat3;
+		scene.spheres.push_back(s3);
+	}
 }
 
 /**
@@ -1540,6 +1665,52 @@ bool build_scene(
 						pack_float3(camera_params, 3, lower_left_corner);
 						pack_float3(camera_params, 6, horizontal);
 						pack_float3(camera_params, 9, vertical);
+					}
+					break;
+
+				case 1:  // Bouncing Spheres (motion blur - see build_bouncing_spheres)
+					build_bouncing_spheres(scene);
+
+					// Configure camera
+					{
+						constexpr float kPi = 3.14159265358979323846f;
+						const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
+						const float3 lookat = make_float3(0.0f, 0.0f, 0.0f);
+						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
+						constexpr float vfov = 20.0f;
+						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+
+						const float theta = vfov * kPi / 180.0f;
+						const float h = tanf(theta / 2.0f);
+						const float viewport_height = 2.0f * h;
+						const float viewport_width = aspect * viewport_height;
+
+						const float3 view_direction = make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z);
+						const float3 w = normalize(view_direction);
+						const float3 u = normalize(cross(vup, w));
+						const float3 v = cross(w, u);
+
+						const float3 horizontal = make_float3(viewport_width * u.x, viewport_width * u.y, viewport_width * u.z);
+						const float3 vertical = make_float3(viewport_height * v.x, viewport_height * v.y, viewport_height * v.z);
+						const float3 lower_left_corner = make_float3(
+							lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - w.x,
+							lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - w.y,
+							lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - w.z
+						);
+
+						auto pack_float3 = [](float* dest, int offset, const float3& v) {
+							dest[offset] = v.x; dest[offset + 1] = v.y; dest[offset + 2] = v.z;
+						};
+
+						pack_float3(camera_params, 0, lookfrom);
+						pack_float3(camera_params, 3, lower_left_corner);
+						pack_float3(camera_params, 6, horizontal);
+						pack_float3(camera_params, 9, vertical);
+
+						// Flat light-blue background, matching CPU registry's
+						// bg=(0.70,0.80,1.00) for this scene (see
+						// GpuCameraParams::backgroundColor's comment).
+						if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.70f, 0.80f, 1.00f);
 					}
 					break;
 

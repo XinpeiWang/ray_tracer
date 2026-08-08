@@ -202,8 +202,14 @@ bool OptiXRenderer::createModule() {
 	moduleCompileOptions.optLevel = OPTIX_COMPILE_OPTIMIZATION_DEFAULT;
 	moduleCompileOptions.debugLevel = OPTIX_COMPILE_DEBUG_LEVEL_MINIMAL;
 
-	// Pipeline compile options (store as member for use in linkPipeline)
-	pipelineCompileOptions_.usesMotionBlur = false;
+	// Pipeline compile options (store as member for use in linkPipeline).
+	// usesMotionBlur is a pipeline-wide enable (needed for
+	// optixGetRayTime()/optixTrace()'s time argument to do anything at all)
+	// but is safe for every scene, motion or not: scenes without motion keep
+	// their GAS single-key and their rays always carry time=0.0f (see
+	// optix_raygen.h), so optixGetRayTime() simply always returns 0 for them
+	// - a provable no-op, not just an assumption.
+	pipelineCompileOptions_.usesMotionBlur = true;
 	pipelineCompileOptions_.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
 	pipelineCompileOptions_.numPayloadValues = 13;  // attenuation(3) + emission(3) + dir(3) + seed(1) + flag(1) + t(1) + brdf_or_light_pdf(1)
 	pipelineCompileOptions_.numAttributeValues = 4;  // Sphere: center.xyz + radius (4 attrs)
@@ -876,6 +882,43 @@ bool OptiXRenderer::buildScene(
 		aabbs.push_back(aabb);
 	}
 
+	// Motion blur: true if any sphere's ray-time-t=1 position differs from
+	// its t=0 position (see SphereData::center1's doc comment). Detected
+	// here, not passed in as a parameter, so any future scene with moving
+	// spheres gets motion support automatically just by setting center1.
+	sceneHasMotion_ = false;
+	for (const auto& s : spheres) {
+		if (s.center1.x != s.center.x || s.center1.y != s.center.y || s.center1.z != s.center.z) {
+			sceneHasMotion_ = true;
+			break;
+		}
+	}
+
+	// A second set of AABBs at ray-time t=1, only built when the scene
+	// actually has motion. Quad/bilinear-patch/triangle geometry never
+	// moves, so their t=1 AABB is identical to their t=0 one - motion keys
+	// apply per accel-structure build (shared across every build input in
+	// it, since OptiX requires all build inputs in one accelBuild() call to
+	// use the same key count), not per build-input, so every build input in
+	// a motion-enabled GAS must supply 2 keys even if only spheres move.
+	std::vector<OptixAabb> aabbsKey1;
+	if (sceneHasMotion_) {
+		aabbsKey1.reserve(totalGeoms);
+		for (const auto& s : spheres) {
+			OptixAabb aabb;
+			aabb.minX = s.center1.x - s.radius;
+			aabb.minY = s.center1.y - s.radius;
+			aabb.minZ = s.center1.z - s.radius;
+			aabb.maxX = s.center1.x + s.radius;
+			aabb.maxY = s.center1.y + s.radius;
+			aabb.maxZ = s.center1.z + s.radius;
+			aabbsKey1.push_back(aabb);
+		}
+		// Static primitives: duplicate the t=0 AABBs already computed above
+		// (at the same relative offsets in `aabbs`, right after the spheres).
+		aabbsKey1.insert(aabbsKey1.end(), aabbs.begin() + spheres.size(), aabbs.end());
+	}
+
 	// Upload AABBs to device
 	CUdeviceptr d_aabb;
 	size_t aabbSize = aabbs.size() * sizeof(OptixAabb);
@@ -887,16 +930,33 @@ bool OptiXRenderer::buildScene(
 		cudaMemcpyHostToDevice
 	));
 
+	// Key-1 (t=1) buffer - only allocated/uploaded when the scene has
+	// motion. Left at 0 otherwise; every use of it below is either gated on
+	// sceneHasMotion_ or never dereferenced by OptiX when numKeys<2 (see the
+	// per-build-input aabbBuffers arrays), so a "0 + offset" placeholder
+	// value in the unused case is inert - CUdeviceptr is an integer handle,
+	// not a real pointer, so this arithmetic is well-defined either way.
+	CUdeviceptr d_aabbKey1 = 0;
+	if (sceneHasMotion_) {
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_aabbKey1), aabbSize));
+		CUDA_CHECK(cudaMemcpy(
+			reinterpret_cast<void*>(d_aabbKey1),
+			aabbsKey1.data(),
+			aabbSize,
+			cudaMemcpyHostToDevice
+		));
+	}
+
 	// Build input for sphere geometry. OptiX validation rejects a non-null
 	// aabbBuffers when numPrimitives==0 ("numPrimitives is zero, but
 	// aabbBuffers is non-null") even though it would never be dereferenced -
 	// null out the pointer itself for empty types rather than just leaving
 	// numPrimitives at 0.
-	CUdeviceptr d_sphere_aabb = d_aabb;
+	CUdeviceptr d_sphere_aabb_keys[2] = { d_aabb, d_aabbKey1 };
 	std::vector<uint32_t> sphere_flags(spheres.size(), OPTIX_GEOMETRY_FLAG_NONE);
 	OptixBuildInput sphereBuildInput = {};
 	sphereBuildInput.type = OPTIX_BUILD_INPUT_TYPE_CUSTOM_PRIMITIVES;
-	sphereBuildInput.customPrimitiveArray.aabbBuffers = spheres.empty() ? nullptr : &d_sphere_aabb;
+	sphereBuildInput.customPrimitiveArray.aabbBuffers = spheres.empty() ? nullptr : d_sphere_aabb_keys;
 	sphereBuildInput.customPrimitiveArray.numPrimitives = static_cast<unsigned int>(spheres.size());
 	sphereBuildInput.customPrimitiveArray.flags = sphere_flags.data();
 	sphereBuildInput.customPrimitiveArray.numSbtRecords = 1;  // Single hit group for all spheres
@@ -905,11 +965,14 @@ bool OptiXRenderer::buildScene(
 	sphereBuildInput.customPrimitiveArray.sbtIndexOffsetStrideInBytes = 0;
 
 	// Build input for quad geometry
-	CUdeviceptr d_quad_aabb = d_aabb + (spheres.size() * sizeof(OptixAabb));
+	CUdeviceptr d_quad_aabb_keys[2] = {
+		d_aabb + (spheres.size() * sizeof(OptixAabb)),
+		d_aabbKey1 + (spheres.size() * sizeof(OptixAabb))
+	};
 	std::vector<uint32_t> quad_flags(quads.size(), OPTIX_GEOMETRY_FLAG_NONE);
 	OptixBuildInput quadBuildInput = {};
 	quadBuildInput.type = OPTIX_BUILD_INPUT_TYPE_CUSTOM_PRIMITIVES;
-	quadBuildInput.customPrimitiveArray.aabbBuffers = quads.empty() ? nullptr : &d_quad_aabb;
+	quadBuildInput.customPrimitiveArray.aabbBuffers = quads.empty() ? nullptr : d_quad_aabb_keys;
 	quadBuildInput.customPrimitiveArray.numPrimitives = static_cast<unsigned int>(quads.size());
 	quadBuildInput.customPrimitiveArray.flags = quad_flags.data();
 	quadBuildInput.customPrimitiveArray.numSbtRecords = 1;  // Single hit group for all quads
@@ -918,11 +981,14 @@ bool OptiXRenderer::buildScene(
 	quadBuildInput.customPrimitiveArray.sbtIndexOffsetStrideInBytes = 0;
 
 	// Build input for bilinear patch geometry
-	CUdeviceptr d_blp_aabb = d_aabb + ((spheres.size() + quads.size()) * sizeof(OptixAabb));
+	CUdeviceptr d_blp_aabb_keys[2] = {
+		d_aabb + ((spheres.size() + quads.size()) * sizeof(OptixAabb)),
+		d_aabbKey1 + ((spheres.size() + quads.size()) * sizeof(OptixAabb))
+	};
 	std::vector<uint32_t> blp_flags(bilinearPatches.size(), OPTIX_GEOMETRY_FLAG_NONE);
 	OptixBuildInput blpBuildInput = {};
 	blpBuildInput.type = OPTIX_BUILD_INPUT_TYPE_CUSTOM_PRIMITIVES;
-	blpBuildInput.customPrimitiveArray.aabbBuffers = bilinearPatches.empty() ? nullptr : &d_blp_aabb;
+	blpBuildInput.customPrimitiveArray.aabbBuffers = bilinearPatches.empty() ? nullptr : d_blp_aabb_keys;
 	blpBuildInput.customPrimitiveArray.numPrimitives = static_cast<unsigned int>(bilinearPatches.size());
 	blpBuildInput.customPrimitiveArray.flags = blp_flags.data();
 	blpBuildInput.customPrimitiveArray.numSbtRecords = 1;  // Single hit group for all bilinear patches
@@ -931,11 +997,14 @@ bool OptiXRenderer::buildScene(
 	blpBuildInput.customPrimitiveArray.sbtIndexOffsetStrideInBytes = 0;
 
 	// Build input for triangle geometry
-	CUdeviceptr d_tri_aabb = d_aabb + ((spheres.size() + quads.size() + bilinearPatches.size()) * sizeof(OptixAabb));
+	CUdeviceptr d_tri_aabb_keys[2] = {
+		d_aabb + ((spheres.size() + quads.size() + bilinearPatches.size()) * sizeof(OptixAabb)),
+		d_aabbKey1 + ((spheres.size() + quads.size() + bilinearPatches.size()) * sizeof(OptixAabb))
+	};
 	std::vector<uint32_t> tri_flags(triangles.size(), OPTIX_GEOMETRY_FLAG_NONE);
 	OptixBuildInput triBuildInput = {};
 	triBuildInput.type = OPTIX_BUILD_INPUT_TYPE_CUSTOM_PRIMITIVES;
-	triBuildInput.customPrimitiveArray.aabbBuffers = triangles.empty() ? nullptr : &d_tri_aabb;
+	triBuildInput.customPrimitiveArray.aabbBuffers = triangles.empty() ? nullptr : d_tri_aabb_keys;
 	triBuildInput.customPrimitiveArray.numPrimitives = static_cast<unsigned int>(triangles.size());
 	triBuildInput.customPrimitiveArray.flags = tri_flags.data();
 	triBuildInput.customPrimitiveArray.numSbtRecords = 1;  // Single hit group for all triangles
@@ -968,6 +1037,12 @@ bool OptiXRenderer::buildScene(
 	OptixAccelBuildOptions accelOptions = {};
 	accelOptions.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
 	accelOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
+	// numKeys<2 means "no motion" (OptiX treats 0 and 1 identically) - only
+	// scenes with moving spheres (sceneHasMotion_) pay for real motion keys.
+	accelOptions.motionOptions.numKeys = sceneHasMotion_ ? 2 : 0;
+	accelOptions.motionOptions.timeBegin = 0.0f;
+	accelOptions.motionOptions.timeEnd = 1.0f;
+	accelOptions.motionOptions.flags = OPTIX_MOTION_FLAG_NONE;
 
 	// Query memory requirements
 	OptixAccelBufferSizes gasBufferSizes;
@@ -1006,6 +1081,7 @@ bool OptiXRenderer::buildScene(
 	// Free temp buffer
 	cudaFree(reinterpret_cast<void*>(d_temp));
 	cudaFree(reinterpret_cast<void*>(d_aabb));
+	cudaFree(reinterpret_cast<void*>(d_aabbKey1));  // cudaFree(0) is a documented no-op when motion wasn't used
 
 	// Store GAS buffer
 	if (d_gas_) cudaFree(reinterpret_cast<void*>(d_gas_));
@@ -1235,6 +1311,10 @@ bool OptiXRenderer::render(
 	// Punctual (delta) lights
 	params.punctualLights = reinterpret_cast<PunctualLightGPU*>(d_punctualLights_);
 	params.numPunctualLights = numPunctualLights_;
+
+	// Motion blur: only the scene(s) with moving spheres set this - see
+	// buildScene()'s sceneHasMotion_ detection and optix_raygen.h's use of it.
+	params.motionBlurEnabled = sceneHasMotion_;
 
 	// Upload launch params
 	CUDA_CHECK(cudaMemcpy(

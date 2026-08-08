@@ -79,7 +79,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             1, SceneNames::BouncingSpheres,
             "Random spheres with checker ground (In One Weekend final)",
-            "Slow", 100, false, false,
+            "Slow", 100, false, true,
             { 20, 13, 2, 3,  0, 0, 0,  0.70, 0.80, 1.00 },
             build_bouncing_spheres,
             sky_dummy_lights

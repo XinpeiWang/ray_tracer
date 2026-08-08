@@ -152,6 +152,7 @@ private:
 	// -------------------------------------------------------------------
 	OptixTraversableHandle gasHandle_ = 0; ///< Acceleration structure handle
 	CUdeviceptr d_gas_ = 0;                ///< Device memory for GAS
+	bool sceneHasMotion_ = false;          ///< True if the uploaded scene has >=1 moving sphere (see buildScene())
 
 	// -------------------------------------------------------------------
 	// Scene Geometry and Materials (Device Memory)

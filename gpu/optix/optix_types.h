@@ -42,7 +42,19 @@ struct ShadowPayload {
 
 // Sphere geometry data (custom primitive)
 struct SphereData {
-	float3 center;
+	float3 center;   // position at ray-time t=0 (the only position, for a static sphere)
+	// Position at ray-time t=1, for motion blur (RTIOW-style linear "bounce"
+	// interpolation, matching src/TheRestOfYourLife/sphere.h's moving-sphere
+	// constructor: current_center = lerp(center, center1, ray.time())).
+	// Left zero-initialized (garbage) for every static sphere in every scene
+	// that doesn't use motion blur - always safe, because the intersection
+	// program only ever multiplies it by a ray-time that is provably 0.0f
+	// for those scenes (see optix_raygen.h), and lerp(a, b, 0) == a exactly
+	// regardless of b. Only scenes that actually build moving spheres (with
+	// center1 != center) need to also enable LaunchParams::motionBlurEnabled
+	// and give their sphere GAS build 2 motion keys - see
+	// OptiXRenderer::buildScene()'s sceneHasMotion_ detection.
+	float3 center1;
 	float radius;
 	int materialIdx;
 };
@@ -327,6 +339,12 @@ struct LaunchParams {
 	// not selected via the alias table.
 	PunctualLightGPU* punctualLights;
 	unsigned int numPunctualLights;
+
+	// True only for scenes with moving spheres (SphereData::center1 != center
+	// for at least one sphere - see OptiXRenderer::buildScene()). Tells the
+	// raygen program to sample a random ray-time in [0,1] per pixel-sample
+	// (RTIOW shutter convention) instead of always using 0.0f.
+	bool motionBlurEnabled;
 };
 
 // Hit group data (per-geometry instance in SBT)

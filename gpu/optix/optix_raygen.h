@@ -33,6 +33,15 @@ extern "C" __global__ void __raygen__rg() {
 		float cam_weight;
 		generate_primary_ray(u, v, seed, ray_origin, ray_direction, cam_weight);
 
+		// Ray time for motion blur (RTIOW shutter convention: uniform in
+		// [0,1), sampled once per pixel-sample and reused for every bounce
+		// of this sample) - matches src/TheRestOfYourLife/camera.h's
+		// `auto ray_time = random_double();`. Scenes without motion always
+		// use 0.0f, which optix_intersection_sphere.h's lerp(center,
+		// center1, 0.0f) resolves to `center` exactly regardless of
+		// center1's (possibly garbage) value.
+		float ray_time = params.motionBlurEnabled ? random_float(seed) : 0.0f;
+
 		// Path tracing loop
 		float3 throughput = make_float3(cam_weight, cam_weight, cam_weight);
 		float3 radiance = make_float3(0.0f, 0.0f, 0.0f);
@@ -68,7 +77,7 @@ extern "C" __global__ void __raygen__rg() {
 				ray_direction,          // Ray direction
 				0.001f,                 // tmin
 				1e16f,                  // tmax
-				0.0f,                   // rayTime
+				ray_time,               // rayTime
 				OptixVisibilityMask(255),
 				OPTIX_RAY_FLAG_NONE,
 				RAY_TYPE_RADIANCE,      // SBT offset

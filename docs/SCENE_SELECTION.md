@@ -11,7 +11,7 @@ The scene library is defined in `src/TheRestOfYourLife/scenes.h` and includes:
 | ID | Scene Name | Description | Performance | GPU Support | Notes |
 |----|------------|-------------|-------------|-------------|-------|
 | 0 | Cornell Box | Classic Cornell box with glass sphere and white box | Medium | ✅ Yes | Default scene |
-| 1 | Bouncing Spheres | Random spheres with checker ground (final scene from "In One Weekend") | Slow | ❌ CPU only | Uses moving spheres |
+| 1 | Bouncing Spheres | Random spheres with checker ground (final scene from "In One Weekend") | Slow | ✅ Yes | Uses moving spheres (real OptiX motion blur on GPU) |
 | 2 | Checkered Spheres | Two spheres with procedural checker texture | Fast | ❌ CPU only | Simple test scene |
 | 3 | Earth | Globe with earth texture mapping | Fast | ❌ CPU only | **Requires earthmap.jpg** |
 | 4 | Perlin Spheres | Spheres with Perlin noise marble texture | Fast | ❌ CPU only | Procedural textures |
@@ -104,7 +104,11 @@ ray_tracer.exe [--cpu|--gpu] [--output PATH] width spp max_depth scene_id cam_x 
 ### Bouncing Spheres (ID 1)
 - This is the final scene from "Ray Tracing in One Weekend"
 - Contains ~400 small spheres + 3 large spheres
-- Uses moving spheres (motion blur)
+- Uses moving spheres (motion blur) - the checker ground texture is
+  approximated as flat gray on GPU (no procedural textures on GPU), and the
+  exact random sphere layout differs between CPU and GPU (different RNGs),
+  but GPU motion blur is real: native OptiX motion keys + per-ray-time
+  interpolation, not an approximation
 - BVH acceleration is applied automatically
 - Recommended camera: `(13, 2, 3)` looking at `(0, 0, 0)`
 

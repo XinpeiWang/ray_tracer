@@ -8,6 +8,19 @@ extern "C" __global__ void __intersection__sphere() {
 	// Fetch sphere data from device array
 	const SphereData& sphere = params.spheres[primIdx];
 
+	// Motion blur: interpolate to this ray's time. lerp(center, center1, 0)
+	// == center exactly, so this is a provable no-op for every sphere in
+	// every scene that doesn't set motionBlurEnabled (optix_raygen.h always
+	// passes rayTime=0.0f in that case) - center1 can hold garbage there and
+	// it's still safe. Matches src/TheRestOfYourLife/sphere.h's
+	// `current_center = center.at(r.time())` linear interpolation exactly.
+	const float ray_time = optixGetRayTime();
+	const float3 center = make_float3(
+		sphere.center.x + ray_time * (sphere.center1.x - sphere.center.x),
+		sphere.center.y + ray_time * (sphere.center1.y - sphere.center.y),
+		sphere.center.z + ray_time * (sphere.center1.z - sphere.center.z)
+	);
+
 	// Get ray parameters
 	const float3 ray_orig = optixGetWorldRayOrigin();
 	const float3 ray_dir = optixGetWorldRayDirection();
@@ -15,7 +28,7 @@ extern "C" __global__ void __intersection__sphere() {
 	const float ray_tmax = optixGetRayTmax();
 
 	// Sphere intersection
-	const float3 oc = ray_orig - sphere.center;
+	const float3 oc = ray_orig - center;
 	const float a = dot(ray_dir, ray_dir);
 	const float half_b = dot(oc, ray_dir);
 	const float c = dot(oc, oc) - sphere.radius * sphere.radius;
@@ -37,9 +50,9 @@ extern "C" __global__ void __intersection__sphere() {
 	optixReportIntersection(
 		root,                      // t value
 		0,                         // hit kind
-		__float_as_int(sphere.center.x),  // attribute 0 (sphere center for normal calc)
-		__float_as_int(sphere.center.y),  // attribute 1
-		__float_as_int(sphere.center.z),  // attribute 2
+		__float_as_int(center.x),  // attribute 0 (time-interpolated center, for normal calc)
+		__float_as_int(center.y),  // attribute 1
+		__float_as_int(center.z),  // attribute 2
 		__float_as_int(sphere.radius)     // attribute 3
 	);
 }

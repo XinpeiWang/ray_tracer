@@ -137,10 +137,15 @@ TEST(FindSceneTest, CornellBoxIsGpuCompatible) {
 	EXPECT_TRUE(s->gpu_compatible);
 }
 
-TEST(FindSceneTest, BouncingSpheresIsNotGpuCompatible) {
+TEST(FindSceneTest, BouncingSpheresIsGpuCompatible) {
+	// Scene 1 uses moving spheres (motion blur) - gpu/optix/scene_builder.cpp's
+	// build_bouncing_spheres() + OptiXRenderer::buildScene()'s sceneHasMotion_
+	// detection give it real OptiX native motion blur (SphereData::center1,
+	// GAS motion keys, optixGetRayTime() interpolation in
+	// optix_intersection_sphere.h) - see optix_types.h's SphereData comment.
 	const SceneDescriptor* s = find_scene(1);
 	ASSERT_NE(s, nullptr);
-	EXPECT_FALSE(s->gpu_compatible);
+	EXPECT_TRUE(s->gpu_compatible);
 }
 
 TEST(FindSceneTest, PbrtV4ScenesAreGpuCompatible) {
