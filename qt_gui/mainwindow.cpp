@@ -190,7 +190,13 @@ void RenderThread::run() {
 		QByteArray rawData = m_renderProcess->readAll();
 
 		if (!rawData.isEmpty()) {
-			QString output = QString::fromLocal8Bit(rawData);
+			// ray_tracer.exe's console output (box-drawing banners, checkmarks)
+			// is UTF-8 - fromLocal8Bit() decoded it against the system ANSI
+			// codepage instead, mangling every non-ASCII character (e.g. "─"
+			// -> "â”€"). QProcess pipes raw bytes with no codepage translation,
+			// so the bytes captured here are exactly what the child process
+			// wrote - decode them as UTF-8 to match.
+			QString output = QString::fromUtf8(rawData);
 			accumulatedOutput += output;
 
 			// Split into individual lines and emit each separately so every line
