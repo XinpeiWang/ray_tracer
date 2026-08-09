@@ -2100,6 +2100,38 @@ bool build_scene(
 								}
 							}
 
+							// Every static sphere across every scene case above is built via
+							// `SphereData s{};` (or equivalent), which value-initializes
+							// center1 to (0,0,0) - "safe" only as long as ray_time stays
+							// provably 0.0f for that scene (see SphereData::center1's doc
+							// comment in optix_types.h). But ray_time is 0.0f only when
+							// motionBlurEnabled is false, and that flag is auto-detected
+							// below in OptiXRenderer::buildScene() by checking whether ANY
+							// sphere's center1 differs from its center - which a merely
+							// *unset* center1 satisfies just as well as a real moving
+							// sphere does, for any static sphere not centered at the exact
+							// origin (e.g. every scene's ground sphere). That falsely
+							// enabled motion blur for every such scene, randomizing every
+							// sphere's ray-time-interpolated position per sample - the
+							// actual cause of scenes 19/24/31 (etc. - any sphere-using scene
+							// without an explicit light source) rendering as near-black
+							// noise on GPU: their camera rays were hitting spheres at
+							// effectively random positions instead of their real ones,
+							// almost never reaching the open background.
+							//
+							// build_bouncing_spheres() (scene 1) is the only builder that
+							// wants real motion and already explicitly sets center1 on
+							// every sphere it creates (to itself for static ones, to a real
+							// bounce target for moving ones) - this loop only touches
+							// spheres that never got an explicit center1 at all, so it
+							// can't undo that.
+							for (auto& s : scene.spheres) {
+								if (s.center1.x == 0.0f && s.center1.y == 0.0f && s.center1.z == 0.0f &&
+									!(s.center.x == 0.0f && s.center.y == 0.0f && s.center.z == 0.0f)) {
+									s.center1 = s.center;
+								}
+							}
+
 							return true;
 						}
 
