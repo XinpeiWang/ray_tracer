@@ -266,7 +266,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             21, SceneNames::SubsurfaceSlab,
             "Cornell box with translucent wax slab and jade sphere using subsurface-like scattering",
-            "Slow", 300, false, false,
+            "Slow", 300, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_subsurface_slab,
             build_cornell_box_lights

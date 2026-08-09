@@ -1636,6 +1636,91 @@ static void build_homogeneous_medium_scene_gpu(SceneData& scene) {
 	scene.spheres.push_back(fog);
 }
 
+/// @brief Scene 21: Subsurface Slab. Matches CPU build_subsurface_slab()
+/// (scenes_advanced.h) - CPU's own header comment there is explicit this
+/// isn't a real BSSRDF: it's the same "dielectric boundary + internal
+/// constant_medium" trick as scene 8's fog spheres, which
+/// MaterialType::DielectricMedium already implements exactly (see that
+/// type's comment in optix_types.h) - no new device code needed. The jade
+/// sphere maps onto it with zero approximation (it's already a sphere);
+/// the wax slab's box boundary is approximated as a sphere sized to
+/// roughly its footprint, same "box boundary would need a second AABB-slab
+/// intersection path not worth the complexity" precedent as scene 7's own
+/// two constant_medium boxes (see build_cornell_smoke_gpu's comment).
+static void build_subsurface_slab_gpu(SceneData& scene) {
+	using namespace cornell_box_data;
+
+	// The 5 standard walls (green/red/ceiling/floor/back) - shares
+	// cornell_box_data::kQuads[0..4] with CPU's build_subsurface_slab().
+	// This scene's own light is a different color than kQuads[5], so it's
+	// added separately below rather than looping through index 5.
+	for (int i = 0; i < 5; ++i) {
+		const QuadSpec& q = kQuads[i];
+		const int mat = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({
+			MaterialType::Lambertian,
+			make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)),
+			0.0f, 0.0f,
+			make_float3(0.0f, 0.0f, 0.0f)
+		});
+		add_transformed_quad(scene,
+			make_float3(static_cast<float>(q.Q.x), static_cast<float>(q.Q.y), static_cast<float>(q.Q.z)),
+			make_float3(static_cast<float>(q.u.x), static_cast<float>(q.u.y), static_cast<float>(q.u.z)),
+			make_float3(static_cast<float>(q.v.x), static_cast<float>(q.v.y), static_cast<float>(q.v.z)),
+			mat);
+	}
+
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(12.0f, 12.0f, 12.0f) });
+	{
+		QuadData lq{};
+		lq.Q = make_float3(213.0f, 554.0f, 227.0f);
+		lq.u = make_float3(130.0f, 0.0f, 0.0f);
+		lq.v = make_float3(0.0f, 0.0f, 105.0f);
+		const float3 lc = cross(lq.u, lq.v);
+		lq.w = lc;
+		lq.normal = normalize(lc);
+		lq.D = dot(lq.normal, lq.Q);
+		lq.materialIdx = mat_light;
+		scene.quads.push_back(lq);
+		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+		scene.isLightSphere.push_back(false);
+	}
+
+	// Wax slab: CPU's box(0,0,0)-(200,300,160) translated by (270,0,230),
+	// i.e. world-space [270,470]x[0,300]x[230,390] - approximated as a
+	// sphere at the box's center with a radius chosen to roughly match its
+	// footprint. ior=1.4/sigma_t=0.04/albedo=(0.98,0.96,0.90), matching
+	// CPU's dielectric(1.4) + constant_medium(...,0.04,milky-white) exactly.
+	{
+		const int mat_slab = safe_cast_to_int(scene.materials.size());
+		MaterialData m{ MaterialType::DielectricMedium, make_float3(0.98f, 0.96f, 0.90f), 0.0f, 1.4f,
+			make_float3(0.0f, 0.0f, 0.0f), make_float3(0.04f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+		scene.materials.push_back(m);
+		SphereData s{};
+		s.center = make_float3(370.0f, 150.0f, 310.0f);
+		s.radius = 140.0f;
+		s.materialIdx = mat_slab;
+		scene.spheres.push_back(s);
+	}
+
+	// Jade sphere: CPU's sphere(160,90,160,r=90) - matches exactly, no
+	// approximation needed (it's already a sphere). ior=1.5/sigma_t=0.06/
+	// albedo=(0.1,0.5,0.2), matching CPU's dielectric(1.5) +
+	// constant_medium(...,0.06,jade-green) exactly.
+	{
+		const int mat_jade = safe_cast_to_int(scene.materials.size());
+		MaterialData m{ MaterialType::DielectricMedium, make_float3(0.1f, 0.5f, 0.2f), 0.0f, 1.5f,
+			make_float3(0.0f, 0.0f, 0.0f), make_float3(0.06f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+		scene.materials.push_back(m);
+		SphereData s{};
+		s.center = make_float3(160.0f, 90.0f, 160.0f);
+		s.radius = 90.0f;
+		s.materialIdx = mat_jade;
+		scene.spheres.push_back(s);
+	}
+}
+
 /// @brief Scene 31: Cloud Medium. Matches CPU build_cloud_medium_scene()
 /// (ground + one medium sphere, density 0.8, HG g=0.05) - the CPU's Perlin-
 /// noise density texture is dead code there too (constructed but never
@@ -2339,6 +2424,10 @@ bool build_scene(
 
 														case 30:  // Homogeneous Medium (constant_medium, HG g=0.3)
 														if (scene_id == 30) build_homogeneous_medium_scene_gpu(scene);
+														// fallthrough
+
+														case 21:  // Subsurface Slab (see build_subsurface_slab_gpu's comment)
+														if (scene_id == 21) build_subsurface_slab_gpu(scene);
 														// fallthrough
 
 														case 23:  // Bilinear Patch Scene (pbrt-v4 BilinearPatch shape)
