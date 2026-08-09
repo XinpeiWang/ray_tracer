@@ -42,6 +42,51 @@ namespace {
 		return make_float3(p.x + offset.x, p.y + offset.y, p.z + offset.z);
 	}
 
+	// Fills the 12-float camera_params layout (origin, lower_left_corner,
+	// horizontal, vertical) shared by every GPU scene's pinhole/thin-lens
+	// camera - the same math src/TheRestOfYourLife/camera.h's initialize()
+	// uses on the CPU side. focus_dist=1.0 (the default) reproduces the
+	// plain pinhole camera every non-depth-of-field scene uses; scenes with
+	// actual defocus blur (e.g. scene 22) pass their real focus distance,
+	// which scales both the viewport size and the lower-left-corner offset
+	// - see camera.h's own viewport_height = 2*h*focus_dist formula. When a
+	// caller additionally needs the camera basis vectors (u, v, w) - e.g.
+	// for defocus-disk sampling setup - pass non-null out_u/out_v/out_w.
+	void build_pinhole_camera_params(
+		const float3& lookfrom, const float3& lookat, const float3& vup,
+		float vfov_degrees, float aspect, float focus_dist,
+		float* camera_params,
+		float3* out_u = nullptr, float3* out_v = nullptr, float3* out_w = nullptr
+	) {
+		constexpr float kPi = 3.14159265358979323846f;
+		const float theta = vfov_degrees * kPi / 180.0f;
+		const float h = tanf(theta / 2.0f);
+		const float viewport_height = 2.0f * h * focus_dist;
+		const float viewport_width = aspect * viewport_height;
+
+		const float3 view_direction = make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z);
+		const float3 w = normalize(view_direction);
+		const float3 u = normalize(cross(vup, w));
+		const float3 v = cross(w, u);
+
+		const float3 horizontal = make_float3(viewport_width * u.x, viewport_width * u.y, viewport_width * u.z);
+		const float3 vertical = make_float3(viewport_height * v.x, viewport_height * v.y, viewport_height * v.z);
+		const float3 lower_left_corner = make_float3(
+			lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - focus_dist * w.x,
+			lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - focus_dist * w.y,
+			lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - focus_dist * w.z
+		);
+
+		camera_params[0] = lookfrom.x;           camera_params[1] = lookfrom.y;           camera_params[2] = lookfrom.z;
+		camera_params[3] = lower_left_corner.x;  camera_params[4] = lower_left_corner.y;  camera_params[5] = lower_left_corner.z;
+		camera_params[6] = horizontal.x;         camera_params[7] = horizontal.y;         camera_params[8] = horizontal.z;
+		camera_params[9] = vertical.x;           camera_params[10] = vertical.y;          camera_params[11] = vertical.z;
+
+		if (out_u) *out_u = u;
+		if (out_v) *out_v = v;
+		if (out_w) *out_w = w;
+	}
+
 	// Helper to check if a material is emissive
 	inline bool is_emissive(const SceneData& scene, int material_idx) {
 		if (material_idx < 0 || material_idx >= static_cast<int>(scene.materials.size()))
@@ -1606,9 +1651,6 @@ bool build_scene(
 
 			// Configure camera for Cornell Box
 			{
-				constexpr float kPi = 3.14159265358979323846f;
-
-				// Camera parameters (use provided position)
 				const float3 lookfrom = make_float3(
 					static_cast<float>(cam_x),
 					static_cast<float>(cam_y),
@@ -1616,58 +1658,10 @@ bool build_scene(
 				);
 				const float3 lookat = make_float3(278.0f, 278.0f, 278.0f);  // Center of box
 				const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
-				constexpr float vfov = 40.0f;  // Vertical field of view in degrees
 				const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-
-				// Calculate viewport dimensions
-				const float theta = vfov * kPi / 180.0f;
-				const float h = tanf(theta / 2.0f);
-				const float viewport_height = 2.0f * h;
-				const float viewport_width = aspect * viewport_height;
-
-				// Calculate camera basis vectors
-				const float3 view_direction = make_float3(
-					lookfrom.x - lookat.x,
-					lookfrom.y - lookat.y,
-					lookfrom.z - lookat.z
-				);
-				const float3 w = normalize(view_direction);
-				const float3 u = normalize(cross(vup, w));
-				const float3 v = cross(w, u);
-
-				// Calculate viewport vectors
-				const float3 horizontal = make_float3(
-					viewport_width * u.x,
-					viewport_width * u.y,
-					viewport_width * u.z
-				);
-				const float3 vertical = make_float3(
-					viewport_height * v.x,
-					viewport_height * v.y,
-					viewport_height * v.z
-				);
-
-				// Calculate lower-left corner of viewport
-				const float3 lower_left_corner = make_float3(
-					lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - w.x,
-					lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - w.y,
-					lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - w.z
-				);
-
-				// Helper to pack float3 into array
-				auto pack_float3 = [](float* dest, int offset, const float3& v) {
-					dest[offset]     = v.x;
-					dest[offset + 1] = v.y;
-					dest[offset + 2] = v.z;
-				};
-
-				// Pack camera parameters: [origin(3), lower_left(3), horizontal(3), vertical(3)]
-				pack_float3(camera_params, 0, lookfrom);
-						pack_float3(camera_params, 3, lower_left_corner);
-						pack_float3(camera_params, 6, horizontal);
-						pack_float3(camera_params, 9, vertical);
-					}
-					break;
+				build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);
+			}
+			break;
 
 				case 1:  // Bouncing Spheres (motion blur - see build_bouncing_spheres)
 					build_bouncing_spheres(scene);
@@ -1686,41 +1680,13 @@ bool build_scene(
 					// camera absurdly far away, rendering an unrecognizable speck,
 					// for any single-image render that doesn't opt into the override.
 					{
-						constexpr float kPi = 3.14159265358979323846f;
 						const float3 lookfrom = force_camera_override
 							? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z))
 							: make_float3(13.0f, 2.0f, 3.0f);
 						const float3 lookat = make_float3(0.0f, 0.0f, 0.0f);
 						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
-						constexpr float vfov = 20.0f;
 						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-
-						const float theta = vfov * kPi / 180.0f;
-						const float h = tanf(theta / 2.0f);
-						const float viewport_height = 2.0f * h;
-						const float viewport_width = aspect * viewport_height;
-
-						const float3 view_direction = make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z);
-						const float3 w = normalize(view_direction);
-						const float3 u = normalize(cross(vup, w));
-						const float3 v = cross(w, u);
-
-						const float3 horizontal = make_float3(viewport_width * u.x, viewport_width * u.y, viewport_width * u.z);
-						const float3 vertical = make_float3(viewport_height * v.x, viewport_height * v.y, viewport_height * v.z);
-						const float3 lower_left_corner = make_float3(
-							lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - w.x,
-							lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - w.y,
-							lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - w.z
-						);
-
-						auto pack_float3 = [](float* dest, int offset, const float3& v) {
-							dest[offset] = v.x; dest[offset + 1] = v.y; dest[offset + 2] = v.z;
-						};
-
-						pack_float3(camera_params, 0, lookfrom);
-						pack_float3(camera_params, 3, lower_left_corner);
-						pack_float3(camera_params, 6, horizontal);
-						pack_float3(camera_params, 9, vertical);
+						build_pinhole_camera_params(lookfrom, lookat, vup, 20.0f, aspect, 1.0f, camera_params);
 
 						// Flat light-blue background, matching CPU registry's
 						// bg=(0.70,0.80,1.00) for this scene (see
@@ -1740,41 +1706,13 @@ bool build_scene(
 					// camera at whatever Cornell-Box-scale position happened
 					// to be leftover from a previous scene.
 					{
-						constexpr float kPi = 3.14159265358979323846f;
 						const float3 lookfrom = force_camera_override
 							? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z))
 							: make_float3(13.0f, 2.0f, 3.0f);
 						const float3 lookat = make_float3(0.0f, 0.0f, 0.0f);
 						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
-						constexpr float vfov = 20.0f;
 						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-
-						const float theta = vfov * kPi / 180.0f;
-						const float h = tanf(theta / 2.0f);
-						const float viewport_height = 2.0f * h;
-						const float viewport_width = aspect * viewport_height;
-
-						const float3 view_direction = make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z);
-						const float3 w = normalize(view_direction);
-						const float3 u = normalize(cross(vup, w));
-						const float3 v = cross(w, u);
-
-						const float3 horizontal = make_float3(viewport_width * u.x, viewport_width * u.y, viewport_width * u.z);
-						const float3 vertical = make_float3(viewport_height * v.x, viewport_height * v.y, viewport_height * v.z);
-						const float3 lower_left_corner = make_float3(
-							lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - w.x,
-							lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - w.y,
-							lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - w.z
-						);
-
-						auto pack_float3 = [](float* dest, int offset, const float3& v) {
-							dest[offset] = v.x; dest[offset + 1] = v.y; dest[offset + 2] = v.z;
-						};
-
-						pack_float3(camera_params, 0, lookfrom);
-						pack_float3(camera_params, 3, lower_left_corner);
-						pack_float3(camera_params, 6, horizontal);
-						pack_float3(camera_params, 9, vertical);
+						build_pinhole_camera_params(lookfrom, lookat, vup, 20.0f, aspect, 1.0f, camera_params);
 
 						// Flat light-blue background, matching CPU registry's
 						// bg=(0.70,0.80,1.00) for this scene (see
@@ -1789,68 +1727,23 @@ bool build_scene(
 
 						// Configure camera
 					{
-						constexpr float kPi = 3.14159265358979323846f;
 						const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
 						const float3 lookat = make_float3(0.0f, 0.0f, 0.0f);
 						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
-						constexpr float vfov = 80.0f;  // Wide angle for quads
 						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+						build_pinhole_camera_params(lookfrom, lookat, vup, 80.0f, aspect, 1.0f, camera_params);  // 80: wide angle for quads
+					}
+					break;
 
-						const float theta = vfov * kPi / 180.0f;
-						const float h = tanf(theta / 2.0f);
-						const float viewport_height = 2.0f * h;
-						const float viewport_width = aspect * viewport_height;
-
-						const float3 view_direction = make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z);
-						const float3 w = normalize(view_direction);
-						const float3 u = normalize(cross(vup, w));
-						const float3 v = cross(w, u);
-
-						const float3 horizontal = make_float3(viewport_width * u.x, viewport_width * u.y, viewport_width * u.z);
-						const float3 vertical = make_float3(viewport_height * v.x, viewport_height * v.y, viewport_height * v.z);
-						const float3 lower_left_corner = make_float3(
-							lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - w.x,
-							lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - w.y,
-							lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - w.z
-						);
-
-						auto pack_float3 = [](float* dest, int offset, const float3& v) {
-							dest[offset] = v.x; dest[offset + 1] = v.y; dest[offset + 2] = v.z;
-						};
-
-										pack_float3(camera_params, 0, lookfrom);
-											pack_float3(camera_params, 3, lower_left_corner);
-											pack_float3(camera_params, 6, horizontal);
-											pack_float3(camera_params, 9, vertical);
-										}
-										break;
-
-									case 9: {  // Rough Metal Spheres (GGX)
+				case 9: {  // Rough Metal Spheres (GGX)
 										build_rough_metal_spheres(scene);
 
 										// Camera: vfov=35, lookfrom=(cam_x,cam_y,cam_z), lookat=(0,1,0)
-										constexpr float kPi9 = 3.14159265358979323846f;
 										const float3 lookfrom9 = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
 										const float3 lookat9   = make_float3(0.0f, 1.0f, 0.0f);
 										const float3 vup9      = make_float3(0.0f, 1.0f, 0.0f);
-										constexpr float vfov9  = 35.0f;
 										const float aspect9    = static_cast<float>(image_width) / static_cast<float>(image_height);
-										const float h9         = tanf((vfov9 * kPi9 / 180.0f) / 2.0f);
-										const float vh9        = 2.0f * h9;
-										const float vw9        = aspect9 * vh9;
-										const float3 wd9 = normalize(make_float3(lookfrom9.x - lookat9.x, lookfrom9.y - lookat9.y, lookfrom9.z - lookat9.z));
-										const float3 u9  = normalize(cross(vup9, wd9));
-										const float3 v9  = cross(wd9, u9);
-										const float3 horiz9 = make_float3(vw9*u9.x, vw9*u9.y, vw9*u9.z);
-										const float3 vert9  = make_float3(vh9*v9.x, vh9*v9.y, vh9*v9.z);
-										const float3 llc9   = make_float3(
-											lookfrom9.x - horiz9.x/2.0f - vert9.x/2.0f - wd9.x,
-											lookfrom9.y - horiz9.y/2.0f - vert9.y/2.0f - wd9.y,
-											lookfrom9.z - horiz9.z/2.0f - vert9.z/2.0f - wd9.z);
-										camera_params[0]=lookfrom9.x; camera_params[1]=lookfrom9.y; camera_params[2]=lookfrom9.z;
-										camera_params[3]=llc9.x;      camera_params[4]=llc9.y;      camera_params[5]=llc9.z;
-										camera_params[6]=horiz9.x;    camera_params[7]=horiz9.y;    camera_params[8]=horiz9.z;
-										camera_params[9]=vert9.x;     camera_params[10]=vert9.y;    camera_params[11]=vert9.z;
+										build_pinhole_camera_params(lookfrom9, lookat9, vup9, 35.0f, aspect9, 1.0f, camera_params);
 										break;
 									}
 
@@ -1928,39 +1821,11 @@ bool build_scene(
 														case 23:  // Bilinear Patch Scene (pbrt-v4 BilinearPatch shape)
 														if (scene_id == 23) build_bilinear_patch_scene_gpu(scene);
 													{
-									constexpr float kPi = 3.14159265358979323846f;
 									const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
 									const float3 lookat = make_float3(278.0f, 278.0f, 278.0f);
 									const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
-									constexpr float vfov = 40.0f;
 									const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-
-									const float theta = vfov * kPi / 180.0f;
-									const float h = tanf(theta / 2.0f);
-									const float viewport_height = 2.0f * h;
-									const float viewport_width = aspect * viewport_height;
-
-									const float3 view_direction = make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z);
-									const float3 w = normalize(view_direction);
-									const float3 u = normalize(cross(vup, w));
-									const float3 v = cross(w, u);
-
-									const float3 horizontal = make_float3(viewport_width * u.x, viewport_width * u.y, viewport_width * u.z);
-									const float3 vertical   = make_float3(viewport_height * v.x, viewport_height * v.y, viewport_height * v.z);
-									const float3 lower_left_corner = make_float3(
-										lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - w.x,
-										lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - w.y,
-										lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - w.z
-									);
-
-									auto pack_float3 = [](float* dest, int offset, const float3& v) {
-										dest[offset] = v.x; dest[offset + 1] = v.y; dest[offset + 2] = v.z;
-									};
-
-									pack_float3(camera_params, 0, lookfrom);
-									pack_float3(camera_params, 3, lower_left_corner);
-									pack_float3(camera_params, 6, horizontal);
-									pack_float3(camera_params, 9, vertical);
+									build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);
 								}
 								break;
 
@@ -1970,42 +1835,19 @@ bool build_scene(
 								const float3 lookfrom = make_float3(0.0f, 2.0f, 9.0f);
 								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								constexpr float vfov = 20.0f;            // matches CPU CameraConfig row for scene 22
-								constexpr float defocus_angle = 10.0f;   // ditto
+								constexpr float defocus_angle = 10.0f;   // matches CPU CameraConfig row for scene 22
 								constexpr float focus_dist    = 9.0f;    // ditto
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
 
-								const float theta = vfov * kPi / 180.0f;
-								const float h = tanf(theta / 2.0f);
-								const float viewport_height = 2.0f * h * focus_dist;
-								const float viewport_width  = aspect * viewport_height;
-
-								const float3 w = normalize(make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z));
-								const float3 u = normalize(cross(vup, w));
-								const float3 v = cross(w, u);
-
-								const float3 horizontal = make_float3(viewport_width * u.x, viewport_width * u.y, viewport_width * u.z);
-								const float3 vertical   = make_float3(viewport_height * v.x, viewport_height * v.y, viewport_height * v.z);
-								const float3 lower_left_corner = make_float3(
-									lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - focus_dist * w.x,
-									lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - focus_dist * w.y,
-									lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - focus_dist * w.z
-								);
-
-								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
-									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
-								};
-								pack_float3(camera_params, 0, lookfrom);
-								pack_float3(camera_params, 3, lower_left_corner);
-								pack_float3(camera_params, 6, horizontal);
-								pack_float3(camera_params, 9, vertical);
+								float3 u, v;
+								build_pinhole_camera_params(lookfrom, lookat, vup, 20.0f, aspect, focus_dist, camera_params, &u, &v);
 
 								if (out_camera_extra) {
 									out_camera_extra->kind = CameraKind::Perspective;
 									out_camera_extra->origin = lookfrom;
-									out_camera_extra->lower_left_corner = lower_left_corner;
-									out_camera_extra->horizontal = horizontal;
-									out_camera_extra->vertical = vertical;
+									out_camera_extra->lower_left_corner = make_float3(camera_params[3], camera_params[4], camera_params[5]);
+									out_camera_extra->horizontal = make_float3(camera_params[6], camera_params[7], camera_params[8]);
+									out_camera_extra->vertical = make_float3(camera_params[9], camera_params[10], camera_params[11]);
 									// pbrt-v4/book-style thin-lens disk basis, scaled by focus_dist and
 									// half the defocus cone angle - matches src/TheRestOfYourLife/
 									// camera.h's defocus_disk_u/v exactly.
@@ -2163,37 +2005,11 @@ bool build_scene(
 
 							case 24: {  // HDRI Sky (flat-color background - see backgroundColor's comment)
 								build_hdri_sky_world_gpu(scene);
-								constexpr float kPi = 3.14159265358979323846f;
 								const float3 lookfrom = make_float3(0.0f, 2.0f, 10.0f);
 								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								constexpr float vfov = 30.0f;  // matches CPU CameraConfig row for scene 24
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-
-								const float theta = vfov * kPi / 180.0f;
-								const float h = tanf(theta / 2.0f);
-								const float viewport_height = 2.0f * h;
-								const float viewport_width  = aspect * viewport_height;
-
-								const float3 w = normalize(make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z));
-								const float3 u = normalize(cross(vup, w));
-								const float3 v = cross(w, u);
-
-								const float3 horizontal = make_float3(viewport_width * u.x, viewport_width * u.y, viewport_width * u.z);
-								const float3 vertical   = make_float3(viewport_height * v.x, viewport_height * v.y, viewport_height * v.z);
-								const float3 lower_left_corner = make_float3(
-									lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - w.x,
-									lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - w.y,
-									lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - w.z
-								);
-
-								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
-									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
-								};
-								pack_float3(camera_params, 0, lookfrom);
-								pack_float3(camera_params, 3, lower_left_corner);
-								pack_float3(camera_params, 6, horizontal);
-								pack_float3(camera_params, 9, vertical);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 30.0f, aspect, 1.0f, camera_params);  // 30: matches CPU CameraConfig row for scene 24
 
 								if (out_camera_extra) {
 									// Matches CPU build_hdri_sky()'s solid-color sky_light(0.3,0.6,1.0)
@@ -2206,37 +2022,11 @@ bool build_scene(
 
 							case 31: {  // Cloud Medium (constant_medium, HG g=0.05)
 								build_cloud_medium_scene_gpu(scene);
-								constexpr float kPi = 3.14159265358979323846f;
 								const float3 lookfrom = make_float3(0.0f, 5.0f, 20.0f);
 								const float3 lookat   = make_float3(0.0f, 2.0f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								constexpr float vfov = 20.0f;  // matches CPU CameraConfig row for scene 31
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-
-								const float theta = vfov * kPi / 180.0f;
-								const float h = tanf(theta / 2.0f);
-								const float viewport_height = 2.0f * h;
-								const float viewport_width  = aspect * viewport_height;
-
-								const float3 w = normalize(make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z));
-								const float3 u = normalize(cross(vup, w));
-								const float3 v = cross(w, u);
-
-								const float3 horizontal = make_float3(viewport_width * u.x, viewport_width * u.y, viewport_width * u.z);
-								const float3 vertical   = make_float3(viewport_height * v.x, viewport_height * v.y, viewport_height * v.z);
-								const float3 lower_left_corner = make_float3(
-									lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - w.x,
-									lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - w.y,
-									lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - w.z
-								);
-
-								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
-									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
-								};
-								pack_float3(camera_params, 0, lookfrom);
-								pack_float3(camera_params, 3, lower_left_corner);
-								pack_float3(camera_params, 6, horizontal);
-								pack_float3(camera_params, 9, vertical);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 20.0f, aspect, 1.0f, camera_params);  // 20: matches CPU CameraConfig row for scene 31
 								if (out_camera_extra) {
 									// Matches CPU CameraConfig bg for scene 31 - this is the scene's
 									// ONLY light source (no emissive geometry), so a missing/black
@@ -2248,37 +2038,11 @@ bool build_scene(
 
 							case 19: {  // Hair Fibers (pbrt-v4 HairBxDF)
 								build_hair_fibers_gpu(scene);
-								constexpr float kPi = 3.14159265358979323846f;
 								const float3 lookfrom = make_float3(0.0f, 2.0f, 8.0f);
 								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								constexpr float vfov = 30.0f;  // matches CPU CameraConfig row for scene 19
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-
-								const float theta = vfov * kPi / 180.0f;
-								const float h = tanf(theta / 2.0f);
-								const float viewport_height = 2.0f * h;
-								const float viewport_width  = aspect * viewport_height;
-
-								const float3 w = normalize(make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z));
-								const float3 u = normalize(cross(vup, w));
-								const float3 v = cross(w, u);
-
-								const float3 horizontal = make_float3(viewport_width * u.x, viewport_width * u.y, viewport_width * u.z);
-								const float3 vertical   = make_float3(viewport_height * v.x, viewport_height * v.y, viewport_height * v.z);
-								const float3 lower_left_corner = make_float3(
-									lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - w.x,
-									lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - w.y,
-									lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - w.z
-								);
-
-								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
-									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
-								};
-								pack_float3(camera_params, 0, lookfrom);
-								pack_float3(camera_params, 3, lower_left_corner);
-								pack_float3(camera_params, 6, horizontal);
-								pack_float3(camera_params, 9, vertical);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 30.0f, aspect, 1.0f, camera_params);  // 30: matches CPU CameraConfig row for scene 19
 								if (out_camera_extra) {
 									// Matches CPU CameraConfig bg for scene 19 (dim ambient - the
 									// only light source, no emissive geometry in this scene).
@@ -2289,37 +2053,11 @@ bool build_scene(
 
 							case 34: {  // Measured BRDF (see build_measured_brdf_scene_gpu's comment)
 								build_measured_brdf_scene_gpu(scene);
-								constexpr float kPi = 3.14159265358979323846f;
 								const float3 lookfrom = make_float3(0.0f, 3.0f, 12.0f);
 								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								constexpr float vfov = 25.0f;  // matches CPU CameraConfig row for scene 34
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-
-								const float theta = vfov * kPi / 180.0f;
-								const float h = tanf(theta / 2.0f);
-								const float viewport_height = 2.0f * h;
-								const float viewport_width  = aspect * viewport_height;
-
-								const float3 w = normalize(make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z));
-								const float3 u = normalize(cross(vup, w));
-								const float3 v = cross(w, u);
-
-								const float3 horizontal = make_float3(viewport_width * u.x, viewport_width * u.y, viewport_width * u.z);
-								const float3 vertical   = make_float3(viewport_height * v.x, viewport_height * v.y, viewport_height * v.z);
-								const float3 lower_left_corner = make_float3(
-									lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - w.x,
-									lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - w.y,
-									lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - w.z
-								);
-
-								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
-									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
-								};
-								pack_float3(camera_params, 0, lookfrom);
-								pack_float3(camera_params, 3, lower_left_corner);
-								pack_float3(camera_params, 6, horizontal);
-								pack_float3(camera_params, 9, vertical);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 25.0f, aspect, 1.0f, camera_params);  // 25: matches CPU CameraConfig row for scene 34
 								// backgroundColor left at zero-init (matches CPU bg=(0,0,0)) - this
 								// scene has a real emissive light sphere, unlike scenes 19/31.
 								break;
@@ -2327,37 +2065,11 @@ bool build_scene(
 
 							case 37: {  // Triangle Mesh (see build_triangle_mesh_scene_gpu's comment)
 								build_triangle_mesh_scene_gpu(scene);
-								constexpr float kPi = 3.14159265358979323846f;
 								const float3 lookfrom = make_float3(0.0f, 4.0f, 8.0f);
 								const float3 lookat   = make_float3(0.0f, 2.5f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								constexpr float vfov = 35.0f;  // matches CPU CameraConfig row for scene 37
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-
-								const float theta = vfov * kPi / 180.0f;
-								const float h = tanf(theta / 2.0f);
-								const float viewport_height = 2.0f * h;
-								const float viewport_width  = aspect * viewport_height;
-
-								const float3 w = normalize(make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z));
-								const float3 u = normalize(cross(vup, w));
-								const float3 v = cross(w, u);
-
-								const float3 horizontal = make_float3(viewport_width * u.x, viewport_width * u.y, viewport_width * u.z);
-								const float3 vertical   = make_float3(viewport_height * v.x, viewport_height * v.y, viewport_height * v.z);
-								const float3 lower_left_corner = make_float3(
-									lookfrom.x - horizontal.x / 2.0f - vertical.x / 2.0f - w.x,
-									lookfrom.y - horizontal.y / 2.0f - vertical.y / 2.0f - w.y,
-									lookfrom.z - horizontal.z / 2.0f - vertical.z / 2.0f - w.z
-								);
-
-								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
-									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
-								};
-								pack_float3(camera_params, 0, lookfrom);
-								pack_float3(camera_params, 3, lower_left_corner);
-								pack_float3(camera_params, 6, horizontal);
-								pack_float3(camera_params, 9, vertical);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 37
 								if (out_camera_extra) {
 									// Matches CPU CameraConfig bg for scene 37 (dim ambient - real
 									// light sphere is the main source, matches scene 19's style).
