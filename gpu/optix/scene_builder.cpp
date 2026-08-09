@@ -1221,33 +1221,19 @@ static void build_projection_cornell_gpu(SceneData& scene) {
 	scene.punctualLights.push_back(light);
 }
 
-// Shared overhead area light used by scenes 22/32 below. GPU has no
-// background/miss-color model (unlike CPU, which lights these scenes purely
-// via a flat sky background color - see build_scene()'s camera-only comment
-// for scenes 22/32) - without this, either GPU scene would render fully
-// black despite the camera itself working correctly.
-static void add_overhead_area_light(SceneData& scene, float3 center, float halfSize, float intensity) {
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f,
-								 make_float3(intensity, intensity, intensity) });
-	QuadData lq{};
-	lq.Q = make_float3(center.x - halfSize, center.y, center.z - halfSize);
-	lq.u = make_float3(2.0f * halfSize, 0.0f, 0.0f);
-	lq.v = make_float3(0.0f, 0.0f, 2.0f * halfSize);
-	const float3 lc = cross(lq.u, lq.v);
-	lq.w = lc;
-	lq.normal = normalize(lc);
-	lq.D = dot(lq.normal, lq.Q);
-	lq.materialIdx = mat_light;
-	scene.quads.push_back(lq);
-	scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-	scene.isLightSphere.push_back(false);
-}
-
 /// @brief Scene 22: Depth of Field. Matches CPU build_depth_of_field() in
 /// spirit (ground + a row of spheres spanning near/far of the focus plane to
 /// show defocus blur) - simplified to solid-color materials since GPU has no
-/// checker/procedural texture support.
+/// checker/procedural texture support. No emissive geometry, matching CPU
+/// exactly (build_depth_of_field() has none either) - both are lit purely by
+/// a flat sky background color, set via backgroundColor in this scene's
+/// build_scene() case below (matching CameraConfig's bg for scene 22) rather
+/// than a synthetic light. An earlier version of this function added a
+/// hand-placed overhead area-light quad instead, under the mistaken belief
+/// that GPU had no background/miss-color mechanism (it does - see
+/// optix_miss.h's __miss__ms() and scene 5/24's own use of this same field)
+/// - that extra light was a real, NEE-sampled light CPU doesn't have,
+/// silently breaking CpuGpuLightParityTest for this scene.
 static void build_depth_of_field_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.5f, 0.5f, 0.5f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
@@ -1290,12 +1276,15 @@ static void build_depth_of_field_gpu(SceneData& scene) {
 		s.materialIdx = mat;
 		scene.spheres.push_back(s);
 	}
-	add_overhead_area_light(scene, make_float3(0.0f, 15.0f, 0.0f), 8.0f, 1.0f);
 }
 
 /// @brief Scene 32: Orthographic Camera. Matches CPU build_ortho_camera_scene()
 /// in spirit (ground + a row of colored lambertian spheres) - simplified to
-/// solid-color materials, same reasoning as scene 22 above.
+/// solid-color materials, same reasoning as scene 22 above. No emissive
+/// geometry either, matching CPU - build_ortho_sky() is a flat-color
+/// sky_light there, mirrored via backgroundColor in this scene's
+/// build_scene() case below, same as scene 22 (see that scene's comment for
+/// why - this scene had the identical spurious-overhead-light bug).
 static void build_ortho_camera_scene_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.5f, 0.5f, 0.5f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
@@ -1318,7 +1307,6 @@ static void build_ortho_camera_scene_gpu(SceneData& scene) {
 		s.materialIdx = mat;
 		scene.spheres.push_back(s);
 	}
-	add_overhead_area_light(scene, make_float3(0.0f, 15.0f, 0.0f), 8.0f, 4.0f);
 }
 
 /// @brief Scene 33: Spherical Camera. Matches CPU build_spherical_camera_scene()
@@ -2259,6 +2247,10 @@ bool build_scene(
 									const float defocus_radius = focus_dist * tanf((defocus_angle * kPi / 180.0f) / 2.0f);
 									out_camera_extra->defocus_disk_u = make_float3(u.x * defocus_radius, u.y * defocus_radius, u.z * defocus_radius);
 									out_camera_extra->defocus_disk_v = make_float3(v.x * defocus_radius, v.y * defocus_radius, v.z * defocus_radius);
+									// Matches CPU CameraConfig bg for scene 22 - see
+									// build_depth_of_field_gpu's comment for why this replaced a
+									// synthetic overhead light.
+									out_camera_extra->backgroundColor = make_float3(0.70f, 0.80f, 1.00f);
 								}
 								break;
 							}
@@ -2304,6 +2296,10 @@ bool build_scene(
 									out_camera_extra->horizontal = horizontal;
 									out_camera_extra->vertical = vertical;
 									out_camera_extra->w = make_float3(-w.x, -w.y, -w.z);  // forward = negated look-from/look-at "backward" w
+									// Matches CPU's build_ortho_sky() flat sky_light(0.5,0.7,1.0) - see
+									// build_ortho_camera_scene_gpu's comment for why this replaced a
+									// synthetic overhead light.
+									out_camera_extra->backgroundColor = make_float3(0.5f, 0.7f, 1.0f);
 								}
 								break;
 							}
