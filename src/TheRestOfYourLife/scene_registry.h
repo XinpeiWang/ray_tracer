@@ -107,7 +107,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             3, SceneNames::Earth,
             "Globe with earth texture mapping (requires earthmap.jpg)",
-            "Fast", 100, true, false,
+            "Fast", 100, true, true,
             { 20, 0, 0, 12,  0, 0, 0,  0.70, 0.80, 1.00 },
             build_earth,
             sky_dummy_lights

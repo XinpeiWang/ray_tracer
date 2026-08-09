@@ -1020,6 +1020,27 @@ void build_checkered_spheres(SceneData& scene) {
 	}
 }
 
+/// @brief Scene 3: Earth. Matches CPU build_earth() (src/TheRestOfYourLife/
+/// scenes_book.h) exactly: a single radius-2 sphere at the origin with the
+/// earthmap.jpg image texture (see load_image_texture_gpu's comment for the
+/// solid-cyan fallback if that file can't be found - it now can, see
+/// images/earthmap.jpg), no other geometry. Illuminated purely by the flat
+/// sky background (CameraConfig bg=(0.70,0.80,1.00)), same as scenes 1/2/5.
+static void build_earth_gpu(SceneData& scene) {
+	const int earthTexIdx = load_image_texture_gpu(scene, "earthmap.jpg");
+	const int mat = safe_cast_to_int(scene.materials.size());
+	MaterialData m{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+	m.textureIdx = earthTexIdx;
+	scene.materials.push_back(m);
+	SphereData s{};
+	s.center = make_float3(0.0f, 0.0f, 0.0f);
+	s.center1 = s.center;
+	s.radius = 2.0f;
+	s.materialIdx = mat;
+	scene.spheres.push_back(s);
+}
+
 /**
  * Build colored quads scene (scene 5)
  * Five colored quads arranged in 3D space
@@ -2088,6 +2109,29 @@ bool build_scene(
 						// bg=(0.70,0.80,1.00) for this scene (see
 						// GpuCameraParams::backgroundColor's comment) - this was
 						// previously left at the zero-init default (black).
+						if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.70f, 0.80f, 1.00f);
+					}
+					break;
+
+				case 3:  // Earth (see build_earth_gpu's comment)
+					build_earth_gpu(scene);
+
+					// Same Fixed-mode situation as scenes 1/2 above - ignore
+					// cam_x/y/z by default (this scene's single sphere sits
+					// right at the origin, so a leftover Cornell-Box-scale
+					// camera position would place it out of frame entirely).
+					{
+						const float3 lookfrom = force_camera_override
+							? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z))
+							: make_float3(0.0f, 0.0f, 12.0f);
+						const float3 lookat = make_float3(0.0f, 0.0f, 0.0f);
+						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
+						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+						build_pinhole_camera_params(lookfrom, lookat, vup, 20.0f, aspect, 1.0f, camera_params);
+
+						// Flat light-blue background, matching CPU registry's
+						// bg=(0.70,0.80,1.00) for this scene (see
+						// GpuCameraParams::backgroundColor's comment).
 						if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.70f, 0.80f, 1.00f);
 					}
 					break;
