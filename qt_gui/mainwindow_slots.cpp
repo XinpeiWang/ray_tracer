@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "scene_descriptor.h"
+#include "scene_metadata_client.h"
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QProcess>
@@ -226,20 +227,31 @@ void MainWindow::onSceneChanged(int index) {
 	int scene_id = (m_sceneCombo && index >= 0) ? m_sceneCombo->itemData(index).toInt() : index;
 	const SceneDesc* info = find_scene_desc(scene_id);
 	if (!info) return;
+
+	// GPU-compatibility is queried live from scene_metadata.dll (see
+	// scene_metadata_client.h) instead of a locally-duplicated field, so it
+	// can't drift from scene_registry.h the way scene_descriptor.h's old
+	// gpu_supported field already had once. If the DLL can't be queried
+	// (missing, wrong architecture, etc.) default to "supported" - the
+	// worse outcome there is an avoidable GPU render failure, not a
+	// misleadingly-blocked CPU-only scene.
+	bool gpuSupported = true;
+	SceneMetadataClient::gpuCompatible(scene_id, gpuSupported);
+
 	QString infoText = QString("<b>Description:</b> %1<br>").arg(info->description);
 	infoText += QString("<b>Performance:</b> %1<br>").arg(info->performance);
 	infoText += QString("<b>Recommended SPP:</b> %1<br>").arg(info->recommended_spp);
-	infoText += QString("<b>GPU Support:</b> %1<br>").arg(info->gpu_supported ? "Yes" : "CPU only");
+	infoText += QString("<b>GPU Support:</b> %1<br>").arg(gpuSupported ? "Yes" : "CPU only");
 	if (info->requires_files)
 		infoText += "<br><b style='color: #FFD700;'>&#9888; Requires external files</b>";
-	if (!info->gpu_supported)
+	if (!gpuSupported)
 		infoText += "<br><b style='color: #FF6B6B;'>&#9888; CPU renderer only</b>";
 	m_sceneInfoLabel->setText(infoText);
 	if (m_samplesSpinBox->value() == 100 || m_samplesSpinBox->value() == 200 || m_samplesSpinBox->value() == 500)
 		m_samplesSpinBox->setValue(info->recommended_spp);
 
 	// Auto-switch to CPU when scene doesn't support GPU
-	if (!info->gpu_supported && m_renderModeCombo->currentData().toBool()) {
+	if (!gpuSupported && m_renderModeCombo->currentData().toBool()) {
 		m_renderModeCombo->setCurrentIndex(1); // index 1 = CPU
 	}
 
@@ -254,14 +266,22 @@ void MainWindow::onSceneChanged(int index) {
 	// specifically exempted from that overwrite - see its own comment).
 	// The user can still freely adjust the camera afterward, same as for
 	// every other scene.
-	m_cameraPresetCombo->setCurrentIndex(7);
-	m_currentLookatX = info->lookat_x;
-	m_currentLookatY = info->lookat_y;
-	m_currentLookatZ = info->lookat_z;
-	m_cameraPosX->setValue(info->cam_x);
-	m_cameraPosY->setValue(info->cam_y);
-	m_cameraPosZ->setValue(info->cam_z);
-	refreshCameraDistanceDisplay();
+	//
+	// Also queried live from scene_metadata.dll rather than a duplicated
+	// table - if the query fails, leave the camera spinboxes exactly as
+	// they were (skip the reset) rather than falling back to a stale or
+	// wrong-scale default.
+	double cam_x, cam_y, cam_z, lookat_x, lookat_y, lookat_z;
+	if (SceneMetadataClient::recommendedCamera(scene_id, cam_x, cam_y, cam_z, lookat_x, lookat_y, lookat_z)) {
+		m_cameraPresetCombo->setCurrentIndex(7);
+		m_currentLookatX = lookat_x;
+		m_currentLookatY = lookat_y;
+		m_currentLookatZ = lookat_z;
+		m_cameraPosX->setValue(cam_x);
+		m_cameraPosY->setValue(cam_y);
+		m_cameraPosZ->setValue(cam_z);
+		refreshCameraDistanceDisplay();
+	}
 }
 
 void MainWindow::onProgressUpdate(int percentage) {

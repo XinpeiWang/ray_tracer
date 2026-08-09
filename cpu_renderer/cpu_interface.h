@@ -115,6 +115,12 @@ int cpu_scene_recommended_camera(int scene_id,
 	double* lookfrom_x, double* lookfrom_y, double* lookfrom_z,
 	double* lookat_x, double* lookat_y, double* lookat_z);
 
+/// Looks up scene_id (not index, like cpu_scene_recommended_camera above -
+/// unlike cpu_scene_gpu_compatible above, which is index-based) and returns
+/// whether gpu/optix/scene_builder.cpp has a case for it.
+/// @return 1 if GPU compatible, 0 if not (including if scene_id isn't found)
+int cpu_scene_gpu_compatible_by_id(int scene_id);
+
 #ifdef __cplusplus
 }
 #endif

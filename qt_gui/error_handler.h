@@ -5,6 +5,7 @@
 #include <QMap>
 #include <QStringList>
 #include "scene_descriptor.h"
+#include "scene_metadata_client.h"
 
 // ============================================================================
 // Qt GUI Error Handler
@@ -32,12 +33,20 @@ inline int maxSceneId() {
 }
 
 // "0 (Cornell Box), 2 (Checkered Spheres), ..." for every GPU-supported scene.
+// GPU-compatibility is queried live from scene_metadata.dll (see
+// scene_metadata_client.h) rather than a locally-duplicated field, so it
+// can't drift from scene_registry.h. Scenes are included if the query
+// fails (unlikely - the DLL is deployed alongside this GUI - but erring
+// toward listing a scene as GPU-supported is safer than erring toward
+// steering users away from one that actually works).
 inline QString gpuSupportedSceneList() {
 	int count = 0;
 	const SceneDesc* scenes = get_all_scenes(&count);
 	QStringList parts;
 	for (int i = 0; i < count; ++i) {
-		if (scenes[i].gpu_supported)
+		bool supported = true;
+		SceneMetadataClient::gpuCompatible(scenes[i].id, supported);
+		if (supported)
 			parts << QString("%1 (%2)").arg(scenes[i].id).arg(scenes[i].name);
 	}
 	return parts.join(", ");

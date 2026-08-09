@@ -17,10 +17,18 @@ SOURCES += \
 	mainwindow.cpp \
 	mainwindow_tabs.cpp \
 	mainwindow_style.cpp \
-	mainwindow_slots.cpp
+	mainwindow_slots.cpp \
+	scene_metadata_client.cpp
 
 HEADERS += \
-	mainwindow.h
+	mainwindow.h \
+	scene_metadata_client.h
+
+# scene_metadata.dll (MSVC-built, loaded dynamically at runtime via
+# LoadLibrary/GetProcAddress from kernel32 - see scene_metadata_client.cpp,
+# already linked implicitly by MinGW) is not linked here; it just needs to
+# end up alongside RayTracerGUI.exe in RayTracer_Package, which its own
+# post-build step already handles.
 
 # Platform-specific settings
 win32 {

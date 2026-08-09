@@ -315,3 +315,9 @@ extern "C" int cpu_scene_recommended_camera(int scene_id,
 	if (lookat_z) *lookat_z = cc.lookat_z;
 	return 1;
 }
+
+extern "C" int cpu_scene_gpu_compatible_by_id(int scene_id) {
+	const SceneDescriptor* s = find_scene(scene_id);
+	if (!s) return 0;
+	return s->gpu_compatible ? 1 : 0;
+}
