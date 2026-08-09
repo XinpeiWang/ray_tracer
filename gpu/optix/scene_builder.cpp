@@ -1732,6 +1732,15 @@ bool build_scene(
 						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
 						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
 						build_pinhole_camera_params(lookfrom, lookat, vup, 80.0f, aspect, 1.0f, camera_params);  // 80: wide angle for quads
+
+						// This scene has no emissive geometry at all (5 plain
+						// Lambertian quads) - matches CPU registry's
+						// bg=(0.70,0.80,1.00) for scene 5 (see
+						// GpuCameraParams::backgroundColor's comment). Without
+						// this the scene rendered totally black on GPU: no
+						// lights meant every path's only possible radiance was
+						// this background color, and it was never set.
+						if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.70f, 0.80f, 1.00f);
 					}
 					break;
 
