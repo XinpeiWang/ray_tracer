@@ -46,6 +46,10 @@ cpu_renderer/cpu_renderer/Win32/
 *.lo
 *.o
 *.obj
+# ...except real Wavefront OBJ mesh assets under models/ (e.g. scene 38's
+# stanford-bunny.obj) - *.obj above is meant for compiler build artifacts,
+# not 3D geometry that happens to share the extension.
+!models/*.obj
 
 # Backup / temp / stash files
 *.bak

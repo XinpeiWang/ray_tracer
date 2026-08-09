@@ -144,14 +144,14 @@ enum class MaterialType : int {
 	DielectricMedium = 13
 };
 
-// Texture kinds - see TextureData below. Matches the two CPU texture
-// classes that scene 8 (Final Scene) actually needs (src/TheRestOfYourLife/
-// texture.h's image_texture and noise_texture); other CPU texture classes
-// (checker_texture, marble_texture, mipmap_texture, ...) have no GPU
-// equivalent yet.
+// Texture kinds - see TextureData below. Matches three CPU texture classes
+// (src/TheRestOfYourLife/texture.h's image_texture, noise_texture, and
+// checker_texture); other CPU texture classes (marble_texture,
+// mipmap_texture, ...) have no GPU equivalent yet.
 enum class TextureKind : int {
 	Image = 0,
-	Noise = 1
+	Noise = 1,
+	Checker = 2
 };
 
 // One entry per texture, indexed by MaterialData::textureIdx. Image
@@ -162,10 +162,12 @@ enum class TextureKind : int {
 // rtw_stb_image.h's own byte layout exactly (3 bytes/pixel, row-major).
 struct TextureData {
 	TextureKind kind;
-	int pixelOffset;   // Image: byte offset into texturePixels. Unused for Noise.
-	int width;         // Image: pixel width. Unused for Noise.
-	int height;        // Image: pixel height. Unused for Noise.
-	float noiseScale;  // Noise: scale param (noise_texture's constructor arg). Unused for Image.
+	int pixelOffset;   // Image: byte offset into texturePixels. Unused otherwise.
+	int width;         // Image: pixel width. Unused otherwise.
+	int height;        // Image: pixel height. Unused otherwise.
+	float noiseScale;  // Noise: scale param. Checker: 1/scale (checker_texture's own inv_scale). Unused for Image.
+	float3 color1;     // Checker: "even" cell color. Unused otherwise.
+	float3 color2;     // Checker: "odd" cell color. Unused otherwise.
 };
 
 // Material data (packed for SBT)

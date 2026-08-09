@@ -504,6 +504,17 @@ __device__ __forceinline__ float3 sample_texture(int textureIdx, float u, float 
 		const unsigned char* px = params.texturePixels + tex.pixelOffset + (j * tex.width + i) * 3;
 		constexpr float kColorScale = 1.0f / 255.0f;
 		return make_float3(px[0] * kColorScale, px[1] * kColorScale, px[2] * kColorScale);
+	} else if (tex.kind == TextureKind::Checker) {
+		// Matches checker_texture::value() (texture.h:53-61) exactly: floor
+		// each world-space coordinate scaled by 1/scale, sum the three
+		// integers, and pick a color by parity - equality-to-zero on `%2`
+		// is sign-agnostic, so this is correct for negative coordinates too
+		// (just like the CPU version, which relies on the same C++ rule).
+		const int xi = static_cast<int>(floorf(tex.noiseScale * p.x));
+		const int yi = static_cast<int>(floorf(tex.noiseScale * p.y));
+		const int zi = static_cast<int>(floorf(tex.noiseScale * p.z));
+		const bool is_even = ((xi + yi + zi) % 2) == 0;
+		return is_even ? tex.color1 : tex.color2;
 	} else {
 		// Matches noise_texture::value() (texture.h:127-129) exactly:
 		// color(.5,.5,.5) * (1 + sin(scale*p.z + 10*turb(p,7))), where

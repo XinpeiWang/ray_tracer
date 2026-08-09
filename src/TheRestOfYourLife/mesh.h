@@ -46,7 +46,24 @@ inline std::shared_ptr<hittable> load_obj(
 		double scale = 1.0,
 		point3 offset = point3(0,0,0))
 {
+	// Hunt for the file the same way rtw_stb_image.h's rtw_image does for
+	// earthmap.jpg: try filepath as given first, then models/<filepath>
+	// climbing up to 5 parent directories, so a single copy of the asset at
+	// the repo root's models/ dir loads correctly regardless of which
+	// deploy directory (x64/Release, bin/Release, RayTracer_Package, ...)
+	// the renderer's current working directory happens to be.
 	std::ifstream file(filepath);
+	if (!file.is_open()) {
+		static const char* kSearchPrefixes[] = {
+			"models/", "../models/", "../../models/",
+			"../../../models/", "../../../../models/", "../../../../../models/"
+		};
+		for (const char* prefix : kSearchPrefixes) {
+			file.clear();
+			file.open(prefix + filepath);
+			if (file.is_open()) break;
+		}
+	}
 	if (!file.is_open())
 		throw std::runtime_error("load_obj: cannot open file: " + filepath);
 

@@ -68,6 +68,7 @@ namespace SceneNames {
     constexpr const char* PortalInfiniteLight  = "Portal Infinite Light";
     constexpr const char* RealisticCamera      = "Realistic Camera";
     constexpr const char* TriangleMesh         = "Triangle Mesh";
+    constexpr const char* StanfordBunny        = "Stanford Bunny";
 } // namespace SceneNames
 
 struct SceneDesc {
@@ -199,6 +200,9 @@ inline const SceneDesc* get_all_scenes(int* out_count = nullptr) {
 		{ 37, SceneNames::TriangleMesh,
 		   "Procedurally-generated icosahedron showcasing real triangle-mesh geometry (watertight Moller-Trumbore intersection)",
 		   "Fast",      100, false },
+		{ 38, SceneNames::StanfordBunny,
+		   "Classic Stanford bunny scan (69,451 triangles) in polished bronze, loaded from an external .obj file (requires models/stanford-bunny.obj)",
+		   "Very Slow", 150, true },
 	};
 	static const int kCount = (int)(sizeof(kScenes) / sizeof(kScenes[0]));
 	if (out_count) *out_count = kCount;

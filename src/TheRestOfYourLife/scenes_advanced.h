@@ -796,3 +796,43 @@ inline hittable_list build_triangle_mesh_scene() {
 	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
 	return world;
 }
+
+// ============================================================================
+// Scene 38: Stanford Bunny
+// The classic Stanford 3D Scanning Repository bunny (35,947 vertices, 69,451
+// triangles - the standard "bun_zipper" reconstruction, downloaded as
+// models/stanford-bunny.obj) rendered in polished bronze, sitting on a
+// checkered ground under an overhead area light. Unlike scene 37's
+// procedural icosahedron, this exercises mesh.h's load_obj() end-to-end
+// against a real, large, external asset - the file has positions only (no
+// vn/vt), so triangle::hit() falls back to flat per-face geometric normals
+// here too, same as scene 37. That ruled out a dielectric material here: a
+// glass surface refracts per-facet with no smooth normal interpolation to
+// hide it, so light scatters incoherently across adjacent faces instead of
+// converging into a clear "see-through" image - it renders as a matte,
+// frosted-looking blob rather than glass (confirmed by an earlier render of
+// this exact scene). Metal reflects the same per-facet normals but doesn't
+// need coherence to look right, so the facets read as an intentional
+// low-poly-statue style instead of a rendering artifact - same reasoning as
+// scene 37's own metal icosahedron.
+// scale/offset below were computed from the raw OBJ's own bounding box
+// (x:[-0.09469,0.06101] y:[0.03299,0.18732] z:[-0.06187,0.05880], i.e. a
+// real-world ~15cm scan) to sit the model on the ground plane (y=0) centered
+// on the origin at a ~3-unit height, matching scene 37's icosahedron scale.
+// ============================================================================
+inline hittable_list build_stanford_bunny() {
+	hittable_list world;
+
+	// Ground
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	auto bronze = make_shared<metal>(color(0.71, 0.43, 0.20), 0.15);
+	world.add(std::make_shared<triangle_mesh>(
+		"stanford-bunny.obj", bronze,
+		/*scale=*/19.4, point3(0.3267, -0.6398, 0.0298)));
+
+	// Area light
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}

@@ -9,6 +9,9 @@
 #include <iostream>
 #include <random>
 #include <string>
+#include <fstream>
+#include <sstream>
+#include <vector>
 
 #include "../../src/shared/conductor_data.h"
 #include "../../src/shared/cameras.h"
@@ -247,6 +250,93 @@ namespace {
 		tex.noiseScale = scale;
 		scene.textures.push_back(tex);
 		return static_cast<int>(scene.textures.size()) - 1;
+	}
+
+	// Registers a checker texture (no pixel data - see TextureKind::Checker
+	// in optix_types.h). Matches CPU's checker_texture(scale, c1, c2)
+	// constructor exactly (texture.h:50-51) - stores 1/scale directly in
+	// noiseScale so sample_texture() (optix_device_helpers.h) can multiply
+	// straight through, same as checker_texture's own inv_scale member.
+	inline int add_checker_texture_gpu(SceneData& scene, float scale, float3 color1, float3 color2) {
+		TextureData tex{};
+		tex.kind = TextureKind::Checker;
+		tex.pixelOffset = 0;
+		tex.width = 0;
+		tex.height = 0;
+		tex.noiseScale = 1.0f / scale;
+		tex.color1 = color1;
+		tex.color2 = color2;
+		scene.textures.push_back(tex);
+		return static_cast<int>(scene.textures.size()) - 1;
+	}
+
+	// Minimal Wavefront OBJ triangle loader for GPU scene building: loads
+	// positions ("v") and faces ("f", fan-triangulated, any "p", "p/t",
+	// "p//n" or "p/t/n" index format - only the position index is used)
+	// directly into SceneData::triangles, applying the same scale/offset
+	// transform CPU's src/TheRestOfYourLife/mesh.h::load_obj() takes. This
+	// is a bare-bones reimplementation rather than a call into mesh.h
+	// itself: that loader builds a CPU hittable_list/bvh_node of the full
+	// CPU material/hittable class hierarchy, which the GPU scene builder
+	// has no use for and otherwise never touches - GPU only needs the flat
+	// TriangleData array this writes straight into `scene`. No vn/vt/
+	// material handling (this codebase's one real .obj asset, the Stanford
+	// bunny, has none). Search path matches mesh.h's load_obj() exactly, so
+	// a single models/ asset works from both renderers regardless of the
+	// current working directory the renderer happens to run from.
+	inline void load_obj_triangles_gpu(SceneData& scene, const char* filename,
+			int materialIdx, float scale, float3 offset) {
+		std::ifstream file(filename);
+		if (!file.is_open()) {
+			static const char* kSearchPrefixes[] = {
+				"models/", "../models/", "../../models/",
+				"../../../models/", "../../../../models/", "../../../../../models/"
+			};
+			for (const char* prefix : kSearchPrefixes) {
+				file.clear();
+				file.open(std::string(prefix) + filename);
+				if (file.is_open()) break;
+			}
+		}
+		if (!file.is_open()) {
+			std::cerr << "[OptiX] Could not load mesh '" << filename
+					   << "' (tried a few relative paths) - scene will be missing this geometry.\n";
+			return;
+		}
+
+		std::vector<float3> positions;
+		std::string line;
+		while (std::getline(file, line)) {
+			if (line.empty() || line[0] == '#') continue;
+			std::istringstream ss(line);
+			std::string tok;
+			ss >> tok;
+			if (tok == "v") {
+				float x, y, z;
+				ss >> x >> y >> z;
+				positions.push_back(make_float3(x * scale + offset.x, y * scale + offset.y, z * scale + offset.z));
+			} else if (tok == "f") {
+				std::vector<int> idx;
+				std::string fv;
+				while (ss >> fv) {
+					int p = 0;
+					if (sscanf_s(fv.c_str(), "%d", &p) == 1 && p > 0)
+						idx.push_back(p - 1);
+				}
+				for (size_t i = 1; i + 1 < idx.size(); ++i) {
+					if (idx[0] < 0 || idx[0] >= static_cast<int>(positions.size()) ||
+						idx[i] < 0 || idx[i] >= static_cast<int>(positions.size()) ||
+						idx[i + 1] < 0 || idx[i + 1] >= static_cast<int>(positions.size()))
+						continue;
+					TriangleData t{};
+					t.p0 = positions[idx[0]];
+					t.p1 = positions[idx[i]];
+					t.p2 = positions[idx[i + 1]];
+					t.materialIdx = materialIdx;
+					scene.triangles.push_back(t);
+				}
+			}
+		}
 	}
 }
 
@@ -1685,6 +1775,45 @@ static void build_triangle_mesh_scene_gpu(SceneData& scene) {
 	scene.isLightSphere.push_back(true);
 }
 
+/// @brief Scene 38: Stanford Bunny. Matches CPU build_stanford_bunny()
+/// (src/TheRestOfYourLife/scenes_advanced.h) exactly: same checkered ground
+/// (now a real GPU checker texture, see add_checker_texture_gpu - unlike
+/// scene 37's flat-gray ground approximation, added before this codebase
+/// had any GPU texture support at all), same bronze metal material, same
+/// scale/offset/light placement. The bunny geometry itself is loaded via
+/// load_obj_triangles_gpu() from the same models/stanford-bunny.obj CPU
+/// loads - 69,451 real triangles, not a procedural stand-in like scene 37's
+/// icosahedron, so this is the actual GPU exercise of load_obj_triangles_gpu
+/// against a large external asset.
+static void build_stanford_bunny_gpu(SceneData& scene) {
+	// Ground
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
+		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
+	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+	ground_mat.textureIdx = checkerTexIdx;
+	scene.materials.push_back(ground_mat);
+	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	// Bunny mesh, in polished bronze - matches CPU's exact scale/offset
+	// (both computed from the raw OBJ's own bounding box, see CPU's
+	// build_stanford_bunny() comment for the numbers).
+	const int mat_bunny = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.71f, 0.43f, 0.20f), 0.15f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	load_obj_triangles_gpu(scene, "stanford-bunny.obj", mat_bunny,
+		/*scale=*/19.4f, make_float3(0.3267f, -0.6398f, 0.0298f));
+
+	// Area light
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
+	scene.spheres.push_back(light);
+	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+	scene.isLightSphere.push_back(true);
+}
+
 /// @brief Scene 8: Final Scene (Ray Tracing: The Next Week finale).
 /// Matches CPU build_final_scene() (src/TheRestOfYourLife/scenes_book.h)
 /// structurally: 400-box randomized-height ground, area light quad, moving
@@ -2343,6 +2472,20 @@ bool build_scene(
 								if (out_camera_extra) {
 									// Matches CPU CameraConfig bg for scene 37 (dim ambient - real
 									// light sphere is the main source, matches scene 19's style).
+									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
+								}
+								break;
+							}
+
+							case 38: {  // Stanford Bunny (see build_stanford_bunny_gpu's comment)
+								build_stanford_bunny_gpu(scene);
+								const float3 lookfrom = make_float3(0.0f, 3.0f, 7.0f);
+								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 38
+								if (out_camera_extra) {
+									// Matches CPU CameraConfig bg for scene 38.
 									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
 								}
 								break;
