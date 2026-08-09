@@ -1,22 +1,36 @@
-// scene_descriptor.h -- Presentational scene metadata (name, description,
-// performance hint, recommended SPP, whether external files are needed).
-// Shared by the Qt GUI and error_handler.h.
+// scene_descriptor.h -- Canonical scene NAME constants only.
 //
-// Camera position and GPU-compatibility are NOT here - they live only in
-// src/TheRestOfYourLife/scene_registry.h and are queried live via
-// scene_metadata.dll / qt_gui/scene_metadata_client.h, so there is exactly
-// one place that can drift from the actual renderer behavior, not two.
+// All scene METADATA (description, performance hint, recommended SPP,
+// requires_files, gpu_compatible, camera) lives solely in
+// src/TheRestOfYourLife/scene_registry.h's SceneDescriptor table, queried
+// live by the Qt GUI via scene_metadata.dll / qt_gui/scene_metadata_client.h
+// - there is exactly one place that can drift from actual renderer
+// behavior, not two. This header used to also carry its own duplicate
+// presentational table (SceneDesc/kAllScenes/get_all_scenes/
+// find_scene_desc) so the GUI - which can't link scene_registry.h's full
+// CPU hittable/material class hierarchy - could read it without the DLL
+// bridge; that duplication drifted out of sync once already (scene 1 got
+// gpu_compatible=true in the registry without its mirror row here being
+// updated, so the GUI kept showing "CPU only" until fixed separately) and
+// was removed once scene_metadata.dll grew accessors for every field, not
+// just camera/gpu_compatible.
+//
+// SceneNames stays here (rather than moving into scene_registry.h itself)
+// because it's a lightweight, dependency-free header both scene_registry.h
+// (CPU) and gpu/optix/scene_builder.cpp (GPU) #include just for these
+// string constants, without pulling in anything heavier.
 //
 // To add a scene:
 //   1. Add a name constant in SceneNames below
-//   2. Add a row in kAllScenes[] using that constant
-//   3. Add a builder in src/TheRestOfYourLife/scenes.h
-//   4. Add the scene to scene_registry.h (CPU) using the same SceneNames
-//      constant, including its CameraConfig - this is what
-//      scene_metadata.dll serves to the GUI, no separate step needed here
-//   5. Add a case in gpu/optix/scene_builder.cpp (GPU) and set
+//   2. Add a builder in src/TheRestOfYourLife/scenes.h (or scenes_book.h/
+//      scenes_advanced.h)
+//   3. Add the scene's row to scene_registry.h (CPU) using the same
+//      SceneNames constant, including its CameraConfig - scene_metadata.dll
+//      serves every field of this row to the GUI live, no separate step
+//      needed here
+//   4. Optionally add a case in gpu/optix/scene_builder.cpp (GPU) and set
 //      scene_registry.h's gpu_compatible = true - scene_metadata.dll picks
-//      this up automatically, no separate flag to set in this file
+//      this up automatically too
 
 #pragma once
 
@@ -25,8 +39,8 @@
 
 // -----------------------------------------------------------------------
 // Canonical scene name constants
-// Use these everywhere (registry, GPU builder, tests) so names can never
-// drift between the two tables.
+// Use these everywhere (registry, GPU builder, tests) rather than raw
+// string literals, so a scene's name can never drift between call sites.
 // -----------------------------------------------------------------------
 namespace SceneNames {
     constexpr const char* CornellBox          = "Cornell Box";
@@ -70,157 +84,5 @@ namespace SceneNames {
     constexpr const char* TriangleMesh         = "Triangle Mesh";
     constexpr const char* StanfordBunny        = "Stanford Bunny";
 } // namespace SceneNames
-
-struct SceneDesc {
-	int         id;
-	const char* name;
-	const char* description;
-	const char* performance;   // "Fast" | "Medium" | "Slow" | "Very Slow"
-	int         recommended_spp;
-	bool        requires_files; // needs external assets (e.g. earthmap.jpg)
-};
-
-// -----------------------------------------------------------------------
-// Canonical list — edit ONLY here when adding / changing scenes
-// -----------------------------------------------------------------------
-inline const SceneDesc* get_all_scenes(int* out_count = nullptr) {
-	static const SceneDesc kScenes[] = {
-		{  0, SceneNames::CornellBox,
-		   "Classic Cornell box with glass sphere and aluminum box",
-		   "Medium",    100, false },
-		{  1, SceneNames::BouncingSpheres,
-		   "Random spheres with checker ground (In One Weekend final)",
-		   "Slow",      100, false },
-		{  2, SceneNames::CheckeredSpheres,
-		   "Two spheres with procedural checker texture",
-		   "Fast",      100, false },
-		{  3, SceneNames::Earth,
-		   "Globe with earth texture mapping (requires earthmap.jpg)",
-		   "Fast",      100, true },
-		{  4, SceneNames::PerlinSpheres,
-		   "Spheres with Perlin noise marble texture",
-		   "Fast",      100, false },
-		{  5, SceneNames::ColoredQuads,
-		   "Five colored quad primitives",
-		   "Fast",      100, false },
-		{  6, SceneNames::SimpleLight,
-		   "Perlin spheres with emissive light sources",
-		   "Fast",      100, false },
-		{  7, SceneNames::CornellSmoke,
-		   "Cornell box with volumetric fog",
-		   "Slow",      200, false },
-		{  8, SceneNames::FinalScene,
-		   "Complex scene from The Next Week",
-		   "Very Slow", 500, false },
-		{  9, SceneNames::RoughMetalSpheres,
-		   "Five GGX spheres roughness 0.05 to 0.8 -- showcases microfacet BRDF",
-		   "Medium",    200, false },
-		{ 10, SceneNames::CornellRoughMetal,
-		   "Cornell box with rough aluminum box and rough gold sphere",
-		   "Medium",    200, false },
-		{ 11, SceneNames::CornellRoughGlass,
-		   "Cornell box with a GGX rough-dielectric sphere (pbrt-v4 RoughDielectricBxDF)",
-		   "Medium",    200, false },
-		{ 12, SceneNames::CornellConductor,
-		   "Cornell box with polished gold sphere and aluminium box using GGX VNDF + complex Fresnel (pbrt-v4 ConductorBxDF)",
-		   "Medium",    200, false },
-		{ 13, SceneNames::CornellCoatedDiffuse,
-		   "Cornell box with blue coated-diffuse sphere and red coated-diffuse box (pbrt-v4 CoatedDiffuseBxDF)",
-		   "Medium",    200, false },
-		{ 14, SceneNames::CornellThinGlass,
-		   "Cornell box with a vertical thin-glass panel, analytic multi-bounce Fresnel (pbrt-v4 ThinDielectricBxDF)",
-		   "Medium",    200, false },
-		{ 15, SceneNames::CornellCoatedConductor,
-		   "Cornell box with lacquered-gold sphere and lacquered-copper box (pbrt-v4 CoatedConductorBxDF)",
-		   "Medium",    200, false },
-		{ 16, SceneNames::CornellWaxSlab,
-		   "Cornell box with a wax sphere that diffusely reflects and transmits light (pbrt-v4 DiffuseTransmissionBxDF)",
-		   "Medium",    200, false },
-		{ 17, SceneNames::CornellCrystal,
-		   "Cornell box with a crystal sphere using Fresnel-weighted diffuse reflection (pbrt-v4 NormalizedFresnelBxDF)",
-		   "Medium",    200, false },
-		{ 18, SceneNames::PrincipledShowcase,
-		   "Row of spheres from matte plastic to metallic with clearcoat (pbrt-v4 PrincipledBxDF)",
-		   "Medium",    200, false },
-		{ 19, SceneNames::HairFibers,
-		   "Sphere cluster with hair/fur fiber scattering (pbrt-v4 HairBxDF)",
-		   "Medium",    200, false },
-		{ 20, SceneNames::NormalMappedCornell,
-		   "Cornell box with procedural bump-mapped back wall and normal-mapped sphere (pbrt-v4 NormalMap/BumpMap)",
-		   "Medium",    200, false },
-		{ 21, SceneNames::SubsurfaceSlab,
-		   "Cornell box with translucent wax slab and jade sphere using subsurface-like scattering",
-		   "Slow",      300, false },
-		{ 22, SceneNames::DepthOfField,
-		   "Row of spheres with defocus blur showing depth-of-field from the thin-lens camera model",
-		   "Medium",    200, false },
-		{ 23, SceneNames::BilinearPatchScene,
-		   "Cornell box with curved bilinear patch saddle surface (pbrt-v4 BilinearPatch shape)",
-		   "Medium",    200, false },
-		// pbrt-v4 light / camera / medium showcase scenes
-		{ 24, SceneNames::HdriSky,
-		   "Open scene lit by a procedural gradient sky (pbrt-v4 ImageInfiniteLight / sky_light)",
-		   "Medium",    200, false },
-		{ 25, SceneNames::SpotlightCornell,
-		   "Cornell box lit by a spotlight with smooth penumbra (pbrt-v4 SpotLight)",
-		   "Medium",    200, false },
-		{ 26, SceneNames::DistantLightCornell,
-		   "Cornell box lit by a parallel sun-like distant light (pbrt-v4 DistantLight)",
-		   "Medium",    200, false },
-		{ 27, SceneNames::PointLightCornell,
-		   "Cornell box lit by a single overhead point light with 1/r^2 falloff (pbrt-v4 PointLight)",
-		   "Medium",    200, false },
-		{ 28, SceneNames::GoniometricLight,
-		   "Cornell box lit by a goniometric (IES-profile) point light (pbrt-v4 GoniometricLight)",
-		   "Medium",    200, false },
-		{ 29, SceneNames::ProjectionLight,
-		   "Cornell box with a slide-projector beam casting a checkerboard pattern (pbrt-v4 ProjectionLight)",
-		   "Medium",    200, false },
-		{ 30, SceneNames::HomogeneousMedium,
-		   "Cornell box filled with a homogeneous scattering fog (pbrt-v4 HomogeneousMedium / HenyeyGreenstein)",
-		   "Slow",      300, false },
-		{ 31, SceneNames::CloudMedium,
-		   "Open scene with a procedural Perlin-noise cloud volume (pbrt-v4 CloudMedium)",
-		   "Slow",      300, false },
-		{ 32, SceneNames::OrthographicCamera,
-		   "Geometric showcase rendered with an orthographic (parallel-projection) camera (pbrt-v4 OrthographicCamera)",
-		   "Fast",      100, false },
-		{ 33, SceneNames::SphericalCamera,
-		   "360-degree equirectangular panorama from a spherical camera (pbrt-v4 SphericalCamera)",
-		   "Medium",    200, false },
-		{ 34, SceneNames::MeasuredBrdf,
-		   "Sphere cluster with measured BRDF material using tabulated RGL data (pbrt-v4 MeasuredBxDF)",
-		   "Medium",    200, false },
-		{ 35, SceneNames::PortalInfiniteLight,
-		   "Room scene with a portal window sampling the sky through a planar quad (pbrt-v4 PortalImageInfiniteLight)",
-		   "Slow",      300, false },
-		{ 36, SceneNames::RealisticCamera,
-		   "Spheres rendered through a thin-lens with realistic lens-element bokeh (pbrt-v4 RealisticCamera)",
-		   "Medium",    200, false },
-		{ 37, SceneNames::TriangleMesh,
-		   "Procedurally-generated icosahedron showcasing real triangle-mesh geometry (watertight Moller-Trumbore intersection)",
-		   "Fast",      100, false },
-		{ 38, SceneNames::StanfordBunny,
-		   "Classic Stanford bunny scan (69,451 triangles) in polished bronze, loaded from an external .obj file (requires models/stanford-bunny.obj)",
-		   "Very Slow", 150, true },
-	};
-	static const int kCount = (int)(sizeof(kScenes) / sizeof(kScenes[0]));
-	if (out_count) *out_count = kCount;
-	return kScenes;
-}
-
-inline const SceneDesc* find_scene_desc(int id) {
-	int count = 0;
-	const SceneDesc* scenes = get_all_scenes(&count);
-	for (int i = 0; i < count; ++i)
-		if (scenes[i].id == id) return &scenes[i];
-	return nullptr;
-}
-
-inline int scene_desc_count() {
-	int count = 0;
-	get_all_scenes(&count);
-	return count;
-}
 
 #endif // __cplusplus

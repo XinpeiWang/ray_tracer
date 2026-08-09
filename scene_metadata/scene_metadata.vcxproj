@@ -28,7 +28,16 @@
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v145</PlatformToolset>
-    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <!-- WholeProgramOptimization (LTCG) removed: this DLL links the whole
+         cpu_renderer.lib (which contains a /GL-compiled object,
+         stb_image_impl.obj - see scene_metadata_dll.cpp's own comment),
+         and that combination reproducibly hit "fatal error LNK1103:
+         debugging information corrupt" here too, the same class of MSVC
+         LTCG+/GL linker fragility already worked around in
+         tests/ray_tracer_tests.vcxproj and launcher/launcher.vcxproj. This
+         DLL is a handful of trivial passthrough exports (see
+         scene_metadata_dll.cpp) - there's no meaningful optimization to
+         lose by dropping LTCG here. -->
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />

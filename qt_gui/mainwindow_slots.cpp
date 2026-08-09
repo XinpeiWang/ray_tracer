@@ -1,5 +1,4 @@
 #include "mainwindow.h"
-#include "scene_descriptor.h"
 #include "scene_metadata_client.h"
 #include <QFileDialog>
 #include <QMessageBox>
@@ -244,30 +243,35 @@ void MainWindow::refreshCameraDistanceDisplay() {
 
 void MainWindow::onSceneChanged(int index) {
 	int scene_id = (m_sceneCombo && index >= 0) ? m_sceneCombo->itemData(index).toInt() : index;
-	const SceneDesc* info = find_scene_desc(scene_id);
-	if (!info) return;
 
-	// GPU-compatibility is queried live from scene_metadata.dll (see
-	// scene_metadata_client.h) instead of a locally-duplicated field, so it
+	// Every field here is queried live from scene_metadata.dll (see
+	// scene_metadata_client.h) instead of a locally-duplicated table, so it
 	// can't drift from scene_registry.h the way scene_descriptor.h's old
-	// gpu_supported field already had once. If the DLL can't be queried
-	// (missing, wrong architecture, etc.) default to "supported" - the
-	// worse outcome there is an avoidable GPU render failure, not a
-	// misleadingly-blocked CPU-only scene.
+	// copy already had once. An empty description means the DLL couldn't
+	// be queried or scene_id wasn't found.
+	QString description = SceneMetadataClient::sceneDescription(scene_id);
+	if (description.isEmpty()) return;
+
+	// GPU-compatibility defaults to "supported" if the DLL can't be
+	// queried (missing, wrong architecture, etc.) - the worse outcome
+	// there is an avoidable GPU render failure, not a misleadingly-blocked
+	// CPU-only scene.
 	bool gpuSupported = true;
 	SceneMetadataClient::gpuCompatible(scene_id, gpuSupported);
 
-	QString infoText = QString("<b>Description:</b> %1<br>").arg(info->description);
-	infoText += QString("<b>Performance:</b> %1<br>").arg(info->performance);
-	infoText += QString("<b>Recommended SPP:</b> %1<br>").arg(info->recommended_spp);
+	int recommendedSpp = SceneMetadataClient::sceneRecommendedSpp(scene_id);
+
+	QString infoText = QString("<b>Description:</b> %1<br>").arg(description);
+	infoText += QString("<b>Performance:</b> %1<br>").arg(SceneMetadataClient::scenePerformance(scene_id));
+	infoText += QString("<b>Recommended SPP:</b> %1<br>").arg(recommendedSpp);
 	infoText += QString("<b>GPU Support:</b> %1<br>").arg(gpuSupported ? "Yes" : "CPU only");
-	if (info->requires_files)
+	if (SceneMetadataClient::sceneRequiresFiles(scene_id))
 		infoText += "<br><b style='color: #FFD700;'>&#9888; Requires external files</b>";
 	if (!gpuSupported)
 		infoText += "<br><b style='color: #FF6B6B;'>&#9888; CPU renderer only</b>";
 	m_sceneInfoLabel->setText(infoText);
 	if (m_samplesSpinBox->value() == 100 || m_samplesSpinBox->value() == 200 || m_samplesSpinBox->value() == 500)
-		m_samplesSpinBox->setValue(info->recommended_spp);
+		m_samplesSpinBox->setValue(recommendedSpp);
 
 	// Auto-switch to CPU when scene doesn't support GPU
 	if (!gpuSupported && m_renderModeCombo->currentData().toBool()) {

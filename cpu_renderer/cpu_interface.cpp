@@ -321,3 +321,28 @@ extern "C" int cpu_scene_gpu_compatible_by_id(int scene_id) {
 	if (!s) return 0;
 	return s->gpu_compatible ? 1 : 0;
 }
+
+extern "C" const char* cpu_scene_name_by_id(int scene_id) {
+	const SceneDescriptor* s = find_scene(scene_id);
+	return s ? s->name : "";
+}
+
+extern "C" const char* cpu_scene_description_by_id(int scene_id) {
+	const SceneDescriptor* s = find_scene(scene_id);
+	return s ? s->description : "";
+}
+
+extern "C" const char* cpu_scene_performance_by_id(int scene_id) {
+	const SceneDescriptor* s = find_scene(scene_id);
+	return s ? s->performance : "";
+}
+
+extern "C" int cpu_scene_recommended_spp_by_id(int scene_id) {
+	const SceneDescriptor* s = find_scene(scene_id);
+	return s ? s->recommended_spp : 100;
+}
+
+extern "C" int cpu_scene_requires_files_by_id(int scene_id) {
+	const SceneDescriptor* s = find_scene(scene_id);
+	return (s && s->requires_files) ? 1 : 0;
+}

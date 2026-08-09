@@ -1,5 +1,5 @@
 #include "mainwindow.h"
-#include "scene_descriptor.h"
+#include "scene_metadata_client.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -34,11 +34,19 @@ void MainWindow::createBasicTab() {
 	QHBoxLayout *sceneRow = new QHBoxLayout();
 	m_sceneCombo = new QComboBox(basicTab);
 	{
-		int count = 0;
-		const SceneDesc* scenes = get_all_scenes(&count);
-		for (int i = 0; i < count; ++i) {
-			QString label = QString("[%1] %2").arg(scenes[i].id).arg(scenes[i].name);
-			m_sceneCombo->addItem(label, scenes[i].id);
+		// Ids are contiguous from 0 (tests/unit/scene_registry_tests.cpp's
+		// IDsAreContiguousFromZero enforces this), so counting up to
+		// sceneCount() and querying each id directly is enough - no
+		// separate index-vs-id translation needed here.
+		int count = SceneMetadataClient::sceneCount();
+		if (count <= 0) {
+			QMessageBox::critical(basicTab, "Scene Metadata Unavailable",
+				"Could not load scene_metadata.dll, so the scene list is empty. "
+				"Make sure scene_metadata.dll is present alongside RayTracerGUI.exe.");
+		}
+		for (int id = 0; id < count; ++id) {
+			QString label = QString("[%1] %2").arg(id).arg(SceneMetadataClient::sceneName(id));
+			m_sceneCombo->addItem(label, id);
 		}
 	}
 	styleComboBox(m_sceneCombo);

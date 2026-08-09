@@ -32,3 +32,36 @@ SCENE_METADATA_API int scene_metadata_recommended_camera(int scene_id,
 	return cpu_scene_recommended_camera(scene_id, lookfrom_x, lookfrom_y, lookfrom_z,
 	                                     lookat_x, lookat_y, lookat_z);
 }
+
+// Everything below serves the presentational fields (name/description/
+// performance/recommended_spp/requires_files) that used to live in the
+// GUI's own duplicated src/shared/scene_descriptor.h table - see that
+// header's comment for why it was removed. scene_metadata_count() plus a
+// by-id lookup per field is all the GUI needs to enumerate every scene
+// (ids are contiguous from 0, enforced by
+// tests/unit/scene_registry_tests.cpp's IDsAreContiguousFromZero), so
+// there's no separate by-index-vs-by-id split here the way cpu_interface.h
+// has for its own historical reasons.
+SCENE_METADATA_API int scene_metadata_count() {
+	return cpu_scene_count();
+}
+
+SCENE_METADATA_API const char* scene_metadata_name(int scene_id) {
+	return cpu_scene_name_by_id(scene_id);
+}
+
+SCENE_METADATA_API const char* scene_metadata_description(int scene_id) {
+	return cpu_scene_description_by_id(scene_id);
+}
+
+SCENE_METADATA_API const char* scene_metadata_performance(int scene_id) {
+	return cpu_scene_performance_by_id(scene_id);
+}
+
+SCENE_METADATA_API int scene_metadata_recommended_spp(int scene_id) {
+	return cpu_scene_recommended_spp_by_id(scene_id);
+}
+
+SCENE_METADATA_API int scene_metadata_requires_files(int scene_id) {
+	return cpu_scene_requires_files_by_id(scene_id);
+}

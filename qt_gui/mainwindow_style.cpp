@@ -1,5 +1,4 @@
 #include "mainwindow.h"
-#include "scene_descriptor.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -339,6 +338,31 @@ void MainWindow::styleGroupBox(QGroupBox *box) {
 
 void MainWindow::styleComboBox(QComboBox *combo) {
 	QAbstractItemView *view = combo->view();
+
+	// Cap the popup's visible rows so it scrolls instead of growing past
+	// the screen - matters most for m_sceneCombo (39 scenes and counting);
+	// harmless for the shorter dropdowns (mode/quality/resolution/camera
+	// presets), which never reach this count anyway.
+	// setMaxVisibleItems() alone doesn't reliably constrain the popup here
+	// (confirmed live - the popup still grew to fit every item, no
+	// scrollbar) - the Fusion style forced onto the view below, combined
+	// with this QSS's `min-height: 32px` per item, apparently isn't what
+	// Qt's own maxVisibleItems sizing math measures against on this style/
+	// platform combination. A hard pixel cap on the view itself sidesteps
+	// that: QAbstractItemView shows a scrollbar automatically once content
+	// exceeds its viewport height, regardless of how that height was set.
+	combo->setMaxVisibleItems(12);
+	view->setMaximumHeight(420);
+	// The view alone scrolling correctly wasn't enough - confirmed live,
+	// the popup's own top-level container window (a separate widget
+	// QComboBox lazily creates the first time view() is called, sized from
+	// its own pre-QSS sizeHint estimate) stayed at the full uncapped
+	// height, leaving a large dead/empty area around the now-properly-
+	// clamped-and-scrollable view floating inside it. Cap the container
+	// too, once it exists (immediately, since accessing view() above is
+	// exactly what creates it).
+	if (QWidget *popupContainer = view->parentWidget())
+		popupContainer->setMaximumHeight(420);
 
 	// Force Fusion style on the popup so Qt honours the stylesheet
 	// instead of deferring to the Windows native list-box renderer.

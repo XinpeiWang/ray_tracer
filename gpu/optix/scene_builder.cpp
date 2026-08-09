@@ -3,7 +3,13 @@
 
 #include "scene_builder.h"
 #include "optix_math_helpers.h"
-#include "../../src/shared/scene_descriptor.h"
+// Declarations only (extern "C", no scene_registry.h class hierarchy) -
+// the actual implementation lives in cpu_renderer.lib, resolved at final
+// link time exactly like stb_image.h's stbi_loadf above (see that
+// include's own comment) - both launcher.vcxproj and
+// tests/ray_tracer_tests.vcxproj already link cpu_renderer.lib alongside
+// this project's own output.
+#include "../../cpu_renderer/cpu_interface.h"
 #include <cmath>
 #include <cassert>
 #include <iostream>
@@ -2492,9 +2498,9 @@ bool build_scene(
 							}
 
 							default: {
-									const SceneDesc* desc = find_scene_desc(scene_id);
-									if (desc) {
-										std::cerr << "[OptiX] Scene '" << desc->name
+									const char* name = cpu_scene_name_by_id(scene_id);
+									if (name && name[0] != '\0') {
+										std::cerr << "[OptiX] Scene '" << name
 											  << "' (id=" << scene_id << ") is not implemented for GPU rendering.\n"
 											  << "[OptiX] Use CPU renderer for this scene.\n";
 									} else {

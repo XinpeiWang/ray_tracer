@@ -4,7 +4,6 @@
 #include <QString>
 #include <QMap>
 #include <QStringList>
-#include "scene_descriptor.h"
 #include "scene_metadata_client.h"
 
 // ============================================================================
@@ -18,36 +17,35 @@
 
 namespace ErrorHandler {
 
-// Scene-count/GPU-support text below is generated from get_all_scenes()
-// rather than hardcoded, so it can't go stale the way it did previously
-// (this file said "Scene ID must be between 0 and 8" and separately
-// "0-36" for the same error code, and claimed GPU support for only 4 of
-// the 11 GPU-capable scenes while the total scene count had grown from
-// 9 to 37).
+// Scene-count/GPU-support text below is generated live from
+// scene_metadata.dll rather than hardcoded, so it can't go stale the way
+// it did previously (this file said "Scene ID must be between 0 and 8"
+// and separately "0-36" for the same error code, and claimed GPU support
+// for only 4 of the 11 GPU-capable scenes while the total scene count had
+// grown from 9 to 37).
 
 // Highest valid scene ID (scene count - 1).
 inline int maxSceneId() {
-	int count = 0;
-	get_all_scenes(&count);
+	int count = SceneMetadataClient::sceneCount();
 	return count > 0 ? count - 1 : 0;
 }
 
 // "0 (Cornell Box), 2 (Checkered Spheres), ..." for every GPU-supported scene.
-// GPU-compatibility is queried live from scene_metadata.dll (see
-// scene_metadata_client.h) rather than a locally-duplicated field, so it
-// can't drift from scene_registry.h. Scenes are included if the query
-// fails (unlikely - the DLL is deployed alongside this GUI - but erring
-// toward listing a scene as GPU-supported is safer than erring toward
-// steering users away from one that actually works).
+// Both count and per-scene GPU-compatibility are queried live from
+// scene_metadata.dll (see scene_metadata_client.h) rather than a
+// locally-duplicated field, so this can't drift from scene_registry.h.
+// Scenes are included if the query fails (unlikely - the DLL is deployed
+// alongside this GUI - but erring toward listing a scene as GPU-supported
+// is safer than erring toward steering users away from one that actually
+// works).
 inline QString gpuSupportedSceneList() {
-	int count = 0;
-	const SceneDesc* scenes = get_all_scenes(&count);
+	int count = SceneMetadataClient::sceneCount();
 	QStringList parts;
-	for (int i = 0; i < count; ++i) {
+	for (int id = 0; id < count; ++id) {
 		bool supported = true;
-		SceneMetadataClient::gpuCompatible(scenes[i].id, supported);
+		SceneMetadataClient::gpuCompatible(id, supported);
 		if (supported)
-			parts << QString("%1 (%2)").arg(scenes[i].id).arg(scenes[i].name);
+			parts << QString("%1 (%2)").arg(id).arg(SceneMetadataClient::sceneName(id));
 	}
 	return parts.join(", ");
 }

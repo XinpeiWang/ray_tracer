@@ -1,16 +1,19 @@
 #pragma once
-// scene_registry.h -- CPU scene registry (pbrt-v4 SceneEntity pattern)
+// scene_registry.h -- CPU scene registry (pbrt-v4 SceneEntity pattern),
+// the sole source of truth for scene metadata (see SceneDescriptor's
+// gpu_compatible field comment below for why there's only one table).
 //
-// Scene names are defined as constants in src/shared/scene_descriptor.h (SceneNames::).
-// Always use SceneNames:: constants here -- never raw string literals -- so both
-// tables can never drift out of sync.
+// Scene names are defined as constants in src/shared/scene_descriptor.h
+// (SceneNames::). Always use SceneNames:: constants here -- never raw
+// string literals -- so a name can never drift between call sites.
 //
 // To add a new scene:
 //   1. Add a SceneNames:: constant in scene_descriptor.h
-//   2. Add a row in scene_descriptor.h kScenes[]
-//   3. Add a builder function in scenes.h
-//   4. Add one SceneDescriptor entry in get_scene_registry() below using SceneNames::
-//   Done -- cpu_interface and GUI pick it up automatically.
+//   2. Add a builder function in scenes.h (or scenes_book.h/scenes_advanced.h)
+//   3. Add one SceneDescriptor entry in get_scene_registry() below using SceneNames::
+//   Done -- cpu_interface.cpp's C API and scene_metadata.dll (and through
+//   it, the GUI) pick it up automatically, no other file to touch unless
+//   you're also adding GPU support (see gpu/optix/scene_builder.cpp).
 
 #include "../shared/scene_descriptor.h"
 #include "scenes.h"
@@ -47,13 +50,15 @@ struct SceneDescriptor {
     const char* performance;   // "Fast" | "Medium" | "Slow" | "Very Slow"
     int         recommended_spp;
     bool        requires_files;
-    // NOT read by the Qt GUI or qt_gui/error_handler.h - they read the
-    // separate, independently-maintained `gpu_supported` field in
-    // src/shared/scene_descriptor.h's kScenes[] table instead. Keep both
-    // flags in sync by hand when adding/removing GPU support for a scene;
-    // nothing enforces it (this exact drift happened once already: scene 1
-    // got gpu_compatible=true here without its scene_descriptor.h row being
-    // updated, so the GUI kept showing "CPU only" until fixed separately).
+    // Every field above and this one are queried live by the Qt GUI via
+    // scene_metadata.dll (see qt_gui/scene_metadata_client.h) rather than
+    // a separate, independently-maintained copy - this struct is now the
+    // sole source of truth for scene metadata (src/shared/scene_descriptor.h
+    // used to duplicate id/name/description/performance/recommended_spp/
+    // requires_files in its own kScenes[] table; that drifted out of sync
+    // once already - scene 1 got gpu_compatible=true here without its
+    // scene_descriptor.h row being updated, so the GUI kept showing "CPU
+    // only" until fixed separately - which is why that table was removed).
     bool        gpu_compatible;
     CameraConfig camera;
     std::function<hittable_list()>                       build_world;
@@ -486,7 +491,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         },
         {
             38, SceneNames::StanfordBunny,
-            "Classic Stanford bunny scan (69,451 triangles) in polished bronze, loaded from an external .obj file",
+            "Classic Stanford bunny scan (69,451 triangles) in polished bronze, loaded from an external .obj file (requires models/stanford-bunny.obj)",
             "Very Slow", 150, true, true,
             { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
             build_stanford_bunny,

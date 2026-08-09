@@ -10,11 +10,20 @@ namespace {
 
 typedef int (*GpuCompatibleFn)(int);
 typedef int (*RecommendedCameraFn)(int, double*, double*, double*, double*, double*, double*);
+typedef int (*CountFn)();
+typedef const char* (*StringByIdFn)(int);
+typedef int (*IntByIdFn)(int);
 
 struct DllHandle {
 	HMODULE module = nullptr;
 	GpuCompatibleFn gpuCompatibleFn = nullptr;
 	RecommendedCameraFn recommendedCameraFn = nullptr;
+	CountFn countFn = nullptr;
+	StringByIdFn nameFn = nullptr;
+	StringByIdFn descriptionFn = nullptr;
+	StringByIdFn performanceFn = nullptr;
+	IntByIdFn recommendedSppFn = nullptr;
+	IntByIdFn requiresFilesFn = nullptr;
 };
 
 // Callers span both the GUI thread (onSceneChanged, onRenderClicked) and
@@ -34,12 +43,23 @@ DllHandle& handle() {
 			GetProcAddress(h.module, "scene_metadata_gpu_compatible"));
 		h.recommendedCameraFn = reinterpret_cast<RecommendedCameraFn>(
 			GetProcAddress(h.module, "scene_metadata_recommended_camera"));
+		h.countFn = reinterpret_cast<CountFn>(
+			GetProcAddress(h.module, "scene_metadata_count"));
+		h.nameFn = reinterpret_cast<StringByIdFn>(
+			GetProcAddress(h.module, "scene_metadata_name"));
+		h.descriptionFn = reinterpret_cast<StringByIdFn>(
+			GetProcAddress(h.module, "scene_metadata_description"));
+		h.performanceFn = reinterpret_cast<StringByIdFn>(
+			GetProcAddress(h.module, "scene_metadata_performance"));
+		h.recommendedSppFn = reinterpret_cast<IntByIdFn>(
+			GetProcAddress(h.module, "scene_metadata_recommended_spp"));
+		h.requiresFilesFn = reinterpret_cast<IntByIdFn>(
+			GetProcAddress(h.module, "scene_metadata_requires_files"));
 
-		if (!h.gpuCompatibleFn || !h.recommendedCameraFn) {
+		if (!h.gpuCompatibleFn || !h.recommendedCameraFn || !h.countFn || !h.nameFn ||
+			!h.descriptionFn || !h.performanceFn || !h.recommendedSppFn || !h.requiresFilesFn) {
 			FreeLibrary(h.module);
-			h.module = nullptr;
-			h.gpuCompatibleFn = nullptr;
-			h.recommendedCameraFn = nullptr;
+			h = DllHandle{};
 		}
 	});
 	return h;
@@ -65,6 +85,36 @@ bool recommendedCamera(int scene_id,
 	if (!ensureLoaded()) return false;
 	return handle().recommendedCameraFn(scene_id,
 		&cam_x, &cam_y, &cam_z, &lookat_x, &lookat_y, &lookat_z) != 0;
+}
+
+int sceneCount() {
+	if (!ensureLoaded()) return 0;
+	return handle().countFn();
+}
+
+QString sceneName(int scene_id) {
+	if (!ensureLoaded()) return QString();
+	return QString::fromUtf8(handle().nameFn(scene_id));
+}
+
+QString sceneDescription(int scene_id) {
+	if (!ensureLoaded()) return QString();
+	return QString::fromUtf8(handle().descriptionFn(scene_id));
+}
+
+QString scenePerformance(int scene_id) {
+	if (!ensureLoaded()) return QString();
+	return QString::fromUtf8(handle().performanceFn(scene_id));
+}
+
+int sceneRecommendedSpp(int scene_id) {
+	if (!ensureLoaded()) return 100;
+	return handle().recommendedSppFn(scene_id);
+}
+
+bool sceneRequiresFiles(int scene_id) {
+	if (!ensureLoaded()) return false;
+	return handle().requiresFilesFn(scene_id) != 0;
 }
 
 } // namespace SceneMetadataClient

@@ -122,6 +122,19 @@ int cpu_scene_recommended_camera(int scene_id,
 /// @return 1 if GPU compatible, 0 if not (including if scene_id isn't found)
 int cpu_scene_gpu_compatible_by_id(int scene_id);
 
+/// The rest of this file's index-based accessors (cpu_scene_name/
+/// description/performance/recommended_spp/requires_files) are also
+/// available by id - lets a caller with just a scene_id (the GUI's scene
+/// combo box stores ids, not registry positions, though they're numerically
+/// identical today) look a single scene up directly instead of first
+/// resolving id -> index. Same "" / 0 / default-on-not-found behavior as
+/// their index-based counterparts.
+const char* cpu_scene_name_by_id(int scene_id);
+const char* cpu_scene_description_by_id(int scene_id);
+const char* cpu_scene_performance_by_id(int scene_id);
+int cpu_scene_recommended_spp_by_id(int scene_id);
+int cpu_scene_requires_files_by_id(int scene_id);
+
 #ifdef __cplusplus
 }
 #endif

@@ -1,6 +1,6 @@
 #include "mainwindow.h"
 #include "error_handler.h"
-#include "scene_descriptor.h"
+#include "scene_metadata_client.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -70,9 +70,9 @@ void RenderThread::stopRender() {
 void RenderThread::run() {
 	emit logMessage(QString("Starting render..."));
 
-	// Look up scene name from the shared descriptor table
-	const SceneDesc* sceneInfo = find_scene_desc(m_sceneId);
-	QString sceneName = sceneInfo ? QString(sceneInfo->name) : QString("Scene %1").arg(m_sceneId);
+	// Look up scene name live from scene_metadata.dll
+	QString sceneName = SceneMetadataClient::sceneName(m_sceneId);
+	if (sceneName.isEmpty()) sceneName = QString("Scene %1").arg(m_sceneId);
 
 	// Emit a separator so each render is visually distinct in the log
 	QString sep = QString("─").repeated(60);

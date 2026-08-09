@@ -421,12 +421,14 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // GUI mirror count guard
 // ===========================================================================
 
-// The Qt GUI builds its scene dropdown dynamically from get_all_scenes()
-// (qt_gui/mainwindow_tabs.cpp createBasicTab()), not a hardcoded array, so it
-// can't drift out of sync with the registry on its own. This constant exists
-// as a tripwire: if it stops matching scene_count(), something changed the
-// registry size and it's worth double-checking the GUI/error-hint text that
-// mentions specific scene counts or ID ranges by hand.
+// The Qt GUI builds its scene dropdown dynamically from
+// SceneMetadataClient::sceneCount()/sceneName() (qt_gui/mainwindow_tabs.cpp
+// createBasicTab()), which query scene_metadata.dll -> this registry live,
+// not a hardcoded array, so it can't drift out of sync with the registry
+// on its own. This constant exists as a tripwire: if it stops matching
+// scene_count(), something changed the registry size and it's worth
+// double-checking the GUI/error-hint text that mentions specific scene
+// counts or ID ranges by hand.
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
 	constexpr int kGuiSceneCount = 39;
 	EXPECT_EQ(scene_count(), kGuiSceneCount)
