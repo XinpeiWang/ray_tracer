@@ -169,6 +169,29 @@ void MainWindow::applyDarkTheme() {
 			min-height: 26px;
 			margin: 3px 2px;
 		}
+		/* Fusion splits a spin box's contents-rect height in half for its
+		   up/down step buttons, so at the shared 26px min-height above
+		   (~11px per button once the 2px border is subtracted) the
+		   PlusMinus primitives' cross-bars are proportionally too thick
+		   for the space: the "+" blobs into a diamond and only the "-"
+		   reads cleanly (see styleSpinBox()'s comment for why PlusMinus
+		   is used at all). Taller spin boxes only, so each button gets
+		   room for a legible glyph; the combo box keeps the 26px height. */
+		QSpinBox, QDoubleSpinBox {
+			min-height: 40px;
+		}
+		/* Sizes only the clickable button rect, not ::up-arrow/
+		   ::down-arrow - those stay completely unstyled so Fusion keeps
+		   drawing its native PE_IndicatorSpinPlus/Minus fill inside the
+		   wider rect (styling the arrow subcontrol itself is what
+		   collapsed to an empty box, see styleSpinBox()'s comment).
+		   Widens len = min(buttonWidth, buttonHeight)'s width side to
+		   match the min-height bump above, so neither dimension caps it
+		   down to a thick, blobby cross. */
+		QSpinBox::up-button, QDoubleSpinBox::up-button,
+		QSpinBox::down-button, QDoubleSpinBox::down-button {
+			width: 20px;
+		}
 		QSpinBox:hover, QDoubleSpinBox:hover, QComboBox:hover {
 			background-color: #1A0A2A;
 			border: 2px solid #FF00FF;
@@ -360,10 +383,22 @@ void MainWindow::styleComboBox(QComboBox *combo) {
 }
 
 void MainWindow::styleSpinBox(QAbstractSpinBox *spinBox) {
-	// Custom arrow icons (image:, border-triangle trick, PNG resources -
-	// tried all three) don't render for ::up-arrow/::down-arrow with this
-	// style/Qt version. PlusMinus symbols sidestep the whole arrow-image
-	// pipeline: Qt draws "+"/"-" as text instead, which reliably works.
+	// UpDownArrows (the unstyled default - no setButtonSymbols() call) was
+	// tried first, reusing the same "leave the subcontrol alone" approach
+	// that works for m_sceneCombo's own drop-down arrow - it rendered as a
+	// completely empty box instead (confirmed live), matching this file's
+	// prior history of every ::up-arrow/::down-arrow customization attempt
+	// collapsing to nothing with this style/Qt version. Back to PlusMinus:
+	// Fusion's PE_IndicatorSpinPlus/Minus fill-rect primitives
+	// (QCommonStyle::drawPrimitive) are the one thing confirmed to render
+	// something. Geometry: horizontal bar len x step, plus a crossing
+	// vertical bar for "+", where len = min(buttonWidth, buttonHeight) and
+	// step = round-up-to-even((len+4)/5) - see applyDarkTheme()'s
+	// ::up-button/::down-button width rule, which widens the button rect
+	// (without touching ::up-arrow/::down-arrow, so the native fill
+	// primitive keeps drawing) so len isn't capped by Fusion's narrow
+	// default button width, keeping the step/len ratio low enough to read
+	// as a cross instead of a blob.
 	spinBox->setButtonSymbols(QAbstractSpinBox::PlusMinus);
 
 	// Styling otherwise comes entirely from the global stylesheet in
