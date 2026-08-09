@@ -161,6 +161,47 @@ extern "C" __global__ void __closesthit__sphere() {
 			// is_specular=true cases).
 			scattered   = sample_hair_material(ray_dir, normal, mat, seed, scattered_dir, attenuation);
 			is_specular = true;
+	} else if (mat.type == MaterialType::DielectricMedium) {
+			// Combined dielectric surface + internal medium - see this
+			// type's comment in optix_types.h. On entry (front_face) the
+			// direct dielectric surface always wins the bounce (matches the
+			// CPU's two-hittable trick: the medium's sampled hit distance
+			// can never be closer than the entry surface), so just refract/
+			// reflect normally. On the following bounce, now travelling
+			// inside toward this sphere's exit surface (front_face false),
+			// recompute both roots exactly like the Medium branch above to
+			// get the remaining distance to the exit, sample a free path,
+			// and either scatter via the HG phase function or fall through
+			// to a normal exit refraction/reflection at the far surface.
+			if (front_face) {
+				attenuation = make_float3(1.0f, 1.0f, 1.0f);
+				scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
+			} else {
+				float3 unit_dir = normalize(ray_dir);
+				float3 oc2 = ray_orig - sphere_center;
+				float half_b2 = dot(oc2, unit_dir);
+				float c2 = dot(oc2, oc2) - sphere_radius * sphere_radius;
+				float disc2 = fmaxf(0.0f, half_b2 * half_b2 - c2);
+				float sq2 = sqrtf(disc2);
+				float t_near = fmaxf(0.0f, -half_b2 - sq2);
+				float t_far  = -half_b2 + sq2;
+				float dist_inside = fmaxf(0.0f, t_far - t_near);
+
+				float sigma_t = mat.eta_c.x;
+				float free_path = (sigma_t > 1e-8f) ? (-logf(fmaxf(1e-8f, 1.0f - random_float(seed))) / sigma_t) : 1e30f;
+
+				if (free_path < dist_inside) {
+					medium_t_hit  = t_near + free_path;
+					scattered_dir = sample_henyey_greenstein(unit_dir, mat.fuzz, seed);
+					attenuation   = mat.albedo;
+					is_medium     = true;
+				} else {
+					attenuation = make_float3(1.0f, 1.0f, 1.0f);
+					scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
+				}
+			}
+			scattered   = true;
+			is_specular = true;  // specular bounce / no NEE-MIS for volume scattering
 	} else {
 		shade_material(mat, normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, seed,
 			attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission);

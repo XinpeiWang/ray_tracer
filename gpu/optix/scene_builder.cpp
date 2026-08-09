@@ -1694,19 +1694,11 @@ static void build_triangle_mesh_scene_gpu(SceneData& scene) {
 /// counts, and - as of this function - image/noise textures via
 /// load_image_texture_gpu/add_noise_texture_gpu and shade_material()'s
 /// texture sampling, see optix_types.h's MaterialData::textureIdx).
-/// One piece is deliberately NOT ported yet and uses a plain-glass
-/// approximation instead: the two constant_medium fog spheres (small blue
-/// fog + giant whole-scene haze). CPU achieves this by adding the SAME
-/// dielectric boundary sphere to the world twice (once directly, once
-/// wrapped in constant_medium), letting whichever hits closer each bounce
-/// win. GPU's MaterialType::Medium is a standalone material, mutually
-/// exclusive with Dielectric, so this needs its own material type - the
-/// small fog sphere is approximated as plain dielectric glass for now
-/// (visually reasonable - it's still a glass sphere, just without the
-/// interior fog tint); the giant radius-5000 whole-scene haze sphere is
-/// skipped entirely (CPU's own version is barely visible - an extremely
-/// subtle atmospheric tint at density 0.0001 - and naively wrapping the
-/// whole scene in glass would look nothing like it).
+/// The two constant_medium fog spheres (small blue fog + giant whole-scene
+/// haze) use MaterialType::DielectricMedium, which collapses CPU's "same
+/// dielectric boundary sphere added to the world twice - once directly,
+/// once wrapped in constant_medium, whichever hits closer each bounce wins"
+/// trick into a single material (see that type's comment in optix_types.h).
 /// Uses its own fixed-seed RNG for the ground/sphere-cluster randomization,
 /// like every other procedural GPU scene (e.g. build_bouncing_spheres) -
 /// not intended to pixel-match CPU's independently-seeded layout.
@@ -1774,12 +1766,16 @@ void build_final_scene_gpu(SceneData& scene) {
 		scene.spheres.push_back(s);
 	}
 
-	// Small fog-sphere placeholder (plain dielectric for now - see this
-	// function's header comment; Piece 3 upgrades this to a real
-	// dielectric+medium combined material).
+	// Small fog sphere: dielectric(1.5) boundary with an internal blue-
+	// tinted medium (matches CPU's constant_medium(boundary, 0.2,
+	// color(0.2,0.4,0.9)) wrapping the same dielectric(1.5) boundary).
+	// MaterialData.eta_c.x carries sigma_t=0.2 (density); .fuzz=0 is the
+	// HG asymmetry g, matching CPU's legacy constructor's g=0.0 default.
 	{
 		const int mat = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({ MaterialType::Dielectric, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 1.5f, make_float3(0.0f, 0.0f, 0.0f) });
+		MaterialData m{ MaterialType::DielectricMedium, make_float3(0.2f, 0.4f, 0.9f), 0.0f, 1.5f,
+			make_float3(0.0f, 0.0f, 0.0f), make_float3(0.2f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+		scene.materials.push_back(m);
 		SphereData s{};
 		s.center = make_float3(360.0f, 150.0f, 145.0f);
 		s.center1 = s.center;
@@ -1787,8 +1783,27 @@ void build_final_scene_gpu(SceneData& scene) {
 		s.materialIdx = mat;
 		scene.spheres.push_back(s);
 	}
-	// Giant whole-scene haze sphere intentionally omitted - see this
-	// function's header comment.
+
+	// Giant whole-scene haze sphere: extremely subtle white atmospheric
+	// tint (matches CPU's constant_medium(boundary_r5000, .0001,
+	// color(1,1,1))). The camera and every other object in this scene sit
+	// well within its radius-5000 boundary, so every primary ray starts
+	// already inside it - see MaterialType::DielectricMedium's comment in
+	// optix_types.h for why that makes the "entry from outside" half of
+	// this material's logic unreachable here, which is fine, it's still
+	// correct.
+	{
+		const int mat = safe_cast_to_int(scene.materials.size());
+		MaterialData m{ MaterialType::DielectricMedium, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 1.5f,
+			make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0001f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+		scene.materials.push_back(m);
+		SphereData s{};
+		s.center = make_float3(0.0f, 0.0f, 0.0f);
+		s.center1 = s.center;
+		s.radius = 5000.0f;
+		s.materialIdx = mat;
+		scene.spheres.push_back(s);
+	}
 
 	// Earth-image-texture sphere. Falls back to CPU's own solid-cyan
 	// missing-texture color if earthmap.jpg can't be found (see

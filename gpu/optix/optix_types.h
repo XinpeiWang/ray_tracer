@@ -122,7 +122,26 @@ enum class MaterialType : int {
 	// only geometry any scene ever applies it to (scene 19's 5 hair spheres).
 	// Reuses MaterialData.albedo as sigma_a (RGB absorption), .fuzz as
 	// beta_m, .ior as eta, .eta_c.x as beta_n, .eta_c.y as alpha_deg.
-	Hair = 12
+	Hair = 12,
+	// Sphere simultaneously a dielectric surface AND an internal
+	// participating medium - matches src/TheRestOfYourLife/scenes_book.h's
+	// build_final_scene() trick of adding the SAME boundary sphere to the
+	// CPU world twice (once as a plain dielectric, once wrapped in
+	// constant_medium): a ray always hits the dielectric surface first when
+	// entering from outside (the medium's sampled hit distance can never be
+	// closer than the entry surface), but on the very next bounce - now
+	// travelling inside, hitting this sphere's exit surface - it may
+	// scatter off the medium before reaching that exit. Handled inline in
+	// optix_intersection_sphere.h (needs the same shape-specific near/far
+	// re-intersection Medium above already does), not through
+	// shade_material(). Reuses MaterialData.ior as the dielectric index of
+	// refraction (Dielectric's own field), .albedo as the medium's
+	// single-scatter color and .fuzz as its HG asymmetry g (Medium's own
+	// fields), and .eta_c.x - otherwise unused outside Conductor/Hair - as
+	// sigma_t (extinction coefficient), since this is the only material
+	// type that needs a dielectric IOR and a medium's sigma_t/g/albedo at
+	// the same time.
+	DielectricMedium = 13
 };
 
 // Texture kinds - see TextureData below. Matches the two CPU texture

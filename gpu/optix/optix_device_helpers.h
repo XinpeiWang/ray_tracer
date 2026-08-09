@@ -132,6 +132,30 @@ __device__ __forceinline__ float3 refract(const float3& uv, const float3& n, flo
 
 // Schlick's approximation removed — FrDielectric<float> from shared/fresnel.h is used instead.
 
+// Smooth dielectric reflect-or-refract, shared by MaterialType::Dielectric
+// (shade_material's case below) and MaterialType::DielectricMedium
+// (optix_intersection_sphere.h's inline handling, which needs this same
+// surface interaction at both the entry AND exit surface, alongside its own
+// medium free-path sampling that doesn't fit shade_material's generic
+// per-material switch). `front_face` selects the eta ratio direction; `ior`
+// is the material's index of refraction on the denser side.
+__device__ __forceinline__ float3 dielectric_scatter(const float3& ray_dir, const float3& normal,
+		bool front_face, float ior, unsigned int& seed) {
+	float ri = front_face ? (1.0f / ior) : ior;
+	float3 unit_direction = normalize(ray_dir);
+	float cos_theta = fminf(dot(-unit_direction, normal), 1.0f);
+	float sin_theta = sqrtf(1.0f - cos_theta * cos_theta);
+
+	bool cannot_refract = ri * sin_theta > 1.0f;
+
+	// FrDielectric expects eta_t/eta_i; ri = eta_i/eta_t, so pass 1/ri
+	if (cannot_refract || FrDielectric(cos_theta, 1.0f / ri) > random_float(seed)) {
+		return reflect(unit_direction, normal);
+	} else {
+		return refract(unit_direction, normal, ri);
+	}
+}
+
 //==============================================================================
 // Multiple Importance Sampling (MIS) Helpers
 //==============================================================================
@@ -634,19 +658,7 @@ __device__ __forceinline__ void shade_material(
 
 		case MaterialType::Dielectric: {
 			attenuation = make_float3(1.0f, 1.0f, 1.0f);
-			float ri = front_face ? (1.0f / mat.ior) : mat.ior;
-			float3 unit_direction = normalize(ray_dir);
-			float cos_theta = fminf(dot(-unit_direction, normal), 1.0f);
-			float sin_theta = sqrtf(1.0f - cos_theta * cos_theta);
-
-			bool cannot_refract = ri * sin_theta > 1.0f;
-
-			// FrDielectric expects eta_t/eta_i; ri = eta_i/eta_t, so pass 1/ri
-			if (cannot_refract || FrDielectric(cos_theta, 1.0f / ri) > random_float(seed)) {
-				scattered_dir = reflect(unit_direction, normal);
-			} else {
-				scattered_dir = refract(unit_direction, normal, ri);
-			}
+			scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
 			scattered = true;
 			is_specular = true;  // specular bounce: next hit adds full emission, no MIS
 			break;
