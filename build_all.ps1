@@ -39,7 +39,7 @@ Push-Location $QtBuildDir
 try {
     $mf = "Makefile.$Config"
     if ($Rebuild) { & mingw32-make -f $mf clean 2>&1 | Out-Null }
-    $mo = & mingw32-make -f $mf 2>&1
+    $mo = & mingw32-make -j"$([System.Environment]::ProcessorCount)" -f $mf 2>&1
     $me = $mo | Where-Object { $_ -match 'error:|Error \d' }
     if ($LASTEXITCODE -ne 0 -or $me.Count -gt 0) {
         FAIL 'mingw32-make FAILED'

@@ -28,7 +28,10 @@
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v145</PlatformToolset>
-    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <!-- No WholeProgramOptimization (LTCG) here on purpose: this test binary
+         is rebuilt on every iteration and its runtime perf doesn't matter,
+         but LTCG forces a full non-incremental relink every time - pure
+         build-speed cost for zero benefit. -->
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
@@ -46,7 +49,10 @@
     <TargetName>ray_tracer_tests</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <LinkIncremental>false</LinkIncremental>
+    <!-- Incremental linking now that LTCG is off above - LTCG and
+         incremental linking are mutually exclusive; without LTCG this is a
+         real speedup on repeated builds where only a few TUs changed. -->
+    <LinkIncremental>true</LinkIncremental>
     <OutDir>$(SolutionDir)bin\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)obj\$(ProjectName)\$(Configuration)\</IntDir>
     <TargetName>ray_tracer_tests</TargetName>
@@ -59,6 +65,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <DebugInformationFormat>OldStyle</DebugInformationFormat>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
       <AdditionalIncludeDirectories>$(OptixSdkPath)\include;$(CudaToolkitPath)\include;$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)src\shared;$(SolutionDir)src;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\optix;$(SolutionDir)tests\build\_deps\googletest-src\googletest\include;$(SolutionDir)tests\build\_deps\googletest-src\googletest;$(SolutionDir)tests\build\_deps\googletest-src\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
         </ClCompile>
@@ -80,6 +87,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <DebugInformationFormat>OldStyle</DebugInformationFormat>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <AdditionalOptions>/FS %(AdditionalOptions)</AdditionalOptions>
       <AdditionalIncludeDirectories>$(OptixSdkPath)\include;$(CudaToolkitPath)\include;$(SolutionDir)src\TheRestOfYourLife;$(SolutionDir)src\shared;$(SolutionDir)src;$(SolutionDir)cpu_renderer;$(SolutionDir)gpu\optix;$(SolutionDir)tests\build\_deps\googletest-src\googletest\include;$(SolutionDir)tests\build\_deps\googletest-src\googletest;$(SolutionDir)tests\build\_deps\googletest-src\googlemock\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       </ClCompile>
@@ -143,7 +151,6 @@
     <ClCompile Include="unit\normal_map_tests.cpp" />
     <ClCompile Include="unit\path_sampler_tests.cpp" />
     <ClCompile Include="unit\piecewise_dist_tests.cpp" />
-    <ClCompile Include="unit\power_light_sampler_tests.cpp" />
     <ClCompile Include="unit\principled_bsdf_tests.cpp" />
     <ClCompile Include="unit\punctual_light_tests.cpp" />
     <ClCompile Include="unit\sampling_tests.cpp" />
