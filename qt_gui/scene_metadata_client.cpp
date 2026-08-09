@@ -4,6 +4,7 @@
 #include <QCoreApplication>
 #include <QString>
 #include <QDir>
+#include <mutex>
 
 namespace {
 
@@ -14,11 +15,33 @@ struct DllHandle {
 	HMODULE module = nullptr;
 	GpuCompatibleFn gpuCompatibleFn = nullptr;
 	RecommendedCameraFn recommendedCameraFn = nullptr;
-	bool attempted = false;
 };
 
+// Callers span both the GUI thread (onSceneChanged, onRenderClicked) and
+// RenderThread's worker thread (mainwindow.cpp's run(), via
+// ErrorHandler::getTroubleshootingHint -> gpuSupportedSceneList for exit
+// code 211) - std::call_once, not a plain "attempted" bool, makes the
+// first load race-free regardless of which thread gets there first.
 DllHandle& handle() {
 	static DllHandle h;
+	static std::once_flag loadOnce;
+	std::call_once(loadOnce, [&h]() {
+		QString dllPath = QDir(QCoreApplication::applicationDirPath()).filePath("scene_metadata.dll");
+		h.module = LoadLibraryW(reinterpret_cast<const wchar_t*>(dllPath.utf16()));
+		if (!h.module) return;
+
+		h.gpuCompatibleFn = reinterpret_cast<GpuCompatibleFn>(
+			GetProcAddress(h.module, "scene_metadata_gpu_compatible"));
+		h.recommendedCameraFn = reinterpret_cast<RecommendedCameraFn>(
+			GetProcAddress(h.module, "scene_metadata_recommended_camera"));
+
+		if (!h.gpuCompatibleFn || !h.recommendedCameraFn) {
+			FreeLibrary(h.module);
+			h.module = nullptr;
+			h.gpuCompatibleFn = nullptr;
+			h.recommendedCameraFn = nullptr;
+		}
+	});
 	return h;
 }
 
@@ -27,27 +50,7 @@ DllHandle& handle() {
 namespace SceneMetadataClient {
 
 bool ensureLoaded() {
-	DllHandle& h = handle();
-	if (h.attempted) return h.module != nullptr;
-	h.attempted = true;
-
-	QString dllPath = QDir(QCoreApplication::applicationDirPath()).filePath("scene_metadata.dll");
-	h.module = LoadLibraryW(reinterpret_cast<const wchar_t*>(dllPath.utf16()));
-	if (!h.module) return false;
-
-	h.gpuCompatibleFn = reinterpret_cast<GpuCompatibleFn>(
-		GetProcAddress(h.module, "scene_metadata_gpu_compatible"));
-	h.recommendedCameraFn = reinterpret_cast<RecommendedCameraFn>(
-		GetProcAddress(h.module, "scene_metadata_recommended_camera"));
-
-	if (!h.gpuCompatibleFn || !h.recommendedCameraFn) {
-		FreeLibrary(h.module);
-		h.module = nullptr;
-		h.gpuCompatibleFn = nullptr;
-		h.recommendedCameraFn = nullptr;
-		return false;
-	}
-	return true;
+	return handle().module != nullptr;
 }
 
 bool gpuCompatible(int scene_id, bool& out_compatible) {

@@ -61,9 +61,16 @@ void MainWindow::onRenderClicked() {
 	// harmless, since it'd be the same value anyway) cam_x/y/z on the
 	// command line, not a silently wrong camera.
 	bool camExplicit = true;
-	double recCamX, recCamY, recCamZ, recLookatX, recLookatY, recLookatZ;
+	double recCamX = 0.0, recCamY = 0.0, recCamZ = 0.0, recLookatX = 0.0, recLookatY = 0.0, recLookatZ = 0.0;
 	if (SceneMetadataClient::recommendedCamera(sceneId, recCamX, recCamY, recCamZ, recLookatX, recLookatY, recLookatZ)) {
-		constexpr double kEpsilon = 1e-6;
+		// m_cameraPosX/Y/Z are QDoubleSpinBoxes with the default 2 decimal
+		// places, so a recommended value round-trips through setValue()/
+		// value() rounded to the nearest 0.01 - the epsilon has to be
+		// looser than that (half a step) or a scene whose recommended
+		// camera ever needs more precision than 2 decimals would silently
+		// never compare equal, permanently forcing camExplicit=true (still
+		// harmless, just pointlessly defeats this check for that scene).
+		constexpr double kEpsilon = 0.005;
 		camExplicit = std::abs(camX - recCamX) > kEpsilon
 			|| std::abs(camY - recCamY) > kEpsilon
 			|| std::abs(camZ - recCamZ) > kEpsilon;

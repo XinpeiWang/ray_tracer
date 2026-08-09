@@ -50,10 +50,11 @@ extern "C" {
 ///                      CameraConfig.mode isn't UserControlled (which
 ///                      otherwise silently ignore cam_x/y/z and use the
 ///                      scene's own fixed lookfrom - see cpu_interface.cpp).
-///                      main.cpp's video-mode frame loop passes 1, since a
-///                      video needs to honor its per-frame animated camera
-///                      regardless of the scene's single-image default;
-///                      single-image rendering passes 0 (default).
+///                      main.cpp passes 1 unconditionally for BOTH
+///                      single-image and video-mode renders (see its own
+///                      comment on why) - the 0 default here only matters
+///                      to direct callers that bypass main.cpp entirely
+///                      (e.g. unit tests).
 /// @return 0 on success, non-zero error code on failure
 int cpu_render_main(
     int width,

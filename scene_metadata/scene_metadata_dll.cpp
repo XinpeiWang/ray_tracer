@@ -10,6 +10,14 @@
 // lives in this file. Add a new export here (and to
 // qt_gui/scene_metadata_client.h/.cpp) whenever the GUI needs another piece
 // of scene_registry.h's data instead of duplicating it locally.
+//
+// Note: this links the whole cpu_renderer.lib, not just these two
+// functions - cpu_interface.cpp is one translation unit containing both
+// this metadata lookup AND cpu_render_main (the full CPU path tracer), so
+// the linker pulls in all of it, including every scene builder's
+// std::function entry in scene_registry.h's table. The resulting DLL
+// (~400KB) is small enough that this hasn't mattered in practice; splitting
+// cpu_interface.cpp would be the fix if it ever does.
 #include "../cpu_renderer/cpu_interface.h"
 
 #define SCENE_METADATA_API extern "C" __declspec(dllexport)
