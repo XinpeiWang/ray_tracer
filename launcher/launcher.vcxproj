@@ -36,7 +36,16 @@
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v145</PlatformToolset>
-    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <!-- WholeProgramOptimization (LTCG) removed: linking this project against
+         cpu_renderer.lib (which itself contains a /GL-compiled object,
+         stb_image_impl.obj) reproducibly hit "fatal error LNK1103:
+         debugging information corrupt" with LTCG enabled here - the same
+         class of MSVC LTCG+/GL linker fragility already worked around in
+         tests/ray_tracer_tests.vcxproj. This project is a thin CLI
+         dispatcher (main.cpp/image_writer.cpp) over cpu_renderer.lib/
+         optix_renderer.lib, which carry their own optimization settings
+         independently, so launcher's own cross-module LTCG gains would be
+         negligible anyway. -->
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
@@ -49,7 +58,16 @@
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v145</PlatformToolset>
-    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <!-- WholeProgramOptimization (LTCG) removed: linking this project against
+         cpu_renderer.lib (which itself contains a /GL-compiled object,
+         stb_image_impl.obj) reproducibly hit "fatal error LNK1103:
+         debugging information corrupt" with LTCG enabled here - the same
+         class of MSVC LTCG+/GL linker fragility already worked around in
+         tests/ray_tracer_tests.vcxproj. This project is a thin CLI
+         dispatcher (main.cpp/image_writer.cpp) over cpu_renderer.lib/
+         optix_renderer.lib, which carry their own optimization settings
+         independently, so launcher's own cross-module LTCG gains would be
+         negligible anyway. -->
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
