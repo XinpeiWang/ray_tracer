@@ -1614,6 +1614,157 @@ static void build_triangle_mesh_scene_gpu(SceneData& scene) {
 	scene.isLightSphere.push_back(true);
 }
 
+/// @brief Scene 8: Final Scene (Ray Tracing: The Next Week finale).
+/// Matches CPU build_final_scene() (src/TheRestOfYourLife/scenes_book.h)
+/// structurally: 400-box randomized-height ground, area light quad, moving
+/// sphere, dielectric + metal spheres, and a 1000-sphere rotated/translated
+/// cluster - all already-proven GPU features (boxes-as-quads, motion blur,
+/// large static sphere counts). Two pieces are deliberately NOT ported yet
+/// and use flat-color Lambertian placeholders instead:
+///   - The Earth-image and Perlin-noise textured spheres (GPU has no
+///     texture support at all yet - see optix_types.h's MaterialData).
+///   - The two constant_medium fog spheres (small blue fog + giant
+///     whole-scene haze) - CPU achieves this by adding the SAME dielectric
+///     boundary sphere to the world twice (once directly, once wrapped in
+///     constant_medium), letting whichever hits closer each bounce win.
+///     GPU's MaterialType::Medium is a standalone material, mutually
+///     exclusive with Dielectric, so this needs its own material type -
+///     the small fog sphere is approximated as plain dielectric glass for
+///     now (visually reasonable - it's still a glass sphere, just without
+///     the interior fog tint); the giant radius-5000 whole-scene haze
+///     sphere is skipped entirely (CPU's own version is barely visible -
+///     an extremely subtle atmospheric tint at density 0.0001 - and naively
+///     wrapping the whole scene in glass would look nothing like it).
+/// Uses its own fixed-seed RNG for the ground/sphere-cluster randomization,
+/// like every other procedural GPU scene (e.g. build_bouncing_spheres) -
+/// not intended to pixel-match CPU's independently-seeded layout.
+void build_final_scene_gpu(SceneData& scene) {
+	std::mt19937 rng(8u);
+	std::uniform_real_distribution<float> unit(0.0f, 1.0f);
+
+	// Ground: 20x20 grid of boxes with randomized height, matching CPU's
+	// loop bounds/spacing (w=100, x0/z0 in [-1000,1000)) exactly.
+	{
+		const int mat_ground = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.48f, 0.83f, 0.53f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		constexpr int kBoxesPerSide = 20;
+		constexpr float w = 100.0f;
+		for (int i = 0; i < kBoxesPerSide; ++i) {
+			for (int j = 0; j < kBoxesPerSide; ++j) {
+				const float x0 = -1000.0f + i * w;
+				const float z0 = -1000.0f + j * w;
+				const float y1 = 1.0f + unit(rng) * 100.0f;  // random_double(1,101)
+				add_box(scene, make_float3(x0, 0.0f, z0), make_float3(x0 + w, y1, z0 + w), mat_ground);
+			}
+		}
+	}
+
+	// Area light quad (matches CPU exactly: Q=(123,554,147), u=(300,0,0), v=(0,0,265))
+	{
+		const int mat_light = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(7.0f, 7.0f, 7.0f) });
+		add_transformed_quad(scene, make_float3(123.0f, 554.0f, 147.0f), make_float3(300.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 265.0f), mat_light);
+	}
+
+	// Moving sphere (real GPU motion blur - center1 differs from center).
+	{
+		const int mat = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.7f, 0.3f, 0.1f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		SphereData s{};
+		s.center = make_float3(400.0f, 400.0f, 200.0f);
+		s.center1 = make_float3(430.0f, 400.0f, 200.0f);  // center + (30,0,0)
+		s.radius = 50.0f;
+		s.materialIdx = mat;
+		scene.spheres.push_back(s);
+	}
+
+	// Dielectric (glass) sphere.
+	{
+		const int mat = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({ MaterialType::Dielectric, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 1.5f, make_float3(0.0f, 0.0f, 0.0f) });
+		SphereData s{};
+		s.center = make_float3(260.0f, 150.0f, 45.0f);
+		s.center1 = s.center;
+		s.radius = 50.0f;
+		s.materialIdx = mat;
+		scene.spheres.push_back(s);
+	}
+
+	// Metal sphere.
+	{
+		const int mat = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({ MaterialType::Metal, make_float3(0.8f, 0.8f, 0.9f), 1.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		SphereData s{};
+		s.center = make_float3(0.0f, 150.0f, 145.0f);
+		s.center1 = s.center;
+		s.radius = 50.0f;
+		s.materialIdx = mat;
+		scene.spheres.push_back(s);
+	}
+
+	// Small fog-sphere placeholder (plain dielectric for now - see this
+	// function's header comment; Piece 3 upgrades this to a real
+	// dielectric+medium combined material).
+	{
+		const int mat = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({ MaterialType::Dielectric, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 1.5f, make_float3(0.0f, 0.0f, 0.0f) });
+		SphereData s{};
+		s.center = make_float3(360.0f, 150.0f, 145.0f);
+		s.center1 = s.center;
+		s.radius = 70.0f;
+		s.materialIdx = mat;
+		scene.spheres.push_back(s);
+	}
+	// Giant whole-scene haze sphere intentionally omitted - see this
+	// function's header comment.
+
+	// Earth-texture sphere placeholder (flat color for now - Piece 2 adds
+	// real image-texture support).
+	{
+		const int mat = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.25f, 0.35f, 0.55f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		SphereData s{};
+		s.center = make_float3(400.0f, 200.0f, 400.0f);
+		s.center1 = s.center;
+		s.radius = 100.0f;
+		s.materialIdx = mat;
+		scene.spheres.push_back(s);
+	}
+
+	// Perlin-noise-texture sphere placeholder (flat color for now - Piece 2
+	// adds real procedural noise texture support).
+	{
+		const int mat = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.55f, 0.5f, 0.45f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		SphereData s{};
+		s.center = make_float3(220.0f, 280.0f, 300.0f);
+		s.center1 = s.center;
+		s.radius = 80.0f;
+		s.materialIdx = mat;
+		scene.spheres.push_back(s);
+	}
+
+	// 1000-sphere white cluster, rotated 15deg around Y then translated -
+	// matches CPU's random_double(0,165) box + rotate_y(15) + translate
+	// (-100,270,395) exactly in structure (own RNG sequence, not CPU's).
+	{
+		const int mat_white = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		constexpr int kNumSpheres = 1000;
+		constexpr float kTranslate_x = -100.0f, kTranslate_y = 270.0f, kTranslate_z = 395.0f;
+		for (int i = 0; i < kNumSpheres; ++i) {
+			const float3 local = make_float3(unit(rng) * 165.0f, unit(rng) * 165.0f, unit(rng) * 165.0f);
+			const float3 rotated = rotate_y(local, 15.0f);
+			SphereData s{};
+			s.center = make_float3(rotated.x + kTranslate_x, rotated.y + kTranslate_y, rotated.z + kTranslate_z);
+			s.center1 = s.center;
+			s.radius = 10.0f;
+			s.materialIdx = mat_white;
+			scene.spheres.push_back(s);
+		}
+	}
+}
+
 /// @brief Build a scene and configure the camera
 /// @param scene_id Scene identifier (0 = Cornell Box)
 /// @param image_width Output image width in pixels
@@ -1741,6 +1892,20 @@ bool build_scene(
 						// lights meant every path's only possible radiance was
 						// this background color, and it was never set.
 						if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.70f, 0.80f, 1.00f);
+					}
+					break;
+
+				case 8:  // Final Scene (see build_final_scene_gpu's own comment
+						 // for what's ported vs. placeholder-approximated)
+					build_final_scene_gpu(scene);
+					{
+						const float3 lookfrom = make_float3(478.0f, 278.0f, -600.0f);
+						const float3 lookat = make_float3(278.0f, 278.0f, 0.0f);
+						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
+						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+						build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);
+						// backgroundColor left at zero-init (matches CPU bg=(0,0,0)) -
+						// this scene has a real area light (the light quad above).
 					}
 					break;
 
