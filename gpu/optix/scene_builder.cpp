@@ -8,10 +8,19 @@
 #include <cassert>
 #include <iostream>
 #include <random>
+#include <string>
 
 #include "../../src/shared/conductor_data.h"
 #include "../../src/shared/cameras.h"
 #include "../../src/shared/cornell_box_data.h"
+// Declarations only (no STB_IMAGE_IMPLEMENTATION) - the actual
+// implementation is already compiled once into cpu_renderer.lib (see
+// src/external/stb_image_impl.cpp), and launcher.vcxproj always links
+// both cpu_renderer.lib and optix_renderer.lib into ray_tracer.exe
+// together, so stbi_loadf resolves at final link time without needing a
+// second copy of the implementation (which would collide as a duplicate
+// symbol if compiled into optix_renderer.lib too).
+#include "../../src/external/stb_image.h"
 
 namespace {
 	// Constants for Cornell Box dimensions
@@ -176,6 +185,68 @@ namespace {
 		add_transformed_quad(scene, make_float3(min_corner.x, max_corner.y, max_corner.z), dx, make_float3(0, 0, -dz.z), material_idx, rotation_y_degrees, translation);
 		// Bottom face (min.x, min.y, min.z)
 		add_transformed_quad(scene, make_float3(min_corner.x, min_corner.y, min_corner.z), dx, dz, material_idx, rotation_y_degrees, translation);
+	}
+
+	// Loads an image file into scene.texturePixels (appended) + a new
+	// TextureData entry in scene.textures, returning its index. Matches
+	// CPU's rtw_stb_image.h + texture.h::image_texture exactly: tries a
+	// few relative search paths, converts stb's float pixel data to 8-bit
+	// RGB bytes via the same float_to_byte formula (<=0 -> 0, >=1 -> 255,
+	// else 256*value, rtw_stb_image.h:120-126). On load failure, still
+	// returns a valid index whose width/height are 0 - sample_texture()
+	// (optix_device_helpers.h) treats that as CPU's own solid-cyan
+	// missing-texture fallback (texture.h:76), not a crash.
+	inline int load_image_texture_gpu(SceneData& scene, const char* filename) {
+		int width = 0, height = 0, channels = 0;
+		float* fdata = nullptr;
+		const char* search_prefixes[] = { "", "images/", "../images/", "../../images/" };
+		for (const char* prefix : search_prefixes) {
+			std::string path = std::string(prefix) + filename;
+			fdata = stbi_loadf(path.c_str(), &width, &height, &channels, 3);
+			if (fdata) break;
+		}
+
+		TextureData tex{};
+		tex.kind = TextureKind::Image;
+		tex.noiseScale = 0.0f;
+		if (!fdata) {
+			std::cerr << "[OptiX] Could not load image texture '" << filename
+					   << "' (tried a few relative paths) - using solid-cyan "
+					   << "debug fallback, matching CPU's own missing-texture behavior.\n";
+			tex.pixelOffset = 0;
+			tex.width = 0;
+			tex.height = 0;
+		} else {
+			tex.pixelOffset = safe_cast_to_int(scene.texturePixels.size());
+			tex.width = width;
+			tex.height = height;
+			const size_t total = static_cast<size_t>(width) * height * 3;
+			scene.texturePixels.resize(scene.texturePixels.size() + total);
+			unsigned char* out = scene.texturePixels.data() + tex.pixelOffset;
+			for (size_t i = 0; i < total; ++i) {
+				const float v = fdata[i];
+				out[i] = (v <= 0.0f) ? 0 : (v >= 1.0f ? 255 : static_cast<unsigned char>(256.0f * v));
+			}
+			stbi_image_free(fdata);
+		}
+		scene.textures.push_back(tex);
+		return static_cast<int>(scene.textures.size()) - 1;
+	}
+
+	// Registers a Perlin-noise texture (no pixel data - see
+	// TextureKind::Noise in optix_types.h). Matches CPU's
+	// noise_texture(scale) constructor exactly - see sample_texture()'s
+	// Noise branch (optix_device_helpers.h) for the actual turbulence
+	// formula this is evaluated with.
+	inline int add_noise_texture_gpu(SceneData& scene, float scale) {
+		TextureData tex{};
+		tex.kind = TextureKind::Noise;
+		tex.pixelOffset = 0;
+		tex.width = 0;
+		tex.height = 0;
+		tex.noiseScale = scale;
+		scene.textures.push_back(tex);
+		return static_cast<int>(scene.textures.size()) - 1;
 	}
 }
 
@@ -1617,24 +1688,25 @@ static void build_triangle_mesh_scene_gpu(SceneData& scene) {
 /// @brief Scene 8: Final Scene (Ray Tracing: The Next Week finale).
 /// Matches CPU build_final_scene() (src/TheRestOfYourLife/scenes_book.h)
 /// structurally: 400-box randomized-height ground, area light quad, moving
-/// sphere, dielectric + metal spheres, and a 1000-sphere rotated/translated
-/// cluster - all already-proven GPU features (boxes-as-quads, motion blur,
-/// large static sphere counts). Two pieces are deliberately NOT ported yet
-/// and use flat-color Lambertian placeholders instead:
-///   - The Earth-image and Perlin-noise textured spheres (GPU has no
-///     texture support at all yet - see optix_types.h's MaterialData).
-///   - The two constant_medium fog spheres (small blue fog + giant
-///     whole-scene haze) - CPU achieves this by adding the SAME dielectric
-///     boundary sphere to the world twice (once directly, once wrapped in
-///     constant_medium), letting whichever hits closer each bounce win.
-///     GPU's MaterialType::Medium is a standalone material, mutually
-///     exclusive with Dielectric, so this needs its own material type -
-///     the small fog sphere is approximated as plain dielectric glass for
-///     now (visually reasonable - it's still a glass sphere, just without
-///     the interior fog tint); the giant radius-5000 whole-scene haze
-///     sphere is skipped entirely (CPU's own version is barely visible -
-///     an extremely subtle atmospheric tint at density 0.0001 - and naively
-///     wrapping the whole scene in glass would look nothing like it).
+/// sphere, dielectric + metal spheres, Earth-image and Perlin-noise
+/// textured spheres, and a 1000-sphere rotated/translated cluster - all
+/// now real GPU features (boxes-as-quads, motion blur, large static sphere
+/// counts, and - as of this function - image/noise textures via
+/// load_image_texture_gpu/add_noise_texture_gpu and shade_material()'s
+/// texture sampling, see optix_types.h's MaterialData::textureIdx).
+/// One piece is deliberately NOT ported yet and uses a plain-glass
+/// approximation instead: the two constant_medium fog spheres (small blue
+/// fog + giant whole-scene haze). CPU achieves this by adding the SAME
+/// dielectric boundary sphere to the world twice (once directly, once
+/// wrapped in constant_medium), letting whichever hits closer each bounce
+/// win. GPU's MaterialType::Medium is a standalone material, mutually
+/// exclusive with Dielectric, so this needs its own material type - the
+/// small fog sphere is approximated as plain dielectric glass for now
+/// (visually reasonable - it's still a glass sphere, just without the
+/// interior fog tint); the giant radius-5000 whole-scene haze sphere is
+/// skipped entirely (CPU's own version is barely visible - an extremely
+/// subtle atmospheric tint at density 0.0001 - and naively wrapping the
+/// whole scene in glass would look nothing like it).
 /// Uses its own fixed-seed RNG for the ground/sphere-cluster randomization,
 /// like every other procedural GPU scene (e.g. build_bouncing_spheres) -
 /// not intended to pixel-match CPU's independently-seeded layout.
@@ -1718,11 +1790,17 @@ void build_final_scene_gpu(SceneData& scene) {
 	// Giant whole-scene haze sphere intentionally omitted - see this
 	// function's header comment.
 
-	// Earth-texture sphere placeholder (flat color for now - Piece 2 adds
-	// real image-texture support).
+	// Earth-image-texture sphere. Falls back to CPU's own solid-cyan
+	// missing-texture color if earthmap.jpg can't be found (see
+	// load_image_texture_gpu's comment) - this matches CPU's behavior
+	// exactly rather than being a GPU-specific limitation.
 	{
+		const int earthTexIdx = load_image_texture_gpu(scene, "earthmap.jpg");
 		const int mat = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.25f, 0.35f, 0.55f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		MaterialData m{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
+			make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+		m.textureIdx = earthTexIdx;
+		scene.materials.push_back(m);
 		SphereData s{};
 		s.center = make_float3(400.0f, 200.0f, 400.0f);
 		s.center1 = s.center;
@@ -1731,11 +1809,14 @@ void build_final_scene_gpu(SceneData& scene) {
 		scene.spheres.push_back(s);
 	}
 
-	// Perlin-noise-texture sphere placeholder (flat color for now - Piece 2
-	// adds real procedural noise texture support).
+	// Perlin-noise-texture sphere (matches CPU's noise_texture(0.2) exactly).
 	{
+		const int noiseTexIdx = add_noise_texture_gpu(scene, 0.2f);
 		const int mat = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.55f, 0.5f, 0.45f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		MaterialData m{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
+			make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+		m.textureIdx = noiseTexIdx;
+		scene.materials.push_back(m);
 		SphereData s{};
 		s.center = make_float3(220.0f, 280.0f, 300.0f);
 		s.center1 = s.center;

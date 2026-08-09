@@ -100,7 +100,7 @@ extern "C" __global__ void __closesthit__triangle() {
 	bool is_specular = false;
 	float brdf_pdf_override = -1.0f;
 
-	shade_material(mat, final_normal, ray_dir, hit_point, front_face, seed,
+	shade_material(mat, final_normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
 		attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission);
 
 	optixSetPayload_3(__float_as_uint(emission.x));

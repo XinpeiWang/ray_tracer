@@ -14,6 +14,13 @@ struct SceneData {
 	std::vector<TriangleData> triangles;
 	std::vector<MaterialData> materials;
 
+	// Textures referenced by MaterialData::textureIdx (see optix_types.h's
+	// TextureData). texturePixels is one shared flat 8-bit RGB buffer every
+	// Image-kind texture's pixelOffset indexes into. Empty for every scene
+	// that doesn't use MaterialData::textureIdx.
+	std::vector<TextureData> textures;
+	std::vector<unsigned char> texturePixels;
+
 	// RealisticCamera (CameraKind::Realistic) host-precomputed tables - see
 	// optix_types.h's GpuLensElement/GpuExitPupilBounds. Empty for every
 	// other scene.

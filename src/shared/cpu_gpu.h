@@ -32,3 +32,22 @@
 #    define CPU_GPU_RESTRICT __restrict__
 #  endif
 #endif
+
+// CPU_GPU_CONST marks namespace-scope constexpr DATA (not functions) that
+// a CPU_GPU-tagged function reads - e.g. a lookup table. Unlike functions,
+// __host__ __device__ isn't legal on a single constexpr array definition,
+// so under NVCC this is device-only (`static __device__ constexpr` - the
+// leading `static` keeps it internal-linkage, so including this header
+// from more than one nvcc-compiled translation unit can't collide at
+// device-link time); on a plain host compile it's the original
+// `static constexpr`, unchanged. A function tagged CPU_GPU that reads
+// CPU_GPU_CONST data therefore still compiles correctly for both host and
+// device - the two never need to see the "other side"'s definition,
+// because __CUDACC__ is only ever defined for the device compile pass.
+#ifndef CPU_GPU_CONST
+#  if defined(__CUDACC__)
+#    define CPU_GPU_CONST static __device__ constexpr
+#  else
+#    define CPU_GPU_CONST static constexpr
+#  endif
+#endif

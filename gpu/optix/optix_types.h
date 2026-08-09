@@ -125,6 +125,30 @@ enum class MaterialType : int {
 	Hair = 12
 };
 
+// Texture kinds - see TextureData below. Matches the two CPU texture
+// classes that scene 8 (Final Scene) actually needs (src/TheRestOfYourLife/
+// texture.h's image_texture and noise_texture); other CPU texture classes
+// (checker_texture, marble_texture, mipmap_texture, ...) have no GPU
+// equivalent yet.
+enum class TextureKind : int {
+	Image = 0,
+	Noise = 1
+};
+
+// One entry per texture, indexed by MaterialData::textureIdx. Image
+// textures point into a single shared flat 8-bit RGB pixel buffer
+// (LaunchParams::texturePixels) via byte offset - same "flat device
+// buffer, index in device code" convention as every other array in this
+// codebase (see LaunchParams below). Matches src/TheRestOfYourLife/
+// rtw_stb_image.h's own byte layout exactly (3 bytes/pixel, row-major).
+struct TextureData {
+	TextureKind kind;
+	int pixelOffset;   // Image: byte offset into texturePixels. Unused for Noise.
+	int width;         // Image: pixel width. Unused for Noise.
+	int height;        // Image: pixel height. Unused for Noise.
+	float noiseScale;  // Noise: scale param (noise_texture's constructor arg). Unused for Image.
+};
+
 // Material data (packed for SBT)
 struct MaterialData {
 	MaterialType type;
@@ -135,6 +159,12 @@ struct MaterialData {
 	// Conductor complex IOR per RGB channel (pbrt-v4 ConductorBxDF: eta, k)
 	float3 eta_c;       // Real part η per R/G/B channel (Conductor only); Hair reuses .x = beta_n (azimuthal roughness), .y = alpha_deg (scale tilt)
 	float3 k_c;         // Imaginary part k per R/G/B channel (Conductor only)
+	// Index into LaunchParams::textures, or -1 to use `albedo` directly
+	// (every material before this field existed omitted it in brace-init,
+	// which C++ aggregate-init already defaults to -1 via this default
+	// member initializer - not 0 - so no existing call site needed
+	// updating). Lambertian-only for now (see shade_material()'s comment).
+	int textureIdx = -1;
 };
 
 // Punctual (delta) light kinds - point/spot/distant. These are evaluated
@@ -325,6 +355,13 @@ struct LaunchParams {
 	// Material data
 	MaterialData* materials;
 	unsigned int numMaterials;
+
+	// Texture data (see TextureData above) - indexed by
+	// MaterialData::textureIdx. texturePixels is one shared flat 8-bit RGB
+	// buffer every Image-kind TextureData::pixelOffset points into.
+	TextureData* textures;
+	unsigned int numTextures;
+	unsigned char* texturePixels;
 
 	// Light sampling support (indices into sphere/quad arrays)
 	int* lightIndices;          // Array of light primitive indices

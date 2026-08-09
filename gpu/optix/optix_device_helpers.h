@@ -10,6 +10,7 @@
 #include "../../src/shared/fresnel.h"    // Shared exact Fresnel (CPU+GPU)
 #include "../../src/shared/microfacet.h" // GGX TrowbridgeReitz (CPU+GPU)
 #include "../../src/shared/bxdfs.h"      // HairBxDF<T> (CPU+GPU) - see MaterialType::Hair
+#include "../../src/shared/noise.h"      // Perlin turbulence (CPU+GPU) - see sample_texture()
 
 // Launch parameters (constant across all threads)
 extern "C" { __constant__ LaunchParams params; }
@@ -453,25 +454,65 @@ __device__ __forceinline__ void add_punctual_lights_lambertian(
 	}
 }
 
+// Samples a texture by index (see TextureData in optix_types.h), matching
+// CPU's texture::value(u, v, p) dispatch (src/TheRestOfYourLife/texture.h)
+// for the two kinds ported so far - only called when
+// MaterialData::textureIdx >= 0 (Lambertian only for now, see
+// shade_material() below). u/v are used for Image; p (world-space hit
+// point) is used for Noise - CPU's own base-class interface takes all
+// three regardless of which the concrete texture subclass actually needs,
+// same here.
+__device__ __forceinline__ float3 sample_texture(int textureIdx, float u, float v, const float3& p) {
+	const TextureData& tex = params.textures[textureIdx];
+	if (tex.kind == TextureKind::Image) {
+		// Matches image_texture::value() (texture.h:74-88) exactly: clamp
+		// uv to [0,1], flip v (stored image rows are top-to-bottom, v=0 is
+		// the bottom of the [0,1] texture-coordinate convention), clamp the
+		// resulting integer pixel index to the image bounds (rtw_image::
+		// pixel_data()'s own clamp), nearest-neighbor, 8-bit -> [0,1] float.
+		// A failed image load (width/height <= 0) matches CPU's own solid-
+		// cyan debugging fallback (texture.h:76) exactly.
+		if (tex.width <= 0 || tex.height <= 0) return make_float3(0.0f, 1.0f, 1.0f);
+		const float uc = fminf(fmaxf(u, 0.0f), 1.0f);
+		const float vc = 1.0f - fminf(fmaxf(v, 0.0f), 1.0f);
+		const int i = min(static_cast<int>(uc * tex.width), tex.width - 1);
+		const int j = min(static_cast<int>(vc * tex.height), tex.height - 1);
+		const unsigned char* px = params.texturePixels + tex.pixelOffset + (j * tex.width + i) * 3;
+		constexpr float kColorScale = 1.0f / 255.0f;
+		return make_float3(px[0] * kColorScale, px[1] * kColorScale, px[2] * kColorScale);
+	} else {
+		// Matches noise_texture::value() (texture.h:127-129) exactly:
+		// color(.5,.5,.5) * (1 + sin(scale*p.z + 10*turb(p,7))), where
+		// turb(p,7) is perlin::turb's own default (depth=7, omega=0.5,
+		// perlin.h:37) delegating to turbulence_simple<T> (noise.h:252).
+		const float turb = turbulence_simple<float>(p.x, p.y, p.z, 0.5f, 7);
+		const float s = 0.5f * (1.0f + sinf(tex.noiseScale * p.z + 10.0f * turb));
+		return make_float3(s, s, s);
+	}
+}
+
 // Evaluates material scattering for every MaterialType except Medium and
 // Hair, which are sphere-only and stay in optix_intersection_sphere.h's own
 // closest-hit program (they need shape-specific re-intersection/geometry
 // data - a medium's exit distance, a hair fiber's curve parameterization -
 // that no other primitive type has). Identical scattering/NEE/MIS logic
 // regardless of which primitive was actually hit; only `normal`,
-// `hit_point`, and `front_face` differ per caller, and those are passed in
-// rather than recomputed here. Leaves out_scattered false (every other
-// output untouched) for DiffuseLight/default, exactly matching each call
-// site's prior inline default: case - `emission` is the sole in/out
+// `hit_point`, `front_face`, and `uv` differ per caller, and those are
+// passed in rather than recomputed here. Leaves out_scattered false (every
+// other output untouched) for DiffuseLight/default, exactly matching each
+// call site's prior inline default: case - `emission` is the sole in/out
 // parameter (NEE contributions from Lambertian/CoatedDiffuse/
 // NormalizedFresnel get added directly into whatever the caller already
-// initialized it to, i.e. mat.emission).
+// initialized it to, i.e. mat.emission). `uv` is only meaningful for
+// Lambertian materials with textureIdx >= 0 (scene 8's Earth/noise
+// spheres) - every other caller/material can pass (0,0).
 __device__ __forceinline__ void shade_material(
 	const MaterialData& mat,
 	const float3& normal,
 	const float3& ray_dir,
 	const float3& hit_point,
 	bool front_face,
+	float uv_u, float uv_v,
 	unsigned int& seed,
 	float3& out_attenuation,
 	float3& out_scattered_dir,
@@ -496,7 +537,7 @@ __device__ __forceinline__ void shade_material(
 				scattered_dir = normal;
 			}
 			scattered_dir = normalize(scattered_dir);
-			attenuation = mat.albedo;
+			attenuation = (mat.textureIdx >= 0) ? sample_texture(mat.textureIdx, uv_u, uv_v, hit_point) : mat.albedo;
 			scattered = true;
 
 			// Add direct lighting via explicit light sampling (Next Event Estimation)

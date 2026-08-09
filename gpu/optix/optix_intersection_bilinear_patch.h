@@ -145,7 +145,7 @@ extern "C" __global__ void __closesthit__bilinear_patch() {
 	bool is_specular = false;  // pbrt-v4 specularBounce: MIS is skipped for specular events
 	float brdf_pdf_override = -1.0f;  // if >= 0, overrides cosine_pdf in payload packing
 
-	shade_material(mat, final_normal, ray_dir, hit_point, front_face, seed,
+	shade_material(mat, final_normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
 		attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission);
 
 	// Pack updated payload back into registers (see optix_intersection_quad.h

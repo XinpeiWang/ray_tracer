@@ -70,7 +70,9 @@ public:
 		const std::vector<BilinearPatchData>& bilinearPatches = {},
 		const std::vector<TriangleData>& triangles = {},
 		const std::vector<GpuLensElement>& lensElements = {},
-		const std::vector<GpuExitPupilBounds>& exitPupilBounds = {}
+		const std::vector<GpuExitPupilBounds>& exitPupilBounds = {},
+		const std::vector<TextureData>& textures = {},
+		const std::vector<unsigned char>& texturePixels = {}
 	);
 
 	/// @brief Render a frame using path tracing
@@ -159,6 +161,9 @@ private:
 	// -------------------------------------------------------------------
 	CUdeviceptr d_materials_ = 0;     ///< Device material array
 	unsigned int numMaterials_ = 0;   ///< Number of materials
+	CUdeviceptr d_textures_ = 0;      ///< Device texture metadata array (TextureData)
+	unsigned int numTextures_ = 0;    ///< Number of textures
+	CUdeviceptr d_texturePixels_ = 0; ///< Device shared flat texture pixel buffer
 	CUdeviceptr d_spheres_ = 0;       ///< Device sphere array
 	unsigned int numSpheres_ = 0;     ///< Number of spheres
 	CUdeviceptr d_quads_ = 0;         ///< Device quad array

@@ -89,6 +89,17 @@ extern "C" __global__ void __closesthit__sphere() {
 	const bool front_face = dot(ray_dir, outward_normal) < 0.0f;
 	const float3 normal = front_face ? outward_normal : -outward_normal;
 
+	// Sphere UV (only meaningful for a Lambertian material with
+	// textureIdx >= 0 - see shade_material()'s uv_u/uv_v params). Matches
+	// CPU's get_sphere_uv() (sphere.h:131-144) exactly, using the raw
+	// outward_normal (not the front-face-corrected one) since UV mapping
+	// is a property of the surface point, independent of which side the
+	// ray hit from.
+	const float sphere_theta = acosf(-outward_normal.y);
+	const float sphere_phi = atan2f(-outward_normal.z, outward_normal.x) + 3.14159265358979323846f;
+	const float sphere_uv_u = sphere_phi / (2.0f * 3.14159265358979323846f);
+	const float sphere_uv_v = sphere_theta / 3.14159265358979323846f;
+
 	// Unpack payload from registers
 	float3 attenuation_in = make_float3(
 		__uint_as_float(optixGetPayload_0()),
@@ -151,7 +162,7 @@ extern "C" __global__ void __closesthit__sphere() {
 			scattered   = sample_hair_material(ray_dir, normal, mat, seed, scattered_dir, attenuation);
 			is_specular = true;
 	} else {
-		shade_material(mat, normal, ray_dir, hit_point, front_face, seed,
+		shade_material(mat, normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, seed,
 			attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission);
 	}
 

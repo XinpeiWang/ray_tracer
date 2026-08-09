@@ -532,7 +532,9 @@ bool OptiXRenderer::buildScene(
 	const std::vector<BilinearPatchData>& bilinearPatches,
 	const std::vector<TriangleData>& triangles,
 	const std::vector<GpuLensElement>& lensElements,
-	const std::vector<GpuExitPupilBounds>& exitPupilBounds
+	const std::vector<GpuExitPupilBounds>& exitPupilBounds,
+	const std::vector<TextureData>& textures,
+	const std::vector<unsigned char>& texturePixels
 ) {
 	// Store material data on device
 	numMaterials_ = static_cast<unsigned int>(materials.size());
@@ -551,6 +553,44 @@ bool OptiXRenderer::buildScene(
 	));
 
 	std::cout << "[OptiX] Uploaded " << materials.size() << " materials to GPU\n";
+
+	// Store texture metadata + shared pixel buffer on device. Both are
+	// legitimately empty for most scenes (no textures at all) - guard the
+	// malloc/memcpy rather than relying on cudaMalloc(0)'s behavior, same
+	// caution already taken for bilinearPatches/triangles below.
+	numTextures_ = static_cast<unsigned int>(textures.size());
+	size_t textureSize = textures.size() * sizeof(TextureData);
+
+	if (d_textures_) {
+		cudaFree(reinterpret_cast<void*>(d_textures_));
+		d_textures_ = 0;
+	}
+	if (!textures.empty()) {
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_textures_), textureSize));
+		CUDA_CHECK(cudaMemcpy(
+			reinterpret_cast<void*>(d_textures_),
+			textures.data(),
+			textureSize,
+			cudaMemcpyHostToDevice
+		));
+	}
+
+	if (d_texturePixels_) {
+		cudaFree(reinterpret_cast<void*>(d_texturePixels_));
+		d_texturePixels_ = 0;
+	}
+	if (!texturePixels.empty()) {
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_texturePixels_), texturePixels.size()));
+		CUDA_CHECK(cudaMemcpy(
+			reinterpret_cast<void*>(d_texturePixels_),
+			texturePixels.data(),
+			texturePixels.size(),
+			cudaMemcpyHostToDevice
+		));
+	}
+
+	if (!textures.empty())
+		std::cout << "[OptiX] Uploaded " << textures.size() << " textures (" << texturePixels.size() << " pixel bytes) to GPU\n";
 
 	// Store sphere data on device
 	numSpheres_ = static_cast<unsigned int>(spheres.size());
@@ -1293,6 +1333,9 @@ bool OptiXRenderer::render(
 	params.traversable = gasHandle_;
 	params.materials = reinterpret_cast<MaterialData*>(d_materials_);
 	params.numMaterials = numMaterials_;
+	params.textures = reinterpret_cast<TextureData*>(d_textures_);
+	params.numTextures = numTextures_;
+	params.texturePixels = reinterpret_cast<unsigned char*>(d_texturePixels_);
 	params.spheres = reinterpret_cast<SphereData*>(d_spheres_);
 	params.numSpheres = numSpheres_;
 	params.quads = reinterpret_cast<QuadData*>(d_quads_);
@@ -1376,6 +1419,8 @@ void OptiXRenderer::cleanup() noexcept {
 
 	// Free scene data
 	if (d_materials_) cudaFree(reinterpret_cast<void*>(d_materials_));
+	if (d_textures_) cudaFree(reinterpret_cast<void*>(d_textures_));
+	if (d_texturePixels_) cudaFree(reinterpret_cast<void*>(d_texturePixels_));
 	if (d_spheres_) cudaFree(reinterpret_cast<void*>(d_spheres_));
 	if (d_quads_) cudaFree(reinterpret_cast<void*>(d_quads_));
 	if (d_bilinearPatches_) cudaFree(reinterpret_cast<void*>(d_bilinearPatches_));
