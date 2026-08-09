@@ -56,8 +56,17 @@ extern "C" int optix_render_main(
 		GpuCameraParams cameraExtra{};  // zero-init: kind=Perspective, DOF/spherical fields all zero
 
 		if (!build_scene(scene_id, image_width, image_height, scene, camera_params, cam_x, cam_y, cam_z, &cameraExtra, force_camera_override != 0)) {
-			std::cerr << "[OptiX] Failed to build scene\n";
-			return ERR_GPU_SCENE_BUILD_FAILED;
+			// build_scene() only ever returns false for an unrecognized/
+			// unimplemented scene_id (its default: case) - the other
+			// return-false path (a null camera_params buffer) is
+			// unreachable in practice, since every caller here passes a
+			// valid on-stack array. ERR_GPU_UNSUPPORTED_SCENE gives the
+			// user the actionable "switch to CPU mode" message
+			// (error_handler.h); the old ERR_GPU_SCENE_BUILD_FAILED here
+			// was misleading - it reads as a genuine build/geometry
+			// failure, not "this scene was never ported to GPU."
+			std::cerr << "[OptiX] Scene not supported on GPU\n";
+			return ERR_GPU_UNSUPPORTED_SCENE;
 		}
 
 		// Scenes that don't use a non-default camera model leave cameraExtra
