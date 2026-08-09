@@ -99,7 +99,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             2, SceneNames::CheckeredSpheres,
             "Two spheres with procedural checker texture",
-            "Fast", 100, false, false,
+            "Fast", 100, false, true,
             { 20, 13, 2, 3,  0, 0, 0,  0.70, 0.80, 1.00 },
             build_checkered_spheres,
             sky_dummy_lights
@@ -123,7 +123,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             5, SceneNames::ColoredQuads,
             "Five colored quad primitives",
-            "Fast", 100, false, false,
+            "Fast", 100, false, true,
             { 80, 0, 0, 9,  0, 0, 0,  0.70, 0.80, 1.00 },
             build_quads,
             sky_dummy_lights

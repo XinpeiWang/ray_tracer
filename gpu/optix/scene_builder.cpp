@@ -976,48 +976,33 @@ void build_bouncing_spheres(SceneData& scene) {
 	}
 }
 
-/**
- * Build checkered spheres scene (scene 2)
- * Two spheres with different albedos
- */
+/// @brief Build checkered spheres scene (scene 2). Matches CPU
+/// build_checkered_spheres() (src/TheRestOfYourLife/scenes_book.h) exactly:
+/// a single checker_texture(scale=0.32, color(.2,.3,.1), color(.9,.9,.9))
+/// shared across both spheres - not two separately flat-colored spheres (an
+/// earlier version of this function approximated the checker that way,
+/// before this codebase had any GPU checker-texture support; see
+/// add_checker_texture_gpu, added for scene 38's ground).
 void build_checkered_spheres(SceneData& scene) {
-	// Bottom sphere (darker)
-	const int mat1 = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({
-		MaterialType::Lambertian,
-		make_float3(0.2f, 0.3f, 0.1f),  // albedo
-		0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f)  // no emission
-	});
+	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.32f,
+		make_float3(0.2f, 0.3f, 0.1f), make_float3(0.9f, 0.9f, 0.9f));
+	const int mat = safe_cast_to_int(scene.materials.size());
+	MaterialData m{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+	m.textureIdx = checkerTexIdx;
+	scene.materials.push_back(m);
 
 	SphereData sphere1{};
 	sphere1.center = make_float3(0.0f, -10.0f, 0.0f);
 	sphere1.radius = 10.0f;
-	sphere1.materialIdx = mat1;
+	sphere1.materialIdx = mat;
 	scene.spheres.push_back(sphere1);
-	if (is_emissive(scene, mat1)) {
-		scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-		scene.isLightSphere.push_back(true);
-	}
-
-	// Top sphere (lighter)
-	const int mat2 = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({
-		MaterialType::Lambertian,
-		make_float3(0.9f, 0.9f, 0.9f),  // albedo
-		0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f)  // no emission
-	});
 
 	SphereData sphere2{};
 	sphere2.center = make_float3(0.0f, 10.0f, 0.0f);
 	sphere2.radius = 10.0f;
-	sphere2.materialIdx = mat2;
+	sphere2.materialIdx = mat;
 	scene.spheres.push_back(sphere2);
-	if (is_emissive(scene, mat2)) {
-		scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-		scene.isLightSphere.push_back(true);
-	}
 }
 
 /// @brief Scene 3: Earth. Matches CPU build_earth() (src/TheRestOfYourLife/
