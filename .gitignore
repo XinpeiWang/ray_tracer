@@ -153,6 +153,13 @@ RayTracer_Package/styles/
 !docs/*.png
 !docs/*.jpg
 
+# ...and real texture assets under images/ (e.g. earthmap.jpg for scenes
+# 3/8) - same reasoning as models/*.obj above: the broad *.jpg/*.png rules
+# above are meant for generated render output, not source texture data
+# that happens to share the extension.
+!images/*.jpg
+!images/*.png
+
 # Test output
 test_*.ppm
 test_*.png
