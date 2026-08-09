@@ -115,7 +115,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             4, SceneNames::PerlinSpheres,
             "Spheres with Perlin noise marble texture",
-            "Fast", 100, false, false,
+            "Fast", 100, false, true,
             { 20, 13, 2, 3,  0, 0, 0,  0.70, 0.80, 1.00 },
             build_perlin_spheres,
             sky_dummy_lights
@@ -131,7 +131,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             6, SceneNames::SimpleLight,
             "Perlin spheres with emissive light sources",
-            "Fast", 100, false, false,
+            "Fast", 100, false, true,
             { 20, 26, 3, 6,  0, 2, 0,  0, 0, 0 },
             build_simple_light,
             no_lights

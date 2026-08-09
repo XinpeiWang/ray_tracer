@@ -1026,6 +1026,73 @@ static void build_earth_gpu(SceneData& scene) {
 	scene.spheres.push_back(s);
 }
 
+/// @brief Ground + Perlin-noise sphere pair shared by scenes 4 (Perlin
+/// Spheres) and 6 (Simple Light) - both start from identical code in CPU
+/// (scenes_book.h's build_perlin_spheres() and build_simple_light() both
+/// begin with the exact same two spheres before scene 6 adds its lights).
+/// One shared noise_texture(scale=4) material for both spheres, matching
+/// CPU's single `pertext` object.
+static void add_perlin_spheres_pair_gpu(SceneData& scene) {
+	const int noiseTexIdx = add_noise_texture_gpu(scene, 4.0f);
+	const int mat = safe_cast_to_int(scene.materials.size());
+	MaterialData m{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+	m.textureIdx = noiseTexIdx;
+	scene.materials.push_back(m);
+
+	SphereData ground{};
+	ground.center = make_float3(0.0f, -1000.0f, 0.0f);
+	ground.radius = 1000.0f;
+	ground.materialIdx = mat;
+	scene.spheres.push_back(ground);
+
+	SphereData s{};
+	s.center = make_float3(0.0f, 2.0f, 0.0f);
+	s.radius = 2.0f;
+	s.materialIdx = mat;
+	scene.spheres.push_back(s);
+}
+
+/// @brief Scene 4: Perlin Spheres. Matches CPU build_perlin_spheres()
+/// (scenes_book.h) exactly.
+static void build_perlin_spheres_gpu(SceneData& scene) {
+	add_perlin_spheres_pair_gpu(scene);
+}
+
+/// @brief Scene 6: Simple Light. Matches CPU build_simple_light()
+/// (scenes_book.h) exactly: the same Perlin-sphere pair as scene 4, plus
+/// one emissive sphere and one emissive quad sharing a single
+/// diffuse_light(4,4,4) material (matched here with one shared GPU
+/// material index registered as a light for both primitives).
+static void build_simple_light_gpu(SceneData& scene) {
+	add_perlin_spheres_pair_gpu(scene);
+
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f,
+		make_float3(4.0f, 4.0f, 4.0f) });
+
+	SphereData lightSphere{};
+	lightSphere.center = make_float3(0.0f, 7.0f, 0.0f);
+	lightSphere.radius = 2.0f;
+	lightSphere.materialIdx = mat_light;
+	scene.spheres.push_back(lightSphere);
+	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+	scene.isLightSphere.push_back(true);
+
+	QuadData lightQuad{};
+	lightQuad.Q = make_float3(3.0f, 1.0f, -2.0f);
+	lightQuad.u = make_float3(2.0f, 0.0f, 0.0f);
+	lightQuad.v = make_float3(0.0f, 2.0f, 0.0f);
+	const float3 lc = cross(lightQuad.u, lightQuad.v);
+	lightQuad.w = lc;
+	lightQuad.normal = normalize(lc);
+	lightQuad.D = dot(lightQuad.normal, lightQuad.Q);
+	lightQuad.materialIdx = mat_light;
+	scene.quads.push_back(lightQuad);
+	scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+	scene.isLightSphere.push_back(false);
+}
+
 /**
  * Build colored quads scene (scene 5)
  * Five colored quads arranged in 3D space
@@ -2121,6 +2188,26 @@ bool build_scene(
 					}
 					break;
 
+				case 4:  // Perlin Spheres (see add_perlin_spheres_pair_gpu's comment)
+					build_perlin_spheres_gpu(scene);
+
+					// Same Fixed-mode situation as scenes 1/2/3 above.
+					{
+						const float3 lookfrom = force_camera_override
+							? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z))
+							: make_float3(13.0f, 2.0f, 3.0f);
+						const float3 lookat = make_float3(0.0f, 0.0f, 0.0f);
+						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
+						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+						build_pinhole_camera_params(lookfrom, lookat, vup, 20.0f, aspect, 1.0f, camera_params);
+
+						// Flat light-blue background, matching CPU registry's
+						// bg=(0.70,0.80,1.00) for this scene (see
+						// GpuCameraParams::backgroundColor's comment).
+						if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.70f, 0.80f, 1.00f);
+					}
+					break;
+
 				case 5:  // Colored Quads
 						build_quads_scene(scene);
 
@@ -2142,6 +2229,20 @@ bool build_scene(
 						if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.70f, 0.80f, 1.00f);
 					}
 					break;
+
+				case 6: {  // Simple Light (see build_simple_light_gpu's comment)
+					build_simple_light_gpu(scene);
+
+					const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
+					const float3 lookat = make_float3(0.0f, 2.0f, 0.0f);
+					const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
+					const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+					build_pinhole_camera_params(lookfrom, lookat, vup, 20.0f, aspect, 1.0f, camera_params);
+					// backgroundColor left at zero-init (matches CPU bg=(0,0,0)) -
+					// this scene has real emissive geometry (the light sphere and
+					// light quad above).
+					break;
+				}
 
 				case 8:  // Final Scene (see build_final_scene_gpu's own comment
 						 // for what's ported vs. placeholder-approximated)
