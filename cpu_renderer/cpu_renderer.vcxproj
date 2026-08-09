@@ -26,7 +26,21 @@
     <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v145</PlatformToolset>
-    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <!-- WholeProgramOptimization (LTCG, i.e. /GL) removed at the root cause
+         rather than patched in every consumer: this static lib's /GL-
+         compiled objects (stb_image_impl.obj in particular) reproducibly
+         triggered "fatal error LNK1103: debugging information corrupt" in
+         every downstream project that itself also had LTCG enabled and
+         needed to relink this lib after a cpu_renderer source change -
+         hit three separate times this session (tests/ray_tracer_tests.
+         vcxproj, launcher/launcher.vcxproj, scene_metadata/
+         scene_metadata.vcxproj) before tracing it back here. Disabling it
+         on the consumer side each time worked but only for that one
+         consumer; disabling it here fixes it for all of them at once and
+         for any future one. cpu_renderer.lib is linked into a CLI
+         renderer and a handful of DLL/test binaries, not a
+         performance-critical shared library consumed by external code -
+         there's no meaningful optimization loss from dropping LTCG here. -->
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />

@@ -27,7 +27,19 @@
     <ConfigurationType>StaticLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v145</PlatformToolset>
-    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <!-- WholeProgramOptimization (LTCG, i.e. /GL) removed - same reasoning
+         as cpu_renderer.vcxproj's identical change: any static lib's own
+         /GL-compiled objects can trigger "fatal error LNK1103: debugging
+         information corrupt" in a downstream consumer that also has LTCG
+         enabled when it needs to relink after a source change in this
+         project (this class of bug hit three different consumer projects
+         this session - see cpu_renderer.vcxproj's comment for the root-
+         cause trace). Removed here proactively rather than waiting for it
+         to reproduce with this project's own .cpp files (scene_builder.cpp
+         etc. - the .cu device code compiles through a separate nvcc path
+         unaffected by this flag). This project links into a CLI renderer
+         and test binaries, not a performance-critical shared library
+         consumed by external code - no meaningful optimization loss. -->
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
