@@ -49,13 +49,25 @@ void MainWindow::onRenderClicked() {
 
 	// Camera position (lookfrom) - read from spinboxes
 	// These reflect either the selected preset or custom user input
-	// The camera will always look toward the center (278, 278, 278) - lookat is fixed in renderer
+	int sceneId = m_sceneCombo->currentData().toInt();
 	double camX = m_cameraPosX->value();
 	double camY = m_cameraPosY->value();
 	double camZ = m_cameraPosZ->value();
 
-	// Scene selection - determines which scene to render
-	int sceneId = m_sceneCombo->currentData().toInt();
+	// Only treat the camera as "explicit" (see RenderThread::setParameters's
+	// comment) if it actually differs from this scene's own recommended
+	// camera - queried live, same as onSceneChanged. If the query fails,
+	// default to explicit: the worse outcome is an unnecessary (but
+	// harmless, since it'd be the same value anyway) cam_x/y/z on the
+	// command line, not a silently wrong camera.
+	bool camExplicit = true;
+	double recCamX, recCamY, recCamZ, recLookatX, recLookatY, recLookatZ;
+	if (SceneMetadataClient::recommendedCamera(sceneId, recCamX, recCamY, recCamZ, recLookatX, recLookatY, recLookatZ)) {
+		constexpr double kEpsilon = 1e-6;
+		camExplicit = std::abs(camX - recCamX) > kEpsilon
+			|| std::abs(camY - recCamY) > kEpsilon
+			|| std::abs(camZ - recCamZ) > kEpsilon;
+	}
 
 	// ========================================================================
 	// Launch Render Thread
@@ -63,7 +75,7 @@ void MainWindow::onRenderClicked() {
 	// RenderThread spawns ray_tracer.exe as a subprocess with all parameters
 	// The executable will call either CPU or GPU renderer based on useGPU flag
 	m_renderThread = new RenderThread(this);
-	m_renderThread->setParameters(useGPU, width, height, samples, maxDepth, sceneId, camX, camY, camZ, outputPath);
+	m_renderThread->setParameters(useGPU, width, height, samples, maxDepth, sceneId, camX, camY, camZ, camExplicit, outputPath);
 
 	// Set video parameters if in video mode
 	if (m_videoMode) {

@@ -30,12 +30,13 @@
 // RenderThread Implementation
 RenderThread::RenderThread(QObject *parent)
 	: QThread(parent), m_useGPU(true), m_width(800), m_height(800), m_samples(100), m_maxDepth(50),
-	  m_sceneId(0), m_camX(278), m_camY(278), m_camZ(-800), m_renderProcess(nullptr),
+	  m_sceneId(0), m_camX(278), m_camY(278), m_camZ(-800), m_camExplicit(false), m_renderProcess(nullptr),
 	  m_videoMode(false), m_videoFrames(60), m_videoFPS(30), m_videoSpeed(1.0), m_cameraPath("orbit") {
 }
 
 void RenderThread::setParameters(bool useGPU, int width, int height, int samples, int maxDepth,
-								  int sceneId, double camX, double camY, double camZ, const QString &outputPath) {
+								  int sceneId, double camX, double camY, double camZ, bool camExplicit,
+								  const QString &outputPath) {
 	m_useGPU = useGPU;
 	m_width = width;
 	m_height = height;
@@ -45,6 +46,7 @@ void RenderThread::setParameters(bool useGPU, int width, int height, int samples
 	m_camX = camX;
 	m_camY = camY;
 	m_camZ = camZ;
+	m_camExplicit = camExplicit;
 	m_outputPath = outputPath;
 }
 
@@ -144,14 +146,22 @@ void RenderThread::run() {
 	// regardless of what the user picked in the Scene dropdown.
 	args << QString::number(m_sceneId);
 
-	// Camera position is sent in both modes: single-image uses it directly,
+	// Camera position is only sent when it's explicit (see setParameters()'s
+	// comment) - when the user hasn't touched it, omitting it lets
+	// ray_tracer.exe fall back to the scene's own recommended camera
+	// (main.cpp, driven by cam_explicit) exactly as a bare CLI invocation
+	// would, instead of this GUI forcing every render through the "explicit
+	// camera" path regardless of whether the user asked for one. When
+	// explicit, it applies in both modes: single-image uses it directly,
 	// and video mode uses it as the camera path's starting point (see
 	// main.cpp's cam_explicit override of path_lookfrom) so that adjusting
-	// X/Y/Z or "Distance from Center" in the GUI actually changes the video,
-	// not just the single-image preview.
-	args << QString::number(m_camX);     // Camera position X
-	args << QString::number(m_camY);     // Camera position Y
-	args << QString::number(m_camZ);     // Camera position Z
+	// X/Y/Z or "Distance from Center" in the GUI actually changes the
+	// video, not just the single-image preview.
+	if (m_camExplicit) {
+		args << QString::number(m_camX);     // Camera position X
+		args << QString::number(m_camY);     // Camera position Y
+		args << QString::number(m_camZ);     // Camera position Z
+	}
 
 	emit logMessage(QString("Command: %1 %2").arg(exePath, args.join(" ")));
 

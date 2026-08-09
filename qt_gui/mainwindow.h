@@ -57,8 +57,15 @@ public:
 	// Camera parameters (camX, camY, camZ) define the camera position (lookfrom)
 	// The camera always looks at the Cornell box center (278, 278, 278) - lookat is fixed
 	// sceneId selects which scene to render (0=Cornell Box, 1=Bouncing Spheres, etc.)
-	void setParameters(bool useGPU, int width, int height, int samples, int maxDepth, 
-					   int sceneId, double camX, double camY, double camZ, const QString &outputPath = QString());
+	// camExplicit: true if camX/Y/Z differ from sceneId's own recommended camera
+	// (computed by the caller via SceneMetadataClient - see onRenderClicked) - only
+	// then are cam_x/y/z actually passed on the command line, so ray_tracer.exe's
+	// own "use the scene's recommended camera" fallback (main.cpp, driven by
+	// LaunchArgs::cam_explicit) stays a real code path for untouched renders
+	// instead of being permanently short-circuited by this GUI.
+	void setParameters(bool useGPU, int width, int height, int samples, int maxDepth,
+					   int sceneId, double camX, double camY, double camZ, bool camExplicit,
+					   const QString &outputPath = QString());
 
 	// Set video generation parameters
 	void setVideoParameters(bool enabled, int frames, int fps, const QString &cameraPath, double speed = 1.0);
@@ -88,6 +95,7 @@ private:
 	double m_camX;          // Camera X coordinate
 	double m_camY;          // Camera Y coordinate
 	double m_camZ;          // Camera Z coordinate
+	bool m_camExplicit;     // See setParameters()'s comment
 
 	QString m_outputPath;   // Output file path for rendered image
 	QProcess *m_renderProcess; // Subprocess handle for ray_tracer.exe (owned by the worker thread - run())

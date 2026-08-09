@@ -47,6 +47,26 @@ struct LaunchArgs {
 	// scene's own recommended camera instead of forcing this default onto
 	// every scene, which would misplace it just as badly as a stale GUI
 	// spinbox value would for a much smaller scene).
+	//
+	// How this relates to the renderer's other two camera-authority
+	// concepts, so all three don't have to be puzzled out independently:
+	//   - CameraConfig::mode (Fixed/UserControlled, scene_registry.h) is
+	//     the SCENE's own default posture: does this scene want manual
+	//     camera control at all, absent any override?
+	//   - cam_explicit (here) and force_camera_override (cpu_interface.h /
+	//     optix_interface.h / scene_builder.h) are the same question - "does
+	//     THIS render call override that default?" - asked at two different
+	//     layers: cam_explicit at CLI-parse time (did the user supply
+	//     cam_x/y/z at all), force_camera_override at render-call time
+	//     (main.cpp sets it from cam_explicit for single images, and
+	//     unconditionally for every video frame, which must always honor
+	//     its own per-frame animated camera regardless of scene mode).
+	// The Qt GUI (qt_gui/mainwindow_slots.cpp's onRenderClicked) computes
+	// its own explicit-ness by comparing the camera spinboxes against the
+	// scene's recommended default (via scene_metadata.dll) and only sends
+	// cam_x/y/z when they actually differ - otherwise this fallback path
+	// would never run for GUI-launched renders, since every GUI render
+	// would otherwise arrive with cam_x/y/z always present.
 	bool   cam_explicit      = false;
 };
 
