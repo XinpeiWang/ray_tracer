@@ -150,10 +150,20 @@ private:
 	size_t numHitRecords_ = 0;            ///< Number of hit records
 
 	// -------------------------------------------------------------------
-	// Acceleration Structure (GAS)
+	// Acceleration Structure
 	// -------------------------------------------------------------------
-	OptixTraversableHandle gasHandle_ = 0; ///< Acceleration structure handle
-	CUdeviceptr d_gas_ = 0;                ///< Device memory for GAS
+	// OptiX forbids mixing OPTIX_BUILD_INPUT_TYPE_TRIANGLES and
+	// OPTIX_BUILD_INPUT_TYPE_CUSTOM_PRIMITIVES build inputs in one GAS, so
+	// triangles (native OptiX geometry) and spheres/quads/bilinear-patches
+	// (custom AABB primitives) live in two separate GASes, combined under
+	// one top-level IAS - gasHandle_/d_gas_ is that IAS (single-level
+	// instancing), the traversable actually used at render time.
+	OptixTraversableHandle gasHandle_ = 0;       ///< Top-level IAS handle (used by params.traversable)
+	CUdeviceptr d_gas_ = 0;                      ///< Device memory for the IAS
+	OptixTraversableHandle gasCustomHandle_ = 0; ///< Child GAS: spheres/quads/bilinear-patches
+	CUdeviceptr d_gasCustom_ = 0;                ///< Device memory for the custom-primitive GAS
+	OptixTraversableHandle gasTriHandle_ = 0;    ///< Child GAS: triangles (native OptiX geometry)
+	CUdeviceptr d_gasTri_ = 0;                   ///< Device memory for the triangle GAS
 	bool sceneHasMotion_ = false;          ///< True if the uploaded scene has >=1 moving sphere (see buildScene())
 
 	// -------------------------------------------------------------------

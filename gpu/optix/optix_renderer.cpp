@@ -17,6 +17,7 @@
 #include <iostream>
 #include <sstream>
 #include <array>
+#include <cstring>
 
 namespace {
 	/// Constants for OptiX configuration
@@ -210,11 +211,23 @@ bool OptiXRenderer::createModule() {
 	// optix_raygen.h), so optixGetRayTime() simply always returns 0 for them
 	// - a provable no-op, not just an assumption.
 	pipelineCompileOptions_.usesMotionBlur = true;
-	pipelineCompileOptions_.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
+	// Single-level instancing (one IAS wrapping exactly the 2 child GASes
+	// built in buildAccelerationStructure - triangles can't share a GAS
+	// with the custom AABB primitives, see that function's comment), not
+	// ALLOW_SINGLE_GAS anymore.
+	pipelineCompileOptions_.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
 	pipelineCompileOptions_.numPayloadValues = 13;  // attenuation(3) + emission(3) + dir(3) + seed(1) + flag(1) + t(1) + brdf_or_light_pdf(1)
 	pipelineCompileOptions_.numAttributeValues = 4;  // Sphere: center.xyz + radius (4 attrs)
 	pipelineCompileOptions_.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
 	pipelineCompileOptions_.pipelineLaunchParamsVariableName = "params";
+	// Triangles use OptiX's built-in hardware-accelerated triangle geometry
+	// (OPTIX_BUILD_INPUT_TYPE_TRIANGLES, see build_triangle_mesh_gpu below);
+	// spheres/quads/bilinear-patches stay custom AABB primitives. Both flags
+	// must be declared together since the GAS mixes both kinds of build
+	// input - matches pbrt-v4's own GPU renderer, which also uses built-in
+	// triangles alongside custom quadric/bilinear-patch primitives.
+	pipelineCompileOptions_.usesPrimitiveTypeFlags =
+		OPTIX_PRIMITIVE_TYPE_FLAGS_CUSTOM | OPTIX_PRIMITIVE_TYPE_FLAGS_TRIANGLE;
 
 	// Create module
 	char log[2048];
@@ -350,11 +363,10 @@ bool OptiXRenderer::createProgramGroups() {
 		&hitgroupBilinearPatchPG_
 	));
 
-	// Triangle hit group (intersection + closest-hit)
+	// Triangle hit group (closest-hit only - intersection is OptiX's
+	// built-in hardware triangle test, no custom IS program bound).
 	OptixProgramGroupDesc triangleHitDesc = {};
 	triangleHitDesc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
-	triangleHitDesc.hitgroup.moduleIS = module_;
-	triangleHitDesc.hitgroup.entryFunctionNameIS = "__intersection__triangle";
 	triangleHitDesc.hitgroup.moduleCH = module_;
 	triangleHitDesc.hitgroup.entryFunctionNameCH = "__closesthit__triangle";
 
@@ -426,11 +438,11 @@ bool OptiXRenderer::createProgramGroups() {
 		&shadowHitgroupBilinearPatchPG_
 	));
 
-	// Shadow hit group for triangles (any-hit only, no closest-hit)
+	// Shadow hit group for triangles (any-hit only, no closest-hit, no
+	// custom IS - built-in hardware triangle test, same as the radiance
+	// hit group above).
 	OptixProgramGroupDesc shadowTriangleHitDesc = {};
 	shadowTriangleHitDesc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
-	shadowTriangleHitDesc.hitgroup.moduleIS = module_;
-	shadowTriangleHitDesc.hitgroup.entryFunctionNameIS = "__intersection__triangle";
 	shadowTriangleHitDesc.hitgroup.moduleAH = module_;
 	shadowTriangleHitDesc.hitgroup.entryFunctionNameAH = "__anyhit__shadow_triangle";
 
@@ -515,7 +527,7 @@ bool OptiXRenderer::linkPipeline() {
 		directCallableStackSizeFromTraversal,
 		directCallableStackSizeFromState,
 		continuationStackSize,
-		1  // maxTraversableGraphDepth (must be 1 for OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS)
+		2  // maxTraversableGraphDepth: IAS -> GAS is 2 levels (single-level instancing)
 	));
 
 	std::cout << "[OptiX] Pipeline linked successfully\n";
@@ -858,9 +870,11 @@ bool OptiXRenderer::buildScene(
 		return false;
 	}
 
-	size_t totalGeoms = spheres.size() + quads.size() + bilinearPatches.size() + triangles.size();
+	// Triangles are excluded from this count - they don't go through the
+	// AABB-based custom-primitive path below (see the comment further down).
+	size_t totalAabbGeoms = spheres.size() + quads.size() + bilinearPatches.size();
 	std::vector<OptixAabb> aabbs;
-	aabbs.reserve(totalGeoms);
+	aabbs.reserve(totalAabbGeoms);
 
 	// Build AABBs for spheres
 	for (const auto& s : spheres) {
@@ -910,17 +924,14 @@ bool OptiXRenderer::buildScene(
 		aabbs.push_back(aabb);
 	}
 
-	// Build AABBs for triangles
-	for (const auto& t : triangles) {
-		OptixAabb aabb;
-		aabb.minX = fminf(fminf(t.p0.x, t.p1.x), t.p2.x);
-		aabb.minY = fminf(fminf(t.p0.y, t.p1.y), t.p2.y);
-		aabb.minZ = fminf(fminf(t.p0.z, t.p1.z), t.p2.z);
-		aabb.maxX = fmaxf(fmaxf(t.p0.x, t.p1.x), t.p2.x);
-		aabb.maxY = fmaxf(fmaxf(t.p0.y, t.p1.y), t.p2.y);
-		aabb.maxZ = fmaxf(fmaxf(t.p0.z, t.p1.z), t.p2.z);
-		aabbs.push_back(aabb);
-	}
+	// Triangles are NOT included in this combined AABB buffer - they use
+	// OptiX's built-in hardware triangle geometry (OPTIX_BUILD_INPUT_TYPE_
+	// TRIANGLES, see the vertex-buffer upload and triBuildInput below),
+	// which needs a vertex buffer, not host-computed AABBs (OptiX derives
+	// its own bounds internally from the vertex data during the accel
+	// build). This matches pbrt-v4's own GPU renderer, which also gives
+	// triangles OptiX's native path while keeping quadrics/bilinear-patches
+	// as custom AABB primitives like `totalAabbGeoms`'s other three types here.
 
 	// Motion blur: true if any sphere's ray-time-t=1 position differs from
 	// its t=0 position (see SphereData::center1's doc comment). Detected
@@ -943,7 +954,7 @@ bool OptiXRenderer::buildScene(
 	// a motion-enabled GAS must supply 2 keys even if only spheres move.
 	std::vector<OptixAabb> aabbsKey1;
 	if (sceneHasMotion_) {
-		aabbsKey1.reserve(totalGeoms);
+		aabbsKey1.reserve(totalAabbGeoms);
 		for (const auto& s : spheres) {
 			OptixAabb aabb;
 			aabb.minX = s.center1.x - s.radius;
@@ -1036,96 +1047,205 @@ bool OptiXRenderer::buildScene(
 	blpBuildInput.customPrimitiveArray.sbtIndexOffsetSizeInBytes = 0;
 	blpBuildInput.customPrimitiveArray.sbtIndexOffsetStrideInBytes = 0;
 
-	// Build input for triangle geometry
-	CUdeviceptr d_tri_aabb_keys[2] = {
-		d_aabb + ((spheres.size() + quads.size() + bilinearPatches.size()) * sizeof(OptixAabb)),
-		d_aabbKey1 + ((spheres.size() + quads.size() + bilinearPatches.size()) * sizeof(OptixAabb))
-	};
-	std::vector<uint32_t> tri_flags(triangles.size(), OPTIX_GEOMETRY_FLAG_NONE);
+	// Build input for triangle geometry - OptiX's built-in triangle type,
+	// not a custom AABB primitive (see the comment above the AABB loops).
+	// Vertex buffer is a flat triangle soup (3 vertices per TriangleData,
+	// in order, no index buffer) - primitive i's 3 vertices are exactly
+	// triangles[i].p0/p1/p2, so optixGetPrimitiveIndex() in the closest-hit/
+	// any-hit programs keeps indexing params.triangles[primIdx] unchanged.
+	CUdeviceptr d_triVertices = 0;
+	std::vector<float3> triVertsHost;
+	if (!triangles.empty()) {
+		triVertsHost.reserve(triangles.size() * 3);
+		for (const auto& t : triangles) {
+			triVertsHost.push_back(t.p0);
+			triVertsHost.push_back(t.p1);
+			triVertsHost.push_back(t.p2);
+		}
+		size_t triVertsSize = triVertsHost.size() * sizeof(float3);
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_triVertices), triVertsSize));
+		CUDA_CHECK(cudaMemcpy(
+			reinterpret_cast<void*>(d_triVertices),
+			triVertsHost.data(),
+			triVertsSize,
+			cudaMemcpyHostToDevice
+		));
+	}
+	// Triangles get their own GAS (see the "two GASes + one IAS" comment
+	// below) built with motionOptions.numKeys=0 always, since triangles
+	// never move - so unlike the AABB types above, no duplicate-for-key-1
+	// buffer is needed here, just a single vertex buffer.
+	CUdeviceptr d_tri_vertex_keys[1] = { d_triVertices };
+	// flags[] for a triangle build input is indexed per SBT record (here:
+	// just 1, since numSbtRecords=1), NOT per primitive like the AABB
+	// custom-primitive arrays above - a single entry is correct.
+	std::vector<uint32_t> tri_flags(1, OPTIX_GEOMETRY_FLAG_NONE);
 	OptixBuildInput triBuildInput = {};
-	triBuildInput.type = OPTIX_BUILD_INPUT_TYPE_CUSTOM_PRIMITIVES;
-	triBuildInput.customPrimitiveArray.aabbBuffers = triangles.empty() ? nullptr : d_tri_aabb_keys;
-	triBuildInput.customPrimitiveArray.numPrimitives = static_cast<unsigned int>(triangles.size());
-	triBuildInput.customPrimitiveArray.flags = tri_flags.data();
-	triBuildInput.customPrimitiveArray.numSbtRecords = 1;  // Single hit group for all triangles
-	triBuildInput.customPrimitiveArray.sbtIndexOffsetBuffer = 0;
-	triBuildInput.customPrimitiveArray.sbtIndexOffsetSizeInBytes = 0;
-	triBuildInput.customPrimitiveArray.sbtIndexOffsetStrideInBytes = 0;
+	triBuildInput.type = OPTIX_BUILD_INPUT_TYPE_TRIANGLES;
+	triBuildInput.triangleArray.vertexBuffers = triangles.empty() ? nullptr : d_tri_vertex_keys;
+	triBuildInput.triangleArray.numVertices = static_cast<unsigned int>(triangles.size() * 3);
+	triBuildInput.triangleArray.vertexFormat = OPTIX_VERTEX_FORMAT_FLOAT3;
+	triBuildInput.triangleArray.vertexStrideInBytes = sizeof(float3);
+	triBuildInput.triangleArray.indexBuffer = 0;  // implicit: every 3 vertices form one triangle
+	triBuildInput.triangleArray.flags = tri_flags.data();
+	triBuildInput.triangleArray.numSbtRecords = 1;  // Single hit group for all triangles
+	triBuildInput.triangleArray.sbtIndexOffsetBuffer = 0;
+	triBuildInput.triangleArray.sbtIndexOffsetSizeInBytes = 0;
+	triBuildInput.triangleArray.sbtIndexOffsetStrideInBytes = 0;
 
-	// Combine build inputs. OptiX validation rejects a build input with
-	// numPrimitives==0 outright (both a non-null aabbBuffers AND a null
-	// flags pointer are separately flagged as errors for a zero-count custom-
-	// primitive build input - there's no valid all-zero-count configuration
-	// to keep as a placeholder), so empty types must be omitted from this
-	// array entirely, in the same relative [sphere, quad, bilinear patch,
-	// triangle] order, rather than always including all 4. OptiX assigns each
-	// primitive's SBT hit-group record purely by its build input's POSITION
-	// in this array (sbtIndexOffsetBuffer is null for all four, so every
-	// primitive in build input i implicitly uses
-	// hitgroupRecordBase[i*stride+rayType]) - buildSBT() below applies this
-	// exact same conditional-inclusion logic (same 4 counts, same relative
-	// order) so its hit records line up with these positions.
-	std::vector<OptixBuildInput> buildInputVec;
-	if (!spheres.empty()) buildInputVec.push_back(sphereBuildInput);
-	if (!quads.empty()) buildInputVec.push_back(quadBuildInput);
-	if (!bilinearPatches.empty()) buildInputVec.push_back(blpBuildInput);
-	if (!triangles.empty()) buildInputVec.push_back(triBuildInput);
-	const OptixBuildInput* buildInputs = buildInputVec.data();
-	unsigned int numBuildInputs = static_cast<unsigned int>(buildInputVec.size());
+	// Two GASes + one IAS: OptiX forbids mixing OPTIX_BUILD_INPUT_TYPE_
+	// TRIANGLES and OPTIX_BUILD_INPUT_TYPE_CUSTOM_PRIMITIVES build inputs in
+	// a single GAS (confirmed via NVIDIA's own forums - "you cannot mix
+	// different primitive types in a single GAS"), so triangles get their
+	// own GAS, spheres/quads/bilinear-patches keep sharing the other one
+	// (same conditional-inclusion, same relative [sphere, quad, bilinear
+	// patch] order as before), and a top-level IAS with 2 static-identity
+	// instances combines them into the single traversable
+	// trace_shadow_ray()/the radiance loop both already use. Each
+	// instance's sbtOffset shifts that whole child GAS's hit-group records
+	// to its own region of the flat SBT array buildSBT() builds below -
+	// custom-prim types keep the exact same indices they always had
+	// (instance 0's sbtOffset=0), triangles land right after them (instance
+	// 1's sbtOffset = however many hit records the custom-prim types
+	// occupy) - so buildSBT()'s own record layout doesn't change at all,
+	// only how the offset into it is supplied (per-instance now, instead of
+	// via build-input position within one shared GAS).
+	std::vector<OptixBuildInput> customBuildInputVec;
+	if (!spheres.empty()) customBuildInputVec.push_back(sphereBuildInput);
+	if (!quads.empty()) customBuildInputVec.push_back(quadBuildInput);
+	if (!bilinearPatches.empty()) customBuildInputVec.push_back(blpBuildInput);
 
-	// Accel build options
-	OptixAccelBuildOptions accelOptions = {};
-	accelOptions.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
-	accelOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
+	OptixAccelBuildOptions customAccelOptions = {};
+	customAccelOptions.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+	customAccelOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
 	// numKeys<2 means "no motion" (OptiX treats 0 and 1 identically) - only
 	// scenes with moving spheres (sceneHasMotion_) pay for real motion keys.
-	accelOptions.motionOptions.numKeys = sceneHasMotion_ ? 2 : 0;
-	accelOptions.motionOptions.timeBegin = 0.0f;
-	accelOptions.motionOptions.timeEnd = 1.0f;
-	accelOptions.motionOptions.flags = OPTIX_MOTION_FLAG_NONE;
+	customAccelOptions.motionOptions.numKeys = sceneHasMotion_ ? 2 : 0;
+	customAccelOptions.motionOptions.timeBegin = 0.0f;
+	customAccelOptions.motionOptions.timeEnd = 1.0f;
+	customAccelOptions.motionOptions.flags = OPTIX_MOTION_FLAG_NONE;
 
-	// Query memory requirements
-	OptixAccelBufferSizes gasBufferSizes;
-	OPTIX_CHECK(optixAccelComputeMemoryUsage(
-		context_,
-		&accelOptions,
-		buildInputs,
-		numBuildInputs,
-		&gasBufferSizes
-	));
+	CUdeviceptr d_gasCustomOutput = 0;
+	if (!customBuildInputVec.empty()) {
+		OptixAccelBufferSizes customBufferSizes;
+		OPTIX_CHECK(optixAccelComputeMemoryUsage(
+			context_, &customAccelOptions, customBuildInputVec.data(),
+			static_cast<unsigned int>(customBuildInputVec.size()), &customBufferSizes
+		));
 
-	// Allocate temp and output buffers
-	CUdeviceptr d_temp;
-	CUdeviceptr d_gasOutput;
-	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_temp), gasBufferSizes.tempSizeInBytes));
-	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_gasOutput), gasBufferSizes.outputSizeInBytes));
+		CUdeviceptr d_customTemp;
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_customTemp), customBufferSizes.tempSizeInBytes));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_gasCustomOutput), customBufferSizes.outputSizeInBytes));
 
-	// Build acceleration structure
-	OPTIX_CHECK(optixAccelBuild(
-		context_,
-		stream_,
-		&accelOptions,
-		buildInputs,
-		numBuildInputs,
-		d_temp,
-		gasBufferSizes.tempSizeInBytes,
-		d_gasOutput,
-		gasBufferSizes.outputSizeInBytes,
-		&gasHandle_,
-		nullptr,  // No compacted size output (simplify for now)
-		0
-	));
-
-	CUDA_CHECK(cudaStreamSynchronize(stream_));
-
-	// Free temp buffer
-	cudaFree(reinterpret_cast<void*>(d_temp));
+		OPTIX_CHECK(optixAccelBuild(
+			context_, stream_, &customAccelOptions, customBuildInputVec.data(),
+			static_cast<unsigned int>(customBuildInputVec.size()),
+			d_customTemp, customBufferSizes.tempSizeInBytes,
+			d_gasCustomOutput, customBufferSizes.outputSizeInBytes,
+			&gasCustomHandle_, nullptr, 0
+		));
+		CUDA_CHECK(cudaStreamSynchronize(stream_));
+		cudaFree(reinterpret_cast<void*>(d_customTemp));
+	}
 	cudaFree(reinterpret_cast<void*>(d_aabb));
 	cudaFree(reinterpret_cast<void*>(d_aabbKey1));  // cudaFree(0) is a documented no-op when motion wasn't used
 
-	// Store GAS buffer
+	// Triangle GAS - always static (numKeys=0): triangles never move
+	// regardless of sceneHasMotion_ (that flag only tracks moving spheres).
+	OptixAccelBuildOptions triAccelOptions = {};
+	triAccelOptions.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+	triAccelOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
+	triAccelOptions.motionOptions.numKeys = 0;
+
+	CUdeviceptr d_gasTriOutput = 0;
+	if (!triangles.empty()) {
+		OptixAccelBufferSizes triBufferSizes;
+		OPTIX_CHECK(optixAccelComputeMemoryUsage(
+			context_, &triAccelOptions, &triBuildInput, 1, &triBufferSizes
+		));
+
+		CUdeviceptr d_triTemp;
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_triTemp), triBufferSizes.tempSizeInBytes));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_gasTriOutput), triBufferSizes.outputSizeInBytes));
+
+		OPTIX_CHECK(optixAccelBuild(
+			context_, stream_, &triAccelOptions, &triBuildInput, 1,
+			d_triTemp, triBufferSizes.tempSizeInBytes,
+			d_gasTriOutput, triBufferSizes.outputSizeInBytes,
+			&gasTriHandle_, nullptr, 0
+		));
+		CUDA_CHECK(cudaStreamSynchronize(stream_));
+		cudaFree(reinterpret_cast<void*>(d_triTemp));
+	}
+	cudaFree(reinterpret_cast<void*>(d_triVertices));  // cudaFree(0) is a no-op when there were no triangles
+
+	if (d_gasCustom_) cudaFree(reinterpret_cast<void*>(d_gasCustom_));
+	d_gasCustom_ = d_gasCustomOutput;
+	if (d_gasTri_) cudaFree(reinterpret_cast<void*>(d_gasTri_));
+	d_gasTri_ = d_gasTriOutput;
+
+	// Top-level IAS: one static-identity instance per non-empty child GAS.
+	const int numCustomPrimSbtRecords = 2 * (int)(!spheres.empty() + !quads.empty() + !bilinearPatches.empty());
+	static const float kIdentity[12] = { 1,0,0,0, 0,1,0,0, 0,0,1,0 };
+	std::vector<OptixInstance> instances;
+	if (gasCustomHandle_) {
+		OptixInstance inst{};
+		memcpy(inst.transform, kIdentity, sizeof(kIdentity));
+		inst.instanceId = 0;
+		inst.sbtOffset = 0;
+		inst.visibilityMask = 255;
+		inst.flags = OPTIX_INSTANCE_FLAG_NONE;
+		inst.traversableHandle = gasCustomHandle_;
+		instances.push_back(inst);
+	}
+	if (gasTriHandle_) {
+		OptixInstance inst{};
+		memcpy(inst.transform, kIdentity, sizeof(kIdentity));
+		inst.instanceId = 1;
+		inst.sbtOffset = numCustomPrimSbtRecords;
+		inst.visibilityMask = 255;
+		inst.flags = OPTIX_INSTANCE_FLAG_NONE;
+		inst.traversableHandle = gasTriHandle_;
+		instances.push_back(inst);
+	}
+
+	CUdeviceptr d_instances;
+	size_t instancesSize = instances.size() * sizeof(OptixInstance);
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_instances), instancesSize));
+	CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_instances), instances.data(), instancesSize, cudaMemcpyHostToDevice));
+
+	OptixBuildInput iasBuildInput = {};
+	iasBuildInput.type = OPTIX_BUILD_INPUT_TYPE_INSTANCES;
+	iasBuildInput.instanceArray.instances = d_instances;
+	iasBuildInput.instanceArray.numInstances = static_cast<unsigned int>(instances.size());
+
+	OptixAccelBuildOptions iasAccelOptions = {};
+	iasAccelOptions.buildFlags = OPTIX_BUILD_FLAG_ALLOW_COMPACTION;
+	iasAccelOptions.operation = OPTIX_BUILD_OPERATION_BUILD;
+	iasAccelOptions.motionOptions.numKeys = 0;  // Instance transforms are static; motion lives inside the custom-prim GAS
+
+	OptixAccelBufferSizes iasBufferSizes;
+	OPTIX_CHECK(optixAccelComputeMemoryUsage(
+		context_, &iasAccelOptions, &iasBuildInput, 1, &iasBufferSizes
+	));
+
+	CUdeviceptr d_iasTemp;
+	CUdeviceptr d_iasOutput;
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_iasTemp), iasBufferSizes.tempSizeInBytes));
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_iasOutput), iasBufferSizes.outputSizeInBytes));
+
+	OPTIX_CHECK(optixAccelBuild(
+		context_, stream_, &iasAccelOptions, &iasBuildInput, 1,
+		d_iasTemp, iasBufferSizes.tempSizeInBytes,
+		d_iasOutput, iasBufferSizes.outputSizeInBytes,
+		&gasHandle_, nullptr, 0
+	));
+	CUDA_CHECK(cudaStreamSynchronize(stream_));
+	cudaFree(reinterpret_cast<void*>(d_iasTemp));
+	cudaFree(reinterpret_cast<void*>(d_instances));
+
 	if (d_gas_) cudaFree(reinterpret_cast<void*>(d_gas_));
-	d_gas_ = d_gasOutput;
+	d_gas_ = d_iasOutput;
 
 	std::cout << "[OptiX] Built acceleration structure: "
 		<< spheres.size() << " spheres, "
@@ -1414,8 +1534,10 @@ void OptiXRenderer::cleanup() noexcept {
 	if (d_missRecord_) cudaFree(reinterpret_cast<void*>(d_missRecord_));
 	if (d_hitgroupRecords_) cudaFree(reinterpret_cast<void*>(d_hitgroupRecords_));
 
-	// Free acceleration structure
+	// Free acceleration structures (top-level IAS + the two child GASes)
 	if (d_gas_) cudaFree(reinterpret_cast<void*>(d_gas_));
+	if (d_gasCustom_) cudaFree(reinterpret_cast<void*>(d_gasCustom_));
+	if (d_gasTri_) cudaFree(reinterpret_cast<void*>(d_gasTri_));
 
 	// Free scene data
 	if (d_materials_) cudaFree(reinterpret_cast<void*>(d_materials_));
