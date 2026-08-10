@@ -561,6 +561,19 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
                 return l;
             }
         },
+        {
+            41, SceneNames::StanfordLucy,
+            "Stanford Lucy angel figure (99,970 triangles) in bright silver, loaded from an external .obj file (requires models/lucy.obj)",
+            "Very Slow", 150, true, true,
+            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
+            build_stanford_lucy,
+            []() {
+                hittable_list l;
+                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
+                      std::shared_ptr<material>()));
+                return l;
+            }
+        },
     };
     return registry;
 }

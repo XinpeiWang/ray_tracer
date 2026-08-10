@@ -2187,6 +2187,47 @@ static void build_stanford_happy_buddha_gpu(SceneData& scene) {
 	scene.isLightSphere.push_back(true);
 }
 
+/// @brief Scene 41: Stanford Lucy. Matches CPU build_stanford_lucy()
+/// (src/TheRestOfYourLife/scenes_advanced.h) exactly: same checkered
+/// ground, same bright-silver metal material, same scale/offset/light
+/// placement. The Lucy geometry itself is loaded via
+/// load_obj_triangles_gpu() from the same models/lucy.obj CPU loads -
+/// 99,970 real triangles, same "positions only, no vn/vt" situation as
+/// scenes 37-40 (confirmed via grep - zero `vn` lines in the source
+/// file). That file was rotated to Y-up once, directly, before being
+/// committed to this repo - see CPU's build_stanford_lucy() comment for
+/// why (this mirror's lucy.obj ships Z-up) - so no rotation is needed
+/// here either, same scale+translate-only transform as every other mesh
+/// scene.
+static void build_stanford_lucy_gpu(SceneData& scene) {
+	// Ground
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
+		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
+	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+	ground_mat.textureIdx = checkerTexIdx;
+	scene.materials.push_back(ground_mat);
+	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	// Lucy mesh, in bright silver - matches CPU's exact scale/offset (both
+	// computed from the raw OBJ's own bounding box, see CPU's
+	// build_stanford_lucy() comment for the numbers).
+	const int mat_lucy = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.85f, 0.85f, 0.88f), 0.1f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	load_obj_triangles_gpu(scene, "lucy.obj", mat_lucy,
+		/*scale=*/0.0018783f, make_float3(-1.2978f, 1.1380f, -0.2283f));
+
+	// Area light
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
+	scene.spheres.push_back(light);
+	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+	scene.isLightSphere.push_back(true);
+}
+
 /// @brief Scene 8: Final Scene (Ray Tracing: The Next Week finale).
 /// Matches CPU build_final_scene() (src/TheRestOfYourLife/scenes_book.h)
 /// structurally: 400-box randomized-height ground, area light quad, moving
@@ -2984,6 +3025,20 @@ bool build_scene(
 								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 40
 								if (out_camera_extra) {
 									// Matches CPU CameraConfig bg for scene 40 (same as scenes 38/39's).
+									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
+								}
+								break;
+							}
+
+							case 41: {  // Stanford Lucy (see build_stanford_lucy_gpu's comment)
+								build_stanford_lucy_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
+								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 41
+								if (out_camera_extra) {
+									// Matches CPU CameraConfig bg for scene 41 (same as scenes 38-40's).
 									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
 								}
 								break;

@@ -907,3 +907,46 @@ inline hittable_list build_stanford_happy_buddha() {
 	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
 	return world;
 }
+
+// ============================================================================
+// Scene 41: Stanford Lucy
+// The Stanford 3D Scanning Repository Lucy (a standing angel figure,
+// 49,987 vertices, 99,970 triangles - this mirror's decimated version; the
+// original scan is ~28M triangles), downloaded as models/lucy.obj from the
+// same common-3d-test-models mirror as scenes 38-40, rendered in bright
+// silver, sitting on the same checkered-ground + overhead-area-light setup
+// as those three scenes.
+// UNLIKE those three, this mirror's lucy.obj ships Z-up (its raw bounding
+// box has z-range 1597, dwarfing its y-range of 534 and x-range of 930 - a
+// tall standing figure should have its LARGEST extent along the up axis,
+// which was Z here, not Y like every other mesh scene in this codebase
+// assumes). Since mesh.h's triangle_mesh only supports a scale+translate
+// transform (see its constructor - no rotation parameter), the fix was
+// applied once, directly to the downloaded file, before this scene was
+// wired up: every vertex was rotated -90 degrees about the X axis
+// (new_y=old_z, new_z=-old_y) so the file committed to this repo is
+// already Y-up, matching every other mesh scene's convention - no special-
+// casing needed anywhere in the loading/rendering path.
+// Same "positions only, no vn/vt" situation as scenes 37-40 (confirmed via
+// grep - zero `vn` lines in the source file).
+// scale/offset below were computed from the (already-rotated) OBJ's own
+// bounding box (x:[225.9,1156.0] y:[-605.9,991.3] z:[-145.3,388.4]) to sit
+// the model on the ground plane (y=0) centered on the origin at a ~3-unit
+// height, matching scenes 37-40's own mesh scale convention.
+// ============================================================================
+inline hittable_list build_stanford_lucy() {
+	hittable_list world;
+
+	// Ground
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	auto silver = make_shared<metal>(color(0.85, 0.85, 0.88), 0.1);
+	world.add(std::make_shared<triangle_mesh>(
+		"lucy.obj", silver,
+		/*scale=*/0.0018783, point3(-1.2978, 1.1380, -0.2283)));
+
+	// Area light
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}
