@@ -210,6 +210,7 @@
     <ClCompile Include="unit\measured_bxdf_tests.cpp" />
     <ClCompile Include="unit\bdpt_tests.cpp" />
     <ClCompile Include="unit\mlt_tests.cpp" />
+    <ClCompile Include="unit\sppm_adapter_bsdf_tests.cpp" />
     <ClCompile Include="unit\sppm_tests.cpp" />
     <ClCompile Include="unit\vol_path_tests.cpp" />
     <ClCompile Include="unit\bilinear_patch_tests.cpp" />
