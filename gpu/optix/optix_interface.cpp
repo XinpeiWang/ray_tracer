@@ -5,6 +5,7 @@
 #include "optix_renderer.h"
 #include "scene_builder.h"
 #include "../../src/TheRestOfYourLife/error_codes.h"
+#include "../../src/shared/tone_map.h"
 #include <iostream>
 #include <fstream>
 #include <memory>
@@ -138,7 +139,7 @@ extern "C" int optix_render_main(
 		std::cout << "[TECH] Light sampling : Power-weighted alias table (Vose method)  phi = area * Le * pi" << std::endl;
 		std::cout << "[TECH] MIS            : Power heuristic  beta=2  (BSDF sample + NEE light sample)" << std::endl;
 		std::cout << "[TECH] Path termination: fixed max_depth=" << max_depth << "  (no Russian Roulette on GPU)" << std::endl;
-		std::cout << "[TECH] Tone mapping   : sqrt gamma-2.0  (linear gamma correction, no filmic tone map)" << std::endl;
+		std::cout << "[TECH] Tone mapping   : ACES filmic (Narkowicz) + sRGB OETF  (matches CPU's write_color())" << std::endl;
 		std::cout << "[TECH] Device         : CUDA / OptiX 7+  (NVIDIA GPU)" << std::endl;
 		std::cout << "[TECH] ─────────────────────────────────────────────────────" << std::endl;
 
@@ -167,21 +168,36 @@ extern "C" int optix_render_main(
 		// PPM header
 		outFile << "P3\n" << image_width << " " << image_height << "\n255\n";
 
-		// Write pixels with gamma correction
+		// Write pixels with the same ACES filmic tone map + sRGB OETF CPU's
+		// write_color() (src/TheRestOfYourLife/color.h) uses - previously
+		// this was a plain sqrt gamma-2.0 approximation, the exact thing
+		// tone_map.h's own header comment says CPU "replaced" at some point
+		// without GPU's output path being updated to match, which showed up
+		// as a real, visible color/contrast mismatch between the two
+		// renderers (ACES's filmic S-curve shifts shadow/midtone hue and
+		// softens contrast compared to a flat gamma curve).
 		for (size_t i = 0; i < pixelCount; ++i) {
-			float r = framebuffer[i * 3 + 0];
-			float g = framebuffer[i * 3 + 1];
-			float b = framebuffer[i * 3 + 2];
+			double r = framebuffer[i * 3 + 0];
+			double g = framebuffer[i * 3 + 1];
+			double b = framebuffer[i * 3 + 2];
 
-			// Gamma correction (gamma = 2.0)
-			r = sqrtf(fmaxf(r, 0.0f));
-			g = sqrtf(fmaxf(g, 0.0f));
-			b = sqrtf(fmaxf(b, 0.0f));
+			// NaN/Inf guard (firefly guard), matching write_color() exactly.
+			if (!std::isfinite(r)) r = 0.0;
+			if (!std::isfinite(g)) g = 0.0;
+			if (!std::isfinite(b)) b = 0.0;
 
-			// Clamp and convert to byte
-			int ir = static_cast<int>(fminf(r * 255.999f, 255.0f));
-			int ig = static_cast<int>(fminf(g * 255.999f, 255.0f));
-			int ib = static_cast<int>(fminf(b * 255.999f, 255.0f));
+			r = linear_to_srgb(apply_tone_map(r, ToneMapMode::ACES));
+			g = linear_to_srgb(apply_tone_map(g, ToneMapMode::ACES));
+			b = linear_to_srgb(apply_tone_map(b, ToneMapMode::ACES));
+
+			// Clamp and convert to byte (matches write_color()'s
+			// interval(0.000, 0.999) clamp-then-*256 convention exactly).
+			// fmin/fmax, not std::min/std::max: this TU pulls in <windows.h>
+			// transitively (via optix.h/cuda headers) without NOMINMAX, and
+			// std::min/std::max collide with its min/max macros here.
+			int ir = static_cast<int>(256.0 * std::fmin(std::fmax(r, 0.0), 0.999));
+			int ig = static_cast<int>(256.0 * std::fmin(std::fmax(g, 0.0), 0.999));
+			int ib = static_cast<int>(256.0 * std::fmin(std::fmax(b, 0.0), 0.999));
 
 			outFile << ir << " " << ig << " " << ib << "\n";
 		}
