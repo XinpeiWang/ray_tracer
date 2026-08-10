@@ -192,6 +192,16 @@ private:
 	// existing viewing direction from this point, rather than needing to
 	// know the scene's geometry to type new X/Y/Z values by hand.
 	double m_currentLookatX = 278.0, m_currentLookatY = 278.0, m_currentLookatZ = 278.0;
+	// Distance from m_currentLookat* to the CURRENT scene's own recommended
+	// camera (updated in onSceneChanged alongside the lookat fields above).
+	// m_cameraPresetCombo's items store direction*ratio vectors (see its
+	// setup comment in mainwindow_tabs.cpp) that get scaled by this value in
+	// onCameraPresetChanged, so a named preset like "Right Wall" lands at a
+	// sensible position for whatever scene is active instead of always
+	// landing at Cornell Box's own literal (500,278,278), which used to be
+	// wildly outside the geometry of any other scene (e.g. scene 1's
+	// spheres sit within roughly +-15 units of the origin).
+	double m_currentSceneCamDistance = 1078.0;
 
 	// Scene selection
 	QComboBox *m_sceneCombo;            // Scene selector dropdown (Cornell Box, Bouncing Spheres, etc.)

@@ -171,14 +171,19 @@ void MainWindow::onCameraPresetChanged(int index) {
 	// Skip this for Custom: its stored itemData is just a fixed starting
 	// point, and overwriting the spinboxes here would silently discard
 	// whatever position the user already typed in whenever they switch away
-	// from Custom and back. Non-Custom presets always show their own fixed
-	// position, so overwriting is correct (and expected) for those.
-	// QVector3D is stored in each combo box item's data as a QVariant
+	// from Custom and back. Non-Custom presets always show their own
+	// scaled position, so overwriting is correct (and expected) for those.
+	// itemData holds a direction*ratio vector, not an absolute position (see
+	// the combo's setup comment in mainwindow_tabs.cpp) - scale by the
+	// current scene's own recommended-camera distance and offset from its
+	// lookat, so e.g. "Right Wall" lands somewhere sensible for whatever
+	// scene is active instead of always landing at Cornell Box's own literal
+	// (500,278,278).
 	if (!isCustom && index >= 0 && index < m_cameraPresetCombo->count()) {
-		QVector3D pos = m_cameraPresetCombo->itemData(index).value<QVector3D>();
-		m_cameraPosX->setValue(pos.x());
-		m_cameraPosY->setValue(pos.y());
-		m_cameraPosZ->setValue(pos.z());
+		QVector3D dir = m_cameraPresetCombo->itemData(index).value<QVector3D>();
+		m_cameraPosX->setValue(m_currentLookatX + dir.x() * m_currentSceneCamDistance);
+		m_cameraPosY->setValue(m_currentLookatY + dir.y() * m_currentSceneCamDistance);
+		m_cameraPosZ->setValue(m_currentLookatZ + dir.z() * m_currentSceneCamDistance);
 	}
 
 	// Keep the Distance display in sync with wherever X/Y/Z just landed
@@ -279,16 +284,18 @@ void MainWindow::onSceneChanged(int index) {
 	}
 
 	// Reset the camera position to this scene's own recommended default -
-	// every preset in m_cameraPresetCombo is Cornell-Box-scale (hundreds of
-	// units), so leaving a stale preset/position selected from a previously
-	// viewed scene could put the camera absurdly far from a much smaller
-	// scene's actual geometry (e.g. scene 1's spheres sit within roughly
-	// +-15 units of the origin). Switches to "Custom" (index 7) first so
-	// onCameraPresetChanged() enables the spinboxes for editing without
-	// also overwriting the values we're about to set (Custom is
-	// specifically exempted from that overwrite - see its own comment).
-	// The user can still freely adjust the camera afterward, same as for
-	// every other scene.
+	// every preset in m_cameraPresetCombo is now a direction*ratio relative
+	// to m_currentSceneCamDistance rather than an absolute Cornell-Box-scale
+	// position (see the combo's setup comment in mainwindow_tabs.cpp), but a
+	// stale position from a previously viewed scene could still be wildly
+	// wrong-scale for a much smaller scene's actual geometry (e.g. scene 1's
+	// spheres sit within roughly +-15 units of the origin) until
+	// m_currentSceneCamDistance itself is refreshed below. Switches to
+	// "Custom" (index 7) first so onCameraPresetChanged() enables the
+	// spinboxes for editing without also overwriting the values we're about
+	// to set (Custom is specifically exempted from that overwrite - see its
+	// own comment). The user can still freely adjust the camera afterward,
+	// same as for every other scene.
 	//
 	// Also queried live from scene_metadata.dll rather than a duplicated
 	// table - if the query fails, leave the camera spinboxes exactly as
@@ -300,10 +307,30 @@ void MainWindow::onSceneChanged(int index) {
 		m_currentLookatX = lookat_x;
 		m_currentLookatY = lookat_y;
 		m_currentLookatZ = lookat_z;
+		// This scene's own default viewing distance - the reference every
+		// named preset in m_cameraPresetCombo scales against (see its setup
+		// comment). Falls back to the Cornell-scale default (1078) if the
+		// recommended camera sits exactly on its own lookat (distance 0),
+		// which would otherwise collapse every preset to the lookat point.
+		double dx = cam_x - lookat_x, dy = cam_y - lookat_y, dz = cam_z - lookat_z;
+		double dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+		m_currentSceneCamDistance = (dist > 1e-6) ? dist : 1078.0;
 		m_cameraPosX->setValue(cam_x);
 		m_cameraPosY->setValue(cam_y);
 		m_cameraPosZ->setValue(cam_z);
 		refreshCameraDistanceDisplay();
+
+		// Scale the spinboxes' arrow-key/scroll step to this scene's scale
+		// too - a fixed 10-unit step (Cornell Box's own scale) is unusably
+		// coarse for e.g. scene 39's Stanford Armadillo, whose whole ~3-unit
+		// model would be crossed in well under one click. 1/100th of the
+		// scene's own default viewing distance keeps Cornell Box's step at
+		// its original ~10.8, matching prior behavior there.
+		const double step = m_currentSceneCamDistance / 100.0;
+		m_cameraPosX->setSingleStep(step);
+		m_cameraPosY->setSingleStep(step);
+		m_cameraPosZ->setSingleStep(step);
+		m_cameraDistance->setSingleStep(step);
 	}
 }
 

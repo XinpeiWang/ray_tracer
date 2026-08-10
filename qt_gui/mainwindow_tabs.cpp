@@ -249,26 +249,49 @@ void MainWindow::createAdvancedTab() {
 	cameraLayout->setContentsMargins(15, 22, 15, 12);
 
 	// Camera preset combo box
-	// Each preset stores a QVector3D with the camera position (lookfrom)
-	// All presets maintain ~220-300 units from center for consistent viewing distance
+	// Each preset stores a direction*ratio QVector3D, NOT an absolute world
+	// position: onCameraPresetChanged() scales it by m_currentSceneCamDistance
+	// (the CURRENT scene's own recommended-camera distance from its lookat)
+	// and offsets it from m_currentLookat*, so "Right Wall" lands at a
+	// sensible position for whatever scene is active. These vectors were
+	// derived from Cornell Box's own original hardcoded positions - e.g.
+	// "Front View (Outside)" used to be the literal point (278,278,-800),
+	// which is offset (0,0,-1078) from Cornell's lookat (278,278,278); divide
+	// by Cornell's own recommended-camera distance (1078, the default
+	// m_currentSceneCamDistance below) to get this preset's direction*ratio
+	// vector (0,0,-1.0) - a pure "straight back, at 1x the scene's own
+	// default viewing distance" direction that means the same thing
+	// regardless of scene scale. The others below were derived the same way,
+	// which is why "Front View" ends up at ratio 1.0 (it WAS the reference
+	// distance) while the inside/corner views are fractions of it. Previously
+	// every preset stored its literal Cornell-Box position directly, so
+	// selecting e.g. "Right Wall" while viewing a much smaller scene (like
+	// scene 1's spheres, which sit within roughly +-15 units of the origin)
+	// put the camera at a literal (500,278,278) - wildly outside that
+	// scene's geometry.
 	m_cameraPresetCombo = new QComboBox(advancedTab);
 
-	// Default view: outside the box looking in through the open front (Z=0)
-	// Far back view for full scene visibility
-	m_cameraPresetCombo->addItem("Front View (Outside)", QVariant::fromValue(QVector3D(278, 278, -800)));
+	// Default view: straight back from lookat, at the scene's own default
+	// viewing distance (ratio 1.0) - matches Cornell Box's own recommended
+	// camera exactly, since that's what this ratio was derived from.
+	m_cameraPresetCombo->addItem("Front View (Outside)", QVariant::fromValue(QVector3D(0.0f, 0.0f, -1.0f)));
 
 	// Inside views: camera positioned near walls, all looking toward center
-	m_cameraPresetCombo->addItem("Inside Front", QVariant::fromValue(QVector3D(278, 278, 50)));    // Near Z=0 opening
-	m_cameraPresetCombo->addItem("Inside Back", QVariant::fromValue(QVector3D(278, 278, 500)));    // Near Z=555 back wall
-	m_cameraPresetCombo->addItem("Right Wall (Green)", QVariant::fromValue(QVector3D(500, 278, 278))); // Near X=555 green wall
-	m_cameraPresetCombo->addItem("Left Wall (Red)", QVariant::fromValue(QVector3D(50, 278, 278)));     // Near X=0 red wall
+	m_cameraPresetCombo->addItem("Inside Front", QVariant::fromValue(QVector3D(0.0f, 0.0f, -0.211503f)));   // Near Z=0 opening
+	m_cameraPresetCombo->addItem("Inside Back", QVariant::fromValue(QVector3D(0.0f, 0.0f, 0.205937f)));     // Near Z=555 back wall
+	m_cameraPresetCombo->addItem("Right Wall (Green)", QVariant::fromValue(QVector3D(0.205937f, 0.0f, 0.0f))); // Near X=555 green wall
+	m_cameraPresetCombo->addItem("Left Wall (Red)", QVariant::fromValue(QVector3D(-0.211503f, 0.0f, 0.0f)));   // Near X=0 red wall
 
 	// Corner views: diagonal perspectives from inside the box
-	m_cameraPresetCombo->addItem("Floor Corner", QVariant::fromValue(QVector3D(100, 50, 100)));    // Low angle, near floor
-	m_cameraPresetCombo->addItem("Ceiling Corner", QVariant::fromValue(QVector3D(450, 500, 450))); // High angle, near ceiling
+	m_cameraPresetCombo->addItem("Floor Corner", QVariant::fromValue(QVector3D(-0.165121f, -0.211503f, -0.165121f)));  // Low angle, near floor
+	m_cameraPresetCombo->addItem("Ceiling Corner", QVariant::fromValue(QVector3D(0.159555f, 0.205937f, 0.159555f)));   // High angle, near ceiling
 
-	// Custom: allows manual X/Y/Z input via spinboxes below
-	m_cameraPresetCombo->addItem("Custom", QVariant::fromValue(QVector3D(278, 278, -800)));
+	// Custom: allows manual X/Y/Z input via spinboxes below. Its itemData is
+	// never read (onCameraPresetChanged skips the overwrite for Custom - see
+	// its own comment), so this value is unused, but keep it a plausible
+	// starting direction rather than leaving it as leftover absolute-position
+	// data of a different shape than every other item now stores.
+	m_cameraPresetCombo->addItem("Custom", QVariant::fromValue(QVector3D(0.0f, 0.0f, -1.0f)));
 
 	styleComboBox(m_cameraPresetCombo);
 	cameraLayout->addRow("Preset:", m_cameraPresetCombo);
