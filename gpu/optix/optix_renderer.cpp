@@ -1125,6 +1125,20 @@ bool OptiXRenderer::buildScene(
 	customAccelOptions.motionOptions.timeEnd = 1.0f;
 	customAccelOptions.motionOptions.flags = OPTIX_MOTION_FLAG_NONE;
 
+	// g_renderer (optix_interface.cpp) is a process-lifetime singleton reused
+	// across scene switches, not reconstructed per scene - so gasCustomHandle_/
+	// gasTriHandle_ are members that can carry a stale value from whichever
+	// PREVIOUS scene actually had that geometry type, if the CURRENT scene
+	// doesn't. Reset both unconditionally before the conditional build blocks
+	// below: without this, e.g. switching from a triangle-mesh scene to one
+	// with none would leave gasTriHandle_ pointing at a GAS whose device
+	// memory this same function already frees a few lines down (d_gasTri_),
+	// and the IAS build after would wire that dangling handle into a live
+	// instance - undefined behavior at trace time, not something that fails
+	// loudly here.
+	gasCustomHandle_ = 0;
+	gasTriHandle_ = 0;
+
 	CUdeviceptr d_gasCustomOutput = 0;
 	if (!customBuildInputVec.empty()) {
 		OptixAccelBufferSizes customBufferSizes;

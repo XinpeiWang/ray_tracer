@@ -230,3 +230,51 @@ TEST_F(GPURenderTest, DifferentCamerasDifferentOutput) {
 		<< "Front and side camera renders are too similar — "
 		<< "different viewpoints should produce visually different images";
 }
+
+// ----------------------------------------------------------------------------
+// Test 7: Switching from a triangle-mesh scene to a non-mesh scene within the
+// same process doesn't corrupt the acceleration structure.
+//
+// optix_interface.cpp's g_renderer is a process-lifetime singleton, reused
+// (not reconstructed) whenever scene_id changes - see its g_uploaded_scene_id
+// skip-reupload comment. Triangle geometry gets its own GAS, combined with
+// the sphere/quad/bilinear-patch GAS under a top-level IAS (OptiX forbids
+// mixing custom AABB primitives and native triangles in one GAS - see
+// buildAccelerationStructure()'s comment). Its two child-GAS traversable
+// handles are OptiXRenderer members, only written inside their own
+// conditional build block; a scene with no triangles skips the triangle
+// block entirely - if that handle isn't explicitly reset first, it would
+// carry the PREVIOUS scene's triangle-GAS handle into the new IAS build,
+// even though this same function already freed that GAS's device memory a
+// few lines earlier. That's a dangling traversable handle wired into a live
+// instance - undefined behavior at trace time, not something that fails
+// loudly at build time. Scene 37 (procedural icosahedron) has triangles;
+// scene 0 (Cornell box) has none - rendering 37 then 0 exercises exactly
+// this transition.
+TEST(GPUSceneSwitchTest, TriangleThenNonTriangleSceneInSameProcess) {
+	if (!optix_is_available()) {
+		GTEST_SKIP() << "OptiX not available on this system";
+	}
+
+	const char* triOutput = "gpu_test_switch_tri.ppm";
+	const char* nonTriOutput = "gpu_test_switch_nontri.ppm";
+
+	int triResult = optix_render_main(60, 60, 50, 5, triOutput, 37, 0.0, 8.0, 16.0);
+	ASSERT_EQ(triResult, 0) << "Triangle-mesh scene (37) render failed";
+	PPMImage triImg = load_ppm(triOutput);
+	ASSERT_TRUE(triImg.valid) << "Failed to load triangle-mesh scene render";
+
+	int nonTriResult = optix_render_main(60, 60, 50, 5, nonTriOutput, 0, 278.0, 278.0, -800.0);
+	ASSERT_EQ(nonTriResult, 0) << "Non-mesh scene (0) render failed after a triangle-mesh scene";
+	PPMImage nonTriImg = load_ppm(nonTriOutput);
+	ASSERT_TRUE(nonTriImg.valid) << "Failed to load non-mesh scene render";
+
+	float nonTriSum = std::accumulate(nonTriImg.pixels.begin(), nonTriImg.pixels.end(), 0.0f);
+	EXPECT_GT(nonTriSum, 0.0f)
+		<< "Non-mesh scene rendered all-black after a triangle-mesh scene in "
+		<< "the same process - possible dangling traversable handle from a "
+		<< "stale acceleration-structure member";
+
+	std::remove(triOutput);
+	std::remove(nonTriOutput);
+}
