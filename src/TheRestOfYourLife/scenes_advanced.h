@@ -1069,3 +1069,36 @@ inline hittable_list build_suzanne() {
 	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
 	return world;
 }
+// ============================================================================
+// Scene 46: Nefertiti Bust
+// Same external-mesh convention as scenes 37-45 (checkered ground, metal
+// material, overhead area light). Source file's own bounding box (x:[-119.3,
+// 119.4] y:[-181.3,181.3] z:[-247.3,247.3]) had its LARGEST extent on z, not
+// y - unlike every prior mesh scene (whose bounding box either already made
+// Y-up unambiguous, or turned out Y-up anyway after a first CPU render) -
+// which for a bust's naturally-tall proportions meant Z-up, the same
+// situation Lucy (scene 41) hit. Fixed the same way: every vertex was
+// rotated -90 degrees about the X axis (new_y=old_z, new_z=-old_y) directly
+// in the downloaded file before it was committed to this repo, so no
+// rotation is needed here - just the usual scale+translate.
+// scale/offset computed from the (already-rotated) OBJ's own bounding box
+// (x:[-119.3,119.4] y:[-247.3,247.3] z:[-181.2,181.3]) to sit the model on
+// the ground plane (y=0) centered on the origin at the same ~3-unit
+// standing height used by every other mesh scene.
+// ============================================================================
+inline hittable_list build_nefertiti() {
+	hittable_list world;
+
+	// Ground
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	auto silver = make_shared<metal>(color(0.85, 0.85, 0.88), 0.1);
+	world.add(std::make_shared<triangle_mesh>(
+		"nefertiti.obj", silver,
+		/*scale=*/0.0060654, point3(-0.0001, 1.4998, -0.0002)));
+
+	// Area light
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}

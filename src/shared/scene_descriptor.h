@@ -90,6 +90,7 @@ namespace SceneNames {
     constexpr const char* UtahTeapot           = "Utah Teapot";
     constexpr const char* SpotCow              = "Spot the Cow";
     constexpr const char* Suzanne              = "Suzanne";
+    constexpr const char* NefertitiBust        = "Nefertiti Bust";
 } // namespace SceneNames
 
 #endif // __cplusplus
