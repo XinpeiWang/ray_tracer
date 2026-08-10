@@ -258,7 +258,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             20, SceneNames::NormalMappedCornell,
             "Cornell box with procedural bump-mapped back wall and normal-mapped sphere (pbrt-v4 NormalMap/BumpMap)",
-            "Medium", 200, false, false,
+            "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_normal_mapped_cornell,
             build_cornell_box_lights

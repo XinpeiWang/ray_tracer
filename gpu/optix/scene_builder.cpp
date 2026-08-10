@@ -1636,6 +1636,86 @@ static void build_homogeneous_medium_scene_gpu(SceneData& scene) {
 	scene.spheres.push_back(fog);
 }
 
+/// @brief Scene 20: Normal Mapped Cornell. Matches CPU
+/// build_normal_mapped_cornell() (scenes_advanced.h). CPU's bump-mapped
+/// back wall and rotated box (bump_map_material wrapping a noise_texture
+/// displacement source) are a confirmed no-op on CPU itself:
+/// bump_map_material::apply() samples the texture at 3 different (u,v) but
+/// the SAME hit point p, and noise_texture::value() (texture.h:127-129)
+/// ignores u/v entirely and depends only on p - so disp==disp_u==disp_v
+/// bit-for-bit, the finite-difference gradient apply_bump_map() computes
+/// is always exactly zero, and it returns the unperturbed geometric normal
+/// unchanged. Verified empirically too, not just from reading the code: a
+/// CPU render of this scene shows the back wall and box as flat white,
+/// zero visible bump texture. So this GPU port renders them as plain flat
+/// Lambertian white (same kBox/kQuads[] geometry and color already used by
+/// the standard Cornell Box scene) - matching CPU's actual rendered pixels
+/// exactly, rather than implementing bump-map device code that would never
+/// be visually exercised by any current scene.
+/// The sphere's normal_map_material IS non-degenerate (its normal source,
+/// checker_texture, uses world-position p directly per-sample with no
+/// finite-difference step, so it varies meaningfully across the sphere)
+/// and is ported for real via MaterialType::NormalMappedLambertian - see
+/// that type's comment in optix_types.h and its handling in
+/// optix_intersection_sphere.h.
+static void build_normal_mapped_cornell_gpu(SceneData& scene) {
+	using namespace cornell_box_data;
+
+	// 5 walls + the one light this scene actually has - kQuads[5]'s
+	// position and color (15,15,15) match CPU's light exactly. Not
+	// kQuads[6] (the secondary accent light), which this scene doesn't use.
+	for (int i = 0; i < 6; ++i) {
+		const QuadSpec& q = kQuads[i];
+		const int mat = safe_cast_to_int(scene.materials.size());
+		if (q.is_light) {
+			scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f,
+				make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)) });
+		} else {
+			scene.materials.push_back({ MaterialType::Lambertian,
+				make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)),
+				0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		}
+		// add_transformed_quad() already auto-registers emissive quads into
+		// lightIndices/isLightSphere itself (it checks the material type) -
+		// do not also push here, or the one light double-counts.
+		add_transformed_quad(scene,
+			make_float3(static_cast<float>(q.Q.x), static_cast<float>(q.Q.y), static_cast<float>(q.Q.z)),
+			make_float3(static_cast<float>(q.u.x), static_cast<float>(q.u.y), static_cast<float>(q.u.z)),
+			make_float3(static_cast<float>(q.v.x), static_cast<float>(q.v.y), static_cast<float>(q.v.z)),
+			mat);
+	}
+
+	// Rotated box: same kBox geometry/color as the standard Cornell Box
+	// scene - matches CPU's (effectively-flat-white, see header comment
+	// above) bumped_box exactly.
+	const int mat_box = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian,
+		make_float3(static_cast<float>(kBox.color.r), static_cast<float>(kBox.color.g), static_cast<float>(kBox.color.b)),
+		0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	add_box(scene,
+		make_float3(static_cast<float>(kBox.corner_min.x), static_cast<float>(kBox.corner_min.y), static_cast<float>(kBox.corner_min.z)),
+		make_float3(static_cast<float>(kBox.corner_max.x), static_cast<float>(kBox.corner_max.y), static_cast<float>(kBox.corner_max.z)),
+		mat_box,
+		static_cast<float>(kBox.rotate_y_degrees),
+		make_float3(static_cast<float>(kBox.translate.x), static_cast<float>(kBox.translate.y), static_cast<float>(kBox.translate.z)));
+
+	// Normal-mapped sphere: matches CPU's normal_map_material(
+	// checker_texture(8.0, (0.5,0.5,1.0), (0.8,0.8,1.0)),
+	// lambertian(0.2,0.3,0.8)) exactly.
+	const int checkerTexIdx = add_checker_texture_gpu(scene, 8.0f,
+		make_float3(0.5f, 0.5f, 1.0f), make_float3(0.8f, 0.8f, 1.0f));
+	const int mat_sphere = safe_cast_to_int(scene.materials.size());
+	MaterialData m{ MaterialType::NormalMappedLambertian, make_float3(0.2f, 0.3f, 0.8f), 0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+	m.textureIdx = checkerTexIdx;
+	scene.materials.push_back(m);
+	SphereData s{};
+	s.center = make_float3(190.0f, 90.0f, 190.0f);
+	s.radius = 90.0f;
+	s.materialIdx = mat_sphere;
+	scene.spheres.push_back(s);
+}
+
 /// @brief Scene 21: Subsurface Slab. Matches CPU build_subsurface_slab()
 /// (scenes_advanced.h) - CPU's own header comment there is explicit this
 /// isn't a real BSSRDF: it's the same "dielectric boundary + internal
@@ -2428,6 +2508,10 @@ bool build_scene(
 
 														case 21:  // Subsurface Slab (see build_subsurface_slab_gpu's comment)
 														if (scene_id == 21) build_subsurface_slab_gpu(scene);
+														// fallthrough
+
+														case 20:  // Normal Mapped Cornell (see build_normal_mapped_cornell_gpu's comment)
+														if (scene_id == 20) build_normal_mapped_cornell_gpu(scene);
 														// fallthrough
 
 														case 23:  // Bilinear Patch Scene (pbrt-v4 BilinearPatch shape)

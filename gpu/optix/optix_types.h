@@ -141,7 +141,30 @@ enum class MaterialType : int {
 	// sigma_t (extinction coefficient), since this is the only material
 	// type that needs a dielectric IOR and a medium's sigma_t/g/albedo at
 	// the same time.
-	DielectricMedium = 13
+	DielectricMedium = 13,
+	// Lambertian with a perturbed shading normal, sourced from a tangent-
+	// space RGB normal-map texture (MaterialData.textureIdx) - matches
+	// src/TheRestOfYourLife/normal_map_materials.h's normal_map_material
+	// wrapper exactly, but collapsed into one material instead of CPU's
+	// "wrapper delegates to inner material after perturbing rec.normal"
+	// pattern: handled inline in optix_intersection_sphere.h (needs the
+	// sphere's own tangent/dpdu, computed the same way CPU's sphere.h
+	// does), which then calls shade_material() with the perturbed normal
+	// and a temporary MaterialType::Lambertian view of this same data -
+	// reusing that case's existing NEE/MIS logic verbatim rather than
+	// duplicating it. Reuses MaterialData.albedo as the inner Lambertian's
+	// flat color (CPU's scene never combines this with an albedo texture,
+	// so .textureIdx is unambiguously "the normal map" here, not "the
+	// albedo texture" the way it means for a plain Lambertian).
+	// Sphere-only, matching CPU's only current use (scene 20's one
+	// normal-mapped sphere) - see also this codebase's confirmed-empirically
+	// finding that scene 20's OTHER normal-perturbation technique (bump-
+	// mapping the back wall/box via bump_map_material + noise_texture) is
+	// a no-op on CPU itself (a p-only procedural texture can't produce a
+	// nonzero (u,v) finite-difference gradient), so it isn't ported here -
+	// the GPU builder renders those surfaces as plain flat Lambertian,
+	// which already matches CPU's actual rendered pixels exactly.
+	NormalMappedLambertian = 14
 };
 
 // Texture kinds - see TextureData below. Matches three CPU texture classes

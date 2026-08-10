@@ -202,6 +202,46 @@ extern "C" __global__ void __closesthit__sphere() {
 			}
 			scattered   = true;
 			is_specular = true;  // specular bounce / no NEE-MIS for volume scattering
+	} else if (mat.type == MaterialType::NormalMappedLambertian) {
+			// Tangent (dpdu): CPU's sphere.h computes this from the RAW
+			// outward_normal (matching sphere_uv_u/v's own convention
+			// above), not the front-face-corrected one - cross with world
+			// up, fallback to (1,0,0) at the poles where that cross
+			// product degenerates.
+			float3 dpdu;
+			{
+				const float3 world_up = make_float3(0.0f, 1.0f, 0.0f);
+				const float3 t = cross(world_up, outward_normal);
+				const float tlen = length(t);
+				dpdu = (tlen > 1e-6f) ? (t / tlen) : make_float3(1.0f, 0.0f, 0.0f);
+			}
+
+			// Decode the tangent-space normal from the map texture exactly
+			// like CPU's normal_map_material::apply(): 2*RGB-1, normalize
+			// (fallback (0,0,1) i.e. "no perturbation" if degenerate).
+			const float3 packed = sample_texture(mat.textureIdx, sphere_uv_u, sphere_uv_v, hit_point);
+			float ns_x = 2.0f * packed.x - 1.0f;
+			float ns_y = 2.0f * packed.y - 1.0f;
+			float ns_z = 2.0f * packed.z - 1.0f;
+			const float ns_len = sqrtf(ns_x * ns_x + ns_y * ns_y + ns_z * ns_z);
+			if (ns_len > 1e-8f) { ns_x /= ns_len; ns_y /= ns_len; ns_z /= ns_len; }
+			else                { ns_x = 0.0f; ns_y = 0.0f; ns_z = 1.0f; }
+
+			float out_nx, out_ny, out_nz;
+			apply_normal_map(ns_x, ns_y, ns_z, normal.x, normal.y, normal.z,
+				dpdu.x, dpdu.y, dpdu.z, out_nx, out_ny, out_nz);
+			const float3 perturbed_normal = make_float3(out_nx, out_ny, out_nz);
+
+			// Shade as plain Lambertian (mat.albedo) using the perturbed
+			// normal - reuses shade_material()'s existing Lambertian NEE/
+			// MIS logic verbatim rather than duplicating it. textureIdx is
+			// cleared since it means "normal map" for this material type,
+			// not "albedo texture" the way Lambertian itself reads it.
+			MaterialData effective = mat;
+			effective.type = MaterialType::Lambertian;
+			effective.textureIdx = -1;
+			shade_material(effective, perturbed_normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, seed,
+				attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission);
 	} else {
 		shade_material(mat, normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, seed,
 			attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission);

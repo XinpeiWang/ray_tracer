@@ -11,6 +11,7 @@
 #include "../../src/shared/microfacet.h" // GGX TrowbridgeReitz (CPU+GPU)
 #include "../../src/shared/bxdfs.h"      // HairBxDF<T> (CPU+GPU) - see MaterialType::Hair
 #include "../../src/shared/noise.h"      // Perlin turbulence (CPU+GPU) - see sample_texture()
+#include "../../src/shared/normal_map.h" // apply_normal_map (CPU+GPU) - see MaterialType::NormalMappedLambertian
 
 // Launch parameters (constant across all threads)
 extern "C" { __constant__ LaunchParams params; }
