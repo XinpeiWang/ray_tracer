@@ -656,6 +656,19 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
                 return l;
             }
         },
+        {
+            48, SceneNames::Cheburashka,
+            "Beloved cartoon-character bust from Keenan Crane's geometry-processing course (13,334 triangles) in bright silver, loaded from an external .obj file (requires models/cheburashka.obj)",
+            "Very Slow", 150, true, true,
+            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
+            build_cheburashka,
+            []() {
+                hittable_list l;
+                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
+                      std::shared_ptr<material>()));
+                return l;
+            }
+        },
     };
     return registry;
 }
