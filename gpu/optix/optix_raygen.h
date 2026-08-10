@@ -10,13 +10,29 @@ extern "C" __global__ void __raygen__rg() {
 
 	if (px >= params.width || py >= params.height) return;
 
-	// Initialize random seed from pixel + frame
-	unsigned int seed = (py * params.width + px) + params.frameNumber * 719393;
-
 	//Accumulate samples
 	float3 pixel_color = make_float3(0.0f, 0.0f, 0.0f);
 
 	for (unsigned int s = 0; s < params.samplesPerPixel; ++s) {
+		// Fresh, independently-hashed seed per sample (pixel, sample index, and
+		// frame all mixed in), rather than a single seed mutated in place and
+		// carried over from one sample to the next across the whole pixel loop.
+		// The latter was a real, confirmed bug: for a high-samples-per-pixel
+		// render, chaining pcg_hash() across hundreds of bounces' worth of
+		// random_float() calls develops a statistical bias in its low-order
+		// bits that most materials don't visibly react to (Lambertian's
+		// smoothly-varying cosine-hemisphere sample tolerates it fine), but
+		// which systematically skews MaterialType::Principled's threshold-
+		// based lobe selection (`u1 < p_diff` / `u1 < p_diff+p_spec`) toward
+		// the wrong lobe more and more often as the chain got longer -
+		// reproduced directly: at 5 spp a render matched the CPU reference's
+		// brightness closely, but at 100+ spp it converged to a much darker,
+		// wrong image, and the darkening tracked spp alone (not width or
+		// max_depth). Re-deriving the seed here removes the long-chain
+		// dependency entirely - each sample's bounce sequence starts from its
+		// own independent hash instead of continuing the previous sample's.
+		unsigned int seed = pcg_hash((py * params.width + px) * 9781u + s * 6271u + params.frameNumber * 719393u);
+
 		// Halton low-discrepancy pixel offset (pbrt-v4 HaltonSampler pattern)
 		// base-2 for x, base-3 for y. Pixel coords (px,py) are mixed into the
 		// sample index for per-pixel decorrelation — adjacent pixels use different

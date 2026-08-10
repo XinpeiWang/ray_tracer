@@ -242,6 +242,14 @@ extern "C" __global__ void __closesthit__sphere() {
 			effective.textureIdx = -1;
 			shade_material(effective, perturbed_normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, seed,
 				attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission);
+	} else if (mat.type == MaterialType::Principled) {
+			// Disney/pbrt-v4 multi-lobe BSDF - see sample_principled_material's
+			// comment in optix_device_helpers.h. Matches principled_material.h's
+			// skip_pdf=true: no NEE/MIS, res.r/g/b already divides by the
+			// sample pdf (same convention as this codebase's other
+			// is_specular=true cases, e.g. MaterialType::Hair above).
+			scattered   = sample_principled_material(ray_dir, normal, mat, seed, scattered_dir, attenuation);
+			is_specular = true;
 	} else {
 		shade_material(mat, normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, seed,
 			attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission);

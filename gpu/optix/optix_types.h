@@ -164,7 +164,24 @@ enum class MaterialType : int {
 	// nonzero (u,v) finite-difference gradient), so it isn't ported here -
 	// the GPU builder renders those surfaces as plain flat Lambertian,
 	// which already matches CPU's actual rendered pixels exactly.
-	NormalMappedLambertian = 14
+	NormalMappedLambertian = 14,
+	// Disney/pbrt-v4-style multi-lobe BSDF (diffuse + GGX specular + GGX
+	// clearcoat, metallic-blended Fresnel) - matches src/TheRestOfYourLife/
+	// principled_material.h exactly by directly instantiating the same
+	// CPU_GPU-tagged src/shared/bxdfs_principled.h::PrincipledBxDF<T> struct
+	// device-side (T=float), the same pattern already used for
+	// MaterialType::Hair's HairBxDF<T> - see sample_principled_material() in
+	// optix_device_helpers.h. Like Hair, CPU's principled::scatter() sets
+	// skip_pdf=true (its returned weight already folds in the BSDF value,
+	// cosine term, and multi-lobe balance-heuristic PDF), so this is handled
+	// as a specular-style bounce (no NEE/MIS) exactly like Hair/Metal/
+	// Dielectric/Conductor.
+	// Field reuse (no new MaterialData fields needed): albedo = base color,
+	// ior = ior, fuzz = roughness, eta_c.x = metallic, eta_c.y = clearcoat,
+	// eta_c.z = clearcoat_rough (k_c unused - Principled isn't a Conductor).
+	// Sphere-only, matching CPU's only current use (scene 18's 7 showcase
+	// spheres).
+	Principled = 15
 };
 
 // Texture kinds - see TextureData below. Matches three CPU texture classes

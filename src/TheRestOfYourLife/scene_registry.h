@@ -232,7 +232,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         {
             18, SceneNames::PrincipledShowcase,
             "Row of spheres from matte plastic to metallic with clearcoat (pbrt-v4 PrincipledBxDF)",
-            "Medium", 200, false, false,
+            "Medium", 200, false, true,
             { 35, 0, 2.5, 10,  0, 1, 0,  0.10, 0.10, 0.12 },
             build_principled_showcase,
             []() {

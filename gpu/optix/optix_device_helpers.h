@@ -113,6 +113,41 @@ __device__ __forceinline__ bool sample_hair_material(
 	return true;
 }
 
+// MaterialType::Principled: Disney/pbrt-v4-style multi-lobe BSDF (src/shared/
+// bxdfs_principled.h's PrincipledBxDF<T>) - matches src/TheRestOfYourLife/
+// principled_material.h::scatter() exactly (same "instantiate the shared
+// CPU_GPU BxDF struct directly" pattern as sample_hair_material() above).
+// Returns false if the sample should be rejected (mirrors principled's
+// `if (!res.valid) return false;`). Field reuse: albedo=base color, ior=ior,
+// fuzz=roughness, eta_c.x=metallic, eta_c.y=clearcoat, eta_c.z=clearcoat_rough
+// - see MaterialType::Principled's comment in optix_types.h.
+__device__ __forceinline__ bool sample_principled_material(
+	const float3& ray_dir, const float3& normal, const MaterialData& mat,
+	unsigned int& seed, float3& scattered_dir, float3& attenuation)
+{
+	PrincipledBxDF<float> bxdf{
+		mat.albedo.x, mat.albedo.y, mat.albedo.z,
+		mat.eta_c.x,   // metallic
+		mat.fuzz,      // roughness
+		mat.ior,
+		mat.eta_c.y,   // clearcoat
+		mat.eta_c.z }; // clearcoat_rough
+
+	float3 unit_dir = normalize(ray_dir);
+	float u1 = random_float(seed), u2 = random_float(seed), u3 = random_float(seed);
+
+	auto res = bxdf.sample(
+		normal.x, normal.y, normal.z,
+		unit_dir.x, unit_dir.y, unit_dir.z,
+		u1, u2, u3);
+
+	if (!res.valid) return false;
+
+	scattered_dir = make_float3(res.wo_x, res.wo_y, res.wo_z);
+	attenuation   = make_float3(res.r, res.g, res.b);
+	return true;
+}
+
 __device__ __forceinline__ float3 random_on_hemisphere(const float3& normal, unsigned int& seed) {
 	float3 on_unit_sphere = random_unit_vector(seed);
 	if (dot(on_unit_sphere, normal) > 0.0f)

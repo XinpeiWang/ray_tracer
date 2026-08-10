@@ -1921,6 +1921,50 @@ static void build_hair_fibers_gpu(SceneData& scene) {
 	}
 }
 
+/// @brief Scene 18: Principled Showcase. Matches CPU build_principled_showcase()
+/// exactly: 7 spheres sweeping the Disney/pbrt-v4 principled BSDF parameter
+/// space (matte -> plastic -> semi-metallic -> fully metallic -> clearcoated
+/// metal) over a checkered ground, using MaterialType::Principled - see that
+/// type's comment in optix_types.h for how it reuses the shared CPU_GPU
+/// PrincipledBxDF<T> struct directly instead of reimplementing the multi-lobe
+/// math by hand.
+static void build_principled_showcase_gpu(SceneData& scene) {
+	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.5f,
+		make_float3(0.1f, 0.1f, 0.12f), make_float3(0.2f, 0.2f, 0.22f));
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) };
+	ground_mat.textureIdx = checkerTexIdx;
+	scene.materials.push_back(ground_mat);
+	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	// x position, base color, metallic, roughness, clearcoat, clearcoat_rough
+	// - matches CPU's 7 principled(...) calls exactly (ior=1.5 for all).
+	struct PrincipledSphere { float x; float3 base; float metallic; float roughness; float clearcoat; float clearcoat_rough; };
+	const PrincipledSphere spheres[7] = {
+		{ -3.0f, make_float3(0.8f, 0.1f, 0.1f),  0.0f, 0.9f,  0.0f, 0.1f  }, // 0: matte diffuse (red)
+		{ -2.0f, make_float3(0.1f, 0.2f, 0.8f),  0.0f, 0.2f,  0.0f, 0.1f  }, // 1: plastic, low roughness (blue)
+		{ -1.0f, make_float3(0.1f, 0.7f, 0.2f),  0.0f, 0.3f,  1.0f, 0.05f }, // 2: plastic, clearcoated (green)
+		{  0.0f, make_float3(0.9f, 0.7f, 0.2f),  0.5f, 0.3f,  0.0f, 0.1f  }, // 3: semi-metallic (gold-tinted)
+		{  1.0f, make_float3(0.8f, 0.45f, 0.2f), 0.8f, 0.4f,  0.0f, 0.1f  }, // 4: near-metallic, rough (copper-ish)
+		{  2.0f, make_float3(0.9f, 0.9f, 0.9f),  1.0f, 0.05f, 0.0f, 0.1f  }, // 5: fully metallic, smooth (silver)
+		{  3.0f, make_float3(0.9f, 0.7f, 0.1f),  1.0f, 0.1f,  1.0f, 0.08f }, // 6: fully metallic, clearcoated (lacquered gold)
+	};
+	for (const auto& p : spheres) {
+		const int mat_idx = safe_cast_to_int(scene.materials.size());
+		MaterialData m{};
+		m.type = MaterialType::Principled;
+		m.albedo = p.base;
+		m.ior = 1.5f;
+		m.fuzz = p.roughness;
+		m.eta_c = make_float3(p.metallic, p.clearcoat, p.clearcoat_rough);
+		scene.materials.push_back(m);
+
+		SphereData s{}; s.center = make_float3(p.x, 1.0f, 0.0f); s.radius = 1.0f; s.materialIdx = mat_idx;
+		scene.spheres.push_back(s);
+	}
+}
+
 /// @brief Scene 34: Measured BRDF. Matches CPU build_measured_brdf_scene()'s
 /// ACTUAL rendered behavior, not its name: src/TheRestOfYourLife/scenes_advanced.h's
 /// `measured_material::scatter()` never reads its MeasuredBRDFData member at
@@ -2778,6 +2822,21 @@ bool build_scene(
 									// Matches CPU CameraConfig bg for scene 37 (dim ambient - real
 									// light sphere is the main source, matches scene 19's style).
 									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
+								}
+								break;
+							}
+
+							case 18: {  // Principled Showcase (see build_principled_showcase_gpu's comment)
+								build_principled_showcase_gpu(scene);
+								const float3 lookfrom = make_float3(0.0f, 2.5f, 10.0f);
+								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 18
+								if (out_camera_extra) {
+									// Matches CPU CameraConfig bg for scene 18 (dim ambient - no
+									// emissive geometry in this scene, same style as scenes 19/31/37).
+									out_camera_extra->backgroundColor = make_float3(0.10f, 0.10f, 0.12f);
 								}
 								break;
 							}
