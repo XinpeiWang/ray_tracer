@@ -643,6 +643,19 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
                 return l;
             }
         },
+        {
+            47, SceneNames::Horse,
+            "Classic geometry-processing test horse head/neck bust (96,966 triangles) in bright silver, loaded from an external .obj file (requires models/horse.obj)",
+            "Very Slow", 150, true, true,
+            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
+            build_horse,
+            []() {
+                hittable_list l;
+                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
+                      std::shared_ptr<material>()));
+                return l;
+            }
+        },
     };
     return registry;
 }

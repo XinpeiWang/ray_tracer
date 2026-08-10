@@ -1102,3 +1102,31 @@ inline hittable_list build_nefertiti() {
 	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
 	return world;
 }
+
+// ============================================================================
+// Scene 47: Horse
+// Same external-mesh convention as scenes 37-46 (checkered ground, metal
+// material, overhead area light). Axis orientation unverified before first
+// render - scale/offset below assume Y-up like most prior mesh scenes; if
+// the first CPU render shows it on its side, this needs updating to rotate
+// it, matching how Lucy (scene 41) and Nefertiti (scene 46) were handled.
+// scale/offset computed from the raw OBJ's own bounding box (x:[-0.042,
+// 0.042] y:[-0.0917,0.0917] z:[-0.0764,0.0764]) to normalize the model to
+// the same ~3-unit standing height used by every other mesh scene.
+// ============================================================================
+inline hittable_list build_horse() {
+	hittable_list world;
+
+	// Ground
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	auto silver = make_shared<metal>(color(0.85, 0.85, 0.88), 0.1);
+	world.add(std::make_shared<triangle_mesh>(
+		"horse.obj", silver,
+		/*scale=*/16.36295, point3(0.0, 1.5, 0.0)));
+
+	// Area light
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}
