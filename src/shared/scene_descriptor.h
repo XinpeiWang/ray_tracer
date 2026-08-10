@@ -83,6 +83,7 @@ namespace SceneNames {
     constexpr const char* RealisticCamera      = "Realistic Camera";
     constexpr const char* TriangleMesh         = "Triangle Mesh";
     constexpr const char* StanfordBunny        = "Stanford Bunny";
+    constexpr const char* StanfordArmadillo    = "Stanford Armadillo";
 } // namespace SceneNames
 
 #endif // __cplusplus

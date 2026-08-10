@@ -835,3 +835,39 @@ inline hittable_list build_stanford_bunny() {
 	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
 	return world;
 }
+
+// ============================================================================
+// Scene 39: Stanford Armadillo
+// The Stanford 3D Scanning Repository armadillo (49,990 vertices, 99,976
+// triangles, downloaded as models/armadillo.obj from the same common-3d-
+// test-models mirror as scene 38's bunny) rendered in gunmetal, sitting on
+// the same checkered-ground + overhead-area-light setup as scene 38.
+// Same "positions only, no vn/vt" situation as scenes 37/38 (confirmed via
+// grep - zero `vn` lines in the source file), so triangle::hit() falls back
+// to flat per-face geometric normals here too, and metal is used for the
+// same reason as those two scenes: it reflects the per-facet normals
+// coherently (reads as an intentional low-poly-statue style) where a
+// dielectric would scatter light incoherently across adjacent facets and
+// look like frosted glass instead of clear glass.
+// scale/offset below were computed from the raw OBJ's own bounding box
+// (x:[-63.497,63.517] y:[-54.220,97.087] z:[-57.715,57.696], i.e. a
+// real-world ~150mm scan) to sit the model on the ground plane (y=0)
+// centered on the origin at a ~3-unit height, matching scenes 37/38's own
+// mesh scale convention.
+// ============================================================================
+inline hittable_list build_stanford_armadillo() {
+	hittable_list world;
+
+	// Ground
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	auto gunmetal = make_shared<metal>(color(0.55, 0.56, 0.58), 0.08);
+	world.add(std::make_shared<triangle_mesh>(
+		"armadillo.obj", gunmetal,
+		/*scale=*/0.0198, point3(0.0, 1.0736, 0.0)));
+
+	// Area light
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}

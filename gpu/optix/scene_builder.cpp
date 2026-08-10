@@ -2114,6 +2114,42 @@ static void build_stanford_bunny_gpu(SceneData& scene) {
 	scene.isLightSphere.push_back(true);
 }
 
+/// @brief Scene 39: Stanford Armadillo. Matches CPU build_stanford_armadillo()
+/// (src/TheRestOfYourLife/scenes_advanced.h) exactly: same checkered ground,
+/// same gunmetal metal material, same scale/offset/light placement. The
+/// armadillo geometry itself is loaded via load_obj_triangles_gpu() from
+/// the same models/armadillo.obj CPU loads - 99,976 real triangles, same
+/// "positions only, no vn/vt" situation as scene 38's bunny (confirmed via
+/// grep - zero `vn` lines in the source file).
+static void build_stanford_armadillo_gpu(SceneData& scene) {
+	// Ground
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
+		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
+	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+	ground_mat.textureIdx = checkerTexIdx;
+	scene.materials.push_back(ground_mat);
+	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	// Armadillo mesh, in gunmetal - matches CPU's exact scale/offset (both
+	// computed from the raw OBJ's own bounding box, see CPU's
+	// build_stanford_armadillo() comment for the numbers).
+	const int mat_armadillo = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.55f, 0.56f, 0.58f), 0.08f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	load_obj_triangles_gpu(scene, "armadillo.obj", mat_armadillo,
+		/*scale=*/0.0198f, make_float3(0.0f, 1.0736f, 0.0f));
+
+	// Area light
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
+	scene.spheres.push_back(light);
+	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+	scene.isLightSphere.push_back(true);
+}
+
 /// @brief Scene 8: Final Scene (Ray Tracing: The Next Week finale).
 /// Matches CPU build_final_scene() (src/TheRestOfYourLife/scenes_book.h)
 /// structurally: 400-box randomized-height ground, area light quad, moving
@@ -2883,6 +2919,20 @@ bool build_scene(
 								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 38
 								if (out_camera_extra) {
 									// Matches CPU CameraConfig bg for scene 38.
+									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
+								}
+								break;
+							}
+
+							case 39: {  // Stanford Armadillo (see build_stanford_armadillo_gpu's comment)
+								build_stanford_armadillo_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
+								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 39
+								if (out_camera_extra) {
+									// Matches CPU CameraConfig bg for scene 39 (same as scene 38's).
 									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
 								}
 								break;
