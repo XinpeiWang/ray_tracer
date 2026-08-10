@@ -107,6 +107,7 @@
     <!-- Unit Tests -->
     <ClCompile Include="gtest_all.cpp" />
     <ClCompile Include="gtest_main_wrapper.cpp" />
+    <ClCompile Include="unit\area_light_sampling_tests.cpp" />
     <ClCompile Include="unit\bsdf_chi2_tests.cpp" />
     <ClCompile Include="unit\bvh_light_sampler_tests.cpp" />
     <ClCompile Include="unit\bvh_tests.cpp" />

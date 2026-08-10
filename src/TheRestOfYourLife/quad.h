@@ -127,6 +127,21 @@ class quad : public hittable {
         return vec3(rx - origin.x(), ry - origin.y(), rz - origin.z());
     }
 
+    // sample_area: uniform sample of this quad's own surface, independent of
+    // any reference point (needed for light emission / photon tracing, as
+    // opposed to random()'s solid-angle sample toward a viewer). u1,u2 in
+    // [0,1) map directly onto the quad's own (alpha,beta) UV parameterization
+    // (same convention is_interior() already uses), so no rejection or extra
+    // math is needed beyond the plane point itself.
+    bool sample_area(double u1, double u2, AreaLightSample& out) const override {
+        out.p = Q + u1*u + u2*v;
+        out.n = normal;
+        out.u = u1;
+        out.v = u2;
+        out.pdf_pos = (area > 0.0) ? 1.0 / area : 0.0;
+        return true;
+    }
+
   private:
     point3 Q;
     vec3 u, v;

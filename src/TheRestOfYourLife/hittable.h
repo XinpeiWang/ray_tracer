@@ -39,6 +39,21 @@ class hit_record {
 };
 
 
+// AreaLightSample -- result of hittable::sample_area(): a uniformly-sampled
+// point on a shape's own surface, independent of any reference/viewing
+// point. This is the complement of pdf_value()/random() below, which sample
+// a *direction toward* the shape from a given reference point (used for
+// NEE); sample_area() is needed for light *emission* (e.g. photon tracing),
+// which needs to pick a start point on the light before picking a direction
+// leaving it.
+struct AreaLightSample {
+    point3 p;         // sampled point, world space
+    vec3   n;         // outward geometric normal at p (unit length)
+    double u, v;       // surface parameterization at p (shape's own UV convention)
+    double pdf_pos;    // probability density over area, i.e. 1 / surface area
+};
+
+
 class hittable {
   public:
     virtual ~hittable() = default;
@@ -53,6 +68,13 @@ class hittable {
 
     virtual vec3 random(const point3& origin) const {
         return vec3(1,0,0);
+    }
+
+    // Uniform-area sample of this shape's own surface (see AreaLightSample
+    // above). Default: not an area-samplable shape (mirrors the
+    // pdf_value/random default-return pattern). Overridden by quad/sphere.
+    virtual bool sample_area(double u1, double u2, AreaLightSample& out) const {
+        return false;
     }
 };
 

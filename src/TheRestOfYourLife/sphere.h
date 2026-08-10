@@ -122,6 +122,23 @@ class sphere : public hittable {
         return uvw.transform(random_to_sphere(radius, distance_squared));
     }
 
+    // sample_area: uniform sample of this sphere's own surface, independent
+    // of any reference point (needed for light emission / photon tracing, as
+    // opposed to random()'s solid-angle sample toward a viewer). Only
+    // correct for stationary spheres (uses center.at(0)), matching
+    // pdf_value()'s own documented limitation above.
+    bool sample_area(double u1, double u2, AreaLightSample& out) const override {
+        double z = 1.0 - 2.0*u1;
+        double r = std::sqrt(std::max(0.0, 1.0 - z*z));
+        double phi = 2.0*pi*u2;
+        vec3 n_local(r*std::cos(phi), r*std::sin(phi), z);   // unit sphere point
+        out.n = n_local;
+        out.p = center.at(0) + radius * n_local;
+        get_sphere_uv(n_local, out.u, out.v);
+        out.pdf_pos = (radius > 0.0) ? 1.0 / (4.0 * pi * radius * radius) : 0.0;
+        return true;
+    }
+
   private:
     ray center;
     double radius;
