@@ -950,3 +950,30 @@ inline hittable_list build_stanford_lucy() {
 	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
 	return world;
 }
+
+// ============================================================================
+// Scene 42: Stanford XYZRGB Dragon
+// Same external-mesh convention as scenes 37-41 (checkered ground, metal
+// material, overhead area light). Source file's own bounding box
+// (x:[-98.6,103.1] y:[-62.75,49.29] z:[-57.25,76.97]) confirmed Y-up out of
+// the box (unlike Lucy) - no rotation needed.
+// scale/offset computed from that bounding box to sit the model on the
+// ground plane (y=0) centered on the origin at a ~3-unit height, matching
+// scenes 37-41's own mesh scale convention.
+// ============================================================================
+inline hittable_list build_stanford_dragon() {
+	hittable_list world;
+
+	// Ground
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	auto silver = make_shared<metal>(color(0.85, 0.85, 0.88), 0.1);
+	world.add(std::make_shared<triangle_mesh>(
+		"xyzrgb_dragon.obj", silver,
+		/*scale=*/0.0267772, point3(-0.0600, 1.6803, -0.2640)));
+
+	// Area light
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}

@@ -32,10 +32,10 @@ TEST(SceneRegistryTest, RegistryIsNonEmpty) {
 }
 
 TEST(SceneRegistryTest, RegistryHasExpectedCount) {
-	// We currently register 42 scenes (ids 0-41).
+	// We currently register 43 scenes (ids 0-42).
 	// This test will fail if a scene is accidentally added or removed -
 	// update this count (and kGuiSceneCount below) when that's intentional.
-	EXPECT_EQ(scene_count(), 42);
+	EXPECT_EQ(scene_count(), 43);
 }
 
 TEST(SceneRegistryTest, AllIDsAreUnique) {
@@ -430,7 +430,7 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // double-checking the GUI/error-hint text that mentions specific scene
 // counts or ID ranges by hand.
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
-	constexpr int kGuiSceneCount = 42;
+	constexpr int kGuiSceneCount = 43;
 	EXPECT_EQ(scene_count(), kGuiSceneCount)
 		<< "Registry size changed -- update kGuiSceneCount here to match.";
 }

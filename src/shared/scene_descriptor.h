@@ -86,6 +86,7 @@ namespace SceneNames {
     constexpr const char* StanfordArmadillo    = "Stanford Armadillo";
     constexpr const char* StanfordHappyBuddha  = "Stanford Happy Buddha";
     constexpr const char* StanfordLucy         = "Stanford Lucy";
+    constexpr const char* StanfordDragon       = "Stanford XYZRGB Dragon";
 } // namespace SceneNames
 
 #endif // __cplusplus
