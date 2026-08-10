@@ -871,3 +871,39 @@ inline hittable_list build_stanford_armadillo() {
 	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
 	return world;
 }
+
+// ============================================================================
+// Scene 40: Stanford Happy Buddha
+// The Stanford 3D Scanning Repository happy buddha (49,251 vertices, 98,601
+// triangles, downloaded as models/happy-buddha.obj from the same common-3d-
+// test-models mirror as scenes 38/39) rendered in polished gold, sitting on
+// the same checkered-ground + overhead-area-light setup as those two scenes.
+// Same "positions only, no vn/vt" situation (confirmed via grep - zero `vn`
+// lines in the source file), so triangle::hit() falls back to flat per-face
+// geometric normals here too, and metal is used for the same reason as
+// scenes 37/38/39: it reflects the per-facet normals coherently (reads as
+// an intentional low-poly-statue style) where a dielectric would scatter
+// light incoherently across adjacent facets and look like frosted glass
+// instead of clear glass.
+// scale/offset below were computed from the raw OBJ's own bounding box
+// (x:[-0.04610,0.03522] y:[0.04976,0.24779] z:[-0.04739,0.03400], i.e. a
+// real-world ~20cm scan) to sit the model on the ground plane (y=0)
+// centered on the origin at a ~3-unit height, matching scenes 37/38/39's
+// own mesh scale convention.
+// ============================================================================
+inline hittable_list build_stanford_happy_buddha() {
+	hittable_list world;
+
+	// Ground
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	auto gold = make_shared<metal>(color(0.83, 0.69, 0.22), 0.05);
+	world.add(std::make_shared<triangle_mesh>(
+		"happy-buddha.obj", gold,
+		/*scale=*/15.1496, point3(0.0824, -0.7539, 0.1015)));
+
+	// Area light
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}
