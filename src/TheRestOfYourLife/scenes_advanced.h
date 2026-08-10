@@ -257,7 +257,6 @@ public:
 		rec.u = h->u; rec.v = h->v;
 		rec.mat = mat;
 		// dpdu: approximate tangent along u direction
-		double px,py,pz, dx,dy,dz, ex,ey,ez;
 		float fro[3]={(float)ro[0],(float)ro[1],(float)ro[2]};
 		float frd[3]={(float)rd[0],(float)rd[1],(float)rd[2]};
 		float sq00[3]={(float)shape.p00x,(float)shape.p00y,(float)shape.p00z};

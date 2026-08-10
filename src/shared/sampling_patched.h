@@ -1032,7 +1032,7 @@ CPU_GPU float InvertTrimmedExponentialSample(float x, float c, float xMax) {
 // Normal (Gaussian) distribution
 // pbrt-v4: NormalPDF / SampleNormal / InvertNormalSample / SampleTwoNormal
 CPU_GPU float NormalPDF(float x, float mu = 0.f, float sigma = 1.f) {
-	return Gaussian(x, mu, sigma);
+	return static_cast<float>(Gaussian(x, mu, sigma));
 }
 
 CPU_GPU float SampleNormal(float u, float mu = 0.f, float sigma = 1.f) {
