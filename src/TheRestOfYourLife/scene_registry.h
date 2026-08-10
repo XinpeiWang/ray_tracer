@@ -374,10 +374,16 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_ortho_sky,
             nullptr,
             [](camera_t& cam) {
-                // Camera at (0,3,12) looking at (0,1,0)
+                // cam.lookfrom/lookat are already set (from CameraConfig, or
+                // overridden by the caller - e.g. a video-mode frame's
+                // animated position) by the time setup_camera() runs - see
+                // cpu_interface.cpp. Read them here instead of hardcoding the
+                // registry's default (0,3,12)/(0,1,0), so this alt camera
+                // actually moves for video mode instead of silently staying
+                // frozen on every frame.
                 Mat4<double> ctw = make_look_at<double>(
-                    0, 3, 12,   // from
-                    0, 1, 0,    // to
+                    cam.lookfrom.x(), cam.lookfrom.y(), cam.lookfrom.z(),
+                    cam.lookat.x(),   cam.lookat.y(),   cam.lookat.z(),
                     0, 1, 0     // up
                 );
                 double xmin, xmax, ymin, ymax;
@@ -400,10 +406,31 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_spherical_sky,
             nullptr,
             [](camera_t& cam) {
-                // SphericalCamera centered at origin looking around
+                // SphericalCamera captures the full 360-degree sphere around
+                // its origin, so its orientation doesn't gate a field of
+                // view the way lookat does for other cameras - this scene's
+                // own registry entry sets lookat=(0,0,0) directly below
+                // lookfrom=(0,1,0), which would make the polar (up) axis of
+                // the equirect mapping parallel to world up, a degenerate
+                // input to make_look_at (cross(up,forward) == 0). Use a
+                // fixed horizontal forward reference (+Z, matching the old
+                // hardcoded identity transform's own forward axis, so the
+                // panorama's default orientation is unchanged) instead, so
+                // it stays stable and well-defined regardless of the
+                // scene's lookat value; only the origin needs to track
+                // cam.lookfrom (previously hardcoded to the world origin
+                // via an identity transform, so video mode's animated
+                // camera position had no effect and every frame was
+                // identical).
+                Mat4<double> ctw = make_look_at<double>(
+                    cam.lookfrom.x(), cam.lookfrom.y(),     cam.lookfrom.z(),
+                    cam.lookfrom.x(), cam.lookfrom.y(), cam.lookfrom.z() + 1.0,
+                    0, 1, 0     // up
+                );
                 cam.alt_spherical_cam = std::make_shared<SphericalCamera<double>>(
                     cam.image_width, cam.image_height,
-                    SphericalCamera<double>::EquiRectangular
+                    SphericalCamera<double>::EquiRectangular,
+                    ctw
                 );
             }
         },
@@ -458,10 +485,16 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
                     100.0,      2.9804,  1.567, 14.478,
                     -24.5656,   0.0,     1.0,   15.0
                 };
-                // camera_to_world: camera at (0,2,-2) looking at (0,1,5)
+                // camera_to_world: read cam.lookfrom/lookat (already set from
+                // CameraConfig, or overridden by the caller - e.g. a
+                // video-mode frame's animated position - by the time
+                // setup_camera() runs, see cpu_interface.cpp) instead of the
+                // registry's default (0,2,-2)/(0,1,5) directly, so this alt
+                // camera actually moves for video mode instead of silently
+                // staying frozen on every frame.
                 Mat4<double> ctw = make_look_at<double>(
-                    0, 2, -2,   // from
-                    0, 1,  5,   // to
+                    cam.lookfrom.x(), cam.lookfrom.y(), cam.lookfrom.z(),
+                    cam.lookat.x(),   cam.lookat.y(),   cam.lookat.z(),
                     0, 1,  0    // up
                 );
                 cam.alt_realistic_cam = std::make_shared<RealisticCamera<double>>(
