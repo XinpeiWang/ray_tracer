@@ -301,19 +301,19 @@ namespace {
 	}
 
 	// Minimal Wavefront OBJ triangle loader for GPU scene building: loads
-	// positions ("v") and faces ("f", fan-triangulated, any "p", "p/t",
-	// "p//n" or "p/t/n" index format - only the position index is used)
-	// directly into SceneData::triangles, applying the same scale/offset
-	// transform CPU's src/TheRestOfYourLife/mesh.h::load_obj() takes. This
-	// is a bare-bones reimplementation rather than a call into mesh.h
-	// itself: that loader builds a CPU hittable_list/bvh_node of the full
-	// CPU material/hittable class hierarchy, which the GPU scene builder
-	// has no use for and otherwise never touches - GPU only needs the flat
-	// TriangleData array this writes straight into `scene`. No vn/vt/
-	// material handling (this codebase's one real .obj asset, the Stanford
-	// bunny, has none). Search path matches mesh.h's load_obj() exactly, so
-	// a single models/ asset works from both renderers regardless of the
-	// current working directory the renderer happens to run from.
+	// positions ("v"), optional per-vertex normals ("vn"), and faces ("f",
+	// fan-triangulated, any "p", "p/t", "p//n" or "p/t/n" index format - vt
+	// is still ignored, only p and n are used) directly into
+	// SceneData::triangles, applying the same scale/offset transform CPU's
+	// src/TheRestOfYourLife/mesh.h::load_obj() takes. This is a bare-bones
+	// reimplementation rather than a call into mesh.h itself: that loader
+	// builds a CPU hittable_list/bvh_node of the full CPU material/hittable
+	// class hierarchy, which the GPU scene builder has no use for and
+	// otherwise never touches - GPU only needs the flat TriangleData array
+	// this writes straight into `scene`. Search path matches mesh.h's
+	// load_obj() exactly, so a single models/ asset works from both
+	// renderers regardless of the current working directory the renderer
+	// happens to run from.
 	inline void load_obj_triangles_gpu(SceneData& scene, const char* filename,
 			int materialIdx, float scale, float3 offset) {
 		std::ifstream file(filename);
@@ -335,6 +335,15 @@ namespace {
 		}
 
 		std::vector<float3> positions;
+		// Normals are unit direction vectors, unaffected by the uniform
+		// scale/offset applied to positions (matches CPU's mesh.h, which
+		// likewise only transforms raw_pos, not raw_norm).
+		std::vector<float3> normals;
+		// OBJ format lists all "v"/"vn"/"vt" data before any "f" line
+		// references it, so by the time the first face is parsed, `normals`
+		// already holds every vertex normal the file has (or none, if it
+		// has none) - checking !normals.empty() per-face is equivalent to
+		// (and simpler than) a separate up-front presence scan.
 		std::string line;
 		while (std::getline(file, line)) {
 			if (line.empty() || line[0] == '#') continue;
@@ -345,14 +354,30 @@ namespace {
 				float x, y, z;
 				ss >> x >> y >> z;
 				positions.push_back(make_float3(x * scale + offset.x, y * scale + offset.y, z * scale + offset.z));
+			} else if (tok == "vn") {
+				float x, y, z;
+				ss >> x >> y >> z;
+				normals.push_back(normalize(make_float3(x, y, z)));
 			} else if (tok == "f") {
-				std::vector<int> idx;
+				std::vector<int> idx, nIdx;
 				std::string fv;
 				while (ss >> fv) {
-					int p = 0;
-					if (sscanf_s(fv.c_str(), "%d", &p) == 1 && p > 0)
-						idx.push_back(p - 1);
+					// Possible formats: p   p/t   p//n   p/t/n
+					int p = 0, t = 0, n = 0;
+					if (sscanf_s(fv.c_str(), "%d/%d/%d", &p, &t, &n) == 3) {
+						idx.push_back(p - 1); nIdx.push_back(n - 1);
+					} else if (sscanf_s(fv.c_str(), "%d//%d", &p, &n) == 2) {
+						idx.push_back(p - 1); nIdx.push_back(n - 1);
+					} else if (sscanf_s(fv.c_str(), "%d/%d", &p, &t) == 2) {
+						idx.push_back(p - 1); nIdx.push_back(-1);
+					} else if (sscanf_s(fv.c_str(), "%d", &p) == 1) {
+						idx.push_back(p - 1); nIdx.push_back(-1);
+					}
 				}
+				auto cornerNormal = [&](int ni) -> float3 {
+					if (ni >= 0 && ni < static_cast<int>(normals.size())) return normals[ni];
+					return make_float3(0.0f, 1.0f, 0.0f);  // matches CPU mesh.h's fallback
+				};
 				for (size_t i = 1; i + 1 < idx.size(); ++i) {
 					if (idx[0] < 0 || idx[0] >= static_cast<int>(positions.size()) ||
 						idx[i] < 0 || idx[i] >= static_cast<int>(positions.size()) ||
@@ -363,6 +388,12 @@ namespace {
 					t.p1 = positions[idx[i]];
 					t.p2 = positions[idx[i + 1]];
 					t.materialIdx = materialIdx;
+					t.hasNormals = !normals.empty();
+					if (t.hasNormals) {
+						t.n0 = cornerNormal(nIdx[0]);
+						t.n1 = cornerNormal(nIdx[i]);
+						t.n2 = cornerNormal(nIdx[i + 1]);
+					}
 					scene.triangles.push_back(t);
 				}
 			}

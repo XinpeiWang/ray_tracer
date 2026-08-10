@@ -82,16 +82,20 @@ struct BilinearPatchData {
 	int materialIdx;
 };
 
-// Triangle geometry data (custom primitive) - flat shading only (no per-vertex
-// normals): the normal is the single geometric cross(e1,e2) direction, matching
-// scene 37's procedural faceted-icosahedron use case (see
-// src/TheRestOfYourLife/triangle.h's CPU reference, whose per-vertex-normal
-// interpolation path is unused there too since that scene builds no normals
-// array). See optix_intersection_triangle.h for the watertight Woop/
-// Moller-Trumbore intersection (same algorithm as triangle.h).
+// Triangle geometry data (native OptiX triangle, see optix_renderer.cpp's
+// buildAccelerationStructure). Shading normal is per-vertex-interpolated
+// (barycentric, via optixGetTriangleBarycentrics()) when the source mesh
+// had "vn" data - n0/n1/n2 - and falls back to the flat geometric normal
+// cross(e1,e2) when hasNormals is false (e.g. scene 37's procedural
+// icosahedron, or any mesh scene whose source .obj has no vn lines - most
+// of them; Suzanne, scene 45, was the first to actually exercise this
+// path). Mirrors src/TheRestOfYourLife/triangle.h's CPU
+// has_normals()-gated interpolation exactly.
 struct TriangleData {
 	float3 p0, p1, p2;
+	float3 n0, n1, n2;
 	int materialIdx;
+	bool hasNormals;
 };
 
 // Material types

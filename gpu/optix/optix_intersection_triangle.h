@@ -14,6 +14,15 @@
 // GPU-only "meshes cast no shadow" bug to that custom path (root cause
 // unresolved - the built-in path sidesteps it entirely, matching the
 // battle-tested approach every other OptiX renderer uses for triangles).
+//
+// Shading normal: interpolated from TriangleData::n0/n1/n2 via the
+// built-in intersection's barycentric attributes when the source mesh had
+// "vn" data (tri.hasNormals - see scene_builder.cpp's load_obj_triangles_gpu
+// and optix_types.h's TriangleData), else the flat geometric normal
+// cross(e1,e2). optixGetTriangleBarycentrics() returns (u,v) weighting
+// p1/p2 with p0's weight (1-u-v) - the same b0/b1/b2 convention CPU's
+// src/TheRestOfYourLife/triangle.h uses for its own p0/p1/p2-ordered
+// interpolation, so no reordering is needed to match it.
 
 //==============================================================================
 // Triangle Closest Hit Program
@@ -29,9 +38,16 @@ extern "C" __global__ void __closesthit__triangle() {
 	const float3 ray_dir = optixGetWorldRayDirection();
 	const float3 hit_point = ray_orig + t * ray_dir;
 
-	const float3 geom_normal = normalize(cross(tri.p1 - tri.p0, tri.p2 - tri.p0));
-	const bool front_face = dot(ray_dir, geom_normal) < 0.0f;
-	const float3 final_normal = front_face ? geom_normal : -geom_normal;
+	float3 shading_normal;
+	if (tri.hasNormals) {
+		const float2 bary = optixGetTriangleBarycentrics();
+		const float b1 = bary.x, b2 = bary.y, b0 = 1.0f - b1 - b2;
+		shading_normal = normalize(b0 * tri.n0 + b1 * tri.n1 + b2 * tri.n2);
+	} else {
+		shading_normal = normalize(cross(tri.p1 - tri.p0, tri.p2 - tri.p0));
+	}
+	const bool front_face = dot(ray_dir, shading_normal) < 0.0f;
+	const float3 final_normal = front_face ? shading_normal : -shading_normal;
 
 	// Unpack payload from registers
 	float3 attenuation_in = make_float3(
