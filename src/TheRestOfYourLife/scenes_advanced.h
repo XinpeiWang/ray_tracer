@@ -1006,3 +1006,33 @@ inline hittable_list build_utah_teapot() {
 	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
 	return world;
 }
+
+// ============================================================================
+// Scene 44: Spot the Cow (Keenan Crane)
+// Same external-mesh convention as scenes 37-43 (checkered ground, metal
+// material, overhead area light). Axis orientation unverified before first
+// render (unlike scenes 37-43, whose bounding boxes already made Y-up vs
+// Z-up unambiguous) - scale/offset below assume Y-up like every prior mesh
+// scene; if the first CPU render shows the cow lying on its side, this
+// comment and the offset need updating to rotate it, matching how Lucy
+// (scene 41) was handled.
+// scale/offset computed from the raw OBJ's own bounding box (x:[-0.472,
+// 0.472] y:[-0.737,0.954] z:[-0.669,1.049]) to normalize the model to the
+// same ~3-unit standing height used by every other mesh scene.
+// ============================================================================
+inline hittable_list build_spot_cow() {
+	hittable_list world;
+
+	// Ground
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	auto silver = make_shared<metal>(color(0.85, 0.85, 0.88), 0.1);
+	world.add(std::make_shared<triangle_mesh>(
+		"spot.obj", silver,
+		/*scale=*/1.7747, point3(0.0, 1.3076, -0.3373)));
+
+	// Area light
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}
