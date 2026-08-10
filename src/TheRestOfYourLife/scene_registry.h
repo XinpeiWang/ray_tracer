@@ -587,6 +587,23 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
                 return l;
             }
         },
+        {
+            43, SceneNames::UtahTeapot,
+            "The classic Utah Teapot (6,320 triangles) in bright silver, loaded from an external .obj file (requires models/teapot.obj)",
+            "Medium", 150, true, true,
+            // Camera pulled back further than the other mesh scenes (0,3,7)
+            // because the teapot's spout+handle make it much wider than it
+            // is tall (~9 units wide vs ~3 tall after normalization) -
+            // the statue framing crops the spout/handle at this aspect.
+            { 35, 0, 6, 20,  0, 1.2, 0,  0.05, 0.05, 0.08 },
+            build_utah_teapot,
+            []() {
+                hittable_list l;
+                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
+                      std::shared_ptr<material>()));
+                return l;
+            }
+        },
     };
     return registry;
 }

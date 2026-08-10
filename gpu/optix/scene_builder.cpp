@@ -2266,6 +2266,43 @@ static void build_stanford_dragon_gpu(SceneData& scene) {
 	scene.isLightSphere.push_back(true);
 }
 
+/// @brief Scene 43: Utah Teapot. Matches CPU build_utah_teapot()
+/// (src/TheRestOfYourLife/scenes_advanced.h) exactly: same checkered
+/// ground, same bright-silver metal material, same scale/offset/light
+/// placement. The teapot geometry itself is loaded via
+/// load_obj_triangles_gpu() from the same models/teapot.obj CPU loads -
+/// 6,320 real triangles, same "positions only, no vn/vt" situation as
+/// scenes 37-42. Already Y-up and already sitting on y=0 (confirmed via
+/// its own bounding box), so no rotation and no y-offset needed.
+static void build_utah_teapot_gpu(SceneData& scene) {
+	// Ground
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
+		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
+	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+	ground_mat.textureIdx = checkerTexIdx;
+	scene.materials.push_back(ground_mat);
+	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	// Teapot mesh, in bright silver - matches CPU's exact scale/offset (both
+	// computed from the raw OBJ's own bounding box, see CPU's
+	// build_utah_teapot() comment for the numbers).
+	const int mat_teapot = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.85f, 0.85f, 0.88f), 0.1f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	load_obj_triangles_gpu(scene, "teapot.obj", mat_teapot,
+		/*scale=*/0.952381f, make_float3(-1.6352f, 0.0f, 0.0f));
+
+	// Area light
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
+	scene.spheres.push_back(light);
+	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+	scene.isLightSphere.push_back(true);
+}
+
 /// @brief Scene 8: Final Scene (Ray Tracing: The Next Week finale).
 /// Matches CPU build_final_scene() (src/TheRestOfYourLife/scenes_book.h)
 /// structurally: 400-box randomized-height ground, area light quad, moving
@@ -3091,6 +3128,24 @@ bool build_scene(
 								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 42
 								if (out_camera_extra) {
 									// Matches CPU CameraConfig bg for scene 42 (same as scenes 38-41's).
+									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
+								}
+								break;
+							}
+
+							case 43: {  // Utah Teapot (see build_utah_teapot_gpu's comment)
+								build_utah_teapot_gpu(scene);
+								// Camera pulled back further than the other mesh scenes'
+								// default (0,3,7) - matches CPU CameraConfig row for scene 43,
+								// see its comment in scene_registry.h for why (the teapot's
+								// spout+handle make it much wider than tall).
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 6.0f, 20.0f);
+								const float3 lookat   = make_float3(0.0f, 1.2f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 43
+								if (out_camera_extra) {
+									// Matches CPU CameraConfig bg for scene 43 (same as scenes 38-42's).
 									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
 								}
 								break;

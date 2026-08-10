@@ -977,3 +977,32 @@ inline hittable_list build_stanford_dragon() {
 	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
 	return world;
 }
+
+// ============================================================================
+// Scene 43: Utah Teapot
+// Same external-mesh convention as scenes 37-42 (checkered ground, metal
+// material, overhead area light) - but the classic CG test model instead
+// of a statue. Source file's own bounding box (x:[-3.0,6.434] y:[0.0,3.15]
+// z:[-2.0,2.0]) confirmed Y-up and already sitting on y=0 - no rotation
+// needed, and the y offset is 0 (the mesh already touches the ground plane
+// at its minimum, no lift required).
+// scale/offset computed from that bounding box to normalize the model to
+// the same ~3-unit height and origin-centered footprint used by every
+// other mesh scene.
+// ============================================================================
+inline hittable_list build_utah_teapot() {
+	hittable_list world;
+
+	// Ground
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	auto silver = make_shared<metal>(color(0.85, 0.85, 0.88), 0.1);
+	world.add(std::make_shared<triangle_mesh>(
+		"teapot.obj", silver,
+		/*scale=*/0.952381, point3(-1.6352, 0.0, 0.0)));
+
+	// Area light
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}
