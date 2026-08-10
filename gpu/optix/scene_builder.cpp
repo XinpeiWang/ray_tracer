@@ -105,6 +105,30 @@ namespace {
 		if (out_w) *out_w = w;
 	}
 
+	// Resolves the lookfrom for a Fixed-mode scene (no CameraMode::
+	// UserControlled in its src/TheRestOfYourLife/scene_registry.h entry):
+	// honor cam_x/y/z only when force_camera_override is set (video mode's
+	// per-frame animated position, or an explicit CLI/GUI override) -
+	// otherwise fall back to the scene's own registered default, matching
+	// cpu_interface.cpp's `(cc.mode == CameraMode::UserControlled ||
+	// force_camera_override) ? cam_x,y,z : cc.lookfrom` precedence exactly.
+	//
+	// Centralized here instead of each scene case re-deriving this ternary
+	// by hand: that was the actual root cause of a real bug (see git log
+	// "Fix video mode's frozen camera") - nine-plus scenes' camera cases,
+	// including one added earlier the same session, simply never got the
+	// ternary, so video mode silently rendered the same frozen frame for
+	// every one of them. A single call site here can't be skipped by
+	// accident the way a hand-copied multi-line ternary can.
+	inline float3 resolve_fixed_lookfrom(
+		bool force_camera_override, double cam_x, double cam_y, double cam_z,
+		float default_x, float default_y, float default_z)
+	{
+		return force_camera_override
+			? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z))
+			: make_float3(default_x, default_y, default_z);
+	}
+
 	// Helper to check if a material is emissive
 	inline bool is_emissive(const SceneData& scene, int material_idx) {
 		if (material_idx < 0 || material_idx >= static_cast<int>(scene.materials.size()))
@@ -2332,9 +2356,7 @@ bool build_scene(
 					// camera absurdly far away, rendering an unrecognizable speck,
 					// for any single-image render that doesn't opt into the override.
 					{
-						const float3 lookfrom = force_camera_override
-							? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z))
-							: make_float3(13.0f, 2.0f, 3.0f);
+						const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 13.0f, 2.0f, 3.0f);
 						const float3 lookat = make_float3(0.0f, 0.0f, 0.0f);
 						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
 						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
@@ -2358,9 +2380,7 @@ bool build_scene(
 					// camera at whatever Cornell-Box-scale position happened
 					// to be leftover from a previous scene.
 					{
-						const float3 lookfrom = force_camera_override
-							? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z))
-							: make_float3(13.0f, 2.0f, 3.0f);
+						const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 13.0f, 2.0f, 3.0f);
 						const float3 lookat = make_float3(0.0f, 0.0f, 0.0f);
 						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
 						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
@@ -2382,9 +2402,7 @@ bool build_scene(
 					// right at the origin, so a leftover Cornell-Box-scale
 					// camera position would place it out of frame entirely).
 					{
-						const float3 lookfrom = force_camera_override
-							? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z))
-							: make_float3(0.0f, 0.0f, 12.0f);
+						const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 0.0f, 12.0f);
 						const float3 lookat = make_float3(0.0f, 0.0f, 0.0f);
 						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
 						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
@@ -2402,9 +2420,7 @@ bool build_scene(
 
 					// Same Fixed-mode situation as scenes 1/2/3 above.
 					{
-						const float3 lookfrom = force_camera_override
-							? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z))
-							: make_float3(13.0f, 2.0f, 3.0f);
+						const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 13.0f, 2.0f, 3.0f);
 						const float3 lookat = make_float3(0.0f, 0.0f, 0.0f);
 						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
 						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
@@ -2462,9 +2478,7 @@ bool build_scene(
 						// CPU, UNLESS force_camera_override is set (video mode's
 						// per-frame animated position), same convention as
 						// scenes 1-4 above.
-						const float3 lookfrom = force_camera_override
-							? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z))
-							: make_float3(478.0f, 278.0f, -600.0f);
+						const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 478.0f, 278.0f, -600.0f);
 						const float3 lookat = make_float3(278.0f, 278.0f, 0.0f);
 						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
 						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
@@ -2579,12 +2593,7 @@ bool build_scene(
 							case 22: {  // Depth of Field (thin-lens perspective camera)
 								build_depth_of_field_gpu(scene);
 								constexpr float kPi = 3.14159265358979323846f;
-								// Fixed-mode scene - ignore cam_x/y/z by default, matching
-								// CPU, UNLESS force_camera_override is set (video mode),
-								// same convention as scenes 1-4 above.
-								const float3 lookfrom = force_camera_override
-									? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z))
-									: make_float3(0.0f, 2.0f, 9.0f);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.0f, 9.0f);
 								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
 								constexpr float defocus_angle = 10.0f;   // matches CPU CameraConfig row for scene 22
@@ -2616,12 +2625,7 @@ bool build_scene(
 
 							case 32: {  // Orthographic Camera (parallel projection)
 								build_ortho_camera_scene_gpu(scene);
-								// Fixed-mode scene - ignore cam_x/y/z by default, matching
-								// CPU, UNLESS force_camera_override is set (video mode),
-								// same convention as scenes 1-4 above.
-								const float3 lookfrom = force_camera_override
-									? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z))
-									: make_float3(0.0f, 3.0f, 12.0f);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 12.0f);
 								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
@@ -2680,9 +2684,7 @@ bool build_scene(
 								// previously hardcoded to the world origin regardless, so
 								// video mode's animated camera position had no effect and
 								// every frame was identical).
-								const float3 origin = force_camera_override
-									? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z))
-									: make_float3(0.0f, 0.0f, 0.0f);
+								const float3 origin = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 0.0f, 0.0f);
 								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
 									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
 								};
@@ -2704,11 +2706,16 @@ bool build_scene(
 
 							case 36: {  // Realistic Camera (pbrt-v4 multi-element lens)
 								build_realistic_camera_scene_gpu(scene);
+								// Fixed-mode scene - let lookfrom track cam_x/y/z only under
+								// force_camera_override (video mode), matching CPU's scene 36
+								// setup_camera lambda; lookat stays fixed (this scene never
+								// overrides it, matching every other scene's convention).
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.0f, -2.0f);
 								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
 									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
 								};
 								const float3 zero = make_float3(0.0f, 0.0f, 0.0f);
-								pack_float3(camera_params, 0, zero);
+								pack_float3(camera_params, 0, lookfrom);
 								pack_float3(camera_params, 3, zero);
 								pack_float3(camera_params, 6, zero);
 								pack_float3(camera_params, 9, zero);
@@ -2732,7 +2739,7 @@ bool build_scene(
 										-24.5656f,   0.0f,     1.0f,   15.0f
 									};
 									Mat4<float> ctw = make_look_at<float>(
-										0.0f, 2.0f, -2.0f,   // from
+										lookfrom.x, lookfrom.y, lookfrom.z,   // from
 										0.0f, 1.0f,  5.0f,   // to
 										0.0f, 1.0f,  0.0f    // up
 									);
@@ -2779,12 +2786,7 @@ bool build_scene(
 
 							case 24: {  // HDRI Sky (flat-color background - see backgroundColor's comment)
 								build_hdri_sky_world_gpu(scene);
-								// Fixed-mode scene - ignore cam_x/y/z by default, matching
-								// CPU, UNLESS force_camera_override is set (video mode),
-								// same convention as scenes 1-4 above.
-								const float3 lookfrom = force_camera_override
-									? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z))
-									: make_float3(0.0f, 2.0f, 10.0f);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.0f, 10.0f);
 								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
@@ -2801,12 +2803,7 @@ bool build_scene(
 
 							case 31: {  // Cloud Medium (constant_medium, HG g=0.05)
 								build_cloud_medium_scene_gpu(scene);
-								// Fixed-mode scene - ignore cam_x/y/z by default, matching
-								// CPU, UNLESS force_camera_override is set (video mode),
-								// same convention as scenes 1-4 above.
-								const float3 lookfrom = force_camera_override
-									? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z))
-									: make_float3(0.0f, 5.0f, 20.0f);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 5.0f, 20.0f);
 								const float3 lookat   = make_float3(0.0f, 2.0f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
@@ -2822,12 +2819,7 @@ bool build_scene(
 
 							case 19: {  // Hair Fibers (pbrt-v4 HairBxDF)
 								build_hair_fibers_gpu(scene);
-								// Fixed-mode scene - ignore cam_x/y/z by default, matching
-								// CPU, UNLESS force_camera_override is set (video mode),
-								// same convention as scenes 1-4 above.
-								const float3 lookfrom = force_camera_override
-									? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z))
-									: make_float3(0.0f, 2.0f, 8.0f);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.0f, 8.0f);
 								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
@@ -2842,12 +2834,7 @@ bool build_scene(
 
 							case 34: {  // Measured BRDF (see build_measured_brdf_scene_gpu's comment)
 								build_measured_brdf_scene_gpu(scene);
-								// Fixed-mode scene - ignore cam_x/y/z by default, matching
-								// CPU, UNLESS force_camera_override is set (video mode),
-								// same convention as scenes 1-4 above.
-								const float3 lookfrom = force_camera_override
-									? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z))
-									: make_float3(0.0f, 3.0f, 12.0f);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 12.0f);
 								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
@@ -2859,12 +2846,7 @@ bool build_scene(
 
 							case 37: {  // Triangle Mesh (see build_triangle_mesh_scene_gpu's comment)
 								build_triangle_mesh_scene_gpu(scene);
-								// Fixed-mode scene - ignore cam_x/y/z by default, matching
-								// CPU, UNLESS force_camera_override is set (video mode),
-								// same convention as scenes 1-4 above.
-								const float3 lookfrom = force_camera_override
-									? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z))
-									: make_float3(0.0f, 4.0f, 8.0f);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 4.0f, 8.0f);
 								const float3 lookat   = make_float3(0.0f, 2.5f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
@@ -2879,12 +2861,7 @@ bool build_scene(
 
 							case 18: {  // Principled Showcase (see build_principled_showcase_gpu's comment)
 								build_principled_showcase_gpu(scene);
-								// Fixed-mode scene - ignore cam_x/y/z by default, matching
-								// CPU, UNLESS force_camera_override is set (video mode),
-								// same convention as scenes 1-4 above.
-								const float3 lookfrom = force_camera_override
-									? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z))
-									: make_float3(0.0f, 2.5f, 10.0f);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.5f, 10.0f);
 								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
@@ -2899,12 +2876,7 @@ bool build_scene(
 
 							case 38: {  // Stanford Bunny (see build_stanford_bunny_gpu's comment)
 								build_stanford_bunny_gpu(scene);
-								// Fixed-mode scene - ignore cam_x/y/z by default, matching
-								// CPU, UNLESS force_camera_override is set (video mode),
-								// same convention as scenes 1-4 above.
-								const float3 lookfrom = force_camera_override
-									? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z))
-									: make_float3(0.0f, 3.0f, 7.0f);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
 								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
