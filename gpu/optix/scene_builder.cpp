@@ -2522,6 +2522,59 @@ static void build_cheburashka_gpu(SceneData& scene) {
 	scene.isLightSphere.push_back(true);
 }
 
+/// @brief Scene 49: Trophy Room. Matches CPU build_trophy_room()
+/// (src/TheRestOfYourLife/scenes_advanced.h) exactly: same four meshes
+/// (bunny/teapot/Suzanne/Spot the Cow) at the same shrunk-and-shifted
+/// scale/offset, same four metal tones (bronze/chrome/gold/gunmetal), same
+/// checkered ground and light. First scene to place multiple external
+/// meshes in one composition - see CPU's comment for why this one uses
+/// four opaque metals rather than glass (an earlier dielectric-on-mesh
+/// attempt produced non-converging noise, flagged separately).
+static void build_trophy_room_gpu(SceneData& scene) {
+	// Ground
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
+		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
+	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+	ground_mat.textureIdx = checkerTexIdx;
+	scene.materials.push_back(ground_mat);
+	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	// Bunny (bronze) - matches CPU's shrunk scale/offset exactly.
+	const int mat_bronze = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.71f, 0.43f, 0.20f), 0.15f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	load_obj_triangles_gpu(scene, "stanford-bunny.obj", mat_bronze,
+		/*scale=*/10.3467f, make_float3(-3.32576f, -0.34123f, 0.01589f));
+
+	// Teapot (chrome)
+	const int mat_chrome = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.85f, 0.85f, 0.88f), 0.10f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	load_obj_triangles_gpu(scene, "teapot.obj", mat_chrome,
+		/*scale=*/0.50794f, make_float3(-2.07211f, 0.0f, 0.0f));
+
+	// Suzanne (gold)
+	const int mat_gold = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.83f, 0.69f, 0.22f), 0.05f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	load_obj_triangles_gpu(scene, "suzanne.obj", mat_gold,
+		/*scale=*/0.81270f, make_float3(3.22694f, -0.21723f, -3.33526f));
+
+	// Spot the Cow (gunmetal)
+	const int mat_gunmetal = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.55f, 0.56f, 0.58f), 0.08f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	load_obj_triangles_gpu(scene, "spot.obj", mat_gunmetal,
+		/*scale=*/0.94651f, make_float3(3.5f, 0.69739f, -0.17989f));
+
+	// Area light
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
+	scene.spheres.push_back(light);
+	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+	scene.isLightSphere.push_back(true);
+}
+
 /// @brief Scene 8: Final Scene (Ray Tracing: The Next Week finale).
 /// Matches CPU build_final_scene() (src/TheRestOfYourLife/scenes_book.h)
 /// structurally: 400-box randomized-height ground, area light quad, moving
@@ -3435,6 +3488,20 @@ bool build_scene(
 								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 48
 								if (out_camera_extra) {
 									// Matches CPU CameraConfig bg for scene 48 (same as scenes 38-47's).
+									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
+								}
+								break;
+							}
+
+							case 49: {  // Trophy Room (see build_trophy_room_gpu's comment)
+								build_trophy_room_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.3f, 14.0f);
+								const float3 lookat   = make_float3(0.0f, 0.9f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 34.0f, aspect, 1.0f, camera_params);  // 34: matches CPU CameraConfig row for scene 49
+								if (out_camera_extra) {
+									// Matches CPU CameraConfig bg for scene 49 (same as scenes 38-48's).
 									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
 								}
 								break;

@@ -1158,3 +1158,68 @@ inline hittable_list build_cheburashka() {
 	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
 	return world;
 }
+
+// ============================================================================
+// Scene 49: Trophy Room
+// First scene to place multiple external meshes together in one composition
+// (every prior mesh scene, 37-48, is a single statue alone on the checkered
+// ground). Four already-downloaded meshes - bunny, teapot, Suzanne, and Spot
+// the Cow - reused at a shared, smaller ~1.6-unit display height and lined
+// up along a shelf, each in a different one of the polished-metal tones
+// already proven safe on scanned meshes elsewhere in this file (bronze:
+// scene 38, silver/chrome: scene 43, gold: scene 40, gunmetal: scene 39) -
+// deliberately staying off dielectric here: an earlier attempt to render the
+// XYZRGB Dragon (scene 42's mesh) in glass produced persistent salt-and-
+// pepper noise that did not converge even at 3000spp (vs the usual ~150-300
+// for these scenes), most likely from inconsistent triangle winding in that
+// scan confusing the inside/outside test refraction depends on - flagged
+// separately for investigation, not something to build a showcase scene on
+// top of yet.
+// Each mesh's scale/offset below is its own solo scene's scale/offset
+// (see scenes 38/43/44/45's own comments for each raw bounding box) scaled
+// down by 1.6/3.0 to shrink it from that solo scene's ~3-unit standing
+// height to ~1.6 units, plus a per-item x-shift to line the four up along
+// the shelf; the y/z centering falls out of that same scaling automatically
+// since each solo scale/offset pair was already tuned to center its mesh at
+// x=0/z=0 sitting on y=0 - scaling both scale and offset by the same
+// fraction preserves that centering at the smaller size, and the x-shift is
+// simply added on top after.
+// ============================================================================
+inline hittable_list build_trophy_room() {
+	hittable_list world;
+
+	// Ground
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	auto bronze   = make_shared<metal>(color(0.71, 0.43, 0.20), 0.15);
+	auto chrome   = make_shared<metal>(color(0.85, 0.85, 0.88), 0.10);
+	auto gold     = make_shared<metal>(color(0.83, 0.69, 0.22), 0.05);
+	auto gunmetal = make_shared<metal>(color(0.55, 0.56, 0.58), 0.08);
+
+	// Bunny (bronze) - solo scale/offset from scene 38: 19.4, (0.3267,-0.6398,0.0298)
+	world.add(std::make_shared<triangle_mesh>(
+		"stanford-bunny.obj", bronze,
+		/*scale=*/10.3467, point3(-3.32576, -0.34123, 0.01589)));
+
+	// Teapot (chrome) - solo scale/offset from scene 43: 0.952381, (-1.6352,0,0)
+	world.add(std::make_shared<triangle_mesh>(
+		"teapot.obj", chrome,
+		/*scale=*/0.50794, point3(-2.07211, 0.0, 0.0)));
+
+	// Suzanne (gold) - solo scale/offset from scene 45: 1.52381, (3.8005,-0.4073,-6.2536)
+	world.add(std::make_shared<triangle_mesh>(
+		"suzanne.obj", gold,
+		/*scale=*/0.81270, point3(3.22694, -0.21723, -3.33526)));
+
+	// Spot the Cow (gunmetal) - solo scale/offset from scene 44: 1.7747, (0,1.3076,-0.3373)
+	world.add(std::make_shared<triangle_mesh>(
+		"spot.obj", gunmetal,
+		/*scale=*/0.94651, point3(3.5, 0.69739, -0.17989)));
+
+	// Area light - standard radius-2/(0,8,0) placement, same as every other
+	// mesh scene (a wider light was tried first, but became visible as a
+	// blown-out disc in-frame with this scene's wider camera FOV).
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}
