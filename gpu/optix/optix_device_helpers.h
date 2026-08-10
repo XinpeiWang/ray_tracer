@@ -673,8 +673,24 @@ __device__ __forceinline__ void shade_material(
 						}
 
 						// L = BRDF * emission * cos(theta) * MIS_weight / pdf
+						// Uses `attenuation` (already texture-sampled above if
+						// mat.textureIdx >= 0), NOT mat.albedo directly - for a
+						// textured Lambertian (e.g. scenes 38-40's checkered
+						// ground), mat.albedo is just a (1,1,1) white
+						// placeholder (see line 611's own comment), so using it
+						// here made every NEE-lit textured surface's direct
+						// lighting term use full white reflectance regardless
+						// of its actual (possibly much darker) texture color -
+						// confirmed via a real, sample-count-independent ~1.5x
+						// CPU/GPU brightness mismatch on scene 40's checkered
+						// ground (a hard bias, not noise: identical ratio at
+						// 100 spp and 2000 spp) that CPU didn't have (its own
+						// NEE path already samples the checker texture, see
+						// camera.h's `srec.attenuation`). Indirect/BSDF-sampled
+						// bounces were never affected - they already read
+						// `attenuation`, not mat.albedo.
 						float cos_theta = fmaxf(0.0f, dot(to_light, normal));
-						float3 brdf = mat.albedo / 3.14159265358979323846f;  // Lambertian BRDF
+						float3 brdf = attenuation / 3.14159265358979323846f;  // Lambertian BRDF
 						float3 direct_light = mis_weight * brdf * light_emission * cos_theta / light_pdf;
 
 						// Add to emission (raygen will apply throughput)
@@ -686,7 +702,11 @@ __device__ __forceinline__ void shade_material(
 			// Direct lighting from punctual (point/spot/distant) lights -
 			// deterministic delta lights, evaluated separately from the
 			// area-light alias table above (see optix_device_helpers.h).
-			add_punctual_lights_lambertian(hit_point, normal, mat.albedo, emission);
+			// Same fix as the NEE term above: pass the already texture-
+			// sampled `attenuation`, not the (1,1,1)-placeholder mat.albedo,
+			// so a textured Lambertian under a punctual light isn't
+			// incorrectly lit as if fully white.
+			add_punctual_lights_lambertian(hit_point, normal, attenuation, emission);
 
 			break;
 		}
