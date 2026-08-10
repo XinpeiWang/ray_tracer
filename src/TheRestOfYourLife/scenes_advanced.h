@@ -1036,3 +1036,36 @@ inline hittable_list build_spot_cow() {
 	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
 	return world;
 }
+
+// ============================================================================
+// Scene 45: Suzanne (Blender's monkey-head mascot)
+// Same external-mesh convention as scenes 37-44 (checkered ground, metal
+// material, overhead area light). Source faces are mostly quads (468 of
+// 500), fan-triangulated the same way every other mesh scene's loader
+// already handles n-gons - no special casing needed. Axis orientation
+// unverified before first render, same situation as Spot (scene 44) - scale/
+// offset below assume Y-up; if the first CPU render shows it on its side,
+// this needs updating to rotate it, matching how Lucy (scene 41) was
+// handled.
+// scale/offset computed from the raw OBJ's own bounding box (x:[-3.861,
+// -1.127] y:[0.267,2.236] z:[3.252,4.955] - not origin-centered in the
+// source file, unlike every prior mesh scene, but the offset below
+// re-centers it the same way regardless) to normalize the model to the
+// same ~3-unit standing height used by every other mesh scene.
+// ============================================================================
+inline hittable_list build_suzanne() {
+	hittable_list world;
+
+	// Ground
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	auto silver = make_shared<metal>(color(0.85, 0.85, 0.88), 0.1);
+	world.add(std::make_shared<triangle_mesh>(
+		"suzanne.obj", silver,
+		/*scale=*/1.52381, point3(3.8005, -0.4073, -6.2536)));
+
+	// Area light
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}
