@@ -178,6 +178,24 @@ class SobolSampler {
 								^ static_cast<uint64_t>(d)  * 2246822519ull);
 			seeds_[d] = static_cast<uint32_t>(h);
 		}
+		// Seed the beyond-SOBOL_DIMS fallback LCG (see get() below) from a hash
+		// of pixel + sample index, NOT a fixed constant. Paths needing more
+		// than SOBOL_DIMS random draws are routine for anything requiring many
+		// bounces (e.g. Russian Roulette through a highly concave dielectric
+		// mesh, which can easily need 20-40+ draws) - a shared fixed seed here
+		// means every pixel and every sample would replay the EXACT SAME
+		// "random" sequence past dimension SOBOL_DIMS, turning Russian
+		// Roulette survive/die decisions past that point into a deterministic
+		// function of bounce-index-within-path alone. That produces a strong,
+		// image-wide structural bias that does not shrink with more spp - it
+		// looked like ordinary noise but a 10000spp render was numerically
+		// indistinguishable from a 100spp one (confirmed while debugging a
+		// glass-mesh scene whose deep concave geometry reliably exceeds
+		// SOBOL_DIMS bounces, unlike simpler convex shapes that rarely do).
+		fallback_ = mix_bits(static_cast<uint64_t>(px) * 2654435761ull
+							^ static_cast<uint64_t>(py) * 805459861ull
+							^ static_cast<uint64_t>(sample_idx) * 3266489917ull
+							^ 0x9E3779B97F4A7C15ull);
 	}
 
 	// Return the next sample dimension value in [0, 1).

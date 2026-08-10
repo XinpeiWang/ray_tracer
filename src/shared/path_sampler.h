@@ -91,6 +91,18 @@ class PathSampler {
 			h ^= h >> 17; h *= 0xbf324c81u; h ^= h >> 11;
 			seeds_[d] = h;
 		}
+		// Seed the beyond-max_dims fallback LCG (see get() below) from a hash
+		// of pixel + sample index rather than a fixed constant - see
+		// sobol_sampler.h's SobolSampler for why a shared fixed seed here is a
+		// real bug, not just a cosmetic one: any path needing more than
+		// max_dims random draws (e.g. Russian Roulette through many bounces)
+		// would otherwise replay the identical "random" sequence for every
+		// pixel and every sample past that point, producing a strong bias
+		// that does not shrink with more spp.
+		uint32_t fh = px * 2654435761u ^ py * 1013904223u
+					^ static_cast<uint32_t>(sample_idx) * 2246822519u;
+		fh ^= fh >> 17; fh *= 0xbf324c81u; fh ^= fh >> 11;
+		fallback_ = (static_cast<uint64_t>(fh) << 32) | fh;
 	}
 
 	// Return the next sample dimension value in [0, 1).

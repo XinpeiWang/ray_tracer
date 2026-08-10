@@ -44,7 +44,31 @@ inline std::shared_ptr<hittable> load_obj(
 		std::shared_ptr<material> mat,
 		// Optional transform: scale and translate applied to positions
 		double scale = 1.0,
-		point3 offset = point3(0,0,0))
+		point3 offset = point3(0,0,0),
+		// When true AND the file itself has no "vn" data, generate smooth
+		// per-vertex normals (area-weighted average of adjacent face
+		// normals) instead of leaving the mesh flat-faceted. Defaults to
+		// false so every existing flat-shaded mesh scene (37-49) keeps its
+		// current, already-verified faceted look - this is opt-in, not a
+		// silent behavior change.
+		//
+		// Investigated as a possible fix for a dielectric (glass) render of
+		// xyzrgb_dragon.obj (250K flat-faceted triangles, deeply concave)
+		// producing salt-and-pepper noise that didn't visibly change between
+		// 100spp and 10000spp. Smooth normals alone did NOT resolve that -
+		// a follow-up pixel-wise MSE comparison across sample counts showed
+		// MSE(100spp, 10000spp) was no larger than MSE(3000spp, 10000spp),
+		// which rules out ordinary unconverged noise entirely: the image is
+		// converging, just to a genuinely chaotic-looking result, since
+		// refraction through a deeply concave solid needing dozens of
+		// internal bounces is extremely sensitive to sub-pixel ray origin
+		// (a well-documented hard case for unidirectional path tracing,
+		// requiring bidirectional/photon-mapping style integrators to
+		// resolve cleanly - not something either this renderer or pbrt-v4's
+		// own default PathIntegrator has). Kept as a real, independently
+		// useful capability (smooth-shaded meshes without authored vn data)
+		// even though it wasn't the fix for that specific investigation.
+		bool smooth_normals = false)
 {
 	// Hunt for the file the same way rtw_stb_image.h's rtw_image does for
 	// earthmap.jpg: try filepath as given first, then models/<filepath>
@@ -130,12 +154,34 @@ inline std::shared_ptr<hittable> load_obj(
 		throw std::runtime_error("load_obj: no geometry in file: " + filepath);
 
 	// ------------------------------------------------------------------
+	// Optionally generate smooth per-vertex normals (area-weighted average
+	// of adjacent face normals -- each face's contribution is the raw,
+	// unnormalized cross product, so larger triangles naturally pull the
+	// average more, matching the standard mesh-processing convention). Only
+	// engages when the file itself has no vn data; if it does, that data is
+	// authoritative and used as-is below.
+	// ------------------------------------------------------------------
+	std::vector<vec3> generated_norm;
+	if (smooth_normals && raw_norm.empty()) {
+		generated_norm.assign(raw_pos.size(), vec3(0,0,0));
+		for (auto& tri : faces) {
+			int i0 = tri[0].p, i1 = tri[1].p, i2 = tri[2].p;
+			vec3 face_normal = cross(raw_pos[i1] - raw_pos[i0], raw_pos[i2] - raw_pos[i0]);
+			generated_norm[i0] += face_normal;
+			generated_norm[i1] += face_normal;
+			generated_norm[i2] += face_normal;
+		}
+		for (auto& n : generated_norm)
+			if (n.length_squared() > 1e-20) n = unit_vector(n);
+	}
+
+	// ------------------------------------------------------------------
 	// Build triangle_mesh_data from face soup
 	// Each face vertex gets its own entry in the flat arrays to keep
 	// the indexing simple (allows different normals/UVs per face corner).
 	// ------------------------------------------------------------------
 	auto mesh_data = std::make_shared<triangle_mesh_data>();
-	bool have_norms = !raw_norm.empty();
+	bool have_norms = !raw_norm.empty() || !generated_norm.empty();
 	bool have_uvs   = !raw_u.empty();
 
 	mesh_data->positions.reserve(faces.size() * 3);
@@ -151,7 +197,9 @@ inline std::shared_ptr<hittable> load_obj(
 				throw std::runtime_error("load_obj: invalid position index in " + filepath);
 			mesh_data->positions.push_back(raw_pos[fv.p]);
 
-			if (have_norms && fv.n >= 0 && fv.n < (int)raw_norm.size())
+			if (!generated_norm.empty())
+				mesh_data->normals.push_back(generated_norm[fv.p]);
+			else if (have_norms && fv.n >= 0 && fv.n < (int)raw_norm.size())
 				mesh_data->normals.push_back(raw_norm[fv.n]);
 			else if (have_norms)
 				mesh_data->normals.push_back(vec3(0,1,0)); // fallback
@@ -190,9 +238,10 @@ class triangle_mesh : public hittable {
 	triangle_mesh(const std::string& filepath,
 				  std::shared_ptr<material> mat,
 				  double scale = 1.0,
-				  point3 offset = point3(0,0,0))
+				  point3 offset = point3(0,0,0),
+				  bool smooth_normals = false)
 	{
-		bvh = load_obj(filepath, mat, scale, offset);
+		bvh = load_obj(filepath, mat, scale, offset, smooth_normals);
 		bbox = bvh->bounding_box();
 	}
 
