@@ -646,29 +646,45 @@ namespace {
 
 		// One Lambertian MaterialData per unique .mtl name, added to
 		// scene.materials on first use and cached by name so faces sharing
-		// a material share one materialIdx. When textureDir is set and the
-		// material has a map_Kd whose image loads successfully, the
-		// material gets a real textureIdx (see load_image_texture_gpu) on
-		// top of its Kd fallback color; otherwise it's Kd-only, matching
-		// the pre-texture-support behavior exactly.
+		// a material share one materialIdx: a real textureIdx (see
+		// load_image_texture_gpu) when textureDir is set and the
+		// material's map_Kd image loads successfully, else Kd-only, else
+		// fallbackMaterialIdx when the name is empty/unknown or has
+		// neither -- mirrors CPU's load_obj_mtl() exactly. Deliberately
+		// does NOT require a Kd line to attempt the texture: a material
+		// with only map_Kd (no Kd) is valid OBJ and must still resolve,
+		// even though none of Sponza/Bistro/Rungholt's .mtl files actually
+		// have one (every map_Kd material there also has a Kd line).
 		std::unordered_map<std::string, int> matCache;
 		for (const auto& f : faces) {
 			int materialIdx = fallbackMaterialIdx;
-			auto colorIt = mtlColors.find(f.mtl);
-			if (!f.mtl.empty() && colorIt != mtlColors.end()) {
+			if (!f.mtl.empty()) {
 				auto cached = matCache.find(f.mtl);
 				if (cached != matCache.end()) {
 					materialIdx = cached->second;
 				} else {
-					materialIdx = safe_cast_to_int(scene.materials.size());
-					scene.materials.push_back({ MaterialType::Lambertian, colorIt->second, 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+					int resolvedIdx = -1;
 					auto texIt = mtlTextures.find(f.mtl);
 					if (texIt != mtlTextures.end()) {
 						std::string imgPath = resolve_mtl_texture_path_gpu(texIt->second, foundPrefix + textureDir);
 						int texIdx = load_image_texture_gpu(scene, imgPath.c_str());
-						if (scene.textures[texIdx].width > 0)
+						if (scene.textures[texIdx].width > 0) {
+							auto colorForTexIt = mtlColors.find(f.mtl);
+							float3 albedo = (colorForTexIt != mtlColors.end())
+								? colorForTexIt->second : make_float3(1.0f, 1.0f, 1.0f);
+							resolvedIdx = safe_cast_to_int(scene.materials.size());
+							scene.materials.push_back({ MaterialType::Lambertian, albedo, 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
 							scene.materials.back().textureIdx = texIdx;
+						}
 					}
+					if (resolvedIdx < 0) {
+						auto colorIt = mtlColors.find(f.mtl);
+						if (colorIt != mtlColors.end()) {
+							resolvedIdx = safe_cast_to_int(scene.materials.size());
+							scene.materials.push_back({ MaterialType::Lambertian, colorIt->second, 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+						}
+					}
+					materialIdx = (resolvedIdx >= 0) ? resolvedIdx : fallbackMaterialIdx;
 					matCache[f.mtl] = materialIdx;
 				}
 			}

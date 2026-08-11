@@ -1484,12 +1484,12 @@ inline hittable_list build_ogre() {
 // benchmark scene. Departs from the scenes-37-61 convention in three ways:
 //   1. No separate checkered-ground sphere -- the mesh's own floor is part
 //      of the geometry.
-//   2. Per-face materials come from the companion sponza.mtl's Kd (diffuse)
-//      colors via load_obj_mtl() -- real per-surface base colors (stone,
-//      fabric awnings, foliage, etc.), though still no textures (map_Kd),
-//      matching how every other mesh scene here already handles untextured
-//      meshes. Any face with no usemtl/an unknown material name falls back
-//      to a flat sandstone lambertian.
+//   2. Per-face materials come from the companion sponza.mtl via
+//      load_obj_mtl(), including real map_Kd image textures (sampled via
+//      the mesh's own UVs, models/sponza_textures/) where a material has
+//      one, falling back to a flat Kd color and finally to a flat
+//      sandstone lambertian for any face with no usemtl/unknown material/
+//      missing texture.
 //   3. Lit by an open-sky sky_light (like scene 24's build_hdri_sky)
 //      instead of a single overhead point/area light -- Sponza's own
 //      architecture is an open colonnade meant to be lit by daylight
@@ -1558,9 +1558,9 @@ inline hittable_list build_rocker_arm() {
 // ============================================================================
 // Scene 63: Amazon Lumberyard Bistro (Exterior)
 // Second "whole environment" scene (see build_sponza()'s own comment for
-// the shared design rationale: no separate ground, per-face .mtl materials
-// via load_obj_mtl(), open-sky lighting instead of a point/area light).
-// 2.84M triangles - a full
+// the shared design rationale: no separate ground, real per-face .mtl
+// materials/textures via load_obj_mtl(), open-sky lighting instead of a
+// point/area light). 2.84M triangles - a full
 // outdoor street block (multiple buildings, a plaza/street network), not
 // one enclosed building like Sponza.
 //
