@@ -70,9 +70,19 @@ constexpr double kWinX0 = 0.35, kWinX1 = 0.70;
 constexpr double kWinY0 = 0.55, kWinY1 = 0.90;
 
 // Average ray_color() over every pixel in the sphere's screen-space
-// window. Returns mean Rec.709 luminance.
+// window, spp samples per pixel. Returns mean Rec.709 luminance.
+//
+// spp=1 (the original value here) turned out to make this test genuinely
+// flaky for coated_diffuse specifically: its LayeredBxDF does an internal
+// stochastic random walk (reflect off the coat / transmit-bounce-transmit
+// out / absorb), high enough per-sample variance that a single sample per
+// pixel occasionally averaged just under the threshold across the whole
+// window (observed failing mean: 0.0294, threshold 0.03) even though nothing
+// was actually wrong -- confirmed by rerunning this exact test standalone
+// and seeing it flip between pass and fail. 4 samples/pixel quarters that
+// variance for a very small runtime cost (still well under a second).
 double average_sphere_brightness(const hittable_list& world, const hittable& lights,
-                                  const camera& cam) {
+                                  const camera& cam, int spp = 4) {
 	int x0 = static_cast<int>(kWinX0 * cam.image_width);
 	int x1 = static_cast<int>(kWinX1 * cam.image_width);
 	int y0 = static_cast<int>(kWinY0 * cam.image_height);
@@ -83,10 +93,12 @@ double average_sphere_brightness(const hittable_list& world, const hittable& lig
 	for (int j = y0; j < y1; ++j) {
 		for (int i = x0; i < x1; ++i) {
 			ray r = cam.get_ray(i, j, 0, 0, vec3(0.0, 0.0, 0.0));
-			SobolSampler ps(j * cam.image_width + i, i, j);
-			color c = cam.ray_color(r, cam.max_depth, world, lights, ps);
-			sum += 0.2126 * c.x() + 0.7152 * c.y() + 0.0722 * c.z();
-			++count;
+			for (int s = 0; s < spp; ++s) {
+				SobolSampler ps(s * (cam.image_width * cam.image_height) + j * cam.image_width + i, i, j);
+				color c = cam.ray_color(r, cam.max_depth, world, lights, ps);
+				sum += 0.2126 * c.x() + 0.7152 * c.y() + 0.0722 * c.z();
+				++count;
+			}
 		}
 	}
 	return sum / count;
