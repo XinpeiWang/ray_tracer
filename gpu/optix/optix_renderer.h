@@ -107,17 +107,19 @@ public:
 	///                If empty, looks in the same directory as optix_programs.ptx.
 	void enableWavefront(bool enable, const std::string& ptxPath = "");
 
-	/// @brief Phase 1a smoke test only: traces one primary ray per pixel via
-	///        the new SPPM pipeline and writes white-on-hit/black-on-miss to
-	///        outputFramebuffer. Proves the SPPMPathTracer module/program-
-	///        group/pipeline/SBT/PTX-JIT machinery works against the real
-	///        uploaded scene (buildScene() must already have been called)
-	///        before any real SPPM camera-pass/photon-pass math exists. Not
-	///        the final SPPM entry point -- see sub-phase 1e's renderSPPM().
+	/// @brief Sub-phase 1b verification only: runs ONE SPPM camera pass
+	///        (visible-point recording + NEE) and writes the resulting Ld
+	///        to outputFramebuffer. Proves the SPPMPathTracer module/
+	///        program-group/pipeline/SBT machinery AND the camera-pass math
+	///        (specular-chain resampling, NEE via the alias table, shadow
+	///        rays) work against the real uploaded scene (buildScene() must
+	///        already have been called) before the real multi-iteration
+	///        loop exists. Not the final SPPM entry point -- see sub-phase
+	///        1e's renderSPPM().
 	/// @param ptxPath Optional explicit path to sppm_programs.ptx.
 	bool renderSPPMTrivial(unsigned int width, unsigned int height,
 	                        const GpuCameraParams& camera, float* outputFramebuffer,
-	                        const std::string& ptxPath = "");
+	                        unsigned int maxDepth = 8, const std::string& ptxPath = "");
 
 private:
 	// -------------------------------------------------------------------

@@ -19,8 +19,35 @@
 #include "optix_types.h"
 
 // ============================================================================
+// SPPMPixelGPU -- per-pixel SPPM state, GPU-flattened analog of src/shared/
+// sppm.h's SPPMPixel<T> (see that struct's own comment for the CPU
+// reference). Phase 1b only populates/reads the visible-point and Ld
+// fields (the camera pass's own output); the radius/tau/n/Phi/m fields
+// SPPMUpdateRadius/the photon pass need are added in sub-phase 1d, once
+// there's a photon pass to read them -- matches the plan's own
+// incremental-extension approach (see this file's top comment).
+//
+// vp_materialIdx doubles as the CPU adapter's bsdf_id: unlike CPU's
+// hittable/material (virtual, shared_ptr-based, needing sppm_adapter.h's
+// whole transient_ctx_/durable_ctx_ shading-context-table machinery to
+// survive from the camera pass to a later photon-pass query), GPU
+// MaterialData is already a flat, permanently-addressable array -- the
+// index alone is a valid handle with no extra indirection needed.
+struct SPPMPixelGPU {
+	float3 Ld;             // accumulated direct lighting (this iteration)
+	float3 vp_p;            // visible-point world position
+	float3 vp_wo;            // outgoing direction (toward camera/prior bounce)
+	float3 vp_n;             // shading normal at the visible point
+	float3 vp_beta;          // path throughput at the visible point
+	int    vp_materialIdx;   // index into SPPMLaunchParams::materials
+	bool   vp_valid;         // false if this pixel's camera ray never reached
+	                         // a non-delta hit this iteration (escaped, hit a
+	                         // light, or exhausted maxDepth mid-specular-chain)
+};
+
+// ============================================================================
 // SPPMLaunchParams -- constant data passed to sppm_programs.cu's OptiX
-// programs (Phase 1a: camera-pass raygen only).
+// programs.
 // ============================================================================
 struct SPPMLaunchParams {
 	// Scene (device pointers, owned by OptiXRenderer -- reused as-is from
@@ -33,12 +60,27 @@ struct SPPMLaunchParams {
 	MaterialData* materials;
 	unsigned int  numMaterials;
 
-	// Output
+	// Area-light sampling (power-weighted alias table, same device data
+	// OptiXRenderer::buildScene() already uploads for the regular path
+	// tracers -- reused as-is, no separate SPPM copy).
+	int*           lightIndices;
+	bool*          isLightSphere;
+	GpuAliasEntry* aliasTable;
+	unsigned int   numLights;
+
+	// SPPM per-pixel state (see SPPMPixelGPU above).
+	SPPMPixelGPU* pixels;
+
+	// Output (Phase 1b writes pixels[i].Ld here directly for visual
+	// verification -- sppm_render_with_adapter()'s GPU analog in a later
+	// sub-phase reconstructs the real SPPMFinalImage() formula into this
+	// buffer instead once there's a photon pass contributing to it too).
 	float3*      framebuffer;
 	unsigned int width;
 	unsigned int height;
+	unsigned int maxDepth;
 
-	// Camera (reused verbatim from the existing GpuCameraParams -- Phase 1a
+	// Camera (reused verbatim from the existing GpuCameraParams -- Phase 1
 	// only exercises the Perspective case's viewport fields).
 	GpuCameraParams camera;
 };

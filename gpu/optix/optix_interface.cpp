@@ -153,7 +153,7 @@ extern "C" int optix_render_main(
 
 			if (!g_renderer->renderSPPMTrivial(
 					static_cast<unsigned int>(image_width), static_cast<unsigned int>(image_height),
-					cameraExtra, framebuffer.data(), ptxPath)) {
+					cameraExtra, framebuffer.data(), static_cast<unsigned int>(max_depth), ptxPath)) {
 				std::cerr << "[OptiX] SPPM trivial render failed\n";
 				return ERR_GPU_RENDER_FAILED;
 			}

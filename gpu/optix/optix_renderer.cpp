@@ -1645,7 +1645,7 @@ void OptiXRenderer::enableWavefront(bool enable, const std::string& ptxPath) {
 // ============================================================================
 bool OptiXRenderer::renderSPPMTrivial(unsigned int width, unsigned int height,
                                        const GpuCameraParams& camera, float* outputFramebuffer,
-                                       const std::string& ptxPath) {
+                                       unsigned int maxDepth, const std::string& ptxPath) {
 	if (!sppmTracer_) {
 		sppmTracer_ = std::make_unique<optix_renderer::SPPMPathTracer>();
 		if (!ptxPath.empty()) sppmTracer_->setPTXPath(ptxPath);
@@ -1676,6 +1676,8 @@ bool OptiXRenderer::renderSPPMTrivial(unsigned int width, unsigned int height,
 	return sppmTracer_->renderTrivial(
 		static_cast<int>(width), static_cast<int>(height), camera, outputFramebuffer,
 		gasHandle_, d_materials_, d_spheres_, d_quads_,
-		numMaterials_, numSpheres_, numQuads_);
+		numMaterials_, numSpheres_, numQuads_,
+		d_lightIndices_, d_isLightSphere_, d_aliasTable_, numLights_,
+		maxDepth);
 }
 

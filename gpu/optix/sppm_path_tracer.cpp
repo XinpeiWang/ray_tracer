@@ -139,26 +139,68 @@ bool SPPMPathTracer::createProgramGroups() {
 	OPTIX_CHECK(optixProgramGroupCreate(context_, &quadHitDesc, 1, &pgOptions,
 	                                     log, &logSize, &hitQuadPG_));
 
-	std::cout << "[SPPMPathTracer] Created 4 program groups\n";
+	// Shadow ray type (sub-phase 1b: NEE needs occlusion testing) -- same
+	// program shapes as optix_renderer.cpp's own shadow setup: a shared
+	// miss program (unoccluded) plus one any-hit-only hit group per
+	// geometry type (no closest-hit -- OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT is
+	// set at the trace call site in sppm_programs.cu).
+	OptixProgramGroupDesc shadowMissDesc = {};
+	shadowMissDesc.kind                   = OPTIX_PROGRAM_GROUP_KIND_MISS;
+	shadowMissDesc.miss.module            = sppmModule_;
+	shadowMissDesc.miss.entryFunctionName = "__miss__sppm_shadow";
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(context_, &shadowMissDesc, 1, &pgOptions,
+	                                     log, &logSize, &missShadowPG_));
+
+	OptixProgramGroupDesc shadowSphereDesc = {};
+	shadowSphereDesc.kind                         = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	shadowSphereDesc.hitgroup.moduleIS             = sppmModule_;
+	shadowSphereDesc.hitgroup.entryFunctionNameIS  = "__intersection__sppm_sphere";
+	shadowSphereDesc.hitgroup.moduleAH             = sppmModule_;
+	shadowSphereDesc.hitgroup.entryFunctionNameAH  = "__anyhit__sppm_shadow_sphere";
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(context_, &shadowSphereDesc, 1, &pgOptions,
+	                                     log, &logSize, &shadowHitSpherePG_));
+
+	OptixProgramGroupDesc shadowQuadDesc = {};
+	shadowQuadDesc.kind                        = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	shadowQuadDesc.hitgroup.moduleIS            = sppmModule_;
+	shadowQuadDesc.hitgroup.entryFunctionNameIS = "__intersection__sppm_quad";
+	shadowQuadDesc.hitgroup.moduleAH            = sppmModule_;
+	shadowQuadDesc.hitgroup.entryFunctionNameAH = "__anyhit__sppm_shadow_quad";
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(context_, &shadowQuadDesc, 1, &pgOptions,
+	                                     log, &logSize, &shadowHitQuadPG_));
+
+	std::cout << "[SPPMPathTracer] Created 7 program groups\n";
 	return true;
 }
 
 bool SPPMPathTracer::linkPipeline() {
 	OptixPipelineLinkOptions linkOptions = {};
-	linkOptions.maxTraceDepth = 1;  // Phase 1a: one optixTrace call, no recursion
+	// Each optixTrace call in sppm_programs.cu's raygen is a single, non-
+	// recursive trace (the bounce/NEE loop lives in the raygen itself, not
+	// via closesthit calling optixTrace again) -- matches wavefront's own
+	// shadow pipeline (maxTraceDepth=1) and the recursive path's raygen
+	// loop, neither of which need device-side recursion despite looping
+	// many bounces host-side-equivalent (i.e. within one raygen invocation).
+	linkOptions.maxTraceDepth = 1;
 
 	OptixProgramGroup groups[] = {
 		raygenCameraPG_,
 		missRadiancePG_,
 		hitSpherePG_,
-		hitQuadPG_
+		hitQuadPG_,
+		missShadowPG_,
+		shadowHitSpherePG_,
+		shadowHitQuadPG_
 	};
 
 	char   log[2048];
 	size_t logSize = sizeof(log);
 	OPTIX_CHECK(optixPipelineCreate(
 		context_, &pipelineCompileOptions_, &linkOptions,
-		groups, 4, log, &logSize, &pipeline_));
+		groups, 7, log, &logSize, &pipeline_));
 
 	std::cout << "[SPPMPathTracer] Linked pipeline\n";
 	return true;
@@ -188,22 +230,38 @@ bool SPPMPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuads) {
 	CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_raygenRecord_), &rg,
 	                      sizeof(RaygenRecord), cudaMemcpyHostToDevice));
 
-	MissRecord missRec;
-	OPTIX_CHECK(optixSbtRecordPackHeader(missRadiancePG_, &missRec));
-	missRec.data = 0;
-	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_missRecord_), sizeof(MissRecord)));
-	CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_missRecord_), &missRec,
-	                      sizeof(MissRecord), cudaMemcpyHostToDevice));
+	// Two miss records: [radiance, shadow] -- matches RAY_TYPE_RADIANCE=0/
+	// RAY_TYPE_SHADOW=1 (optix_types.h) and the missSBTIndex args passed at
+	// each optixTrace call site in sppm_programs.cu.
+	std::vector<MissRecord> missRecs(2);
+	OPTIX_CHECK(optixSbtRecordPackHeader(missRadiancePG_, &missRecs[0]));
+	missRecs[0].data = 0;
+	OPTIX_CHECK(optixSbtRecordPackHeader(missShadowPG_, &missRecs[1]));
+	missRecs[1].data = 0;
+	size_t missSz = missRecs.size() * sizeof(MissRecord);
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_missRecord_), missSz));
+	CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_missRecord_), missRecs.data(),
+	                      missSz, cudaMemcpyHostToDevice));
 
+	// Hit records: [radiance, shadow] pair per PRESENT geometry type (stride
+	// 2, matching the SBT offset/stride args at each optixTrace call site),
+	// same "present types only, in [sphere, quad] order" filter as the
+	// radiance-only build above.
 	std::vector<HitGroupRecord> hitRecs;
 	if (hasSpheres) {
 		hitRecs.emplace_back();
 		OPTIX_CHECK(optixSbtRecordPackHeader(hitSpherePG_, &hitRecs.back()));
 		hitRecs.back().data = {};
+		hitRecs.emplace_back();
+		OPTIX_CHECK(optixSbtRecordPackHeader(shadowHitSpherePG_, &hitRecs.back()));
+		hitRecs.back().data = {};
 	}
 	if (hasQuads) {
 		hitRecs.emplace_back();
 		OPTIX_CHECK(optixSbtRecordPackHeader(hitQuadPG_, &hitRecs.back()));
+		hitRecs.back().data = {};
+		hitRecs.emplace_back();
+		OPTIX_CHECK(optixSbtRecordPackHeader(shadowHitQuadPG_, &hitRecs.back()));
 		hitRecs.back().data = {};
 	}
 
@@ -215,7 +273,7 @@ bool SPPMPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuads) {
 	sbt_.raygenRecord                = d_raygenRecord_;
 	sbt_.missRecordBase              = d_missRecord_;
 	sbt_.missRecordStrideInBytes     = sizeof(MissRecord);
-	sbt_.missRecordCount             = 1;
+	sbt_.missRecordCount             = static_cast<unsigned int>(missRecs.size());
 	sbt_.hitgroupRecordBase          = d_hitRecords_;
 	sbt_.hitgroupRecordStrideInBytes = sizeof(HitGroupRecord);
 	sbt_.hitgroupRecordCount         = static_cast<unsigned int>(hitRecs.size());
@@ -228,10 +286,20 @@ bool SPPMPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuads) {
 bool SPPMPathTracer::renderTrivial(int width, int height, const GpuCameraParams& camera,
                                     float* outputFramebuffer, OptixTraversableHandle gasHandle,
                                     CUdeviceptr d_materials, CUdeviceptr d_spheres, CUdeviceptr d_quads,
-                                    unsigned int numMaterials, unsigned int numSpheres, unsigned int numQuads) {
+                                    unsigned int numMaterials, unsigned int numSpheres, unsigned int numQuads,
+                                    CUdeviceptr d_lightIndices, CUdeviceptr d_isLightSphere,
+                                    CUdeviceptr d_aliasTable, unsigned int numLights,
+                                    unsigned int maxDepth) {
 	CUdeviceptr d_framebuffer;
 	size_t fbSize = static_cast<size_t>(width) * height * sizeof(float3);
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_framebuffer), fbSize));
+
+	size_t numPixels = static_cast<size_t>(width) * height;
+	if (pixelsCapacity_ != numPixels) {
+		if (d_pixels_) cudaFree(reinterpret_cast<void*>(d_pixels_));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_pixels_), numPixels * sizeof(SPPMPixelGPU)));
+		pixelsCapacity_ = numPixels;
+	}
 
 	SPPMLaunchParams params{};
 	params.traversable  = gasHandle;
@@ -241,9 +309,15 @@ bool SPPMPathTracer::renderTrivial(int width, int height, const GpuCameraParams&
 	params.numQuads      = numQuads;
 	params.materials    = reinterpret_cast<MaterialData*>(d_materials);
 	params.numMaterials  = numMaterials;
+	params.lightIndices  = reinterpret_cast<int*>(d_lightIndices);
+	params.isLightSphere = reinterpret_cast<bool*>(d_isLightSphere);
+	params.aliasTable    = reinterpret_cast<GpuAliasEntry*>(d_aliasTable);
+	params.numLights     = numLights;
+	params.pixels       = reinterpret_cast<SPPMPixelGPU*>(d_pixels_);
 	params.framebuffer  = reinterpret_cast<float3*>(d_framebuffer);
 	params.width        = static_cast<unsigned int>(width);
 	params.height       = static_cast<unsigned int>(height);
+	params.maxDepth     = maxDepth;
 	params.camera       = camera;
 
 	CUDA_CHECK(cudaMemcpy(
@@ -287,6 +361,9 @@ void SPPMPathTracer::destroyProgramGroups() {
 	destroy(missRadiancePG_);
 	destroy(hitSpherePG_);
 	destroy(hitQuadPG_);
+	destroy(missShadowPG_);
+	destroy(shadowHitSpherePG_);
+	destroy(shadowHitQuadPG_);
 }
 
 void SPPMPathTracer::destroySBT() {
@@ -305,6 +382,7 @@ void SPPMPathTracer::cleanup() {
 	if (pipeline_) { optixPipelineDestroy(pipeline_); pipeline_ = nullptr; }
 	if (sppmModule_) { optixModuleDestroy(sppmModule_); sppmModule_ = nullptr; }
 	if (d_launchParams_) { cudaFree(reinterpret_cast<void*>(d_launchParams_)); d_launchParams_ = 0; }
+	if (d_pixels_) { cudaFree(reinterpret_cast<void*>(d_pixels_)); d_pixels_ = 0; pixelsCapacity_ = 0; }
 }
 
 } // namespace optix_renderer

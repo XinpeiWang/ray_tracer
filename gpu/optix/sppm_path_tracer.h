@@ -39,16 +39,22 @@ public:
 
 	void setPTXPath(const std::string& path) { ptxPath_ = path; }
 
-	// Phase 1a: traces one primary ray per pixel and writes white-on-hit /
-	// black-on-miss to outputFramebuffer -- proves the pipeline/SBT/PTX-JIT
-	// machinery works against the real uploaded scene before any real SPPM
-	// math exists. Replaced with the real iteration loop in sub-phase 1d;
-	// kept as a distinctly-named method (not render()) so it's obvious this
-	// is a placeholder, not the final API.
+	// Sub-phase 1b: runs ONE camera pass (visible-point recording + NEE via
+	// the scene's area-light alias table) and writes pixels[i].Ld straight
+	// to outputFramebuffer for visual inspection -- not yet the real
+	// multi-iteration SPPM loop (hash grid + photon pass are sub-phases
+	// 1c/1d). Kept as a distinctly-named method (not render()) so it's
+	// obvious this is still a verification step, not the final API. Also
+	// allocates/exposes the per-pixel SPPMPixelGPU buffer (d_pixels_) so a
+	// later sub-phase can extend this into the real iteration loop without
+	// re-deriving the buffer-sizing logic.
 	bool renderTrivial(int width, int height, const GpuCameraParams& camera,
 	                    float* outputFramebuffer, OptixTraversableHandle gasHandle,
 	                    CUdeviceptr d_materials, CUdeviceptr d_spheres, CUdeviceptr d_quads,
-	                    unsigned int numMaterials, unsigned int numSpheres, unsigned int numQuads);
+	                    unsigned int numMaterials, unsigned int numSpheres, unsigned int numQuads,
+	                    CUdeviceptr d_lightIndices, CUdeviceptr d_isLightSphere,
+	                    CUdeviceptr d_aliasTable, unsigned int numLights,
+	                    unsigned int maxDepth);
 
 private:
 	bool loadModule();
@@ -62,10 +68,13 @@ private:
 	OptixModule sppmModule_ = nullptr;
 	OptixPipelineCompileOptions pipelineCompileOptions_ = {};
 
-	OptixProgramGroup raygenCameraPG_ = nullptr;
-	OptixProgramGroup missRadiancePG_ = nullptr;
-	OptixProgramGroup hitSpherePG_    = nullptr;
-	OptixProgramGroup hitQuadPG_      = nullptr;
+	OptixProgramGroup raygenCameraPG_   = nullptr;
+	OptixProgramGroup missRadiancePG_   = nullptr;
+	OptixProgramGroup hitSpherePG_      = nullptr;
+	OptixProgramGroup hitQuadPG_        = nullptr;
+	OptixProgramGroup missShadowPG_     = nullptr;
+	OptixProgramGroup shadowHitSpherePG_ = nullptr;
+	OptixProgramGroup shadowHitQuadPG_   = nullptr;
 
 	OptixPipeline pipeline_ = nullptr;
 	OptixShaderBindingTable sbt_ = {};
@@ -74,6 +83,8 @@ private:
 	CUdeviceptr d_hitRecords_     = 0;
 
 	CUdeviceptr d_launchParams_ = 0;
+	CUdeviceptr d_pixels_       = 0;  // SPPMPixelGPU[width*height], see renderTrivial()
+	size_t      pixelsCapacity_ = 0;  // element count currently allocated at d_pixels_
 
 	unsigned int numSpheres_ = 0;
 	unsigned int numQuads_   = 0;
