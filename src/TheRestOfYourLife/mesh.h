@@ -318,6 +318,88 @@ inline std::unordered_map<std::string, color> parse_mtl(const std::string& filep
 
 
 // ---------------------------------------------------------------------------
+// parse_mtl_textures
+// Companion to parse_mtl(): maps material name -> its map_Kd (diffuse
+// texture) path, exactly as written in the .mtl (backslashes, "..", etc.
+// un-normalized -- see resolve_mtl_texture_path() for that). Only materials
+// with a map_Kd line appear in the result. Kept separate from parse_mtl()
+// rather than folded into its return value so parse_mtl()'s existing
+// color-only signature (and its test coverage) stays unchanged.
+// ---------------------------------------------------------------------------
+inline std::unordered_map<std::string, std::string> parse_mtl_textures(const std::string& filepath) {
+	std::unordered_map<std::string, std::string> result;
+
+	std::ifstream file(filepath);
+	if (!file.is_open()) {
+		static const char* kSearchPrefixes[] = {
+			"models/", "../models/", "../../models/",
+			"../../../models/", "../../../../models/", "../../../../../models/"
+		};
+		for (const char* prefix : kSearchPrefixes) {
+			file.clear();
+			file.open(prefix + filepath);
+			if (file.is_open()) break;
+		}
+	}
+	if (!file.is_open()) return result;
+
+	std::string line, current;
+	while (std::getline(file, line)) {
+		if (line.empty() || line[0] == '#') continue;
+		std::istringstream ss(line);
+		std::string tok;
+		ss >> tok;
+		if (tok == "newmtl") {
+			ss >> current;
+		} else if (tok == "map_Kd" && !current.empty()) {
+			// Take the rest of the line (minus surrounding whitespace) as
+			// the filename rather than a single ss >> token: real texture
+			// filenames in these archives can contain literal spaces (e.g.
+			// Bistro's "Metal_ RollDoor_01/Metal_ RollDoor_01_diff.png"),
+			// which a single >> would silently truncate at. Real-world
+			// .mtl "map_Kd" lines can also carry options (-o, -s, -bm, ...)
+			// before the filename; none of the three scenes this was built
+			// for (Sponza/Bistro/Rungholt) use them, so this doesn't handle
+			// that general case.
+			std::string path;
+			std::getline(ss, path);
+			size_t start = path.find_first_not_of(" \t");
+			if (start != std::string::npos) {
+				size_t end = path.find_last_not_of(" \t\r");
+				result[current] = path.substr(start, end - start + 1);
+			}
+		}
+	}
+	return result;
+}
+
+
+// ---------------------------------------------------------------------------
+// resolve_mtl_texture_path
+// Rewrites a .mtl-relative texture path (as read by parse_mtl_textures, e.g.
+// "textures\foo.png" or "..\BuildingTextures\bar.png") into a path under
+// texture_dir. Backslashes are normalized to forward slashes and any
+// leading "../"/"./" segments are stripped rather than resolved literally --
+// callers relocate the actual texture files under texture_dir instead of
+// mirroring the original archive's exact directory nesting relative to the
+// .mtl file, so only the meaningful tail (e.g. "BuildingTextures/bar.png")
+// matters.
+// ---------------------------------------------------------------------------
+inline std::string resolve_mtl_texture_path(const std::string& relative_path, const std::string& texture_dir) {
+	std::string p = relative_path;
+	for (auto& c : p) if (c == '\\') c = '/';
+
+	size_t pos = 0;
+	while (true) {
+		if (p.compare(pos, 3, "../") == 0) pos += 3;
+		else if (p.compare(pos, 2, "./") == 0) pos += 2;
+		else break;
+	}
+	return texture_dir + "/" + p.substr(pos);
+}
+
+
+// ---------------------------------------------------------------------------
 // load_obj_mtl
 // Like load_obj(), but assigns each triangle its own material by tracking
 // the OBJ's mtllib/usemtl directives and looking up each name's Kd color in
@@ -326,6 +408,18 @@ inline std::unordered_map<std::string, color> parse_mtl(const std::string& filep
 // with no usemtl, a name absent from the .mtl (or an unreadable/missing
 // .mtl entirely), so a bad/absent .mtl degrades to load_obj()'s old flat
 // look rather than failing the load.
+//
+// texture_dir: when non-empty, materials with a map_Kd entry get a real
+// image_texture-backed lambertian (sampled via this mesh's own "vt" UVs)
+// instead of a flat Kd color, resolved via resolve_mtl_texture_path()
+// against found_prefix + texture_dir -- a path *relative to the models/
+// folder itself* (e.g. "sponza_textures", not "models/sponza_textures"),
+// so it inherits the same climb-to-find-models/ prefix that successfully
+// located filepath, regardless of the render's current working directory
+// (RayTracer_Package/, bin/Release/, a test binary's own cwd, ...). Left
+// empty (the default), this behaves exactly like the Kd-only version --
+// Rungholt (whose .mtl carries no real map_Kd textures worth fetching)
+// keeps calling load_obj_mtl() without this arg.
 //
 // A standalone duplicate of load_obj()'s parse loop rather than a shared
 // helper: load_obj() is used by ~50 existing single-material mesh scenes
@@ -339,8 +433,16 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 		std::shared_ptr<material> fallback_mat,
 		double scale = 1.0,
 		point3 offset = point3(0,0,0),
-		bool smooth_normals = false)
+		bool smooth_normals = false,
+		const std::string& texture_dir = "")
 {
+	// Tracks which search prefix (if any) actually located filepath, so
+	// texture_dir (a path relative to models/, e.g. "sponza_textures") can
+	// be resolved with the same number of ".." climbs the .obj itself
+	// needed - texture_dir alone doesn't know how deep under models/ the
+	// current working directory actually is (RayTracer_Package/, bin/
+	// Release/, a test binary's own cwd, ...).
+	std::string found_prefix;
 	std::ifstream file(filepath);
 	if (!file.is_open()) {
 		static const char* kSearchPrefixes[] = {
@@ -350,7 +452,7 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 		for (const char* prefix : kSearchPrefixes) {
 			file.clear();
 			file.open(prefix + filepath);
-			if (file.is_open()) break;
+			if (file.is_open()) { found_prefix = prefix; break; }
 		}
 	}
 	if (!file.is_open())
@@ -431,13 +533,17 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 	// falling back to "<same name as the .obj>.mtl" if that's missing,
 	// unreadable, or defines no Kd colors at all.
 	std::unordered_map<std::string, color> mtl_colors;
+	std::unordered_map<std::string, std::string> mtl_textures;
+	std::string mtl_path_used = mtllib_name;
 	if (!mtllib_name.empty())
 		mtl_colors = parse_mtl(mtllib_name);
 	if (mtl_colors.empty()) {
 		auto dot = filepath.find_last_of('.');
-		std::string guess = (dot == std::string::npos ? filepath : filepath.substr(0, dot)) + ".mtl";
-		mtl_colors = parse_mtl(guess);
+		mtl_path_used = (dot == std::string::npos ? filepath : filepath.substr(0, dot)) + ".mtl";
+		mtl_colors = parse_mtl(mtl_path_used);
 	}
+	if (!texture_dir.empty() && !mtl_path_used.empty())
+		mtl_textures = parse_mtl_textures(mtl_path_used);
 
 	std::vector<vec3> generated_norm;
 	if (smooth_normals && raw_norm.empty()) {
@@ -491,9 +597,11 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 
 	// ------------------------------------------------------------------
 	// Build one triangle hittable per face, resolving each face's .mtl
-	// name to a cached lambertian(color) material (one shared_ptr per
-	// unique name, shared across every face using it), or fallback_mat
-	// when the name is empty/unknown.
+	// name to a cached material (one shared_ptr per unique name, shared
+	// across every face using it): a real image_texture-backed lambertian
+	// when texture_dir is set and the material's map_Kd image loads
+	// successfully, else a flat lambertian(Kd), else fallback_mat when the
+	// name is empty/unknown or has neither.
 	// ------------------------------------------------------------------
 	std::unordered_map<std::string, std::shared_ptr<material>> mat_cache;
 	hittable_list tris;
@@ -501,13 +609,25 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 	for (int i = 0; i < n; ++i) {
 		const std::string& name = faces[i].mtl;
 		std::shared_ptr<material> tri_mat = fallback_mat;
-		auto color_it = mtl_colors.find(name);
-		if (!name.empty() && color_it != mtl_colors.end()) {
+		if (!name.empty()) {
 			auto cached = mat_cache.find(name);
 			if (cached != mat_cache.end()) {
 				tri_mat = cached->second;
 			} else {
-				tri_mat = std::make_shared<lambertian>(color_it->second);
+				std::shared_ptr<material> resolved;
+				auto tex_it = mtl_textures.find(name);
+				if (!texture_dir.empty() && tex_it != mtl_textures.end()) {
+					std::string img_path = resolve_mtl_texture_path(tex_it->second, found_prefix + texture_dir);
+					rtw_image probe(img_path.c_str());
+					if (probe.height() > 0)
+						resolved = std::make_shared<lambertian>(std::make_shared<image_texture>(img_path.c_str()));
+				}
+				if (!resolved) {
+					auto color_it = mtl_colors.find(name);
+					if (color_it != mtl_colors.end())
+						resolved = std::make_shared<lambertian>(color_it->second);
+				}
+				tri_mat = resolved ? resolved : fallback_mat;
 				mat_cache[name] = tri_mat;
 			}
 		}
@@ -521,7 +641,8 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 // ---------------------------------------------------------------------------
 // triangle_mesh_mtl
 // Like triangle_mesh, but backed by load_obj_mtl() for real per-face .mtl
-// colors instead of one flat material for the whole mesh.
+// colors (and, when texture_dir is given, real map_Kd image textures)
+// instead of one flat material for the whole mesh.
 // ---------------------------------------------------------------------------
 class triangle_mesh_mtl : public hittable {
   public:
@@ -529,9 +650,10 @@ class triangle_mesh_mtl : public hittable {
 					   std::shared_ptr<material> fallback_mat,
 					   double scale = 1.0,
 					   point3 offset = point3(0,0,0),
-					   bool smooth_normals = false)
+					   bool smooth_normals = false,
+					   const std::string& texture_dir = "")
 	{
-		bvh = load_obj_mtl(filepath, fallback_mat, scale, offset, smooth_normals);
+		bvh = load_obj_mtl(filepath, fallback_mat, scale, offset, smooth_normals, texture_dir);
 		bbox = bvh->bounding_box();
 	}
 

@@ -91,11 +91,20 @@ struct BilinearPatchData {
 // of them; Suzanne, scene 45, was the first to actually exercise this
 // path). Mirrors src/TheRestOfYourLife/triangle.h's CPU
 // has_normals()-gated interpolation exactly.
+// uv0/uv1/uv2: per-vertex texture coordinates ("vt" data), barycentric-
+// interpolated the same way as n0/n1/n2 when hasUVs is set (see
+// optix_intersection_triangle.h) - feeds MaterialData::textureIdx image
+// sampling for meshes with a real map_Kd texture (scenes 62/63's Sponza/
+// Bistro; see scene_builder.cpp's load_obj_triangles_mtl_gpu()). Meshes
+// with no "vt" data (or whose material has no textureIdx) leave hasUVs
+// false and uv0-2 unused, matching hasNormals' same opt-in pattern.
 struct TriangleData {
 	float3 p0, p1, p2;
 	float3 n0, n1, n2;
+	float2 uv0, uv1, uv2;
 	int materialIdx;
 	bool hasNormals;
+	bool hasUVs;
 };
 
 // Material types

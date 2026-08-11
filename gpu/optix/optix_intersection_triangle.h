@@ -39,10 +39,19 @@ extern "C" __global__ void __closesthit__triangle() {
 	const float3 hit_point = ray_orig + t * ray_dir;
 
 	float3 shading_normal;
-	if (tri.hasNormals) {
+	float uv_u = 0.0f, uv_v = 0.0f;
+	if (tri.hasNormals || tri.hasUVs) {
 		const float2 bary = optixGetTriangleBarycentrics();
 		const float b1 = bary.x, b2 = bary.y, b0 = 1.0f - b1 - b2;
-		shading_normal = normalize(b0 * tri.n0 + b1 * tri.n1 + b2 * tri.n2);
+		if (tri.hasNormals) {
+			shading_normal = normalize(b0 * tri.n0 + b1 * tri.n1 + b2 * tri.n2);
+		} else {
+			shading_normal = normalize(cross(tri.p1 - tri.p0, tri.p2 - tri.p0));
+		}
+		if (tri.hasUVs) {
+			uv_u = b0 * tri.uv0.x + b1 * tri.uv1.x + b2 * tri.uv2.x;
+			uv_v = b0 * tri.uv0.y + b1 * tri.uv1.y + b2 * tri.uv2.y;
+		}
 	} else {
 		shading_normal = normalize(cross(tri.p1 - tri.p0, tri.p2 - tri.p0));
 	}
@@ -65,7 +74,7 @@ extern "C" __global__ void __closesthit__triangle() {
 	bool is_specular = false;
 	float brdf_pdf_override = -1.0f;
 
-	shade_material(mat, final_normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
+	shade_material(mat, final_normal, ray_dir, hit_point, front_face, uv_u, uv_v, seed,
 		attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission);
 
 	optixSetPayload_3(__float_as_uint(emission.x));

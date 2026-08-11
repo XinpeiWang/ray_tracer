@@ -1525,7 +1525,8 @@ inline hittable_list build_sponza() {
 	auto stone = make_shared<lambertian>(color(0.80, 0.74, 0.62));
 	world.add(std::make_shared<triangle_mesh_mtl>(
 		"sponza.obj", stone,
-		/*scale=*/1.0, point3(60.52, 126.44, 38.69)));
+		/*scale=*/1.0, point3(60.52, 126.44, 38.69),
+		/*smooth_normals=*/false, "sponza_textures"));
 
 	return world;
 }
@@ -1588,7 +1589,8 @@ inline hittable_list build_bistro_exterior() {
 	auto plaster = make_shared<lambertian>(color(0.75, 0.62, 0.50));
 	world.add(std::make_shared<triangle_mesh_mtl>(
 		"bistro_exterior.obj", plaster,
-		/*scale=*/1.0, point3(-1526.37, 472.62, -267.01)));
+		/*scale=*/1.0, point3(-1526.37, 472.62, -267.01),
+		/*smooth_normals=*/false, "bistro_textures"));
 
 	return world;
 }

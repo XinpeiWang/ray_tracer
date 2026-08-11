@@ -450,19 +450,11 @@ namespace {
 		return result;
 	}
 
-	// GPU counterpart of CPU's load_obj_mtl(): like load_obj_triangles_gpu()
-	// above, but tracks mtllib/usemtl directives during face parsing and
-	// resolves each face's material name to its own MaterialData (added to
-	// scene.materials on first use, cached by name so faces sharing a
-	// material share one materialIdx), instead of applying a single
-	// materialIdx to every triangle. Falls back to fallbackMaterialIdx for
-	// faces with no usemtl, an unknown name, or a missing/unreadable .mtl.
-	// A standalone duplicate of load_obj_triangles_gpu() rather than a
-	// shared helper, for the same reason CPU's load_obj_mtl() duplicates
-	// load_obj(): ~50 existing single-material scenes call the original and
-	// must not change behavior.
-	inline void load_obj_triangles_mtl_gpu(SceneData& scene, const char* filename,
-			int fallbackMaterialIdx, float scale, float3 offset) {
+	// GPU counterpart of CPU's parse_mtl_textures(): maps material name ->
+	// its map_Kd (diffuse texture) path, exactly as written in the .mtl.
+	// Only materials with a map_Kd line appear in the result.
+	inline std::unordered_map<std::string, std::string> parse_mtl_textures_gpu(const std::string& filename) {
+		std::unordered_map<std::string, std::string> result;
 		std::ifstream file(filename);
 		if (!file.is_open()) {
 			static const char* kSearchPrefixes[] = {
@@ -475,6 +467,88 @@ namespace {
 				if (file.is_open()) break;
 			}
 		}
+		if (!file.is_open()) return result;
+
+		std::string line, current;
+		while (std::getline(file, line)) {
+			if (line.empty() || line[0] == '#') continue;
+			std::istringstream ss(line);
+			std::string tok;
+			ss >> tok;
+			if (tok == "newmtl") {
+				ss >> current;
+			} else if (tok == "map_Kd" && !current.empty()) {
+				// Rest-of-line rather than a single ss >> token: real
+				// texture filenames in these archives can contain literal
+				// spaces (e.g. Bistro's "Metal_ RollDoor_01/..."), which a
+				// single >> would silently truncate at. See CPU's
+				// parse_mtl_textures() comment for the full rationale.
+				std::string path;
+				std::getline(ss, path);
+				size_t start = path.find_first_not_of(" \t");
+				if (start != std::string::npos) {
+					size_t end = path.find_last_not_of(" \t\r");
+					result[current] = path.substr(start, end - start + 1);
+				}
+			}
+		}
+		return result;
+	}
+
+	// GPU counterpart of CPU's resolve_mtl_texture_path(): normalizes
+	// backslashes to forward slashes and strips leading "../"/"./"
+	// segments, then joins onto textureDir. See CPU's own comment
+	// (mesh.h) for why literal relative-path resolution isn't used.
+	inline std::string resolve_mtl_texture_path_gpu(const std::string& relativePath, const std::string& textureDir) {
+		std::string p = relativePath;
+		for (auto& c : p) if (c == '\\') c = '/';
+
+		size_t pos = 0;
+		while (true) {
+			if (p.compare(pos, 3, "../") == 0) pos += 3;
+			else if (p.compare(pos, 2, "./") == 0) pos += 2;
+			else break;
+		}
+		return textureDir + "/" + p.substr(pos);
+	}
+
+	// GPU counterpart of CPU's load_obj_mtl(): like load_obj_triangles_gpu()
+	// above, but tracks mtllib/usemtl directives during face parsing and
+	// resolves each face's material name to its own MaterialData (added to
+	// scene.materials on first use, cached by name so faces sharing a
+	// material share one materialIdx), instead of applying a single
+	// materialIdx to every triangle. Falls back to fallbackMaterialIdx for
+	// faces with no usemtl, an unknown name, or a missing/unreadable .mtl.
+	// A standalone duplicate of load_obj_triangles_gpu() rather than a
+	// shared helper, for the same reason CPU's load_obj_mtl() duplicates
+	// load_obj(): ~50 existing single-material scenes call the original and
+	// must not change behavior.
+	//
+	// textureDir: when non-null/non-empty, materials with a map_Kd entry
+	// get a real image-texture-backed MaterialData (sampled via this
+	// mesh's own "vt" UVs, interpolated in optix_intersection_triangle.h)
+	// instead of a flat Kd color, resolved via resolve_mtl_texture_path_gpu()
+	// against foundPrefix + textureDir -- a path *relative to the models/
+	// folder itself* (e.g. "sponza_textures", not "models/sponza_textures"),
+	// mirroring CPU's load_obj_mtl() exactly (see its own comment for why:
+	// textureDir alone can't know how many ".." climbs the current working
+	// directory needs to reach models/). Left null (the default), this
+	// behaves exactly like the Kd-only version.
+	inline void load_obj_triangles_mtl_gpu(SceneData& scene, const char* filename,
+			int fallbackMaterialIdx, float scale, float3 offset, const char* textureDir = nullptr) {
+		std::string foundPrefix;
+		std::ifstream file(filename);
+		if (!file.is_open()) {
+			static const char* kSearchPrefixes[] = {
+				"models/", "../models/", "../../models/",
+				"../../../models/", "../../../../models/", "../../../../../models/"
+			};
+			for (const char* prefix : kSearchPrefixes) {
+				file.clear();
+				file.open(std::string(prefix) + filename);
+				if (file.is_open()) { foundPrefix = prefix; break; }
+			}
+		}
 		if (!file.is_open()) {
 			std::cerr << "[OptiX] Could not load mesh '" << filename
 					   << "' (tried a few relative paths) - scene will be missing this geometry.\n";
@@ -483,7 +557,8 @@ namespace {
 
 		std::vector<float3> positions;
 		std::vector<float3> normals;
-		struct Face { int p[3]; int n[3]; std::string mtl; };
+		std::vector<float2> uvs;
+		struct Face { int p[3]; int n[3]; int t[3]; std::string mtl; };
 		std::vector<Face> faces;
 		std::string mtllibName;
 		std::string currentMtl;
@@ -502,12 +577,16 @@ namespace {
 				float x, y, z;
 				ss >> x >> y >> z;
 				normals.push_back(normalize(make_float3(x, y, z)));
+			} else if (tok == "vt") {
+				float u, v;
+				ss >> u >> v;
+				uvs.push_back(make_float2(u, v));
 			} else if (tok == "mtllib") {
 				ss >> mtllibName;
 			} else if (tok == "usemtl") {
 				ss >> currentMtl;
 			} else if (tok == "f") {
-				std::vector<int> idx, nIdx;
+				std::vector<int> idx, nIdx, tIdx;
 				std::string fv;
 				auto resolveIdx = [](int raw, size_t countSoFar) -> int {
 					return raw > 0 ? raw - 1 : static_cast<int>(countSoFar) + raw;
@@ -515,13 +594,13 @@ namespace {
 				while (ss >> fv) {
 					int p = 0, t = 0, n = 0;
 					if (sscanf_s(fv.c_str(), "%d/%d/%d", &p, &t, &n) == 3) {
-						idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(resolveIdx(n, normals.size()));
+						idx.push_back(resolveIdx(p, positions.size())); tIdx.push_back(resolveIdx(t, uvs.size())); nIdx.push_back(resolveIdx(n, normals.size()));
 					} else if (sscanf_s(fv.c_str(), "%d//%d", &p, &n) == 2) {
-						idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(resolveIdx(n, normals.size()));
+						idx.push_back(resolveIdx(p, positions.size())); tIdx.push_back(-1); nIdx.push_back(resolveIdx(n, normals.size()));
 					} else if (sscanf_s(fv.c_str(), "%d/%d", &p, &t) == 2) {
-						idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(-1);
+						idx.push_back(resolveIdx(p, positions.size())); tIdx.push_back(resolveIdx(t, uvs.size())); nIdx.push_back(-1);
 					} else if (sscanf_s(fv.c_str(), "%d", &p) == 1) {
-						idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(-1);
+						idx.push_back(resolveIdx(p, positions.size())); tIdx.push_back(-1); nIdx.push_back(-1);
 					}
 				}
 				for (size_t i = 1; i + 1 < idx.size(); ++i) {
@@ -532,6 +611,7 @@ namespace {
 					Face f{};
 					f.p[0] = idx[0]; f.p[1] = idx[i]; f.p[2] = idx[i + 1];
 					f.n[0] = nIdx[0]; f.n[1] = nIdx[i]; f.n[2] = nIdx[i + 1];
+					f.t[0] = tIdx[0]; f.t[1] = tIdx[i]; f.t[2] = tIdx[i + 1];
 					f.mtl = currentMtl;
 					faces.push_back(f);
 				}
@@ -542,23 +622,35 @@ namespace {
 		// prefer the file's own mtllib directive, fall back to
 		// "<same name as the .obj>.mtl" if that's missing/empty/unreadable.
 		std::unordered_map<std::string, float3> mtlColors;
+		std::string mtlPathUsed = mtllibName;
 		if (!mtllibName.empty())
 			mtlColors = parse_mtl_gpu(mtllibName);
 		if (mtlColors.empty()) {
 			std::string name(filename);
 			auto dot = name.find_last_of('.');
-			std::string guess = (dot == std::string::npos ? name : name.substr(0, dot)) + ".mtl";
-			mtlColors = parse_mtl_gpu(guess);
+			mtlPathUsed = (dot == std::string::npos ? name : name.substr(0, dot)) + ".mtl";
+			mtlColors = parse_mtl_gpu(mtlPathUsed);
 		}
+		std::unordered_map<std::string, std::string> mtlTextures;
+		if (textureDir && textureDir[0] != '\0' && !mtlPathUsed.empty())
+			mtlTextures = parse_mtl_textures_gpu(mtlPathUsed);
 
 		auto cornerNormal = [&](int ni) -> float3 {
 			if (ni >= 0 && ni < static_cast<int>(normals.size())) return normals[ni];
 			return make_float3(0.0f, 1.0f, 0.0f);
 		};
+		auto cornerUV = [&](int ti) -> float2 {
+			if (ti >= 0 && ti < static_cast<int>(uvs.size())) return uvs[ti];
+			return make_float2(0.0f, 0.0f);
+		};
 
 		// One Lambertian MaterialData per unique .mtl name, added to
 		// scene.materials on first use and cached by name so faces sharing
-		// a material share one materialIdx.
+		// a material share one materialIdx. When textureDir is set and the
+		// material has a map_Kd whose image loads successfully, the
+		// material gets a real textureIdx (see load_image_texture_gpu) on
+		// top of its Kd fallback color; otherwise it's Kd-only, matching
+		// the pre-texture-support behavior exactly.
 		std::unordered_map<std::string, int> matCache;
 		for (const auto& f : faces) {
 			int materialIdx = fallbackMaterialIdx;
@@ -570,6 +662,13 @@ namespace {
 				} else {
 					materialIdx = safe_cast_to_int(scene.materials.size());
 					scene.materials.push_back({ MaterialType::Lambertian, colorIt->second, 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+					auto texIt = mtlTextures.find(f.mtl);
+					if (texIt != mtlTextures.end()) {
+						std::string imgPath = resolve_mtl_texture_path_gpu(texIt->second, foundPrefix + textureDir);
+						int texIdx = load_image_texture_gpu(scene, imgPath.c_str());
+						if (scene.textures[texIdx].width > 0)
+							scene.materials.back().textureIdx = texIdx;
+					}
 					matCache[f.mtl] = materialIdx;
 				}
 			}
@@ -583,6 +682,12 @@ namespace {
 				t.n0 = cornerNormal(f.n[0]);
 				t.n1 = cornerNormal(f.n[1]);
 				t.n2 = cornerNormal(f.n[2]);
+			}
+			t.hasUVs = !uvs.empty();
+			if (t.hasUVs) {
+				t.uv0 = cornerUV(f.t[0]);
+				t.uv1 = cornerUV(f.t[1]);
+				t.uv2 = cornerUV(f.t[2]);
 			}
 			scene.triangles.push_back(t);
 		}
@@ -3256,9 +3361,10 @@ void build_final_scene_gpu(SceneData& scene) {
 
 /// @brief Scene 62: Crytek Sponza. Matches CPU build_sponza() exactly: no
 /// separate ground sphere (the mesh's own floor is part of the geometry),
-/// per-face materials from the companion sponza.mtl's Kd colors (falling
-/// back to a flat sandstone lambertian for any face with no usemtl/unknown
-/// material), no explicit light source object -- lit purely via the
+/// real per-face textures sampled via the mesh's own UVs from the companion
+/// sponza.mtl's map_Kd images (models/sponza_textures/, falling back to a
+/// flat sandstone lambertian for any face with no usemtl/unknown material/
+/// missing texture), no explicit light source object -- lit purely via the
 /// flat-color "sky" set on GpuCameraParams::backgroundColor at the case-62
 /// dispatch site below (GPU has no sky_light/infinite-light object the way
 /// the CPU registry's build_sky field does -- background color IS the GPU
@@ -3267,18 +3373,19 @@ static void build_sponza_gpu(SceneData& scene) {
 	const int mat_stone = safe_cast_to_int(scene.materials.size());
 	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.80f, 0.74f, 0.62f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
 	load_obj_triangles_mtl_gpu(scene, "sponza.obj", mat_stone,
-		/*scale=*/1.0f, make_float3(60.52f, 126.44f, 38.69f));
+		/*scale=*/1.0f, make_float3(60.52f, 126.44f, 38.69f), "sponza_textures");
 }
 
 /// @brief Scene 63: Amazon Lumberyard Bistro (Exterior). Matches CPU
 /// build_bistro_exterior() exactly. See build_sponza_gpu()'s own comment
-/// for the shared design rationale (per-face .mtl materials, sky via
-/// backgroundColor). 2.84M triangles -- the largest mesh in this codebase.
+/// for the shared design rationale (real per-face textures via map_Kd, sky
+/// via backgroundColor). 2.84M triangles -- the largest mesh in this
+/// codebase.
 static void build_bistro_exterior_gpu(SceneData& scene) {
 	const int mat_plaster = safe_cast_to_int(scene.materials.size());
 	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.75f, 0.62f, 0.50f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
 	load_obj_triangles_mtl_gpu(scene, "bistro_exterior.obj", mat_plaster,
-		/*scale=*/1.0f, make_float3(-1526.37f, 472.62f, -267.01f));
+		/*scale=*/1.0f, make_float3(-1526.37f, 472.62f, -267.01f), "bistro_textures");
 }
 
 /// @brief Scene 64: Rungholt. Matches CPU build_rungholt() exactly. See

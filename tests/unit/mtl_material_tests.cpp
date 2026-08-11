@@ -163,3 +163,90 @@ TEST(MtlMaterial, ParseMtlReadsKdPerMaterial) {
 
 	std::remove("mtl_material_test_parse.mtl");
 }
+
+// parse_mtl_textures(): reads map_Kd per material, ignores materials with
+// no map_Kd line, ignores other map_* lines (map_Ka, map_Bump, ...).
+TEST(MtlMaterial, ParseMtlTexturesReadsMapKdPerMaterial) {
+	write_temp_file("mtl_material_test_textures.mtl",
+		"newmtl Textured\n"
+		"Kd 1.0 1.0 1.0\n"
+		"map_Ka some_ambient.png\n"
+		"map_Kd textures\\brick_diff.png\n"
+		"newmtl FlatOnly\n"
+		"Kd 0.5 0.5 0.5\n");
+
+	auto textures = parse_mtl_textures("mtl_material_test_textures.mtl");
+	ASSERT_EQ(textures.size(), 1u);
+	ASSERT_TRUE(textures.count("Textured"));
+	EXPECT_EQ(textures["Textured"], "textures\\brick_diff.png");
+	EXPECT_FALSE(textures.count("FlatOnly"));
+
+	std::remove("mtl_material_test_textures.mtl");
+}
+
+// Regression test for a real bug found while adding Bistro's textures:
+// some of its map_Kd paths contain literal spaces in a folder name (e.g.
+// "..\OtherTextures\Tiling\Metal_ RollDoor_01\Metal_ RollDoor_01_diff.png"),
+// which parse_mtl_textures()'s original `ss >> path` silently truncated at
+// the first space -- the mesh loaded, but that material's texture quietly
+// fell back to the solid-cyan missing-texture placeholder instead of erroring
+// loudly, which is exactly the kind of failure that's easy to miss visually.
+TEST(MtlMaterial, ParseMtlTexturesHandlesFilenamesWithSpaces) {
+	write_temp_file("mtl_material_test_spaces.mtl",
+		"newmtl Metal_RollDoor\n"
+		"Kd 1.0 1.0 1.0\n"
+		"map_Kd ..\\OtherTextures\\Tiling\\Metal_ RollDoor_01\\Metal_ RollDoor_01_diff.png\n");
+
+	auto textures = parse_mtl_textures("mtl_material_test_spaces.mtl");
+	ASSERT_TRUE(textures.count("Metal_RollDoor"));
+	EXPECT_EQ(textures["Metal_RollDoor"],
+		"..\\OtherTextures\\Tiling\\Metal_ RollDoor_01\\Metal_ RollDoor_01_diff.png");
+
+	std::remove("mtl_material_test_spaces.mtl");
+}
+
+// resolve_mtl_texture_path(): backslashes normalize to forward slashes, and
+// leading "../"/"./" segments are stripped (textures are relocated under
+// texture_dir rather than mirroring the original archive's exact nesting).
+TEST(MtlMaterial, ResolveMtlTexturePathNormalizesAndStripsRelativePrefix) {
+	EXPECT_EQ(resolve_mtl_texture_path("textures\\foo.png", "models/sponza_textures"),
+		"models/sponza_textures/textures/foo.png");
+	EXPECT_EQ(resolve_mtl_texture_path("..\\BuildingTextures\\bar.png", "models/bistro_textures"),
+		"models/bistro_textures/BuildingTextures/bar.png");
+	EXPECT_EQ(resolve_mtl_texture_path("./flat.png", "models/x"),
+		"models/x/flat.png");
+}
+
+// When texture_dir is given but the resolved map_Kd image doesn't actually
+// exist on disk, load_obj_mtl() must degrade to the material's flat Kd
+// color (or fallback_mat if it has neither) instead of crashing or silently
+// producing a broken/cyan-debug texture -- this is the real-world case for
+// any material whose specific texture file is missing from a deploy.
+TEST(MtlMaterial, MissingTextureFileFallsBackToFlatKd) {
+	write_temp_file("mtl_material_test_missing_tex.mtl",
+		"newmtl HasBoth\n"
+		"Kd 0.2 0.4 0.6\n"
+		"map_Kd textures\\does_not_exist_anywhere.png\n");
+	std::string objPath = write_temp_file("mtl_material_test_missing_tex.obj",
+		"mtllib mtl_material_test_missing_tex.mtl\n"
+		"v 0 0 0\n"
+		"v 1 0 0\n"
+		"v 0 1 0\n"
+		"usemtl HasBoth\n"
+		"f 1 2 3\n");
+
+	auto fallback = std::make_shared<lambertian>(color(0.9, 0.9, 0.9));
+	auto mesh = load_obj_mtl(objPath, fallback, 1.0, point3(0,0,0), false, "models/nonexistent_texture_dir");
+	ASSERT_NE(mesh, nullptr);
+
+	ray r(point3(0.2, 0.2, -5), vec3(0, 0, 1));
+	hit_record rec;
+	ASSERT_TRUE(mesh->hit(r, interval(0.001, infinity), rec));
+	color c = lambertian_color(rec.mat);
+	EXPECT_NEAR(c.x(), 0.2, 1e-9);
+	EXPECT_NEAR(c.y(), 0.4, 1e-9);
+	EXPECT_NEAR(c.z(), 0.6, 1e-9);
+
+	std::remove("mtl_material_test_missing_tex.obj");
+	std::remove("mtl_material_test_missing_tex.mtl");
+}

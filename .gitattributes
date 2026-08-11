@@ -1,1 +1,2 @@
 models/*.obj filter=lfs diff=lfs merge=lfs -text
+models/**/*.png filter=lfs diff=lfs merge=lfs -text

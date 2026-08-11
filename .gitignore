@@ -160,6 +160,13 @@ RayTracer_Package/styles/
 !images/*.jpg
 !images/*.png
 
+# ...and real mesh texture assets under models/sponza_textures/ and
+# models/bistro_textures/ (map_Kd images for scenes 62/63 - see
+# src/TheRestOfYourLife/mesh.h's load_obj_mtl()) - same reasoning as
+# images/*.png above.
+!models/sponza_textures/**/*.png
+!models/bistro_textures/**/*.png
+
 # Test output
 test_*.ppm
 test_*.png
