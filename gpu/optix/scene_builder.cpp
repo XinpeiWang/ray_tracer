@@ -3286,6 +3286,19 @@ bool build_scene(
 	scene.triangles.clear();
 	scene.materials.clear();
 
+	// Shared camera setup for the Cornell-box-shell scenes (rough metal/glass,
+	// conductor, coated diffuse/conductor, thin glass, wax slab, crystal,
+	// spotlight/distant/point/goniometric/projection light, portal light,
+	// smoke, homogeneous medium, subsurface slab, normal-mapped, bilinear
+	// patch) -- all share the same lookat-center-of-box camera.
+	const auto setup_cornell_box_camera = [&]() {
+		const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
+		const float3 lookat = make_float3(278.0f, 278.0f, 278.0f);
+		const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
+		const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+		build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);
+	};
+
 	// Build requested scene
 	switch (scene_id) {
 		case 0:  // Cornell Box
@@ -3466,94 +3479,100 @@ bool build_scene(
 										break;
 									}
 
-									case 10:  // Cornell Rough Metal (GGX)
+							case 10:  // Cornell Rough Metal (GGX)
 								build_cornell_rough_metal(scene);
-
-								// Same camera as Cornell Box (lookat center of box)
-								// (camera block below handles this)
-								// fallthrough intentional -- camera identical to case 11
-								goto cornell_box_camera;
+								setup_cornell_box_camera();
+								break;
 
 							case 11:  // Cornell Rough Glass (GGX)
-											build_cornell_rough_glass(scene);
-											cornell_box_camera:
+								build_cornell_rough_glass(scene);
+								setup_cornell_box_camera();
+								break;
 
-											case 12:  // Cornell Conductor (GGX + complex Fresnel, pbrt-v4 ConductorBxDF)
-												if (scene_id == 12) build_cornell_conductor(scene);
-												// fallthrough
+							case 12:  // Cornell Conductor (GGX + complex Fresnel, pbrt-v4 ConductorBxDF)
+								build_cornell_conductor(scene);
+								setup_cornell_box_camera();
+								break;
 
-												case 13:  // Cornell Coated Diffuse (pbrt-v4 CoatedDiffuseBxDF)
-												if (scene_id == 13) build_cornell_coated_diffuse(scene);
-												// fallthrough
+							case 13:  // Cornell Coated Diffuse (pbrt-v4 CoatedDiffuseBxDF)
+								build_cornell_coated_diffuse(scene);
+								setup_cornell_box_camera();
+								break;
 
-													case 14:  // Cornell Thin Glass (pbrt-v4 ThinDielectricBxDF)
-													if (scene_id == 14) build_cornell_thin_glass(scene);
-													// fallthrough
+							case 14:  // Cornell Thin Glass (pbrt-v4 ThinDielectricBxDF)
+								build_cornell_thin_glass(scene);
+								setup_cornell_box_camera();
+								break;
 
-														case 15:  // Cornell Coated Conductor (pbrt-v4 CoatedConductorBxDF)
-														if (scene_id == 15) build_cornell_coated_conductor(scene);
-														// fallthrough
+							case 15:  // Cornell Coated Conductor (pbrt-v4 CoatedConductorBxDF)
+								build_cornell_coated_conductor(scene);
+								setup_cornell_box_camera();
+								break;
 
-														case 16:  // Cornell Wax Slab (pbrt-v4 DiffuseTransmissionBxDF)
-														if (scene_id == 16) build_cornell_wax_slab(scene);
-														// fallthrough
+							case 16:  // Cornell Wax Slab (pbrt-v4 DiffuseTransmissionBxDF)
+								build_cornell_wax_slab(scene);
+								setup_cornell_box_camera();
+								break;
 
-														case 17:  // Cornell Crystal (pbrt-v4 NormalizedFresnelBxDF)
-														if (scene_id == 17) build_cornell_crystal(scene);
-														// fallthrough
+							case 17:  // Cornell Crystal (pbrt-v4 NormalizedFresnelBxDF)
+								build_cornell_crystal(scene);
+								setup_cornell_box_camera();
+								break;
 
-														case 25:  // Spotlight Cornell (pbrt-v4 SpotLight)
-														if (scene_id == 25) build_spotlight_cornell_gpu(scene);
-														// fallthrough
+							case 25:  // Spotlight Cornell (pbrt-v4 SpotLight)
+								build_spotlight_cornell_gpu(scene);
+								setup_cornell_box_camera();
+								break;
 
-														case 26:  // Distant Light Cornell (pbrt-v4 DistantLight)
-														if (scene_id == 26) build_distant_light_cornell_gpu(scene);
-														// fallthrough
+							case 26:  // Distant Light Cornell (pbrt-v4 DistantLight)
+								build_distant_light_cornell_gpu(scene);
+								setup_cornell_box_camera();
+								break;
 
-														case 27:  // Point Light Cornell (pbrt-v4 PointLight)
-														if (scene_id == 27) build_point_light_cornell_gpu(scene);
-														// fallthrough
+							case 27:  // Point Light Cornell (pbrt-v4 PointLight)
+								build_point_light_cornell_gpu(scene);
+								setup_cornell_box_camera();
+								break;
 
-														case 28:  // Goniometric Light Cornell (pbrt-v4 GoniometricLight)
-														if (scene_id == 28) build_goniometric_cornell_gpu(scene);
-														// fallthrough
+							case 28:  // Goniometric Light Cornell (pbrt-v4 GoniometricLight)
+								build_goniometric_cornell_gpu(scene);
+								setup_cornell_box_camera();
+								break;
 
-														case 29:  // Projection Light Cornell (pbrt-v4 ProjectionLight)
-														if (scene_id == 29) build_projection_cornell_gpu(scene);
-														// fallthrough
+							case 29:  // Projection Light Cornell (pbrt-v4 ProjectionLight)
+								build_projection_cornell_gpu(scene);
+								setup_cornell_box_camera();
+								break;
 
-														case 35:  // Portal Infinite Light (pbrt-v4 PortalImageInfiniteLight)
-														if (scene_id == 35) {
-															build_portal_light_scene_gpu(scene);
-															if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(1.0f, 1.2f, 1.5f);
-														}
-														// fallthrough
+							case 35:  // Portal Infinite Light (pbrt-v4 PortalImageInfiniteLight)
+								build_portal_light_scene_gpu(scene);
+								setup_cornell_box_camera();
+								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(1.0f, 1.2f, 1.5f);
+								break;
 
-														case 7:  // Cornell Smoke (constant_medium)
-														if (scene_id == 7) build_cornell_smoke_gpu(scene);
-														// fallthrough
+							case 7:  // Cornell Smoke (constant_medium)
+								build_cornell_smoke_gpu(scene);
+								setup_cornell_box_camera();
+								break;
 
-														case 30:  // Homogeneous Medium (constant_medium, HG g=0.3)
-														if (scene_id == 30) build_homogeneous_medium_scene_gpu(scene);
-														// fallthrough
+							case 30:  // Homogeneous Medium (constant_medium, HG g=0.3)
+								build_homogeneous_medium_scene_gpu(scene);
+								setup_cornell_box_camera();
+								break;
 
-														case 21:  // Subsurface Slab (see build_subsurface_slab_gpu's comment)
-														if (scene_id == 21) build_subsurface_slab_gpu(scene);
-														// fallthrough
+							case 21:  // Subsurface Slab (see build_subsurface_slab_gpu's comment)
+								build_subsurface_slab_gpu(scene);
+								setup_cornell_box_camera();
+								break;
 
-														case 20:  // Normal Mapped Cornell (see build_normal_mapped_cornell_gpu's comment)
-														if (scene_id == 20) build_normal_mapped_cornell_gpu(scene);
-														// fallthrough
+							case 20:  // Normal Mapped Cornell (see build_normal_mapped_cornell_gpu's comment)
+								build_normal_mapped_cornell_gpu(scene);
+								setup_cornell_box_camera();
+								break;
 
-														case 23:  // Bilinear Patch Scene (pbrt-v4 BilinearPatch shape)
-														if (scene_id == 23) build_bilinear_patch_scene_gpu(scene);
-													{
-									const float3 lookfrom = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
-									const float3 lookat = make_float3(278.0f, 278.0f, 278.0f);
-									const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
-									const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-									build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);
-								}
+							case 23:  // Bilinear Patch Scene (pbrt-v4 BilinearPatch shape)
+								build_bilinear_patch_scene_gpu(scene);
+								setup_cornell_box_camera();
 								break;
 
 							case 22: {  // Depth of Field (thin-lens perspective camera)
