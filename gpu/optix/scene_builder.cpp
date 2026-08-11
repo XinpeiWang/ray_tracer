@@ -361,17 +361,28 @@ namespace {
 			} else if (tok == "f") {
 				std::vector<int> idx, nIdx;
 				std::string fv;
+				// OBJ indices may be negative ("relative"): -1 refers to the
+				// most-recently-defined v/vn, resolved against however many
+				// have been parsed so far in the file - matches CPU mesh.h's
+				// load_obj() fix (see that function's own comment for why:
+				// rungholt.obj, a McGuire Computer Graphics Archive scene,
+				// uses this convention throughout, and the previous `p - 1`/
+				// `n - 1` here silently dropped every negative-indexed face,
+				// same bug as the CPU loader had).
+				auto resolveIdx = [](int raw, size_t countSoFar) -> int {
+					return raw > 0 ? raw - 1 : static_cast<int>(countSoFar) + raw;
+				};
 				while (ss >> fv) {
 					// Possible formats: p   p/t   p//n   p/t/n
 					int p = 0, t = 0, n = 0;
 					if (sscanf_s(fv.c_str(), "%d/%d/%d", &p, &t, &n) == 3) {
-						idx.push_back(p - 1); nIdx.push_back(n - 1);
+						idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(resolveIdx(n, normals.size()));
 					} else if (sscanf_s(fv.c_str(), "%d//%d", &p, &n) == 2) {
-						idx.push_back(p - 1); nIdx.push_back(n - 1);
+						idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(resolveIdx(n, normals.size()));
 					} else if (sscanf_s(fv.c_str(), "%d/%d", &p, &t) == 2) {
-						idx.push_back(p - 1); nIdx.push_back(-1);
+						idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(-1);
 					} else if (sscanf_s(fv.c_str(), "%d", &p) == 1) {
-						idx.push_back(p - 1); nIdx.push_back(-1);
+						idx.push_back(resolveIdx(p, positions.size())); nIdx.push_back(-1);
 					}
 				}
 				auto cornerNormal = [&](int ni) -> float3 {
@@ -3092,6 +3103,18 @@ static void build_bistro_exterior_gpu(SceneData& scene) {
 		/*scale=*/1.0f, make_float3(-1526.37f, 472.62f, -267.01f));
 }
 
+/// @brief Scene 64: Rungholt. Matches CPU build_rungholt() exactly. See
+/// build_sponza_gpu()'s comment for the shared design rationale, and CPU
+/// build_rungholt()'s own comment for the real negative-face-index OBJ
+/// loader bug this mesh exposed (fixed in load_obj_triangles_gpu()'s
+/// underlying parser the same way as the CPU loader -- see that function).
+static void build_rungholt_gpu(SceneData& scene) {
+	const int mat_wood = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.62f, 0.48f, 0.34f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	load_obj_triangles_gpu(scene, "rungholt.obj", mat_wood,
+		/*scale=*/1.0f, make_float3(0.0f, 0.0f, 0.0f));
+}
+
 /// @brief Build a scene and configure the camera
 /// @param scene_id Scene identifier (0 = Cornell Box)
 /// @param image_width Output image width in pixels
@@ -4007,6 +4030,20 @@ bool build_scene(
 								build_pinhole_camera_params(lookfrom, lookat, vup, 60.0f, aspect, 1.0f, camera_params);  // 60: matches CPU CameraConfig row for scene 63
 								if (out_camera_extra) {
 									// Matches CPU build_bistro_exterior_sky()'s solid-color sky_light(0.55,0.72,0.95).
+									out_camera_extra->backgroundColor = make_float3(0.55f, 0.72f, 0.95f);
+								}
+								break;
+							}
+
+							case 64: {  // Rungholt (see build_rungholt_gpu's comment)
+								build_rungholt_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 400.0f, 300.0f, 400.0f);
+								const float3 lookat   = make_float3(0.0f, 40.0f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 45.0f, aspect, 1.0f, camera_params);  // 45: matches CPU CameraConfig row for scene 64
+								if (out_camera_extra) {
+									// Matches CPU build_rungholt_sky()'s solid-color sky_light(0.55,0.72,0.95).
 									out_camera_extra->backgroundColor = make_float3(0.55f, 0.72f, 0.95f);
 								}
 								break;

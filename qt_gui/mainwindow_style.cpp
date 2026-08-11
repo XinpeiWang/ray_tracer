@@ -340,7 +340,7 @@ void MainWindow::styleComboBox(QComboBox *combo) {
 	QAbstractItemView *view = combo->view();
 
 	// Cap the popup's visible rows so it scrolls instead of growing past
-	// the screen - matters most for m_sceneCombo (64 scenes and counting);
+	// the screen - matters most for m_sceneCombo (65 scenes and counting);
 	// harmless for the shorter dropdowns (mode/quality/resolution/camera
 	// presets), which never reach this count anyway.
 	// setMaxVisibleItems() alone doesn't reliably constrain the popup here

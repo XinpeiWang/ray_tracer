@@ -1595,3 +1595,51 @@ inline hittable_list build_bistro_exterior() {
 inline std::shared_ptr<sky_light> build_bistro_exterior_sky() {
 	return std::make_shared<sky_light>(color(0.55, 0.72, 0.95));
 }
+
+// ============================================================================
+// Scene 64: Rungholt
+// Third "whole environment" scene (see build_sponza()'s own comment for
+// the shared design rationale). A giant blocky Minecraft-style town
+// (6.7M triangles) rather than a real-world building/street -- since the
+// geometry itself is inherently voxel-blocky, it looks essentially
+// identical with or without the original textures, unlike Sponza/Bistro
+// where the flat single-material look is a real (if minor) compromise.
+//
+// This mesh EXPOSED A REAL BUG in this codebase's shared OBJ loader
+// (src/TheRestOfYourLife/mesh.h's load_obj()): rungholt.obj uses negative
+// ("relative") face-vertex indices throughout, a valid part of the OBJ
+// spec that the loader never handled -- every negative index silently
+// resolved to a nonsense value and got dropped, which would have loaded
+// this mesh with most of its geometry missing and no error at all. Fixed
+// in load_obj() itself (now resolves negative indices against the
+// vertex/uv/normal count parsed so far, per spec) rather than worked
+// around here -- see tests/unit/obj_negative_indices_tests.cpp for the
+// regression coverage.
+//
+// Scale/offset: none needed -- the raw OBJ is already centered near the
+// origin with its floor already at y=0 (raw bbox x=[-327,328]
+// y=[0,69] z=[-275,275]), unlike every other mesh scene in this file.
+//
+// Camera: unlike Sponza/Bistro, no street-level ray-probing was needed --
+// Rungholt's low, sprawling footprint (69 units tall vs. 655x550 wide/deep)
+// makes a simple elevated 3/4 overview safe by construction (nothing to
+// get lost inside), verified with one quick ray-triangle probe (same
+// standalone script used for Sponza/Bistro, not committed): camera at
+// (400,300,400) looking toward the town center does hit the town's
+// rooftops (~639 units away), not empty space -- a "whole village from
+// above" establishing shot.
+// ============================================================================
+inline hittable_list build_rungholt() {
+	hittable_list world;
+
+	auto wood = make_shared<lambertian>(color(0.62, 0.48, 0.34));
+	world.add(std::make_shared<triangle_mesh>(
+		"rungholt.obj", wood,
+		/*scale=*/1.0, point3(0.0, 0.0, 0.0)));
+
+	return world;
+}
+
+inline std::shared_ptr<sky_light> build_rungholt_sky() {
+	return std::make_shared<sky_light>(color(0.55, 0.72, 0.95));
+}

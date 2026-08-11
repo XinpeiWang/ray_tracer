@@ -209,6 +209,7 @@
     <ClCompile Include="unit\concentric_disk_tests.cpp" />
     <ClCompile Include="unit\anisotropic_ggx_tests.cpp" />
     <ClCompile Include="unit\mix_material_tests.cpp" />
+    <ClCompile Include="unit\obj_negative_indices_tests.cpp" />
     <ClCompile Include="unit\volume_scattering_tests.cpp" />
     <ClCompile Include="unit\ratio_tracking_tests.cpp" />
     <ClCompile Include="unit\measured_bxdf_tests.cpp" />

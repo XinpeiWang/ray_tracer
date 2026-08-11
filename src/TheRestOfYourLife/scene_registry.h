@@ -858,6 +858,16 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_bistro_exterior_sky,
             nullptr
         },
+        {
+            64, SceneNames::Rungholt,
+            "Rungholt (6.7M triangles) - a giant blocky Minecraft-style town, in warm wood-tone lambertian, loaded from an external .obj file (requires models/rungholt.obj). Third 'whole environment' mesh scene, same design rationale as scenes 62-63 -- see build_rungholt()'s own comment (including a real OBJ-loader bug this mesh exposed and fixed: negative/relative face indices).",
+            "Very Slow", 150, true, true,
+            { 45, 400, 300, 400,  0, 40, 0,  0, 0, 0 },
+            build_rungholt,
+            no_lights,
+            build_rungholt_sky,
+            nullptr
+        },
     };
     return registry;
 }

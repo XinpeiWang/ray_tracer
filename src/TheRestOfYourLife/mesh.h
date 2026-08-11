@@ -126,19 +126,33 @@ inline std::shared_ptr<hittable> load_obj(
 			// Parse all face vertices, then fan-triangulate
 			std::vector<FaceVertex> fverts;
 			std::string fv_str;
+			// OBJ indices may be negative ("relative"): -1 refers to the
+			// most-recently-defined v/vt/vn, -2 the one before that, etc.,
+			// resolved against however many have been parsed so far in the
+			// file (not the eventual total) - e.g. rungholt.obj (a McGuire
+			// Computer Graphics Archive scene) uses this convention
+			// throughout. A positive index resolves the same way regardless
+			// (1-based from the start of the file).
+			auto resolve_index = [](int raw, size_t count_so_far) -> int {
+				return raw > 0 ? raw - 1 : static_cast<int>(count_so_far) + raw;
+			};
 			while (ss >> fv_str) {
 				FaceVertex fv{ -1, -1, -1 };
 				// Possible formats: p   p/t   p//n   p/t/n
 				// sscanf is simpler than splitting for these patterns
 				int pi, ti, ni;
 				if (sscanf(fv_str.c_str(), "%d/%d/%d", &pi, &ti, &ni) == 3) {
-					fv.p = pi - 1; fv.t = ti - 1; fv.n = ni - 1;
+					fv.p = resolve_index(pi, raw_pos.size());
+					fv.t = resolve_index(ti, raw_u.size());
+					fv.n = resolve_index(ni, raw_norm.size());
 				} else if (sscanf(fv_str.c_str(), "%d//%d", &pi, &ni) == 2) {
-					fv.p = pi - 1; fv.n = ni - 1;
+					fv.p = resolve_index(pi, raw_pos.size());
+					fv.n = resolve_index(ni, raw_norm.size());
 				} else if (sscanf(fv_str.c_str(), "%d/%d", &pi, &ti) == 2) {
-					fv.p = pi - 1; fv.t = ti - 1;
+					fv.p = resolve_index(pi, raw_pos.size());
+					fv.t = resolve_index(ti, raw_u.size());
 				} else if (sscanf(fv_str.c_str(), "%d", &pi) == 1) {
-					fv.p = pi - 1;
+					fv.p = resolve_index(pi, raw_pos.size());
 				}
 				if (fv.p >= 0) fverts.push_back(fv);
 			}
