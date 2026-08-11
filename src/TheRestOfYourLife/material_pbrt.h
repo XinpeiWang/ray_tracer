@@ -185,10 +185,12 @@ class rough_dielectric : public material {
 
         double wd_x, wd_y, wd_z;
         frame.to_world(res.wo_x, res.wo_y, res.wo_z, wd_x, wd_y, wd_z);
-        srec.attenuation  = color(res.r, res.g, res.b);
-        srec.pdf_ptr      = nullptr;
-        srec.skip_pdf     = true;
-        srec.skip_pdf_ray = ray(rec.p, unit_vector(vec3(wd_x, wd_y, wd_z)), r_in.time());
+        srec.attenuation     = color(res.r, res.g, res.b);
+        srec.pdf_ptr         = nullptr;
+        srec.skip_pdf        = true;
+        srec.skip_pdf_ray    = ray(rec.p, unit_vector(vec3(wd_x, wd_y, wd_z)), r_in.time());
+        srec.eta             = res.is_transmission ? res.eta : 1.0;
+        srec.is_transmission = res.is_transmission;
         return true;
     }
 

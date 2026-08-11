@@ -25,10 +25,26 @@ class scatter_record {
   public:
     color attenuation;
     shared_ptr<pdf> pdf_ptr;
-    bool skip_pdf;
+    bool skip_pdf = false;
     ray skip_pdf_ray;
-    double eta;           // IOR ratio (1.0 unless refraction; pbrt-v4 bs->eta)
-    bool is_transmission; // true when a refraction occurred (drives etaScale in integrator)
+    // Defaulted so materials that never cross a refractive boundary (metal,
+    // rough_metal, conductor, coated_diffuse, thin_dielectric,
+    // coated_conductor) don't have to remember to set these -- previously
+    // left uninitialized by every skip_pdf material except dielectric,
+    // which meant camera.h's etaScale/Russian-roulette logic
+    // (`eta_scale *= srec.eta * srec.eta` gated by `srec.is_transmission`)
+    // read garbage stack memory on every bounce off one of those materials.
+    // For rough_dielectric specifically this reliably corrupted eta_scale
+    // right after the entry bounce, causing the very next (exit) bounce's
+    // RR check to compute a near-1.0 kill probability from garbage and
+    // terminate the path before it could reach any wall or light --
+    // rendering the sphere's refraction-dominated interior almost solid
+    // black regardless of sample count (confirmed via debug instrumentation:
+    // reflect-branch/silhouette rays, which only ever take one skip_pdf
+    // bounce before hitting a non-specular wall, never exercised the
+    // corrupted path and rendered correctly).
+    double eta = 1.0;             // IOR ratio (1.0 unless refraction; pbrt-v4 bs->eta)
+    bool is_transmission = false; // true when a refraction occurred (drives etaScale in integrator)
 };
 
 

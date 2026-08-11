@@ -98,7 +98,9 @@ struct RoughDielectricBxDF {
 	{
 		BxDFSampleResult<T> res{};
 		res.r = T(1); res.g = T(1); res.b = T(1);
+		res.eta = T(1);
 		res.is_specular = true;
+		res.is_transmission = false;
 
 		TrowbridgeReitz<T> dist(alpha_x, alpha_y);
 		T wm_x, wm_y, wm_z;
@@ -134,6 +136,13 @@ struct RoughDielectricBxDF {
 				wo_x =  eta*(-wi_x) + (eta*cos_i - cos_t)*wm_x;
 				wo_y =  eta*(-wi_y) + (eta*cos_i - cos_t)*wm_y;
 				wo_z = -(eta*wi_z   - (eta*cos_i - cos_t)*wm_z);
+				// Genuine transmission -- record eta for the integrator's
+				// etaScale/Russian-roulette bookkeeping (pbrt-v4 bs->eta).
+				// Previously left at the res{} default (0), which the
+				// material wrapper didn't even propagate to scatter_record
+				// in the first place -- see scatter_record's own comment.
+				res.eta = eta;
+				res.is_transmission = true;
 			}
 		}
 
