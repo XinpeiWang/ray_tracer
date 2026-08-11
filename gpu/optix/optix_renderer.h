@@ -121,7 +121,22 @@ public:
 	                        const GpuCameraParams& camera, float* outputFramebuffer,
 	                        unsigned int maxDepth = 8, const std::string& ptxPath = "");
 
+	/// @brief Sub-phase 1d: the real multi-iteration GPU SPPM render (camera
+	///        pass -> hash grid -> photon pass -> radius contraction,
+	///        repeated nIterations times, then final-image reconstruction).
+	///        See SPPMPathTracer::render()'s own comment for the full loop.
+	/// @param ptxPath Optional explicit path to sppm_programs.ptx.
+	bool renderSPPM(unsigned int width, unsigned int height,
+	                 int nIterations, int nPhotons, unsigned int maxDepth, float initialRadius,
+	                 const GpuCameraParams& camera, float* outputFramebuffer,
+	                 const std::string& ptxPath = "");
+
 private:
+	// Lazily creates + initializes sppmTracer_ (module/program groups/
+	// pipeline/SBT), shared by renderSPPMTrivial() and renderSPPM() so the
+	// init sequence only exists once.
+	bool ensureSPPMTracer(const std::string& ptxPath);
+
 	// -------------------------------------------------------------------
 	// OptiX Core Resources
 	// -------------------------------------------------------------------

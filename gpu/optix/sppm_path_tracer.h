@@ -56,10 +56,31 @@ public:
 	                    CUdeviceptr d_aliasTable, unsigned int numLights,
 	                    unsigned int maxDepth);
 
+	// Sub-phase 1d: the real multi-iteration SPPM loop (camera pass -> host
+	// grid-bounds readback -> hash-grid insert -> photon pass -> radius
+	// contraction, repeated nIterations times, then a final-image kernel
+	// reconstructing L = Ld/nIterations + tau/(n*totalPhotonPaths*pi*r^2)).
+	// See sppm_path_tracer.h's own top comment for why this is a distinct
+	// method rather than PathTracingStrategy::render().
+	bool render(int width, int height, int nIterations, int nPhotons, int maxDepth,
+	            float initialRadius, const GpuCameraParams& camera,
+	            float* outputFramebuffer, OptixTraversableHandle gasHandle,
+	            CUdeviceptr d_materials, CUdeviceptr d_spheres, CUdeviceptr d_quads,
+	            unsigned int numMaterials, unsigned int numSpheres, unsigned int numQuads,
+	            CUdeviceptr d_lightIndices, CUdeviceptr d_isLightSphere,
+	            CUdeviceptr d_aliasTable, unsigned int numLights);
+
 private:
 	bool loadModule();
 	void destroyProgramGroups();
 	void destroySBT();
+	// Allocates/resizes d_pixels_ and the hash-grid buffers (d_cellHead_/
+	// d_nodeNext_/d_nodePixel_) for numPixels, sizing hashSize_ via
+	// sppm_detail::NextPrime(numPixels) (src/shared/sppm.h, CPU_GPU-tagged
+	// and directly #include-able) -- matches CPU's own HashGrid::Build()
+	// table sizing exactly. Buffers persist across iterations; only
+	// reallocated when numPixels changes.
+	bool ensureBuffers(size_t numPixels);
 
 	OptixDeviceContext context_ = nullptr;
 	cudaStream_t       stream_  = nullptr;
@@ -69,6 +90,7 @@ private:
 	OptixPipelineCompileOptions pipelineCompileOptions_ = {};
 
 	OptixProgramGroup raygenCameraPG_   = nullptr;
+	OptixProgramGroup raygenPhotonPG_   = nullptr;  // sub-phase 1d
 	OptixProgramGroup missRadiancePG_   = nullptr;
 	OptixProgramGroup hitSpherePG_      = nullptr;
 	OptixProgramGroup hitQuadPG_        = nullptr;
@@ -77,14 +99,31 @@ private:
 	OptixProgramGroup shadowHitQuadPG_   = nullptr;
 
 	OptixPipeline pipeline_ = nullptr;
-	OptixShaderBindingTable sbt_ = {};
-	CUdeviceptr d_raygenRecord_   = 0;
-	CUdeviceptr d_missRecord_     = 0;
-	CUdeviceptr d_hitRecords_     = 0;
+
+	// Two SBTs sharing the SAME miss/hit records (identical closesthit/
+	// any-hit behavior for both passes -- only the raygen differs), each
+	// with its own raygenRecord -- same "one pipeline, per-pass SBT" pattern
+	// WavefrontPathTracer already uses for its own intersect/shadow split
+	// (see wavefront_path_tracer.cpp's buildSBT()), just without that one's
+	// additional hit-record duplication since SPPM's two passes need
+	// identical hit behavior, not different per-pass hit data.
+	OptixShaderBindingTable sbtCamera_ = {};
+	OptixShaderBindingTable sbtPhoton_ = {};
+	CUdeviceptr d_raygenRecordCamera_ = 0;
+	CUdeviceptr d_raygenRecordPhoton_ = 0;
+	CUdeviceptr d_missRecord_         = 0;
+	CUdeviceptr d_hitRecords_         = 0;
 
 	CUdeviceptr d_launchParams_ = 0;
-	CUdeviceptr d_pixels_       = 0;  // SPPMPixelGPU[width*height], see renderTrivial()
+	CUdeviceptr d_pixels_       = 0;  // SPPMPixelGPU[width*height]
 	size_t      pixelsCapacity_ = 0;  // element count currently allocated at d_pixels_
+
+	// Hash grid (sub-phase 1d) -- persistent across iterations, only
+	// reallocated when pixelsCapacity_ changes. See ensureBuffers().
+	CUdeviceptr d_cellHead_  = 0;  // int[hashSize_]
+	CUdeviceptr d_nodeNext_  = 0;  // int[numPixels * kSPPMMaxCellsPerPoint]
+	CUdeviceptr d_nodePixel_ = 0;  // int[numPixels * kSPPMMaxCellsPerPoint]
+	int         hashSize_    = 0;
 
 	unsigned int numSpheres_ = 0;
 	unsigned int numQuads_   = 0;

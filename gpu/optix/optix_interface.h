@@ -31,6 +31,27 @@ int optix_render_main(
 	int force_camera_override = 0
 );
 
+// GPU SPPM (Stochastic Progressive Photon Mapping) rendering entry point,
+// mirrors cpu_render_main_sppm()'s signature (cpu_renderer/cpu_interface.h)
+// so main.cpp's --sppm --gpu branch (sub-phase 1e) can call either with the
+// same argument shape. Phase 1 scope only: rejects any scene_id other than
+// 11 (CornellRoughGlass) with ERR_GPU_UNSUPPORTED_SCENE -- see
+// C:\Users\xinpe\.claude\plans\cached-wobbling-ritchie.md's own "Explicitly
+// out of scope for Phase 1" section.
+int optix_render_main_sppm(
+	int image_width,
+	int image_height,
+	int iterations,
+	int photons,
+	int max_depth,
+	const char* output_path,
+	int scene_id,
+	double cam_x,
+	double cam_y,
+	double cam_z,
+	int force_camera_override = 0
+);
+
 // Returns the number of emissive light primitives (quads+spheres) that
 // gpu/optix/scene_builder.cpp's build_scene() would upload for scene_id, or
 // -1 if the scene fails to build. build_scene() is pure host-side C++ (no

@@ -10,10 +10,27 @@
 #endif
 
 #include "sppm_path_tracer.h"
+#include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <vector>
+
+// Launch wrappers for the plain-CUDA compute kernels (sppm_kernels.cu/
+// sppm_launch.cu) -- declared extern "C" there, called directly from host
+// code the same way WavefrontPathTracer calls its own wf_launch_* wrappers.
+extern "C" void sppm_launch_hash_grid_insert(
+	const SPPMPixelGPU* d_pixels, int numPixels,
+	SPPMHashGridParams gridParams,
+	int* d_cellHead, int* d_nodeNext, int* d_nodePixel,
+	cudaStream_t stream);
+extern "C" void sppm_launch_radius_update(
+	SPPMPixelGPU* d_pixels, int numPixels, cudaStream_t stream);
+extern "C" void sppm_launch_final_image(
+	const SPPMPixelGPU* d_pixels, int numPixels,
+	int nIterations, float totalPhotonPaths, float3* d_framebuffer,
+	cudaStream_t stream);
 
 namespace optix_renderer {
 
@@ -111,6 +128,16 @@ bool SPPMPathTracer::createProgramGroups() {
 	OPTIX_CHECK(optixProgramGroupCreate(context_, &rgDesc, 1, &pgOptions,
 	                                     log, &logSize, &raygenCameraPG_));
 
+	// Photon-pass raygen (sub-phase 1d) -- same module/pipeline, own SBT
+	// (see buildSBT()'s sbtPhoton_).
+	OptixProgramGroupDesc photonRgDesc = {};
+	photonRgDesc.kind                     = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
+	photonRgDesc.raygen.module            = sppmModule_;
+	photonRgDesc.raygen.entryFunctionName = "__raygen__sppm_photon_pass";
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(context_, &photonRgDesc, 1, &pgOptions,
+	                                     log, &logSize, &raygenPhotonPG_));
+
 	OptixProgramGroupDesc missDesc = {};
 	missDesc.kind                   = OPTIX_PROGRAM_GROUP_KIND_MISS;
 	missDesc.miss.module            = sppmModule_;
@@ -172,7 +199,7 @@ bool SPPMPathTracer::createProgramGroups() {
 	OPTIX_CHECK(optixProgramGroupCreate(context_, &shadowQuadDesc, 1, &pgOptions,
 	                                     log, &logSize, &shadowHitQuadPG_));
 
-	std::cout << "[SPPMPathTracer] Created 7 program groups\n";
+	std::cout << "[SPPMPathTracer] Created 8 program groups\n";
 	return true;
 }
 
@@ -188,6 +215,7 @@ bool SPPMPathTracer::linkPipeline() {
 
 	OptixProgramGroup groups[] = {
 		raygenCameraPG_,
+		raygenPhotonPG_,
 		missRadiancePG_,
 		hitSpherePG_,
 		hitQuadPG_,
@@ -200,7 +228,7 @@ bool SPPMPathTracer::linkPipeline() {
 	size_t logSize = sizeof(log);
 	OPTIX_CHECK(optixPipelineCreate(
 		context_, &pipelineCompileOptions_, &linkOptions,
-		groups, 7, log, &logSize, &pipeline_));
+		groups, 8, log, &logSize, &pipeline_));
 
 	std::cout << "[SPPMPathTracer] Linked pipeline\n";
 	return true;
@@ -223,11 +251,21 @@ bool SPPMPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuads) {
 	const bool hasSpheres = numSpheres > 0;
 	const bool hasQuads   = numQuads > 0;
 
-	RaygenRecord rg;
-	OPTIX_CHECK(optixSbtRecordPackHeader(raygenCameraPG_, &rg));
-	rg.data = 0;
-	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_raygenRecord_), sizeof(RaygenRecord)));
-	CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_raygenRecord_), &rg,
+	RaygenRecord rgCamera;
+	OPTIX_CHECK(optixSbtRecordPackHeader(raygenCameraPG_, &rgCamera));
+	rgCamera.data = 0;
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_raygenRecordCamera_), sizeof(RaygenRecord)));
+	CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_raygenRecordCamera_), &rgCamera,
+	                      sizeof(RaygenRecord), cudaMemcpyHostToDevice));
+
+	// Photon-pass raygen record (sub-phase 1d) -- shares the miss/hit
+	// records built below with sbtCamera_ (see this class's header comment
+	// on why: identical closesthit/any-hit behavior for both passes).
+	RaygenRecord rgPhoton;
+	OPTIX_CHECK(optixSbtRecordPackHeader(raygenPhotonPG_, &rgPhoton));
+	rgPhoton.data = 0;
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_raygenRecordPhoton_), sizeof(RaygenRecord)));
+	CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_raygenRecordPhoton_), &rgPhoton,
 	                      sizeof(RaygenRecord), cudaMemcpyHostToDevice));
 
 	// Two miss records: [radiance, shadow] -- matches RAY_TYPE_RADIANCE=0/
@@ -270,15 +308,18 @@ bool SPPMPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuads) {
 	CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_hitRecords_), hitRecs.data(),
 	                      sz, cudaMemcpyHostToDevice));
 
-	sbt_.raygenRecord                = d_raygenRecord_;
-	sbt_.missRecordBase              = d_missRecord_;
-	sbt_.missRecordStrideInBytes     = sizeof(MissRecord);
-	sbt_.missRecordCount             = static_cast<unsigned int>(missRecs.size());
-	sbt_.hitgroupRecordBase          = d_hitRecords_;
-	sbt_.hitgroupRecordStrideInBytes = sizeof(HitGroupRecord);
-	sbt_.hitgroupRecordCount         = static_cast<unsigned int>(hitRecs.size());
+	sbtCamera_.raygenRecord                = d_raygenRecordCamera_;
+	sbtCamera_.missRecordBase              = d_missRecord_;
+	sbtCamera_.missRecordStrideInBytes     = sizeof(MissRecord);
+	sbtCamera_.missRecordCount             = static_cast<unsigned int>(missRecs.size());
+	sbtCamera_.hitgroupRecordBase          = d_hitRecords_;
+	sbtCamera_.hitgroupRecordStrideInBytes = sizeof(HitGroupRecord);
+	sbtCamera_.hitgroupRecordCount         = static_cast<unsigned int>(hitRecs.size());
 
-	std::cout << "[SPPMPathTracer] Built SBT (spheres=" << numSpheres
+	sbtPhoton_ = sbtCamera_;
+	sbtPhoton_.raygenRecord = d_raygenRecordPhoton_;
+
+	std::cout << "[SPPMPathTracer] Built SBTs (spheres=" << numSpheres
 	          << " quads=" << numQuads << ")\n";
 	return true;
 }
@@ -295,11 +336,18 @@ bool SPPMPathTracer::renderTrivial(int width, int height, const GpuCameraParams&
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_framebuffer), fbSize));
 
 	size_t numPixels = static_cast<size_t>(width) * height;
-	if (pixelsCapacity_ != numPixels) {
-		if (d_pixels_) cudaFree(reinterpret_cast<void*>(d_pixels_));
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_pixels_), numPixels * sizeof(SPPMPixelGPU)));
-		pixelsCapacity_ = numPixels;
-	}
+	// Routed through ensureBuffers() (not a standalone malloc) so this and
+	// render() can never leave the hash-grid buffers (d_cellHead_ etc.)
+	// null after the other has already set pixelsCapacity_ for the same
+	// numPixels -- ensureBuffers() is a no-op if already sized correctly,
+	// so this is a harmless no-op the first time render() sizes things too.
+	if (!ensureBuffers(numPixels)) return false;
+	// Zero the pixel buffer: the camera-pass raygen no longer resets
+	// pixel.Ld itself (sub-phase 1d made it accumulate across iterations,
+	// see sppm_programs.cu's own comment on that raygen) -- this single-shot
+	// smoke-test call needs a fresh baseline every time, same as render()'s
+	// own per-render init below.
+	CUDA_CHECK(cudaMemset(reinterpret_cast<void*>(d_pixels_), 0, numPixels * sizeof(SPPMPixelGPU)));
 
 	SPPMLaunchParams params{};
 	params.traversable  = gasHandle;
@@ -332,7 +380,7 @@ bool SPPMPathTracer::renderTrivial(int width, int height, const GpuCameraParams&
 		stream_,
 		d_launchParams_,
 		sizeof(SPPMLaunchParams),
-		&sbt_,
+		&sbtCamera_,
 		static_cast<unsigned int>(width),
 		static_cast<unsigned int>(height),
 		1
@@ -353,11 +401,169 @@ bool SPPMPathTracer::renderTrivial(int width, int height, const GpuCameraParams&
 	return true;
 }
 
+bool SPPMPathTracer::ensureBuffers(size_t numPixels) {
+	if (pixelsCapacity_ == numPixels) return true;
+
+	if (d_pixels_)   { cudaFree(reinterpret_cast<void*>(d_pixels_));   d_pixels_ = 0; }
+	if (d_cellHead_) { cudaFree(reinterpret_cast<void*>(d_cellHead_)); d_cellHead_ = 0; }
+	if (d_nodeNext_) { cudaFree(reinterpret_cast<void*>(d_nodeNext_)); d_nodeNext_ = 0; }
+	if (d_nodePixel_){ cudaFree(reinterpret_cast<void*>(d_nodePixel_)); d_nodePixel_ = 0; }
+	pixelsCapacity_ = 0;
+
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_pixels_), numPixels * sizeof(SPPMPixelGPU)));
+
+	hashSize_ = sppm_next_prime(static_cast<int>(numPixels));
+	size_t poolSize = numPixels * static_cast<size_t>(kSPPMMaxCellsPerPoint);
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_cellHead_), hashSize_ * sizeof(int)));
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nodeNext_), poolSize * sizeof(int)));
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nodePixel_), poolSize * sizeof(int)));
+
+	pixelsCapacity_ = numPixels;
+	return true;
+}
+
+bool SPPMPathTracer::render(int width, int height, int nIterations, int nPhotons, int maxDepth,
+                             float initialRadius, const GpuCameraParams& camera,
+                             float* outputFramebuffer, OptixTraversableHandle gasHandle,
+                             CUdeviceptr d_materials, CUdeviceptr d_spheres, CUdeviceptr d_quads,
+                             unsigned int numMaterials, unsigned int numSpheres, unsigned int numQuads,
+                             CUdeviceptr d_lightIndices, CUdeviceptr d_isLightSphere,
+                             CUdeviceptr d_aliasTable, unsigned int numLights) {
+	const size_t numPixels = static_cast<size_t>(width) * height;
+	if (!ensureBuffers(numPixels)) return false;
+
+	// Initialise pixels with the starting radius (mirrors SPPMRender's own
+	// init loop, src/shared/sppm.h) -- everything else (Ld/tau/n/Phi/m/
+	// vp_valid) starts at zero, which SPPMPixelGPU{} already gives us.
+	std::vector<SPPMPixelGPU> hostPixels(numPixels);
+	for (auto& px : hostPixels) { px = SPPMPixelGPU{}; px.radius = initialRadius; }
+	CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_pixels_), hostPixels.data(),
+	                      numPixels * sizeof(SPPMPixelGPU), cudaMemcpyHostToDevice));
+
+	CUdeviceptr d_framebuffer;
+	size_t fbSize = numPixels * sizeof(float3);
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_framebuffer), fbSize));
+
+	SPPMLaunchParams params{};
+	params.traversable   = gasHandle;
+	params.spheres       = reinterpret_cast<SphereData*>(d_spheres);
+	params.numSpheres    = numSpheres;
+	params.quads         = reinterpret_cast<QuadData*>(d_quads);
+	params.numQuads      = numQuads;
+	params.materials     = reinterpret_cast<MaterialData*>(d_materials);
+	params.numMaterials  = numMaterials;
+	params.lightIndices  = reinterpret_cast<int*>(d_lightIndices);
+	params.isLightSphere = reinterpret_cast<bool*>(d_isLightSphere);
+	params.aliasTable    = reinterpret_cast<GpuAliasEntry*>(d_aliasTable);
+	params.numLights     = numLights;
+	params.pixels        = reinterpret_cast<SPPMPixelGPU*>(d_pixels_);
+	params.framebuffer   = reinterpret_cast<float3*>(d_framebuffer);
+	params.width          = static_cast<unsigned int>(width);
+	params.height          = static_cast<unsigned int>(height);
+	params.maxDepth       = static_cast<unsigned int>(maxDepth);
+	params.camera         = camera;
+	params.cellHead       = reinterpret_cast<int*>(d_cellHead_);
+	params.nodeNext       = reinterpret_cast<int*>(d_nodeNext_);
+	params.nodePixel      = reinterpret_cast<int*>(d_nodePixel_);
+	params.nPhotons       = static_cast<unsigned int>(nPhotons);
+
+	int64_t totalPhotonPaths = 0;
+
+	for (int iter = 0; iter < nIterations; ++iter) {
+		// 1. Camera pass: deposit visible points, accumulate Ld via NEE.
+		params.photonSeedBase = static_cast<unsigned int>(iter);
+		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_launchParams_), &params,
+		                      sizeof(SPPMLaunchParams), cudaMemcpyHostToDevice));
+		OPTIX_CHECK(optixLaunch(pipeline_, stream_, d_launchParams_, sizeof(SPPMLaunchParams),
+		                        &sbtCamera_, static_cast<unsigned int>(width),
+		                        static_cast<unsigned int>(height), 1));
+		CUDA_CHECK(cudaStreamSynchronize(stream_));
+
+		// 2. Host-side grid-bounds computation (mirrors CPU HashGrid::Build()'s
+		// first phase, src/shared/sppm.h) -- read back visible points, find
+		// bounds/max radius, derive resolution. Small enough at Phase 1 scale
+		// (scene 11) that a full pixel readback each iteration is fine; a
+		// device-side reduction would be the natural next optimisation for a
+		// later phase, matching CPU SPPM's own single-threaded-first history.
+		CUDA_CHECK(cudaMemcpy(hostPixels.data(), reinterpret_cast<void*>(d_pixels_),
+		                      numPixels * sizeof(SPPMPixelGPU), cudaMemcpyDeviceToHost));
+
+		float gMin[3] = { std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max() };
+		float gMax[3] = { std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest() };
+		float maxR = 0.0f;
+		for (const auto& px : hostPixels) {
+			if (!px.vp_valid) continue;
+			gMin[0] = std::min(gMin[0], px.vp_p.x - px.radius); gMax[0] = std::max(gMax[0], px.vp_p.x + px.radius);
+			gMin[1] = std::min(gMin[1], px.vp_p.y - px.radius); gMax[1] = std::max(gMax[1], px.vp_p.y + px.radius);
+			gMin[2] = std::min(gMin[2], px.vp_p.z - px.radius); gMax[2] = std::max(gMax[2], px.vp_p.z + px.radius);
+			maxR = std::max(maxR, px.radius);
+		}
+		for (int d = 0; d < 3; ++d) {
+			if (gMin[d] > gMax[d]) { gMin[d] = 0.0f; gMax[d] = 1.0f; }
+			if (gMax[d] - gMin[d] < 1e-6f) gMax[d] = gMin[d] + 1e-6f;
+		}
+		if (maxR <= 0.0f) maxR = 1.0f;
+
+		float diag[3] = { gMax[0]-gMin[0], gMax[1]-gMin[1], gMax[2]-gMin[2] };
+		float maxDiag = std::max({diag[0], diag[1], diag[2]});
+		int baseRes = std::max(1, static_cast<int>(maxDiag / maxR));
+
+		SPPMHashGridParams hg{};
+		hg.gridMin = make_float3(gMin[0], gMin[1], gMin[2]);
+		hg.gridMax = make_float3(gMax[0], gMax[1], gMax[2]);
+		hg.gridRes[0] = std::max(1, static_cast<int>(baseRes * diag[0] / maxDiag));
+		hg.gridRes[1] = std::max(1, static_cast<int>(baseRes * diag[1] / maxDiag));
+		hg.gridRes[2] = std::max(1, static_cast<int>(baseRes * diag[2] / maxDiag));
+		hg.cellSize = make_float3(diag[0] / hg.gridRes[0], diag[1] / hg.gridRes[1], diag[2] / hg.gridRes[2]);
+		hg.hashSize = hashSize_;
+		params.hashGrid = hg;
+
+		// 3. Build the hash grid: reset cellHead, then insert every valid
+		// visible point (sub-phase 1c's kernel, verified in isolation by
+		// tests/unit/sppm_gpu_hash_grid_tests.cpp).
+		CUDA_CHECK(cudaMemset(reinterpret_cast<void*>(d_cellHead_), 0xFF, hashSize_ * sizeof(int)));
+		sppm_launch_hash_grid_insert(
+			reinterpret_cast<const SPPMPixelGPU*>(d_pixels_), static_cast<int>(numPixels),
+			hg, reinterpret_cast<int*>(d_cellHead_), reinterpret_cast<int*>(d_nodeNext_),
+			reinterpret_cast<int*>(d_nodePixel_), stream_);
+
+		// 4. Photon pass: shoot nPhotons photons, accumulate Phi/m via the
+		// hash grid built above.
+		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_launchParams_), &params,
+		                      sizeof(SPPMLaunchParams), cudaMemcpyHostToDevice));
+		OPTIX_CHECK(optixLaunch(pipeline_, stream_, d_launchParams_, sizeof(SPPMLaunchParams),
+		                        &sbtPhoton_, static_cast<unsigned int>(nPhotons), 1, 1));
+		CUDA_CHECK(cudaStreamSynchronize(stream_));
+		totalPhotonPaths += nPhotons;
+
+		// 5. Radius contraction (gamma=2/3), folds Phi into tau, resets
+		// vp_valid for the next camera pass.
+		sppm_launch_radius_update(reinterpret_cast<SPPMPixelGPU*>(d_pixels_),
+		                          static_cast<int>(numPixels), stream_);
+		CUDA_CHECK(cudaStreamSynchronize(stream_));
+	}
+
+	// 6. Reconstruct the final image: L = Ld/nIterations + tau/(n*totalPhotonPaths*pi*r^2).
+	sppm_launch_final_image(reinterpret_cast<const SPPMPixelGPU*>(d_pixels_), static_cast<int>(numPixels),
+	                        nIterations, static_cast<float>(totalPhotonPaths),
+	                        reinterpret_cast<float3*>(d_framebuffer), stream_);
+	CUDA_CHECK(cudaStreamSynchronize(stream_));
+
+	CUDA_CHECK(cudaMemcpy(outputFramebuffer, reinterpret_cast<void*>(d_framebuffer),
+	                      fbSize, cudaMemcpyDeviceToHost));
+	cudaFree(reinterpret_cast<void*>(d_framebuffer));
+
+	std::cout << "[SPPMPathTracer] render: " << width << "x" << height
+	          << " (" << nIterations << " iterations, " << nPhotons << " photons/iter) done\n";
+	return true;
+}
+
 void SPPMPathTracer::destroyProgramGroups() {
 	auto destroy = [](OptixProgramGroup& pg) {
 		if (pg) { optixProgramGroupDestroy(pg); pg = nullptr; }
 	};
 	destroy(raygenCameraPG_);
+	destroy(raygenPhotonPG_);
 	destroy(missRadiancePG_);
 	destroy(hitSpherePG_);
 	destroy(hitQuadPG_);
@@ -370,10 +576,12 @@ void SPPMPathTracer::destroySBT() {
 	auto freeDev = [](CUdeviceptr& p) {
 		if (p) { cudaFree(reinterpret_cast<void*>(p)); p = 0; }
 	};
-	freeDev(d_raygenRecord_);
+	freeDev(d_raygenRecordCamera_);
+	freeDev(d_raygenRecordPhoton_);
 	freeDev(d_missRecord_);
 	freeDev(d_hitRecords_);
-	sbt_ = {};
+	sbtCamera_ = {};
+	sbtPhoton_ = {};
 }
 
 void SPPMPathTracer::cleanup() {
@@ -382,7 +590,11 @@ void SPPMPathTracer::cleanup() {
 	if (pipeline_) { optixPipelineDestroy(pipeline_); pipeline_ = nullptr; }
 	if (sppmModule_) { optixModuleDestroy(sppmModule_); sppmModule_ = nullptr; }
 	if (d_launchParams_) { cudaFree(reinterpret_cast<void*>(d_launchParams_)); d_launchParams_ = 0; }
-	if (d_pixels_) { cudaFree(reinterpret_cast<void*>(d_pixels_)); d_pixels_ = 0; pixelsCapacity_ = 0; }
+	if (d_pixels_)    { cudaFree(reinterpret_cast<void*>(d_pixels_));    d_pixels_ = 0; }
+	if (d_cellHead_)  { cudaFree(reinterpret_cast<void*>(d_cellHead_));  d_cellHead_ = 0; }
+	if (d_nodeNext_)  { cudaFree(reinterpret_cast<void*>(d_nodeNext_));  d_nodeNext_ = 0; }
+	if (d_nodePixel_) { cudaFree(reinterpret_cast<void*>(d_nodePixel_)); d_nodePixel_ = 0; }
+	pixelsCapacity_ = 0;
 }
 
 } // namespace optix_renderer

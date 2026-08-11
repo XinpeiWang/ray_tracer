@@ -201,7 +201,9 @@ int main(int argc, char** argv) {
         std::cout << "Camera path: " << camera_path << std::endl;
         std::cout << "Renderer: " << (use_gpu ? "GPU" : "CPU") << std::endl;
     } else {
-        std::cout << "\nLaunching renderer (" << (use_sppm ? "SPPM" : (use_gpu ? "GPU" : "CPU")) << " mode)..." << std::endl;
+        std::cout << "\nLaunching renderer ("
+                   << (use_sppm ? (use_gpu ? "GPU SPPM" : "CPU SPPM") : (use_gpu ? "GPU" : "CPU"))
+                   << " mode)..." << std::endl;
     }
 
     // ========================================================================
@@ -550,8 +552,34 @@ int main(int argc, char** argv) {
 
     int render_result = -1; // 0 = success, non-zero = error
 
-    if (use_sppm) {
-        // SPPM Renderer (CPU-only, Stochastic Progressive Photon Mapping)
+    if (use_sppm && use_gpu) {
+        // SPPM Renderer, GPU/OptiX path (Phase 1: scene 11/CornellRoughGlass
+        // only -- see gpu/optix/optix_interface.cpp's optix_render_main_sppm()
+        // for the exact scope rejection). Checked before the CPU-only
+        // use_sppm branch below so --sppm --gpu actually reaches the GPU
+        // path instead of silently falling back to CPU.
+        if (!optix_is_available()) {
+            std::cerr << "ERROR: OptiX is not available! (--sppm --gpu requires OptiX)" << std::endl;
+            return ERR_GPU_NO_DEVICE;
+        }
+        std::cout << "Calling optix_render_main_sppm(...) in-process (OptiX)..." << std::endl;
+        render_result = optix_render_main_sppm(image_width, image_height, args.sppm_iterations,
+                                                args.sppm_photons, max_ray_depth, out_path.c_str(),
+                                                scene_id, cam_x, cam_y, cam_z, 1);  // force_camera_override
+        std::cout << "optix_render_main_sppm returned: " << render_result << std::endl;
+        if (render_result == SUCCESS) {
+            std::cout << "Rendered with GPU SPPM renderer, output: " << out_path << std::endl;
+        } else {
+            ErrorInfo err(render_result);
+            std::cerr << "\n" << std::string(60, '=') << std::endl;
+            std::cerr << "GPU SPPM RENDER FAILED" << std::endl;
+            std::cerr << std::string(60, '=') << std::endl;
+            std::cerr << err.to_string() << std::endl;
+            std::cerr << std::string(60, '=') << "\n" << std::endl;
+            return render_result;
+        }
+    } else if (use_sppm) {
+        // SPPM Renderer, CPU path (Stochastic Progressive Photon Mapping).
         // Implemented in cpu_renderer/cpu_interface.cpp - takes priority
         // over --gpu/--cpu since SPPM is a distinct render mode, not a
         // path-tracer variant.

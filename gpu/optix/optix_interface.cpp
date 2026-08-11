@@ -130,51 +130,6 @@ extern "C" int optix_render_main(
 		size_t pixelCount = image_width * image_height;
 		std::vector<float> framebuffer(pixelCount * 3);
 
-		// TEMPORARY, sub-phase 1a verification only (see the GPU SPPM plan,
-		// C:\Users\xinpe\.claude\plans\cached-wobbling-ritchie.md): traces the
-		// new SPPM pipeline's trivial hit-or-miss raygen against whatever
-		// scene is currently loaded, instead of the normal path tracer.
-		// Confirms the new module/program-group/pipeline/SBT/PTX-JIT
-		// machinery actually works against a real uploaded scene (e.g. scene
-		// 11) before any camera-pass/photon-pass math is written. Replaced by
-		// a proper optix_render_main_sppm() in sub-phase 1e once there's real
-		// SPPM output to produce, not just a hit/miss mask.
-#pragma warning(suppress: 4996)
-		const char* sppmTrivialEnv = std::getenv("RAY_TRACER_SPPM_TRIVIAL");
-		if (sppmTrivialEnv && std::string(sppmTrivialEnv) == "1") {
-			std::cout << "[OptiX] SPPM Phase 1a trivial raygen enabled (RAY_TRACER_SPPM_TRIVIAL=1)\n";
-			std::string ptxDir;
-			std::string outStr(output_path);
-			size_t sep = outStr.rfind('\\');
-			if (sep == std::string::npos) sep = outStr.rfind('/');
-			std::string ptxPath = (sep != std::string::npos)
-				? outStr.substr(0, sep + 1) + "sppm_programs.ptx"
-				: "sppm_programs.ptx";
-
-			if (!g_renderer->renderSPPMTrivial(
-					static_cast<unsigned int>(image_width), static_cast<unsigned int>(image_height),
-					cameraExtra, framebuffer.data(), static_cast<unsigned int>(max_depth), ptxPath)) {
-				std::cerr << "[OptiX] SPPM trivial render failed\n";
-				return ERR_GPU_RENDER_FAILED;
-			}
-
-			std::ofstream sppmOut(output_path, std::ios::binary);
-			if (!sppmOut) {
-				std::cerr << "[OptiX] Failed to open output file: " << output_path << "\n";
-				return ERR_FILE_WRITE_FAILED;
-			}
-			sppmOut << "P3\n" << image_width << " " << image_height << "\n255\n";
-			for (size_t i = 0; i < pixelCount; ++i) {
-				int ir = static_cast<int>(std::fmin(std::fmax(framebuffer[i * 3 + 0], 0.0f), 1.0f) * 255.0f);
-				int ig = static_cast<int>(std::fmin(std::fmax(framebuffer[i * 3 + 1], 0.0f), 1.0f) * 255.0f);
-				int ib = static_cast<int>(std::fmin(std::fmax(framebuffer[i * 3 + 2], 0.0f), 1.0f) * 255.0f);
-				sppmOut << ir << " " << ig << " " << ib << "\n";
-			}
-			sppmOut.close();
-			std::cout << "[OptiX] SPPM trivial render complete! Output: " << output_path << "\n";
-			return 0;
-		}
-
 		// Technique summary
 		std::cout << "[TECH] ── Render Technique Summary ──────────────────────────" << std::endl;
 		std::cout << "[TECH] Integrator     : OptiX mega-kernel path tracer  (raygen + closest-hit + miss programs)" << std::endl;
@@ -251,6 +206,145 @@ extern "C" int optix_render_main(
 
 		std::cout << "[OptiX] Render complete! Output: " << output_path << "\n";
 		return 0;  // Success
+
+	} catch (const std::exception& e) {
+		std::cerr << "[OptiX] Exception: " << e.what() << "\n";
+		return ERR_GPU_EXCEPTION;
+	} catch (...) {
+		std::cerr << "[OptiX] Unknown error\n";
+		return ERR_GPU_UNKNOWN_ERROR;
+	}
+}
+
+// GPU SPPM entry point (sub-phase 1e) -- mirrors optix_render_main()'s own
+// scene-build/camera-setup preamble and ACES-tonemap PPM write, but calls
+// OptiXRenderer::renderSPPM() (the real multi-iteration loop, sub-phase 1d)
+// instead of render(). Phase 1 scope only: any scene_id other than 11
+// (CornellRoughGlass) is rejected up front, matching the plan's own
+// "Explicitly out of scope for Phase 1" section.
+extern "C" int optix_render_main_sppm(
+	int image_width,
+	int image_height,
+	int iterations,
+	int photons,
+	int max_depth,
+	const char* output_path,
+	int scene_id,
+	double cam_x,
+	double cam_y,
+	double cam_z,
+	int force_camera_override
+) {
+	if (scene_id != 11) {
+		std::cerr << "[OptiX] GPU SPPM (Phase 1) only supports scene 11 (CornellRoughGlass); got scene "
+		          << scene_id << ". Use CPU SPPM (--sppm without --gpu) for other scenes.\n";
+		return ERR_GPU_UNSUPPORTED_SCENE;
+	}
+
+	try {
+		if (!g_renderer) {
+			std::cout << "[OptiX] Initializing renderer...\n";
+			g_renderer = std::make_unique<OptiXRenderer>();
+			if (!g_renderer->initialize()) {
+				std::cerr << "[OptiX] Failed to initialize renderer\n";
+				return ERR_GPU_DEVICE_INIT_FAILED;
+			}
+		}
+
+		std::cout << "[OptiX] Building scene " << scene_id << " (SPPM)...\n";
+		std::cout << "[OptiX] Camera position: (" << cam_x << ", " << cam_y << ", " << cam_z << ")\n";
+
+		SceneData scene;
+		float camera_params[12];
+		GpuCameraParams cameraExtra{};
+
+		if (!build_scene(scene_id, image_width, image_height, scene, camera_params, cam_x, cam_y, cam_z, &cameraExtra, force_camera_override != 0)) {
+			std::cerr << "[OptiX] Scene not supported on GPU\n";
+			return ERR_GPU_UNSUPPORTED_SCENE;
+		}
+
+		bool defocusDiskZero = cameraExtra.defocus_disk_u.x == 0.0f && cameraExtra.defocus_disk_u.y == 0.0f &&
+		                       cameraExtra.defocus_disk_u.z == 0.0f;
+		if (cameraExtra.kind == CameraKind::Perspective && defocusDiskZero) {
+			cameraExtra.origin = make_float3(camera_params[0], camera_params[1], camera_params[2]);
+			cameraExtra.lower_left_corner = make_float3(camera_params[3], camera_params[4], camera_params[5]);
+			cameraExtra.horizontal = make_float3(camera_params[6], camera_params[7], camera_params[8]);
+			cameraExtra.vertical = make_float3(camera_params[9], camera_params[10], camera_params[11]);
+		}
+
+		if (scene_id != g_uploaded_scene_id) {
+			if (!g_renderer->buildScene(scene.spheres, scene.quads, scene.materials,
+			                             scene.lightIndices, scene.isLightSphere,
+			                             scene.punctualLights, scene.bilinearPatches,
+			                             scene.triangles, scene.lensElements,
+			                             scene.exitPupilBounds, scene.textures,
+			                             scene.texturePixels)) {
+				std::cerr << "[OptiX] Failed to upload scene to GPU\n";
+				return ERR_GPU_MEMORY_COPY_FAILED;
+			}
+			g_uploaded_scene_id = scene_id;
+		} else {
+			std::cout << "[OptiX] Reusing already-uploaded scene " << scene_id << " (skipping GPU rebuild)\n";
+		}
+
+		std::cout << "[TECH] ── Render Technique Summary ──────────────────────────" << std::endl;
+		std::cout << "[TECH] Integrator     : GPU SPPM (Stochastic Progressive Photon Mapping, Phase 1)" << std::endl;
+		std::cout << "[TECH] Iterations     : " << iterations << "  |  Photons/iteration: " << photons << std::endl;
+		std::cout << "[TECH] Materials      : Lambertian + RoughDielectric (GGX)  |  Lights: area only" << std::endl;
+		std::cout << "[TECH] Hash grid      : atomic-head-swap linked list over a fixed device node pool" << std::endl;
+		std::cout << "[TECH] Tone mapping   : ACES filmic (Narkowicz) + sRGB OETF  (matches CPU's write_color())" << std::endl;
+		std::cout << "[TECH] ─────────────────────────────────────────────────────" << std::endl;
+
+		size_t pixelCount = static_cast<size_t>(image_width) * image_height;
+		std::vector<float> framebuffer(pixelCount * 3);
+
+		std::string outStr(output_path);
+		size_t sep = outStr.rfind('\\');
+		if (sep == std::string::npos) sep = outStr.rfind('/');
+		std::string ptxPath = (sep != std::string::npos)
+			? outStr.substr(0, sep + 1) + "sppm_programs.ptx"
+			: "sppm_programs.ptx";
+
+		std::cout << "[OptiX] Rendering (SPPM)...\n";
+		// initialRadius: fixed at Phase 1 (5.0, matching CPU SPPM's own
+		// scene-11 default -- see cpu_render_main_sppm's call site) rather
+		// than exposed as a CLI parameter yet; --sppm's existing CLI surface
+		// (main.cpp/launcher_args.h) has no radius flag for the CPU path
+		// either, so GPU staying consistent with that is the faithful port,
+		// not a gap introduced here.
+		if (!g_renderer->renderSPPM(
+				static_cast<unsigned int>(image_width), static_cast<unsigned int>(image_height),
+				iterations, photons, static_cast<unsigned int>(max_depth), 5.0f,
+				cameraExtra, framebuffer.data(), ptxPath)) {
+			std::cerr << "[OptiX] SPPM render failed\n";
+			return ERR_GPU_RENDER_FAILED;
+		}
+
+		std::ofstream outFile(output_path, std::ios::binary);
+		if (!outFile) {
+			std::cerr << "[OptiX] Failed to open output file: " << output_path << "\n";
+			return ERR_FILE_WRITE_FAILED;
+		}
+		outFile << "P3\n" << image_width << " " << image_height << "\n255\n";
+		for (size_t i = 0; i < pixelCount; ++i) {
+			double r = framebuffer[i * 3 + 0];
+			double g = framebuffer[i * 3 + 1];
+			double b = framebuffer[i * 3 + 2];
+			if (!std::isfinite(r)) r = 0.0;
+			if (!std::isfinite(g)) g = 0.0;
+			if (!std::isfinite(b)) b = 0.0;
+			r = linear_to_srgb(apply_tone_map(r, ToneMapMode::ACES));
+			g = linear_to_srgb(apply_tone_map(g, ToneMapMode::ACES));
+			b = linear_to_srgb(apply_tone_map(b, ToneMapMode::ACES));
+			int ir = static_cast<int>(256.0 * std::fmin(std::fmax(r, 0.0), 0.999));
+			int ig = static_cast<int>(256.0 * std::fmin(std::fmax(g, 0.0), 0.999));
+			int ib = static_cast<int>(256.0 * std::fmin(std::fmax(b, 0.0), 0.999));
+			outFile << ir << " " << ig << " " << ib << "\n";
+		}
+		outFile.close();
+
+		std::cout << "[OptiX] SPPM render complete! Output: " << output_path << "\n";
+		return 0;
 
 	} catch (const std::exception& e) {
 		std::cerr << "[OptiX] Exception: " << e.what() << "\n";

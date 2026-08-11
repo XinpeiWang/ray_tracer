@@ -1643,35 +1643,40 @@ void OptiXRenderer::enableWavefront(bool enable, const std::string& ptxPath) {
 // comment). Lazily creates sppmTracer_ the same way enableWavefront() does
 // for wavefrontTracer_.
 // ============================================================================
+bool OptiXRenderer::ensureSPPMTracer(const std::string& ptxPath) {
+	if (sppmTracer_) return true;
+
+	sppmTracer_ = std::make_unique<optix_renderer::SPPMPathTracer>();
+	if (!ptxPath.empty()) sppmTracer_->setPTXPath(ptxPath);
+
+	if (!sppmTracer_->initialize(context_, stream_)) {
+		std::cerr << "[OptiXRenderer] Failed to initialize SPPMPathTracer\n";
+		sppmTracer_.reset();
+		return false;
+	}
+	if (!sppmTracer_->createProgramGroups()) {
+		std::cerr << "[OptiXRenderer] SPPMPathTracer::createProgramGroups failed\n";
+		sppmTracer_.reset();
+		return false;
+	}
+	if (!sppmTracer_->linkPipeline()) {
+		std::cerr << "[OptiXRenderer] SPPMPathTracer::linkPipeline failed\n";
+		sppmTracer_.reset();
+		return false;
+	}
+	if (!sppmTracer_->buildSBT(numSpheres_, numQuads_)) {
+		std::cerr << "[OptiXRenderer] SPPMPathTracer::buildSBT failed\n";
+		sppmTracer_.reset();
+		return false;
+	}
+	std::cout << "[OptiXRenderer] SPPMPathTracer ready\n";
+	return true;
+}
+
 bool OptiXRenderer::renderSPPMTrivial(unsigned int width, unsigned int height,
                                        const GpuCameraParams& camera, float* outputFramebuffer,
                                        unsigned int maxDepth, const std::string& ptxPath) {
-	if (!sppmTracer_) {
-		sppmTracer_ = std::make_unique<optix_renderer::SPPMPathTracer>();
-		if (!ptxPath.empty()) sppmTracer_->setPTXPath(ptxPath);
-
-		if (!sppmTracer_->initialize(context_, stream_)) {
-			std::cerr << "[OptiXRenderer] Failed to initialize SPPMPathTracer\n";
-			sppmTracer_.reset();
-			return false;
-		}
-		if (!sppmTracer_->createProgramGroups()) {
-			std::cerr << "[OptiXRenderer] SPPMPathTracer::createProgramGroups failed\n";
-			sppmTracer_.reset();
-			return false;
-		}
-		if (!sppmTracer_->linkPipeline()) {
-			std::cerr << "[OptiXRenderer] SPPMPathTracer::linkPipeline failed\n";
-			sppmTracer_.reset();
-			return false;
-		}
-		if (!sppmTracer_->buildSBT(numSpheres_, numQuads_)) {
-			std::cerr << "[OptiXRenderer] SPPMPathTracer::buildSBT failed\n";
-			sppmTracer_.reset();
-			return false;
-		}
-		std::cout << "[OptiXRenderer] SPPMPathTracer ready\n";
-	}
+	if (!ensureSPPMTracer(ptxPath)) return false;
 
 	return sppmTracer_->renderTrivial(
 		static_cast<int>(width), static_cast<int>(height), camera, outputFramebuffer,
@@ -1679,5 +1684,19 @@ bool OptiXRenderer::renderSPPMTrivial(unsigned int width, unsigned int height,
 		numMaterials_, numSpheres_, numQuads_,
 		d_lightIndices_, d_isLightSphere_, d_aliasTable_, numLights_,
 		maxDepth);
+}
+
+bool OptiXRenderer::renderSPPM(unsigned int width, unsigned int height,
+                                int nIterations, int nPhotons, unsigned int maxDepth, float initialRadius,
+                                const GpuCameraParams& camera, float* outputFramebuffer,
+                                const std::string& ptxPath) {
+	if (!ensureSPPMTracer(ptxPath)) return false;
+
+	return sppmTracer_->render(
+		static_cast<int>(width), static_cast<int>(height), nIterations, nPhotons,
+		static_cast<int>(maxDepth), initialRadius, camera, outputFramebuffer,
+		gasHandle_, d_materials_, d_spheres_, d_quads_,
+		numMaterials_, numSpheres_, numQuads_,
+		d_lightIndices_, d_isLightSphere_, d_aliasTable_, numLights_);
 }
 

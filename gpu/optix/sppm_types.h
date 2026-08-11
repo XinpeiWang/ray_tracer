@@ -115,6 +115,25 @@ __host__ __device__ __forceinline__ void sppm_to_grid(
 	}
 }
 
+// Next prime >= n -- host-only sizing helper for the hash table (hashSize),
+// duplicated from src/shared/sppm.h's sppm_detail::NextPrime rather than
+// included (that header pulls in bdpt.h/rng.h/<forward_list> etc. that
+// don't belong in this GPU-facing header) -- kept numerically identical on
+// purpose, same "duplicated but numerically identical" convention as
+// sppm_hash_point3i/sppm_to_grid above.
+inline int sppm_next_prime(int n) {
+	if (n <= 2) return 2;
+	if (n % 2 == 0) ++n;
+	while (true) {
+		bool ok = true;
+		for (int i = 3; (long long)i * i <= n; i += 2) {
+			if (n % i == 0) { ok = false; break; }
+		}
+		if (ok) return n;
+		n += 2;
+	}
+}
+
 __host__ __device__ __forceinline__ int sppm_hash_bucket(
 	const SPPMHashGridParams& gp, float wx, float wy, float wz) {
 	int gi[3];
@@ -148,10 +167,11 @@ struct SPPMLaunchParams {
 	// SPPM per-pixel state (see SPPMPixelGPU above).
 	SPPMPixelGPU* pixels;
 
-	// Output (Phase 1b writes pixels[i].Ld here directly for visual
-	// verification -- sppm_render_with_adapter()'s GPU analog in a later
-	// sub-phase reconstructs the real SPPMFinalImage() formula into this
-	// buffer instead once there's a photon pass contributing to it too).
+	// Output (Phase 1b wrote pixels[i].Ld here directly for visual
+	// verification, single camera-pass only. Sub-phase 1d's real
+	// sppm_final_image_kernel -- see sppm_kernels.cu -- reconstructs the
+	// full SPPMFinalImage() formula into this buffer instead, once the
+	// photon pass is contributing to pixels[i].tau/n too).
 	float3*      framebuffer;
 	unsigned int width;
 	unsigned int height;
@@ -160,6 +180,28 @@ struct SPPMLaunchParams {
 	// Camera (reused verbatim from the existing GpuCameraParams -- Phase 1
 	// only exercises the Perspective case's viewport fields).
 	GpuCameraParams camera;
+
+	// Spatial hash grid (sub-phase 1d) -- bounds/resolution (hashGrid) are
+	// computed HOST-side once per iteration (mirrors CPU's HashGrid::Build()
+	// first phase, see sppm.h) from a readback of pixels[], then
+	// cellHead/nodeNext/nodePixel are populated device-side via
+	// sppm_hash_grid_insert_kernel (sppm_kernels.cu) before the photon-pass
+	// raygen below reads them. Buffers are persistent (allocated once by
+	// SPPMPathTracer, sized off hashGrid.hashSize/numPixels*kSPPMMaxCellsPerPoint),
+	// not reallocated per iteration -- only cellHead is reset (to -1) each
+	// iteration, since nodeNext/nodePixel are always fully overwritten up to
+	// each point's own `count` before being linked from a fresh cellHead.
+	SPPMHashGridParams hashGrid;
+	int* cellHead;
+	int* nodeNext;
+	int* nodePixel;
+
+	// Photon pass (sub-phase 1d) -- one thread per photon, launched as
+	// (nPhotons, 1, 1). photonSeedBase varies per-iteration (set by the host
+	// to the iteration index) so successive iterations' photon RNG streams
+	// don't retrace identical paths.
+	unsigned int nPhotons;
+	unsigned int photonSeedBase;
 };
 
 #endif // __CUDACC__ || OPTIX_RENDERER_AVAILABLE

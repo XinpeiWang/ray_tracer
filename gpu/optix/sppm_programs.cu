@@ -73,6 +73,21 @@ __device__ __forceinline__ float sppm_rand(unsigned int& seed) {
 	seed = sppm_pcg(seed);
 	return float(seed) / 4294967296.0f;
 }
+// Uniform point on the unit sphere via rejection sampling -- direct copy of
+// wavefront_kernels.cu's wf_rand_unit (identical algorithm, sppm_ prefix,
+// same "don't share device helpers across backends" convention as this
+// file's other sppm_-prefixed ports). Used by the photon pass's
+// Lambertian-bounce sampling below: normalize(normal + sppm_rand_unit(seed))
+// is a cosine-weighted hemisphere sample (same identity wavefront_kernels.cu's
+// own Lambertian case already relies on), so f_val*cosI/pdf collapses to
+// exactly `albedo` with no separate cosine-pdf bookkeeping needed.
+__device__ __forceinline__ float3 sppm_rand_unit(unsigned int& seed) {
+	while (true) {
+		float3 p = make_float3(2.0f*sppm_rand(seed)-1.0f, 2.0f*sppm_rand(seed)-1.0f, 2.0f*sppm_rand(seed)-1.0f);
+		float l = dot(p, p);
+		if (l > 1e-8f && l < 1.0f) return p / sqrtf(l);
+	}
+}
 
 // ============================================================================
 // __intersection__sppm_sphere / __intersection__sppm_quad
@@ -326,6 +341,75 @@ static __device__ float3 sppm_sample_sphere_light(const SphereData& sph, const f
 	return dir;
 }
 
+// GGX VNDF microfacet resample for a RoughDielectric hit -- shared by both
+// raygens below (camera pass and photon pass, sub-phase 1d). Same-file
+// sharing only; this codebase's "no cross-backend device helper sharing"
+// convention (see this file's top comment) is about not reaching across
+// wavefront/recursive/SPPM module boundaries, not about duplicating logic
+// within one already-cohesive module. Returns false (and leaves out_dir
+// unset) on the wi_z<=0 grazing-incidence edge case -- caller must treat
+// that as a terminated path, matching the camera pass's original inline
+// `break` here before this was extracted.
+static __device__ __forceinline__ bool sppm_sample_rough_dielectric(
+	const float3& dir_in, const float3& n, const MaterialData& mat,
+	unsigned int& seed, float3& out_dir) {
+	float alpha = sqrtf(mat.fuzz);
+	float3 up_v = (fabsf(n.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
+	float3 tan_v = normalize(cross(up_v, n));
+	float3 bitan = cross(n, tan_v);
+	float3 wi_w = -normalize(dir_in);
+	float wi_x = dot(wi_w, tan_v), wi_y = dot(wi_w, bitan), wi_z = dot(wi_w, n);
+	if (wi_z <= 0.0f) return false;
+
+	TrowbridgeReitz<float> rd_dist(alpha, alpha);
+	float wm_x, wm_y, wm_z;
+	rd_dist.Sample_wm(wi_x, wi_y, wi_z, sppm_rand(seed), sppm_rand(seed), wm_x, wm_y, wm_z);
+	float rd_dot = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
+	float Fr = FrDielectric(rd_dot, mat.ior);
+
+	if (sppm_rand(seed) < Fr) {
+		float wo_x = 2.0f*rd_dot*wm_x - wi_x;
+		float wo_y = 2.0f*rd_dot*wm_y - wi_y;
+		float wo_z = 2.0f*rd_dot*wm_z - wi_z;
+		out_dir = normalize(wo_x*tan_v + wo_y*bitan + wo_z*n);
+	} else {
+		float3 wm_world = wm_x*tan_v + wm_y*bitan + wm_z*n;
+		float eta = dot(dir_in, n) < 0.0f ? (1.0f / mat.ior) : mat.ior;
+		out_dir = cpu_gpu_refract<float3, float>(normalize(dir_in), wm_world, eta);
+	}
+	return true;
+}
+
+// Uniform point on a quad light's surface + its (fixed) front-facing normal
+// -- direct analog of CPU quad::sample_area() (src/TheRestOfYourLife/
+// quad.h), used for photon EMISSION (sub-phase 1d), as opposed to
+// sppm_sample_quad_light's NEE-toward-a-reference-point sampling above.
+// out_pdf_pos is the area-measure density alone (1/area); the caller
+// combines it with the light-selection pmf separately, matching CPU
+// SampleLightLe's own `pdf_pos = as.pdf_pos * emitter_alias_.pmf(idx)`.
+static __device__ float3 sppm_sample_quad_area(const QuadData& q, unsigned int& seed,
+                                                  float3& out_n, float& out_pdf_pos) {
+	float s = sppm_rand(seed), t = sppm_rand(seed);
+	float3 p = q.Q + s * q.u + t * q.v;
+	out_n = q.normal;
+	float area = length(cross(q.u, q.v));
+	out_pdf_pos = (area > 1e-12f) ? (1.0f / area) : 0.0f;
+	return p;
+}
+
+// Uniform point on a sphere light's surface -- rejection-sampled, same
+// approach as sppm_sample_sphere_light's own dist<=r branch above.
+static __device__ float3 sppm_sample_sphere_area(const SphereData& sph, unsigned int& seed,
+                                                    float3& out_n, float& out_pdf_pos) {
+	float3 p;
+	do {
+		p = make_float3(2.0f*sppm_rand(seed)-1.0f, 2.0f*sppm_rand(seed)-1.0f, 2.0f*sppm_rand(seed)-1.0f);
+	} while (dot(p, p) > 1.0f || dot(p, p) < 1e-8f);
+	out_n = normalize(p);
+	out_pdf_pos = 1.0f / (4.0f * 3.14159265f * sph.radius * sph.radius);
+	return sph.center + sph.radius * out_n;
+}
+
 // ============================================================================
 // __raygen__sppm_camera_pass (sub-phase 1b) -- see file header comment.
 // ============================================================================
@@ -339,7 +423,13 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 	unsigned int seed = sppm_pcg(sppm_pcg(pixelIdx) ^ 0x9E3779B9u);
 
 	SPPMPixelGPU& pixel = sppm_params.pixels[pixelIdx];
-	pixel.Ld = make_float3(0.0f, 0.0f, 0.0f);
+	// pixel.Ld is NOT reset here -- it accumulates across every iteration of
+	// the outer SPPM loop and is divided by nIterations in
+	// sppm_final_image_kernel (sppm_kernels.cu), mirroring src/shared/
+	// sppm.h's own SPPMCameraPass comment on this exact point. The pixel
+	// buffer is zero-initialized ONCE by the host before the first
+	// iteration (SPPMPathTracer::render()/renderTrivial()) so this still
+	// starts from zero on iteration 0.
 	pixel.vp_valid = false;
 
 	// Primary ray through the pixel center (no jitter/DOF -- matches
@@ -390,39 +480,14 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 		}
 
 		if (mat.type == MaterialType::RoughDielectric) {
-			// GGX VNDF microfacet sample -- ported from wavefront_kernels.cu's
-			// MaterialType::RoughDielectric case (identical math), Phase 1's
-			// only delta material. attenuation is always mat.albedo (white
-			// for scene 11's glass sphere, see scene_builder.cpp's
-			// build_cornell_rough_glass): VNDF sampling is self-normalizing
-			// for dielectrics, matching the CPU RoughDielectricBxDF's own
-			// "attenuation = white" convention (src/shared/bxdfs_conductor.h).
-			float alpha = sqrtf(mat.fuzz);
-			float3 n = payload.normal;
-			float3 up_v = (fabsf(n.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
-			float3 tan_v = normalize(cross(up_v, n));
-			float3 bitan = cross(n, tan_v);
-			float3 wi_w = -normalize(dir);
-			float wi_x = dot(wi_w, tan_v), wi_y = dot(wi_w, bitan), wi_z = dot(wi_w, n);
-			if (wi_z <= 0.0f) break;
-
-			TrowbridgeReitz<float> rd_dist(alpha, alpha);
-			float wm_x, wm_y, wm_z;
-			rd_dist.Sample_wm(wi_x, wi_y, wi_z, sppm_rand(seed), sppm_rand(seed), wm_x, wm_y, wm_z);
-			float rd_dot = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
-			float Fr = FrDielectric(rd_dot, mat.ior);
-
+			// GGX VNDF microfacet sample, Phase 1's only delta material.
+			// attenuation is always mat.albedo (white for scene 11's glass
+			// sphere, see scene_builder.cpp's build_cornell_rough_glass):
+			// VNDF sampling is self-normalizing for dielectrics, matching
+			// the CPU RoughDielectricBxDF's own "attenuation = white"
+			// convention (src/shared/bxdfs_conductor.h).
 			float3 new_dir;
-			if (sppm_rand(seed) < Fr) {
-				float wo_x = 2.0f*rd_dot*wm_x - wi_x;
-				float wo_y = 2.0f*rd_dot*wm_y - wi_y;
-				float wo_z = 2.0f*rd_dot*wm_z - wi_z;
-				new_dir = normalize(wo_x*tan_v + wo_y*bitan + wo_z*n);
-			} else {
-				float3 wm_world = wm_x*tan_v + wm_y*bitan + wm_z*n;
-				float eta = dot(dir, payload.normal) < 0.0f ? (1.0f / mat.ior) : mat.ior;
-				new_dir = cpu_gpu_refract<float3, float>(normalize(dir), wm_world, eta);
-			}
+			if (!sppm_sample_rough_dielectric(dir, payload.normal, mat, seed, new_dir)) break;
 
 			beta = beta * mat.albedo;
 			org = payload.hitPoint;
@@ -485,4 +550,151 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 	}
 
 	sppm_params.framebuffer[pixelIdx] = pixel.Ld;
+}
+
+// ============================================================================
+// __raygen__sppm_photon_pass (sub-phase 1d): one thread per photon, launched
+// as (nPhotons, 1, 1). Direct port of src/shared/sppm.h's SPPMPhotonPass()/
+// sppm_adapter.h's sppm_photon_pass_mt(): sample a light emission point +
+// direction (SampleLightLe equivalent, see sppm_sample_quad_area/
+// sppm_sample_sphere_area above), trace up to maxDepth bounces, and at each
+// non-delta hit past depth 0 look up the hash grid (built just before this
+// launch, see SPPMPathTracer::render()) and atomically deposit flux into
+// nearby visible points' Phi/m. Continues the walk via Russian roulette,
+// matching sppm.h's pbrt-v4 formula exactly.
+// ============================================================================
+extern "C" __global__ void __raygen__sppm_photon_pass() {
+	const unsigned int photonIdx = optixGetLaunchIndex().x;
+	if (photonIdx >= sppm_params.nPhotons) return;
+	if (sppm_params.numLights == 0 || !sppm_params.aliasTable) return;
+
+	unsigned int seed = sppm_pcg(sppm_pcg(photonIdx ^ sppm_params.photonSeedBase) ^ 0x2545F491u);
+
+	// ---- Sample a light + emission point/direction (SampleLightLe) ----
+	int slot = int(sppm_rand(seed) * float(sppm_params.numLights));
+	if (slot >= (int)sppm_params.numLights) slot = (int)sppm_params.numLights - 1;
+	const GpuAliasEntry& entry = sppm_params.aliasTable[slot];
+	int light_idx = (sppm_rand(seed) < entry.q) ? slot : entry.alias;
+	float selection_pdf = sppm_params.aliasTable[light_idx].pdf;
+
+	int  prim_idx        = sppm_params.lightIndices[light_idx];
+	bool is_sphere_light  = sppm_params.isLightSphere[light_idx];
+
+	float3 p, n_light;
+	float area_pdf = 0.0f;
+	float3 Le;
+	if (is_sphere_light) {
+		const SphereData& sph = sppm_params.spheres[prim_idx];
+		p = sppm_sample_sphere_area(sph, seed, n_light, area_pdf);
+		Le = sppm_params.materials[sph.materialIdx].emission;
+	} else {
+		const QuadData& q = sppm_params.quads[prim_idx];
+		p = sppm_sample_quad_area(q, seed, n_light, area_pdf);
+		Le = sppm_params.materials[q.materialIdx].emission;
+	}
+	float pdf_pos = area_pdf * selection_pdf;
+	if (pdf_pos <= 1e-9f) return;
+
+	// Cosine-weighted direction leaving the light into its outward
+	// hemisphere -- normalize(n + rand_unit()) identity (see sppm_rand_unit's
+	// own comment): same technique this file's camera pass and
+	// wavefront_kernels.cu's own Lambertian case already rely on.
+	float3 dir = normalize(n_light + sppm_rand_unit(seed));
+	float cos_theta = dot(dir, n_light);
+	if (cos_theta <= 0.0f) return; // degenerate onb edge case, matches CPU's own early-out
+	const float kPi = 3.14159265358979323846f;
+	float pdf_dir = cos_theta / kPi;
+	if (pdf_dir <= 1e-9f) return;
+
+	// beta = Le * cos_theta / (pdf_pos * pdf_dir) -- matches CPU's
+	// `les.L * les.abs_cos_theta / (les.pdf_pos * les.pdf_dir)` exactly.
+	float3 beta = Le * (cos_theta / (pdf_pos * pdf_dir));
+
+	float3 org = p + 0.001f * n_light;
+	float3 dir_cur = dir;
+
+	for (unsigned int depth = 0; depth < sppm_params.maxDepth; ++depth) {
+		SPPMHitPayload payload;
+		payload.hit = false;
+		unsigned int p0, p1;
+		sppmPackPointer(&payload, p0, p1);
+		optixTrace(
+			sppm_params.traversable,
+			org, dir_cur,
+			0.001f, 1e30f,
+			0.0f,
+			OptixVisibilityMask(255),
+			OPTIX_RAY_FLAG_NONE,
+			0,  // SBT offset (radiance ray type)
+			2,  // SBT stride (2 ray types: radiance, shadow)
+			0,  // miss SBT index (radiance miss)
+			p0, p1);
+		if (!payload.hit) break;
+
+		const MaterialData& mat = sppm_params.materials[payload.materialIdx];
+
+		// Deposit flux at nearby visible points -- depth>0 mirrors CPU (the
+		// first bounce is left for the camera pass's own NEE, avoiding
+		// double-counting direct illumination). Non-delta == "not
+		// RoughDielectric" for Phase 1's material set, matching CPU's
+		// `!hit.is_delta_bsdf`. Uses the VISIBLE POINT's own recorded
+		// material (vp_materialIdx), not the photon's current hit material
+		// -- same as CPU's BSDFf(px.vp_bsdf_id, ...) call, since Phase 1
+		// only ever records Lambertian visible points.
+		if (depth > 0 && mat.type != MaterialType::RoughDielectric && mat.type != MaterialType::DiffuseLight) {
+			int bucket = sppm_hash_bucket(sppm_params.hashGrid, payload.hitPoint.x, payload.hitPoint.y, payload.hitPoint.z);
+			int slotIdx = sppm_params.cellHead[bucket];
+			while (slotIdx != -1) {
+				int pixelIdx = sppm_params.nodePixel[slotIdx];
+				SPPMPixelGPU& vp = sppm_params.pixels[pixelIdx];
+				if (vp.vp_valid) {
+					float3 d = vp.vp_p - payload.hitPoint;
+					if (dot(d, d) <= vp.radius * vp.radius) {
+						float3 wi = -dir_cur;
+						float cos_wi = dot(wi, vp.vp_n);
+						if (cos_wi > 0.0f) {
+							const float inv_pi = 1.0f / kPi;
+							const MaterialData& vpMat = sppm_params.materials[vp.vp_materialIdx];
+							float3 f = vpMat.albedo * inv_pi;
+							float3 phi_add = beta * vp.vp_beta * f;
+							atomicAdd(&vp.Phi.x, phi_add.x);
+							atomicAdd(&vp.Phi.y, phi_add.y);
+							atomicAdd(&vp.Phi.z, phi_add.z);
+							atomicAdd(&vp.m, 1);
+						}
+					}
+				}
+				slotIdx = sppm_params.nodeNext[slotIdx];
+			}
+		}
+
+		// Continue the photon random walk.
+		float3 beta_new;
+		float3 new_dir;
+		if (mat.type == MaterialType::RoughDielectric) {
+			if (!sppm_sample_rough_dielectric(dir_cur, payload.normal, mat, seed, new_dir)) break;
+			beta_new = beta * mat.albedo;
+		} else if (mat.type == MaterialType::DiffuseLight) {
+			break; // photon paths don't continue off emitters
+		} else {
+			// Lambertian (Phase 1's only remaining material): cosine-weighted
+			// bounce, f*cosI/pdf collapses to exactly `albedo` (see
+			// sppm_rand_unit's own comment) -- same technique
+			// wavefront_kernels.cu's Lambertian case already relies on.
+			new_dir = normalize(payload.normal + sppm_rand_unit(seed));
+			beta_new = beta * mat.albedo;
+		}
+
+		// Russian roulette (mirrors SPPMPhotonPass's pbrt-v4 formula exactly:
+		// q = max(0, 1 - betaNewMax/betaMax)).
+		float betaMax    = fmaxf(beta.x, fmaxf(beta.y, beta.z));
+		float betaNewMax = fmaxf(beta_new.x, fmaxf(beta_new.y, beta_new.z));
+		float q_rr = (betaMax > 0.0f) ? fmaxf(0.0f, 1.0f - betaNewMax / betaMax) : 0.0f;
+		if (sppm_rand(seed) < q_rr) break;
+		float invSurv = 1.0f / (1.0f - q_rr);
+		beta = beta_new * invSurv;
+
+		org     = payload.hitPoint;
+		dir_cur = new_dir;
+	}
 }

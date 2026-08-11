@@ -10,8 +10,14 @@
 // a fixed node pool -- see sppm_types.h's own comment for the full design
 // (why GPU can't just replicate CPU's forward_list-per-bucket approach,
 // and why this is the chosen alternative).
+//
+// sppm_radius_update_kernel / sppm_final_image_kernel (sub-phase 1d): one
+// thread per pixel each, direct ports of src/shared/sppm.h's
+// SPPMUpdateRadius<T>()/SPPMFinalImage<T>() -- see those functions' own
+// comments for the formulas being mirrored.
 
 #include "sppm_types.h"
+#include "optix_math_helpers.h"
 #include <cuda_runtime.h>
 
 extern "C" __global__ void sppm_hash_grid_insert_kernel(
@@ -48,4 +54,46 @@ extern "C" __global__ void sppm_hash_grid_insert_kernel(
 		nodeNext[slot] = atomicExch(&cellHead[h], slot);
 		++count;
 	}
+}
+
+// Port of src/shared/sppm.h's SPPMUpdateRadius<T>(): after a photon pass,
+// contracts each pixel's search radius (gamma=2/3) and folds this
+// iteration's Phi into the long-running tau accumulator, scaled by the
+// radius contraction squared. Always resets vp_valid (next camera pass
+// re-derives it), matching SPPMUpdateRadius's own unconditional reset.
+extern "C" __global__ void sppm_radius_update_kernel(SPPMPixelGPU* pixels, int numPixels) {
+	int i = blockIdx.x * blockDim.x + threadIdx.x;
+	if (i >= numPixels) return;
+
+	SPPMPixelGPU& px = pixels[i];
+	if (px.m > 0) {
+		const float kGamma = 2.0f / 3.0f;
+		float nNew = px.n + kGamma * (float)px.m;
+		float rNew = px.radius * sqrtf(nNew / (px.n + (float)px.m));
+
+		float scale = (rNew * rNew) / (px.radius * px.radius);
+		px.tau = (px.tau + px.Phi) * scale;
+
+		px.n      = nNew;
+		px.radius = rNew;
+		px.m      = 0;
+		px.Phi    = make_float3(0.0f, 0.0f, 0.0f);
+	}
+	px.vp_valid = false;
+}
+
+// Port of src/shared/sppm.h's SPPMFinalImage<T>(): L = Ld/nIterations +
+// tau/(n * totalPhotonPaths * pi * r^2).
+extern "C" __global__ void sppm_final_image_kernel(
+	const SPPMPixelGPU* pixels, int numPixels,
+	int nIterations, float totalPhotonPaths, float3* framebuffer) {
+	int i = blockIdx.x * blockDim.x + threadIdx.x;
+	if (i >= numPixels) return;
+
+	const SPPMPixelGPU& px = pixels[i];
+	const float kPi = 3.14159265358979323846f;
+	float invIter = (nIterations > 0) ? 1.0f / (float)nIterations : 0.0f;
+	float denom = px.n * totalPhotonPaths * kPi * px.radius * px.radius;
+	float3 indirect = (denom > 0.0f) ? px.tau * (1.0f / denom) : make_float3(0.0f, 0.0f, 0.0f);
+	framebuffer[i] = px.Ld * invIter + indirect;
 }
