@@ -1,6 +1,6 @@
 # Ray Tracer
 
-A high-performance ray tracing renderer with both **CPU** and **GPU (OptiX)** implementations. This project demonstrates physically-based rendering techniques including path tracing, material systems, and physically-based lighting.
+A physically-based renderer with parallel **CPU** and **GPU (OptiX)** implementations, built up from the "Ray Tracing in One Weekend" book series into a much broader pbrt-v4-style feature set: 65 scenes, a wide material library, multiple light types, real triangle-mesh/texture support, BVH acceleration, volumetrics, and an experimental SPPM (photon-mapping) integrator alongside standard path tracing.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
@@ -28,9 +28,9 @@ See [INSTALL.md](INSTALL.md) for detailed usage instructions.
 ## 🔨 Building from Source
 
 **Quick build:**
-```batch
-# From Visual Studio Developer Command Prompt
-scripts\build_and_deploy.ps1
+```powershell
+# From Visual Studio Developer PowerShell
+.\scripts\build_and_deploy.ps1
 ```
 
 For detailed build instructions, see **[BUILD.md](BUILD.md)**.
@@ -38,29 +38,36 @@ For detailed build instructions, see **[BUILD.md](BUILD.md)**.
 ## 🎯 Features
 
 ### Core Rendering
-- ✅ **Path tracing** with multiple bounces
-- ✅ **Material system**: Lambertian (diffuse), Metal (reflective), Dielectric (glass), Emissive (lights)
-- ✅ **Importance sampling** (cosine-weighted hemisphere)
-- ✅ **Fresnel reflections** (Schlick approximation)
-- ✅ **Anti-aliasing** through multi-sampling
-- ✅ **Gamma correction** (gamma=2.0)
-- ✅ **Cornell box** and custom scene support
+- ✅ **Path tracing** with next-event estimation and multiple importance sampling (power heuristic)
+- ✅ **BVH acceleration** on both CPU and GPU (SAH-based CPU BVH; OptiX's native BVH/GAS on GPU) — not a linear scan
+- ✅ **65 built-in scenes** (ids 0-64) spanning the "Ray Tracing" book series, a pbrt-v4-style material/light/camera showcase, ~25 real-world statue/object meshes, and three "movie-level" environment scenes (Sponza, Amazon Lumberyard Bistro, Rungholt) — see [Scenes](#-scenes) below
+- ✅ **Real triangle meshes**: OBJ loading with BVH, per-face `.mtl` materials, and real `map_Kd` image-texture sampling (not just flat colors) on both CPU and GPU
+- ✅ **Stochastic Progressive Photon Mapping (SPPM)**, an alternative integrator for hard caustic/glass scenes a standard path tracer struggles to converge — CPU-verified broadly, GPU-verified on one reference scene (see [Known Limitations](#-known-limitations))
+- ✅ **Volumetric media**: homogeneous participating media and procedural (Perlin-noise) cloud/fog
+- ✅ **Anti-aliasing** through multi-sampling, **ACES filmic tone mapping** + sRGB output
+
+### Materials
+Lambertian, Metal, Dielectric (smooth and rough), Conductor (GGX + complex Fresnel), Coated Diffuse/Conductor (clear-coat layering), Thin Dielectric, Diffuse Transmission, Normalized Fresnel, Principled (Disney-style multi-lobe), Hair (Marschner/Chiang fiber scattering), Normal/Bump mapping, homogeneous participating media, and mixed materials — see `docs/` and `src/TheRestOfYourLife/material_*.h` for details.
+
+### Lighting
+Area lights (quad/sphere), point/spot/distant (sun) punctual lights, goniometric (IES-profile) lights, projection lights, procedural sky, and image-based HDRI environment lighting (including portal-sampled HDRI through a window).
+
+### Cameras
+Pinhole, depth-of-field (thin-lens), orthographic, spherical/equirectangular 360°, and a realistic multi-element lens camera (double-Gauss, real exit-pupil sampling) — all with both CPU and GPU support.
 
 ### Video Generation 🎬
 - ✅ **Animated camera paths**: orbit, linear, figure-8, spiral
 - ✅ **Multi-frame rendering** with automatic frame numbering
-- ✅ **Direct MP4 video encoding** using OpenCV (no FFmpeg required!)
-- ✅ **Configurable FPS and quality** settings
-- 📖 See [VIDEO_GENERATION.md](docs/VIDEO_GENERATION.md) for detailed usage
+- ✅ **MP4 video assembly** via an `ffmpeg` subprocess (requires `ffmpeg` on `PATH`)
+- ✅ **Configurable FPS, speed, and quality** settings
+- 📖 See [docs/VIDEO_GENERATION.md](docs/VIDEO_GENERATION.md) for detailed usage
 
 ### Dual Rendering Modes
-- **CPU Renderer**: Multi-threaded, portable, debugging-friendly
-- **GPU Renderer**: OptiX-accelerated ray tracing, **10-100x faster** for complex scenes
+- **CPU Renderer**: Multi-threaded, importance-sampled, the most feature-complete and battle-tested path
+- **GPU Renderer**: OptiX-accelerated, dramatically faster for complex scenes — has near-complete feature parity with CPU (see [Known Limitations](#-known-limitations) for the remaining gaps), plus an alternate queue-based **wavefront** path tracer (opt-in via `RAY_TRACER_WAVEFRONT=1`)
 
-### Scene Primitives
-- Spheres with arbitrary center/radius
-- Quads (axis-aligned rectangles) for boxes and walls
-- Extensible geometry system
+### Qt GUI
+Scene picker with live metadata (description, GPU compatibility, perf hint), camera presets, quality/resolution presets, GPU/CPU toggle, image vs. video mode with camera-path selection, and one-click render.
 
 ## 📊 Performance
 
@@ -74,10 +81,12 @@ For detailed build instructions, see **[BUILD.md](BUILD.md)**.
 **GPU Performance by Resolution (RTX 5080):**
 
 | Resolution | Samples | Kernel Time | FPS (equiv) |
-|------------|---------|-------------|-------------|
+|------------|---------|-------------|--------------|
 | 400×225    | 2       | 2.5ms       | ~400 fps    |
 | 800×450    | 4       | 9.6ms       | ~100 fps    |
 | 1920×1080  | 10      | ~100ms      | ~10 fps     |
+
+Large environment scenes (Bistro's 2.84M triangles + ~1.9GB of texture data) are naturally much slower to build and render than the Cornell Box — expect tens of seconds for scene setup alone, independent of GPU speed.
 
 ## 🚀 Quick Start
 
@@ -99,6 +108,9 @@ Download the portable package and run it directly - see the [📦 Download secti
 - **CUDA Toolkit 13.2+** ([download](https://developer.nvidia.com/cuda-downloads))
 - **Updated NVIDIA drivers**
 
+**Optional (for video generation):**
+- **ffmpeg** on `PATH` — video rendering assembles frames into MP4 via an `ffmpeg` subprocess; without it, frames are still rendered to disk but not muxed into a video.
+
 ### Building
 
 #### 1. Clone the Repository
@@ -107,6 +119,8 @@ Download the portable package and run it directly - see the [📦 Download secti
 git clone https://github.com/XinpeiWang/ray_tracer.git
 cd ray_tracer
 ```
+
+Some large mesh/texture assets (Sponza, Bistro, Rungholt and their textures) are tracked via **Git LFS** — make sure `git lfs` is installed before cloning, or run `git lfs pull` afterward if large assets show up as small pointer files.
 
 #### 2. Prerequisites
 
@@ -161,16 +175,16 @@ msbuild ray_tracer.sln /p:Configuration=Release /p:Platform=x64
 
 | Component | Path |
 |---|---|
-| Console renderer | `launcher\x64\Release\ray_tracer.exe` |
+| Console renderer | `x64\Release\ray_tracer.exe` |
 | Qt GUI | `qt_gui\release\RayTracerGUI.exe` |
-| Tests | `tests\x64\Release\ray_tracer_tests.exe` |
+| Tests | `bin\Release\ray_tracer_tests.exe` |
 | Deployed package | `RayTracer_Package\RayTracerGUI.exe` |
 
 See [BUILD.md](BUILD.md) for full details, advanced options, and troubleshooting common issues (missing MSBuild, OptiX/CUDA errors, Qt not found).
 
 ### Running Tests
 
-The test suite uses **Google Test** and covers ~2500+ unit and integration tests.
+The test suite uses **Google Test** and covers roughly **2,850+ unit and integration tests** across ~140 test files.
 
 #### Option A: Automated script (builds + runs in one step)
 ```powershell
@@ -194,24 +208,24 @@ ctest -C Release --output-on-failure
 
 #### Option C: Run the pre-built test binary directly
 ```cmd
-tests\build\Release\unit_tests.exe
+bin\Release\ray_tracer_tests.exe
 ```
 Filter to specific tests with Google Test flags:
 ```cmd
 # Run only a subset by name pattern
-tests\build\Release\unit_tests.exe --gtest_filter=Camera*
+bin\Release\ray_tracer_tests.exe --gtest_filter=Camera*
 
 # List all available tests without running
-tests\build\Release\unit_tests.exe --gtest_list_tests
+bin\Release\ray_tracer_tests.exe --gtest_list_tests
 
 # Show brief pass/fail summary
-tests\build\Release\unit_tests.exe --gtest_brief=1
+bin\Release\ray_tracer_tests.exe --gtest_brief=1
 ```
 
 #### Option D: Visual Studio Test Explorer
 Open `ray_tracer.sln`, then **Test → Test Explorer** and click **Run All**.
 
-> Tests requiring an NVIDIA GPU (OptiX) are automatically skipped if no compatible GPU is present.
+> Tests requiring an NVIDIA GPU (OptiX) are automatically skipped if no compatible GPU is present. Mesh-scene tests requiring external assets not present on disk are skipped too (not failed).
 
 See [tests/TESTING_GUIDE.md](tests/TESTING_GUIDE.md) for the full guide including test structure and how to add new tests.
 
@@ -225,32 +239,35 @@ The app will auto-detect your GPU and prompt for rendering settings interactivel
 
 #### CPU Rendering
 ```cmd
-ray_tracer.exe --cpu [width] [samples] [max_depth]
+ray_tracer.exe --cpu [width] [samples] [max_depth] [scene_id]
 ```
 
-#### GPU Rendering (CUDA)
+#### GPU Rendering (CUDA/OptiX, default)
 ```cmd
-ray_tracer.exe --gpu [width] [samples] [max_depth]
+ray_tracer.exe --gpu [width] [samples] [max_depth] [scene_id]
 ```
 
 **Examples:**
 ```cmd
-ray_tracer.exe --gpu 800 1000 20   # GPU, 800x800, 1000 samples
-ray_tracer.exe --cpu 600 100 15    # CPU, 600x600, 100 samples
+ray_tracer.exe --gpu 800 1000 20 0    # GPU, Cornell Box, 800x800, 1000 samples
+ray_tracer.exe --cpu 600 100 15 42    # CPU, Stanford Dragon, 600x600, 100 samples
+```
+
+#### SPPM (Photon Mapping)
+```cmd
+ray_tracer.exe --sppm 600 300 10 11          # CPU SPPM, scene 11 (Cornell Rough Glass)
+ray_tracer.exe --sppm --gpu 600 300 10 11    # GPU SPPM (scene 11 only, see Known Limitations)
 ```
 
 #### Video Generation 🎬
 ```cmd
-# Render 60 frames with orbit camera path (video auto-assembled with OpenCV)
+# Render 60 frames with orbit camera path (assembled into MP4 via ffmpeg)
 ray_tracer.exe --video --frames 60 --fps 30 --camera-path orbit 600 100 50
 
-# Output: output/image_video.mp4 (created automatically, no separate assembly step needed!)
+# Output: output/image_video.mp4
 ```
 
-**NEW**: Video generation now uses OpenCV for direct video encoding - **no FFmpeg required!** 🎉  
-The launcher automatically assembles frames into an MP4 video file during rendering.
-
-See [VIDEO_GENERATION.md](docs/VIDEO_GENERATION.md) for complete video generation guide.
+See [docs/VIDEO_GENERATION.md](docs/VIDEO_GENERATION.md) for complete video generation guide.
 
 **Output**: Generates both `image.ppm` (raw) and `image.png` (lossless) in the `output/` folder next to the executable.
 
@@ -263,6 +280,20 @@ The ray tracer automatically generates multiple output formats for convenience:
 
 Both formats are generated after each render completes.
 
+## 🖼️ Scenes
+
+65 scenes (ids 0-64), selected via the `scene_id` CLI argument or the GUI's scene dropdown. Full descriptions and camera defaults live in [src/TheRestOfYourLife/scene_registry.h](src/TheRestOfYourLife/scene_registry.h).
+
+| Range | Category |
+|---|---|
+| 0-8, 22 | "Ray Tracing" book 1-3 progression (Cornell Box, Bouncing Spheres, Checkered/Perlin/Earth spheres, Cornell Smoke, depth of field, ...) |
+| 9-21, 23 | pbrt-v4 material/BxDF showcase — mostly Cornell-box variants exercising rough metal, conductor, coated diffuse/conductor, thin glass, hair, subsurface, bilinear patches |
+| 24-36 | pbrt-v4 light/camera/medium showcase — HDRI sky, spot/distant/point/goniometric/projection lights, homogeneous & cloud media, orthographic/spherical/realistic-lens cameras, measured BRDFs |
+| 37-61 | Real-world statue/object meshes (Stanford Bunny, Armadillo, Happy Buddha, Lucy, XYZRGB Dragon, Utah Teapot, Suzanne, Nefertiti, and ~15 more) — one object per scene, checkered floor, overhead light |
+| 62-64 | "Movie-level" environment scenes: Crytek Sponza (262K tris), Amazon Lumberyard Bistro Exterior (2.84M tris), Rungholt (6.7M tris) — real per-face `.mtl` materials, with real `map_Kd` image textures on Sponza/Bistro |
+
+Scenes 37-64 load external `.obj` assets from `models/` (Git LFS for the large ones); scenes 62-63 additionally need their texture directories (`models/sponza_textures/`, `models/bistro_textures/`).
+
 ## 📦 Distribution & Release Process
 
 ### Creating a Distribution Package
@@ -270,7 +301,7 @@ Both formats are generated after each render completes.
 After building in Release mode, you can create a portable package:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\package.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\package.ps1
 ```
 
 This will:
@@ -303,7 +334,7 @@ Compress-Archive -Path .\RayTracer_Package\* -DestinationPath RayTracer_v1.0_Por
 2. **Create the Package**
    ```powershell
    # Run packaging script
-   powershell -ExecutionPolicy Bypass -File .\package.ps1
+   powershell -ExecutionPolicy Bypass -File .\scripts\package.ps1
 
    # Verify package contents
    dir RayTracer_Package
@@ -329,43 +360,7 @@ Compress-Archive -Path .\RayTracer_Package\* -DestinationPath RayTracer_v1.0_Por
    c. Fill in release details:
    - **Tag version**: `v1.0` (or your version number)
    - **Release title**: `Ray Tracer v1.0 - Portable Edition`
-   - **Description** (example):
-   ```markdown
-   ## Ray Tracer v1.0 - Cornell Box Path Tracer
-
-   First official release of the GPU/CPU hybrid ray tracer!
-
-   ### Features
-   - ✅ Automatic GPU detection with CPU fallback
-   - ✅ Interactive parameter selection
-   - ✅ CUDA-accelerated path tracing
-   - ✅ Multi-threaded CPU renderer
-   - ✅ Cornell Box scene included
-   - ✅ Portable - no installation required
-
-   ### What's Included
-   - RayTracer.exe - Main application
-   - launcher.bat - Easy double-click launcher
-   - Full documentation (README.txt, INSTALL.md)
-   - All runtime dependencies (CUDA, Visual C++)
-
-   ### System Requirements
-   - Windows 10/11 (64-bit)
-   - 4 GB RAM minimum
-   - NVIDIA GPU with CUDA support (optional, for GPU mode)
-
-   ### Quick Start
-   1. Download `RayTracer_v1.0_Portable.zip`
-   2. Extract to any folder
-   3. Double-click `launcher.bat`
-   4. Follow the prompts and enjoy!
-
-   ### Performance
-   - GPU Mode: ~5-15 seconds for high-quality renders
-   - CPU Mode: ~1-5 minutes for good quality
-
-   See [INSTALL.md](INSTALL.md) for detailed instructions.
-   ```
+   - **Description**: summarize what's new since the last release (new scenes, integrators, materials, fixes)
 
    d. **Attach the ZIP file**: Drag and drop `RayTracer_v1.0_Portable.zip`
 
@@ -410,153 +405,113 @@ Follow semantic versioning: `vMAJOR.MINOR.PATCH`
 - **MINOR**: New features, backward compatible
 - **PATCH**: Bug fixes, small improvements
 
-Examples:
-- `v1.0` - Initial release
-- `v1.1` - Added denoising feature
-- `v1.1.1` - Fixed GPU memory leak
-- `v2.0` - Switched to Vulkan backend (breaking change)
-
 ## 📁 Project Structure
 
 ```
 ray_tracer/
+├── main.cpp                      # Unified launcher entry point (CPU/GPU/SPPM/video dispatch)
+│
 ├── src/                          # Ray tracing library (based on "Ray Tracing in One Weekend" series)
-│   ├── InOneWeekend/            # Book 1: Basic ray tracer
-│   ├── TheNextWeek/             # Book 2: BVH, textures, volumes
-│   ├── TheRestOfYourLife/       # Book 3: Path tracing, PDFs (ACTIVE CODEBASE)
-│   └── external/                # Third-party headers (stb_image, etc.)
+│   ├── InOneWeekend/             # Book 1: Basic ray tracer
+│   ├── TheNextWeek/              # Book 2: BVH, textures, volumes
+│   ├── TheRestOfYourLife/        # Book 3+: path tracing, PDFs, materials, scenes (ACTIVE CODEBASE)
+│   ├── shared/                   # CPU/GPU-shared headers: pbrt-v4-style BxDFs, cameras, lights, sampling
+│   └── external/                 # Third-party headers (stb_image, etc.)
 │
-├── launcher/                     # Main executable project
-│   ├── main.cpp                 # Entry point with CPU/GPU mode switching
-│   └── launcher.vcxproj         # Visual Studio project (auto-deploys to RayTracer_Package/)
+├── launcher/                     # Launcher project file (source lives at repo root, see main.cpp above)
+│   └── launcher.vcxproj          # Visual Studio project (auto-deploys to RayTracer_Package/)
 │
-├── cpu_renderer/                 # CPU path tracer (static library)
-│   ├── cpu_interface.cpp/.h     # C API for CPU rendering
-│   └── cpu_renderer.vcxproj     # Visual Studio project
+├── cpu_renderer/                  # CPU path tracer (static library)
+│   ├── cpu_interface.cpp/.h      # C API for CPU rendering
+│   └── cpu_renderer.vcxproj      # Visual Studio project
 │
-├── optix_renderer/               # OptiX GPU renderer (static library)
-│   └── optix_renderer.vcxproj   # Visual Studio project (auto-deploys PTX)
+├── optix_renderer/                # OptiX GPU renderer (static library)
+│   └── optix_renderer.vcxproj    # Visual Studio project (auto-deploys PTX)
 │
-├── gpu/optix/                    # OptiX GPU implementation
-│   ├── optix_programs.cu        # OptiX ray tracing kernels (compiled to PTX)
-│   ├── optix_renderer.cpp/.h    # OptiX host-side renderer
-│   ├── optix_interface.cpp/.h   # C API wrapper
-│   ├── scene_builder.cpp/.h     # Scene conversion to OptiX format
-│   └── optix_types.h            # Shared structures
+├── gpu/optix/                     # OptiX GPU implementation
+│   ├── optix_programs.cu         # Recursive (mega-kernel) OptiX ray tracing kernels
+│   ├── wavefront_*.cu/.h         # Queue-based wavefront path tracer (alt. GPU backend)
+│   ├── sppm_*.cu/.h              # GPU SPPM (photon mapping) backend
+│   ├── optix_renderer.cpp/.h     # OptiX host-side renderer
+│   ├── optix_interface.cpp/.h    # C API wrapper
+│   ├── scene_builder.cpp/.h      # Scene conversion to OptiX format (all 65 scenes)
+│   └── optix_types.h             # Shared structures (materials, geometry, launch params)
 │
-├── qt_gui/                       # Qt 6 graphical interface
-│   ├── RayTracerGUI.pro         # Qt project file
-│   ├── mainwindow.cpp/.h        # Main GUI window
-│   └── (Qt build output)        # Builds to RayTracer_Package/
+├── qt_gui/                        # Qt 6 graphical interface
+│   ├── RayTracerGUI.pro          # Qt project file
+│   ├── mainwindow.cpp/.h         # Main GUI window
+│   └── (Qt build output)         # Builds to RayTracer_Package/
 │
-├── tests/                        # Google Test suite
-│   ├── unit/                    # Unit tests
-│   └── integration/             # Integration tests
+├── models/                        # Mesh (.obj) and texture assets, Git LFS for the large ones
 │
-├── scripts/                      # Build and deployment scripts
-│   ├── build_all.bat/.ps1       # Build all components
-│   ├── build_and_deploy.ps1     # One-command build + deploy
-│   ├── deploy_qt_gui.ps1        # Qt dependency deployment
-│   └── setup_env.bat/.ps1       # Environment setup
+├── tests/                         # Google Test suite (~2,850 tests)
+│   ├── unit/                     # Unit tests
+│   └── integration/              # Integration tests
 │
-├── docs/                         # Documentation (fixes, guides, migration notes)
-│   └── (21 historical .md files moved here for organization)
+├── scripts/                       # Build and deployment scripts
+│   ├── build_all.bat/.ps1        # Build all components
+│   ├── build_and_deploy.ps1      # One-command build + deploy
+│   ├── deploy_qt_gui.ps1         # Qt dependency deployment
+│   └── setup_env.bat/.ps1        # Environment setup
 │
-├── RayTracer_Package/            # Deployment output (single canonical location)
-│   ├── RayTracerGUI.exe         # Qt GUI (built from qt_gui/)
-│   ├── ray_tracer.exe           # Console launcher (auto-deployed from launcher/)
-│   ├── optix_programs.ptx       # GPU shader (auto-deployed from optix_renderer/)
-│   └── Qt6*.dll + plugins       # Qt dependencies (deployed by scripts/deploy_qt_gui.ps1)
+├── docs/                          # Feature guides, migration notes, architecture docs
 │
-├── README.md                     # This file
-├── BUILD.md                      # Detailed build instructions
-├── INSTALL.md                    # Installation and usage guide
-├── CODING_STANDARDS.md           # Code style guidelines
-└── ray_tracer.sln                # Visual Studio solution
+├── RayTracer_Package/              # Deployment output (single canonical location)
+│   ├── RayTracerGUI.exe          # Qt GUI (built from qt_gui/)
+│   ├── ray_tracer.exe            # Console launcher (auto-deployed from launcher/)
+│   ├── optix_programs.ptx        # GPU shader (auto-deployed from optix_renderer/)
+│   └── Qt6*.dll + plugins        # Qt dependencies (deployed by scripts/deploy_qt_gui.ps1)
+│
+├── README.md                      # This file
+├── BUILD.md                       # Detailed build instructions
+├── INSTALL.md                     # Installation and usage guide
+├── CODING_STANDARDS.md            # Code style guidelines
+└── ray_tracer.sln                 # Visual Studio solution
 ```
 
 **Key Directories:**
-- **src/TheRestOfYourLife/** - Active production codebase (Cornell box, path tracing, PDFs)
+- **src/TheRestOfYourLife/** and **src/shared/** - Active production codebase (materials, lights, cameras, scenes)
+- **gpu/optix/** - GPU implementation, mirrors the CPU feature set (see [Known Limitations](#-known-limitations) for gaps)
+- **models/** - External mesh/texture assets (Git LFS)
 - **RayTracer_Package/** - Single canonical deployment directory (auto-populated by builds)
 - **scripts/** - All build/deploy automation
-- **docs/** - Historical documentation and migration guides
+- **docs/** - Feature guides and architecture notes
 
 ## 🎨 Rendering Modes
 
 ### CPU Renderer
 
 **Pros:**
-- Portable (runs anywhere)
-- Easy to debug
-- Stable and well-tested
+- Most feature-complete (all materials/lights/integrators, including SPPM broadly and BDPT/MLT as tested libraries)
+- Portable, easy to debug, stable and well-tested
 
 **Cons:**
-- Slower (5-10s for 800×450 @ 10 samples)
+- Slower than GPU for complex scenes
 
 **Usage:**
 ```cmd
 ray_tracer.exe --cpu
 ```
 
-### GPU Renderer (CUDA)
+### GPU Renderer (OptiX/CUDA)
 
 **Pros:**
-- **10-100× faster** than CPU
-- Real-time preview capable
-- High sample counts feasible
+- **10-100×+ faster** than CPU for most scenes
+- Near feature-complete: same material library, most lights/cameras, mesh+texture support, and SPPM on one reference scene
+- Two backends: the default recursive mega-kernel path tracer, and an opt-in wavefront (queue-based) path tracer (`RAY_TRACER_WAVEFRONT=1`)
 
 **Cons:**
-- Requires NVIDIA GPU
-- CUDA setup complexity
+- Requires NVIDIA GPU + CUDA/OptiX setup
+- A handful of features remain CPU-only or scene-limited — see [Known Limitations](#-known-limitations)
 
 **Usage:**
 ```cmd
 ray_tracer.exe --gpu
 ```
 
-**Three Kernel Variants Available:**
-1. **Simple Kernel** - Single sphere test (debugging)
-2. **Serial Kernel** - Single-bounce lighting
-3. **Path Tracing Kernel** - Full multi-bounce path tracer (default)
-
-## 🖼️ Example Scenes
-
-### Cornell Box (Default)
-Classic Cornell box with:
-- Two large spheres (metal and lambertian)
-- Colored walls (red, green, white)
-- White floor and ceiling
-- Bright area light at top
-
-### Custom Scenes
-Modify `scene_serializer.cpp` (GPU) or scene setup in `book_bridge.cpp` (CPU) to create custom scenes.
-
 ## 🔧 Configuration
 
-### Render Settings
-
-Edit in source files:
-
-**CPU (`book_bridge.cpp`):**
-```cpp
-const int image_width = 800;
-const int image_height = 450;
-const int samples_per_pixel = 10;
-const int max_depth = 50;
-```
-
-**GPU (`host.cu` main or `cuda_interface.cu`):**
-```cpp
-int image_width = 800;
-int image_height = 450;
-int samples_per_pixel = 10;
-int max_depth = 50;
-```
-
-Or via command line (standalone GPU):
-```cmd
-cuda_renderer.exe 1920 1080 100
-```
+Rendering settings (resolution, samples, depth, scene) are passed via CLI arguments or the interactive/GUI prompts — see [Running (Development)](#running-development) above. There is no separate config file; scene definitions themselves live in [src/TheRestOfYourLife/scene_registry.h](src/TheRestOfYourLife/scene_registry.h) (CPU) and [gpu/optix/scene_builder.cpp](gpu/optix/scene_builder.cpp) (GPU).
 
 ## 🐛 Troubleshooting
 
@@ -566,17 +521,17 @@ cuda_renderer.exe 1920 1080 100
 
 **Solution:** 
 1. Ensure OptiX SDK 9.1+ is installed
-2. Run `setup_env.bat` to configure environment variables
-3. Check that `gpu/optix/optix_programs.ptx` exists after build
+2. Run `scripts\setup_env.ps1` (or `.bat`) to configure environment variables
+3. Check that `gpu/optix/optix_programs.ptx` exists after build, and that it was copied to `RayTracer_Package/`
 
 See [BUILD.md](BUILD.md) for detailed troubleshooting.
 
 ### Black or Incorrect Output
 
 1. Check console for error messages
-2. Verify scene data is loading correctly
+2. Verify scene/mesh assets are present (mesh scenes need `models/`, some need Git LFS pulled)
 3. Try reducing samples for faster feedback
-4. Test with simple kernel first (GPU)
+4. For a new mesh scene, verify the camera isn't embedded in geometry or in a fully-enclosed, unlit room
 
 ### Performance Issues
 
@@ -589,29 +544,32 @@ See [BUILD.md](BUILD.md) for detailed troubleshooting.
 - Update NVIDIA drivers
 - Check GPU utilization: `nvidia-smi`
 - Verify not running debug build
-- Ensure adequate VRAM
+- Ensure adequate VRAM (large environment scenes can use several GB of texture data alone)
 
 ## 🔬 Technical Details
 
-### Material Types
+### Material Types (partial list — see [Features](#materials) above for the full library)
 
 ```cpp
 // Lambertian (diffuse)
-material mat_diffuse = make_shared<lambertian>(color(0.8, 0.2, 0.2));
+auto mat_diffuse = make_shared<lambertian>(color(0.8, 0.2, 0.2));
 
 // Metal (reflective)
-material mat_metal = make_shared<metal>(color(0.8, 0.8, 0.8), 0.1); // fuzz=0.1
+auto mat_metal = make_shared<metal>(color(0.8, 0.8, 0.8), 0.1); // fuzz=0.1
 
 // Dielectric (glass)
-material mat_glass = make_shared<dielectric>(1.5); // IOR=1.5
+auto mat_glass = make_shared<dielectric>(1.5); // IOR=1.5
 
 // Emissive (light)
-material mat_light = make_shared<diffuse_light>(color(15, 15, 15));
+auto mat_light = make_shared<diffuse_light>(color(15, 15, 15));
+
+// Real per-material image texture (map_Kd), sampled via mesh UVs
+auto mat_textured = make_shared<lambertian>(make_shared<image_texture>("brick_diff.png"));
 ```
 
 ### Camera Model
 
-Pinhole camera with:
+pbrt-v4-style camera abstraction with multiple implementations (pinhole, thin-lens, orthographic, spherical, realistic multi-element lens) — see [Cameras](#cameras) above. The default pinhole camera supports:
 - Configurable field of view (vertical)
 - Lookfrom/lookat/vup vectors
 - Focus distance and aperture (depth of field capable)
@@ -619,69 +577,73 @@ Pinhole camera with:
 ### Ray Tracing Algorithm
 
 1. **Ray Generation**: Cast rays from camera through each pixel
-2. **Intersection**: Test ray against all scene geometry
-3. **Shading**: Evaluate material at hit point
-4. **Bouncing**: Recursively trace scattered rays (up to max_depth)
+2. **Intersection**: BVH-accelerated traversal against scene geometry (CPU BVH / OptiX GAS on GPU)
+3. **Shading**: Evaluate material BxDF at hit point, with next-event estimation + multiple importance sampling against scene lights
+4. **Bouncing**: Recursively trace scattered rays (up to max_depth, Russian roulette on CPU)
 5. **Accumulation**: Average multiple samples per pixel
-6. **Tone Mapping**: Apply gamma correction
+6. **Tone Mapping**: ACES filmic tone mapping + sRGB OETF
+
+An alternative SPPM (photon mapping) integrator is available for scenes with hard-to-converge caustics — see [SPPM (Photon Mapping)](#sppm-photon-mapping) above.
 
 ### Random Number Generation
 
-- **CPU**: C++ standard library (`<random>`)
-- **GPU**: xorshift32 PRNG (device-side, per-pixel seeded)
+- **CPU**: PCG-family generator, thread-local, stratified/Sobol low-discrepancy sampling for many integrators
+- **GPU**: PCG hash-based PRNG (device-side, per-pixel/per-bounce seeded)
 
 ## 📚 References
 
-This project is based on the excellent **"Ray Tracing in One Weekend"** series by Peter Shirley:
+This project is based on the excellent **"Ray Tracing in One Weekend"** series by Peter Shirley, and its material/light/camera library draws heavily on **pbrt-v4**:
 
 - [Ray Tracing in One Weekend](https://raytracing.github.io/books/RayTracingInOneWeekend.html)
 - [Ray Tracing: The Next Week](https://raytracing.github.io/books/RayTracingTheNextWeek.html)
 - [Ray Tracing: The Rest of Your Life](https://raytracing.github.io/books/RayTracingTheRestOfYourLife.html)
+- [Physically Based Rendering: From Theory to Implementation (pbrt-v4)](https://pbr-book.org/)
 
 ### Additional Resources
 
 - [NVIDIA CUDA Programming Guide](https://docs.nvidia.com/cuda/cuda-c-programming-guide/)
-- [Physically Based Rendering Book](https://pbr-book.org/)
 - [Scratchapixel - Ray Tracing](https://www.scratchapixel.com/lessons/3d-basic-rendering/introduction-to-ray-tracing/how-does-it-work)
+
+### Mesh & Texture Credits
+
+External mesh/texture assets (`models/`) come from the Stanford 3D Scanning Repository, the McGuire Computer Graphics Archive (Crytek Sponza, Amazon Lumberyard Bistro, Rungholt), and the common-3d-test-models collection — see each model's own license/attribution where noted.
 
 ## 🚧 Known Limitations
 
-### Current Limitations
+Being upfront about what's incomplete rather than overselling:
 
-- **No BVH acceleration structure**: Linear O(n) intersection tests
-- **No texture mapping**: Solid colors only
-- **Fixed scene**: Hardcoded Cornell box (modifiable in source)
-- **No adaptive sampling**: Fixed samples per pixel
-- **Windows only**: Platform-specific code (file paths, CUDA)
+- **GPU SPPM is scene-limited**: the GPU photon-mapping backend has only been verified end-to-end on one reference scene (Cornell Rough Glass). CPU SPPM works across a much broader set of materials/lights, though it too is primarily verified on lambertian + delta-BSDF scenes.
+- **BDPT and MLT are libraries, not exposed render modes**: `src/shared/bdpt.h` and `mlt.h` exist with their own unit test coverage, but aren't wired into the CLI or GUI as a selectable integrator yet.
+- **Hair/fur has no literal fiber geometry**: the Marschner/Chiang BxDF math is real, but it's applied via a shading-normal proxy on sphere primitives (one scene), not actual curve/strand geometry.
+- **GPU wavefront path tracer is opt-in and less exercised**: enabled via `RAY_TRACER_WAVEFRONT=1` rather than a first-class CLI flag; the default recursive GPU backend is the primary, best-tested GPU path.
+- **Windows only**: platform-specific code throughout (file paths, CUDA/OptiX integration, build system).
+- **No adaptive sampling**: fixed samples-per-pixel for standard path tracing (SPPM itself is progressive by design).
 
-### Planned Improvements
+### Planned / possible future work
 
-- [ ] BVH acceleration structure for faster rendering
-- [ ] Texture mapping and normal maps
-- [ ] Environment maps / HDRI backgrounds
+- [ ] Selectable BDPT/MLT integrators from the CLI/GUI
+- [ ] Broader GPU SPPM scene support
+- [ ] Real curve/strand hair geometry
 - [ ] Adaptive sampling based on variance
-- [ ] Multi-GPU support
-- [ ] Real-time interactive preview mode
-- [ ] Scene file format (JSON/XML)
 - [ ] Cross-platform support (Linux, macOS)
 
 ## 🤝 Contributing
 
 Contributions are welcome! Areas for improvement:
 
-1. **Performance**: BVH, better sampling strategies
-2. **Features**: Textures, volumes, participating media
-3. **Scenes**: Scene file parser, more examples
+1. **Integrators**: wiring BDPT/MLT into the CLI, broadening GPU SPPM scene support
+2. **Geometry**: real curve/hair geometry, more mesh formats
+3. **Scenes**: more example scenes, a scene file format (JSON/XML) instead of hardcoded registry entries
 4. **Portability**: Linux/macOS support
-5. **Documentation**: Tutorials, code comments
+5. **Documentation**: tutorials, code comments
 
 ## 📝 License
 
-This project is inspired by and includes code from the "Ray Tracing in One Weekend" series, which is licensed under CC0 1.0 Universal (public domain).
+This project is inspired by and includes code from the "Ray Tracing in One Weekend" series, which is licensed under CC0 1.0 Universal (public domain). Material/light/camera algorithms are original implementations informed by the publicly available pbrt-v4 book text.
 
 GPU implementation and project structure are original work.
 
-See individual source files for specific attributions.
+See individual source files for specific attributions, and the [Mesh & Texture Credits](#mesh--texture-credits) section above for external asset licensing.
 
 ## 👤 Author
 
@@ -691,13 +653,15 @@ See individual source files for specific attributions.
 
 ## 🌟 Acknowledgments
 
-- **Peter Shirley** for the amazing "Ray Tracing in One Weekend" book series
-- **NVIDIA** for CUDA and GPU computing resources
+- **Peter Shirley** for the "Ray Tracing in One Weekend" book series
+- **Matt Pharr, Wenzel Jakob, and Greg Humphreys** for pbrt-v4, whose published algorithms informed much of this renderer's material/light/sampling library
+- **NVIDIA** for CUDA, OptiX, and GPU computing resources
 - **stb libraries** for image I/O
+- **Morgan McGuire** and the McGuire Computer Graphics Archive for the Sponza/Bistro/Rungholt scenes
 
 ---
 
-**Last Updated:** July 20, 2026  
-**Version:** 2.0.0 (OptiX)
+**Last Updated:** August 11, 2026
+**Version:** 2.1.0 (Textured meshes + expanded scene library)
 
 View the [OptiX GPU documentation](gpu/optix/README.md) for detailed OptiX build instructions.
