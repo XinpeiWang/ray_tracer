@@ -160,17 +160,17 @@ bool OptiXRenderer::createContext() {
 	// Initialize CUDA Driver API
 	CU_CHECK(cuInit(0));
 
-	// Get CUDA device
-	CUdevice cuDevice;
-	CU_CHECK(cuDeviceGet(&cuDevice, kDefaultCudaDevice));
+	// Get CUDA device (stored in cuDevice_ -- cleanup() needs it to release
+	// the primary context correctly, see that member's own comment).
+	CU_CHECK(cuDeviceGet(&cuDevice_, kDefaultCudaDevice));
 
 	// Query and display device name
 	std::array<char, kMaxDeviceNameLength> deviceName{};
-	cuDeviceGetName(deviceName.data(), static_cast<int>(deviceName.size()), cuDevice);
+	cuDeviceGetName(deviceName.data(), static_cast<int>(deviceName.size()), cuDevice_);
 	std::cout << "[OptiX] Using GPU: " << deviceName.data() << "\n";
 
 	// Retain primary CUDA context (modern approach for CUDA 13.2+)
-	CU_CHECK(cuDevicePrimaryCtxRetain(&cudaContext_, cuDevice));
+	CU_CHECK(cuDevicePrimaryCtxRetain(&cudaContext_, cuDevice_));
 
 	// Create CUDA stream for asynchronous operations
 	CUDA_CHECK(cudaStreamCreate(&stream_));
@@ -1600,7 +1600,17 @@ void OptiXRenderer::cleanup() noexcept {
 
 	// Destroy CUDA resources
 	if (stream_) cudaStreamDestroy(stream_);
-	if (cudaContext_) cuCtxDestroy(cudaContext_);
+	// cudaContext_ is a PRIMARY context (createContext()'s own
+	// cuDevicePrimaryCtxRetain() call) -- cuCtxDestroy() is invalid for
+	// that kind of handle (the driver rejects it: CUDA_ERROR_INVALID_
+	// CONTEXT, "Cannot destroy primary context", caught via
+	// compute-sanitizer -- it failed silently here before since the
+	// CUresult was never checked and nothing ran afterward to trip over
+	// the resulting state). The correct release call is
+	// cuDevicePrimaryCtxRelease(device), which decrements the refcount
+	// cuDevicePrimaryCtxRetain() incremented instead of trying to destroy
+	// the context object outright.
+	if (cudaContext_) cuDevicePrimaryCtxRelease(cuDevice_);
 
 	// Destroy wavefront tracer if it was created
 	wavefrontTracer_.reset();

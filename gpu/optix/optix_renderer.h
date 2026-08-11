@@ -141,8 +141,17 @@ private:
 	// OptiX Core Resources
 	// -------------------------------------------------------------------
 	OptixDeviceContext context_ = nullptr;  ///< OptiX device context
-	CUcontext cudaContext_ = nullptr;       ///< CUDA context
+	CUcontext cudaContext_ = nullptr;       ///< CUDA primary context (see cuDevice_'s own comment)
 	CUstream stream_ = nullptr;             ///< CUDA stream for async operations
+	// The device cudaContext_ was retained against (createContext()'s own
+	// cuDeviceGet() call, kDefaultCudaDevice). Stored so cleanup() can
+	// release the primary context correctly: cuDevicePrimaryCtxRetain()'d
+	// contexts must be given back via cuDevicePrimaryCtxRelease(device),
+	// not cuCtxDestroy(context) -- the driver rejects the latter for a
+	// primary-context handle (confirmed via compute-sanitizer:
+	// CUDA_ERROR_INVALID_CONTEXT, "Cannot destroy primary context" -- see
+	// cleanup()'s own comment for the fuller story).
+	CUdevice cuDevice_ = 0;
 
 	// -------------------------------------------------------------------
 	// Wavefront path tracer (optional mode)
