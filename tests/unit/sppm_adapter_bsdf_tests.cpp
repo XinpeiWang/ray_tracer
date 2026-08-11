@@ -217,6 +217,163 @@ TEST(SppmBsdfSampleF, MirrorMetalReflectsAcrossNormal) {
 }
 
 // ============================================================================
+// diffuse_transmission -- dedicated closed-form bridge (multi-lobe material)
+// ============================================================================
+
+TEST(SppmBsdfF, DiffuseTransmissionReflectionHemisphereMatchesR) {
+	auto mat = make_shared<diffuse_transmission>(color(0.6, 0.3, 0.1), color(0.1, 0.2, 0.5));
+	SPPMShadingContext ctx;
+	ctx.p = point3(0, 0, 0);
+	ctx.normal = vec3(0, 1, 0);
+	ctx.mat = mat;
+
+	double n[3] = { 0, 1, 0 };
+	double wo[3] = { 0, 1, 0 };
+	double wi[3] = { 0, 1, 0 };   // same hemisphere as n -> reflection lobe
+	double out[3];
+	sppm_bsdf_f(ctx, wo, wi, n, out);
+
+	EXPECT_NEAR(out[0], 0.6 / pi, 1e-9);
+	EXPECT_NEAR(out[1], 0.3 / pi, 1e-9);
+	EXPECT_NEAR(out[2], 0.1 / pi, 1e-9);
+}
+
+TEST(SppmBsdfF, DiffuseTransmissionTransmissionHemisphereMatchesT) {
+	auto mat = make_shared<diffuse_transmission>(color(0.6, 0.3, 0.1), color(0.1, 0.2, 0.5));
+	SPPMShadingContext ctx;
+	ctx.p = point3(0, 0, 0);
+	ctx.normal = vec3(0, 1, 0);
+	ctx.mat = mat;
+
+	double n[3] = { 0, 1, 0 };
+	double wo[3] = { 0, 1, 0 };
+	double wi[3] = { 0, -1, 0 };   // opposite hemisphere from n -> transmission lobe
+	double out[3];
+	sppm_bsdf_f(ctx, wo, wi, n, out);
+
+	EXPECT_NEAR(out[0], 0.1 / pi, 1e-9);
+	EXPECT_NEAR(out[1], 0.2 / pi, 1e-9);
+	EXPECT_NEAR(out[2], 0.5 / pi, 1e-9);
+}
+
+TEST(SppmBsdfSampleF, DiffuseTransmissionEnergyConservationConvergesToRPlusT) {
+	// Grayscale R/T (equal across channels) so pr=R, pt=T as scalars and the
+	// expected value of f*|cosI|/pdf simplifies to exactly R+T on every
+	// channel (see sppm_adapter.h's diffuse_transmission special-case
+	// comment for the derivation) -- a clean, closed-form MC target.
+	double R = 0.5, T = 0.2;
+	auto mat = make_shared<diffuse_transmission>(color(R, R, R), color(T, T, T));
+	SPPMShadingContext ctx;
+	ctx.p = point3(0, 0, 0);
+	ctx.normal = vec3(0, 1, 0);
+	ctx.mat = mat;
+
+	double n[3] = { 0, 1, 0 };
+	double wo[3] = { 0, 1, 0 };
+
+	const int N = 20000;
+	double sum[3] = { 0, 0, 0 };
+	for (int i = 0; i < N; ++i) {
+		double new_dir[3], f_val[3], pdf;
+		bool is_specular;
+		ASSERT_TRUE(sppm_bsdf_sample_f(ctx, wo, n, 0.0, 0.0, new_dir, f_val, pdf, is_specular));
+		EXPECT_FALSE(is_specular);
+		ASSERT_GT(pdf, 0.0);
+		double cosI = std::fabs(new_dir[0]*n[0] + new_dir[1]*n[1] + new_dir[2]*n[2]);
+		for (int c = 0; c < 3; ++c) sum[c] += f_val[c] * cosI / pdf;
+	}
+	for (int c = 0; c < 3; ++c) {
+		double mean = sum[c] / N;
+		EXPECT_NEAR(mean, R + T, 0.02) << "channel " << c;
+	}
+}
+
+TEST(SppmBsdfSampleF, DiffuseTransmissionSamplesBothHemispheres) {
+	// Sanity that both lobes are actually reachable (not just one) - a
+	// silent regression that always picked one hemisphere would still pass
+	// the energy-conservation test above by coincidence if R==T, so this
+	// checks the mechanism directly.
+	auto mat = make_shared<diffuse_transmission>(color(0.5, 0.5, 0.5), color(0.5, 0.5, 0.5));
+	SPPMShadingContext ctx;
+	ctx.p = point3(0, 0, 0);
+	ctx.normal = vec3(0, 1, 0);
+	ctx.mat = mat;
+
+	double n[3] = { 0, 1, 0 };
+	double wo[3] = { 0, 1, 0 };
+	bool saw_reflection = false, saw_transmission = false;
+	for (int i = 0; i < 500; ++i) {
+		double new_dir[3], f_val[3], pdf;
+		bool is_specular;
+		ASSERT_TRUE(sppm_bsdf_sample_f(ctx, wo, n, 0.0, 0.0, new_dir, f_val, pdf, is_specular));
+		double cosI = new_dir[0]*n[0] + new_dir[1]*n[1] + new_dir[2]*n[2];
+		if (cosI > 0) saw_reflection = true; else saw_transmission = true;
+	}
+	EXPECT_TRUE(saw_reflection);
+	EXPECT_TRUE(saw_transmission);
+}
+
+// ============================================================================
+// normalized_fresnel -- confirms the EXISTING generic bridge already
+// handles it correctly (its scatter() sets attenuation=(1,1,1)
+// unconditionally, so it never needed a special case)
+// ============================================================================
+
+TEST(SppmBsdfF, NormalizedFresnelMatchesClosedForm) {
+	auto mat = make_shared<normalized_fresnel>(1.5);
+	SPPMShadingContext ctx;
+	ctx.p = point3(0, 0, 0);
+	ctx.normal = vec3(0, 1, 0);
+	ctx.mat = mat;
+
+	double n[3] = { 0, 1, 0 };
+	double wo[3] = { 0, 1, 0 };
+	double wi[3] = { 0, 1, 0 };   // straight up: cos_wi = 1
+	double out[3];
+	sppm_bsdf_f(ctx, wo, wi, n, out);
+
+	double fr = FrDielectric(1.0, 1.5);
+	double expected = (1.0 - fr) / (mat->get_c() * pi);
+	EXPECT_NEAR(out[0], expected, 1e-9);
+	EXPECT_NEAR(out[1], expected, 1e-9);
+	EXPECT_NEAR(out[2], expected, 1e-9);
+}
+
+TEST(SppmBsdfSampleF, NormalizedFresnelEnergyConservationConvergesToOne) {
+	// (1-Fr)/c integrated over the cosine-weighted hemisphere converges to
+	// exactly 1.0 by construction: c = 1 - 2*FresnelMoment1(1/eta) is
+	// specifically the normalization constant that makes this BSDF conserve
+	// all incoming energy (it's used at BSSRDF exit boundaries, where that
+	// normalization is the whole point) - NOT "less than 1 like a lossy
+	// reflectance" (an earlier version of this test wrongly assumed that
+	// and failed at mean=1.0008, well within MC noise of the true 1.0).
+	auto mat = make_shared<normalized_fresnel>(1.5);
+	SPPMShadingContext ctx;
+	ctx.p = point3(0, 0, 0);
+	ctx.normal = vec3(0, 1, 0);
+	ctx.mat = mat;
+
+	double n[3] = { 0, 1, 0 };
+	double wo[3] = { 0, 1, 0 };
+
+	const int N = 5000;
+	double sum = 0.0;
+	for (int i = 0; i < N; ++i) {
+		double new_dir[3], f_val[3], pdf;
+		bool is_specular;
+		ASSERT_TRUE(sppm_bsdf_sample_f(ctx, wo, n, 0.0, 0.0, new_dir, f_val, pdf, is_specular));
+		EXPECT_FALSE(is_specular);
+		ASSERT_GT(pdf, 0.0);
+		double cosI = std::fabs(new_dir[0]*n[0] + new_dir[1]*n[1] + new_dir[2]*n[2]);
+		double v = f_val[0] * cosI / pdf;
+		EXPECT_TRUE(std::isfinite(v));
+		sum += v;
+	}
+	double mean = sum / N;
+	EXPECT_NEAR(mean, 1.0, 0.02);
+}
+
+// ============================================================================
 // rough_dielectric (scene 11's actual sphere material) sanity
 // ============================================================================
 

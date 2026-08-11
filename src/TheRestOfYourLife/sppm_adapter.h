@@ -119,22 +119,44 @@ inline hit_record sppm_reconstruct_hit_record(const SPPMShadingContext& ctx, con
 // `srec.attenuation * scattering_pdf(...)`) combined with
 // material::scatter()'s srec.attenuation.
 //
-// v1 is provably exact only for `lambertian`: its attenuation
-// (tex->value(u,v,p)) is deterministic and direction-independent, so
-// calling scatter() here (for attenuation alone, discarding the direction
-// it importance-samples) is safe. diffuse_transmission/normalized_fresnel/
-// mix_material are multi-lobe materials whose scatter() stochastically
-// commits to one lobe and returns THAT lobe's attenuation -- reusing it for
-// an arbitrary externally-supplied wi that might belong to the other lobe
-// is not sound in general. Deferred to a later phase with bespoke
-// per-material closed-form formulas; not needed for the v1 scene-11
-// (CornellRoughGlass) target, which uses only lambertian + a delta sphere
-// material.
+// v1 was provably exact only for `lambertian` (attenuation deterministic
+// and direction-independent, so calling scatter() here for attenuation
+// alone, discarding the direction it importance-samples, is safe).
+// `normalized_fresnel` turns out to satisfy the exact same condition --
+// its scatter() always sets attenuation=(1,1,1) regardless of any random
+// draw (confirmed by reading material_pbrt.h directly), so it was already
+// safe under the generic path below without needing a special case; a
+// dedicated test now locks this in (see tests/unit/sppm_adapter_bsdf_tests.cpp).
+//
+// `diffuse_transmission` genuinely needed a special case: its scatter()
+// stochastically commits to reflection (attenuation=R) OR transmission
+// (attenuation=T), so reusing whichever was drawn for an externally-supplied
+// wi that might land in the OTHER lobe's hemisphere is wrong. Handled below
+// via the material's own closed-form f(wo,wi) = SameHemisphere(wi) ? R/pi :
+// T/pi (pbrt-v4 DiffuseTransmissionBxDF::f) computed directly from its
+// get_reflectance()/get_transmittance() accessors -- no scatter() call
+// needed at all for this material, sidestepping the stochastic-lobe problem
+// entirely rather than working around it.
+//
+// `mix_material` remains genuinely deferred: it can stochastically delegate
+// to two COMPLETELY DIFFERENT underlying BSDFs (e.g. lambertian blended
+// with a delta metal), and a delta sub-material has no finite f() value
+// away from its exact reflection direction at all -- there's no single
+// closed form to special-case the way diffuse_transmission's two same-shape
+// diffuse lobes allowed.
 inline void sppm_bsdf_f(const SPPMShadingContext& ctx, const double wo[3], const double wi[3],
                          const double n[3], double out[3]) {
 	out[0] = out[1] = out[2] = 0.0;
 	if (!ctx.mat) return;
 	double cos_wi = wi[0]*n[0] + wi[1]*n[1] + wi[2]*n[2];
+
+	if (auto dt = dynamic_cast<const diffuse_transmission*>(ctx.mat.get())) {
+		color c = (cos_wi > 0.0) ? dt->get_reflectance() : dt->get_transmittance();
+		double inv_pi = 1.0 / pi;
+		out[0] = c.x() * inv_pi; out[1] = c.y() * inv_pi; out[2] = c.z() * inv_pi;
+		return;
+	}
+
 	if (cos_wi <= 0.0) return;
 
 	hit_record rec = sppm_reconstruct_hit_record(ctx, n);
@@ -199,7 +221,21 @@ inline bool sppm_bsdf_sample_f(const SPPMShadingContext& ctx, const double wo[3]
 	// evaluate f through the SAME formula BSDFf uses (sppm_bsdf_f) so the
 	// two paths can never drift into inconsistent results.
 	vec3 d = srec.pdf_ptr->generate();
-	double p = srec.pdf_ptr->value(d);
+	double p;
+	if (dynamic_cast<const diffuse_transmission*>(ctx.mat.get())) {
+		// srec.pdf_ptr is a plain cosine_pdf over whichever single lobe
+		// scatter() happened to draw (reflection or transmission) - its
+		// value(d) is only that lobe's OWN cos/pi density, missing the
+		// lobe-selection-probability factor (pr/(pr+pt) or pt/(pr+pt)) that
+		// the true overall sampling density needs. The material's own
+		// scattering_pdf() already computes that full, correctly-weighted
+		// density (confirmed by reading material_pbrt.h's
+		// diffuse_transmission::scattering_pdf() directly) - use it instead
+		// of pdf_ptr->value() for this material specifically.
+		p = ctx.mat->scattering_pdf(fake_in, rec, ray(ctx.p, d));
+	} else {
+		p = srec.pdf_ptr->value(d);
+	}
 	if (p <= 0.0) return false;
 	vec3 dn = unit_vector(d);
 	double wi[3] = { dn.x(), dn.y(), dn.z() };
