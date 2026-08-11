@@ -355,37 +355,82 @@ class SPPMSceneAdapter {
 	// in the same estimate, so there is no double-counting risk requiring a
 	// balance/power heuristic weight the way camera.h's own two-strategy
 	// loop needs one.
+	// Accumulates BOTH area-light NEE and punctual (delta) light
+	// contributions into Ld -- structured as two independent blocks (each
+	// with its own early-outs) rather than one early-return chain, since a
+	// scene can have punctual lights with NO area lights at all
+	// (build_lights() == no_lights for scenes 25-28/etc - "Spotlight
+	// Cornell", "Point Light Cornell", ... - see scene_registry.h). An
+	// earlier version of this function gated everything behind the
+	// area-light NEE's own early returns, which silently produced a
+	// completely black render for any such scene under --sppm (nee_lights_
+	// empty -> pdf_l<=0 -> early return -> punctual block never reached).
+	//
+	// Sky (infinite) light support is NOT included here: unlike punctual
+	// lights, sky contribution also needs to be added when a specular ray
+	// chain in the camera pass ESCAPES the scene entirely (a ray miss), but
+	// src/shared/sppm.h's own SPPMCameraPass has no infinite-light-on-miss
+	// hook at all (confirmed by reading its full source) - adding that
+	// would mean modifying sppm.h itself, which this integration has
+	// deliberately avoided touching throughout. Scenes relying solely on
+	// build_sky() (e.g. scene 24 HdriSky) will still render black under
+	// --sppm; still deferred.
 	void DirectLight(const double p[3], const double n[3], const double wo[3],
 	                  int bsdf_id, double Ld[3]) const {
 		Ld[0] = Ld[1] = Ld[2] = 0.0;
 		point3 P(p[0], p[1], p[2]);
 
-		hittable_pdf light_pdf(nee_lights_, P);
-		vec3 raw_dir = light_pdf.generate();
-		double dist = raw_dir.length();
-		if (dist < 1e-9) return;
-		vec3 dir = raw_dir / dist;
-		double pdf_l = light_pdf.value(dir);
-		if (pdf_l <= 0.0) return;
+		// --- Area lights (NEE toward nee_lights_) ---
+		{
+			hittable_pdf light_pdf(nee_lights_, P);
+			vec3 raw_dir = light_pdf.generate();
+			double dist = raw_dir.length();
+			if (dist >= 1e-9) {
+				vec3 dir = raw_dir / dist;
+				double pdf_l = light_pdf.value(dir);
+				double cos_i = dir.x()*n[0] + dir.y()*n[1] + dir.z()*n[2];
+				if (pdf_l > 0.0 && cos_i > 0.0) {
+					hit_record light_rec;
+					ray shadow_ray(P, dir);
+					if (world_.hit(shadow_ray, interval(0.001, infinity), light_rec)) {
+						color Le = light_rec.mat
+							? light_rec.mat->emitted(shadow_ray, light_rec, light_rec.u, light_rec.v, light_rec.p)
+							: color(0, 0, 0);
+						if (Le.x() > 0.0 || Le.y() > 0.0 || Le.z() > 0.0) {
+							double wi[3] = { dir.x(), dir.y(), dir.z() };
+							double f[3];
+							BSDFf(bsdf_id, wo, wi, n, f);
+							Ld[0] += f[0] * cos_i * Le.x() / pdf_l;
+							Ld[1] += f[1] * cos_i * Le.y() / pdf_l;
+							Ld[2] += f[2] * cos_i * Le.z() / pdf_l;
+						}
+					}
+				}
+			}
+		}
 
-		double cos_i = dir.x()*n[0] + dir.y()*n[1] + dir.z()*n[2];
-		if (cos_i <= 0.0) return;
-
-		hit_record light_rec;
-		ray shadow_ray(P, dir);
-		if (!world_.hit(shadow_ray, interval(0.001, infinity), light_rec)) return;
-		color Le = light_rec.mat
-			? light_rec.mat->emitted(shadow_ray, light_rec, light_rec.u, light_rec.v, light_rec.p)
-			: color(0, 0, 0);
-		if (Le.x() <= 0.0 && Le.y() <= 0.0 && Le.z() <= 0.0) return;
-
-		double wi[3] = { dir.x(), dir.y(), dir.z() };
-		double f[3];
-		BSDFf(bsdf_id, wo, wi, n, f);
-
-		Ld[0] = f[0] * cos_i * Le.x() / pdf_l;
-		Ld[1] = f[1] * cos_i * Le.y() / pdf_l;
-		Ld[2] = f[2] * cos_i * Le.z() / pdf_l;
+		// --- Punctual (delta) lights: point/spot/distant/goniometric/projection ---
+		// Mirrors camera.h's own NEE strategy A-3 exactly: pdf=1 for delta
+		// lights, no MIS weight needed (no competing BSDF-sampled strategy
+		// can ever land exactly on a delta light's direction).
+		if (cam_.punct_lights && !cam_.punct_lights->empty()) {
+			cam_.punct_lights->for_each_sample(P, [&](const PunctualLiSample& ps) {
+				if (ps.Li.x() <= 0.0 && ps.Li.y() <= 0.0 && ps.Li.z() <= 0.0) return;
+				double cos_i = ps.wi.x()*n[0] + ps.wi.y()*n[1] + ps.wi.z()*n[2];
+				if (cos_i <= 0.0) return;
+				double wi[3] = { ps.wi.x(), ps.wi.y(), ps.wi.z() };
+				double f[3];
+				BSDFf(bsdf_id, wo, wi, n, f);
+				if (f[0] <= 0.0 && f[1] <= 0.0 && f[2] <= 0.0) return;
+				hit_record shadow_rec;
+				interval shadow_t(0.001, ps.t_max == infinity ? infinity : ps.t_max - 0.001);
+				if (!world_.hit(ray(P, ps.wi), shadow_t, shadow_rec)) {
+					Ld[0] += f[0] * cos_i * ps.Li.x();
+					Ld[1] += f[1] * cos_i * ps.Li.y();
+					Ld[2] += f[2] * cos_i * ps.Li.z();
+				}
+			});
+		}
 	}
 
 	// Emits a photon from a power-weighted, uniform-area-sampled point on a

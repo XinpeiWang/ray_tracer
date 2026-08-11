@@ -23,6 +23,7 @@
 #include "camera.h"
 #include "scenes_materials.h"   // build_cornell_rough_glass()
 #include "cornell_box_scene.h"  // build_cornell_box_lights()
+#include "scenes_advanced.h"    // build_point_light_cornell()/build_point_light_punct()
 #include "power_light_sampler.h"
 #include "color.h"
 #include "sppm_adapter.h"
@@ -114,4 +115,50 @@ TEST(SppmFirstSlice, CenterPixelRegionReceivesLight) {
 		}
 	}
 	EXPECT_GT(sum, 0.0) << "center region of a lit Cornell box rendered as pure black";
+}
+
+// ============================================================================
+// Punctual (delta) light support (SPPM Phase 6b)
+// ============================================================================
+// Scene 27 (Point Light Cornell) has NO area lights at all - build_lights()
+// is no_lights (see scene_registry.h) and all illumination comes from
+// build_point_light_punct()'s single point light via cam.punct_lights. An
+// earlier version of SPPMSceneAdapter::DirectLight() only queried
+// nee_lights_ (empty for this scene) and never reached the punctual-light
+// block at all, silently rendering scenes like this one pure black under
+// --sppm. This test targets that exact scenario directly, matching the
+// pattern camera.h's own path tracer already handles correctly.
+TEST(SppmFirstSlice, PointLightOnlySceneIsNotPureBlack) {
+	hittable_list world = build_point_light_cornell();
+	hittable_list lights_raw;   // no_lights: genuinely empty, matching the real registry entry
+	power_light_list lights(lights_raw);
+
+	camera cam;
+	cam.aspect_ratio = 1.0;
+	cam.image_width = 32;
+	cam.samples_per_pixel = 1;
+	cam.max_depth = 5;
+	cam.vup = vec3(0, 1, 0);
+	cam.vfov = 40;
+	cam.background = color(0, 0, 0);
+	cam.lookfrom = point3(278, 278, -800);
+	cam.lookat = point3(278, 278, 278);
+	cam.punct_lights = build_point_light_punct();   // the fix under test
+	cam.initialize();
+
+	SPPMSceneAdapter adapter(world, lights, cam);
+
+	std::vector<double> out_rgb;
+	sppm_render_with_adapter(adapter, cam.image_width, cam.image_height,
+	         /*nIterations=*/10, /*nPhotons=*/500, /*maxDepth=*/5,
+	         /*initialRadius=*/10.0, out_rgb);
+
+	ASSERT_EQ((int)out_rgb.size(), cam.image_width * cam.image_height * 3);
+	int nonzero_count = 0;
+	for (double v : out_rgb) {
+		EXPECT_TRUE(std::isfinite(v));
+		EXPECT_GE(v, 0.0);
+		if (v > 0.0) ++nonzero_count;
+	}
+	EXPECT_GT(nonzero_count, 0) << "scene with only a punctual light rendered pure black under --sppm";
 }
