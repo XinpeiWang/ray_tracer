@@ -1552,3 +1552,46 @@ inline hittable_list build_rocker_arm() {
 	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
 	return world;
 }
+
+// ============================================================================
+// Scene 63: Amazon Lumberyard Bistro (Exterior)
+// Second "whole environment" scene (see build_sponza()'s own comment for
+// the shared design rationale: no separate ground, single lambertian
+// material since this loader has no per-face/.mtl support, open-sky
+// lighting instead of a point/area light). 2.84M triangles - a full
+// outdoor street block (multiple buildings, a plaza/street network), not
+// one enclosed building like Sponza.
+//
+// Scale/offset: native scale, only re-centered/floor-aligned: raw bbox
+// x=[-3903.64,6956.37] y=[-472.62,2720.77] z=[-5496.06,6030.09], offset by
+// (-1526.37, 472.62, -267.01).
+//
+// Camera: same problem as Sponza (a naive "back up and look at the
+// center" framing risks landing inside a building or a fully-enclosed
+// courtyard) but a DIFFERENT shape here - this is an open street block,
+// not one solid building, so open ground-level space is actually common,
+// not rare. Still verified with the same standalone ray-triangle probe
+// script (not committed) before spending a render cycle: cast rays
+// straight down across a coarse (x,z) grid to find street-level height
+// (~496 world units, most points hit either roughly that height or a
+// rooftop ~1400-2400 up, with several grid points missing geometry
+// entirely - this scene has real open plazas), then horizontal rays from
+// several street-level candidates to find one with a long, unobstructed
+// sightline. (1500,700,2000) looking toward +X had a verified-clear
+// 3000-unit sightline - a "walking down the street between buildings"
+// shot, this scene's version of Sponza's "looking down the nave."
+// ============================================================================
+inline hittable_list build_bistro_exterior() {
+	hittable_list world;
+
+	auto plaster = make_shared<lambertian>(color(0.75, 0.62, 0.50));
+	world.add(std::make_shared<triangle_mesh>(
+		"bistro_exterior.obj", plaster,
+		/*scale=*/1.0, point3(-1526.37, 472.62, -267.01)));
+
+	return world;
+}
+
+inline std::shared_ptr<sky_light> build_bistro_exterior_sky() {
+	return std::make_shared<sky_light>(color(0.55, 0.72, 0.95));
+}

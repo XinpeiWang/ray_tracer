@@ -848,6 +848,16 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_sponza_sky,
             nullptr
         },
+        {
+            63, SceneNames::AmazonBistro,
+            "Amazon Lumberyard Bistro, Exterior (2.84M triangles) - a full outdoor street block (multiple buildings + plaza), in warm plaster/terracotta lambertian (this renderer's OBJ loader has no per-face/.mtl material support) lit by an open sky, loaded from an external .obj file (requires models/bistro_exterior.obj). Second 'whole environment' mesh scene, same design rationale as scene 62 (Crytek Sponza) -- see build_bistro_exterior()'s own comment.",
+            "Very Slow", 150, true, true,
+            { 60, 1500, 700, 2000,  4000, 700, 2000,  0, 0, 0 },
+            build_bistro_exterior,
+            no_lights,
+            build_bistro_exterior_sky,
+            nullptr
+        },
     };
     return registry;
 }

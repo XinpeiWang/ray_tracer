@@ -107,6 +107,7 @@ namespace SceneNames {
     constexpr const char* Ogre                 = "Ogre";
     constexpr const char* RockerArm            = "Rocker Arm";
     constexpr const char* CrytekSponza         = "Crytek Sponza";
+    constexpr const char* AmazonBistro         = "Amazon Lumberyard Bistro";
 } // namespace SceneNames
 
 #endif // __cplusplus

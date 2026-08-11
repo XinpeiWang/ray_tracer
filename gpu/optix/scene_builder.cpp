@@ -3081,6 +3081,17 @@ static void build_sponza_gpu(SceneData& scene) {
 		/*scale=*/1.0f, make_float3(60.52f, 126.44f, 38.69f));
 }
 
+/// @brief Scene 63: Amazon Lumberyard Bistro (Exterior). Matches CPU
+/// build_bistro_exterior() exactly. See build_sponza_gpu()'s own comment
+/// for the shared design rationale (single lambertian material, sky via
+/// backgroundColor). 2.84M triangles -- the largest mesh in this codebase.
+static void build_bistro_exterior_gpu(SceneData& scene) {
+	const int mat_plaster = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.75f, 0.62f, 0.50f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	load_obj_triangles_gpu(scene, "bistro_exterior.obj", mat_plaster,
+		/*scale=*/1.0f, make_float3(-1526.37f, 472.62f, -267.01f));
+}
+
 /// @brief Build a scene and configure the camera
 /// @param scene_id Scene identifier (0 = Cornell Box)
 /// @param image_width Output image width in pixels
@@ -3983,6 +3994,20 @@ bool build_scene(
 								if (out_camera_extra) {
 									// Matches CPU build_sponza_sky()'s solid-color sky_light(0.65,0.78,0.95).
 									out_camera_extra->backgroundColor = make_float3(0.65f, 0.78f, 0.95f);
+								}
+								break;
+							}
+
+							case 63: {  // Amazon Lumberyard Bistro, Exterior (see build_bistro_exterior_gpu's comment)
+								build_bistro_exterior_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 1500.0f, 700.0f, 2000.0f);
+								const float3 lookat   = make_float3(4000.0f, 700.0f, 2000.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 60.0f, aspect, 1.0f, camera_params);  // 60: matches CPU CameraConfig row for scene 63
+								if (out_camera_extra) {
+									// Matches CPU build_bistro_exterior_sky()'s solid-color sky_light(0.55,0.72,0.95).
+									out_camera_extra->backgroundColor = make_float3(0.55f, 0.72f, 0.95f);
 								}
 								break;
 							}
