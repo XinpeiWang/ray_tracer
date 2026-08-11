@@ -38,6 +38,7 @@
 #include <algorithm>
 #include <string>
 #include <fstream>
+#include <limits>
 
 // ===========================================================================
 // Layer 1 -- BSDF bridge
@@ -366,15 +367,16 @@ class SPPMSceneAdapter {
 	// completely black render for any such scene under --sppm (nee_lights_
 	// empty -> pdf_l<=0 -> early return -> punctual block never reached).
 	//
-	// Sky (infinite) light support is NOT included here: unlike punctual
-	// lights, sky contribution also needs to be added when a specular ray
-	// chain in the camera pass ESCAPES the scene entirely (a ray miss), but
-	// src/shared/sppm.h's own SPPMCameraPass has no infinite-light-on-miss
-	// hook at all (confirmed by reading its full source) - adding that
-	// would mean modifying sppm.h itself, which this integration has
-	// deliberately avoided touching throughout. Scenes relying solely on
-	// build_sky() (e.g. scene 24 HdriSky) will still render black under
-	// --sppm; still deferred.
+	// Sky (infinite) light support: this function's own NEE-toward-sky
+	// block (below) handles the case where a DIFFUSE surface receives
+	// skylight. The OTHER half - a specular chain escaping the scene
+	// entirely and seeing the sky directly - can't be handled here at all
+	// (DirectLight is only ever called at a diffuse hit) and is instead
+	// handled by sppm_camera_pass_with_sky(), a separate adapter-specific
+	// camera-pass loop that mirrors src/shared/sppm.h's own SPPMCameraPass
+	// with a sky-on-miss addition - written as a standalone function rather
+	// than modifying sppm.h itself, which this integration has deliberately
+	// avoided touching throughout.
 	void DirectLight(const double p[3], const double n[3], const double wo[3],
 	                  int bsdf_id, double Ld[3]) const {
 		Ld[0] = Ld[1] = Ld[2] = 0.0;
@@ -430,6 +432,39 @@ class SPPMSceneAdapter {
 					Ld[2] += f[2] * cos_i * ps.Li.z();
 				}
 			});
+		}
+
+		// --- Sky (infinite) light: NEE from this diffuse surface toward the sky ---
+		// No MIS weighting needed here either, for a different reason than
+		// the delta-light case above: sppm_camera_pass_with_sky()'s own
+		// sky-on-miss handling only ever triggers for a PURE SPECULAR chain
+		// that escapes the scene (the loop breaks before ever recording a
+		// visible point in that case), while DirectLight() is only ever
+		// called at a non-specular (diffuse) hit, which is a DIFFERENT,
+		// mutually exclusive path outcome within the same camera-pass trace
+		// - there is no competing strategy that could double-count the same
+		// sky sample from the same trace the way camera.h's own two-strategy
+		// (NEE + separate BSDF-sampled continuation) loop needs MIS for.
+		if (cam_.sky) {
+			SkyLiSample sky_smp = cam_.sky->sample_Le();
+			double pdf_sky = sky_smp.pdf;
+			if (pdf_sky > 0.0) {
+				vec3 dir = sky_smp.direction;
+				double cos_i = dir.x()*n[0] + dir.y()*n[1] + dir.z()*n[2];
+				if (cos_i > 0.0) {
+					hit_record sky_rec;
+					ray sky_shadow(P, dir);
+					if (!world_.hit(sky_shadow, interval(0.001, infinity), sky_rec)) {
+						double wi[3] = { dir.x(), dir.y(), dir.z() };
+						double f[3];
+						BSDFf(bsdf_id, wo, wi, n, f);
+						color Le_sky = cam_.sky->Le(unit_vector(dir));
+						Ld[0] += f[0] * cos_i * Le_sky.x() / pdf_sky;
+						Ld[1] += f[1] * cos_i * Le_sky.y() / pdf_sky;
+						Ld[2] += f[2] * cos_i * Le_sky.z() / pdf_sky;
+					}
+				}
+			}
 		}
 	}
 
@@ -496,6 +531,18 @@ class SPPMSceneAdapter {
 		return true;
 	}
 
+	// Not part of sppm.h's duck-typed Scene concept (its own SPPMCameraPass
+	// has no infinite-light-on-miss hook to call these through) -- used
+	// directly by sppm_camera_pass_with_sky() below instead, which is an
+	// adapter-specific camera-pass loop, not sppm.h's generic one. See that
+	// function's doc comment for the full explanation.
+	bool HasSky() const { return static_cast<bool>(cam_.sky); }
+
+	void SkyLe(const double dir[3], double out[3]) const {
+		color c = cam_.sky->Le(unit_vector(vec3(dir[0], dir[1], dir[2])));
+		out[0] = c.x(); out[1] = c.y(); out[2] = c.z();
+	}
+
   private:
 	const hittable_list& world_;
 	const hittable&       nee_lights_;
@@ -518,15 +565,112 @@ class SPPMSceneAdapter {
 // ===========================================================================
 // sppm_render_with_adapter -- shared SPPM iteration loop
 // ===========================================================================
-// Identical to src/shared/sppm.h's own SPPMRender() body, with one addition:
-// scene.BeginIteration() is called once per iteration, immediately before
-// that iteration's camera pass. sppm.h's SPPMRender() can't do this itself
-// since it's generic/duck-typed and has no idea SPPMSceneAdapter needs its
-// shading-context table cleared between iterations (see
-// SPPMSceneAdapter::BeginIteration()'s own doc comment for why that's safe
-// to do once per iteration rather than per-call). Kept here rather than
-// duplicated at each call site (tests, cpu_interface.cpp) so the
-// BeginIteration timing invariant only has to be gotten right in one place.
+// sppm_camera_pass_with_sky -- adapter-specific camera pass
+// ===========================================================================
+// A direct copy of src/shared/sppm.h's own SPPMCameraPass() logic, with one
+// addition: when a specular chain's ray escapes the scene entirely (a
+// miss), and the adapter has a sky light configured, accumulate its Le
+// before giving up on that pixel for this iteration. sppm.h's own
+// SPPMCameraPass has no infinite-light-on-miss hook at all (confirmed by
+// reading its full source) - rather than modify that reference-quality
+// generic file to add one (this integration has deliberately avoided
+// touching sppm.h throughout), this is a separate, adapter-specific
+// function that takes SPPMSceneAdapter directly instead of a generic
+// template Scene parameter, so it can call SPPMSceneAdapter::HasSky()/
+// SkyLe() - methods that exist only on the adapter, not as part of the
+// duck-typed Scene concept sppm.h's own functions are written against.
+//
+// Without this, any scene relying solely on build_sky() for illumination
+// (e.g. scene 24 HdriSky, 32/33's alt-camera showcases, 35 PortalInfiniteLight
+// - all use no_lights for area lights and no punctual lights either) would
+// render pure black under --sppm, the same class of bug punctual-light
+// support (SPPMSceneAdapter::DirectLight()) fixed for delta lights.
+inline void sppm_camera_pass_with_sky(std::vector<SPPMPixel<double>>& pixels,
+                                       int width, int height, int maxDepth,
+                                       const SPPMSceneAdapter& scene) {
+	for (int iy = 0; iy < height; ++iy) {
+		for (int ix = 0; ix < width; ++ix) {
+			int idx = iy * width + ix;
+			SPPMPixel<double>& pixel = pixels[idx];
+			pixel.px = ix;
+			pixel.py = iy;
+			pixel.vp_valid = false;
+
+			double px = (double(ix) + 0.5) / double(width);
+			double py = (double(iy) + 0.5) / double(height);
+
+			double cam_p[3], ray_d[3], cam_n[3];
+			if (!scene.PixelToRay(px, py, cam_p, ray_d, cam_n))
+				continue;
+
+			double org[3] = { cam_p[0], cam_p[1], cam_p[2] };
+			double dir[3] = { ray_d[0], ray_d[1], ray_d[2] };
+			double beta[3] = { 1.0, 1.0, 1.0 };
+
+			for (int depth = 0; depth < maxDepth; ++depth) {
+				BDPTHit<double> hit{};
+				if (!scene.Intersect(org, dir, std::numeric_limits<double>::max(), hit)) {
+					if (scene.HasSky()) {
+						double le[3];
+						scene.SkyLe(dir, le);
+						pixel.Ld[0] += beta[0] * le[0];
+						pixel.Ld[1] += beta[1] * le[1];
+						pixel.Ld[2] += beta[2] * le[2];
+					}
+					break;
+				}
+
+				pixel.Ld[0] += beta[0] * hit.area_Le[0];
+				pixel.Ld[1] += beta[1] * hit.area_Le[1];
+				pixel.Ld[2] += beta[2] * hit.area_Le[2];
+
+				if (hit.is_delta_bsdf) {
+					double new_dir[3], f_val[3], pdf;
+					bool is_spec;
+					double u1 = scene.RandFloat(), u2 = scene.RandFloat();
+					if (!scene.BSDFSampleF(hit.bsdf_id, hit.wo, hit.shading_n,
+					                       u1, u2, new_dir, f_val, pdf, is_spec))
+						break;
+					if (pdf <= 0.0) break;
+					double cosI = std::fabs(new_dir[0]*hit.shading_n[0] +
+					                        new_dir[1]*hit.shading_n[1] +
+					                        new_dir[2]*hit.shading_n[2]);
+					beta[0] *= f_val[0] * cosI / pdf;
+					beta[1] *= f_val[1] * cosI / pdf;
+					beta[2] *= f_val[2] * cosI / pdf;
+					org[0] = hit.p[0]; org[1] = hit.p[1]; org[2] = hit.p[2];
+					dir[0] = new_dir[0]; dir[1] = new_dir[1]; dir[2] = new_dir[2];
+				} else {
+					pixel.vp_valid = true;
+					pixel.vp_p[0] = hit.p[0]; pixel.vp_p[1] = hit.p[1]; pixel.vp_p[2] = hit.p[2];
+					pixel.vp_wo[0] = hit.wo[0]; pixel.vp_wo[1] = hit.wo[1]; pixel.vp_wo[2] = hit.wo[2];
+					pixel.vp_n[0] = hit.shading_n[0]; pixel.vp_n[1] = hit.shading_n[1]; pixel.vp_n[2] = hit.shading_n[2];
+					pixel.vp_beta[0] = beta[0]; pixel.vp_beta[1] = beta[1]; pixel.vp_beta[2] = beta[2];
+					pixel.vp_bsdf_id = hit.bsdf_id;
+
+					double ld[3];
+					scene.DirectLight(hit.p, hit.shading_n, hit.wo, hit.bsdf_id, ld);
+					pixel.Ld[0] += beta[0] * ld[0];
+					pixel.Ld[1] += beta[1] * ld[1];
+					pixel.Ld[2] += beta[2] * ld[2];
+					break;
+				}
+			}
+		}
+	}
+}
+
+// Identical to src/shared/sppm.h's own SPPMRender() body, with two
+// additions: (1) scene.BeginIteration() is called once per iteration,
+// immediately before that iteration's camera pass. sppm.h's SPPMRender()
+// can't do this itself since it's generic/duck-typed and has no idea
+// SPPMSceneAdapter needs its shading-context table cleared between
+// iterations (see SPPMSceneAdapter::BeginIteration()'s own doc comment for
+// why that's safe to do once per iteration rather than per-call). (2) uses
+// sppm_camera_pass_with_sky() above instead of sppm.h's own SPPMCameraPass()
+// (sky-light support - see that function's doc comment). Kept here rather
+// than duplicated at each call site (tests, cpu_interface.cpp) so both of
+// these invariants only have to be gotten right in one place.
 inline void sppm_render_with_adapter(const SPPMSceneAdapter& scene, int width, int height,
                                       int nIterations, int nPhotons, int maxDepth,
                                       double initialRadius, std::vector<double>& out_rgb) {
@@ -541,7 +685,7 @@ inline void sppm_render_with_adapter(const SPPMSceneAdapter& scene, int width, i
 	int64_t totalPhotonPaths = 0;
 	for (int iter = 0; iter < nIterations; ++iter) {
 		scene.BeginIteration();
-		SPPMCameraPass(pixels, width, height, maxDepth, scene);
+		sppm_camera_pass_with_sky(pixels, width, height, maxDepth, scene);
 
 		sppm_detail::HashGrid<double> hashGrid;
 		hashGrid.Build(pixels);

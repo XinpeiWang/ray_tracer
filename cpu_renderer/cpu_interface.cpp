@@ -324,15 +324,14 @@ extern "C" int cpu_render_main_sppm(int width, int height, int iterations, int p
 				   << " lookat=(" << cc.lookat_x << "," << cc.lookat_y << "," << cc.lookat_z << ")" << std::endl;
 		// Alternate camera models (ortho/spherical/realistic) are honored
 		// transparently via camera::get_ray() inside SPPMSceneAdapter::
-		// PixelToRay(). Punctual (delta) lights ARE supported (SPPMSceneAdapter::
-		// DirectLight() queries cam.punct_lights for direct-lighting
-		// contribution - see sppm_adapter.h) - must be wired up here or a
-		// scene like scene 27 "Point Light Cornell" renders pure black.
-		// Sky/infinite lights are still NOT supported (sppm.h's own
-		// SPPMCameraPass has no infinite-light-on-miss hook to add one to -
-		// see DirectLight()'s own comment) - build_sky() is deliberately
-		// left unapplied; a scene relying solely on it will still render
-		// black under --sppm.
+		// PixelToRay(). Both punctual (delta) lights AND sky/infinite lights
+		// are supported (SPPMSceneAdapter::DirectLight() queries
+		// cam.punct_lights; sppm_camera_pass_with_sky() queries cam.sky on a
+		// camera-ray miss - see sppm_adapter.h) - must be wired up here or a
+		// scene like scene 27 "Point Light Cornell" or scene 24 "HDRI Sky"
+		// renders pure black.
+		if (scene_desc->build_sky)
+			cam.sky = scene_desc->build_sky();
 		if (scene_desc->build_punct)
 			cam.punct_lights = scene_desc->build_punct();
 		if (scene_desc->setup_camera)

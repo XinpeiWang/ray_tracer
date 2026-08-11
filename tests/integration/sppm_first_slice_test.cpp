@@ -162,3 +162,89 @@ TEST(SppmFirstSlice, PointLightOnlySceneIsNotPureBlack) {
 	}
 	EXPECT_GT(nonzero_count, 0) << "scene with only a punctual light rendered pure black under --sppm";
 }
+
+// ============================================================================
+// Sky (infinite) light support
+// ============================================================================
+// Scene 24 (HDRI Sky) has NO area lights and NO punctual lights - build_lights()
+// is no_lights and build_punct is nullptr (see scene_registry.h); all
+// illumination comes from build_hdri_sky()'s procedural gradient sky. This
+// exercises BOTH halves of sky support: sppm_camera_pass_with_sky()'s
+// sky-on-miss handling (for the scene's own metal/glass spheres, which
+// escape to the sky via specular bounces) and DirectLight()'s sky NEE
+// block (for the ground plane and the diffuse orange sphere, which need
+// direct skylight to not render pure black).
+TEST(SppmFirstSlice, SkyOnlySceneIsNotPureBlack) {
+	hittable_list world = build_hdri_sky_world();
+	hittable_list lights_raw;   // no_lights: genuinely empty, matching the real registry entry
+	power_light_list lights(lights_raw);
+
+	camera cam;
+	cam.aspect_ratio = 1.0;
+	cam.image_width = 32;
+	cam.samples_per_pixel = 1;
+	cam.max_depth = 5;
+	cam.vup = vec3(0, 1, 0);
+	cam.vfov = 30;
+	cam.background = color(0, 0, 0);
+	cam.lookfrom = point3(0, 2, 10);
+	cam.lookat = point3(0, 1, 0);
+	cam.sky = build_hdri_sky();   // the fix under test
+	cam.initialize();
+
+	SPPMSceneAdapter adapter(world, lights, cam);
+
+	std::vector<double> out_rgb;
+	sppm_render_with_adapter(adapter, cam.image_width, cam.image_height,
+	         /*nIterations=*/10, /*nPhotons=*/500, /*maxDepth=*/5,
+	         /*initialRadius=*/10.0, out_rgb);
+
+	ASSERT_EQ((int)out_rgb.size(), cam.image_width * cam.image_height * 3);
+	int nonzero_count = 0;
+	for (double v : out_rgb) {
+		EXPECT_TRUE(std::isfinite(v));
+		EXPECT_GE(v, 0.0);
+		if (v > 0.0) ++nonzero_count;
+	}
+	EXPECT_GT(nonzero_count, 0) << "scene with only a sky light rendered pure black under --sppm";
+}
+
+// Targeted check that ground-plane pixels specifically (a diffuse surface,
+// not one of the scene's specular spheres) receive skylight - this is the
+// half of sky support that DirectLight()'s NEE block provides and the
+// sky-on-miss handling alone would NOT cover (a diffuse hit never reaches
+// the miss branch). Samples the bottom row of the image, which the chosen
+// camera framing keeps below the spheres' horizon.
+TEST(SppmFirstSlice, GroundPlaneReceivesSkylightViaNEE) {
+	hittable_list world = build_hdri_sky_world();
+	hittable_list lights_raw;
+	power_light_list lights(lights_raw);
+
+	camera cam;
+	cam.aspect_ratio = 1.0;
+	cam.image_width = 32;
+	cam.samples_per_pixel = 1;
+	cam.max_depth = 5;
+	cam.vup = vec3(0, 1, 0);
+	cam.vfov = 30;
+	cam.background = color(0, 0, 0);
+	cam.lookfrom = point3(0, 2, 10);
+	cam.lookat = point3(0, 1, 0);
+	cam.sky = build_hdri_sky();
+	cam.initialize();
+
+	SPPMSceneAdapter adapter(world, lights, cam);
+
+	std::vector<double> out_rgb;
+	sppm_render_with_adapter(adapter, cam.image_width, cam.image_height,
+	         /*nIterations=*/15, /*nPhotons=*/500, /*maxDepth=*/5,
+	         /*initialRadius=*/10.0, out_rgb);
+
+	double bottom_row_sum = 0.0;
+	int y = cam.image_height - 1;
+	for (int x = 0; x < cam.image_width; ++x) {
+		int idx = (y * cam.image_width + x) * 3;
+		bottom_row_sum += out_rgb[idx] + out_rgb[idx + 1] + out_rgb[idx + 2];
+	}
+	EXPECT_GT(bottom_row_sum, 0.0) << "ground plane (diffuse surface) received no skylight";
+}
