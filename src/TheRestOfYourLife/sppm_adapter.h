@@ -31,6 +31,7 @@
 #include "camera.h"
 #include "power_light_sampler.h"
 #include "color.h"
+#include "thread_count.h"     // determine_render_thread_count()
 #include "../shared/bdpt.h"   // BDPTHit, BDPTLightLeSample
 #include "../shared/sppm.h"   // SPPMPixel, SPPMCameraPass, SPPMPhotonPass, SPPMUpdateRadius, SPPMFinalImage
 
@@ -39,6 +40,9 @@
 #include <string>
 #include <fstream>
 #include <limits>
+#include <thread>
+#include <mutex>
+#include <atomic>
 
 // ===========================================================================
 // Layer 1 -- BSDF bridge
@@ -308,19 +312,50 @@ class SPPMSceneAdapter {
 	// do exactly once per iteration (not per-call) because sppm.h's own
 	// SPPMUpdateRadius() unconditionally invalidates every pixel's visible
 	// point at the end of each iteration, so no bsdf_id from a prior
-	// iteration is ever looked up again. Not thread-safe (ctx_ is a plain
-	// append-only vector) -- multithreading the passes is explicitly
-	// deferred to a later phase.
-	void BeginIteration() const { ctx_.clear(); }
+	// iteration is ever looked up again. Called serially by
+	// sppm_render_with_adapter() between passes (no worker threads active
+	// at that point), so it doesn't itself need ctx_mutex_.
+	//
+	// reserve_hint (optional): std::vector::clear() keeps existing capacity,
+	// so this only matters on the very first iteration -- but during that
+	// first iteration, multiple camera/photon-pass worker threads can be
+	// concurrently calling Intersect() (and therefore ctx_.push_back())
+	// while the vector is still growing; every reallocation happens while
+	// ctx_mutex_ is held (see Intersect()'s comment), so it stalls every
+	// other thread waiting on the lock for however long copying the
+	// existing elements takes. Reserving a generous capacity up front
+	// turns every push_back for the rest of the render into a true O(1)
+	// append with no reallocation, eliminating that one-time stall.
+	void BeginIteration(size_t reserve_hint = 0) const {
+		ctx_.clear();
+		if (reserve_hint > ctx_.capacity()) ctx_.reserve(reserve_hint);
+	}
 
+	// Intersect/BSDFSampleF/BSDFf are called concurrently by camera-pass
+	// and photon-pass worker threads (see sppm_camera_pass_with_sky() and
+	// sppm_photon_pass_mt() below), all sharing this one adapter instance.
+	// ctx_ is a plain std::vector: concurrent push_back from multiple
+	// threads races on its size/capacity/data-pointer bookkeeping, and a
+	// push_back on one thread can reallocate the backing array out from
+	// under a concurrent ctx_[id] read on another -- both push_back and
+	// every ctx_[id] access are therefore guarded by ctx_mutex_. The
+	// BSDFSampleF/BSDFf critical sections only copy out the small
+	// SPPMShadingContext struct before releasing the lock, so the actual
+	// (much more expensive) BSDF math and world_.hit() shadow-ray tracing
+	// -- already proven safe for concurrent calls by the existing
+	// multithreaded path tracer in camera.h -- run unlocked.
 	bool Intersect(const double org[3], const double dir[3], double t_max,
 	               BDPTHit<double>& hit) const {
 		ray r(point3(org[0], org[1], org[2]), vec3(dir[0], dir[1], dir[2]));
 		hit_record rec;
 		if (!world_.hit(r, interval(0.001, t_max), rec)) return false;
 
-		ctx_.push_back(SPPMShadingContext{ rec.p, rec.normal, rec.u, rec.v, rec.mat });
-		int id = static_cast<int>(ctx_.size()) - 1;
+		int id;
+		{
+			std::lock_guard<std::mutex> lg(ctx_mutex_);
+			ctx_.push_back(SPPMShadingContext{ rec.p, rec.normal, rec.u, rec.v, rec.mat });
+			id = static_cast<int>(ctx_.size()) - 1;
+		}
 
 		for (int c = 0; c < 3; ++c) hit.p[c] = rec.p[c];
 		for (int c = 0; c < 3; ++c) hit.geo_n[c] = rec.normal[c];       // no separate geometric normal in this codebase
@@ -343,11 +378,15 @@ class SPPMSceneAdapter {
 	bool BSDFSampleF(int id, const double wo[3], const double n[3],
 	                  double u1, double u2,
 	                  double new_dir[3], double f_val[3], double& pdf, bool& is_specular) const {
-		return sppm_bsdf_sample_f(ctx_[id], wo, n, u1, u2, new_dir, f_val, pdf, is_specular);
+		SPPMShadingContext ctx;
+		{ std::lock_guard<std::mutex> lg(ctx_mutex_); ctx = ctx_[id]; }
+		return sppm_bsdf_sample_f(ctx, wo, n, u1, u2, new_dir, f_val, pdf, is_specular);
 	}
 
 	void BSDFf(int id, const double wo[3], const double wi[3], const double n[3], double out[3]) const {
-		sppm_bsdf_f(ctx_[id], wo, wi, n, out);
+		SPPMShadingContext ctx;
+		{ std::lock_guard<std::mutex> lg(ctx_mutex_); ctx = ctx_[id]; }
+		sppm_bsdf_f(ctx, wo, wi, n, out);
 	}
 
 	// Near-identical to camera.h's own ray_color() NEE strategy A-1, minus
@@ -550,6 +589,7 @@ class SPPMSceneAdapter {
 	std::vector<shared_ptr<hittable>> emitters_;
 	AliasTable emitter_alias_;
 	mutable std::vector<SPPMShadingContext> ctx_;
+	mutable std::mutex ctx_mutex_;
 
 	// Only quad/sphere currently expose get_material() (both predate this
 	// file); this is the one place that needs to know that concretely,
@@ -585,82 +625,221 @@ class SPPMSceneAdapter {
 // - all use no_lights for area lights and no punctual lights either) would
 // render pure black under --sppm, the same class of bug punctual-light
 // support (SPPMSceneAdapter::DirectLight()) fixed for delta lights.
+//
+// Multithreaded over image rows (atomic row-steal, mirroring camera.h's own
+// render() worker pattern) -- safe because each worker only ever writes to
+// pixels[idx] for the one pixel it's currently processing (no cross-pixel
+// contention), and the one piece of state genuinely shared across pixels/
+// threads, SPPMSceneAdapter's shading-context table, is guarded internally
+// by ctx_mutex_ (see Intersect()/BSDFSampleF()/BSDFf()'s own comments).
+// nthreads is passed in rather than rediscovered here because
+// determine_render_thread_count()'s auto-detect path samples system idle
+// time over ~200ms -- calling it once per pass per iteration (sppm_render_
+// with_adapter() calls this function once per iteration, nIterations times)
+// would burn seconds to minutes of pure detection overhead across a real
+// multi-iteration render; the caller resolves it once for the whole render.
 inline void sppm_camera_pass_with_sky(std::vector<SPPMPixel<double>>& pixels,
                                        int width, int height, int maxDepth,
-                                       const SPPMSceneAdapter& scene) {
-	for (int iy = 0; iy < height; ++iy) {
-		for (int ix = 0; ix < width; ++ix) {
-			int idx = iy * width + ix;
-			SPPMPixel<double>& pixel = pixels[idx];
-			pixel.px = ix;
-			pixel.py = iy;
-			pixel.vp_valid = false;
+                                       const SPPMSceneAdapter& scene,
+                                       unsigned int nthreads) {
+	std::atomic<int> next_row(0);
 
-			double px = (double(ix) + 0.5) / double(width);
-			double py = (double(iy) + 0.5) / double(height);
+	auto worker = [&]() {
+		while (true) {
+			int iy = next_row.fetch_add(1);
+			if (iy >= height) break;
 
-			double cam_p[3], ray_d[3], cam_n[3];
-			if (!scene.PixelToRay(px, py, cam_p, ray_d, cam_n))
-				continue;
+			for (int ix = 0; ix < width; ++ix) {
+				int idx = iy * width + ix;
+				SPPMPixel<double>& pixel = pixels[idx];
+				pixel.px = ix;
+				pixel.py = iy;
+				pixel.vp_valid = false;
 
-			double org[3] = { cam_p[0], cam_p[1], cam_p[2] };
-			double dir[3] = { ray_d[0], ray_d[1], ray_d[2] };
-			double beta[3] = { 1.0, 1.0, 1.0 };
+				double px = (double(ix) + 0.5) / double(width);
+				double py = (double(iy) + 0.5) / double(height);
 
-			for (int depth = 0; depth < maxDepth; ++depth) {
-				BDPTHit<double> hit{};
-				if (!scene.Intersect(org, dir, std::numeric_limits<double>::max(), hit)) {
-					if (scene.HasSky()) {
-						double le[3];
-						scene.SkyLe(dir, le);
-						pixel.Ld[0] += beta[0] * le[0];
-						pixel.Ld[1] += beta[1] * le[1];
-						pixel.Ld[2] += beta[2] * le[2];
-					}
-					break;
-				}
+				double cam_p[3], ray_d[3], cam_n[3];
+				if (!scene.PixelToRay(px, py, cam_p, ray_d, cam_n))
+					continue;
 
-				pixel.Ld[0] += beta[0] * hit.area_Le[0];
-				pixel.Ld[1] += beta[1] * hit.area_Le[1];
-				pixel.Ld[2] += beta[2] * hit.area_Le[2];
+				double org[3] = { cam_p[0], cam_p[1], cam_p[2] };
+				double dir[3] = { ray_d[0], ray_d[1], ray_d[2] };
+				double beta[3] = { 1.0, 1.0, 1.0 };
 
-				if (hit.is_delta_bsdf) {
-					double new_dir[3], f_val[3], pdf;
-					bool is_spec;
-					double u1 = scene.RandFloat(), u2 = scene.RandFloat();
-					if (!scene.BSDFSampleF(hit.bsdf_id, hit.wo, hit.shading_n,
-					                       u1, u2, new_dir, f_val, pdf, is_spec))
+				for (int depth = 0; depth < maxDepth; ++depth) {
+					BDPTHit<double> hit{};
+					if (!scene.Intersect(org, dir, std::numeric_limits<double>::max(), hit)) {
+						if (scene.HasSky()) {
+							double le[3];
+							scene.SkyLe(dir, le);
+							pixel.Ld[0] += beta[0] * le[0];
+							pixel.Ld[1] += beta[1] * le[1];
+							pixel.Ld[2] += beta[2] * le[2];
+						}
 						break;
-					if (pdf <= 0.0) break;
-					double cosI = std::fabs(new_dir[0]*hit.shading_n[0] +
-					                        new_dir[1]*hit.shading_n[1] +
-					                        new_dir[2]*hit.shading_n[2]);
-					beta[0] *= f_val[0] * cosI / pdf;
-					beta[1] *= f_val[1] * cosI / pdf;
-					beta[2] *= f_val[2] * cosI / pdf;
-					org[0] = hit.p[0]; org[1] = hit.p[1]; org[2] = hit.p[2];
-					dir[0] = new_dir[0]; dir[1] = new_dir[1]; dir[2] = new_dir[2];
-				} else {
-					pixel.vp_valid = true;
-					pixel.vp_p[0] = hit.p[0]; pixel.vp_p[1] = hit.p[1]; pixel.vp_p[2] = hit.p[2];
-					pixel.vp_wo[0] = hit.wo[0]; pixel.vp_wo[1] = hit.wo[1]; pixel.vp_wo[2] = hit.wo[2];
-					pixel.vp_n[0] = hit.shading_n[0]; pixel.vp_n[1] = hit.shading_n[1]; pixel.vp_n[2] = hit.shading_n[2];
-					pixel.vp_beta[0] = beta[0]; pixel.vp_beta[1] = beta[1]; pixel.vp_beta[2] = beta[2];
-					pixel.vp_bsdf_id = hit.bsdf_id;
+					}
 
-					double ld[3];
-					scene.DirectLight(hit.p, hit.shading_n, hit.wo, hit.bsdf_id, ld);
-					pixel.Ld[0] += beta[0] * ld[0];
-					pixel.Ld[1] += beta[1] * ld[1];
-					pixel.Ld[2] += beta[2] * ld[2];
-					break;
+					pixel.Ld[0] += beta[0] * hit.area_Le[0];
+					pixel.Ld[1] += beta[1] * hit.area_Le[1];
+					pixel.Ld[2] += beta[2] * hit.area_Le[2];
+
+					if (hit.is_delta_bsdf) {
+						double new_dir[3], f_val[3], pdf;
+						bool is_spec;
+						double u1 = scene.RandFloat(), u2 = scene.RandFloat();
+						if (!scene.BSDFSampleF(hit.bsdf_id, hit.wo, hit.shading_n,
+						                       u1, u2, new_dir, f_val, pdf, is_spec))
+							break;
+						if (pdf <= 0.0) break;
+						double cosI = std::fabs(new_dir[0]*hit.shading_n[0] +
+						                        new_dir[1]*hit.shading_n[1] +
+						                        new_dir[2]*hit.shading_n[2]);
+						beta[0] *= f_val[0] * cosI / pdf;
+						beta[1] *= f_val[1] * cosI / pdf;
+						beta[2] *= f_val[2] * cosI / pdf;
+						org[0] = hit.p[0]; org[1] = hit.p[1]; org[2] = hit.p[2];
+						dir[0] = new_dir[0]; dir[1] = new_dir[1]; dir[2] = new_dir[2];
+					} else {
+						pixel.vp_valid = true;
+						pixel.vp_p[0] = hit.p[0]; pixel.vp_p[1] = hit.p[1]; pixel.vp_p[2] = hit.p[2];
+						pixel.vp_wo[0] = hit.wo[0]; pixel.vp_wo[1] = hit.wo[1]; pixel.vp_wo[2] = hit.wo[2];
+						pixel.vp_n[0] = hit.shading_n[0]; pixel.vp_n[1] = hit.shading_n[1]; pixel.vp_n[2] = hit.shading_n[2];
+						pixel.vp_beta[0] = beta[0]; pixel.vp_beta[1] = beta[1]; pixel.vp_beta[2] = beta[2];
+						pixel.vp_bsdf_id = hit.bsdf_id;
+
+						double ld[3];
+						scene.DirectLight(hit.p, hit.shading_n, hit.wo, hit.bsdf_id, ld);
+						pixel.Ld[0] += beta[0] * ld[0];
+						pixel.Ld[1] += beta[1] * ld[1];
+						pixel.Ld[2] += beta[2] * ld[2];
+						break;
+					}
 				}
 			}
 		}
-	}
+	};
+
+	std::vector<std::thread> threads;
+	threads.reserve(nthreads);
+	for (unsigned int t = 0; t < nthreads; ++t) threads.emplace_back(worker);
+	for (auto& th : threads) th.join();
 }
 
-// Identical to src/shared/sppm.h's own SPPMRender() body, with two
+// ===========================================================================
+// sppm_photon_pass_mt -- multithreaded photon pass
+// ===========================================================================
+// A direct copy of src/shared/sppm.h's own SPPMPhotonPass() body (kept
+// templated over Scene like the original, since -- unlike the camera pass --
+// nothing here needs SPPMSceneAdapter-specific methods), parallelized over
+// photon index (atomic photon-steal). This integration has deliberately
+// never modified sppm.h itself (see sppm_camera_pass_with_sky()'s own
+// comment for why), so this is a separate, adapter-file function rather
+// than a multithreaded variant added to the reference header.
+//
+// Per-photon work is independent EXCEPT for the hash-grid deposit step: two
+// photons on two different threads can both land within radius of the same
+// pixel's visible point at the same time (that's the whole point of the
+// hash grid -- a popular visible point is meant to collect flux from many
+// photons), so concurrent unsynchronized `px.Phi[c] += ...; px.m++;` would
+// race. pixel_mutexes provides one mutex per pixel so that only genuinely
+// concurrent writes to the *same* pixel ever contend; every other field
+// read here (vp_valid/vp_p/radius/vp_bsdf_id/vp_wo/vp_n/vp_beta) is set
+// once by the camera pass and never mutated during the photon pass, so
+// reading them unlocked is safe. The much more expensive scene.Intersect()/
+// BSDFf()/BSDFSampleF() calls have their own internal synchronization (see
+// SPPMSceneAdapter's ctx_mutex_) and otherwise run fully in parallel.
+template<typename Scene>
+inline void sppm_photon_pass_mt(std::vector<SPPMPixel<double>>& pixels,
+                                 const sppm_detail::HashGrid<double>& grid,
+                                 int nPhotons, int maxDepth,
+                                 const Scene& scene,
+                                 std::vector<std::mutex>& pixel_mutexes,
+                                 unsigned int nthreads) {
+	std::atomic<int> next_photon(0);
+
+	auto worker = [&]() {
+		while (true) {
+			int ph = next_photon.fetch_add(1);
+			if (ph >= nPhotons) break;
+
+			BDPTLightLeSample<double> les{};
+			double u1 = scene.RandFloat();
+			double u2a[2] = { scene.RandFloat(), scene.RandFloat() };
+			double u2b[2] = { scene.RandFloat(), scene.RandFloat() };
+			if (!scene.SampleLightLe(u1, u2a, u2b, les)) continue;
+			if (les.pdf_pos <= 0.0 || les.pdf_dir <= 0.0) continue;
+
+			double beta[3];
+			for (int c = 0; c < 3; ++c)
+				beta[c] = les.L[c] * les.abs_cos_theta / (les.pdf_pos * les.pdf_dir);
+
+			double org[3] = { les.ray_o[0], les.ray_o[1], les.ray_o[2] };
+			double dir[3] = { les.ray_d[0], les.ray_d[1], les.ray_d[2] };
+
+			for (int depth = 0; depth < maxDepth; ++depth) {
+				BDPTHit<double> hit{};
+				if (!scene.Intersect(org, dir, std::numeric_limits<double>::max(), hit))
+					break;
+
+				if (depth > 0 && !hit.is_delta_bsdf) {
+					int h = grid.Bucket(hit.p[0], hit.p[1], hit.p[2]);
+					for (int pidx : grid.CellList(h)) {
+						SPPMPixel<double>& px = pixels[pidx];
+						if (!px.vp_valid) continue;
+						double dx = px.vp_p[0] - hit.p[0];
+						double dy = px.vp_p[1] - hit.p[1];
+						double dz = px.vp_p[2] - hit.p[2];
+						if (dx*dx + dy*dy + dz*dz > px.radius * px.radius) continue;
+
+						double wi[3] = { -dir[0], -dir[1], -dir[2] };
+						double f[3];
+						scene.BSDFf(px.vp_bsdf_id, px.vp_wo, wi, px.vp_n, f);
+
+						std::lock_guard<std::mutex> lg(pixel_mutexes[pidx]);
+						for (int c = 0; c < 3; ++c)
+							px.Phi[c] += beta[c] * px.vp_beta[c] * f[c];
+						px.m++;
+					}
+				}
+
+				double new_dir[3], f_val[3], pdf;
+				bool is_spec;
+				double su1 = scene.RandFloat(), su2 = scene.RandFloat();
+				if (!scene.BSDFSampleF(hit.bsdf_id, hit.wo, hit.shading_n,
+				                       su1, su2, new_dir, f_val, pdf, is_spec))
+					break;
+				if (pdf <= 0.0) break;
+
+				double cosI = std::fabs(new_dir[0]*hit.shading_n[0] +
+				                        new_dir[1]*hit.shading_n[1] +
+				                        new_dir[2]*hit.shading_n[2]);
+				double beta_new[3];
+				for (int c = 0; c < 3; ++c)
+					beta_new[c] = beta[c] * f_val[c] * cosI / pdf;
+
+				double betaMax = std::max({beta[0], beta[1], beta[2]});
+				double betaNewMax = std::max({beta_new[0], beta_new[1], beta_new[2]});
+				double q = 0.0;
+				if (betaMax > 0.0)
+					q = std::max(0.0, 1.0 - betaNewMax / betaMax);
+				if (scene.RandFloat() < q) break;
+				double invSurv = 1.0 / (1.0 - q);
+				for (int c = 0; c < 3; ++c) beta[c] = beta_new[c] * invSurv;
+
+				org[0] = hit.p[0]; org[1] = hit.p[1]; org[2] = hit.p[2];
+				dir[0] = new_dir[0]; dir[1] = new_dir[1]; dir[2] = new_dir[2];
+			}
+		}
+	};
+
+	std::vector<std::thread> threads;
+	threads.reserve(nthreads);
+	for (unsigned int t = 0; t < nthreads; ++t) threads.emplace_back(worker);
+	for (auto& th : threads) th.join();
+}
+
+// Identical to src/shared/sppm.h's own SPPMRender() body, with three
 // additions: (1) scene.BeginIteration() is called once per iteration,
 // immediately before that iteration's camera pass. sppm.h's SPPMRender()
 // can't do this itself since it's generic/duck-typed and has no idea
@@ -668,8 +847,13 @@ inline void sppm_camera_pass_with_sky(std::vector<SPPMPixel<double>>& pixels,
 // iterations (see SPPMSceneAdapter::BeginIteration()'s own doc comment for
 // why that's safe to do once per iteration rather than per-call). (2) uses
 // sppm_camera_pass_with_sky() above instead of sppm.h's own SPPMCameraPass()
-// (sky-light support - see that function's doc comment). Kept here rather
-// than duplicated at each call site (tests, cpu_interface.cpp) so both of
+// (sky-light support - see that function's doc comment). (3) uses
+// sppm_photon_pass_mt() instead of sppm.h's single-threaded SPPMPhotonPass(),
+// and both passes are multithreaded now -- nthreads is resolved once here,
+// not per-pass-per-iteration (see sppm_camera_pass_with_sky()'s comment on
+// why), and pixel_mutexes is allocated once and reused across every
+// iteration's photon pass rather than rebuilt each time. Kept here rather
+// than duplicated at each call site (tests, cpu_interface.cpp) so all of
 // these invariants only have to be gotten right in one place.
 inline void sppm_render_with_adapter(const SPPMSceneAdapter& scene, int width, int height,
                                       int nIterations, int nPhotons, int maxDepth,
@@ -682,15 +866,25 @@ inline void sppm_render_with_adapter(const SPPMSceneAdapter& scene, int width, i
 		pixels[i].py = i / width;
 	}
 
+	unsigned int nthreads = determine_render_thread_count();
+	std::vector<std::mutex> pixel_mutexes(nPixels);
+
+	// Generous upper bound on how many Intersect() calls one iteration can
+	// make (camera pass: at most one per pixel per depth; photon pass: at
+	// most one per photon per depth) -- see BeginIteration()'s own comment
+	// for why reserving this once avoids reallocation-under-lock stalls.
+	size_t ctx_reserve_hint = static_cast<size_t>(width) * height * maxDepth
+	                         + static_cast<size_t>(nPhotons) * maxDepth;
+
 	int64_t totalPhotonPaths = 0;
 	for (int iter = 0; iter < nIterations; ++iter) {
-		scene.BeginIteration();
-		sppm_camera_pass_with_sky(pixels, width, height, maxDepth, scene);
+		scene.BeginIteration(ctx_reserve_hint);
+		sppm_camera_pass_with_sky(pixels, width, height, maxDepth, scene, nthreads);
 
 		sppm_detail::HashGrid<double> hashGrid;
 		hashGrid.Build(pixels);
 
-		SPPMPhotonPass(pixels, hashGrid, nPhotons, maxDepth, scene);
+		sppm_photon_pass_mt(pixels, hashGrid, nPhotons, maxDepth, scene, pixel_mutexes, nthreads);
 		totalPhotonPaths += nPhotons;
 
 		SPPMUpdateRadius(pixels);
