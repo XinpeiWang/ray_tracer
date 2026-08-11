@@ -1484,11 +1484,12 @@ inline hittable_list build_ogre() {
 // benchmark scene. Departs from the scenes-37-61 convention in three ways:
 //   1. No separate checkered-ground sphere -- the mesh's own floor is part
 //      of the geometry.
-//   2. This renderer's OBJ loader has no per-face/.mtl material support
-//      (positions+faces only) -- the whole building is a single lambertian
-//      material (warm sandstone/marble tone) rather than per-surface
-//      textures, matching how every other mesh scene here already handles
-//      untextured meshes.
+//   2. Per-face materials come from the companion sponza.mtl's Kd (diffuse)
+//      colors via load_obj_mtl() -- real per-surface base colors (stone,
+//      fabric awnings, foliage, etc.), though still no textures (map_Kd),
+//      matching how every other mesh scene here already handles untextured
+//      meshes. Any face with no usemtl/an unknown material name falls back
+//      to a flat sandstone lambertian.
 //   3. Lit by an open-sky sky_light (like scene 24's build_hdri_sky)
 //      instead of a single overhead point/area light -- Sponza's own
 //      architecture is an open colonnade meant to be lit by daylight
@@ -1522,7 +1523,7 @@ inline hittable_list build_sponza() {
 	hittable_list world;
 
 	auto stone = make_shared<lambertian>(color(0.80, 0.74, 0.62));
-	world.add(std::make_shared<triangle_mesh>(
+	world.add(std::make_shared<triangle_mesh_mtl>(
 		"sponza.obj", stone,
 		/*scale=*/1.0, point3(60.52, 126.44, 38.69)));
 
@@ -1556,9 +1557,9 @@ inline hittable_list build_rocker_arm() {
 // ============================================================================
 // Scene 63: Amazon Lumberyard Bistro (Exterior)
 // Second "whole environment" scene (see build_sponza()'s own comment for
-// the shared design rationale: no separate ground, single lambertian
-// material since this loader has no per-face/.mtl support, open-sky
-// lighting instead of a point/area light). 2.84M triangles - a full
+// the shared design rationale: no separate ground, per-face .mtl materials
+// via load_obj_mtl(), open-sky lighting instead of a point/area light).
+// 2.84M triangles - a full
 // outdoor street block (multiple buildings, a plaza/street network), not
 // one enclosed building like Sponza.
 //
@@ -1585,7 +1586,7 @@ inline hittable_list build_bistro_exterior() {
 	hittable_list world;
 
 	auto plaster = make_shared<lambertian>(color(0.75, 0.62, 0.50));
-	world.add(std::make_shared<triangle_mesh>(
+	world.add(std::make_shared<triangle_mesh_mtl>(
 		"bistro_exterior.obj", plaster,
 		/*scale=*/1.0, point3(-1526.37, 472.62, -267.01)));
 
@@ -1600,10 +1601,12 @@ inline std::shared_ptr<sky_light> build_bistro_exterior_sky() {
 // Scene 64: Rungholt
 // Third "whole environment" scene (see build_sponza()'s own comment for
 // the shared design rationale). A giant blocky Minecraft-style town
-// (6.7M triangles) rather than a real-world building/street -- since the
-// geometry itself is inherently voxel-blocky, it looks essentially
-// identical with or without the original textures, unlike Sponza/Bistro
-// where the flat single-material look is a real (if minor) compromise.
+// (6.7M triangles) rather than a real-world building/street. Uses
+// load_obj_mtl() like Sponza/Bistro for real per-block Kd colors (grass,
+// stone, wood, thatch, ...) instead of one flat tone -- still no textures
+// (map_Kd), but since the geometry itself is inherently voxel-blocky, flat
+// per-material colors alone already read as "textured" far more than they
+// do on Sponza/Bistro's smoothly-curved surfaces.
 //
 // This mesh EXPOSED A REAL BUG in this codebase's shared OBJ loader
 // (src/TheRestOfYourLife/mesh.h's load_obj()): rungholt.obj uses negative
@@ -1633,7 +1636,7 @@ inline hittable_list build_rungholt() {
 	hittable_list world;
 
 	auto wood = make_shared<lambertian>(color(0.62, 0.48, 0.34));
-	world.add(std::make_shared<triangle_mesh>(
+	world.add(std::make_shared<triangle_mesh_mtl>(
 		"rungholt.obj", wood,
 		/*scale=*/1.0, point3(0.0, 0.0, 0.0)));
 
