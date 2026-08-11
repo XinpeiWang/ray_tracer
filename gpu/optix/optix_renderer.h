@@ -14,6 +14,7 @@
 
 // Forward declaration — avoid including wavefront header in all TUs
 namespace optix_renderer { class WavefrontPathTracer; }
+namespace optix_renderer { class SPPMPathTracer; }
 
 /// @class OptiXRenderer
 /// @brief Main OptiX path tracer implementation.
@@ -106,6 +107,18 @@ public:
 	///                If empty, looks in the same directory as optix_programs.ptx.
 	void enableWavefront(bool enable, const std::string& ptxPath = "");
 
+	/// @brief Phase 1a smoke test only: traces one primary ray per pixel via
+	///        the new SPPM pipeline and writes white-on-hit/black-on-miss to
+	///        outputFramebuffer. Proves the SPPMPathTracer module/program-
+	///        group/pipeline/SBT/PTX-JIT machinery works against the real
+	///        uploaded scene (buildScene() must already have been called)
+	///        before any real SPPM camera-pass/photon-pass math exists. Not
+	///        the final SPPM entry point -- see sub-phase 1e's renderSPPM().
+	/// @param ptxPath Optional explicit path to sppm_programs.ptx.
+	bool renderSPPMTrivial(unsigned int width, unsigned int height,
+	                        const GpuCameraParams& camera, float* outputFramebuffer,
+	                        const std::string& ptxPath = "");
+
 private:
 	// -------------------------------------------------------------------
 	// OptiX Core Resources
@@ -119,6 +132,11 @@ private:
 	// -------------------------------------------------------------------
 	std::unique_ptr<optix_renderer::WavefrontPathTracer> wavefrontTracer_;
 	bool useWavefront_ = false;  ///< If true, render() delegates to wavefrontTracer_
+
+	// -------------------------------------------------------------------
+	// SPPM path tracer (Phase 1 GPU port, see renderSPPMTrivial())
+	// -------------------------------------------------------------------
+	std::unique_ptr<optix_renderer::SPPMPathTracer> sppmTracer_;
 
 	// -------------------------------------------------------------------
 	// Pipeline and Shaders

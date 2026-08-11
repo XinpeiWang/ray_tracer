@@ -130,6 +130,51 @@ extern "C" int optix_render_main(
 		size_t pixelCount = image_width * image_height;
 		std::vector<float> framebuffer(pixelCount * 3);
 
+		// TEMPORARY, sub-phase 1a verification only (see the GPU SPPM plan,
+		// C:\Users\xinpe\.claude\plans\cached-wobbling-ritchie.md): traces the
+		// new SPPM pipeline's trivial hit-or-miss raygen against whatever
+		// scene is currently loaded, instead of the normal path tracer.
+		// Confirms the new module/program-group/pipeline/SBT/PTX-JIT
+		// machinery actually works against a real uploaded scene (e.g. scene
+		// 11) before any camera-pass/photon-pass math is written. Replaced by
+		// a proper optix_render_main_sppm() in sub-phase 1e once there's real
+		// SPPM output to produce, not just a hit/miss mask.
+#pragma warning(suppress: 4996)
+		const char* sppmTrivialEnv = std::getenv("RAY_TRACER_SPPM_TRIVIAL");
+		if (sppmTrivialEnv && std::string(sppmTrivialEnv) == "1") {
+			std::cout << "[OptiX] SPPM Phase 1a trivial raygen enabled (RAY_TRACER_SPPM_TRIVIAL=1)\n";
+			std::string ptxDir;
+			std::string outStr(output_path);
+			size_t sep = outStr.rfind('\\');
+			if (sep == std::string::npos) sep = outStr.rfind('/');
+			std::string ptxPath = (sep != std::string::npos)
+				? outStr.substr(0, sep + 1) + "sppm_programs.ptx"
+				: "sppm_programs.ptx";
+
+			if (!g_renderer->renderSPPMTrivial(
+					static_cast<unsigned int>(image_width), static_cast<unsigned int>(image_height),
+					cameraExtra, framebuffer.data(), ptxPath)) {
+				std::cerr << "[OptiX] SPPM trivial render failed\n";
+				return ERR_GPU_RENDER_FAILED;
+			}
+
+			std::ofstream sppmOut(output_path, std::ios::binary);
+			if (!sppmOut) {
+				std::cerr << "[OptiX] Failed to open output file: " << output_path << "\n";
+				return ERR_FILE_WRITE_FAILED;
+			}
+			sppmOut << "P3\n" << image_width << " " << image_height << "\n255\n";
+			for (size_t i = 0; i < pixelCount; ++i) {
+				int ir = static_cast<int>(std::fmin(std::fmax(framebuffer[i * 3 + 0], 0.0f), 1.0f) * 255.0f);
+				int ig = static_cast<int>(std::fmin(std::fmax(framebuffer[i * 3 + 1], 0.0f), 1.0f) * 255.0f);
+				int ib = static_cast<int>(std::fmin(std::fmax(framebuffer[i * 3 + 2], 0.0f), 1.0f) * 255.0f);
+				sppmOut << ir << " " << ig << " " << ib << "\n";
+			}
+			sppmOut.close();
+			std::cout << "[OptiX] SPPM trivial render complete! Output: " << output_path << "\n";
+			return 0;
+		}
+
 		// Technique summary
 		std::cout << "[TECH] ── Render Technique Summary ──────────────────────────" << std::endl;
 		std::cout << "[TECH] Integrator     : OptiX mega-kernel path tracer  (raygen + closest-hit + miss programs)" << std::endl;

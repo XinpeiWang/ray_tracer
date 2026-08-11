@@ -28,6 +28,8 @@
     <!-- Wavefront CUDA compute kernels -> .obj (linked into optix_renderer.lib) -->
     <WavefrontObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels.cu" />
     <WavefrontObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_launch.cu" />
+    <!-- SPPM OptiX device programs -> PTX (loaded at runtime) -->
+    <SppmPtxSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\sppm_programs.cu" />
   </ItemGroup>
 
   <!-- ===================================================================== -->
@@ -92,6 +94,35 @@
           ConsoleToMSBuild="true" />
 
     <Message Text="[OptiX] Generated PTX: $(WfPtxOut)" Importance="High" />
+  </Target>
+
+  <!-- ===================================================================== -->
+  <!-- Compile sppm_programs.cu -> sppm_programs.ptx                         -->
+  <!-- ===================================================================== -->
+  <Target Name="CompileSppmPtx"
+          Condition="'$(SolutionDir)' != '' and '$(MSBuildProjectName)' == 'optix_renderer'"
+          BeforeTargets="Build"
+          Inputs="@(SppmPtxSource)"
+          Outputs="$(MSBuildProjectDirectory)\..\gpu\optix\sppm_programs.ptx">
+
+    <Message Text="[OptiX] Compiling sppm_programs.cu to PTX..." Importance="High" />
+
+    <PropertyGroup>
+      <NvccPath>$(CudaToolkitPath)\bin\nvcc.exe</NvccPath>
+      <SppmPtxFlags>--ptx -O3 --use_fast_math --relocatable-device-code=true -arch=sm_86</SppmPtxFlags>
+      <SppmPtxFlags>$(SppmPtxFlags) -I"$(OptixSdkPath)\include"</SppmPtxFlags>
+      <SppmPtxFlags>$(SppmPtxFlags) -I"$(CudaToolkitPath)\include"</SppmPtxFlags>
+      <SppmPtxFlags>$(SppmPtxFlags) -I"$(MSBuildProjectDirectory)\..\gpu\optix"</SppmPtxFlags>
+      <SppmPtxFlags>$(SppmPtxFlags) -I"$(MSBuildProjectDirectory)\..\src\shared"</SppmPtxFlags>
+      <SppmPtxOut>$(MSBuildProjectDirectory)\..\gpu\optix\sppm_programs.ptx</SppmPtxOut>
+    </PropertyGroup>
+
+    <Exec Command='"$(NvccPath)" $(SppmPtxFlags) "$(MSBuildProjectDirectory)\..\gpu\optix\sppm_programs.cu" -o "$(SppmPtxOut)"'
+          WorkingDirectory="$(MSBuildThisFileDirectory)"
+          IgnoreExitCode="false"
+          ConsoleToMSBuild="true" />
+
+    <Message Text="[OptiX] Generated PTX: $(SppmPtxOut)" Importance="High" />
   </Target>
 
   <!-- ===================================================================== -->

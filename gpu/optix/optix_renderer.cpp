@@ -10,6 +10,7 @@
 #include "optix_renderer.h"
 #include "optix_math_helpers.h"
 #include "wavefront_path_tracer.h"
+#include "sppm_path_tracer.h"
 #include <optix_function_table_definition.h>
 #include <optix_stack_size.h>
 #include <cuda.h>
@@ -1635,5 +1636,46 @@ void OptiXRenderer::enableWavefront(bool enable, const std::string& ptxPath) {
 		}
 		std::cout << "[OptiXRenderer] WavefrontPathTracer ready\n";
 	}
+}
+
+// ============================================================================
+// renderSPPMTrivial — Phase 1a smoke test (see optix_renderer.h's own doc
+// comment). Lazily creates sppmTracer_ the same way enableWavefront() does
+// for wavefrontTracer_.
+// ============================================================================
+bool OptiXRenderer::renderSPPMTrivial(unsigned int width, unsigned int height,
+                                       const GpuCameraParams& camera, float* outputFramebuffer,
+                                       const std::string& ptxPath) {
+	if (!sppmTracer_) {
+		sppmTracer_ = std::make_unique<optix_renderer::SPPMPathTracer>();
+		if (!ptxPath.empty()) sppmTracer_->setPTXPath(ptxPath);
+
+		if (!sppmTracer_->initialize(context_, stream_)) {
+			std::cerr << "[OptiXRenderer] Failed to initialize SPPMPathTracer\n";
+			sppmTracer_.reset();
+			return false;
+		}
+		if (!sppmTracer_->createProgramGroups()) {
+			std::cerr << "[OptiXRenderer] SPPMPathTracer::createProgramGroups failed\n";
+			sppmTracer_.reset();
+			return false;
+		}
+		if (!sppmTracer_->linkPipeline()) {
+			std::cerr << "[OptiXRenderer] SPPMPathTracer::linkPipeline failed\n";
+			sppmTracer_.reset();
+			return false;
+		}
+		if (!sppmTracer_->buildSBT(numSpheres_, numQuads_)) {
+			std::cerr << "[OptiXRenderer] SPPMPathTracer::buildSBT failed\n";
+			sppmTracer_.reset();
+			return false;
+		}
+		std::cout << "[OptiXRenderer] SPPMPathTracer ready\n";
+	}
+
+	return sppmTracer_->renderTrivial(
+		static_cast<int>(width), static_cast<int>(height), camera, outputFramebuffer,
+		gasHandle_, d_materials_, d_spheres_, d_quads_,
+		numMaterials_, numSpheres_, numQuads_);
 }
 
