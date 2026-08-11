@@ -66,7 +66,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <Lib>
-      <AdditionalDependencies>$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels.obj;$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_launch.obj;$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_dlink.obj;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels.obj;$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_launch.obj;$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_dlink.obj;$(MSBuildProjectDirectory)\..\gpu\optix\sppm_kernels.obj;$(MSBuildProjectDirectory)\..\gpu\optix\sppm_launch.obj;$(MSBuildProjectDirectory)\..\gpu\optix\sppm_dlink.obj;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Lib>
   </ItemDefinitionGroup>
@@ -91,7 +91,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <Lib>
-      <AdditionalDependencies>$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels.obj;$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_launch.obj;$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_dlink.obj;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels.obj;$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_launch.obj;$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_dlink.obj;$(MSBuildProjectDirectory)\..\gpu\optix\sppm_kernels.obj;$(MSBuildProjectDirectory)\..\gpu\optix\sppm_launch.obj;$(MSBuildProjectDirectory)\..\gpu\optix\sppm_dlink.obj;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(CudaToolkitPath)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Lib>
   </ItemDefinitionGroup>
@@ -124,6 +124,8 @@
     <None Include="..\gpu\optix\wavefront_kernels.cu" />
     <None Include="..\gpu\optix\wavefront_launch.cu" />
     <None Include="..\gpu\optix\sppm_programs.cu" />
+    <None Include="..\gpu\optix\sppm_kernels.cu" />
+    <None Include="..\gpu\optix\sppm_launch.cu" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <!-- Post-Build Event: Auto-deploy PTX to RayTracer_Package -->
