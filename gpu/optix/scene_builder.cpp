@@ -44,6 +44,172 @@ namespace {
 		return static_cast<int>(value);
 	}
 
+	// ------------------------------------------------------------------
+	// Named-field material factories.
+	//
+	// MaterialData (optix_types.h) is a flat 8-field POD reused across all
+	// 16 MaterialTypes -- e.g. `.fuzz` means Metal roughness, GGX alpha,
+	// Henyey-Greenstein g, or Hair's beta_m depending on `.type`, and
+	// `.eta_c` alone means 4 unrelated things (Conductor's complex IOR,
+	// Hair's beta_n/alpha_deg pair, DielectricMedium's sigma_t, Principled's
+	// metallic/clearcoat/clearcoat_rough triple). Before these helpers,
+	// every call site built a MaterialData by raw positional aggregate-init
+	// or manual field-by-field assignment, so the *meaning* of each
+	// argument depended entirely on which MaterialType was named on the
+	// same line -- a transposed argument (e.g. swapping fuzz/ior) would
+	// compile silently and render a wrong-but-plausible image.
+	//
+	// These functions don't change MaterialData's layout (still a GPU
+	// upload requirement: one flat contiguous array, no vtable/RTTI) but
+	// give every call site a parameter name for what it's actually
+	// setting, matching the field-reuse mapping already documented on each
+	// MaterialType enumerator in optix_types.h. Each returns the new
+	// material's index (folding in the safe_cast_to_int(size())+push_back
+	// pattern every existing call site repeated by hand).
+	// ------------------------------------------------------------------
+
+	inline int add_lambertian(SceneData& scene, float3 albedo, int textureIdx = -1) {
+		const int idx = safe_cast_to_int(scene.materials.size());
+		MaterialData m{ MaterialType::Lambertian, albedo, 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) };
+		m.textureIdx = textureIdx;
+		scene.materials.push_back(m);
+		return idx;
+	}
+
+	inline int add_metal(SceneData& scene, float3 albedo, float fuzz) {
+		const int idx = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({ MaterialType::Metal, albedo, fuzz, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		return idx;
+	}
+
+	inline int add_dielectric(SceneData& scene, float ior) {
+		const int idx = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({ MaterialType::Dielectric, make_float3(1.0f, 1.0f, 1.0f), 0.0f, ior, make_float3(0.0f, 0.0f, 0.0f) });
+		return idx;
+	}
+
+	inline int add_diffuse_light(SceneData& scene, float3 emission) {
+		const int idx = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, emission });
+		return idx;
+	}
+
+	inline int add_rough_dielectric(SceneData& scene, float alpha, float ior) {
+		const int idx = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({ MaterialType::RoughDielectric, make_float3(1.0f, 1.0f, 1.0f), alpha, ior, make_float3(0.0f, 0.0f, 0.0f) });
+		return idx;
+	}
+
+	inline int add_conductor(SceneData& scene, float3 eta, float3 k, float alpha) {
+		const int idx = safe_cast_to_int(scene.materials.size());
+		MaterialData m{};
+		m.type = MaterialType::Conductor;
+		m.fuzz = alpha;
+		m.eta_c = eta;
+		m.k_c = k;
+		scene.materials.push_back(m);
+		return idx;
+	}
+
+	inline int add_coated_diffuse(SceneData& scene, float3 albedo, float coatRoughness, float coatIor) {
+		const int idx = safe_cast_to_int(scene.materials.size());
+		MaterialData m{};
+		m.type = MaterialType::CoatedDiffuse;
+		m.albedo = albedo;
+		m.fuzz = coatRoughness;
+		m.ior = coatIor;
+		scene.materials.push_back(m);
+		return idx;
+	}
+
+	inline int add_thin_dielectric(SceneData& scene, float ior) {
+		const int idx = safe_cast_to_int(scene.materials.size());
+		MaterialData m{};
+		m.type = MaterialType::ThinDielectric;
+		m.ior = ior;
+		scene.materials.push_back(m);
+		return idx;
+	}
+
+	inline int add_coated_conductor(SceneData& scene, float3 eta, float3 k, float coatRoughness, float coatIor) {
+		const int idx = safe_cast_to_int(scene.materials.size());
+		MaterialData m{};
+		m.type = MaterialType::CoatedConductor;
+		m.fuzz = coatRoughness;
+		m.ior = coatIor;
+		m.eta_c = eta;
+		m.k_c = k;
+		scene.materials.push_back(m);
+		return idx;
+	}
+
+	inline int add_diffuse_transmission(SceneData& scene, float3 reflectance, float3 transmittance) {
+		const int idx = safe_cast_to_int(scene.materials.size());
+		MaterialData m{};
+		m.type = MaterialType::DiffuseTransmission;
+		m.albedo = reflectance;    // R
+		m.emission = transmittance; // T (reuses the emission field -- see MaterialType::DiffuseTransmission)
+		scene.materials.push_back(m);
+		return idx;
+	}
+
+	inline int add_normalized_fresnel(SceneData& scene, float ior) {
+		const int idx = safe_cast_to_int(scene.materials.size());
+		MaterialData m{};
+		m.type = MaterialType::NormalizedFresnel;
+		m.ior = ior;
+		scene.materials.push_back(m);
+		return idx;
+	}
+
+	inline int add_medium(SceneData& scene, float3 albedo, float g, float sigma_t) {
+		const int idx = safe_cast_to_int(scene.materials.size());
+		scene.materials.push_back({ MaterialType::Medium, albedo, g, sigma_t, make_float3(0.0f, 0.0f, 0.0f) });
+		return idx;
+	}
+
+	inline int add_hair(SceneData& scene, float3 sigma_a, float beta_m, float eta, float beta_n, float alpha_deg) {
+		const int idx = safe_cast_to_int(scene.materials.size());
+		MaterialData m{};
+		m.type = MaterialType::Hair;
+		m.albedo = sigma_a;
+		m.fuzz = beta_m;
+		m.ior = eta;
+		m.eta_c = make_float3(beta_n, alpha_deg, 0.0f);
+		scene.materials.push_back(m);
+		return idx;
+	}
+
+	inline int add_dielectric_medium(SceneData& scene, float3 albedo, float ior, float sigma_t, float g = 0.0f) {
+		const int idx = safe_cast_to_int(scene.materials.size());
+		MaterialData m{ MaterialType::DielectricMedium, albedo, g, ior,
+			make_float3(0.0f, 0.0f, 0.0f), make_float3(sigma_t, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+		scene.materials.push_back(m);
+		return idx;
+	}
+
+	inline int add_normal_mapped_lambertian(SceneData& scene, float3 albedo, int normalMapTexIdx) {
+		const int idx = safe_cast_to_int(scene.materials.size());
+		MaterialData m{ MaterialType::NormalMappedLambertian, albedo, 0.0f, 0.0f,
+			make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+		m.textureIdx = normalMapTexIdx;
+		scene.materials.push_back(m);
+		return idx;
+	}
+
+	inline int add_principled(SceneData& scene, float3 baseColor, float ior, float roughness,
+			float metallic, float clearcoat, float clearcoatRoughness) {
+		const int idx = safe_cast_to_int(scene.materials.size());
+		MaterialData m{};
+		m.type = MaterialType::Principled;
+		m.albedo = baseColor;
+		m.ior = ior;
+		m.fuzz = roughness;
+		m.eta_c = make_float3(metallic, clearcoat, clearcoatRoughness);
+		scene.materials.push_back(m);
+		return idx;
+	}
+
 	// Helper to rotate a point around Y axis
 	inline float3 rotate_y(const float3& p, float angle_degrees) {
 		const float radians = angle_degrees * (3.14159265358979323846f / 180.0f);
@@ -673,7 +839,7 @@ namespace {
 							float3 albedo = (colorForTexIt != mtlColors.end())
 								? colorForTexIt->second : make_float3(1.0f, 1.0f, 1.0f);
 							resolvedIdx = safe_cast_to_int(scene.materials.size());
-							scene.materials.push_back({ MaterialType::Lambertian, albedo, 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+							add_lambertian(scene, albedo);
 							scene.materials.back().textureIdx = texIdx;
 						}
 					}
@@ -681,7 +847,7 @@ namespace {
 						auto colorIt = mtlColors.find(f.mtl);
 						if (colorIt != mtlColors.end()) {
 							resolvedIdx = safe_cast_to_int(scene.materials.size());
-							scene.materials.push_back({ MaterialType::Lambertian, colorIt->second, 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+							add_lambertian(scene, colorIt->second);
 						}
 					}
 					materialIdx = (resolvedIdx >= 0) ? resolvedIdx : fallbackMaterialIdx;
@@ -721,19 +887,9 @@ static void build_cornell_box(SceneData& scene) {
 	for (const auto& q : kQuads) {
 		const int mat = safe_cast_to_int(scene.materials.size());
 		if (q.is_light) {
-			scene.materials.push_back({
-				MaterialType::DiffuseLight,
-				make_float3(0.0f, 0.0f, 0.0f),
-				0.0f, 0.0f,
-				make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b))
-			});
+			add_diffuse_light(scene, make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)));
 		} else {
-			scene.materials.push_back({
-				MaterialType::Lambertian,
-				make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)),
-				0.0f, 0.0f,
-				make_float3(0.0f, 0.0f, 0.0f)
-			});
+			add_lambertian(scene, make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)));
 		}
 
 		QuadData quad{};
@@ -753,14 +909,7 @@ static void build_cornell_box(SceneData& scene) {
 	}
 
 	// Glass sphere
-	const int mat_glass = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({
-		MaterialType::Dielectric,
-		make_float3(1.0f, 1.0f, 1.0f),  // albedo (unused for dielectric)
-		0.0f,
-		static_cast<float>(kGlassSphere.glass_ior),
-		make_float3(0.0f, 0.0f, 0.0f)
-	});
+	const int mat_glass = add_dielectric(scene, static_cast<float>(kGlassSphere.glass_ior));
 	SphereData glass_sphere{};
 	glass_sphere.center = make_float3(
 		static_cast<float>(kGlassSphere.center.x), static_cast<float>(kGlassSphere.center.y), static_cast<float>(kGlassSphere.center.z));
@@ -770,13 +919,7 @@ static void build_cornell_box(SceneData& scene) {
 	// Glass is never emissive - no lightIndices entry.
 
 	// White rotated box
-	const int mat_box = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({
-		MaterialType::Lambertian,
-		make_float3(static_cast<float>(kBox.color.r), static_cast<float>(kBox.color.g), static_cast<float>(kBox.color.b)),
-		0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f)
-	});
+	const int mat_box = add_lambertian(scene, make_float3(static_cast<float>(kBox.color.r), static_cast<float>(kBox.color.g), static_cast<float>(kBox.color.b)));
 	add_box(scene,
 		make_float3(static_cast<float>(kBox.corner_min.x), static_cast<float>(kBox.corner_min.y), static_cast<float>(kBox.corner_min.z)),
 		make_float3(static_cast<float>(kBox.corner_max.x), static_cast<float>(kBox.corner_max.y), static_cast<float>(kBox.corner_max.z)),
@@ -790,22 +933,19 @@ static void build_cornell_box(SceneData& scene) {
 /// spheres with roughness 0.05..0.8, and a large quad area light above.
 static void build_rough_metal_spheres(SceneData& scene) {
     // Ground (large dark-grey Lambertian sphere)
-    const int mat_ground = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.2f, 0.2f, 0.2f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+    const int mat_ground = add_lambertian(scene, make_float3(0.2f, 0.2f, 0.2f));
 
     // Area light quad material
     constexpr float kRMSLightIntensity = 6.0f;
     const int mat_light = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f,
-                                 make_float3(kRMSLightIntensity, kRMSLightIntensity, kRMSLightIntensity) });
+    add_diffuse_light(scene, make_float3(kRMSLightIntensity, kRMSLightIntensity, kRMSLightIntensity));
 
     // Five rough-metal sphere materials: roughness 0.05, 0.2, 0.4, 0.6, 0.8
     const float roughnesses[5] = { 0.05f, 0.2f, 0.4f, 0.6f, 0.8f };
     int mat_metal[5];
     for (int i = 0; i < 5; ++i) {
         mat_metal[i] = safe_cast_to_int(scene.materials.size());
-        scene.materials.push_back({ MaterialType::Metal, make_float3(0.95f, 0.85f, 0.55f),
-                                     roughnesses[i], 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+        add_metal(scene, make_float3(0.95f, 0.85f, 0.55f), roughnesses[i]);
     }
 
     // Ground sphere: center (0,-1000,0), radius 1000
@@ -853,19 +993,9 @@ static void add_cornell_walls_and_main_light(SceneData& scene) {
         const QuadSpec& q = kQuads[i];
         const int mat = safe_cast_to_int(scene.materials.size());
         if (q.is_light) {
-            scene.materials.push_back({
-                MaterialType::DiffuseLight,
-                make_float3(0.0f, 0.0f, 0.0f),
-                0.0f, 0.0f,
-                make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b))
-            });
+            add_diffuse_light(scene, make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)));
         } else {
-            scene.materials.push_back({
-                MaterialType::Lambertian,
-                make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)),
-                0.0f, 0.0f,
-                make_float3(0.0f, 0.0f, 0.0f)
-            });
+            add_lambertian(scene, make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)));
         }
 
         QuadData quad{};
@@ -891,12 +1021,10 @@ static void build_cornell_rough_metal(SceneData& scene) {
     add_cornell_walls_and_main_light(scene);
 
     // Rough aluminum box material (roughness 0.15)
-    const int mat_alum = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Metal, make_float3(0.8f, 0.85f, 0.88f), 0.15f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+    const int mat_alum = add_metal(scene, make_float3(0.8f, 0.85f, 0.88f), 0.15f);
 
     // Rough gold sphere material (roughness 0.3)
-    const int mat_gold = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Metal, make_float3(0.95f, 0.78f, 0.28f), 0.3f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+    const int mat_gold = add_metal(scene, make_float3(0.95f, 0.78f, 0.28f), 0.3f);
 
     // Rough gold sphere (center 190, 90, 190), radius 90
     SphereData sphere{};
@@ -921,26 +1049,16 @@ static void build_cornell_conductor(SceneData& scene) {
     add_cornell_walls_and_main_light(scene);
 
     // Gold sphere material (conductor, roughness 0.1 -- polished gold)
-    const int mat_gold = safe_cast_to_int(scene.materials.size());
-    {
-        MaterialData md{};
-        md.type  = MaterialType::Conductor;
-        md.fuzz  = 0.1f;   // roughness; alpha = sqrt(0.1)
-        md.eta_c = make_float3(kConductorAu.eta_r, kConductorAu.eta_g, kConductorAu.eta_b);
-        md.k_c   = make_float3(kConductorAu.k_r,   kConductorAu.k_g,   kConductorAu.k_b);
-        scene.materials.push_back(md);
-    }
+    const int mat_gold = add_conductor(scene,
+        make_float3(kConductorAu.eta_r, kConductorAu.eta_g, kConductorAu.eta_b),
+        make_float3(kConductorAu.k_r,   kConductorAu.k_g,   kConductorAu.k_b),
+        0.1f);   // roughness; alpha = sqrt(0.1)
 
     // Aluminium box material (conductor, roughness 0.05 -- polished aluminium)
-    const int mat_alum = safe_cast_to_int(scene.materials.size());
-    {
-        MaterialData md{};
-        md.type  = MaterialType::Conductor;
-        md.fuzz  = 0.05f;
-        md.eta_c = make_float3(kConductorAl.eta_r, kConductorAl.eta_g, kConductorAl.eta_b);
-        md.k_c   = make_float3(kConductorAl.k_r,   kConductorAl.k_g,   kConductorAl.k_b);
-        scene.materials.push_back(md);
-    }
+    const int mat_alum = add_conductor(scene,
+        make_float3(kConductorAl.eta_r, kConductorAl.eta_g, kConductorAl.eta_b),
+        make_float3(kConductorAl.k_r,   kConductorAl.k_g,   kConductorAl.k_b),
+        0.05f);
 
     // Gold sphere
     SphereData sphere{};
@@ -965,26 +1083,13 @@ static void build_cornell_coated_diffuse(SceneData& scene) {
     add_cornell_walls_and_main_light(scene);
 
     // Blue coated-diffuse sphere (IOR 1.5, roughness 0.1)
-    const int mat_coated_blue = safe_cast_to_int(scene.materials.size());
-    {
-        MaterialData md{};
-        md.type   = MaterialType::CoatedDiffuse;
-        md.albedo = make_float3(0.2f, 0.3f, 0.9f);  // diffuse base colour
-        md.fuzz   = 0.1f;                            // coat roughness (RoughnessToAlpha done in shader)
-        md.ior    = 1.5f;                            // coat IOR (glass-like)
-        scene.materials.push_back(md);
-    }
+    const int mat_coated_blue = add_coated_diffuse(scene,
+        make_float3(0.2f, 0.3f, 0.9f),  // diffuse base colour
+        0.1f,                            // coat roughness (RoughnessToAlpha done in shader)
+        1.5f);                           // coat IOR (glass-like)
 
     // Red coated-diffuse box (IOR 1.5, roughness 0.2)
-    const int mat_coated_red = safe_cast_to_int(scene.materials.size());
-    {
-        MaterialData md{};
-        md.type   = MaterialType::CoatedDiffuse;
-        md.albedo = make_float3(0.8f, 0.1f, 0.1f);
-        md.fuzz   = 0.2f;
-        md.ior    = 1.5f;
-        scene.materials.push_back(md);
-    }
+    const int mat_coated_red = add_coated_diffuse(scene, make_float3(0.8f, 0.1f, 0.1f), 0.2f, 1.5f);
 
     // Blue coated-diffuse sphere
     SphereData sph{};
@@ -1007,30 +1112,20 @@ static void build_cornell_coated_diffuse(SceneData& scene) {
 /// using pbrt-v4 ThinDielectricBxDF (analytic multi-bounce Fresnel, no bending).
 static void build_cornell_thin_glass(SceneData& scene) {
     const int mat_red   = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+    add_lambertian(scene, make_float3(0.65f, 0.05f, 0.05f));
 
-    const int mat_white = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+    const int mat_white = add_lambertian(scene, make_float3(0.73f, 0.73f, 0.73f));
 
-    const int mat_green = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+    const int mat_green = add_lambertian(scene, make_float3(0.12f, 0.45f, 0.15f));
 
     const int mat_light = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f,
-                                 make_float3(kLightIntensity, kLightIntensity, kLightIntensity) });
+    add_diffuse_light(scene, make_float3(kLightIntensity, kLightIntensity, kLightIntensity));
 
     // White diffuse box
-    const int mat_box = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+    const int mat_box = add_lambertian(scene, make_float3(0.73f, 0.73f, 0.73f));
 
     // Thin-glass panel (IOR 1.5)
-    const int mat_panel = safe_cast_to_int(scene.materials.size());
-    {
-        MaterialData md{};
-        md.type = MaterialType::ThinDielectric;
-        md.ior  = 1.5f;
-        scene.materials.push_back(md);
-    }
+    const int mat_panel = add_thin_dielectric(scene, 1.5f);
 
     // Cornell Box walls
     { QuadData q{}; q.Q = make_float3(kBoxSize,0,0); q.u = make_float3(0,0,kBoxSize); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_green; scene.quads.push_back(q); }
@@ -1073,28 +1168,17 @@ static void build_cornell_coated_conductor(SceneData& scene) {
     add_cornell_walls_and_main_light(scene);
 
     // Lacquered-gold sphere (Au conductor, IOR-1.5 coat, roughness 0.1)
-    const int mat_gold_lacquer = safe_cast_to_int(scene.materials.size());
-    {
-        MaterialData md{};
-        md.type  = MaterialType::CoatedConductor;
-        md.fuzz  = 0.1f;   // coat roughness
-        md.ior   = 1.5f;   // coat IOR
-        md.eta_c = make_float3(kConductorAu.eta_r, kConductorAu.eta_g, kConductorAu.eta_b);
-        md.k_c   = make_float3(kConductorAu.k_r,   kConductorAu.k_g,   kConductorAu.k_b);
-        scene.materials.push_back(md);
-    }
+    const int mat_gold_lacquer = add_coated_conductor(scene,
+        make_float3(kConductorAu.eta_r, kConductorAu.eta_g, kConductorAu.eta_b),
+        make_float3(kConductorAu.k_r,   kConductorAu.k_g,   kConductorAu.k_b),
+        0.1f,   // coat roughness
+        1.5f);  // coat IOR
 
     // Lacquered-copper box (Cu conductor, IOR-1.5 coat, roughness 0.2)
-    const int mat_copper_lacquer = safe_cast_to_int(scene.materials.size());
-    {
-        MaterialData md{};
-        md.type  = MaterialType::CoatedConductor;
-        md.fuzz  = 0.2f;
-        md.ior   = 1.5f;
-        md.eta_c = make_float3(kConductorCu.eta_r, kConductorCu.eta_g, kConductorCu.eta_b);
-        md.k_c   = make_float3(kConductorCu.k_r,   kConductorCu.k_g,   kConductorCu.k_b);
-        scene.materials.push_back(md);
-    }
+    const int mat_copper_lacquer = add_coated_conductor(scene,
+        make_float3(kConductorCu.eta_r, kConductorCu.eta_g, kConductorCu.eta_b),
+        make_float3(kConductorCu.k_r,   kConductorCu.k_g,   kConductorCu.k_b),
+        0.2f, 1.5f);
 
     // Lacquered-gold sphere
     SphereData sphere{};
@@ -1118,20 +1202,12 @@ static void build_cornell_wax_slab(SceneData& scene) {
     add_cornell_walls_and_main_light(scene);
 
     // Wax sphere: albedo = R (reflectance), emission = T (transmittance)
-    const int mat_wax = safe_cast_to_int(scene.materials.size());
-    {
-        MaterialData md{};
-        md.type    = MaterialType::DiffuseTransmission;
-        md.albedo  = make_float3(0.6f, 0.5f, 0.3f);   // R: reflected diffuse color
-        md.emission = make_float3(0.8f, 0.6f, 0.3f);  // T: transmitted diffuse color
-        md.fuzz    = 0.0f;
-        md.ior     = 0.0f;
-        scene.materials.push_back(md);
-    }
+    const int mat_wax = add_diffuse_transmission(scene,
+        make_float3(0.6f, 0.5f, 0.3f),   // R: reflected diffuse color
+        make_float3(0.8f, 0.6f, 0.3f));  // T: transmitted diffuse color
 
     // White diffuse box material (same albedo as the walls, own index)
-    const int mat_box = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+    const int mat_box = add_lambertian(scene, make_float3(0.73f, 0.73f, 0.73f));
 
     // Wax sphere (left)
     SphereData wax_sphere{};
@@ -1155,21 +1231,13 @@ static void build_cornell_wax_slab(SceneData& scene) {
 static void build_cornell_crystal(SceneData& scene) {
     add_cornell_walls_and_main_light(scene);
 
-    // Crystal sphere: NormalizedFresnelBxDF, IOR 1.5 (glass/crystal)
-    const int mat_crystal = safe_cast_to_int(scene.materials.size());
-    {
-        MaterialData md{};
-        md.type    = MaterialType::NormalizedFresnel;
-        md.albedo  = make_float3(1.0f, 1.0f, 1.0f);  // unused -- weight computed from Fresnel
-        md.ior     = 1.5f;
-        md.fuzz    = 0.0f;
-        md.emission = make_float3(0.0f, 0.0f, 0.0f);
-        scene.materials.push_back(md);
-    }
+    // Crystal sphere: NormalizedFresnelBxDF, IOR 1.5 (glass/crystal).
+    // albedo is unused (weight computed from Fresnel) -- add_normalized_fresnel()
+    // leaves it default-zeroed like every other field this type doesn't use.
+    const int mat_crystal = add_normalized_fresnel(scene, 1.5f);
 
     // White diffuse box material (same albedo as the walls, own index)
-    const int mat_box = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+    const int mat_box = add_lambertian(scene, make_float3(0.73f, 0.73f, 0.73f));
 
     // Crystal sphere (left)
     SphereData crystal_sphere{};
@@ -1193,12 +1261,10 @@ static void build_cornell_rough_glass(SceneData& scene) {
     add_cornell_walls_and_main_light(scene);
 
     // Rough glass sphere (roughness 0.2, IOR 1.5 -- frosted glass)
-    const int mat_rough_glass = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::RoughDielectric, make_float3(1.0f, 1.0f, 1.0f), 0.2f, kGlassIOR, make_float3(0.0f, 0.0f, 0.0f) });
+    const int mat_rough_glass = add_rough_dielectric(scene, 0.2f, kGlassIOR);
 
     // White diffuse box material (same albedo as the walls, own index)
-    const int mat_box = safe_cast_to_int(scene.materials.size());
-    scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+    const int mat_box = add_lambertian(scene, make_float3(0.73f, 0.73f, 0.73f));
 
     // White diffuse box (right)
     add_box(scene,
@@ -1241,12 +1307,7 @@ void build_bouncing_spheres(SceneData& scene) {
 	// Ground sphere - checker approximated as flat gray.
 	{
 		const int mat = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({
-			MaterialType::Lambertian,
-			make_float3(0.5f, 0.5f, 0.5f),
-			0.0f, 0.0f,
-			make_float3(0.0f, 0.0f, 0.0f)
-		});
+		add_lambertian(scene, make_float3(0.5f, 0.5f, 0.5f));
 		SphereData ground{};
 		ground.center = make_float3(0.0f, -1000.0f, 0.0f);
 		ground.center1 = ground.center;  // static
@@ -1284,18 +1345,18 @@ void build_bouncing_spheres(SceneData& scene) {
 					unit(rng) * unit(rng)
 				);
 				mat_idx = safe_cast_to_int(scene.materials.size());
-				scene.materials.push_back({ MaterialType::Lambertian, albedo, 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+				add_lambertian(scene, albedo);
 				center1 = make_float3(center.x, center.y + unit(rng) * 0.5f, center.z);
 			} else if (choose_mat < 0.95f) {
 				// Metal
 				const float3 albedo = make_float3(0.5f + 0.5f * unit(rng), 0.5f + 0.5f * unit(rng), 0.5f + 0.5f * unit(rng));
 				const float fuzz = 0.5f * unit(rng);
 				mat_idx = safe_cast_to_int(scene.materials.size());
-				scene.materials.push_back({ MaterialType::Metal, albedo, fuzz, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+				add_metal(scene, albedo, fuzz);
 			} else {
 				// Glass
 				mat_idx = safe_cast_to_int(scene.materials.size());
-				scene.materials.push_back({ MaterialType::Dielectric, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 1.5f, make_float3(0.0f, 0.0f, 0.0f) });
+				add_dielectric(scene, 1.5f);
 			}
 
 			SphereData sph{};
@@ -1309,8 +1370,7 @@ void build_bouncing_spheres(SceneData& scene) {
 
 	// Three large signature spheres - static.
 	{
-		const int mat1 = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({ MaterialType::Dielectric, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 1.5f, make_float3(0.0f, 0.0f, 0.0f) });
+		const int mat1 = add_dielectric(scene, 1.5f);
 		SphereData s1{};
 		s1.center = make_float3(0.0f, 1.0f, 0.0f);
 		s1.center1 = s1.center;
@@ -1319,8 +1379,7 @@ void build_bouncing_spheres(SceneData& scene) {
 		scene.spheres.push_back(s1);
 	}
 	{
-		const int mat2 = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.4f, 0.2f, 0.1f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		const int mat2 = add_lambertian(scene, make_float3(0.4f, 0.2f, 0.1f));
 		SphereData s2{};
 		s2.center = make_float3(-4.0f, 1.0f, 0.0f);
 		s2.center1 = s2.center;
@@ -1329,8 +1388,7 @@ void build_bouncing_spheres(SceneData& scene) {
 		scene.spheres.push_back(s2);
 	}
 	{
-		const int mat3 = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({ MaterialType::Metal, make_float3(0.7f, 0.6f, 0.5f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		const int mat3 = add_metal(scene, make_float3(0.7f, 0.6f, 0.5f), 0.0f);
 		SphereData s3{};
 		s3.center = make_float3(4.0f, 1.0f, 0.0f);
 		s3.center1 = s3.center;
@@ -1351,10 +1409,7 @@ void build_checkered_spheres(SceneData& scene) {
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.32f,
 		make_float3(0.2f, 0.3f, 0.1f), make_float3(0.9f, 0.9f, 0.9f));
 	const int mat = safe_cast_to_int(scene.materials.size());
-	MaterialData m{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	m.textureIdx = checkerTexIdx;
-	scene.materials.push_back(m);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 
 	SphereData sphere1{};
 	sphere1.center = make_float3(0.0f, -10.0f, 0.0f);
@@ -1378,10 +1433,7 @@ void build_checkered_spheres(SceneData& scene) {
 static void build_earth_gpu(SceneData& scene) {
 	const int earthTexIdx = load_image_texture_gpu(scene, "earthmap.jpg");
 	const int mat = safe_cast_to_int(scene.materials.size());
-	MaterialData m{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	m.textureIdx = earthTexIdx;
-	scene.materials.push_back(m);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), earthTexIdx);
 	SphereData s{};
 	s.center = make_float3(0.0f, 0.0f, 0.0f);
 	s.center1 = s.center;
@@ -1399,10 +1451,7 @@ static void build_earth_gpu(SceneData& scene) {
 static void add_perlin_spheres_pair_gpu(SceneData& scene) {
 	const int noiseTexIdx = add_noise_texture_gpu(scene, 4.0f);
 	const int mat = safe_cast_to_int(scene.materials.size());
-	MaterialData m{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	m.textureIdx = noiseTexIdx;
-	scene.materials.push_back(m);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), noiseTexIdx);
 
 	SphereData ground{};
 	ground.center = make_float3(0.0f, -1000.0f, 0.0f);
@@ -1432,8 +1481,7 @@ static void build_simple_light_gpu(SceneData& scene) {
 	add_perlin_spheres_pair_gpu(scene);
 
 	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f,
-		make_float3(4.0f, 4.0f, 4.0f) });
+	add_diffuse_light(scene, make_float3(4.0f, 4.0f, 4.0f));
 
 	SphereData lightSphere{};
 	lightSphere.center = make_float3(0.0f, 7.0f, 0.0f);
@@ -1469,12 +1517,7 @@ void build_quads_scene(SceneData& scene) {
 							  float r, float g, float b) {
 		// Add material
 		const int mat_idx = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({
-			MaterialType::Lambertian,
-			make_float3(r, g, b),
-			0.0f, 0.0f,
-			make_float3(0.0f, 0.0f, 0.0f)
-		});
+		add_lambertian(scene, make_float3(r, g, b));
 
 		// Add quad
 		QuadData quad{};
@@ -1523,12 +1566,7 @@ static void build_punctual_light_walls(SceneData& scene) {
 	for (int i = 0; i < 5; ++i) {
 		const QuadSpec& q = kQuads[i];
 		const int mat = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({
-			MaterialType::Lambertian,
-			make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)),
-			0.0f, 0.0f,
-			make_float3(0.0f, 0.0f, 0.0f)
-		});
+		add_lambertian(scene, make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)));
 		add_transformed_quad(scene,
 			make_float3(static_cast<float>(q.Q.x), static_cast<float>(q.Q.y), static_cast<float>(q.Q.z)),
 			make_float3(static_cast<float>(q.u.x), static_cast<float>(q.u.y), static_cast<float>(q.u.z)),
@@ -1537,11 +1575,9 @@ static void build_punctual_light_walls(SceneData& scene) {
 	}
 
 	// Sphere materials: white lambertian + blue-tinted fuzzy metal (matches CPU)
-	const int mat_white_sphere = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_white_sphere = add_lambertian(scene, make_float3(0.73f, 0.73f, 0.73f));
 
-	const int mat_metal_sphere = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.8f, 0.8f, 0.9f), 0.1f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_metal_sphere = add_metal(scene, make_float3(0.8f, 0.8f, 0.9f), 0.1f);
 
 	// Two spheres (matches CPU cornell_walls_no_light exactly)
 	{ SphereData s{}; s.center = make_float3(190.0f, 90.0f, 190.0f); s.radius = 90.0f; s.materialIdx = mat_white_sphere; scene.spheres.push_back(s); }
@@ -1672,8 +1708,7 @@ static void build_projection_cornell_gpu(SceneData& scene) {
 /// - that extra light was a real, NEE-sampled light CPU doesn't have,
 /// silently breaking CpuGpuLightParityTest for this scene.
 static void build_depth_of_field_gpu(SceneData& scene) {
-	const int mat_ground = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.5f, 0.5f, 0.5f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_ground = add_lambertian(scene, make_float3(0.5f, 0.5f, 0.5f));
 	SphereData ground{};
 	// Modest flat ground (not the usual radius-1000 "planet" sphere used
 	// elsewhere in this file) - at this camera's close distance/narrow fov,
@@ -1696,13 +1731,14 @@ static void build_depth_of_field_gpu(SceneData& scene) {
 		MaterialType::Metal, MaterialType::Lambertian
 	};
 	for (int i = 0; i < 5; ++i) {
-		const int mat = safe_cast_to_int(scene.materials.size());
-		MaterialData m{};
-		m.type = kinds[i];
-		m.albedo = colors[i];
-		m.fuzz = (kinds[i] == MaterialType::Metal) ? 0.05f : 0.0f;
-		m.ior = (kinds[i] == MaterialType::Dielectric) ? 1.5f : 0.0f;
-		scene.materials.push_back(m);
+		// Material kind varies per sphere (see kinds[] above), so this picks
+		// the matching named factory per-iteration instead of one fixed call.
+		int mat;
+		switch (kinds[i]) {
+			case MaterialType::Metal:      mat = add_metal(scene, colors[i], 0.05f); break;
+			case MaterialType::Dielectric: mat = add_dielectric(scene, 1.5f); break;
+			default:                       mat = add_lambertian(scene, colors[i]); break;
+		}
 		SphereData s{};
 		// Smaller radius than a first attempt at this scene used: at only 5
 		// world units from the camera (nearest sphere, z=+4) with a narrow
@@ -1723,8 +1759,7 @@ static void build_depth_of_field_gpu(SceneData& scene) {
 /// build_scene() case below, same as scene 22 (see that scene's comment for
 /// why - this scene had the identical spurious-overhead-light bug).
 static void build_ortho_camera_scene_gpu(SceneData& scene) {
-	const int mat_ground = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.5f, 0.5f, 0.5f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_ground = add_lambertian(scene, make_float3(0.5f, 0.5f, 0.5f));
 	SphereData ground{};
 	ground.center = make_float3(0.0f, -1000.0f, 0.0f);
 	ground.radius = 1000.0f;
@@ -1736,8 +1771,7 @@ static void build_ortho_camera_scene_gpu(SceneData& scene) {
 		make_float3(0.2f, 0.4f, 0.9f), make_float3(0.7f, 0.2f, 0.8f)
 	};
 	for (int i = 0; i < 5; ++i) {
-		const int mat = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({ MaterialType::Lambertian, colors[i], 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		const int mat = add_lambertian(scene, colors[i]);
 		SphereData s{};
 		s.center = make_float3((i - 2) * 2.5f, 1.0f, 0.0f);
 		s.radius = 1.0f;
@@ -1750,8 +1784,7 @@ static void build_ortho_camera_scene_gpu(SceneData& scene) {
 /// in spirit (ground + a ring of colored spheres + one emissive sphere) -
 /// self-illuminating, needs no extra light unlike scenes 22/32 above.
 static void build_spherical_camera_scene_gpu(SceneData& scene) {
-	const int mat_ground = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.5f, 0.5f, 0.5f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_ground = add_lambertian(scene, make_float3(0.5f, 0.5f, 0.5f));
 	SphereData ground{};
 	// CPU's SphericalCamera uses no camera_to_world (identity), so the
 	// camera sits exactly at world origin - keep the ground surface below
@@ -1770,8 +1803,7 @@ static void build_spherical_camera_scene_gpu(SceneData& scene) {
 		float3 col = make_float3(0.5f + 0.5f * cosf(2.0f * kPi * hue),
 								   0.5f + 0.5f * cosf(2.0f * kPi * (hue + 0.33f)),
 								   0.5f + 0.5f * cosf(2.0f * kPi * (hue + 0.67f)));
-		const int mat = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({ MaterialType::Lambertian, col, 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		const int mat = add_lambertian(scene, col);
 		SphereData s{};
 		s.center = make_float3(4.0f * cosf(ang), 1.0f, 4.0f * sinf(ang));
 		s.radius = 0.8f;
@@ -1782,8 +1814,7 @@ static void build_spherical_camera_scene_gpu(SceneData& scene) {
 	// Central emissive sphere, matches CPU's central diffuse_light sphere.
 	const int mat_light = safe_cast_to_int(scene.materials.size());
 	constexpr float kSphericalLightIntensity = 8.0f;
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f,
-								 make_float3(kSphericalLightIntensity, kSphericalLightIntensity, kSphericalLightIntensity) });
+	add_diffuse_light(scene, make_float3(kSphericalLightIntensity, kSphericalLightIntensity, kSphericalLightIntensity));
 	SphereData lightSphere{};
 	lightSphere.center = make_float3(0.0f, 3.0f, 0.0f);
 	lightSphere.radius = 1.0f;
@@ -1799,8 +1830,7 @@ static void build_spherical_camera_scene_gpu(SceneData& scene) {
 /// this file's established "no procedural textures on GPU" simplification
 /// used elsewhere (e.g. build_triangle_mesh_scene_gpu).
 static void build_realistic_camera_scene_gpu(SceneData& scene) {
-	const int mat_ground = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.5f, 0.5f, 0.5f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_ground = add_lambertian(scene, make_float3(0.5f, 0.5f, 0.5f));
 	SphereData ground{};
 	ground.center = make_float3(0.0f, -1000.0f, 0.0f);
 	ground.radius = 1000.0f;
@@ -1813,8 +1843,7 @@ static void build_realistic_camera_scene_gpu(SceneData& scene) {
 	};
 	for (int i = 0; i < 5; ++i) {
 		const float z = 2.0f + i * 1.5f;
-		const int mat = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({ MaterialType::Lambertian, sphere_colors[i], 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		const int mat = add_lambertian(scene, sphere_colors[i]);
 		SphereData s{};
 		s.center = make_float3(0.0f, 1.0f, z);
 		s.radius = 0.8f;
@@ -1822,8 +1851,7 @@ static void build_realistic_camera_scene_gpu(SceneData& scene) {
 		scene.spheres.push_back(s);
 	}
 
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData lightSphere{};
 	lightSphere.center = make_float3(0.0f, 8.0f, 5.0f);
 	lightSphere.radius = 2.0f;
@@ -1839,32 +1867,28 @@ static void build_realistic_camera_scene_gpu(SceneData& scene) {
 /// GpuCameraParams::backgroundColor's comment) - the caller sets that
 /// separately, this only builds the ground+spheres geometry.
 static void build_hdri_sky_world_gpu(SceneData& scene) {
-	const int mat_ground = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.4f, 0.4f, 0.4f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_ground = add_lambertian(scene, make_float3(0.4f, 0.4f, 0.4f));
 	SphereData ground{};
 	ground.center = make_float3(0.0f, -1000.0f, 0.0f);
 	ground.radius = 1000.0f;
 	ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
-	const int mat_lambertian = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.7f, 0.3f, 0.2f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_lambertian = add_lambertian(scene, make_float3(0.7f, 0.3f, 0.2f));
 	SphereData s1{};
 	s1.center = make_float3(-3.0f, 1.0f, 0.0f);
 	s1.radius = 1.0f;
 	s1.materialIdx = mat_lambertian;
 	scene.spheres.push_back(s1);
 
-	const int mat_metal = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.8f, 0.8f, 0.9f), 0.05f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_metal = add_metal(scene, make_float3(0.8f, 0.8f, 0.9f), 0.05f);
 	SphereData s2{};
 	s2.center = make_float3(0.0f, 1.0f, 0.0f);
 	s2.radius = 1.0f;
 	s2.materialIdx = mat_metal;
 	scene.spheres.push_back(s2);
 
-	const int mat_glass = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Dielectric, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 1.5f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_glass = add_dielectric(scene, 1.5f);
 	SphereData s3{};
 	s3.center = make_float3(3.0f, 1.0f, 0.0f);
 	s3.radius = 1.0f;
@@ -1877,14 +1901,10 @@ static void build_hdri_sky_world_gpu(SceneData& scene) {
 /// sphere). Uses the same wall-quad layout as build_punctual_light_walls,
 /// duplicated here rather than shared since materials/sphere content differ.
 static void build_portal_light_scene_gpu(SceneData& scene) {
-	const int mat_red = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-	const int mat_white = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-	const int mat_green = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-	const int mat_metal_sphere = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.8f, 0.8f, 0.9f), 0.05f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_red = add_lambertian(scene, make_float3(0.65f, 0.05f, 0.05f));
+	const int mat_white = add_lambertian(scene, make_float3(0.73f, 0.73f, 0.73f));
+	const int mat_green = add_lambertian(scene, make_float3(0.12f, 0.45f, 0.15f));
+	const int mat_metal_sphere = add_metal(scene, make_float3(0.8f, 0.8f, 0.9f), 0.05f);
 
 	add_transformed_quad(scene, make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), make_float3(0, kBoxSize, 0), mat_green);
 	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(0, 0, -kBoxSize), make_float3(0, kBoxSize, 0), mat_red);
@@ -1915,12 +1935,7 @@ static void build_cornell_smoke_gpu(SceneData& scene) {
 	for (int i = 0; i < 5; ++i) {
 		const QuadSpec& q = kQuads[i];
 		const int mat = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({
-			MaterialType::Lambertian,
-			make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)),
-			0.0f, 0.0f,
-			make_float3(0.0f, 0.0f, 0.0f)
-		});
+		add_lambertian(scene, make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)));
 		add_transformed_quad(scene,
 			make_float3(static_cast<float>(q.Q.x), static_cast<float>(q.Q.y), static_cast<float>(q.Q.z)),
 			make_float3(static_cast<float>(q.u.x), static_cast<float>(q.u.y), static_cast<float>(q.u.z)),
@@ -1928,8 +1943,7 @@ static void build_cornell_smoke_gpu(SceneData& scene) {
 			mat);
 	}
 
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(7.0f, 7.0f, 7.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(7.0f, 7.0f, 7.0f));
 	{
 		QuadData lq{};
 		lq.Q = make_float3(113.0f, 554.0f, 127.0f);
@@ -1947,10 +1961,8 @@ static void build_cornell_smoke_gpu(SceneData& scene) {
 
 	// Two medium spheres approximating CPU's two rotated boxes (centered
 	// roughly where box1 [265,0,295]+165/2 and box2 [130,0,65]+82.5 sit).
-	const int mat_medium_dark = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Medium, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.01f, make_float3(0.0f, 0.0f, 0.0f) });
-	const int mat_medium_white = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Medium, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.01f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_medium_dark = add_medium(scene, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.01f);
+	const int mat_medium_white = add_medium(scene, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.01f);
 
 	SphereData m1{}; m1.center = make_float3(347.0f, 165.0f, 377.0f); m1.radius = 115.0f; m1.materialIdx = mat_medium_dark;
 	scene.spheres.push_back(m1);
@@ -1962,14 +1974,10 @@ static void build_cornell_smoke_gpu(SceneData& scene) {
 /// build_homogeneous_medium_scene() exactly (full Cornell box + a single
 /// medium sphere at the box's center, radius 400, density 0.005, HG g=0.3).
 static void build_homogeneous_medium_scene_gpu(SceneData& scene) {
-	const int mat_red = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-	const int mat_white = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-	const int mat_green = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(15.0f, 15.0f, 15.0f) });
+	const int mat_red = add_lambertian(scene, make_float3(0.65f, 0.05f, 0.05f));
+	const int mat_white = add_lambertian(scene, make_float3(0.73f, 0.73f, 0.73f));
+	const int mat_green = add_lambertian(scene, make_float3(0.12f, 0.45f, 0.15f));
+	const int mat_light = add_diffuse_light(scene, make_float3(15.0f, 15.0f, 15.0f));
 
 	add_transformed_quad(scene, make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), make_float3(0, kBoxSize, 0), mat_green);
 	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(0, 0, -kBoxSize), make_float3(0, kBoxSize, 0), mat_red);
@@ -1991,8 +1999,7 @@ static void build_homogeneous_medium_scene_gpu(SceneData& scene) {
 		scene.isLightSphere.push_back(false);
 	}
 
-	const int mat_medium = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Medium, make_float3(0.8f, 0.9f, 1.0f), 0.3f, 0.005f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_medium = add_medium(scene, make_float3(0.8f, 0.9f, 1.0f), 0.3f, 0.005f);
 	SphereData fog{};
 	fog.center = make_float3(277.5f, 277.5f, 277.5f);
 	fog.radius = 400.0f;
@@ -2032,12 +2039,9 @@ static void build_normal_mapped_cornell_gpu(SceneData& scene) {
 		const QuadSpec& q = kQuads[i];
 		const int mat = safe_cast_to_int(scene.materials.size());
 		if (q.is_light) {
-			scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f,
-				make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)) });
+			add_diffuse_light(scene, make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)));
 		} else {
-			scene.materials.push_back({ MaterialType::Lambertian,
-				make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)),
-				0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+			add_lambertian(scene, make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)));
 		}
 		// add_transformed_quad() already auto-registers emissive quads into
 		// lightIndices/isLightSphere itself (it checks the material type) -
@@ -2053,9 +2057,7 @@ static void build_normal_mapped_cornell_gpu(SceneData& scene) {
 	// scene - matches CPU's (effectively-flat-white, see header comment
 	// above) bumped_box exactly.
 	const int mat_box = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian,
-		make_float3(static_cast<float>(kBox.color.r), static_cast<float>(kBox.color.g), static_cast<float>(kBox.color.b)),
-		0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	add_lambertian(scene, make_float3(static_cast<float>(kBox.color.r), static_cast<float>(kBox.color.g), static_cast<float>(kBox.color.b)));
 	add_box(scene,
 		make_float3(static_cast<float>(kBox.corner_min.x), static_cast<float>(kBox.corner_min.y), static_cast<float>(kBox.corner_min.z)),
 		make_float3(static_cast<float>(kBox.corner_max.x), static_cast<float>(kBox.corner_max.y), static_cast<float>(kBox.corner_max.z)),
@@ -2068,11 +2070,7 @@ static void build_normal_mapped_cornell_gpu(SceneData& scene) {
 	// lambertian(0.2,0.3,0.8)) exactly.
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 8.0f,
 		make_float3(0.5f, 0.5f, 1.0f), make_float3(0.8f, 0.8f, 1.0f));
-	const int mat_sphere = safe_cast_to_int(scene.materials.size());
-	MaterialData m{ MaterialType::NormalMappedLambertian, make_float3(0.2f, 0.3f, 0.8f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	m.textureIdx = checkerTexIdx;
-	scene.materials.push_back(m);
+	const int mat_sphere = add_normal_mapped_lambertian(scene, make_float3(0.2f, 0.3f, 0.8f), checkerTexIdx);
 	SphereData s{};
 	s.center = make_float3(190.0f, 90.0f, 190.0f);
 	s.radius = 90.0f;
@@ -2101,12 +2099,7 @@ static void build_subsurface_slab_gpu(SceneData& scene) {
 	for (int i = 0; i < 5; ++i) {
 		const QuadSpec& q = kQuads[i];
 		const int mat = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({
-			MaterialType::Lambertian,
-			make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)),
-			0.0f, 0.0f,
-			make_float3(0.0f, 0.0f, 0.0f)
-		});
+		add_lambertian(scene, make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)));
 		add_transformed_quad(scene,
 			make_float3(static_cast<float>(q.Q.x), static_cast<float>(q.Q.y), static_cast<float>(q.Q.z)),
 			make_float3(static_cast<float>(q.u.x), static_cast<float>(q.u.y), static_cast<float>(q.u.z)),
@@ -2114,8 +2107,7 @@ static void build_subsurface_slab_gpu(SceneData& scene) {
 			mat);
 	}
 
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(12.0f, 12.0f, 12.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(12.0f, 12.0f, 12.0f));
 	{
 		QuadData lq{};
 		lq.Q = make_float3(213.0f, 554.0f, 227.0f);
@@ -2137,10 +2129,7 @@ static void build_subsurface_slab_gpu(SceneData& scene) {
 	// footprint. ior=1.4/sigma_t=0.04/albedo=(0.98,0.96,0.90), matching
 	// CPU's dielectric(1.4) + constant_medium(...,0.04,milky-white) exactly.
 	{
-		const int mat_slab = safe_cast_to_int(scene.materials.size());
-		MaterialData m{ MaterialType::DielectricMedium, make_float3(0.98f, 0.96f, 0.90f), 0.0f, 1.4f,
-			make_float3(0.0f, 0.0f, 0.0f), make_float3(0.04f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-		scene.materials.push_back(m);
+		const int mat_slab = add_dielectric_medium(scene, make_float3(0.98f, 0.96f, 0.90f), 1.4f, 0.04f);
 		SphereData s{};
 		s.center = make_float3(370.0f, 150.0f, 310.0f);
 		s.radius = 140.0f;
@@ -2153,10 +2142,7 @@ static void build_subsurface_slab_gpu(SceneData& scene) {
 	// albedo=(0.1,0.5,0.2), matching CPU's dielectric(1.5) +
 	// constant_medium(...,0.06,jade-green) exactly.
 	{
-		const int mat_jade = safe_cast_to_int(scene.materials.size());
-		MaterialData m{ MaterialType::DielectricMedium, make_float3(0.1f, 0.5f, 0.2f), 0.0f, 1.5f,
-			make_float3(0.0f, 0.0f, 0.0f), make_float3(0.06f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-		scene.materials.push_back(m);
+		const int mat_jade = add_dielectric_medium(scene, make_float3(0.1f, 0.5f, 0.2f), 1.5f, 0.06f);
 		SphereData s{};
 		s.center = make_float3(160.0f, 90.0f, 160.0f);
 		s.radius = 90.0f;
@@ -2171,16 +2157,14 @@ static void build_subsurface_slab_gpu(SceneData& scene) {
 /// actually used by the constant_medium call, which passes a constant
 /// density), so this is a faithful, not simplified, port.
 static void build_cloud_medium_scene_gpu(SceneData& scene) {
-	const int mat_ground = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.4f, 0.5f, 0.3f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_ground = add_lambertian(scene, make_float3(0.4f, 0.5f, 0.3f));
 	SphereData ground{};
 	ground.center = make_float3(0.0f, -1000.0f, 0.0f);
 	ground.radius = 1000.0f;
 	ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
-	const int mat_medium = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Medium, make_float3(1.0f, 1.0f, 1.0f), 0.05f, 0.8f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_medium = add_medium(scene, make_float3(1.0f, 1.0f, 1.0f), 0.05f, 0.8f);
 	SphereData cloud{};
 	cloud.center = make_float3(0.0f, 3.0f, 0.0f);
 	cloud.radius = 3.0f;
@@ -2194,14 +2178,10 @@ static void build_cloud_medium_scene_gpu(SceneData& scene) {
 /// medium boxes, these are NOT approximated as another shape - bilinear
 /// patches have their own GPU geometry type.
 static void build_bilinear_patch_scene_gpu(SceneData& scene) {
-	const int mat_red = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.65f, 0.05f, 0.05f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-	const int mat_white = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-	const int mat_green = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.12f, 0.45f, 0.15f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(15.0f, 15.0f, 15.0f) });
+	const int mat_red = add_lambertian(scene, make_float3(0.65f, 0.05f, 0.05f));
+	const int mat_white = add_lambertian(scene, make_float3(0.73f, 0.73f, 0.73f));
+	const int mat_green = add_lambertian(scene, make_float3(0.12f, 0.45f, 0.15f));
+	const int mat_light = add_diffuse_light(scene, make_float3(15.0f, 15.0f, 15.0f));
 
 	add_transformed_quad(scene, make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), make_float3(0, kBoxSize, 0), mat_green);
 	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(0, 0, -kBoxSize), make_float3(0, kBoxSize, 0), mat_red);
@@ -2224,8 +2204,7 @@ static void build_bilinear_patch_scene_gpu(SceneData& scene) {
 	}
 
 	// Patch 1: classic hyperbolic paraboloid saddle, gold metal
-	const int mat_gold = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.8f, 0.7f, 0.3f), 0.05f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_gold = add_metal(scene, make_float3(0.8f, 0.7f, 0.3f), 0.05f);
 	{
 		BilinearPatchData p{};
 		p.p00 = make_float3(150.0f, 80.0f, 200.0f);
@@ -2237,8 +2216,7 @@ static void build_bilinear_patch_scene_gpu(SceneData& scene) {
 	}
 
 	// Patch 2: curved ramp (linear in u, curved in v), blue metal
-	const int mat_blue = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.2f, 0.4f, 0.8f), 0.1f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_blue = add_metal(scene, make_float3(0.2f, 0.4f, 0.8f), 0.1f);
 	{
 		BilinearPatchData p{};
 		p.p00 = make_float3(200.0f, 200.0f, 220.0f);
@@ -2255,8 +2233,7 @@ static void build_bilinear_patch_scene_gpu(SceneData& scene) {
 /// (Marschner/Chiang fiber scattering; no literal fiber geometry - see
 /// MaterialType::Hair's comment in optix_types.h).
 static void build_hair_fibers_gpu(SceneData& scene) {
-	const int mat_ground = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.05f, 0.05f, 0.06f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_ground = add_lambertian(scene, make_float3(0.05f, 0.05f, 0.06f));
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
@@ -2271,15 +2248,8 @@ static void build_hair_fibers_gpu(SceneData& scene) {
 		{ make_float3(0.0f, 1.0f, 1.8f), make_float3(0.50f, 0.55f, 0.60f), 0.15f, 0.15f, 2.0f }, // fine black fur
 	};
 	for (const auto& h : hairs) {
-		const int mat_idx = safe_cast_to_int(scene.materials.size());
-		MaterialData m{};
-		m.type = MaterialType::Hair;
-		m.albedo = h.sigma_a;
-		m.fuzz = h.beta_m;
-		m.ior = 1.55f;  // fiber eta, matches CPU hair_material's default
-		m.eta_c = make_float3(h.beta_n, h.alpha_deg, 0.0f);
-		scene.materials.push_back(m);
-
+		// 1.55f: fiber eta, matches CPU hair_material's default
+		const int mat_idx = add_hair(scene, h.sigma_a, h.beta_m, 1.55f, h.beta_n, h.alpha_deg);
 		SphereData s{}; s.center = h.center; s.radius = 1.0f; s.materialIdx = mat_idx;
 		scene.spheres.push_back(s);
 	}
@@ -2296,9 +2266,7 @@ static void build_principled_showcase_gpu(SceneData& scene) {
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.5f,
 		make_float3(0.1f, 0.1f, 0.12f), make_float3(0.2f, 0.2f, 0.22f));
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(0.0f, 0.0f, 0.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
@@ -2315,15 +2283,7 @@ static void build_principled_showcase_gpu(SceneData& scene) {
 		{  3.0f, make_float3(0.9f, 0.7f, 0.1f),  1.0f, 0.1f,  1.0f, 0.08f }, // 6: fully metallic, clearcoated (lacquered gold)
 	};
 	for (const auto& p : spheres) {
-		const int mat_idx = safe_cast_to_int(scene.materials.size());
-		MaterialData m{};
-		m.type = MaterialType::Principled;
-		m.albedo = p.base;
-		m.ior = 1.5f;
-		m.fuzz = p.roughness;
-		m.eta_c = make_float3(p.metallic, p.clearcoat, p.clearcoat_rough);
-		scene.materials.push_back(m);
-
+		const int mat_idx = add_principled(scene, p.base, 1.5f, p.roughness, p.metallic, p.clearcoat, p.clearcoat_rough);
 		SphereData s{}; s.center = make_float3(p.x, 1.0f, 0.0f); s.radius = 1.0f; s.materialIdx = mat_idx;
 		scene.spheres.push_back(s);
 	}
@@ -2339,20 +2299,17 @@ static void build_principled_showcase_gpu(SceneData& scene) {
 /// matching that actual behavior with MaterialType::Lambertian, not porting
 /// the unused tensor-BRDF machinery.
 static void build_measured_brdf_scene_gpu(SceneData& scene) {
-	const int mat_ground = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.3f, 0.3f, 0.3f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_ground = add_lambertian(scene, make_float3(0.3f, 0.3f, 0.3f));
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
-	const int mat_measured = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.7f, 0.5f, 0.3f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_measured = add_lambertian(scene, make_float3(0.7f, 0.5f, 0.3f));
 	for (int i = -2; i <= 2; ++i) {
 		SphereData s{}; s.center = make_float3(static_cast<float>(i) * 2.5f, 1.0f, 0.0f); s.radius = 1.0f; s.materialIdx = mat_measured;
 		scene.spheres.push_back(s);
 	}
 
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(8.0f, 8.0f, 8.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(8.0f, 8.0f, 8.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 1.5f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -2367,8 +2324,7 @@ static void build_measured_brdf_scene_gpu(SceneData& scene) {
 /// approximation instead), so the ground's CPU checker texture becomes a
 /// solid mid-gray here.
 static void build_triangle_mesh_scene_gpu(SceneData& scene) {
-	const int mat_ground = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.5f, 0.5f, 0.5f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_ground = add_lambertian(scene, make_float3(0.5f, 0.5f, 0.5f));
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
@@ -2396,8 +2352,7 @@ static void build_triangle_mesh_scene_gpu(SceneData& scene) {
 		{4,9,5}, {2,4,11}, {6,2,10}, {8,6,7}, {9,8,1},
 	};
 
-	const int mat_mesh = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.8f, 0.6f, 0.2f), 0.15f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_mesh = add_metal(scene, make_float3(0.8f, 0.6f, 0.2f), 0.15f);
 	for (const auto& f : faces) {
 		TriangleData t{};
 		t.p0 = verts[f[0]];
@@ -2407,8 +2362,7 @@ static void build_triangle_mesh_scene_gpu(SceneData& scene) {
 		scene.triangles.push_back(t);
 	}
 
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -2430,24 +2384,19 @@ static void build_stanford_bunny_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
 	// Bunny mesh, in polished bronze - matches CPU's exact scale/offset
 	// (both computed from the raw OBJ's own bounding box, see CPU's
 	// build_stanford_bunny() comment for the numbers).
-	const int mat_bunny = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.71f, 0.43f, 0.20f), 0.15f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_bunny = add_metal(scene, make_float3(0.71f, 0.43f, 0.20f), 0.15f);
 	load_obj_triangles_gpu(scene, "stanford-bunny.obj", mat_bunny,
 		/*scale=*/19.4f, make_float3(0.3267f, -0.6398f, 0.0298f));
 
 	// Area light
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -2466,24 +2415,19 @@ static void build_stanford_armadillo_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
 	// Armadillo mesh, in gunmetal - matches CPU's exact scale/offset (both
 	// computed from the raw OBJ's own bounding box, see CPU's
 	// build_stanford_armadillo() comment for the numbers).
-	const int mat_armadillo = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.55f, 0.56f, 0.58f), 0.08f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_armadillo = add_metal(scene, make_float3(0.55f, 0.56f, 0.58f), 0.08f);
 	load_obj_triangles_gpu(scene, "armadillo.obj", mat_armadillo,
 		/*scale=*/0.0198f, make_float3(0.0f, 1.0736f, 0.0f));
 
 	// Area light
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -2503,24 +2447,19 @@ static void build_stanford_happy_buddha_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
 	// Buddha mesh, in polished gold - matches CPU's exact scale/offset (both
 	// computed from the raw OBJ's own bounding box, see CPU's
 	// build_stanford_happy_buddha() comment for the numbers).
-	const int mat_buddha = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.83f, 0.69f, 0.22f), 0.05f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_buddha = add_metal(scene, make_float3(0.83f, 0.69f, 0.22f), 0.05f);
 	load_obj_triangles_gpu(scene, "happy-buddha.obj", mat_buddha,
 		/*scale=*/15.1496f, make_float3(0.0824f, -0.7539f, 0.1015f));
 
 	// Area light
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -2544,24 +2483,19 @@ static void build_stanford_lucy_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
 	// Lucy mesh, in bright silver - matches CPU's exact scale/offset (both
 	// computed from the raw OBJ's own bounding box, see CPU's
 	// build_stanford_lucy() comment for the numbers).
-	const int mat_lucy = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.85f, 0.85f, 0.88f), 0.1f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_lucy = add_metal(scene, make_float3(0.85f, 0.85f, 0.88f), 0.1f);
 	load_obj_triangles_gpu(scene, "lucy.obj", mat_lucy,
 		/*scale=*/0.0018783f, make_float3(-1.2978f, 1.1380f, -0.2283f));
 
 	// Area light
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -2582,24 +2516,19 @@ static void build_stanford_dragon_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
 	// Dragon mesh, in bright silver - matches CPU's exact scale/offset (both
 	// computed from the raw OBJ's own bounding box, see CPU's
 	// build_stanford_dragon() comment for the numbers).
-	const int mat_dragon = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.85f, 0.85f, 0.88f), 0.1f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_dragon = add_metal(scene, make_float3(0.85f, 0.85f, 0.88f), 0.1f);
 	load_obj_triangles_gpu(scene, "xyzrgb_dragon.obj", mat_dragon,
 		/*scale=*/0.0267772f, make_float3(-0.0600f, 1.6803f, -0.2640f));
 
 	// Area light
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -2619,24 +2548,19 @@ static void build_glass_dragon_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
 	// Dragon mesh, in clear glass - matches CPU's exact scale/offset (same
 	// numbers as scene 42's metal dragon, see build_stanford_dragon_gpu's
 	// comment).
-	const int mat_dragon = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Dielectric, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 1.5f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_dragon = add_dielectric(scene, 1.5f);
 	load_obj_triangles_gpu(scene, "xyzrgb_dragon.obj", mat_dragon,
 		/*scale=*/0.0267772f, make_float3(-0.0600f, 1.6803f, -0.2640f));
 
 	// Area light
-	const int mat_light2 = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light2 = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light2{}; light2.center = make_float3(0.0f, 8.0f, 0.0f); light2.radius = 2.0f; light2.materialIdx = mat_light2;
 	scene.spheres.push_back(light2);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -2648,20 +2572,15 @@ static void build_beast_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
-	const int mat_beast = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.71f, 0.43f, 0.20f), 0.15f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_beast = add_metal(scene, make_float3(0.71f, 0.43f, 0.20f), 0.15f);
 	load_obj_triangles_gpu(scene, "beast.obj", mat_beast,
 		/*scale=*/0.0118956f, make_float3(0.0000f, 0.0103f, -0.3401f));
 
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -2673,20 +2592,15 @@ static void build_beetle_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
-	const int mat_beetle = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.85f, 0.85f, 0.88f), 0.08f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_beetle = add_metal(scene, make_float3(0.85f, 0.85f, 0.88f), 0.08f);
 	load_obj_triangles_gpu(scene, "beetle.obj", mat_beetle,
 		/*scale=*/9.9009901f, make_float3(0.3614f, -3.0297f, -1.9010f));
 
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -2698,20 +2612,15 @@ static void build_beetle_alt_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
-	const int mat_beetle = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.55f, 0.56f, 0.58f), 0.12f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_beetle = add_metal(scene, make_float3(0.55f, 0.56f, 0.58f), 0.12f);
 	load_obj_triangles_gpu(scene, "beetle-alt.obj", mat_beetle,
 		/*scale=*/8.8757396f, make_float3(0.0000f, 1.5000f, 0.0000f));
 
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -2723,20 +2632,15 @@ static void build_bimba_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
-	const int mat_bimba = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.83f, 0.69f, 0.22f), 0.05f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_bimba = add_metal(scene, make_float3(0.83f, 0.69f, 0.22f), 0.05f);
 	load_obj_triangles_gpu(scene, "bimba.obj", mat_bimba,
 		/*scale=*/9.2592593f, make_float3(0.3333f, 2.2963f, 10.7454f));
 
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -2748,20 +2652,15 @@ static void build_cow_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
-	const int mat_cow = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.80f, 0.65f, 0.28f), 0.15f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_cow = add_metal(scene, make_float3(0.80f, 0.65f, 0.28f), 0.15f);
 	load_obj_triangles_gpu(scene, "cow.obj", mat_cow,
 		/*scale=*/0.4689698f, make_float3(-0.3639f, 1.7056f, 0.0000f));
 
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -2773,20 +2672,15 @@ static void build_fandisk_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
-	const int mat_fandisk = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.55f, 0.56f, 0.58f), 0.1f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_fandisk = add_metal(scene, make_float3(0.55f, 0.56f, 0.58f), 0.1f);
 	load_obj_triangles_gpu(scene, "fandisk.obj", mat_fandisk,
 		/*scale=*/0.5719733f, make_float3(-1.3807f, -7.2097f, 0.7664f));
 
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -2798,20 +2692,15 @@ static void build_homer_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
-	const int mat_homer = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.85f, 0.70f, 0.25f), 0.1f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_homer = add_metal(scene, make_float3(0.85f, 0.70f, 0.25f), 0.1f);
 	load_obj_triangles_gpu(scene, "homer.obj", mat_homer,
 		/*scale=*/3.5671819f, make_float3(-1.7818f, -0.5565f, -1.7568f));
 
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -2826,20 +2715,15 @@ static void build_igea_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
-	const int mat_igea = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.85f, 0.85f, 0.88f), 0.1f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_igea = add_metal(scene, make_float3(0.85f, 0.85f, 0.88f), 0.1f);
 	load_obj_triangles_gpu(scene, "igea.obj", mat_igea,
 		/*scale=*/30.0000000f, make_float3(0.0000f, 1.5000f, 0.0000f));
 
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -2851,20 +2735,15 @@ static void build_max_planck_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
-	const int mat_planck = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.65f, 0.45f, 0.30f), 0.2f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_planck = add_metal(scene, make_float3(0.65f, 0.45f, 0.30f), 0.2f);
 	load_obj_triangles_gpu(scene, "max-planck.obj", mat_planck,
 		/*scale=*/0.0092252f, make_float3(-0.2823f, 1.6670f, -0.7592f));
 
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -2876,20 +2755,15 @@ static void build_ogre_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
-	const int mat_ogre = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.45f, 0.50f, 0.35f), 0.2f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_ogre = add_metal(scene, make_float3(0.45f, 0.50f, 0.35f), 0.2f);
 	load_obj_triangles_gpu(scene, "ogre.obj", mat_ogre,
 		/*scale=*/0.0936388f, make_float3(0.0000f, 0.0007f, 0.0557f));
 
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -2901,20 +2775,15 @@ static void build_rocker_arm_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
-	const int mat_rocker = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.55f, 0.56f, 0.58f), 0.1f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_rocker = add_metal(scene, make_float3(0.55f, 0.56f, 0.58f), 0.1f);
 	load_obj_triangles_gpu(scene, "rocker-arm.obj", mat_rocker,
 		/*scale=*/5.8365759f, make_float3(0.0000f, 1.5000f, 0.0000f));
 
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -2934,24 +2803,19 @@ static void build_utah_teapot_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
 	// Teapot mesh, in bright silver - matches CPU's exact scale/offset (both
 	// computed from the raw OBJ's own bounding box, see CPU's
 	// build_utah_teapot() comment for the numbers).
-	const int mat_teapot = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.85f, 0.85f, 0.88f), 0.1f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_teapot = add_metal(scene, make_float3(0.85f, 0.85f, 0.88f), 0.1f);
 	load_obj_triangles_gpu(scene, "teapot.obj", mat_teapot,
 		/*scale=*/0.952381f, make_float3(-1.6352f, 0.0f, 0.0f));
 
 	// Area light
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -2971,24 +2835,19 @@ static void build_spot_cow_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
 	// Cow mesh, in bright silver - matches CPU's exact scale/offset (both
 	// computed from the raw OBJ's own bounding box, see CPU's
 	// build_spot_cow() comment for the numbers).
-	const int mat_cow = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.85f, 0.85f, 0.88f), 0.1f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_cow = add_metal(scene, make_float3(0.85f, 0.85f, 0.88f), 0.1f);
 	load_obj_triangles_gpu(scene, "spot.obj", mat_cow,
 		/*scale=*/1.7747f, make_float3(0.0f, 1.3076f, -0.3373f));
 
 	// Area light
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -3008,24 +2867,19 @@ static void build_suzanne_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
 	// Suzanne mesh, in bright silver - matches CPU's exact scale/offset
 	// (both computed from the raw OBJ's own bounding box, see CPU's
 	// build_suzanne() comment for the numbers).
-	const int mat_suzanne = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.85f, 0.85f, 0.88f), 0.1f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_suzanne = add_metal(scene, make_float3(0.85f, 0.85f, 0.88f), 0.1f);
 	load_obj_triangles_gpu(scene, "suzanne.obj", mat_suzanne,
 		/*scale=*/1.52381f, make_float3(3.8005f, -0.4073f, -6.2536f));
 
 	// Area light
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -3048,24 +2902,19 @@ static void build_nefertiti_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
 	// Nefertiti mesh, in bright silver - matches CPU's exact scale/offset
 	// (both computed from the raw OBJ's own bounding box, see CPU's
 	// build_nefertiti() comment for the numbers).
-	const int mat_nefertiti = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.85f, 0.85f, 0.88f), 0.1f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_nefertiti = add_metal(scene, make_float3(0.85f, 0.85f, 0.88f), 0.1f);
 	load_obj_triangles_gpu(scene, "nefertiti.obj", mat_nefertiti,
 		/*scale=*/0.0060654f, make_float3(-0.0001f, 1.4998f, -0.0002f));
 
 	// Area light
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -3085,24 +2934,19 @@ static void build_horse_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
 	// Horse mesh, in bright silver - matches CPU's exact scale/offset (both
 	// computed from the raw OBJ's own bounding box, see CPU's
 	// build_horse() comment for the numbers).
-	const int mat_horse = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.85f, 0.85f, 0.88f), 0.1f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_horse = add_metal(scene, make_float3(0.85f, 0.85f, 0.88f), 0.1f);
 	load_obj_triangles_gpu(scene, "horse.obj", mat_horse,
 		/*scale=*/16.36295f, make_float3(0.0f, 1.5f, 0.0f));
 
 	// Area light
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -3122,24 +2966,19 @@ static void build_cheburashka_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
 	// Cheburashka mesh, in bright silver - matches CPU's exact scale/offset
 	// (both computed from the raw OBJ's own bounding box, see CPU's
 	// build_cheburashka() comment for the numbers).
-	const int mat_cheb = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.85f, 0.85f, 0.88f), 0.1f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_cheb = add_metal(scene, make_float3(0.85f, 0.85f, 0.88f), 0.1f);
 	load_obj_triangles_gpu(scene, "cheburashka.obj", mat_cheb,
 		/*scale=*/3.5648929f, make_float3(-1.7824465f, -0.2824465f, -1.7824465f));
 
 	// Area light
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -3159,40 +2998,32 @@ static void build_trophy_room_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
 	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
 		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-	ground_mat.textureIdx = checkerTexIdx;
-	scene.materials.push_back(ground_mat);
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
 	// Bunny (bronze) - matches CPU's shrunk scale/offset exactly.
-	const int mat_bronze = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.71f, 0.43f, 0.20f), 0.15f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_bronze = add_metal(scene, make_float3(0.71f, 0.43f, 0.20f), 0.15f);
 	load_obj_triangles_gpu(scene, "stanford-bunny.obj", mat_bronze,
 		/*scale=*/10.3467f, make_float3(-3.32576f, -0.34123f, 0.01589f));
 
 	// Teapot (chrome)
-	const int mat_chrome = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.85f, 0.85f, 0.88f), 0.10f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_chrome = add_metal(scene, make_float3(0.85f, 0.85f, 0.88f), 0.10f);
 	load_obj_triangles_gpu(scene, "teapot.obj", mat_chrome,
 		/*scale=*/0.50794f, make_float3(-2.07211f, 0.0f, 0.0f));
 
 	// Suzanne (gold)
-	const int mat_gold = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.83f, 0.69f, 0.22f), 0.05f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_gold = add_metal(scene, make_float3(0.83f, 0.69f, 0.22f), 0.05f);
 	load_obj_triangles_gpu(scene, "suzanne.obj", mat_gold,
 		/*scale=*/0.81270f, make_float3(3.22694f, -0.21723f, -3.33526f));
 
 	// Spot the Cow (gunmetal)
-	const int mat_gunmetal = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Metal, make_float3(0.55f, 0.56f, 0.58f), 0.08f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_gunmetal = add_metal(scene, make_float3(0.55f, 0.56f, 0.58f), 0.08f);
 	load_obj_triangles_gpu(scene, "spot.obj", mat_gunmetal,
 		/*scale=*/0.94651f, make_float3(3.5f, 0.69739f, -0.17989f));
 
 	// Area light
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
@@ -3223,8 +3054,7 @@ void build_final_scene_gpu(SceneData& scene) {
 	// Ground: 20x20 grid of boxes with randomized height, matching CPU's
 	// loop bounds/spacing (w=100, x0/z0 in [-1000,1000)) exactly.
 	{
-		const int mat_ground = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.48f, 0.83f, 0.53f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		const int mat_ground = add_lambertian(scene, make_float3(0.48f, 0.83f, 0.53f));
 		constexpr int kBoxesPerSide = 20;
 		constexpr float w = 100.0f;
 		for (int i = 0; i < kBoxesPerSide; ++i) {
@@ -3239,15 +3069,13 @@ void build_final_scene_gpu(SceneData& scene) {
 
 	// Area light quad (matches CPU exactly: Q=(123,554,147), u=(300,0,0), v=(0,0,265))
 	{
-		const int mat_light = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(7.0f, 7.0f, 7.0f) });
+		const int mat_light = add_diffuse_light(scene, make_float3(7.0f, 7.0f, 7.0f));
 		add_transformed_quad(scene, make_float3(123.0f, 554.0f, 147.0f), make_float3(300.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 265.0f), mat_light);
 	}
 
 	// Moving sphere (real GPU motion blur - center1 differs from center).
 	{
-		const int mat = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.7f, 0.3f, 0.1f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		const int mat = add_lambertian(scene, make_float3(0.7f, 0.3f, 0.1f));
 		SphereData s{};
 		s.center = make_float3(400.0f, 400.0f, 200.0f);
 		s.center1 = make_float3(430.0f, 400.0f, 200.0f);  // center + (30,0,0)
@@ -3258,8 +3086,7 @@ void build_final_scene_gpu(SceneData& scene) {
 
 	// Dielectric (glass) sphere.
 	{
-		const int mat = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({ MaterialType::Dielectric, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 1.5f, make_float3(0.0f, 0.0f, 0.0f) });
+		const int mat = add_dielectric(scene, 1.5f);
 		SphereData s{};
 		s.center = make_float3(260.0f, 150.0f, 45.0f);
 		s.center1 = s.center;
@@ -3270,8 +3097,7 @@ void build_final_scene_gpu(SceneData& scene) {
 
 	// Metal sphere.
 	{
-		const int mat = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({ MaterialType::Metal, make_float3(0.8f, 0.8f, 0.9f), 1.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		const int mat = add_metal(scene, make_float3(0.8f, 0.8f, 0.9f), 1.0f);
 		SphereData s{};
 		s.center = make_float3(0.0f, 150.0f, 145.0f);
 		s.center1 = s.center;
@@ -3286,10 +3112,7 @@ void build_final_scene_gpu(SceneData& scene) {
 	// MaterialData.eta_c.x carries sigma_t=0.2 (density); .fuzz=0 is the
 	// HG asymmetry g, matching CPU's legacy constructor's g=0.0 default.
 	{
-		const int mat = safe_cast_to_int(scene.materials.size());
-		MaterialData m{ MaterialType::DielectricMedium, make_float3(0.2f, 0.4f, 0.9f), 0.0f, 1.5f,
-			make_float3(0.0f, 0.0f, 0.0f), make_float3(0.2f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-		scene.materials.push_back(m);
+		const int mat = add_dielectric_medium(scene, make_float3(0.2f, 0.4f, 0.9f), 1.5f, 0.2f);
 		SphereData s{};
 		s.center = make_float3(360.0f, 150.0f, 145.0f);
 		s.center1 = s.center;
@@ -3307,10 +3130,7 @@ void build_final_scene_gpu(SceneData& scene) {
 	// this material's logic unreachable here, which is fine, it's still
 	// correct.
 	{
-		const int mat = safe_cast_to_int(scene.materials.size());
-		MaterialData m{ MaterialType::DielectricMedium, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 1.5f,
-			make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0001f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-		scene.materials.push_back(m);
+		const int mat = add_dielectric_medium(scene, make_float3(1.0f, 1.0f, 1.0f), 1.5f, 0.0001f);
 		SphereData s{};
 		s.center = make_float3(0.0f, 0.0f, 0.0f);
 		s.center1 = s.center;
@@ -3326,10 +3146,7 @@ void build_final_scene_gpu(SceneData& scene) {
 	{
 		const int earthTexIdx = load_image_texture_gpu(scene, "earthmap.jpg");
 		const int mat = safe_cast_to_int(scene.materials.size());
-		MaterialData m{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-			make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-		m.textureIdx = earthTexIdx;
-		scene.materials.push_back(m);
+		add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), earthTexIdx);
 		SphereData s{};
 		s.center = make_float3(400.0f, 200.0f, 400.0f);
 		s.center1 = s.center;
@@ -3342,10 +3159,7 @@ void build_final_scene_gpu(SceneData& scene) {
 	{
 		const int noiseTexIdx = add_noise_texture_gpu(scene, 0.2f);
 		const int mat = safe_cast_to_int(scene.materials.size());
-		MaterialData m{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
-			make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
-		m.textureIdx = noiseTexIdx;
-		scene.materials.push_back(m);
+		add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), noiseTexIdx);
 		SphereData s{};
 		s.center = make_float3(220.0f, 280.0f, 300.0f);
 		s.center1 = s.center;
@@ -3358,8 +3172,7 @@ void build_final_scene_gpu(SceneData& scene) {
 	// matches CPU's random_double(0,165) box + rotate_y(15) + translate
 	// (-100,270,395) exactly in structure (own RNG sequence, not CPU's).
 	{
-		const int mat_white = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.73f, 0.73f, 0.73f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		const int mat_white = add_lambertian(scene, make_float3(0.73f, 0.73f, 0.73f));
 		constexpr int kNumSpheres = 1000;
 		constexpr float kTranslate_x = -100.0f, kTranslate_y = 270.0f, kTranslate_z = 395.0f;
 		for (int i = 0; i < kNumSpheres; ++i) {
@@ -3386,8 +3199,7 @@ void build_final_scene_gpu(SceneData& scene) {
 /// the CPU registry's build_sky field does -- background color IS the GPU
 /// sky, same convention as scene 24's HDRI Sky).
 static void build_sponza_gpu(SceneData& scene) {
-	const int mat_stone = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.80f, 0.74f, 0.62f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_stone = add_lambertian(scene, make_float3(0.80f, 0.74f, 0.62f));
 	load_obj_triangles_mtl_gpu(scene, "sponza.obj", mat_stone,
 		/*scale=*/1.0f, make_float3(60.52f, 126.44f, 38.69f), "sponza_textures");
 }
@@ -3398,8 +3210,7 @@ static void build_sponza_gpu(SceneData& scene) {
 /// via backgroundColor). 2.84M triangles -- the largest mesh in this
 /// codebase.
 static void build_bistro_exterior_gpu(SceneData& scene) {
-	const int mat_plaster = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.75f, 0.62f, 0.50f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_plaster = add_lambertian(scene, make_float3(0.75f, 0.62f, 0.50f));
 	load_obj_triangles_mtl_gpu(scene, "bistro_exterior.obj", mat_plaster,
 		/*scale=*/1.0f, make_float3(-1526.37f, 472.62f, -267.01f), "bistro_textures");
 }
@@ -3411,8 +3222,7 @@ static void build_bistro_exterior_gpu(SceneData& scene) {
 /// underlying parser the same way as the CPU loader -- see that function;
 /// load_obj_triangles_mtl_gpu() shares the same fix).
 static void build_rungholt_gpu(SceneData& scene) {
-	const int mat_wood = safe_cast_to_int(scene.materials.size());
-	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.62f, 0.48f, 0.34f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	const int mat_wood = add_lambertian(scene, make_float3(0.62f, 0.48f, 0.34f));
 	load_obj_triangles_mtl_gpu(scene, "rungholt.obj", mat_wood,
 		/*scale=*/1.0f, make_float3(0.0f, 0.0f, 0.0f));
 }
