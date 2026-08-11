@@ -1534,15 +1534,22 @@ bool OptiXRenderer::render(
 }
 
 void OptiXRenderer::cleanup() noexcept {
-	// Must happen before context_ is destroyed below: wavefrontTracer_ owns
-	// its own OptiX program groups/pipelines/module, all created from
-	// context_. Without this, wavefrontTracer_'s implicit member destructor
-	// runs after this function returns - i.e. after optixDeviceContextDestroy
-	// below - and tries to destroy OptiX objects belonging to an
-	// already-destroyed context (use-after-free, reliably crashes with an
-	// access violation on process exit once wavefront mode actually gets
-	// far enough to allocate anything).
+	// Must happen before context_ is destroyed below: wavefrontTracer_ and
+	// sppmTracer_ each own their own OptiX program groups/pipelines/module,
+	// all created from context_. Without this, their implicit member
+	// destructors run after this function returns - i.e. after
+	// optixDeviceContextDestroy below - and try to destroy OptiX objects
+	// belonging to an already-destroyed context (use-after-free, reliably
+	// crashes with an access violation on process exit once that mode
+	// actually gets far enough to allocate anything). sppmTracer_ was
+	// missing from this list entirely until GPU SPPM sub-phase 1f's own
+	// verification test caught it under compute-sanitizer (CUDA_ERROR_
+	// INVALID_CONTEXT inside cuCtxDestroy, called from SPPMPathTracer's
+	// destructor after context_/cudaContext_ were already torn down) -
+	// wavefrontTracer_ alone had never exercised this path in a way that
+	// happened to crash visibly before.
 	wavefrontTracer_.reset();
+	sppmTracer_.reset();
 
 	// Free SBT records
 	if (d_raygenRecord_) cudaFree(reinterpret_cast<void*>(d_raygenRecord_));

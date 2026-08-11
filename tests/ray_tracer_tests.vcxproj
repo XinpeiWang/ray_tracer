@@ -165,6 +165,7 @@
     </ClCompile>
     <ClCompile Include="integration\render_tests.cpp" />
     <ClCompile Include="integration\sppm_first_slice_test.cpp" />
+    <ClCompile Include="integration\sppm_gpu_first_slice_test.cpp" />
     <ClCompile Include="integration\skip_pdf_material_brightness_tests.cpp" />
     <ClCompile Include="unit\scatter_record_transmission_tests.cpp" />
     <ClCompile Include="unit\gpu_render_tests.cpp" />
