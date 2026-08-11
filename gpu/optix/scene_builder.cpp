@@ -70,41 +70,57 @@ namespace {
 
 	inline int add_lambertian(SceneData& scene, float3 albedo, int textureIdx = -1) {
 		const int idx = safe_cast_to_int(scene.materials.size());
-		MaterialData m{ MaterialType::Lambertian, albedo, 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) };
+		MaterialData m{};
+		m.type = MaterialType::Lambertian;
+		m.albedo = albedo;
 		m.textureIdx = textureIdx;
 		scene.materials.push_back(m);
 		return idx;
 	}
 
-	inline int add_metal(SceneData& scene, float3 albedo, float fuzz) {
+	inline int add_metal(SceneData& scene, float3 albedo, float roughness) {
 		const int idx = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({ MaterialType::Metal, albedo, fuzz, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+		MaterialData m{};
+		m.type = MaterialType::Metal;
+		m.albedo = albedo;
+		m.roughness = roughness;
+		scene.materials.push_back(m);
 		return idx;
 	}
 
 	inline int add_dielectric(SceneData& scene, float ior) {
 		const int idx = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({ MaterialType::Dielectric, make_float3(1.0f, 1.0f, 1.0f), 0.0f, ior, make_float3(0.0f, 0.0f, 0.0f) });
+		MaterialData m{};
+		m.type = MaterialType::Dielectric;
+		m.ior = ior;
+		scene.materials.push_back(m);
 		return idx;
 	}
 
 	inline int add_diffuse_light(SceneData& scene, float3 emission) {
 		const int idx = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, emission });
+		MaterialData m{};
+		m.type = MaterialType::DiffuseLight;
+		m.emission = emission;
+		scene.materials.push_back(m);
 		return idx;
 	}
 
-	inline int add_rough_dielectric(SceneData& scene, float alpha, float ior) {
+	inline int add_rough_dielectric(SceneData& scene, float roughness, float ior) {
 		const int idx = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({ MaterialType::RoughDielectric, make_float3(1.0f, 1.0f, 1.0f), alpha, ior, make_float3(0.0f, 0.0f, 0.0f) });
+		MaterialData m{};
+		m.type = MaterialType::RoughDielectric;
+		m.roughness = roughness;
+		m.ior = ior;
+		scene.materials.push_back(m);
 		return idx;
 	}
 
-	inline int add_conductor(SceneData& scene, float3 eta, float3 k, float alpha) {
+	inline int add_conductor(SceneData& scene, float3 eta, float3 k, float roughness) {
 		const int idx = safe_cast_to_int(scene.materials.size());
 		MaterialData m{};
 		m.type = MaterialType::Conductor;
-		m.fuzz = alpha;
+		m.roughness = roughness;
 		m.eta_c = eta;
 		m.k_c = k;
 		scene.materials.push_back(m);
@@ -116,7 +132,7 @@ namespace {
 		MaterialData m{};
 		m.type = MaterialType::CoatedDiffuse;
 		m.albedo = albedo;
-		m.fuzz = coatRoughness;
+		m.roughness = coatRoughness;
 		m.ior = coatIor;
 		scene.materials.push_back(m);
 		return idx;
@@ -135,7 +151,7 @@ namespace {
 		const int idx = safe_cast_to_int(scene.materials.size());
 		MaterialData m{};
 		m.type = MaterialType::CoatedConductor;
-		m.fuzz = coatRoughness;
+		m.roughness = coatRoughness;
 		m.ior = coatIor;
 		m.eta_c = eta;
 		m.k_c = k;
@@ -147,8 +163,8 @@ namespace {
 		const int idx = safe_cast_to_int(scene.materials.size());
 		MaterialData m{};
 		m.type = MaterialType::DiffuseTransmission;
-		m.albedo = reflectance;    // R
-		m.emission = transmittance; // T (reuses the emission field -- see MaterialType::DiffuseTransmission)
+		m.reflectance = reflectance;
+		m.transmittance = transmittance;
 		scene.materials.push_back(m);
 		return idx;
 	}
@@ -164,7 +180,12 @@ namespace {
 
 	inline int add_medium(SceneData& scene, float3 albedo, float g, float sigma_t) {
 		const int idx = safe_cast_to_int(scene.materials.size());
-		scene.materials.push_back({ MaterialType::Medium, albedo, g, sigma_t, make_float3(0.0f, 0.0f, 0.0f) });
+		MaterialData m{};
+		m.type = MaterialType::Medium;
+		m.medium_albedo = albedo;
+		m.g = g;
+		m.sigma_t = sigma_t;
+		scene.materials.push_back(m);
 		return idx;
 	}
 
@@ -172,26 +193,32 @@ namespace {
 		const int idx = safe_cast_to_int(scene.materials.size());
 		MaterialData m{};
 		m.type = MaterialType::Hair;
-		m.albedo = sigma_a;
-		m.fuzz = beta_m;
-		m.ior = eta;
-		m.eta_c = make_float3(beta_n, alpha_deg, 0.0f);
+		m.sigma_a = sigma_a;
+		m.beta_m = beta_m;
+		m.eta = eta;
+		m.hair_extra.beta_n = beta_n;
+		m.hair_extra.alpha_deg = alpha_deg;
 		scene.materials.push_back(m);
 		return idx;
 	}
 
 	inline int add_dielectric_medium(SceneData& scene, float3 albedo, float ior, float sigma_t, float g = 0.0f) {
 		const int idx = safe_cast_to_int(scene.materials.size());
-		MaterialData m{ MaterialType::DielectricMedium, albedo, g, ior,
-			make_float3(0.0f, 0.0f, 0.0f), make_float3(sigma_t, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+		MaterialData m{};
+		m.type = MaterialType::DielectricMedium;
+		m.medium_albedo = albedo;
+		m.g = g;
+		m.ior = ior;
+		m.dielectric_medium_extra.sigma_t = sigma_t;
 		scene.materials.push_back(m);
 		return idx;
 	}
 
 	inline int add_normal_mapped_lambertian(SceneData& scene, float3 albedo, int normalMapTexIdx) {
 		const int idx = safe_cast_to_int(scene.materials.size());
-		MaterialData m{ MaterialType::NormalMappedLambertian, albedo, 0.0f, 0.0f,
-			make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+		MaterialData m{};
+		m.type = MaterialType::NormalMappedLambertian;
+		m.albedo = albedo;
 		m.textureIdx = normalMapTexIdx;
 		scene.materials.push_back(m);
 		return idx;
@@ -202,10 +229,12 @@ namespace {
 		const int idx = safe_cast_to_int(scene.materials.size());
 		MaterialData m{};
 		m.type = MaterialType::Principled;
-		m.albedo = baseColor;
+		m.base_color = baseColor;
 		m.ior = ior;
-		m.fuzz = roughness;
-		m.eta_c = make_float3(metallic, clearcoat, clearcoatRoughness);
+		m.roughness = roughness;
+		m.principled_params.metallic = metallic;
+		m.principled_params.clearcoat = clearcoat;
+		m.principled_params.clearcoat_rough = clearcoatRoughness;
 		scene.materials.push_back(m);
 		return idx;
 	}

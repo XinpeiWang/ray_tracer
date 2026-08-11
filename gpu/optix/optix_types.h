@@ -223,21 +223,83 @@ struct TextureData {
 	float3 color2;     // Checker: "odd" cell color. Unused otherwise.
 };
 
-// Material data (packed for SBT)
+// Material data (packed for SBT).
+//
+// This struct is reused across all 16 MaterialTypes (see the field-reuse
+// notes already on each MaterialType enumerator above), which used to mean
+// every field's *meaning* depended entirely on which MaterialType was set
+// on the same MaterialData instance - e.g. plain `.fuzz` meant Metal
+// roughness, RoughDielectric/Conductor/CoatedDiffuse/CoatedConductor/
+// Principled roughness, Medium/DielectricMedium's Henyey-Greenstein
+// asymmetry g, or Hair's beta_m, entirely by convention/comment.
+//
+// Each field below is now an anonymous union of same-size alternatives,
+// one name per material family that owns that storage - purely a set of
+// alternate *names* for the exact same bytes (standard C++11 anonymous
+// unions), not a layout change: sizeof/alignment/positional-brace-init
+// order are all unchanged (the first-listed name in each union is what a
+// positional aggregate-init like `{ MaterialType::Metal, albedo, fuzz,
+// 0.0f, ... }` still binds to), and every pre-existing field name (.fuzz,
+// .ior, .eta_c, ...) remains valid and reads/writes the identical bytes -
+// this is why no reading code (shade_material(), wavefront_kernels.cu's
+// parallel switch, optix_intersection_sphere.h's special-cased types) had
+// to change: they still compile and run byte-for-byte identically. Only
+// scene_builder.cpp's add_<type>() material factories (the sole writers,
+// after the Phase 1 refactor that funneled all ~190 material-creation call
+// sites through them) were updated to use the clearer names.
 struct MaterialData {
 	MaterialType type;
-	float3 albedo;      // For lambertian, metal; also single-scatter color for Medium; also sigma_a (RGB absorption) for Hair
-	float fuzz;         // For metal (roughness); also GGX alpha for RoughDielectric / Conductor; also HG asymmetry g for Medium; also beta_m (longitudinal roughness) for Hair
-	float ior;          // For dielectric / rough_dielectric (index of refraction); also sigma_t (extinction coefficient) for Medium; also fiber eta for Hair
-	float3 emission;    // For diffuse_light
-	// Conductor complex IOR per RGB channel (pbrt-v4 ConductorBxDF: eta, k)
-	float3 eta_c;       // Real part η per R/G/B channel (Conductor only); Hair reuses .x = beta_n (azimuthal roughness), .y = alpha_deg (scale tilt)
-	float3 k_c;         // Imaginary part k per R/G/B channel (Conductor only)
+
+	union {
+		float3 albedo;         // Lambertian/Metal/RoughDielectric(unused)/CoatedDiffuse: diffuse/base color
+		float3 sigma_a;        // Hair: RGB absorption coefficient
+		float3 medium_albedo;  // Medium/DielectricMedium: single-scatter color
+		float3 reflectance;    // DiffuseTransmission: R (reflected diffuse color)
+		float3 base_color;     // Principled: base color
+	};
+
+	union {
+		float fuzz;       // Legacy/generic name - still what most reading code uses
+		float roughness;  // Metal/RoughDielectric/Conductor/CoatedDiffuse/CoatedConductor/Principled:
+		                  //   authored roughness (RoughnessToAlpha conversion done in shading code)
+		float g;          // Medium/DielectricMedium: Henyey-Greenstein phase asymmetry
+		float beta_m;     // Hair: longitudinal roughness
+	};
+
+	union {
+		float ior;      // Dielectric/RoughDielectric/ThinDielectric/CoatedDiffuse(coat)/
+		                //   CoatedConductor(coat)/NormalizedFresnel/DielectricMedium/Principled: index of refraction
+		float sigma_t;  // Medium: extinction coefficient
+		float eta;      // Hair: fiber index of refraction
+	};
+
+	union {
+		float3 emission;       // DiffuseLight: emitted radiance
+		float3 transmittance;  // DiffuseTransmission: T (transmitted diffuse color)
+	};
+
+	// Conductor complex IOR real part is this union's own, unambiguous
+	// purpose; Hair/DielectricMedium/Principled each borrow the same 12
+	// bytes for their own unrelated per-component data (see each nested
+	// struct below - matches the field-reuse already on MaterialType's own
+	// enumerator comments exactly).
+	union {
+		float3 eta_c;  // Conductor/CoatedConductor: real part η per R/G/B channel (pbrt-v4 ConductorBxDF)
+		struct { float beta_n, alpha_deg, _hair_pad; } hair_extra;               // Hair
+		struct { float sigma_t, _dielectric_medium_pad1, _dielectric_medium_pad2; } dielectric_medium_extra; // DielectricMedium
+		struct { float metallic, clearcoat, clearcoat_rough; } principled_params; // Principled
+	};
+
+	float3 k_c;   // Conductor/CoatedConductor only: imaginary part k per R/G/B channel
+
 	// Index into LaunchParams::textures, or -1 to use `albedo` directly
 	// (every material before this field existed omitted it in brace-init,
 	// which C++ aggregate-init already defaults to -1 via this default
 	// member initializer - not 0 - so no existing call site needed
-	// updating). Lambertian-only for now (see shade_material()'s comment).
+	// updating). Lambertian: albedo texture. NormalMappedLambertian reuses
+	// this as the normal-map texture index instead (see that type's own
+	// comment) - unambiguous since CPU never combines that material with a
+	// real albedo texture too.
 	int textureIdx = -1;
 };
 
