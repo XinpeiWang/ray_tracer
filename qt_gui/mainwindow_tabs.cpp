@@ -16,6 +16,8 @@
 #include <QScreen>
 #include <QTimer>
 #include <QAbstractItemView>
+#include <QDesktopServices>
+#include <QUrl>
 #include <cmath>
 
 void MainWindow::createBasicTab() {
@@ -363,6 +365,66 @@ void MainWindow::createAdvancedTab() {
 	m_tabWidget->addTab(scrollArea, "Advanced Settings");
 }
 
+void MainWindow::createPreviewTab() {
+	QWidget *previewWidget = new QWidget();
+	QVBoxLayout *layout = new QVBoxLayout(previewWidget);
+	layout->setContentsMargins(12, 12, 12, 12);
+	layout->setSpacing(8);
+
+	// Shows the rendered PNG scaled to fit (see main.cpp's Format Conversion
+	// step, which always writes a same-basename .png next to a successful
+	// render's .ppm output) - populated by onRenderComplete() instead of
+	// this app shelling out to the OS's default image viewer for every render.
+	m_previewLabel = new ScaledImageLabel(previewWidget);
+	m_previewLabel->setPlaceholderText("No render yet — start a render to see a preview here.");
+	m_previewLabel->setMinimumHeight(200);
+	m_previewLabel->setStyleSheet(
+		"ScaledImageLabel {"
+		"  background-color: #1A1A1A;"
+		"  border: 1px solid #404040;"
+		"  border-radius: 4px;"
+		"  color: #888888;"
+		"  font-size: 11pt;"
+		"}"
+	);
+	layout->addWidget(m_previewLabel, /*stretch=*/1);
+
+	m_previewInfoLabel = new QLabel(previewWidget);
+	m_previewInfoLabel->setAlignment(Qt::AlignCenter);
+	m_previewInfoLabel->setStyleSheet("color: #A8A8A8; font-size: 9pt;");
+	layout->addWidget(m_previewInfoLabel);
+
+	QHBoxLayout *btnLayout = new QHBoxLayout();
+	btnLayout->setContentsMargins(0, 4, 0, 0);
+
+	QString previewBtnStyle =
+		"QPushButton { min-height: 28px; max-height: 28px; min-width: 200px; padding: 0px 20px; font-size: 11pt; }"
+		"QPushButton:hover { background-color: #3A1050; border-color: #00FFFF; color: #00FFFF; }";
+
+	QPushButton *openFolderButton = new QPushButton("📁 Open Output Folder");
+	openFolderButton->setStyleSheet(previewBtnStyle);
+	connect(openFolderButton, &QPushButton::clicked, this, [this]() {
+		if (m_lastOutputPath.isEmpty()) return;
+		QFileInfo fileInfo(m_lastOutputPath);
+		QDesktopServices::openUrl(QUrl::fromLocalFile(fileInfo.absolutePath()));
+	});
+
+	QPushButton *openViewerButton = new QPushButton("🖼 Open in Default Viewer");
+	openViewerButton->setStyleSheet(previewBtnStyle);
+	connect(openViewerButton, &QPushButton::clicked, this, [this]() {
+		if (m_lastPreviewImagePath.isEmpty()) return;
+		QDesktopServices::openUrl(QUrl::fromLocalFile(m_lastPreviewImagePath));
+	});
+
+	btnLayout->addStretch();
+	btnLayout->addWidget(openFolderButton);
+	btnLayout->addWidget(openViewerButton);
+	btnLayout->addStretch();
+	layout->addLayout(btnLayout);
+
+	m_previewTabIndex = m_tabWidget->addTab(previewWidget, "Preview");
+}
+
 void MainWindow::createLogTab() {
 	QWidget *logWidget = new QWidget();
 	QVBoxLayout *layout = new QVBoxLayout(logWidget);
@@ -426,7 +488,7 @@ void MainWindow::createLogTab() {
 	btnLayout->addWidget(clearButton);
 	layout->addLayout(btnLayout);
 
-	m_tabWidget->addTab(logWidget, "Log Output");
+	m_logTabIndex = m_tabWidget->addTab(logWidget, "Log Output");
 }
 
 void MainWindow::createVideoTab() {

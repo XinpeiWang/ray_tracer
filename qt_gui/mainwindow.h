@@ -19,6 +19,8 @@
 #include <QEvent>
 #include <QTimer>
 #include <QDateTime>
+#include <QPixmap>
+#include <QResizeEvent>
 #include <atomic>
 
 // ============================================================================
@@ -38,6 +40,57 @@ protected:
             return true;  // always block wheel on these controls
         return QObject::eventFilter(obj, event);
     }
+};
+
+// ============================================================================
+// ScaledImageLabel
+// ============================================================================
+// A QLabel that shows an image scaled to fit its current size (preserving
+// aspect ratio, re-scaled on every resize) instead of QLabel's default
+// native-size-or-nothing behavior. Used by the Preview tab to show the
+// rendered image inline - see MainWindow::createPreviewTab() - instead of
+// shelling out to the OS's default image viewer for every render.
+// ============================================================================
+class ScaledImageLabel : public QLabel {
+	Q_OBJECT
+public:
+	explicit ScaledImageLabel(QWidget *parent = nullptr) : QLabel(parent) {
+		setAlignment(Qt::AlignCenter);
+		setMinimumSize(1, 1);
+	}
+
+	void setPreviewPixmap(const QPixmap &pixmap) {
+		m_original = pixmap;
+		updateScaledPixmap();
+	}
+
+	// Drops the currently displayed image (if any) and restores whatever
+	// text was last set via setPlaceholderText().
+	void clearPreviewPixmap() {
+		m_original = QPixmap();
+		setPixmap(QPixmap());
+		setText(m_placeholderText);
+	}
+
+	void setPlaceholderText(const QString &text) {
+		m_placeholderText = text;
+		if (m_original.isNull()) setText(text);
+	}
+
+protected:
+	void resizeEvent(QResizeEvent *event) override {
+		QLabel::resizeEvent(event);
+		updateScaledPixmap();
+	}
+
+private:
+	void updateScaledPixmap() {
+		if (m_original.isNull()) return;
+		setPixmap(m_original.scaled(size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+	}
+
+	QPixmap m_original;
+	QString m_placeholderText;
 };
 
 // ============================================================================
@@ -145,6 +198,7 @@ private:
 	void createBasicTab();
 	void createAdvancedTab();
 	void createVideoTab();
+	void createPreviewTab();
 	void createLogTab();
 	void applyDarkTheme();
 	void styleComboBox(QComboBox *combo);
@@ -214,8 +268,17 @@ private:
 	QDoubleSpinBox *m_videoSpeedSpinBox; // Camera movement speed multiplier
 	QLabel *m_videoInfoLabel;           // Video duration and path info
 
+	// Preview tab - shows the rendered image inline instead of shelling out
+	// to the OS's default image viewer (see onRenderComplete()).
+	ScaledImageLabel *m_previewLabel;   // Displays the rendered PNG, scaled to fit
+	QLabel *m_previewInfoLabel;         // Filename / resolution / size / render time
+	int m_previewTabIndex = -1;         // Index of the Preview tab within m_tabWidget
+	QString m_lastOutputPath;           // Most recent render's raw output path (.ppm)
+	QString m_lastPreviewImagePath;     // Most recent render's displayed image path (.png)
+
 	// Log output
 	QTextEdit *m_logTextEdit;           // Log output display
+	int m_logTabIndex = -1;             // Index of the Log Output tab within m_tabWidget
 
 	// Render thread
 	RenderThread *m_renderThread;       // Background render thread (nullptr when not rendering)

@@ -437,6 +437,7 @@ void MainWindow::setupUI() {
 	createBasicTab();
 	createAdvancedTab();
 	createVideoTab();
+	createPreviewTab();
 	createLogTab();
 
 	// Initialize scene info AFTER tabs are created (onSceneChanged uses m_samplesSpinBox)

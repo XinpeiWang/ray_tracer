@@ -311,6 +311,13 @@ void MainWindow::onRenderClicked() {
 	m_progressBar->setValue(0);
 	m_statusLabel->setText(m_videoMode ? "Rendering video frames..." : "Rendering...");
 
+	// Clear any previous render's preview so a stale image doesn't linger
+	// confusingly while this one is in progress.
+	if (m_previewLabel) m_previewLabel->clearPreviewPixmap();
+	if (m_previewInfoLabel) m_previewInfoLabel->clear();
+	m_lastOutputPath.clear();
+	m_lastPreviewImagePath.clear();
+
 	// Start elapsed timer
 	m_renderStartTime = QDateTime::currentDateTime();
 	if (!m_elapsedTimer) {
@@ -320,7 +327,7 @@ void MainWindow::onRenderClicked() {
 	m_elapsedTimer->start(1000);
 
 	// Auto-switch to Log tab so user sees live output immediately
-	m_tabWidget->setCurrentIndex(m_tabWidget->count() - 1);
+	if (m_logTabIndex >= 0) m_tabWidget->setCurrentIndex(m_logTabIndex);
 
 	m_renderThread->start();
 }
@@ -565,11 +572,39 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 			// Trigger automatic video assembly
 			QTimer::singleShot(500, this, &MainWindow::assembleVideoAutomatically);
 		} else {
-			// Image mode: Auto-open the output file if it exists
+			// Image mode: show the rendered image inline on the Preview tab
+			// instead of shelling out to the OS's default image viewer.
+			// main.cpp's Format Conversion step always writes a same-
+			// basename .png next to a successful render's .ppm output -
+			// load that (smaller, simpler than parsing PPM by hand).
 			if (!outputPath.isEmpty()) {
 				QFileInfo fileInfo(outputPath);
+				QString pngPath = fileInfo.absolutePath() + "/" + fileInfo.completeBaseName() + ".png";
+				QFileInfo pngInfo(pngPath);
 
-				if (fileInfo.exists()) {
+				m_lastOutputPath = outputPath;
+
+				if (pngInfo.exists()) {
+					QPixmap pixmap(pngPath);
+					if (!pixmap.isNull() && m_previewLabel) {
+						m_lastPreviewImagePath = pngPath;
+						m_previewLabel->setPreviewPixmap(pixmap);
+						if (m_previewInfoLabel) {
+							m_previewInfoLabel->setText(QString("%1  •  %2×%3  •  %4 KB  •  %5s")
+								.arg(pngInfo.fileName())
+								.arg(pixmap.width()).arg(pixmap.height())
+								.arg(pngInfo.size() / 1024)
+								.arg(totalTime, 0, 'f', 2));
+						}
+						if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
+					} else {
+						m_statusLabel->setText(QString("✅ Render complete (%1s) - Warning: preview image failed to load at %2")
+							.arg(totalTime, 0, 'f', 2).arg(pngPath));
+					}
+				} else if (fileInfo.exists()) {
+					// PNG conversion failed but the raw PPM output exists -
+					// fall back to the old external-viewer behavior rather
+					// than showing nothing.
 					QDesktopServices::openUrl(QUrl::fromLocalFile(outputPath));
 				} else {
 					m_statusLabel->setText(QString("✅ Render complete (%1s) - Warning: output file not found at %2")
