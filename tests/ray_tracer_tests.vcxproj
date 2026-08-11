@@ -164,6 +164,7 @@
       <ExcludedFromBuild>true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="integration\render_tests.cpp" />
+    <ClCompile Include="integration\sppm_first_slice_test.cpp" />
     <ClCompile Include="unit\gpu_render_tests.cpp" />
     <ClCompile Include="unit\wavefront_tests.cpp" />
     <ClCompile Include="unit\energy_conservation_tests.cpp" />
