@@ -695,6 +695,149 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
                 return l;
             }
         },
+        {
+            51, SceneNames::Beast,
+            "Fantasy creature bust (common-3d-test-models) in bronze, loaded from an external .obj file (requires models/beast.obj)",
+            "Very Slow", 150, true, true,
+            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
+            build_beast,
+            []() {
+                hittable_list l;
+                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
+                      std::shared_ptr<material>()));
+                return l;
+            }
+        },
+        {
+            52, SceneNames::VWBeetle,
+            "Classic CAD-style Volkswagen Beetle in bright chrome, loaded from an external .obj file (requires models/beetle.obj). Elongated along Z after normalization, so the camera is pulled back further than the other mesh scenes, same reasoning as scene 43's Utah Teapot.",
+            "Medium", 150, true, true,
+            { 35, 0, 3, 16,  0, 1.2, 0,  0.05, 0.05, 0.08 },
+            build_beetle,
+            []() {
+                hittable_list l;
+                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
+                      std::shared_ptr<material>()));
+                return l;
+            }
+        },
+        {
+            53, SceneNames::VWBeetleAlt,
+            "Alternate resolution/topology of scene 52's Volkswagen Beetle mesh, in gunmetal, loaded from an external .obj file (requires models/beetle-alt.obj). Same elongated-Z proportions and pulled-back camera as scene 52.",
+            "Very Slow", 150, true, true,
+            { 35, 0, 3, 16,  0, 1.2, 0,  0.05, 0.05, 0.08 },
+            build_beetle_alt,
+            []() {
+                hittable_list l;
+                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
+                      std::shared_ptr<material>()));
+                return l;
+            }
+        },
+        {
+            54, SceneNames::Bimba,
+            "Smooth abstract bust/statue (AIM@SHAPE repository test model) in gold, loaded from an external .obj file (requires models/bimba.obj)",
+            "Very Slow", 150, true, true,
+            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
+            build_bimba,
+            []() {
+                hittable_list l;
+                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
+                      std::shared_ptr<material>()));
+                return l;
+            }
+        },
+        {
+            55, SceneNames::Cow,
+            "Classic Viewpoint/Alias Cow test model (distinct from scene 44's Spot the Cow) in brass, loaded from an external .obj file (requires models/cow.obj)",
+            "Medium", 150, true, true,
+            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
+            build_cow,
+            []() {
+                hittable_list l;
+                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
+                      std::shared_ptr<material>()));
+                return l;
+            }
+        },
+        {
+            56, SceneNames::Fandisk,
+            "Classic CAD mechanical-engineering test model with sharp creases, in gunmetal, loaded from an external .obj file (requires models/fandisk.obj)",
+            "Medium", 150, true, true,
+            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
+            build_fandisk,
+            []() {
+                hittable_list l;
+                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
+                      std::shared_ptr<material>()));
+                return l;
+            }
+        },
+        {
+            57, SceneNames::Homer,
+            "Homer Simpson bust in gold, loaded from an external .obj file (requires models/homer.obj)",
+            "Medium", 150, true, true,
+            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
+            build_homer,
+            []() {
+                hittable_list l;
+                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
+                      std::shared_ptr<material>()));
+                return l;
+            }
+        },
+        {
+            58, SceneNames::Igea,
+            "Classical Italian bust (Igea, Roman goddess of health) in bright silver, loaded from an external .obj file (requires models/igea.obj). This particular scan's face is tilted upward rather than forward -- camera positioned higher and closer, looking down at the face, rather than the other mesh scenes' eye-level framing.",
+            "Very Slow", 150, true, true,
+            { 35, 0, 5, 3,  0, 1.5, 0,  0.05, 0.05, 0.08 },
+            build_igea,
+            []() {
+                hittable_list l;
+                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
+                      std::shared_ptr<material>()));
+                return l;
+            }
+        },
+        {
+            59, SceneNames::MaxPlanck,
+            "Scanned bust of physicist Max Planck in aged bronze, loaded from an external .obj file (requires models/max-planck.obj). This scan's face points toward -Z, so the camera sits on that side (unlike the other mesh scenes' +Z default) to actually see the face instead of the back of the head.",
+            "Very Slow", 150, true, true,
+            { 35, 0, 3, -7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
+            build_max_planck,
+            []() {
+                hittable_list l;
+                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
+                      std::shared_ptr<material>()));
+                return l;
+            }
+        },
+        {
+            60, SceneNames::Ogre,
+            "Fantasy ogre head in dark olive metal, loaded from an external .obj file (requires models/ogre.obj)",
+            "Very Slow", 150, true, true,
+            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
+            build_ogre,
+            []() {
+                hittable_list l;
+                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
+                      std::shared_ptr<material>()));
+                return l;
+            }
+        },
+        {
+            61, SceneNames::RockerArm,
+            "Mechanical engine-part test model in gunmetal, loaded from an external .obj file (requires models/rocker-arm.obj). Elongated along Z after normalization like the Beetle scenes, but much smaller overall, so the camera is only modestly pulled back (not as far as scenes 52/53's cars).",
+            "Slow", 150, true, true,
+            { 35, 0, 2.5, 7,  0, 1.2, 0,  0.05, 0.05, 0.08 },
+            build_rocker_arm,
+            []() {
+                hittable_list l;
+                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
+                      std::shared_ptr<material>()));
+                return l;
+            }
+        },
     };
     return registry;
 }

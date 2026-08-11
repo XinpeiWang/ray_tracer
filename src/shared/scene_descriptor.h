@@ -95,6 +95,17 @@ namespace SceneNames {
     constexpr const char* Cheburashka          = "Cheburashka";
     constexpr const char* TrophyRoom           = "Trophy Room";
     constexpr const char* GlassDragon          = "Glass Dragon";
+    constexpr const char* Beast                = "Beast";
+    constexpr const char* VWBeetle             = "VW Beetle";
+    constexpr const char* VWBeetleAlt          = "VW Beetle (Alt)";
+    constexpr const char* Bimba                = "Bimba";
+    constexpr const char* Cow                  = "Cow";
+    constexpr const char* Fandisk              = "Fandisk";
+    constexpr const char* Homer                = "Homer";
+    constexpr const char* Igea                 = "Igea";
+    constexpr const char* MaxPlanck            = "Max Planck";
+    constexpr const char* Ogre                 = "Ogre";
+    constexpr const char* RockerArm            = "Rocker Arm";
 } // namespace SceneNames
 
 #endif // __cplusplus

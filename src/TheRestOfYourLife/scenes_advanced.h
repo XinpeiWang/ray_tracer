@@ -1277,3 +1277,222 @@ inline hittable_list build_glass_dragon() {
 	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
 	return world;
 }
+
+// ============================================================================
+// Scene 51: Beast
+// Fantasy creature bust from common-3d-test-models. Scale/offset from raw
+// OBJ bounding box (Y-up, standing on y=0), same convention as scenes
+// 37-50.
+// ============================================================================
+inline hittable_list build_beast() {
+	hittable_list world;
+
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	auto bronze = make_shared<metal>(color(0.71, 0.43, 0.20), 0.15);
+	world.add(std::make_shared<triangle_mesh>(
+		"beast.obj", bronze,
+		/*scale=*/0.0118956, point3(0.0000, 0.0103, -0.3401)));
+
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}
+
+// ============================================================================
+// Scene 52: VW Beetle
+// Classic CAD-style Volkswagen Beetle test mesh. Notably elongated along Z
+// after normalization (~3.6 wide/tall x ~8.8 deep) - same situation as
+// scene 43's Utah Teapot, camera pulled back accordingly in the registry.
+// ============================================================================
+inline hittable_list build_beetle() {
+	hittable_list world;
+
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	auto chrome = make_shared<metal>(color(0.85, 0.85, 0.88), 0.08);
+	world.add(std::make_shared<triangle_mesh>(
+		"beetle.obj", chrome,
+		/*scale=*/9.9009901, point3(0.3614, -3.0297, -1.9010)));
+
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}
+
+// ============================================================================
+// Scene 53: VW Beetle (alternate mesh)
+// Alternate resolution/topology of the same Beetle model (scene 52) -
+// same elongated-Z proportions, pulled-back camera.
+// ============================================================================
+inline hittable_list build_beetle_alt() {
+	hittable_list world;
+
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	auto gunmetal = make_shared<metal>(color(0.55, 0.56, 0.58), 0.12);
+	world.add(std::make_shared<triangle_mesh>(
+		"beetle-alt.obj", gunmetal,
+		/*scale=*/8.8757396, point3(0.0000, 1.5000, 0.0000)));
+
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}
+
+// ============================================================================
+// Scene 54: Bimba
+// Smooth abstract bust/statue (AIM@SHAPE repository test model).
+// ============================================================================
+inline hittable_list build_bimba() {
+	hittable_list world;
+
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	auto gold = make_shared<metal>(color(0.83, 0.69, 0.22), 0.05);
+	world.add(std::make_shared<triangle_mesh>(
+		"bimba.obj", gold,
+		/*scale=*/9.2592593, point3(0.3333, 2.2963, 10.7454)));
+
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}
+
+// ============================================================================
+// Scene 55: Cow
+// Classic Viewpoint/Alias Cow test model (distinct from scene 44's Spot
+// the Cow - a different, higher-poly untextured cow mesh).
+// ============================================================================
+inline hittable_list build_cow() {
+	hittable_list world;
+
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	auto brass = make_shared<metal>(color(0.80, 0.65, 0.28), 0.15);
+	world.add(std::make_shared<triangle_mesh>(
+		"cow.obj", brass,
+		/*scale=*/0.4689698, point3(-0.3639, 1.7056, 0.0000)));
+
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}
+
+// ============================================================================
+// Scene 56: Fandisk
+// Classic CAD/mechanical-engineering test model with sharp creases, used
+// in countless edge-preserving-smoothing papers.
+// ============================================================================
+inline hittable_list build_fandisk() {
+	hittable_list world;
+
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	auto gunmetal = make_shared<metal>(color(0.55, 0.56, 0.58), 0.1);
+	world.add(std::make_shared<triangle_mesh>(
+		"fandisk.obj", gunmetal,
+		/*scale=*/0.5719733, point3(-1.3807, -7.2097, 0.7664)));
+
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}
+
+// ============================================================================
+// Scene 57: Homer
+// Homer Simpson bust - a fun, recognizable geometry-processing test model.
+// ============================================================================
+inline hittable_list build_homer() {
+	hittable_list world;
+
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	auto gold = make_shared<metal>(color(0.85, 0.70, 0.25), 0.1);
+	world.add(std::make_shared<triangle_mesh>(
+		"homer.obj", gold,
+		/*scale=*/3.5671819, point3(-1.7818, -0.5565, -1.7568)));
+
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}
+
+// ============================================================================
+// Scene 58: Igea
+// Classical Italian bust (Igea, Roman goddess of health) - high-resolution
+// scan, common geometry-processing test model.
+// ============================================================================
+inline hittable_list build_igea() {
+	hittable_list world;
+
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	auto silver = make_shared<metal>(color(0.85, 0.85, 0.88), 0.1);
+	world.add(std::make_shared<triangle_mesh>(
+		"igea.obj", silver,
+		/*scale=*/30.0000000, point3(0.0000, 1.5000, 0.0000)));
+
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}
+
+// ============================================================================
+// Scene 59: Max Planck
+// Scanned bust of physicist Max Planck - a well-known geometry-processing
+// test model.
+// ============================================================================
+inline hittable_list build_max_planck() {
+	hittable_list world;
+
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	auto aged_bronze = make_shared<metal>(color(0.65, 0.45, 0.30), 0.2);
+	world.add(std::make_shared<triangle_mesh>(
+		"max-planck.obj", aged_bronze,
+		/*scale=*/0.0092252, point3(-0.2823, 1.6670, -0.7592)));
+
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}
+
+// ============================================================================
+// Scene 60: Ogre
+// Fantasy ogre head - stylized, chunky geometry, a fun creature scene.
+// ============================================================================
+inline hittable_list build_ogre() {
+	hittable_list world;
+
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	auto olive_metal = make_shared<metal>(color(0.45, 0.50, 0.35), 0.2);
+	world.add(std::make_shared<triangle_mesh>(
+		"ogre.obj", olive_metal,
+		/*scale=*/0.0936388, point3(0.0000, 0.0007, 0.0557)));
+
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}
+
+// ============================================================================
+// Scene 61: Rocker Arm
+// Mechanical engine-part test model, elongated along Z after
+// normalization (similar to the Beetle scenes).
+// ============================================================================
+inline hittable_list build_rocker_arm() {
+	hittable_list world;
+
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	auto gunmetal = make_shared<metal>(color(0.55, 0.56, 0.58), 0.1);
+	world.add(std::make_shared<triangle_mesh>(
+		"rocker-arm.obj", gunmetal,
+		/*scale=*/5.8365759, point3(0.0000, 1.5000, 0.0000)));
+
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}

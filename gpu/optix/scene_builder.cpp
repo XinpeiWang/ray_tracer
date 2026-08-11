@@ -2334,6 +2334,284 @@ static void build_glass_dragon_gpu(SceneData& scene) {
 	scene.isLightSphere.push_back(true);
 }
 
+/// @brief Scene 51: Beast. Matches CPU build_beast() exactly.
+static void build_beast_gpu(SceneData& scene) {
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
+		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
+	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+	ground_mat.textureIdx = checkerTexIdx;
+	scene.materials.push_back(ground_mat);
+	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	const int mat_beast = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.71f, 0.43f, 0.20f), 0.15f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	load_obj_triangles_gpu(scene, "beast.obj", mat_beast,
+		/*scale=*/0.0118956f, make_float3(0.0000f, 0.0103f, -0.3401f));
+
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
+	scene.spheres.push_back(light);
+	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+	scene.isLightSphere.push_back(true);
+}
+
+/// @brief Scene 52: VW Beetle. Matches CPU build_beetle() exactly.
+static void build_beetle_gpu(SceneData& scene) {
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
+		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
+	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+	ground_mat.textureIdx = checkerTexIdx;
+	scene.materials.push_back(ground_mat);
+	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	const int mat_beetle = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.85f, 0.85f, 0.88f), 0.08f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	load_obj_triangles_gpu(scene, "beetle.obj", mat_beetle,
+		/*scale=*/9.9009901f, make_float3(0.3614f, -3.0297f, -1.9010f));
+
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
+	scene.spheres.push_back(light);
+	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+	scene.isLightSphere.push_back(true);
+}
+
+/// @brief Scene 53: VW Beetle (alternate mesh). Matches CPU build_beetle_alt() exactly.
+static void build_beetle_alt_gpu(SceneData& scene) {
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
+		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
+	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+	ground_mat.textureIdx = checkerTexIdx;
+	scene.materials.push_back(ground_mat);
+	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	const int mat_beetle = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.55f, 0.56f, 0.58f), 0.12f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	load_obj_triangles_gpu(scene, "beetle-alt.obj", mat_beetle,
+		/*scale=*/8.8757396f, make_float3(0.0000f, 1.5000f, 0.0000f));
+
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
+	scene.spheres.push_back(light);
+	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+	scene.isLightSphere.push_back(true);
+}
+
+/// @brief Scene 54: Bimba. Matches CPU build_bimba() exactly.
+static void build_bimba_gpu(SceneData& scene) {
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
+		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
+	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+	ground_mat.textureIdx = checkerTexIdx;
+	scene.materials.push_back(ground_mat);
+	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	const int mat_bimba = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.83f, 0.69f, 0.22f), 0.05f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	load_obj_triangles_gpu(scene, "bimba.obj", mat_bimba,
+		/*scale=*/9.2592593f, make_float3(0.3333f, 2.2963f, 10.7454f));
+
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
+	scene.spheres.push_back(light);
+	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+	scene.isLightSphere.push_back(true);
+}
+
+/// @brief Scene 55: Cow. Matches CPU build_cow() exactly.
+static void build_cow_gpu(SceneData& scene) {
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
+		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
+	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+	ground_mat.textureIdx = checkerTexIdx;
+	scene.materials.push_back(ground_mat);
+	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	const int mat_cow = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.80f, 0.65f, 0.28f), 0.15f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	load_obj_triangles_gpu(scene, "cow.obj", mat_cow,
+		/*scale=*/0.4689698f, make_float3(-0.3639f, 1.7056f, 0.0000f));
+
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
+	scene.spheres.push_back(light);
+	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+	scene.isLightSphere.push_back(true);
+}
+
+/// @brief Scene 56: Fandisk. Matches CPU build_fandisk() exactly.
+static void build_fandisk_gpu(SceneData& scene) {
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
+		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
+	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+	ground_mat.textureIdx = checkerTexIdx;
+	scene.materials.push_back(ground_mat);
+	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	const int mat_fandisk = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.55f, 0.56f, 0.58f), 0.1f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	load_obj_triangles_gpu(scene, "fandisk.obj", mat_fandisk,
+		/*scale=*/0.5719733f, make_float3(-1.3807f, -7.2097f, 0.7664f));
+
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
+	scene.spheres.push_back(light);
+	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+	scene.isLightSphere.push_back(true);
+}
+
+/// @brief Scene 57: Homer. Matches CPU build_homer() exactly.
+static void build_homer_gpu(SceneData& scene) {
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
+		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
+	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+	ground_mat.textureIdx = checkerTexIdx;
+	scene.materials.push_back(ground_mat);
+	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	const int mat_homer = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.85f, 0.70f, 0.25f), 0.1f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	load_obj_triangles_gpu(scene, "homer.obj", mat_homer,
+		/*scale=*/3.5671819f, make_float3(-1.7818f, -0.5565f, -1.7568f));
+
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
+	scene.spheres.push_back(light);
+	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+	scene.isLightSphere.push_back(true);
+}
+
+/// @brief Scene 58: Igea. Matches CPU build_igea() exactly (unrotated mesh --
+/// this scan's face points up rather than forward, compensated by the
+/// registry's camera position, not a mesh transform -- see build_igea()'s
+/// own comment).
+static void build_igea_gpu(SceneData& scene) {
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
+		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
+	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+	ground_mat.textureIdx = checkerTexIdx;
+	scene.materials.push_back(ground_mat);
+	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	const int mat_igea = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.85f, 0.85f, 0.88f), 0.1f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	load_obj_triangles_gpu(scene, "igea.obj", mat_igea,
+		/*scale=*/30.0000000f, make_float3(0.0000f, 1.5000f, 0.0000f));
+
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
+	scene.spheres.push_back(light);
+	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+	scene.isLightSphere.push_back(true);
+}
+
+/// @brief Scene 59: Max Planck. Matches CPU build_max_planck() exactly.
+static void build_max_planck_gpu(SceneData& scene) {
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
+		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
+	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+	ground_mat.textureIdx = checkerTexIdx;
+	scene.materials.push_back(ground_mat);
+	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	const int mat_planck = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.65f, 0.45f, 0.30f), 0.2f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	load_obj_triangles_gpu(scene, "max-planck.obj", mat_planck,
+		/*scale=*/0.0092252f, make_float3(-0.2823f, 1.6670f, -0.7592f));
+
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
+	scene.spheres.push_back(light);
+	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+	scene.isLightSphere.push_back(true);
+}
+
+/// @brief Scene 60: Ogre. Matches CPU build_ogre() exactly.
+static void build_ogre_gpu(SceneData& scene) {
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
+		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
+	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+	ground_mat.textureIdx = checkerTexIdx;
+	scene.materials.push_back(ground_mat);
+	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	const int mat_ogre = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.45f, 0.50f, 0.35f), 0.2f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	load_obj_triangles_gpu(scene, "ogre.obj", mat_ogre,
+		/*scale=*/0.0936388f, make_float3(0.0000f, 0.0007f, 0.0557f));
+
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
+	scene.spheres.push_back(light);
+	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+	scene.isLightSphere.push_back(true);
+}
+
+/// @brief Scene 61: Rocker Arm. Matches CPU build_rocker_arm() exactly.
+static void build_rocker_arm_gpu(SceneData& scene) {
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
+		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
+	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+	ground_mat.textureIdx = checkerTexIdx;
+	scene.materials.push_back(ground_mat);
+	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	const int mat_rocker = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Metal, make_float3(0.55f, 0.56f, 0.58f), 0.1f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	load_obj_triangles_gpu(scene, "rocker-arm.obj", mat_rocker,
+		/*scale=*/5.8365759f, make_float3(0.0000f, 1.5000f, 0.0000f));
+
+	const int mat_light = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
+	scene.spheres.push_back(light);
+	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+	scene.isLightSphere.push_back(true);
+}
+
 /// @brief Scene 43: Utah Teapot. Matches CPU build_utah_teapot()
 /// (src/TheRestOfYourLife/scenes_advanced.h) exactly: same checkered
 /// ground, same bright-silver metal material, same scale/offset/light
@@ -3555,6 +3833,128 @@ bool build_scene(
 									// Matches CPU CameraConfig bg for scene 50 (same as scenes 38-49's).
 									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
 								}
+								break;
+							}
+
+
+							case 51: {  // Beast (see build_beast_gpu's comment)
+								build_beast_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
+								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);
+								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
+								break;
+							}
+
+							case 52: {  // VW Beetle (see build_beetle_gpu's comment)
+								build_beetle_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 16.0f);
+								const float3 lookat   = make_float3(0.0f, 1.2f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);
+								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
+								break;
+							}
+
+							case 53: {  // VW Beetle (alternate mesh) (see build_beetle_alt_gpu's comment)
+								build_beetle_alt_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 16.0f);
+								const float3 lookat   = make_float3(0.0f, 1.2f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);
+								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
+								break;
+							}
+
+							case 54: {  // Bimba (see build_bimba_gpu's comment)
+								build_bimba_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
+								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);
+								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
+								break;
+							}
+
+							case 55: {  // Cow (see build_cow_gpu's comment)
+								build_cow_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
+								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);
+								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
+								break;
+							}
+
+							case 56: {  // Fandisk (see build_fandisk_gpu's comment)
+								build_fandisk_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
+								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);
+								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
+								break;
+							}
+
+							case 57: {  // Homer (see build_homer_gpu's comment)
+								build_homer_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
+								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);
+								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
+								break;
+							}
+
+							case 58: {  // Igea (see build_igea_gpu's comment)
+								build_igea_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 5.0f, 3.0f);
+								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);
+								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
+								break;
+							}
+
+							case 59: {  // Max Planck (see build_max_planck_gpu's comment)
+								build_max_planck_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, -7.0f);
+								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);
+								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
+								break;
+							}
+
+							case 60: {  // Ogre (see build_ogre_gpu's comment)
+								build_ogre_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
+								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);
+								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
+								break;
+							}
+
+							case 61: {  // Rocker Arm (see build_rocker_arm_gpu's comment)
+								build_rocker_arm_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.5f, 7.0f);
+								const float3 lookat   = make_float3(0.0f, 1.2f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);
+								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
 								break;
 							}
 
