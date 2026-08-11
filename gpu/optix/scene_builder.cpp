@@ -2297,6 +2297,43 @@ static void build_stanford_dragon_gpu(SceneData& scene) {
 	scene.isLightSphere.push_back(true);
 }
 
+/// @brief Scene 50: Glass Dragon. Matches CPU build_glass_dragon()
+/// (src/TheRestOfYourLife/scenes_advanced.h) exactly: same mesh/scale/
+/// offset/light placement as scene 42's dragon, but MaterialType::Dielectric
+/// (IOR 1.5, matches CPU's dielectric(1.5)) instead of Metal. See CPU
+/// build_glass_dragon()'s own comment for why neither the regular path
+/// tracer NOR --sppm render this scene's dragon surface itself cleanly
+/// (a genuinely hard case, not a bug) - this GPU builder only targets the
+/// regular GPU path tracer; GPU SPPM is Phase-1-scoped to scene 11 only.
+static void build_glass_dragon_gpu(SceneData& scene) {
+	// Ground
+	const int mat_ground = safe_cast_to_int(scene.materials.size());
+	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
+		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
+	MaterialData ground_mat{ MaterialType::Lambertian, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.0f,
+		make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f), make_float3(0.0f, 0.0f, 0.0f) };
+	ground_mat.textureIdx = checkerTexIdx;
+	scene.materials.push_back(ground_mat);
+	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	// Dragon mesh, in clear glass - matches CPU's exact scale/offset (same
+	// numbers as scene 42's metal dragon, see build_stanford_dragon_gpu's
+	// comment).
+	const int mat_dragon = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Dielectric, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 1.5f, make_float3(0.0f, 0.0f, 0.0f) });
+	load_obj_triangles_gpu(scene, "xyzrgb_dragon.obj", mat_dragon,
+		/*scale=*/0.0267772f, make_float3(-0.0600f, 1.6803f, -0.2640f));
+
+	// Area light
+	const int mat_light2 = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::DiffuseLight, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.0f, make_float3(6.0f, 6.0f, 6.0f) });
+	SphereData light2{}; light2.center = make_float3(0.0f, 8.0f, 0.0f); light2.radius = 2.0f; light2.materialIdx = mat_light2;
+	scene.spheres.push_back(light2);
+	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
+	scene.isLightSphere.push_back(true);
+}
+
 /// @brief Scene 43: Utah Teapot. Matches CPU build_utah_teapot()
 /// (src/TheRestOfYourLife/scenes_advanced.h) exactly: same checkered
 /// ground, same bright-silver metal material, same scale/offset/light
@@ -3502,6 +3539,20 @@ bool build_scene(
 								build_pinhole_camera_params(lookfrom, lookat, vup, 34.0f, aspect, 1.0f, camera_params);  // 34: matches CPU CameraConfig row for scene 49
 								if (out_camera_extra) {
 									// Matches CPU CameraConfig bg for scene 49 (same as scenes 38-48's).
+									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
+								}
+								break;
+							}
+
+							case 50: {  // Glass Dragon (see build_glass_dragon_gpu's comment)
+								build_glass_dragon_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
+								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 50
+								if (out_camera_extra) {
+									// Matches CPU CameraConfig bg for scene 50 (same as scenes 38-49's).
 									out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
 								}
 								break;

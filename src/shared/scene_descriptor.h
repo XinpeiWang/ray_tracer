@@ -94,6 +94,7 @@ namespace SceneNames {
     constexpr const char* Horse                = "Horse";
     constexpr const char* Cheburashka          = "Cheburashka";
     constexpr const char* TrophyRoom           = "Trophy Room";
+    constexpr const char* GlassDragon          = "Glass Dragon";
 } // namespace SceneNames
 
 #endif // __cplusplus

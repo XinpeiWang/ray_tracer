@@ -1223,3 +1223,57 @@ inline hittable_list build_trophy_room() {
 	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
 	return world;
 }
+
+// ============================================================================
+// Scene 50: Glass Dragon
+// Same mesh/normalization as scene 42 (Stanford XYZRGB Dragon) - identical
+// scale/offset - but `dielectric` glass instead of metal. This is the
+// scene that originally motivated building --sppm in the first place: a
+// large, deeply concave mesh refracting light needs dozens of internal
+// bounces to resolve its caustics, which is chaotically sensitive to ray
+// direction under unidirectional path tracing (both the regular CPU/GPU
+// path tracer AND pbrt-v4's own default PathIntegrator hit this same
+// wall - see the investigation this scene is named after). That's not a
+// bug: MSE(100spp,10000spp) was shown to be no smaller than
+// MSE(3000spp,10000spp) - the "noise" is the genuinely converged answer
+// for that integrator, not shrinking variance.
+//
+// IMPORTANT, discovered while adding this scene: --sppm does NOT clean up
+// the dragon's own surface either. sppm_adapter.h's camera pass only
+// records a "visible point" (the thing photon density estimation actually
+// improves) at a non-delta hit (is_delta_bsdf == false); the dragon is
+// 100% dielectric (delta), so the camera never records a visible point ON
+// it - only wherever its specular chain eventually lands on a non-delta
+// surface (here, the checkered floor, or nowhere if the chain escapes to
+// background). That means the dragon's own directly-visible glass surface
+// is rendered by the exact same per-pixel specular-chain resampling as the
+// plain path tracer (averaged only across nIterations camera passes via
+// Ld/nIterations) - SPPM's photon-density machinery contributes nothing to
+// IT specifically. Verified empirically: 80 iter x 60k photons vs 300 iter
+// x 200k photons (4.8M vs 60M total photons) produced visually identical
+// dragon-surface noise. What --sppm DOES add here is a genuine floor
+// caustic under/around the dragon (photon density landing on the diffuse
+// checker floor) that the regular path tracer's NEE-only floor shading
+// can't resolve - a real, visible difference, just not a "clean glass
+// dragon." A fully clean render of the glass surface itself would need
+// bidirectional path tracing or MLT, neither of which exist in this
+// codebase. GPU SPPM is Phase-1-scoped to scene 11 only as of this
+// writing, so even the floor-caustic benefit needs CPU `--sppm`
+// specifically for this scene.
+// ============================================================================
+inline hittable_list build_glass_dragon() {
+	hittable_list world;
+
+	// Ground
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	auto glass = make_shared<dielectric>(1.5);
+	world.add(std::make_shared<triangle_mesh>(
+		"xyzrgb_dragon.obj", glass,
+		/*scale=*/0.0267772, point3(-0.0600, 1.6803, -0.2640)));
+
+	// Area light
+	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}

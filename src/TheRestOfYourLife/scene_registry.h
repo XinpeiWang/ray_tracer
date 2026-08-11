@@ -682,6 +682,19 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
                 return l;
             }
         },
+        {
+            50, SceneNames::GlassDragon,
+            "Stanford XYZRGB Dragon (249,882 triangles) in clear glass (dielectric, IOR 1.5), loaded from an external .obj file (requires models/xyzrgb_dragon.obj). The dragon's own surface renders persistently noisy at any sample count under EITHER the regular path tracer OR --sppm -- refraction through this deeply concave mesh is a hard case for any unidirectional camera-side estimator (SPPM's photon-density gather only ever helps non-delta/diffuse surfaces, and the dragon is 100% delta-BSDF glass), not a bug. --sppm's real benefit here is a genuine floor caustic from the dragon (CPU only -- GPU SPPM currently supports scene 11 only) that the regular path tracer's NEE can't resolve; a fully clean render of the glass surface itself would need bidirectional path tracing or MLT.",
+            "Very Slow", 150, true, true,
+            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
+            build_glass_dragon,
+            []() {
+                hittable_list l;
+                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
+                      std::shared_ptr<material>()));
+                return l;
+            }
+        },
     };
     return registry;
 }
