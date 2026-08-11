@@ -106,6 +106,7 @@ namespace SceneNames {
     constexpr const char* MaxPlanck            = "Max Planck";
     constexpr const char* Ogre                 = "Ogre";
     constexpr const char* RockerArm            = "Rocker Arm";
+    constexpr const char* CrytekSponza         = "Crytek Sponza";
 } // namespace SceneNames
 
 #endif // __cplusplus

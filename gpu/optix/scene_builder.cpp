@@ -3066,6 +3066,21 @@ void build_final_scene_gpu(SceneData& scene) {
 	}
 }
 
+/// @brief Scene 62: Crytek Sponza. Matches CPU build_sponza() exactly: no
+/// separate ground sphere (the mesh's own floor is part of the geometry),
+/// single lambertian sandstone material for the whole building (no per-
+/// face/.mtl support), no explicit light source object -- lit purely via
+/// the flat-color "sky" set on GpuCameraParams::backgroundColor at the
+/// case-62 dispatch site below (GPU has no sky_light/infinite-light object
+/// the way the CPU registry's build_sky field does -- background color IS
+/// the GPU sky, same convention as scene 24's HDRI Sky).
+static void build_sponza_gpu(SceneData& scene) {
+	const int mat_stone = safe_cast_to_int(scene.materials.size());
+	scene.materials.push_back({ MaterialType::Lambertian, make_float3(0.80f, 0.74f, 0.62f), 0.0f, 0.0f, make_float3(0.0f, 0.0f, 0.0f) });
+	load_obj_triangles_gpu(scene, "sponza.obj", mat_stone,
+		/*scale=*/1.0f, make_float3(60.52f, 126.44f, 38.69f));
+}
+
 /// @brief Build a scene and configure the camera
 /// @param scene_id Scene identifier (0 = Cornell Box)
 /// @param image_width Output image width in pixels
@@ -3955,6 +3970,20 @@ bool build_scene(
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
 								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);
 								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
+								break;
+							}
+
+							case 62: {  // Crytek Sponza (see build_sponza_gpu's comment)
+								build_sponza_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, -800.0f, 300.0f, 0.0f);
+								const float3 lookat   = make_float3(800.0f, 300.0f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 70.0f, aspect, 1.0f, camera_params);  // 70: matches CPU CameraConfig row for scene 62
+								if (out_camera_extra) {
+									// Matches CPU build_sponza_sky()'s solid-color sky_light(0.65,0.78,0.95).
+									out_camera_extra->backgroundColor = make_float3(0.65f, 0.78f, 0.95f);
+								}
 								break;
 							}
 

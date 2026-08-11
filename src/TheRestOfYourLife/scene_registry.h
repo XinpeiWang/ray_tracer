@@ -838,6 +838,16 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
                 return l;
             }
         },
+        {
+            62, SceneNames::CrytekSponza,
+            "Crytek Sponza (262K triangles) - the classic architectural global-illumination benchmark scene, in warm sandstone lambertian (this renderer's OBJ loader has no per-face/.mtl material support) lit by an open sky, loaded from an external .obj file (requires models/sponza.obj). First 'whole environment' mesh scene here rather than a single statue -- see build_sponza()'s own comment for the full design rationale.",
+            "Very Slow", 150, true, true,
+            { 70, -800, 300, 0,  800, 300, 0,  0, 0, 0 },
+            build_sponza,
+            no_lights,
+            build_sponza_sky,
+            nullptr
+        },
     };
     return registry;
 }

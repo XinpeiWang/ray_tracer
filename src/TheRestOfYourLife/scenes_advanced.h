@@ -1478,6 +1478,62 @@ inline hittable_list build_ogre() {
 }
 
 // ============================================================================
+// Scene 62: Crytek Sponza
+// First "whole environment" mesh scene, not a single statue -- a complete
+// architectural interior (262K triangles), the classic global-illumination
+// benchmark scene. Departs from the scenes-37-61 convention in three ways:
+//   1. No separate checkered-ground sphere -- the mesh's own floor is part
+//      of the geometry.
+//   2. This renderer's OBJ loader has no per-face/.mtl material support
+//      (positions+faces only) -- the whole building is a single lambertian
+//      material (warm sandstone/marble tone) rather than per-surface
+//      textures, matching how every other mesh scene here already handles
+//      untextured meshes.
+//   3. Lit by an open-sky sky_light (like scene 24's build_hdri_sky)
+//      instead of a single overhead point/area light -- Sponza's own
+//      architecture is an open colonnade meant to be lit by daylight
+//      filtering through the arches, not a single bulb.
+//
+// Scale/offset: kept at the raw OBJ's native scale (no normalization to a
+// ~3-unit figure like the statue scenes -- this is a building, not an
+// object on a table) with only a re-centering offset: raw bbox
+// x=[-1920.95,1799.91] y=[-126.44,1429.43] z=[-1182.81,1105.43], offset by
+// (60.52, 126.44, 38.69) to sit the (near-)floor at y=0 and center the plan
+// on (x,z)=(0,0).
+//
+// Camera: unlike every other mesh scene here, a bbox-derived "just back up
+// and look at the center" camera does NOT work for this one -- Sponza's
+// footprint is mostly enclosed (side aisles under a solid roof), with only
+// a narrow open-air central nave (roughly world x in [-1300,1300], z in
+// [-235,235], no roof) letting the sky_light actually reach the interior.
+// A handful of blind camera guesses all landed in solid geometry or fully
+// enclosed side rooms and rendered pure black (no sky reachable within
+// max_depth bounces, hence no light at all under sky-only illumination).
+// Found the real position by a standalone Moller-Trumbore ray-triangle
+// probe script (not committed -- one-off diagnostic) run directly against
+// the raw OBJ data: cast rays straight down across an (x,z) grid to map
+// roof-vs-open-sky, then cast horizontal rays from candidate points to
+// confirm clear sightlines before ever spending a render cycle on them.
+// The registry's camera ({-800,300,0} -> {800,300,0}) sits in the middle
+// of that verified-open nave, looking down its ~2600-unit length -- the
+// classic "columns receding down the corridor" Sponza shot.
+// ============================================================================
+inline hittable_list build_sponza() {
+	hittable_list world;
+
+	auto stone = make_shared<lambertian>(color(0.80, 0.74, 0.62));
+	world.add(std::make_shared<triangle_mesh>(
+		"sponza.obj", stone,
+		/*scale=*/1.0, point3(60.52, 126.44, 38.69)));
+
+	return world;
+}
+
+inline std::shared_ptr<sky_light> build_sponza_sky() {
+	return std::make_shared<sky_light>(color(0.65, 0.78, 0.95));
+}
+
+// ============================================================================
 // Scene 61: Rocker Arm
 // Mechanical engine-part test model, elongated along Z after
 // normalization (similar to the Beetle scenes).
