@@ -179,6 +179,17 @@ int main(int argc, char** argv) {
 	int  video_fps          = args.video_fps;
 	double video_speed      = args.video_speed;
 	std::string camera_path = args.camera_path;
+	bool use_sppm           = args.use_sppm;
+
+	// SPPM has no defined per-frame semantics (its progressive radius state
+	// doesn't reset cleanly frame-to-frame the way the path tracer's
+	// stateless per-pixel sampling does) - reject the combination outright
+	// rather than silently mis-rendering a video.
+	if (use_sppm && video_mode) {
+		std::cerr << ErrorInfo(ERR_INVALID_ARGUMENTS).to_string()
+				  << " - --sppm and --video cannot be combined" << std::endl;
+		return ERR_INVALID_ARGUMENTS;
+	}
 
     if (video_mode) {
         std::cout << "\n========================================" << std::endl;
@@ -190,7 +201,7 @@ int main(int argc, char** argv) {
         std::cout << "Camera path: " << camera_path << std::endl;
         std::cout << "Renderer: " << (use_gpu ? "GPU" : "CPU") << std::endl;
     } else {
-        std::cout << "\nLaunching renderer (" << (use_gpu ? "GPU" : "CPU") << " mode)..." << std::endl;
+        std::cout << "\nLaunching renderer (" << (use_sppm ? "SPPM" : (use_gpu ? "GPU" : "CPU")) << " mode)..." << std::endl;
     }
 
     // ========================================================================
@@ -539,7 +550,28 @@ int main(int argc, char** argv) {
 
     int render_result = -1; // 0 = success, non-zero = error
 
-    if (use_gpu) {
+    if (use_sppm) {
+        // SPPM Renderer (CPU-only, Stochastic Progressive Photon Mapping)
+        // Implemented in cpu_renderer/cpu_interface.cpp - takes priority
+        // over --gpu/--cpu since SPPM is a distinct render mode, not a
+        // path-tracer variant.
+        std::cout << "Calling cpu_render_main_sppm(...) in-process..." << std::endl;
+        render_result = cpu_render_main_sppm(image_width, image_height, args.sppm_iterations,
+                                              args.sppm_photons, max_ray_depth, out_path.c_str(),
+                                              scene_id, cam_x, cam_y, cam_z, 1);  // force_camera_override
+        std::cout << "cpu_render_main_sppm returned: " << render_result << std::endl;
+        if (render_result == SUCCESS) {
+            std::cout << "Rendered with SPPM renderer, output: " << out_path << std::endl;
+        } else {
+            ErrorInfo err(render_result);
+            std::cerr << "\n" << std::string(60, '=') << std::endl;
+            std::cerr << "SPPM RENDER FAILED" << std::endl;
+            std::cerr << std::string(60, '=') << std::endl;
+            std::cerr << err.to_string() << std::endl;
+            std::cerr << std::string(60, '=') << "\n" << std::endl;
+            return render_result;
+        }
+    } else if (use_gpu) {
         // GPU Renderer (OptiX)
         if (optix_is_available()) {
             std::cout << "[OptiX] OptiX is available!" << std::endl;

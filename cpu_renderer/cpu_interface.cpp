@@ -25,6 +25,7 @@
 #include "../src/TheRestOfYourLife/scene_registry.h"
 #include "../src/TheRestOfYourLife/hittable_list.h"
 #include "../src/TheRestOfYourLife/power_light_sampler.h"
+#include "../src/TheRestOfYourLife/sppm_adapter.h"
 #include "../src/TheRestOfYourLife/error_codes.h"
 #include <iostream>
 #include <fstream>
@@ -238,6 +239,131 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 	} catch (const std::exception& e) {
 		std::cerr << "[cpu_interface] " << ErrorInfo(ERR_CPU_RENDER_FAILED).to_string()
 				  << " - " << e.what() << std::endl;
+		return ERR_CPU_RENDER_FAILED;
+	} catch (...) {
+		std::cerr << "[cpu_interface] " << ErrorInfo(ERR_UNKNOWN).to_string() << std::endl;
+		return ERR_UNKNOWN;
+	}
+}
+
+// ============================================================================
+// cpu_render_main_sppm - SPPM Render Entry Point
+// ============================================================================
+// Separate from cpu_render_main() deliberately - see cpu_interface.h's doc
+// comment on this function for why. Builds the scene via the same
+// scene_registry closures cpu_render_main() uses, but renders through
+// SPPMSceneAdapter (src/TheRestOfYourLife/sppm_adapter.h) instead of
+// camera::render(), and writes the PPM directly to output_path (no
+// Desktop-write-then-copy dance, since - unlike camera::render() - this
+// path never writes anywhere else first).
+// ============================================================================
+
+extern "C" int cpu_render_main_sppm(int width, int height, int iterations, int photons, int max_depth,
+									  const char* output_path, int scene_id, double cam_x, double cam_y,
+									  double cam_z, int force_camera_override) {
+	try {
+		if (width <= 0 || height <= 0) {
+			std::cerr << ErrorInfo(ERR_INVALID_DIMENSIONS).to_string() << std::endl;
+			return ERR_INVALID_DIMENSIONS;
+		}
+		if (iterations <= 0 || photons <= 0) {
+			std::cerr << ErrorInfo(ERR_INVALID_SAMPLE_COUNT).to_string() << std::endl;
+			return ERR_INVALID_SAMPLE_COUNT;
+		}
+		if (max_depth <= 0) {
+			std::cerr << ErrorInfo(ERR_INVALID_MAX_DEPTH).to_string() << std::endl;
+			return ERR_INVALID_MAX_DEPTH;
+		}
+
+		const SceneDescriptor* scene_desc = find_scene(scene_id);
+		if (!scene_desc) {
+			std::cerr << ErrorInfo(ERR_INVALID_SCENE_ID).to_string() << " (received: " << scene_id << ")" << std::endl;
+			return ERR_INVALID_SCENE_ID;
+		}
+
+		std::clog << "[cpu_interface] cpu_render_main_sppm start: " << width << "x" << height
+				   << " iterations=" << iterations << " photons=" << photons << " scene_id=" << scene_id
+				   << " camera=(" << cam_x << "," << cam_y << "," << cam_z << ") out=" << output_path << std::endl;
+
+		std::cout << "[cpu_interface] Building scene " << scene_id << " (" << scene_desc->name << ") for SPPM..." << std::endl;
+		hittable_list world      = scene_desc->build_world();
+		hittable_list lights_raw = scene_desc->build_lights();
+
+		power_light_list lights;
+		if (scene_id == 0 || scene_id == 10) {
+			lights = build_cornell_box_power_lights();
+		} else {
+			lights = power_light_list(lights_raw);
+		}
+
+		if (world.objects.size() == 0) {
+			std::cerr << ErrorInfo(ERR_CPU_SCENE_EMPTY).to_string() << std::endl;
+			return ERR_CPU_SCENE_EMPTY;
+		}
+
+		camera cam;
+		cam.aspect_ratio = double(width) / double(height);
+		cam.image_width  = width;
+		cam.image_height = int(cam.image_width / cam.aspect_ratio);
+		cam.image_height = (cam.image_height < 1) ? 1 : cam.image_height;
+		cam.vup          = vec3(0, 1, 0);
+
+		const CameraConfig& cc = scene_desc->camera;
+		cam.vfov          = cc.vfov;
+		cam.background    = color(cc.bg_r, cc.bg_g, cc.bg_b);
+		cam.defocus_angle = cc.defocus_angle;
+		cam.focus_dist    = cc.focus_dist;
+		if (cc.mode == CameraMode::UserControlled || force_camera_override) {
+			cam.lookfrom = point3(cam_x, cam_y, cam_z);
+		} else {
+			cam.lookfrom = point3(cc.lookfrom_x, cc.lookfrom_y, cc.lookfrom_z);
+		}
+		cam.lookat = point3(cc.lookat_x, cc.lookat_y, cc.lookat_z);
+		std::cout << "[cpu_interface] Camera: vfov=" << cc.vfov
+				   << " lookfrom=(" << cam.lookfrom.x() << "," << cam.lookfrom.y() << "," << cam.lookfrom.z() << ")"
+				   << " lookat=(" << cc.lookat_x << "," << cc.lookat_y << "," << cc.lookat_z << ")" << std::endl;
+		// Alternate camera models (ortho/spherical/realistic) are honored
+		// transparently via camera::get_ray() inside SPPMSceneAdapter::
+		// PixelToRay(). Sky/infinite lights and punctual (delta) lights are
+		// NOT yet supported by SPPMSceneAdapter (area lights via
+		// diffuse_light on quad/sphere only) - scene_desc->build_sky()/
+		// build_punct() are intentionally not applied here; a scene relying
+		// on either will render with those lights simply absent.
+		if (scene_desc->setup_camera)
+			scene_desc->setup_camera(cam);
+		cam.initialize();
+
+		std::filesystem::path out_fs_path(output_path);
+		if (!out_fs_path.parent_path().empty() && !std::filesystem::exists(out_fs_path.parent_path())) {
+			std::filesystem::create_directories(out_fs_path.parent_path());
+		}
+
+		std::cout << "[TECH] ── Render Technique Summary ──────────────────────────" << std::endl;
+		std::cout << "[TECH] Integrator     : Stochastic Progressive Photon Mapping (pbrt-v4 SPPMIntegrator style)" << std::endl;
+		std::cout << "[TECH] Photon lookup  : Spatial hash grid, progressive radius contraction (gamma=2/3)" << std::endl;
+		std::cout << "[TECH] BSDF coverage  : lambertian + 8 delta materials only (see cpu_render_main_sppm's doc comment)" << std::endl;
+		std::cout << "[TECH] Threading      : single-threaded (see sppm_adapter.h's BeginIteration() comment)" << std::endl;
+		std::cout << "[TECH] ─────────────────────────────────────────────────────" << std::endl;
+
+		std::cout << "[cpu_interface] Starting SPPM render (" << iterations << " iterations x " << photons << " photons)..." << std::endl;
+		SPPMSceneAdapter adapter(world, lights, cam);
+		std::vector<double> out_rgb;
+		sppm_render_with_adapter(adapter, cam.image_width, cam.image_height,
+								   iterations, photons, max_depth,
+								   /*initialRadius=*/10.0, out_rgb);
+
+		sppm_write_ppm(output_path, cam.image_width, cam.image_height, out_rgb);
+
+		std::clog << "[cpu_interface] SPPM render complete: " << output_path << std::endl;
+		return SUCCESS;
+
+	} catch (const std::bad_alloc& e) {
+		std::cerr << "[cpu_interface] " << ErrorInfo(ERR_CPU_MEMORY_ALLOCATION).to_string()
+				   << " - " << e.what() << std::endl;
+		return ERR_CPU_MEMORY_ALLOCATION;
+	} catch (const std::exception& e) {
+		std::cerr << "[cpu_interface] " << ErrorInfo(ERR_CPU_RENDER_FAILED).to_string()
+				   << " - " << e.what() << std::endl;
 		return ERR_CPU_RENDER_FAILED;
 	} catch (...) {
 		std::cerr << "[cpu_interface] " << ErrorInfo(ERR_UNKNOWN).to_string() << std::endl;

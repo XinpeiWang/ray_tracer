@@ -30,10 +30,14 @@
 #include "sphere.h"
 #include "camera.h"
 #include "power_light_sampler.h"
+#include "color.h"
 #include "../shared/bdpt.h"   // BDPTHit, BDPTLightLeSample
+#include "../shared/sppm.h"   // SPPMPixel, SPPMCameraPass, SPPMPhotonPass, SPPMUpdateRadius, SPPMFinalImage
 
 #include <vector>
 #include <algorithm>
+#include <string>
+#include <fstream>
 
 // ===========================================================================
 // Layer 1 -- BSDF bridge
@@ -428,3 +432,59 @@ class SPPMSceneAdapter {
 		return nullptr;
 	}
 };
+
+
+// ===========================================================================
+// sppm_render_with_adapter -- shared SPPM iteration loop
+// ===========================================================================
+// Identical to src/shared/sppm.h's own SPPMRender() body, with one addition:
+// scene.BeginIteration() is called once per iteration, immediately before
+// that iteration's camera pass. sppm.h's SPPMRender() can't do this itself
+// since it's generic/duck-typed and has no idea SPPMSceneAdapter needs its
+// shading-context table cleared between iterations (see
+// SPPMSceneAdapter::BeginIteration()'s own doc comment for why that's safe
+// to do once per iteration rather than per-call). Kept here rather than
+// duplicated at each call site (tests, cpu_interface.cpp) so the
+// BeginIteration timing invariant only has to be gotten right in one place.
+inline void sppm_render_with_adapter(const SPPMSceneAdapter& scene, int width, int height,
+                                      int nIterations, int nPhotons, int maxDepth,
+                                      double initialRadius, std::vector<double>& out_rgb) {
+	int nPixels = width * height;
+	std::vector<SPPMPixel<double>> pixels(nPixels);
+	for (int i = 0; i < nPixels; ++i) {
+		pixels[i].radius = initialRadius;
+		pixels[i].px = i % width;
+		pixels[i].py = i / width;
+	}
+
+	int64_t totalPhotonPaths = 0;
+	for (int iter = 0; iter < nIterations; ++iter) {
+		scene.BeginIteration();
+		SPPMCameraPass(pixels, width, height, maxDepth, scene);
+
+		sppm_detail::HashGrid<double> hashGrid;
+		hashGrid.Build(pixels);
+
+		SPPMPhotonPass(pixels, hashGrid, nPhotons, maxDepth, scene);
+		totalPhotonPaths += nPhotons;
+
+		SPPMUpdateRadius(pixels);
+	}
+
+	SPPMFinalImage(pixels, nIterations, totalPhotonPaths, out_rgb);
+}
+
+// Writes a flat RGB double buffer (as produced by sppm_render_with_adapter's
+// out_rgb, or SPPMFinalImage's own out_rgb) to a P3 PPM file, applying the
+// same tone mapping / sRGB encoding as the existing path tracer's
+// write_color() (color.h) so SPPM output looks consistent with every other
+// render this codebase produces.
+inline void sppm_write_ppm(const std::string& path, int width, int height,
+                            const std::vector<double>& rgb) {
+	std::ofstream out(path);
+	out << "P3\n" << width << ' ' << height << "\n255\n";
+	for (int i = 0; i < width * height; ++i) {
+		color c(rgb[i * 3 + 0], rgb[i * 3 + 1], rgb[i * 3 + 2]);
+		write_color(out, c);
+	}
+}

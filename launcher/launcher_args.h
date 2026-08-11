@@ -20,12 +20,21 @@ namespace {
 	constexpr double kDefaultCameraX = 278.0;
 	constexpr double kDefaultCameraY = 278.0;
 	constexpr double kDefaultCameraZ = -800.0;
+	constexpr int kDefaultSppmIterations = 100;
+	constexpr int kDefaultSppmPhotons = 5000;
 }
 
 struct LaunchArgs {
 	bool use_gpu            = true;
 	bool force_cpu          = false;
 	bool video_mode         = false;
+	// Stochastic Progressive Photon Mapping - a separate CPU-only render
+	// mode (see cpu_renderer/cpu_interface.h's cpu_render_main_sppm() doc
+	// comment), not a flag on the existing --cpu/--gpu path tracer. Takes
+	// priority over use_gpu/force_cpu when set (main.cpp checks it first).
+	bool   use_sppm         = false;
+	int    sppm_iterations  = kDefaultSppmIterations;
+	int    sppm_photons     = kDefaultSppmPhotons;
 	int  video_frames       = 120;
 	int  video_fps          = 30;
 	double video_speed      = 1.0;
@@ -91,6 +100,27 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			consumed_args.insert(i);
 			consumed_args.insert(i + 1);
 			++i;
+		} else if (arg == "--sppm") {
+			out.use_sppm = true;
+			consumed_args.insert(i);
+		} else if (arg == "--sppm-iterations" && i + 1 < argc) {
+			try {
+				out.sppm_iterations = std::stoi(argv[i + 1]);
+				consumed_args.insert(i);
+				consumed_args.insert(i + 1);
+				++i;
+			} catch (const std::exception&) {
+				std::cerr << "Invalid --sppm-iterations value, using default\n";
+			}
+		} else if (arg == "--sppm-photons" && i + 1 < argc) {
+			try {
+				out.sppm_photons = std::stoi(argv[i + 1]);
+				consumed_args.insert(i);
+				consumed_args.insert(i + 1);
+				++i;
+			} catch (const std::exception&) {
+				std::cerr << "Invalid --sppm-photons value, using default\n";
+			}
 		} else if (arg == "--video") {
 			out.video_mode = true;
 			consumed_args.insert(i);
@@ -131,6 +161,13 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << " [--cpu|--gpu] [--output PATH] [width] [spp] [max_depth] [scene_id] [cam_x] [cam_y] [cam_z]\n"
 					  << "  --cpu      : Force CPU rendering\n"
 					  << "  --gpu      : Force GPU rendering (default)\n"
+					  << "  --sppm     : Render with Stochastic Progressive Photon Mapping instead of\n"
+					  << "               the path tracer (CPU-only; overrides --cpu/--gpu; incompatible\n"
+					  << "               with --video). Best for hard caustic/glass scenes. Verified\n"
+					  << "               end-to-end on scene 11 (Cornell Rough Glass); other scenes are\n"
+					  << "               unverified and only support lambertian + delta-BSDF materials.\n"
+					  << "  --sppm-iterations N: SPPM iteration count (default " << kDefaultSppmIterations << ")\n"
+					  << "  --sppm-photons N   : Photons shot per SPPM iteration (default " << kDefaultSppmPhotons << ")\n"
 					  << "  --output,-o: Output file path (default: ./output/image.ppm)\n"
 					  << "  --video    : Enable video generation mode\n"
 					  << "  --frames,-f: Number of frames for video (default: 120)\n"

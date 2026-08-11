@@ -9,14 +9,12 @@
  * investing in CLI/registry polish". Small parameters are used throughout
  * (this phase is about correctness, not quality/convergence).
  *
- * Runs its own thin SPPM iteration loop (camera pass -> hash grid build ->
- * photon pass -> radius update, repeated) rather than calling sppm.h's
- * SPPMRender() directly, because SPPMSceneAdapter::BeginIteration() must be
- * called once per iteration before that iteration's camera pass (to clear
- * the shading-context table -- see sppm_adapter.h's BeginIteration() doc
- * comment for why), and sppm.h's own SPPMRender() has no hook for that
- * (it doesn't know about this adapter's internal bookkeeping). This loop
- * is otherwise identical to SPPMRender()'s body.
+ * Uses sppm_adapter.h's shared sppm_render_with_adapter()/sppm_write_ppm()
+ * helpers (also used by cpu_interface.cpp's --sppm CLI path) rather than
+ * duplicating the iteration loop here -- see sppm_render_with_adapter()'s
+ * own doc comment for why it needs to call SPPMSceneAdapter::BeginIteration()
+ * once per iteration (a detail sppm.h's own generic SPPMRender() can't know
+ * about).
  */
 
 #include <gtest/gtest.h>
@@ -28,55 +26,9 @@
 #include "power_light_sampler.h"
 #include "color.h"
 #include "sppm_adapter.h"
-#include "../../src/shared/sppm.h"
 
 #include <cmath>
-#include <fstream>
 #include <filesystem>
-
-namespace {
-
-void run_sppm(const SPPMSceneAdapter& scene, int width, int height,
-              int nIterations, int nPhotons, int maxDepth, double initialRadius,
-              std::vector<double>& out_rgb) {
-	int nPixels = width * height;
-	std::vector<SPPMPixel<double>> pixels(nPixels);
-	for (int i = 0; i < nPixels; ++i) {
-		pixels[i].radius = initialRadius;
-		pixels[i].px = i % width;
-		pixels[i].py = i / width;
-	}
-
-	int64_t totalPhotonPaths = 0;
-	for (int iter = 0; iter < nIterations; ++iter) {
-		scene.BeginIteration();
-		SPPMCameraPass(pixels, width, height, maxDepth, scene);
-
-		sppm_detail::HashGrid<double> hashGrid;
-		hashGrid.Build(pixels);
-
-		SPPMPhotonPass(pixels, hashGrid, nPhotons, maxDepth, scene);
-		totalPhotonPaths += nPhotons;
-
-		SPPMUpdateRadius(pixels);
-	}
-
-	SPPMFinalImage(pixels, nIterations, totalPhotonPaths, out_rgb);
-}
-
-// Writes a P3 PPM for manual visual inspection. Not asserted on beyond
-// "the file was created" -- this is a debugging aid, not a correctness
-// check (see the programmatic asserts in the TEST body for that).
-void write_ppm(const std::string& path, int width, int height, const std::vector<double>& rgb) {
-	std::ofstream out(path);
-	out << "P3\n" << width << ' ' << height << "\n255\n";
-	for (int i = 0; i < width * height; ++i) {
-		color c(rgb[i * 3 + 0], rgb[i * 3 + 1], rgb[i * 3 + 2]);
-		write_color(out, c);
-	}
-}
-
-} // namespace
 
 TEST(SppmFirstSlice, CornellRoughGlassProducesFiniteNonNegativeImage) {
 	hittable_list world = build_cornell_rough_glass();
@@ -98,7 +50,7 @@ TEST(SppmFirstSlice, CornellRoughGlassProducesFiniteNonNegativeImage) {
 	SPPMSceneAdapter adapter(world, lights, cam);
 
 	std::vector<double> out_rgb;
-	run_sppm(adapter, cam.image_width, cam.image_height,
+	sppm_render_with_adapter(adapter, cam.image_width, cam.image_height,
 	         /*nIterations=*/20, /*nPhotons=*/2000, /*maxDepth=*/5,
 	         /*initialRadius=*/10.0, out_rgb);
 
@@ -117,7 +69,7 @@ TEST(SppmFirstSlice, CornellRoughGlassProducesFiniteNonNegativeImage) {
 	// Write a PPM for manual visual inspection (not itself asserted on).
 	std::filesystem::path out_dir = std::filesystem::temp_directory_path() / "ray_tracer_sppm_test";
 	std::filesystem::create_directories(out_dir);
-	write_ppm((out_dir / "cornell_rough_glass_sppm.ppm").string(),
+	sppm_write_ppm((out_dir / "cornell_rough_glass_sppm.ppm").string(),
 	          cam.image_width, cam.image_height, out_rgb);
 }
 
@@ -147,7 +99,7 @@ TEST(SppmFirstSlice, CenterPixelRegionReceivesLight) {
 	SPPMSceneAdapter adapter(world, lights, cam);
 
 	std::vector<double> out_rgb;
-	run_sppm(adapter, cam.image_width, cam.image_height,
+	sppm_render_with_adapter(adapter, cam.image_width, cam.image_height,
 	         /*nIterations=*/15, /*nPhotons=*/1500, /*maxDepth=*/5,
 	         /*initialRadius=*/10.0, out_rgb);
 

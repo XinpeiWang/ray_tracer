@@ -69,6 +69,55 @@ int cpu_render_main(
     int force_camera_override = 0
 );
 
+/// @brief Render a scene using Stochastic Progressive Photon Mapping (SPPM)
+/// instead of the default unidirectional path tracer.
+/// @details A separate entry point (not a mode flag on cpu_render_main)
+/// deliberately - SPPM is a fundamentally different render loop (iterative
+/// camera-pass + photon-pass + progressive-radius-contraction, not a
+/// one-shot per-pixel Monte Carlo sample loop), so keeping it as its own
+/// function leaves cpu_render_main's existing ABI/behavior completely
+/// untouched. Intended for scenes with hard-to-converge specular/caustic
+/// transport (e.g. glass spheres) that the path tracer either can't
+/// converge on in reasonable time or renders very noisily - see
+/// src/TheRestOfYourLife/sppm_adapter.h's file comment for the underlying
+/// investigation. Works against the same scene_registry build_world()/
+/// build_lights() closures as cpu_render_main - any scene id is technically
+/// valid, but this is currently only verified end-to-end against scene 11
+/// (Cornell Rough Glass); other scenes may render correctly but are
+/// unverified.
+///
+/// Only supports lambertian (non-specular) materials for indirect/caustic
+/// light transport plus the 8 delta-BSDF material classes (metal,
+/// dielectric, rough_metal, rough_dielectric, conductor, coated_diffuse,
+/// thin_dielectric, coated_conductor) - diffuse_transmission/
+/// normalized_fresnel/mix_material are not yet supported by the BSDF
+/// bridge (sppm_adapter.h's sppm_bsdf_f() comment explains why) and will
+/// render those surfaces as black/incorrect.
+///
+/// @param width          Image width in pixels (height = width for square aspect)
+/// @param height         Image height in pixels
+/// @param iterations     Number of SPPM iterations (more = less noise, slower)
+/// @param photons        Photons shot per iteration
+/// @param max_depth      Maximum ray/photon path depth
+/// @param output_path    Output PPM file path
+/// @param scene_id       Scene selector (see scene_registry.h)
+/// @param cam_x/y/z      Camera position (see cpu_render_main's own doc)
+/// @param force_camera_override  Same semantics as cpu_render_main's own parameter
+/// @return 0 on success, non-zero error code on failure
+int cpu_render_main_sppm(
+    int width,
+    int height,
+    int iterations,
+    int photons,
+    int max_depth,
+    const char* output_path,
+    int scene_id,
+    double cam_x,
+    double cam_y,
+    double cam_z,
+    int force_camera_override = 0
+);
+
 /// Scene metadata C API -- lets the GUI query the registry without C++ headers
 /// @return total number of registered scenes
 int cpu_scene_count();
