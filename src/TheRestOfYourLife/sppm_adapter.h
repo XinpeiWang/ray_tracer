@@ -76,9 +76,13 @@ struct SPPMShadingContext {
 // non-delta hits, treating delta hits via BSDFSampleF resampling alone --
 // matching pbrt-v4's own SPPM design.
 //
-// diffuse_transmission/normalized_fresnel/mix_material are intentionally
-// NOT delta (skip_pdf=false) but are also not given full BSDFf support in
-// this v1 bridge -- see sppm_bsdf_f's comment.
+// diffuse_transmission/normalized_fresnel are intentionally NOT delta
+// (skip_pdf=false) but are also not given full BSDFf support in this v1
+// bridge -- see sppm_bsdf_f's comment. mix_material is never passed here
+// directly -- SPPMSceneAdapter::Intersect() resolves it down to a concrete
+// sub-material first (see sppm_resolve_material() below), so by the time
+// anything in this file classifies or evaluates a material, it's always
+// one of the real, concrete classes checked below.
 inline bool sppm_is_delta_material(const material* m) {
 	return dynamic_cast<const metal*>(m) != nullptr ||
 	       dynamic_cast<const dielectric*>(m) != nullptr ||
@@ -88,6 +92,41 @@ inline bool sppm_is_delta_material(const material* m) {
 	       dynamic_cast<const coated_diffuse*>(m) != nullptr ||
 	       dynamic_cast<const thin_dielectric*>(m) != nullptr ||
 	       dynamic_cast<const coated_conductor*>(m) != nullptr;
+}
+
+// Resolves a mix_material down to a concrete, non-mix sub-material, matching
+// mix_material::scatter()'s own stochastic weight draw exactly (same
+// weight_tex lookup, same `random_double() >= w` comparison) -- recurses to
+// handle a mix nested inside a mix, which pbrt-v4 allows.
+//
+// Why this needs to happen in Intersect() rather than being solved the way
+// diffuse_transmission was (a closed-form f(wo,wi) covering both lobes):
+// mix_material can blend two COMPLETELY DIFFERENT BSDFs (e.g. lambertian
+// blended with a delta metal), and a delta sub-material has no finite f()
+// value away from its exact reflection direction -- there's no single
+// closed form that could cover both a diffuse and a delta lobe the way
+// diffuse_transmission's two same-shape diffuse lobes allowed. But
+// mix_material::scatter() itself doesn't attempt one either: it just draws
+// one random number and delegates entirely to whichever sub-material won,
+// returning that sub-material's own scatter_record unchanged. SPPM can copy
+// that same trick, just earlier: resolve the winning sub-material once, at
+// Intersect() time (the one place in SPPM's algorithm that runs before
+// is_delta_bsdf is needed), and store THAT concrete material in the
+// shading-context table instead of the raw mix_material pointer. Every
+// later BSDFf/BSDFSampleF/DirectLight call against this hit's bsdf_id --
+// including a photon-pass query long after the camera pass that created it
+// -- then sees a single, already-resolved, ordinary material, exactly like
+// any other hit. This mirrors how the regular path tracer already treats
+// mix_material (one fresh stochastic draw per scatter() call); the only
+// difference is WHEN that draw happens.
+inline shared_ptr<material> sppm_resolve_material(const shared_ptr<material>& mat,
+                                                    double u, double v, const point3& p) {
+	auto mm = std::dynamic_pointer_cast<mix_material>(mat);
+	if (!mm) return mat;
+	double w = mm->get_weight()->value(u, v, p).x();
+	w = w < 0.0 ? 0.0 : (w > 1.0 ? 1.0 : w);
+	return (random_double() >= w) ? sppm_resolve_material(mm->get_mat_a(), u, v, p)
+	                               : sppm_resolve_material(mm->get_mat_b(), u, v, p);
 }
 
 // Reconstructs a synthetic hit_record from a captured shading context plus
@@ -143,12 +182,12 @@ inline hit_record sppm_reconstruct_hit_record(const SPPMShadingContext& ctx, con
 // needed at all for this material, sidestepping the stochastic-lobe problem
 // entirely rather than working around it.
 //
-// `mix_material` remains genuinely deferred: it can stochastically delegate
-// to two COMPLETELY DIFFERENT underlying BSDFs (e.g. lambertian blended
-// with a delta metal), and a delta sub-material has no finite f() value
-// away from its exact reflection direction at all -- there's no single
-// closed form to special-case the way diffuse_transmission's two same-shape
-// diffuse lobes allowed.
+// `mix_material` never reaches this function as such: SPPMSceneAdapter::
+// Intersect() resolves it down to a concrete sub-material before it's ever
+// stored in a shading context (see sppm_resolve_material()'s own comment
+// for why that has to happen there rather than being handled with a
+// closed-form f() the way diffuse_transmission was) -- ctx.mat here is
+// always one of the real, concrete material classes.
 inline void sppm_bsdf_f(const SPPMShadingContext& ctx, const double wo[3], const double wi[3],
                          const double n[3], double out[3]) {
 	out[0] = out[1] = out[2] = 0.0;
@@ -350,10 +389,27 @@ class SPPMSceneAdapter {
 		hit_record rec;
 		if (!world_.hit(r, interval(0.001, t_max), rec)) return false;
 
+		// Emission is read from the RAW (possibly mix_material) hit before
+		// resolution below: mix_material::emitted() correctly blends both
+		// sub-materials' emission deterministically ((1-w)*ea + w*eb, no
+		// randomness), which is the right way to handle emission from a mix
+		// -- resolving to one stochastically-chosen sub-material first would
+		// needlessly add variance to something that already has an exact
+		// closed form.
+		color Le = rec.mat ? rec.mat->emitted(r, rec, rec.u, rec.v, rec.p) : color(0, 0, 0);
+
+		// Resolve mix_material down to a concrete sub-material before it's
+		// captured in the shading-context table -- see sppm_resolve_material()'s
+		// comment for why this has to happen here, once, rather than being
+		// deferred to whatever later call happens to look at ctx.mat first.
+		shared_ptr<material> resolved_mat = rec.mat
+			? sppm_resolve_material(rec.mat, rec.u, rec.v, rec.p)
+			: rec.mat;
+
 		int id;
 		{
 			std::lock_guard<std::mutex> lg(ctx_mutex_);
-			ctx_.push_back(SPPMShadingContext{ rec.p, rec.normal, rec.u, rec.v, rec.mat });
+			ctx_.push_back(SPPMShadingContext{ rec.p, rec.normal, rec.u, rec.v, resolved_mat });
 			id = static_cast<int>(ctx_.size()) - 1;
 		}
 
@@ -363,11 +419,10 @@ class SPPMSceneAdapter {
 		vec3 wo = unit_vector(-r.direction());
 		hit.wo[0] = wo.x(); hit.wo[1] = wo.y(); hit.wo[2] = wo.z();
 		hit.uv[0] = rec.u; hit.uv[1] = rec.v;
-		color Le = rec.mat ? rec.mat->emitted(r, rec, rec.u, rec.v, rec.p) : color(0, 0, 0);
 		hit.area_Le[0] = Le.x(); hit.area_Le[1] = Le.y(); hit.area_Le[2] = Le.z();
 		hit.t_hit = rec.t;
 		hit.is_medium_boundary = false;   // constant_medium scenes out of scope for v1
-		hit.is_delta_bsdf = rec.mat ? sppm_is_delta_material(rec.mat.get()) : false;
+		hit.is_delta_bsdf = resolved_mat ? sppm_is_delta_material(resolved_mat.get()) : false;
 		hit.bsdf_id = id;
 		hit.light_id = -1;   // unused by SPPM's own algorithm
 		return true;

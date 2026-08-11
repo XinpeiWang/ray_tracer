@@ -399,3 +399,83 @@ TEST(SppmBsdfSampleF, RoughDielectricReportsSpecularAndValidDirections) {
 		for (int c = 0; c < 3; ++c) EXPECT_TRUE(std::isfinite(f_val[c]));
 	}
 }
+
+// ============================================================================
+// sppm_resolve_material (mix_material support)
+// ============================================================================
+// mix_material never reaches sppm_is_delta_material/sppm_bsdf_f/
+// sppm_bsdf_sample_f directly -- SPPMSceneAdapter::Intersect() resolves it
+// down to a concrete sub-material first via sppm_resolve_material(), which
+// is what these tests target.
+
+TEST(SppmResolveMaterial, NonMixMaterialPassesThroughUnchanged) {
+	auto lam = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+	auto resolved = sppm_resolve_material(lam, 0.0, 0.0, point3(0, 0, 0));
+	EXPECT_EQ(resolved.get(), lam.get());
+}
+
+// weight=0.8 means mat_b is chosen with probability 0.8 (mix_material::
+// scatter(): `random_double() >= w ? mat_a : mat_b`, so P(mat_b) = w) --
+// mirrors that exact draw, so the resolved distribution should match.
+TEST(SppmResolveMaterial, ResolvesToEachSubMaterialAccordingToWeight) {
+	auto mat_a = make_shared<lambertian>(color(0.1, 0.1, 0.1));
+	auto mat_b = make_shared<metal>(color(0.9, 0.9, 0.9), 0.0);
+	auto mix = make_shared<mix_material>(mat_a, mat_b, 0.8);
+
+	int a_count = 0, b_count = 0;
+	const int N = 2000;
+	for (int i = 0; i < N; ++i) {
+		auto resolved = sppm_resolve_material(mix, 0.0, 0.0, point3(0, 0, 0));
+		ASSERT_FALSE(std::dynamic_pointer_cast<mix_material>(resolved))
+			<< "resolved material must never itself be a mix_material";
+		if (resolved.get() == mat_a.get()) ++a_count;
+		else if (resolved.get() == mat_b.get()) ++b_count;
+		else FAIL() << "resolved to neither sub-material";
+	}
+	EXPECT_NEAR(static_cast<double>(b_count) / N, 0.8, 0.03);
+	EXPECT_NEAR(static_cast<double>(a_count) / N, 0.2, 0.03);
+}
+
+// A mix nested inside a mix (pbrt-v4 allows arbitrary nesting) must resolve
+// all the way down to a real, concrete leaf material, never stopping at an
+// inner mix_material.
+TEST(SppmResolveMaterial, ResolvesNestedMixToConcreteLeaf) {
+	auto leaf_a = make_shared<lambertian>(color(0.1, 0.1, 0.1));
+	auto leaf_b = make_shared<metal>(color(0.9, 0.9, 0.9), 0.0);
+	auto leaf_c = make_shared<dielectric>(1.5);
+	auto inner = make_shared<mix_material>(leaf_a, leaf_b, 0.5);
+	auto outer = make_shared<mix_material>(inner, leaf_c, 0.5);
+
+	for (int i = 0; i < 200; ++i) {
+		auto resolved = sppm_resolve_material(outer, 0.0, 0.0, point3(0, 0, 0));
+		ASSERT_FALSE(std::dynamic_pointer_cast<mix_material>(resolved));
+		bool is_known_leaf = resolved.get() == leaf_a.get() ||
+		                      resolved.get() == leaf_b.get() ||
+		                      resolved.get() == leaf_c.get();
+		EXPECT_TRUE(is_known_leaf);
+	}
+}
+
+// The whole point of resolving before classification: sppm_is_delta_material
+// must see the winning sub-material's real type, not "mix_material" (which
+// isn't one of the checked delta classes and would otherwise always report
+// false, silently mistreating a delta-lobe draw as diffuse).
+TEST(SppmResolveMaterial, ResolvedDeltaSubMaterialIsClassifiedAsDelta) {
+	auto lam = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+	auto met = make_shared<metal>(color(0.9, 0.9, 0.9), 0.0);
+	auto mix = make_shared<mix_material>(lam, met, 1.0);   // weight=1.0 -> always mat_b (metal)
+
+	auto resolved = sppm_resolve_material(mix, 0.0, 0.0, point3(0, 0, 0));
+	EXPECT_EQ(resolved.get(), met.get());
+	EXPECT_TRUE(sppm_is_delta_material(resolved.get()));
+}
+
+TEST(SppmResolveMaterial, ResolvedNonDeltaSubMaterialIsClassifiedAsNonDelta) {
+	auto lam = make_shared<lambertian>(color(0.5, 0.5, 0.5));
+	auto met = make_shared<metal>(color(0.9, 0.9, 0.9), 0.0);
+	auto mix = make_shared<mix_material>(lam, met, 0.0);   // weight=0.0 -> always mat_a (lambertian)
+
+	auto resolved = sppm_resolve_material(mix, 0.0, 0.0, point3(0, 0, 0));
+	EXPECT_EQ(resolved.get(), lam.get());
+	EXPECT_FALSE(sppm_is_delta_material(resolved.get()));
+}

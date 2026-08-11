@@ -248,3 +248,55 @@ TEST(SppmFirstSlice, GroundPlaneReceivesSkylightViaNEE) {
 	}
 	EXPECT_GT(bottom_row_sum, 0.0) << "ground plane (diffuse surface) received no skylight";
 }
+
+// ============================================================================
+// mix_material support
+// ============================================================================
+// A Cornell box with a mix_material sphere (half lambertian, half mirror
+// metal) - end-to-end confirmation that SPPMSceneAdapter::Intersect()'s
+// per-hit resolution (sppm_resolve_material(), unit-tested in isolation in
+// sppm_adapter_bsdf_tests.cpp) holds up through a real render: the delta
+// draws must continue as specular bounces without ever reaching
+// DirectLight(), and the non-delta draws must record visible points and
+// receive direct lighting normally, all against the SAME sphere/bsdf_id
+// across many stochastic per-hit realizations spanning both the camera and
+// photon passes.
+TEST(SppmFirstSlice, MixMaterialSphereRendersFiniteNonNegativeImage) {
+	hittable_list world;
+	add_cornell_walls_and_main_light(world);
+	auto mat_a = make_shared<lambertian>(color(0.6, 0.2, 0.2));
+	auto mat_b = make_shared<metal>(color(0.9, 0.9, 0.9), 0.0);
+	auto mix = make_shared<mix_material>(mat_a, mat_b, 0.5);
+	world.add(make_shared<sphere>(point3(190, 90, 190), 90, mix));
+
+	hittable_list lights_raw = build_cornell_box_lights();
+	power_light_list lights(lights_raw);
+
+	camera cam;
+	cam.aspect_ratio = 1.0;
+	cam.image_width = 32;
+	cam.samples_per_pixel = 1;
+	cam.max_depth = 8;
+	cam.vup = vec3(0, 1, 0);
+	cam.vfov = 40;
+	cam.background = color(0, 0, 0);
+	cam.lookfrom = point3(278, 278, -800);
+	cam.lookat = point3(278, 278, 278);
+	cam.initialize();
+
+	SPPMSceneAdapter adapter(world, lights, cam);
+
+	std::vector<double> out_rgb;
+	sppm_render_with_adapter(adapter, cam.image_width, cam.image_height,
+	         /*nIterations=*/20, /*nPhotons=*/2000, /*maxDepth=*/8,
+	         /*initialRadius=*/10.0, out_rgb);
+
+	ASSERT_EQ((int)out_rgb.size(), cam.image_width * cam.image_height * 3);
+	int nonzero_count = 0;
+	for (double v : out_rgb) {
+		EXPECT_TRUE(std::isfinite(v));
+		EXPECT_GE(v, 0.0);
+		if (v > 0.0) ++nonzero_count;
+	}
+	EXPECT_GT(nonzero_count, 0) << "mix_material sphere rendered pure black under --sppm";
+}
