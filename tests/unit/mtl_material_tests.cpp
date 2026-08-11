@@ -1,10 +1,11 @@
 // mtl_material_tests.cpp
-// Regression coverage for load_obj_mtl()/parse_mtl() (mesh.h), added when
-// Sponza/Bistro/Rungholt (scenes 62-64) were switched from one flat material
-// per mesh to real per-face colors sourced from the companion .mtl file's
-// Kd (diffuse) entries. Uses small synthetic .obj/.mtl fixtures rather than
-// the real multi-hundred-MB scene assets, so this stays fast and
-// deterministic.
+// Regression coverage for load_obj_mtl()/parse_mtl()/parse_mtl_textures()/
+// resolve_mtl_texture_path() (mesh.h), added when Sponza/Bistro/Rungholt
+// (scenes 62-64) were switched from one flat material per mesh to real
+// per-face colors -- and, for Sponza/Bistro, real map_Kd image textures --
+// sourced from the companion .mtl file. Uses small synthetic .obj/.mtl
+// fixtures rather than the real multi-hundred-MB/GB scene assets, so this
+// stays fast and deterministic.
 #include <gtest/gtest.h>
 #include "mesh.h"
 #include "material_simple.h"

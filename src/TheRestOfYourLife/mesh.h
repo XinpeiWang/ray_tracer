@@ -28,6 +28,7 @@
 #include <unordered_map>
 #include <stdexcept>
 #include <cstdio>
+#include <utility>
 
 
 // ---------------------------------------------------------------------------
@@ -618,9 +619,13 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 				auto tex_it = mtl_textures.find(name);
 				if (!texture_dir.empty() && tex_it != mtl_textures.end()) {
 					std::string img_path = resolve_mtl_texture_path(tex_it->second, found_prefix + texture_dir);
+					// Decode once: probe the load here, then move the
+					// already-decoded pixels into image_texture instead of
+					// having its own constructor decode the same file
+					// again (image_texture(rtw_image&&), texture.h).
 					rtw_image probe(img_path.c_str());
 					if (probe.height() > 0)
-						resolved = std::make_shared<lambertian>(std::make_shared<image_texture>(img_path.c_str()));
+						resolved = std::make_shared<lambertian>(std::make_shared<image_texture>(std::move(probe)));
 				}
 				if (!resolved) {
 					auto color_it = mtl_colors.find(name);

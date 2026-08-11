@@ -71,6 +71,14 @@ class image_texture : public texture {
   public:
     image_texture(const char* filename) : image(filename) {}
 
+    // Takes ownership of an already-loaded rtw_image instead of decoding
+    // the file a second time -- for callers that need to check whether a
+    // load actually succeeded (image.height() > 0) before committing to an
+    // image_texture, e.g. mesh.h's load_obj_mtl() probing a map_Kd texture
+    // and falling back to a flat Kd color on failure instead of this
+    // class's own cyan-debug fallback.
+    explicit image_texture(rtw_image&& loaded) : image(std::move(loaded)) {}
+
     color value(double u, double v, const point3& p) const override {
         // If we have no texture data, then return solid cyan as a debugging aid.
         if (image.height() <= 0) return color(0,1,1);

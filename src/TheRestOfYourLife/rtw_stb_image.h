@@ -30,6 +30,46 @@ class rtw_image {
   public:
     rtw_image() {}
 
+    // Owns two heap buffers (bdata/fdata) freed in ~rtw_image() -- copying
+    // would shallow-copy those pointers and double-free on destruction, so
+    // copy is disabled outright (a compile error is safer than the latent
+    // UB the implicit, deprecated copy constructor would otherwise allow).
+    // Move is cheap and safe (just transfers ownership), added so callers
+    // can probe-then-reuse a load without decoding the same image twice --
+    // see texture.h's image_texture(rtw_image&&) constructor.
+    rtw_image(const rtw_image&) = delete;
+    rtw_image& operator=(const rtw_image&) = delete;
+
+    rtw_image(rtw_image&& other) noexcept
+        : fdata(other.fdata), bdata(other.bdata),
+          image_width(other.image_width), image_height(other.image_height),
+          bytes_per_scanline(other.bytes_per_scanline)
+    {
+        other.fdata = nullptr;
+        other.bdata = nullptr;
+        other.image_width = 0;
+        other.image_height = 0;
+        other.bytes_per_scanline = 0;
+    }
+
+    rtw_image& operator=(rtw_image&& other) noexcept {
+        if (this != &other) {
+            delete[] bdata;
+            STBI_FREE(fdata);
+            fdata = other.fdata;
+            bdata = other.bdata;
+            image_width = other.image_width;
+            image_height = other.image_height;
+            bytes_per_scanline = other.bytes_per_scanline;
+            other.fdata = nullptr;
+            other.bdata = nullptr;
+            other.image_width = 0;
+            other.image_height = 0;
+            other.bytes_per_scanline = 0;
+        }
+        return *this;
+    }
+
     rtw_image(const char* image_filename) {
         // Loads image data from the specified file. If the RTW_IMAGES environment variable is
         // defined, looks only in that directory for the image file. If the image was not found,
