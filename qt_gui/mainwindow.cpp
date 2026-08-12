@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "error_handler.h"
 #include "scene_metadata_client.h"
+#include "win_taskbar.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -399,12 +400,38 @@ MainWindow::MainWindow(QWidget *parent)
 
 	setupUI();
 	applyDarkTheme();
+
+	// Notification-only tray icon: the app has no tray menu and never hides
+	// into the tray, this exists purely so a render finishing while the user
+	// is in another window can say so. Skipped entirely where the platform
+	// has no tray.
+	if (QSystemTrayIcon::isSystemTrayAvailable()) {
+		// A QSystemTrayIcon with a null icon does not become visible, and an
+		// invisible tray icon silently swallows showMessage() - which is
+		// exactly how this failed the first time round. windowIcon() is empty
+		// this early (the .rc icon is an executable resource, not necessarily
+		// the widget's), so fall back until something non-null is found.
+		QIcon icon = windowIcon();
+		if (icon.isNull()) icon = qApp->windowIcon();
+		if (icon.isNull()) icon = style()->standardIcon(QStyle::SP_ComputerIcon);
+		m_trayIcon = new QSystemTrayIcon(icon, this);
+		m_trayIcon->setToolTip("Ray Tracer");
+		m_trayIcon->show();
+	}
+
+	// The taskbar button only exists once the window has been realised, so
+	// defer the COM setup to the event loop rather than doing it here.
+	QTimer::singleShot(0, this, []() { win_taskbar::init(); });
 }
 
 MainWindow::~MainWindow() {
 	if (m_renderController && m_renderController->isRunning()) {
 		m_renderController->stopRender();
 	}
+	// A progress state left set outlives the window on the taskbar button,
+	// so it must be cleared explicitly.
+	win_taskbar::setState(this, win_taskbar::State::NoProgress);
+	win_taskbar::shutdown();
 }
 
 void MainWindow::setupUI() {

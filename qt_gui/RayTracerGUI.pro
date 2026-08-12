@@ -15,11 +15,13 @@ SOURCES += \
 	mainwindow_tabs.cpp \
 	mainwindow_style.cpp \
 	mainwindow_slots.cpp \
-	scene_metadata_client.cpp
+	scene_metadata_client.cpp \
+	win_taskbar.cpp
 
 HEADERS += \
 	mainwindow.h \
-	scene_metadata_client.h
+	scene_metadata_client.h \
+	win_taskbar.h
 
 # scene_metadata.dll (MSVC-built, loaded dynamically at runtime via
 # LoadLibrary/GetProcAddress from kernel32 - see scene_metadata_client.cpp,
@@ -35,6 +37,12 @@ win32 {
 	# Add application icon
 	RC_ICONS = app_icon.ico
 	RC_FILE = app_icon.rc
+
+	# win_taskbar.cpp drives the taskbar progress button through ITaskbarList3.
+	# Qt 6 has no API for this - QtWinExtras (QWinTaskbarProgress) was removed
+	# and its replacement bugs are still open - so it goes through COM directly,
+	# which needs ole32 for CoCreateInstance/CoInitializeEx.
+	LIBS += -lole32
 }
 
 # Default rules for deployment

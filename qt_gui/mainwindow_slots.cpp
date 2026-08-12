@@ -1,5 +1,7 @@
 #include "mainwindow.h"
 #include "scene_metadata_client.h"
+#include "win_taskbar.h"
+#include <QApplication>
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QProcess>
@@ -346,6 +348,11 @@ void MainWindow::onRenderClicked() {
 	m_renderStartTime = QDateTime::currentDateTime();
 	resetProgressSamples();
 	setProgressResultState("");
+	// Indeterminate until the first real progress line: scene loading and
+	// BVH/pipeline build report nothing, and a bar pinned at 0% reads as
+	// "stuck" rather than "working".
+	m_lastTaskbarPercent = -1;
+	win_taskbar::setState(this, win_taskbar::State::Indeterminate);
 	if (!m_elapsedTimer) {
 		m_elapsedTimer = new QTimer(this);
 		connect(m_elapsedTimer, &QTimer::timeout, this, &MainWindow::onElapsedTick);
@@ -574,6 +581,16 @@ void MainWindow::onSceneChanged(int index) {
 
 void MainWindow::onProgressUpdate(int percentage) {
 	m_progressBar->setValue(percentage);
+
+	// Mirror onto the taskbar button so progress is readable while the window
+	// is behind something else. Only pushed when the integer percent actually
+	// changes - the COM call is not free, and progress lines arrive far more
+	// often than once per percent.
+	if (percentage != m_lastTaskbarPercent) {
+		m_lastTaskbarPercent = percentage;
+		win_taskbar::setProgress(this, percentage / 100.0);
+	}
+
 	// Let onElapsedTick handle status label text during rendering;
 	// just keep the progress bar updated here.
 	if (!m_isRendering)
@@ -585,6 +602,11 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 	m_renderButton->setEnabled(true);
 	m_stopButton->setEnabled(false);
 	if (m_elapsedTimer) m_elapsedTimer->stop();
+
+	// A failed render leaves the taskbar button red so the outcome is visible
+	// without switching to the window; anything else clears it. Leaving a
+	// progress state set would make it stick until the process exits.
+	notifyRenderFinished(success, message, totalTime);
 
 	if (success) {
 		m_progressBar->setValue(100);
@@ -767,6 +789,46 @@ QString MainWindow::formatProgressStatus(qint64 elapsedMs, int percent) {
 	}
 
 	return text;
+}
+
+void MainWindow::notifyRenderFinished(bool success, const QString &message, double totalTime) {
+	const bool stoppedByUser = message.contains("stopped by user", Qt::CaseInsensitive);
+
+	if (success || stoppedByUser) {
+		win_taskbar::setState(this, win_taskbar::State::NoProgress);
+	} else {
+		win_taskbar::setState(this, win_taskbar::State::Error);
+	}
+
+	// Only pull attention when the user is plausibly elsewhere. OBS gates its
+	// completion toast on the window not being visible for the same reason -
+	// notifying someone who is already watching the progress bar is pure
+	// noise. QApplication::alert is a no-op when the window is active, so it
+	// is safe to call unconditionally (Qt Creator does exactly this after a
+	// build).
+	QApplication::alert(this, 3000);
+
+	if (isActiveWindow()) return;
+
+	// Log why a notification was or wasn't raised - a silently-swallowed
+	// showMessage() (which is what an invisible tray icon does) is otherwise
+	// indistinguishable from the feature simply not being wired up.
+	if (!m_trayIcon) {
+		onLogMessage("[DEBUG] No system tray available; skipping completion notification");
+		return;
+	}
+	if (!QSystemTrayIcon::supportsMessages()) {
+		onLogMessage("[DEBUG] System tray does not support messages; skipping notification");
+		return;
+	}
+
+	const QString title = success ? "Render complete"
+								  : (stoppedByUser ? "Render stopped" : "Render failed");
+	const QString body = success
+		? QString("Finished in %1 seconds").arg(totalTime, 0, 'f', 2)
+		: message.section('<', 0, 0).left(120);
+	m_trayIcon->showMessage(title, body,
+		success ? QSystemTrayIcon::Information : QSystemTrayIcon::Warning, 10000);
 }
 
 void MainWindow::setProgressResultState(const char *state) {

@@ -21,6 +21,7 @@
 #include <QElapsedTimer>
 #include <QPixmap>
 #include <QResizeEvent>
+#include <QSystemTrayIcon>
 
 // ============================================================================
 // WheelIgnoreFilter
@@ -357,6 +358,17 @@ private:
 	// Paints the progress bar green on success / red on failure, matching
 	// Qt Creator's ProgressBarColorFinished / ProgressBarColorError.
 	void setProgressResultState(const char *state);
+	// Clears or reddens the taskbar button and, if the window isn't the
+	// active one, raises a tray notification.
+	void notifyRenderFinished(bool success, const QString &message, double totalTime);
+
+	// Last percentage pushed to the taskbar button, so the COM call only
+	// fires when the integer percent actually changes.
+	int m_lastTaskbarPercent = -1;
+
+	// Used only for completion notifications - the app has no tray UI.
+	// Null if the platform has no system tray.
+	QSystemTrayIcon *m_trayIcon = nullptr;
 
 	// Shared event filter that blocks accidental wheel-scroll on controls
 	WheelIgnoreFilter *m_wheelFilter;
