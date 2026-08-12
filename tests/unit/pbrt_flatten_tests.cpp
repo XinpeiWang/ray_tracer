@@ -398,3 +398,4 @@ TEST(PbrtFocusTest, ADegenerateCameraStillYieldsAUsableDistance) {
 	for (int i = 0; i < 3; ++i) { c.lookfrom[i] = 5; c.lookat[i] = 5; }
 	EXPECT_GT(pbrt_flatten::focusDistanceFor(c), 0.0);
 }
+

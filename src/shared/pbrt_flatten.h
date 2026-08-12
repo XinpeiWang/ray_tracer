@@ -30,6 +30,12 @@
 #include <vector>
 
 #include "pbrt_scene.h"
+#include "loop_subdivide.h"
+
+// Refinement is exponential: every level multiplies the triangle count by
+// four, so a scene asking for 8 turns a 10k-triangle cage into 650 million.
+// Clamping is the difference between a slow render and an exhausted machine.
+inline constexpr int kMaxSubdivLevels = 4;
 
 namespace pbrt_flatten {
 
@@ -293,11 +299,59 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			continue;
 		}
 
-		if (shape.type == "trianglemesh" || shape.type == "plymesh") {
+		if (shape.type == "trianglemesh" || shape.type == "plymesh"
+				|| shape.type == "loopsubdiv") {
 			std::vector<double> P;
 			std::vector<int> indices;
 
-			if (shape.type == "trianglemesh") {
+			if (shape.type == "loopsubdiv") {
+				// A subdivision surface is a control cage plus a refinement
+				// rule, so it arrives looking exactly like a trianglemesh and
+				// renders as a faceted lump if treated as one. loop_subdivide.h
+				// is already in this project - itself a port of pbrt's own
+				// loopsubdiv - so this is a refinement step, not a new feature.
+				//
+				// Refining in object space, before the CTM is applied, is safe
+				// as well as convenient: Loop limit positions are affine
+				// combinations of the control points, so subdividing and then
+				// transforming gives the same surface as the reverse.
+				const pbrt_scene::Param *pp = shape.params.find("P");
+				const pbrt_scene::Param *pi = shape.params.find("indices");
+				if (!pp || !pi) {
+					warn("a loopsubdiv is missing its P or indices parameter; skipped");
+					continue;
+				}
+
+				std::vector<std::array<double, 3>> cage(pp->numbers.size() / 3);
+				for (std::size_t v = 0; v < cage.size(); ++v)
+					cage[v] = {pp->numbers[v * 3], pp->numbers[v * 3 + 1],
+							   pp->numbers[v * 3 + 2]};
+				std::vector<int> cageIdx;
+				cageIdx.reserve(pi->numbers.size());
+				for (double d : pi->numbers) cageIdx.push_back(static_cast<int>(d));
+
+				// Each level quadruples the triangle count, so an unbounded
+				// value is a way to run out of memory rather than a way to get
+				// a smoother surface. pbrt's own default is 3.
+				int levels = shape.params.getInt("levels", 3);
+				if (levels > kMaxSubdivLevels) {
+					warn("loopsubdiv asks for " + std::to_string(levels) +
+						 " levels; clamped to " + std::to_string(kMaxSubdivLevels) +
+						 " (each level quadruples the triangle count)");
+					levels = kMaxSubdivLevels;
+				}
+				if (levels < 0) levels = 0;
+
+				const LoopSubdivResult<double> refined =
+					loop_subdivide<double>(cage, cageIdx, levels);
+				P.resize(refined.positions.size() * 3);
+				for (std::size_t v = 0; v < refined.positions.size(); ++v) {
+					P[v * 3]     = refined.positions[v][0];
+					P[v * 3 + 1] = refined.positions[v][1];
+					P[v * 3 + 2] = refined.positions[v][2];
+				}
+				indices = refined.indices;
+			} else if (shape.type == "trianglemesh") {
 				const pbrt_scene::Param *pp = shape.params.find("P");
 				const pbrt_scene::Param *pi = shape.params.find("indices");
 				if (!pp || !pi) {
