@@ -117,6 +117,11 @@ inline LoadResult loadFile(const std::string &path) {
 					std::vector<int> &indices) {
 			ply_mesh::LoadResult m = ply_mesh::loadFile(join(sceneDir, want));
 			if (!m.ok) m = ply_mesh::loadFile(want);   // already absolute, or cwd-relative
+			// A scene naming "x.ply" when the folder ships "x.ply.gz" is common
+			// enough to be worth one extra open. Without this the failure is a
+			// missing-file message about a file that is plainly right there.
+			if (!m.ok) m = ply_mesh::loadFile(join(sceneDir, want) + ".gz");
+			if (!m.ok) m = ply_mesh::loadFile(want + ".gz");
 			if (!m.ok) return false;
 			positions = std::move(m.mesh.positions);
 			indices = std::move(m.mesh.indices);

@@ -34,6 +34,8 @@
 #include <string>
 #include <vector>
 
+#include "gzip_inflate.h"
+
 namespace ply_mesh {
 
 struct Mesh {
@@ -350,7 +352,22 @@ inline LoadResult loadFile(const std::string &path) {
 	}
 	std::ostringstream ss;
 	ss << in.rdbuf();
-	LoadResult parsed = parse(ss.str());
+	std::string bytes = ss.str();
+
+	// Detected from the content, not the extension. Most published pbrt
+	// geometry is gzipped, and a scene is free to name a compressed file .ply
+	// - sniffing the magic bytes is right in both directions, where trusting
+	// the name is wrong in both.
+	if (gzip::looksGzipped(bytes)) {
+		std::string inflated, error;
+		if (!gzip::inflate(bytes, inflated, error)) {
+			r.error = path + ": " + error;
+			return r;
+		}
+		bytes.swap(inflated);
+	}
+
+	LoadResult parsed = parse(bytes);
 	if (!parsed.ok) parsed.error = path + ": " + parsed.error;
 	return parsed;
 }
