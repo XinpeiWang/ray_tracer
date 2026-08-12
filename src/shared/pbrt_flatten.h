@@ -272,10 +272,38 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		if (!md.params.find("reflectance")) c = md.params.getVec3("k", c);
 		m.color[0] = c.x; m.color[1] = c.y; m.color[2] = c.z;
 
+		// A parameter bound to a Texture is silently worth a warning: the
+		// material still renders, but with a constant colour where the scene
+		// asked for a pattern. pbrt's ganesha is the case that showed this -
+		// its statue's reflectance is an imagemap, and without a word about
+		// it the render just looks like a shading bug.
+		for (const pbrt_scene::Param &p : md.params.items) {
+			if (p.type != "texture") continue;
+			warn("material '" + md.type + "' binds its '" + p.name +
+				 "' to a texture, which is not supported; a constant colour is "
+				 "used instead");
+		}
+
 		m.roughness = md.params.getFloat("roughness", 0.0);
 		// "eta" is pbrt's name for index of refraction on dielectrics.
 		m.ior = md.params.getFloat("eta", md.params.getFloat("ior", 1.5));
 		out.materials.push_back(m);
+	}
+
+	// ---- lights that are not area lights ---------------------------------
+	// Only AreaLightSource is carried through; infinite, distant, point and
+	// spot lights are dropped. Saying so is not politeness, it is the
+	// difference between a legible limitation and an inexplicable render:
+	// pbrt's ganesha is lit almost entirely by an infinite light, so dropping
+	// it silently produces a black statue that looks exactly like a shading
+	// bug and sends you hunting through the BSDF code.
+	for (const pbrt_scene::LightDecl &ld : scene.lights) {
+		warn("light source '" + ld.type + "' is not supported and was dropped; "
+			 "the scene will be darker than intended" +
+			 (ld.type == "infinite"
+				  ? std::string(" - an infinite light is usually a scene's main "
+								"illumination")
+				  : std::string()));
 	}
 
 	// ---- area lights -----------------------------------------------------

@@ -117,6 +117,65 @@ TEST(PbrtSubdivTest, AMalformedLoopSubdivIsSkippedWithItsOwnMessage) {
 }
 
 // ---------------------------------------------------------------------------
+// Things that are dropped must say so
+// ---------------------------------------------------------------------------
+// pbrt's ganesha scene is lit almost entirely by an infinite light. Dropping
+// it silently produced a black statue that looked exactly like a shading bug -
+// the render was correct given what had been discarded, and nothing on screen
+// connected the two. A limitation that announces itself is a limitation; one
+// that does not is a bug report waiting to happen.
+
+TEST(PbrtDroppedTest, AnInfiniteLightIsNotDiscardedInSilence) {
+	const FlatScene s = build(
+		"WorldBegin\n"
+		"LightSource \"infinite\" \"string filename\" \"sky.exr\"\n");
+	EXPECT_TRUE(warned(s, "infinite"))
+		<< "the scene's main illumination vanished without a word";
+	EXPECT_TRUE(warned(s, "darker than intended"));
+}
+
+TEST(PbrtDroppedTest, EveryUnsupportedLightTypeIsNamedIndividually) {
+	const FlatScene s = build(
+		"WorldBegin\n"
+		"LightSource \"distant\"\n"
+		"LightSource \"point\"\n");
+	EXPECT_TRUE(warned(s, "distant"));
+	EXPECT_TRUE(warned(s, "point"));
+}
+
+TEST(PbrtDroppedTest, AnAreaLightIsNotWarnedAboutBecauseItIsSupported) {
+	// The counterpart that keeps the warning meaningful: if everything warned,
+	// the warnings would be noise and nobody would read the one that matters.
+	const FlatScene s = build(
+		"WorldBegin\n"
+		"AttributeBegin\n"
+		"  AreaLightSource \"diffuse\" \"rgb L\" [ 1 1 1 ]\n"
+		"  Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"    \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n"
+		"AttributeEnd\n");
+	EXPECT_FALSE(warned(s, "not supported and was dropped"));
+}
+
+TEST(PbrtDroppedTest, ATextureBoundToAMaterialIsReportedWithItsParameterName) {
+	const FlatScene s = build(
+		"Texture \"tmap\" \"spectrum\" \"imagemap\" \"string filename\" [ \"t.png\" ]\n"
+		"Material \"coateddiffuse\" \"texture reflectance\" [ \"tmap\" ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	EXPECT_TRUE(warned(s, "reflectance"))
+		<< "a textured material renders flat and says nothing about it";
+	EXPECT_TRUE(warned(s, "constant colour"));
+}
+
+TEST(PbrtDroppedTest, APlainColourMaterialIsNotWarnedAbout) {
+	const FlatScene s = build(
+		"Material \"diffuse\" \"rgb reflectance\" [ 0.5 0.5 0.5 ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	EXPECT_FALSE(warned(s, "texture"));
+}
+
+// ---------------------------------------------------------------------------
 // Shading normals
 // ---------------------------------------------------------------------------
 // The point of subdividing rather than tessellating is the limit surface, and
