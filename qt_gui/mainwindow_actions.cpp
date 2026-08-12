@@ -232,6 +232,10 @@ void MainWindow::saveLogToFile() {
 }
 
 void MainWindow::clearLog() {
+	// The history has to go with it. Otherwise a later theme change, which
+	// rebuilds the pane from that history, would resurrect every line the user
+	// just cleared.
+	m_logHistory.clear();
 	if (m_logTextEdit) m_logTextEdit->clear();
 }
 

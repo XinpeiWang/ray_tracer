@@ -534,12 +534,46 @@ void MainWindow::onLogMessage(const QString &message) {
 	const render_output::LogCategory category =
 		render_output::classifyLogLine(msg.toStdString());
 
+	m_logHistory.push_back({ts, escaped, category});
 	m_logTextEdit->append(styleLogLine(category,
 									   m_activeTheme.colourFor(category.severity).name(),
 									   m_activeTheme.logSeparator.name(),
 									   ts, escaped));
 
 	qDebug() << msg;
+}
+
+// Re-renders every line the log has shown, in the current scheme. Called on a
+// theme change: the pane's contents are HTML with the previous scheme's
+// colours already written into each span, so they can only be replaced, not
+// recoloured.
+void MainWindow::rebuildLogPane() {
+	if (!m_logTextEdit || m_logHistory.isEmpty()) return;
+
+	// Re-appending line by line rather than assembling one HTML document keeps
+	// this on exactly the same code path as normal logging, so a rebuilt pane
+	// cannot drift in appearance from a freshly written one. Updates are held
+	// off because otherwise every append repaints and reflows the whole
+	// document.
+	const bool scrolledToBottom =
+		m_logTextEdit->verticalScrollBar()->value() ==
+		m_logTextEdit->verticalScrollBar()->maximum();
+
+	m_logTextEdit->setUpdatesEnabled(false);
+	m_logTextEdit->clear();
+	for (const LoggedLine &line : m_logHistory) {
+		m_logTextEdit->append(styleLogLine(line.category,
+										   m_activeTheme.colourFor(line.category.severity).name(),
+										   m_activeTheme.logSeparator.name(),
+										   line.timestamp, line.escaped));
+	}
+	m_logTextEdit->setUpdatesEnabled(true);
+
+	// append() leaves the cursor at the end, which scrolls the view there.
+	// Restore the top for a user who had scrolled up to read something - a
+	// theme change should not move them.
+	if (!scrolledToBottom)
+		m_logTextEdit->moveCursor(QTextCursor::Start);
 }
 
 namespace {

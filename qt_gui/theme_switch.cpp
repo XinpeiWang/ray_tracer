@@ -110,10 +110,9 @@ void MainWindow::restyleThemedWidgets() {
 	retintItems(m_modeCombo, {":/icons/image.svg", ":/icons/video.svg"});
 	retintItems(m_renderModeCombo, {":/icons/gpu.svg", ":/icons/cpu.svg"});
 
-	// The log pane's existing contents were written as HTML with the previous
-	// scheme's colours baked into each line, so they cannot be recoloured in
-	// place. Say so rather than leaving the user wondering why old lines look
-	// wrong next to new ones.
-	if (m_logTextEdit && !m_logTextEdit->document()->isEmpty())
-		onLogMessage("[INFO] Theme changed - existing log lines keep their previous colours");
+	// The pane holds HTML with the previous scheme's colours already written
+	// into each span, so its existing lines cannot be recoloured in place -
+	// they are re-rendered from the kept history instead. This used to print an
+	// apology telling the user the old lines would stay the wrong colour.
+	rebuildLogPane();
 }

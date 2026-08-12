@@ -25,6 +25,7 @@
 #include <QSystemTrayIcon>
 
 #include "camera_math.h"
+#include "render_output_parser.h"
 #include "theme.h"
 
 class QMenu;
@@ -375,6 +376,21 @@ private:
 	// Log output
 	QTextEdit *m_logTextEdit;           // Log output display
 	int m_logTabIndex = -1;             // Index of the Log Output tab within m_tabWidget
+
+	// Every line the log has shown, kept so a theme change can re-render it.
+	// The QTextEdit holds only the RESULT of styling - HTML with one scheme's
+	// colours already baked into each span - which cannot be recoloured after
+	// the fact. Keeping the inputs (what the line said, and how it classified)
+	// is what makes a rebuild possible; the classification is cached rather
+	// than recomputed because it is regex work and a long render log has tens
+	// of thousands of lines.
+	struct LoggedLine {
+		QString timestamp;
+		QString escaped;
+		render_output::LogCategory category;
+	};
+	QVector<LoggedLine> m_logHistory;
+	void rebuildLogPane();
 
 	// Render driver (nullptr when not rendering)
 	RenderController *m_renderController;
