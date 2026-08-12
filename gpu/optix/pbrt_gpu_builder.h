@@ -37,6 +37,10 @@ struct BuildStats {
 	std::size_t spheres = 0;
 	std::size_t quadLights = 0;
 	std::size_t unsampledEmissiveTriangles = 0;
+	// Placements the builder prepared. The renderer turns these into IAS
+	// entries; until it does, they are prepared but not drawn.
+	std::size_t instancePlacements = 0;
+	std::size_t unsupportedInstancedSpheres = 0;
 	std::size_t unhandledInstances = 0;
 };
 
@@ -157,10 +161,6 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		out.spheres.push_back(sd);
 	}
 	stats.spheres = out.spheres.size();
-	// See pbrt_cpu_builder.h: instanced geometry needs an OptiX IAS
-	// per instance definition, which is not built yet. Counted so the
-	// caller can say the scene is incomplete rather than looking parsed-wrong.
-	stats.unhandledInstances = scene.instances.size();
 
 	// ---- lights recovered as quads, then everything else as triangles ----
 	const pbrt_quadify::Result merged = pbrt_quadify::quadify(scene.triangles);
@@ -201,6 +201,71 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 	}
 	stats.triangles = out.triangles.size();
 	stats.unsampledEmissiveTriangles = pbrt_quadify::unmergedEmissiveCount(merged);
+
+	// ---- instanced geometry ----------------------------------------------
+	// Object space, kept apart from the world-space list above. Emissive
+	// shapes are not here: flatten() already baked those per placement into
+	// scene.triangles, because a light must be enumerable to be sampled.
+	out.instanceGroups.clear();
+	out.instancePlacements.clear();
+	out.instanceTriangles.clear();
+
+	std::vector<int> groupIndexMap(scene.groups.size(), -1);
+	for (std::size_t g = 0; g < scene.groups.size(); ++g) {
+		const pbrt_flatten::InstanceGroup &grp = scene.groups[g];
+		if (grp.triangles.empty()) continue;      // spheres: see the note below
+
+		SceneData::InstanceGroupGPU gpuGroup;
+		gpuGroup.triangleBase = static_cast<int>(out.instanceTriangles.size());
+		for (const pbrt_flatten::Triangle &t : grp.triangles) {
+			TriangleData td = {};
+			td.p0 = f3(&t.v[0]);
+			td.p1 = f3(&t.v[3]);
+			td.p2 = f3(&t.v[6]);
+			if (t.hasNormals) {
+				td.n0 = f3(&t.n[0]);
+				td.n1 = f3(&t.n[3]);
+				td.n2 = f3(&t.n[6]);
+			}
+			td.hasNormals = t.hasNormals;
+			td.hasUVs = false;
+			td.materialIdx = materialIndex(t.material, t.areaLight);
+			out.instanceTriangles.push_back(td);
+		}
+		gpuGroup.triangleCount =
+			static_cast<int>(out.instanceTriangles.size()) - gpuGroup.triangleBase;
+		groupIndexMap[g] = static_cast<int>(out.instanceGroups.size());
+		out.instanceGroups.push_back(gpuGroup);
+
+		if (!grp.spheres.empty()) {
+			// Spheres are custom AABB primitives sharing a GAS with quads, so
+			// instancing them needs a second per-group GAS and its own SBT
+			// region. Triangles cover the published scenes; this is reported
+			// rather than silently dropped.
+			stats.unsupportedInstancedSpheres += grp.spheres.size();
+		}
+	}
+
+	for (const pbrt_flatten::Instance &inst : scene.instances) {
+		if (inst.group < 0 ||
+			static_cast<std::size_t>(inst.group) >= groupIndexMap.size()) continue;
+		const int mapped = groupIndexMap[static_cast<std::size_t>(inst.group)];
+		if (mapped < 0) continue;
+
+		SceneData::InstancePlacementGPU p;
+		p.group = mapped;
+		// FlatScene stores a row-major 4x4; OptiX wants the top three rows as
+		// a 3x4, which is the same memory order with the last row dropped.
+		for (int row = 0; row < 3; ++row)
+			for (int col = 0; col < 4; ++col)
+				p.transform[row * 4 + col] =
+					static_cast<float>(inst.xform[row * 4 + col]);
+		out.instancePlacements.push_back(p);
+	}
+	stats.instancePlacements = out.instancePlacements.size();
+	// Prepared but not yet drawn: the renderer does not build the per-group
+	// GASes or the IAS entries yet, so these placements are data only.
+	stats.unhandledInstances = out.instancePlacements.size();
 
 	return stats;
 }

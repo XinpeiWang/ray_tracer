@@ -14,6 +14,28 @@ struct SceneData {
 	std::vector<TriangleData> triangles;
 	std::vector<MaterialData> materials;
 
+	// ---- object instancing ------------------------------------------------
+	// Geometry that exists once and is placed many times. Kept in a SEPARATE
+	// array from `triangles` on purpose: these are in their definition's
+	// OBJECT space, and appending them to the world-space list would put every
+	// instanced object at the origin for any consumer that has not learned
+	// about groups yet. Separation makes ignoring them safe rather than wrong.
+	//
+	// The renderer builds one GAS per group over its sub-range, and the base
+	// index is what the device adds to optixGetPrimitiveIndex() to recover the
+	// global triangle - see LaunchParams::instanceTriBase.
+	struct InstanceGroupGPU {
+		int triangleBase = 0;    // first triangle in `instanceTriangles`
+		int triangleCount = 0;
+	};
+	struct InstancePlacementGPU {
+		int group = -1;
+		float transform[12] = {1,0,0,0, 0,1,0,0, 0,0,1,0};  // OptiX 3x4 row-major
+	};
+	std::vector<TriangleData> instanceTriangles;   // object space
+	std::vector<InstanceGroupGPU> instanceGroups;
+	std::vector<InstancePlacementGPU> instancePlacements;
+
 	// Textures referenced by MaterialData::textureIdx (see optix_types.h's
 	// TextureData). texturePixels is one shared flat 8-bit RGB buffer every
 	// Image-kind texture's pixelOffset indexes into. Empty for every scene
