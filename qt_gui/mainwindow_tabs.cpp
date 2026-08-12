@@ -90,8 +90,13 @@ void MainWindow::createBasicTab() {
 		// SceneCategories::kAll drives the ORDER (a curated reading order, not
 		// the order categories happen to first appear in the registry).
 		// Categories with no scenes are skipped rather than shown as an empty
-		// tab; scene_registry_tests.cpp's EveryCategoryHasAtLeastOneScene makes
-		// that unreachable in a correct build, but a stale DLL could still do it.
+		// tab. For the built-in categories that is defensive only -
+		// scene_registry_tests.cpp's EveryCategoryHasAtLeastOneScene makes an
+		// empty one unreachable in a correct build. "User Scenes" is the case
+		// where it genuinely happens: it holds .pbrt files discovered on disk,
+		// so it is empty for every user who has not installed a scene
+		// collection, and they should see no tab at all rather than one that
+		// opens onto nothing.
 		for (std::size_t i = 0; i < SceneCategories::kAllCount; ++i) {
 			const QString category = QString::fromUtf8(SceneCategories::kAll[i]);
 			int inCategory = 0;

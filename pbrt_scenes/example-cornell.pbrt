@@ -1,0 +1,69 @@
+# example-cornell.pbrt -- a small Cornell box, written by hand.
+#
+# This file exists so the User Scenes feature is demonstrable without
+# downloading anything: drop a .pbrt in this folder and it becomes a scene.
+# It is also a readable starting point for editing - every directive it uses
+# is one the loader supports.
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints. Delete it freely.
+
+LookAt  278 278 -800    278 278 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+# ---------------------------------------------------------------- light
+# Small and bright, recessed into the ceiling. Emission is per unit area, so
+# a small quad needs a large L to light the room.
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 18 15 8 ]
+  Shape "trianglemesh"
+    "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 213 548.7 227   343 548.7 227   343 548.7 332   213 548.7 332 ]
+AttributeEnd
+
+# ---------------------------------------------------------------- walls
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+
+# floor
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   555 0 0   555 0 555   0 0 555 ]
+# ceiling
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 555 0   555 555 0   555 555 555   0 555 555 ]
+# back wall
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   555 0 555   555 555 555   0 555 555 ]
+
+# The two coloured walls are what make the box recognisable - the colour
+# bleeding onto the white surfaces is the whole point of the scene.
+AttributeBegin
+  Material "diffuse" "rgb reflectance" [ 0.65 0.05 0.05 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 555 0 0   555 0 555   555 555 555   555 555 0 ]
+AttributeEnd
+
+AttributeBegin
+  Material "diffuse" "rgb reflectance" [ 0.12 0.45 0.15 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 0   0 0 555   0 555 555   0 555 0 ]
+AttributeEnd
+
+# ---------------------------------------------------------------- contents
+# Spheres rather than the usual boxes, so the scene also exercises the sphere
+# shape and its transform handling.
+AttributeBegin
+  Translate 185 120 169
+  Material "diffuse" "rgb reflectance" [ 0.85 0.72 0.35 ]
+  Shape "sphere" "float radius" [ 120 ]
+AttributeEnd
+
+AttributeBegin
+  Translate 370 90 351
+  Material "dielectric"
+  Shape "sphere" "float radius" [ 90 ]
+AttributeEnd

@@ -21,7 +21,12 @@
 #include "sky_light.h"
 #include "punctual_light_objects.h"
 #include "camera.h"
+#include "pbrt_cpu_builder.h"
+#include "../shared/pbrt_discover.h"
+#include "../shared/pbrt_load.h"
+#include <deque>
 #include <functional>
+#include <iostream>
 #include <vector>
 #include <string>
 #include <memory>
@@ -83,7 +88,13 @@ static inline hittable_list sky_dummy_lights() {
 
 static inline hittable_list no_lights() { return hittable_list{}; }
 
-inline const std::vector<SceneDescriptor>& get_scene_registry() {
+// -----------------------------------------------------------------------
+// Scenes loaded from .pbrt files (see append_pbrt_scenes below)
+// -----------------------------------------------------------------------
+
+// The scenes compiled into this binary. Everything the full registry holds
+// beyond these came from a .pbrt file found on disk at startup.
+inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
     static const std::vector<SceneDescriptor> registry = {
         {
             0, SceneNames::CornellBox, SceneCategories::Basics,
@@ -874,6 +885,141 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             nullptr
         },
     };
+    return registry;
+}
+
+inline int builtin_scene_count() {
+    return static_cast<int>(get_builtin_scene_registry().size());
+}
+
+// -----------------------------------------------------------------------
+// Loaded scenes
+// -----------------------------------------------------------------------
+// Turns each .pbrt file found on disk into a SceneDescriptor appended after
+// the built-ins. Doing it here, in the one function every consumer already
+// reads through, is what makes loaded scenes appear in the CLI, in
+// scene_metadata.dll and in the GUI's scene list without any of those three
+// knowing that pbrt exists.
+//
+// GEOMETRY IS LOADED WHEN THE SCENE IS RENDERED, NOT WHEN IT IS LISTED
+// --------------------------------------------------------------------
+// pbrt_discover only read each file's header, so listing a hundred scenes
+// costs a hundred small reads. The full load happens inside build_world(),
+// the first time that particular scene is actually rendered.
+//
+// build_world() and build_lights() are separate calls against one scene, and
+// cpu_interface.cpp invokes both, so the result is cached: without that, a
+// render would parse and triangulate the entire file twice.
+namespace pbrt_scene_registry {
+
+// Loading is deferred AND shared between the two callbacks below, which is
+// why this is a shared_ptr the lambdas capture rather than a local.
+struct Loaded {
+    bool attempted = false;
+    pbrt_cpu::BuildResult built;
+};
+
+inline void append(std::vector<SceneDescriptor>& registry) {
+    const std::vector<pbrt_discover::Discovered> found = pbrt_discover::scanDefaultPaths();
+
+    // SceneDescriptor holds `const char*`, so the strings have to outlive the
+    // registry. A deque is used rather than a vector because it never
+    // reallocates its elements, so pointers taken here stay valid as more
+    // scenes are appended.
+    static std::deque<std::string> names;
+    static std::deque<std::string> descriptions;
+
+    int id = builtin_scene_count();
+    for (const pbrt_discover::Discovered& d : found) {
+        // A file that will not even parse its header is skipped rather than
+        // listed: offering a scene that cannot possibly render is worse than
+        // not offering it. The warning goes to stderr so the CLI and the GUI
+        // log both surface it.
+        if (!d.ok) {
+            std::cerr << "warning: skipping " << d.path << ": " << d.error << "\n";
+            continue;
+        }
+
+        names.push_back(d.name);
+        descriptions.push_back(
+            "Loaded from " + d.path + " (pbrt-v4 scene). Camera, resolution and "
+            "sample count come from the file itself; geometry is read on first "
+            "render, so the first frame of a large scene starts slowly.");
+
+        const auto state = std::make_shared<Loaded>();
+        const std::string path = d.path;
+
+        // Both callbacks run the load exactly once between them.
+        const auto ensure = [state, path]() -> pbrt_cpu::BuildResult& {
+            if (!state->attempted) {
+                state->attempted = true;
+                const pbrt_load::LoadResult r = pbrt_load::loadFile(path);
+                if (!r.ok) {
+                    std::cerr << "error: " << r.error << "\n";
+                } else {
+                    for (const pbrt_scene::Warning& w : r.scene.warnings)
+                        std::cerr << "warning: " << path << ": " << w.message << "\n";
+                    state->built = pbrt_cpu::build(r.scene);
+                }
+            }
+            return state->built;
+        };
+
+        SceneDescriptor s;
+        s.id = id++;
+        s.name = names.back().c_str();
+        s.category = SceneCategories::UserScenes;
+        s.description = descriptions.back().c_str();
+        // Honest rather than flattering: a .pbrt file can hold anything from
+        // three triangles to ten million, and nothing in the header says
+        // which. "Unknown" is the truthful answer at this point.
+        s.performance = "Unknown";
+        s.recommended_spp = d.samplesPerPixel;
+        s.requires_files = true;
+        // No GPU path consumes a FlatScene yet, so claiming otherwise would
+        // route the user into a renderer that has never seen this geometry.
+        s.gpu_compatible = false;
+        s.camera = CameraConfig{
+            d.camera.vfov,
+            d.camera.lookfrom[0], d.camera.lookfrom[1], d.camera.lookfrom[2],
+            d.camera.lookat[0],   d.camera.lookat[1],   d.camera.lookat[2],
+            0.0, 0.0, 0.0,                      // pbrt has no flat background
+            CameraMode::Fixed,
+            d.camera.aperture,
+            d.camera.focusDistance
+        };
+
+        // A failed load yields an empty world rather than a crash - the error
+        // above already said why, and an empty render is a legible symptom.
+        s.build_world  = [ensure]() {
+            pbrt_cpu::BuildResult& b = ensure();
+            return b.world ? *b.world : hittable_list{};
+        };
+        s.build_lights = [ensure]() {
+            pbrt_cpu::BuildResult& b = ensure();
+            return b.lights ? *b.lights : hittable_list{};
+        };
+        s.build_sky = nullptr;
+        s.build_punct = nullptr;
+        // CameraConfig cannot express an up vector, but pbrt's LookAt can, and
+        // a scene shot in Z-up renders sideways without this. setup_camera
+        // runs after every config field is applied, so it is the right place.
+        const double ux = d.camera.up[0], uy = d.camera.up[1], uz = d.camera.up[2];
+        s.setup_camera = [ux, uy, uz](camera_t& cam) { cam.vup = vec3(ux, uy, uz); };
+
+        registry.push_back(s);
+    }
+}
+
+} // namespace pbrt_scene_registry
+
+// The full registry: built-in scenes, then whatever was found on disk.
+inline const std::vector<SceneDescriptor>& get_scene_registry() {
+    static const std::vector<SceneDescriptor> registry = []() {
+        std::vector<SceneDescriptor> all = get_builtin_scene_registry();
+        pbrt_scene_registry::append(all);
+        return all;
+    }();
     return registry;
 }
 

@@ -133,10 +133,18 @@ namespace SceneCategories {
     constexpr const char* Geometry   = "Geometry";     // shape primitives
     constexpr const char* Models     = "Models";       // single imported meshes
     constexpr const char* LargeScene = "Large Scenes"; // full textured environments
+    // Scenes loaded from .pbrt files found on disk rather than compiled in.
+    // Unlike every category above it, this one is populated at runtime and is
+    // legitimately empty when the user has no scene collection installed -
+    // which is why the registry tests exempt it from "every category has at
+    // least one scene".
+    constexpr const char* UserScenes = "User Scenes";
 
-    // Display order for the GUI's category tabs.
+    // Display order for the GUI's category tabs. UserScenes is last so the
+    // built-in tabs never shift position when a scene folder appears.
     constexpr const char* kAll[] = {
-        Basics, Materials, Lights, Cameras, Volumes, Geometry, Models, LargeScene
+        Basics, Materials, Lights, Cameras, Volumes, Geometry, Models, LargeScene,
+        UserScenes
     };
     constexpr std::size_t kAllCount = sizeof(kAll) / sizeof(kAll[0]);
 } // namespace SceneCategories

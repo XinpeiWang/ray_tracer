@@ -32,10 +32,36 @@ TEST(SceneRegistryTest, RegistryIsNonEmpty) {
 }
 
 TEST(SceneRegistryTest, RegistryHasExpectedCount) {
-	// We currently register 65 scenes (ids 0-64).
+	// We currently compile in 65 scenes (ids 0-64).
 	// This test will fail if a scene is accidentally added or removed -
 	// update this count (and kGuiSceneCount below) when that's intentional.
-	EXPECT_EQ(scene_count(), 65);
+	//
+	// Deliberately the BUILT-IN count, not scene_count(). The full registry
+	// also contains whatever .pbrt files happen to be on the machine running
+	// the tests, which is not a property of this source tree and must not
+	// decide whether the suite passes.
+	EXPECT_EQ(builtin_scene_count(), 65);
+}
+
+TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem) {
+	// The contract the ids depend on: loading scenes from disk may only ADD
+	// entries at the end. If a loaded scene could take a lower id, every saved
+	// setting and every script that passes a scene number would silently point
+	// at a different scene than it did yesterday.
+	const auto& all = get_scene_registry();
+	ASSERT_GE(all.size(), static_cast<std::size_t>(builtin_scene_count()));
+
+	const auto& builtins = get_builtin_scene_registry();
+	for (std::size_t i = 0; i < builtins.size(); ++i) {
+		EXPECT_EQ(all[i].id, builtins[i].id);
+		EXPECT_STREQ(all[i].name, builtins[i].name);
+	}
+	for (std::size_t i = builtins.size(); i < all.size(); ++i) {
+		EXPECT_STREQ(all[i].category, SceneCategories::UserScenes)
+			<< "a scene past the built-ins should be a loaded one";
+		EXPECT_EQ(all[i].id, static_cast<int>(i))
+			<< "loaded scene ids must continue the built-in sequence without gaps";
+	}
 }
 
 TEST(SceneRegistryTest, AllIDsAreUnique) {
@@ -72,7 +98,13 @@ TEST(SceneRegistryTest, AllDescriptionsAreNonEmpty) {
 }
 
 TEST(SceneRegistryTest, AllPerformanceStringsAreValid) {
-	static const std::set<std::string> kValid = {"Fast", "Medium", "Slow", "Very Slow"};
+	// "Unknown" is only ever produced by scenes loaded from a .pbrt file.
+	// Nothing in a pbrt header says whether the world behind it holds three
+	// triangles or ten million, and the geometry is deliberately not read
+	// until the scene is rendered - so any of the four estimates below would
+	// be a guess presented as a fact.
+	static const std::set<std::string> kValid = {"Fast", "Medium", "Slow",
+												"Very Slow", "Unknown"};
 	for (const auto& s : get_scene_registry()) {
 		EXPECT_NE(s.performance, nullptr);
 		EXPECT_GT(kValid.count(s.performance), 0u)
@@ -107,6 +139,12 @@ TEST(SceneRegistryTest, EveryCategoryHasAtLeastOneScene) {
 		if (s.category) used.insert(s.category);
 
 	for (std::size_t i = 0; i < SceneCategories::kAllCount; ++i) {
+		// UserScenes is populated from .pbrt files found on disk, so it is
+		// legitimately empty on a machine with no scene collection installed -
+		// including every CI machine. Every other category is compiled in, so
+		// an empty one there really is the bug this test is looking for.
+		if (std::string(SceneCategories::kAll[i]) == SceneCategories::UserScenes)
+			continue;
 		EXPECT_GT(used.count(SceneCategories::kAll[i]), 0u)
 			<< "Category '" << SceneCategories::kAll[i]
 			<< "' has no scenes - it would render as an empty tab in the GUI";
@@ -477,6 +515,6 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // counts or ID ranges by hand.
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
 	constexpr int kGuiSceneCount = 65;
-	EXPECT_EQ(scene_count(), kGuiSceneCount)
+	EXPECT_EQ(builtin_scene_count(), kGuiSceneCount)
 		<< "Registry size changed -- update kGuiSceneCount here to match.";
 }
