@@ -88,9 +88,9 @@ no rebuild:
     <folder containing RayTracerGUI.exe>/themes/
     %APPDATA%/Ray Tracer Project/Ray Tracer/themes/
 
-`RayTracer_Package/themes/example.theme` is a complete, commented starting
-point — copy it and edit. Every colour role is required; `id` must not match a
-built-in.
+`qt_gui/themes/example.theme` is a complete, commented starting point — copy it
+into one of the folders above and edit. Every colour role is required; `id` must
+not match a built-in.
 
 A loaded theme is not a second-class citizen: it parses into the same
 `PaletteData` struct the built-ins use, so it goes through the identical

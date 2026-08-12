@@ -1,0 +1,72 @@
+; ============================================================================
+; Example user theme
+; ============================================================================
+; Drop a .theme file in either of these and it appears in the Theme menu with
+; the built-ins - no rebuild:
+;
+;   <folder containing RayTracerGUI.exe>/themes/
+;   %APPDATA%/Ray Tracer Project/Ray Tracer/themes/
+;
+; Every colour below is required. A file missing one, or with a value that is
+; not a #rrggbb colour, is skipped with a warning naming the file and the key -
+; a half-specified theme would otherwise render black wherever it forgot
+; something. `id` must not match a built-in (cyberpunk, dracula, nord, gruvbox,
+; solarized-dark, solarized-light, breeze-dark, qtcreator-dark,
+; fantasy-parchment, scifi-blueprint, retro-arcade, cherry-blossom).
+;
+; Roles are named for what they are FOR, not what they look like. Read
+; qt_gui/palette_data.h for what each one drives.
+;
+; This example is a slate-and-amber dark scheme; edit freely.
+; ============================================================================
+
+id = example-slate
+name = Example Slate
+origin = Bundled example - copy this file and edit it
+
+; Surface ramp, deepest first: window, panels, raised, pressed.
+surface0 = #1b1f24
+surface1 = #22272e
+surface2 = #2c333b
+surface3 = #39414b
+
+textBody     = #d6dde5
+textMuted    = #9aa7b4
+textDisabled = #6b7783
+
+; accentPrimary drives the primary action and group titles;
+; accentSecondary is the focus/active marker.
+accentPrimary   = #e0a34a
+accentSecondary = #5fb3c4
+accentDim       = #7a6236
+
+; The primary button's gradient. Explicit rather than derived - deriving it
+; from the accent looks plausible on one scheme and wrong on every other.
+primaryTop         = #33383f
+primaryBottom      = #262b31
+primaryTopHover    = #3c424a
+primaryBottomHover = #2e343b
+
+border       = #313841
+borderStrong = #4a545f
+hoverRow     = #2f363e
+
+success = #6fbf73
+error   = #e06c6c
+
+; One colour per log severity. The log is the densest coloured surface in the
+; app, so these are worth choosing rather than reusing the accents.
+logInfo        = #d6dde5
+logError       = #e06c6c
+logWarning     = #e0b04a
+logSuccess     = #6fbf73
+logGpu         = #6fbf73
+logCpu         = #6f9fd8
+logPerformance = #e08a4a
+logScene       = #b48ce0
+logInit        = #5fb3c4
+logTechnique   = #dd7bb0
+logCommand     = #a8b4c0
+logDebug       = #8b98a5
+; Decoration only - the "=====" rules between sections. Keep it quiet.
+logSeparator   = #454e58
