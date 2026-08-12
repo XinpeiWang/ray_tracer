@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "scene_metadata_client.h"
 #include "win_taskbar.h"
+#include "render_output_parser.h"
 #include <QApplication>
 #include <QFileDialog>
 #include <QMessageBox>
@@ -22,217 +23,36 @@
 
 namespace {
 
-// ============================================================================
-// Log line classification
-// ============================================================================
-// onLogMessage() below used to be one long if/else chain matching keywords
-// against each incoming line - it had already needed a dedicated bug-fix
-// pass once (mis-categorized lines stealing each other's rules) and kept
-// growing harder to safely extend. This splits it into small, independently
-// readable classifier functions tried in order (first match wins), same
-// "line parser chain" shape Qt Creator's Core::OutputWindow uses for its
-// own process-output categorization. Adding a new category is now "add one
-// function + one array entry" instead of finding the right spot to splice
-// an else-if into a 150-line function.
-// ============================================================================
+// Log-line classification lives in render_output_parser.h, which is Qt-free so
+// the rules can be unit tested against real captured renderer output (see
+// tests/unit/render_output_parser_tests.cpp). It previously lived here as ~15
+// classifier functions in this anonymous namespace, which no test could reach
+// - and writing those tests immediately turned up a misclassification that had
+// shipped: the launcher's settings echo ("... height=80 spp=4 ...") was being
+// labelled a performance measurement.
 
-enum class LogLineStyle {
-	Normal,       // "HH:mm:ss [LABEL] message" - most lines
-	BoldLabeled,  // same as Normal but bold (render-start banners)
-	Banner,       // bold, no timestamp/label (separators, error banner)
-};
-
-struct LogCategory {
-	QString colour;
-	QString label;  // ignored for Banner style
-	LogLineStyle style = LogLineStyle::Normal;
-};
-
-using LogClassifierFn = std::optional<LogCategory> (*)(const QString&);
-
-// Would otherwise match classifySeparator's "===" rule below and render as a
-// plain grey line, burying the one banner meant to flag a render failure.
-std::optional<LogCategory> classifyErrorDetailsBanner(const QString& msg) {
-	if (msg.contains("ERROR DETAILS"))
-		return LogCategory{"#FF6B6B", QString(), LogLineStyle::Banner};
-	return std::nullopt;
-}
-
-std::optional<LogCategory> classifySeparator(const QString& msg) {
-	if (msg.startsWith("═") || msg.startsWith("─") ||
-		msg.startsWith("===") || msg.startsWith("---"))
-		return LogCategory{"#555555", QString(), LogLineStyle::Banner};
-	return std::nullopt;
-}
-
-// Matches on the ASCII words, not the leading glyph. ray_tracer.exe's console
-// output decorates lines with box-drawing/emoji characters, and matching those
-// literally turned them into an undocumented wire protocol between its stdout
-// and this classifier: restyling either side (or the mojibake class of bug
-// already documented in RenderController::onReadyRead) would silently drop
-// lines back to the plain default category. The words are the contract; the
-// glyphs are decoration.
-std::optional<LogCategory> classifyRenderStart(const QString& msg) {
-	if (msg.contains("RENDER START") || msg.startsWith("Starting render"))
-		return LogCategory{"#74C0FC", "INFO", LogLineStyle::BoldLabeled};
-	return std::nullopt;
-}
-
-std::optional<LogCategory> classifyErrorOrFatal(const QString& msg) {
-	if (!(msg.contains("error", Qt::CaseInsensitive) ||
-		  msg.contains("FAILED",  Qt::CaseSensitive)  ||
-		  msg.contains("fatal",   Qt::CaseInsensitive) ||
-		  msg.contains("ERR_",    Qt::CaseSensitive)   ||
-		  msg.startsWith("Result: FAILED")))
-		return std::nullopt;
-
-	// Keep the red "this is an error" signal, but preserve which subsystem
-	// it came from instead of collapsing every GPU/CPU line that happens to
-	// contain "error"/"failed" into the generic ERR tag.
-	QString label;
-	if (msg.contains("[OptiX]",     Qt::CaseSensitive)   ||
-		msg.contains("[optix]",     Qt::CaseSensitive)   ||
-		msg.contains("OptiX",       Qt::CaseSensitive)   ||
-		msg.contains("GPU mode",    Qt::CaseInsensitive)) {
-		label = "GPU ";
-	} else if (msg.contains("[cpu_interface]", Qt::CaseSensitive) ||
-			   msg.contains("CPU mode",        Qt::CaseInsensitive)) {
-		label = "CPU ";
-	} else {
-		label = "ERR ";
+QString styleLogLine(const render_output::LogCategory &cat,
+					 const QString &timestamp, const QString &escaped) {
+	switch (cat.style) {
+	case render_output::LineStyle::Banner:
+		return QString("<span style='color:%1;font-family:Consolas,monospace;font-size:9pt;'>"
+					   "<b>%2</b></span>").arg(QString::fromLatin1(cat.colour), escaped);
+	case render_output::LineStyle::BoldLabeled:
+		return QString("<span style='color:%1;font-family:Consolas,monospace;font-size:9pt;'>"
+					   "<b><span style='color:#888888;'>%2</span> "
+					   "<span style='color:%1;'>[%3]</span> %4</b></span>")
+			.arg(QString::fromLatin1(cat.colour), timestamp,
+				 QString::fromLatin1(cat.label), escaped);
+	case render_output::LineStyle::Normal:
+		break;
 	}
-	return LogCategory{"#FF6B6B", label, LogLineStyle::Normal};
+	return QString("<span style='color:%1;font-family:Consolas,monospace;font-size:9pt;'>"
+				   "<span style='color:#555555;'>%2</span> "
+				   "<span style='color:%1;'>[%3]</span> %4"
+				   "</span>")
+		.arg(QString::fromLatin1(cat.colour), timestamp,
+			 QString::fromLatin1(cat.label), escaped);
 }
-
-std::optional<LogCategory> classifyWarning(const QString& msg) {
-	if (msg.contains("warning", Qt::CaseInsensitive) ||
-		msg.contains("WARN",    Qt::CaseSensitive)    ||
-		msg.contains("Requires external files", Qt::CaseInsensitive))
-		return LogCategory{"#FFD700", "WARN"};
-	return std::nullopt;
-}
-
-// The check-mark prefixes are kept as an extra hint (ray_tracer.exe emits
-// them), but every case they cover is also matched by an ASCII phrase below,
-// so success lines stay correctly categorised even if the glyphs change - see
-// classifyRenderStart()'s comment.
-std::optional<LogCategory> classifySuccess(const QString& msg) {
-	if (msg.startsWith("Result: SUCCESS") ||
-		msg.startsWith("✅") ||
-		msg.startsWith("✓")  ||
-		msg.contains("[OK]",                Qt::CaseSensitive)   ||
-		msg.contains("Render completed",    Qt::CaseInsensitive) ||
-		msg.contains("render complete",     Qt::CaseInsensitive) ||
-		msg.contains("rendered successfully", Qt::CaseInsensitive) ||
-		msg.contains("saved successfully",  Qt::CaseInsensitive) ||
-		msg.contains("PNG saved",           Qt::CaseInsensitive))
-		return LogCategory{"#51CF66", " OK "};
-	return std::nullopt;
-}
-
-std::optional<LogCategory> classifyGpuOptix(const QString& msg) {
-	if (msg.contains("[OptiX]",         Qt::CaseSensitive) ||
-		msg.contains("[optix]",          Qt::CaseSensitive) ||
-		msg.contains("OptiX",            Qt::CaseSensitive) ||
-		msg.contains("optix_render",     Qt::CaseInsensitive) ||
-		msg.contains("GPU mode",         Qt::CaseInsensitive) ||
-		msg.contains("NVIDIA",           Qt::CaseSensitive) ||
-		msg.contains("RTX",              Qt::CaseSensitive) ||
-		msg.contains("Launching renderer (GPU", Qt::CaseInsensitive))
-		return LogCategory{"#A9E34B", "GPU "};
-	return std::nullopt;
-}
-
-std::optional<LogCategory> classifyCpuRenderer(const QString& msg) {
-	if (msg.contains("[cpu_interface]",  Qt::CaseSensitive) ||
-		msg.contains("CPU mode",         Qt::CaseInsensitive) ||
-		msg.contains("Launching renderer (CPU", Qt::CaseInsensitive))
-		return LogCategory{"#74C0FC", "CPU "};
-	return std::nullopt;
-}
-
-std::optional<LogCategory> classifyPerfTiming(const QString& msg) {
-	if (msg.contains("RENDER TIME",  Qt::CaseSensitive) ||
-		msg.contains("time=",          Qt::CaseInsensitive) ||
-		msg.contains(" ms",           Qt::CaseSensitive)   ||
-		msg.contains(" spp",          Qt::CaseInsensitive) ||
-		msg.contains("Rendered ",     Qt::CaseSensitive)   ||
-		msg.contains("Pipeline stat", Qt::CaseInsensitive))
-		return LogCategory{"#FFA94D", "PERF"};
-	return std::nullopt;
-}
-
-std::optional<LogCategory> classifySceneInfo(const QString& msg) {
-	if (msg.contains("Building scene",   Qt::CaseInsensitive) ||
-		msg.contains("Uploaded ",         Qt::CaseInsensitive) ||
-		msg.contains("Built ",            Qt::CaseSensitive)   ||
-		msg.contains("materials to GPU",  Qt::CaseInsensitive) ||
-		msg.contains("spheres to GPU",    Qt::CaseInsensitive) ||
-		msg.contains("quads to GPU",      Qt::CaseInsensitive) ||
-		msg.contains("light sources",     Qt::CaseInsensitive) ||
-		msg.contains("acceleration struct", Qt::CaseInsensitive))
-		return LogCategory{"#CC99FF", "SCN "};
-	return std::nullopt;
-}
-
-std::optional<LogCategory> classifyPipelineInit(const QString& msg) {
-	if (msg.contains("Pipeline",         Qt::CaseSensitive) ||
-		msg.contains("Initializ",        Qt::CaseInsensitive) ||
-		msg.contains("Loaded PTX",       Qt::CaseInsensitive) ||
-		msg.contains("Created program",  Qt::CaseInsensitive) ||
-		msg.contains("Using GPU:",       Qt::CaseSensitive))
-		return LogCategory{"#63E6BE", "INIT"};
-	return std::nullopt;
-}
-
-std::optional<LogCategory> classifyTechSummary(const QString& msg) {
-	if (msg.startsWith("[TECH]"))
-		return LogCategory{"#E599F7", "TECH"};
-	return std::nullopt;
-}
-
-std::optional<LogCategory> classifyCommandLine(const QString& msg) {
-	if (msg.startsWith("Command:"))
-		return LogCategory{"#CCCCCC", "CMD "};
-	return std::nullopt;
-}
-
-std::optional<LogCategory> classifyDebugSettings(const QString& msg) {
-	if (msg.contains("[DEBUG]",           Qt::CaseSensitive) ||
-		msg.contains("Parsed ",           Qt::CaseSensitive)  ||
-		msg.contains("Using command-line",Qt::CaseInsensitive)||
-		msg.contains("Writing output to", Qt::CaseInsensitive))
-		return LogCategory{"#A8A8A8", "DBG "};
-	return std::nullopt;
-}
-
-std::optional<LogCategory> classifyProcessResult(const QString& msg) {
-	if (msg.startsWith("Process finished") ||
-		msg.startsWith("Result:"))
-		return LogCategory{"#D0D0D0", "INFO"};
-	return std::nullopt;
-}
-
-// Tried in order, first match wins - matches the original if/else chain's
-// precedence exactly (e.g. classifyErrorOrFatal before classifyGpuOptix, so
-// an OptiX line containing "error" still gets flagged red, not green).
-constexpr std::array<LogClassifierFn, 15> kLogClassifiers = {
-	classifyErrorDetailsBanner,
-	classifySeparator,
-	classifyRenderStart,
-	classifyErrorOrFatal,
-	classifyWarning,
-	classifySuccess,
-	classifyGpuOptix,
-	classifyCpuRenderer,
-	classifyPerfTiming,
-	classifySceneInfo,
-	classifyPipelineInit,
-	classifyTechSummary,
-	classifyCommandLine,
-	classifyDebugSettings,
-	classifyProcessResult,
-};
 
 } // namespace
 
@@ -703,37 +523,12 @@ void MainWindow::onLogMessage(const QString &message) {
 	// HTML-escape so < > & don't break the rich-text display
 	QString escaped = msg.toHtmlEscaped();
 
-	// First matching classifier wins; falls back to plain INFO if none
-	// match, same as the original if/else chain's final "else" branch.
-	LogCategory category{"#D0D0D0", "INFO", LogLineStyle::Normal};
-	for (LogClassifierFn classify : kLogClassifiers) {
-		if (std::optional<LogCategory> match = classify(msg)) {
-			category = *match;
-			break;
-		}
-	}
+	// Classification is the tested, Qt-free implementation; this function is
+	// left with nothing but presentation.
+	const render_output::LogCategory category =
+		render_output::classifyLogLine(msg.toStdString());
 
-	QString html;
-	switch (category.style) {
-	case LogLineStyle::Banner:
-		html = QString("<span style='color:%1;font-family:Consolas,monospace;font-size:9pt;'>"
-						"<b>%2</b></span>").arg(category.colour, escaped);
-		break;
-	case LogLineStyle::BoldLabeled:
-		html = QString("<span style='color:%1;font-family:Consolas,monospace;font-size:9pt;'>"
-						"<b><span style='color:#888888;'>%2</span> "
-						"<span style='color:%1;'>[%3]</span> %4</b></span>")
-			.arg(category.colour, ts, category.label, escaped);
-		break;
-	case LogLineStyle::Normal:
-		html = QString("<span style='color:%1;font-family:Consolas,monospace;font-size:9pt;'>"
-						"<span style='color:#555555;'>%2</span> "
-						"<span style='color:%1;'>[%3]</span> %4"
-						"</span>")
-			.arg(category.colour, ts, category.label, escaped);
-		break;
-	}
-	m_logTextEdit->append(html);
+	m_logTextEdit->append(styleLogLine(category, ts, escaped));
 
 	qDebug() << msg;
 }

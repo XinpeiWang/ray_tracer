@@ -2,6 +2,7 @@
 #include "error_handler.h"
 #include "scene_metadata_client.h"
 #include "win_taskbar.h"
+#include "render_output_parser.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -228,47 +229,33 @@ void RenderController::handleOutputChunk(const QString &chunk) {
 }
 
 void RenderController::parseProgressLine(const QString &line) {
-	static const QRegularExpression scanlinesRegex("Scanlines remaining:\\s*(\\d+)");
-	// Matches "[5/60] Rendering frame_"
-	static const QRegularExpression videoFrameRegex("\\[(\\d+)/(\\d+)\\] Rendering frame_");
+	// The actual matching lives in render_output_parser.h so it can be unit
+	// tested against real captured renderer output - see
+	// tests/unit/render_output_parser_tests.cpp. Doing it here meant the
+	// wording of ray_tracer.exe's std::cout calls was an untested protocol,
+	// and a reworded line silently froze the progress bar.
+	const std::string raw = line.toStdString();
 
 	// Video mode: rendering (0-95%), then a fixed bump once ffmpeg assembly
 	// starts (no per-frame progress available from ffmpeg cheaply);
-	// onRenderComplete snaps to 100% once the subprocess actually exits. PNG
-	// conversion no longer gets its own reserved range - it now happens on a
-	// background thread overlapped with rendering (see main.cpp's
-	// BackgroundPngConverter) and finishes near-instantly after the last
-	// frame, so there's no distinct serial "converting" phase left to show.
+	// onRenderComplete snaps to 100% once the subprocess actually exits.
 	if (m_videoMode) {
-		QRegularExpressionMatch frameMatch = videoFrameRegex.match(line);
-		if (frameMatch.hasMatch()) {
-			int currentFrame = frameMatch.captured(1).toInt();
-			int totalFrames = frameMatch.captured(2).toInt();
-			int progress = (totalFrames > 0) ? (currentFrame * 95) / totalFrames : 0;
-			progress = std::max(0, std::min(progress, 95));
-			if (progress > m_lastProgress) {
-				emit progressUpdate(progress);
-				m_lastProgress = progress;
-			}
+		const int framePct = render_output::parseVideoFrameProgress(raw);
+		if (framePct != render_output::kNoProgress && framePct > m_lastProgress) {
+			emit progressUpdate(framePct);
+			m_lastProgress = framePct;
 		}
-		if (line.contains("ASSEMBLING VIDEO WITH FFMPEG") && m_lastProgress < 97) {
+		if (render_output::isVideoAssemblyStart(raw) && m_lastProgress < 97) {
 			emit progressUpdate(97);
 			m_lastProgress = 97;
 		}
 		return;
 	}
 
-	// Single-image mode: look for "Scanlines remaining: X"
-	QRegularExpressionMatch scanlinesMatch = scanlinesRegex.match(line);
-	if (scanlinesMatch.hasMatch()) {
-		int remaining = scanlinesMatch.captured(1).toInt();
-		int completed = m_height - remaining;
-		int progress = (m_height > 0) ? (completed * 100) / m_height : 0;
-		progress = std::max(0, std::min(progress, 100));  // Clamp to 0-100
-		if (progress > m_lastProgress) {                  // Only update forward
-			emit progressUpdate(progress);
-			m_lastProgress = progress;
-		}
+	const int pct = render_output::parseScanlineProgress(raw, m_height);
+	if (pct != render_output::kNoProgress && pct > m_lastProgress) {
+		emit progressUpdate(pct);   // only ever moves forward
+		m_lastProgress = pct;
 	}
 }
 
