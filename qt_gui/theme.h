@@ -85,6 +85,19 @@ struct Palette {
 	QColor logSeparator;
 
 	QColor colourFor(render_output::LogSeverity severity) const;
+
+	// Optional decorative motif, painted on the tab pane's background - i.e.
+	// the area AROUND the group boxes, never underneath their text. Panels stay
+	// fully opaque on purpose: ghosting a pattern through body text and dense
+	// log lines costs legibility for very little character. What you get
+	// instead is the motif in the margins and the gaps between panels.
+	//
+	// Opacity is baked into the artwork rather than applied at runtime, because
+	// Qt stylesheets have no opacity property for background-image and each of
+	// these is drawn for one specific palette anyway.
+	QString backgroundImage;              // qrc path; empty = no motif
+	bool    backgroundTiled = false;      // true = seamless repeat, false = single placement
+	QString backgroundPosition = "bottom right";  // ignored when tiled
 };
 
 // All available themes, in menu order. The first entry is the default.

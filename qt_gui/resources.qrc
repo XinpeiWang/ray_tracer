@@ -14,5 +14,11 @@
         <file>icons/clear.svg</file>
         <file>icons/gpu.svg</file>
         <file>icons/cpu.svg</file>
+        <!-- Decorative motifs for the topical themes. Painted on the tab
+             pane's background only - see theme::Palette::backgroundImage. -->
+        <file>backgrounds/parchment.svg</file>
+        <file>backgrounds/blueprint.svg</file>
+        <file>backgrounds/arcade.svg</file>
+        <file>backgrounds/blossom.svg</file>
     </qresource>
 </RCC>

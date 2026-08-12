@@ -462,6 +462,238 @@ Palette qtCreatorDark() {
 	return p;
 }
 
+// ===========================================================================
+// Topical themes
+// ===========================================================================
+// Unlike the eight above, these are not transcriptions of an existing scheme -
+// they are original palettes built around a subject, each with its own motif
+// painted on the tab pane's background (see Palette::backgroundImage).
+//
+// They are named for a GENRE, not for any particular game or film, and their
+// artwork is drawn from scratch in qt_gui/backgrounds/. Naming a theme after a
+// real franchise, or shipping its art, would be someone else's trademark and
+// copyright in a public repository; the genre carries the same feel without
+// borrowing anything.
+//
+// All four are light schemes on purpose. A faint motif needs a light ground to
+// read against at all - at 7% ink on a near-black surface it is either
+// invisible or, once boosted enough to see, glare.
+// ===========================================================================
+
+// Fantasy Parchment - aged paper and iron-gall ink, the palette of a tabletop
+// campaign map. Warm neutrals only; the accents are leather and wax-seal red
+// rather than anything that would look printed.
+Palette fantasyParchment() {
+	Palette p;
+	p.id = "fantasy-parchment";
+	p.name = "Fantasy Parchment";
+	p.origin = "Original palette - aged paper and iron-gall ink";
+	p.isDark = false;
+
+	p.surface0 = "#f6ecd9";   // the page
+	p.surface1 = "#efe3cc";   // panels, a shade deeper than the page
+	p.surface2 = "#e6d7bb";
+	p.surface3 = "#dbc9a8";
+
+	p.textBody = "#4a3b2a";     // iron-gall ink, browner than black
+	p.textMuted = "#7a6650";
+	p.textDisabled = "#a6947c";
+
+	p.accentPrimary = "#8b3a2f";   // wax seal
+	p.accentSecondary = "#8b5a2b"; // tooled leather
+	p.accentDim = "#b08a5e";
+	p.primaryTop = "#efe3cc";
+	p.primaryBottom = "#e2d2b4";
+	p.primaryTopHover = "#f6ecd9";
+	p.primaryBottomHover = "#eadcc2";
+
+	p.border = "#d6c4a4";
+	p.borderStrong = "#b8a284";
+	p.hoverRow = "#e4d5b8";
+
+	p.success = "#5c7a3a";   // moss
+	p.error = "#a33227";
+
+	p.logInfo = "#4a3b2a";
+	p.logError = "#a33227";
+	p.logWarning = "#9a6a1c";
+	p.logSuccess = "#5c7a3a";
+	p.logGpu = "#5c7a3a";
+	p.logCpu = "#7a5b2e";
+	p.logPerformance = "#a85c1e";
+	p.logScene = "#6a4a7a";
+	p.logInit = "#3d6b62";
+	p.logTechnique = "#8b3a5e";
+	p.logCommand = "#6b5b45";
+	p.logDebug = "#8c7a62";
+	p.logSeparator = "#c0ad8d";
+
+	p.backgroundImage = ":/backgrounds/parchment.svg";
+	p.backgroundTiled = false;
+	p.backgroundPosition = "bottom right";
+	return p;
+}
+
+// Sci-Fi Blueprint - drafting paper. Cool near-white ground with a single
+// saturated blue doing all the accent work, which is how real blueprints read:
+// one ink, many line weights.
+Palette sciFiBlueprint() {
+	Palette p;
+	p.id = "scifi-blueprint";
+	p.name = "Sci-Fi Blueprint";
+	p.origin = "Original palette - drafting paper and blueprint ink";
+	p.isDark = false;
+
+	p.surface0 = "#eef4f8";
+	p.surface1 = "#e4edf3";
+	p.surface2 = "#d8e4ed";
+	p.surface3 = "#c8d8e4";
+
+	p.textBody = "#24404d";
+	p.textMuted = "#5b7787";
+	p.textDisabled = "#8ba4b2";
+
+	p.accentPrimary = "#0b6f8f";
+	p.accentSecondary = "#127d9e";
+	p.accentDim = "#4a90a8";
+	p.primaryTop = "#e4edf3";
+	p.primaryBottom = "#d4e2ea";
+	p.primaryTopHover = "#eef4f8";
+	p.primaryBottomHover = "#dfeaf1";
+
+	p.border = "#c9d9e3";
+	p.borderStrong = "#a3bccb";
+	p.hoverRow = "#d6e3ec";
+
+	p.success = "#2e7d5b";
+	p.error = "#b3382f";
+
+	p.logInfo = "#24404d";
+	p.logError = "#b3382f";
+	p.logWarning = "#a06a10";
+	p.logSuccess = "#2e7d5b";
+	p.logGpu = "#2e7d5b";
+	p.logCpu = "#0b6f8f";
+	p.logPerformance = "#b25f00";
+	p.logScene = "#5a5a9e";
+	p.logInit = "#127d9e";
+	p.logTechnique = "#8e3d78";
+	p.logCommand = "#4a6472";
+	p.logDebug = "#7a94a2";
+	p.logSeparator = "#a8bfcb";
+
+	p.backgroundImage = ":/backgrounds/blueprint.svg";
+	p.backgroundTiled = true;
+	return p;
+}
+
+// Retro Arcade - eighties cabinet art with the saturation pulled right down.
+// The hues are the period ones (coral, teal, violet); making them pastel is
+// what lets them sit on a light ground without becoming neon.
+Palette retroArcade() {
+	Palette p;
+	p.id = "retro-arcade";
+	p.name = "Retro Arcade";
+	p.origin = "Original palette - eighties cabinet art, desaturated";
+	p.isDark = false;
+
+	p.surface0 = "#fbf3e6";
+	p.surface1 = "#f4e9d8";
+	p.surface2 = "#ebdcc6";
+	p.surface3 = "#dfcbb0";
+
+	p.textBody = "#3d3550";
+	p.textMuted = "#6e6484";
+	p.textDisabled = "#9c93ad";
+
+	p.accentPrimary = "#d94f70";
+	p.accentSecondary = "#2f8f8f";
+	p.accentDim = "#8a6ba8";
+	p.primaryTop = "#f4e9d8";
+	p.primaryBottom = "#e8d9c0";
+	p.primaryTopHover = "#fbf3e6";
+	p.primaryBottomHover = "#f0e3ce";
+
+	p.border = "#dfcdb4";
+	p.borderStrong = "#bfa98c";
+	p.hoverRow = "#ecdcc4";
+
+	p.success = "#3f8f5c";
+	p.error = "#c4372f";
+
+	p.logInfo = "#3d3550";
+	p.logError = "#c4372f";
+	p.logWarning = "#c17a10";
+	p.logSuccess = "#3f8f5c";
+	p.logGpu = "#2f8f8f";
+	p.logCpu = "#5a5fa8";
+	p.logPerformance = "#e08a1e";
+	p.logScene = "#8a4fa8";
+	p.logInit = "#2f8f8f";
+	p.logTechnique = "#d94f70";
+	p.logCommand = "#5e5570";
+	p.logDebug = "#8b829c";
+	p.logSeparator = "#c3b39a";
+
+	p.backgroundImage = ":/backgrounds/arcade.svg";
+	p.backgroundTiled = true;
+	return p;
+}
+
+// Cherry Blossom - the softest of the four. Its accents are the only ones here
+// that are genuinely low-contrast against their ground, so the log colours
+// deliberately run darker than the UI accents rather than matching them.
+Palette cherryBlossom() {
+	Palette p;
+	p.id = "cherry-blossom";
+	p.name = "Cherry Blossom";
+	p.origin = "Original palette - sakura and warm grey";
+	p.isDark = false;
+
+	p.surface0 = "#fdf2f4";
+	p.surface1 = "#f8e9ec";
+	p.surface2 = "#f1dde2";
+	p.surface3 = "#e6cbd3";
+
+	p.textBody = "#4a4448";
+	p.textMuted = "#7d7379";
+	p.textDisabled = "#a89ea4";
+
+	p.accentPrimary = "#b2536f";
+	p.accentSecondary = "#5f8a6a";   // new leaf, the counterpoint to the pink
+	p.accentDim = "#c4708c";
+	p.primaryTop = "#f8e9ec";
+	p.primaryBottom = "#eedae0";
+	p.primaryTopHover = "#fdf2f4";
+	p.primaryBottomHover = "#f5e3e8";
+
+	p.border = "#ecd7dd";
+	p.borderStrong = "#d3b3bd";
+	p.hoverRow = "#f0dbe1";
+
+	p.success = "#4f7d5c";
+	p.error = "#b53a3a";
+
+	p.logInfo = "#4a4448";
+	p.logError = "#b53a3a";
+	p.logWarning = "#a4761c";
+	p.logSuccess = "#4f7d5c";
+	p.logGpu = "#4f7d5c";
+	p.logCpu = "#5a6f9e";
+	p.logPerformance = "#b8862b";
+	p.logScene = "#8a5f9e";
+	p.logInit = "#41827d";
+	p.logTechnique = "#b2536f";
+	p.logCommand = "#6a5f66";
+	p.logDebug = "#94888f";
+	p.logSeparator = "#cdb8c0";
+
+	p.backgroundImage = ":/backgrounds/blossom.svg";
+	p.backgroundTiled = false;
+	p.backgroundPosition = "top left";
+	return p;
+}
+
 const QVector<Palette> &registry() {
 	static const QVector<Palette> themes = {
 		cyberpunk(),
@@ -472,6 +704,10 @@ const QVector<Palette> &registry() {
 		solarizedLight(),
 		breezeDark(),
 		qtCreatorDark(),
+		fantasyParchment(),
+		sciFiBlueprint(),
+		retroArcade(),
+		cherryBlossom(),
 	};
 	return themes;
 }

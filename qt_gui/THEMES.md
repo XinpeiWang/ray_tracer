@@ -1,9 +1,10 @@
 # Theme attribution
 
-The GUI ships eight colour schemes (`qt_gui/theme.cpp`). Seven of them take
+The GUI ships twelve colour schemes (`qt_gui/theme.cpp`). Seven of them take
 their numbers from established, widely-used developer colour schemes rather
 than from values invented here — they have been eye-tested by far more people
-than this project has, and they land somewhere users already recognise.
+than this project has, and they land somewhere users already recognise. The
+remaining five (Cyberpunk plus the four topical schemes below) are original.
 
 ## What was and was not taken
 
@@ -41,6 +42,42 @@ text and border tints at paint time rather than storing them.
 Cyberpunk is the project's own scheme and remains the default; its values are
 unchanged from before the theme system existed, so the app looks the same on
 first run as it always did.
+
+## Topical themes
+
+Four further schemes are not transcriptions of anything - they are original
+palettes built around a subject, each with its own decorative motif:
+
+| Scheme | Motif | Placement |
+| --- | --- | --- |
+| Fantasy Parchment | compass rose, contour lines, sea-serpent flourish | bottom right |
+| Sci-Fi Blueprint | drafting grid with registration crosses | tiled |
+| Retro Arcade | dot matrix with sparkles and a scanline | tiled |
+| Cherry Blossom | branch, blossoms and drifting petals | top left |
+
+**These are named for a genre, never for a franchise, and every motif is drawn
+from scratch** (`qt_gui/backgrounds/*.svg`). No game or film artwork, screenshot,
+logo, or name is used. Naming a theme after a real property, or shipping its
+art, would be someone else's trademark and copyright — the genre carries the
+same feel without borrowing anything.
+
+All four are light schemes deliberately: a faint motif needs a light ground to
+read against at all. At the opacities used here it would be either invisible on
+a near-black surface or, once boosted enough to see, glare.
+
+### How the motif is painted
+
+On the tab pages' `QScrollArea` background — that is, the area *around* the
+group boxes. Panels stay fully opaque, so the motif is never underneath body
+text or log lines; ghosting a pattern through those costs legibility for very
+little character. Opacity is baked into each SVG rather than applied at runtime,
+because Qt stylesheets have no opacity property for `background-image`.
+
+It cannot go on `QTabWidget::pane`: the scroll area covers the pane edge to
+edge, so a background set there is never seen (confirmed by probing with an
+opaque colour — nothing rendered). The scroll area's own viewport and content
+widget also fill themselves opaquely by default and have to be punched through,
+which is what the `QScrollArea#tabScroll > QWidget` rules do.
 
 ## Icons
 

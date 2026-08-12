@@ -269,6 +269,13 @@ void MainWindow::createBasicTab() {
 	scrollArea->setWidget(basicTab);
 	scrollArea->setWidgetResizable(true);
 	scrollArea->setFrameShape(QFrame::NoFrame);
+	// Named so the global stylesheet can paint a theme's decorative motif here.
+	// It has to be the scroll area rather than QTabWidget::pane: the pane is
+	// covered edge to edge by this widget, so a background set on it is never
+	// seen. QAbstractScrollArea is also the one thing Qt documents as
+	// supporting background-attachment, which is what keeps the motif still
+	// while the settings scroll past.
+	scrollArea->setObjectName("tabScroll");
 	scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 	scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
@@ -461,6 +468,13 @@ void MainWindow::createAdvancedTab() {
 	scrollArea->setWidget(advancedTab);
 	scrollArea->setWidgetResizable(true);
 	scrollArea->setFrameShape(QFrame::NoFrame);
+	// Named so the global stylesheet can paint a theme's decorative motif here.
+	// It has to be the scroll area rather than QTabWidget::pane: the pane is
+	// covered edge to edge by this widget, so a background set on it is never
+	// seen. QAbstractScrollArea is also the one thing Qt documents as
+	// supporting background-attachment, which is what keeps the motif still
+	// while the settings scroll past.
+	scrollArea->setObjectName("tabScroll");
 	scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 	scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
@@ -725,6 +739,13 @@ void MainWindow::createVideoTab() {
 	scrollArea->setWidget(videoTab);
 	scrollArea->setWidgetResizable(true);
 	scrollArea->setFrameShape(QFrame::NoFrame);
+	// Named so the global stylesheet can paint a theme's decorative motif here.
+	// It has to be the scroll area rather than QTabWidget::pane: the pane is
+	// covered edge to edge by this widget, so a background set on it is never
+	// seen. QAbstractScrollArea is also the one thing Qt documents as
+	// supporting background-attachment, which is what keeps the motif still
+	// while the settings scroll past.
+	scrollArea->setObjectName("tabScroll");
 
 	m_tabWidget->addTab(scrollArea, "Video Settings");
 }

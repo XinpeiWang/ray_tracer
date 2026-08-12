@@ -15,6 +15,8 @@
 #include <QScreen>
 #include <QTimer>
 #include <QAbstractItemView>
+#include <QFile>
+#include <QDebug>
 #include <QStyledItemDelegate>
 
 
@@ -56,6 +58,41 @@ QString hex(const QColor &c) { return c.name(QColor::HexRgb); }
 QColor textOn(const QColor &fill, const theme::Palette &p) {
 	return fill.lightness() > 170 ? p.surface0 : QColor(Qt::white);
 }
+
+// Builds the QSS fragment that paints a theme's decorative motif on the tab
+// pane. Empty for the eight schemes that have none, which is why the tokens are
+// substituted rather than the rule being written inline.
+//
+// Qt's stylesheet engine has no background-size, so a non-tiled motif is drawn
+// at whatever size its SVG declares and anchored to a corner - that is why the
+// artwork is authored at a deliberate size rather than expected to scale.
+QString paneBackgroundRule(const theme::Palette &p) {
+	if (p.backgroundImage.isEmpty()) return QString();
+
+	// A missing or unregistered resource makes QSS silently skip the
+	// declaration - the same failure mode that once made the SVG icons render
+	// as nothing at all. Check rather than trust, and say so.
+	if (!QFile::exists(p.backgroundImage)) {
+		qWarning() << "Theme" << p.id << "declares background" << p.backgroundImage
+				   << "but it is not in the resource bundle - motif skipped."
+				   << "Check resources.qrc.";
+		return QString();
+	}
+
+	// One line: whitespace inside a QSS block is insignificant, and keeping the
+	// fragment flat avoids having to match the surrounding rule's indentation.
+	//
+	// background-attachment: fixed anchors the motif to the viewport rather
+	// than to the scrolled content, so it stays put while the settings panel
+	// scrolls past it - a motif that slid around with the content would read as
+	// a rendering glitch.
+	return QString("background-image: url(%1); background-repeat: %2; "
+				   "background-position: %3; background-attachment: fixed;")
+		.arg(p.backgroundImage,
+			 p.backgroundTiled ? "repeat" : "no-repeat",
+			 p.backgroundTiled ? "top left" : p.backgroundPosition);
+}
+
 
 } // namespace
 
@@ -231,6 +268,26 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			border-radius: 0px %RADIUS% %RADIUS% %RADIUS%;
 			background-color: %SURFACE0%;
 			top: -1px;
+		}
+		/* The scrolling tab pages, and where a theme's decorative motif is
+		   painted. Not on QTabWidget::pane, which this covers completely. */
+		QScrollArea#tabScroll {
+			background-color: %SURFACE0%;
+			border: none;
+			%PANE_BACKGROUND%
+		}
+		/* A scroll area's own background is covered by two widgets Qt creates
+		   for it - the viewport, and the content widget inside that - both of
+		   which fill themselves opaquely by default. Punching both through is
+		   the documented way to let a scroll area's background show. The child
+		   selectors are deliberately direct (">"): group boxes sit deeper and
+		   keep their own opaque QGroupBox rule, which is what stops the motif
+		   from ever appearing behind text. */
+		QScrollArea#tabScroll > QWidget {
+			background: transparent;
+		}
+		QScrollArea#tabScroll > QWidget > QWidget {
+			background: transparent;
 		}
 		QTabBar::tab {
 			background-color: transparent;
@@ -487,6 +544,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			padding: 4px 8px;
 		}
 	)")
+		.replace("%PANE_BACKGROUND%", paneBackgroundRule(p))
 		.replace("%SURFACE0%",      hex(p.surface0))
 		.replace("%SURFACE1%",      hex(p.surface1))
 		.replace("%SURFACE2%",      hex(p.surface2))

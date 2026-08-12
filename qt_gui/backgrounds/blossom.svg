@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Cherry Blossom motif: a branch with five-petal blossoms and a few petals
+     drifting away from it. Original artwork.
+
+     Placed once (not tiled), anchored top-left, so the branch reads as entering
+     the frame from the corner rather than as wallpaper.
+
+     Opacity is baked in; Qt stylesheets have no opacity property for
+     background-image. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="460" height="380" viewBox="0 0 460 380">
+  <g opacity="0.14">
+
+    <!-- Branch: one main limb from the corner with two offshoots. Drawn as
+         filled tapering shapes rather than strokes so it thins toward the tip
+         the way a real branch does. -->
+    <g fill="#6b5158">
+      <path d="M-10 26 q90 20 150 56 q70 42 128 60 q52 16 96 12 q-44 12 -100 -2
+               q-62 -18 -132 -60 q-58 -34 -144 -54 Z"/>
+      <path d="M118 66 q26 34 34 76 q-16 -38 -44 -70 Z"/>
+      <path d="M262 140 q34 20 46 52 q-24 -30 -58 -44 Z"/>
+    </g>
+
+    <!-- Blossoms: five petals around a small centre. -->
+    <g fill="#c4708c">
+      <g transform="translate(152 148)">
+        <g>
+          <ellipse cx="0" cy="-13" rx="7.5" ry="11"/>
+          <ellipse cx="0" cy="-13" rx="7.5" ry="11" transform="rotate(72)"/>
+          <ellipse cx="0" cy="-13" rx="7.5" ry="11" transform="rotate(144)"/>
+          <ellipse cx="0" cy="-13" rx="7.5" ry="11" transform="rotate(216)"/>
+          <ellipse cx="0" cy="-13" rx="7.5" ry="11" transform="rotate(288)"/>
+        </g>
+        <circle r="3.4" fill="#a8546f"/>
+      </g>
+      <g transform="translate(310 194) scale(0.82)">
+        <g>
+          <ellipse cx="0" cy="-13" rx="7.5" ry="11"/>
+          <ellipse cx="0" cy="-13" rx="7.5" ry="11" transform="rotate(72)"/>
+          <ellipse cx="0" cy="-13" rx="7.5" ry="11" transform="rotate(144)"/>
+          <ellipse cx="0" cy="-13" rx="7.5" ry="11" transform="rotate(216)"/>
+          <ellipse cx="0" cy="-13" rx="7.5" ry="11" transform="rotate(288)"/>
+        </g>
+        <circle r="3.4" fill="#a8546f"/>
+      </g>
+      <g transform="translate(74 62) scale(0.7)">
+        <g>
+          <ellipse cx="0" cy="-13" rx="7.5" ry="11"/>
+          <ellipse cx="0" cy="-13" rx="7.5" ry="11" transform="rotate(72)"/>
+          <ellipse cx="0" cy="-13" rx="7.5" ry="11" transform="rotate(144)"/>
+          <ellipse cx="0" cy="-13" rx="7.5" ry="11" transform="rotate(216)"/>
+          <ellipse cx="0" cy="-13" rx="7.5" ry="11" transform="rotate(288)"/>
+        </g>
+        <circle r="3.4" fill="#a8546f"/>
+      </g>
+    </g>
+
+    <!-- Loose petals, falling away and to the right, each turned a little
+         differently so they don't read as a repeated stamp. -->
+    <g fill="#c4708c">
+      <ellipse cx="208" cy="232" rx="6" ry="9" transform="rotate(28 208 232)"/>
+      <ellipse cx="256" cy="290" rx="5.4" ry="8" transform="rotate(-42 256 290)"/>
+      <ellipse cx="352" cy="268" rx="5" ry="7.5" transform="rotate(66 352 268)"/>
+      <ellipse cx="404" cy="326" rx="4.6" ry="7" transform="rotate(-16 404 326)"/>
+      <ellipse cx="150" cy="300" rx="4.4" ry="6.6" transform="rotate(52 150 300)"/>
+    </g>
+  </g>
+</svg>

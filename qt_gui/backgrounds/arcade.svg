@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Retro Arcade motif: a dot-matrix field with occasional sparkles, the look
+     of a low-resolution display seen up close. Original artwork.
+
+     TILES - same seam rule as blueprint.svg: anything on an edge is drawn on
+     the top/left only, never bottom/right, so neighbouring tiles don't
+     double up along the seam. The dots sit safely inside the tile, so only the
+     scanline needs that care.
+
+     Opacity is baked in; Qt stylesheets have no opacity property for
+     background-image. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72">
+  <g opacity="0.16">
+    <!-- Dot matrix on a 24px pitch, offset every other row so it reads as a
+         display rather than as graph paper. -->
+    <g fill="#3d3550">
+      <rect x="4"  y="4"  width="3" height="3"/>
+      <rect x="28" y="4"  width="3" height="3"/>
+      <rect x="52" y="4"  width="3" height="3"/>
+      <rect x="16" y="28" width="3" height="3"/>
+      <rect x="40" y="28" width="3" height="3"/>
+      <rect x="64" y="28" width="3" height="3"/>
+      <rect x="4"  y="52" width="3" height="3"/>
+      <rect x="28" y="52" width="3" height="3"/>
+      <rect x="52" y="52" width="3" height="3"/>
+    </g>
+
+    <!-- A four-point sparkle - the "extra life" glint. Plus-shaped, drawn from
+         chunky blocks so it stays in keeping with the dot matrix. -->
+    <g fill="#d94f70">
+      <rect x="38" y="12" width="3" height="9"/>
+      <rect x="35" y="15" width="9" height="3"/>
+    </g>
+    <g fill="#2f8f8f">
+      <rect x="14" y="60" width="3" height="9"/>
+      <rect x="11" y="63" width="9" height="3"/>
+    </g>
+
+    <!-- One scanline per tile, top edge only. -->
+    <rect x="0" y="0" width="72" height="1" fill="#3d3550"/>
+  </g>
+</svg>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Sci-Fi Blueprint motif: a drafting grid. Original artwork.
+
+     This one TILES, so every edge has to meet its opposite exactly. The rule
+     followed here: draw grid lines only on the top and left edges, never the
+     bottom or right - the neighbouring tile supplies those. Drawing all four
+     would double the line weight along every seam and produce a visible lattice
+     of darker lines at the tile boundaries.
+
+     Opacity is baked in for the same reason as the other motifs: Qt stylesheets
+     have no opacity property for background-image. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
+  <g opacity="0.17" fill="none" stroke="#0b6f8f">
+    <!-- Minor divisions every 16px. Top and left edges only (see above). -->
+    <g stroke-width="0.6">
+      <path d="M16 0 v96 M32 0 v96 M48 0 v96 M64 0 v96 M80 0 v96"/>
+      <path d="M0 16 h96 M0 32 h96 M0 48 h96 M0 64 h96 M0 80 h96"/>
+    </g>
+    <!-- Major divisions at the tile boundary, heavier. -->
+    <g stroke-width="1.3">
+      <path d="M0 0 v96"/>
+      <path d="M0 0 h96"/>
+    </g>
+    <!-- Registration cross at the major intersection, the way a real drafting
+         sheet marks its origin. -->
+    <g stroke-width="1.1">
+      <path d="M48 44 v8 M44 48 h8"/>
+    </g>
+  </g>
+</svg>
