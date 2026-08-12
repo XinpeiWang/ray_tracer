@@ -15,6 +15,7 @@
 #include <QScreen>
 #include <QTimer>
 #include <QAbstractItemView>
+#include <QStyledItemDelegate>
 
 
 // ============================================================================
@@ -37,61 +38,53 @@
 // ============================================================================
 namespace {
 
-// Surface ramp - darkest (window) to lightest (raised controls)
-constexpr const char *kSurface0     = "#0E0E14";  // Window / deepest background
-constexpr const char *kSurface1     = "#16161F";  // Panels, group boxes, inputs
-constexpr const char *kSurface2     = "#1E1E2A";  // Raised / hovered controls
-constexpr const char *kSurface3     = "#2A2A3A";  // Pressed / selected controls
-
-// Text
-constexpr const char *kTextBody     = "#E6E6F0";  // Default readable text
-constexpr const char *kTextMuted    = "#9A9AB0";  // Secondary / helper text
-constexpr const char *kTextDisabled = "#5A5A70";
-
-// Accents (small doses only)
-constexpr const char *kAccentCyan   = "#00E5FF";  // Focus, active tab, headings
-constexpr const char *kAccentMag    = "#FF3DFF";  // Primary action, titles
-constexpr const char *kAccentDim    = "#C93FE8";  // Primary border at rest
-
-// Lines
-constexpr const char *kBorder       = "#2A2A3A";  // Ordinary 1px chrome
-constexpr const char *kBorderStrong = "#3A3A50";  // Interactive controls
-
-// Hover fill for list/menu rows. Deliberately purple-tinted and a clear step
-// lighter than kSurface3 - a plain neutral hover at this contrast level is
-// nearly invisible against kSurface1, which loses the "this row is under the
-// cursor" feedback the old high-saturation theme did give.
-constexpr const char *kHoverRow     = "#3A2E56";
-
-// Radius scale - two values, not five
+// Radius scale - two values, not five. Unlike colours these are not part of a
+// theme: every scheme shares the same geometry, only the palette changes.
 constexpr const char *kRadius       = "6px";      // Controls
 constexpr const char *kRadiusLarge  = "10px";     // Containers
 
+// Qt stylesheets want "#RRGGBB" strings, palettes hold QColor.
+QString hex(const QColor &c) { return c.name(QColor::HexRgb); }
+
+// Text drawn on a selected row sits on accentDim, so it has to contrast with
+// THAT, not with the window. White is right for every dark scheme and for
+// mid-tone accents; only a genuinely pale accent needs dark text instead. The
+// threshold is high because white-on-mid-tone stays readable a good way up the
+// range - flipping at the midpoint sent Solarized Light's violet accent to
+// cream text, which was the worse of the two options.
+QColor selectedRowText(const theme::Palette &p) {
+	return p.accentDim.lightness() > 170 ? p.surface0 : QColor(Qt::white);
+}
+
 } // namespace
 
-void MainWindow::applyDarkTheme() {
-	// Cyberpunk theme with neon colors
-	QPalette cyberpunkPalette;
-	cyberpunkPalette.setColor(QPalette::Window, QColor(0x0E, 0x0E, 0x14));
-	cyberpunkPalette.setColor(QPalette::WindowText, QColor(0xE6, 0xE6, 0xF0));
-	cyberpunkPalette.setColor(QPalette::Base, QColor(0x16, 0x16, 0x1F));
-	cyberpunkPalette.setColor(QPalette::AlternateBase, QColor(0x1E, 0x1E, 0x2A));
-	cyberpunkPalette.setColor(QPalette::ToolTipBase, QColor(0x1E, 0x1E, 0x2A));
-	cyberpunkPalette.setColor(QPalette::ToolTipText, QColor(0xE6, 0xE6, 0xF0));
-	cyberpunkPalette.setColor(QPalette::Text, QColor(0xE6, 0xE6, 0xF0));
-	cyberpunkPalette.setColor(QPalette::Button, QColor(0x1E, 0x1E, 0x2A));
-	cyberpunkPalette.setColor(QPalette::ButtonText, QColor(0xE6, 0xE6, 0xF0));
-	cyberpunkPalette.setColor(QPalette::BrightText, QColor(0xFF, 0x3D, 0xFF));
-	cyberpunkPalette.setColor(QPalette::Link, QColor(0x00, 0xE5, 0xFF));
-	cyberpunkPalette.setColor(QPalette::Highlight, QColor(0xC9, 0x3F, 0xE8));
-	cyberpunkPalette.setColor(QPalette::HighlightedText, QColor(0xFF, 0xFF, 0xFF));
+void MainWindow::applyTheme(const theme::Palette &p) {
+	m_activeTheme = p;
+
+	// Qt's own palette still matters: it is what non-stylesheet painting and
+	// native dialogs read, so it has to track the scheme too rather than being
+	// left on whatever the first theme set.
+	QPalette appPalette;
+	appPalette.setColor(QPalette::Window, p.surface0);
+	appPalette.setColor(QPalette::WindowText, p.textBody);
+	appPalette.setColor(QPalette::Base, p.surface1);
+	appPalette.setColor(QPalette::AlternateBase, p.surface2);
+	appPalette.setColor(QPalette::ToolTipBase, p.surface2);
+	appPalette.setColor(QPalette::ToolTipText, p.textBody);
+	appPalette.setColor(QPalette::Text, p.textBody);
+	appPalette.setColor(QPalette::Button, p.surface2);
+	appPalette.setColor(QPalette::ButtonText, p.textBody);
+	appPalette.setColor(QPalette::BrightText, p.accentPrimary);
+	appPalette.setColor(QPalette::Link, p.accentSecondary);
+	appPalette.setColor(QPalette::Highlight, p.accentDim);
+	appPalette.setColor(QPalette::HighlightedText, selectedRowText(p));
 
 	// Disabled state colors
-	cyberpunkPalette.setColor(QPalette::Disabled, QPalette::WindowText, QColor(0x5A, 0x5A, 0x70));
-	cyberpunkPalette.setColor(QPalette::Disabled, QPalette::Text, QColor(0x5A, 0x5A, 0x70));
-	cyberpunkPalette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(0x5A, 0x5A, 0x70));
+	appPalette.setColor(QPalette::Disabled, QPalette::WindowText, p.textDisabled);
+	appPalette.setColor(QPalette::Disabled, QPalette::Text, p.textDisabled);
+	appPalette.setColor(QPalette::Disabled, QPalette::ButtonText, p.textDisabled);
 
-	qApp->setPalette(cyberpunkPalette);
+	qApp->setPalette(appPalette);
 	qApp->setStyle(QStyleFactory::create("Fusion"));
 
 	// Set cyberpunk-style font
@@ -138,7 +131,7 @@ void MainWindow::applyDarkTheme() {
 			padding: 2px 12px;
 			left: 12px;
 			top: 2px;
-			color: %ACCENT_MAG%;
+			color: %ACCENT_1%;
 			font-size: 12pt;
 			font-weight: bold;
 			background-color: %SURFACE1%;
@@ -156,14 +149,14 @@ void MainWindow::applyDarkTheme() {
 		}
 		QPushButton:hover {
 			background-color: %SURFACE3%;
-			border-color: %ACCENT_CYAN%;
-			color: %ACCENT_CYAN%;
+			border-color: %ACCENT_2%;
+			color: %ACCENT_2%;
 		}
 		QPushButton:pressed {
 			background-color: %SURFACE1%;
 		}
 		QPushButton:focus {
-			border: 1px solid %ACCENT_CYAN%;
+			border: 1px solid %ACCENT_2%;
 		}
 		QPushButton:disabled {
 			background-color: %SURFACE1%;
@@ -174,20 +167,20 @@ void MainWindow::applyDarkTheme() {
 		   bold text, so it reads as the main thing to click. */
 		QPushButton#primaryAction {
 			background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-				stop:0 #3A1050, stop:1 #240C38);
+				stop:0 %PRIMARY_TOP%, stop:1 %PRIMARY_BOTTOM%);
 			border: 2px solid %ACCENT_DIM%;
-			color: %ACCENT_MAG%;
+			color: %ACCENT_1%;
 			font-weight: bold;
 			font-size: 13pt;
 		}
 		QPushButton#primaryAction:hover {
 			background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-				stop:0 #4E1668, stop:1 #341048);
-			border-color: %ACCENT_CYAN%;
-			color: %ACCENT_CYAN%;
+				stop:0 %PRIMARY_TOP_HOVER%, stop:1 %PRIMARY_BOTTOM_HOVER%);
+			border-color: %ACCENT_2%;
+			color: %ACCENT_2%;
 		}
 		QPushButton#primaryAction:pressed {
-			background-color: #240C38;
+			background-color: %PRIMARY_BOTTOM%;
 		}
 		QPushButton#primaryAction:disabled {
 			background-color: %SURFACE1%;
@@ -205,7 +198,7 @@ void MainWindow::applyDarkTheme() {
 		}
 		QProgressBar::chunk {
 			background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-				stop:0 %ACCENT_MAG%, stop:1 %ACCENT_CYAN%);
+				stop:0 %ACCENT_1%, stop:1 %ACCENT_2%);
 			border-radius: 5px;
 		}
 		/* Outcome colouring, driven by the "resultState" dynamic property
@@ -214,10 +207,10 @@ void MainWindow::applyDarkTheme() {
 		   stays readable instead of snapping back to an empty bar - the
 		   same convention Qt Creator uses, including its exact colours. */
 		QProgressBar[resultState="success"]::chunk {
-			background-color: #5AAA3C;
+			background-color: %SUCCESS%;
 		}
 		QProgressBar[resultState="error"]::chunk {
-			background-color: #DF4F4F;
+			background-color: %ERROR%;
 		}
 		QTabWidget::pane {
 			border: 1px solid %BORDER%;
@@ -243,8 +236,8 @@ void MainWindow::applyDarkTheme() {
 		QTabBar::tab:selected {
 			background-color: %SURFACE0%;
 			border-color: %BORDER%;
-			border-bottom: 2px solid %ACCENT_CYAN%;
-			color: %ACCENT_CYAN%;
+			border-bottom: 2px solid %ACCENT_2%;
+			color: %ACCENT_2%;
 			font-weight: bold;
 		}
 		QTabBar::tab:hover:!selected {
@@ -292,7 +285,7 @@ void MainWindow::applyDarkTheme() {
 		   navigation is unmistakable without every control glowing at rest. */
 		QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus, QLineEdit:focus {
 			background-color: %SURFACE2%;
-			border: 1px solid %ACCENT_CYAN%;
+			border: 1px solid %ACCENT_2%;
 			color: %TEXT%;
 		}
 		/* No custom ::up-button/::down-button/::up-arrow/::down-arrow rules:
@@ -308,7 +301,7 @@ void MainWindow::applyDarkTheme() {
 			border: 1px solid %BORDER_STRONG%;
 			border-radius: %RADIUS%;
 			selection-background-color: %ACCENT_DIM%;
-			selection-color: #FFFFFF;
+			selection-color: %SELECTED_TEXT%;
 			color: %TEXT%;
 			outline: none;
 			padding: 2px;
@@ -322,11 +315,11 @@ void MainWindow::applyDarkTheme() {
 		}
 		QComboBox QAbstractItemView::item:hover {
 			background-color: %HOVER_ROW%;
-			color: %ACCENT_CYAN%;
+			color: %ACCENT_2%;
 		}
 		QComboBox QAbstractItemView::item:selected {
 			background-color: %ACCENT_DIM%;
-			color: #FFFFFF;
+			color: %SELECTED_TEXT%;
 		}
 		QListView {
 			background-color: %SURFACE1%;
@@ -340,11 +333,11 @@ void MainWindow::applyDarkTheme() {
 		}
 		QListView::item:hover {
 			background-color: %HOVER_ROW%;
-			color: %ACCENT_CYAN%;
+			color: %ACCENT_2%;
 		}
 		QListView::item:selected {
 			background-color: %ACCENT_DIM%;
-			color: #FFFFFF;
+			color: %SELECTED_TEXT%;
 		}
 		QLabel {
 			color: %TEXT%;
@@ -362,7 +355,7 @@ void MainWindow::applyDarkTheme() {
 			border-radius: %RADIUS%;
 			color: %TEXT%;
 			selection-background-color: %ACCENT_DIM%;
-			selection-color: #FFFFFF;
+			selection-color: %SELECTED_TEXT%;
 			font-size: 10pt;
 			padding: 5px;
 		}
@@ -420,19 +413,26 @@ void MainWindow::applyDarkTheme() {
 			padding: 4px 8px;
 		}
 	)")
-		.replace("%SURFACE0%",      kSurface0)
-		.replace("%SURFACE1%",      kSurface1)
-		.replace("%SURFACE2%",      kSurface2)
-		.replace("%SURFACE3%",      kSurface3)
-		.replace("%HOVER_ROW%",     kHoverRow)
-		.replace("%TEXT%",          kTextBody)
-		.replace("%TEXT_MUTED%",    kTextMuted)
-		.replace("%TEXT_DISABLED%", kTextDisabled)
-		.replace("%ACCENT_CYAN%",   kAccentCyan)
-		.replace("%ACCENT_MAG%",    kAccentMag)
-		.replace("%ACCENT_DIM%",    kAccentDim)
-		.replace("%BORDER_STRONG%", kBorderStrong)
-		.replace("%BORDER%",        kBorder)
+		.replace("%SURFACE0%",      hex(p.surface0))
+		.replace("%SURFACE1%",      hex(p.surface1))
+		.replace("%SURFACE2%",      hex(p.surface2))
+		.replace("%SURFACE3%",      hex(p.surface3))
+		.replace("%SELECTED_TEXT%", hex(selectedRowText(p)))
+		.replace("%HOVER_ROW%",     hex(p.hoverRow))
+		.replace("%TEXT%",          hex(p.textBody))
+		.replace("%TEXT_MUTED%",    hex(p.textMuted))
+		.replace("%TEXT_DISABLED%", hex(p.textDisabled))
+		.replace("%ACCENT_2%",      hex(p.accentSecondary))
+		.replace("%ACCENT_1%",      hex(p.accentPrimary))
+		.replace("%ACCENT_DIM%",    hex(p.accentDim))
+		.replace("%BORDER_STRONG%", hex(p.borderStrong))
+		.replace("%BORDER%",        hex(p.border))
+		.replace("%SUCCESS%",       hex(p.success))
+		.replace("%ERROR%",         hex(p.error))
+		.replace("%PRIMARY_TOP_HOVER%",    hex(p.primaryTopHover))
+		.replace("%PRIMARY_BOTTOM_HOVER%", hex(p.primaryBottomHover))
+		.replace("%PRIMARY_TOP%",          hex(p.primaryTop))
+		.replace("%PRIMARY_BOTTOM%",       hex(p.primaryBottom))
 		.replace("%RADIUS_LG%",     kRadiusLarge)
 		.replace("%RADIUS%",        kRadius);
 
@@ -473,14 +473,31 @@ void MainWindow::styleComboBox(QComboBox *combo) {
 	if (QWidget *popupContainer = view->parentWidget())
 		popupContainer->setMaximumHeight(420);
 
-	// Force Fusion style on the popup so Qt honours the stylesheet
-	// instead of deferring to the Windows native list-box renderer.
-	view->setStyle(QStyleFactory::create("Fusion"));
+	// QComboBox installs a plain QItemDelegate on its popup, and QItemDelegate
+	// paints items itself without consulting the stylesheet - which silently
+	// discards every QAbstractItemView::item rule below. Only QStyledItemDelegate
+	// routes item painting back through the style, so without this line the
+	// hover and selection styling is dead code that renders nothing.
+	view->setItemDelegate(new QStyledItemDelegate(view));
 
 	view->setMouseTracking(true);
 	view->viewport()->setMouseTracking(true);
 	view->setAttribute(Qt::WA_Hover, true);
 	view->viewport()->setAttribute(Qt::WA_Hover, true);
+
+	applyComboPopupPalette(combo);
+
+	combo->installEventFilter(m_wheelFilter);
+}
+
+// The popup is styled separately from the global sheet (Qt does not reach into
+// it reliably), so it reads the active scheme directly. Split out from
+// styleComboBox() so a theme switch can re-run just this part: the sizing and
+// delegate setup above is one-time, but the colours are not, and leaving them
+// baked at construction was exactly what made popups keep the previous scheme
+// after switching.
+void MainWindow::applyComboPopupPalette(QComboBox *combo) {
+	QAbstractItemView *view = combo->view();
 
 	view->setStyleSheet(QString(R"(
 		QAbstractItemView {
@@ -498,31 +515,30 @@ void MainWindow::styleComboBox(QComboBox *combo) {
 			border-left: 3px solid transparent;
 			color: %TEXT%;
 		}
-		/* A 3px accent bar on the left edge marks the hovered row instead of
-		   recolouring the whole row - the reserved-transparent border above
-		   keeps the text from shifting sideways when it appears. */
-		QAbstractItemView::item:hover {
-			background-color: %HOVER_ROW%;
-			color: %ACCENT_CYAN%;
-			border-left: 3px solid %ACCENT_CYAN%;
-		}
+		/* Only :selected is styled here, deliberately. In a combo popup,
+		   moving the mouse over the list moves the CURRENT item rather than
+		   setting a hover state, so the row under the cursor arrives as
+		   selected and :hover never fires (verified live with probe colours).
+		   A :hover rule here would be dead code.
+
+		   The marker is a 3px accent bar plus a quiet background rather than a
+		   full-width accent fill: this list is 65 scenes long, and a saturated
+		   band sweeping down it as the cursor moves is exhausting to read
+		   against. The reserved-transparent border above keeps the text from
+		   shifting sideways when the bar appears. */
 		QAbstractItemView::item:selected {
-			background-color: %ACCENT_DIM%;
-			color: #FFFFFF;
-			border-left: 3px solid %ACCENT_MAG%;
+			background-color: %HOVER_ROW%;
+			color: %ACCENT_2%;
+			border-left: 3px solid %ACCENT_1%;
 		}
 	)")
-		.replace("%SURFACE1%",      kSurface1)
-		.replace("%SURFACE3%",      kSurface3)
-		.replace("%HOVER_ROW%",     kHoverRow)
-		.replace("%TEXT%",          kTextBody)
-		.replace("%ACCENT_CYAN%",   kAccentCyan)
-		.replace("%ACCENT_MAG%",    kAccentMag)
-		.replace("%ACCENT_DIM%",    kAccentDim)
-		.replace("%BORDER_STRONG%", kBorderStrong)
+		.replace("%SURFACE1%",      hex(m_activeTheme.surface1))
+		.replace("%HOVER_ROW%",     hex(m_activeTheme.hoverRow))
+		.replace("%TEXT%",          hex(m_activeTheme.textBody))
+		.replace("%ACCENT_2%",      hex(m_activeTheme.accentSecondary))
+		.replace("%ACCENT_1%",      hex(m_activeTheme.accentPrimary))
+		.replace("%BORDER_STRONG%", hex(m_activeTheme.borderStrong))
 		.replace("%RADIUS%",        kRadius));
-
-	combo->installEventFilter(m_wheelFilter);
 }
 
 void MainWindow::styleSpinBox(QAbstractSpinBox *spinBox) {

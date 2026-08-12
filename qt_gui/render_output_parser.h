@@ -36,8 +36,27 @@ enum class LineStyle {
 	Banner,       // bold, no timestamp or label (separators, error banner)
 };
 
+// What a line MEANS, not how it looks. The parser deliberately does not name
+// colours: presentation is the theme's job, and baking hex values in here made
+// the log the one part of the UI a theme could not restyle.
+enum class LogSeverity {
+	Info,        // ordinary chatter
+	Error,       // failures
+	Warning,
+	Success,
+	Gpu,         // attributed to the GPU/OptiX backend
+	Cpu,         // attributed to the CPU backend
+	Performance, // timings and throughput
+	Scene,       // scene construction / uploads
+	Init,        // pipeline and device setup
+	Technique,   // the [TECH] integrator summary
+	Command,     // the launched command line
+	Debug,       // settings echoes and [DEBUG] lines
+	Separator,   // horizontal rules between runs
+};
+
 struct LogCategory {
-	const char *colour = "#D0D0D0";
+	LogSeverity severity = LogSeverity::Info;
 	const char *label = "INFO";   // ignored when style == Banner
 	LineStyle style = LineStyle::Normal;
 };
@@ -150,15 +169,15 @@ inline LogCategory classifyLogLine(const std::string &line) {
 	// Would otherwise match the "===" separator rule below and render as a
 	// plain grey line, burying the one banner meant to flag a failure.
 	if (contains(line, "ERROR DETAILS"))
-		return LogCategory{"#FF6B6B", "", LineStyle::Banner};
+		return LogCategory{LogSeverity::Error, "", LineStyle::Banner};
 
 	if (startsWith(line, "\xE2\x95\x90") ||   // U+2550 box drawing double horizontal
 		startsWith(line, "\xE2\x94\x80") ||   // U+2500 box drawing light horizontal
 		startsWith(line, "===") || startsWith(line, "---"))
-		return LogCategory{"#555555", "", LineStyle::Banner};
+		return LogCategory{LogSeverity::Separator, "", LineStyle::Banner};
 
 	if (contains(line, "RENDER START") || startsWith(line, "Starting render"))
-		return LogCategory{"#74C0FC", "INFO", LineStyle::BoldLabeled};
+		return LogCategory{LogSeverity::Info, "INFO", LineStyle::BoldLabeled};
 
 	if (containsNoCase(line, "error") || contains(line, "FAILED") ||
 		containsNoCase(line, "fatal") || contains(line, "ERR_") ||
@@ -168,15 +187,15 @@ inline LogCategory classifyLogLine(const std::string &line) {
 		// to contain "error"/"failed" into a generic ERR tag.
 		if (contains(line, "[OptiX]") || contains(line, "[optix]") ||
 			contains(line, "OptiX") || containsNoCase(line, "GPU mode"))
-			return LogCategory{"#FF6B6B", "GPU "};
+			return LogCategory{LogSeverity::Error, "GPU "};
 		if (contains(line, "[cpu_interface]") || containsNoCase(line, "CPU mode"))
-			return LogCategory{"#FF6B6B", "CPU "};
-		return LogCategory{"#FF6B6B", "ERR "};
+			return LogCategory{LogSeverity::Error, "CPU "};
+		return LogCategory{LogSeverity::Error, "ERR "};
 	}
 
 	if (containsNoCase(line, "warning") || contains(line, "WARN") ||
 		containsNoCase(line, "Requires external files"))
-		return LogCategory{"#FFD700", "WARN"};
+		return LogCategory{LogSeverity::Warning, "WARN"};
 
 	// The check-mark prefixes are an extra hint only; every case they cover is
 	// also matched by an ASCII phrase here.
@@ -189,17 +208,17 @@ inline LogCategory classifyLogLine(const std::string &line) {
 		containsNoCase(line, "rendered successfully") ||
 		containsNoCase(line, "saved successfully") ||
 		containsNoCase(line, "PNG saved"))
-		return LogCategory{"#51CF66", " OK "};
+		return LogCategory{LogSeverity::Success, " OK "};
 
 	if (contains(line, "[OptiX]") || contains(line, "[optix]") ||
 		contains(line, "OptiX") || containsNoCase(line, "optix_render") ||
 		containsNoCase(line, "GPU mode") || contains(line, "NVIDIA") ||
 		contains(line, "RTX") || containsNoCase(line, "Launching renderer (GPU"))
-		return LogCategory{"#A9E34B", "GPU "};
+		return LogCategory{LogSeverity::Gpu, "GPU "};
 
 	if (contains(line, "[cpu_interface]") || containsNoCase(line, "CPU mode") ||
 		containsNoCase(line, "Launching renderer (CPU"))
-		return LogCategory{"#74C0FC", "CPU "};
+		return LogCategory{LogSeverity::Cpu, "CPU "};
 
 	// " spp" alone is too loose: the launcher echoes its settings as
 	// "... height=80 spp=4 ...", which matched and tagged a plain settings
@@ -211,33 +230,33 @@ inline LogCategory classifyLogLine(const std::string &line) {
 	if (contains(line, "RENDER TIME") || containsNoCase(line, "time=") ||
 		contains(line, " ms") || std::regex_search(line, sppMeasurement) ||
 		contains(line, "Rendered ") || containsNoCase(line, "Pipeline stat"))
-		return LogCategory{"#FFA94D", "PERF"};
+		return LogCategory{LogSeverity::Performance, "PERF"};
 
 	if (containsNoCase(line, "Building scene") || containsNoCase(line, "Uploaded ") ||
 		contains(line, "Built ") || containsNoCase(line, "materials to GPU") ||
 		containsNoCase(line, "spheres to GPU") || containsNoCase(line, "quads to GPU") ||
 		containsNoCase(line, "light sources") ||
 		containsNoCase(line, "acceleration struct"))
-		return LogCategory{"#CC99FF", "SCN "};
+		return LogCategory{LogSeverity::Scene, "SCN "};
 
 	if (contains(line, "Pipeline") || containsNoCase(line, "Initializ") ||
 		containsNoCase(line, "Loaded PTX") || containsNoCase(line, "Created program") ||
 		contains(line, "Using GPU:"))
-		return LogCategory{"#63E6BE", "INIT"};
+		return LogCategory{LogSeverity::Init, "INIT"};
 
 	if (startsWith(line, "[TECH]"))
-		return LogCategory{"#E599F7", "TECH"};
+		return LogCategory{LogSeverity::Technique, "TECH"};
 
 	if (startsWith(line, "Command:"))
-		return LogCategory{"#CCCCCC", "CMD "};
+		return LogCategory{LogSeverity::Command, "CMD "};
 
 	if (contains(line, "[DEBUG]") || contains(line, "Parsed ") ||
 		containsNoCase(line, "Using command-line") ||
 		containsNoCase(line, "Writing output to"))
-		return LogCategory{"#A8A8A8", "DBG "};
+		return LogCategory{LogSeverity::Debug, "DBG "};
 
 	if (startsWith(line, "Process finished") || startsWith(line, "Result:"))
-		return LogCategory{"#D0D0D0", "INFO"};
+		return LogCategory{LogSeverity::Info, "INFO"};
 
 	return LogCategory{};  // plain INFO
 }

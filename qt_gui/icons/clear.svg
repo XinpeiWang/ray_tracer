@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Holes are real transparency (fill-rule="evenodd" over nested subpaths),
+     never a rectangle painted in the background colour: the icons are tinted
+     at runtime and sit on whatever surface the active theme provides. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" fill="#E6E6F0">
-  <path d="M6 1.5 h4 l.6 1.1 H14 v1.6 H2 V2.6 h3.4 Z"/><path d="M3.2 5.4 h9.6 l-.8 8.2 a1 1 0 0 1-1 .9 H5 a1 1 0 0 1-1-.9 Z"/><rect x="6" y="7" width="1.1" height="5" fill="#0E0E14"/><rect x="8.9" y="7" width="1.1" height="5" fill="#0E0E14"/>
+  <path d="M6 1.5 h4 l.6 1.1 H14 v1.6 H2 V2.6 h3.4 Z"/>
+  <path fill-rule="evenodd" d="M3.2 5.4 h9.6 l-.8 8.2 a1 1 0 0 1-1 .9 H5 a1 1 0 0 1-1-.9 Z M6 7 h1.1 v5 H6 Z M8.9 7 H10 v5 H8.9 Z"/>
 </svg>

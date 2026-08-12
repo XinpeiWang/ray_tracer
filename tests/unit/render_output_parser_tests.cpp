@@ -203,7 +203,7 @@ TEST(RenderOutputParserTest, ErrorDetailsBannerOutranksTheSeparatorRule) {
 	// as a plain grey separator, burying the one banner that flags a failure.
 	const auto cat = classifyLogLine("=== ERROR DETAILS ===");
 	EXPECT_EQ(cat.style, LineStyle::Banner);
-	EXPECT_STREQ(cat.colour, "#FF6B6B") << "the failure banner must not be grey";
+	EXPECT_EQ(cat.severity, LogSeverity::Error) << "the failure banner must not be a plain separator";
 }
 
 TEST(RenderOutputParserTest, UnrecognisedLinesFallBackToPlainInfo) {

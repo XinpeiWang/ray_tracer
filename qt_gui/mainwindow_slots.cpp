@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "icon_tint.h"
 #include "scene_metadata_client.h"
 #include "win_taskbar.h"
 #include "render_output_parser.h"
@@ -32,27 +33,26 @@ namespace {
 // shipped: the launcher's settings echo ("... height=80 spp=4 ...") was being
 // labelled a performance measurement.
 
-QString styleLogLine(const render_output::LogCategory &cat,
-					 const QString &timestamp, const QString &escaped) {
+QString styleLogLine(const render_output::LogCategory &cat, const QString &colour,
+					 const QString &timestampColour, const QString &timestamp,
+					 const QString &escaped) {
 	switch (cat.style) {
 	case render_output::LineStyle::Banner:
 		return QString("<span style='color:%1;font-family:Consolas,monospace;font-size:9pt;'>"
-					   "<b>%2</b></span>").arg(QString::fromLatin1(cat.colour), escaped);
+					   "<b>%2</b></span>").arg(colour, escaped);
 	case render_output::LineStyle::BoldLabeled:
 		return QString("<span style='color:%1;font-family:Consolas,monospace;font-size:9pt;'>"
 					   "<b><span style='color:#888888;'>%2</span> "
 					   "<span style='color:%1;'>[%3]</span> %4</b></span>")
-			.arg(QString::fromLatin1(cat.colour), timestamp,
-				 QString::fromLatin1(cat.label), escaped);
+			.arg(colour, timestamp, QString::fromLatin1(cat.label), escaped);
 	case render_output::LineStyle::Normal:
 		break;
 	}
 	return QString("<span style='color:%1;font-family:Consolas,monospace;font-size:9pt;'>"
-				   "<span style='color:#555555;'>%2</span> "
+				   "<span style='color:%5;'>%2</span> "
 				   "<span style='color:%1;'>[%3]</span> %4"
 				   "</span>")
-		.arg(QString::fromLatin1(cat.colour), timestamp,
-			 QString::fromLatin1(cat.label), escaped);
+		.arg(colour, timestamp, QString::fromLatin1(cat.label), escaped, timestampColour);
 }
 
 } // namespace
@@ -529,7 +529,10 @@ void MainWindow::onLogMessage(const QString &message) {
 	const render_output::LogCategory category =
 		render_output::classifyLogLine(msg.toStdString());
 
-	m_logTextEdit->append(styleLogLine(category, ts, escaped));
+	m_logTextEdit->append(styleLogLine(category,
+									   m_activeTheme.colourFor(category.severity).name(),
+									   m_activeTheme.logSeparator.name(),
+									   ts, escaped));
 
 	qDebug() << msg;
 }
@@ -663,11 +666,13 @@ void MainWindow::onModeChanged(int index) {
 		// QIcon now, and a text-embedded emoji would sit next to it as a
 		// second, differently-styled icon.
 		m_renderButton->setText("START VIDEO &RENDER");
-		m_renderButton->setIcon(QIcon(":/icons/video_accent.svg"));
+		icon_tint::apply(m_renderButton, ":/icons/video.svg",
+		                 icon_tint::Role::Primary, m_activeTheme.accentPrimary);
 		m_statusLabel->setText("Ready to render video frames");
 	} else {
 		m_renderButton->setText("START &RENDER");
-		m_renderButton->setIcon(QIcon(":/icons/render_accent.svg"));
+		icon_tint::apply(m_renderButton, ":/icons/render.svg",
+		                 icon_tint::Role::Primary, m_activeTheme.accentPrimary);
 		m_statusLabel->setText("Ready to render");
 	}
 

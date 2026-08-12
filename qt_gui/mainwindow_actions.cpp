@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "icon_tint.h"
 
 #include <QApplication>
 #include <QDesktopServices>
@@ -41,7 +42,10 @@
 // ============================================================================
 
 void MainWindow::createActions() {
-	m_actRender = new QAction(QIcon(":/icons/render.svg"), "&Render Image", this);
+	constexpr auto kBody = icon_tint::Role::Body;
+
+	m_actRender = new QAction("&Render Image", this);
+	icon_tint::apply(m_actRender, ":/icons/render.svg", kBody, m_activeTheme.textBody);
 	m_actRender->setShortcuts({QKeySequence(Qt::Key_F12), QKeySequence("Ctrl+R")});
 	m_actRender->setStatusTip("Render the selected scene with the current settings");
 	connect(m_actRender, &QAction::triggered, this, [this]() {
@@ -50,7 +54,8 @@ void MainWindow::createActions() {
 		onRenderClicked();
 	});
 
-	m_actRenderVideo = new QAction(QIcon(":/icons/video.svg"), "Render &Video", this);
+	m_actRenderVideo = new QAction("Render &Video", this);
+	icon_tint::apply(m_actRenderVideo, ":/icons/video.svg", kBody, m_activeTheme.textBody);
 	m_actRenderVideo->setShortcut(QKeySequence("Ctrl+F12"));
 	m_actRenderVideo->setStatusTip("Render the camera path frame by frame and assemble a video");
 	connect(m_actRenderVideo, &QAction::triggered, this, [this]() {
@@ -59,13 +64,15 @@ void MainWindow::createActions() {
 		onRenderClicked();
 	});
 
-	m_actStop = new QAction(QIcon(":/icons/stop.svg"), "&Stop Render", this);
+	m_actStop = new QAction("&Stop Render", this);
+	icon_tint::apply(m_actStop, ":/icons/stop.svg", kBody, m_activeTheme.textBody);
 	m_actStop->setShortcut(QKeySequence(Qt::Key_Escape));
 	m_actStop->setShortcutContext(Qt::WindowShortcut);
 	m_actStop->setStatusTip("Stop the running render and discard its output");
 	connect(m_actStop, &QAction::triggered, this, &MainWindow::onStopClicked);
 
-	m_actOpenFolder = new QAction(QIcon(":/icons/folder.svg"), "Open Output &Folder", this);
+	m_actOpenFolder = new QAction("Open Output &Folder", this);
+	icon_tint::apply(m_actOpenFolder, ":/icons/folder.svg", kBody, m_activeTheme.textBody);
 	m_actOpenFolder->setShortcut(QKeySequence("Ctrl+Shift+O"));
 	m_actOpenFolder->setStatusTip("Show the folder containing the last render");
 	connect(m_actOpenFolder, &QAction::triggered, this, [this]() {
@@ -73,19 +80,22 @@ void MainWindow::createActions() {
 		QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(m_lastOutputPath).absolutePath()));
 	});
 
-	m_actOpenViewer = new QAction(QIcon(":/icons/image.svg"), "Open in Default &Viewer", this);
+	m_actOpenViewer = new QAction("Open in Default &Viewer", this);
+	icon_tint::apply(m_actOpenViewer, ":/icons/image.svg", kBody, m_activeTheme.textBody);
 	m_actOpenViewer->setStatusTip("Open the rendered image in the system image viewer");
 	connect(m_actOpenViewer, &QAction::triggered, this, [this]() {
 		if (m_lastPreviewImagePath.isEmpty()) return;
 		QDesktopServices::openUrl(QUrl::fromLocalFile(m_lastPreviewImagePath));
 	});
 
-	m_actCopyLog = new QAction(QIcon(":/icons/copy.svg"), "&Copy Log", this);
+	m_actCopyLog = new QAction("&Copy Log", this);
+	icon_tint::apply(m_actCopyLog, ":/icons/copy.svg", kBody, m_activeTheme.textBody);
 	m_actCopyLog->setShortcut(QKeySequence("Ctrl+Shift+C"));   // Ctrl+C stays "copy selection"
 	m_actCopyLog->setStatusTip("Copy the entire log to the clipboard");
 	connect(m_actCopyLog, &QAction::triggered, this, &MainWindow::copyLogToClipboard);
 
-	m_actSaveLog = new QAction(QIcon(":/icons/save.svg"), "&Save Log…", this);
+	m_actSaveLog = new QAction("&Save Log…", this);
+	icon_tint::apply(m_actSaveLog, ":/icons/save.svg", kBody, m_activeTheme.textBody);
 	// Deliberately NOT QKeySequence::Save. In a renderer, Ctrl+S reads as
 	// "save the image", and handing someone a log-save dialog when they meant
 	// their render is worse than having no shortcut. Renders already write
@@ -95,7 +105,8 @@ void MainWindow::createActions() {
 	m_actSaveLog->setStatusTip("Write the log to a text file");
 	connect(m_actSaveLog, &QAction::triggered, this, &MainWindow::saveLogToFile);
 
-	m_actClearLog = new QAction(QIcon(":/icons/clear.svg"), "C&lear Log", this);
+	m_actClearLog = new QAction("C&lear Log", this);
+	icon_tint::apply(m_actClearLog, ":/icons/clear.svg", kBody, m_activeTheme.textBody);
 	m_actClearLog->setShortcut(QKeySequence("Ctrl+L"));        // terminal convention
 	m_actClearLog->setStatusTip("Clear the log pane");
 	connect(m_actClearLog, &QAction::triggered, this, &MainWindow::clearLog);
@@ -141,6 +152,8 @@ void MainWindow::createMenus() {
 			m_tabWidget->setCurrentIndex(i);
 		});
 	}
+	viewMenu->addSeparator();
+	createThemeMenu(viewMenu);
 	viewMenu->addSeparator();
 	viewMenu->addAction(m_actCopyLog);
 	viewMenu->addAction(m_actClearLog);

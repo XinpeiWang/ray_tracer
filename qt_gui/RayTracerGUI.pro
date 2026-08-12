@@ -21,12 +21,19 @@ SOURCES += \
 	mainwindow_style.cpp \
 	mainwindow_slots.cpp \
 	mainwindow_actions.cpp \
+	icon_tint.cpp \
 	scene_metadata_client.cpp \
+	theme.cpp \
+	theme_switch.cpp \
 	win_taskbar.cpp
 
 HEADERS += \
 	mainwindow.h \
+	camera_math.h \
+	icon_tint.h \
+	render_output_parser.h \
 	scene_metadata_client.h \
+	theme.h \
 	win_taskbar.h
 
 # scene_metadata.dll (MSVC-built, loaded dynamically at runtime via

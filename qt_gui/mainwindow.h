@@ -25,6 +25,9 @@
 #include <QSystemTrayIcon>
 
 #include "camera_math.h"
+#include "theme.h"
+
+class QMenu;
 
 // ============================================================================
 // WheelIgnoreFilter
@@ -274,9 +277,22 @@ private:
 	// progress bar - that stays large and central where it belongs.
 	QLabel *m_statusDevice = nullptr;
 	QLabel *m_statusSettings = nullptr;
+
+	// The scheme currently in force. Widgets that are styled individually
+	// (the log pane, preview, scene info panel) re-read this when it changes.
+	theme::Palette m_activeTheme;
+	QVector<QAction *> m_themeActions;
+	void restyleThemedWidgets();
 	void refreshStatusBarInfo();
-	void applyDarkTheme();
+	// Applies a colour scheme to the whole app. Safe to call repeatedly: the
+	// theme menu re-invokes it to switch live rather than asking for a restart.
+	void applyTheme(const theme::Palette &palette);
+	void switchTheme(const QString &themeId);
+	void createThemeMenu(QMenu *viewMenu);
+	QString loadSavedThemeId() const;
+	void saveThemeId(const QString &themeId) const;
 	void styleComboBox(QComboBox *combo);
+	void applyComboPopupPalette(QComboBox *combo);
 	void styleSpinBox(QAbstractSpinBox *spinBox);
 	void styleGroupBox(QGroupBox *box);
 	void assembleVideoAutomatically();  // Automatically assembles video after frames are rendered

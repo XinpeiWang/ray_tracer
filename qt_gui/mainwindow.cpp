@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "icon_tint.h"
 #include "error_handler.h"
 #include "scene_metadata_client.h"
 #include "win_taskbar.h"
@@ -387,8 +388,12 @@ MainWindow::MainWindow(QWidget *parent)
 		resize(800, 700);
 	}
 
+	// The theme must exist before setupUI(), because createThemeMenu() ticks
+	// the entry matching the active scheme.
+	m_activeTheme = theme::byId(loadSavedThemeId());
 	setupUI();
-	applyDarkTheme();
+	applyTheme(m_activeTheme);
+	restyleThemedWidgets();
 
 	// Notification-only tray icon: the app has no tray menu and never hides
 	// into the tray, this exists purely so a render finishing while the user
@@ -505,10 +510,13 @@ void MainWindow::setupUI() {
 	// derives a proper greyed variant automatically. Emoji also render
 	// inconsistently across fonts and are read aloud by their CLDR name
 	// ("wastebasket Clear Log, button") by screen readers.
-	// The primary button's label is the magenta accent rather than body
-	// colour, so it takes the accent-tinted variant of the play mark - a
-	// body-white icon beside magenta bold text reads as orphaned.
-	m_renderButton = new QPushButton(QIcon(":/icons/render_accent.svg"), "START &RENDER", this);
+	// The primary button's label is drawn in accentPrimary rather than body
+	// colour, so its icon takes the same role - a body-coloured icon beside
+	// accent-coloured bold text reads as orphaned. This used to be a second
+	// hand-authored SVG with the accent baked in; tinting made it unnecessary.
+	m_renderButton = new QPushButton("START &RENDER", this);
+	icon_tint::apply(m_renderButton, ":/icons/render.svg",
+	                 icon_tint::Role::Primary, m_activeTheme.accentPrimary);
 	// Singles this out as the primary action in the stylesheet (2px accent
 	// border + bold), so it isn't visually tied with every other button.
 	m_renderButton->setObjectName("primaryAction");
@@ -520,7 +528,9 @@ void MainWindow::setupUI() {
 	connect(m_renderButton, &QPushButton::clicked, this, &MainWindow::onRenderClicked);
 
 	// Stop button
-	m_stopButton = new QPushButton(QIcon(":/icons/stop.svg"), "S&TOP RENDER", this);
+	m_stopButton = new QPushButton("S&TOP RENDER", this);
+	icon_tint::apply(m_stopButton, ":/icons/stop.svg",
+	                 icon_tint::Role::Body, m_activeTheme.textBody);
 	m_stopButton->setMinimumHeight(50);
 	m_stopButton->setIconSize(QSize(20, 20));
 	m_stopButton->setEnabled(false);

@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "icon_tint.h"
 #include "scene_metadata_client.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -88,8 +89,8 @@ void MainWindow::createBasicTab() {
 	renderLayout->setContentsMargins(15, 22, 15, 12);
 
 	m_modeCombo = new QComboBox(basicTab);
-	m_modeCombo->addItem(QIcon(":/icons/image.svg"), "Render Single Image");
-	m_modeCombo->addItem(QIcon(":/icons/video.svg"), "Generate Video");
+	m_modeCombo->addItem(icon_tint::tinted(":/icons/image.svg", m_activeTheme.textBody), "Render Single Image");
+	m_modeCombo->addItem(icon_tint::tinted(":/icons/video.svg", m_activeTheme.textBody), "Generate Video");
 	m_modeCombo->setCurrentIndex(0);
 	styleComboBox(m_modeCombo);
 	connect(m_modeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -101,8 +102,8 @@ void MainWindow::createBasicTab() {
 		"Generate Video renders a camera path frame by frame and assembles an MP4.");
 
 	m_renderModeCombo = new QComboBox(basicTab);
-	m_renderModeCombo->addItem(QIcon(":/icons/gpu.svg"), "GPU (CUDA) - Fast", true);
-	m_renderModeCombo->addItem(QIcon(":/icons/cpu.svg"), "CPU - High Quality", false);
+	m_renderModeCombo->addItem(icon_tint::tinted(":/icons/gpu.svg", m_activeTheme.textBody), "GPU (CUDA) - Fast", true);
+	m_renderModeCombo->addItem(icon_tint::tinted(":/icons/cpu.svg", m_activeTheme.textBody), "CPU - High Quality", false);
 	styleComboBox(m_renderModeCombo);
 	// Tooltips carry what the label cannot: the actual trade-off, not a repeat
 	// of the visible text.
@@ -441,7 +442,8 @@ void MainWindow::createPreviewTab() {
 	QString previewBtnStyle =
 		"QPushButton { min-height: 28px; max-height: 28px; min-width: 200px; padding: 0px 20px; font-size: 11pt; }";
 
-	QPushButton *openFolderButton = new QPushButton(QIcon(":/icons/folder.svg"), "Open Output &Folder");
+	QPushButton *openFolderButton = new QPushButton("Open Output &Folder");
+	icon_tint::apply(openFolderButton, ":/icons/folder.svg", icon_tint::Role::Body, m_activeTheme.textBody);
 	openFolderButton->setStyleSheet(previewBtnStyle);
 	openFolderButton->setToolTip("Show the folder containing the last render in Explorer");
 	connect(openFolderButton, &QPushButton::clicked, this, [this]() {
@@ -450,7 +452,8 @@ void MainWindow::createPreviewTab() {
 		QDesktopServices::openUrl(QUrl::fromLocalFile(fileInfo.absolutePath()));
 	});
 
-	QPushButton *openViewerButton = new QPushButton(QIcon(":/icons/image.svg"), "Open in Default &Viewer");
+	QPushButton *openViewerButton = new QPushButton("Open in Default &Viewer");
+	icon_tint::apply(openViewerButton, ":/icons/image.svg", icon_tint::Role::Body, m_activeTheme.textBody);
 	openViewerButton->setStyleSheet(previewBtnStyle);
 	openViewerButton->setToolTip("Open the rendered image in the system image viewer");
 	connect(openViewerButton, &QPushButton::clicked, this, [this]() {
@@ -499,15 +502,18 @@ void MainWindow::createLogTab() {
 	// (see createActions()), so the bodies live in slots rather than lambdas
 	// here - otherwise the menu entry and the button would be two separate
 	// copies of the same behaviour, free to drift apart.
-	QPushButton *copyButton = new QPushButton(QIcon(":/icons/copy.svg"), "&Copy All");
+	QPushButton *copyButton = new QPushButton("&Copy All");
+	icon_tint::apply(copyButton, ":/icons/copy.svg", icon_tint::Role::Body, m_activeTheme.textBody);
 	copyButton->setStyleSheet(logBtnStyle);
 	connect(copyButton, &QPushButton::clicked, this, &MainWindow::copyLogToClipboard);
 
-	QPushButton *saveButton = new QPushButton(QIcon(":/icons/save.svg"), "&Save Log…");
+	QPushButton *saveButton = new QPushButton("&Save Log…");
+	icon_tint::apply(saveButton, ":/icons/save.svg", icon_tint::Role::Body, m_activeTheme.textBody);
 	saveButton->setStyleSheet(logBtnStyle);
 	connect(saveButton, &QPushButton::clicked, this, &MainWindow::saveLogToFile);
 
-	QPushButton *clearButton = new QPushButton(QIcon(":/icons/clear.svg"), "C&lear Log");
+	QPushButton *clearButton = new QPushButton("C&lear Log");
+	icon_tint::apply(clearButton, ":/icons/clear.svg", icon_tint::Role::Body, m_activeTheme.textBody);
 	clearButton->setStyleSheet(logBtnStyle);
 	connect(clearButton, &QPushButton::clicked, this, &MainWindow::clearLog);
 
