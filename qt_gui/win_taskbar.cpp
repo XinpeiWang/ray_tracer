@@ -50,9 +50,13 @@ void init() {
 	// Strictly, Windows documents waiting for the "TaskbarButtonCreated"
 	// message before calling HrInit; in practice creating the interface once
 	// the window is shown works, and is what Qt Creator does.
-	if (FAILED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE))) {
-		// Already initialised on this thread by Qt is fine - keep going.
-	}
+	//
+	// The result is deliberately discarded: Qt has normally already
+	// initialised COM on the GUI thread, which returns S_FALSE or
+	// RPC_E_CHANGED_MODE rather than a usable failure. Either way the
+	// CoCreateInstance below is the real test of whether this can work, so
+	// there is nothing useful to branch on here.
+	(void)CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
 
 	if (FAILED(CoCreateInstance(CLSID_TaskbarList, nullptr, CLSCTX_INPROC_SERVER,
 								IID_PPV_ARGS(&g_taskbar)))) {

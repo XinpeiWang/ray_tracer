@@ -10,6 +10,7 @@
 #include <QMessageBox>
 #include <QApplication>
 #include <QStyleFactory>
+#include <QStyle>
 #include <QPalette>
 #include <QProcess>
 #include <QDir>
@@ -417,7 +418,26 @@ MainWindow::MainWindow(QWidget *parent)
 		if (icon.isNull()) icon = style()->standardIcon(QStyle::SP_ComputerIcon);
 		m_trayIcon = new QSystemTrayIcon(icon, this);
 		m_trayIcon->setToolTip("Ray Tracer");
+		// Shown for the app's whole lifetime. Showing it lazily instead (only
+		// around a render, to avoid parking a do-nothing icon in the tray) was
+		// tried and reverted, but NOT because it was proven broken: after the
+		// change no notification arrived, and after reverting it none arrived
+		// either, so the failure was environmental - Windows throttles
+		// repeated toasts from the same app, which a burst of testing will
+		// trigger. This configuration is kept only because it is the one with
+		// positive evidence behind it (a delivered "Render complete" toast).
+		// If the lazy variant is ever revisited, verify it on a fresh boot or
+		// a different app identity, not immediately after other toasts.
 		m_trayIcon->show();
+		connect(m_trayIcon, &QSystemTrayIcon::activated, this,
+				[this](QSystemTrayIcon::ActivationReason reason) {
+			// An icon that ignores clicks is its own small annoyance.
+			if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
+				showNormal();
+				raise();
+				activateWindow();
+			}
+		});
 	}
 
 	// The taskbar button only exists once the window has been realised, so

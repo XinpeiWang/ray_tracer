@@ -838,6 +838,7 @@ void MainWindow::notifyRenderFinished(bool success, const QString &message, doub
 		success ? QSystemTrayIcon::Information : QSystemTrayIcon::Warning, 10000);
 }
 
+
 void MainWindow::setProgressResultState(const char *state) {
 	if (!m_progressBar) return;
 	// Dynamic property + repolish is the standard way to switch a QSS rule

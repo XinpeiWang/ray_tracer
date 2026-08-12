@@ -1,7 +1,6 @@
 #include "mainwindow.h"
 
 #include <QApplication>
-#include <QClipboard>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFile>
@@ -87,7 +86,12 @@ void MainWindow::createActions() {
 	connect(m_actCopyLog, &QAction::triggered, this, &MainWindow::copyLogToClipboard);
 
 	m_actSaveLog = new QAction(QIcon(":/icons/save.svg"), "&Save Log…", this);
-	m_actSaveLog->setShortcut(QKeySequence::Save);
+	// Deliberately NOT QKeySequence::Save. In a renderer, Ctrl+S reads as
+	// "save the image", and handing someone a log-save dialog when they meant
+	// their render is worse than having no shortcut. Renders already write
+	// themselves to the output path, so there is no save-image command for
+	// Ctrl+S to mean - leaving it unbound is the honest option.
+	m_actSaveLog->setShortcut(QKeySequence("Ctrl+Shift+S"));
 	m_actSaveLog->setStatusTip("Write the log to a text file");
 	connect(m_actSaveLog, &QAction::triggered, this, &MainWindow::saveLogToFile);
 
