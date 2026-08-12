@@ -488,6 +488,20 @@ struct LaunchParams {
 	TriangleData* triangles;
 	unsigned int numTriangles;
 
+	// Where each IAS instance's triangles start in `triangles`, indexed by
+	// OptixInstance::instanceId.
+	//
+	// Object instancing gives each instance definition its own GAS, and
+	// optixGetPrimitiveIndex() restarts at 0 inside every GAS - so a primitive
+	// index alone no longer identifies a triangle. Adding this base recovers
+	// the global index while leaving one flat triangle array for everything.
+	//
+	// Null means "no instancing in this scene", and every lookup then uses
+	// base 0, which is exactly what a single-GAS scene has always done. That
+	// is deliberate: the instancing path is inert until a scene actually needs
+	// it, so it cannot change how existing scenes render.
+	const int* instanceTriBase;
+
 	// Material data
 	MaterialData* materials;
 	unsigned int numMaterials;

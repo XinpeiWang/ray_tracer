@@ -1452,8 +1452,12 @@ bool OptiXRenderer::render(
 	size_t fbSize = width * height * sizeof(float3);
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_framebuffer), fbSize));
 
-	// Setup launch params
-	LaunchParams params;
+	// Setup launch params. Zero-initialised on purpose: LaunchParams is a POD
+	// whose fields are assigned one by one below, so any field NOT assigned
+	// here would otherwise hold stack garbage. instanceTriBase is read on the
+	// device as "null means no instancing", and a garbage pointer there is an
+	// out-of-bounds read inside a hit program - among the hardest bugs to see.
+	LaunchParams params = {};
 	params.framebuffer = reinterpret_cast<float3*>(d_framebuffer);
 	params.width = width;
 	params.height = height;
@@ -1478,6 +1482,7 @@ bool OptiXRenderer::render(
 	params.bilinearPatches = reinterpret_cast<BilinearPatchData*>(d_bilinearPatches_);
 	params.numBilinearPatches = numBilinearPatches_;
 	params.triangles = reinterpret_cast<TriangleData*>(d_triangles_);
+	params.instanceTriBase = nullptr;   // set only by scenes with instances
 	params.numTriangles = numTriangles_;
 
 	// Light sampling for MIS

@@ -30,7 +30,13 @@
 
 extern "C" __global__ void __closesthit__triangle() {
 	const unsigned int primIdx = optixGetPrimitiveIndex();
-	const TriangleData& tri = params.triangles[primIdx];
+	// A primitive index is local to its GAS, so an instanced definition's
+	// triangle 0 and the scene's triangle 0 are different triangles. The base
+	// table maps this instance back to its slice of the global array; a scene
+	// with no instancing has no table and lands on 0, exactly as before.
+	const unsigned int triBase = params.instanceTriBase
+		? (unsigned int)params.instanceTriBase[optixGetInstanceId()] : 0u;
+	const TriangleData& tri = params.triangles[triBase + primIdx];
 	const MaterialData& mat = params.materials[tri.materialIdx];
 
 	const float t = optixGetRayTmax();
@@ -55,6 +61,15 @@ extern "C" __global__ void __closesthit__triangle() {
 	} else {
 		shading_normal = normalize(cross(tri.p1 - tri.p0, tri.p2 - tri.p0));
 	}
+	// Instanced geometry is stored in its definition's object space, so its
+	// normal has to come out to world space before it means anything against a
+	// world-space ray. A normal takes the inverse transpose, not the transform
+	// itself - OptiX's helper does that. For every non-instanced GAS the
+	// transform is identity and this is a no-op, which is why it can be
+	// applied unconditionally rather than branching on whether the scene has
+	// instances.
+	shading_normal = normalize(optixTransformNormalFromObjectToWorldSpace(shading_normal));
+
 	const bool front_face = dot(ray_dir, shading_normal) < 0.0f;
 	const float3 final_normal = front_face ? shading_normal : -shading_normal;
 

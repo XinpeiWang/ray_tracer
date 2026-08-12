@@ -92,7 +92,10 @@ extern "C" __global__ void __anyhit__shadow_bilinear_patch() {
 // Shadow any-hit for triangles
 extern "C" __global__ void __anyhit__shadow_triangle() {
 	const unsigned int primIdx = optixGetPrimitiveIndex();
-	const TriangleData& tri = params.triangles[primIdx];
+	// See optix_intersection_triangle.h: a primitive index is local to its GAS.
+	const unsigned int triBase = params.instanceTriBase
+		? (unsigned int)params.instanceTriBase[optixGetInstanceId()] : 0u;
+	const TriangleData& tri = params.triangles[triBase + primIdx];
 	const MaterialData& mat = params.materials[tri.materialIdx];
 
 	if (mat.type == MaterialType::DiffuseLight) {
