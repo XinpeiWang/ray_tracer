@@ -333,6 +333,8 @@ void MainWindow::onRenderClicked() {
 	m_isRendering = true;
 	m_renderButton->setEnabled(false);
 	m_stopButton->setEnabled(true);
+	updateActionStates();
+	refreshStatusBarInfo();
 	m_progressBar->setValue(0);
 	m_statusLabel->setText(m_videoMode ? "Rendering video frames..." : "Rendering...");
 
@@ -602,6 +604,7 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 	m_renderButton->setEnabled(true);
 	m_stopButton->setEnabled(false);
 	if (m_elapsedTimer) m_elapsedTimer->stop();
+	updateActionStates();
 
 	// A failed render leaves the taskbar button red so the outcome is visible
 	// without switching to the window; anything else clears it. Leaving a
@@ -648,6 +651,9 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 								.arg(totalTime, 0, 'f', 2));
 						}
 						if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
+						// Open Folder / Open Viewer only become meaningful once
+						// there is actually something to open.
+						updateActionStates();
 					} else {
 						m_statusLabel->setText(QString("✅ Render complete (%1s) - Warning: preview image failed to load at %2")
 							.arg(totalTime, 0, 'f', 2).arg(pngPath));

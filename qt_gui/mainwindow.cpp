@@ -449,6 +449,23 @@ void MainWindow::setupUI() {
 	// Initialize scene info AFTER tabs are created (onSceneChanged uses m_samplesSpinBox)
 	onSceneChanged(0);
 
+	// Actions/menus come after the tabs because the View menu enumerates the
+	// tabs, and the status bar reads the renderer/size/samples widgets.
+	createActions();
+	createMenus();
+	createStatusBar();
+
+	// Keep the status bar's ambient readout honest when the user changes any
+	// of the settings it reports.
+	connect(m_renderModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+			this, [this](int) { refreshStatusBarInfo(); });
+	connect(m_widthSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
+			this, [this](int) { refreshStatusBarInfo(); });
+	connect(m_heightSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
+			this, [this](int) { refreshStatusBarInfo(); });
+	connect(m_samplesSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
+			this, [this](int) { refreshStatusBarInfo(); });
+
 	mainLayout->addWidget(m_tabWidget);
 
 	// Progress section

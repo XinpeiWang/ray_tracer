@@ -494,34 +494,21 @@ void MainWindow::createLogTab() {
 	QString logBtnStyle =
 		"QPushButton { min-height: 28px; max-height: 28px; min-width: 160px; padding: 0px 20px; font-size: 11pt; }";
 
+	// These three share their implementation with the File menu's actions
+	// (see createActions()), so the bodies live in slots rather than lambdas
+	// here - otherwise the menu entry and the button would be two separate
+	// copies of the same behaviour, free to drift apart.
 	QPushButton *copyButton = new QPushButton("📋 &Copy All");
 	copyButton->setStyleSheet(logBtnStyle);
-	connect(copyButton, &QPushButton::clicked, [this]() {
-		m_logTextEdit->selectAll();
-		m_logTextEdit->copy();
-		m_logTextEdit->moveCursor(QTextCursor::End);
-	});
+	connect(copyButton, &QPushButton::clicked, this, &MainWindow::copyLogToClipboard);
 
 	QPushButton *saveButton = new QPushButton("💾 &Save Log…");
 	saveButton->setStyleSheet(logBtnStyle);
-	connect(saveButton, &QPushButton::clicked, [this]() {
-		QString path = QFileDialog::getSaveFileName(this, "Save Log",
-			QDir::homePath() + "/render_log.txt",
-			"Text Files (*.txt);;All Files (*.*)");
-		if (!path.isEmpty()) {
-			QFile file(path);
-			if (file.open(QFile::WriteOnly | QFile::Text)) {
-				QTextStream out(&file);
-				out << m_logTextEdit->toPlainText();
-				file.close();
-				onLogMessage(QString("[INFO] Log saved to %1").arg(path));
-			}
-		}
-	});
+	connect(saveButton, &QPushButton::clicked, this, &MainWindow::saveLogToFile);
 
 	QPushButton *clearButton = new QPushButton("🗑 C&lear Log");
 	clearButton->setStyleSheet(logBtnStyle);
-	connect(clearButton, &QPushButton::clicked, m_logTextEdit, &QTextEdit::clear);
+	connect(clearButton, &QPushButton::clicked, this, &MainWindow::clearLog);
 
 	btnLayout->addWidget(copyButton);
 	btnLayout->addWidget(saveButton);

@@ -10,6 +10,7 @@
 #include <QProgressBar>
 #include <QLabel>
 #include <QPushButton>
+#include <QAction>
 #include <QGroupBox>
 #include <QLineEdit>
 #include <QProcess>
@@ -226,6 +227,12 @@ private slots:
 	void onLogMessage(const QString &message);
 	void onElapsedTick();        // fires every second during render to update status label
 
+	// Shared by the log tab's buttons and the File menu's actions.
+	void copyLogToClipboard();
+	void saveLogToFile();
+	void clearLog();
+	void showAboutDialog();
+
 private:
 	void setupUI();
 	void createBasicTab();
@@ -233,6 +240,39 @@ private:
 	void createVideoTab();
 	void createPreviewTab();
 	void createLogTab();
+
+	// ------------------------------------------------------------------
+	// Action layer
+	// ------------------------------------------------------------------
+	// Every command is a QAction first. A QAction carries its shortcut,
+	// tooltip and status tip in one object, so the menu entry, the keyboard
+	// shortcut and the status-bar hint can't drift out of sync the way three
+	// separate hand-wired copies would. Qt Creator, OBS, Kate and Wireshark
+	// are all built this way.
+	void createActions();
+	void createMenus();
+	void createStatusBar();
+	// Enables/disables the render-related actions to match m_isRendering.
+	void updateActionStates();
+
+	QAction *m_actRender = nullptr;
+	QAction *m_actRenderVideo = nullptr;
+	QAction *m_actStop = nullptr;
+	QAction *m_actOpenFolder = nullptr;
+	QAction *m_actOpenViewer = nullptr;
+	QAction *m_actCopyLog = nullptr;
+	QAction *m_actSaveLog = nullptr;
+	QAction *m_actClearLog = nullptr;
+	QAction *m_actAbout = nullptr;
+	QAction *m_actAboutQt = nullptr;
+	QAction *m_actQuit = nullptr;
+
+	// Status bar: permanent widgets carry ambient state that would otherwise
+	// have no home (which renderer, what size/quality). Deliberately NOT the
+	// progress bar - that stays large and central where it belongs.
+	QLabel *m_statusDevice = nullptr;
+	QLabel *m_statusSettings = nullptr;
+	void refreshStatusBarInfo();
 	void applyDarkTheme();
 	void styleComboBox(QComboBox *combo);
 	void styleSpinBox(QAbstractSpinBox *spinBox);

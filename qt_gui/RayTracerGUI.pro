@@ -15,6 +15,7 @@ SOURCES += \
 	mainwindow_tabs.cpp \
 	mainwindow_style.cpp \
 	mainwindow_slots.cpp \
+	mainwindow_actions.cpp \
 	scene_metadata_client.cpp \
 	win_taskbar.cpp
 
