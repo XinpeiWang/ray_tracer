@@ -13,6 +13,7 @@
 #include "pbrt_flatten.h"
 #include "pbrt_scene.h"
 
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -209,4 +210,137 @@ TEST(FlattenTest, ParserWarningsAreCarriedThrough) {
 	const FlatScene s = flattenSource(
 		"Accelerator \"bvh\"\n" + std::string(kQuadMesh));
 	EXPECT_TRUE(warnedAbout(s, "Accelerator"));
+}
+
+// ===========================================================================
+// Camera
+// ===========================================================================
+// pbrt hands over a world-to-camera matrix; our camera wants an eye, a target
+// and a vertical fov. Getting the inversion or the fov convention wrong
+// mis-frames every scene, and does so plausibly enough to look intentional.
+
+TEST(FlattenCameraTest, EyeAndTargetAreRecoveredFromWorldToCamera) {
+	const FlatScene s = flattenSource(
+		"LookAt 0 0 -5   0 0 0   0 1 0\n"
+		"Camera \"perspective\" \"float fov\" [ 40 ]\n"
+		"WorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_NEAR(s.camera.lookfrom[0], 0.0, 1e-9);
+	EXPECT_NEAR(s.camera.lookfrom[1], 0.0, 1e-9);
+	EXPECT_NEAR(s.camera.lookfrom[2], -5.0, 1e-9);
+	// looking toward the origin means the target is further along +z
+	EXPECT_NEAR(s.camera.lookat[2], -4.0, 1e-9);
+	EXPECT_NEAR(s.camera.up[1], 1.0, 1e-9);
+}
+
+TEST(FlattenCameraTest, OffAxisEyePositionRoundTrips) {
+	const FlatScene s = flattenSource(
+		"LookAt 3 4 1.5   0.5 0.5 0   0 0 1\n"
+		"Camera \"perspective\"\n"
+		"WorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_NEAR(s.camera.lookfrom[0], 3.0, 1e-9);
+	EXPECT_NEAR(s.camera.lookfrom[1], 4.0, 1e-9);
+	EXPECT_NEAR(s.camera.lookfrom[2], 1.5, 1e-9);
+
+	// The view direction must point from the eye toward the stated target.
+	const double dx = s.camera.lookat[0] - s.camera.lookfrom[0];
+	const double dy = s.camera.lookat[1] - s.camera.lookfrom[1];
+	const double dz = s.camera.lookat[2] - s.camera.lookfrom[2];
+	const double tx = 0.5 - 3.0, ty = 0.5 - 4.0, tz = 0.0 - 1.5;
+	const double tlen = std::sqrt(tx * tx + ty * ty + tz * tz);
+	EXPECT_NEAR(dx, tx / tlen, 1e-9);
+	EXPECT_NEAR(dy, ty / tlen, 1e-9);
+	EXPECT_NEAR(dz, tz / tlen, 1e-9);
+}
+
+TEST(FlattenCameraTest, FovIsTakenAsVerticalOnALandscapeFrame) {
+	const FlatScene s = flattenSource(
+		"Film \"rgb\" \"integer xresolution\" [ 800 ] \"integer yresolution\" [ 600 ]\n"
+		"Camera \"perspective\" \"float fov\" [ 45 ]\n"
+		"WorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_NEAR(s.camera.vfov, 45.0, 1e-9);
+}
+
+TEST(FlattenCameraTest, FovIsConvertedOnAPortraitFrame) {
+	// pbrt's fov covers the NARROWER axis, which on a portrait frame is the
+	// width. Taking it as vertical unconditionally would leave vfov at 45 and
+	// silently mis-frame the scene.
+	const FlatScene s = flattenSource(
+		"Film \"rgb\" \"integer xresolution\" [ 600 ] \"integer yresolution\" [ 800 ]\n"
+		"Camera \"perspective\" \"float fov\" [ 45 ]\n"
+		"WorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_GT(s.camera.vfov, 45.0) << "the vertical angle must widen, not stay put";
+	// tan(v/2) = tan(h/2) / aspect, aspect = 600/800
+	const double expect = 2.0 * std::atan(std::tan(45.0 * 0.5 * 3.14159265358979323846 / 180.0)
+										  / 0.75) * 180.0 / 3.14159265358979323846;
+	EXPECT_NEAR(s.camera.vfov, expect, 1e-9);
+}
+
+TEST(FlattenCameraTest, DepthOfFieldParametersAreCarriedOver) {
+	const FlatScene s = flattenSource(
+		"Camera \"perspective\" \"float lensradius\" [ 0.1 ] \"float focaldistance\" [ 7 ]\n"
+		"WorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_NEAR(s.camera.aperture, 0.2, 1e-9) << "aperture is diameter, pbrt gives radius";
+	EXPECT_NEAR(s.camera.focusDistance, 7.0, 1e-9);
+}
+
+// ===========================================================================
+// Materials and emission
+// ===========================================================================
+
+TEST(FlattenMaterialTest, PbrtNamesMapStraightAcross) {
+	const FlatScene s = flattenSource(
+		"Material \"coateddiffuse\" \"rgb reflectance\" [ .2 .4 .6 ] \"float roughness\" [ .3 ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].kind, MaterialKind::CoatedDiffuse);
+	EXPECT_DOUBLE_EQ(s.materials[0].color[1], 0.4);
+	EXPECT_DOUBLE_EQ(s.materials[0].roughness, 0.3);
+}
+
+TEST(FlattenMaterialTest, DielectricEtaIsReadAsIor) {
+	const FlatScene s = flattenSource(
+		"Material \"dielectric\" \"float eta\" [ 1.33 ]\n" + std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].kind, MaterialKind::Dielectric);
+	EXPECT_DOUBLE_EQ(s.materials[0].ior, 1.33);
+}
+
+TEST(FlattenMaterialTest, UnsupportedMaterialIsFlaggedNotSilentlySubstituted) {
+	// A subsurface material rendered as diffuse looks plausible and is wrong,
+	// so the substitution has to be announced.
+	const FlatScene s = flattenSource(
+		"Material \"subsurface\"\n" + std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].kind, MaterialKind::Unsupported);
+	EXPECT_EQ(s.materials[0].pbrtType, "subsurface");
+	EXPECT_TRUE(warnedAbout(s, "subsurface"));
+}
+
+TEST(FlattenMaterialTest, AreaLightRadianceAndScaleAreExtracted) {
+	const FlatScene s = flattenSource(
+		"AttributeBegin\n"
+		"  AreaLightSource \"diffuse\" \"rgb L\" [ 17 12 4 ] \"float scale\" [ 2 ]\n"
+		+ std::string(kQuadMesh) + "AttributeEnd\n");
+	ASSERT_EQ(s.areaLights.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.areaLights[0].L[0], 17.0);
+	EXPECT_DOUBLE_EQ(s.areaLights[0].L[2], 4.0);
+	EXPECT_DOUBLE_EQ(s.areaLights[0].scale, 2.0);
+}
+
+TEST(FlattenMaterialTest, BlackbodyEmissionIsReportedAsApproximated) {
+	const FlatScene s = flattenSource(
+		"AttributeBegin\n"
+		"  AreaLightSource \"diffuse\" \"blackbody L\" [ 6500 ]\n"
+		+ std::string(kQuadMesh) + "AttributeEnd\n");
+	EXPECT_TRUE(warnedAbout(s, "blackbody"));
+}
+
+TEST(FlattenMaterialTest, MaterialIndicesOnGeometryStillLineUp) {
+	const FlatScene s = flattenSource(
+		"Material \"diffuse\"\n" + std::string(kQuadMesh)
+		+ "Material \"conductor\"\n" + std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 2u);
+	ASSERT_EQ(s.triangles.size(), 4u);
+	EXPECT_EQ(s.materials[s.triangles[0].material].kind, MaterialKind::Diffuse);
+	EXPECT_EQ(s.materials[s.triangles[3].material].kind, MaterialKind::Conductor);
 }

@@ -46,9 +46,52 @@ struct Sphere {
 	int areaLight = -1;
 };
 
+// pbrt's material set and ours are the same set under the same names - the
+// MaterialType enum in gpu/optix/optix_types.h cites pbrt's BxDFs by name - so
+// this is a rename, not a translation. Anything genuinely absent maps to
+// Unsupported and is reported rather than quietly substituted, because a
+// subsurface material silently rendered as diffuse looks plausible and wrong.
+enum class MaterialKind {
+	Diffuse,
+	Conductor,
+	Dielectric,
+	ThinDielectric,
+	CoatedDiffuse,
+	CoatedConductor,
+	DiffuseTransmission,
+	Unsupported,
+};
+
+struct Material {
+	MaterialKind kind = MaterialKind::Diffuse;
+	std::string pbrtType;              // as written, for diagnostics
+	double color[3] = {0.5, 0.5, 0.5}; // reflectance / albedo
+	double roughness = 0.0;
+	double ior = 1.5;
+};
+
+struct Emission {
+	double L[3] = {1.0, 1.0, 1.0};
+	double scale = 1.0;
+};
+
+// Our camera is described the way camera.h wants it - an eye point, a target
+// and a vertical field of view - rather than as pbrt's world-to-camera matrix.
+struct Camera {
+	double lookfrom[3] = {0, 0, 0};
+	double lookat[3] = {0, 0, 1};
+	double up[3] = {0, 1, 0};
+	double vfov = 90.0;          // degrees, VERTICAL - see the note in flatten()
+	double aperture = 0.0;
+	double focusDistance = 1e6;
+};
+
 struct FlatScene {
 	std::vector<Triangle> triangles;
 	std::vector<Sphere> spheres;
+	std::vector<Material> materials;    // parallel to Scene::materials
+	std::vector<Emission> areaLights;   // parallel to Scene::areaLights
+	Camera camera;
 	std::vector<pbrt_scene::Warning> warnings;
 
 	bool empty() const { return triangles.empty() && spheres.empty(); }
@@ -81,6 +124,41 @@ inline void axisScales(const pbrt_scene::Matrix4 &m, double *out) {
 	}
 }
 
+inline MaterialKind materialKindFor(const std::string &type) {
+	if (type == "diffuse")             return MaterialKind::Diffuse;
+	if (type == "conductor")           return MaterialKind::Conductor;
+	if (type == "dielectric")          return MaterialKind::Dielectric;
+	if (type == "thindielectric")      return MaterialKind::ThinDielectric;
+	if (type == "coateddiffuse")       return MaterialKind::CoatedDiffuse;
+	if (type == "coatedconductor")     return MaterialKind::CoatedConductor;
+	if (type == "diffusetransmission") return MaterialKind::DiffuseTransmission;
+	return MaterialKind::Unsupported;   // subsurface, measured, mix, hair, ...
+}
+
+// Recovers the eye point and viewing direction from pbrt's WORLD-TO-CAMERA
+// matrix by inverting it. The rotation part is orthonormal (LookAt builds it
+// from normalised, mutually perpendicular axes), so the inverse is the
+// transpose and the eye is -R^T * t. Doing a general 4x4 inverse here would be
+// both slower and less numerically pleasant.
+//
+// pbrt's camera looks down +z with +y up, which is where the row picks below
+// come from: R^T * (0,0,1) is R's third row, R^T * (0,1,0) is its second.
+inline Camera cameraFromWorldToCamera(const pbrt_scene::Matrix4 &w2c) {
+	Camera c;
+	const double *m = w2c.m;
+
+	// eye = -R^T * t
+	const double tx = m[3], ty = m[7], tz = m[11];
+	c.lookfrom[0] = -(m[0] * tx + m[4] * ty + m[8]  * tz);
+	c.lookfrom[1] = -(m[1] * tx + m[5] * ty + m[9]  * tz);
+	c.lookfrom[2] = -(m[2] * tx + m[6] * ty + m[10] * tz);
+
+	const double fwd[3] = {m[8], m[9], m[10]};
+	c.up[0] = m[4]; c.up[1] = m[5]; c.up[2] = m[6];
+	for (int i = 0; i < 3; ++i) c.lookat[i] = c.lookfrom[i] + fwd[i];
+	return c;
+}
+
 } // namespace detail
 
 inline FlatScene flatten(const pbrt_scene::Scene &scene,
@@ -92,6 +170,72 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 	const auto warn = [&out](const std::string &msg) {
 		out.warnings.push_back({0, std::string(), msg});
 	};
+
+	// ---- materials -------------------------------------------------------
+	for (const pbrt_scene::MaterialDecl &md : scene.materials) {
+		Material m;
+		m.pbrtType = md.type;
+		m.kind = materialKindFor(md.type);
+		if (m.kind == MaterialKind::Unsupported) {
+			warn("material type '" + md.type + "' is not supported; "
+				 "it will fall back to a diffuse approximation");
+		}
+		// pbrt spells the base colour differently per material: reflectance for
+		// diffuse, but conductors are described by their complex IOR and use
+		// k/eta instead. Take whichever is present, defaulting to mid grey.
+		const pbrt_scene::Vec3 def{m.color[0], m.color[1], m.color[2]};
+		pbrt_scene::Vec3 c = md.params.getVec3("reflectance", def);
+		if (!md.params.find("reflectance")) c = md.params.getVec3("k", c);
+		m.color[0] = c.x; m.color[1] = c.y; m.color[2] = c.z;
+
+		m.roughness = md.params.getFloat("roughness", 0.0);
+		// "eta" is pbrt's name for index of refraction on dielectrics.
+		m.ior = md.params.getFloat("eta", md.params.getFloat("ior", 1.5));
+		out.materials.push_back(m);
+	}
+
+	// ---- area lights -----------------------------------------------------
+	for (const pbrt_scene::LightDecl &ld : scene.areaLights) {
+		Emission e;
+		const pbrt_scene::Vec3 L = ld.params.getVec3("L", pbrt_scene::Vec3{1, 1, 1});
+		e.L[0] = L.x; e.L[1] = L.y; e.L[2] = L.z;
+		e.scale = ld.params.getFloat("scale", 1.0);
+		// "blackbody L" declares a colour TEMPERATURE under the parameter name
+		// L, so this has to test the parameter's type, not look for a
+		// parameter called "blackbody" - the latter never matches and the
+		// warning never fires.
+		const pbrt_scene::Param *Lp = ld.params.find("L");
+		if (Lp && Lp->type == "blackbody") {
+			// Converting a temperature to radiance properly needs a spectral
+			// pipeline; say so rather than quietly emitting the raw number.
+			warn("an area light is given as a blackbody temperature, which is "
+				 "approximated rather than converted spectrally");
+		}
+		out.areaLights.push_back(e);
+	}
+
+	// ---- camera ----------------------------------------------------------
+	out.camera = cameraFromWorldToCamera(scene.worldToCamera);
+	{
+		const double fov = scene.cameraFov();
+		// pbrt's fov applies to the NARROWER image axis. Ours is always
+		// vertical, so on a landscape frame they agree and on a portrait one
+		// they do not - taking pbrt's number as vertical unconditionally
+		// silently mis-frames every portrait scene.
+		if (scene.xResolution >= scene.yResolution) {
+			out.camera.vfov = fov;
+		} else {
+			const double aspect = (scene.yResolution > 0)
+								  ? static_cast<double>(scene.xResolution) / scene.yResolution
+								  : 1.0;
+			const double halfRad = fov * 0.5 * 3.14159265358979323846 / 180.0;
+			const double tanV = (aspect > 0.0) ? std::tan(halfRad) / aspect : std::tan(halfRad);
+			out.camera.vfov = 2.0 * std::atan(tanV) * 180.0 / 3.14159265358979323846;
+		}
+		out.camera.aperture = scene.cameraParams.getFloat("lensradius", 0.0) * 2.0;
+		out.camera.focusDistance = scene.cameraParams.getFloat("focaldistance",
+															   out.camera.focusDistance);
+	}
 
 	for (const pbrt_scene::ShapeDecl &shape : scene.shapes) {
 		if (shape.type == "sphere") {
