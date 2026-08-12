@@ -3307,6 +3307,11 @@ static bool build_loaded_pbrt_scene(
 		std::cerr << "[OptiX] warning: no samplable lights in this scene - "
 			     "expect a very dark image.\n";
 	}
+	if (stats.unhandledInstances > 0) {
+		std::cerr << "[OptiX] warning: " << stats.unhandledInstances
+			  << " object instance(s) are not placed yet, so the geometry they "
+			     "reference is missing from this render.\n";
+	}
 
 	// The scene's own camera, unless the user moved it.
 	const pbrt_flatten::Camera& c = loaded.scene.camera;

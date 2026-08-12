@@ -310,15 +310,22 @@ TEST(PbrtSkipTest, SkippingConsumesTheDirectivesParametersNotTheNextDirective) {
 	EXPECT_EQ(s.materials[0].type, "diffuse");
 }
 
-TEST(PbrtSkipTest, InstancingIsReportedRatherThanSilentlyWrong) {
-	// Emitting instanced geometry once in place is a real approximation, so it
-	// has to be visible to the caller.
+TEST(PbrtSkipTest, InstancingIsParsedRatherThanApproximated) {
+	// This test used to assert the opposite: that instancing warned it was
+	// unsupported and emitted the geometry once in place. That approximation
+	// is gone - a definition is now recorded separately from the scene and
+	// placed by its instances, which is what pbrt means by the directives.
+	// See pbrt_instance_tests.cpp for the behaviour in full.
 	const Scene s = parseOk(
 		"ObjectBegin \"leaf\"\n"
 		"  Shape \"sphere\"\n"
 		"ObjectEnd\n"
 		"ObjectInstance \"leaf\"\n");
-	EXPECT_TRUE(hasWarningContaining(s, "instancing is not supported"));
+	EXPECT_FALSE(hasWarningContaining(s, "instancing is not supported"));
+	EXPECT_TRUE(s.shapes.empty()) << "the definition was emitted in place";
+	ASSERT_EQ(s.objects.size(), 1u);
+	EXPECT_EQ(s.objects[0].shapes.size(), 1u);
+	EXPECT_EQ(s.instances.size(), 1u);
 }
 
 TEST(PbrtSkipTest, StrayTokenWhereADirectiveBelongsIsFatal) {

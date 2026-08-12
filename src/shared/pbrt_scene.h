@@ -234,6 +234,19 @@ struct Warning {
 // directory, an archive).
 using FileResolver = std::function<bool(const std::string &path, std::string &outContents)>;
 
+// A named collection of shapes that exists once and is placed many times.
+struct ObjectDecl {
+	std::string name;
+	std::vector<ShapeDecl> shapes;
+};
+
+// One placement of an ObjectDecl.
+struct InstanceDecl {
+	std::string name;
+	Matrix4 xform;      // the CTM where ObjectInstance appeared
+	int line = 0;       // so an instance of an undefined object can be located
+};
+
 struct Scene {
 	// Pre-world state.
 	std::string cameraType = "perspective";
@@ -251,6 +264,15 @@ struct Scene {
 	std::vector<LightDecl> lights;       // LightSource
 	std::vector<LightDecl> areaLights;   // AreaLightSource
 	std::vector<ShapeDecl> shapes;
+
+	// An instance definition: shapes recorded between ObjectBegin and
+	// ObjectEnd, which are NOT part of the scene until an ObjectInstance
+	// places them. Their xform is the CTM where each shape was declared,
+	// matching pbrt - the instance's own transform is applied on top, so a
+	// definition opened under a transform has that transform applied twice.
+	// Odd, but it is what published scenes are written against.
+	std::vector<ObjectDecl> objects;
+	std::vector<InstanceDecl> instances;
 
 	// Directives recognised as pbrt but not implemented here. Never fatal -
 	// see the header comment.
@@ -441,6 +463,11 @@ private:
 	ParseResult result_;
 	GraphicsState gs_;
 	std::vector<GraphicsState> stack_;
+	// Index into Scene::objects while between ObjectBegin and ObjectEnd, or
+	// -1. Shapes declared while this is set belong to the definition rather
+	// than to the scene, which is the whole difference between defining an
+	// object and drawing one.
+	int recordingObject_ = -1;
 	bool inWorld_ = false;
 
 	int curLine() const {
@@ -570,15 +597,42 @@ private:
 		// TransformBegin/End were removed in pbrt-v4 but appear in v3 scenes,
 		// where they push only the CTM. Treating them as full attribute scopes
 		// is close enough for loading and avoids rejecting the file.
-		if (d == "AttributeBegin" || d == "TransformBegin" || d == "ObjectBegin") {
-			if (d == "ObjectBegin") {
-				if (pos_ < t_.size() && t_[pos_].quoted) ++pos_;   // instance name
-				warn(line, "ObjectBegin: instancing is not supported; its shapes are emitted once in place");
-			}
+		if (d == "AttributeBegin" || d == "TransformBegin") {
 			stack_.push_back(gs_);
 			return true;
 		}
-		if (d == "AttributeEnd" || d == "TransformEnd" || d == "ObjectEnd") {
+		if (d == "ObjectBegin") {
+			std::string name;
+			if (pos_ < t_.size() && t_[pos_].quoted) { name = t_[pos_].text; ++pos_; }
+			// Nesting is rejected rather than flattened. pbrt refuses it too,
+			// and a definition that silently absorbed another one would place
+			// the inner object's geometry at every outer instance - geometry
+			// appearing where the scene never put it.
+			if (recordingObject_ >= 0)
+				return (result_ = fail(line, "ObjectBegin inside an instance definition")), false;
+			for (const ObjectDecl &o : s_.objects) {
+				if (o.name == name) {
+					warn(line, "object '" + name + "' is redefined; "
+						 "the later definition replaces the earlier one");
+					break;
+				}
+			}
+			stack_.push_back(gs_);
+			s_.objects.push_back(ObjectDecl{name, {}});
+			recordingObject_ = static_cast<int>(s_.objects.size()) - 1;
+			return true;
+		}
+		if (d == "ObjectEnd") {
+			if (recordingObject_ < 0)
+				return (result_ = fail(line, "ObjectEnd without a matching ObjectBegin")), false;
+			recordingObject_ = -1;
+			if (stack_.empty())
+				return (result_ = fail(line, "ObjectEnd without a matching Begin")), false;
+			gs_ = stack_.back();
+			stack_.pop_back();
+			return true;
+		}
+		if (d == "AttributeEnd" || d == "TransformEnd") {
 			if (stack_.empty())
 				return (result_ = fail(line, d + " without a matching Begin")), false;
 			gs_ = stack_.back();
@@ -586,8 +640,15 @@ private:
 			return true;
 		}
 		if (d == "ObjectInstance") {
-			if (pos_ < t_.size() && t_[pos_].quoted) ++pos_;
-			warn(line, "ObjectInstance: instancing is not supported; this instance is skipped");
+			std::string name;
+			if (pos_ < t_.size() && t_[pos_].quoted) { name = t_[pos_].text; ++pos_; }
+			if (recordingObject_ >= 0)
+				return (result_ = fail(line, "ObjectInstance inside an instance definition")), false;
+			InstanceDecl inst;
+			inst.name = name;
+			inst.xform = gs_.ctm;
+			inst.line = line;
+			s_.instances.push_back(inst);
 			return true;
 		}
 		if (d == "ReverseOrientation") { gs_.reverseOrientation = !gs_.reverseOrientation; return true; }
@@ -671,7 +732,10 @@ private:
 			sh.materialIndex = gs_.materialIndex;
 			sh.areaLightIndex = gs_.areaLightIndex;
 			sh.reverseOrientation = gs_.reverseOrientation;
-			s_.shapes.push_back(sh);
+			if (recordingObject_ >= 0)
+				s_.objects[static_cast<std::size_t>(recordingObject_)].shapes.push_back(sh);
+			else
+				s_.shapes.push_back(sh);
 			return true;
 		}
 

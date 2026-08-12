@@ -93,6 +93,8 @@ struct BuildResult {
 	std::size_t triangleCount = 0;
 	std::size_t sphereCount = 0;
 	std::size_t uniqueVertexCount = 0;
+	// Instances the scene defined that this builder did not place.
+	std::size_t unhandledInstances = 0;
 };
 
 // Turns flattened geometry into a BVH-accelerated world plus the light list
@@ -104,6 +106,13 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	BuildResult out;
 	out.world = std::make_shared<hittable_list>();
 	out.lights = std::make_shared<hittable_list>();
+
+	// Instanced geometry is not consumed yet - that needs a general affine
+	// transform hittable, which this renderer does not have (hittable.h offers
+	// only translate and rotate_y). Reported rather than dropped in silence,
+	// because the symptom is a scene missing whatever it instanced, which
+	// looks like a parsing failure and is not one.
+	out.unhandledInstances = scene.instances.size();
 
 	const auto materialFor = [&scene](int materialIndex, int areaLightIndex)
 			-> std::shared_ptr<material> {

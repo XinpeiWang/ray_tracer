@@ -37,6 +37,7 @@ struct BuildStats {
 	std::size_t spheres = 0;
 	std::size_t quadLights = 0;
 	std::size_t unsampledEmissiveTriangles = 0;
+	std::size_t unhandledInstances = 0;
 };
 
 namespace detail {
@@ -156,6 +157,10 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		out.spheres.push_back(sd);
 	}
 	stats.spheres = out.spheres.size();
+	// See pbrt_cpu_builder.h: instanced geometry needs an OptiX IAS
+	// per instance definition, which is not built yet. Counted so the
+	// caller can say the scene is incomplete rather than looking parsed-wrong.
+	stats.unhandledInstances = scene.instances.size();
 
 	// ---- lights recovered as quads, then everything else as triangles ----
 	const pbrt_quadify::Result merged = pbrt_quadify::quadify(scene.triangles);

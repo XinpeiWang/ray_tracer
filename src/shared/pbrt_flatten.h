@@ -134,15 +134,38 @@ inline double focusDistanceFor(const Camera &c) {
 														   : toSubject;
 }
 
+// Geometry that exists once and is drawn many times, in OBJECT space - the one
+// place in this header where the CTM is deliberately not baked, because baking
+// it is exactly what instancing exists to avoid.
+struct InstanceGroup {
+	std::string name;
+	std::vector<Triangle> triangles;
+	std::vector<Sphere> spheres;
+};
+
+struct Instance {
+	int group = -1;
+	double xform[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};   // object -> world, row major
+};
+
 struct FlatScene {
 	std::vector<Triangle> triangles;
 	std::vector<Sphere> spheres;
 	std::vector<Material> materials;    // parallel to Scene::materials
 	std::vector<Emission> areaLights;   // parallel to Scene::areaLights
+
+	// Instanced geometry. `groups` hold object-space shapes; `instances` place
+	// them. A backend that ignores these renders a scene missing everything
+	// that was instanced, so both builders must handle them.
+	std::vector<InstanceGroup> groups;
+	std::vector<Instance> instances;
+
 	Camera camera;
 	std::vector<pbrt_scene::Warning> warnings;
 
-	bool empty() const { return triangles.empty() && spheres.empty(); }
+	bool empty() const {
+		return triangles.empty() && spheres.empty() && instances.empty();
+	}
 };
 
 // Supplies a PLY mesh's positions and indices for `Shape "plymesh"`. Same
@@ -154,6 +177,32 @@ using MeshResolver = std::function<bool(const std::string &path,
 										std::vector<int> &indices)>;
 
 namespace detail {
+
+// One shape to emit, where to put it, and under which transform. Routing the
+// single shape loop through this is what lets the same code serve three
+// callers - scene geometry, an instance definition's object-space geometry,
+// and an instanced emitter baked into world space - without three copies of
+// the triangulation, subdivision and PLY handling.
+struct ShapeWork {
+	const pbrt_scene::ShapeDecl *shape = nullptr;
+	pbrt_scene::Matrix4 xform;
+	std::vector<Triangle> *triangles = nullptr;
+	std::vector<Sphere> *spheres = nullptr;
+};
+
+// Row-major 4x4 multiply: `a` applied after `b`, i.e. the result maps a point
+// through b and then through a.
+inline pbrt_scene::Matrix4 compose(const pbrt_scene::Matrix4 &a,
+								   const pbrt_scene::Matrix4 &b) {
+	pbrt_scene::Matrix4 r;
+	for (int i = 0; i < 4; ++i)
+		for (int j = 0; j < 4; ++j) {
+			double s = 0;
+			for (int k = 0; k < 4; ++k) s += a.m[i * 4 + k] * b.m[k * 4 + j];
+			r.m[i * 4 + j] = s;
+		}
+	return r;
+}
 
 inline void transformPoint(const pbrt_scene::Matrix4 &m,
 						   double x, double y, double z, double *out) {
@@ -349,14 +398,74 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 															   out.camera.focusDistance);
 	}
 
-	for (const pbrt_scene::ShapeDecl &shape : scene.shapes) {
+	// ---- decide what goes where before emitting anything ------------------
+	//
+	// Three destinations:
+	//   * plain scene shapes            -> world space, as before
+	//   * an object's non-emissive shapes -> its group, in OBJECT space
+	//   * an object's EMISSIVE shapes   -> world space, once per instance
+	//
+	// That last one is the interesting decision. Instancing saves memory
+	// because geometry is shared during traversal, but lights are not
+	// traversed - they are enumerated into a flat list and sampled from a
+	// distribution, so every copy of an emitter needs its own entry whatever
+	// we do. Instancing them would save nothing and would force the MIS path
+	// to recover which instance a ray struck. Baking them costs one entry per
+	// copy, which for the handful of emitters an object has is nothing.
+	//
+	// pbrt declines this case outright ("Area lights not supported with object
+	// instancing"). Baking is cheap enough that we do not have to.
+	std::vector<detail::ShapeWork> work;
+
+	for (const pbrt_scene::ShapeDecl &shape : scene.shapes)
+		work.push_back({&shape, shape.xform, &out.triangles, &out.spheres});
+
+	// Sized up front so the pointers taken below stay valid as work is added.
+	out.groups.resize(scene.objects.size());
+	for (std::size_t g = 0; g < scene.objects.size(); ++g) {
+		out.groups[g].name = scene.objects[g].name;
+		for (const pbrt_scene::ShapeDecl &shape : scene.objects[g].shapes) {
+			if (shape.areaLightIndex >= 0) continue;    // emissive: baked below
+			work.push_back({&shape, shape.xform,
+							&out.groups[g].triangles, &out.groups[g].spheres});
+		}
+	}
+
+	for (const pbrt_scene::InstanceDecl &inst : scene.instances) {
+		int group = -1;
+		for (std::size_t g = 0; g < scene.objects.size(); ++g)
+			if (scene.objects[g].name == inst.name) { group = static_cast<int>(g); break; }
+		if (group < 0) {
+			warn("ObjectInstance names '" + inst.name +
+				 "', which was never defined; the instance is skipped");
+			continue;
+		}
+
+		Instance placed;
+		placed.group = group;
+		for (int i = 0; i < 16; ++i) placed.xform[i] = inst.xform.m[i];
+		out.instances.push_back(placed);
+
+		// Emissive shapes in the definition, baked into world space for this
+		// placement so they can be sampled like any other light.
+		for (const pbrt_scene::ShapeDecl &shape :
+				 scene.objects[static_cast<std::size_t>(group)].shapes) {
+			if (shape.areaLightIndex < 0) continue;
+			work.push_back({&shape, detail::compose(inst.xform, shape.xform),
+							&out.triangles, &out.spheres});
+		}
+	}
+
+	for (const detail::ShapeWork &w : work) {
+		const pbrt_scene::ShapeDecl &shape = *w.shape;
+		const pbrt_scene::Matrix4 &xform = w.xform;
 		if (shape.type == "sphere") {
 			const double r = shape.params.getFloat("radius", 1.0);
 			Sphere s;
-			transformPoint(shape.xform, 0.0, 0.0, 0.0, s.center);
+			transformPoint(xform, 0.0, 0.0, 0.0, s.center);
 
 			double sc[3];
-			axisScales(shape.xform, sc);
+			axisScales(xform, sc);
 			const double lo = std::fmin(sc[0], std::fmin(sc[1], sc[2]));
 			const double hi = std::fmax(sc[0], std::fmax(sc[1], sc[2]));
 			if (hi - lo > 1e-6 * std::fmax(1.0, hi)) {
@@ -366,7 +475,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			s.radius = r * hi;
 			s.material = shape.materialIndex;
 			s.areaLight = shape.areaLightIndex;
-			out.spheres.push_back(s);
+			w.spheres->push_back(s);
 			continue;
 		}
 
@@ -472,7 +581,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// between the same point on adjacent faces.
 			std::vector<double> world(vertexCount * 3);
 			for (std::size_t v = 0; v < vertexCount; ++v)
-				transformPoint(shape.xform, P[v * 3], P[v * 3 + 1], P[v * 3 + 2],
+				transformPoint(xform, P[v * 3], P[v * 3 + 1], P[v * 3 + 2],
 							   &world[v * 3]);
 
 			// A normal list that does not cover every vertex cannot be indexed
@@ -483,7 +592,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			if (!N.empty() && N.size() / 3 >= vertexCount) {
 				worldN.resize(vertexCount * 3);
 				for (std::size_t v = 0; v < vertexCount; ++v)
-					transformNormal(shape.xform, N[v * 3], N[v * 3 + 1], N[v * 3 + 2],
+					transformNormal(xform, N[v * 3], N[v * 3 + 1], N[v * 3 + 2],
 									&worldN[v * 3]);
 			} else if (!N.empty()) {
 				warn("a mesh supplied fewer normals than vertices; "
@@ -520,7 +629,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				}
 				t.material = shape.materialIndex;
 				t.areaLight = shape.areaLightIndex;
-				out.triangles.push_back(t);
+				w.triangles->push_back(t);
 			}
 			continue;
 		}

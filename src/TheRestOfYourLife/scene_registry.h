@@ -963,6 +963,13 @@ inline void append(std::vector<SceneDescriptor>& registry) {
                     for (const pbrt_scene::Warning& w : r.scene.warnings)
                         std::cerr << "warning: " << path << ": " << w.message << "\n";
                     state->built = pbrt_cpu::build(r.scene);
+                    if (state->built.unhandledInstances > 0) {
+                        std::cerr << "warning: " << path << ": "
+                                  << state->built.unhandledInstances
+                                  << " object instance(s) are not placed yet, so the"
+                                     " geometry they reference is missing from this"
+                                     " render.\n";
+                    }
                 }
             }
             return state->built;
