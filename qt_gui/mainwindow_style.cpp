@@ -208,6 +208,17 @@ void MainWindow::applyDarkTheme() {
 				stop:0 %ACCENT_MAG%, stop:1 %ACCENT_CYAN%);
 			border-radius: 5px;
 		}
+		/* Outcome colouring, driven by the "resultState" dynamic property
+		   (see MainWindow::setProgressResultState). The finished bar keeps
+		   its fill and just changes colour, so a completed or failed render
+		   stays readable instead of snapping back to an empty bar - the
+		   same convention Qt Creator uses, including its exact colours. */
+		QProgressBar[resultState="success"]::chunk {
+			background-color: #5AAA3C;
+		}
+		QProgressBar[resultState="error"]::chunk {
+			background-color: #DF4F4F;
+		}
 		QTabWidget::pane {
 			border: 1px solid %BORDER%;
 			border-radius: 0px %RADIUS% %RADIUS% %RADIUS%;

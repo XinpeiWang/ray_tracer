@@ -11,6 +11,7 @@
 #include <QScrollBar>
 #include <QCoreApplication>
 #include <QSignalBlocker>
+#include <QStyle>
 #include <QThread>
 #include <array>
 #include <cmath>
@@ -340,8 +341,11 @@ void MainWindow::onRenderClicked() {
 	m_lastOutputPath.clear();
 	m_lastPreviewImagePath.clear();
 
-	// Start elapsed timer
+	// Start elapsed timer. Its 1 Hz tick doubles as the ETA sampling clock,
+	// which is the same cadence HandBrake samples at.
 	m_renderStartTime = QDateTime::currentDateTime();
+	resetProgressSamples();
+	setProgressResultState("");
 	if (!m_elapsedTimer) {
 		m_elapsedTimer = new QTimer(this);
 		connect(m_elapsedTimer, &QTimer::timeout, this, &MainWindow::onElapsedTick);
@@ -584,6 +588,9 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 
 	if (success) {
 		m_progressBar->setValue(100);
+		// A finished bar keeps its fill and turns green rather than resetting -
+		// the outcome stays visible after the fact (Qt Creator's behaviour).
+		setProgressResultState("success");
 		m_statusLabel->setText(QString("✅ %1 - Total time: %2 seconds").arg(message).arg(totalTime, 0, 'f', 2));
 
 		// If video mode, automatically assemble the video
@@ -635,12 +642,21 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 			}
 		}
 	} else {
-		// Reset progress bar on failure/stop
-		m_progressBar->setValue(0);
+		const bool stoppedByUser = message.contains("stopped by user", Qt::CaseInsensitive);
+
+		// A user-requested stop isn't a failure, so it clears back to neutral;
+		// a genuine failure leaves the bar where it died and turns it red, so
+		// the outcome is still readable after the dialog is dismissed.
+		if (stoppedByUser) {
+			m_progressBar->setValue(0);
+			setProgressResultState("");
+		} else {
+			setProgressResultState("error");
+		}
 		m_statusLabel->setText(QString("❌ %1").arg(message));
 
 		// Only show error popup for actual failures, not for user-stopped renders
-		if (!message.contains("stopped by user", Qt::CaseInsensitive)) {
+		if (!stoppedByUser) {
 			QMessageBox::critical(this, "Render Failed", message);
 		}
 	}
@@ -693,21 +709,81 @@ void MainWindow::onLogMessage(const QString &message) {
 	qDebug() << msg;
 }
 
+namespace {
+
+// H:MM:SS once past an hour, else M:SS. Always at least M:SS so the field
+// width stays stable and the status line doesn't jitter as digits change -
+// the same reason HandBrake's status string uses fixed-width specifiers.
+QString formatDuration(qint64 seconds) {
+	if (seconds < 0) return QStringLiteral("--:--");
+	const qint64 h = seconds / 3600;
+	const qint64 m = (seconds % 3600) / 60;
+	const qint64 s = seconds % 60;
+	if (h > 0)
+		return QString("%1:%2:%3").arg(h).arg(m, 2, 10, QChar('0')).arg(s, 2, 10, QChar('0'));
+	return QString("%1:%2").arg(m).arg(s, 2, 10, QChar('0'));
+}
+
+} // namespace
+
+void MainWindow::resetProgressSamples() {
+	m_progressRingCount = 0;
+	for (ProgressSample &sample : m_progressRing)
+		sample = ProgressSample{};
+}
+
+QString MainWindow::formatProgressStatus(qint64 elapsedMs, int percent) {
+	// Append this tick's sample, shifting the ring when it's full.
+	if (m_progressRingCount < kProgressSamples) {
+		m_progressRing[m_progressRingCount++] = ProgressSample{elapsedMs, percent};
+	} else {
+		for (int i = 0; i < kProgressSamples - 1; ++i)
+			m_progressRing[i] = m_progressRing[i + 1];
+		m_progressRing[kProgressSamples - 1] = ProgressSample{elapsedMs, percent};
+	}
+
+	QString text = QString("Rendering  ·  %1%  ·  elapsed %2")
+		.arg(percent, 3)
+		.arg(formatDuration(elapsedMs / 1000));
+
+	// Instantaneous rate across the ring - shown, never divided by.
+	const ProgressSample &oldest = m_progressRing[0];
+	const qint64 windowMs = elapsedMs - oldest.elapsedMs;
+	if (m_progressRingCount == kProgressSamples && windowMs > 0) {
+		const double pctPerSec = 1000.0 * (percent - oldest.percent) / windowMs;
+		if (pctPerSec > 0.0)
+			text += QString("  ·  %1 %/s").arg(pctPerSec, 0, 'f', 1);
+	}
+
+	// ETA from the cumulative rate, suppressed during warm-up.
+	if (elapsedMs >= kEtaWarmupMs && percent > 0 && percent < 100) {
+		const double pctPerMs = double(percent) / double(elapsedMs);
+		if (pctPerMs > 0.0) {
+			const qint64 remainingMs = qint64((100.0 - percent) / pctPerMs);
+			text += QString("  ·  ETA %1").arg(formatDuration(remainingMs / 1000));
+		}
+	} else if (percent < 100) {
+		text += QStringLiteral("  ·  ETA --:--");
+	}
+
+	return text;
+}
+
+void MainWindow::setProgressResultState(const char *state) {
+	if (!m_progressBar) return;
+	// Dynamic property + repolish is the standard way to switch a QSS rule
+	// at runtime; the stylesheet carries matching
+	// QProgressBar[resultState="..."]::chunk selectors.
+	m_progressBar->setProperty("resultState", state);
+	m_progressBar->style()->unpolish(m_progressBar);
+	m_progressBar->style()->polish(m_progressBar);
+	m_progressBar->update();
+}
+
 void MainWindow::onElapsedTick() {
 	if (!m_isRendering) return;
-	qint64 elapsed = m_renderStartTime.secsTo(QDateTime::currentDateTime());
-	int h = (int)(elapsed / 3600);
-	int m = (int)((elapsed % 3600) / 60);
-	int s = (int)(elapsed % 60);
-	QString elapsedStr;
-	if (h > 0)
-		elapsedStr = QString("%1h %2m %3s").arg(h).arg(m, 2, 10, QChar('0')).arg(s, 2, 10, QChar('0'));
-	else if (m > 0)
-		elapsedStr = QString("%1m %2s").arg(m).arg(s, 2, 10, QChar('0'));
-	else
-		elapsedStr = QString("%1s").arg(s);
-	int pct = m_progressBar->value();
-	m_statusLabel->setText(QString("Rendering... %1% | elapsed: %2").arg(pct).arg(elapsedStr));
+	const qint64 elapsedMs = m_renderStartTime.msecsTo(QDateTime::currentDateTime());
+	m_statusLabel->setText(formatProgressStatus(elapsedMs, m_progressBar->value()));
 }
 
 void MainWindow::onModeChanged(int index) {

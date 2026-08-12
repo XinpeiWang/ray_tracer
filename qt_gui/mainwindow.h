@@ -323,6 +323,41 @@ private:
 	QTimer *m_elapsedTimer;             // fires every second during render
 	QDateTime m_renderStartTime;        // wall-clock time when render began
 
+	// ------------------------------------------------------------------
+	// Progress sampling for the time-remaining estimate
+	// ------------------------------------------------------------------
+	// Modelled on HandBrake's UpdateState() (libhb/sync.c), which is the
+	// most carefully-built ETA of the render/encode tools surveyed. Two
+	// separate rates are derived from the same samples:
+	//
+	//   * an INSTANTANEOUS rate over the short sliding window, which is
+	//     responsive enough to be worth showing, but far too noisy to
+	//     divide by; and
+	//   * a CUMULATIVE rate over the whole render, whose sensitivity to
+	//     new noise keeps shrinking, so the ETA drifts smoothly instead
+	//     of oscillating every tick.
+	//
+	// The ETA uses the cumulative rate for exactly that reason. Nothing is
+	// shown at all until kEtaWarmupMs has passed - an early estimate from
+	// two samples is worse than admitting we don't know yet, so the label
+	// reads "--:--" rather than a wild (or zero) guess.
+	struct ProgressSample {
+		qint64 elapsedMs = 0;
+		int percent = 0;
+	};
+	static constexpr int kProgressSamples = 4;     // ring depth (~3s window at 1Hz)
+	static constexpr qint64 kEtaWarmupMs = 4000;   // no estimate before this
+	ProgressSample m_progressRing[kProgressSamples];
+	int m_progressRingCount = 0;        // how many slots are actually filled
+
+	void resetProgressSamples();
+	// Appends a sample and returns the formatted "elapsed / ETA" status
+	// text for the current tick.
+	QString formatProgressStatus(qint64 elapsedMs, int percent);
+	// Paints the progress bar green on success / red on failure, matching
+	// Qt Creator's ProgressBarColorFinished / ProgressBarColorError.
+	void setProgressResultState(const char *state);
+
 	// Shared event filter that blocks accidental wheel-scroll on controls
 	WheelIgnoreFilter *m_wheelFilter;
 };
