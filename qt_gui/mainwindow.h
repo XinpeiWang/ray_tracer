@@ -290,7 +290,7 @@ private:
 	// theme menu re-invokes it to switch live rather than asking for a restart.
 	void applyTheme(const theme::Palette &palette);
 	void switchTheme(const QString &themeId);
-	void createThemeMenu(QMenu *viewMenu);
+	void createThemeMenu();
 	QString loadSavedThemeId() const;
 	void saveThemeId(const QString &themeId) const;
 	void styleComboBox(QComboBox *combo);

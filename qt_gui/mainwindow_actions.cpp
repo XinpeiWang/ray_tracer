@@ -153,10 +153,12 @@ void MainWindow::createMenus() {
 		});
 	}
 	viewMenu->addSeparator();
-	createThemeMenu(viewMenu);
-	viewMenu->addSeparator();
 	viewMenu->addAction(m_actCopyLog);
 	viewMenu->addAction(m_actClearLog);
+
+	// Between View and Help: Help is conventionally last in a menu bar, so a
+	// new menu goes before it rather than after.
+	createThemeMenu();
 
 	QMenu *helpMenu = menuBar()->addMenu("&Help");
 	helpMenu->addAction(m_actAbout);

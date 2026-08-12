@@ -51,8 +51,12 @@ void MainWindow::switchTheme(const QString &themeId) {
 	statusBar()->showMessage(QString("Theme: %1").arg(p.name), 3000);
 }
 
-void MainWindow::createThemeMenu(QMenu *viewMenu) {
-	QMenu *themeMenu = viewMenu->addMenu("&Theme");
+// A top-level menu rather than a submenu of View. Themes are a first-class
+// preference here - twelve of them, several with their own artwork - and
+// burying a twelve-item list one level down made it both harder to reach and
+// harder to discover. "T" is free as a mnemonic alongside File/Render/View/Help.
+void MainWindow::createThemeMenu() {
+	QMenu *themeMenu = menuBar()->addMenu("&Theme");
 
 	// Exclusive check marks: exactly one scheme is in force at a time.
 	auto *group = new QActionGroup(this);
