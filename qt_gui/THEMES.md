@@ -79,6 +79,50 @@ opaque colour — nothing rendered). The scroll area's own viewport and content
 widget also fill themselves opaquely by default and have to be punched through,
 which is what the `QScrollArea#tabScroll > QWidget` rules do.
 
+## Your own themes
+
+Themes are no longer compile-time only. Drop a `.theme` file (INI syntax) in
+either of these and it appears in the Theme menu alongside the built-ins, with
+no rebuild:
+
+    <folder containing RayTracerGUI.exe>/themes/
+    %APPDATA%/Ray Tracer Project/Ray Tracer/themes/
+
+`RayTracer_Package/themes/example.theme` is a complete, commented starting
+point — copy it and edit. Every colour role is required; `id` must not match a
+built-in.
+
+A loaded theme is not a second-class citizen: it parses into the same
+`PaletteData` struct the built-ins use, so it goes through the identical
+registry, lookup, menu and settings persistence with no special cases.
+
+A file that is malformed — a missing role, a value that is not `#rrggbb`, an id
+that shadows a built-in — is skipped with a warning naming the file and the
+offending key. It is never fatal and never silent: a theme file is user content
+and the app has to start without it. Parsing lives in the Qt-free
+`palette_file.h` so those failure modes are unit-tested rather than hoped for.
+
+## Contrast
+
+Every palette is checked against WCAG 2.1 ratios by
+`tests/unit/palette_data_tests.cpp` — body text, muted text, all twelve log
+severities, the progress bar's outcome text and the primary button's label,
+each against the surface it actually sits on. This exists because two bugs had
+already shipped that it catches instantly: a dark-olive "100%" on a dark-olive
+success fill, and gold warnings on cream.
+
+Two deliberate exceptions:
+
+- **Separators are decoration**, not information. WCAG exempts decorative
+  content, and a divider forced to 3:1 stops dividing and starts competing with
+  the text either side of it. They are checked for being perceptible, not
+  readable.
+- **Solarized and Nord miss AA for body text.** Both are famously low-contrast
+  by design, and these are transcriptions. Editing them until they pass would
+  ship something labelled Solarized that is not Solarized — someone choosing
+  Solarized is asking for Solarized. They are held to a lower floor set just
+  under what they measure today, so a regression still fails the build.
+
 ## Icons
 
 The SVGs under `qt_gui/icons/` are original to this project. They are

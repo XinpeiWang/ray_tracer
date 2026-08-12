@@ -2,6 +2,8 @@
 #define PALETTE_DATA_H
 
 #include <cstddef>
+#include <string>
+#include <vector>
 
 // ============================================================================
 // Palette data - deliberately Qt-free
@@ -38,9 +40,12 @@ inline bool operator==(const Rgb &a, const Rgb &b) {
 constexpr Rgb kUnset{0, 0, 0};
 
 struct PaletteData {
-	const char *id;
-	const char *name;
-	const char *origin;
+	// std::string rather than const char*: a palette loaded from a file at
+	// runtime owns its text, and making loaded and built-in palettes the same
+	// type is what lets them share one registry, one lookup and one test suite.
+	std::string id;
+	std::string name;
+	std::string origin;
 
 	// Surface ramp, deepest first.
 	Rgb surface0, surface1, surface2, surface3;
@@ -70,15 +75,14 @@ struct PaletteData {
 		logPerformance, logScene, logInit, logTechnique, logCommand,
 		logDebug, logSeparator;
 
-	// Optional decorative motif. nullptr / empty = none.
-	const char *backgroundImage = nullptr;
+	// Optional decorative motif. Empty = none.
+	std::string backgroundImage;
 	bool backgroundTiled = false;
-	const char *backgroundPosition = "bottom right";
+	std::string backgroundPosition = "bottom right";
 };
 
 // Every built-in palette, in menu order. The first entry is the default.
-const PaletteData *builtins();
-std::size_t builtinCount();
+const std::vector<PaletteData> &builtins();
 
 // ---------------------------------------------------------------------------
 // Contrast, per WCAG 2.1

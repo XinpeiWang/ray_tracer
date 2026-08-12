@@ -21,7 +21,7 @@
 namespace palette_data {
 namespace {
 
-const PaletteData kBuiltins[] = {
+const std::vector<PaletteData> kBuiltins = {
 
 // The scheme this project shipped with. Preserved value-for-value so switching
 // away and back is a genuine round trip rather than an approximation.
@@ -502,8 +502,7 @@ const PaletteData kBuiltins[] = {
 
 } // namespace
 
-const PaletteData *builtins() { return kBuiltins; }
-std::size_t builtinCount() { return sizeof(kBuiltins) / sizeof(kBuiltins[0]); }
+const std::vector<PaletteData> &builtins() { return kBuiltins; }
 
 // WCAG 2.1 relative luminance: linearise each channel, then weight by the eye's
 // sensitivity to it. The 0.03928 knee and 1.055/2.4 curve are the sRGB transfer

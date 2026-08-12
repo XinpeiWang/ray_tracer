@@ -5,6 +5,7 @@
 #include <QString>
 #include <QVector>
 
+#include "palette_data.h"
 #include "render_output_parser.h"
 
 // ============================================================================
@@ -108,6 +109,16 @@ const QVector<Palette> &all();
 const Palette &byId(const QString &id);
 
 const Palette &defaultPalette();
+
+// Reads *.theme files from <app dir>/themes and the per-user config directory.
+// Called once by all(); exposed so the GUI can report what failed to load.
+// Never throws and never fails as a whole - a bad file is skipped and appended
+// to `problems` (if given), because a theme file is user content and the app
+// has to start without it.
+QVector<palette_data::PaletteData> loadUserPalettes(QStringList *problems = nullptr);
+
+// Whatever loadUserPalettes() reported the first time the registry was built.
+const QStringList &userThemeProblems();
 
 } // namespace theme
 

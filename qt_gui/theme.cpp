@@ -20,9 +20,9 @@ QColor toQColor(const palette_data::Rgb &c) {
 
 Palette adapt(const palette_data::PaletteData &d) {
 	Palette p;
-	p.id = QString::fromUtf8(d.id);
-	p.name = QString::fromUtf8(d.name);
-	p.origin = QString::fromUtf8(d.origin);
+	p.id = QString::fromStdString(d.id);
+	p.name = QString::fromStdString(d.name);
+	p.origin = QString::fromStdString(d.origin);
 
 	p.surface0 = toQColor(d.surface0);
 	p.surface1 = toQColor(d.surface1);
@@ -63,24 +63,39 @@ Palette adapt(const palette_data::PaletteData &d) {
 	p.logDebug = toQColor(d.logDebug);
 	p.logSeparator = toQColor(d.logSeparator);
 
-	if (d.backgroundImage) p.backgroundImage = QString::fromUtf8(d.backgroundImage);
+	p.backgroundImage = QString::fromStdString(d.backgroundImage);
 	p.backgroundTiled = d.backgroundTiled;
-	if (d.backgroundPosition) p.backgroundPosition = QString::fromUtf8(d.backgroundPosition);
+	if (!d.backgroundPosition.empty())
+		p.backgroundPosition = QString::fromStdString(d.backgroundPosition);
+	return p;
+}
+
+QStringList &problemsStore() {
+	static QStringList p;
 	return p;
 }
 
 const QVector<Palette> &registry() {
 	static const QVector<Palette> themes = []() {
 		QVector<Palette> v;
-		v.reserve(static_cast<int>(palette_data::builtinCount()));
-		for (std::size_t i = 0; i < palette_data::builtinCount(); ++i)
-			v.push_back(adapt(palette_data::builtins()[i]));
+		for (const palette_data::PaletteData &d : palette_data::builtins())
+			v.push_back(adapt(d));
+		// User themes come after the built-ins, so a built-in always wins a
+		// name clash - though loadUserPalettes() already rejects ids that
+		// collide, so this is belt and braces.
+		for (const palette_data::PaletteData &d : loadUserPalettes(&problemsStore()))
+			v.push_back(adapt(d));
 		return v;
 	}();
 	return themes;
 }
 
 } // namespace
+
+const QStringList &userThemeProblems() {
+	registry();   // force the one-time load so the list is populated
+	return problemsStore();
+}
 
 // No default: case, deliberately. Adding a LogSeverity without giving it a
 // colour is then a compile error rather than a silent fall-through to logInfo -

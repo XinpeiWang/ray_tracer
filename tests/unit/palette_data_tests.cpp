@@ -29,8 +29,8 @@ namespace {
 
 std::vector<const PaletteData *> allPalettes() {
 	std::vector<const PaletteData *> v;
-	for (std::size_t i = 0; i < builtinCount(); ++i)
-		v.push_back(&builtins()[i]);
+	for (const PaletteData &p : builtins())
+		v.push_back(&p);
 	return v;
 }
 
@@ -85,13 +85,13 @@ std::vector<std::pair<const char *, Rgb>> fieldsOf(const PaletteData &p) {
 // ===========================================================================
 
 TEST(PaletteDataTest, RegistryIsNonEmpty) {
-	EXPECT_GT(builtinCount(), 0u);
+	EXPECT_GT(builtins().size(), 0u);
 }
 
 TEST(PaletteDataTest, HasExpectedCount) {
 	// Update deliberately when adding a theme, so one appearing or vanishing by
 	// accident is loud.
-	EXPECT_EQ(builtinCount(), 12u);
+	EXPECT_EQ(builtins().size(), 12u);
 }
 
 TEST(PaletteDataTest, IdsAreUniqueAndNonEmpty) {
@@ -99,21 +99,17 @@ TEST(PaletteDataTest, IdsAreUniqueAndNonEmpty) {
 	// theme permanently unreachable - byId() returns whichever comes first.
 	std::set<std::string> seen;
 	for (const PaletteData *p : allPalettes()) {
-		ASSERT_NE(p->id, nullptr);
-		const std::string id = p->id;
-		EXPECT_FALSE(id.empty()) << "empty theme id";
-		EXPECT_TRUE(seen.insert(id).second) << "duplicate theme id '" << id << "'";
+		EXPECT_FALSE(p->id.empty()) << "empty theme id";
+		EXPECT_TRUE(seen.insert(p->id).second) << "duplicate theme id '" << p->id << "'";
 	}
 }
 
 TEST(PaletteDataTest, NamesAndOriginsAreNonEmpty) {
 	for (const PaletteData *p : allPalettes()) {
-		ASSERT_NE(p->name, nullptr);
-		ASSERT_NE(p->origin, nullptr);
-		EXPECT_GT(std::string(p->name).size(), 0u) << "theme " << p->id;
+		EXPECT_FALSE(p->name.empty()) << "theme " << p->id;
 		// origin is shown as the menu entry's status tip and records where the
 		// numbers came from; an empty one means an unattributed palette.
-		EXPECT_GT(std::string(p->origin).size(), 0u) << "theme " << p->id;
+		EXPECT_FALSE(p->origin.empty()) << "theme " << p->id;
 	}
 }
 
@@ -134,8 +130,7 @@ TEST(PaletteDataTest, EveryColourFieldIsAssigned) {
 TEST(PaletteDataTest, TiledBackgroundsDeclareAnImage) {
 	for (const PaletteData *p : allPalettes()) {
 		if (p->backgroundTiled) {
-			ASSERT_NE(p->backgroundImage, nullptr) << "theme " << p->id;
-			EXPECT_GT(std::string(p->backgroundImage).size(), 0u)
+			EXPECT_FALSE(p->backgroundImage.empty())
 				<< "theme '" << p->id << "' is marked tiled but has no image";
 		}
 	}

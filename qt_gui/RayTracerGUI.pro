@@ -23,6 +23,8 @@ SOURCES += \
 	mainwindow_actions.cpp \
 	icon_tint.cpp \
 	palette_data.cpp \
+	palette_file.cpp \
+	theme_load.cpp \
 	scene_metadata_client.cpp \
 	theme.cpp \
 	theme_switch.cpp \
@@ -33,6 +35,7 @@ HEADERS += \
 	camera_math.h \
 	icon_tint.h \
 	palette_data.h \
+	palette_file.h \
 	render_output_parser.h \
 	scene_metadata_client.h \
 	theme.h \
