@@ -11,6 +11,7 @@
 #include <QScrollBar>
 #include <QCoreApplication>
 #include <QSignalBlocker>
+#include <QThread>
 #include <array>
 #include <cmath>
 #include <optional>
@@ -258,7 +259,7 @@ void MainWindow::onRenderClicked() {
 	double camY = m_cameraPosY->value();
 	double camZ = m_cameraPosZ->value();
 
-	// Only treat the camera as "explicit" (see RenderThread::setParameters's
+	// Only treat the camera as "explicit" (see RenderController::setParameters's
 	// comment) if it actually differs from this scene's own recommended
 	// camera - queried live, same as onSceneChanged. If the query fails,
 	// default to explicit: the worse outcome is an unnecessary (but
@@ -281,12 +282,14 @@ void MainWindow::onRenderClicked() {
 	}
 
 	// ========================================================================
-	// Launch Render Thread
+	// Launch Render
 	// ========================================================================
-	// RenderThread spawns ray_tracer.exe as a subprocess with all parameters
-	// The executable will call either CPU or GPU renderer based on useGPU flag
-	m_renderThread = new RenderThread(this);
-	m_renderThread->setParameters(useGPU, width, height, samples, maxDepth, sceneId, camX, camY, camZ, camExplicit, outputPath);
+	// RenderController spawns ray_tracer.exe as a subprocess with all
+	// parameters and reports its output back via signals (no worker thread -
+	// QProcess is already asynchronous). The executable will call either the
+	// CPU or GPU renderer based on the useGPU flag.
+	m_renderController = new RenderController(this);
+	m_renderController->setParameters(useGPU, width, height, samples, maxDepth, sceneId, camX, camY, camZ, camExplicit, outputPath);
 
 	// Set video parameters if in video mode
 	if (m_videoMode) {
@@ -294,16 +297,22 @@ void MainWindow::onRenderClicked() {
 		int videoFPS = m_videoFPSSpinBox->value();
 		double videoSpeed = m_videoSpeedSpinBox->value();
 		QString cameraPath = m_cameraPathCombo->currentData().toString();
-		m_renderThread->setVideoParameters(true, videoFrames, videoFPS, cameraPath, videoSpeed);
+		m_renderController->setVideoParameters(true, videoFrames, videoFPS, cameraPath, videoSpeed);
 	} else {
-		m_renderThread->setVideoParameters(false, 0, 0, "", 1.0);
+		m_renderController->setVideoParameters(false, 0, 0, "", 1.0);
 	}
 
-	connect(m_renderThread, &RenderThread::progressUpdate, this, &MainWindow::onProgressUpdate);
-	connect(m_renderThread, SIGNAL(renderComplete(bool,QString,double,QString)), 
-			this, SLOT(onRenderComplete(bool,QString,double,QString)));
-	connect(m_renderThread, &RenderThread::logMessage, this, &MainWindow::onLogMessage);
-	connect(m_renderThread, &QThread::finished, m_renderThread, &QObject::deleteLater);
+	connect(m_renderController, &RenderController::progressUpdate, this, &MainWindow::onProgressUpdate);
+	connect(m_renderController, &RenderController::renderComplete, this, &MainWindow::onRenderComplete);
+	connect(m_renderController, &RenderController::logMessage, this, &MainWindow::onLogMessage);
+
+	// The controller is done once it reports completion; drop it so
+	// m_renderController is only non-null while a render is actually active.
+	connect(m_renderController, &RenderController::renderComplete, this, [this]() {
+		if (!m_renderController) return;
+		m_renderController->deleteLater();
+		m_renderController = nullptr;
+	});
 
 	m_isRendering = true;
 	m_renderButton->setEnabled(false);
@@ -329,21 +338,21 @@ void MainWindow::onRenderClicked() {
 	// Auto-switch to Log tab so user sees live output immediately
 	if (m_logTabIndex >= 0) m_tabWidget->setCurrentIndex(m_logTabIndex);
 
-	m_renderThread->start();
+	m_renderController->start();
 }
 
 void MainWindow::onStopClicked() {
-	if (!m_isRendering || !m_renderThread) {
+	if (!m_isRendering || !m_renderController) {
 		return;
 	}
 
 	m_statusLabel->setText("Stopping render...");
 	m_stopButton->setEnabled(false);
 
-	// Stop the render process - this will cause the thread to finish
-	m_renderThread->stopRender();
+	m_renderController->stopRender();
 
-	// The thread will emit renderComplete when done, which will reset the UI
+	// The controller emits renderComplete once the process actually exits,
+	// which resets the UI.
 }
 
 void MainWindow::onQualityPresetChanged(int index) {

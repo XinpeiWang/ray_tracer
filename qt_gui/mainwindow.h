@@ -10,7 +10,6 @@
 #include <QProgressBar>
 #include <QLabel>
 #include <QPushButton>
-#include <QThread>
 #include <QGroupBox>
 #include <QLineEdit>
 #include <QProcess>
@@ -19,9 +18,9 @@
 #include <QEvent>
 #include <QTimer>
 #include <QDateTime>
+#include <QElapsedTimer>
 #include <QPixmap>
 #include <QResizeEvent>
-#include <atomic>
 
 // ============================================================================
 // WheelIgnoreFilter
@@ -94,19 +93,28 @@ private:
 };
 
 // ============================================================================
-// RenderThread
+// RenderController
 // ============================================================================
-// Background thread that spawns ray_tracer.exe as a subprocess
-// Passes render parameters including camera position via command line
-// Monitors stdout for progress updates and completion status
+// Spawns ray_tracer.exe as a subprocess and turns its stdout into progress
+// and log signals.
+//
+// This deliberately is NOT a QThread. QProcess is already fully asynchronous
+// (it's a QObject that emits readyReadStandardOutput/finished/errorOccurred
+// on the event loop), so it needs no worker thread of its own - this class
+// lives on the GUI thread and is driven entirely by those signals. The
+// earlier design subclassed QThread and ran a blocking
+// `while (running) { waitForReadyRead(50); readAll(); }` loop, which cost a
+// fixed up-to-50ms latency on every progress update and forced the
+// stop-request flag to be an atomic polled across threads. Being
+// single-threaded now, stopRender() can just kill the process directly.
 // ============================================================================
-class RenderThread : public QThread {
+class RenderController : public QObject {
 	Q_OBJECT
 
 public:
-	RenderThread(QObject *parent = nullptr);
+	explicit RenderController(QObject *parent = nullptr);
 
-	// Set all render parameters before starting the thread
+	// Set all render parameters before calling start()
 	// Camera parameters (camX, camY, camZ) define the camera position (lookfrom)
 	// The camera always looks at the Cornell box center (278, 278, 278) - lookat is fixed
 	// sceneId selects which scene to render (0=Cornell Box, 1=Bouncing Spheres, etc.)
@@ -123,19 +131,33 @@ public:
 	// Set video generation parameters
 	void setVideoParameters(bool enabled, int frames, int fps, const QString &cameraPath, double speed = 1.0);
 
-	// Request the render process to stop (sends terminate signal)
+	// Builds the command line and launches ray_tracer.exe. Returns immediately;
+	// everything after this point is driven by the process's own signals.
+	void start();
+
+	// Kill the render process. Safe to call when nothing is running.
 	void stopRender();
 
-protected:
-	// Thread entry point - builds command line and launches ray_tracer.exe
-	void run() override;
+	bool isRunning() const;
 
 signals:
 	void progressUpdate(int percentage);
 	void renderComplete(bool success, const QString &message, double totalTime, const QString &outputPath);
 	void logMessage(const QString &message);
 
+private slots:
+	void onReadyRead();
+	void onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);
+	void onProcessErrorOccurred(QProcess::ProcessError error);
+
 private:
+	// Splits a raw output chunk into complete lines (holding any trailing
+	// partial line back in m_lineBuffer until the rest arrives), emitting
+	// each as a log message and feeding it to parseProgressLine().
+	void handleOutputChunk(const QString &chunk);
+	void parseProgressLine(const QString &line);
+	void finish(bool success, const QString &message, const QString &outputPath);
+
 	// Render configuration
 	bool m_useGPU;          // true = GPU renderer, false = CPU renderer
 	int m_width;            // Image width in pixels
@@ -151,12 +173,22 @@ private:
 	bool m_camExplicit;     // See setParameters()'s comment
 
 	QString m_outputPath;   // Output file path for rendered image
-	QProcess *m_renderProcess; // Subprocess handle for ray_tracer.exe (owned by the worker thread - run())
+	QProcess *m_renderProcess = nullptr;  // Subprocess handle (child of this object)
 
-	// Set by stopRender() (called from the GUI thread) and polled from run() (the
-	// worker thread) so the process is only ever killed by the thread that owns it,
-	// and so a genuine crash can be told apart from a user-requested stop.
-	std::atomic<bool> m_stopRequested{false};
+	// Whether the user asked to stop, tracked explicitly rather than inferred
+	// from exit status/code - a real crash (e.g. access violation) also
+	// produces CrashExit + a nonzero exit code on Windows, so that heuristic
+	// can't tell the two apart and used to mislabel genuine crashes as
+	// "stopped by user", hiding the error dialog.
+	bool m_stopRequested = false;
+
+	// Guards against emitting renderComplete twice when both errorOccurred
+	// and finished fire for the same run.
+	bool m_finished = false;
+
+	QElapsedTimer m_elapsed;   // Wall-clock timer for the render
+	QString m_lineBuffer;      // Incomplete trailing line awaiting the rest of its chunk
+	int m_lastProgress = 0;    // Last emitted percentage (progress only moves forward)
 
 	// Video generation parameters
 	bool m_videoMode;       // true = video generation, false = single image
@@ -280,8 +312,8 @@ private:
 	QTextEdit *m_logTextEdit;           // Log output display
 	int m_logTabIndex = -1;             // Index of the Log Output tab within m_tabWidget
 
-	// Render thread
-	RenderThread *m_renderThread;       // Background render thread (nullptr when not rendering)
+	// Render driver (nullptr when not rendering)
+	RenderController *m_renderController;
 
 	// State
 	bool m_isRendering;                 // true when a render is in progress

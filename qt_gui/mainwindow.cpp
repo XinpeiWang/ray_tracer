@@ -27,14 +27,14 @@
 #include <QScreen>
 #include <QTimer>
 
-// RenderThread Implementation
-RenderThread::RenderThread(QObject *parent)
-	: QThread(parent), m_useGPU(true), m_width(800), m_height(800), m_samples(100), m_maxDepth(50),
-	  m_sceneId(0), m_camX(278), m_camY(278), m_camZ(-800), m_camExplicit(false), m_renderProcess(nullptr),
+// RenderController Implementation
+RenderController::RenderController(QObject *parent)
+	: QObject(parent), m_useGPU(true), m_width(800), m_height(800), m_samples(100), m_maxDepth(50),
+	  m_sceneId(0), m_camX(278), m_camY(278), m_camZ(-800), m_camExplicit(false),
 	  m_videoMode(false), m_videoFrames(60), m_videoFPS(30), m_videoSpeed(1.0), m_cameraPath("orbit") {
 }
 
-void RenderThread::setParameters(bool useGPU, int width, int height, int samples, int maxDepth,
+void RenderController::setParameters(bool useGPU, int width, int height, int samples, int maxDepth,
 								  int sceneId, double camX, double camY, double camZ, bool camExplicit,
 								  const QString &outputPath) {
 	m_useGPU = useGPU;
@@ -50,7 +50,7 @@ void RenderThread::setParameters(bool useGPU, int width, int height, int samples
 	m_outputPath = outputPath;
 }
 
-void RenderThread::setVideoParameters(bool enabled, int frames, int fps, const QString &cameraPath, double speed) {
+void RenderController::setVideoParameters(bool enabled, int frames, int fps, const QString &cameraPath, double speed) {
 	m_videoMode = enabled;
 	m_videoFrames = frames;
 	m_videoFPS = fps;
@@ -58,16 +58,20 @@ void RenderThread::setVideoParameters(bool enabled, int frames, int fps, const Q
 	m_cameraPath = cameraPath;
 }
 
-void RenderThread::stopRender() {
-	// Called from the GUI thread. m_renderProcess is created and owned by the
-	// worker thread (see run()), so it must not be touched from here - just
-	// flag the request and let run()'s polling loop do the actual kill() on
-	// its own thread.
-	emit logMessage("Stopping render...");
-	m_stopRequested.store(true, std::memory_order_relaxed);
+bool RenderController::isRunning() const {
+	return m_renderProcess && m_renderProcess->state() != QProcess::NotRunning;
 }
 
-void RenderThread::run() {
+void RenderController::stopRender() {
+	if (!isRunning()) return;
+	emit logMessage("Stopping render...");
+	m_stopRequested = true;
+	// Everything lives on the GUI thread now, so the process can be killed
+	// directly here - onProcessFinished() will pick it up from the event loop.
+	m_renderProcess->kill();
+}
+
+void RenderController::start() {
 	emit logMessage(QString("Starting render..."));
 
 	// Look up scene name live from scene_metadata.dll
@@ -165,151 +169,124 @@ void RenderThread::run() {
 
 	emit logMessage(QString("Command: %1 %2").arg(exePath, args.join(" ")));
 
-	QTime startTime = QTime::currentTime();
-
 	// ========================================================================
 	// Launch ray_tracer.exe as Subprocess
 	// ========================================================================
-	m_renderProcess = new QProcess();
+	m_stopRequested = false;
+	m_finished = false;
+	m_lastProgress = 0;
+	m_lineBuffer.clear();
+	m_elapsed.start();
+
+	m_renderProcess = new QProcess(this);
 	m_renderProcess->setProcessChannelMode(QProcess::MergedChannels);
 
 	// Set working directory to the application directory (RayTracer_Package)
 	// This ensures output/frames directories are created in the correct location
 	m_renderProcess->setWorkingDirectory(QCoreApplication::applicationDirPath());
 
-	m_renderProcess->start(exePath, args);
+	connect(m_renderProcess, &QProcess::readyReadStandardOutput,
+			this, &RenderController::onReadyRead);
+	connect(m_renderProcess, &QProcess::errorOccurred,
+			this, &RenderController::onProcessErrorOccurred);
+	connect(m_renderProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+			this, &RenderController::onProcessFinished);
 
-	if (!m_renderProcess->waitForStarted()) {
-		QString error = m_renderProcess->errorString();
-		emit renderComplete(false, QString("Failed to start renderer: %1").arg(error), 0.0, QString());
-		m_renderProcess->deleteLater();
-		m_renderProcess = nullptr;
+	m_renderProcess->start(exePath, args);
+}
+
+void RenderController::onReadyRead() {
+	// ray_tracer.exe's console output (box-drawing banners, checkmarks) is
+	// UTF-8 - fromLocal8Bit() would decode it against the system ANSI
+	// codepage instead, mangling every non-ASCII character (e.g. "─" ->
+	// "â”€"). QProcess pipes raw bytes with no codepage translation, so the
+	// bytes read here are exactly what the child process wrote.
+	handleOutputChunk(QString::fromUtf8(m_renderProcess->readAll()));
+}
+
+void RenderController::handleOutputChunk(const QString &chunk) {
+	m_lineBuffer += chunk;
+
+	// The renderer writes its in-place progress counter with a bare '\r' and
+	// no newline, so '\r' has to count as a line terminator here - waiting
+	// for '\n' would stall progress updates until the next real line.
+	QStringList parts = m_lineBuffer.split(QRegularExpression("[\r\n]"));
+
+	// Whatever follows the last terminator is an incomplete line: hold it
+	// back until the rest of it arrives in a later chunk.
+	m_lineBuffer = parts.takeLast();
+
+	for (const QString &part : parts) {
+		QString line = part.trimmed();
+		if (line.isEmpty()) continue;
+		emit logMessage(line);
+		parseProgressLine(line);
+	}
+}
+
+void RenderController::parseProgressLine(const QString &line) {
+	static const QRegularExpression scanlinesRegex("Scanlines remaining:\\s*(\\d+)");
+	// Matches "[5/60] Rendering frame_"
+	static const QRegularExpression videoFrameRegex("\\[(\\d+)/(\\d+)\\] Rendering frame_");
+
+	// Video mode: rendering (0-95%), then a fixed bump once ffmpeg assembly
+	// starts (no per-frame progress available from ffmpeg cheaply);
+	// onRenderComplete snaps to 100% once the subprocess actually exits. PNG
+	// conversion no longer gets its own reserved range - it now happens on a
+	// background thread overlapped with rendering (see main.cpp's
+	// BackgroundPngConverter) and finishes near-instantly after the last
+	// frame, so there's no distinct serial "converting" phase left to show.
+	if (m_videoMode) {
+		QRegularExpressionMatch frameMatch = videoFrameRegex.match(line);
+		if (frameMatch.hasMatch()) {
+			int currentFrame = frameMatch.captured(1).toInt();
+			int totalFrames = frameMatch.captured(2).toInt();
+			int progress = (totalFrames > 0) ? (currentFrame * 95) / totalFrames : 0;
+			progress = std::max(0, std::min(progress, 95));
+			if (progress > m_lastProgress) {
+				emit progressUpdate(progress);
+				m_lastProgress = progress;
+			}
+		}
+		if (line.contains("ASSEMBLING VIDEO WITH FFMPEG") && m_lastProgress < 97) {
+			emit progressUpdate(97);
+			m_lastProgress = 97;
+		}
 		return;
 	}
 
-	// Read output and parse progress
-	int lastProgress = 0;
-	QRegularExpression scanlinesRegex("Scanlines remaining:\\s*(\\d+)");
-	QRegularExpression videoFrameRegex("\\[(\\d+)/(\\d+)\\] Rendering frame_");  // Matches "[5/60] Rendering frame_"
-	int totalScanlines = m_height; // Track total height for percentage calculation
-	QString accumulatedOutput;
-
-	while (m_renderProcess->state() == QProcess::Running) {
-		if (m_stopRequested.load(std::memory_order_relaxed)) {
-			// This thread owns m_renderProcess (created above), so it's the
-			// only one allowed to call kill() on it.
-			m_renderProcess->kill();
-			m_renderProcess->waitForFinished(3000); // Wait up to 3 seconds
-			break;
-		}
-		m_renderProcess->waitForReadyRead(50); // Check more frequently
-		QByteArray rawData = m_renderProcess->readAll();
-
-		if (!rawData.isEmpty()) {
-			// ray_tracer.exe's console output (box-drawing banners, checkmarks)
-			// is UTF-8 - fromLocal8Bit() decoded it against the system ANSI
-			// codepage instead, mangling every non-ASCII character (e.g. "─"
-			// -> "â”€"). QProcess pipes raw bytes with no codepage translation,
-			// so the bytes captured here are exactly what the child process
-			// wrote - decode them as UTF-8 to match.
-			QString output = QString::fromUtf8(rawData);
-			accumulatedOutput += output;
-
-			// Split into individual lines and emit each separately so every line
-			// gets its own timestamp and category label in the log panel.
-			QStringList lines = output.split(QRegularExpression("[\r\n]"), Qt::SkipEmptyParts);
-			for (const QString& line : lines) {
-				QString trimmed = line.trimmed();
-				if (!trimmed.isEmpty())
-					emit logMessage(trimmed);
-			}
-
-			// Parse progress from same lines
-			for (const QString& line : lines) {
-				// Video mode: rendering (0-95%), then a fixed bump once ffmpeg
-				// assembly starts (no per-frame progress available from ffmpeg
-				// cheaply); onRenderComplete snaps to 100% once the subprocess
-				// actually exits. PNG conversion no longer gets its own
-				// reserved range - it now happens on a background thread
-				// overlapped with rendering (see main.cpp's BackgroundPngConverter)
-				// and finishes near-instantly after the last frame, so there's
-				// no distinct serial "converting" phase left to represent.
-				if (m_videoMode) {
-					QRegularExpressionMatch frameMatch = videoFrameRegex.match(line);
-					if (frameMatch.hasMatch()) {
-						int currentFrame = frameMatch.captured(1).toInt();
-						int totalFrames = frameMatch.captured(2).toInt();
-						int progress = (totalFrames > 0) ? (currentFrame * 95) / totalFrames : 0;
-						progress = std::max(0, std::min(progress, 95));
-						if (progress > lastProgress) {
-							emit progressUpdate(progress);
-							lastProgress = progress;
-						}
-					}
-					if (line.contains("ASSEMBLING VIDEO WITH FFMPEG") && lastProgress < 97) {
-						emit progressUpdate(97);
-						lastProgress = 97;
-					}
-				}
-				// Single-image mode: look for "Scanlines remaining: X"
-				else {
-					QRegularExpressionMatch scanlinesMatch = scanlinesRegex.match(line);
-					if (scanlinesMatch.hasMatch()) {
-						int remaining = scanlinesMatch.captured(1).toInt();
-						int completed = totalScanlines - remaining;
-						int progress = (totalScanlines > 0) ? (completed * 100) / totalScanlines : 0;
-						progress = std::max(0, std::min(progress, 100)); // Clamp to 0-100
-						if (progress > lastProgress) { // Only update forward
-							emit progressUpdate(progress);
-							lastProgress = progress;
-						}
-					}
-				}
-			}
-
-			// Also check the accumulated buffer for the last scanline message (single-image mode only)
-			if (!m_videoMode) {
-				int lastCR = accumulatedOutput.lastIndexOf('\r');
-				if (lastCR >= 0) {
-					QString lastLine = accumulatedOutput.mid(lastCR + 1);
-					QRegularExpressionMatch match = scanlinesRegex.match(lastLine);
-					if (match.hasMatch()) {
-						int remaining = match.captured(1).toInt();
-						int completed = totalScanlines - remaining;
-						int progress = (totalScanlines > 0) ? (completed * 100) / totalScanlines : 0;
-						progress = std::max(0, std::min(progress, 100));
-						if (progress > lastProgress) {
-							emit progressUpdate(progress);
-							lastProgress = progress;
-						}
-					}
-				}
-			}
+	// Single-image mode: look for "Scanlines remaining: X"
+	QRegularExpressionMatch scanlinesMatch = scanlinesRegex.match(line);
+	if (scanlinesMatch.hasMatch()) {
+		int remaining = scanlinesMatch.captured(1).toInt();
+		int completed = m_height - remaining;
+		int progress = (m_height > 0) ? (completed * 100) / m_height : 0;
+		progress = std::max(0, std::min(progress, 100));  // Clamp to 0-100
+		if (progress > m_lastProgress) {                  // Only update forward
+			emit progressUpdate(progress);
+			m_lastProgress = progress;
 		}
 	}
+}
 
-	// Wait for process to finish
-	// Use -1 (infinite timeout) because complex scenes can take a long time
-	// The progress updates will keep the GUI responsive
-	if (m_renderProcess->state() != QProcess::NotRunning) {
-		m_renderProcess->waitForFinished(-1); // Wait indefinitely
-	}
+void RenderController::onProcessErrorOccurred(QProcess::ProcessError error) {
+	// Only FailedToStart is terminal on its own - every other error is
+	// followed by finished(), which does the reporting.
+	if (error != QProcess::FailedToStart || m_finished) return;
+	finish(false, QString("Failed to start renderer: %1").arg(m_renderProcess->errorString()), QString());
+}
 
-	QTime endTime = QTime::currentTime();
-	double totalTime = startTime.msecsTo(endTime) / 1000.0;
+void RenderController::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus) {
+	if (m_finished) return;
 
-	int exitCode = m_renderProcess->exitCode();
-	QProcess::ExitStatus exitStatus = m_renderProcess->exitStatus();
-	QString finalOutput = m_renderProcess->readAll();
+	const double totalTime = m_elapsed.elapsed() / 1000.0;
 
-	// Flush any trailing lines
+	// Drain whatever is left, then flush any final partial line.
+	handleOutputChunk(QString::fromUtf8(m_renderProcess->readAll()));
+	QString finalOutput = m_lineBuffer.trimmed();
 	if (!finalOutput.isEmpty()) {
-		QStringList trailing = finalOutput.split(QRegularExpression("[\\r\\n]"), Qt::SkipEmptyParts);
-		for (const QString& line : trailing) {
-			QString trimmed = line.trimmed();
-			if (!trimmed.isEmpty())
-				emit logMessage(trimmed);
-		}
+		emit logMessage(finalOutput);
+		m_lineBuffer.clear();
 	}
 
 	// Structured finish footer
@@ -327,20 +304,9 @@ void RenderThread::run() {
 		.arg(exitStatus == QProcess::NormalExit ? "Normal" : "Crash")
 		.arg(elapsedStr));
 
-	// Whether this was a user-requested stop, tracked explicitly via
-	// m_stopRequested rather than inferred from exit status/code - a real
-	// crash (e.g. access violation) also produces CrashExit + a nonzero exit
-	// code on Windows, so that heuristic can't tell the two apart and used to
-	// mislabel genuine crashes as "stopped by user", hiding the error dialog.
-	bool wasKilled = m_stopRequested.load(std::memory_order_relaxed);
-
-	// Clean up process
-	m_renderProcess->deleteLater();
-	m_renderProcess = nullptr;
-
-	if (wasKilled) {
+	if (m_stopRequested) {
 		emit logMessage("Result: STOPPED BY USER");
-		emit renderComplete(false, "Render stopped by user", totalTime, QString());
+		finish(false, "Render stopped by user", QString());
 	} else if (exitCode == 0) {
 		// Determine actual output path (default if not specified)
 		QString actualOutputPath = m_outputPath;
@@ -355,7 +321,7 @@ void RenderThread::run() {
 
 		emit logMessage(QString("Result: SUCCESS  |  Output: %1").arg(actualOutputPath));
 		emit progressUpdate(100);
-		emit renderComplete(true, "Render completed successfully!", totalTime, actualOutputPath);
+		finish(true, "Render completed successfully!", actualOutputPath);
 	} else {
 		// Render failed with specific error code
 		emit logMessage(QString("Result: FAILED (exit code %1)").arg(exitCode));
@@ -382,13 +348,27 @@ void RenderThread::run() {
 		if (!finalOutput.isEmpty()) {
 			fullErrorMsg += "\n\nOutput:\n" + finalOutput;
 		}
-		emit renderComplete(false, fullErrorMsg, totalTime, QString());
+		finish(false, fullErrorMsg, QString());
 	}
+}
+
+void RenderController::finish(bool success, const QString &message, const QString &outputPath) {
+	m_finished = true;
+
+	const double totalTime = m_elapsed.elapsed() / 1000.0;
+
+	if (m_renderProcess) {
+		m_renderProcess->disconnect(this);
+		m_renderProcess->deleteLater();
+		m_renderProcess = nullptr;
+	}
+
+	emit renderComplete(success, message, totalTime, outputPath);
 }
 
 // MainWindow Implementation
 MainWindow::MainWindow(QWidget *parent)
-	: QMainWindow(parent), m_renderThread(nullptr), m_isRendering(false), m_videoMode(false),
+	: QMainWindow(parent), m_renderController(nullptr), m_isRendering(false), m_videoMode(false),
 	  m_elapsedTimer(nullptr) {
 
 	// Create shared wheel filter (blocks accidental scroll on all controls)
@@ -422,9 +402,8 @@ MainWindow::MainWindow(QWidget *parent)
 }
 
 MainWindow::~MainWindow() {
-	if (m_renderThread && m_renderThread->isRunning()) {
-		m_renderThread->terminate();
-		m_renderThread->wait();
+	if (m_renderController && m_renderController->isRunning()) {
+		m_renderController->stopRender();
 	}
 }
 

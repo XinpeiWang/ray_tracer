@@ -26,11 +26,10 @@ struct DllHandle {
 	IntByIdFn requiresFilesFn = nullptr;
 };
 
-// Callers span both the GUI thread (onSceneChanged, onRenderClicked) and
-// RenderThread's worker thread (mainwindow.cpp's run(), via
-// ErrorHandler::getTroubleshootingHint -> gpuSupportedSceneList for exit
-// code 211) - std::call_once, not a plain "attempted" bool, makes the
-// first load race-free regardless of which thread gets there first.
+// All current callers are on the GUI thread, but std::call_once (rather than
+// a plain "attempted" bool) keeps the one-time DLL load race-free if this is
+// ever called from another thread again - it previously was, from the render
+// worker thread that RenderController replaced.
 DllHandle& handle() {
 	static DllHandle h;
 	static std::once_flag loadOnce;
