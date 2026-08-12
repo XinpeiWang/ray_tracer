@@ -60,16 +60,9 @@ void MainWindow::createBasicTab() {
 
 	m_sceneInfoLabel = new QLabel(basicTab);
 	m_sceneInfoLabel->setWordWrap(true);
-	m_sceneInfoLabel->setStyleSheet(
-		"QLabel {"
-		"  color: #9A9AB0;"
-		"  background-color: #1E1E2A;"
-		"  border: 1px solid #2A2A3A;"
-		"  border-radius: 6px;"
-		"  padding: 8px 12px;"
-		"  font-size: 11px;"
-		"}"
-	);
+	// Appearance lives in the global stylesheet under this name, so it follows
+	// the active theme without anything here having to know a colour.
+	m_sceneInfoLabel->setObjectName("sceneInfo");
 	sceneGroupLayout->addWidget(m_sceneInfoLabel);
 
 	connect(m_sceneCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -418,20 +411,12 @@ void MainWindow::createPreviewTab() {
 	m_previewLabel = new ScaledImageLabel(previewWidget);
 	m_previewLabel->setPlaceholderText("No render yet — start a render to see a preview here.");
 	m_previewLabel->setMinimumHeight(200);
-	m_previewLabel->setStyleSheet(
-		"ScaledImageLabel {"
-		"  background-color: #0E0E14;"
-		"  border: 1px solid #2A2A3A;"
-		"  border-radius: 6px;"
-		"  color: #9A9AB0;"
-		"  font-size: 11pt;"
-		"}"
-	);
+	// Styled globally by class name - see the ScaledImageLabel rule.
 	layout->addWidget(m_previewLabel, /*stretch=*/1);
 
 	m_previewInfoLabel = new QLabel(previewWidget);
 	m_previewInfoLabel->setAlignment(Qt::AlignCenter);
-	m_previewInfoLabel->setStyleSheet("color: #9A9AB0; font-size: 9pt;");
+	m_previewInfoLabel->setObjectName("previewInfo");
 	layout->addWidget(m_previewInfoLabel);
 
 	QHBoxLayout *btnLayout = new QHBoxLayout();
@@ -479,14 +464,8 @@ void MainWindow::createLogTab() {
 	m_logTextEdit->setReadOnly(true);
 	m_logTextEdit->setFont(QFont("Consolas", 9));
 	m_logTextEdit->setLineWrapMode(QTextEdit::NoWrap);
-	// Dark background matches the app theme
-	m_logTextEdit->setStyleSheet(
-		"QTextEdit {"
-		"  background-color: #0E0E14;"
-		"  border: 1px solid #2A2A3A;"
-		"  border-radius: 6px;"
-		"}"
-	);
+	// No stylesheet here: the global QTextEdit rule already supplies the
+	// surface, border and radius, and this local copy only duplicated it.
 
 	layout->addWidget(m_logTextEdit);
 
@@ -593,7 +572,7 @@ void MainWindow::createVideoTab() {
 	// Video duration info (calculated from frames/fps)
 	m_videoInfoLabel = new QLabel();
 	m_videoInfoLabel->setWordWrap(true);
-	m_videoInfoLabel->setStyleSheet("QLabel { color: #9A9AB0; font-style: italic; padding: 10px; }");
+	m_videoInfoLabel->setObjectName("videoInfo");
 
 	// Update duration display when frames, FPS, speed, or path changes
 	auto updateVideoDuration = [this]() {
@@ -644,7 +623,7 @@ void MainWindow::createVideoTab() {
 	);
 	requirementsInfo->setOpenExternalLinks(true);
 	requirementsInfo->setWordWrap(true);
-	requirementsInfo->setStyleSheet("QLabel { color: #9A9AB0; padding: 10px; }");
+	requirementsInfo->setObjectName("mutedInfo");
 	requirementsLayout->addWidget(requirementsInfo);
 
 	layout->addWidget(requirementsGroup);
@@ -665,7 +644,7 @@ void MainWindow::createVideoTab() {
 		"• Typical render time: 1-5 minutes (GPU), 15-60 minutes (CPU)"
 	);
 	usageText->setWordWrap(true);
-	usageText->setStyleSheet("QLabel { color: #9A9AB0; padding: 10px; line-height: 1.5; }");
+	usageText->setObjectName("mutedInfo");
 	usageLayout->addWidget(usageText);
 
 	layout->addWidget(usageGroup);

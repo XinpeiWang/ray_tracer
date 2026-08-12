@@ -42,9 +42,9 @@ QString styleLogLine(const render_output::LogCategory &cat, const QString &colou
 					   "<b>%2</b></span>").arg(colour, escaped);
 	case render_output::LineStyle::BoldLabeled:
 		return QString("<span style='color:%1;font-family:Consolas,monospace;font-size:9pt;'>"
-					   "<b><span style='color:#888888;'>%2</span> "
+					   "<b><span style='color:%5;'>%2</span> "
 					   "<span style='color:%1;'>[%3]</span> %4</b></span>")
-			.arg(colour, timestamp, QString::fromLatin1(cat.label), escaped);
+			.arg(colour, timestamp, QString::fromLatin1(cat.label), escaped, timestampColour);
 	case render_output::LineStyle::Normal:
 		break;
 	}
@@ -339,10 +339,15 @@ void MainWindow::onSceneChanged(int index) {
 	infoText += QString("<b>Performance:</b> %1<br>").arg(SceneMetadataClient::scenePerformance(scene_id));
 	infoText += QString("<b>Recommended SPP:</b> %1<br>").arg(recommendedSpp);
 	infoText += QString("<b>GPU Support:</b> %1<br>").arg(gpuSupported ? "Yes" : "CPU only");
+	// These two warnings are the only coloured text in the label, so they take
+	// their colours from the theme's log severities rather than fixed hex - a
+	// gold-on-cream warning is unreadable on the light schemes.
 	if (SceneMetadataClient::sceneRequiresFiles(scene_id))
-		infoText += "<br><b style='color: #FFD700;'>&#9888; Requires external files</b>";
+		infoText += QString("<br><b style='color: %1;'>&#9888; Requires external files</b>")
+			.arg(m_activeTheme.logWarning.name());
 	if (!gpuSupported)
-		infoText += "<br><b style='color: #FF6B6B;'>&#9888; CPU renderer only</b>";
+		infoText += QString("<br><b style='color: %1;'>&#9888; CPU renderer only</b>")
+			.arg(m_activeTheme.logError.name());
 	m_sceneInfoLabel->setText(infoText);
 	if (m_samplesSpinBox->value() == 100 || m_samplesSpinBox->value() == 200 || m_samplesSpinBox->value() == 500)
 		m_samplesSpinBox->setValue(recommendedSpp);

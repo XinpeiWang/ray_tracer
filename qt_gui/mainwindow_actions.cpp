@@ -169,15 +169,11 @@ void MainWindow::createStatusBar() {
 	// (action status tips) uses the same bar automatically.
 	m_statusDevice = new QLabel(this);
 	m_statusSettings = new QLabel(this);
-	m_statusDevice->setStyleSheet("color: #9A9AB0; padding: 0 8px;");
-	m_statusSettings->setStyleSheet("color: #9A9AB0; padding: 0 8px;");
+	m_statusDevice->setObjectName("statusInfo");
+	m_statusSettings->setObjectName("statusInfo");
 
 	statusBar()->addPermanentWidget(m_statusSettings);
 	statusBar()->addPermanentWidget(m_statusDevice);
-	statusBar()->setStyleSheet(
-		"QStatusBar { background-color: #0E0E14; color: #9A9AB0; }"
-		"QStatusBar::item { border: none; }"
-	);
 	refreshStatusBarInfo();
 }
 

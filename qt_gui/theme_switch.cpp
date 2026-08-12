@@ -73,42 +73,16 @@ void MainWindow::createThemeMenu(QMenu *viewMenu) {
 	}
 }
 
-// Widgets that carry their own stylesheet rather than inheriting the global
-// one. These used to hold hardcoded hex values, which is exactly what made the
-// app un-themeable: the global sheet could change but these stayed cyberpunk.
+// The parts of the UI the global stylesheet cannot reach on its own.
+//
+// Everything that CAN be expressed as a rule in the global sheet lives there
+// instead, addressed by object name (QLabel#sceneInfo, #previewInfo, #videoInfo,
+// #mutedInfo, #statusInfo) or class name (ScaledImageLabel). Those re-theme for
+// free when applyTheme() rebuilds the sheet, and nothing has to be listed here.
+// What remains are the two categories that genuinely cannot: widgets Qt styles
+// outside the global sheet, and pixmaps that have to be regenerated.
 void MainWindow::restyleThemedWidgets() {
 	const theme::Palette &p = m_activeTheme;
-	const QString body = p.textBody.name();
-	const QString muted = p.textMuted.name();
-	const QString border = p.border.name();
-	const QString surface0 = p.surface0.name();
-	const QString surface2 = p.surface2.name();
-
-	if (m_sceneInfoLabel) {
-		m_sceneInfoLabel->setStyleSheet(QString(
-			"QLabel { color: %1; background-color: %2; border: 1px solid %3;"
-			" border-radius: 6px; padding: 8px 12px; font-size: 11px; }")
-			.arg(muted, surface2, border));
-	}
-	if (m_previewLabel) {
-		m_previewLabel->setStyleSheet(QString(
-			"ScaledImageLabel { background-color: %1; border: 1px solid %2;"
-			" border-radius: 6px; color: %3; font-size: 11pt; }")
-			.arg(surface0, border, muted));
-	}
-	if (m_previewInfoLabel)
-		m_previewInfoLabel->setStyleSheet(QString("color: %1; font-size: 9pt;").arg(muted));
-	if (m_logTextEdit) {
-		m_logTextEdit->setStyleSheet(QString(
-			"QTextEdit { background-color: %1; border: 1px solid %2; border-radius: 6px; }")
-			.arg(surface0, border));
-	}
-	if (m_videoInfoLabel)
-		m_videoInfoLabel->setStyleSheet(QString("QLabel { color: %1; font-style: italic; padding: 10px; }").arg(muted));
-	if (m_statusDevice)
-		m_statusDevice->setStyleSheet(QString("color: %1; padding: 0 8px;").arg(muted));
-	if (m_statusSettings)
-		m_statusSettings->setStyleSheet(QString("color: %1; padding: 0 8px;").arg(muted));
 
 	// Combo popups are separate top-level widgets with their own stylesheet, so
 	// the global sheet never reaches them. findChildren() rather than a list of
@@ -136,16 +110,10 @@ void MainWindow::restyleThemedWidgets() {
 	retintItems(m_modeCombo, {":/icons/image.svg", ":/icons/video.svg"});
 	retintItems(m_renderModeCombo, {":/icons/gpu.svg", ":/icons/cpu.svg"});
 
-	statusBar()->setStyleSheet(QString(
-		"QStatusBar { background-color: %1; color: %2; }"
-		"QStatusBar::item { border: none; }").arg(surface0, muted));
-
 	// The log pane's existing contents were written as HTML with the previous
 	// scheme's colours baked into each line, so they cannot be recoloured in
 	// place. Say so rather than leaving the user wondering why old lines look
 	// wrong next to new ones.
 	if (m_logTextEdit && !m_logTextEdit->document()->isEmpty())
 		onLogMessage("[INFO] Theme changed - existing log lines keep their previous colours");
-
-	Q_UNUSED(body);
 }

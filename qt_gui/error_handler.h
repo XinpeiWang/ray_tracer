@@ -250,16 +250,6 @@ inline QString getTroubleshootingHint(int errorCode) {
 	return "Check the Log Output tab for detailed error information.";
 }
 
-// Get category color (for UI styling)
-inline QString getCategoryColor(int errorCode) {
-	if (errorCode == 0) return "#4CAF50"; // Green - success
-	if (errorCode >= 1 && errorCode <= 99) return "#FF9800"; // Orange - general
-	if (errorCode >= 100 && errorCode <= 199) return "#2196F3"; // Blue - CPU
-	if (errorCode >= 200 && errorCode <= 299) return "#9C27B0"; // Purple - GPU
-	if (errorCode == 999) return "#9E9E9E"; // Gray - user action
-	return "#F44336"; // Red - unknown
-}
-
 // Get error category name
 inline QString getCategoryName(int errorCode) {
 	if (errorCode == 0) return "Success";

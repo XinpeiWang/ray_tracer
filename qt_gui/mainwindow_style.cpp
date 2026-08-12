@@ -46,14 +46,15 @@ constexpr const char *kRadiusLarge  = "10px";     // Containers
 // Qt stylesheets want "#RRGGBB" strings, palettes hold QColor.
 QString hex(const QColor &c) { return c.name(QColor::HexRgb); }
 
-// Text drawn on a selected row sits on accentDim, so it has to contrast with
-// THAT, not with the window. White is right for every dark scheme and for
-// mid-tone accents; only a genuinely pale accent needs dark text instead. The
+// Text drawn ON a filled element (a selected row, a completed progress bar)
+// has to contrast with THAT fill, not with the window - which is why a single
+// body-text colour cannot serve both. White is right for every dark scheme and
+// for mid-tone fills; only a genuinely pale fill needs dark text instead. The
 // threshold is high because white-on-mid-tone stays readable a good way up the
 // range - flipping at the midpoint sent Solarized Light's violet accent to
 // cream text, which was the worse of the two options.
-QColor selectedRowText(const theme::Palette &p) {
-	return p.accentDim.lightness() > 170 ? p.surface0 : QColor(Qt::white);
+QColor textOn(const QColor &fill, const theme::Palette &p) {
+	return fill.lightness() > 170 ? p.surface0 : QColor(Qt::white);
 }
 
 } // namespace
@@ -77,7 +78,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 	appPalette.setColor(QPalette::BrightText, p.accentPrimary);
 	appPalette.setColor(QPalette::Link, p.accentSecondary);
 	appPalette.setColor(QPalette::Highlight, p.accentDim);
-	appPalette.setColor(QPalette::HighlightedText, selectedRowText(p));
+	appPalette.setColor(QPalette::HighlightedText, textOn(p.accentDim, p));
 
 	// Disabled state colors
 	appPalette.setColor(QPalette::Disabled, QPalette::WindowText, p.textDisabled);
@@ -211,6 +212,19 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 		}
 		QProgressBar[resultState="error"]::chunk {
 			background-color: %ERROR%;
+		}
+		/* A finished bar is filled edge to edge, so its percentage text sits on
+		   the outcome colour and has to contrast with THAT. Leaving it on body
+		   text put a dark olive "100%" on Solarized Light's dark olive success
+		   fill - technically drawn, effectively invisible. The in-progress bar
+		   deliberately keeps body text: its text spans both the filled and
+		   unfilled halves, so no single colour is right and the trough is the
+		   safer one to match. */
+		QProgressBar[resultState="success"] {
+			color: %ON_SUCCESS%;
+		}
+		QProgressBar[resultState="error"] {
+			color: %ON_ERROR%;
 		}
 		QTabWidget::pane {
 			border: 1px solid %BORDER%;
@@ -346,6 +360,51 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			margin: 3px 2px;
 			background: transparent;
 		}
+		/* Secondary and explanatory surfaces, addressed by object name rather
+		   than by a stylesheet set on the widget itself. A per-widget sheet is
+		   invisible to this one, so it has to be rebuilt by hand on every
+		   theme change - which is exactly how these ended up frozen on the
+		   first scheme's colours. Rules here re-theme for free. */
+		QLabel#sceneInfo {
+			color: %TEXT_MUTED%;
+			background-color: %SURFACE2%;
+			border: 1px solid %BORDER%;
+			border-radius: %RADIUS%;
+			padding: 8px 12px;
+			font-size: 11px;
+		}
+		QLabel#previewInfo {
+			color: %TEXT_MUTED%;
+			font-size: 9pt;
+		}
+		QLabel#videoInfo {
+			color: %TEXT_MUTED%;
+			font-style: italic;
+			padding: 10px;
+		}
+		/* Shared by the long help/requirements blurbs on the Video tab. */
+		QLabel#mutedInfo {
+			color: %TEXT_MUTED%;
+			padding: 10px;
+		}
+		QLabel#statusInfo {
+			color: %TEXT_MUTED%;
+			padding: 0 8px;
+		}
+		ScaledImageLabel {
+			background-color: %SURFACE0%;
+			border: 1px solid %BORDER%;
+			border-radius: %RADIUS%;
+			color: %TEXT_MUTED%;
+			font-size: 11pt;
+		}
+		QStatusBar {
+			background-color: %SURFACE0%;
+			color: %TEXT_MUTED%;
+		}
+		QStatusBar::item {
+			border: none;
+		}
 		QFormLayout {
 			spacing: 10px;
 		}
@@ -417,7 +476,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 		.replace("%SURFACE1%",      hex(p.surface1))
 		.replace("%SURFACE2%",      hex(p.surface2))
 		.replace("%SURFACE3%",      hex(p.surface3))
-		.replace("%SELECTED_TEXT%", hex(selectedRowText(p)))
+		.replace("%SELECTED_TEXT%", hex(textOn(p.accentDim, p)))
 		.replace("%HOVER_ROW%",     hex(p.hoverRow))
 		.replace("%TEXT%",          hex(p.textBody))
 		.replace("%TEXT_MUTED%",    hex(p.textMuted))
@@ -427,6 +486,8 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 		.replace("%ACCENT_DIM%",    hex(p.accentDim))
 		.replace("%BORDER_STRONG%", hex(p.borderStrong))
 		.replace("%BORDER%",        hex(p.border))
+		.replace("%ON_SUCCESS%",    hex(textOn(p.success, p)))
+		.replace("%ON_ERROR%",      hex(textOn(p.error, p)))
 		.replace("%SUCCESS%",       hex(p.success))
 		.replace("%ERROR%",         hex(p.error))
 		.replace("%PRIMARY_TOP_HOVER%",    hex(p.primaryTopHover))
