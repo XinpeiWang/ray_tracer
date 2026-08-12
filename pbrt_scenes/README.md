@@ -42,7 +42,19 @@ rather than failing the load, so a scene using an unsupported feature still
 renders — without that feature. Unsupported constructs are worth reading the warnings
 for: a missing displacement map or medium can change a render substantially.
 
-These scenes render on the CPU only. No GPU path consumes them yet.
+## CPU and GPU
+
+These scenes render on both backends, from the same parsed scene — pass
+`--gpu` or `--cpu`.
+
+The GPU is the weaker of the two here, in one specific way: it can only sample
+area lights that are spheres or **parallelograms**. pbrt writes area lights as
+triangle meshes, and the loader rejoins triangle pairs into quads to cover the
+usual case, but a light that is a general quadrilateral, a triangle fan, or a
+genuine single triangle cannot be converted. Those still emit when a ray hits
+them directly, so the image is darker and noisier rather than wrong — and the
+GPU build prints exactly how many lights it could not convert. If you see that
+warning, use `--cpu` for that scene.
 
 ## Getting scenes
 
