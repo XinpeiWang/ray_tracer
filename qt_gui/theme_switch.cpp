@@ -101,18 +101,12 @@ void MainWindow::restyleThemedWidgets() {
 	icon_tint::retint(this, p.textBody, p.accentPrimary);
 
 	// Combo ITEM icons are copies held by the model, not by a widget, so
-	// retint() cannot reach them - they have to be set through the model.
-	const auto retintItems = [&](QComboBox *combo, std::initializer_list<const char *> paths) {
-		if (!combo) return;
-		int index = 0;
-		for (const char *path : paths) {
-			if (index < combo->count())
-				combo->setItemIcon(index, icon_tint::tinted(path, p.textBody));
-			++index;
-		}
-	};
-	retintItems(m_modeCombo, {":/icons/image.svg", ":/icons/video.svg"});
-	retintItems(m_renderModeCombo, {":/icons/gpu.svg", ":/icons/cpu.svg"});
+	// retint() above cannot reach them. Each item carries its own resource path
+	// (see icon_tint::addItem), so this needs no list of paths to keep in step
+	// with the code that created them - and it picks up any combo added later
+	// for free.
+	for (QComboBox *combo : findChildren<QComboBox *>())
+		icon_tint::retintItems(combo, p.textBody);
 
 	// The pane holds HTML with the previous scheme's colours already written
 	// into each span, so its existing lines cannot be recoloured in place -

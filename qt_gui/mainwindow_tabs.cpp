@@ -151,8 +151,8 @@ void MainWindow::createBasicTab() {
 	renderLayout->setContentsMargins(15, 22, 15, 12);
 
 	m_modeCombo = new QComboBox(basicTab);
-	m_modeCombo->addItem(icon_tint::tinted(":/icons/image.svg", m_activeTheme.textBody), "Render Single Image");
-	m_modeCombo->addItem(icon_tint::tinted(":/icons/video.svg", m_activeTheme.textBody), "Generate Video");
+	icon_tint::addItem(m_modeCombo, ":/icons/image.svg", "Render Single Image", {}, m_activeTheme.textBody);
+	icon_tint::addItem(m_modeCombo, ":/icons/video.svg", "Generate Video", {}, m_activeTheme.textBody);
 	m_modeCombo->setCurrentIndex(0);
 	styleComboBox(m_modeCombo);
 	connect(m_modeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -164,8 +164,8 @@ void MainWindow::createBasicTab() {
 		"Generate Video renders a camera path frame by frame and assembles an MP4.");
 
 	m_renderModeCombo = new QComboBox(basicTab);
-	m_renderModeCombo->addItem(icon_tint::tinted(":/icons/gpu.svg", m_activeTheme.textBody), "GPU (CUDA) - Fast", true);
-	m_renderModeCombo->addItem(icon_tint::tinted(":/icons/cpu.svg", m_activeTheme.textBody), "CPU - High Quality", false);
+	icon_tint::addItem(m_renderModeCombo, ":/icons/gpu.svg", "GPU (CUDA) - Fast", true, m_activeTheme.textBody);
+	icon_tint::addItem(m_renderModeCombo, ":/icons/cpu.svg", "CPU - High Quality", false, m_activeTheme.textBody);
 	styleComboBox(m_renderModeCombo);
 	// Tooltips carry what the label cannot: the actual trade-off, not a repeat
 	// of the visible text.

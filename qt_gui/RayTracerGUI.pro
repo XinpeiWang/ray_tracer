@@ -22,6 +22,7 @@ SOURCES += \
 	mainwindow_slots.cpp \
 	mainwindow_actions.cpp \
 	icon_tint.cpp \
+	palette_data.cpp \
 	scene_metadata_client.cpp \
 	theme.cpp \
 	theme_switch.cpp \
@@ -31,6 +32,7 @@ HEADERS += \
 	mainwindow.h \
 	camera_math.h \
 	icon_tint.h \
+	palette_data.h \
 	render_output_parser.h \
 	scene_metadata_client.h \
 	theme.h \

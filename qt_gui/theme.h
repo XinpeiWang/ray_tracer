@@ -31,7 +31,6 @@ struct Palette {
 	QString id;        // stable key written to QSettings
 	QString name;      // shown in the menu
 	QString origin;    // where the palette comes from, for the About/tooltip
-	bool isDark = true;
 
 	// Surface ramp, deepest first.
 	QColor surface0;   // window / deepest background

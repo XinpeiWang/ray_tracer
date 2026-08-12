@@ -2,6 +2,8 @@
 
 #include <QAbstractButton>
 #include <QAction>
+#include <QComboBox>
+#include <QVariant>
 #include <QPainter>
 #include <QPixmap>
 #include <QWidget>
@@ -19,6 +21,11 @@ constexpr const char *kRoleProperty = "themedIconRole";
 // their 2x hi-dpi equivalents. QIcon picks the closest and scales, so a few
 // pre-rendered sizes are enough; rendering every possible size is not.
 constexpr int kSizes[] = {16, 24, 32, 48};
+
+// Where a combo item keeps its icon's resource path. Qt::UserRole itself is
+// already taken by the item's own value (the scene id, the GPU flag, ...), so
+// this sits one past it.
+constexpr int kItemPathRole = Qt::UserRole + 1;
 
 QColor colourForRole(Role role, const QColor &body, const QColor &primary) {
 	return role == Role::Primary ? primary : body;
@@ -62,6 +69,21 @@ void apply(QAction *action, const QString &path, Role role, const QColor &colour
 void apply(QAbstractButton *button, const QString &path, Role role, const QColor &colour) {
 	remember(button, path, role);
 	button->setIcon(tinted(path, colour));
+}
+
+void addItem(QComboBox *combo, const QString &path, const QString &text,
+			 const QVariant &data, const QColor &colour) {
+	combo->addItem(tinted(path, colour), text, data);
+	combo->setItemData(combo->count() - 1, path, kItemPathRole);
+}
+
+void retintItems(QComboBox *combo, const QColor &colour) {
+	if (!combo) return;
+	for (int i = 0; i < combo->count(); ++i) {
+		const QVariant path = combo->itemData(i, kItemPathRole);
+		if (!path.isValid()) continue;   // an item that never had an icon
+		combo->setItemIcon(i, tinted(path.toString(), colour));
+	}
 }
 
 void retint(QWidget *root, const QColor &bodyColour, const QColor &primaryColour) {

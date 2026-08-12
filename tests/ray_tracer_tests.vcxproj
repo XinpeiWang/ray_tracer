@@ -160,6 +160,10 @@
     <ClCompile Include="unit\error_codes_tests.cpp" />
     <ClCompile Include="unit\render_output_parser_tests.cpp" />
     <ClCompile Include="unit\camera_math_tests.cpp" />
+    <ClCompile Include="unit\palette_data_tests.cpp" />
+    <!-- The GUI's palette tables. Qt-free precisely so this MSVC binary can
+         compile them; see qt_gui/palette_data.h. -->
+    <ClCompile Include="..\qt_gui\palette_data.cpp" />
     <ClCompile Include="unit\math_tests.cpp" />
     <ClCompile Include="unit\interface_tests.cpp" />
     <!-- Integration Tests -->

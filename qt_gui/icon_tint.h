@@ -7,6 +7,8 @@
 
 class QAbstractButton;
 class QAction;
+class QComboBox;
+class QVariant;
 class QWidget;
 
 // ============================================================================
@@ -43,6 +45,18 @@ void apply(QAbstractButton *button, const QString &path, Role role, const QColor
 // Re-tints every action and button under `root` that went through apply().
 // bodyColour and primaryColour supply the two roles.
 void retint(QWidget *root, const QColor &bodyColour, const QColor &primaryColour);
+
+// Combo box ITEMS need their own pair, because an item's icon is a copy held by
+// the model rather than by any widget - retint() cannot reach it.
+//
+// addItem() stashes the resource path on the item itself, which is what lets
+// retintItems() work off nothing but the combo. The alternative, and what this
+// replaced, was a second hardcoded list of the same paths in the theme-switch
+// code: change the icon in one place and the other silently kept re-tinting
+// the old one.
+void addItem(QComboBox *combo, const QString &path, const QString &text,
+			 const QVariant &data, const QColor &colour);
+void retintItems(QComboBox *combo, const QColor &colour);
 
 } // namespace icon_tint
 
