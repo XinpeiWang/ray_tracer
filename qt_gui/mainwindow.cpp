@@ -442,18 +442,24 @@ void MainWindow::setupUI() {
 
 	mainLayout->addWidget(progressGroup);
 
-	// Render button
-	m_renderButton = new QPushButton("▶ START RENDER", this);
+	// Render button.
+	// Mnemonics ("&R" -> Alt+R) are assigned so every button is reachable
+	// without the mouse. They're deliberately collision-free across the whole
+	// window, including buttons that live on different tabs: R=Render,
+	// T=sTop, B=Browse, C=Copy, S=Save, L=cLear, F=Folder, V=Viewer.
+	m_renderButton = new QPushButton("▶ START &RENDER", this);
 	// Singles this out as the primary action in the stylesheet (2px accent
 	// border + bold), so it isn't visually tied with every other button.
 	m_renderButton->setObjectName("primaryAction");
 	m_renderButton->setMinimumHeight(50);
+	m_renderButton->setToolTip("Render the selected scene with the current settings");
 	connect(m_renderButton, &QPushButton::clicked, this, &MainWindow::onRenderClicked);
 
 	// Stop button
-	m_stopButton = new QPushButton("■ STOP RENDER", this);
+	m_stopButton = new QPushButton("■ S&TOP RENDER", this);
 	m_stopButton->setMinimumHeight(50);
 	m_stopButton->setEnabled(false);
+	m_stopButton->setToolTip("Stop the running render and discard its output");
 	connect(m_stopButton, &QPushButton::clicked, this, &MainWindow::onStopClicked);
 
 	// Button layout

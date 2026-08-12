@@ -95,10 +95,20 @@ void MainWindow::createBasicTab() {
 			this, &MainWindow::onModeChanged);
 	renderLayout->addRow("Output Mode:", m_modeCombo);
 
+	m_modeCombo->setToolTip(
+		"Single Image renders one frame.\n"
+		"Generate Video renders a camera path frame by frame and assembles an MP4.");
+
 	m_renderModeCombo = new QComboBox(basicTab);
 	m_renderModeCombo->addItem("🎮 GPU (CUDA) - Fast", true);
 	m_renderModeCombo->addItem("🖥️ CPU - High Quality", false);
 	styleComboBox(m_renderModeCombo);
+	// Tooltips carry what the label cannot: the actual trade-off, not a repeat
+	// of the visible text.
+	m_renderModeCombo->setToolTip(
+		"GPU: OptiX hardware ray tracing — typically orders of magnitude faster.\n"
+		"CPU: importance-sampled path tracer — supports every scene and material,\n"
+		"including the handful the GPU backend does not implement.");
 	renderLayout->addRow("Renderer:", m_renderModeCombo);
 
 	// Quality preset
@@ -114,6 +124,19 @@ void MainWindow::createBasicTab() {
 	connect(m_qualityPresetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
 			this, &MainWindow::onQualityPresetChanged);
 	styleComboBox(m_qualityPresetCombo);
+	// The preset names are relative ("Ultra", "Maximum") and say nothing
+	// quantitative; spell out what each actually sets. Keep in sync with
+	// onQualityPresetChanged()'s presetSamples/presetDepth tables.
+	m_qualityPresetCombo->setToolTip(
+		"Samples per pixel / max ray depth:\n"
+		"  Draft    25 spp,  depth 10\n"
+		"  Preview  50 spp,  depth 20\n"
+		"  Good    100 spp,  depth 50\n"
+		"  High    500 spp,  depth 50\n"
+		"  Ultra  1000 spp,  depth 100\n"
+		"  Maximum 5000 spp, depth 100\n"
+		"Custom leaves the Advanced tab values untouched.\n"
+		"Render time scales roughly linearly with samples per pixel.");
 	renderLayout->addRow("Quality:", m_qualityPresetCombo);
 
 	// Resolution
@@ -154,7 +177,14 @@ void MainWindow::createBasicTab() {
 	m_outputPathEdit->setStyleSheet(
 		"QLineEdit { font-size: 11pt; padding: 6px 8px; min-height: 32px; }"
 	);
-	m_browseButton = new QPushButton("Browse...", basicTab);
+	m_outputPathEdit->setToolTip(
+		"Where the rendered image is written. A .png is always saved alongside\n"
+		"the raw .ppm, and it is the .png the Preview tab displays.");
+	// Trailing ellipsis (U+2026, not three periods) marks an action that needs
+	// further input before it completes - a file dialog here. Buttons that act
+	// immediately (Open Output Folder, Clear Log) deliberately have none.
+	m_browseButton = new QPushButton("&Browse…", basicTab);
+	m_browseButton->setToolTip("Choose the output file name and location");
 	connect(m_browseButton, &QPushButton::clicked, [this]() {
 		QString path = QFileDialog::getSaveFileName(this, "Save Render Output",
 			m_outputPathEdit->text(), "PNG Image (*.png);;PPM Image (*.ppm)");
@@ -213,6 +243,10 @@ void MainWindow::createAdvancedTab() {
 	m_samplesSpinBox->setRange(1, 10000);
 	m_samplesSpinBox->setValue(100);
 	styleSpinBox(m_samplesSpinBox);
+	m_samplesSpinBox->setToolTip(
+		"Rays traced per pixel. This is the main quality/time dial: noise falls\n"
+		"as the square root of this value, so halving the noise costs about 4x\n"
+		"the render time. Setting it here switches Quality to Custom.");
 	formLayout->addRow("Samples per Pixel:", m_samplesSpinBox);
 
 	// Max depth
@@ -220,6 +254,10 @@ void MainWindow::createAdvancedTab() {
 	m_maxDepthSpinBox->setRange(1, 100);
 	m_maxDepthSpinBox->setValue(50);
 	styleSpinBox(m_maxDepthSpinBox);
+	m_maxDepthSpinBox->setToolTip(
+		"How many times a ray may bounce before it is terminated. Low values\n"
+		"darken glass and mirrors, which need many bounces to resolve; scenes\n"
+		"of plain diffuse surfaces look the same well below the maximum.");
 	formLayout->addRow("Max Ray Depth:", m_maxDepthSpinBox);
 
 	layout->addWidget(advancedGroup);
@@ -402,16 +440,18 @@ void MainWindow::createPreviewTab() {
 	QString previewBtnStyle =
 		"QPushButton { min-height: 28px; max-height: 28px; min-width: 200px; padding: 0px 20px; font-size: 11pt; }";
 
-	QPushButton *openFolderButton = new QPushButton("📁 Open Output Folder");
+	QPushButton *openFolderButton = new QPushButton("📁 Open Output &Folder");
 	openFolderButton->setStyleSheet(previewBtnStyle);
+	openFolderButton->setToolTip("Show the folder containing the last render in Explorer");
 	connect(openFolderButton, &QPushButton::clicked, this, [this]() {
 		if (m_lastOutputPath.isEmpty()) return;
 		QFileInfo fileInfo(m_lastOutputPath);
 		QDesktopServices::openUrl(QUrl::fromLocalFile(fileInfo.absolutePath()));
 	});
 
-	QPushButton *openViewerButton = new QPushButton("🖼 Open in Default Viewer");
+	QPushButton *openViewerButton = new QPushButton("🖼 Open in Default &Viewer");
 	openViewerButton->setStyleSheet(previewBtnStyle);
+	openViewerButton->setToolTip("Open the rendered image in the system image viewer");
 	connect(openViewerButton, &QPushButton::clicked, this, [this]() {
 		if (m_lastPreviewImagePath.isEmpty()) return;
 		QDesktopServices::openUrl(QUrl::fromLocalFile(m_lastPreviewImagePath));
@@ -454,7 +494,7 @@ void MainWindow::createLogTab() {
 	QString logBtnStyle =
 		"QPushButton { min-height: 28px; max-height: 28px; min-width: 160px; padding: 0px 20px; font-size: 11pt; }";
 
-	QPushButton *copyButton = new QPushButton("📋 Copy All");
+	QPushButton *copyButton = new QPushButton("📋 &Copy All");
 	copyButton->setStyleSheet(logBtnStyle);
 	connect(copyButton, &QPushButton::clicked, [this]() {
 		m_logTextEdit->selectAll();
@@ -462,7 +502,7 @@ void MainWindow::createLogTab() {
 		m_logTextEdit->moveCursor(QTextCursor::End);
 	});
 
-	QPushButton *saveButton = new QPushButton("💾 Save Log");
+	QPushButton *saveButton = new QPushButton("💾 &Save Log…");
 	saveButton->setStyleSheet(logBtnStyle);
 	connect(saveButton, &QPushButton::clicked, [this]() {
 		QString path = QFileDialog::getSaveFileName(this, "Save Log",
@@ -479,7 +519,7 @@ void MainWindow::createLogTab() {
 		}
 	});
 
-	QPushButton *clearButton = new QPushButton("🗑 Clear Log");
+	QPushButton *clearButton = new QPushButton("🗑 C&lear Log");
 	clearButton->setStyleSheet(logBtnStyle);
 	connect(clearButton, &QPushButton::clicked, m_logTextEdit, &QTextEdit::clear);
 
@@ -512,6 +552,13 @@ void MainWindow::createVideoTab() {
 	m_cameraPathCombo->addItem("➡️ Linear (Straight path)", "linear");
 	m_cameraPathCombo->addItem("∞ Figure-8 (Lemniscate)", "figure8");
 	m_cameraPathCombo->addItem("🌀 Spiral (Zoom-in)", "spiral");
+	m_cameraPathCombo->setToolTip(
+		"How the camera moves over the frame sequence:\n"
+		"  Orbit     — full circle around the scene, always looking at its centre\n"
+		"  Linear    — straight sweep past the scene\n"
+		"  Figure-8  — lemniscate, crossing back through the middle\n"
+		"  Spiral    — orbits while moving steadily closer\n"
+		"Every path starts from the camera position on the Advanced tab.");
 	m_cameraPathCombo->setCurrentIndex(0);
 	styleComboBox(m_cameraPathCombo);
 	videoLayout->addRow("Camera Path:", m_cameraPathCombo);

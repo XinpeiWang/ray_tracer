@@ -61,8 +61,15 @@ std::optional<LogCategory> classifySeparator(const QString& msg) {
 	return std::nullopt;
 }
 
+// Matches on the ASCII words, not the leading glyph. ray_tracer.exe's console
+// output decorates lines with box-drawing/emoji characters, and matching those
+// literally turned them into an undocumented wire protocol between its stdout
+// and this classifier: restyling either side (or the mojibake class of bug
+// already documented in RenderController::onReadyRead) would silently drop
+// lines back to the plain default category. The words are the contract; the
+// glyphs are decoration.
 std::optional<LogCategory> classifyRenderStart(const QString& msg) {
-	if (msg.startsWith("▶ RENDER START") || msg.startsWith("Starting render"))
+	if (msg.contains("RENDER START") || msg.startsWith("Starting render"))
 		return LogCategory{"#74C0FC", "INFO", LogLineStyle::BoldLabeled};
 	return std::nullopt;
 }
@@ -101,13 +108,19 @@ std::optional<LogCategory> classifyWarning(const QString& msg) {
 	return std::nullopt;
 }
 
+// The check-mark prefixes are kept as an extra hint (ray_tracer.exe emits
+// them), but every case they cover is also matched by an ASCII phrase below,
+// so success lines stay correctly categorised even if the glyphs change - see
+// classifyRenderStart()'s comment.
 std::optional<LogCategory> classifySuccess(const QString& msg) {
 	if (msg.startsWith("Result: SUCCESS") ||
 		msg.startsWith("✅") ||
 		msg.startsWith("✓")  ||
+		msg.contains("[OK]",                Qt::CaseSensitive)   ||
 		msg.contains("Render completed",    Qt::CaseInsensitive) ||
 		msg.contains("render complete",     Qt::CaseInsensitive) ||
 		msg.contains("rendered successfully", Qt::CaseInsensitive) ||
+		msg.contains("saved successfully",  Qt::CaseInsensitive) ||
 		msg.contains("PNG saved",           Qt::CaseInsensitive))
 		return LogCategory{"#51CF66", " OK "};
 	return std::nullopt;
@@ -702,10 +715,12 @@ void MainWindow::onModeChanged(int index) {
 
 	// Update render button text based on mode
 	if (m_videoMode) {
-		m_renderButton->setText("🎬 START VIDEO RENDER");
+		// Keep the same Alt+R mnemonic as the single-image label below, so the
+		// keyboard shortcut doesn't move when the output mode changes.
+		m_renderButton->setText("🎬 START VIDEO &RENDER");
 		m_statusLabel->setText("Ready to render video frames");
 	} else {
-		m_renderButton->setText("▶ START RENDER");
+		m_renderButton->setText("▶ START &RENDER");
 		m_statusLabel->setText("Ready to render");
 	}
 
