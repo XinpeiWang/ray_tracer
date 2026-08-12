@@ -17,27 +17,79 @@
 #include <QAbstractItemView>
 
 
+// ============================================================================
+// Design tokens
+// ============================================================================
+// The theme keeps its cyberpunk identity, but routes every colour through a
+// small named set instead of ad-hoc hex literals per rule. Two principles do
+// most of the work here:
+//
+//   1. Saturated neon is an ACCENT, never body text. Pure #00FFFF/#FF00FF are
+//      the harshest colours an sRGB display can produce; they used to be the
+//      colour of every QLabel, log line and combo item, which made long
+//      render logs genuinely tiring to read. Body text is now near-white and
+//      the neon is reserved for titles, the primary action, focus rings and
+//      selection.
+//   2. Border weight encodes HIERARCHY. Everything used to carry a 2px glowing
+//      border - buttons, tabs, panes, spin boxes, the progress bar, even the
+//      scroll bar - so nothing stood out. Ordinary chrome is now a 1px subtle
+//      line; only the primary action (START RENDER) keeps a 2px accent border.
+// ============================================================================
+namespace {
+
+// Surface ramp - darkest (window) to lightest (raised controls)
+constexpr const char *kSurface0     = "#0E0E14";  // Window / deepest background
+constexpr const char *kSurface1     = "#16161F";  // Panels, group boxes, inputs
+constexpr const char *kSurface2     = "#1E1E2A";  // Raised / hovered controls
+constexpr const char *kSurface3     = "#2A2A3A";  // Pressed / selected controls
+
+// Text
+constexpr const char *kTextBody     = "#E6E6F0";  // Default readable text
+constexpr const char *kTextMuted    = "#9A9AB0";  // Secondary / helper text
+constexpr const char *kTextDisabled = "#5A5A70";
+
+// Accents (small doses only)
+constexpr const char *kAccentCyan   = "#00E5FF";  // Focus, active tab, headings
+constexpr const char *kAccentMag    = "#FF3DFF";  // Primary action, titles
+constexpr const char *kAccentDim    = "#C93FE8";  // Primary border at rest
+
+// Lines
+constexpr const char *kBorder       = "#2A2A3A";  // Ordinary 1px chrome
+constexpr const char *kBorderStrong = "#3A3A50";  // Interactive controls
+
+// Hover fill for list/menu rows. Deliberately purple-tinted and a clear step
+// lighter than kSurface3 - a plain neutral hover at this contrast level is
+// nearly invisible against kSurface1, which loses the "this row is under the
+// cursor" feedback the old high-saturation theme did give.
+constexpr const char *kHoverRow     = "#3A2E56";
+
+// Radius scale - two values, not five
+constexpr const char *kRadius       = "6px";      // Controls
+constexpr const char *kRadiusLarge  = "10px";     // Containers
+
+} // namespace
+
 void MainWindow::applyDarkTheme() {
 	// Cyberpunk theme with neon colors
 	QPalette cyberpunkPalette;
-	cyberpunkPalette.setColor(QPalette::Window, QColor(10, 10, 15));           // Deep black with subtle blue
-	cyberpunkPalette.setColor(QPalette::WindowText, QColor(0, 255, 255));      // Bright cyan neon
-	cyberpunkPalette.setColor(QPalette::Base, QColor(5, 5, 10));               // Almost pure black
-	cyberpunkPalette.setColor(QPalette::AlternateBase, QColor(15, 10, 20));    // Dark purple tint
-	cyberpunkPalette.setColor(QPalette::ToolTipBase, QColor(20, 0, 30));       // Dark purple
-	cyberpunkPalette.setColor(QPalette::ToolTipText, QColor(255, 0, 255));     // Magenta neon
-	cyberpunkPalette.setColor(QPalette::Text, QColor(0, 255, 255));            // Cyan neon
-	cyberpunkPalette.setColor(QPalette::Button, QColor(30, 15, 50));           // Deep purple
-	cyberpunkPalette.setColor(QPalette::ButtonText, QColor(255, 0, 255));      // Magenta neon
-	cyberpunkPalette.setColor(QPalette::BrightText, QColor(255, 255, 0));      // Yellow neon
-	cyberpunkPalette.setColor(QPalette::Link, QColor(0, 200, 255));            // Bright blue
-	cyberpunkPalette.setColor(QPalette::Highlight, QColor(200, 0, 255));       // Purple-pink highlight
-	cyberpunkPalette.setColor(QPalette::HighlightedText, QColor(255, 255, 255)); // White
+	cyberpunkPalette.setColor(QPalette::Window, QColor(0x0E, 0x0E, 0x14));
+	cyberpunkPalette.setColor(QPalette::WindowText, QColor(0xE6, 0xE6, 0xF0));
+	cyberpunkPalette.setColor(QPalette::Base, QColor(0x16, 0x16, 0x1F));
+	cyberpunkPalette.setColor(QPalette::AlternateBase, QColor(0x1E, 0x1E, 0x2A));
+	cyberpunkPalette.setColor(QPalette::ToolTipBase, QColor(0x1E, 0x1E, 0x2A));
+	cyberpunkPalette.setColor(QPalette::ToolTipText, QColor(0xE6, 0xE6, 0xF0));
+	cyberpunkPalette.setColor(QPalette::Text, QColor(0xE6, 0xE6, 0xF0));
+	cyberpunkPalette.setColor(QPalette::Button, QColor(0x1E, 0x1E, 0x2A));
+	cyberpunkPalette.setColor(QPalette::ButtonText, QColor(0xE6, 0xE6, 0xF0));
+	cyberpunkPalette.setColor(QPalette::BrightText, QColor(0xFF, 0x3D, 0xFF));
+	cyberpunkPalette.setColor(QPalette::Link, QColor(0x00, 0xE5, 0xFF));
+	cyberpunkPalette.setColor(QPalette::Highlight, QColor(0xC9, 0x3F, 0xE8));
+	cyberpunkPalette.setColor(QPalette::HighlightedText, QColor(0xFF, 0xFF, 0xFF));
 
 	// Disabled state colors
-	cyberpunkPalette.setColor(QPalette::Disabled, QPalette::WindowText, QColor(60, 60, 80));
-	cyberpunkPalette.setColor(QPalette::Disabled, QPalette::Text, QColor(60, 60, 80));
-	cyberpunkPalette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(80, 40, 100));
+	cyberpunkPalette.setColor(QPalette::Disabled, QPalette::WindowText, QColor(0x5A, 0x5A, 0x70));
+	cyberpunkPalette.setColor(QPalette::Disabled, QPalette::Text, QColor(0x5A, 0x5A, 0x70));
+	cyberpunkPalette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor(0x5A, 0x5A, 0x70));
 
 	qApp->setPalette(cyberpunkPalette);
 	qApp->setStyle(QStyleFactory::create("Fusion"));
@@ -59,21 +111,25 @@ void MainWindow::applyDarkTheme() {
 	if (!fontSet) {
 		cyberpunkFont.setFamily("Arial");
 	}
-	cyberpunkFont.setPointSize(11);  // Increased from 10
-	cyberpunkFont.setWeight(QFont::Bold);
-	cyberpunkFont.setLetterSpacing(QFont::AbsoluteSpacing, 0.8);
+	cyberpunkFont.setPointSize(11);
+	// Normal weight app-wide: bold was previously applied to EVERY widget,
+	// which meant nothing was actually emphasised. Bold is now opt-in, on
+	// group-box titles and the primary button only. Letter-spacing is also
+	// gone from body text (it belongs on short display strings, not on log
+	// lines and labels, where it measurably slows reading).
+	cyberpunkFont.setWeight(QFont::Normal);
 	qApp->setFont(cyberpunkFont);
 
 	// Apply cyberpunk stylesheet for enhanced neon effects
-	QString stylesheet = R"(
+	QString stylesheet = QString(R"(
 		QGroupBox {
-			border: 1px solid #2E5A5E;
-			border-radius: 10px;
+			border: 1px solid %BORDER%;
+			border-radius: %RADIUS_LG%;
 			margin-top: 26px;
 			margin-bottom: 6px;
 			padding: 4px 10px 10px 10px;
-			background-color: #14141F;
-			color: #00FFFF;
+			background-color: %SURFACE1%;
+			color: %TEXT%;
 			font-size: 12pt;
 		}
 		QGroupBox::title {
@@ -82,100 +138,126 @@ void MainWindow::applyDarkTheme() {
 			padding: 2px 12px;
 			left: 12px;
 			top: 2px;
-			color: #FF00FF;
-			font-size: 13pt;
+			color: %ACCENT_MAG%;
+			font-size: 12pt;
 			font-weight: bold;
-			background-color: #14141F;
+			background-color: %SURFACE1%;
 		}
+		/* Ordinary (secondary) buttons: a quiet 1px outline. The primary
+		   action is singled out by object name further down. */
 		QPushButton {
-			background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-				stop:0 #3A1050, stop:1 #1E0832);
-			border: 2px solid #C93FE8;
-			border-radius: 8px;
-			color: #FF00FF;
-			padding: 10px 20px;
-			font-weight: bold;
-			font-size: 13pt;
-			min-height: 42px;
+			background-color: %SURFACE2%;
+			border: 1px solid %BORDER_STRONG%;
+			border-radius: %RADIUS%;
+			color: %TEXT%;
+			padding: 8px 18px;
+			font-size: 12pt;
+			min-height: 34px;
 		}
 		QPushButton:hover {
-			background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-				stop:0 #5A1570, stop:1 #3E1552);
-			border: 2px solid #00FFFF;
-			color: #00FFFF;
+			background-color: %SURFACE3%;
+			border-color: %ACCENT_CYAN%;
+			color: %ACCENT_CYAN%;
 		}
 		QPushButton:pressed {
-			background-color: #2A0A40;
-			border: 2px solid #C800FF;
+			background-color: %SURFACE1%;
+		}
+		QPushButton:focus {
+			border: 1px solid %ACCENT_CYAN%;
 		}
 		QPushButton:disabled {
-			background-color: #1A0A2A;
-			border: 2px solid #503060;
-			color: #503060;
+			background-color: %SURFACE1%;
+			border-color: %BORDER%;
+			color: %TEXT_DISABLED%;
+		}
+		/* Primary action - the one element allowed a 2px accent border and
+		   bold text, so it reads as the main thing to click. */
+		QPushButton#primaryAction {
+			background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+				stop:0 #3A1050, stop:1 #240C38);
+			border: 2px solid %ACCENT_DIM%;
+			color: %ACCENT_MAG%;
+			font-weight: bold;
+			font-size: 13pt;
+		}
+		QPushButton#primaryAction:hover {
+			background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+				stop:0 #4E1668, stop:1 #341048);
+			border-color: %ACCENT_CYAN%;
+			color: %ACCENT_CYAN%;
+		}
+		QPushButton#primaryAction:pressed {
+			background-color: #240C38;
+		}
+		QPushButton#primaryAction:disabled {
+			background-color: %SURFACE1%;
+			border: 2px solid %BORDER%;
+			color: %TEXT_DISABLED%;
 		}
 		QProgressBar {
-			border: 2px solid #2E5A5E;
-			border-radius: 8px;
+			border: 1px solid %BORDER%;
+			border-radius: %RADIUS%;
 			text-align: center;
-			background-color: #0A0A0F;
-			color: #00FFFF;
-			font-size: 12pt;
-			min-height: 32px;
+			background-color: %SURFACE0%;
+			color: %TEXT%;
+			font-size: 11pt;
+			min-height: 28px;
 		}
 		QProgressBar::chunk {
 			background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-				stop:0 #FF00FF, stop:0.5 #C800FF, stop:1 #00FFFF);
+				stop:0 %ACCENT_MAG%, stop:1 %ACCENT_CYAN%);
 			border-radius: 5px;
 		}
 		QTabWidget::pane {
-			border: 2px solid #C93FE8;
-			border-radius: 0px 8px 8px 8px;
-			background-color: #0A0A0F;
-			top: -2px;
+			border: 1px solid %BORDER%;
+			border-radius: 0px %RADIUS% %RADIUS% %RADIUS%;
+			background-color: %SURFACE0%;
+			top: -1px;
 		}
 		QTabBar::tab {
-			background-color: #1E0832;
-			border: 2px solid #5A3A6E;
-			border-bottom: 2px solid #C93FE8;
-			border-top-left-radius: 8px;
-			border-top-right-radius: 8px;
+			background-color: transparent;
+			border: 1px solid transparent;
+			border-bottom: 1px solid %BORDER%;
+			border-top-left-radius: %RADIUS%;
+			border-top-right-radius: %RADIUS%;
 			padding: 10px 18px;
-			color: #D090E8;
+			color: %TEXT_MUTED%;
 			font-size: 12pt;
 			min-width: 100px;
 			margin-right: 2px;
 		}
+		/* The selected tab is marked by an accent underline rather than a
+		   full glowing outline - the tab strip is navigation, not the
+		   loudest thing on screen. */
 		QTabBar::tab:selected {
-			background-color: #3A1050;
-			border-color: #00FFFF;
-			border-bottom-color: #0A0A0F;
-			color: #00FFFF;
-			margin-bottom: -2px;
-			padding-bottom: 12px;
+			background-color: %SURFACE0%;
+			border-color: %BORDER%;
+			border-bottom: 2px solid %ACCENT_CYAN%;
+			color: %ACCENT_CYAN%;
+			font-weight: bold;
 		}
-		QTabBar::tab:hover {
-			background-color: #2A0A40;
-			color: #00FFFF;
-			border-color: #FF00FF;
+		QTabBar::tab:hover:!selected {
+			background-color: %SURFACE1%;
+			color: %TEXT%;
 		}
-		QSpinBox, QDoubleSpinBox, QComboBox {
-			background-color: #0A0A0F;
-			border: 2px solid #2E5A5E;
-			border-radius: 5px;
+		QSpinBox, QDoubleSpinBox, QComboBox, QLineEdit {
+			background-color: %SURFACE1%;
+			border: 1px solid %BORDER_STRONG%;
+			border-radius: %RADIUS%;
 			padding: 6px 8px;
-			color: #00FFFF;
+			color: %TEXT%;
 			font-size: 11pt;
 			min-height: 26px;
 			margin: 3px 2px;
 		}
 		/* Fusion splits a spin box's contents-rect height in half for its
 		   up/down step buttons, so at the shared 26px min-height above
-		   (~11px per button once the 2px border is subtracted) the
-		   PlusMinus primitives' cross-bars are proportionally too thick
-		   for the space: the "+" blobs into a diamond and only the "-"
-		   reads cleanly (see styleSpinBox()'s comment for why PlusMinus
-		   is used at all). Taller spin boxes only, so each button gets
-		   room for a legible glyph; the combo box keeps the 26px height. */
+		   (~12px per button once the border is subtracted) the PlusMinus
+		   primitives' cross-bars are proportionally too thick for the
+		   space: the "+" blobs into a diamond and only the "-" reads
+		   cleanly (see styleSpinBox()'s comment for why PlusMinus is used
+		   at all). Taller spin boxes only, so each button gets room for a
+		   legible glyph; the combo box keeps the 26px height. */
 		QSpinBox, QDoubleSpinBox {
 			min-height: 40px;
 		}
@@ -191,15 +273,16 @@ void MainWindow::applyDarkTheme() {
 		QSpinBox::down-button, QDoubleSpinBox::down-button {
 			width: 20px;
 		}
-		QSpinBox:hover, QDoubleSpinBox:hover, QComboBox:hover {
-			background-color: #1A0A2A;
-			border: 2px solid #FF00FF;
-			color: #FF00FF;
+		QSpinBox:hover, QDoubleSpinBox:hover, QComboBox:hover, QLineEdit:hover {
+			background-color: %SURFACE2%;
+			border-color: %TEXT_MUTED%;
 		}
-		QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {
-			background-color: #2A1040;
-			border: 2px solid #C800FF;
-			color: #FF00FF;
+		/* Focus is the one state that gets the accent colour, so keyboard
+		   navigation is unmistakable without every control glowing at rest. */
+		QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus, QLineEdit:focus {
+			background-color: %SURFACE2%;
+			border: 1px solid %ACCENT_CYAN%;
+			color: %TEXT%;
 		}
 		/* No custom ::up-button/::down-button/::up-arrow/::down-arrow rules:
 		   every attempt to restyle them (custom background+border, image
@@ -210,92 +293,86 @@ void MainWindow::applyDarkTheme() {
 		   Qt's stock Fusion step buttons, which are the one thing
 		   confirmed to actually render. */
 		QComboBox QAbstractItemView {
-			background-color: #0A0A0F;
-			border: 2px solid #FF00FF;
-			border-radius: 5px;
-			selection-background-color: #FF00FF;
-			selection-color: #000000;
-			color: #00FFFF;
+			background-color: %SURFACE1%;
+			border: 1px solid %BORDER_STRONG%;
+			border-radius: %RADIUS%;
+			selection-background-color: %ACCENT_DIM%;
+			selection-color: #FFFFFF;
+			color: %TEXT%;
 			outline: none;
 			padding: 2px;
 		}
 		QComboBox QAbstractItemView::item {
 			padding: 8px;
 			min-height: 30px;
-			border: 1px solid transparent;
+			border: none;
 			background-color: transparent;
-			color: #00FFFF;
+			color: %TEXT%;
 		}
 		QComboBox QAbstractItemView::item:hover {
-			background-color: #5A1570;
-			border: 1px solid #FF00FF;
-			color: #FF00FF;
+			background-color: %HOVER_ROW%;
+			color: %ACCENT_CYAN%;
 		}
 		QComboBox QAbstractItemView::item:selected {
-			background-color: #FF00FF;
-			color: #000000;
-			border: 1px solid #00FFFF;
-		}
-		QComboBox QAbstractItemView::item:selected:hover {
-			background-color: #00FFFF;
-			color: #000000;
-			border: 1px solid #FF00FF;
+			background-color: %ACCENT_DIM%;
+			color: #FFFFFF;
 		}
 		QListView {
-			background-color: #0A0A0F;
-			border: 2px solid #FF00FF;
-			color: #00FFFF;
+			background-color: %SURFACE1%;
+			border: 1px solid %BORDER_STRONG%;
+			border-radius: %RADIUS%;
+			color: %TEXT%;
 		}
 		QListView::item {
 			padding: 8px;
 			min-height: 30px;
 		}
 		QListView::item:hover {
-			background-color: #5A1570;
-			color: #FF00FF;
+			background-color: %HOVER_ROW%;
+			color: %ACCENT_CYAN%;
 		}
 		QListView::item:selected {
-			background-color: #FF00FF;
-			color: #000000;
-		}
-		QListView::item:selected:hover {
-			background-color: #00FFFF;
-			color: #000000;
+			background-color: %ACCENT_DIM%;
+			color: #FFFFFF;
 		}
 		QLabel {
-			color: #00FFFF;
+			color: %TEXT%;
 			font-size: 11pt;
 			padding: 4px 5px;
 			margin: 3px 2px;
+			background: transparent;
 		}
 		QFormLayout {
 			spacing: 10px;
 		}
 		QTextEdit {
-			background-color: #0A0A0F;
-			border: 2px solid #2E5A5E;
-			border-radius: 5px;
-			color: #00FFFF;
-			selection-background-color: #C800FF;
+			background-color: %SURFACE0%;
+			border: 1px solid %BORDER%;
+			border-radius: %RADIUS%;
+			color: %TEXT%;
+			selection-background-color: %ACCENT_DIM%;
+			selection-color: #FFFFFF;
 			font-size: 10pt;
 			padding: 5px;
 		}
+		/* Scroll bars are chrome: no border, transparent trough, and a
+		   muted handle that only picks up the accent on hover. Previously
+		   they carried a 2px cyan border and a magenta gradient handle,
+		   which made them one of the loudest things on screen. */
 		QScrollBar:vertical {
-			background-color: #0A0A0F;
-			width: 16px;
+			background: transparent;
+			width: 12px;
 			margin: 0px;
-			border: 2px solid #00FFFF;
-			border-radius: 8px;
+			border: none;
 		}
 		QScrollBar::handle:vertical {
-			background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-				stop:0 #FF00FF, stop:1 #C800FF);
-			border-radius: 6px;
+			background-color: %BORDER_STRONG%;
+			border-radius: 4px;
 			min-height: 30px;
 			margin: 2px;
 		}
 		QScrollBar::handle:vertical:hover {
-			background-color: #00FFFF;
+			background-color: %ACCENT_DIM%;
 		}
 		QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
 			height: 0px;
@@ -304,21 +381,19 @@ void MainWindow::applyDarkTheme() {
 			background: none;
 		}
 		QScrollBar:horizontal {
-			background-color: #0A0A0F;
-			height: 16px;
+			background: transparent;
+			height: 12px;
 			margin: 0px;
-			border: 2px solid #00FFFF;
-			border-radius: 8px;
+			border: none;
 		}
 		QScrollBar::handle:horizontal {
-			background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-				stop:0 #FF00FF, stop:1 #C800FF);
-			border-radius: 6px;
+			background-color: %BORDER_STRONG%;
+			border-radius: 4px;
 			min-width: 30px;
 			margin: 2px;
 		}
 		QScrollBar::handle:horizontal:hover {
-			background-color: #00FFFF;
+			background-color: %ACCENT_DIM%;
 		}
 		QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
 			width: 0px;
@@ -326,7 +401,30 @@ void MainWindow::applyDarkTheme() {
 		QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
 			background: none;
 		}
-	)";
+		QToolTip {
+			background-color: %SURFACE2%;
+			border: 1px solid %BORDER_STRONG%;
+			border-radius: 4px;
+			color: %TEXT%;
+			padding: 4px 8px;
+		}
+	)")
+		.replace("%SURFACE0%",      kSurface0)
+		.replace("%SURFACE1%",      kSurface1)
+		.replace("%SURFACE2%",      kSurface2)
+		.replace("%SURFACE3%",      kSurface3)
+		.replace("%HOVER_ROW%",     kHoverRow)
+		.replace("%TEXT%",          kTextBody)
+		.replace("%TEXT_MUTED%",    kTextMuted)
+		.replace("%TEXT_DISABLED%", kTextDisabled)
+		.replace("%ACCENT_CYAN%",   kAccentCyan)
+		.replace("%ACCENT_MAG%",    kAccentMag)
+		.replace("%ACCENT_DIM%",    kAccentDim)
+		.replace("%BORDER_STRONG%", kBorderStrong)
+		.replace("%BORDER%",        kBorder)
+		.replace("%RADIUS_LG%",     kRadiusLarge)
+		.replace("%RADIUS%",        kRadius);
+
 	qApp->setStyleSheet(stylesheet);
 }
 
@@ -373,35 +471,45 @@ void MainWindow::styleComboBox(QComboBox *combo) {
 	view->setAttribute(Qt::WA_Hover, true);
 	view->viewport()->setAttribute(Qt::WA_Hover, true);
 
-	view->setStyleSheet(R"(
+	view->setStyleSheet(QString(R"(
 		QAbstractItemView {
-			background-color: #0A0A0F;
-			border: 3px solid #FF00FF;
-			border-radius: 5px;
+			background-color: %SURFACE1%;
+			border: 1px solid %BORDER_STRONG%;
+			border-radius: %RADIUS%;
 			outline: none;
-			color: #00FFFF;
+			color: %TEXT%;
 			padding: 2px;
 		}
 		QAbstractItemView::item {
 			padding: 8px 12px;
 			min-height: 32px;
 			border: none;
-			color: #00FFFF;
+			border-left: 3px solid transparent;
+			color: %TEXT%;
 		}
+		/* A 3px accent bar on the left edge marks the hovered row instead of
+		   recolouring the whole row - the reserved-transparent border above
+		   keeps the text from shifting sideways when it appears. */
 		QAbstractItemView::item:hover {
-			background-color: #5A1570;
-			color: #FF00FF;
-			border-left: 3px solid #FF00FF;
+			background-color: %HOVER_ROW%;
+			color: %ACCENT_CYAN%;
+			border-left: 3px solid %ACCENT_CYAN%;
 		}
 		QAbstractItemView::item:selected {
-			background-color: #FF00FF;
-			color: #000000;
+			background-color: %ACCENT_DIM%;
+			color: #FFFFFF;
+			border-left: 3px solid %ACCENT_MAG%;
 		}
-		QAbstractItemView::item:selected:hover {
-			background-color: #00FFFF;
-			color: #000000;
-		}
-	)");
+	)")
+		.replace("%SURFACE1%",      kSurface1)
+		.replace("%SURFACE3%",      kSurface3)
+		.replace("%HOVER_ROW%",     kHoverRow)
+		.replace("%TEXT%",          kTextBody)
+		.replace("%ACCENT_CYAN%",   kAccentCyan)
+		.replace("%ACCENT_MAG%",    kAccentMag)
+		.replace("%ACCENT_DIM%",    kAccentDim)
+		.replace("%BORDER_STRONG%", kBorderStrong)
+		.replace("%RADIUS%",        kRadius));
 
 	combo->installEventFilter(m_wheelFilter);
 }

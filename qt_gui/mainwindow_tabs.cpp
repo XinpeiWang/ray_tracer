@@ -60,11 +60,11 @@ void MainWindow::createBasicTab() {
 	m_sceneInfoLabel->setWordWrap(true);
 	m_sceneInfoLabel->setStyleSheet(
 		"QLabel {"
-		"  color: #B0B0B0;"
-		"  background-color: #2E2E2E;"
-		"  border: 1px solid #404040;"
-		"  border-radius: 4px;"
-		"  padding: 6px 10px;"
+		"  color: #9A9AB0;"
+		"  background-color: #1E1E2A;"
+		"  border: 1px solid #2A2A3A;"
+		"  border-radius: 6px;"
+		"  padding: 8px 12px;"
 		"  font-size: 11px;"
 		"}"
 	);
@@ -380,10 +380,10 @@ void MainWindow::createPreviewTab() {
 	m_previewLabel->setMinimumHeight(200);
 	m_previewLabel->setStyleSheet(
 		"ScaledImageLabel {"
-		"  background-color: #1A1A1A;"
-		"  border: 1px solid #404040;"
-		"  border-radius: 4px;"
-		"  color: #888888;"
+		"  background-color: #0E0E14;"
+		"  border: 1px solid #2A2A3A;"
+		"  border-radius: 6px;"
+		"  color: #9A9AB0;"
 		"  font-size: 11pt;"
 		"}"
 	);
@@ -391,15 +391,16 @@ void MainWindow::createPreviewTab() {
 
 	m_previewInfoLabel = new QLabel(previewWidget);
 	m_previewInfoLabel->setAlignment(Qt::AlignCenter);
-	m_previewInfoLabel->setStyleSheet("color: #A8A8A8; font-size: 9pt;");
+	m_previewInfoLabel->setStyleSheet("color: #9A9AB0; font-size: 9pt;");
 	layout->addWidget(m_previewInfoLabel);
 
 	QHBoxLayout *btnLayout = new QHBoxLayout();
 	btnLayout->setContentsMargins(0, 4, 0, 0);
 
+	// Geometry only - colour and hover/focus states come from the global
+	// theme so every secondary button behaves identically.
 	QString previewBtnStyle =
-		"QPushButton { min-height: 28px; max-height: 28px; min-width: 200px; padding: 0px 20px; font-size: 11pt; }"
-		"QPushButton:hover { background-color: #3A1050; border-color: #00FFFF; color: #00FFFF; }";
+		"QPushButton { min-height: 28px; max-height: 28px; min-width: 200px; padding: 0px 20px; font-size: 11pt; }";
 
 	QPushButton *openFolderButton = new QPushButton("📁 Open Output Folder");
 	openFolderButton->setStyleSheet(previewBtnStyle);
@@ -437,9 +438,9 @@ void MainWindow::createLogTab() {
 	// Dark background matches the app theme
 	m_logTextEdit->setStyleSheet(
 		"QTextEdit {"
-		"  background-color: #1A1A1A;"
-		"  border: 1px solid #404040;"
-		"  border-radius: 4px;"
+		"  background-color: #0E0E14;"
+		"  border: 1px solid #2A2A3A;"
+		"  border-radius: 6px;"
 		"}"
 	);
 
@@ -449,9 +450,9 @@ void MainWindow::createLogTab() {
 	QHBoxLayout *btnLayout = new QHBoxLayout();
 	btnLayout->setContentsMargins(0, 4, 0, 0);
 
+	// Geometry only - see previewBtnStyle's comment.
 	QString logBtnStyle =
-		"QPushButton { min-height: 28px; max-height: 28px; min-width: 160px; padding: 0px 20px; font-size: 11pt; }"
-		"QPushButton:hover { background-color: #3A1050; border-color: #00FFFF; color: #00FFFF; }";
+		"QPushButton { min-height: 28px; max-height: 28px; min-width: 160px; padding: 0px 20px; font-size: 11pt; }";
 
 	QPushButton *copyButton = new QPushButton("📋 Copy All");
 	copyButton->setStyleSheet(logBtnStyle);
@@ -551,7 +552,7 @@ void MainWindow::createVideoTab() {
 	// Video duration info (calculated from frames/fps)
 	m_videoInfoLabel = new QLabel();
 	m_videoInfoLabel->setWordWrap(true);
-	m_videoInfoLabel->setStyleSheet("QLabel { color: #00FFFF; font-style: italic; padding: 10px; }");
+	m_videoInfoLabel->setStyleSheet("QLabel { color: #9A9AB0; font-style: italic; padding: 10px; }");
 
 	// Update duration display when frames, FPS, speed, or path changes
 	auto updateVideoDuration = [this]() {
@@ -602,7 +603,7 @@ void MainWindow::createVideoTab() {
 	);
 	requirementsInfo->setOpenExternalLinks(true);
 	requirementsInfo->setWordWrap(true);
-	requirementsInfo->setStyleSheet("QLabel { color: #00FFFF; padding: 10px; }");
+	requirementsInfo->setStyleSheet("QLabel { color: #9A9AB0; padding: 10px; }");
 	requirementsLayout->addWidget(requirementsInfo);
 
 	layout->addWidget(requirementsGroup);
@@ -623,7 +624,7 @@ void MainWindow::createVideoTab() {
 		"• Typical render time: 1-5 minutes (GPU), 15-60 minutes (CPU)"
 	);
 	usageText->setWordWrap(true);
-	usageText->setStyleSheet("QLabel { color: #00FFFF; padding: 10px; line-height: 1.5; }");
+	usageText->setStyleSheet("QLabel { color: #9A9AB0; padding: 10px; line-height: 1.5; }");
 	usageLayout->addWidget(usageText);
 
 	layout->addWidget(usageGroup);

@@ -444,6 +444,9 @@ void MainWindow::setupUI() {
 
 	// Render button
 	m_renderButton = new QPushButton("▶ START RENDER", this);
+	// Singles this out as the primary action in the stylesheet (2px accent
+	// border + bold), so it isn't visually tied with every other button.
+	m_renderButton->setObjectName("primaryAction");
 	m_renderButton->setMinimumHeight(50);
 	connect(m_renderButton, &QPushButton::clicked, this, &MainWindow::onRenderClicked);
 
