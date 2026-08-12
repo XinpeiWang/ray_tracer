@@ -184,8 +184,13 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		td.p0 = f3(&t.v[0]);
 		td.p1 = f3(&t.v[3]);
 		td.p2 = f3(&t.v[6]);
-		td.hasNormals = false;           // flatten does not carry shading normals
-		td.hasUVs = false;
+		if (t.hasNormals) {
+			td.n0 = f3(&t.n[0]);
+			td.n1 = f3(&t.n[3]);
+			td.n2 = f3(&t.n[6]);
+		}
+		td.hasNormals = t.hasNormals;
+		td.hasUVs = false;               // flatten does not carry UVs yet
 		td.materialIdx = materialIndex(t.material, t.areaLight);
 		out.triangles.push_back(td);
 	}

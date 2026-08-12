@@ -116,6 +116,84 @@ TEST(PbrtSubdivTest, AMalformedLoopSubdivIsSkippedWithItsOwnMessage) {
 	EXPECT_TRUE(warned(s, "loopsubdiv"));
 }
 
+// ---------------------------------------------------------------------------
+// Shading normals
+// ---------------------------------------------------------------------------
+// The point of subdividing rather than tessellating is the limit surface, and
+// the limit surface is carried by its normals. Refining without them renders
+// smoother facets, which is not the same thing as a smooth surface.
+
+TEST(PbrtNormalTest, ARefinedSurfaceCarriesUnitLengthShadingNormals) {
+	const FlatScene s = build(subdiv(2));
+	ASSERT_GT(s.triangles.size(), 0u);
+	int withNormals = 0;
+	for (const Triangle &t : s.triangles) {
+		if (!t.hasNormals) continue;
+		++withNormals;
+		for (int k = 0; k < 9; k += 3) {
+			const double len = std::sqrt(t.n[k] * t.n[k] + t.n[k + 1] * t.n[k + 1] +
+										 t.n[k + 2] * t.n[k + 2]);
+			EXPECT_NEAR(len, 1.0, 1e-9) << "a shading normal is not unit length";
+		}
+	}
+	EXPECT_GT(withNormals, 0) << "refinement produced no shading normals at all";
+}
+
+TEST(PbrtNormalTest, AMeshWithNoNormalsSaysSoRatherThanInventingThem) {
+	const FlatScene s = build(
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	ASSERT_EQ(s.triangles.size(), 1u);
+	EXPECT_FALSE(s.triangles[0].hasNormals);
+}
+
+TEST(PbrtNormalTest, AnExplicitNParameterIsCarriedThrough) {
+	const FlatScene s = build(
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n"
+		"  \"normal N\" [ 0 0 1  0 0 1  0 0 1 ]\n");
+	ASSERT_EQ(s.triangles.size(), 1u);
+	ASSERT_TRUE(s.triangles[0].hasNormals);
+	EXPECT_NEAR(s.triangles[0].n[2], 1.0, 1e-9);
+}
+
+TEST(PbrtNormalTest, NormalsSurviveNonUniformScalePerpendicularToTheSurface) {
+	// The whole reason normals need the inverse transpose rather than the
+	// matrix itself. Under Scale 1 1 4 a directly-transformed normal tilts off
+	// the surface; the correct one stays perpendicular to it.
+	//
+	// Asserting perpendicularity to the transformed edges - rather than a
+	// hand-computed vector - means the test states the property that matters
+	// and cannot be satisfied by reproducing my own arithmetic error.
+	const FlatScene s = build(
+		"Scale 1 1 4\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 1 ]\n"
+		"  \"normal N\" [ 0 -1 1  0 -1 1  0 -1 1 ]\n");
+	ASSERT_EQ(s.triangles.size(), 1u);
+	const Triangle &t = s.triangles[0];
+	ASSERT_TRUE(t.hasNormals);
+
+	const double e1[3] = {t.v[3] - t.v[0], t.v[4] - t.v[1], t.v[5] - t.v[2]};
+	const double e2[3] = {t.v[6] - t.v[0], t.v[7] - t.v[1], t.v[8] - t.v[2]};
+	const double d1 = t.n[0] * e1[0] + t.n[1] * e1[1] + t.n[2] * e1[2];
+	const double d2 = t.n[0] * e2[0] + t.n[1] * e2[1] + t.n[2] * e2[2];
+	EXPECT_NEAR(d1, 0.0, 1e-9) << "normal is no longer perpendicular to edge 1";
+	EXPECT_NEAR(d2, 0.0, 1e-9) << "normal is no longer perpendicular to edge 2";
+}
+
+TEST(PbrtNormalTest, TooFewNormalsAreRefusedWholesaleRatherThanUsedInPart) {
+	// Half-smooth shading is a worse artefact than none: it looks like a
+	// lighting bug rather than a data problem, and only on some faces.
+	const FlatScene s = build(
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n"
+		"  \"normal N\" [ 0 0 1 ]\n");
+	ASSERT_EQ(s.triangles.size(), 1u);
+	EXPECT_FALSE(s.triangles[0].hasNormals);
+	EXPECT_TRUE(warned(s, "fewer normals than vertices"));
+}
+
 TEST(PbrtSubdivTest, MaterialAndAreaLightStillAttachToARefinedSurface) {
 	// The refined triangles are new objects that never existed in the source
 	// file, so their material and emission tags are assigned rather than

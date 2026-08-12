@@ -67,12 +67,21 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 // positions came from transforming the same source vertex, so equal vertices
 // are bitwise equal and an exact-match dedup recovers the original count -
 // worth doing when the target is scenes with millions of triangles.
+// The shading normal is part of the key, not just the position. Two faces can
+// legitimately meet at the same point with different normals - that is exactly
+// how a crease is expressed - and merging them into one vertex would smooth
+// the edge away. Deduping on position alone is only correct when there are no
+// shading normals at all, which is no longer the case.
 struct VertexKey {
 	double x, y, z;
+	double nx, ny, nz;
 	bool operator<(const VertexKey &o) const {
 		if (x != o.x) return x < o.x;
 		if (y != o.y) return y < o.y;
-		return z < o.z;
+		if (z != o.z) return z < o.z;
+		if (nx != o.nx) return nx < o.nx;
+		if (ny != o.ny) return ny < o.ny;
+		return nz < o.nz;
 	}
 };
 
@@ -126,12 +135,21 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		auto mesh = std::make_shared<triangle_mesh_data>();
 		std::map<VertexKey, int> seen;
 
-		const auto vertexIndex = [&](const double *p) {
-			const VertexKey k{p[0], p[1], p[2]};
+		// A mesh either has a normal for every vertex or for none: `triangle`
+		// gates interpolation on has_normals(), which is all-or-nothing, so a
+		// partially filled list would index past the end.
+		bool anyNormals = false;
+		for (const pbrt_flatten::Triangle &t : scene.triangles)
+			if (t.hasNormals) { anyNormals = true; break; }
+
+		const auto vertexIndex = [&](const double *p, const double *n) {
+			const VertexKey k{p[0], p[1], p[2],
+							  n ? n[0] : 0.0, n ? n[1] : 0.0, n ? n[2] : 0.0};
 			auto it = seen.find(k);
 			if (it != seen.end()) return it->second;
 			const int idx = static_cast<int>(mesh->positions.size());
 			mesh->positions.push_back(point3(p[0], p[1], p[2]));
+			if (anyNormals) mesh->normals.push_back(vec3(n[0], n[1], n[2]));
 			seen.emplace(k, idx);
 			return idx;
 		};
@@ -142,9 +160,27 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		std::vector<std::pair<int, int>> perTriangleMaterial;
 		perTriangleMaterial.reserve(scene.triangles.size());
 		for (const pbrt_flatten::Triangle &t : scene.triangles) {
-			mesh->indices.push_back(vertexIndex(&t.v[0]));
-			mesh->indices.push_back(vertexIndex(&t.v[3]));
-			mesh->indices.push_back(vertexIndex(&t.v[6]));
+			// When any mesh in the scene has shading normals, a face without
+			// its own still needs one per vertex or the two arrays fall out of
+			// step. Its geometric normal is the honest answer - it renders
+			// exactly as it would have with no normals at all.
+			double gn[3] = {0, 0, 1};
+			if (anyNormals && !t.hasNormals) {
+				const double e1[3] = {t.v[3] - t.v[0], t.v[4] - t.v[1], t.v[5] - t.v[2]};
+				const double e2[3] = {t.v[6] - t.v[0], t.v[7] - t.v[1], t.v[8] - t.v[2]};
+				gn[0] = e1[1] * e2[2] - e1[2] * e2[1];
+				gn[1] = e1[2] * e2[0] - e1[0] * e2[2];
+				gn[2] = e1[0] * e2[1] - e1[1] * e2[0];
+				const double len = std::sqrt(gn[0] * gn[0] + gn[1] * gn[1] + gn[2] * gn[2]);
+				if (len > 0) { gn[0] /= len; gn[1] /= len; gn[2] /= len; }
+			}
+			const double *n0 = t.hasNormals ? &t.n[0] : gn;
+			const double *n1 = t.hasNormals ? &t.n[3] : gn;
+			const double *n2 = t.hasNormals ? &t.n[6] : gn;
+
+			mesh->indices.push_back(vertexIndex(&t.v[0], n0));
+			mesh->indices.push_back(vertexIndex(&t.v[3], n1));
+			mesh->indices.push_back(vertexIndex(&t.v[6], n2));
 			perTriangleMaterial.emplace_back(t.material, t.areaLight);
 		}
 		out.uniqueVertexCount = mesh->positions.size();

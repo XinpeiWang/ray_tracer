@@ -41,6 +41,13 @@ namespace pbrt_flatten {
 
 struct Triangle {
 	double v[9];              // three vertices, world space, xyz each
+	// Per-vertex shading normals, world space, same layout as v. Only
+	// meaningful when hasNormals - a mesh with none falls back to the flat
+	// geometric normal, which is correct for genuinely faceted geometry and
+	// wrong-looking for anything curved. A subdivision surface without these
+	// renders as the polygon soup it was refined from.
+	double n[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
+	bool hasNormals = false;
 	int material = -1;        // index into Scene::materials, -1 = pbrt default
 	int areaLight = -1;       // index into Scene::areaLights, -1 = not emissive
 };
@@ -153,6 +160,42 @@ inline void transformPoint(const pbrt_scene::Matrix4 &m,
 	out[0] = m.m[0] * x + m.m[1] * y + m.m[2]  * z + m.m[3];
 	out[1] = m.m[4] * x + m.m[5] * y + m.m[6]  * z + m.m[7];
 	out[2] = m.m[8] * x + m.m[9] * y + m.m[10] * z + m.m[11];
+}
+
+// Normals do NOT transform by the matrix that transforms points. Under a
+// non-uniform scale, transforming a normal directly tilts it off the surface -
+// squash a sphere and its normals stop being perpendicular to it. The correct
+// transform is the inverse transpose of the upper-left 3x3, which is what this
+// computes (by adjugate, then transposed by reading it column-wise).
+//
+// Doing it properly rather than assuming rigid transforms costs twenty lines
+// and buys correctness on every scene that scales an axis - which real ones do.
+inline void transformNormal(const pbrt_scene::Matrix4 &m,
+							double x, double y, double z, double *out) {
+	const double a = m.m[0], b = m.m[1], c = m.m[2];
+	const double d = m.m[4], e = m.m[5], f = m.m[6];
+	const double g = m.m[8], h = m.m[9], i = m.m[10];
+
+	// Cofactors of the 3x3. The adjugate is their transpose, and the inverse
+	// is adjugate/det - but we then want the transpose of that inverse, so the
+	// two transposes cancel and the cofactor matrix is used directly.
+	const double c00 = e * i - f * h, c01 = f * g - d * i, c02 = d * h - e * g;
+	const double c10 = c * h - b * i, c11 = a * i - c * g, c12 = b * g - a * h;
+	const double c20 = b * f - c * e, c21 = c * d - a * f, c22 = a * e - b * d;
+
+	const double det = a * c00 + b * c01 + c * c02;
+	if (std::fabs(det) < 1e-18) {           // degenerate: leave it alone
+		out[0] = x; out[1] = y; out[2] = z;
+		return;
+	}
+
+	double nx = c00 * x + c01 * y + c02 * z;
+	double ny = c10 * x + c11 * y + c12 * z;
+	double nz = c20 * x + c21 * y + c22 * z;
+
+	const double len = std::sqrt(nx * nx + ny * ny + nz * nz);
+	if (len > 0) { nx /= len; ny /= len; nz /= len; }
+	out[0] = nx; out[1] = ny; out[2] = nz;
 }
 
 // The three basis vectors' lengths are the scale along each axis. Comparing
@@ -303,6 +346,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				|| shape.type == "loopsubdiv") {
 			std::vector<double> P;
 			std::vector<int> indices;
+			std::vector<double> N;    // per-vertex, object space; empty = none
 
 			if (shape.type == "loopsubdiv") {
 				// A subdivision surface is a control cage plus a refinement
@@ -351,6 +395,17 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					P[v * 3 + 2] = refined.positions[v][2];
 				}
 				indices = refined.indices;
+
+				// The limit-surface normals are the entire reason to subdivide
+				// rather than just tessellate. Discarding them renders the
+				// refined mesh as visible facets - smoother facets than the
+				// control cage, but facets.
+				N.resize(refined.normals.size() * 3);
+				for (std::size_t v = 0; v < refined.normals.size(); ++v) {
+					N[v * 3]     = refined.normals[v][0];
+					N[v * 3 + 1] = refined.normals[v][1];
+					N[v * 3 + 2] = refined.normals[v][2];
+				}
 			} else if (shape.type == "trianglemesh") {
 				const pbrt_scene::Param *pp = shape.params.find("P");
 				const pbrt_scene::Param *pi = shape.params.find("indices");
@@ -361,6 +416,8 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				P = pp->numbers;
 				indices.reserve(pi->numbers.size());
 				for (double d : pi->numbers) indices.push_back(static_cast<int>(d));
+				// pbrt's own name for per-vertex shading normals.
+				if (const pbrt_scene::Param *pn = shape.params.find("N")) N = pn->numbers;
 			} else {
 				const std::string file = shape.params.getString("filename", "");
 				if (file.empty()) { warn("a plymesh has no filename; skipped"); continue; }
@@ -390,6 +447,21 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				transformPoint(shape.xform, P[v * 3], P[v * 3 + 1], P[v * 3 + 2],
 							   &world[v * 3]);
 
+			// A normal list that does not cover every vertex cannot be indexed
+			// safely by the face indices, so it is refused wholesale rather
+			// than used for part of the mesh - half-smooth shading is a worse
+			// artefact than none, and much harder to recognise.
+			std::vector<double> worldN;
+			if (!N.empty() && N.size() / 3 >= vertexCount) {
+				worldN.resize(vertexCount * 3);
+				for (std::size_t v = 0; v < vertexCount; ++v)
+					transformNormal(shape.xform, N[v * 3], N[v * 3 + 1], N[v * 3 + 2],
+									&worldN[v * 3]);
+			} else if (!N.empty()) {
+				warn("a mesh supplied fewer normals than vertices; "
+					 "they are ignored and it will render flat-shaded");
+			}
+
 			bool reportedRange = false;
 			for (std::size_t i = 0; i + 2 < indices.size(); i += 3) {
 				const int a = indices[i], b = indices[i + 1], c = indices[i + 2];
@@ -409,6 +481,14 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					t.v[0 + k] = world[static_cast<std::size_t>(a) * 3 + k];
 					t.v[3 + k] = world[static_cast<std::size_t>(b) * 3 + k];
 					t.v[6 + k] = world[static_cast<std::size_t>(c) * 3 + k];
+				}
+				if (!worldN.empty()) {
+					for (int k = 0; k < 3; ++k) {
+						t.n[0 + k] = worldN[static_cast<std::size_t>(a) * 3 + k];
+						t.n[3 + k] = worldN[static_cast<std::size_t>(b) * 3 + k];
+						t.n[6 + k] = worldN[static_cast<std::size_t>(c) * 3 + k];
+					}
+					t.hasNormals = true;
 				}
 				t.material = shape.materialIndex;
 				t.areaLight = shape.areaLightIndex;
