@@ -18,6 +18,7 @@
 
 #include "pbrt_flatten.h"
 #include "pbrt_scene.h"
+#include "pbrt_cpu_builder.h"
 
 #include <string>
 
@@ -263,3 +264,81 @@ TEST(PbrtInstanceTest, AnEmissiveShapeIsNotAlsoLeftInTheSharedGroup) {
 		EXPECT_LT(t.areaLight, 0);
 	EXPECT_EQ(s.triangles.size(), 1u);
 }
+
+// ---------------------------------------------------------------------------
+// Building
+// ---------------------------------------------------------------------------
+// The CPU builder places instances with transform_instance rather than baking
+// them. The property worth asserting is the negative one: the shared geometry
+// is built once however many placements refer to it.
+
+TEST(PbrtInstanceBuildTest, PlacementsShareOneBuiltCopyOfTheGeometry) {
+	const pbrt_scene::ParseResult r = pbrt_scene::parse(kTwoInstances);
+	ASSERT_TRUE(r.ok) << r.error;
+	const FlatScene f = flatten(r.scene);
+	const pbrt_cpu::BuildResult b = pbrt_cpu::build(f);
+
+	EXPECT_EQ(b.instanceCount, 2u);
+	// One triangle built, not two: triangleCount counts what was constructed,
+	// and both placements point at it.
+	EXPECT_EQ(b.triangleCount, 1u)
+		<< "the geometry was built once per placement, which is baking";
+}
+
+TEST(PbrtInstanceBuildTest, AnInstancedTriangleIsActuallyHitWhereItWasPlaced) {
+	// Counts alone would pass if the transform were dropped and everything sat
+	// at the origin, so this fires a ray at where the second placement should
+	// be and insists something is there.
+	const pbrt_scene::ParseResult r = pbrt_scene::parse(kTwoInstances);
+	ASSERT_TRUE(r.ok) << r.error;
+	const pbrt_cpu::BuildResult b = pbrt_cpu::build(flatten(r.scene));
+	ASSERT_TRUE(b.world != nullptr);
+
+	// The triangle spans (0,0,0)-(1,0,0)-(0,1,0), placed at x+10 and x+20.
+	// Aim down -z through a point inside the second copy.
+	const ray hitting(point3(20.2, 0.2, 5), vec3(0, 0, -1));
+	hit_record rec;
+	EXPECT_TRUE(b.world->hit(hitting, interval(0.001, infinity), rec))
+		<< "nothing at the second placement - the instance transform was lost";
+
+	// And nothing at the origin, where un-transformed geometry would sit.
+	const ray missing(point3(0.2, 0.2, 5), vec3(0, 0, -1));
+	hit_record rec2;
+	EXPECT_FALSE(b.world->hit(missing, interval(0.001, infinity), rec2))
+		<< "geometry is at the origin, so the placement transform was ignored";
+}
+
+TEST(PbrtInstanceBuildTest, AnInstancedEmitterEndsUpInTheLightList) {
+	// Baked per placement by flatten, so each copy should arrive as ordinary
+	// world geometry AND be registered for next-event estimation. A light that
+	// exists but is not in this list still glows when a ray happens to hit it
+	// and contributes nothing to the lighting of anything else.
+	const char *kLamp = R"PBRT(
+ObjectBegin "lamp"
+  AttributeBegin
+    AreaLightSource "diffuse" "rgb L" [ 5 5 5 ]
+    Shape "trianglemesh" "integer indices" [ 0 1 2 ]
+      "point3 P" [ 0 0 0  1 0 0  0 1 0 ]
+  AttributeEnd
+ObjectEnd
+AttributeBegin
+  Translate 10 0 0
+  ObjectInstance "lamp"
+AttributeEnd
+AttributeBegin
+  Translate 20 0 0
+  ObjectInstance "lamp"
+AttributeEnd
+)PBRT";
+
+	const pbrt_scene::ParseResult r = pbrt_scene::parse(kLamp);
+	ASSERT_TRUE(r.ok) << r.error;
+	const pbrt_cpu::BuildResult b = pbrt_cpu::build(flatten(r.scene));
+	ASSERT_TRUE(b.lights != nullptr);
+	EXPECT_EQ(b.lights->objects.size(), 2u)
+		<< "each placement of an emitter needs its own entry to be sampled";
+	// And the shared group is empty, so nothing was instanced as well as baked.
+	EXPECT_EQ(b.instanceCount, 0u)
+		<< "an emitter-only definition should place no instanced geometry";
+}
+

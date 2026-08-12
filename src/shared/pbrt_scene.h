@@ -71,6 +71,44 @@ struct Matrix4 {
 		return r;
 	}
 
+	// The inverse of an affine transform, which is what a renderer needs to
+	// carry a ray INTO an instance's object space. Returns false when the
+	// matrix is singular - a scale of zero on some axis - rather than
+	// producing infinities that would surface later as missing geometry.
+	//
+	// Affine only, and deliberately: every transform pbrt can build here has
+	// (0,0,0,1) as its bottom row, so inverting the 3x3 and negating the
+	// translated origin is both exact and much cheaper than a general 4x4
+	// inverse.  [A t]^-1 = [A^-1  -A^-1 t]
+	//                      [0 1]   [0        1     ]
+	bool inverseAffine(Matrix4 &out) const {
+		const double a = m[0], b = m[1], c = m[2];
+		const double d = m[4], e = m[5], f = m[6];
+		const double g = m[8], h = m[9], i = m[10];
+
+		const double A =  (e * i - f * h);
+		const double B = -(d * i - f * g);
+		const double C =  (d * h - e * g);
+		const double det = a * A + b * B + c * C;
+		if (!(det > 1e-300 || det < -1e-300)) return false;
+		const double inv = 1.0 / det;
+
+		// Adjugate divided by the determinant, written out transposed.
+		const double n0 = A * inv,                    n1 = -(b * i - c * h) * inv, n2 =  (b * f - c * e) * inv;
+		const double n4 = B * inv,                    n5 =  (a * i - c * g) * inv, n6 = -(a * f - c * d) * inv;
+		const double n8 = C * inv,                    n9 = -(a * h - b * g) * inv, n10 = (a * e - b * d) * inv;
+
+		const double tx = m[3], ty = m[7], tz = m[11];
+		out.m[0] = n0; out.m[1] = n1; out.m[2]  = n2;
+		out.m[4] = n4; out.m[5] = n5; out.m[6]  = n6;
+		out.m[8] = n8; out.m[9] = n9; out.m[10] = n10;
+		out.m[3]  = -(n0 * tx + n1 * ty + n2  * tz);
+		out.m[7]  = -(n4 * tx + n5 * ty + n6  * tz);
+		out.m[11] = -(n8 * tx + n9 * ty + n10 * tz);
+		out.m[12] = 0; out.m[13] = 0; out.m[14] = 0; out.m[15] = 1;
+		return true;
+	}
+
 	static Matrix4 translate(double x, double y, double z) {
 		Matrix4 r;
 		r.m[3] = x; r.m[7] = y; r.m[11] = z;

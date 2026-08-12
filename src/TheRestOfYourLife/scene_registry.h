@@ -963,13 +963,14 @@ inline void append(std::vector<SceneDescriptor>& registry) {
                     for (const pbrt_scene::Warning& w : r.scene.warnings)
                         std::cerr << "warning: " << path << ": " << w.message << "\n";
                     state->built = pbrt_cpu::build(r.scene);
-                    if (state->built.unhandledInstances > 0) {
-                        std::cerr << "warning: " << path << ": "
-                                  << state->built.unhandledInstances
-                                  << " object instance(s) are not placed yet, so the"
-                                     " geometry they reference is missing from this"
-                                     " render.\n";
-                    }
+                    // Worth printing rather than inferring from the picture:
+                    // instanced geometry that failed to be placed looks
+                    // identical to geometry the scene never had.
+                    std::cerr << "[pbrt] " << path << ": "
+                              << state->built.triangleCount << " triangles, "
+                              << state->built.sphereCount << " spheres, "
+                              << state->built.instanceCount << " instance placements\n";
+
                 }
             }
             return state->built;

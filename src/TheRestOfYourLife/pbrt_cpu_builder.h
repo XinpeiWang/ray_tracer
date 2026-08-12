@@ -20,6 +20,7 @@
 #include "material.h"
 #include "sphere.h"
 #include "triangle.h"
+#include "transform_instance.h"
 
 namespace pbrt_cpu {
 
@@ -93,8 +94,9 @@ struct BuildResult {
 	std::size_t triangleCount = 0;
 	std::size_t sphereCount = 0;
 	std::size_t uniqueVertexCount = 0;
-	// Instances the scene defined that this builder did not place.
-	std::size_t unhandledInstances = 0;
+	// Instance placements actually added to the world. Each shares one
+	// BVH with every other placement of the same definition.
+	std::size_t instanceCount = 0;
 };
 
 // Turns flattened geometry into a BVH-accelerated world plus the light list
@@ -107,12 +109,6 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	out.world = std::make_shared<hittable_list>();
 	out.lights = std::make_shared<hittable_list>();
 
-	// Instanced geometry is not consumed yet - that needs a general affine
-	// transform hittable, which this renderer does not have (hittable.h offers
-	// only translate and rotate_y). Reported rather than dropped in silence,
-	// because the symptom is a scene missing whatever it instanced, which
-	// looks like a parsing failure and is not one.
-	out.unhandledInstances = scene.instances.size();
 
 	const auto materialFor = [&scene](int materialIndex, int areaLightIndex)
 			-> std::shared_ptr<material> {
@@ -139,8 +135,15 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		return made;
 	};
 
+	// Emitting geometry is now done more than once - for the scene itself, and
+	// again for each instance definition, whose geometry stays in object space
+	// and is placed by a transform rather than baked. Everything below is what
+	// it always was; only its inputs and outputs became parameters.
+	const auto emitGeometry = [&](const std::vector<pbrt_flatten::Triangle> &tris,
+								  const std::vector<pbrt_flatten::Sphere> &sphs,
+								  hittable_list &world, hittable_list &lights) {
 	// ---- triangles -------------------------------------------------------
-	if (!scene.triangles.empty()) {
+	if (!tris.empty()) {
 		auto mesh = std::make_shared<triangle_mesh_data>();
 		std::map<VertexKey, int> seen;
 
@@ -148,7 +151,7 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		// gates interpolation on has_normals(), which is all-or-nothing, so a
 		// partially filled list would index past the end.
 		bool anyNormals = false;
-		for (const pbrt_flatten::Triangle &t : scene.triangles)
+		for (const pbrt_flatten::Triangle &t : tris)
 			if (t.hasNormals) { anyNormals = true; break; }
 
 		const auto vertexIndex = [&](const double *p, const double *n) {
@@ -167,8 +170,8 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		// it - triangle's constructor reads the positions immediately to
 		// precompute its normal and area.
 		std::vector<std::pair<int, int>> perTriangleMaterial;
-		perTriangleMaterial.reserve(scene.triangles.size());
-		for (const pbrt_flatten::Triangle &t : scene.triangles) {
+		perTriangleMaterial.reserve(tris.size());
+		for (const pbrt_flatten::Triangle &t : tris) {
 			// When any mesh in the scene has shading normals, a face without
 			// its own still needs one per vertex or the two arrays fall out of
 			// step. Its geometric normal is the honest answer - it renders
@@ -192,27 +195,68 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			mesh->indices.push_back(vertexIndex(&t.v[6], n2));
 			perTriangleMaterial.emplace_back(t.material, t.areaLight);
 		}
-		out.uniqueVertexCount = mesh->positions.size();
+		out.uniqueVertexCount += mesh->positions.size();
 
 		for (std::size_t i = 0; i < perTriangleMaterial.size(); ++i) {
 			auto mat = cachedMaterial(perTriangleMaterial[i].first,
 									  perTriangleMaterial[i].second);
 			auto tri = std::make_shared<triangle>(mesh, static_cast<int>(i), mat);
-			out.world->add(tri);
-			if (perTriangleMaterial[i].second >= 0) out.lights->add(tri);
+			world.add(tri);
+			if (perTriangleMaterial[i].second >= 0) lights.add(tri);
 		}
-		out.triangleCount = perTriangleMaterial.size();
+		out.triangleCount += perTriangleMaterial.size();
 	}
 
 	// ---- spheres ---------------------------------------------------------
-	for (const pbrt_flatten::Sphere &s : scene.spheres) {
+	for (const pbrt_flatten::Sphere &s : sphs) {
 		auto mat = cachedMaterial(s.material, s.areaLight);
 		auto sp = std::make_shared<sphere>(point3(s.center[0], s.center[1], s.center[2]),
 										   s.radius, mat);
-		out.world->add(sp);
-		if (s.areaLight >= 0) out.lights->add(sp);
+		world.add(sp);
+		if (s.areaLight >= 0) lights.add(sp);
 	}
-	out.sphereCount = scene.spheres.size();
+	out.sphereCount += sphs.size();
+	};
+
+
+	emitGeometry(scene.triangles, scene.spheres, *out.world, *out.lights);
+
+	// ---- instances -------------------------------------------------------
+	// Each definition is built once, into its own BVH, and then placed by a
+	// transform per instance. That BVH is shared by every placement - which is
+	// the entire point, and the reason this cannot simply bake vertices.
+	//
+	// No light list is passed: flatten() has already moved any emissive shapes
+	// out of the group and baked them per placement into world space, because
+	// a light has to be enumerable to be sampled. Passing one here would be
+	// harmless but misleading, so it gets a scratch list that stays empty.
+	// Built once per DEFINITION, before any placement looks at them. Building
+	// inside the instance loop instead would produce one BVH per placement,
+	// which is baking with extra steps.
+	std::vector<std::shared_ptr<hittable>> groupBVHs(scene.groups.size());
+	for (std::size_t g = 0; g < scene.groups.size(); ++g) {
+		const pbrt_flatten::InstanceGroup &grp = scene.groups[g];
+		if (grp.triangles.empty() && grp.spheres.empty()) continue;
+
+		auto geometry = std::make_shared<hittable_list>();
+		hittable_list unusedLights;
+		emitGeometry(grp.triangles, grp.spheres, *geometry, unusedLights);
+		if (!geometry->objects.empty())
+			groupBVHs[g] = std::make_shared<bvh_node>(*geometry);
+	}
+
+	for (const pbrt_flatten::Instance &inst : scene.instances) {
+		if (inst.group < 0 ||
+			static_cast<std::size_t>(inst.group) >= groupBVHs.size()) continue;
+		const std::shared_ptr<hittable> &shared =
+			groupBVHs[static_cast<std::size_t>(inst.group)];
+		if (!shared) continue;
+
+		pbrt_scene::Matrix4 m;
+		for (int k = 0; k < 16; ++k) m.m[k] = inst.xform[k];
+		out.world->add(std::make_shared<transform_instance>(shared, m));
+		++out.instanceCount;
+	}
 
 	// A flat list would make every ray test every primitive; these scenes are
 	// the reason the BVH exists.

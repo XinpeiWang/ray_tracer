@@ -67,3 +67,31 @@ AttributeBegin
   Material "dielectric"
   Shape "sphere" "float radius" [ 90 ]
 AttributeEnd
+
+# ---------------------------------------------------------------- instancing
+# One small pyramid, defined once and placed three times. This is real
+# instancing: the geometry is stored a single time and each placement is a
+# transform, so a hundred of these would still cost one pyramid of memory.
+ObjectBegin "pyramid"
+  Material "diffuse" "rgb reflectance" [ 0.75 0.65 0.30 ]
+  Shape "trianglemesh"
+    "integer indices" [ 0 1 4  1 2 4  2 3 4  3 0 4  0 2 1  0 3 2 ]
+    "point3 P" [ -30 0 -30   30 0 -30   30 0 30   -30 0 30   0 70 0 ]
+ObjectEnd
+
+AttributeBegin
+  Translate 100 0 80
+  ObjectInstance "pyramid"
+AttributeEnd
+
+AttributeBegin
+  Translate 250 0 60
+  Rotate 35 0 1 0
+  ObjectInstance "pyramid"
+AttributeEnd
+
+AttributeBegin
+  Translate 430 0 90
+  Scale 0.6 1.4 0.6
+  ObjectInstance "pyramid"
+AttributeEnd
