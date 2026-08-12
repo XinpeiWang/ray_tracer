@@ -6,16 +6,40 @@
 #include <QStringList>
 #include "scene_metadata_client.h"
 
+// The canonical code list and its baseline text. Header-only and Qt-free
+// (<string>/<map>), so the GUI can share it rather than restate it.
+#include "../src/TheRestOfYourLife/error_codes.h"
+
 // ============================================================================
 // Qt GUI Error Handler
 // ============================================================================
-// Maps numeric error codes to user-friendly messages and troubleshooting hints
-// for display in the GUI when renders fail.
+// Presents renderer exit codes to the user.
 //
-// This is a Qt-compatible wrapper around the C++ error_codes.h system
+// This file used to be a full second copy of the error system: its own
+// integer literals, its own message text, its own hints. Nothing tied the two
+// together, so a code added to error_codes.h would surface here as "Unknown
+// Error" with no build failure and no test to catch it. (Checked at the time
+// of this change: the two tables had not actually drifted - 41 backend codes,
+// all covered - so this is prevention, not a bug fix.)
+//
+// Now the relationship is explicit:
+//   * codes are named enum constants, so renaming or removing one in
+//     error_codes.h breaks THIS FILE at compile time rather than silently;
+//   * message/hint/category text falls back to the canonical
+//     get_error_message()/get_troubleshooting_hint()/get_error_category(),
+//     so a newly added code is described correctly here without any edit;
+//   * the GUI only overrides where it genuinely adds something the backend
+//     cannot know - a short title for a dialog caption, bulleted hints
+//     written for a GUI user, or live data like the current scene count.
 // ============================================================================
 
 namespace ErrorHandler {
+
+// Bridges the canonical std::string API into Qt without pulling <string>
+// conversions through every call site below.
+inline QString fromStd(const std::string &s) {
+	return QString::fromStdString(s);
+}
 
 // Scene-count/GPU-support text below is generated live from
 // scene_metadata.dll rather than hardcoded, so it can't go stale the way
@@ -54,53 +78,53 @@ inline QString gpuSupportedSceneList() {
 inline QString getErrorTitle(int errorCode) {
 	static const QMap<int, QString> titles = {
 		// Success
-		{0, "Success"},
+		{SUCCESS, "Success"},
 
 		// General errors (1-99)
-		{1, "Unknown Error"},
-		{2, "Invalid Arguments"},
-		{3, "File Not Found"},
-		{4, "File Read Failed"},
-		{5, "File Write Failed"},
-		{6, "File Copy Failed"},
-		{7, "Directory Creation Failed"},
-		{8, "Invalid Image Dimensions"},
-		{9, "Invalid Sample Count"},
-		{10, "Invalid Ray Depth"},
-		{11, "Invalid Scene ID"},
-		{12, "Invalid Camera Position"},
-		{13, "Invalid Output Path"},
-		{14, "Video Assembly Failed"},
+		{ERR_UNKNOWN, "Unknown Error"},
+		{ERR_INVALID_ARGUMENTS, "Invalid Arguments"},
+		{ERR_FILE_NOT_FOUND, "File Not Found"},
+		{ERR_FILE_READ_FAILED, "File Read Failed"},
+		{ERR_FILE_WRITE_FAILED, "File Write Failed"},
+		{ERR_FILE_COPY_FAILED, "File Copy Failed"},
+		{ERR_DIRECTORY_CREATE_FAILED, "Directory Creation Failed"},
+		{ERR_INVALID_DIMENSIONS, "Invalid Image Dimensions"},
+		{ERR_INVALID_SAMPLE_COUNT, "Invalid Sample Count"},
+		{ERR_INVALID_MAX_DEPTH, "Invalid Ray Depth"},
+		{ERR_INVALID_SCENE_ID, "Invalid Scene ID"},
+		{ERR_INVALID_CAMERA_POSITION, "Invalid Camera Position"},
+		{ERR_OUTPUT_PATH_INVALID, "Invalid Output Path"},
+		{ERR_VIDEO_ASSEMBLY_FAILED, "Video Assembly Failed"},
 
 		// CPU errors (100-199)
-		{100, "Scene Build Failed (CPU)"},
-		{101, "Scene is Empty (CPU)"},
-		{102, "Camera Initialization Failed (CPU)"},
-		{103, "Rendering Failed (CPU)"},
-		{104, "Thread Error (CPU)"},
-		{105, "Out of Memory (CPU)"},
-		{106, "BVH Build Failed (CPU)"},
-		{107, "Texture Load Failed (CPU)"},
-		{108, "No Lights in Scene (CPU)"},
-		{109, "Invalid Material (CPU)"},
+		{ERR_CPU_SCENE_BUILD_FAILED, "Scene Build Failed (CPU)"},
+		{ERR_CPU_SCENE_EMPTY, "Scene is Empty (CPU)"},
+		{ERR_CPU_CAMERA_INIT_FAILED, "Camera Initialization Failed (CPU)"},
+		{ERR_CPU_RENDER_FAILED, "Rendering Failed (CPU)"},
+		{ERR_CPU_THREAD_FAILED, "Thread Error (CPU)"},
+		{ERR_CPU_MEMORY_ALLOCATION, "Out of Memory (CPU)"},
+		{ERR_CPU_BVH_BUILD_FAILED, "BVH Build Failed (CPU)"},
+		{ERR_CPU_TEXTURE_LOAD_FAILED, "Texture Load Failed (CPU)"},
+		{ERR_CPU_LIGHTS_EMPTY, "No Lights in Scene (CPU)"},
+		{ERR_CPU_MATERIAL_INVALID, "Invalid Material (CPU)"},
 
 		// GPU errors (200-299)
-		{200, "No GPU Found"},
-		{201, "GPU Initialization Failed"},
-		{202, "GPU Out of Memory"},
-		{203, "GPU Memory Copy Failed"},
-		{204, "GPU Kernel Launch Failed"},
-		{205, "GPU Kernel Execution Failed"},
-		{206, "GPU Scene Serialization Failed"},
-		{207, "GPU Synchronization Failed"},
-		{208, "GPU Out of Memory"},
-		{209, "Invalid GPU Configuration"},
-		{210, "GPU Texture Binding Failed"},
-		{211, "Scene Not Supported on GPU"},
-		{212, "Scene Build Failed (GPU)"},
-		{213, "Rendering Failed (GPU)"},
-		{214, "Exception During Rendering (GPU)"},
-		{215, "Unknown Error (GPU)"},
+		{ERR_GPU_NO_DEVICE, "No GPU Found"},
+		{ERR_GPU_DEVICE_INIT_FAILED, "GPU Initialization Failed"},
+		{ERR_GPU_MEMORY_ALLOCATION, "GPU Out of Memory"},
+		{ERR_GPU_MEMORY_COPY_FAILED, "GPU Memory Copy Failed"},
+		{ERR_GPU_KERNEL_LAUNCH_FAILED, "GPU Kernel Launch Failed"},
+		{ERR_GPU_KERNEL_EXECUTION_FAILED, "GPU Kernel Execution Failed"},
+		{ERR_GPU_SCENE_SERIALIZATION_FAILED, "GPU Scene Serialization Failed"},
+		{ERR_GPU_DEVICE_SYNCHRONIZATION_FAILED, "GPU Synchronization Failed"},
+		{ERR_GPU_OUT_OF_MEMORY, "GPU Out of Memory"},
+		{ERR_GPU_INVALID_CONFIGURATION, "Invalid GPU Configuration"},
+		{ERR_GPU_TEXTURE_BINDING_FAILED, "GPU Texture Binding Failed"},
+		{ERR_GPU_UNSUPPORTED_SCENE, "Scene Not Supported on GPU"},
+		{ERR_GPU_SCENE_BUILD_FAILED, "Scene Build Failed (GPU)"},
+		{ERR_GPU_RENDER_FAILED, "Rendering Failed (GPU)"},
+		{ERR_GPU_EXCEPTION, "Exception During Rendering (GPU)"},
+		{ERR_GPU_UNKNOWN_ERROR, "Unknown Error (GPU)"},
 
 		// User action
 		{999, "Cancelled by User"}
@@ -120,35 +144,43 @@ inline QString getErrorMessage(int errorCode) {
 		return QString("Scene ID must be between 0 and %1. Check the scene selector.").arg(maxSceneId());
 
 	static const QMap<int, QString> messages = {
-		{0, "Render completed successfully."},
-		{1, "An unknown error occurred during rendering."},
-		{2, "Invalid command-line arguments were provided to the renderer."},
-		{3, "A required file could not be found."},
-		{5, "Failed to write the output image file."},
-		{8, "Image dimensions must be positive integers (recommended: 400-1920)."},
-		{9, "Samples per pixel must be greater than 0 (recommended: 10-500)."},
-		{10, "Maximum ray depth must be greater than 0 (recommended: 10-100)."},
-		{14, "Frames rendered successfully, but assembling them into a video with ffmpeg failed."},
-		{100, "Failed to construct the scene geometry."},
-		{101, "The scene contains no objects to render."},
-		{103, "An error occurred while rendering the image."},
-		{105, "The system ran out of memory during rendering."},
-		{107, "Failed to load texture file (e.g., earthmap.jpg for Earth scene)."},
-		{200, "No CUDA-capable GPU was detected."},
-		{202, "The GPU ran out of memory."},
-		{204, "Failed to launch GPU rendering kernel."},
-		{208, "GPU memory allocation failed."},
-		{211, "This scene is not supported on GPU. Please use CPU mode."},
-		{212, "Failed to construct the scene geometry on GPU."},
-		{213, "An error occurred while rendering the image on GPU."},
-		{214, "An exception was thrown while rendering on GPU."},
-		{215, "An unknown error occurred while rendering on GPU."},
+		{SUCCESS, "Render completed successfully."},
+		{ERR_UNKNOWN, "An unknown error occurred during rendering."},
+		{ERR_INVALID_ARGUMENTS, "Invalid command-line arguments were provided to the renderer."},
+		{ERR_FILE_NOT_FOUND, "A required file could not be found."},
+		{ERR_FILE_WRITE_FAILED, "Failed to write the output image file."},
+		{ERR_INVALID_DIMENSIONS, "Image dimensions must be positive integers (recommended: 400-1920)."},
+		{ERR_INVALID_SAMPLE_COUNT, "Samples per pixel must be greater than 0 (recommended: 10-500)."},
+		{ERR_INVALID_MAX_DEPTH, "Maximum ray depth must be greater than 0 (recommended: 10-100)."},
+		{ERR_VIDEO_ASSEMBLY_FAILED, "Frames rendered successfully, but assembling them into a video with ffmpeg failed."},
+		{ERR_CPU_SCENE_BUILD_FAILED, "Failed to construct the scene geometry."},
+		{ERR_CPU_SCENE_EMPTY, "The scene contains no objects to render."},
+		{ERR_CPU_RENDER_FAILED, "An error occurred while rendering the image."},
+		{ERR_CPU_MEMORY_ALLOCATION, "The system ran out of memory during rendering."},
+		{ERR_CPU_TEXTURE_LOAD_FAILED, "Failed to load texture file (e.g., earthmap.jpg for Earth scene)."},
+		{ERR_GPU_NO_DEVICE, "No CUDA-capable GPU was detected."},
+		{ERR_GPU_MEMORY_ALLOCATION, "The GPU ran out of memory."},
+		{ERR_GPU_KERNEL_LAUNCH_FAILED, "Failed to launch GPU rendering kernel."},
+		{ERR_GPU_OUT_OF_MEMORY, "GPU memory allocation failed."},
+		{ERR_GPU_UNSUPPORTED_SCENE, "This scene is not supported on GPU. Please use CPU mode."},
+		{ERR_GPU_SCENE_BUILD_FAILED, "Failed to construct the scene geometry on GPU."},
+		{ERR_GPU_RENDER_FAILED, "An error occurred while rendering the image on GPU."},
+		{ERR_GPU_EXCEPTION, "An exception was thrown while rendering on GPU."},
+		{ERR_GPU_UNKNOWN_ERROR, "An unknown error occurred while rendering on GPU."},
 		{999, "The render was cancelled by the user."}
 	};
 
 	if (messages.contains(errorCode)) {
 		return messages[errorCode];
 	}
+	// Not overridden here - use the canonical text rather than inventing a
+	// generic string, so a code added to error_codes.h is described properly
+	// without anyone having to remember to edit this file too. The has_*
+	// predicate matters: get_error_message() returns a placeholder rather
+	// than an empty string for unknown codes, so testing the return value
+	// would always "succeed" and mask this file's own wording.
+	if (::has_error_message(errorCode))
+		return fromStd(::get_error_message(errorCode));
 	return QString("An error occurred with code %1.").arg(errorCode);
 }
 
@@ -169,40 +201,40 @@ inline QString getTroubleshootingHint(int errorCode) {
 	}
 
 	static const QMap<int, QString> hints = {
-		{5, "• Check that the output directory exists and is writable\n"
+		{ERR_FILE_WRITE_FAILED, "• Check that the output directory exists and is writable\n"
 			"• Make sure you have enough disk space\n"
 			"• Try closing any programs that might be using the output file"},
 
-		{14, "• Install ffmpeg from https://ffmpeg.org/download.html and add it to your PATH\n"
+		{ERR_VIDEO_ASSEMBLY_FAILED, "• Install ffmpeg from https://ffmpeg.org/download.html and add it to your PATH\n"
 			 "• Check the render log above for the exact ffmpeg command and error output\n"
 			 "• Rendered frames are kept in output/frames/ - you can assemble the video manually"},
 
-		{8, "• Try common resolutions: 800×800, 1920×1080\n"
+		{ERR_INVALID_DIMENSIONS, "• Try common resolutions: 800×800, 1920×1080\n"
 			"• Width and height must be positive numbers"},
 
-		{9, "• For quick previews, use 10-50 samples\n"
+		{ERR_INVALID_SAMPLE_COUNT, "• For quick previews, use 10-50 samples\n"
 			"• For final renders, use 100-500 samples\n"
 			"• More samples = better quality but slower"},
 
-		{100, "• Some scenes require texture files (e.g., earthmap.jpg)\n"
+		{ERR_CPU_SCENE_BUILD_FAILED, "• Some scenes require texture files (e.g., earthmap.jpg)\n"
 			 "• Make sure all required files are in the correct location"},
 
-		{105, "• Try reducing image resolution (e.g., 800×800 instead of 1920×1080)\n"
+		{ERR_CPU_MEMORY_ALLOCATION, "• Try reducing image resolution (e.g., 800×800 instead of 1920×1080)\n"
 			  "• Try reducing samples per pixel (e.g., 50 instead of 500)\n"
 			  "• Close other memory-intensive applications"},
 
-		{107, "• For the Earth scene, make sure earthmap.jpg is in the correct folder\n"
+		{ERR_CPU_TEXTURE_LOAD_FAILED, "• For the Earth scene, make sure earthmap.jpg is in the correct folder\n"
 			  "• Check that texture files are not corrupted"},
 
-		{200, "• No CUDA-capable GPU found\n"
+		{ERR_GPU_NO_DEVICE, "• No CUDA-capable GPU found\n"
 			  "• Switch to CPU mode in the renderer settings\n"
 			  "• CPU mode works on all systems"},
 
-		{202, "• Try reducing image resolution\n"
+		{ERR_GPU_MEMORY_ALLOCATION, "• Try reducing image resolution\n"
 			  "• Try reducing samples per pixel\n"
 			  "• Switch to CPU mode if GPU memory is limited"},
 
-		{208, "• GPU ran out of memory\n"
+		{ERR_GPU_OUT_OF_MEMORY, "• GPU ran out of memory\n"
 			  "• Try smaller resolution (e.g., 800×800)\n"
 			  "• Try fewer samples (e.g., 50)\n"
 			  "• Switch to CPU mode for large scenes"}
@@ -211,6 +243,10 @@ inline QString getTroubleshootingHint(int errorCode) {
 	if (hints.contains(errorCode)) {
 		return hints[errorCode];
 	}
+	// Same idea as getErrorMessage(), including why the has_* predicate is
+	// needed rather than an emptiness check.
+	if (::has_troubleshooting_hint(errorCode))
+		return fromStd(::get_troubleshooting_hint(errorCode));
 	return "Check the Log Output tab for detailed error information.";
 }
 

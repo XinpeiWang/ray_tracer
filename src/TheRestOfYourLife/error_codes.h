@@ -74,7 +74,11 @@ enum RenderErrorCode {
 // ============================================================================
 // Error Code to String Message
 // ============================================================================
-inline std::string get_error_message(int error_code) {
+// Table is exposed (rather than living inside get_error_message) so callers
+// can distinguish "this code has real text" from "this code is unknown and you
+// are looking at a generic placeholder". The Qt GUI needs that distinction to
+// decide whether its own wording is better than the fallback.
+inline const std::map<int, std::string>& error_message_table() {
 	static const std::map<int, std::string> error_messages = {
 		// Success
 		{SUCCESS, "Success"},
@@ -129,8 +133,19 @@ inline std::string get_error_message(int error_code) {
 		{ERR_USER_CANCELLED, "Render cancelled by user"}
 	};
 
-	auto it = error_messages.find(error_code);
-	if (it != error_messages.end()) {
+	return error_messages;
+}
+
+// True when the code has a real, specific message rather than a placeholder.
+inline bool has_error_message(int error_code) {
+	const auto& t = error_message_table();
+	return t.find(error_code) != t.end();
+}
+
+inline std::string get_error_message(int error_code) {
+	const auto& t = error_message_table();
+	auto it = t.find(error_code);
+	if (it != t.end()) {
 		return it->second;
 	}
 
@@ -141,7 +156,7 @@ inline std::string get_error_message(int error_code) {
 // ============================================================================
 // Error Code to Troubleshooting Hint
 // ============================================================================
-inline std::string get_troubleshooting_hint(int error_code) {
+inline const std::map<int, std::string>& troubleshooting_hint_table() {
 	static const std::map<int, std::string> hints = {
 		{ERR_FILE_WRITE_FAILED, "Check output directory permissions and disk space."},
 		{ERR_FILE_NOT_FOUND, "Verify that required texture files (e.g., earthmap.jpg) are in the correct location."},
@@ -159,8 +174,19 @@ inline std::string get_troubleshooting_hint(int error_code) {
 		{ERR_VIDEO_ASSEMBLY_FAILED, "Install ffmpeg (https://ffmpeg.org/download.html) and ensure it is on PATH, or assemble the rendered frames manually using the ffmpeg command printed above."}
 	};
 
-	auto it = hints.find(error_code);
-	if (it != hints.end()) {
+	return hints;
+}
+
+// True when the code has a real, specific hint rather than a placeholder.
+inline bool has_troubleshooting_hint(int error_code) {
+	const auto& t = troubleshooting_hint_table();
+	return t.find(error_code) != t.end();
+}
+
+inline std::string get_troubleshooting_hint(int error_code) {
+	const auto& t = troubleshooting_hint_table();
+	auto it = t.find(error_code);
+	if (it != t.end()) {
 		return it->second;
 	}
 
