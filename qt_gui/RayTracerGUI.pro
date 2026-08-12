@@ -1,6 +1,11 @@
-QT += core gui widgets
+# svg is required for QIcon to load the SVG icons in resources.qrc. Without
+# the module (and without imageformats/qsvg.dll alongside the exe) QIcon
+# silently renders nothing at all rather than reporting an error.
+QT += core gui widgets svg
 
 CONFIG += c++17
+
+RESOURCES += resources.qrc
 
 TARGET = RayTracerGUI
 TEMPLATE = app

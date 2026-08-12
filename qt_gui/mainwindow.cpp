@@ -23,6 +23,7 @@
 #include <QAbstractItemView>
 #include <QPainter>
 #include <QPolygon>
+#include <QIcon>
 #include <QPixmap>
 #include <QScrollArea>
 #include <QScreen>
@@ -491,17 +492,30 @@ void MainWindow::setupUI() {
 	// without the mouse. They're deliberately collision-free across the whole
 	// window, including buttons that live on different tabs: R=Render,
 	// T=sTop, B=Browse, C=Copy, S=Save, L=cLear, F=Folder, V=Viewer.
-	m_renderButton = new QPushButton("▶ START &RENDER", this);
+	// Icons come from resources.qrc rather than emoji in the label text.
+	// A colour emoji carries its own palette, so it cannot be tinted to the
+	// theme and stays fully saturated when the button is disabled; QIcon
+	// derives a proper greyed variant automatically. Emoji also render
+	// inconsistently across fonts and are read aloud by their CLDR name
+	// ("wastebasket Clear Log, button") by screen readers.
+	// The primary button's label is the magenta accent rather than body
+	// colour, so it takes the accent-tinted variant of the play mark - a
+	// body-white icon beside magenta bold text reads as orphaned.
+	m_renderButton = new QPushButton(QIcon(":/icons/render_accent.svg"), "START &RENDER", this);
 	// Singles this out as the primary action in the stylesheet (2px accent
 	// border + bold), so it isn't visually tied with every other button.
 	m_renderButton->setObjectName("primaryAction");
 	m_renderButton->setMinimumHeight(50);
+	// The style's default 16px icon is dwarfed by a 50px-tall button with
+	// 13pt bold text; 20px sits correctly against the cap height.
+	m_renderButton->setIconSize(QSize(20, 20));
 	m_renderButton->setToolTip("Render the selected scene with the current settings");
 	connect(m_renderButton, &QPushButton::clicked, this, &MainWindow::onRenderClicked);
 
 	// Stop button
-	m_stopButton = new QPushButton("■ S&TOP RENDER", this);
+	m_stopButton = new QPushButton(QIcon(":/icons/stop.svg"), "S&TOP RENDER", this);
 	m_stopButton->setMinimumHeight(50);
+	m_stopButton->setIconSize(QSize(20, 20));
 	m_stopButton->setEnabled(false);
 	m_stopButton->setToolTip("Stop the running render and discard its output");
 	connect(m_stopButton, &QPushButton::clicked, this, &MainWindow::onStopClicked);

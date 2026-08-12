@@ -16,6 +16,7 @@
 #include <QScreen>
 #include <QTimer>
 #include <QAbstractItemView>
+#include <QIcon>
 #include <QDesktopServices>
 #include <QUrl>
 #include <cmath>
@@ -87,8 +88,8 @@ void MainWindow::createBasicTab() {
 	renderLayout->setContentsMargins(15, 22, 15, 12);
 
 	m_modeCombo = new QComboBox(basicTab);
-	m_modeCombo->addItem("🖼️ Render Single Image");
-	m_modeCombo->addItem("🎬 Generate Video");
+	m_modeCombo->addItem(QIcon(":/icons/image.svg"), "Render Single Image");
+	m_modeCombo->addItem(QIcon(":/icons/video.svg"), "Generate Video");
 	m_modeCombo->setCurrentIndex(0);
 	styleComboBox(m_modeCombo);
 	connect(m_modeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -100,8 +101,8 @@ void MainWindow::createBasicTab() {
 		"Generate Video renders a camera path frame by frame and assembles an MP4.");
 
 	m_renderModeCombo = new QComboBox(basicTab);
-	m_renderModeCombo->addItem("🎮 GPU (CUDA) - Fast", true);
-	m_renderModeCombo->addItem("🖥️ CPU - High Quality", false);
+	m_renderModeCombo->addItem(QIcon(":/icons/gpu.svg"), "GPU (CUDA) - Fast", true);
+	m_renderModeCombo->addItem(QIcon(":/icons/cpu.svg"), "CPU - High Quality", false);
 	styleComboBox(m_renderModeCombo);
 	// Tooltips carry what the label cannot: the actual trade-off, not a repeat
 	// of the visible text.
@@ -113,13 +114,13 @@ void MainWindow::createBasicTab() {
 
 	// Quality preset
 	m_qualityPresetCombo = new QComboBox(basicTab);
-	m_qualityPresetCombo->addItem("⚡ Draft (Very Fast)", 0);
-	m_qualityPresetCombo->addItem("🚀 Preview (Fast)", 1);
-	m_qualityPresetCombo->addItem("📷 Good (Balanced)", 2);
-	m_qualityPresetCombo->addItem("💎 High (Slow)", 3);
-	m_qualityPresetCombo->addItem("✨ Ultra (Very Slow)", 4);
-	m_qualityPresetCombo->addItem("🌟 Maximum (Extreme)", 5);
-	m_qualityPresetCombo->addItem("🎨 Custom", 6);
+	m_qualityPresetCombo->addItem("Draft (Very Fast)", 0);
+	m_qualityPresetCombo->addItem("Preview (Fast)", 1);
+	m_qualityPresetCombo->addItem("Good (Balanced)", 2);
+	m_qualityPresetCombo->addItem("High (Slow)", 3);
+	m_qualityPresetCombo->addItem("Ultra (Very Slow)", 4);
+	m_qualityPresetCombo->addItem("Maximum (Extreme)", 5);
+	m_qualityPresetCombo->addItem("Custom", 6);
 	m_qualityPresetCombo->setCurrentIndex(2); // Default to Good
 	connect(m_qualityPresetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
 			this, &MainWindow::onQualityPresetChanged);
@@ -440,7 +441,7 @@ void MainWindow::createPreviewTab() {
 	QString previewBtnStyle =
 		"QPushButton { min-height: 28px; max-height: 28px; min-width: 200px; padding: 0px 20px; font-size: 11pt; }";
 
-	QPushButton *openFolderButton = new QPushButton("📁 Open Output &Folder");
+	QPushButton *openFolderButton = new QPushButton(QIcon(":/icons/folder.svg"), "Open Output &Folder");
 	openFolderButton->setStyleSheet(previewBtnStyle);
 	openFolderButton->setToolTip("Show the folder containing the last render in Explorer");
 	connect(openFolderButton, &QPushButton::clicked, this, [this]() {
@@ -449,7 +450,7 @@ void MainWindow::createPreviewTab() {
 		QDesktopServices::openUrl(QUrl::fromLocalFile(fileInfo.absolutePath()));
 	});
 
-	QPushButton *openViewerButton = new QPushButton("🖼 Open in Default &Viewer");
+	QPushButton *openViewerButton = new QPushButton(QIcon(":/icons/image.svg"), "Open in Default &Viewer");
 	openViewerButton->setStyleSheet(previewBtnStyle);
 	openViewerButton->setToolTip("Open the rendered image in the system image viewer");
 	connect(openViewerButton, &QPushButton::clicked, this, [this]() {
@@ -498,15 +499,15 @@ void MainWindow::createLogTab() {
 	// (see createActions()), so the bodies live in slots rather than lambdas
 	// here - otherwise the menu entry and the button would be two separate
 	// copies of the same behaviour, free to drift apart.
-	QPushButton *copyButton = new QPushButton("📋 &Copy All");
+	QPushButton *copyButton = new QPushButton(QIcon(":/icons/copy.svg"), "&Copy All");
 	copyButton->setStyleSheet(logBtnStyle);
 	connect(copyButton, &QPushButton::clicked, this, &MainWindow::copyLogToClipboard);
 
-	QPushButton *saveButton = new QPushButton("💾 &Save Log…");
+	QPushButton *saveButton = new QPushButton(QIcon(":/icons/save.svg"), "&Save Log…");
 	saveButton->setStyleSheet(logBtnStyle);
 	connect(saveButton, &QPushButton::clicked, this, &MainWindow::saveLogToFile);
 
-	QPushButton *clearButton = new QPushButton("🗑 C&lear Log");
+	QPushButton *clearButton = new QPushButton(QIcon(":/icons/clear.svg"), "C&lear Log");
 	clearButton->setStyleSheet(logBtnStyle);
 	connect(clearButton, &QPushButton::clicked, this, &MainWindow::clearLog);
 
@@ -535,10 +536,10 @@ void MainWindow::createVideoTab() {
 
 	// Camera path selector
 	m_cameraPathCombo = new QComboBox();
-	m_cameraPathCombo->addItem("🔄 Orbit (Circular rotation)", "orbit");
-	m_cameraPathCombo->addItem("➡️ Linear (Straight path)", "linear");
-	m_cameraPathCombo->addItem("∞ Figure-8 (Lemniscate)", "figure8");
-	m_cameraPathCombo->addItem("🌀 Spiral (Zoom-in)", "spiral");
+	m_cameraPathCombo->addItem("Orbit (Circular rotation)", "orbit");
+	m_cameraPathCombo->addItem("Linear (Straight path)", "linear");
+	m_cameraPathCombo->addItem("Figure-8 (Lemniscate)", "figure8");
+	m_cameraPathCombo->addItem("Spiral (Zoom-in)", "spiral");
 	m_cameraPathCombo->setToolTip(
 		"How the camera moves over the frame sequence:\n"
 		"  Orbit     — full circle around the scene, always looking at its centre\n"
@@ -643,7 +644,7 @@ void MainWindow::createVideoTab() {
 	layout->addWidget(requirementsGroup);
 
 	// Usage instructions
-	QGroupBox *usageGroup = new QGroupBox("📖 Usage Instructions", videoTab);
+	QGroupBox *usageGroup = new QGroupBox("Usage Instructions", videoTab);
 	QVBoxLayout *usageLayout = new QVBoxLayout(usageGroup);
 
 	QLabel *usageText = new QLabel(

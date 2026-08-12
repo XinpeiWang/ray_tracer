@@ -13,6 +13,7 @@
 #include <QScrollBar>
 #include <QCoreApplication>
 #include <QSignalBlocker>
+#include <QIcon>
 #include <QStyle>
 #include <QThread>
 #include <array>
@@ -860,11 +861,16 @@ void MainWindow::onModeChanged(int index) {
 	// Update render button text based on mode
 	if (m_videoMode) {
 		// Keep the same Alt+R mnemonic as the single-image label below, so the
-		// keyboard shortcut doesn't move when the output mode changes.
-		m_renderButton->setText("🎬 START VIDEO &RENDER");
+		// keyboard shortcut doesn't move when the output mode changes. The
+		// leading glyph is gone from both labels: the button carries a real
+		// QIcon now, and a text-embedded emoji would sit next to it as a
+		// second, differently-styled icon.
+		m_renderButton->setText("START VIDEO &RENDER");
+		m_renderButton->setIcon(QIcon(":/icons/video_accent.svg"));
 		m_statusLabel->setText("Ready to render video frames");
 	} else {
-		m_renderButton->setText("▶ START &RENDER");
+		m_renderButton->setText("START &RENDER");
+		m_renderButton->setIcon(QIcon(":/icons/render_accent.svg"));
 		m_statusLabel->setText("Ready to render");
 	}
 

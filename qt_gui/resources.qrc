@@ -1,0 +1,20 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <!-- Prefix "/" keeps resource paths as ":/icons/<name>.svg" rather than
+         the doubled ":/icons/icons/<name>.svg" a "/icons" prefix would give,
+         since the files already live in an icons/ directory. -->
+    <qresource prefix="/">
+        <file>icons/render.svg</file>
+        <file>icons/render_accent.svg</file>
+        <file>icons/stop.svg</file>
+        <file>icons/video.svg</file>
+        <file>icons/video_accent.svg</file>
+        <file>icons/image.svg</file>
+        <file>icons/folder.svg</file>
+        <file>icons/copy.svg</file>
+        <file>icons/save.svg</file>
+        <file>icons/clear.svg</file>
+        <file>icons/gpu.svg</file>
+        <file>icons/cpu.svg</file>
+    </qresource>
+</RCC>

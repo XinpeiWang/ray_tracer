@@ -7,6 +7,7 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QIcon>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -41,7 +42,7 @@
 // ============================================================================
 
 void MainWindow::createActions() {
-	m_actRender = new QAction("&Render Image", this);
+	m_actRender = new QAction(QIcon(":/icons/render.svg"), "&Render Image", this);
 	m_actRender->setShortcuts({QKeySequence(Qt::Key_F12), QKeySequence("Ctrl+R")});
 	m_actRender->setStatusTip("Render the selected scene with the current settings");
 	connect(m_actRender, &QAction::triggered, this, [this]() {
@@ -50,7 +51,7 @@ void MainWindow::createActions() {
 		onRenderClicked();
 	});
 
-	m_actRenderVideo = new QAction("Render &Video", this);
+	m_actRenderVideo = new QAction(QIcon(":/icons/video.svg"), "Render &Video", this);
 	m_actRenderVideo->setShortcut(QKeySequence("Ctrl+F12"));
 	m_actRenderVideo->setStatusTip("Render the camera path frame by frame and assemble a video");
 	connect(m_actRenderVideo, &QAction::triggered, this, [this]() {
@@ -59,13 +60,13 @@ void MainWindow::createActions() {
 		onRenderClicked();
 	});
 
-	m_actStop = new QAction("&Stop Render", this);
+	m_actStop = new QAction(QIcon(":/icons/stop.svg"), "&Stop Render", this);
 	m_actStop->setShortcut(QKeySequence(Qt::Key_Escape));
 	m_actStop->setShortcutContext(Qt::WindowShortcut);
 	m_actStop->setStatusTip("Stop the running render and discard its output");
 	connect(m_actStop, &QAction::triggered, this, &MainWindow::onStopClicked);
 
-	m_actOpenFolder = new QAction("Open Output &Folder", this);
+	m_actOpenFolder = new QAction(QIcon(":/icons/folder.svg"), "Open Output &Folder", this);
 	m_actOpenFolder->setShortcut(QKeySequence("Ctrl+Shift+O"));
 	m_actOpenFolder->setStatusTip("Show the folder containing the last render");
 	connect(m_actOpenFolder, &QAction::triggered, this, [this]() {
@@ -73,24 +74,24 @@ void MainWindow::createActions() {
 		QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(m_lastOutputPath).absolutePath()));
 	});
 
-	m_actOpenViewer = new QAction("Open in Default &Viewer", this);
+	m_actOpenViewer = new QAction(QIcon(":/icons/image.svg"), "Open in Default &Viewer", this);
 	m_actOpenViewer->setStatusTip("Open the rendered image in the system image viewer");
 	connect(m_actOpenViewer, &QAction::triggered, this, [this]() {
 		if (m_lastPreviewImagePath.isEmpty()) return;
 		QDesktopServices::openUrl(QUrl::fromLocalFile(m_lastPreviewImagePath));
 	});
 
-	m_actCopyLog = new QAction("&Copy Log", this);
+	m_actCopyLog = new QAction(QIcon(":/icons/copy.svg"), "&Copy Log", this);
 	m_actCopyLog->setShortcut(QKeySequence("Ctrl+Shift+C"));   // Ctrl+C stays "copy selection"
 	m_actCopyLog->setStatusTip("Copy the entire log to the clipboard");
 	connect(m_actCopyLog, &QAction::triggered, this, &MainWindow::copyLogToClipboard);
 
-	m_actSaveLog = new QAction("&Save Log…", this);
+	m_actSaveLog = new QAction(QIcon(":/icons/save.svg"), "&Save Log…", this);
 	m_actSaveLog->setShortcut(QKeySequence::Save);
 	m_actSaveLog->setStatusTip("Write the log to a text file");
 	connect(m_actSaveLog, &QAction::triggered, this, &MainWindow::saveLogToFile);
 
-	m_actClearLog = new QAction("C&lear Log", this);
+	m_actClearLog = new QAction(QIcon(":/icons/clear.svg"), "C&lear Log", this);
 	m_actClearLog->setShortcut(QKeySequence("Ctrl+L"));        // terminal convention
 	m_actClearLog->setStatusTip("Clear the log pane");
 	connect(m_actClearLog, &QAction::triggered, this, &MainWindow::clearLog);
