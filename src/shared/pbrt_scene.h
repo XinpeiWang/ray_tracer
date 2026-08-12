@@ -39,6 +39,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -218,8 +219,20 @@ struct ShapeDecl {
 
 struct Warning {
 	int line = 0;
+	std::string file;      // empty for the top-level scene
 	std::string message;
 };
+
+// Supplies the contents of an Include'd file. Returning false means "not
+// found", which is an error rather than a warning: a scene whose geometry
+// lives in an included file loads as an empty scene otherwise, and an empty
+// render is a far more confusing symptom than a refusal naming the path.
+//
+// A callback rather than direct file I/O so the parser stays a pure function -
+// the tests exercise nesting, cycles and missing files from an in-memory map,
+// and the caller decides what "a path" means (working directory, scene
+// directory, an archive).
+using FileResolver = std::function<bool(const std::string &path, std::string &outContents)>;
 
 struct Scene {
 	// Pre-world state.
@@ -262,10 +275,10 @@ struct Token {
 	std::string text;
 	int line = 0;
 	bool quoted = false;
+	int file = 0;      // index into TokenStream::files; 0 = the top-level scene
 };
 
-inline std::vector<Token> tokenize(const std::string &src) {
-	std::vector<Token> out;
+inline void tokenizeInto(const std::string &src, int fileIndex, std::vector<Token> &out) {
 	int line = 1;
 	std::size_t i = 0;
 	while (i < src.size()) {
@@ -277,7 +290,7 @@ inline std::vector<Token> tokenize(const std::string &src) {
 			continue;
 		}
 		if (c == '[' || c == ']') {
-			out.push_back({std::string(1, c), line, false});
+			out.push_back({std::string(1, c), line, false, fileIndex});
 			++i;
 			continue;
 		}
@@ -290,7 +303,7 @@ inline std::vector<Token> tokenize(const std::string &src) {
 				text += src[i++];
 			}
 			if (i < src.size()) ++i;
-			out.push_back({text, start, true});
+			out.push_back({text, start, true, fileIndex});
 			continue;
 		}
 		std::string word;
@@ -298,9 +311,8 @@ inline std::vector<Token> tokenize(const std::string &src) {
 			   && src[i] != '"' && src[i] != '[' && src[i] != ']' && src[i] != '#') {
 			word += src[i++];
 		}
-		out.push_back({word, line, false});
+		out.push_back({word, line, false, fileIndex});
 	}
-	return out;
 }
 
 // strtod, not stod: no exceptions, and the end pointer proves the WHOLE token
@@ -311,6 +323,72 @@ inline bool toDouble(const std::string &s, double &out) {
 	const double v = std::strtod(s.c_str(), &end);
 	if (end != s.c_str() + s.size()) return false;
 	out = v;
+	return true;
+}
+
+// Everything the parser sees, after includes have been spliced in.
+struct TokenStream {
+	std::vector<Token> tokens;
+	std::vector<std::string> files{""};   // index 0 is the top-level scene
+};
+
+// Splices Include/Import contents into the token stream at the point they
+// appear, which is exactly pbrt's textual semantics - the included file
+// inherits the current graphics state and can leave it modified.
+//
+// Depth and cycle guards are not paranoia: a file that includes itself, or a
+// pair that include each other, otherwise recurses until the stack dies, and
+// scene archives really do contain leftover self-references.
+inline bool expandIncludes(const std::string &text, int fileIndex,
+						   TokenStream &out, const FileResolver &resolver,
+						   std::vector<std::string> &openStack,
+						   std::string &error) {
+	if (openStack.size() > 32) {
+		error = "Include nesting deeper than 32 files - probably a cycle";
+		return false;
+	}
+
+	std::vector<Token> local;
+	tokenizeInto(text, fileIndex, local);
+
+	for (std::size_t i = 0; i < local.size(); ++i) {
+		const bool isInclude = !local[i].quoted
+							   && (local[i].text == "Include" || local[i].text == "Import");
+		if (!isInclude) { out.tokens.push_back(local[i]); continue; }
+
+		if (i + 1 >= local.size() || !local[i + 1].quoted) {
+			error = "line " + std::to_string(local[i].line) + ": "
+					+ local[i].text + " needs a quoted filename";
+			return false;
+		}
+		const std::string path = local[i + 1].text;
+		++i;   // consume the filename
+
+		// No resolver: the caller is parsing text in isolation and there is
+		// nothing to read from. Drop the directive rather than failing - this
+		// is the deliberate choice of a caller who passed no resolver, not a
+		// broken scene.
+		if (!resolver) continue;
+
+		for (const std::string &open : openStack) {
+			if (open == path) {
+				error = "Include cycle: '" + path + "' includes itself";
+				return false;
+			}
+		}
+
+		std::string contents;
+		if (!resolver(path, contents)) {
+			error = "cannot open included file '" + path + "'";
+			return false;
+		}
+
+		out.files.push_back(path);
+		const int childIndex = static_cast<int>(out.files.size()) - 1;
+		openStack.push_back(path);
+		if (!expandIncludes(contents, childIndex, out, resolver, openStack, error)) return false;
+		openStack.pop_back();
+	}
 	return true;
 }
 
@@ -337,7 +415,7 @@ struct GraphicsState {
 
 class Parser {
 public:
-	explicit Parser(std::vector<Token> tokens) : t_(std::move(tokens)) {}
+	explicit Parser(TokenStream stream) : stream_(std::move(stream)), t_(stream_.tokens) {}
 
 	ParseResult run() {
 		while (pos_ < t_.size()) {
@@ -356,7 +434,8 @@ public:
 	}
 
 private:
-	std::vector<Token> t_;
+	TokenStream stream_;
+	const std::vector<Token> &t_;
 	std::size_t pos_ = 0;
 	Scene s_;
 	ParseResult result_;
@@ -369,15 +448,26 @@ private:
 		return t_.empty() ? 0 : t_.back().line;
 	}
 
+	// Errors and warnings name the file they came from. Without it, "line 12"
+	// in a scene that includes six geometry files is close to useless.
+	std::string fileOf(std::size_t at) const {
+		if (at >= t_.size()) return std::string();
+		const int idx = t_[at].file;
+		if (idx <= 0 || static_cast<std::size_t>(idx) >= stream_.files.size()) return std::string();
+		return stream_.files[static_cast<std::size_t>(idx)];
+	}
+
 	ParseResult fail(int line, const std::string &msg) {
 		result_.ok = false;
 		result_.line = line;
-		result_.error = "line " + std::to_string(line) + ": " + msg;
+		const std::string f = fileOf(pos_ ? pos_ - 1 : 0);
+		result_.error = (f.empty() ? std::string() : f + " ") + "line "
+						+ std::to_string(line) + ": " + msg;
 		return result_;
 	}
 
 	void warn(int line, const std::string &msg) {
-		s_.warnings.push_back({line, msg});
+		s_.warnings.push_back({line, fileOf(pos_ ? pos_ - 1 : 0), msg});
 	}
 
 	bool readNumbers(int count, double *out, const std::string &directive) {
@@ -595,8 +685,19 @@ private:
 
 } // namespace detail
 
-inline ParseResult parse(const std::string &text) {
-	return detail::Parser(detail::tokenize(text)).run();
+// `resolver` supplies Include'd files. Omit it to parse a self-contained
+// scene; see FileResolver for why a callback rather than direct file I/O.
+inline ParseResult parse(const std::string &text, const FileResolver &resolver = {}) {
+	detail::TokenStream stream;
+	std::vector<std::string> openStack;
+	std::string error;
+	if (!detail::expandIncludes(text, 0, stream, resolver, openStack, error)) {
+		ParseResult r;
+		r.ok = false;
+		r.error = error;
+		return r;
+	}
+	return detail::Parser(std::move(stream)).run();
 }
 
 } // namespace pbrt_scene

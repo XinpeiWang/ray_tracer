@@ -16,6 +16,7 @@
 
 #include "pbrt_scene.h"
 
+#include <map>
 #include <string>
 
 using namespace pbrt_scene;
@@ -371,4 +372,126 @@ TEST(PbrtSceneTest, ParsesACornellBoxStyleFragmentEndToEnd) {
 	EXPECT_EQ(s.materials[s.shapes[1].materialIndex].name, "white");
 	EXPECT_EQ(s.shapes[1].params.find("P")->numbers.size(), 12u);
 	EXPECT_TRUE(s.warnings.empty()) << "nothing here should need skipping";
+}
+
+// ===========================================================================
+// Include
+// ===========================================================================
+// Real scenes put geometry in separate files - killeroo-simple.pbrt is little
+// more than settings plus `Include "geometry/killeroo.pbrt"`. Skipping the
+// directive loads an empty scene, which is a far more confusing symptom than
+// a refusal, so these carry real weight.
+
+namespace {
+
+// An in-memory filesystem, which is the whole reason parse() takes a resolver
+// callback instead of opening files itself.
+pbrt_scene::FileResolver mapResolver(std::map<std::string, std::string> files) {
+	return [files](const std::string &path, std::string &out) {
+		auto it = files.find(path);
+		if (it == files.end()) return false;
+		out = it->second;
+		return true;
+	};
+}
+
+} // namespace
+
+TEST(PbrtIncludeTest, IncludedGeometryIsSplicedIn) {
+	const ParseResult r = parse(
+		"Material \"diffuse\"\n"
+		"Include \"geometry/mesh.pbrt\"\n",
+		mapResolver({{"geometry/mesh.pbrt", "Shape \"sphere\" \"float radius\" [ 4 ]\n"}}));
+	ASSERT_TRUE(r.ok) << r.error;
+	ASSERT_EQ(r.scene.shapes.size(), 1u);
+	EXPECT_DOUBLE_EQ(r.scene.shapes[0].params.getFloat("radius", -1), 4.0);
+}
+
+TEST(PbrtIncludeTest, IncludedFileInheritsTheCurrentGraphicsState) {
+	// pbrt's Include is textual: the included file sees the material and CTM in
+	// force at the point of inclusion.
+	const ParseResult r = parse(
+		"Material \"conductor\"\n"
+		"Translate 3 0 0\n"
+		"Include \"g.pbrt\"\n",
+		mapResolver({{"g.pbrt", "Shape \"sphere\"\n"}}));
+	ASSERT_TRUE(r.ok) << r.error;
+	ASSERT_EQ(r.scene.shapes.size(), 1u);
+	EXPECT_EQ(r.scene.materials[r.scene.shapes[0].materialIndex].type, "conductor");
+	EXPECT_DOUBLE_EQ(r.scene.shapes[0].xform.m[3], 3.0);
+}
+
+TEST(PbrtIncludeTest, StateChangedInsideAnIncludeLeaksOutAsPbrtIntends) {
+	const ParseResult r = parse(
+		"Include \"m.pbrt\"\n"
+		"Shape \"sphere\"\n",
+		mapResolver({{"m.pbrt", "Material \"conductor\"\n"}}));
+	ASSERT_TRUE(r.ok) << r.error;
+	ASSERT_EQ(r.scene.shapes.size(), 1u);
+	EXPECT_EQ(r.scene.materials[r.scene.shapes[0].materialIndex].type, "conductor");
+}
+
+TEST(PbrtIncludeTest, IncludesNest) {
+	const ParseResult r = parse(
+		"Include \"a.pbrt\"\n",
+		mapResolver({{"a.pbrt", "Include \"b.pbrt\"\n"},
+					 {"b.pbrt", "Shape \"sphere\"\n"}}));
+	ASSERT_TRUE(r.ok) << r.error;
+	EXPECT_EQ(r.scene.shapes.size(), 1u);
+}
+
+TEST(PbrtIncludeTest, ImportIsTreatedLikeInclude) {
+	const ParseResult r = parse(
+		"Import \"g.pbrt\"\n",
+		mapResolver({{"g.pbrt", "Shape \"sphere\"\n"}}));
+	ASSERT_TRUE(r.ok) << r.error;
+	EXPECT_EQ(r.scene.shapes.size(), 1u);
+}
+
+TEST(PbrtIncludeTest, MissingIncludedFileIsFatalAndNamesThePath) {
+	// Not a warning. A scene missing its geometry renders empty, and an empty
+	// render gives no clue which path was wrong.
+	const ParseResult r = parse("Include \"geometry/gone.pbrt\"\n", mapResolver({}));
+	EXPECT_FALSE(r.ok);
+	EXPECT_NE(r.error.find("geometry/gone.pbrt"), std::string::npos) << r.error;
+}
+
+TEST(PbrtIncludeTest, SelfReferentialIncludeIsRejectedNotRecursedForever) {
+	const ParseResult r = parse(
+		"Include \"loop.pbrt\"\n",
+		mapResolver({{"loop.pbrt", "Include \"loop.pbrt\"\n"}}));
+	EXPECT_FALSE(r.ok);
+	EXPECT_NE(r.error.find("cycle"), std::string::npos) << r.error;
+}
+
+TEST(PbrtIncludeTest, MutualIncludeCycleIsRejected) {
+	const ParseResult r = parse(
+		"Include \"a.pbrt\"\n",
+		mapResolver({{"a.pbrt", "Include \"b.pbrt\"\n"},
+					 {"b.pbrt", "Include \"a.pbrt\"\n"}}));
+	EXPECT_FALSE(r.ok);
+	EXPECT_NE(r.error.find("cycle"), std::string::npos) << r.error;
+}
+
+TEST(PbrtIncludeTest, IncludeWithoutAFilenameIsRejected) {
+	const ParseResult r = parse("Include\nShape \"sphere\"\n", mapResolver({}));
+	EXPECT_FALSE(r.ok);
+	EXPECT_NE(r.error.find("quoted filename"), std::string::npos) << r.error;
+}
+
+TEST(PbrtIncludeTest, ErrorsInsideAnIncludeNameTheIncludedFile) {
+	// "line 2" alone is useless when a scene pulls in six geometry files.
+	const ParseResult r = parse(
+		"Include \"bad.pbrt\"\n",
+		mapResolver({{"bad.pbrt", "Shape \"sphere\"\nTranslate 1 2\n"}}));
+	EXPECT_FALSE(r.ok);
+	EXPECT_NE(r.error.find("bad.pbrt"), std::string::npos)
+		<< "the failing file must be named: " << r.error;
+}
+
+TEST(PbrtIncludeTest, WithoutAResolverIncludeIsDroppedRatherThanFailing) {
+	// A caller parsing text in isolation passed no resolver deliberately.
+	const ParseResult r = parse("Include \"x.pbrt\"\nShape \"sphere\"\n");
+	ASSERT_TRUE(r.ok) << r.error;
+	EXPECT_EQ(r.scene.shapes.size(), 1u);
 }
