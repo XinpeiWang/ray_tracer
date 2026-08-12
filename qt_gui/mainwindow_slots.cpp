@@ -2,6 +2,7 @@
 #include "scene_metadata_client.h"
 #include "win_taskbar.h"
 #include "render_output_parser.h"
+#include "camera_math.h"
 #include <QApplication>
 #include <QFileDialog>
 #include <QMessageBox>
@@ -248,10 +249,13 @@ void MainWindow::onCameraPresetChanged(int index) {
 	// scene is active instead of always landing at Cornell Box's own literal
 	// (500,278,278).
 	if (!isCustom && index >= 0 && index < m_cameraPresetCombo->count()) {
-		QVector3D dir = m_cameraPresetCombo->itemData(index).value<QVector3D>();
-		m_cameraPosX->setValue(m_currentLookatX + dir.x() * m_currentSceneCamDistance);
-		m_cameraPosY->setValue(m_currentLookatY + dir.y() * m_currentSceneCamDistance);
-		m_cameraPosZ->setValue(m_currentLookatZ + dir.z() * m_currentSceneCamDistance);
+		const QVector3D dir = m_cameraPresetCombo->itemData(index).value<QVector3D>();
+		const camera_math::Vec3 pos = camera_math::presetPosition(
+			camera_math::Vec3{dir.x(), dir.y(), dir.z()},
+			currentLookAt(), m_currentSceneCamDistance);
+		m_cameraPosX->setValue(pos.x);
+		m_cameraPosY->setValue(pos.y);
+		m_cameraPosZ->setValue(pos.z);
 	}
 
 	// Keep the Distance display in sync with wherever X/Y/Z just landed
@@ -269,31 +273,31 @@ void MainWindow::onCameraPresetChanged(int index) {
 // (m_currentLookatX/Y/Z) to the new distance - i.e. a zoom control that
 // preserves viewing angle, rather than resetting to some fixed direction.
 // ============================================================================
+// Reading the camera position and look-at point out of the widgets was
+// repeated verbatim at three call sites; these keep that in one place.
+camera_math::Vec3 MainWindow::currentCameraPosition() const {
+	return camera_math::Vec3{m_cameraPosX->value(),
+							 m_cameraPosY->value(),
+							 m_cameraPosZ->value()};
+}
+
+camera_math::Vec3 MainWindow::currentLookAt() const {
+	return camera_math::Vec3{m_currentLookatX, m_currentLookatY, m_currentLookatZ};
+}
+
 void MainWindow::onCameraDistanceChanged(double distance) {
-	double dx = m_cameraPosX->value() - m_currentLookatX;
-	double dy = m_cameraPosY->value() - m_currentLookatY;
-	double dz = m_cameraPosZ->value() - m_currentLookatZ;
-	double currentDist = std::sqrt(dx * dx + dy * dy + dz * dz);
+	// Arithmetic (including the camera-sits-on-the-target degenerate case)
+	// lives in camera_math.h so it can be unit tested - see
+	// tests/unit/camera_math_tests.cpp. This slot is only plumbing.
+	const camera_math::Vec3 moved = camera_math::repositionAtDistance(
+		currentCameraPosition(), currentLookAt(), distance);
 
-	// If the camera is sitting exactly on the look-at point, there's no
-	// direction to preserve - fall back to looking down -Z, matching the
-	// launcher's own generic default direction.
-	if (currentDist < 1e-6) {
-		dx = 0.0;
-		dy = 0.0;
-		dz = -1.0;
-		currentDist = 1.0;
-	}
-
-	const double scale = distance / currentDist;
-
-	// setValue() below will each fire valueChanged -> onSceneChanged is not
-	// connected to X/Y/Z directly, so no re-entrant loop here; only guard
-	// against this spinbox re-triggering itself is unnecessary since we
-	// don't write back to m_cameraDistance in this slot.
-	m_cameraPosX->setValue(m_currentLookatX + dx * scale);
-	m_cameraPosY->setValue(m_currentLookatY + dy * scale);
-	m_cameraPosZ->setValue(m_currentLookatZ + dz * scale);
+	// setValue() below each fire valueChanged; onSceneChanged is not connected
+	// to X/Y/Z, so there is no re-entrant loop, and we deliberately do not
+	// write back to m_cameraDistance here.
+	m_cameraPosX->setValue(moved.x);
+	m_cameraPosY->setValue(moved.y);
+	m_cameraPosZ->setValue(moved.z);
 }
 
 // ============================================================================
@@ -305,11 +309,8 @@ void MainWindow::onCameraDistanceChanged(double distance) {
 // right back, a harmless but wasteful no-op loop).
 // ============================================================================
 void MainWindow::refreshCameraDistanceDisplay() {
-	double dx = m_cameraPosX->value() - m_currentLookatX;
-	double dy = m_cameraPosY->value() - m_currentLookatY;
-	double dz = m_cameraPosZ->value() - m_currentLookatZ;
-	double dist = std::sqrt(dx * dx + dy * dy + dz * dz);
-
+	const double dist = camera_math::distanceFromTarget(currentCameraPosition(),
+														currentLookAt());
 	const QSignalBlocker blocker(m_cameraDistance);
 	m_cameraDistance->setValue(dist);
 }

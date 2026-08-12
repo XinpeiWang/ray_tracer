@@ -24,6 +24,8 @@
 #include <QResizeEvent>
 #include <QSystemTrayIcon>
 
+#include "camera_math.h"
+
 // ============================================================================
 // WheelIgnoreFilter
 // ============================================================================
@@ -279,6 +281,11 @@ private:
 	void styleGroupBox(QGroupBox *box);
 	void assembleVideoAutomatically();  // Automatically assembles video after frames are rendered
 	void refreshCameraDistanceDisplay(); // Recomputes m_cameraDistance's shown value from X/Y/Z and m_currentLookat*, without re-triggering onCameraDistanceChanged
+
+	// Camera arithmetic lives in camera_math.h (Qt-free, unit tested); these
+	// just read the current values out of the widgets for it.
+	camera_math::Vec3 currentCameraPosition() const;
+	camera_math::Vec3 currentLookAt() const;
 
 	// UI Components
 	QTabWidget *m_tabWidget;

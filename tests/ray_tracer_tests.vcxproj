@@ -159,6 +159,7 @@
     <ClCompile Include="unit\scene_registry_tests.cpp" />
     <ClCompile Include="unit\error_codes_tests.cpp" />
     <ClCompile Include="unit\render_output_parser_tests.cpp" />
+    <ClCompile Include="unit\camera_math_tests.cpp" />
     <ClCompile Include="unit\math_tests.cpp" />
     <ClCompile Include="unit\interface_tests.cpp" />
     <!-- Integration Tests -->
