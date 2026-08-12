@@ -1,4 +1,4 @@
-# Deploy Ray Tracer Qt GUI with all dependencies
+﻿# Deploy Ray Tracer Qt GUI with all dependencies
 # This script focuses on Qt GUI and its dependencies.
 # Backend (ray_tracer.exe) and PTX are now auto-deployed by MSBuild post-build events.
 
@@ -14,7 +14,11 @@ Write-Host "Ray Tracer Qt GUI Deployment Script" -ForegroundColor Cyan
 Write-Host "Configuration: $Configuration" -ForegroundColor Cyan
 Write-Host "========================================`n" -ForegroundColor Cyan
 
-$repoRoot = $PSScriptRoot
+# $PSScriptRoot is scripts/, so the repo root is one level up. Getting this
+# wrong is quiet rather than loud: paths still resolve, just to a directory
+# that does not exist, and the script reports missing files instead of
+# failing outright.
+$repoRoot = Split-Path $PSScriptRoot -Parent
 $packageDir = "$repoRoot\RayTracer_Package"
 
 # Verify backend files exist (they should be auto-deployed by MSBuild)

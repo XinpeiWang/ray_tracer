@@ -96,6 +96,16 @@ if ($Clean) {
 	}
 }
 
+# A running GUI holds a write lock on RayTracerGUI.exe, and the Qt link step
+# below writes straight into RayTracer_Package. Leaving it running produces a
+# bare "ld returned 1 exit status" with no hint as to why, so stop it first.
+$runningGui = Get-Process -Name 'RayTracerGUI' -ErrorAction SilentlyContinue
+if ($runningGui) {
+	Write-Host "Stopping running RayTracerGUI.exe (it locks the build output)..."
+	Stop-Process -Name 'RayTracerGUI' -Force
+	Start-Sleep -Milliseconds 800
+}
+
 # Build C++ solution
 Write-Header "Building C++ Solution ($Configuration|x64)"
 Write-Host "Building: launcher, cpu_renderer, optix_renderer$(if (-not $SkipTests) {', tests'})"
@@ -225,7 +235,9 @@ if (-not $SkipGui) {
 					Write-Error-Message "qmake failed"
 				} else {
 					# Build
-					& "$mingwBinPath\mingw32-make.exe" -j8
+					# All cores rather than a fixed 8 - this machine may have
+					# more, and a smaller one should not be oversubscribed.
+					& "$mingwBinPath\mingw32-make.exe" -j"$([System.Environment]::ProcessorCount)"
 					if ($LASTEXITCODE -ne 0) {
 						Write-Error-Message "Qt GUI build failed"
 					} else {

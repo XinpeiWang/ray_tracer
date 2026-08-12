@@ -98,6 +98,11 @@
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <!-- main.cpp includes are written relative to the repo root
+           ("cpu_renderer/...", "src/...", "gpu/optix/..."). That resolved
+           implicitly while main.cpp sat at the root; now that it lives
+           beside this project the root has to be on the include path. -->
+      <AdditionalIncludeDirectories>$(ProjectDir)..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -116,6 +121,11 @@
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <!-- main.cpp includes are written relative to the repo root
+           ("cpu_renderer/...", "src/...", "gpu/optix/..."). That resolved
+           implicitly while main.cpp sat at the root; now that it lives
+           beside this project the root has to be on the include path. -->
+      <AdditionalIncludeDirectories>$(ProjectDir)..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -132,6 +142,11 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <!-- main.cpp includes are written relative to the repo root
+           ("cpu_renderer/...", "src/...", "gpu/optix/..."). That resolved
+           implicitly while main.cpp sat at the root; now that it lives
+           beside this project the root has to be on the include path. -->
+      <AdditionalIncludeDirectories>$(ProjectDir)..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       
     </ClCompile>
     <Link>
@@ -154,6 +169,11 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <!-- main.cpp includes are written relative to the repo root
+           ("cpu_renderer/...", "src/...", "gpu/optix/..."). That resolved
+           implicitly while main.cpp sat at the root; now that it lives
+           beside this project the root has to be on the include path. -->
+      <AdditionalIncludeDirectories>$(ProjectDir)..;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       
     </ClCompile>
     <Link>
@@ -168,7 +188,7 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\main.cpp" />
+    <ClCompile Include="main.cpp" />
     <ClCompile Include="..\src\external\image_writer.cpp" />
   </ItemGroup>
   <ItemGroup>

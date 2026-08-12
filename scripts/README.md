@@ -4,6 +4,19 @@ Utility scripts for building, packaging, and testing the ray tracer.
 
 ## Contents
 
+### Building
+- **`build_all.ps1`** - Build everything: launcher, renderers, tests, Qt GUI
+  - Flags: `-Configuration Debug|Release`, `-SkipTests`, `-SkipGui`, `-Deploy`, `-Clean`
+  - Stops a running RayTracerGUI.exe first; it locks the build output
+  - Usage: `.\scriptsuild_all.ps1`
+- **`build_all.bat`** - Batch equivalent
+- **`build_and_deploy.ps1`** - build_all.ps1 followed by the Qt deployment step
+
+### Deployment
+- **`deploy_launcher.ps1`** - Verifies ray_tracer.exe and the PTX files reached
+  RayTracer_Package/ after a build
+- **`deploy_qt_gui.ps1`** - Copies the Qt runtime DLLs next to RayTracerGUI.exe
+
 ### Packaging
 - **`package.ps1`** - PowerShell script to create distribution packages
   - Builds Release configuration

@@ -18,7 +18,7 @@
 - The GUI executable is `RayTracerGUI.exe` and is deployed to the `RayTracer_Package/` directory.
 - The GUI spawns the console launcher `ray_tracer.exe` as a subprocess to perform rendering. Scene metadata (description, GPU compatibility, perf hint) is loaded live from a separate `scene_metadata.dll` (built from `scene_metadata.vcxproj`), not hardcoded in the GUI — **this DLL must be rebuilt whenever `scene_registry.h` changes**, or the GUI will show a stale scene list. `RayTracerGUI.exe` holds a lock on this DLL while running, so it needs to be closed before rebuilding.
 - **Deployment**: MSBuild automatically deploys `ray_tracer.exe` and the OptiX PTX files to `RayTracer_Package/` via post-build events when you build the launcher or optix_renderer projects. No manual copying needed for those two, but see the PTX staleness gotcha above for `bin/`/`x64/` test-binary directories.
-- **Verification**: Run `.\deploy_launcher.ps1` to verify deployment succeeded after building.
+- **Verification**: Run `.\scripts\deploy_launcher.ps1` to verify deployment succeeded after building.
 - **Qt dependencies**: Run `windeployqt.exe RayTracerGUI.exe --no-translations` in the `RayTracer_Package` directory to deploy Qt6 DLLs if missing.
 
 ## Rendering Guidelines

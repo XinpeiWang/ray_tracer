@@ -325,7 +325,7 @@ RayTracer_Package\               # Deployment package (if deployed)
    ```powershell
    $env:Path += ";C:\Qt\6.11.1\mingw_64\bin"
    ```
-3. Or skip GUI: `.\build_all.ps1 -SkipGui`
+3. Or skip GUI: `.\scripts\build_all.ps1 -SkipGui`
 
 ## Advanced Topics
 
@@ -345,10 +345,10 @@ msbuild ray_tracer.sln /p:Configuration=Release /p:Platform=x64 /p:CudaToolkitPa
 ### Clean Build
 ```batch
 # Batch script
-build_all.bat Release clean
+.\scripts\build_all.bat Release clean
 
 # PowerShell script
-.\build_all.ps1 -Clean
+.\scripts\build_all.ps1 -Clean
 
 # Direct MSBuild
 msbuild ray_tracer.sln /t:Clean /p:Configuration=Release /p:Platform=x64

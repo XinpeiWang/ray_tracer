@@ -409,8 +409,6 @@ Follow semantic versioning: `vMAJOR.MINOR.PATCH`
 
 ```
 ray_tracer/
-├── main.cpp                      # Unified launcher entry point (CPU/GPU/SPPM/video dispatch)
-│
 ├── src/                          # Ray tracing library (based on "Ray Tracing in One Weekend" series)
 │   ├── InOneWeekend/             # Book 1: Basic ray tracer
 │   ├── TheNextWeek/              # Book 2: BVH, textures, volumes
@@ -418,7 +416,10 @@ ray_tracer/
 │   ├── shared/                   # CPU/GPU-shared headers: pbrt-v4-style BxDFs, cameras, lights, sampling
 │   └── external/                 # Third-party headers (stb_image, etc.)
 │
-├── launcher/                     # Launcher project file (source lives at repo root, see main.cpp above)
+├── launcher/                     # Unified launcher: the ray_tracer.exe entry point
+│   ├── main.cpp                  # CPU/GPU/SPPM/video dispatch
+│   ├── launcher_args.h           # Command-line parsing
+│   ├── camera_path.h             # Video camera paths
 │   └── launcher.vcxproj          # Visual Studio project (auto-deploys to RayTracer_Package/)
 │
 ├── cpu_renderer/                  # CPU path tracer (static library)
@@ -450,6 +451,7 @@ ray_tracer/
 │
 ├── scripts/                       # Build and deployment scripts
 │   ├── build_all.bat/.ps1        # Build all components
+│   ├── deploy_launcher.ps1       # Verify the launcher deployed to RayTracer_Package/
 │   ├── build_and_deploy.ps1      # One-command build + deploy
 │   ├── deploy_qt_gui.ps1         # Qt dependency deployment
 │   └── setup_env.bat/.ps1        # Environment setup

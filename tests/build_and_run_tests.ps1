@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 # PowerShell script to build and run Ray Tracer unit tests
 # Alternative to batch script with better error handling and output
 

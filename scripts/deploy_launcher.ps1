@@ -1,8 +1,12 @@
-# Verify Launcher Deployment
+﻿# Verify Launcher Deployment
 # Checks that ray_tracer.exe and optix_programs.ptx are correctly deployed to RayTracer_Package
 # MSBuild post-build events should auto-deploy; this script verifies it worked
 
-$RepoRoot = $PSScriptRoot
+# $PSScriptRoot is scripts/, so the repo root is one level up. Getting this
+# wrong is quiet rather than loud: paths still resolve, just to a directory
+# that does not exist, and the script reports missing files instead of
+# failing outright.
+$RepoRoot = Split-Path $PSScriptRoot -Parent
 $PackageDir = Join-Path $RepoRoot "RayTracer_Package"
 $ExpectedExe = Join-Path $PackageDir "ray_tracer.exe"
 $ExpectedPTX = Join-Path $PackageDir "optix_programs.ptx"

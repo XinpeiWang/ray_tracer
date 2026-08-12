@@ -430,7 +430,7 @@ Before committing code, verify:
 - **Qt**: Version 6.11.1 (for GUI)
 
 ### Build System
-- Use `build_all.ps1` for complete build
+- Use `scripts\build_all.ps1` for complete build
 - Use `build_and_deploy.ps1` for build + package
 - Run `deploy_qt_gui.ps1` after Qt GUI changes
 

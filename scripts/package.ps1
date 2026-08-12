@@ -11,7 +11,11 @@ Write-Host "Ray Tracer Packaging Script" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
 # Paths
-$ProjectRoot = $PSScriptRoot
+# $PSScriptRoot is scripts/, so the repo root is one level up. Getting this
+# wrong is quiet rather than loud: paths still resolve, just to a directory
+# that does not exist, and the script reports missing files instead of
+# failing outright.
+$ProjectRoot = Split-Path $PSScriptRoot -Parent
 $BuildDir = Join-Path $ProjectRoot "x64\$Config"
 $OutputDir = Join-Path $ProjectRoot $OutputDir
 

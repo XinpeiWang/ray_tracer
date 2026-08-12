@@ -1,4 +1,4 @@
-# Qt6 Installation Verification Script
+﻿# Qt6 Installation Verification Script
 
 Write-Host "`n🔍 Checking for Qt6 Installation...`n" -ForegroundColor Cyan
 
