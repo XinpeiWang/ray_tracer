@@ -986,7 +986,9 @@ inline void append(std::vector<SceneDescriptor>& registry) {
             0.0, 0.0, 0.0,                      // pbrt has no flat background
             CameraMode::Fixed,
             d.camera.aperture,
-            d.camera.focusDistance
+            // NOT d.camera.focusDistance - see focusDistanceFor()'s comment.
+            // Passing pbrt's raw default here made near geometry vanish.
+            pbrt_flatten::focusDistanceFor(d.camera)
         };
 
         // A failed load yields an empty world rather than a crash - the error

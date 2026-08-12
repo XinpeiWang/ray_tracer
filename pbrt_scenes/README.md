@@ -37,21 +37,6 @@ The parser covers pbrt-v4's core: `LookAt`/`Translate`/`Rotate`/`Scale`/
 `MakeNamedMaterial`/`NamedMaterial`, `Texture`, `AreaLightSource`, `Shape`
 (`trianglemesh`, `plymesh`, `sphere`), and `Include`.
 
-### Known issue: `Material "conductor"` renders black
-
-A conductor with no explicit `reflectance` or `k` currently renders as a pure
-black surface, at any roughness. Verified by rendering the same sphere at
-roughness 0.1 and 0.9 — both are absolutely black, which rules out the
-plausible innocent explanation (a mirror sphere in an open-fronted box really
-does reflect mostly darkness). The colour defaulting in
-`src/shared/pbrt_flatten.h` looks correct on inspection, so the fault is
-somewhere further along; it has not yet been traced.
-
-Until it is fixed, prefer `coateddiffuse` or an explicit
-`"rgb reflectance"` for metallic-looking surfaces. This is why the bundled
-`example-cornell.pbrt` uses a diffuse sphere where a metal one would be the
-natural choice.
-
 Anything the parser does not understand is skipped with a warning on stderr
 rather than failing the load, so a scene using an unsupported feature still
 renders — without that feature. Unsupported constructs are worth reading the warnings

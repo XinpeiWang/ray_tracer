@@ -83,8 +83,43 @@ struct Camera {
 	double up[3] = {0, 1, 0};
 	double vfov = 90.0;          // degrees, VERTICAL - see the note in flatten()
 	double aperture = 0.0;
+	// pbrt's own default, and it is a sentinel meaning "effectively at
+	// infinity", not a measurement. See focusDistanceFor() before using it.
 	double focusDistance = 1e6;
 };
+
+// The focus distance to actually give a camera, which is NOT camera.focusDistance.
+//
+// pbrt only uses focal distance to place the plane of sharp focus, so its
+// "no depth of field" default of 1e6 is harmless there. Our camera also uses
+// focus_dist to size the viewport (see camera.h's initialize()), which makes
+// the primary ray's direction vector grow in proportion. Ray parameters are
+// then measured in units of that vector, so the fixed t_min of 0.001 used for
+// self-intersection stops rejecting hits within 0.001 world units and starts
+// rejecting hits within a THOUSAND of them - silently deleting near geometry
+// while distant geometry renders normally.
+//
+// That is not a hypothetical: it rendered a metal sphere in the bundled
+// example scene as a perfectly black disc with a hard edge, which reads like
+// a broken material and is not one. A test pins it.
+//
+// With no aperture there is no plane of focus to honour, so the distance to
+// the subject is both harmless and the sane choice. With an aperture the
+// scene meant something by it, but a value at the sentinel still cannot be
+// used literally.
+inline double focusDistanceFor(const Camera &c) {
+	double toSubject = 0.0;
+	for (int i = 0; i < 3; ++i) {
+		const double d = c.lookat[i] - c.lookfrom[i];
+		toSubject += d * d;
+	}
+	toSubject = std::sqrt(toSubject);
+	if (toSubject <= 0.0) toSubject = 10.0;
+
+	if (c.aperture <= 0.0) return toSubject;
+	return (c.focusDistance > 0.0 && c.focusDistance < 1e5) ? c.focusDistance
+														   : toSubject;
+}
 
 struct FlatScene {
 	std::vector<Triangle> triangles;

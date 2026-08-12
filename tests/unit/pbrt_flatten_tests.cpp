@@ -344,3 +344,57 @@ TEST(FlattenMaterialTest, MaterialIndicesOnGeometryStillLineUp) {
 	EXPECT_EQ(s.materials[s.triangles[0].material].kind, MaterialKind::Diffuse);
 	EXPECT_EQ(s.materials[s.triangles[3].material].kind, MaterialKind::Conductor);
 }
+
+// ---------------------------------------------------------------------------
+// Focus distance
+// ---------------------------------------------------------------------------
+// focusDistanceFor() exists because pbrt's "no depth of field" default is the
+// sentinel 1e6, and our camera uses focus_dist to size the viewport as well as
+// to place the plane of focus. Handing it the sentinel scales the primary ray
+// direction by a million, and the fixed t_min of 0.001 then rejects every hit
+// within a thousand world units - which deleted near geometry from every
+// loaded scene and looked like a broken material.
+
+TEST(PbrtFocusTest, TheNoDepthOfFieldSentinelNeverReachesTheCamera) {
+	pbrt_flatten::Camera c;                       // defaults: aperture 0, 1e6
+	c.lookfrom[2] = -800; c.lookat[2] = 0;
+	EXPECT_LT(pbrt_flatten::focusDistanceFor(c), 1e5)
+		<< "pbrt's 1e6 sentinel was passed through as if it were a measurement";
+}
+
+TEST(PbrtFocusTest, WithNoApertureItFocusesOnTheSubject) {
+	// Nothing is out of focus without an aperture, so the only requirement is
+	// a sane viewport scale - and the distance to what the camera is aimed at
+	// is the one number guaranteed to be on the scene's own scale.
+	pbrt_flatten::Camera c;
+	c.lookfrom[0] = 278; c.lookfrom[1] = 278; c.lookfrom[2] = -800;
+	c.lookat[0] = 278;   c.lookat[1] = 278;   c.lookat[2] = 0;
+	EXPECT_NEAR(pbrt_flatten::focusDistanceFor(c), 800.0, 1e-9);
+}
+
+TEST(PbrtFocusTest, AnExplicitFocalDistanceIsHonouredWhenThereIsAnAperture) {
+	pbrt_flatten::Camera c;
+	c.lookfrom[2] = -10; c.lookat[2] = 0;
+	c.aperture = 0.5;
+	c.focusDistance = 37.0;
+	EXPECT_NEAR(pbrt_flatten::focusDistanceFor(c), 37.0, 1e-9)
+		<< "a scene that set focaldistance meant it";
+}
+
+TEST(PbrtFocusTest, AnApertureWithNoFocalDistanceStillFallsBackRatherThanUsing1e6) {
+	// pbrt lets a scene set lensradius without focaldistance, leaving the
+	// sentinel in place. Honouring it literally would reintroduce the bug on
+	// exactly the scenes that asked for depth of field.
+	pbrt_flatten::Camera c;
+	c.lookfrom[2] = -10; c.lookat[2] = 0;
+	c.aperture = 0.5;
+	EXPECT_NEAR(pbrt_flatten::focusDistanceFor(c), 10.0, 1e-9);
+}
+
+TEST(PbrtFocusTest, ADegenerateCameraStillYieldsAUsableDistance) {
+	// lookfrom == lookat is nonsense, but returning 0 would make the viewport
+	// zero-sized and every ray degenerate. Better a harmless default.
+	pbrt_flatten::Camera c;
+	for (int i = 0; i < 3; ++i) { c.lookfrom[i] = 5; c.lookat[i] = 5; }
+	EXPECT_GT(pbrt_flatten::focusDistanceFor(c), 0.0);
+}
