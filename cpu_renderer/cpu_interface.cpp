@@ -463,6 +463,12 @@ extern "C" const char* cpu_scene_category_by_id(int scene_id) {
 	return s ? s->category : "";
 }
 
+extern "C" const char* cpu_scene_pbrt_path_by_id(int scene_id) {
+	const auto& byId = pbrt_scene_registry::paths();
+	const auto it = byId.find(scene_id);
+	return (it == byId.end()) ? "" : it->second.c_str();
+}
+
 extern "C" const char* cpu_scene_description_by_id(int scene_id) {
 	const SceneDescriptor* s = find_scene(scene_id);
 	return s ? s->description : "";

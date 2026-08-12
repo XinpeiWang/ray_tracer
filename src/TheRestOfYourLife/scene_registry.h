@@ -26,6 +26,7 @@
 #include "../shared/pbrt_load.h"
 #include <deque>
 #include <functional>
+#include <map>
 #include <iostream>
 #include <vector>
 #include <string>
@@ -919,6 +920,8 @@ struct Loaded {
     pbrt_cpu::BuildResult built;
 };
 
+std::map<int, std::string>& paths();   // defined below, used by append()
+
 inline void append(std::vector<SceneDescriptor>& registry) {
     const std::vector<pbrt_discover::Discovered> found = pbrt_discover::scanDefaultPaths();
 
@@ -976,9 +979,13 @@ inline void append(std::vector<SceneDescriptor>& registry) {
         s.performance = "Unknown";
         s.recommended_spp = d.samplesPerPixel;
         s.requires_files = true;
-        // No GPU path consumes a FlatScene yet, so claiming otherwise would
-        // route the user into a renderer that has never seen this geometry.
-        s.gpu_compatible = false;
+        // gpu/optix/pbrt_gpu_builder.h consumes the same FlatScene this does,
+        // so both backends render the same file. The GPU one is the weaker of
+        // the two here: it can only sample area lights that are spheres or
+        // parallelograms, and it says so at build time when a scene's lights
+        // are neither. That is a quality difference on some scenes, not a
+        // reason to hide the option on all of them.
+        s.gpu_compatible = true;
         s.camera = CameraConfig{
             d.camera.vfov,
             d.camera.lookfrom[0], d.camera.lookfrom[1], d.camera.lookfrom[2],
@@ -1009,8 +1016,19 @@ inline void append(std::vector<SceneDescriptor>& registry) {
         const double ux = d.camera.up[0], uy = d.camera.up[1], uz = d.camera.up[2];
         s.setup_camera = [ux, uy, uz](camera_t& cam) { cam.vup = vec3(ux, uy, uz); };
 
+        paths()[s.id] = path;
         registry.push_back(s);
     }
+}
+
+// The .pbrt file each loaded scene came from, keyed by scene id. Kept beside
+// the registry rather than inside SceneDescriptor because only loaded scenes
+// have one, and the GPU builder is the only consumer: it is handed a scene id
+// and has to find the same file the CPU side found. Re-scanning the directory
+// there would be a second implementation of the search order, free to drift.
+inline std::map<int, std::string>& paths() {
+    static std::map<int, std::string> byId;
+    return byId;
 }
 
 } // namespace pbrt_scene_registry

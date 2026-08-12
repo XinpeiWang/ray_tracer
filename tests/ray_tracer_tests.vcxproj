@@ -168,6 +168,7 @@
     <ClCompile Include="unit\pbrt_cpu_builder_tests.cpp" />
     <ClCompile Include="unit\pbrt_discover_tests.cpp" />
     <ClCompile Include="unit\pbrt_load_tests.cpp" />
+    <ClCompile Include="unit\pbrt_quadify_tests.cpp" />
     <!-- The GUI's palette tables. Qt-free precisely so this MSVC binary can
          compile them; see qt_gui/palette_data.h. -->
     <ClCompile Include="..\qt_gui\palette_data.cpp" />

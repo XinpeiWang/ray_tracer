@@ -184,6 +184,12 @@ const char* cpu_scene_name_by_id(int scene_id);
 /// groups its scene list by this.
 const char* cpu_scene_category_by_id(int scene_id);
 const char* cpu_scene_description_by_id(int scene_id);
+/// For a scene loaded from a .pbrt file, the path it was loaded from; "" for
+/// every built-in scene. This exists so the GPU scene builder can find the
+/// same file the CPU registry found. The alternative - re-scanning the scene
+/// directory from the GPU side - would be a second implementation of the
+/// search order and free to disagree about which file is scene 65.
+const char* cpu_scene_pbrt_path_by_id(int scene_id);
 const char* cpu_scene_performance_by_id(int scene_id);
 int cpu_scene_recommended_spp_by_id(int scene_id);
 int cpu_scene_requires_files_by_id(int scene_id);

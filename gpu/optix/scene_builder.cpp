@@ -10,6 +10,8 @@
 // tests/ray_tracer_tests.vcxproj already link cpu_renderer.lib alongside
 // this project's own output.
 #include "../../cpu_renderer/cpu_interface.h"
+#include "pbrt_gpu_builder.h"
+#include "../../src/shared/pbrt_load.h"
 #include <cmath>
 #include <cassert>
 #include <iostream>
@@ -3263,6 +3265,74 @@ static void build_rungholt_gpu(SceneData& scene) {
 /// @param scene Output scene data to populate
 /// @param camera_params Output camera parameters array [origin(3), lower_left(3), horizontal(3), vertical(3)]
 /// @return true if scene was built successfully, false for unknown scene_id
+// Builds a scene that came from a .pbrt file on disk. Separate from the
+// switch below because there is nothing to switch on: these scenes are
+// discovered at startup, so the code path is one function rather than one
+// case per scene.
+static bool build_loaded_pbrt_scene(
+	const char* path,
+	SceneData& scene,
+	float* camera_params,
+	const int image_width,
+	const int image_height,
+	const double cam_x,
+	const double cam_y,
+	const double cam_z,
+	const bool force_camera_override
+) {
+	const pbrt_load::LoadResult loaded = pbrt_load::loadFile(path);
+	if (!loaded.ok) {
+		std::cerr << "[OptiX] " << loaded.error << "\n";
+		return false;
+	}
+	for (const pbrt_scene::Warning& w : loaded.scene.warnings)
+		std::cerr << "[OptiX] warning: " << path << ": " << w.message << "\n";
+
+	const pbrt_gpu::BuildStats stats = pbrt_gpu::build(loaded.scene, scene);
+	std::cerr << "[OptiX] Loaded " << path << ": " << stats.triangles
+		  << " triangles, " << stats.spheres << " spheres, "
+		  << stats.quadLights << " quads, "
+		  << scene.lightIndices.size() << " sampled lights\n";
+
+	// Silence here would be the cruel option: the render still runs, it is
+	// just darker than the scene asked for, and nothing on screen says why.
+	if (stats.unsampledEmissiveTriangles > 0) {
+		std::cerr << "[OptiX] warning: " << stats.unsampledEmissiveTriangles
+			  << " emissive triangle(s) are not parallelograms, so they cannot be "
+			     "sampled as lights on GPU.\n"
+			  << "[OptiX] They still emit when hit directly, but the image will be "
+			     "darker and noisier than the CPU render. Use --cpu for this scene.\n";
+	}
+	if (scene.lightIndices.empty()) {
+		std::cerr << "[OptiX] warning: no samplable lights in this scene - "
+			     "expect a very dark image.\n";
+	}
+
+	// The scene's own camera, unless the user moved it.
+	const pbrt_flatten::Camera& c = loaded.scene.camera;
+	const float3 lookfrom = force_camera_override
+		? make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y),
+			      static_cast<float>(cam_z))
+		: make_float3(static_cast<float>(c.lookfrom[0]),
+			      static_cast<float>(c.lookfrom[1]),
+			      static_cast<float>(c.lookfrom[2]));
+	const float3 lookat = make_float3(static_cast<float>(c.lookat[0]),
+					  static_cast<float>(c.lookat[1]),
+					  static_cast<float>(c.lookat[2]));
+	const float3 vup = make_float3(static_cast<float>(c.up[0]),
+				       static_cast<float>(c.up[1]),
+				       static_cast<float>(c.up[2]));
+	const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+	// focusDistanceFor() rather than c.focusDistance: pbrt's "no depth of
+	// field" default is the sentinel 1e6, and focus_dist scales the viewport
+	// here exactly as it does on the CPU. Passing the sentinel through made
+	// near geometry vanish once already.
+	build_pinhole_camera_params(
+		lookfrom, lookat, vup, static_cast<float>(c.vfov), aspect,
+		static_cast<float>(pbrt_flatten::focusDistanceFor(c)), camera_params);
+	return true;
+}
+
 bool build_scene(
 	const int scene_id,
 	const int image_width,
@@ -4210,6 +4280,20 @@ bool build_scene(
 							}
 
 							default: {
+									// A scene loaded from a .pbrt file has no case of its
+									// own - it is not known at compile time. The CPU
+									// registry already resolved which file this id is, so
+									// ask it rather than re-deriving the directory search
+									// order here and risking the two sides disagreeing
+									// about which file is scene 65.
+									const char* pbrtPath = cpu_scene_pbrt_path_by_id(scene_id);
+									if (pbrtPath && pbrtPath[0] != '\0') {
+										return build_loaded_pbrt_scene(
+											pbrtPath, scene, camera_params,
+											image_width, image_height,
+											cam_x, cam_y, cam_z, force_camera_override);
+									}
+
 									const char* name = cpu_scene_name_by_id(scene_id);
 									if (name && name[0] != '\0') {
 										std::cerr << "[OptiX] Scene '" << name
