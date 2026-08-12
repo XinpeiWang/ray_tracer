@@ -1,5 +1,9 @@
 #include "mainwindow.h"
 #include "icon_tint.h"
+
+#include "../src/shared/scene_descriptor.h"
+
+#include <QTabBar>
 #include "scene_metadata_client.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -22,6 +26,32 @@
 #include <QUrl>
 #include <cmath>
 
+// Refills the scene dropdown with just one category's scenes.
+//
+// Ids are contiguous from 0 (tests/unit/scene_registry_tests.cpp's
+// IDsAreContiguousFromZero enforces this), so walking 0..sceneCount() and
+// querying each id directly is enough - no index-vs-id translation needed.
+// The id is stored as item data and everything downstream reads THAT, never
+// the row index, which is what makes filtering the list safe: a scene keeps
+// its identity no matter which position it lands in.
+void MainWindow::populateSceneCombo(const QString &category) {
+	if (!m_sceneCombo) return;
+
+	// Silent while refilling: clear() plus one addItem() per scene would emit
+	// currentIndexChanged repeatedly, running onSceneChanged - which rewrites
+	// the SPP box and camera - once per insertion, on scenes the user never
+	// chose. The caller issues exactly one update for the final selection.
+	const QSignalBlocker blocker(m_sceneCombo);
+	m_sceneCombo->clear();
+
+	const int count = SceneMetadataClient::sceneCount();
+	for (int id = 0; id < count; ++id) {
+		if (SceneMetadataClient::sceneCategory(id) != category) continue;
+		m_sceneCombo->addItem(
+			QString("[%1] %2").arg(id).arg(SceneMetadataClient::sceneName(id)), id);
+	}
+}
+
 void MainWindow::createBasicTab() {
 	QWidget *basicTab = new QWidget();
 	QVBoxLayout *layout = new QVBoxLayout(basicTab);
@@ -35,28 +65,67 @@ void MainWindow::createBasicTab() {
 	sceneGroupLayout->setContentsMargins(12, 20, 12, 10);
 	sceneGroupLayout->setSpacing(8);
 
-	QHBoxLayout *sceneRow = new QHBoxLayout();
-	m_sceneCombo = new QComboBox(basicTab);
+	// A category filter above the dropdown. With 65 scenes and counting, one
+	// flat list had become a scroll-and-hunt exercise; the tabs cut it to at
+	// most a couple of dozen at a time. The categories come from the registry
+	// itself (SceneDescriptor::category, served by scene_metadata.dll), not
+	// from a table here - a GUI-local copy is exactly the duplication that
+	// drifted before and got scene_descriptor.h's mirror table deleted.
+	const int sceneCount = SceneMetadataClient::sceneCount();
+	if (sceneCount <= 0) {
+		QMessageBox::critical(basicTab, "Scene Metadata Unavailable",
+			"Could not load scene_metadata.dll, so the scene list is empty. "
+			"Make sure scene_metadata.dll is present alongside RayTracerGUI.exe.");
+	}
+
+	m_sceneCategoryTabs = new QTabBar(basicTab);
+	m_sceneCategoryTabs->setObjectName("sceneCategoryTabs");
+	m_sceneCategoryTabs->setDrawBase(false);
+	m_sceneCategoryTabs->setExpanding(false);
+	// Eight categories fit at this window's normal width, but the tab bar is
+	// inside a resizable group box - scroll buttons beat silently clipping the
+	// last category off the right edge when it isn't.
+	m_sceneCategoryTabs->setUsesScrollButtons(true);
 	{
-		// Ids are contiguous from 0 (tests/unit/scene_registry_tests.cpp's
-		// IDsAreContiguousFromZero enforces this), so counting up to
-		// sceneCount() and querying each id directly is enough - no
-		// separate index-vs-id translation needed here.
-		int count = SceneMetadataClient::sceneCount();
-		if (count <= 0) {
-			QMessageBox::critical(basicTab, "Scene Metadata Unavailable",
-				"Could not load scene_metadata.dll, so the scene list is empty. "
-				"Make sure scene_metadata.dll is present alongside RayTracerGUI.exe.");
-		}
-		for (int id = 0; id < count; ++id) {
-			QString label = QString("[%1] %2").arg(id).arg(SceneMetadataClient::sceneName(id));
-			m_sceneCombo->addItem(label, id);
+		// SceneCategories::kAll drives the ORDER (a curated reading order, not
+		// the order categories happen to first appear in the registry).
+		// Categories with no scenes are skipped rather than shown as an empty
+		// tab; scene_registry_tests.cpp's EveryCategoryHasAtLeastOneScene makes
+		// that unreachable in a correct build, but a stale DLL could still do it.
+		for (std::size_t i = 0; i < SceneCategories::kAllCount; ++i) {
+			const QString category = QString::fromUtf8(SceneCategories::kAll[i]);
+			int inCategory = 0;
+			for (int id = 0; id < sceneCount; ++id)
+				if (SceneMetadataClient::sceneCategory(id) == category) ++inCategory;
+			if (inCategory == 0) continue;
+
+			const int tab = m_sceneCategoryTabs->addTab(category);
+			m_sceneCategoryTabs->setTabData(tab, category);
+			m_sceneCategoryTabs->setTabToolTip(tab,
+				QString("%1 scene%2").arg(inCategory).arg(inCategory == 1 ? "" : "s"));
 		}
 	}
+	sceneGroupLayout->addWidget(m_sceneCategoryTabs);
+
+	QHBoxLayout *sceneRow = new QHBoxLayout();
+	m_sceneCombo = new QComboBox(basicTab);
 	styleComboBox(m_sceneCombo);
 	sceneRow->addWidget(new QLabel("Scene:"));
 	sceneRow->addWidget(m_sceneCombo, 1);
 	sceneGroupLayout->addLayout(sceneRow);
+
+	// Fill the dropdown for whichever category the bar opened on.
+	if (m_sceneCategoryTabs->count() > 0)
+		populateSceneCombo(m_sceneCategoryTabs->tabData(0).toString());
+
+	connect(m_sceneCategoryTabs, &QTabBar::currentChanged, this, [this](int tab) {
+		if (tab < 0) return;
+		populateSceneCombo(m_sceneCategoryTabs->tabData(tab).toString());
+		// populateSceneCombo() deliberately stays silent, so the one update for
+		// the newly selected scene is issued here - otherwise switching category
+		// would leave the description, SPP and camera describing the old scene.
+		onSceneChanged(m_sceneCombo->currentIndex());
+	});
 
 	m_sceneInfoLabel = new QLabel(basicTab);
 	m_sceneInfoLabel->setWordWrap(true);

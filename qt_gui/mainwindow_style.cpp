@@ -258,6 +258,21 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			background-color: %SURFACE1%;
 			color: %TEXT%;
 		}
+		/* The scene-category bar is a filter inside a group box, not top-level
+		   navigation, so it is deliberately quieter than the main tab strip
+		   above: smaller text, tighter padding, no minimum width (eight
+		   categories at the main strip's 100px each would not fit), and a
+		   1px underline rather than 2px. Same accent, less weight - it should
+		   read as subordinate to the tabs it sits under. */
+		QTabBar#sceneCategoryTabs::tab {
+			padding: 5px 12px;
+			font-size: 10pt;
+			min-width: 0px;
+			margin-right: 1px;
+		}
+		QTabBar#sceneCategoryTabs::tab:selected {
+			border-bottom: 1px solid %ACCENT_2%;
+		}
 		QSpinBox, QDoubleSpinBox, QComboBox, QLineEdit {
 			background-color: %SURFACE1%;
 			border: 1px solid %BORDER_STRONG%;

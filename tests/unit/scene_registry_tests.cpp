@@ -81,6 +81,38 @@ TEST(SceneRegistryTest, AllPerformanceStringsAreValid) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Categories
+// ---------------------------------------------------------------------------
+// The Qt GUI builds its scene-browser tabs from SceneCategories::kAll and puts
+// each scene under the tab matching its category string. A scene whose
+// category is misspelled - or a category constant that no scene uses - both
+// fail silently there: the scene simply appears under no tab, or an empty tab
+// appears. These tests are what make either loud.
+
+TEST(SceneRegistryTest, AllCategoriesAreKnownConstants) {
+	static const std::set<std::string> kValid(
+		SceneCategories::kAll, SceneCategories::kAll + SceneCategories::kAllCount);
+	for (const auto& s : get_scene_registry()) {
+		ASSERT_NE(s.category, nullptr) << "Null category for id " << s.id;
+		EXPECT_GT(kValid.count(s.category), 0u)
+			<< "Unknown category '" << s.category << "' for scene id " << s.id
+			<< " - use a SceneCategories:: constant, not a literal";
+	}
+}
+
+TEST(SceneRegistryTest, EveryCategoryHasAtLeastOneScene) {
+	std::set<std::string> used;
+	for (const auto& s : get_scene_registry())
+		if (s.category) used.insert(s.category);
+
+	for (std::size_t i = 0; i < SceneCategories::kAllCount; ++i) {
+		EXPECT_GT(used.count(SceneCategories::kAll[i]), 0u)
+			<< "Category '" << SceneCategories::kAll[i]
+			<< "' has no scenes - it would render as an empty tab in the GUI";
+	}
+}
+
 TEST(SceneRegistryTest, AllRecommendedSppArePositive) {
 	for (const auto& s : get_scene_registry()) {
 		EXPECT_GT(s.recommended_spp, 0) << "Bad spp for id " << s.id;
@@ -318,6 +350,20 @@ TEST(CpuSceneApiTest, DescriptionByIndexMatchesCppRegistry) {
 		EXPECT_STREQ(cpu_scene_description(i), get_scene_registry()[i].description)
 			<< "Description mismatch at index " << i;
 	}
+}
+
+TEST(CpuSceneApiTest, CategoryByIdMatchesCppRegistry) {
+	// The GUI reads categories only through this C API (via scene_metadata.dll),
+	// never from the C++ registry directly, so the bridge needs its own check.
+	for (const auto& s : get_scene_registry()) {
+		EXPECT_STREQ(cpu_scene_category_by_id(s.id), s.category)
+			<< "Category mismatch for scene id " << s.id;
+	}
+}
+
+TEST(CpuSceneApiTest, OutOfRangeCategoryReturnsEmptyString) {
+	EXPECT_STREQ(cpu_scene_category_by_id(9999), "");
+	EXPECT_STREQ(cpu_scene_category_by_id(-1), "");
 }
 
 TEST(CpuSceneApiTest, PerformanceByIndexMatchesCppRegistry) {

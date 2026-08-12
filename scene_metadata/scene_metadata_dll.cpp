@@ -50,6 +50,10 @@ SCENE_METADATA_API const char* scene_metadata_name(int scene_id) {
 	return cpu_scene_name_by_id(scene_id);
 }
 
+SCENE_METADATA_API const char* scene_metadata_category(int scene_id) {
+	return cpu_scene_category_by_id(scene_id);
+}
+
 SCENE_METADATA_API const char* scene_metadata_description(int scene_id) {
 	return cpu_scene_description_by_id(scene_id);
 }

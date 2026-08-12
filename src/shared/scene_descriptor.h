@@ -111,4 +111,34 @@ namespace SceneNames {
     constexpr const char* Rungholt             = "Rungholt";
 } // namespace SceneNames
 
+// -----------------------------------------------------------------------
+// Canonical scene category constants
+// -----------------------------------------------------------------------
+// Categories group scenes by WHAT THEY DEMONSTRATE, which is the question a
+// user browsing 65 scenes is actually asking - not by which book chapter or
+// source file they came from. The Qt GUI turns these into a filter tab bar
+// above the scene list (see qt_gui/mainwindow_tabs.cpp).
+//
+// Same rule as SceneNames: use these constants in the registry, never raw
+// string literals, so a category can't drift between call sites. kAll is the
+// display order for the tabs and is what tests/unit/scene_registry_tests.cpp
+// validates every scene's category against - a typo'd category would
+// otherwise silently produce a scene that appears under no tab at all.
+namespace SceneCategories {
+    constexpr const char* Basics     = "Basics";       // the book scenes
+    constexpr const char* Materials  = "Materials";    // BxDF / surface appearance
+    constexpr const char* Lights     = "Lights";       // light types and sampling
+    constexpr const char* Cameras    = "Cameras";      // projection and lens models
+    constexpr const char* Volumes    = "Volumes";      // participating media
+    constexpr const char* Geometry   = "Geometry";     // shape primitives
+    constexpr const char* Models     = "Models";       // single imported meshes
+    constexpr const char* LargeScene = "Large Scenes"; // full textured environments
+
+    // Display order for the GUI's category tabs.
+    constexpr const char* kAll[] = {
+        Basics, Materials, Lights, Cameras, Volumes, Geometry, Models, LargeScene
+    };
+    constexpr std::size_t kAllCount = sizeof(kAll) / sizeof(kAll[0]);
+} // namespace SceneCategories
+
 #endif // __cplusplus

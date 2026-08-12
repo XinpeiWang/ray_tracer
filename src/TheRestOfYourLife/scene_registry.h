@@ -46,6 +46,11 @@ using camera_t = camera;
 struct SceneDescriptor {
     int         id;
     const char* name;
+    // Which group this scene appears under in the GUI's category tabs. Always
+    // a SceneCategories:: constant, never a literal - a typo would put the
+    // scene under no tab at all, which is silent (see the category tests in
+    // tests/unit/scene_registry_tests.cpp, which pin exactly that).
+    const char* category;
     const char* description;
     const char* performance;   // "Fast" | "Medium" | "Slow" | "Very Slow"
     int         recommended_spp;
@@ -81,7 +86,7 @@ static inline hittable_list no_lights() { return hittable_list{}; }
 inline const std::vector<SceneDescriptor>& get_scene_registry() {
     static const std::vector<SceneDescriptor> registry = {
         {
-            0, SceneNames::CornellBox,
+            0, SceneNames::CornellBox, SceneCategories::Basics,
             "Classic Cornell box with glass sphere and aluminum box",
             "Medium", 100, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -89,7 +94,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_box_lights
         },
         {
-            1, SceneNames::BouncingSpheres,
+            1, SceneNames::BouncingSpheres, SceneCategories::Basics,
             "Random spheres with checker ground (In One Weekend final)",
             "Slow", 100, false, true,
             { 20, 13, 2, 3,  0, 0, 0,  0.70, 0.80, 1.00 },
@@ -97,7 +102,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             sky_dummy_lights
         },
         {
-            2, SceneNames::CheckeredSpheres,
+            2, SceneNames::CheckeredSpheres, SceneCategories::Basics,
             "Two spheres with procedural checker texture",
             "Fast", 100, false, true,
             { 20, 13, 2, 3,  0, 0, 0,  0.70, 0.80, 1.00 },
@@ -105,7 +110,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             sky_dummy_lights
         },
         {
-            3, SceneNames::Earth,
+            3, SceneNames::Earth, SceneCategories::Basics,
             "Globe with earth texture mapping (requires earthmap.jpg)",
             "Fast", 100, true, true,
             { 20, 0, 0, 12,  0, 0, 0,  0.70, 0.80, 1.00 },
@@ -113,7 +118,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             sky_dummy_lights
         },
         {
-            4, SceneNames::PerlinSpheres,
+            4, SceneNames::PerlinSpheres, SceneCategories::Basics,
             "Spheres with Perlin noise marble texture",
             "Fast", 100, false, true,
             { 20, 13, 2, 3,  0, 0, 0,  0.70, 0.80, 1.00 },
@@ -121,7 +126,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             sky_dummy_lights
         },
         {
-            5, SceneNames::ColoredQuads,
+            5, SceneNames::ColoredQuads, SceneCategories::Basics,
             "Five colored quad primitives",
             "Fast", 100, false, true,
             { 80, 0, 0, 9,  0, 0, 0,  0.70, 0.80, 1.00 },
@@ -129,7 +134,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             sky_dummy_lights
         },
         {
-            6, SceneNames::SimpleLight,
+            6, SceneNames::SimpleLight, SceneCategories::Basics,
             "Perlin spheres with emissive light sources",
             "Fast", 100, false, true,
             { 20, 26, 3, 6,  0, 2, 0,  0, 0, 0 },
@@ -137,7 +142,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             no_lights
         },
         {
-            7, SceneNames::CornellSmoke,
+            7, SceneNames::CornellSmoke, SceneCategories::Basics,
             "Cornell box with volumetric fog",
             "Slow", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -145,7 +150,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_smoke_lights
         },
         {
-            8, SceneNames::FinalScene,
+            8, SceneNames::FinalScene, SceneCategories::Basics,
             "Complex scene from The Next Week",
             "Very Slow", 500, false, true,
             { 40, 478, 278, -600,  278, 278, 0,  0, 0, 0 },
@@ -153,7 +158,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_final_scene_lights
         },
         {
-            9, SceneNames::RoughMetalSpheres,
+            9, SceneNames::RoughMetalSpheres, SceneCategories::Materials,
             "Five GGX spheres roughness 0.05 to 0.8 -- showcases microfacet BRDF",
             "Medium", 200, false, true,
             { 35, 0, 2.5, 10,  0, 1, 0,  0.10, 0.10, 0.12 },
@@ -166,7 +171,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            10, SceneNames::CornellRoughMetal,
+            10, SceneNames::CornellRoughMetal, SceneCategories::Materials,
             "Cornell box with rough aluminum box and rough gold sphere",
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -174,7 +179,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_box_lights
         },
         {
-            11, SceneNames::CornellRoughGlass,
+            11, SceneNames::CornellRoughGlass, SceneCategories::Materials,
             "Cornell box with a GGX rough-dielectric sphere (pbrt-v4 RoughDielectricBxDF)",
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -182,7 +187,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_box_lights
         },
         {
-            12, SceneNames::CornellConductor,
+            12, SceneNames::CornellConductor, SceneCategories::Materials,
             "Cornell box with polished gold sphere and aluminium box using GGX VNDF + complex Fresnel (pbrt-v4 ConductorBxDF)",
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -190,7 +195,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_box_lights
         },
         {
-            13, SceneNames::CornellCoatedDiffuse,
+            13, SceneNames::CornellCoatedDiffuse, SceneCategories::Materials,
             "Cornell box with blue coated-diffuse sphere and red coated-diffuse box (pbrt-v4 CoatedDiffuseBxDF)",
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -198,7 +203,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_box_lights
         },
         {
-            14, SceneNames::CornellThinGlass,
+            14, SceneNames::CornellThinGlass, SceneCategories::Materials,
             "Cornell box with a vertical thin-glass panel, analytic multi-bounce Fresnel (pbrt-v4 ThinDielectricBxDF)",
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -206,7 +211,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_thin_glass_lights
         },
         {
-            15, SceneNames::CornellCoatedConductor,
+            15, SceneNames::CornellCoatedConductor, SceneCategories::Materials,
             "Cornell box with lacquered-gold sphere and lacquered-copper box (pbrt-v4 CoatedConductorBxDF)",
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -214,7 +219,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_box_lights
         },
         {
-            16, SceneNames::CornellWaxSlab,
+            16, SceneNames::CornellWaxSlab, SceneCategories::Materials,
             "Cornell box with a wax sphere that diffusely reflects and transmits light (pbrt-v4 DiffuseTransmissionBxDF)",
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -222,7 +227,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_box_lights
         },
         {
-            17, SceneNames::CornellCrystal,
+            17, SceneNames::CornellCrystal, SceneCategories::Materials,
             "Cornell box with a crystal sphere using Fresnel-weighted diffuse reflection (pbrt-v4 NormalizedFresnelBxDF)",
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -230,7 +235,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_box_lights
         },
         {
-            18, SceneNames::PrincipledShowcase,
+            18, SceneNames::PrincipledShowcase, SceneCategories::Materials,
             "Row of spheres from matte plastic to metallic with clearcoat (pbrt-v4 PrincipledBxDF)",
             "Medium", 200, false, true,
             { 35, 0, 2.5, 10,  0, 1, 0,  0.10, 0.10, 0.12 },
@@ -243,7 +248,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            19, SceneNames::HairFibers,
+            19, SceneNames::HairFibers, SceneCategories::Materials,
             "Sphere cluster with hair/fur fiber scattering (pbrt-v4 HairBxDF)",
             "Medium", 200, false, true,
             { 30, 0, 2, 8,  0, 1, 0,  0.05, 0.05, 0.07 },
@@ -256,7 +261,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            20, SceneNames::NormalMappedCornell,
+            20, SceneNames::NormalMappedCornell, SceneCategories::Materials,
             "Cornell box with procedural bump-mapped back wall and normal-mapped sphere (pbrt-v4 NormalMap/BumpMap)",
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -264,7 +269,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_box_lights
         },
         {
-            21, SceneNames::SubsurfaceSlab,
+            21, SceneNames::SubsurfaceSlab, SceneCategories::Materials,
             "Cornell box with translucent wax slab and jade sphere using subsurface-like scattering",
             "Slow", 300, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -272,7 +277,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_box_lights
         },
         {
-            22, SceneNames::DepthOfField,
+            22, SceneNames::DepthOfField, SceneCategories::Cameras,
             "Row of spheres with defocus blur showing depth-of-field from the thin-lens camera model",
             "Medium", 200, false, true,
             { 20, 0, 2, 9,  0, 1, 0,  0.70, 0.80, 1.00, CameraMode::Fixed, 10.0, 9.0 },
@@ -280,7 +285,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             sky_dummy_lights
         },
         {
-            23, SceneNames::BilinearPatchScene,
+            23, SceneNames::BilinearPatchScene, SceneCategories::Geometry,
             "Cornell box with curved bilinear patch saddle surface (pbrt-v4 BilinearPatch shape)",
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -289,7 +294,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
         },
         // ---- pbrt-v4 light / camera / medium showcase ----
         {
-            24, SceneNames::HdriSky,
+            24, SceneNames::HdriSky, SceneCategories::Lights,
             "Open scene lit by a procedural gradient sky (pbrt-v4 ImageInfiniteLight / sky_light)",
             "Medium", 200, false, true,
             { 30, 0, 2, 10,  0, 1, 0,  0, 0, 0 },
@@ -299,7 +304,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             nullptr
         },
         {
-            25, SceneNames::SpotlightCornell,
+            25, SceneNames::SpotlightCornell, SceneCategories::Lights,
             "Cornell box lit by a spotlight with smooth penumbra (pbrt-v4 SpotLight)",
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -309,7 +314,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_spotlight_punct
         },
         {
-            26, SceneNames::DistantLightCornell,
+            26, SceneNames::DistantLightCornell, SceneCategories::Lights,
             "Cornell box lit by a parallel sun-like distant light (pbrt-v4 DistantLight)",
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -319,7 +324,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_distant_light_punct
         },
         {
-            27, SceneNames::PointLightCornell,
+            27, SceneNames::PointLightCornell, SceneCategories::Lights,
             "Cornell box lit by a single overhead point light with 1/r^2 falloff (pbrt-v4 PointLight)",
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -329,7 +334,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_point_light_punct
         },
         {
-            28, SceneNames::GoniometricLight,
+            28, SceneNames::GoniometricLight, SceneCategories::Lights,
             "Cornell box lit by a goniometric (IES-profile) point light (pbrt-v4 GoniometricLight)",
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -339,7 +344,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_goniometric_punct
         },
         {
-            29, SceneNames::ProjectionLight,
+            29, SceneNames::ProjectionLight, SceneCategories::Lights,
             "Cornell box with a slide-projector beam casting a checkerboard pattern (pbrt-v4 ProjectionLight)",
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -349,7 +354,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_projection_punct
         },
         {
-            30, SceneNames::HomogeneousMedium,
+            30, SceneNames::HomogeneousMedium, SceneCategories::Volumes,
             "Cornell box filled with a homogeneous scattering fog (pbrt-v4 HomogeneousMedium / HenyeyGreenstein)",
             "Slow", 300, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -357,7 +362,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_cornell_box_lights
         },
         {
-            31, SceneNames::CloudMedium,
+            31, SceneNames::CloudMedium, SceneCategories::Volumes,
             "Open scene with a procedural Perlin-noise cloud volume (pbrt-v4 CloudMedium)",
             "Slow", 300, false, true,
             { 20, 0, 5, 20,  0, 2, 0,  0.5, 0.7, 1.0 },
@@ -365,7 +370,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             sky_dummy_lights
         },
         {
-            32, SceneNames::OrthographicCamera,
+            32, SceneNames::OrthographicCamera, SceneCategories::Cameras,
             "Geometric showcase rendered with an orthographic (parallel-projection) camera (pbrt-v4 OrthographicCamera)",
             "Fast", 100, false, true,
             { 30, 0, 3, 12,  0, 1, 0,  0, 0, 0 },
@@ -397,7 +402,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            33, SceneNames::SphericalCamera,
+            33, SceneNames::SphericalCamera, SceneCategories::Cameras,
             "360-degree equirectangular panorama from a spherical camera (pbrt-v4 SphericalCamera)",
             "Medium", 200, false, true,
             { 90, 0, 1, 0,  0, 0, 0,  0, 0, 0 },
@@ -435,7 +440,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            34, SceneNames::MeasuredBrdf,
+            34, SceneNames::MeasuredBrdf, SceneCategories::Materials,
             "Sphere cluster with measured BRDF material using tabulated RGL data (pbrt-v4 MeasuredBxDF)",
             "Medium", 200, false, true,
             { 25, 0, 3, 12,  0, 1, 0,  0, 0, 0 },
@@ -448,7 +453,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            35, SceneNames::PortalInfiniteLight,
+            35, SceneNames::PortalInfiniteLight, SceneCategories::Lights,
             "Room scene with a portal window sampling the sky through a planar quad (pbrt-v4 PortalImageInfiniteLight)",
             "Slow", 300, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
@@ -457,7 +462,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             build_portal_sky
         },
         {
-            36, SceneNames::RealisticCamera,
+            36, SceneNames::RealisticCamera, SceneCategories::Cameras,
             "Spheres rendered through a thin-lens with realistic lens-element bokeh (pbrt-v4 RealisticCamera)",
             "Medium", 200, false, true,
             { 50, 0, 2, -2,  0, 1, 5,  0, 0, 0 },
@@ -510,7 +515,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            37, SceneNames::TriangleMesh,
+            37, SceneNames::TriangleMesh, SceneCategories::Geometry,
             "Procedurally-generated icosahedron showcasing real triangle-mesh geometry (watertight Moller-Trumbore intersection)",
             "Fast", 100, false, true,
             { 35, 0, 4, 8,  0, 2.5, 0,  0.05, 0.05, 0.08 },
@@ -523,7 +528,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            38, SceneNames::StanfordBunny,
+            38, SceneNames::StanfordBunny, SceneCategories::Models,
             "Classic Stanford bunny scan (69,451 triangles) in polished bronze, loaded from an external .obj file (requires models/stanford-bunny.obj)",
             "Very Slow", 150, true, true,
             { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
@@ -536,7 +541,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            39, SceneNames::StanfordArmadillo,
+            39, SceneNames::StanfordArmadillo, SceneCategories::Models,
             "Stanford armadillo scan (99,976 triangles) in gunmetal, loaded from an external .obj file (requires models/armadillo.obj)",
             "Very Slow", 150, true, true,
             { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
@@ -549,7 +554,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            40, SceneNames::StanfordHappyBuddha,
+            40, SceneNames::StanfordHappyBuddha, SceneCategories::Models,
             "Stanford happy buddha scan (98,601 triangles) in polished gold, loaded from an external .obj file (requires models/happy-buddha.obj)",
             "Very Slow", 150, true, true,
             { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
@@ -562,7 +567,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            41, SceneNames::StanfordLucy,
+            41, SceneNames::StanfordLucy, SceneCategories::Models,
             "Stanford Lucy angel figure (99,970 triangles) in bright silver, loaded from an external .obj file (requires models/lucy.obj)",
             "Very Slow", 150, true, true,
             { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
@@ -575,7 +580,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            42, SceneNames::StanfordDragon,
+            42, SceneNames::StanfordDragon, SceneCategories::Models,
             "Stanford XYZRGB Dragon (249,882 triangles) in bright silver, loaded from an external .obj file (requires models/xyzrgb_dragon.obj)",
             "Very Slow", 150, true, true,
             { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
@@ -588,7 +593,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            43, SceneNames::UtahTeapot,
+            43, SceneNames::UtahTeapot, SceneCategories::Models,
             "The classic Utah Teapot (6,320 triangles) in bright silver, loaded from an external .obj file (requires models/teapot.obj)",
             "Medium", 150, true, true,
             // Camera pulled back further than the other mesh scenes (0,3,7)
@@ -605,7 +610,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            44, SceneNames::SpotCow,
+            44, SceneNames::SpotCow, SceneCategories::Models,
             "Keenan Crane's Spot the Cow (5,856 triangles) in bright silver, loaded from an external .obj file (requires models/spot.obj)",
             "Slow", 150, true, true,
             { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
@@ -618,7 +623,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            45, SceneNames::Suzanne,
+            45, SceneNames::Suzanne, SceneCategories::Models,
             "Blender's Suzanne monkey-head mascot (968 triangles after fan-triangulating its mostly-quad faces) in bright silver, loaded from an external .obj file (requires models/suzanne.obj)",
             "Fast", 150, true, true,
             { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
@@ -631,7 +636,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            46, SceneNames::NefertitiBust,
+            46, SceneNames::NefertitiBust, SceneCategories::Models,
             "Scanned bust of Nefertiti (99,938 triangles) in bright silver, loaded from an external .obj file (requires models/nefertiti.obj)",
             "Very Slow", 150, true, true,
             { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
@@ -644,7 +649,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            47, SceneNames::Horse,
+            47, SceneNames::Horse, SceneCategories::Models,
             "Classic geometry-processing test horse head/neck bust (96,966 triangles) in bright silver, loaded from an external .obj file (requires models/horse.obj)",
             "Very Slow", 150, true, true,
             { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
@@ -657,7 +662,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            48, SceneNames::Cheburashka,
+            48, SceneNames::Cheburashka, SceneCategories::Models,
             "Beloved cartoon-character bust from Keenan Crane's geometry-processing course (13,334 triangles) in bright silver, loaded from an external .obj file (requires models/cheburashka.obj)",
             "Very Slow", 150, true, true,
             { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
@@ -670,7 +675,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            49, SceneNames::TrophyRoom,
+            49, SceneNames::TrophyRoom, SceneCategories::Models,
             "Four already-loaded meshes (bunny, teapot, Suzanne, Spot the Cow) lined up in bronze/chrome/gold/gunmetal, the first scene to combine multiple external .obj meshes in one composition (requires models/stanford-bunny.obj, teapot.obj, suzanne.obj, spot.obj)",
             "Very Slow", 200, true, true,
             { 34, 0, 2.3, 14,  0, 0.9, 0,  0.05, 0.05, 0.08 },
@@ -683,7 +688,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            50, SceneNames::GlassDragon,
+            50, SceneNames::GlassDragon, SceneCategories::Models,
             "Stanford XYZRGB Dragon (249,882 triangles) in clear glass (dielectric, IOR 1.5), loaded from an external .obj file (requires models/xyzrgb_dragon.obj). The dragon's own surface renders persistently noisy at any sample count under EITHER the regular path tracer OR --sppm -- refraction through this deeply concave mesh is a hard case for any unidirectional camera-side estimator (SPPM's photon-density gather only ever helps non-delta/diffuse surfaces, and the dragon is 100% delta-BSDF glass), not a bug. --sppm's real benefit here is a genuine floor caustic from the dragon (CPU only -- GPU SPPM currently supports scene 11 only) that the regular path tracer's NEE can't resolve; a fully clean render of the glass surface itself would need bidirectional path tracing or MLT.",
             "Very Slow", 150, true, true,
             { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
@@ -696,7 +701,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            51, SceneNames::Beast,
+            51, SceneNames::Beast, SceneCategories::Models,
             "Fantasy creature bust (common-3d-test-models) in bronze, loaded from an external .obj file (requires models/beast.obj)",
             "Very Slow", 150, true, true,
             { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
@@ -709,7 +714,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            52, SceneNames::VWBeetle,
+            52, SceneNames::VWBeetle, SceneCategories::Models,
             "Classic CAD-style Volkswagen Beetle in bright chrome, loaded from an external .obj file (requires models/beetle.obj). Elongated along Z after normalization, so the camera is pulled back further than the other mesh scenes, same reasoning as scene 43's Utah Teapot.",
             "Medium", 150, true, true,
             { 35, 0, 3, 16,  0, 1.2, 0,  0.05, 0.05, 0.08 },
@@ -722,7 +727,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            53, SceneNames::VWBeetleAlt,
+            53, SceneNames::VWBeetleAlt, SceneCategories::Models,
             "Alternate resolution/topology of scene 52's Volkswagen Beetle mesh, in gunmetal, loaded from an external .obj file (requires models/beetle-alt.obj). Same elongated-Z proportions and pulled-back camera as scene 52.",
             "Very Slow", 150, true, true,
             { 35, 0, 3, 16,  0, 1.2, 0,  0.05, 0.05, 0.08 },
@@ -735,7 +740,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            54, SceneNames::Bimba,
+            54, SceneNames::Bimba, SceneCategories::Models,
             "Smooth abstract bust/statue (AIM@SHAPE repository test model) in gold, loaded from an external .obj file (requires models/bimba.obj)",
             "Very Slow", 150, true, true,
             { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
@@ -748,7 +753,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            55, SceneNames::Cow,
+            55, SceneNames::Cow, SceneCategories::Models,
             "Classic Viewpoint/Alias Cow test model (distinct from scene 44's Spot the Cow) in brass, loaded from an external .obj file (requires models/cow.obj)",
             "Medium", 150, true, true,
             { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
@@ -761,7 +766,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            56, SceneNames::Fandisk,
+            56, SceneNames::Fandisk, SceneCategories::Models,
             "Classic CAD mechanical-engineering test model with sharp creases, in gunmetal, loaded from an external .obj file (requires models/fandisk.obj)",
             "Medium", 150, true, true,
             { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
@@ -774,7 +779,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            57, SceneNames::Homer,
+            57, SceneNames::Homer, SceneCategories::Models,
             "Homer Simpson bust in gold, loaded from an external .obj file (requires models/homer.obj)",
             "Medium", 150, true, true,
             { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
@@ -787,7 +792,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            58, SceneNames::Igea,
+            58, SceneNames::Igea, SceneCategories::Models,
             "Classical Italian bust (Igea, Roman goddess of health) in bright silver, loaded from an external .obj file (requires models/igea.obj). This particular scan's face is tilted upward rather than forward -- camera positioned higher and closer, looking down at the face, rather than the other mesh scenes' eye-level framing.",
             "Very Slow", 150, true, true,
             { 35, 0, 5, 3,  0, 1.5, 0,  0.05, 0.05, 0.08 },
@@ -800,7 +805,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            59, SceneNames::MaxPlanck,
+            59, SceneNames::MaxPlanck, SceneCategories::Models,
             "Scanned bust of physicist Max Planck in aged bronze, loaded from an external .obj file (requires models/max-planck.obj). This scan's face points toward -Z, so the camera sits on that side (unlike the other mesh scenes' +Z default) to actually see the face instead of the back of the head.",
             "Very Slow", 150, true, true,
             { 35, 0, 3, -7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
@@ -813,7 +818,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            60, SceneNames::Ogre,
+            60, SceneNames::Ogre, SceneCategories::Models,
             "Fantasy ogre head in dark olive metal, loaded from an external .obj file (requires models/ogre.obj)",
             "Very Slow", 150, true, true,
             { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
@@ -826,7 +831,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            61, SceneNames::RockerArm,
+            61, SceneNames::RockerArm, SceneCategories::Models,
             "Mechanical engine-part test model in gunmetal, loaded from an external .obj file (requires models/rocker-arm.obj). Elongated along Z after normalization like the Beetle scenes, but much smaller overall, so the camera is only modestly pulled back (not as far as scenes 52/53's cars).",
             "Slow", 150, true, true,
             { 35, 0, 2.5, 7,  0, 1.2, 0,  0.05, 0.05, 0.08 },
@@ -839,7 +844,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             }
         },
         {
-            62, SceneNames::CrytekSponza,
+            62, SceneNames::CrytekSponza, SceneCategories::LargeScene,
             "Crytek Sponza (262K triangles) - the classic architectural global-illumination benchmark scene, in warm sandstone lambertian (this renderer's OBJ loader has no per-face/.mtl material support) lit by an open sky, loaded from an external .obj file (requires models/sponza.obj). First 'whole environment' mesh scene here rather than a single statue -- see build_sponza()'s own comment for the full design rationale.",
             "Very Slow", 150, true, true,
             { 70, -800, 300, 0,  800, 300, 0,  0, 0, 0 },
@@ -849,7 +854,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             nullptr
         },
         {
-            63, SceneNames::AmazonBistro,
+            63, SceneNames::AmazonBistro, SceneCategories::LargeScene,
             "Amazon Lumberyard Bistro, Exterior (2.84M triangles) - a full outdoor street block (multiple buildings + plaza), in warm plaster/terracotta lambertian (this renderer's OBJ loader has no per-face/.mtl material support) lit by an open sky, loaded from an external .obj file (requires models/bistro_exterior.obj). Second 'whole environment' mesh scene, same design rationale as scene 62 (Crytek Sponza) -- see build_bistro_exterior()'s own comment.",
             "Very Slow", 150, true, true,
             { 60, 1500, 700, 2000,  4000, 700, 2000,  0, 0, 0 },
@@ -859,7 +864,7 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
             nullptr
         },
         {
-            64, SceneNames::Rungholt,
+            64, SceneNames::Rungholt, SceneCategories::LargeScene,
             "Rungholt (6.7M triangles) - a giant blocky Minecraft-style town, in warm wood-tone lambertian, loaded from an external .obj file (requires models/rungholt.obj). Third 'whole environment' mesh scene, same design rationale as scenes 62-63 -- see build_rungholt()'s own comment (including a real OBJ-loader bug this mesh exposed and fixed: negative/relative face indices).",
             "Very Slow", 150, true, true,
             { 45, 400, 300, 400,  0, 40, 0,  0, 0, 0 },

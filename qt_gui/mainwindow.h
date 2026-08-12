@@ -29,6 +29,7 @@
 #include "theme.h"
 
 class QMenu;
+class QTabBar;
 
 // ============================================================================
 // WheelIgnoreFilter
@@ -355,7 +356,13 @@ private:
 	double m_currentSceneCamDistance = 1078.0;
 
 	// Scene selection
-	QComboBox *m_sceneCombo;            // Scene selector dropdown (Cornell Box, Bouncing Spheres, etc.)
+	QTabBar *m_sceneCategoryTabs = nullptr;  // Category filter above the scene dropdown
+	QComboBox *m_sceneCombo;            // Scene selector dropdown, showing one category at a time
+
+	// Refills m_sceneCombo with just the scenes in `category`. Does NOT emit
+	// currentIndexChanged per insertion - callers apply the resulting selection
+	// themselves with a single onSceneChanged() call.
+	void populateSceneCombo(const QString &category);
 	QLabel *m_sceneInfoLabel;           // Scene description and performance info
 
 	// Video Tab

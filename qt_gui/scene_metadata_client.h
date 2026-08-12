@@ -54,6 +54,11 @@ int sceneCount();
 // scene_id's display name, or "" if not loaded/found.
 QString sceneName(int scene_id);
 
+// scene_id's category ("Basics", "Materials", ...), or "" if not
+// loaded/found. Matches one of the SceneCategories:: constants in
+// src/shared/scene_descriptor.h; the GUI groups its scene list by this.
+QString sceneCategory(int scene_id);
+
 // scene_id's short description, or "" if not loaded/found.
 QString sceneDescription(int scene_id);
 

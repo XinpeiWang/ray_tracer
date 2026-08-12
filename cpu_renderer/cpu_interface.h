@@ -179,6 +179,10 @@ int cpu_scene_gpu_compatible_by_id(int scene_id);
 /// resolving id -> index. Same "" / 0 / default-on-not-found behavior as
 /// their index-based counterparts.
 const char* cpu_scene_name_by_id(int scene_id);
+/// The scene's category ("Basics", "Materials", ...) - one of the
+/// SceneCategories:: constants in src/shared/scene_descriptor.h. The Qt GUI
+/// groups its scene list by this.
+const char* cpu_scene_category_by_id(int scene_id);
 const char* cpu_scene_description_by_id(int scene_id);
 const char* cpu_scene_performance_by_id(int scene_id);
 int cpu_scene_recommended_spp_by_id(int scene_id);

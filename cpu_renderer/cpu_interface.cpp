@@ -458,6 +458,11 @@ extern "C" const char* cpu_scene_name_by_id(int scene_id) {
 	return s ? s->name : "";
 }
 
+extern "C" const char* cpu_scene_category_by_id(int scene_id) {
+	const SceneDescriptor* s = find_scene(scene_id);
+	return s ? s->category : "";
+}
+
 extern "C" const char* cpu_scene_description_by_id(int scene_id) {
 	const SceneDescriptor* s = find_scene(scene_id);
 	return s ? s->description : "";

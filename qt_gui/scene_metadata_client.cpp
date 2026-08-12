@@ -20,6 +20,7 @@ struct DllHandle {
 	RecommendedCameraFn recommendedCameraFn = nullptr;
 	CountFn countFn = nullptr;
 	StringByIdFn nameFn = nullptr;
+	StringByIdFn categoryFn = nullptr;
 	StringByIdFn descriptionFn = nullptr;
 	StringByIdFn performanceFn = nullptr;
 	IntByIdFn recommendedSppFn = nullptr;
@@ -46,6 +47,8 @@ DllHandle& handle() {
 			GetProcAddress(h.module, "scene_metadata_count"));
 		h.nameFn = reinterpret_cast<StringByIdFn>(
 			GetProcAddress(h.module, "scene_metadata_name"));
+		h.categoryFn = reinterpret_cast<StringByIdFn>(
+			GetProcAddress(h.module, "scene_metadata_category"));
 		h.descriptionFn = reinterpret_cast<StringByIdFn>(
 			GetProcAddress(h.module, "scene_metadata_description"));
 		h.performanceFn = reinterpret_cast<StringByIdFn>(
@@ -55,8 +58,13 @@ DllHandle& handle() {
 		h.requiresFilesFn = reinterpret_cast<IntByIdFn>(
 			GetProcAddress(h.module, "scene_metadata_requires_files"));
 
+		// Every export is required, including newer ones: a DLL missing any of
+		// them is a stale build sitting next to a newer exe, and half-working
+		// metadata (a scene list with no categories, say) is harder to diagnose
+		// than the outright "couldn't load" the caller already handles.
 		if (!h.gpuCompatibleFn || !h.recommendedCameraFn || !h.countFn || !h.nameFn ||
-			!h.descriptionFn || !h.performanceFn || !h.recommendedSppFn || !h.requiresFilesFn) {
+			!h.categoryFn || !h.descriptionFn || !h.performanceFn ||
+			!h.recommendedSppFn || !h.requiresFilesFn) {
 			FreeLibrary(h.module);
 			h = DllHandle{};
 		}
@@ -94,6 +102,11 @@ int sceneCount() {
 QString sceneName(int scene_id) {
 	if (!ensureLoaded()) return QString();
 	return QString::fromUtf8(handle().nameFn(scene_id));
+}
+
+QString sceneCategory(int scene_id) {
+	if (!ensureLoaded()) return QString();
+	return QString::fromUtf8(handle().categoryFn(scene_id));
 }
 
 QString sceneDescription(int scene_id) {
