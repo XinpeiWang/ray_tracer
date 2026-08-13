@@ -180,6 +180,22 @@ void MainWindow::createBasicTab() {
 		"including the handful the GPU backend does not implement.");
 	renderLayout->addRow("Renderer:", m_renderModeCombo);
 
+	m_gpuBackendCombo = new QComboBox(basicTab);
+	icon_tint::addItem(m_gpuBackendCombo, ":/icons/gpu.svg", "Recursive (Default)", false, m_activeTheme.textBody);
+	icon_tint::addItem(m_gpuBackendCombo, ":/icons/gpu.svg", "Wavefront (Experimental)", true, m_activeTheme.textBody);
+	m_gpuBackendCombo->setCurrentIndex(0);
+	styleComboBox(m_gpuBackendCombo);
+	m_gpuBackendCombo->setToolTip(
+		"Recursive: one thread per pixel, the default GPU path tracer — broad, battle-tested coverage.\n"
+		"Wavefront: splits each bounce into separate queue-passed kernel launches — better GPU\n"
+		"utilization on complex/divergent scenes, but a newer, less exercised code path.\n"
+		"Only applies when Renderer is set to GPU.");
+	// Starts disabled/enabled in sync with the initial Renderer selection (GPU,
+	// index 0/true above) - the connect() in the constructor keeps it synced
+	// afterwards whenever the user changes Renderer.
+	m_gpuBackendCombo->setEnabled(m_renderModeCombo->currentData().toBool());
+	renderLayout->addRow("GPU Backend:", m_gpuBackendCombo);
+
 	// Quality preset
 	m_qualityPresetCombo = new QComboBox(basicTab);
 	m_qualityPresetCombo->addItem("Draft (Very Fast)", 0);

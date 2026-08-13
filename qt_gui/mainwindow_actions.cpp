@@ -182,7 +182,8 @@ void MainWindow::createStatusBar() {
 void MainWindow::refreshStatusBarInfo() {
 	if (!m_statusDevice || !m_statusSettings) return;
 	const bool useGPU = m_renderModeCombo && m_renderModeCombo->currentData().toBool();
-	m_statusDevice->setText(useGPU ? "GPU (OptiX)" : "CPU");
+	const bool useWavefront = useGPU && m_gpuBackendCombo && m_gpuBackendCombo->currentData().toBool();
+	m_statusDevice->setText(useGPU ? (useWavefront ? "GPU (OptiX, wavefront)" : "GPU (OptiX)") : "CPU");
 	if (m_widthSpinBox && m_heightSpinBox && m_samplesSpinBox) {
 		m_statusSettings->setText(QString("%1x%2  ·  %3 spp")
 			.arg(m_widthSpinBox->value())

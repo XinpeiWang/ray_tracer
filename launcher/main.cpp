@@ -181,6 +181,14 @@ int main(int argc, char** argv) {
 	std::string camera_path = args.camera_path;
 	bool use_sppm           = args.use_sppm;
 
+	// optix_render_main() reads this env var itself (gpu/optix/optix_interface.cpp)
+	// to pick the wavefront GPU backend over the default recursive one - set it
+	// once here so it's in effect for both single-image and per-frame video
+	// renders below. Meaningless under CPU/SPPM, so only set for a plain GPU render.
+	if (use_gpu && !use_sppm && args.use_wavefront) {
+		_putenv_s("RAY_TRACER_WAVEFRONT", "1");
+	}
+
 	// SPPM has no defined per-frame semantics (its progressive radius state
 	// doesn't reset cleanly frame-to-frame the way the path tracer's
 	// stateless per-pixel sampling does) - reject the combination outright
@@ -199,10 +207,11 @@ int main(int argc, char** argv) {
         std::cout << "FPS: " << video_fps << std::endl;
         std::cout << "Speed: " << video_speed << "x" << std::endl;
         std::cout << "Camera path: " << camera_path << std::endl;
-        std::cout << "Renderer: " << (use_gpu ? "GPU" : "CPU") << std::endl;
+        std::cout << "Renderer: " << (use_gpu ? (args.use_wavefront ? "GPU (wavefront)" : "GPU") : "CPU") << std::endl;
     } else {
         std::cout << "\nLaunching renderer ("
-                   << (use_sppm ? (use_gpu ? "GPU SPPM" : "CPU SPPM") : (use_gpu ? "GPU" : "CPU"))
+                   << (use_sppm ? (use_gpu ? "GPU SPPM" : "CPU SPPM")
+                                 : (use_gpu ? (args.use_wavefront ? "GPU wavefront" : "GPU") : "CPU"))
                    << " mode)..." << std::endl;
     }
 

@@ -27,6 +27,10 @@ namespace {
 struct LaunchArgs {
 	bool use_gpu            = true;
 	bool force_cpu          = false;
+	// GPU-only: use the wavefront (queue-based) path tracer instead of the
+	// default recursive (megakernel) one - see gpu/optix/wavefront_path_tracer.h.
+	// Ignored under --cpu/--sppm.
+	bool use_wavefront      = false;
 	bool video_mode         = false;
 	// Stochastic Progressive Photon Mapping - a separate CPU-only render
 	// mode (see cpu_renderer/cpu_interface.h's cpu_render_main_sppm() doc
@@ -100,6 +104,9 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			consumed_args.insert(i);
 			consumed_args.insert(i + 1);
 			++i;
+		} else if (arg == "--wavefront") {
+			out.use_wavefront = true;
+			consumed_args.insert(i);
 		} else if (arg == "--sppm") {
 			out.use_sppm = true;
 			consumed_args.insert(i);
@@ -161,6 +168,8 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << " [--cpu|--gpu] [--output PATH] [width] [spp] [max_depth] [scene_id] [cam_x] [cam_y] [cam_z]\n"
 					  << "  --cpu      : Force CPU rendering\n"
 					  << "  --gpu      : Force GPU rendering (default)\n"
+					  << "  --wavefront: Use the wavefront (queue-based) GPU path tracer instead of\n"
+					  << "               the default recursive one. GPU-only, ignored under --cpu/--sppm.\n"
 					  << "  --sppm     : Render with Stochastic Progressive Photon Mapping instead of\n"
 					  << "               the path tracer (incompatible with --video). Best for hard\n"
 					  << "               caustic/glass scenes. CPU: verified end-to-end on scene 11\n"

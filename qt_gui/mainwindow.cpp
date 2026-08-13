@@ -34,15 +34,16 @@
 
 // RenderController Implementation
 RenderController::RenderController(QObject *parent)
-	: QObject(parent), m_useGPU(true), m_width(800), m_height(800), m_samples(100), m_maxDepth(50),
+	: QObject(parent), m_useGPU(true), m_useWavefront(false), m_width(800), m_height(800), m_samples(100), m_maxDepth(50),
 	  m_sceneId(0), m_camX(278), m_camY(278), m_camZ(-800), m_camExplicit(false),
 	  m_videoMode(false), m_videoFrames(60), m_videoFPS(30), m_videoSpeed(1.0), m_cameraPath("orbit") {
 }
 
 void RenderController::setParameters(bool useGPU, int width, int height, int samples, int maxDepth,
 								  int sceneId, double camX, double camY, double camZ, bool camExplicit,
-								  const QString &outputPath) {
+								  const QString &outputPath, bool useWavefront) {
 	m_useGPU = useGPU;
+	m_useWavefront = useWavefront;
 	m_width = width;
 	m_height = height;
 	m_samples = samples;
@@ -94,7 +95,7 @@ void RenderController::start() {
 		.arg(m_width).arg(m_height)
 		.arg(m_samples)
 		.arg(m_maxDepth)
-		.arg(m_useGPU ? "GPU" : "CPU"));
+		.arg(m_useGPU ? (m_useWavefront ? "GPU wavefront" : "GPU") : "CPU"));
 	emit logMessage(sep);
 
 	// ========================================================================
@@ -115,6 +116,7 @@ void RenderController::start() {
 	// Render mode flag: --gpu or --cpu
 	if (m_useGPU) {
 		args << "--gpu";
+		if (m_useWavefront) args << "--wavefront";
 	} else {
 		args << "--cpu";
 	}
@@ -471,7 +473,10 @@ void MainWindow::setupUI() {
 	// Keep the status bar's ambient readout honest when the user changes any
 	// of the settings it reports.
 	connect(m_renderModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-			this, [this](int) { refreshStatusBarInfo(); });
+			this, [this](int) {
+				refreshStatusBarInfo();
+				m_gpuBackendCombo->setEnabled(m_renderModeCombo->currentData().toBool());
+			});
 	connect(m_widthSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
 			this, [this](int) { refreshStatusBarInfo(); });
 	connect(m_heightSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),

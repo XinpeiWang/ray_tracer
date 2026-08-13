@@ -69,6 +69,9 @@ void MainWindow::onRenderClicked() {
 
 	// Render mode: GPU (true) or CPU (false)
 	bool useGPU = m_renderModeCombo->currentData().toBool();
+	// GPU backend: recursive (false, default) or wavefront (true). Meaningless
+	// under CPU, so only honored when useGPU is also true.
+	bool useWavefront = useGPU && m_gpuBackendCombo->currentData().toBool();
 
 	// Resolution: either from preset dropdown or custom values from Advanced tab
 	int width, height;
@@ -127,7 +130,7 @@ void MainWindow::onRenderClicked() {
 	// QProcess is already asynchronous). The executable will call either the
 	// CPU or GPU renderer based on the useGPU flag.
 	m_renderController = new RenderController(this);
-	m_renderController->setParameters(useGPU, width, height, samples, maxDepth, sceneId, camX, camY, camZ, camExplicit, outputPath);
+	m_renderController->setParameters(useGPU, width, height, samples, maxDepth, sceneId, camX, camY, camZ, camExplicit, outputPath, useWavefront);
 
 	// Set video parameters if in video mode
 	if (m_videoMode) {

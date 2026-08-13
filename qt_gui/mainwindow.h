@@ -135,7 +135,7 @@ public:
 	// instead of being permanently short-circuited by this GUI.
 	void setParameters(bool useGPU, int width, int height, int samples, int maxDepth,
 					   int sceneId, double camX, double camY, double camZ, bool camExplicit,
-					   const QString &outputPath = QString());
+					   const QString &outputPath = QString(), bool useWavefront = false);
 
 	// Set video generation parameters
 	void setVideoParameters(bool enabled, int frames, int fps, const QString &cameraPath, double speed = 1.0);
@@ -169,6 +169,7 @@ private:
 
 	// Render configuration
 	bool m_useGPU;          // true = GPU renderer, false = CPU renderer
+	bool m_useWavefront;    // true = wavefront (queue-based) GPU backend; ignored unless m_useGPU
 	int m_width;            // Image width in pixels
 	int m_height;           // Image height in pixels
 	int m_samples;          // Samples per pixel (anti-aliasing quality)
@@ -313,6 +314,7 @@ private:
 
 	// Basic Tab
 	QComboBox *m_renderModeCombo;       // GPU vs CPU selection
+	QComboBox *m_gpuBackendCombo;       // Recursive vs wavefront GPU path tracer (only meaningful under GPU)
 	QComboBox *m_qualityPresetCombo;    // Quality preset dropdown
 	QComboBox *m_resolutionCombo;       // Resolution preset dropdown
 	QLineEdit *m_outputPathEdit;        // Output file path (timestamped by default)
