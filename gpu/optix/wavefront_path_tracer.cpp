@@ -81,7 +81,14 @@ bool WavefrontPathTracer::initialize(OptixDeviceContext context,
 	stream_  = stream;
 
 	pipelineCompileOptions_.usesMotionBlur        = false;
-	pipelineCompileOptions_.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
+	// SINGLE_LEVEL_INSTANCING, matching OptiXRenderer's own pipeline, because
+	// the traversable handed to render() is the top-level IAS that
+	// OptiXRenderer::buildScene() builds - never a bare GAS. This said
+	// ALLOW_SINGLE_GAS, which happened not to misbehave visibly on this driver
+	// but is the wrong contract for an IAS and makes optixGetInstanceId()
+	// unusable - and that is exactly what object instancing needs to recover
+	// which placement a hit came from.
+	pipelineCompileOptions_.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
 	pipelineCompileOptions_.numPayloadValues       = 2;  // pointer p0/p1
 	pipelineCompileOptions_.numAttributeValues     = 4;
 	pipelineCompileOptions_.exceptionFlags         = OPTIX_EXCEPTION_FLAG_NONE;
@@ -113,22 +120,46 @@ bool WavefrontPathTracer::initialize(OptixDeviceContext context,
 // ============================================================================
 
 bool WavefrontPathTracer::loadModule() {
-	// ptxPath_ is set by enableWavefront() to point at wavefront_programs.ptx.
-	// If somehow empty, fall back to the same directory as the current working directory.
-	std::string ptxPath = ptxPath_;
-	if (ptxPath.empty()) {
-		ptxPath = "wavefront_programs.ptx";
+	// Candidates in preference order, mirroring OptiXRenderer::loadPTX's own
+	// search for optix_programs.ptx.
+	//
+	// Searching rather than trusting one path is not defensive padding: the
+	// caller derives ptxPath_ from the OUTPUT IMAGE's directory, and nothing
+	// in the build ever copies the PTX there. So the single-path version
+	// always missed, printed one line, and fell back to the recursive tracer -
+	// which renders a perfectly good image, just not with the renderer that
+	// was asked for. Wavefront mode was effectively unreachable for anyone who
+	// did not hand-copy the file, and said so only in passing.
+	const char *kName = "wavefront_programs.ptx";
+	std::string candidates[] = {
+		ptxPath_,                          // caller's guess, if any
+		std::string("gpu/optix/") + kName, // where the build actually writes it
+		std::string("optix_output/") + kName,
+		std::string("./") + kName,
+	};
+
+	std::string ptxSource;
+	std::string loadedFrom;
+	for (const std::string &path : candidates) {
+		if (path.empty()) continue;
+		std::ifstream file(path, std::ios::binary);
+		if (!file.is_open()) continue;
+		std::ostringstream oss;
+		oss << file.rdbuf();
+		ptxSource = oss.str();
+		loadedFrom = path;
+		break;
 	}
 
-	// Read PTX file
-	std::ifstream file(ptxPath, std::ios::binary);
-	if (!file.is_open()) {
-		std::cerr << "[WavefrontPathTracer] Could not open PTX: " << ptxPath << "\n";
+	if (ptxSource.empty()) {
+		// Loud, because the consequence is silent: the renderer carries on in
+		// recursive mode and the image looks fine.
+		std::cerr << "[WavefrontPathTracer] warning: could not find " << kName
+				  << " in any of the searched locations; wavefront mode is NOT "
+				     "active and this render will use the recursive tracer.\n";
 		return false;
 	}
-	std::ostringstream oss;
-	oss << file.rdbuf();
-	std::string ptxSource = oss.str();
+	std::cout << "[WavefrontPathTracer] Loaded module from " << loadedFrom << "\n";
 
 	OptixModuleCompileOptions moduleCompileOptions = {};
 	moduleCompileOptions.maxRegisterCount = OPTIX_COMPILE_DEFAULT_MAX_REGISTER_COUNT;
@@ -149,7 +180,6 @@ bool WavefrontPathTracer::loadModule() {
 		&wfModule_
 	));
 
-	std::cout << "[WavefrontPathTracer] Loaded module from " << ptxPath << "\n";
 	return true;
 }
 
@@ -346,6 +376,32 @@ bool WavefrontPathTracer::linkPipeline(unsigned int maxTraceDepth) {
 		std::cout << "[WavefrontPathTracer] Linked shadow pipeline\n";
 	}
 
+	// Stack size, and specifically maxTraversableGraphDepth=2 - IAS then GAS,
+	// matching OptiXRenderer::linkPipeline() and the traversable this backend
+	// is actually handed.
+	//
+	// Neither pipeline set a stack size at all before, which left the depth at
+	// its default of 1. That was survivable while the pipeline claimed
+	// ALLOW_SINGLE_GAS, since traversal never descended through an instance;
+	// once it does, a depth-1 stack sends it somewhere undefined and CUDA
+	// reports "invalid program counter" (718) - which kills the whole device
+	// context, so the failure surfaced not here but as a cascade of unrelated
+	// tests failing to create their own context afterwards.
+	//
+	// The conservative sizes below come from the same optixUtilComputeStackSizes
+	// call the recursive pipeline uses; the wavefront programs are shallower
+	// (maxTraceDepth 2 and 1), so these are an upper bound rather than a tuned
+	// figure.
+	for (OptixPipeline p : {intersectPipeline_, shadowPipeline_}) {
+		if (!p) continue;
+		OPTIX_CHECK(optixPipelineSetStackSize(
+			p,
+			/*directCallableStackSizeFromTraversal*/ 0,
+			/*directCallableStackSizeFromState*/     0,
+			/*continuationStackSize*/                4096,
+			/*maxTraversableGraphDepth*/             2));
+	}
+
 	return true;
 }
 
@@ -354,6 +410,9 @@ bool WavefrontPathTracer::linkPipeline(unsigned int maxTraceDepth) {
 // ============================================================================
 
 bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuads, unsigned int numBilinearPatches, unsigned int numTriangles) {
+	// haveInstanced* come from setInstancedGeometryFlags(); see its comment.
+	const bool haveInstTri = haveInstancedTriangles_;
+	const bool haveInstSph = haveInstancedSpheres_;
 	numSpheres_ = numSpheres;
 	numQuads_   = numQuads;
 	numBilinearPatches_ = numBilinearPatches;
@@ -413,6 +472,17 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
 			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitTrianglePG_, &hitRecs.back())); hitRecs.back().data = {}; // unused slot
 		}
+		// Instanced geometry's own pairs, appended after the scene's packed
+		// region in the same order OptiXRenderer::buildSBT() uses - see
+		// setInstancedGeometryFlags().
+		if (haveInstTri) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
+		}
+		if (haveInstSph) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
+		}
 
 		size_t sz = hitRecs.size() * sizeof(HitGroupRecord);
 		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_intersectHitRecords_), sz));
@@ -460,6 +530,16 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 		if (hasTri) {
 			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
 			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
+		}
+		// Same appended pairs as the intersect SBT above - both are indexed
+		// by the same per-instance sbtOffset.
+		if (haveInstTri) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
+		}
+		if (haveInstSph) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
 		}
 
 		size_t sz = hitRecs.size() * sizeof(HitGroupRecord);
@@ -680,6 +760,7 @@ bool WavefrontPathTracer::render(
 	lp.numMaterials  = num_materials;
 	lp.lightIndices  = reinterpret_cast<int*>(d_light_indices);
 	lp.lightKinds = reinterpret_cast<const GpuLightKind*>(d_lightKinds);
+	lp.instancePrimBase = reinterpret_cast<const int*>(d_instancePrimBase_);
 	lp.aliasTable    = reinterpret_cast<GpuAliasEntry*>(d_alias_table);
 	lp.numLights     = num_lights;
 	lp.samplesPerPixel = (unsigned int)samples_per_pixel;

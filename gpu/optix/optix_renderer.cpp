@@ -1701,6 +1701,9 @@ bool OptiXRenderer::render(
 
 	// Delegate to WavefrontPathTracer if enabled
 	if (useWavefront_ && wavefrontTracer_) {
+		// Set per render rather than once at enable time, so a scene switch
+		// cannot leave a previous scene's table wired in.
+		wavefrontTracer_->setInstancePrimBase(d_instanceBase_);
 		return wavefrontTracer_->render(
 			(int)width, (int)height, (int)samplesPerPixel, (int)maxDepth,
 			gpuCam,
@@ -1921,13 +1924,36 @@ void OptiXRenderer::enableWavefront(bool enable, const std::string& ptxPath) {
 			useWavefront_ = false;
 			return;
 		}
-		if (!wavefrontTracer_->buildSBT(numSpheres_, numQuads_, numBilinearPatches_, numTriangles_)) {
-			std::cerr << "[OptiXRenderer] WavefrontPathTracer::buildSBT failed\n";
-			wavefrontTracer_.reset();
-			useWavefront_ = false;
-			return;
-		}
 		std::cout << "[OptiXRenderer] WavefrontPathTracer ready\n";
+	}
+
+	// OUTSIDE the first-time block on purpose: the SBT describes the CURRENT
+	// scene's geometry, and this object outlives any one scene (it is created
+	// once and reused as scenes are switched). Building it only on creation
+	// left a scene-A SBT in place for a scene-B render.
+	//
+	// That used to be survivable, because the pipeline claimed ALLOW_SINGLE_GAS
+	// and OptiX then ignored the per-instance sbtOffsets entirely. With real
+	// instancing traversal those offsets are honoured, so a stale SBT sends a
+	// hit to whatever record happens to sit at that index - and if none does,
+	// to no valid program at all: CUDA reports "invalid program counter" (718)
+	// and the device context dies, taking every later test in the process with
+	// it. Found exactly that way, as WavefrontRenderTest failing only when run
+	// after other scenes had been rendered, never in isolation.
+	//
+	// SCENE-only counts, not the combined ones: numSpheres_/numTriangles_
+	// include the instance definitions' geometry, and feeding those here would
+	// make the SBT claim a scene-level record for a type the scene itself has
+	// none of - shifting every later record. The instanced pairs are appended
+	// separately from the flags, exactly as OptiXRenderer::buildSBT() does it.
+	wavefrontTracer_->setInstancedGeometryFlags(!instanceTriangles_.empty(),
+												!instanceSpheres_.empty());
+	if (!wavefrontTracer_->buildSBT(sceneSphereCount_, numQuads_,
+									numBilinearPatches_, sceneTriangleCount_)) {
+		std::cerr << "[OptiXRenderer] WavefrontPathTracer::buildSBT failed\n";
+		wavefrontTracer_.reset();
+		useWavefront_ = false;
+		return;
 	}
 }
 

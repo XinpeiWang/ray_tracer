@@ -40,6 +40,25 @@ public:
     const char* getName() const override { return "WavefrontPathTracer"; }
     void setPTXPath(const std::string& path) { ptxPath_ = path; }
 
+    /// Per-instance primitive base table (LaunchParams::instancePrimBase's
+    /// twin - see optix_types.h). A setter rather than another render()
+    /// parameter because render() is a virtual override shared with
+    /// RecursivePathTracer, and widening it would churn an interface for data
+    /// only this backend reads. 0 = no instancing, which is every built-in
+    /// scene.
+    void setInstancePrimBase(CUdeviceptr p) { d_instancePrimBase_ = p; }
+
+    /// Whether the scene has instanced geometry of each kind. buildSBT() must
+    /// append the same dedicated hit-record pairs, in the same order, that
+    /// OptiXRenderer::buildSBT() does - the IAS instances carry sbtOffsets
+    /// computed against that layout, and both SBTs are indexed by them, so a
+    /// layout that disagrees sends a hit to the wrong program. Call before
+    /// buildSBT().
+    void setInstancedGeometryFlags(bool haveTriangles, bool haveSpheres) {
+        haveInstancedTriangles_ = haveTriangles;
+        haveInstancedSpheres_ = haveSpheres;
+    }
+
 private:
     bool loadModule();
     void destroyProgramGroups();
@@ -100,6 +119,9 @@ private:
     CUdeviceptr d_shadowCounter_    = 0;
     int          queueCapacity_ = 0;
     std::string  ptxPath_;
+    CUdeviceptr  d_instancePrimBase_ = 0;   ///< see setInstancePrimBase()
+    bool         haveInstancedTriangles_ = false;  ///< see setInstancedGeometryFlags()
+    bool         haveInstancedSpheres_ = false;
     unsigned int numSpheres_  = 0;
     unsigned int numQuads_    = 0;
     unsigned int numBilinearPatches_ = 0;

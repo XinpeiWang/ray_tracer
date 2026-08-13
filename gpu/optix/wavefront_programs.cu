@@ -27,6 +27,23 @@
 // Wavefront launch params live in constant memory.
 extern "C" { __constant__ WavefrontLaunchParams wf_params; }
 
+// Object instancing, wavefront's copy of what optix_intersection_triangle.h
+// and optix_intersection_sphere.h do on the recursive path.
+//
+// A primitive index restarts at 0 inside every GAS, so an instance
+// definition's triangle 0 and the scene's triangle 0 are different triangles.
+// This recovers the global index. The entry is SIGNED and -1 is a real
+// sentinel meaning "already world space" (the scene's own two instances),
+// which is also what gates the object-to-world normal transform below - so
+// callers keep the raw value too, not just the clamped base.
+__device__ __forceinline__ int wf_instance_base() {
+	return wf_params.instancePrimBase
+		? wf_params.instancePrimBase[optixGetInstanceId()] : -1;
+}
+__device__ __forceinline__ unsigned int wf_prim_base(int instBase) {
+	return (instBase >= 0) ? (unsigned int)instBase : 0u;
+}
+
 // Per-shadow-ray occlusion output (device pointer passed via launch params extension).
 // We reuse a float3* slot in WavefrontLaunchParams — see wavefront_path_tracer.cpp
 // which passes d_occluded via the misuse of framebuffer during the shadow pass.
@@ -152,10 +169,16 @@ extern "C" __global__ void __raygen__wf_intersect() {
 
 extern "C" __global__ void __intersection__wf_sphere() {
 	const unsigned int primIdx = optixGetPrimitiveIndex();
-	const SphereData& sphere = wf_params.spheres[primIdx];
+	const SphereData& sphere = wf_params.spheres[wf_prim_base(wf_instance_base()) + primIdx];
 
-	const float3 ray_orig = optixGetWorldRayOrigin();
-	const float3 ray_dir  = optixGetWorldRayDirection();
+	// OBJECT space - the sphere's centre/radius live in whatever space its GAS
+	// was built in. Not a branch for instanced geometry: the scene's own GAS
+	// instances carry an identity transform, for which OptiX's object ray IS
+	// the world ray, so the non-instanced path is unchanged by construction.
+	// t needs no rescaling either, since OptiX transforms the direction
+	// without renormalising it.
+	const float3 ray_orig = optixGetObjectRayOrigin();
+	const float3 ray_dir  = optixGetObjectRayDirection();
 	const float  ray_tmin = optixGetRayTmin();
 	const float  ray_tmax = optixGetRayTmax();
 
@@ -359,10 +382,13 @@ extern "C" __global__ void __closesthit__wf_bilinear_patch() {
 
 extern "C" __global__ void __intersection__wf_triangle() {
 	const unsigned int primIdx = optixGetPrimitiveIndex();
-	const TriangleData& tri = wf_params.triangles[primIdx];
+	const TriangleData& tri = wf_params.triangles[wf_prim_base(wf_instance_base()) + primIdx];
 
-	const float3 ro = optixGetWorldRayOrigin();
-	const float3 rd = optixGetWorldRayDirection();
+	// Object space, for the same reason as __intersection__wf_sphere above -
+	// identical to world space on the non-instanced path, since those
+	// instances carry an identity transform.
+	const float3 ro = optixGetObjectRayOrigin();
+	const float3 rd = optixGetObjectRayDirection();
 	const float ray_tmin = optixGetRayTmin();
 	const float ray_tmax = optixGetRayTmax();
 
@@ -414,7 +440,8 @@ extern "C" __global__ void __closesthit__wf_triangle() {
 	WfHitPayload* payload = (WfHitPayload*)unpackPointer(
 		optixGetPayload_0(), optixGetPayload_1());
 
-	const int primIdx = optixGetPrimitiveIndex();
+	const int instBase = wf_instance_base();
+	const int primIdx = (int)(wf_prim_base(instBase) + optixGetPrimitiveIndex());
 	const TriangleData& tri = wf_params.triangles[primIdx];
 
 	const float3 ray_orig = optixGetWorldRayOrigin();
@@ -423,7 +450,13 @@ extern "C" __global__ void __closesthit__wf_triangle() {
 
 	float3 hit_point = ray_orig + t_hit * ray_dir;
 
+	// The vertices are in the definition's object space for an instanced
+	// triangle, so the normal derived from them has to be carried to world
+	// space before it can be compared against the world ray. Skipped entirely
+	// when instBase < 0.
 	float3 geom_normal = normalize(cross(tri.p1 - tri.p0, tri.p2 - tri.p0));
+	if (instBase >= 0)
+		geom_normal = normalize(optixTransformNormalFromObjectToWorldSpace(geom_normal));
 	bool front_face = dot(ray_dir, geom_normal) < 0.0f;
 	float3 normal = front_face ? geom_normal : -geom_normal;
 
@@ -444,18 +477,31 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 		optixGetPayload_0(), optixGetPayload_1());
 
 	// Custom intersection stores sphere index in attribute 0.
-	const int sphereIdx = optixGetPrimitiveIndex();
+	const int instBase  = wf_instance_base();
+	const int sphereIdx = (int)(wf_prim_base(instBase) + optixGetPrimitiveIndex());
 
-	// Reconstruct hit point and normal from ray + t.
+	// Reconstruct hit point and normal from ray + t. Position and view
+	// direction stay in WORLD space - they feed lighting, which is world-space
+	// throughout - while the normal is derived in the sphere's own space and
+	// brought back, so a placement's non-uniform scale yields the ellipsoid
+	// normal rather than a resized sphere's.
 	const float3 ray_orig = optixGetWorldRayOrigin();
 	const float3 ray_dir  = optixGetWorldRayDirection();
 	const float  t_hit    = optixGetRayTmax();
 
 	float3 hit_point = ray_orig + t_hit * ray_dir;
 
-	// Sphere normal
+	// Sphere normal. optixGetObjectRay*() is illegal in a closest-hit program,
+	// so the hit point is transformed instead of the ray rebuilt - same reason
+	// optix_intersection_sphere.h does it this way. Both transforms are
+	// skipped outright when instBase < 0, leaving that path bit-for-bit what
+	// it computed before instancing existed.
 	const SphereData& sph = wf_params.spheres[sphereIdx];
-	float3 outward_normal = normalize(hit_point - sph.center);
+	float3 obj_hit = hit_point;
+	if (instBase >= 0) obj_hit = optixTransformPointFromWorldToObjectSpace(hit_point);
+	float3 outward_normal = normalize(obj_hit - sph.center);
+	if (instBase >= 0)
+		outward_normal = normalize(optixTransformNormalFromObjectToWorldSpace(outward_normal));
 	// Flip to face the ray
 	bool front_face = dot(ray_dir, outward_normal) < 0.0f;
 	float3 normal = front_face ? outward_normal : -outward_normal;

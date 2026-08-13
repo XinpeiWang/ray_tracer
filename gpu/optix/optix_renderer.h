@@ -267,10 +267,6 @@ private:
 		instancePlacements_ = placements;
 	}
 
-	/// True when the last setInstanceData() gave this scene geometry to place.
-	/// Used to warn about render modes that do not honour instancing.
-	bool hasInstancePlacements() const { return !instancePlacements_.empty(); }
-
   private:
 	CUdeviceptr d_lensElements_ = 0;      ///< Device RealisticCamera lens table
 	unsigned int numLensElements_ = 0;    ///< Number of lens elements

@@ -185,6 +185,10 @@ struct WavefrontLaunchParams {
 	// Light sampling (alias table, same layout as RecursivePathTracer)
 	int*         lightIndices;
 	const GpuLightKind* lightKinds;   // see optix_types.h - width is load-bearing
+	// Per-instance primitive base, same table and same -1 sentinel as
+	// LaunchParams::instancePrimBase in optix_types.h. Null when the scene has
+	// no object instances, which is every built-in scene.
+	const int* instancePrimBase;
 	GpuAliasEntry* aliasTable;
 	unsigned int   numLights;
 
