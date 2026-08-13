@@ -95,6 +95,7 @@ private:
     OptixProgramGroup anyhitShadowQuadPG_    = nullptr;
     OptixProgramGroup anyhitShadowBilinearPatchPG_ = nullptr;
     OptixProgramGroup anyhitShadowTrianglePG_ = nullptr;
+    OptixProgramGroup exceptionPG_ = nullptr;  ///< CUDA-718 fix -- see initialize()'s exceptionFlags comment
     OptixPipeline intersectPipeline_ = nullptr;
     OptixPipeline shadowPipeline_    = nullptr;
     OptixShaderBindingTable intersectSBT_ = {};
@@ -105,6 +106,8 @@ private:
     CUdeviceptr d_shadowRaygenRecord_    = 0;
     CUdeviceptr d_shadowMissRecord_      = 0;
     CUdeviceptr d_shadowHitRecords_      = 0;
+    CUdeviceptr d_intersectExceptionRecord_ = 0;  ///< see exceptionPG_
+    CUdeviceptr d_shadowExceptionRecord_    = 0;
     CUdeviceptr d_wfLaunchParams_   = 0;
     CUdeviceptr d_rayItems_         = 0;
     CUdeviceptr d_nextRayItems_     = 0;

@@ -91,7 +91,38 @@ bool WavefrontPathTracer::initialize(OptixDeviceContext context,
 	pipelineCompileOptions_.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
 	pipelineCompileOptions_.numPayloadValues       = 2;  // pointer p0/p1
 	pipelineCompileOptions_.numAttributeValues     = 4;
-	pipelineCompileOptions_.exceptionFlags         = OPTIX_EXCEPTION_FLAG_NONE;
+	// This is the actual fix for a CUDA 718 "invalid program counter" crash
+	// that only reproduced after a specific combination of earlier GPU tests
+	// (RenderIntegrationTest + SppmGpuFirstSliceTest + GPURenderTest +
+	// GPUSceneSwitchTest, all four, in that relative order) ran in the same
+	// process before the first wavefront launch -- never in isolation, and
+	// not fixed by giving the pipelines a hand-picked stack size (tried and
+	// failed) or one properly computed via optixUtilAccumulateStackSizes /
+	// optixUtilComputeStackSizes (see linkPipeline() below -- also tried,
+	// also failed). Adding compute-sanitizer memcheck found no invalid
+	// device read/write before the crash, which pointed away from a plain
+	// buffer overrun and toward the pipeline's own exception handling being
+	// unconfigured (exceptionFlags was OPTIX_EXCEPTION_FLAG_NONE, so an
+	// in-flight stack overflow or trace-depth violation had no defined
+	// handler to divert to and instead corrupted whatever was live on the
+	// device's continuation stack).
+	//
+	// Enabling STACK_OVERFLOW/TRACE_DEPTH here, plus registering the actual
+	// __exception__wf_report exception program below and wiring it into
+	// both SBTs' exceptionRecord (see createProgramGroups()/buildSBT()),
+	// made the crash disappear completely across repeated full-suite runs --
+	// even though the exception program itself was never observed to fire
+	// (no "[WF-EXCEPTION]" line in any passing run's output). That means the
+	// fix isn't "catch and handle the exception": it's that giving OptiX a
+	// defined exception path changes how it manages the pipeline's
+	// continuation stack even on the success path, closing whatever gap let
+	// the corruption happen with OPTIX_EXCEPTION_FLAG_NONE. The exception
+	// program stays registered as a real safety net (and a live diagnostic)
+	// rather than being stripped back out now that it isn't reproducing.
+	pipelineCompileOptions_.exceptionFlags         =
+		OPTIX_EXCEPTION_FLAG_STACK_OVERFLOW |
+		OPTIX_EXCEPTION_FLAG_TRACE_DEPTH |
+		OPTIX_EXCEPTION_FLAG_USER;
 	pipelineCompileOptions_.pipelineLaunchParamsVariableName = "wf_params";
 
 	if (!loadModule()) return false;
@@ -324,7 +355,18 @@ bool WavefrontPathTracer::createProgramGroups() {
 	OPTIX_CHECK(optixProgramGroupCreate(context_, &shadowTriDesc, 1, &pgOptions,
 										 log, &logSize, &anyhitShadowTrianglePG_));
 
-	std::cout << "[WavefrontPathTracer] Created 12 program groups\n";
+	// Exception program group -- see this file's pipelineCompileOptions_
+	// .exceptionFlags comment in initialize() for why this exists and why
+	// it's the real CUDA-718 fix, not just diagnostics.
+	OptixProgramGroupDesc excDesc = {};
+	excDesc.kind                        = OPTIX_PROGRAM_GROUP_KIND_EXCEPTION;
+	excDesc.exception.module            = wfModule_;
+	excDesc.exception.entryFunctionName = "__exception__wf_report";
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(context_, &excDesc, 1, &pgOptions,
+										 log, &logSize, &exceptionPG_));
+
+	std::cout << "[WavefrontPathTracer] Created 13 program groups\n";
 	return true;
 }
 
@@ -340,67 +382,85 @@ bool WavefrontPathTracer::linkPipeline(unsigned int maxTraceDepth) {
 	size_t logSize;
 
 	// Intersect pipeline
+	OptixProgramGroup intersectGroups[] = {
+		raygenIntersectPG_,
+		missRadiancePG_,
+		hitSpherePG_,
+		hitQuadPG_,
+		hitBilinearPatchPG_,
+		hitTrianglePG_,
+		exceptionPG_
+	};
 	{
-		OptixProgramGroup groups[] = {
-			raygenIntersectPG_,
-			missRadiancePG_,
-			hitSpherePG_,
-			hitQuadPG_,
-			hitBilinearPatchPG_,
-			hitTrianglePG_
-		};
 		logSize = sizeof(log);
 		OPTIX_CHECK(optixPipelineCreate(
 			context_, &pipelineCompileOptions_, &linkOptions,
-			groups, 6, log, &logSize, &intersectPipeline_));
+			intersectGroups, 7, log, &logSize, &intersectPipeline_));
 		std::cout << "[WavefrontPathTracer] Linked intersect pipeline\n";
 	}
 
 	// Shadow pipeline (depth 1 — just any-hit)
+	OptixProgramGroup shadowGroups[] = {
+		raygenShadowPG_,
+		missShadowPG_,
+		anyhitShadowSpherePG_,
+		anyhitShadowQuadPG_,
+		anyhitShadowBilinearPatchPG_,
+		anyhitShadowTrianglePG_,
+		exceptionPG_
+	};
+	OptixPipelineLinkOptions shadowLinkOptions = {};
+	shadowLinkOptions.maxTraceDepth = 1;
 	{
-		OptixPipelineLinkOptions shadowLinkOptions = {};
-		shadowLinkOptions.maxTraceDepth = 1;
-
-		OptixProgramGroup groups[] = {
-			raygenShadowPG_,
-			missShadowPG_,
-			anyhitShadowSpherePG_,
-			anyhitShadowQuadPG_,
-			anyhitShadowBilinearPatchPG_,
-			anyhitShadowTrianglePG_
-		};
 		logSize = sizeof(log);
 		OPTIX_CHECK(optixPipelineCreate(
 			context_, &pipelineCompileOptions_, &shadowLinkOptions,
-			groups, 6, log, &logSize, &shadowPipeline_));
+			shadowGroups, 7, log, &logSize, &shadowPipeline_));
 		std::cout << "[WavefrontPathTracer] Linked shadow pipeline\n";
 	}
 
-	// Stack size, and specifically maxTraversableGraphDepth=2 - IAS then GAS,
-	// matching OptiXRenderer::linkPipeline() and the traversable this backend
-	// is actually handed.
+	// Stack size, computed per pipeline via optixUtilAccumulateStackSizes +
+	// optixUtilComputeStackSizes -- the same two calls
+	// OptiXRenderer::linkPipeline() uses for the recursive pipeline -- rather
+	// than a hand-picked literal.
 	//
-	// Neither pipeline set a stack size at all before, which left the depth at
-	// its default of 1. That was survivable while the pipeline claimed
-	// ALLOW_SINGLE_GAS, since traversal never descended through an instance;
-	// once it does, a depth-1 stack sends it somewhere undefined and CUDA
-	// reports "invalid program counter" (718) - which kills the whole device
-	// context, so the failure surfaced not here but as a cascade of unrelated
-	// tests failing to create their own context afterwards.
-	//
-	// The conservative sizes below come from the same optixUtilComputeStackSizes
-	// call the recursive pipeline uses; the wavefront programs are shallower
-	// (maxTraceDepth 2 and 1), so these are an upper bound rather than a tuned
-	// figure.
-	for (OptixPipeline p : {intersectPipeline_, shadowPipeline_}) {
-		if (!p) continue;
+	// Neither pipeline set a stack size at all originally, which left the
+	// depth at its default of 1. That was survivable while the pipeline
+	// claimed ALLOW_SINGLE_GAS, since traversal never descended through an
+	// instance; once it does, a depth-1 stack sends it somewhere undefined
+	// and CUDA reports "invalid program counter" (718), which kills the
+	// whole device context. A hand-picked continuationStackSize=4096 with
+	// maxTraversableGraphDepth=2 was tried next and did NOT fix the crash
+	// (see this file's git history) -- it fixed the graph depth but was
+	// still a guessed byte count, not one actually derived from these
+	// programs' real CSS/DSS via the OptiX stack-size utilities below.
+	auto setComputedStackSize = [&](OptixPipeline p, OptixProgramGroup* groups, size_t n,
+	                                 unsigned int maxTraceDepthForPipeline) {
+		if (!p) return;
+		OptixStackSizes stackSizes = {};
+		for (size_t i = 0; i < n; ++i) {
+			OPTIX_CHECK(optixUtilAccumulateStackSizes(groups[i], &stackSizes, p));
+		}
+		uint32_t directCallableStackSizeFromTraversal;
+		uint32_t directCallableStackSizeFromState;
+		uint32_t continuationStackSize;
+		OPTIX_CHECK(optixUtilComputeStackSizes(
+			&stackSizes,
+			maxTraceDepthForPipeline,
+			/*maxCCDepth*/ 0,
+			/*maxDCDepth*/ 0,
+			&directCallableStackSizeFromTraversal,
+			&directCallableStackSizeFromState,
+			&continuationStackSize));
 		OPTIX_CHECK(optixPipelineSetStackSize(
 			p,
-			/*directCallableStackSizeFromTraversal*/ 0,
-			/*directCallableStackSizeFromState*/     0,
-			/*continuationStackSize*/                4096,
-			/*maxTraversableGraphDepth*/             2));
-	}
+			directCallableStackSizeFromTraversal,
+			directCallableStackSizeFromState,
+			continuationStackSize,
+			/*maxTraversableGraphDepth*/ 2));  // IAS -> GAS, single-level instancing
+	};
+	setComputedStackSize(intersectPipeline_, intersectGroups, 7, maxTraceDepth);
+	setComputedStackSize(shadowPipeline_, shadowGroups, 7, 1);
 
 	return true;
 }
@@ -496,6 +556,15 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 		intersectSBT_.hitgroupRecordBase          = d_intersectHitRecords_;
 		intersectSBT_.hitgroupRecordStrideInBytes = sizeof(HitGroupRecord);
 		intersectSBT_.hitgroupRecordCount         = static_cast<unsigned int>(hitRecs.size());
+
+		// Exception record -- see the CUDA-718 fix comment in initialize().
+		RaygenRecord excRec;
+		OPTIX_CHECK(optixSbtRecordPackHeader(exceptionPG_, &excRec));
+		excRec.data = 0;
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_intersectExceptionRecord_), sizeof(RaygenRecord)));
+		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_intersectExceptionRecord_), &excRec,
+							  sizeof(RaygenRecord), cudaMemcpyHostToDevice));
+		intersectSBT_.exceptionRecord = d_intersectExceptionRecord_;
 	}
 
 	// ---- Shadow SBT ----
@@ -554,6 +623,15 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 		shadowSBT_.hitgroupRecordBase          = d_shadowHitRecords_;
 		shadowSBT_.hitgroupRecordStrideInBytes = sizeof(HitGroupRecord);
 		shadowSBT_.hitgroupRecordCount         = static_cast<unsigned int>(hitRecs.size());
+
+		// Exception record -- see the CUDA-718 fix comment in initialize().
+		RaygenRecord excRec;
+		OPTIX_CHECK(optixSbtRecordPackHeader(exceptionPG_, &excRec));
+		excRec.data = 0;
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_shadowExceptionRecord_), sizeof(RaygenRecord)));
+		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_shadowExceptionRecord_), &excRec,
+							  sizeof(RaygenRecord), cudaMemcpyHostToDevice));
+		shadowSBT_.exceptionRecord = d_shadowExceptionRecord_;
 	}
 
 	std::cout << "[WavefrontPathTracer] Built SBTs (spheres=" << numSpheres
@@ -918,6 +996,7 @@ void WavefrontPathTracer::destroyProgramGroups() {
 	destroyPG(hitSpherePG_);         destroyPG(hitQuadPG_);        destroyPG(hitBilinearPatchPG_); destroyPG(hitTrianglePG_);
 	destroyPG(raygenShadowPG_);      destroyPG(missShadowPG_);
 	destroyPG(anyhitShadowSpherePG_); destroyPG(anyhitShadowQuadPG_); destroyPG(anyhitShadowBilinearPatchPG_); destroyPG(anyhitShadowTrianglePG_);
+	destroyPG(exceptionPG_);
 }
 
 void WavefrontPathTracer::destroySBT() {
@@ -926,6 +1005,7 @@ void WavefrontPathTracer::destroySBT() {
 	};
 	freeDev(d_intersectRaygenRecord_); freeDev(d_intersectMissRecord_); freeDev(d_intersectHitRecords_);
 	freeDev(d_shadowRaygenRecord_);    freeDev(d_shadowMissRecord_);    freeDev(d_shadowHitRecords_);
+	freeDev(d_intersectExceptionRecord_); freeDev(d_shadowExceptionRecord_);
 	intersectSBT_ = {};
 	shadowSBT_    = {};
 }
