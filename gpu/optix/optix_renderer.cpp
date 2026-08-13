@@ -19,6 +19,7 @@
 #include <sstream>
 #include <array>
 #include <cstring>
+#include <cstdlib>       // getenv, for RAY_TRACER_OPTIX_VALIDATION
 #include <type_traits>   // remove_pointer_t, for the light-flag width assert
 
 namespace {
@@ -39,17 +40,26 @@ namespace {
 // ============================================================================
 
 /// @brief Logging callback for OptiX messages
-/// @param level Message severity level
+/// @param level Message severity level (1=fatal, 2=error, 3=warning, 4=print)
 /// @param tag Message category tag
 /// @param message The log message
-/// @param cbdata User callback data (unused)
-static void contextLogCallback(
+/// @param cbdata The OptiXRenderer instance passed via
+///               OptixDeviceContextOptions::logCallbackData at context
+///               creation - null for isAvailable()'s throwaway probe
+///               context, which doesn't track issues.
+void contextLogCallback(
 	unsigned int level,
 	const char* tag,
 	const char* message,
-	void* /*cbdata*/
+	void* cbdata
 ) {
 	fprintf(stderr, "[OptiX][%u][%s]: %s\n", level, tag, message);
+	if (level <= 3) {
+		if (auto* self = static_cast<OptiXRenderer*>(cbdata)) {
+			self->loggedIssues_.push_back(
+				std::string("[") + tag + "] " + message);
+		}
+	}
 }
 
 OptiXRenderer::OptiXRenderer() {
@@ -182,7 +192,27 @@ bool OptiXRenderer::createContext() {
 	// Create OptiX device context with logging
 	OptixDeviceContextOptions options{};
 	options.logCallbackFunction = &contextLogCallback;
+	options.logCallbackData = this;
 	options.logCallbackLevel = kDefaultLogLevel;
+
+	// Opt-in only: validation mode enables extra device-side checks (e.g.
+	// SBT-index bounds) that OptiX otherwise skips for performance, at a
+	// real per-launch cost. It caught a real, previously-undetected bug
+	// this way - a shadow-ray miss-SBT index that was silently reading
+	// adjacent heap memory - deterministically, on every scene, the moment
+	// it was tried. See tests/integration/optix_validation_sweep_test.cpp
+	// for the opt-in test that exercises this. Fixed for the context's
+	// whole lifetime (matches OptiX's own API - there's no way to change
+	// an existing context's validation mode after creation).
+#pragma warning(suppress: 4996)
+	const char* validationEnv = std::getenv("RAY_TRACER_OPTIX_VALIDATION");
+	validationEnabled_ = validationEnv && std::string(validationEnv) == "1";
+	options.validationMode = validationEnabled_
+		? OPTIX_DEVICE_CONTEXT_VALIDATION_MODE_ALL
+		: OPTIX_DEVICE_CONTEXT_VALIDATION_MODE_OFF;
+	if (validationEnabled_) {
+		std::cout << "[OptiX] Validation mode enabled (RAY_TRACER_OPTIX_VALIDATION=1)\n";
+	}
 
 	OPTIX_CHECK(optixDeviceContextCreate(cudaContext_, &options, &context_));
 

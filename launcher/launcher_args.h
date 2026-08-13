@@ -31,6 +31,10 @@ struct LaunchArgs {
 	// default recursive (megakernel) one - see gpu/optix/wavefront_path_tracer.h.
 	// Ignored under --cpu/--sppm.
 	bool use_wavefront      = false;
+	// GPU-only: enable OptiX validation mode (extra device-side checks, real
+	// per-launch cost) - see OptiXRenderer::createContext()'s own comment.
+	// Ignored under --cpu/--sppm.
+	bool optix_validate     = false;
 	bool video_mode         = false;
 	// Stochastic Progressive Photon Mapping - a separate CPU-only render
 	// mode (see cpu_renderer/cpu_interface.h's cpu_render_main_sppm() doc
@@ -107,6 +111,9 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 		} else if (arg == "--wavefront") {
 			out.use_wavefront = true;
 			consumed_args.insert(i);
+		} else if (arg == "--optix-validate") {
+			out.optix_validate = true;
+			consumed_args.insert(i);
 		} else if (arg == "--sppm") {
 			out.use_sppm = true;
 			consumed_args.insert(i);
@@ -170,6 +177,9 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "  --gpu      : Force GPU rendering (default)\n"
 					  << "  --wavefront: Use the wavefront (queue-based) GPU path tracer instead of\n"
 					  << "               the default recursive one. GPU-only, ignored under --cpu/--sppm.\n"
+					  << "  --optix-validate: Enable OptiX validation mode (extra device-side checks,\n"
+					  << "               real per-launch cost - for debugging, not routine use).\n"
+					  << "               GPU-only, ignored under --cpu/--sppm.\n"
 					  << "  --sppm     : Render with Stochastic Progressive Photon Mapping instead of\n"
 					  << "               the path tracer (incompatible with --video). Best for hard\n"
 					  << "               caustic/glass scenes. CPU: verified end-to-end on scene 11\n"

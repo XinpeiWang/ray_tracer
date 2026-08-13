@@ -61,6 +61,39 @@ int optix_render_main_sppm(
 // scene's CPU and GPU builders have drifted out of sync on light count.
 int gpu_scene_light_count(int scene_id, int image_width, int image_height);
 
+// The three functions below expose OptiXRenderer::loggedIssues() (see its
+// own doc comment) for opt-in deep-validation sweeps - see
+// tests/integration/optix_validation_sweep_test.cpp. Only meaningful when
+// RAY_TRACER_OPTIX_VALIDATION=1 was set before the first optix_render_main()
+// call in this process (validation mode is fixed for the context's whole
+// lifetime); the count is always 0 otherwise. All three are no-ops (count 0,
+// index out of range) before any render has created g_renderer.
+
+// Number of OptiX log messages at level <= 3 (fatal/error/warning) recorded
+// since the last optix_clear_validation_issues() call.
+int optix_validation_issue_count();
+
+// Message text for the issue at the given 0-based index (must be <
+// optix_validation_issue_count()). Returns "" if out of range. Valid until
+// the next optix_clear_validation_issues() call.
+const char* optix_validation_issue(int index);
+
+// Clears the recorded issue list - call between scenes/backends in a sweep
+// so each iteration's pass/fail is independent of what came before it.
+void optix_clear_validation_issues();
+
+// Whether the CURRENT g_renderer's OptiX context was actually created with
+// validation mode on. Unlike RAY_TRACER_WAVEFRONT (read fresh on every
+// render call), RAY_TRACER_OPTIX_VALIDATION is read ONCE, at OptiX context
+// creation - the first optix_render_main() call in the process, whichever
+// call that happens to be. If something else already triggered context
+// creation earlier in this process without the env var set, setting it now
+// has no effect: the context (and every render after it) stays
+// unvalidated. Callers that need validation guarantees MUST check this
+// after their first render rather than trusting the env var alone - see
+// tests/integration/optix_validation_sweep_test.cpp's SetUp().
+bool optix_validation_enabled();
+
 #ifdef __cplusplus
 }
 #endif

@@ -383,3 +383,23 @@ extern "C" int gpu_scene_light_count(int scene_id, int image_width, int image_he
 		return -1;
 	}
 }
+
+extern "C" int optix_validation_issue_count() {
+	if (!g_renderer) return 0;
+	return static_cast<int>(g_renderer->loggedIssues().size());
+}
+
+extern "C" const char* optix_validation_issue(int index) {
+	if (!g_renderer) return "";
+	const auto& issues = g_renderer->loggedIssues();
+	if (index < 0 || static_cast<size_t>(index) >= issues.size()) return "";
+	return issues[index].c_str();
+}
+
+extern "C" void optix_clear_validation_issues() {
+	if (g_renderer) g_renderer->clearLoggedIssues();
+}
+
+extern "C" bool optix_validation_enabled() {
+	return g_renderer && g_renderer->validationEnabled();
+}

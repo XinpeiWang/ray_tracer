@@ -188,6 +188,9 @@ int main(int argc, char** argv) {
 	if (use_gpu && !use_sppm && args.use_wavefront) {
 		_putenv_s("RAY_TRACER_WAVEFRONT", "1");
 	}
+	if (use_gpu && !use_sppm && args.optix_validate) {
+		_putenv_s("RAY_TRACER_OPTIX_VALIDATION", "1");
+	}
 
 	// SPPM has no defined per-frame semantics (its progressive radius state
 	// doesn't reset cleanly frame-to-frame the way the path tracer's

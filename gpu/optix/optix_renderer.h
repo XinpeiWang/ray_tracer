@@ -110,6 +110,28 @@ public:
 	///                If empty, looks in the same directory as optix_programs.ptx.
 	void enableWavefront(bool enable, const std::string& ptxPath = "");
 
+	/// @brief Whether the OptiX device context was created with
+	///        OPTIX_DEVICE_CONTEXT_VALIDATION_MODE_ALL (see createContext()'s
+	///        own comment for what that buys and costs). Read once via the
+	///        RAY_TRACER_OPTIX_VALIDATION env var at context-creation time -
+	///        the validation mode is fixed for the context's whole lifetime,
+	///        it cannot be toggled per-render the way wavefront mode can.
+	bool validationEnabled() const { return validationEnabled_; }
+
+	/// @brief Messages the context log callback received at level <= 3
+	///        (fatal/error/warning; see OptixLogCallback's own doc comment
+	///        for the level scale) since the last clearLoggedIssues() call.
+	///        With validation mode on, this is where a bug like an
+	///        out-of-bounds SBT index shows up - OptiX reports it here
+	///        deterministically even on a run that would otherwise render a
+	///        plausible-looking image and never crash.
+	const std::vector<std::string>& loggedIssues() const { return loggedIssues_; }
+	void clearLoggedIssues() { loggedIssues_.clear(); }
+
+	// contextLogCallback() needs to reach loggedIssues_ from a free function
+	// (it's the OptixLogCallback function-pointer type, not a member).
+	friend void contextLogCallback(unsigned int, const char*, const char*, void*);
+
 	/// @brief Sub-phase 1b verification only: runs ONE SPPM camera pass
 	///        (visible-point recording + NEE) and writes the resulting Ld
 	///        to outputFramebuffer. Proves the SPPMPathTracer module/
@@ -144,6 +166,8 @@ private:
 	// OptiX Core Resources
 	// -------------------------------------------------------------------
 	OptixDeviceContext context_ = nullptr;  ///< OptiX device context
+	bool validationEnabled_ = false;        ///< See validationEnabled()
+	std::vector<std::string> loggedIssues_; ///< See loggedIssues()
 	CUcontext cudaContext_ = nullptr;       ///< CUDA primary context (see cuDevice_'s own comment)
 	CUstream stream_ = nullptr;             ///< CUDA stream for async operations
 	// The device cudaContext_ was retained against (createContext()'s own
