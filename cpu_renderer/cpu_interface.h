@@ -41,7 +41,9 @@ extern "C" {
 /// @param spp           Samples per pixel (higher = less noise, slower render)
 /// @param max_depth     Maximum ray bounce depth (higher = more realistic lighting)
 /// @param output_path   Output PPM file path (e.g., "C:/path/to/image.ppm")
-/// @param scene_id      Scene selector (0=Cornell Box, 1=Bouncing Spheres, etc.)
+/// @param scene_id      Scene selector, category letter + number within
+///                      category (e.g. "A1"=Cornell Box, "A2"=Bouncing
+///                      Spheres - see src/TheRestOfYourLife/scene_registry.h)
 /// @param cam_x         Camera position X coordinate (default: 278)
 /// @param cam_y         Camera position Y coordinate (default: 278)
 /// @param cam_z         Camera position Z coordinate (default: -800)
@@ -62,7 +64,7 @@ int cpu_render_main(
     int spp,
     int max_depth,
     const char* output_path,
-    int scene_id,
+    const char* scene_id,
     double cam_x,
     double cam_y,
     double cam_z,
@@ -111,7 +113,7 @@ int cpu_render_main_sppm(
     int photons,
     int max_depth,
     const char* output_path,
-    int scene_id,
+    const char* scene_id,
     double cam_x,
     double cam_y,
     double cam_z,
@@ -123,8 +125,12 @@ int cpu_render_main_sppm(
 int cpu_scene_count();
 
 /// @param index  position in registry (0..cpu_scene_count()-1)
-/// @return scene id, or -1 if index out of range
-int cpu_scene_id(int index);
+/// @return scene id (category letter + number, e.g. "B10"), or "" if index
+/// out of range. This is the only bridge from "position in registry" to
+/// "id" - every function below takes an id, not a position, so a caller
+/// that only knows a position (e.g. enumerating the whole registry) starts
+/// here.
+const char* cpu_scene_id(int index);
 
 /// @param index  position in registry
 /// @return scene name string, or "" if out of range
@@ -161,7 +167,7 @@ int cpu_scene_gpu_compatible(int index);
 /// default view) regardless of scene. Any of the six out-params may be null
 /// if that value isn't needed.
 /// @return 1 on success, 0 if scene_id isn't found (out-params left untouched)
-int cpu_scene_recommended_camera(int scene_id,
+int cpu_scene_recommended_camera(const char* scene_id,
 	double* lookfrom_x, double* lookfrom_y, double* lookfrom_z,
 	double* lookat_x, double* lookat_y, double* lookat_z);
 
@@ -169,30 +175,38 @@ int cpu_scene_recommended_camera(int scene_id,
 /// unlike cpu_scene_gpu_compatible above, which is index-based) and returns
 /// whether gpu/optix/scene_builder.cpp has a case for it.
 /// @return 1 if GPU compatible, 0 if not (including if scene_id isn't found)
-int cpu_scene_gpu_compatible_by_id(int scene_id);
+int cpu_scene_gpu_compatible_by_id(const char* scene_id);
 
 /// The rest of this file's index-based accessors (cpu_scene_name/
 /// description/performance/recommended_spp/requires_files) are also
 /// available by id - lets a caller with just a scene_id (the GUI's scene
-/// combo box stores ids, not registry positions, though they're numerically
-/// identical today) look a single scene up directly instead of first
-/// resolving id -> index. Same "" / 0 / default-on-not-found behavior as
-/// their index-based counterparts.
-const char* cpu_scene_name_by_id(int scene_id);
+/// combo box stores ids, not registry positions) look a single scene up
+/// directly instead of first resolving id -> index via cpu_scene_id().
+/// Same "" / 0 / default-on-not-found behavior as their index-based
+/// counterparts.
+const char* cpu_scene_name_by_id(const char* scene_id);
 /// The scene's category ("Basics", "Materials", ...) - one of the
 /// SceneCategories:: constants in src/shared/scene_descriptor.h. The Qt GUI
 /// groups its scene list by this.
-const char* cpu_scene_category_by_id(int scene_id);
-const char* cpu_scene_description_by_id(int scene_id);
+const char* cpu_scene_category_by_id(const char* scene_id);
+const char* cpu_scene_description_by_id(const char* scene_id);
 /// For a scene loaded from a .pbrt file, the path it was loaded from; "" for
 /// every built-in scene. This exists so the GPU scene builder can find the
 /// same file the CPU registry found. The alternative - re-scanning the scene
 /// directory from the GPU side - would be a second implementation of the
 /// search order and free to disagree about which file is scene 65.
-const char* cpu_scene_pbrt_path_by_id(int scene_id);
-const char* cpu_scene_performance_by_id(int scene_id);
-int cpu_scene_recommended_spp_by_id(int scene_id);
-int cpu_scene_requires_files_by_id(int scene_id);
+const char* cpu_scene_pbrt_path_by_id(const char* scene_id);
+/// The OLD flat 0..N int id (SceneDescriptor::legacy_id - see its comment
+/// in scene_registry.h) for a scene, or -1 if scene_id isn't found. This
+/// exists ONLY so gpu/optix/scene_builder.cpp's build_scene() can translate
+/// the new string id into what its large switch(scene_id) still expects,
+/// without that file needing to include scene_registry.h's full CPU
+/// hittable/material class hierarchy just for this one lookup. Do not use
+/// this for anything else - it is not a second public id.
+int cpu_scene_legacy_id_by_id(const char* scene_id);
+const char* cpu_scene_performance_by_id(const char* scene_id);
+int cpu_scene_recommended_spp_by_id(const char* scene_id);
+int cpu_scene_requires_files_by_id(const char* scene_id);
 
 #ifdef __cplusplus
 }

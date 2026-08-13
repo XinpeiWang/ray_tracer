@@ -71,9 +71,9 @@ TEST_F(SppmGpuFirstSliceTest, CornellRoughGlassProducesFiniteNonBlackImage) {
 	int result = optix_render_main_sppm(
 		/*image_width=*/48, /*image_height=*/48,
 		/*iterations=*/10, /*photons=*/2000, /*max_depth=*/5,
-		path, /*scene_id=*/11,
+		path, /*scene_id=*/"B3",
 		278.0, 278.0, -800.0, /*force_camera_override=*/1);
-	ASSERT_EQ(result, 0) << "optix_render_main_sppm failed on scene 11";
+	ASSERT_EQ(result, 0) << "optix_render_main_sppm failed on scene B3";
 
 	PPMImage img = load_ppm(path);
 	ASSERT_TRUE(img.valid) << "Failed to load rendered PPM";
@@ -95,18 +95,18 @@ TEST_F(SppmGpuFirstSliceTest, CornellRoughGlassProducesFiniteNonBlackImage) {
 	                            << "likely produced no direct or indirect lighting contribution";
 }
 
-// Phase 1 scope guard: any scene other than 11 must be rejected cleanly
+// Phase 1 scope guard: any scene other than B3 must be rejected cleanly
 // (not crash, not silently render garbage) -- see optix_render_main_sppm's
-// own doc comment on why scene 11 is the only supported scene right now.
+// own doc comment on why scene B3 is the only supported scene right now.
 TEST_F(SppmGpuFirstSliceTest, RejectsOutOfScopeScene) {
 	const char* path = "sppm_gpu_first_slice_test_scene0.ppm";
 	outputFiles_.push_back(path);
 
 	int result = optix_render_main_sppm(
 		32, 32, /*iterations=*/5, /*photons=*/500, /*max_depth=*/5,
-		path, /*scene_id=*/0,
+		path, /*scene_id=*/"A1",
 		278.0, 278.0, -800.0, 1);
-	EXPECT_NE(result, 0) << "GPU SPPM should reject scene 0 (Phase 1 supports scene 11 only)";
+	EXPECT_NE(result, 0) << "GPU SPPM should reject scene A1 (Phase 1 supports scene B3 only)";
 }
 
 // Regression guard: the real multi-iteration SPPM path (renderSPPM(),
@@ -120,11 +120,11 @@ TEST_F(SppmGpuFirstSliceTest, PlainGpuRenderStillWorksAfterSppmRender) {
 	outputFiles_.push_back(sppmPath);
 	outputFiles_.push_back(plainPath);
 
-	ASSERT_EQ(optix_render_main_sppm(48, 48, 10, 2000, 5, sppmPath, 11,
+	ASSERT_EQ(optix_render_main_sppm(48, 48, 10, 2000, 5, sppmPath, "B3",
 	                                  278.0, 278.0, -800.0, 1), 0);
 
 	int plainResult = optix_render_main(48, 48, /*samples_per_pixel=*/50, /*max_depth=*/5,
-	                                     plainPath, /*scene_id=*/11,
+	                                     plainPath, /*scene_id=*/"B3",
 	                                     278.0, 278.0, -800.0, 1);
 	ASSERT_EQ(plainResult, 0) << "Plain GPU render failed after an SPPM render in the same process";
 

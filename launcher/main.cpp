@@ -170,7 +170,7 @@ int main(int argc, char** argv) {
 	int  image_height       = args.image_height;
 	int  samples_per_pixel  = args.samples_per_pixel;
 	int  max_ray_depth      = args.max_ray_depth;
-	int  scene_id           = args.scene_id;
+	std::string scene_id    = args.scene_id;
 	double cam_x            = args.cam_x;
 	double cam_y            = args.cam_y;
 	double cam_z            = args.cam_z;
@@ -358,7 +358,7 @@ int main(int argc, char** argv) {
         // Image and Video preview starts from the same view.
         double path_lookfrom_x = 278.0, path_lookfrom_y = 278.0, path_lookfrom_z = -800.0;
         double path_lookat_x = 278.0, path_lookat_y = 278.0, path_lookat_z = 278.0;
-        if (cpu_scene_recommended_camera(scene_id, &path_lookfrom_x, &path_lookfrom_y, &path_lookfrom_z,
+        if (cpu_scene_recommended_camera(scene_id.c_str(), &path_lookfrom_x, &path_lookfrom_y, &path_lookfrom_z,
                                           &path_lookat_x, &path_lookat_y, &path_lookat_z)) {
             std::cout << "Camera path starts at (" << path_lookfrom_x << ", " << path_lookfrom_y << ", " << path_lookfrom_z
                        << ") looking at (" << path_lookat_x << ", " << path_lookat_y << ", " << path_lookat_z
@@ -425,7 +425,7 @@ int main(int argc, char** argv) {
                         samples_per_pixel,
                         max_ray_depth,
                         frame_path.string().c_str(),
-                        scene_id,
+                        scene_id.c_str(),
                         cam_pos.lookfrom_x,
                         cam_pos.lookfrom_y,
                         cam_pos.lookfrom_z,
@@ -442,7 +442,7 @@ int main(int argc, char** argv) {
                     samples_per_pixel,
                     max_ray_depth,
                     frame_path.string().c_str(),
-                    scene_id,
+                    scene_id.c_str(),
                     cam_pos.lookfrom_x,
                     cam_pos.lookfrom_y,
                     cam_pos.lookfrom_z,
@@ -556,7 +556,7 @@ int main(int argc, char** argv) {
     // scene's CameraConfig.mode (Fixed scenes would otherwise silently
     // ignore it and use their own registry lookfrom unconditionally).
     if (!args.cam_explicit) {
-        cpu_scene_recommended_camera(scene_id, &cam_x, &cam_y, &cam_z, nullptr, nullptr, nullptr);
+        cpu_scene_recommended_camera(scene_id.c_str(), &cam_x, &cam_y, &cam_z, nullptr, nullptr, nullptr);
     }
 
     // Start timing for performance measurement
@@ -577,7 +577,7 @@ int main(int argc, char** argv) {
         std::cout << "Calling optix_render_main_sppm(...) in-process (OptiX)..." << std::endl;
         render_result = optix_render_main_sppm(image_width, image_height, args.sppm_iterations,
                                                 args.sppm_photons, max_ray_depth, out_path.c_str(),
-                                                scene_id, cam_x, cam_y, cam_z, 1);  // force_camera_override
+                                                scene_id.c_str(), cam_x, cam_y, cam_z, 1);  // force_camera_override
         std::cout << "optix_render_main_sppm returned: " << render_result << std::endl;
         if (render_result == SUCCESS) {
             std::cout << "Rendered with GPU SPPM renderer, output: " << out_path << std::endl;
@@ -598,7 +598,7 @@ int main(int argc, char** argv) {
         std::cout << "Calling cpu_render_main_sppm(...) in-process..." << std::endl;
         render_result = cpu_render_main_sppm(image_width, image_height, args.sppm_iterations,
                                               args.sppm_photons, max_ray_depth, out_path.c_str(),
-                                              scene_id, cam_x, cam_y, cam_z, 1);  // force_camera_override
+                                              scene_id.c_str(), cam_x, cam_y, cam_z, 1);  // force_camera_override
         std::cout << "cpu_render_main_sppm returned: " << render_result << std::endl;
         if (render_result == SUCCESS) {
             std::cout << "Rendered with SPPM renderer, output: " << out_path << std::endl;
@@ -623,7 +623,7 @@ int main(int argc, char** argv) {
                 samples_per_pixel,
                 max_ray_depth,
                 out_path.c_str(),
-                scene_id,
+                scene_id.c_str(),
                 cam_x,
                 cam_y,
                 cam_z,
@@ -649,7 +649,7 @@ int main(int argc, char** argv) {
         // CPU Renderer (multithreaded C++)
         // Implemented in cpu_renderer/cpu_interface.cpp
         std::cout << "Calling cpu_render_main(...) in-process..." << std::endl;
-        render_result = cpu_render_main(image_width, image_height, samples_per_pixel, max_ray_depth, out_path.c_str(), scene_id, cam_x, cam_y, cam_z, 1);  // force_camera_override
+        render_result = cpu_render_main(image_width, image_height, samples_per_pixel, max_ray_depth, out_path.c_str(), scene_id.c_str(), cam_x, cam_y, cam_z, 1);  // force_camera_override
         std::cout << "cpu_render_main returned: " << render_result << std::endl;
         if (render_result == SUCCESS) {
             std::cout << "Rendered with in-process CPU renderer, output: " << out_path << std::endl;

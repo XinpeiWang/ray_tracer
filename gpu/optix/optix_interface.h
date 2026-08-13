@@ -24,7 +24,7 @@ int optix_render_main(
 	int samples_per_pixel,
 	int max_depth,
 	const char* output_path,
-	int scene_id,
+	const char* scene_id,
 	double cam_x,
 	double cam_y,
 	double cam_z,
@@ -35,9 +35,7 @@ int optix_render_main(
 // mirrors cpu_render_main_sppm()'s signature (cpu_renderer/cpu_interface.h)
 // so main.cpp's --sppm --gpu branch (sub-phase 1e) can call either with the
 // same argument shape. Phase 1 scope only: rejects any scene_id other than
-// 11 (CornellRoughGlass) with ERR_GPU_UNSUPPORTED_SCENE -- see
-// C:\Users\xinpe\.claude\plans\cached-wobbling-ritchie.md's own "Explicitly
-// out of scope for Phase 1" section.
+// "B3" (CornellRoughGlass, old flat id 11) with ERR_GPU_UNSUPPORTED_SCENE.
 int optix_render_main_sppm(
 	int image_width,
 	int image_height,
@@ -45,7 +43,7 @@ int optix_render_main_sppm(
 	int photons,
 	int max_depth,
 	const char* output_path,
-	int scene_id,
+	const char* scene_id,
 	double cam_x,
 	double cam_y,
 	double cam_z,
@@ -59,7 +57,7 @@ int optix_render_main_sppm(
 // optix_render_main(). Used by CPU/GPU scene-parity tests (see
 // tests/integration/cpu_gpu_comparison_tests.cpp) to catch cases where a
 // scene's CPU and GPU builders have drifted out of sync on light count.
-int gpu_scene_light_count(int scene_id, int image_width, int image_height);
+int gpu_scene_light_count(const char* scene_id, int image_width, int image_height);
 
 // The three functions below expose OptiXRenderer::loggedIssues() (see its
 // own doc comment) for opt-in deep-validation sweeps - see

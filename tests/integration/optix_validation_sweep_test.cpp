@@ -53,23 +53,23 @@ namespace {
 // sweep can't silently shrink on a machine that hasn't downloaded them.
 // See gpu/optix/scene_builder.cpp's case comments for what each ID builds.
 struct SweepScene {
-	int id;
+	const char* id;
 	const char* name;
 };
 
 const SweepScene kSweepScenes[] = {
-	{0,  "CornellBox"},            // quads + sphere, area light - baseline
-	{1,  "BouncingSpheres"},       // motion blur - task #107's bug class
-	{5,  "ColoredQuads"},          // zero lights - task #106's bug class
-	{8,  "FinalScene"},            // motion blur + medium + many primitives -
-	                                // the scene that first exposed both bugs
-	{13, "CornellCoatedDiffuse"},  // complex layered BxDF
-	{18, "PrincipledShowcase"},    // Principled material, zero lights
-	{19, "HairFibers"},            // curve geometry
-	{20, "NormalMappedCornell"},   // textures + normal maps
-	{23, "BilinearPatchScene"},    // bilinear patch geometry
-	{25, "SpotlightCornell"},      // punctual light
-	{37, "TriangleMesh"},          // triangle geometry
+	{"A1",  "CornellBox"},            // quads + sphere, area light - baseline
+	{"A2",  "BouncingSpheres"},       // motion blur - task #107's bug class
+	{"A6",  "ColoredQuads"},          // zero lights - task #106's bug class
+	{"A9",  "FinalScene"},            // motion blur + medium + many primitives -
+	                                    // the scene that first exposed both bugs
+	{"B5",  "CornellCoatedDiffuse"},  // complex layered BxDF
+	{"B10", "PrincipledShowcase"},    // Principled material, zero lights
+	{"B11", "HairFibers"},            // curve geometry
+	{"B12", "NormalMappedCornell"},   // textures + normal maps
+	{"F1",  "BilinearPatchScene"},    // bilinear patch geometry
+	{"C2",  "SpotlightCornell"},      // punctual light
+	{"F2",  "TriangleMesh"},          // triangle geometry
 };
 
 }  // namespace
@@ -93,7 +93,7 @@ protected:
 		// mode for the rest of the process, if it hasn't been decided
 		// already) before checking whether it actually took.
 		optix_clear_validation_issues();
-		optix_render_main(4, 4, 1, 1, warmupPath_.c_str(), 0, 278.0, 278.0, -800.0);
+		optix_render_main(4, 4, 1, 1, warmupPath_.c_str(), "A1", 278.0, 278.0, -800.0);
 		std::remove(warmupPath_.c_str());
 		if (!optix_validation_enabled()) {
 			GTEST_SKIP() << "Validation mode did not take effect - something "
@@ -108,7 +108,7 @@ protected:
 		std::remove(outPath_.c_str());
 	}
 
-	::testing::AssertionResult renderAndCheck(int sceneId, bool wavefront) {
+	::testing::AssertionResult renderAndCheck(const char* sceneId, bool wavefront) {
 #ifdef _WIN32
 		_putenv_s("RAY_TRACER_WAVEFRONT", wavefront ? "1" : "");
 #else
@@ -144,14 +144,14 @@ protected:
 
 TEST_F(OptixValidationSweepTest, RecursiveBackend) {
 	for (const auto& scene : kSweepScenes) {
-		SCOPED_TRACE(std::string("scene ") + std::to_string(scene.id) + " (" + scene.name + ")");
+		SCOPED_TRACE(std::string("scene ") + scene.id + " (" + scene.name + ")");
 		EXPECT_TRUE(renderAndCheck(scene.id, /*wavefront=*/false));
 	}
 }
 
 TEST_F(OptixValidationSweepTest, WavefrontBackend) {
 	for (const auto& scene : kSweepScenes) {
-		SCOPED_TRACE(std::string("scene ") + std::to_string(scene.id) + " (" + scene.name + ")");
+		SCOPED_TRACE(std::string("scene ") + scene.id + " (" + scene.name + ")");
 		EXPECT_TRUE(renderAndCheck(scene.id, /*wavefront=*/true));
 	}
 }
@@ -161,6 +161,6 @@ TEST_F(OptixValidationSweepTest, WavefrontBackend) {
 // #106/#107/#108): a zero-light scene immediately followed by a lit scene,
 // same process, wavefront backend.
 TEST_F(OptixValidationSweepTest, WavefrontZeroLightThenLitSceneSequence) {
-	EXPECT_TRUE(renderAndCheck(5, /*wavefront=*/true));  // Colored Quads, zero lights
-	EXPECT_TRUE(renderAndCheck(0, /*wavefront=*/true));  // Cornell Box, has lights
+	EXPECT_TRUE(renderAndCheck("A6", /*wavefront=*/true));  // Colored Quads, zero lights
+	EXPECT_TRUE(renderAndCheck("A1", /*wavefront=*/true));  // Cornell Box, has lights
 }

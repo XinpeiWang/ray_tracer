@@ -29,11 +29,11 @@ bool ensureLoaded();
 
 // Returns true and sets out_compatible if scene_id's GPU-compatibility
 // could be queried; false (out_compatible left untouched) otherwise.
-bool gpuCompatible(int scene_id, bool& out_compatible);
+bool gpuCompatible(const QString& scene_id, bool& out_compatible);
 
 // Returns true and fills every output if scene_id's recommended camera
 // could be queried; false (all outputs left untouched) otherwise.
-bool recommendedCamera(int scene_id,
+bool recommendedCamera(const QString& scene_id,
 	double& cam_x, double& cam_y, double& cam_z,
 	double& lookat_x, double& lookat_y, double& lookat_z);
 
@@ -41,9 +41,10 @@ bool recommendedCamera(int scene_id,
 // SPP/requires_files) - the sole source now for what used to be a separate
 // GUI-local copy in src/shared/scene_descriptor.h (see that header's
 // comment). Every scene's row is queried by id, not enumerated as a batch
-// like the old get_all_scenes() did - callers loop id in
-// [0, sceneCount()) themselves, relying on the registry's ids being
-// contiguous from 0 (tests/unit/scene_registry_tests.cpp enforces this).
+// like the old get_all_scenes() did - callers loop index in
+// [0, sceneCount()) and resolve each position's id via sceneIdAtIndex()
+// first, since ids are category letter + number now, not contiguous ints
+// (see scene_registry.h's SceneDescriptor::id comment).
 // All return their type's "empty" value (0 / "" / false) if the DLL isn't
 // loaded or scene_id isn't found - same "fail quiet, let the caller's
 // existing state stand" contract as gpuCompatible/recommendedCamera above.
@@ -51,29 +52,35 @@ bool recommendedCamera(int scene_id,
 // Total number of registered scenes, or 0 if the DLL isn't loaded.
 int sceneCount();
 
+// The id (category letter + number, e.g. "B10") of the scene at registry
+// position index, or "" if not loaded/index out of range. The only bridge
+// from "position in registry" to "id" - every other function below takes
+// an id, not a position.
+QString sceneIdAtIndex(int index);
+
 // scene_id's display name, or "" if not loaded/found.
-QString sceneName(int scene_id);
+QString sceneName(const QString& scene_id);
 
 // scene_id's category ("Basics", "Materials", ...), or "" if not
 // loaded/found. Matches one of the SceneCategories:: constants in
 // src/shared/scene_descriptor.h; the GUI groups its scene list by this.
-QString sceneCategory(int scene_id);
+QString sceneCategory(const QString& scene_id);
 
 // scene_id's short description, or "" if not loaded/found.
-QString sceneDescription(int scene_id);
+QString sceneDescription(const QString& scene_id);
 
 // scene_id's performance hint ("Fast"/"Medium"/"Slow"/"Very Slow"), or ""
 // if not loaded/found.
-QString scenePerformance(int scene_id);
+QString scenePerformance(const QString& scene_id);
 
 // scene_id's recommended samples-per-pixel, or 100 (the same fallback
 // cpu_interface.cpp's own accessors use) if not loaded/found.
-int sceneRecommendedSpp(int scene_id);
+int sceneRecommendedSpp(const QString& scene_id);
 
 // True if scene_id requires external asset files (e.g. earthmap.jpg);
 // false if not loaded/found - erring toward "no special files needed"
 // rather than surfacing a spurious warning.
-bool sceneRequiresFiles(int scene_id);
+bool sceneRequiresFiles(const QString& scene_id);
 
 } // namespace SceneMetadataClient
 

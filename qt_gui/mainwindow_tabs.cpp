@@ -28,12 +28,13 @@
 
 // Refills the scene dropdown with just one category's scenes.
 //
-// Ids are contiguous from 0 (tests/unit/scene_registry_tests.cpp's
-// IDsAreContiguousFromZero enforces this), so walking 0..sceneCount() and
-// querying each id directly is enough - no index-vs-id translation needed.
-// The id is stored as item data and everything downstream reads THAT, never
-// the row index, which is what makes filtering the list safe: a scene keeps
-// its identity no matter which position it lands in.
+// Ids are category letter + number now (e.g. "B10"), not contiguous ints
+// (see scene_registry.h's SceneDescriptor::id comment), so walking registry
+// POSITIONS 0..sceneCount() and resolving each one's id via
+// sceneIdAtIndex() is how enumeration works now. The id is stored as item
+// data and everything downstream reads THAT, never the row index, which is
+// what makes filtering the list safe: a scene keeps its identity no matter
+// which position it lands in.
 void MainWindow::populateSceneCombo(const QString &category) {
 	if (!m_sceneCombo) return;
 
@@ -45,7 +46,8 @@ void MainWindow::populateSceneCombo(const QString &category) {
 	m_sceneCombo->clear();
 
 	const int count = SceneMetadataClient::sceneCount();
-	for (int id = 0; id < count; ++id) {
+	for (int i = 0; i < count; ++i) {
+		const QString id = SceneMetadataClient::sceneIdAtIndex(i);
 		if (SceneMetadataClient::sceneCategory(id) != category) continue;
 		m_sceneCombo->addItem(
 			QString("[%1] %2").arg(id).arg(SceneMetadataClient::sceneName(id)), id);
@@ -100,8 +102,8 @@ void MainWindow::createBasicTab() {
 		for (std::size_t i = 0; i < SceneCategories::kAllCount; ++i) {
 			const QString category = QString::fromUtf8(SceneCategories::kAll[i]);
 			int inCategory = 0;
-			for (int id = 0; id < sceneCount; ++id)
-				if (SceneMetadataClient::sceneCategory(id) == category) ++inCategory;
+			for (int i = 0; i < sceneCount; ++i)
+				if (SceneMetadataClient::sceneCategory(SceneMetadataClient::sceneIdAtIndex(i)) == category) ++inCategory;
 			if (inCategory == 0) continue;
 
 			const int tab = m_sceneCategoryTabs->addTab(category);

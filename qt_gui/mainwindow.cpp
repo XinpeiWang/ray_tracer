@@ -35,12 +35,12 @@
 // RenderController Implementation
 RenderController::RenderController(QObject *parent)
 	: QObject(parent), m_useGPU(true), m_useWavefront(false), m_width(800), m_height(800), m_samples(100), m_maxDepth(50),
-	  m_sceneId(0), m_camX(278), m_camY(278), m_camZ(-800), m_camExplicit(false),
+	  m_sceneId("A1"), m_camX(278), m_camY(278), m_camZ(-800), m_camExplicit(false),
 	  m_videoMode(false), m_videoFrames(60), m_videoFPS(30), m_videoSpeed(1.0), m_cameraPath("orbit") {
 }
 
 void RenderController::setParameters(bool useGPU, int width, int height, int samples, int maxDepth,
-								  int sceneId, double camX, double camY, double camZ, bool camExplicit,
+								  const QString &sceneId, double camX, double camY, double camZ, bool camExplicit,
 								  const QString &outputPath, bool useWavefront) {
 	m_useGPU = useGPU;
 	m_useWavefront = useWavefront;
@@ -144,7 +144,7 @@ void RenderController::start() {
 	// 1. width: image width in pixels (height = width for square aspect ratio)
 	// 2. samples: samples per pixel for anti-aliasing and noise reduction
 	// 3. depth: maximum ray bounce depth for recursive ray tracing
-	// 4. scene_id: scene selector (0=Cornell Box, 1=Bouncing Spheres, etc.)
+	// 4. scene_id: scene selector (category letter + number, e.g. "A1"=Cornell Box)
 	// 5. cam_x: camera X position (lookfrom X coordinate) - direct in image mode, path start in video mode
 	// 6. cam_y: camera Y position (lookfrom Y coordinate) - direct in image mode, path start in video mode
 	// 7. cam_z: camera Z position (lookfrom Z coordinate) - direct in image mode, path start in video mode
@@ -155,7 +155,7 @@ void RenderController::start() {
 	// Scene ID applies in both modes - dropping it in video mode used to
 	// silently fall back to the launcher's default (scene 0/Cornell Box)
 	// regardless of what the user picked in the Scene dropdown.
-	args << QString::number(m_sceneId);
+	args << m_sceneId;
 
 	// Camera position is only sent when it's explicit (see setParameters()'s
 	// comment) - when the user hasn't touched it, omitting it lets

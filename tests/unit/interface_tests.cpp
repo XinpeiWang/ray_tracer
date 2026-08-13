@@ -43,7 +43,7 @@ TEST(CPUInterfaceTest, ValidParameters) {
 	double cam_y = 278.0;
 	double cam_z = -800.0;
 
-	int result = cpu_render_main(width, height, spp, max_depth, output_path, 0, cam_x, cam_y, cam_z);
+	int result = cpu_render_main(width, height, spp, max_depth, output_path, "A1", cam_x, cam_y, cam_z);
 
 	// Should return 0 for success
 	EXPECT_EQ(result, 0);
@@ -74,7 +74,7 @@ TEST(CPUInterfaceTest, DifferentCameraPositions) {
 		int result = cpu_render_main(
 			50, 50, 1, 3,  // Small, fast render
 			output_path.c_str(),
-			0, test.cam_x, test.cam_y, test.cam_z
+			"A1", test.cam_x, test.cam_y, test.cam_z
 		);
 
 		EXPECT_EQ(result, 0) << "Failed for: " << test.name;
@@ -91,7 +91,7 @@ TEST(CPUInterfaceTest, MinimumParameters) {
 	int result = cpu_render_main(
 		10, 10, 1, 1,  // Minimum size
 		"test_cpu_min.ppm",
-		0, 278, 278, -800
+		"A1", 278, 278, -800
 	);
 
 	EXPECT_EQ(result, 0);
@@ -105,7 +105,7 @@ TEST(CPUInterfaceTest, LargerParameters) {
 	int result = cpu_render_main(
 		32, 32, 2, 5,  // Reduced for speed
 		"test_cpu_large.ppm",
-		0, 278, 278, -800
+		"A1", 278, 278, -800
 	);
 
 	EXPECT_EQ(result, 0);
@@ -147,7 +147,7 @@ TEST(GPUInterfaceTest, ValidParameters) {
 	int max_depth = 5;
 	const char* output_path = "test_gpu_output.ppm";
 
-	int result = optix_render_main(width, height, spp, max_depth, output_path, 0, 278.0, 278.0, -800.0);
+	int result = optix_render_main(width, height, spp, max_depth, output_path, "A1", 278.0, 278.0, -800.0);
 
 	// Should return 0 for success
 	EXPECT_EQ(result, 0);
@@ -175,7 +175,7 @@ TEST(InterfaceValidationTest, ZeroWidth) {
 	int result = cpu_render_main(
 		0, 16, 1, 5,  // Zero width
 		"test_invalid.ppm",
-		0, 278, 278, -800
+		"A1", 278, 278, -800
 	);
 
 	EXPECT_EQ(result, ERR_INVALID_DIMENSIONS);
@@ -190,7 +190,7 @@ TEST(InterfaceValidationTest, ZeroHeight) {
 	int result = cpu_render_main(
 		16, 0, 1, 5,  // Zero height
 		"test_invalid.ppm",
-		0, 278, 278, -800
+		"A1", 278, 278, -800
 	);
 
 	EXPECT_EQ(result, ERR_INVALID_DIMENSIONS);
@@ -204,7 +204,7 @@ TEST(InterfaceValidationTest, NegativeSamples) {
 	int result = cpu_render_main(
 		16, 16, -1, 5,  // Negative samples
 		"test_invalid.ppm",
-		0, 278, 278, -800
+		"A1", 278, 278, -800
 	);
 
 	EXPECT_EQ(result, ERR_INVALID_SAMPLE_COUNT);
@@ -232,7 +232,7 @@ TEST(CameraParametersTest, CenterPosition) {
 	int result = cpu_render_main(
 		50, 50, 1, 3,
 		"test_center.ppm",
-		0, 278, 278, 278  // At center
+		"A1", 278, 278, 278  // At center
 	);
 
 	EXPECT_EQ(result, 0);
@@ -246,7 +246,7 @@ TEST(CameraParametersTest, FarAwayCamera) {
 	int result = cpu_render_main(
 		50, 50, 1, 3,
 		"test_far.ppm",
-		0, 278, 278, -5000  // Very far
+		"A1", 278, 278, -5000  // Very far
 	);
 
 	EXPECT_EQ(result, 0);
@@ -260,7 +260,7 @@ TEST(CameraParametersTest, ExtremeCoordinates) {
 	int result = cpu_render_main(
 		50, 50, 1, 3,
 		"test_extreme.ppm",
-		0, 10000, 10000, 10000  // Far outside scene
+		"A1", 10000, 10000, 10000  // Far outside scene
 	);
 
 	EXPECT_EQ(result, 0);
@@ -280,7 +280,7 @@ TEST(OutputFileTest, FileCreation) {
 	int result = cpu_render_main(
 		50, 50, 1, 3,
 		output_path,
-		0, 278, 278, -800
+		"A1", 278, 278, -800
 	);
 	std::ifstream file(output_path);
 	EXPECT_TRUE(file.good()) << "Output file was not created";
@@ -301,7 +301,7 @@ TEST(OutputFileTest, PathWithDirectory) {
 	int result = cpu_render_main(
 		50, 50, 1, 3,
 		output_path,
-		0, 278, 278, -800
+		"A1", 278, 278, -800
 	);
 
 	EXPECT_EQ(result, SUCCESS);
@@ -323,7 +323,7 @@ TEST(BenchmarkTest, SmallCPURender) {
 	int result = cpu_render_main(
 		100, 100, 1, 5,
 		"benchmark_cpu.ppm",
-		0, 278, 278, -800
+		"A1", 278, 278, -800
 	);
 
 	auto end = std::chrono::high_resolution_clock::now();
@@ -354,7 +354,7 @@ TEST(BenchmarkTest, SmallGPURender) {
 	int result = optix_render_main(
 		100, 100, 10, 5,
 		"benchmark_gpu.ppm",
-		0, 278.0, 278.0, -800.0
+		"A1", 278.0, 278.0, -800.0
 	);
 
 	auto end = std::chrono::high_resolution_clock::now();

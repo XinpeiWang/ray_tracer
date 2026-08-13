@@ -22,11 +22,11 @@
 
 #define SCENE_METADATA_API extern "C" __declspec(dllexport)
 
-SCENE_METADATA_API int scene_metadata_gpu_compatible(int scene_id) {
+SCENE_METADATA_API int scene_metadata_gpu_compatible(const char* scene_id) {
 	return cpu_scene_gpu_compatible_by_id(scene_id);
 }
 
-SCENE_METADATA_API int scene_metadata_recommended_camera(int scene_id,
+SCENE_METADATA_API int scene_metadata_recommended_camera(const char* scene_id,
 	double* lookfrom_x, double* lookfrom_y, double* lookfrom_z,
 	double* lookat_x, double* lookat_y, double* lookat_z) {
 	return cpu_scene_recommended_camera(scene_id, lookfrom_x, lookfrom_y, lookfrom_z,
@@ -36,36 +36,38 @@ SCENE_METADATA_API int scene_metadata_recommended_camera(int scene_id,
 // Everything below serves the presentational fields (name/description/
 // performance/recommended_spp/requires_files) that used to live in the
 // GUI's own duplicated src/shared/scene_descriptor.h table - see that
-// header's comment for why it was removed. scene_metadata_count() plus a
-// by-id lookup per field is all the GUI needs to enumerate every scene
-// (ids are contiguous from 0, enforced by
-// tests/unit/scene_registry_tests.cpp's IDsAreContiguousFromZero), so
-// there's no separate by-index-vs-by-id split here the way cpu_interface.h
-// has for its own historical reasons.
+// header's comment for why it was removed. scene_ids are category letter +
+// number now (e.g. "B10"), not contiguous ints - a caller enumerating the
+// whole registry starts at scene_metadata_id_at_index(0..count()-1) to get
+// each scene's id, then looks up its other fields by that id below.
 SCENE_METADATA_API int scene_metadata_count() {
 	return cpu_scene_count();
 }
 
-SCENE_METADATA_API const char* scene_metadata_name(int scene_id) {
+SCENE_METADATA_API const char* scene_metadata_id_at_index(int index) {
+	return cpu_scene_id(index);
+}
+
+SCENE_METADATA_API const char* scene_metadata_name(const char* scene_id) {
 	return cpu_scene_name_by_id(scene_id);
 }
 
-SCENE_METADATA_API const char* scene_metadata_category(int scene_id) {
+SCENE_METADATA_API const char* scene_metadata_category(const char* scene_id) {
 	return cpu_scene_category_by_id(scene_id);
 }
 
-SCENE_METADATA_API const char* scene_metadata_description(int scene_id) {
+SCENE_METADATA_API const char* scene_metadata_description(const char* scene_id) {
 	return cpu_scene_description_by_id(scene_id);
 }
 
-SCENE_METADATA_API const char* scene_metadata_performance(int scene_id) {
+SCENE_METADATA_API const char* scene_metadata_performance(const char* scene_id) {
 	return cpu_scene_performance_by_id(scene_id);
 }
 
-SCENE_METADATA_API int scene_metadata_recommended_spp(int scene_id) {
+SCENE_METADATA_API int scene_metadata_recommended_spp(const char* scene_id) {
 	return cpu_scene_recommended_spp_by_id(scene_id);
 }
 
-SCENE_METADATA_API int scene_metadata_requires_files(int scene_id) {
+SCENE_METADATA_API int scene_metadata_requires_files(const char* scene_id) {
 	return cpu_scene_requires_files_by_id(scene_id);
 }

@@ -48,13 +48,15 @@ inline QString fromStd(const std::string &s) {
 // for only 4 of the 11 GPU-capable scenes while the total scene count had
 // grown from 9 to 37).
 
-// Highest valid scene ID (scene count - 1).
-inline int maxSceneId() {
-	int count = SceneMetadataClient::sceneCount();
-	return count > 0 ? count - 1 : 0;
+// Total scene count, for messaging like "N scenes available". Ids are
+// category letter + number now (e.g. "B10"), not contiguous ints, so there
+// is no more "highest valid id" - see scene_registry.h's SceneDescriptor::id
+// comment.
+inline int sceneCount() {
+	return SceneMetadataClient::sceneCount();
 }
 
-// "0 (Cornell Box), 2 (Checkered Spheres), ..." for every GPU-supported scene.
+// "A1 (Cornell Box), C1 (Colored Quads), ..." for every GPU-supported scene.
 // Both count and per-scene GPU-compatibility are queried live from
 // scene_metadata.dll (see scene_metadata_client.h) rather than a
 // locally-duplicated field, so this can't drift from scene_registry.h.
@@ -65,7 +67,8 @@ inline int maxSceneId() {
 inline QString gpuSupportedSceneList() {
 	int count = SceneMetadataClient::sceneCount();
 	QStringList parts;
-	for (int id = 0; id < count; ++id) {
+	for (int i = 0; i < count; ++i) {
+		QString id = SceneMetadataClient::sceneIdAtIndex(i);
 		bool supported = true;
 		SceneMetadataClient::gpuCompatible(id, supported);
 		if (supported)
@@ -141,7 +144,7 @@ inline QString getErrorMessage(int errorCode) {
 	// Scene count grows over time, so this one is built from the live scene
 	// table instead of living in the static map below.
 	if (errorCode == 11)
-		return QString("Scene ID must be between 0 and %1. Check the scene selector.").arg(maxSceneId());
+		return QString("Scene ID must be a valid scene identifier (e.g. \"A1\"). Check the scene selector.");
 
 	static const QMap<int, QString> messages = {
 		{SUCCESS, "Render completed successfully."},
@@ -190,14 +193,14 @@ inline QString getTroubleshootingHint(int errorCode) {
 	// scenes are GPU-supported), so they're built here instead of hardcoded
 	// in the static map below.
 	if (errorCode == 11) {
-		return QString("• Valid scenes are 0-%1 — check the Scene dropdown in the Basic Settings tab\n"
-			"• Use CPU renderer for scenes that are not GPU-supported").arg(maxSceneId());
+		return QString("• Check the Scene dropdown in the Basic Settings tab for a valid scene id\n"
+			"• Use CPU renderer for scenes that are not GPU-supported");
 	}
 	if (errorCode == 211) {
 		return QString("• GPU supports scenes: %1\n"
 			"• Switch to CPU mode for all other scenes\n"
 			"• CPU mode supports all %2 scenes")
-			.arg(gpuSupportedSceneList()).arg(maxSceneId() + 1);
+			.arg(gpuSupportedSceneList()).arg(sceneCount());
 	}
 
 	static const QMap<int, QString> hints = {

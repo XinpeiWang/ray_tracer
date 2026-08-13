@@ -95,7 +95,7 @@ void MainWindow::onRenderClicked() {
 
 	// Camera position (lookfrom) - read from spinboxes
 	// These reflect either the selected preset or custom user input
-	int sceneId = m_sceneCombo->currentData().toInt();
+	QString sceneId = m_sceneCombo->currentData().toString();
 	double camX = m_cameraPosX->value();
 	double camY = m_cameraPosY->value();
 	double camZ = m_cameraPosZ->value();
@@ -319,7 +319,13 @@ void MainWindow::refreshCameraDistanceDisplay() {
 }
 
 void MainWindow::onSceneChanged(int index) {
-	int scene_id = (m_sceneCombo && index >= 0) ? m_sceneCombo->itemData(index).toInt() : index;
+	if (index < 0) return;
+	// A raw combo-row index is no longer a valid id on its own (ids are
+	// category letter + number now - see scene_registry.h's
+	// SceneDescriptor::id comment), so the m_sceneCombo-null fallback
+	// resolves the id via the registry position instead.
+	QString scene_id = m_sceneCombo ? m_sceneCombo->itemData(index).toString()
+									 : SceneMetadataClient::sceneIdAtIndex(index);
 
 	// Every field here is queried live from scene_metadata.dll (see
 	// scene_metadata_client.h) instead of a locally-duplicated table, so it

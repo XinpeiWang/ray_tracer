@@ -31,6 +31,7 @@
 #include <fstream>
 #include <filesystem>
 #include <cmath>
+#include <cstring>
 
 // ============================================================================
 // cpu_render_main - CPU Render Entry Point
@@ -40,7 +41,7 @@
 // ============================================================================
 
 extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, const char* output_path,
-								 int scene_id, double cam_x, double cam_y, double cam_z,
+								 const char* scene_id, double cam_x, double cam_y, double cam_z,
 								 int force_camera_override) {
 	try {
 		// ====================================================================
@@ -94,8 +95,10 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		// (scene_desc->build_lights() -> build_cornell_smoke_lights(), a
 		// single correctly-sized light) is both correct and, with only one
 		// light in the list, equivalent to power weighting anyway.
+		// "A1"/"B2" are scene 0 (Cornell Box) / scene 10 (Cornell Rough Metal)
+		// under the old flat numbering - see scene_registry.h's SceneDescriptor::id.
 		power_light_list lights;
-		if (scene_id == 0 || scene_id == 10) {
+		if (std::strcmp(scene_id, "A1") == 0 || std::strcmp(scene_id, "B2") == 0) {
 			lights = build_cornell_box_power_lights();
 		} else {
 			lights = power_light_list(lights_raw);
@@ -259,7 +262,7 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 // ============================================================================
 
 extern "C" int cpu_render_main_sppm(int width, int height, int iterations, int photons, int max_depth,
-									  const char* output_path, int scene_id, double cam_x, double cam_y,
+									  const char* output_path, const char* scene_id, double cam_x, double cam_y,
 									  double cam_z, int force_camera_override) {
 	try {
 		if (width <= 0 || height <= 0) {
@@ -290,7 +293,7 @@ extern "C" int cpu_render_main_sppm(int width, int height, int iterations, int p
 		hittable_list lights_raw = scene_desc->build_lights();
 
 		power_light_list lights;
-		if (scene_id == 0 || scene_id == 10) {
+		if (std::strcmp(scene_id, "A1") == 0 || std::strcmp(scene_id, "B2") == 0) {
 			lights = build_cornell_box_power_lights();
 		} else {
 			lights = power_light_list(lights_raw);
@@ -384,10 +387,10 @@ extern "C" int cpu_scene_count() {
 	return scene_count();
 }
 
-extern "C" int cpu_scene_id(int index) {
+extern "C" const char* cpu_scene_id(int index) {
 	const auto& reg = get_scene_registry();
-	if (index < 0 || index >= (int)reg.size()) return -1;
-	return reg[index].id;
+	if (index < 0 || index >= (int)reg.size()) return "";
+	return reg[index].id.c_str();
 }
 
 extern "C" const char* cpu_scene_name(int index) {
@@ -426,7 +429,7 @@ extern "C" int cpu_scene_gpu_compatible(int index) {
 	return reg[index].gpu_compatible ? 1 : 0;
 }
 
-extern "C" int cpu_scene_recommended_camera(int scene_id,
+extern "C" int cpu_scene_recommended_camera(const char* scene_id,
 	double* lookfrom_x, double* lookfrom_y, double* lookfrom_z,
 	double* lookat_x, double* lookat_y, double* lookat_z) {
 	const SceneDescriptor* s = find_scene(scene_id);
@@ -447,44 +450,49 @@ extern "C" int cpu_scene_recommended_camera(int scene_id,
 	return 1;
 }
 
-extern "C" int cpu_scene_gpu_compatible_by_id(int scene_id) {
+extern "C" int cpu_scene_gpu_compatible_by_id(const char* scene_id) {
 	const SceneDescriptor* s = find_scene(scene_id);
 	if (!s) return 0;
 	return s->gpu_compatible ? 1 : 0;
 }
 
-extern "C" const char* cpu_scene_name_by_id(int scene_id) {
+extern "C" const char* cpu_scene_name_by_id(const char* scene_id) {
 	const SceneDescriptor* s = find_scene(scene_id);
 	return s ? s->name : "";
 }
 
-extern "C" const char* cpu_scene_category_by_id(int scene_id) {
+extern "C" const char* cpu_scene_category_by_id(const char* scene_id) {
 	const SceneDescriptor* s = find_scene(scene_id);
 	return s ? s->category : "";
 }
 
-extern "C" const char* cpu_scene_pbrt_path_by_id(int scene_id) {
+extern "C" const char* cpu_scene_pbrt_path_by_id(const char* scene_id) {
 	const auto& byId = pbrt_scene_registry::paths();
 	const auto it = byId.find(scene_id);
 	return (it == byId.end()) ? "" : it->second.c_str();
 }
 
-extern "C" const char* cpu_scene_description_by_id(int scene_id) {
+extern "C" int cpu_scene_legacy_id_by_id(const char* scene_id) {
+	const SceneDescriptor* s = find_scene(scene_id);
+	return s ? s->legacy_id : -1;
+}
+
+extern "C" const char* cpu_scene_description_by_id(const char* scene_id) {
 	const SceneDescriptor* s = find_scene(scene_id);
 	return s ? s->description : "";
 }
 
-extern "C" const char* cpu_scene_performance_by_id(int scene_id) {
+extern "C" const char* cpu_scene_performance_by_id(const char* scene_id) {
 	const SceneDescriptor* s = find_scene(scene_id);
 	return s ? s->performance : "";
 }
 
-extern "C" int cpu_scene_recommended_spp_by_id(int scene_id) {
+extern "C" int cpu_scene_recommended_spp_by_id(const char* scene_id) {
 	const SceneDescriptor* s = find_scene(scene_id);
 	return s ? s->recommended_spp : 100;
 }
 
-extern "C" int cpu_scene_requires_files_by_id(int scene_id) {
+extern "C" int cpu_scene_requires_files_by_id(const char* scene_id) {
 	const SceneDescriptor* s = find_scene(scene_id);
 	return (s && s->requires_files) ? 1 : 0;
 }

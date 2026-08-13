@@ -56,29 +56,38 @@ TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem)
 		EXPECT_EQ(all[i].id, builtins[i].id);
 		EXPECT_STREQ(all[i].name, builtins[i].name);
 	}
+	// No built-in scene uses category UserScenes ("I"), so loaded scenes
+	// start numbering at I1 - see pbrt_scene_registry::append()'s
+	// user_number comment in scene_registry.h.
+	int user_number = 1;
 	for (std::size_t i = builtins.size(); i < all.size(); ++i) {
 		EXPECT_STREQ(all[i].category, SceneCategories::UserScenes)
 			<< "a scene past the built-ins should be a loaded one";
-		EXPECT_EQ(all[i].id, static_cast<int>(i))
-			<< "loaded scene ids must continue the built-in sequence without gaps";
+		EXPECT_EQ(all[i].id, "I" + std::to_string(user_number++))
+			<< "loaded scene ids must continue the UserScenes sequence without gaps";
 	}
 }
 
 TEST(SceneRegistryTest, AllIDsAreUnique) {
-	std::set<int> seen;
+	std::set<std::string> seen;
 	for (const auto& s : get_scene_registry()) {
 		EXPECT_TRUE(seen.insert(s.id).second)
 			<< "Duplicate scene id: " << s.id;
 	}
 }
 
-TEST(SceneRegistryTest, IDsAreContiguousFromZero) {
-	// IDs should be 0..N-1 so the GUI combobox index == scene id.
+TEST(SceneRegistryTest, EveryIndexResolvesToAFindableId) {
+	// IDs are category letter + number now, not contiguous ints (see
+	// scene_registry.h's SceneDescriptor::id comment) - what stays true is
+	// that every position in the registry has an id that find_scene() can
+	// look back up, which is what cpu_scene_id(index) + find_scene(id)
+	// (the GUI's actual enumeration path) depends on.
 	int n = scene_count();
 	for (int i = 0; i < n; ++i) {
-		const SceneDescriptor* s = find_scene(i);
-		ASSERT_NE(s, nullptr) << "Missing scene id: " << i;
-		EXPECT_EQ(s->id, i);
+		const std::string& id = get_scene_registry()[i].id;
+		const SceneDescriptor* s = find_scene(id);
+		ASSERT_NE(s, nullptr) << "Missing scene id: " << id;
+		EXPECT_EQ(s->id, id);
 	}
 }
 
@@ -184,43 +193,43 @@ TEST(FindSceneTest, FindsAllRegisteredScenes) {
 }
 
 TEST(FindSceneTest, ReturnsNullForUnknownId) {
-	EXPECT_EQ(find_scene(-1), nullptr);
-	EXPECT_EQ(find_scene(9999), nullptr);
-	EXPECT_EQ(find_scene(scene_count()), nullptr); // one past the end
+	EXPECT_EQ(find_scene(""), nullptr);
+	EXPECT_EQ(find_scene("Z9999"), nullptr);
+	EXPECT_EQ(find_scene("NotARealId"), nullptr);
 }
 
 TEST(FindSceneTest, CorrectNameLookup) {
-	const SceneDescriptor* s = find_scene(0);
+	const SceneDescriptor* s = find_scene("A1");
 	ASSERT_NE(s, nullptr);
 	EXPECT_STREQ(s->name, "Cornell Box");
 }
 
 TEST(FindSceneTest, EarthSceneRequiresFiles) {
-	const SceneDescriptor* s = find_scene(3);
+	const SceneDescriptor* s = find_scene("A4");
 	ASSERT_NE(s, nullptr);
 	EXPECT_TRUE(s->requires_files);
 }
 
 TEST(FindSceneTest, CornellBoxIsGpuCompatible) {
-	const SceneDescriptor* s = find_scene(0);
+	const SceneDescriptor* s = find_scene("A1");
 	ASSERT_NE(s, nullptr);
 	EXPECT_TRUE(s->gpu_compatible);
 }
 
 TEST(FindSceneTest, BouncingSpheresIsGpuCompatible) {
-	// Scene 1 uses moving spheres (motion blur) - gpu/optix/scene_builder.cpp's
+	// Scene A2 uses moving spheres (motion blur) - gpu/optix/scene_builder.cpp's
 	// build_bouncing_spheres() + OptiXRenderer::buildScene()'s sceneHasMotion_
 	// detection give it real OptiX native motion blur (SphereData::center1,
 	// GAS motion keys, optixGetRayTime() interpolation in
 	// optix_intersection_sphere.h) - see optix_types.h's SphereData comment.
-	const SceneDescriptor* s = find_scene(1);
+	const SceneDescriptor* s = find_scene("A2");
 	ASSERT_NE(s, nullptr);
 	EXPECT_TRUE(s->gpu_compatible);
 }
 
 TEST(FindSceneTest, PbrtV4ScenesAreGpuCompatible) {
-	// Scenes 10-17 all have GPU implementations in scene_builder.cpp
-	for (int id : {10, 11, 12, 13, 14, 15, 16, 17}) {
+	// Scenes B2-B9 (old flat ids 10-17) all have GPU implementations in scene_builder.cpp
+	for (const std::string& id : {"B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9"}) {
 		const SceneDescriptor* s = find_scene(id);
 		ASSERT_NE(s, nullptr) << "Missing scene id: " << id;
 		EXPECT_TRUE(s->gpu_compatible) << "Scene " << id << " should be gpu_compatible";
@@ -235,7 +244,7 @@ TEST(FindSceneTest, PunctualLightScenesAreGpuCompatible) {
 	// Projection Cornell) extend the same PunctualLightGPU NEE path with two
 	// image-based light kinds (build_goniometric_cornell_gpu/
 	// build_projection_cornell_gpu, GoniometricLightGPU/ProjectionLightGPU).
-	for (int id : {25, 26, 27, 28, 29}) {
+	for (const std::string& id : {"C2", "C3", "C4", "C5", "C6"}) {
 		const SceneDescriptor* s = find_scene(id);
 		ASSERT_NE(s, nullptr) << "Missing scene id: " << id;
 		EXPECT_TRUE(s->gpu_compatible) << "Scene " << id << " should be gpu_compatible";
@@ -250,7 +259,7 @@ TEST(FindSceneTest, NonDefaultCameraScenesAreGpuCompatible) {
 	// OrthographicCamera, 33 SphericalCamera (equirectangular) - see
 	// generate_primary_ray in optix_device_helpers.h (recursive path) and
 	// wf_generate_primary_ray in wavefront_kernels.cu (wavefront path).
-	for (int id : {9, 22, 32, 33}) {
+	for (const std::string& id : {"B1", "D1", "D2", "D3"}) {
 		const SceneDescriptor* s = find_scene(id);
 		ASSERT_NE(s, nullptr) << "Missing scene id: " << id;
 		EXPECT_TRUE(s->gpu_compatible) << "Scene " << id << " should be gpu_compatible";
@@ -266,7 +275,7 @@ TEST(FindSceneTest, BackgroundColorScenesAreGpuCompatible) {
 	// background color for missed rays (GpuCameraParams::backgroundColor in
 	// optix_types.h, consumed by optix_miss.h and wavefront_kernels.cu's
 	// accumulate_miss), not a full environment-map sampler.
-	for (int id : {24, 35}) {
+	for (const std::string& id : {"C1", "C7"}) {
 		const SceneDescriptor* s = find_scene(id);
 		ASSERT_NE(s, nullptr) << "Missing scene id: " << id;
 		EXPECT_TRUE(s->gpu_compatible) << "Scene " << id << " should be gpu_compatible";
@@ -284,7 +293,7 @@ TEST(FindSceneTest, VolumetricMediumScenesAreGpuCompatible) {
 	// __closesthit__wf_sphere in wavefront_programs.cu) and
 	// sample_henyey_greenstein/wf_sample_henyey_greenstein for the scatter
 	// direction. Scene 7's two rotated boxes are approximated as spheres.
-	for (int id : {7, 30, 31}) {
+	for (const std::string& id : {"A8", "E1", "E2"}) {
 		const SceneDescriptor* s = find_scene(id);
 		ASSERT_NE(s, nullptr) << "Missing scene id: " << id;
 		EXPECT_TRUE(s->gpu_compatible) << "Scene " << id << " should be gpu_compatible";
@@ -300,7 +309,7 @@ TEST(FindSceneTest, BilinearPatchSceneIsGpuCompatible) {
 	// al. 2004 / pbrt-v4 IntersectBilinearPatch) as its own GPU geometry type
 	// - see optix_intersection_bilinear_patch.h and BilinearPatchData in
 	// optix_types.h - rather than an approximation with existing shapes.
-	const SceneDescriptor* s = find_scene(23);
+	const SceneDescriptor* s = find_scene("F1");
 	ASSERT_NE(s, nullptr);
 	EXPECT_TRUE(s->gpu_compatible);
 }
@@ -313,7 +322,7 @@ TEST(FindSceneTest, HairFibersSceneIsGpuCompatible) {
 	// tangent proxy - matching src/TheRestOfYourLife/hair_material.h's own
 	// simplification exactly (src/shared/shapes.h's CurveShape, literal
 	// fiber-strand geometry, is unused dead code, never wired to any scene).
-	const SceneDescriptor* s = find_scene(19);
+	const SceneDescriptor* s = find_scene("B11");
 	ASSERT_NE(s, nullptr);
 	EXPECT_TRUE(s->gpu_compatible);
 }
@@ -328,7 +337,7 @@ TEST(FindSceneTest, MeasuredBrdfSceneIsGpuCompatible) {
 	// implemented and unit-tested elsewhere in this codebase but never wired
 	// to this scene, so the GPU port matches actual CPU behavior with plain
 	// MaterialType::Lambertian rather than porting unused tensor-BRDF math.
-	const SceneDescriptor* s = find_scene(34);
+	const SceneDescriptor* s = find_scene("B14");
 	ASSERT_NE(s, nullptr);
 	EXPECT_TRUE(s->gpu_compatible);
 }
@@ -342,7 +351,7 @@ TEST(FindSceneTest, RealisticCameraSceneIsGpuCompatible) {
 	// path (film-plane mapping, exit-pupil sampling, per-element Snell's-law
 	// trace) is ported to device code, in both the recursive
 	// (optix_device_helpers.h) and wavefront (wavefront_kernels.cu) strategies.
-	const SceneDescriptor* s = find_scene(36);
+	const SceneDescriptor* s = find_scene("D4");
 	ASSERT_NE(s, nullptr);
 	EXPECT_TRUE(s->gpu_compatible);
 }
@@ -356,7 +365,7 @@ TEST(FindSceneTest, TriangleMeshSceneIsGpuCompatible) {
 	// GPU port (a new TriangleData custom-primitive geometry type, mirroring
 	// the sphere/quad/bilinear-patch pattern) were added together. The scene
 	// is a procedurally-generated icosahedron (no external .obj file needed).
-	const SceneDescriptor* s = find_scene(37);
+	const SceneDescriptor* s = find_scene("F2");
 	ASSERT_NE(s, nullptr);
 	EXPECT_TRUE(s->gpu_compatible);
 }
@@ -394,14 +403,14 @@ TEST(CpuSceneApiTest, CategoryByIdMatchesCppRegistry) {
 	// The GUI reads categories only through this C API (via scene_metadata.dll),
 	// never from the C++ registry directly, so the bridge needs its own check.
 	for (const auto& s : get_scene_registry()) {
-		EXPECT_STREQ(cpu_scene_category_by_id(s.id), s.category)
+		EXPECT_STREQ(cpu_scene_category_by_id(s.id.c_str()), s.category)
 			<< "Category mismatch for scene id " << s.id;
 	}
 }
 
 TEST(CpuSceneApiTest, OutOfRangeCategoryReturnsEmptyString) {
-	EXPECT_STREQ(cpu_scene_category_by_id(9999), "");
-	EXPECT_STREQ(cpu_scene_category_by_id(-1), "");
+	EXPECT_STREQ(cpu_scene_category_by_id("NotARealId"), "");
+	EXPECT_STREQ(cpu_scene_category_by_id(""), "");
 }
 
 TEST(CpuSceneApiTest, PerformanceByIndexMatchesCppRegistry) {
@@ -435,9 +444,9 @@ TEST(CpuSceneApiTest, GpuCompatibleByIndexMatchesCppRegistry) {
 }
 
 // Out-of-range guards
-TEST(CpuSceneApiTest, OutOfRangeIdReturnsMinusOne) {
-	EXPECT_EQ(cpu_scene_id(-1), -1);
-	EXPECT_EQ(cpu_scene_id(cpu_scene_count()), -1);
+TEST(CpuSceneApiTest, OutOfRangeIdReturnsEmptyString) {
+	EXPECT_STREQ(cpu_scene_id(-1), "");
+	EXPECT_STREQ(cpu_scene_id(cpu_scene_count()), "");
 }
 
 TEST(CpuSceneApiTest, OutOfRangeNameReturnsEmptyString) {
@@ -468,8 +477,8 @@ TEST(SceneBuilderTest, AllScenesProduceNonEmptyWorld) {
 }
 
 TEST(SceneBuilderTest, CornellFamilyLightsAreNonEmpty) {
-	// Scenes that use Cornell box lights: 0, 7, 10
-	for (int id : {0, 7, 10}) {
+	// Scenes that use Cornell box lights: A1, A8, B2 (old flat ids 0, 7, 10)
+	for (const std::string& id : {"A1", "A8", "B2"}) {
 		const SceneDescriptor* s = find_scene(id);
 		ASSERT_NE(s, nullptr);
 		hittable_list lights;
@@ -482,7 +491,7 @@ TEST(SceneBuilderTest, CornellFamilyLightsAreNonEmpty) {
 
 TEST(SceneBuilderTest, SkyDummyLightsAreNonEmpty) {
 	// All sky-lit scenes should still return a dummy light for PDF sampling
-	for (int id : {1, 2, 4, 5, 9}) {
+	for (const std::string& id : {"A2", "A3", "A5", "A6", "B1"}) {
 		const SceneDescriptor* s = find_scene(id);
 		ASSERT_NE(s, nullptr);
 		hittable_list lights;
@@ -494,7 +503,7 @@ TEST(SceneBuilderTest, SkyDummyLightsAreNonEmpty) {
 
 TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 	// Registry-based determinism: same id always builds same object count
-	const SceneDescriptor* s = find_scene(0);
+	const SceneDescriptor* s = find_scene("A1");
 	ASSERT_NE(s, nullptr);
 	hittable_list w1 = s->build_world();
 	hittable_list w2 = s->build_world();

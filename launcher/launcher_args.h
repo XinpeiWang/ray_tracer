@@ -9,13 +9,15 @@
 #include <string>
 #include <vector>
 #include <set>
+#include <algorithm>
+#include <cctype>
 
 namespace {
 	constexpr int kDefaultWidth = 600;
 	constexpr int kDefaultHeight = 600;
 	constexpr int kDefaultSamplesPerPixel = 500;
 	constexpr int kDefaultMaxDepth = 20;
-	constexpr int kDefaultSceneId = 0;
+	constexpr const char* kDefaultSceneId = "A1";
 	constexpr double kCornellBoxCenter = 278.0;
 	constexpr double kDefaultCameraX = 278.0;
 	constexpr double kDefaultCameraY = 278.0;
@@ -53,7 +55,7 @@ struct LaunchArgs {
 	int    image_height      = kDefaultHeight;
 	int    samples_per_pixel = kDefaultSamplesPerPixel;
 	int    max_ray_depth     = kDefaultMaxDepth;
-	int    scene_id          = kDefaultSceneId;
+	std::string scene_id     = kDefaultSceneId;
 	double cam_x             = kDefaultCameraX;
 	double cam_y             = kDefaultCameraY;
 	double cam_z             = kDefaultCameraZ;
@@ -200,7 +202,8 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "  width      : Image width (default " << kDefaultWidth << ", square aspect)\n"
 					  << "  spp        : Samples per pixel (default " << kDefaultSamplesPerPixel << ")\n"
 					  << "  max_depth  : Max ray depth (default " << kDefaultMaxDepth << ")\n"
-					  << "  scene_id   : Scene selector (0=Cornell Box, default " << kDefaultSceneId << ")\n"
+					  << "  scene_id   : Scene selector, category letter + number (e.g. \"A1\"=Cornell Box,\n"
+					  << "               default " << kDefaultSceneId << " - see src/TheRestOfYourLife/scene_registry.h)\n"
 					  << "  cam_x/y/z  : Camera position - if omitted, uses the selected scene's own\n"
 					  << "               recommended camera (see src/TheRestOfYourLife/scene_registry.h),\n"
 					  << "               not a single fixed default across every scene\n";
@@ -208,27 +211,60 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 		}
 	}
 
-	// Parse positional numeric arguments: width spp depth scene_id cam_x cam_y cam_z
-	std::vector<double> numeric_args;
+	// Parse positional arguments: width spp depth scene_id cam_x cam_y cam_z
+	// Kept as raw strings rather than blindly std::stod-ing every token like
+	// the old flat-int scheme did - scene_id (position 3) is a category
+	// letter + number now (e.g. "A2"), not a number, so each position is
+	// parsed according to what it's actually expected to hold - see
+	// scene_registry.h's SceneDescriptor::id comment for the id format.
+	std::vector<std::string> positional_args;
 	for (int i = 1; i < argc; ++i) {
 		if (consumed_args.count(i) > 0) continue;
 		const std::string arg = argv[i];
 		if (arg.size() >= 2 && arg[0] == '-' && arg[1] == '-') continue;
-		try { numeric_args.push_back(std::stod(arg)); } catch (const std::exception&) {}
+		positional_args.push_back(arg);
 	}
 
-	if (numeric_args.size() >= 1 && numeric_args[0] > 0) {
-		out.image_width = out.image_height = static_cast<int>(numeric_args[0]);
+	auto parse_positive_int = [](const std::string& s, int& out_value) {
+		try {
+			double v = std::stod(s);
+			if (v > 0) out_value = static_cast<int>(v);
+		} catch (const std::exception&) {}
+	};
+
+	if (positional_args.size() >= 1) parse_positive_int(positional_args[0], out.image_width);
+	out.image_height = out.image_width;
+	if (positional_args.size() >= 2) parse_positive_int(positional_args[1], out.samples_per_pixel);
+	if (positional_args.size() >= 3) parse_positive_int(positional_args[2], out.max_ray_depth);
+
+	if (positional_args.size() >= 4) {
+		const std::string& id = positional_args[3];
+		// Category letter + one or more digits (e.g. "A1", "B10").
+		const bool valid = id.size() >= 2 && id[0] >= 'A' && id[0] <= 'Z' &&
+			std::all_of(id.begin() + 1, id.end(),
+				[](unsigned char c) { return std::isdigit(c) != 0; });
+		if (valid) {
+			out.scene_id = id;
+		} else {
+			std::cerr << "Invalid scene_id \"" << id
+				<< "\" - expected a category letter followed by a number "
+				   "(e.g. \"A1\"), see src/TheRestOfYourLife/scene_registry.h\n";
+			return false;
+		}
 	}
-	if (numeric_args.size() >= 2 && numeric_args[1] > 0)
-		out.samples_per_pixel = static_cast<int>(numeric_args[1]);
-	if (numeric_args.size() >= 3 && numeric_args[2] > 0)
-		out.max_ray_depth = static_cast<int>(numeric_args[2]);
-	if (numeric_args.size() >= 4 && numeric_args[3] >= 0)
-		out.scene_id = static_cast<int>(numeric_args[3]);
-	if (numeric_args.size() >= 5) { out.cam_x = numeric_args[4]; out.cam_explicit = true; }
-	if (numeric_args.size() >= 6) out.cam_y = numeric_args[5];
-	if (numeric_args.size() >= 7) out.cam_z = numeric_args[6];
+
+	if (positional_args.size() >= 5) {
+		try { out.cam_x = std::stod(positional_args[4]); out.cam_explicit = true; }
+		catch (const std::exception&) { std::cerr << "Invalid cam_x value, using default\n"; }
+	}
+	if (positional_args.size() >= 6) {
+		try { out.cam_y = std::stod(positional_args[5]); }
+		catch (const std::exception&) { std::cerr << "Invalid cam_y value, using default\n"; }
+	}
+	if (positional_args.size() >= 7) {
+		try { out.cam_z = std::stod(positional_args[6]); }
+		catch (const std::exception&) { std::cerr << "Invalid cam_z value, using default\n"; }
+	}
 
 	return true;
 }

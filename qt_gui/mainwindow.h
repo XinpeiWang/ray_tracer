@@ -126,7 +126,9 @@ public:
 	// Set all render parameters before calling start()
 	// Camera parameters (camX, camY, camZ) define the camera position (lookfrom)
 	// The camera always looks at the Cornell box center (278, 278, 278) - lookat is fixed
-	// sceneId selects which scene to render (0=Cornell Box, 1=Bouncing Spheres, etc.)
+	// sceneId selects which scene to render (category letter + number, e.g.
+	// "A1"=Cornell Box, "A2"=Bouncing Spheres - see
+	// src/TheRestOfYourLife/scene_registry.h's SceneDescriptor::id)
 	// camExplicit: true if camX/Y/Z differ from sceneId's own recommended camera
 	// (computed by the caller via SceneMetadataClient - see onRenderClicked) - only
 	// then are cam_x/y/z actually passed on the command line, so ray_tracer.exe's
@@ -134,7 +136,7 @@ public:
 	// LaunchArgs::cam_explicit) stays a real code path for untouched renders
 	// instead of being permanently short-circuited by this GUI.
 	void setParameters(bool useGPU, int width, int height, int samples, int maxDepth,
-					   int sceneId, double camX, double camY, double camZ, bool camExplicit,
+					   const QString &sceneId, double camX, double camY, double camZ, bool camExplicit,
 					   const QString &outputPath = QString(), bool useWavefront = false);
 
 	// Set video generation parameters
@@ -174,7 +176,7 @@ private:
 	int m_height;           // Image height in pixels
 	int m_samples;          // Samples per pixel (anti-aliasing quality)
 	int m_maxDepth;         // Max ray bounce depth (lighting quality)
-	int m_sceneId;          // Scene selector ID (0=Cornell Box, 1=Bouncing Spheres, etc.)
+	QString m_sceneId;      // Scene selector ID (category letter + number, e.g. "A1")
 
 	// Camera position (lookfrom) - always looking at center (278, 278, 278)
 	double m_camX;          // Camera X coordinate

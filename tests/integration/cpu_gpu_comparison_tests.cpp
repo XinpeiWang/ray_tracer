@@ -102,13 +102,13 @@ protected:
 
 	Image renderCPU(const char* filename, int w, int h, int spp, int depth) {
 		files_.push_back(filename);
-		cpu_render_main(w, h, spp, depth, filename, 0, 278.0, 278.0, -800.0);
+		cpu_render_main(w, h, spp, depth, filename, "A1", 278.0, 278.0, -800.0);
 		return load_image(filename);
 	}
 
 	Image renderGPU(const char* filename, int w, int h, int spp, int depth) {
 		files_.push_back(filename);
-		if (optix_render_main(w, h, spp, depth, filename, 0, 278.0, 278.0, -800.0) != 0)
+		if (optix_render_main(w, h, spp, depth, filename, "A1", 278.0, 278.0, -800.0) != 0)
 			return {};   // invalid image; caller should check image.valid
 		return load_image(filename);
 	}
@@ -326,14 +326,18 @@ static int count_cpu_emissive_lights(const std::shared_ptr<hittable>& h) {
 class CpuGpuLightParityTest : public ::testing::TestWithParam<int> {};
 
 TEST_P(CpuGpuLightParityTest, LightCountMatches) {
-	const SceneDescriptor* s = find_scene(GetParam());
-	ASSERT_NE(s, nullptr) << "Missing scene id " << GetParam();
+	// GetParam() is a registry POSITION, not a scene id (ids are category
+	// letter + number now, not contiguous ints - see scene_registry.h's
+	// SceneDescriptor::id comment), so resolve id via the registry first.
+	const SceneDescriptor& desc = get_scene_registry()[GetParam()];
+	const SceneDescriptor* s = find_scene(desc.id);
+	ASSERT_NE(s, nullptr) << "Missing scene id " << desc.id;
 	if (!s->gpu_compatible) GTEST_SKIP() << s->name << " is not GPU-compatible";
 	if (s->requires_files) GTEST_SKIP() << s->name << " requires external assets";
 
 	hittable_list world = s->build_world();
 	int cpuLights = count_cpu_emissive_lights_list(world);
-	int gpuLights = gpu_scene_light_count(s->id, 100, 100);
+	int gpuLights = gpu_scene_light_count(s->id.c_str(), 100, 100);
 
 	ASSERT_GE(gpuLights, 0) << s->name << " (id " << s->id << "): GPU scene build failed";
 	EXPECT_EQ(cpuLights, gpuLights)
@@ -346,8 +350,8 @@ INSTANTIATE_TEST_SUITE_P(
 	AllScenes, CpuGpuLightParityTest,
 	::testing::Range(0, static_cast<int>(get_scene_registry().size())),
 	[](const ::testing::TestParamInfo<int>& info) {
-		const SceneDescriptor* s = find_scene(info.param);
-		std::string name = s ? s->name : "Unknown";
+		const SceneDescriptor& desc = get_scene_registry()[info.param];
+		std::string name = desc.name ? desc.name : "Unknown";
 		std::string sanitized;
 		for (char c : name) sanitized += std::isalnum(static_cast<unsigned char>(c)) ? c : '_';
 		return "Scene" + std::to_string(info.param) + "_" + sanitized;

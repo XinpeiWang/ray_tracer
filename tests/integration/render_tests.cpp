@@ -96,7 +96,7 @@ TEST(RenderIntegrationTest, BasicCPURender) {
 	int result = cpu_render_main(
 		32, 32, 2, 5,
 		output,
-		0, 278, 278, -800
+		"A1", 278, 278, -800
 	);
 
 	EXPECT_EQ(result, 0);
@@ -130,7 +130,7 @@ TEST(RenderIntegrationTest, CPUDifferentResolutions) {
 		int result = cpu_render_main(
 			test.width, test.height, 1, 3,
 			output.c_str(),
-			0, 278, 278, -800
+			"A1", 278, 278, -800
 		);
 
 		EXPECT_EQ(result, 0) << "Failed for: " << test.name;
@@ -152,11 +152,11 @@ TEST(RenderIntegrationTest, CPUCameraPositionsDifferent) {
 	const char* output2 = "test_cpu_cam2.ppm";
 
 	// Render from front
-	cpu_render_main(32, 32, 1, 5, output1, 0, 278, 278, -800);
+	cpu_render_main(32, 32, 1, 5, output1, "A1", 278, 278, -800);
 	size_t hash1 = hash_file(output1);
 
 	// Render from left wall
-	cpu_render_main(32, 32, 1, 5, output2, 0, 50, 278, 278);
+	cpu_render_main(32, 32, 1, 5, output2, "A1", 50, 278, 278);
 	size_t hash2 = hash_file(output2);
 
 	// Images should be different
@@ -183,7 +183,7 @@ TEST(RenderIntegrationTest, BasicGPURender) {
 	int result = optix_render_main(
 		64, 64, 200, 5,
 		output,
-		0, 278.0, 278.0, -800.0
+		"A1", 278.0, 278.0, -800.0
 	);
 
 	EXPECT_EQ(result, 0);
@@ -222,7 +222,7 @@ TEST(RenderIntegrationTest, GPUDifferentResolutions) {
 		int result = optix_render_main(
 			test.width, test.height, 50, 3,
 			output.c_str(),
-			0, 278.0, 278.0, -800.0
+			"A1", 278.0, 278.0, -800.0
 		);
 
 		EXPECT_EQ(result, 0) << "Failed for: " << test.name;
@@ -248,8 +248,8 @@ TEST(RenderIntegrationTest, GPUvsCPUSimilarity) {
 	const char* gpu_output = "test_compare_gpu.ppm";
 
 	// Render small image with both
-	cpu_render_main(32, 32, 10, 5, cpu_output, 0, 278, 278, -800);
-	if (optix_render_main(32, 32, 500, 5, gpu_output, 0, 278.0, 278.0, -800.0) != 0)
+	cpu_render_main(32, 32, 10, 5, cpu_output, "A1", 278, 278, -800);
+	if (optix_render_main(32, 32, 500, 5, gpu_output, "A1", 278.0, 278.0, -800.0) != 0)
 		GTEST_SKIP() << "optix_render_main failed — driver/PTX incompatibility";
 
 	// Both should exist and have valid headers
@@ -286,11 +286,11 @@ TEST(RenderIntegrationTest, SampleCountAffectsOutput) {
 	const char* output_high = "test_samples_high.ppm";
 
 	// Low sample count
-	cpu_render_main(32, 32, 1, 5, output_low, 0, 278, 278, -800);
+	cpu_render_main(32, 32, 1, 5, output_low, "A1", 278, 278, -800);
 	size_t hash_low = hash_file(output_low);
 
 	// High sample count
-	cpu_render_main(32, 32, 10, 5, output_high, 0, 278, 278, -800);
+	cpu_render_main(32, 32, 10, 5, output_high, "A1", 278, 278, -800);
 	size_t hash_high = hash_file(output_high);
 
 	// Different sample counts should produce different images
@@ -308,7 +308,7 @@ TEST(RenderIntegrationTest, OneSampleFast) {
 
 	auto start = std::chrono::high_resolution_clock::now();
 
-	int result = cpu_render_main(32, 32, 1, 5, output, 0, 278, 278, -800);
+	int result = cpu_render_main(32, 32, 1, 5, output, "A1", 278, 278, -800);
 
 	auto end = std::chrono::high_resolution_clock::now();
 	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
@@ -333,11 +333,11 @@ TEST(RenderIntegrationTest, MaxDepthAffectsOutput) {
 	const char* output_deep = "test_depth_deep.ppm";
 
 	// Shallow depth
-	cpu_render_main(32, 32, 2, 1, output_shallow, 0, 278, 278, -800);
+	cpu_render_main(32, 32, 2, 1, output_shallow, "A1", 278, 278, -800);
 	size_t hash_shallow = hash_file(output_shallow);
 
 	// Deep depth
-	cpu_render_main(32, 32, 2, 20, output_deep, 0, 278, 278, -800);
+	cpu_render_main(32, 32, 2, 20, output_deep, "A1", 278, 278, -800);
 	size_t hash_deep = hash_file(output_deep);
 
 	// Different max depths should produce different images
@@ -379,7 +379,7 @@ TEST(RenderIntegrationTest, AllCameraPresetsValid) {
 		int result = cpu_render_main(
 			16, 16, 1, 3,  // Small, fast render
 			output.c_str(),
-			0, preset.cam_x, preset.cam_y, preset.cam_z
+			"A1", preset.cam_x, preset.cam_y, preset.cam_z
 		);
 
 		EXPECT_EQ(result, 0) << "Failed for preset: " << preset.name;
@@ -402,8 +402,8 @@ TEST(RenderIntegrationTest, DeterministicRender) {
 	const char* output2 = "test_deterministic_2.ppm";
 
 	// Render twice with same parameters
-	cpu_render_main(32, 32, 2, 5, output1, 0, 278, 278, -800);
-	cpu_render_main(32, 32, 2, 5, output2, 0, 278, 278, -800);
+	cpu_render_main(32, 32, 2, 5, output1, "A1", 278, 278, -800);
+	cpu_render_main(32, 32, 2, 5, output2, "A1", 278, 278, -800);
 
 	size_t hash1 = hash_file(output1);
 	size_t hash2 = hash_file(output2);
@@ -434,7 +434,7 @@ TEST(RenderIntegrationTest, NonExistentDirectory) {
 	// cpu_render_main creates missing parent directories for output_path
 	// (cpu_interface.cpp's std::filesystem::create_directories call), so a
 	// valid render request should succeed even into a not-yet-existing dir.
-	int result = cpu_render_main(16, 16, 1, 3, output, 0, 278, 278, -800);
+	int result = cpu_render_main(16, 16, 1, 3, output, "A1", 278, 278, -800);
 
 	EXPECT_EQ(result, SUCCESS);
 
@@ -451,7 +451,7 @@ TEST(RenderIntegrationTest, NonExistentDirectory) {
 TEST(RenderIntegrationTest, VerySmallImage) {
 	const char* output = "test_tiny.ppm";
 
-	int result = cpu_render_main(10, 10, 1, 3, output, 0, 278, 278, -800);
+	int result = cpu_render_main(10, 10, 1, 3, output, "A1", 278, 278, -800);
 
 	EXPECT_EQ(result, 0);
 
@@ -471,7 +471,7 @@ TEST(RenderIntegrationTest, VeryLargeMaxDepth) {
 
 	// Use depth=20 (not 1000) -- Russian Roulette handles deep paths,
 	// but depth=1000 with 50x50 is prohibitively slow for a unit test.
-	int result = cpu_render_main(16, 16, 1, 20, output, 0, 278, 278, -800);
+	int result = cpu_render_main(16, 16, 1, 20, output, "A1", 278, 278, -800);
 
 	EXPECT_EQ(result, 0);
 

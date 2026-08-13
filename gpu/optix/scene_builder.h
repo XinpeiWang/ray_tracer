@@ -82,7 +82,7 @@ struct SceneData {
 // video-mode frame loop, which must animate the camera every frame
 // regardless of a scene's single-image default.
 bool build_scene(
-	int scene_id,
+	const char* scene_id,
 	int image_width,
 	int image_height,
 	SceneData& scene,

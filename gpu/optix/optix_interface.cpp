@@ -11,6 +11,7 @@
 #include <memory>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 
 // Global renderer instance
@@ -18,8 +19,9 @@ static std::unique_ptr<OptiXRenderer> g_renderer;
 
 // Which scene_id is currently uploaded to the GPU (materials/geometry/BVH/SBT
 // all live in g_renderer's device memory, keyed only by scene_id - see the
-// skip-reupload check below). -1 = nothing uploaded yet this process.
-static int g_uploaded_scene_id = -1;
+// skip-reupload check below). "" = nothing uploaded yet this process (never
+// a valid id - every real id has a category letter and a number).
+static std::string g_uploaded_scene_id;
 
 extern "C" bool optix_is_available() {
 	return OptiXRenderer::isAvailable();
@@ -31,7 +33,7 @@ extern "C" int optix_render_main(
 	int samples_per_pixel,
 	int max_depth,
 	const char* output_path,
-	int scene_id,
+	const char* scene_id,
 	double cam_x,
 	double cam_y,
 	double cam_z,
@@ -236,14 +238,14 @@ extern "C" int optix_render_main_sppm(
 	int photons,
 	int max_depth,
 	const char* output_path,
-	int scene_id,
+	const char* scene_id,
 	double cam_x,
 	double cam_y,
 	double cam_z,
 	int force_camera_override
 ) {
-	if (scene_id != 11) {
-		std::cerr << "[OptiX] GPU SPPM (Phase 1) only supports scene 11 (CornellRoughGlass); got scene "
+	if (std::strcmp(scene_id, "B3") != 0) {
+		std::cerr << "[OptiX] GPU SPPM (Phase 1) only supports scene B3 (CornellRoughGlass); got scene "
 		          << scene_id << ". Use CPU SPPM (--sppm without --gpu) for other scenes.\n";
 		return ERR_GPU_UNSUPPORTED_SCENE;
 	}
@@ -369,7 +371,7 @@ extern "C" int optix_render_main_sppm(
 	}
 }
 
-extern "C" int gpu_scene_light_count(int scene_id, int image_width, int image_height) {
+extern "C" int gpu_scene_light_count(const char* scene_id, int image_width, int image_height) {
 	try {
 		SceneData scene;
 		float camera_params[12];

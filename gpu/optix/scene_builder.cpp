@@ -3259,7 +3259,7 @@ static void build_rungholt_gpu(SceneData& scene) {
 }
 
 /// @brief Build a scene and configure the camera
-/// @param scene_id Scene identifier (0 = Cornell Box)
+/// @param scene_id Scene identifier, category letter + number ("A1" = Cornell Box)
 /// @param image_width Output image width in pixels
 /// @param image_height Output image height in pixels
 /// @param scene Output scene data to populate
@@ -3470,7 +3470,7 @@ static bool build_loaded_pbrt_scene(
 }
 
 bool build_scene(
-	const int scene_id,
+	const char* scene_id,
 	const int image_width,
 	const int image_height,
 	SceneData& scene,
@@ -3484,6 +3484,16 @@ bool build_scene(
 	if (camera_params == nullptr) {
 		return false;  // Invalid camera parameter buffer
 	}
+
+	// The switch below still keys on the OLD flat 0..64 int id (unchanged,
+	// on purpose - see SceneDescriptor::legacy_id's comment in
+	// scene_registry.h: rewriting ~900 lines of case bodies into a
+	// string-keyed dispatch wasn't worth the risk for what's purely an
+	// internal implementation detail). cpu_scene_legacy_id_by_id() is the
+	// one place that translates the new id back to it; -1 (not found, e.g.
+	// a garbled scene_id) falls through to the same `default:` case an
+	// out-of-range legacy id always did.
+	const int legacy_scene_id = cpu_scene_legacy_id_by_id(scene_id);
 
 	// Clear previous scene data
 	scene.spheres.clear();
@@ -3506,7 +3516,7 @@ bool build_scene(
 	};
 
 	// Build requested scene
-	switch (scene_id) {
+	switch (legacy_scene_id) {
 		case 0:  // Cornell Box
 			build_cornell_box(scene);
 

@@ -111,7 +111,7 @@ protected:
 	PPMImage renderGPU(const char* filename, int w, int h, int spp, int depth,
 					   double camX = 278.0, double camY = 278.0, double camZ = -800.0) {
 		outputFiles_.push_back(filename);
-		if (optix_render_main(w, h, spp, depth, filename, 0, camX, camY, camZ) != 0)
+		if (optix_render_main(w, h, spp, depth, filename, "A1", camX, camY, camZ) != 0)
 			return {};   // invalid image; caller should ASSERT_TRUE(img.valid)
 		return load_ppm(filename);
 	}
@@ -259,13 +259,13 @@ TEST(GPUSceneSwitchTest, TriangleThenNonTriangleSceneInSameProcess) {
 	const char* triOutput = "gpu_test_switch_tri.ppm";
 	const char* nonTriOutput = "gpu_test_switch_nontri.ppm";
 
-	int triResult = optix_render_main(60, 60, 50, 5, triOutput, 37, 0.0, 8.0, 16.0);
-	ASSERT_EQ(triResult, 0) << "Triangle-mesh scene (37) render failed";
+	int triResult = optix_render_main(60, 60, 50, 5, triOutput, "F2", 0.0, 8.0, 16.0);
+	ASSERT_EQ(triResult, 0) << "Triangle-mesh scene (F2) render failed";
 	PPMImage triImg = load_ppm(triOutput);
 	ASSERT_TRUE(triImg.valid) << "Failed to load triangle-mesh scene render";
 
-	int nonTriResult = optix_render_main(60, 60, 50, 5, nonTriOutput, 0, 278.0, 278.0, -800.0);
-	ASSERT_EQ(nonTriResult, 0) << "Non-mesh scene (0) render failed after a triangle-mesh scene";
+	int nonTriResult = optix_render_main(60, 60, 50, 5, nonTriOutput, "A1", 278.0, 278.0, -800.0);
+	ASSERT_EQ(nonTriResult, 0) << "Non-mesh scene (A1) render failed after a triangle-mesh scene";
 	PPMImage nonTriImg = load_ppm(nonTriOutput);
 	ASSERT_TRUE(nonTriImg.valid) << "Failed to load non-mesh scene render";
 
@@ -292,11 +292,11 @@ TEST(GPUSceneSwitchTest, RecursivePrincipledThenZeroSucceeds) {
 	const char* out1 = "gpu_test_diag_recursive_18.ppm";
 	const char* out2 = "gpu_test_diag_recursive_0.ppm";
 
-	int r1 = optix_render_main(60, 60, 50, 5, out1, 18, 278.0, 278.0, -800.0);
-	ASSERT_EQ(r1, 0) << "Scene 18 (Principled) render failed";
+	int r1 = optix_render_main(60, 60, 50, 5, out1, "B10", 278.0, 278.0, -800.0);
+	ASSERT_EQ(r1, 0) << "Scene B10 (Principled) render failed";
 
-	int r2 = optix_render_main(60, 60, 50, 5, out2, 0, 278.0, 278.0, -800.0);
-	ASSERT_EQ(r2, 0) << "Scene 0 render after scene 18 failed (recursive backend)";
+	int r2 = optix_render_main(60, 60, 50, 5, out2, "A1", 278.0, 278.0, -800.0);
+	ASSERT_EQ(r2, 0) << "Scene A1 render after scene B10 failed (recursive backend)";
 
 	std::remove(out1);
 	std::remove(out2);

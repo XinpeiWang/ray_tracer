@@ -280,7 +280,7 @@ protected:
 
 	WFPPMImage renderWF(const char* name, int w, int h, int spp, int depth,
 						double cx = 278, double cy = 278, double cz = -800,
-						int scene_id = 0) {
+						const char* scene_id = "A1") {
 		files_.push_back(name);
 		if (optix_render_main(w, h, spp, depth, name, scene_id, cx, cy, cz) != 0)
 			return {};
@@ -318,10 +318,10 @@ TEST_F(WavefrontRenderTest, NonBlackOutput) {
 // alloc/free pattern for the light index/kind/alias-table buffers) right
 // before a lit scene was what it took to land on bytes that faulted.
 TEST_F(WavefrontRenderTest, ZeroLightSceneThenLitSceneDoesNotCrash) {
-	auto img1 = renderWF("wf_diag_zerolight1.ppm", 80, 80, 50, 5, 278, 278, -800, 5);
-	ASSERT_TRUE(img1.valid) << "Scene 5 (zero lights) render failed";
-	auto img2 = renderWF("wf_diag_zerolight2.ppm", 80, 80, 50, 5, 278, 278, -800, 0);
-	ASSERT_TRUE(img2.valid) << "Scene 0 render after scene 5 (zero lights) failed";
+	auto img1 = renderWF("wf_diag_zerolight1.ppm", 80, 80, 50, 5, 278, 278, -800, "A6");
+	ASSERT_TRUE(img1.valid) << "Scene A6 (zero lights) render failed";
+	auto img2 = renderWF("wf_diag_zerolight2.ppm", 80, 80, 50, 5, 278, 278, -800, "A1");
+	ASSERT_TRUE(img2.valid) << "Scene A1 render after scene A6 (zero lights) failed";
 }
 
 // Regression test for task #107: scene 8 (Final Scene) rendered solid black
@@ -340,8 +340,8 @@ TEST_F(WavefrontRenderTest, Scene8FinalSceneIsNotBlack) {
 	// cx/cy/cz are ignored for scene 8 (a Fixed-mode camera scene - see the
 	// case 8 block in scene_builder.cpp), so the renderWF() defaults are
 	// fine here.
-	auto img = renderWF("wf_test_scene8.ppm", 80, 80, 200, 8, 278, 278, -800, 8);
-	ASSERT_TRUE(img.valid) << "Wavefront render of scene 8 failed to produce a valid PPM";
+	auto img = renderWF("wf_test_scene8.ppm", 80, 80, 200, 8, 278, 278, -800, "A9");
+	ASSERT_TRUE(img.valid) << "Wavefront render of scene A9 failed to produce a valid PPM";
 	float bf = wf_black_fraction(img);
 	EXPECT_LT(bf, 0.95f)
 		<< "More than 95% of pixels are black (black fraction=" << bf
@@ -391,7 +391,7 @@ TEST_F(WavefrontRenderTest, WavefrontBrightnessConsistentWithRecursive) {
 	// 10x-factor tolerance check.
 	files_.push_back("wf_test_consistency_rec.ppm");
 	WFPPMImage rec;
-	if (optix_render_main(60, 60, 150, 8, "wf_test_consistency_rec.ppm", 0,
+	if (optix_render_main(60, 60, 150, 8, "wf_test_consistency_rec.ppm", "A1",
 						  278, 278, -800) == 0) {
 		rec = wf_load_ppm("wf_test_consistency_rec.ppm");
 	}

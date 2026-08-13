@@ -36,6 +36,7 @@
 
 #ifdef __cplusplus
 #include <cstddef>
+#include <cstring>
 
 // -----------------------------------------------------------------------
 // Canonical scene name constants
@@ -147,6 +148,29 @@ namespace SceneCategories {
         UserScenes
     };
     constexpr std::size_t kAllCount = sizeof(kAll) / sizeof(kAll[0]);
+
+    // One letter per category, same order as kAll, used to build scene ids
+    // like "B10" (10th Materials scene) - see scene_registry.h's SceneDescriptor::id.
+    // Parallel array rather than a struct-of-two-fields because kAll is
+    // itself already consumed as a bare array by existing GUI/test code
+    // that shouldn't need to change shape for this.
+    constexpr char kAllLetters[] = {
+        'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'
+    };
+    static_assert(sizeof(kAllLetters) / sizeof(kAllLetters[0]) == kAllCount,
+                  "kAllLetters must have exactly one entry per kAll category");
+
+    // Returns the letter for a category, or '\0' if category doesn't match
+    // any entry in kAll (a typo'd category, same failure mode kAll's own
+    // scene_registry_tests.cpp check exists to catch). strcmp, not pointer
+    // identity - correct regardless of whether the caller's `category` and
+    // kAll's entries happen to be the same interned string literal.
+    inline char letter_for_category(const char* category) {
+        for (std::size_t i = 0; i < kAllCount; ++i) {
+            if (std::strcmp(kAll[i], category) == 0) return kAllLetters[i];
+        }
+        return '\0';
+    }
 } // namespace SceneCategories
 
 #endif // __cplusplus
