@@ -444,10 +444,33 @@ __device__ __forceinline__ bool trace_shadow_ray(
 	// Pack shadow payload (single bool: occluded)
 	unsigned int occluded = 1;  // Default to occluded (will be set to 0 if miss)
 
+	// Nudge the origin along the ray's own travel direction before tracing,
+	// mirroring optix_raygen.h's scatter_origin = hit_point + 0.01f *
+	// normalize(scatterDir) for continuation rays. Shadow rays had no such
+	// offset - only tmin=0.001 - which is fine for the flat quads/spheres
+	// every scene used to test GPU shadow rays, where the shading normal IS
+	// the geometric normal and self-intersection can't happen at a grazing
+	// angle. It falls apart for a smooth-shaded triangle mesh (per-vertex
+	// interpolated normals from e.g. a loopsubdiv or OBJ "vn" import): the
+	// shading normal at a point routinely diverges from its triangle's own
+	// flat facet, most sharply at high-curvature areas (joints, haunches),
+	// so a shadow ray toward a light can leave at a near-tangent angle to
+	// the ACTUAL facet and immediately self-intersect it or a neighboring
+	// facet sharing that vertex - tmin alone doesn't stop that, since it
+	// only cuts off a distance along the ray, not a lateral margin. Found
+	// via killeroo-simple.pbrt (a real pbrt-v4 scene: loop-subdivided,
+	// coateddiffuse-shaded, lit by one small hard area light) rendering
+	// almost solid black on GPU with sparse white flecks - CPU rendered it
+	// correctly - while every scene already covered by the test suite
+	// (quads/spheres, or flat/architectural triangle meshes where shading
+	// and geometric normals nearly coincide) never exercised this path
+	// clearly enough to surface it.
+	const float3 shadow_origin = origin + 0.01f * normalize(direction);
+
 	// Trace shadow ray with occlusion testing
 	optixTrace(
 		params.traversable,           // Acceleration structure
-		origin,                        // Ray origin
+		shadow_origin,                 // Ray origin
 		direction,                     // Ray direction
 		0.001f,                        // tmin (avoid self-intersection)
 		max_distance,                  // tmax
@@ -1060,70 +1083,63 @@ __device__ __forceinline__ void shade_material(
 				scattered     = true;
 				is_specular   = true;
 			} else {
-				float3 diff_dir = cdn + random_in_unit_sphere(seed);
-				if (dot(diff_dir, diff_dir) < 1e-12f) diff_dir = cdn;
-				diff_dir = normalize(diff_dir);
-				float cos_out = fabsf(dot(diff_dir, cdn));
-				float F_out   = FrDielectric(cos_out, 1.0f / mat.ior);
-				float T       = (1.0f - F_in) * (1.0f - F_out);
-				attenuation   = make_float3(mat.albedo.x*T, mat.albedo.y*T, mat.albedo.z*T);
+				// Multi-bounce escape through the coat, mirroring the actual
+				// random walk in src/shared/bxdfs_layered.h's
+				// CoatedDiffuseBxDF::sample_local (medium scattering omitted
+				// - coateddiffuse never sets a scattering medium). A single
+				// Lambertian bounce followed by one exit attempt is what the
+				// earlier version of this branch did (with or without the
+				// cd_c normalization above) and it stayed far too dark: most
+				// individual cosine-sampled directions fail their exit test,
+				// and giving up immediately on failure discards that
+				// sample's energy entirely rather than retrying, which is
+				// what the real layered material does - a failed exit
+				// attempt scatters back into the diffuse base for another
+				// Lambertian bounce and another try, compounding by albedo
+				// each time, until one succeeds or the bounce budget runs
+				// out. No explicit light sampling here, matching how CPU's
+				// coated_diffuse material treats this whole material as
+				// skip_pdf (material_pbrt.h): pbrt-v4's LayeredBxDF only
+				// supports sampling a direction, never evaluating f(wo,wi)
+				// at an arbitrary chosen one, so there is no light-sampling
+				// direction to aim a shadow ray at - illumination comes
+				// purely from where the bounces the walk below happens to
+				// land, same as CPU.
+				// Each exit attempt below re-samples a GGX microfacet normal
+				// relative to the CURRENT internal direction (cd_dist.Sample_wm
+				// again, exactly like the entry test above) rather than testing
+				// Fresnel at the macro normal directly - matching
+				// bxdfs_layered.h's own exit test. For a rough coat the two
+				// disagree noticeably: the macro-normal angle can be steep even
+				// when the GGX distribution still offers plenty of near-normal
+				// microfacets to escape through, so testing only the macro
+				// angle over-rejects and compounds too many extra albedo
+				// multiplies from the retries that didn't need to happen.
+				constexpr int kMaxCoatBounces = 8;
+				float3 beta = make_float3(1.0f - F_in, 1.0f - F_in, 1.0f - F_in);
+				float3 diff_dir = cdn;
+				bool escaped = false;
+				for (int cb = 0; cb < kMaxCoatBounces; ++cb) {
+					diff_dir = cdn + random_unit_vector(seed);
+					if (near_zero(diff_dir)) diff_dir = cdn;
+					diff_dir = normalize(diff_dir);
+					beta.x *= mat.albedo.x; beta.y *= mat.albedo.y; beta.z *= mat.albedo.z;
+
+					float dw_x = dot(diff_dir, cdtan), dw_y = dot(diff_dir, cdbit), dw_z = dot(diff_dir, cdn);
+					float dwm_x, dwm_y, dwm_z;
+					cd_dist.Sample_wm(dw_x, dw_y, dw_z, random_float(seed), random_float(seed), dwm_x, dwm_y, dwm_z);
+					float cos_out = dw_x*dwm_x + dw_y*dwm_y + dw_z*dwm_z;
+					float F_out   = FrDielectric(cos_out, 1.0f / mat.ior);
+					if (random_float(seed) < F_out) continue;  // TIR: bounce again
+					beta.x *= (1.0f - F_out); beta.y *= (1.0f - F_out); beta.z *= (1.0f - F_out);
+					escaped = true;
+					break;
+				}
+				if (!escaped) { scattered = false; break; }
+				attenuation   = beta;
 				scattered_dir = diff_dir;
 				scattered     = true;
-				is_specular   = false;
-
-				// NEE: direct light with the coat-weighted diffuse BSDF -
-				// this branch sets is_specular=false (it's a real diffuse
-				// lobe under the coat) but was missing the light-sampling
-				// block every other is_specular=false material has
-				// (Lambertian above, NormalizedFresnel below), so it could
-				// only ever get illuminated by BSDF-sampled paths that
-				// randomly happened to hit the light - no importance
-				// sampling toward it at all. That made it render far too
-				// dark, especially for a small/hard-to-hit area light.
-				// T_in (F_in) is fixed for this scattering event (from the
-				// same coat sample drawn above); F_out is re-evaluated at
-				// the light-sampled direction, mirroring how the BSDF
-				// sample's own F_out is evaluated at diff_dir above.
-				if (params.numLights > 0) {
-					int light_idx;
-					float selection_pdf;
-					if (params.aliasTable) {
-						int slot = int(random_float(seed) * float(params.numLights));
-						if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
-						const GpuAliasEntry& entry = params.aliasTable[slot];
-						light_idx = (random_float(seed) < entry.q) ? slot : entry.alias;
-						selection_pdf = params.aliasTable[light_idx].pdf;
-					} else {
-						light_idx = int(random_float(seed) * float(params.numLights));
-						if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
-						selection_pdf = 1.0f / float(params.numLights);
-					}
-
-					float geom_pdf = 0.0f;
-					float max_dist = 0.0f;
-					float3 light_emission = make_float3(0.0f, 0.0f, 0.0f);
-					float3 to_light = sample_area_light_by_kind(
-						light_idx, hit_point, seed, geom_pdf, max_dist, light_emission);
-
-					float light_pdf = selection_pdf * geom_pdf;
-					if (light_pdf > 1e-6f) {
-						bool visible = trace_shadow_ray(hit_point, to_light, max_dist);
-						if (visible) {
-							float cos_to_light = fmaxf(dot(to_light, cdn), 0.0f);
-							if (cos_to_light > 0.0f) {
-								float F_out_l = FrDielectric(cos_to_light, 1.0f / mat.ior);
-								float T_l     = (1.0f - F_in) * (1.0f - F_out_l);
-								float3 brdf_val = make_float3(mat.albedo.x*T_l, mat.albedo.y*T_l, mat.albedo.z*T_l)
-												  / 3.14159265358979323846f;
-								float brdf_pdf   = cosine_pdf(to_light, cdn);
-								float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
-
-								float3 direct_light = mis_weight * brdf_val * light_emission * cos_to_light / light_pdf;
-								emission = emission + direct_light;
-							}
-						}
-					}
-				}
+				is_specular   = true;
 			}
 			break;
 		}
