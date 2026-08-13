@@ -631,7 +631,7 @@ __device__ __forceinline__ void shade_material(
 				}
 
 				int prim_idx = params.lightIndices[light_idx];
-				bool is_sphere = params.isLightSphere[light_idx];
+				bool is_sphere = params.isLightSphere[light_idx] != 0;
 
 				// Sample direction toward light
 				float3 to_light;
@@ -1013,7 +1013,7 @@ __device__ __forceinline__ void shade_material(
 					}
 
 					int prim_idx = params.lightIndices[light_idx];
-					bool is_sphere_light = params.isLightSphere[light_idx];
+					bool is_sphere_light = params.isLightSphere[light_idx] != 0;
 
 					float3 to_light;
 					float geom_pdf = 0.0f;
@@ -1126,7 +1126,7 @@ __device__ __forceinline__ void shade_material(
 				}
 
 				int prim_idx = params.lightIndices[light_idx];
-				bool is_sphere_light = params.isLightSphere[light_idx];
+				bool is_sphere_light = params.isLightSphere[light_idx] != 0;
 
 				float3 to_light;
 				float geom_pdf = 0.0f;

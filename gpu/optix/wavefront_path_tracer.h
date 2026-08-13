@@ -52,7 +52,7 @@ private:
         const SphereData* d_spheres, unsigned int numSpheres,
         const QuadData* d_quads, unsigned int numQuads,
         const MaterialData* d_materials, unsigned int numMaterials,
-        const int* d_lightIndices, const bool* d_isLightSphere,
+        const int* d_lightIndices, const int* d_isLightSphere,
         const GpuAliasEntry* d_aliasTable, unsigned int numLights,
         const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
         float3* d_framebuffer);

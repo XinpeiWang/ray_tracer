@@ -138,7 +138,7 @@ extern "C" __global__ void __closesthit__quad() {
 			int prim_idx = (int)primIdx;
 			float sel_pdf = 0.0f;
 			for (unsigned int li = 0; li < params.numLights; ++li) {
-				if (params.lightIndices[li] == prim_idx && !params.isLightSphere[li]) {
+				if (params.lightIndices[li] == prim_idx && params.isLightSphere[li] == 0) {
 					sel_pdf = params.aliasTable[li].pdf;
 					break;
 				}

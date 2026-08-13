@@ -589,7 +589,7 @@ extern "C" __global__ void evaluate_materials(
 	const QuadData*     quads,
 	const MaterialData* materials,
 	const int*          lightIndices,
-	const bool*         isLightSphere,
+	const int*          isLightSphere,
 	const GpuAliasEntry* aliasTable,
 	unsigned int numLights,
 	const PunctualLightGPU* punctualLights,
@@ -1043,7 +1043,7 @@ extern "C" __global__ void evaluate_materials(
 		float selection_pdf = aliasTable[light_idx].pdf;
 
 		int   prim_idx        = lightIndices[light_idx];
-		bool  is_sphere_light = isLightSphere[light_idx];
+		bool  is_sphere_light = isLightSphere[light_idx] != 0;
 
 		float  geom_pdf = 0.0f, max_dist = 0.0f;
 		float3 to_light;

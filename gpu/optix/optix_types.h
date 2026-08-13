@@ -524,7 +524,19 @@ struct LaunchParams {
 	// Light sampling support (indices into sphere/quad arrays)
 	int* lightIndices;          // Array of light primitive indices
 	unsigned int numLights;     // Number of emissive lights in scene
-	bool* isLightSphere;        // True if lightIndices[i] is sphere, false if quad
+	// Nonzero if lightIndices[i] is a sphere, zero if a quad.
+	//
+	// int, NOT bool, and the width is load-bearing: the host uploads one int
+	// per light (optix_renderer.cpp packs a std::vector<int> for alignment).
+	// Reading that buffer back through a bool* takes one BYTE per element, so
+	// only light 0 landed on its own flag - lights 1..3 read the upper, always
+	// zero, bytes of light 0's int and so always looked like quads. A sphere
+	// light misread as a quad is then looked up in params.quads, which in a
+	// scene with no quads at all is an out-of-bounds read: an illegal memory
+	// access that kills the launch outright, not a subtle shading difference.
+	// Every backend's copy of this field (wavefront_types.h, sppm_types.h)
+	// had the same mismatch and the same fix.
+	const int* isLightSphere;
 
 	// Power-weighted alias table for light selection (pbrt-v4 PowerLightSampler)
 	GpuAliasEntry* aliasTable;  // Device pointer to alias table (numLights entries)

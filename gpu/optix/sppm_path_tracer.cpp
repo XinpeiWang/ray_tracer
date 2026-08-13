@@ -358,7 +358,7 @@ bool SPPMPathTracer::renderTrivial(int width, int height, const GpuCameraParams&
 	params.materials    = reinterpret_cast<MaterialData*>(d_materials);
 	params.numMaterials  = numMaterials;
 	params.lightIndices  = reinterpret_cast<int*>(d_lightIndices);
-	params.isLightSphere = reinterpret_cast<bool*>(d_isLightSphere);
+	params.isLightSphere = reinterpret_cast<const int*>(d_isLightSphere);
 	params.aliasTable    = reinterpret_cast<GpuAliasEntry*>(d_aliasTable);
 	params.numLights     = numLights;
 	params.pixels       = reinterpret_cast<SPPMPixelGPU*>(d_pixels_);
@@ -453,7 +453,7 @@ bool SPPMPathTracer::render(int width, int height, int nIterations, int nPhotons
 	params.materials     = reinterpret_cast<MaterialData*>(d_materials);
 	params.numMaterials  = numMaterials;
 	params.lightIndices  = reinterpret_cast<int*>(d_lightIndices);
-	params.isLightSphere = reinterpret_cast<bool*>(d_isLightSphere);
+	params.isLightSphere = reinterpret_cast<const int*>(d_isLightSphere);
 	params.aliasTable    = reinterpret_cast<GpuAliasEntry*>(d_aliasTable);
 	params.numLights     = numLights;
 	params.pixels        = reinterpret_cast<SPPMPixelGPU*>(d_pixels_);

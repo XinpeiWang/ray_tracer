@@ -40,7 +40,7 @@ extern "C" void wf_launch_evaluate_materials(
 	const SphereData*, unsigned int,
 	const QuadData*, unsigned int,
 	const MaterialData*, unsigned int,
-	const int*, const bool*, const GpuAliasEntry*, unsigned int,
+	const int*, const int*, const GpuAliasEntry*, unsigned int,
 	const PunctualLightGPU*, unsigned int,
 	int, cudaStream_t);
 extern "C" void wf_launch_accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, cudaStream_t);
@@ -563,7 +563,7 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 	const SphereData*    d_spheres,   unsigned int numSpheres,
 	const QuadData*      d_quads,     unsigned int numQuads,
 	const MaterialData*  d_materials, unsigned int numMaterials,
-	const int*           d_lightIndices, const bool* d_isLightSphere,
+	const int*           d_lightIndices, const int* d_isLightSphere,
 	const GpuAliasEntry* d_aliasTable,  unsigned int numLights,
 	const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
 	float3*              d_framebuffer)
@@ -679,7 +679,7 @@ bool WavefrontPathTracer::render(
 	lp.materials     = reinterpret_cast<MaterialData*>(d_materials);
 	lp.numMaterials  = num_materials;
 	lp.lightIndices  = reinterpret_cast<int*>(d_light_indices);
-	lp.isLightSphere = reinterpret_cast<bool*>(d_is_light_sphere);
+	lp.isLightSphere = reinterpret_cast<const int*>(d_is_light_sphere);
 	lp.aliasTable    = reinterpret_cast<GpuAliasEntry*>(d_alias_table);
 	lp.numLights     = num_lights;
 	lp.samplesPerPixel = (unsigned int)samples_per_pixel;
@@ -748,7 +748,7 @@ bool WavefrontPathTracer::render(
 				reinterpret_cast<const QuadData*>(d_quads),     num_quads,
 				reinterpret_cast<const MaterialData*>(d_materials), num_materials,
 				reinterpret_cast<const int*>(d_light_indices),
-				reinterpret_cast<const bool*>(d_is_light_sphere),
+				reinterpret_cast<const int*>(d_is_light_sphere),
 				reinterpret_cast<const GpuAliasEntry*>(d_alias_table),
 				num_lights,
 				reinterpret_cast<const PunctualLightGPU*>(d_punctual_lights),

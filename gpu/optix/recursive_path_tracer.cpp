@@ -307,7 +307,7 @@ bool RecursivePathTracer::render(
 	// Light sampling for MIS
 	params.lightIndices = reinterpret_cast<int*>(d_light_indices);
 	params.numLights = num_lights;
-	params.isLightSphere = reinterpret_cast<bool*>(d_is_light_sphere);
+	params.isLightSphere = reinterpret_cast<const int*>(d_is_light_sphere);
 	params.aliasTable = reinterpret_cast<GpuAliasEntry*>(d_alias_table);
 
 	// Punctual (delta) lights

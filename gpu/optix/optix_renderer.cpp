@@ -19,6 +19,7 @@
 #include <sstream>
 #include <array>
 #include <cstring>
+#include <type_traits>   // remove_pointer_t, for the light-flag width assert
 
 namespace {
 	/// Constants for OptiX configuration
@@ -777,6 +778,17 @@ bool OptiXRenderer::buildScene(
 		for (size_t i = 0; i < isLightSphere.size(); ++i) {
 			lightFlags[i] = isLightSphere[i] ? 1 : 0;
 		}
+		// The element type here and the pointee type the device reads it back
+		// through MUST be the same width. They were not - this uploaded int
+		// and LaunchParams::isLightSphere was a bool*, so the device advanced
+		// one byte per light and only light 0 ever landed on its own flag.
+		// Pinned at compile time because the failure is invisible in any scene
+		// with fewer than two lights, and every scene here had one.
+		static_assert(
+			sizeof(decltype(lightFlags)::value_type) ==
+				sizeof(std::remove_pointer_t<decltype(LaunchParams::isLightSphere)>),
+			"light-flag upload width must match what the device reads; see "
+			"LaunchParams::isLightSphere in optix_types.h");
 
 		size_t lightFlagSize = lightFlags.size() * sizeof(int);
 		if (d_isLightSphere_) {
@@ -1734,7 +1746,7 @@ bool OptiXRenderer::render(
 	// Light sampling for MIS
 	params.lightIndices = reinterpret_cast<int*>(d_lightIndices_);
 	params.numLights = numLights_;
-	params.isLightSphere = reinterpret_cast<bool*>(d_isLightSphere_);
+	params.isLightSphere = reinterpret_cast<const int*>(d_isLightSphere_);
 	params.aliasTable = reinterpret_cast<GpuAliasEntry*>(d_aliasTable_);
 
 	// Punctual (delta) lights

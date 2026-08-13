@@ -1,0 +1,70 @@
+# two-sphere-lights.pbrt -- more than one sphere area light in one scene.
+#
+# Written to pin down a specific failure rather than to look good: the GPU
+# light-type table is uploaded as one int per light but was read back through
+# a bool pointer, so only the FIRST light's type survived the width mismatch.
+# Lights 1..3 always read as "quad" whatever they really were, and a sphere
+# read as a quad is looked up in the wrong array entirely.
+#
+# A scene needs two things to show that, and no bundled scene had both: at
+# least two area lights, and a SPHERE among them at an index other than zero.
+# The pbrt builder emits every sphere light before every quad light, so two
+# sphere lights is the shortest way to get one.
+#
+# The two spheres are deliberately different colours and on opposite sides -
+# if the second one stops lighting the room, or lights it wrongly, the image
+# says so plainly rather than just getting a little noisier.
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  278 278 -800    278 278 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+# ------------------------------------------------- light 0: warm, left side
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 7.0 4.4 1.8 ]
+  Translate 120 430 240
+  Shape "sphere" "float radius" [ 45 ]
+AttributeEnd
+
+# ------------------------------------------------- light 1: cool, right side
+# This is the one the width mismatch used to lose.
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 1.6 3.8 7.6 ]
+  Translate 440 430 240
+  Shape "sphere" "float radius" [ 45 ]
+AttributeEnd
+
+# ---------------------------------------------------------------- walls
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+
+# floor
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   555 0 0   555 0 555   0 0 555 ]
+# ceiling
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 555 0   555 555 0   555 555 555   0 555 555 ]
+# back wall
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   555 0 555   555 555 555   0 555 555 ]
+# left wall
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 0   555 0 555   555 555 555   555 555 0 ]
+# right wall
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   0 0 555   0 555 555   0 555 0 ]
+
+# ------------------------------------------------------------- contents
+# A plain white sphere in the middle: with both lights working it picks up
+# warm light on one side and cool on the other, which is the clearest
+# possible read on whether the second light is being sampled.
+AttributeBegin
+  Translate 278 130 300
+  Shape "sphere" "float radius" [ 130 ]
+AttributeEnd
