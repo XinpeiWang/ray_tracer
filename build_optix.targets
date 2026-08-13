@@ -33,6 +33,20 @@
     <!-- SPPM plain CUDA compute kernels -> .obj (linked into optix_renderer.lib) -->
     <SppmObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\sppm_kernels.cu" />
     <SppmObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\sppm_launch.cu" />
+
+    <!-- Headers every .cu file above can transitively include, appended to
+         every CUDA-compiling target's Inputs below so MSBuild's up-to-date
+         check actually notices header edits. Without this, only each .cu
+         file's own timestamp was checked - editing a shared header (e.g.
+         src/shared/bxdfs.h) left every target reporting "up-to-date" and
+         silently kept stale .ptx/.obj output in place (confirmed live: no
+         CUDA recompilation occurred after touching such a header). Blunt
+         but correct: any header change in either directory invalidates
+         every target here, even ones that don't actually use it - a few
+         extra nvcc invocations is far cheaper than shipping stale device
+         code that the build itself can't detect. -->
+    <CudaHeaderDeps Include="$(OptixOutputDir)\*.h" />
+    <CudaHeaderDeps Include="$(MSBuildProjectDirectory)\..\src\shared\*.h" />
   </ItemGroup>
 
   <!-- ===================================================================== -->
@@ -41,7 +55,7 @@
   <Target Name="CompileOptixPrograms"
           Condition="'$(SolutionDir)' != '' and '$(MSBuildProjectName)' == 'optix_renderer'"
           BeforeTargets="Build"
-          Inputs="@(OptixSource)"
+          Inputs="@(OptixSource);@(CudaHeaderDeps)"
           Outputs="$(SolutionDir)gpu\optix\%(OptixSource.Filename).ptx">
 
     <Message Text="[OptiX] Compiling %(OptixSource.Filename).cu to PTX..." Importance="High" />
@@ -76,7 +90,7 @@
   <Target Name="CompileWavefrontPtx"
           Condition="'$(SolutionDir)' != '' and '$(MSBuildProjectName)' == 'optix_renderer'"
           BeforeTargets="Build"
-          Inputs="@(WavefrontPtxSource)"
+          Inputs="@(WavefrontPtxSource);@(CudaHeaderDeps)"
           Outputs="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_programs.ptx">
 
     <Message Text="[OptiX] Compiling wavefront_programs.cu to PTX..." Importance="High" />
@@ -105,7 +119,7 @@
   <Target Name="CompileSppmPtx"
           Condition="'$(SolutionDir)' != '' and '$(MSBuildProjectName)' == 'optix_renderer'"
           BeforeTargets="Build"
-          Inputs="@(SppmPtxSource)"
+          Inputs="@(SppmPtxSource);@(CudaHeaderDeps)"
           Outputs="$(MSBuildProjectDirectory)\..\gpu\optix\sppm_programs.ptx">
 
     <Message Text="[OptiX] Compiling sppm_programs.cu to PTX..." Importance="High" />
@@ -135,7 +149,7 @@
   <Target Name="CompileWavefrontKernels"
           Condition="'$(SolutionDir)' != '' and '$(MSBuildProjectName)' == 'optix_renderer'"
           BeforeTargets="Lib"
-          Inputs="@(WavefrontObjSource)"
+          Inputs="@(WavefrontObjSource);@(CudaHeaderDeps)"
           Outputs="$(MSBuildProjectDirectory)\..\gpu\optix\%(WavefrontObjSource.Filename).obj">
 
     <Message Text="[CUDA] Compiling %(WavefrontObjSource.Filename).cu to obj..." Importance="High" />
@@ -180,7 +194,15 @@
   <Target Name="DeviceLinkWavefront"
           Condition="'$(SolutionDir)' != '' and '$(MSBuildProjectName)' == 'optix_renderer'"
           AfterTargets="CompileWavefrontKernels"
-          BeforeTargets="Lib">
+          BeforeTargets="Lib"
+          Inputs="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels.obj;$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_launch.obj"
+          Outputs="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_dlink.obj">
+    <!-- Without Inputs/Outputs, MSBuild has no way to skip this target, so
+         nvcc -dlink ran unconditionally on every build (even a genuine
+         no-op) - its output always got a fresh mtime, which invalidated
+         Lib's AdditionalDependencies check and forced a full relink of
+         every consuming exe every time. Measured ~41s on every single
+         build before this fix, incremental or not. -->
 
     <Message Text="[CUDA] Device-linking wavefront objs -> wavefront_dlink.obj..." Importance="High" />
 
@@ -209,7 +231,7 @@
   <Target Name="CompileSppmKernels"
           Condition="'$(SolutionDir)' != '' and '$(MSBuildProjectName)' == 'optix_renderer'"
           BeforeTargets="Lib"
-          Inputs="@(SppmObjSource)"
+          Inputs="@(SppmObjSource);@(CudaHeaderDeps)"
           Outputs="$(MSBuildProjectDirectory)\..\gpu\optix\%(SppmObjSource.Filename).obj">
 
     <Message Text="[CUDA] Compiling %(SppmObjSource.Filename).cu to obj..." Importance="High" />
@@ -246,7 +268,9 @@
   <Target Name="DeviceLinkSppm"
           Condition="'$(SolutionDir)' != '' and '$(MSBuildProjectName)' == 'optix_renderer'"
           AfterTargets="CompileSppmKernels"
-          BeforeTargets="Lib">
+          BeforeTargets="Lib"
+          Inputs="$(MSBuildProjectDirectory)\..\gpu\optix\sppm_kernels.obj;$(MSBuildProjectDirectory)\..\gpu\optix\sppm_launch.obj"
+          Outputs="$(MSBuildProjectDirectory)\..\gpu\optix\sppm_dlink.obj">
 
     <Message Text="[CUDA] Device-linking SPPM objs -> sppm_dlink.obj..." Importance="High" />
 
