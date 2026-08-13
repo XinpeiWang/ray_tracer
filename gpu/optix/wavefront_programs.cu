@@ -673,7 +673,18 @@ extern "C" __global__ void __raygen__wf_shadow() {
 		OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT,
 		1,                  // SBT offset (shadow)
 		2,                  // SBT stride
-		1,                  // miss SBT index (shadow miss)
+		0,                  // miss SBT index -- shadowSBT_ has its OWN dedicated
+							// missRecordBase with exactly ONE record (see
+							// buildSBT()'s shadowSBT_.missRecordCount = 1), unlike
+							// a combined [radiance, shadow] miss array; index 1 was
+							// out-of-bounds. Silently "worked" on small scenes by
+							// reading adjacent heap bytes past the 1-record cudaMalloc
+							// (undefined behavior, not correctness) until confirmed via
+							// OPTIX_DEVICE_CONTEXT_VALIDATION_MODE_ALL, which flags it
+							// as MISS_SBT_OUT_OF_BOUNDS on every scene, and turns it into
+							// a hard device fault whose exact address depends on
+							// allocation layout -- which is what made scene 8's larger
+							// memory footprint crash outright instead of "working".
 		p0, p1
 	);
 

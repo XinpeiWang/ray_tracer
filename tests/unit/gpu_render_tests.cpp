@@ -278,3 +278,26 @@ TEST(GPUSceneSwitchTest, TriangleThenNonTriangleSceneInSameProcess) {
 	std::remove(triOutput);
 	std::remove(nonTriOutput);
 }
+
+// Confirms scene 18 (Principled) -> scene 0 in the same process is fine on
+// the recursive backend - a wavefront-only crash reproduces for this exact
+// scene pair (see wavefront_tests.cpp's DISABLED_ZeroLightSceneThenLitSceneCrashes,
+// tracked as task #106), which rules out a shared-code bug in PrincipledBxDF
+// or scene teardown and narrows it to wavefront-specific plumbing.
+TEST(GPUSceneSwitchTest, RecursivePrincipledThenZeroSucceeds) {
+	if (!optix_is_available()) {
+		GTEST_SKIP() << "OptiX not available on this system";
+	}
+
+	const char* out1 = "gpu_test_diag_recursive_18.ppm";
+	const char* out2 = "gpu_test_diag_recursive_0.ppm";
+
+	int r1 = optix_render_main(60, 60, 50, 5, out1, 18, 278.0, 278.0, -800.0);
+	ASSERT_EQ(r1, 0) << "Scene 18 (Principled) render failed";
+
+	int r2 = optix_render_main(60, 60, 50, 5, out2, 0, 278.0, 278.0, -800.0);
+	ASSERT_EQ(r2, 0) << "Scene 0 render after scene 18 failed (recursive backend)";
+
+	std::remove(out1);
+	std::remove(out2);
+}

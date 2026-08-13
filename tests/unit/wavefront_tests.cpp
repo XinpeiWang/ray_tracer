@@ -279,9 +279,10 @@ protected:
 	}
 
 	WFPPMImage renderWF(const char* name, int w, int h, int spp, int depth,
-						double cx = 278, double cy = 278, double cz = -800) {
+						double cx = 278, double cy = 278, double cz = -800,
+						int scene_id = 0) {
 		files_.push_back(name);
-		if (optix_render_main(w, h, spp, depth, name, 0, cx, cy, cz) != 0)
+		if (optix_render_main(w, h, spp, depth, name, scene_id, cx, cy, cz) != 0)
 			return {};
 		return wf_load_ppm(name);
 	}
@@ -298,6 +299,53 @@ TEST_F(WavefrontRenderTest, NonBlackOutput) {
 	EXPECT_LT(bf, 0.95f)
 		<< "More than 95% of pixels are black (black fraction=" << bf
 		<< "). Wavefront renderer may not be working.";
+}
+
+// Regression test for task #106: a wavefront scene with ZERO emissive
+// lights, immediately followed by any scene WITH lights in the same
+// process, used to crash the shadow pipeline (illegal memory access /
+// cudaStreamSynchronize failure at wavefront_path_tracer.cpp's shadow
+// launch sync). Bisected to be independent of material type, textures,
+// geometry composition, and resolution - reproduced with a scene using
+// only plain pre-existing Lambertian quads and no textures (scene 5)
+// followed by the Cornell box (scene 0). compute-sanitizer's memcheck,
+// racecheck, and synccheck all reported zero errors against this repro,
+// which made sense once the real cause surfaced while fixing task #107:
+// __raygen__wf_shadow (wavefront_programs.cu) passed missSBTIndex=1 to
+// optixTrace, but shadowSBT_ has exactly one miss record (index 0) - an
+// out-of-bounds read into adjacent heap memory whose contents depend on
+// allocation history, which is exactly why a zero-light scene (different
+// alloc/free pattern for the light index/kind/alias-table buffers) right
+// before a lit scene was what it took to land on bytes that faulted.
+TEST_F(WavefrontRenderTest, ZeroLightSceneThenLitSceneDoesNotCrash) {
+	auto img1 = renderWF("wf_diag_zerolight1.ppm", 80, 80, 50, 5, 278, 278, -800, 5);
+	ASSERT_TRUE(img1.valid) << "Scene 5 (zero lights) render failed";
+	auto img2 = renderWF("wf_diag_zerolight2.ppm", 80, 80, 50, 5, 278, 278, -800, 0);
+	ASSERT_TRUE(img2.valid) << "Scene 0 render after scene 5 (zero lights) failed";
+}
+
+// Regression test for task #107: scene 8 (Final Scene) rendered solid black
+// on the wavefront backend because WavefrontPathTracer::initialize() set
+// pipelineCompileOptions_.usesMotionBlur=false while tracing against the
+// SAME IAS/GAS the recursive backend builds via OptiXRenderer::buildScene() -
+// which gets motionOptions.numKeys=2 (see its sceneHasMotion_ detection)
+// whenever a scene has a moving sphere, as scene 8's does. Tracing a
+// motion-enabled traversable from a pipeline compiled with
+// usesMotionBlur=false is undefined behavior in OptiX; here it made every
+// primary ray report a miss on the very first intersect launch. Fixed by
+// setting usesMotionBlur=true unconditionally (matching the recursive
+// pipeline's own always-on setting, safe for motion and non-motion scenes
+// alike - see both files' comments at that assignment).
+TEST_F(WavefrontRenderTest, Scene8FinalSceneIsNotBlack) {
+	// cx/cy/cz are ignored for scene 8 (a Fixed-mode camera scene - see the
+	// case 8 block in scene_builder.cpp), so the renderWF() defaults are
+	// fine here.
+	auto img = renderWF("wf_test_scene8.ppm", 80, 80, 200, 8, 278, 278, -800, 8);
+	ASSERT_TRUE(img.valid) << "Wavefront render of scene 8 failed to produce a valid PPM";
+	float bf = wf_black_fraction(img);
+	EXPECT_LT(bf, 0.95f)
+		<< "More than 95% of pixels are black (black fraction=" << bf
+		<< "). Scene 8's motion-blur/traversable mismatch may have regressed.";
 }
 
 // Test 2: Correct output dimensions

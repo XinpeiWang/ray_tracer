@@ -81,7 +81,22 @@ bool WavefrontPathTracer::initialize(OptixDeviceContext context,
 	module_  = module;
 	stream_  = stream;
 
-	pipelineCompileOptions_.usesMotionBlur        = false;
+	// Must be true, not false: the traversable this pipeline traces against
+	// is the SAME IAS/GAS OptiXRenderer::buildScene() builds for the
+	// recursive backend, and that GAS gets motionOptions.numKeys=2 whenever
+	// the scene has a moving sphere (see its sceneHasMotion_ detection) -
+	// motion keys apply per accel-structure build, not per pipeline. Tracing
+	// a motion-enabled traversable from a pipeline compiled with
+	// usesMotionBlur=false is undefined behavior in OptiX; in practice it
+	// made every primary ray report a miss on scene 8 (Final Scene, whose
+	// moving sphere triggers sceneHasMotion_), rendering it solid black
+	// while the recursive backend (usesMotionBlur=true, see its own
+	// optix_renderer.cpp comment) rendered the same GAS correctly. Safe for
+	// every scene either way, motion or not, by the same reasoning as that
+	// comment: non-motion scenes keep a single-key GAS and this pipeline's
+	// own optixTrace calls (wavefront_programs.cu) always pass rayTime=0.0f,
+	// so optixGetRayTime() is a provable no-op for them.
+	pipelineCompileOptions_.usesMotionBlur        = true;
 	// SINGLE_LEVEL_INSTANCING, matching OptiXRenderer's own pipeline, because
 	// the traversable handed to render() is the top-level IAS that
 	// OptiXRenderer::buildScene() builds - never a bare GAS. This said
