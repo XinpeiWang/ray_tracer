@@ -988,11 +988,12 @@ inline void append(std::vector<SceneDescriptor>& registry) {
         s.recommended_spp = d.samplesPerPixel;
         s.requires_files = true;
         // gpu/optix/pbrt_gpu_builder.h consumes the same FlatScene this does,
-        // so both backends render the same file. The GPU one is the weaker of
-        // the two here: it can only sample area lights that are spheres or
-        // parallelograms, and it says so at build time when a scene's lights
-        // are neither. That is a quality difference on some scenes, not a
-        // reason to hide the option on all of them.
+        // so both backends render the same file, and they now agree on what
+        // they can sample: sphere, parallelogram AND individual-triangle area
+        // lights (GpuLightKind), plus instanced triangles and spheres. The GPU
+        // used to be the weaker of the two - it could only sample lights that
+        // were spheres or parallelograms - which is no longer true and is why
+        // this no longer carries a caveat.
         s.gpu_compatible = true;
         s.camera = CameraConfig{
             d.camera.vfov,
