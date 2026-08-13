@@ -1344,8 +1344,27 @@ extern "C" __global__ void evaluate_materials(
 			// Spectral direct-light contribution
 			SS Ld = (mis_w * bsdf_val * cos_l / light_pdf) * throughput * bsdf_color * light_emission_spec;
 
+			// 0.01, not the original 0.001: a scene with many densely-packed
+			// custom primitives (spheres) reproducibly crashed the shadow
+			// OptiX launch with an illegal memory access - the 0.001 offset
+			// left the shadow ray's origin too close to its own emitting
+			// surface (and, at high primitive density, to a neighboring
+			// primitive's surface too) for this driver's any-hit traversal
+			// over custom AABBs to handle; confirmed via bisection on
+			// synthetic sphere-field pbrt scenes (compute-sanitizer memcheck/
+			// initcheck found nothing, ruling out a plain buffer overrun).
+			// Deliberately still offsetting along the (possibly perturbed,
+			// for MaterialType::NormalMappedLambertian) shading normal, NOT
+			// the shadow ray's own direction the way optix_device_helpers.h's
+			// trace_shadow_ray() does: that alternative was tried first and
+			// fixed the same crash, but broke NormalMappedLambertian (scene
+			// 20 rendered 99% black) - a shading normal that has been bent
+			// away from the true surface no longer guarantees "away from
+			// this primitive" the way it does along the true geometric
+			// normal, so a light-direction offset can leave the ray
+			// re-entering its own (unperturbed) sphere at a grazing angle.
 			ShadowRayWorkItem shadow;
-			shadow.origin    = hit_point + 0.001f * normal;
+			shadow.origin    = hit_point + 0.01f * normal;
 			shadow.direction = to_light;
 			shadow.tMax      = max_dist - 0.002f;
 			for (int i = 0; i < kWFNWavelengths; ++i) {
@@ -1402,8 +1421,10 @@ extern "C" __global__ void evaluate_materials(
 
 		SS Ld = (bsdf_val * cos_l) * throughput * bsdf_color * Li_spec;
 
+		// See the area-light block above for why this is 0.01, not 0.001,
+		// and still along the shading normal rather than the ray direction.
 		ShadowRayWorkItem shadow;
-		shadow.origin    = hit_point + 0.001f * normal;
+		shadow.origin    = hit_point + 0.01f * normal;
 		shadow.direction = wi;
 		shadow.tMax      = t_max - 0.002f;
 		for (int i = 0; i < kWFNWavelengths; ++i) {
