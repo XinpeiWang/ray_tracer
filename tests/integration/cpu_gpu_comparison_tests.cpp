@@ -149,9 +149,12 @@ TEST_F(CPUGPUComparisonTest, BothProduceNonBlackOutput) {
 TEST_F(CPUGPUComparisonTest, HighSPPBrightnessConverges) {
 	if (!gpuAvailable_) GTEST_SKIP() << "OptiX not available";
 
-	// Use sufficient samples for both to have meaningful statistics
-	Image cpu = renderCPU("cmp_cpu_converge.ppm", 80, 80, 100,  10);
-	Image gpu = renderGPU("cmp_gpu_converge.ppm", 80, 80, 2000, 10);
+	// Use sufficient samples for both to have meaningful statistics. GPU spp
+	// is well above CPU's since it's naive (no importance sampling) - it
+	// needs more samples for the same variance, but not 2000: the 50%
+	// tolerance below is generous enough that 500 already converges reliably.
+	Image cpu = renderCPU("cmp_cpu_converge.ppm", 80, 80, 100, 10);
+	Image gpu = renderGPU("cmp_gpu_converge.ppm", 80, 80, 500, 10);
 
 	ASSERT_TRUE(cpu.valid) << "CPU render failed";
 	ASSERT_TRUE(gpu.valid) << "GPU render failed";
@@ -231,7 +234,9 @@ TEST_F(CPUGPUComparisonTest, CPUShowsColorVariation) {
 TEST_F(CPUGPUComparisonTest, GPUShowsColorVariation) {
 	if (!gpuAvailable_) GTEST_SKIP() << "OptiX not available";
 
-	Image img = renderGPU("cmp_gpu_color.ppm", 100, 100, 1000, 10);
+	// Only checking gross per-channel fractions (>5%), not fine brightness
+	// matching - doesn't need anywhere near 1000spp to be stable.
+	Image img = renderGPU("cmp_gpu_color.ppm", 100, 100, 150, 10);
 	ASSERT_TRUE(img.valid) << "GPU render failed";
 
 	RGBAverage avg = avg_channels(img);

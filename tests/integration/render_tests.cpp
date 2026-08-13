@@ -19,6 +19,7 @@
 #include <functional>
 #include <chrono>
 #include <filesystem>
+#include "../../src/TheRestOfYourLife/error_codes.h"
 
 extern "C" {
 	#include "cpu_interface.h"
@@ -430,12 +431,12 @@ TEST(RenderIntegrationTest, NonExistentDirectory) {
 	const char* output_dir = "nonexistent_dir";
 	const char* output = "nonexistent_dir/test.ppm";
 
-	// This may fail or use default output path
+	// cpu_render_main creates missing parent directories for output_path
+	// (cpu_interface.cpp's std::filesystem::create_directories call), so a
+	// valid render request should succeed even into a not-yet-existing dir.
 	int result = cpu_render_main(16, 16, 1, 3, output, 0, 278, 278, -800);
 
-	// Current implementation may succeed
-	// or fail - just verify it doesn't crash
-	EXPECT_TRUE(result == 0 || result != 0);
+	EXPECT_EQ(result, SUCCESS);
 
 	// The renderer may auto-create the target directory; clean up so
 	// repeated test runs don't leave litter in the working directory.

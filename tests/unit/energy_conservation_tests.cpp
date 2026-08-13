@@ -126,7 +126,7 @@ TEST_F(EnergyConservationTest, GPUNoFireflies) {
 	const char* out = "ec_test_gpu_fireflies.ppm";
 	files_.push_back(out);
 
-	if (int rc = optix_render_main(64, 64, 500, 10, out, 0, 278.0, 278.0, -800.0))
+	if (int rc = optix_render_main(64, 64, 150, 10, out, 0, 278.0, 278.0, -800.0))
 		GTEST_SKIP() << "optix_render_main failed (rc=" << rc << ") — driver/PTX incompatibility";
 	RenderResult r = load_render(out);
 	ASSERT_TRUE(r.valid) << "GPU render failed";

@@ -12,8 +12,10 @@
 #include <gtest/gtest.h>
 #include <string>
 #include <fstream>
+#include <filesystem>
 #include <cstdio>
 #include <chrono>
+#include "../../src/TheRestOfYourLife/error_codes.h"
 
 // Include the C interfaces
 extern "C" {
@@ -170,17 +172,13 @@ TEST(GPUInterfaceTest, DifferentCameraPositions) {
  * Test invalid width (zero)
  */
 TEST(InterfaceValidationTest, ZeroWidth) {
-	// Note: The current interface may not validate this
-	// This test documents expected behavior
 	int result = cpu_render_main(
 		0, 16, 1, 5,  // Zero width
 		"test_invalid.ppm",
 		0, 278, 278, -800
 	);
 
-	// Should fail or handle gracefully
-	// (Current implementation may not check this)
-	EXPECT_TRUE(result == 0 || result != 0);  // Placeholder
+	EXPECT_EQ(result, ERR_INVALID_DIMENSIONS);
 
 	std::remove("test_invalid.ppm");
 }
@@ -195,7 +193,7 @@ TEST(InterfaceValidationTest, ZeroHeight) {
 		0, 278, 278, -800
 	);
 
-	EXPECT_TRUE(result == 0 || result != 0);  // Placeholder
+	EXPECT_EQ(result, ERR_INVALID_DIMENSIONS);
 	std::remove("test_invalid.ppm");
 }
 
@@ -209,7 +207,7 @@ TEST(InterfaceValidationTest, NegativeSamples) {
 		0, 278, 278, -800
 	);
 
-	EXPECT_TRUE(result == 0 || result != 0);  // Placeholder
+	EXPECT_EQ(result, ERR_INVALID_SAMPLE_COUNT);
 	std::remove("test_invalid.ppm");
 }
 
@@ -295,8 +293,9 @@ TEST(OutputFileTest, FileCreation) {
  * Test output path with directory
  */
 TEST(OutputFileTest, PathWithDirectory) {
-	// Note: This may require the directory to exist
-	// Current implementation may use OneDrive/Desktop default
+	// cpu_render_main creates missing parent directories for output_path
+	// (cpu_interface.cpp's std::filesystem::create_directories call), so a
+	// valid render request should succeed even into a not-yet-existing dir.
 	const char* output_path = "test_output/test_render.ppm";
 
 	int result = cpu_render_main(
@@ -305,8 +304,10 @@ TEST(OutputFileTest, PathWithDirectory) {
 		0, 278, 278, -800
 	);
 
-	// May succeed or fail depending on directory existence
-	EXPECT_TRUE(result == 0 || result != 0);  // Placeholder
+	EXPECT_EQ(result, SUCCESS);
+
+	std::remove(output_path);
+	std::filesystem::remove("test_output");
 }
 
 // ============================================================================

@@ -187,9 +187,6 @@
     <ClCompile Include="unit\math_tests.cpp" />
     <ClCompile Include="unit\interface_tests.cpp" />
     <!-- Integration Tests -->
-    <ClCompile Include="integration\serialization_tests.cpp">
-      <ExcludedFromBuild>true</ExcludedFromBuild>
-    </ClCompile>
     <ClCompile Include="integration\render_tests.cpp" />
     <ClCompile Include="integration\sppm_first_slice_test.cpp" />
     <ClCompile Include="integration\sppm_gpu_first_slice_test.cpp" />

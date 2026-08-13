@@ -386,9 +386,12 @@ TEST_F(WavefrontRenderTest, WavefrontBrightnessConsistentWithRecursive) {
 #else
 	setenv("RAY_TRACER_WAVEFRONT", "0", 1);
 #endif
+	// Recursive has real importance sampling (MIS/NEE), so it doesn't need
+	// anywhere near wavefront's 1000spp to produce a stable average for a
+	// 10x-factor tolerance check.
 	files_.push_back("wf_test_consistency_rec.ppm");
 	WFPPMImage rec;
-	if (optix_render_main(60, 60, 1000, 8, "wf_test_consistency_rec.ppm", 0,
+	if (optix_render_main(60, 60, 150, 8, "wf_test_consistency_rec.ppm", 0,
 						  278, 278, -800) == 0) {
 		rec = wf_load_ppm("wf_test_consistency_rec.ppm");
 	}
@@ -415,8 +418,10 @@ TEST_F(WavefrontRenderTest, WavefrontBrightnessConsistentWithRecursive) {
 
 // Test 5: Different samples per pixel produce different wavefront output
 TEST_F(WavefrontRenderTest, DifferentSPPProducesDifferentOutput) {
-	auto img_lo = renderWF("wf_test_spp_lo.ppm", 60, 60,   10, 5);
-	auto img_hi = renderWF("wf_test_spp_hi.ppm", 60, 60, 1000, 5);
+	// Only needs to prove random sampling noise differs between the two
+	// runs (avg_diff > 0.001) - 100 vs 10 is already an easy margin for that.
+	auto img_lo = renderWF("wf_test_spp_lo.ppm", 60, 60,  10, 5);
+	auto img_hi = renderWF("wf_test_spp_hi.ppm", 60, 60, 100, 5);
 	ASSERT_TRUE(img_lo.valid) << "Low-SPP wavefront render failed";
 	ASSERT_TRUE(img_hi.valid) << "High-SPP wavefront render failed";
 
