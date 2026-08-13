@@ -3328,13 +3328,19 @@ static bool build_loaded_pbrt_scene(
 				       static_cast<float>(c.up[1]),
 				       static_cast<float>(c.up[2]));
 	const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-	// focusDistanceFor() rather than c.focusDistance: pbrt's "no depth of
-	// field" default is the sentinel 1e6, and focus_dist scales the viewport
-	// here exactly as it does on the CPU. Passing the sentinel through made
-	// near geometry vanish once already.
+	// focus_dist is 1.0f, NOT the scene's focal distance - and that matches
+	// every other GPU scene in this file, all of which pass 1.0f.
+	//
+	// The two backends use this parameter differently. camera.h places the
+	// CPU viewport AT focus_dist, so there it must be a real world distance
+	// (see focusDistanceFor()'s comment in pbrt_flatten.h - feeding it pbrt's
+	// 1e6 "no depth of field" sentinel deleted near geometry). Here the
+	// viewport sits at unit distance, so anything other than 1.0f just scales
+	// it: passing a real focal distance like 800 makes the viewport 800x too
+	// wide and every primary ray misses the scene.
 	build_pinhole_camera_params(
 		lookfrom, lookat, vup, static_cast<float>(c.vfov), aspect,
-		static_cast<float>(pbrt_flatten::focusDistanceFor(c)), camera_params);
+		1.0f, camera_params);
 	return true;
 }
 

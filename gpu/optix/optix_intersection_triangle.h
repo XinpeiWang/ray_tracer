@@ -61,14 +61,22 @@ extern "C" __global__ void __closesthit__triangle() {
 	} else {
 		shading_normal = normalize(cross(tri.p1 - tri.p0, tri.p2 - tri.p0));
 	}
-	// Instanced geometry is stored in its definition's object space, so its
-	// normal has to come out to world space before it means anything against a
-	// world-space ray. A normal takes the inverse transpose, not the transform
-	// itself - OptiX's helper does that. For every non-instanced GAS the
-	// transform is identity and this is a no-op, which is why it can be
-	// applied unconditionally rather than branching on whether the scene has
-	// instances.
-	shading_normal = normalize(optixTransformNormalFromObjectToWorldSpace(shading_normal));
+	// NO object-to-world normal transform here.
+	//
+	// db7a609 added optixTransformNormalFromObjectToWorldSpace() at this
+	// point, ahead of object instancing, reasoning that a non-instanced GAS
+	// has an identity transform so the call would be a no-op. That reasoning
+	// was untested against a scene containing any triangles (scene 0, the
+	// regression check used, has zero) and it was wrong: with it in place
+	// every loaded pbrt scene rendered pure black on GPU. Confirmed by
+	// isolated bisection - removing only this line, output cleared and PTX
+	// recompiled before each measurement, brings the render back.
+	//
+	// When instancing is implemented for real, this belongs here again but
+	// gated on the geometry actually being instanced (e.g. only when
+	// params.instanceTriBase is non-null AND resolves to a real instance for
+	// this primitive) - and it must be re-verified against a scene that
+	// actually contains triangles, not scene 0.
 
 	const bool front_face = dot(ray_dir, shading_normal) < 0.0f;
 	const float3 final_normal = front_face ? shading_normal : -shading_normal;

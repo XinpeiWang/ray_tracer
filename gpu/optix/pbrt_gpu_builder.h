@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "scene_builder.h"
+#include "optix_math_helpers.h"   // cross(), dot(), length() - used below
 #include "../../src/shared/pbrt_flatten.h"
 #include "../../src/shared/pbrt_quadify.h"
 
@@ -170,8 +171,24 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		qd.Q = f3(q.Q);
 		qd.u = f3(q.u);
 		qd.v = f3(q.v);
+		// w = u x v DIRECTLY, matching every other GPU quad builder in
+		// scene_builder.cpp (grep quad.w = quad_cross / lc there) - NOT the
+		// n/dot(n,n) reciprocal that the CPU-side RTIOW quad.h barycentric
+		// trick uses, which is a different convention for a different purpose.
+		//
+		// gpu/optix/optix_device_helpers.h's sample_quad_light() reads
+		// `area = length(quad.w)` on the documented assumption "w = u x v, so
+		// |w| = area". Handing it n/dot(n,n) instead gives |w| = 1/area, which
+		// silently inverts that assumption: the light's NEE pdf comes out
+		// scaled by area^2 (~1.86e8 for this scene's ~13650-unit light quad),
+		// and dividing radiance by a pdf that far too large is indistinguishable
+		// from no light at all once quantized to 8 bits. Confirmed by dumping
+		// the raw pre-tonemap framebuffer: values were finite, positive, and
+		// real (not NaN, not exactly zero) but capped at ~4.7e-7 - light WAS
+		// reaching every surface, just at a hundred-millionth of its true
+		// magnitude, which 8-bit output cannot represent as anything but black.
 		const float3 n = cross(qd.u, qd.v);
-		qd.w = make_float3(n.x / dot(n, n), n.y / dot(n, n), n.z / dot(n, n));
+		qd.w = n;
 		const float len = sqrtf(dot(n, n));
 		qd.normal = make_float3(n.x / len, n.y / len, n.z / len);
 		qd.D = dot(qd.normal, qd.Q);
