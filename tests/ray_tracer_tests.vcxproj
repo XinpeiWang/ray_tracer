@@ -117,6 +117,7 @@
     <ClCompile Include="unit\pbrt_gpu_instance_sphere_tests.cpp" />
     <ClCompile Include="unit\pbrt_gpu_triangle_light_tests.cpp" />
     <ClCompile Include="unit\pbrt_gpu_light_coverage_tests.cpp" />
+    <ClCompile Include="unit\spherical_rectangle_adjudication_tests.cpp" />
     <ClCompile Include="unit\filter_tests.cpp" />
     <ClCompile Include="unit\hair_bxdf_tests.cpp" />
     <ClCompile Include="unit\halton_sampler_tests.cpp" />
