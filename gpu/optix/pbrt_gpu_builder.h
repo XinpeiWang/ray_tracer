@@ -53,6 +53,19 @@ inline float3 f3(const double *v) {
 					   static_cast<float>(v[2]));
 }
 
+// Mirrors pbrt_cpu_builder.h's reflectanceToConductorK() - see its comment
+// for why (a reflectance-only conductor, eta=1 solved for k via the
+// normal-incidence Schlick relation). Kept in sync by hand since one is
+// CPU-only (double, color) and the other GPU-only (float, float3); a shared
+// header for six lines was judged not worth the indirection.
+inline float3 reflectanceToConductorK(const float3 &r) {
+	const auto k1 = [](float x) {
+		x = x < 0.0f ? 0.0f : (x > 0.9999f ? 0.9999f : x);
+		return 2.0f * sqrtf(x) / sqrtf(fmaxf(1e-4f, 1.0f - x));
+	};
+	return make_float3(k1(r.x), k1(r.y), k1(r.z));
+}
+
 // Mirrors pbrt_cpu_builder.h's makeMaterial() decision for decision, including
 // emission winning over the declared material - in pbrt an AreaLightSource
 // attaches to the shape, and the surface is an emitter regardless of what else
@@ -98,9 +111,22 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		break;
 	case pbrt_flatten::MaterialKind::DiffuseTransmission:
 		d.type = MaterialType::DiffuseTransmission;
-		d.transmittance = d.albedo;
+		// Was d.albedo (the reflectance channel, already assigned above) -
+		// silently making transmittance identical to reflectance regardless
+		// of what the scene's own "transmittance" parameter said, before
+		// pbrt_flatten.h had anywhere to keep that value separately.
+		d.transmittance = make_float3(static_cast<float>(m.transmittance[0]),
+									  static_cast<float>(m.transmittance[1]),
+									  static_cast<float>(m.transmittance[2]));
 		break;
 	case pbrt_flatten::MaterialKind::CoatedConductor:
+		// Same reflectance-only approximation pbrt_cpu_builder.h uses (see
+		// its reflectanceToConductorK() comment) - eta=1, k solved from the
+		// albedo already read above as a normal-incidence reflectance.
+		d.type = MaterialType::CoatedConductor;
+		d.eta_c = make_float3(1.0f, 1.0f, 1.0f);
+		d.k_c = reflectanceToConductorK(d.albedo);
+		break;
 	case pbrt_flatten::MaterialKind::Diffuse:
 	case pbrt_flatten::MaterialKind::Unsupported:
 		d.type = MaterialType::Lambertian;

@@ -305,6 +305,59 @@ TEST(FlattenMaterialTest, DielectricEtaIsReadAsIor) {
 	EXPECT_DOUBLE_EQ(s.materials[0].ior, 1.33);
 }
 
+TEST(FlattenMaterialTest, RoughnessFallsBackToUOrVRoughnessWhenIsotropicIsAbsent) {
+	// A scene that only gives the anisotropic pair has no "roughness" key to
+	// find, and without a fallback chain that silently reads as 0 - a
+	// perfect mirror - regardless of what uroughness/vroughness said.
+	const FlatScene s = flattenSource(
+		"Material \"coateddiffuse\" \"float uroughness\" [ .25 ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].roughness, 0.25);
+}
+
+TEST(FlattenMaterialTest, VRoughnessIsUsedWhenNeitherRoughnessNorURoughnessIsGiven) {
+	const FlatScene s = flattenSource(
+		"Material \"coateddiffuse\" \"float vroughness\" [ .4 ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].roughness, 0.4);
+}
+
+TEST(FlattenMaterialTest, PlainRoughnessTakesPriorityOverTheAnisotropicPair) {
+	const FlatScene s = flattenSource(
+		"Material \"coateddiffuse\" \"float roughness\" [ .1 ] "
+		"\"float uroughness\" [ .9 ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].roughness, 0.1);
+}
+
+TEST(FlattenMaterialTest, DiffuseTransmissionReadsItsOwnTransmittanceColour) {
+	// Distinct from "reflectance" on purpose - a diffusetransmission material
+	// that let one silently stand in for the other would look identical from
+	// both sides, which is not what the scene asked for.
+	const FlatScene s = flattenSource(
+		"Material \"diffusetransmission\" \"rgb reflectance\" [ .8 .1 .1 ] "
+		"\"rgb transmittance\" [ .1 .1 .8 ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].kind, MaterialKind::DiffuseTransmission);
+	EXPECT_DOUBLE_EQ(s.materials[0].color[0], 0.8);
+	EXPECT_DOUBLE_EQ(s.materials[0].transmittance[2], 0.8);
+}
+
+TEST(FlattenMaterialTest, DiffuseTransmissionDefaultsMatchPbrt) {
+	// pbrt-v4's own default for this material is 0.25 for both channels, not
+	// the generic 0.5 mid-grey every other material defaults its colour to.
+	const FlatScene s = flattenSource(
+		"Material \"diffusetransmission\"\n" + std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].transmittance[0], 0.25);
+	EXPECT_DOUBLE_EQ(s.materials[0].transmittance[1], 0.25);
+	EXPECT_DOUBLE_EQ(s.materials[0].transmittance[2], 0.25);
+}
+
 TEST(FlattenMaterialTest, UnsupportedMaterialIsFlaggedNotSilentlySubstituted) {
 	// A subsurface material rendered as diffuse looks plausible and is wrong,
 	// so the substitution has to be announced.

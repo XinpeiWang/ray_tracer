@@ -26,6 +26,26 @@ namespace pbrt_cpu {
 
 namespace detail {
 
+// pbrt-v4 lets a conductor be given directly as a reflectance colour instead
+// of measured eta/k spectra (its own ConductorMaterial does exactly this
+// conversion when "reflectance" is bound rather than "eta"/"k"): an eta of 1
+// paired with k solved from the normal-incidence Schlick reflectance
+// r = ((eta-1)^2+k^2) / ((eta+1)^2+k^2), which at eta=1 reduces to
+// k = 2*sqrt(r) / sqrt(max(eps, 1-r)). CoatedConductor's own eta/k
+// sub-parameters ("conductor.eta"/"conductor.k") are a real pbrt-v4 syntax
+// this parser does not read yet (see pbrt_flatten.h's generic, unprefixed
+// "reflectance"/"k" lookup), so this conversion is the same approximation
+// tier plain Conductor already accepts here rather than a new one - a
+// coated metal rendered from its base colour instead of exact spectra,
+// clearly better than the flat Lambertian this used to fall back to.
+inline color reflectanceToConductorK(const color& r) {
+	const auto k1 = [](double x) {
+		x = x < 0.0 ? 0.0 : (x > 0.9999 ? 0.9999 : x);
+		return 2.0 * std::sqrt(x) / std::sqrt(std::fmax(1e-4, 1.0 - x));
+	};
+	return color(k1(r.x()), k1(r.y()), k1(r.z()));
+}
+
 // pbrt's material names already match ours (see pbrt_flatten.h), so this is
 // construction rather than interpretation. An Unsupported material becomes
 // diffuse - flatten() has already warned about it by name, so failing here
@@ -52,10 +72,17 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 	case pbrt_flatten::MaterialKind::Dielectric:
 	case pbrt_flatten::MaterialKind::ThinDielectric:
 		return std::make_shared<dielectric>(m.ior);
-	case pbrt_flatten::MaterialKind::Diffuse:
 	case pbrt_flatten::MaterialKind::CoatedDiffuse:
-	case pbrt_flatten::MaterialKind::CoatedConductor:
+		return std::make_shared<coated_diffuse>(albedo, m.ior, m.roughness);
+	case pbrt_flatten::MaterialKind::CoatedConductor: {
+		const color k = reflectanceToConductorK(albedo);
+		return std::make_shared<coated_conductor>(
+			1.0, 1.0, 1.0, k.x(), k.y(), k.z(), m.ior, m.roughness);
+	}
 	case pbrt_flatten::MaterialKind::DiffuseTransmission:
+		return std::make_shared<diffuse_transmission>(
+			albedo, color(m.transmittance[0], m.transmittance[1], m.transmittance[2]));
+	case pbrt_flatten::MaterialKind::Diffuse:
 	case pbrt_flatten::MaterialKind::Unsupported:
 		break;
 	}

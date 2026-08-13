@@ -81,6 +81,13 @@ struct Material {
 	double color[3] = {0.5, 0.5, 0.5}; // reflectance / albedo
 	double roughness = 0.0;
 	double ior = 1.5;
+	// DiffuseTransmission only: the light that passes through rather than
+	// reflects. pbrt-v4's own default (0.25) is closer to that material's
+	// intent than reusing `color`'s 0.5 default would be - a
+	// diffusetransmission with neither parameter set should look like a
+	// frosted panel passing about a quarter of the light each way, not a
+	// mirror-symmetric reflectance/transmittance split at 0.5/0.5.
+	double transmittance[3] = {0.25, 0.25, 0.25};
 };
 
 struct Emission {
@@ -333,9 +340,26 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				 "used instead");
 		}
 
-		m.roughness = md.params.getFloat("roughness", 0.0);
+		// "roughness" is pbrt's isotropic spelling; a scene that instead gives
+		// separate "uroughness"/"vroughness" (its anisotropic spelling) has no
+		// isotropic value to find, and without this fallback chain silently
+		// renders as a perfect mirror (roughness 0) regardless of what either
+		// one said - a much larger visual difference than the isotropic
+		// approximation this settles for (using whichever of the two is
+		// present; a scene with both must average them by hand, but that is
+		// rare in practice and this format has no field for true anisotropy).
+		m.roughness = md.params.getFloat("roughness",
+							md.params.getFloat("uroughness",
+								md.params.getFloat("vroughness", 0.0)));
 		// "eta" is pbrt's name for index of refraction on dielectrics.
 		m.ior = md.params.getFloat("eta", md.params.getFloat("ior", 1.5));
+
+		// DiffuseTransmission only, but harmless to read unconditionally: no
+		// other material kind has a "transmittance" parameter to collide with.
+		const pbrt_scene::Vec3 defT{m.transmittance[0], m.transmittance[1], m.transmittance[2]};
+		const pbrt_scene::Vec3 t = md.params.getVec3("transmittance", defT);
+		m.transmittance[0] = t.x; m.transmittance[1] = t.y; m.transmittance[2] = t.z;
+
 		out.materials.push_back(m);
 	}
 
@@ -433,8 +457,17 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 
 	for (const pbrt_scene::InstanceDecl &inst : scene.instances) {
 		int group = -1;
+		// Last match wins, matching pbrt's own name-rebinding semantics and
+		// the parser's own warning when ObjectBegin redefines a name ("the
+		// later definition replaces the earlier one" - pbrt_scene.h). A
+		// redefined object still leaves BOTH definitions in scene.objects
+		// (the parser doesn't erase the old one, only warns), so stopping at
+		// the first match here silently placed the earlier, supposedly-
+		// superseded definition instead - the exact opposite of what the
+		// warning told the user would happen. No `break`: keep scanning so
+		// the last (most recent) definition's index is what survives.
 		for (std::size_t g = 0; g < scene.objects.size(); ++g)
-			if (scene.objects[g].name == inst.name) { group = static_cast<int>(g); break; }
+			if (scene.objects[g].name == inst.name) group = static_cast<int>(g);
 		if (group < 0) {
 			warn("ObjectInstance names '" + inst.name +
 				 "', which was never defined; the instance is skipped");

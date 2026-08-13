@@ -132,3 +132,47 @@ TEST(PbrtCpuBuildTest, MaterialsAreSharedRatherThanCopiedPerPrimitive) {
 							 interval(0.001, infinity), c));
 	EXPECT_EQ(a.mat.get(), c.mat.get());
 }
+
+// ---------------------------------------------------------------------------
+// makeMaterial() used to fall through to lambertian for these three kinds
+// silently - no warning, unlike the genuinely-unsupported case - even though
+// coated_diffuse, coated_conductor and diffuse_transmission all already
+// existed in material_pbrt.h. That made CPU and GPU render the same pbrt
+// file with different materials for any scene using one of them. These pin
+// the real class getting built, not just that something renders.
+// ---------------------------------------------------------------------------
+
+TEST(PbrtCpuBuildTest, CoatedDiffuseBuildsTheRealMaterialNotLambertian) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Material \"coateddiffuse\" \"rgb reflectance\" [ .2 .4 .6 ] "
+		"\"float roughness\" [ .1 ]\n" + std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	EXPECT_NE(dynamic_cast<coated_diffuse *>(rec.mat.get()), nullptr)
+		<< "a pbrt coateddiffuse material must build the real coated_diffuse "
+		   "class, not silently fall back to lambertian";
+}
+
+TEST(PbrtCpuBuildTest, CoatedConductorBuildsTheRealMaterialNotLambertian) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Material \"coatedconductor\" \"rgb reflectance\" [ .8 .8 .8 ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	EXPECT_NE(dynamic_cast<coated_conductor *>(rec.mat.get()), nullptr)
+		<< "a pbrt coatedconductor material must build the real "
+		   "coated_conductor class, not silently fall back to lambertian";
+}
+
+TEST(PbrtCpuBuildTest, DiffuseTransmissionBuildsTheRealMaterialNotLambertian) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Material \"diffusetransmission\"\n" + std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	EXPECT_NE(dynamic_cast<diffuse_transmission *>(rec.mat.get()), nullptr)
+		<< "a pbrt diffusetransmission material must build the real "
+		   "diffuse_transmission class, not silently fall back to lambertian";
+}

@@ -183,6 +183,34 @@ TEST(PbrtInstanceTest, TheInstanceTransformComposesWithTheShapesOwn) {
 	EXPECT_NEAR(s.instances[0].xform[3], 100.0, 1e-12);
 }
 
+TEST(PbrtInstanceTest, RedefiningAnObjectMakesTheLaterDefinitionWin) {
+	// The parser warns "the later definition replaces the earlier one" when
+	// ObjectBegin reuses a name (pbrt_scene.h's ObjectBegin handling) - but
+	// it does not erase the earlier ObjectDecl, only warns and appends a
+	// second one under the same name, so flatten() is the one actually
+	// responsible for honouring that promise when ObjectInstance resolves
+	// the name. A vertex at a distinct x tells the two definitions apart.
+	const FlatScene s = build(
+		"ObjectBegin \"o\"\n"
+		"  Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"    \"point3 P\" [ 1 0 0  1 0 0  1 0 0 ]\n"
+		"ObjectEnd\n"
+		"ObjectBegin \"o\"\n"
+		"  Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"    \"point3 P\" [ 9 0 0  9 0 0  9 0 0 ]\n"
+		"ObjectEnd\n"
+		"ObjectInstance \"o\"\n");
+	EXPECT_TRUE(warned(s, "redefined"));
+	ASSERT_EQ(s.instances.size(), 1u);
+	const int g = s.instances[0].group;
+	ASSERT_GE(g, 0);
+	ASSERT_LT(static_cast<std::size_t>(g), s.groups.size());
+	ASSERT_EQ(s.groups[g].triangles.size(), 1u);
+	EXPECT_NEAR(s.groups[g].triangles[0].v[0], 9.0, 1e-12)
+		<< "ObjectInstance resolved to the earlier definition, contradicting "
+		   "the parser's own warning about which one would win";
+}
+
 TEST(PbrtInstanceTest, AnInstanceOfSomethingUndefinedIsNamedAndSkipped) {
 	const FlatScene s = build("ObjectInstance \"ghost\"\n");
 	EXPECT_TRUE(s.instances.empty());
