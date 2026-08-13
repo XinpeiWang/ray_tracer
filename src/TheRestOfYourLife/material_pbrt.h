@@ -197,6 +197,10 @@ class rough_dielectric : public material {
     double get_ior()       const { return ior; }
     double get_roughness() const { return alpha_x * alpha_x; }
 
+    // See material::is_shadow_transmissive()'s comment - matches
+    // optix_anyhit_shadow.h's MaterialType::RoughDielectric skip.
+    bool is_shadow_transmissive(const hit_record&) const override { return true; }
+
   private:
     double ior;
     double alpha_x, alpha_y;
@@ -317,6 +321,10 @@ class thin_dielectric : public material {
     }
 
     double get_ior() const { return ior; }
+
+    // See material::is_shadow_transmissive()'s comment - matches
+    // optix_anyhit_shadow.h's MaterialType::ThinDielectric skip.
+    bool is_shadow_transmissive(const hit_record&) const override { return true; }
 
   private:
     double ior;
@@ -490,6 +498,14 @@ class diffuse_transmission : public material {
     color get_reflectance()   const { return R; }
     color get_transmittance() const { return T; }
 
+    // See material::is_shadow_transmissive()'s comment - matches
+    // optix_anyhit_shadow.h's MaterialType::DiffuseTransmission skip.
+    // Unconditional, not weighted by R vs T, matching that same GPU
+    // convention: this material is treated as non-occluding outright rather
+    // than probabilistically, regardless of how much of its energy actually
+    // reflects.
+    bool is_shadow_transmissive(const hit_record&) const override { return true; }
+
   private:
     color R;  // reflectance (same-hemisphere diffuse)
     color T;  // transmittance (opposite-hemisphere diffuse)
@@ -615,6 +631,19 @@ class mix_material : public material {
     shared_ptr<material> get_mat_a()   const { return mat_a; }
     shared_ptr<material> get_mat_b()   const { return mat_b; }
     shared_ptr<texture>  get_weight()  const { return weight_tex; }
+
+    // GPU has no equivalent Mix material type, so there is no GPU convention
+    // to match here (unlike every other override in this file) - this is a
+    // CPU-only correctness improvement, extending the same principle
+    // scatter() already uses: stochastically resolve to whichever sub-material
+    // this particular shadow ray would have hit, weighted the same way a
+    // scatter event would be.
+    bool is_shadow_transmissive(const hit_record& rec) const override {
+        double w = weight_tex->value(rec.u, rec.v, rec.p).x();
+        w = w < 0.0 ? 0.0 : (w > 1.0 ? 1.0 : w);
+        return (random_double() >= w) ? mat_a->is_shadow_transmissive(rec)
+                                       : mat_b->is_shadow_transmissive(rec);
+    }
 
   private:
     shared_ptr<material> mat_a;

@@ -67,5 +67,26 @@ class material {
     const {
         return 0;
     }
+
+    // Whether a SHADOW ray's occlusion test should treat a hit on this
+    // material as "nothing there" and keep going, rather than as a blocker.
+    // Default false (opaque) is the conservative, correct default for
+    // anything that doesn't override it.
+    //
+    // Mirrors gpu/optix/optix_anyhit_shadow.h's per-type skip list exactly
+    // (Dielectric/RoughDielectric/ThinDielectric/DiffuseTransmission/Medium) -
+    // GPU has treated transmissive materials this way since that file was
+    // written; CPU's shadow-ray tests (shadow_ray.h) did not, because they
+    // predate it and were never updated to match. A glass sphere sitting
+    // between a shading point and an area light made CPU's simple
+    // "did the shadow ray hit ANYTHING" + "is that emissive" test find the
+    // glass, see a non-emissive material, and silently drop the sample as
+    // occluded - even though light physically passes through glass. See
+    // shadow_ray.h's own comment for the discovery (a real, measured
+    // CPU/GPU brightness divergence, not a hypothetical).
+    virtual bool is_shadow_transmissive(const hit_record& rec) const {
+        (void)rec;
+        return false;
+    }
 };
 

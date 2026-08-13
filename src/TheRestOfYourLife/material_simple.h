@@ -110,6 +110,10 @@ class dielectric : public material {
     // Accessor for serialization
     double get_refraction_index() const { return refraction_index; }
 
+    // See material::is_shadow_transmissive()'s comment - matches
+    // optix_anyhit_shadow.h's MaterialType::Dielectric skip.
+    bool is_shadow_transmissive(const hit_record&) const override { return true; }
+
   private:
     double refraction_index;
 };

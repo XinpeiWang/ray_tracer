@@ -17,6 +17,7 @@
 #include "material.h"
 #include "sky_light.h"
 #include "punctual_light_objects.h"
+#include "shadow_ray.h"
 #include "../shared/path_sampler.h"
 #include "../shared/sobol_sampler.h"
 #include "../shared/filter.h"
@@ -484,7 +485,7 @@ class camera {
                         double pdf_b_at_l = srec.pdf_ptr->value(light_dir);
                         double w_l        = mis_power_heuristic(pdf_l, pdf_b_at_l);
                         hit_record light_rec;
-                        if (world.hit(shadow_ray, interval(0.001, infinity), light_rec)) {
+                        if (shadow_ray_hit(world, shadow_ray, light_rec)) {
                             color Le_d = light_rec.mat->emitted(
                                 shadow_ray, light_rec, light_rec.u, light_rec.v, light_rec.p);
                             if (Le_d.x() > 0 || Le_d.y() > 0 || Le_d.z() > 0)
@@ -508,7 +509,7 @@ class camera {
                         double pdf_b_at_sky = srec.pdf_ptr->value(sky_dir);
                         double w_sky        = mis_power_heuristic(pdf_sky, pdf_b_at_sky);
                         hit_record sky_rec;
-                        if (!world.hit(sky_shadow, interval(0.001, infinity), sky_rec)) {
+                        if (!shadow_ray_hit(world, sky_shadow, sky_rec)) {
                             color Le_sky = sky->Le(unit_vector(sky_dir));
                             L += beta * w_sky * srec.attenuation * f_pdf * Le_sky / pdf_sky;
                         }
@@ -526,9 +527,9 @@ class camera {
                                                            ray(rec.p, ps.wi, current_ray.time()));
                     if (f_pdf <= 0.0) return;
                     hit_record shadow_rec;
-                    interval shadow_t(0.001, ps.t_max - 0.001);
-                    if (ps.t_max == infinity) shadow_t = interval(0.001, infinity);
-                    if (!world.hit(ray(rec.p, ps.wi, current_ray.time()), shadow_t, shadow_rec)) {
+                    double shadow_t_max = (ps.t_max == infinity) ? infinity : (ps.t_max - 0.001);
+                    if (!shadow_ray_hit(world, ray(rec.p, ps.wi, current_ray.time()),
+                                        shadow_rec, shadow_t_max)) {
                         // delta light: pdf=1, no MIS weight needed
                         L += beta * srec.attenuation * f_pdf * ps.Li;
                     }

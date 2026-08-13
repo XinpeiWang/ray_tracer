@@ -31,6 +31,7 @@
 #include "camera.h"
 #include "power_light_sampler.h"
 #include "color.h"
+#include "shadow_ray.h"
 #include "thread_count.h"     // determine_render_thread_count()
 #include "../shared/bdpt.h"   // BDPTHit, BDPTLightLeSample
 #include "../shared/sppm.h"   // SPPMPixel, SPPMCameraPass, SPPMPhotonPass, SPPMUpdateRadius, SPPMFinalImage
@@ -500,7 +501,7 @@ class SPPMSceneAdapter {
 				if (pdf_l > 0.0 && cos_i > 0.0) {
 					hit_record light_rec;
 					ray shadow_ray(P, dir);
-					if (world_.hit(shadow_ray, interval(0.001, infinity), light_rec)) {
+					if (shadow_ray_hit(world_, shadow_ray, light_rec)) {
 						color Le = light_rec.mat
 							? light_rec.mat->emitted(shadow_ray, light_rec, light_rec.u, light_rec.v, light_rec.p)
 							: color(0, 0, 0);
@@ -531,8 +532,8 @@ class SPPMSceneAdapter {
 				BSDFf(bsdf_id, wo, wi, n, f);
 				if (f[0] <= 0.0 && f[1] <= 0.0 && f[2] <= 0.0) return;
 				hit_record shadow_rec;
-				interval shadow_t(0.001, ps.t_max == infinity ? infinity : ps.t_max - 0.001);
-				if (!world_.hit(ray(P, ps.wi), shadow_t, shadow_rec)) {
+				double shadow_t_max = (ps.t_max == infinity) ? infinity : (ps.t_max - 0.001);
+				if (!shadow_ray_hit(world_, ray(P, ps.wi), shadow_rec, shadow_t_max)) {
 					Ld[0] += f[0] * cos_i * ps.Li.x();
 					Ld[1] += f[1] * cos_i * ps.Li.y();
 					Ld[2] += f[2] * cos_i * ps.Li.z();
@@ -560,7 +561,7 @@ class SPPMSceneAdapter {
 				if (cos_i > 0.0) {
 					hit_record sky_rec;
 					ray sky_shadow(P, dir);
-					if (!world_.hit(sky_shadow, interval(0.001, infinity), sky_rec)) {
+					if (!shadow_ray_hit(world_, sky_shadow, sky_rec)) {
 						double wi[3] = { dir.x(), dir.y(), dir.z() };
 						double f[3];
 						BSDFf(bsdf_id, wo, wi, n, f);

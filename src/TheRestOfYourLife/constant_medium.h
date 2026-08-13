@@ -67,6 +67,15 @@ class hg_phase_material : public material {
         return phase.pdf(wo.x(), wo.y(), wo.z(), wi.x(), wi.y(), wi.z());
     }
 
+    // See material::is_shadow_transmissive()'s comment - matches
+    // optix_anyhit_shadow.h's MaterialType::Medium skip. Both sides make the
+    // same simplification here: a shadow ray through fog is treated as fully
+    // unattenuated rather than integrating real Beer-Lambert transmittance
+    // (constant_medium::transmittance() exists for that but nothing calls
+    // it yet) - "unoccluded" is closer to correct than "fully blocked", which
+    // is what happened before this override existed.
+    bool is_shadow_transmissive(const hit_record&) const override { return true; }
+
   private:
     color albedo;
     HenyeyGreensteinPhaseFunction<double> phase;
