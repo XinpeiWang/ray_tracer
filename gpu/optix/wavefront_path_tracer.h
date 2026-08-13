@@ -48,6 +48,21 @@ public:
     /// scene.
     void setInstancePrimBase(CUdeviceptr p) { d_instancePrimBase_ = p; }
 
+    /// Texture metadata + shared pixel buffer (OptiXRenderer's own
+    /// d_textures_/d_texturePixels_, already uploaded once at buildScene()
+    /// time for the recursive path). Same setter-not-render()-parameter
+    /// pattern as setInstancePrimBase() above, for the same reason: render()
+    /// is a virtual override shared with RecursivePathTracer, and widening
+    /// it would churn an interface for data only this backend reads this way
+    /// (the recursive path gets it through LaunchParams instead). 0/0 (the
+    /// default) is a valid "no textures in this scene" state - MaterialType::
+    /// Lambertian/NormalMappedLambertian hits with textureIdx < 0 never
+    /// dereference either pointer.
+    void setTextures(CUdeviceptr d_textures, CUdeviceptr d_texturePixels) {
+        d_textures_ = d_textures;
+        d_texturePixels_ = d_texturePixels;
+    }
+
     /// Whether the scene has instanced geometry of each kind. buildSBT() must
     /// append the same dedicated hit-record pairs, in the same order, that
     /// OptiXRenderer::buildSBT() does - the IAS instances carry sbtOffsets
@@ -75,6 +90,8 @@ private:
         const GpuAliasEntry* d_aliasTable, unsigned int numLights,
         const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
         float3* d_framebuffer);
+    // Not a launchX-style param above deliberately - see setTextures()'s
+    // comment for why textures travel via member state instead.
     void launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor);
     void launchAccumulateShadow(int numShadow, const bool* d_occluded, float3* d_framebuffer);
     void launchNormalizeFramebuffer(unsigned int numPixels, float invSPP, float3* d_framebuffer);
@@ -123,6 +140,8 @@ private:
     int          queueCapacity_ = 0;
     std::string  ptxPath_;
     CUdeviceptr  d_instancePrimBase_ = 0;   ///< see setInstancePrimBase()
+    CUdeviceptr  d_textures_ = 0;           ///< see setTextures()
+    CUdeviceptr  d_texturePixels_ = 0;
     bool         haveInstancedTriangles_ = false;  ///< see setInstancedGeometryFlags()
     bool         haveInstancedSpheres_ = false;
     unsigned int numSpheres_  = 0;

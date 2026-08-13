@@ -73,7 +73,10 @@ struct WfHitPayload {
 	int    materialIdx;
 	int    geomType;   // 0 = sphere, 1 = quad
 	bool   hit;
-	float  mediumTFar; // MaterialType::Medium only - see HitWorkItem::mediumTFar
+	float  mediumTFar; // MaterialType::Medium/DielectricMedium only - see HitWorkItem::mediumTFar
+	int    frontFace;  // see HitWorkItem::frontFace
+	float3 objNormal;  // sphere-only - see HitWorkItem::objNormal
+	float  uv_u, uv_v; // see HitWorkItem::uv_u/uv_v
 };
 
 struct WfShadowPayload {
@@ -122,6 +125,10 @@ extern "C" __global__ void __raygen__wf_intersect() {
 		h.materialIdx = payload.materialIdx;
 		h.geomType    = payload.geomType;
 		h.mediumTFar  = payload.mediumTFar;
+		h.frontFace   = payload.frontFace;
+		h.objNormal   = payload.objNormal;
+		h.uv_u        = payload.uv_u;
+		h.uv_v        = payload.uv_v;
 		h.rayOrigin   = ray.origin;
 		h.rayDir      = ray.direction;
 		for (int i = 0; i < kWFNWavelengths; ++i) {
@@ -368,6 +375,10 @@ extern "C" __global__ void __closesthit__wf_bilinear_patch() {
 	payload->geomType    = 2;
 	payload->hit         = true;
 	payload->mediumTFar  = 0.0f;
+	// No texturing support for bilinear patches on either backend yet - see
+	// __closesthit__wf_quad's own comment on the same convention.
+	payload->uv_u        = 0.0f;
+	payload->uv_v        = 0.0f;
 }
 
 // ============================================================================
@@ -433,7 +444,19 @@ extern "C" __global__ void __intersection__wf_triangle() {
 	const float t = tScaled * invDet;
 	if (t < ray_tmin || t > ray_tmax) return;
 
-	optixReportIntersection(t, 0, 0, 0, 0, 0);
+	// Barycentric weights for p0/p1/p2, same convention optixGetTriangleBarycentrics()
+	// uses on the recursive (native-triangle) path: b1 weights p1, b2 weights
+	// p2, b0=1-b1-b2 weights p0 (see optix_intersection_triangle.h's comment).
+	// e0/e1/e2 above are already proportional to the point-vs-opposite-edge
+	// signed areas (this IS a Möller-Trumbore/Woop-style barycentric test),
+	// so dividing by their sum (det) gives the weights directly - no extra
+	// work, just exposing numbers this program already computed. These two
+	// attribute slots were unused (hardcoded 0) before; not a payload/ABI
+	// change, since attribute count is fixed by pipelineCompileOptions
+	// regardless of how many of the 4 a given intersection program fills in.
+	const float b1 = e1 * invDet;
+	const float b2 = e2 * invDet;
+	optixReportIntersection(t, 0, __float_as_int(b1), __float_as_int(b2), 0, 0);
 }
 
 extern "C" __global__ void __closesthit__wf_triangle() {
@@ -460,6 +483,21 @@ extern "C" __global__ void __closesthit__wf_triangle() {
 	bool front_face = dot(ray_dir, geom_normal) < 0.0f;
 	float3 normal = front_face ? geom_normal : -geom_normal;
 
+	// Barycentric-interpolated UV, matching optix_intersection_triangle.h's
+	// closesthit exactly - tri.hasUVs gates it the same way tri.hasNormals
+	// gates smooth-normal interpolation there (this program stays flat-shaded
+	// regardless, see this function's own header comment; UV is independent
+	// of that and is the one piece MaterialType::Lambertian's textureIdx
+	// actually needs).
+	float uv_u = 0.0f, uv_v = 0.0f;
+	if (tri.hasUVs) {
+		const float b1 = __int_as_float(optixGetAttribute_0());
+		const float b2 = __int_as_float(optixGetAttribute_1());
+		const float b0 = 1.0f - b1 - b2;
+		uv_u = b0 * tri.uv0.x + b1 * tri.uv1.x + b2 * tri.uv2.x;
+		uv_v = b0 * tri.uv0.y + b1 * tri.uv1.y + b2 * tri.uv2.y;
+	}
+
 	payload->hitPoint    = hit_point;
 	payload->normal      = normal;
 	payload->t           = t_hit;
@@ -467,6 +505,8 @@ extern "C" __global__ void __closesthit__wf_triangle() {
 	payload->geomType    = 3;
 	payload->hit         = true;
 	payload->mediumTFar  = 0.0f;
+	payload->uv_u        = uv_u;
+	payload->uv_v        = uv_v;
 }
 
 // ============================================================================
@@ -499,12 +539,24 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 	const SphereData& sph = wf_params.spheres[sphereIdx];
 	float3 obj_hit = hit_point;
 	if (instBase >= 0) obj_hit = optixTransformPointFromWorldToObjectSpace(hit_point);
-	float3 outward_normal = normalize(obj_hit - sph.center);
+	// Kept OBJECT-space (never transformed) for UV purposes, matching
+	// optix_intersection_sphere.h's own obj_normal/outward_normal split - a
+	// texture stays pinned to the geometry as a placement rotates it, which a
+	// world-space UV wouldn't. outward_normal below is the (possibly
+	// world-transformed) copy used for shading/dpdu.
+	const float3 obj_normal = normalize(obj_hit - sph.center);
+	float3 outward_normal = obj_normal;
 	if (instBase >= 0)
 		outward_normal = normalize(optixTransformNormalFromObjectToWorldSpace(outward_normal));
 	// Flip to face the ray
 	bool front_face = dot(ray_dir, outward_normal) < 0.0f;
 	float3 normal = front_face ? outward_normal : -outward_normal;
+
+	// Sphere UV - matches CPU's get_sphere_uv() / optix_intersection_sphere.h
+	// exactly (uses the raw, un-flipped obj_normal - UV is a property of the
+	// surface point, independent of which side the ray hit from).
+	const float sphere_theta = acosf(-obj_normal.y);
+	const float sphere_phi = atan2f(-obj_normal.z, obj_normal.x) + 3.14159265358979323846f;
 
 	payload->hitPoint    = hit_point;
 	payload->normal      = normal;
@@ -513,16 +565,25 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 	payload->geomType    = 0;
 	payload->hit         = true;
 	payload->mediumTFar  = 0.0f;
+	payload->frontFace   = front_face ? 1 : 0;
+	payload->objNormal   = outward_normal;
+	payload->uv_u        = sphere_phi / (2.0f * 3.14159265358979323846f);
+	payload->uv_v        = sphere_theta / 3.14159265358979323846f;
 
-	// MaterialType::Medium: override with the entry (near) / exit (far) roots
-	// recomputed relative to the CURRENT ray origin, matching optix_intersection_
-	// sphere.h's __closesthit__sphere Medium case. optixGetRayTmax() alone isn't
-	// enough - it reports whichever single root the intersection program found
-	// valid, which is the FAR root when this ray already starts inside the
-	// sphere (e.g. continuing after a prior in-medium scatter). Recomputing both
-	// roots here handles that re-entry case the same way the recursive path does.
+	// MaterialType::Medium (always) and MaterialType::DielectricMedium (exit
+	// surface only, front_face false - its entry surface just refracts/
+	// reflects normally, no re-intersection needed there): override with the
+	// entry (near) / exit (far) roots recomputed relative to the CURRENT ray
+	// origin, matching optix_intersection_sphere.h's __closesthit__sphere.
+	// optixGetRayTmax() alone isn't enough - it reports whichever single root
+	// the intersection program found valid, which is the FAR root when this
+	// ray already starts inside the sphere (e.g. continuing after a prior
+	// in-medium scatter). Recomputing both roots here handles that re-entry
+	// case the same way the recursive path does.
 	const MaterialData& sph_mat = wf_params.materials[sph.materialIdx];
-	if (sph_mat.type == MaterialType::Medium) {
+	const bool needsNearFar = (sph_mat.type == MaterialType::Medium) ||
+		(sph_mat.type == MaterialType::DielectricMedium && !front_face);
+	if (needsNearFar) {
 		float3 unit_dir = normalize(ray_dir);
 		float3 oc2 = ray_orig - sph.center;
 		float half_b2 = dot(oc2, unit_dir);
@@ -561,6 +622,13 @@ extern "C" __global__ void __closesthit__wf_quad() {
 	payload->materialIdx = q.materialIdx;
 	payload->geomType    = 1;
 	payload->hit         = true;
+	payload->mediumTFar  = 0.0f;
+	// No per-quad UV exists on this codebase's GPU side (QuadData carries no
+	// uv0/1/2 the way TriangleData does) - matches the recursive path, which
+	// never textures a quad either (its shade_material() callers pass (0,0)
+	// for every quad hit).
+	payload->uv_u        = 0.0f;
+	payload->uv_v        = 0.0f;
 }
 
 // ============================================================================

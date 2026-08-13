@@ -42,6 +42,7 @@ extern "C" void wf_launch_evaluate_materials(
 	const MaterialData*, unsigned int,
 	const int*, const GpuLightKind*, const GpuAliasEntry*, unsigned int,
 	const PunctualLightGPU*, unsigned int,
+	const TextureData*, const unsigned char*,
 	int, cudaStream_t);
 extern "C" void wf_launch_accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, cudaStream_t);
 extern "C" void wf_launch_accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*, cudaStream_t);
@@ -749,6 +750,8 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		d_materials, numMaterials,
 		d_lightIndices, d_lightKinds, d_aliasTable, numLights,
 		d_punctualLights, numPunctualLights,
+		reinterpret_cast<const TextureData*>(d_textures_),
+		reinterpret_cast<const unsigned char*>(d_texturePixels_),
 		maxDepth, stream_);
 }
 

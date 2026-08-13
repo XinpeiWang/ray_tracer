@@ -1704,6 +1704,7 @@ bool OptiXRenderer::render(
 		// Set per render rather than once at enable time, so a scene switch
 		// cannot leave a previous scene's table wired in.
 		wavefrontTracer_->setInstancePrimBase(d_instanceBase_);
+		wavefrontTracer_->setTextures(d_textures_, d_texturePixels_);
 		return wavefrontTracer_->render(
 			(int)width, (int)height, (int)samplesPerPixel, (int)maxDepth,
 			gpuCam,

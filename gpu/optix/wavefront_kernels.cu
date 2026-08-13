@@ -28,7 +28,9 @@
 #include "fresnel.h"
 #include "microfacet.h"
 #include "math_utils.h"
-#include "bxdfs.h"  // HairBxDF<T> - see MaterialType::Hair
+#include "bxdfs.h"  // HairBxDF<T>/PrincipledBxDF<T> - see MaterialType::Hair/Principled
+#include "../../src/shared/noise.h"       // turbulence_simple - see wf_sample_texture()
+#include "../../src/shared/normal_map.h"  // apply_normal_map - see MaterialType::NormalMappedLambertian
 
 // ============================================================================
 // Device helpers (shared with optix_programs.cu logic)
@@ -115,12 +117,99 @@ __device__ __forceinline__ bool wf_sample_hair_material(
 	return true;
 }
 
+// Samples a texture by index - duplicated from optix_device_helpers.h's
+// sample_texture (with the wf_ prefix), matching this file's existing
+// pattern of not sharing device helpers with the recursive path. Only
+// called when MaterialData::textureIdx >= 0 (Lambertian/NormalMappedLambertian).
+__device__ __forceinline__ float3 wf_sample_texture(
+	const TextureData* textures, const unsigned char* texturePixels,
+	int textureIdx, float u, float v, const float3& p)
+{
+	const TextureData& tex = textures[textureIdx];
+	if (tex.kind == TextureKind::Image) {
+		if (tex.width <= 0 || tex.height <= 0) return make_float3(0.0f, 1.0f, 1.0f);
+		const float uc = fminf(fmaxf(u, 0.0f), 1.0f);
+		const float vc = 1.0f - fminf(fmaxf(v, 0.0f), 1.0f);
+		const int i = min(static_cast<int>(uc * tex.width), tex.width - 1);
+		const int j = min(static_cast<int>(vc * tex.height), tex.height - 1);
+		const unsigned char* px = texturePixels + tex.pixelOffset + (j * tex.width + i) * 3;
+		constexpr float kColorScale = 1.0f / 255.0f;
+		return make_float3(px[0] * kColorScale, px[1] * kColorScale, px[2] * kColorScale);
+	} else if (tex.kind == TextureKind::Checker) {
+		const int xi = static_cast<int>(floorf(tex.noiseScale * p.x));
+		const int yi = static_cast<int>(floorf(tex.noiseScale * p.y));
+		const int zi = static_cast<int>(floorf(tex.noiseScale * p.z));
+		const bool is_even = ((xi + yi + zi) % 2) == 0;
+		return is_even ? tex.color1 : tex.color2;
+	} else {
+		const float turb = turbulence_simple<float>(p.x, p.y, p.z, 0.5f, 7);
+		const float s = 0.5f * (1.0f + sinf(tex.noiseScale * p.z + 10.0f * turb));
+		return make_float3(s, s, s);
+	}
+}
+
+// MaterialType::Principled: Disney/pbrt-v4-style multi-lobe BSDF, duplicated
+// from optix_device_helpers.h's sample_principled_material (with the wf_
+// prefix) rather than shared, matching this file's existing pattern of not
+// sharing device helpers with the recursive path. Field reuse: albedo=base
+// color, ior=ior, fuzz=roughness, eta_c.x=metallic, eta_c.y=clearcoat,
+// eta_c.z=clearcoat_rough - see MaterialType::Principled's comment in
+// optix_types.h.
+__device__ __forceinline__ bool wf_sample_principled_material(
+	const float3& ray_dir, const float3& normal, const MaterialData& mat,
+	unsigned int& seed, float3& scattered_dir, float3& attenuation)
+{
+	PrincipledBxDF<float> bxdf{
+		mat.albedo.x, mat.albedo.y, mat.albedo.z,
+		mat.eta_c.x,   // metallic
+		mat.fuzz,      // roughness
+		mat.ior,
+		mat.eta_c.y,   // clearcoat
+		mat.eta_c.z }; // clearcoat_rough
+
+	float3 unit_dir = normalize(ray_dir);
+	float u1 = wf_rand(seed), u2 = wf_rand(seed), u3 = wf_rand(seed);
+
+	auto res = bxdf.sample(
+		normal.x, normal.y, normal.z,
+		unit_dir.x, unit_dir.y, unit_dir.z,
+		u1, u2, u3);
+
+	if (!res.valid) return false;
+
+	scattered_dir = make_float3(res.wo_x, res.wo_y, res.wo_z);
+	attenuation   = make_float3(res.r, res.g, res.b);
+	return true;
+}
+
 // reflect/refract wrappers
 __device__ __forceinline__ float3 wf_reflect(const float3& v, const float3& n) {
 	return cpu_gpu_reflect(v, n);
 }
 __device__ __forceinline__ float3 wf_refract(const float3& v, const float3& n, float e) {
 	return cpu_gpu_refract<float3, float>(v, n, e);
+}
+
+// Smooth dielectric reflect-or-refract, duplicated from optix_device_helpers.h's
+// dielectric_scatter (with the wf_ prefix) - shared by MaterialType::Dielectric's
+// existing inline handling (kept as-is, not routed through this) and
+// MaterialType::DielectricMedium's entry-surface case below, which needs
+// this exact surface interaction alongside its own medium free-path
+// sampling that doesn't fit a single self-contained case block the way
+// Dielectric's does.
+__device__ __forceinline__ float3 wf_dielectric_scatter(
+	const float3& ray_dir, const float3& normal, bool front_face, float ior, unsigned int& seed)
+{
+	float ri = front_face ? (1.0f / ior) : ior;
+	float3 unit_direction = normalize(ray_dir);
+	float cos_theta = fminf(dot(-unit_direction, normal), 1.0f);
+	float sin_theta = sqrtf(1.0f - cos_theta * cos_theta);
+	bool cannot_refract = ri * sin_theta > 1.0f;
+	if (cannot_refract || FrDielectric(cos_theta, 1.0f / ri) > wf_rand(seed)) {
+		return wf_reflect(unit_direction, normal);
+	} else {
+		return wf_refract(unit_direction, normal, ri);
+	}
 }
 
 // MIS power heuristic (balance if both 0)
@@ -594,6 +683,8 @@ extern "C" __global__ void evaluate_materials(
 	unsigned int numLights,
 	const PunctualLightGPU* punctualLights,
 	unsigned int numPunctualLights,
+	const TextureData*  textures,
+	const unsigned char* texturePixels,
 	int maxDepth
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -722,7 +813,10 @@ extern "C" __global__ void evaluate_materials(
 	case MaterialType::Lambertian: {
 		scattered_dir = normalize(normal + wf_rand_unit(seed));
 		if (wf_near_zero(scattered_dir)) scattered_dir = normal;
-		attenuation = albedoSpectrum(mat.albedo);
+		const float3 lambertianColor = (mat.textureIdx >= 0)
+			? wf_sample_texture(textures, texturePixels, mat.textureIdx, h.uv_u, h.uv_v, hit_point)
+			: mat.albedo;
+		attenuation = albedoSpectrum(lambertianColor);
 		scattered   = true;
 		is_specular = false;
 		break;
@@ -833,10 +927,40 @@ extern "C" __global__ void evaluate_materials(
 			attenuation   = SS(1.f);
 			is_specular   = true;
 		} else {
-			scattered_dir = normalize(normal + wf_rand_unit(seed));
-			if (wf_near_zero(scattered_dir)) scattered_dir = normal;
-			attenuation = albedoSpectrum(mat.albedo);
-			is_specular = false;
+			// Multi-bounce escape through the coat, matching
+			// optix_device_helpers.h's shade_material() CoatedDiffuse case
+			// (see its own comment for why this replaced a single Lambertian
+			// bounce + one exit attempt: giving up immediately on a failed
+			// exit test discards that sample's energy entirely, rendering
+			// far too dark, rather than retrying like the real layered
+			// material's random walk does). No explicit NEE here either,
+			// matching CPU's coated_diffuse (skip_pdf - pbrt-v4's
+			// LayeredBxDF has no closed-form f(wo,wi) to aim a shadow ray
+			// at), which is why `is_specular` is true even on this branch.
+			constexpr int kMaxCoatBounces = 8;
+			float3 beta = make_float3(1.0f - Fr, 1.0f - Fr, 1.0f - Fr);
+			float3 diff_dir = cdn;
+			bool escaped = false;
+			for (int cb = 0; cb < kMaxCoatBounces; ++cb) {
+				diff_dir = cdn + wf_rand_unit(seed);
+				if (wf_near_zero(diff_dir)) diff_dir = cdn;
+				diff_dir = normalize(diff_dir);
+				beta.x *= mat.albedo.x; beta.y *= mat.albedo.y; beta.z *= mat.albedo.z;
+
+				float dw_x = dot(diff_dir, cdtan), dw_y = dot(diff_dir, cdbitan), dw_z = dot(diff_dir, cdn);
+				float dwm_x, dwm_y, dwm_z;
+				cd_dist.Sample_wm(dw_x, dw_y, dw_z, wf_rand(seed), wf_rand(seed), dwm_x, dwm_y, dwm_z);
+				float cos_out = dw_x*dwm_x + dw_y*dwm_y + dw_z*dwm_z;
+				float F_out = FrDielectric(cos_out, 1.0f / mat.ior);
+				if (wf_rand(seed) < F_out) continue;  // TIR: bounce again
+				beta.x *= (1.0f - F_out); beta.y *= (1.0f - F_out); beta.z *= (1.0f - F_out);
+				escaped = true;
+				break;
+			}
+			if (!escaped) { scattered = false; break; }
+			attenuation   = albedoSpectrum(beta);
+			scattered_dir = diff_dir;
+			is_specular   = true;
 		}
 		scattered = (dot(scattered_dir, normal) > 0.0f);
 		break;
@@ -940,6 +1064,26 @@ extern "C" __global__ void evaluate_materials(
 		// recursive-path handling exactly: albedo = reflectance R (same
 		// hemisphere), emission = transmittance T (reused field, not
 		// derived as 1-R), max-component probability weighting.
+		//
+		// is_specular = true (this material's BSDF is genuinely non-specular,
+		// but the flag here means "skip the caller's generic NEE block", see
+		// below): recursive's own shade_material() case for this material has
+		// no explicit light-sampling code at all, so setting is_specular=false
+		// here (matching a naive reading of "diffuse = non-specular") made
+		// this branch the ONLY one of the two backends' NEE blocks that ran
+		// for DiffuseTransmission - and it ran with the caller's hardcoded
+		// Lambertian-shaped 1/pi white BRDF default, which is wrong on two
+		// counts: it ignores mat.albedo's actual color entirely, and it can't
+		// tell the reflective lobe (BRDF = R/pi) from the transmissive one
+		// (BRDF = T/pi, and only for a light on the FAR side of the surface,
+		// which the block's `dot(to_light, normal) > 0` gate would wrongly
+		// reject anyway). CPU's own diffuse_transmission material (see
+		// material_pbrt.h) DOES support real two-hemisphere NEE via its own
+		// cosine_pdf(±normal)/skip_pdf=false machinery - a real BRDF-aware fix
+		// here would port that, not just disable NEE - but until that lands on
+		// both GPU backends, disabling it here removes the wrong, colour-blind
+		// contribution and matches what recursive already (implicitly) ships:
+		// zero explicit NEE, all illumination via the BSDF-sampled bounce.
 		float3 R = mat.albedo;
 		float3 T_col = mat.emission;
 		float pr = fmaxf(R.x, fmaxf(R.y, R.z));
@@ -956,7 +1100,7 @@ extern "C" __global__ void evaluate_materials(
 			attenuation = albedoSpectrum(T_col);
 		}
 		scattered   = true;
-		is_specular = false;
+		is_specular = true;
 		break;
 	}
 	case MaterialType::NormalizedFresnel: {
@@ -1010,6 +1154,104 @@ extern "C" __global__ void evaluate_materials(
 		// albedoSpectrum) since it's already divided by the sample pdf.
 		float3 sdir, atten;
 		if (wf_sample_hair_material(h.rayDir, normal, mat, seed, sdir, atten)) {
+			scattered_dir = sdir;
+			attenuation   = unboundedSpectrum(atten);
+			scattered     = true;
+		} else {
+			scattered = false;
+		}
+		is_specular = true;
+		break;
+	}
+	case MaterialType::DielectricMedium: {
+		// Combined dielectric surface + internal medium - mirrors
+		// optix_intersection_sphere.h's closesthit case exactly. On entry
+		// (h.frontFace) the direct dielectric surface always wins the bounce
+		// (the medium's sampled hit distance can never be closer than the
+		// entry surface), so just refract/reflect normally. On the exit
+		// surface (frontFace false), __closesthit__wf_sphere already
+		// recomputed the near/far roots into h.t/h.mediumTFar (same
+		// mechanism as MaterialType::Medium above) - sample a free path
+		// through that interior segment and either scatter via the HG phase
+		// function or fall through to a normal exit refraction/reflection
+		// at the far surface.
+		if (h.frontFace) {
+			attenuation   = SS(1.f);
+			scattered_dir = wf_dielectric_scatter(h.rayDir, normal, true, mat.ior, seed);
+		} else {
+			float t_near = h.t;
+			float t_far  = h.mediumTFar;
+			float dist_inside = fmaxf(0.0f, t_far - t_near);
+			float sigma_t = mat.eta_c.x;  // dielectric_medium_extra.sigma_t
+			float free_path = (sigma_t > 1e-8f) ? (-logf(fmaxf(1e-8f, 1.0f - wf_rand(seed))) / sigma_t) : 1e30f;
+			float3 unit_dir = normalize(h.rayDir);
+			if (free_path < dist_inside) {
+				float medium_t = t_near + free_path;
+				hit_point     = h.rayOrigin + medium_t * unit_dir;
+				scattered_dir = wf_sample_henyey_greenstein(unit_dir, mat.fuzz, seed);
+				attenuation   = albedoSpectrum(mat.albedo);
+			} else {
+				hit_point     = h.rayOrigin + t_far * unit_dir;
+				attenuation   = SS(1.f);
+				scattered_dir = wf_dielectric_scatter(h.rayDir, normal, false, mat.ior, seed);
+			}
+		}
+		scattered   = true;
+		is_specular = true;  // no NEE/MIS for volume scattering, matches Medium above
+		break;
+	}
+	case MaterialType::NormalMappedLambertian: {
+		// Lambertian with a perturbed shading normal from a tangent-space
+		// RGB normal-map texture - mirrors optix_intersection_sphere.h's
+		// closesthit case exactly. dpdu comes from h.objNormal (the sphere's
+		// raw, possibly-world-transformed-if-instanced outward normal -
+		// see HitWorkItem::objNormal), cross with world up, falling back to
+		// (1,0,0) at the poles where that cross product degenerates.
+		float3 dpdu;
+		{
+			const float3 world_up = make_float3(0.0f, 1.0f, 0.0f);
+			const float3 t = cross(world_up, h.objNormal);
+			const float tlen = length(t);
+			dpdu = (tlen > 1e-6f) ? (t / tlen) : make_float3(1.0f, 0.0f, 0.0f);
+		}
+
+		// Decode the tangent-space normal from the map texture: 2*RGB-1,
+		// normalize (fallback (0,0,1) i.e. "no perturbation" if degenerate) -
+		// matches CPU's normal_map_material::apply() exactly.
+		const float3 packed = wf_sample_texture(textures, texturePixels, mat.textureIdx, h.uv_u, h.uv_v, hit_point);
+		float ns_x = 2.0f * packed.x - 1.0f;
+		float ns_y = 2.0f * packed.y - 1.0f;
+		float ns_z = 2.0f * packed.z - 1.0f;
+		const float ns_len = sqrtf(ns_x * ns_x + ns_y * ns_y + ns_z * ns_z);
+		if (ns_len > 1e-8f) { ns_x /= ns_len; ns_y /= ns_len; ns_z /= ns_len; }
+		else                { ns_x = 0.0f; ns_y = 0.0f; ns_z = 1.0f; }
+
+		float out_nx, out_ny, out_nz;
+		apply_normal_map(ns_x, ns_y, ns_z, normal.x, normal.y, normal.z,
+			dpdu.x, dpdu.y, dpdu.z, out_nx, out_ny, out_nz);
+		normal = make_float3(out_nx, out_ny, out_nz);  // perturbed shading normal;
+		                                                // NEE below reads this same
+		                                                // outer-scope `normal`.
+
+		// Shade as plain Lambertian (mat.albedo) using the perturbed normal -
+		// reuses the Lambertian case's logic rather than duplicating it.
+		// textureIdx means "normal map" for this material type, not "albedo
+		// texture" (matches recursive - CPU never combines the two).
+		scattered_dir = normalize(normal + wf_rand_unit(seed));
+		if (wf_near_zero(scattered_dir)) scattered_dir = normal;
+		attenuation = albedoSpectrum(mat.albedo);
+		scattered   = true;
+		is_specular = false;
+		break;
+	}
+	case MaterialType::Principled: {
+		// Disney/pbrt-v4-style multi-lobe BSDF - see wf_sample_principled_material's
+		// comment above. Matches principled_material.h's skip_pdf=true: no
+		// NEE/MIS (is_specular=true), and the result needs unboundedSpectrum
+		// (not albedoSpectrum) since it's already divided by the sample pdf -
+		// same convention as MaterialType::Hair above.
+		float3 sdir, atten;
+		if (wf_sample_principled_material(h.rayDir, normal, mat, seed, sdir, atten)) {
 			scattered_dir = sdir;
 			attenuation   = unboundedSpectrum(atten);
 			scattered     = true;

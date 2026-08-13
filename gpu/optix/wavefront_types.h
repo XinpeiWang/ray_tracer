@@ -55,13 +55,44 @@ struct HitWorkItem {
 	int    materialIdx;
 	int    geomType;           // 0 = sphere, 1 = quad, 2 = bilinear patch, 3 = triangle (unused beyond bookkeeping - not read anywhere)
 
-	// MaterialType::Medium only: `t` above holds the entry (near) root of the
-	// medium sphere's boundary; this holds the exit (far) root. Both are
+	// MaterialType::Medium and MaterialType::DielectricMedium (exit surface,
+	// i.e. front-facing false) only: `t` above holds the entry (near) root of
+	// the medium sphere's boundary; this holds the exit (far) root. Both are
 	// recomputed in closesthit relative to the CURRENT ray origin (handles a
 	// ray that already starts inside the sphere, e.g. continuing after a
 	// prior in-medium scatter event) - see __closesthit__wf_sphere. Unused
-	// (0) for all other material types.
+	// (0) for every other material type, and for DielectricMedium's entry
+	// surface (frontFace true - see that field below).
 	float  mediumTFar;
+
+	// True if the ray hit the front (outward-facing) side of the surface,
+	// i.e. the same thing `front_face` means in optix_intersection_sphere.h.
+	// Lost once `normal` below is flipped to always oppose the incident ray
+	// (see __closesthit__wf_sphere), so it has to travel separately -
+	// MaterialType::DielectricMedium needs it to pick between its entry
+	// (refract/reflect the dielectric surface) and exit (re-enter the
+	// internal medium, or exit-refract) behaviour. Meaningless (left 0) for
+	// every material that doesn't branch on it.
+	int    frontFace;
+
+	// Sphere-only, OBJECT-space (never transformed to world, even for an
+	// instanced placement - mirrors optix_intersection_sphere.h's obj_normal)
+	// raw outward normal, i.e. BEFORE the front-face flip that produced
+	// `normal` above. MaterialType::NormalMappedLambertian's tangent (dpdu)
+	// is derived from this, matching the recursive path exactly. Zero for
+	// quad/triangle hits and for any sphere material that doesn't read it.
+	float3 objNormal;
+
+	// Surface texture coordinates. Sphere: standard spherical (theta,phi)
+	// mapping, computed in __closesthit__wf_sphere from objNormal, matching
+	// CPU's get_sphere_uv() and optix_intersection_sphere.h's sphere_uv_u/v.
+	// Triangle: barycentric-interpolated from TriangleData::uv0/1/2 when
+	// tri.hasUVs (matches optix_intersection_triangle.h), else 0. Quad: no
+	// per-quad UV exists on this codebase's GPU side (matches the recursive
+	// path, which never textures a quad either), always 0. Only meaningful
+	// for MaterialType::Lambertian/NormalMappedLambertian with
+	// MaterialData::textureIdx >= 0.
+	float  uv_u, uv_v;
 
 	// Incident ray (needed to evaluate material)
 	float3 rayOrigin;
