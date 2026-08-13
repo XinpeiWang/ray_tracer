@@ -5,8 +5,16 @@ extern "C" __global__ void __intersection__sphere() {
 	// Get primitive index from OptiX
 	const unsigned int primIdx = optixGetPrimitiveIndex();
 
+	// A primitive index is local to its GAS, so an instanced definition's
+	// sphere 0 and the scene's sphere 0 are different spheres. See
+	// LaunchParams::instancePrimBase - one table serves triangles and spheres
+	// alike because a GAS only ever holds one of the two.
+	const int instBase = params.instancePrimBase
+		? params.instancePrimBase[optixGetInstanceId()] : -1;
+	const unsigned int sphBase = (instBase >= 0) ? (unsigned int)instBase : 0u;
+
 	// Fetch sphere data from device array
-	const SphereData& sphere = params.spheres[primIdx];
+	const SphereData& sphere = params.spheres[sphBase + primIdx];
 
 	// Motion blur: interpolate to this ray's time. lerp(center, center1, 0)
 	// == center exactly, so this is a provable no-op for every sphere in
@@ -21,9 +29,23 @@ extern "C" __global__ void __intersection__sphere() {
 		sphere.center.z + ray_time * (sphere.center1.z - sphere.center.z)
 	);
 
-	// Get ray parameters
-	const float3 ray_orig = optixGetWorldRayOrigin();
-	const float3 ray_dir = optixGetWorldRayDirection();
+	// OBJECT space, not world. The sphere's centre/radius are stored in
+	// whatever space its GAS was built in, and for an instanced definition
+	// that is the definition's own - so the test has to happen there too.
+	//
+	// This is not a special case for instanced geometry: the scene's own GAS
+	// instances carry an identity transform, for which OptiX's object-space
+	// ray IS the world-space ray, so the non-instanced path is unchanged by
+	// construction rather than by a branch. Intersecting in object space is
+	// also what makes a placement with a non-uniform scale come out as the
+	// ellipsoid the scene asked for.
+	//
+	// t needs no rescaling between the two spaces: OptiX transforms the ray
+	// direction WITHOUT renormalising it, so the same t parameter names the
+	// same point in both, and reporting it against the world-space tmin/tmax
+	// below is correct.
+	const float3 ray_orig = optixGetObjectRayOrigin();
+	const float3 ray_dir = optixGetObjectRayDirection();
 	const float ray_tmin = optixGetRayTmin();
 	const float ray_tmax = optixGetRayTmax();
 
@@ -65,12 +87,21 @@ extern "C" __global__ void __closesthit__sphere() {
 	// Get primitive index
 	const unsigned int primIdx = optixGetPrimitiveIndex();
 
+	// Same base lookup the intersection program above does - see its comment.
+	// Read again here (rather than passed through an attribute) because it
+	// also gates the object-to-world normal transform below.
+	const int instBase = params.instancePrimBase
+		? params.instancePrimBase[optixGetInstanceId()] : -1;
+	const unsigned int sphBase = (instBase >= 0) ? (unsigned int)instBase : 0u;
+
 	// Fetch sphere data from device array
-	const SphereData& sphere = params.spheres[primIdx];
+	const SphereData& sphere = params.spheres[sphBase + primIdx];
 	const int matIdx = sphere.materialIdx;
 	const MaterialData& mat = params.materials[matIdx];
 
-	// Reconstruct sphere data from attributes
+	// Reconstruct sphere data from attributes. OBJECT space, matching the
+	// intersection program that reported them; identical to world space for
+	// every non-instanced sphere, whose instance transform is the identity.
 	const float3 sphere_center = make_float3(
 		__int_as_float(optixGetAttribute_0()),
 		__int_as_float(optixGetAttribute_1()),
@@ -78,14 +109,36 @@ extern "C" __global__ void __closesthit__sphere() {
 	);
 	const float sphere_radius = __int_as_float(optixGetAttribute_3());
 
-	// Get hit point
+	// Get hit point. The shading position and view direction stay in WORLD
+	// space - they feed lighting, which is world-space throughout - while the
+	// surface normal is derived in object space just below and brought back.
 	const float t = optixGetRayTmax();
 	const float3 ray_orig = optixGetWorldRayOrigin();
 	const float3 ray_dir = optixGetWorldRayDirection();
 	const float3 hit_point = ray_orig + t * ray_dir;
 
-	// Compute normal
-	float3 outward_normal = (hit_point - sphere_center) / sphere_radius;
+	// Compute the normal in the sphere's own space, where it is exactly radial
+	// and unit length however the placement scales it, then carry it to world
+	// space through the inverse-transpose. Doing it the other way round - a
+	// world-space (hit - centre) - is what would turn a scaled instance's
+	// ellipsoid back into a sphere for shading purposes.
+	//
+	// The hit point is brought the other way, by transform rather than by
+	// rebuilding the ray: optixGetObjectRay*() is legal in an intersection
+	// program but NOT in a closest-hit one (OptiX rejects the module outright:
+	// "Illegal call to optixGetObjectRayOrigin ... with semantic type
+	// CLOSESTHIT"), whereas the transform helpers are available here.
+	//
+	// Both transforms are skipped entirely, not merely applied as no-ops, for
+	// non-instanced geometry (instBase < 0) - so that path costs nothing and
+	// stays bit-for-bit what it computed before instancing existed.
+	float3 obj_hit = hit_point;
+	if (instBase >= 0) obj_hit = optixTransformPointFromWorldToObjectSpace(hit_point);
+	const float3 obj_normal = (obj_hit - sphere_center) / sphere_radius;
+	float3 outward_normal = obj_normal;
+	if (instBase >= 0) {
+		outward_normal = normalize(optixTransformNormalFromObjectToWorldSpace(obj_normal));
+	}
 	const bool front_face = dot(ray_dir, outward_normal) < 0.0f;
 	const float3 normal = front_face ? outward_normal : -outward_normal;
 
@@ -94,9 +147,11 @@ extern "C" __global__ void __closesthit__sphere() {
 	// CPU's get_sphere_uv() (sphere.h:131-144) exactly, using the raw
 	// outward_normal (not the front-face-corrected one) since UV mapping
 	// is a property of the surface point, independent of which side the
-	// ray hit from.
-	const float sphere_theta = acosf(-outward_normal.y);
-	const float sphere_phi = atan2f(-outward_normal.z, outward_normal.x) + 3.14159265358979323846f;
+	// ray hit from. Uses the OBJECT-space normal, so a texture stays pinned
+	// to the geometry as a placement rotates it - which is also what the CPU
+	// does, since transform_instance hands the child an object-space ray.
+	const float sphere_theta = acosf(-obj_normal.y);
+	const float sphere_phi = atan2f(-obj_normal.z, obj_normal.x) + 3.14159265358979323846f;
 	const float sphere_uv_u = sphere_phi / (2.0f * 3.14159265358979323846f);
 	const float sphere_uv_v = sphere_theta / 3.14159265358979323846f;
 
@@ -128,6 +183,17 @@ extern "C" __global__ void __closesthit__sphere() {
 			// free-path distance via Beer-Lambert inversion; if it lands
 			// before the exit, scatter via the HG phase function, else pass
 			// straight through and continue from the exit point.
+			//
+			// This and the DielectricMedium branch below are the two places
+			// still mixing the WORLD ray with the now-object-space centre.
+			// That is sound rather than sloppy: the only spheres whose two
+			// spaces differ are instanced ones, and instanced spheres reach
+			// here only from a .pbrt file, whose material set (see
+			// pbrt_gpu_builder.h's makeMaterial) has no Medium or
+			// DielectricMedium in it at all. Built-in scenes 12/13, which do
+			// use them, have no instancing - so the combination is
+			// unreachable, and leaving these on world space keeps their
+			// verified output bit-for-bit unchanged.
 			float3 unit_dir = normalize(ray_dir);
 			float3 oc2 = ray_orig - sphere_center;
 			float half_b2 = dot(oc2, unit_dir);
@@ -297,8 +363,12 @@ extern "C" __global__ void __closesthit__sphere() {
 		// This is the solid-angle PDF used by the NEE sampler, enabling MIS in raygen.
 		float light_pdf_for_incoming = 0.0f;
 		if (params.aliasTable && params.numLights > 0) {
-			// Find selection PMF for this sphere in the alias table
-			int prim_idx = (int)primIdx;
+			// Find selection PMF for this sphere in the alias table. The
+			// GLOBAL index, since lightIndices holds indices into the one flat
+			// sphere array. An instanced sphere is never emissive (flatten()
+			// bakes emitters per placement instead), so its index simply never
+			// matches - which is the correct answer, not a missed case.
+			int prim_idx = (int)(sphBase + primIdx);
 			float sel_pdf = 0.0f;
 			for (unsigned int li = 0; li < params.numLights; ++li) {
 				if (params.lightIndices[li] == prim_idx && params.isLightSphere[li]) {

@@ -100,8 +100,8 @@ extern "C" int optix_render_main(
 			// so instance data is part of what "this scene is already
 			// uploaded" means: a scene switch that reuses geometry must not
 			// keep a PREVIOUS scene's placements around.
-			g_renderer->setInstanceData(scene.instanceTriangles, scene.instanceGroups,
-										scene.instancePlacements);
+			g_renderer->setInstanceData(scene.instanceTriangles, scene.instanceSpheres,
+										scene.instanceGroups, scene.instancePlacements);
 			if (!g_renderer->buildScene(scene.spheres, scene.quads, scene.materials,
 										 scene.lightIndices, scene.isLightSphere,
 										 scene.punctualLights, scene.bilinearPatches,
@@ -119,7 +119,17 @@ extern "C" int optix_render_main(
 		// Enable wavefront mode if requested via env var RAY_TRACER_WAVEFRONT=1
 #pragma warning(suppress: 4996)
 		const char* wfEnv = std::getenv("RAY_TRACER_WAVEFRONT");
-		if (wfEnv && std::string(wfEnv) == "1") {
+		if (wfEnv && std::string(wfEnv) == "1" && g_renderer->hasInstancePlacements()) {
+			// The wavefront tracer builds its OWN shader binding table from
+			// primitive counts alone, so it knows nothing about the extra
+			// records and per-instance base offsets that placed geometry
+			// needs - it would read the wrong primitives rather than fail.
+			// Declining is the honest answer; silently rendering nonsense is
+			// not.
+			std::cerr << "[OptiX] warning: wavefront mode does not support object "
+					     "instancing; rendering this scene with the default "
+					     "path tracer instead.\n";
+		} else if (wfEnv && std::string(wfEnv) == "1") {
 			// Derive PTX path: same directory as output_path, or executable directory
 			std::string ptxPath;
 			std::string outStr(output_path);
@@ -285,8 +295,8 @@ extern "C" int optix_render_main_sppm(
 			// so instance data is part of what "this scene is already
 			// uploaded" means: a scene switch that reuses geometry must not
 			// keep a PREVIOUS scene's placements around.
-			g_renderer->setInstanceData(scene.instanceTriangles, scene.instanceGroups,
-										scene.instancePlacements);
+			g_renderer->setInstanceData(scene.instanceTriangles, scene.instanceSpheres,
+										scene.instanceGroups, scene.instancePlacements);
 			if (!g_renderer->buildScene(scene.spheres, scene.quads, scene.materials,
 			                             scene.lightIndices, scene.isLightSphere,
 			                             scene.punctualLights, scene.bilinearPatches,

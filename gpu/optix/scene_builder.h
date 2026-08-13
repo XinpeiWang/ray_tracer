@@ -23,16 +23,24 @@ struct SceneData {
 	//
 	// The renderer builds one GAS per group over its sub-range, and the base
 	// index is what the device adds to optixGetPrimitiveIndex() to recover the
-	// global triangle - see LaunchParams::instanceTriBase.
+	// global primitive - see LaunchParams::instancePrimBase.
+	//
+	// Triangles and spheres are tracked separately because OptiX cannot put
+	// them in one acceleration structure (native triangles vs custom AABB
+	// primitives), so a group holding both becomes TWO GASes and a single
+	// placement of it becomes two instance-hierarchy entries.
 	struct InstanceGroupGPU {
 		int triangleBase = 0;    // first triangle in `instanceTriangles`
 		int triangleCount = 0;
+		int sphereBase = 0;      // first sphere in `instanceSpheres`
+		int sphereCount = 0;
 	};
 	struct InstancePlacementGPU {
 		int group = -1;
 		float transform[12] = {1,0,0,0, 0,1,0,0, 0,0,1,0};  // OptiX 3x4 row-major
 	};
 	std::vector<TriangleData> instanceTriangles;   // object space
+	std::vector<SphereData> instanceSpheres;       // object space
 	std::vector<InstanceGroupGPU> instanceGroups;
 	std::vector<InstancePlacementGPU> instancePlacements;
 

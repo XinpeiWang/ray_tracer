@@ -605,9 +605,17 @@ bool OptiXRenderer::buildScene(
 	if (!textures.empty())
 		std::cout << "[OptiX] Uploaded " << textures.size() << " textures (" << texturePixels.size() << " pixel bytes) to GPU\n";
 
-	// Store sphere data on device
-	numSpheres_ = static_cast<unsigned int>(spheres.size());
-	size_t sphereSize = spheres.size() * sizeof(SphereData);
+	// Store sphere data on device. Like the triangle array below, this holds
+	// the scene's own world-space spheres followed by every instance
+	// definition's object-space ones, because the device indexes a single flat
+	// array whichever GAS a hit came from. sceneSphereCount_ marks the
+	// boundary; only the leading world-space run takes part in the scene's own
+	// acceleration structure and light list.
+	sceneSphereCount_ = static_cast<unsigned int>(spheres.size());
+	std::vector<SphereData> allSpheres = spheres;
+	allSpheres.insert(allSpheres.end(), instanceSpheres_.begin(), instanceSpheres_.end());
+	numSpheres_ = static_cast<unsigned int>(allSpheres.size());
+	size_t sphereSize = allSpheres.size() * sizeof(SphereData);
 
 	if (d_spheres_) {
 		cudaFree(reinterpret_cast<void*>(d_spheres_));
@@ -616,12 +624,15 @@ bool OptiXRenderer::buildScene(
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_spheres_), sphereSize));
 	CUDA_CHECK(cudaMemcpy(
 		reinterpret_cast<void*>(d_spheres_),
-		spheres.data(),
+		allSpheres.data(),
 		sphereSize,
 		cudaMemcpyHostToDevice
 	));
 
-	std::cout << "[OptiX] Uploaded " << spheres.size() << " spheres to GPU\n";
+	std::cout << "[OptiX] Uploaded " << spheres.size() << " spheres to GPU";
+	if (!instanceSpheres_.empty())
+		std::cout << " (+" << instanceSpheres_.size() << " in instance definitions)";
+	std::cout << "\n";
 
 	// Store quad data on device
 	numQuads_ = static_cast<unsigned int>(quads.size());
@@ -1218,9 +1229,12 @@ bool OptiXRenderer::buildScene(
 	// singleton, so these are member vectors that must be rebuilt (and their
 	// old device memory freed) every buildScene() call, same reasoning as
 	// gasCustomHandle_/gasTriHandle_ above.
-	for (CUdeviceptr p : d_gasGroups_) if (p) cudaFree(reinterpret_cast<void*>(p));
-	d_gasGroups_.assign(instanceGroups_.size(), 0);
-	gasGroupHandles_.assign(instanceGroups_.size(), 0);
+	for (CUdeviceptr p : d_gasGroupTri_) if (p) cudaFree(reinterpret_cast<void*>(p));
+	for (CUdeviceptr p : d_gasGroupSphere_) if (p) cudaFree(reinterpret_cast<void*>(p));
+	d_gasGroupTri_.assign(instanceGroups_.size(), 0);
+	gasGroupTriHandles_.assign(instanceGroups_.size(), 0);
+	d_gasGroupSphere_.assign(instanceGroups_.size(), 0);
+	gasGroupSphereHandles_.assign(instanceGroups_.size(), 0);
 
 	for (std::size_t g = 0; g < instanceGroups_.size(); ++g) {
 		const SceneData::InstanceGroupGPU& grp = instanceGroups_[g];
@@ -1267,12 +1281,78 @@ bool OptiXRenderer::buildScene(
 			context_, stream_, &triAccelOptions, &groupBuildInput, 1,
 			d_groupTemp, groupBufferSizes.tempSizeInBytes,
 			d_groupOutput, groupBufferSizes.outputSizeInBytes,
-			&gasGroupHandles_[g], nullptr, 0));
+			&gasGroupTriHandles_[g], nullptr, 0));
 		CUDA_CHECK(cudaStreamSynchronize(stream_));
 		cudaFree(reinterpret_cast<void*>(d_groupTemp));
 		cudaFree(reinterpret_cast<void*>(d_groupVerts));
 
-		d_gasGroups_[g] = d_groupOutput;
+		d_gasGroupTri_[g] = d_groupOutput;
+	}
+
+	// Spheres in a definition need a SECOND GAS of their own: they are custom
+	// AABB primitives, which OptiX refuses to put in the same structure as the
+	// native triangles above. Their AABBs are computed in the definition's
+	// object space and stay there - the placement's transform is applied by
+	// traversal, which is what lets a non-uniform scale produce an ellipsoid
+	// instead of a resized sphere.
+	for (std::size_t g = 0; g < instanceGroups_.size(); ++g) {
+		const SceneData::InstanceGroupGPU& grp = instanceGroups_[g];
+		if (grp.sphereCount <= 0) continue;
+
+		std::vector<OptixAabb> groupAabbs;
+		groupAabbs.reserve(static_cast<std::size_t>(grp.sphereCount));
+		for (int i = 0; i < grp.sphereCount; ++i) {
+			const SphereData& s = instanceSpheres_[static_cast<std::size_t>(grp.sphereBase + i)];
+			OptixAabb aabb;
+			aabb.minX = s.center.x - s.radius;
+			aabb.minY = s.center.y - s.radius;
+			aabb.minZ = s.center.z - s.radius;
+			aabb.maxX = s.center.x + s.radius;
+			aabb.maxY = s.center.y + s.radius;
+			aabb.maxZ = s.center.z + s.radius;
+			groupAabbs.push_back(aabb);
+		}
+
+		CUdeviceptr d_groupAabb = 0;
+		size_t groupAabbSize = groupAabbs.size() * sizeof(OptixAabb);
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_groupAabb), groupAabbSize));
+		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_groupAabb), groupAabbs.data(),
+			groupAabbSize, cudaMemcpyHostToDevice));
+
+		CUdeviceptr d_groupAabbKeys[1] = { d_groupAabb };
+		std::vector<uint32_t> groupSphereFlags(groupAabbs.size(), OPTIX_GEOMETRY_FLAG_NONE);
+		OptixBuildInput groupSphereInput = {};
+		groupSphereInput.type = OPTIX_BUILD_INPUT_TYPE_CUSTOM_PRIMITIVES;
+		groupSphereInput.customPrimitiveArray.aabbBuffers = d_groupAabbKeys;
+		groupSphereInput.customPrimitiveArray.numPrimitives = static_cast<unsigned int>(groupAabbs.size());
+		groupSphereInput.customPrimitiveArray.flags = groupSphereFlags.data();
+		groupSphereInput.customPrimitiveArray.numSbtRecords = 1;
+		groupSphereInput.customPrimitiveArray.sbtIndexOffsetBuffer = 0;
+		groupSphereInput.customPrimitiveArray.sbtIndexOffsetSizeInBytes = 0;
+		groupSphereInput.customPrimitiveArray.sbtIndexOffsetStrideInBytes = 0;
+
+		// triAccelOptions rather than customAccelOptions: that one carries the
+		// scene's motion keys, and an instance definition never moves (a pbrt
+		// ObjectInstance has one static transform). numKeys=0 is what this
+		// wants regardless of sceneHasMotion_.
+		OptixAccelBufferSizes groupBufferSizes;
+		OPTIX_CHECK(optixAccelComputeMemoryUsage(
+			context_, &triAccelOptions, &groupSphereInput, 1, &groupBufferSizes));
+
+		CUdeviceptr d_groupTemp = 0, d_groupOutput = 0;
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_groupTemp), groupBufferSizes.tempSizeInBytes));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_groupOutput), groupBufferSizes.outputSizeInBytes));
+
+		OPTIX_CHECK(optixAccelBuild(
+			context_, stream_, &triAccelOptions, &groupSphereInput, 1,
+			d_groupTemp, groupBufferSizes.tempSizeInBytes,
+			d_groupOutput, groupBufferSizes.outputSizeInBytes,
+			&gasGroupSphereHandles_[g], nullptr, 0));
+		CUDA_CHECK(cudaStreamSynchronize(stream_));
+		cudaFree(reinterpret_cast<void*>(d_groupTemp));
+		cudaFree(reinterpret_cast<void*>(d_groupAabb));
+
+		d_gasGroupSphere_[g] = d_groupOutput;
 	}
 
 	if (d_gasCustom_) cudaFree(reinterpret_cast<void*>(d_gasCustom_));
@@ -1280,50 +1360,71 @@ bool OptiXRenderer::buildScene(
 	if (d_gasTri_) cudaFree(reinterpret_cast<void*>(d_gasTri_));
 	d_gasTri_ = d_gasTriOutput;
 
-	// Top-level IAS: one static-identity instance per non-empty child GAS.
+	// Top-level IAS: one static-identity instance per non-empty child GAS,
+	// then one further instance per instanced-geometry placement.
+	//
+	// SBT LAYOUT AND WHY INSTANCED GEOMETRY GETS ITS OWN RECORDS
+	// A child GAS's hit record is found at
+	//     instance.sbtOffset + build_input_index * RAY_TYPE_COUNT + ray_type,
+	// and the scene's custom-primitive region is packed with no gaps for
+	// absent types, so a build input's index there depends on which OTHER
+	// types the scene happens to contain. An instance GAS has exactly one
+	// build input (index 0), so pointing it into that packed region would
+	// only work by coincidence - and for spheres, which sort FIRST among the
+	// custom types, it would go wrong the moment a scene has instanced
+	// spheres but no world-space ones. So buildSBT() appends a dedicated
+	// record pair per instanced geometry type after everything else, and
+	// these offsets address those. See buildSBT()'s own parameters.
+	const bool haveInstancedTriangles = !instanceTriangles_.empty();
+	const bool haveInstancedSpheres = !instanceSpheres_.empty();
 	const int numCustomPrimSbtRecords = 2 * (int)(!spheres.empty() + !quads.empty() + !bilinearPatches.empty());
+	const int sceneTriSbtOffset = numCustomPrimSbtRecords;
+	const int instTriSbtOffset = numCustomPrimSbtRecords + (triangles.empty() ? 0 : 2);
+	const int instSphereSbtOffset = instTriSbtOffset + (haveInstancedTriangles ? 2 : 0);
+
 	static const float kIdentity[12] = { 1,0,0,0, 0,1,0,0, 0,0,1,0 };
 	std::vector<OptixInstance> instances;
-	if (gasCustomHandle_) {
+	// instancePrimBase, built in lockstep with `instances` so that entry i
+	// describes instance id i - the id is assigned as the push position
+	// rather than a fixed number, because how many entries exist before a
+	// placement now depends on which child GASes the scene has. -1 means
+	// "already world space, base 0" (see LaunchParams::instancePrimBase).
+	std::vector<int> baseTable;
+	const auto addInstance = [&](OptixTraversableHandle handle, const float* xform,
+								 int sbtOffset, int primBase) {
 		OptixInstance inst{};
-		memcpy(inst.transform, kIdentity, sizeof(kIdentity));
-		inst.instanceId = 0;
-		inst.sbtOffset = 0;
+		memcpy(inst.transform, xform, sizeof(inst.transform));
+		inst.instanceId = static_cast<unsigned int>(instances.size());
+		inst.sbtOffset = static_cast<unsigned int>(sbtOffset);
 		inst.visibilityMask = 255;
 		inst.flags = OPTIX_INSTANCE_FLAG_NONE;
-		inst.traversableHandle = gasCustomHandle_;
+		inst.traversableHandle = handle;
 		instances.push_back(inst);
-	}
-	if (gasTriHandle_) {
-		OptixInstance inst{};
-		memcpy(inst.transform, kIdentity, sizeof(kIdentity));
-		inst.instanceId = 1;
-		inst.sbtOffset = numCustomPrimSbtRecords;
-		inst.visibilityMask = 255;
-		inst.flags = OPTIX_INSTANCE_FLAG_NONE;
-		inst.traversableHandle = gasTriHandle_;
-		instances.push_back(inst);
-	}
-	// One instance per PLACEMENT (not per group) - the same group GAS can be
-	// referenced by many instances, each with its own transform. IDs start
-	// at 2 since custom-prims/triangles above always claim 0/1 (even when
-	// absent - see their own comments), and every triangle instance -
-	// native or placed - shares the same hit-group pair, so sbtOffset is
-	// the same numCustomPrimSbtRecords used for the native triangle GAS.
-	for (std::size_t i = 0; i < instancePlacements_.size(); ++i) {
-		const SceneData::InstancePlacementGPU& placement = instancePlacements_[i];
-		if (placement.group < 0 || static_cast<std::size_t>(placement.group) >= gasGroupHandles_.size())
-			continue;
-		OptixTraversableHandle h = gasGroupHandles_[static_cast<std::size_t>(placement.group)];
-		if (!h) continue;
-		OptixInstance inst{};
-		memcpy(inst.transform, placement.transform, sizeof(inst.transform));
-		inst.instanceId = static_cast<unsigned int>(2 + i);
-		inst.sbtOffset = numCustomPrimSbtRecords;
-		inst.visibilityMask = 255;
-		inst.flags = OPTIX_INSTANCE_FLAG_NONE;
-		inst.traversableHandle = h;
-		instances.push_back(inst);
+		baseTable.push_back(primBase);
+	};
+
+	if (gasCustomHandle_) addInstance(gasCustomHandle_, kIdentity, 0, -1);
+	if (gasTriHandle_) addInstance(gasTriHandle_, kIdentity, sceneTriSbtOffset, -1);
+
+	// One instance per PLACEMENT, not per group: the same group GAS is
+	// referenced by every placement of it, each with its own transform, and
+	// that sharing is the entire point of instancing over baking. A group
+	// holding both triangles and spheres contributes TWO entries per
+	// placement, since its geometry had to be split across two GASes.
+	for (const SceneData::InstancePlacementGPU& placement : instancePlacements_) {
+		if (placement.group < 0 ||
+			static_cast<std::size_t>(placement.group) >= instanceGroups_.size()) continue;
+		const std::size_t g = static_cast<std::size_t>(placement.group);
+		const SceneData::InstanceGroupGPU& grp = instanceGroups_[g];
+
+		if (gasGroupTriHandles_[g]) {
+			addInstance(gasGroupTriHandles_[g], placement.transform, instTriSbtOffset,
+						static_cast<int>(sceneTriangleCount_) + grp.triangleBase);
+		}
+		if (gasGroupSphereHandles_[g]) {
+			addInstance(gasGroupSphereHandles_[g], placement.transform, instSphereSbtOffset,
+						static_cast<int>(sceneSphereCount_) + grp.sphereBase);
+		}
 	}
 
 	CUdeviceptr d_instances;
@@ -1364,25 +1465,13 @@ bool OptiXRenderer::buildScene(
 	if (d_gas_) cudaFree(reinterpret_cast<void*>(d_gas_));
 	d_gas_ = d_iasOutput;
 
-	// instanceTriBase: LaunchParams::instanceTriBase, indexed directly by
-	// optixGetInstanceId() (ids 0..1+placements.size(), assigned above).
-	// -1 is a real sentinel meaning "not instanced, base 0" - see
-	// optix_intersection_triangle.h/optix_anyhit_shadow.h's shared gate on
-	// instBase >= 0. Rebuilt every call for the same reason as the GASes
-	// above; left null (no upload) for scenes with no placements at all, so
-	// params.instanceTriBase stays nullptr and every triangle program takes
-	// its cheaper non-instanced path unconditionally.
+	// Upload the base table assembled alongside the instance array above.
+	// Rebuilt every call for the same reason as the GASes; left null (no
+	// upload at all) for scenes with no placements, so params.instancePrimBase
+	// stays nullptr and every hit program takes its cheaper non-instanced path
+	// without even a table read.
 	if (d_instanceBase_) { cudaFree(reinterpret_cast<void*>(d_instanceBase_)); d_instanceBase_ = 0; }
-	if (!instancePlacements_.empty()) {
-		std::vector<int> baseTable(2 + instancePlacements_.size(), -1);
-		for (std::size_t i = 0; i < instancePlacements_.size(); ++i) {
-			const SceneData::InstancePlacementGPU& placement = instancePlacements_[i];
-			int base = -1;
-			if (placement.group >= 0 && static_cast<std::size_t>(placement.group) < instanceGroups_.size()) {
-				base = static_cast<int>(sceneTriangleCount_) + instanceGroups_[static_cast<std::size_t>(placement.group)].triangleBase;
-			}
-			baseTable[2 + i] = base;
-		}
+	if (!instancePlacements_.empty() && !baseTable.empty()) {
 		size_t baseTableSize = baseTable.size() * sizeof(int);
 		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_instanceBase_), baseTableSize));
 		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_instanceBase_), baseTable.data(),
@@ -1395,13 +1484,11 @@ bool OptiXRenderer::buildScene(
 		<< bilinearPatches.size() << " bilinear patches, "
 		<< triangles.size() << " triangles\n";
 
-	// Build Shader Binding Table (SBT). Pass allTriangles, not the scene-only
-	// `triangles` param: buildSBT only checks non-emptiness to decide whether
-	// to emit the triangle hit-group record pair, and every instance
-	// placement's IAS entry above points at that same pair via
-	// numCustomPrimSbtRecords - a scene with instanced triangles but none of
-	// its own would otherwise skip the record the placements need.
-	if (!buildSBT(spheres, quads, bilinearPatches, allTriangles)) {
+	// Build Shader Binding Table (SBT). The scene-only geometry decides the
+	// packed record region; instanced geometry gets appended pairs of its own,
+	// which the instTri/instSphere offsets computed above address.
+	if (!buildSBT(spheres, quads, bilinearPatches, triangles,
+				  haveInstancedTriangles, haveInstancedSpheres)) {
 		std::cerr << "Failed to build SBT\n";
 		return false;
 	}
@@ -1413,7 +1500,9 @@ bool OptiXRenderer::buildSBT(
 	const std::vector<SphereData>& spheres,
 	const std::vector<QuadData>& quads,
 	const std::vector<BilinearPatchData>& bilinearPatches,
-	const std::vector<TriangleData>& triangles
+	const std::vector<TriangleData>& triangles,
+	bool haveInstancedTriangles,
+	bool haveInstancedSpheres
 ) {
 	// Raygen record
 	RaygenRecord raygenRecord;
@@ -1489,6 +1578,31 @@ bool OptiXRenderer::buildSBT(
 		hitGroupRecords.back().data = {};
 		hitGroupRecords.emplace_back();
 		OPTIX_CHECK(optixSbtRecordPackHeader(shadowHitgroupTrianglePG_, &hitGroupRecords.back()));
+		hitGroupRecords.back().data = {};
+	}
+
+	// Instanced geometry's own records, appended AFTER the packed scene region
+	// above so adding them cannot shift any existing build input's index. The
+	// programs are the same ones the scene's records already name - these
+	// records are duplicates whose only job is to give a per-definition GAS a
+	// sbtOffset it can reach without depending on which geometry types the
+	// scene itself happens to have. buildScene() computes the matching offsets
+	// from the same two flags; the order here (triangles, then spheres) is
+	// what those computations assume.
+	if (haveInstancedTriangles) {
+		hitGroupRecords.emplace_back();
+		OPTIX_CHECK(optixSbtRecordPackHeader(hitgroupTrianglePG_, &hitGroupRecords.back()));
+		hitGroupRecords.back().data = {};
+		hitGroupRecords.emplace_back();
+		OPTIX_CHECK(optixSbtRecordPackHeader(shadowHitgroupTrianglePG_, &hitGroupRecords.back()));
+		hitGroupRecords.back().data = {};
+	}
+	if (haveInstancedSpheres) {
+		hitGroupRecords.emplace_back();
+		OPTIX_CHECK(optixSbtRecordPackHeader(hitgroupSpherePG_, &hitGroupRecords.back()));
+		hitGroupRecords.back().data = {};
+		hitGroupRecords.emplace_back();
+		OPTIX_CHECK(optixSbtRecordPackHeader(shadowHitgroupSpherePG_, &hitGroupRecords.back()));
 		hitGroupRecords.back().data = {};
 	}
 
@@ -1586,7 +1700,7 @@ bool OptiXRenderer::render(
 
 	// Setup launch params. Zero-initialised on purpose: LaunchParams is a POD
 	// whose fields are assigned one by one below, so any field NOT assigned
-	// here would otherwise hold stack garbage. instanceTriBase is read on the
+	// here would otherwise hold stack garbage. instancePrimBase is read on the
 	// device as "null means no instancing", and a garbage pointer there is an
 	// out-of-bounds read inside a hit program - among the hardest bugs to see.
 	LaunchParams params = {};
@@ -1614,7 +1728,7 @@ bool OptiXRenderer::render(
 	params.bilinearPatches = reinterpret_cast<BilinearPatchData*>(d_bilinearPatches_);
 	params.numBilinearPatches = numBilinearPatches_;
 	params.triangles = reinterpret_cast<TriangleData*>(d_triangles_);
-	params.instanceTriBase = reinterpret_cast<int*>(d_instanceBase_);  // null unless the scene has placements
+	params.instancePrimBase = reinterpret_cast<int*>(d_instanceBase_);  // null unless the scene has placements
 	params.numTriangles = numTriangles_;
 
 	// Light sampling for MIS
@@ -1698,7 +1812,8 @@ void OptiXRenderer::cleanup() noexcept {
 	if (d_gas_) cudaFree(reinterpret_cast<void*>(d_gas_));
 	if (d_gasCustom_) cudaFree(reinterpret_cast<void*>(d_gasCustom_));
 	if (d_gasTri_) cudaFree(reinterpret_cast<void*>(d_gasTri_));
-	for (CUdeviceptr p : d_gasGroups_) if (p) cudaFree(reinterpret_cast<void*>(p));
+	for (CUdeviceptr p : d_gasGroupTri_) if (p) cudaFree(reinterpret_cast<void*>(p));
+	for (CUdeviceptr p : d_gasGroupSphere_) if (p) cudaFree(reinterpret_cast<void*>(p));
 	if (d_instanceBase_) cudaFree(reinterpret_cast<void*>(d_instanceBase_));
 
 	// Free scene data

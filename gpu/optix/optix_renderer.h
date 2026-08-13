@@ -238,24 +238,38 @@ private:
 	// nothing, which is what every built-in scene wants and is exactly what
 	// it did before this existed.
 	std::vector<TriangleData> instanceTriangles_;              ///< object space
+	std::vector<SphereData> instanceSpheres_;                  ///< object space
 	std::vector<SceneData::InstanceGroupGPU> instanceGroups_;
 	std::vector<SceneData::InstancePlacementGPU> instancePlacements_;
-	std::vector<OptixTraversableHandle> gasGroupHandles_;       ///< one per group
-	std::vector<CUdeviceptr> d_gasGroups_;                      ///< their storage
-	CUdeviceptr d_instanceBase_ = 0;    ///< LaunchParams::instanceTriBase table
+	// A group holding both triangles and spheres needs one GAS of each, since
+	// OptiX will not mix native triangles with custom AABB primitives - so
+	// these are parallel arrays over groups, either of which may hold a null
+	// handle for a group that has no geometry of that kind.
+	std::vector<OptixTraversableHandle> gasGroupTriHandles_;
+	std::vector<CUdeviceptr> d_gasGroupTri_;
+	std::vector<OptixTraversableHandle> gasGroupSphereHandles_;
+	std::vector<CUdeviceptr> d_gasGroupSphere_;
+	CUdeviceptr d_instanceBase_ = 0;    ///< LaunchParams::instancePrimBase table
 	unsigned int sceneTriangleCount_ = 0;  ///< triangles before the instanced ones
+	unsigned int sceneSphereCount_ = 0;    ///< spheres before the instanced ones
 
   public:
 	/// Geometry stored once and placed many times. Call before buildScene();
 	/// passing empty vectors (or not calling it) disables instancing for the
 	/// next scene built.
 	void setInstanceData(const std::vector<TriangleData>& triangles,
+						 const std::vector<SphereData>& spheres,
 						 const std::vector<SceneData::InstanceGroupGPU>& groups,
 						 const std::vector<SceneData::InstancePlacementGPU>& placements) {
 		instanceTriangles_ = triangles;
+		instanceSpheres_ = spheres;
 		instanceGroups_ = groups;
 		instancePlacements_ = placements;
 	}
+
+	/// True when the last setInstanceData() gave this scene geometry to place.
+	/// Used to warn about render modes that do not honour instancing.
+	bool hasInstancePlacements() const { return !instancePlacements_.empty(); }
 
   private:
 	CUdeviceptr d_lensElements_ = 0;      ///< Device RealisticCamera lens table
@@ -296,11 +310,20 @@ private:
 	bool linkPipeline();
 
 	/// @brief Build Shader Binding Table from geometry
+	/// @param haveInstancedTriangles,haveInstancedSpheres Append a dedicated
+	///        hit-record pair for instanced geometry of that type. Instanced
+	///        GASes cannot reuse the scene's own records positionally - a
+	///        child GAS's records are addressed as sbtOffset + build-input
+	///        index, and the scene's custom-primitive region is packed with no
+	///        gaps for absent types - so they get their own pair at the end,
+	///        which buildScene() points their instances at.
 	bool buildSBT(
 		const std::vector<SphereData>& spheres,
 		const std::vector<QuadData>& quads,
 		const std::vector<BilinearPatchData>& bilinearPatches,
-		const std::vector<TriangleData>& triangles
+		const std::vector<TriangleData>& triangles,
+		bool haveInstancedTriangles,
+		bool haveInstancedSpheres
 	);
 
 	/// @brief Release all GPU resources

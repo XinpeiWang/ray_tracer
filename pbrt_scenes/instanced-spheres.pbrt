@@ -1,0 +1,111 @@
+# instanced-spheres.pbrt -- object instancing with spheres in the definition.
+#
+# example-cornell.pbrt already covers instanced TRIANGLES. This one exists for
+# the case that is genuinely harder: a definition holding spheres, and a
+# definition holding both spheres and triangles at once.
+#
+# Two things here are deliberate and worth keeping if this file is edited:
+#
+#   1. The third placement carries a NON-UNIFORM scale. A sphere under one is
+#      an ellipsoid, and the only way to render that is to carry the ray into
+#      the instance's space and intersect there - baking the placement into a
+#      world-space sphere cannot express it and would quietly draw a round
+#      ball. So this placement is the visible difference between real
+#      instancing and baking, and it is why it is in the scene.
+#
+#   2. The definition mixes spheres WITH triangles. Those cannot share one
+#      acceleration structure on GPU, so a single placement of this object has
+#      to become two entries in the instance hierarchy. A definition of only
+#      one kind would never exercise that.
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  278 278 -800    278 278 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+# ---------------------------------------------------------------- light
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 18 15 8 ]
+  Shape "trianglemesh"
+    "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 213 548.7 227   343 548.7 227   343 548.7 332   213 548.7 332 ]
+AttributeEnd
+
+# ---------------------------------------------------------------- walls
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+
+# floor
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   555 0 0   555 0 555   0 0 555 ]
+# ceiling
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 555 0   555 555 0   555 555 555   0 555 555 ]
+# back wall
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   555 0 555   555 555 555   0 555 555 ]
+
+AttributeBegin
+  Material "diffuse" "rgb reflectance" [ 0.65 0.05 0.05 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 555 0 0   555 0 555   555 555 555   555 555 0 ]
+AttributeEnd
+
+AttributeBegin
+  Material "diffuse" "rgb reflectance" [ 0.12 0.45 0.15 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 0 0 0   0 0 555   0 555 555   0 555 0 ]
+AttributeEnd
+
+# ---------------------------------------------------------------- instancing
+# One "cairn": a square slab with a metal ball resting on it and a smaller
+# glass ball beside it. Defined once, in its own local space centred on the
+# origin, then placed three times.
+ObjectBegin "cairn"
+  AttributeBegin
+    Material "diffuse" "rgb reflectance" [ 0.75 0.65 0.30 ]
+    Shape "trianglemesh"
+      "integer indices" [ 0 1 2  0 2 3 ]
+      "point3 P" [ -60 4 -60   60 4 -60   60 4 60   -60 4 60 ]
+  AttributeEnd
+
+  AttributeBegin
+    Translate -22 46 0
+    Material "conductor" "float roughness" [ 0.2 ]
+    Shape "sphere" "float radius" [ 42 ]
+  AttributeEnd
+
+  AttributeBegin
+    Translate 46 26 10
+    Material "dielectric"
+    Shape "sphere" "float radius" [ 22 ]
+  AttributeEnd
+ObjectEnd
+
+# Plain placement - the reference for the two below.
+AttributeBegin
+  Translate 120 0 120
+  ObjectInstance "cairn"
+AttributeEnd
+
+# Rotated. Spheres are rotation-invariant on their own, but their POSITIONS
+# within the definition are not, so this still moves them relative to the slab.
+AttributeBegin
+  Translate 300 0 380
+  Rotate 55 0 1 0
+  ObjectInstance "cairn"
+AttributeEnd
+
+# Non-uniform scale: both spheres should read as ellipsoids, stretched tall
+# and squeezed in z. If they come out round, the placement was baked rather
+# than instanced.
+AttributeBegin
+  Translate 440 0 150
+  Scale 0.7 1.6 0.7
+  ObjectInstance "cairn"
+AttributeEnd

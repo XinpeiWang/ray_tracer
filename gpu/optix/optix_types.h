@@ -488,19 +488,27 @@ struct LaunchParams {
 	TriangleData* triangles;
 	unsigned int numTriangles;
 
-	// Where each IAS instance's triangles start in `triangles`, indexed by
-	// OptixInstance::instanceId.
+	// Where each IAS instance's primitives start in whichever flat array holds
+	// them (`triangles` or `spheres`), indexed by OptixInstance::instanceId.
 	//
 	// Object instancing gives each instance definition its own GAS, and
 	// optixGetPrimitiveIndex() restarts at 0 inside every GAS - so a primitive
-	// index alone no longer identifies a triangle. Adding this base recovers
-	// the global index while leaving one flat triangle array for everything.
+	// index alone no longer identifies a primitive. Adding this base recovers
+	// the global index while leaving one flat array per geometry type.
 	//
-	// Null means "no instancing in this scene", and every lookup then uses
-	// base 0, which is exactly what a single-GAS scene has always done. That
-	// is deliberate: the instancing path is inert until a scene actually needs
-	// it, so it cannot change how existing scenes render.
-	const int* instanceTriBase;
+	// One table serves both types because a GAS holds only ONE of them (OptiX
+	// forbids mixing native triangles with custom AABB primitives), so an
+	// instance id names exactly one array and the program that reads it already
+	// knows which.
+	//
+	// The entry is SIGNED and -1 is a real sentinel, not "unused": it means
+	// this instance's geometry is already in world space (the scene's own two
+	// instances), which is also what gates the object-to-world normal transform
+	// in the hit programs. Null means "no instancing in this scene", and every
+	// lookup then uses base 0, which is exactly what a single-GAS scene has
+	// always done. That is deliberate: the instancing path is inert until a
+	// scene actually needs it, so it cannot change how existing scenes render.
+	const int* instancePrimBase;
 
 	// Material data
 	MaterialData* materials;

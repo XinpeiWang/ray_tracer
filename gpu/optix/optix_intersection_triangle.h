@@ -40,8 +40,8 @@ extern "C" __global__ void __closesthit__triangle() {
 	// because their triangles already sit in world space - only a placement
 	// of an instance DEFINITION gets a real (>= 0) base. instBase is read
 	// again below to gate the normal transform on the same condition.
-	const int instBase = params.instanceTriBase
-		? params.instanceTriBase[optixGetInstanceId()] : -1;
+	const int instBase = params.instancePrimBase
+		? params.instancePrimBase[optixGetInstanceId()] : -1;
 	const unsigned int triBase = (instBase >= 0) ? (unsigned int)instBase : 0u;
 	const TriangleData& tri = params.triangles[triBase + primIdx];
 	const MaterialData& mat = params.materials[tri.materialIdx];

@@ -3307,12 +3307,6 @@ static bool build_loaded_pbrt_scene(
 		std::cerr << "[OptiX] warning: no samplable lights in this scene - "
 			     "expect a very dark image.\n";
 	}
-	if (stats.unsupportedInstancedSpheres > 0) {
-		std::cerr << "[OptiX] warning: " << stats.unsupportedInstancedSpheres
-			  << " instanced sphere(s) are not supported on GPU (only "
-			     "instanced triangles are), so they are missing from this "
-			     "render. Use --cpu for this scene.\n";
-	}
 	if (stats.instancePlacements > 0) {
 		std::cerr << "[OptiX] " << stats.instancePlacements << " object instance placement(s)\n";
 	}

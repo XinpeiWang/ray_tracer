@@ -4,7 +4,13 @@
 extern "C" __global__ void __anyhit__shadow_sphere() {
 	// Get primitive and material
 	const unsigned int primIdx = optixGetPrimitiveIndex();
-	const SphereData& sphere = params.spheres[primIdx];
+	// See optix_intersection_sphere.h: a primitive index is local to its GAS,
+	// and the table entry is SIGNED (-1 = not instanced) - casting -1 straight
+	// to unsigned would wrap to UINT_MAX instead of falling back to base 0.
+	const int instBase = params.instancePrimBase
+		? params.instancePrimBase[optixGetInstanceId()] : -1;
+	const unsigned int sphBase = (instBase >= 0) ? (unsigned int)instBase : 0u;
+	const SphereData& sphere = params.spheres[sphBase + primIdx];
 	const MaterialData& mat = params.materials[sphere.materialIdx];
 
 	// IMPORTANT: When hitting light source, set NOT occluded and terminate
@@ -95,8 +101,8 @@ extern "C" __global__ void __anyhit__shadow_triangle() {
 	// See optix_intersection_triangle.h: a primitive index is local to its GAS,
 	// and the table entry is SIGNED (-1 = not instanced) - casting -1 straight
 	// to unsigned would wrap to UINT_MAX instead of falling back to base 0.
-	const int instBase = params.instanceTriBase
-		? params.instanceTriBase[optixGetInstanceId()] : -1;
+	const int instBase = params.instancePrimBase
+		? params.instancePrimBase[optixGetInstanceId()] : -1;
 	const unsigned int triBase = (instBase >= 0) ? (unsigned int)instBase : 0u;
 	const TriangleData& tri = params.triangles[triBase + primIdx];
 	const MaterialData& mat = params.materials[tri.materialIdx];

@@ -41,7 +41,6 @@ struct BuildStats {
 	// Placements the builder prepared; optix_renderer.cpp's buildScene()
 	// turns each one into its own IAS entry over a per-definition GAS.
 	std::size_t instancePlacements = 0;
-	std::size_t unsupportedInstancedSpheres = 0;
 };
 
 namespace detail {
@@ -225,11 +224,12 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 	out.instanceGroups.clear();
 	out.instancePlacements.clear();
 	out.instanceTriangles.clear();
+	out.instanceSpheres.clear();
 
 	std::vector<int> groupIndexMap(scene.groups.size(), -1);
 	for (std::size_t g = 0; g < scene.groups.size(); ++g) {
 		const pbrt_flatten::InstanceGroup &grp = scene.groups[g];
-		if (grp.triangles.empty()) continue;      // spheres: see the note below
+		if (grp.triangles.empty() && grp.spheres.empty()) continue;
 
 		SceneData::InstanceGroupGPU gpuGroup;
 		gpuGroup.triangleBase = static_cast<int>(out.instanceTriangles.size());
@@ -250,16 +250,28 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		}
 		gpuGroup.triangleCount =
 			static_cast<int>(out.instanceTriangles.size()) - gpuGroup.triangleBase;
+
+		// Spheres are custom AABB primitives, so they cannot share the GAS the
+		// triangles above get; the renderer gives this group a second one. They
+		// stay in the definition's object space like the triangles, which is
+		// what lets a placement with a non-uniform scale render as the ellipsoid
+		// the scene asked for - a baked world-space sphere could only ever be
+		// round. Never emissive: flatten() bakes those per placement instead,
+		// because a light has to be enumerable to be sampled.
+		gpuGroup.sphereBase = static_cast<int>(out.instanceSpheres.size());
+		for (const pbrt_flatten::Sphere &s : grp.spheres) {
+			SphereData sd = {};
+			sd.center = f3(s.center);
+			sd.center1 = sd.center;          // static; see SphereData's comment
+			sd.radius = static_cast<float>(s.radius);
+			sd.materialIdx = materialIndex(s.material, s.areaLight);
+			out.instanceSpheres.push_back(sd);
+		}
+		gpuGroup.sphereCount =
+			static_cast<int>(out.instanceSpheres.size()) - gpuGroup.sphereBase;
+
 		groupIndexMap[g] = static_cast<int>(out.instanceGroups.size());
 		out.instanceGroups.push_back(gpuGroup);
-
-		if (!grp.spheres.empty()) {
-			// Spheres are custom AABB primitives sharing a GAS with quads, so
-			// instancing them needs a second per-group GAS and its own SBT
-			// region. Triangles cover the published scenes; this is reported
-			// rather than silently dropped.
-			stats.unsupportedInstancedSpheres += grp.spheres.size();
-		}
 	}
 
 	for (const pbrt_flatten::Instance &inst : scene.instances) {
