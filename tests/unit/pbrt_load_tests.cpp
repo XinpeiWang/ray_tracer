@@ -162,3 +162,68 @@ TEST_F(TempTree, MissingPlyMeshWarnsRatherThanFailingTheWholeScene) {
 		if (w.message.find("gone.ply") != std::string::npos) warned = true;
 	EXPECT_TRUE(warned);
 }
+
+// ---------------------------------------------------------------------------
+// loadFileNear / parseLensFile - a realistic camera's lensfile. Neither
+// pbrt_scene.h nor pbrt_flatten.h can read it themselves (see pbrt_load.h's
+// header comment on why file access lives only here), so scene_registry.h
+// resolves and parses it separately, at the point it actually builds the
+// camera rather than at flatten() time.
+// ---------------------------------------------------------------------------
+
+TEST_F(TempTree, LensFileResolvesRelativeToTheScene) {
+	write("dgauss.dat", "35.98738 1.21638 1.54 23.716\n");
+	std::string contents;
+	EXPECT_TRUE(pbrt_load::loadFileNear(path("scene.pbrt"), "dgauss.dat", contents));
+	EXPECT_NE(contents.find("35.98738"), std::string::npos);
+}
+
+TEST_F(TempTree, LensFileNotFoundIsReportedAsMissing) {
+	std::string contents;
+	EXPECT_FALSE(pbrt_load::loadFileNear(path("scene.pbrt"), "nope.dat", contents));
+}
+
+TEST(PbrtLensFileParseTest, FourNumberRowsAreReadInOrder) {
+	const std::vector<double> lens = pbrt_load::parseLensFile(
+		"35.98738  1.21638  1.54  23.716\n"
+		"11.69718  9.9957   1.0   17.996\n");
+	ASSERT_EQ(lens.size(), 8u);
+	EXPECT_DOUBLE_EQ(lens[0], 35.98738);
+	EXPECT_DOUBLE_EQ(lens[4], 11.69718);
+	EXPECT_DOUBLE_EQ(lens[7], 17.996);
+}
+
+TEST(PbrtLensFileParseTest, CommentsAndBlankLinesAreIgnored) {
+	const std::vector<double> lens = pbrt_load::parseLensFile(
+		"# dgauss.22deg.dat - a Double-Gauss lens\n"
+		"\n"
+		"35.98738 1.21638 1.54 23.716  # first element\n"
+		"\n"
+		"11.69718 9.9957 1.0 17.996\n");
+	EXPECT_EQ(lens.size(), 8u);
+}
+
+TEST(PbrtLensFileParseTest, AnApertureStopRowIsReadLikeAnyOther) {
+	// radius=0, eta=0 marks the aperture stop in pbrt's own format -
+	// RealisticCamera's constructor is what interprets that meaning; the
+	// parser's only job is to hand every 4-number row through unchanged.
+	const std::vector<double> lens = pbrt_load::parseLensFile("0.0 2.75 0.0 7.4\n");
+	ASSERT_EQ(lens.size(), 4u);
+	EXPECT_DOUBLE_EQ(lens[0], 0.0);
+	EXPECT_DOUBLE_EQ(lens[2], 0.0);
+	EXPECT_DOUBLE_EQ(lens[3], 7.4);
+}
+
+TEST(PbrtLensFileParseTest, ATrailingPartialRowIsDropped) {
+	// Three numbers where a fourth was expected - malformed input, not a
+	// scene worth guessing at. Dropping the partial row (rather than reading
+	// it and shifting every row after it out of phase) is the safer failure.
+	const std::vector<double> lens = pbrt_load::parseLensFile(
+		"35.98738 1.21638 1.54 23.716\n"
+		"11.69718 9.9957 1.0\n");
+	EXPECT_EQ(lens.size(), 4u);
+}
+
+TEST(PbrtLensFileParseTest, EmptyTextYieldsNoRows) {
+	EXPECT_TRUE(pbrt_load::parseLensFile("").empty());
+}

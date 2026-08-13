@@ -283,6 +283,88 @@ TEST(FlattenCameraTest, DepthOfFieldParametersAreCarriedOver) {
 	EXPECT_NEAR(s.camera.focusDistance, 7.0, 1e-9);
 }
 
+TEST(FlattenCameraTest, CameraTypeDefaultsToPerspective) {
+	const FlatScene s = flattenSource("WorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_EQ(s.camera.type, "perspective");
+}
+
+TEST(FlattenCameraTest, ScreenWindowOverrideIsCarriedThrough) {
+	// Orthographic has no fov to derive a scale from any other way - a scene
+	// authored larger than ~1 world unit across needs this to see anything.
+	const FlatScene s = flattenSource(
+		"Camera \"orthographic\" \"float screenwindow\" [ -8 8 -8 8 ]\n"
+		"WorldBegin\n" + std::string(kQuadMesh));
+	ASSERT_TRUE(s.camera.hasScreenWindow);
+	EXPECT_DOUBLE_EQ(s.camera.screenWindow[0], -8.0);
+	EXPECT_DOUBLE_EQ(s.camera.screenWindow[1], 8.0);
+	EXPECT_DOUBLE_EQ(s.camera.screenWindow[3], 8.0);
+}
+
+TEST(FlattenCameraTest, MissingScreenWindowLeavesTheDefaultInPlace) {
+	const FlatScene s = flattenSource(
+		"Camera \"orthographic\"\nWorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_FALSE(s.camera.hasScreenWindow);
+}
+
+TEST(FlattenCameraTest, ScreenWindowWithTooFewNumbersIsIgnoredAndWarned) {
+	const FlatScene s = flattenSource(
+		"Camera \"orthographic\" \"float screenwindow\" [ -8 8 ]\n"
+		"WorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_FALSE(s.camera.hasScreenWindow);
+	EXPECT_TRUE(warnedAbout(s, "screenwindow"));
+}
+
+TEST(FlattenCameraTest, OrthographicCameraTypeIsCarriedThrough) {
+	// Before this, the type argument to Camera was parsed and then never
+	// looked at again - every loaded scene rendered as perspective regardless.
+	const FlatScene s = flattenSource(
+		"Camera \"orthographic\"\nWorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_EQ(s.camera.type, "orthographic");
+}
+
+TEST(FlattenCameraTest, SphericalCameraReadsItsMappingParameter) {
+	const FlatScene s = flattenSource(
+		"Camera \"spherical\" \"string mapping\" [ \"equalarea\" ]\n"
+		"WorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_EQ(s.camera.type, "spherical");
+	EXPECT_EQ(s.camera.sphericalMapping, "equalarea");
+}
+
+TEST(FlattenCameraTest, SphericalCameraDefaultsToEquirectangular) {
+	const FlatScene s = flattenSource(
+		"Camera \"spherical\"\nWorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_EQ(s.camera.sphericalMapping, "equirectangular");
+}
+
+TEST(FlattenCameraTest, RealisticCameraReadsItsOwnParameters) {
+	const FlatScene s = flattenSource(
+		"Camera \"realistic\" \"string lensfile\" [ \"dgauss.dat\" ] "
+		"\"float aperturediameter\" [ 4.5 ] \"float filmdiag\" [ 50 ]\n"
+		"WorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_EQ(s.camera.type, "realistic");
+	EXPECT_EQ(s.camera.lensFile, "dgauss.dat");
+	EXPECT_NEAR(s.camera.apertureDiameterMM, 4.5, 1e-9);
+	EXPECT_NEAR(s.camera.filmDiagonalMM, 50.0, 1e-9);
+}
+
+TEST(FlattenCameraTest, RealisticCameraFocusDistanceSpellingIsAlsoRead) {
+	// pbrt-v4 spells this "focaldistance" for perspective/orthographic but
+	// "focusdistance" for realistic - reading only the first silently keeps
+	// every realistic-camera scene at the 1e6 no-DOF sentinel.
+	const FlatScene s = flattenSource(
+		"Camera \"realistic\" \"string lensfile\" [ \"dgauss.dat\" ] "
+		"\"float focusdistance\" [ 12 ]\n"
+		"WorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_NEAR(s.camera.focusDistance, 12.0, 1e-9);
+}
+
+TEST(FlattenCameraTest, RealisticCameraWithNoLensfileFallsBackToPerspective) {
+	const FlatScene s = flattenSource(
+		"Camera \"realistic\"\nWorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_EQ(s.camera.type, "perspective");
+	EXPECT_TRUE(warnedAbout(s, "lensfile"));
+}
+
 // ===========================================================================
 // Materials and emission
 // ===========================================================================

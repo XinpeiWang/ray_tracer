@@ -106,6 +106,27 @@ struct Camera {
 	// pbrt's own default, and it is a sentinel meaning "effectively at
 	// infinity", not a measurement. See focusDistanceFor() before using it.
 	double focusDistance = 1e6;
+
+	// Non-perspective cameras. "perspective" (the default) uses only the
+	// fields above, exactly as before. Anything else additionally carries
+	// its own parameters, read from the Camera directive's own parameter
+	// list - lookfrom/lookat/up above still apply to all of them (they come
+	// from the world-to-camera matrix, which every pbrt camera type shares).
+	std::string type = "perspective";                  // as pbrt spells it
+	std::string sphericalMapping = "equirectangular";   // spherical/environment only
+	std::string lensFile;                               // realistic only: path, relative to the scene file
+	double filmDiagonalMM = 35.0;      // realistic only - pbrt-v4's own default
+	double apertureDiameterMM = 1.0;   // realistic only - pbrt-v4's own default
+
+	// Orthographic only: pbrt's optional explicit screen-window override
+	// (xmin, xmax, ymin, ymax, in world units - orthographic has no fov to
+	// derive a scale from any other way). Without it, an orthographic
+	// camera falls back to a screen window sized for a roughly 1-unit-across
+	// scene, which is pbrt's own default too - a real scene authored at a
+	// larger scale is expected to give this explicitly, the same as it
+	// would have to for real pbrt.
+	bool hasScreenWindow = false;
+	double screenWindow[4] = {-1.0, 1.0, -1.0, 1.0};  // xmin, xmax, ymin, ymax
 };
 
 // The focus distance to actually give a camera, which is NOT camera.focusDistance.
@@ -418,8 +439,45 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			out.camera.vfov = 2.0 * std::atan(tanV) * 180.0 / 3.14159265358979323846;
 		}
 		out.camera.aperture = scene.cameraParams.getFloat("lensradius", 0.0) * 2.0;
+		// pbrt-v4 spells this "focaldistance" for perspective/orthographic but
+		// "focusdistance" for realistic - reading both means a scene does not
+		// silently keep the 1e6 sentinel just because it used the other
+		// camera type's spelling.
 		out.camera.focusDistance = scene.cameraParams.getFloat("focaldistance",
-															   out.camera.focusDistance);
+									   scene.cameraParams.getFloat("focusdistance",
+										   out.camera.focusDistance));
+
+		// Non-perspective cameras. lookfrom/lookat/up above already came from
+		// the world-to-camera matrix, which every pbrt camera type shares -
+		// only the type-specific parameters need reading here.
+		out.camera.type = scene.cameraType;
+		if (const pbrt_scene::Param *sw = scene.cameraParams.find("screenwindow")) {
+			if (sw->numbers.size() >= 4) {
+				out.camera.hasScreenWindow = true;
+				out.camera.screenWindow[0] = sw->numbers[0];
+				out.camera.screenWindow[1] = sw->numbers[1];
+				out.camera.screenWindow[2] = sw->numbers[2];
+				out.camera.screenWindow[3] = sw->numbers[3];
+			} else {
+				warn("a camera's \"screenwindow\" needs 4 numbers (xmin xmax ymin "
+					 "ymax); ignored");
+			}
+		}
+		if (out.camera.type == "spherical" || out.camera.type == "environment") {
+			out.camera.sphericalMapping =
+				scene.cameraParams.getString("mapping", out.camera.sphericalMapping);
+		} else if (out.camera.type == "realistic") {
+			out.camera.lensFile = scene.cameraParams.getString("lensfile", "");
+			out.camera.apertureDiameterMM =
+				scene.cameraParams.getFloat("aperturediameter", out.camera.apertureDiameterMM);
+			out.camera.filmDiagonalMM =
+				scene.cameraParams.getFloat("filmdiag", out.camera.filmDiagonalMM);
+			if (out.camera.lensFile.empty()) {
+				warn("a realistic camera has no \"lensfile\"; rendering with a "
+					 "perspective camera instead");
+				out.camera.type = "perspective";
+			}
+		}
 	}
 
 	// ---- decide what goes where before emitting anything ------------------

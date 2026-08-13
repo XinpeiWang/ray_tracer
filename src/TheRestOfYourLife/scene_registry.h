@@ -1022,8 +1022,85 @@ inline void append(std::vector<SceneDescriptor>& registry) {
         // CameraConfig cannot express an up vector, but pbrt's LookAt can, and
         // a scene shot in Z-up renders sideways without this. setup_camera
         // runs after every config field is applied, so it is the right place.
+        //
+        // It is also the only hook that can give a pbrt scene a non-
+        // perspective camera: camera_t's alt_ortho_cam/alt_spherical_cam/
+        // alt_realistic_cam slots (see camera.h) are the same generic
+        // mechanism the built-in OrthographicCamera/SphericalCamera/
+        // RealisticCamera scenes already use, populated here from whatever
+        // pbrt_flatten.h read off the Camera directive instead of a
+        // hardcoded scene. Before this, `Camera "orthographic"` (or
+        // "realistic"/"spherical"/"environment") in a loaded .pbrt file was
+        // parsed and then silently never looked at again - every pbrt scene
+        // rendered through the standard perspective path regardless of what
+        // its own Camera directive asked for, with no warning, even though
+        // this renderer already has real support for all three.
         const double ux = d.camera.up[0], uy = d.camera.up[1], uz = d.camera.up[2];
-        s.setup_camera = [ux, uy, uz](camera_t& cam) { cam.vup = vec3(ux, uy, uz); };
+        const pbrt_flatten::Camera pcam = d.camera;
+        s.setup_camera = [ux, uy, uz, pcam, path](camera_t& cam) {
+            cam.vup = vec3(ux, uy, uz);
+            if (pcam.type == "perspective") return;
+
+            Mat4<double> ctw = make_look_at<double>(
+                cam.lookfrom.x(), cam.lookfrom.y(), cam.lookfrom.z(),
+                cam.lookat.x(),   cam.lookat.y(),   cam.lookat.z(),
+                ux, uy, uz);
+
+            if (pcam.type == "orthographic") {
+                double xmin, xmax, ymin, ymax;
+                if (pcam.hasScreenWindow) {
+                    // The scene gave its own extent explicitly - orthographic
+                    // has no fov to derive one from any other way, so without
+                    // this a scene authored at any scale other than roughly
+                    // 1 world unit across needs it to see anything at all.
+                    xmin = pcam.screenWindow[0]; xmax = pcam.screenWindow[1];
+                    ymin = pcam.screenWindow[2]; ymax = pcam.screenWindow[3];
+                } else {
+                    compute_screen_window<double>(cam.image_width, cam.image_height,
+                                                  xmin, xmax, ymin, ymax);
+                }
+                cam.alt_ortho_cam = std::make_shared<OrthographicCamera<double>>(
+                    xmin, xmax, ymin, ymax, cam.image_width, cam.image_height, ctw);
+            } else if (pcam.type == "spherical" || pcam.type == "environment") {
+                const auto mapping = (pcam.sphericalMapping == "equalarea")
+                    ? SphericalCamera<double>::EqualArea
+                    : SphericalCamera<double>::EquiRectangular;
+                cam.alt_spherical_cam = std::make_shared<SphericalCamera<double>>(
+                    cam.image_width, cam.image_height, mapping, ctw);
+            } else if (pcam.type == "realistic") {
+                // flatten() already turned a missing lensfile into a warning
+                // and fell back to "perspective" (see pbrt_flatten.h), so
+                // reaching this branch means a filename really was given -
+                // what's left to fail is the file itself, checked here
+                // rather than at flatten() time because reading it needs a
+                // resolver, and pbrt_flatten.h deliberately has no file
+                // access of its own (see pbrt_load.h's header comment).
+                std::string lensText;
+                if (!pbrt_load::loadFileNear(path, pcam.lensFile, lensText)) {
+                    std::cerr << "warning: " << path << ": realistic camera's lensfile '"
+                              << pcam.lensFile << "' could not be found; "
+                                 "rendering with a perspective camera instead\n";
+                    return;
+                }
+                const std::vector<double> lens = pbrt_load::parseLensFile(lensText);
+                if (lens.empty()) {
+                    std::cerr << "warning: " << path << ": lensfile '" << pcam.lensFile
+                              << "' had no usable lens elements; "
+                                 "rendering with a perspective camera instead\n";
+                    return;
+                }
+                // Film half-extents from the diagonal and the image's own
+                // aspect ratio - pbrt-v4's own convention, and the same
+                // relationship the built-in RealisticCamera scene's
+                // hardcoded 18mm x 12mm half-extents satisfy for its 3:2 frame.
+                const double aspect = (cam.image_height > 0)
+                    ? static_cast<double>(cam.image_width) / cam.image_height : 1.0;
+                const double halfY = pcam.filmDiagonalMM / (2.0 * std::sqrt(aspect * aspect + 1.0));
+                const double halfX = aspect * halfY;
+                cam.alt_realistic_cam = std::make_shared<RealisticCamera<double>>(
+                    ctw, halfX, halfY, cam.focus_dist, pcam.apertureDiameterMM, lens);
+            }
+        };
 
         paths()[s.id] = path;
         registry.push_back(s);

@@ -133,4 +133,42 @@ inline LoadResult loadFile(const std::string &path) {
 	return r;
 }
 
+// Reads a file a scene references outside the Include/plymesh graphs this
+// header already resolves - currently just a "realistic" camera's lensfile,
+// which pbrt_flatten.h can name but has no file access of its own to read.
+// Same relative-to-the-scene-first, then as-given convention as everything
+// else in this file, so a lens file living beside its scene is found without
+// the caller having to know the scene's own directory.
+inline bool loadFileNear(const std::string &scenePath, const std::string &relPath,
+						 std::string &outContents) {
+	using namespace detail;
+	const std::string sceneDir = directoryOf(scenePath);
+	if (readFile(join(sceneDir, relPath), outContents)) return true;
+	return readFile(relPath, outContents);
+}
+
+// Parses a pbrt-format lens description table: whitespace-separated
+// "radius thickness eta aperture-diameter" rows in millimetres, '#' comments
+// to end of line, blank lines ignored - the format pbrt-v4 ships its own
+// sample lens files in (e.g. dgauss.22deg.dat), matching what
+// RealisticCamera's own lens-table constructor argument already expects, so
+// the result can be passed straight through with no further conversion.
+// Returns however many complete 4-number rows were found; a malformed file
+// that does not divide evenly drops its trailing partial row rather than
+// misreading every row after it out of phase.
+inline std::vector<double> parseLensFile(const std::string &text) {
+	std::vector<double> row;
+	std::istringstream in(text);
+	std::string line;
+	while (std::getline(in, line)) {
+		const std::size_t hash = line.find('#');
+		if (hash != std::string::npos) line.resize(hash);
+		std::istringstream ls(line);
+		double v;
+		while (ls >> v) row.push_back(v);
+	}
+	row.resize((row.size() / 4) * 4);
+	return row;
+}
+
 } // namespace pbrt_load
