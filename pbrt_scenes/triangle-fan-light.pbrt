@@ -1,0 +1,80 @@
+# triangle-fan-light.pbrt -- an area light that is not a parallelogram.
+#
+# Almost every pbrt area light is a rectangle written as two triangles, and
+# pbrt_quadify.h rejoins those into one quad before the GPU ever sees them. So
+# the interesting case - a light whose triangles will NOT merge - never turned
+# up in a bundled scene, and the GPU's inability to sample one went unnoticed:
+# such triangles were emitted as geometry that glows when hit but that
+# next-event estimation could not aim at, leaving the image darker and noisier
+# than the CPU's with nothing on screen to say why.
+#
+# This light is a five-triangle fan around a centre vertex, with the rim
+# vertices at deliberately IRREGULAR radii. Both of those matter. A regular
+# hexagonal fan - the obvious first attempt - fails to test anything: its
+# wedges are equilateral, so adjacent pairs form rhombi and pbrt_quadify.h
+# happily merges the whole light back into quads. Unequal radii stop any two
+# wedges from being a parallelogram, and an odd count means one triangle
+# would be left over even if some pair did merge.
+#
+# Five is also enough to spread the light-selection alias table over several
+# entries, rather than the single-light case every other bundled scene has.
+#
+# The room is otherwise plain and light grey on purpose: with one hexagonal
+# light and nothing else competing, the falloff on the walls and the sphere's
+# shadow are the whole picture, so any error in the per-triangle pdf shows up
+# as banding, a seam between wedges, or an overall brightness difference
+# against the CPU render rather than hiding in busy geometry.
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  278 278 -800    278 278 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+# ------------------------------------------------- the irregular fan light
+# Centre vertex is index 0; the rim runs 1..5 around it at 72-degree steps but
+# at radii 100, 80, 110, 85, 95, in the ceiling plane y = 548.7. Each face is
+# (centre, rim_i, rim_i+1), the last closing back onto rim 1.
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 16 14 10 ]
+  Shape "trianglemesh"
+    "integer indices" [ 0 1 2   0 2 3   0 3 4   0 4 5   0 5 1 ]
+    "point3 P" [ 278.0 548.7 278.0
+                 378.0 548.7 278.0
+                 302.7 548.7 354.1
+                 189.0 548.7 342.7
+                 209.2 548.7 228.0
+                 307.4 548.7 187.7 ]
+AttributeEnd
+
+# ---------------------------------------------------------------- walls
+Material "diffuse" "rgb reflectance" [ 0.72 0.72 0.70 ]
+
+# floor
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   555 0 0   555 0 555   0 0 555 ]
+# ceiling
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 555 0   555 555 0   555 555 555   0 555 555 ]
+# back wall
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   555 0 555   555 555 555   0 555 555 ]
+# left wall
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 0   555 0 555   555 555 555   555 555 0 ]
+# right wall
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   0 0 555   0 555 555   0 555 0 ]
+
+# ------------------------------------------------------------- contents
+# One matte sphere, placed to throw a soft shadow straight down from the fan.
+AttributeBegin
+  Translate 278 120 300
+  Material "diffuse" "rgb reflectance" [ 0.68 0.55 0.42 ]
+  Shape "sphere" "float radius" [ 120 ]
+AttributeEnd

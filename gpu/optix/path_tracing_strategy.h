@@ -94,7 +94,7 @@ public:
 	 * @param d_spheres Device pointer to sphere array
 	 * @param d_quads Device pointer to quad array
 	 * @param d_light_indices Device pointer to light index array
-	 * @param d_is_light_sphere Device pointer to light type flags
+	 * @param d_lightKinds Device GpuLightKind array, one per light
 	 * @param d_alias_table Device pointer to power-weighted alias table
 	 * @param num_materials Number of materials
 	 * @param num_spheres Number of spheres
@@ -120,7 +120,7 @@ public:
 		CUdeviceptr d_spheres,
 		CUdeviceptr d_quads,
 		CUdeviceptr d_light_indices,
-		CUdeviceptr d_is_light_sphere,
+		CUdeviceptr d_lightKinds,
 		CUdeviceptr d_alias_table,
 		unsigned int num_materials,
 		unsigned int num_spheres,

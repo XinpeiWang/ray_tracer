@@ -52,7 +52,7 @@ public:
 	                    float* outputFramebuffer, OptixTraversableHandle gasHandle,
 	                    CUdeviceptr d_materials, CUdeviceptr d_spheres, CUdeviceptr d_quads,
 	                    unsigned int numMaterials, unsigned int numSpheres, unsigned int numQuads,
-	                    CUdeviceptr d_lightIndices, CUdeviceptr d_isLightSphere,
+	                    CUdeviceptr d_lightIndices, CUdeviceptr d_lightKinds,
 	                    CUdeviceptr d_aliasTable, unsigned int numLights,
 	                    unsigned int maxDepth);
 
@@ -67,7 +67,7 @@ public:
 	            float* outputFramebuffer, OptixTraversableHandle gasHandle,
 	            CUdeviceptr d_materials, CUdeviceptr d_spheres, CUdeviceptr d_quads,
 	            unsigned int numMaterials, unsigned int numSpheres, unsigned int numQuads,
-	            CUdeviceptr d_lightIndices, CUdeviceptr d_isLightSphere,
+	            CUdeviceptr d_lightIndices, CUdeviceptr d_lightKinds,
 	            CUdeviceptr d_aliasTable, unsigned int numLights);
 
 private:

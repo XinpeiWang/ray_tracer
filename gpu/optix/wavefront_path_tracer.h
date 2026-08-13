@@ -25,7 +25,7 @@ public:
         const GpuCameraParams& camera,
         float* framebuffer, OptixTraversableHandle gas_handle,
         CUdeviceptr d_materials, CUdeviceptr d_spheres, CUdeviceptr d_quads,
-        CUdeviceptr d_light_indices, CUdeviceptr d_is_light_sphere,
+        CUdeviceptr d_light_indices, CUdeviceptr d_lightKinds,
         CUdeviceptr d_alias_table, unsigned int num_materials,
         unsigned int num_spheres, unsigned int num_quads,
         unsigned int num_lights,
@@ -52,7 +52,7 @@ private:
         const SphereData* d_spheres, unsigned int numSpheres,
         const QuadData* d_quads, unsigned int numQuads,
         const MaterialData* d_materials, unsigned int numMaterials,
-        const int* d_lightIndices, const int* d_isLightSphere,
+        const int* d_lightIndices, const GpuLightKind* d_lightKinds,
         const GpuAliasEntry* d_aliasTable, unsigned int numLights,
         const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
         float3* d_framebuffer);

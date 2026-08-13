@@ -59,7 +59,7 @@ struct SceneData {
 
 	// Light tracking for MIS
 	std::vector<int> lightIndices;      // Indices into sphere/quad arrays
-	std::vector<bool> isLightSphere;    // True if sphere, false if quad
+	std::vector<GpuLightKind> lightKinds;   // how to sample lightIndices[i]
 
 	// Punctual (delta) lights: point/spot/distant. Separate from the area
 	// lights above - not geometry, evaluated deterministically every hit.

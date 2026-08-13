@@ -541,7 +541,7 @@ bool OptiXRenderer::buildScene(
 	const std::vector<QuadData>& quads,
 	const std::vector<MaterialData>& materials,
 	const std::vector<int>& lightIndices,
-	const std::vector<bool>& isLightSphere,
+	const std::vector<GpuLightKind>& lightKinds,
 	const std::vector<PunctualLightGPU>& punctualLights,
 	const std::vector<BilinearPatchData>& bilinearPatches,
 	const std::vector<TriangleData>& triangles,
@@ -773,32 +773,29 @@ bool OptiXRenderer::buildScene(
 			cudaMemcpyHostToDevice
 		));
 
-		// Upload light type flags (convert bool to int for better GPU alignment)
-		std::vector<int> lightFlags(isLightSphere.size());
-		for (size_t i = 0; i < isLightSphere.size(); ++i) {
-			lightFlags[i] = isLightSphere[i] ? 1 : 0;
-		}
-		// The element type here and the pointee type the device reads it back
-		// through MUST be the same width. They were not - this uploaded int
-		// and LaunchParams::isLightSphere was a bool*, so the device advanced
-		// one byte per light and only light 0 ever landed on its own flag.
-		// Pinned at compile time because the failure is invisible in any scene
-		// with fewer than two lights, and every scene here had one.
+		// Upload the light kinds verbatim - no repacking, because the host
+		// vector's element type IS the type the device reads (GpuLightKind is
+		// an int-backed enum class). That identity is the point: this used to
+		// pack a std::vector<int> that the device then read through a bool*,
+		// advancing one byte per light, so only light 0 ever landed on its own
+		// entry. The assert below pins the two together, since the failure is
+		// invisible in any scene with fewer than two lights and every built-in
+		// scene here has one.
 		static_assert(
-			sizeof(decltype(lightFlags)::value_type) ==
-				sizeof(std::remove_pointer_t<decltype(LaunchParams::isLightSphere)>),
-			"light-flag upload width must match what the device reads; see "
-			"LaunchParams::isLightSphere in optix_types.h");
+			sizeof(std::remove_reference_t<decltype(lightKinds)>::value_type) ==
+				sizeof(std::remove_pointer_t<decltype(LaunchParams::lightKinds)>),
+			"light-kind upload width must match what the device reads; see "
+			"GpuLightKind in optix_types.h");
 
-		size_t lightFlagSize = lightFlags.size() * sizeof(int);
-		if (d_isLightSphere_) {
-			cudaFree(reinterpret_cast<void*>(d_isLightSphere_));
+		size_t lightKindSize = lightKinds.size() * sizeof(GpuLightKind);
+		if (d_lightKinds_) {
+			cudaFree(reinterpret_cast<void*>(d_lightKinds_));
 		}
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_isLightSphere_), lightFlagSize));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_lightKinds_), lightKindSize));
 		CUDA_CHECK(cudaMemcpy(
-			reinterpret_cast<void*>(d_isLightSphere_),
-			lightFlags.data(),
-			lightFlagSize,
+			reinterpret_cast<void*>(d_lightKinds_),
+			lightKinds.data(),
+			lightKindSize,
 			cudaMemcpyHostToDevice
 		));
 
@@ -811,11 +808,23 @@ bool OptiXRenderer::buildScene(
 			int prim_idx = lightIndices[i];
 			float3 emission = make_float3(0.f, 0.f, 0.f);
 			float area = 1.0f;
-			if (isLightSphere[i]) {
+			if (lightKinds[i] == GpuLightKind::Sphere) {
 				const SphereData& s = spheres[prim_idx];
 				const MaterialData& m = materials[s.materialIdx];
 				emission = m.emission;
 				area = 4.0f * 3.14159265f * s.radius * s.radius;  // surface area of sphere
+			} else if (lightKinds[i] == GpuLightKind::Triangle) {
+				// Indexes `triangles`, not `quads` - and note this is the
+				// SCENE's triangle array, which is what lightIndices was built
+				// against; instanced triangles are never emissive (flatten()
+				// bakes emitters per placement), so no base offset applies.
+				const TriangleData& t = triangles[prim_idx];
+				const MaterialData& m = materials[t.materialIdx];
+				emission = m.emission;
+				// Half the parallelogram the two edges span.
+				const float3 e1 = t.p1 - t.p0;
+				const float3 e2 = t.p2 - t.p0;
+				area = 0.5f * length(cross(e1, e2));
 			} else {
 				const QuadData& q = quads[prim_idx];
 				const MaterialData& m = materials[q.materialIdx];
@@ -870,9 +879,9 @@ bool OptiXRenderer::buildScene(
 			cudaFree(reinterpret_cast<void*>(d_lightIndices_));
 			d_lightIndices_ = 0;
 		}
-		if (d_isLightSphere_) {
-			cudaFree(reinterpret_cast<void*>(d_isLightSphere_));
-			d_isLightSphere_ = 0;
+		if (d_lightKinds_) {
+			cudaFree(reinterpret_cast<void*>(d_lightKinds_));
+			d_lightKinds_ = 0;
 		}
 		if (d_aliasTable_) {
 			cudaFree(reinterpret_cast<void*>(d_aliasTable_));
@@ -1698,7 +1707,7 @@ bool OptiXRenderer::render(
 			outputFramebuffer,
 			gasHandle_,
 			d_materials_, d_spheres_, d_quads_,
-			d_lightIndices_, d_isLightSphere_, d_aliasTable_,
+			d_lightIndices_, d_lightKinds_, d_aliasTable_,
 			numMaterials_, numSpheres_, numQuads_, numLights_,
 			d_punctualLights_, numPunctualLights_,
 			d_bilinearPatches_, numBilinearPatches_,
@@ -1746,7 +1755,7 @@ bool OptiXRenderer::render(
 	// Light sampling for MIS
 	params.lightIndices = reinterpret_cast<int*>(d_lightIndices_);
 	params.numLights = numLights_;
-	params.isLightSphere = reinterpret_cast<const int*>(d_isLightSphere_);
+	params.lightKinds = reinterpret_cast<const GpuLightKind*>(d_lightKinds_);
 	params.aliasTable = reinterpret_cast<GpuAliasEntry*>(d_aliasTable_);
 
 	// Punctual (delta) lights
@@ -1839,7 +1848,7 @@ void OptiXRenderer::cleanup() noexcept {
 	if (d_lensElements_) cudaFree(reinterpret_cast<void*>(d_lensElements_));
 	if (d_exitPupilBounds_) cudaFree(reinterpret_cast<void*>(d_exitPupilBounds_));
 	if (d_lightIndices_) cudaFree(reinterpret_cast<void*>(d_lightIndices_));
-	if (d_isLightSphere_) cudaFree(reinterpret_cast<void*>(d_isLightSphere_));
+	if (d_lightKinds_) cudaFree(reinterpret_cast<void*>(d_lightKinds_));
 	if (d_aliasTable_) cudaFree(reinterpret_cast<void*>(d_aliasTable_));
 	if (d_punctualLights_) cudaFree(reinterpret_cast<void*>(d_punctualLights_));
 
@@ -1966,7 +1975,7 @@ bool OptiXRenderer::renderSPPMTrivial(unsigned int width, unsigned int height,
 		static_cast<int>(width), static_cast<int>(height), camera, outputFramebuffer,
 		gasHandle_, d_materials_, d_spheres_, d_quads_,
 		numMaterials_, numSpheres_, numQuads_,
-		d_lightIndices_, d_isLightSphere_, d_aliasTable_, numLights_,
+		d_lightIndices_, d_lightKinds_, d_aliasTable_, numLights_,
 		maxDepth);
 }
 
@@ -1981,6 +1990,6 @@ bool OptiXRenderer::renderSPPM(unsigned int width, unsigned int height,
 		static_cast<int>(maxDepth), initialRadius, camera, outputFramebuffer,
 		gasHandle_, d_materials_, d_spheres_, d_quads_,
 		numMaterials_, numSpheres_, numQuads_,
-		d_lightIndices_, d_isLightSphere_, d_aliasTable_, numLights_);
+		d_lightIndices_, d_lightKinds_, d_aliasTable_, numLights_);
 }
 

@@ -48,7 +48,7 @@ public:
 	/// @param quads Vector of quad geometry data
 	/// @param materials Vector of material data
 	/// @param lightIndices Vector of light primitive indices
-	/// @param isLightSphere Vector of flags (true=sphere, false=quad)
+	/// @param lightKinds How to sample each entry of lightIndices (see GpuLightKind)
 	/// @param punctualLights Vector of point/spot/distant delta lights (separate
 	///        from the area-light arrays above; evaluated deterministically,
 	///        not selected via the alias table)
@@ -69,7 +69,7 @@ public:
 		const std::vector<QuadData>& quads,
 		const std::vector<MaterialData>& materials,
 		const std::vector<int>& lightIndices,
-		const std::vector<bool>& isLightSphere,
+		const std::vector<GpuLightKind>& lightKinds,
 		const std::vector<PunctualLightGPU>& punctualLights = {},
 		const std::vector<BilinearPatchData>& bilinearPatches = {},
 		const std::vector<TriangleData>& triangles = {},
@@ -279,7 +279,7 @@ private:
 
 	// Light sampling support for MIS
 	CUdeviceptr d_lightIndices_ = 0;  ///< Device light primitive indices
-	CUdeviceptr d_isLightSphere_ = 0; ///< Device light type flags (sphere/quad)
+	CUdeviceptr d_lightKinds_ = 0; ///< Device GpuLightKind array, one per light
 	CUdeviceptr d_aliasTable_ = 0;    ///< Device alias table for power-weighted light sampling
 	unsigned int numLights_ = 0;      ///< Number of emissive lights
 

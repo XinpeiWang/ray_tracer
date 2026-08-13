@@ -328,7 +328,7 @@ bool SPPMPathTracer::renderTrivial(int width, int height, const GpuCameraParams&
                                     float* outputFramebuffer, OptixTraversableHandle gasHandle,
                                     CUdeviceptr d_materials, CUdeviceptr d_spheres, CUdeviceptr d_quads,
                                     unsigned int numMaterials, unsigned int numSpheres, unsigned int numQuads,
-                                    CUdeviceptr d_lightIndices, CUdeviceptr d_isLightSphere,
+                                    CUdeviceptr d_lightIndices, CUdeviceptr d_lightKinds,
                                     CUdeviceptr d_aliasTable, unsigned int numLights,
                                     unsigned int maxDepth) {
 	CUdeviceptr d_framebuffer;
@@ -358,7 +358,7 @@ bool SPPMPathTracer::renderTrivial(int width, int height, const GpuCameraParams&
 	params.materials    = reinterpret_cast<MaterialData*>(d_materials);
 	params.numMaterials  = numMaterials;
 	params.lightIndices  = reinterpret_cast<int*>(d_lightIndices);
-	params.isLightSphere = reinterpret_cast<const int*>(d_isLightSphere);
+	params.lightKinds = reinterpret_cast<const GpuLightKind*>(d_lightKinds);
 	params.aliasTable    = reinterpret_cast<GpuAliasEntry*>(d_aliasTable);
 	params.numLights     = numLights;
 	params.pixels       = reinterpret_cast<SPPMPixelGPU*>(d_pixels_);
@@ -427,7 +427,7 @@ bool SPPMPathTracer::render(int width, int height, int nIterations, int nPhotons
                              float* outputFramebuffer, OptixTraversableHandle gasHandle,
                              CUdeviceptr d_materials, CUdeviceptr d_spheres, CUdeviceptr d_quads,
                              unsigned int numMaterials, unsigned int numSpheres, unsigned int numQuads,
-                             CUdeviceptr d_lightIndices, CUdeviceptr d_isLightSphere,
+                             CUdeviceptr d_lightIndices, CUdeviceptr d_lightKinds,
                              CUdeviceptr d_aliasTable, unsigned int numLights) {
 	const size_t numPixels = static_cast<size_t>(width) * height;
 	if (!ensureBuffers(numPixels)) return false;
@@ -453,7 +453,7 @@ bool SPPMPathTracer::render(int width, int height, int nIterations, int nPhotons
 	params.materials     = reinterpret_cast<MaterialData*>(d_materials);
 	params.numMaterials  = numMaterials;
 	params.lightIndices  = reinterpret_cast<int*>(d_lightIndices);
-	params.isLightSphere = reinterpret_cast<const int*>(d_isLightSphere);
+	params.lightKinds = reinterpret_cast<const GpuLightKind*>(d_lightKinds);
 	params.aliasTable    = reinterpret_cast<GpuAliasEntry*>(d_aliasTable);
 	params.numLights     = numLights;
 	params.pixels        = reinterpret_cast<SPPMPixelGPU*>(d_pixels_);

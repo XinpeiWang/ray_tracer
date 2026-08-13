@@ -107,6 +107,35 @@ struct TriangleData {
 	bool hasUVs;
 };
 
+// Which array a sampled area light lives in, and therefore how to sample it.
+//
+// Explicitly : int, and the width is load-bearing. The host uploads one of
+// these per light and the device reads the same buffer back through a
+// pointer; when those two widths disagreed (this was a bool* over an int
+// buffer) only light 0 landed on its own entry - lights 1..3 read the upper,
+// always zero, bytes of light 0's value and so all looked like the zero kind.
+// A sphere light misread that way is then looked up in params.quads, which in
+// a scene with no quads at all is an out-of-bounds read: an illegal memory
+// access that kills the launch outright, not a subtle shading difference.
+// optix_renderer.cpp static_asserts the two widths against each other at the
+// upload site; wavefront_types.h and sppm_types.h carry their own copies of
+// the pointer and must stay this type too.
+//
+// Quad is deliberately 0 so the historical false==quad / true==sphere
+// encoding is preserved for anything still reasoning in those terms.
+enum class GpuLightKind : int {
+	Quad = 0,
+	Sphere = 1,
+	// A single emissive triangle. Most pbrt area lights arrive as a pair of
+	// triangles that pbrt_quadify.h rejoins into one parallelogram and which
+	// therefore become Quad; this kind is for the ones that will not merge -
+	// an odd triangle, a fan, anything non-parallelogram - which used to be
+	// emitted as geometry that glows when hit but that next-event estimation
+	// could not aim at, leaving the GPU image darker and noisier than the CPU
+	// one for no reason the picture explained.
+	Triangle = 2,
+};
+
 // Material types
 enum class MaterialType : int {
 	Lambertian = 0,
@@ -305,7 +334,7 @@ struct MaterialData {
 
 // Punctual (delta) light kinds - point/spot/distant. These are evaluated
 // deterministically at every hit (pdf=0, no MIS, not part of lightIndices/
-// aliasTable/isLightSphere at all) rather than stochastically picked like
+// aliasTable/lightKinds at all) rather than stochastically picked like
 // the area lights, mirroring how src/TheRestOfYourLife/punctual_light_objects.h
 // handles them on the CPU.
 enum class PunctualLightKind : int {
@@ -524,19 +553,9 @@ struct LaunchParams {
 	// Light sampling support (indices into sphere/quad arrays)
 	int* lightIndices;          // Array of light primitive indices
 	unsigned int numLights;     // Number of emissive lights in scene
-	// Nonzero if lightIndices[i] is a sphere, zero if a quad.
-	//
-	// int, NOT bool, and the width is load-bearing: the host uploads one int
-	// per light (optix_renderer.cpp packs a std::vector<int> for alignment).
-	// Reading that buffer back through a bool* takes one BYTE per element, so
-	// only light 0 landed on its own flag - lights 1..3 read the upper, always
-	// zero, bytes of light 0's int and so always looked like quads. A sphere
-	// light misread as a quad is then looked up in params.quads, which in a
-	// scene with no quads at all is an out-of-bounds read: an illegal memory
-	// access that kills the launch outright, not a subtle shading difference.
-	// Every backend's copy of this field (wavefront_types.h, sppm_types.h)
-	// had the same mismatch and the same fix.
-	const int* isLightSphere;
+	// Which array lightIndices[i] indexes - see GpuLightKind, whose comment
+	// explains why the width of this pointee is load-bearing.
+	const GpuLightKind* lightKinds;
 
 	// Power-weighted alias table for light selection (pbrt-v4 PowerLightSampler)
 	GpuAliasEntry* aliasTable;  // Device pointer to alias table (numLights entries)

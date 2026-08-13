@@ -51,7 +51,7 @@ public:
 		CUdeviceptr d_spheres,
 		CUdeviceptr d_quads,
 		CUdeviceptr d_light_indices,
-		CUdeviceptr d_is_light_sphere,
+		CUdeviceptr d_lightKinds,
 		CUdeviceptr d_alias_table,
 		unsigned int num_materials,
 		unsigned int num_spheres,

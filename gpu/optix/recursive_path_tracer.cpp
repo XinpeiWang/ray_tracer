@@ -265,7 +265,7 @@ bool RecursivePathTracer::render(
 	CUdeviceptr d_spheres,
 	CUdeviceptr d_quads,
 	CUdeviceptr d_light_indices,
-	CUdeviceptr d_is_light_sphere,
+	CUdeviceptr d_lightKinds,
 	CUdeviceptr d_alias_table,
 	unsigned int num_materials,
 	unsigned int num_spheres,
@@ -307,7 +307,7 @@ bool RecursivePathTracer::render(
 	// Light sampling for MIS
 	params.lightIndices = reinterpret_cast<int*>(d_light_indices);
 	params.numLights = num_lights;
-	params.isLightSphere = reinterpret_cast<const int*>(d_is_light_sphere);
+	params.lightKinds = reinterpret_cast<const GpuLightKind*>(d_lightKinds);
 	params.aliasTable = reinterpret_cast<GpuAliasEntry*>(d_alias_table);
 
 	// Punctual (delta) lights

@@ -514,7 +514,7 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 			float selection_pdf = sppm_params.aliasTable[light_idx].pdf;
 
 			int  prim_idx        = sppm_params.lightIndices[light_idx];
-			bool is_sphere_light = sppm_params.isLightSphere[light_idx] != 0;
+			bool is_sphere_light = sppm_params.lightKinds[light_idx] == GpuLightKind::Sphere;
 
 			float geom_pdf = 0.0f, max_dist = 0.0f;
 			float3 to_light;
@@ -578,7 +578,7 @@ extern "C" __global__ void __raygen__sppm_photon_pass() {
 	float selection_pdf = sppm_params.aliasTable[light_idx].pdf;
 
 	int  prim_idx        = sppm_params.lightIndices[light_idx];
-	bool is_sphere_light  = sppm_params.isLightSphere[light_idx] != 0;
+	bool is_sphere_light  = sppm_params.lightKinds[light_idx] == GpuLightKind::Sphere;
 
 	float3 p, n_light;
 	float area_pdf = 0.0f;

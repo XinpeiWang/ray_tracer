@@ -184,7 +184,7 @@ struct WavefrontLaunchParams {
 
 	// Light sampling (alias table, same layout as RecursivePathTracer)
 	int*         lightIndices;
-	const int*   isLightSphere;   // see optix_types.h: int, not bool - width is load-bearing
+	const GpuLightKind* lightKinds;   // see optix_types.h - width is load-bearing
 	GpuAliasEntry* aliasTable;
 	unsigned int   numLights;
 

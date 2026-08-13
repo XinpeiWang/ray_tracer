@@ -126,11 +126,46 @@ extern "C" __global__ void __closesthit__triangle() {
 		optixSetPayload_11(__float_as_uint(t_hit));
 		optixSetPayload_12(__float_as_uint(brdf_pdf_out));
 	} else if (mat.type == MaterialType::DiffuseLight) {
-		// Triangles are never registered as lights by scene_builder.cpp (no
-		// scene emits light from a triangle mesh), so this is unreachable in
-		// practice - pdf=0 is safe, matching bilinear patch's same note.
+		// NEE pdf for the incoming direction reaching this triangle light, so
+		// MIS in raygen can weight a BSDF-sampled path that happened to land
+		// here against the light-sampled estimate of the same thing. Mirrors
+		// the quad program's block exactly, differing only in halving the
+		// parallelogram's area - see sample_triangle_light().
+		//
+		// This used to be an unconditional pdf=0 on the grounds that no scene
+		// emits from a triangle. A pbrt file whose area light will not fold
+		// into a parallelogram now does, and leaving the pdf at zero would
+		// hand MIS a weight of 1 for the BSDF strategy - double-counting the
+		// light rather than merely losing a little quality.
+		float light_pdf_for_incoming = 0.0f;
+		if (params.aliasTable && params.numLights > 0) {
+			// Global index: lightIndices addresses the scene's own triangle
+			// array. An instanced triangle is never emissive, so its global
+			// index simply never matches, which is the correct answer.
+			const int prim_global = (int)(triBase + primIdx);
+			float sel_pdf = 0.0f;
+			for (unsigned int li = 0; li < params.numLights; ++li) {
+				if (params.lightIndices[li] == prim_global &&
+					params.lightKinds[li] == GpuLightKind::Triangle) {
+					sel_pdf = params.aliasTable[li].pdf;
+					break;
+				}
+			}
+			if (sel_pdf > 0.0f) {
+				const float3 e1 = tri.p1 - tri.p0;
+				const float3 e2 = tri.p2 - tri.p0;
+				const float3 n_unnorm = cross(e1, e2);
+				const float twice_area = length(n_unnorm);
+				const float area = 0.5f * twice_area;
+				const float dist_sq = t * t * dot(ray_dir, ray_dir);
+				const float cosine = (twice_area > 1e-12f)
+					? fabsf(dot(ray_dir, n_unnorm / twice_area)) : 0.0f;
+				if (cosine > 1e-6f && area > 1e-12f)
+					light_pdf_for_incoming = sel_pdf * dist_sq / (cosine * area);
+			}
+		}
 		optixSetPayload_10(2);
-		optixSetPayload_12(0);
+		optixSetPayload_12(__float_as_uint(light_pdf_for_incoming));
 	} else {
 		optixSetPayload_10(0);
 		optixSetPayload_12(0);

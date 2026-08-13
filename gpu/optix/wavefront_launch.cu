@@ -17,7 +17,7 @@ extern "C" __global__ void evaluate_materials(
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
 	float3*,
 	const SphereData*, const QuadData*, const MaterialData*,
-	const int*, const int*, const GpuAliasEntry*,
+	const int*, const GpuLightKind*, const GpuAliasEntry*,
 	unsigned int,
 	const PunctualLightGPU*, unsigned int,
 	int);
@@ -53,7 +53,7 @@ extern "C" void wf_launch_evaluate_materials(
 	const QuadData*              d_quads,     unsigned int numQuads,
 	const MaterialData*          d_materials, unsigned int numMaterials,
 	const int*                   d_lightIndices,
-	const int*                   d_isLightSphere,
+	const GpuLightKind*          d_lightKinds,
 	const GpuAliasEntry*         d_aliasTable,
 	unsigned int                 numLights,
 	const PunctualLightGPU*      d_punctualLights,
@@ -69,7 +69,7 @@ extern "C" void wf_launch_evaluate_materials(
 		nextRayQueue, shadowQueue,
 		d_framebuffer,
 		d_spheres, d_quads, d_materials,
-		d_lightIndices, d_isLightSphere, d_aliasTable,
+		d_lightIndices, d_lightKinds, d_aliasTable,
 		numLights, d_punctualLights, numPunctualLights, maxDepth);
 }
 

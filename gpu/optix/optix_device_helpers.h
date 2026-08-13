@@ -276,6 +276,109 @@ __device__ __forceinline__ float3 sample_quad_light(
 	return direction;
 }
 
+// Sample a random point on a triangle light.
+//
+// Same shape of answer as sample_quad_light above - a direction plus a
+// solid-angle pdf - and deliberately the same structure, because the only
+// real differences are how a uniform point is drawn and that the area is half
+// a parallelogram's.
+//
+// Most pbrt area lights never reach here: they arrive as triangle PAIRS that
+// pbrt_quadify.h rejoins into one parallelogram, which is both cheaper to
+// sample and what the quad path already did well. This is for the ones that
+// will not merge - an odd triangle, a fan, anything non-parallelogram - which
+// before this existed were emitted as geometry that glows when hit but that
+// next-event estimation could not aim at.
+__device__ __forceinline__ float3 sample_triangle_light(
+	const TriangleData& tri,
+	const float3& origin,
+	unsigned int& seed,
+	float& pdf,
+	float& out_dist
+) {
+	// Uniform point on the triangle by folding the unit square onto it: draw
+	// (a,b) in [0,1]^2 and reflect the half that falls outside a+b<=1 back
+	// through the diagonal. Area-preserving, so the point stays uniform, and
+	// branch-cheap compared with the sqrt form.
+	float a = random_float(seed);
+	float b = random_float(seed);
+	if (a + b > 1.0f) { a = 1.0f - a; b = 1.0f - b; }
+
+	const float3 e1 = tri.p1 - tri.p0;
+	const float3 e2 = tri.p2 - tri.p0;
+	const float3 point = tri.p0 + a * e1 + b * e2;
+
+	float3 to_light = point - origin;
+	float dist_sq = dot(to_light, to_light);
+	out_dist = sqrtf(dist_sq);
+	if (out_dist < 1e-6f) { pdf = 0.0f; return make_float3(0.0f, 0.0f, 1.0f); }
+	float3 direction = to_light / out_dist;
+
+	// GEOMETRIC normal, not the interpolated shading normal: this converts an
+	// area measure to a solid-angle one, which is a property of the surface
+	// the sample was actually drawn on.
+	const float3 n_unnorm = cross(e1, e2);
+	const float twice_area = length(n_unnorm);
+	const float area = 0.5f * twice_area;      // half the parallelogram
+	if (twice_area < 1e-12f) { pdf = 0.0f; return direction; }
+	const float3 normal = n_unnorm / twice_area;
+
+	const float cosine = fabsf(dot(direction, normal));
+	if (cosine < 1e-6f || area < 1e-12f) {
+		pdf = 0.0f;
+		return direction;
+	}
+
+	pdf = dist_sq / (cosine * area);
+	return direction;
+}
+
+// Sample whichever kind of area light `light_idx` names, and report the
+// emitter's radiance alongside it.
+//
+// One helper rather than the same three-way branch written out at each of the
+// next-event sites below - they had already drifted into two slightly
+// different spellings of the two-way version, and adding a third kind to each
+// by hand is exactly how a backend ends up sampling a light one way and
+// weighting it another.
+__device__ __forceinline__ float3 sample_area_light_by_kind(
+	int light_idx,
+	const float3& origin,
+	unsigned int& seed,
+	float& geom_pdf,
+	float& max_dist,
+	float3& emission
+) {
+	const int prim_idx = params.lightIndices[light_idx];
+	switch (params.lightKinds[light_idx]) {
+	case GpuLightKind::Sphere: {
+		const SphereData& s = params.spheres[prim_idx];
+		const float3 dir = sample_sphere_light(s, origin, seed, geom_pdf);
+		// Distance to the CENTRE, matching what this path has always used to
+		// bound the shadow ray for a sphere light.
+		max_dist = length(s.center - origin);
+		emission = params.materials[s.materialIdx].emission;
+		return dir;
+	}
+	case GpuLightKind::Triangle: {
+		// The scene's own triangle array - an instanced triangle is never
+		// emissive (flatten() bakes emitters per placement into world space),
+		// so no per-instance base offset applies here.
+		const TriangleData& t = params.triangles[prim_idx];
+		const float3 dir = sample_triangle_light(t, origin, seed, geom_pdf, max_dist);
+		emission = params.materials[t.materialIdx].emission;
+		return dir;
+	}
+	case GpuLightKind::Quad:
+	default: {
+		const QuadData& q = params.quads[prim_idx];
+		const float3 dir = sample_quad_light(q, origin, seed, geom_pdf, max_dist);
+		emission = params.materials[q.materialIdx].emission;
+		return dir;
+	}
+	}
+}
+
 // Evaluate quad light PDF for a given direction
 __device__ __forceinline__ float quad_light_pdf(
 	const QuadData& quad,
@@ -630,23 +733,12 @@ __device__ __forceinline__ void shade_material(
 					selection_pdf = 1.0f / float(params.numLights);
 				}
 
-				int prim_idx = params.lightIndices[light_idx];
-				bool is_sphere = params.isLightSphere[light_idx] != 0;
-
 				// Sample direction toward light
-				float3 to_light;
 				float geom_pdf = 0.0f;  // PDF of the sampled direction (geometry term)
 				float max_dist = 0.0f;
-
-				if (is_sphere) {
-					const SphereData& light_sphere = params.spheres[prim_idx];
-					to_light = sample_sphere_light(light_sphere, hit_point, seed, geom_pdf);
-					float3 to_center = light_sphere.center - hit_point;
-					max_dist = length(to_center);
-				} else {
-					const QuadData& light_quad = params.quads[prim_idx];
-					to_light = sample_quad_light(light_quad, hit_point, seed, geom_pdf, max_dist);
-				}
+				float3 sampled_light_emission = make_float3(0.0f, 0.0f, 0.0f);
+				float3 to_light = sample_area_light_by_kind(
+					light_idx, hit_point, seed, geom_pdf, max_dist, sampled_light_emission);
 
 				// Combined PDF = selection_pdf * geometric_pdf
 				float light_pdf = selection_pdf * geom_pdf;
@@ -662,15 +754,10 @@ __device__ __forceinline__ void shade_material(
 						// MIS weight using power heuristic
 						float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
 
-						// Get light emission
-						float3 light_emission = make_float3(0.0f, 0.0f, 0.0f);
-						if (is_sphere) {
-							const MaterialData& light_mat = params.materials[params.spheres[prim_idx].materialIdx];
-							light_emission = light_mat.emission;
-						} else {
-							const MaterialData& light_mat = params.materials[params.quads[prim_idx].materialIdx];
-							light_emission = light_mat.emission;
-						}
+						// Emission of the light that was actually sampled -
+						// looked up by the same helper that chose it, so the
+						// two can't disagree about which primitive it was.
+						const float3 light_emission = sampled_light_emission;
 
 						// L = BRDF * emission * cos(theta) * MIS_weight / pdf
 						// Uses `attenuation` (already texture-sampled above if
@@ -1012,22 +1099,11 @@ __device__ __forceinline__ void shade_material(
 						selection_pdf = 1.0f / float(params.numLights);
 					}
 
-					int prim_idx = params.lightIndices[light_idx];
-					bool is_sphere_light = params.isLightSphere[light_idx] != 0;
-
-					float3 to_light;
 					float geom_pdf = 0.0f;
 					float max_dist = 0.0f;
-
-					if (is_sphere_light) {
-						const SphereData& light_sphere = params.spheres[prim_idx];
-						to_light = sample_sphere_light(light_sphere, hit_point, seed, geom_pdf);
-						float3 to_center = light_sphere.center - hit_point;
-						max_dist = length(to_center);
-					} else {
-						const QuadData& light_quad = params.quads[prim_idx];
-						to_light = sample_quad_light(light_quad, hit_point, seed, geom_pdf, max_dist);
-					}
+					float3 light_emission = make_float3(0.0f, 0.0f, 0.0f);
+					float3 to_light = sample_area_light_by_kind(
+						light_idx, hit_point, seed, geom_pdf, max_dist, light_emission);
 
 					float light_pdf = selection_pdf * geom_pdf;
 					if (light_pdf > 1e-6f) {
@@ -1041,15 +1117,6 @@ __device__ __forceinline__ void shade_material(
 												  / 3.14159265358979323846f;
 								float brdf_pdf   = cosine_pdf(to_light, cdn);
 								float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
-
-								float3 light_emission = make_float3(0.0f, 0.0f, 0.0f);
-								if (is_sphere_light) {
-									const MaterialData& light_mat = params.materials[params.spheres[prim_idx].materialIdx];
-									light_emission = light_mat.emission;
-								} else {
-									const MaterialData& light_mat = params.materials[params.quads[prim_idx].materialIdx];
-									light_emission = light_mat.emission;
-								}
 
 								float3 direct_light = mis_weight * brdf_val * light_emission * cos_to_light / light_pdf;
 								emission = emission + direct_light;
@@ -1125,22 +1192,11 @@ __device__ __forceinline__ void shade_material(
 					selection_pdf = 1.0f / float(params.numLights);
 				}
 
-				int prim_idx = params.lightIndices[light_idx];
-				bool is_sphere_light = params.isLightSphere[light_idx] != 0;
-
-				float3 to_light;
 				float geom_pdf = 0.0f;
 				float max_dist = 0.0f;
-
-				if (is_sphere_light) {
-					const SphereData& light_sphere = params.spheres[prim_idx];
-					to_light = sample_sphere_light(light_sphere, hit_point, seed, geom_pdf);
-					float3 to_center = light_sphere.center - hit_point;
-					max_dist = length(to_center);
-				} else {
-					const QuadData& light_quad = params.quads[prim_idx];
-					to_light = sample_quad_light(light_quad, hit_point, seed, geom_pdf, max_dist);
-				}
+				float3 light_emission = make_float3(0.0f, 0.0f, 0.0f);
+				float3 to_light = sample_area_light_by_kind(
+					light_idx, hit_point, seed, geom_pdf, max_dist, light_emission);
 
 				float light_pdf = selection_pdf * geom_pdf;
 				if (light_pdf > 1e-6f) {
@@ -1153,15 +1209,6 @@ __device__ __forceinline__ void shade_material(
 							float brdf_val = (1.0f - fr_l) / (nf_c * 3.14159265358979323846f);
 							float brdf_pdf_l = brdf_val * cos_to_light;  // cosine_pdf * brdf * pi cancel
 							float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf_l);
-
-							float3 light_emission = make_float3(0.0f, 0.0f, 0.0f);
-							if (is_sphere_light) {
-								const MaterialData& light_mat = params.materials[params.spheres[prim_idx].materialIdx];
-								light_emission = light_mat.emission;
-							} else {
-								const MaterialData& light_mat = params.materials[params.quads[prim_idx].materialIdx];
-								light_emission = light_mat.emission;
-							}
 
 							float3 direct_light = mis_weight * brdf_val * light_emission * cos_to_light / light_pdf;
 							emission = emission + direct_light;

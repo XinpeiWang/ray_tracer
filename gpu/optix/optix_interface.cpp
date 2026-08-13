@@ -103,7 +103,7 @@ extern "C" int optix_render_main(
 			g_renderer->setInstanceData(scene.instanceTriangles, scene.instanceSpheres,
 										scene.instanceGroups, scene.instancePlacements);
 			if (!g_renderer->buildScene(scene.spheres, scene.quads, scene.materials,
-										 scene.lightIndices, scene.isLightSphere,
+										 scene.lightIndices, scene.lightKinds,
 										 scene.punctualLights, scene.bilinearPatches,
 										 scene.triangles, scene.lensElements,
 										 scene.exitPupilBounds, scene.textures,
@@ -298,7 +298,7 @@ extern "C" int optix_render_main_sppm(
 			g_renderer->setInstanceData(scene.instanceTriangles, scene.instanceSpheres,
 										scene.instanceGroups, scene.instancePlacements);
 			if (!g_renderer->buildScene(scene.spheres, scene.quads, scene.materials,
-			                             scene.lightIndices, scene.isLightSphere,
+			                             scene.lightIndices, scene.lightKinds,
 			                             scene.punctualLights, scene.bilinearPatches,
 			                             scene.triangles, scene.lensElements,
 			                             scene.exitPupilBounds, scene.textures,

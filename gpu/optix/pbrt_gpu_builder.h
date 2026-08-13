@@ -7,18 +7,21 @@
 //
 // AREA LIGHTS ARE THE WHOLE DIFFICULTY
 // ------------------------------------
-// The GPU samples area lights as spheres or quads and nothing else: the light
-// list carries one is-it-a-sphere flag per entry (optix_renderer.cpp). pbrt
-// has no quad shape - a light is a `trianglemesh` with an AreaLightSource
-// attached - so handed over naively, every pbrt light becomes geometry that
+// pbrt has no quad shape - a light is a `trianglemesh` with an AreaLightSource
+// attached - while the GPU samples an area light as one of the shapes named by
+// GpuLightKind. Handed over naively, every pbrt light becomes geometry that
 // glows when hit but that next-event estimation cannot aim at. That is not a
 // slightly noisier image; it is a black one.
 //
-// pbrt_quadify.h rejoins the triangle pairs into parallelograms, which is why
-// the emissive geometry here goes through it and the rest does not. Emissive
-// triangles that will not merge are kept as geometry and counted, so the
-// caller can say plainly that some lights will not be sampled rather than
-// leaving the user to wonder why a render is dark.
+// So emissive geometry takes a different route here from everything else.
+// pbrt_quadify.h first rejoins triangle PAIRS into parallelograms, which is
+// what the overwhelming majority of pbrt area lights are and which the quad
+// sampler handles well. What will not merge - an odd triangle, a fan, anything
+// genuinely non-parallelogram - is registered as GpuLightKind::Triangle and
+// sampled per triangle instead. That second path is newer: those lights used
+// to be emitted as glowing geometry and left out of the light list entirely,
+// which cost real brightness and noise on GPU with nothing on screen to
+// explain it.
 
 #include <cstddef>
 #include <map>
@@ -37,7 +40,7 @@ struct BuildStats {
 	std::size_t triangles = 0;
 	std::size_t spheres = 0;
 	std::size_t quadLights = 0;
-	std::size_t unsampledEmissiveTriangles = 0;
+	std::size_t emissiveTrianglesSampledIndividually = 0;
 	// Placements the builder prepared; optix_renderer.cpp's buildScene()
 	// turns each one into its own IAS entry over a per-definition GAS.
 	std::size_t instancePlacements = 0;
@@ -119,7 +122,7 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 	out.triangles.clear();
 	out.materials.clear();
 	out.lightIndices.clear();
-	out.isLightSphere.clear();
+	out.lightKinds.clear();
 
 	// One MaterialData per distinct (material, emission) pair, exactly as the
 	// CPU builder caches them - a mesh with a thousand faces sharing one
@@ -155,7 +158,7 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		sd.materialIdx = materialIndex(s.material, s.areaLight);
 		if (s.areaLight >= 0) {
 			out.lightIndices.push_back(static_cast<int>(out.spheres.size()));
-			out.isLightSphere.push_back(true);
+			out.lightKinds.push_back(GpuLightKind::Sphere);
 		}
 		out.spheres.push_back(sd);
 	}
@@ -193,7 +196,7 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		qd.materialIdx = materialIndex(q.material, q.areaLight);
 		if (q.areaLight >= 0) {
 			out.lightIndices.push_back(static_cast<int>(out.quads.size()));
-			out.isLightSphere.push_back(false);
+			out.lightKinds.push_back(GpuLightKind::Quad);
 		}
 		out.quads.push_back(qd);
 	}
@@ -212,10 +215,25 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		td.hasNormals = t.hasNormals;
 		td.hasUVs = false;               // flatten does not carry UVs yet
 		td.materialIdx = materialIndex(t.material, t.areaLight);
+		// An emissive triangle that would not fold into a parallelogram is
+		// registered as a light in its own right. It used to be emitted as
+		// geometry and nothing else - it glowed when a ray happened to hit it,
+		// but next-event estimation could not aim at it, so the GPU image came
+		// out darker and noisier than the CPU one with nothing on screen to
+		// explain why. GpuLightKind::Triangle and sample_triangle_light() are
+		// the two halves of the fix.
+		if (t.areaLight >= 0) {
+			out.lightIndices.push_back(static_cast<int>(out.triangles.size()));
+			out.lightKinds.push_back(GpuLightKind::Triangle);
+		}
 		out.triangles.push_back(td);
 	}
 	stats.triangles = out.triangles.size();
-	stats.unsampledEmissiveTriangles = pbrt_quadify::unmergedEmissiveCount(merged);
+	// Kept as a stat because it still says something real - how many lights
+	// needed the per-triangle path rather than the cheaper merged-quad one -
+	// but it no longer means "these will not be sampled". The caller's warning
+	// went away with the gap it described.
+	stats.emissiveTrianglesSampledIndividually = pbrt_quadify::unmergedEmissiveCount(merged);
 
 	// ---- instanced geometry ----------------------------------------------
 	// Object space, kept apart from the world-space list above. Emissive

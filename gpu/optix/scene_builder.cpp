@@ -373,7 +373,7 @@ namespace {
 		// Track if this quad is a light
 		if (is_emissive(scene, material_idx)) {
 			scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-			scene.isLightSphere.push_back(false); // false = quad
+			scene.lightKinds.push_back(GpuLightKind::Quad); // false = quad
 		}
 	}
 
@@ -935,7 +935,7 @@ static void build_cornell_box(SceneData& scene) {
 		scene.quads.push_back(quad);
 		if (q.is_light) {
 			scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-			scene.isLightSphere.push_back(false);
+			scene.lightKinds.push_back(GpuLightKind::Quad);
 		}
 	}
 
@@ -1007,7 +1007,7 @@ static void build_rough_metal_spheres(SceneData& scene) {
     lq.materialIdx = mat_light;
     scene.quads.push_back(lq);
     scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-    scene.isLightSphere.push_back(false);
+    scene.lightKinds.push_back(GpuLightKind::Quad);
 }
 
 /// @brief Adds the 5 standard Cornell-box walls (red/white/green/white/white)
@@ -1041,7 +1041,7 @@ static void add_cornell_walls_and_main_light(SceneData& scene) {
         scene.quads.push_back(quad);
         if (q.is_light) {
             scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-            scene.isLightSphere.push_back(false);
+            scene.lightKinds.push_back(GpuLightKind::Quad);
         }
     }
 }
@@ -1162,7 +1162,7 @@ static void build_cornell_thin_glass(SceneData& scene) {
     { QuadData q{}; q.Q = make_float3(kBoxSize,0,0); q.u = make_float3(0,0,kBoxSize); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_green; scene.quads.push_back(q); }
     { QuadData q{}; q.Q = make_float3(0,0,kBoxSize); q.u = make_float3(0,0,-kBoxSize); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_red; scene.quads.push_back(q); }
     { QuadData q{}; q.Q = make_float3(213,554,227); q.u = make_float3(130,0,0); q.v = make_float3(0,0,105); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_light; scene.quads.push_back(q);
-      scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1); scene.isLightSphere.push_back(false); }
+      scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1); scene.lightKinds.push_back(GpuLightKind::Quad); }
     { QuadData q{}; q.Q = make_float3(0,kBoxSize,0); q.u = make_float3(kBoxSize,0,0); q.v = make_float3(0,0,kBoxSize); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
     { QuadData q{}; q.Q = make_float3(0,0,kBoxSize); q.u = make_float3(kBoxSize,0,0); q.v = make_float3(0,0,-kBoxSize); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
     { QuadData q{}; q.Q = make_float3(kBoxSize,0,kBoxSize); q.u = make_float3(-kBoxSize,0,0); q.v = make_float3(0,kBoxSize,0); const float3 c = cross(q.u,q.v); q.w=c; q.normal=normalize(c); q.D=dot(q.normal,q.Q); q.materialIdx=mat_white; scene.quads.push_back(q); }
@@ -1520,7 +1520,7 @@ static void build_simple_light_gpu(SceneData& scene) {
 	lightSphere.materialIdx = mat_light;
 	scene.spheres.push_back(lightSphere);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 
 	QuadData lightQuad{};
 	lightQuad.Q = make_float3(3.0f, 1.0f, -2.0f);
@@ -1533,7 +1533,7 @@ static void build_simple_light_gpu(SceneData& scene) {
 	lightQuad.materialIdx = mat_light;
 	scene.quads.push_back(lightQuad);
 	scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-	scene.isLightSphere.push_back(false);
+	scene.lightKinds.push_back(GpuLightKind::Quad);
 }
 
 /**
@@ -1564,7 +1564,7 @@ void build_quads_scene(SceneData& scene) {
 		// Track if emissive
 		if (is_emissive(scene, mat_idx)) {
 			scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-			scene.isLightSphere.push_back(false);
+			scene.lightKinds.push_back(GpuLightKind::Quad);
 		}
 	};
 
@@ -1852,7 +1852,7 @@ static void build_spherical_camera_scene_gpu(SceneData& scene) {
 	lightSphere.materialIdx = mat_light;
 	scene.spheres.push_back(lightSphere);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 36: Realistic Camera. Matches CPU build_realistic_camera_scene()
@@ -1889,7 +1889,7 @@ static void build_realistic_camera_scene_gpu(SceneData& scene) {
 	lightSphere.materialIdx = mat_light;
 	scene.spheres.push_back(lightSphere);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 24: HDRI Sky. Matches CPU build_hdri_sky_world() (ground +
@@ -1987,7 +1987,7 @@ static void build_cornell_smoke_gpu(SceneData& scene) {
 		lq.materialIdx = mat_light;
 		scene.quads.push_back(lq);
 		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-		scene.isLightSphere.push_back(false);
+		scene.lightKinds.push_back(GpuLightKind::Quad);
 	}
 
 	// Two medium spheres approximating CPU's two rotated boxes (centered
@@ -2027,7 +2027,7 @@ static void build_homogeneous_medium_scene_gpu(SceneData& scene) {
 		lq.materialIdx = mat_light;
 		scene.quads.push_back(lq);
 		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-		scene.isLightSphere.push_back(false);
+		scene.lightKinds.push_back(GpuLightKind::Quad);
 	}
 
 	const int mat_medium = add_medium(scene, make_float3(0.8f, 0.9f, 1.0f), 0.3f, 0.005f);
@@ -2075,7 +2075,7 @@ static void build_normal_mapped_cornell_gpu(SceneData& scene) {
 			add_lambertian(scene, make_float3(static_cast<float>(q.color.r), static_cast<float>(q.color.g), static_cast<float>(q.color.b)));
 		}
 		// add_transformed_quad() already auto-registers emissive quads into
-		// lightIndices/isLightSphere itself (it checks the material type) -
+		// lightIndices/lightKinds itself (it checks the material type) -
 		// do not also push here, or the one light double-counts.
 		add_transformed_quad(scene,
 			make_float3(static_cast<float>(q.Q.x), static_cast<float>(q.Q.y), static_cast<float>(q.Q.z)),
@@ -2151,7 +2151,7 @@ static void build_subsurface_slab_gpu(SceneData& scene) {
 		lq.materialIdx = mat_light;
 		scene.quads.push_back(lq);
 		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-		scene.isLightSphere.push_back(false);
+		scene.lightKinds.push_back(GpuLightKind::Quad);
 	}
 
 	// Wax slab: CPU's box(0,0,0)-(200,300,160) translated by (270,0,230),
@@ -2231,7 +2231,7 @@ static void build_bilinear_patch_scene_gpu(SceneData& scene) {
 		lq.materialIdx = mat_light;
 		scene.quads.push_back(lq);
 		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-		scene.isLightSphere.push_back(false);
+		scene.lightKinds.push_back(GpuLightKind::Quad);
 	}
 
 	// Patch 1: classic hyperbolic paraboloid saddle, gold metal
@@ -2344,7 +2344,7 @@ static void build_measured_brdf_scene_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 1.5f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 37: Triangle Mesh. Matches CPU build_triangle_mesh_scene()
@@ -2397,7 +2397,7 @@ static void build_triangle_mesh_scene_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 38: Stanford Bunny. Matches CPU build_stanford_bunny()
@@ -2431,7 +2431,7 @@ static void build_stanford_bunny_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 39: Stanford Armadillo. Matches CPU build_stanford_armadillo()
@@ -2462,7 +2462,7 @@ static void build_stanford_armadillo_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 40: Stanford Happy Buddha. Matches CPU
@@ -2494,7 +2494,7 @@ static void build_stanford_happy_buddha_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 41: Stanford Lucy. Matches CPU build_stanford_lucy()
@@ -2530,7 +2530,7 @@ static void build_stanford_lucy_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 42: Stanford XYZRGB Dragon. Matches CPU build_stanford_dragon()
@@ -2563,7 +2563,7 @@ static void build_stanford_dragon_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 50: Glass Dragon. Matches CPU build_glass_dragon()
@@ -2595,7 +2595,7 @@ static void build_glass_dragon_gpu(SceneData& scene) {
 	SphereData light2{}; light2.center = make_float3(0.0f, 8.0f, 0.0f); light2.radius = 2.0f; light2.materialIdx = mat_light2;
 	scene.spheres.push_back(light2);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 51: Beast. Matches CPU build_beast() exactly.
@@ -2615,7 +2615,7 @@ static void build_beast_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 52: VW Beetle. Matches CPU build_beetle() exactly.
@@ -2635,7 +2635,7 @@ static void build_beetle_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 53: VW Beetle (alternate mesh). Matches CPU build_beetle_alt() exactly.
@@ -2655,7 +2655,7 @@ static void build_beetle_alt_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 54: Bimba. Matches CPU build_bimba() exactly.
@@ -2675,7 +2675,7 @@ static void build_bimba_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 55: Cow. Matches CPU build_cow() exactly.
@@ -2695,7 +2695,7 @@ static void build_cow_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 56: Fandisk. Matches CPU build_fandisk() exactly.
@@ -2715,7 +2715,7 @@ static void build_fandisk_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 57: Homer. Matches CPU build_homer() exactly.
@@ -2735,7 +2735,7 @@ static void build_homer_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 58: Igea. Matches CPU build_igea() exactly (unrotated mesh --
@@ -2758,7 +2758,7 @@ static void build_igea_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 59: Max Planck. Matches CPU build_max_planck() exactly.
@@ -2778,7 +2778,7 @@ static void build_max_planck_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 60: Ogre. Matches CPU build_ogre() exactly.
@@ -2798,7 +2798,7 @@ static void build_ogre_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 61: Rocker Arm. Matches CPU build_rocker_arm() exactly.
@@ -2818,7 +2818,7 @@ static void build_rocker_arm_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 43: Utah Teapot. Matches CPU build_utah_teapot()
@@ -2850,7 +2850,7 @@ static void build_utah_teapot_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 44: Spot the Cow (Keenan Crane). Matches CPU build_spot_cow()
@@ -2882,7 +2882,7 @@ static void build_spot_cow_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 45: Suzanne (Blender's monkey-head mascot). Matches CPU
@@ -2914,7 +2914,7 @@ static void build_suzanne_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 46: Nefertiti Bust. Matches CPU build_nefertiti()
@@ -2949,7 +2949,7 @@ static void build_nefertiti_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 47: Horse (classic geometry-processing test model - a
@@ -2981,7 +2981,7 @@ static void build_horse_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 48: Cheburashka (beloved cartoon-character bust from Keenan
@@ -3013,7 +3013,7 @@ static void build_cheburashka_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 49: Trophy Room. Matches CPU build_trophy_room()
@@ -3058,7 +3058,7 @@ static void build_trophy_room_gpu(SceneData& scene) {
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.isLightSphere.push_back(true);
+	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
 /// @brief Scene 8: Final Scene (Ray Tracing: The Next Week finale).
@@ -3294,14 +3294,13 @@ static bool build_loaded_pbrt_scene(
 		  << stats.quadLights << " quads, "
 		  << scene.lightIndices.size() << " sampled lights\n";
 
-	// Silence here would be the cruel option: the render still runs, it is
-	// just darker than the scene asked for, and nothing on screen says why.
-	if (stats.unsampledEmissiveTriangles > 0) {
-		std::cerr << "[OptiX] warning: " << stats.unsampledEmissiveTriangles
-			  << " emissive triangle(s) are not parallelograms, so they cannot be "
-			     "sampled as lights on GPU.\n"
-			  << "[OptiX] They still emit when hit directly, but the image will be "
-			     "darker and noisier than the CPU render. Use --cpu for this scene.\n";
+	// Reported, not warned about: these are sampled properly now (as
+	// GpuLightKind::Triangle), so the only thing worth saying is that they
+	// took the per-triangle path rather than the cheaper merged-quad one.
+	if (stats.emissiveTrianglesSampledIndividually > 0) {
+		std::cerr << "[OptiX] " << stats.emissiveTrianglesSampledIndividually
+			  << " emissive triangle(s) are not parallelograms and are sampled "
+			     "individually\n";
 	}
 	if (scene.lightIndices.empty()) {
 		std::cerr << "[OptiX] warning: no samplable lights in this scene - "
