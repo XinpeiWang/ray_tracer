@@ -38,11 +38,10 @@ struct BuildStats {
 	std::size_t spheres = 0;
 	std::size_t quadLights = 0;
 	std::size_t unsampledEmissiveTriangles = 0;
-	// Placements the builder prepared. The renderer turns these into IAS
-	// entries; until it does, they are prepared but not drawn.
+	// Placements the builder prepared; optix_renderer.cpp's buildScene()
+	// turns each one into its own IAS entry over a per-definition GAS.
 	std::size_t instancePlacements = 0;
 	std::size_t unsupportedInstancedSpheres = 0;
-	std::size_t unhandledInstances = 0;
 };
 
 namespace detail {
@@ -280,9 +279,6 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		out.instancePlacements.push_back(p);
 	}
 	stats.instancePlacements = out.instancePlacements.size();
-	// Prepared but not yet drawn: the renderer does not build the per-group
-	// GASes or the IAS entries yet, so these placements are data only.
-	stats.unhandledInstances = out.instancePlacements.size();
 
 	return stats;
 }

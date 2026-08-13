@@ -33,9 +33,16 @@ extern "C" __global__ void __closesthit__triangle() {
 	// A primitive index is local to its GAS, so an instanced definition's
 	// triangle 0 and the scene's triangle 0 are different triangles. The base
 	// table maps this instance back to its slice of the global array; a scene
-	// with no instancing has no table and lands on 0, exactly as before.
-	const unsigned int triBase = params.instanceTriBase
-		? (unsigned int)params.instanceTriBase[optixGetInstanceId()] : 0u;
+	// with no instancing has no table and lands on base 0, exactly as before.
+	//
+	// The table entry is SIGNED and -1 is a real sentinel, not "unused": the
+	// scene's own two instances (custom-prim id 0, triangle id 1) get -1
+	// because their triangles already sit in world space - only a placement
+	// of an instance DEFINITION gets a real (>= 0) base. instBase is read
+	// again below to gate the normal transform on the same condition.
+	const int instBase = params.instanceTriBase
+		? params.instanceTriBase[optixGetInstanceId()] : -1;
+	const unsigned int triBase = (instBase >= 0) ? (unsigned int)instBase : 0u;
 	const TriangleData& tri = params.triangles[triBase + primIdx];
 	const MaterialData& mat = params.materials[tri.materialIdx];
 
@@ -61,22 +68,21 @@ extern "C" __global__ void __closesthit__triangle() {
 	} else {
 		shading_normal = normalize(cross(tri.p1 - tri.p0, tri.p2 - tri.p0));
 	}
-	// NO object-to-world normal transform here.
+	// Object-to-world normal transform, but ONLY for genuinely instanced
+	// geometry (instBase >= 0 - see its comment above).
 	//
-	// db7a609 added optixTransformNormalFromObjectToWorldSpace() at this
-	// point, ahead of object instancing, reasoning that a non-instanced GAS
-	// has an identity transform so the call would be a no-op. That reasoning
-	// was untested against a scene containing any triangles (scene 0, the
-	// regression check used, has zero) and it was wrong: with it in place
-	// every loaded pbrt scene rendered pure black on GPU. Confirmed by
-	// isolated bisection - removing only this line, output cleared and PTX
-	// recompiled before each measurement, brings the render back.
-	//
-	// When instancing is implemented for real, this belongs here again but
-	// gated on the geometry actually being instanced (e.g. only when
-	// params.instanceTriBase is non-null AND resolves to a real instance for
-	// this primitive) - and it must be re-verified against a scene that
-	// actually contains triangles, not scene 0.
+	// db7a609 first added this unconditionally, reasoning a non-instanced GAS
+	// has an identity transform so the call is a no-op there. That was true
+	// for the transform itself, but the bug was elsewhere: a stacked, unrelated
+	// regression (2e8c79b) made every loaded pbrt scene render black regardless,
+	// which made the unconditional version LOOK responsible when it was
+	// reverted alongside the real fix. With that other bug now fixed and a
+	// scene actually rendering, gating this call on instBase costs nothing on
+	// the identity path (skipped entirely rather than executed as a no-op) and
+	// is what makes instanced normals correct once instances exist.
+	if (instBase >= 0) {
+		shading_normal = normalize(optixTransformNormalFromObjectToWorldSpace(shading_normal));
+	}
 
 	const bool front_face = dot(ray_dir, shading_normal) < 0.0f;
 	const float3 final_normal = front_face ? shading_normal : -shading_normal;

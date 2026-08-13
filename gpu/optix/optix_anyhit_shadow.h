@@ -92,9 +92,12 @@ extern "C" __global__ void __anyhit__shadow_bilinear_patch() {
 // Shadow any-hit for triangles
 extern "C" __global__ void __anyhit__shadow_triangle() {
 	const unsigned int primIdx = optixGetPrimitiveIndex();
-	// See optix_intersection_triangle.h: a primitive index is local to its GAS.
-	const unsigned int triBase = params.instanceTriBase
-		? (unsigned int)params.instanceTriBase[optixGetInstanceId()] : 0u;
+	// See optix_intersection_triangle.h: a primitive index is local to its GAS,
+	// and the table entry is SIGNED (-1 = not instanced) - casting -1 straight
+	// to unsigned would wrap to UINT_MAX instead of falling back to base 0.
+	const int instBase = params.instanceTriBase
+		? params.instanceTriBase[optixGetInstanceId()] : -1;
+	const unsigned int triBase = (instBase >= 0) ? (unsigned int)instBase : 0u;
 	const TriangleData& tri = params.triangles[triBase + primIdx];
 	const MaterialData& mat = params.materials[tri.materialIdx];
 

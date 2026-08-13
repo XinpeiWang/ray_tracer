@@ -6,6 +6,9 @@
 #pragma once
 
 #include "optix_types.h"
+// For SceneData's instancing structs. No cycle: scene_builder.h pulls only
+// optix_types.h and <vector>.
+#include "scene_builder.h"
 #include <optix_stubs.h>
 #include <vector>
 #include <string>
@@ -226,6 +229,35 @@ private:
 	unsigned int numBilinearPatches_ = 0; ///< Number of bilinear patches
 	CUdeviceptr d_triangles_ = 0;      ///< Device triangle array
 	unsigned int numTriangles_ = 0;    ///< Number of triangles
+
+	// ---- object instancing -------------------------------------------------
+	// Supplied by setInstanceData() rather than as buildScene() parameters:
+	// threading three more arguments through would churn its declaration, its
+	// definition, and both call sites in optix_interface.cpp, all to carry
+	// data only one kind of scene uses. A scene that never calls it instances
+	// nothing, which is what every built-in scene wants and is exactly what
+	// it did before this existed.
+	std::vector<TriangleData> instanceTriangles_;              ///< object space
+	std::vector<SceneData::InstanceGroupGPU> instanceGroups_;
+	std::vector<SceneData::InstancePlacementGPU> instancePlacements_;
+	std::vector<OptixTraversableHandle> gasGroupHandles_;       ///< one per group
+	std::vector<CUdeviceptr> d_gasGroups_;                      ///< their storage
+	CUdeviceptr d_instanceBase_ = 0;    ///< LaunchParams::instanceTriBase table
+	unsigned int sceneTriangleCount_ = 0;  ///< triangles before the instanced ones
+
+  public:
+	/// Geometry stored once and placed many times. Call before buildScene();
+	/// passing empty vectors (or not calling it) disables instancing for the
+	/// next scene built.
+	void setInstanceData(const std::vector<TriangleData>& triangles,
+						 const std::vector<SceneData::InstanceGroupGPU>& groups,
+						 const std::vector<SceneData::InstancePlacementGPU>& placements) {
+		instanceTriangles_ = triangles;
+		instanceGroups_ = groups;
+		instancePlacements_ = placements;
+	}
+
+  private:
 	CUdeviceptr d_lensElements_ = 0;      ///< Device RealisticCamera lens table
 	unsigned int numLensElements_ = 0;    ///< Number of lens elements
 	CUdeviceptr d_exitPupilBounds_ = 0;    ///< Device RealisticCamera exit-pupil bounds table

@@ -95,6 +95,13 @@ extern "C" int optix_render_main(
 		// makes video rendering (same scene, moving camera, many frames in
 		// one process) expensive: skip it when nothing but the camera moved.
 		if (scene_id != g_uploaded_scene_id) {
+			// Instanced geometry travels separately - see setInstanceData().
+			// Called inside this same cache-skip guard as buildScene() itself,
+			// so instance data is part of what "this scene is already
+			// uploaded" means: a scene switch that reuses geometry must not
+			// keep a PREVIOUS scene's placements around.
+			g_renderer->setInstanceData(scene.instanceTriangles, scene.instanceGroups,
+										scene.instancePlacements);
 			if (!g_renderer->buildScene(scene.spheres, scene.quads, scene.materials,
 										 scene.lightIndices, scene.isLightSphere,
 										 scene.punctualLights, scene.bilinearPatches,
@@ -273,6 +280,13 @@ extern "C" int optix_render_main_sppm(
 		}
 
 		if (scene_id != g_uploaded_scene_id) {
+			// Instanced geometry travels separately - see setInstanceData().
+			// Called inside this same cache-skip guard as buildScene() itself,
+			// so instance data is part of what "this scene is already
+			// uploaded" means: a scene switch that reuses geometry must not
+			// keep a PREVIOUS scene's placements around.
+			g_renderer->setInstanceData(scene.instanceTriangles, scene.instanceGroups,
+										scene.instancePlacements);
 			if (!g_renderer->buildScene(scene.spheres, scene.quads, scene.materials,
 			                             scene.lightIndices, scene.isLightSphere,
 			                             scene.punctualLights, scene.bilinearPatches,
