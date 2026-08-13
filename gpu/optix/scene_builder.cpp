@@ -3278,7 +3278,8 @@ static bool build_loaded_pbrt_scene(
 	const double cam_x,
 	const double cam_y,
 	const double cam_z,
-	const bool force_camera_override
+	const bool force_camera_override,
+	GpuCameraParams* out_camera_extra
 ) {
 	const pbrt_load::LoadResult loaded = pbrt_load::loadFile(path);
 	if (!loaded.ok) {
@@ -3338,6 +3339,133 @@ static bool build_loaded_pbrt_scene(
 	build_pinhole_camera_params(
 		lookfrom, lookat, vup, static_cast<float>(c.vfov), aspect,
 		1.0f, camera_params);
+
+	// Route non-perspective Camera directives to their GPU camera model, the
+	// same generic, data-driven way CPU's setup_camera lambda does (see
+	// scene_registry.h) - camera_params above stays populated regardless, as
+	// the fallback optix_interface.cpp uses when kind ends up Perspective.
+	if (out_camera_extra && c.type != "perspective") {
+		if (c.type == "orthographic") {
+			// Mirrors case 32's own math (scene_builder.cpp, build_scene()),
+			// just driven by this scene's own lookfrom/lookat/up/screenwindow
+			// instead of a hardcoded built-in-scene camera.
+			float xmin, xmax, ymin, ymax;
+			if (c.hasScreenWindow) {
+				xmin = static_cast<float>(c.screenWindow[0]);
+				xmax = static_cast<float>(c.screenWindow[1]);
+				ymin = static_cast<float>(c.screenWindow[2]);
+				ymax = static_cast<float>(c.screenWindow[3]);
+			} else {
+				compute_screen_window<float>(image_width, image_height, xmin, xmax, ymin, ymax);
+			}
+			const float3 w = normalize(make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z));
+			const float3 u = normalize(cross(vup, w));
+			const float3 v = cross(w, u);
+			const float3 horizontal = make_float3((xmax - xmin) * u.x, (xmax - xmin) * u.y, (xmax - xmin) * u.z);
+			const float3 vertical   = make_float3((ymax - ymin) * v.x, (ymax - ymin) * v.y, (ymax - ymin) * v.z);
+			const float3 lower_left_corner = make_float3(
+				lookfrom.x + xmin * u.x + ymin * v.x,
+				lookfrom.y + xmin * u.y + ymin * v.y,
+				lookfrom.z + xmin * u.z + ymin * v.z);
+			out_camera_extra->kind = CameraKind::Orthographic;
+			out_camera_extra->lower_left_corner = lower_left_corner;
+			out_camera_extra->horizontal = horizontal;
+			out_camera_extra->vertical = vertical;
+			out_camera_extra->w = make_float3(-w.x, -w.y, -w.z);
+		} else if (c.type == "spherical" || c.type == "environment") {
+			if (c.sphericalMapping == "equalarea") {
+				// The device raygen (optix_device_helpers.h / wavefront_kernels.cu)
+				// only implements EquiRectangular - no GPU EqualArea mapping
+				// exists yet. Still route to Spherical (closer than staying
+				// Perspective) but say so, the same "warn, use the closer
+				// approximation" convention as pbrt_flatten.h's own gaps.
+				std::cerr << "[OptiX] warning: " << path
+					  << ": spherical camera's \"equalarea\" mapping has no GPU "
+					     "implementation; rendering as equirectangular instead\n";
+			}
+			const Mat4<float> ctw = make_look_at<float>(
+				lookfrom.x, lookfrom.y, lookfrom.z,
+				lookat.x, lookat.y, lookat.z,
+				vup.x, vup.y, vup.z);
+			const CamVec3<float> su = ctw.transform_vec(1.0f, 0.0f, 0.0f);
+			const CamVec3<float> sv = ctw.transform_vec(0.0f, 1.0f, 0.0f);
+			const CamVec3<float> sw = ctw.transform_vec(0.0f, 0.0f, 1.0f);
+			out_camera_extra->kind = CameraKind::Spherical;
+			out_camera_extra->origin = lookfrom;
+			out_camera_extra->su = make_float3(su.x, su.y, su.z);
+			out_camera_extra->sv = make_float3(sv.x, sv.y, sv.z);
+			out_camera_extra->sw = make_float3(sw.x, sw.y, sw.z);
+		} else if (c.type == "realistic") {
+			// c.lensFile is guaranteed non-empty here - pbrt_flatten.h already
+			// fell back to "perspective" at flatten() time if the scene gave
+			// none (see Camera's own comment). A missing/malformed file on
+			// disk is still possible and only detectable here, where actual
+			// file access happens.
+			std::string lensText;
+			if (!pbrt_load::loadFileNear(path, c.lensFile, lensText)) {
+				std::cerr << "[OptiX] warning: " << path << ": realistic camera lensfile '"
+					  << c.lensFile << "' not found; rendering as perspective instead\n";
+			} else {
+				const std::vector<double> lensD = pbrt_load::parseLensFile(lensText);
+				if (lensD.empty()) {
+					std::cerr << "[OptiX] warning: " << path << ": realistic camera lensfile '"
+						  << c.lensFile << "' has no usable rows; rendering as perspective instead\n";
+				} else {
+					std::vector<float> lens;
+					lens.reserve(lensD.size());
+					for (double v : lensD) lens.push_back(static_cast<float>(v));
+					const float aspectF = (image_height > 0)
+						? static_cast<float>(image_width) / static_cast<float>(image_height) : 1.0f;
+					const float halfY = static_cast<float>(c.filmDiagonalMM) / (2.0f * std::sqrt(aspectF * aspectF + 1.0f));
+					const float halfX = aspectF * halfY;
+					const Mat4<float> ctw = make_look_at<float>(
+						lookfrom.x, lookfrom.y, lookfrom.z,
+						lookat.x, lookat.y, lookat.z,
+						vup.x, vup.y, vup.z);
+					const float focusDist = static_cast<float>(pbrt_flatten::focusDistanceFor(c));
+					RealisticCamera<float> realCam(ctw, halfX, halfY, focusDist,
+						static_cast<float>(c.apertureDiameterMM), lens);
+
+					scene.lensElements.clear();
+					for (int i = 0; i < realCam.num_elements(); ++i) {
+						GpuLensElement le{};
+						le.curvatureRadius = realCam.lens_curvature_radius(i);
+						le.thickness       = realCam.lens_thickness(i);
+						le.eta              = realCam.lens_eta(i);
+						le.apertureRadius   = realCam.lens_aperture_radius(i);
+						scene.lensElements.push_back(le);
+					}
+					scene.exitPupilBounds.clear();
+					for (int i = 0; i < realCam.num_exit_pupil_bounds(); ++i) {
+						GpuExitPupilBounds b{};
+						b.xMin = realCam.exit_pupil_xmin(i);
+						b.xMax = realCam.exit_pupil_xmax(i);
+						b.yMin = realCam.exit_pupil_ymin(i);
+						b.yMax = realCam.exit_pupil_ymax(i);
+						b.degenerate = realCam.exit_pupil_degenerate(i) ? 1 : 0;
+						scene.exitPupilBounds.push_back(b);
+					}
+
+					const CamVec3<float> wo = realCam.world_origin();
+					const CamVec3<float> wr = realCam.world_right();
+					const CamVec3<float> wu = realCam.world_up();
+					const CamVec3<float> wf = realCam.world_forward();
+
+					out_camera_extra->kind = CameraKind::Realistic;
+					out_camera_extra->origin = make_float3(wo.x, wo.y, wo.z);
+					out_camera_extra->su = make_float3(wr.x, wr.y, wr.z);
+					out_camera_extra->sv = make_float3(wu.x, wu.y, wu.z);
+					out_camera_extra->sw = make_float3(wf.x, wf.y, wf.z);
+					out_camera_extra->film_half_x = realCam.film_half_x();
+					out_camera_extra->film_half_y = realCam.film_half_y();
+					out_camera_extra->lens_rear_z = realCam.lens_rear_z();
+					out_camera_extra->numLensElements = static_cast<int>(scene.lensElements.size());
+					out_camera_extra->numExitPupilBounds = static_cast<int>(scene.exitPupilBounds.size());
+				}
+			}
+		}
+	}
+
 	return true;
 }
 
@@ -4299,7 +4427,8 @@ bool build_scene(
 										return build_loaded_pbrt_scene(
 											pbrtPath, scene, camera_params,
 											image_width, image_height,
-											cam_x, cam_y, cam_z, force_camera_override);
+											cam_x, cam_y, cam_z, force_camera_override,
+											out_camera_extra);
 									}
 
 									const char* name = cpu_scene_name_by_id(scene_id);
