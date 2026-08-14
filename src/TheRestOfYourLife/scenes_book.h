@@ -148,6 +148,18 @@ inline hittable_list build_checkered_spheres() {
 	world.add(make_shared<sphere>(point3(0,-10, 0), 10, make_shared<lambertian>(checker)));
 	world.add(make_shared<sphere>(point3(0, 10, 0), 10, make_shared<lambertian>(checker)));
 
+	// Small accent spheres resting on the visible cap of the lower "planet"
+	// (radius 10, centered (0,-10,0), so its near-camera pole sits right
+	// around y=0) - scale/depth reference and material variety for what was
+	// otherwise just 2 bare checker spheres with nothing to catch light or
+	// frame against.
+	world.add(make_shared<sphere>(point3(1.6, 0.5, 2.2), 0.9,
+		make_shared<lambertian>(color(0.55, 0.15, 0.10))));
+	world.add(make_shared<sphere>(point3(-1.4, 0.45, 1.6), 0.7,
+		make_shared<metal>(color(0.8, 0.75, 0.6), 0.05)));
+	world.add(make_shared<sphere>(point3(0.1, 0.15, 3.0), 0.6,
+		make_shared<dielectric>(1.5)));
+
 	return world;
 }
 
@@ -155,11 +167,35 @@ inline hittable_list build_checkered_spheres() {
  * Build earth globe scene (requires earthmap.jpg)
  */
 inline hittable_list build_earth() {
+	hittable_list world;
+
 	auto earth_texture = make_shared<image_texture>("earthmap.jpg");
 	auto earth_surface = make_shared<lambertian>(earth_texture);
-	auto globe = make_shared<sphere>(point3(0,0,0), 2, earth_surface);
+	world.add(make_shared<sphere>(point3(0,0,0), 2, earth_surface));
 
-	return hittable_list(globe);
+	// Small grey "moon" for scale/context - the globe used to float alone
+	// with nothing to read its size against.
+	world.add(make_shared<sphere>(point3(2.0, 1.3, 0.5), 0.35,
+		make_shared<lambertian>(color(0.6, 0.6, 0.62))));
+
+	// Dim cool rim light behind the globe (far side from camera, offset to
+	// one side so it reads as a crescent highlight rather than a flat
+	// silhouette wash) - see build_earth_lights() for its NEE-sampled twin.
+	auto rim = make_shared<diffuse_light>(color(0.9, 1.0, 1.3));
+	world.add(make_shared<quad>(point3(-4.0, -2.5, -6.0), vec3(3.0,0,0), vec3(0,5.0,0), rim));
+
+	return world;
+}
+
+/**
+ * Light list for build_earth() - the rim-light quad, for NEE importance
+ * sampling. Replaces sky_dummy_lights() now that the scene has a real light.
+ */
+inline hittable_list build_earth_lights() {
+	hittable_list lights;
+	auto empty_mat = std::shared_ptr<material>();
+	lights.add(make_shared<quad>(point3(-4.0, -2.5, -6.0), vec3(3.0,0,0), vec3(0,5.0,0), empty_mat));
+	return lights;
 }
 
 /**
@@ -172,7 +208,30 @@ inline hittable_list build_perlin_spheres() {
 	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(pertext)));
 	world.add(make_shared<sphere>(point3(0,2,0), 2, make_shared<lambertian>(pertext)));
 
+	// Two smaller marble companion spheres (different noise scale for
+	// variety) grouped near the main sphere - was previously just 2 bare
+	// spheres lit only by flat sky ambient with no directed light at all.
+	auto pertext2 = make_shared<noise_texture>(8);
+	world.add(make_shared<sphere>(point3(2.2, 0.8, 1.0), 0.8, make_shared<lambertian>(pertext2)));
+	world.add(make_shared<sphere>(point3(-1.8, 0.6, -1.2), 0.6, make_shared<lambertian>(pertext2)));
+
+	// Warm key light from upper-left - see build_perlin_spheres_lights().
+	auto key = make_shared<diffuse_light>(color(8, 6, 3));
+	world.add(make_shared<quad>(point3(-4,6,-3), vec3(4,0,0), vec3(0,0,4), key));
+
 	return world;
+}
+
+/**
+ * Light list for build_perlin_spheres() - the key-light quad, for NEE
+ * importance sampling. Replaces sky_dummy_lights() now that the scene has a
+ * real light.
+ */
+inline hittable_list build_perlin_spheres_lights() {
+	hittable_list lights;
+	auto empty_mat = std::shared_ptr<material>();
+	lights.add(make_shared<quad>(point3(-4,6,-3), vec3(4,0,0), vec3(0,0,4), empty_mat));
+	return lights;
 }
 
 /**
@@ -195,7 +254,26 @@ inline hittable_list build_quads() {
 	world.add(make_shared<quad>(point3(-2, 3, 1), vec3(4, 0, 0), vec3(0, 0, 4), upper_orange));
 	world.add(make_shared<quad>(point3(-2,-3, 5), vec3(4, 0, 0), vec3(0, 0,-4), lower_teal));
 
+	// A real light floating in the room, facing the camera - previously
+	// this scene had NO registered lights at all, so every quad read as a
+	// flat, orientation-independent color swatch lit only by the ambient
+	// background. See build_quads_lights() for its NEE-sampled twin.
+	auto lamp = make_shared<diffuse_light>(color(7, 7, 6.5));
+	world.add(make_shared<quad>(point3(-1,0.5,3), vec3(2,0,0), vec3(0,1,0), lamp));
+
 	return world;
+}
+
+/**
+ * Light list for build_quads() - the floating lamp quad, for NEE importance
+ * sampling. Replaces sky_dummy_lights() now that the scene has a real
+ * light.
+ */
+inline hittable_list build_quads_lights() {
+	hittable_list lights;
+	auto empty_mat = std::shared_ptr<material>();
+	lights.add(make_shared<quad>(point3(-1,0.5,3), vec3(2,0,0), vec3(0,1,0), empty_mat));
+	return lights;
 }
 
 /**
@@ -208,9 +286,14 @@ inline hittable_list build_simple_light() {
 	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(pertext)));
 	world.add(make_shared<sphere>(point3(0,2,0), 2, make_shared<lambertian>(pertext)));
 
-	auto difflight = make_shared<diffuse_light>(color(4,4,4));
-	world.add(make_shared<sphere>(point3(0,7,0), 2, difflight));
-	world.add(make_shared<quad>(point3(3,1,-2), vec3(2,0,0), vec3(0,2,0), difflight));
+	// Warm sphere light above, cool quad light to the side - previously
+	// both were the same flat white (4,4,4), placed symmetrically, so
+	// there was no color/temperature contrast to read as two distinct
+	// lights rather than one doubled-up source.
+	auto warm_light = make_shared<diffuse_light>(color(6,3,1));
+	world.add(make_shared<sphere>(point3(0,7,0), 2, warm_light));
+	auto cool_light = make_shared<diffuse_light>(color(2,3,6));
+	world.add(make_shared<quad>(point3(3.5,1,-3), vec3(2,0,0), vec3(0,2,0), cool_light));
 
 	return world;
 }
@@ -240,6 +323,20 @@ inline hittable_list build_cornell_smoke() {
 	auto light = make_shared<diffuse_light>(color(7, 7, 7));
 	world.add(make_shared<quad>(point3(113,554,127), vec3(330,0,0), vec3(0,0,305), light));
 
+	// Warm accent light from the shared Cornell-box data (kQuads[6]) -
+	// second light source through the fog so it isn't lit by one flat
+	// overhead source only. See build_cornell_smoke_lights() for its
+	// NEE-sampled twin.
+	{
+		const QuadSpec& accent = kQuads[6];
+		auto accent_light = make_shared<diffuse_light>(color(accent.color.r, accent.color.g, accent.color.b));
+		world.add(make_shared<quad>(
+			point3(accent.Q.x, accent.Q.y, accent.Q.z),
+			vec3(accent.u.x, accent.u.y, accent.u.z),
+			vec3(accent.v.x, accent.v.y, accent.v.z),
+			accent_light));
+	}
+
 	shared_ptr<hittable> box1 = box(point3(0,0,0), point3(165,330,165), white);
 	box1 = make_shared<rotate_y>(box1, 15);
 	box1 = make_shared<translate>(box1, vec3(265,0,295));
@@ -248,8 +345,10 @@ inline hittable_list build_cornell_smoke() {
 	box2 = make_shared<rotate_y>(box2, -18);
 	box2 = make_shared<translate>(box2, vec3(130,0,65));
 
-	world.add(make_shared<constant_medium>(box1, 0.01, color(0,0,0)));
-	world.add(make_shared<constant_medium>(box2, 0.01, color(1,1,1)));
+	// Tinted fog instead of monochrome black/white - gives the two smoke
+	// boxes real color interest as light scatters through them.
+	world.add(make_shared<constant_medium>(box1, 0.01, color(0.05, 0.07, 0.12)));
+	world.add(make_shared<constant_medium>(box2, 0.01, color(1.0, 0.85, 0.6)));
 
 	return world;
 }

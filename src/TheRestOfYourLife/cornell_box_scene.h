@@ -80,6 +80,11 @@ inline hittable_list build_cornell_smoke_lights() {
 	auto empty_material = shared_ptr<material>();
 	lights.add(
 		make_shared<quad>(point3(443,554,432), vec3(-330,0,0), vec3(0,0,-305), empty_material));
+	// Warm accent light from cornell_box_data::kQuads[6], added to
+	// build_cornell_smoke() alongside this scene's own ceiling light - see
+	// that function's own comment.
+	lights.add(
+		make_shared<quad>(point3(554,100,200), vec3(0,0,150), vec3(0,200,0), empty_material));
 	return lights;
 }
 

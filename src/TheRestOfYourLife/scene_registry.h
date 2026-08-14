@@ -121,7 +121,11 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "A2", 1, SceneNames::BouncingSpheres, SceneCategories::Basics,
             "Random spheres with checker ground (In One Weekend final)",
             "Slow", 100, false, true,
-            { 20, 13, 2, 3,  0, 0, 0,  0.70, 0.80, 1.00 },
+            // defocus_angle/focus_dist: the book's own final-render values
+            // for this exact scene - a subtle depth-of-field "beauty shot"
+            // focused on the 3 hero spheres near the origin, without
+            // redesigning the iconic grid composition itself.
+            { 20, 13, 2, 3,  0, 0, 0,  0.70, 0.80, 1.00, CameraMode::Fixed, 0.6, 10.0 },
             build_bouncing_spheres,
             sky_dummy_lights
         },
@@ -129,7 +133,10 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "A3", 2, SceneNames::CheckeredSpheres, SceneCategories::Basics,
             "Two spheres with procedural checker texture",
             "Fast", 100, false, true,
-            { 20, 13, 2, 3,  0, 0, 0,  0.70, 0.80, 1.00 },
+            // Warm sunset-ish flat background instead of generic sky-blue -
+            // fits the "planet" motif better and gives the new accent
+            // spheres something to contrast against.
+            { 20, 13, 2, 3,  0, 0, 0,  0.90, 0.75, 0.55 },
             build_checkered_spheres,
             sky_dummy_lights
         },
@@ -137,9 +144,11 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "A4", 3, SceneNames::Earth, SceneCategories::Basics,
             "Globe with earth texture mapping (requires earthmap.jpg)",
             "Fast", 100, true, true,
-            { 20, 0, 0, 12,  0, 0, 0,  0.70, 0.80, 1.00 },
+            // vfov widened 20->25 to leave room for the new moon accent
+            // sphere near the frame edge without cropping it.
+            { 25, 0, 0, 12,  0, 0, 0,  0.70, 0.80, 1.00 },
             build_earth,
-            sky_dummy_lights
+            build_earth_lights
         },
         {
             "A5", 4, SceneNames::PerlinSpheres, SceneCategories::Basics,
@@ -147,7 +156,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Fast", 100, false, true,
             { 20, 13, 2, 3,  0, 0, 0,  0.70, 0.80, 1.00 },
             build_perlin_spheres,
-            sky_dummy_lights
+            build_perlin_spheres_lights
         },
         {
             "A6", 5, SceneNames::ColoredQuads, SceneCategories::Basics,
@@ -155,7 +164,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Fast", 100, false, true,
             { 80, 0, 0, 9,  0, 0, 0,  0.70, 0.80, 1.00 },
             build_quads,
-            sky_dummy_lights
+            build_quads_lights
         },
         {
             "A7", 6, SceneNames::SimpleLight, SceneCategories::Basics,
@@ -177,7 +186,9 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "A9", 8, SceneNames::FinalScene, SceneCategories::Basics,
             "Complex scene from The Next Week",
             "Very Slow", 500, false, true,
-            { 40, 478, 278, -600,  278, 278, 0,  0, 0, 0 },
+            // Subtle deep ambient instead of pure black - the box-grid
+            // ground and negative space used to render into a stark void.
+            { 40, 478, 278, -600,  278, 278, 0,  0.03, 0.025, 0.02 },
             build_final_scene,
             build_final_scene_lights
         },

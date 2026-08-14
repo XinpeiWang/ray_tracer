@@ -1453,6 +1453,31 @@ void build_checkered_spheres(SceneData& scene) {
 	sphere2.radius = 10.0f;
 	sphere2.materialIdx = mat;
 	scene.spheres.push_back(sphere2);
+
+	// Small accent spheres resting on the visible cap of the lower
+	// "planet" - matches CPU build_checkered_spheres() exactly (see its
+	// own comment for the reasoning).
+	const int warmMat  = add_lambertian(scene, make_float3(0.55f, 0.15f, 0.10f));
+	const int metalMat = add_metal(scene, make_float3(0.8f, 0.75f, 0.6f), 0.05f);
+	const int glassMat = add_dielectric(scene, 1.5f);
+
+	SphereData accent1{};
+	accent1.center = make_float3(1.6f, 0.5f, 2.2f);
+	accent1.radius = 0.9f;
+	accent1.materialIdx = warmMat;
+	scene.spheres.push_back(accent1);
+
+	SphereData accent2{};
+	accent2.center = make_float3(-1.4f, 0.45f, 1.6f);
+	accent2.radius = 0.7f;
+	accent2.materialIdx = metalMat;
+	scene.spheres.push_back(accent2);
+
+	SphereData accent3{};
+	accent3.center = make_float3(0.1f, 0.15f, 3.0f);
+	accent3.radius = 0.6f;
+	accent3.materialIdx = glassMat;
+	scene.spheres.push_back(accent3);
 }
 
 /// @brief Scene 3: Earth. Matches CPU build_earth() (src/TheRestOfYourLife/
@@ -1471,6 +1496,33 @@ static void build_earth_gpu(SceneData& scene) {
 	s.radius = 2.0f;
 	s.materialIdx = mat;
 	scene.spheres.push_back(s);
+
+	// Small grey "moon" for scale/context - matches CPU build_earth() (see
+	// its own comment).
+	const int moonMat = add_lambertian(scene, make_float3(0.6f, 0.6f, 0.62f));
+	SphereData moon{};
+	moon.center = make_float3(2.0f, 1.3f, 0.5f);
+	moon.center1 = moon.center;
+	moon.radius = 0.35f;
+	moon.materialIdx = moonMat;
+	scene.spheres.push_back(moon);
+
+	// Dim cool rim light behind the globe - matches CPU build_earth()'s
+	// quad exactly (see build_earth_lights()).
+	const int rimMat = safe_cast_to_int(scene.materials.size());
+	add_diffuse_light(scene, make_float3(0.9f, 1.0f, 1.3f));
+	QuadData rim{};
+	rim.Q = make_float3(-4.0f, -2.5f, -6.0f);
+	rim.u = make_float3(3.0f, 0.0f, 0.0f);
+	rim.v = make_float3(0.0f, 5.0f, 0.0f);
+	const float3 rc = cross(rim.u, rim.v);
+	rim.w = rc;
+	rim.normal = normalize(rc);
+	rim.D = dot(rim.normal, rim.Q);
+	rim.materialIdx = rimMat;
+	scene.quads.push_back(rim);
+	scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+	scene.lightKinds.push_back(GpuLightKind::Quad);
 }
 
 /// @brief Ground + Perlin-noise sphere pair shared by scenes 4 (Perlin
@@ -1498,39 +1550,76 @@ static void add_perlin_spheres_pair_gpu(SceneData& scene) {
 }
 
 /// @brief Scene 4: Perlin Spheres. Matches CPU build_perlin_spheres()
-/// (scenes_book.h) exactly.
+/// (scenes_book.h) exactly: the shared ground+main-sphere pair, plus 2
+/// smaller marble companion spheres (noise scale 8, vs. the pair's 4) and a
+/// warm key-light quad - this scene used to be lit only by flat sky
+/// ambient with no directed light at all.
 static void build_perlin_spheres_gpu(SceneData& scene) {
 	add_perlin_spheres_pair_gpu(scene);
+
+	const int noiseTex2Idx = add_noise_texture_gpu(scene, 8.0f);
+	const int companionMat = safe_cast_to_int(scene.materials.size());
+	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), noiseTex2Idx);
+
+	SphereData companion1{};
+	companion1.center = make_float3(2.2f, 0.8f, 1.0f);
+	companion1.radius = 0.8f;
+	companion1.materialIdx = companionMat;
+	scene.spheres.push_back(companion1);
+
+	SphereData companion2{};
+	companion2.center = make_float3(-1.8f, 0.6f, -1.2f);
+	companion2.radius = 0.6f;
+	companion2.materialIdx = companionMat;
+	scene.spheres.push_back(companion2);
+
+	const int keyMat = safe_cast_to_int(scene.materials.size());
+	add_diffuse_light(scene, make_float3(8.0f, 6.0f, 3.0f));
+	QuadData key{};
+	key.Q = make_float3(-4.0f, 6.0f, -3.0f);
+	key.u = make_float3(4.0f, 0.0f, 0.0f);
+	key.v = make_float3(0.0f, 0.0f, 4.0f);
+	const float3 kc = cross(key.u, key.v);
+	key.w = kc;
+	key.normal = normalize(kc);
+	key.D = dot(key.normal, key.Q);
+	key.materialIdx = keyMat;
+	scene.quads.push_back(key);
+	scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+	scene.lightKinds.push_back(GpuLightKind::Quad);
 }
 
 /// @brief Scene 6: Simple Light. Matches CPU build_simple_light()
-/// (scenes_book.h) exactly: the same Perlin-sphere pair as scene 4, plus
-/// one emissive sphere and one emissive quad sharing a single
-/// diffuse_light(4,4,4) material (matched here with one shared GPU
-/// material index registered as a light for both primitives).
+/// (scenes_book.h) exactly: the same Perlin-sphere pair as scene 4, plus a
+/// warm emissive sphere above and a cool emissive quad to the side (two
+/// separate materials/colors, not one shared flat-white light, for
+/// temperature contrast between them - see CPU's own comment).
 static void build_simple_light_gpu(SceneData& scene) {
 	add_perlin_spheres_pair_gpu(scene);
 
-	const int mat_light = safe_cast_to_int(scene.materials.size());
-	add_diffuse_light(scene, make_float3(4.0f, 4.0f, 4.0f));
+	const int warmMat = safe_cast_to_int(scene.materials.size());
+	add_diffuse_light(scene, make_float3(6.0f, 3.0f, 1.0f));
 
 	SphereData lightSphere{};
 	lightSphere.center = make_float3(0.0f, 7.0f, 0.0f);
 	lightSphere.radius = 2.0f;
-	lightSphere.materialIdx = mat_light;
+	lightSphere.materialIdx = warmMat;
 	scene.spheres.push_back(lightSphere);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
 	scene.lightKinds.push_back(GpuLightKind::Sphere);
 
+	const int coolMat = safe_cast_to_int(scene.materials.size());
+	add_diffuse_light(scene, make_float3(2.0f, 3.0f, 6.0f));
+
 	QuadData lightQuad{};
-	lightQuad.Q = make_float3(3.0f, 1.0f, -2.0f);
+	lightQuad.Q = make_float3(3.5f, 1.0f, -3.0f);
 	lightQuad.u = make_float3(2.0f, 0.0f, 0.0f);
 	lightQuad.v = make_float3(0.0f, 2.0f, 0.0f);
 	const float3 lc = cross(lightQuad.u, lightQuad.v);
 	lightQuad.w = lc;
 	lightQuad.normal = normalize(lc);
 	lightQuad.D = dot(lightQuad.normal, lightQuad.Q);
-	lightQuad.materialIdx = mat_light;
+	lightQuad.materialIdx = coolMat;
 	scene.quads.push_back(lightQuad);
 	scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
 	scene.lightKinds.push_back(GpuLightKind::Quad);
@@ -1582,6 +1671,25 @@ void build_quads_scene(SceneData& scene) {
 
 	// Lower teal quad
 	add_quad(-2.0f, -3.0f, 5.0f, 4.0f, 0.0f, 0.0f, 0.0f, 0.0f, -4.0f, 0.2f, 0.8f, 0.8f);
+
+	// A real light floating in the room, facing the camera - matches CPU
+	// build_quads() exactly (see its own comment). The add_quad lambda
+	// above only builds Lambertian materials, so this is added directly
+	// rather than through it.
+	const int lampMat = safe_cast_to_int(scene.materials.size());
+	add_diffuse_light(scene, make_float3(7.0f, 7.0f, 6.5f));
+	QuadData lamp{};
+	lamp.Q = make_float3(-1.0f, 0.5f, 3.0f);
+	lamp.u = make_float3(2.0f, 0.0f, 0.0f);
+	lamp.v = make_float3(0.0f, 1.0f, 0.0f);
+	const float3 lc = cross(lamp.u, lamp.v);
+	lamp.w = lc;
+	lamp.normal = normalize(lc);
+	lamp.D = dot(lamp.normal, lamp.Q);
+	lamp.materialIdx = lampMat;
+	scene.quads.push_back(lamp);
+	scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+	scene.lightKinds.push_back(GpuLightKind::Quad);
 }
 
 /// @brief Cornell box walls (no light quad) + two spheres, for scenes lit by
@@ -1990,10 +2098,33 @@ static void build_cornell_smoke_gpu(SceneData& scene) {
 		scene.lightKinds.push_back(GpuLightKind::Quad);
 	}
 
+	// Warm accent light from kQuads[6], added alongside this scene's own
+	// ceiling light - matches CPU build_cornell_smoke() exactly (see its
+	// own comment).
+	{
+		const QuadSpec& accent = kQuads[6];
+		const int mat_accent = add_diffuse_light(scene, make_float3(
+			static_cast<float>(accent.color.r), static_cast<float>(accent.color.g), static_cast<float>(accent.color.b)));
+		QuadData aq{};
+		aq.Q = make_float3(static_cast<float>(accent.Q.x), static_cast<float>(accent.Q.y), static_cast<float>(accent.Q.z));
+		aq.u = make_float3(static_cast<float>(accent.u.x), static_cast<float>(accent.u.y), static_cast<float>(accent.u.z));
+		aq.v = make_float3(static_cast<float>(accent.v.x), static_cast<float>(accent.v.y), static_cast<float>(accent.v.z));
+		const float3 ac = cross(aq.u, aq.v);
+		aq.w = ac;
+		aq.normal = normalize(ac);
+		aq.D = dot(aq.normal, aq.Q);
+		aq.materialIdx = mat_accent;
+		scene.quads.push_back(aq);
+		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+		scene.lightKinds.push_back(GpuLightKind::Quad);
+	}
+
 	// Two medium spheres approximating CPU's two rotated boxes (centered
 	// roughly where box1 [265,0,295]+165/2 and box2 [130,0,65]+82.5 sit).
-	const int mat_medium_dark = add_medium(scene, make_float3(0.0f, 0.0f, 0.0f), 0.0f, 0.01f);
-	const int mat_medium_white = add_medium(scene, make_float3(1.0f, 1.0f, 1.0f), 0.0f, 0.01f);
+	// Tinted (cool blue-grey / warm amber) instead of black/white - matches
+	// CPU build_cornell_smoke() exactly.
+	const int mat_medium_dark = add_medium(scene, make_float3(0.05f, 0.07f, 0.12f), 0.0f, 0.01f);
+	const int mat_medium_white = add_medium(scene, make_float3(1.0f, 0.85f, 0.6f), 0.0f, 0.01f);
 
 	SphereData m1{}; m1.center = make_float3(347.0f, 165.0f, 377.0f); m1.radius = 115.0f; m1.materialIdx = mat_medium_dark;
 	scene.spheres.push_back(m1);
@@ -3562,12 +3693,40 @@ bool build_scene(
 						const float3 lookat = make_float3(0.0f, 0.0f, 0.0f);
 						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
 						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-						build_pinhole_camera_params(lookfrom, lookat, vup, 20.0f, aspect, 1.0f, camera_params);
 
-						// Flat light-blue background, matching CPU registry's
-						// bg=(0.70,0.80,1.00) for this scene (see
-						// GpuCameraParams::backgroundColor's comment).
-						if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.70f, 0.80f, 1.00f);
+						// defocus_angle=0.6, focus_dist=10.0: matches CPU
+						// CameraConfig's DOF values for this scene (the
+						// book's own final-render "beauty shot" values,
+						// focused near the 3 hero spheres) - same thin-lens
+						// wiring as case 22 (Depth of Field scene).
+						constexpr float kPi = 3.14159265358979323846f;
+						constexpr float defocus_angle = 0.6f;
+						constexpr float focus_dist    = 10.0f;
+						float3 dof_u, dof_v;
+						build_pinhole_camera_params(lookfrom, lookat, vup, 20.0f, aspect, focus_dist, camera_params, &dof_u, &dof_v);
+
+						if (out_camera_extra) {
+							// A nonzero defocus disk opts this scene out of
+							// optix_interface.cpp's generic camera_params->
+							// cameraExtra fallback (see its own comment on
+							// defocusDiskZero), so kind/origin/lower_left_corner/
+							// horizontal/vertical must be set explicitly here too -
+							// same full set case 22 (Depth of Field scene) sets.
+							out_camera_extra->kind = CameraKind::Perspective;
+							out_camera_extra->origin = lookfrom;
+							out_camera_extra->lower_left_corner = make_float3(camera_params[3], camera_params[4], camera_params[5]);
+							out_camera_extra->horizontal = make_float3(camera_params[6], camera_params[7], camera_params[8]);
+							out_camera_extra->vertical = make_float3(camera_params[9], camera_params[10], camera_params[11]);
+
+							const float defocus_radius = focus_dist * tanf((defocus_angle * kPi / 180.0f) / 2.0f);
+							out_camera_extra->defocus_disk_u = make_float3(dof_u.x * defocus_radius, dof_u.y * defocus_radius, dof_u.z * defocus_radius);
+							out_camera_extra->defocus_disk_v = make_float3(dof_v.x * defocus_radius, dof_v.y * defocus_radius, dof_v.z * defocus_radius);
+
+							// Flat light-blue background, matching CPU registry's
+							// bg=(0.70,0.80,1.00) for this scene (see
+							// GpuCameraParams::backgroundColor's comment).
+							out_camera_extra->backgroundColor = make_float3(0.70f, 0.80f, 1.00f);
+						}
 					}
 					break;
 
@@ -3588,11 +3747,10 @@ bool build_scene(
 						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
 						build_pinhole_camera_params(lookfrom, lookat, vup, 20.0f, aspect, 1.0f, camera_params);
 
-						// Flat light-blue background, matching CPU registry's
-						// bg=(0.70,0.80,1.00) for this scene (see
-						// GpuCameraParams::backgroundColor's comment) - this was
-						// previously left at the zero-init default (black).
-						if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.70f, 0.80f, 1.00f);
+						// Warm sunset-ish flat background, matching CPU registry's
+						// bg=(0.90,0.75,0.55) for this scene - fits the "planet"
+						// motif and contrasts with the new accent spheres.
+						if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.90f, 0.75f, 0.55f);
 					}
 					break;
 
@@ -3608,7 +3766,10 @@ bool build_scene(
 						const float3 lookat = make_float3(0.0f, 0.0f, 0.0f);
 						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
 						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-						build_pinhole_camera_params(lookfrom, lookat, vup, 20.0f, aspect, 1.0f, camera_params);
+						// vfov 20->25: matches CPU registry, widened to leave
+						// room for the new moon accent sphere near the frame
+						// edge without cropping it.
+						build_pinhole_camera_params(lookfrom, lookat, vup, 25.0f, aspect, 1.0f, camera_params);
 
 						// Flat light-blue background, matching CPU registry's
 						// bg=(0.70,0.80,1.00) for this scene (see
@@ -3646,13 +3807,13 @@ bool build_scene(
 						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
 						build_pinhole_camera_params(lookfrom, lookat, vup, 80.0f, aspect, 1.0f, camera_params);  // 80: wide angle for quads
 
-						// This scene has no emissive geometry at all (5 plain
-						// Lambertian quads) - matches CPU registry's
+						// Flat sky-blue fill background, matching CPU registry's
 						// bg=(0.70,0.80,1.00) for scene 5 (see
-						// GpuCameraParams::backgroundColor's comment). Without
-						// this the scene rendered totally black on GPU: no
-						// lights meant every path's only possible radiance was
-						// this background color, and it was never set.
+						// GpuCameraParams::backgroundColor's comment) - now a
+						// secondary fill alongside the floating lamp quad
+						// build_quads_scene() adds (that quad used to be this
+						// scene's only possible radiance source before it had
+						// any registered light of its own; see its comment).
 						if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.70f, 0.80f, 1.00f);
 					}
 					break;
@@ -3685,8 +3846,12 @@ bool build_scene(
 						const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
 						const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
 						build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);
-						// backgroundColor left at zero-init (matches CPU bg=(0,0,0)) -
-						// this scene has a real area light (the light quad above).
+						// Subtle deep ambient instead of pure black, matching CPU
+						// registry's bg=(0.03,0.025,0.02) - the box-grid ground and
+						// negative space used to render into a stark void even
+						// though this scene has a real area light (the light quad
+						// above) doing the actual illumination.
+						if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.03f, 0.025f, 0.02f);
 					}
 					break;
 
