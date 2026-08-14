@@ -32,28 +32,36 @@ inline hittable_list build_principled_showcase() {
 	auto checker = make_shared<checker_texture>(0.5, color(0.1, 0.1, 0.12), color(0.2, 0.2, 0.22));
 	world.add(make_shared<sphere>(point3(0, -1000, 0), 1000, make_shared<lambertian>(checker)));
 
-	// Row of 7 spheres: metallic 0->1, roughness varies, clearcoat on last two
+	// Row of 7 spheres: metallic 0->1, roughness varies, clearcoat on last two.
+	// Spacing 2.0 (radius 1.0 each) so neighbors don't overlap/fuse -- each
+	// material needs to read as its own distinct sphere.
 	//  0: pure matte diffuse (red)
-	world.add(make_shared<sphere>(point3(-3, 1, 0), 1.0,
+	world.add(make_shared<sphere>(point3(-6, 1, 0), 1.0,
 		make_shared<principled>(color(0.8, 0.1, 0.1), 0.0, 0.9, 1.5, 0.0)));
 	//  1: plastic, low roughness (blue)
-	world.add(make_shared<sphere>(point3(-2, 1, 0), 1.0,
+	world.add(make_shared<sphere>(point3(-4, 1, 0), 1.0,
 		make_shared<principled>(color(0.1, 0.2, 0.8), 0.0, 0.2, 1.5, 0.0)));
 	//  2: plastic, clearcoated (green)
-	world.add(make_shared<sphere>(point3(-1, 1, 0), 1.0,
+	world.add(make_shared<sphere>(point3(-2, 1, 0), 1.0,
 		make_shared<principled>(color(0.1, 0.7, 0.2), 0.0, 0.3, 1.5, 1.0, 0.05)));
 	//  3: semi-metallic (gold-tinted)
 	world.add(make_shared<sphere>(point3(0, 1, 0), 1.0,
 		make_shared<principled>(color(0.9, 0.7, 0.2), 0.5, 0.3, 1.5, 0.0)));
 	//  4: near-metallic, rough (copper-ish)
-	world.add(make_shared<sphere>(point3(1, 1, 0), 1.0,
+	world.add(make_shared<sphere>(point3(2, 1, 0), 1.0,
 		make_shared<principled>(color(0.8, 0.45, 0.2), 0.8, 0.4, 1.5, 0.0)));
 	//  5: fully metallic, smooth (silver)
-	world.add(make_shared<sphere>(point3(2, 1, 0), 1.0,
+	world.add(make_shared<sphere>(point3(4, 1, 0), 1.0,
 		make_shared<principled>(color(0.9, 0.9, 0.9), 1.0, 0.05, 1.5, 0.0)));
 	//  6: fully metallic, clearcoated (lacquered gold)
-	world.add(make_shared<sphere>(point3(3, 1, 0), 1.0,
+	world.add(make_shared<sphere>(point3(6, 1, 0), 1.0,
 		make_shared<principled>(color(0.9, 0.7, 0.1), 1.0, 0.1, 1.5, 1.0, 0.08)));
+
+	// Overhead area light -- without a real light source the clearcoat/
+	// metallic spheres show no specular highlight, defeating the point of
+	// the demo (matches build_rough_metal_spheres()'s own light style).
+	world.add(make_shared<quad>(point3(-7, 7, -5), vec3(14, 0, 0), vec3(0, 0, 10),
+		make_shared<diffuse_light>(color(6, 6, 6))));
 
 	return world;
 }
@@ -70,21 +78,35 @@ inline hittable_list build_hair_fibers() {
 	world.add(make_shared<sphere>(point3(0, -1000, 0), 1000,
 		make_shared<lambertian>(color(0.05, 0.05, 0.06))));
 
+	// Spacing widened (radius 1.0, min separation ~2.25) from the original
+	// tightly-packed cluster where every neighbor pair physically overlapped
+	// - that overlap let camera rays get trapped bouncing back and forth in
+	// the sliver of intersecting geometry between two near-lossless hair
+	// spheres (the white/silver fur below has sigma_a near 0), each bounce
+	// multiplying an already-high hair-BSDF throughput, producing runaway
+	// blown-white energy at normal ray depths (confirmed: the blowout
+	// vanished at max_depth=2, appeared again at higher depth, independent
+	// of light intensity - a multi-bounce explosion, not a lighting issue).
 	// Dark brown hair (default sigma_a)
-	world.add(make_shared<sphere>(point3(-2.5, 1, 0), 1.0,
+	world.add(make_shared<sphere>(point3(-3.5, 1, 0), 1.0,
 		make_shared<hair_material>(0.06, 0.10, 0.20, 0.25, 0.25, 2.0)));
 	// Blonde hair (low absorption, warm tint)
-	world.add(make_shared<sphere>(point3(-0.8, 1, 0.3), 1.0,
+	world.add(make_shared<sphere>(point3(-1.2, 1, 0.4), 1.0,
 		make_shared<hair_material>(0.01, 0.015, 0.03, 0.30, 0.30, 2.0)));
 	// Auburn hair (strong red absorption pattern)
-	world.add(make_shared<sphere>(point3(0.9, 1, -0.3), 1.0,
+	world.add(make_shared<sphere>(point3(1.2, 1, -0.4), 1.0,
 		make_shared<hair_material>(0.02, 0.08, 0.18, 0.20, 0.20, 3.0)));
 	// White/silver fur (very low absorption, rough)
-	world.add(make_shared<sphere>(point3(2.5, 1, 0), 1.0,
+	world.add(make_shared<sphere>(point3(3.5, 1, 0), 1.0,
 		make_shared<hair_material>(0.001, 0.001, 0.002, 0.45, 0.45, 1.0)));
 	// Fine black fur (very high absorption)
-	world.add(make_shared<sphere>(point3(0, 1, 1.8), 1.0,
+	world.add(make_shared<sphere>(point3(0, 1, 2.3), 1.0,
 		make_shared<hair_material>(0.50, 0.55, 0.60, 0.15, 0.15, 2.0)));
+
+	// Overhead area light -- without a real light source, the scene was lit
+	// only by the flat ambient background.
+	world.add(make_shared<quad>(point3(-5, 6, -5), vec3(10, 0, 0), vec3(0, 0, 7),
+		make_shared<diffuse_light>(color(5, 5, 4.3))));
 
 	return world;
 }

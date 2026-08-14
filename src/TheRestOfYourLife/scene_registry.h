@@ -196,7 +196,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B1", 9, SceneNames::RoughMetalSpheres, SceneCategories::Materials,
             "Five GGX spheres roughness 0.05 to 0.8 -- showcases microfacet BRDF",
             "Medium", 200, false, true,
-            { 35, 0, 2.5, 10,  0, 1, 0,  0.10, 0.10, 0.12 },
+            { 42, 0, 2.7, 17,  0, 1, 0,  0.10, 0.10, 0.12 },
             build_rough_metal_spheres,
             []() {
                 hittable_list l;
@@ -209,7 +209,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B2", 10, SceneNames::CornellRoughMetal, SceneCategories::Materials,
             "Cornell box with rough aluminum box and rough gold sphere",
             "Medium", 200, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
+            { 40, 278, 278, -800,  278, 278, 278,  0.05, 0.055, 0.07, CameraMode::UserControlled },
             build_cornell_rough_metal,
             build_cornell_box_lights
         },
@@ -225,7 +225,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B4", 12, SceneNames::CornellConductor, SceneCategories::Materials,
             "Cornell box with polished gold sphere and aluminium box using GGX VNDF + complex Fresnel (pbrt-v4 ConductorBxDF)",
             "Medium", 200, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
+            { 40, 278, 278, -800,  278, 278, 278,  0.05, 0.055, 0.07, CameraMode::UserControlled },
             build_cornell_conductor,
             build_cornell_box_lights
         },
@@ -249,7 +249,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B7", 15, SceneNames::CornellCoatedConductor, SceneCategories::Materials,
             "Cornell box with lacquered-gold sphere and lacquered-copper box (pbrt-v4 CoatedConductorBxDF)",
             "Medium", 200, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
+            { 40, 278, 278, -800,  278, 278, 278,  0.05, 0.055, 0.07, CameraMode::UserControlled },
             build_cornell_coated_conductor,
             build_cornell_box_lights
         },
@@ -273,12 +273,12 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B10", 18, SceneNames::PrincipledShowcase, SceneCategories::Materials,
             "Row of spheres from matte plastic to metallic with clearcoat (pbrt-v4 PrincipledBxDF)",
             "Medium", 200, false, true,
-            { 35, 0, 2.5, 10,  0, 1, 0,  0.10, 0.10, 0.12 },
+            { 45, 0, 2.7, 17,  0, 1, 0,  0.10, 0.10, 0.12 },
             build_principled_showcase,
             []() {
                 hittable_list l;
                 auto empty_mat = std::shared_ptr<material>();
-                l.add(std::make_shared<quad>(point3(-6,6,-4), vec3(12,0,0), vec3(0,0,8), empty_mat));
+                l.add(std::make_shared<quad>(point3(-7,7,-5), vec3(14,0,0), vec3(0,0,10), empty_mat));
                 return l;
             }
         },
@@ -286,12 +286,12 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B11", 19, SceneNames::HairFibers, SceneCategories::Materials,
             "Sphere cluster with hair/fur fiber scattering (pbrt-v4 HairBxDF)",
             "Medium", 200, false, true,
-            { 30, 0, 2, 8,  0, 1, 0,  0.05, 0.05, 0.07 },
+            { 45, 0, 2.5, 14,  0, 1, 0,  0.05, 0.05, 0.07 },
             build_hair_fibers,
             []() {
                 hittable_list l;
                 auto empty_mat = std::shared_ptr<material>();
-                l.add(std::make_shared<quad>(point3(-6,6,-4), vec3(12,0,0), vec3(0,0,8), empty_mat));
+                l.add(std::make_shared<quad>(point3(-5,6,-5), vec3(10,0,0), vec3(0,0,7), empty_mat));
                 return l;
             }
         },
@@ -307,7 +307,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B13", 21, SceneNames::SubsurfaceSlab, SceneCategories::Materials,
             "Cornell box with translucent wax slab and jade sphere using subsurface-like scattering",
             "Slow", 300, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
+            { 40, 278, 278, -800,  278, 278, 278,  0.05, 0.055, 0.07, CameraMode::UserControlled },
             build_subsurface_slab,
             build_cornell_box_lights
         },
@@ -478,7 +478,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B14", 34, SceneNames::MeasuredBrdf, SceneCategories::Materials,
             "Sphere cluster with measured BRDF material using tabulated RGL data (pbrt-v4 MeasuredBxDF)",
             "Medium", 200, false, true,
-            { 25, 0, 3, 12,  0, 1, 0,  0, 0, 0 },
+            { 42, 0, 3.2, 17,  0, 1, 0,  0, 0, 0 },
             build_measured_brdf_scene,
             []() {
                 hittable_list l;

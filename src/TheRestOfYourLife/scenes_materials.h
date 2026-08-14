@@ -125,8 +125,10 @@ inline hittable_list build_cornell_coated_diffuse() {
 	auto coated_blue = make_shared<coated_diffuse>(color(0.2, 0.3, 0.9), 1.5, 0.1);
 	world.add(make_shared<sphere>(point3(190, 90, 190), 90, coated_blue));
 
-	// Red coated-diffuse box (IOR 1.5, roughness 0.2 -- slightly rougher coat)
-	auto coated_red = make_shared<coated_diffuse>(color(0.8, 0.1, 0.1), 1.5, 0.2);
+	// Orange/terracotta coated-diffuse box (IOR 1.5, roughness 0.2 -- slightly
+	// rougher coat). Was near-identical red to the wall behind it and didn't
+	// read as a distinct object; shifted hue only, same coat properties.
+	auto coated_red = make_shared<coated_diffuse>(color(0.75, 0.35, 0.1), 1.5, 0.2);
 	shared_ptr<hittable> box1 = box(point3(0,0,0), point3(165,330,165), coated_red);
 	box1 = make_shared<rotate_y>(box1, 15);
 	box1 = make_shared<translate>(box1, vec3(265,0,295));
@@ -168,9 +170,22 @@ inline hittable_list build_cornell_thin_glass() {
 	box1 = make_shared<translate>(box1, vec3(265,0,295));
 	world.add(box1);
 
-	// Thin-glass panel (IOR 1.5) -- vertical slab spanning box interior
+	// Thin-glass panel (IOR 1.5) -- angled ~62 degrees off the camera's
+	// straight-on view axis so it's actually visible. Fresnel reflectance
+	// for IOR 1.5 only rises steeply near grazing incidence (~4% at 0 deg,
+	// ~9% at 60 deg, ~35% at 80 deg) - facing the camera dead-on (0 deg, as
+	// this panel used to) or even a mild 28-degree tilt (still <5%) both
+	// made it imperceptible; 62 degrees was tuned by rendering until the
+	// sheen actually reads while the panel is still wide enough on screen
+	// to not foreshorten into an unreadable sliver. Built centered at the
+	// local origin so rotate_y (which pivots around world/local (0,0,0))
+	// rotates the panel in place, then translated to its position in the box.
 	auto panel = make_shared<thin_dielectric>(1.5);
-	world.add(make_shared<quad>(point3(100, 0, 200), vec3(0, 555, 0), vec3(355, 0, 0), panel));
+	shared_ptr<hittable> panel_quad = make_shared<quad>(
+		point3(-177.5, -277.5, 0), vec3(0, 555, 0), vec3(355, 0, 0), panel);
+	panel_quad = make_shared<rotate_y>(panel_quad, 62);
+	panel_quad = make_shared<translate>(panel_quad, vec3(277.5, 277.5, 200));
+	world.add(panel_quad);
 
 	return world;
 }

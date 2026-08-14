@@ -1117,8 +1117,10 @@ static void build_cornell_coated_diffuse(SceneData& scene) {
         0.1f,                            // coat roughness (RoughnessToAlpha done in shader)
         1.5f);                           // coat IOR (glass-like)
 
-    // Red coated-diffuse box (IOR 1.5, roughness 0.2)
-    const int mat_coated_red = add_coated_diffuse(scene, make_float3(0.8f, 0.1f, 0.1f), 0.2f, 1.5f);
+    // Orange/terracotta coated-diffuse box (IOR 1.5, roughness 0.2) - was
+    // near-identical red to the wall behind it (matches CPU's fix, see
+    // build_cornell_coated_diffuse()'s comment there).
+    const int mat_coated_red = add_coated_diffuse(scene, make_float3(0.75f, 0.35f, 0.1f), 0.2f, 1.5f);
 
     // Blue coated-diffuse sphere
     SphereData sph{};
@@ -1173,13 +1175,27 @@ static void build_cornell_thin_glass(SceneData& scene) {
         15.0f,
         make_float3(265.0f, 0.0f, 295.0f));
 
-    // Thin-glass panel: vertical slab spanning box interior
-    // Q=(100,0,200), u=(0,555,0), v=(355,0,0)  -- horizontal quad lying in xz plane rotated
+    // Thin-glass panel: rotated ~28 degrees off the camera's straight-on
+    // view axis so it's actually visible (matches CPU build_cornell_thin_glass()
+    // - see that function's comment: at 0 degrees incidence, IOR-1.5 Fresnel
+    // reflectance is only ~4%, imperceptible). Built centered at local
+    // origin, rotated about Y (same convention as CPU's rotate_y: x'=cos*x
+    // + sin*z, z'=-sin*x + cos*z, y untouched), then translated into place.
     {
+        const float panelAngleRad = 62.0f * 3.14159265358979323846f / 180.0f;  // matches CPU's 62-degree tilt
+        const float cosA = cosf(panelAngleRad), sinA = sinf(panelAngleRad);
+        auto rotate_y_pt = [&](float x, float y, float z) {
+            return make_float3(cosA * x + sinA * z, y, -sinA * x + cosA * z);
+        };
+        const float3 Q_rot = rotate_y_pt(-177.5f, -277.5f, 0.0f);
+        const float3 u_rot = rotate_y_pt(0.0f, 555.0f, 0.0f);  // vertical edge, unchanged by Y rotation
+        const float3 v_rot = rotate_y_pt(355.0f, 0.0f, 0.0f);
+        const float3 translate = make_float3(277.5f, 277.5f, 200.0f);
+
         QuadData q{};
-        q.Q = make_float3(100.0f, 0.0f, 200.0f);
-        q.u = make_float3(0.0f, 555.0f, 0.0f);
-        q.v = make_float3(355.0f, 0.0f, 0.0f);
+        q.Q = make_float3(Q_rot.x + translate.x, Q_rot.y + translate.y, Q_rot.z + translate.z);
+        q.u = u_rot;
+        q.v = v_rot;
         const float3 c = cross(q.u, q.v);
         q.w      = c;
         q.normal = normalize(c);
@@ -2379,12 +2395,16 @@ static void build_hair_fibers_gpu(SceneData& scene) {
 	// Hair MaterialData reuse: albedo=sigma_a(r,g,b), fuzz=beta_m, ior=eta(1.55),
 	// eta_c.x=beta_n, eta_c.y=alpha_deg.
 	struct HairSphere { float3 center; float3 sigma_a; float beta_m; float beta_n; float alpha_deg; };
+	// Spacing widened (matches CPU build_hair_fibers() - see that function's
+	// comment: the original tightly-packed cluster let camera rays get
+	// trapped bouncing between overlapping near-lossless hair spheres,
+	// producing runaway blown-white energy).
 	const HairSphere hairs[5] = {
-		{ make_float3(-2.5f, 1.0f, 0.0f), make_float3(0.06f, 0.10f, 0.20f), 0.25f, 0.25f, 2.0f }, // dark brown
-		{ make_float3(-0.8f, 1.0f, 0.3f), make_float3(0.01f, 0.015f, 0.03f), 0.30f, 0.30f, 2.0f }, // blonde
-		{ make_float3(0.9f, 1.0f, -0.3f), make_float3(0.02f, 0.08f, 0.18f), 0.20f, 0.20f, 3.0f }, // auburn
-		{ make_float3(2.5f, 1.0f, 0.0f), make_float3(0.001f, 0.001f, 0.002f), 0.45f, 0.45f, 1.0f }, // white/silver fur
-		{ make_float3(0.0f, 1.0f, 1.8f), make_float3(0.50f, 0.55f, 0.60f), 0.15f, 0.15f, 2.0f }, // fine black fur
+		{ make_float3(-3.5f, 1.0f, 0.0f), make_float3(0.06f, 0.10f, 0.20f), 0.25f, 0.25f, 2.0f }, // dark brown
+		{ make_float3(-1.2f, 1.0f, 0.4f), make_float3(0.01f, 0.015f, 0.03f), 0.30f, 0.30f, 2.0f }, // blonde
+		{ make_float3(1.2f, 1.0f, -0.4f), make_float3(0.02f, 0.08f, 0.18f), 0.20f, 0.20f, 3.0f }, // auburn
+		{ make_float3(3.5f, 1.0f, 0.0f), make_float3(0.001f, 0.001f, 0.002f), 0.45f, 0.45f, 1.0f }, // white/silver fur
+		{ make_float3(0.0f, 1.0f, 2.3f), make_float3(0.50f, 0.55f, 0.60f), 0.15f, 0.15f, 2.0f }, // fine black fur
 	};
 	for (const auto& h : hairs) {
 		// 1.55f: fiber eta, matches CPU hair_material's default
@@ -2392,6 +2412,23 @@ static void build_hair_fibers_gpu(SceneData& scene) {
 		SphereData s{}; s.center = h.center; s.radius = 1.0f; s.materialIdx = mat_idx;
 		scene.spheres.push_back(s);
 	}
+
+	// Overhead area light -- matches CPU build_hair_fibers()'s own light
+	// (see that function's comment). Without it the scene was lit only by
+	// the flat ambient background.
+	const int mat_light = add_diffuse_light(scene, make_float3(5.0f, 5.0f, 4.3f));
+	QuadData lq{};
+	lq.Q = make_float3(-5.0f, 6.0f, -5.0f);
+	lq.u = make_float3(10.0f, 0.0f, 0.0f);
+	lq.v = make_float3(0.0f, 0.0f, 7.0f);
+	const float3 lc = cross(lq.u, lq.v);
+	lq.w = lc;
+	lq.normal = normalize(lc);
+	lq.D = dot(lq.normal, lq.Q);
+	lq.materialIdx = mat_light;
+	scene.quads.push_back(lq);
+	scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+	scene.lightKinds.push_back(GpuLightKind::Quad);
 }
 
 /// @brief Scene 18: Principled Showcase. Matches CPU build_principled_showcase()
@@ -2411,21 +2448,39 @@ static void build_principled_showcase_gpu(SceneData& scene) {
 
 	// x position, base color, metallic, roughness, clearcoat, clearcoat_rough
 	// - matches CPU's 7 principled(...) calls exactly (ior=1.5 for all).
+	// Spacing 2.0 (radius 1.0 each) so neighbors don't overlap/fuse.
 	struct PrincipledSphere { float x; float3 base; float metallic; float roughness; float clearcoat; float clearcoat_rough; };
 	const PrincipledSphere spheres[7] = {
-		{ -3.0f, make_float3(0.8f, 0.1f, 0.1f),  0.0f, 0.9f,  0.0f, 0.1f  }, // 0: matte diffuse (red)
-		{ -2.0f, make_float3(0.1f, 0.2f, 0.8f),  0.0f, 0.2f,  0.0f, 0.1f  }, // 1: plastic, low roughness (blue)
-		{ -1.0f, make_float3(0.1f, 0.7f, 0.2f),  0.0f, 0.3f,  1.0f, 0.05f }, // 2: plastic, clearcoated (green)
+		{ -6.0f, make_float3(0.8f, 0.1f, 0.1f),  0.0f, 0.9f,  0.0f, 0.1f  }, // 0: matte diffuse (red)
+		{ -4.0f, make_float3(0.1f, 0.2f, 0.8f),  0.0f, 0.2f,  0.0f, 0.1f  }, // 1: plastic, low roughness (blue)
+		{ -2.0f, make_float3(0.1f, 0.7f, 0.2f),  0.0f, 0.3f,  1.0f, 0.05f }, // 2: plastic, clearcoated (green)
 		{  0.0f, make_float3(0.9f, 0.7f, 0.2f),  0.5f, 0.3f,  0.0f, 0.1f  }, // 3: semi-metallic (gold-tinted)
-		{  1.0f, make_float3(0.8f, 0.45f, 0.2f), 0.8f, 0.4f,  0.0f, 0.1f  }, // 4: near-metallic, rough (copper-ish)
-		{  2.0f, make_float3(0.9f, 0.9f, 0.9f),  1.0f, 0.05f, 0.0f, 0.1f  }, // 5: fully metallic, smooth (silver)
-		{  3.0f, make_float3(0.9f, 0.7f, 0.1f),  1.0f, 0.1f,  1.0f, 0.08f }, // 6: fully metallic, clearcoated (lacquered gold)
+		{  2.0f, make_float3(0.8f, 0.45f, 0.2f), 0.8f, 0.4f,  0.0f, 0.1f  }, // 4: near-metallic, rough (copper-ish)
+		{  4.0f, make_float3(0.9f, 0.9f, 0.9f),  1.0f, 0.05f, 0.0f, 0.1f  }, // 5: fully metallic, smooth (silver)
+		{  6.0f, make_float3(0.9f, 0.7f, 0.1f),  1.0f, 0.1f,  1.0f, 0.08f }, // 6: fully metallic, clearcoated (lacquered gold)
 	};
 	for (const auto& p : spheres) {
 		const int mat_idx = add_principled(scene, p.base, 1.5f, p.roughness, p.metallic, p.clearcoat, p.clearcoat_rough);
 		SphereData s{}; s.center = make_float3(p.x, 1.0f, 0.0f); s.radius = 1.0f; s.materialIdx = mat_idx;
 		scene.spheres.push_back(s);
 	}
+
+	// Overhead area light -- matches CPU build_principled_showcase()'s own
+	// light (see that function's comment). Without it the clearcoat/metallic
+	// spheres showed no specular highlight.
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
+	QuadData lq{};
+	lq.Q = make_float3(-7.0f, 7.0f, -5.0f);
+	lq.u = make_float3(14.0f, 0.0f, 0.0f);
+	lq.v = make_float3(0.0f, 0.0f, 10.0f);
+	const float3 lc = cross(lq.u, lq.v);
+	lq.w = lc;
+	lq.normal = normalize(lc);
+	lq.D = dot(lq.normal, lq.Q);
+	lq.materialIdx = mat_light;
+	scene.quads.push_back(lq);
+	scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+	scene.lightKinds.push_back(GpuLightKind::Quad);
 }
 
 /// @brief Scene 34: Measured BRDF. Matches CPU build_measured_brdf_scene()'s
@@ -3835,18 +3890,27 @@ bool build_scene(
 				case 9: {  // Rough Metal Spheres (GGX)
 										build_rough_metal_spheres(scene);
 
-										// Camera: vfov=35, lookfrom=(cam_x,cam_y,cam_z), lookat=(0,1,0)
+										// Camera: vfov=42, lookfrom=(cam_x,cam_y,cam_z), lookat=(0,1,0) -
+										// matches CPU CameraConfig row for scene 9 (widened/pulled back so
+										// all 5 spheres, spanning x=+-6, actually fit in frame).
 										const float3 lookfrom9 = make_float3(static_cast<float>(cam_x), static_cast<float>(cam_y), static_cast<float>(cam_z));
 										const float3 lookat9   = make_float3(0.0f, 1.0f, 0.0f);
 										const float3 vup9      = make_float3(0.0f, 1.0f, 0.0f);
 										const float aspect9    = static_cast<float>(image_width) / static_cast<float>(image_height);
-										build_pinhole_camera_params(lookfrom9, lookat9, vup9, 35.0f, aspect9, 1.0f, camera_params);
+										build_pinhole_camera_params(lookfrom9, lookat9, vup9, 42.0f, aspect9, 1.0f, camera_params);
 										break;
 									}
 
 							case 10:  // Cornell Rough Metal (GGX)
 								build_cornell_rough_metal(scene);
 								setup_cornell_box_camera();
+								if (out_camera_extra) {
+									// Matches CPU CameraConfig bg for scene 10 - a flat black background
+									// made the box's near-mirror faces (which mostly reflect back out
+									// the box's open front) read as solid black instead of shiny metal;
+									// a dim fill fixes that.
+									out_camera_extra->backgroundColor = make_float3(0.05f, 0.055f, 0.07f);
+								}
 								break;
 
 							case 11:  // Cornell Rough Glass (GGX)
@@ -3857,6 +3921,10 @@ bool build_scene(
 							case 12:  // Cornell Conductor (GGX + complex Fresnel, pbrt-v4 ConductorBxDF)
 								build_cornell_conductor(scene);
 								setup_cornell_box_camera();
+								if (out_camera_extra) {
+									// Matches CPU CameraConfig bg for scene 12 (same reasoning as scene 10).
+									out_camera_extra->backgroundColor = make_float3(0.05f, 0.055f, 0.07f);
+								}
 								break;
 
 							case 13:  // Cornell Coated Diffuse (pbrt-v4 CoatedDiffuseBxDF)
@@ -3872,6 +3940,10 @@ bool build_scene(
 							case 15:  // Cornell Coated Conductor (pbrt-v4 CoatedConductorBxDF)
 								build_cornell_coated_conductor(scene);
 								setup_cornell_box_camera();
+								if (out_camera_extra) {
+									// Matches CPU CameraConfig bg for scene 15 (same reasoning as scene 10).
+									out_camera_extra->backgroundColor = make_float3(0.05f, 0.055f, 0.07f);
+								}
 								break;
 
 							case 16:  // Cornell Wax Slab (pbrt-v4 DiffuseTransmissionBxDF)
@@ -3928,6 +4000,12 @@ bool build_scene(
 							case 21:  // Subsurface Slab (see build_subsurface_slab_gpu's comment)
 								build_subsurface_slab_gpu(scene);
 								setup_cornell_box_camera();
+								if (out_camera_extra) {
+									// Matches CPU CameraConfig bg for scene 21 (same reasoning as scene 10 -
+									// the dielectric shell's reflection/refraction rays hit the same
+									// open-front-of-box black-background issue).
+									out_camera_extra->backgroundColor = make_float3(0.05f, 0.055f, 0.07f);
+								}
 								break;
 
 							case 20:  // Normal Mapped Cornell (see build_normal_mapped_cornell_gpu's comment)
@@ -4169,11 +4247,13 @@ bool build_scene(
 
 							case 19: {  // Hair Fibers (pbrt-v4 HairBxDF)
 								build_hair_fibers_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.0f, 8.0f);
+								// lookfrom/vfov widened/pulled back to fit the now wider-spaced
+								// cluster - matches CPU CameraConfig row for scene 19.
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.5f, 14.0f);
 								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 30.0f, aspect, 1.0f, camera_params);  // 30: matches CPU CameraConfig row for scene 19
+								build_pinhole_camera_params(lookfrom, lookat, vup, 45.0f, aspect, 1.0f, camera_params);  // 45: matches CPU CameraConfig row for scene 19
 								if (out_camera_extra) {
 									// Matches CPU CameraConfig bg for scene 19 (dim ambient - the
 									// only light source, no emissive geometry in this scene).
@@ -4184,11 +4264,14 @@ bool build_scene(
 
 							case 34: {  // Measured BRDF (see build_measured_brdf_scene_gpu's comment)
 								build_measured_brdf_scene_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 12.0f);
+								// lookfrom/vfov widened/pulled back so all 5 spheres (spanning
+								// x=+-5) actually fit in frame - matches CPU CameraConfig row for
+								// scene 34.
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.2f, 17.0f);
 								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 25.0f, aspect, 1.0f, camera_params);  // 25: matches CPU CameraConfig row for scene 34
+								build_pinhole_camera_params(lookfrom, lookat, vup, 42.0f, aspect, 1.0f, camera_params);  // 42: matches CPU CameraConfig row for scene 34
 								// backgroundColor left at zero-init (matches CPU bg=(0,0,0)) - this
 								// scene has a real emissive light sphere, unlike scenes 19/31.
 								break;
@@ -4211,11 +4294,14 @@ bool build_scene(
 
 							case 18: {  // Principled Showcase (see build_principled_showcase_gpu's comment)
 								build_principled_showcase_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.5f, 10.0f);
+								// lookfrom/vfov widened/pulled back so all 7 spheres (spanning
+								// x=+-7 after the spacing fix) actually fit in frame - matches
+								// CPU CameraConfig row for scene 18.
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.7f, 17.0f);
 								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 18
+								build_pinhole_camera_params(lookfrom, lookat, vup, 45.0f, aspect, 1.0f, camera_params);  // 45: matches CPU CameraConfig row for scene 18
 								if (out_camera_extra) {
 									// Matches CPU CameraConfig bg for scene 18 (dim ambient - no
 									// emissive geometry in this scene, same style as scenes 19/31/37).

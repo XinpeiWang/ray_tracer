@@ -60,9 +60,6 @@ inline hittable_list build_cornell_box_lights() {
 		make_shared<quad>(point3(343,554,332), vec3(-130,0,0), vec3(0,0,-105), empty_material));
 	// Glass sphere (acts as a secondary sampled target)
 	lights.add(make_shared<sphere>(point3(190, 90, 190), 90, empty_material));
-	// Accent wall light
-	lights.add(
-		make_shared<quad>(point3(554,100,200), vec3(0,0,150), vec3(0,200,0), empty_material));
 
 	return lights;
 }

@@ -346,10 +346,21 @@ struct HairBxDF {
 
 		if (pdf < T(1e-8)) return res;
 
+		// fr and pdf are both derived from the same Mp/Np lobe math but via
+		// separate code paths (eval_local vs scattering_pdf_local); near the
+		// 1e-8 floor above, small inconsistencies between the two make
+		// fr/pdf spike into extreme outliers (observed as blown-white
+		// fireflies when this BSDF is used interactively at low SPP). Clamp
+		// the ratio well above any physically-expected value (this BSDF's
+		// energy-conserving lobes sum to ~1, see the WhiteFurnaceBound unit
+		// test) rather than above the noise floor itself, so ordinary
+		// samples are untouched and only true numerical spikes are capped.
+		const T kMaxAttenuation = T(50);
+		T ratio_r = fr / pdf, ratio_g = fg / pdf, ratio_b = fb / pdf;
 		res.wo_x = wo_wx; res.wo_y = wo_wy; res.wo_z = wo_wz;
-		res.r = fr / pdf;
-		res.g = fg / pdf;
-		res.b = fb / pdf;
+		res.r = ratio_r < kMaxAttenuation ? ratio_r : kMaxAttenuation;
+		res.g = ratio_g < kMaxAttenuation ? ratio_g : kMaxAttenuation;
+		res.b = ratio_b < kMaxAttenuation ? ratio_b : kMaxAttenuation;
 		res.is_specular = false;
 		res.is_transmission = false;
 		res.eta = T(1);
