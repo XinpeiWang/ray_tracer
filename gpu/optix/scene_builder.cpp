@@ -2396,9 +2396,8 @@ static void build_hair_fibers_gpu(SceneData& scene) {
 	// eta_c.x=beta_n, eta_c.y=alpha_deg.
 	struct HairSphere { float3 center; float3 sigma_a; float beta_m; float beta_n; float alpha_deg; };
 	// Spacing widened (matches CPU build_hair_fibers() - see that function's
-	// comment: the original tightly-packed cluster let camera rays get
-	// trapped bouncing between overlapping near-lossless hair spheres,
-	// producing runaway blown-white energy).
+	// comment) so the 5 distinct hair colors read as 5 distinct spheres
+	// instead of fusing into one shape.
 	const HairSphere hairs[5] = {
 		{ make_float3(-3.5f, 1.0f, 0.0f), make_float3(0.06f, 0.10f, 0.20f), 0.25f, 0.25f, 2.0f }, // dark brown
 		{ make_float3(-1.2f, 1.0f, 0.4f), make_float3(0.01f, 0.015f, 0.03f), 0.30f, 0.30f, 2.0f }, // blonde
@@ -2414,9 +2413,11 @@ static void build_hair_fibers_gpu(SceneData& scene) {
 	}
 
 	// Overhead area light -- matches CPU build_hair_fibers()'s own light
-	// (see that function's comment). Without it the scene was lit only by
-	// the flat ambient background.
-	const int mat_light = add_diffuse_light(scene, make_float3(5.0f, 5.0f, 4.3f));
+	// (see that function's comment for the intensity-calibration rationale:
+	// hair's peak BSDF response is far brighter than diffuse/glossy
+	// surfaces, so this codebase's usual 6,6,6 light-quad intensity blew
+	// the whole visible hemisphere to white under the ACES tone map).
+	const int mat_light = add_diffuse_light(scene, make_float3(0.22f, 0.22f, 0.19f));
 	QuadData lq{};
 	lq.Q = make_float3(-5.0f, 6.0f, -5.0f);
 	lq.u = make_float3(10.0f, 0.0f, 0.0f);

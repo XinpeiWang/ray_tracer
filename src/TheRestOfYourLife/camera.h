@@ -397,6 +397,28 @@ class camera {
         bool   any_nonspecular    = false;  // pbrt-v4: anyNonSpecularBounces
         point3 prev_surface_p     = r.origin(); // pbrt-v4: prevIntrCtx shading point
 
+        // Russian roulette below only fires when a path's throughput has
+        // dropped under 1.0 - it terminates/reweights *dim* paths, but does
+        // nothing when throughput has grown large. General defensive
+        // firefly ceiling for the rare case a BSDF's per-bounce ratio (e.g.
+        // hair's fr/pdf importance-sampling ratio - see hair_material.h/
+        // bxdfs_hair.h, which already clamps that single-bounce ratio to
+        // 50) compounds across several bounces into an extreme value.
+        // Confirmed NOT the cause of scene B11's original blown-white
+        // look (that traced to the scene's overhead light being miscalibrated
+        // for hair's naturally bright peak response - see
+        // build_hair_fibers()'s comment - clamping throughput here, even
+        // aggressively, made no visible difference until the light itself
+        // was recalibrated). Kept as a generous, low-risk safety net; a
+        // well-behaved BSDF (Fresnel reflectance <=1, importance-sampled
+        // f/pdf integrating to ~1) never approaches it.
+        constexpr double kMaxPathThroughput = 50.0;
+        auto clamp_throughput = [&](const color& c) {
+            return color(std::min(c.x(), kMaxPathThroughput),
+                         std::min(c.y(), kMaxPathThroughput),
+                         std::min(c.z(), kMaxPathThroughput));
+        };
+
         while (bounces_left > 0) {
             hit_record rec;
 
@@ -448,7 +470,7 @@ class camera {
 
             // Specular bounce: no NEE, update beta and advance ray
             if (srec.skip_pdf) {
-                color new_beta = beta * srec.attenuation;
+                color new_beta = clamp_throughput(beta * srec.attenuation);
                 if (bounces_left < depth) {
                     // pbrt-v4: rrBeta = beta * etaScale to avoid killing transmission paths
                     color rr_beta = new_beta * eta_scale;
@@ -547,7 +569,7 @@ class camera {
                 if (f_pdf <= 0.0) break;
 
                 // Russian Roulette after first bounce
-                color new_beta = beta * srec.attenuation * f_pdf / pdf_b;
+                color new_beta = clamp_throughput(beta * srec.attenuation * f_pdf / pdf_b);
                 if (bounces_left < depth) {
                     // pbrt-v4: rrBeta = beta * etaScale
                     color rr_beta = new_beta * eta_scale;

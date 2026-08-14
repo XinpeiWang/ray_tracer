@@ -79,14 +79,10 @@ inline hittable_list build_hair_fibers() {
 		make_shared<lambertian>(color(0.05, 0.05, 0.06))));
 
 	// Spacing widened (radius 1.0, min separation ~2.25) from the original
-	// tightly-packed cluster where every neighbor pair physically overlapped
-	// - that overlap let camera rays get trapped bouncing back and forth in
-	// the sliver of intersecting geometry between two near-lossless hair
-	// spheres (the white/silver fur below has sigma_a near 0), each bounce
-	// multiplying an already-high hair-BSDF throughput, producing runaway
-	// blown-white energy at normal ray depths (confirmed: the blowout
-	// vanished at max_depth=2, appeared again at higher depth, independent
-	// of light intensity - a multi-bounce explosion, not a lighting issue).
+	// tightly-packed cluster where every neighbor pair physically
+	// overlapped, so the 5 distinct hair colors read as 5 distinct spheres
+	// instead of fusing into one shape (same fix as build_principled_showcase()'s
+	// spacing - see that function's comment).
 	// Dark brown hair (default sigma_a)
 	world.add(make_shared<sphere>(point3(-3.5, 1, 0), 1.0,
 		make_shared<hair_material>(0.06, 0.10, 0.20, 0.25, 0.25, 2.0)));
@@ -104,9 +100,18 @@ inline hittable_list build_hair_fibers() {
 		make_shared<hair_material>(0.50, 0.55, 0.60, 0.15, 0.15, 2.0)));
 
 	// Overhead area light -- without a real light source, the scene was lit
-	// only by the flat ambient background.
+	// only by the flat ambient background. Intensity calibrated much
+	// dimmer than this codebase's other light-quad scenes (e.g.
+	// build_rough_metal_spheres()/build_principled_showcase() both use
+	// 6,6,6): hair's peak BSDF response (real hair strongly forward/
+	// specular-scatters) is far brighter than a typical diffuse/glossy
+	// surface's, so the same "normal" intensity blew the whole visible
+	// hemisphere to solid white under the ACES tone map. Confirmed by a
+	// direct sweep of light intensity alone (down to near-zero and back
+	// up) with scene geometry/depth held fixed - this was a lighting
+	// calibration issue, not a BSDF or path-throughput bug.
 	world.add(make_shared<quad>(point3(-5, 6, -5), vec3(10, 0, 0), vec3(0, 0, 7),
-		make_shared<diffuse_light>(color(5, 5, 4.3))));
+		make_shared<diffuse_light>(color(0.22, 0.22, 0.19))));
 
 	return world;
 }
