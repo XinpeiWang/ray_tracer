@@ -4048,8 +4048,12 @@ bool build_scene(
 								constexpr float focus_dist    = 9.0f;    // ditto
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
 
+								// vfov widened from 20 to 62 so the row of spheres (spanning
+								// x=+-5) actually fits in frame at focus_dist=9 - matches CPU
+								// CameraConfig row for scene 22. defocus_angle/focus_dist
+								// unchanged so the DOF blur physics stays as designed.
 								float3 u, v;
-								build_pinhole_camera_params(lookfrom, lookat, vup, 20.0f, aspect, focus_dist, camera_params, &u, &v);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 62.0f, aspect, focus_dist, camera_params, &u, &v);
 
 								if (out_camera_extra) {
 									out_camera_extra->kind = CameraKind::Perspective;
@@ -4073,17 +4077,20 @@ bool build_scene(
 
 							case 32: {  // Orthographic Camera (parallel projection)
 								build_ortho_camera_scene_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 12.0f);
+								// lookfrom moved higher/farther back (was (0,3,12)) and the
+								// screen-window scale reduced (was 8) - matches CPU's
+								// setup_camera lambda for scene 32; see that lambda's comment
+								// for why the old values put ray origins below the giant
+								// ground sphere's surface for the bottom rows.
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 10.0f, 20.0f);
 								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
 
-								// compute_screen_window-equivalent aspect-correct default, then
-								// scaled x8 - matches CPU's setup_camera lambda for scene 32.
 								float xmin, xmax, ymin, ymax;
 								if (aspect >= 1.0f) { xmin = -aspect; xmax = aspect; ymin = -1.0f; ymax = 1.0f; }
 								else                { xmin = -1.0f; xmax = 1.0f; ymin = -1.0f / aspect; ymax = 1.0f / aspect; }
-								constexpr float kScreenScale = 8.0f;
+								constexpr float kScreenScale = 5.0f;
 								xmin *= kScreenScale; xmax *= kScreenScale; ymin *= kScreenScale; ymax *= kScreenScale;
 
 								const float3 w = normalize(make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z));
@@ -4157,8 +4164,12 @@ bool build_scene(
 								// Fixed-mode scene - let lookfrom track cam_x/y/z only under
 								// force_camera_override (video mode), matching CPU's scene 36
 								// setup_camera lambda; lookat stays fixed (this scene never
-								// overrides it, matching every other scene's convention).
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.0f, -2.0f);
+								// overrides it, matching every other scene's convention). The
+								// oblique default (not dead-on with the sphere row) is required -
+								// see scene_registry.h's scene 36 comment: the row sits exactly on
+								// the old dead-on viewing axis, so the near sphere fully occluded
+								// the rest from every lens sample.
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 1.65f, 1.07f, -6.85f);
 								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
 									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
 								};
@@ -4188,10 +4199,16 @@ bool build_scene(
 									};
 									Mat4<float> ctw = make_look_at<float>(
 										lookfrom.x, lookfrom.y, lookfrom.z,   // from
-										0.0f, 1.0f,  5.0f,   // to
+										1.4f, 1.0f,  5.5f,   // to
 										0.0f, 1.0f,  0.0f    // up
 									);
-									RealisticCamera<float> realCam(ctw, 18.0f, 12.0f, 7.0f, 8.0f, lens, 512);
+									// Film half-extents shrunk from 18/12mm (a full 35mm frame) to
+									// 3.0/2.0mm, and focus distance/camera position updated to an
+									// oblique framing of the sphere row - matches CPU's fix in
+									// scene_registry.h's scene 36 setup_camera lambda, see that
+									// comment for the full reasoning (lens vignetting at the old film
+									// size, plus the row sitting on the old dead-on viewing axis).
+									RealisticCamera<float> realCam(ctw, 3.0f, 2.0f, 12.4f, 8.0f, lens, 512);
 
 									scene.lensElements.clear();
 									for (int i = 0; i < realCam.num_elements(); ++i) {

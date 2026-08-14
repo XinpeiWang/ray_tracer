@@ -315,7 +315,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "D1", 22, SceneNames::DepthOfField, SceneCategories::Cameras,
             "Row of spheres with defocus blur showing depth-of-field from the thin-lens camera model",
             "Medium", 200, false, true,
-            { 20, 0, 2, 9,  0, 1, 0,  0.70, 0.80, 1.00, CameraMode::Fixed, 10.0, 9.0 },
+            { 62, 0, 2, 9,  0, 1, 0,  0.70, 0.80, 1.00, CameraMode::Fixed, 10.0, 9.0 },
             build_depth_of_field,
             sky_dummy_lights
         },
@@ -408,7 +408,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "D2", 32, SceneNames::OrthographicCamera, SceneCategories::Cameras,
             "Geometric showcase rendered with an orthographic (parallel-projection) camera (pbrt-v4 OrthographicCamera)",
             "Fast", 100, false, true,
-            { 30, 0, 3, 12,  0, 1, 0,  0, 0, 0 },
+            { 30, 0, 10, 20,  0, 1, 0,  0, 0, 0 },
             build_ortho_camera_scene,
             no_lights,
             build_ortho_sky,
@@ -429,8 +429,20 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
                 double xmin, xmax, ymin, ymax;
                 compute_screen_window<double>(cam.image_width, cam.image_height,
                                               xmin, xmax, ymin, ymax);
+                // Screen-window scale (was 8, uniform in x AND y): the row of
+                // spheres needs wide horizontal coverage, but scaling y by
+                // the same large factor pushed ray origins for the bottom
+                // rows below the giant ground sphere's surface (radius 100,
+                // centered at y=-100) - those rays hit the sphere from
+                // inside/behind, the Lambertian material's cosine check
+                // failed, and the path terminated with zero radiance,
+                // rendering as a solid black region with a curved boundary
+                // (traced from that sphere's silhouette). Camera moved
+                // higher/farther back (was lookfrom (0,3,12)) so a scale
+                // that's still wide enough for the spheres doesn't dip
+                // below ground.
                 cam.alt_ortho_cam = std::make_shared<OrthographicCamera<double>>(
-                    xmin*8, xmax*8, ymin*8, ymax*8,   // screen window scaled to scene
+                    xmin*5, xmax*5, ymin*5, ymax*5,
                     cam.image_width, cam.image_height,
                     ctw
                 );
@@ -500,7 +512,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "D4", 36, SceneNames::RealisticCamera, SceneCategories::Cameras,
             "Spheres rendered through a thin-lens with realistic lens-element bokeh (pbrt-v4 RealisticCamera)",
             "Medium", 200, false, true,
-            { 50, 0, 2, -2,  0, 1, 5,  0, 0, 0 },
+            { 50, 1.65, 1.07, -6.85,  1.4, 1, 5.5,  0, 0, 0 },
             build_realistic_camera_scene,
             []() {
                 hittable_list l;
@@ -529,20 +541,72 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
                 // CameraConfig, or overridden by the caller - e.g. a
                 // video-mode frame's animated position - by the time
                 // setup_camera() runs, see cpu_interface.cpp) instead of the
-                // registry's default (0,2,-2)/(0,1,5) directly, so this alt
-                // camera actually moves for video mode instead of silently
-                // staying frozen on every frame.
+                // registry's original default (0,2,-2)/(0,1,5) directly, so
+                // this alt camera actually moves for video mode instead of
+                // silently staying frozen on every frame.
                 Mat4<double> ctw = make_look_at<double>(
                     cam.lookfrom.x(), cam.lookfrom.y(), cam.lookfrom.z(),
                     cam.lookat.x(),   cam.lookat.y(),   cam.lookat.z(),
                     0, 1,  0    // up
                 );
+                // Film half-extents shrunk from a full 35mm frame (18/12mm) to
+                // 3.0/2.0mm. This "simplified" 9-element lens prescription
+                // (curvatures/thicknesses copied from pbrt-v4's dgauss sample
+                // but hand-trimmed) has a genuine back-focal-distance of only
+                // ~4mm - far short of what a real Double-Gauss 35mm-format
+                // lens needs (~30-40mm) - so its actual working image circle
+                // is much smaller than a 35mm frame. At 18/12mm, over 70% of
+                // the film radius fell entirely outside every lens element's
+                // combined aperture (confirmed by sweeping exit-pupil-bounds
+                // degeneracy directly against this exact lens data - neither
+                // focus_distance nor a wider requested aperture changed it),
+                // rendering as solid black outside a small central disc.
+                // Verified empirically: this lens gives full, non-vignetted
+                // coverage starting around a 3.6mm RADIUS from the film
+                // center; 3.0/2.0mm keeps every corner (sqrt(3.0^2+2.0^2)
+                // = 3.6mm) within that verified-safe radius - see the
+                // half-width/half-height comment below for why the corners
+                // specifically matter here.
+                //
+                // Two more real bugs were found and fixed alongside the film
+                // size, both upstream of this file:
+                //  1. src/TheRestOfYourLife/camera.h's get_ray() was
+                //     discarding RealisticCamera::generate_ray()'s `weight`
+                //     (the pbrt-v4 cos^4(theta)/(pdf*LensRearZ^2) exposure
+                //     factor - see cameras.h's class comment). With this
+                //     lens's tiny rear-Z, 1/LensRearZ^2 is a large multiplier;
+                //     dropping it made every CPU RealisticCamera render come
+                //     out catastrophically underexposed regardless of camera
+                //     position (GPU already applied the equivalent weight
+                //     correctly - see optix_device_helpers.h's
+                //     generate_primary_ray). Fixed by threading the weight
+                //     out of get_ray() and multiplying it into the sample
+                //     before filter accumulation.
+                //  2. The scene's 5 spheres sit at x=0, differing only in
+                //     depth (z=2..8) - i.e. exactly on the camera's original
+                //     on-axis viewing line. An opaque near sphere on that
+                //     same line fully occludes the ones behind it from every
+                //     lens-aperture sample, so the original dead-on
+                //     lookfrom/lookat rendered as one oversized near sphere
+                //     with the rest invisible no matter the distance. Fixed
+                //     by moving the camera to an oblique angle (found via a
+                //     temporary ray-vs-known-sphere projection sweep, see
+                //     git history for tests/unit/realistic_camera_tests.cpp)
+                //     so all 5 spheres are visible side by side with
+                //     depth-increasing defocus blur - the actual bokeh demo
+                //     this scene is meant to show.
                 cam.alt_realistic_cam = std::make_shared<RealisticCamera<double>>(
                     ctw,
-                    18.0,   // film half-width mm (matches a real 35mm frame's
-                    12.0,   // film half-height mm  half-extents, realistic_camera_tests.cpp's
-                            // FILM_HX/FILM_HY convention)
-                    7.0,    // focus distance meters
+                    3.0,    // film half-width mm
+                    2.0,    // film half-height mm (3:2 aspect) - chosen so the frame's
+                            // CORNER radius (sqrt(hx^2+hy^2) = 3.6mm) sits right at the
+                            // empirically-verified non-vignetted radius; the corners of
+                            // a rectangular film reach further than the half-width/
+                            // half-height alone, and a larger size here left them a
+                            // grainy high-variance patch (a handful of valid-but-near-
+                            // degenerate exit-pupil samples getting a very small pdf,
+                            // hence a very large 1/pdf weight spike).
+                    12.4,   // focus distance meters
                     8.0,    // aperture diameter mm
                     lens,
                     512     // pupil samples

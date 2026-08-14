@@ -821,17 +821,32 @@ private:
         // --- Scene-side cardinal points ---
         // pbrt-v4: rScene = Ray( (x,0, LensFrontZ+1), (0,0,-1) )
         // In our camera space (z=+toward scene): origin z = lensFrontZ+1, dir z = -1.
+        // The "+1"/"-1" below are 1 METRE offsets (this class's internal unit,
+        // like lens_rear_z()/lens_front_z()) placing the paraxial reference ray
+        // far enough from the lens system to approximate a ray from infinity -
+        // this previously used T(0.001) (1mm) here, apparently copy-pasted from
+        // the unrelated mm->m conversion constant used elsewhere in this class
+        // (e.g. `x` just above, or film_half_x_'s constructor). At 1mm the
+        // "far" reference point sits at or inside the lens stack itself (this
+        // lens's rear_z is only ~4mm), producing a degenerate/wrong cardinal-
+        // point calculation - the root cause of scene D4 (RealisticCamera)
+        // rendering almost entirely black except a small central disc: the
+        // resulting lens_rear_z was wrong regardless of focus_distance or the
+        // scene's own lens data, collapsing all but the innermost exit-pupil
+        // bounds to zero area (confirmed empirically: sweeping focus_distance
+        // and the seed rear-thickness both left lens_rear_z and the
+        // non-degenerate exit-pupil-bounds count unchanged).
         T front_z = T(0); for (const auto& e:elements_) front_z += e.thickness;
         T pz0=T(0), fz0=T(0);
         {
             T ro_ox, ro_oy, ro_oz, ro_dx, ro_dy, ro_dz;
             bool ok = trace_lenses_from_scene(
-                x, T(0), front_z + T(0.001),
+                x, T(0), front_z + T(1),
                 T(0), T(0), T(-1),
                 ro_ox, ro_oy, ro_oz, ro_dx, ro_dy, ro_dz);
             if (ok)
                 compute_cardinal_points(
-                    x, T(0), front_z+T(0.001), T(0), T(0), T(-1),
+                    x, T(0), front_z+T(1), T(0), T(0), T(-1),
                     ro_ox, ro_oy, ro_oz, ro_dx, ro_dy, ro_dz,
                     pz0, fz0);
         }
@@ -839,17 +854,18 @@ private:
         // --- Film-side cardinal points ---
         // pbrt-v4: rFilm = Ray( (x, 0, LensRearZ-1), (0,0,1) )
         // LensRearZ in pbrt-v4 is the last element's thickness (>0), a positive z.
-        // We use orig_rear as that distance.
+        // We use orig_rear as that distance. See the scene-side comment above
+        // for why this is a 1-metre offset, not 1mm.
         T pz1=T(0), fz1=T(0);
         {
             T rs_ox, rs_oy, rs_oz, rs_dx, rs_dy, rs_dz;
             T w = trace_lenses_from_film(
-                x, T(0), orig_rear - T(0.001),
+                x, T(0), orig_rear - T(1),
                 T(0), T(0), T(1),
                 rs_ox, rs_oy, rs_oz, rs_dx, rs_dy, rs_dz);
             if (w != T(0))
                 compute_cardinal_points(
-                    x, T(0), orig_rear-T(0.001), T(0), T(0), T(1),
+                    x, T(0), orig_rear-T(1), T(0), T(0), T(1),
                     rs_ox, rs_oy, rs_oz, rs_dx, rs_dy, rs_dz,
                     pz1, fz1);
         }

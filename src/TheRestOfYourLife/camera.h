@@ -174,9 +174,15 @@ class camera {
                                     // Compute sub-pixel offset once; use for both the ray
                                     // origin and the filter weight (pbrt-v4: FilterSample).
                                     vec3 offset = sample_square_stratified(s_i, s_j, sample_idx, i, j);
-                                    ray r = get_ray(i, j, s_i, s_j, offset);
+                                    double camera_weight = 1.0;
+                                    ray r = get_ray(i, j, s_i, s_j, offset, &camera_weight);
                                     SobolSampler ps(sample_idx, i, j);  // pbrt-v4 Sobol+FastOwen
                                 color sample = ray_color(r, max_depth, world, lights, ps);
+                                // Apply the camera's exposure weight (pbrt-v4: L *= cameraRay->weight).
+                                // Always 1.0 for pinhole/Ortho/Spherical; for RealisticCamera this is
+                                // the cos^4(theta)/(pdf*LensRearZ^2) factor that converts the traced
+                                // radiance into the correct measured exposure - see get_ray's comment.
+                                sample = sample * camera_weight;
                                 // NaN/Inf firefly guard (pbrt-v4 style)
                                 if (std::isnan(sample.x()) || std::isnan(sample.y()) || std::isnan(sample.z()) ||
                                     std::isinf(sample.x()) || std::isinf(sample.y()) || std::isinf(sample.z()))
@@ -281,7 +287,14 @@ class camera {
 
     // Overload accepting a pre-computed sub-pixel offset (avoids double Halton evaluation
     // when the caller already has the offset for filter weight computation).
-    ray get_ray(int i, int j, int /*s_i*/, int /*s_j*/, const vec3& offset) const {
+    // out_camera_weight, if non-null, receives the camera's exposure weight for this
+    // sample (pbrt-v4 CameraRay::weight - always 1 for Ortho/Spherical, but for
+    // RealisticCamera it's cos^4(theta)/(pdf*LensRearZ^2) and MUST be multiplied into
+    // the returned radiance, exactly like pbrt-v4's integrators do (L *= cameraRay->weight)
+    // - omitting it silently under-exposes every RealisticCamera render.
+    ray get_ray(int i, int j, int /*s_i*/, int /*s_j*/, const vec3& offset,
+                double* out_camera_weight = nullptr) const {
+        if (out_camera_weight) *out_camera_weight = 1.0;
         // If an alternate camera model is set, delegate ray generation to it.
         if (alt_ortho_cam || alt_spherical_cam || alt_realistic_cam) {
             CameraSample<double> cs;
@@ -304,6 +317,7 @@ class camera {
                 cs.pFilm_y = film_y;
                 res = alt_realistic_cam->generate_ray(cs);
             }
+            if (out_camera_weight) *out_camera_weight = res.weight;
             point3 ro(res.origin.x, res.origin.y, res.origin.z);
             vec3   rd(res.direction.x, res.direction.y, res.direction.z);
             return ray(ro, rd, cs.time);
