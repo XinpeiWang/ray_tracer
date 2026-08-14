@@ -11,9 +11,14 @@
 //   __miss__wf_radiance     - Append a MissWorkItem to missQueue.
 //
 // Shadow phase (separate optixLaunch):
-//   __raygen__wf_shadow     - Dispatches one shadow-test per ShadowRayWorkItem.
-//   __anyhit__wf_shadow     - Terminates immediately (any hit = occluded).
-//   __miss__wf_shadow       - Writes occluded[rayIndex] = false.
+//   __raygen__wf_shadow          - Dispatches one shadow-test per ShadowRayWorkItem.
+//   __anyhit__wf_shadow_sphere / _quad / _bilinear_patch / _triangle
+//                                 - One per geometry type (mirrors
+//                                   optix_anyhit_shadow.h): DiffuseLight is
+//                                   NOT an occluder, transmissive materials
+//                                   are ignored, everything else terminates
+//                                   the ray with occluded=true.
+//   __miss__wf_shadow            - Writes occluded[rayIndex] = false.
 //
 // The host (wavefront_path_tracer.cpp) drives two launches per bounce:
 //   1. optixLaunch(intersectPipeline, numRays)   -> fills hitQueue + missQueue
@@ -693,10 +698,121 @@ extern "C" __global__ void __raygen__wf_shadow() {
 	occluded[idx]  = sp.occluded;
 }
 
-// __anyhit__wf_shadow: terminate immediately on first hit.
-extern "C" __global__ void __anyhit__wf_shadow() {
+// __anyhit__wf_shadow_*: one per geometry type (sphere/quad/bilinear_patch/
+// triangle), mirroring optix_anyhit_shadow.h's __anyhit__shadow_* exactly -
+// see that file's own comments for why DiffuseLight and the transmissive
+// materials need special handling, not just "any hit = occluded":
+//
+//   - MaterialType::DiffuseLight is NOT an occluder - a shadow ray sampled
+//     toward a light is EXPECTED to end inside/on that light's own surface,
+//     so treating the hit as occlusion would make every area light shadow
+//     itself. This one previously used a single generic __anyhit__wf_shadow
+//     with no material lookup at all (unconditional occluded=true regardless
+//     of what was hit), so any shadow ray whose sampled direction actually
+//     reached the light within its tMax read as occluded - which for a
+//     sphere light is any point with a large-enough cosine to the light
+//     (i.e. exactly the well-lit directions NEE most needs), and for a quad
+//     light happened to not manifest because the tMax/origin-offset epsilon
+//     interaction (see wavefront_kernels.cu's shadow-ray-setup comment)
+//     pushed the effective light-plane distance the other way for a
+//     camera-facing quad normal. Confirmed via scene B14 (Measured BRDF
+//     showroom, sphere light only): floor and sphere-tops facing the light
+//     directly went black under --wavefront while the recursive path
+//     rendered them correctly lit.
+//   - Dielectric/RoughDielectric/ThinDielectric/DiffuseTransmission (and
+//     Medium, sphere-only - see optix_anyhit_shadow.h's own comment) let
+//     light through rather than blocking NEE outright.
+extern "C" __global__ void __anyhit__wf_shadow_sphere() {
+	const int instBase = wf_instance_base();
+	const SphereData& sph = wf_params.spheres[wf_prim_base(instBase) + optixGetPrimitiveIndex()];
+	const MaterialData& mat = wf_params.materials[sph.materialIdx];
+
 	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
 		optixGetPayload_0(), optixGetPayload_1());
+
+	if (mat.type == MaterialType::DiffuseLight) {
+		sp->occluded = false;
+		optixTerminateRay();
+		return;
+	}
+	if (mat.type == MaterialType::Dielectric ||
+		mat.type == MaterialType::RoughDielectric ||
+		mat.type == MaterialType::ThinDielectric ||
+		mat.type == MaterialType::DiffuseTransmission ||
+		mat.type == MaterialType::Medium) {
+		optixIgnoreIntersection();
+		return;
+	}
+	sp->occluded = true;
+	optixTerminateRay();
+}
+
+extern "C" __global__ void __anyhit__wf_shadow_quad() {
+	const QuadData& quad = wf_params.quads[optixGetPrimitiveIndex()];
+	const MaterialData& mat = wf_params.materials[quad.materialIdx];
+
+	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
+		optixGetPayload_0(), optixGetPayload_1());
+
+	if (mat.type == MaterialType::DiffuseLight) {
+		sp->occluded = false;
+		optixTerminateRay();
+		return;
+	}
+	if (mat.type == MaterialType::Dielectric ||
+		mat.type == MaterialType::RoughDielectric ||
+		mat.type == MaterialType::ThinDielectric ||
+		mat.type == MaterialType::DiffuseTransmission) {
+		optixIgnoreIntersection();
+		return;
+	}
+	sp->occluded = true;
+	optixTerminateRay();
+}
+
+extern "C" __global__ void __anyhit__wf_shadow_bilinear_patch() {
+	const BilinearPatchData& patch = wf_params.bilinearPatches[optixGetPrimitiveIndex()];
+	const MaterialData& mat = wf_params.materials[patch.materialIdx];
+
+	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
+		optixGetPayload_0(), optixGetPayload_1());
+
+	if (mat.type == MaterialType::DiffuseLight) {
+		sp->occluded = false;
+		optixTerminateRay();
+		return;
+	}
+	if (mat.type == MaterialType::Dielectric ||
+		mat.type == MaterialType::RoughDielectric ||
+		mat.type == MaterialType::ThinDielectric ||
+		mat.type == MaterialType::DiffuseTransmission) {
+		optixIgnoreIntersection();
+		return;
+	}
+	sp->occluded = true;
+	optixTerminateRay();
+}
+
+extern "C" __global__ void __anyhit__wf_shadow_triangle() {
+	const int instBase = wf_instance_base();
+	const TriangleData& tri = wf_params.triangles[wf_prim_base(instBase) + optixGetPrimitiveIndex()];
+	const MaterialData& mat = wf_params.materials[tri.materialIdx];
+
+	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
+		optixGetPayload_0(), optixGetPayload_1());
+
+	if (mat.type == MaterialType::DiffuseLight) {
+		sp->occluded = false;
+		optixTerminateRay();
+		return;
+	}
+	if (mat.type == MaterialType::Dielectric ||
+		mat.type == MaterialType::RoughDielectric ||
+		mat.type == MaterialType::ThinDielectric ||
+		mat.type == MaterialType::DiffuseTransmission) {
+		optixIgnoreIntersection();
+		return;
+	}
 	sp->occluded = true;
 	optixTerminateRay();
 }

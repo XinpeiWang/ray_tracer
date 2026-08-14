@@ -333,7 +333,7 @@ bool WavefrontPathTracer::createProgramGroups() {
 	shadowSphereDesc.hitgroup.moduleIS             = wfModule_;
 	shadowSphereDesc.hitgroup.entryFunctionNameIS  = "__intersection__wf_sphere";
 	shadowSphereDesc.hitgroup.moduleAH             = wfModule_;
-	shadowSphereDesc.hitgroup.entryFunctionNameAH  = "__anyhit__wf_shadow";
+	shadowSphereDesc.hitgroup.entryFunctionNameAH  = "__anyhit__wf_shadow_sphere";
 	logSize = sizeof(log);
 	OPTIX_CHECK(optixProgramGroupCreate(context_, &shadowSphereDesc, 1, &pgOptions,
 										 log, &logSize, &anyhitShadowSpherePG_));
@@ -344,7 +344,7 @@ bool WavefrontPathTracer::createProgramGroups() {
 	shadowQuadDesc.hitgroup.moduleIS             = wfModule_;
 	shadowQuadDesc.hitgroup.entryFunctionNameIS  = "__intersection__wf_quad";
 	shadowQuadDesc.hitgroup.moduleAH             = wfModule_;
-	shadowQuadDesc.hitgroup.entryFunctionNameAH  = "__anyhit__wf_shadow";
+	shadowQuadDesc.hitgroup.entryFunctionNameAH  = "__anyhit__wf_shadow_quad";
 	logSize = sizeof(log);
 	OPTIX_CHECK(optixProgramGroupCreate(context_, &shadowQuadDesc, 1, &pgOptions,
 										 log, &logSize, &anyhitShadowQuadPG_));
@@ -355,7 +355,7 @@ bool WavefrontPathTracer::createProgramGroups() {
 	shadowBlpDesc.hitgroup.moduleIS             = wfModule_;
 	shadowBlpDesc.hitgroup.entryFunctionNameIS  = "__intersection__wf_bilinear_patch";
 	shadowBlpDesc.hitgroup.moduleAH             = wfModule_;
-	shadowBlpDesc.hitgroup.entryFunctionNameAH  = "__anyhit__wf_shadow";
+	shadowBlpDesc.hitgroup.entryFunctionNameAH  = "__anyhit__wf_shadow_bilinear_patch";
 	logSize = sizeof(log);
 	OPTIX_CHECK(optixProgramGroupCreate(context_, &shadowBlpDesc, 1, &pgOptions,
 										 log, &logSize, &anyhitShadowBilinearPatchPG_));
@@ -366,7 +366,7 @@ bool WavefrontPathTracer::createProgramGroups() {
 	shadowTriDesc.hitgroup.moduleIS             = wfModule_;
 	shadowTriDesc.hitgroup.entryFunctionNameIS  = "__intersection__wf_triangle";
 	shadowTriDesc.hitgroup.moduleAH             = wfModule_;
-	shadowTriDesc.hitgroup.entryFunctionNameAH  = "__anyhit__wf_shadow";
+	shadowTriDesc.hitgroup.entryFunctionNameAH  = "__anyhit__wf_shadow_triangle";
 	logSize = sizeof(log);
 	OPTIX_CHECK(optixProgramGroupCreate(context_, &shadowTriDesc, 1, &pgOptions,
 										 log, &logSize, &anyhitShadowTrianglePG_));
