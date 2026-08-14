@@ -155,14 +155,19 @@ protected:
 		const char *tmp = std::getenv("TEMP");
 		root_ = std::string(tmp ? tmp : ".") + "/pbrt_discover_tests/";
 		std::error_code ec;
-		std::filesystem::create_directories(root_ + "geometry", ec);
+		std::filesystem::create_directories(root_, ec);
 	}
 	void TearDown() override {
 		std::error_code ec;
 		std::filesystem::remove_all(root_, ec);
 	}
+	// Creates any missing parent directories under root_ so a test can write
+	// straight into e.g. "ganesha/ganesha.pbrt" without a separate setup step.
 	void write(const std::string &relative, const std::string &contents) {
-		std::ofstream out(root_ + relative, std::ios::binary);
+		const std::filesystem::path full = root_ + relative;
+		std::error_code ec;
+		std::filesystem::create_directories(full.parent_path(), ec);
+		std::ofstream out(full, std::ios::binary);
 		out << contents;
 	}
 	std::string root_;
@@ -174,9 +179,9 @@ TEST_F(ScanTree, ListsPbrtFilesInSortedOrder) {
 	// Sorted, not directory order: a scene's id is derived from its position,
 	// and an id that moves when an unrelated file is added would invalidate
 	// saved settings and any script that passes a scene number.
-	write("zebra.pbrt", "Film \"rgb\"\n");
-	write("apple.pbrt", "Film \"rgb\"\n");
-	write("mango.pbrt", "Film \"rgb\"\n");
+	write("zebra.pbrt", "Camera \"perspective\"\nFilm \"rgb\"\n");
+	write("apple.pbrt", "Camera \"perspective\"\nFilm \"rgb\"\n");
+	write("mango.pbrt", "Camera \"perspective\"\nFilm \"rgb\"\n");
 
 	const std::vector<pbrt_discover::Discovered> found =
 		pbrt_discover::scanDirectory(root_);
@@ -186,14 +191,10 @@ TEST_F(ScanTree, ListsPbrtFilesInSortedOrder) {
 	EXPECT_EQ(found[2].name, "zebra");
 }
 
-TEST_F(ScanTree, IgnoresNonPbrtFilesAndSubdirectories) {
-	// Real scenes keep their includes in geometry/, and those are fragments
-	// rather than scenes - listing them would offer the user a dozen entries
-	// that each render a fraction of one picture.
-	write("scene.pbrt", "Film \"rgb\"\n");
+TEST_F(ScanTree, IgnoresNonPbrtFiles) {
+	write("scene.pbrt", "Camera \"perspective\"\nFilm \"rgb\"\n");
 	write("notes.txt", "hello");
 	write("mesh.ply", "ply");
-	write("geometry/part.pbrt", "Film \"rgb\"\n");
 
 	const std::vector<pbrt_discover::Discovered> found =
 		pbrt_discover::scanDirectory(root_);
@@ -201,17 +202,61 @@ TEST_F(ScanTree, IgnoresNonPbrtFilesAndSubdirectories) {
 	EXPECT_EQ(found[0].name, "scene");
 }
 
+TEST_F(ScanTree, DescendsOneLevelIntoSubdirectoriesToFindEachScenesOwnFolder) {
+	// Published scene collections (e.g. github.com/mmp/pbrt-v4-scenes)
+	// package each scene as its own folder, so a real scene one level down
+	// must be found, not just ones sitting flat in the scanned directory.
+	write("top.pbrt", "Camera \"perspective\"\nFilm \"rgb\"\n");
+	write("ganesha/ganesha.pbrt", "Camera \"perspective\"\nFilm \"rgb\"\n");
+
+	const std::vector<pbrt_discover::Discovered> found =
+		pbrt_discover::scanDirectory(root_);
+	ASSERT_EQ(found.size(), 2u);
+	EXPECT_EQ(found[0].name, "ganesha") << "sorts before top.pbrt by full path";
+	EXPECT_EQ(found[1].name, "top");
+}
+
+TEST_F(ScanTree, DoesNotDescendMoreThanOneLevel) {
+	// A fragment's own nested asset folders (geometry/, textures/) must stay
+	// unlisted - only the one level that separates a scene's own folder from
+	// its shared parent is descended.
+	write("scene/scene.pbrt", "Camera \"perspective\"\nFilm \"rgb\"\n");
+	write("scene/geometry/part.pbrt", "Camera \"perspective\"\nFilm \"rgb\"\n");
+
+	const std::vector<pbrt_discover::Discovered> found =
+		pbrt_discover::scanDirectory(root_);
+	ASSERT_EQ(found.size(), 1u);
+	EXPECT_EQ(found[0].name, "scene");
+}
+
+TEST_F(ScanTree, ExcludesFilesThatParseCleanlyButNeverDeclareACamera) {
+	// A materials/geometry library meant only to be Include'd from a real
+	// scene file - e.g. mmp/pbrt-v4-scenes' own "materials.pbrt", which sits
+	// flat alongside the real scene file(s) rather than in a subdirectory,
+	// so location alone can't identify it as a fragment. Left unfiltered,
+	// this parses "successfully" as a scene with zero geometry, which then
+	// fails to render at all (ERR 101, no objects in the scene).
+	write("materials.pbrt", "MakeNamedMaterial \"m\" \"string type\" [\"diffuse\"]\n");
+	write("real-scene.pbrt", "Camera \"perspective\"\nFilm \"rgb\"\n");
+
+	const std::vector<pbrt_discover::Discovered> found =
+		pbrt_discover::scanDirectory(root_);
+	ASSERT_EQ(found.size(), 1u);
+	EXPECT_EQ(found[0].name, "real-scene");
+}
+
 TEST_F(ScanTree, ExtensionMatchIsCaseInsensitive) {
-	write("Shouty.PBRT", "Film \"rgb\"\n");
+	write("Shouty.PBRT", "Camera \"perspective\"\nFilm \"rgb\"\n");
 	EXPECT_EQ(pbrt_discover::scanDirectory(root_).size(), 1u);
 }
 
 TEST_F(ScanTree, AnUnparseableFileIsStillListedSoTheCallerCanReportIt) {
 	// Silently dropping it would leave a user staring at a scene folder
 	// wondering why one file never appears. The caller decides what to do;
-	// this layer just refuses to hide the problem.
-	write("good.pbrt", "Film \"rgb\"\n");
-	write("broken.pbrt", "Translate 1 2\nWorldBegin\n");
+	// this layer just refuses to hide the problem. Both declare a Camera so
+	// the case under test is "fails to parse", not "filtered as a fragment".
+	write("good.pbrt", "Camera \"perspective\"\nFilm \"rgb\"\n");
+	write("broken.pbrt", "Camera \"perspective\"\nTranslate 1 2\nWorldBegin\n");
 
 	const std::vector<pbrt_discover::Discovered> found =
 		pbrt_discover::scanDirectory(root_);
@@ -223,7 +268,7 @@ TEST_F(ScanTree, AnUnparseableFileIsStillListedSoTheCallerCanReportIt) {
 TEST_F(ScanTree, DiscoveredPathIsUsableToLoadTheFileLater) {
 	// The path is the handle the registry keeps for the deferred full load,
 	// so it has to be openable, not just descriptive.
-	write("scene.pbrt", "Film \"rgb\"\n");
+	write("scene.pbrt", "Camera \"perspective\"\nFilm \"rgb\"\n");
 	const std::vector<pbrt_discover::Discovered> found =
 		pbrt_discover::scanDirectory(root_);
 	ASSERT_EQ(found.size(), 1u);

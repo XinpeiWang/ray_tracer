@@ -290,6 +290,12 @@ struct Scene {
 	std::string cameraType = "perspective";
 	ParamList cameraParams;
 	Matrix4 worldToCamera;      // the CTM at WorldBegin
+	// Whether a Camera directive was actually seen, as opposed to cameraType/
+	// cameraParams/worldToCamera just sitting at their defaults. Distinguishes
+	// a real top-level scene from a fragment (a MakeNamedMaterial/geometry
+	// library meant only to be Include'd) that happens to parse cleanly -
+	// see pbrt_discover.h's scanDirectory(), the only reader of this field.
+	bool cameraDeclared = false;
 	int xResolution = 1280;
 	int yResolution = 720;
 	std::string filmFilename;
@@ -692,6 +698,7 @@ private:
 		if (d == "ReverseOrientation") { gs_.reverseOrientation = !gs_.reverseOrientation; return true; }
 
 		if (d == "Camera") {
+			s_.cameraDeclared = true;
 			if (pos_ < t_.size() && t_[pos_].quoted) { s_.cameraType = t_[pos_].text; ++pos_; }
 			s_.cameraParams = readParams();
 			return true;

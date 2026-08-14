@@ -311,6 +311,19 @@ RayTracer_Package/*.dll
 vcpkg/
 
 ##############################################################################
+# Downloaded pbrt-v4-scenes collection (local only - see pbrt_scenes/README.md)
+##############################################################################
+
+# Full scene bundles fetched from github.com/mmp/pbrt-v4-scenes, each in its
+# own folder with third-party geometry/textures. Not committed - point
+# RAY_TRACER_PBRT_DIR at one of these folders instead (see the README).
+pbrt_scenes/contemporary-bathroom/
+pbrt_scenes/barcelona-pavilion/
+pbrt_scenes/sssdragon/
+pbrt_scenes/ganesha/
+pbrt_scenes/sportscar/
+
+##############################################################################
 # CMake build directories
 ##############################################################################
 tests/build_test/Debug/

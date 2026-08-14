@@ -46,6 +46,11 @@ struct Discovered {
 	int yResolution = 720;
 	bool ok = false;
 	std::string error;
+	// Whether the file itself declared a Camera directive (see
+	// pbrt_scene::Scene::cameraDeclared's comment) - scanDirectory() uses
+	// this to tell a real top-level scene apart from a fragment that just
+	// happens to parse cleanly.
+	bool declaresCamera = false;
 };
 
 namespace detail {
@@ -102,6 +107,7 @@ inline Discovered describe(const std::string &path, const std::string &text) {
 	d.samplesPerPixel = parsed.scene.samplesPerPixel;
 	d.xResolution = parsed.scene.xResolution;
 	d.yResolution = parsed.scene.yResolution;
+	d.declaresCamera = parsed.scene.cameraDeclared;
 
 	// flatten() with no mesh resolver still derives the camera - that comes
 	// from the world-to-camera matrix and the fov, neither of which needs a
@@ -126,31 +132,60 @@ inline Discovered describeFile(const std::string &path) {
 	return describe(path, ss.str());
 }
 
-// Every .pbrt directly inside `dir`, sorted by name so the scene ids a user
-// sees are stable between runs - directory order is not, and an id that moves
-// when an unrelated file is added would break saved settings and any script
-// that passes a scene number.
+namespace detail {
+
+inline void collectPbrtFiles(const std::filesystem::path &from, std::vector<std::string> &out) {
+	std::error_code ec;
+	for (const auto &entry : std::filesystem::directory_iterator(from, ec)) {
+		if (ec) break;
+		if (!entry.is_regular_file(ec)) continue;
+		std::string ext = entry.path().extension().string();
+		std::transform(ext.begin(), ext.end(), ext.begin(),
+					   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		if (ext == ".pbrt") out.push_back(entry.path().string());
+	}
+}
+
+} // namespace detail
+
+// Every .pbrt inside `dir`, plus every .pbrt one level down inside each of
+// `dir`'s own subdirectories, sorted by path so the scene ids a user sees are
+// stable between runs - directory order is not, and an id that moves when an
+// unrelated file is added would break saved settings and any script that
+// passes a scene number.
 //
-// Not recursive on purpose: real pbrt scenes keep their includes in
-// subdirectories (geometry/, textures/), and those are fragments, not scenes.
-// Descending would list them all as if they were renderable.
+// One level of subdirectory descent, not zero and not unlimited: published
+// scene collections (e.g. github.com/mmp/pbrt-v4-scenes) package each scene
+// as its own folder holding both the renderable .pbrt file(s) and that
+// scene's own geometry/, textures/, bsdfs/ - "one folder per scene" needs
+// exactly one level to find those. Descending further would also list a
+// fragment's OWN nested asset folders as if they were scenes.
+//
+// A file that parses cleanly but never declares its own Camera directive is
+// excluded - it is a fragment (a materials/geometry library meant only to be
+// Include'd from a real scene file), not something renderable on its own.
+// Some collections keep these alongside the real scene file(s) rather than
+// tucked into a subdirectory, so location alone cannot tell them apart; see
+// pbrt_scene::Scene::cameraDeclared. A file that FAILS to parse still
+// surfaces regardless - hiding a parse error is worse than a spurious entry.
 inline std::vector<Discovered> scanDirectory(const std::string &dir) {
 	std::vector<Discovered> found;
 	std::error_code ec;
 	if (!std::filesystem::is_directory(dir, ec)) return found;
 
 	std::vector<std::string> paths;
+	detail::collectPbrtFiles(dir, paths);
 	for (const auto &entry : std::filesystem::directory_iterator(dir, ec)) {
 		if (ec) break;
-		if (!entry.is_regular_file(ec)) continue;
-		std::string ext = entry.path().extension().string();
-		std::transform(ext.begin(), ext.end(), ext.begin(),
-					   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-		if (ext == ".pbrt") paths.push_back(entry.path().string());
+		if (entry.is_directory(ec)) detail::collectPbrtFiles(entry.path(), paths);
 	}
 	std::sort(paths.begin(), paths.end());
 
-	for (const std::string &p : paths) found.push_back(describeFile(p));
+	for (const std::string &p : paths) {
+		Discovered d = describeFile(p);
+		if (d.ok && !d.declaresCamera) continue;
+		found.push_back(d);
+	}
 	return found;
 }
 
