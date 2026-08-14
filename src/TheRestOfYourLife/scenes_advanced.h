@@ -406,15 +406,16 @@ inline std::shared_ptr<sky_light> build_hdri_sky() {
 			float g = 0.3f + 0.4f * (1.f - std::abs(t - 0.5f) * 2.f);
 			float b = 0.8f * (1.f - t * t);
 			int idx = (y * W + x) * 3;
-			hdr[idx]   = r * 3.0f;  // HDR over-exposure
-			hdr[idx+1] = g * 3.0f;
-			hdr[idx+2] = b * 4.0f;
+			hdr[idx]   = r;
+			hdr[idx+1] = g;
+			hdr[idx+2] = b;
 		}
 	}
-	// sky_light accepts a texture; build a solid-color sky for simplicity
-	// and layer with a gradient_texture
-	auto sky = std::make_shared<sky_light>(color(0.3, 0.6, 1.0));
-	return sky;
+	// Actually use the gradient built above via sky_light's raw-pixel-data
+	// constructor (this used to build the image then discard it, returning
+	// a flat solid_color sky instead - description promised a "procedural
+	// gradient sky" but the render was a single flat blue tint).
+	return std::make_shared<sky_light>(W, H, hdr.data(), 1.0);
 }
 
 // ============================================================================
@@ -471,12 +472,19 @@ inline hittable_list build_distant_light_cornell() { return cornell_walls_no_lig
 
 inline std::shared_ptr<punctual_light_list> build_distant_light_punct() {
 	auto pl = std::make_shared<punctual_light_list>();
-	// Sun-like light coming from upper-right through the open top
+	// Sun-like light coming from upper-right through the open top.
+	// DistantLightData::eval_Li() is `radiance * scale` with NO 1/r^2 falloff
+	// (that's the point of a directional/parallel light) - unlike the point/
+	// spot/goniometric lights below, this scale should NOT be a huge number
+	// compensating for r^2; it directly IS the incident irradiance. The
+	// previous 800000.0 (copy-pasted from the r^2-falloff lights' scale
+	// convention) made this scene almost total white blowout under the ACES
+	// tone map.
 	pl->add_distant(
 		vec3(-0.4, -1.0, -0.2),         // direction (toward light is negated inside)
 		color(1.0, 0.98, 0.92),         // warm sunlight
 		1000.0,                         // scene radius
-		800000.0                        // radiance scale
+		14.0                            // radiance scale
 	);
 	return pl;
 }
@@ -489,10 +497,14 @@ inline hittable_list build_point_light_cornell() { return cornell_walls_no_light
 
 inline std::shared_ptr<punctual_light_list> build_point_light_punct() {
 	auto pl = std::make_shared<punctual_light_list>();
+	// Intensity scale matches build_spotlight_punct()'s calibrated 600000.0
+	// (same PointLightData::eval_Li = intensity/r^2 formula, similar height
+	// above the floor) - the previous 5000000.0 was ~8x too bright, blowing
+	// the room to near-white.
 	pl->add_point(
 		point3(278, 540, 278),          // overhead center
 		color(1.0, 0.98, 0.90),         // warm white
-		5000000.0                       // intensity
+		600000.0                        // intensity
 	);
 	return pl;
 }
@@ -518,10 +530,13 @@ inline std::shared_ptr<punctual_light_list> build_goniometric_punct() {
 	}
 	// Identity rotation (light looks down -Z in light space)
 	double id[9] = {1,0,0, 0,1,0, 0,0,1};
+	// Scale matches build_spotlight_punct()'s calibrated 600000.0 (same
+	// 1/r^2 falloff formula, similar height) - the previous 4000000.0
+	// blew the room to near-white.
 	pl->add_gonio(
 		point3(278, 520, 278),
 		color(1.0, 0.9, 0.7),  // warm tint
-		4000000.0,
+		600000.0,
 		id,
 		img, NU, NV
 	);
@@ -760,15 +775,30 @@ inline hittable_list build_portal_light_scene() {
 	world.add(make_shared<quad>(point3(0,0,555),   vec3(0,0,-555), vec3(0,555,0), red));    // left
 	world.add(make_shared<quad>(point3(0,555,0),   vec3(555,0,0),  vec3(0,0,555), white)); // ceiling
 	world.add(make_shared<quad>(point3(0,0,555),   vec3(555,0,0),  vec3(0,0,-555), white)); // floor
-	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), white)); // back
+
+	// Back wall with an actual window cut into it (a "portal" the sky is
+	// visible through) instead of one solid quad. Previously the room was
+	// fully enclosed except for the same open-front convention every other
+	// Cornell scene here uses, so nothing in the render distinguished this
+	// scene as having a "portal" at all - a 245x245 hole (centered in the
+	// 555x555 wall), built from 4 border quads around it, gives the
+	// PortalImageInfiniteLight description something real to point at.
+	world.add(make_shared<quad>(point3(555,400,555), vec3(-555,0,0), vec3(0,155,0), white)); // top strip
+	world.add(make_shared<quad>(point3(555,0,555),   vec3(-555,0,0), vec3(0,155,0), white)); // bottom strip
+	world.add(make_shared<quad>(point3(555,155,555), vec3(-155,0,0), vec3(0,245,0), white)); // right-of-window strip
+	world.add(make_shared<quad>(point3(155,155,555), vec3(-155,0,0), vec3(0,245,0), white)); // left-of-window strip
+
 	// Objects inside
 	world.add(make_shared<sphere>(point3(190,100,190), 100, make_shared<metal>(color(0.8,0.8,0.9),0.05)));
 	return world;
 }
 
 inline std::shared_ptr<sky_light> build_portal_sky() {
-	// Bright directional sky light (simulates portal sampling via sky_light)
-	return std::make_shared<sky_light>(color(1.0, 1.2, 1.5));
+	// Sky light visible through the window (simulates portal sampling via
+	// sky_light). Dimmed from the original (1.0,1.2,1.5) - max component
+	// >1 was pushing the room toward overexposed even before the window
+	// narrowed how much of it reaches the room.
+	return std::make_shared<sky_light>(color(0.55, 0.65, 0.85));
 }
 
 // ============================================================================

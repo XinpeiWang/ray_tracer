@@ -1765,7 +1765,11 @@ static void build_distant_light_cornell_gpu(SceneData& scene) {
 	light.kind = PunctualLightKind::Distant;
 	light.distant.dir_x = dir.x; light.distant.dir_y = dir.y; light.distant.dir_z = dir.z;
 	light.distant.ir = 1.0f; light.distant.ig = 0.98f; light.distant.ib = 0.92f;
-	light.distant.scale = 800000.0f;
+	// No 1/r^2 falloff for a distant light - this scale directly IS the
+	// incident irradiance, not a huge r^2-compensating number like the
+	// point/spot/goniometric lights below (matches CPU's fix, see
+	// build_distant_light_punct()'s comment).
+	light.distant.scale = 14.0f;
 	light.distant.scene_radius = 1000.0f;
 	scene.punctualLights.push_back(light);
 }
@@ -1778,7 +1782,9 @@ static void build_point_light_cornell_gpu(SceneData& scene) {
 	light.kind = PunctualLightKind::Point;
 	light.point.pos_x = 278.0f; light.point.pos_y = 540.0f; light.point.pos_z = 278.0f;
 	light.point.ir = 1.0f; light.point.ig = 0.98f; light.point.ib = 0.90f;
-	light.point.scale = 5000000.0f;
+	// Matches CPU's fix (see build_point_light_punct()'s comment) - was
+	// ~8x too bright, blowing the room to near-white.
+	light.point.scale = 600000.0f;
 	scene.punctualLights.push_back(light);
 }
 
@@ -1795,7 +1801,9 @@ static void build_goniometric_cornell_gpu(SceneData& scene) {
 	g.world_to_light[3] = 0.0f; g.world_to_light[4] = 1.0f; g.world_to_light[5] = 0.0f;
 	g.world_to_light[6] = 0.0f; g.world_to_light[7] = 0.0f; g.world_to_light[8] = 1.0f;
 	g.ir = 1.0f; g.ig = 0.9f; g.ib = 0.7f;
-	g.scale = 4000000.0f;
+	// Matches CPU's fix (see build_goniometric_punct()'s comment) - was
+	// blowing the room to near-white.
+	g.scale = 600000.0f;
 	// Same synthetic profile as CPU build_goniometric_punct(): bright toward
 	// the bottom hemisphere (v > NV/2), dim toward the top.
 	g.nu = 16; g.nv = 8;
@@ -2063,7 +2071,15 @@ static void build_portal_light_scene_gpu(SceneData& scene) {
 	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(0, 0, -kBoxSize), make_float3(0, kBoxSize, 0), mat_red);
 	add_transformed_quad(scene, make_float3(0, kBoxSize, 0), make_float3(kBoxSize, 0, 0), make_float3(0, 0, kBoxSize), mat_white);   // ceiling
 	add_transformed_quad(scene, make_float3(0, 0, kBoxSize), make_float3(kBoxSize, 0, 0), make_float3(0, 0, -kBoxSize), mat_white);  // floor
-	add_transformed_quad(scene, make_float3(kBoxSize, 0, kBoxSize), make_float3(-kBoxSize, 0, 0), make_float3(0, kBoxSize, 0), mat_white); // back
+
+	// Back wall with an actual window cut into it (matches CPU
+	// build_portal_light_scene() - see that function's comment) instead of
+	// one solid quad, so this scene visually has something a "portal"
+	// description can point at.
+	add_transformed_quad(scene, make_float3(555, 400, 555), make_float3(-555, 0, 0), make_float3(0, 155, 0), mat_white); // top strip
+	add_transformed_quad(scene, make_float3(555, 0, 555),   make_float3(-555, 0, 0), make_float3(0, 155, 0), mat_white); // bottom strip
+	add_transformed_quad(scene, make_float3(555, 155, 555), make_float3(-155, 0, 0), make_float3(0, 245, 0), mat_white); // right-of-window strip
+	add_transformed_quad(scene, make_float3(155, 155, 555), make_float3(-155, 0, 0), make_float3(0, 245, 0), mat_white); // left-of-window strip
 
 	SphereData s{};
 	s.center = make_float3(190.0f, 100.0f, 190.0f);
@@ -3985,7 +4001,10 @@ bool build_scene(
 							case 35:  // Portal Infinite Light (pbrt-v4 PortalImageInfiniteLight)
 								build_portal_light_scene_gpu(scene);
 								setup_cornell_box_camera();
-								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(1.0f, 1.2f, 1.5f);
+								// Matches CPU build_portal_sky()'s fix (see that function's
+								// comment) - dimmed from (1.0,1.2,1.5), which pushed the room
+								// toward overexposed.
+								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.55f, 0.65f, 0.85f);
 								break;
 
 							case 7:  // Cornell Smoke (constant_medium)
@@ -4215,17 +4234,24 @@ bool build_scene(
 
 							case 24: {  // HDRI Sky (flat-color background - see backgroundColor's comment)
 								build_hdri_sky_world_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.0f, 10.0f);
+								// lookfrom/vfov widened/pulled back so all 3 spheres (spanning
+								// x=+-4) actually fit in frame - matches CPU CameraConfig row
+								// for scene 24.
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.3f, 15.0f);
 								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 30.0f, aspect, 1.0f, camera_params);  // 30: matches CPU CameraConfig row for scene 24
+								build_pinhole_camera_params(lookfrom, lookat, vup, 42.0f, aspect, 1.0f, camera_params);  // 42: matches CPU CameraConfig row for scene 24
 
 								if (out_camera_extra) {
-									// Matches CPU build_hdri_sky()'s solid-color sky_light(0.3,0.6,1.0)
-									// (see GpuCameraParams::backgroundColor's comment for why this is a
-									// flat color, not an importance-sampled environment map).
-									out_camera_extra->backgroundColor = make_float3(0.3f, 0.6f, 1.0f);
+									// CPU's build_hdri_sky() now actually uses its procedural
+									// blue-to-warm-horizon gradient (previously built the image
+									// then discarded it, returning a flat solid_color sky_light -
+									// see that function's comment). GPU has no per-pixel
+									// environment-map sampling (see GpuCameraParams::backgroundColor's
+									// comment), so this flat color approximates the gradient's
+									// average tone instead of matching it exactly.
+									out_camera_extra->backgroundColor = make_float3(0.4f, 0.5f, 0.53f);
 								}
 								break;
 							}

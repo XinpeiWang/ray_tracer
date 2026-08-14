@@ -332,7 +332,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "C1", 24, SceneNames::HdriSky, SceneCategories::Lights,
             "Open scene lit by a procedural gradient sky (pbrt-v4 ImageInfiniteLight / sky_light)",
             "Medium", 200, false, true,
-            { 30, 0, 2, 10,  0, 1, 0,  0, 0, 0 },
+            { 42, 0, 2.3, 15,  0, 1, 0,  0, 0, 0 },
             build_hdri_sky_world,
             no_lights,
             build_hdri_sky,
