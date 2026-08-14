@@ -32,7 +32,9 @@ TEST(SceneRegistryTest, RegistryIsNonEmpty) {
 }
 
 TEST(SceneRegistryTest, RegistryHasExpectedCount) {
-	// We currently compile in 65 scenes (ids 0-64).
+	// We currently compile in 69 scenes (ids 0-68 - D5-D8 added the classic
+	// Cornell box rendered by each of D1-D4's camera models for direct
+	// comparison, see scene_registry.h's comment above those 4 rows).
 	// This test will fail if a scene is accidentally added or removed -
 	// update this count (and kGuiSceneCount below) when that's intentional.
 	//
@@ -40,7 +42,7 @@ TEST(SceneRegistryTest, RegistryHasExpectedCount) {
 	// also contains whatever .pbrt files happen to be on the machine running
 	// the tests, which is not a property of this source tree and must not
 	// decide whether the suite passes.
-	EXPECT_EQ(builtin_scene_count(), 65);
+	EXPECT_EQ(builtin_scene_count(), 69);
 }
 
 TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem) {
@@ -523,7 +525,7 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // double-checking the GUI/error-hint text that mentions specific scene
 // counts or ID ranges by hand.
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
-	constexpr int kGuiSceneCount = 65;
+	constexpr int kGuiSceneCount = 69;
 	EXPECT_EQ(builtin_scene_count(), kGuiSceneCount)
 		<< "Registry size changed -- update kGuiSceneCount here to match.";
 }

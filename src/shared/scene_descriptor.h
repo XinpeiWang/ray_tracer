@@ -82,6 +82,14 @@ namespace SceneNames {
     constexpr const char* MeasuredBrdf         = "Measured BRDF";
     constexpr const char* PortalInfiniteLight  = "Portal Infinite Light";
     constexpr const char* RealisticCamera      = "Realistic Camera";
+    // Same classic Cornell box as A1 (CornellBox), rendered with each of the
+    // other four camera models - a fixed reference scene makes the actual
+    // camera differences (blur, projection, distortion) easier to compare
+    // than each D1-D4 scene's own bespoke geometry does.
+    constexpr const char* DepthOfFieldCornellBox      = "Depth of Field (Cornell Box)";
+    constexpr const char* OrthographicCameraCornellBox = "Orthographic Camera (Cornell Box)";
+    constexpr const char* SphericalCameraCornellBox    = "Spherical Camera (Cornell Box)";
+    constexpr const char* RealisticCameraCornellBox    = "Realistic Camera (Cornell Box)";
     constexpr const char* TriangleMesh         = "Triangle Mesh";
     constexpr const char* StanfordBunny        = "Stanford Bunny";
     constexpr const char* StanfordArmadillo    = "Stanford Armadillo";
@@ -116,7 +124,7 @@ namespace SceneNames {
 // Canonical scene category constants
 // -----------------------------------------------------------------------
 // Categories group scenes by WHAT THEY DEMONSTRATE, which is the question a
-// user browsing 65 scenes is actually asking - not by which book chapter or
+// user browsing 69 scenes is actually asking - not by which book chapter or
 // source file they came from. The Qt GUI turns these into a filter tab bar
 // above the scene list (see qt_gui/mainwindow_tabs.cpp).
 //

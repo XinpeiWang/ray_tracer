@@ -57,7 +57,7 @@ struct SceneDescriptor {
     // generate their id at runtime with unbounded count - see
     // pbrt_scene_registry::append() below.
     std::string id;
-    // The OLD flat 0..64 scene_id, kept only so gpu/optix/scene_builder.cpp's
+    // The OLD flat 0..68 scene_id, kept only so gpu/optix/scene_builder.cpp's
     // large switch(scene_id) doesn't need rewriting into a string-keyed
     // dispatch - build_scene() looks a scene up by `id` via find_scene()
     // and switches on `legacy_id` internally. Never exposed outside that
@@ -608,6 +608,157 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
                             // hence a very large 1/pdf weight spike).
                     12.4,   // focus distance meters
                     8.0,    // aperture diameter mm
+                    lens,
+                    512     // pupil samples
+                );
+            }
+        },
+        // D5-D8: the exact same classic Cornell box as A1 (build_cornell_box /
+        // build_cornell_box_lights, backed by src/shared/cornell_box_data.h),
+        // rendered by each of D1-D4's camera models in turn. Keeping the scene
+        // fixed and only varying the camera makes the actual differences
+        // between the four models (defocus blur, parallel projection, 360
+        // panorama, real lens bokeh) directly comparable, which D1-D4's own
+        // bespoke per-scene geometry doesn't support. D1-D4 are left
+        // unchanged - these are additive, not replacements.
+        {
+            "D5", 65, SceneNames::DepthOfFieldCornellBox, SceneCategories::Cameras,
+            "The classic Cornell box (same scene as A1/D6-D8) with defocus blur from the thin-lens perspective camera",
+            "Medium", 200, false, true,
+            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::Fixed, 2.0, 800.0 },
+            build_cornell_box,
+            build_cornell_box_lights
+        },
+        {
+            "D6", 66, SceneNames::OrthographicCameraCornellBox, SceneCategories::Cameras,
+            "The classic Cornell box (same scene as A1/D5/D7/D8) rendered with a parallel-projection orthographic camera",
+            "Medium", 200, false, true,
+            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0 },
+            build_cornell_box,
+            build_cornell_box_lights,
+            nullptr,
+            nullptr,
+            [](camera_t& cam) {
+                // cam.lookfrom/lookat already set from CameraConfig (or a
+                // video-mode override) by the time setup_camera() runs.
+                //
+                // Same lookfrom/lookat as A1/D5 (dead-on, straight down the
+                // box's own z-axis). An angled "isometric dollhouse" vantage
+                // was tried first to also reveal a side wall, but this
+                // codebase's camera_to_world convention (see cameras.h's
+                // Mat4/make_look_at - the ray direction ends up built from
+                // the basis vectors' individual components rather than
+                // behaving like a textbook "rotate camera-space forward into
+                // world space" transform) makes an oblique orthographic
+                // frame's actual on-screen position hard to predict by hand;
+                // empirical search (see git history for this file and
+                // tests/unit/realistic_camera_tests.cpp) never found an
+                // angled position that centered the box as reliably as this
+                // dead-on one does. The trade-off is real - a dead-on
+                // orthographic view shows only the back wall/floor/ceiling,
+                // not the red/green side walls - but it still demonstrates
+                // parallel projection's defining trait unambiguously: unlike
+                // D5's converging perspective lines, this box's edges stay
+                // perfectly parallel no matter how far from center they are.
+                Mat4<double> ctw = make_look_at<double>(
+                    cam.lookfrom.x(), cam.lookfrom.y(), cam.lookfrom.z(),
+                    cam.lookat.x(),   cam.lookat.y(),   cam.lookat.z(),
+                    0, 1, 0     // up
+                );
+                double xmin, xmax, ymin, ymax;
+                compute_screen_window<double>(cam.image_width, cam.image_height,
+                                              xmin, xmax, ymin, ymax);
+                // The box spans 555 world units per side; a screen-window
+                // half-extent of ~320 (with the unscaled +-1/+-aspect window
+                // from compute_screen_window) fills close to half the frame
+                // with the box, centered - confirmed via a ray-vs-AABB sweep
+                // (see git history for tests/unit/realistic_camera_tests.cpp)
+                // rather than by eye, since this codebase's camera_to_world
+                // convention doesn't map screen position to world position
+                // as directly as the naive "u/v offset from lookfrom" model
+                // suggests (see this lambda's opening comment).
+                cam.alt_ortho_cam = std::make_shared<OrthographicCamera<double>>(
+                    xmin*320, xmax*320, ymin*320, ymax*320,
+                    cam.image_width, cam.image_height,
+                    ctw
+                );
+            }
+        },
+        {
+            "D7", 67, SceneNames::SphericalCameraCornellBox, SceneCategories::Cameras,
+            "The classic Cornell box (same scene as A1/D5/D6/D8), toured from its center as a 360-degree equirectangular panorama",
+            "Medium", 200, false, true,
+            { 90, 278, 278, 278,  278, 278, 279,  0, 0, 0 },
+            build_cornell_box,
+            build_cornell_box_lights,
+            nullptr,
+            nullptr,
+            [](camera_t& cam) {
+                // SphericalCamera captures the full 360-degree sphere around
+                // its origin - see D3's setup_camera lambda for why lookat
+                // isn't used directly (degenerate cross(up,forward) if it
+                // were fed straight into make_look_at) and a fixed +Z
+                // forward reference is used instead, with only the origin
+                // tracking cam.lookfrom (the box's center, so the panorama
+                // shows all 5 walls, the ceiling light, the glass sphere,
+                // and the rotated box wrapped around the viewer).
+                Mat4<double> ctw = make_look_at<double>(
+                    cam.lookfrom.x(), cam.lookfrom.y(),       cam.lookfrom.z(),
+                    cam.lookfrom.x(), cam.lookfrom.y(), cam.lookfrom.z() + 1.0,
+                    0, 1, 0     // up
+                );
+                cam.alt_spherical_cam = std::make_shared<SphericalCamera<double>>(
+                    cam.image_width, cam.image_height,
+                    SphericalCamera<double>::EquiRectangular,
+                    ctw
+                );
+            }
+        },
+        {
+            "D8", 68, SceneNames::RealisticCameraCornellBox, SceneCategories::Cameras,
+            "The classic Cornell box (same scene as A1/D5-D7), rendered through a multi-element lens for realistic bokeh (pbrt-v4 RealisticCamera)",
+            "Medium", 200, false, true,
+            { 40, 278, 278, -420,  278, 278, 278,  0, 0, 0 },
+            build_cornell_box,
+            build_cornell_box_lights,
+            nullptr,
+            nullptr,
+            [](camera_t& cam) {
+                // Same simplified 9-element dgauss lens as D4 (see that
+                // scene's setup_camera lambda for the full derivation of its
+                // vignetting-safe 3.0/2.13mm film size). D4's lens/film pair
+                // was tuned for a scene a few world-units from the camera;
+                // this box is ~550 units across, so at D4's own aperture
+                // (8mm = 0.008 world units) the defocus cone would be far
+                // too narrow to see any blur at a comparable framing
+                // distance. Scaling the aperture up to 350mm (0.35 world
+                // units) restores a defocus cone of roughly the same
+                // angular size as D4's - this is a display convenience for
+                // an already-non-physical "simplified" lens, not meant to
+                // model a real 350mm-aperture lens.
+                std::vector<double> lens = {
+                     35.98738,  1.21638, 1.54,  23.716,
+                     11.69718,  9.9957,  1.0,   17.996,
+                     13.08714, 15.9948,  1.77,  12.364,
+                    -22.63294,  2.7757,  1.617, 9.812,
+                      0.0,      2.75,    0.0,   7.4,     // aperture stop
+                     36.3581,   8.9722,  1.617, 12.7,
+                    -17.8595,   1.2,     1.0,   12.7,
+                    100.0,      2.9804,  1.567, 14.478,
+                    -24.5656,   0.0,     1.0,   15.0
+                };
+                Mat4<double> ctw = make_look_at<double>(
+                    cam.lookfrom.x(), cam.lookfrom.y(), cam.lookfrom.z(),
+                    cam.lookat.x(),   cam.lookat.y(),   cam.lookat.z(),
+                    0, 1, 0     // up
+                );
+                cam.alt_realistic_cam = std::make_shared<RealisticCamera<double>>(
+                    ctw,
+                    3.0,    // film half-width mm
+                    2.0,    // film half-height mm - same vignetting-safe size as D4
+                    420.0,  // focus distance world-units, ~= lookfrom-to-lookat distance
+                    350.0,  // aperture diameter mm (see comment above for why this is
+                            // scaled way up from D4's 8mm)
                     lens,
                     512     // pupil samples
                 );

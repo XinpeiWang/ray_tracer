@@ -3672,7 +3672,7 @@ bool build_scene(
 		return false;  // Invalid camera parameter buffer
 	}
 
-	// The switch below still keys on the OLD flat 0..64 int id (unchanged,
+	// The switch below still keys on the OLD flat 0..68 int id (unchanged,
 	// on purpose - see SceneDescriptor::legacy_id's comment in
 	// scene_registry.h: rewriting ~900 lines of case bodies into a
 	// string-keyed dispatch wasn't worth the risk for what's purely an
@@ -4209,6 +4209,196 @@ bool build_scene(
 									// comment for the full reasoning (lens vignetting at the old film
 									// size, plus the row sitting on the old dead-on viewing axis).
 									RealisticCamera<float> realCam(ctw, 3.0f, 2.0f, 12.4f, 8.0f, lens, 512);
+
+									scene.lensElements.clear();
+									for (int i = 0; i < realCam.num_elements(); ++i) {
+										GpuLensElement le{};
+										le.curvatureRadius = realCam.lens_curvature_radius(i);
+										le.thickness       = realCam.lens_thickness(i);
+										le.eta              = realCam.lens_eta(i);
+										le.apertureRadius   = realCam.lens_aperture_radius(i);
+										scene.lensElements.push_back(le);
+									}
+									scene.exitPupilBounds.clear();
+									for (int i = 0; i < realCam.num_exit_pupil_bounds(); ++i) {
+										GpuExitPupilBounds b{};
+										b.xMin = realCam.exit_pupil_xmin(i);
+										b.xMax = realCam.exit_pupil_xmax(i);
+										b.yMin = realCam.exit_pupil_ymin(i);
+										b.yMax = realCam.exit_pupil_ymax(i);
+										b.degenerate = realCam.exit_pupil_degenerate(i) ? 1 : 0;
+										scene.exitPupilBounds.push_back(b);
+									}
+
+									CamVec3<float> wo = realCam.world_origin();
+									CamVec3<float> wr = realCam.world_right();
+									CamVec3<float> wu = realCam.world_up();
+									CamVec3<float> wf = realCam.world_forward();
+
+									out_camera_extra->kind = CameraKind::Realistic;
+									out_camera_extra->origin = make_float3(wo.x, wo.y, wo.z);
+									out_camera_extra->su = make_float3(wr.x, wr.y, wr.z);
+									out_camera_extra->sv = make_float3(wu.x, wu.y, wu.z);
+									out_camera_extra->sw = make_float3(wf.x, wf.y, wf.z);
+									out_camera_extra->film_half_x = realCam.film_half_x();
+									out_camera_extra->film_half_y = realCam.film_half_y();
+									out_camera_extra->lens_rear_z = realCam.lens_rear_z();
+									out_camera_extra->numLensElements = static_cast<int>(scene.lensElements.size());
+									out_camera_extra->numExitPupilBounds = static_cast<int>(scene.exitPupilBounds.size());
+								}
+								break;
+							}
+
+							// D5-D8: same classic Cornell box as scene 0 (A1) - see CPU
+							// scene_registry.h's comment above these 4 rows for why - each
+							// showing a different camera model. build_cornell_box(scene) is
+							// the exact same shared-data-driven builder scene 0 uses below.
+							case 65: {  // Depth of Field (Cornell Box)
+								build_cornell_box(scene);
+								constexpr float kPi = 3.14159265358979323846f;
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 278.0f, 278.0f, -800.0f);
+								const float3 lookat   = make_float3(278.0f, 278.0f, 278.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								constexpr float defocus_angle = 2.0f;    // matches CPU CameraConfig row for scene 65
+								constexpr float focus_dist    = 800.0f; // ditto
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+
+								float3 u, v;
+								build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, focus_dist, camera_params, &u, &v);
+
+								if (out_camera_extra) {
+									out_camera_extra->kind = CameraKind::Perspective;
+									out_camera_extra->origin = lookfrom;
+									out_camera_extra->lower_left_corner = make_float3(camera_params[3], camera_params[4], camera_params[5]);
+									out_camera_extra->horizontal = make_float3(camera_params[6], camera_params[7], camera_params[8]);
+									out_camera_extra->vertical = make_float3(camera_params[9], camera_params[10], camera_params[11]);
+									const float defocus_radius = focus_dist * tanf((defocus_angle * kPi / 180.0f) / 2.0f);
+									out_camera_extra->defocus_disk_u = make_float3(u.x * defocus_radius, u.y * defocus_radius, u.z * defocus_radius);
+									out_camera_extra->defocus_disk_v = make_float3(v.x * defocus_radius, v.y * defocus_radius, v.z * defocus_radius);
+								}
+								break;
+							}
+
+							case 66: {  // Orthographic Camera (Cornell Box)
+								build_cornell_box(scene);
+								// Dead-on, same lookfrom/lookat as scene 0 (A1) and scene 65
+								// (D5) - matches CPU's setup_camera lambda for scene 66; see
+								// that lambda's comment for why an angled "isometric" vantage
+								// was tried and abandoned (CPU's camera_to_world convention
+								// made the angled framing unpredictable to hand-tune, and this
+								// dead-on view still unambiguously demonstrates parallel
+								// projection's defining trait: perfectly parallel edges,
+								// unlike scene 65's converging perspective lines).
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 278.0f, 278.0f, -800.0f);
+								const float3 lookat   = make_float3(278.0f, 278.0f, 278.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+
+								float xmin, xmax, ymin, ymax;
+								if (aspect >= 1.0f) { xmin = -aspect; xmax = aspect; ymin = -1.0f; ymax = 1.0f; }
+								else                { xmin = -1.0f; xmax = 1.0f; ymin = -1.0f / aspect; ymax = 1.0f / aspect; }
+								// 320: matches CPU CameraConfig/setup_camera lambda for scene
+								// 66 - fills close to half the frame with the box, centered.
+								constexpr float kScreenScale = 320.0f;
+								xmin *= kScreenScale; xmax *= kScreenScale; ymin *= kScreenScale; ymax *= kScreenScale;
+
+								const float3 w = normalize(make_float3(lookfrom.x - lookat.x, lookfrom.y - lookat.y, lookfrom.z - lookat.z));
+								const float3 u = normalize(cross(vup, w));
+								const float3 v = cross(w, u);
+
+								const float3 horizontal = make_float3((xmax - xmin) * u.x, (xmax - xmin) * u.y, (xmax - xmin) * u.z);
+								const float3 vertical   = make_float3((ymax - ymin) * v.x, (ymax - ymin) * v.y, (ymax - ymin) * v.z);
+								const float3 lower_left_corner = make_float3(
+									lookfrom.x + xmin * u.x + ymin * v.x,
+									lookfrom.y + xmin * u.y + ymin * v.y,
+									lookfrom.z + xmin * u.z + ymin * v.z
+								);
+
+								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
+									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
+								};
+								pack_float3(camera_params, 0, lookfrom);
+								pack_float3(camera_params, 3, lower_left_corner);
+								pack_float3(camera_params, 6, horizontal);
+								pack_float3(camera_params, 9, vertical);
+
+								if (out_camera_extra) {
+									out_camera_extra->kind = CameraKind::Orthographic;
+									out_camera_extra->lower_left_corner = lower_left_corner;
+									out_camera_extra->horizontal = horizontal;
+									out_camera_extra->vertical = vertical;
+									out_camera_extra->w = make_float3(-w.x, -w.y, -w.z);
+								}
+								break;
+							}
+
+							case 67: {  // Spherical Camera (Cornell Box)
+								build_cornell_box(scene);
+								// Origin at the box's center (278,278,278) - only under
+								// force_camera_override (video mode), matching D3's own
+								// convention; fixed axis-aligned su/sv/sw basis (identical
+								// to what CPU's setup_camera lambda's make_look_at produces
+								// from an origin looking toward origin+(0,0,1) with up=+Y)
+								// so the panorama shows all 5 walls, the ceiling light, the
+								// glass sphere, and the rotated box wrapped around it.
+								const float3 origin = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 278.0f, 278.0f, 278.0f);
+								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
+									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
+								};
+								const float3 zero = make_float3(0.0f, 0.0f, 0.0f);
+								pack_float3(camera_params, 0, origin);
+								pack_float3(camera_params, 3, zero);
+								pack_float3(camera_params, 6, zero);
+								pack_float3(camera_params, 9, zero);
+
+								if (out_camera_extra) {
+									out_camera_extra->kind = CameraKind::Spherical;
+									out_camera_extra->origin = origin;
+									out_camera_extra->su = make_float3(1.0f, 0.0f, 0.0f);
+									out_camera_extra->sv = make_float3(0.0f, 1.0f, 0.0f);
+									out_camera_extra->sw = make_float3(0.0f, 0.0f, 1.0f);
+								}
+								break;
+							}
+
+							case 68: {  // Realistic Camera (Cornell Box)
+								build_cornell_box(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 278.0f, 278.0f, -420.0f);
+								auto pack_float3 = [](float* dest, int offset, const float3& vv) {
+									dest[offset] = vv.x; dest[offset + 1] = vv.y; dest[offset + 2] = vv.z;
+								};
+								const float3 zero = make_float3(0.0f, 0.0f, 0.0f);
+								pack_float3(camera_params, 0, lookfrom);
+								pack_float3(camera_params, 3, zero);
+								pack_float3(camera_params, 6, zero);
+								pack_float3(camera_params, 9, zero);
+
+								if (out_camera_extra) {
+									// Same simplified 9-element dgauss lens as scene 36 (D4) -
+									// reused host-side RealisticCamera<float>, same reasoning
+									// as that case for why FocusThickLens/BoundExitPupil don't
+									// need a CUDA port. Aperture scaled way up from D4's 8mm to
+									// 350mm - matches CPU's setup_camera lambda comment for
+									// scene 68 (this box is ~550 units across vs D4's few-unit
+									// scene, so D4's own aperture would give an imperceptibly
+									// narrow defocus cone at a comparable framing distance).
+									std::vector<float> lens = {
+										 35.98738f,  1.21638f, 1.54f,  23.716f,
+										 11.69718f,  9.9957f,  1.0f,   17.996f,
+										 13.08714f, 15.9948f,  1.77f,  12.364f,
+										-22.63294f,  2.7757f,  1.617f, 9.812f,
+										  0.0f,      2.75f,    0.0f,   7.4f,     // aperture stop
+										 36.3581f,   8.9722f,  1.617f, 12.7f,
+										-17.8595f,   1.2f,     1.0f,   12.7f,
+										100.0f,      2.9804f,  1.567f, 14.478f,
+										-24.5656f,   0.0f,     1.0f,   15.0f
+									};
+									Mat4<float> ctw = make_look_at<float>(
+										lookfrom.x, lookfrom.y, lookfrom.z,   // from
+										278.0f, 278.0f, 278.0f,   // to
+										0.0f, 1.0f,  0.0f    // up
+									);
+									RealisticCamera<float> realCam(ctw, 3.0f, 2.0f, 420.0f, 350.0f, lens, 512);
 
 									scene.lensElements.clear();
 									for (int i = 0; i < realCam.num_elements(); ++i) {
