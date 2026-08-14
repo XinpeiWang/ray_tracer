@@ -151,6 +151,7 @@ extern "C" __global__ void __raygen__wf_intersect() {
 		MissWorkItem m;
 		for (int i = 0; i < kWFNWavelengths; ++i) {
 			m.throughput[i]      = ray.throughput[i];
+			m.radiance[i]        = ray.radiance[i];
 			m.wavelengths[i]     = ray.wavelengths[i];
 			m.wavelength_pdfs[i] = ray.wavelength_pdfs[i];
 		}

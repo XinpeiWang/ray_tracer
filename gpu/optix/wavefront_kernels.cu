@@ -848,32 +848,66 @@ extern "C" __global__ void evaluate_materials(
 		break;
 	}
 	case MaterialType::RoughDielectric: {
+		// Ported from optix_device_helpers.h's recursive-path case (see its
+		// own comments) - this one previously diverged in three ways that
+		// together made every rough-dielectric surface render pure black:
+		//  1. wi_z<=0 terminated the path instead of flipping wi into the
+		//     upper hemisphere - a ray exiting the glass from inside
+		//     legitimately lands with wi_z<0 in the local frame, and killing
+		//     it there means light that entered the sphere almost never
+		//     found its way back out.
+		//  2. Fresnel used mat.ior directly with no front/back-face
+		//     adjustment, instead of pbrt-v4's front_face ? 1/ior : ior
+		//     convention (see FrDielectric's own eta contract).
+		//  3. attenuation read mat.albedo, which optix_types.h's own
+		//     MaterialData comment documents as unused/undefined for
+		//     RoughDielectric (a union slot shared with Hair/Medium/
+		//     DiffuseTransmission/Principled's own fields) - for a material
+		//     built via add_rough_dielectric() (scene_builder.cpp), which
+		//     never writes albedo, that slot is always zero, so every
+		//     scatter event was multiplied by black regardless of what
+		//     light actually reached the surface. The correct weight is the
+		//     VNDF-sampling shadow-masking ratio G(wo,wi)/G1(wi) - the D,
+		//     cos, and pdf terms cancel under VNDF importance sampling,
+		//     matching pbrt-v4's RoughDielectricBxDF exactly.
 		float rd_alpha = sqrtf(mat.fuzz);
+		bool rd_front_face = h.frontFace != 0;
+		float rd_ri = rd_front_face ? (1.0f / mat.ior) : mat.ior;
 		float3 n = normal;
 		float3 up_v = (fabsf(n.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
 		float3 tan_v  = normalize(cross(up_v, n));
 		float3 bitan = cross(n, tan_v);
-		float3 wi_w = -normalize(h.rayDir);
+		float3 wi_w = normalize(-h.rayDir);
 		float wi_x = dot(wi_w, tan_v), wi_y = dot(wi_w, bitan), wi_z = dot(wi_w, n);
-		if (wi_z <= 0.0f) { scattered = false; break; }
+		if (wi_z < 0.0f) { wi_z = -wi_z; wi_x = -wi_x; wi_y = -wi_y; }
 		TrowbridgeReitz<float> rd_dist(rd_alpha, rd_alpha);
 		float wm_x, wm_y, wm_z;
 		rd_dist.Sample_wm(wi_x, wi_y, wi_z, wf_rand(seed), wf_rand(seed), wm_x, wm_y, wm_z);
 		float rd_dot = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
-		float Fr = FrDielectric(rd_dot, mat.ior);
+		float Fr = FrDielectric(rd_dot, 1.0f / rd_ri);
+		float wo_x, wo_y, wo_z;
 		if (wf_rand(seed) < Fr) {
 			// Reflect
-			float wo_x = 2.0f*rd_dot*wm_x - wi_x;
-			float wo_y = 2.0f*rd_dot*wm_y - wi_y;
-			float wo_z = 2.0f*rd_dot*wm_z - wi_z;
+			wo_x = 2.0f*rd_dot*wm_x - wi_x;
+			wo_y = 2.0f*rd_dot*wm_y - wi_y;
+			wo_z = 2.0f*rd_dot*wm_z - wi_z;
+			if (wo_z <= 0.0f) { scattered = false; break; }
 			scattered_dir = normalize(wo_x*tan_v + wo_y*bitan + wo_z*n);
 		} else {
 			// Refract
 			float3 wm_world = wm_x*tan_v + wm_y*bitan + wm_z*n;
-			float eta = dot(h.rayDir, normal) < 0.0f ? (1.0f / mat.ior) : mat.ior;
-			scattered_dir = wf_refract(normalize(h.rayDir), wm_world, eta);
+			float eta = rd_front_face ? (1.0f / mat.ior) : mat.ior;
+			float3 refracted = wf_refract(normalize(h.rayDir), wm_world, eta);
+			wo_x = dot(refracted, tan_v); wo_y = dot(refracted, bitan); wo_z = dot(refracted, n);
+			scattered_dir = refracted;
 		}
-		attenuation = albedoSpectrum(mat.albedo);
+		{
+			float wo_z_abs = fabsf(wo_z);
+			float G2 = rd_dist.G(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z_abs);
+			float G1_wi = rd_dist.G1(wi_x, wi_y, wi_z);
+			float w = (G1_wi > 1e-8f) ? (G2 / G1_wi) : 0.0f;
+			attenuation = SS(w);
+		}
 		scattered   = true;
 		is_specular = true;
 		break;
@@ -1511,7 +1545,6 @@ extern "C" __global__ void accumulate_miss(
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numMiss) return;
-	if (backgroundColor.x <= 0.0f && backgroundColor.y <= 0.0f && backgroundColor.z <= 0.0f) return;
 
 	const MissWorkItem& m = missQueue.items[idx];
 	using SS  = SampledSpectrum<kWFNWavelengths>;
@@ -1522,7 +1555,13 @@ extern "C" __global__ void accumulate_miss(
 		swl.pdf[i]    = m.wavelength_pdfs[i];
 	}
 	SS throughput(m.throughput);
-	SS L = throughput * wf_lift_rgb_to_spectrum(backgroundColor, swl);
+	// m.radiance is already fully weighted (accumulated by evaluate_materials
+	// as radiance = radiance + throughput * emission at each light hit along
+	// a deferred-flush specular chain - see MissWorkItem::radiance's own
+	// comment) - add it directly, not multiplied by the CURRENT throughput
+	// again, the same way evaluate_materials's own flush sites do.
+	SS L = throughput * wf_lift_rgb_to_spectrum(backgroundColor, swl) + SS(m.radiance);
+	if (!(bool)L) return;
 
 	auto xyz = SampledSpectrumToXYZ(L, swl, d_cie_x, d_cie_y, d_cie_z, kDevCIEMin, kDevCIENSamples);
 	float r, g, b;

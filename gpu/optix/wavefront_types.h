@@ -124,6 +124,14 @@ struct ShadowRayWorkItem {
 // A miss result: the ray escaped, accumulate background/environment.
 struct MissWorkItem {
 	float  throughput[kWFNWavelengths];
+	// Radiance already accumulated along this path before it missed (e.g. a
+	// specular-bounce chain's emission from an earlier light hit - see
+	// RayWorkItem::radiance's own comment). Non-specular bounces flush their
+	// radiance at every hit (evaluate_materials's NEE block), but a specular
+	// chain defers the flush until the path terminates, so a miss has to
+	// carry it here or it's silently lost - accumulate_miss adds this on top
+	// of the flat background term, not instead of it.
+	float  radiance[kWFNWavelengths];
 	float  wavelengths[kWFNWavelengths];
 	float  wavelength_pdfs[kWFNWavelengths];
 	float3 rayDir;             // for environment-map lookups (currently unused)
