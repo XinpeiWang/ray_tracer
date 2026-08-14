@@ -24,6 +24,7 @@
 #include <QIcon>
 #include <QDesktopServices>
 #include <QUrl>
+#include <QSplitter>
 #include <cmath>
 
 // Refills the scene dropdown with just one category's scenes.
@@ -506,32 +507,48 @@ void MainWindow::createAdvancedTab() {
 
 void MainWindow::createPreviewTab() {
 	QWidget *previewWidget = new QWidget();
-	QVBoxLayout *layout = new QVBoxLayout(previewWidget);
-	layout->setContentsMargins(12, 12, 12, 12);
-	layout->setSpacing(8);
+	QHBoxLayout *outerLayout = new QHBoxLayout(previewWidget);
+	outerLayout->setContentsMargins(12, 12, 12, 12);
+	outerLayout->setSpacing(0);
+
+	// Image on the left in a large, dominant pane; info/buttons in a narrow
+	// sidebar on the right, so the image gets most of the tab's space instead
+	// of splitting height with a full-width info/button strip underneath it.
+	// A QSplitter (not a fixed QHBoxLayout split) so the user can still drag
+	// the sidebar narrower/wider if they want even more image space.
+	QSplitter *splitter = new QSplitter(Qt::Horizontal, previewWidget);
+	splitter->setChildrenCollapsible(false);
+	outerLayout->addWidget(splitter);
 
 	// Shows the rendered PNG scaled to fit (see main.cpp's Format Conversion
 	// step, which always writes a same-basename .png next to a successful
 	// render's .ppm output) - populated by onRenderComplete() instead of
 	// this app shelling out to the OS's default image viewer for every render.
-	m_previewLabel = new ScaledImageLabel(previewWidget);
+	m_previewLabel = new ScaledImageLabel();
 	m_previewLabel->setPlaceholderText("No render yet — start a render to see a preview here.");
-	m_previewLabel->setMinimumHeight(200);
+	m_previewLabel->setMinimumSize(200, 200);
 	// Styled globally by class name - see the ScaledImageLabel rule.
-	layout->addWidget(m_previewLabel, /*stretch=*/1);
+	splitter->addWidget(m_previewLabel);
 
-	m_previewInfoLabel = new QLabel(previewWidget);
-	m_previewInfoLabel->setAlignment(Qt::AlignCenter);
+	QWidget *sidebar = new QWidget();
+	sidebar->setMinimumWidth(200);
+	sidebar->setMaximumWidth(320);
+	QVBoxLayout *sideLayout = new QVBoxLayout(sidebar);
+	sideLayout->setContentsMargins(12, 4, 0, 0);
+	sideLayout->setSpacing(10);
+
+	m_previewInfoLabel = new QLabel(sidebar);
+	m_previewInfoLabel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+	m_previewInfoLabel->setWordWrap(true);
 	m_previewInfoLabel->setObjectName("previewInfo");
-	layout->addWidget(m_previewInfoLabel);
-
-	QHBoxLayout *btnLayout = new QHBoxLayout();
-	btnLayout->setContentsMargins(0, 4, 0, 0);
+	sideLayout->addWidget(m_previewInfoLabel);
 
 	// Geometry only - colour and hover/focus states come from the global
-	// theme so every secondary button behaves identically.
+	// theme so every secondary button behaves identically. Full sidebar
+	// width and stacked vertically now that they're beside the image, not
+	// centered in a horizontal strip underneath it.
 	QString previewBtnStyle =
-		"QPushButton { min-height: 28px; max-height: 28px; min-width: 200px; padding: 0px 20px; font-size: 11pt; }";
+		"QPushButton { min-height: 28px; max-height: 28px; padding: 0px 20px; font-size: 11pt; }";
 
 	QPushButton *openFolderButton = new QPushButton("Open Output &Folder");
 	icon_tint::apply(openFolderButton, ":/icons/folder.svg", icon_tint::Role::Body, m_activeTheme.textBody);
@@ -542,6 +559,7 @@ void MainWindow::createPreviewTab() {
 		QFileInfo fileInfo(m_lastOutputPath);
 		QDesktopServices::openUrl(QUrl::fromLocalFile(fileInfo.absolutePath()));
 	});
+	sideLayout->addWidget(openFolderButton);
 
 	QPushButton *openViewerButton = new QPushButton("Open in Default &Viewer");
 	icon_tint::apply(openViewerButton, ":/icons/image.svg", icon_tint::Role::Body, m_activeTheme.textBody);
@@ -551,12 +569,16 @@ void MainWindow::createPreviewTab() {
 		if (m_lastPreviewImagePath.isEmpty()) return;
 		QDesktopServices::openUrl(QUrl::fromLocalFile(m_lastPreviewImagePath));
 	});
+	sideLayout->addWidget(openViewerButton);
 
-	btnLayout->addStretch();
-	btnLayout->addWidget(openFolderButton);
-	btnLayout->addWidget(openViewerButton);
-	btnLayout->addStretch();
-	layout->addLayout(btnLayout);
+	sideLayout->addStretch(1);
+	splitter->addWidget(sidebar);
+
+	// Bias initial space toward the image - the sidebar only needs enough
+	// width for its buttons/info text, everything else goes to the render.
+	splitter->setStretchFactor(0, 1);
+	splitter->setStretchFactor(1, 0);
+	splitter->setSizes({700, 220});
 
 	m_previewTabIndex = m_tabWidget->addTab(previewWidget, "Preview");
 }
