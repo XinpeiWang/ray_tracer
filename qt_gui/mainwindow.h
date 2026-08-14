@@ -380,6 +380,7 @@ private:
 	// to the OS's default image viewer (see onRenderComplete()).
 	ScaledImageLabel *m_previewLabel;   // Displays the rendered PNG, scaled to fit
 	QLabel *m_previewInfoLabel;         // Filename / resolution / size / render time
+	QLabel *m_previewSceneDescLabel;    // Selected scene's description - see onSceneChanged()
 	int m_previewTabIndex = -1;         // Index of the Preview tab within m_tabWidget
 	QString m_lastOutputPath;           // Most recent render's raw output path (.ppm)
 	QString m_lastPreviewImagePath;     // Most recent render's displayed image path (.png)

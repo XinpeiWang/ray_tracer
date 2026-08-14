@@ -449,6 +449,14 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			color: %TEXT_MUTED%;
 			font-size: 9pt;
 		}
+		QLabel#previewSceneDesc {
+			color: %TEXT_MUTED%;
+			background-color: %SURFACE2%;
+			border: 1px solid %BORDER%;
+			border-radius: %RADIUS%;
+			padding: 8px 10px;
+			font-size: 10px;
+		}
 		QLabel#videoInfo {
 			color: %TEXT_MUTED%;
 			font-style: italic;

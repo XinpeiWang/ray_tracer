@@ -543,6 +543,16 @@ void MainWindow::createPreviewTab() {
 	m_previewInfoLabel->setObjectName("previewInfo");
 	sideLayout->addWidget(m_previewInfoLabel);
 
+	// Selected scene's description - same text/source as the Basic Settings
+	// tab's #sceneInfo box (see onSceneChanged()), kept in sync with the
+	// scene combo rather than tied to a completed render, so it's already
+	// showing what you're about to render before the first click.
+	m_previewSceneDescLabel = new QLabel(sidebar);
+	m_previewSceneDescLabel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+	m_previewSceneDescLabel->setWordWrap(true);
+	m_previewSceneDescLabel->setObjectName("previewSceneDesc");
+	sideLayout->addWidget(m_previewSceneDescLabel);
+
 	// Geometry only - colour and hover/focus states come from the global
 	// theme so every secondary button behaves identically. Full sidebar
 	// width and stacked vertically now that they're beside the image, not

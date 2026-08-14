@@ -358,6 +358,10 @@ void MainWindow::onSceneChanged(int index) {
 		infoText += QString("<br><b style='color: %1;'>&#9888; CPU renderer only</b>")
 			.arg(m_activeTheme.logError.name());
 	m_sceneInfoLabel->setText(infoText);
+	// Same description text, shown in the Preview tab's sidebar too - see
+	// createPreviewTab()'s own comment on why this is kept in sync here
+	// rather than only refreshed on render completion.
+	m_previewSceneDescLabel->setText(description);
 	if (m_samplesSpinBox->value() == 100 || m_samplesSpinBox->value() == 200 || m_samplesSpinBox->value() == 500)
 		m_samplesSpinBox->setValue(recommendedSpp);
 
