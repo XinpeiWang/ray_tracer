@@ -534,3 +534,129 @@ TEST(PbrtFocusTest, ADegenerateCameraStillYieldsAUsableDistance) {
 	EXPECT_GT(pbrt_flatten::focusDistanceFor(c), 0.0);
 }
 
+// ===========================================================================
+// LightSource "infinite"
+// ===========================================================================
+// Real pbrt-v4 scenes (pavilion, ganesha, sportscar-sky) lean on this as
+// their main illumination. Dropping it - the old behaviour - renders black
+// or near-black instead of failing loudly, so these pin what flatten() must
+// carry through: presence, the constant-colour and filename forms, and the
+// CTM (an environment map with its rotation dropped still renders, just with
+// the sun/horizon facing the wrong way - easy to miss without a check).
+
+TEST(FlattenInfiniteLightTest, AbsentByDefault) {
+	const FlatScene s = flattenSource(kQuadMesh);
+	EXPECT_FALSE(s.infiniteLight.present);
+}
+
+TEST(FlattenInfiniteLightTest, ConstantColorFormPopulatesLAndScale) {
+	const FlatScene s = flattenSource(
+		"LightSource \"infinite\" \"rgb L\" [ 1 2 3 ] \"float scale\" [ 2 ]\n");
+	ASSERT_TRUE(s.infiniteLight.present);
+	EXPECT_DOUBLE_EQ(s.infiniteLight.L[0], 1.0);
+	EXPECT_DOUBLE_EQ(s.infiniteLight.L[1], 2.0);
+	EXPECT_DOUBLE_EQ(s.infiniteLight.L[2], 3.0);
+	EXPECT_DOUBLE_EQ(s.infiniteLight.scale, 2.0);
+	EXPECT_TRUE(s.infiniteLight.imageFile.empty());
+}
+
+TEST(FlattenInfiniteLightTest, FilenameFormRecordsThePathButDoesNotDecodeIt) {
+	// flatten() is filesystem-free by design (see the file comment) - decoding
+	// filename into imagePixels is pbrt_load::loadFile()'s job, done AFTER
+	// flatten() returns. This only pins the half flatten() itself owns.
+	const FlatScene s = flattenSource(
+		"LightSource \"infinite\" \"string filename\" [ \"sky.exr\" ]\n");
+	ASSERT_TRUE(s.infiniteLight.present);
+	EXPECT_EQ(s.infiniteLight.imageFile, "sky.exr");
+	EXPECT_EQ(s.infiniteLight.imageWidth, 0);
+	EXPECT_EQ(s.infiniteLight.imageHeight, 0);
+	EXPECT_TRUE(s.infiniteLight.imagePixels.empty());
+}
+
+TEST(FlattenInfiniteLightTest, RotationIsCarriedThroughInTheXform) {
+	const FlatScene s = flattenSource(
+		"Rotate 90 0 1 0\nLightSource \"infinite\" \"rgb L\" [ 1 1 1 ]\n");
+	ASSERT_TRUE(s.infiniteLight.present);
+	// A 90 degree rotation about Y is not the identity matrix - if the CTM
+	// were dropped (the old bug's shape) this would come back as identity
+	// regardless of the Rotate directive above it.
+	const pbrt_scene::Matrix4 &m = s.infiniteLight.xform;
+	const pbrt_scene::Matrix4 id = pbrt_scene::Matrix4::identity();
+	bool differsFromIdentity = false;
+	for (int i = 0; i < 16; ++i)
+		if (std::abs(m.m[i] - id.m[i]) > 1e-9) differsFromIdentity = true;
+	EXPECT_TRUE(differsFromIdentity);
+}
+
+TEST(FlattenInfiniteLightTest, OnlyTheLastInfiniteLightWins) {
+	const FlatScene s = flattenSource(
+		"LightSource \"infinite\" \"rgb L\" [ 1 1 1 ]\n"
+		"LightSource \"infinite\" \"rgb L\" [ 9 8 7 ]\n");
+	ASSERT_TRUE(s.infiniteLight.present);
+	EXPECT_DOUBLE_EQ(s.infiniteLight.L[0], 9.0);
+	EXPECT_DOUBLE_EQ(s.infiniteLight.L[1], 8.0);
+	EXPECT_DOUBLE_EQ(s.infiniteLight.L[2], 7.0);
+}
+
+TEST(FlattenInfiniteLightTest, OtherLightKindsAreStillDroppedWithAWarning) {
+	// Distant/point/spot are not carried through - only "infinite" is worth
+	// the extra plumbing (see InfiniteLight's own comment on why).
+	const FlatScene s = flattenSource(
+		"LightSource \"point\" \"rgb I\" [ 1 1 1 ]\n");
+	EXPECT_FALSE(s.infiniteLight.present);
+	EXPECT_TRUE(warnedAbout(s, "point"));
+}
+
+// ===========================================================================
+// Shape "bilinearmesh"
+// ===========================================================================
+// sportscar-area-lights.pbrt authors all 5 of its studio light panels as
+// bilinear patches - dropping the shape (the old behaviour) loses 100% of
+// that scene's light geometry and renders pure black.
+
+TEST(FlattenBilinearMeshTest, FourPointFormPopulatesCorners) {
+	const FlatScene s = flattenSource(
+		"Shape \"bilinearmesh\" \"point3 P\" [ 0 0 0  1 0 0  0 1 0  1 1 0 ]\n");
+	ASSERT_EQ(s.bilinearPatches.size(), 1u);
+	const pbrt_flatten::BilinearPatch &bp = s.bilinearPatches[0];
+	EXPECT_DOUBLE_EQ(bp.p[0][0], 0.0); EXPECT_DOUBLE_EQ(bp.p[0][1], 0.0);
+	EXPECT_DOUBLE_EQ(bp.p[1][0], 1.0); EXPECT_DOUBLE_EQ(bp.p[1][1], 0.0);
+	EXPECT_DOUBLE_EQ(bp.p[2][0], 0.0); EXPECT_DOUBLE_EQ(bp.p[2][1], 1.0);
+	EXPECT_DOUBLE_EQ(bp.p[3][0], 1.0); EXPECT_DOUBLE_EQ(bp.p[3][1], 1.0);
+}
+
+TEST(FlattenBilinearMeshTest, TransformIsBakedIntoEveryCorner) {
+	const FlatScene s = flattenSource(
+		"Translate 10 20 30\n"
+		"Shape \"bilinearmesh\" \"point3 P\" [ 0 0 0  1 0 0  0 1 0  1 1 0 ]\n");
+	ASSERT_EQ(s.bilinearPatches.size(), 1u);
+	const pbrt_flatten::BilinearPatch &bp = s.bilinearPatches[0];
+	EXPECT_DOUBLE_EQ(bp.p[0][0], 10.0);
+	EXPECT_DOUBLE_EQ(bp.p[0][1], 20.0);
+	EXPECT_DOUBLE_EQ(bp.p[0][2], 30.0);
+	EXPECT_DOUBLE_EQ(bp.p[1][0], 11.0) << "second corner translated too";
+}
+
+TEST(FlattenBilinearMeshTest, AreaLightSourceMarksItEmissive) {
+	const FlatScene s = flattenSource(
+		"AttributeBegin\n"
+		"  AreaLightSource \"diffuse\" \"rgb L\" [ 5 5 5 ]\n"
+		"  Shape \"bilinearmesh\" \"point3 P\" [ 0 0 0  1 0 0  0 1 0  1 1 0 ]\n"
+		"AttributeEnd\n"
+		"Shape \"bilinearmesh\" \"point3 P\" [ 0 0 5  1 0 5  0 1 5  1 1 5 ]\n");
+	ASSERT_EQ(s.bilinearPatches.size(), 2u);
+	EXPECT_GE(s.bilinearPatches[0].areaLight, 0) << "inside the AreaLightSource scope";
+	EXPECT_EQ(s.bilinearPatches[1].areaLight, -1) << "outside it";
+}
+
+TEST(FlattenBilinearMeshTest, MultiPatchIndexedFormFallsThroughToTheGenericWarning) {
+	// Only the single-patch "point3 P" (4 points) form is built - see
+	// BilinearPatch's own comment on why the multi-patch "integer indices"
+	// form is out of scope. It must not silently build a wrong/empty patch.
+	const FlatScene s = flattenSource(
+		"Shape \"bilinearmesh\" \"integer indices\" [ 0 1 2 3 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0  1 1 0  1 1 1  0 1 1 ]\n");
+	EXPECT_TRUE(s.bilinearPatches.empty());
+	EXPECT_TRUE(warnedAbout(s, "bilinearmesh"));
+}
+

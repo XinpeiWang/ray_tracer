@@ -62,52 +62,57 @@
 #include <cmath>
 #include <optional>
 
+#include "cpu_gpu.h"
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 namespace blp_detail {
 
-inline float dot(const float* a, const float* b) {
+CPU_GPU float dot(const float* a, const float* b) {
     return a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
 }
 
-inline void cross(const float* a, const float* b, float* out) {
+CPU_GPU void cross(const float* a, const float* b, float* out) {
     out[0] = a[1]*b[2] - a[2]*b[1];
     out[1] = a[2]*b[0] - a[0]*b[2];
     out[2] = a[0]*b[1] - a[1]*b[0];
 }
 
-inline void sub(const float* a, const float* b, float* out) {
+CPU_GPU void sub(const float* a, const float* b, float* out) {
     out[0]=a[0]-b[0]; out[1]=a[1]-b[1]; out[2]=a[2]-b[2];
 }
 
-inline void lerp3(const float* a, const float* b, float t, float* out) {
+CPU_GPU void lerp3(const float* a, const float* b, float t, float* out) {
     out[0]=(1-t)*a[0]+t*b[0];
     out[1]=(1-t)*a[1]+t*b[1];
     out[2]=(1-t)*a[2]+t*b[2];
 }
 
-inline float length(const float* a) {
+CPU_GPU float length(const float* a) {
     return std::sqrt(a[0]*a[0]+a[1]*a[1]+a[2]*a[2]);
 }
 
-inline float length2(const float* a) {
+CPU_GPU float length2(const float* a) {
     return a[0]*a[0]+a[1]*a[1]+a[2]*a[2];
 }
 
-inline float abs_max(const float* a) {
-    return std::max({std::abs(a[0]), std::abs(a[1]), std::abs(a[2])});
+CPU_GPU float abs_max(const float* a) {
+    float m = std::abs(a[0]);
+    m = std::max(m, std::abs(a[1]));
+    m = std::max(m, std::abs(a[2]));
+    return m;
 }
 
 // 3x3 matrix determinant  (column-major: col0,col1,col2 each float[3])
-inline float det3(const float* c0, const float* c1, const float* c2) {
+CPU_GPU float det3(const float* c0, const float* c1, const float* c2) {
     return c0[0]*(c1[1]*c2[2]-c1[2]*c2[1])
           -c1[0]*(c0[1]*c2[2]-c0[2]*c2[1])
           +c2[0]*(c0[1]*c1[2]-c0[2]*c1[1]);
 }
 
 // Solve quadratic a*t^2 + b*t + c = 0, return false if no real roots
-inline bool quadratic(float a, float b, float c, float* t0, float* t1) {
+CPU_GPU bool quadratic(float a, float b, float c, float* t0, float* t1) {
     // Degenerate: linear equation
     if (a == 0.f) {
         if (b == 0.f) return false;
@@ -141,12 +146,19 @@ struct BlpHit {
 //
 // Ray: origin ro[3], direction rd[3].
 // Patch corners: p00, p10, p01, p11 (u=0/1, v=0/1).
-// Returns BlpHit{u,v,t} if hit in (eps, t_max), else nullopt.
+// Writes BlpHit{u,v,t} to *out_hit and returns true if hit in (eps, t_max),
+// else returns false (*out_hit left untouched).
+//
+// Returns bool + out-param rather than std::optional<BlpHit>: this function
+// is called (transitively via blp_pdf_wi) from CUDA device code, and is
+// eagerly parsed (not a template), so nvcc's device-compilation pass must be
+// able to fully type-check it even when std::optional isn't usable there.
 // ---------------------------------------------------------------------------
-inline std::optional<BlpHit>
+CPU_GPU bool
 blp_intersect(const float* ro, const float* rd, float t_max,
               const float* p00, const float* p10,
-              const float* p01, const float* p11)
+              const float* p01, const float* p11,
+              BlpHit* out_hit)
 {
     using namespace blp_detail;
 
@@ -174,7 +186,7 @@ blp_intersect(const float* ro, const float* rd, float t_max,
 
     float u1, u2;
     if (!quadratic(a, b, c, &u1, &u2))
-        return std::nullopt;
+        return false;
 
     // eps = gamma(30) * (max|ro| + max|rd| + max|p00|+max|p10|+max|p01|+max|p11|)
     float eps = 4e-6f * (abs_max(ro) + abs_max(rd) +
@@ -213,8 +225,9 @@ blp_intersect(const float* ro, const float* rd, float t_max,
     try_u(u1);
     if (u2 != u1) try_u(u2);
 
-    if (t_hit >= t_max) return std::nullopt;
-    return BlpHit{u_hit, v_hit, t_hit};
+    if (t_hit >= t_max) return false;
+    *out_hit = BlpHit{u_hit, v_hit, t_hit};
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -223,7 +236,7 @@ blp_intersect(const float* ro, const float* rd, float t_max,
 // Evaluate patch point and partial derivatives at (u,v).
 // pbrt-v4: bilinear interpolation used throughout Sample / Intersect.
 // ---------------------------------------------------------------------------
-inline void blp_point(const float* p00, const float* p10,
+CPU_GPU void blp_point(const float* p00, const float* p10,
                       const float* p01, const float* p11,
                       float u, float v,
                       float* out_p, float* out_dpdu, float* out_dpdv)
@@ -252,7 +265,7 @@ inline void blp_point(const float* p00, const float* p10,
 // Unit outward normal at (u,v): normalize(cross(dpdu, dpdv)).
 // pbrt-v4: Normal3f(Normalize(Cross(dpdu, dpdv)))
 // ---------------------------------------------------------------------------
-inline void blp_normal(const float* p00, const float* p10,
+CPU_GPU void blp_normal(const float* p00, const float* p10,
                        const float* p01, const float* p11,
                        float u, float v, float* out_n)
 {
@@ -270,7 +283,7 @@ inline void blp_normal(const float* p00, const float* p10,
 // pbrt-v4: IsRectangle() in shapes.h.
 // Checks coplanarity and equal diagonal distances from centroid.
 // ---------------------------------------------------------------------------
-inline bool blp_is_rectangle(const float* p00, const float* p10,
+CPU_GPU bool blp_is_rectangle(const float* p00, const float* p10,
                               const float* p01, const float* p11)
 {
     using namespace blp_detail;
@@ -325,7 +338,7 @@ inline bool blp_is_rectangle(const float* p00, const float* p10,
 //   area += 0.5 * |cross(p[i+1][j+1]-p[i][j], p[i+1][j]-p[i][j+1])|
 // For a rectangle: Distance(p00,p01)*Distance(p00,p10).
 // ---------------------------------------------------------------------------
-inline float blp_area(const float* p00, const float* p10,
+CPU_GPU float blp_area(const float* p00, const float* p10,
                       const float* p01, const float* p11)
 {
     if (blp_is_rectangle(p00, p10, p01, p11)) {
@@ -374,7 +387,7 @@ inline float blp_area(const float* p00, const float* p10,
 // out_n[3] - unit normal at sampled point
 // out_pdf   - PDF with respect to solid angle (= 1/area for area sampling)
 // ---------------------------------------------------------------------------
-inline void blp_sample(const float* p00, const float* p10,
+CPU_GPU void blp_sample(const float* p00, const float* p10,
                        const float* p01, const float* p11,
                        const float* u2,
                        float* out_p, float* out_n, float* out_pdf)
@@ -461,33 +474,44 @@ inline void blp_sample(const float* p00, const float* p10,
 //
 // = pdf_area(hit_point) * dist^2 / |cos_theta|
 // ---------------------------------------------------------------------------
-inline float blp_pdf_wi(const float* p00, const float* p10,
+CPU_GPU float blp_pdf_wi(const float* p00, const float* p10,
                         const float* p01, const float* p11,
                         const float* ref_p,
                         const float* wi)
 {
     using namespace blp_detail;
     // Intersect the ray from ref_p along wi with the patch
-    auto hit = blp_intersect(ref_p, wi, 1e20f, p00, p10, p01, p11);
-    if (!hit) return 0.f;
+    BlpHit hit;
+    if (!blp_intersect(ref_p, wi, 1e20f, p00, p10, p01, p11, &hit)) return 0.f;
 
     // Area PDF at hit point = 1 / |dpdu x dpdv|  (uniform area sampling)
     float hp[3], dpdu[3], dpdv[3];
-    blp_point(p00, p10, p01, p11, hit->u, hit->v, hp, dpdu, dpdv);
+    blp_point(p00, p10, p01, p11, hit.u, hit.v, hp, dpdu, dpdv);
     float cr[3]; cross(dpdu, dpdv, cr);
     float dA = length(cr);
     if (dA == 0.f) return 0.f;
 
     float area_pdf = 1.f / dA;
 
+    // wi is not guaranteed unit length - random()'s documented contract
+    // (see bilinear_patch_hittable::random(), matching quad::random()) hands
+    // back the raw origin-to-sample vector, and callers commonly pass that
+    // straight into pdf_value() for NEE/MIS. dot(n, wi) alone would then be
+    // |wi| * cos(true angle), not cos(true angle), making the returned pdf
+    // scale with |wi| instead of being invariant to it - dividing by wi_len
+    // here is what makes blp_pdf_wi safe to call with either a unit or a raw
+    // direction, matching quad.h/sphere.h's own scale-invariant pdf_value.
+    float wi_len2 = length2(wi);
+    if (wi_len2 == 0.f) return 0.f;
+    float wi_len = std::sqrt(wi_len2);
+
     // normal at hit
     float n[3] = {cr[0]/dA, cr[1]/dA, cr[2]/dA};
-    float cos_theta = std::abs(dot(n, wi));
+    float cos_theta = std::abs(dot(n, wi)) / wi_len;
     if (cos_theta == 0.f) return 0.f;
 
     // dist^2 = t^2 * |wi|^2
-    float wi_len2 = length2(wi);
-    float dist2 = hit->t * hit->t * wi_len2;
+    float dist2 = hit.t * hit.t * wi_len2;
 
     return area_pdf * dist2 / cos_theta;
 }
@@ -516,6 +540,16 @@ inline float blp_pdf_wi(const float* p00, const float* p10,
 // Reference: pbrt-v4 src/pbrt/shapes.h  BilinearPatch class
 //            Ramsey et al., "Ray Bilinear Patch Intersections", 2004
 // ===========================================================================
+
+// BilinearPatchShape<T> (below) is CPU-only in practice: its only caller is
+// scenes_advanced.h's bilinear_patch_hittable (host code). Device code uses
+// the plain blp_* free functions above instead. Excluding it (and its
+// shapes.h dependency) from the CUDA device-compilation pass avoids handing
+// nvcc's device frontend shapes.h's own non-template std::optional-returning
+// functions, which -- like blp_intersect used to -- it cannot parse; fixing
+// that is out of scope here since shapes.h backs several other GPU-unrelated
+// shape templates.
+#if !defined(__CUDACC__)
 
 // Always include shapes.h so ShapeHit<T>, ShapeSample<T>, and SamplingContext<T>
 // have a single canonical definition (avoids ODR violations when bilinear_patch.h
@@ -636,15 +670,16 @@ struct BilinearPatchShape {
         float sq10[3]={(float)p10x,(float)p10y,(float)p10z};
         float sq01[3]={(float)p01x,(float)p01y,(float)p01z};
         float sq11[3]={(float)p11x,(float)p11y,(float)p11z};
-        auto h = blp_intersect(ro, rd, (float)t_max, sq00, sq10, sq01, sq11);
-        if (!h || (T)h->t < t_min || (T)h->t > t_max) return {};
-        float u = h->u, v = h->v;
+        BlpHit h;
+        bool hit = blp_intersect(ro, rd, (float)t_max, sq00, sq10, sq01, sq11, &h);
+        if (!hit || (T)h.t < t_min || (T)h.t > t_max) return {};
+        float u = h.u, v = h.v;
         // Compute normal at (u,v)
         T nnx,nny,nnz;
         outward_normal((T)u,(T)v, nnx,nny,nnz);
         // Orient normal toward ray origin
         if (nnx*rdx+nny*rdy+nnz*rdz > T(0)) { nnx=-nnx; nny=-nny; nnz=-nnz; }
-        return ShapeHit<T>{(T)h->t, nnx,nny,nnz, (T)u,(T)v};
+        return ShapeHit<T>{(T)h.t, nnx,nny,nnz, (T)u,(T)v};
     }
 
     // -----------------------------------------------------------------------
@@ -696,3 +731,5 @@ struct BilinearPatchShape {
         return std::isfinite(pdf) ? pdf : T(0);
     }
 };
+
+#endif // !defined(__CUDACC__)

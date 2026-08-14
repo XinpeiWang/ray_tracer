@@ -119,20 +119,17 @@ TEST(PbrtSubdivTest, AMalformedLoopSubdivIsSkippedWithItsOwnMessage) {
 // ---------------------------------------------------------------------------
 // Things that are dropped must say so
 // ---------------------------------------------------------------------------
-// pbrt's ganesha scene is lit almost entirely by an infinite light. Dropping
-// it silently produced a black statue that looked exactly like a shading bug -
-// the render was correct given what had been discarded, and nothing on screen
-// connected the two. A limitation that announces itself is a limitation; one
-// that does not is a bug report waiting to happen.
-
-TEST(PbrtDroppedTest, AnInfiniteLightIsNotDiscardedInSilence) {
-	const FlatScene s = build(
-		"WorldBegin\n"
-		"LightSource \"infinite\" \"string filename\" \"sky.exr\"\n");
-	EXPECT_TRUE(warned(s, "infinite"))
-		<< "the scene's main illumination vanished without a word";
-	EXPECT_TRUE(warned(s, "darker than intended"));
-}
+// pbrt's ganesha scene is lit almost entirely by an infinite light. It used
+// to be dropped silently, producing a black statue that looked exactly like
+// a shading bug - the render was correct given what had been discarded, and
+// nothing on screen connected the two. A limitation that announces itself is
+// a limitation; one that does not is a bug report waiting to happen.
+//
+// "infinite" itself is no longer one of these - it is now carried through
+// (see FlattenInfiniteLightTest in pbrt_flatten_tests.cpp) rather than
+// dropped-with-a-warning, which is what used to be pinned here. distant,
+// point and spot are still dropped, so that half of the guarantee still
+// applies to them.
 
 TEST(PbrtDroppedTest, EveryUnsupportedLightTypeIsNamedIndividually) {
 	const FlatScene s = build(

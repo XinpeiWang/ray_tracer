@@ -134,6 +134,13 @@ enum class GpuLightKind : int {
 	// could not aim at, leaving the GPU image darker and noisier than the CPU
 	// one for no reason the picture explained.
 	Triangle = 2,
+	// Shape "bilinearmesh" carrying an AreaLightSource - real published pbrt
+	// scenes use this for non-planar/non-rectangular light panels (e.g.
+	// sportscar-area-lights.pbrt's studio softboxes), which pbrt_quadify.h
+	// cannot fold into a Quad because they are not necessarily coplanar.
+	// Same "used to glow but not be aimable" gap Triangle closed, for the one
+	// shape kind that gap didn't cover.
+	BilinearPatch = 3,
 };
 
 // Material types

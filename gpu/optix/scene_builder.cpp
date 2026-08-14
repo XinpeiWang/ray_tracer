@@ -3295,6 +3295,13 @@ static bool build_loaded_pbrt_scene(
 		  << stats.quadLights << " quads, "
 		  << scene.lightIndices.size() << " sampled lights\n";
 
+	// Flat-colour GPU approximation of the scene's own LightSource "infinite"
+	// (see GpuCameraParams::backgroundColor's comment and pbrt_gpu_builder.h's
+	// BuildStats::backgroundColor) - same shape as every hand-written HDRI
+	// scene's own GPU port a few lines up in this file. Left at zero-init
+	// (matches CPU bg=(0,0,0)) for a scene with no infinite light.
+	if (out_camera_extra) out_camera_extra->backgroundColor = stats.backgroundColor;
+
 	// Reported, not warned about: these are sampled properly now (as
 	// GpuLightKind::Triangle), so the only thing worth saying is that they
 	// took the per-triangle path rather than the cheaper merged-quad one.

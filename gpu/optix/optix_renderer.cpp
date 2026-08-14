@@ -11,6 +11,7 @@
 #include "optix_math_helpers.h"
 #include "wavefront_path_tracer.h"
 #include "sppm_path_tracer.h"
+#include "../../src/shared/bilinear_patch.h"  // blp_area - alias-table power for GpuLightKind::BilinearPatch
 #include <optix_function_table_definition.h>
 #include <optix_stack_size.h>
 #include <cuda.h>
@@ -855,6 +856,22 @@ bool OptiXRenderer::buildScene(
 				const float3 e1 = t.p1 - t.p0;
 				const float3 e2 = t.p2 - t.p0;
 				area = 0.5f * length(cross(e1, e2));
+			} else if (lightKinds[i] == GpuLightKind::BilinearPatch) {
+				// Indexes `bilinearPatches`, not `quads` - this branch must
+				// stay explicit (not fall into the trailing else below) or
+				// prim_idx gets reinterpreted against the wrong array, which
+				// for a scene with fewer quads than bilinear patches (e.g.
+				// sportscar-area-lights.pbrt has zero quads and 5 bilinear-
+				// patch lights) is an out-of-bounds read, not just a wrong
+				// number.
+				const BilinearPatchData& bp = bilinearPatches[prim_idx];
+				const MaterialData& m = materials[bp.materialIdx];
+				emission = m.emission;
+				const float p00[3] = {bp.p00.x, bp.p00.y, bp.p00.z};
+				const float p10[3] = {bp.p10.x, bp.p10.y, bp.p10.z};
+				const float p01[3] = {bp.p01.x, bp.p01.y, bp.p01.z};
+				const float p11[3] = {bp.p11.x, bp.p11.y, bp.p11.z};
+				area = blp_area(p00, p10, p01, p11);
 			} else {
 				const QuadData& q = quads[prim_idx];
 				const MaterialData& m = materials[q.materialIdx];

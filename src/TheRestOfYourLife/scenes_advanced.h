@@ -271,6 +271,35 @@ public:
 
 	aabb bounding_box() const override { return bbox; }
 
+	// Solid-angle PDF for a direction from origin toward this patch - the
+	// hittable NEE hooks quad.h overrides for the same reason (see its own
+	// pdf_value/random pair). Backed by blp_pdf_wi (src/shared/bilinear_patch.h),
+	// which is CPU_GPU-tagged and shared with the GPU closest-hit's own MIS
+	// lookup, so the two backends cannot disagree about a light's pdf.
+	double pdf_value(const point3& origin, const vec3& direction) const override {
+		const float o[3] = {(float)origin.x(), (float)origin.y(), (float)origin.z()};
+		const float d[3] = {(float)direction.x(), (float)direction.y(), (float)direction.z()};
+		const float p00[3] = {(float)shape.p00x, (float)shape.p00y, (float)shape.p00z};
+		const float p10[3] = {(float)shape.p10x, (float)shape.p10y, (float)shape.p10z};
+		const float p01[3] = {(float)shape.p01x, (float)shape.p01y, (float)shape.p01z};
+		const float p11[3] = {(float)shape.p11x, (float)shape.p11y, (float)shape.p11z};
+		return static_cast<double>(blp_pdf_wi(p00, p10, p01, p11, o, d));
+	}
+
+	// Uniform-area sample, returned as the vector from origin to the sampled
+	// point (unnormalized) - matching quad.h::random()'s own contract, which
+	// every caller of a light's random() already expects.
+	vec3 random(const point3& origin) const override {
+		const float u2[2] = {(float)random_double(), (float)random_double()};
+		const float p00[3] = {(float)shape.p00x, (float)shape.p00y, (float)shape.p00z};
+		const float p10[3] = {(float)shape.p10x, (float)shape.p10y, (float)shape.p10z};
+		const float p01[3] = {(float)shape.p01x, (float)shape.p01y, (float)shape.p01z};
+		const float p11[3] = {(float)shape.p11x, (float)shape.p11y, (float)shape.p11z};
+		float outP[3], outN[3], outPdf = 0.f;
+		blp_sample(p00, p10, p01, p11, u2, outP, outN, &outPdf);
+		return vec3(outP[0] - origin.x(), outP[1] - origin.y(), outP[2] - origin.z());
+	}
+
 private:
 	BilinearPatchShape<double> shape;
 	shared_ptr<material> mat;

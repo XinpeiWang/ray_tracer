@@ -170,10 +170,36 @@ extern "C" __global__ void __closesthit__bilinear_patch() {
 		optixSetPayload_11(__float_as_uint(t_hit));
 		optixSetPayload_12(__float_as_uint(brdf_pdf_out));
 	} else if (mat.type == MaterialType::DiffuseLight) {
-		// See the DiffuseLight case comment above - not reachable in practice
-		// (no scene registers a bilinear patch as a light), pdf=0 is safe.
+		// NEE pdf for the incoming direction reaching this bilinear-patch
+		// light, so MIS in raygen can weight a BSDF-sampled path that
+		// happened to land here against the light-sampled estimate of the
+		// same thing. Mirrors the triangle program's block (see its own
+		// comment on why pdf=0 is no longer the safe default now that a real
+		// scene - sportscar-area-lights.pbrt's studio light panels - emits
+		// from a bilinear patch), using blp_pdf_wi for the area-to-solid-
+		// angle Jacobian instead of recomputing it by hand.
+		float light_pdf_for_incoming = 0.0f;
+		if (params.aliasTable && params.numLights > 0) {
+			float sel_pdf = 0.0f;
+			for (unsigned int li = 0; li < params.numLights; ++li) {
+				if (params.lightIndices[li] == (int)primIdx &&
+					params.lightKinds[li] == GpuLightKind::BilinearPatch) {
+					sel_pdf = params.aliasTable[li].pdf;
+					break;
+				}
+			}
+			if (sel_pdf > 0.0f) {
+				const float p00[3] = {patch.p00.x, patch.p00.y, patch.p00.z};
+				const float p10[3] = {patch.p10.x, patch.p10.y, patch.p10.z};
+				const float p01[3] = {patch.p01.x, patch.p01.y, patch.p01.z};
+				const float p11[3] = {patch.p11.x, patch.p11.y, patch.p11.z};
+				const float ref[3] = {ray_orig.x, ray_orig.y, ray_orig.z};
+				const float wi[3] = {ray_dir.x, ray_dir.y, ray_dir.z};
+				light_pdf_for_incoming = sel_pdf * blp_pdf_wi(p00, p10, p01, p11, ref, wi);
+			}
+		}
 		optixSetPayload_10(2);  // hit_light
-		optixSetPayload_12(0);
+		optixSetPayload_12(__float_as_uint(light_pdf_for_incoming));
 	} else {
 		optixSetPayload_10(0);  // absorbed
 		optixSetPayload_12(0);

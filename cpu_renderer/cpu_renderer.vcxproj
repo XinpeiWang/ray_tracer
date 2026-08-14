@@ -81,7 +81,10 @@
     <ClInclude Include="cpu_interface.h" />
     <ClInclude Include="..\src\TheRestOfYourLife\*.h" />
     <ClCompile Include="..\src\external\stb_image_impl.cpp" />
+    <ClCompile Include="..\src\external\tinyexr_impl.cpp" />
+    <ClCompile Include="..\src\external\miniz.c" />
     <ClInclude Include="..\src\external\*.h" />
+    <ClInclude Include="..\src\external\*.hh" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

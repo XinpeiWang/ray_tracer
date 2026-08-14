@@ -59,6 +59,22 @@ struct Sphere {
 	int areaLight = -1;
 };
 
+// Shape "bilinearmesh" - a single bilinear patch (4 corner points, not
+// necessarily planar or a parallelogram - that generality is the point of
+// the shape existing separately from a quad/trianglemesh at all). Only the
+// single-patch form (`"point3 P"`, 4 points) is built; pbrt-v4's multi-patch
+// form (`"integer indices"`, N patches sharing one vertex pool) still falls
+// through to flatten()'s generic "shape not supported" warning - no scene
+// this loader has actually seen uses it. World-space corners, laid out
+// (u,v) = (0,0),(1,0),(0,1),(1,1), matching src/shared/bilinear_patch.h's
+// own p00/p10/p01/p11 convention (see pbrt_cpu_builder.h/pbrt_gpu_builder.h,
+// the two consumers of this layout).
+struct BilinearPatch {
+	double p[4][3] = {{0,0,0}, {0,0,0}, {0,0,0}, {0,0,0}};
+	int material = -1;
+	int areaLight = -1;
+};
+
 // pbrt's material set and ours are the same set under the same names - the
 // MaterialType enum in gpu/optix/optix_types.h cites pbrt's BxDFs by name - so
 // this is a rename, not a translation. Anything genuinely absent maps to
@@ -93,6 +109,32 @@ struct Material {
 struct Emission {
 	double L[3] = {1.0, 1.0, 1.0};
 	double scale = 1.0;
+};
+
+// LightSource "infinite" - a scene's environment/sky light. Distant, point
+// and spot lights are still dropped (see the warning loop in flatten()) -
+// this is the one non-area light kind worth carrying through, because it is
+// usually a scene's main illumination (see flatten()'s own comment on why
+// dropping it silently is worse than most warnings).
+struct InfiniteLight {
+	bool present = false;
+	double L[3] = {1.0, 1.0, 1.0};   // used as-is when imageWidth/imageHeight are 0
+	double scale = 1.0;
+	std::string imageFile;           // as named by the scene; empty = constant colour only
+	// Decoded pixel data, filled in by pbrt_load::loadFile() AFTER flatten()
+	// returns - this header stays filesystem-free by design (see the file
+	// comment), so it cannot itself resolve or decode imageFile. Row-major,
+	// 3 floats/pixel, linear. imageWidth/imageHeight are 0 until (and unless)
+	// that happens, which is also how a caller tells "decode did not run yet
+	// or failed" apart from "this scene has no image, only a constant L".
+	std::vector<float> imagePixels;
+	int imageWidth = 0;
+	int imageHeight = 0;
+	// The CTM at the LightSource directive, world -> light space. An
+	// environment map's sun/horizon faces the wrong way if this is dropped -
+	// not black, but visibly wrong, which is easy to miss without a scene
+	// that actually has a directional feature to check against.
+	pbrt_scene::Matrix4 xform;
 };
 
 // Our camera is described the way camera.h wants it - an eye point, a target
@@ -179,8 +221,10 @@ struct Instance {
 struct FlatScene {
 	std::vector<Triangle> triangles;
 	std::vector<Sphere> spheres;
+	std::vector<BilinearPatch> bilinearPatches;
 	std::vector<Material> materials;    // parallel to Scene::materials
 	std::vector<Emission> areaLights;   // parallel to Scene::areaLights
+	InfiniteLight infiniteLight;        // present=false if the scene has none
 
 	// Instanced geometry. `groups` hold object-space shapes; `instances` place
 	// them. A backend that ignores these renders a scene missing everything
@@ -216,6 +260,7 @@ struct ShapeWork {
 	pbrt_scene::Matrix4 xform;
 	std::vector<Triangle> *triangles = nullptr;
 	std::vector<Sphere> *spheres = nullptr;
+	std::vector<BilinearPatch> *bilinearPatches = nullptr;
 };
 
 // Row-major 4x4 multiply: `a` applied after `b`, i.e. the result maps a point
@@ -385,19 +430,30 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 	}
 
 	// ---- lights that are not area lights ---------------------------------
-	// Only AreaLightSource is carried through; infinite, distant, point and
-	// spot lights are dropped. Saying so is not politeness, it is the
-	// difference between a legible limitation and an inexplicable render:
-	// pbrt's ganesha is lit almost entirely by an infinite light, so dropping
-	// it silently produces a black statue that looks exactly like a shading
-	// bug and sends you hunting through the BSDF code.
+	// "infinite" (the environment/sky light) is carried through below - it is
+	// usually a scene's main illumination, so dropping it silently produces a
+	// render that looks exactly like a shading bug and sends you hunting
+	// through the BSDF code instead. distant, point and spot lights are still
+	// dropped; saying so is the difference between a legible limitation and
+	// an inexplicable one.
+	//
+	// Only the LAST "infinite" LightSource in the scene wins if there is more
+	// than one - real pbrt scenes have at most one (this codebase has never
+	// seen otherwise among the scenes it loads), and picking the last one
+	// matches how pbrt's own graphics-state model would apply them (each
+	// later directive's effect is visible, not merged).
 	for (const pbrt_scene::LightDecl &ld : scene.lights) {
+		if (ld.type == "infinite") {
+			out.infiniteLight.present = true;
+			const pbrt_scene::Vec3 L = ld.params.getVec3("L", pbrt_scene::Vec3{1, 1, 1});
+			out.infiniteLight.L[0] = L.x; out.infiniteLight.L[1] = L.y; out.infiniteLight.L[2] = L.z;
+			out.infiniteLight.scale = ld.params.getFloat("scale", 1.0);
+			out.infiniteLight.imageFile = ld.params.getString("filename", "");
+			out.infiniteLight.xform = ld.xform;
+			continue;
+		}
 		warn("light source '" + ld.type + "' is not supported and was dropped; "
-			 "the scene will be darker than intended" +
-			 (ld.type == "infinite"
-				  ? std::string(" - an infinite light is usually a scene's main "
-								"illumination")
-				  : std::string()));
+			 "the scene will be darker than intended");
 	}
 
 	// ---- area lights -----------------------------------------------------
@@ -500,7 +556,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 	std::vector<detail::ShapeWork> work;
 
 	for (const pbrt_scene::ShapeDecl &shape : scene.shapes)
-		work.push_back({&shape, shape.xform, &out.triangles, &out.spheres});
+		work.push_back({&shape, shape.xform, &out.triangles, &out.spheres, &out.bilinearPatches});
 
 	// Sized up front so the pointers taken below stay valid as work is added.
 	out.groups.resize(scene.objects.size());
@@ -508,6 +564,12 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		out.groups[g].name = scene.objects[g].name;
 		for (const pbrt_scene::ShapeDecl &shape : scene.objects[g].shapes) {
 			if (shape.areaLightIndex >= 0) continue;    // emissive: baked below
+			// bilinearPatches left null: an instanced (non-emissive)
+			// bilinearmesh has no scene in this loader's own corpus and no
+			// InstanceGroup storage for it - the bilinearmesh branch below
+			// treats a null output the same way it treats any other
+			// unsupported case, rather than silently dropping the shape
+			// with no explanation.
 			work.push_back({&shape, shape.xform,
 							&out.groups[g].triangles, &out.groups[g].spheres});
 		}
@@ -543,7 +605,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				 scene.objects[static_cast<std::size_t>(group)].shapes) {
 			if (shape.areaLightIndex < 0) continue;
 			work.push_back({&shape, detail::compose(inst.xform, shape.xform),
-							&out.triangles, &out.spheres});
+							&out.triangles, &out.spheres, &out.bilinearPatches});
 		}
 	}
 
@@ -568,6 +630,26 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			s.areaLight = shape.areaLightIndex;
 			w.spheres->push_back(s);
 			continue;
+		}
+
+		if (shape.type == "bilinearmesh") {
+			// Single-patch form only (see BilinearPatch's own comment) - a
+			// bare "point3 P" with exactly 4 points, no "integer indices".
+			// Anything else (the multi-patch form, or an instanced/object-
+			// space one - see the null-bilinearPatches comment above) falls
+			// through to the generic "shape not supported" warning below,
+			// same as every other shape kind this file does not build.
+			const pbrt_scene::Param *P = shape.params.find("P");
+			if (w.bilinearPatches && P && P->numbers.size() == 12) {
+				BilinearPatch bp;
+				for (int i = 0; i < 4; ++i)
+					transformPoint(xform, P->numbers[i * 3 + 0], P->numbers[i * 3 + 1],
+								   P->numbers[i * 3 + 2], bp.p[i]);
+				bp.material = shape.materialIndex;
+				bp.areaLight = shape.areaLightIndex;
+				w.bilinearPatches->push_back(bp);
+				continue;
+			}
 		}
 
 		if (shape.type == "trianglemesh" || shape.type == "plymesh"

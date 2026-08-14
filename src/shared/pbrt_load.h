@@ -20,6 +20,8 @@
 // because a scene's geometry/ subdirectory routinely includes its own
 // neighbours by bare filename.
 
+#include <algorithm>
+#include <cctype>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -28,6 +30,9 @@
 #include "pbrt_flatten.h"
 #include "pbrt_scene.h"
 #include "ply_mesh.h"
+
+#include "../external/stb_image.h"
+#include "../external/tinyexr.h"
 
 namespace pbrt_load {
 
@@ -63,6 +68,64 @@ inline bool readFile(const std::string &path, std::string &out) {
 	std::ostringstream ss;
 	ss << in.rdbuf();
 	out = ss.str();
+	return true;
+}
+
+inline bool endsWithCaseInsensitive(const std::string &path, const std::string &ext) {
+	if (path.size() < ext.size()) return false;
+	return std::equal(ext.rbegin(), ext.rend(), path.rbegin(),
+		[](unsigned char a, unsigned char b) {
+			return std::tolower(a) == std::tolower(b);
+		});
+}
+
+// Decodes an infinite light's environment-map bytes into row-major RGB float
+// pixels (3 floats/pixel, linear) - the format sky_light's raw-buffer
+// constructor (sky_light.h) accepts. Dispatches purely on `filename`'s
+// extension, not the bytes themselves: pbrt-v4-scenes environment maps are
+// exclusively .exr (needs tinyexr - stb_image cannot decode it) or .hdr
+// (Radiance RGBE, stb_image's own native HDR format). Returns false, leaving
+// the outputs untouched, on a format this cannot decode or a corrupt file -
+// the caller falls back to the scene's constant-colour L the same way it
+// would for a scene with no filename at all, rather than failing the load
+// over one texture.
+inline bool decodeInfiniteLightImage(const std::string &filename, const std::string &bytes,
+									 std::vector<float> &outPixels, int &outW, int &outH) {
+	if (endsWithCaseInsensitive(filename, ".exr")) {
+		float *rgba = nullptr;
+		int w = 0, h = 0;
+		const char *err = nullptr;
+		const int rc = LoadEXRFromMemory(&rgba, &w, &h,
+			reinterpret_cast<const unsigned char *>(bytes.data()), bytes.size(), &err);
+		if (err) FreeEXRErrorMessage(err);
+		if (rc != TINYEXR_SUCCESS || !rgba || w <= 0 || h <= 0) {
+			if (rgba) free(rgba);
+			return false;
+		}
+		outPixels.resize(static_cast<std::size_t>(w) * h * 3);
+		for (int i = 0; i < w * h; ++i) {
+			outPixels[i * 3 + 0] = rgba[i * 4 + 0];
+			outPixels[i * 3 + 1] = rgba[i * 4 + 1];
+			outPixels[i * 3 + 2] = rgba[i * 4 + 2];
+		}
+		free(rgba);
+		outW = w; outH = h;
+		return true;
+	}
+
+	// Everything else goes through stb_image's own HDR path (Radiance
+	// .hdr/.pic - the same decoder rtw_image's filename constructor uses).
+	int w = 0, h = 0, channels = 0;
+	float *pixels = stbi_loadf_from_memory(
+		reinterpret_cast<const unsigned char *>(bytes.data()),
+		static_cast<int>(bytes.size()), &w, &h, &channels, 3);
+	if (!pixels || w <= 0 || h <= 0) {
+		if (pixels) stbi_image_free(pixels);
+		return false;
+	}
+	outPixels.assign(pixels, pixels + static_cast<std::size_t>(w) * h * 3);
+	stbi_image_free(pixels);
+	outW = w; outH = h;
 	return true;
 }
 
@@ -130,6 +193,29 @@ inline LoadResult loadFile(const std::string &path) {
 
 	r.scene = pbrt_flatten::flatten(parsed.scene, meshes);
 	r.ok = true;
+
+	// Infinite light's image, if it has one. Resolved the same
+	// scene-directory-then-as-given way as everything else in this file
+	// (loadFileNear() below is this exact lookup, factored out for a
+	// caller that only has the flattened result to work from - inlined
+	// here instead since sceneDir/readFile are already in scope).
+	pbrt_flatten::InfiniteLight &sky = r.scene.infiniteLight;
+	if (sky.present && !sky.imageFile.empty()) {
+		std::string bytes;
+		if (readFile(join(sceneDir, sky.imageFile), bytes) || readFile(sky.imageFile, bytes)) {
+			if (!decodeInfiniteLightImage(sky.imageFile, bytes,
+										  sky.imagePixels, sky.imageWidth, sky.imageHeight)) {
+				r.scene.warnings.push_back(
+					{0, path, "infinite light image '" + sky.imageFile +
+						"' could not be decoded; using its constant colour instead"});
+			}
+		} else {
+			r.scene.warnings.push_back(
+				{0, path, "infinite light image '" + sky.imageFile +
+					"' could not be read; using its constant colour instead"});
+		}
+	}
+
 	return r;
 }
 

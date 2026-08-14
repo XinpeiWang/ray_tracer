@@ -12,6 +12,7 @@
 #include "../../src/shared/bxdfs.h"      // HairBxDF<T> (CPU+GPU) - see MaterialType::Hair
 #include "../../src/shared/noise.h"      // Perlin turbulence (CPU+GPU) - see sample_texture()
 #include "../../src/shared/normal_map.h" // apply_normal_map (CPU+GPU) - see MaterialType::NormalMappedLambertian
+#include "../../src/shared/bilinear_patch.h" // blp_sample/blp_pdf_wi (CPU+GPU) - see GpuLightKind::BilinearPatch
 
 // Launch parameters (constant across all threads)
 extern "C" { __constant__ LaunchParams params; }
@@ -333,6 +334,44 @@ __device__ __forceinline__ float3 sample_triangle_light(
 	return direction;
 }
 
+// Same shape of answer as sample_triangle_light above - a direction plus a
+// solid-angle pdf - for Shape "bilinearmesh" area lights (GpuLightKind::
+// BilinearPatch). blp_sample (src/shared/bilinear_patch.h, CPU_GPU-tagged,
+// shared with the CPU builder's own NEE hooks - see
+// bilinear_patch_hittable::random() in scenes_advanced.h) draws a uniform-
+// area point and returns an AREA-domain pdf; the area-to-solid-angle
+// Jacobian conversion below is the same one sample_triangle_light applies,
+// using blp_sample's own returned normal rather than recomputing one.
+__device__ __forceinline__ float3 sample_bilinear_patch_light(
+	const BilinearPatchData& bp,
+	const float3& origin,
+	unsigned int& seed,
+	float& pdf,
+	float& out_dist
+) {
+	const float p00[3] = {bp.p00.x, bp.p00.y, bp.p00.z};
+	const float p10[3] = {bp.p10.x, bp.p10.y, bp.p10.z};
+	const float p01[3] = {bp.p01.x, bp.p01.y, bp.p01.z};
+	const float p11[3] = {bp.p11.x, bp.p11.y, bp.p11.z};
+	const float u2[2] = {random_float(seed), random_float(seed)};
+	float outP[3], outN[3], areaPdf = 0.0f;
+	blp_sample(p00, p10, p01, p11, u2, outP, outN, &areaPdf);
+
+	const float3 point = make_float3(outP[0], outP[1], outP[2]);
+	const float3 normal = make_float3(outN[0], outN[1], outN[2]);
+	float3 to_light = point - origin;
+	float dist_sq = dot(to_light, to_light);
+	out_dist = sqrtf(dist_sq);
+	if (out_dist < 1e-6f || areaPdf <= 0.0f) { pdf = 0.0f; return make_float3(0.0f, 0.0f, 1.0f); }
+	float3 direction = to_light / out_dist;
+
+	const float cosine = fabsf(dot(direction, normal));
+	if (cosine < 1e-6f) { pdf = 0.0f; return direction; }
+
+	pdf = areaPdf * dist_sq / cosine;
+	return direction;
+}
+
 // Sample whichever kind of area light `light_idx` names, and report the
 // emitter's radiance alongside it.
 //
@@ -367,6 +406,12 @@ __device__ __forceinline__ float3 sample_area_light_by_kind(
 		const TriangleData& t = params.triangles[prim_idx];
 		const float3 dir = sample_triangle_light(t, origin, seed, geom_pdf, max_dist);
 		emission = params.materials[t.materialIdx].emission;
+		return dir;
+	}
+	case GpuLightKind::BilinearPatch: {
+		const BilinearPatchData& bp = params.bilinearPatches[prim_idx];
+		const float3 dir = sample_bilinear_patch_light(bp, origin, seed, geom_pdf, max_dist);
+		emission = params.materials[bp.materialIdx].emission;
 		return dir;
 	}
 	case GpuLightKind::Quad:

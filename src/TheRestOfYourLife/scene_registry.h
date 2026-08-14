@@ -1044,7 +1044,14 @@ inline void append(std::vector<SceneDescriptor>& registry) {
             pbrt_cpu::BuildResult& b = ensure();
             return b.lights ? *b.lights : hittable_list{};
         };
-        s.build_sky = nullptr;
+        // nullptr (flat background) unless the scene declared its own
+        // LightSource "infinite" - see pbrt_cpu_builder.h's build() for how
+        // b.sky gets populated (constant-colour form now; image-backed form
+        // once the image resolver lands).
+        s.build_sky = [ensure]() -> std::shared_ptr<sky_light> {
+            pbrt_cpu::BuildResult& b = ensure();
+            return b.sky;
+        };
         s.build_punct = nullptr;
         // CameraConfig cannot express an up vector, but pbrt's LookAt can, and
         // a scene shot in Z-up renders sideways without this. setup_camera

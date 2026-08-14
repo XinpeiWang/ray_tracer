@@ -107,6 +107,14 @@ class hdr_image_texture : public texture {
   public:
     hdr_image_texture(const char* filename) : image(filename) {}
 
+    // Mirrors image_texture(rtw_image&&) just above - takes ownership of an
+    // already-decoded image instead of decoding a file a second time. The
+    // pbrt loader's EXR path is the caller: it has to decode the image once
+    // anyway to build sky_light's importance-sampling distribution, and this
+    // lets that same decode become the texture sky_light::Le() reads from,
+    // rather than re-reading (and, for EXR, re-decoding) the file here too.
+    explicit hdr_image_texture(rtw_image&& loaded) : image(std::move(loaded)) {}
+
     color value(double u, double v, const point3& p) const override {
         if (image.height() <= 0) return color(0, 1, 1); // cyan debug fallback
 

@@ -45,8 +45,25 @@ class sky_light {
     // HDR latlong file -- builds luminance-weighted importance sampling distribution.
     // Mirrors pbrt-v4 ImageInfiniteLight constructor building PiecewiseConstant2D.
     explicit sky_light(const char* hdr_filename, double brightness = 1.0)
-        : env_tex(make_shared<hdr_image_texture>(hdr_filename)), scale(brightness), has_dist(false) {
-        rtw_image img(hdr_filename);
+        : sky_light(rtw_image(hdr_filename), brightness) {}
+
+    // Same as the filename constructor, but from pixel data already decoded
+    // by the caller (e.g. the pbrt loader's EXR path - this class has no
+    // format support of its own beyond whatever rtw_image/stb_image already
+    // read). Delegates to the rtw_image&& constructor below so the same
+    // decoded image builds both the importance-sampling distribution and
+    // env_tex, rather than decoding twice the way the filename constructor
+    // above effectively used to (once here, again inside hdr_image_texture).
+    sky_light(int w, int h, const float* pixels, double brightness = 1.0)
+        : sky_light(rtw_image(w, h, pixels), brightness) {}
+
+  private:
+    // Shared by both HDR constructors above - takes ownership of an already-
+    // decoded image (from a file or a raw buffer, rtw_image does not care
+    // which) and builds env_tex and the importance-sampling distribution
+    // from that ONE decode.
+    explicit sky_light(rtw_image&& img, double brightness)
+        : scale(brightness), has_dist(false) {
         int W = img.width(), H = img.height();
         if (W > 0 && H > 0) {
             std::vector<double> weights(W * H);
@@ -65,7 +82,13 @@ class sky_light {
             has_dist = !dist.empty();
             img_w = W; img_h = H;
         }
+        // img moved-from below is still a valid (if now-empty on failure)
+        // rtw_image - hdr_image_texture's value() already handles
+        // height()<=0 with a cyan debug fallback, so no separate check here.
+        env_tex = make_shared<hdr_image_texture>(std::move(img));
     }
+
+  public:
     // Radiance arriving from world direction dir (unit vector expected).
     color Le(const vec3& dir) const {
         auto [u, v] = dir_to_uv(dir);

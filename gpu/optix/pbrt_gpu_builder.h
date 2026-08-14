@@ -39,11 +39,20 @@ namespace pbrt_gpu {
 struct BuildStats {
 	std::size_t triangles = 0;
 	std::size_t spheres = 0;
+	std::size_t bilinearPatches = 0;
 	std::size_t quadLights = 0;
 	std::size_t emissiveTrianglesSampledIndividually = 0;
 	// Placements the builder prepared; optix_renderer.cpp's buildScene()
 	// turns each one into its own IAS entry over a per-definition GAS.
 	std::size_t instancePlacements = 0;
+	// scene.infiniteLight's flat colour for missed rays, or (0,0,0) if the
+	// scene has none - GPU approximation of a real environment light, same
+	// shape as the hand-written HDRI scenes' own GPU port (see
+	// pbrt_flatten.h's InfiniteLight comment for why full image-based
+	// importance sampling stays CPU-only). Currently L*scale only; once the
+	// image resolver lands this becomes the decoded image's average colour
+	// for the filename case.
+	float3 backgroundColor = make_float3(0.0f, 0.0f, 0.0f);
 };
 
 namespace detail {
@@ -146,6 +155,7 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 	out.spheres.clear();
 	out.quads.clear();
 	out.triangles.clear();
+	out.bilinearPatches.clear();
 	out.materials.clear();
 	out.lightIndices.clear();
 	out.lightKinds.clear();
@@ -189,6 +199,26 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		out.spheres.push_back(sd);
 	}
 	stats.spheres = out.spheres.size();
+
+	// ---- bilinear patches -------------------------------------------------
+	// Shape "bilinearmesh" - unlike triangles, never routed through
+	// pbrt_quadify.h: a bilinear patch is not necessarily planar, so folding
+	// two of them into one parallelogram the way triangle pairs are would be
+	// wrong in general (see pbrt_flatten.h's BilinearPatch comment).
+	for (const pbrt_flatten::BilinearPatch &p : scene.bilinearPatches) {
+		BilinearPatchData bd = {};
+		bd.p00 = f3(p.p[0]);
+		bd.p10 = f3(p.p[1]);
+		bd.p01 = f3(p.p[2]);
+		bd.p11 = f3(p.p[3]);
+		bd.materialIdx = materialIndex(p.material, p.areaLight);
+		if (p.areaLight >= 0) {
+			out.lightIndices.push_back(static_cast<int>(out.bilinearPatches.size()));
+			out.lightKinds.push_back(GpuLightKind::BilinearPatch);
+		}
+		out.bilinearPatches.push_back(bd);
+	}
+	stats.bilinearPatches = out.bilinearPatches.size();
 
 	// ---- lights recovered as quads, then everything else as triangles ----
 	const pbrt_quadify::Result merged = pbrt_quadify::quadify(scene.triangles);
@@ -335,6 +365,35 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		out.instancePlacements.push_back(p);
 	}
 	stats.instancePlacements = out.instancePlacements.size();
+
+	// ---- infinite/sky light, flat-colour GPU approximation ----------------
+	if (scene.infiniteLight.present) {
+		const auto &sky = scene.infiniteLight;
+		if (sky.imageWidth > 0 && sky.imageHeight > 0 && !sky.imagePixels.empty()) {
+			// Mean of every decoded pixel - a crude approximation of the real
+			// environment map's overall brightness/tint (no directional
+			// detail at all, unlike the CPU path's real importance-sampled
+			// image - see pbrt_flatten.h's InfiniteLight comment for why
+			// that stays CPU-only), but far closer than treating an
+			// environment-lit scene as a flat colour the scene never named.
+			double r = 0.0, g = 0.0, b = 0.0;
+			const std::size_t n = static_cast<std::size_t>(sky.imageWidth) * sky.imageHeight;
+			for (std::size_t i = 0; i < n; ++i) {
+				r += sky.imagePixels[i * 3 + 0];
+				g += sky.imagePixels[i * 3 + 1];
+				b += sky.imagePixels[i * 3 + 2];
+			}
+			stats.backgroundColor = make_float3(
+				static_cast<float>(r / n * sky.scale),
+				static_cast<float>(g / n * sky.scale),
+				static_cast<float>(b / n * sky.scale));
+		} else {
+			stats.backgroundColor = make_float3(
+				static_cast<float>(sky.L[0] * sky.scale),
+				static_cast<float>(sky.L[1] * sky.scale),
+				static_cast<float>(sky.L[2] * sky.scale));
+		}
+	}
 
 	return stats;
 }

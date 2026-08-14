@@ -18,6 +18,8 @@
 #include "bvh.h"
 #include "hittable_list.h"
 #include "material.h"
+#include "scenes_advanced.h"   // bilinear_patch_hittable
+#include "sky_light.h"
 #include "sphere.h"
 #include "triangle.h"
 #include "transform_instance.h"
@@ -118,8 +120,10 @@ struct VertexKey {
 struct BuildResult {
 	std::shared_ptr<hittable_list> world;
 	std::shared_ptr<hittable_list> lights;   // emissive shapes, for NEE
+	std::shared_ptr<sky_light> sky;          // null if the scene has no infinite light
 	std::size_t triangleCount = 0;
 	std::size_t sphereCount = 0;
+	std::size_t bilinearPatchCount = 0;
 	std::size_t uniqueVertexCount = 0;
 	// Instance placements actually added to the world. Each shares one
 	// BVH with every other placement of the same definition.
@@ -168,6 +172,7 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	// it always was; only its inputs and outputs became parameters.
 	const auto emitGeometry = [&](const std::vector<pbrt_flatten::Triangle> &tris,
 								  const std::vector<pbrt_flatten::Sphere> &sphs,
+								  const std::vector<pbrt_flatten::BilinearPatch> &patches,
 								  hittable_list &world, hittable_list &lights) {
 	// ---- triangles -------------------------------------------------------
 	if (!tris.empty()) {
@@ -243,10 +248,28 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		if (s.areaLight >= 0) lights.add(sp);
 	}
 	out.sphereCount += sphs.size();
+
+	// ---- bilinear patches -------------------------------------------------
+	// Shape "bilinearmesh" - see pbrt_flatten.h's BilinearPatch comment for
+	// why only the single-patch form reaches here. bilinear_patch_hittable
+	// (scenes_advanced.h) now overrides pdf_value()/random() the same way
+	// quad does, so an emissive one is NEE-samplable, not just hittable.
+	for (const pbrt_flatten::BilinearPatch &bp : patches) {
+		auto mat = cachedMaterial(bp.material, bp.areaLight);
+		auto patch = std::make_shared<bilinear_patch_hittable>(
+			point3(bp.p[0][0], bp.p[0][1], bp.p[0][2]),
+			point3(bp.p[1][0], bp.p[1][1], bp.p[1][2]),
+			point3(bp.p[2][0], bp.p[2][1], bp.p[2][2]),
+			point3(bp.p[3][0], bp.p[3][1], bp.p[3][2]),
+			mat);
+		world.add(patch);
+		if (bp.areaLight >= 0) lights.add(patch);
+	}
+	out.bilinearPatchCount += patches.size();
 	};
 
 
-	emitGeometry(scene.triangles, scene.spheres, *out.world, *out.lights);
+	emitGeometry(scene.triangles, scene.spheres, scene.bilinearPatches, *out.world, *out.lights);
 
 	// ---- instances -------------------------------------------------------
 	// Each definition is built once, into its own BVH, and then placed by a
@@ -267,7 +290,11 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 
 		auto geometry = std::make_shared<hittable_list>();
 		hittable_list unusedLights;
-		emitGeometry(grp.triangles, grp.spheres, *geometry, unusedLights);
+		// No InstanceGroup::bilinearPatches - object-space bilinear patches
+		// inside an instance definition are out of scope (see flatten()'s
+		// null-bilinearPatches comment on why), so this is always empty.
+		static const std::vector<pbrt_flatten::BilinearPatch> kNoBilinearPatches;
+		emitGeometry(grp.triangles, grp.spheres, kNoBilinearPatches, *geometry, unusedLights);
 		if (!geometry->objects.empty())
 			groupBVHs[g] = std::make_shared<bvh_node>(*geometry);
 	}
@@ -291,6 +318,26 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		auto accelerated = std::make_shared<hittable_list>();
 		accelerated->add(std::make_shared<bvh_node>(*out.world));
 		out.world = accelerated;
+	}
+
+	// ---- infinite/sky light ------------------------------------------------
+	// Image-based when pbrt_load::loadFile() successfully decoded one
+	// (imageWidth/imageHeight > 0 - see FlatScene::InfiniteLight's comment on
+	// why the decode happens there and not here or in flatten()). Falls back
+	// to the scene's constant L otherwise - either it never named an image,
+	// or naming one failed to resolve/decode (a warning was already recorded
+	// for that case).
+	if (scene.infiniteLight.present) {
+		if (scene.infiniteLight.imageWidth > 0 && scene.infiniteLight.imageHeight > 0) {
+			out.sky = std::make_shared<sky_light>(
+				scene.infiniteLight.imageWidth, scene.infiniteLight.imageHeight,
+				scene.infiniteLight.imagePixels.data(), scene.infiniteLight.scale);
+		} else {
+			out.sky = std::make_shared<sky_light>(color(
+				scene.infiniteLight.L[0] * scene.infiniteLight.scale,
+				scene.infiniteLight.L[1] * scene.infiniteLight.scale,
+				scene.infiniteLight.L[2] * scene.infiniteLight.scale));
+		}
 	}
 	return out;
 }

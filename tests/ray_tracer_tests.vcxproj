@@ -117,6 +117,7 @@
     <ClCompile Include="unit\pbrt_gpu_quad_light_tests.cpp" />
     <ClCompile Include="unit\pbrt_gpu_instance_sphere_tests.cpp" />
     <ClCompile Include="unit\pbrt_gpu_triangle_light_tests.cpp" />
+    <ClCompile Include="unit\pbrt_gpu_bilinear_light_tests.cpp" />
     <ClCompile Include="unit\pbrt_gpu_light_coverage_tests.cpp" />
     <ClCompile Include="unit\spherical_rectangle_adjudication_tests.cpp" />
     <ClCompile Include="unit\quad_light_estimator_bias_tests.cpp" />
@@ -247,6 +248,7 @@
     <ClCompile Include="unit\sppm_gpu_hash_grid_tests.cpp" />
     <ClCompile Include="unit\vol_path_tests.cpp" />
     <ClCompile Include="unit\bilinear_patch_tests.cpp" />
+    <ClCompile Include="unit\bilinear_patch_hittable_tests.cpp" />
     <ClCompile Include="unit\bssrdf_vol_path_tests.cpp" />
     <ClCompile Include="unit\bvh_aggregate_tests.cpp" />
     <ClCompile Include="unit\cloud_medium_tests.cpp" />

@@ -22,7 +22,9 @@
 #define STBI_FREE(p) free(p)
 #endif
 
+#include <cstddef>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 
 
@@ -93,6 +95,29 @@ class rtw_image {
         if (load("../../../../../../images/" + filename)) return;
 
         std::cerr << "ERROR: Could not load image file '" << image_filename << "'.\n";
+    }
+
+    // Takes decoded RGB float pixel data (row-major, 3 floats/pixel, [0,1]
+    // linear) that came from somewhere other than stb_image - e.g. an EXR
+    // decode, which this class has no format support for itself. Copies into
+    // an STBI_FREE-compatible buffer (malloc, not new[]) so the destructor's
+    // existing STBI_FREE(fdata) stays correct regardless of which
+    // constructor built this image.
+    rtw_image(int w, int h, const float* pixels) {
+        if (w <= 0 || h <= 0 || !pixels) return;
+        // Plain malloc, not STBI_MALLOC: that macro only exists inside
+        // stb_image.h's own STB_IMAGE_IMPLEMENTATION translation unit (see
+        // stb_image_impl.cpp), invisible here - but STBI_FREE(p) below (the
+        // destructor, and the fallback #define a few lines up in this file)
+        // is plain free(p) regardless, so a plain malloc pairs with it exactly.
+        const std::size_t count = static_cast<std::size_t>(w) * h * bytes_per_pixel;
+        fdata = static_cast<float*>(std::malloc(count * sizeof(float)));
+        if (!fdata) return;
+        std::memcpy(fdata, pixels, count * sizeof(float));
+        image_width = w;
+        image_height = h;
+        bytes_per_scanline = image_width * bytes_per_pixel;
+        convert_to_bytes();
     }
 
     ~rtw_image() {

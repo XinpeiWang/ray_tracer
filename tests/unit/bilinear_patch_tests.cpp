@@ -39,33 +39,33 @@ static const float tr11[3] = {1,1,0};
 TEST(BilinearPatch, IntersectHitsCenter) {
     // Ray from above center of unit square, pointing -z
     float ro[3]={0.5f,0.5f,1.f}, rd[3]={0,0,-1.f};
-    auto h = blp_intersect(ro, rd, 10.f, sq00, sq10, sq01, sq11);
-    ASSERT_TRUE(h.has_value());
-    EXPECT_NEAR(h->t, 1.f, 1e-5f);
-    EXPECT_NEAR(h->u, 0.5f, 1e-4f);
-    EXPECT_NEAR(h->v, 0.5f, 1e-4f);
+    BlpHit h;
+    ASSERT_TRUE(blp_intersect(ro, rd, 10.f, sq00, sq10, sq01, sq11, &h));
+    EXPECT_NEAR(h.t, 1.f, 1e-5f);
+    EXPECT_NEAR(h.u, 0.5f, 1e-4f);
+    EXPECT_NEAR(h.v, 0.5f, 1e-4f);
 }
 
 TEST(BilinearPatch, IntersectHitsCorner) {
     float ro[3]={0.f,0.f,1.f}, rd[3]={0,0,-1.f};
-    auto h = blp_intersect(ro, rd, 10.f, sq00, sq10, sq01, sq11);
-    ASSERT_TRUE(h.has_value());
-    EXPECT_NEAR(h->t, 1.f, 1e-5f);
-    EXPECT_NEAR(h->u, 0.f, 2e-4f);
-    EXPECT_NEAR(h->v, 0.f, 2e-4f);
+    BlpHit h;
+    ASSERT_TRUE(blp_intersect(ro, rd, 10.f, sq00, sq10, sq01, sq11, &h));
+    EXPECT_NEAR(h.t, 1.f, 1e-5f);
+    EXPECT_NEAR(h.u, 0.f, 2e-4f);
+    EXPECT_NEAR(h.v, 0.f, 2e-4f);
 }
 
 TEST(BilinearPatch, IntersectMissesOutside) {
     // Ray aimed outside the patch
     float ro[3]={2.f,2.f,1.f}, rd[3]={0,0,-1.f};
-    auto h = blp_intersect(ro, rd, 10.f, sq00, sq10, sq01, sq11);
-    EXPECT_FALSE(h.has_value());
+    BlpHit h;
+    EXPECT_FALSE(blp_intersect(ro, rd, 10.f, sq00, sq10, sq01, sq11, &h));
 }
 
 TEST(BilinearPatch, IntersectMissesBeyondTMax) {
     float ro[3]={0.5f,0.5f,5.f}, rd[3]={0,0,-1.f};
-    auto h = blp_intersect(ro, rd, 2.f, sq00, sq10, sq01, sq11);
-    EXPECT_FALSE(h.has_value());
+    BlpHit h;
+    EXPECT_FALSE(blp_intersect(ro, rd, 2.f, sq00, sq10, sq01, sq11, &h));
 }
 
 TEST(BilinearPatch, IntersectObliqueRay) {
@@ -74,18 +74,18 @@ TEST(BilinearPatch, IntersectObliqueRay) {
     float dlen = std::sqrt(d[0]*d[0]+d[1]*d[1]+d[2]*d[2]);
     d[0]/=dlen; d[1]/=dlen; d[2]/=dlen;
     float ro[3]={0,0,2.f};
-    auto h = blp_intersect(ro, d, 10.f, sq00, sq10, sq01, sq11);
-    ASSERT_TRUE(h.has_value());
-    EXPECT_GT(h->t, 0.f);
-    EXPECT_GE(h->u, 0.f); EXPECT_LE(h->u, 1.f);
-    EXPECT_GE(h->v, 0.f); EXPECT_LE(h->v, 1.f);
+    BlpHit h;
+    ASSERT_TRUE(blp_intersect(ro, d, 10.f, sq00, sq10, sq01, sq11, &h));
+    EXPECT_GT(h.t, 0.f);
+    EXPECT_GE(h.u, 0.f); EXPECT_LE(h.u, 1.f);
+    EXPECT_GE(h.v, 0.f); EXPECT_LE(h.v, 1.f);
 }
 
 TEST(BilinearPatch, IntersectTrapezoidCenter) {
     float ro[3]={0.75f,0.5f,1.f}, rd[3]={0,0,-1.f};
-    auto h = blp_intersect(ro, rd, 10.f, tr00, tr10, tr01, tr11);
-    ASSERT_TRUE(h.has_value());
-    EXPECT_NEAR(h->t, 1.f, 1e-5f);
+    BlpHit h;
+    ASSERT_TRUE(blp_intersect(ro, rd, 10.f, tr00, tr10, tr01, tr11, &h));
+    EXPECT_NEAR(h.t, 1.f, 1e-5f);
 }
 
 // ---------------------------------------------------------------------------
@@ -266,10 +266,10 @@ TEST(BilinearPatch, UVContinuous) {
             float xu = float(i)/5.f, xv = float(j)/5.f;
             float ro[3] = {xu, xv, 2.f};
             float rd[3] = {0,0,-1.f};
-            auto h = blp_intersect(ro, rd, 10.f, sq00, sq10, sq01, sq11);
-            if (h) {
-                EXPECT_GE(h->u, -1e-4f); EXPECT_LE(h->u, 1+1e-4f);
-                EXPECT_GE(h->v, -1e-4f); EXPECT_LE(h->v, 1+1e-4f);
+            BlpHit h;
+            if (blp_intersect(ro, rd, 10.f, sq00, sq10, sq01, sq11, &h)) {
+                EXPECT_GE(h.u, -1e-4f); EXPECT_LE(h.u, 1+1e-4f);
+                EXPECT_GE(h.v, -1e-4f); EXPECT_LE(h.v, 1+1e-4f);
             }
         }
     }
