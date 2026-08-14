@@ -1,15 +1,14 @@
 #pragma once
 // cornell_box_data.h - shared geometry/material data for the classic Cornell
-// box scene (scene 0: 5 walls, 2 lights, a rotated white box, a glass
+// box scene (scene 0: 5 walls, 1 ceiling light, a rotated white box, a glass
 // sphere), consumed by BOTH:
 //   - src/TheRestOfYourLife/scenes_book.h::build_cornell_box() (CPU)
 //   - gpu/optix/scene_builder.cpp::build_cornell_box() (GPU)
 //
 // These were previously two independent, hand-copied definitions that
-// silently drifted apart - GPU was missing the dim warm accent light CPU
-// had (see the CpuGpuLightParityTest that caught it). Editing a wall,
-// light, the box, or the glass sphere here now changes both renderers at
-// once instead of requiring the same edit twice.
+// silently drifted apart (see the CpuGpuLightParityTest that caught it).
+// Editing a wall, light, the box, or the glass sphere here now changes both
+// renderers at once instead of requiring the same edit twice.
 //
 // Deliberately NOT a shared builder function: CPU's hittable_list (a tree
 // of shared_ptr<hittable> with virtual dispatch) and GPU's SceneData (flat
@@ -60,8 +59,6 @@ inline constexpr QuadSpec kQuads[] = {
 	{ {555,0,555}, {-555,0,0}, {0,555,0}, {0.73,0.73,0.73}, false },
 	// Main ceiling light (bright white)
 	{ {213,554,227}, {130,0,0}, {0,0,105}, {15,15,15}, true },
-	// Secondary accent light embedded in the green wall (dim warm)
-	{ {554,100,200}, {0,0,150}, {0,200,0}, {4,2,1}, true },
 };
 inline constexpr int kNumQuads = sizeof(kQuads) / sizeof(kQuads[0]);
 

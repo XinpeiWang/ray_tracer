@@ -21,13 +21,10 @@
 
 /**
  * Adds the 5 standard Cornell-box walls (red/white/green/white/white) and the
- * main ceiling light - cornell_box_data::kQuads[0..5], skipping the dim warm
- * accent light at index 6 - to `world`. Shared by every "Cornell family"
- * scene (10-17 in scenes_materials.h) that keeps the standard box shell but
- * swaps in different sphere/box materials, so those scenes stop each
- * hand-typing the same 5 walls + light quad. Scene 0's build_cornell_box()
- * below doesn't use this - it needs the accent light too, so it loops over
- * the full kQuads itself.
+ * main ceiling light - all of cornell_box_data::kQuads - to `world`. Shared
+ * by every "Cornell family" scene (10-17 in scenes_materials.h) that keeps
+ * the standard box shell but swaps in different sphere/box materials, so
+ * those scenes stop each hand-typing the same 5 walls + light quad.
  */
 inline void add_cornell_walls_and_main_light(hittable_list& world) {
 	using namespace cornell_box_data;
@@ -322,20 +319,6 @@ inline hittable_list build_cornell_smoke() {
 	auto white = make_shared<lambertian>(color(.73, .73, .73));  // for the boxes below
 	auto light = make_shared<diffuse_light>(color(7, 7, 7));
 	world.add(make_shared<quad>(point3(113,554,127), vec3(330,0,0), vec3(0,0,305), light));
-
-	// Warm accent light from the shared Cornell-box data (kQuads[6]) -
-	// second light source through the fog so it isn't lit by one flat
-	// overhead source only. See build_cornell_smoke_lights() for its
-	// NEE-sampled twin.
-	{
-		const QuadSpec& accent = kQuads[6];
-		auto accent_light = make_shared<diffuse_light>(color(accent.color.r, accent.color.g, accent.color.b));
-		world.add(make_shared<quad>(
-			point3(accent.Q.x, accent.Q.y, accent.Q.z),
-			vec3(accent.u.x, accent.u.y, accent.u.z),
-			vec3(accent.v.x, accent.v.y, accent.v.z),
-			accent_light));
-	}
 
 	shared_ptr<hittable> box1 = box(point3(0,0,0), point3(165,330,165), white);
 	box1 = make_shared<rotate_y>(box1, 15);

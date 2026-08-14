@@ -224,26 +224,6 @@ TEST(CornellBoxPhiTest, CeilingLightPhiFormula) {
 	EXPECT_NEAR(phi,  13650.0 * 15.0 * M_PI, 1e-4);
 }
 
-TEST(CornellBoxPhiTest, AccentLightPhiFormula) {
-	// Accent quad: u=(0,0,150), v=(0,200,0), emission=(4,2,1)
-	// area = 150 * 200 = 30000
-	// luminance(4,2,1) = 0.2126*4 + 0.7152*2 + 0.0722*1 = 0.8504 + 1.4304 + 0.0722 = 2.353
-	vec3 u(0, 0, 150);
-	vec3 v(0, 200, 0);
-	color emission(4, 2, 1);
-
-	double area = cross(u, v).length();
-	double lum  = 0.2126 * emission.x() + 0.7152 * emission.y() + 0.0722 * emission.z();
-	double phi  = area * lum * M_PI;
-
-	EXPECT_NEAR(area, 30000.0, 1e-6);
-	EXPECT_NEAR(lum,  2.353,   1e-3);
-	EXPECT_GT(phi, 0.0);
-	// Ceiling phi >> accent phi (bright vs dim)
-	double ceiling_phi = 13650.0 * 15.0 * M_PI;
-	EXPECT_GT(ceiling_phi, phi);
-}
-
 // ============================================================================
 // Power light sampler: multi-light proportionality
 // Mirrors pbrt-v4 lightsamplers_test.cpp BVHLightSampling.Point pattern:

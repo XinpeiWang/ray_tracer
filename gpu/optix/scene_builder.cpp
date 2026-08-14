@@ -1011,13 +1011,11 @@ static void build_rough_metal_spheres(SceneData& scene) {
 }
 
 /// @brief Adds the 5 standard Cornell-box walls (red/white/green/white/white)
-/// and the main ceiling light - cornell_box_data::kQuads[0..5], skipping the
-/// dim warm accent light at index 6 - to scene. Shared by every "Cornell
-/// family" GPU builder (scenes 10-13, 15-17) that keeps the standard box
-/// shell but swaps in different sphere/box materials, mirroring CPU's
-/// add_cornell_walls_and_main_light() in scenes_book.h. Scene 0's
-/// build_cornell_box() above doesn't use this - it needs the accent light
-/// too, so it loops over the full kQuads itself.
+/// and the main ceiling light - all of cornell_box_data::kQuads - to scene.
+/// Shared by every "Cornell family" GPU builder (scenes 10-13, 15-17) that
+/// keeps the standard box shell but swaps in different sphere/box
+/// materials, mirroring CPU's add_cornell_walls_and_main_light() in
+/// scenes_book.h.
 static void add_cornell_walls_and_main_light(SceneData& scene) {
     using namespace cornell_box_data;
     for (int i = 0; i < 6; ++i) {
@@ -2094,27 +2092,6 @@ static void build_cornell_smoke_gpu(SceneData& scene) {
 		lq.D = dot(lq.normal, lq.Q);
 		lq.materialIdx = mat_light;
 		scene.quads.push_back(lq);
-		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
-		scene.lightKinds.push_back(GpuLightKind::Quad);
-	}
-
-	// Warm accent light from kQuads[6], added alongside this scene's own
-	// ceiling light - matches CPU build_cornell_smoke() exactly (see its
-	// own comment).
-	{
-		const QuadSpec& accent = kQuads[6];
-		const int mat_accent = add_diffuse_light(scene, make_float3(
-			static_cast<float>(accent.color.r), static_cast<float>(accent.color.g), static_cast<float>(accent.color.b)));
-		QuadData aq{};
-		aq.Q = make_float3(static_cast<float>(accent.Q.x), static_cast<float>(accent.Q.y), static_cast<float>(accent.Q.z));
-		aq.u = make_float3(static_cast<float>(accent.u.x), static_cast<float>(accent.u.y), static_cast<float>(accent.u.z));
-		aq.v = make_float3(static_cast<float>(accent.v.x), static_cast<float>(accent.v.y), static_cast<float>(accent.v.z));
-		const float3 ac = cross(aq.u, aq.v);
-		aq.w = ac;
-		aq.normal = normalize(ac);
-		aq.D = dot(aq.normal, aq.Q);
-		aq.materialIdx = mat_accent;
-		scene.quads.push_back(aq);
 		scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
 		scene.lightKinds.push_back(GpuLightKind::Quad);
 	}
