@@ -27,6 +27,8 @@
 #include <array>
 #include <unordered_map>
 #include <unordered_set>
+#include <cmath>
+#include <algorithm>
 #include <stdexcept>
 #include <cstdio>
 #include <utility>
@@ -322,6 +324,73 @@ inline std::unordered_map<std::string, color> parse_mtl(const std::string& filep
 
 
 // ---------------------------------------------------------------------------
+// mtl_specular_params / parse_mtl_specular
+// Companion to parse_mtl(): maps material name -> its classic Blinn-Phong
+// specular parameters (Ks, Ns, illum, Ni), read together in one pass since
+// dispatching a material to lambertian/metal/dielectric needs all of them
+// jointly (see load_obj_mtl()'s material-resolution loop). illum/ni default
+// to -1 ("not specified in the file") rather than 0/1.5, so callers can
+// distinguish "this .mtl declares illum 0" from "this .mtl says nothing
+// about illum at all".
+// ---------------------------------------------------------------------------
+struct mtl_specular_params {
+	color  ks = color(0, 0, 0);
+	double ns = 0.0;
+	int    illum = -1;
+	double ni = -1.0;
+};
+
+inline std::unordered_map<std::string, mtl_specular_params> parse_mtl_specular(const std::string& filepath) {
+	std::unordered_map<std::string, mtl_specular_params> result;
+
+	std::ifstream file(filepath);
+	if (!file.is_open()) {
+		static const char* kSearchPrefixes[] = {
+			"models/", "../models/", "../../models/",
+			"../../../models/", "../../../../models/", "../../../../../models/"
+		};
+		for (const char* prefix : kSearchPrefixes) {
+			file.clear();
+			file.open(prefix + filepath);
+			if (file.is_open()) break;
+		}
+	}
+	if (!file.is_open()) return result;
+
+	std::string line, current;
+	while (std::getline(file, line)) {
+		if (line.empty() || line[0] == '#') continue;
+		std::istringstream ss(line);
+		std::string tok;
+		ss >> tok;
+		if (tok == "newmtl") {
+			ss >> current;
+		} else if (tok == "Ks" && !current.empty()) {
+			double r, g, b;
+			ss >> r >> g >> b;
+			result[current].ks = color(r, g, b);
+		} else if (tok == "Ns" && !current.empty()) {
+			ss >> result[current].ns;
+		} else if (tok == "illum" && !current.empty()) {
+			ss >> result[current].illum;
+		} else if (tok == "Ni" && !current.empty()) {
+			ss >> result[current].ni;
+		}
+	}
+	return result;
+}
+
+// Standard Phong-exponent-to-roughness conversion, mapping a classic OBJ/
+// .mtl Ns (specular exponent, typically 1-1000) onto a physically-based
+// roughness in (0, 1]. At Ns=0 (the boilerplate default most exporters
+// write when they don't otherwise populate it) this returns 1.0 (fully
+// rough), which metal's own constructor clamps to anyway.
+inline double phong_to_roughness(double ns) {
+	return std::sqrt(2.0 / (ns + 2.0));
+}
+
+
+// ---------------------------------------------------------------------------
 // parse_mtl_textures
 // Companion to parse_mtl(): maps material name -> its map_Kd (diffuse
 // texture) path, exactly as written in the .mtl (backslashes, "..", etc.
@@ -593,6 +662,7 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 	std::unordered_map<std::string, color> mtl_colors;
 	std::unordered_map<std::string, std::string> mtl_textures;
 	std::unordered_map<std::string, color> mtl_emission;
+	std::unordered_map<std::string, mtl_specular_params> mtl_specular;
 	std::string mtl_path_used = mtllib_name;
 	if (!mtllib_name.empty())
 		mtl_colors = parse_mtl(mtllib_name);
@@ -605,6 +675,8 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 		mtl_textures = parse_mtl_textures(mtl_path_used);
 	if (out_lights && !mtl_path_used.empty())
 		mtl_emission = parse_mtl_emission(mtl_path_used);
+	if (!mtl_path_used.empty())
+		mtl_specular = parse_mtl_specular(mtl_path_used);
 
 	std::vector<vec3> generated_norm;
 	if (smooth_normals && raw_norm.empty()) {
@@ -661,11 +733,15 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 	// name to a cached material (one shared_ptr per unique name, shared
 	// across every face using it): a diffuse_light(Ke) when the material
 	// is genuinely emissive (out_lights requested and a non-degenerate Ke
-	// line present), else a real image_texture-backed lambertian when
-	// texture_dir is set and the material's map_Kd image loads
-	// successfully, else a flat lambertian(Kd), else fallback_mat when the
-	// name is empty/unknown or has none of the above.
+	// line present); else, by illum, a dielectric (illum 7 -- "reflection
+	// and refraction on") or a metal(Kd, roughness-from-Ns) (illum 2 --
+	// "highlight on" -- with a real, non-boilerplate Ks); else a real
+	// image_texture-backed lambertian when texture_dir is set and the
+	// material's map_Kd image loads successfully, else a flat lambertian
+	// (Kd), else fallback_mat when the name is empty/unknown or has none
+	// of the above.
 	// ------------------------------------------------------------------
+	constexpr double kMeaningfulKsComponent = 0.02;
 	std::unordered_map<std::string, std::shared_ptr<material>> mat_cache;
 	std::unordered_set<std::string> emissive_mats;
 	hittable_list tris;
@@ -683,6 +759,19 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 				if (ke_it != mtl_emission.end()) {
 					resolved = std::make_shared<diffuse_light>(ke_it->second);
 					emissive_mats.insert(name);
+				}
+				if (!resolved) {
+					auto spec_it = mtl_specular.find(name);
+					if (spec_it != mtl_specular.end()) {
+						const mtl_specular_params& sp = spec_it->second;
+						if (sp.illum == 7) {
+							resolved = std::make_shared<dielectric>(sp.ni > 0.0 ? sp.ni : 1.5);
+						} else if (sp.illum == 2 && std::max({sp.ks.x(), sp.ks.y(), sp.ks.z()}) > kMeaningfulKsComponent) {
+							auto color_it = mtl_colors.find(name);
+							color kd = (color_it != mtl_colors.end()) ? color_it->second : color(1, 1, 1);
+							resolved = std::make_shared<metal>(kd, phong_to_roughness(sp.ns));
+						}
+					}
 				}
 				if (!resolved) {
 					auto tex_it = mtl_textures.find(name);

@@ -314,6 +314,146 @@ TEST(MtlMaterial, ParseMtlEmissionReadsKePerMaterialAndSkipsZero) {
 	std::remove("mtl_material_test_parse_ke.mtl");
 }
 
+// Specular dispatch (Ks/Ns/illum): boilerplate illum 2 with near-zero Ks
+// stays an ordinary lambertian, illum 2 with a real Ks becomes a metal
+// (albedo = Kd, fuzz = phong_to_roughness(Ns)), and illum 7 becomes a
+// dielectric with Ni as its IOR. None of the three real large scenes
+// exercise the metal/dielectric paths meaningfully (see load_obj_mtl()'s
+// own comment history), hence this synthetic fixture.
+TEST(MtlMaterial, SpecularDispatchByIllumAndKs) {
+	write_temp_file("mtl_material_test_specular.mtl",
+		"newmtl Plain\n"
+		"Kd 0.5 0.5 0.5\n"
+		"Ks 0.01 0.01 0.01\n"
+		"Ns 10.0\n"
+		"illum 2\n"
+		"newmtl Glossy\n"
+		"Kd 0.8 0.6 0.2\n"
+		"Ks 0.50 0.50 0.50\n"
+		"Ns 200.0\n"
+		"illum 2\n"
+		"newmtl Glass\n"
+		"Kd 1.0 1.0 1.0\n"
+		"Ni 1.45\n"
+		"illum 7\n");
+	std::string objPath = write_temp_file("mtl_material_test_specular.obj",
+		"mtllib mtl_material_test_specular.mtl\n"
+		"v 0 0 0\n"
+		"v 1 0 0\n"
+		"v 0 1 0\n"
+		"v 1 1 0\n"
+		"v 2 0 0\n"
+		"v 2 1 0\n"
+		"usemtl Plain\n"
+		"f 1 2 3\n"
+		"usemtl Glossy\n"
+		"f 2 4 3\n"
+		"usemtl Glass\n"
+		"f 2 5 6\n");
+
+	auto fallback = std::make_shared<lambertian>(color(0.5, 0.5, 0.5));
+	auto mesh = load_obj_mtl(objPath, fallback);
+	ASSERT_NE(mesh, nullptr);
+
+	// Plain: illum 2 but Ks is negligible (0.01, boilerplate-level) -- stays
+	// lambertian, same as if illum/Ks weren't in the file at all.
+	ray rPlain(point3(0.2, 0.2, -5), vec3(0, 0, 1));
+	hit_record recPlain;
+	ASSERT_TRUE(mesh->hit(rPlain, interval(0.001, infinity), recPlain));
+	EXPECT_NE(std::dynamic_pointer_cast<lambertian>(recPlain.mat), nullptr);
+
+	// Glossy: illum 2 with a real Ks (0.5) -- becomes a metal(Kd, fuzz).
+	ray rGlossy(point3(0.7, 0.7, -5), vec3(0, 0, 1));
+	hit_record recGlossy;
+	ASSERT_TRUE(mesh->hit(rGlossy, interval(0.001, infinity), recGlossy));
+	auto glossyMetal = std::dynamic_pointer_cast<metal>(recGlossy.mat);
+	ASSERT_NE(glossyMetal, nullptr);
+	color glossyAlbedo = glossyMetal->get_albedo();
+	EXPECT_NEAR(glossyAlbedo.x(), 0.8, 1e-9);
+	EXPECT_NEAR(glossyAlbedo.y(), 0.6, 1e-9);
+	EXPECT_NEAR(glossyAlbedo.z(), 0.2, 1e-9);
+	EXPECT_NEAR(glossyMetal->get_fuzz(), phong_to_roughness(200.0), 1e-9);
+
+	// Glass: illum 7 -- becomes a dielectric with Ni as its IOR. Face is
+	// v2(1,0,0), v5(2,0,0), v6(2,1,0); (1.7,0.3) sits inside that triangle.
+	ray rGlass(point3(1.7, 0.3, -5), vec3(0, 0, 1));
+	hit_record recGlass;
+	ASSERT_TRUE(mesh->hit(rGlass, interval(0.001, infinity), recGlass));
+	EXPECT_NE(std::dynamic_pointer_cast<dielectric>(recGlass.mat), nullptr);
+
+	std::remove("mtl_material_test_specular.obj");
+	std::remove("mtl_material_test_specular.mtl");
+}
+
+// illum 7 with no Ni line at all must default to IOR 1.5 rather than an
+// uninitialized/garbage value -- confirmed indirectly via a successful hit
+// (a NaN/zero IOR dielectric would misbehave badly enough to be visually
+// obvious, but this at least pins that the material resolves at all and
+// stays a dielectric).
+TEST(MtlMaterial, Illum7WithoutNiStillResolvesToDielectric) {
+	write_temp_file("mtl_material_test_no_ni.mtl",
+		"newmtl Glass\n"
+		"Kd 1.0 1.0 1.0\n"
+		"illum 7\n");
+	std::string objPath = write_temp_file("mtl_material_test_no_ni.obj",
+		"mtllib mtl_material_test_no_ni.mtl\n"
+		"v 0 0 0\n"
+		"v 1 0 0\n"
+		"v 0 1 0\n"
+		"usemtl Glass\n"
+		"f 1 2 3\n");
+
+	auto fallback = std::make_shared<lambertian>(color(0.5, 0.5, 0.5));
+	auto mesh = load_obj_mtl(objPath, fallback);
+	ASSERT_NE(mesh, nullptr);
+
+	ray r(point3(0.2, 0.2, -5), vec3(0, 0, 1));
+	hit_record rec;
+	ASSERT_TRUE(mesh->hit(r, interval(0.001, infinity), rec));
+	EXPECT_NE(std::dynamic_pointer_cast<dielectric>(rec.mat), nullptr);
+
+	std::remove("mtl_material_test_no_ni.obj");
+	std::remove("mtl_material_test_no_ni.mtl");
+}
+
+// parse_mtl_specular() in isolation: reads Ks/Ns/illum/Ni per material. A
+// material with none of those four tokens (Kd-only) gets no entry at all --
+// letting load_obj_mtl()'s .find() naturally skip specular dispatch for it,
+// same as if the .mtl had no Ks/Ns/illum/Ni concept whatsoever. A material
+// that specifies illum but no Ni keeps Ni at its -1 "not specified"
+// sentinel, so callers can tell that apart from an explicit "Ni 0".
+TEST(MtlMaterial, ParseMtlSpecularReadsFieldsPerMaterial) {
+	write_temp_file("mtl_material_test_parse_specular.mtl",
+		"newmtl Full\n"
+		"Kd 0.5 0.5 0.5\n"
+		"Ks 0.3 0.4 0.5\n"
+		"Ns 64.0\n"
+		"illum 2\n"
+		"Ni 1.33\n"
+		"newmtl IllumOnly\n"
+		"Kd 0.4 0.4 0.4\n"
+		"illum 1\n"
+		"newmtl KdOnly\n"
+		"Kd 0.2 0.2 0.2\n");
+
+	auto spec = parse_mtl_specular("mtl_material_test_parse_specular.mtl");
+	ASSERT_TRUE(spec.count("Full"));
+	EXPECT_NEAR(spec["Full"].ks.x(), 0.3, 1e-9);
+	EXPECT_NEAR(spec["Full"].ks.y(), 0.4, 1e-9);
+	EXPECT_NEAR(spec["Full"].ks.z(), 0.5, 1e-9);
+	EXPECT_NEAR(spec["Full"].ns, 64.0, 1e-9);
+	EXPECT_EQ(spec["Full"].illum, 2);
+	EXPECT_NEAR(spec["Full"].ni, 1.33, 1e-9);
+
+	ASSERT_TRUE(spec.count("IllumOnly"));
+	EXPECT_EQ(spec["IllumOnly"].illum, 1);
+	EXPECT_LT(spec["IllumOnly"].ni, 0.0);
+
+	EXPECT_FALSE(spec.count("KdOnly"));
+
+	std::remove("mtl_material_test_parse_specular.mtl");
+}
+
 // resolve_mtl_texture_path(): backslashes normalize to forward slashes, and
 // leading "../"/"./" segments are stripped (textures are relocated under
 // texture_dir rather than mirroring the original archive's exact nesting).

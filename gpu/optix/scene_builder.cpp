@@ -751,6 +751,67 @@ namespace {
 		return result;
 	}
 
+	// GPU counterpart of CPU's mtl_specular_params/parse_mtl_specular():
+	// maps material name -> its classic Blinn-Phong specular parameters
+	// (Ks, Ns, illum, Ni), read together in one pass since dispatching a
+	// material to Lambertian/Metal/Dielectric needs all of them jointly.
+	// illum/ni default to -1 ("not specified in the file").
+	struct MtlSpecularParamsGpu {
+		float3 ks = make_float3(0.0f, 0.0f, 0.0f);
+		float  ns = 0.0f;
+		int    illum = -1;
+		float  ni = -1.0f;
+	};
+
+	inline std::unordered_map<std::string, MtlSpecularParamsGpu> parse_mtl_specular_gpu(const std::string& filename) {
+		std::unordered_map<std::string, MtlSpecularParamsGpu> result;
+		std::ifstream file(filename);
+		if (!file.is_open()) {
+			static const char* kSearchPrefixes[] = {
+				"models/", "../models/", "../../models/",
+				"../../../models/", "../../../../models/", "../../../../../models/"
+			};
+			for (const char* prefix : kSearchPrefixes) {
+				file.clear();
+				file.open(std::string(prefix) + filename);
+				if (file.is_open()) break;
+			}
+		}
+		if (!file.is_open()) return result;
+
+		std::string line, current;
+		while (std::getline(file, line)) {
+			if (line.empty() || line[0] == '#') continue;
+			std::istringstream ss(line);
+			std::string tok;
+			ss >> tok;
+			if (tok == "newmtl") {
+				ss >> current;
+			} else if (tok == "Ks" && !current.empty()) {
+				float r, g, b;
+				ss >> r >> g >> b;
+				result[current].ks = make_float3(r, g, b);
+			} else if (tok == "Ns" && !current.empty()) {
+				ss >> result[current].ns;
+			} else if (tok == "illum" && !current.empty()) {
+				ss >> result[current].illum;
+			} else if (tok == "Ni" && !current.empty()) {
+				ss >> result[current].ni;
+			}
+		}
+		return result;
+	}
+
+	// GPU counterpart of CPU's phong_to_roughness().
+	inline float phong_to_roughness_gpu(float ns) {
+		return sqrtf(2.0f / (ns + 2.0f));
+	}
+
+	// GPU counterpart of CPU's kMeaningfulKsComponent: below this, an
+	// illum-2 material's Ks is treated as exporter boilerplate (near-zero
+	// rounding noise) rather than a real "this material is glossy" signal.
+	constexpr float kMeaningfulKsComponentGpu = 0.02f;
+
 	// GPU counterpart of CPU's parse_mtl_emission(): maps material name ->
 	// its Ke (emission) color. An explicit "Ke 0 0 0" is treated the same
 	// as no Ke line at all (see CPU's own comment for why) -- only
@@ -939,6 +1000,9 @@ namespace {
 		std::unordered_map<std::string, float3> mtlEmission;
 		if (!mtlPathUsed.empty())
 			mtlEmission = parse_mtl_emission_gpu(mtlPathUsed);
+		std::unordered_map<std::string, MtlSpecularParamsGpu> mtlSpecular;
+		if (!mtlPathUsed.empty())
+			mtlSpecular = parse_mtl_specular_gpu(mtlPathUsed);
 
 		auto cornerNormal = [&](int ni) -> float3 {
 			if (ni >= 0 && ni < static_cast<int>(normals.size())) return normals[ni];
@@ -953,15 +1017,17 @@ namespace {
 		// first use and cached by name so faces sharing a material share one
 		// materialIdx: a DiffuseLight(Ke) when the material has a real Ke
 		// (takes priority -- an emissive material is a light source, not a
-		// surface to shade, same as CPU's load_obj_mtl()), else a real
-		// textureIdx (see load_image_texture_gpu) when textureDir is set
-		// and the material's map_Kd image loads successfully, else
-		// Kd-only, else fallbackMaterialIdx when the name is empty/unknown
-		// or has none of the above -- mirrors CPU's load_obj_mtl() exactly.
-		// Deliberately does NOT require a Kd line to attempt the texture: a
-		// material with only map_Kd (no Kd) is valid OBJ and must still
-		// resolve, even though none of Sponza/Bistro/Rungholt's .mtl files
-		// actually have one (every map_Kd material there also has a Kd line).
+		// surface to shade); else, by illum, a Dielectric (illum 7) or a
+		// Metal(Kd, roughness-from-Ns) (illum 2 with a real, non-boilerplate
+		// Ks); else a real textureIdx (see load_image_texture_gpu) when
+		// textureDir is set and the material's map_Kd image loads
+		// successfully, else Kd-only, else fallbackMaterialIdx when the
+		// name is empty/unknown or has none of the above -- mirrors CPU's
+		// load_obj_mtl() exactly. Deliberately does NOT require a Kd line
+		// to attempt the texture: a material with only map_Kd (no Kd) is
+		// valid OBJ and must still resolve, even though none of Sponza/
+		// Bistro/Rungholt's .mtl files actually have one (every map_Kd
+		// material there also has a Kd line).
 		std::unordered_map<std::string, int> matCache;
 		for (const auto& f : faces) {
 			int materialIdx = fallbackMaterialIdx;
@@ -974,6 +1040,20 @@ namespace {
 					auto keIt = mtlEmission.find(f.mtl);
 					if (keIt != mtlEmission.end())
 						resolvedIdx = add_diffuse_light(scene, keIt->second);
+					if (resolvedIdx < 0) {
+						auto specIt = mtlSpecular.find(f.mtl);
+						if (specIt != mtlSpecular.end()) {
+							const MtlSpecularParamsGpu& sp = specIt->second;
+							if (sp.illum == 7) {
+								resolvedIdx = add_dielectric(scene, sp.ni > 0.0f ? sp.ni : 1.5f);
+							} else if (sp.illum == 2 && fmaxf(fmaxf(sp.ks.x, sp.ks.y), sp.ks.z) > kMeaningfulKsComponentGpu) {
+								auto colorForKsIt = mtlColors.find(f.mtl);
+								float3 kd = (colorForKsIt != mtlColors.end())
+									? colorForKsIt->second : make_float3(1.0f, 1.0f, 1.0f);
+								resolvedIdx = add_metal(scene, kd, phong_to_roughness_gpu(sp.ns));
+							}
+						}
+					}
 					if (resolvedIdx < 0) {
 						auto texIt = mtlTextures.find(f.mtl);
 						if (texIt != mtlTextures.end()) {
