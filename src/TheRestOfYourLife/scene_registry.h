@@ -915,8 +915,8 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         build_instanced_spheres_descriptor(),
         {
             "F4", 72, SceneNames::CurveFibers, SceneCategories::Geometry,
-            "A windswept tuft of real Bezier curve strands (CurveShape, tapered Cylinder cross-section) - genuine ray-curve intersection, not the sphere+HairBxDF trick scene B11 uses. CPU only: no OptiX custom-intersection program exists yet for curves.",
-            "Fast", 150, false, false,
+            "A windswept tuft of real Bezier curve strands (CurveShape, tapered Cylinder cross-section) - genuine ray-curve intersection on CPU, not the sphere+HairBxDF trick scene B11 uses. GPU renders the same 70 strands tessellated into tapered tubes of bilinear patches (matches pbrt-v4's own GPU curve strategy) rather than an exact curve intersection, so the tube surface reads slightly faceted up close.",
+            "Fast", 150, false, true,
             { 38, 0, 2.0, 6.5,  0, 0.7, 0,  0.04, 0.045, 0.06 },
             build_curve_fibers_scene,
             []() {

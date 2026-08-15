@@ -24,6 +24,7 @@
 
 #include "../../src/shared/conductor_data.h"
 #include "../../src/shared/rgb_nebula_generator.h"
+#include "../../src/shared/curve_tessellate.h"
 #include "../../src/shared/cameras.h"
 #include "../../src/shared/cornell_box_data.h"
 // Declarations only (no STB_IMAGE_IMPLEMENTATION) - the actual
@@ -2806,6 +2807,105 @@ static void build_triangle_mesh_scene_gpu(SceneData& scene) {
 	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
+/// @brief Scene 72: Curve Fibers. Matches CPU build_curve_fibers_scene()
+/// (src/TheRestOfYourLife/scenes_advanced.h) exactly in strand placement
+/// (same 70-strand Fibonacci-disk arrangement, same deterministic hash01
+/// pseudo-random, same windswept lean/taper), but NOT in intersection
+/// method: the CPU side renders each strand as a real CurveShape with an
+/// exact recursive-subdivision ray-curve test, while this GPU builder
+/// tessellates each strand into a tapered tube of bilinear patches
+/// (curve_tessellate.h) and feeds them into the SAME bilinear-patch GPU
+/// pipeline scene F1 already uses - no new OptiX intersection program,
+/// hit group, or GAS/SBT wiring needed. This mirrors pbrt-v4's own GPU
+/// backend, which dices curves into bilinear patches for the identical
+/// reason (see curve_tessellate.h's header comment): the real recursive
+/// curve-intersection algorithm is a poor fit for the GPU. The tube reads
+/// as slightly faceted up close compared to the CPU's perfectly smooth
+/// curve - an expected, documented tessellation trade-off, not a bug.
+static void build_curve_fibers_scene_gpu(SceneData& scene) {
+	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
+		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
+	const int mat_ground = add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
+	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	// Same 5 hair tones as build_curve_fibers_scene() (CPU) / build_hair_fibers()
+	// (scene 19): dark brown, blonde, auburn, silver, black.
+	const float3 palette[5] = {
+		make_float3(0.25f, 0.14f, 0.06f),
+		make_float3(0.80f, 0.65f, 0.35f),
+		make_float3(0.45f, 0.13f, 0.05f),
+		make_float3(0.75f, 0.75f, 0.78f),
+		make_float3(0.03f, 0.03f, 0.03f),
+	};
+	int matIdx[5];
+	for (int c = 0; c < 5; ++c) matIdx[c] = add_lambertian(scene, palette[c]);
+
+	// Deterministic per-strand pseudo-random in [0,1) - identical hash to
+	// build_curve_fibers_scene()'s own hash01 lambda, so both backends grow
+	// the same 70 strands from the same roots/heights/leans.
+	auto hash01 = [](int i, int salt) -> float {
+		unsigned int h = static_cast<unsigned int>(i) * 374761393u
+		                + static_cast<unsigned int>(salt) * 668265263u;
+		h = (h ^ (h >> 13)) * 1274126177u;
+		h ^= (h >> 16);
+		return static_cast<float>(h & 0xFFFFFFu) / static_cast<float>(0xFFFFFFu);
+	};
+
+	const int strand_count = 70;
+	const float disk_radius = 1.4f;
+	const float golden_angle = 2.399963229728653f;  // sunflower packing (~137.5 deg)
+	const int n_length = 10, n_radial = 8;           // tube tessellation density
+
+	std::vector<curve_tessellate::Quad> quads;
+	for (int i = 0; i < strand_count; ++i) {
+		float frac = (i + 0.5f) / strand_count;
+		float r = disk_radius * std::sqrt(frac);
+		float angle = i * golden_angle;
+		float bx = r * std::cos(angle);
+		float bz = r * std::sin(angle);
+
+		float height = 0.9f + 0.5f * hash01(i, 1);
+		float lean   = height * (0.35f + 0.35f * hash01(i, 2));
+
+		float cp[4][3] = {
+			{ bx,               0.0f,          bz },
+			{ bx + 0.15f*lean,  height*0.33f,  bz },
+			{ bx + 0.55f*lean,  height*0.70f,  bz },
+			{ bx + lean,        height,        bz },
+		};
+
+		quads.clear();
+		curve_tessellate::tessellate(cp, 0.0f, 1.0f, 0.045f, 0.006f, n_length, n_radial, quads);
+
+		const int mat = matIdx[i % 5];
+		for (const curve_tessellate::Quad& q : quads) {
+			BilinearPatchData p{};
+			p.p00 = make_float3(q.p00[0], q.p00[1], q.p00[2]);
+			p.p10 = make_float3(q.p10[0], q.p10[1], q.p10[2]);
+			p.p01 = make_float3(q.p01[0], q.p01[1], q.p01[2]);
+			p.p11 = make_float3(q.p11[0], q.p11[1], q.p11[2]);
+			p.materialIdx = mat;
+			scene.bilinearPatches.push_back(p);
+		}
+	}
+
+	// Overhead area light - matches CPU's quad(-2.5,4.0,-2.5)/(5,0,0)/(0,0,5).
+	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
+	QuadData lq{};
+	lq.Q = make_float3(-2.5f, 4.0f, -2.5f);
+	lq.u = make_float3(5.0f, 0.0f, 0.0f);
+	lq.v = make_float3(0.0f, 0.0f, 5.0f);
+	const float3 lc = cross(lq.u, lq.v);
+	lq.w = lc;
+	lq.normal = normalize(lc);
+	lq.D = dot(lq.normal, lq.Q);
+	lq.materialIdx = mat_light;
+	scene.quads.push_back(lq);
+	scene.lightIndices.push_back(static_cast<int>(scene.quads.size()) - 1);
+	scene.lightKinds.push_back(GpuLightKind::Quad);
+}
+
 /// @brief Scene 38: Stanford Bunny. Matches CPU build_stanford_bunny()
 /// (src/TheRestOfYourLife/scenes_advanced.h) exactly: same checkered ground
 /// (now a real GPU checker texture, see add_checker_texture_gpu - unlike
@@ -4733,6 +4833,20 @@ bool build_scene(
 									// Matches CPU CameraConfig bg for scene 70 - same reasoning as
 									// scene 31 (Cloud Medium): this scene's only light source.
 									out_camera_extra->backgroundColor = make_float3(0.5f, 0.7f, 1.0f);
+								}
+								break;
+							}
+
+							case 72: {  // Curve Fibers (see build_curve_fibers_scene_gpu's comment)
+								build_curve_fibers_scene_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.0f, 6.5f);
+								const float3 lookat   = make_float3(0.0f, 0.7f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 38.0f, aspect, 1.0f, camera_params);  // 38: matches CPU CameraConfig row for scene 72
+								if (out_camera_extra) {
+									// Matches CPU CameraConfig bg for scene 72.
+									out_camera_extra->backgroundColor = make_float3(0.04f, 0.045f, 0.06f);
 								}
 								break;
 							}
