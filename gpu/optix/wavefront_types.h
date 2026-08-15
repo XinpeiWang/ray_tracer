@@ -229,6 +229,19 @@ struct WavefrontLaunchParams {
 	MaterialData*  materials;
 	unsigned int   numMaterials;
 
+	// Texture metadata + shared pixel buffer (OptiXRenderer's own
+	// d_textures_/d_texturePixels_, already uploaded once at buildScene()
+	// time for the recursive path - see WavefrontPathTracer::setTextures()).
+	// Needed here (unlike the shading-kernel texture args wf_sample_texture()
+	// already takes in wavefront_kernels.cu) so wavefront_programs.cu's
+	// OptiX trace-time any-hit programs can sample an alpha-cutout mask
+	// (MaterialData::alphaMaskTexIdx) before closest-hit is even decided -
+	// see __anyhit__wf_triangle. Null/null (the default) is a valid "no
+	// textures in this scene" state, same as the recursive path's
+	// LaunchParams::textures/texturePixels.
+	TextureData*   textures;
+	unsigned char* texturePixels;
+
 	// Heterogeneous cloud media (MaterialType::CloudMedium), same shared
 	// device buffer OptiXRenderer::buildScene() already uploads for the
 	// recursive path - see wavefront_kernels.cu's CloudMedium case.

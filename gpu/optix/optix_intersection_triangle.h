@@ -23,6 +23,46 @@
 // p1/p2 with p0's weight (1-u-v) - the same b0/b1/b2 convention CPU's
 // src/TheRestOfYourLife/triangle.h uses for its own p0/p1/p2-ordered
 // interpolation, so no reordering is needed to match it.
+//
+// Alpha-cutout (MaterialData::alphaMaskTexIdx, see __anyhit__triangle
+// below): unlike the from-scratch intersection routine mentioned above,
+// this any-hit program is a standard, low-risk OptiX hook that doesn't
+// replace the built-in intersection test at all - it only conditionally
+// rejects an already-computed hit via optixIgnoreIntersection(), so it
+// isn't implicated by that prior instability.
+
+//==============================================================================
+// Triangle Any-Hit Program (radiance rays only - alpha-cutout)
+//==============================================================================
+// Registered on the SAME hit group as the closest-hit program below
+// (optix_renderer.cpp's triangleHitDesc now sets both moduleCH and
+// moduleAH), not a new program group - OptiX runs any-hit for every
+// candidate intersection along a ray BEFORE closest-hit is decided, which
+// is exactly when a transparent pixel needs to be skipped so it can't win
+// as "the" hit in the first place; closest-hit runs too late for that. A
+// no-op (returns immediately) for the overwhelming majority of triangles,
+// whose material has no alpha mask.
+extern "C" __global__ void __anyhit__triangle() {
+	const unsigned int primIdx = optixGetPrimitiveIndex();
+	const int instBase = params.instancePrimBase
+		? params.instancePrimBase[optixGetInstanceId()] : -1;
+	const unsigned int triBase = (instBase >= 0) ? (unsigned int)instBase : 0u;
+	const TriangleData& tri = params.triangles[triBase + primIdx];
+	const MaterialData& mat = params.materials[tri.materialIdx];
+	if (mat.alphaMaskTexIdx < 0) return;
+
+	float uv_u = 0.0f, uv_v = 0.0f;
+	if (tri.hasUVs) {
+		const float2 bary = optixGetTriangleBarycentrics();
+		const float b1 = bary.x, b2 = bary.y, b0 = 1.0f - b1 - b2;
+		uv_u = b0 * tri.uv0.x + b1 * tri.uv1.x + b2 * tri.uv2.x;
+		uv_v = b0 * tri.uv0.y + b1 * tri.uv1.y + b2 * tri.uv2.y;
+	}
+	const float t = optixGetRayTmax();
+	const float3 hit_point = optixGetWorldRayOrigin() + t * optixGetWorldRayDirection();
+	if (!passes_alpha_cutout(mat.alphaMaskTexIdx, uv_u, uv_v, hit_point))
+		optixIgnoreIntersection();
+}
 
 //==============================================================================
 // Triangle Closest Hit Program

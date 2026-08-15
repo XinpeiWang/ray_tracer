@@ -302,12 +302,18 @@ bool WavefrontPathTracer::createProgramGroups() {
 	OPTIX_CHECK(optixProgramGroupCreate(context_, &blpHitDesc, 1, &pgOptions,
 										 log, &logSize, &hitBilinearPatchPG_));
 
+	// Any-hit added for alpha-cutout (MaterialData::alphaMaskTexIdx) - see
+	// __anyhit__wf_triangle's own comment (wavefront_programs.cu). Same hit
+	// group/program group as before, no new SBT record type - a no-op for
+	// the overwhelming majority of triangles.
 	OptixProgramGroupDesc triHitDesc = {};
 	triHitDesc.kind                            = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
 	triHitDesc.hitgroup.moduleIS               = wfModule_;
 	triHitDesc.hitgroup.entryFunctionNameIS    = "__intersection__wf_triangle";
 	triHitDesc.hitgroup.moduleCH               = wfModule_;
 	triHitDesc.hitgroup.entryFunctionNameCH    = "__closesthit__wf_triangle";
+	triHitDesc.hitgroup.moduleAH               = wfModule_;
+	triHitDesc.hitgroup.entryFunctionNameAH    = "__anyhit__wf_triangle";
 	logSize = sizeof(log);
 	OPTIX_CHECK(optixProgramGroupCreate(context_, &triHitDesc, 1, &pgOptions,
 										 log, &logSize, &hitTrianglePG_));
@@ -861,6 +867,8 @@ bool WavefrontPathTracer::render(
 	lp.numTriangles  = num_triangles;
 	lp.materials     = reinterpret_cast<MaterialData*>(d_materials);
 	lp.numMaterials  = num_materials;
+	lp.textures       = reinterpret_cast<TextureData*>(d_textures_);
+	lp.texturePixels  = reinterpret_cast<unsigned char*>(d_texturePixels_);
 	lp.cloudMediums    = reinterpret_cast<CloudMedium<float>*>(d_cloudMediums_);
 	lp.numCloudMediums = numCloudMediums_;
 	lp.rgbGridMediums    = reinterpret_cast<GpuRgbGridMedium*>(d_rgbGridMediums_);

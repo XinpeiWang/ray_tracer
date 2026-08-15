@@ -733,6 +733,22 @@ __device__ __forceinline__ float3 sample_texture(int textureIdx, float u, float 
 	}
 }
 
+// Alpha-cutout test (OBJ/.mtl map_d): returns true if the hit should be
+// kept, false if it should be treated as fully transparent - a caller at an
+// any-hit call site (radiance or shadow) should then call
+// optixIgnoreIntersection() so the ray continues past this point as if the
+// geometry weren't there. A no-op (always true) for alphaMaskTexIdx < 0,
+// i.e. the overwhelming majority of materials. Samples the mask's red
+// channel only against a fixed threshold - real alpha-cutout masks are
+// strongly bimodal (opaque/transparent), so a fixed threshold is the
+// standard, simple choice, matching CPU's own kAlphaCutoutThreshold
+// (triangle.h).
+__device__ __forceinline__ bool passes_alpha_cutout(int alphaMaskTexIdx, float u, float v, const float3& p) {
+	if (alphaMaskTexIdx < 0) return true;
+	constexpr float kAlphaCutoutThreshold = 0.5f;
+	return sample_texture(alphaMaskTexIdx, u, v, p).x >= kAlphaCutoutThreshold;
+}
+
 // Evaluates material scattering for every MaterialType except Medium and
 // Hair, which are sphere-only and stay in optix_intersection_sphere.h's own
 // closest-hit program (they need shape-specific re-intersection/geometry

@@ -114,6 +114,30 @@ extern "C" __global__ void __anyhit__shadow_triangle() {
 	const TriangleData& tri = params.triangles[triBase + primIdx];
 	const MaterialData& mat = params.materials[tri.materialIdx];
 
+	// Alpha-cutout: a transparent pixel of a leaf/foliage material casts no
+	// shadow there, same as any other "not actually here" any-hit case
+	// below - checked first since it applies regardless of the material's
+	// type otherwise (an alpha-masked material here is always ordinary
+	// lambertian, never a light or dielectric, but there's no reason to
+	// assume that will always hold). No-op (skips straight to the existing
+	// checks) for the overwhelming majority of triangles, whose material
+	// has no alpha mask.
+	if (mat.alphaMaskTexIdx >= 0) {
+		float uv_u = 0.0f, uv_v = 0.0f;
+		if (tri.hasUVs) {
+			const float2 bary = optixGetTriangleBarycentrics();
+			const float b1 = bary.x, b2 = bary.y, b0 = 1.0f - b1 - b2;
+			uv_u = b0 * tri.uv0.x + b1 * tri.uv1.x + b2 * tri.uv2.x;
+			uv_v = b0 * tri.uv0.y + b1 * tri.uv1.y + b2 * tri.uv2.y;
+		}
+		const float t = optixGetRayTmax();
+		const float3 hit_point = optixGetWorldRayOrigin() + t * optixGetWorldRayDirection();
+		if (!passes_alpha_cutout(mat.alphaMaskTexIdx, uv_u, uv_v, hit_point)) {
+			optixIgnoreIntersection();
+			return;
+		}
+	}
+
 	if (mat.type == MaterialType::DiffuseLight) {
 		optixSetPayload_0(0);
 		optixTerminateRay();

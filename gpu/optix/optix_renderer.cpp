@@ -396,12 +396,20 @@ bool OptiXRenderer::createProgramGroups() {
 		&hitgroupBilinearPatchPG_
 	));
 
-	// Triangle hit group (closest-hit only - intersection is OptiX's
-	// built-in hardware triangle test, no custom IS program bound).
+	// Triangle hit group (closest-hit + any-hit - intersection is OptiX's
+	// built-in hardware triangle test, no custom IS program bound). The
+	// any-hit program is new: it's a no-op for the overwhelming majority of
+	// triangles (MaterialData::alphaMaskTexIdx < 0), only rejecting a
+	// candidate hit via optixIgnoreIntersection() for OBJ/.mtl alpha-cutout
+	// materials (map_d) - see __anyhit__triangle's own comment
+	// (optix_intersection_triangle.h) for why this doesn't touch the
+	// built-in intersection test at all.
 	OptixProgramGroupDesc triangleHitDesc = {};
 	triangleHitDesc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
 	triangleHitDesc.hitgroup.moduleCH = module_;
 	triangleHitDesc.hitgroup.entryFunctionNameCH = "__closesthit__triangle";
+	triangleHitDesc.hitgroup.moduleAH = module_;
+	triangleHitDesc.hitgroup.entryFunctionNameAH = "__anyhit__triangle";
 
 	logSize = sizeof(log);
 	OPTIX_CHECK(optixProgramGroupCreate(

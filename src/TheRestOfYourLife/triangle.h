@@ -14,6 +14,7 @@
 //==============================================================================================
 
 #include "hittable.h"
+#include "texture.h"
 #include "../shared/sampling.h"
 #include <array>
 #include <memory>
@@ -44,8 +45,15 @@ class triangle : public hittable {
   public:
 	triangle(std::shared_ptr<triangle_mesh_data> mesh,
 			 int tri_index,
-			 std::shared_ptr<material> mat)
-		: mesh(mesh), tri_idx(tri_index), mat(mat)
+			 std::shared_ptr<material> mat,
+			 // OBJ/.mtl map_d alpha-cutout mask (see load_obj_mtl()'s own
+			 // comment in mesh.h). nullptr (the default) for every plain
+			 // load_obj() mesh and every material with no map_d - hit()
+			 // skips the alpha test entirely in that case, so this is a
+			 // zero-cost, zero-behavior-change default for the ~50
+			 // existing single-material mesh scenes.
+			 std::shared_ptr<texture> alpha_mask = nullptr)
+		: mesh(mesh), tri_idx(tri_index), mat(mat), alpha_mask(alpha_mask)
 	{
 		const int* idx = &mesh->indices[3 * tri_idx];
 		const point3& p0 = mesh->positions[idx[0]];
@@ -168,6 +176,20 @@ class triangle : public hittable {
 			rec.v = b2;
 		}
 
+		// Alpha-cutout (OBJ/.mtl map_d, see load_obj_mtl()'s own comment):
+		// a triangle has at most one intersection with a given ray, so
+		// "reject" is simply "this triangle isn't a hit for this ray" - the
+		// BVH naturally continues to whatever's behind it, no re-search-
+		// along-this-triangle complexity. Real alpha-cutout masks are
+		// strongly bimodal (opaque/transparent), so a fixed threshold is
+		// the standard, simple choice - matches the GPU path's identical
+		// kAlphaCutoutThreshold (optix_device_helpers.h's
+		// passes_alpha_cutout(), wavefront_programs.cu's
+		// wf_passes_alpha_cutout()). No-op for the overwhelming majority of
+		// triangles, whose material has no alpha mask.
+		if (alpha_mask && alpha_mask->value(rec.u, rec.v, rec.p).x() < kAlphaCutoutThreshold)
+			return false;
+
 		// dpdu: approximate tangent along u axis (used by normal maps)
 		{
 			vec3 e1v = p1 - p0, e2v = p2 - p0;
@@ -233,9 +255,12 @@ class triangle : public hittable {
 	std::shared_ptr<material> get_material() const { return mat; }
 
   private:
+	static constexpr double kAlphaCutoutThreshold = 0.5;
+
 	std::shared_ptr<triangle_mesh_data> mesh;
 	int tri_idx;
 	std::shared_ptr<material> mat;
+	std::shared_ptr<texture> alpha_mask;
 	vec3  geom_normal;
 	double area;
 	aabb   bbox;

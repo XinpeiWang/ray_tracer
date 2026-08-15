@@ -578,6 +578,51 @@ inline bool is_grayscale_image(const rtw_image& img) {
 
 
 // ---------------------------------------------------------------------------
+// parse_mtl_alpha_textures
+// Companion to parse_mtl_textures(): maps material name -> its map_d
+// (alpha-cutout mask) texture path. Matches "map_d" and, per the OBJ/.mtl
+// spec's own alternate spelling, "map_D".
+// ---------------------------------------------------------------------------
+inline std::unordered_map<std::string, std::string> parse_mtl_alpha_textures(const std::string& filepath) {
+	std::unordered_map<std::string, std::string> result;
+
+	std::ifstream file(filepath);
+	if (!file.is_open()) {
+		static const char* kSearchPrefixes[] = {
+			"models/", "../models/", "../../models/",
+			"../../../models/", "../../../../models/", "../../../../../models/"
+		};
+		for (const char* prefix : kSearchPrefixes) {
+			file.clear();
+			file.open(prefix + filepath);
+			if (file.is_open()) break;
+		}
+	}
+	if (!file.is_open()) return result;
+
+	std::string line, current;
+	while (std::getline(file, line)) {
+		if (line.empty() || line[0] == '#') continue;
+		std::istringstream ss(line);
+		std::string tok;
+		ss >> tok;
+		if (tok == "newmtl") {
+			ss >> current;
+		} else if ((tok == "map_d" || tok == "map_D") && !current.empty()) {
+			std::string path;
+			std::getline(ss, path);
+			size_t start = path.find_first_not_of(" \t");
+			if (start != std::string::npos) {
+				size_t end = path.find_last_not_of(" \t\r");
+				result[current] = path.substr(start, end - start + 1);
+			}
+		}
+	}
+	return result;
+}
+
+
+// ---------------------------------------------------------------------------
 // resolve_mtl_texture_path
 // Rewrites a .mtl-relative texture path (as read by parse_mtl_textures, e.g.
 // "textures\foo.png" or "..\BuildingTextures\bar.png") into a path under
@@ -756,9 +801,11 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 		mtl_path_used = (dot == std::string::npos ? filepath : filepath.substr(0, dot)) + ".mtl";
 		mtl_colors = parse_mtl(mtl_path_used);
 	}
+	std::unordered_map<std::string, std::string> mtl_alpha_textures;
 	if (!texture_dir.empty() && !mtl_path_used.empty()) {
 		mtl_textures = parse_mtl_textures(mtl_path_used);
 		mtl_bump_textures = parse_mtl_bump_textures(mtl_path_used);
+		mtl_alpha_textures = parse_mtl_alpha_textures(mtl_path_used);
 	}
 	if (out_lights && !mtl_path_used.empty())
 		mtl_emission = parse_mtl_emission(mtl_path_used);
@@ -831,10 +878,14 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 	// bump_map_material or normal_map_material, chosen by the loaded
 	// image's actual pixel content via is_grayscale_image() (see that
 	// function's own comment for why the .mtl keyword alone can't say
-	// which one a given map_Bump reference really is).
+	// which one a given map_Bump reference really is). Independently, a
+	// map_d texture (when present and texture_dir is set) becomes an
+	// alpha-cutout mask passed to each face's triangle constructor - see
+	// triangle::hit()'s own alpha test.
 	// ------------------------------------------------------------------
 	constexpr double kMeaningfulKsComponent = 0.02;
 	std::unordered_map<std::string, std::shared_ptr<material>> mat_cache;
+	std::unordered_map<std::string, std::shared_ptr<texture>> alpha_mask_cache;
 	std::unordered_set<std::string> emissive_mats;
 	hittable_list tris;
 	int n = mesh_data->num_triangles();
@@ -903,9 +954,30 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 				}
 				tri_mat = resolved ? resolved : fallback_mat;
 				mat_cache[name] = tri_mat;
+
+				// map_d alpha-cutout mask: independent of which branch
+				// above produced tri_mat (unlike map_Bump, this doesn't
+				// wrap the material -- see triangle::hit()'s own alpha
+				// test). Resolved and cached once per unique name here,
+				// same as tri_mat itself, so a mask shared by thousands of
+				// foliage triangles is decoded once, not per-triangle.
+				if (!texture_dir.empty()) {
+					auto alpha_it = mtl_alpha_textures.find(name);
+					if (alpha_it != mtl_alpha_textures.end()) {
+						std::string alpha_path = resolve_mtl_texture_path(alpha_it->second, found_prefix + texture_dir);
+						rtw_image alpha_probe(alpha_path.c_str());
+						if (alpha_probe.height() > 0)
+							alpha_mask_cache[name] = std::make_shared<image_texture>(std::move(alpha_probe));
+					}
+				}
 			}
 		}
-		auto tri = std::make_shared<triangle>(mesh_data, i, tri_mat);
+		std::shared_ptr<texture> tri_alpha;
+		if (!name.empty()) {
+			auto a_it = alpha_mask_cache.find(name);
+			if (a_it != alpha_mask_cache.end()) tri_alpha = a_it->second;
+		}
+		auto tri = std::make_shared<triangle>(mesh_data, i, tri_mat, tri_alpha);
 		tris.add(tri);
 		if (out_lights && !name.empty() && emissive_mats.count(name))
 			out_lights->add(tri);

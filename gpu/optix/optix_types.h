@@ -409,6 +409,17 @@ struct MaterialData {
 	// comment) - unambiguous since CPU never combines that material with a
 	// real albedo texture too.
 	int textureIdx = -1;
+
+	// Index into LaunchParams::textures for an opacity/alpha-cutout mask
+	// (map_d in OBJ/.mtl), or -1 for none (the overwhelming majority of
+	// materials) - see optix_intersection_triangle.h's __anyhit__triangle
+	// and optix_anyhit_shadow.h's __anyhit__shadow_triangle. Independent of
+	// textureIdx above (a material can have both a diffuse texture and a
+	// separate alpha mask), and applies only to triangles today - no
+	// sphere/quad/bilinear-patch scene sets it. Same default-member-
+	// initializer trick as textureIdx: every brace-init call site gets -1
+	// automatically, no existing call site needs updating.
+	int alphaMaskTexIdx = -1;
 };
 
 // Punctual (delta) light kinds - point/spot/distant. These are evaluated

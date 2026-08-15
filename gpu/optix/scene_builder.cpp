@@ -804,6 +804,46 @@ namespace {
 		return result;
 	}
 
+	// GPU counterpart of CPU's parse_mtl_alpha_textures(): maps material
+	// name -> its map_d (alpha-cutout mask) texture path. Matches "map_d"
+	// and, per the OBJ/.mtl spec's own alternate spelling, "map_D".
+	inline std::unordered_map<std::string, std::string> parse_mtl_alpha_textures_gpu(const std::string& filename) {
+		std::unordered_map<std::string, std::string> result;
+		std::ifstream file(filename);
+		if (!file.is_open()) {
+			static const char* kSearchPrefixes[] = {
+				"models/", "../models/", "../../models/",
+				"../../../models/", "../../../../models/", "../../../../../models/"
+			};
+			for (const char* prefix : kSearchPrefixes) {
+				file.clear();
+				file.open(std::string(prefix) + filename);
+				if (file.is_open()) break;
+			}
+		}
+		if (!file.is_open()) return result;
+
+		std::string line, current;
+		while (std::getline(file, line)) {
+			if (line.empty() || line[0] == '#') continue;
+			std::istringstream ss(line);
+			std::string tok;
+			ss >> tok;
+			if (tok == "newmtl") {
+				ss >> current;
+			} else if ((tok == "map_d" || tok == "map_D") && !current.empty()) {
+				std::string path;
+				std::getline(ss, path);
+				size_t start = path.find_first_not_of(" \t");
+				if (start != std::string::npos) {
+					size_t end = path.find_last_not_of(" \t\r");
+					result[current] = path.substr(start, end - start + 1);
+				}
+			}
+		}
+		return result;
+	}
+
 	// GPU counterpart of CPU's phong_to_roughness().
 	inline float phong_to_roughness_gpu(float ns) {
 		return sqrtf(2.0f / (ns + 2.0f));
@@ -1075,8 +1115,11 @@ namespace {
 		if (!mtlPathUsed.empty())
 			mtlSpecular = parse_mtl_specular_gpu(mtlPathUsed);
 		std::unordered_map<std::string, std::string> mtlBump;
-		if (textureDir && textureDir[0] != '\0' && !mtlPathUsed.empty())
+		std::unordered_map<std::string, std::string> mtlAlpha;
+		if (textureDir && textureDir[0] != '\0' && !mtlPathUsed.empty()) {
 			mtlBump = parse_mtl_bump_textures_gpu(mtlPathUsed);
+			mtlAlpha = parse_mtl_alpha_textures_gpu(mtlPathUsed);
+		}
 
 		auto cornerNormal = [&](int ni) -> float3 {
 			if (ni >= 0 && ni < static_cast<int>(normals.size())) return normals[ni];
@@ -1209,6 +1252,22 @@ namespace {
 									resolvedIdx = add_normal_mapped_lambertian(scene, albedo, bumpTexIdx);
 								}
 							}
+						}
+					}
+					// map_d -> MaterialData::alphaMaskTexIdx. Independent of
+					// which branch above produced resolvedIdx (unlike
+					// map_Bump's normal-map handling, this doesn't need a
+					// same-material-type check or a new MaterialData - it's
+					// a separate field any material type can carry) - see
+					// optix_intersection_triangle.h's __anyhit__triangle and
+					// optix_anyhit_shadow.h's __anyhit__shadow_triangle.
+					if (resolvedIdx >= 0) {
+						auto alphaIt = mtlAlpha.find(f.mtl);
+						if (alphaIt != mtlAlpha.end()) {
+							std::string alphaPath = resolve_mtl_texture_path_gpu(alphaIt->second, foundPrefix + textureDir);
+							int alphaTexIdx = load_image_texture_gpu(scene, alphaPath.c_str());
+							if (scene.textures[alphaTexIdx].width > 0)
+								scene.materials[resolvedIdx].alphaMaskTexIdx = alphaTexIdx;
 						}
 					}
 					materialIdx = (resolvedIdx >= 0) ? resolvedIdx : fallbackMaterialIdx;

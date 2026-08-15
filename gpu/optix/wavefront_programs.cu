@@ -49,6 +49,30 @@ __device__ __forceinline__ unsigned int wf_prim_base(int instBase) {
 	return (instBase >= 0) ? (unsigned int)instBase : 0u;
 }
 
+// Alpha-cutout test (OBJ/.mtl map_d), wavefront's own copy of
+// optix_device_helpers.h's passes_alpha_cutout()/sample_texture() -
+// duplicated rather than shared because wavefront_programs.cu and the
+// recursive path's optix_programs.cu are compiled as two separate OptiX
+// modules (see this file's own header comment on why wf_sphere/wf_quad/
+// wf_triangle intersection programs are likewise wavefront-native copies,
+// not cross-module reuse). Only handles TextureKind::Image (alpha masks
+// are always a loaded map_d file, never Checker/Noise), so this is
+// deliberately narrower than the full sample_texture() - matches its
+// Image-kind branch exactly. Returns true (keep the hit) for
+// alphaMaskTexIdx < 0, i.e. the overwhelming majority of triangles.
+__device__ __forceinline__ bool wf_passes_alpha_cutout(int alphaMaskTexIdx, float u, float v) {
+	if (alphaMaskTexIdx < 0) return true;
+	const TextureData& tex = wf_params.textures[alphaMaskTexIdx];
+	if (tex.width <= 0 || tex.height <= 0) return true;
+	const float uc = fminf(fmaxf(u, 0.0f), 1.0f);
+	const float vc = 1.0f - fminf(fmaxf(v, 0.0f), 1.0f);
+	const int i = min(static_cast<int>(uc * tex.width), tex.width - 1);
+	const int j = min(static_cast<int>(vc * tex.height), tex.height - 1);
+	const unsigned char* px = wf_params.texturePixels + tex.pixelOffset + (j * tex.width + i) * 3;
+	constexpr float kAlphaCutoutThreshold = 0.5f;
+	return (px[0] * (1.0f / 255.0f)) >= kAlphaCutoutThreshold;
+}
+
 // Per-shadow-ray occlusion output (device pointer passed via launch params extension).
 // We reuse a float3* slot in WavefrontLaunchParams — see wavefront_path_tracer.cpp
 // which passes d_occluded via the misuse of framebuffer during the shadow pass.
@@ -465,6 +489,37 @@ extern "C" __global__ void __intersection__wf_triangle() {
 	optixReportIntersection(t, 0, __float_as_int(b1), __float_as_int(b2), 0, 0);
 }
 
+// Alpha-cutout for radiance rays (MaterialData::alphaMaskTexIdx) - runs
+// BEFORE closest-hit is decided, which is exactly when a transparent pixel
+// needs to be skipped so it can't win as "the" hit in the first place.
+// Registered on the same hit group as __intersection__wf_triangle/
+// __closesthit__wf_triangle above (wavefront_path_tracer.cpp's triHitDesc
+// now sets moduleAH too), not a new program group. Uses
+// optixGetAttribute_0/1() (this hit group's own custom-intersection
+// barycentrics), NOT optixGetTriangleBarycentrics() - that's only valid
+// for OptiX's built-in triangle intersection, which the recursive path
+// uses but this wavefront-native one does not (see the header comment
+// above). A no-op for the overwhelming majority of triangles, whose
+// material has no alpha mask.
+extern "C" __global__ void __anyhit__wf_triangle() {
+	const int instBase = wf_instance_base();
+	const int primIdx = (int)(wf_prim_base(instBase) + optixGetPrimitiveIndex());
+	const TriangleData& tri = wf_params.triangles[primIdx];
+	const MaterialData& mat = wf_params.materials[tri.materialIdx];
+	if (mat.alphaMaskTexIdx < 0) return;
+
+	float uv_u = 0.0f, uv_v = 0.0f;
+	if (tri.hasUVs) {
+		const float b1 = __int_as_float(optixGetAttribute_0());
+		const float b2 = __int_as_float(optixGetAttribute_1());
+		const float b0 = 1.0f - b1 - b2;
+		uv_u = b0 * tri.uv0.x + b1 * tri.uv1.x + b2 * tri.uv2.x;
+		uv_v = b0 * tri.uv0.y + b1 * tri.uv1.y + b2 * tri.uv2.y;
+	}
+	if (!wf_passes_alpha_cutout(mat.alphaMaskTexIdx, uv_u, uv_v))
+		optixIgnoreIntersection();
+}
+
 extern "C" __global__ void __closesthit__wf_triangle() {
 	WfHitPayload* payload = (WfHitPayload*)unpackPointer(
 		optixGetPayload_0(), optixGetPayload_1());
@@ -832,6 +887,26 @@ extern "C" __global__ void __anyhit__wf_shadow_triangle() {
 	const int instBase = wf_instance_base();
 	const TriangleData& tri = wf_params.triangles[wf_prim_base(instBase) + optixGetPrimitiveIndex()];
 	const MaterialData& mat = wf_params.materials[tri.materialIdx];
+
+	// Alpha-cutout: a transparent pixel of a leaf/foliage material casts no
+	// shadow there - see __anyhit__wf_triangle's own comment for why
+	// optixGetAttribute_0/1() (this hit group's own custom-intersection
+	// barycentrics), not optixGetTriangleBarycentrics(). No-op for the
+	// overwhelming majority of triangles, whose material has no alpha mask.
+	if (mat.alphaMaskTexIdx >= 0) {
+		float uv_u = 0.0f, uv_v = 0.0f;
+		if (tri.hasUVs) {
+			const float b1 = __int_as_float(optixGetAttribute_0());
+			const float b2 = __int_as_float(optixGetAttribute_1());
+			const float b0 = 1.0f - b1 - b2;
+			uv_u = b0 * tri.uv0.x + b1 * tri.uv1.x + b2 * tri.uv2.x;
+			uv_v = b0 * tri.uv0.y + b1 * tri.uv1.y + b2 * tri.uv2.y;
+		}
+		if (!wf_passes_alpha_cutout(mat.alphaMaskTexIdx, uv_u, uv_v)) {
+			optixIgnoreIntersection();
+			return;
+		}
+	}
 
 	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
 		optixGetPayload_0(), optixGetPayload_1());

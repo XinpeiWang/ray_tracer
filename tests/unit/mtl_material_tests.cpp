@@ -9,9 +9,12 @@
 #include <gtest/gtest.h>
 #include "mesh.h"
 #include "material_simple.h"
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "external/stb_image_write.h"
 #include <cstdio>
 #include <fstream>
 #include <memory>
+#include <vector>
 
 namespace {
 
@@ -19,6 +22,15 @@ std::string write_temp_file(const std::string& path, const std::string& contents
 	std::ofstream f(path, std::ios::binary);
 	f << contents;
 	f.close();
+	return path;
+}
+
+// Writes a solid-color 1x1 RGB PNG -- used to build real alpha-cutout mask
+// fixtures (map_d), since is_grayscale_image()/the alpha test both need to
+// read actual decoded pixel data, not just a filename.
+std::string write_solid_png(const std::string& path, unsigned char r, unsigned char g, unsigned char b) {
+	unsigned char px[3] = { r, g, b };
+	stbi_write_png(path.c_str(), 1, 1, 3, px, 3);
 	return path;
 }
 
@@ -498,4 +510,93 @@ TEST(MtlMaterial, MissingTextureFileFallsBackToFlatKd) {
 
 	std::remove("mtl_material_test_missing_tex.obj");
 	std::remove("mtl_material_test_missing_tex.mtl");
+}
+
+// Alpha-cutout (map_d): a fully-opaque (white) mask must not change
+// whether the triangle is hit -- confirms the >= threshold comparison in
+// triangle::hit() keeps an opaque pixel, not just that it rejects a
+// transparent one.
+TEST(MtlMaterial, AlphaCutoutOpaqueMaskKeepsHit) {
+	write_solid_png("mtl_material_test_alpha_opaque.png", 255, 255, 255);
+	write_temp_file("mtl_material_test_alpha_opaque.mtl",
+		"newmtl OpaqueMask\n"
+		"Kd 0.4 0.6 0.8\n"
+		"map_d mtl_material_test_alpha_opaque.png\n");
+	std::string objPath = write_temp_file("mtl_material_test_alpha_opaque.obj",
+		"mtllib mtl_material_test_alpha_opaque.mtl\n"
+		"v 0 0 0\n"
+		"v 1 0 0\n"
+		"v 0 1 0\n"
+		"usemtl OpaqueMask\n"
+		"f 1 2 3\n");
+
+	auto fallback = std::make_shared<lambertian>(color(0.5, 0.5, 0.5));
+	auto mesh = load_obj_mtl(objPath, fallback, 1.0, point3(0,0,0), false, ".");
+	ASSERT_NE(mesh, nullptr);
+
+	ray r(point3(0.2, 0.2, -5), vec3(0, 0, 1));
+	hit_record rec;
+	EXPECT_TRUE(mesh->hit(r, interval(0.001, infinity), rec));
+
+	std::remove("mtl_material_test_alpha_opaque.obj");
+	std::remove("mtl_material_test_alpha_opaque.mtl");
+	std::remove("mtl_material_test_alpha_opaque.png");
+}
+
+// Alpha-cutout (map_d): a fully-transparent (black) mask must make the
+// triangle unhittable at every point on its surface -- this is the actual
+// leaf/foliage-cutout behavior (Sponza's leaf/vase_plant/chain materials,
+// Bistro's tree/hedge foliage), confirmed here with a synthetic fixture
+// since the real scenes only cut out PART of each texture, not the whole
+// thing, making a targeted pass/fail assertion on a specific real pixel
+// impractical without shipping a real texture file into the test tree.
+TEST(MtlMaterial, AlphaCutoutTransparentMaskRejectsHit) {
+	write_solid_png("mtl_material_test_alpha_cutout.png", 0, 0, 0);
+	write_temp_file("mtl_material_test_alpha_cutout.mtl",
+		"newmtl CutoutLeaf\n"
+		"Kd 0.2 0.6 0.2\n"
+		"map_d mtl_material_test_alpha_cutout.png\n");
+	std::string objPath = write_temp_file("mtl_material_test_alpha_cutout.obj",
+		"mtllib mtl_material_test_alpha_cutout.mtl\n"
+		"v 0 0 0\n"
+		"v 1 0 0\n"
+		"v 0 1 0\n"
+		"usemtl CutoutLeaf\n"
+		"f 1 2 3\n");
+
+	auto fallback = std::make_shared<lambertian>(color(0.5, 0.5, 0.5));
+	auto mesh = load_obj_mtl(objPath, fallback, 1.0, point3(0,0,0), false, ".");
+	ASSERT_NE(mesh, nullptr);
+
+	ray r(point3(0.2, 0.2, -5), vec3(0, 0, 1));
+	hit_record rec;
+	EXPECT_FALSE(mesh->hit(r, interval(0.001, infinity), rec));
+
+	std::remove("mtl_material_test_alpha_cutout.obj");
+	std::remove("mtl_material_test_alpha_cutout.mtl");
+	std::remove("mtl_material_test_alpha_cutout.png");
+}
+
+// parse_mtl_alpha_textures(): reads map_d per material, ignores materials
+// with no map_d line, matches the OBJ/.mtl spec's "map_D" alternate casing
+// too.
+TEST(MtlMaterial, ParseMtlAlphaTexturesReadsMapDPerMaterial) {
+	write_temp_file("mtl_material_test_parse_alpha.mtl",
+		"newmtl Leaf\n"
+		"Kd 0.2 0.6 0.2\n"
+		"map_d leaf_mask.png\n"
+		"newmtl AltCasing\n"
+		"Kd 0.5 0.5 0.5\n"
+		"map_D alt_mask.png\n"
+		"newmtl FlatOnly\n"
+		"Kd 0.3 0.3 0.3\n");
+
+	auto alpha = parse_mtl_alpha_textures("mtl_material_test_parse_alpha.mtl");
+	ASSERT_TRUE(alpha.count("Leaf"));
+	EXPECT_EQ(alpha["Leaf"], "leaf_mask.png");
+	ASSERT_TRUE(alpha.count("AltCasing"));
+	EXPECT_EQ(alpha["AltCasing"], "alt_mask.png");
+	EXPECT_FALSE(alpha.count("FlatOnly"));
+
+	std::remove("mtl_material_test_parse_alpha.mtl");
 }
