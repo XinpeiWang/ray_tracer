@@ -240,7 +240,15 @@ TEST(ConstantMedium, PhaseMaterialNonNull) {
 	}
 }
 
-// hg_phase_material scatter produces a valid direction
+// hg_phase_material scatter produces a valid direction via its pdf_ptr.
+// skip_pdf is deliberately false here (see hg_phase_material::scatter()'s
+// own comment): unlike a specular/delta BSDF, HG is smooth and benefits
+// from NEE, so the integrator samples a direction through srec.pdf_ptr
+// (generate()/value()) the same way it does for lambertian/cosine_pdf,
+// rather than reading a pre-populated skip_pdf_ray. This test used to
+// assert the old skip_pdf=true, skip_pdf_ray-populated contract and went
+// stale when that NEE fix landed - skip_pdf_ray is simply never touched
+// on this path now, so it correctly reads back as a zero direction.
 TEST(HGPhaseMaterial, ScatterProducesValidDirection) {
 	hg_phase_material mat(color(0.9, 0.9, 0.9), 0.7);
 	ray r_in(point3(0,0,0), vec3(0,0,1));
@@ -251,8 +259,10 @@ TEST(HGPhaseMaterial, ScatterProducesValidDirection) {
 	scatter_record srec;
 	bool ok = mat.scatter(r_in, rec, srec);
 	EXPECT_TRUE(ok);
-	EXPECT_TRUE(srec.skip_pdf);
-	double len = srec.skip_pdf_ray.direction().length();
+	EXPECT_FALSE(srec.skip_pdf);
+	ASSERT_NE(srec.pdf_ptr, nullptr);
+	vec3 dir = srec.pdf_ptr->generate();
+	double len = dir.length();
 	EXPECT_NEAR(len, 1.0, 1e-8);
 }
 
