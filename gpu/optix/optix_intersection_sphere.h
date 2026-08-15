@@ -37,6 +37,47 @@ __device__ __forceinline__ float gpu_cloud_density(const CloudMedium<float>& clo
 	return fminf(1.0f, fmaxf(0.0f, d + extra));
 }
 
+// Clamped voxel fetch for gpu_rgb_grid_trilinear below - `d` is one channel
+// block (nx*ny*nz floats) of LaunchParams::rgbGridData, offset by the
+// caller.
+__device__ __forceinline__ float gpu_rgb_grid_at(const float* d, int nx, int ny, int nz,
+												   int x, int y, int z) {
+	x = x < 0 ? 0 : (x >= nx ? nx-1 : x);
+	y = y < 0 ? 0 : (y >= ny ? ny-1 : y);
+	z = z < 0 ? 0 : (z >= nz ? nz-1 : z);
+	return d[x + nx * (y + ny * z)];
+}
+
+// Trilinear lookup into one channel of a GpuRgbGridMedium's flat voxel data,
+// px/py/pz in normalized [0,1]^3 medium space. A from-scratch device
+// reimplementation (not a call to SampledGrid<T>::lookup(), which - like
+// CloudMedium::compute_density() - lives in a struct not meant to be used
+// directly on device: RGBGridMediumData<T>'s SampledGrid<T> members use
+// std::vector internally, so GpuRgbGridMedium's data lives in this shared
+// flat buffer instead - see MaterialType::RgbGridMedium's comment in
+// optix_types.h).
+__device__ __forceinline__ float gpu_rgb_grid_trilinear(const float* d, int nx, int ny, int nz,
+														  float px, float py, float pz) {
+	float gx = px*nx - 0.5f, gy = py*ny - 0.5f, gz = pz*nz - 0.5f;
+	int ix0 = (int)floorf(gx), iy0 = (int)floorf(gy), iz0 = (int)floorf(gz);
+	float fx = gx-ix0, fy = gy-iy0, fz = gz-iz0;
+	float c000 = gpu_rgb_grid_at(d,nx,ny,nz, ix0,   iy0,   iz0);
+	float c100 = gpu_rgb_grid_at(d,nx,ny,nz, ix0+1, iy0,   iz0);
+	float c010 = gpu_rgb_grid_at(d,nx,ny,nz, ix0,   iy0+1, iz0);
+	float c110 = gpu_rgb_grid_at(d,nx,ny,nz, ix0+1, iy0+1, iz0);
+	float c001 = gpu_rgb_grid_at(d,nx,ny,nz, ix0,   iy0,   iz0+1);
+	float c101 = gpu_rgb_grid_at(d,nx,ny,nz, ix0+1, iy0,   iz0+1);
+	float c011 = gpu_rgb_grid_at(d,nx,ny,nz, ix0,   iy0+1, iz0+1);
+	float c111 = gpu_rgb_grid_at(d,nx,ny,nz, ix0+1, iy0+1, iz0+1);
+	float c00 = c000 + fx*(c100-c000);
+	float c10 = c010 + fx*(c110-c010);
+	float c01 = c001 + fx*(c101-c001);
+	float c11 = c011 + fx*(c111-c011);
+	float c0 = c00 + fy*(c10-c00);
+	float c1 = c01 + fy*(c11-c01);
+	return c0 + fz*(c1-c0);
+}
+
 extern "C" __global__ void __intersection__sphere() {
 	// Get primitive index from OptiX
 	const unsigned int primIdx = optixGetPrimitiveIndex();
@@ -310,6 +351,91 @@ extern "C" __global__ void __closesthit__sphere() {
 			}
 			if (!did_scatter) {
 				scattered_dir = unit_dir3;  // straight through, no interaction
+				attenuation   = make_float3(1.0f, 1.0f, 1.0f);
+			}
+			scattered    = true;
+			is_specular  = true;
+			is_medium    = true;
+	} else if (mat.type == MaterialType::RgbGridMedium) {
+			// Heterogeneous per-voxel R/G/B scattering grid - see
+			// MaterialType::RgbGridMedium's comment in optix_types.h. Uses a
+			// single GLOBAL majorant (grid.sigma_maj) rather than CPU's real
+			// per-voxel DDA majorant grid (src/TheRestOfYourLife/
+			// rgb_grid_medium_hittable.h) - the same simplification
+			// CloudMedium's GPU delta tracking already makes over its own
+			// CPU counterpart, for the same reason (keep GPU delta tracking
+			// algorithmically simple).
+			const GpuRgbGridMedium& grid = params.rgbGridMediums[(int)mat.rgb_grid_medium_extra.rgbGridMediumIdx];
+			float3 unit_dir3 = normalize(ray_dir);
+
+			// Transform ray into medium space (grid.mat/translate) - same
+			// affine-transform-preserves-t reasoning as CloudMedium's own
+			// branch above (grid.mat applied to both origin and direction).
+			float mox = grid.mat[0]*ray_orig.x + grid.mat[1]*ray_orig.y + grid.mat[2]*ray_orig.z + grid.translate[0];
+			float moy = grid.mat[3]*ray_orig.x + grid.mat[4]*ray_orig.y + grid.mat[5]*ray_orig.z + grid.translate[1];
+			float moz = grid.mat[6]*ray_orig.x + grid.mat[7]*ray_orig.y + grid.mat[8]*ray_orig.z + grid.translate[2];
+			float mdx = grid.mat[0]*unit_dir3.x + grid.mat[1]*unit_dir3.y + grid.mat[2]*unit_dir3.z;
+			float mdy = grid.mat[3]*unit_dir3.x + grid.mat[4]*unit_dir3.y + grid.mat[5]*unit_dir3.z;
+			float mdz = grid.mat[6]*unit_dir3.x + grid.mat[7]*unit_dir3.y + grid.mat[8]*unit_dir3.z;
+
+			// Ray/AABB slab test in medium space (unit cube [0,1]^3).
+			float segMin = 0.0f, segMax = 1e30f;
+			bool has_seg = true;
+			{
+				float invd, s0, s1;
+				invd = (mdx != 0.0f) ? 1.0f/mdx : 1e30f;
+				s0 = (0.0f - mox)*invd; s1 = (1.0f - mox)*invd;
+				if (s0 > s1) { float tmp = s0; s0 = s1; s1 = tmp; }
+				segMin = fmaxf(segMin, s0); segMax = fminf(segMax, s1);
+				if (segMin > segMax) has_seg = false;
+
+				invd = (mdy != 0.0f) ? 1.0f/mdy : 1e30f;
+				s0 = (0.0f - moy)*invd; s1 = (1.0f - moy)*invd;
+				if (s0 > s1) { float tmp = s0; s0 = s1; s1 = tmp; }
+				segMin = fmaxf(segMin, s0); segMax = fminf(segMax, s1);
+				if (segMin > segMax) has_seg = false;
+
+				invd = (mdz != 0.0f) ? 1.0f/mdz : 1e30f;
+				s0 = (0.0f - moz)*invd; s1 = (1.0f - moz)*invd;
+				if (s0 > s1) { float tmp = s0; s0 = s1; s1 = tmp; }
+				segMin = fmaxf(segMin, s0); segMax = fminf(segMax, s1);
+				if (segMin > segMax) has_seg = false;
+			}
+
+			bool did_scatter = false;
+			if (has_seg && grid.sigma_maj > 0.0f) {
+				if (segMin < 0.0f) segMin = 0.0f;
+				float tt = segMin;
+				const int voxelCount = grid.nx * grid.ny * grid.nz;
+				const float* rData = params.rgbGridData + grid.dataOffset;
+				const float* gData = rData + voxelCount;
+				const float* bData = gData + voxelCount;
+				for (int iter = 0; iter < 128 && !did_scatter; ++iter) {
+					float dt = -logf(fmaxf(1e-8f, 1.0f - random_float(seed))) / grid.sigma_maj;
+					tt += dt;
+					if (tt >= segMax) break;
+					float px = mox + tt*mdx, py = moy + tt*mdy, pz = moz + tt*mdz;
+					float dr = gpu_rgb_grid_trilinear(rData, grid.nx, grid.ny, grid.nz, px, py, pz);
+					float dg = gpu_rgb_grid_trilinear(gData, grid.nx, grid.ny, grid.nz, px, py, pz);
+					float db = gpu_rgb_grid_trilinear(bData, grid.nx, grid.ny, grid.nz, px, py, pz);
+					float sr = dr * grid.sigma_scale, sg = dg * grid.sigma_scale, sb = db * grid.sigma_scale;
+					float sigma_t_local = fmaxf(sr, fmaxf(sg, sb));
+					if (random_float(seed) < sigma_t_local / grid.sigma_maj) {
+						did_scatter = true;
+						medium_t_hit  = tt;
+						scattered_dir = sample_henyey_greenstein(unit_dir3, grid.phase_g, seed);
+						float maxc = fmaxf(sr, fmaxf(sg, fmaxf(sb, 1e-6f)));
+						attenuation = make_float3(sr/maxc, sg/maxc, sb/maxc);
+					}
+				}
+				if (!did_scatter) medium_t_hit = segMax;
+			} else {
+				// Missed the medium's own (tighter) AABB entirely - the
+				// trigger sphere is a loose bound, same as CloudMedium above.
+				medium_t_hit = t;
+			}
+			if (!did_scatter) {
+				scattered_dir = unit_dir3;
 				attenuation   = make_float3(1.0f, 1.0f, 1.0f);
 			}
 			scattered    = true;

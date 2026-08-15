@@ -580,7 +580,9 @@ bool OptiXRenderer::buildScene(
 	const std::vector<GpuExitPupilBounds>& exitPupilBounds,
 	const std::vector<TextureData>& textures,
 	const std::vector<unsigned char>& texturePixels,
-	const std::vector<CloudMedium<float>>& cloudMediums
+	const std::vector<CloudMedium<float>>& cloudMediums,
+	const std::vector<GpuRgbGridMedium>& rgbGridMediums,
+	const std::vector<float>& rgbGridData
 ) {
 	// Store material data on device
 	numMaterials_ = static_cast<unsigned int>(materials.size());
@@ -808,6 +810,50 @@ bool OptiXRenderer::buildScene(
 			cudaMemcpyHostToDevice
 		));
 		std::cout << "[OptiX] Uploaded " << cloudMediums.size() << " cloud media to GPU\n";
+	}
+
+	// Heterogeneous RGB grid media (MaterialType::RgbGridMedium) - metadata
+	// table plus the shared flat voxel-data buffer it slices into (see
+	// GpuRgbGridMedium::dataOffset), same two-array pattern as the
+	// RealisticCamera lens table (GpuLensElement metadata isn't itself this
+	// two-tier, but CloudMedium above and this both mirror that upload
+	// approach: cudaMalloc/cudaMemcpy, freeing any prior allocation first).
+	numRgbGridMediums_ = static_cast<unsigned int>(rgbGridMediums.size());
+	size_t rgbGridMediumSize = rgbGridMediums.size() * sizeof(GpuRgbGridMedium);
+
+	if (d_rgbGridMediums_) {
+		cudaFree(reinterpret_cast<void*>(d_rgbGridMediums_));
+		d_rgbGridMediums_ = 0;
+	}
+
+	if (numRgbGridMediums_ > 0) {
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_rgbGridMediums_), rgbGridMediumSize));
+		CUDA_CHECK(cudaMemcpy(
+			reinterpret_cast<void*>(d_rgbGridMediums_),
+			rgbGridMediums.data(),
+			rgbGridMediumSize,
+			cudaMemcpyHostToDevice
+		));
+	}
+
+	rgbGridDataCount_ = static_cast<unsigned int>(rgbGridData.size());
+	size_t rgbGridDataSize = rgbGridData.size() * sizeof(float);
+
+	if (d_rgbGridData_) {
+		cudaFree(reinterpret_cast<void*>(d_rgbGridData_));
+		d_rgbGridData_ = 0;
+	}
+
+	if (rgbGridDataCount_ > 0) {
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_rgbGridData_), rgbGridDataSize));
+		CUDA_CHECK(cudaMemcpy(
+			reinterpret_cast<void*>(d_rgbGridData_),
+			rgbGridData.data(),
+			rgbGridDataSize,
+			cudaMemcpyHostToDevice
+		));
+		std::cout << "[OptiX] Uploaded " << rgbGridMediums.size() << " RGB grid media ("
+			<< rgbGridData.size() << " voxel floats) to GPU\n";
 	}
 
 	// Store light data on device for MIS
@@ -1776,6 +1822,7 @@ bool OptiXRenderer::render(
 		wavefrontTracer_->setInstancePrimBase(d_instanceBase_);
 		wavefrontTracer_->setTextures(d_textures_, d_texturePixels_);
 		wavefrontTracer_->setCloudMediums(d_cloudMediums_, numCloudMediums_);
+		wavefrontTracer_->setRgbGridMediums(d_rgbGridMediums_, numRgbGridMediums_, d_rgbGridData_, rgbGridDataCount_);
 		return wavefrontTracer_->render(
 			(int)width, (int)height, (int)samplesPerPixel, (int)maxDepth,
 			gpuCam,
@@ -1816,6 +1863,10 @@ bool OptiXRenderer::render(
 	params.numMaterials = numMaterials_;
 	params.cloudMediums = reinterpret_cast<CloudMedium<float>*>(d_cloudMediums_);
 	params.numCloudMediums = numCloudMediums_;
+	params.rgbGridMediums = reinterpret_cast<GpuRgbGridMedium*>(d_rgbGridMediums_);
+	params.numRgbGridMediums = numRgbGridMediums_;
+	params.rgbGridData = reinterpret_cast<float*>(d_rgbGridData_);
+	params.rgbGridDataCount = rgbGridDataCount_;
 	params.textures = reinterpret_cast<TextureData*>(d_textures_);
 	params.numTextures = numTextures_;
 	params.texturePixels = reinterpret_cast<unsigned char*>(d_texturePixels_);
@@ -1925,6 +1976,8 @@ void OptiXRenderer::cleanup() noexcept {
 	if (d_lensElements_) cudaFree(reinterpret_cast<void*>(d_lensElements_));
 	if (d_exitPupilBounds_) cudaFree(reinterpret_cast<void*>(d_exitPupilBounds_));
 	if (d_cloudMediums_) cudaFree(reinterpret_cast<void*>(d_cloudMediums_));
+	if (d_rgbGridMediums_) cudaFree(reinterpret_cast<void*>(d_rgbGridMediums_));
+	if (d_rgbGridData_) cudaFree(reinterpret_cast<void*>(d_rgbGridData_));
 	if (d_lightIndices_) cudaFree(reinterpret_cast<void*>(d_lightIndices_));
 	if (d_lightKinds_) cudaFree(reinterpret_cast<void*>(d_lightKinds_));
 	if (d_aliasTable_) cudaFree(reinterpret_cast<void*>(d_aliasTable_));

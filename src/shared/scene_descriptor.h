@@ -77,6 +77,8 @@ namespace SceneNames {
     constexpr const char* ProjectionLight      = "Projection Light";
     constexpr const char* HomogeneousMedium    = "Homogeneous Medium";
     constexpr const char* CloudMedium          = "Cloud Medium";
+    constexpr const char* DielectricMediumShowcase = "Dielectric Medium Showcase";
+    constexpr const char* RgbGridMedium        = "RGB Grid Medium";
     constexpr const char* OrthographicCamera   = "Orthographic Camera";
     constexpr const char* SphericalCamera      = "Spherical Camera";
     constexpr const char* MeasuredBrdf         = "Measured BRDF";

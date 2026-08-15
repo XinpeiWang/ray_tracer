@@ -77,7 +77,9 @@ public:
 		const std::vector<GpuExitPupilBounds>& exitPupilBounds = {},
 		const std::vector<TextureData>& textures = {},
 		const std::vector<unsigned char>& texturePixels = {},
-		const std::vector<CloudMedium<float>>& cloudMediums = {}
+		const std::vector<CloudMedium<float>>& cloudMediums = {},
+		const std::vector<GpuRgbGridMedium>& rgbGridMediums = {},
+		const std::vector<float>& rgbGridData = {}
 	);
 
 	/// @brief Render a frame using path tracing
@@ -299,6 +301,10 @@ private:
 	unsigned int numExitPupilBounds_ = 0;  ///< Number of exit-pupil bounds slabs
 	CUdeviceptr d_cloudMediums_ = 0;       ///< Device CloudMedium<float> table (MaterialType::CloudMedium)
 	unsigned int numCloudMediums_ = 0;     ///< Number of cloud media
+	CUdeviceptr d_rgbGridMediums_ = 0;     ///< Device GpuRgbGridMedium table (MaterialType::RgbGridMedium)
+	unsigned int numRgbGridMediums_ = 0;   ///< Number of RGB grid media
+	CUdeviceptr d_rgbGridData_ = 0;        ///< Device flat voxel data for all RGB grid media
+	unsigned int rgbGridDataCount_ = 0;    ///< Number of floats in d_rgbGridData_
 
 	// Light sampling support for MIS
 	CUdeviceptr d_lightIndices_ = 0;  ///< Device light primitive indices

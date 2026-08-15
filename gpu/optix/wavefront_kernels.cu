@@ -61,6 +61,41 @@ __device__ __forceinline__ float gpu_cloud_density(const CloudMedium<float>& clo
 	return fminf(1.0f, fmaxf(0.0f, d + extra));
 }
 
+// Matches optix_intersection_sphere.h's gpu_rgb_grid_at/gpu_rgb_grid_
+// trilinear exactly - see that copy's comment for why this is a from-
+// scratch reimplementation rather than a call into RGBGridMediumData<T>/
+// SampledGrid<T> (std::vector-backed, host-only). Own definition here since
+// this is a separate translation unit from optix_programs.cu.
+__device__ __forceinline__ float gpu_rgb_grid_at(const float* d, int nx, int ny, int nz,
+												   int x, int y, int z) {
+	x = x < 0 ? 0 : (x >= nx ? nx-1 : x);
+	y = y < 0 ? 0 : (y >= ny ? ny-1 : y);
+	z = z < 0 ? 0 : (z >= nz ? nz-1 : z);
+	return d[x + nx * (y + ny * z)];
+}
+
+__device__ __forceinline__ float gpu_rgb_grid_trilinear(const float* d, int nx, int ny, int nz,
+														  float px, float py, float pz) {
+	float gx = px*nx - 0.5f, gy = py*ny - 0.5f, gz = pz*nz - 0.5f;
+	int ix0 = (int)floorf(gx), iy0 = (int)floorf(gy), iz0 = (int)floorf(gz);
+	float fx = gx-ix0, fy = gy-iy0, fz = gz-iz0;
+	float c000 = gpu_rgb_grid_at(d,nx,ny,nz, ix0,   iy0,   iz0);
+	float c100 = gpu_rgb_grid_at(d,nx,ny,nz, ix0+1, iy0,   iz0);
+	float c010 = gpu_rgb_grid_at(d,nx,ny,nz, ix0,   iy0+1, iz0);
+	float c110 = gpu_rgb_grid_at(d,nx,ny,nz, ix0+1, iy0+1, iz0);
+	float c001 = gpu_rgb_grid_at(d,nx,ny,nz, ix0,   iy0,   iz0+1);
+	float c101 = gpu_rgb_grid_at(d,nx,ny,nz, ix0+1, iy0,   iz0+1);
+	float c011 = gpu_rgb_grid_at(d,nx,ny,nz, ix0,   iy0+1, iz0+1);
+	float c111 = gpu_rgb_grid_at(d,nx,ny,nz, ix0+1, iy0+1, iz0+1);
+	float c00 = c000 + fx*(c100-c000);
+	float c10 = c010 + fx*(c110-c010);
+	float c01 = c001 + fx*(c101-c001);
+	float c11 = c011 + fx*(c111-c011);
+	float c0 = c00 + fy*(c10-c00);
+	float c1 = c01 + fy*(c11-c01);
+	return c0 + fz*(c1-c0);
+}
+
 __device__ __forceinline__ unsigned int wf_pcg(unsigned int seed) {
 	unsigned int state = seed * 747796405u + 2891336453u;
 	unsigned int word  = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
@@ -712,7 +747,9 @@ extern "C" __global__ void evaluate_materials(
 	const unsigned char* texturePixels,
 	int maxDepth,
 	const CloudMedium<float>* cloudMediums,
-	unsigned int numCloudMediums
+	unsigned int numCloudMediums,
+	const GpuRgbGridMedium* rgbGridMediums,
+	const float* rgbGridData
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
@@ -1253,6 +1290,86 @@ extern "C" __global__ void evaluate_materials(
 			if (!did_scatter) medium_t = segMax;
 		} else {
 			medium_t = h.t;  // missed the medium's own AABB - pass straight through
+		}
+		if (!did_scatter) {
+			scattered_dir = unit_dir;
+			attenuation   = SS(1.f);
+		}
+		hit_point   = h.rayOrigin + medium_t * unit_dir;
+		scattered   = true;
+		is_specular = true;
+		break;
+	}
+
+	case MaterialType::RgbGridMedium: {
+		// Heterogeneous per-voxel R/G/B scattering grid - mirrors
+		// optix_intersection_sphere.h's closesthit RgbGridMedium case exactly
+		// (see that comment for the full reasoning, including why this uses
+		// one single GLOBAL majorant rather than CPU's real per-voxel DDA
+		// majorant grid).
+		const GpuRgbGridMedium& grid = rgbGridMediums[(int)mat.rgb_grid_medium_extra.rgbGridMediumIdx];
+		float3 unit_dir = normalize(h.rayDir);
+
+		float mox = grid.mat[0]*h.rayOrigin.x + grid.mat[1]*h.rayOrigin.y + grid.mat[2]*h.rayOrigin.z + grid.translate[0];
+		float moy = grid.mat[3]*h.rayOrigin.x + grid.mat[4]*h.rayOrigin.y + grid.mat[5]*h.rayOrigin.z + grid.translate[1];
+		float moz = grid.mat[6]*h.rayOrigin.x + grid.mat[7]*h.rayOrigin.y + grid.mat[8]*h.rayOrigin.z + grid.translate[2];
+		float mdx = grid.mat[0]*unit_dir.x + grid.mat[1]*unit_dir.y + grid.mat[2]*unit_dir.z;
+		float mdy = grid.mat[3]*unit_dir.x + grid.mat[4]*unit_dir.y + grid.mat[5]*unit_dir.z;
+		float mdz = grid.mat[6]*unit_dir.x + grid.mat[7]*unit_dir.y + grid.mat[8]*unit_dir.z;
+
+		float segMin = 0.0f, segMax = 1e30f;
+		bool has_seg = true;
+		{
+			float invd, s0, s1;
+			invd = (mdx != 0.0f) ? 1.0f/mdx : 1e30f;
+			s0 = (0.0f - mox)*invd; s1 = (1.0f - mox)*invd;
+			if (s0 > s1) { float tmp = s0; s0 = s1; s1 = tmp; }
+			segMin = fmaxf(segMin, s0); segMax = fminf(segMax, s1);
+			if (segMin > segMax) has_seg = false;
+
+			invd = (mdy != 0.0f) ? 1.0f/mdy : 1e30f;
+			s0 = (0.0f - moy)*invd; s1 = (1.0f - moy)*invd;
+			if (s0 > s1) { float tmp = s0; s0 = s1; s1 = tmp; }
+			segMin = fmaxf(segMin, s0); segMax = fminf(segMax, s1);
+			if (segMin > segMax) has_seg = false;
+
+			invd = (mdz != 0.0f) ? 1.0f/mdz : 1e30f;
+			s0 = (0.0f - moz)*invd; s1 = (1.0f - moz)*invd;
+			if (s0 > s1) { float tmp = s0; s0 = s1; s1 = tmp; }
+			segMin = fmaxf(segMin, s0); segMax = fminf(segMax, s1);
+			if (segMin > segMax) has_seg = false;
+		}
+
+		bool did_scatter = false;
+		float medium_t = 0.0f;
+		if (has_seg && grid.sigma_maj > 0.0f) {
+			if (segMin < 0.0f) segMin = 0.0f;
+			float tt = segMin;
+			const int voxelCount = grid.nx * grid.ny * grid.nz;
+			const float* rData = rgbGridData + grid.dataOffset;
+			const float* gData = rData + voxelCount;
+			const float* bData = gData + voxelCount;
+			for (int iter = 0; iter < 128 && !did_scatter; ++iter) {
+				float dt = -logf(fmaxf(1e-8f, 1.0f - wf_rand(seed))) / grid.sigma_maj;
+				tt += dt;
+				if (tt >= segMax) break;
+				float px = mox + tt*mdx, py = moy + tt*mdy, pz = moz + tt*mdz;
+				float dr = gpu_rgb_grid_trilinear(rData, grid.nx, grid.ny, grid.nz, px, py, pz);
+				float dg = gpu_rgb_grid_trilinear(gData, grid.nx, grid.ny, grid.nz, px, py, pz);
+				float db = gpu_rgb_grid_trilinear(bData, grid.nx, grid.ny, grid.nz, px, py, pz);
+				float sr = dr * grid.sigma_scale, sg = dg * grid.sigma_scale, sb = db * grid.sigma_scale;
+				float sigma_t_local = fmaxf(sr, fmaxf(sg, sb));
+				if (wf_rand(seed) < sigma_t_local / grid.sigma_maj) {
+					did_scatter = true;
+					medium_t      = tt;
+					scattered_dir = wf_sample_henyey_greenstein(unit_dir, grid.phase_g, seed);
+					float maxc = fmaxf(sr, fmaxf(sg, fmaxf(sb, 1e-6f)));
+					attenuation = albedoSpectrum(make_float3(sr/maxc, sg/maxc, sb/maxc));
+				}
+			}
+			if (!did_scatter) medium_t = segMax;
+		} else {
+			medium_t = h.t;
 		}
 		if (!did_scatter) {
 			scattered_dir = unit_dir;

@@ -741,7 +741,8 @@ extern "C" __global__ void __anyhit__wf_shadow_sphere() {
 		mat.type == MaterialType::ThinDielectric ||
 		mat.type == MaterialType::DiffuseTransmission ||
 		mat.type == MaterialType::Medium ||
-		mat.type == MaterialType::CloudMedium) {
+		mat.type == MaterialType::CloudMedium ||
+		mat.type == MaterialType::RgbGridMedium) {
 		optixIgnoreIntersection();
 		return;
 	}

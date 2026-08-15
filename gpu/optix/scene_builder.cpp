@@ -23,6 +23,7 @@
 #include <unordered_map>
 
 #include "../../src/shared/conductor_data.h"
+#include "../../src/shared/rgb_nebula_generator.h"
 #include "../../src/shared/cameras.h"
 #include "../../src/shared/cornell_box_data.h"
 // Declarations only (no STB_IMAGE_IMPLEMENTATION) - the actual
@@ -207,6 +208,32 @@ namespace {
 		m.medium_albedo = albedo;
 		m.g = medium.phase_g;
 		m.cloud_medium_extra.cloudMediumIdx = static_cast<float>(cloudIdx);
+		scene.materials.push_back(m);
+		return idx;
+	}
+
+	// Uploads a heterogeneous RGB grid medium's metadata + flat voxel data
+	// (R block, then G, then B - see GpuRgbGridMedium::dataOffset), then adds
+	// a material referencing it via rgb_grid_medium_extra.rgbGridMediumIdx -
+	// see MaterialType::RgbGridMedium's comment in optix_types.h. `meta`'s
+	// dataOffset field is overwritten here; the caller only needs to fill in
+	// every other field before calling this.
+	inline int add_rgb_grid_medium(SceneData& scene, GpuRgbGridMedium meta,
+	                                const std::vector<float>& r,
+	                                const std::vector<float>& g,
+	                                const std::vector<float>& b) {
+		meta.dataOffset = safe_cast_to_int(scene.rgbGridData.size());
+		scene.rgbGridData.insert(scene.rgbGridData.end(), r.begin(), r.end());
+		scene.rgbGridData.insert(scene.rgbGridData.end(), g.begin(), g.end());
+		scene.rgbGridData.insert(scene.rgbGridData.end(), b.begin(), b.end());
+
+		const int mediumIdx = safe_cast_to_int(scene.rgbGridMediums.size());
+		scene.rgbGridMediums.push_back(meta);
+
+		const int idx = safe_cast_to_int(scene.materials.size());
+		MaterialData m{};
+		m.type = MaterialType::RgbGridMedium;
+		m.rgb_grid_medium_extra.rgbGridMediumIdx = static_cast<float>(mediumIdx);
 		scene.materials.push_back(m);
 		return idx;
 	}
@@ -2429,6 +2456,115 @@ static void build_cloud_medium_scene_gpu(SceneData& scene) {
 	scene.spheres.push_back(s2);
 }
 
+/// @brief Scene E3: Dielectric Medium Showcase. Matches CPU
+/// build_dielectric_medium_scene() - three glass spheres with colored
+/// internal fog at varying density, using the already-wired single-material
+/// MaterialType::DielectricMedium (add_dielectric_medium()) rather than
+/// CPU's two-hittable dielectric+constant_medium pair, since the whole
+/// point of that material type is to fuse the two into one.
+static void build_dielectric_medium_scene_gpu(SceneData& scene) {
+	const int mat_ground = add_lambertian(scene, make_float3(0.4f, 0.5f, 0.3f));
+	SphereData ground{};
+	ground.center = make_float3(0.0f, -1000.0f, 0.0f);
+	ground.radius = 1000.0f;
+	ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	struct fog_sphere { float x; float3 albedo; float sigma_t; };
+	const fog_sphere spheres[3] = {
+		{ -4.0f, make_float3(0.9f, 0.2f, 0.2f), 0.5f },  // thin red mist
+		{  0.0f, make_float3(0.2f, 0.8f, 0.3f), 1.5f },  // medium green haze
+		{  4.0f, make_float3(0.3f, 0.4f, 0.9f), 3.0f },  // dense blue fog
+	};
+	const float radius = 1.5f;
+	for (const auto& s : spheres) {
+		const int mat = add_dielectric_medium(scene, s.albedo, 1.5f, s.sigma_t);
+		SphereData sp{};
+		sp.center = make_float3(s.x, radius, 0.0f);
+		sp.radius = radius;
+		sp.materialIdx = mat;
+		scene.spheres.push_back(sp);
+	}
+}
+
+/// @brief Scene E4: RGB Grid Medium ("nebula"). Matches CPU
+/// build_rgb_grid_medium_scene() exactly - same world AABB, same
+/// generate_nebula_channel() calls (so both backends render identical voxel
+/// data), same sigma_scale/phase_g. Uses the new MaterialType::RgbGridMedium
+/// (add_rgb_grid_medium()) with a "trigger sphere" the same way CloudMedium
+/// does (see build_cloud_medium_scene_gpu's comment) - the sphere's own
+/// geometry only exists to get the ray into this branch at all; the medium's
+/// real bounds are GpuRgbGridMedium::bounds_min/max, tested fresh in the
+/// closesthit branch.
+static void build_rgb_grid_medium_scene_gpu(SceneData& scene) {
+	const int mat_ground = add_lambertian(scene, make_float3(0.4f, 0.5f, 0.3f));
+	SphereData ground{};
+	ground.center = make_float3(0.0f, -1000.0f, 0.0f);
+	ground.radius = 1000.0f;
+	ground.materialIdx = mat_ground;
+	scene.spheres.push_back(ground);
+
+	const int nx = 24, ny = 24, nz = 24;
+	std::vector<float> ss_r, ss_g, ss_b;
+	generate_nebula_channel<float>(nx, ny, nz, 3.0f, 0.0f,  0.0f, 0.0f, ss_r);
+	generate_nebula_channel<float>(nx, ny, nz, 3.0f, 5.2f,  1.7f, 3.3f, ss_g);
+	generate_nebula_channel<float>(nx, ny, nz, 3.0f, 11.4f, 8.8f, 2.1f, ss_b);
+
+	float max_density = 0.0f;
+	for (float v : ss_r) max_density = fmaxf(max_density, v);
+	for (float v : ss_g) max_density = fmaxf(max_density, v);
+	for (float v : ss_b) max_density = fmaxf(max_density, v);
+
+	const float3 world_min = make_float3(-4.0f, 1.0f, -4.0f);
+	const float3 world_max = make_float3(4.0f, 5.0f, 4.0f);
+	const float sx = 1.0f / (world_max.x - world_min.x);
+	const float sy = 1.0f / (world_max.y - world_min.y);
+	const float sz = 1.0f / (world_max.z - world_min.z);
+	const float sigma_scale = 4.0f;  // matches CPU's sigma_scale
+
+	GpuRgbGridMedium meta{};
+	meta.bounds_min[0] = world_min.x; meta.bounds_min[1] = world_min.y; meta.bounds_min[2] = world_min.z;
+	meta.bounds_max[0] = world_max.x; meta.bounds_max[1] = world_max.y; meta.bounds_max[2] = world_max.z;
+	meta.mat[0] = sx;   meta.mat[1] = 0.0f; meta.mat[2] = 0.0f;
+	meta.mat[3] = 0.0f; meta.mat[4] = sy;   meta.mat[5] = 0.0f;
+	meta.mat[6] = 0.0f; meta.mat[7] = 0.0f; meta.mat[8] = sz;
+	meta.translate[0] = -world_min.x*sx;
+	meta.translate[1] = -world_min.y*sy;
+	meta.translate[2] = -world_min.z*sz;
+	meta.nx = nx; meta.ny = ny; meta.nz = nz;
+	meta.sigma_scale = sigma_scale;
+	meta.sigma_maj = max_density * sigma_scale * 1.01f;  // small safety margin
+	meta.phase_g = 0.2f;
+
+	const int mat_medium = add_rgb_grid_medium(scene, meta, ss_r, ss_g, ss_b);
+
+	const float3 center = make_float3(
+		0.5f*(world_min.x+world_max.x), 0.5f*(world_min.y+world_max.y), 0.5f*(world_min.z+world_max.z));
+	const float3 half = make_float3(
+		0.5f*(world_max.x-world_min.x), 0.5f*(world_max.y-world_min.y), 0.5f*(world_max.z-world_min.z));
+	const float trigger_radius = sqrtf(half.x*half.x + half.y*half.y + half.z*half.z);
+	SphereData trigger{};
+	trigger.center = center;
+	trigger.radius = trigger_radius;
+	trigger.materialIdx = mat_medium;
+	scene.spheres.push_back(trigger);
+
+	// Context spheres - matches CPU exactly.
+	const int mat_orange = add_lambertian(scene, make_float3(0.9f, 0.3f, 0.2f));
+	SphereData s1{};
+	s1.center = make_float3(-6.0f, 0.5f, 4.0f);
+	s1.radius = 0.5f;
+	s1.materialIdx = mat_orange;
+	scene.spheres.push_back(s1);
+
+	const int mat_metal = add_metal(scene, make_float3(0.8f, 0.8f, 0.9f), 0.05f);
+	SphereData s2{};
+	s2.center = make_float3(6.0f, 0.5f, 4.0f);
+	s2.radius = 0.5f;
+	s2.materialIdx = mat_metal;
+	scene.spheres.push_back(s2);
+}
+
 /// @brief Scene 23: Bilinear Patch Scene. Matches CPU build_bilinear_patch_scene()
 /// exactly - standard Cornell box + two genuinely curved (non-planar) metal
 /// bilinear patches (see optix_intersection_bilinear_patch.h). Unlike scene 7's
@@ -4562,6 +4698,36 @@ bool build_scene(
 									// Matches CPU CameraConfig bg for scene 31 - this is the scene's
 									// ONLY light source (no emissive geometry), so a missing/black
 									// background here means zero illumination anywhere in the image.
+									out_camera_extra->backgroundColor = make_float3(0.5f, 0.7f, 1.0f);
+								}
+								break;
+							}
+
+							case 69: {  // Dielectric Medium Showcase (glass spheres w/ colored fog)
+								build_dielectric_medium_scene_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 18.0f);
+								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);  // 40: matches CPU CameraConfig row for scene 69
+								if (out_camera_extra) {
+									// Matches CPU CameraConfig bg for scene 69 - same reasoning as
+									// scene 31 (Cloud Medium): this scene's only light source.
+									out_camera_extra->backgroundColor = make_float3(0.5f, 0.7f, 1.0f);
+								}
+								break;
+							}
+
+							case 70: {  // RGB Grid Medium (heterogeneous per-voxel R/G/B nebula)
+								build_rgb_grid_medium_scene_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 5.0f, 30.0f);
+								const float3 lookat   = make_float3(0.0f, 3.0f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 45.0f, aspect, 1.0f, camera_params);  // 45: matches CPU CameraConfig row for scene 70
+								if (out_camera_extra) {
+									// Matches CPU CameraConfig bg for scene 70 - same reasoning as
+									// scene 31 (Cloud Medium): this scene's only light source.
 									out_camera_extra->backgroundColor = make_float3(0.5f, 0.7f, 1.0f);
 								}
 								break;

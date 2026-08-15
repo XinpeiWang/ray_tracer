@@ -410,6 +410,27 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             sky_dummy_lights
         },
         {
+            "E3", 69, SceneNames::DielectricMediumShowcase, SceneCategories::Volumes,
+            "Three glass spheres containing colored internal fog at varying density - dielectric surface + participating medium combined (pbrt-v4 style)",
+            "Medium", 200, false, true,
+            // vfov/lookfrom chosen so all 3 spheres (x:[-5.5,5.5] incl.
+            // radius) fit comfortably in frame - see build_dielectric_medium_scene.
+            { 40, 0, 3, 18,  0, 1.5, 0,  0.5, 0.7, 1.0 },
+            build_dielectric_medium_scene,
+            sky_dummy_lights
+        },
+        {
+            "E4", 70, SceneNames::RgbGridMedium, SceneCategories::Volumes,
+            "Heterogeneous nebula with an independent per-voxel R/G/B scattering grid (pbrt-v4 RGBGridMedium)",
+            "Slow", 300, false, true,
+            // Pulled back further than E2's cloud camera - this box is
+            // taller (world y:[1,5] vs E2's [1,4]) and the context spheres
+            // sit further out (x:+-6) - see build_rgb_grid_medium_scene.
+            { 45, 0, 5, 30,  0, 3, 0,  0.5, 0.7, 1.0 },
+            build_rgb_grid_medium_scene,
+            sky_dummy_lights
+        },
+        {
             "D2", 32, SceneNames::OrthographicCamera, SceneCategories::Cameras,
             "Geometric showcase rendered with an orthographic (parallel-projection) camera (pbrt-v4 OrthographicCamera)",
             "Fast", 100, false, true,

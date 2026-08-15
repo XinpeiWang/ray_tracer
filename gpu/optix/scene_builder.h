@@ -14,6 +14,8 @@ struct SceneData {
 	std::vector<TriangleData> triangles;
 	std::vector<MaterialData> materials;
 	std::vector<CloudMedium<float>> cloudMediums;  // indexed by MaterialType::CloudMedium's cloud_medium_extra.cloudMediumIdx
+	std::vector<GpuRgbGridMedium> rgbGridMediums;  // indexed by MaterialType::RgbGridMedium's rgb_grid_medium_extra.rgbGridMediumIdx
+	std::vector<float> rgbGridData;                // flat voxel data, sliced per-medium via GpuRgbGridMedium::dataOffset
 
 	// ---- object instancing ------------------------------------------------
 	// Geometry that exists once and is placed many times. Kept in a SEPARATE

@@ -75,6 +75,18 @@ public:
         numCloudMediums_ = numCloudMediums;
     }
 
+    /// Heterogeneous RGB grid media (MaterialType::RgbGridMedium) - same
+    /// setter-not-render()-parameter pattern as setCloudMediums() above, for
+    /// the same reason. 0/0/0/0 (the default) is a valid "no RGB grid media
+    /// in this scene" state.
+    void setRgbGridMediums(CUdeviceptr d_rgbGridMediums, unsigned int numRgbGridMediums,
+                            CUdeviceptr d_rgbGridData, unsigned int rgbGridDataCount) {
+        d_rgbGridMediums_ = d_rgbGridMediums;
+        numRgbGridMediums_ = numRgbGridMediums;
+        d_rgbGridData_ = d_rgbGridData;
+        rgbGridDataCount_ = rgbGridDataCount;
+    }
+
     /// Whether the scene has instanced geometry of each kind. buildSBT() must
     /// append the same dedicated hit-record pairs, in the same order, that
     /// OptiXRenderer::buildSBT() does - the IAS instances carry sbtOffsets
@@ -156,6 +168,10 @@ private:
     CUdeviceptr  d_texturePixels_ = 0;
     CUdeviceptr  d_cloudMediums_ = 0;       ///< see setCloudMediums()
     unsigned int numCloudMediums_ = 0;
+    CUdeviceptr  d_rgbGridMediums_ = 0;     ///< see setRgbGridMediums()
+    unsigned int numRgbGridMediums_ = 0;
+    CUdeviceptr  d_rgbGridData_ = 0;
+    unsigned int rgbGridDataCount_ = 0;
     bool         haveInstancedTriangles_ = false;  ///< see setInstancedGeometryFlags()
     bool         haveInstancedSpheres_ = false;
     unsigned int numSpheres_  = 0;

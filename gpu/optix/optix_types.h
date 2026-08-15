@@ -254,7 +254,47 @@ enum class MaterialType : int {
 	// and every other Medium-family type already uses those same two names.
 	// Sphere-only for the same reason Medium is: only usable on the boundary
 	// shape the intersection code re-derives entry/exit roots for.
-	CloudMedium = 16
+	CloudMedium = 16,
+	// Heterogeneous participating medium with a real per-voxel R/G/B
+	// scattering grid (pbrt-v4 RGBGridMedium, src/shared/rgb_grid_medium.h) -
+	// matches src/TheRestOfYourLife/rgb_grid_medium_hittable.h's delta
+	// tracking, except GPU uses one single GLOBAL majorant for the whole
+	// medium (GpuRgbGridMedium::sigma_maj) rather than CPU's real per-voxel
+	// DDA majorant grid - a deliberate simplification (see gpu_rgb_grid_
+	// trilinear's comment in optix_intersection_sphere.h) to keep GPU delta
+	// tracking algorithmically simple. Like CloudMedium, this only stores an
+	// INDEX (rgb_grid_medium_extra.rgbGridMediumIdx) into
+	// LaunchParams::rgbGridMediums, one level further than CloudMedium even:
+	// RGBGridMediumData<T> can't be used directly on device at all (its
+	// SampledGrid<T> members use std::vector/std::optional internally), so
+	// GpuRgbGridMedium is a from-scratch flat metadata struct (below) whose
+	// actual voxel data lives in a SEPARATE shared flat buffer
+	// (LaunchParams::rgbGridData), indexed via GpuRgbGridMedium::dataOffset.
+	// Sphere-only, same reason as Medium/CloudMedium.
+	RgbGridMedium = 17
+};
+
+// Heterogeneous per-voxel R/G/B scattering grid metadata (GPU-only flat
+// analog of RGBGridMediumData<T> - see MaterialType::RgbGridMedium's
+// comment for why that struct can't be used directly on device). One
+// instance per RgbGridMedium material, indexed via MaterialData::
+// rgb_grid_medium_extra.rgbGridMediumIdx. Plain POD, no CPU_GPU tagging
+// needed (its own fields are read directly by ordinary device code in
+// optix_intersection_sphere.h/wavefront_kernels.cu, same as SphereData/
+// QuadData already are).
+struct GpuRgbGridMedium {
+	float bounds_min[3], bounds_max[3];  // world-space AABB
+	float mat[9];                         // row-major 3x3 world->medium transform
+	float translate[3];
+	int   nx, ny, nz;                     // grid resolution
+	// Element offset into LaunchParams::rgbGridData - the R channel block
+	// starts here, G at +nx*ny*nz, B at +2*(nx*ny*nz).
+	int   dataOffset;
+	float sigma_scale;  // overall density multiplier (matches CPU's sigma_scale)
+	float sigma_maj;    // precomputed global majorant = sigma_scale * max
+	                     // voxel value across all three channels, with a
+	                     // small safety margin - see the GPU scene builder.
+	float phase_g;       // Henyey-Greenstein asymmetry
 };
 
 // Texture kinds - see TextureData below. Matches three CPU texture classes
@@ -353,6 +393,9 @@ struct MaterialData {
 		// layout - see MaterialType::CloudMedium's comment for why an index
 		// rather than direct field reuse).
 		struct { float cloudMediumIdx, _cloud_medium_pad1, _cloud_medium_pad2; } cloud_medium_extra;
+		// RgbGridMedium: index into LaunchParams::rgbGridMediums - same
+		// index-not-direct-field-reuse reasoning as cloud_medium_extra above.
+		struct { float rgbGridMediumIdx, _rgb_grid_medium_pad1, _rgb_grid_medium_pad2; } rgb_grid_medium_extra;
 	};
 
 	float3 k_c;   // Conductor/CoatedConductor only: imaginary part k per R/G/B channel
@@ -585,6 +628,15 @@ struct LaunchParams {
 	// comment) rather than a separate GPU-specific mirror struct.
 	CloudMedium<float>* cloudMediums;
 	unsigned int numCloudMediums;
+
+	// Heterogeneous per-voxel R/G/B media (MaterialType::RgbGridMedium),
+	// indexed by MaterialData::rgb_grid_medium_extra.rgbGridMediumIdx. Each
+	// GpuRgbGridMedium's actual voxel data is a separate slice of the flat
+	// rgbGridData buffer below (see GpuRgbGridMedium::dataOffset).
+	GpuRgbGridMedium* rgbGridMediums;
+	unsigned int numRgbGridMediums;
+	float* rgbGridData;
+	unsigned int rgbGridDataCount;
 
 	// Texture data (see TextureData above) - indexed by
 	// MaterialData::textureIdx. texturePixels is one shared flat 8-bit RGB

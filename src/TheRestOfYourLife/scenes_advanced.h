@@ -8,6 +8,8 @@
 #include "material.h"
 #include "constant_medium.h"
 #include "cloud_medium_hittable.h"
+#include "rgb_grid_medium_hittable.h"
+#include "../shared/rgb_nebula_generator.h"
 #include "hair_material.h"
 #include "principled_material.h"
 #include "normal_map_materials.h"
@@ -682,6 +684,117 @@ inline hittable_list build_cloud_medium_scene() {
 	// of the cloud instead of nearly buried in its silhouette; the camera's
 	// CameraConfig row was also widened (see scene_registry.h) so both are
 	// actually in frame at all, which they previously weren't either way.
+	world.add(make_shared<sphere>(point3(-6, 0.5, 4), 0.5,
+								 make_shared<lambertian>(color(0.9, 0.3, 0.2))));
+	world.add(make_shared<sphere>(point3(6, 0.5, 4), 0.5,
+								 make_shared<metal>(color(0.8,0.8,0.9), 0.05)));
+	return world;
+}
+
+// ============================================================================
+// Scene E3: Dielectric Medium Showcase
+// Three glass spheres, each containing a different colored internal fog at a
+// different density, showing the "dielectric surface + internal medium"
+// combination as its own subject - A9's Final Scene and B13's Subsurface
+// Slab already use this same combination, but only as one element among
+// several other things; this scene exists purely to show the range (thin
+// mist -> dense fog) side by side.
+//
+// CPU builds this the same way A9/B13 already do: the boundary shape is
+// added to `world` TWICE - once with a `dielectric` surface material, once
+// wrapped in `constant_medium` for the internal scattering - rather than one
+// combined material (see constant_medium's own header comment: the medium's
+// sampled hit distance can never be closer than the entry surface, so this
+// works without any explicit ordering logic). GPU instead uses the already-
+// wired single-material MaterialType::DielectricMedium fusion (see
+// build_dielectric_medium_scene_gpu in gpu/optix/scene_builder.cpp) since
+// that's the whole point of that material type existing.
+// ============================================================================
+inline hittable_list build_dielectric_medium_scene() {
+	hittable_list world;
+	// Ground
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000,
+								 make_shared<lambertian>(color(0.4, 0.5, 0.3))));
+
+	struct fog_sphere { double x; color albedo; double sigma_t; };
+	// sigma_t values chosen so optical depth (sigma_t * diameter, diameter=3)
+	// spans thin/misty (1.5) to dense/opaque (9.0) - a visibly different
+	// look per sphere, not just three different colors at the same density.
+	const fog_sphere spheres[3] = {
+		{ -4.0, color(0.9, 0.2, 0.2), 0.5 },  // thin red mist
+		{  0.0, color(0.2, 0.8, 0.3), 1.5 },  // medium green haze
+		{  4.0, color(0.3, 0.4, 0.9), 3.0 },  // dense blue fog
+	};
+	const double radius = 1.5;
+	for (const auto& s : spheres) {
+		auto boundary = make_shared<sphere>(point3(s.x, radius, 0), radius,
+											 make_shared<dielectric>(1.5));
+		world.add(boundary);
+		world.add(make_shared<constant_medium>(boundary, s.sigma_t, s.albedo));
+	}
+	return world;
+}
+
+// ============================================================================
+// Scene E4: RGB Grid Medium ("nebula")
+// A heterogeneous medium with an independent per-voxel R/G/B scattering
+// grid (pbrt-v4 RGBGridMedium / src/shared/rgb_grid_medium.h), wired up for
+// the first time - previously only unit-tested, never used by any scene
+// (the same "built but unwired" state CloudMedium was in before scene E2).
+// Unlike E2's CloudMedium (procedural, evaluated analytically per point at
+// render time), this stores real per-voxel data in a grid baked once at
+// scene-build time via generate_nebula_channel() (src/shared/
+// rgb_nebula_generator.h) - the SAME generator GPU's build_rgb_grid_medium_
+// scene_gpu() calls, so both backends render identical voxel data. Each
+// channel uses a different frequency-space offset so R/G/B genuinely
+// decorrelate into visible color variation, not just a uniformly-tinted
+// cloud.
+// ============================================================================
+inline hittable_list build_rgb_grid_medium_scene() {
+	hittable_list world;
+	// Ground
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000,
+								 make_shared<lambertian>(color(0.4, 0.5, 0.3))));
+
+	const int nx = 24, ny = 24, nz = 24;
+	std::vector<double> sa_zero(static_cast<size_t>(nx)*ny*nz, 0.0);  // sigma_a=0: pure
+	                                                                  // scattering (see
+	                                                                  // rgb_grid_medium_hittable.h)
+	std::vector<double> ss_r, ss_g, ss_b;
+	generate_nebula_channel<double>(nx, ny, nz, 3.0, 0.0,  0.0,  0.0,  ss_r);
+	generate_nebula_channel<double>(nx, ny, nz, 3.0, 5.2,  1.7,  3.3,  ss_g);
+	generate_nebula_channel<double>(nx, ny, nz, 3.0, 11.4, 8.8,  2.1,  ss_b);
+
+	Bounds3<double> unit_cube(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
+	auto grid = RGBGridMediumData<double>::build(
+		sa_zero, sa_zero, sa_zero,   // sigma_a: zero everywhere (must be non-empty
+		                             // to actually get 0 - see build()'s own doc:
+		                             // an OMITTED grid defaults to 1, not 0)
+		ss_r, ss_g, ss_b,            // sigma_s: the nebula's actual per-channel density
+		{}, {}, {},                  // Le: no emission
+		nx, ny, nz,
+		unit_cube,
+		4.0,   // sigma_scale: overall density multiplier, tuned so the ~8-unit
+		       // box reads as a real volumetric nebula rather than a faint haze
+		0.0,   // Le_scale: unused (no emission)
+		0.2,   // phase_g: slight forward scattering, matches E1/E2's fog
+		16     // maj_res: majorant grid resolution (DDA acceleration)
+	);
+
+	point3 world_min(-4, 1, -4), world_max(4, 5, 4);
+	double sx = 1.0 / (world_max.x() - world_min.x());
+	double sy = 1.0 / (world_max.y() - world_min.y());
+	double sz = 1.0 / (world_max.z() - world_min.z());
+	double world_to_medium_mat[9] = { sx,0,0,  0,sy,0,  0,0,sz };
+	double world_to_medium_translate[3] = {
+		-world_min.x()*sx, -world_min.y()*sy, -world_min.z()*sz
+	};
+	world.add(make_shared<rgb_grid_medium_hittable>(
+		grid, 0.2, world_min, world_max,
+		world_to_medium_mat, world_to_medium_translate));
+
+	// Context spheres, same idea as E2's - clearly outside the nebula's own
+	// x:[-4,4] extent so they read as separate objects, not buried in it.
 	world.add(make_shared<sphere>(point3(-6, 0.5, 4), 0.5,
 								 make_shared<lambertian>(color(0.9, 0.3, 0.2))));
 	world.add(make_shared<sphere>(point3(6, 0.5, 4), 0.5,

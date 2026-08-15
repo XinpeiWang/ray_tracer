@@ -227,6 +227,14 @@ struct WavefrontLaunchParams {
 	CloudMedium<float>* cloudMediums;
 	unsigned int         numCloudMediums;
 
+	// Heterogeneous RGB grid media (MaterialType::RgbGridMedium), same
+	// shared device buffers OptiXRenderer::buildScene() already uploads for
+	// the recursive path - see wavefront_kernels.cu's RgbGridMedium case.
+	GpuRgbGridMedium* rgbGridMediums;
+	unsigned int      numRgbGridMediums;
+	float*            rgbGridData;
+	unsigned int      rgbGridDataCount;
+
 	// Light sampling (alias table, same layout as RecursivePathTracer)
 	int*         lightIndices;
 	const GpuLightKind* lightKinds;   // see optix_types.h - width is load-bearing

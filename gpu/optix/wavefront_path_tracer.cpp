@@ -45,6 +45,7 @@ extern "C" void wf_launch_evaluate_materials(
 	const TextureData*, const unsigned char*,
 	int,
 	const CloudMedium<float>*, unsigned int,
+	const GpuRgbGridMedium*, const float*,
 	cudaStream_t);
 extern "C" void wf_launch_accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, cudaStream_t);
 extern "C" void wf_launch_accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*, cudaStream_t);
@@ -771,6 +772,8 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		reinterpret_cast<const unsigned char*>(d_texturePixels_),
 		maxDepth,
 		reinterpret_cast<const CloudMedium<float>*>(d_cloudMediums_), numCloudMediums_,
+		reinterpret_cast<const GpuRgbGridMedium*>(d_rgbGridMediums_),
+		reinterpret_cast<const float*>(d_rgbGridData_),
 		stream_);
 }
 
@@ -860,6 +863,10 @@ bool WavefrontPathTracer::render(
 	lp.numMaterials  = num_materials;
 	lp.cloudMediums    = reinterpret_cast<CloudMedium<float>*>(d_cloudMediums_);
 	lp.numCloudMediums = numCloudMediums_;
+	lp.rgbGridMediums    = reinterpret_cast<GpuRgbGridMedium*>(d_rgbGridMediums_);
+	lp.numRgbGridMediums = numRgbGridMediums_;
+	lp.rgbGridData        = reinterpret_cast<float*>(d_rgbGridData_);
+	lp.rgbGridDataCount   = rgbGridDataCount_;
 	lp.lightIndices  = reinterpret_cast<int*>(d_light_indices);
 	lp.lightKinds = reinterpret_cast<const GpuLightKind*>(d_lightKinds);
 	lp.instancePrimBase = reinterpret_cast<const int*>(d_instancePrimBase_);
