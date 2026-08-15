@@ -376,6 +376,51 @@ __device__ float3 wf_sample_quad_light(const QuadData& q, const float3& hit,
 	return dir;
 }
 
+// Sample a point on a triangle light. Same shape of answer/logic as
+// sample_triangle_light() in optix_device_helpers.h (the recursive path's
+// own copy - duplicated here for the same cross-module reason every other
+// wf_sample_*_light function in this file is: wavefront_kernels.cu and the
+// recursive path's optix_programs.cu are compiled as separate OptiX
+// modules). Was entirely missing before - the NEE light-selection dispatch
+// below only ever distinguished Sphere from "everything else is Quad",
+// so a genuinely selected GpuLightKind::Triangle light read Quad data at
+// a triangle's index instead - into an empty quads[] array for any
+// OBJ/.mtl mesh scene with real Ke emission and zero actual quads, a wild
+// out-of-bounds read (CUDA error 700, illegal memory access). Never
+// caught before because no scene had ever registered a genuinely emissive
+// OBJ triangle as a light in wavefront mode until Fireplace Room's real
+// Ke materials exercised it - the exact same "first real use surfaces a
+// latent gap" story as wf_sample_sphere_light's own comment above.
+// GpuLightKind::BilinearPatch has this identical gap and remains
+// unfixed - no scene combines wavefront mode with a bilinear-patch light
+// yet, so it hasn't been exercised either; a future one hitting the same
+// crash should look here first.
+__device__ float3 wf_sample_triangle_light(const TriangleData& tri, const float3& hit,
+											unsigned int& seed, float& geom_pdf, float& maxDist) {
+	float a = wf_rand(seed), b = wf_rand(seed);
+	if (a + b > 1.0f) { a = 1.0f - a; b = 1.0f - b; }
+	const float3 e1 = tri.p1 - tri.p0;
+	const float3 e2 = tri.p2 - tri.p0;
+	const float3 point = tri.p0 + a * e1 + b * e2;
+
+	float3 dir = point - hit;
+	maxDist = length(dir);
+	if (maxDist < 1e-6f) { geom_pdf = 0.0f; return make_float3(0.0f, 0.0f, 1.0f); }
+	dir = dir / maxDist;
+
+	const float3 n_unnorm = cross(e1, e2);
+	const float twice_area = length(n_unnorm);
+	if (twice_area < 1e-12f) { geom_pdf = 0.0f; return dir; }
+	const float3 normal = n_unnorm / twice_area;
+	const float area = 0.5f * twice_area;
+
+	const float cosine = fabsf(dot(dir, normal));
+	if (cosine < 1e-6f) { geom_pdf = 0.0f; return dir; }
+
+	geom_pdf = (maxDist * maxDist) / (cosine * area);
+	return dir;
+}
+
 // Equal-area sphere->square mapping for the goniometric light's image
 // lookup. Duplicated from optix_device_helpers.h's dev_equal_area_sphere_to_square
 // (itself a local copy of src/shared/sampling_patched.h's EqualAreaSphereToSquare -
@@ -736,6 +781,7 @@ extern "C" __global__ void evaluate_materials(
 	// Scene data
 	const SphereData*   spheres,
 	const QuadData*     quads,
+	const TriangleData* triangles,
 	const MaterialData* materials,
 	const int*          lightIndices,
 	const GpuLightKind* lightKinds,
@@ -1527,8 +1573,8 @@ extern "C" __global__ void evaluate_materials(
 		int light_idx = (wf_rand(seed) < entry.q) ? slot : entry.alias;
 		float selection_pdf = aliasTable[light_idx].pdf;
 
-		int   prim_idx        = lightIndices[light_idx];
-		bool  is_sphere_light = lightKinds[light_idx] == GpuLightKind::Sphere;
+		int            prim_idx  = lightIndices[light_idx];
+		GpuLightKind   kind      = lightKinds[light_idx];
 
 		float  geom_pdf = 0.0f, max_dist = 0.0f;
 		float3 to_light;
@@ -1548,11 +1594,20 @@ extern "C" __global__ void evaluate_materials(
 			return s;
 		};
 
-		if (is_sphere_light) {
+		if (kind == GpuLightKind::Sphere) {
 			const SphereData& s = spheres[prim_idx];
 			to_light = wf_sample_sphere_light(s, hit_point, seed, geom_pdf, max_dist);
 			light_emission_spec = liftEmission(materials[s.materialIdx].emission);
+		} else if (kind == GpuLightKind::Triangle) {
+			const TriangleData& tri = triangles[prim_idx];
+			to_light = wf_sample_triangle_light(tri, hit_point, seed, geom_pdf, max_dist);
+			light_emission_spec = liftEmission(materials[tri.materialIdx].emission);
 		} else {
+			// Quad, and the still-unhandled BilinearPatch case (see the
+			// wf_sample_triangle_light comment above this dispatch's history) -
+			// BilinearPatch falls through here same as before this fix, reading
+			// wrong data if one is ever selected; a scene that exercises that
+			// gap should add a fourth branch the same way this one was added.
 			const QuadData& q = quads[prim_idx];
 			to_light = wf_sample_quad_light(q, hit_point, seed, geom_pdf, max_dist);
 			light_emission_spec = liftEmission(materials[q.materialIdx].emission);

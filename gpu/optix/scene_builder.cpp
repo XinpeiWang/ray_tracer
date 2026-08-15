@@ -4113,6 +4113,26 @@ static void build_rungholt_gpu(SceneData& scene) {
 		/*scale=*/1.0f, make_float3(0.0f, 0.0f, 0.0f));
 }
 
+/// @brief Scene 73: Fireplace Room. Matches CPU build_fireplace_room()
+/// exactly. See build_sponza_gpu()'s own comment for the shared design
+/// rationale (real per-face textures via map_Kd, sky via backgroundColor).
+/// A small furnished interior rather than a building-scale environment.
+static void build_fireplace_room_gpu(SceneData& scene) {
+	const int mat_wood = add_lambertian(scene, make_float3(0.55f, 0.45f, 0.35f));
+	load_obj_triangles_mtl_gpu(scene, "fireplace_room.obj", mat_wood,
+		/*scale=*/1.0f, make_float3(-2.305f, 0.003f, 1.518f), "fireplace_room_textures");
+}
+
+/// @brief Scene 74: San Miguel. Matches CPU build_san_miguel() exactly.
+/// See build_sponza_gpu()'s own comment for the shared design rationale.
+/// 9.9M triangles -- the largest mesh in this codebase (Bistro was
+/// previously the largest at 2.84M).
+static void build_san_miguel_gpu(SceneData& scene) {
+	const int mat_adobe = add_lambertian(scene, make_float3(0.75f, 0.65f, 0.55f));
+	load_obj_triangles_mtl_gpu(scene, "san_miguel.obj", mat_adobe,
+		/*scale=*/1.0f, make_float3(-12.25f, 0.463f, -1.4475f), "san_miguel_textures");
+}
+
 /// @brief Build a scene and configure the camera
 /// @param scene_id Scene identifier, category letter + number ("A1" = Cornell Box)
 /// @param image_width Output image width in pixels
@@ -5625,6 +5645,36 @@ bool build_scene(
 								if (out_camera_extra) {
 									// Matches CPU build_rungholt_sky()'s solid-color sky_light(0.55,0.72,0.95).
 									out_camera_extra->backgroundColor = make_float3(0.55f, 0.72f, 0.95f);
+								}
+								break;
+							}
+
+							case 73: {  // Fireplace Room (see build_fireplace_room_gpu's comment)
+								build_fireplace_room_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, -2.0f, 1.6f, -1.5f);
+								const float3 lookat   = make_float3(0.0f, 1.3f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 55.0f, aspect, 1.0f, camera_params);  // 55: matches CPU CameraConfig row for scene 73
+								if (out_camera_extra) {
+									// Matches CPU build_fireplace_room_sky()'s solid-color sky_light(0.6,0.75,0.95).
+									out_camera_extra->backgroundColor = make_float3(0.6f, 0.75f, 0.95f);
+								}
+								break;
+							}
+
+							case 74: {  // San Miguel (see build_san_miguel_gpu's comment)
+								build_san_miguel_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 10.0f, 3.0f, 5.0f);
+								const float3 lookat   = make_float3(0.0f, 3.0f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 45.0f, aspect, 1.0f, camera_params);  // 45: matches CPU CameraConfig row for scene 74
+								if (out_camera_extra) {
+									// Matches CPU build_san_miguel_sky()'s brightened sky_light(1.4,1.68,2.0) -
+									// see that function's comment (the colonnaded courtyard is light-starved
+									// by geometric occlusion at the original brightness, same issue as Sponza).
+									out_camera_extra->backgroundColor = make_float3(1.4f, 1.68f, 2.0f);
 								}
 								break;
 							}

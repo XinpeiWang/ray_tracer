@@ -32,7 +32,7 @@ TEST(SceneRegistryTest, RegistryIsNonEmpty) {
 }
 
 TEST(SceneRegistryTest, RegistryHasExpectedCount) {
-	// We currently compile in 72 scenes (legacy_ids 0-72 with one gap at 53 -
+	// We currently compile in 74 scenes (legacy_ids 0-74 with one gap at 53 -
 	// D5-D8 added the classic Cornell box rendered by each of D1-D4's camera
 	// models for direct comparison, see scene_registry.h's comment above
 	// those 4 rows; E3/E4 added two more volume scenes; F3/F4 added
@@ -40,7 +40,8 @@ TEST(SceneRegistryTest, RegistryHasExpectedCount) {
 	// Beetle Alt, legacy_id 53) was removed as visually indistinguishable
 	// from G15 - see scene_registry.h's G15 entry - leaving that legacy_id
 	// permanently unused rather than renumbering G17-G24, matching this
-	// registry's existing precedent of stable, non-contiguous ids).
+	// registry's existing precedent of stable, non-contiguous ids; H4/H5
+	// added Fireplace Room and San Miguel to the LargeScene category).
 	// This test will fail if a scene is accidentally added or removed -
 	// update this count (and kGuiSceneCount below) when that's intentional.
 	//
@@ -48,7 +49,7 @@ TEST(SceneRegistryTest, RegistryHasExpectedCount) {
 	// also contains whatever .pbrt files happen to be on the machine running
 	// the tests, which is not a property of this source tree and must not
 	// decide whether the suite passes.
-	EXPECT_EQ(builtin_scene_count(), 72);
+	EXPECT_EQ(builtin_scene_count(), 74);
 }
 
 TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem) {
@@ -531,7 +532,7 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // double-checking the GUI/error-hint text that mentions specific scene
 // counts or ID ranges by hand.
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
-	constexpr int kGuiSceneCount = 72;
+	constexpr int kGuiSceneCount = 74;
 	EXPECT_EQ(builtin_scene_count(), kGuiSceneCount)
 		<< "Registry size changed -- update kGuiSceneCount here to match.";
 }

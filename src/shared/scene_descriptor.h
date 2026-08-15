@@ -121,6 +121,8 @@ namespace SceneNames {
     constexpr const char* CrytekSponza         = "Crytek Sponza";
     constexpr const char* AmazonBistro         = "Amazon Lumberyard Bistro";
     constexpr const char* Rungholt             = "Rungholt";
+    constexpr const char* FireplaceRoom        = "Fireplace Room";
+    constexpr const char* SanMiguel            = "San Miguel";
 } // namespace SceneNames
 
 // -----------------------------------------------------------------------

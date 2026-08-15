@@ -1263,6 +1263,26 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             build_rungholt_sky,
             nullptr
         },
+        {
+            "H4", 73, SceneNames::FireplaceRoom, SceneCategories::LargeScene,
+            "Fireplace Room - a small, human-scale furnished living room (fireplace, wood floor, framed pictures, a potted plant), with real per-face .mtl materials and image textures loaded from models/fireplace_room_textures/, lit by an open sky through its windows, loaded from an external .obj file (requires models/fireplace_room.obj). Fourth 'whole environment' mesh scene, same design rationale as scenes 62-64 -- see build_fireplace_room()'s own comment. A furnished interior rather than a building/street/town-scale environment.",
+            "Slow", 150, true, true,
+            { 55, -2.0, 1.6, -1.5,  0, 1.3, 0,  0, 0, 0 },
+            build_fireplace_room,
+            build_fireplace_room_lights,
+            build_fireplace_room_sky,
+            nullptr
+        },
+        {
+            "H5", 74, SceneNames::SanMiguel, SceneCategories::LargeScene,
+            "San Miguel (9.9M triangles) - a dense Mexican hacienda courtyard/villa, the classic 'hero' benchmark scene with real per-face .mtl materials and image textures (tile, wood, fabric, foliage) loaded from models/san_miguel_textures/, lit by an open sky, loaded from an external .obj file (requires models/san_miguel.obj). Fifth 'whole environment' mesh scene, same design rationale as scenes 62-64/73 -- see build_san_miguel()'s own comment.",
+            "Very Slow", 150, true, true,
+            { 45, 10, 3, 5,  0, 3, 0,  0, 0, 0 },
+            build_san_miguel,
+            build_san_miguel_lights,
+            build_san_miguel_sky,
+            nullptr
+        },
     };
     return registry;
 }

@@ -109,6 +109,7 @@ private:
     void launchEvaluateMaterials(int numHits, int maxDepth,
         const SphereData* d_spheres, unsigned int numSpheres,
         const QuadData* d_quads, unsigned int numQuads,
+        const TriangleData* d_triangles, unsigned int numTriangles,
         const MaterialData* d_materials, unsigned int numMaterials,
         const int* d_lightIndices, const GpuLightKind* d_lightKinds,
         const GpuAliasEntry* d_aliasTable, unsigned int numLights,

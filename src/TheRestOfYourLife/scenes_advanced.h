@@ -2064,3 +2064,116 @@ inline hittable_list build_rungholt_lights() {
 inline std::shared_ptr<sky_light> build_rungholt_sky() {
 	return std::make_shared<sky_light>(color(0.55, 0.72, 0.95));
 }
+
+// ============================================================================
+// Scene 73: Fireplace Room
+// Fourth "whole environment" mesh scene, same design rationale as scenes
+// 62-64 (see build_sponza()'s own comment) -- real per-face .mtl materials
+// and image textures (wood floor/furniture, framed pictures, foliage)
+// loaded from models/fireplace_room_textures/, lit by an open sky, loaded
+// from an external .obj file (requires models/fireplace_room.obj). Unlike
+// 62-64, a small, human-scale FURNISHED INTERIOR (a living room with a
+// fireplace) rather than a building-scale environment -- 22 materials,
+// including real map_d alpha-cutout foliage (a potted-plant leaf material)
+// and an illum-7 glass material for the windows/fireplace screen, so this
+// exercises Phase 2/4's specular-dispatch and alpha-cutout work on a
+// second, structurally different asset from Bistro's.
+//
+// Source: McGuire Computer Graphics Archive (casual-effects.com/data),
+// CC BY 3.0, originally modeled for the "grey and white room" scene.
+//
+// Scale/offset: kept at the raw OBJ's native scale (already human-scale,
+// no normalization needed) with only a re-centering offset: raw bbox
+// x=[-0.513,5.123] y=[-0.003,2.879] z=[-3.635,0.599], offset by
+// (-2.305, 0.003, 1.518) to sit the floor at y=0 and center the room's
+// footprint on (x,z)=(0,0).
+//
+// Camera: an enclosed room, not an open colonnade/street (Sponza/Bistro's
+// problem) or a low sprawling town (Rungholt's) -- placed at human eye
+// height (1.6) just inside the room looking across it toward the fireplace
+// wall, verified by CPU render (this room is small/simple enough that a
+// straightforward "corner, eye height, look at center" placement didn't
+// need the standalone ray-probe script the larger scenes required).
+// ============================================================================
+inline std::shared_ptr<triangle_mesh_mtl> fireplace_room_mesh() {
+	static const auto mesh = std::make_shared<triangle_mesh_mtl>(
+		"fireplace_room.obj", make_shared<lambertian>(color(0.55, 0.45, 0.35)),
+		/*scale=*/1.0, point3(-2.305, 0.003, 1.518),
+		/*smooth_normals=*/false, "fireplace_room_textures");
+	return mesh;
+}
+
+inline hittable_list build_fireplace_room() {
+	hittable_list world;
+	world.add(fireplace_room_mesh());
+	return world;
+}
+
+inline hittable_list build_fireplace_room_lights() {
+	return fireplace_room_mesh()->lights();
+}
+
+inline std::shared_ptr<sky_light> build_fireplace_room_sky() {
+	return std::make_shared<sky_light>(color(0.6, 0.75, 0.95));
+}
+
+// ============================================================================
+// Scene 74: San Miguel
+// Fifth "whole environment" mesh scene, same design rationale as scenes
+// 62-64/73 (see build_sponza()'s own comment) -- real per-face .mtl
+// materials and image textures (tile, wood, fabric, foliage) loaded from
+// models/san_miguel_textures/, lit by an open sky, loaded from an external
+// .obj file (requires models/san_miguel.obj). A dense Mexican hacienda
+// courtyard/villa - the classic "hero" benchmark scene, comparable
+// prestige/complexity to Bistro (9.9M triangles, heavy foliage). Real
+// map_bump normal maps (roof beams, tree bark, water) and map_d
+// alpha-cutout foliage throughout, plus a genuine illum-7 glass material
+// (Ns 1000) -- exercises Phases 2-4 on a third, much larger asset.
+//
+// Source: McGuire Computer Graphics Archive (casual-effects.com/data),
+// CC BY 3.0, modeled by Guillermo M. Leal Llaguno based on a real hacienda
+// in San Miguel de Allende, Mexico; this 2017 revision by Morgan McGuire,
+// Guedis Cardenas, and Michael Mara (Williams College) and Nicholas Hull
+// (NVIDIA).
+//
+// Scale/offset: kept at the raw OBJ's native scale (a building-scale
+// environment like Sponza/Bistro, not normalized) with only a re-centering
+// offset: raw bbox x=[-22.274,46.774] y=[-0.463,14.600]
+// z=[-12.042,14.937], offset by (-12.25, 0.463, -1.4475) to sit the
+// (near-)floor at y=0 and center the plan on (x,z)=(0,0).
+//
+// Camera: a walled courtyard complex, not a single open colonnade
+// (Sponza) -- found by direct CPU-render iteration rather than a
+// standalone probe script (each render already costs ~60s regardless of
+// resolution/SPP here, since building the BVH for 9.9M triangles dominates
+// - a separate probe script would cost as much as just rendering), landing
+// on a courtyard-level vantage point looking down a colonnade toward a
+// fountain, arches, and potted foliage - the same "receding corridor" shot
+// language as Sponza/Bistro's own cameras.
+// ============================================================================
+inline std::shared_ptr<triangle_mesh_mtl> san_miguel_mesh() {
+	static const auto mesh = std::make_shared<triangle_mesh_mtl>(
+		"san_miguel.obj", make_shared<lambertian>(color(0.75, 0.65, 0.55)),
+		/*scale=*/1.0, point3(-12.25, 0.463, -1.4475),
+		/*smooth_normals=*/false, "san_miguel_textures");
+	return mesh;
+}
+
+inline hittable_list build_san_miguel() {
+	hittable_list world;
+	world.add(san_miguel_mesh());
+	return world;
+}
+
+inline hittable_list build_san_miguel_lights() {
+	return san_miguel_mesh()->lights();
+}
+
+// Brightened from a first-pass (0.6,0.75,0.95): like Sponza's own sky (see
+// build_sponza_sky()'s comment), San Miguel's courtyard is mostly reached
+// through covered colonnades/arches rather than direct open sky, leaving a
+// same-magnitude sky severely light-starved by geometric occlusion alone -
+// confirmed by an underexposed first-pass render, not guesswork.
+inline std::shared_ptr<sky_light> build_san_miguel_sky() {
+	return std::make_shared<sky_light>(color(1.4, 1.68, 2.0));
+}
