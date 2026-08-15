@@ -1887,16 +1887,32 @@ inline hittable_list build_ogre() {
 // of that verified-open nave, looking down its ~2600-unit length -- the
 // classic "columns receding down the corridor" Sponza shot.
 // ============================================================================
+// Memoized (magic-static, built at most once regardless of how many times
+// build_sponza()/build_sponza_lights() are each called): this mesh is 262K
+// triangles plus real texture decode, far too expensive to build twice per
+// render just so build_world() and build_lights() can each get their own
+// copy. Mirrors the same "shared build state behind separate world/lights
+// accessors" pattern build_instanced_spheres_descriptor() (scene F3) already
+// uses for its .pbrt BuildResult.
+inline std::shared_ptr<triangle_mesh_mtl> sponza_mesh() {
+	static const auto mesh = std::make_shared<triangle_mesh_mtl>(
+		"sponza.obj", make_shared<lambertian>(color(0.80, 0.74, 0.62)),
+		/*scale=*/1.0, point3(60.52, 126.44, 38.69),
+		/*smooth_normals=*/false, "sponza_textures");
+	return mesh;
+}
+
 inline hittable_list build_sponza() {
 	hittable_list world;
-
-	auto stone = make_shared<lambertian>(color(0.80, 0.74, 0.62));
-	world.add(std::make_shared<triangle_mesh_mtl>(
-		"sponza.obj", stone,
-		/*scale=*/1.0, point3(60.52, 126.44, 38.69),
-		/*smooth_normals=*/false, "sponza_textures"));
-
+	world.add(sponza_mesh());
 	return world;
+}
+
+// Empty as of this writing -- sponza.mtl's Ke is zero for all 25 materials
+// -- but wired for real so any future Sponza-like asset with genuine
+// emissive materials (e.g. lamps) lights correctly with no further changes.
+inline hittable_list build_sponza_lights() {
+	return sponza_mesh()->lights();
 }
 
 inline std::shared_ptr<sky_light> build_sponza_sky() {
@@ -1963,16 +1979,27 @@ inline hittable_list build_rocker_arm() {
 // 3000-unit sightline - a "walking down the street between buildings"
 // shot, this scene's version of Sponza's "looking down the nave."
 // ============================================================================
+// Memoized for the same reason as sponza_mesh() above (2.84M triangles plus
+// texture decode).
+inline std::shared_ptr<triangle_mesh_mtl> bistro_exterior_mesh() {
+	static const auto mesh = std::make_shared<triangle_mesh_mtl>(
+		"bistro_exterior.obj", make_shared<lambertian>(color(0.75, 0.62, 0.50)),
+		/*scale=*/1.0, point3(-1526.37, 472.62, -267.01),
+		/*smooth_normals=*/false, "bistro_textures");
+	return mesh;
+}
+
 inline hittable_list build_bistro_exterior() {
 	hittable_list world;
-
-	auto plaster = make_shared<lambertian>(color(0.75, 0.62, 0.50));
-	world.add(std::make_shared<triangle_mesh_mtl>(
-		"bistro_exterior.obj", plaster,
-		/*scale=*/1.0, point3(-1526.37, 472.62, -267.01),
-		/*smooth_normals=*/false, "bistro_textures"));
-
+	world.add(bistro_exterior_mesh());
 	return world;
+}
+
+// Empty as of this writing -- exterior.mtl's Ke is zero across all 91
+// materials, including one literally named "Spotlight_Emissive" -- but
+// wired for real, same rationale as build_sponza_lights() above.
+inline hittable_list build_bistro_exterior_lights() {
+	return bistro_exterior_mesh()->lights();
 }
 
 inline std::shared_ptr<sky_light> build_bistro_exterior_sky() {
@@ -2014,15 +2041,24 @@ inline std::shared_ptr<sky_light> build_bistro_exterior_sky() {
 // rooftops (~639 units away), not empty space -- a "whole village from
 // above" establishing shot.
 // ============================================================================
+// Memoized for the same reason as sponza_mesh() above (6.7M triangles).
+inline std::shared_ptr<triangle_mesh_mtl> rungholt_mesh() {
+	static const auto mesh = std::make_shared<triangle_mesh_mtl>(
+		"rungholt.obj", make_shared<lambertian>(color(0.62, 0.48, 0.34)),
+		/*scale=*/1.0, point3(0.0, 0.0, 0.0));
+	return mesh;
+}
+
 inline hittable_list build_rungholt() {
 	hittable_list world;
-
-	auto wood = make_shared<lambertian>(color(0.62, 0.48, 0.34));
-	world.add(std::make_shared<triangle_mesh_mtl>(
-		"rungholt.obj", wood,
-		/*scale=*/1.0, point3(0.0, 0.0, 0.0)));
-
+	world.add(rungholt_mesh());
 	return world;
+}
+
+// Empty -- rungholt.mtl has no Ke lines at all (not even zero-valued ones)
+// -- but wired for real, same rationale as build_sponza_lights() above.
+inline hittable_list build_rungholt_lights() {
+	return rungholt_mesh()->lights();
 }
 
 inline std::shared_ptr<sky_light> build_rungholt_sky() {

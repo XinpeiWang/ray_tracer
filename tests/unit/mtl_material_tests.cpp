@@ -206,6 +206,114 @@ TEST(MtlMaterial, ParseMtlTexturesHandlesFilenamesWithSpaces) {
 	std::remove("mtl_material_test_spaces.mtl");
 }
 
+// Ke (emission): a material with a real, non-zero Ke gets a diffuse_light
+// material instead of Kd/lambertian, and its triangles are collected into
+// out_lights -- the NEE-light half of the OBJ/.mtl loader completeness work
+// (see load_obj_mtl()'s own comment: emissive geometry doubles as a light,
+// the same pattern pbrt_cpu_builder.h uses for .pbrt area lights). None of
+// the three real large scenes exercise this path (Ke is zero throughout all
+// of sponza.mtl/exterior.mtl/rungholt.mtl), hence this synthetic fixture.
+TEST(MtlMaterial, EmissiveMaterialBecomesLightAndIsCollected) {
+	write_temp_file("mtl_material_test_emission.mtl",
+		"newmtl Lamp\n"
+		"Kd 0.8 0.8 0.8\n"
+		"Ke 5.0 5.0 5.0\n"
+		"newmtl Wall\n"
+		"Kd 0.5 0.5 0.5\n");
+	std::string objPath = write_temp_file("mtl_material_test_emission.obj",
+		"mtllib mtl_material_test_emission.mtl\n"
+		"v 0 0 0\n"
+		"v 1 0 0\n"
+		"v 0 1 0\n"
+		"v 1 1 0\n"
+		"usemtl Lamp\n"
+		"f 1 2 3\n"
+		"usemtl Wall\n"
+		"f 2 4 3\n");
+
+	auto fallback = std::make_shared<lambertian>(color(0.5, 0.5, 0.5));
+	hittable_list lights;
+	auto mesh = load_obj_mtl(objPath, fallback, 1.0, point3(0,0,0), false, "", &lights);
+	ASSERT_NE(mesh, nullptr);
+
+	// The Lamp triangle's material resolves to a diffuse_light, not the
+	// usual Kd-backed lambertian.
+	ray rLamp(point3(0.2, 0.2, -5), vec3(0, 0, 1));
+	hit_record recLamp;
+	ASSERT_TRUE(mesh->hit(rLamp, interval(0.001, infinity), recLamp));
+	EXPECT_NE(std::dynamic_pointer_cast<diffuse_light>(recLamp.mat), nullptr);
+
+	// The Wall triangle (no Ke) stays an ordinary lambertian.
+	ray rWall(point3(0.7, 0.7, -5), vec3(0, 0, 1));
+	hit_record recWall;
+	ASSERT_TRUE(mesh->hit(rWall, interval(0.001, infinity), recWall));
+	EXPECT_NE(std::dynamic_pointer_cast<lambertian>(recWall.mat), nullptr);
+
+	// Exactly the one emissive triangle was collected as a light.
+	EXPECT_EQ(lights.objects.size(), 1u);
+
+	std::remove("mtl_material_test_emission.obj");
+	std::remove("mtl_material_test_emission.mtl");
+}
+
+// An explicit "Ke 0 0 0" (the boilerplate default many exporters always
+// write -- confirmed to be the case for every material in the three real
+// large-scene .mtl files) must NOT be treated as emissive: the material
+// should resolve to its ordinary Kd lambertian and contribute nothing to
+// out_lights, exactly as if no Ke line were present at all.
+TEST(MtlMaterial, ZeroKeIsNotTreatedAsEmissive) {
+	write_temp_file("mtl_material_test_zero_ke.mtl",
+		"newmtl Boilerplate\n"
+		"Kd 0.4 0.4 0.4\n"
+		"Ke 0.0 0.0 0.0\n");
+	std::string objPath = write_temp_file("mtl_material_test_zero_ke.obj",
+		"mtllib mtl_material_test_zero_ke.mtl\n"
+		"v 0 0 0\n"
+		"v 1 0 0\n"
+		"v 0 1 0\n"
+		"usemtl Boilerplate\n"
+		"f 1 2 3\n");
+
+	auto fallback = std::make_shared<lambertian>(color(0.5, 0.5, 0.5));
+	hittable_list lights;
+	auto mesh = load_obj_mtl(objPath, fallback, 1.0, point3(0,0,0), false, "", &lights);
+	ASSERT_NE(mesh, nullptr);
+
+	ray r(point3(0.2, 0.2, -5), vec3(0, 0, 1));
+	hit_record rec;
+	ASSERT_TRUE(mesh->hit(r, interval(0.001, infinity), rec));
+	EXPECT_NE(std::dynamic_pointer_cast<lambertian>(rec.mat), nullptr);
+	EXPECT_EQ(lights.objects.size(), 0u);
+
+	std::remove("mtl_material_test_zero_ke.obj");
+	std::remove("mtl_material_test_zero_ke.mtl");
+}
+
+// parse_mtl_emission() in isolation: reads Ke per material, treats an
+// explicit all-zero Ke the same as no Ke line, ignores unrelated tokens.
+TEST(MtlMaterial, ParseMtlEmissionReadsKePerMaterialAndSkipsZero) {
+	write_temp_file("mtl_material_test_parse_ke.mtl",
+		"newmtl Lamp\n"
+		"Kd 0.8 0.8 0.8\n"
+		"Ke 3.0 2.5 1.0\n"
+		"newmtl Wall\n"
+		"Kd 0.5 0.5 0.5\n"
+		"Ke 0 0 0\n"
+		"newmtl NoKeLine\n"
+		"Kd 0.2 0.2 0.2\n");
+
+	auto emission = parse_mtl_emission("mtl_material_test_parse_ke.mtl");
+	ASSERT_EQ(emission.size(), 1u);
+	ASSERT_TRUE(emission.count("Lamp"));
+	EXPECT_NEAR(emission["Lamp"].x(), 3.0, 1e-9);
+	EXPECT_NEAR(emission["Lamp"].y(), 2.5, 1e-9);
+	EXPECT_NEAR(emission["Lamp"].z(), 1.0, 1e-9);
+	EXPECT_FALSE(emission.count("Wall"));
+	EXPECT_FALSE(emission.count("NoKeLine"));
+
+	std::remove("mtl_material_test_parse_ke.mtl");
+}
+
 // resolve_mtl_texture_path(): backslashes normalize to forward slashes, and
 // leading "../"/"./" segments are stripped (textures are relocated under
 // texture_dir rather than mirroring the original archive's exact nesting).

@@ -751,6 +751,44 @@ namespace {
 		return result;
 	}
 
+	// GPU counterpart of CPU's parse_mtl_emission(): maps material name ->
+	// its Ke (emission) color. An explicit "Ke 0 0 0" is treated the same
+	// as no Ke line at all (see CPU's own comment for why) -- only
+	// materials with a non-degenerate Ke appear in the result.
+	inline std::unordered_map<std::string, float3> parse_mtl_emission_gpu(const std::string& filename) {
+		std::unordered_map<std::string, float3> result;
+		std::ifstream file(filename);
+		if (!file.is_open()) {
+			static const char* kSearchPrefixes[] = {
+				"models/", "../models/", "../../models/",
+				"../../../models/", "../../../../models/", "../../../../../models/"
+			};
+			for (const char* prefix : kSearchPrefixes) {
+				file.clear();
+				file.open(std::string(prefix) + filename);
+				if (file.is_open()) break;
+			}
+		}
+		if (!file.is_open()) return result;
+
+		std::string line, current;
+		while (std::getline(file, line)) {
+			if (line.empty() || line[0] == '#') continue;
+			std::istringstream ss(line);
+			std::string tok;
+			ss >> tok;
+			if (tok == "newmtl") {
+				ss >> current;
+			} else if (tok == "Ke" && !current.empty()) {
+				float r, g, b;
+				ss >> r >> g >> b;
+				if (r > 1e-6f || g > 1e-6f || b > 1e-6f)
+					result[current] = make_float3(r, g, b);
+			}
+		}
+		return result;
+	}
+
 	// GPU counterpart of CPU's resolve_mtl_texture_path(): normalizes
 	// backslashes to forward slashes and strips leading "../"/"./"
 	// segments, then joins onto textureDir. See CPU's own comment
@@ -790,6 +828,14 @@ namespace {
 	// textureDir alone can't know how many ".." climbs the current working
 	// directory needs to reach models/). Left null (the default), this
 	// behaves exactly like the Kd-only version.
+	//
+	// Emissive (Ke) faces are always registered as NEE-samplable
+	// GpuLightKind::Triangle lights (see parse_mtl_emission_gpu()) -- unlike
+	// textureDir, there's no opt-out parameter for this, since (unlike CPU's
+	// separate hittable_list return) the GPU builder always writes directly
+	// into scene.lightIndices/lightKinds and doing so is a no-op whenever a
+	// .mtl (like all three of Sponza/Bistro/Rungholt's, as of this writing)
+	// has no non-degenerate Ke data.
 	inline void load_obj_triangles_mtl_gpu(SceneData& scene, const char* filename,
 			int fallbackMaterialIdx, float scale, float3 offset, const char* textureDir = nullptr) {
 		std::string foundPrefix;
@@ -890,6 +936,9 @@ namespace {
 		std::unordered_map<std::string, std::string> mtlTextures;
 		if (textureDir && textureDir[0] != '\0' && !mtlPathUsed.empty())
 			mtlTextures = parse_mtl_textures_gpu(mtlPathUsed);
+		std::unordered_map<std::string, float3> mtlEmission;
+		if (!mtlPathUsed.empty())
+			mtlEmission = parse_mtl_emission_gpu(mtlPathUsed);
 
 		auto cornerNormal = [&](int ni) -> float3 {
 			if (ni >= 0 && ni < static_cast<int>(normals.size())) return normals[ni];
@@ -900,17 +949,19 @@ namespace {
 			return make_float2(0.0f, 0.0f);
 		};
 
-		// One Lambertian MaterialData per unique .mtl name, added to
-		// scene.materials on first use and cached by name so faces sharing
-		// a material share one materialIdx: a real textureIdx (see
-		// load_image_texture_gpu) when textureDir is set and the
-		// material's map_Kd image loads successfully, else Kd-only, else
-		// fallbackMaterialIdx when the name is empty/unknown or has
-		// neither -- mirrors CPU's load_obj_mtl() exactly. Deliberately
-		// does NOT require a Kd line to attempt the texture: a material
-		// with only map_Kd (no Kd) is valid OBJ and must still resolve,
-		// even though none of Sponza/Bistro/Rungholt's .mtl files actually
-		// have one (every map_Kd material there also has a Kd line).
+		// One MaterialData per unique .mtl name, added to scene.materials on
+		// first use and cached by name so faces sharing a material share one
+		// materialIdx: a DiffuseLight(Ke) when the material has a real Ke
+		// (takes priority -- an emissive material is a light source, not a
+		// surface to shade, same as CPU's load_obj_mtl()), else a real
+		// textureIdx (see load_image_texture_gpu) when textureDir is set
+		// and the material's map_Kd image loads successfully, else
+		// Kd-only, else fallbackMaterialIdx when the name is empty/unknown
+		// or has none of the above -- mirrors CPU's load_obj_mtl() exactly.
+		// Deliberately does NOT require a Kd line to attempt the texture: a
+		// material with only map_Kd (no Kd) is valid OBJ and must still
+		// resolve, even though none of Sponza/Bistro/Rungholt's .mtl files
+		// actually have one (every map_Kd material there also has a Kd line).
 		std::unordered_map<std::string, int> matCache;
 		for (const auto& f : faces) {
 			int materialIdx = fallbackMaterialIdx;
@@ -920,17 +971,22 @@ namespace {
 					materialIdx = cached->second;
 				} else {
 					int resolvedIdx = -1;
-					auto texIt = mtlTextures.find(f.mtl);
-					if (texIt != mtlTextures.end()) {
-						std::string imgPath = resolve_mtl_texture_path_gpu(texIt->second, foundPrefix + textureDir);
-						int texIdx = load_image_texture_gpu(scene, imgPath.c_str());
-						if (scene.textures[texIdx].width > 0) {
-							auto colorForTexIt = mtlColors.find(f.mtl);
-							float3 albedo = (colorForTexIt != mtlColors.end())
-								? colorForTexIt->second : make_float3(1.0f, 1.0f, 1.0f);
-							resolvedIdx = safe_cast_to_int(scene.materials.size());
-							add_lambertian(scene, albedo);
-							scene.materials.back().textureIdx = texIdx;
+					auto keIt = mtlEmission.find(f.mtl);
+					if (keIt != mtlEmission.end())
+						resolvedIdx = add_diffuse_light(scene, keIt->second);
+					if (resolvedIdx < 0) {
+						auto texIt = mtlTextures.find(f.mtl);
+						if (texIt != mtlTextures.end()) {
+							std::string imgPath = resolve_mtl_texture_path_gpu(texIt->second, foundPrefix + textureDir);
+							int texIdx = load_image_texture_gpu(scene, imgPath.c_str());
+							if (scene.textures[texIdx].width > 0) {
+								auto colorForTexIt = mtlColors.find(f.mtl);
+								float3 albedo = (colorForTexIt != mtlColors.end())
+									? colorForTexIt->second : make_float3(1.0f, 1.0f, 1.0f);
+								resolvedIdx = safe_cast_to_int(scene.materials.size());
+								add_lambertian(scene, albedo);
+								scene.materials.back().textureIdx = texIdx;
+							}
 						}
 					}
 					if (resolvedIdx < 0) {
@@ -960,6 +1016,14 @@ namespace {
 				t.uv0 = cornerUV(f.t[0]);
 				t.uv1 = cornerUV(f.t[1]);
 				t.uv2 = cornerUV(f.t[2]);
+			}
+			// Register as an NEE-samplable light if its material is
+			// genuinely emissive, mirroring pbrt_gpu_builder.h's identical
+			// two-line pattern for leftover (non-quad-mergeable) emissive
+			// triangles.
+			if (!f.mtl.empty() && mtlEmission.count(f.mtl)) {
+				scene.lightIndices.push_back(safe_cast_to_int(scene.triangles.size()));
+				scene.lightKinds.push_back(GpuLightKind::Triangle);
 			}
 			scene.triangles.push_back(t);
 		}

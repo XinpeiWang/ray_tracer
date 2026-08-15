@@ -26,6 +26,7 @@
 #include <vector>
 #include <array>
 #include <unordered_map>
+#include <unordered_set>
 #include <stdexcept>
 #include <cstdio>
 #include <utility>
@@ -278,8 +279,10 @@ class triangle_mesh : public hittable {
 // ---------------------------------------------------------------------------
 // parse_mtl
 // Minimal Wavefront .mtl parser: maps material name -> diffuse (Kd) color.
-// Only Kd is read; textures (map_Kd) and other physical parameters are
-// ignored, consistent with this renderer's no-texture mesh convention.
+// Only Kd is read here -- see parse_mtl_textures() for map_Kd and
+// parse_mtl_emission() for Ke, kept as separate functions rather than
+// widening this one's return type so parse_mtl()'s existing color-only
+// signature (and its test coverage) stays unchanged.
 // Returns an empty map (never throws) if the file can't be found, so
 // callers can fall back to a flat material.
 // ---------------------------------------------------------------------------
@@ -376,6 +379,52 @@ inline std::unordered_map<std::string, std::string> parse_mtl_textures(const std
 
 
 // ---------------------------------------------------------------------------
+// parse_mtl_emission
+// Companion to parse_mtl(): maps material name -> its Ke (emission) color.
+// An explicit "Ke 0 0 0" (the boilerplate default many exporters always
+// write, confirmed to be the case for every material in sponza.mtl,
+// exterior.mtl, and rungholt.mtl) is treated the same as no Ke line at all --
+// only materials with a non-degenerate Ke appear in the result, so callers
+// can use "is this name present" directly as "is this material a light",
+// without re-deriving it from a returned all-black color.
+// ---------------------------------------------------------------------------
+inline std::unordered_map<std::string, color> parse_mtl_emission(const std::string& filepath) {
+	std::unordered_map<std::string, color> result;
+
+	std::ifstream file(filepath);
+	if (!file.is_open()) {
+		static const char* kSearchPrefixes[] = {
+			"models/", "../models/", "../../models/",
+			"../../../models/", "../../../../models/", "../../../../../models/"
+		};
+		for (const char* prefix : kSearchPrefixes) {
+			file.clear();
+			file.open(prefix + filepath);
+			if (file.is_open()) break;
+		}
+	}
+	if (!file.is_open()) return result;
+
+	std::string line, current;
+	while (std::getline(file, line)) {
+		if (line.empty() || line[0] == '#') continue;
+		std::istringstream ss(line);
+		std::string tok;
+		ss >> tok;
+		if (tok == "newmtl") {
+			ss >> current;
+		} else if (tok == "Ke" && !current.empty()) {
+			double r, g, b;
+			ss >> r >> g >> b;
+			if (r > 1e-6 || g > 1e-6 || b > 1e-6)
+				result[current] = color(r, g, b);
+		}
+	}
+	return result;
+}
+
+
+// ---------------------------------------------------------------------------
 // resolve_mtl_texture_path
 // Rewrites a .mtl-relative texture path (as read by parse_mtl_textures, e.g.
 // "textures\foo.png" or "..\BuildingTextures\bar.png") into a path under
@@ -428,6 +477,13 @@ inline std::string resolve_mtl_texture_path(const std::string& relative_path, co
 // enough (face material tracking, per-face material assignment instead of
 // one shared_ptr for the whole mesh) that factoring out the overlap would
 // cost more clarity than it saves.
+//
+// out_lights: when non-null, every triangle whose .mtl material has a real
+// Ke gets a diffuse_light(Ke) instead of its Kd/map_Kd material, and is also
+// appended here -- the same "emissive geometry doubles as an NEE light"
+// pattern pbrt_cpu_builder.h already uses for .pbrt area lights. Left null
+// (the default) for callers that don't need it; empty for a mesh whose .mtl
+// has no real Ke data regardless (Sponza/Bistro/Rungholt today).
 // ---------------------------------------------------------------------------
 inline std::shared_ptr<hittable> load_obj_mtl(
 		const std::string& filepath,
@@ -435,7 +491,8 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 		double scale = 1.0,
 		point3 offset = point3(0,0,0),
 		bool smooth_normals = false,
-		const std::string& texture_dir = "")
+		const std::string& texture_dir = "",
+		hittable_list* out_lights = nullptr)
 {
 	// Tracks which search prefix (if any) actually located filepath, so
 	// texture_dir (a path relative to models/, e.g. "sponza_textures") can
@@ -535,6 +592,7 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 	// unreadable, or defines no Kd colors at all.
 	std::unordered_map<std::string, color> mtl_colors;
 	std::unordered_map<std::string, std::string> mtl_textures;
+	std::unordered_map<std::string, color> mtl_emission;
 	std::string mtl_path_used = mtllib_name;
 	if (!mtllib_name.empty())
 		mtl_colors = parse_mtl(mtllib_name);
@@ -545,6 +603,8 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 	}
 	if (!texture_dir.empty() && !mtl_path_used.empty())
 		mtl_textures = parse_mtl_textures(mtl_path_used);
+	if (out_lights && !mtl_path_used.empty())
+		mtl_emission = parse_mtl_emission(mtl_path_used);
 
 	std::vector<vec3> generated_norm;
 	if (smooth_normals && raw_norm.empty()) {
@@ -599,12 +659,15 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 	// ------------------------------------------------------------------
 	// Build one triangle hittable per face, resolving each face's .mtl
 	// name to a cached material (one shared_ptr per unique name, shared
-	// across every face using it): a real image_texture-backed lambertian
-	// when texture_dir is set and the material's map_Kd image loads
+	// across every face using it): a diffuse_light(Ke) when the material
+	// is genuinely emissive (out_lights requested and a non-degenerate Ke
+	// line present), else a real image_texture-backed lambertian when
+	// texture_dir is set and the material's map_Kd image loads
 	// successfully, else a flat lambertian(Kd), else fallback_mat when the
-	// name is empty/unknown or has neither.
+	// name is empty/unknown or has none of the above.
 	// ------------------------------------------------------------------
 	std::unordered_map<std::string, std::shared_ptr<material>> mat_cache;
+	std::unordered_set<std::string> emissive_mats;
 	hittable_list tris;
 	int n = mesh_data->num_triangles();
 	for (int i = 0; i < n; ++i) {
@@ -616,16 +679,23 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 				tri_mat = cached->second;
 			} else {
 				std::shared_ptr<material> resolved;
-				auto tex_it = mtl_textures.find(name);
-				if (!texture_dir.empty() && tex_it != mtl_textures.end()) {
-					std::string img_path = resolve_mtl_texture_path(tex_it->second, found_prefix + texture_dir);
-					// Decode once: probe the load here, then move the
-					// already-decoded pixels into image_texture instead of
-					// having its own constructor decode the same file
-					// again (image_texture(rtw_image&&), texture.h).
-					rtw_image probe(img_path.c_str());
-					if (probe.height() > 0)
-						resolved = std::make_shared<lambertian>(std::make_shared<image_texture>(std::move(probe)));
+				auto ke_it = mtl_emission.find(name);
+				if (ke_it != mtl_emission.end()) {
+					resolved = std::make_shared<diffuse_light>(ke_it->second);
+					emissive_mats.insert(name);
+				}
+				if (!resolved) {
+					auto tex_it = mtl_textures.find(name);
+					if (!texture_dir.empty() && tex_it != mtl_textures.end()) {
+						std::string img_path = resolve_mtl_texture_path(tex_it->second, found_prefix + texture_dir);
+						// Decode once: probe the load here, then move the
+						// already-decoded pixels into image_texture instead of
+						// having its own constructor decode the same file
+						// again (image_texture(rtw_image&&), texture.h).
+						rtw_image probe(img_path.c_str());
+						if (probe.height() > 0)
+							resolved = std::make_shared<lambertian>(std::make_shared<image_texture>(std::move(probe)));
+					}
 				}
 				if (!resolved) {
 					auto color_it = mtl_colors.find(name);
@@ -636,7 +706,10 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 				mat_cache[name] = tri_mat;
 			}
 		}
-		tris.add(std::make_shared<triangle>(mesh_data, i, tri_mat));
+		auto tri = std::make_shared<triangle>(mesh_data, i, tri_mat);
+		tris.add(tri);
+		if (out_lights && !name.empty() && emissive_mats.count(name))
+			out_lights->add(tri);
 	}
 
 	return std::make_shared<bvh_node>(tris);
@@ -658,7 +731,7 @@ class triangle_mesh_mtl : public hittable {
 					   bool smooth_normals = false,
 					   const std::string& texture_dir = "")
 	{
-		bvh = load_obj_mtl(filepath, fallback_mat, scale, offset, smooth_normals, texture_dir);
+		bvh = load_obj_mtl(filepath, fallback_mat, scale, offset, smooth_normals, texture_dir, &emissive_tris);
 		bbox = bvh->bounding_box();
 	}
 
@@ -668,9 +741,16 @@ class triangle_mesh_mtl : public hittable {
 
 	aabb bounding_box() const override { return bbox; }
 
+	// Triangles whose .mtl material has a real Ke, for NEE sampling as area
+	// lights (see build_sponza()/build_bistro_exterior()/build_rungholt()'s
+	// callers in scenes_advanced.h). Empty for any mesh whose .mtl has no
+	// non-degenerate Ke data, which is every large scene as of this writing.
+	const hittable_list& lights() const { return emissive_tris; }
+
   private:
 	std::shared_ptr<hittable> bvh;
 	aabb bbox;
+	hittable_list emissive_tris;
 };
 
 

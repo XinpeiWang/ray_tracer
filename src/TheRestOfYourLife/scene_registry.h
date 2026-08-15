@@ -1239,7 +1239,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Very Slow", 150, true, true,
             { 70, -800, 300, 0,  800, 300, 0,  0, 0, 0 },
             build_sponza,
-            no_lights,
+            build_sponza_lights,
             build_sponza_sky,
             nullptr
         },
@@ -1249,7 +1249,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Very Slow", 150, true, true,
             { 60, 1500, 700, 1700,  4000, 700, 2000,  0, 0, 0 },
             build_bistro_exterior,
-            no_lights,
+            build_bistro_exterior_lights,
             build_bistro_exterior_sky,
             nullptr
         },
@@ -1259,7 +1259,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Very Slow", 150, true, true,
             { 45, 400, 300, 400,  0, 40, 0,  0, 0, 0 },
             build_rungholt,
-            no_lights,
+            build_rungholt_lights,
             build_rungholt_sky,
             nullptr
         },
