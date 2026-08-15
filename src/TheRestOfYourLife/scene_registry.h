@@ -980,9 +980,9 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         },
         {
             "G5", 42, SceneNames::StanfordDragon, SceneCategories::Models,
-            "Stanford XYZRGB Dragon (249,882 triangles) in bright silver, loaded from an external .obj file (requires models/xyzrgb_dragon.obj)",
+            "Stanford XYZRGB Dragon (249,882 triangles) in bright silver, loaded from an external .obj file (requires models/xyzrgb_dragon.obj). Camera pulled back/up further than the other mesh scenes' default (0,3,7): the dragon's lunging pose is much wider than tall (~5.4 units wide vs ~3 tall after normalization, similar to scene 43's teapot), and the default statue framing cropped the head and tail.",
             "Very Slow", 150, true, true,
-            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
+            { 35, 0, 4, 12,  0, 1.5, 0,  0.05, 0.05, 0.08 },
             build_stanford_dragon,
             []() {
                 hittable_list l;
@@ -1002,8 +1002,12 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             { 35, 0, 6, 20,  0, 1.2, 0,  0.05, 0.05, 0.08 },
             build_utah_teapot,
             []() {
+                // Matches build_utah_teapot()'s light sphere, raised to
+                // y=20 - see that function's comment for why (this scene's
+                // raised/pulled-back camera brought the standard y=8 light
+                // into frame as a blown-out disc).
                 hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
+                l.add(std::make_shared<sphere>(point3(0,20,0), 2,
                       std::shared_ptr<material>()));
                 return l;
             }
@@ -1023,9 +1027,9 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         },
         {
             "G8", 45, SceneNames::Suzanne, SceneCategories::Models,
-            "Blender's Suzanne monkey-head mascot (968 triangles after fan-triangulating its mostly-quad faces) in bright silver, loaded from an external .obj file (requires models/suzanne.obj)",
+            "Blender's Suzanne monkey-head mascot (968 triangles after fan-triangulating its mostly-quad faces) in bright silver, loaded from an external .obj file (requires models/suzanne.obj). Unlike every other mesh scene, Suzanne is a disembodied head with no neck/shoulders/pedestal, so grounding its chin at y=0 (the shared statue convention) puts its face well above the generic eye-level camera - the camera below is raised and pulled in closer to look at roughly the model's own eye height instead.",
             "Fast", 150, true, true,
-            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
+            { 35, 0, 2.1, 6.5,  0, 1.9, 0,  0.05, 0.05, 0.08 },
             build_suzanne,
             []() {
                 hittable_list l;
@@ -1126,19 +1130,6 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             }
         },
         {
-            "G16", 53, SceneNames::VWBeetleAlt, SceneCategories::Models,
-            "Alternate resolution/topology of scene 52's Volkswagen Beetle mesh, in gunmetal, loaded from an external .obj file (requires models/beetle-alt.obj). Same elongated-Z proportions and pulled-back camera as scene 52.",
-            "Very Slow", 150, true, true,
-            { 35, 0, 3, 16,  0, 1.2, 0,  0.05, 0.05, 0.08 },
-            build_beetle_alt,
-            []() {
-                hittable_list l;
-                l.add(std::make_shared<sphere>(point3(0,8,0), 2,
-                      std::shared_ptr<material>()));
-                return l;
-            }
-        },
-        {
             "G17", 54, SceneNames::Bimba, SceneCategories::Models,
             "Smooth abstract bust/statue (AIM@SHAPE repository test model) in gold, loaded from an external .obj file (requires models/bimba.obj)",
             "Very Slow", 150, true, true,
@@ -1166,9 +1157,9 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         },
         {
             "G19", 56, SceneNames::Fandisk, SceneCategories::Models,
-            "Classic CAD mechanical-engineering test model with sharp creases, in gunmetal, loaded from an external .obj file (requires models/fandisk.obj)",
+            "Classic CAD mechanical-engineering test model with sharp creases, in gunmetal, loaded from an external .obj file (requires models/fandisk.obj). Camera moved to a three-quarter elevated angle rather than the usual eye-level statue framing - this mesh's proportions are shallow along the default view axis, and a face-on shot showed only a smooth, featureless wedge with none of the sharp creases the model is known for.",
             "Medium", 150, true, true,
-            { 35, 0, 3, 7,  0, 1.5, 0,  0.05, 0.05, 0.08 },
+            { 35, 4, 9, 4,  0, 1.5, 0,  0.05, 0.05, 0.08 },
             build_fandisk,
             []() {
                 hittable_list l;
@@ -1192,9 +1183,9 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         },
         {
             "G21", 58, SceneNames::Igea, SceneCategories::Models,
-            "Classical Italian bust (Igea, Roman goddess of health) in bright silver, loaded from an external .obj file (requires models/igea.obj). This particular scan's face is tilted upward rather than forward -- camera positioned higher and closer, looking down at the face, rather than the other mesh scenes' eye-level framing.",
+            "Classical Italian bust (Igea, Roman goddess of health) in bright silver, loaded from an external .obj file (requires models/igea.obj). An earlier camera here (raised and looking steeply down) was meant to compensate for this scan's upward-tilted face, but actually framed the shiny crown of the skull instead of the face - lowered/pulled back closer to the other mesh scenes' eye-level convention, which shows the face (eyes, nose, tilted-up chin) correctly.",
             "Very Slow", 150, true, true,
-            { 35, 0, 5, 3,  0, 1.5, 0,  0.05, 0.05, 0.08 },
+            { 35, 0, 3, 5,  0, 1.5, 0,  0.05, 0.05, 0.08 },
             build_igea,
             []() {
                 hittable_list l;
@@ -1231,9 +1222,9 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         },
         {
             "G24", 61, SceneNames::RockerArm, SceneCategories::Models,
-            "Mechanical engine-part test model in gunmetal, loaded from an external .obj file (requires models/rocker-arm.obj). Elongated along Z after normalization like the Beetle scenes, but much smaller overall, so the camera is only modestly pulled back (not as far as scenes 52/53's cars).",
+            "Mechanical engine-part test model in gunmetal, loaded from an external .obj file (requires models/rocker-arm.obj). Elongated along Z after normalization like the Beetle scene (G15), but much smaller overall and taller than that comparison suggested - the camera is pulled back/up further than originally set, which cropped the two boss/lobe cylinders at the top of the part. Now visible, those bosses' flat tops catch a strong mirror-like specular highlight from the overhead light - a legitimate result of a flat, low-roughness surface facing a point-ish light, confirmed by testing (repositioning/brightening the light didn't change it), not a bug.",
             "Slow", 150, true, true,
-            { 35, 0, 2.5, 7,  0, 1.2, 0,  0.05, 0.05, 0.08 },
+            { 35, 0, 4, 12,  0, 1.2, 0,  0.05, 0.05, 0.08 },
             build_rocker_arm,
             []() {
                 hittable_list l;

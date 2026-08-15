@@ -1345,8 +1345,19 @@ inline hittable_list build_utah_teapot() {
 		"teapot.obj", silver,
 		/*scale=*/0.952381, point3(-1.6352, 0.0, 0.0)));
 
-	// Area light
-	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	// Area light - raised to y=20 instead of the usual y=8: this scene's
+	// camera is pulled back and raised well above the other mesh scenes'
+	// default (see this function's registry comment) specifically to fit
+	// the teapot's wide spout+handle, and at that raised angle the
+	// standard y=8 light sphere sat inside the camera's FOV and rendered
+	// as a blown-out white disc in frame (an x-shift alone wasn't enough
+	// margin - confirmed by render). Moving it further overhead pushes it
+	// well outside the frustum for any reasonably-angled camera while
+	// still lighting the scene from roughly straight above. Brightness
+	// scaled up ~8x (6,6,6 -> 48,48,48) to compensate for inverse-square
+	// falloff over the much greater light-to-subject distance (roughly
+	// 2.7x further than the usual y=8 placement).
+	world.add(make_shared<sphere>(point3(0, 20, 0), 2, make_shared<diffuse_light>(color(48,48,48))));
 	return world;
 }
 
@@ -1371,9 +1382,21 @@ inline hittable_list build_spot_cow() {
 	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
 
 	auto silver = make_shared<metal>(color(0.85, 0.85, 0.88), 0.1);
-	world.add(std::make_shared<triangle_mesh>(
-		"spot.obj", silver,
-		/*scale=*/1.7747, point3(0.0, 1.3076, -0.3373)));
+	// The raw mesh's forward-facing direction points away from the camera
+	// (confirmed by render - the shot showed hindquarters/tail, not the
+	// face) - mesh.h's triangle_mesh has no rotation parameter, so the mesh
+	// is wrapped in the same rotate_y() hittable the CSG box scenes already
+	// use. rotate_y pivots about the WORLD origin, not the object's own
+	// center, so the mesh is built with NO offset (raw*scale only, still
+	// centered on its own local origin), rotated 180deg about Y there, and
+	// only THEN translated to the original target offset - building at the
+	// final offset first and rotating afterward would have pivoted around
+	// the wrong point and shifted the cow's world position by 2x its own
+	// (nonzero) z-offset.
+	shared_ptr<hittable> cow = std::make_shared<triangle_mesh>(
+		"spot.obj", silver, /*scale=*/1.7747);
+	cow = std::make_shared<rotate_y>(cow, 180);
+	world.add(std::make_shared<translate>(cow, vec3(0.0, 1.3076, -0.3373)));
 
 	// Area light
 	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
@@ -1465,9 +1488,14 @@ inline hittable_list build_horse() {
 	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
 
 	auto silver = make_shared<metal>(color(0.85, 0.85, 0.88), 0.1);
-	world.add(std::make_shared<triangle_mesh>(
+	// Same wrong-facing-direction problem as build_spot_cow() (confirmed by
+	// render - shows the back of the arched neck, not the face) and the
+	// same fix: rotate_y() wrapper, since mesh.h's triangle_mesh has no
+	// rotation parameter of its own.
+	shared_ptr<hittable> horse = std::make_shared<triangle_mesh>(
 		"horse.obj", silver,
-		/*scale=*/16.36295, point3(0.0, 1.5, 0.0)));
+		/*scale=*/16.36295, point3(0.0, 1.5, 0.0));
+	world.add(std::make_shared<rotate_y>(horse, 180));
 
 	// Area light
 	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
@@ -1550,15 +1578,32 @@ inline hittable_list build_trophy_room() {
 		"teapot.obj", chrome,
 		/*scale=*/0.50794, point3(-2.07211, 0.0, 0.0)));
 
-	// Suzanne (gold) - solo scale/offset from scene 45: 1.52381, (3.8005,-0.4073,-6.2536)
+	// Suzanne (gold) - solo scale/offset from scene 45: 1.52381, (3.8005,-0.4073,-6.2536).
+	// y lowered by 0.14 from the pure-scaled value (-0.21723 -> -0.35723):
+	// Suzanne is a disembodied head with no neck/pedestal, so grounding its
+	// chin at y=0 like every other mesh puts its eyes (~65% up the model,
+	// same proportions as the solo scene) around y=1.04 - well above this
+	// scene's shared shelf camera's lookat (y=0.9, chosen for the other
+	// three grounded meshes). Solo scene 45 fixes the equivalent mismatch
+	// by raising ITS camera instead (see that scene's registry comment),
+	// but this composite scene has one camera for all four meshes, so the
+	// only available lever here is lowering Suzanne herself closer to the
+	// shared aim height.
 	world.add(std::make_shared<triangle_mesh>(
 		"suzanne.obj", gold,
-		/*scale=*/0.81270, point3(3.22694, -0.21723, -3.33526)));
+		/*scale=*/0.81270, point3(3.22694, -0.35723, -3.33526)));
 
-	// Spot the Cow (gunmetal) - solo scale/offset from scene 44: 1.7747, (0,1.3076,-0.3373)
-	world.add(std::make_shared<triangle_mesh>(
-		"spot.obj", gunmetal,
-		/*scale=*/0.94651, point3(3.5, 0.69739, -0.17989)));
+	// Spot the Cow (gunmetal) - solo scale/offset from scene 44: 1.7747, (0,1.3076,-0.3373).
+	// Same wrong-facing-direction fix as solo build_spot_cow(), and the same
+	// build-at-origin/rotate/translate composition (see that function's
+	// comment for why: rotate_y pivots around the world origin, and this
+	// piece's offset also carries the shelf x-shift on top of centering, so
+	// rotating a mesh already built at its final offset would land it on
+	// the wrong side of the shelf).
+	shared_ptr<hittable> trophy_cow = std::make_shared<triangle_mesh>(
+		"spot.obj", gunmetal, /*scale=*/0.94651);
+	trophy_cow = std::make_shared<rotate_y>(trophy_cow, 180);
+	world.add(std::make_shared<translate>(trophy_cow, vec3(3.5, 0.69739, -0.17989)));
 
 	// Area light - standard radius-2/(0,8,0) placement, same as every other
 	// mesh scene (a wider light was tried first, but became visible as a
@@ -1658,26 +1703,6 @@ inline hittable_list build_beetle() {
 	world.add(std::make_shared<triangle_mesh>(
 		"beetle.obj", chrome,
 		/*scale=*/9.9009901, point3(0.3614, -3.0297, -1.9010)));
-
-	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
-	return world;
-}
-
-// ============================================================================
-// Scene 53: VW Beetle (alternate mesh)
-// Alternate resolution/topology of the same Beetle model (scene 52) -
-// same elongated-Z proportions, pulled-back camera.
-// ============================================================================
-inline hittable_list build_beetle_alt() {
-	hittable_list world;
-
-	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
-	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
-
-	auto gunmetal = make_shared<metal>(color(0.55, 0.56, 0.58), 0.12);
-	world.add(std::make_shared<triangle_mesh>(
-		"beetle-alt.obj", gunmetal,
-		/*scale=*/8.8757396, point3(0.0000, 1.5000, 0.0000)));
 
 	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
 	return world;
@@ -1894,6 +1919,13 @@ inline hittable_list build_rocker_arm() {
 		"rocker-arm.obj", gunmetal,
 		/*scale=*/5.8365759, point3(0.0000, 1.5000, 0.0000)));
 
+	// Area light - unlike scene 43's Utah Teapot, moving/brightening this
+	// light did NOT change the bright patch on the now-visible boss tops
+	// (tried y=20 + 8x brightness, re-rendered, same shape/extent) - this
+	// confirmed it's a legitimate blown-out mirror-like specular highlight
+	// off a flat, low-roughness surface that the camera fix revealed, not
+	// the light sphere itself being in frame, so the standard light
+	// placement stays unchanged here.
 	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
 	return world;
 }

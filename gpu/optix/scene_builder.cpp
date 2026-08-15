@@ -560,8 +560,14 @@ namespace {
 	// load_obj() exactly, so a single models/ asset works from both
 	// renderers regardless of the current working directory the renderer
 	// happens to run from.
+	// flip_xz: rotates the loaded mesh 180 degrees about Y (negates x and z
+	// of both positions and normals, matching CPU's rotate_y(mesh, 180)
+	// wrapper) before applying offset - for meshes whose source file faces
+	// away from this codebase's shared statue camera convention (see
+	// build_spot_cow_gpu/build_horse_gpu's callers). Defaults to false so
+	// every other caller is unaffected.
 	inline void load_obj_triangles_gpu(SceneData& scene, const char* filename,
-			int materialIdx, float scale, float3 offset) {
+			int materialIdx, float scale, float3 offset, bool flip_xz = false) {
 		std::ifstream file(filename);
 		if (!file.is_open()) {
 			static const char* kSearchPrefixes[] = {
@@ -583,7 +589,8 @@ namespace {
 		std::vector<float3> positions;
 		// Normals are unit direction vectors, unaffected by the uniform
 		// scale/offset applied to positions (matches CPU's mesh.h, which
-		// likewise only transforms raw_pos, not raw_norm).
+		// likewise only transforms raw_pos, not raw_norm) - but DO need the
+		// same flip_xz rotation positions get, when requested.
 		std::vector<float3> normals;
 		// OBJ format lists all "v"/"vn"/"vt" data before any "f" line
 		// references it, so by the time the first face is parsed, `normals`
@@ -599,11 +606,15 @@ namespace {
 			if (tok == "v") {
 				float x, y, z;
 				ss >> x >> y >> z;
-				positions.push_back(make_float3(x * scale + offset.x, y * scale + offset.y, z * scale + offset.z));
+				float lx = x * scale, ly = y * scale, lz = z * scale;
+				if (flip_xz) { lx = -lx; lz = -lz; }
+				positions.push_back(make_float3(lx + offset.x, ly + offset.y, lz + offset.z));
 			} else if (tok == "vn") {
 				float x, y, z;
 				ss >> x >> y >> z;
-				normals.push_back(normalize(make_float3(x, y, z)));
+				float3 n = normalize(make_float3(x, y, z));
+				if (flip_xz) { n.x = -n.x; n.z = -n.z; }
+				normals.push_back(n);
 			} else if (tok == "f") {
 				std::vector<int> idx, nIdx;
 				std::string fv;
@@ -3144,26 +3155,6 @@ static void build_beetle_gpu(SceneData& scene) {
 	scene.lightKinds.push_back(GpuLightKind::Sphere);
 }
 
-/// @brief Scene 53: VW Beetle (alternate mesh). Matches CPU build_beetle_alt() exactly.
-static void build_beetle_alt_gpu(SceneData& scene) {
-	const int mat_ground = safe_cast_to_int(scene.materials.size());
-	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
-		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
-	add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
-	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
-	scene.spheres.push_back(ground);
-
-	const int mat_beetle = add_metal(scene, make_float3(0.55f, 0.56f, 0.58f), 0.12f);
-	load_obj_triangles_gpu(scene, "beetle-alt.obj", mat_beetle,
-		/*scale=*/8.8757396f, make_float3(0.0000f, 1.5000f, 0.0000f));
-
-	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
-	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
-	scene.spheres.push_back(light);
-	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
-	scene.lightKinds.push_back(GpuLightKind::Sphere);
-}
-
 /// @brief Scene 54: Bimba. Matches CPU build_bimba() exactly.
 static void build_bimba_gpu(SceneData& scene) {
 	const int mat_ground = safe_cast_to_int(scene.materials.size());
@@ -3320,6 +3311,11 @@ static void build_rocker_arm_gpu(SceneData& scene) {
 	load_obj_triangles_gpu(scene, "rocker-arm.obj", mat_rocker,
 		/*scale=*/5.8365759f, make_float3(0.0000f, 1.5000f, 0.0000f));
 
+	// Area light - matches CPU build_rocker_arm(): unlike scene 43's Utah
+	// Teapot, repositioning/brightening this light didn't change the bright
+	// patch on the now-visible boss tops, confirming it's a legitimate
+	// specular highlight off a flat surface, not the light itself in
+	// frame - standard placement stays unchanged.
 	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
 	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
@@ -3351,9 +3347,12 @@ static void build_utah_teapot_gpu(SceneData& scene) {
 	load_obj_triangles_gpu(scene, "teapot.obj", mat_teapot,
 		/*scale=*/0.952381f, make_float3(-1.6352f, 0.0f, 0.0f));
 
-	// Area light
-	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
-	SphereData light{}; light.center = make_float3(0.0f, 8.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
+	// Area light - raised to y=20, brightness scaled ~8x (matches CPU
+	// build_utah_teapot() - see that function's comment: this scene's
+	// raised/pulled-back camera brought the standard y=8 light into frame
+	// as a blown-out disc; an x-only shift wasn't enough margin).
+	const int mat_light = add_diffuse_light(scene, make_float3(48.0f, 48.0f, 48.0f));
+	SphereData light{}; light.center = make_float3(0.0f, 20.0f, 0.0f); light.radius = 2.0f; light.materialIdx = mat_light;
 	scene.spheres.push_back(light);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
 	scene.lightKinds.push_back(GpuLightKind::Sphere);
@@ -3380,8 +3379,10 @@ static void build_spot_cow_gpu(SceneData& scene) {
 	// computed from the raw OBJ's own bounding box, see CPU's
 	// build_spot_cow() comment for the numbers).
 	const int mat_cow = add_metal(scene, make_float3(0.85f, 0.85f, 0.88f), 0.1f);
+	// flip_xz=true: matches CPU's rotate_y(mesh, 180) wrapper in
+	// build_spot_cow() - the raw mesh faces away from the camera.
 	load_obj_triangles_gpu(scene, "spot.obj", mat_cow,
-		/*scale=*/1.7747f, make_float3(0.0f, 1.3076f, -0.3373f));
+		/*scale=*/1.7747f, make_float3(0.0f, 1.3076f, -0.3373f), /*flip_xz=*/true);
 
 	// Area light
 	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
@@ -3479,8 +3480,10 @@ static void build_horse_gpu(SceneData& scene) {
 	// computed from the raw OBJ's own bounding box, see CPU's
 	// build_horse() comment for the numbers).
 	const int mat_horse = add_metal(scene, make_float3(0.85f, 0.85f, 0.88f), 0.1f);
+	// flip_xz=true: matches CPU's rotate_y(mesh, 180) wrapper in
+	// build_horse() - the raw mesh faces away from the camera.
 	load_obj_triangles_gpu(scene, "horse.obj", mat_horse,
-		/*scale=*/16.36295f, make_float3(0.0f, 1.5f, 0.0f));
+		/*scale=*/16.36295f, make_float3(0.0f, 1.5f, 0.0f), /*flip_xz=*/true);
 
 	// Area light
 	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
@@ -3549,15 +3552,23 @@ static void build_trophy_room_gpu(SceneData& scene) {
 	load_obj_triangles_gpu(scene, "teapot.obj", mat_chrome,
 		/*scale=*/0.50794f, make_float3(-2.07211f, 0.0f, 0.0f));
 
-	// Suzanne (gold)
+	// Suzanne (gold). y lowered by 0.14 from the pure-scaled value, matching
+	// CPU's build_trophy_room() - see that function's comment for why
+	// (Suzanne is a headless-body-free mesh whose grounded chin puts its
+	// eyes above this scene's shared shelf camera aim height).
 	const int mat_gold = add_metal(scene, make_float3(0.83f, 0.69f, 0.22f), 0.05f);
 	load_obj_triangles_gpu(scene, "suzanne.obj", mat_gold,
-		/*scale=*/0.81270f, make_float3(3.22694f, -0.21723f, -3.33526f));
+		/*scale=*/0.81270f, make_float3(3.22694f, -0.35723f, -3.33526f));
 
-	// Spot the Cow (gunmetal)
+	// Spot the Cow (gunmetal). flip_xz=true: matches CPU's rotate_y(180)
+	// fix in build_trophy_room() - the raw mesh faces away from the camera.
+	// The flip in load_obj_triangles_gpu() is applied to raw*scale BEFORE
+	// offset is added (same effective order as CPU's build-then-rotate-
+	// then-translate composition), so this is correct even with the
+	// nonzero shelf x-shift baked into this offset.
 	const int mat_gunmetal = add_metal(scene, make_float3(0.55f, 0.56f, 0.58f), 0.08f);
 	load_obj_triangles_gpu(scene, "spot.obj", mat_gunmetal,
-		/*scale=*/0.94651f, make_float3(3.5f, 0.69739f, -0.17989f));
+		/*scale=*/0.94651f, make_float3(3.5f, 0.69739f, -0.17989f), /*flip_xz=*/true);
 
 	// Area light
 	const int mat_light = add_diffuse_light(scene, make_float3(6.0f, 6.0f, 6.0f));
@@ -4974,7 +4985,11 @@ bool build_scene(
 
 							case 42: {  // Stanford XYZRGB Dragon (see build_stanford_dragon_gpu's comment)
 								build_stanford_dragon_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
+								// Pulled back/up further than the other mesh scenes' default
+								// (0,3,7) - the dragon's lunging pose is much wider than tall
+								// and cropped at the default framing - matches CPU
+								// CameraConfig row for scene 42.
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 4.0f, 12.0f);
 								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
@@ -5020,8 +5035,13 @@ bool build_scene(
 
 							case 45: {  // Suzanne (see build_suzanne_gpu's comment)
 								build_suzanne_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
-								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
+								// Suzanne is a disembodied head (no neck/pedestal) grounded
+								// chin-at-y=0 like every other mesh, so the camera is raised/
+								// pulled in to look at roughly eye height instead of the
+								// generic statue eye-level camera - matches CPU CameraConfig
+								// row for scene 45.
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.1f, 6.5f);
+								const float3 lookat   = make_float3(0.0f, 1.9f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
 								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);  // 35: matches CPU CameraConfig row for scene 45
@@ -5125,17 +5145,6 @@ bool build_scene(
 								break;
 							}
 
-							case 53: {  // VW Beetle (alternate mesh) (see build_beetle_alt_gpu's comment)
-								build_beetle_alt_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 16.0f);
-								const float3 lookat   = make_float3(0.0f, 1.2f, 0.0f);
-								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
-								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 35.0f, aspect, 1.0f, camera_params);
-								if (out_camera_extra) out_camera_extra->backgroundColor = make_float3(0.05f, 0.05f, 0.08f);
-								break;
-							}
-
 							case 54: {  // Bimba (see build_bimba_gpu's comment)
 								build_bimba_gpu(scene);
 								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
@@ -5160,7 +5169,11 @@ bool build_scene(
 
 							case 56: {  // Fandisk (see build_fandisk_gpu's comment)
 								build_fandisk_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 7.0f);
+								// Three-quarter elevated angle rather than the usual eye-level
+								// statue framing - matches CPU CameraConfig row for scene 56 -
+								// this mesh's proportions are shallow along the default view
+								// axis and a face-on shot hid the model's sharp creases.
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 4.0f, 9.0f, 4.0f);
 								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
@@ -5182,7 +5195,10 @@ bool build_scene(
 
 							case 58: {  // Igea (see build_igea_gpu's comment)
 								build_igea_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 5.0f, 3.0f);
+								// Lowered/pulled back from an earlier raised, steeply-down
+								// camera that framed the crown of the skull instead of the
+								// face - matches CPU CameraConfig row for scene 58.
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 3.0f, 5.0f);
 								const float3 lookat   = make_float3(0.0f, 1.5f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
@@ -5215,7 +5231,10 @@ bool build_scene(
 
 							case 61: {  // Rocker Arm (see build_rocker_arm_gpu's comment)
 								build_rocker_arm_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.5f, 7.0f);
+								// Pulled back/up further than originally set - the previous
+								// framing cropped the two boss/lobe cylinders at the top of
+								// the part - matches CPU CameraConfig row for scene 61.
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 4.0f, 12.0f);
 								const float3 lookat   = make_float3(0.0f, 1.2f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);

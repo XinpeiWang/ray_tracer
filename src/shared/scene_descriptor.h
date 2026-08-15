@@ -110,7 +110,6 @@ namespace SceneNames {
     constexpr const char* GlassDragon          = "Glass Dragon";
     constexpr const char* Beast                = "Beast";
     constexpr const char* VWBeetle             = "VW Beetle";
-    constexpr const char* VWBeetleAlt          = "VW Beetle (Alt)";
     constexpr const char* Bimba                = "Bimba";
     constexpr const char* Cow                  = "Cow";
     constexpr const char* Fandisk              = "Fandisk";
