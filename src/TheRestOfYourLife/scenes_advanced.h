@@ -7,6 +7,7 @@
 #include "quad.h"
 #include "material.h"
 #include "constant_medium.h"
+#include "cloud_medium_hittable.h"
 #include "hair_material.h"
 #include "principled_material.h"
 #include "normal_map_materials.h"
@@ -594,9 +595,21 @@ inline hittable_list build_homogeneous_medium_scene() {
 	world.add(make_shared<quad>(point3(555,0,555), vec3(-555,0,0), vec3(0,555,0), white));
 	world.add(make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), light_mat));
 
-	// Homogeneous fog fills the box (constant_medium with HenyeyGreenstein g=0.3)
-	auto box_boundary = make_shared<sphere>(point3(277.5, 277.5, 277.5), 400,
-											make_shared<lambertian>(color(1,1,1)));
+	// Homogeneous fog fills the box (constant_medium with HenyeyGreenstein g=0.3).
+	// Boundary is a box inset 5 units from each wall, not a sphere: a sphere
+	// large enough to reach the room's face centers (needs r>277.5, the
+	// center-to-wall distance) necessarily also reaches past the room's
+	// corners into the walls themselves (r=400 vs the 480.6 corner
+	// distance), so the medium boundary was coincident with/inside the
+	// solid wall geometry over most of the room - every diffuse bounce off
+	// a wall then had to resolve overlapping medium/wall surfaces at
+	// (near-)zero distance, which is a classic source of severe, resistant
+	// noise (confirmed: unlike this scene, A8's Cornell Smoke - same
+	// constant_medium machinery, small boxes safely inset from every wall -
+	// converges cleanly at the same 300 spp; this scene stayed heavily
+	// noisy even at 5x that sample count until this fix).
+	auto box_boundary = box(point3(5,5,5), point3(550,550,550),
+							make_shared<lambertian>(color(1,1,1)));
 	world.add(make_shared<constant_medium>(box_boundary, 0.005, color(0.8, 0.9, 1.0), 0.3));
 
 	return world;
@@ -604,23 +617,74 @@ inline hittable_list build_homogeneous_medium_scene() {
 
 // ============================================================================
 // Scene 31: Cloud Medium
-// Open scene with a cloud volume using high-density Perlin-noise constant_medium
+// Open scene with a real heterogeneous, procedural Perlin-noise cloud volume
+// (pbrt-v4 CloudMedium, src/shared/cloud_medium.h - 5-octave Perlin FBm
+// density with wispiness perturbation and altitude falloff), rendered via
+// cloud_medium_hittable's delta-tracking hit() (see that file's comment).
+//
+// Previously this scene declared a `noise_texture` but never actually used
+// it - the medium itself was a plain uniform-density constant_medium
+// sphere, so despite the scene's name it rendered as a smooth, hard-edged
+// pale ball with no cloud-like structure at all. This is the CloudMedium
+// class actually being wired into a scene for the first time; GPU support
+// (a new MaterialType::CloudMedium + device-side delta tracking, since GPU
+// media were previously only ever homogeneous) is mirrored in
+// gpu/optix/scene_builder.cpp's build_cloud_medium_scene_gpu.
 // ============================================================================
 inline hittable_list build_cloud_medium_scene() {
 	hittable_list world;
 	// Ground
 	world.add(make_shared<sphere>(point3(0,-1000,0), 1000,
 								 make_shared<lambertian>(color(0.4, 0.5, 0.3))));
-	// Cloud: a large sphere with Perlin-noise density texture
-	auto perlin_tex = make_shared<noise_texture>(0.3);
-	auto cloud_boundary = make_shared<sphere>(point3(0, 3, 0), 3,
-											 make_shared<lambertian>(color(1,1,1)));
-	world.add(make_shared<constant_medium>(cloud_boundary, 0.8, color(1.0, 1.0, 1.0), 0.05));
 
-	// Some background spheres for context
-	world.add(make_shared<sphere>(point3(-5, 0.5, -2), 0.5,
+	// Cloud's world-space AABB maps onto CloudMedium's [0,1]^3 medium space
+	// via a diagonal affine transform. CloudMedium's altitude-falloff term
+	// treats medium-y=0 as the cloud's dense base and medium-y=1 as
+	// thinned to nothing (pbrt-v4 convention), so the box's bottom face
+	// (world y=1) reads as the cloud's base and its top (world y=4) tapers
+	// off naturally - matches how real clouds look denser toward their
+	// base rather than being a uniform-density blob.
+	point3 cloud_min(-4, 1, -3), cloud_max(4, 4, 3);
+	double sx = 1.0 / (cloud_max.x() - cloud_min.x());
+	double sy = 1.0 / (cloud_max.y() - cloud_min.y());
+	double sz = 1.0 / (cloud_max.z() - cloud_min.z());
+	double world_to_medium_mat[9] = { sx,0,0,  0,sy,0,  0,0,sz };
+	double world_to_medium_translate[3] = {
+		-cloud_min.x()*sx, -cloud_min.y()*sy, -cloud_min.z()*sz
+	};
+	auto cloud_medium = CloudMedium<double>::make(
+		0.0, 0.0, 0.0,   1.0, 1.0, 1.0,          // medium-space bounds: unit cube
+		world_to_medium_mat, world_to_medium_translate,
+		0.0,    // sigma_a: pure scattering, no absorption (see cloud_medium_hittable.h)
+		10.0,   // sigma_s: majorant scattering coefficient. Was 40.0 - at that
+		        // value the medium's mean free path (~0.025 world units inside
+		        // a ~3-unit-thick cloud) made delta tracking take ~43 min for a
+		        // 500x500 @ 250spp CPU render. 10.0 keeps the cloud visually
+		        // dense (2.0 was tried first but rendered nearly transparent -
+		        // see cloud_medium_hittable.h's write-up of the algorithm)
+		        // while still cutting the average step count several-fold.
+		        // The GPU recursive backend's real bottleneck turned out to be
+		        // a separate bug (see CloudMedium::compute_density's
+		        // CPU_GPU_NOINLINE comment in cloud_medium.h) rather than
+		        // sigma_s itself, so this doesn't need to be pushed as low as
+		        // earlier iterations assumed.
+		0.3,    // phase_g: slight forward scattering (matches scene 30's fog)
+		1.0,    // density: noise-sum scale
+		1.0,    // wispiness: gradient-noise perturbation for wispy edges
+		4.0     // frequency: spatial frequency of the noise octaves
+	);
+	world.add(make_shared<cloud_medium_hittable>(cloud_medium, color(1,1,1),
+												 cloud_min, cloud_max));
+
+	// Background spheres for context - moved out to x=+-6 (was +-5, inside
+	// the cloud's own x:[-4,4] extent) and forward to z=4 (was -2, inside
+	// the cloud's z:[-3,3] depth) so they read clearly as beside/in front
+	// of the cloud instead of nearly buried in its silhouette; the camera's
+	// CameraConfig row was also widened (see scene_registry.h) so both are
+	// actually in frame at all, which they previously weren't either way.
+	world.add(make_shared<sphere>(point3(-6, 0.5, 4), 0.5,
 								 make_shared<lambertian>(color(0.9, 0.3, 0.2))));
-	world.add(make_shared<sphere>(point3(5, 0.5, -2), 0.5,
+	world.add(make_shared<sphere>(point3(6, 0.5, 4), 0.5,
 								 make_shared<metal>(color(0.8,0.8,0.9), 0.05)));
 	return world;
 }

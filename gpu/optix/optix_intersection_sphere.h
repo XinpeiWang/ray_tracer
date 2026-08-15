@@ -1,6 +1,42 @@
 // optix_intersection_sphere.h -- Sphere intersection + closest-hit programs
 // Included by optix_programs.cu
 
+// GPU-only cloud density: the 5-octave FBm + altitude-falloff portion of
+// CloudMedium<T>::compute_density (src/shared/cloud_medium.h), WITHOUT the
+// optional wispiness/dnoise gradient perturbation CPU renders with. Not a
+// call to compute_density() itself - calling that member function directly
+// from this backend's one-thread-per-pixel mega-kernel closesthit program
+// reproducibly stalled mid-computation (confirmed via device printf: entry
+// into the delta-tracking loop and its dt/tt values print fine, but nothing
+// after the compute_density() call ever does, even though the loop's own
+// t-bounds are otherwise correct) - some interaction between this backend's
+// call graph and that member function specifically that wasn't pinned down
+// despite substantial isolation (ruled out: sigma_s/iteration-cap values,
+// #pragma unroll, marking dnoise or compute_density __noinline__ - the
+// latter "fixed" the timing but corrupted dnoise's reference-parameter
+// outputs, visually a flat-sided box instead of a wispy cloud). This hand-
+// duplicated version - proven correct and fast via the same isolation - is
+// used on both GPU backends instead (see wavefront_kernels.cu's copy).
+// Deliberate, documented CPU/GPU divergence: GPU renders a smoother cloud
+// silhouette missing CPU's fine wispy edge detail, in the same spirit as
+// this codebase's existing "no NEE/MIS for GPU volume scattering" gap.
+__device__ __forceinline__ float gpu_cloud_density(const CloudMedium<float>& cloud,
+													 float mx, float my, float mz) {
+	float ppx = cloud.frequency * mx;
+	float ppy = cloud.frequency * my;
+	float ppz = cloud.frequency * mz;
+	float d = 0.0f;
+	float omega = 0.5f, lambda = 1.0f;
+	for (int oct = 0; oct < 5; ++oct) {
+		d += omega * perlin_noise<float>(lambda * ppx, lambda * ppy, lambda * ppz);
+		omega *= 0.5f;
+		lambda *= 1.99f;
+	}
+	d = fminf(1.0f, fmaxf(0.0f, (1.0f - my) * 4.5f * cloud.density * d));
+	float extra = 2.0f * fmaxf(0.0f, 0.5f - my);
+	return fminf(1.0f, fmaxf(0.0f, d + extra));
+}
+
 extern "C" __global__ void __intersection__sphere() {
 	// Get primitive index from OptiX
 	const unsigned int primIdx = optixGetPrimitiveIndex();
@@ -218,6 +254,66 @@ extern "C" __global__ void __closesthit__sphere() {
 			}
 			scattered    = true;
 			is_specular  = true;  // no NEE/MIS for volume scattering (not yet implemented)
+			is_medium    = true;
+	} else if (mat.type == MaterialType::CloudMedium) {
+			// Heterogeneous, procedural Perlin-noise cloud - see
+			// MaterialType::CloudMedium's comment in optix_types.h. Delta
+			// tracking (null-collision free-path sampling, pbrt-v4
+			// SampleT_maj) through the medium's own world-space AABB - NOT
+			// this trigger sphere's bounds, which only exists to get the ray
+			// into this branch at all - using CloudMedium<float>'s own
+			// sample_ray()/world_to_medium_pt()/compute_density() directly
+			// device-side (CPU_GPU-tagged, compiles as-is - see
+			// optix_types.h's cloud_medium.h include comment). Matches
+			// src/TheRestOfYourLife/cloud_medium_hittable.h's CPU
+			// delta-tracking loop exactly. Like Medium above, no NEE/MIS for
+			// volume scattering (not yet implemented on GPU for either
+			// medium type) - specular-style bounce.
+			const CloudMedium<float>& cloud = params.cloudMediums[(int)mat.cloud_medium_extra.cloudMediumIdx];
+			float3 unit_dir3 = normalize(ray_dir);
+			float ray_o3[3] = { ray_orig.x, ray_orig.y, ray_orig.z };
+			float ray_d3[3] = { unit_dir3.x, unit_dir3.y, unit_dir3.z };
+
+			auto maj_it = cloud.sample_ray(ray_o3, ray_d3, 1e30f);
+			float segMin, segMax, sigma_maj;
+			bool has_seg = maj_it.next(segMin, segMax, sigma_maj);
+
+			bool did_scatter = false;
+			if (has_seg && sigma_maj > 0.0f) {
+				if (segMin < 0.0f) segMin = 0.0f;
+				float tt = segMin;
+				// Bounded iteration count: device code must not risk an
+				// unbounded loop from a pathological (e.g. near-zero
+				// majorant) configuration.
+				for (int iter = 0; iter < 128 && !did_scatter; ++iter) {
+					float dt = -logf(fmaxf(1e-8f, 1.0f - random_float(seed))) / sigma_maj;
+					tt += dt;
+					if (tt >= segMax) break;
+					float3 p = ray_orig + tt * unit_dir3;
+					float mx, my, mz;
+					cloud.world_to_medium_pt(p.x, p.y, p.z, mx, my, mz);
+					float d = gpu_cloud_density(cloud, mx, my, mz);
+					float sigma_s_local = d * cloud.sigma_s;
+					if (random_float(seed) < sigma_s_local / sigma_maj) {
+						did_scatter = true;
+						medium_t_hit  = tt;
+						scattered_dir = sample_henyey_greenstein(unit_dir3, mat.fuzz, seed);
+						attenuation   = mat.albedo;
+					}
+				}
+				if (!did_scatter) medium_t_hit = segMax;
+			} else {
+				// Missed the medium's own (tighter) AABB entirely - the
+				// trigger sphere is a loose bound, so this is a real,
+				// expected case, not an error. Pass straight through.
+				medium_t_hit = t;
+			}
+			if (!did_scatter) {
+				scattered_dir = unit_dir3;  // straight through, no interaction
+				attenuation   = make_float3(1.0f, 1.0f, 1.0f);
+			}
+			scattered    = true;
+			is_specular  = true;
 			is_medium    = true;
 	} else if (mat.type == MaterialType::Hair) {
 			// Marschner/Chiang fiber scattering - see sample_hair_material's

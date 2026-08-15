@@ -69,6 +69,13 @@
       <OptixFlags>$(OptixFlags) --use_fast_math</OptixFlags>
       <OptixFlags>$(OptixFlags) --relocatable-device-code=true</OptixFlags>
       <OptixFlags>$(OptixFlags) -arch=sm_86</OptixFlags>
+      <!-- CloudMedium (src/shared/cloud_medium.h) transitively includes
+           grid_medium.h, which uses std::optional, needing C++17, which nvcc
+           does not default to. The obj compiling CUDA targets in this file
+           already pass the C++17 std flag; this PTX target needs it too now
+           that optix_intersection_sphere.h's MaterialType::CloudMedium
+           branch pulls that header chain in. -->
+      <OptixFlags>$(OptixFlags) --std=c++17</OptixFlags>
       <OptixFlags>$(OptixFlags) -I"$(OptixInclude)"</OptixFlags>
       <OptixFlags>$(OptixFlags) -I"$(CudaInclude)"</OptixFlags>
       <OptixFlags>$(OptixFlags) -I"$(MSBuildProjectDirectory)\..\gpu\optix"</OptixFlags>
@@ -97,7 +104,7 @@
 
     <PropertyGroup>
       <NvccPath>$(CudaToolkitPath)\bin\nvcc.exe</NvccPath>
-      <WfPtxFlags>--ptx -O3 --use_fast_math --relocatable-device-code=true -arch=sm_86</WfPtxFlags>
+      <WfPtxFlags>--ptx -O3 --use_fast_math --relocatable-device-code=true -arch=sm_86 --std=c++17</WfPtxFlags>
       <WfPtxFlags>$(WfPtxFlags) -I"$(OptixSdkPath)\include"</WfPtxFlags>
       <WfPtxFlags>$(WfPtxFlags) -I"$(CudaToolkitPath)\include"</WfPtxFlags>
       <WfPtxFlags>$(WfPtxFlags) -I"$(MSBuildProjectDirectory)\..\gpu\optix"</WfPtxFlags>
@@ -126,7 +133,7 @@
 
     <PropertyGroup>
       <NvccPath>$(CudaToolkitPath)\bin\nvcc.exe</NvccPath>
-      <SppmPtxFlags>--ptx -O3 --use_fast_math --relocatable-device-code=true -arch=sm_86</SppmPtxFlags>
+      <SppmPtxFlags>--ptx -O3 --use_fast_math --relocatable-device-code=true -arch=sm_86 --std=c++17</SppmPtxFlags>
       <SppmPtxFlags>$(SppmPtxFlags) -I"$(OptixSdkPath)\include"</SppmPtxFlags>
       <SppmPtxFlags>$(SppmPtxFlags) -I"$(CudaToolkitPath)\include"</SppmPtxFlags>
       <SppmPtxFlags>$(SppmPtxFlags) -I"$(MSBuildProjectDirectory)\..\gpu\optix"</SppmPtxFlags>

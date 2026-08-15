@@ -27,11 +27,16 @@ extern "C" __global__ void __anyhit__shadow_sphere() {
 	// non-occluding (light passes straight through) rather than wrongly
 	// blocking NEE entirely - a reasonable simplification matching how
 	// this file already approximates other volumetric-adjacent cases.
+	// CloudMedium's trigger sphere gets the same treatment for the same
+	// reason - without this, every shadow ray toward a light on the far side
+	// of the cloud's bounding sphere would be wrongly treated as fully
+	// occluded, rather than just passing through unattenuated.
 	if (mat.type == MaterialType::Dielectric ||
 		mat.type == MaterialType::RoughDielectric ||
 		mat.type == MaterialType::ThinDielectric ||
 		mat.type == MaterialType::DiffuseTransmission ||
-		mat.type == MaterialType::Medium) {
+		mat.type == MaterialType::Medium ||
+		mat.type == MaterialType::CloudMedium) {
 		optixIgnoreIntersection();  // continue traversal (not an occluder)
 		return;
 	}

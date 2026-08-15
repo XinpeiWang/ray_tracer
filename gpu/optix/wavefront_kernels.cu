@@ -36,6 +36,31 @@
 // Device helpers (shared with optix_programs.cu logic)
 // ============================================================================
 
+// GPU-only cloud density: matches optix_intersection_sphere.h's
+// gpu_cloud_density exactly (see that copy's comment for the full
+// reasoning - calling CloudMedium::compute_density()'s member function
+// directly stalled mid-computation on the recursive backend; this hand-
+// duplicated 5-octave-FBm-only version, without CPU's wispiness/dnoise
+// perturbation, is proven correct and fast on both GPU backends). Own
+// definition here since this is a separate translation unit from
+// optix_programs.cu.
+__device__ __forceinline__ float gpu_cloud_density(const CloudMedium<float>& cloud,
+													 float mx, float my, float mz) {
+	float ppx = cloud.frequency * mx;
+	float ppy = cloud.frequency * my;
+	float ppz = cloud.frequency * mz;
+	float d = 0.0f;
+	float omega = 0.5f, lambda = 1.0f;
+	for (int oct = 0; oct < 5; ++oct) {
+		d += omega * perlin_noise<float>(lambda * ppx, lambda * ppy, lambda * ppz);
+		omega *= 0.5f;
+		lambda *= 1.99f;
+	}
+	d = fminf(1.0f, fmaxf(0.0f, (1.0f - my) * 4.5f * cloud.density * d));
+	float extra = 2.0f * fmaxf(0.0f, 0.5f - my);
+	return fminf(1.0f, fmaxf(0.0f, d + extra));
+}
+
 __device__ __forceinline__ unsigned int wf_pcg(unsigned int seed) {
 	unsigned int state = seed * 747796405u + 2891336453u;
 	unsigned int word  = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
@@ -685,7 +710,9 @@ extern "C" __global__ void evaluate_materials(
 	unsigned int numPunctualLights,
 	const TextureData*  textures,
 	const unsigned char* texturePixels,
-	int maxDepth
+	int maxDepth,
+	const CloudMedium<float>* cloudMediums,
+	unsigned int numCloudMediums
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
@@ -1177,6 +1204,61 @@ extern "C" __global__ void evaluate_materials(
 			scattered_dir = unit_dir;  // straight through, no interaction
 			attenuation   = SS(1.f);
 		}
+		scattered   = true;
+		is_specular = true;
+		break;
+	}
+	case MaterialType::CloudMedium: {
+		// Heterogeneous, procedural Perlin-noise cloud - mirrors
+		// optix_intersection_sphere.h's closesthit CloudMedium case exactly
+		// (see that comment for the full reasoning). Unlike Medium above,
+		// this does NOT use h.t/h.mediumTFar (the sphere's own near/far
+		// roots, which __closesthit__wf_sphere only recomputes for
+		// MaterialType::Medium/DielectricMedium - see that function's
+		// needsNearFar) - CloudMedium's own world-space AABB, tested fresh
+		// against the true ray via CloudMedium<float>::sample_ray(), is what
+		// actually bounds it; the trigger sphere's own geometry is
+		// irrelevant beyond having gotten the ray into this branch at all.
+		const CloudMedium<float>& cloud = cloudMediums[(int)mat.cloud_medium_extra.cloudMediumIdx];
+		float3 unit_dir = normalize(h.rayDir);
+		float ray_o3[3] = { h.rayOrigin.x, h.rayOrigin.y, h.rayOrigin.z };
+		float ray_d3[3] = { unit_dir.x, unit_dir.y, unit_dir.z };
+
+		auto maj_it = cloud.sample_ray(ray_o3, ray_d3, 1e30f);
+		float segMin, segMax, sigma_maj;
+		bool has_seg = maj_it.next(segMin, segMax, sigma_maj);
+
+		bool did_scatter = false;
+		float medium_t = 0.0f;
+		if (has_seg && sigma_maj > 0.0f) {
+			if (segMin < 0.0f) segMin = 0.0f;
+			float tt = segMin;
+			// Cap matches optix_intersection_sphere.h's CloudMedium branch.
+			for (int iter = 0; iter < 128 && !did_scatter; ++iter) {
+				float dt = -logf(fmaxf(1e-8f, 1.0f - wf_rand(seed))) / sigma_maj;
+				tt += dt;
+				if (tt >= segMax) break;
+				float3 p = h.rayOrigin + tt * unit_dir;
+				float mx, my, mz;
+				cloud.world_to_medium_pt(p.x, p.y, p.z, mx, my, mz);
+				float d = gpu_cloud_density(cloud, mx, my, mz);
+				float sigma_s_local = d * cloud.sigma_s;
+				if (wf_rand(seed) < sigma_s_local / sigma_maj) {
+					did_scatter = true;
+					medium_t      = tt;
+					scattered_dir = wf_sample_henyey_greenstein(unit_dir, mat.fuzz, seed);
+					attenuation   = albedoSpectrum(mat.albedo);
+				}
+			}
+			if (!did_scatter) medium_t = segMax;
+		} else {
+			medium_t = h.t;  // missed the medium's own AABB - pass straight through
+		}
+		if (!did_scatter) {
+			scattered_dir = unit_dir;
+			attenuation   = SS(1.f);
+		}
+		hit_point   = h.rayOrigin + medium_t * unit_dir;
 		scattered   = true;
 		is_specular = true;
 		break;

@@ -63,6 +63,18 @@ public:
         d_texturePixels_ = d_texturePixels;
     }
 
+    /// Heterogeneous cloud media (MaterialType::CloudMedium), OptiXRenderer's
+    /// own d_cloudMediums_/numCloudMediums_, already uploaded once at
+    /// buildScene() time for the recursive path. Same setter-not-render()-
+    /// parameter pattern as setInstancePrimBase()/setTextures() above, for the
+    /// same reason: render() is a virtual override shared with
+    /// RecursivePathTracer. 0/0 (the default) is a valid "no cloud media in
+    /// this scene" state.
+    void setCloudMediums(CUdeviceptr d_cloudMediums, unsigned int numCloudMediums) {
+        d_cloudMediums_ = d_cloudMediums;
+        numCloudMediums_ = numCloudMediums;
+    }
+
     /// Whether the scene has instanced geometry of each kind. buildSBT() must
     /// append the same dedicated hit-record pairs, in the same order, that
     /// OptiXRenderer::buildSBT() does - the IAS instances carry sbtOffsets
@@ -142,6 +154,8 @@ private:
     CUdeviceptr  d_instancePrimBase_ = 0;   ///< see setInstancePrimBase()
     CUdeviceptr  d_textures_ = 0;           ///< see setTextures()
     CUdeviceptr  d_texturePixels_ = 0;
+    CUdeviceptr  d_cloudMediums_ = 0;       ///< see setCloudMediums()
+    unsigned int numCloudMediums_ = 0;
     bool         haveInstancedTriangles_ = false;  ///< see setInstancedGeometryFlags()
     bool         haveInstancedSpheres_ = false;
     unsigned int numSpheres_  = 0;

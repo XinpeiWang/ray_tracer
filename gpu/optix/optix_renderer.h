@@ -76,7 +76,8 @@ public:
 		const std::vector<GpuLensElement>& lensElements = {},
 		const std::vector<GpuExitPupilBounds>& exitPupilBounds = {},
 		const std::vector<TextureData>& textures = {},
-		const std::vector<unsigned char>& texturePixels = {}
+		const std::vector<unsigned char>& texturePixels = {},
+		const std::vector<CloudMedium<float>>& cloudMediums = {}
 	);
 
 	/// @brief Render a frame using path tracing
@@ -296,6 +297,8 @@ private:
 	unsigned int numLensElements_ = 0;    ///< Number of lens elements
 	CUdeviceptr d_exitPupilBounds_ = 0;    ///< Device RealisticCamera exit-pupil bounds table
 	unsigned int numExitPupilBounds_ = 0;  ///< Number of exit-pupil bounds slabs
+	CUdeviceptr d_cloudMediums_ = 0;       ///< Device CloudMedium<float> table (MaterialType::CloudMedium)
+	unsigned int numCloudMediums_ = 0;     ///< Number of cloud media
 
 	// Light sampling support for MIS
 	CUdeviceptr d_lightIndices_ = 0;  ///< Device light primitive indices

@@ -394,13 +394,18 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Slow", 300, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_homogeneous_medium_scene,
-            build_cornell_box_lights
+            build_homogeneous_medium_lights
         },
         {
             "E2", 31, SceneNames::CloudMedium, SceneCategories::Volumes,
             "Open scene with a procedural Perlin-noise cloud volume (pbrt-v4 CloudMedium)",
             "Slow", 300, false, true,
-            { 20, 0, 5, 20,  0, 2, 0,  0.5, 0.7, 1.0 },
+            // vfov widened/camera pulled back (was 20 deg at (0,5,20)) - the
+            // cloud's world AABB (x:[-4,4]) alone overflowed that framing,
+            // and the two "context" spheres at x=+-5 were entirely outside
+            // it. See build_cloud_medium_scene's comment for the cloud's
+            // actual extent.
+            { 40, 0, 4, 26,  0, 2, 0,  0.5, 0.7, 1.0 },
             build_cloud_medium_scene,
             sky_dummy_lights
         },

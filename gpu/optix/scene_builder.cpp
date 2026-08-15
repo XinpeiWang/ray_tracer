@@ -191,6 +191,26 @@ namespace {
 		return idx;
 	}
 
+	// Pushes `medium` into scene.cloudMediums and returns a MaterialData index
+	// referencing it via cloud_medium_extra.cloudMediumIdx - see
+	// MaterialType::CloudMedium's comment in optix_types.h for why this needs
+	// an index into a separate array rather than direct field reuse the way
+	// add_medium() above does.
+	inline int add_cloud_medium(SceneData& scene, const CloudMedium<float>& medium,
+	                             float3 albedo) {
+		const int cloudIdx = safe_cast_to_int(scene.cloudMediums.size());
+		scene.cloudMediums.push_back(medium);
+
+		const int idx = safe_cast_to_int(scene.materials.size());
+		MaterialData m{};
+		m.type = MaterialType::CloudMedium;
+		m.medium_albedo = albedo;
+		m.g = medium.phase_g;
+		m.cloud_medium_extra.cloudMediumIdx = static_cast<float>(cloudIdx);
+		scene.materials.push_back(m);
+		return idx;
+	}
+
 	inline int add_hair(SceneData& scene, float3 sigma_a, float beta_m, float eta, float beta_n, float alpha_deg) {
 		const int idx = safe_cast_to_int(scene.materials.size());
 		MaterialData m{};
@@ -2170,10 +2190,19 @@ static void build_homogeneous_medium_scene_gpu(SceneData& scene) {
 		scene.lightKinds.push_back(GpuLightKind::Quad);
 	}
 
+	// Radius shrunk from 400 (matches CPU's fix, see build_homogeneous_medium_scene's
+	// comment) - GPU media only support sphere boundaries (see
+	// optix_intersection_sphere.h), unlike CPU which can use an inset box, so this
+	// stays a sphere but sized to stay safely inside the 277.5-unit center-to-wall
+	// distance instead of poking through every wall (the r=400 case reached past
+	// even the room's 480.6-unit corner-to-corner distance in the diagonal
+	// direction). This leaves the room's corners visibly less foggy than CPU's
+	// wall-to-wall box, an accepted CPU/GPU divergence matching build_cornell_smoke_gpu's
+	// own box-approximated-as-spheres precedent above.
 	const int mat_medium = add_medium(scene, make_float3(0.8f, 0.9f, 1.0f), 0.3f, 0.005f);
 	SphereData fog{};
 	fog.center = make_float3(277.5f, 277.5f, 277.5f);
-	fog.radius = 400.0f;
+	fog.radius = 270.0f;
 	fog.materialIdx = mat_medium;
 	scene.spheres.push_back(fog);
 }
@@ -2327,6 +2356,21 @@ static void build_subsurface_slab_gpu(SceneData& scene) {
 /// noise density texture is dead code there too (constructed but never
 /// actually used by the constant_medium call, which passes a constant
 /// density), so this is a faithful, not simplified, port.
+// Matches CPU build_cloud_medium_scene() exactly (scenes_advanced.h) - see
+// that function's comment for the full reasoning (CloudMedium is a real
+// heterogeneous, Perlin-FBm-density medium, not the old uniform-density
+// constant_medium sphere this scene used to render as).
+//
+// GPU's medium handling (both Medium and now CloudMedium) is triggered by
+// hitting a real SPHERE primitive - see optix_intersection_sphere.h's
+// closest-hit program - so CloudMedium still needs *a* sphere to attach its
+// materialIdx to, even though CloudMedium's own axis-aligned world AABB (not
+// this sphere) is what actually bounds the medium: the sphere here is sized
+// to comfortably contain that AABB (its half-diagonal, from the box's
+// center) and only serves as the trigger geometry. The tight [tMin,tMax]
+// used for delta tracking comes from CloudMedium::sample_ray()'s own AABB
+// test against the ray, clipped to the sphere's own entry/exit - see
+// optix_intersection_sphere.h's CloudMedium case.
 static void build_cloud_medium_scene_gpu(SceneData& scene) {
 	const int mat_ground = add_lambertian(scene, make_float3(0.4f, 0.5f, 0.3f));
 	SphereData ground{};
@@ -2335,12 +2379,54 @@ static void build_cloud_medium_scene_gpu(SceneData& scene) {
 	ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 
-	const int mat_medium = add_medium(scene, make_float3(1.0f, 1.0f, 1.0f), 0.05f, 0.8f);
+	// World AABB - matches CPU's cloud_min/cloud_max exactly.
+	const float3 cloud_min = make_float3(-4.0f, 1.0f, -3.0f);
+	const float3 cloud_max = make_float3(4.0f, 4.0f, 3.0f);
+	const float sx = 1.0f / (cloud_max.x - cloud_min.x);
+	const float sy = 1.0f / (cloud_max.y - cloud_min.y);
+	const float sz = 1.0f / (cloud_max.z - cloud_min.z);
+	const float world_to_medium_mat[9] = { sx,0,0,  0,sy,0,  0,0,sz };
+	const float world_to_medium_translate[3] = {
+		-cloud_min.x*sx, -cloud_min.y*sy, -cloud_min.z*sz
+	};
+	CloudMedium<float> cloud_medium = CloudMedium<float>::make(
+		0.0f, 0.0f, 0.0f,   1.0f, 1.0f, 1.0f,   // medium-space bounds: unit cube
+		world_to_medium_mat, world_to_medium_translate,
+		0.0f,   // sigma_a: pure scattering (matches CPU)
+		10.0f,  // sigma_s: matches CPU's build_cloud_medium_scene() - see that
+		        // function's comment.
+		0.3f,   // phase_g
+		1.0f,   // density
+		1.0f,   // wispiness
+		4.0f    // frequency
+	);
+	const int mat_medium = add_cloud_medium(scene, cloud_medium, make_float3(1.0f, 1.0f, 1.0f));
+
+	const float3 cloud_center = make_float3(
+		0.5f*(cloud_min.x+cloud_max.x), 0.5f*(cloud_min.y+cloud_max.y), 0.5f*(cloud_min.z+cloud_max.z));
+	const float3 half = make_float3(
+		0.5f*(cloud_max.x-cloud_min.x), 0.5f*(cloud_max.y-cloud_min.y), 0.5f*(cloud_max.z-cloud_min.z));
+	const float trigger_radius = sqrtf(half.x*half.x + half.y*half.y + half.z*half.z);
 	SphereData cloud{};
-	cloud.center = make_float3(0.0f, 3.0f, 0.0f);
-	cloud.radius = 3.0f;
+	cloud.center = cloud_center;
+	cloud.radius = trigger_radius;
 	cloud.materialIdx = mat_medium;
 	scene.spheres.push_back(cloud);
+
+	// Background spheres for context - matches CPU exactly.
+	const int mat_orange = add_lambertian(scene, make_float3(0.9f, 0.3f, 0.2f));
+	SphereData s1{};
+	s1.center = make_float3(-6.0f, 0.5f, 4.0f);
+	s1.radius = 0.5f;
+	s1.materialIdx = mat_orange;
+	scene.spheres.push_back(s1);
+
+	const int mat_metal = add_metal(scene, make_float3(0.8f, 0.8f, 0.9f), 0.05f);
+	SphereData s2{};
+	s2.center = make_float3(6.0f, 0.5f, 4.0f);
+	s2.radius = 0.5f;
+	s2.materialIdx = mat_metal;
+	scene.spheres.push_back(s2);
 }
 
 /// @brief Scene 23: Bilinear Patch Scene. Matches CPU build_bilinear_patch_scene()
@@ -4463,13 +4549,15 @@ bool build_scene(
 								break;
 							}
 
-							case 31: {  // Cloud Medium (constant_medium, HG g=0.05)
+							case 31: {  // Cloud Medium (CloudMedium: heterogeneous Perlin-noise density)
 								build_cloud_medium_scene_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 5.0f, 20.0f);
+								// lookfrom/vfov widened/pulled back (was 20 deg at (0,5,20)) - matches
+								// CPU CameraConfig row for scene 31; see that row's comment.
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 4.0f, 26.0f);
 								const float3 lookat   = make_float3(0.0f, 2.0f, 0.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-								build_pinhole_camera_params(lookfrom, lookat, vup, 20.0f, aspect, 1.0f, camera_params);  // 20: matches CPU CameraConfig row for scene 31
+								build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);  // 40: matches CPU CameraConfig row for scene 31
 								if (out_camera_extra) {
 									// Matches CPU CameraConfig bg for scene 31 - this is the scene's
 									// ONLY light source (no emissive geometry), so a missing/black

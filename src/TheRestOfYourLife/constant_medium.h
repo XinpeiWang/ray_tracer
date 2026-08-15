@@ -28,6 +28,40 @@
 
 
 // ---------------------------------------------------------------------------
+// hg_phase_pdf
+// pdf wrapper around HenyeyGreensteinPhaseFunction<double>, so medium
+// scattering can go through the same NEE + MIS machinery every other
+// non-specular material uses (see hg_phase_material::scatter()'s comment
+// for why this replaced the old skip_pdf=true shortcut). wo (outgoing,
+// toward the ray's origin) is fixed at construction, matching cosine_pdf
+// fixing its normal at construction - the pdf interface's generate()/
+// value() only ever deal with the incoming direction wi.
+// ---------------------------------------------------------------------------
+class hg_phase_pdf : public pdf {
+  public:
+    hg_phase_pdf(const vec3& wo, const HenyeyGreensteinPhaseFunction<double>& phase)
+        : wo(unit_vector(wo)), phase(phase) {}
+
+    double value(const vec3& direction) const override {
+        vec3 wi = unit_vector(direction);
+        return phase.pdf(wo.x(), wo.y(), wo.z(), wi.x(), wi.y(), wi.z());
+    }
+
+    vec3 generate() const override {
+        double wi_x, wi_y, wi_z, pdf_val;
+        phase.sample(wo.x(), wo.y(), wo.z(),
+                     random_double(), random_double(),
+                     wi_x, wi_y, wi_z, pdf_val);
+        return vec3(wi_x, wi_y, wi_z);
+    }
+
+  private:
+    vec3 wo;
+    HenyeyGreensteinPhaseFunction<double> phase;
+};
+
+
+// ---------------------------------------------------------------------------
 // hg_phase_material
 // CPU material wrapper around HenyeyGreensteinPhaseFunction<double>.
 // Replaces the old isotropic material for volume scattering.
@@ -42,21 +76,29 @@ class hg_phase_material : public material {
 
     bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
                  bool /*do_regularize*/ = false) const override {
-        // Sample a new direction using HG phase function
+        // skip_pdf=true (the original implementation here) tells the
+        // integrator this material is a Dirac-delta/specular-style bounce
+        // and to skip NEE entirely for it - correct for a mirror/glass
+        // BSDF (a random NEE-sampled direction has ~zero chance of landing
+        // exactly on the specular direction, so NEE would be wasted work),
+        // but WRONG for a phase function: HG is smooth/continuous, exactly
+        // like a diffuse BRDF, and benefits from NEE the same way. Every
+        // fog/smoke/cloud medium in this codebase routes through this
+        // scatter() (constant_medium, and now cloud_medium_hittable), so
+        // this wasn't just a per-scene tuning issue - it silently disabled
+        // direct light sampling for every volume-scattering event, forcing
+        // the integrator to rely on randomly BSDF-sampling a direction that
+        // happens to hit the light. That's fine for a small, localized
+        // medium (most of the frame is still normal NEE-lit surfaces - see
+        // A8 Cornell Smoke, where only the smoke itself reads noisier than
+        // the walls), but for a medium filling most/all of the visible
+        // scene (scene 30, Homogeneous Medium) it dominates the image and
+        // stayed heavily noisy even at 5x the recommended sample count
+        // until this fix.
         vec3 wo = unit_vector(-r_in.direction());  // outgoing = toward camera
-
-        double wi_x, wi_y, wi_z, pdf_val;
-        phase.sample(wo.x(), wo.y(), wo.z(),
-                     random_double(), random_double(),
-                     wi_x, wi_y, wi_z, pdf_val);
-
-        vec3 wi(wi_x, wi_y, wi_z);
-
-        // Attenuation = single-scattering albedo (already folded scatter_weight
-        // into the medium hit in constant_medium::hit)
-        srec.attenuation   = albedo;
-        srec.skip_pdf      = true;
-        srec.skip_pdf_ray  = ray(rec.p, wi, r_in.time());
+        srec.attenuation = albedo;
+        srec.pdf_ptr      = make_shared<hg_phase_pdf>(wo, phase);
+        srec.skip_pdf     = false;
         return true;
     }
 

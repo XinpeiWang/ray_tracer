@@ -721,8 +721,8 @@ extern "C" __global__ void __raygen__wf_shadow() {
 //     directly went black under --wavefront while the recursive path
 //     rendered them correctly lit.
 //   - Dielectric/RoughDielectric/ThinDielectric/DiffuseTransmission (and
-//     Medium, sphere-only - see optix_anyhit_shadow.h's own comment) let
-//     light through rather than blocking NEE outright.
+//     Medium/CloudMedium, sphere-only - see optix_anyhit_shadow.h's own
+//     comment) let light through rather than blocking NEE outright.
 extern "C" __global__ void __anyhit__wf_shadow_sphere() {
 	const int instBase = wf_instance_base();
 	const SphereData& sph = wf_params.spheres[wf_prim_base(instBase) + optixGetPrimitiveIndex()];
@@ -740,7 +740,8 @@ extern "C" __global__ void __anyhit__wf_shadow_sphere() {
 		mat.type == MaterialType::RoughDielectric ||
 		mat.type == MaterialType::ThinDielectric ||
 		mat.type == MaterialType::DiffuseTransmission ||
-		mat.type == MaterialType::Medium) {
+		mat.type == MaterialType::Medium ||
+		mat.type == MaterialType::CloudMedium) {
 		optixIgnoreIntersection();
 		return;
 	}

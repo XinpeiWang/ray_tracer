@@ -43,7 +43,9 @@ extern "C" void wf_launch_evaluate_materials(
 	const int*, const GpuLightKind*, const GpuAliasEntry*, unsigned int,
 	const PunctualLightGPU*, unsigned int,
 	const TextureData*, const unsigned char*,
-	int, cudaStream_t);
+	int,
+	const CloudMedium<float>*, unsigned int,
+	cudaStream_t);
 extern "C" void wf_launch_accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, cudaStream_t);
 extern "C" void wf_launch_accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*, cudaStream_t);
 extern "C" void wf_launch_normalize_framebuffer(unsigned int, float, float3*, cudaStream_t);
@@ -767,7 +769,9 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		d_punctualLights, numPunctualLights,
 		reinterpret_cast<const TextureData*>(d_textures_),
 		reinterpret_cast<const unsigned char*>(d_texturePixels_),
-		maxDepth, stream_);
+		maxDepth,
+		reinterpret_cast<const CloudMedium<float>*>(d_cloudMediums_), numCloudMediums_,
+		stream_);
 }
 
 void WavefrontPathTracer::launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor) {
@@ -854,6 +858,8 @@ bool WavefrontPathTracer::render(
 	lp.numTriangles  = num_triangles;
 	lp.materials     = reinterpret_cast<MaterialData*>(d_materials);
 	lp.numMaterials  = num_materials;
+	lp.cloudMediums    = reinterpret_cast<CloudMedium<float>*>(d_cloudMediums_);
+	lp.numCloudMediums = numCloudMediums_;
 	lp.lightIndices  = reinterpret_cast<int*>(d_light_indices);
 	lp.lightKinds = reinterpret_cast<const GpuLightKind*>(d_lightKinds);
 	lp.instancePrimBase = reinterpret_cast<const int*>(d_instancePrimBase_);

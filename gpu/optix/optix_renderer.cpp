@@ -579,7 +579,8 @@ bool OptiXRenderer::buildScene(
 	const std::vector<GpuLensElement>& lensElements,
 	const std::vector<GpuExitPupilBounds>& exitPupilBounds,
 	const std::vector<TextureData>& textures,
-	const std::vector<unsigned char>& texturePixels
+	const std::vector<unsigned char>& texturePixels,
+	const std::vector<CloudMedium<float>>& cloudMediums
 ) {
 	// Store material data on device
 	numMaterials_ = static_cast<unsigned int>(materials.size());
@@ -786,6 +787,28 @@ bool OptiXRenderer::buildScene(
 	if (numLensElements_ > 0)
 		std::cout << "[OptiX] Uploaded " << lensElements.size() << " lens elements, "
 			<< exitPupilBounds.size() << " exit-pupil bounds to GPU\n";
+
+	// Heterogeneous cloud media (MaterialType::CloudMedium) - CloudMedium<float>
+	// is uploaded as-is (see optix_types.h's cloud_medium.h include comment),
+	// same pattern as the lens table above.
+	numCloudMediums_ = static_cast<unsigned int>(cloudMediums.size());
+	size_t cloudMediumSize = cloudMediums.size() * sizeof(CloudMedium<float>);
+
+	if (d_cloudMediums_) {
+		cudaFree(reinterpret_cast<void*>(d_cloudMediums_));
+		d_cloudMediums_ = 0;
+	}
+
+	if (numCloudMediums_ > 0) {
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_cloudMediums_), cloudMediumSize));
+		CUDA_CHECK(cudaMemcpy(
+			reinterpret_cast<void*>(d_cloudMediums_),
+			cloudMediums.data(),
+			cloudMediumSize,
+			cudaMemcpyHostToDevice
+		));
+		std::cout << "[OptiX] Uploaded " << cloudMediums.size() << " cloud media to GPU\n";
+	}
 
 	// Store light data on device for MIS
 	numLights_ = static_cast<unsigned int>(lightIndices.size());
@@ -1752,6 +1775,7 @@ bool OptiXRenderer::render(
 		// cannot leave a previous scene's table wired in.
 		wavefrontTracer_->setInstancePrimBase(d_instanceBase_);
 		wavefrontTracer_->setTextures(d_textures_, d_texturePixels_);
+		wavefrontTracer_->setCloudMediums(d_cloudMediums_, numCloudMediums_);
 		return wavefrontTracer_->render(
 			(int)width, (int)height, (int)samplesPerPixel, (int)maxDepth,
 			gpuCam,
@@ -1790,6 +1814,8 @@ bool OptiXRenderer::render(
 	params.traversable = gasHandle_;
 	params.materials = reinterpret_cast<MaterialData*>(d_materials_);
 	params.numMaterials = numMaterials_;
+	params.cloudMediums = reinterpret_cast<CloudMedium<float>*>(d_cloudMediums_);
+	params.numCloudMediums = numCloudMediums_;
 	params.textures = reinterpret_cast<TextureData*>(d_textures_);
 	params.numTextures = numTextures_;
 	params.texturePixels = reinterpret_cast<unsigned char*>(d_texturePixels_);
@@ -1898,6 +1924,7 @@ void OptiXRenderer::cleanup() noexcept {
 	if (d_triangles_) cudaFree(reinterpret_cast<void*>(d_triangles_));
 	if (d_lensElements_) cudaFree(reinterpret_cast<void*>(d_lensElements_));
 	if (d_exitPupilBounds_) cudaFree(reinterpret_cast<void*>(d_exitPupilBounds_));
+	if (d_cloudMediums_) cudaFree(reinterpret_cast<void*>(d_cloudMediums_));
 	if (d_lightIndices_) cudaFree(reinterpret_cast<void*>(d_lightIndices_));
 	if (d_lightKinds_) cudaFree(reinterpret_cast<void*>(d_lightKinds_));
 	if (d_aliasTable_) cudaFree(reinterpret_cast<void*>(d_aliasTable_));

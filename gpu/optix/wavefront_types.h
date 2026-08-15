@@ -221,6 +221,12 @@ struct WavefrontLaunchParams {
 	MaterialData*  materials;
 	unsigned int   numMaterials;
 
+	// Heterogeneous cloud media (MaterialType::CloudMedium), same shared
+	// device buffer OptiXRenderer::buildScene() already uploads for the
+	// recursive path - see wavefront_kernels.cu's CloudMedium case.
+	CloudMedium<float>* cloudMediums;
+	unsigned int         numCloudMediums;
+
 	// Light sampling (alias table, same layout as RecursivePathTracer)
 	int*         lightIndices;
 	const GpuLightKind* lightKinds;   // see optix_types.h - width is load-bearing

@@ -92,6 +92,21 @@ inline hittable_list build_cornell_thin_glass_lights() {
 	return lights;
 }
 
+// Light list for build_homogeneous_medium_scene() (scene 30): same ceiling
+// light rectangle as scene 0 (213,554,227)/(130,0,0)/(0,0,105), but scene
+// 30 has neither a glass sphere nor the accent wall light (just fog), so
+// build_cornell_box_lights()'s sphere entry aimed roughly half of every
+// NEE sample at a phantom target with no real geometry there - a real,
+// meaningful contributor to this scene's noise on top of the medium
+// boundary fix (see build_homogeneous_medium_scene's comment).
+inline hittable_list build_homogeneous_medium_lights() {
+	hittable_list lights;
+	auto empty_material = shared_ptr<material>();
+	lights.add(
+		make_shared<quad>(point3(343,554,332), vec3(-130,0,0), vec3(0,0,-105), empty_material));
+	return lights;
+}
+
 // Build a power_light_list with power weights computed from geometry + emission.
 // Mirrors pbrt-v4 PowerLightSampler: phi = light.Phi() = area * Le_avg * pi
 // For a quad area light:  phi = |u x v| * luminance(emission) * pi

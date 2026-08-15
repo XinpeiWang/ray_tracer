@@ -178,7 +178,20 @@ struct CloudMedium {
 		T ppy = frequency * py;
 		T ppz = frequency * pz;
 
-		// Optional wispiness: perturb pp with 2 octaves of gradient noise
+		// compute_density() is CPU-only in practice: both GPU backends call
+		// their own gpu_cloud_density() (optix_intersection_sphere.h /
+		// wavefront_kernels.cu) instead, a hand-duplicated 5-octave-FBm-only
+		// version without this wispiness perturbation. Calling this member
+		// function directly from the recursive backend's one-thread-per-
+		// pixel mega-kernel closesthit program reproducibly stalled mid-
+		// computation (confirmed via device printf - entry into the delta-
+		// tracking loop and its dt/tt values print fine, but nothing after
+		// the compute_density() call itself ever does), for reasons not
+		// fully pinned down despite substantial isolation (ruled out:
+		// sigma_s/iteration-cap values, #pragma unroll, marking dnoise or
+		// this function __noinline__ - the latter "fixed" the timing but
+		// corrupted dnoise's reference-parameter outputs instead). This
+		// function itself is unchanged/correct and still used by CPU.
 		if (wispiness > T(0)) {
 			T vomega = T(0.05) * wispiness;
 			T vlambda = T(10);

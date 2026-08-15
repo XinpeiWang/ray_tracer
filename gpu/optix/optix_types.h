@@ -14,6 +14,13 @@
 // templated on T, so PointLightData<float>/SpotLightData<float>/
 // DistantLightData<float> compile directly for device code - no reimplementation.
 #include "../../src/shared/punctual_lights.h"
+// Same relative-path reasoning as punctual_lights.h above. CloudMedium<T> is
+// CPU_GPU-tagged and templated, so CloudMedium<float> compiles directly for
+// device code (it already calls perlin_noise<T> from noise.h, itself
+// CPU_GPU-tagged and already used on-device by optix_device_helpers.h's
+// sample_texture() for TextureKind::Noise) - no device-side reimplementation
+// needed, same as the punctual lights above.
+#include "../../src/shared/cloud_medium.h"
 
 #ifndef __CUDACC__
 #include <stdexcept>
@@ -230,7 +237,24 @@ enum class MaterialType : int {
 	// eta_c.z = clearcoat_rough (k_c unused - Principled isn't a Conductor).
 	// Sphere-only, matching CPU's only current use (scene 18's 7 showcase
 	// spheres).
-	Principled = 15
+	Principled = 15,
+	// Heterogeneous, procedural Perlin-FBm-density participating medium
+	// (pbrt-v4 CloudMedium, src/shared/cloud_medium.h) - matches
+	// src/TheRestOfYourLife/cloud_medium_hittable.h exactly (delta-tracking/
+	// null-collision free-path sampling using the medium's majorant sigma_t,
+	// since density varies per point unlike Medium's single fixed sigma_t).
+	// Unlike every other MaterialType, this one's real parameters (the
+	// world-to-medium affine transform, density/wispiness/frequency, and
+	// sigma_a/sigma_s) don't fit MaterialData's spare per-material bytes, so
+	// this only stores an INDEX (cloud_medium_extra.cloudMediumIdx) into
+	// LaunchParams::cloudMediums, mirroring the RealisticCamera lens-table
+	// pattern (GpuLensElement/GpuExitPupilBounds) rather than any other
+	// MaterialType's direct field reuse. .medium_albedo/.g are still reused
+	// directly (single-scatter color, HG phase asymmetry) since those DO fit
+	// and every other Medium-family type already uses those same two names.
+	// Sphere-only for the same reason Medium is: only usable on the boundary
+	// shape the intersection code re-derives entry/exit roots for.
+	CloudMedium = 16
 };
 
 // Texture kinds - see TextureData below. Matches three CPU texture classes
@@ -324,6 +348,11 @@ struct MaterialData {
 		struct { float beta_n, alpha_deg, _hair_pad; } hair_extra;               // Hair
 		struct { float sigma_t, _dielectric_medium_pad1, _dielectric_medium_pad2; } dielectric_medium_extra; // DielectricMedium
 		struct { float metallic, clearcoat, clearcoat_rough; } principled_params; // Principled
+		// CloudMedium: index into LaunchParams::cloudMediums (stored as a
+		// float so it lives in this union without changing MaterialData's
+		// layout - see MaterialType::CloudMedium's comment for why an index
+		// rather than direct field reuse).
+		struct { float cloudMediumIdx, _cloud_medium_pad1, _cloud_medium_pad2; } cloud_medium_extra;
 	};
 
 	float3 k_c;   // Conductor/CoatedConductor only: imaginary part k per R/G/B channel
@@ -549,6 +578,13 @@ struct LaunchParams {
 	// Material data
 	MaterialData* materials;
 	unsigned int numMaterials;
+
+	// Heterogeneous cloud media (MaterialType::CloudMedium), indexed by
+	// MaterialData::cloud_medium_extra.cloudMediumIdx. CloudMedium<float> is
+	// used directly device-side (see optix_types.h's cloud_medium.h include
+	// comment) rather than a separate GPU-specific mirror struct.
+	CloudMedium<float>* cloudMediums;
+	unsigned int numCloudMediums;
 
 	// Texture data (see TextureData above) - indexed by
 	// MaterialData::textureIdx. texturePixels is one shared flat 8-bit RGB

@@ -13,6 +13,7 @@ struct SceneData {
 	std::vector<BilinearPatchData> bilinearPatches;
 	std::vector<TriangleData> triangles;
 	std::vector<MaterialData> materials;
+	std::vector<CloudMedium<float>> cloudMediums;  // indexed by MaterialType::CloudMedium's cloud_medium_extra.cloudMediumIdx
 
 	// ---- object instancing ------------------------------------------------
 	// Geometry that exists once and is placed many times. Kept in a SEPARATE

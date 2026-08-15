@@ -109,7 +109,7 @@ extern "C" int optix_render_main(
 										 scene.punctualLights, scene.bilinearPatches,
 										 scene.triangles, scene.lensElements,
 										 scene.exitPupilBounds, scene.textures,
-										 scene.texturePixels)) {
+										 scene.texturePixels, scene.cloudMediums)) {
 				std::cerr << "[OptiX] Failed to upload scene to GPU\n";
 				return ERR_GPU_MEMORY_COPY_FAILED;
 			}
@@ -294,7 +294,7 @@ extern "C" int optix_render_main_sppm(
 			                             scene.punctualLights, scene.bilinearPatches,
 			                             scene.triangles, scene.lensElements,
 			                             scene.exitPupilBounds, scene.textures,
-			                             scene.texturePixels)) {
+			                             scene.texturePixels, scene.cloudMediums)) {
 				std::cerr << "[OptiX] Failed to upload scene to GPU\n";
 				return ERR_GPU_MEMORY_COPY_FAILED;
 			}
