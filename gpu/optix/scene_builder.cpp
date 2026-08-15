@@ -739,14 +739,30 @@ namespace {
 				// Rest-of-line rather than a single ss >> token: real
 				// texture filenames in these archives can contain literal
 				// spaces (e.g. Bistro's "Metal_ RollDoor_01/..."), which a
-				// single >> would silently truncate at. See CPU's
-				// parse_mtl_textures() comment for the full rationale.
+				// single >> would silently truncate at. Also skips leading
+				// "-option numeric_args..." tokens (e.g. Gallery's own
+				// "map_Kd -bm 0.7 gallery.jpg") before the filename. See
+				// CPU's parse_mtl_textures() comment for the full rationale.
 				std::string path;
 				std::getline(ss, path);
-				size_t start = path.find_first_not_of(" \t");
-				if (start != std::string::npos) {
+				size_t pos = path.find_first_not_of(" \t");
+				while (pos != std::string::npos && path[pos] == '-') {
+					size_t tokEnd = path.find_first_of(" \t", pos);
+					pos = (tokEnd == std::string::npos) ? std::string::npos
+														 : path.find_first_not_of(" \t", tokEnd);
+					while (pos != std::string::npos) {
+						size_t argEnd = path.find_first_of(" \t", pos);
+						std::string argTok = path.substr(pos, argEnd == std::string::npos ? std::string::npos : argEnd - pos);
+						char* endp = nullptr;
+						std::strtod(argTok.c_str(), &endp);
+						if (endp == argTok.c_str() || *endp != '\0') break;  // not purely numeric
+						pos = (argEnd == std::string::npos) ? std::string::npos
+															 : path.find_first_not_of(" \t", argEnd);
+					}
+				}
+				if (pos != std::string::npos) {
 					size_t end = path.find_last_not_of(" \t\r");
-					result[current] = path.substr(start, end - start + 1);
+					result[current] = path.substr(pos, end - pos + 1);
 				}
 			}
 		}
@@ -1167,7 +1183,9 @@ namespace {
 							const MtlSpecularParamsGpu& sp = specIt->second;
 							if (sp.illum == 7) {
 								resolvedIdx = add_dielectric(scene, sp.ni > 0.0f ? sp.ni : 1.5f);
-							} else if (sp.illum == 2 && fmaxf(fmaxf(sp.ks.x, sp.ks.y), sp.ks.z) > kMeaningfulKsComponentGpu) {
+							} else if ((sp.illum == 2 || sp.illum == 3) && fmaxf(fmaxf(sp.ks.x, sp.ks.y), sp.ks.z) > kMeaningfulKsComponentGpu) {
+								// illum 3 gets the same glossy-metal treatment as
+								// illum 2 - see CPU's identical dispatch comment.
 								auto colorForKsIt = mtlColors.find(f.mtl);
 								float3 kd = (colorForKsIt != mtlColors.end())
 									? colorForKsIt->second : make_float3(1.0f, 1.0f, 1.0f);
@@ -4133,6 +4151,44 @@ static void build_san_miguel_gpu(SceneData& scene) {
 		/*scale=*/1.0f, make_float3(-12.25f, 0.463f, -1.4475f), "san_miguel_textures");
 }
 
+/// @brief Scene 75: Sibenik Cathedral. Matches CPU build_sibenik_cathedral()
+/// exactly. See build_sponza_gpu()'s own comment for the shared design
+/// rationale.
+static void build_sibenik_cathedral_gpu(SceneData& scene) {
+	const int mat_stone = add_lambertian(scene, make_float3(0.72f, 0.71f, 0.65f));
+	load_obj_triangles_mtl_gpu(scene, "sibenik_cathedral.obj", mat_stone,
+		/*scale=*/1.0f, make_float3(0.0f, 15.3123f, 0.0f), "sibenik_cathedral_textures");
+}
+
+/// @brief Scene 76: Breakfast Room. Matches CPU build_breakfast_room()
+/// exactly. See build_sponza_gpu()'s own comment for the shared design
+/// rationale.
+static void build_breakfast_room_gpu(SceneData& scene) {
+	const int mat_room = add_lambertian(scene, make_float3(0.6f, 0.55f, 0.5f));
+	load_obj_triangles_mtl_gpu(scene, "breakfast_room.obj", mat_room,
+		/*scale=*/1.0f, make_float3(0.54f, 1.42f, -2.67f), "breakfast_room_textures");
+}
+
+/// @brief Scene 77: Salle de Bain. Matches CPU build_salle_de_bain()
+/// exactly. See build_sponza_gpu()'s own comment for the shared design
+/// rationale. Real Ke on the "Light" material -- second OBJ/.mtl asset
+/// (after Fireplace Room) to register a genuine Ke-emissive triangle as a
+/// GpuLightKind::Triangle light, exercising the wavefront NEE fix a second
+/// time.
+static void build_salle_de_bain_gpu(SceneData& scene) {
+	const int mat_room = add_lambertian(scene, make_float3(0.85f, 0.85f, 0.85f));
+	load_obj_triangles_mtl_gpu(scene, "salle_de_bain.obj", mat_room,
+		/*scale=*/1.0f, make_float3(0.08f, -0.03f, 0.39f), "salle_de_bain_textures");
+}
+
+/// @brief Scene 78: Gallery. Matches CPU build_gallery() exactly. See
+/// build_sponza_gpu()'s own comment for the shared design rationale.
+static void build_gallery_gpu(SceneData& scene) {
+	const int mat_room = add_lambertian(scene, make_float3(0.6f, 0.55f, 0.45f));
+	load_obj_triangles_mtl_gpu(scene, "gallery.obj", mat_room,
+		/*scale=*/1.0f, make_float3(0.60f, -0.06f, 1.33f), "gallery_textures");
+}
+
 /// @brief Build a scene and configure the camera
 /// @param scene_id Scene identifier, category letter + number ("A1" = Cornell Box)
 /// @param image_width Output image width in pixels
@@ -5675,6 +5731,67 @@ bool build_scene(
 									// see that function's comment (the colonnaded courtyard is light-starved
 									// by geometric occlusion at the original brightness, same issue as Sponza).
 									out_camera_extra->backgroundColor = make_float3(1.4f, 1.68f, 2.0f);
+								}
+								break;
+							}
+
+							case 75: {  // Sibenik Cathedral (see build_sibenik_cathedral_gpu's comment)
+								build_sibenik_cathedral_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, -15.0f, 1.7f, 0.0f);
+								const float3 lookat   = make_float3(15.0f, 5.0f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 60.0f, aspect, 1.0f, camera_params);  // 60: matches CPU CameraConfig row for scene 75
+								if (out_camera_extra) {
+									// Matches CPU build_sibenik_cathedral_sky()'s heavily brightened
+									// sky_light(4.5,4.8,5.2) - see that function's comment (Sibenik's
+									// window apertures are small relative to its stone-walled volume).
+									out_camera_extra->backgroundColor = make_float3(4.5f, 4.8f, 5.2f);
+								}
+								break;
+							}
+
+							case 76: {  // Breakfast Room (see build_breakfast_room_gpu's comment)
+								build_breakfast_room_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, -3.0f, 1.5f, 3.0f);
+								const float3 lookat   = make_float3(2.5f, 1.3f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 70.0f, aspect, 1.0f, camera_params);  // 70: matches CPU CameraConfig row for scene 76
+								if (out_camera_extra) {
+									// Matches CPU build_breakfast_room_sky()'s modestly brightened
+									// sky_light(1.1,1.2,1.35) - see that function's comment.
+									out_camera_extra->backgroundColor = make_float3(1.1f, 1.2f, 1.35f);
+								}
+								break;
+							}
+
+							case 77: {  // Salle de Bain (see build_salle_de_bain_gpu's comment)
+								build_salle_de_bain_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 10.0f, 15.0f, -5.0f);
+								const float3 lookat   = make_float3(-10.0f, 12.0f, 5.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 50.0f, aspect, 1.0f, camera_params);  // 50: matches CPU CameraConfig row for scene 77
+								if (out_camera_extra) {
+									// Salle de Bain is lit by its own real Ke "Light" material (NEE),
+									// not the sky - matches CPU's dim ambient sky_light(0.4,0.45,0.5).
+									out_camera_extra->backgroundColor = make_float3(0.4f, 0.45f, 0.5f);
+								}
+								break;
+							}
+
+							case 78: {  // Gallery (see build_gallery_gpu's comment)
+								build_gallery_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.2f, -5.0f);
+								const float3 lookat   = make_float3(0.0f, 2.2f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 55.0f, aspect, 1.0f, camera_params);  // 55: matches CPU CameraConfig row for scene 78
+								if (out_camera_extra) {
+									// Matches CPU build_gallery_sky()'s brightened sky_light(3.0,3.2,3.6) -
+									// see that function's comment.
+									out_camera_extra->backgroundColor = make_float3(3.0f, 3.2f, 3.6f);
 								}
 								break;
 							}

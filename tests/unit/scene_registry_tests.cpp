@@ -41,7 +41,8 @@ TEST(SceneRegistryTest, RegistryHasExpectedCount) {
 	// from G15 - see scene_registry.h's G15 entry - leaving that legacy_id
 	// permanently unused rather than renumbering G17-G24, matching this
 	// registry's existing precedent of stable, non-contiguous ids; H4/H5
-	// added Fireplace Room and San Miguel to the LargeScene category).
+	// added Fireplace Room and San Miguel to the LargeScene category; H6-H9
+	// added Sibenik Cathedral, Breakfast Room, Salle de Bain, and Gallery).
 	// This test will fail if a scene is accidentally added or removed -
 	// update this count (and kGuiSceneCount below) when that's intentional.
 	//
@@ -49,7 +50,7 @@ TEST(SceneRegistryTest, RegistryHasExpectedCount) {
 	// also contains whatever .pbrt files happen to be on the machine running
 	// the tests, which is not a property of this source tree and must not
 	// decide whether the suite passes.
-	EXPECT_EQ(builtin_scene_count(), 74);
+	EXPECT_EQ(builtin_scene_count(), 78);
 }
 
 TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem) {
@@ -532,7 +533,7 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // double-checking the GUI/error-hint text that mentions specific scene
 // counts or ID ranges by hand.
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
-	constexpr int kGuiSceneCount = 74;
+	constexpr int kGuiSceneCount = 78;
 	EXPECT_EQ(builtin_scene_count(), kGuiSceneCount)
 		<< "Registry size changed -- update kGuiSceneCount here to match.";
 }

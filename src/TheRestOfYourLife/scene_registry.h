@@ -1283,6 +1283,46 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             build_san_miguel_sky,
             nullptr
         },
+        {
+            "H6", 75, SceneNames::SibenikCathedral, SceneCategories::LargeScene,
+            "Sibenik Cathedral - a Gothic cathedral interior (vaulted nave, stone columns, a rose window, colored stained glass), with real per-face .mtl materials, image textures, and real bump maps loaded from models/sibenik_cathedral_textures/, lit through its open doorway/arches, loaded from an external .obj file (requires models/sibenik_cathedral.obj). Sixth 'whole environment' mesh scene, same design rationale as scenes 62-64/73/74 -- see build_sibenik_cathedral()'s own comment.",
+            "Very Slow", 400, true, true,
+            { 60, -15, 1.7, 0,  15, 5, 0,  0, 0, 0 },
+            build_sibenik_cathedral,
+            build_sibenik_cathedral_lights,
+            build_sibenik_cathedral_sky,
+            nullptr
+        },
+        {
+            "H7", 76, SceneNames::BreakfastRoom, SceneCategories::LargeScene,
+            "Breakfast Room - a cozy furnished dining interior with glassware, table settings, and marble/tile textures, with real per-face .mtl materials and image textures loaded from models/breakfast_room_textures/, lit by an open sky through its windows, loaded from an external .obj file (requires models/breakfast_room.obj). Seventh 'whole environment' mesh scene, same design rationale as scenes 62-64/73/74/75 -- see build_breakfast_room()'s own comment.",
+            "Very Slow", 300, true, true,
+            { 70, -3.0, 1.5, 3.0,  2.5, 1.3, 0,  0, 0, 0 },
+            build_breakfast_room,
+            build_breakfast_room_lights,
+            build_breakfast_room_sky,
+            nullptr
+        },
+        {
+            "H8", 77, SceneNames::SalleDeBain, SceneCategories::LargeScene,
+            "Salle de Bain - a tiled bathroom interior with a mirror, tub, and a real ceiling light fixture (genuine Ke emission -- exercises the NEE-light path a second time, after Fireplace Room), with real per-face .mtl materials and image textures loaded from models/salle_de_bain_textures/, loaded from an external .obj file (requires models/salle_de_bain.obj). Eighth 'whole environment' mesh scene, same design rationale as scenes 62-64/73-75 -- see build_salle_de_bain()'s own comment.",
+            "Slow", 150, true, true,
+            { 50, 10, 15, -5,  -10, 12, 5,  0, 0, 0 },
+            build_salle_de_bain,
+            build_salle_de_bain_lights,
+            build_salle_de_bain_sky,
+            nullptr
+        },
+        {
+            "H9", 78, SceneNames::Gallery, SceneCategories::LargeScene,
+            "Gallery - the Hallwyl Museum picture gallery in Stockholm, an ornate room of framed paintings, chandeliers, and a parquet floor, with a real per-face .mtl material and an image texture loaded from models/gallery_textures/, lit by an open sky, loaded from an external .obj file (requires models/gallery.obj). Ninth 'whole environment' mesh scene, same design rationale as scenes 62-64/73-76 -- see build_gallery()'s own comment.",
+            "Very Slow", 300, true, true,
+            { 55, 0, 2.2, -5,  0, 2.2, 0,  0, 0, 0 },
+            build_gallery,
+            build_gallery_lights,
+            build_gallery_sky,
+            nullptr
+        },
     };
     return registry;
 }

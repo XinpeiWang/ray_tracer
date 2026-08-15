@@ -2177,3 +2177,206 @@ inline hittable_list build_san_miguel_lights() {
 inline std::shared_ptr<sky_light> build_san_miguel_sky() {
 	return std::make_shared<sky_light>(color(1.4, 1.68, 2.0));
 }
+
+// ============================================================================
+// Scene 75: Sibenik Cathedral
+// Sixth "whole environment" mesh scene. A Gothic cathedral interior in
+// Sibenik, Croatia - tall vaulted nave, stone columns, a rose window, and
+// several colored stained-glass windows, with real per-face .mtl materials,
+// image textures (kamen.png, KAMEN-stup.png, mramor6x6.png), and real
+// map_Bump normal maps (kamen-bump.png, mramor6x6-bump.png) loaded from
+// models/sibenik_cathedral_textures/. The stained-glass materials
+// (staklo/staklo_zeleno/staklo_plavo/staklo_zuto, illum 6/4, Kd 0,0,0) are
+// not mapped to dielectric by this codebase's illum dispatch (only illum 2/3
+// -> metal and illum 7 -> dielectric are handled), so the colored glass
+// renders as plain black window cutouts rather than tinted transparent
+// glass - light still reaches the interior through the cathedral's open
+// doorway/arches, confirmed by render, not guesswork.
+//
+// Source: McGuire Computer Graphics Archive (casual-effects.com/data),
+// CC BY-NC 3.0 (non-commercial), originally modeled by Marko Dabrovic, with
+// mesh holes corrected by Kenzie Lamar (Vicarious Visions) and high-
+// resolution textures/bump maps painted by Morgan McGuire.
+//
+// Scale/offset: raw OBJ units, no rescale. Raw bbox x=[-20.14,20.14]
+// y=[-15.31,15.30] z=[-8.50,8.50] - already centered on (x,z)=(0,0) by the
+// original model, offset by (0, 15.3123, 0) to sit the floor at y=0.
+//
+// Camera: found by direct CPU-render iteration, landing on a nave-level
+// vantage point looking down the long axis toward the far apse, columns
+// receding on both sides.
+// ============================================================================
+inline std::shared_ptr<triangle_mesh_mtl> sibenik_cathedral_mesh() {
+	static const auto mesh = std::make_shared<triangle_mesh_mtl>(
+		"sibenik_cathedral.obj", make_shared<lambertian>(color(0.72, 0.71, 0.65)),
+		/*scale=*/1.0, point3(0.0, 15.3123, 0.0),
+		/*smooth_normals=*/false, "sibenik_cathedral_textures");
+	return mesh;
+}
+
+inline hittable_list build_sibenik_cathedral() {
+	hittable_list world;
+	world.add(sibenik_cathedral_mesh());
+	return world;
+}
+
+inline hittable_list build_sibenik_cathedral_lights() {
+	return sibenik_cathedral_mesh()->lights();
+}
+
+// Brightened well past Sponza/San Miguel's own modest 1.4-2.3x boosts (see
+// build_sponza_sky()'s comment) - confirmed by iterating from 1x through
+// 10x, not guesswork. Even at 10x, most of the nave away from the window
+// openings stays near-black: Sibenik's real window apertures are small
+// relative to its stone-walled volume (unlike Sponza's open colonnade), so
+// this is a physically plausible "shafts of light in an otherwise dim stone
+// interior" result, not a bug - the same reason real cathedral photography
+// looks like this. Settled on a middle value that properly exposes the
+// window/column areas without blowing them out, rather than chasing an
+// evenly-lit look this geometry doesn't physically support without adding
+// a light source that isn't in the real asset.
+inline std::shared_ptr<sky_light> build_sibenik_cathedral_sky() {
+	return std::make_shared<sky_light>(color(4.5, 4.8, 5.2));
+}
+
+// ============================================================================
+// Scene 76: Breakfast Room
+// Seventh "whole environment" mesh scene. A cozy Blender-sourced dining/
+// breakfast interior with glassware, table settings, and marble/tile
+// textures. Every one of breakfast_room.mtl's 15 materials is tagged
+// "illum 4" (this exporter's blanket default, not a per-material glass
+// signal the way Bistro's real illum-7 materials were - confirmed by every
+// material using it regardless of Kd/Ks, including plain paint and rubber),
+// so illum 4 is deliberately left unmapped to dielectric here; only its
+// map_Kd textures (picture3.jpg, tiles.png) exercise real coverage.
+//
+// Source: McGuire Computer Graphics Archive (casual-effects.com/data),
+// CC BY 3.0.
+//
+// Scale/offset: raw OBJ units, no rescale. Raw bbox x=[-6.35,5.26]
+// y=[-1.42,7.90] z=[-4.54,9.89], offset by (0.54, 1.42, -2.67) to sit the
+// floor at y=0 and center the (x,z) plan on the origin.
+//
+// Camera: found by direct CPU-render iteration, landing on a seated-eye-
+// height vantage point at the table looking across the room toward the
+// window and artwork.
+// ============================================================================
+inline std::shared_ptr<triangle_mesh_mtl> breakfast_room_mesh() {
+	static const auto mesh = std::make_shared<triangle_mesh_mtl>(
+		"breakfast_room.obj", make_shared<lambertian>(color(0.6, 0.55, 0.5)),
+		/*scale=*/1.0, point3(0.54, 1.42, -2.67),
+		/*smooth_normals=*/false, "breakfast_room_textures");
+	return mesh;
+}
+
+inline hittable_list build_breakfast_room() {
+	hittable_list world;
+	world.add(breakfast_room_mesh());
+	return world;
+}
+
+inline hittable_list build_breakfast_room_lights() {
+	return breakfast_room_mesh()->lights();
+}
+
+// Brightened from a first-pass (0.65,0.75,0.9), but only modestly: unlike
+// Sibenik/Gallery's small apertures, Breakfast Room's window is a large
+// glass wall panel with direct sky access, so a same-magnitude boost to
+// their level (3.5-4.2) blew this scene out to solid white - confirmed by
+// render, dialed back to the value below.
+inline std::shared_ptr<sky_light> build_breakfast_room_sky() {
+	return std::make_shared<sky_light>(color(1.1, 1.2, 1.35));
+}
+
+// ============================================================================
+// Scene 77: Salle de Bain (bathroom)
+// Eighth "whole environment" mesh scene. A tiled bathroom with a "Mirror"
+// material (Kd 0,0,0, Ks 0.99, illum 3) and a "Light" material with a real
+// Ke 10,10,10 - the second OBJ/.mtl asset (after Fireplace Room) to register
+// a genuine Ke-emissive triangle as an NEE light, and the first to exercise
+// illum 3 (extended alongside illum 2 into the glossy-metal dispatch branch
+// specifically for this Mirror material - see mesh.h/scene_builder.cpp's
+// specular-dispatch comment).
+//
+// Source: McGuire Computer Graphics Archive (casual-effects.com/data),
+// CC BY 3.0, by Nacimus Prime (Blend Swap), ported by Benedikt Bitterli.
+//
+// Scale/offset: raw OBJ units, no rescale. Raw bbox x=[-17.05,16.90]
+// y=[0.03,33.60] z=[-23.26,22.49], offset by (0.08, -0.03, 0.39) to sit the
+// floor at y=0 and center the (x,z) plan on the origin.
+//
+// Camera: found by direct CPU-render iteration, landing on a vantage point
+// framing the tub, mirror, and tiled wall.
+// ============================================================================
+inline std::shared_ptr<triangle_mesh_mtl> salle_de_bain_mesh() {
+	static const auto mesh = std::make_shared<triangle_mesh_mtl>(
+		"salle_de_bain.obj", make_shared<lambertian>(color(0.85, 0.85, 0.85)),
+		/*scale=*/1.0, point3(0.08, -0.03, 0.39),
+		/*smooth_normals=*/false, "salle_de_bain_textures");
+	return mesh;
+}
+
+inline hittable_list build_salle_de_bain() {
+	hittable_list world;
+	world.add(salle_de_bain_mesh());
+	return world;
+}
+
+inline hittable_list build_salle_de_bain_lights() {
+	return salle_de_bain_mesh()->lights();
+}
+
+inline std::shared_ptr<sky_light> build_salle_de_bain_sky() {
+	return std::make_shared<sky_light>(color(0.4, 0.45, 0.5));
+}
+
+// ============================================================================
+// Scene 78: Gallery
+// Ninth "whole environment" mesh scene. The Hallwyl Museum picture gallery
+// in Stockholm - an ornate room of framed paintings, chandeliers, and
+// parquet floor, all a single material sharing one large gallery.jpg texture
+// referenced as both "map_Kd -bm 0.7 gallery.jpg" and
+// "map_Ke -bm 0.3 gallery.jpg". The leading "-bm <value>" option before the
+// filename was previously unhandled by parse_mtl_textures()/the GPU
+// equivalent (both assumed no leading options, since Sponza/Bistro/Rungholt/
+// Fireplace Room/San Miguel never had any) - fixed alongside this scene so
+// the texture actually loads instead of silently falling back to flat Kd.
+// map_Ke (an emissive *texture*, as opposed to the scalar Ke this codebase's
+// Phase 1 already handles) remains unsupported - the gallery's real painted-
+// canvas glow isn't reproduced, only its diffuse appearance under the scene's
+// sky light.
+//
+// Source: McGuire Computer Graphics Archive (casual-effects.com/data),
+// CC BY-SA 4.0.
+//
+// Scale/offset: raw OBJ units, no rescale. Raw bbox x=[-6.20,5.00]
+// y=[0.06,6.26] z=[-14.04,11.38], offset by (0.60, -0.06, 1.33) to sit the
+// floor at y=0 and center the (x,z) plan on the origin.
+//
+// Camera: found by direct CPU-render iteration, landing on a vantage point
+// down the gallery's central axis framing the hung paintings on both walls.
+// ============================================================================
+inline std::shared_ptr<triangle_mesh_mtl> gallery_mesh() {
+	static const auto mesh = std::make_shared<triangle_mesh_mtl>(
+		"gallery.obj", make_shared<lambertian>(color(0.6, 0.55, 0.45)),
+		/*scale=*/1.0, point3(0.60, -0.06, 1.33),
+		/*smooth_normals=*/false, "gallery_textures");
+	return mesh;
+}
+
+inline hittable_list build_gallery() {
+	hittable_list world;
+	world.add(gallery_mesh());
+	return world;
+}
+
+inline hittable_list build_gallery_lights() {
+	return gallery_mesh()->lights();
+}
+
+// Brightened from a first-pass (0.6,0.65,0.75) for the same reason as
+// Breakfast Room/Sibenik above - the gallery is reached through a limited
+// skylight/doorway rather than direct open sky.
+inline std::shared_ptr<sky_light> build_gallery_sky() {
+	return std::make_shared<sky_light>(color(3.0, 3.2, 3.6));
+}

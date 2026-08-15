@@ -32,6 +32,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include <cstdio>
+#include <cstdlib>
 #include <utility>
 
 
@@ -430,17 +431,38 @@ inline std::unordered_map<std::string, std::string> parse_mtl_textures(const std
 			// the filename rather than a single ss >> token: real texture
 			// filenames in these archives can contain literal spaces (e.g.
 			// Bistro's "Metal_ RollDoor_01/Metal_ RollDoor_01_diff.png"),
-			// which a single >> would silently truncate at. Real-world
-			// .mtl "map_Kd" lines can also carry options (-o, -s, -bm, ...)
-			// before the filename; none of the three scenes this was built
-			// for (Sponza/Bistro/Rungholt) use them, so this doesn't handle
-			// that general case.
+			// which a single >> would silently truncate at.
+			//
+			// Real-world "map_Kd" lines can also carry options (-o, -s,
+			// -bm, -mm, ...) before the filename -- e.g. the Gallery scene's
+			// own .mtl has "map_Kd -bm 0.7 gallery.jpg". Skip any leading
+			// "-option" tokens together with their numeric arguments (1-3
+			// depending on the option; detected here by "does this token
+			// parse fully as a number" rather than hardcoding a count per
+			// option) before taking the remainder as the filename. None of
+			// this was needed for Sponza/Bistro/Rungholt/Fireplace Room/
+			// San Miguel (no leading options in their map_Kd lines), so this
+			// is purely additive for them.
 			std::string path;
 			std::getline(ss, path);
-			size_t start = path.find_first_not_of(" \t");
-			if (start != std::string::npos) {
+			size_t pos = path.find_first_not_of(" \t");
+			while (pos != std::string::npos && path[pos] == '-') {
+				size_t tokEnd = path.find_first_of(" \t", pos);
+				pos = (tokEnd == std::string::npos) ? std::string::npos
+													 : path.find_first_not_of(" \t", tokEnd);
+				while (pos != std::string::npos) {
+					size_t argEnd = path.find_first_of(" \t", pos);
+					std::string argTok = path.substr(pos, argEnd == std::string::npos ? std::string::npos : argEnd - pos);
+					char* endp = nullptr;
+					std::strtod(argTok.c_str(), &endp);
+					if (endp == argTok.c_str() || *endp != '\0') break;  // not purely numeric
+					pos = (argEnd == std::string::npos) ? std::string::npos
+														 : path.find_first_not_of(" \t", argEnd);
+				}
+			}
+			if (pos != std::string::npos) {
 				size_t end = path.find_last_not_of(" \t\r");
-				result[current] = path.substr(start, end - start + 1);
+				result[current] = path.substr(pos, end - pos + 1);
 			}
 		}
 	}
@@ -909,7 +931,12 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 						const mtl_specular_params& sp = spec_it->second;
 						if (sp.illum == 7) {
 							resolved = std::make_shared<dielectric>(sp.ni > 0.0 ? sp.ni : 1.5);
-						} else if (sp.illum == 2 && std::max({sp.ks.x(), sp.ks.y(), sp.ks.z()}) > kMeaningfulKsComponent) {
+						} else if ((sp.illum == 2 || sp.illum == 3) && std::max({sp.ks.x(), sp.ks.y(), sp.ks.z()}) > kMeaningfulKsComponent) {
+							// illum 3 ("diffuse+specular, reflection on") gets the
+							// same glossy-metal treatment as illum 2 - Salle de
+							// Bain's "Mirror" material (Kd 0,0,0, Ks 0.99, illum 3)
+							// would otherwise render as a plain black diffuse
+							// rectangle instead of anything mirror-like.
 							auto color_it = mtl_colors.find(name);
 							color kd = (color_it != mtl_colors.end()) ? color_it->second : color(1, 1, 1);
 							resolved = std::make_shared<metal>(kd, phong_to_roughness(sp.ns));

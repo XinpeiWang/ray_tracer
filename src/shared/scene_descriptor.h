@@ -123,6 +123,10 @@ namespace SceneNames {
     constexpr const char* Rungholt             = "Rungholt";
     constexpr const char* FireplaceRoom        = "Fireplace Room";
     constexpr const char* SanMiguel            = "San Miguel";
+    constexpr const char* SibenikCathedral     = "Sibenik Cathedral";
+    constexpr const char* BreakfastRoom        = "Breakfast Room";
+    constexpr const char* SalleDeBain          = "Salle de Bain";
+    constexpr const char* Gallery              = "Gallery";
 } // namespace SceneNames
 
 // -----------------------------------------------------------------------
