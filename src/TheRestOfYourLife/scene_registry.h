@@ -25,6 +25,7 @@
 #include "../shared/pbrt_discover.h"
 #include "../shared/pbrt_load.h"
 #include <deque>
+#include <filesystem>
 #include <functional>
 #include <map>
 #include <iostream>
@@ -100,6 +101,114 @@ static inline hittable_list sky_dummy_lights() {
 }
 
 static inline hittable_list no_lights() { return hittable_list{}; }
+
+// Defined at the bottom of this file; forward-declared here so a curated
+// builtin entry can register its own .pbrt path the same way
+// pbrt_scene_registry::append() does for dynamically-discovered ones.
+namespace pbrt_scene_registry { std::map<std::string, std::string>& paths(); }
+
+// F3: Instanced Spheres. Loads pbrt_scenes/instanced-spheres.pbrt through
+// the same lazy-load pbrt pipeline pbrt_scene_registry::append() uses for
+// files discovered at startup, but as a curated Geometry-category entry
+// with its own id/name/description rather than an auto-generated "I<N>"
+// User Scene. See that file's own header comment for why it exists: one
+// object definition ("cairn": slab + metal ball + glass ball) placed three
+// times - plain, rotated, and non-uniformly scaled. The scaled placement's
+// spheres only render as true ellipsoids under real instancing (the ray is
+// carried into the instance's local space before intersecting); baking the
+// placement into world-space spheres cannot express a non-uniform scale
+// and would quietly draw round balls instead. GPU needs no new code for
+// this scene - build_scene()'s generic pbrt fallback (see the default:
+// case in gpu/optix/scene_builder.cpp) already handles arbitrary loaded
+// .pbrt files, provided paths()["F3"] resolves, which this sets below.
+inline SceneDescriptor build_instanced_spheres_descriptor() {
+    struct Loaded {
+        bool attempted = false;
+        pbrt_cpu::BuildResult built;
+    };
+    // Resolved the same way pbrt_discover::scanDefaultPaths() finds every
+    // other .pbrt file: the working directory differs between running from
+    // the repo root (development) and from RayTracer_Package/ (GUI/CLI
+    // launch), so a single hardcoded relative path is wrong for one of
+    // them. This walks the same candidate directories, in the same order,
+    // and keeps whichever one actually holds the file.
+    static const std::string path = []() -> std::string {
+        for (const std::string& dir : pbrt_discover::defaultSearchPaths()) {
+            std::filesystem::path candidate =
+                std::filesystem::path(dir) / "instanced-spheres.pbrt";
+            std::error_code ec;
+            if (std::filesystem::exists(candidate, ec))
+                return candidate.string();
+        }
+        return "pbrt_scenes/instanced-spheres.pbrt";  // not found anywhere - fails loudly below
+    }();
+    static const auto state = std::make_shared<Loaded>();
+    // No captures needed: both locals above have static storage duration,
+    // so referencing them here doesn't require (or allow, cleanly) capture.
+    static const auto ensure = []() -> pbrt_cpu::BuildResult& {
+        if (!state->attempted) {
+            state->attempted = true;
+            const pbrt_load::LoadResult r = pbrt_load::loadFile(path);
+            if (!r.ok) {
+                std::cerr << "error: " << r.error << "\n";
+            } else {
+                for (const pbrt_scene::Warning& w : r.scene.warnings)
+                    std::cerr << "warning: " << path << ": " << w.message << "\n";
+                state->built = pbrt_cpu::build(r.scene);
+                std::cerr << "[pbrt] " << path << ": "
+                          << state->built.triangleCount << " triangles, "
+                          << state->built.sphereCount << " spheres, "
+                          << state->built.instanceCount << " instance placements\n";
+            }
+        }
+        return state->built;
+    };
+
+    SceneDescriptor s;
+    s.id = "F3";
+    s.legacy_id = 71;
+    s.name = SceneNames::InstancedSpheres;
+    s.category = SceneCategories::Geometry;
+    s.description =
+        "Object instancing with spheres: one 'cairn' (slab + metal ball + "
+        "glass ball) defined once, placed three times - plain, rotated, and "
+        "non-uniformly scaled. The scaled placement's spheres read as true "
+        "ellipsoids, which only real instancing (not baked world-space "
+        "placement) can produce";
+    s.performance = "Fast";
+    s.recommended_spp = 200;
+    s.requires_files = true;
+    s.gpu_compatible = true;
+    // Matches the file's own `LookAt 278 278 -800  278 278 0  0 1 0` /
+    // `Camera "perspective" "float fov" [ 40 ]` directives.
+    s.camera = CameraConfig{
+        40, 278, 278, -800,  278, 278, 0,  0, 0, 0,
+        CameraMode::Fixed, 0.0, 10.0
+    };
+    // No captures: `ensure` has static storage duration (see above), and
+    // MSVC rejects capturing such a variable by name (C3495) - it doesn't
+    // need capturing to be referenced here either.
+    s.build_world = []() {
+        pbrt_cpu::BuildResult& b = ensure();
+        return b.world ? *b.world : hittable_list{};
+    };
+    s.build_lights = []() {
+        pbrt_cpu::BuildResult& b = ensure();
+        return b.lights ? *b.lights : hittable_list{};
+    };
+    s.build_sky = []() -> std::shared_ptr<sky_light> {
+        pbrt_cpu::BuildResult& b = ensure();
+        return b.sky;
+    };
+    s.build_punct = nullptr;
+    // The file's Camera directive is plain perspective, so no non-default
+    // setup_camera handling (ortho/spherical/realistic) is needed here,
+    // unlike pbrt_scene_registry::append()'s generic per-file version.
+    s.setup_camera = nullptr;
+
+    pbrt_scene_registry::paths()["F3"] = path;
+    return s;
+}
 
 // -----------------------------------------------------------------------
 // Scenes loaded from .pbrt files (see append_pbrt_scenes below)
@@ -799,6 +908,20 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             []() {
                 hittable_list l;
                 l.add(std::make_shared<sphere>(point3(0,8,0), 2,
+                      std::shared_ptr<material>()));
+                return l;
+            }
+        },
+        build_instanced_spheres_descriptor(),
+        {
+            "F4", 72, SceneNames::CurveFibers, SceneCategories::Geometry,
+            "A windswept tuft of real Bezier curve strands (CurveShape, tapered Cylinder cross-section) - genuine ray-curve intersection, not the sphere+HairBxDF trick scene B11 uses. CPU only: no OptiX custom-intersection program exists yet for curves.",
+            "Fast", 150, false, false,
+            { 38, 0, 2.0, 6.5,  0, 0.7, 0,  0.04, 0.045, 0.06 },
+            build_curve_fibers_scene,
+            []() {
+                hittable_list l;
+                l.add(std::make_shared<quad>(point3(-2.5,4.0,-2.5), vec3(5,0,0), vec3(0,0,5),
                       std::shared_ptr<material>()));
                 return l;
             }

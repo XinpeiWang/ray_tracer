@@ -93,6 +93,8 @@ namespace SceneNames {
     constexpr const char* SphericalCameraCornellBox    = "Spherical Camera (Cornell Box)";
     constexpr const char* RealisticCameraCornellBox    = "Realistic Camera (Cornell Box)";
     constexpr const char* TriangleMesh         = "Triangle Mesh";
+    constexpr const char* InstancedSpheres     = "Instanced Spheres";
+    constexpr const char* CurveFibers          = "Curve Fibers";
     constexpr const char* StanfordBunny        = "Stanford Bunny";
     constexpr const char* StanfordArmadillo    = "Stanford Armadillo";
     constexpr const char* StanfordHappyBuddha  = "Stanford Happy Buddha";

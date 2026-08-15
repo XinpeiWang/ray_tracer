@@ -9,6 +9,7 @@
 #include "constant_medium.h"
 #include "cloud_medium_hittable.h"
 #include "rgb_grid_medium_hittable.h"
+#include "curve_shape_hittable.h"
 #include "../shared/rgb_nebula_generator.h"
 #include "hair_material.h"
 #include "principled_material.h"
@@ -1062,6 +1063,79 @@ inline hittable_list build_triangle_mesh_scene() {
 
 	// Area light
 	world.add(make_shared<sphere>(point3(0, 8, 0), 2, make_shared<diffuse_light>(color(6,6,6))));
+	return world;
+}
+
+//==============================================================================================
+// Scene F4: Curve Fibers
+// A windswept tuft of real Bezier curve strands (CurveShape<double>, Cylinder
+// type, root-to-tip tapered width) rooted in a Fibonacci-disk arrangement -
+// genuine curved geometry with a true ray-curve intersection test, unlike
+// scene B11 (Hair Fibers), which applies HairBxDF shading to ordinary spheres
+// rather than curving the geometry itself (see build_hair_fibers()'s
+// comment). Colored with the same five hair-tone palette as B11 so the two
+// scenes read as companions: B11 shows the shading model, this one shows the
+// actual fiber shape a real strand traces.
+//==============================================================================================
+inline hittable_list build_curve_fibers_scene() {
+	hittable_list world;
+
+	// Ground - same checker convention as scene F2 (Triangle Mesh)
+	auto checker = make_shared<checker_texture>(0.8, color(0.15,0.15,0.15), color(0.85,0.85,0.85));
+	world.add(make_shared<sphere>(point3(0,-1000,0), 1000, make_shared<lambertian>(checker)));
+
+	// Deterministic per-strand pseudo-random in [0,1) - independent of the
+	// engine's global RNG so this scene's geometry is identical every run.
+	auto hash01 = [](int i, int salt) -> double {
+		unsigned int h = static_cast<unsigned int>(i) * 374761393u
+		                + static_cast<unsigned int>(salt) * 668265263u;
+		h = (h ^ (h >> 13)) * 1274126177u;
+		h ^= (h >> 16);
+		return (h & 0xFFFFFFu) / double(0xFFFFFFu);
+	};
+
+	// Same 5 hair tones as build_hair_fibers() (B11): dark brown, blonde,
+	// auburn, silver, black.
+	const color palette[5] = {
+		color(0.25, 0.14, 0.06),
+		color(0.80, 0.65, 0.35),
+		color(0.45, 0.13, 0.05),
+		color(0.75, 0.75, 0.78),
+		color(0.03, 0.03, 0.03),
+	};
+
+	const int strand_count = 70;
+	const double disk_radius = 1.4;
+	const double golden_angle = 2.399963229728653;  // sunflower packing (~137.5 deg)
+
+	for (int i = 0; i < strand_count; ++i) {
+		// Fibonacci sunflower disk placement - even root coverage with no RNG.
+		double frac = (i + 0.5) / strand_count;
+		double r = disk_radius * std::sqrt(frac);
+		double angle = i * golden_angle;
+		double bx = r * std::cos(angle);
+		double bz = r * std::sin(angle);
+
+		double height = 0.9 + 0.5 * hash01(i, 1);
+		double lean   = height * (0.35 + 0.35 * hash01(i, 2));  // windswept toward +x
+
+		double cx[4] = { bx, bx + 0.15*lean, bx + 0.55*lean, bx + lean };
+		double cy[4] = { 0.0, height*0.33,   height*0.70,    height    };
+		double cz[4] = { bz,  bz,            bz,             bz        };
+
+		auto curve = CurveShape<double>::make(
+			cx, cy, cz, 0.0, 1.0,
+			0.045, 0.006,             // tapered: thick root, fine tip
+			CurveType::Cylinder);      // round cross-section
+
+		auto mat = make_shared<lambertian>(palette[i % 5]);
+		world.add(make_shared<curve_shape_hittable>(curve, mat));
+	}
+
+	// Overhead area light
+	world.add(make_shared<quad>(point3(-2.5, 4.0, -2.5), vec3(5, 0, 0), vec3(0, 0, 5),
+		make_shared<diffuse_light>(color(6,6,6))));
+
 	return world;
 }
 
