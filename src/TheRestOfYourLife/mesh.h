@@ -19,6 +19,7 @@
 #include "triangle.h"
 #include "bvh.h"
 #include "material_simple.h"
+#include "normal_map_materials.h"
 
 #include <fstream>
 #include <sstream>
@@ -494,6 +495,89 @@ inline std::unordered_map<std::string, color> parse_mtl_emission(const std::stri
 
 
 // ---------------------------------------------------------------------------
+// parse_mtl_bump_textures
+// Companion to parse_mtl_textures(): maps material name -> its map_Bump
+// (bump/normal) texture path. Matches "map_Bump" (the OBJ/.mtl spec's own
+// casing), the all-lowercase "map_bump" actually used throughout this
+// renderer's own Sponza/Bistro .mtl files, and the bare "bump" alias some
+// exporters use.
+//
+// The OBJ/.mtl spec's map_Bump statement is genuinely ambiguous in the
+// wild: it's used for both a real scalar height/displacement map AND a
+// tangent-space RGB normal map, with nothing in the .mtl text itself to
+// tell them apart -- confirmed directly in this renderer's own two asset
+// packs (Sponza's map_bump files are real grayscale bump maps; Bistro's
+// are tangent-space normal maps, both referenced via the identical
+// "map_bump" keyword). Only the material name -> path mapping is resolved
+// here; is_grayscale_image() in load_obj_mtl() inspects the loaded image's
+// actual pixel content to decide bump_map_material vs normal_map_material.
+// ---------------------------------------------------------------------------
+inline std::unordered_map<std::string, std::string> parse_mtl_bump_textures(const std::string& filepath) {
+	std::unordered_map<std::string, std::string> result;
+
+	std::ifstream file(filepath);
+	if (!file.is_open()) {
+		static const char* kSearchPrefixes[] = {
+			"models/", "../models/", "../../models/",
+			"../../../models/", "../../../../models/", "../../../../../models/"
+		};
+		for (const char* prefix : kSearchPrefixes) {
+			file.clear();
+			file.open(prefix + filepath);
+			if (file.is_open()) break;
+		}
+	}
+	if (!file.is_open()) return result;
+
+	std::string line, current;
+	while (std::getline(file, line)) {
+		if (line.empty() || line[0] == '#') continue;
+		std::istringstream ss(line);
+		std::string tok;
+		ss >> tok;
+		if (tok == "newmtl") {
+			ss >> current;
+		} else if ((tok == "map_Bump" || tok == "map_bump" || tok == "bump") && !current.empty()) {
+			std::string path;
+			std::getline(ss, path);
+			size_t start = path.find_first_not_of(" \t");
+			if (start != std::string::npos) {
+				size_t end = path.find_last_not_of(" \t\r");
+				result[current] = path.substr(start, end - start + 1);
+			}
+		}
+	}
+	return result;
+}
+
+// Distinguishes a genuine grayscale height/displacement map from a
+// tangent-space RGB normal map by sampling an 8x8 grid of pixels: a real
+// grayscale image has R==G==B (or very close -- lossy compression can
+// introduce a few units of per-channel noise) at every pixel, while a
+// tangent-space normal map is visibly blue/purple-tinted (Z-dominant),
+// with a large, consistent R/G-vs-B split. 10 (out of 255) sits
+// comfortably above compression noise and well below a real normal map's
+// channel spread -- verified directly against one real sample of each
+// kind from this renderer's own Sponza/Bistro texture sets.
+inline bool is_grayscale_image(const rtw_image& img) {
+	int w = img.width(), h = img.height();
+	if (w <= 0 || h <= 0) return true; // degenerate load; harmless default
+	constexpr int kGrid = 8;
+	int max_diff = 0;
+	for (int sy = 0; sy < kGrid; ++sy) {
+		int y = (sy * h) / kGrid;
+		for (int sx = 0; sx < kGrid; ++sx) {
+			int x = (sx * w) / kGrid;
+			const unsigned char* p = img.pixel_data(x, y);
+			int r = p[0], g = p[1], b = p[2];
+			max_diff = std::max({max_diff, std::abs(r - g), std::abs(g - b), std::abs(r - b)});
+		}
+	}
+	return max_diff <= 10;
+}
+
+
+// ---------------------------------------------------------------------------
 // resolve_mtl_texture_path
 // Rewrites a .mtl-relative texture path (as read by parse_mtl_textures, e.g.
 // "textures\foo.png" or "..\BuildingTextures\bar.png") into a path under
@@ -663,6 +747,7 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 	std::unordered_map<std::string, std::string> mtl_textures;
 	std::unordered_map<std::string, color> mtl_emission;
 	std::unordered_map<std::string, mtl_specular_params> mtl_specular;
+	std::unordered_map<std::string, std::string> mtl_bump_textures;
 	std::string mtl_path_used = mtllib_name;
 	if (!mtllib_name.empty())
 		mtl_colors = parse_mtl(mtllib_name);
@@ -671,8 +756,10 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 		mtl_path_used = (dot == std::string::npos ? filepath : filepath.substr(0, dot)) + ".mtl";
 		mtl_colors = parse_mtl(mtl_path_used);
 	}
-	if (!texture_dir.empty() && !mtl_path_used.empty())
+	if (!texture_dir.empty() && !mtl_path_used.empty()) {
 		mtl_textures = parse_mtl_textures(mtl_path_used);
+		mtl_bump_textures = parse_mtl_bump_textures(mtl_path_used);
+	}
 	if (out_lights && !mtl_path_used.empty())
 		mtl_emission = parse_mtl_emission(mtl_path_used);
 	if (!mtl_path_used.empty())
@@ -739,7 +826,12 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 	// image_texture-backed lambertian when texture_dir is set and the
 	// material's map_Kd image loads successfully, else a flat lambertian
 	// (Kd), else fallback_mat when the name is empty/unknown or has none
-	// of the above.
+	// of the above -- then, whatever that base material is, a map_Bump
+	// texture (when present and texture_dir is set) wraps it in either
+	// bump_map_material or normal_map_material, chosen by the loaded
+	// image's actual pixel content via is_grayscale_image() (see that
+	// function's own comment for why the .mtl keyword alone can't say
+	// which one a given map_Bump reference really is).
 	// ------------------------------------------------------------------
 	constexpr double kMeaningfulKsComponent = 0.02;
 	std::unordered_map<std::string, std::shared_ptr<material>> mat_cache;
@@ -790,6 +882,24 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 					auto color_it = mtl_colors.find(name);
 					if (color_it != mtl_colors.end())
 						resolved = std::make_shared<lambertian>(color_it->second);
+				}
+				// map_Bump wraps whatever base material was just resolved
+				// above (lambertian, metal, dielectric, ...) -- skipped for
+				// emissive materials, where perturbing the emitted-light
+				// normal has no meaningful effect.
+				if (resolved && !texture_dir.empty() && !emissive_mats.count(name)) {
+					auto bump_it = mtl_bump_textures.find(name);
+					if (bump_it != mtl_bump_textures.end()) {
+						std::string bump_path = resolve_mtl_texture_path(bump_it->second, found_prefix + texture_dir);
+						rtw_image bump_probe(bump_path.c_str());
+						if (bump_probe.height() > 0) {
+							bool grayscale = is_grayscale_image(bump_probe);
+							auto bump_tex = std::make_shared<image_texture>(std::move(bump_probe));
+							resolved = grayscale
+								? std::static_pointer_cast<material>(std::make_shared<bump_map_material>(bump_tex, resolved))
+								: std::static_pointer_cast<material>(std::make_shared<normal_map_material>(bump_tex, resolved));
+						}
+					}
 				}
 				tri_mat = resolved ? resolved : fallback_mat;
 				mat_cache[name] = tri_mat;

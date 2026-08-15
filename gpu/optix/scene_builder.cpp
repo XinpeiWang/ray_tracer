@@ -13,6 +13,8 @@
 #include "pbrt_gpu_builder.h"
 #include "../../src/shared/pbrt_load.h"
 #include <cmath>
+#include <cstdlib>
+#include <algorithm>
 #include <cassert>
 #include <iostream>
 #include <random>
@@ -850,6 +852,75 @@ namespace {
 		return result;
 	}
 
+	// GPU counterpart of CPU's parse_mtl_bump_textures(): maps material
+	// name -> its map_Bump (bump/normal) texture path. Matches "map_Bump",
+	// the all-lowercase "map_bump" actually used throughout this renderer's
+	// own Sponza/Bistro .mtl files, and the bare "bump" alias. See CPU's
+	// own comment for why the .mtl keyword alone can't say whether a given
+	// reference is a real scalar height map or a tangent-space RGB normal
+	// map -- is_grayscale_texture_gpu() below inspects the loaded pixel
+	// content to decide, mirroring CPU's is_grayscale_image().
+	inline std::unordered_map<std::string, std::string> parse_mtl_bump_textures_gpu(const std::string& filename) {
+		std::unordered_map<std::string, std::string> result;
+		std::ifstream file(filename);
+		if (!file.is_open()) {
+			static const char* kSearchPrefixes[] = {
+				"models/", "../models/", "../../models/",
+				"../../../models/", "../../../../models/", "../../../../../models/"
+			};
+			for (const char* prefix : kSearchPrefixes) {
+				file.clear();
+				file.open(std::string(prefix) + filename);
+				if (file.is_open()) break;
+			}
+		}
+		if (!file.is_open()) return result;
+
+		std::string line, current;
+		while (std::getline(file, line)) {
+			if (line.empty() || line[0] == '#') continue;
+			std::istringstream ss(line);
+			std::string tok;
+			ss >> tok;
+			if (tok == "newmtl") {
+				ss >> current;
+			} else if ((tok == "map_Bump" || tok == "map_bump" || tok == "bump") && !current.empty()) {
+				std::string path;
+				std::getline(ss, path);
+				size_t start = path.find_first_not_of(" \t");
+				if (start != std::string::npos) {
+					size_t end = path.find_last_not_of(" \t\r");
+					result[current] = path.substr(start, end - start + 1);
+				}
+			}
+		}
+		return result;
+	}
+
+	// GPU counterpart of CPU's is_grayscale_image(): samples an 8x8 grid of
+	// an already-loaded texture's pixels (scene.texturePixels, starting at
+	// tex.pixelOffset) to distinguish a genuine grayscale height/
+	// displacement map (R==G==B everywhere) from a tangent-space RGB normal
+	// map (visibly blue/purple-tinted). See CPU's own comment for the
+	// threshold rationale.
+	inline bool is_grayscale_texture_gpu(const SceneData& scene, int texIdx) {
+		if (texIdx < 0 || texIdx >= static_cast<int>(scene.textures.size())) return true;
+		const TextureData& tex = scene.textures[texIdx];
+		if (tex.width <= 0 || tex.height <= 0) return true;
+		constexpr int kGrid = 8;
+		int max_diff = 0;
+		for (int sy = 0; sy < kGrid; ++sy) {
+			int y = (sy * tex.height) / kGrid;
+			for (int sx = 0; sx < kGrid; ++sx) {
+				int x = (sx * tex.width) / kGrid;
+				size_t idx = static_cast<size_t>(tex.pixelOffset) + (static_cast<size_t>(y) * tex.width + x) * 3;
+				int r = scene.texturePixels[idx], g = scene.texturePixels[idx + 1], b = scene.texturePixels[idx + 2];
+				max_diff = std::max({max_diff, std::abs(r - g), std::abs(g - b), std::abs(r - b)});
+			}
+		}
+		return max_diff <= 10;
+	}
+
 	// GPU counterpart of CPU's resolve_mtl_texture_path(): normalizes
 	// backslashes to forward slashes and strips leading "../"/"./"
 	// segments, then joins onto textureDir. See CPU's own comment
@@ -1003,6 +1074,9 @@ namespace {
 		std::unordered_map<std::string, MtlSpecularParamsGpu> mtlSpecular;
 		if (!mtlPathUsed.empty())
 			mtlSpecular = parse_mtl_specular_gpu(mtlPathUsed);
+		std::unordered_map<std::string, std::string> mtlBump;
+		if (textureDir && textureDir[0] != '\0' && !mtlPathUsed.empty())
+			mtlBump = parse_mtl_bump_textures_gpu(mtlPathUsed);
 
 		auto cornerNormal = [&](int ni) -> float3 {
 			if (ni >= 0 && ni < static_cast<int>(normals.size())) return normals[ni];
@@ -1027,7 +1101,11 @@ namespace {
 		// to attempt the texture: a material with only map_Kd (no Kd) is
 		// valid OBJ and must still resolve, even though none of Sponza/
 		// Bistro/Rungholt's .mtl files actually have one (every map_Kd
-		// material there also has a Kd line).
+		// material there also has a Kd line). Finally, a map_Bump reference
+		// on an untextured Lambertian result upgrades it to
+		// NormalMappedLambertian when the loaded image is a real tangent-
+		// space normal map (see is_grayscale_texture_gpu()'s own comment for
+		// the full bump-vs-normal-map dispatch and its GPU-specific limits).
 		std::unordered_map<std::string, int> matCache;
 		for (const auto& f : faces) {
 			int materialIdx = fallbackMaterialIdx;
@@ -1074,6 +1152,63 @@ namespace {
 						if (colorIt != mtlColors.end()) {
 							resolvedIdx = safe_cast_to_int(scene.materials.size());
 							add_lambertian(scene, colorIt->second);
+						}
+					}
+					// map_Bump -> MaterialType::NormalMappedLambertian, only
+					// when the resolved material is plain Lambertian with NO
+					// existing map_Kd diffuse texture: unlike CPU's decorator
+					// pattern (bump_map_material/normal_map_material wrap ANY
+					// inner material, textured or not), GPU's MaterialType is
+					// a single flat tag with one shared textureIdx slot per
+					// material, so it can't combine two textures (diffuse +
+					// normal) on the same material, and applying it to a
+					// Metal/Dielectric/DiffuseLight base would silently
+					// discard that base's real type. A textured-Lambertian
+					// material (map_Kd present) or a Metal/Dielectric/
+					// DiffuseLight base simply keeps its diffuse texture or
+					// type unperturbed here - a real, structural GPU-vs-CPU
+					// capability gap, not something newly introduced by this
+					// change (NormalMappedLambertian already had this same
+					// one-texture-slot constraint for spheres).
+					if (resolvedIdx >= 0 && textureDir && textureDir[0] != '\0' &&
+							scene.materials[resolvedIdx].type == MaterialType::Lambertian &&
+							scene.materials[resolvedIdx].textureIdx < 0) {
+						auto bumpIt = mtlBump.find(f.mtl);
+						if (bumpIt != mtlBump.end()) {
+							std::string bumpPath = resolve_mtl_texture_path_gpu(bumpIt->second, foundPrefix + textureDir);
+							int bumpTexIdx = load_image_texture_gpu(scene, bumpPath.c_str());
+							if (scene.textures[bumpTexIdx].width > 0) {
+								if (is_grayscale_texture_gpu(scene, bumpTexIdx)) {
+									// Real scalar height/displacement map
+									// (confirmed by pixel content, not
+									// filename - see CPU's is_grayscale_
+									// image() for why the .mtl keyword alone
+									// can't say which one a map_Bump
+									// reference really is). No GPU material
+									// type applies scalar bump/height
+									// displacement today - NormalMappedLambertian
+									// only unpacks a tangent-space RGB normal
+									// map. Feeding a grayscale image into
+									// that unpack path would produce a
+									// degenerate, wrong perturbation (R==G==B
+									// decodes to a normal offset only along
+									// one fixed diagonal direction, not real
+									// per-pixel surface detail), so this
+									// material simply keeps its unperturbed
+									// Lambertian shading on GPU instead of
+									// mis-rendering it. CPU handles this
+									// correctly (see mesh.h's own bump_map_
+									// material/normal_map_material dispatch)
+									// - confirmed present in Sponza's own
+									// textures (all real grayscale bump
+									// maps), absent from Bistro's (real
+									// tangent-space normal maps, handled by
+									// the branch below).
+								} else {
+									float3 albedo = scene.materials[resolvedIdx].albedo;
+									resolvedIdx = add_normal_mapped_lambertian(scene, albedo, bumpTexIdx);
+								}
+							}
 						}
 					}
 					materialIdx = (resolvedIdx >= 0) ? resolvedIdx : fallbackMaterialIdx;

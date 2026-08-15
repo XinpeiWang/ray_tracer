@@ -504,6 +504,37 @@ extern "C" __global__ void __closesthit__wf_triangle() {
 		uv_v = b0 * tri.uv0.y + b1 * tri.uv1.y + b2 * tri.uv2.y;
 	}
 
+	// Real UV-derived tangent (dpdu), for MaterialType::NormalMappedLambertian
+	// - stashed in objNormal (sphere-only field otherwise left zero for
+	// triangle hits, see HitWorkItem::objNormal's own comment) since
+	// WfHitPayload/HitWorkItem carry no per-vertex position/UV data of their
+	// own to recompute this from later. Solves the standard 2x2 system
+	// relating edge vectors to UV deltas (pbrt-v4 Triangle::Intersect),
+	// mirroring optix_intersection_triangle.h's recursive-path equivalent
+	// exactly. Computed unconditionally (cheap, pure math) rather than
+	// gated on the hit material actually being normal-mapped.
+	float3 tri_dpdu;
+	{
+		const float3 e1 = tri.p1 - tri.p0;
+		if (tri.hasUVs) {
+			const float3 e2 = tri.p2 - tri.p0;
+			const float du1 = tri.uv1.x - tri.uv0.x, dv1 = tri.uv1.y - tri.uv0.y;
+			const float du2 = tri.uv2.x - tri.uv0.x, dv2 = tri.uv2.y - tri.uv0.y;
+			const float det = du1 * dv2 - dv1 * du2;
+			if (fabsf(det) > 1e-12f) {
+				const float invDet = 1.0f / det;
+				tri_dpdu = (dv2 * invDet) * e1 - (dv1 * invDet) * e2;
+				const float dpdu_len = length(tri_dpdu);
+				tri_dpdu = (dpdu_len > 1e-8f) ? (tri_dpdu / dpdu_len) : normalize(e1);
+			} else {
+				tri_dpdu = normalize(e1);
+			}
+		} else {
+			tri_dpdu = normalize(e1);
+		}
+		if (instBase >= 0) tri_dpdu = normalize(optixTransformVectorFromObjectToWorldSpace(tri_dpdu));
+	}
+
 	payload->hitPoint    = hit_point;
 	payload->normal      = normal;
 	payload->t           = t_hit;
@@ -511,6 +542,7 @@ extern "C" __global__ void __closesthit__wf_triangle() {
 	payload->geomType    = 3;
 	payload->hit         = true;
 	payload->mediumTFar  = 0.0f;
+	payload->objNormal   = tri_dpdu;
 	payload->uv_u        = uv_u;
 	payload->uv_v        = uv_v;
 }

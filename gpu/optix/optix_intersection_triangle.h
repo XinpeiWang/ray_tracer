@@ -103,7 +103,59 @@ extern "C" __global__ void __closesthit__triangle() {
 	bool is_specular = false;
 	float brdf_pdf_override = -1.0f;
 
-	shade_material(mat, final_normal, ray_dir, hit_point, front_face, uv_u, uv_v, seed,
+	// NormalMappedLambertian: mirrors optix_intersection_sphere.h's own
+	// handling (decode the tangent-space normal, perturb, then shade as
+	// plain Lambertian with the perturbed normal) but with a REAL tangent
+	// instead of a world-up cross-product approximation - triangles carry
+	// actual UVs, so the standard pbrt-v4 Triangle::Intersect approach
+	// (solve the 2x2 system relating edge vectors to UV deltas) applies
+	// directly, unlike a sphere's arbitrary-at-the-poles tangent frame.
+	// Was previously unhandled here entirely (fell through shade_material()'s
+	// switch to its default: scattered=false, i.e. every normal-mapped
+	// triangle silently absorbed all light) - this is what actually wires
+	// the material type into triangle shading for the first time.
+	float3 shade_normal = final_normal;
+	MaterialData shade_mat = mat;
+	if (mat.type == MaterialType::NormalMappedLambertian) {
+		const float3 e1 = tri.p1 - tri.p0;
+		const float3 e2 = tri.p2 - tri.p0;
+		const float du1 = tri.uv1.x - tri.uv0.x, dv1 = tri.uv1.y - tri.uv0.y;
+		const float du2 = tri.uv2.x - tri.uv0.x, dv2 = tri.uv2.y - tri.uv0.y;
+		const float det = du1 * dv2 - dv1 * du2;
+		float3 dpdu;
+		if (fabsf(det) > 1e-12f) {
+			const float invDet = 1.0f / det;
+			dpdu = (dv2 * invDet) * e1 - (dv1 * invDet) * e2;
+			const float dpdu_len = length(dpdu);
+			dpdu = (dpdu_len > 1e-8f) ? (dpdu / dpdu_len) : normalize(e1);
+		} else {
+			dpdu = normalize(e1);
+		}
+		if (instBase >= 0) dpdu = normalize(optixTransformVectorFromObjectToWorldSpace(dpdu));
+
+		const float3 packed = sample_texture(mat.textureIdx, uv_u, uv_v, hit_point);
+		float ns_x = 2.0f * packed.x - 1.0f;
+		float ns_y = 2.0f * packed.y - 1.0f;
+		float ns_z = 2.0f * packed.z - 1.0f;
+		const float ns_len = sqrtf(ns_x * ns_x + ns_y * ns_y + ns_z * ns_z);
+		if (ns_len > 1e-8f) { ns_x /= ns_len; ns_y /= ns_len; ns_z /= ns_len; }
+		else                { ns_x = 0.0f; ns_y = 0.0f; ns_z = 1.0f; }
+
+		float out_nx, out_ny, out_nz;
+		apply_normal_map(ns_x, ns_y, ns_z, final_normal.x, final_normal.y, final_normal.z,
+			dpdu.x, dpdu.y, dpdu.z, out_nx, out_ny, out_nz);
+		shade_normal = make_float3(out_nx, out_ny, out_nz);
+
+		// Reuses shade_material()'s existing Lambertian NEE/MIS logic
+		// verbatim rather than duplicating it; textureIdx is cleared since
+		// it means "normal map" for this material type, not "albedo
+		// texture" the way Lambertian itself reads it - matches the sphere
+		// path's identical effective-material substitution.
+		shade_mat.type = MaterialType::Lambertian;
+		shade_mat.textureIdx = -1;
+	}
+
+	shade_material(shade_mat, shade_normal, ray_dir, hit_point, front_face, uv_u, uv_v, seed,
 		attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission);
 
 	optixSetPayload_3(__float_as_uint(emission.x));

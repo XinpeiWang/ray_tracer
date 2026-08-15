@@ -1436,12 +1436,22 @@ extern "C" __global__ void evaluate_materials(
 	case MaterialType::NormalMappedLambertian: {
 		// Lambertian with a perturbed shading normal from a tangent-space
 		// RGB normal-map texture - mirrors optix_intersection_sphere.h's
-		// closesthit case exactly. dpdu comes from h.objNormal (the sphere's
-		// raw, possibly-world-transformed-if-instanced outward normal -
-		// see HitWorkItem::objNormal), cross with world up, falling back to
-		// (1,0,0) at the poles where that cross product degenerates.
+		// (spheres) / optix_intersection_triangle.h's (triangles) closesthit
+		// cases. dpdu comes from h.objNormal, whose meaning depends on which
+		// geometry was hit - see HitWorkItem::objNormal's own comment.
 		float3 dpdu;
-		{
+		if (h.geomType == 3) {
+			// Triangle: h.objNormal already IS the real, world-space,
+			// UV-derived tangent (see HitWorkItem::objNormal's own comment
+			// and __closesthit__wf_triangle) - use directly. Previously
+			// this branch didn't exist, so every triangle fell through to
+			// the sphere-only cross-product path below; since objNormal is
+			// never populated for triangle hits (stays zero), that always
+			// degenerated to the (1,0,0) fallback regardless of the
+			// triangle's real surface orientation - a silently wrong (not
+			// crashing) shading tangent for every normal-mapped triangle.
+			dpdu = h.objNormal;
+		} else {
 			const float3 world_up = make_float3(0.0f, 1.0f, 0.0f);
 			const float3 t = cross(world_up, h.objNormal);
 			const float tlen = length(t);

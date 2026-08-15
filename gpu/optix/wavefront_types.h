@@ -75,12 +75,20 @@ struct HitWorkItem {
 	// every material that doesn't branch on it.
 	int    frontFace;
 
-	// Sphere-only, OBJECT-space (never transformed to world, even for an
-	// instanced placement - mirrors optix_intersection_sphere.h's obj_normal)
-	// raw outward normal, i.e. BEFORE the front-face flip that produced
-	// `normal` above. MaterialType::NormalMappedLambertian's tangent (dpdu)
-	// is derived from this, matching the recursive path exactly. Zero for
-	// quad/triangle hits and for any sphere material that doesn't read it.
+	// Dual-purpose carrier for MaterialType::NormalMappedLambertian's
+	// tangent (dpdu), since neither this struct nor WfHitPayload otherwise
+	// carries per-vertex position/UV data to recompute one later:
+	//   - Sphere: OBJECT-space (never transformed to world, even for an
+	//     instanced placement - mirrors optix_intersection_sphere.h's
+	//     obj_normal) raw outward normal, BEFORE the front-face flip that
+	//     produced `normal` above. wavefront_kernels.cu derives dpdu from
+	//     this via a world-up cross product, matching the recursive path.
+	//   - Triangle: the ALREADY-COMPUTED, WORLD-space dpdu tangent itself
+	//     (solved from the UV-gradient 2x2 system in
+	//     __closesthit__wf_triangle, mirroring optix_intersection_triangle.h)
+	//     - wavefront_kernels.cu uses it directly, no further derivation.
+	// Zero for quad hits and for any sphere/triangle material that doesn't
+	// read it.
 	float3 objNormal;
 
 	// Surface texture coordinates. Sphere: standard spherical (theta,phi)
