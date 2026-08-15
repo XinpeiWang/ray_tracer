@@ -355,7 +355,12 @@ inline hittable_list build_bilinear_patch_scene() {
 	// Bilinear patch saddle surface: four corners with different Y heights
 	// p00=bottom-left, p10=bottom-right, p01=top-left, p11=top-right
 	// Saddle: p00 and p11 high, p10 and p01 low (classic hyperbolic paraboloid)
-	auto patch_mat = make_shared<metal>(color(0.8, 0.7, 0.3), 0.05);
+	// Roughness raised from 0.05 - at near-mirror sharpness the curved
+	// surface read as mostly flat dark metal with one tiny highlight, which
+	// doesn't actually show the curvature (the whole point of this shape).
+	// A broader, softer highlight lets the surface's shading gradient trace
+	// the saddle/ramp shape instead.
+	auto patch_mat = make_shared<metal>(color(0.8, 0.7, 0.3), 0.15);
 	world.add(make_shared<bilinear_patch_hittable>(
 		point3(150,  80, 200),   // p00 (u=0,v=0) -- higher
 		point3(400,  50, 200),   // p10 (u=1,v=0) -- lower
@@ -364,8 +369,9 @@ inline hittable_list build_bilinear_patch_scene() {
 		patch_mat
 	));
 
-	// Second patch: curved ramp (linear in u, curved in v)
-	auto blue_mat = make_shared<metal>(color(0.2, 0.4, 0.8), 0.1);
+	// Second patch: curved ramp (linear in u, curved in v). Roughness raised
+	// from 0.1 for the same reason as the saddle patch above.
+	auto blue_mat = make_shared<metal>(color(0.2, 0.4, 0.8), 0.25);
 	world.add(make_shared<bilinear_patch_hittable>(
 		point3(200, 200, 220),   // p00
 		point3(370, 200, 220),   // p10

@@ -64,6 +64,22 @@ inline hittable_list build_cornell_box_lights() {
 	return lights;
 }
 
+// Light list for build_bilinear_patch_scene() (scene F1): same ceiling
+// light rectangle as build_cornell_box_lights() (matching geometry: the
+// scene's own quad Q=(213,554,227), u=(130,0,0), v=(0,0,105) is the same
+// rectangle from the opposite corner), but scene F1 has no glass sphere -
+// its "second object" is two bilinear patches, not a sphere - so
+// build_cornell_box_lights()'s sphere entry aimed roughly half of every
+// NEE sample at a phantom target with no real geometry there, same class
+// of bug already fixed for build_cornell_smoke_lights() below.
+inline hittable_list build_bilinear_patch_lights() {
+	hittable_list lights;
+	auto empty_material = shared_ptr<material>();
+	lights.add(
+		make_shared<quad>(point3(213,554,227), vec3(130,0,0), vec3(0,0,105), empty_material));
+	return lights;
+}
+
 // Light list for build_cornell_smoke() (scene 7): that scene's ceiling light
 // is its own, much larger rectangle (world quad Q=(113,554,127),
 // u=(330,0,0), v=(0,0,305), emission (7,7,7) - see scenes_book.h) rather

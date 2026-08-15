@@ -2596,8 +2596,10 @@ static void build_bilinear_patch_scene_gpu(SceneData& scene) {
 		scene.lightKinds.push_back(GpuLightKind::Quad);
 	}
 
-	// Patch 1: classic hyperbolic paraboloid saddle, gold metal
-	const int mat_gold = add_metal(scene, make_float3(0.8f, 0.7f, 0.3f), 0.05f);
+	// Patch 1: classic hyperbolic paraboloid saddle, gold metal. Roughness
+	// matches CPU's build_bilinear_patch_scene() - see that function's
+	// comment for why (0.05 read as flat/mirror-like, hiding the curvature).
+	const int mat_gold = add_metal(scene, make_float3(0.8f, 0.7f, 0.3f), 0.15f);
 	{
 		BilinearPatchData p{};
 		p.p00 = make_float3(150.0f, 80.0f, 200.0f);
@@ -2608,8 +2610,9 @@ static void build_bilinear_patch_scene_gpu(SceneData& scene) {
 		scene.bilinearPatches.push_back(p);
 	}
 
-	// Patch 2: curved ramp (linear in u, curved in v), blue metal
-	const int mat_blue = add_metal(scene, make_float3(0.2f, 0.4f, 0.8f), 0.1f);
+	// Patch 2: curved ramp (linear in u, curved in v), blue metal. Roughness
+	// matches CPU, same reason as the gold patch above.
+	const int mat_blue = add_metal(scene, make_float3(0.2f, 0.4f, 0.8f), 0.25f);
 	{
 		BilinearPatchData p{};
 		p.p00 = make_float3(200.0f, 200.0f, 220.0f);
@@ -2751,13 +2754,14 @@ static void build_measured_brdf_scene_gpu(SceneData& scene) {
 
 /// @brief Scene 37: Triangle Mesh. Matches CPU build_triangle_mesh_scene()
 /// exactly - same golden-ratio icosahedron vertex/face construction, same
-/// gold metal material, same ground/light placement. GPU MaterialType has no
-/// procedural-texture support (no scene has ever needed it - every prior
-/// checker-textured CPU scene ported to GPU this session used a flat
-/// approximation instead), so the ground's CPU checker texture becomes a
-/// solid mid-gray here.
+/// gold metal material, same ground/light placement, and (via
+/// add_checker_texture_gpu(), added for scene 38's ground) the same real
+/// checker-textured ground rather than the flat-gray approximation this
+/// scene used before that helper existed.
 static void build_triangle_mesh_scene_gpu(SceneData& scene) {
-	const int mat_ground = add_lambertian(scene, make_float3(0.5f, 0.5f, 0.5f));
+	const int checkerTexIdx = add_checker_texture_gpu(scene, 0.8f,
+		make_float3(0.15f, 0.15f, 0.15f), make_float3(0.85f, 0.85f, 0.85f));
+	const int mat_ground = add_lambertian(scene, make_float3(1.0f, 1.0f, 1.0f), checkerTexIdx);
 	SphereData ground{}; ground.center = make_float3(0.0f, -1000.0f, 0.0f); ground.radius = 1000.0f; ground.materialIdx = mat_ground;
 	scene.spheres.push_back(ground);
 

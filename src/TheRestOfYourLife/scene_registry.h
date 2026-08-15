@@ -325,7 +325,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Medium", 200, false, true,
             { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
             build_bilinear_patch_scene,
-            build_cornell_box_lights
+            build_bilinear_patch_lights
         },
         // ---- pbrt-v4 light / camera / medium showcase ----
         {
