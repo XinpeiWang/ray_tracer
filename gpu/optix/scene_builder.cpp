@@ -5251,15 +5251,21 @@ bool build_scene(
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
 								build_pinhole_camera_params(lookfrom, lookat, vup, 70.0f, aspect, 1.0f, camera_params);  // 70: matches CPU CameraConfig row for scene 62
 								if (out_camera_extra) {
-									// Matches CPU build_sponza_sky()'s solid-color sky_light(0.65,0.78,0.95).
-									out_camera_extra->backgroundColor = make_float3(0.65f, 0.78f, 0.95f);
+									// Matches CPU build_sponza_sky()'s brightened sky_light(1.3,1.56,1.9) -
+									// see that function's comment (the interior corridor is severely
+									// light-starved by geometric occlusion at the original brightness).
+									out_camera_extra->backgroundColor = make_float3(1.3f, 1.56f, 1.9f);
 								}
 								break;
 							}
 
 							case 63: {  // Amazon Lumberyard Bistro, Exterior (see build_bistro_exterior_gpu's comment)
 								build_bistro_exterior_gpu(scene);
-								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 1500.0f, 700.0f, 2000.0f);
+								// z nudged from 2000 to 1700 (matches CPU CameraConfig row for
+								// scene 63 - see scene_registry.h's H2 comment): a decorative
+								// streetlamp post sat directly in the foreground as a fully-black
+								// silhouette; the shift turns it into a pleasant framing element.
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 1500.0f, 700.0f, 1700.0f);
 								const float3 lookat   = make_float3(4000.0f, 700.0f, 2000.0f);
 								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);

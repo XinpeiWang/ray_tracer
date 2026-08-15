@@ -1235,7 +1235,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         },
         {
             "H1", 62, SceneNames::CrytekSponza, SceneCategories::LargeScene,
-            "Crytek Sponza (262K triangles) - the classic architectural global-illumination benchmark scene, in warm sandstone lambertian (this renderer's OBJ loader has no per-face/.mtl material support) lit by an open sky, loaded from an external .obj file (requires models/sponza.obj). First 'whole environment' mesh scene here rather than a single statue -- see build_sponza()'s own comment for the full design rationale.",
+            "Crytek Sponza (262K triangles) - the classic architectural global-illumination benchmark scene, with real per-face .mtl materials and image textures (curtains, columns, floor) loaded from models/sponza_textures/, lit by an open sky, loaded from an external .obj file (requires models/sponza.obj). First 'whole environment' mesh scene here rather than a single statue -- see build_sponza()'s own comment for the full design rationale.",
             "Very Slow", 150, true, true,
             { 70, -800, 300, 0,  800, 300, 0,  0, 0, 0 },
             build_sponza,
@@ -1245,9 +1245,9 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         },
         {
             "H2", 63, SceneNames::AmazonBistro, SceneCategories::LargeScene,
-            "Amazon Lumberyard Bistro, Exterior (2.84M triangles) - a full outdoor street block (multiple buildings + plaza), in warm plaster/terracotta lambertian (this renderer's OBJ loader has no per-face/.mtl material support) lit by an open sky, loaded from an external .obj file (requires models/bistro_exterior.obj). Second 'whole environment' mesh scene, same design rationale as scene 62 (Crytek Sponza) -- see build_bistro_exterior()'s own comment.",
+            "Amazon Lumberyard Bistro, Exterior (2.84M triangles) - a full outdoor street block (multiple buildings + plaza), with real per-face .mtl materials and image textures (windows, doors, foliage) loaded from models/bistro_textures/, lit by an open sky, loaded from an external .obj file (requires models/bistro_exterior.obj). Second 'whole environment' mesh scene, same design rationale as scene 62 (Crytek Sponza) -- see build_bistro_exterior()'s own comment. Camera nudged 300 units in Z from the original verified-clear-sightline position: a decorative streetlamp post sat directly in the foreground as a fully-black silhouette blocking most of the frame; the shift turns it into a pleasant framing element instead (visible tree/building behind it) rather than eliminating it.",
             "Very Slow", 150, true, true,
-            { 60, 1500, 700, 2000,  4000, 700, 2000,  0, 0, 0 },
+            { 60, 1500, 700, 1700,  4000, 700, 2000,  0, 0, 0 },
             build_bistro_exterior,
             no_lights,
             build_bistro_exterior_sky,
@@ -1255,7 +1255,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         },
         {
             "H3", 64, SceneNames::Rungholt, SceneCategories::LargeScene,
-            "Rungholt (6.7M triangles) - a giant blocky Minecraft-style town, in warm wood-tone lambertian, loaded from an external .obj file (requires models/rungholt.obj). Third 'whole environment' mesh scene, same design rationale as scenes 62-63 -- see build_rungholt()'s own comment (including a real OBJ-loader bug this mesh exposed and fixed: negative/relative face indices).",
+            "Rungholt (6.7M triangles) - a giant blocky Minecraft-style town, with real per-face .mtl material colors (no image textures for this one, unlike scenes 62/63's Sponza/Bistro), loaded from an external .obj file (requires models/rungholt.obj). Third 'whole environment' mesh scene, same design rationale as scenes 62-63 -- see build_rungholt()'s own comment (including a real OBJ-loader bug this mesh exposed and fixed: negative/relative face indices).",
             "Very Slow", 150, true, true,
             { 45, 400, 300, 400,  0, 40, 0,  0, 0, 0 },
             build_rungholt,

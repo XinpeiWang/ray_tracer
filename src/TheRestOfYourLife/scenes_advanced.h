@@ -1900,7 +1900,12 @@ inline hittable_list build_sponza() {
 }
 
 inline std::shared_ptr<sky_light> build_sponza_sky() {
-	return std::make_shared<sky_light>(color(0.65, 0.78, 0.95));
+	// Brightened from the original (0.65,0.78,0.95): Sponza's interior is a
+	// mostly-enclosed corridor reached only through a narrow roof opening
+	// (see build_sponza()'s own comment), so even a same-magnitude sky as
+	// scenes 63/64 leaves the corridor severely light-starved by geometric
+	// occlusion alone - confirmed by comparison render, not guesswork.
+	return std::make_shared<sky_light>(color(1.3, 1.56, 1.9));
 }
 
 // ============================================================================
