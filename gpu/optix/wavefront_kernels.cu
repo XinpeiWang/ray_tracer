@@ -31,6 +31,7 @@
 #include "bxdfs.h"  // HairBxDF<T>/PrincipledBxDF<T> - see MaterialType::Hair/Principled
 #include "../../src/shared/noise.h"       // turbulence_simple - see wf_sample_texture()
 #include "../../src/shared/normal_map.h"  // apply_normal_map - see MaterialType::NormalMappedLambertian
+#include "../../src/shared/bilinear_patch.h"  // blp_sample - see wf_sample_bilinear_patch_light()
 
 // ============================================================================
 // Device helpers (shared with optix_programs.cu logic)
@@ -391,10 +392,10 @@ __device__ float3 wf_sample_quad_light(const QuadData& q, const float3& hit,
 // OBJ triangle as a light in wavefront mode until Fireplace Room's real
 // Ke materials exercised it - the exact same "first real use surfaces a
 // latent gap" story as wf_sample_sphere_light's own comment above.
-// GpuLightKind::BilinearPatch has this identical gap and remains
-// unfixed - no scene combines wavefront mode with a bilinear-patch light
-// yet, so it hasn't been exercised either; a future one hitting the same
-// crash should look here first.
+// GpuLightKind::BilinearPatch had this identical gap - fixed below in
+// wf_sample_bilinear_patch_light(), same shape of fix, still unexercised
+// by any real scene (no scene combines wavefront mode with a bilinear-patch
+// light yet) but no longer a live landmine either.
 __device__ float3 wf_sample_triangle_light(const TriangleData& tri, const float3& hit,
 											unsigned int& seed, float& geom_pdf, float& maxDist) {
 	float a = wf_rand(seed), b = wf_rand(seed);
@@ -418,6 +419,41 @@ __device__ float3 wf_sample_triangle_light(const TriangleData& tri, const float3
 	if (cosine < 1e-6f) { geom_pdf = 0.0f; return dir; }
 
 	geom_pdf = (maxDist * maxDist) / (cosine * area);
+	return dir;
+}
+
+// Sample a point on a bilinear-patch light. Thin wrapper around
+// src/shared/bilinear_patch.h's blp_sample() (CPU_GPU-tagged, safe to call
+// directly here - the recursive-backend member-call stall documented for
+// CloudMedium::compute_density() was specific to that mega-kernel's
+// closesthit and a member function; blp_sample is a free function and the
+// wavefront backend was never affected by that stall in the first place).
+// Same shape of answer as optix_device_helpers.h's own
+// sample_bilinear_patch_light() (the recursive path's copy) - duplicated
+// here for the same cross-module reason every other wf_sample_*_light
+// function in this file is.
+__device__ float3 wf_sample_bilinear_patch_light(const BilinearPatchData& bp, const float3& hit,
+												   unsigned int& seed, float& geom_pdf, float& maxDist) {
+	const float p00[3] = {bp.p00.x, bp.p00.y, bp.p00.z};
+	const float p10[3] = {bp.p10.x, bp.p10.y, bp.p10.z};
+	const float p01[3] = {bp.p01.x, bp.p01.y, bp.p01.z};
+	const float p11[3] = {bp.p11.x, bp.p11.y, bp.p11.z};
+	const float u2[2] = {wf_rand(seed), wf_rand(seed)};
+	float outP[3], outN[3], areaPdf = 0.0f;
+	blp_sample(p00, p10, p01, p11, u2, outP, outN, &areaPdf);
+
+	const float3 point  = make_float3(outP[0], outP[1], outP[2]);
+	const float3 normal = make_float3(outN[0], outN[1], outN[2]);
+	float3 to_light = point - hit;
+	float dist_sq = dot(to_light, to_light);
+	maxDist = sqrtf(dist_sq);
+	if (maxDist < 1e-6f || areaPdf <= 0.0f) { geom_pdf = 0.0f; return make_float3(0.0f, 0.0f, 1.0f); }
+	float3 dir = to_light / maxDist;
+
+	const float cosine = fabsf(dot(dir, normal));
+	if (cosine < 1e-6f) { geom_pdf = 0.0f; return dir; }
+
+	geom_pdf = areaPdf * dist_sq / cosine;
 	return dir;
 }
 
@@ -782,6 +818,7 @@ extern "C" __global__ void evaluate_materials(
 	const SphereData*   spheres,
 	const QuadData*     quads,
 	const TriangleData* triangles,
+	const BilinearPatchData* bilinearPatches,
 	const MaterialData* materials,
 	const int*          lightIndices,
 	const GpuLightKind* lightKinds,
@@ -840,7 +877,14 @@ extern "C" __global__ void evaluate_materials(
 			if (cos_face > 0.0f) {
 				// Uplift RGB emission to spectrum via device sRGB table
 				// (deferred: emissionSpectrum helper is declared below; use inline here)
-				float3 le = mat.emission;
+				// A real map_Ke texture (Gallery's painted-canvas glow) is
+				// sampled at the hit UV instead of the flat mat.emission -
+				// see add_diffuse_light()'s textureIdx comment and the
+				// recursive backend's identical optix_intersection_triangle.h
+				// change.
+				float3 le = (mat.textureIdx >= 0)
+					? wf_sample_texture(textures, texturePixels, mat.textureIdx, h.uv_u, h.uv_v, hit_point)
+					: mat.emission;
 				float m_le = le.x > le.y ? (le.x > le.z ? le.x : le.z)
 										  : (le.y > le.z ? le.y : le.z);
 				float sc = 2.f * m_le;
@@ -1602,12 +1646,11 @@ extern "C" __global__ void evaluate_materials(
 			const TriangleData& tri = triangles[prim_idx];
 			to_light = wf_sample_triangle_light(tri, hit_point, seed, geom_pdf, max_dist);
 			light_emission_spec = liftEmission(materials[tri.materialIdx].emission);
+		} else if (kind == GpuLightKind::BilinearPatch) {
+			const BilinearPatchData& bp = bilinearPatches[prim_idx];
+			to_light = wf_sample_bilinear_patch_light(bp, hit_point, seed, geom_pdf, max_dist);
+			light_emission_spec = liftEmission(materials[bp.materialIdx].emission);
 		} else {
-			// Quad, and the still-unhandled BilinearPatch case (see the
-			// wf_sample_triangle_light comment above this dispatch's history) -
-			// BilinearPatch falls through here same as before this fix, reading
-			// wrong data if one is ever selected; a scene that exercises that
-			// gap should add a fourth branch the same way this one was added.
 			const QuadData& q = quads[prim_idx];
 			to_light = wf_sample_quad_light(q, hit_point, seed, geom_pdf, max_dist);
 			light_emission_spec = liftEmission(materials[q.materialIdx].emission);

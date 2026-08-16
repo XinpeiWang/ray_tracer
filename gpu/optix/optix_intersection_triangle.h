@@ -135,7 +135,13 @@ extern "C" __global__ void __closesthit__triangle() {
 	);
 	unsigned int seed = optixGetPayload_9();
 
-	float3 emission = mat.emission;
+	// DiffuseLight with a real map_Ke texture (e.g. Gallery's painted-canvas
+	// glow) samples it at the hit UV instead of using the flat mat.emission
+	// - see add_diffuse_light()'s textureIdx comment. Every other material
+	// type keeps using mat.emission directly (always zero for them anyway).
+	float3 emission = (mat.type == MaterialType::DiffuseLight && mat.textureIdx >= 0)
+		? sample_texture(mat.textureIdx, uv_u, uv_v, hit_point)
+		: mat.emission;
 
 	float3 attenuation;
 	float3 scattered_dir;

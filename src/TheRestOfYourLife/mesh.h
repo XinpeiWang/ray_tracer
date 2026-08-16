@@ -340,6 +340,16 @@ struct mtl_specular_params {
 	double ns = 0.0;
 	int    illum = -1;
 	double ni = -1.0;
+	// Transmission filter - defaults to (1,1,1) ("no filtering") per the
+	// .mtl spec's own default, matching what every non-glass material in
+	// every H-family scene either omits or writes as explicit boilerplate
+	// "Tf 1 1 1". A handful of real glass materials (Sibenik's stained-
+	// glass windows) write a genuinely non-neutral Tf instead - see
+	// load_obj_mtl()'s illum 4/6 dispatch comment for why that's used as
+	// the "this material really is glass" signal rather than illum alone
+	// (illum 4 is also written, as an unrelated exporter default, on every
+	// material in some Blender-exported .mtl files regardless of type).
+	color  tf = color(1, 1, 1);
 };
 
 inline std::unordered_map<std::string, mtl_specular_params> parse_mtl_specular(const std::string& filepath) {
@@ -377,9 +387,22 @@ inline std::unordered_map<std::string, mtl_specular_params> parse_mtl_specular(c
 			ss >> result[current].illum;
 		} else if (tok == "Ni" && !current.empty()) {
 			ss >> result[current].ni;
+		} else if (tok == "Tf" && !current.empty()) {
+			double r, g, b;
+			ss >> r >> g >> b;
+			result[current].tf = color(r, g, b);
 		}
 	}
 	return result;
+}
+
+// True when a material's Tf is meaningfully different from the .mtl spec's
+// own neutral default (1,1,1) - see mtl_specular_params::tf's comment.
+inline bool mtl_has_real_transmission_filter(const color& tf) {
+	constexpr double kEpsilon = 0.05;
+	return std::fabs(tf.x() - 1.0) > kEpsilon ||
+		   std::fabs(tf.y() - 1.0) > kEpsilon ||
+		   std::fabs(tf.z() - 1.0) > kEpsilon;
 }
 
 // Standard Phong-exponent-to-roughness conversion, mapping a classic OBJ/
@@ -443,6 +466,70 @@ inline std::unordered_map<std::string, std::string> parse_mtl_textures(const std
 			// this was needed for Sponza/Bistro/Rungholt/Fireplace Room/
 			// San Miguel (no leading options in their map_Kd lines), so this
 			// is purely additive for them.
+			std::string path;
+			std::getline(ss, path);
+			size_t pos = path.find_first_not_of(" \t");
+			while (pos != std::string::npos && path[pos] == '-') {
+				size_t tokEnd = path.find_first_of(" \t", pos);
+				pos = (tokEnd == std::string::npos) ? std::string::npos
+													 : path.find_first_not_of(" \t", tokEnd);
+				while (pos != std::string::npos) {
+					size_t argEnd = path.find_first_of(" \t", pos);
+					std::string argTok = path.substr(pos, argEnd == std::string::npos ? std::string::npos : argEnd - pos);
+					char* endp = nullptr;
+					std::strtod(argTok.c_str(), &endp);
+					if (endp == argTok.c_str() || *endp != '\0') break;  // not purely numeric
+					pos = (argEnd == std::string::npos) ? std::string::npos
+														 : path.find_first_not_of(" \t", argEnd);
+				}
+			}
+			if (pos != std::string::npos) {
+				size_t end = path.find_last_not_of(" \t\r");
+				result[current] = path.substr(pos, end - pos + 1);
+			}
+		}
+	}
+	return result;
+}
+
+
+// ---------------------------------------------------------------------------
+// parse_mtl_ke_textures
+// Companion to parse_mtl_textures(): maps material name -> its map_Ke
+// (emissive texture) path. Distinct from parse_mtl_emission() below, which
+// only reads the scalar "Ke r g b" line - a material can have a real
+// map_Ke with no scalar Ke at all (Gallery's own .mtl: "map_Ke -bm 0.3
+// gallery.jpg", no plain "Ke" line anywhere), which parse_mtl_emission()
+// alone would miss entirely. Same leading-option-skipping logic as
+// parse_mtl_textures() (map_Ke lines can carry the same "-bm"-style options
+// map_Kd lines do - confirmed on Gallery's own map_Ke line).
+// ---------------------------------------------------------------------------
+inline std::unordered_map<std::string, std::string> parse_mtl_ke_textures(const std::string& filepath) {
+	std::unordered_map<std::string, std::string> result;
+
+	std::ifstream file(filepath);
+	if (!file.is_open()) {
+		static const char* kSearchPrefixes[] = {
+			"models/", "../models/", "../../models/",
+			"../../../models/", "../../../../models/", "../../../../../models/"
+		};
+		for (const char* prefix : kSearchPrefixes) {
+			file.clear();
+			file.open(prefix + filepath);
+			if (file.is_open()) break;
+		}
+	}
+	if (!file.is_open()) return result;
+
+	std::string line, current;
+	while (std::getline(file, line)) {
+		if (line.empty() || line[0] == '#') continue;
+		std::istringstream ss(line);
+		std::string tok;
+		ss >> tok;
+		if (tok == "newmtl") {
+			ss >> current;
+		} else if (tok == "map_Ke" && !current.empty()) {
 			std::string path;
 			std::getline(ss, path);
 			size_t pos = path.find_first_not_of(" \t");
@@ -815,6 +902,7 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 	std::unordered_map<std::string, color> mtl_emission;
 	std::unordered_map<std::string, mtl_specular_params> mtl_specular;
 	std::unordered_map<std::string, std::string> mtl_bump_textures;
+	std::unordered_map<std::string, std::string> mtl_ke_textures;
 	std::string mtl_path_used = mtllib_name;
 	if (!mtllib_name.empty())
 		mtl_colors = parse_mtl(mtllib_name);
@@ -829,8 +917,11 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 		mtl_bump_textures = parse_mtl_bump_textures(mtl_path_used);
 		mtl_alpha_textures = parse_mtl_alpha_textures(mtl_path_used);
 	}
-	if (out_lights && !mtl_path_used.empty())
+	if (out_lights && !mtl_path_used.empty()) {
 		mtl_emission = parse_mtl_emission(mtl_path_used);
+		if (!texture_dir.empty())
+			mtl_ke_textures = parse_mtl_ke_textures(mtl_path_used);
+	}
 	if (!mtl_path_used.empty())
 		mtl_specular = parse_mtl_specular(mtl_path_used);
 
@@ -909,6 +1000,28 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 	std::unordered_map<std::string, std::shared_ptr<material>> mat_cache;
 	std::unordered_map<std::string, std::shared_ptr<texture>> alpha_mask_cache;
 	std::unordered_set<std::string> emissive_mats;
+	// Subset of emissive_mats that should also be registered as explicit NEE
+	// lights (added to out_lights below). Deliberately excludes map_Ke
+	// textured-emissive materials: Gallery's own single material covers its
+	// entire ~1M-triangle mesh (walls, floor, columns - not just the
+	// painting), and most of that texture's surface is black/near-zero: a
+	// scene-build-time attempt to register every one of those triangles in
+	// `lights` made hittable_pdf's per-sample light-list scan effectively
+	// O(n) over ~1M candidates and never finished a render. Skipping NEE
+	// registration for this case is not a correctness compromise - camera.h's
+	// own emission-handling code (search "Emission -- full Le on camera/
+	// specular hits") already gives an emitter that ISN'T in `lights` a MIS
+	// weight of 1 whenever a BSDF-sampled/camera ray hits it directly (light
+	// pdf evaluates to 0 for an unregistered object, and the power heuristic
+	// gives full weight to the only strategy that could have produced the
+	// sample) - unbiased, just not explicitly importance-sampled. Since a
+	// painting is normally seen because the camera is pointed at it, not
+	// because another surface needs it as a light source, this trades away
+	// only a variance-reduction technique this scene doesn't need, not
+	// correctness. A real emissive material with a small, bounded triangle
+	// count (Fireplace Room/Salle de Bain's actual light fixtures) has no
+	// such performance cliff and keeps full NEE registration below.
+	std::unordered_set<std::string> nee_light_mats;
 	hittable_list tris;
 	int n = mesh_data->num_triangles();
 	for (int i = 0; i < n; ++i) {
@@ -924,12 +1037,51 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 				if (ke_it != mtl_emission.end()) {
 					resolved = std::make_shared<diffuse_light>(ke_it->second);
 					emissive_mats.insert(name);
+					nee_light_mats.insert(name);
+				}
+				if (!resolved) {
+					auto ke_tex_it = mtl_ke_textures.find(name);
+					if (!texture_dir.empty() && ke_tex_it != mtl_ke_textures.end()) {
+						// map_Ke with no scalar Ke line (Gallery's own case) -
+						// same decode-once-then-move pattern as the map_Kd
+						// textured-lambertian branch below, but into a
+						// texture-backed diffuse_light instead: diffuse_light
+						// already supports a shared_ptr<texture> emission
+						// source (see material_simple.h), so this needed no
+						// material-class changes, only the parsing/dispatch
+						// wiring here. Deliberately NOT added to
+						// nee_light_mats - see that set's own comment.
+						std::string ke_img_path = resolve_mtl_texture_path(ke_tex_it->second, found_prefix + texture_dir);
+						rtw_image probe(ke_img_path.c_str());
+						if (probe.height() > 0) {
+							resolved = std::make_shared<diffuse_light>(std::make_shared<image_texture>(std::move(probe)));
+							emissive_mats.insert(name);
+						}
+					}
 				}
 				if (!resolved) {
 					auto spec_it = mtl_specular.find(name);
 					if (spec_it != mtl_specular.end()) {
 						const mtl_specular_params& sp = spec_it->second;
 						if (sp.illum == 7) {
+							resolved = std::make_shared<dielectric>(sp.ni > 0.0 ? sp.ni : 1.5);
+						} else if ((sp.illum == 4 || sp.illum == 6) && mtl_has_real_transmission_filter(sp.tf) &&
+								   mtl_textures.find(name) == mtl_textures.end()) {
+							// illum 4/6 ("transparency, glass on") only when a real,
+							// non-boilerplate Tf backs it up (see
+							// mtl_has_real_transmission_filter's comment) - some
+							// exporters (Breakfast Room's Blender export) write
+							// illum 4 as a blanket default on every material
+							// regardless of type, which would otherwise turn its
+							// Chrome/Ceramic/matte-black-paint materials into glass
+							// too. Also requires no map_Kd texture: a textured
+							// material (e.g. Artwork, Kd 0,0,0 like real glass but
+							// meant to show its picture) is clearly not glass either.
+							// Colorless dielectric, same as illum 7 - Tf's actual
+							// tint isn't reproduced (this codebase's dielectric has
+							// no absorption/tint parameter), so Sibenik's colored
+							// stained glass renders as clear glass rather than
+							// tinted, a documented simplification.
 							resolved = std::make_shared<dielectric>(sp.ni > 0.0 ? sp.ni : 1.5);
 						} else if ((sp.illum == 2 || sp.illum == 3) && std::max({sp.ks.x(), sp.ks.y(), sp.ks.z()}) > kMeaningfulKsComponent) {
 							// illum 3 ("diffuse+specular, reflection on") gets the
@@ -1006,7 +1158,7 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 		}
 		auto tri = std::make_shared<triangle>(mesh_data, i, tri_mat, tri_alpha);
 		tris.add(tri);
-		if (out_lights && !name.empty() && emissive_mats.count(name))
+		if (out_lights && !name.empty() && nee_light_mats.count(name))
 			out_lights->add(tri);
 	}
 

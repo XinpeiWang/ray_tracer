@@ -103,11 +103,17 @@ namespace {
 		return idx;
 	}
 
-	inline int add_diffuse_light(SceneData& scene, float3 emission) {
+	inline int add_diffuse_light(SceneData& scene, float3 emission, int textureIdx = -1) {
 		const int idx = safe_cast_to_int(scene.materials.size());
 		MaterialData m{};
 		m.type = MaterialType::DiffuseLight;
 		m.emission = emission;
+		// Reuses the same textureIdx slot Lambertian uses for its albedo
+		// texture (unambiguous - DiffuseLight never used this field before).
+		// See MaterialType::DiffuseLight's emission-shading code (recursive:
+		// optix_device_helpers.h; wavefront: wavefront_kernels.cu) for where
+		// this is sampled instead of `emission` when >= 0.
+		m.textureIdx = textureIdx;
 		scene.materials.push_back(m);
 		return idx;
 	}
@@ -769,6 +775,60 @@ namespace {
 		return result;
 	}
 
+	// GPU counterpart of CPU's parse_mtl_ke_textures(): maps material name
+	// -> its map_Ke (emissive texture) path, for materials with a real
+	// map_Ke but no plain scalar "Ke r g b" line (Gallery's own case).
+	inline std::unordered_map<std::string, std::string> parse_mtl_ke_textures_gpu(const std::string& filename) {
+		std::unordered_map<std::string, std::string> result;
+		std::ifstream file(filename);
+		if (!file.is_open()) {
+			static const char* kSearchPrefixes[] = {
+				"models/", "../models/", "../../models/",
+				"../../../models/", "../../../../models/", "../../../../../models/"
+			};
+			for (const char* prefix : kSearchPrefixes) {
+				file.clear();
+				file.open(std::string(prefix) + filename);
+				if (file.is_open()) break;
+			}
+		}
+		if (!file.is_open()) return result;
+
+		std::string line, current;
+		while (std::getline(file, line)) {
+			if (line.empty() || line[0] == '#') continue;
+			std::istringstream ss(line);
+			std::string tok;
+			ss >> tok;
+			if (tok == "newmtl") {
+				ss >> current;
+			} else if (tok == "map_Ke" && !current.empty()) {
+				std::string path;
+				std::getline(ss, path);
+				size_t pos = path.find_first_not_of(" \t");
+				while (pos != std::string::npos && path[pos] == '-') {
+					size_t tokEnd = path.find_first_of(" \t", pos);
+					pos = (tokEnd == std::string::npos) ? std::string::npos
+														 : path.find_first_not_of(" \t", tokEnd);
+					while (pos != std::string::npos) {
+						size_t argEnd = path.find_first_of(" \t", pos);
+						std::string argTok = path.substr(pos, argEnd == std::string::npos ? std::string::npos : argEnd - pos);
+						char* endp = nullptr;
+						std::strtod(argTok.c_str(), &endp);
+						if (endp == argTok.c_str() || *endp != '\0') break;  // not purely numeric
+						pos = (argEnd == std::string::npos) ? std::string::npos
+															 : path.find_first_not_of(" \t", argEnd);
+					}
+				}
+				if (pos != std::string::npos) {
+					size_t end = path.find_last_not_of(" \t\r");
+					result[current] = path.substr(pos, end - pos + 1);
+				}
+			}
+		}
+		return result;
+	}
+
 	// GPU counterpart of CPU's mtl_specular_params/parse_mtl_specular():
 	// maps material name -> its classic Blinn-Phong specular parameters
 	// (Ks, Ns, illum, Ni), read together in one pass since dispatching a
@@ -779,6 +839,8 @@ namespace {
 		float  ns = 0.0f;
 		int    illum = -1;
 		float  ni = -1.0f;
+		// See CPU's mtl_specular_params::tf comment - same default/meaning.
+		float3 tf = make_float3(1.0f, 1.0f, 1.0f);
 	};
 
 	inline std::unordered_map<std::string, MtlSpecularParamsGpu> parse_mtl_specular_gpu(const std::string& filename) {
@@ -815,9 +877,21 @@ namespace {
 				ss >> result[current].illum;
 			} else if (tok == "Ni" && !current.empty()) {
 				ss >> result[current].ni;
+			} else if (tok == "Tf" && !current.empty()) {
+				float r, g, b;
+				ss >> r >> g >> b;
+				result[current].tf = make_float3(r, g, b);
 			}
 		}
 		return result;
+	}
+
+	// GPU counterpart of CPU's mtl_has_real_transmission_filter().
+	inline bool mtl_has_real_transmission_filter_gpu(const float3& tf) {
+		constexpr float kEpsilon = 0.05f;
+		return fabsf(tf.x - 1.0f) > kEpsilon ||
+			   fabsf(tf.y - 1.0f) > kEpsilon ||
+			   fabsf(tf.z - 1.0f) > kEpsilon;
 	}
 
 	// GPU counterpart of CPU's parse_mtl_alpha_textures(): maps material
@@ -1125,8 +1199,12 @@ namespace {
 		if (textureDir && textureDir[0] != '\0' && !mtlPathUsed.empty())
 			mtlTextures = parse_mtl_textures_gpu(mtlPathUsed);
 		std::unordered_map<std::string, float3> mtlEmission;
-		if (!mtlPathUsed.empty())
+		std::unordered_map<std::string, std::string> mtlKeTextures;
+		if (!mtlPathUsed.empty()) {
 			mtlEmission = parse_mtl_emission_gpu(mtlPathUsed);
+			if (textureDir && textureDir[0] != '\0')
+				mtlKeTextures = parse_mtl_ke_textures_gpu(mtlPathUsed);
+		}
 		std::unordered_map<std::string, MtlSpecularParamsGpu> mtlSpecular;
 		if (!mtlPathUsed.empty())
 			mtlSpecular = parse_mtl_specular_gpu(mtlPathUsed);
@@ -1178,10 +1256,33 @@ namespace {
 					if (keIt != mtlEmission.end())
 						resolvedIdx = add_diffuse_light(scene, keIt->second);
 					if (resolvedIdx < 0) {
+						auto keTexIt = mtlKeTextures.find(f.mtl);
+						if (keTexIt != mtlKeTextures.end()) {
+							// map_Ke with no scalar Ke (Gallery's own case) - see
+							// CPU's identical dispatch comment. Deliberately NOT
+							// registered as a GpuLightKind::Triangle light below
+							// (that registration stays gated on mtlEmission alone,
+							// unchanged) - same "no NEE registration" reasoning as
+							// CPU's nee_light_mats comment: this texture covers
+							// the scene's entire ~1M-triangle mesh, not just the
+							// painting, and would blow up the alias table the
+							// same way it blew up CPU's hittable_pdf light list.
+							std::string keImgPath = resolve_mtl_texture_path_gpu(keTexIt->second, foundPrefix + textureDir);
+							int keTexIdx = load_image_texture_gpu(scene, keImgPath.c_str());
+							if (scene.textures[keTexIdx].width > 0)
+								resolvedIdx = add_diffuse_light(scene, make_float3(0.0f, 0.0f, 0.0f), keTexIdx);
+						}
+					}
+					if (resolvedIdx < 0) {
 						auto specIt = mtlSpecular.find(f.mtl);
 						if (specIt != mtlSpecular.end()) {
 							const MtlSpecularParamsGpu& sp = specIt->second;
 							if (sp.illum == 7) {
+								resolvedIdx = add_dielectric(scene, sp.ni > 0.0f ? sp.ni : 1.5f);
+							} else if ((sp.illum == 4 || sp.illum == 6) && mtl_has_real_transmission_filter_gpu(sp.tf) &&
+									   mtlTextures.find(f.mtl) == mtlTextures.end()) {
+								// illum 4/6 dielectric, Tf-gated - see CPU's identical
+								// dispatch comment for the full rationale.
 								resolvedIdx = add_dielectric(scene, sp.ni > 0.0f ? sp.ni : 1.5f);
 							} else if ((sp.illum == 2 || sp.illum == 3) && fmaxf(fmaxf(sp.ks.x, sp.ks.y), sp.ks.z) > kMeaningfulKsComponentGpu) {
 								// illum 3 gets the same glossy-metal treatment as
