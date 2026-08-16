@@ -1022,7 +1022,13 @@ bool WavefrontPathTracer::render(
 		// up with no parser/GUI changes at all. `height` fills in for the
 		// scanline unit (this backend has no real scanlines), scaled by
 		// completed/total samples instead of completed/total rows.
-		{
+		//
+		// Throttled to every 10th sample (plus always the last one, so the
+		// bar still reaches 100%) - printing every single sample flooded a
+		// high-spp render's log with lines nobody was reading between GUI
+		// updates.
+		const bool isLastSample = sampleIdx == samples_per_pixel - 1;
+		if ((sampleIdx + 1) % 10 == 0 || isLastSample) {
 			const int completed = (int)((long long)height * (sampleIdx + 1) / samples_per_pixel);
 			std::cout << "Scanlines remaining: " << (height - completed) << "\r" << std::flush;
 		}
