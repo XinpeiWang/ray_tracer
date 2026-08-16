@@ -111,6 +111,14 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		break;
 	case pbrt_flatten::MaterialKind::Dielectric:
 		d.type = MaterialType::Dielectric;
+		// d.albedo was just set to m.color above (same union slot as
+		// Dielectric's own transmission_filter - see optix_types.h's
+		// comment) for every material kind generically; a pbrt dielectric's
+		// "color" isn't the OBJ/.mtl "Tf" tint feature that field means for
+		// Dielectric specifically, so reset it to the neutral/no-op value
+        // here rather than accidentally tinting every pbrt-loaded glass
+        // material by whatever m.color happened to default to.
+		d.transmission_filter = make_float3(1.0f, 1.0f, 1.0f);
 		break;
 	case pbrt_flatten::MaterialKind::ThinDielectric:
 		d.type = MaterialType::ThinDielectric;

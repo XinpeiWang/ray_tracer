@@ -1064,7 +1064,12 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 					if (spec_it != mtl_specular.end()) {
 						const mtl_specular_params& sp = spec_it->second;
 						if (sp.illum == 7) {
-							resolved = std::make_shared<dielectric>(sp.ni > 0.0 ? sp.ni : 1.5);
+							// Tf tints the transmitted contribution only (see
+							// dielectric's own Tf-tint constructor comment) -
+							// a no-op (white) for every illum-7 material that
+							// doesn't set a real Tf, e.g. Bistro's
+							// MASTER_Glass_Clean.
+							resolved = std::make_shared<dielectric>(sp.ni > 0.0 ? sp.ni : 1.5, sp.tf);
 						} else if ((sp.illum == 4 || sp.illum == 6) && mtl_has_real_transmission_filter(sp.tf) &&
 								   mtl_textures.find(name) == mtl_textures.end()) {
 							// illum 4/6 ("transparency, glass on") only when a real,
@@ -1077,12 +1082,13 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 							// too. Also requires no map_Kd texture: a textured
 							// material (e.g. Artwork, Kd 0,0,0 like real glass but
 							// meant to show its picture) is clearly not glass either.
-							// Colorless dielectric, same as illum 7 - Tf's actual
-							// tint isn't reproduced (this codebase's dielectric has
-							// no absorption/tint parameter), so Sibenik's colored
-							// stained glass renders as clear glass rather than
-							// tinted, a documented simplification.
-							resolved = std::make_shared<dielectric>(sp.ni > 0.0 ? sp.ni : 1.5);
+							// Tf tints the transmitted contribution (Sibenik's
+							// colored stained-glass windows) - see dielectric's
+							// own Tf-tint constructor comment for why this is a
+							// flat per-surface tint rather than the volumetric
+							// MaterialType::DielectricMedium/constant_medium
+							// path this codebase already has for thick glass.
+							resolved = std::make_shared<dielectric>(sp.ni > 0.0 ? sp.ni : 1.5, sp.tf);
 						} else if ((sp.illum == 2 || sp.illum == 3) && std::max({sp.ks.x(), sp.ks.y(), sp.ks.z()}) > kMeaningfulKsComponent) {
 							// illum 3 ("diffuse+specular, reflection on") gets the
 							// same glossy-metal treatment as illum 2 - Salle de

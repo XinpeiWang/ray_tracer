@@ -85,6 +85,28 @@ class dielectric : public material {
 
     dielectric(double refraction_index) : refraction_index(refraction_index) {}
 
+    // Tinted glass: a colored transmission_filter multiplies the refracted
+    // (transmitted) contribution only, leaving reflection clear/white -
+    // matches real colored glass (a mirror-like reflection off the surface
+    // doesn't pick up the pane's tint; light that actually passes through
+    // does). This is a direct, non-volumetric read of the classic OBJ/.mtl
+    // spec's own "Tf" (transmission filter) field, not Beer's-law distance
+    // absorption: Tf has no associated thickness/distance in the .mtl
+    // format, and this codebase's existing volumetric option
+    // (MaterialType::DielectricMedium / constant_medium, see that class's
+    // own comment) needs a closed, watertight boundary shape with a real
+    // entry+exit ray crossing to have any effect at all - true for the
+    // sphere-based showcase scenes it was built for, but not for typical
+    // stained-glass window geometry (a single flat layer of triangles,
+    // confirmed on Sibenik Cathedral's own "staklo*" materials - zero
+    // interior distance for a volumetric medium to act over). A flat
+    // per-surface tint is both the practical fit for this geometry and the
+    // historically accurate one: pre-path-tracing renderers this format
+    // targeted applied Tf exactly this way, at the interface, not as a
+    // medium.
+    dielectric(double refraction_index, const color& transmission_filter)
+        : refraction_index(refraction_index), transmission_filter(transmission_filter) {}
+
     BxDF get_bxdf(const MaterialContext<double>& ctx) const {
         return BxDF{ refraction_index };
     }
@@ -98,7 +120,9 @@ class dielectric : public material {
                                ctx.nx, ctx.ny, ctx.nz,
                                ctx.front_face,
                                random_double());
-        srec.attenuation  = color(res.r, res.g, res.b);
+        srec.attenuation  = res.is_transmission
+            ? color(res.r, res.g, res.b) * transmission_filter
+            : color(res.r, res.g, res.b);
         srec.pdf_ptr      = nullptr;
         srec.skip_pdf     = true;
         srec.skip_pdf_ray = ray(rec.p, vec3(res.wo_x, res.wo_y, res.wo_z), r_in.time());
@@ -116,6 +140,7 @@ class dielectric : public material {
 
   private:
     double refraction_index;
+    color transmission_filter = color(1, 1, 1);
 };
 
 

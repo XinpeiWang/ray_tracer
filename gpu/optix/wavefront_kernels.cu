@@ -992,11 +992,19 @@ extern "C" __global__ void evaluate_materials(
 		float  r0 = (1.0f - mat.ior) / (1.0f + mat.ior);
 		r0 = r0 * r0;
 		float schlick = r0 + (1.0f - r0) * powf(1.0f - cos_t, 5.0f);
-		if (cannot_refract || schlick > wf_rand(seed))
+		bool is_transmission;
+		if (cannot_refract || schlick > wf_rand(seed)) {
 			scattered_dir = wf_reflect(unit_dir, normal);
-		else
+			is_transmission = false;
+		} else {
 			scattered_dir = wf_refract(unit_dir, normal, eta);
-		attenuation = SS(1.f);
+			is_transmission = true;
+		}
+		// Tf tints transmission only, matching real colored glass - see
+		// add_dielectric()'s transmission_filter comment (recursive
+		// backend's optix_device_helpers.h identical case has the same
+		// reasoning).
+		attenuation = is_transmission ? albedoSpectrum(mat.transmission_filter) : SS(1.f);
 		scattered   = true;
 		is_specular = true;
 		break;

@@ -94,11 +94,17 @@ namespace {
 		return idx;
 	}
 
-	inline int add_dielectric(SceneData& scene, float ior) {
+	inline int add_dielectric(SceneData& scene, float ior, float3 transmissionFilter = make_float3(1.0f, 1.0f, 1.0f)) {
 		const int idx = safe_cast_to_int(scene.materials.size());
 		MaterialData m{};
 		m.type = MaterialType::Dielectric;
 		m.ior = ior;
+		// MaterialData m{} zero-inits the whole struct, including this
+		// union - transmission_filter must be set explicitly to
+		// (1,1,1)/no-op, not left at the union's zeroed (0,0,0), or every
+		// dielectric material in the codebase (Bistro's glass, Cornell
+		// Rough Glass, Glass Dragon, ...) would render solid black.
+		m.transmission_filter = transmissionFilter;
 		scene.materials.push_back(m);
 		return idx;
 	}
@@ -1278,12 +1284,15 @@ namespace {
 						if (specIt != mtlSpecular.end()) {
 							const MtlSpecularParamsGpu& sp = specIt->second;
 							if (sp.illum == 7) {
-								resolvedIdx = add_dielectric(scene, sp.ni > 0.0f ? sp.ni : 1.5f);
+								// Tf tints the transmitted contribution only -
+								// see CPU's dielectric Tf-tint comment. No-op
+								// (white) for materials with no real Tf.
+								resolvedIdx = add_dielectric(scene, sp.ni > 0.0f ? sp.ni : 1.5f, sp.tf);
 							} else if ((sp.illum == 4 || sp.illum == 6) && mtl_has_real_transmission_filter_gpu(sp.tf) &&
 									   mtlTextures.find(f.mtl) == mtlTextures.end()) {
 								// illum 4/6 dielectric, Tf-gated - see CPU's identical
 								// dispatch comment for the full rationale.
-								resolvedIdx = add_dielectric(scene, sp.ni > 0.0f ? sp.ni : 1.5f);
+								resolvedIdx = add_dielectric(scene, sp.ni > 0.0f ? sp.ni : 1.5f, sp.tf);
 							} else if ((sp.illum == 2 || sp.illum == 3) && fmaxf(fmaxf(sp.ks.x, sp.ks.y), sp.ks.z) > kMeaningfulKsComponentGpu) {
 								// illum 3 gets the same glossy-metal treatment as
 								// illum 2 - see CPU's identical dispatch comment.

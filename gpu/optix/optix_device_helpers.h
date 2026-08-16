@@ -895,8 +895,18 @@ __device__ __forceinline__ void shade_material(
 		}
 
 		case MaterialType::Dielectric: {
-			attenuation = make_float3(1.0f, 1.0f, 1.0f);
 			scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
+			// `normal` here always satisfies dot(ray_dir, normal) < 0 (flipped
+			// to face the incoming ray - see the front_face/final_normal
+			// convention at each closesthit's call site). A reflected
+			// direction bounces back to the ray_dir side (dot > 0); a
+			// refracted direction continues through to the far side
+			// (dot < 0, same sign as ray_dir's own). Tf tints transmission
+			// only, matching real colored glass (a mirror-like reflection
+			// off the surface doesn't pick up the pane's tint) - see
+			// add_dielectric()'s transmission_filter comment.
+			bool is_transmission = dot(scattered_dir, normal) < 0.0f;
+			attenuation = is_transmission ? mat.transmission_filter : make_float3(1.0f, 1.0f, 1.0f);
 			scattered = true;
 			is_specular = true;  // specular bounce: next hit adds full emission, no MIS
 			break;

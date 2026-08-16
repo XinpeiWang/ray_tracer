@@ -356,6 +356,12 @@ struct MaterialData {
 		float3 medium_albedo;  // Medium/DielectricMedium: single-scatter color
 		float3 reflectance;    // DiffuseTransmission: R (reflected diffuse color)
 		float3 base_color;     // Principled: base color
+		// Dielectric: transmission_filter (OBJ/.mtl "Tf") - multiplies the
+		// refracted/transmitted contribution only, leaving reflection
+		// clear/white. Defaults to (1,1,1) (no-op) via add_dielectric()'s
+		// default param - see mesh.h's CPU dielectric class for the full
+		// rationale (a flat per-surface tint, not volumetric absorption).
+		float3 transmission_filter;
 	};
 
 	union {
