@@ -441,14 +441,18 @@ TEST(FlattenMaterialTest, DiffuseTransmissionDefaultsMatchPbrt) {
 }
 
 TEST(FlattenMaterialTest, UnsupportedMaterialIsFlaggedNotSilentlySubstituted) {
-	// A subsurface material rendered as diffuse looks plausible and is wrong,
-	// so the substitution has to be announced.
+	// A material rendered as diffuse looks plausible and is wrong, so the
+	// substitution has to be announced. "subsurface" used to be the example
+	// here, but it is now a real, CPU-supported MaterialKind (see
+	// material_pbrt.h's `class subsurface` and camera.h::sample_bssrdf_exit) -
+	// "hair" (still genuinely unimplemented on both backends) takes its place
+	// as the still-Unsupported example.
 	const FlatScene s = flattenSource(
-		"Material \"subsurface\"\n" + std::string(kQuadMesh));
+		"Material \"hair\"\n" + std::string(kQuadMesh));
 	ASSERT_EQ(s.materials.size(), 1u);
 	EXPECT_EQ(s.materials[0].kind, MaterialKind::Unsupported);
-	EXPECT_EQ(s.materials[0].pbrtType, "subsurface");
-	EXPECT_TRUE(warnedAbout(s, "subsurface"));
+	EXPECT_EQ(s.materials[0].pbrtType, "hair");
+	EXPECT_TRUE(warnedAbout(s, "hair"));
 }
 
 TEST(FlattenMaterialTest, AreaLightRadianceAndScaleAreExtracted) {

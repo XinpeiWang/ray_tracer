@@ -144,6 +144,16 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		d.eta_c = make_float3(1.0f, 1.0f, 1.0f);
 		d.k_c = reflectanceToConductorK(d.albedo);
 		break;
+	case pbrt_flatten::MaterialKind::Subsurface:
+		// No GPU BSSRDF (out of scope - see src/TheRestOfYourLife/
+		// material_pbrt.h's `class subsurface` and camera.h::
+		// sample_bssrdf_exit(), the CPU-only implementation). Falls back to
+		// flat diffuse, exactly as it did before this MaterialKind existed
+		// (when "subsurface" mapped to Unsupported, which also fell back to
+		// Lambertian right here) - CPU gaining real support for this kind
+		// does not change GPU's rendered output at all, only that the
+		// shared "not supported" warning in pbrt_flatten.h's flatten() no
+		// longer fires for it, since it is genuinely supported on CPU now.
 	case pbrt_flatten::MaterialKind::Diffuse:
 	case pbrt_flatten::MaterialKind::Unsupported:
 		d.type = MaterialType::Lambertian;

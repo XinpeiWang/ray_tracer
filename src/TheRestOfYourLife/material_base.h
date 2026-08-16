@@ -21,6 +21,12 @@
 #include "../shared/material_context.h"
 
 
+// Defined in material_pbrt.h. Forward-declared here so `material::
+// as_subsurface()` can return a pointer to it without material_base.h
+// needing to know anything else about it.
+class subsurface;
+
+
 class scatter_record {
   public:
     color attenuation;
@@ -88,5 +94,14 @@ class material {
         (void)rec;
         return false;
     }
+
+    // Non-null only for `class subsurface` (material_pbrt.h): a material
+    // carrying a real BSSRDF diffusion profile. camera.h's ray_color loop
+    // uses this to detect when a specular-transmission scatter event should
+    // be redirected into the BSSRDF probe/exit-point search instead of just
+    // continuing to trace the refracted ray - see camera.h::
+    // sample_bssrdf_exit()'s own comment for why (a material's scatter()
+    // has no access to the scene geometry that search needs).
+    virtual const subsurface* as_subsurface() const { return nullptr; }
 };
 

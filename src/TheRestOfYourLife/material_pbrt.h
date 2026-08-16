@@ -1,5 +1,6 @@
 #pragma once
 #include "material_base.h"
+#include "../shared/bssrdf.h"
 
 // ---------------------------------------------------------------------------
 // rough_metal -- GGX microfacet BRDF (pbrt-v4 TrowbridgeReitzDistribution)
@@ -649,6 +650,100 @@ class mix_material : public material {
     shared_ptr<material> mat_a;
     shared_ptr<material> mat_b;
     shared_ptr<texture>  weight_tex;
+};
+
+
+// ---------------------------------------------------------------------------
+// subsurface -- pbrt-v4 SubsurfaceMaterial (real BSSRDF, CPU-only)
+//
+// The entry/exit interface is the exact same smooth DielectricBxDF every
+// other dielectric-family material in this file uses (matches pbrt-v4's own
+// SubsurfaceMaterial::GetBxDF, which returns a plain DielectricBxDF(eta,
+// distrib) - none of this loader's subsurface scenes give it a roughness).
+// scatter() is therefore `dielectric::scatter()` (material_simple.h) with no
+// transmission_filter - the Fresnel entry/exit split is identical code.
+//
+// The actual subsurface LIGHT TRANSPORT (what happens between the entry and
+// exit points) cannot live here: a material's scatter() only ever sees the
+// local hit_record, never the scene's geometry, and finding the exit point
+// means walking a probe ray through the SAME object's own geometry -
+// bssrdf.h's TabulatedBSSRDF only has the radial diffusion profile
+// (Sr(r)/SampleSr/PDF_Sr), not probe-ray intersection. That geometry-probing
+// step lives in camera.h::sample_bssrdf_exit(), which fires whenever a
+// scatter() event is a specular transmission into a material whose
+// as_subsurface() is non-null - see that function's own comment for the
+// full algorithm (a port of pbrt-v4 VolPathIntegrator::Li's BSSRDF branch,
+// cpu/integrators.cpp ~1187-1255, and this codebase's own already-tested but
+// previously unwired src/shared/vol_path.h::VolPathLi).
+// ---------------------------------------------------------------------------
+class subsurface : public material {
+  public:
+    using BxDF = DielectricBxDF<double>;
+
+    // sigma_a/sigma_s are ALREADY resolved and scaled by the material's
+    // "scale" parameter - see pbrt_flatten.h's flatten(), Subsurface branch,
+    // for how a scene's name/sigma_a+sigma_s/defaults get turned into these.
+    subsurface(double eta, const double sigma_a[3], const double sigma_s[3], double g)
+        : eta_(eta), table_(100, 64) {
+        ComputeBeamDiffusionBSSRDF(g, eta, &table_);
+        for (int c = 0; c < 3; ++c) {
+            sigma_a_[c] = sigma_a[c];
+            sigma_s_[c] = sigma_s[c];
+        }
+        bssrdf_ = TabulatedBSSRDF(sigma_a_, sigma_s_, &table_, 3);
+        // Sw (pbrt-v4's exit-interface BSDF) is the same NormalizedFresnelBxDF
+        // at every exit point this material's BSSRDF ever samples, so one
+        // instance is built once here and shared rather than allocated fresh
+        // on every bounce.
+        exit_bsdf_ = std::make_shared<normalized_fresnel>(eta);
+    }
+
+    // table_ owns the profile grid and bssrdf_ points INTO it (see
+    // TabulatedBSSRDF's own non-owning-pointer design in bssrdf.h) - copying
+    // or moving a `subsurface` would leave bssrdf_ pointing at the source
+    // object's table_, not its own. Every use in this codebase goes through
+    // make_shared<subsurface>(...) held by shared_ptr<material>, which never
+    // copies the pointee, so this is simply closing off a foot-gun that
+    // should never be exercised in practice.
+    subsurface(const subsurface&) = delete;
+    subsurface& operator=(const subsurface&) = delete;
+
+    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
+                 bool do_regularize = false) const override {
+        auto ctx = MaterialContext<double>::from_hit(rec, r_in);
+        BxDF bxdf{ eta_ };
+        vec3 in_dir = unit_vector(r_in.direction());
+        auto res = bxdf.sample(in_dir.x(), in_dir.y(), in_dir.z(),
+                               ctx.nx, ctx.ny, ctx.nz,
+                               ctx.front_face, random_double());
+        srec.attenuation     = color(res.r, res.g, res.b);
+        srec.pdf_ptr         = nullptr;
+        srec.skip_pdf        = true;
+        srec.skip_pdf_ray    = ray(rec.p, vec3(res.wo_x, res.wo_y, res.wo_z), r_in.time());
+        srec.eta             = res.is_transmission ? (double)res.eta : 1.0;
+        srec.is_transmission = res.is_transmission;
+        return true;
+    }
+
+    // See material::is_shadow_transmissive()'s comment - matches
+    // optix_anyhit_shadow.h's MaterialType::Dielectric skip: this material's
+    // entry interface IS a dielectric, so it should not block shadow rays
+    // outright any more than `class dielectric` does.
+    bool is_shadow_transmissive(const hit_record&) const override { return true; }
+
+    const subsurface* as_subsurface() const override { return this; }
+
+    double get_ior() const { return eta_; }
+    const TabulatedBSSRDF& get_bssrdf() const { return bssrdf_; }
+    const shared_ptr<material>& get_exit_bsdf() const { return exit_bsdf_; }
+
+  private:
+    double eta_;
+    double sigma_a_[3];
+    double sigma_s_[3];
+    BSSRDFTable table_;              // owns the profile grid; bssrdf_ points into it
+    TabulatedBSSRDF bssrdf_;
+    shared_ptr<material> exit_bsdf_; // cached normalized_fresnel(eta_) -- Sw
 };
 
 

@@ -84,6 +84,8 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 	case pbrt_flatten::MaterialKind::DiffuseTransmission:
 		return std::make_shared<diffuse_transmission>(
 			albedo, color(m.transmittance[0], m.transmittance[1], m.transmittance[2]));
+	case pbrt_flatten::MaterialKind::Subsurface:
+		return std::make_shared<subsurface>(m.ior, m.sigma_a, m.sigma_s, m.g);
 	case pbrt_flatten::MaterialKind::Diffuse:
 	case pbrt_flatten::MaterialKind::Unsupported:
 		break;

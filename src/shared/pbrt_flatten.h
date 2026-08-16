@@ -80,6 +80,16 @@ struct BilinearPatch {
 // this is a rename, not a translation. Anything genuinely absent maps to
 // Unsupported and is reported rather than quietly substituted, because a
 // subsurface material silently rendered as diffuse looks plausible and wrong.
+//
+// Subsurface IS a real, CPU-supported kind (src/TheRestOfYourLife/
+// material_pbrt.h's `class subsurface` + camera.h's BSSRDF probe/exit-point
+// branch) - it earns its own enumerator rather than staying Unsupported. GPU
+// has no BSSRDF implementation (out of scope - see gpu/optix/
+// pbrt_gpu_builder.h's own comment on its Subsurface case) and keeps
+// rendering it as flat diffuse, exactly as it did back when this kind was
+// still Unsupported; the only behaviour change is that the shared "not
+// supported" warning below no longer fires for it, since it is genuinely
+// supported on at least one backend now.
 enum class MaterialKind {
 	Diffuse,
 	Conductor,
@@ -88,6 +98,7 @@ enum class MaterialKind {
 	CoatedDiffuse,
 	CoatedConductor,
 	DiffuseTransmission,
+	Subsurface,
 	Unsupported,
 };
 
@@ -104,6 +115,16 @@ struct Material {
 	// frosted panel passing about a quarter of the light each way, not a
 	// mirror-symmetric reflectance/transmittance split at 0.5/0.5.
 	double transmittance[3] = {0.25, 0.25, 0.25};
+
+	// Subsurface only: absorption/scattering coefficients, ALREADY multiplied
+	// by the material's "scale" parameter (pbrt-v4 GetBSSRDF: sig_a = scale *
+	// sigma_a, sig_s = scale * sigma_s - see flatten()'s subsurface branch).
+	// Defaults are pbrt-v4's own "nothing specified" preset
+	// (SubsurfaceMaterial::Create's case 4, materials.cpp), which happens to
+	// equal the "Wholemilk" named preset.
+	double sigma_a[3] = {0.0011, 0.0024, 0.014};
+	double sigma_s[3] = {2.55, 3.21, 3.77};
+	double g = 0.0;   // Henyey-Greenstein asymmetry (subsurface only)
 };
 
 struct Emission {
@@ -338,7 +359,43 @@ inline MaterialKind materialKindFor(const std::string &type) {
 	if (type == "coateddiffuse")       return MaterialKind::CoatedDiffuse;
 	if (type == "coatedconductor")     return MaterialKind::CoatedConductor;
 	if (type == "diffusetransmission") return MaterialKind::DiffuseTransmission;
-	return MaterialKind::Unsupported;   // subsurface, measured, mix, hair, ...
+	if (type == "subsurface")          return MaterialKind::Subsurface;
+	return MaterialKind::Unsupported;   // measured, mix, hair, ...
+}
+
+// A subset of pbrt-v4's own named "measured scattering coefficient" table
+// (media.cpp, GetMediumScatteringProperties - from Jensen/Marschner/Levoy/
+// Hanrahan, "A Practical Model for Subsurface Light Transport", SIGGRAPH
+// 2001). sigmaPrimeS is the REDUCED scattering coefficient - pbrt-v4 forces
+// g=0 whenever a named preset is used, at which point sigma_s' == sigma_s,
+// so it can be assigned straight to Material::sigma_s. Only the first
+// (best-known, most commonly used) dozen entries are carried here; pbrt-v4's
+// own table has several dozen more (mostly foods/drinks from a 2006 dilution
+// study) that no scene in this loader's corpus names.
+struct SubsurfacePreset {
+	const char *name;
+	double sigmaPrimeS[3];
+	double sigmaA[3];
+};
+
+inline const SubsurfacePreset *subsurfacePresetFor(const std::string &name) {
+	static const SubsurfacePreset kPresets[] = {
+		{"Apple",      {2.29, 2.39, 1.97}, {0.0030, 0.0034, 0.046}},
+		{"Chicken1",   {0.15, 0.21, 0.38}, {0.015,  0.077,  0.19}},
+		{"Chicken2",   {0.19, 0.25, 0.32}, {0.018,  0.088,  0.20}},
+		{"Cream",      {7.38, 5.47, 3.15}, {0.0002, 0.0028, 0.0163}},
+		{"Ketchup",    {0.18, 0.07, 0.03}, {0.061,  0.97,   1.45}},
+		{"Marble",     {2.19, 2.62, 3.00}, {0.0021, 0.0041, 0.0071}},
+		{"Potato",     {0.68, 0.70, 0.55}, {0.0024, 0.0090, 0.12}},
+		{"Skimmilk",   {0.70, 1.22, 1.90}, {0.0014, 0.0025, 0.0142}},
+		{"Skin1",      {0.74, 0.88, 1.01}, {0.032,  0.17,   0.48}},
+		{"Skin2",      {1.09, 1.59, 1.79}, {0.013,  0.070,  0.145}},
+		{"Spectralon", {11.6, 20.4, 14.9}, {0.00,   0.00,   0.00}},
+		{"Wholemilk",  {2.55, 3.21, 3.77}, {0.0011, 0.0024, 0.014}},
+	};
+	for (const SubsurfacePreset &p : kPresets)
+		if (name == p.name) return &p;
+	return nullptr;
 }
 
 // Recovers the eye point and viewing direction from pbrt's WORLD-TO-CAMERA
@@ -425,6 +482,73 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		const pbrt_scene::Vec3 defT{m.transmittance[0], m.transmittance[1], m.transmittance[2]};
 		const pbrt_scene::Vec3 t = md.params.getVec3("transmittance", defT);
 		m.transmittance[0] = t.x; m.transmittance[1] = t.y; m.transmittance[2] = t.z;
+
+		// Subsurface: resolve sigma_a/sigma_s the way pbrt-v4's own
+		// SubsurfaceMaterial::Create does (materials.cpp) - "4 mutually
+		// exclusive ways to specify the subsurface properties", of which this
+		// supports the first three (named preset, explicit sigma_a+sigma_s,
+		// and "nothing specified" defaults). The fourth (reflectance+mfp,
+		// inverted through the diffusion table via SubsurfaceFromDiffuse)
+		// would need a BSSRDFTable built here at PARSE time just to invert
+		// one number, for a form no scene in this loader's corpus uses; it
+		// warns and falls back to the default coefficients instead.
+		if (m.kind == MaterialKind::Subsurface) {
+			const double scale = md.params.getFloat("scale", 1.0);
+			double g = md.params.getFloat("g", 0.0);
+			double sigA[3] = {m.sigma_a[0], m.sigma_a[1], m.sigma_a[2]};
+			double sigS[3] = {m.sigma_s[0], m.sigma_s[1], m.sigma_s[2]};
+
+			const std::string name = md.params.getString("name", "");
+			const bool hasSigmaA = md.params.find("sigma_a") != nullptr;
+			const bool hasSigmaS = md.params.find("sigma_s") != nullptr;
+
+			if (!name.empty()) {
+				if (const SubsurfacePreset *preset = subsurfacePresetFor(name)) {
+					for (int c = 0; c < 3; ++c) {
+						sigA[c] = preset->sigmaA[c];
+						sigS[c] = preset->sigmaPrimeS[c];
+					}
+					// pbrt-v4: "Enforce g=0 (the database specifies reduced
+					// scattering coefficients)".
+					if (g != 0.0)
+						warn("material 'subsurface' ignores \"g\" when \"name\" "
+							 "selects a measured scattering preset (matches pbrt-v4)");
+					g = 0.0;
+				} else {
+					warn("material 'subsurface' names unknown scattering preset '" +
+						 name + "'; using the default coefficients instead");
+				}
+			} else if (hasSigmaA && hasSigmaS) {
+				const pbrt_scene::Vec3 a =
+					md.params.getVec3("sigma_a", pbrt_scene::Vec3{sigA[0], sigA[1], sigA[2]});
+				const pbrt_scene::Vec3 s =
+					md.params.getVec3("sigma_s", pbrt_scene::Vec3{sigS[0], sigS[1], sigS[2]});
+				sigA[0] = a.x; sigA[1] = a.y; sigA[2] = a.z;
+				sigS[0] = s.x; sigS[1] = s.y; sigS[2] = s.z;
+			} else if (hasSigmaA != hasSigmaS) {
+				warn("material 'subsurface' gives only one of \"sigma_a\"/\"sigma_s\"; "
+					 "both are required together, so the default coefficients are used instead");
+			} else if (md.params.find("reflectance")) {
+				warn("material 'subsurface' gives \"reflectance\" without \"sigma_a\"/"
+					 "\"sigma_s\"; this loader does not invert reflectance+mfp into "
+					 "scattering coefficients, so the default coefficients are used instead");
+			}
+			// else: nothing specified at all -- m.sigma_a/sigma_s's own
+			// defaults (already pbrt-v4's "nothing specified" preset) stand.
+
+			for (int c = 0; c < 3; ++c) {
+				m.sigma_a[c] = sigA[c] * scale;
+				m.sigma_s[c] = sigS[c] * scale;
+			}
+			m.g = g;
+
+			// pbrt-v4's SubsurfaceMaterial defaults eta to 1.33 (skin/water-
+			// like), not the 1.5 (glass-like) default the generic "eta"/"ior"
+			// read above already applied for every material kind - redo it
+			// here with the right default when the scene gave neither.
+			if (!md.params.find("eta") && !md.params.find("ior"))
+				m.ior = 1.33;
+		}
 
 		out.materials.push_back(m);
 	}

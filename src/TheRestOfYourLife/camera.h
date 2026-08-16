@@ -386,6 +386,151 @@ class camera {
         return PowerHeuristic(pdf_a, pdf_b);
     }
 
+    // sample_bssrdf_exit -- BSSRDF probe/exit-point search for real subsurface
+    // scattering (pbrt-v4 SubsurfaceMaterial / TabulatedBSSRDF).
+    //
+    // Called from ray_color() right after rec.mat->scatter() returns a
+    // specular TRANSMISSION into a material whose as_subsurface() is
+    // non-null (class `subsurface`, material_pbrt.h). On success this
+    // reassigns `rec` in place to the found exit point (with rec.mat swapped
+    // to the subsurface material's cached normalized_fresnel exit BSDF --
+    // pbrt-v4's Sw) and refills `srec` by calling that exit material's own
+    // scatter(), so the caller's ordinary non-specular NEE + BSDF-sample code
+    // can continue completely unmodified from there, exactly as pbrt-v4
+    // treats the exit bounce as a normal (non-specular) BSDF once found.
+    //
+    // Mirrors pbrt-v4 VolPathIntegrator::Li's "Account for attenuated
+    // subsurface scattering" block (cpu/integrators.cpp ~1187-1255) and this
+    // codebase's own already-tested but previously unwired port of the same
+    // logic, src/shared/vol_path.h::VolPathLi (see its BSSRDF-branch comment
+    // and tests/unit/bssrdf_vol_path_tests.cpp) -- this is that same
+    // probe-walk-then-reservoir-sample algorithm, reimplemented against the
+    // concrete hittable_list/material types instead of vol_path.h's
+    // duck-typed Scene concept, since wiring the whole templated integrator
+    // in just for this would mean re-deriving NEE/MIS/RR this file already
+    // has working.
+    //
+    // DOCUMENTED SIMPLIFICATIONS vs. pbrt-v4's TabulatedBSSRDF::SampleSp:
+    //   1. Probe axis: pbrt-v4 combines THREE probe axes (shading normal,
+    //      weight 0.5, plus two tangent directions, weight 0.25 each) via
+    //      MIS, so a probe still finds the exit point where the surface is
+    //      nearly edge-on to the normal. This always probes along the
+    //      shading normal only. For the dragon meshes these scenes render --
+    //      reasonably smooth, no thin fins/creases at typical entry points --
+    //      a normal-axis probe finds the opposite side of the surface nearly
+    //      always; the rare miss just terminates that one path sample like
+    //      any other zero-contribution sample, not a systematic bias.
+    //   2. Channel selection: pbrt-v4 is spectral (hero-wavelength sampling
+    //      already randomizes which physical wavelength is "channel 0", so
+    //      its SampleSr always reads channel 0). This renderer is plain RGB,
+    //      so a channel is instead picked uniformly among R/G/B for the
+    //      IMPORTANCE-SAMPLING radius only; Sp itself is evaluated across
+    //      all 3 channels at the found exit distance (matching pbrt-v4's
+    //      Sp(pi) = Sr(Distance(po,pi))), and the pdf is the average of all
+    //      3 channels' PDF_Sr at that distance -- an unbiased MC estimator
+    //      for the same reason pbrt-v3's original (non-hero-wavelength)
+    //      BSSRDF::Sample_S channel pick was.
+    bool sample_bssrdf_exit(hit_record& rec, scatter_record& srec,
+                             const ray& current_ray, const hittable& world,
+                             color& beta, double& eta_scale) const
+    {
+        const subsurface* ss = rec.mat->as_subsurface();
+        if (!ss) return false;
+
+        const color  entry_attenuation     = srec.attenuation;
+        const double entry_eta             = srec.eta;
+        const bool   entry_is_transmission = srec.is_transmission;
+
+        const point3 p0   = rec.p;
+        const vec3   axis = unit_vector(rec.normal);
+        // Any tangent frame around axis works -- the disc is sampled with a
+        // uniform phi, so its orientation doesn't matter, only that t1/t2/axis
+        // are mutually orthonormal.
+        vec3 t1 = unit_vector(std::fabs(axis.x()) > 0.9
+                                 ? cross(vec3(0, 1, 0), axis)
+                                 : cross(vec3(1, 0, 0), axis));
+        vec3 t2 = cross(axis, t1);
+
+        const TabulatedBSSRDF& bssrdf = ss->get_bssrdf();
+
+        const int channel = std::min(2, static_cast<int>(random_double() * 3.0));
+        const double r = bssrdf.sample_sr(channel, random_double());
+        if (r < 0.0) return false;
+        const double r_max = bssrdf.sample_sr(channel, 0.999);
+        if (r_max <= 0.0 || r >= r_max) return false;
+
+        const double phi      = 2.0 * pi * random_double();
+        const double half_len = std::sqrt(std::max(0.0, r_max * r_max - r * r));
+
+        const point3 p_target = p0 + r * (std::cos(phi) * t1 + std::sin(phi) * t2);
+        const point3 p_start  = p_target - half_len * axis;
+        const point3 p_end    = p_target + half_len * axis;
+
+        vec3   seg_dir = p_end - p_start;
+        double seg_len = seg_dir.length();
+        if (seg_len < 1e-10) return false;
+        seg_dir = seg_dir / seg_len;
+
+        // Walk the probe segment, collecting every hit on the SAME material
+        // (matches pbrt-v4's `si->intr.material == isect.material` check)
+        // via unweighted reservoir sampling (Algorithm R: accept candidate i
+        // with probability 1/i) so the chosen exit point is uniformly
+        // distributed among however many candidates the segment crosses --
+        // equivalent to src/shared/reservoir_sampler.h's
+        // WeightedReservoirSampler with every weight equal to 1, reimplemented
+        // inline here rather than included: that header's own AliasTable
+        // collides (same class name, different definition) with
+        // power_light_sampler.h's, which camera.h already pulls in
+        // transitively, and both would land in the same translation unit.
+        const material* target_mat = rec.mat.get();
+        hit_record chosen_hit;
+        int candidate_count = 0;
+        point3 base      = p_start;
+        double remaining = seg_len;
+        while (remaining > 1e-9) {
+            hit_record probe_rec;
+            ray probe_ray(base, seg_dir, current_ray.time());
+            if (!world.hit(probe_ray, interval(1e-6, remaining), probe_rec)) break;
+            if (probe_rec.mat.get() == target_mat) {
+                ++candidate_count;
+                if (random_double() < 1.0 / candidate_count)
+                    chosen_hit = probe_rec;
+            }
+            const double step = probe_rec.t + 1e-4;
+            base = base + step * seg_dir;
+            remaining -= step;
+        }
+        if (candidate_count == 0) return false;
+
+        const hit_record& exit_hit = chosen_hit;
+        const double sample_prob   = 1.0 / candidate_count;
+
+        const double dist = (exit_hit.p - p0).length();
+        const color  Sp(bssrdf.sr(0, dist), bssrdf.sr(1, dist), bssrdf.sr(2, dist));
+        const double pdf = (bssrdf.pdf_sr(0, dist) + bssrdf.pdf_sr(1, dist) +
+                             bssrdf.pdf_sr(2, dist)) / 3.0;
+        if (pdf <= 0.0) return false;
+
+        const double inv = 1.0 / (sample_prob * pdf);
+        constexpr double kMaxPathThroughput = 50.0;  // matches ray_color's own ceiling
+        color new_beta = beta * entry_attenuation * Sp * inv;
+        new_beta = color(std::min(new_beta.x(), kMaxPathThroughput),
+                          std::min(new_beta.y(), kMaxPathThroughput),
+                          std::min(new_beta.z(), kMaxPathThroughput));
+        if (entry_is_transmission) eta_scale *= entry_eta * entry_eta;
+        beta = new_beta;
+
+        rec.p          = exit_hit.p;
+        rec.normal     = exit_hit.normal;
+        rec.dpdu       = exit_hit.dpdu;
+        rec.u          = exit_hit.u;
+        rec.v          = exit_hit.v;
+        rec.front_face = exit_hit.front_face;
+        rec.mat        = ss->get_exit_bsdf();   // Sw = normalized_fresnel(eta)
+
+        return rec.mat->scatter(current_ray, rec, srec, false);
+    }
+
     // ray_color -- iterative path integrator (pbrt-v4 PathIntegrator::Li style)
     //
     // Replaces the previous recursive implementation with a while loop
@@ -482,8 +627,27 @@ class camera {
             if (!rec.mat->scatter(current_ray, rec, srec, any_nonspecular))
                 break;
 
+            // BSSRDF subsurface branch: an entry-interface specular
+            // transmission into a material with a real diffusion profile
+            // (pbrt_flatten::MaterialKind::Subsurface) is redirected here
+            // instead of tracing the refracted ray through the interior,
+            // which this renderer's surface-only intersection model has no
+            // way to do. sample_bssrdf_exit() walks the same object's own
+            // geometry to find a physically-sampled exit point and, on
+            // success, reassigns rec/srec to it (exit BSDF =
+            // normalized_fresnel, pbrt-v4's NormalizedFresnelBxDF) -- see
+            // its own comment for the algorithm and documented
+            // simplifications. On failure the path terminates cleanly, same
+            // as any other zero-contribution sample.
+            bool bssrdf_exit = false;
+            if (srec.skip_pdf && srec.is_transmission && rec.mat->as_subsurface()) {
+                if (!sample_bssrdf_exit(rec, srec, current_ray, world, beta, eta_scale))
+                    break;
+                bssrdf_exit = true;
+            }
+
             // Specular bounce: no NEE, update beta and advance ray
-            if (srec.skip_pdf) {
+            if (srec.skip_pdf && !bssrdf_exit) {
                 color new_beta = clamp_throughput(beta * srec.attenuation);
                 if (bounces_left < depth) {
                     // pbrt-v4: rrBeta = beta * etaScale to avoid killing transmission paths
