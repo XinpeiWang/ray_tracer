@@ -322,6 +322,10 @@ pbrt_scenes/barcelona-pavilion/
 pbrt_scenes/sssdragon/
 pbrt_scenes/ganesha/
 pbrt_scenes/sportscar/
+# Companion tree assets for barcelona-pavilion (referenced as ../landscape/
+# from its .pbrt files) - only the ~46 files it actually needs, not the
+# full ~1.3GB landscape/ folder from the same upstream repo.
+pbrt_scenes/landscape/
 
 ##############################################################################
 # CMake build directories

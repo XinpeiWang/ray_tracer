@@ -86,6 +86,28 @@ TEST(SceneRegistryTest, AllIDsAreUnique) {
 	}
 }
 
+TEST(SceneRegistryTest, AllLegacyIDsAreUnique) {
+	// Pins the fix for a real bug: gpu/optix/scene_builder.cpp's build_scene()
+	// switches on legacy_id, so two SceneDescriptors sharing one is not a
+	// harmless duplicate the way a repeated `id` string would be - it means
+	// GPU silently builds whichever one the switch's `case N:` was written
+	// for, regardless of which scene was actually requested. pbrt_scene_registry
+	// ::append() used to start its counter at builtin_scene_count() (the
+	// builtin array's SIZE), which collided with H9 Gallery's own legacy_id
+	// 78 once G16's removal left legacy_id 53 permanently unused (size 78 ==
+	// highest id in use, not one past it) - the first scene loaded from a
+	// .pbrt file on disk ("I1") got legacy_id 78 too, so GPU rendered
+	// Gallery's framed-paintings interior for it instead of falling through
+	// to the generic pbrt loader, while CPU (which never switches on
+	// legacy_id) rendered the correct file. See pbrt_scene_registry::append()'s
+	// legacy_id comment for the fix.
+	std::set<int> seen;
+	for (const auto& s : get_scene_registry()) {
+		EXPECT_TRUE(seen.insert(s.legacy_id).second)
+			<< "Duplicate legacy_id " << s.legacy_id << " on scene " << s.id;
+	}
+}
+
 TEST(SceneRegistryTest, EveryIndexResolvesToAFindableId) {
 	// IDs are category letter + number now, not contiguous ints (see
 	// scene_registry.h's SceneDescriptor::id comment) - what stays true is

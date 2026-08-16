@@ -24,6 +24,7 @@
 #include "pbrt_cpu_builder.h"
 #include "../shared/pbrt_discover.h"
 #include "../shared/pbrt_load.h"
+#include <algorithm>
 #include <deque>
 #include <filesystem>
 #include <functional>
@@ -1370,15 +1371,33 @@ inline void append(std::vector<SceneDescriptor>& registry) {
     static std::deque<std::string> names;
     static std::deque<std::string> descriptions;
 
-    // legacy_id keeps counting up from the builtins exactly as `id` used to
-    // (see SceneDescriptor::legacy_id's comment) - values >= builtin count
-    // always miss every `case N:` in scene_builder.cpp's switch and land on
-    // `default:`, which is all that's required of it for pbrt scenes.
+    // legacy_id keeps counting up from one past the HIGHEST legacy_id any
+    // builtin scene actually uses (see SceneDescriptor::legacy_id's comment)
+    // - values past every `case N:` in scene_builder.cpp's switch always
+    // miss and land on `default:`, which is all that's required of it for
+    // pbrt scenes.
+    //
+    // NOT builtin_scene_count(): the builtin registry has a permanent gap at
+    // legacy_id 53 (G16 was removed - see scene_registry_tests.cpp's
+    // RegistryHasExpectedCount comment), so the array's SIZE (78) undercounts
+    // the highest id in use by one - the last builtin entry (H9 Gallery)
+    // itself has legacy_id 78. Starting the counter at builtin_scene_count()
+    // therefore handed the first pbrt-loaded scene ("I1") legacy_id=78 too,
+    // a direct collision with Gallery's - build_scene()'s switch matched
+    // `case 78:` before ever reaching `default:`, so GPU silently rendered
+    // Gallery's own geometry (a real photographic gallery of framed
+    // paintings) for whatever the first discovered .pbrt file was, while CPU
+    // (which never switches on legacy_id - see that field's own comment)
+    // rendered the correct file. Computed as a max here, not hardcoded,
+    // so any future gap can't reopen the same collision silently.
+    //
     // user_number is the NEW id's counter, independent and always 1-based -
     // all pbrt scenes share category UserScenes ("I"), so this is simply
     // "the Nth pbrt scene loaded this run", with no static UserScenes
     // entries in the builtin registry to continue from today.
-    int legacy_id = builtin_scene_count();
+    int legacy_id = 0;
+    for (const SceneDescriptor& b : get_builtin_scene_registry())
+        legacy_id = std::max(legacy_id, b.legacy_id + 1);
     int user_number = 1;
     for (const pbrt_discover::Discovered& d : found) {
         // A file that will not even parse its header is skipped rather than
