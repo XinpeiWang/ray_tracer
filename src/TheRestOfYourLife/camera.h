@@ -410,26 +410,30 @@ class camera {
     // in just for this would mean re-deriving NEE/MIS/RR this file already
     // has working.
     //
-    // DOCUMENTED SIMPLIFICATIONS vs. pbrt-v4's TabulatedBSSRDF::SampleSp:
-    //   1. Probe axis: pbrt-v4 combines THREE probe axes (shading normal,
-    //      weight 0.5, plus two tangent directions, weight 0.25 each) via
-    //      MIS, so a probe still finds the exit point where the surface is
-    //      nearly edge-on to the normal. This always probes along the
-    //      shading normal only. For the dragon meshes these scenes render --
-    //      reasonably smooth, no thin fins/creases at typical entry points --
-    //      a normal-axis probe finds the opposite side of the surface nearly
-    //      always; the rare miss just terminates that one path sample like
-    //      any other zero-contribution sample, not a systematic bias.
-    //   2. Channel selection: pbrt-v4 is spectral (hero-wavelength sampling
+    // Probe axis: matches pbrt-v4's SampleSp/PDF_Sp exactly -- one of 3
+    // mutually-orthonormal axes anchored at the entry point (shading normal,
+    // weight 0.5; two tangent directions, weight 0.25 each) is chosen for
+    // the actual probe walk, but PDF_Sp always returns the *combined*
+    // (one-sample MIS, balance heuristic) pdf across all 3 axes regardless
+    // of which one produced the sample. This is what lets the probe still
+    // find a good exit point where the surface is nearly edge-on to the
+    // normal (thin fins/creases, e.g. the SSS dragon meshes' horns/spikes) --
+    // a normal-only probe systematically misses those, and even when it
+    // does hit, weighting by only the normal axis's pdf leaves the estimator
+    // high-variance on such geometry (a documented, now-superseded
+    // simplification of this function's earlier single-axis version).
+    //
+    // DOCUMENTED SIMPLIFICATION vs. pbrt-v4's TabulatedBSSRDF::SampleSp:
+    //   Channel selection: pbrt-v4 is spectral (hero-wavelength sampling
     //      already randomizes which physical wavelength is "channel 0", so
     //      its SampleSr always reads channel 0). This renderer is plain RGB,
     //      so a channel is instead picked uniformly among R/G/B for the
     //      IMPORTANCE-SAMPLING radius only; Sp itself is evaluated across
     //      all 3 channels at the found exit distance (matching pbrt-v4's
     //      Sp(pi) = Sr(Distance(po,pi))), and the pdf is the average of all
-    //      3 channels' PDF_Sr at that distance -- an unbiased MC estimator
-    //      for the same reason pbrt-v3's original (non-hero-wavelength)
-    //      BSSRDF::Sample_S channel pick was.
+    //      3 channels' combined-axis PDF_Sr at that distance -- an unbiased
+    //      MC estimator for the same reason pbrt-v3's original
+    //      (non-hero-wavelength) BSSRDF::Sample_S channel pick was.
     bool sample_bssrdf_exit(hit_record& rec, scatter_record& srec,
                              const ray& current_ray, const hittable& world,
                              color& beta, double& eta_scale) const
@@ -462,9 +466,25 @@ class camera {
         const double phi      = 2.0 * pi * random_double();
         const double half_len = std::sqrt(std::max(0.0, r_max * r_max - r * r));
 
-        const point3 p_target = p0 + r * (std::cos(phi) * t1 + std::sin(phi) * t2);
-        const point3 p_start  = p_target - half_len * axis;
-        const point3 p_end    = p_target + half_len * axis;
+        // Choose one of 3 mutually-orthonormal probe axes for the actual
+        // walk -- matches pbrt-v4 SampleSp's axis-selection probabilities
+        // (Frame::FromZ(ns) 0.5, FromX(ns)/FromY(ns) 0.25 each). Whichever
+        // axis is NOT the probe direction supplies the other disc basis
+        // vector alongside the remaining tangent, so every axis choice still
+        // walks a segment through p0's local neighborhood, just oriented
+        // differently -- this is what lets the probe still find an exit
+        // point when the true nearby surface is edge-on to the shading
+        // normal (thin fins/creases), which a normal-only probe would
+        // systematically miss.
+        const double u_axis = random_double();
+        vec3 probe_axis, basis_a, basis_b;
+        if (u_axis < 0.5)      { probe_axis = axis; basis_a = t1;   basis_b = t2; }
+        else if (u_axis < 0.75) { probe_axis = t1;   basis_a = t2;   basis_b = axis; }
+        else                    { probe_axis = t2;   basis_a = axis; basis_b = t1; }
+
+        const point3 p_target = p0 + r * (std::cos(phi) * basis_a + std::sin(phi) * basis_b);
+        const point3 p_start  = p_target - half_len * probe_axis;
+        const point3 p_end    = p_target + half_len * probe_axis;
 
         vec3   seg_dir = p_end - p_start;
         double seg_len = seg_dir.length();
@@ -511,23 +531,47 @@ class camera {
         const color  Sp(bssrdf.sr(0, dist), bssrdf.sr(1, dist), bssrdf.sr(2, dist));
 
         // PDF_Sp, however, is NOT PDF_Sr(dist) -- pbrt-v4's PDF_Sp projects
-        // (pi - po) onto the plane PERPENDICULAR to the probe axis (the
-        // profile is defined as a function of radius on that plane, not of
-        // straight-line distance to the found point, which also carries an
-        // axial offset of up to +-half_len) and weights by the exit point's
-        // normal component along the probe axis (the Jacobian between the
-        // disc parameterization and actual surface area, same role as a
-        // cosine term). Using `dist` here instead of the projected radius
+        // (pi - po) onto the plane PERPENDICULAR to each candidate probe
+        // axis in turn (the profile is defined as a function of radius on
+        // that plane, not of straight-line distance to the found point,
+        // which also carries an axial offset of up to +-half_len along
+        // whichever axis was actually probed) and weights each by the exit
+        // point's normal component along that axis (the Jacobian between
+        // the disc parameterization and actual surface area, same role as a
+        // cosine term). Using `dist` in place of the projected radius
         // systematically under-estimates the pdf for candidates found far
         // along the probe axis (dist > rProj always, and PDF_Sr is
-        // decreasing), which was inflating 1/pdf into huge, bright-red
-        // firefly weights on curved geometry like the SSS dragon meshes.
-        const vec3   d             = exit_hit.p - p0;
-        const double d_along_axis  = dot(d, axis);
-        const double r_proj = std::sqrt(std::max(0.0, dot(d, d) - d_along_axis * d_along_axis));
-        const double cos_theta = std::fabs(dot(unit_vector(exit_hit.normal), axis));
-        const double pdf = cos_theta * (bssrdf.pdf_sr(0, r_proj) + bssrdf.pdf_sr(1, r_proj) +
-                                         bssrdf.pdf_sr(2, r_proj)) / 3.0;
+        // decreasing), which inflates 1/pdf into huge, bright-red firefly
+        // weights on curved geometry like the SSS dragon meshes.
+        //
+        // Regardless of which axis was actually walked above, PDF_Sp always
+        // returns the *combined* pdf summed over all 3 axes weighted by
+        // their selection probability -- the standard one-sample MIS
+        // (balance heuristic) estimator for "one of several sampling
+        // techniques was used, but every technique could plausibly have
+        // produced this same point." This is what reduces variance on
+        // creased geometry: a point found via the t1/t2 probes still gets
+        // (correctly) up-weighted by however much the normal-axis strategy
+        // *would* have favored it too, and vice versa.
+        const vec3   d = exit_hit.p - p0;
+        const vec3   exit_n = unit_vector(exit_hit.normal);
+        const double d_n  = dot(d, axis);
+        const double d_t1 = dot(d, t1);
+        const double d_t2 = dot(d, t2);
+        const double r_proj_axis = std::sqrt(std::max(0.0, d_t1 * d_t1 + d_t2 * d_t2));
+        const double r_proj_t1   = std::sqrt(std::max(0.0, d_t2 * d_t2 + d_n  * d_n));
+        const double r_proj_t2   = std::sqrt(std::max(0.0, d_n  * d_n  + d_t1 * d_t1));
+        const double cos_axis = std::fabs(dot(exit_n, axis));
+        const double cos_t1   = std::fabs(dot(exit_n, t1));
+        const double cos_t2   = std::fabs(dot(exit_n, t2));
+        constexpr double kAxisProb = 0.5, kTangentProb = 0.25;
+        double pdf = 0.0;
+        for (int c = 0; c < 3; ++c) {
+            pdf += kAxisProb   * bssrdf.pdf_sr(c, r_proj_axis) * cos_axis
+                 + kTangentProb * bssrdf.pdf_sr(c, r_proj_t1)   * cos_t1
+                 + kTangentProb * bssrdf.pdf_sr(c, r_proj_t2)   * cos_t2;
+        }
+        pdf /= 3.0;
         if (pdf <= 0.0) return false;
 
         const double inv = 1.0 / (sample_prob * pdf);
