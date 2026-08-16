@@ -46,13 +46,62 @@ void MainWindow::populateSceneCombo(const QString &category) {
 	const QSignalBlocker blocker(m_sceneCombo);
 	m_sceneCombo->clear();
 
+	// requiresFiles==true on the "Requires External Files" tab, false on
+	// "Self-Contained" - matches rebuildCategoryTabs()'s own reading of the
+	// same tab bar, and defaults to false (self-contained) if the bar
+	// somehow isn't built yet, the safer of the two defaults for a fresh
+	// checkout.
+	const bool wantRequiresFiles = m_sceneAvailabilityTabs && m_sceneAvailabilityTabs->currentIndex() == 1;
+
 	const int count = SceneMetadataClient::sceneCount();
 	for (int i = 0; i < count; ++i) {
 		const QString id = SceneMetadataClient::sceneIdAtIndex(i);
 		if (SceneMetadataClient::sceneCategory(id) != category) continue;
+		if (SceneMetadataClient::sceneRequiresFiles(id) != wantRequiresFiles) continue;
 		m_sceneCombo->addItem(
 			QString("[%1] %2").arg(id).arg(SceneMetadataClient::sceneName(id)), id);
 	}
+}
+
+// Rebuilds m_sceneCategoryTabs for the given availability filter - see this
+// function's own declaration comment (mainwindow.h) for the two-level filter
+// design. Tries to keep the same letter category selected across a rebuild
+// (e.g. toggling availability while on "Geometry" should land back on
+// "Geometry" if it still has a qualifying scene), falling back to index 0
+// otherwise - mirrors createBasicTab()'s own initial-fill fallback.
+void MainWindow::rebuildCategoryTabs(bool requiresFiles) {
+	if (!m_sceneCategoryTabs) return;
+
+	const QString previousCategory = m_sceneCategoryTabs->count() > 0
+		? m_sceneCategoryTabs->tabData(m_sceneCategoryTabs->currentIndex()).toString()
+		: QString();
+
+	const QSignalBlocker blocker(m_sceneCategoryTabs);
+	while (m_sceneCategoryTabs->count() > 0)
+		m_sceneCategoryTabs->removeTab(0);
+
+	const int sceneCount = SceneMetadataClient::sceneCount();
+	int restoredTab = -1;
+	for (std::size_t i = 0; i < SceneCategories::kAllCount; ++i) {
+		const QString category = QString::fromUtf8(SceneCategories::kAll[i]);
+		int inCategory = 0;
+		for (int j = 0; j < sceneCount; ++j) {
+			const QString id = SceneMetadataClient::sceneIdAtIndex(j);
+			if (SceneMetadataClient::sceneCategory(id) != category) continue;
+			if (SceneMetadataClient::sceneRequiresFiles(id) != requiresFiles) continue;
+			++inCategory;
+		}
+		if (inCategory == 0) continue;
+
+		const int tab = m_sceneCategoryTabs->addTab(category);
+		m_sceneCategoryTabs->setTabData(tab, category);
+		m_sceneCategoryTabs->setTabToolTip(tab,
+			QString("%1 scene%2").arg(inCategory).arg(inCategory == 1 ? "" : "s"));
+		if (category == previousCategory) restoredTab = tab;
+	}
+
+	if (m_sceneCategoryTabs->count() > 0)
+		m_sceneCategoryTabs->setCurrentIndex(restoredTab >= 0 ? restoredTab : 0);
 }
 
 void MainWindow::createBasicTab() {
@@ -81,6 +130,36 @@ void MainWindow::createBasicTab() {
 			"Make sure scene_metadata.dll is present alongside RayTracerGUI.exe.");
 	}
 
+	// A second, higher-level filter above the letter-category tabs: every
+	// scene splits into "Self-Contained" (renders in a fresh checkout) or
+	// "Requires External Files" (SceneMetadataClient::sceneRequiresFiles()),
+	// independently of SceneCategories - see mainwindow.h's own comment on
+	// m_sceneAvailabilityTabs for why this is a per-scene split layered on
+	// top of the categories rather than a coarser replacement for them.
+	// Defaults to "Self-Contained" (index 0) - the bucket that reliably
+	// renders for a user who just cloned the repo.
+	m_sceneAvailabilityTabs = new QTabBar(basicTab);
+	m_sceneAvailabilityTabs->setObjectName("sceneCategoryTabs");
+	m_sceneAvailabilityTabs->setDrawBase(false);
+	m_sceneAvailabilityTabs->setExpanding(false);
+	{
+		int selfContainedCount = 0, requiresFilesCount = 0;
+		for (int i = 0; i < sceneCount; ++i) {
+			const QString id = SceneMetadataClient::sceneIdAtIndex(i);
+			if (SceneMetadataClient::sceneRequiresFiles(id)) ++requiresFilesCount;
+			else ++selfContainedCount;
+		}
+		const int selfTab = m_sceneAvailabilityTabs->addTab("Self-Contained");
+		m_sceneAvailabilityTabs->setTabToolTip(selfTab,
+			QString("%1 scene%2 - no extra downloads needed")
+				.arg(selfContainedCount).arg(selfContainedCount == 1 ? "" : "s"));
+		const int filesTab = m_sceneAvailabilityTabs->addTab("Requires External Files");
+		m_sceneAvailabilityTabs->setTabToolTip(filesTab,
+			QString("%1 scene%2 - needs assets not included in a fresh checkout")
+				.arg(requiresFilesCount).arg(requiresFilesCount == 1 ? "" : "s"));
+	}
+	sceneGroupLayout->addWidget(m_sceneAvailabilityTabs);
+
 	m_sceneCategoryTabs = new QTabBar(basicTab);
 	m_sceneCategoryTabs->setObjectName("sceneCategoryTabs");
 	m_sceneCategoryTabs->setDrawBase(false);
@@ -89,30 +168,14 @@ void MainWindow::createBasicTab() {
 	// inside a resizable group box - scroll buttons beat silently clipping the
 	// last category off the right edge when it isn't.
 	m_sceneCategoryTabs->setUsesScrollButtons(true);
-	{
-		// SceneCategories::kAll drives the ORDER (a curated reading order, not
-		// the order categories happen to first appear in the registry).
-		// Categories with no scenes are skipped rather than shown as an empty
-		// tab. For the built-in categories that is defensive only -
-		// scene_registry_tests.cpp's EveryCategoryHasAtLeastOneScene makes an
-		// empty one unreachable in a correct build. "User Scenes" is the case
-		// where it genuinely happens: it holds .pbrt files discovered on disk,
-		// so it is empty for every user who has not installed a scene
-		// collection, and they should see no tab at all rather than one that
-		// opens onto nothing.
-		for (std::size_t i = 0; i < SceneCategories::kAllCount; ++i) {
-			const QString category = QString::fromUtf8(SceneCategories::kAll[i]);
-			int inCategory = 0;
-			for (int i = 0; i < sceneCount; ++i)
-				if (SceneMetadataClient::sceneCategory(SceneMetadataClient::sceneIdAtIndex(i)) == category) ++inCategory;
-			if (inCategory == 0) continue;
-
-			const int tab = m_sceneCategoryTabs->addTab(category);
-			m_sceneCategoryTabs->setTabData(tab, category);
-			m_sceneCategoryTabs->setTabToolTip(tab,
-				QString("%1 scene%2").arg(inCategory).arg(inCategory == 1 ? "" : "s"));
-		}
-	}
+	// SceneCategories::kAll drives the ORDER (a curated reading order, not
+	// the order categories happen to first appear in the registry).
+	// Categories with no scenes IN THE CURRENT AVAILABILITY BUCKET are
+	// skipped rather than shown as an empty tab - same reasoning
+	// createBasicTab() already applied for categories with zero scenes at
+	// all (see rebuildCategoryTabs()'s own comment), just re-evaluated
+	// per bucket instead of once.
+	rebuildCategoryTabs(/*requiresFiles=*/false);
 	sceneGroupLayout->addWidget(m_sceneCategoryTabs);
 
 	QHBoxLayout *sceneRow = new QHBoxLayout();
@@ -125,6 +188,24 @@ void MainWindow::createBasicTab() {
 	// Fill the dropdown for whichever category the bar opened on.
 	if (m_sceneCategoryTabs->count() > 0)
 		populateSceneCombo(m_sceneCategoryTabs->tabData(0).toString());
+
+	connect(m_sceneAvailabilityTabs, &QTabBar::currentChanged, this, [this](int tab) {
+		if (tab < 0) return;
+		rebuildCategoryTabs(/*requiresFiles=*/tab == 1);
+		// rebuildCategoryTabs() picks a category tab but (like the category
+		// bar's own currentChanged handler below) does not refill the combo
+		// itself - QTabBar::currentChanged only fires on an actual index
+		// CHANGE, which rebuildCategoryTabs() causes most of the time (tab
+		// counts/order shift between buckets) but not always (e.g. toggling
+		// back to a bucket that happens to restore the same tab index by
+		// coincidence) - so this always refills explicitly rather than
+		// relying on that signal firing.
+		if (m_sceneCategoryTabs->count() > 0)
+			populateSceneCombo(m_sceneCategoryTabs->tabData(m_sceneCategoryTabs->currentIndex()).toString());
+		else
+			m_sceneCombo->clear();
+		onSceneChanged(m_sceneCombo->currentIndex());
+	});
 
 	connect(m_sceneCategoryTabs, &QTabBar::currentChanged, this, [this](int tab) {
 		if (tab < 0) return;

@@ -360,10 +360,32 @@ private:
 	double m_currentSceneCamDistance = 1078.0;
 
 	// Scene selection
+	// Two-level filter: m_sceneAvailabilityTabs splits every scene into
+	// "Self-Contained" (renders in a fresh checkout, no extra downloads) vs.
+	// "Requires External Files" (SceneMetadataClient::sceneRequiresFiles()),
+	// independently of SceneCategories - a category like Basics or Geometry
+	// has scenes in both buckets (e.g. Basics' A4 Earth needs an image file,
+	// A1-A9 mostly don't), so this is a per-scene split layered on top of the
+	// existing letter categories, not a coarser replacement for them.
+	// m_sceneCategoryTabs is then rebuilt to show only the letter categories
+	// that have at least one scene in whichever availability bucket is
+	// selected (rebuildCategoryTabs()) - mirroring how it already skips any
+	// category with zero scenes at all.
+	QTabBar *m_sceneAvailabilityTabs = nullptr;  // "Self-Contained" / "Requires External Files"
 	QTabBar *m_sceneCategoryTabs = nullptr;  // Category filter above the scene dropdown
 	QComboBox *m_sceneCombo;            // Scene selector dropdown, showing one category at a time
 
-	// Refills m_sceneCombo with just the scenes in `category`. Does NOT emit
+	// Rebuilds m_sceneCategoryTabs' tab set for the given availability filter
+	// (true = only scenes with sceneRequiresFiles()==true, false = only
+	// scenes with sceneRequiresFiles()==false), skipping any letter category
+	// left with zero matching scenes - same skip-if-empty rule
+	// createBasicTab() already applies for categories with zero scenes at
+	// all. Does not touch m_sceneCombo; callers follow up with
+	// populateSceneCombo() for whichever category tab ends up selected.
+	void rebuildCategoryTabs(bool requiresFiles);
+
+	// Refills m_sceneCombo with just the scenes in `category` that also match
+	// m_sceneAvailabilityTabs' current selection. Does NOT emit
 	// currentIndexChanged per insertion - callers apply the resulting selection
 	// themselves with a single onSceneChanged() call.
 	void populateSceneCombo(const QString &category);
