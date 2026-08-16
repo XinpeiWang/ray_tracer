@@ -1,6 +1,7 @@
 #pragma once
 #include "material_base.h"
 #include "../shared/bssrdf.h"
+#include "../shared/measured_bxdf_loader.h"
 
 // ---------------------------------------------------------------------------
 // rough_metal -- GGX microfacet BRDF (pbrt-v4 TrowbridgeReitzDistribution)
@@ -744,6 +745,122 @@ class subsurface : public material {
     BSSRDFTable table_;              // owns the profile grid; bssrdf_ points into it
     TabulatedBSSRDF bssrdf_;
     shared_ptr<material> exit_bsdf_; // cached normalized_fresnel(eta_) -- Sw
+};
+
+
+// ---------------------------------------------------------------------------
+// measured -- pbrt-v4 MeasuredMaterial (real gonioreflectometer-measured BRDF,
+// e.g. automotive paint scans from the RGL/Dupuy&Jakob "A Practical Guide to
+// Fitting BRDFs" .bsdf format)
+//
+// The actual warp-sampling machinery (PiecewiseLinear2D<N>, ported faithfully
+// from pbrt-v4 util/sampling.h) and the BRDF evaluation built on top of it
+// (MeasuredBxDF::f/sample_f/pdf, ported from pbrt-v4 bxdfs.cpp) already live
+// in src/shared/measured_bxdf.h - this class only has to feed it real data
+// (src/shared/measured_bxdf_loader.h's .bsdf tensor-file reader, cached by
+// filename so a file referenced by several materials - e.g. this loader's
+// sportscar test scene, where ilm_l3_37_metallic_spec.bsdf is shared by 4
+// materials - is only ever parsed once) and drive it from scatter().
+//
+// A measured BRDF is a genuine glossy reflection lobe: MeasuredBxDF::
+// sample_f VNDF-importance-samples the tabulated half-vector distribution,
+// it is never a delta distribution the way dielectric/subsurface's specular
+// interfaces are. It therefore follows THIS file's conductor/principled
+// shape - skip_pdf=true, with sample_f's returned (fr,fg,fb) already being
+// the full f*|cos(theta_i)|/pdf throughput ratio, baked in exactly the way
+// ConductorBxDF's VNDF sampling bakes in G/G1 - not dielectric/subsurface's
+// Fresnel-split-then-special-case pattern, which exists to handle a
+// refractive boundary this material doesn't have. scattering_pdf() is
+// implemented for API parity with conductor/principled/rough_metal (and for
+// this loader's own Sample_f/PDF-consistency tests) even though this
+// codebase's current MIS scheme does not call it while skip_pdf is set -
+// see camera.h's "Specular bounce: no NEE" branch.
+//
+// R/G/B are queried from the tensor's spectral interpolant at three fixed
+// wavelengths (612/549/465nm, approximating the sRGB primaries) rather than
+// pbrt-v4's stochastic hero-wavelength spectral sampling - this is the same
+// convention src/shared/materials.h's (currently unwired) MeasuredMaterial
+// already established for this exact BxDF class, reused here rather than
+// inventing a second, inconsistent one.
+// ---------------------------------------------------------------------------
+class measured : public material {
+  public:
+    using BxDF = MeasuredBxDF<double>;
+
+    // filename must already be a resolved, load-tested path - see
+    // pbrt_flatten.h's Material::measuredFilename comment. The actual load
+    // happens through the same process-wide cache pbrt_load.h's scene-
+    // loading pass already primed, so constructing a `measured` for a file
+    // already seen (the common case: several materials naming the same
+    // .bsdf) is a map lookup, not a re-parse of several megabytes of binary.
+    explicit measured(const std::string& filename) {
+        std::string error;
+        data_ = measured_bxdf_io::GetMeasuredBRDFDataCached(filename, error);
+    }
+
+    // False when construction failed to obtain real data (missing/corrupt
+    // file, or one pbrt_load.h already rejected). Callers - specifically
+    // pbrt_cpu_builder.h's makeMaterial() - use this to fall back to a
+    // plain diffuse material instead of holding onto a `measured` whose
+    // scatter() can only ever return false (rendering the surface pure
+    // black, which looks like a bug rather than the documented fallback
+    // every other unsupported/failed material gets).
+    bool loaded() const { return data_ != nullptr; }
+
+    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
+                 bool do_regularize = false) const override {
+        if (!data_) return false;
+
+        auto ctx = MaterialContext<double>::from_hit(rec, r_in);
+        BxDF bxdf(data_.get(), kLambdaR, kLambdaG, kLambdaB);
+        auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
+
+        double wo_x, wo_y, wo_z;
+        frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wo_x, wo_y, wo_z);
+
+        double wi_x, wi_y, wi_z, fr, fg, fb, sampled_pdf;
+        const bool ok = bxdf.sample_f(wo_x, wo_y, wo_z,
+                                      static_cast<float>(random_double()),
+                                      static_cast<float>(random_double()),
+                                      wi_x, wi_y, wi_z, fr, fg, fb, sampled_pdf);
+        if (!ok) return false;
+
+        double wd_x, wd_y, wd_z;
+        frame.to_world(wi_x, wi_y, wi_z, wd_x, wd_y, wd_z);
+        srec.attenuation  = color(fr, fg, fb);
+        srec.pdf_ptr      = nullptr;
+        srec.skip_pdf     = true;
+        srec.skip_pdf_ray = ray(rec.p, unit_vector(vec3(wd_x, wd_y, wd_z)), r_in.time());
+        return true;
+    }
+
+    double scattering_pdf(const ray& r_in, const hit_record& rec,
+                          const ray& scattered) const override {
+        if (!data_) return 0.0;
+
+        auto ctx = MaterialContext<double>::from_hit(rec, r_in);
+        BxDF bxdf(data_.get(), kLambdaR, kLambdaG, kLambdaB);
+        auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
+
+        double wo_x, wo_y, wo_z;
+        frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wo_x, wo_y, wo_z);
+
+        vec3 out_dir = unit_vector(scattered.direction());
+        double wi_x, wi_y, wi_z;
+        frame.to_local(out_dir.x(), out_dir.y(), out_dir.z(), wi_x, wi_y, wi_z);
+
+        return bxdf.pdf(wo_x, wo_y, wo_z, wi_x, wi_y, wi_z);
+    }
+
+    const MeasuredBRDFData* get_data() const { return data_.get(); }
+
+  private:
+    // sRGB-primary approximations - see this class's own comment above.
+    static constexpr double kLambdaR = 612.0;
+    static constexpr double kLambdaG = 549.0;
+    static constexpr double kLambdaB = 465.0;
+
+    shared_ptr<const MeasuredBRDFData> data_;
 };
 
 

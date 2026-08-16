@@ -221,6 +221,17 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 	case pbrt_flatten::MaterialKind::Unsupported:
 		d.type = MaterialType::Lambertian;
 		break;
+	// Real tabulated measured-BRDF support is CPU-only (src/TheRestOfYourLife/
+	// material_pbrt.h's `class measured`) - out of scope for GPU. This case
+	// exists only so adding MaterialKind::Measured to the shared enum (it
+	// used to be an alias for Unsupported) doesn't change GPU's behaviour:
+	// without an explicit case here this would still hit no `default:` and
+	// fail to compile, and if it silently fell through some other branch
+	// instead it would render wrong rather than the flat diffuse a
+	// "measured" material has always rendered as on this backend.
+	case pbrt_flatten::MaterialKind::Measured:
+		d.type = MaterialType::Lambertian;
+		break;
 	}
 	return d;
 }

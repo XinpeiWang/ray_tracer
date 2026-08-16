@@ -86,6 +86,28 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 			albedo, color(m.transmittance[0], m.transmittance[1], m.transmittance[2]));
 	case pbrt_flatten::MaterialKind::Subsurface:
 		return std::make_shared<subsurface>(m.ior, m.sigma_a, m.sigma_s, m.g);
+	case pbrt_flatten::MaterialKind::Measured: {
+		// m.measuredFilename is empty unless pbrt_load.h's post-flatten pass
+		// both resolved AND successfully load-tested it (see pbrt_flatten.h's
+		// Material::measuredFilename comment) - so an empty filename here
+		// means "already warned about, fall back to diffuse", same as
+		// Unsupported below. A non-empty filename means `measured`'s own
+		// constructor is doing a cache hit, not a fresh multi-megabyte parse.
+		if (m.measuredFilename.empty())
+			break;
+		auto mat = std::make_shared<measured>(m.measuredFilename);
+		// Guards against the theoretically-possible case of the file having
+		// become unreadable between pbrt_load.h's validation pass and here
+		// (both happen back-to-back during scene loading, so this is belt-
+		// and-suspenders, not an expected path) - a `measured` that failed
+		// to load can only ever return false from scatter(), which would
+		// render the surface pure black rather than the documented
+		// diffuse-approximation fallback every other unsupported/failed
+		// material gets.
+		if (!mat->loaded())
+			break;
+		return mat;
+	}
 	case pbrt_flatten::MaterialKind::Diffuse:
 	case pbrt_flatten::MaterialKind::Unsupported:
 		break;

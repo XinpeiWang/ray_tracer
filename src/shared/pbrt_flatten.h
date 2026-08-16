@@ -90,6 +90,16 @@ struct BilinearPatch {
 // still Unsupported; the only behaviour change is that the shared "not
 // supported" warning below no longer fires for it, since it is genuinely
 // supported on at least one backend now.
+//
+// Measured is the same story: a real, CPU-supported kind (src/
+// TheRestOfYourLife/material_pbrt.h's `class measured`, backed by src/
+// shared/measured_bxdf.h's ported pbrt-v4 MeasuredBxDF + src/shared/
+// measured_bxdf_loader.h's .bsdf tensor-file reader) rather than the flat
+// diffuse fallback every other Unsupported material still gets. GPU has no
+// measured-BRDF implementation (out of scope) and keeps rendering it as
+// flat diffuse - see gpu/optix/pbrt_gpu_builder.h's own comment on its
+// Measured case, which exists only to preserve that exact fallback now that
+// this enumerator is no longer an alias for Unsupported.
 enum class MaterialKind {
 	Diffuse,
 	Conductor,
@@ -99,6 +109,7 @@ enum class MaterialKind {
 	CoatedConductor,
 	DiffuseTransmission,
 	Subsurface,
+	Measured,
 	Unsupported,
 };
 
@@ -125,6 +136,20 @@ struct Material {
 	double sigma_a[3] = {0.0011, 0.0024, 0.014};
 	double sigma_s[3] = {2.55, 3.21, 3.77};
 	double g = 0.0;   // Henyey-Greenstein asymmetry (subsurface only)
+
+	// Measured only: the "filename" parameter naming the .bsdf tensor file,
+	// exactly AS WRITTEN in the scene ("bsdfs/foo.bsdf" - relative to the
+	// scene file's own directory, same convention as Shape "plymesh"'s
+	// filename or LightSource "infinite"'s). This header stays filesystem-
+	// free by design (see the file comment), so it cannot resolve or read
+	// the file itself - pbrt_load.h::loadFile() does both AFTER flatten()
+	// returns, exactly as it already does for the infinite light's image,
+	// and OVERWRITES this field with the resolved path on success so
+	// pbrt_cpu_builder.h's `class measured` never needs to know the scene's
+	// directory. Empty means "no filename given" (or, after pbrt_load.h's
+	// pass, "could not be resolved/loaded") - either way the material falls
+	// back to a diffuse approximation.
+	std::string measuredFilename;
 };
 
 struct Emission {
@@ -360,7 +385,8 @@ inline MaterialKind materialKindFor(const std::string &type) {
 	if (type == "coatedconductor")     return MaterialKind::CoatedConductor;
 	if (type == "diffusetransmission") return MaterialKind::DiffuseTransmission;
 	if (type == "subsurface")          return MaterialKind::Subsurface;
-	return MaterialKind::Unsupported;   // measured, mix, hair, ...
+	if (type == "measured")            return MaterialKind::Measured;
+	return MaterialKind::Unsupported;   // mix, hair, ...
 }
 
 // A subset of pbrt-v4's own named "measured scattering coefficient" table
@@ -548,6 +574,19 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// here with the right default when the scene gave neither.
 			if (!md.params.find("eta") && !md.params.find("ior"))
 				m.ior = 1.33;
+		}
+
+		// Measured: just the as-written filename (see Material::
+		// measuredFilename's own comment for why resolution/loading happens
+		// later, in pbrt_load.h). pbrt-v4's own MeasuredMaterial has no
+		// other parameters worth reading - reflectance/roughness/eta above
+		// don't apply to a tabulated BRDF.
+		if (m.kind == MaterialKind::Measured) {
+			m.measuredFilename = md.params.getString("filename", "");
+			if (m.measuredFilename.empty()) {
+				warn("material 'measured' has no \"filename\"; "
+					 "it will fall back to a diffuse approximation");
+			}
 		}
 
 		out.materials.push_back(m);

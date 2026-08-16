@@ -175,6 +175,7 @@
     <ClCompile Include="unit\ply_mesh_tests.cpp" />
     <ClCompile Include="unit\pbrt_flatten_tests.cpp" />
     <ClCompile Include="unit\pbrt_cpu_builder_tests.cpp" />
+    <ClCompile Include="unit\measured_bxdf_pbrt_tests.cpp" />
     <ClCompile Include="unit\gzip_inflate_tests.cpp" />
     <ClCompile Include="unit\pbrt_discover_tests.cpp" />
     <ClCompile Include="unit\pbrt_instance_tests.cpp" />

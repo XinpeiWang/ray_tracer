@@ -30,6 +30,7 @@
 #include "pbrt_flatten.h"
 #include "pbrt_scene.h"
 #include "ply_mesh.h"
+#include "measured_bxdf_loader.h"
 
 #include "../external/stb_image.h"
 #include "../external/tinyexr.h"
@@ -69,6 +70,25 @@ inline bool readFile(const std::string &path, std::string &out) {
 	ss << in.rdbuf();
 	out = ss.str();
 	return true;
+}
+
+inline bool fileExists(const std::string &path) {
+	std::ifstream in(path, std::ios::binary);
+	return static_cast<bool>(in);
+}
+
+// Resolves `want` the same scene-directory-first, then as-given way as
+// everything else in this file, but returns the resolved PATH rather than
+// the file's contents - for a measured material's .bsdf tensor file, which
+// is 7-15MB of binary data best read with seeks scattered across the file
+// (measured_bxdf_loader.h opens it directly), not slurped into a string
+// first just to be handed back to another reader. Empty return means
+// neither location has the file.
+inline std::string resolveExistingPath(const std::string &sceneDir, const std::string &want) {
+	const std::string nearScene = join(sceneDir, want);
+	if (fileExists(nearScene)) return nearScene;
+	if (fileExists(want)) return want;
+	return std::string();
 }
 
 inline bool endsWithCaseInsensitive(const std::string &path, const std::string &ext) {
@@ -214,6 +234,45 @@ inline LoadResult loadFile(const std::string &path) {
 				{0, path, "infinite light image '" + sky.imageFile +
 					"' could not be read; using its constant colour instead"});
 		}
+	}
+
+	// Measured materials' .bsdf tensor files. Same scene-directory-then-as-
+	// given resolution as everything else here, but resolved to a PATH
+	// (resolveExistingPath) rather than read into a string - the tensor
+	// reader wants to fopen/seek the file itself (measured_bxdf_loader.h).
+	// This also DOUBLES as validation: parsing the file now, via the same
+	// cache pbrt_cpu_builder.h's `class measured` will hit, means a
+	// malformed or unreadable .bsdf is reported as a warning here (with the
+	// scene path attached, matching every other diagnostic in this
+	// function) rather than silently rendering that material as flat black
+	// or crashing deeper in scene construction. Material::measuredFilename
+	// is overwritten with the resolved path on success so pbrt_cpu_builder.h
+	// never needs to know the scene's own directory - same trick
+	// FlatScene::InfiniteLight's imageFile/imagePixels split already uses.
+	for (pbrt_flatten::Material &m : r.scene.materials) {
+		if (m.kind != pbrt_flatten::MaterialKind::Measured) continue;
+		if (m.measuredFilename.empty()) continue;   // already warned by flatten()
+
+		const std::string resolved = resolveExistingPath(sceneDir, m.measuredFilename);
+		if (resolved.empty()) {
+			r.scene.warnings.push_back(
+				{0, path, "measured material's file '" + m.measuredFilename +
+					"' could not be found; falling back to a diffuse approximation"});
+			m.measuredFilename.clear();
+			continue;
+		}
+
+		std::string loadError;
+		if (!measured_bxdf_io::GetMeasuredBRDFDataCached(resolved, loadError)) {
+			r.scene.warnings.push_back(
+				{0, path, "measured material's file '" + m.measuredFilename +
+					"' could not be loaded (" + loadError +
+					"); falling back to a diffuse approximation"});
+			m.measuredFilename.clear();
+			continue;
+		}
+
+		m.measuredFilename = resolved;
 	}
 
 	return r;
