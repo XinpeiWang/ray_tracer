@@ -505,10 +505,29 @@ class camera {
         const hit_record& exit_hit = chosen_hit;
         const double sample_prob   = 1.0 / candidate_count;
 
+        // Sp(pi) = Sr(Distance(po, pi)) -- pbrt-v4 bssrdf.h TabulatedBSSRDF::Sp,
+        // full 3D distance is correct here.
         const double dist = (exit_hit.p - p0).length();
         const color  Sp(bssrdf.sr(0, dist), bssrdf.sr(1, dist), bssrdf.sr(2, dist));
-        const double pdf = (bssrdf.pdf_sr(0, dist) + bssrdf.pdf_sr(1, dist) +
-                             bssrdf.pdf_sr(2, dist)) / 3.0;
+
+        // PDF_Sp, however, is NOT PDF_Sr(dist) -- pbrt-v4's PDF_Sp projects
+        // (pi - po) onto the plane PERPENDICULAR to the probe axis (the
+        // profile is defined as a function of radius on that plane, not of
+        // straight-line distance to the found point, which also carries an
+        // axial offset of up to +-half_len) and weights by the exit point's
+        // normal component along the probe axis (the Jacobian between the
+        // disc parameterization and actual surface area, same role as a
+        // cosine term). Using `dist` here instead of the projected radius
+        // systematically under-estimates the pdf for candidates found far
+        // along the probe axis (dist > rProj always, and PDF_Sr is
+        // decreasing), which was inflating 1/pdf into huge, bright-red
+        // firefly weights on curved geometry like the SSS dragon meshes.
+        const vec3   d             = exit_hit.p - p0;
+        const double d_along_axis  = dot(d, axis);
+        const double r_proj = std::sqrt(std::max(0.0, dot(d, d) - d_along_axis * d_along_axis));
+        const double cos_theta = std::fabs(dot(unit_vector(exit_hit.normal), axis));
+        const double pdf = cos_theta * (bssrdf.pdf_sr(0, r_proj) + bssrdf.pdf_sr(1, r_proj) +
+                                         bssrdf.pdf_sr(2, r_proj)) / 3.0;
         if (pdf <= 0.0) return false;
 
         const double inv = 1.0 / (sample_prob * pdf);
