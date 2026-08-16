@@ -1012,6 +1012,20 @@ bool WavefrontPathTracer::render(
 			std::swap(d_rayItems_,   d_nextRayItems_);
 			std::swap(d_rayCounter_, d_nextRayCounter_);
 		}
+
+		// Progress reporting: unlike the recursive backend (one monolithic
+		// optixLaunch for the whole image x all samples, no host-visible
+		// checkpoint to report from), this loop already synchronizes once per
+		// sample - report it in the exact "Scanlines remaining: N" shape
+		// qt_gui/render_output_parser.h's parseScanlineProgress() already
+		// expects from the CPU backend, so the GUI's progress bar picks this
+		// up with no parser/GUI changes at all. `height` fills in for the
+		// scanline unit (this backend has no real scanlines), scaled by
+		// completed/total samples instead of completed/total rows.
+		{
+			const int completed = (int)((long long)height * (sampleIdx + 1) / samples_per_pixel);
+			std::cout << "Scanlines remaining: " << (height - completed) << "\r" << std::flush;
+		}
 	}
 
 	// -------------------------------------------------------------------------
