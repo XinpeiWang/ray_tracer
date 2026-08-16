@@ -17,6 +17,17 @@ struct SceneData {
 	std::vector<GpuRgbGridMedium> rgbGridMediums;  // indexed by MaterialType::RgbGridMedium's rgb_grid_medium_extra.rgbGridMediumIdx
 	std::vector<float> rgbGridData;                // flat voxel data, sliced per-medium via GpuRgbGridMedium::dataOffset
 
+	// Tabulated BSSRDF profile tables (MaterialType::Subsurface, recursive
+	// backend only - see optix_types.h's GpuBssrdfTable/MaterialType::
+	// Subsurface comments), indexed by MaterialData::textureIdx. Built once
+	// per unique (g,eta) pair by pbrt_gpu_builder.h; empty for every scene
+	// with no subsurface material.
+	std::vector<GpuBssrdfTable> bssrdfTables;
+	std::vector<float> bssrdfRhoSamples;
+	std::vector<float> bssrdfRadiusSamples;
+	std::vector<float> bssrdfProfile;
+	std::vector<float> bssrdfProfileCdf;
+
 	// ---- object instancing ------------------------------------------------
 	// Geometry that exists once and is placed many times. Kept in a SEPARATE
 	// array from `triangles` on purpose: these are in their definition's

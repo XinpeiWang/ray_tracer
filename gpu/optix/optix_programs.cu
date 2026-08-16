@@ -8,5 +8,12 @@
 #include "optix_intersection_triangle.h"
 #include "optix_anyhit_shadow.h"
 #include "optix_miss.h"
+// RAY_TYPE_PROBE closest-hit/miss programs (recursive backend only, Phase 1
+// BSSRDF) - see optix_types.h's RAY_TYPE_PROBE comment. After the
+// intersection headers above: reuses their __intersection__<type>()
+// programs unchanged (only closest-hit differs per ray type), and needs
+// TriangleData/SphereData/etc. already visible via optix_device_helpers.h's
+// own includes.
+#include "optix_probe_hit.h"
 #include "optix_raygen.h"
 

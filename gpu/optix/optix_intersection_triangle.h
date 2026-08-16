@@ -148,6 +148,8 @@ extern "C" __global__ void __closesthit__triangle() {
 	bool scattered = false;
 	bool is_specular = false;
 	float brdf_pdf_override = -1.0f;
+	bool bssrdf_exit = false;
+	float3 bssrdf_exit_pos = make_float3(0.0f, 0.0f, 0.0f);
 
 	// NormalMappedLambertian: mirrors optix_intersection_sphere.h's own
 	// handling (decode the tangent-space normal, perturb, then shade as
@@ -201,8 +203,9 @@ extern "C" __global__ void __closesthit__triangle() {
 		shade_mat.textureIdx = -1;
 	}
 
-	shade_material(shade_mat, shade_normal, ray_dir, hit_point, front_face, uv_u, uv_v, seed,
-		attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission);
+	shade_material(shade_mat, tri.materialIdx, shade_normal, ray_dir, hit_point, front_face, uv_u, uv_v, seed,
+		attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
+		bssrdf_exit, bssrdf_exit_pos);
 
 	optixSetPayload_3(__float_as_uint(emission.x));
 	optixSetPayload_4(__float_as_uint(emission.y));
@@ -220,9 +223,18 @@ extern "C" __global__ void __closesthit__triangle() {
 		optixSetPayload_6(__float_as_uint(scattered_dir.x));
 		optixSetPayload_7(__float_as_uint(scattered_dir.y));
 		optixSetPayload_8(__float_as_uint(scattered_dir.z));
-		optixSetPayload_10(1);
+		// flag 3 (not 1): MaterialType::Subsurface's probe walk found an
+		// exit point off to the side of this ray - the next ray must
+		// originate there, not at hit_point (see optix_raygen.h's flag==3
+		// handling and shade_material()'s own out_bssrdf_exit comment).
+		optixSetPayload_10(bssrdf_exit ? 3 : 1);
 		optixSetPayload_11(__float_as_uint(t_hit));
 		optixSetPayload_12(__float_as_uint(brdf_pdf_out));
+		if (bssrdf_exit) {
+			optixSetPayload_13(__float_as_uint(bssrdf_exit_pos.x));
+			optixSetPayload_14(__float_as_uint(bssrdf_exit_pos.y));
+			optixSetPayload_15(__float_as_uint(bssrdf_exit_pos.z));
+		}
 	} else if (mat.type == MaterialType::DiffuseLight) {
 		// NEE pdf for the incoming direction reaching this triangle light, so
 		// MIS in raygen can weight a BSDF-sampled path that happened to land

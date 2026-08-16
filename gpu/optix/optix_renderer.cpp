@@ -249,7 +249,14 @@ bool OptiXRenderer::createModule() {
 	// with the custom AABB primitives, see that function's comment), not
 	// ALLOW_SINGLE_GAS anymore.
 	pipelineCompileOptions_.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_LEVEL_INSTANCING;
-	pipelineCompileOptions_.numPayloadValues = 13;  // attenuation(3) + emission(3) + dir(3) + seed(1) + flag(1) + t(1) + brdf_or_light_pdf(1)
+	// Pipeline-wide UPPER BOUND on payload registers (not a per-call exact
+	// count - trace_shadow_ray() passes just 1 word and the new probe ray
+	// (optix_probe_hit.h) passes 7, both well under this). The radiance ray
+	// is the largest user: attenuation(3) + emission(3) + dir(3) + seed(1) +
+	// flag(1) + t(1) + brdf_or_light_pdf(1) + explicit_origin(3, flag==3
+	// only - MaterialType::Subsurface's probe-walk exit point, see
+	// optix_raygen.h) = 16.
+	pipelineCompileOptions_.numPayloadValues = 16;
 	pipelineCompileOptions_.numAttributeValues = 4;  // Sphere: center.xyz + radius (4 attrs)
 	pipelineCompileOptions_.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
 	pipelineCompileOptions_.pipelineLaunchParamsVariableName = "params";
@@ -498,16 +505,108 @@ bool OptiXRenderer::createProgramGroups() {
 		&shadowHitgroupTrianglePG_
 	));
 
-	std::cout << "[OptiX] Created program groups: raygen, miss (radiance + shadow), sphere hit (radiance + shadow), quad hit (radiance + shadow), bilinear patch hit (radiance + shadow), triangle hit (radiance + shadow)\n";
+	// RAY_TYPE_PROBE program groups (recursive backend only, Phase 1 BSSRDF
+	// - see optix_types.h's RAY_TYPE_PROBE comment and optix_probe_hit.h).
+	// One dedicated miss program (a true no-op) plus one closest-hit-only
+	// hit group per geometry type, reusing each type's existing __intersection__
+	// program (only closest-hit differs per ray type).
+	OptixProgramGroupDesc probeMissDesc = {};
+	probeMissDesc.kind = OPTIX_PROGRAM_GROUP_KIND_MISS;
+	probeMissDesc.miss.module = module_;
+	probeMissDesc.miss.entryFunctionName = "__miss__probe";
+
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(
+		context_,
+		&probeMissDesc,
+		1,
+		&pgOptions,
+		log,
+		&logSize,
+		&probeMissPG_
+	));
+
+	OptixProgramGroupDesc probeSphereHitDesc = {};
+	probeSphereHitDesc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	probeSphereHitDesc.hitgroup.moduleIS = module_;
+	probeSphereHitDesc.hitgroup.entryFunctionNameIS = "__intersection__sphere";
+	probeSphereHitDesc.hitgroup.moduleCH = module_;
+	probeSphereHitDesc.hitgroup.entryFunctionNameCH = "__closesthit__probe_sphere";
+
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(
+		context_,
+		&probeSphereHitDesc,
+		1,
+		&pgOptions,
+		log,
+		&logSize,
+		&probeHitgroupSpherePG_
+	));
+
+	OptixProgramGroupDesc probeQuadHitDesc = {};
+	probeQuadHitDesc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	probeQuadHitDesc.hitgroup.moduleIS = module_;
+	probeQuadHitDesc.hitgroup.entryFunctionNameIS = "__intersection__quad";
+	probeQuadHitDesc.hitgroup.moduleCH = module_;
+	probeQuadHitDesc.hitgroup.entryFunctionNameCH = "__closesthit__probe_quad";
+
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(
+		context_,
+		&probeQuadHitDesc,
+		1,
+		&pgOptions,
+		log,
+		&logSize,
+		&probeHitgroupQuadPG_
+	));
+
+	OptixProgramGroupDesc probeBilinearPatchHitDesc = {};
+	probeBilinearPatchHitDesc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	probeBilinearPatchHitDesc.hitgroup.moduleIS = module_;
+	probeBilinearPatchHitDesc.hitgroup.entryFunctionNameIS = "__intersection__bilinear_patch";
+	probeBilinearPatchHitDesc.hitgroup.moduleCH = module_;
+	probeBilinearPatchHitDesc.hitgroup.entryFunctionNameCH = "__closesthit__probe_bilinear_patch";
+
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(
+		context_,
+		&probeBilinearPatchHitDesc,
+		1,
+		&pgOptions,
+		log,
+		&logSize,
+		&probeHitgroupBilinearPatchPG_
+	));
+
+	OptixProgramGroupDesc probeTriangleHitDesc = {};
+	probeTriangleHitDesc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	probeTriangleHitDesc.hitgroup.moduleCH = module_;
+	probeTriangleHitDesc.hitgroup.entryFunctionNameCH = "__closesthit__probe_triangle";
+
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(
+		context_,
+		&probeTriangleHitDesc,
+		1,
+		&pgOptions,
+		log,
+		&logSize,
+		&probeHitgroupTrianglePG_
+	));
+
+	std::cout << "[OptiX] Created program groups: raygen, miss (radiance + shadow + probe), sphere hit (radiance + shadow + probe), quad hit (radiance + shadow + probe), bilinear patch hit (radiance + shadow + probe), triangle hit (radiance + shadow + probe)\n";
 	return true;
 }
 
 bool OptiXRenderer::linkPipeline() {
-	// Collect all program groups (radiance + shadow)
+	// Collect all program groups (radiance + shadow + probe)
 	OptixProgramGroup programGroups[] = {
 		raygenPG_,
 		missPG_,
 		shadowMissPG_,
+		probeMissPG_,
 		hitgroupSpherePG_,
 		hitgroupQuadPG_,
 		hitgroupBilinearPatchPG_,
@@ -515,12 +614,22 @@ bool OptiXRenderer::linkPipeline() {
 		shadowHitgroupSpherePG_,
 		shadowHitgroupQuadPG_,
 		shadowHitgroupBilinearPatchPG_,
-		shadowHitgroupTrianglePG_
+		shadowHitgroupTrianglePG_,
+		probeHitgroupSpherePG_,
+		probeHitgroupQuadPG_,
+		probeHitgroupBilinearPatchPG_,
+		probeHitgroupTrianglePG_
 	};
 
-	// Pipeline link options
+	// Pipeline link options. maxTraceDepth stays 2 (primary + one nested
+	// trace): the probe walk (bssrdf_probe_walk(), optix_device_helpers.h)
+	// issues a bounded LOOP of SEQUENTIAL, non-nested trace_probe_ray()
+	// calls from within the primary hit's own closest-hit program - each
+	// one completes before the next starts, exactly like trace_shadow_ray()
+	// already does for NEE - so the deepest simultaneous trace nesting is
+	// still 2, not 2+numProbeSteps.
 	OptixPipelineLinkOptions pipelineLinkOptions = {};
-	pipelineLinkOptions.maxTraceDepth = 2;  // Primary + shadow/indirect
+	pipelineLinkOptions.maxTraceDepth = 2;  // Primary + shadow/probe/indirect
 
 	// Create pipeline
 	char log[2048];
@@ -590,7 +699,12 @@ bool OptiXRenderer::buildScene(
 	const std::vector<unsigned char>& texturePixels,
 	const std::vector<CloudMedium<float>>& cloudMediums,
 	const std::vector<GpuRgbGridMedium>& rgbGridMediums,
-	const std::vector<float>& rgbGridData
+	const std::vector<float>& rgbGridData,
+	const std::vector<GpuBssrdfTable>& bssrdfTables,
+	const std::vector<float>& bssrdfRhoSamples,
+	const std::vector<float>& bssrdfRadiusSamples,
+	const std::vector<float>& bssrdfProfile,
+	const std::vector<float>& bssrdfProfileCdf
 ) {
 	// Store material data on device
 	numMaterials_ = static_cast<unsigned int>(materials.size());
@@ -863,6 +977,40 @@ bool OptiXRenderer::buildScene(
 		std::cout << "[OptiX] Uploaded " << rgbGridMediums.size() << " RGB grid media ("
 			<< rgbGridData.size() << " voxel floats) to GPU\n";
 	}
+
+	// Tabulated BSSRDF tables (MaterialType::Subsurface, recursive backend
+	// only, Phase 1 - see optix_types.h's GpuBssrdfTable comment). Same
+	// upload shape as the RGB grid media above: one small metadata array
+	// (GpuBssrdfTable) plus four shared flat float buffers it slices into.
+	numBssrdfTables_ = static_cast<unsigned int>(bssrdfTables.size());
+	size_t bssrdfTableSize = bssrdfTables.size() * sizeof(GpuBssrdfTable);
+
+	if (d_bssrdfTables_) { cudaFree(reinterpret_cast<void*>(d_bssrdfTables_)); d_bssrdfTables_ = 0; }
+	if (numBssrdfTables_ > 0) {
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_bssrdfTables_), bssrdfTableSize));
+		CUDA_CHECK(cudaMemcpy(
+			reinterpret_cast<void*>(d_bssrdfTables_),
+			bssrdfTables.data(),
+			bssrdfTableSize,
+			cudaMemcpyHostToDevice
+		));
+	}
+
+	const auto uploadBssrdfFloats = [&](const std::vector<float>& src, CUdeviceptr& dst) {
+		if (dst) { cudaFree(reinterpret_cast<void*>(dst)); dst = 0; }
+		if (src.empty()) return;
+		const size_t bytes = src.size() * sizeof(float);
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dst), bytes));
+		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(dst), src.data(), bytes, cudaMemcpyHostToDevice));
+	};
+	uploadBssrdfFloats(bssrdfRhoSamples, d_bssrdfRhoSamples_);
+	uploadBssrdfFloats(bssrdfRadiusSamples, d_bssrdfRadiusSamples_);
+	uploadBssrdfFloats(bssrdfProfile, d_bssrdfProfile_);
+	uploadBssrdfFloats(bssrdfProfileCdf, d_bssrdfProfileCdf_);
+
+	if (numBssrdfTables_ > 0)
+		std::cout << "[OptiX] Uploaded " << bssrdfTables.size() << " BSSRDF table(s) ("
+			<< bssrdfProfile.size() << " profile floats) to GPU\n";
 
 	// Store light data on device for MIS
 	numLights_ = static_cast<unsigned int>(lightIndices.size());
@@ -1520,12 +1668,17 @@ bool OptiXRenderer::buildScene(
 	// spheres but no world-space ones. So buildSBT() appends a dedicated
 	// record pair per instanced geometry type after everything else, and
 	// these offsets address those. See buildSBT()'s own parameters.
+	//
+	// RAY_TYPE_COUNT (not a literal 2) - each present geometry type now
+	// contributes a TRIPLE of records (radiance/shadow/probe - see
+	// optix_types.h's RAY_TYPE_PROBE comment), not a pair, since the probe
+	// ray type was added for MaterialType::Subsurface's GPU probe walk.
 	const bool haveInstancedTriangles = !instanceTriangles_.empty();
 	const bool haveInstancedSpheres = !instanceSpheres_.empty();
-	const int numCustomPrimSbtRecords = 2 * (int)(!spheres.empty() + !quads.empty() + !bilinearPatches.empty());
+	const int numCustomPrimSbtRecords = RAY_TYPE_COUNT * (int)(!spheres.empty() + !quads.empty() + !bilinearPatches.empty());
 	const int sceneTriSbtOffset = numCustomPrimSbtRecords;
-	const int instTriSbtOffset = numCustomPrimSbtRecords + (triangles.empty() ? 0 : 2);
-	const int instSphereSbtOffset = instTriSbtOffset + (haveInstancedTriangles ? 2 : 0);
+	const int instTriSbtOffset = numCustomPrimSbtRecords + (triangles.empty() ? 0 : RAY_TYPE_COUNT);
+	const int instSphereSbtOffset = instTriSbtOffset + (haveInstancedTriangles ? RAY_TYPE_COUNT : 0);
 
 	static const float kIdentity[12] = { 1,0,0,0, 0,1,0,0, 0,0,1,0 };
 	std::vector<OptixInstance> instances;
@@ -1663,16 +1816,23 @@ bool OptiXRenderer::buildSBT(
 		cudaMemcpyHostToDevice
 	));
 
-	// Miss records (radiance + shadow)
-	std::vector<MissRecord> missRecords(2);
+	// Miss records (radiance + shadow + probe) - indexed by missSBTIndex at
+	// each optixTrace() call site, which passes RAY_TYPE_RADIANCE/SHADOW/
+	// PROBE directly (0/1/2), so this array's order must match that enum
+	// exactly (optix_types.h).
+	std::vector<MissRecord> missRecords(RAY_TYPE_COUNT);
 
 	// Radiance miss
-	OPTIX_CHECK(optixSbtRecordPackHeader(missPG_, &missRecords[0]));
-	missRecords[0].data = 0;
+	OPTIX_CHECK(optixSbtRecordPackHeader(missPG_, &missRecords[RAY_TYPE_RADIANCE]));
+	missRecords[RAY_TYPE_RADIANCE].data = 0;
 
 	// Shadow miss
-	OPTIX_CHECK(optixSbtRecordPackHeader(shadowMissPG_, &missRecords[1]));
-	missRecords[1].data = 0;
+	OPTIX_CHECK(optixSbtRecordPackHeader(shadowMissPG_, &missRecords[RAY_TYPE_SHADOW]));
+	missRecords[RAY_TYPE_SHADOW].data = 0;
+
+	// Probe miss (no-op - see optix_probe_hit.h's __miss__probe())
+	OPTIX_CHECK(optixSbtRecordPackHeader(probeMissPG_, &missRecords[RAY_TYPE_PROBE]));
+	missRecords[RAY_TYPE_PROBE].data = 0;
 
 	if (d_missRecord_) cudaFree(reinterpret_cast<void*>(d_missRecord_));
 	size_t missRecordSize = missRecords.size() * sizeof(MissRecord);
@@ -1684,14 +1844,16 @@ bool OptiXRenderer::buildSBT(
 		cudaMemcpyHostToDevice
 	));
 
-	// Hit group records - radiance + shadow for each geometry type PRESENT in
-	// the scene. OptiX SBT layout: index = (build_input_index * RAY_TYPE_COUNT)
-	// + ray_type_index, where build_input_index is the geometry type's
-	// POSITION among the non-empty build inputs in buildScene() (empty types
-	// are omitted from that array entirely - see its comment) - so this must
-	// emit exactly one (radiance, shadow) record pair per present type, in
-	// the same relative [sphere, quad, bilinear patch, triangle] order, with
-	// no gaps for absent types.
+	// Hit group records - radiance + shadow + probe for each geometry type
+	// PRESENT in the scene. OptiX SBT layout: index = (build_input_index *
+	// RAY_TYPE_COUNT) + ray_type_index, where build_input_index is the
+	// geometry type's POSITION among the non-empty build inputs in
+	// buildScene() (empty types are omitted from that array entirely - see
+	// its comment) - so this must emit exactly one (radiance, shadow,
+	// probe) record TRIPLE per present type, in the same relative [sphere,
+	// quad, bilinear patch, triangle] order and ray-type order (matching
+	// RAY_TYPE_RADIANCE/SHADOW/PROBE = 0/1/2), with no gaps for absent
+	// types.
 	std::vector<HitGroupRecord> hitGroupRecords;
 	if (!spheres.empty()) {
 		hitGroupRecords.emplace_back();
@@ -1699,6 +1861,9 @@ bool OptiXRenderer::buildSBT(
 		hitGroupRecords.back().data = {};
 		hitGroupRecords.emplace_back();
 		OPTIX_CHECK(optixSbtRecordPackHeader(shadowHitgroupSpherePG_, &hitGroupRecords.back()));
+		hitGroupRecords.back().data = {};
+		hitGroupRecords.emplace_back();
+		OPTIX_CHECK(optixSbtRecordPackHeader(probeHitgroupSpherePG_, &hitGroupRecords.back()));
 		hitGroupRecords.back().data = {};
 	}
 	if (!quads.empty()) {
@@ -1708,6 +1873,9 @@ bool OptiXRenderer::buildSBT(
 		hitGroupRecords.emplace_back();
 		OPTIX_CHECK(optixSbtRecordPackHeader(shadowHitgroupQuadPG_, &hitGroupRecords.back()));
 		hitGroupRecords.back().data = {};
+		hitGroupRecords.emplace_back();
+		OPTIX_CHECK(optixSbtRecordPackHeader(probeHitgroupQuadPG_, &hitGroupRecords.back()));
+		hitGroupRecords.back().data = {};
 	}
 	if (!bilinearPatches.empty()) {
 		hitGroupRecords.emplace_back();
@@ -1716,6 +1884,9 @@ bool OptiXRenderer::buildSBT(
 		hitGroupRecords.emplace_back();
 		OPTIX_CHECK(optixSbtRecordPackHeader(shadowHitgroupBilinearPatchPG_, &hitGroupRecords.back()));
 		hitGroupRecords.back().data = {};
+		hitGroupRecords.emplace_back();
+		OPTIX_CHECK(optixSbtRecordPackHeader(probeHitgroupBilinearPatchPG_, &hitGroupRecords.back()));
+		hitGroupRecords.back().data = {};
 	}
 	if (!triangles.empty()) {
 		hitGroupRecords.emplace_back();
@@ -1723,6 +1894,9 @@ bool OptiXRenderer::buildSBT(
 		hitGroupRecords.back().data = {};
 		hitGroupRecords.emplace_back();
 		OPTIX_CHECK(optixSbtRecordPackHeader(shadowHitgroupTrianglePG_, &hitGroupRecords.back()));
+		hitGroupRecords.back().data = {};
+		hitGroupRecords.emplace_back();
+		OPTIX_CHECK(optixSbtRecordPackHeader(probeHitgroupTrianglePG_, &hitGroupRecords.back()));
 		hitGroupRecords.back().data = {};
 	}
 
@@ -1741,6 +1915,9 @@ bool OptiXRenderer::buildSBT(
 		hitGroupRecords.emplace_back();
 		OPTIX_CHECK(optixSbtRecordPackHeader(shadowHitgroupTrianglePG_, &hitGroupRecords.back()));
 		hitGroupRecords.back().data = {};
+		hitGroupRecords.emplace_back();
+		OPTIX_CHECK(optixSbtRecordPackHeader(probeHitgroupTrianglePG_, &hitGroupRecords.back()));
+		hitGroupRecords.back().data = {};
 	}
 	if (haveInstancedSpheres) {
 		hitGroupRecords.emplace_back();
@@ -1748,6 +1925,9 @@ bool OptiXRenderer::buildSBT(
 		hitGroupRecords.back().data = {};
 		hitGroupRecords.emplace_back();
 		OPTIX_CHECK(optixSbtRecordPackHeader(shadowHitgroupSpherePG_, &hitGroupRecords.back()));
+		hitGroupRecords.back().data = {};
+		hitGroupRecords.emplace_back();
+		OPTIX_CHECK(optixSbtRecordPackHeader(probeHitgroupSpherePG_, &hitGroupRecords.back()));
 		hitGroupRecords.back().data = {};
 	}
 
@@ -1767,13 +1947,13 @@ bool OptiXRenderer::buildSBT(
 	sbt_.raygenRecord = d_raygenRecord_;
 	sbt_.missRecordBase = d_missRecord_;
 	sbt_.missRecordStrideInBytes = sizeof(MissRecord);
-	sbt_.missRecordCount = 2;  // radiance + shadow
+	sbt_.missRecordCount = static_cast<unsigned int>(missRecords.size());  // radiance + shadow + probe
 	sbt_.hitgroupRecordBase = d_hitgroupRecords_;
 	sbt_.hitgroupRecordStrideInBytes = sizeof(HitGroupRecord);
 	sbt_.hitgroupRecordCount = static_cast<unsigned int>(hitGroupRecords.size());
 
-	std::cout << "[OptiX] Built SBT: 2 miss records (radiance + shadow), "
-		<< hitGroupRecords.size() << " hit records (one radiance+shadow pair per present geometry type)\n";
+	std::cout << "[OptiX] Built SBT: " << missRecords.size() << " miss records (radiance + shadow + probe), "
+		<< hitGroupRecords.size() << " hit records (one radiance+shadow+probe triple per present geometry type)\n";
 	return true;
 }
 
@@ -1875,6 +2055,12 @@ bool OptiXRenderer::render(
 	params.numRgbGridMediums = numRgbGridMediums_;
 	params.rgbGridData = reinterpret_cast<float*>(d_rgbGridData_);
 	params.rgbGridDataCount = rgbGridDataCount_;
+	params.bssrdfTables = reinterpret_cast<GpuBssrdfTable*>(d_bssrdfTables_);
+	params.numBssrdfTables = numBssrdfTables_;
+	params.bssrdfRhoSamples = reinterpret_cast<float*>(d_bssrdfRhoSamples_);
+	params.bssrdfRadiusSamples = reinterpret_cast<float*>(d_bssrdfRadiusSamples_);
+	params.bssrdfProfile = reinterpret_cast<float*>(d_bssrdfProfile_);
+	params.bssrdfProfileCdf = reinterpret_cast<float*>(d_bssrdfProfileCdf_);
 	params.textures = reinterpret_cast<TextureData*>(d_textures_);
 	params.numTextures = numTextures_;
 	params.texturePixels = reinterpret_cast<unsigned char*>(d_texturePixels_);
@@ -1986,6 +2172,11 @@ void OptiXRenderer::cleanup() noexcept {
 	if (d_cloudMediums_) cudaFree(reinterpret_cast<void*>(d_cloudMediums_));
 	if (d_rgbGridMediums_) cudaFree(reinterpret_cast<void*>(d_rgbGridMediums_));
 	if (d_rgbGridData_) cudaFree(reinterpret_cast<void*>(d_rgbGridData_));
+	if (d_bssrdfTables_) cudaFree(reinterpret_cast<void*>(d_bssrdfTables_));
+	if (d_bssrdfRhoSamples_) cudaFree(reinterpret_cast<void*>(d_bssrdfRhoSamples_));
+	if (d_bssrdfRadiusSamples_) cudaFree(reinterpret_cast<void*>(d_bssrdfRadiusSamples_));
+	if (d_bssrdfProfile_) cudaFree(reinterpret_cast<void*>(d_bssrdfProfile_));
+	if (d_bssrdfProfileCdf_) cudaFree(reinterpret_cast<void*>(d_bssrdfProfileCdf_));
 	if (d_lightIndices_) cudaFree(reinterpret_cast<void*>(d_lightIndices_));
 	if (d_lightKinds_) cudaFree(reinterpret_cast<void*>(d_lightKinds_));
 	if (d_aliasTable_) cudaFree(reinterpret_cast<void*>(d_aliasTable_));
@@ -2005,6 +2196,11 @@ void OptiXRenderer::cleanup() noexcept {
 	if (shadowHitgroupQuadPG_) optixProgramGroupDestroy(shadowHitgroupQuadPG_);
 	if (shadowHitgroupBilinearPatchPG_) optixProgramGroupDestroy(shadowHitgroupBilinearPatchPG_);
 	if (shadowHitgroupTrianglePG_) optixProgramGroupDestroy(shadowHitgroupTrianglePG_);
+	if (probeMissPG_) optixProgramGroupDestroy(probeMissPG_);
+	if (probeHitgroupSpherePG_) optixProgramGroupDestroy(probeHitgroupSpherePG_);
+	if (probeHitgroupQuadPG_) optixProgramGroupDestroy(probeHitgroupQuadPG_);
+	if (probeHitgroupBilinearPatchPG_) optixProgramGroupDestroy(probeHitgroupBilinearPatchPG_);
+	if (probeHitgroupTrianglePG_) optixProgramGroupDestroy(probeHitgroupTrianglePG_);
 
 	// Destroy module and pipeline
 	if (module_) optixModuleDestroy(module_);

@@ -95,17 +95,21 @@ extern "C" __global__ void __closesthit__quad() {
 	bool scattered = false;
 	bool is_specular = false;  // pbrt-v4 specularBounce: MIS is skipped for specular events
 	float brdf_pdf_override = -1.0f;  // if >= 0, overrides cosine_pdf in payload packing
+	bool bssrdf_exit = false;
+	float3 bssrdf_exit_pos = make_float3(0.0f, 0.0f, 0.0f);
 
-	shade_material(mat, final_normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
-		attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission);
+	shade_material(mat, matIdx, final_normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
+		attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
+		bssrdf_exit, bssrdf_exit_pos);
 			// Pack updated payload back into registers
 			// p0-p2: surface attenuation (BRDF albedo - raygen multiplies with throughput)
 	// p3-p5: emission from this surface hit
 	// p6-p8: scatter direction (if scattered)
 	// p9: updated seed
-	// p10: scattered flag (0=absorbed, 1=scattered, 2=hit_light)
+	// p10: scattered flag (0=absorbed, 1=scattered, 2=hit_light, 3=scattered w/ explicit origin override)
 	// p11: hit distance 't'
-	// p12: brdf_pdf of scattered dir (flag==1) OR light NEE pdf of incoming dir (flag==2) for MIS
+	// p12: brdf_pdf of scattered dir (flag==1/3) OR light NEE pdf of incoming dir (flag==2) for MIS
+	// p13-p15: explicit next-ray origin (flag==3 only - MaterialType::Subsurface's probe exit point)
 
 	// Always set emission (for all material types - non-lights have emission=0)
 	optixSetPayload_3(__float_as_uint(emission.x));
@@ -128,9 +132,14 @@ extern "C" __global__ void __closesthit__quad() {
 		optixSetPayload_6(__float_as_uint(scattered_dir.x));  // Scatter direction
 		optixSetPayload_7(__float_as_uint(scattered_dir.y));
 		optixSetPayload_8(__float_as_uint(scattered_dir.z));
-		optixSetPayload_10(1);  // scattered
+		optixSetPayload_10(bssrdf_exit ? 3 : 1);  // scattered (3 = explicit origin override)
 		optixSetPayload_11(__float_as_uint(t_hit));
 		optixSetPayload_12(__float_as_uint(brdf_pdf_out));
+		if (bssrdf_exit) {
+			optixSetPayload_13(__float_as_uint(bssrdf_exit_pos.x));
+			optixSetPayload_14(__float_as_uint(bssrdf_exit_pos.y));
+			optixSetPayload_15(__float_as_uint(bssrdf_exit_pos.z));
+		}
 	} else if (mat.type == MaterialType::DiffuseLight) {
 		// p12: NEE PDF for the incoming ray direction reaching this quad light.
 		float light_pdf_for_incoming = 0.0f;

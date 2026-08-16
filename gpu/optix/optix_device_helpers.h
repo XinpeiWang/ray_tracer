@@ -17,6 +17,11 @@
 // Launch parameters (constant across all threads)
 extern "C" { __constant__ LaunchParams params; }
 
+// Device-side tabulated-BSSRDF evaluation (MaterialType::Subsurface,
+// recursive backend only) - needs `params` above for the flat table arrays,
+// so this include must stay below it.
+#include "optix_bssrdf.h"
+
 //==============================================================================
 // Utility functions
 //==============================================================================
@@ -536,6 +541,62 @@ __device__ __forceinline__ bool trace_shadow_ray(
 	return (occluded == 0);
 }
 
+// Result of one RAY_TYPE_PROBE trace - see trace_probe_ray() below and
+// optix_probe_hit.h's own payload-layout comment.
+struct ProbeHit {
+	bool   found;
+	float3 position;
+	float3 normal;
+	int    materialIdx;
+};
+
+// Trace a single closest-hit probe ray (RAY_TYPE_PROBE), used by
+// bssrdf_probe_walk() below to step along a BSSRDF probe segment. Modeled
+// directly on trace_shadow_ray() above - the same already-proven pattern of
+// a sequential, non-nested optixTrace() call issued from within a hit
+// program - but targets the dedicated probe hit groups (optix_probe_hit.h)
+// instead of the shadow ones, and asks for the actual closest hit (no
+// OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT/DISABLE_CLOSESTHIT) since the probe
+// walk needs real hit geometry, not just an occlusion bit.
+//
+// No self-intersection epsilon nudge along the ray direction (unlike
+// trace_shadow_ray()): the caller (bssrdf_probe_walk()) already advances
+// `base` past each hit by t+1e-4 in world units before the next call, which
+// serves the same purpose for a ray that is walked in fixed steps rather
+// than re-fired from a fresh surface point each time.
+__device__ __forceinline__ ProbeHit trace_probe_ray(
+	const float3& origin,
+	const float3& direction,
+	float max_distance
+) {
+	// Sentinel "no hit" state - __miss__probe() is a true no-op, so these
+	// values pass through unchanged on a miss (see optix_probe_hit.h).
+	unsigned int p0 = (unsigned int)(-1);
+	unsigned int p1 = 0, p2 = 0, p3 = 0, p4 = 0, p5 = 0, p6 = 0;
+
+	optixTrace(
+		params.traversable,
+		origin,
+		direction,
+		1e-5f,                     // tmin
+		max_distance,              // tmax
+		0.0f,                      // rayTime
+		OptixVisibilityMask(255),
+		OPTIX_RAY_FLAG_NONE,       // real closest-hit, not occlusion-only
+		RAY_TYPE_PROBE,            // SBT offset
+		RAY_TYPE_COUNT,            // SBT stride
+		RAY_TYPE_PROBE,            // miss SBT index
+		p0, p1, p2, p3, p4, p5, p6
+	);
+
+	ProbeHit hit;
+	hit.materialIdx = (int)p0;
+	hit.found = (hit.materialIdx >= 0);
+	hit.position = make_float3(__uint_as_float(p1), __uint_as_float(p2), __uint_as_float(p3));
+	hit.normal   = make_float3(__uint_as_float(p4), __uint_as_float(p5), __uint_as_float(p6));
+	return hit;
+}
+
 // Evaluate one punctual (point/spot/distant) light at shading point p:
 // direction toward the light (wi), incident radiance (Li), and shadow-ray
 // max distance (t_max). Returns false if the light contributes nothing here
@@ -753,6 +814,243 @@ __device__ __forceinline__ bool passes_alpha_cutout(int alphaMaskTexIdx, float u
 	return sample_texture(alphaMaskTexIdx, u, v, p).x >= kAlphaCutoutThreshold;
 }
 
+// pbrt-v4 NormalizedFresnelBxDF (MaterialType::NormalizedFresnel's own
+// logic, factored out to a standalone function so MaterialType::
+// Subsurface's probe-walk exit point (bssrdf_probe_walk() below /
+// shade_material()'s own Subsurface case) can shade with it too WITHOUT
+// calling shade_material() itself a second time - OptiX's module compiler
+// statically rejects any self-recursive call graph outright ("COMPILE
+// ERROR: Malformed input... Found call graph recursion involving
+// shade_material") even when the actual runtime call depth is providably
+// bounded to one extra level (a different mat.type reaching a different
+// switch case) - the module simply fails to compile at OptiX pipeline
+// creation time, not a soft warning. This function is called from BOTH
+// shade_material()'s own NormalizedFresnel case (unchanged behavior) and
+// its Subsurface case (the new caller), so there is exactly one
+// implementation of pbrt-v4's Sw exit BSDF, just no longer reached via a
+// recursive shade_material() call.
+//
+// Always scatters (NormalizedFresnel has no failure/absorption case), so
+// there is no out_scattered - unlike shade_material() itself.
+__device__ __forceinline__ void shade_normalized_fresnel(
+	float eta,
+	const float3& normal,
+	const float3& hit_point,
+	unsigned int& seed,
+	float3& out_attenuation,
+	float3& out_scattered_dir,
+	float& out_brdf_pdf_override,
+	float3& emission)
+{
+	float nf_eta = eta;
+	float inv_eta = 1.0f / nf_eta;
+	float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
+	if (nf_c <= 0.0f) nf_c = 1e-6f;
+
+	float3 scattered_dir = normalize(normal + random_unit_vector(seed));
+	if (near_zero(scattered_dir)) scattered_dir = normal;
+
+	float cos_wi = fmaxf(dot(scattered_dir, normal), 1e-6f);
+	float fr     = FrDielectric(cos_wi, nf_eta);
+	float weight = (1.0f - fr) / nf_c;
+	float3 attenuation = make_float3(weight, weight, weight);
+	// p12: correct BSDF PDF for MIS on next bounce: (1-Fr)*cos/(c*pi)
+	float brdf_pdf_override = (1.0f - fr) * cos_wi / (nf_c * 3.14159265358979323846f);
+
+	if (params.numLights > 0) {
+		int light_idx;
+		float selection_pdf;
+		if (params.aliasTable) {
+			int slot = int(random_float(seed) * float(params.numLights));
+			if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
+			const GpuAliasEntry& entry = params.aliasTable[slot];
+			light_idx = (random_float(seed) < entry.q) ? slot : entry.alias;
+			selection_pdf = params.aliasTable[light_idx].pdf;
+		} else {
+			light_idx = int(random_float(seed) * float(params.numLights));
+			if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
+			selection_pdf = 1.0f / float(params.numLights);
+		}
+
+		float geom_pdf = 0.0f;
+		float max_dist = 0.0f;
+		float3 light_emission = make_float3(0.0f, 0.0f, 0.0f);
+		float3 to_light = sample_area_light_by_kind(
+			light_idx, hit_point, seed, geom_pdf, max_dist, light_emission);
+
+		float light_pdf = selection_pdf * geom_pdf;
+		if (light_pdf > 1e-6f) {
+			bool visible = trace_shadow_ray(hit_point, to_light, max_dist);
+			if (visible) {
+				float cos_to_light = fmaxf(dot(to_light, normal), 0.0f);
+				if (cos_to_light > 0.0f) {
+					float fr_l  = FrDielectric(cos_to_light, nf_eta);
+					float brdf_val = (1.0f - fr_l) / (nf_c * 3.14159265358979323846f);
+					float brdf_pdf_l = brdf_val * cos_to_light;
+					float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf_l);
+
+					float3 direct_light = mis_weight * brdf_val * light_emission * cos_to_light / light_pdf;
+					emission = emission + direct_light;
+				}
+			}
+		}
+	}
+
+	{
+		const float3& skyColor = params.camera.backgroundColor;
+		if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
+			float3 sky_dir = random_unit_vector(seed);
+			float  cos_sky = dot(sky_dir, normal);
+			if (cos_sky > 0.0f) {
+				constexpr float pdf_sky = 1.0f / (4.0f * 3.14159265358979323846f);
+				if (trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
+					float fr_sky       = FrDielectric(cos_sky, nf_eta);
+					float brdf_val_sky = (1.0f - fr_sky) / (nf_c * 3.14159265358979323846f);
+					float brdf_pdf_sky = brdf_val_sky * cos_sky;
+					float mis_weight    = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
+					emission = emission + mis_weight * brdf_val_sky * skyColor * cos_sky / pdf_sky;
+				}
+			}
+		}
+	}
+
+	out_attenuation = attenuation;
+	out_scattered_dir = scattered_dir;
+	out_brdf_pdf_override = brdf_pdf_override;
+}
+
+// MaterialType::Subsurface's probe/exit-point search - the GPU port of
+// src/TheRestOfYourLife/camera.h::sample_bssrdf_exit(), replicating its
+// exact 3-axis MIS algorithm (see that function's own extensive comment for
+// the full derivation): pick an RGB channel uniformly for importance-
+// sampling the radius only, sample r/r_max from that channel's profile,
+// pick one of 3 orthonormal probe axes (shading normal, weight 0.5; two
+// tangents, weight 0.25 each), build a probe segment (disc-sampled point +-
+// half_len along the chosen axis), walk the segment via repeated
+// trace_probe_ray() calls collecting same-material candidates via
+// unweighted reservoir sampling (Algorithm R - pbrt-v4's GPU
+// __raygen__randomHit does the identical bounded loop of sequential
+// optixTrace() calls, see this codebase's own research notes on that
+// function), then compute Sp (evaluated at the full 3D entry-to-exit
+// distance) and the combined (one-sample MIS, balance heuristic) pdf summed
+// over all 3 axes exactly as camera.h does.
+//
+// `matIdx` is this material's own index into params.materials[] (shade_
+// material() doesn't otherwise know it - see its own new parameter) - the
+// GPU equivalent of camera.h's `rec.mat.get()` pointer-identity check
+// against a probe candidate's own material.
+//
+// bounded to kMaxProbeSteps segment-walk iterations (matches pbrt-v4's GPU
+// __raygen__randomHit's own 100-iteration cap) so a pathological segment
+// (e.g. many thin, closely-stacked same-material faces) cannot turn into an
+// unbounded device loop.
+__device__ __forceinline__ bool bssrdf_probe_walk(
+	const MaterialData& mat, int matIdx,
+	const float3& p0, const float3& axis0,
+	unsigned int& seed,
+	float3& out_exit_pos, float3& out_exit_normal,
+	float3& out_Sp, float& out_pdf, float& out_sample_prob)
+{
+	constexpr int kMaxProbeSteps = 100;
+	const float kPi = 3.14159265358979323846f;
+
+	const GpuBssrdfTable& table = params.bssrdfTables[mat.textureIdx];
+	const float sigma_a[3] = { mat.bssrdf_sigma_a.x, mat.bssrdf_sigma_a.y, mat.bssrdf_sigma_a.z };
+	const float sigma_s[3] = { mat.bssrdf_sigma_s.x, mat.bssrdf_sigma_s.y, mat.bssrdf_sigma_s.z };
+	float sigma_t[3], rho[3];
+	for (int c = 0; c < 3; ++c) {
+		sigma_t[c] = sigma_a[c] + sigma_s[c];
+		rho[c] = (sigma_t[c] > 0.0f) ? (sigma_s[c] / sigma_t[c]) : 0.0f;
+	}
+
+	const float3 axis = normalize(axis0);
+	const float3 t1 = (fabsf(axis.x) > 0.9f) ? normalize(cross(make_float3(0, 1, 0), axis))
+											  : normalize(cross(make_float3(1, 0, 0), axis));
+	const float3 t2 = cross(axis, t1);
+
+	const int channel = min(2, (int)(random_float(seed) * 3.0f));
+	const float r = gpu_bssrdf_sample_sr(table, sigma_t[channel], rho[channel], random_float(seed));
+	if (r < 0.0f) return false;
+	const float r_max = gpu_bssrdf_sample_sr(table, sigma_t[channel], rho[channel], 0.999f);
+	if (r_max <= 0.0f || r >= r_max) return false;
+
+	const float phi = 2.0f * kPi * random_float(seed);
+	const float half_len = sqrtf(fmaxf(0.0f, r_max * r_max - r * r));
+
+	const float u_axis = random_float(seed);
+	float3 probe_axis, basis_a, basis_b;
+	if (u_axis < 0.5f)       { probe_axis = axis; basis_a = t1;   basis_b = t2; }
+	else if (u_axis < 0.75f) { probe_axis = t1;   basis_a = t2;   basis_b = axis; }
+	else                     { probe_axis = t2;   basis_a = axis; basis_b = t1; }
+
+	const float3 p_target = p0 + r * (cosf(phi) * basis_a + sinf(phi) * basis_b);
+	const float3 p_start  = p_target - half_len * probe_axis;
+	const float3 p_end    = p_target + half_len * probe_axis;
+
+	float3 seg_dir = p_end - p_start;
+	float seg_len = length(seg_dir);
+	if (seg_len < 1e-10f) return false;
+	seg_dir = seg_dir / seg_len;
+
+	float3 chosen_pos = make_float3(0.0f, 0.0f, 0.0f);
+	float3 chosen_normal = make_float3(0.0f, 0.0f, 0.0f);
+	int candidate_count = 0;
+	float3 base = p_start;
+	float remaining = seg_len;
+	for (int iter = 0; iter < kMaxProbeSteps && remaining > 1e-6f; ++iter) {
+		ProbeHit hit = trace_probe_ray(base, seg_dir, remaining);
+		if (!hit.found) break;
+		const float t_local = length(hit.position - base);
+		if (hit.materialIdx == matIdx) {
+			++candidate_count;
+			if (random_float(seed) < 1.0f / (float)candidate_count) {
+				chosen_pos = hit.position;
+				chosen_normal = hit.normal;
+			}
+		}
+		const float step = t_local + 1e-4f;
+		base = base + step * seg_dir;
+		remaining -= step;
+	}
+	if (candidate_count == 0) return false;
+
+	const float sample_prob = 1.0f / (float)candidate_count;
+
+	const float3 d = chosen_pos - p0;
+	const float dist = length(d);
+	const float3 Sp = make_float3(
+		gpu_bssrdf_sr(table, sigma_t[0], rho[0], dist),
+		gpu_bssrdf_sr(table, sigma_t[1], rho[1], dist),
+		gpu_bssrdf_sr(table, sigma_t[2], rho[2], dist));
+
+	const float3 exit_n = normalize(chosen_normal);
+	const float d_n  = dot(d, axis);
+	const float d_t1 = dot(d, t1);
+	const float d_t2 = dot(d, t2);
+	const float r_proj_axis = sqrtf(fmaxf(0.0f, d_t1 * d_t1 + d_t2 * d_t2));
+	const float r_proj_t1   = sqrtf(fmaxf(0.0f, d_t2 * d_t2 + d_n  * d_n));
+	const float r_proj_t2   = sqrtf(fmaxf(0.0f, d_n  * d_n  + d_t1 * d_t1));
+	const float cos_axis = fabsf(dot(exit_n, axis));
+	const float cos_t1   = fabsf(dot(exit_n, t1));
+	const float cos_t2   = fabsf(dot(exit_n, t2));
+	constexpr float kAxisProb = 0.5f, kTangentProb = 0.25f;
+	float pdf = 0.0f;
+	for (int c = 0; c < 3; ++c) {
+		pdf += kAxisProb   * gpu_bssrdf_pdf_sr(table, sigma_t[c], rho[c], r_proj_axis) * cos_axis
+			 + kTangentProb * gpu_bssrdf_pdf_sr(table, sigma_t[c], rho[c], r_proj_t1)   * cos_t1
+			 + kTangentProb * gpu_bssrdf_pdf_sr(table, sigma_t[c], rho[c], r_proj_t2)   * cos_t2;
+	}
+	pdf /= 3.0f;
+	if (pdf <= 0.0f) return false;
+
+	out_exit_pos = chosen_pos;
+	out_exit_normal = exit_n;
+	out_Sp = Sp;
+	out_pdf = pdf;
+	out_sample_prob = sample_prob;
+	return true;
+}
+
 // Evaluates material scattering for every MaterialType except Medium and
 // Hair, which are sphere-only and stay in optix_intersection_sphere.h's own
 // closest-hit program (they need shape-specific re-intersection/geometry
@@ -768,8 +1066,19 @@ __device__ __forceinline__ bool passes_alpha_cutout(int alphaMaskTexIdx, float u
 // initialized it to, i.e. mat.emission). `uv` is only meaningful for
 // Lambertian materials with textureIdx >= 0 (scene 8's Earth/noise
 // spheres) - every other caller/material can pass (0,0).
+// `matIdx` (this material's own index into params.materials[]) is only used
+// by MaterialType::Subsurface's probe walk (identifying "same material"
+// candidates - see bssrdf_probe_walk()'s own comment); every other case
+// ignores it. `out_bssrdf_exit`/`out_bssrdf_exit_pos` are only ever set true
+// by that same case, signalling to the caller (each geometry type's own
+// closest-hit program) that the NEXT ray's origin must be this explicit
+// world-space position - found via an off-ray probe walk - rather than the
+// usual `hit_point + t_hit*ray_dir` reconstruction every other material
+// (including the Medium family's own t-along-the-original-ray override)
+// relies on. See optix_raygen.h's flag==3 handling.
 __device__ __forceinline__ void shade_material(
 	const MaterialData& mat,
+	int matIdx,
 	const float3& normal,
 	const float3& ray_dir,
 	const float3& hit_point,
@@ -781,13 +1090,17 @@ __device__ __forceinline__ void shade_material(
 	bool& out_scattered,
 	bool& out_is_specular,
 	float& out_brdf_pdf_override,
-	float3& emission
+	float3& emission,
+	bool& out_bssrdf_exit,
+	float3& out_bssrdf_exit_pos
 ) {
 	float3 attenuation;
 	float3 scattered_dir;
 	bool scattered = false;
 	bool is_specular = false;  // pbrt-v4 specularBounce: MIS is skipped for specular events
 	float brdf_pdf_override = -1.0f;  // if >= 0, overrides cosine_pdf in payload packing
+	bool bssrdf_exit = false;
+	float3 bssrdf_exit_pos = make_float3(0.0f, 0.0f, 0.0f);
 
 	switch (mat.type) {
 		case MaterialType::Lambertian: {
@@ -945,6 +1258,94 @@ __device__ __forceinline__ void shade_material(
 			attenuation = is_transmission ? mat.transmission_filter : make_float3(1.0f, 1.0f, 1.0f);
 			scattered = true;
 			is_specular = true;  // specular bounce: next hit adds full emission, no MIS
+			break;
+		}
+
+		case MaterialType::Subsurface: {
+			// Real tabulated BSSRDF (recursive backend only, Phase 1 - see
+			// this MaterialType's own comment in optix_types.h and
+			// bssrdf_probe_walk()'s comment above for the full algorithm).
+			// Entry interface: the exact same smooth DielectricBxDF sample
+			// as MaterialType::Dielectric above (matches pbrt-v4's own
+			// SubsurfaceMaterial::GetBxDF / this codebase's CPU `class
+			// subsurface`, material_pbrt.h - a plain DielectricBxDF(eta),
+			// no roughness, no Tf tint).
+			//
+			// `emission` on entry is whatever the caller initialized it to
+			// (mat.emission, per shade_material()'s own general convention)
+			// - but Subsurface has no real emission field: that union slot
+			// is bssrdf_sigma_a here (see optix_types.h's MaterialType::
+			// Subsurface comment), so the caller's mat.emission read is
+			// actually sigma_a's bytes reinterpreted as a color. Reset to a
+			// clean zero before anything below might add to it.
+			emission = make_float3(0.0f, 0.0f, 0.0f);
+			scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
+			bool is_transmission = dot(scattered_dir, normal) < 0.0f;
+			if (!is_transmission) {
+				// Specular reflection off the entry interface - identical
+				// to Dielectric's own reflection case.
+				attenuation = make_float3(1.0f, 1.0f, 1.0f);
+				scattered   = true;
+				is_specular = true;
+				break;
+			}
+
+			// Transmission: attempt the probe/exit-point search. On
+			// failure the path terminates with zero contribution, matching
+			// camera.h's `if (!sample_bssrdf_exit(...)) break;`.
+			float3 exit_pos, exit_normal, Sp;
+			float pdf, sample_prob;
+			if (!bssrdf_probe_walk(mat, matIdx, hit_point, normal, seed,
+									exit_pos, exit_normal, Sp, pdf, sample_prob)) {
+				scattered = false;
+				break;
+			}
+			const float3 sss_weight = Sp / (sample_prob * pdf);
+
+			// Shade the exit point as pbrt-v4's Sw (NormalizedFresnel(eta))
+			// via shade_normalized_fresnel() - the same standalone function
+			// MaterialType::NormalizedFresnel's own case calls, NOT a
+			// nested shade_material() call: OptiX's module compiler
+			// statically rejects any self-recursive call graph (see that
+			// function's own comment for the exact compile error), even
+			// though the actual call depth here would have been provably
+			// bounded to one extra level. This still exactly mirrors
+			// camera.h's own hand-off design (rec.mat swapped to
+			// ss->get_exit_bsdf(), then that material's own scatter()
+			// called once) - just with the shared logic factored into its
+			// own function instead of reached by re-entering the switch.
+			// shade_normalized_fresnel() always scatters (no failure case).
+			float3 exit_atten, exit_dir;
+			float exit_pdf_override;
+			shade_normalized_fresnel(mat.ior, exit_normal, exit_pos, seed,
+				exit_atten, exit_dir, exit_pdf_override, emission);
+
+			// emission was just accumulated (in place) by that call's
+			// own NEE terms, evaluated at exit_pos with the OLD (pre-this-
+			// bounce) throughput - but those terms didn't know about
+			// sss_weight, so scale the just-added contribution by it,
+			// leaving whatever emission already held (mat.emission, always
+			// zero for Subsurface) untouched. Mirrors camera.h's own
+			// ordering: sample_bssrdf_exit() multiplies `beta` by
+			// entry_attenuation*Sp*inv BEFORE the exit bounce's own NEE
+			// (inside ray_color's main loop) ever runs, so that NEE already
+			// sees the weighted throughput - here, where entry+exit shading
+			// happen in one call, the weighting has to be applied after
+			// the fact instead.
+			emission = sss_weight * emission;
+
+			attenuation    = sss_weight * exit_atten;
+			scattered_dir  = exit_dir;
+			scattered      = true;
+			is_specular    = false;  // NormalizedFresnel participates in MIS
+			brdf_pdf_override = exit_pdf_override;
+
+			// The next ray must originate at exit_pos (found off to the
+			// side via the probe walk), not along this hit's own ray - see
+			// shade_material()'s own comment on out_bssrdf_exit/
+			// out_bssrdf_exit_pos and optix_raygen.h's flag==3 handling.
+			bssrdf_exit     = true;
+			bssrdf_exit_pos = exit_pos;
 			break;
 		}
 
@@ -1278,88 +1679,21 @@ __device__ __forceinline__ void shade_material(
 		}
 
 		case MaterialType::NormalizedFresnel: {
-			// pbrt-v4 NormalizedFresnelBxDF -- sphere version
-			// f(wi) = (1 - FrDielectric(cos_wi, eta)) / (c * pi)
-			// where c = 1 - 2*FresnelMoment1(1/eta)
-			// Diffuse BSDF: participates in MIS (is_specular=false).
-			// attenuation = BRDF weight for BRDF-sampled direction.
-			// NEE: direct light with BSDF-evaluated brdf factor.
-			float nf_eta = mat.ior;
-			float inv_eta = 1.0f / nf_eta;
-			float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
-			if (nf_c <= 0.0f) nf_c = 1e-6f;
-
-			scattered_dir = normalize(normal + random_unit_vector(seed));
-			if (near_zero(scattered_dir)) scattered_dir = normal;
-
-			float cos_wi = fmaxf(dot(scattered_dir, normal), 1e-6f);
-			float fr     = FrDielectric(cos_wi, nf_eta);
-			float weight = (1.0f - fr) / nf_c;
-			attenuation  = make_float3(weight, weight, weight);
-			scattered    = true;
-			is_specular  = false;
-			// p12: correct BSDF PDF for MIS on next bounce: (1-Fr)*cos/(c*pi)
-			brdf_pdf_override = (1.0f - fr) * cos_wi / (nf_c * 3.14159265358979323846f);
-			if (params.numLights > 0) {
-				int light_idx;
-				float selection_pdf;
-				if (params.aliasTable) {
-					int slot = int(random_float(seed) * float(params.numLights));
-					if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
-					const GpuAliasEntry& entry = params.aliasTable[slot];
-					light_idx = (random_float(seed) < entry.q) ? slot : entry.alias;
-					selection_pdf = params.aliasTable[light_idx].pdf;
-				} else {
-					light_idx = int(random_float(seed) * float(params.numLights));
-					if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
-					selection_pdf = 1.0f / float(params.numLights);
-				}
-
-				float geom_pdf = 0.0f;
-				float max_dist = 0.0f;
-				float3 light_emission = make_float3(0.0f, 0.0f, 0.0f);
-				float3 to_light = sample_area_light_by_kind(
-					light_idx, hit_point, seed, geom_pdf, max_dist, light_emission);
-
-				float light_pdf = selection_pdf * geom_pdf;
-				if (light_pdf > 1e-6f) {
-					bool visible = trace_shadow_ray(hit_point, to_light, max_dist);
-					if (visible) {
-						float cos_to_light = fmaxf(dot(to_light, normal), 0.0f);
-						if (cos_to_light > 0.0f) {
-							// BSDF value at the light direction
-							float fr_l  = FrDielectric(cos_to_light, nf_eta);
-							float brdf_val = (1.0f - fr_l) / (nf_c * 3.14159265358979323846f);
-							float brdf_pdf_l = brdf_val * cos_to_light;  // cosine_pdf * brdf * pi cancel
-							float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf_l);
-
-							float3 direct_light = mis_weight * brdf_val * light_emission * cos_to_light / light_pdf;
-							emission = emission + direct_light;
-						}
-					}
-				}
-			}
-
-			// Direct lighting from the sky - mirrors the Lambertian case's own
-			// sky-NEE block above (see its comment); same BSDF formula this
-			// case already uses for its own area-light NEE.
-			{
-				const float3& skyColor = params.camera.backgroundColor;
-				if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
-					float3 sky_dir = random_unit_vector(seed);
-					float  cos_sky = dot(sky_dir, normal);
-					if (cos_sky > 0.0f) {
-						constexpr float pdf_sky = 1.0f / (4.0f * 3.14159265358979323846f);
-						if (trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
-							float fr_sky       = FrDielectric(cos_sky, nf_eta);
-							float brdf_val_sky = (1.0f - fr_sky) / (nf_c * 3.14159265358979323846f);
-							float brdf_pdf_sky = brdf_val_sky * cos_sky;
-							float mis_weight    = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
-							emission = emission + mis_weight * brdf_val_sky * skyColor * cos_sky / pdf_sky;
-						}
-					}
-				}
-			}
+			// pbrt-v4 NormalizedFresnelBxDF - see shade_normalized_fresnel()
+			// above (factored out so MaterialType::Subsurface's exit point
+			// can shade with the exact same code without a self-recursive
+			// call into shade_material() itself, which OptiX's module
+			// compiler statically rejects - see that function's own
+			// comment). Diffuse BSDF: participates in MIS (is_specular=false).
+			float3 nf_atten, nf_dir;
+			float nf_pdf_override;
+			shade_normalized_fresnel(mat.ior, normal, hit_point, seed,
+				nf_atten, nf_dir, nf_pdf_override, emission);
+			attenuation = nf_atten;
+			scattered_dir = nf_dir;
+			brdf_pdf_override = nf_pdf_override;
+			scattered = true;
+			is_specular = false;
 			break;
 		}
 		case MaterialType::DiffuseLight: {
@@ -1380,6 +1714,8 @@ __device__ __forceinline__ void shade_material(
 	out_scattered = scattered;
 	out_is_specular = is_specular;
 	out_brdf_pdf_override = brdf_pdf_override;
+	out_bssrdf_exit = bssrdf_exit;
+	out_bssrdf_exit_pos = bssrdf_exit_pos;
 }
 
 // Realistic multi-element lens camera (pbrt-v4 RealisticCamera, src/shared/

@@ -33,6 +33,14 @@
 #include "optix_math_helpers.h"   // cross(), dot(), length() - used below
 #include "../../src/shared/pbrt_flatten.h"
 #include "../../src/shared/pbrt_quadify.h"
+// ComputeBeamDiffusionBSSRDF/BSSRDFTable - the SAME CPU-side table builder
+// src/TheRestOfYourLife/material_pbrt.h's `class subsurface` already uses,
+// called here once per unique (g,eta) pair to build the table this builder
+// then uploads for the recursive GPU backend's probe walk - see
+// getOrBuildBssrdfTable() below and optix_types.h's GpuBssrdfTable comment.
+// Not a device computation: this runs host-side at scene-build time, same
+// cost class as building a BVH or alias table.
+#include "../../src/shared/bssrdf.h"
 
 namespace pbrt_gpu {
 
@@ -75,13 +83,55 @@ inline float3 reflectanceToConductorK(const float3 &r) {
 	return make_float3(k1(r.x), k1(r.y), k1(r.z));
 }
 
+// Builds (or looks up, if an earlier material already asked for the same
+// (g,eta) pair - e.g. this codebase's own dragon_10/50/250 "scale" scenes,
+// which all share eta=1.5/g=0 and differ only in sigma_a/sigma_s) a
+// BSSRDFTable via the existing CPU ComputeBeamDiffusionBSSRDF(), uploads its
+// arrays into `out`'s flat buffers, and returns the new GpuBssrdfTable's
+// index (for MaterialData::textureIdx - see MaterialType::Subsurface's
+// comment). n_rho=100/n_radius=64 matches src/TheRestOfYourLife/
+// material_pbrt.h's `class subsurface` constructor exactly, so CPU and GPU
+// build tables at the same resolution.
+inline int getOrBuildBssrdfTable(double g, double eta, SceneData &out,
+								 std::map<std::pair<double,double>, int> &cache) {
+	const auto key = std::make_pair(g, eta);
+	const auto it = cache.find(key);
+	if (it != cache.end()) return it->second;
+
+	BSSRDFTable table(100, 64);
+	ComputeBeamDiffusionBSSRDF(g, eta, &table);
+
+	GpuBssrdfTable gt{};
+	gt.n_rho = table.n_rho;
+	gt.n_radius = table.n_radius;
+	gt.rho_offset = static_cast<int>(out.bssrdfRhoSamples.size());
+	gt.radius_offset = static_cast<int>(out.bssrdfRadiusSamples.size());
+	gt.profile_offset = static_cast<int>(out.bssrdfProfile.size());
+
+	for (double v : table.rho_samples) out.bssrdfRhoSamples.push_back(static_cast<float>(v));
+	for (double v : table.radius_samples) out.bssrdfRadiusSamples.push_back(static_cast<float>(v));
+	for (double v : table.profile) out.bssrdfProfile.push_back(static_cast<float>(v));
+	for (double v : table.profile_cdf) out.bssrdfProfileCdf.push_back(static_cast<float>(v));
+
+	const int idx = static_cast<int>(out.bssrdfTables.size());
+	out.bssrdfTables.push_back(gt);
+	cache.emplace(key, idx);
+	return idx;
+}
+
 // Mirrors pbrt_cpu_builder.h's makeMaterial() decision for decision, including
 // emission winning over the declared material - in pbrt an AreaLightSource
 // attaches to the shape, and the surface is an emitter regardless of what else
 // it said it was. The two builders disagreeing here would mean the same file
 // renders as two different scenes depending on the backend.
+//
+// `out`/`bssrdfTableCache` are only touched by the Subsurface case below
+// (building/deduping this material's BSSRDFTable); every other material kind
+// ignores them.
 inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
-								 const pbrt_flatten::Emission *emission) {
+								 const pbrt_flatten::Emission *emission,
+								 SceneData &out,
+								 std::map<std::pair<double,double>, int> &bssrdfTableCache) {
 	MaterialData d = {};
 	d.textureIdx = -1;
 
@@ -145,15 +195,28 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		d.k_c = reflectanceToConductorK(d.albedo);
 		break;
 	case pbrt_flatten::MaterialKind::Subsurface:
-		// No GPU BSSRDF (out of scope - see src/TheRestOfYourLife/
-		// material_pbrt.h's `class subsurface` and camera.h::
-		// sample_bssrdf_exit(), the CPU-only implementation). Falls back to
-		// flat diffuse, exactly as it did before this MaterialKind existed
-		// (when "subsurface" mapped to Unsupported, which also fell back to
-		// Lambertian right here) - CPU gaining real support for this kind
-		// does not change GPU's rendered output at all, only that the
-		// shared "not supported" warning in pbrt_flatten.h's flatten() no
-		// longer fires for it, since it is genuinely supported on CPU now.
+		// Real tabulated BSSRDF, RECURSIVE GPU BACKEND ONLY (Phase 1 - see
+		// optix_types.h's MaterialType::Subsurface comment for the full
+		// field-reuse layout, and shade_material()'s own comment,
+		// optix_device_helpers.h, for the probe-walk algorithm). `d.albedo`
+		// is deliberately left as `m.color` (already assigned above,
+		// generically, before this switch) rather than repurposed for
+		// sigma_a - that is what lets the wavefront backend's own explicit
+		// Subsurface fallback (wavefront_kernels.cu) keep rendering exactly
+		// the same flat gray it always has, unaware this real GPU
+		// implementation exists at all.
+		d.type = MaterialType::Subsurface;
+		d.bssrdf_sigma_a = make_float3(static_cast<float>(m.sigma_a[0]),
+										static_cast<float>(m.sigma_a[1]),
+										static_cast<float>(m.sigma_a[2]));
+		d.bssrdf_sigma_s = make_float3(static_cast<float>(m.sigma_s[0]),
+										static_cast<float>(m.sigma_s[1]),
+										static_cast<float>(m.sigma_s[2]));
+		// d.ior already holds eta (m.ior), assigned generically above -
+		// same field NormalizedFresnel(ior=eta) reads at the found exit
+		// point (shade_material()'s probe-walk success path).
+		d.textureIdx = getOrBuildBssrdfTable(m.g, m.ior, out, bssrdfTableCache);
+		break;
 	case pbrt_flatten::MaterialKind::Diffuse:
 	case pbrt_flatten::MaterialKind::Unsupported:
 		d.type = MaterialType::Lambertian;
@@ -182,6 +245,10 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 	// CPU builder caches them - a mesh with a thousand faces sharing one
 	// material must not produce a thousand identical GPU materials.
 	std::map<std::pair<int, int>, int> cache;
+	// Separate dedup cache for BSSRDFTable-by-(g,eta) - see
+	// getOrBuildBssrdfTable()'s own comment. Only Subsurface materials touch
+	// this; stays empty for every scene without one.
+	std::map<std::pair<double, double>, int> bssrdfTableCache;
 	const auto materialIndex = [&](int mi, int ai) {
 		const auto key = std::make_pair(mi, ai);
 		const auto it = cache.find(key);
@@ -198,7 +265,7 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 				: kDefault;
 
 		const int idx = static_cast<int>(out.materials.size());
-		out.materials.push_back(makeMaterial(m, em));
+		out.materials.push_back(makeMaterial(m, em, out, bssrdfTableCache));
 		cache.emplace(key, idx);
 		return idx;
 	};

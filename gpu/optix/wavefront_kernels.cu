@@ -982,6 +982,29 @@ extern "C" __global__ void evaluate_materials(
 		is_specular = false;
 		break;
 	}
+	case MaterialType::Subsurface: {
+		// No GPU BSSRDF on the wavefront backend (Phase 1 is recursive-
+		// backend-only - see optix_types.h's MaterialType::Subsurface
+		// comment and gpu/optix/optix_device_helpers.h's shade_material()
+		// for the real implementation). Falls back to flat diffuse using
+		// mat.albedo - deliberately NOT the same as the Lambertian case
+		// above: mat.textureIdx is repurposed on this MaterialType as an
+		// index into LaunchParams::bssrdfTables (recursive backend only),
+		// not a real texture index, so reading it here as one would be an
+		// out-of-bounds params.textures[] access. mat.albedo itself is
+		// still the plain flat-gray fallback color (pbrt_gpu_builder.h's
+		// makeMaterial() deliberately leaves it as `m.color`, NOT sigma_a -
+		// see that function's own comment) - this is exactly the same
+		// rendered result Subsurface has always had on this backend, before
+		// this MaterialType even existed (when it mapped straight to
+		// MaterialType::Lambertian via the same Unsupported fallback).
+		scattered_dir = normalize(normal + wf_rand_unit(seed));
+		if (wf_near_zero(scattered_dir)) scattered_dir = normal;
+		attenuation = albedoSpectrum(mat.albedo);
+		scattered   = true;
+		is_specular = false;
+		break;
+	}
 	case MaterialType::Metal: {
 		float3 reflected = wf_reflect(normalize(h.rayDir), normal);
 		scattered_dir    = normalize(reflected + mat.fuzz * wf_rand_unit(seed));
@@ -1684,7 +1707,7 @@ extern "C" __global__ void evaluate_materials(
 			// achromatic BRDF value (no color/texture involved), so it needs
 			// no equivalent multiply.
 			SS bsdf_color(1.f);
-			if (mat.type == MaterialType::Lambertian) {
+			if (mat.type == MaterialType::Lambertian || mat.type == MaterialType::Subsurface) {
 				bsdf_color = attenuation;
 			} else if (mat.type == MaterialType::NormalizedFresnel) {
 				float nf_eta = mat.ior;
@@ -1767,7 +1790,7 @@ extern "C" __global__ void evaluate_materials(
 			// for Lambertian (direction-independent BRDF, safe to reuse here);
 			// NormalizedFresnel's bsdf_val is already a complete achromatic value.
 			SS bsdf_color(1.f);
-			if (mat.type == MaterialType::Lambertian) {
+			if (mat.type == MaterialType::Lambertian || mat.type == MaterialType::Subsurface) {
 				bsdf_color = attenuation;
 			} else if (mat.type == MaterialType::NormalizedFresnel) {
 				float nf_eta = mat.ior;
@@ -1830,7 +1853,7 @@ extern "C" __global__ void evaluate_materials(
 		// for Lambertian (direction-independent BRDF, safe to reuse here);
 		// NormalizedFresnel's bsdf_val is already a complete achromatic value.
 		SS bsdf_color(1.f);
-		if (mat.type == MaterialType::Lambertian) {
+		if (mat.type == MaterialType::Lambertian || mat.type == MaterialType::Subsurface) {
 			bsdf_color = attenuation;
 		} else if (mat.type == MaterialType::NormalizedFresnel) {
 			float nf_eta = mat.ior;

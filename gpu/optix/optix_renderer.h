@@ -79,7 +79,12 @@ public:
 		const std::vector<unsigned char>& texturePixels = {},
 		const std::vector<CloudMedium<float>>& cloudMediums = {},
 		const std::vector<GpuRgbGridMedium>& rgbGridMediums = {},
-		const std::vector<float>& rgbGridData = {}
+		const std::vector<float>& rgbGridData = {},
+		const std::vector<GpuBssrdfTable>& bssrdfTables = {},
+		const std::vector<float>& bssrdfRhoSamples = {},
+		const std::vector<float>& bssrdfRadiusSamples = {},
+		const std::vector<float>& bssrdfProfile = {},
+		const std::vector<float>& bssrdfProfileCdf = {}
 	);
 
 	/// @brief Render a frame using path tracing
@@ -214,6 +219,14 @@ private:
 	OptixProgramGroup shadowHitgroupBilinearPatchPG_ = nullptr; ///< Bilinear patch shadow hit group
 	OptixProgramGroup shadowHitgroupTrianglePG_ = nullptr;      ///< Triangle shadow hit group
 
+	// RAY_TYPE_PROBE program groups (recursive backend only, Phase 1 BSSRDF
+	// - see optix_types.h's RAY_TYPE_PROBE comment and optix_probe_hit.h).
+	OptixProgramGroup probeMissPG_ = nullptr;                    ///< Probe miss program (no-op)
+	OptixProgramGroup probeHitgroupSpherePG_ = nullptr;          ///< Sphere probe hit group
+	OptixProgramGroup probeHitgroupQuadPG_ = nullptr;            ///< Quad probe hit group
+	OptixProgramGroup probeHitgroupBilinearPatchPG_ = nullptr;   ///< Bilinear patch probe hit group
+	OptixProgramGroup probeHitgroupTrianglePG_ = nullptr;        ///< Triangle probe hit group
+
 	// -------------------------------------------------------------------
 	// Shader Binding Table (SBT)
 	// -------------------------------------------------------------------
@@ -305,6 +318,15 @@ private:
 	unsigned int numRgbGridMediums_ = 0;   ///< Number of RGB grid media
 	CUdeviceptr d_rgbGridData_ = 0;        ///< Device flat voxel data for all RGB grid media
 	unsigned int rgbGridDataCount_ = 0;    ///< Number of floats in d_rgbGridData_
+
+	// Tabulated BSSRDF tables (MaterialType::Subsurface, recursive backend
+	// only, Phase 1 - see optix_types.h's GpuBssrdfTable comment).
+	CUdeviceptr d_bssrdfTables_ = 0;
+	unsigned int numBssrdfTables_ = 0;
+	CUdeviceptr d_bssrdfRhoSamples_ = 0;
+	CUdeviceptr d_bssrdfRadiusSamples_ = 0;
+	CUdeviceptr d_bssrdfProfile_ = 0;
+	CUdeviceptr d_bssrdfProfileCdf_ = 0;
 
 	// Light sampling support for MIS
 	CUdeviceptr d_lightIndices_ = 0;  ///< Device light primitive indices

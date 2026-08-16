@@ -72,7 +72,10 @@ extern "C" __global__ void __raygen__rg() {
 			payload.depth = depth;
 			payload.scattered = false;
 
-			// Trace ray - pack 13 payload registers
+			// Trace ray - pack 16 payload registers (13 original + p13-p15,
+			// added for MaterialType::Subsurface's explicit next-ray-origin
+			// override - see optix_types.h's RAY_TYPE_PROBE comment and
+			// shade_material()'s out_bssrdf_exit/out_bssrdf_exit_pos).
 			unsigned int p0 = __float_as_uint(payload.attenuation.x);
 			unsigned int p1 = __float_as_uint(payload.attenuation.y);
 			unsigned int p2 = __float_as_uint(payload.attenuation.z);
@@ -94,6 +97,9 @@ extern "C" __global__ void __raygen__rg() {
 			// overwrite it with their own OUTPUT meaning (brdf_pdf of the new
 			// scatter direction, or the NEE light pdf for a hit_light result).
 			unsigned int p12 = __float_as_uint(prev_brdf_pdf);
+			// p13-p15: explicit next-ray origin, only written (and only
+			// meaningful) when flag==3 below.
+			unsigned int p13 = 0, p14 = 0, p15 = 0;
 
 			optixTrace(
 				params.traversable,     // Acceleration structure
@@ -107,10 +113,10 @@ extern "C" __global__ void __raygen__rg() {
 				RAY_TYPE_RADIANCE,      // SBT offset
 				RAY_TYPE_COUNT,         // SBT stride
 				RAY_TYPE_RADIANCE,      // missSBTIndex
-				p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12
+				p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15
 			);
 
-			// Unpack payload (13 registers)
+			// Unpack payload (16 registers)
 			payload.attenuation.x = __uint_as_float(p0);
 			payload.attenuation.y = __uint_as_float(p1);
 			payload.attenuation.z = __uint_as_float(p2);
@@ -124,6 +130,11 @@ extern "C" __global__ void __raygen__rg() {
 			unsigned int flag = p10;
 			float t_hit = __uint_as_float(p11);
 			float scatter_brdf_pdf = __uint_as_float(p12);  // BRDF PDF of the new scatter direction
+			// Explicit next-ray origin (flag==3 only - MaterialType::
+			// Subsurface's probe-walk exit point, found off to the side of
+			// this ray, which `ray_origin + t_hit*ray_direction` below
+			// cannot represent).
+			float3 explicit_origin = make_float3(__uint_as_float(p13), __uint_as_float(p14), __uint_as_float(p15));
 
 			// Decode flag: 0=absorbed, 1=scattered, 2=hit_light
 			if (flag == 2) {
@@ -148,13 +159,21 @@ extern "C" __global__ void __raygen__rg() {
 					radiance = radiance + throughput * Le;
 				}
 				break;
-			} else if (flag == 1) {
-				// Scattered - compute scatter origin and update for next bounce
+			} else if (flag == 1 || flag == 3) {
+				// Scattered - compute scatter origin and update for next bounce.
+				// flag==3: MaterialType::Subsurface's probe walk found an
+				// off-ray exit point - the next ray must start THERE, not
+				// at `ray_origin + t_hit*ray_direction` (which only ever
+				// names a point along the CURRENT ray, exactly like every
+				// other material's t_hit convention, including the Medium
+				// family's own re-intersection override - see optix_types.h's
+				// RAY_TYPE_PROBE comment for why this needed new payload
+				// registers rather than reusing that mechanism).
 
 				// Add NEE direct-light emission from this surface hit (already MIS-weighted inside hit program)
 				radiance = radiance + throughput * payload.emission;
 
-				float3 hit_point = ray_origin + t_hit * ray_direction;
+				float3 hit_point = (flag == 3) ? explicit_origin : (ray_origin + t_hit * ray_direction);
 				float3 scatter_origin = hit_point + 0.01f * normalize(payload.scatterDir);
 
 				// Multiply throughput by surface BRDF (attenuation from hit program)

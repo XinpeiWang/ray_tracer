@@ -144,12 +144,15 @@ extern "C" __global__ void __closesthit__bilinear_patch() {
 	bool scattered = false;
 	bool is_specular = false;  // pbrt-v4 specularBounce: MIS is skipped for specular events
 	float brdf_pdf_override = -1.0f;  // if >= 0, overrides cosine_pdf in payload packing
+	bool bssrdf_exit = false;
+	float3 bssrdf_exit_pos = make_float3(0.0f, 0.0f, 0.0f);
 
-	shade_material(mat, final_normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
-		attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission);
+	shade_material(mat, matIdx, final_normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
+		attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
+		bssrdf_exit, bssrdf_exit_pos);
 
 	// Pack updated payload back into registers (see optix_intersection_quad.h
-	// for the p0-p12 layout - identical here)
+	// for the p0-p15 layout - identical here)
 	optixSetPayload_3(__float_as_uint(emission.x));
 	optixSetPayload_4(__float_as_uint(emission.y));
 	optixSetPayload_5(__float_as_uint(emission.z));
@@ -166,9 +169,14 @@ extern "C" __global__ void __closesthit__bilinear_patch() {
 		optixSetPayload_6(__float_as_uint(scattered_dir.x));
 		optixSetPayload_7(__float_as_uint(scattered_dir.y));
 		optixSetPayload_8(__float_as_uint(scattered_dir.z));
-		optixSetPayload_10(1);  // scattered
+		optixSetPayload_10(bssrdf_exit ? 3 : 1);  // scattered (3 = explicit origin override)
 		optixSetPayload_11(__float_as_uint(t_hit));
 		optixSetPayload_12(__float_as_uint(brdf_pdf_out));
+		if (bssrdf_exit) {
+			optixSetPayload_13(__float_as_uint(bssrdf_exit_pos.x));
+			optixSetPayload_14(__float_as_uint(bssrdf_exit_pos.y));
+			optixSetPayload_15(__float_as_uint(bssrdf_exit_pos.z));
+		}
 	} else if (mat.type == MaterialType::DiffuseLight) {
 		// NEE pdf for the incoming direction reaching this bilinear-patch
 		// light, so MIS in raygen can weight a BSDF-sampled path that

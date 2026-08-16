@@ -271,7 +271,73 @@ enum class MaterialType : int {
 	// actual voxel data lives in a SEPARATE shared flat buffer
 	// (LaunchParams::rgbGridData), indexed via GpuRgbGridMedium::dataOffset.
 	// Sphere-only, same reason as Medium/CloudMedium.
-	RgbGridMedium = 17
+	RgbGridMedium = 17,
+	// Real tabulated BSSRDF (pbrt-v4 TabulatedBSSRDF / SubsurfaceMaterial),
+	// RECURSIVE BACKEND ONLY (Phase 1 - see shade_material()'s own comment on
+	// this case, optix_device_helpers.h). Mirrors src/TheRestOfYourLife/
+	// material_pbrt.h's `class subsurface` + camera.h::sample_bssrdf_exit()'s
+	// 3-axis-MIS probe/exit-point algorithm exactly, replacing the flat-
+	// diffuse fallback pbrt_gpu_builder.h used to emit for
+	// pbrt_flatten::MaterialKind::Subsurface. The wavefront backend has NO
+	// real implementation of this type (deliberately out of scope for this
+	// phase - see wavefront_kernels.cu's own explicit fallback case) and
+	// treats it as flat diffuse using .albedo, exactly as it did before this
+	// MaterialType existed.
+	//
+	// Field reuse: .albedo stays `m.color` (the flat-gray fallback color,
+	// 0.5/0.5/0.5 by pbrt_flatten.h's own default) rather than being
+	// repurposed for sigma_a - this is what lets the wavefront fallback keep
+	// rendering exactly the same flat gray it always has, unaware this
+	// MaterialType even exists. .ior is eta (index of refraction, already
+	// assigned generically before this type's own switch case). sigma_a/
+	// sigma_s (RGB absorption/scattering coefficients, ALREADY scale-
+	// multiplied - see pbrt_flatten::Material::sigma_a/sigma_s's own comment)
+	// live in the emission/transmittance union and the k_c-aliased union
+	// respectively (see MaterialData's own field comments below) - both
+	// otherwise unused by this material kind (no emission, no Conductor k).
+	// .textureIdx is repurposed as an index into LaunchParams::bssrdfTables
+	// (this material's precomputed BSSRDFTable, built once per unique (g,eta)
+	// pair at scene-build time - see pbrt_gpu_builder.h) rather than a real
+	// texture index; Subsurface materials never carry a real texture in this
+	// loader, so this reuse is unambiguous on the recursive backend, which is
+	// the only backend that ever reads it as anything but -1.
+	Subsurface = 18
+};
+
+// Device-uploaded mirror of src/shared/bssrdf.h's BSSRDFTable, for the
+// recursive GPU backend's MaterialType::Subsurface probe walk (see
+// shade_material()'s own comment and gpu/optix/optix_bssrdf.h). Built ONCE
+// per unique (g,eta) pair at scene-build time by calling the existing CPU
+// ComputeBeamDiffusionBSSRDF() and uploading the resulting arrays - not a
+// device-side computation (see pbrt_gpu_builder.h). Multiple Subsurface
+// materials commonly share one table (same g/eta, different sigma_a/sigma_s
+// - e.g. this codebase's own dragon_10/50/250 "scale" scenes, which all use
+// eta=1.5, g=0 and differ only in scale), so tables are deduplicated and
+// referenced by index (MaterialData::textureIdx, repurposed - see
+// MaterialType::Subsurface's own comment) rather than embedded per-material,
+// mirroring the CloudMedium/RgbGridMedium "index into a LaunchParams array"
+// convention rather than GoniometricLightGPU/ProjectionLightGPU's inline-
+// array convention, since a table (100 rho x 64 radius by default) is much
+// larger than those lights' tiny images.
+//
+// rho_eff (pbrt-v4's per-row effective albedo, used by SubsurfaceFromDiffuse
+// for CPU-only reflectance+mfp inversion - not needed here, see
+// pbrt_flatten.h/material_pbrt.h) is NOT uploaded: it is exactly
+// profile_cdf[row*n_radius + (n_radius-1)] (integrate_catmull_rom's own
+// returned total equals the CDF's own last entry - see src/shared/
+// sampling_2d.h), so gpu_bssrdf_pdf_sr() (optix_bssrdf.h) recovers it from
+// profile_cdf directly instead of uploading a fourth per-table array.
+struct GpuBssrdfTable {
+	int n_rho;
+	int n_radius;
+	int rho_offset;      // into LaunchParams::bssrdfRhoSamples
+	int radius_offset;   // into LaunchParams::bssrdfRadiusSamples
+	// profile and profile_cdf share this same offset and n_rho*n_radius
+	// layout (row i = rho_samples[i], column j = radius_samples[j]) into
+	// their own separate flat buffers (LaunchParams::bssrdfProfile /
+	// bssrdfProfileCdf) - one offset serves both since every table's rows
+	// are built and stored in lockstep (see pbrt_gpu_builder.h).
+	int profile_offset;
 };
 
 // Heterogeneous per-voxel R/G/B scattering grid metadata (GPU-only flat
@@ -382,6 +448,15 @@ struct MaterialData {
 	union {
 		float3 emission;       // DiffuseLight: emitted radiance
 		float3 transmittance;  // DiffuseTransmission: T (transmitted diffuse color)
+		// Subsurface: RGB absorption coefficient (pbrt-v4 sigma_a, already
+		// scale-multiplied - see pbrt_flatten::Material::sigma_a's comment).
+		// Named bssrdf_sigma_a (not sigma_a - that name is already taken by
+		// the OTHER union above, Hair's own RGB absorption field) so both can
+		// coexist; shares this slot rather than `albedo` specifically so that
+		// `albedo` can stay the flat-gray fallback color the wavefront
+		// backend's Subsurface fallback case reads - see MaterialType::
+		// Subsurface's own comment in optix_types.h.
+		float3 bssrdf_sigma_a;
 	};
 
 	// Conductor complex IOR real part is this union's own, unambiguous
@@ -404,7 +479,14 @@ struct MaterialData {
 		struct { float rgbGridMediumIdx, _rgb_grid_medium_pad1, _rgb_grid_medium_pad2; } rgb_grid_medium_extra;
 	};
 
-	float3 k_c;   // Conductor/CoatedConductor only: imaginary part k per R/G/B channel
+	union {
+		float3 k_c;         // Conductor/CoatedConductor only: imaginary part k per R/G/B channel
+		// Subsurface: RGB scattering coefficient (pbrt-v4 sigma_s, already
+		// scale-multiplied). k_c has no meaning for Subsurface (not a
+		// Conductor), so this slot is free to reuse - same alternate-name
+		// pattern as every other union in this struct.
+		float3 bssrdf_sigma_s;
+	};
 
 	// Index into LaunchParams::textures, or -1 to use `albedo` directly
 	// (every material before this field existed omitted it in brace-init,
@@ -413,7 +495,12 @@ struct MaterialData {
 	// updating). Lambertian: albedo texture. NormalMappedLambertian reuses
 	// this as the normal-map texture index instead (see that type's own
 	// comment) - unambiguous since CPU never combines that material with a
-	// real albedo texture too.
+	// real albedo texture too. Subsurface (recursive backend only) reuses it
+	// again, as an index into LaunchParams::bssrdfTables - see
+	// MaterialType::Subsurface's own comment for why this reuse is safe
+	// (never a real texture for this material kind) and why the wavefront
+	// backend's own Subsurface fallback case must NOT read this field as a
+	// texture index.
 	int textureIdx = -1;
 
 	// Index into LaunchParams::textures for an opacity/alpha-cutout mask
@@ -670,6 +757,18 @@ struct LaunchParams {
 	float* rgbGridData;
 	unsigned int rgbGridDataCount;
 
+	// Tabulated BSSRDF profile tables (MaterialType::Subsurface, recursive
+	// backend only - see GpuBssrdfTable's own comment), indexed by
+	// MaterialData::textureIdx (repurposed for this material kind). The four
+	// flat arrays below are shared across every table; each GpuBssrdfTable
+	// entry names its own slice via rho_offset/radius_offset/profile_offset.
+	GpuBssrdfTable* bssrdfTables;
+	unsigned int numBssrdfTables;
+	float* bssrdfRhoSamples;
+	float* bssrdfRadiusSamples;
+	float* bssrdfProfile;
+	float* bssrdfProfileCdf;
+
 	// Texture data (see TextureData above) - indexed by
 	// MaterialData::textureIdx. texturePixels is one shared flat 8-bit RGB
 	// buffer every Image-kind TextureData::pixelOffset points into.
@@ -719,10 +818,27 @@ struct HitGroupData {
 };
 
 // Ray types
+//
+// RAY_TYPE_PROBE (recursive backend only, Phase 1 BSSRDF): a small-payload
+// closest-hit-only ray used by the MaterialType::Subsurface probe walk
+// (bssrdf_probe_walk(), optix_device_helpers.h) to find candidate exit
+// points along a probe segment, modeled on trace_shadow_ray()'s already-
+// proven pattern of a sequential, non-nested optixTrace() call issued from
+// within a hit program - see that function's own comment. Needs its own hit
+// groups (see optix_probe_hit.h) rather than reusing RAY_TYPE_RADIANCE's,
+// because it must report raw hit geometry (position/normal/material index)
+// with NO shading/NEE/scattering - reusing the radiance hit groups would
+// mean either running full shade_material() pointlessly on every probe
+// segment step (wasteful and, worse, would recursively re-enter this same
+// probe-walk machinery for a probe ray that happens to land on another
+// Subsurface surface) or overloading the radiance ray's already-fully-
+// packed 13-payload-register convention with an ambiguous "probe mode" flag.
+// The wavefront backend has no equivalent and never traces this ray type.
 enum {
 	RAY_TYPE_RADIANCE = 0,
 	RAY_TYPE_SHADOW = 1,
-	RAY_TYPE_COUNT = 2
+	RAY_TYPE_PROBE = 2,
+	RAY_TYPE_COUNT = 3
 };
 
 // ============================================================================

@@ -251,6 +251,12 @@ extern "C" __global__ void __closesthit__sphere() {
 	float brdf_pdf_override = -1.0f;  // if >= 0, overrides cosine_pdf in payload packing
 	bool is_medium = false;    // MaterialType::Medium: t_hit below must use medium_t_hit,
 	float medium_t_hit = 0.0f; // not optixGetRayTmax() (which is just the sphere's entry surface)
+	// MaterialType::Subsurface never applies to spheres in this loader (see
+	// shade_material()'s own comment) - always false/unused here, but every
+	// call site must still supply these two out-params (shade_material()'s
+	// signature is shared across all geometry types).
+	bool bssrdf_exit = false;
+	float3 bssrdf_exit_pos = make_float3(0.0f, 0.0f, 0.0f);
 
 	if (mat.type == MaterialType::Medium) {
 			// Homogeneous participating medium - see MaterialType::Medium's
@@ -528,8 +534,9 @@ extern "C" __global__ void __closesthit__sphere() {
 			MaterialData effective = mat;
 			effective.type = MaterialType::Lambertian;
 			effective.textureIdx = -1;
-			shade_material(effective, perturbed_normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, seed,
-				attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission);
+			shade_material(effective, matIdx, perturbed_normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, seed,
+				attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
+				bssrdf_exit, bssrdf_exit_pos);
 	} else if (mat.type == MaterialType::Principled) {
 			// Disney/pbrt-v4 multi-lobe BSDF - see sample_principled_material's
 			// comment in optix_device_helpers.h. Matches principled_material.h's
@@ -539,8 +546,9 @@ extern "C" __global__ void __closesthit__sphere() {
 			scattered   = sample_principled_material(ray_dir, normal, mat, seed, scattered_dir, attenuation);
 			is_specular = true;
 	} else {
-		shade_material(mat, normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, seed,
-			attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission);
+		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, seed,
+			attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
+			bssrdf_exit, bssrdf_exit_pos);
 	}
 
 	// Pack updated payload back into registers
@@ -577,9 +585,18 @@ extern "C" __global__ void __closesthit__sphere() {
 		optixSetPayload_6(__float_as_uint(scattered_dir.x));  // Scatter direction
 		optixSetPayload_7(__float_as_uint(scattered_dir.y));
 		optixSetPayload_8(__float_as_uint(scattered_dir.z));
-		optixSetPayload_10(1);  // scattered
+		// MaterialType::Subsurface (and therefore bssrdf_exit) never applies
+		// to spheres in this loader, but flag 3 / p13-15 are packed the same
+		// way triangle/quad/bilinear-patch do for consistency - see
+		// optix_intersection_quad.h's p0-p15 layout comment.
+		optixSetPayload_10(bssrdf_exit ? 3 : 1);  // scattered
 		optixSetPayload_11(__float_as_uint(t_hit));
 		optixSetPayload_12(__float_as_uint(brdf_pdf_out));
+		if (bssrdf_exit) {
+			optixSetPayload_13(__float_as_uint(bssrdf_exit_pos.x));
+			optixSetPayload_14(__float_as_uint(bssrdf_exit_pos.y));
+			optixSetPayload_15(__float_as_uint(bssrdf_exit_pos.z));
+		}
 	} else if (mat.type == MaterialType::DiffuseLight) {
 		// p12: NEE PDF for the incoming ray direction reaching this sphere light.
 		// This is the solid-angle PDF used by the NEE sampler, enabling MIS in raygen.
