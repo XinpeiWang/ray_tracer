@@ -301,7 +301,75 @@ enum class MaterialType : int {
 	// texture index; Subsurface materials never carry a real texture in this
 	// loader, so this reuse is unambiguous on the recursive backend, which is
 	// the only backend that ever reads it as anything but -1.
-	Subsurface = 18
+	Subsurface = 18,
+	// Real tabulated measured-BRDF (pbrt-v4 Material "measured" - a real
+	// gonioreflectometer-measured BRDF loaded from a binary .bsdf tensor
+	// file, Dupuy & Jakob's format), BOTH GPU backends. Mirrors
+	// src/TheRestOfYourLife/material_pbrt.h's `class measured` exactly: a
+	// single VNDF-importance-sampled BxDF sample per hit (MeasuredBxDF::
+	// sample_f - src/shared/measured_bxdf.h), no Fresnel entry/exit split,
+	// no probe walk - same *shape* as MaterialType::Metal/Conductor/Hair/
+	// Principled (sample once, get a direction + full skip_pdf-style
+	// throughput weight, continue as a non-NEE specular-style bounce). This
+	// replaces the flat-diffuse fallback pbrt_gpu_builder.h used to emit for
+	// pbrt_flatten::MaterialKind::Measured before this MaterialType existed
+	// (see gpu/optix/optix_measured_bxdf.h / wavefront_measured_bxdf.h for
+	// the device math, and optix_device_helpers.h's shade_material() /
+	// wavefront_kernels.cu's evaluate_materials() for the two backends'
+	// dispatch).
+	//
+	// Field reuse: .textureIdx is repurposed as an index into
+	// LaunchParams::measuredTables (this material's flattened 5-sub-table
+	// set - see GpuMeasuredTable below), built once per unique resolved
+	// .bsdf file path at scene-build time (getOrBuildMeasuredTable(),
+	// pbrt_gpu_builder.h) - same "index into a shared LaunchParams array"
+	// convention as MaterialType::Subsurface's own textureIdx reuse just
+	// above; a measured material never carries a real texture in this
+	// loader, so this reuse is unambiguous on both backends. No other
+	// MaterialData field is used - the query wavelengths (612/549/465nm,
+	// approximating sRGB primaries, matching `class measured`'s kLambdaR/G/B
+	// exactly) are fixed constants in the device code, not per-material data.
+	Measured = 19
+};
+
+// GPU flat-array mirror of one PiecewiseLinear2D<Dimension> instance (see
+// src/shared/piecewise_linear_2d.h's private members m_nx/m_ny/m_ps/m_pst/
+// m_pv/m_data/m_mcdf/m_ccdf, exposed read-only via the const accessors added
+// there for exactly this purpose - see that file's own comment). Used by
+// MaterialType::Measured's device math (gpu/optix/optix_measured_bxdf.h /
+// wavefront_measured_bxdf.h). One instance per PiecewiseLinear2D sub-table
+// (ndf/sigma/vndf/luminance/spectra - see GpuMeasuredTable below); `dim`
+// records which of the three Dimension values (0, 2, or 3) this particular
+// sub-table was built at, since a MeasuredBRDFData mixes all three (unlike
+// GpuBssrdfTable, which only ever describes one shape).
+struct GpuPL2DTable {
+	int nx, ny;                  // XSize()/YSize()
+	int dim;                     // Dimension: 0 (ndf/sigma), 2 (vndf/luminance), 3 (spectra)
+	int param_res[3];            // m_ps[i] per axis; unused axes (i >= dim) are 1
+	int param_stride[3];         // m_pst[i] per axis; unused axes are 0
+	// Offset into LaunchParams::measuredParamValues, param_res[i] floats
+	// starting here, per axis; -1 for unused axes (i >= dim).
+	int param_value_offset[3];
+	int data_offset;             // offset into ::measuredData, size = slices*nx*ny
+	// offset into ::measuredMcdf/::measuredCcdf, or -1 for a table with no
+	// CDF (build_cdf=false - ndf/sigma/spectra; only vndf/luminance have one).
+	int mcdf_offset;
+	int ccdf_offset;
+};
+
+// One measured-BRDF material's full table set - mirrors MeasuredBRDFData
+// (src/shared/measured_bxdf.h) exactly: ndf/sigma unconditional
+// (Dimension=0, Eval()-only), vndf/luminance conditioned on (phi_i,theta_i)
+// (Dimension=2, real CDFs, Sample()-only - this material samples exactly
+// once per hit, see MaterialType::Measured's own comment), spectra
+// conditioned on (phi_i,theta_i,lambda) (Dimension=3, Eval()-only). Built
+// once per unique resolved .bsdf file path (pbrt_gpu_builder.h's
+// getOrBuildMeasuredTable(), deduped the same way getOrBuildBssrdfTable()
+// dedupes by (g,eta) - the sportscar scene's ilm_l3_37_metallic_spec.bsdf is
+// referenced by 4 materials).
+struct GpuMeasuredTable {
+	GpuPL2DTable ndf, sigma, vndf, luminance, spectra;
+	int isotropic;   // bool as int - see MeasuredBRDFData::isotropic
 };
 
 // Device-uploaded mirror of src/shared/bssrdf.h's BSSRDFTable, for the
@@ -768,6 +836,19 @@ struct LaunchParams {
 	float* bssrdfRadiusSamples;
 	float* bssrdfProfile;
 	float* bssrdfProfileCdf;
+
+	// Real tabulated measured-BRDF tables (MaterialType::Measured, both GPU
+	// backends - see GpuMeasuredTable's own comment), indexed by
+	// MaterialData::textureIdx (repurposed - see MaterialType::Measured's own
+	// comment). The four flat arrays below are shared across every table;
+	// each GpuPL2DTable inside a GpuMeasuredTable names its own slice via
+	// data_offset/mcdf_offset/ccdf_offset/param_value_offset.
+	GpuMeasuredTable* measuredTables;
+	unsigned int numMeasuredTables;
+	float* measuredParamValues;
+	float* measuredData;
+	float* measuredMcdf;
+	float* measuredCcdf;
 
 	// Texture data (see TextureData above) - indexed by
 	// MaterialData::textureIdx. texturePixels is one shared flat 8-bit RGB

@@ -41,6 +41,18 @@
 // Not a device computation: this runs host-side at scene-build time, same
 // cost class as building a BVH or alias table.
 #include "../../src/shared/bssrdf.h"
+// GetMeasuredBRDFDataCached()/MeasuredBRDFData/PiecewiseLinear2D<N> - the
+// SAME process-wide cache src/TheRestOfYourLife/material_pbrt.h's `class
+// measured` already uses (reused here rather than reparsing a multi-
+// megabyte .bsdf file a second time), called once per unique resolved
+// filename to get the already-built warp tables this builder then flattens
+// and uploads for BOTH GPU backends - see getOrBuildMeasuredTable() below
+// and optix_types.h's GpuPL2DTable/GpuMeasuredTable comments. CPU-only
+// (std::ifstream, std::mutex - see that header's own comment), but this
+// file (pbrt_gpu_builder.h) is itself only ever included from host-compiled
+// .cpp files (scene_builder.cpp and tests/unit/*.cpp - never a .cu), so
+// that is not a problem here.
+#include "../../src/shared/measured_bxdf_loader.h"
 
 namespace pbrt_gpu {
 
@@ -119,6 +131,103 @@ inline int getOrBuildBssrdfTable(double g, double eta, SceneData &out,
 	return idx;
 }
 
+// Flattens one already-built PiecewiseLinear2D<Dimension> instance (its CDF
+// construction, if any, already ran CPU-side when `t` was built - see
+// piecewise_linear_2d.h's own header comment; this is purely a read-and-copy
+// step) into `out`'s shared measuredParamValues/measuredData/measuredMcdf/
+// measuredCcdf buffers, and returns the resulting GpuPL2DTable describing
+// the slices it just appended. Template on Dimension (0, 2, or 3 - matches
+// MeasuredBRDFData's own ndf/sigma vs. vndf/luminance vs. spectra split)
+// purely to accept PiecewiseLinear2D<N>'s own compile-time-Dimension type;
+// GpuPL2DTable::dim below carries the SAME value at runtime, for the device
+// code (which reads a GpuMeasuredTable's five sub-tables generically, not
+// through a template - see optix_measured_bxdf.h's own comment on why).
+template <size_t Dimension>
+inline GpuPL2DTable flattenMeasuredSubTable(const PiecewiseLinear2D<Dimension>& t, SceneData& out) {
+	GpuPL2DTable g{};
+	g.nx = t.XSize();
+	g.ny = t.YSize();
+	g.dim = static_cast<int>(Dimension);
+
+	const uint32_t* res = t.ParamRes();
+	const uint32_t* stride = t.ParamStride();
+	for (size_t i = 0; i < 3; ++i) {
+		if (i < Dimension) {
+			const std::vector<float>& axis = t.ParamValues(i);
+			g.param_res[i] = static_cast<int>(res[i]);
+			g.param_stride[i] = static_cast<int>(stride[i]);
+			g.param_value_offset[i] = static_cast<int>(out.measuredParamValues.size());
+			out.measuredParamValues.insert(out.measuredParamValues.end(), axis.begin(), axis.end());
+		} else {
+			g.param_res[i] = 1;
+			g.param_stride[i] = 0;
+			g.param_value_offset[i] = -1;
+		}
+	}
+
+	g.data_offset = static_cast<int>(out.measuredData.size());
+	const std::vector<float>& data = t.Data();
+	out.measuredData.insert(out.measuredData.end(), data.begin(), data.end());
+
+	const std::vector<float>& mcdf = t.Mcdf();
+	if (!mcdf.empty()) {
+		g.mcdf_offset = static_cast<int>(out.measuredMcdf.size());
+		out.measuredMcdf.insert(out.measuredMcdf.end(), mcdf.begin(), mcdf.end());
+	} else {
+		g.mcdf_offset = -1;
+	}
+	const std::vector<float>& ccdf = t.Ccdf();
+	if (!ccdf.empty()) {
+		g.ccdf_offset = static_cast<int>(out.measuredCcdf.size());
+		out.measuredCcdf.insert(out.measuredCcdf.end(), ccdf.begin(), ccdf.end());
+	} else {
+		g.ccdf_offset = -1;
+	}
+	return g;
+}
+
+// Builds (or looks up, if an earlier material already asked for the same
+// resolved .bsdf path - e.g. the sportscar scene's ilm_l3_37_metallic_spec.
+// bsdf, referenced by 4 materials) a GpuMeasuredTable by loading the file
+// through the SAME CPU-side cache src/TheRestOfYourLife/material_pbrt.h's
+// `class measured` already uses (measured_bxdf_io::GetMeasuredBRDFDataCached
+// - reuses the already-parsed MeasuredBRDFData rather than reparsing several
+// megabytes of binary a second time), flattening its 5 PiecewiseLinear2D
+// sub-tables into `out`'s shared buffers, and returning the new
+// GpuMeasuredTable's index (for MaterialData::textureIdx - see
+// MaterialType::Measured's comment). Returns -1 if the file failed to load
+// (should not normally happen here: pbrt_load.h already load-tested
+// resolvedPath during CPU scene loading and would have cleared
+// Material::measuredFilename on failure - see that field's own comment -
+// but a failed GetMeasuredBRDFDataCached() call is still handled explicitly
+// rather than assumed impossible).
+inline int getOrBuildMeasuredTable(const std::string& resolvedPath, SceneData& out,
+								   std::map<std::string, int>& cache) {
+	const auto it = cache.find(resolvedPath);
+	if (it != cache.end()) return it->second;
+
+	std::string error;
+	std::shared_ptr<const MeasuredBRDFData> data =
+		measured_bxdf_io::GetMeasuredBRDFDataCached(resolvedPath, error);
+	if (!data) {
+		cache.emplace(resolvedPath, -1);
+		return -1;
+	}
+
+	GpuMeasuredTable mt{};
+	mt.isotropic = data->isotropic ? 1 : 0;
+	mt.ndf       = flattenMeasuredSubTable<0>(data->ndf, out);
+	mt.sigma     = flattenMeasuredSubTable<0>(data->sigma, out);
+	mt.vndf      = flattenMeasuredSubTable<2>(data->vndf, out);
+	mt.luminance = flattenMeasuredSubTable<2>(data->luminance, out);
+	mt.spectra   = flattenMeasuredSubTable<3>(data->spectra, out);
+
+	const int idx = static_cast<int>(out.measuredTables.size());
+	out.measuredTables.push_back(mt);
+	cache.emplace(resolvedPath, idx);
+	return idx;
+}
+
 // Mirrors pbrt_cpu_builder.h's makeMaterial() decision for decision, including
 // emission winning over the declared material - in pbrt an AreaLightSource
 // attaches to the shape, and the surface is an emitter regardless of what else
@@ -131,7 +240,8 @@ inline int getOrBuildBssrdfTable(double g, double eta, SceneData &out,
 inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 								 const pbrt_flatten::Emission *emission,
 								 SceneData &out,
-								 std::map<std::pair<double,double>, int> &bssrdfTableCache) {
+								 std::map<std::pair<double,double>, int> &bssrdfTableCache,
+								 std::map<std::string, int> &measuredTableCache) {
 	MaterialData d = {};
 	d.textureIdx = -1;
 
@@ -221,17 +331,28 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 	case pbrt_flatten::MaterialKind::Unsupported:
 		d.type = MaterialType::Lambertian;
 		break;
-	// Real tabulated measured-BRDF support is CPU-only (src/TheRestOfYourLife/
-	// material_pbrt.h's `class measured`) - out of scope for GPU. This case
-	// exists only so adding MaterialKind::Measured to the shared enum (it
-	// used to be an alias for Unsupported) doesn't change GPU's behaviour:
-	// without an explicit case here this would still hit no `default:` and
-	// fail to compile, and if it silently fell through some other branch
-	// instead it would render wrong rather than the flat diffuse a
-	// "measured" material has always rendered as on this backend.
-	case pbrt_flatten::MaterialKind::Measured:
-		d.type = MaterialType::Lambertian;
+	// Real tabulated measured-BRDF support, BOTH GPU backends now (see
+	// MaterialType::Measured's own comment in optix_types.h and
+	// optix_measured_bxdf.h/wavefront_measured_bxdf.h for the device math).
+	// m.measuredFilename is already a resolved, load-tested absolute path by
+	// this point (pbrt_load.h ran during CPU scene loading, before this
+	// builder ever sees the FlatScene - see that field's own comment) or
+	// empty if resolution/loading failed - either way, falling back to
+	// Lambertian here matches pbrt_cpu_builder.h's own `class measured`
+	// fallback (`loaded()` false) exactly, so the two backends cannot
+	// disagree about which materials got real data and which fell back.
+	case pbrt_flatten::MaterialKind::Measured: {
+		const int tableIdx = m.measuredFilename.empty()
+			? -1
+			: getOrBuildMeasuredTable(m.measuredFilename, out, measuredTableCache);
+		if (tableIdx >= 0) {
+			d.type = MaterialType::Measured;
+			d.textureIdx = tableIdx;
+		} else {
+			d.type = MaterialType::Lambertian;
+		}
 		break;
+	}
 	}
 	return d;
 }
@@ -260,6 +381,10 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 	// getOrBuildBssrdfTable()'s own comment. Only Subsurface materials touch
 	// this; stays empty for every scene without one.
 	std::map<std::pair<double, double>, int> bssrdfTableCache;
+	// Separate dedup cache for GpuMeasuredTable-by-resolved-.bsdf-path - see
+	// getOrBuildMeasuredTable()'s own comment. Only Measured materials touch
+	// this; stays empty for every scene without one.
+	std::map<std::string, int> measuredTableCache;
 	const auto materialIndex = [&](int mi, int ai) {
 		const auto key = std::make_pair(mi, ai);
 		const auto it = cache.find(key);
@@ -276,7 +401,7 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 				: kDefault;
 
 		const int idx = static_cast<int>(out.materials.size());
-		out.materials.push_back(makeMaterial(m, em, out, bssrdfTableCache));
+		out.materials.push_back(makeMaterial(m, em, out, bssrdfTableCache, measuredTableCache));
 		cache.emplace(key, idx);
 		return idx;
 	};

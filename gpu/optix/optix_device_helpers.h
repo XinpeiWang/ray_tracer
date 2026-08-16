@@ -13,6 +13,7 @@
 #include "../../src/shared/noise.h"      // Perlin turbulence (CPU+GPU) - see sample_texture()
 #include "../../src/shared/normal_map.h" // apply_normal_map (CPU+GPU) - see MaterialType::NormalMappedLambertian
 #include "../../src/shared/bilinear_patch.h" // blp_sample/blp_pdf_wi (CPU+GPU) - see GpuLightKind::BilinearPatch
+#include "../../src/shared/shading_frame.h"  // ShadingFrame<T> (CPU+GPU) - see MaterialType::Measured
 
 // Launch parameters (constant across all threads)
 extern "C" { __constant__ LaunchParams params; }
@@ -153,6 +154,13 @@ __device__ __forceinline__ bool sample_principled_material(
 	attenuation   = make_float3(res.r, res.g, res.b);
 	return true;
 }
+
+// Device-side real tabulated-measured-BRDF evaluation (MaterialType::
+// Measured, both GPU backends - this is the recursive backend's copy) -
+// needs `params` (declared above) for the flat table arrays and
+// random_float() (defined above) for sample_measured_material()'s own
+// per-sample randoms, so this include must stay below both.
+#include "optix_measured_bxdf.h"
 
 __device__ __forceinline__ float3 random_on_hemisphere(const float3& normal, unsigned int& seed) {
 	float3 on_unit_sphere = random_unit_vector(seed);
@@ -1240,6 +1248,30 @@ __device__ __forceinline__ void shade_material(
 			attenuation = mat.albedo;
 			scattered = true;
 			is_specular = true;  // specular bounce: next hit adds full emission, no MIS
+			break;
+		}
+
+		case MaterialType::Measured: {
+			// Real tabulated measured-BRDF (pbrt-v4 Material "measured") -
+			// a single VNDF-importance-sampled BxDF sample per hit, same
+			// *shape* as Metal above (sample once, get a direction + full
+			// throughput weight, continue as a non-NEE specular-style
+			// bounce) - see sample_measured_material() (optix_measured_
+			// bxdf.h) and MaterialType::Measured's own comment in
+			// optix_types.h. Falls back to absorption (scattered=false,
+			// matching CPU's `if (!ok) return false;`) on any of
+			// sample_f()'s own rejection paths (grazing wo, zero pdf, a
+			// reflected half-vector below the horizon) or an invalid table
+			// index.
+			float3 sdir, atten;
+			if (sample_measured_material(ray_dir, normal, mat, seed, sdir, atten)) {
+				scattered_dir = sdir;
+				attenuation   = atten;
+				scattered     = true;
+			} else {
+				scattered = false;
+			}
+			is_specular = true;
 			break;
 		}
 

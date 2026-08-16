@@ -213,6 +213,19 @@ public:
     int  XSize()const{return(int)m_nx;}
     int  YSize()const{return(int)m_ny;}
 
+    // ---- GPU upload accessors -------------------------------------------
+    // Read-only access to the already-built flat tables/parameter axes, for
+    // flattening one PiecewiseLinear2D instance into device buffers (see
+    // gpu/optix/pbrt_gpu_builder.h's getOrBuildMeasuredTable()). No CDF
+    // construction happens on the GPU - these just expose what BuildImpl()
+    // already computed CPU-side. Pure const getters, no behavior change.
+    const uint32_t* ParamRes()    const { return m_ps; }
+    const uint32_t* ParamStride() const { return m_pst; }
+    const std::vector<float>& ParamValues(size_t axis) const { return m_pv[axis]; }
+    const std::vector<float>& Data() const { return m_data; }
+    const std::vector<float>& Mcdf() const { return m_mcdf; }
+    const std::vector<float>& Ccdf() const { return m_ccdf; }
+
 private:
     void BuildImpl(const float* data,int xSize,int ySize,
                    const int* pr,const float* const* pv,

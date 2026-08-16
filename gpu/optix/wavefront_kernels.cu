@@ -32,6 +32,7 @@
 #include "../../src/shared/noise.h"       // turbulence_simple - see wf_sample_texture()
 #include "../../src/shared/normal_map.h"  // apply_normal_map - see MaterialType::NormalMappedLambertian
 #include "../../src/shared/bilinear_patch.h"  // blp_sample - see wf_sample_bilinear_patch_light()
+#include "../../src/shared/shading_frame.h"   // ShadingFrame<T> (CPU+GPU) - see MaterialType::Measured
 
 // ============================================================================
 // Device helpers (shared with optix_programs.cu logic)
@@ -242,6 +243,15 @@ __device__ __forceinline__ bool wf_sample_principled_material(
 	attenuation   = make_float3(res.r, res.g, res.b);
 	return true;
 }
+
+// MaterialType::Measured: real tabulated measured-BRDF (wavefront-native
+// device math + wf_sample_measured_material(), duplicated from
+// optix_measured_bxdf.h with the wf_ prefix - see that new header's own
+// extensive comment). Needs wf_rand() (defined above) and ShadingFrame<T>
+// (included at the top of this file), so it lives here rather than
+// wavefront_probe.h - unlike BSSRDF, this material never needs an OptiX
+// trace, so it does not belong in that probe-walk-specific module.
+#include "wavefront_measured_bxdf.h"
 
 // reflect/refract wrappers
 __device__ __forceinline__ float3 wf_reflect(const float3& v, const float3& n) {
@@ -1216,6 +1226,18 @@ extern "C" __global__ void evaluate_materials(
 	unsigned int numCloudMediums,
 	const GpuRgbGridMedium* rgbGridMediums,
 	const float* rgbGridData,
+	// Real tabulated measured-BRDF tables (MaterialType::Measured) - see
+	// optix_types.h's GpuMeasuredTable comment and wavefront_measured_bxdf.h.
+	// Plain extra kernel parameters, same shape as cloudMediums/
+	// rgbGridMediums above (this material needs no OptiX trace, so it does
+	// not go through the wf_params/lp raygen-launch-params path the BSSRDF
+	// probe walk uses).
+	const GpuMeasuredTable* measuredTables,
+	unsigned int numMeasuredTables,
+	const float* measuredParamValues,
+	const float* measuredData,
+	const float* measuredMcdf,
+	const float* measuredCcdf,
 	float3 skyColor,
 	float shadowRayEpsilon
 ) {
@@ -1435,6 +1457,29 @@ extern "C" __global__ void evaluate_materials(
 		attenuation      = albedoSpectrum(mat.albedo);
 		scattered        = (dot(scattered_dir, normal) > 0.0f);
 		is_specular      = true;
+		break;
+	}
+	case MaterialType::Measured: {
+		// Real tabulated measured-BRDF - see wf_sample_measured_material's
+		// comment above. Matches material_pbrt.h `class measured`'s
+		// skip_pdf=true: no NEE/MIS (is_specular=true), and the result needs
+		// unboundedSpectrum (not albedoSpectrum) since sample_f()'s returned
+		// fr/fg/fb is already the material's full throughput weight, not a
+		// [0,1] albedo - same convention as MaterialType::Hair/Principled
+		// above (their BxDF::sample() results are likewise already-weighted,
+		// potentially-unbounded values).
+		float3 sdir, atten;
+		if (wf_sample_measured_material(h.rayDir, normal, mat,
+				measuredTables, numMeasuredTables,
+				measuredParamValues, measuredData, measuredMcdf, measuredCcdf,
+				seed, sdir, atten)) {
+			scattered_dir = sdir;
+			attenuation   = unboundedSpectrum(atten);
+			scattered     = true;
+		} else {
+			scattered = false;
+		}
+		is_specular = true;
 		break;
 	}
 	case MaterialType::Dielectric: {

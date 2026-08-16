@@ -49,6 +49,8 @@ extern "C" void wf_launch_evaluate_materials(
 	int,
 	const CloudMedium<float>*, unsigned int,
 	const GpuRgbGridMedium*, const float*,
+	const GpuMeasuredTable*, unsigned int,
+	const float*, const float*, const float*, const float*,
 	float3, float,
 	cudaStream_t);
 extern "C" void wf_launch_accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, cudaStream_t);
@@ -965,6 +967,11 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		reinterpret_cast<const CloudMedium<float>*>(d_cloudMediums_), numCloudMediums_,
 		reinterpret_cast<const GpuRgbGridMedium*>(d_rgbGridMediums_),
 		reinterpret_cast<const float*>(d_rgbGridData_),
+		reinterpret_cast<const GpuMeasuredTable*>(d_measuredTables_), numMeasuredTables_,
+		reinterpret_cast<const float*>(d_measuredParamValues_),
+		reinterpret_cast<const float*>(d_measuredData_),
+		reinterpret_cast<const float*>(d_measuredMcdf_),
+		reinterpret_cast<const float*>(d_measuredCcdf_),
 		skyColor, shadowRayEpsilon,
 		stream_);
 }

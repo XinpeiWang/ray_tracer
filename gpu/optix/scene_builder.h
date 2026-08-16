@@ -28,6 +28,17 @@ struct SceneData {
 	std::vector<float> bssrdfProfile;
 	std::vector<float> bssrdfProfileCdf;
 
+	// Real tabulated measured-BRDF tables (MaterialType::Measured, both GPU
+	// backends - see optix_types.h's GpuPL2DTable/GpuMeasuredTable
+	// comments), indexed by MaterialData::textureIdx. Built once per unique
+	// resolved .bsdf file path by pbrt_gpu_builder.h; empty for every scene
+	// with no measured material.
+	std::vector<GpuMeasuredTable> measuredTables;
+	std::vector<float> measuredParamValues;
+	std::vector<float> measuredData;
+	std::vector<float> measuredMcdf;
+	std::vector<float> measuredCcdf;
+
 	// ---- object instancing ------------------------------------------------
 	// Geometry that exists once and is placed many times. Kept in a SEPARATE
 	// array from `triangles` on purpose: these are in their definition's

@@ -84,7 +84,12 @@ public:
 		const std::vector<float>& bssrdfRhoSamples = {},
 		const std::vector<float>& bssrdfRadiusSamples = {},
 		const std::vector<float>& bssrdfProfile = {},
-		const std::vector<float>& bssrdfProfileCdf = {}
+		const std::vector<float>& bssrdfProfileCdf = {},
+		const std::vector<GpuMeasuredTable>& measuredTables = {},
+		const std::vector<float>& measuredParamValues = {},
+		const std::vector<float>& measuredData = {},
+		const std::vector<float>& measuredMcdf = {},
+		const std::vector<float>& measuredCcdf = {}
 	);
 
 	/// @brief Render a frame using path tracing
@@ -327,6 +332,15 @@ private:
 	CUdeviceptr d_bssrdfRadiusSamples_ = 0;
 	CUdeviceptr d_bssrdfProfile_ = 0;
 	CUdeviceptr d_bssrdfProfileCdf_ = 0;
+
+	// Real tabulated measured-BRDF tables (MaterialType::Measured, both GPU
+	// backends - see optix_types.h's GpuMeasuredTable comment).
+	CUdeviceptr d_measuredTables_ = 0;
+	unsigned int numMeasuredTables_ = 0;
+	CUdeviceptr d_measuredParamValues_ = 0;
+	CUdeviceptr d_measuredData_ = 0;
+	CUdeviceptr d_measuredMcdf_ = 0;
+	CUdeviceptr d_measuredCcdf_ = 0;
 
 	// Light sampling support for MIS
 	CUdeviceptr d_lightIndices_ = 0;  ///< Device light primitive indices

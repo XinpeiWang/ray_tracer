@@ -704,7 +704,12 @@ bool OptiXRenderer::buildScene(
 	const std::vector<float>& bssrdfRhoSamples,
 	const std::vector<float>& bssrdfRadiusSamples,
 	const std::vector<float>& bssrdfProfile,
-	const std::vector<float>& bssrdfProfileCdf
+	const std::vector<float>& bssrdfProfileCdf,
+	const std::vector<GpuMeasuredTable>& measuredTables,
+	const std::vector<float>& measuredParamValues,
+	const std::vector<float>& measuredData,
+	const std::vector<float>& measuredMcdf,
+	const std::vector<float>& measuredCcdf
 ) {
 	// Store material data on device
 	numMaterials_ = static_cast<unsigned int>(materials.size());
@@ -1011,6 +1016,41 @@ bool OptiXRenderer::buildScene(
 	if (numBssrdfTables_ > 0)
 		std::cout << "[OptiX] Uploaded " << bssrdfTables.size() << " BSSRDF table(s) ("
 			<< bssrdfProfile.size() << " profile floats) to GPU\n";
+
+	// Real tabulated measured-BRDF tables (MaterialType::Measured, both GPU
+	// backends - see optix_types.h's GpuMeasuredTable comment). Same upload
+	// shape as the BSSRDF tables just above: one small metadata array
+	// (GpuMeasuredTable, itself 5 GpuPL2DTable sub-tables) plus four shared
+	// flat float buffers it slices into.
+	numMeasuredTables_ = static_cast<unsigned int>(measuredTables.size());
+	size_t measuredTableSize = measuredTables.size() * sizeof(GpuMeasuredTable);
+
+	if (d_measuredTables_) { cudaFree(reinterpret_cast<void*>(d_measuredTables_)); d_measuredTables_ = 0; }
+	if (numMeasuredTables_ > 0) {
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_measuredTables_), measuredTableSize));
+		CUDA_CHECK(cudaMemcpy(
+			reinterpret_cast<void*>(d_measuredTables_),
+			measuredTables.data(),
+			measuredTableSize,
+			cudaMemcpyHostToDevice
+		));
+	}
+
+	const auto uploadMeasuredFloats = [&](const std::vector<float>& src, CUdeviceptr& dst) {
+		if (dst) { cudaFree(reinterpret_cast<void*>(dst)); dst = 0; }
+		if (src.empty()) return;
+		const size_t bytes = src.size() * sizeof(float);
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dst), bytes));
+		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(dst), src.data(), bytes, cudaMemcpyHostToDevice));
+	};
+	uploadMeasuredFloats(measuredParamValues, d_measuredParamValues_);
+	uploadMeasuredFloats(measuredData, d_measuredData_);
+	uploadMeasuredFloats(measuredMcdf, d_measuredMcdf_);
+	uploadMeasuredFloats(measuredCcdf, d_measuredCcdf_);
+
+	if (numMeasuredTables_ > 0)
+		std::cout << "[OptiX] Uploaded " << measuredTables.size() << " measured-BRDF table(s) ("
+			<< measuredData.size() << " data floats) to GPU\n";
 
 	// Store light data on device for MIS
 	numLights_ = static_cast<unsigned int>(lightIndices.size());
@@ -2013,6 +2053,8 @@ bool OptiXRenderer::render(
 		wavefrontTracer_->setRgbGridMediums(d_rgbGridMediums_, numRgbGridMediums_, d_rgbGridData_, rgbGridDataCount_);
 		wavefrontTracer_->setBssrdfTables(d_bssrdfTables_, numBssrdfTables_,
 			d_bssrdfRhoSamples_, d_bssrdfRadiusSamples_, d_bssrdfProfile_, d_bssrdfProfileCdf_);
+		wavefrontTracer_->setMeasuredTables(d_measuredTables_, numMeasuredTables_,
+			d_measuredParamValues_, d_measuredData_, d_measuredMcdf_, d_measuredCcdf_);
 		return wavefrontTracer_->render(
 			(int)width, (int)height, (int)samplesPerPixel, (int)maxDepth,
 			gpuCam,
@@ -2063,6 +2105,12 @@ bool OptiXRenderer::render(
 	params.bssrdfRadiusSamples = reinterpret_cast<float*>(d_bssrdfRadiusSamples_);
 	params.bssrdfProfile = reinterpret_cast<float*>(d_bssrdfProfile_);
 	params.bssrdfProfileCdf = reinterpret_cast<float*>(d_bssrdfProfileCdf_);
+	params.measuredTables = reinterpret_cast<GpuMeasuredTable*>(d_measuredTables_);
+	params.numMeasuredTables = numMeasuredTables_;
+	params.measuredParamValues = reinterpret_cast<float*>(d_measuredParamValues_);
+	params.measuredData = reinterpret_cast<float*>(d_measuredData_);
+	params.measuredMcdf = reinterpret_cast<float*>(d_measuredMcdf_);
+	params.measuredCcdf = reinterpret_cast<float*>(d_measuredCcdf_);
 	params.textures = reinterpret_cast<TextureData*>(d_textures_);
 	params.numTextures = numTextures_;
 	params.texturePixels = reinterpret_cast<unsigned char*>(d_texturePixels_);
@@ -2179,6 +2227,11 @@ void OptiXRenderer::cleanup() noexcept {
 	if (d_bssrdfRadiusSamples_) cudaFree(reinterpret_cast<void*>(d_bssrdfRadiusSamples_));
 	if (d_bssrdfProfile_) cudaFree(reinterpret_cast<void*>(d_bssrdfProfile_));
 	if (d_bssrdfProfileCdf_) cudaFree(reinterpret_cast<void*>(d_bssrdfProfileCdf_));
+	if (d_measuredTables_) cudaFree(reinterpret_cast<void*>(d_measuredTables_));
+	if (d_measuredParamValues_) cudaFree(reinterpret_cast<void*>(d_measuredParamValues_));
+	if (d_measuredData_) cudaFree(reinterpret_cast<void*>(d_measuredData_));
+	if (d_measuredMcdf_) cudaFree(reinterpret_cast<void*>(d_measuredMcdf_));
+	if (d_measuredCcdf_) cudaFree(reinterpret_cast<void*>(d_measuredCcdf_));
 	if (d_lightIndices_) cudaFree(reinterpret_cast<void*>(d_lightIndices_));
 	if (d_lightKinds_) cudaFree(reinterpret_cast<void*>(d_lightKinds_));
 	if (d_aliasTable_) cudaFree(reinterpret_cast<void*>(d_aliasTable_));

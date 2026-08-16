@@ -113,7 +113,10 @@ extern "C" int optix_render_main(
 										 scene.rgbGridMediums, scene.rgbGridData,
 									 scene.bssrdfTables, scene.bssrdfRhoSamples,
 									 scene.bssrdfRadiusSamples, scene.bssrdfProfile,
-									 scene.bssrdfProfileCdf)) {
+									 scene.bssrdfProfileCdf,
+										 scene.measuredTables, scene.measuredParamValues,
+										 scene.measuredData, scene.measuredMcdf,
+										 scene.measuredCcdf)) {
 				std::cerr << "[OptiX] Failed to upload scene to GPU\n";
 				return ERR_GPU_MEMORY_COPY_FAILED;
 			}
@@ -302,7 +305,10 @@ extern "C" int optix_render_main_sppm(
 										 scene.rgbGridMediums, scene.rgbGridData,
 									 scene.bssrdfTables, scene.bssrdfRhoSamples,
 									 scene.bssrdfRadiusSamples, scene.bssrdfProfile,
-									 scene.bssrdfProfileCdf)) {
+									 scene.bssrdfProfileCdf,
+										 scene.measuredTables, scene.measuredParamValues,
+										 scene.measuredData, scene.measuredMcdf,
+										 scene.measuredCcdf)) {
 				std::cerr << "[OptiX] Failed to upload scene to GPU\n";
 				return ERR_GPU_MEMORY_COPY_FAILED;
 			}

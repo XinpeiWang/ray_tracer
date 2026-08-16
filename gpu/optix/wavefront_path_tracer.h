@@ -106,6 +106,25 @@ public:
         d_bssrdfProfileCdf_ = d_bssrdfProfileCdf;
     }
 
+    /// Real tabulated measured-BRDF tables (MaterialType::Measured) - same
+    /// setter-not-render()-parameter pattern as setCloudMediums()/
+    /// setRgbGridMediums()/setBssrdfTables() above, for the same reason.
+    /// These are the SAME device buffers OptiXRenderer already builds/
+    /// uploads once for the recursive backend (see optix_types.h's
+    /// GpuMeasuredTable comment and pbrt_gpu_builder.h's
+    /// getOrBuildMeasuredTable() - already backend-agnostic). 0/0/... (the
+    /// default) is a valid "no Measured materials in this scene" state.
+    void setMeasuredTables(CUdeviceptr d_measuredTables, unsigned int numMeasuredTables,
+                            CUdeviceptr d_measuredParamValues, CUdeviceptr d_measuredData,
+                            CUdeviceptr d_measuredMcdf, CUdeviceptr d_measuredCcdf) {
+        d_measuredTables_ = d_measuredTables;
+        numMeasuredTables_ = numMeasuredTables;
+        d_measuredParamValues_ = d_measuredParamValues;
+        d_measuredData_ = d_measuredData;
+        d_measuredMcdf_ = d_measuredMcdf;
+        d_measuredCcdf_ = d_measuredCcdf;
+    }
+
     /// Whether the scene has instanced geometry of each kind. buildSBT() must
     /// append the same dedicated hit-record pairs, in the same order, that
     /// OptiXRenderer::buildSBT() does - the IAS instances carry sbtOffsets
@@ -223,6 +242,13 @@ private:
     CUdeviceptr  d_bssrdfRadiusSamples_ = 0;
     CUdeviceptr  d_bssrdfProfile_ = 0;
     CUdeviceptr  d_bssrdfProfileCdf_ = 0;
+
+    CUdeviceptr  d_measuredTables_ = 0;       ///< see setMeasuredTables()
+    unsigned int numMeasuredTables_ = 0;
+    CUdeviceptr  d_measuredParamValues_ = 0;
+    CUdeviceptr  d_measuredData_ = 0;
+    CUdeviceptr  d_measuredMcdf_ = 0;
+    CUdeviceptr  d_measuredCcdf_ = 0;
     std::string  ptxPath_;
     CUdeviceptr  d_instancePrimBase_ = 0;   ///< see setInstancePrimBase()
     CUdeviceptr  d_textures_ = 0;           ///< see setTextures()
