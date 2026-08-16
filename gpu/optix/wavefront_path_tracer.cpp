@@ -23,6 +23,7 @@
 #include "rgb_to_spectrum_table.h"
 #include <optix_stack_size.h>
 #include <cuda.h>
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -890,6 +891,14 @@ bool WavefrontPathTracer::render(
 	lp.maxDepth        = (unsigned int)max_depth;
 	lp.frameNumber     = frameNumber_++;
 
+	// Progress print interval: a flat "every 10th sample" (the original
+	// throttle) still produced 500 lines on a 5000-spp render - plenty to
+	// flood a log panel. Scales the interval with samples_per_pixel instead,
+	// capping the whole render at ~50 progress lines, but never coarser than
+	// every-10-samples so a short/low-spp render (which finishes in a couple
+	// seconds anyway) keeps the same fine-grained updates as before.
+	const int progressPrintInterval = std::max(10, samples_per_pixel / 50);
+
 	// -------------------------------------------------------------------------
 	// Outer sample loop
 	// -------------------------------------------------------------------------
@@ -1023,12 +1032,10 @@ bool WavefrontPathTracer::render(
 		// scanline unit (this backend has no real scanlines), scaled by
 		// completed/total samples instead of completed/total rows.
 		//
-		// Throttled to every 10th sample (plus always the last one, so the
-		// bar still reaches 100%) - printing every single sample flooded a
-		// high-spp render's log with lines nobody was reading between GUI
-		// updates.
+		// Throttled to progressPrintInterval (plus always the last sample,
+		// so the bar still reaches 100%) - see that variable's own comment.
 		const bool isLastSample = sampleIdx == samples_per_pixel - 1;
-		if ((sampleIdx + 1) % 10 == 0 || isLastSample) {
+		if ((sampleIdx + 1) % progressPrintInterval == 0 || isLastSample) {
 			const int completed = (int)((long long)height * (sampleIdx + 1) / samples_per_pixel);
 			std::cout << "Scanlines remaining: " << (height - completed) << "\r" << std::flush;
 		}
