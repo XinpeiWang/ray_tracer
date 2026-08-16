@@ -175,8 +175,8 @@ struct MeasuredBRDFData {
 		isotropic = is_isotropic;
 
 		// NDF and sigma have no parameter conditioning
-		ndf   = PiecewiseLinear2D<0>(ndf_data,   ndf_nx,   ndf_ny,   true, false);
-		sigma = PiecewiseLinear2D<0>(sigma_data,  sigma_nx, sigma_ny, true, false);
+		ndf   = PiecewiseLinear2D<0>(ndf_data,   ndf_nx,   ndf_ny,   false, false);
+		sigma = PiecewiseLinear2D<0>(sigma_data,  sigma_nx, sigma_ny, false, false);
 
 		// VNDF and luminance: conditioned on (phi_i, theta_i)
 		const int    vndf_res[2]    = { nphi_i, ntheta_i };
