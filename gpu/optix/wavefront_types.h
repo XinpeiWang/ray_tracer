@@ -158,6 +158,68 @@ struct MissWorkItem {
 	float  brdf_pdf;
 };
 
+// A MaterialType::Subsurface entry hit that transmitted through the entry
+// dielectric interface (evaluate_materials's own Subsurface case,
+// wavefront_kernels.cu) and needs a BSSRDF probe walk to find its exit
+// point. Pushed instead of scattering directly, because the probe walk
+// needs real optixTrace calls (optix_probe_hit.h's payload/hit-group
+// pattern via wf_trace_probe_ray(), wavefront_probe.h) which are
+// unavailable from evaluate_materials - a plain CUDA kernel, not an OptiX
+// program. Consumed by __raygen__wf_probe (wavefront_probe.h), one thread
+// per queued item, mirroring pbrt-v4's own SampleSubsurface/
+// GetBSSRDFAndProbeRayWorkItem -> IntersectOneRandom staging.
+//
+// Carries the probe's own entry point/axis (p0/axis0 - see
+// bssrdf_probe_walk()'s comment in optix_device_helpers.h for what these
+// mean, this is the exact same 3-axis-MIS algorithm) plus everything
+// needed to resume the path once (or if) an exit point is found - the same
+// per-path state RayWorkItem itself carries, since a probe request is a
+// path in flight just like any other queued ray.
+struct BssrdfProbeWorkItem {
+	float3 p0;      // probe segment center (Subsurface entry hit point)
+	float3 axis0;   // probe axis seed (entry shading normal)
+	// This material's own index into materials[] - identifies "same
+	// material" candidates during the walk (bssrdf_probe_walk()'s own
+	// matIdx parameter) and is looked up again to read
+	// bssrdf_sigma_a/bssrdf_sigma_s/ior/textureIdx (-> bssrdfTables).
+	int    matIdx;
+	unsigned int seed;
+	float  throughput[kWFNWavelengths];
+	float  radiance[kWFNWavelengths];
+	float  wavelengths[kWFNWavelengths];
+	float  wavelength_pdfs[kWFNWavelengths];
+	int    pixelIndex;
+	int    depth;
+};
+
+// Result of one BSSRDF probe walk (__raygen__wf_probe, wavefront_probe.h) -
+// always pushed, whether or not a valid exit point was found (see `found`),
+// so resolve_bssrdf_exit() (wavefront_kernels.cu) can flush this path's
+// still-pending `radiance` (deferred specular-chain emission, same meaning
+// as RayWorkItem::radiance) even on failure - otherwise it would be
+// silently dropped, the same class of bug MissWorkItem::radiance's own
+// comment warns about for a different case. On success, resolves as an
+// ordinary MaterialType::NormalizedFresnel(ior=materials[matIdx].ior)
+// non-specular bounce at exitPos/exitNormal, weighted by Sp/(sampleProb*pdf) -
+// mirrors camera.h::sample_bssrdf_exit()'s hand-off and the recursive
+// backend's identical shade_material() Subsurface-case hand-off exactly.
+struct BssrdfExitWorkItem {
+	int    found;        // 0/1 - see this struct's own comment
+	float3 exitPos;
+	float3 exitNormal;
+	float3 Sp;            // BSSRDF profile value at the found exit distance (unbounded positive RGB, not a [0,1] albedo)
+	float  pdf;            // combined 3-axis MIS pdf (bssrdf_probe_walk()'s out_pdf)
+	float  sampleProb;     // 1/candidate_count from the walk's reservoir sampling
+	int    matIdx;
+	unsigned int seed;
+	float  throughput[kWFNWavelengths];
+	float  radiance[kWFNWavelengths];
+	float  wavelengths[kWFNWavelengths];
+	float  wavelength_pdfs[kWFNWavelengths];
+	int    pixelIndex;
+	int    depth;
+};
+
 // ============================================================================
 // WorkQueue<T> — device-side append-only queue with an atomic size counter
 // ============================================================================
@@ -219,6 +281,15 @@ struct WavefrontLaunchParams {
 	// Shadow ray queue is traced separately via a second optixLaunch.
 	WorkQueue<ShadowRayWorkItem> shadowQueue;
 
+	// BSSRDF probe walk (MaterialType::Subsurface, wavefront backend Phase
+	// 2 - see BssrdfProbeWorkItem/BssrdfExitWorkItem's own comments). Both
+	// traced via a THIRD optixLaunch (reusing the same intersect pipeline/
+	// module, a dedicated raygen + hit groups - see wavefront_probe.h and
+	// WavefrontPathTracer::buildSBT()'s probeSBT_), between the intersect
+	// and shadow launches each bounce.
+	WorkQueue<BssrdfProbeWorkItem> bssrdfProbeQueue;
+	WorkQueue<BssrdfExitWorkItem>  bssrdfExitQueue;
+
 	// Output
 	float3*      framebuffer;
 	unsigned int width;
@@ -267,6 +338,22 @@ struct WavefrontLaunchParams {
 	unsigned int      numRgbGridMediums;
 	float*            rgbGridData;
 	unsigned int      rgbGridDataCount;
+
+	// Tabulated BSSRDF profile tables (MaterialType::Subsurface), same
+	// device buffers OptiXRenderer already uploads once for the recursive
+	// path (see optix_types.h's GpuBssrdfTable / LaunchParams::bssrdfTables
+	// comments) - read here by wavefront_probe.h's wf_gpu_bssrdf_sr()/
+	// wf_gpu_bssrdf_pdf_sr()/wf_gpu_bssrdf_sample_sr() (wavefront-native
+	// duplicates of gpu/optix/optix_bssrdf.h's math, reading through
+	// `wf_params` instead of the recursive path's `params` - separate OptiX
+	// modules can't share a __constant__ launch-params symbol, matching
+	// every other wf_-prefixed device-helper duplicate in this codebase).
+	GpuBssrdfTable* bssrdfTables;
+	unsigned int    numBssrdfTables;
+	float* bssrdfRhoSamples;
+	float* bssrdfRadiusSamples;
+	float* bssrdfProfile;
+	float* bssrdfProfileCdf;
 
 	// Light sampling (alias table, same layout as RecursivePathTracer)
 	int*         lightIndices;

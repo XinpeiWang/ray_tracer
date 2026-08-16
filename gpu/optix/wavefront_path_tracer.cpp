@@ -36,7 +36,7 @@ extern "C" void wf_launch_generate_camera_rays(
 	GpuCameraParams, unsigned int, cudaStream_t);
 extern "C" void wf_launch_evaluate_materials(
 	WorkQueue<HitWorkItem>, int,
-	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
+	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>, WorkQueue<BssrdfProbeWorkItem>,
 	float3*,
 	const SphereData*, unsigned int,
 	const QuadData*, unsigned int,
@@ -53,6 +53,19 @@ extern "C" void wf_launch_evaluate_materials(
 	cudaStream_t);
 extern "C" void wf_launch_accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, cudaStream_t);
 extern "C" void wf_launch_accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*, cudaStream_t);
+extern "C" void wf_launch_resolve_bssrdf_exit(
+	WorkQueue<BssrdfExitWorkItem>, int,
+	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
+	float3*,
+	const SphereData*, unsigned int,
+	const QuadData*, unsigned int,
+	const TriangleData*, unsigned int,
+	const BilinearPatchData*, unsigned int,
+	const MaterialData*, unsigned int,
+	const int*, const GpuLightKind*, const GpuAliasEntry*, unsigned int,
+	const PunctualLightGPU*, unsigned int,
+	float3, float,
+	cudaStream_t);
 extern "C" void wf_launch_normalize_framebuffer(unsigned int, float, float3*, cudaStream_t);
 extern "C" void wf_reset_queue_counter(int*, cudaStream_t);
 extern "C" void wf_upload_cie_tables(const float*, const float*, const float*, int);
@@ -322,6 +335,71 @@ bool WavefrontPathTracer::createProgramGroups() {
 	OPTIX_CHECK(optixProgramGroupCreate(context_, &triHitDesc, 1, &pgOptions,
 										 log, &logSize, &hitTrianglePG_));
 
+	// ----- BSSRDF probe walk (MaterialType::Subsurface, Phase 2) -----
+	// Linked into the SAME intersect pipeline as the raygen/hit groups
+	// above (see linkPipeline()'s intersectGroups[] array and
+	// wavefront_probe.h's own header comment for why no new module/
+	// pipeline is needed here).
+
+	OptixProgramGroupDesc probeRgDesc = {};
+	probeRgDesc.kind                     = OPTIX_PROGRAM_GROUP_KIND_RAYGEN;
+	probeRgDesc.raygen.module            = wfModule_;
+	probeRgDesc.raygen.entryFunctionName = "__raygen__wf_probe";
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(context_, &probeRgDesc, 1, &pgOptions,
+										 log, &logSize, &raygenProbePG_));
+
+	OptixProgramGroupDesc probeMissDesc = {};
+	probeMissDesc.kind                   = OPTIX_PROGRAM_GROUP_KIND_MISS;
+	probeMissDesc.miss.module            = wfModule_;
+	probeMissDesc.miss.entryFunctionName = "__miss__wf_probe";
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(context_, &probeMissDesc, 1, &pgOptions,
+										 log, &logSize, &missProbePG_));
+
+	OptixProgramGroupDesc probeSphereDesc = {};
+	probeSphereDesc.kind                         = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	probeSphereDesc.hitgroup.moduleIS            = wfModule_;
+	probeSphereDesc.hitgroup.entryFunctionNameIS = "__intersection__wf_sphere";
+	probeSphereDesc.hitgroup.moduleCH            = wfModule_;
+	probeSphereDesc.hitgroup.entryFunctionNameCH = "__closesthit__wf_probe_sphere";
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(context_, &probeSphereDesc, 1, &pgOptions,
+										 log, &logSize, &hitProbeSpherePG_));
+
+	OptixProgramGroupDesc probeQuadDesc = {};
+	probeQuadDesc.kind                         = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	probeQuadDesc.hitgroup.moduleIS            = wfModule_;
+	probeQuadDesc.hitgroup.entryFunctionNameIS = "__intersection__wf_quad";
+	probeQuadDesc.hitgroup.moduleCH            = wfModule_;
+	probeQuadDesc.hitgroup.entryFunctionNameCH = "__closesthit__wf_probe_quad";
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(context_, &probeQuadDesc, 1, &pgOptions,
+										 log, &logSize, &hitProbeQuadPG_));
+
+	OptixProgramGroupDesc probeBlpDesc = {};
+	probeBlpDesc.kind                         = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	probeBlpDesc.hitgroup.moduleIS            = wfModule_;
+	probeBlpDesc.hitgroup.entryFunctionNameIS = "__intersection__wf_bilinear_patch";
+	probeBlpDesc.hitgroup.moduleCH            = wfModule_;
+	probeBlpDesc.hitgroup.entryFunctionNameCH = "__closesthit__wf_probe_bilinear_patch";
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(context_, &probeBlpDesc, 1, &pgOptions,
+										 log, &logSize, &hitProbeBilinearPatchPG_));
+
+	// Deliberately no any-hit (alpha-cutout) here - see wavefront_probe.h's
+	// own header comment for the same documented simplification
+	// optix_probe_hit.h's recursive-backend twin already makes.
+	OptixProgramGroupDesc probeTriDesc = {};
+	probeTriDesc.kind                         = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	probeTriDesc.hitgroup.moduleIS            = wfModule_;
+	probeTriDesc.hitgroup.entryFunctionNameIS = "__intersection__wf_triangle";
+	probeTriDesc.hitgroup.moduleCH            = wfModule_;
+	probeTriDesc.hitgroup.entryFunctionNameCH = "__closesthit__wf_probe_triangle";
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(context_, &probeTriDesc, 1, &pgOptions,
+										 log, &logSize, &hitProbeTrianglePG_));
+
 	// ----- Shadow pipeline -----
 
 	OptixProgramGroupDesc shadowRGDesc = {};
@@ -395,7 +473,7 @@ bool WavefrontPathTracer::createProgramGroups() {
 	OPTIX_CHECK(optixProgramGroupCreate(context_, &excDesc, 1, &pgOptions,
 										 log, &logSize, &exceptionPG_));
 
-	std::cout << "[WavefrontPathTracer] Created 13 program groups\n";
+	std::cout << "[WavefrontPathTracer] Created 19 program groups\n";
 	return true;
 }
 
@@ -410,7 +488,10 @@ bool WavefrontPathTracer::linkPipeline(unsigned int maxTraceDepth) {
 	char   log[2048];
 	size_t logSize;
 
-	// Intersect pipeline
+	// Intersect pipeline - also carries the BSSRDF probe-walk program groups
+	// (raygenProbePG_ etc.), launched via the SAME pipeline object with a
+	// separate probeSBT_ (see wavefront_probe.h's own header comment and
+	// buildSBT()'s probeSBT_ for why no separate pipeline is needed).
 	OptixProgramGroup intersectGroups[] = {
 		raygenIntersectPG_,
 		missRadiancePG_,
@@ -418,13 +499,20 @@ bool WavefrontPathTracer::linkPipeline(unsigned int maxTraceDepth) {
 		hitQuadPG_,
 		hitBilinearPatchPG_,
 		hitTrianglePG_,
+		raygenProbePG_,
+		missProbePG_,
+		hitProbeSpherePG_,
+		hitProbeQuadPG_,
+		hitProbeBilinearPatchPG_,
+		hitProbeTrianglePG_,
 		exceptionPG_
 	};
+	constexpr size_t kNumIntersectGroups = sizeof(intersectGroups) / sizeof(intersectGroups[0]);
 	{
 		logSize = sizeof(log);
 		OPTIX_CHECK(optixPipelineCreate(
 			context_, &pipelineCompileOptions_, &linkOptions,
-			intersectGroups, 7, log, &logSize, &intersectPipeline_));
+			intersectGroups, (unsigned int)kNumIntersectGroups, log, &logSize, &intersectPipeline_));
 		std::cout << "[WavefrontPathTracer] Linked intersect pipeline\n";
 	}
 
@@ -488,7 +576,7 @@ bool WavefrontPathTracer::linkPipeline(unsigned int maxTraceDepth) {
 			continuationStackSize,
 			/*maxTraversableGraphDepth*/ 2));  // IAS -> GAS, single-level instancing
 	};
-	setComputedStackSize(intersectPipeline_, intersectGroups, 7, maxTraceDepth);
+	setComputedStackSize(intersectPipeline_, intersectGroups, kNumIntersectGroups, maxTraceDepth);
 	setComputedStackSize(shadowPipeline_, shadowGroups, 7, 1);
 
 	return true;
@@ -596,6 +684,77 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 		intersectSBT_.exceptionRecord = d_intersectExceptionRecord_;
 	}
 
+	// ---- Probe SBT (BSSRDF probe walk, Phase 2) ----
+	// Mirrors the Intersect SBT's own layout EXACTLY (same present-type
+	// ordering, same stride=2 pairing, same instanced-geometry append order)
+	// so the shared IAS instances' baked sbtOffset values resolve correctly
+	// against this SBT too, at the SAME trace-time SBTOffset=0/SBTStride=2
+	// wf_trace_probe_ray() (wavefront_probe.h) already passes - see that
+	// function's own comment. Uses this same pipeline (intersectPipeline_),
+	// just a different SBT/program groups.
+	{
+		RaygenRecord rg;
+		OPTIX_CHECK(optixSbtRecordPackHeader(raygenProbePG_, &rg));
+		rg.data = 0;
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_probeRaygenRecord_), sizeof(RaygenRecord)));
+		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_probeRaygenRecord_), &rg,
+							  sizeof(RaygenRecord), cudaMemcpyHostToDevice));
+
+		MissRecord missRec;
+		OPTIX_CHECK(optixSbtRecordPackHeader(missProbePG_, &missRec));
+		missRec.data = 0;
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_probeMissRecord_), sizeof(MissRecord)));
+		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_probeMissRecord_), &missRec,
+							  sizeof(MissRecord), cudaMemcpyHostToDevice));
+
+		std::vector<HitGroupRecord> hitRecs;
+		if (hasSpheres) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
+		}
+		if (hasQuads) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeQuadPG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeQuadPG_, &hitRecs.back())); hitRecs.back().data = {};
+		}
+		if (hasBlp) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeBilinearPatchPG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeBilinearPatchPG_, &hitRecs.back())); hitRecs.back().data = {};
+		}
+		if (hasTri) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
+		}
+		if (haveInstTri) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
+		}
+		if (haveInstSph) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
+		}
+
+		size_t sz = hitRecs.size() * sizeof(HitGroupRecord);
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_probeHitRecords_), sz));
+		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_probeHitRecords_), hitRecs.data(),
+							  sz, cudaMemcpyHostToDevice));
+
+		probeSBT_.raygenRecord                = d_probeRaygenRecord_;
+		probeSBT_.missRecordBase              = d_probeMissRecord_;
+		probeSBT_.missRecordStrideInBytes     = sizeof(MissRecord);
+		probeSBT_.missRecordCount             = 1;
+		probeSBT_.hitgroupRecordBase          = d_probeHitRecords_;
+		probeSBT_.hitgroupRecordStrideInBytes = sizeof(HitGroupRecord);
+		probeSBT_.hitgroupRecordCount         = static_cast<unsigned int>(hitRecs.size());
+
+		RaygenRecord probeExcRec;
+		OPTIX_CHECK(optixSbtRecordPackHeader(exceptionPG_, &probeExcRec));
+		probeExcRec.data = 0;
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_probeExceptionRecord_), sizeof(RaygenRecord)));
+		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_probeExceptionRecord_), &probeExcRec,
+							  sizeof(RaygenRecord), cudaMemcpyHostToDevice));
+		probeSBT_.exceptionRecord = d_probeExceptionRecord_;
+	}
+
 	// ---- Shadow SBT ----
 	{
 		RaygenRecord rg;
@@ -663,7 +822,7 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 		shadowSBT_.exceptionRecord = d_shadowExceptionRecord_;
 	}
 
-	std::cout << "[WavefrontPathTracer] Built SBTs (spheres=" << numSpheres
+	std::cout << "[WavefrontPathTracer] Built SBTs (probe SBT included) (spheres=" << numSpheres
 			  << " quads=" << numQuads
 			  << " bilinearPatches=" << numBilinearPatches
 			  << " triangles=" << numTriangles << ")\n";
@@ -684,6 +843,10 @@ bool WavefrontPathTracer::allocateQueues(int numPixels) {
 	size_t missItemSz   = numPixels * sizeof(MissWorkItem);
 	size_t shadowItemSz = numPixels * sizeof(ShadowRayWorkItem);
 	size_t occludedSz   = numPixels * sizeof(bool);
+	// Worst case every hit this bounce is a Subsurface transmission -
+	// same numPixels capacity class as every other per-bounce queue.
+	size_t probeItemSz  = numPixels * sizeof(BssrdfProbeWorkItem);
+	size_t exitItemSz   = numPixels * sizeof(BssrdfExitWorkItem);
 	size_t counterSz    = sizeof(int);
 
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_rayItems_),     rayItemSz));
@@ -692,12 +855,16 @@ bool WavefrontPathTracer::allocateQueues(int numPixels) {
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_missItems_),    missItemSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_shadowItems_),  shadowItemSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_occluded_),     occludedSz));
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_probeItems_),   probeItemSz));
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_exitItems_),    exitItemSz));
 
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_rayCounter_),     counterSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nextRayCounter_), counterSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_hitCounter_),     counterSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_missCounter_),    counterSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_shadowCounter_),  counterSz));
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_probeCounter_),   counterSz));
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_exitCounter_),    counterSz));
 
 	return true;
 }
@@ -709,9 +876,11 @@ void WavefrontPathTracer::freeQueues() {
 	freeDev(d_rayItems_);      freeDev(d_nextRayItems_);
 	freeDev(d_hitItems_);      freeDev(d_missItems_);
 	freeDev(d_shadowItems_);   freeDev(d_occluded_);
+	freeDev(d_probeItems_);    freeDev(d_exitItems_);
 	freeDev(d_rayCounter_);    freeDev(d_nextRayCounter_);
 	freeDev(d_hitCounter_);    freeDev(d_missCounter_);
 	freeDev(d_shadowCounter_);
+	freeDev(d_probeCounter_);  freeDev(d_exitCounter_);
 	queueCapacity_ = 0;
 }
 
@@ -774,7 +943,15 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 	sq.counter  = reinterpret_cast<int*>(d_shadowCounter_);
 	sq.capacity = queueCapacity_;
 
-	wf_launch_evaluate_materials(hq, numHits, nq, sq, d_framebuffer,
+	// BSSRDF probe-request queue (MaterialType::Subsurface, Phase 2) - filled
+	// by evaluate_materials's own Subsurface case instead of scattering
+	// inline (see wavefront_types.h's BssrdfProbeWorkItem comment).
+	WorkQueue<BssrdfProbeWorkItem> pq;
+	pq.items    = reinterpret_cast<BssrdfProbeWorkItem*>(d_probeItems_);
+	pq.counter  = reinterpret_cast<int*>(d_probeCounter_);
+	pq.capacity = queueCapacity_;
+
+	wf_launch_evaluate_materials(hq, numHits, nq, sq, pq, d_framebuffer,
 		d_spheres, numSpheres,
 		d_quads, numQuads,
 		d_triangles, numTriangles,
@@ -814,6 +991,47 @@ void WavefrontPathTracer::launchAccumulateShadow(
 	sq.capacity = queueCapacity_;
 
 	wf_launch_accumulate_shadow(sq, numShadow, d_occluded, d_framebuffer, stream_);
+}
+
+void WavefrontPathTracer::launchResolveBssrdfExit(
+	int numExit,
+	const MaterialData* d_materials, unsigned int numMaterials,
+	const SphereData* d_spheres, unsigned int numSpheres,
+	const QuadData* d_quads, unsigned int numQuads,
+	const TriangleData* d_triangles, unsigned int numTriangles,
+	const BilinearPatchData* d_bilinearPatches, unsigned int numBilinearPatches,
+	const int* d_lightIndices, const GpuLightKind* d_lightKinds,
+	const GpuAliasEntry* d_aliasTable, unsigned int numLights,
+	const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
+	float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon)
+{
+	if (numExit == 0) return;
+
+	WorkQueue<BssrdfExitWorkItem> eq;
+	eq.items    = reinterpret_cast<BssrdfExitWorkItem*>(d_exitItems_);
+	eq.counter  = reinterpret_cast<int*>(d_exitCounter_);
+	eq.capacity = queueCapacity_;
+
+	WorkQueue<RayWorkItem> nq;
+	nq.items    = reinterpret_cast<RayWorkItem*>(d_nextRayItems_);
+	nq.counter  = reinterpret_cast<int*>(d_nextRayCounter_);
+	nq.capacity = queueCapacity_;
+
+	WorkQueue<ShadowRayWorkItem> sq;
+	sq.items    = reinterpret_cast<ShadowRayWorkItem*>(d_shadowItems_);
+	sq.counter  = reinterpret_cast<int*>(d_shadowCounter_);
+	sq.capacity = queueCapacity_;
+
+	wf_launch_resolve_bssrdf_exit(eq, numExit, nq, sq, d_framebuffer,
+		d_spheres, numSpheres,
+		d_quads, numQuads,
+		d_triangles, numTriangles,
+		d_bilinearPatches, numBilinearPatches,
+		d_materials, numMaterials,
+		d_lightIndices, d_lightKinds, d_aliasTable, numLights,
+		d_punctualLights, numPunctualLights,
+		skyColor, shadowRayEpsilon,
+		stream_);
 }
 
 void WavefrontPathTracer::launchNormalizeFramebuffer(
@@ -889,6 +1107,18 @@ bool WavefrontPathTracer::render(
 	lp.instancePrimBase = reinterpret_cast<const int*>(d_instancePrimBase_);
 	lp.aliasTable    = reinterpret_cast<GpuAliasEntry*>(d_alias_table);
 	lp.numLights     = num_lights;
+	// BSSRDF probe walk (MaterialType::Subsurface, Phase 2) - same device
+	// buffers OptiXRenderer already builds/uploads once for the recursive
+	// backend, wired in via setBssrdfTables(). Null/0 (the default) is a
+	// valid "no Subsurface materials in this scene" state - wf_params.
+	// numBssrdfTables stays 0 and evaluate_materials's Subsurface case is
+	// simply never reached.
+	lp.bssrdfTables         = reinterpret_cast<GpuBssrdfTable*>(d_bssrdfTables_);
+	lp.numBssrdfTables      = numBssrdfTables_;
+	lp.bssrdfRhoSamples     = reinterpret_cast<float*>(d_bssrdfRhoSamples_);
+	lp.bssrdfRadiusSamples  = reinterpret_cast<float*>(d_bssrdfRadiusSamples_);
+	lp.bssrdfProfile        = reinterpret_cast<float*>(d_bssrdfProfile_);
+	lp.bssrdfProfileCdf     = reinterpret_cast<float*>(d_bssrdfProfileCdf_);
 	lp.samplesPerPixel = (unsigned int)samples_per_pixel;
 	lp.maxDepth        = (unsigned int)max_depth;
 	lp.frameNumber     = frameNumber_++;
@@ -924,6 +1154,8 @@ bool WavefrontPathTracer::render(
 			resetQueueCounter(reinterpret_cast<int*>(d_missCounter_));
 			resetQueueCounter(reinterpret_cast<int*>(d_shadowCounter_));
 			resetQueueCounter(reinterpret_cast<int*>(d_nextRayCounter_));
+			resetQueueCounter(reinterpret_cast<int*>(d_probeCounter_));
+			resetQueueCounter(reinterpret_cast<int*>(d_exitCounter_));
 
 			// ------------------------------------------------------------------
 			// Phase 2: OptiX intersect launch
@@ -978,6 +1210,62 @@ bool WavefrontPathTracer::render(
 			launchAccumulateMiss(numMiss, d_fbPtr, camera.backgroundColor);
 
 			CUDA_CHECK(cudaStreamSynchronize(stream_));
+
+			// ------------------------------------------------------------------
+			// Phase 4b: BSSRDF probe walk + exit resolve (MaterialType::
+			// Subsurface, Phase 2) - mirrors pbrt-v4's own SampleSubsurface
+			// dedicated stage, called once per bounce depth right after
+			// evaluate_materials (which queued any Subsurface-transmission
+			// hits this bounce into bssrdfProbeQueue instead of scattering
+			// them directly - see wavefront_types.h's BssrdfProbeWorkItem
+			// comment). Skipped entirely (both the extra optixLaunch and the
+			// CUDA kernel) when nothing was queued - the overwhelming
+			// majority of bounces on the overwhelming majority of scenes,
+			// since Subsurface materials are rare. Must run BEFORE the
+			// numShadow read below: resolve_bssrdf_exit() (wavefront_kernels.cu)
+			// appends its own NEE shadow rays into the SAME shadowQueue
+			// evaluate_materials already wrote to, so they need to be
+			// counted before the shadow pass launches.
+			// ------------------------------------------------------------------
+			int numProbe = readQueueSize(reinterpret_cast<int*>(d_probeCounter_));
+			if (numProbe > 0) {
+				lp.bssrdfProbeQueue.items    = reinterpret_cast<BssrdfProbeWorkItem*>(d_probeItems_);
+				lp.bssrdfProbeQueue.counter  = reinterpret_cast<int*>(d_probeCounter_);
+				lp.bssrdfProbeQueue.capacity = queueCapacity_;
+
+				lp.bssrdfExitQueue.items    = reinterpret_cast<BssrdfExitWorkItem*>(d_exitItems_);
+				lp.bssrdfExitQueue.counter  = reinterpret_cast<int*>(d_exitCounter_);
+				lp.bssrdfExitQueue.capacity = queueCapacity_;
+
+				CUDA_CHECK(cudaMemcpyAsync(reinterpret_cast<void*>(d_wfLaunchParams_), &lp,
+										   sizeof(WavefrontLaunchParams), cudaMemcpyHostToDevice, stream_));
+
+				OPTIX_CHECK(optixLaunch(
+					intersectPipeline_, stream_,
+					d_wfLaunchParams_, sizeof(WavefrontLaunchParams),
+					&probeSBT_,
+					(unsigned int)numProbe, 1, 1));
+
+				CUDA_CHECK(cudaStreamSynchronize(stream_));
+
+				int numExit = readQueueSize(reinterpret_cast<int*>(d_exitCounter_));
+				launchResolveBssrdfExit(
+					numExit,
+					reinterpret_cast<const MaterialData*>(d_materials), num_materials,
+					reinterpret_cast<const SphereData*>(d_spheres), num_spheres,
+					reinterpret_cast<const QuadData*>(d_quads), num_quads,
+					reinterpret_cast<const TriangleData*>(d_triangles), num_triangles,
+					reinterpret_cast<const BilinearPatchData*>(d_bilinear_patches), num_bilinear_patches,
+					reinterpret_cast<const int*>(d_light_indices),
+					reinterpret_cast<const GpuLightKind*>(d_lightKinds),
+					reinterpret_cast<const GpuAliasEntry*>(d_alias_table),
+					num_lights,
+					reinterpret_cast<const PunctualLightGPU*>(d_punctual_lights),
+					num_punctual_lights,
+					d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon);
+
+				CUDA_CHECK(cudaStreamSynchronize(stream_));
+			}
 
 			int numShadow = readQueueSize(reinterpret_cast<int*>(d_shadowCounter_));
 
@@ -1072,6 +1360,8 @@ void WavefrontPathTracer::destroyProgramGroups() {
 	destroyPG(hitSpherePG_);         destroyPG(hitQuadPG_);        destroyPG(hitBilinearPatchPG_); destroyPG(hitTrianglePG_);
 	destroyPG(raygenShadowPG_);      destroyPG(missShadowPG_);
 	destroyPG(anyhitShadowSpherePG_); destroyPG(anyhitShadowQuadPG_); destroyPG(anyhitShadowBilinearPatchPG_); destroyPG(anyhitShadowTrianglePG_);
+	destroyPG(raygenProbePG_);       destroyPG(missProbePG_);
+	destroyPG(hitProbeSpherePG_);    destroyPG(hitProbeQuadPG_);   destroyPG(hitProbeBilinearPatchPG_); destroyPG(hitProbeTrianglePG_);
 	destroyPG(exceptionPG_);
 }
 
@@ -1081,9 +1371,11 @@ void WavefrontPathTracer::destroySBT() {
 	};
 	freeDev(d_intersectRaygenRecord_); freeDev(d_intersectMissRecord_); freeDev(d_intersectHitRecords_);
 	freeDev(d_shadowRaygenRecord_);    freeDev(d_shadowMissRecord_);    freeDev(d_shadowHitRecords_);
-	freeDev(d_intersectExceptionRecord_); freeDev(d_shadowExceptionRecord_);
+	freeDev(d_probeRaygenRecord_);     freeDev(d_probeMissRecord_);     freeDev(d_probeHitRecords_);
+	freeDev(d_intersectExceptionRecord_); freeDev(d_shadowExceptionRecord_); freeDev(d_probeExceptionRecord_);
 	intersectSBT_ = {};
 	shadowSBT_    = {};
+	probeSBT_     = {};
 }
 
 void WavefrontPathTracer::cleanup() {

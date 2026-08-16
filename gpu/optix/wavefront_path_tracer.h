@@ -87,6 +87,25 @@ public:
         rgbGridDataCount_ = rgbGridDataCount;
     }
 
+    /// Tabulated BSSRDF profile tables (MaterialType::Subsurface) - same
+    /// setter-not-render()-parameter pattern as setCloudMediums()/
+    /// setRgbGridMediums() above, for the same reason. These are the SAME
+    /// device buffers OptiXRenderer already builds/uploads once for the
+    /// recursive backend (see optix_types.h's GpuBssrdfTable comment and
+    /// pbrt_gpu_builder.h's getOrBuildBssrdfTable() - already backend-
+    /// agnostic, untouched by this wiring). 0/0/... (the default) is a
+    /// valid "no Subsurface materials in this scene" state.
+    void setBssrdfTables(CUdeviceptr d_bssrdfTables, unsigned int numBssrdfTables,
+                          CUdeviceptr d_bssrdfRhoSamples, CUdeviceptr d_bssrdfRadiusSamples,
+                          CUdeviceptr d_bssrdfProfile, CUdeviceptr d_bssrdfProfileCdf) {
+        d_bssrdfTables_ = d_bssrdfTables;
+        numBssrdfTables_ = numBssrdfTables;
+        d_bssrdfRhoSamples_ = d_bssrdfRhoSamples;
+        d_bssrdfRadiusSamples_ = d_bssrdfRadiusSamples;
+        d_bssrdfProfile_ = d_bssrdfProfile;
+        d_bssrdfProfileCdf_ = d_bssrdfProfileCdf;
+    }
+
     /// Whether the scene has instanced geometry of each kind. buildSBT() must
     /// append the same dedicated hit-record pairs, in the same order, that
     /// OptiXRenderer::buildSBT() does - the IAS instances carry sbtOffsets
@@ -120,6 +139,16 @@ private:
     // comment for why textures travel via member state instead.
     void launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor);
     void launchAccumulateShadow(int numShadow, const bool* d_occluded, float3* d_framebuffer);
+    void launchResolveBssrdfExit(int numExit,
+        const MaterialData* d_materials, unsigned int numMaterials,
+        const SphereData* d_spheres, unsigned int numSpheres,
+        const QuadData* d_quads, unsigned int numQuads,
+        const TriangleData* d_triangles, unsigned int numTriangles,
+        const BilinearPatchData* d_bilinearPatches, unsigned int numBilinearPatches,
+        const int* d_lightIndices, const GpuLightKind* d_lightKinds,
+        const GpuAliasEntry* d_aliasTable, unsigned int numLights,
+        const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
+        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon);
     void launchNormalizeFramebuffer(unsigned int numPixels, float invSPP, float3* d_framebuffer);
     int  readQueueSize(int* d_counter);
     void resetQueueCounter(int* d_counter);
@@ -138,17 +167,37 @@ private:
     OptixProgramGroup anyhitShadowQuadPG_    = nullptr;
     OptixProgramGroup anyhitShadowBilinearPatchPG_ = nullptr;
     OptixProgramGroup anyhitShadowTrianglePG_ = nullptr;
+    // BSSRDF probe walk (MaterialType::Subsurface, Phase 2) - linked into
+    // the SAME intersectPipeline_/wfModule_ as the intersect programs above
+    // (see wavefront_probe.h's own header comment for why: no new OptiX
+    // module/pipeline is needed, just more program groups in the same
+    // pipeline, selected via their own dedicated probeSBT_ at launch time).
+    OptixProgramGroup raygenProbePG_             = nullptr;
+    OptixProgramGroup missProbePG_               = nullptr;
+    OptixProgramGroup hitProbeSpherePG_          = nullptr;
+    OptixProgramGroup hitProbeQuadPG_            = nullptr;
+    OptixProgramGroup hitProbeBilinearPatchPG_   = nullptr;
+    OptixProgramGroup hitProbeTrianglePG_        = nullptr;
     OptixProgramGroup exceptionPG_ = nullptr;  ///< CUDA-718 fix -- see initialize()'s exceptionFlags comment
     OptixPipeline intersectPipeline_ = nullptr;
     OptixPipeline shadowPipeline_    = nullptr;
     OptixShaderBindingTable intersectSBT_ = {};
     OptixShaderBindingTable shadowSBT_    = {};
+    // Probe SBT - same intersectPipeline_, own raygen/hit records (mirrors
+    // intersectSBT_'s own per-present-type/stride-2 hit-record layout
+    // exactly, just pointing at the probe hit groups instead of the
+    // radiance ones - see buildSBT()'s own comment).
+    OptixShaderBindingTable probeSBT_     = {};
     CUdeviceptr d_intersectRaygenRecord_ = 0;
     CUdeviceptr d_intersectMissRecord_   = 0;
     CUdeviceptr d_intersectHitRecords_   = 0;
     CUdeviceptr d_shadowRaygenRecord_    = 0;
     CUdeviceptr d_shadowMissRecord_      = 0;
     CUdeviceptr d_shadowHitRecords_      = 0;
+    CUdeviceptr d_probeRaygenRecord_     = 0;
+    CUdeviceptr d_probeMissRecord_       = 0;
+    CUdeviceptr d_probeHitRecords_       = 0;
+    CUdeviceptr d_probeExceptionRecord_  = 0;
     CUdeviceptr d_intersectExceptionRecord_ = 0;  ///< see exceptionPG_
     CUdeviceptr d_shadowExceptionRecord_    = 0;
     CUdeviceptr d_wfLaunchParams_   = 0;
@@ -158,12 +207,22 @@ private:
     CUdeviceptr d_missItems_        = 0;
     CUdeviceptr d_shadowItems_      = 0;
     CUdeviceptr d_occluded_         = 0;
+    CUdeviceptr d_probeItems_       = 0;   ///< BssrdfProbeWorkItem queue
+    CUdeviceptr d_exitItems_        = 0;   ///< BssrdfExitWorkItem queue
     CUdeviceptr d_rayCounter_       = 0;
     CUdeviceptr d_nextRayCounter_   = 0;
     CUdeviceptr d_hitCounter_       = 0;
     CUdeviceptr d_missCounter_      = 0;
     CUdeviceptr d_shadowCounter_    = 0;
+    CUdeviceptr d_probeCounter_     = 0;
+    CUdeviceptr d_exitCounter_      = 0;
     int          queueCapacity_ = 0;
+    CUdeviceptr  d_bssrdfTables_ = 0;         ///< see setBssrdfTables()
+    unsigned int numBssrdfTables_ = 0;
+    CUdeviceptr  d_bssrdfRhoSamples_ = 0;
+    CUdeviceptr  d_bssrdfRadiusSamples_ = 0;
+    CUdeviceptr  d_bssrdfProfile_ = 0;
+    CUdeviceptr  d_bssrdfProfileCdf_ = 0;
     std::string  ptxPath_;
     CUdeviceptr  d_instancePrimBase_ = 0;   ///< see setInstancePrimBase()
     CUdeviceptr  d_textures_ = 0;           ///< see setTextures()

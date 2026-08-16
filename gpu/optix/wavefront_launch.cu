@@ -14,7 +14,7 @@ extern "C" __global__ void generate_camera_rays(
 	GpuCameraParams, unsigned int, unsigned int);
 extern "C" __global__ void evaluate_materials(
 	WorkQueue<HitWorkItem>, int,
-	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
+	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>, WorkQueue<BssrdfProbeWorkItem>,
 	float3*,
 	const SphereData*, const QuadData*, const TriangleData*, const BilinearPatchData*, const MaterialData*,
 	const int*, const GpuLightKind*, const GpuAliasEntry*,
@@ -27,6 +27,15 @@ extern "C" __global__ void evaluate_materials(
 	float3, float);
 extern "C" __global__ void accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3);
 extern "C" __global__ void accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*);
+extern "C" __global__ void resolve_bssrdf_exit(
+	WorkQueue<BssrdfExitWorkItem>, int,
+	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
+	float3*,
+	const SphereData*, const QuadData*, const TriangleData*, const BilinearPatchData*, const MaterialData*,
+	const int*, const GpuLightKind*, const GpuAliasEntry*,
+	unsigned int,
+	const PunctualLightGPU*, unsigned int,
+	float3, float);
 extern "C" __global__ void reset_queue_counter(int*);
 extern "C" __global__ void normalize_framebuffer(float3*, unsigned int, float);
 
@@ -52,6 +61,7 @@ extern "C" void wf_launch_evaluate_materials(
 	int                          numHits,
 	WorkQueue<RayWorkItem>       nextRayQueue,
 	WorkQueue<ShadowRayWorkItem> shadowQueue,
+	WorkQueue<BssrdfProbeWorkItem> bssrdfProbeQueue,
 	float3*                      d_framebuffer,
 	const SphereData*            d_spheres,   unsigned int numSpheres,
 	const QuadData*              d_quads,     unsigned int numQuads,
@@ -79,7 +89,7 @@ extern "C" void wf_launch_evaluate_materials(
 	dim3 grid((numHits + 255) / 256);
 	evaluate_materials<<<grid, block, 0, (cudaStream_t)stream>>>(
 		hq, numHits,
-		nextRayQueue, shadowQueue,
+		nextRayQueue, shadowQueue, bssrdfProbeQueue,
 		d_framebuffer,
 		d_spheres, d_quads, d_triangles, d_bilinearPatches, d_materials,
 		d_lightIndices, d_lightKinds, d_aliasTable,
@@ -108,6 +118,40 @@ extern "C" void wf_launch_accumulate_shadow(
 	dim3 block(256);
 	dim3 grid((numShadow + 255) / 256);
 	accumulate_shadow<<<grid, block, 0, (cudaStream_t)stream>>>(sq, numShadow, d_occluded, d_framebuffer);
+}
+
+extern "C" void wf_launch_resolve_bssrdf_exit(
+	WorkQueue<BssrdfExitWorkItem> eq,
+	int                          numExit,
+	WorkQueue<RayWorkItem>       nextRayQueue,
+	WorkQueue<ShadowRayWorkItem> shadowQueue,
+	float3*                      d_framebuffer,
+	const SphereData*            d_spheres,   unsigned int numSpheres,
+	const QuadData*              d_quads,     unsigned int numQuads,
+	const TriangleData*          d_triangles, unsigned int numTriangles,
+	const BilinearPatchData*     d_bilinearPatches, unsigned int numBilinearPatches,
+	const MaterialData*          d_materials, unsigned int numMaterials,
+	const int*                   d_lightIndices,
+	const GpuLightKind*          d_lightKinds,
+	const GpuAliasEntry*         d_aliasTable,
+	unsigned int                 numLights,
+	const PunctualLightGPU*      d_punctualLights,
+	unsigned int                 numPunctualLights,
+	float3                       skyColor,
+	float                        shadowRayEpsilon,
+	cudaStream_t                 stream)
+{
+	if (numExit == 0) return;
+	dim3 block(256);
+	dim3 grid((numExit + 255) / 256);
+	resolve_bssrdf_exit<<<grid, block, 0, (cudaStream_t)stream>>>(
+		eq, numExit,
+		nextRayQueue, shadowQueue,
+		d_framebuffer,
+		d_spheres, d_quads, d_triangles, d_bilinearPatches, d_materials,
+		d_lightIndices, d_lightKinds, d_aliasTable,
+		numLights, d_punctualLights, numPunctualLights,
+		skyColor, shadowRayEpsilon);
 }
 
 extern "C" void wf_launch_normalize_framebuffer(

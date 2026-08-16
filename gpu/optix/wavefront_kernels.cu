@@ -273,6 +273,30 @@ __device__ __forceinline__ float3 wf_dielectric_scatter(
 	}
 }
 
+// pbrt-v4 NormalizedFresnelBxDF direction sample - factored out of
+// MaterialType::NormalizedFresnel's own switch case below so
+// resolve_bssrdf_exit() (MaterialType::Subsurface's BSSRDF exit point,
+// Phase 2) can reuse the identical formula without duplicating it. NEE for
+// this BSDF lives in wf_finish_material_scatter() instead (keyed off
+// MaterialType::NormalizedFresnel there too) - this function is only the
+// BSDF-sample half (direction + weight + pdf), matching how the switch
+// case below already separated the two concerns before this factoring.
+__device__ __forceinline__ void wf_sample_normalized_fresnel(
+	float eta, const float3& normal, unsigned int& seed,
+	float3& out_dir, float& out_weight, float& out_brdf_pdf)
+{
+	float inv_eta = 1.0f / eta;
+	float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
+	if (nf_c <= 0.0f) nf_c = 1e-6f;
+	float3 dir = normalize(normal + wf_rand_unit(seed));
+	if (wf_near_zero(dir)) dir = normal;
+	float cos_wi = fmaxf(dot(dir, normal), 1e-6f);
+	float fr = FrDielectric(cos_wi, eta);
+	out_dir        = dir;
+	out_weight     = (1.0f - fr) / nf_c;
+	out_brdf_pdf   = (1.0f - fr) * cos_wi / (nf_c * 3.14159265f);
+}
+
 // MIS power heuristic (balance if both 0)
 __device__ __forceinline__ float wf_mis(float a, float b) {
 	float a2 = a * a, b2 = b * b;
@@ -809,11 +833,369 @@ extern "C" __global__ void generate_camera_rays(
 //     - Emissive surfaces write directly to the framebuffer
 // ============================================================================
 
+// wf_finish_material_scatter -- NEE (area/sky/punctual lights) + next-ray-
+// push tail, factored out of evaluate_materials's own per-hit switch tail
+// (previously inline there) so resolve_bssrdf_exit() below (MaterialType::
+// Subsurface's BSSRDF exit point, Phase 2) can reuse the EXACT same
+// NormalizedFresnel-shaped NEE/bounce logic that MaterialType::
+// NormalizedFresnel's own switch case in evaluate_materials already
+// exercises for a genuine NormalizedFresnel hit, instead of duplicating it -
+// mirrors the recursive backend's own shade_normalized_fresnel() factoring
+// (optix_device_helpers.h) for the identical reason, just without that
+// backend's OptiX self-recursive-call-graph constraint (this is a plain
+// CUDA device function, callable from as many __global__ kernels in this
+// translation unit as need it - no module compiler involved).
+//
+// Callers must already know `scattered == true` - evaluate_materials keeps
+// its own `if (!scattered) { addToFramebuffer(...); return; }` check before
+// calling this (a material can fail to scatter; this function no longer
+// handles that case at all, since resolve_bssrdf_exit()'s own "did the
+// probe walk find an exit point" failure is a DIFFERENT check, handled
+// entirely before this function is ever called - see that kernel).
+//
+// `matType`/`nfEta` together select the bsdf_color/bsdf_val formula exactly
+// as the NEE blocks below always did: MaterialType::Lambertian reuses
+// `attenuation` directly (already the diffuse albedo, direction-independent);
+// MaterialType::NormalizedFresnel (nfEta = mat.ior for a genuine hit, or the
+// Subsurface material's own eta for a BSSRDF exit point - see
+// resolve_bssrdf_exit()) recomputes the achromatic Fresnel-weighted formula;
+// anything else falls back to the flat Lambertian default (every non-
+// specular material either caller ever reaches this with is one of the two
+// above - is_specular materials skip the whole NEE block, matching the
+// original inline code's own `if (!is_specular)` gate).
+__device__ __forceinline__ void wf_finish_material_scatter(
+	MaterialType matType, float nfEta,
+	const float3& normal, const float3& hit_point,
+	unsigned int& seed,
+	const SampledSpectrum<kWFNWavelengths>& throughput,
+	const SampledSpectrum<kWFNWavelengths>& radiance,
+	const SampledWavelengths<kWFNWavelengths>& swl,
+	const SampledSpectrum<kWFNWavelengths>& attenuation,
+	const float3& scattered_dir, bool is_specular, float brdf_pdf_override,
+	int pixelIndex, int depth,
+	const SphereData* spheres, const QuadData* quads,
+	const TriangleData* triangles, const BilinearPatchData* bilinearPatches,
+	const MaterialData* materials,
+	const int* lightIndices, const GpuLightKind* lightKinds,
+	const GpuAliasEntry* aliasTable, unsigned int numLights,
+	const PunctualLightGPU* punctualLights, unsigned int numPunctualLights,
+	float3 skyColor, float shadow_eps,
+	WorkQueue<ShadowRayWorkItem>& shadowQueue,
+	WorkQueue<RayWorkItem>& nextRayQueue,
+	float3* framebuffer)
+{
+	using SS = SampledSpectrum<kWFNWavelengths>;
+
+	auto addToFramebuffer = [&](int pixIdx, const SS& L) {
+		auto xyz = SampledSpectrumToXYZ(L, swl, d_cie_x, d_cie_y, d_cie_z,
+										kDevCIEMin, kDevCIENSamples);
+		float r, g, b;
+		wf_xyz_to_linear_rgb(xyz.x, xyz.y, xyz.z, r, g, b);
+		atomicAdd(&framebuffer[pixIdx].x, r);
+		atomicAdd(&framebuffer[pixIdx].y, g);
+		atomicAdd(&framebuffer[pixIdx].z, b);
+	};
+
+	// -------------------------------------------------------------------------
+	// NEE: direct-light shadow ray (non-specular materials only)
+	// -------------------------------------------------------------------------
+	if (!is_specular) {
+	if (numLights > 0 && aliasTable) {
+		// Pick a light via alias table
+		int   slot = int(wf_rand(seed) * float(numLights));
+		if (slot >= (int)numLights) slot = (int)numLights - 1;
+		const GpuAliasEntry& entry = aliasTable[slot];
+		int light_idx = (wf_rand(seed) < entry.q) ? slot : entry.alias;
+		float selection_pdf = aliasTable[light_idx].pdf;
+
+		int            prim_idx  = lightIndices[light_idx];
+		GpuLightKind   kind      = lightKinds[light_idx];
+
+		float  geom_pdf = 0.0f, max_dist = 0.0f;
+		float3 to_light;
+		SS light_emission_spec(0.f);
+
+		auto liftEmission = [&](float3 le) -> SS {
+			float m = le.x > le.y ? (le.x > le.z ? le.x : le.z)
+								  : (le.y > le.z ? le.y : le.z);
+			float sc = 2.f * m;
+			if (sc <= 0.f) return SS(0.f);
+			float c0, c1, c2;
+			dev_srgb_to_coeffs(le.x/sc, le.y/sc, le.z/sc, c0, c1, c2);
+			RGBSigmoidPolynomial poly(c0, c1, c2);
+			SS s(0.f);
+			for (int i = 0; i < kWFNWavelengths; ++i)
+				s[i] = sc * poly(swl.lambda[i]);
+			return s;
+		};
+
+		if (kind == GpuLightKind::Sphere) {
+			const SphereData& s = spheres[prim_idx];
+			to_light = wf_sample_sphere_light(s, hit_point, seed, geom_pdf, max_dist);
+			light_emission_spec = liftEmission(materials[s.materialIdx].emission);
+		} else if (kind == GpuLightKind::Triangle) {
+			const TriangleData& tri = triangles[prim_idx];
+			to_light = wf_sample_triangle_light(tri, hit_point, seed, geom_pdf, max_dist);
+			light_emission_spec = liftEmission(materials[tri.materialIdx].emission);
+		} else if (kind == GpuLightKind::BilinearPatch) {
+			const BilinearPatchData& bp = bilinearPatches[prim_idx];
+			to_light = wf_sample_bilinear_patch_light(bp, hit_point, seed, geom_pdf, max_dist);
+			light_emission_spec = liftEmission(materials[bp.materialIdx].emission);
+		} else {
+			const QuadData& q = quads[prim_idx];
+			to_light = wf_sample_quad_light(q, hit_point, seed, geom_pdf, max_dist);
+			light_emission_spec = liftEmission(materials[q.materialIdx].emission);
+		}
+
+		float light_pdf = selection_pdf * geom_pdf;
+		if (light_pdf > 1e-6f && dot(to_light, normal) > 0.0f) {
+			float cos_l = fmaxf(dot(to_light, normal), 0.0f);
+			float bsdf_val = 1.0f / 3.14159265f; // Lambertian default
+			// Lambertian's BRDF is albedo/pi, direction-independent - `attenuation`
+			// already equals albedoSpectrum(mat.albedo) from the caller, so reuse
+			// it here instead of leaving the NEE contribution achromatic.
+			// NormalizedFresnel's bsdf_val below is already a complete,
+			// achromatic BRDF value (no color/texture involved), so it needs
+			// no equivalent multiply.
+			SS bsdf_color(1.f);
+			if (matType == MaterialType::Lambertian) {
+				bsdf_color = attenuation;
+			} else if (matType == MaterialType::NormalizedFresnel) {
+				float inv_eta = 1.0f / nfEta;
+				float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
+				if (nf_c <= 0.0f) nf_c = 1e-6f;
+				float fr_l = FrDielectric(cos_l, nfEta);
+				bsdf_val = (1.0f - fr_l) / (nf_c * 3.14159265f);
+			}
+			float brdf_pdf_l = (brdf_pdf_override > 0.0f) ? brdf_pdf_override : (bsdf_val * cos_l);
+			float mis_w = wf_mis(light_pdf, brdf_pdf_l);
+
+			// Spectral direct-light contribution
+			SS Ld = (mis_w * bsdf_val * cos_l / light_pdf) * throughput * bsdf_color * light_emission_spec;
+
+			// 0.01, not the original 0.001: a scene with many densely-packed
+			// custom primitives (spheres) reproducibly crashed the shadow
+			// OptiX launch with an illegal memory access - the 0.001 offset
+			// left the shadow ray's origin too close to its own emitting
+			// surface (and, at high primitive density, to a neighboring
+			// primitive's surface too) for this driver's any-hit traversal
+			// over custom AABBs to handle; confirmed via bisection on
+			// synthetic sphere-field pbrt scenes (compute-sanitizer memcheck/
+			// initcheck found nothing, ruling out a plain buffer overrun).
+			// Offsetting along BOTH the shading normal AND the shadow ray's
+			// own direction, not just the normal alone. The normal-only
+			// offset is load-bearing on its own (see above): a pure
+			// direction-only offset - matching optix_device_helpers.h's
+			// trace_shadow_ray() - was tried first and broke
+			// NormalMappedLambertian (scene 20 rendered 99% black), since a
+			// shading normal bent away from the true surface no longer
+			// guarantees "away from this primitive" the way the true
+			// geometric normal does, letting the ray re-enter its own
+			// (unperturbed) sphere at a grazing angle. But normal-only,
+			// even at a much larger shadow_eps, turned out far weaker than
+			// direction-only at escaping self-intersection on dense,
+			// closely-packed real geometry: Sibenik Cathedral's stone
+			// tracery false-occluded most sky-NEE shadow rays at
+			// shadow_eps=0.01, and bumping shadow_eps up to 2.0 with a
+			// normal-only offset barely helped (GPU stayed under 50% of
+			// CPU's brightness at matched settings) - adding the direction
+			// component back in (while keeping the normal component, so
+			// NormalMappedLambertian stays fixed) closed the gap to ~73%
+			// at shadow_eps=0.5, confirmed by direct experiment. 2.0 with
+			// the combined offset overshot badly (GPU 1.5x *brighter* than
+			// CPU - real light leaks from skipping past legitimate
+			// occluders), which is why this is a per-scene-tunable value
+			// (GpuCameraParams::shadowRayEpsilon), not a blanket increase.
+			ShadowRayWorkItem shadow;
+			shadow.origin    = hit_point + shadow_eps * normal + shadow_eps * normalize(to_light);
+			shadow.direction = to_light;
+			shadow.tMax      = max_dist - 0.002f;
+			for (int i = 0; i < kWFNWavelengths; ++i) {
+				shadow.Ld[i]             = Ld[i];
+				shadow.wavelengths[i]    = swl.lambda[i];
+				shadow.wavelength_pdfs[i] = swl.pdf[i];
+			}
+			shadow.pixelIndex = pixelIndex;
+			shadowQueue.push(shadow);
+		}
+	}
+	// -------------------------------------------------------------------------
+	// NEE: sky (infinite) light. Mirrors CPU's camera.h Strategy A-2 and the
+	// recursive backend's own sky-NEE block (optix_device_helpers.h) - see
+	// that comment for the full story (GPU used to only pick up sky light via
+	// a lucky BSDF-sampled escape, no NEE, which under-lit small-aperture
+	// interiors like Sibenik Cathedral). skyColor is the same constant color
+	// the miss path already uses (camera.backgroundColor - see
+	// optix_miss.h/accumulate_miss's own use of it), defaulting to black for
+	// every scene without a sky, which makes this a free no-op there.
+	// -------------------------------------------------------------------------
+	if (!is_specular && (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f)) {
+		float3 sky_dir = wf_rand_unit(seed);
+		float  cos_l   = dot(sky_dir, normal);
+		if (cos_l > 0.0f) {
+			float pdf_sky = 1.0f / (4.0f * 3.14159265f); // uniform sphere - matches sky_light::sample_Le()'s constant-color fallback
+
+			float bsdf_val = 1.0f / 3.14159265f; // Lambertian default
+			// See the area-light block above: attenuation == albedoSpectrum(mat.albedo)
+			// for Lambertian (direction-independent BRDF, safe to reuse here);
+			// NormalizedFresnel's bsdf_val is already a complete achromatic value.
+			SS bsdf_color(1.f);
+			if (matType == MaterialType::Lambertian) {
+				bsdf_color = attenuation;
+			} else if (matType == MaterialType::NormalizedFresnel) {
+				float inv_eta = 1.0f / nfEta;
+				float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
+				if (nf_c <= 0.0f) nf_c = 1e-6f;
+				float fr_l = FrDielectric(cos_l, nfEta);
+				bsdf_val = (1.0f - fr_l) / (nf_c * 3.14159265f);
+			}
+			float brdf_pdf_sky = (brdf_pdf_override > 0.0f) ? brdf_pdf_override : (bsdf_val * cos_l);
+			float mis_w = wf_mis(pdf_sky, brdf_pdf_sky);
+
+			// Uplift RGB skyColor to spectrum (same pattern as liftEmission above)
+			float m = skyColor.x > skyColor.y ? (skyColor.x > skyColor.z ? skyColor.x : skyColor.z)
+			                                  : (skyColor.y > skyColor.z ? skyColor.y : skyColor.z);
+			float sc = 2.f * m;
+			SS sky_spec(0.f);
+			if (sc > 0.f) {
+				float c0, c1, c2;
+				dev_srgb_to_coeffs(skyColor.x / sc, skyColor.y / sc, skyColor.z / sc, c0, c1, c2);
+				RGBSigmoidPolynomial poly(c0, c1, c2);
+				for (int i = 0; i < kWFNWavelengths; ++i)
+					sky_spec[i] = sc * poly(swl.lambda[i]);
+			}
+
+			SS Ld = (mis_w * bsdf_val * cos_l / pdf_sky) * throughput * bsdf_color * sky_spec;
+
+			// See the area-light block above for why this is a combined
+			// normal+direction offset, not the normal alone.
+			ShadowRayWorkItem shadow;
+			shadow.origin    = hit_point + shadow_eps * normal + shadow_eps * normalize(sky_dir);
+			shadow.direction = sky_dir;
+			shadow.tMax      = 1e30f;
+			for (int i = 0; i < kWFNWavelengths; ++i) {
+				shadow.Ld[i]              = Ld[i];
+				shadow.wavelengths[i]     = swl.lambda[i];
+				shadow.wavelength_pdfs[i] = swl.pdf[i];
+			}
+			shadow.pixelIndex = pixelIndex;
+			shadowQueue.push(shadow);
+		}
+	}
+
+	// -------------------------------------------------------------------------
+	// NEE: punctual (point/spot/distant) delta lights. Unlike the area-light
+	// block above (one stochastic pick via alias table), every contributing
+	// punctual light gets its own shadow ray - matches recursive path
+	// (optix_device_helpers.h add_punctual_lights_lambertian) and the CPU
+	// reference (camera.h punct_lights loop): pdf=1 by construction, so no
+	// MIS weight or pdf division, just beta * BRDF * cos_theta * Li per light.
+	// -------------------------------------------------------------------------
+	for (unsigned int pli = 0; pli < numPunctualLights; ++pli) {
+		float3 wi, Li; float t_max;
+		if (!wf_eval_punctual_light(punctualLights[pli], hit_point, wi, Li, t_max)) continue;
+		float cos_l = dot(wi, normal);
+		if (cos_l <= 0.0f) continue;
+
+		float bsdf_val = 1.0f / 3.14159265f; // Lambertian default
+		// See the area-light block above: attenuation == albedoSpectrum(mat.albedo)
+		// for Lambertian (direction-independent BRDF, safe to reuse here);
+		// NormalizedFresnel's bsdf_val is already a complete achromatic value.
+		SS bsdf_color(1.f);
+		if (matType == MaterialType::Lambertian) {
+			bsdf_color = attenuation;
+		} else if (matType == MaterialType::NormalizedFresnel) {
+			float inv_eta = 1.0f / nfEta;
+			float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
+			if (nf_c <= 0.0f) nf_c = 1e-6f;
+			float fr_l = FrDielectric(cos_l, nfEta);
+			bsdf_val = (1.0f - fr_l) / (nf_c * 3.14159265f);
+		}
+
+		// Uplift RGB Li to spectrum (same pattern as liftEmission above)
+		float m = Li.x > Li.y ? (Li.x > Li.z ? Li.x : Li.z) : (Li.y > Li.z ? Li.y : Li.z);
+		float sc = 2.f * m;
+		SS Li_spec(0.f);
+		if (sc > 0.f) {
+			float c0, c1, c2;
+			dev_srgb_to_coeffs(Li.x / sc, Li.y / sc, Li.z / sc, c0, c1, c2);
+			RGBSigmoidPolynomial poly(c0, c1, c2);
+			for (int i = 0; i < kWFNWavelengths; ++i)
+				Li_spec[i] = sc * poly(swl.lambda[i]);
+		}
+
+		SS Ld = (bsdf_val * cos_l) * throughput * bsdf_color * Li_spec;
+
+		// See the area-light block above for why this is a combined
+		// normal+direction offset, not the normal alone.
+		ShadowRayWorkItem shadow;
+		shadow.origin    = hit_point + shadow_eps * normal + shadow_eps * normalize(wi);
+		shadow.direction = wi;
+		shadow.tMax      = t_max - 0.002f;
+		for (int i = 0; i < kWFNWavelengths; ++i) {
+			shadow.Ld[i]              = Ld[i];
+			shadow.wavelengths[i]     = swl.lambda[i];
+			shadow.wavelength_pdfs[i] = swl.pdf[i];
+		}
+		shadow.pixelIndex = pixelIndex;
+		shadowQueue.push(shadow);
+	}
+
+	// Flush accumulated prior-bounce radiance (once, regardless of whether
+	// any area/punctual lights actually contributed above).
+	if ((bool)radiance) addToFramebuffer(pixelIndex, radiance);
+	} // if (!is_specular) - NEE (area + punctual lights)
+
+	// -------------------------------------------------------------------------
+	// Bounce: push next ray
+	// -------------------------------------------------------------------------
+	SS new_throughput = throughput * attenuation;
+
+	// Russian roulette after depth 3
+	if (depth >= 3) {
+		float p = new_throughput.MaxComponentValue();
+		if (wf_rand(seed) >= p) {
+			if (is_specular) addToFramebuffer(pixelIndex, radiance);
+			return;
+		}
+		new_throughput = new_throughput / p;
+	}
+
+	RayWorkItem next;
+	next.origin     = hit_point + 0.001f * scattered_dir;
+	next.direction  = normalize(scattered_dir);
+	next.seed            = seed;
+	next.pixelIndex      = pixelIndex;
+	next.depth           = depth + 1;
+	next.specular_bounce = is_specular ? 1 : 0;
+	// BRDF PDF of this new direction, for MIS if this ray escapes the scene
+	// on its next bounce (see RayWorkItem::brdf_pdf's own comment) - mirrors
+	// optix_intersection_sphere.h's brdf_pdf_out exactly (0 for specular,
+	// else brdf_pdf_override if the material set one, else the cosine-
+	// weighted hemisphere pdf every non-specular case here samples from).
+	next.brdf_pdf = is_specular ? 0.0f
+		: (brdf_pdf_override > 0.0f ? brdf_pdf_override
+			: fmaxf(dot(next.direction, normal), 0.0f) / 3.14159265f);
+	next.tMin       = 0.001f;
+	next.tMax       = 1e30f;
+	for (int i = 0; i < kWFNWavelengths; ++i) {
+		next.throughput[i]      = new_throughput[i];
+		next.radiance[i]        = is_specular ? radiance[i] : 0.0f;
+		next.wavelengths[i]     = swl.lambda[i];
+		next.wavelength_pdfs[i] = swl.pdf[i];
+	}
+	nextRayQueue.push(next);
+}
+
 extern "C" __global__ void evaluate_materials(
 	WorkQueue<HitWorkItem>       hitQueue,
 	int                          numHits,
 	WorkQueue<RayWorkItem>       nextRayQueue,
 	WorkQueue<ShadowRayWorkItem> shadowQueue,
+	// BSSRDF probe-request queue (MaterialType::Subsurface, Phase 2) - see
+	// this file's own Subsurface case and BssrdfProbeWorkItem's comment
+	// (wavefront_types.h).
+	WorkQueue<BssrdfProbeWorkItem> bssrdfProbeQueue,
 	float3*                      framebuffer,
 	// Scene data
 	const SphereData*   spheres,
@@ -983,27 +1365,69 @@ extern "C" __global__ void evaluate_materials(
 		break;
 	}
 	case MaterialType::Subsurface: {
-		// No GPU BSSRDF on the wavefront backend (Phase 1 is recursive-
-		// backend-only - see optix_types.h's MaterialType::Subsurface
-		// comment and gpu/optix/optix_device_helpers.h's shade_material()
-		// for the real implementation). Falls back to flat diffuse using
-		// mat.albedo - deliberately NOT the same as the Lambertian case
-		// above: mat.textureIdx is repurposed on this MaterialType as an
-		// index into LaunchParams::bssrdfTables (recursive backend only),
-		// not a real texture index, so reading it here as one would be an
-		// out-of-bounds params.textures[] access. mat.albedo itself is
-		// still the plain flat-gray fallback color (pbrt_gpu_builder.h's
-		// makeMaterial() deliberately leaves it as `m.color`, NOT sigma_a -
-		// see that function's own comment) - this is exactly the same
-		// rendered result Subsurface has always had on this backend, before
-		// this MaterialType even existed (when it mapped straight to
-		// MaterialType::Lambertian via the same Unsupported fallback).
-		scattered_dir = normalize(normal + wf_rand_unit(seed));
-		if (wf_near_zero(scattered_dir)) scattered_dir = normal;
-		attenuation = albedoSpectrum(mat.albedo);
-		scattered   = true;
-		is_specular = false;
-		break;
+		// Real tabulated BSSRDF (wavefront backend, Phase 2 - Phase 1
+		// shipped this for the recursive backend only, see optix_device_
+		// helpers.h's shade_material() Subsurface case, which this mirrors).
+		//
+		// Entry interface: the exact same smooth dielectric sample as
+		// MaterialType::Dielectric, via the already-shared wf_dielectric_
+		// scatter() helper (also used by DielectricMedium's own entry
+		// surface above) - matches pbrt-v4's SubsurfaceMaterial::GetBxDF /
+		// this codebase's CPU `class subsurface` (material_pbrt.h), and the
+		// recursive backend's identical dielectric_scatter() call.
+		//
+		// front_face is hardcoded true: by this whole design's construction
+		// (mirroring pbrt-v4's own SubsurfaceMaterial and the recursive
+		// backend's Phase 1), a Subsurface material's entry interface is
+		// only ever reached from a genuine outside hit - the probe walk's
+		// own exit point resumes as a MaterialType::NormalizedFresnel bounce
+		// instead of a second Subsurface entry (see resolve_bssrdf_exit()
+		// below), so this switch case is never reached "from inside".
+		// HitWorkItem::frontFace itself isn't usable here regardless - it's
+		// only populated for sphere hits (__closesthit__wf_sphere), and the
+		// SSS dragon scenes this targets are triangle meshes.
+		float3 sdir = wf_dielectric_scatter(h.rayDir, normal, /*front_face=*/true, mat.ior, seed);
+		bool is_transmission = dot(sdir, normal) < 0.0f;
+		if (!is_transmission) {
+			// Specular reflection off the entry interface - identical to
+			// Dielectric's own reflection case; falls through to the shared
+			// tail below as an ordinary specular bounce (no NEE, no probe
+			// walk needed).
+			scattered_dir = sdir;
+			attenuation   = SS(1.f);
+			scattered     = true;
+			is_specular   = true;
+			break;
+		}
+
+		// Transmission: hand off to the dedicated BSSRDF probe-walk stage
+		// (wavefront_probe.h's __raygen__wf_probe + this file's own
+		// resolve_bssrdf_exit(), wired into WavefrontPathTracer::render()'s
+		// per-bounce loop) instead of scattering inline - the probe walk
+		// needs real optixTrace calls, unavailable from this plain CUDA
+		// kernel. Carries everything needed to resume the path once (or if)
+		// an exit point is found - see BssrdfProbeWorkItem's own comment.
+		// This thread's own work ends here: nothing is pushed to
+		// nextRayQueue/shadowQueue/framebuffer now, that happens later (this
+		// bounce, before the shadow pass - see the per-bounce loop) via
+		// resolve_bssrdf_exit() once the probe walk resolves.
+		{
+			BssrdfProbeWorkItem probeItem;
+			probeItem.p0     = hit_point;
+			probeItem.axis0  = normal;
+			probeItem.matIdx = h.materialIdx;
+			probeItem.seed   = seed;
+			for (int i = 0; i < kWFNWavelengths; ++i) {
+				probeItem.throughput[i]      = throughput[i];
+				probeItem.radiance[i]        = radiance[i];
+				probeItem.wavelengths[i]     = swl.lambda[i];
+				probeItem.wavelength_pdfs[i] = swl.pdf[i];
+			}
+			probeItem.pixelIndex = h.pixelIndex;
+			probeItem.depth      = h.depth;
+			bssrdfProbeQueue.push(probeItem);
+		}
+		return;
 	}
 	case MaterialType::Metal: {
 		float3 reflected = wf_reflect(normalize(h.rayDir), normal);
@@ -1330,19 +1754,11 @@ extern "C" __global__ void evaluate_materials(
 		break;
 	}
 	case MaterialType::NormalizedFresnel: {
-		float nf_eta = mat.ior;
-		float inv_eta = 1.0f / nf_eta;
-		float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
-		if (nf_c <= 0.0f) nf_c = 1e-6f;
-		scattered_dir = normalize(normal + wf_rand_unit(seed));
-		if (wf_near_zero(scattered_dir)) scattered_dir = normal;
-		float cos_wi = fmaxf(dot(scattered_dir, normal), 1e-6f);
-		float fr = FrDielectric(cos_wi, nf_eta);
-		float weight = (1.0f - fr) / nf_c;
+		float weight;
+		wf_sample_normalized_fresnel(mat.ior, normal, seed, scattered_dir, weight, brdf_pdf_override);
 		attenuation = SS(weight);
 		scattered   = true;
 		is_specular = false;
-		brdf_pdf_override = (1.0f - fr) * cos_wi / (nf_c * 3.14159265f);
 		break;
 	}
 	case MaterialType::Medium: {
@@ -1643,300 +2059,14 @@ extern "C" __global__ void evaluate_materials(
 		return;
 	}
 
-	// -------------------------------------------------------------------------
-	// NEE: direct-light shadow ray (non-specular materials only)
-	// -------------------------------------------------------------------------
-	if (!is_specular) {
-	if (numLights > 0 && aliasTable) {
-		// Pick a light via alias table
-		int   slot = int(wf_rand(seed) * float(numLights));
-		if (slot >= (int)numLights) slot = (int)numLights - 1;
-		const GpuAliasEntry& entry = aliasTable[slot];
-		int light_idx = (wf_rand(seed) < entry.q) ? slot : entry.alias;
-		float selection_pdf = aliasTable[light_idx].pdf;
-
-		int            prim_idx  = lightIndices[light_idx];
-		GpuLightKind   kind      = lightKinds[light_idx];
-
-		float  geom_pdf = 0.0f, max_dist = 0.0f;
-		float3 to_light;
-		SS light_emission_spec(0.f);
-
-		auto liftEmission = [&](float3 le) -> SS {
-			float m = le.x > le.y ? (le.x > le.z ? le.x : le.z)
-								  : (le.y > le.z ? le.y : le.z);
-			float sc = 2.f * m;
-			if (sc <= 0.f) return SS(0.f);
-			float c0, c1, c2;
-			dev_srgb_to_coeffs(le.x/sc, le.y/sc, le.z/sc, c0, c1, c2);
-			RGBSigmoidPolynomial poly(c0, c1, c2);
-			SS s(0.f);
-			for (int i = 0; i < kWFNWavelengths; ++i)
-				s[i] = sc * poly(swl.lambda[i]);
-			return s;
-		};
-
-		if (kind == GpuLightKind::Sphere) {
-			const SphereData& s = spheres[prim_idx];
-			to_light = wf_sample_sphere_light(s, hit_point, seed, geom_pdf, max_dist);
-			light_emission_spec = liftEmission(materials[s.materialIdx].emission);
-		} else if (kind == GpuLightKind::Triangle) {
-			const TriangleData& tri = triangles[prim_idx];
-			to_light = wf_sample_triangle_light(tri, hit_point, seed, geom_pdf, max_dist);
-			light_emission_spec = liftEmission(materials[tri.materialIdx].emission);
-		} else if (kind == GpuLightKind::BilinearPatch) {
-			const BilinearPatchData& bp = bilinearPatches[prim_idx];
-			to_light = wf_sample_bilinear_patch_light(bp, hit_point, seed, geom_pdf, max_dist);
-			light_emission_spec = liftEmission(materials[bp.materialIdx].emission);
-		} else {
-			const QuadData& q = quads[prim_idx];
-			to_light = wf_sample_quad_light(q, hit_point, seed, geom_pdf, max_dist);
-			light_emission_spec = liftEmission(materials[q.materialIdx].emission);
-		}
-
-		float light_pdf = selection_pdf * geom_pdf;
-		if (light_pdf > 1e-6f && dot(to_light, normal) > 0.0f) {
-			float cos_l = fmaxf(dot(to_light, normal), 0.0f);
-			float bsdf_val = 1.0f / 3.14159265f; // Lambertian default
-			// Lambertian's BRDF is albedo/pi, direction-independent - `attenuation`
-			// already equals albedoSpectrum(mat.albedo) from the switch above, so
-			// reuse it here instead of leaving the NEE contribution achromatic
-			// (was previously missing entirely: every Lambertian surface
-			// contributed as if albedo were white, regardless of actual color).
-			// NormalizedFresnel's bsdf_val below is already a complete,
-			// achromatic BRDF value (no color/texture involved), so it needs
-			// no equivalent multiply.
-			SS bsdf_color(1.f);
-			if (mat.type == MaterialType::Lambertian || mat.type == MaterialType::Subsurface) {
-				bsdf_color = attenuation;
-			} else if (mat.type == MaterialType::NormalizedFresnel) {
-				float nf_eta = mat.ior;
-				float inv_eta = 1.0f / nf_eta;
-				float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
-				if (nf_c <= 0.0f) nf_c = 1e-6f;
-				float fr_l = FrDielectric(cos_l, nf_eta);
-				bsdf_val = (1.0f - fr_l) / (nf_c * 3.14159265f);
-			}
-			float brdf_pdf_l = (brdf_pdf_override > 0.0f) ? brdf_pdf_override : (bsdf_val * cos_l);
-			float mis_w = wf_mis(light_pdf, brdf_pdf_l);
-
-			// Spectral direct-light contribution
-			SS Ld = (mis_w * bsdf_val * cos_l / light_pdf) * throughput * bsdf_color * light_emission_spec;
-
-			// 0.01, not the original 0.001: a scene with many densely-packed
-			// custom primitives (spheres) reproducibly crashed the shadow
-			// OptiX launch with an illegal memory access - the 0.001 offset
-			// left the shadow ray's origin too close to its own emitting
-			// surface (and, at high primitive density, to a neighboring
-			// primitive's surface too) for this driver's any-hit traversal
-			// over custom AABBs to handle; confirmed via bisection on
-			// synthetic sphere-field pbrt scenes (compute-sanitizer memcheck/
-			// initcheck found nothing, ruling out a plain buffer overrun).
-			// Offsetting along BOTH the shading normal AND the shadow ray's
-			// own direction, not just the normal alone. The normal-only
-			// offset is load-bearing on its own (see above): a pure
-			// direction-only offset - matching optix_device_helpers.h's
-			// trace_shadow_ray() - was tried first and broke
-			// NormalMappedLambertian (scene 20 rendered 99% black), since a
-			// shading normal bent away from the true surface no longer
-			// guarantees "away from this primitive" the way the true
-			// geometric normal does, letting the ray re-enter its own
-			// (unperturbed) sphere at a grazing angle. But normal-only,
-			// even at a much larger shadow_eps, turned out far weaker than
-			// direction-only at escaping self-intersection on dense,
-			// closely-packed real geometry: Sibenik Cathedral's stone
-			// tracery false-occluded most sky-NEE shadow rays at
-			// shadow_eps=0.01, and bumping shadow_eps up to 2.0 with a
-			// normal-only offset barely helped (GPU stayed under 50% of
-			// CPU's brightness at matched settings) - adding the direction
-			// component back in (while keeping the normal component, so
-			// NormalMappedLambertian stays fixed) closed the gap to ~73%
-			// at shadow_eps=0.5, confirmed by direct experiment. 2.0 with
-			// the combined offset overshot badly (GPU 1.5x *brighter* than
-			// CPU - real light leaks from skipping past legitimate
-			// occluders), which is why this is a per-scene-tunable value
-			// (GpuCameraParams::shadowRayEpsilon), not a blanket increase.
-			ShadowRayWorkItem shadow;
-			shadow.origin    = hit_point + shadow_eps * normal + shadow_eps * normalize(to_light);
-			shadow.direction = to_light;
-			shadow.tMax      = max_dist - 0.002f;
-			for (int i = 0; i < kWFNWavelengths; ++i) {
-				shadow.Ld[i]             = Ld[i];
-				shadow.wavelengths[i]    = swl.lambda[i];
-				shadow.wavelength_pdfs[i] = swl.pdf[i];
-			}
-			shadow.pixelIndex = h.pixelIndex;
-			shadowQueue.push(shadow);
-		}
-	}
-	// -------------------------------------------------------------------------
-	// NEE: sky (infinite) light. Mirrors CPU's camera.h Strategy A-2 and the
-	// recursive backend's own sky-NEE block (optix_device_helpers.h) - see
-	// that comment for the full story (GPU used to only pick up sky light via
-	// a lucky BSDF-sampled escape, no NEE, which under-lit small-aperture
-	// interiors like Sibenik Cathedral). skyColor is the same constant color
-	// the miss path already uses (camera.backgroundColor - see
-	// optix_miss.h/accumulate_miss's own use of it), defaulting to black for
-	// every scene without a sky, which makes this a free no-op there.
-	// -------------------------------------------------------------------------
-	if (!is_specular && (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f)) {
-		float3 sky_dir = wf_rand_unit(seed);
-		float  cos_l   = dot(sky_dir, normal);
-		if (cos_l > 0.0f) {
-			float pdf_sky = 1.0f / (4.0f * 3.14159265f); // uniform sphere - matches sky_light::sample_Le()'s constant-color fallback
-
-			float bsdf_val = 1.0f / 3.14159265f; // Lambertian default
-			// See the area-light block above: attenuation == albedoSpectrum(mat.albedo)
-			// for Lambertian (direction-independent BRDF, safe to reuse here);
-			// NormalizedFresnel's bsdf_val is already a complete achromatic value.
-			SS bsdf_color(1.f);
-			if (mat.type == MaterialType::Lambertian || mat.type == MaterialType::Subsurface) {
-				bsdf_color = attenuation;
-			} else if (mat.type == MaterialType::NormalizedFresnel) {
-				float nf_eta = mat.ior;
-				float inv_eta = 1.0f / nf_eta;
-				float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
-				if (nf_c <= 0.0f) nf_c = 1e-6f;
-				float fr_l = FrDielectric(cos_l, nf_eta);
-				bsdf_val = (1.0f - fr_l) / (nf_c * 3.14159265f);
-			}
-			float brdf_pdf_sky = (brdf_pdf_override > 0.0f) ? brdf_pdf_override : (bsdf_val * cos_l);
-			float mis_w = wf_mis(pdf_sky, brdf_pdf_sky);
-
-			// Uplift RGB skyColor to spectrum (same pattern as liftEmission above)
-			float m = skyColor.x > skyColor.y ? (skyColor.x > skyColor.z ? skyColor.x : skyColor.z)
-			                                  : (skyColor.y > skyColor.z ? skyColor.y : skyColor.z);
-			float sc = 2.f * m;
-			SS sky_spec(0.f);
-			if (sc > 0.f) {
-				float c0, c1, c2;
-				dev_srgb_to_coeffs(skyColor.x / sc, skyColor.y / sc, skyColor.z / sc, c0, c1, c2);
-				RGBSigmoidPolynomial poly(c0, c1, c2);
-				for (int i = 0; i < kWFNWavelengths; ++i)
-					sky_spec[i] = sc * poly(swl.lambda[i]);
-			}
-
-			SS Ld = (mis_w * bsdf_val * cos_l / pdf_sky) * throughput * bsdf_color * sky_spec;
-
-			// See the area-light block above for why this is a combined
-			// normal+direction offset, not the normal alone.
-			ShadowRayWorkItem shadow;
-			shadow.origin    = hit_point + shadow_eps * normal + shadow_eps * normalize(sky_dir);
-			shadow.direction = sky_dir;
-			shadow.tMax      = 1e30f;
-			for (int i = 0; i < kWFNWavelengths; ++i) {
-				shadow.Ld[i]              = Ld[i];
-				shadow.wavelengths[i]     = swl.lambda[i];
-				shadow.wavelength_pdfs[i] = swl.pdf[i];
-			}
-			shadow.pixelIndex = h.pixelIndex;
-			shadowQueue.push(shadow);
-		}
-	}
-
-	// -------------------------------------------------------------------------
-	// NEE: punctual (point/spot/distant) delta lights. Unlike the area-light
-	// block above (one stochastic pick via alias table), every contributing
-	// punctual light gets its own shadow ray - matches recursive path
-	// (optix_device_helpers.h add_punctual_lights_lambertian) and the CPU
-	// reference (camera.h punct_lights loop): pdf=1 by construction, so no
-	// MIS weight or pdf division, just beta * BRDF * cos_theta * Li per light.
-	// -------------------------------------------------------------------------
-	for (unsigned int pli = 0; pli < numPunctualLights; ++pli) {
-		float3 wi, Li; float t_max;
-		if (!wf_eval_punctual_light(punctualLights[pli], hit_point, wi, Li, t_max)) continue;
-		float cos_l = dot(wi, normal);
-		if (cos_l <= 0.0f) continue;
-
-		float bsdf_val = 1.0f / 3.14159265f; // Lambertian default
-		// See the area-light block above: attenuation == albedoSpectrum(mat.albedo)
-		// for Lambertian (direction-independent BRDF, safe to reuse here);
-		// NormalizedFresnel's bsdf_val is already a complete achromatic value.
-		SS bsdf_color(1.f);
-		if (mat.type == MaterialType::Lambertian || mat.type == MaterialType::Subsurface) {
-			bsdf_color = attenuation;
-		} else if (mat.type == MaterialType::NormalizedFresnel) {
-			float nf_eta = mat.ior;
-			float inv_eta = 1.0f / nf_eta;
-			float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
-			if (nf_c <= 0.0f) nf_c = 1e-6f;
-			float fr_l = FrDielectric(cos_l, nf_eta);
-			bsdf_val = (1.0f - fr_l) / (nf_c * 3.14159265f);
-		}
-
-		// Uplift RGB Li to spectrum (same pattern as liftEmission above)
-		float m = Li.x > Li.y ? (Li.x > Li.z ? Li.x : Li.z) : (Li.y > Li.z ? Li.y : Li.z);
-		float sc = 2.f * m;
-		SS Li_spec(0.f);
-		if (sc > 0.f) {
-			float c0, c1, c2;
-			dev_srgb_to_coeffs(Li.x / sc, Li.y / sc, Li.z / sc, c0, c1, c2);
-			RGBSigmoidPolynomial poly(c0, c1, c2);
-			for (int i = 0; i < kWFNWavelengths; ++i)
-				Li_spec[i] = sc * poly(swl.lambda[i]);
-		}
-
-		SS Ld = (bsdf_val * cos_l) * throughput * bsdf_color * Li_spec;
-
-		// See the area-light block above for why this is a combined
-		// normal+direction offset, not the normal alone.
-		ShadowRayWorkItem shadow;
-		shadow.origin    = hit_point + shadow_eps * normal + shadow_eps * normalize(wi);
-		shadow.direction = wi;
-		shadow.tMax      = t_max - 0.002f;
-		for (int i = 0; i < kWFNWavelengths; ++i) {
-			shadow.Ld[i]              = Ld[i];
-			shadow.wavelengths[i]     = swl.lambda[i];
-			shadow.wavelength_pdfs[i] = swl.pdf[i];
-		}
-		shadow.pixelIndex = h.pixelIndex;
-		shadowQueue.push(shadow);
-	}
-
-	// Flush accumulated prior-bounce radiance (once, regardless of whether
-	// any area/punctual lights actually contributed above).
-	if ((bool)radiance) addToFramebuffer(h.pixelIndex, radiance);
-	} // if (!is_specular) - NEE (area + punctual lights)
-
-	// -------------------------------------------------------------------------
-	// Bounce: push next ray
-	// -------------------------------------------------------------------------
-	SS new_throughput = throughput * attenuation;
-
-	// Russian roulette after depth 3
-	if (h.depth >= 3) {
-		float p = new_throughput.MaxComponentValue();
-		if (wf_rand(seed) >= p) {
-			if (is_specular) addToFramebuffer(h.pixelIndex, radiance);
-			return;
-		}
-		new_throughput = new_throughput / p;
-	}
-
-	RayWorkItem next;
-	next.origin     = hit_point + 0.001f * scattered_dir;
-	next.direction  = normalize(scattered_dir);
-	next.seed            = seed;
-	next.pixelIndex      = h.pixelIndex;
-	next.depth           = h.depth + 1;
-	next.specular_bounce = is_specular ? 1 : 0;
-	// BRDF PDF of this new direction, for MIS if this ray escapes the scene
-	// on its next bounce (see RayWorkItem::brdf_pdf's own comment) - mirrors
-	// optix_intersection_sphere.h's brdf_pdf_out exactly (0 for specular,
-	// else brdf_pdf_override if the material set one, else the cosine-
-	// weighted hemisphere pdf every non-specular case here samples from).
-	next.brdf_pdf = is_specular ? 0.0f
-		: (brdf_pdf_override > 0.0f ? brdf_pdf_override
-			: fmaxf(dot(next.direction, normal), 0.0f) / 3.14159265f);
-	next.tMin       = 0.001f;
-	next.tMax       = 1e30f;
-	for (int i = 0; i < kWFNWavelengths; ++i) {
-		next.throughput[i]      = new_throughput[i];
-		next.radiance[i]        = is_specular ? radiance[i] : 0.0f;
-		next.wavelengths[i]     = swl.lambda[i];
-		next.wavelength_pdfs[i] = swl.pdf[i];
-	}
-	nextRayQueue.push(next);
+	wf_finish_material_scatter(mat.type, mat.ior, normal, hit_point, seed,
+		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
+		h.pixelIndex, h.depth,
+		spheres, quads, triangles, bilinearPatches, materials,
+		lightIndices, lightKinds, aliasTable, numLights,
+		punctualLights, numPunctualLights,
+		skyColor, shadow_eps,
+		shadowQueue, nextRayQueue, framebuffer);
 }
 
 // Uplift a flat RGB color to a spectral sample at the given hero
@@ -1958,6 +2088,124 @@ __device__ __forceinline__ SampledSpectrum<kWFNWavelengths> wf_lift_rgb_to_spect
 	for (int i = 0; i < kWFNWavelengths; ++i)
 		s[i] = sc * poly(swl.lambda[i]);
 	return s;
+}
+
+// ============================================================================
+// Kernel 2b — resolve_bssrdf_exit
+//   Consumes BssrdfExitWorkItem (the result of __raygen__wf_probe's BSSRDF
+//   probe walk, wavefront_probe.h) - MaterialType::Subsurface, Phase 2.
+//
+//   found==0 (probe walk failed to find a valid exit point): flush this
+//   path's still-pending `radiance` (deferred specular-chain emission) if
+//   nonzero and stop - mirrors evaluate_materials's own `if (!scattered)`
+//   handling, and BssrdfExitWorkItem's own comment on why this can't be
+//   silently dropped.
+//
+//   found==1: resume the path as an ordinary MaterialType::
+//   NormalizedFresnel(ior=materials[matIdx].ior) non-specular bounce at
+//   exitPos/exitNormal, weighted by Sp/(sampleProb*pdf) - mirrors camera.h::
+//   sample_bssrdf_exit()'s hand-off and the recursive backend's identical
+//   shade_material() Subsurface-case hand-off (optix_device_helpers.h).
+//
+//   Folds sss_weight into `throughput` BEFORE calling wf_finish_material_
+//   scatter() - rather than scaling emission after the fact the way the
+//   recursive backend's own deferred-outer-multiply payload design does:
+//   wavefront's NEE math already multiplies every Ld term by `throughput`
+//   directly (see wf_finish_material_scatter()'s own Ld formulas), so pre-
+//   weighting throughput here makes that existing math do the right thing
+//   automatically, both for this bounce's own NEE and for the
+//   `new_throughput = throughput * attenuation` the next bounce inherits -
+//   no separate post-hoc emission scale needed. `radiance` (unrelated prior-
+//   bounce emission, not part of this BSSRDF event) is passed through
+//   unweighted, exactly as wf_finish_material_scatter() already treats it.
+// ============================================================================
+
+extern "C" __global__ void resolve_bssrdf_exit(
+	WorkQueue<BssrdfExitWorkItem> exitQueue,
+	int                           numExit,
+	WorkQueue<RayWorkItem>        nextRayQueue,
+	WorkQueue<ShadowRayWorkItem>  shadowQueue,
+	float3*                       framebuffer,
+	const SphereData*   spheres,
+	const QuadData*     quads,
+	const TriangleData* triangles,
+	const BilinearPatchData* bilinearPatches,
+	const MaterialData* materials,
+	const int*          lightIndices,
+	const GpuLightKind* lightKinds,
+	const GpuAliasEntry* aliasTable,
+	unsigned int numLights,
+	const PunctualLightGPU* punctualLights,
+	unsigned int numPunctualLights,
+	float3 skyColor,
+	float shadowRayEpsilon
+) {
+	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	if (idx >= numExit) return;
+
+	const BssrdfExitWorkItem& item = exitQueue.items[idx];
+
+	using SS  = SampledSpectrum<kWFNWavelengths>;
+	using SWL = SampledWavelengths<kWFNWavelengths>;
+	SWL swl;
+	for (int i = 0; i < kWFNWavelengths; ++i) {
+		swl.lambda[i] = item.wavelengths[i];
+		swl.pdf[i]    = item.wavelength_pdfs[i];
+	}
+	SS throughput(item.throughput);
+	SS radiance(item.radiance);
+	unsigned int seed = item.seed;
+
+	// <= 0 (zero-init default) means "use the standard 0.01f" - mirrors
+	// evaluate_materials's own identical default.
+	const float shadow_eps = (shadowRayEpsilon > 0.0f) ? shadowRayEpsilon : 0.01f;
+
+	if (!item.found) {
+		// Probe walk failed to find a valid exit point - path terminates,
+		// same as evaluate_materials's own `if (!scattered)` handling.
+		if ((bool)radiance) {
+			auto xyz = SampledSpectrumToXYZ(radiance, swl, d_cie_x, d_cie_y, d_cie_z,
+											kDevCIEMin, kDevCIENSamples);
+			float r, g, b;
+			wf_xyz_to_linear_rgb(xyz.x, xyz.y, xyz.z, r, g, b);
+			atomicAdd(&framebuffer[item.pixelIndex].x, r);
+			atomicAdd(&framebuffer[item.pixelIndex].y, g);
+			atomicAdd(&framebuffer[item.pixelIndex].z, b);
+		}
+		return;
+	}
+
+	const MaterialData& mat = materials[item.matIdx];
+	const float eta = mat.ior;
+
+	// sss_weight = Sp / (sampleProb * pdf) - see bssrdf_probe_walk()'s own
+	// comment (optix_device_helpers.h) for the full derivation. Sp is an
+	// unbounded-positive RGB value (a BSSRDF profile value, not a [0,1]
+	// albedo), so it needs the same normalize-by-2*max uplift technique
+	// evaluate_materials's own unboundedSpectrum lambda uses for
+	// MaterialType::Hair/Principled results - wf_lift_rgb_to_spectrum()
+	// above already IS that same technique in standalone form.
+	SS Sp_spec = wf_lift_rgb_to_spectrum(item.Sp, swl);
+	float denom = item.sampleProb * item.pdf;
+	SS sss_weight = (denom > 1e-12f) ? (Sp_spec / denom) : SS(0.f);
+
+	SS weightedThroughput = throughput * sss_weight;
+
+	float3 scattered_dir;
+	float weight, brdf_pdf_override;
+	wf_sample_normalized_fresnel(eta, item.exitNormal, seed, scattered_dir, weight, brdf_pdf_override);
+	SS attenuation = SS(weight);
+
+	wf_finish_material_scatter(MaterialType::NormalizedFresnel, eta,
+		item.exitNormal, item.exitPos, seed,
+		weightedThroughput, radiance, swl, attenuation, scattered_dir,
+		/*is_specular=*/false, brdf_pdf_override,
+		item.pixelIndex, item.depth,
+		spheres, quads, triangles, bilinearPatches, materials,
+		lightIndices, lightKinds, aliasTable, numLights,
+		punctualLights, numPunctualLights,
+		skyColor, shadow_eps,
+		shadowQueue, nextRayQueue, framebuffer);
 }
 
 // ============================================================================

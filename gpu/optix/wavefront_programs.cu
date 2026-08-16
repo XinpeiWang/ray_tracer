@@ -112,6 +112,12 @@ struct WfShadowPayload {
 	bool occluded;
 };
 
+// BSSRDF probe walk (MaterialType::Subsurface, wavefront backend Phase 2) -
+// needs wf_instance_base()/wf_prim_base()/packPointer()/unpackPointer()
+// above, so this include has to stay below them. See wavefront_probe.h's
+// own header comment for the full design.
+#include "wavefront_probe.h"
+
 // ============================================================================
 // __raygen__wf_intersect
 //   Launch dimensions: (numRaysInQueue, 1, 1).
