@@ -4351,7 +4351,17 @@ static bool build_loaded_pbrt_scene(
 			  << " emissive triangle(s) are not parallelograms and are sampled "
 			     "individually\n";
 	}
-	if (scene.lightIndices.empty()) {
+	// backgroundColor is zero-init unless the scene has a real LightSource
+	// "infinite" (see BuildStats::backgroundColor's comment) - a scene lit
+	// purely by one, like sportscar-sky.pbrt (whose 5 AreaLightSource blocks
+	// all have their Shape commented out in the source file itself, leaving
+	// zero real discrete lights), still renders properly via sky NEE
+	// (background color feeds the same NEE path a real light would), so
+	// warning "expect a very dark image" here would be actively wrong, not
+	// just uninformative.
+	if (scene.lightIndices.empty() &&
+	    stats.backgroundColor.x == 0.0f && stats.backgroundColor.y == 0.0f &&
+	    stats.backgroundColor.z == 0.0f) {
 		std::cerr << "[OptiX] warning: no samplable lights in this scene - "
 			     "expect a very dark image.\n";
 	}
