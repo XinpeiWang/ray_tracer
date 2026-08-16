@@ -20,7 +20,25 @@ extern "C" __global__ void __miss__ms() {
 	);
 	unsigned int seed = optixGetPayload_9();
 
+	// MIS weight against the sky-NEE strategy (shade_material()'s own
+	// sky-NEE blocks - see their comment), mirroring CPU's camera.h escaped-
+	// ray handling exactly: a camera ray or specular bounce (prev_brdf_pdf
+	// == 0, optix_raygen.h's own convention) gets the sky's full,
+	// unweighted radiance (no NEE strategy could have sampled this ray in
+	// the first place); any other bounce discounts it by the balance
+	// heuristic against the sky's uniform-sphere pdf (1/4pi - the only sky
+	// mode any GPU scene builder sets), so a genuinely-escaped ray doesn't
+	// double-count against the NEE sample already taken at the previous
+	// hit. Before this, every miss added the FULL background color
+	// unconditionally, which - paired with adding sky-NEE - would have
+	// double-counted the sky's contribution on every non-specular escape.
+	const float prev_brdf_pdf = __uint_as_float(optixGetPayload_12());
 	float3 emission = color;
+	if (prev_brdf_pdf > 0.0f && (color.x > 0.0f || color.y > 0.0f || color.z > 0.0f)) {
+		constexpr float pdf_sky = 1.0f / (4.0f * 3.14159265358979323846f);
+		float w_b = mis_power_heuristic(prev_brdf_pdf, pdf_sky);
+		emission = w_b * color;
+	}
 
 	optixSetPayload_3(__float_as_uint(emission.x));
 	optixSetPayload_4(__float_as_uint(emission.y));

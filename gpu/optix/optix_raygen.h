@@ -85,7 +85,15 @@ extern "C" __global__ void __raygen__rg() {
 			unsigned int p9 = payload.seed;
 			unsigned int p10 = 0;  // scattered flag
 			unsigned int p11 = 0;  // hit distance 't'
-			unsigned int p12 = 0;  // brdf_pdf of scattered direction (for MIS on next bounce)
+			// INPUT for __miss__ms (see its own comment): prev_brdf_pdf, the BRDF
+			// PDF of the ray that arrives at this trace - 0 for the primary ray or
+			// a specular bounce (CPU's prev_bsdf_pdf convention exactly), non-zero
+			// otherwise. Every closest-hit program only ever WRITES p12 (never
+			// reads it - see their own optixSetPayload_12 calls), so this incoming
+			// value is only ever consumed by the miss program; hit programs then
+			// overwrite it with their own OUTPUT meaning (brdf_pdf of the new
+			// scatter direction, or the NEE light pdf for a hit_light result).
+			unsigned int p12 = __float_as_uint(prev_brdf_pdf);
 
 			optixTrace(
 				params.traversable,     // Acceleration structure

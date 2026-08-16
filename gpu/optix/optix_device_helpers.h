@@ -510,7 +510,11 @@ __device__ __forceinline__ bool trace_shadow_ray(
 	// (quads/spheres, or flat/architectural triangle meshes where shading
 	// and geometric normals nearly coincide) never exercised this path
 	// clearly enough to surface it.
-	const float3 shadow_origin = origin + 0.01f * normalize(direction);
+	// <= 0 (zero-init default) means "use the standard 0.01f" - see
+	// GpuCameraParams::shadowRayEpsilon's own comment for why some scenes
+	// need a larger, explicitly-set override.
+	const float shadow_eps = (params.camera.shadowRayEpsilon > 0.0f) ? params.camera.shadowRayEpsilon : 0.01f;
+	const float3 shadow_origin = origin + shadow_eps * normalize(direction);
 
 	// Trace shadow ray with occlusion testing
 	optixTrace(
@@ -878,6 +882,38 @@ __device__ __forceinline__ void shade_material(
 			// so a textured Lambertian under a punctual light isn't
 			// incorrectly lit as if fully white.
 			add_punctual_lights_lambertian(hit_point, normal, attenuation, emission);
+
+			// Direct lighting from the sky (infinite light) - mirrors CPU's
+			// camera.h Strategy A-2 (NEE toward the sky, MIS-weighted against
+			// the BSDF-sampled bounce), which the GPU miss program
+			// (optix_miss.h) never had: it only adds the background color when
+			// a bounced ray happens to escape the scene entirely, with no
+			// importance sampling toward it - fine for open scenes, but
+			// starves interiors with small apertures (confirmed: Sibenik
+			// Cathedral rendered 2.85x darker than CPU at matched settings
+			// before this fix). Every GPU scene's sky is a constant color (the
+			// only sky_light mode any builder sets - see optix_miss.h's own
+			// comment), so this only needs the uniform-sphere fallback
+			// sky_light::sample_Le() uses for that case, not HDR importance
+			// sampling. Skipped outright when backgroundColor is black (every
+			// scene without a sky) - free, since NEE toward a zero-radiance
+			// light contributes nothing.
+			{
+				const float3& skyColor = params.camera.backgroundColor;
+				if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
+					float3 sky_dir = random_unit_vector(seed);
+					float  cos_sky = dot(sky_dir, normal);
+					if (cos_sky > 0.0f) {
+						constexpr float pdf_sky = 1.0f / (4.0f * 3.14159265358979323846f);
+						if (trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
+							float brdf_pdf_sky = cosine_pdf(sky_dir, normal);
+							float mis_weight    = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
+							float3 brdf = attenuation / 3.14159265358979323846f;
+							emission = emission + mis_weight * brdf * skyColor * cos_sky / pdf_sky;
+						}
+					}
+				}
+			}
 
 			break;
 		}
@@ -1299,6 +1335,27 @@ __device__ __forceinline__ void shade_material(
 
 							float3 direct_light = mis_weight * brdf_val * light_emission * cos_to_light / light_pdf;
 							emission = emission + direct_light;
+						}
+					}
+				}
+			}
+
+			// Direct lighting from the sky - mirrors the Lambertian case's own
+			// sky-NEE block above (see its comment); same BSDF formula this
+			// case already uses for its own area-light NEE.
+			{
+				const float3& skyColor = params.camera.backgroundColor;
+				if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
+					float3 sky_dir = random_unit_vector(seed);
+					float  cos_sky = dot(sky_dir, normal);
+					if (cos_sky > 0.0f) {
+						constexpr float pdf_sky = 1.0f / (4.0f * 3.14159265358979323846f);
+						if (trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
+							float fr_sky       = FrDielectric(cos_sky, nf_eta);
+							float brdf_val_sky = (1.0f - fr_sky) / (nf_c * 3.14159265358979323846f);
+							float brdf_pdf_sky = brdf_val_sky * cos_sky;
+							float mis_weight    = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
+							emission = emission + mis_weight * brdf_val_sky * skyColor * cos_sky / pdf_sky;
 						}
 					}
 				}

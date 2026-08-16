@@ -5857,6 +5857,13 @@ bool build_scene(
 									// sky_light(4.5,4.8,5.2) - see that function's comment (Sibenik's
 									// window apertures are small relative to its stone-walled volume).
 									out_camera_extra->backgroundColor = make_float3(4.5f, 4.8f, 5.2f);
+									// Sibenik's dense stone tracery (thin, closely-packed columns/
+									// arches) false-occludes most sky-NEE shadow rays at the standard
+									// 0.01f offset - see GpuCameraParams::shadowRayEpsilon's own
+									// comment for the confirmed-by-experiment numbers (GPU brightness
+									// went from ~24% to ~89% of CPU's at this value, at matched
+									// settings). No other scene needs this override.
+									out_camera_extra->shadowRayEpsilon = 0.5f;
 								}
 								break;
 							}

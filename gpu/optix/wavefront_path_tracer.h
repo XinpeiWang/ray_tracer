@@ -115,7 +115,7 @@ private:
         const int* d_lightIndices, const GpuLightKind* d_lightKinds,
         const GpuAliasEntry* d_aliasTable, unsigned int numLights,
         const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
-        float3* d_framebuffer);
+        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon);
     // Not a launchX-style param above deliberately - see setTextures()'s
     // comment for why textures travel via member state instead.
     void launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor);

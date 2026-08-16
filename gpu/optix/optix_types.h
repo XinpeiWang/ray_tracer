@@ -583,6 +583,21 @@ struct GpuCameraParams {
 	// importance-sampled-image machinery in image_infinite_light.h is
 	// unused dead code on the CPU side too, never wired to any scene).
 	float3 backgroundColor;
+
+	// Shadow-ray self-intersection offset override (world units), along the
+	// shadow ray's own direction - see trace_shadow_ray()'s (optix_device_
+	// helpers.h) own comment for why this offset exists at all. <= 0 (the
+	// default, zero-init-safe for every scene that doesn't set it) means
+	// "use the standard 0.01f". Some scenes need more: Sibenik Cathedral's
+	// dense stone tracery (thin, closely-packed columns/arches) was
+	// confirmed - by direct experiment, not guesswork - to false-occlude
+	// most sky-NEE shadow rays at 0.01f, making the whole interior render
+	// far darker than it should (GPU ~24% of CPU's brightness at matched
+	// settings); bumping just this scene's epsilon to 0.5f closed the gap
+	// to ~89%. A flat 0.01f isn't safe to raise for every scene (a smaller-
+	// scale scene could get real light leaks from too large an offset), so
+	// this is a per-scene override, not a global constant change.
+	float shadowRayEpsilon;
 };
 
 // Launch parameters (passed to all OptiX programs)

@@ -49,6 +49,7 @@ extern "C" void wf_launch_evaluate_materials(
 	int,
 	const CloudMedium<float>*, unsigned int,
 	const GpuRgbGridMedium*, const float*,
+	float3, float,
 	cudaStream_t);
 extern "C" void wf_launch_accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, cudaStream_t);
 extern "C" void wf_launch_accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*, cudaStream_t);
@@ -754,7 +755,7 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 	const int*           d_lightIndices, const GpuLightKind* d_lightKinds,
 	const GpuAliasEntry* d_aliasTable,  unsigned int numLights,
 	const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
-	float3*              d_framebuffer)
+	float3*              d_framebuffer, float3 skyColor, float shadowRayEpsilon)
 {
 	if (numHits == 0) return;
 
@@ -787,6 +788,7 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		reinterpret_cast<const CloudMedium<float>*>(d_cloudMediums_), numCloudMediums_,
 		reinterpret_cast<const GpuRgbGridMedium*>(d_rgbGridMediums_),
 		reinterpret_cast<const float*>(d_rgbGridData_),
+		skyColor, shadowRayEpsilon,
 		stream_);
 }
 
@@ -968,7 +970,7 @@ bool WavefrontPathTracer::render(
 				num_lights,
 				reinterpret_cast<const PunctualLightGPU*>(d_punctual_lights),
 				num_punctual_lights,
-				d_fbPtr);
+				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon);
 
 			// ------------------------------------------------------------------
 			// Phase 4: Accumulate miss (escaped rays → background)

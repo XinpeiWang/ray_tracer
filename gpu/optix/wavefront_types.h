@@ -40,6 +40,13 @@ struct RayWorkItem {
 	int          pixelIndex;       // flat pixel index (y*width + x)
 	int          depth;            // current bounce (0 = primary)
 	int          specular_bounce;  // 1 if this ray was spawned by a specular event
+	// BRDF PDF of this ray's own scatter direction, for MIS if it escapes the
+	// scene on the next bounce (accumulate_miss's own comment) - mirrors the
+	// recursive backend's prev_brdf_pdf (optix_raygen.h/optix_miss.h). 0 for
+	// the primary ray or a specular bounce (same sentinel meaning as
+	// specular_bounce above - "no MIS, full weight"), cosine_pdf(direction,
+	// normal) otherwise.
+	float        brdf_pdf;
 	float        tMin;             // ray t_min (normally 0.001)
 	float        tMax;             // ray t_max (normally 1e30)
 };
@@ -144,6 +151,11 @@ struct MissWorkItem {
 	float  wavelength_pdfs[kWFNWavelengths];
 	float3 rayDir;             // for environment-map lookups (currently unused)
 	int    pixelIndex;
+	// Carried from RayWorkItem::brdf_pdf (see its own comment) - accumulate_miss
+	// needs this to MIS-weight the sky's background contribution against the
+	// sky-NEE strategy (evaluate_materials's own sky-NEE block), mirroring
+	// optix_miss.h's recursive-backend equivalent.
+	float  brdf_pdf;
 };
 
 // ============================================================================
