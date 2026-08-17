@@ -139,8 +139,11 @@ extern "C" __global__ void __closesthit__triangle() {
 	// glow) samples it at the hit UV instead of using the flat mat.emission
 	// - see add_diffuse_light()'s textureIdx comment. Every other material
 	// type keeps using mat.emission directly (always zero for them anyway).
-	float3 emission = (mat.type == MaterialType::DiffuseLight && mat.textureIdx >= 0)
-		? sample_texture(mat.textureIdx, uv_u, uv_v, hit_point)
+	// Either way, DiffuseLight is one-sided (see optix_intersection_sphere.h's
+	// own comment on this gate) - matches CPU's diffuse_light::emitted().
+	float3 emission = (mat.type != MaterialType::DiffuseLight) ? mat.emission
+		: !front_face ? make_float3(0.0f, 0.0f, 0.0f)
+		: (mat.textureIdx >= 0) ? sample_texture(mat.textureIdx, uv_u, uv_v, hit_point)
 		: mat.emission;
 
 	float3 attenuation;

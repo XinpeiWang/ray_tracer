@@ -329,8 +329,14 @@ extern "C" __global__ void __closesthit__sphere() {
 	);
 	unsigned int seed = optixGetPayload_9();
 
-	// Get emission from material (all materials can emit, most have emission=0)
-	float3 emission = mat.emission;
+	// Get emission from material (all materials can emit, most have emission=0).
+	// DiffuseLight is one-sided, matching CPU's diffuse_light::emitted()
+	// (material_simple.h: `if (!rec.front_face) return color(0,0,0)`) - an
+	// unguarded read here made a light's back face glow exactly as brightly
+	// as its front, contrary to CPU and to pbrt-v4's own AreaLight (one-sided
+	// unless "twosided" is set, which this loader doesn't produce anyway).
+	float3 emission = (mat.type == MaterialType::DiffuseLight && !front_face)
+		? make_float3(0.0f, 0.0f, 0.0f) : mat.emission;
 
 	// Material scattering
 	float3 attenuation;
@@ -389,7 +395,13 @@ extern "C" __global__ void __closesthit__sphere() {
 
 			if (free_path < dist_inside) {
 				medium_t_hit = t_near + free_path;
-				scattered_dir = sample_henyey_greenstein(unit_dir, mat.fuzz, seed);
+				// sample_henyey_greenstein's `wo` is the outgoing direction
+				// (toward where the ray came from), matching CPU's
+				// hg_phase_material::scatter() `wo = -r_in.direction()`
+				// convention - passing the un-negated forward travel
+				// direction here inverted the g>0/g<0 forward/back-scatter
+				// bias for any anisotropic medium.
+				scattered_dir = sample_henyey_greenstein(-unit_dir, mat.fuzz, seed);
 				attenuation = mat.albedo;
 			} else {
 				medium_t_hit = t_far;
@@ -441,7 +453,10 @@ extern "C" __global__ void __closesthit__sphere() {
 					if (random_float(seed) < sigma_s_local / sigma_maj) {
 						did_scatter = true;
 						medium_t_hit  = tt;
-						scattered_dir = sample_henyey_greenstein(unit_dir3, mat.fuzz, seed);
+						// See the Medium branch above's comment: `wo` must be
+						// the negated (outgoing) direction to match CPU's
+						// hg_phase_material convention.
+						scattered_dir = sample_henyey_greenstein(-unit_dir3, mat.fuzz, seed);
 						attenuation   = mat.albedo;
 					}
 				}
@@ -526,7 +541,10 @@ extern "C" __global__ void __closesthit__sphere() {
 					if (random_float(seed) < sigma_t_local / grid.sigma_maj) {
 						did_scatter = true;
 						medium_t_hit  = tt;
-						scattered_dir = sample_henyey_greenstein(unit_dir3, grid.phase_g, seed);
+						// See the Medium branch's comment above: `wo` must be
+						// the negated (outgoing) direction to match CPU's
+						// hg_phase_material convention.
+						scattered_dir = sample_henyey_greenstein(-unit_dir3, grid.phase_g, seed);
 						float maxc = fmaxf(sr, fmaxf(sg, fmaxf(sb, 1e-6f)));
 						attenuation = make_float3(sr/maxc, sg/maxc, sb/maxc);
 					}
@@ -594,7 +612,12 @@ extern "C" __global__ void __closesthit__sphere() {
 					medium_t_hit  = t_near + free_path;
 					float3 medium_point = ray_orig + medium_t_hit * unit_dir;
 					float g = mat.fuzz;  // Medium/DielectricMedium: HG asymmetry
-					scattered_dir = sample_henyey_greenstein(unit_dir, g, seed);
+					// See the Medium branch's comment above: `wo` must be the
+					// negated (outgoing) direction to match CPU's
+					// hg_phase_material convention - this also makes the
+					// sampled scattered_dir self-consistent with the `wo`
+					// computed just below for this same event's NEE/MIS.
+					scattered_dir = sample_henyey_greenstein(-unit_dir, g, seed);
 					attenuation   = mat.albedo;
 					is_medium     = true;
 

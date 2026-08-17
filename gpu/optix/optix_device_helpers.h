@@ -1723,6 +1723,18 @@ __device__ __forceinline__ void shade_material(
 			// albedo = reflectance R (same hemisphere), emission = transmittance T (reused field)
 			float3 R = mat.albedo;
 			float3 T_col = mat.emission;  // transmittance packed into emission field
+			// `emission` (the OUT parameter, not T_col above) enters this case
+			// pre-loaded with mat.emission by the caller's general convention
+			// (same as MaterialType::Subsurface's own comment on this pattern
+			// just above) - but this material has no real emission field
+			// either: that union slot is T (transmittance), which is exactly
+			// T_col just read above. Left unreset, `emission` would still
+			// equal T_col and get added to the final radiance as if this
+			// surface were itself glowing by its own transmittance color, on
+			// top of the real scattered contribution below - a real bug this
+			// case previously had (DiffuseTransmission never resets emission,
+			// unlike Subsurface's explicit reset a few cases above).
+			emission = make_float3(0.0f, 0.0f, 0.0f);
 			float pr = fmaxf(R.x, fmaxf(R.y, R.z));
 			float pt = fmaxf(T_col.x, fmaxf(T_col.y, T_col.z));
 			if (pr + pt <= 0.0f) { scattered = false; break; }

@@ -165,10 +165,23 @@ extern "C" __global__ void __anyhit__shadow_triangle() {
 		return;
 	}
 
+	// MaterialType::Subsurface belongs in this list: its entry interface IS a
+	// plain dielectric surface (see MaterialType::Subsurface's own comment,
+	// shade_material() in optix_device_helpers.h - "the exact same smooth
+	// DielectricBxDF sample as MaterialType::Dielectric"), and CPU's
+	// equivalent `class subsurface::is_shadow_transmissive()`
+	// (material_pbrt.h) returns true with a comment explicitly stating it
+	// matches this list - Subsurface's own omission here was a real bug
+	// (the CPU code was written assuming GPU parity that didn't actually
+	// exist): any NEE shadow ray crossing a Subsurface-shaded mesh (skin,
+	// wax, marble - Subsurface is triangle-only in this backend, which is
+	// why only this triangle any-hit needs it, not the sphere one above)
+	// was wrongly reported fully occluded instead of passing through.
 	if (mat.type == MaterialType::Dielectric ||
 		mat.type == MaterialType::RoughDielectric ||
 		mat.type == MaterialType::ThinDielectric ||
-		mat.type == MaterialType::DiffuseTransmission) {
+		mat.type == MaterialType::DiffuseTransmission ||
+		mat.type == MaterialType::Subsurface) {
 		optixIgnoreIntersection();
 		return;
 	}
