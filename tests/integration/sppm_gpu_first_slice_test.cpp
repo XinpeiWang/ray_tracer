@@ -9,8 +9,21 @@
 // invocation goes through.
 //
 // Small iteration/photon counts throughout: this is about correctness (does
-// a real GPU SPPM render produce finite, non-negative, non-black output and
-// respect Phase 1's scene-11-only scope), not visual convergence quality.
+// a real GPU SPPM render produce finite, non-negative, non-black output),
+// not visual convergence quality.
+//
+// Scope note: this file originally only exercised B3 (CornellRoughGlass) --
+// Phase 1's one hardcoded scene -- plus a "GPU SPPM rejects any other scene"
+// guard. A later generalization pass (see optix_interface.cpp's
+// sppm_gpu_unsupported_reason() and sppm_programs.cu's
+// sppm_is_delta_material()/sppm_sample_delta_material()) extended GPU SPPM's
+// material dispatch to also cover Lambertian+Metal+Dielectric+Conductor
+// scenes built purely from spheres/quads with area lights, so this file now
+// also renders A1 (CornellBox, smooth Dielectric glass) and B4
+// (CornellConductor, GGX conductor) end-to-end, and the old "reject anything
+// but B3" test was replaced with one that rejects a scene using a
+// MaterialType genuinely still unsupported (B5 CornellCoatedDiffuse) --
+// see that test's own comment.
 #include <gtest/gtest.h>
 #include <cmath>
 #include <cstdio>
@@ -95,18 +108,86 @@ TEST_F(SppmGpuFirstSliceTest, CornellRoughGlassProducesFiniteNonBlackImage) {
 	                            << "likely produced no direct or indirect lighting contribution";
 }
 
-// Phase 1 scope guard: any scene other than B3 must be rejected cleanly
-// (not crash, not silently render garbage) -- see optix_render_main_sppm's
-// own doc comment on why scene B3 is the only supported scene right now.
-TEST_F(SppmGpuFirstSliceTest, RejectsOutOfScopeScene) {
-	const char* path = "sppm_gpu_first_slice_test_scene0.ppm";
+// A1 (CornellBox): Lambertian walls/box + a smooth Dielectric glass sphere +
+// a DiffuseLight ceiling quad -- exercises the Dielectric branch added to
+// sppm_is_delta_material()/sppm_sample_delta_material() (sppm_programs.cu)
+// by the generalization pass documented at this file's own top comment.
+// Previously rejected outright by Phase 1's hardcoded "only B3" guard.
+TEST_F(SppmGpuFirstSliceTest, CornellBoxDielectricProducesFiniteNonBlackImage) {
+	const char* path = "sppm_gpu_first_slice_test_a1.ppm";
+	outputFiles_.push_back(path);
+
+	int result = optix_render_main_sppm(
+		/*image_width=*/48, /*image_height=*/48,
+		/*iterations=*/10, /*photons=*/2000, /*max_depth=*/5,
+		path, /*scene_id=*/"A1",
+		278.0, 278.0, -800.0, /*force_camera_override=*/1);
+	ASSERT_EQ(result, 0) << "optix_render_main_sppm failed on scene A1";
+
+	PPMImage img = load_ppm(path);
+	ASSERT_TRUE(img.valid) << "Failed to load rendered PPM";
+	ASSERT_EQ(img.width, 48);
+	ASSERT_EQ(img.height, 48);
+
+	int nonzero_count = 0;
+	for (int v : img.pixels) {
+		ASSERT_GE(v, 0);
+		ASSERT_LE(v, 255);
+		if (v > 0) ++nonzero_count;
+	}
+	EXPECT_GT(nonzero_count, 0) << "Rendered image is entirely black";
+}
+
+// B4 (CornellConductor): Cornell walls + a polished-gold sphere and a
+// polished-aluminium box, both MaterialType::Conductor (GGX VNDF + complex
+// Fresnel) -- exercises the Conductor branch added by the same
+// generalization pass. Previously rejected outright by Phase 1's hardcoded
+// "only B3" guard.
+TEST_F(SppmGpuFirstSliceTest, CornellConductorProducesFiniteNonBlackImage) {
+	const char* path = "sppm_gpu_first_slice_test_b4.ppm";
+	outputFiles_.push_back(path);
+
+	int result = optix_render_main_sppm(
+		/*image_width=*/48, /*image_height=*/48,
+		/*iterations=*/10, /*photons=*/2000, /*max_depth=*/5,
+		path, /*scene_id=*/"B4",
+		278.0, 278.0, -800.0, /*force_camera_override=*/1);
+	ASSERT_EQ(result, 0) << "optix_render_main_sppm failed on scene B4";
+
+	PPMImage img = load_ppm(path);
+	ASSERT_TRUE(img.valid) << "Failed to load rendered PPM";
+	ASSERT_EQ(img.width, 48);
+	ASSERT_EQ(img.height, 48);
+
+	int nonzero_count = 0;
+	for (int v : img.pixels) {
+		ASSERT_GE(v, 0);
+		ASSERT_LE(v, 255);
+		if (v > 0) ++nonzero_count;
+	}
+	EXPECT_GT(nonzero_count, 0) << "Rendered image is entirely black";
+}
+
+// Scope guard, updated for the post-generalization rule set: GPU SPPM must
+// still cleanly reject (not crash, not silently mis-render) a scene using a
+// MaterialType its camera/photon-pass dispatch genuinely has no BSDF sampler
+// for. B5 (CornellCoatedDiffuse) is a good example -- pure sphere/quad
+// geometry (so it isn't rejected for the unrelated triangle-mesh reason),
+// but its sphere/box use MaterialType::CoatedDiffuse, which is intentionally
+// NOT in sppm_is_delta_material()'s covered set (see that function's own
+// comment on why: CPU's own coated_diffuse handling involves a multi-bounce
+// coat-escape random walk this GPU port hasn't ported yet) -- so this locks
+// in real, current out-of-scope behavior rather than an arbitrary
+// placeholder id.
+TEST_F(SppmGpuFirstSliceTest, RejectsSceneWithUnsupportedMaterial) {
+	const char* path = "sppm_gpu_first_slice_test_b5.ppm";
 	outputFiles_.push_back(path);
 
 	int result = optix_render_main_sppm(
 		32, 32, /*iterations=*/5, /*photons=*/500, /*max_depth=*/5,
-		path, /*scene_id=*/"A1",
+		path, /*scene_id=*/"B5",
 		278.0, 278.0, -800.0, 1);
-	EXPECT_NE(result, 0) << "GPU SPPM should reject scene A1 (Phase 1 supports scene B3 only)";
+	EXPECT_NE(result, 0) << "GPU SPPM should reject scene B5 (CoatedDiffuse has no GPU SPPM BSDF sampler)";
 }
 
 // Regression guard: the real multi-iteration SPPM path (renderSPPM(),

@@ -34,8 +34,16 @@ int optix_render_main(
 // GPU SPPM (Stochastic Progressive Photon Mapping) rendering entry point,
 // mirrors cpu_render_main_sppm()'s signature (cpu_renderer/cpu_interface.h)
 // so main.cpp's --sppm --gpu branch (sub-phase 1e) can call either with the
-// same argument shape. Phase 1 scope only: rejects any scene_id other than
-// "B3" (CornellRoughGlass, old flat id 11) with ERR_GPU_UNSUPPORTED_SCENE.
+// same argument shape. Scope is determined dynamically from the built
+// scene's actual materials/geometry/lights (see optix_interface.cpp's
+// sppm_gpu_unsupported_reason() for the full, current rule set) rather than
+// a hardcoded scene-id allowlist -- as of this writing that covers scenes
+// built purely from spheres/quads, area (quad/sphere) lights only, and the
+// {Lambertian, Metal, Dielectric, RoughDielectric, Conductor, DiffuseLight}
+// material subset; anything else is rejected with a reason-specific
+// ERR_GPU_UNSUPPORTED_SCENE message (mesh/instanced/bilinear-patch
+// geometry, punctual/sky lighting, and remaining MaterialTypes like
+// CoatedDiffuse/Hair/Subsurface all still fall outside that set).
 int optix_render_main_sppm(
 	int image_width,
 	int image_height,

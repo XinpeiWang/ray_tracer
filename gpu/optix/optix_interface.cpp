@@ -261,12 +261,112 @@ extern "C" int optix_render_main(
 	}
 }
 
+// Human-readable name for the MaterialTypes this function's error messages
+// can name -- deliberately NOT exhaustive (optix_types.h's MaterialType has
+// ~20 enumerators); anything past this list falls back to printing the raw
+// int, which is enough to look up in optix_types.h when it happens.
+static const char* sppm_gpu_material_type_name(MaterialType t) {
+	switch (t) {
+	case MaterialType::Lambertian:          return "Lambertian";
+	case MaterialType::Metal:               return "Metal";
+	case MaterialType::Dielectric:          return "Dielectric";
+	case MaterialType::DiffuseLight:        return "DiffuseLight";
+	case MaterialType::RoughDielectric:     return "RoughDielectric";
+	case MaterialType::Conductor:           return "Conductor";
+	case MaterialType::CoatedDiffuse:       return "CoatedDiffuse";
+	case MaterialType::ThinDielectric:      return "ThinDielectric";
+	case MaterialType::CoatedConductor:     return "CoatedConductor";
+	case MaterialType::DiffuseTransmission: return "DiffuseTransmission";
+	case MaterialType::NormalizedFresnel:   return "NormalizedFresnel";
+	case MaterialType::Medium:              return "Medium";
+	case MaterialType::Hair:                return "Hair";
+	default:                                return "<other>";
+	}
+}
+
+// GPU SPPM scene-capability check -- inspects the ALREADY-BUILT scene (not
+// just its id string) so this stays correct automatically as new scenes are
+// added to the registry, rather than needing a hand-maintained id allowlist.
+//
+// This replaces Phase 1's original `if (scene_id != "B3") reject` guard,
+// which was overcautious in one respect and exactly right in another:
+//   - The hash-grid/world-bounds machinery in sppm_path_tracer.cpp was
+//     ALREADY scene-agnostic even under the old guard -- it computes
+//     gridMin/gridMax/gridRes from a host-side readback of each iteration's
+//     actual camera-pass visible points (see its own comment, "mirrors CPU
+//     HashGrid::Build()'s first phase"), never a fixed B3-shaped box. So
+//     that part of the restriction really was just leftover Phase 1
+//     over-caution, not a real blocker -- nothing here needed to change.
+//   - What WAS genuinely B3-specific: sppm_programs.cu's OptiX device
+//     programs only ever implemented BSDF sampling for the exact material
+//     set B3 happens to use (Lambertian walls/box, a DiffuseLight ceiling
+//     quad, and a RoughDielectric glass sphere) -- any other MaterialType
+//     silently fell through a "treat as Lambertian" fallback, reading that
+//     material's (possibly unset, e.g. RoughDielectric's own albedo slot)
+//     union field as if it were a diffuse color. Metal/Dielectric/Conductor
+//     dispatch was added to sppm_programs.cu (see its own
+//     sppm_is_delta_material()/sppm_sample_delta_material() comments) to
+//     close that gap for the mainstream surface-BSDF cases; this function's
+//     job is to keep rejecting -- with an honest, specific reason -- the
+//     scenes that still hit a genuine gap: mesh/instanced/bilinear-patch
+//     geometry (SPPMPathTracer::buildSBT() only has hit-group records for
+//     spheres/quads), punctual or sky lighting (neither raygen samples
+//     them), non-quad/sphere light shapes (the raygens' light-kind branch is
+//     binary: Sphere or "else assume Quad"), and any remaining MaterialType
+//     this port still has no BSDF for (CoatedDiffuse, Hair, Subsurface, ...).
+//
+// Returns "" if the scene is fully supported by GPU SPPM as it stands today,
+// or a human-readable reason (naming the specific blocker) otherwise.
+static std::string sppm_gpu_unsupported_reason(const SceneData& scene) {
+	if (!scene.triangles.empty() || !scene.instanceTriangles.empty() ||
+	    !scene.instanceSpheres.empty() || !scene.instanceGroups.empty()) {
+		return "uses triangle-mesh and/or instanced geometry -- GPU SPPM's hash-grid "
+		       "SBT (SPPMPathTracer::buildSBT()) only has hit-group records for spheres "
+		       "and quads";
+	}
+	if (!scene.bilinearPatches.empty()) {
+		return "uses bilinear-patch geometry, which GPU SPPM's OptiX programs have no "
+		       "intersection/hit-group support for (spheres and quads only)";
+	}
+	if (!scene.punctualLights.empty()) {
+		return "uses punctual (point/spot) lights -- GPU SPPM's camera/photon-pass "
+		       "raygens only sample the scene's area-light alias table";
+	}
+	if (scene.skyWidth > 0 || scene.skyHeight > 0) {
+		return "uses a sky/infinite light -- GPU SPPM's raygens have no sky-sampling "
+		       "branch yet (matches this port's camera-pass header comment)";
+	}
+	for (GpuLightKind k : scene.lightKinds) {
+		if (k != GpuLightKind::Quad && k != GpuLightKind::Sphere) {
+			return "has an area light shape (e.g. a lone emissive triangle) GPU SPPM's "
+			       "raygens don't dispatch on -- they only distinguish Sphere from "
+			       "\"else assume Quad\"";
+		}
+	}
+	for (size_t i = 0; i < scene.materials.size(); ++i) {
+		const MaterialType t = scene.materials[i].type;
+		const bool supported =
+			t == MaterialType::Lambertian || t == MaterialType::DiffuseLight ||
+			t == MaterialType::RoughDielectric || t == MaterialType::Metal ||
+			t == MaterialType::Dielectric || t == MaterialType::Conductor;
+		if (!supported) {
+			return std::string("uses MaterialType::") + sppm_gpu_material_type_name(t) +
+			       " (material index " + std::to_string(i) + ") -- sppm_programs.cu's "
+			       "camera/photon passes don't implement a BSDF sampler for it yet";
+		}
+	}
+	return "";
+}
+
 // GPU SPPM entry point (sub-phase 1e) -- mirrors optix_render_main()'s own
 // scene-build/camera-setup preamble and ACES-tonemap PPM write, but calls
 // OptiXRenderer::renderSPPM() (the real multi-iteration loop, sub-phase 1d)
-// instead of render(). Phase 1 scope only: any scene_id other than 11
-// (CornellRoughGlass) is rejected up front, matching the plan's own
-// "Explicitly out of scope for Phase 1" section.
+// instead of render(). Scope is now determined dynamically, by inspecting
+// the built scene's actual materials/geometry/lights (see
+// sppm_gpu_unsupported_reason() above) rather than a hardcoded "only B3" id
+// check -- the scene must still be BUILT first (build_scene() below) before
+// that inspection is possible, so the capability check happens after the
+// build, not before it like the old string-compare guard did.
 extern "C" int optix_render_main_sppm(
 	int image_width,
 	int image_height,
@@ -280,12 +380,6 @@ extern "C" int optix_render_main_sppm(
 	double cam_z,
 	int force_camera_override
 ) {
-	if (std::strcmp(scene_id, "B3") != 0) {
-		std::cerr << "[OptiX] GPU SPPM (Phase 1) only supports scene B3 (CornellRoughGlass); got scene "
-		          << scene_id << ". Use CPU SPPM (--sppm without --gpu) for other scenes.\n";
-		return ERR_GPU_UNSUPPORTED_SCENE;
-	}
-
 	try {
 		if (!g_renderer) {
 			std::cout << "[OptiX] Initializing renderer...\n";
@@ -306,6 +400,20 @@ extern "C" int optix_render_main_sppm(
 		if (!build_scene(scene_id, image_width, image_height, scene, camera_params, cam_x, cam_y, cam_z, &cameraExtra, force_camera_override != 0)) {
 			std::cerr << "[OptiX] Scene not supported on GPU\n";
 			return ERR_GPU_UNSUPPORTED_SCENE;
+		}
+
+		// Dynamic capability check (see sppm_gpu_unsupported_reason()'s own
+		// comment for the full "what changed from Phase 1's blunt B3-only
+		// guard, and why" story) -- must happen here, after build_scene(),
+		// since it inspects the scene's actual material/geometry/light data,
+		// not just its id.
+		{
+			const std::string reason = sppm_gpu_unsupported_reason(scene);
+			if (!reason.empty()) {
+				std::cerr << "[OptiX] GPU SPPM does not support scene " << scene_id << ": "
+				          << reason << ". Use CPU SPPM (--sppm without --gpu) instead.\n";
+				return ERR_GPU_UNSUPPORTED_SCENE;
+			}
 		}
 
 		bool defocusDiskZero = cameraExtra.defocus_disk_u.x == 0.0f && cameraExtra.defocus_disk_u.y == 0.0f &&
@@ -354,7 +462,7 @@ extern "C" int optix_render_main_sppm(
 		std::cout << "[TECH] ── Render Technique Summary ──────────────────────────" << std::endl;
 		std::cout << "[TECH] Integrator     : GPU SPPM (Stochastic Progressive Photon Mapping, Phase 1)" << std::endl;
 		std::cout << "[TECH] Iterations     : " << iterations << "  |  Photons/iteration: " << photons << std::endl;
-		std::cout << "[TECH] Materials      : Lambertian + RoughDielectric (GGX)  |  Lights: area only" << std::endl;
+		std::cout << "[TECH] Materials      : Lambertian, Metal, Dielectric, RoughDielectric (GGX), Conductor (GGX)  |  Lights: area only" << std::endl;
 		std::cout << "[TECH] Hash grid      : atomic-head-swap linked list over a fixed device node pool" << std::endl;
 		std::cout << "[TECH] Tone mapping   : ACES filmic (Narkowicz) + sRGB OETF  (matches CPU's write_color())" << std::endl;
 		std::cout << "[TECH] ─────────────────────────────────────────────────────" << std::endl;

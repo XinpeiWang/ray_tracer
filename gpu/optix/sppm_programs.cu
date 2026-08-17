@@ -13,24 +13,30 @@
 //
 // __raygen__sppm_camera_pass (sub-phase 1b): one thread per pixel, direct
 // port of src/shared/sppm.h's SPPMCameraPass()/sppm_adapter.h's
-// sppm_camera_pass_with_sky() (minus the sky branch -- Phase 1 has no sky
-// support). Follows a specular chain via RoughDielectricBxDF-style GGX
-// resampling (ported from wavefront_kernels.cu's MaterialType::RoughDielectric
-// case, the only delta material Phase 1 supports) until it hits a
-// non-delta (Lambertian, Phase 1's only non-delta type) surface, records
-// that as the pixel's visible point, and computes one NEE sample toward
-// the scene's area light(s) via the same power-weighted alias table the
-// regular path tracers already use. Unlike the regular path tracers' NEE,
-// there's no MIS weight here: SPPM's camera pass calls this exactly once
-// per pixel with no competing BSDF-sampled continuation in the same
-// estimate (matches sppm_adapter.h's own DirectLight() -- see its comment
-// for the fuller reasoning), so no balance/power heuristic is needed.
+// sppm_camera_pass_with_sky() (minus the sky branch -- no sky/infinite-light
+// support yet, see optix_interface.cpp's scene-capability check). Follows a
+// specular chain via delta-BSDF resampling (RoughDielectricBxDF-style GGX,
+// plus Metal/Dielectric/Conductor added in a later generalization pass -- see
+// sppm_is_delta_material()/sppm_sample_delta_material() below for the full,
+// current delta set and why it stops there) until it hits a non-delta
+// (Lambertian -- still the only non-delta material this camera pass records
+// a visible point for) surface, records that as the pixel's visible point,
+// and computes one NEE sample toward the scene's area light(s) via the same
+// power-weighted alias table the regular path tracers already use. Unlike
+// the regular path tracers' NEE, there's no MIS weight here: SPPM's camera
+// pass calls this exactly once per pixel with no competing BSDF-sampled
+// continuation in the same estimate (matches sppm_adapter.h's own
+// DirectLight() -- see its comment for the fuller reasoning), so no
+// balance/power heuristic is needed.
 //
-// This is still a single-iteration verification step (see the plan,
-// C:\Users\xinpe\.claude\plans\cached-wobbling-ritchie.md, sub-phase 1b):
-// pixels[i].Ld is written straight to the framebuffer for visual
-// inspection. The real multi-iteration loop (hash grid, photon pass,
-// radius contraction) is sub-phases 1c/1d.
+// pixels[i].Ld is written straight to the framebuffer; the real
+// multi-iteration loop (hash grid, photon pass, radius contraction) lives in
+// SPPMPathTracer::render() (sppm_path_tracer.cpp), which also computes the
+// hash-grid's world-space bounds dynamically from each iteration's actual
+// visible points -- NOT a fixed/hardcoded box, so that part of the pipeline
+// was already scene-agnostic before this generalization pass; the real
+// scene-B3-only restriction this file's material dispatch used to impose is
+// what's documented at each MaterialType branch below.
 
 #include <optix.h>
 #include "sppm_types.h"
@@ -218,6 +224,23 @@ extern "C" __global__ void __miss__sppm_radiance() {
 // the regular path tracers already make, not something new to this port).
 // ============================================================================
 
+// Transmissive materials that let a shadow ray pass through rather than
+// blocking NEE outright -- matches the established convention already used
+// by both other GPU backends (optix_anyhit_shadow.h's __anyhit__shadow_*,
+// wavefront_programs.cu's __anyhit__wf_shadow_*, see the latter's own
+// comment for the full "why", including the B14 regression that motivated
+// treating DiffuseLight specially too). Generalized here from "RoughDielectric
+// only" to also cover MaterialType::Dielectric (A1 Cornell Box's smooth glass
+// sphere, and any other scene using a plain dielectric) now that GPU SPPM's
+// camera/photon passes handle it (see sppm_is_delta_material() below) --
+// Metal/Conductor are deliberately NOT added here: both are opaque reflective
+// materials (no transmission lobe at all), so the pre-existing "anything else
+// blocks the shadow ray" fallthrough is already the physically correct
+// behavior for them, same as it already is for Lambertian.
+static __device__ __forceinline__ bool sppm_is_transmissive_material(MaterialType t) {
+	return t == MaterialType::RoughDielectric || t == MaterialType::Dielectric;
+}
+
 extern "C" __global__ void __anyhit__sppm_shadow_sphere() {
 	const unsigned int primIdx = optixGetPrimitiveIndex();
 	const SphereData& sphere = sppm_params.spheres[primIdx];
@@ -228,7 +251,7 @@ extern "C" __global__ void __anyhit__sppm_shadow_sphere() {
 		optixTerminateRay();
 		return;
 	}
-	if (mat.type == MaterialType::RoughDielectric) {
+	if (sppm_is_transmissive_material(mat.type)) {
 		optixIgnoreIntersection();
 		return;
 	}
@@ -246,7 +269,7 @@ extern "C" __global__ void __anyhit__sppm_shadow_quad() {
 		optixTerminateRay();
 		return;
 	}
-	if (mat.type == MaterialType::RoughDielectric) {
+	if (sppm_is_transmissive_material(mat.type)) {
 		optixIgnoreIntersection();
 		return;
 	}
@@ -380,6 +403,99 @@ static __device__ __forceinline__ bool sppm_sample_rough_dielectric(
 	return true;
 }
 
+// True for the MaterialTypes GPU SPPM's camera/photon passes treat as a
+// delta (specular) BSDF -- i.e. resampled via BSDFSampleF-style importance
+// sampling alone, with no visible point recorded and no NEE/photon-deposit
+// evaluation at that hit. Matches CPU's sppm_is_delta_material()
+// (src/TheRestOfYourLife/sppm_adapter.h) restricted to the subset this GPU
+// port actually implements a sampler for: CPU's own delta set also includes
+// rough_metal, coated_diffuse, thin_dielectric, and coated_conductor --
+// those remain genuinely unsupported here (see optix_interface.cpp's
+// scene-capability check, which rejects any scene using a MaterialType not
+// covered by this function or by the Lambertian fallback below) rather than
+// silently mis-scattered through that fallback.
+static __device__ __forceinline__ bool sppm_is_delta_material(MaterialType t) {
+	return t == MaterialType::RoughDielectric || t == MaterialType::Metal ||
+	       t == MaterialType::Dielectric || t == MaterialType::Conductor;
+}
+
+// Importance-samples a new direction + beta multiplier at a Metal/Dielectric/
+// Conductor hit (RoughDielectric keeps its own pre-existing
+// sppm_sample_rough_dielectric() above, called separately by both raygens --
+// left untouched rather than folded in here, so scene B3's already-verified
+// output can't be perturbed by this generalization). Direct, unmodified-math
+// ports of wavefront_kernels.cu's own MaterialType::Metal/Dielectric/
+// Conductor cases -- see that file's per-case comments for the full
+// derivation of each (Schlick reflectance for Dielectric, GGX VNDF + complex
+// Fresnel with the G2/G1 shadow-masking weight for Conductor). Shared by both
+// the camera pass and the photon pass raygens below: CPU's SPPMCameraPass/
+// SPPMPhotonPass treat every delta material identically (resample, multiply
+// beta, continue the walk), so one shared sampler is correct for both rather
+// than two independent copies.
+static __device__ __forceinline__ bool sppm_sample_delta_material(
+	const float3& dir_in, const float3& n, const MaterialData& mat,
+	unsigned int& seed, float3& out_dir, float3& out_atten) {
+	switch (mat.type) {
+	case MaterialType::Metal: {
+		float3 reflected = cpu_gpu_reflect(normalize(dir_in), n);
+		float3 d = normalize(reflected + mat.fuzz * sppm_rand_unit(seed));
+		if (dot(d, n) <= 0.0f) return false;  // scattered below the surface -- absorbed
+		out_dir   = d;
+		out_atten = mat.albedo;
+		return true;
+	}
+	case MaterialType::Dielectric: {
+		float  eta      = dot(dir_in, n) < 0.0f ? (1.0f / mat.ior) : mat.ior;
+		float3 unit_dir = normalize(dir_in);
+		float  cos_t    = fminf(dot(-unit_dir, n), 1.0f);
+		float  sin_t    = sqrtf(fmaxf(0.0f, 1.0f - cos_t * cos_t));
+		bool   cannot_refract = eta * sin_t > 1.0f;
+		float  r0 = (1.0f - mat.ior) / (1.0f + mat.ior);
+		r0 = r0 * r0;
+		float schlick = r0 + (1.0f - r0) * powf(1.0f - cos_t, 5.0f);
+		bool is_transmission;
+		if (cannot_refract || schlick > sppm_rand(seed)) {
+			out_dir = cpu_gpu_reflect(unit_dir, n);
+			is_transmission = false;
+		} else {
+			out_dir = cpu_gpu_refract<float3, float>(unit_dir, n, eta);
+			is_transmission = true;
+		}
+		// Tf tints transmission only, matching real colored glass -- see
+		// add_dielectric()'s transmission_filter comment (identical
+		// convention on both other backends' Dielectric cases).
+		out_atten = is_transmission ? mat.transmission_filter : make_float3(1.0f, 1.0f, 1.0f);
+		return true;
+	}
+	case MaterialType::Conductor: {
+		float alpha  = sqrtf(mat.fuzz);
+		float3 up_v  = (fabsf(n.x) > 0.9f) ? make_float3(0, 1, 0) : make_float3(1, 0, 0);
+		float3 tan_v = normalize(cross(up_v, n));
+		float3 bitan = cross(n, tan_v);
+		float3 wi_w  = normalize(-dir_in);
+		float wi_x = dot(wi_w, tan_v), wi_y = dot(wi_w, bitan), wi_z = dot(wi_w, n);
+		if (wi_z <= 0.0f) return false;
+		TrowbridgeReitz<float> dist(alpha, alpha);
+		float wm_x, wm_y, wm_z;
+		dist.Sample_wm(wi_x, wi_y, wi_z, sppm_rand(seed), sppm_rand(seed), wm_x, wm_y, wm_z);
+		float c_dot = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
+		float wo_x = 2.0f*c_dot*wm_x - wi_x;
+		float wo_y = 2.0f*c_dot*wm_y - wi_y;
+		float wo_z = 2.0f*c_dot*wm_z - wi_z;
+		if (wo_z <= 0.0f) return false;
+		float G1_wi  = dist.G1(wi_x, wi_y, wi_z);
+		float G_wowi = dist.G(wo_x, wo_y, wo_z, wi_x, wi_y, wi_z);
+		float weight = (G1_wi > 1e-8f) ? G_wowi / G1_wi : 0.0f;
+		float3 F = FrConductorRGB(c_dot, mat.eta_c.x, mat.eta_c.y, mat.eta_c.z, mat.k_c.x, mat.k_c.y, mat.k_c.z);
+		out_atten = make_float3(F.x * weight, F.y * weight, F.z * weight);
+		out_dir   = normalize(wo_x*tan_v + wo_y*bitan + wo_z*n);
+		return true;
+	}
+	default:
+		return false;  // RoughDielectric (own sampler) / non-delta -- not this function's job
+	}
+}
+
 // Uniform point on a quad light's surface + its (fixed) front-facing normal
 // -- direct analog of CPU quad::sample_area() (src/TheRestOfYourLife/
 // quad.h), used for photon EMISSION (sub-phase 1d), as opposed to
@@ -480,16 +596,38 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 		}
 
 		if (mat.type == MaterialType::RoughDielectric) {
-			// GGX VNDF microfacet sample, Phase 1's only delta material.
-			// attenuation is always mat.albedo (white for scene 11's glass
-			// sphere, see scene_builder.cpp's build_cornell_rough_glass):
-			// VNDF sampling is self-normalizing for dielectrics, matching
-			// the CPU RoughDielectricBxDF's own "attenuation = white"
-			// convention (src/shared/bxdfs_conductor.h).
+			// GGX VNDF microfacet sample -- left byte-for-byte as it was
+			// before this function grew Metal/Dielectric/Conductor support,
+			// so scene B3's already-verified output can't be perturbed by
+			// that generalization (see sppm_sample_delta_material()'s own
+			// comment on why RoughDielectric keeps its own separate sampler
+			// rather than being folded into that shared helper). attenuation
+			// is always mat.albedo (white for scene 11's glass sphere, see
+			// scene_builder.cpp's build_cornell_rough_glass): VNDF sampling
+			// is self-normalizing for dielectrics, matching the CPU
+			// RoughDielectricBxDF's own "attenuation = white" convention
+			// (src/shared/bxdfs_conductor.h).
 			float3 new_dir;
 			if (!sppm_sample_rough_dielectric(dir, payload.normal, mat, seed, new_dir)) break;
 
 			beta = beta * mat.albedo;
+			org = payload.hitPoint;
+			dir = new_dir;
+			continue;
+		}
+
+		if (mat.type == MaterialType::Metal || mat.type == MaterialType::Dielectric ||
+		    mat.type == MaterialType::Conductor) {
+			// Generalization beyond Phase 1's original RoughDielectric-only
+			// delta set (see sppm_is_delta_material()/sppm_sample_delta_
+			// material()'s own comments) -- covers B1/B2's rough metal
+			// spheres, A1's smooth glass sphere, and B4's polished-conductor
+			// gold/aluminium, none of which recorded a (physically wrong)
+			// Lambertian visible point before this change.
+			float3 new_dir, atten;
+			if (!sppm_sample_delta_material(dir, payload.normal, mat, seed, new_dir, atten)) break;
+
+			beta = beta * atten;
 			org = payload.hitPoint;
 			dir = new_dir;
 			continue;
@@ -635,13 +773,17 @@ extern "C" __global__ void __raygen__sppm_photon_pass() {
 
 		// Deposit flux at nearby visible points -- depth>0 mirrors CPU (the
 		// first bounce is left for the camera pass's own NEE, avoiding
-		// double-counting direct illumination). Non-delta == "not
-		// RoughDielectric" for Phase 1's material set, matching CPU's
+		// double-counting direct illumination). Non-delta == "not one of
+		// sppm_is_delta_material()'s types" (generalized from the original
+		// Phase 1 "not RoughDielectric" check), matching CPU's
 		// `!hit.is_delta_bsdf`. Uses the VISIBLE POINT's own recorded
 		// material (vp_materialIdx), not the photon's current hit material
-		// -- same as CPU's BSDFf(px.vp_bsdf_id, ...) call, since Phase 1
-		// only ever records Lambertian visible points.
-		if (depth > 0 && mat.type != MaterialType::RoughDielectric && mat.type != MaterialType::DiffuseLight) {
+		// -- same as CPU's BSDFf(px.vp_bsdf_id, ...) call; every visible
+		// point the camera pass records is still Lambertian (the only
+		// non-delta material this GPU port's camera pass ever stops at), so
+		// the plain albedo/pi evaluation just below remains correct even
+		// after this generalization.
+		if (depth > 0 && !sppm_is_delta_material(mat.type) && mat.type != MaterialType::DiffuseLight) {
 			int bucket = sppm_hash_bucket(sppm_params.hashGrid, payload.hitPoint.x, payload.hitPoint.y, payload.hitPoint.z);
 			int slotIdx = sppm_params.cellHead[bucket];
 			while (slotIdx != -1) {
@@ -674,6 +816,13 @@ extern "C" __global__ void __raygen__sppm_photon_pass() {
 		if (mat.type == MaterialType::RoughDielectric) {
 			if (!sppm_sample_rough_dielectric(dir_cur, payload.normal, mat, seed, new_dir)) break;
 			beta_new = beta * mat.albedo;
+		} else if (mat.type == MaterialType::Metal || mat.type == MaterialType::Dielectric ||
+		           mat.type == MaterialType::Conductor) {
+			// Generalization beyond Phase 1's original RoughDielectric-only
+			// delta set -- see sppm_sample_delta_material()'s own comment.
+			float3 atten;
+			if (!sppm_sample_delta_material(dir_cur, payload.normal, mat, seed, new_dir, atten)) break;
+			beta_new = beta * atten;
 		} else if (mat.type == MaterialType::DiffuseLight) {
 			break; // photon paths don't continue off emitters
 		} else {
