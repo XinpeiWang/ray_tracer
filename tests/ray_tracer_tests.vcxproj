@@ -191,6 +191,8 @@
     <!-- Integration Tests -->
     <ClCompile Include="integration\render_tests.cpp" />
     <ClCompile Include="integration\sppm_first_slice_test.cpp" />
+    <ClCompile Include="integration\bdpt_first_render_test.cpp" />
+    <ClCompile Include="integration\mlt_first_render_test.cpp" />
     <ClCompile Include="integration\sppm_gpu_first_slice_test.cpp" />
     <ClCompile Include="integration\skip_pdf_material_brightness_tests.cpp" />
     <ClCompile Include="integration\pbrt_scene_render_test.cpp" />
@@ -245,6 +247,7 @@
     <ClCompile Include="unit\measured_bxdf_tests.cpp" />
     <ClCompile Include="unit\bdpt_tests.cpp" />
     <ClCompile Include="unit\mlt_tests.cpp" />
+    <ClCompile Include="unit\launcher_args_bdpt_mlt_tests.cpp" />
     <ClCompile Include="unit\sppm_adapter_bsdf_tests.cpp" />
     <ClCompile Include="unit\sppm_tests.cpp" />
     <ClCompile Include="unit\sppm_gpu_hash_grid_tests.cpp" />

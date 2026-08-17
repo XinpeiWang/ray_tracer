@@ -180,6 +180,8 @@ int main(int argc, char** argv) {
 	double video_speed      = args.video_speed;
 	std::string camera_path = args.camera_path;
 	bool use_sppm           = args.use_sppm;
+	bool use_bdpt           = args.use_bdpt;
+	bool use_mlt            = args.use_mlt;
 
 	// optix_render_main() reads this env var itself (gpu/optix/optix_interface.cpp)
 	// to pick the wavefront GPU backend over the default recursive one - set it
@@ -202,6 +204,35 @@ int main(int argc, char** argv) {
 		return ERR_INVALID_ARGUMENTS;
 	}
 
+	// BDPT/MLT are each their own distinct render mode, same footing as
+	// SPPM - reject any combination of two-or-more special modes outright
+	// (which one would even "win" is ambiguous) rather than silently
+	// picking one, mirroring --sppm/--video's own rejection above. Neither
+	// has a defined per-frame video semantics either (a fresh independent
+	// render per frame would technically work for either, unlike SPPM's
+	// genuinely stateful radius, but wiring that per-frame path through
+	// main.cpp's video loop is unimplemented scope here) - rejected for the
+	// same "don't silently do something unexpected" reasoning.
+	if ((use_bdpt && use_mlt) || (use_bdpt && use_sppm) || (use_mlt && use_sppm)) {
+		std::cerr << ErrorInfo(ERR_INVALID_ARGUMENTS).to_string()
+				  << " - --bdpt, --mlt, and --sppm are mutually exclusive render modes" << std::endl;
+		return ERR_INVALID_ARGUMENTS;
+	}
+	if ((use_bdpt || use_mlt) && video_mode) {
+		std::cerr << ErrorInfo(ERR_INVALID_ARGUMENTS).to_string()
+				  << " - --bdpt/--mlt and --video cannot be combined" << std::endl;
+		return ERR_INVALID_ARGUMENTS;
+	}
+	// --bdpt/--mlt have no GPU/OptiX implementation at all (CPU only - see
+	// cpu_interface.h's cpu_render_main_bdpt()/cpu_render_main_mlt() doc
+	// comments) - always render via the CPU path below regardless of
+	// use_gpu, but only warn about it when the user actually typed --gpu
+	// (use_gpu's own struct default is true, so warning unconditionally
+	// would fire on the plain, common `--bdpt` invocation too).
+	if ((use_bdpt || use_mlt) && args.gpu_flag_explicit) {
+		std::cerr << "WARNING: --gpu is ignored under --bdpt/--mlt (CPU-only, no GPU/OptiX implementation exists) - rendering on CPU" << std::endl;
+	}
+
     if (video_mode) {
         std::cout << "\n========================================" << std::endl;
         std::cout << "VIDEO GENERATION MODE" << std::endl;
@@ -213,8 +244,10 @@ int main(int argc, char** argv) {
         std::cout << "Renderer: " << (use_gpu ? (args.use_wavefront ? "GPU (wavefront)" : "GPU") : "CPU") << std::endl;
     } else {
         std::cout << "\nLaunching renderer ("
-                   << (use_sppm ? (use_gpu ? "GPU SPPM" : "CPU SPPM")
-                                 : (use_gpu ? (args.use_wavefront ? "GPU wavefront" : "GPU") : "CPU"))
+                   << (use_bdpt ? "CPU BDPT"
+                       : use_mlt ? "CPU MLT"
+                       : use_sppm ? (use_gpu ? "GPU SPPM" : "CPU SPPM")
+                                  : (use_gpu ? (args.use_wavefront ? "GPU wavefront" : "GPU") : "CPU"))
                    << " mode)..." << std::endl;
     }
 
@@ -564,12 +597,59 @@ int main(int argc, char** argv) {
 
     int render_result = -1; // 0 = success, non-zero = error
 
-    if (use_sppm && use_gpu) {
-        // SPPM Renderer, GPU/OptiX path (Phase 1: scene 11/CornellRoughGlass
-        // only -- see gpu/optix/optix_interface.cpp's optix_render_main_sppm()
-        // for the exact scope rejection). Checked before the CPU-only
-        // use_sppm branch below so --sppm --gpu actually reaches the GPU
-        // path instead of silently falling back to CPU.
+    if (use_bdpt) {
+        // BDPT Renderer, CPU path (Bidirectional Path Tracing). Implemented
+        // in cpu_renderer/cpu_interface_bdpt.cpp - checked before use_sppm/
+        // use_gpu below since it's a distinct render mode, not a path-tracer
+        // variant (same shape as use_sppm's own priority - see this file's
+        // earlier mutual-exclusion validation, which already rejected
+        // --bdpt combined with --sppm/--mlt/--video, and the gpu_flag_explicit
+        // warning above, which already covered --bdpt --gpu).
+        std::cout << "Calling cpu_render_main_bdpt(...) in-process..." << std::endl;
+        render_result = cpu_render_main_bdpt(image_width, image_height, samples_per_pixel,
+                                              args.bdpt_max_depth, out_path.c_str(),
+                                              scene_id.c_str(), cam_x, cam_y, cam_z, 1);  // force_camera_override
+        std::cout << "cpu_render_main_bdpt returned: " << render_result << std::endl;
+        if (render_result == SUCCESS) {
+            std::cout << "Rendered with BDPT renderer, output: " << out_path << std::endl;
+        } else {
+            ErrorInfo err(render_result);
+            std::cerr << "\n" << std::string(60, '=') << std::endl;
+            std::cerr << "BDPT RENDER FAILED" << std::endl;
+            std::cerr << std::string(60, '=') << std::endl;
+            std::cerr << err.to_string() << std::endl;
+            std::cerr << std::string(60, '=') << "\n" << std::endl;
+            return render_result;
+        }
+    } else if (use_mlt) {
+        // MLT Renderer, CPU path (Metropolis Light Transport). Implemented
+        // in cpu_renderer/cpu_interface_bdpt.cpp - same priority reasoning
+        // as use_bdpt above.
+        std::cout << "Calling cpu_render_main_mlt(...) in-process..." << std::endl;
+        render_result = cpu_render_main_mlt(image_width, image_height, args.mlt_bootstrap,
+                                             args.mlt_mutations, args.mlt_max_depth, out_path.c_str(),
+                                             scene_id.c_str(), cam_x, cam_y, cam_z, 1);  // force_camera_override
+        std::cout << "cpu_render_main_mlt returned: " << render_result << std::endl;
+        if (render_result == SUCCESS) {
+            std::cout << "Rendered with MLT renderer, output: " << out_path << std::endl;
+        } else {
+            ErrorInfo err(render_result);
+            std::cerr << "\n" << std::string(60, '=') << std::endl;
+            std::cerr << "MLT RENDER FAILED" << std::endl;
+            std::cerr << std::string(60, '=') << std::endl;
+            std::cerr << err.to_string() << std::endl;
+            std::cerr << std::string(60, '=') << "\n" << std::endl;
+            return render_result;
+        }
+    } else if (use_sppm && use_gpu) {
+        // SPPM Renderer, GPU/OptiX path. Scope (which scenes are actually
+        // supported) is determined dynamically from the built scene's real
+        // materials/geometry/lights -- see gpu/optix/optix_interface.cpp's
+        // sppm_gpu_unsupported_reason() for the exact, current rule set and
+        // optix_render_main_sppm() returns a reason-specific
+        // ERR_GPU_UNSUPPORTED_SCENE for anything still out of scope. Checked
+        // before the CPU-only use_sppm branch below so --sppm --gpu actually
+        // reaches the GPU path instead of silently falling back to CPU.
         if (!optix_is_available()) {
             std::cerr << "ERROR: OptiX is not available! (--sppm --gpu requires OptiX)" << std::endl;
             return ERR_GPU_NO_DEVICE;

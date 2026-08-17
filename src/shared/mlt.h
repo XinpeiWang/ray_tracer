@@ -14,7 +14,10 @@
 //   MLTEvalPath<T,Scene>()          -- evaluate one BDPT (s,t) strategy
 //                                      (mirrors MLTIntegrator::L)
 //   MLTBootstrap<T,Scene>()         -- warm-up: compute b = E[f]
-//   MLTRenderLoop<T,Scene>()        -- full Metropolis render loop
+//   MLTRenderLoop<T,Scene>()        -- full Metropolis render loop (optional
+//                                      chainSeed param for running several
+//                                      independent chains in parallel --
+//                                      see its own doc comment)
 //
 // Design rules (same as bdpt.h):
 //   - Header-only, no virtual functions, no heap allocation in hot paths
@@ -335,7 +338,13 @@ MLTPathResult<T> MLTEvalPath(MLTSampler<T>& sampler, int depth,
 		void InfiniteLightLe(const T d[3], T out[3]) const {
 			scene.InfiniteLightLe(d, out);
 		}
-		float InfiniteLightDensity(const T d[3]) const {
+		// Was hardcoded `float` regardless of T -- harmless for the
+		// T=float instantiations this file's own unit tests used
+		// exclusively until now, but a real (if numerically silent for
+		// this integration's own Scene, which always returns exactly 0)
+		// double->float truncation once a T=double caller exists -- see
+		// src/TheRestOfYourLife/bdpt_adapter.h, the first T=double caller.
+		T InfiniteLightDensity(const T d[3]) const {
 			return scene.InfiniteLightDensity(d);
 		}
 		void BSDFf(int id, const T wo[3], const T wi[3], const T n[3], T out[3]) const {
@@ -422,12 +431,49 @@ T MLTBootstrap(int nBootstrap, int maxDepth, T sigma, T largeStepProb,
 //
 // Normalization: the callback receives values pre-scaled by b/nMutations so
 // the caller can simply accumulate them into a floating-point framebuffer.
-
+//
+// chainSeed: identifies this Markov chain when a caller runs several in
+// parallel. Defaults to the same literal constant this function used to
+// hardcode internally, so every existing caller (tests/unit/mlt_tests.cpp
+// in particular) that doesn't pass one gets byte-identical behavior to
+// before this parameter was added -- this is a strictly additive change.
+//
+// This function's own bootstrap-then-chain bundling turned out not to be
+// quite what src/TheRestOfYourLife/bdpt_adapter.h's mlt_render_with_adapter()
+// needed in the end -- letting each independent chain draw its own depth
+// from ONE shared, luminance-weighted alias table (this function's own
+// design, matching pbrt-v4) measurably starves every depth except whichever
+// has the single largest bootstrap outlier on a real scene. That driver
+// ended up calling MLTBootstrap() directly instead and stratifying chains
+// across depths explicitly, duplicating (not calling) this function's own
+// post-bootstrap loop body as mlt_run_depth_chain() -- see that function's
+// own doc comment for the full story and measured numbers. chainSeed is
+// still a real, independently useful fix (kept here rather than reverted):
+// any OTHER caller of this function across several threads needs it for
+// the exact reason described below, even if bdpt_adapter.h itself no
+// longer calls this particular function.
+//
+// Why a seed parameter had to be added at all rather than just calling this
+// function N times on N threads with no other change: every source of
+// randomness this function and MLTBootstrap() touch is fully determined by
+// (nBootstrap, maxDepth, sigma, largeStepProb, scene) alone -- MLTBootstrap's
+// per-sample MLTSampler seeds are `i*(maxDepth+1)+depth` (a pure function of
+// the loop indices), and this function's own chain-selection/accept-reject
+// RNG used to be a hardcoded `RNG rng(12345u)`. Two calls with identical
+// arguments therefore used to produce bit-identical output, deterministically,
+// every time -- calling this "N times on N threads" would have run N
+// redundant copies of the exact same chain, not N independent ones. Mixing
+// chainSeed into both the chain-selection RNG and the MLTSampler's own seed
+// below is the minimal change that makes independent chains possible while
+// leaving MLTBootstrap() itself (and its b normalization constant, which
+// SHOULD be the same target-distribution estimate across chains, matching
+// pbrt-v4's own single-shared-bootstrap design) completely untouched.
 template<typename T, typename Scene, typename SplatFn>
 void MLTRenderLoop(int nBootstrap, int64_t nMutations, int maxDepth,
 				   T sigma, T largeStepProb,
 				   const Scene& scene,
-				   SplatFn splatCallback) {
+				   SplatFn splatCallback,
+				   uint64_t chainSeed = 12345u) {
 	// Bootstrap phase
 	std::vector<T> bootstrapWeights;
 	T b = MLTBootstrap(nBootstrap, maxDepth, sigma, largeStepProb,
@@ -443,12 +489,18 @@ void MLTRenderLoop(int nBootstrap, int64_t nMutations, int maxDepth,
 
 	T invNorm = b / (T)nMutations; // per-splat scale factor
 
-	// Single Markov chain (callers can run multiple chains in parallel)
-	RNG rng(12345u);
+	// One Markov chain per call (see chainSeed's own comment above for how
+	// callers get several independent ones running in parallel).
+	RNG rng(chainSeed);
 	int bootstrapIndex = aliasTable.sample(rng.Uniform<double>());
 	int depth = bootstrapIndex % (maxDepth + 1);
 
-	MLTSampler<T> sampler(1, (uint64_t)bootstrapIndex, sigma, largeStepProb);
+	// splitmix64-style combine: two different chainSeed values must not
+	// collide even when they happen to pick the same bootstrapIndex (a real
+	// possibility -- nBootstrap*(maxDepth+1) bootstrap samples are shared
+	// across all chains), otherwise those chains would still walk in lockstep.
+	uint64_t samplerSeed = (uint64_t)bootstrapIndex * 0x9E3779B97F4A7C15ull + chainSeed;
+	MLTSampler<T> sampler(1, samplerSeed, sigma, largeStepProb);
 	MLTPathResult<T> current = MLTEvalPath(sampler, depth, scene, maxDepth);
 	T cCurrent = (T)scene.Luminance(current.L[0], current.L[1], current.L[2]);
 

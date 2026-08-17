@@ -24,6 +24,19 @@ namespace {
 	constexpr double kDefaultCameraZ = -800.0;
 	constexpr int kDefaultSppmIterations = 100;
 	constexpr int kDefaultSppmPhotons = 5000;
+	// BDPT: smaller than kDefaultMaxDepth deliberately -- BDPT's per-sample
+	// cost is O(maxDepth^2) (every (s,t) strategy pair up to that depth is
+	// connected and MIS-weighted, unlike the path tracer's O(maxDepth) single
+	// walk), so pbrt-v4's own CLI default (5) is a much better starting point
+	// than reusing the path tracer's 20.
+	constexpr int kDefaultBdptMaxDepth = 5;
+	// MLT: pbrt-v4's own ballpark defaults (Render.cpp), scaled down for a
+	// CPU-only render in this codebase's existing time budget -- see
+	// launcher_args.h's --mlt-* help text for how to raise these for a
+	// higher-quality (slower) render.
+	constexpr int kDefaultMltBootstrap = 100000;
+	constexpr long long kDefaultMltMutations = 4000000;
+	constexpr int kDefaultMltMaxDepth = 5;
 }
 
 struct LaunchArgs {
@@ -45,6 +58,19 @@ struct LaunchArgs {
 	bool   use_sppm         = false;
 	int    sppm_iterations  = kDefaultSppmIterations;
 	int    sppm_photons     = kDefaultSppmPhotons;
+	// Bidirectional Path Tracing - another separate CPU-only render mode
+	// (see cpu_renderer/cpu_interface.h's cpu_render_main_bdpt() doc
+	// comment), same "takes priority over use_gpu/force_cpu, mutually
+	// exclusive with the other special render modes" shape as use_sppm.
+	// CPU only - no GPU/OptiX implementation exists (see --gpu handling in
+	// main.cpp and this struct's own validation below).
+	bool   use_bdpt         = false;
+	int    bdpt_max_depth   = kDefaultBdptMaxDepth;
+	// Metropolis Light Transport - same shape as use_bdpt/use_sppm above.
+	bool   use_mlt          = false;
+	int    mlt_bootstrap    = kDefaultMltBootstrap;
+	long long mlt_mutations = kDefaultMltMutations;
+	int    mlt_max_depth    = kDefaultMltMaxDepth;
 	int  video_frames       = 120;
 	int  video_fps          = 30;
 	double video_speed      = 1.0;
@@ -87,6 +113,13 @@ struct LaunchArgs {
 	// would never run for GUI-launched renders, since every GUI render
 	// would otherwise arrive with cam_x/y/z always present.
 	bool   cam_explicit      = false;
+
+	// True only if the user actually passed --gpu/-gpu - lets main.cpp warn
+	// specifically when --gpu was a deliberate choice that --bdpt/--mlt (no
+	// GPU implementation at all - see cpu_interface.h's cpu_render_main_bdpt()
+	// doc comment) can't honor, without spamming that warning on the common
+	// `--bdpt` invocation, where use_gpu just sits at its own struct default.
+	bool   gpu_flag_explicit = false;
 };
 
 // Parse command-line arguments into a LaunchArgs struct.
@@ -104,6 +137,7 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 		} else if (arg == "--gpu" || arg == "-gpu") {
 			out.use_gpu   = true;
 			out.force_cpu = false;
+			out.gpu_flag_explicit = true;
 			consumed_args.insert(i);
 		} else if ((arg == "--output" || arg == "-o") && i + 1 < argc) {
 			out.custom_output_path = argv[i + 1];
@@ -136,6 +170,48 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 				++i;
 			} catch (const std::exception&) {
 				std::cerr << "Invalid --sppm-photons value, using default\n";
+			}
+		} else if (arg == "--bdpt") {
+			out.use_bdpt = true;
+			consumed_args.insert(i);
+		} else if (arg == "--bdpt-max-depth" && i + 1 < argc) {
+			try {
+				out.bdpt_max_depth = std::stoi(argv[i + 1]);
+				consumed_args.insert(i);
+				consumed_args.insert(i + 1);
+				++i;
+			} catch (const std::exception&) {
+				std::cerr << "Invalid --bdpt-max-depth value, using default\n";
+			}
+		} else if (arg == "--mlt") {
+			out.use_mlt = true;
+			consumed_args.insert(i);
+		} else if (arg == "--mlt-bootstrap" && i + 1 < argc) {
+			try {
+				out.mlt_bootstrap = std::stoi(argv[i + 1]);
+				consumed_args.insert(i);
+				consumed_args.insert(i + 1);
+				++i;
+			} catch (const std::exception&) {
+				std::cerr << "Invalid --mlt-bootstrap value, using default\n";
+			}
+		} else if (arg == "--mlt-mutations" && i + 1 < argc) {
+			try {
+				out.mlt_mutations = std::stoll(argv[i + 1]);
+				consumed_args.insert(i);
+				consumed_args.insert(i + 1);
+				++i;
+			} catch (const std::exception&) {
+				std::cerr << "Invalid --mlt-mutations value, using default\n";
+			}
+		} else if (arg == "--mlt-max-depth" && i + 1 < argc) {
+			try {
+				out.mlt_max_depth = std::stoi(argv[i + 1]);
+				consumed_args.insert(i);
+				consumed_args.insert(i + 1);
+				++i;
+			} catch (const std::exception&) {
+				std::cerr << "Invalid --mlt-max-depth value, using default\n";
 			}
 		} else if (arg == "--video") {
 			out.video_mode = true;
@@ -192,6 +268,23 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "               CPU SPPM (--sppm without --gpu) instead.\n"
 					  << "  --sppm-iterations N: SPPM iteration count (default " << kDefaultSppmIterations << ")\n"
 					  << "  --sppm-photons N   : Photons shot per SPPM iteration (default " << kDefaultSppmPhotons << ")\n"
+					  << "  --bdpt     : Render with Bidirectional Path Tracing instead of the path\n"
+					  << "               tracer (incompatible with --video, --sppm, --mlt). CPU only -\n"
+					  << "               no GPU/OptiX implementation exists; --gpu is ignored (with a\n"
+					  << "               warning) if combined with --bdpt. Area lights only (no\n"
+					  << "               punctual/sky-light NEE yet). Verified end-to-end on scene A1\n"
+					  << "               (Cornell Box) only; other scenes are unverified.\n"
+					  << "  --bdpt-max-depth N : Maximum BDPT path depth (default " << kDefaultBdptMaxDepth << ")\n"
+					  << "  --mlt      : Render with Metropolis Light Transport instead of the path\n"
+					  << "               tracer (incompatible with --video, --sppm, --bdpt). CPU only -\n"
+					  << "               no GPU/OptiX implementation exists; --gpu is ignored (with a\n"
+					  << "               warning) if combined with --mlt. Same area-lights-only scope\n"
+					  << "               and scene A1 verification as --bdpt (MLT is built directly on\n"
+					  << "               BDPT's subpath machinery).\n"
+					  << "  --mlt-bootstrap N  : MLT bootstrap samples per depth (default " << kDefaultMltBootstrap << ")\n"
+					  << "  --mlt-mutations N  : Total Metropolis mutations, all chains combined\n"
+					  << "                       (default " << kDefaultMltMutations << ")\n"
+					  << "  --mlt-max-depth N  : Maximum BDPT path depth per MLT sample (default " << kDefaultMltMaxDepth << ")\n"
 					  << "  --output,-o: Output file path (default: ./output/image.ppm)\n"
 					  << "  --video    : Enable video generation mode\n"
 					  << "  --frames,-f: Number of frames for video (default: 120)\n"

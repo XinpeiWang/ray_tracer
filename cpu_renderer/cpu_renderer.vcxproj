@@ -76,6 +76,15 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="cpu_interface.cpp" />
+    <!-- Separate translation unit from cpu_interface.cpp: see
+         cpu_interface_bdpt.cpp's own file comment for why (avoids an
+         AliasTable ODR collision between power_light_sampler.h, needed by
+         cpu_interface.cpp's existing SPPM path, and reservoir_sampler.h,
+         needed by src/shared/mlt.h). -->
+    <ClCompile Include="cpu_interface_bdpt.cpp" />
+    <!-- The rendering half of that same split - see bdpt_render_core.cpp's
+         own file comment. Never includes scene_registry.h. -->
+    <ClCompile Include="bdpt_render_core.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cpu_interface.h" />

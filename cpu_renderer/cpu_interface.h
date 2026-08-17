@@ -120,6 +120,91 @@ int cpu_render_main_sppm(
     int force_camera_override = 0
 );
 
+/// @brief Render a scene using Bidirectional Path Tracing (BDPT).
+/// @details Implemented in cpu_renderer/cpu_interface_bdpt.cpp -- a
+/// SEPARATE translation unit from cpu_interface.cpp (which hosts
+/// cpu_render_main/cpu_render_main_sppm above), not for architectural
+/// symmetry but to avoid a genuine ODR conflict: cpu_interface.cpp already
+/// includes sppm_adapter.h, which includes
+/// src/TheRestOfYourLife/power_light_sampler.h (a global `class AliasTable`),
+/// while BDPT/MLT need src/shared/mlt.h, which includes
+/// src/shared/reservoir_sampler.h (a DIFFERENT global `class AliasTable`).
+/// Both are legitimate, independently-developed ports of the same pbrt-v4
+/// concept for different subsystems; neither can be renamed away for free,
+/// so they simply can never appear in the same translation unit. See
+/// src/TheRestOfYourLife/bdpt_adapter.h's own file comment for the full
+/// story (also the reason SPPMSceneAdapter's BSDF bridge was extracted into
+/// bsdf_bridge.h -- reused by both this file's adapter and SPPM's without
+/// re-pulling power_light_sampler.h).
+///
+/// Uses BDPTSceneAdapter (src/TheRestOfYourLife/bdpt_adapter.h) against the
+/// same scene_registry build_world()/build_lights() closures
+/// cpu_render_main()/cpu_render_main_sppm() use. CPU-only: bidirectional
+/// path tracing on the GPU (OptiX) is out of scope for this integration,
+/// comparable in scope to the GPU SPPM work and left for a future,
+/// dedicated project -- see launcher_args.h's --bdpt/--gpu handling.
+///
+/// Area lights ONLY (no punctual/sky-light NEE) -- see bdpt_adapter.h's own
+/// "Scope (v1)" comment for the full reasoning. Verified end-to-end against
+/// scene A1 (Cornell Box) only; other scenes are unverified.
+///
+/// @param width/height    Image dimensions in pixels
+/// @param spp             Samples per pixel (one full BDPTLi() estimate per sample)
+/// @param bdpt_max_depth  Maximum BDPT path depth (camera+light vertices combined)
+/// @param output_path     Output PPM file path
+/// @param scene_id        Scene selector (see scene_registry.h)
+/// @param cam_x/y/z       Camera position (see cpu_render_main's own doc)
+/// @param force_camera_override  Same semantics as cpu_render_main's own parameter
+/// @return 0 on success, non-zero error code on failure
+int cpu_render_main_bdpt(
+    int width,
+    int height,
+    int spp,
+    int bdpt_max_depth,
+    const char* output_path,
+    const char* scene_id,
+    double cam_x,
+    double cam_y,
+    double cam_z,
+    int force_camera_override = 0
+);
+
+/// @brief Render a scene using Metropolis Light Transport (MLT).
+/// @details Same translation-unit split rationale, same BDPTSceneAdapter
+/// reuse (MLT is built directly on top of BDPT's subpath machinery -- see
+/// src/shared/mlt.h's own file comment), and the same v1 scope (area lights
+/// only, scene A1 the only end-to-end-verified scene) as
+/// cpu_render_main_bdpt() above -- see that function's doc comment and
+/// bdpt_adapter.h's file comment for the full reasoning, not repeated here.
+///
+/// Multiple independent Markov chains run in parallel across worker threads
+/// (see src/TheRestOfYourLife/bdpt_adapter.h's mlt_render_with_adapter() and
+/// src/shared/mlt.h's chainSeed parameter) -- mlt.h's own MLTRenderLoop() is
+/// otherwise a single-chain driver.
+///
+/// @param width/height     Image dimensions
+/// @param mlt_bootstrap    Bootstrap samples per depth (mlt.h's nBootstrap)
+/// @param mlt_mutations    Total Metropolis mutations across ALL chains combined
+/// @param mlt_max_depth    Maximum BDPT path depth used by each MLT sample
+/// @param output_path      Output PPM file path
+/// @param scene_id         Scene selector (see scene_registry.h)
+/// @param cam_x/y/z        Camera position (see cpu_render_main's own doc)
+/// @param force_camera_override  Same semantics as cpu_render_main's own parameter
+/// @return 0 on success, non-zero error code on failure
+int cpu_render_main_mlt(
+    int width,
+    int height,
+    int mlt_bootstrap,
+    long long mlt_mutations,
+    int mlt_max_depth,
+    const char* output_path,
+    const char* scene_id,
+    double cam_x,
+    double cam_y,
+    double cam_z,
+    int force_camera_override = 0
+);
+
 /// Scene metadata C API -- lets the GUI query the registry without C++ headers
 /// @return total number of registered scenes
 int cpu_scene_count();
