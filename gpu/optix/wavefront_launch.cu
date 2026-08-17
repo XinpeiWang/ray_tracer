@@ -189,6 +189,14 @@ extern "C" void wf_upload_cie_tables(
 	cudaMemcpyToSymbol(d_cie_z, h_cie_z, n_samples * sizeof(float));
 }
 
+// h_d65: caller-normalised D65 SPD, resampled onto the same 360-830nm/1nm
+// grid as d_cie_x/y/z (see wf_upload_d65_table's own declaration comment in
+// wavefront_path_tracer.cpp for the exact normalisation).
+extern "C" void wf_upload_d65_table(const float* h_d65, int n_samples)
+{
+	cudaMemcpyToSymbol(d_d65, h_d65, n_samples * sizeof(float));
+}
+
 extern "C" void wf_upload_srgb_table(
 	const float* h_zNodes,    // [64]
 	const float* h_coeffs,    // [3*64*64*64*3]

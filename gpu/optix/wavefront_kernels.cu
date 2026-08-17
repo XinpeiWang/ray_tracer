@@ -962,6 +962,15 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		float3 to_light;
 		SS light_emission_spec(0.f);
 
+		// A light's RGB colour is an ILLUMINANT (pbrt-v4 RGBIlluminantSpectrum:
+		// scale * rsp(lambda) * D65(lambda)), not a bare RGBUnboundedSpectrum
+		// (scale * rsp(lambda)) -- without the D65 factor, a grey light
+		// uplifts to a flat/equal-energy spectrum (chromaticity (0.333,
+		// 0.333)) instead of D65-white (0.3127,0.3290), which then
+		// reconstructs as a non-neutral RGB through wf_xyz_to_linear_rgb's
+		// D65-targeted matrix (R inflated ~20%, G/B suppressed ~5-11%) -- see
+		// dev_sample_d65()'s own comment in spectral_device.h for the full
+		// derivation.
 		auto liftEmission = [&](float3 le) -> SS {
 			float m = le.x > le.y ? (le.x > le.z ? le.x : le.z)
 								  : (le.y > le.z ? le.y : le.z);
@@ -972,7 +981,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			RGBSigmoidPolynomial poly(c0, c1, c2);
 			SS s(0.f);
 			for (int i = 0; i < kWFNWavelengths; ++i)
-				s[i] = sc * poly(swl.lambda[i]);
+				s[i] = sc * poly(swl.lambda[i]) * dev_sample_d65(swl.lambda[i]);
 			return s;
 		};
 
@@ -1127,7 +1136,8 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			// Uplift RGB sky_Le_val (the real per-direction radiance for an
 			// image sky, or the flat skyColor otherwise - see
 			// wf_sample_sky_nee()) to spectrum (same pattern as liftEmission
-			// above).
+			// above, including the D65 illuminant factor -- see that
+			// lambda's own comment).
 			float m = sky_Le_val.x > sky_Le_val.y ? (sky_Le_val.x > sky_Le_val.z ? sky_Le_val.x : sky_Le_val.z)
 			                                       : (sky_Le_val.y > sky_Le_val.z ? sky_Le_val.y : sky_Le_val.z);
 			float sc = 2.f * m;
@@ -1137,7 +1147,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 				dev_srgb_to_coeffs(sky_Le_val.x / sc, sky_Le_val.y / sc, sky_Le_val.z / sc, c0, c1, c2);
 				RGBSigmoidPolynomial poly(c0, c1, c2);
 				for (int i = 0; i < kWFNWavelengths; ++i)
-					sky_spec[i] = sc * poly(swl.lambda[i]);
+					sky_spec[i] = sc * poly(swl.lambda[i]) * dev_sample_d65(swl.lambda[i]);
 			}
 
 			SS Ld = (mis_w * bsdf_val * cos_l / pdf_sky) * throughput * bsdf_color * sky_spec;
@@ -1189,7 +1199,9 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			bsdf_val = (1.0f - fr_l) / (nf_c * 3.14159265f);
 		}
 
-		// Uplift RGB Li to spectrum (same pattern as liftEmission above)
+		// Uplift RGB Li to spectrum (same pattern as liftEmission above,
+		// including the D65 illuminant factor -- see that lambda's own
+		// comment)
 		float m = Li.x > Li.y ? (Li.x > Li.z ? Li.x : Li.z) : (Li.y > Li.z ? Li.y : Li.z);
 		float sc = 2.f * m;
 		SS Li_spec(0.f);
@@ -1198,7 +1210,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			dev_srgb_to_coeffs(Li.x / sc, Li.y / sc, Li.z / sc, c0, c1, c2);
 			RGBSigmoidPolynomial poly(c0, c1, c2);
 			for (int i = 0; i < kWFNWavelengths; ++i)
-				Li_spec[i] = sc * poly(swl.lambda[i]);
+				Li_spec[i] = sc * poly(swl.lambda[i]) * dev_sample_d65(swl.lambda[i]);
 		}
 
 		SS Ld = (bsdf_val * cos_l) * throughput * bsdf_color * Li_spec;
@@ -1378,8 +1390,12 @@ extern "C" __global__ void evaluate_materials(
 					dev_srgb_to_coeffs(le.x/sc, le.y/sc, le.z/sc, c0, c1, c2);
 					RGBSigmoidPolynomial emitPoly(c0, c1, c2);
 					SS emitS(0.f);
+					// D65 illuminant factor -- see liftEmission's own comment
+					// above (this is the same "light RGB is an illuminant,
+					// not a bare unbounded spectrum" uplift, just for a
+					// directly-hit emissive surface instead of an NEE sample).
 					for (int i = 0; i < kWFNWavelengths; ++i)
-						emitS[i] = sc * emitPoly(swl.lambda[i]);
+						emitS[i] = sc * emitPoly(swl.lambda[i]) * dev_sample_d65(swl.lambda[i]);
 					radiance = radiance + throughput * emitS;
 				}
 			}
@@ -2214,8 +2230,15 @@ extern "C" __global__ void evaluate_materials(
 // evaluate_materials below (that one captures its `swl` by reference from
 // its own hit context; accumulate_miss needs the same math against a
 // MissWorkItem's own wavelengths instead).
+//
+// isIlluminant: true for a light-source colour (background/sky radiance in
+// accumulate_miss below), which needs the D65 illuminant factor -- see
+// liftEmission's own comment above for why. false (default) for an
+// already-computed reflectance-like weight (e.g. resolve_bssrdf_exit's Sp
+// spatial term), which must NOT get an extra illuminant multiply -- it's
+// not a colour being lit, it's already a throughput.
 __device__ __forceinline__ SampledSpectrum<kWFNWavelengths> wf_lift_rgb_to_spectrum(
-	float3 rgb, const SampledWavelengths<kWFNWavelengths>& swl
+	float3 rgb, const SampledWavelengths<kWFNWavelengths>& swl, bool isIlluminant = false
 ) {
 	using SS = SampledSpectrum<kWFNWavelengths>;
 	float m = rgb.x > rgb.y ? (rgb.x > rgb.z ? rgb.x : rgb.z) : (rgb.y > rgb.z ? rgb.y : rgb.z);
@@ -2225,8 +2248,10 @@ __device__ __forceinline__ SampledSpectrum<kWFNWavelengths> wf_lift_rgb_to_spect
 	dev_srgb_to_coeffs(rgb.x / sc, rgb.y / sc, rgb.z / sc, c0, c1, c2);
 	RGBSigmoidPolynomial poly(c0, c1, c2);
 	SS s(0.f);
-	for (int i = 0; i < kWFNWavelengths; ++i)
+	for (int i = 0; i < kWFNWavelengths; ++i) {
 		s[i] = sc * poly(swl.lambda[i]);
+		if (isIlluminant) s[i] *= dev_sample_d65(swl.lambda[i]);
+	}
 	return s;
 }
 
@@ -2410,7 +2435,7 @@ extern "C" __global__ void accumulate_miss(
 	// a deferred-flush specular chain - see MissWorkItem::radiance's own
 	// comment) - add it directly, not multiplied by the CURRENT throughput
 	// again, the same way evaluate_materials's own flush sites do.
-	SS L = throughput * wf_lift_rgb_to_spectrum(weightedBackground, swl) + SS(m.radiance);
+	SS L = throughput * wf_lift_rgb_to_spectrum(weightedBackground, swl, /*isIlluminant=*/true) + SS(m.radiance);
 	if (!(bool)L) return;
 
 	auto xyz = SampledSpectrumToXYZ(L, swl, d_cie_x, d_cie_y, d_cie_z, kDevCIEMin, kDevCIENSamples);

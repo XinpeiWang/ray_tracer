@@ -22,6 +22,23 @@ __constant__ float d_cie_x[kDevCIENSamples];
 __constant__ float d_cie_y[kDevCIENSamples];
 __constant__ float d_cie_z[kDevCIENSamples];
 
+// CIE Standard Illuminant D65 SPD, resampled onto the same 360-830nm/1nm
+// grid as d_cie_x/y/z (see wf_upload_d65_table() in wavefront_launch.cu and
+// its host-side caller in wavefront_path_tracer.cpp), and PRE-NORMALISED so
+// that InnerProduct(CIE_Y, D65) == kCIE_Y_integral (106.856895) -- i.e. a
+// (1,1,1) RGBIlluminantSpectrum reconstructs to XYZ Y=1 through the same
+// unweighted-CIE_Y_integral convention SampledSpectrumToXYZ already uses
+// below. Without this multiply (or without this exact normalisation), any
+// achromatic light-source RGB uplifted through the flat r==g==b branch of
+// dev_srgb_to_coeffs produces an equal-energy-illuminant (chromaticity
+// (0.333,0.333)) spectrum instead of a D65-white (chromaticity
+// (0.3127,0.3290)) one, and reconstructing THAT through wf_xyz_to_linear_rgb
+// below (a matrix built for D65 white) yields a non-neutral RGB: R inflated
+// ~20%, G/B suppressed ~5-9%/~9-11% -- see wavefront_path_tracer.cpp's
+// upload-site comment for the full derivation and measured numbers (found
+// via tests/integration/material_cpu_gpu_parity_tests.cpp's B1 finding).
+__constant__ float d_d65[kDevCIENSamples];
+
 // sRGB upsampling table in device constant memory
 // Layout: [3][64][64][64][3] floats = 3*64*64*64*3 = 2,359,296 floats = ~9 MB
 // This fits in device global memory; we store a pointer to device memory.
@@ -31,9 +48,22 @@ __constant__ const float* d_srgb_coeffs;     // [3*64*64*64*3] trilinear coeffic
 extern __constant__ float d_cie_x[kDevCIENSamples];
 extern __constant__ float d_cie_y[kDevCIENSamples];
 extern __constant__ float d_cie_z[kDevCIENSamples];
+extern __constant__ float d_d65[kDevCIENSamples];
 extern __constant__ const float* d_srgb_zNodes;
 extern __constant__ const float* d_srgb_coeffs;
 #endif
+
+// Sample the pre-normalised device D65 table at the nearest integer
+// wavelength -- same lookup convention SampledSpectrumToXYZ (sampled_
+// spectrum.h) uses for d_cie_x/y/z, so multiplying this into a light's
+// uplifted spectrum before it reaches that same estimator is consistent.
+// Returns 0 outside the tabulated 360-830nm range (mirrors that function's
+// own out-of-range handling).
+__device__ __forceinline__ float dev_sample_d65(float lambda) {
+	int idx = (int)(lambda + 0.5f) - kDevCIEMin;
+	if (idx < 0 || idx >= kDevCIENSamples) return 0.f;
+	return d_d65[idx];
+}
 
 // Lightweight device-only sRGB upsampling: same algorithm as RGBToSpectrumTable::operator()
 // but reads from __constant__ / global device pointers.

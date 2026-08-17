@@ -72,6 +72,7 @@ extern "C" void wf_launch_normalize_framebuffer(unsigned int, float, float3*, cu
 extern "C" void wf_reset_queue_counter(int*, cudaStream_t);
 extern "C" void wf_upload_cie_tables(const float*, const float*, const float*, int);
 extern "C" void wf_upload_srgb_table(const float*, const float*, int);
+extern "C" void wf_upload_d65_table(const float*, int);
 
 namespace optix_renderer {
 
@@ -167,6 +168,46 @@ bool WavefrontPathTracer::initialize(OptixDeviceContext context,
 
 	// Upload CIE XYZ matching function tables to device __constant__ memory
 	wf_upload_cie_tables(CIE_X, CIE_Y, CIE_Z, kCIENSamples);
+
+	// Upload the CIE Standard Illuminant D65 SPD, resampled onto the same
+	// 360-830nm/1nm grid as CIE_X/Y/Z and pre-normalised so that
+	// InnerProduct(CIE_Y, D65) == kCIE_Y_integral (106.856895f) -- i.e. so a
+	// (1,1,1) RGBIlluminantSpectrum reconstructs to XYZ Y=1 under the same
+	// unweighted-CIE_Y_integral convention SampledSpectrumToXYZ uses for
+	// every other spectral quantity in this pipeline.
+	//
+	// Root-cause context (found via tests/integration/
+	// material_cpu_gpu_parity_tests.cpp's B1/RoughMetalSpheres finding):
+	// every light-source RGB the wavefront kernel uplifts to a spectrum
+	// (area lights, punctual lights, sky/background, direct-hit emissive
+	// surfaces) was being treated as an RGBUnboundedSpectrum (scale *
+	// rsp(lambda), no illuminant) instead of pbrt-v4's RGBIlluminantSpectrum
+	// (scale * rsp(lambda) * illuminant(lambda)). Since dev_srgb_to_coeffs's
+	// achromatic (r==g==b) branch produces a perfectly FLAT spectrum for any
+	// grey light colour, omitting the D65 factor made every grey light in
+	// the scene carry an equal-energy-illuminant chromaticity (0.333,0.333)
+	// instead of D65's (0.3127,0.3290). wf_xyz_to_linear_rgb's matrix is
+	// built for D65 white, so reconstructing an equal-energy spectrum
+	// through it yields a non-neutral RGB (R inflated ~20%, G/B suppressed
+	// ~5-11%) -- which then multiplies through onto everything that light
+	// illuminates. Verified with a standalone deterministic Riemann-sum
+	// integration (no Monte Carlo/rendering involved): multiplying by this
+	// normalised D65 table reproduces CPU's naive per-channel RGB multiply
+	// to within 0.05% for B1's gold-metal-under-grey-light case.
+	{
+		static float h_d65[kCIENSamples];
+		const DenselySampledSpectrum& d65 = GetD65Illuminant();
+		float normConst = 0.f;
+		for (int i = 0; i < kCIENSamples; ++i) {
+			float lambda = static_cast<float>(kCIELambda_min + i);
+			float d65v = d65(lambda);
+			h_d65[i] = d65v;
+			normConst += CIE_Y[i] * d65v;
+		}
+		const float scale = kCIE_Y_integral / normConst;
+		for (int i = 0; i < kCIENSamples; ++i) h_d65[i] *= scale;
+		wf_upload_d65_table(h_d65, kCIENSamples);
+	}
 
 	// Upload sRGB upsampling table to device memory
 	{
