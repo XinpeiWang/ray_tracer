@@ -200,6 +200,7 @@
     <ClCompile Include="unit\wavefront_tests.cpp" />
     <ClCompile Include="unit\energy_conservation_tests.cpp" />
     <ClCompile Include="integration\cpu_gpu_comparison_tests.cpp" />
+    <ClCompile Include="integration\material_cpu_gpu_parity_tests.cpp" />
     <ClCompile Include="unit\sky_light_tests.cpp" />
     <ClCompile Include="unit\sobol_sampler_tests.cpp" />
         <ClCompile Include="unit\z_sobol_sampler_tests.cpp" />
