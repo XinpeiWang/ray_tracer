@@ -675,6 +675,39 @@ class mix_material : public material {
             return mat_b->scattering_pdf(r_in, rec, scattered);
     }
 
+    // Same deterministic branch as scatter()/scattering_pdf() above - without
+    // this override, the base class default (return srec_attenuation
+    // unchanged) applied even when the committed sub-material is itself a
+    // diffuse_transmission, silently reintroducing the exact NEE-hemisphere
+    // color bug diffuse_transmission::scattering_attenuation() exists to fix
+    // (mix(diffuse_transmission, X) would ignore it entirely).
+    color scattering_attenuation(const hit_record& rec, const ray& scattered,
+                                  const color& srec_attenuation) const override {
+        double w = weight_tex->value(rec.u, rec.v, rec.p).x();
+        w = w < 0.0 ? 0.0 : (w > 1.0 ? 1.0 : w);
+        if (branch_hash01(rec.p) >= w)
+            return mat_a->scattering_attenuation(rec, scattered, srec_attenuation);
+        else
+            return mat_b->scattering_attenuation(rec, scattered, srec_attenuation);
+    }
+
+    // Same deterministic branch as scatter() above - without this override,
+    // the base class default (nullptr) applied unconditionally, so
+    // mix(subsurface, X) silently dropped real BSSRDF exit sampling
+    // (camera.h's sample_bssrdf_exit() gates on `rec.mat->as_subsurface()`
+    // being non-null right after scatter() returns a specular transmission -
+    // it needs to see the SAME branch scatter() just committed to for this
+    // same rec, which base_material::as_subsurface() taking `rec` now makes
+    // possible).
+    const subsurface* as_subsurface(const hit_record& rec) const override {
+        double w = weight_tex->value(rec.u, rec.v, rec.p).x();
+        w = w < 0.0 ? 0.0 : (w > 1.0 ? 1.0 : w);
+        if (branch_hash01(rec.p) >= w)
+            return mat_a->as_subsurface(rec);
+        else
+            return mat_b->as_subsurface(rec);
+    }
+
     shared_ptr<material> get_mat_a()   const { return mat_a; }
     shared_ptr<material> get_mat_b()   const { return mat_b; }
     shared_ptr<texture>  get_weight()  const { return weight_tex; }
@@ -780,7 +813,7 @@ class subsurface : public material {
     // outright any more than `class dielectric` does.
     bool is_shadow_transmissive(const hit_record&) const override { return true; }
 
-    const subsurface* as_subsurface() const override { return this; }
+    const subsurface* as_subsurface(const hit_record&) const override { return this; }
 
     double get_ior() const { return eta_; }
     const TabulatedBSSRDF& get_bssrdf() const { return bssrdf_; }

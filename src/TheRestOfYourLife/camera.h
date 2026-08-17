@@ -438,7 +438,7 @@ class camera {
                              const ray& current_ray, const hittable& world,
                              color& beta, double& eta_scale) const
     {
-        const subsurface* ss = rec.mat->as_subsurface();
+        const subsurface* ss = rec.mat->as_subsurface(rec);
         if (!ss) return false;
 
         const color  entry_attenuation     = srec.attenuation;
@@ -703,7 +703,7 @@ class camera {
             // simplifications. On failure the path terminates cleanly, same
             // as any other zero-contribution sample.
             bool bssrdf_exit = false;
-            if (srec.skip_pdf && srec.is_transmission && rec.mat->as_subsurface()) {
+            if (srec.skip_pdf && srec.is_transmission && rec.mat->as_subsurface(rec)) {
                 if (!sample_bssrdf_exit(rec, srec, current_ray, world, beta, eta_scale))
                     break;
                 bssrdf_exit = true;

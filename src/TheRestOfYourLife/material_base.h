@@ -122,6 +122,17 @@ class material {
     // continuing to trace the refracted ray - see camera.h::
     // sample_bssrdf_exit()'s own comment for why (a material's scatter()
     // has no access to the scene geometry that search needs).
-    virtual const subsurface* as_subsurface() const { return nullptr; }
+    //
+    // Takes `rec` (unused by every override except mix_material's) so a
+    // wrapper material whose choice of sub-material varies by hit point
+    // (mix_material) can report the SAME sub-material the immediately
+    // preceding scatter() call on this same rec committed to, rather than
+    // being unable to answer the question at all (the immediate motivation:
+    // mix_material previously had no override, so mix(subsurface, X)
+    // silently dropped BSSRDF regardless of which branch was picked).
+    virtual const subsurface* as_subsurface(const hit_record& rec) const {
+        (void)rec;
+        return nullptr;
+    }
 };
 
