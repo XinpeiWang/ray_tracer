@@ -135,11 +135,10 @@ extern "C" __global__ void __closesthit__bilinear_patch() {
 	);
 	unsigned int seed = optixGetPayload_9();
 
-	// Get emission from material (all materials can emit, most have emission=0).
-	// See optix_intersection_sphere.h's own comment on this same gate -
-	// DiffuseLight is one-sided, matching CPU's diffuse_light::emitted().
-	float3 emission = (mat.type == MaterialType::DiffuseLight && !front_face)
-		? make_float3(0.0f, 0.0f, 0.0f) : mat.emission;
+	// Get emission from material - see material_emission()'s own comment
+	// (optix_device_helpers.h) for why this goes through an accessor rather
+	// than reading mat.emission raw.
+	float3 emission = material_emission(mat, front_face);
 
 	// Material scattering (same as sphere/quad)
 	float3 attenuation;

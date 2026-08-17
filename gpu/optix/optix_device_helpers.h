@@ -837,6 +837,33 @@ __device__ __forceinline__ float3 sample_texture(int textureIdx, float u, float 
 	}
 }
 
+// Emission the caller's local `emission` variable should be initialized to
+// BEFORE calling shade_material() - see shade_material()'s own comment on
+// that in/out convention (NEE contributions get added on top of whatever
+// this returns). Guards the mat.emission union-slot read behind
+// mat.type == DiffuseLight, so a material that reuses that slot for
+// something else entirely (DiffuseTransmission's transmittance,
+// Subsurface's sigma_a, ...) never depends on shade_material()'s own switch
+// remembering to reset it back to zero - previously TWO separate cases each
+// carried a near-identical "don't forget to zero this" comment doing that
+// reset by hand; a third material reusing this slot in the future would
+// silently need a fourth. One-sided per front_face, matching CPU's
+// diffuse_light::emitted(). textureIdx>=0 samples a real map_Ke texture at
+// the given UV (only triangles currently ever populate this for DiffuseLight
+// - see add_diffuse_light()'s textureIdx comment - but any future geometry
+// type gets it for free by going through this accessor instead of reading
+// mat.emission raw).
+__device__ __forceinline__ float3 material_emission(
+		const MaterialData& mat, bool front_face,
+		float uv_u = 0.0f, float uv_v = 0.0f,
+		float3 hit_point = make_float3(0.0f, 0.0f, 0.0f)) {
+	if (mat.type != MaterialType::DiffuseLight || !front_face)
+		return make_float3(0.0f, 0.0f, 0.0f);
+	if (mat.textureIdx >= 0)
+		return sample_texture(mat.textureIdx, uv_u, uv_v, hit_point);
+	return mat.emission;
+}
+
 // Alpha-cutout test (OBJ/.mtl map_d): returns true if the hit should be
 // kept, false if it should be treated as fully transparent - a caller at an
 // any-hit call site (radiance or shadow) should then call
@@ -1337,14 +1364,12 @@ __device__ __forceinline__ void shade_material(
 			// subsurface`, material_pbrt.h - a plain DielectricBxDF(eta),
 			// no roughness, no Tf tint).
 			//
-			// `emission` on entry is whatever the caller initialized it to
-			// (mat.emission, per shade_material()'s own general convention)
-			// - but Subsurface has no real emission field: that union slot
-			// is bssrdf_sigma_a here (see optix_types.h's MaterialType::
-			// Subsurface comment), so the caller's mat.emission read is
-			// actually sigma_a's bytes reinterpreted as a color. Reset to a
-			// clean zero before anything below might add to it.
-			emission = make_float3(0.0f, 0.0f, 0.0f);
+			// `emission` on entry is already zero (the caller reads it via
+			// material_emission(), which guards the mat.emission union-slot
+			// read behind mat.type == DiffuseLight - Subsurface has no real
+			// emission field, that slot is bssrdf_sigma_a here, see
+			// optix_types.h's MaterialType::Subsurface comment - so no reset
+			// needed here anymore).
 			scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
 			bool is_transmission = dot(scattered_dir, normal) < 0.0f;
 			if (!is_transmission) {
@@ -1723,18 +1748,13 @@ __device__ __forceinline__ void shade_material(
 			// albedo = reflectance R (same hemisphere), emission = transmittance T (reused field)
 			float3 R = mat.albedo;
 			float3 T_col = mat.emission;  // transmittance packed into emission field
-			// `emission` (the OUT parameter, not T_col above) enters this case
-			// pre-loaded with mat.emission by the caller's general convention
-			// (same as MaterialType::Subsurface's own comment on this pattern
-			// just above) - but this material has no real emission field
-			// either: that union slot is T (transmittance), which is exactly
-			// T_col just read above. Left unreset, `emission` would still
-			// equal T_col and get added to the final radiance as if this
-			// surface were itself glowing by its own transmittance color, on
-			// top of the real scattered contribution below - a real bug this
-			// case previously had (DiffuseTransmission never resets emission,
-			// unlike Subsurface's explicit reset a few cases above).
-			emission = make_float3(0.0f, 0.0f, 0.0f);
+			// `emission` (the OUT parameter, not T_col above) is already
+			// zero on entry - the caller reads it via material_emission(),
+			// which guards the mat.emission union-slot read behind
+			// mat.type == DiffuseLight (see that function's own comment).
+			// This material has no real emission field either: that union
+			// slot is T (transmittance), which is exactly T_col just read
+			// above.
 			float pr = fmaxf(R.x, fmaxf(R.y, R.z));
 			float pt = fmaxf(T_col.x, fmaxf(T_col.y, T_col.z));
 			if (pr + pt <= 0.0f) { scattered = false; break; }

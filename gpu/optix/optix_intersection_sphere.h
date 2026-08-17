@@ -329,14 +329,10 @@ extern "C" __global__ void __closesthit__sphere() {
 	);
 	unsigned int seed = optixGetPayload_9();
 
-	// Get emission from material (all materials can emit, most have emission=0).
-	// DiffuseLight is one-sided, matching CPU's diffuse_light::emitted()
-	// (material_simple.h: `if (!rec.front_face) return color(0,0,0)`) - an
-	// unguarded read here made a light's back face glow exactly as brightly
-	// as its front, contrary to CPU and to pbrt-v4's own AreaLight (one-sided
-	// unless "twosided" is set, which this loader doesn't produce anyway).
-	float3 emission = (mat.type == MaterialType::DiffuseLight && !front_face)
-		? make_float3(0.0f, 0.0f, 0.0f) : mat.emission;
+	// Get emission from material - see material_emission()'s own comment for
+	// why this goes through an accessor rather than reading mat.emission raw
+	// (that field is a reused union slot for several material types).
+	float3 emission = material_emission(mat, front_face);
 
 	// Material scattering
 	float3 attenuation;

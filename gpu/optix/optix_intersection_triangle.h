@@ -135,16 +135,13 @@ extern "C" __global__ void __closesthit__triangle() {
 	);
 	unsigned int seed = optixGetPayload_9();
 
-	// DiffuseLight with a real map_Ke texture (e.g. Gallery's painted-canvas
-	// glow) samples it at the hit UV instead of using the flat mat.emission
-	// - see add_diffuse_light()'s textureIdx comment. Every other material
-	// type keeps using mat.emission directly (always zero for them anyway).
-	// Either way, DiffuseLight is one-sided (see optix_intersection_sphere.h's
-	// own comment on this gate) - matches CPU's diffuse_light::emitted().
-	float3 emission = (mat.type != MaterialType::DiffuseLight) ? mat.emission
-		: !front_face ? make_float3(0.0f, 0.0f, 0.0f)
-		: (mat.textureIdx >= 0) ? sample_texture(mat.textureIdx, uv_u, uv_v, hit_point)
-		: mat.emission;
+	// Get emission from material - see material_emission()'s own comment
+	// (optix_device_helpers.h) for why this goes through an accessor rather
+	// than reading mat.emission raw. Triangles are the only geometry type
+	// that currently ever has a real map_Ke texture (e.g. Gallery's
+	// painted-canvas glow - see add_diffuse_light()'s textureIdx comment),
+	// hence the only caller that passes uv_u/uv_v/hit_point through.
+	float3 emission = material_emission(mat, front_face, uv_u, uv_v, hit_point);
 
 	float3 attenuation;
 	float3 scattered_dir;
