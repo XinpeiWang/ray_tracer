@@ -146,9 +146,20 @@ class WeightedReservoirSampler {
 
 	// Merge another reservoir (over a disjoint set) into this one.
 	// pbrt-v4: WeightedReservoirSampler::Merge
+	//
+	// `other` is folded in as a single candidate weighted by its total
+	// weight_sum_ (the standard Talbot-style reservoir merge) - add() already
+	// sets reservoir_weight_ = other.weight_sum_ internally when that
+	// candidate is accepted. This used to be overwritten right after with
+	// other.reservoir_weight_ (the weight of `other`'s own single retained
+	// sample, a different and smaller quantity), corrupting
+	// sample_probability()/reservoir_weight() for the accepted merge. Masked
+	// today by restir.h always calling merge() on fresh single-item
+	// reservoirs, where weight_sum_ == reservoir_weight_ so the bug is
+	// invisible - it only bites once a caller merges a reservoir that has
+	// itself accumulated more than one candidate.
 	CPU_GPU void merge(const WeightedReservoirSampler& other) {
-		if (other.has_sample() && add(other.reservoir_, other.weight_sum_))
-			reservoir_weight_ = other.reservoir_weight_;
+		if (other.has_sample()) add(other.reservoir_, other.weight_sum_);
 	}
 
 	// Copy state (weights + reservoir) but not the RNG state.

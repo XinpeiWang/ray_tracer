@@ -383,6 +383,25 @@ inline double focusDistanceFor(const Camera &c) {
 														   : toSubject;
 }
 
+// The defocus_angle to actually give camera.h's CameraConfig, which is NOT
+// c.aperture. c.aperture is set (a few dozen lines below, where "lensradius"
+// is read) to pbrt's lensradius*2 - a world-space lens DIAMETER - while
+// camera.h's defocus_angle is a full-angle measurement in DEGREES
+// (defocus_radius = focus_dist * tan(degrees_to_radians(defocus_angle/2)),
+// camera.h's initialize()). Passing the world-space diameter straight into a
+// degrees field (as callers used to) isn't a unit conversion away from
+// correct, it's simply the wrong quantity - e.g. pbrt's "lensradius 0.1" at a
+// focus distance of 10 world units should barely blur the image, but read as
+// "0.2 degrees" the defocus disk is spuriously enormous or vanishingly small
+// depending on the scene's actual scale, essentially unrelated to what the
+// scene file asked for. Solves defocus_radius = lens_radius for defocus_angle
+// given the same focus_dist this camera will actually be built with.
+inline double defocusAngleDegreesFor(const Camera &c, double focus_dist) {
+	if (c.aperture <= 0.0 || focus_dist <= 0.0) return 0.0;
+	const double lens_radius = c.aperture * 0.5;
+	return 2.0 * (std::atan(lens_radius / focus_dist) * 180.0 / 3.14159265358979323846);
+}
+
 // Geometry that exists once and is drawn many times, in OBJECT space - the one
 // place in this header where the CTM is deliberately not baked, because baking
 // it is exactly what instancing exists to avoid.
@@ -494,6 +513,15 @@ inline void transformNormal(const pbrt_scene::Matrix4 &m,
 	double nx = c00 * x + c01 * y + c02 * z;
 	double ny = c10 * x + c11 * y + c12 * z;
 	double nz = c20 * x + c21 * y + c22 * z;
+
+	// The cofactor matrix alone is inverse-transpose scaled by det (the two
+	// transposes noted above cancel the adjugate's transpose, not the 1/det
+	// factor) - for det>0 that uniform positive scale vanishes under the
+	// normalize below and this was silently correct, but for det<0 (a
+	// mirroring transform - e.g. pbrt's own "Scale -1 1 1", which shows up in
+	// real scenes for cheaply flipping an asset) the omitted sign flip left
+	// every transformed normal pointing exactly backwards.
+	if (det < 0.0) { nx = -nx; ny = -ny; nz = -nz; }
 
 	const double len = std::sqrt(nx * nx + ny * ny + nz * nz);
 	if (len > 0) { nx /= len; ny /= len; nz /= len; }
