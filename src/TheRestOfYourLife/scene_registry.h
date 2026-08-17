@@ -1481,7 +1481,11 @@ inline void append(std::vector<SceneDescriptor>& registry) {
             d.camera.lookat[0],   d.camera.lookat[1],   d.camera.lookat[2],
             0.0, 0.0, 0.0,                      // pbrt has no flat background
             CameraMode::Fixed,
-            d.camera.aperture,
+            // NOT d.camera.aperture directly - see defocusAngleDegreesFor()'s
+            // comment: that field is a world-space lens DIAMETER (pbrt's
+            // lensradius*2), not a degrees value, and camera.h's
+            // defocus_angle is a full angle in degrees.
+            pbrt_flatten::defocusAngleDegreesFor(d.camera, pbrt_flatten::focusDistanceFor(d.camera)),
             // NOT d.camera.focusDistance - see focusDistanceFor()'s comment.
             // Passing pbrt's raw default here made near geometry vanish.
             pbrt_flatten::focusDistanceFor(d.camera)

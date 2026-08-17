@@ -80,8 +80,17 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		// a fuzz, so roughness maps onto fuzz directly.
 		return std::make_shared<metal>(albedo, m.roughness);
 	case pbrt_flatten::MaterialKind::Dielectric:
-	case pbrt_flatten::MaterialKind::ThinDielectric:
 		return std::make_shared<dielectric>(m.ior);
+	case pbrt_flatten::MaterialKind::ThinDielectric:
+		// A zero-thickness slab (thin_dielectric, material_pbrt.h) is NOT the
+		// same BxDF as a solid dielectric volume: the transmitted ray exits
+		// un-refracted on the same side it entered, and R/T are the
+		// closed-form internal-bounce sums (ThinDielectricBxDF), not Snell's
+		// law - this used to fall through to plain `dielectric`, refracting a
+		// window pane/soap bubble as if it had real thickness and an interior
+		// (visibly wrong bending, and no gpu_thin_dielectric_material parity
+		// with the GPU backend's MaterialType::ThinDielectric either).
+		return std::make_shared<thin_dielectric>(m.ior);
 	case pbrt_flatten::MaterialKind::CoatedDiffuse:
 		return std::make_shared<coated_diffuse>(albedo, m.ior, m.roughness);
 	case pbrt_flatten::MaterialKind::CoatedConductor: {

@@ -4394,19 +4394,48 @@ static bool build_loaded_pbrt_scene(
 				       static_cast<float>(c.up[1]),
 				       static_cast<float>(c.up[2]));
 	const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
-	// focus_dist is 1.0f, NOT the scene's focal distance - and that matches
-	// every other GPU scene in this file, all of which pass 1.0f.
-	//
-	// The two backends use this parameter differently. camera.h places the
-	// CPU viewport AT focus_dist, so there it must be a real world distance
-	// (see focusDistanceFor()'s comment in pbrt_flatten.h - feeding it pbrt's
-	// 1e6 "no depth of field" sentinel deleted near geometry). Here the
-	// viewport sits at unit distance, so anything other than 1.0f just scales
-	// it: passing a real focal distance like 800 makes the viewport 800x too
-	// wide and every primary ray misses the scene.
-	build_pinhole_camera_params(
-		lookfrom, lookat, vup, static_cast<float>(c.vfov), aspect,
-		1.0f, camera_params);
+	// c.aperture (pbrt's lensradius*2, a world-space lens diameter) was
+	// never read here at all: every loaded .pbrt scene rendered pinhole-sharp
+	// on GPU regardless of what its own Camera directive's "lensradius"
+	// asked for, while the identical scene on CPU (scene_registry.h, which
+	// does read it via defocusAngleDegreesFor()) correctly blurred. Case 1/
+	// case 22 elsewhere in this file show the pattern this now follows: pass
+	// the real focus_dist into build_pinhole_camera_params (capturing its u/v
+	// basis) only when there's a nonzero aperture to blur with, and derive
+	// defocus_disk_u/v from it exactly as camera.h does - a zero-aperture
+	// scene keeps the prior focus_dist=1.0f/no-DOF behavior untouched (see
+	// build_pinhole_camera_params's own viewport-scaling comment this
+	// replaces for why 1.0f, not a real distance, is deliberate there).
+	const float focus_dist_world = static_cast<float>(pbrt_flatten::focusDistanceFor(c));
+	const float defocus_angle_deg = static_cast<float>(
+		pbrt_flatten::defocusAngleDegreesFor(c, focus_dist_world));
+	if (defocus_angle_deg > 0.0f) {
+		float3 dof_u, dof_v;
+		build_pinhole_camera_params(
+			lookfrom, lookat, vup, static_cast<float>(c.vfov), aspect,
+			focus_dist_world, camera_params, &dof_u, &dof_v);
+		if (out_camera_extra) {
+			// A nonzero defocus disk opts this scene out of
+			// optix_interface.cpp's generic camera_params->cameraExtra
+			// fallback (see CameraKind::Perspective's own comment there), so
+			// kind/origin/lower_left_corner/horizontal/vertical must be set
+			// explicitly here too - same full set case 1/case 22 set.
+			out_camera_extra->kind = CameraKind::Perspective;
+			out_camera_extra->origin = lookfrom;
+			out_camera_extra->lower_left_corner = make_float3(camera_params[3], camera_params[4], camera_params[5]);
+			out_camera_extra->horizontal = make_float3(camera_params[6], camera_params[7], camera_params[8]);
+			out_camera_extra->vertical = make_float3(camera_params[9], camera_params[10], camera_params[11]);
+
+			constexpr float kPi = 3.14159265358979323846f;
+			const float defocus_radius = focus_dist_world * tanf((defocus_angle_deg * kPi / 180.0f) / 2.0f);
+			out_camera_extra->defocus_disk_u = make_float3(dof_u.x * defocus_radius, dof_u.y * defocus_radius, dof_u.z * defocus_radius);
+			out_camera_extra->defocus_disk_v = make_float3(dof_v.x * defocus_radius, dof_v.y * defocus_radius, dof_v.z * defocus_radius);
+		}
+	} else {
+		build_pinhole_camera_params(
+			lookfrom, lookat, vup, static_cast<float>(c.vfov), aspect,
+			1.0f, camera_params);
+	}
 
 	// Route non-perspective Camera directives to their GPU camera model, the
 	// same generic, data-driven way CPU's setup_camera lambda does (see

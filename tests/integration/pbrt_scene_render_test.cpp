@@ -211,8 +211,13 @@ Loaded loadAndAim(const std::string &text, int spp) {
 	// focusDistance directly. Without this the harness was quietly kinder to
 	// the renderer than the real path is, and missed a bug that deleted
 	// geometry in every loaded scene.
-	out.cam.defocus_angle = flat.camera.aperture;
+	//
+	// defocus_angle also goes through defocusAngleDegreesFor() rather than
+	// using flat.camera.aperture directly - that field is a world-space lens
+	// DIAMETER, not a degrees value (see that function's own comment); this
+	// test used to carry the same unit-mismatch bug scene_registry.h had.
 	out.cam.focus_dist = pbrt_flatten::focusDistanceFor(flat.camera);
+	out.cam.defocus_angle = pbrt_flatten::defocusAngleDegreesFor(flat.camera, out.cam.focus_dist);
 	// nullptr (no punctual lights) unless the scene declared LightSource
 	// point/spot/distant/goniometric/projection - same wiring
 	// cpu_interface.cpp does for every other pbrt scene (see scene_registry.h's
