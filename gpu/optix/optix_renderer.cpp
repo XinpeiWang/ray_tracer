@@ -709,7 +709,15 @@ bool OptiXRenderer::buildScene(
 	const std::vector<float>& measuredParamValues,
 	const std::vector<float>& measuredData,
 	const std::vector<float>& measuredMcdf,
-	const std::vector<float>& measuredCcdf
+	const std::vector<float>& measuredCcdf,
+	const std::vector<float>& skyImagePixels,
+	const std::vector<float>& skyMarginalCdf,
+	const std::vector<float>& skyMarginalFunc,
+	float skyMarginalFuncInt,
+	const std::vector<float>& skyConditionalCdf,
+	const std::vector<float>& skyConditionalFunc,
+	const std::vector<float>& skyConditionalFuncInt,
+	int skyWidth, int skyHeight, float skyScale
 ) {
 	// Store material data on device
 	numMaterials_ = static_cast<unsigned int>(materials.size());
@@ -1051,6 +1059,35 @@ bool OptiXRenderer::buildScene(
 	if (numMeasuredTables_ > 0)
 		std::cout << "[OptiX] Uploaded " << measuredTables.size() << " measured-BRDF table(s) ("
 			<< measuredData.size() << " data floats) to GPU\n";
+
+	// Real importance-sampled HDR sky distribution (LightSource "infinite"
+	// with an image - see optix_types.h's GpuSkyDistribution comment). Same
+	// upload shape as the BSSRDF/measured-BRDF tables just above, minus the
+	// per-table metadata array (a scene has at most one infinite light, so
+	// there is nothing to dedup/index - just the flat buffers themselves,
+	// referenced later by GpuSkyDistribution's own pointer fields).
+	skyWidth_ = skyWidth;
+	skyHeight_ = skyHeight;
+	skyScale_ = skyScale;
+	skyMarginalFuncInt_ = skyMarginalFuncInt;
+
+	const auto uploadSkyFloats = [&](const std::vector<float>& src, CUdeviceptr& dst) {
+		if (dst) { cudaFree(reinterpret_cast<void*>(dst)); dst = 0; }
+		if (src.empty()) return;
+		const size_t bytes = src.size() * sizeof(float);
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dst), bytes));
+		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(dst), src.data(), bytes, cudaMemcpyHostToDevice));
+	};
+	uploadSkyFloats(skyImagePixels, d_skyImagePixels_);
+	uploadSkyFloats(skyMarginalCdf, d_skyMarginalCdf_);
+	uploadSkyFloats(skyMarginalFunc, d_skyMarginalFunc_);
+	uploadSkyFloats(skyConditionalCdf, d_skyConditionalCdf_);
+	uploadSkyFloats(skyConditionalFunc, d_skyConditionalFunc_);
+	uploadSkyFloats(skyConditionalFuncInt, d_skyConditionalFuncInt_);
+
+	if (skyHeight_ > 0)
+		std::cout << "[OptiX] Uploaded real HDR sky distribution (" << skyWidth_ << "x" << skyHeight_
+			<< ", " << skyImagePixels.size() << " pixel floats) to GPU\n";
 
 	// Store light data on device for MIS
 	numLights_ = static_cast<unsigned int>(lightIndices.size());
@@ -2043,6 +2080,27 @@ bool OptiXRenderer::render(
 		gpuCam.numExitPupilBounds = static_cast<int>(numExitPupilBounds_);
 	}
 
+	// Real importance-sampled HDR sky distribution (LightSource "infinite"
+	// with an image - see optix_types.h's GpuSkyDistribution comment) - same
+	// "device pointers patched in fresh here, not known at scene-build time"
+	// lifecycle as CameraKind::Realistic's lens tables just above.
+	// skyHeight_ <= 0 (the default, every scene with a constant-colour sky
+	// or no infinite light at all) leaves gpuCam.skyDist zero-init'd, which
+	// every call site on both GPU backends already treats as "fall back to
+	// backgroundColor + uniform-sphere sampling".
+	if (skyHeight_ > 0) {
+		gpuCam.skyDist.width = skyWidth_;
+		gpuCam.skyDist.height = skyHeight_;
+		gpuCam.skyDist.scale = skyScale_;
+		gpuCam.skyDist.imagePixels = reinterpret_cast<const float*>(d_skyImagePixels_);
+		gpuCam.skyDist.marginalCdf = reinterpret_cast<const float*>(d_skyMarginalCdf_);
+		gpuCam.skyDist.marginalFunc = reinterpret_cast<const float*>(d_skyMarginalFunc_);
+		gpuCam.skyDist.marginalFuncInt = skyMarginalFuncInt_;
+		gpuCam.skyDist.conditionalCdf = reinterpret_cast<const float*>(d_skyConditionalCdf_);
+		gpuCam.skyDist.conditionalFunc = reinterpret_cast<const float*>(d_skyConditionalFunc_);
+		gpuCam.skyDist.conditionalFuncInt = reinterpret_cast<const float*>(d_skyConditionalFuncInt_);
+	}
+
 	// Delegate to WavefrontPathTracer if enabled
 	if (useWavefront_ && wavefrontTracer_) {
 		// Set per render rather than once at enable time, so a scene switch
@@ -2232,6 +2290,12 @@ void OptiXRenderer::cleanup() noexcept {
 	if (d_measuredData_) cudaFree(reinterpret_cast<void*>(d_measuredData_));
 	if (d_measuredMcdf_) cudaFree(reinterpret_cast<void*>(d_measuredMcdf_));
 	if (d_measuredCcdf_) cudaFree(reinterpret_cast<void*>(d_measuredCcdf_));
+	if (d_skyImagePixels_) cudaFree(reinterpret_cast<void*>(d_skyImagePixels_));
+	if (d_skyMarginalCdf_) cudaFree(reinterpret_cast<void*>(d_skyMarginalCdf_));
+	if (d_skyMarginalFunc_) cudaFree(reinterpret_cast<void*>(d_skyMarginalFunc_));
+	if (d_skyConditionalCdf_) cudaFree(reinterpret_cast<void*>(d_skyConditionalCdf_));
+	if (d_skyConditionalFunc_) cudaFree(reinterpret_cast<void*>(d_skyConditionalFunc_));
+	if (d_skyConditionalFuncInt_) cudaFree(reinterpret_cast<void*>(d_skyConditionalFuncInt_));
 	if (d_lightIndices_) cudaFree(reinterpret_cast<void*>(d_lightIndices_));
 	if (d_lightKinds_) cudaFree(reinterpret_cast<void*>(d_lightKinds_));
 	if (d_aliasTable_) cudaFree(reinterpret_cast<void*>(d_aliasTable_));

@@ -39,6 +39,22 @@ struct SceneData {
 	std::vector<float> measuredMcdf;
 	std::vector<float> measuredCcdf;
 
+	// Real importance-sampled HDR sky distribution (LightSource "infinite"
+	// with an image - see optix_types.h's GpuSkyDistribution comment). Built
+	// once by pbrt_gpu_builder.h from the scene's decoded infinite-light
+	// image; skyHeight stays 0 (its default) for every scene with a
+	// constant-colour sky or no infinite light at all, matching
+	// GpuSkyDistribution::height's own "disabled" sentinel.
+	std::vector<float> skyImagePixels;        // skyWidth*skyHeight*3, row-major RGB
+	std::vector<float> skyMarginalCdf;        // skyHeight+1
+	std::vector<float> skyMarginalFunc;       // skyHeight
+	float skyMarginalFuncInt = 0.0f;
+	std::vector<float> skyConditionalCdf;     // skyHeight*(skyWidth+1)
+	std::vector<float> skyConditionalFunc;    // skyHeight*skyWidth
+	std::vector<float> skyConditionalFuncInt; // skyHeight
+	int skyWidth = 0, skyHeight = 0;
+	float skyScale = 1.0f;
+
 	// ---- object instancing ------------------------------------------------
 	// Geometry that exists once and is placed many times. Kept in a SEPARATE
 	// array from `triangles` on purpose: these are in their definition's

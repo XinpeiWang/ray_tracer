@@ -95,6 +95,15 @@ class PiecewiseConstant1D {
 	// func[i] value for bin i (used by PiecewiseConstant2D to build marginal)
 	double func_value(int i) const { return func[i]; }
 
+	// ---- GPU upload accessors ---------------------------------------------
+	// Read-only access to the already-built func/cdf arrays, for flattening
+	// one PiecewiseConstant1D instance into device buffers (see gpu/optix/
+	// pbrt_gpu_builder.h's sky-light distribution build). Pure const getters,
+	// no behavior change - mirrors piecewise_linear_2d.h's own GPU upload
+	// accessors (added for the measured-BRDF GPU work) exactly in spirit.
+	const std::vector<double>& Func() const { return func; }
+	const std::vector<double>& Cdf()  const { return cdf; }
+
   private:
 	std::vector<double> func; // original function values
 	std::vector<double> cdf;  // CDF[0..n], cdf[0]=0, cdf[n]=1
@@ -164,6 +173,15 @@ class PiecewiseConstant2D {
 	}
 
 	bool empty() const { return conditionals.empty(); }
+
+	// ---- GPU upload accessors ---------------------------------------------
+	// Read-only access to the marginal and each per-row conditional
+	// distribution, for flattening this instance into device buffers (see
+	// gpu/optix/pbrt_gpu_builder.h's sky-light distribution build). Pure
+	// const getters, no behavior change.
+	const PiecewiseConstant1D& Marginal() const { return marginal; }
+	const PiecewiseConstant1D& Conditional(int v) const { return conditionals[v]; }
+	int NV() const { return (int)conditionals.size(); }
 
   private:
 	std::vector<PiecewiseConstant1D> conditionals; // one per image row

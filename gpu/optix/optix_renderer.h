@@ -89,7 +89,20 @@ public:
 		const std::vector<float>& measuredParamValues = {},
 		const std::vector<float>& measuredData = {},
 		const std::vector<float>& measuredMcdf = {},
-		const std::vector<float>& measuredCcdf = {}
+		const std::vector<float>& measuredCcdf = {},
+		// Real importance-sampled HDR sky distribution (LightSource
+		// "infinite" with an image - see optix_types.h's GpuSkyDistribution
+		// comment and SceneData's own matching fields in scene_builder.h).
+		// skyHeight stays 0 (its default) for every scene with a constant-
+		// colour sky or no infinite light at all.
+		const std::vector<float>& skyImagePixels = {},
+		const std::vector<float>& skyMarginalCdf = {},
+		const std::vector<float>& skyMarginalFunc = {},
+		float skyMarginalFuncInt = 0.0f,
+		const std::vector<float>& skyConditionalCdf = {},
+		const std::vector<float>& skyConditionalFunc = {},
+		const std::vector<float>& skyConditionalFuncInt = {},
+		int skyWidth = 0, int skyHeight = 0, float skyScale = 1.0f
 	);
 
 	/// @brief Render a frame using path tracing
@@ -341,6 +354,25 @@ private:
 	CUdeviceptr d_measuredData_ = 0;
 	CUdeviceptr d_measuredMcdf_ = 0;
 	CUdeviceptr d_measuredCcdf_ = 0;
+
+	// Real importance-sampled HDR sky distribution (LightSource "infinite"
+	// with an image - see optix_types.h's GpuSkyDistribution comment). Both
+	// GPU backends: recursive reads these via params.camera.skyDist (patched
+	// in fresh inside render(), same lifecycle as CameraKind::Realistic's
+	// lensElements/exitPupilBounds just above), wavefront receives the same
+	// GpuSkyDistribution by value through the `camera` parameter its own
+	// render() already takes - see WavefrontPathTracer::render()'s call
+	// sites. skyHeight_ <= 0 (the default) means "no image sky in this
+	// scene", matching GpuSkyDistribution::height's own sentinel.
+	CUdeviceptr d_skyImagePixels_ = 0;
+	CUdeviceptr d_skyMarginalCdf_ = 0;
+	CUdeviceptr d_skyMarginalFunc_ = 0;
+	CUdeviceptr d_skyConditionalCdf_ = 0;
+	CUdeviceptr d_skyConditionalFunc_ = 0;
+	CUdeviceptr d_skyConditionalFuncInt_ = 0;
+	int skyWidth_ = 0, skyHeight_ = 0;
+	float skyScale_ = 1.0f;
+	float skyMarginalFuncInt_ = 0.0f;
 
 	// Light sampling support for MIS
 	CUdeviceptr d_lightIndices_ = 0;  ///< Device light primitive indices

@@ -51,9 +51,9 @@ extern "C" void wf_launch_evaluate_materials(
 	const GpuRgbGridMedium*, const float*,
 	const GpuMeasuredTable*, unsigned int,
 	const float*, const float*, const float*, const float*,
-	float3, float,
+	float3, float, GpuSkyDistribution,
 	cudaStream_t);
-extern "C" void wf_launch_accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, cudaStream_t);
+extern "C" void wf_launch_accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, GpuSkyDistribution, cudaStream_t);
 extern "C" void wf_launch_accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*, cudaStream_t);
 extern "C" void wf_launch_resolve_bssrdf_exit(
 	WorkQueue<BssrdfExitWorkItem>, int,
@@ -66,7 +66,7 @@ extern "C" void wf_launch_resolve_bssrdf_exit(
 	const MaterialData*, unsigned int,
 	const int*, const GpuLightKind*, const GpuAliasEntry*, unsigned int,
 	const PunctualLightGPU*, unsigned int,
-	float3, float,
+	float3, float, GpuSkyDistribution,
 	cudaStream_t);
 extern "C" void wf_launch_normalize_framebuffer(unsigned int, float, float3*, cudaStream_t);
 extern "C" void wf_reset_queue_counter(int*, cudaStream_t);
@@ -926,7 +926,8 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 	const int*           d_lightIndices, const GpuLightKind* d_lightKinds,
 	const GpuAliasEntry* d_aliasTable,  unsigned int numLights,
 	const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
-	float3*              d_framebuffer, float3 skyColor, float shadowRayEpsilon)
+	float3*              d_framebuffer, float3 skyColor, float shadowRayEpsilon,
+	GpuSkyDistribution skyDist)
 {
 	if (numHits == 0) return;
 
@@ -972,11 +973,12 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		reinterpret_cast<const float*>(d_measuredData_),
 		reinterpret_cast<const float*>(d_measuredMcdf_),
 		reinterpret_cast<const float*>(d_measuredCcdf_),
-		skyColor, shadowRayEpsilon,
+		skyColor, shadowRayEpsilon, skyDist,
 		stream_);
 }
 
-void WavefrontPathTracer::launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor) {
+void WavefrontPathTracer::launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor,
+												GpuSkyDistribution skyDist) {
 	if (numMiss == 0) return;
 
 	WorkQueue<MissWorkItem> mq;
@@ -984,7 +986,7 @@ void WavefrontPathTracer::launchAccumulateMiss(int numMiss, float3* d_framebuffe
 	mq.counter  = reinterpret_cast<int*>(d_missCounter_);
 	mq.capacity = queueCapacity_;
 
-	wf_launch_accumulate_miss(mq, numMiss, d_framebuffer, backgroundColor, stream_);
+	wf_launch_accumulate_miss(mq, numMiss, d_framebuffer, backgroundColor, skyDist, stream_);
 }
 
 void WavefrontPathTracer::launchAccumulateShadow(
@@ -1010,7 +1012,8 @@ void WavefrontPathTracer::launchResolveBssrdfExit(
 	const int* d_lightIndices, const GpuLightKind* d_lightKinds,
 	const GpuAliasEntry* d_aliasTable, unsigned int numLights,
 	const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
-	float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon)
+	float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon,
+	GpuSkyDistribution skyDist)
 {
 	if (numExit == 0) return;
 
@@ -1037,7 +1040,7 @@ void WavefrontPathTracer::launchResolveBssrdfExit(
 		d_materials, numMaterials,
 		d_lightIndices, d_lightKinds, d_aliasTable, numLights,
 		d_punctualLights, numPunctualLights,
-		skyColor, shadowRayEpsilon,
+		skyColor, shadowRayEpsilon, skyDist,
 		stream_);
 }
 
@@ -1209,12 +1212,12 @@ bool WavefrontPathTracer::render(
 				num_lights,
 				reinterpret_cast<const PunctualLightGPU*>(d_punctual_lights),
 				num_punctual_lights,
-				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon);
+				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist);
 
 			// ------------------------------------------------------------------
 			// Phase 4: Accumulate miss (escaped rays → background)
 			// ------------------------------------------------------------------
-			launchAccumulateMiss(numMiss, d_fbPtr, camera.backgroundColor);
+			launchAccumulateMiss(numMiss, d_fbPtr, camera.backgroundColor, camera.skyDist);
 
 			CUDA_CHECK(cudaStreamSynchronize(stream_));
 
@@ -1269,7 +1272,7 @@ bool WavefrontPathTracer::render(
 					num_lights,
 					reinterpret_cast<const PunctualLightGPU*>(d_punctual_lights),
 					num_punctual_lights,
-					d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon);
+					d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist);
 
 				CUDA_CHECK(cudaStreamSynchronize(stream_));
 			}

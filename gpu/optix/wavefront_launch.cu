@@ -26,8 +26,8 @@ extern "C" __global__ void evaluate_materials(
 	const GpuRgbGridMedium*, const float*,
 	const GpuMeasuredTable*, unsigned int,
 	const float*, const float*, const float*, const float*,
-	float3, float);
-extern "C" __global__ void accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3);
+	float3, float, GpuSkyDistribution);
+extern "C" __global__ void accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, GpuSkyDistribution);
 extern "C" __global__ void accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*);
 extern "C" __global__ void resolve_bssrdf_exit(
 	WorkQueue<BssrdfExitWorkItem>, int,
@@ -37,7 +37,7 @@ extern "C" __global__ void resolve_bssrdf_exit(
 	const int*, const GpuLightKind*, const GpuAliasEntry*,
 	unsigned int,
 	const PunctualLightGPU*, unsigned int,
-	float3, float);
+	float3, float, GpuSkyDistribution);
 extern "C" __global__ void reset_queue_counter(int*);
 extern "C" __global__ void normalize_framebuffer(float3*, unsigned int, float);
 
@@ -89,6 +89,7 @@ extern "C" void wf_launch_evaluate_materials(
 	const float*                 d_measuredCcdf,
 	float3                       skyColor,
 	float                        shadowRayEpsilon,
+	GpuSkyDistribution           skyDist,
 	cudaStream_t                     stream)
 {
 	if (numHits == 0) return;
@@ -106,17 +107,17 @@ extern "C" void wf_launch_evaluate_materials(
 		d_rgbGridMediums, d_rgbGridData,
 		d_measuredTables, numMeasuredTables,
 		d_measuredParamValues, d_measuredData, d_measuredMcdf, d_measuredCcdf,
-		skyColor, shadowRayEpsilon);
+		skyColor, shadowRayEpsilon, skyDist);
 }
 
 extern "C" void wf_launch_accumulate_miss(
 	WorkQueue<MissWorkItem> mq, int numMiss,
-	float3* d_framebuffer, float3 backgroundColor, cudaStream_t stream)
+	float3* d_framebuffer, float3 backgroundColor, GpuSkyDistribution skyDist, cudaStream_t stream)
 {
 	if (numMiss == 0) return;
 	dim3 block(256);
 	dim3 grid((numMiss + 255) / 256);
-	accumulate_miss<<<grid, block, 0, (cudaStream_t)stream>>>(mq, numMiss, d_framebuffer, backgroundColor);
+	accumulate_miss<<<grid, block, 0, (cudaStream_t)stream>>>(mq, numMiss, d_framebuffer, backgroundColor, skyDist);
 }
 
 extern "C" void wf_launch_accumulate_shadow(
@@ -148,6 +149,7 @@ extern "C" void wf_launch_resolve_bssrdf_exit(
 	unsigned int                 numPunctualLights,
 	float3                       skyColor,
 	float                        shadowRayEpsilon,
+	GpuSkyDistribution           skyDist,
 	cudaStream_t                 stream)
 {
 	if (numExit == 0) return;
@@ -160,7 +162,7 @@ extern "C" void wf_launch_resolve_bssrdf_exit(
 		d_spheres, d_quads, d_triangles, d_bilinearPatches, d_materials,
 		d_lightIndices, d_lightKinds, d_aliasTable,
 		numLights, d_punctualLights, numPunctualLights,
-		skyColor, shadowRayEpsilon);
+		skyColor, shadowRayEpsilon, skyDist);
 }
 
 extern "C" void wf_launch_normalize_framebuffer(

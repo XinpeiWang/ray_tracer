@@ -697,6 +697,62 @@ struct GpuExitPupilBounds {
 	int   degenerate;  // 1 = no valid exit-pupil sample in this radial slab
 };
 
+// GPU flat mirror of sky_light's REAL (image + PiecewiseConstant2D)
+// importance-sampling machinery (src/TheRestOfYourLife/sky_light.h +
+// src/shared/piecewise_dist.h), built once per scene CPU-side (from the SAME
+// decoded infinite-light image the flat-colour mean-brightness approximation
+// already used - see pbrt_gpu_builder.h) and uploaded as flat device
+// buffers, mirroring the measured-BRDF GPU work's "flatten CPU-built tables,
+// upload flat buffers, port only the read-path math to device" pattern (see
+// optix_measured_bxdf.h's own comment) - just simpler, since a scene has at
+// most ONE infinite light (no per-material indexing/dedup needed the way
+// GpuMeasuredTable/GpuBssrdfTable require).
+//
+// height <= 0 (the zero-init default) means "this scene has no real HDR
+// image" (a constant-colour sky, or no infinite light at all) - every call
+// site (gpu/optix/optix_sky_light.h / wavefront_sky_light.h and their
+// callers) falls back to the existing flat-colour + uniform-sphere path in
+// that case, unchanged from before this struct existed.
+//
+// Embedded directly in GpuCameraParams (not a separate LaunchParams array,
+// unlike GpuMeasuredTable/GpuBssrdfTable) so it rides along on the SAME
+// pass-through mechanism backgroundColor/shadowRayEpsilon already use to
+// reach both GPU backends: recursive reads it via params.camera.skyDist,
+// wavefront's kernels receive it as an explicit by-value parameter (same
+// established pattern as GpuCameraParams itself already being passed by
+// value into generate_camera_rays) extracted from the `camera` argument
+// WavefrontPathTracer::render() already receives - see that function's own
+// call sites. The raw device pointers below are only valid AFTER
+// OptiXRenderer::buildScene() has uploaded them (mirrors CameraKind::
+// Realistic's lensElements/exitPupilBounds pointers just below, which follow
+// the identical "logical camera params built early, raw uploaded-table
+// pointers patched in fresh inside render()" lifecycle).
+//
+// Deliberately NO in-class member initializers (unlike some other structs in
+// this codebase): LaunchParams's own `__constant__ params` global (optix_
+// device_helpers.h) requires every type it contains support trivial, non-
+// dynamic initialization - nvcc rejects in-class initializers there with
+// "dynamic initialization is not supported for a __constant__ variable".
+// Every host-side use already zero-initializes the containing struct
+// explicitly (`LaunchParams params = {};` / GpuCameraParams's own "always
+// zero-initialized" convention - see its own comment), so height/scale/every
+// pointer here are reliably 0/0.0f/nullptr by construction anyway.
+struct GpuSkyDistribution {
+	int width, height;              // image dimensions (nu, nv)
+	float scale;                    // sky_light::scale (brightness multiplier)
+	const float* imagePixels;       // width*height*3 floats, row-major RGB, linear
+	const float* marginalCdf;       // height+1 floats
+	const float* marginalFunc;      // height floats
+	float marginalFuncInt;
+	// Row r's slice starts at r*(width+1) (cdf) / r*width (func) - regular
+	// stride since every row has the same width, unlike GpuPL2DTable's
+	// per-axis offsets (which vary because different sub-tables have
+	// different axis counts).
+	const float* conditionalCdf;    // height*(width+1) floats
+	const float* conditionalFunc;   // height*width floats
+	const float* conditionalFuncInt; // height floats, one per row
+};
+
 // GPU camera parameters. `origin`/`lower_left_corner`/`horizontal`/`vertical`
 // describe the perspective/orthographic viewport (same meaning as before this
 // struct existed); the remaining fields are only meaningful for their
@@ -753,6 +809,13 @@ struct GpuCameraParams {
 	// scale scene could get real light leaks from too large an offset), so
 	// this is a per-scene override, not a global constant change.
 	float shadowRayEpsilon;
+
+	// Real importance-sampled HDR sky (LightSource "infinite" with an image) -
+	// see GpuSkyDistribution's own comment. height<=0 (default) means "use
+	// backgroundColor + uniform-sphere sampling", exactly as before this
+	// field existed - every scene with a constant-colour sky, or no infinite
+	// light at all, is completely unaffected.
+	GpuSkyDistribution skyDist;
 };
 
 // Launch parameters (passed to all OptiX programs)

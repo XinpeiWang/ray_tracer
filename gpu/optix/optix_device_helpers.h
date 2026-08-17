@@ -162,6 +162,12 @@ __device__ __forceinline__ bool sample_principled_material(
 // per-sample randoms, so this include must stay below both.
 #include "optix_measured_bxdf.h"
 
+// Device-side real importance-sampled HDR sky (LightSource "infinite" with
+// an image) - needs `params` and random_float()/random_unit_vector() (all
+// defined above), so this include must stay below them too. See that file's
+// own header comment.
+#include "optix_sky_light.h"
+
 __device__ __forceinline__ float3 random_on_hemisphere(const float3& normal, unsigned int& seed) {
 	float3 on_unit_sphere = random_unit_vector(seed);
 	if (dot(on_unit_sphere, normal) > 0.0f)
@@ -907,16 +913,18 @@ __device__ __forceinline__ void shade_normalized_fresnel(
 	{
 		const float3& skyColor = params.camera.backgroundColor;
 		if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
-			float3 sky_dir = random_unit_vector(seed);
+			// sample_sky_nee() (optix_sky_light.h) - see shade_material()'s
+			// own Lambertian sky-NEE block for the full comment.
+			float3 sky_dir, sky_Le_val; float pdf_sky;
+			sample_sky_nee(seed, skyColor, sky_dir, pdf_sky, sky_Le_val);
 			float  cos_sky = dot(sky_dir, normal);
 			if (cos_sky > 0.0f) {
-				constexpr float pdf_sky = 1.0f / (4.0f * 3.14159265358979323846f);
 				if (trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
 					float fr_sky       = FrDielectric(cos_sky, nf_eta);
 					float brdf_val_sky = (1.0f - fr_sky) / (nf_c * 3.14159265358979323846f);
 					float brdf_pdf_sky = brdf_val_sky * cos_sky;
 					float mis_weight    = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
-					emission = emission + mis_weight * brdf_val_sky * skyColor * cos_sky / pdf_sky;
+					emission = emission + mis_weight * brdf_val_sky * sky_Le_val * cos_sky / pdf_sky;
 				}
 			}
 		}
@@ -1212,25 +1220,26 @@ __device__ __forceinline__ void shade_material(
 			// importance sampling toward it - fine for open scenes, but
 			// starves interiors with small apertures (confirmed: Sibenik
 			// Cathedral rendered 2.85x darker than CPU at matched settings
-			// before this fix). Every GPU scene's sky is a constant color (the
-			// only sky_light mode any builder sets - see optix_miss.h's own
-			// comment), so this only needs the uniform-sphere fallback
-			// sky_light::sample_Le() uses for that case, not HDR importance
-			// sampling. Skipped outright when backgroundColor is black (every
-			// scene without a sky) - free, since NEE toward a zero-radiance
-			// light contributes nothing.
+			// before this fix). sample_sky_nee() (optix_sky_light.h)
+			// dispatches to real HDR importance sampling when the scene's
+			// infinite light carries an image (params.camera.skyDist.height >
+			// 0), falling back to this exact uniform-sphere sample otherwise -
+			// same shape as sky_light::sample_Le()'s own two modes. Skipped
+			// outright when backgroundColor is black (every scene without a
+			// sky) - free, since NEE toward a zero-radiance light contributes
+			// nothing.
 			{
 				const float3& skyColor = params.camera.backgroundColor;
 				if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
-					float3 sky_dir = random_unit_vector(seed);
+					float3 sky_dir, sky_Le_val; float pdf_sky;
+					sample_sky_nee(seed, skyColor, sky_dir, pdf_sky, sky_Le_val);
 					float  cos_sky = dot(sky_dir, normal);
 					if (cos_sky > 0.0f) {
-						constexpr float pdf_sky = 1.0f / (4.0f * 3.14159265358979323846f);
 						if (trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
 							float brdf_pdf_sky = cosine_pdf(sky_dir, normal);
 							float mis_weight    = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
 							float3 brdf = attenuation / 3.14159265358979323846f;
-							emission = emission + mis_weight * brdf * skyColor * cos_sky / pdf_sky;
+							emission = emission + mis_weight * brdf * sky_Le_val * cos_sky / pdf_sky;
 						}
 					}
 				}

@@ -53,6 +53,12 @@
 // .cpp files (scene_builder.cpp and tests/unit/*.cpp - never a .cu), so
 // that is not a problem here.
 #include "../../src/shared/measured_bxdf_loader.h"
+// PiecewiseConstant1D/PiecewiseConstant2D - the SAME distribution
+// src/TheRestOfYourLife/sky_light.h builds CPU-side for its real
+// importance-sampled HDR environment light. Built here (once per scene, from
+// the scene's already-decoded infinite-light image) purely to flatten and
+// upload - see the "infinite/sky light" block at the end of build() below.
+#include "../../src/shared/piecewise_dist.h"
 
 namespace pbrt_gpu {
 
@@ -65,13 +71,18 @@ struct BuildStats {
 	// Placements the builder prepared; optix_renderer.cpp's buildScene()
 	// turns each one into its own IAS entry over a per-definition GAS.
 	std::size_t instancePlacements = 0;
-	// scene.infiniteLight's flat colour for missed rays, or (0,0,0) if the
-	// scene has none - GPU approximation of a real environment light, same
-	// shape as the hand-written HDRI scenes' own GPU port (see
-	// pbrt_flatten.h's InfiniteLight comment for why full image-based
-	// importance sampling stays CPU-only). Currently L*scale only; once the
-	// image resolver lands this becomes the decoded image's average colour
-	// for the filename case.
+	// scene.infiniteLight's mean colour (L*scale for a constant-colour sky,
+	// or the decoded image's unweighted average colour*scale for an image
+	// sky), or (0,0,0) if the scene has none. Still used as the "does this
+	// scene have a sky at all" gate every NEE/miss call site checks, and as
+	// the flat-colour + uniform-sphere fallback for a constant-colour sky -
+	// but for an image sky, the REAL per-direction importance-sampled
+	// machinery (SceneData::skyImagePixels/skyMarginalCdf/etc., built and
+	// flattened just below this comment's own call site - see build()'s
+	// "infinite/sky light" block) now does the actual per-direction Le()/
+	// pdf_Li() work on both GPU backends (gpu/optix/optix_sky_light.h /
+	// wavefront_sky_light.h), mirroring src/TheRestOfYourLife/sky_light.h
+	// exactly instead of approximating it with a flat wash.
 	float3 backgroundColor = make_float3(0.0f, 0.0f, 0.0f);
 };
 
@@ -608,6 +619,56 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 				static_cast<float>(r / n * sky.scale),
 				static_cast<float>(g / n * sky.scale),
 				static_cast<float>(b / n * sky.scale));
+
+			// Real importance-sampled HDR sky (GpuSkyDistribution - see
+			// optix_types.h's own comment): the SAME PiecewiseConstant2D
+			// construction src/TheRestOfYourLife/sky_light.h's private
+			// constructor builds (Rec.709 luminance * sin(theta) weights,
+			// sin(theta) being the equirectangular solid-angle Jacobian
+			// correction - see that file's own header comment), from the
+			// SAME already-decoded image `stats.backgroundColor` just used
+			// above for its mean-colour fallback. That mean colour stays as
+			// computed either way - it still serves both as the "does this
+			// scene have a sky at all" gate every NEE/miss call site already
+			// checks (backgroundColor != 0) and as the flat-colour fallback
+			// for the rare degenerate case where the distribution itself
+			// ends up empty (e.g. an all-black image).
+			std::vector<double> weights(static_cast<std::size_t>(sky.imageWidth) * sky.imageHeight);
+			constexpr double kPi = 3.14159265358979323846;
+			for (int v = 0; v < sky.imageHeight; ++v) {
+				const double theta = (v + 0.5) / sky.imageHeight * kPi;
+				const double sin_theta = std::sin(theta);
+				for (int u = 0; u < sky.imageWidth; ++u) {
+					const float* px = &sky.imagePixels[(static_cast<std::size_t>(v) * sky.imageWidth + u) * 3];
+					const double lum = 0.2126 * px[0] + 0.7152 * px[1] + 0.0722 * px[2];
+					weights[static_cast<std::size_t>(v) * sky.imageWidth + u] = (lum > 0.0 ? lum : 0.0) * sin_theta;
+				}
+			}
+			const PiecewiseConstant2D dist(weights, sky.imageWidth, sky.imageHeight);
+			if (!dist.empty()) {
+				const PiecewiseConstant1D& marg = dist.Marginal();
+				out.skyMarginalFuncInt = static_cast<float>(marg.integral());
+				out.skyMarginalCdf.reserve(marg.Cdf().size());
+				for (double d : marg.Cdf()) out.skyMarginalCdf.push_back(static_cast<float>(d));
+				out.skyMarginalFunc.reserve(marg.Func().size());
+				for (double d : marg.Func()) out.skyMarginalFunc.push_back(static_cast<float>(d));
+
+				const int nv = dist.NV();
+				out.skyConditionalCdf.reserve(static_cast<std::size_t>(nv) * (sky.imageWidth + 1));
+				out.skyConditionalFunc.reserve(static_cast<std::size_t>(nv) * sky.imageWidth);
+				out.skyConditionalFuncInt.reserve(nv);
+				for (int r = 0; r < nv; ++r) {
+					const PiecewiseConstant1D& cond = dist.Conditional(r);
+					for (double d : cond.Cdf()) out.skyConditionalCdf.push_back(static_cast<float>(d));
+					for (double d : cond.Func()) out.skyConditionalFunc.push_back(static_cast<float>(d));
+					out.skyConditionalFuncInt.push_back(static_cast<float>(cond.integral()));
+				}
+
+				out.skyImagePixels = sky.imagePixels; // already row-major float RGB, linear
+				out.skyWidth = sky.imageWidth;
+				out.skyHeight = sky.imageHeight;
+				out.skyScale = static_cast<float>(sky.scale);
+			}
 		} else {
 			stats.backgroundColor = make_float3(
 				static_cast<float>(sky.L[0] * sky.scale),

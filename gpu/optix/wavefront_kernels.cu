@@ -253,6 +253,11 @@ __device__ __forceinline__ bool wf_sample_principled_material(
 // trace, so it does not belong in that probe-walk-specific module.
 #include "wavefront_measured_bxdf.h"
 
+// Device-side real importance-sampled HDR sky for the wavefront backend
+// (mirrors optix_sky_light.h - see wavefront_sky_light.h's own header
+// comment). Needs wf_rand()/wf_rand_unit() (defined above).
+#include "wavefront_sky_light.h"
+
 // reflect/refract wrappers
 __device__ __forceinline__ float3 wf_reflect(const float3& v, const float3& n) {
 	return cpu_gpu_reflect(v, n);
@@ -889,7 +894,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	const int* lightIndices, const GpuLightKind* lightKinds,
 	const GpuAliasEntry* aliasTable, unsigned int numLights,
 	const PunctualLightGPU* punctualLights, unsigned int numPunctualLights,
-	float3 skyColor, float shadow_eps,
+	float3 skyColor, float shadow_eps, const GpuSkyDistribution& skyDist,
 	WorkQueue<ShadowRayWorkItem>& shadowQueue,
 	WorkQueue<RayWorkItem>& nextRayQueue,
 	float3* framebuffer)
@@ -1040,11 +1045,17 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// every scene without a sky, which makes this a free no-op there.
 	// -------------------------------------------------------------------------
 	if (!is_specular && (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f)) {
-		float3 sky_dir = wf_rand_unit(seed);
+		// wf_sample_sky_nee() (wavefront_sky_light.h) dispatches to real HDR
+		// importance sampling when the scene's infinite light carries an
+		// image (skyDist.height > 0), falling back to this exact uniform-
+		// sphere sample + flat skyColor otherwise - see optix_device_
+		// helpers.h's own Lambertian sky-NEE block for the recursive
+		// backend's identical dispatch, and optix_sky_light.h for the full
+		// algorithm comment.
+		float3 sky_dir, sky_Le_val; float pdf_sky;
+		wf_sample_sky_nee(skyDist, seed, skyColor, sky_dir, pdf_sky, sky_Le_val);
 		float  cos_l   = dot(sky_dir, normal);
 		if (cos_l > 0.0f) {
-			float pdf_sky = 1.0f / (4.0f * 3.14159265f); // uniform sphere - matches sky_light::sample_Le()'s constant-color fallback
-
 			float bsdf_val = 1.0f / 3.14159265f; // Lambertian default
 			// See the area-light block above: attenuation == albedoSpectrum(mat.albedo)
 			// for Lambertian (direction-independent BRDF, safe to reuse here);
@@ -1062,14 +1073,17 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			float brdf_pdf_sky = (brdf_pdf_override > 0.0f) ? brdf_pdf_override : (bsdf_val * cos_l);
 			float mis_w = wf_mis(pdf_sky, brdf_pdf_sky);
 
-			// Uplift RGB skyColor to spectrum (same pattern as liftEmission above)
-			float m = skyColor.x > skyColor.y ? (skyColor.x > skyColor.z ? skyColor.x : skyColor.z)
-			                                  : (skyColor.y > skyColor.z ? skyColor.y : skyColor.z);
+			// Uplift RGB sky_Le_val (the real per-direction radiance for an
+			// image sky, or the flat skyColor otherwise - see
+			// wf_sample_sky_nee()) to spectrum (same pattern as liftEmission
+			// above).
+			float m = sky_Le_val.x > sky_Le_val.y ? (sky_Le_val.x > sky_Le_val.z ? sky_Le_val.x : sky_Le_val.z)
+			                                       : (sky_Le_val.y > sky_Le_val.z ? sky_Le_val.y : sky_Le_val.z);
 			float sc = 2.f * m;
 			SS sky_spec(0.f);
 			if (sc > 0.f) {
 				float c0, c1, c2;
-				dev_srgb_to_coeffs(skyColor.x / sc, skyColor.y / sc, skyColor.z / sc, c0, c1, c2);
+				dev_srgb_to_coeffs(sky_Le_val.x / sc, sky_Le_val.y / sc, sky_Le_val.z / sc, c0, c1, c2);
 				RGBSigmoidPolynomial poly(c0, c1, c2);
 				for (int i = 0; i < kWFNWavelengths; ++i)
 					sky_spec[i] = sc * poly(swl.lambda[i]);
@@ -1239,7 +1253,14 @@ extern "C" __global__ void evaluate_materials(
 	const float* measuredMcdf,
 	const float* measuredCcdf,
 	float3 skyColor,
-	float shadowRayEpsilon
+	float shadowRayEpsilon,
+	// Real importance-sampled HDR sky (LightSource "infinite" with an image) -
+	// see optix_types.h's GpuSkyDistribution comment. Passed by value, same
+	// established pattern as GpuCameraParams itself already crossing this
+	// exact kernel-launch boundary (generate_camera_rays). height<=0 (the
+	// default when the scene has no image sky) makes every sky-NEE/miss call
+	// site below fall back to skyColor + uniform-sphere sampling, unchanged.
+	GpuSkyDistribution skyDist
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
@@ -2110,7 +2131,7 @@ extern "C" __global__ void evaluate_materials(
 		spheres, quads, triangles, bilinearPatches, materials,
 		lightIndices, lightKinds, aliasTable, numLights,
 		punctualLights, numPunctualLights,
-		skyColor, shadow_eps,
+		skyColor, shadow_eps, skyDist,
 		shadowQueue, nextRayQueue, framebuffer);
 }
 
@@ -2183,7 +2204,8 @@ extern "C" __global__ void resolve_bssrdf_exit(
 	const PunctualLightGPU* punctualLights,
 	unsigned int numPunctualLights,
 	float3 skyColor,
-	float shadowRayEpsilon
+	float shadowRayEpsilon,
+	GpuSkyDistribution skyDist
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numExit) return;
@@ -2249,7 +2271,7 @@ extern "C" __global__ void resolve_bssrdf_exit(
 		spheres, quads, triangles, bilinearPatches, materials,
 		lightIndices, lightKinds, aliasTable, numLights,
 		punctualLights, numPunctualLights,
-		skyColor, shadow_eps,
+		skyColor, shadow_eps, skyDist,
 		shadowQueue, nextRayQueue, framebuffer);
 }
 
@@ -2265,7 +2287,10 @@ extern "C" __global__ void accumulate_miss(
 	WorkQueue<MissWorkItem> missQueue,
 	int                     numMiss,
 	float3*                 framebuffer,
-	float3                  backgroundColor
+	float3                  backgroundColor,
+	// Real importance-sampled HDR sky - see evaluate_materials's own
+	// GpuSkyDistribution parameter comment.
+	GpuSkyDistribution      skyDist
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numMiss) return;
@@ -2279,19 +2304,26 @@ extern "C" __global__ void accumulate_miss(
 		swl.pdf[i]    = m.wavelength_pdfs[i];
 	}
 	SS throughput(m.throughput);
-	// MIS weight against the sky-NEE strategy (evaluate_materials's own
-	// sky-NEE block), mirroring optix_miss.h's recursive-backend equivalent
-	// exactly - see that comment for the full reasoning. m.brdf_pdf == 0 for
-	// the primary ray or a specular bounce (RayWorkItem::brdf_pdf's own
-	// sentinel) -> full weight; otherwise discounted by the balance
-	// heuristic against the sky's uniform-sphere pdf (1/4pi) so a genuinely-
+	// Real per-direction radiance for an image sky (wf_sky_radiance(),
+	// wavefront_sky_light.h - uses m.rayDir, previously carried but unused -
+	// see MissWorkItem::rayDir's own comment), or the flat backgroundColor
+	// otherwise. MIS weight against the sky-NEE strategy (evaluate_
+	// materials's own sky-NEE block), mirroring optix_miss.h's recursive-
+	// backend equivalent exactly - see that comment for the full reasoning.
+	// m.brdf_pdf == 0 for the primary ray or a specular bounce (RayWorkItem::
+	// brdf_pdf's own sentinel) -> full weight; otherwise discounted by the
+	// balance heuristic against the sky strategy's own pdf at this direction
+	// (wf_sky_pdf_for_mis() - the real importance-sampled pdf for an image
+	// sky, or the uniform-sphere 1/4pi constant otherwise), so a genuinely-
 	// escaped ray doesn't double-count against the NEE sample already taken
-	// at the previous hit.
-	float3 weightedBackground = backgroundColor;
+	// at the previous hit. `backgroundColor` still gates "does this scene
+	// have a sky at all" below, matching prior behavior exactly.
+	float3 color = wf_sky_radiance(skyDist, m.rayDir, backgroundColor);
+	float3 weightedBackground = color;
 	if (m.brdf_pdf > 0.0f && (backgroundColor.x > 0.0f || backgroundColor.y > 0.0f || backgroundColor.z > 0.0f)) {
-		constexpr float pdf_sky = 1.0f / (4.0f * 3.14159265f);
+		const float pdf_sky = wf_sky_pdf_for_mis(skyDist, m.rayDir);
 		float w_b = wf_mis(m.brdf_pdf, pdf_sky);
-		weightedBackground = w_b * backgroundColor;
+		weightedBackground = w_b * color;
 	}
 	// m.radiance is already fully weighted (accumulated by evaluate_materials
 	// as radiance = radiance + throughput * emission at each light hit along

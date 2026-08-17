@@ -153,10 +153,10 @@ private:
         const int* d_lightIndices, const GpuLightKind* d_lightKinds,
         const GpuAliasEntry* d_aliasTable, unsigned int numLights,
         const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
-        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon);
+        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist);
     // Not a launchX-style param above deliberately - see setTextures()'s
     // comment for why textures travel via member state instead.
-    void launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor);
+    void launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor, GpuSkyDistribution skyDist);
     void launchAccumulateShadow(int numShadow, const bool* d_occluded, float3* d_framebuffer);
     void launchResolveBssrdfExit(int numExit,
         const MaterialData* d_materials, unsigned int numMaterials,
@@ -167,7 +167,7 @@ private:
         const int* d_lightIndices, const GpuLightKind* d_lightKinds,
         const GpuAliasEntry* d_aliasTable, unsigned int numLights,
         const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
-        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon);
+        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist);
     void launchNormalizeFramebuffer(unsigned int numPixels, float invSPP, float3* d_framebuffer);
     int  readQueueSize(int* d_counter);
     void resetQueueCounter(int* d_counter);

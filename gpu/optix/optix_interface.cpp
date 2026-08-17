@@ -116,7 +116,12 @@ extern "C" int optix_render_main(
 									 scene.bssrdfProfileCdf,
 										 scene.measuredTables, scene.measuredParamValues,
 										 scene.measuredData, scene.measuredMcdf,
-										 scene.measuredCcdf)) {
+										 scene.measuredCcdf,
+										 scene.skyImagePixels, scene.skyMarginalCdf,
+										 scene.skyMarginalFunc, scene.skyMarginalFuncInt,
+										 scene.skyConditionalCdf, scene.skyConditionalFunc,
+										 scene.skyConditionalFuncInt,
+										 scene.skyWidth, scene.skyHeight, scene.skyScale)) {
 				std::cerr << "[OptiX] Failed to upload scene to GPU\n";
 				return ERR_GPU_MEMORY_COPY_FAILED;
 			}
@@ -308,7 +313,12 @@ extern "C" int optix_render_main_sppm(
 									 scene.bssrdfProfileCdf,
 										 scene.measuredTables, scene.measuredParamValues,
 										 scene.measuredData, scene.measuredMcdf,
-										 scene.measuredCcdf)) {
+										 scene.measuredCcdf,
+										 scene.skyImagePixels, scene.skyMarginalCdf,
+										 scene.skyMarginalFunc, scene.skyMarginalFuncInt,
+										 scene.skyConditionalCdf, scene.skyConditionalFunc,
+										 scene.skyConditionalFuncInt,
+										 scene.skyWidth, scene.skyHeight, scene.skyScale)) {
 				std::cerr << "[OptiX] Failed to upload scene to GPU\n";
 				return ERR_GPU_MEMORY_COPY_FAILED;
 			}
