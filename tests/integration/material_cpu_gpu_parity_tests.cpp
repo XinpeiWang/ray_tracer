@@ -578,6 +578,30 @@ TEST_P(MaterialCpuGpuParityTest, BrightnessAndChannelsConsistentAcrossBackends) 
 	check_relative_parity(s->name, s->id, "R channel", "CPU", "GPU-wavefront", cpuC.r, wfC.r, tolerance);
 	check_relative_parity(s->name, s->id, "G channel", "CPU", "GPU-wavefront", cpuC.g, wfC.g, tolerance);
 	check_relative_parity(s->name, s->id, "B channel", "CPU", "GPU-wavefront", cpuC.b, wfC.b, tolerance);
+
+	// GPU-recursive vs GPU-wavefront, directly - previously this suite only
+	// ever compared each GPU backend against CPU separately, never against
+	// each other. That gap matters: several real bugs this codebase has hit
+	// (a grazing-angle check present in one GPU backend's material case but
+	// missing in the other's independently-hand-ported copy, a per-geometry-
+	// type payload field only initialized by one of the two backends' closest-
+	// hit programs, ...) are drift BETWEEN the two GPU backends specifically -
+	// two independent hand-ports of what's supposed to be identical material
+	// logic. Such a bug can easily leave both backends still within
+	// `tolerance` of CPU (the CPU-vs-GPU comparisons above already have
+	// documented legitimate algorithmic gaps - different NEE strategies for
+	// media/DiffuseTransmission, see this file's header comment - baked into
+	// their tolerance) while disagreeing with each other by more than that
+	// gap actually warrants, which neither existing check would catch.
+	// Reuses the same tolerance as the CPU comparisons above rather than a
+	// separately-calibrated tighter one - deliberately conservative pending
+	// real measured rec-vs-wf gap data with the same isolated-run rigor this
+	// file's header comment used for the CPU comparisons, but strictly better
+	// than not comparing this pair at all.
+	check_relative_parity(s->name, s->id, "avg brightness", "GPU-recursive", "GPU-wavefront", recBright, wfBright, tolerance);
+	check_relative_parity(s->name, s->id, "R channel", "GPU-recursive", "GPU-wavefront", recC.r, wfC.r, tolerance);
+	check_relative_parity(s->name, s->id, "G channel", "GPU-recursive", "GPU-wavefront", recC.g, wfC.g, tolerance);
+	check_relative_parity(s->name, s->id, "B channel", "GPU-recursive", "GPU-wavefront", recC.b, wfC.b, tolerance);
 }
 
 INSTANTIATE_TEST_SUITE_P(
