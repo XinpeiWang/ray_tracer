@@ -775,13 +775,17 @@ TEST(FlattenPunctualLightTest, SpotLightDefaultConeMatchesPbrt) {
 	EXPECT_NEAR(pl.dir[2], 1.0, 1e-9);
 }
 
-TEST(FlattenPunctualLightTest, SpotLightFalloffStartNeverGoesNegative) {
-	// conedeltaangle larger than coneangle is a malformed scene, not a
-	// licence to hand SpotLightData a negative angle.
+TEST(FlattenPunctualLightTest, SpotLightFalloffStartCanGoNegative) {
+	// conedeltaangle larger than coneangle is legal pbrt-v4, not malformed:
+	// pbrt-v4's own SpotLight::Create passes coneangle - conedeltaangle
+	// through unclamped, and cos() being even means a negative start angle
+	// still produces a real, meaningful full-intensity core (cos(-80) ==
+	// cos(80)) rather than collapsing to "no core at all" the way clamping
+	// to 0 would.
 	const FlatScene s = flattenSource(
 		"LightSource \"spot\" \"float coneangle\" [ 10 ] \"float conedeltaangle\" [ 90 ]\n");
 	ASSERT_EQ(s.punctualLights.size(), 1u);
-	EXPECT_GE(s.punctualLights[0].falloffStartAngleDeg, 0.0);
+	EXPECT_DOUBLE_EQ(s.punctualLights[0].falloffStartAngleDeg, -80.0);
 }
 
 TEST(FlattenPunctualLightTest, DistantLightPointsFromTowardFrom) {

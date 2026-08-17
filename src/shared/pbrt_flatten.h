@@ -894,8 +894,17 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			pl.intensity[0] = I.x; pl.intensity[1] = I.y; pl.intensity[2] = I.z;
 			pl.scale = ld.params.getFloat("scale", 1.0);
 			pl.coneAngleDeg = ld.params.getFloat("coneangle", 30.0);
+			// pbrt-v4's own SpotLight::Create passes coneangle - conedeltaangle
+			// through UNCLAMPED (see SpotLight's cosFalloffStart/cosFalloffEnd
+			// construction) - a conedeltaangle larger than coneangle yields a
+			// negative falloffStartAngleDeg, which is not malformed: cos() is
+			// even, so cos(-10deg) == cos(10deg), meaning a negative start angle
+			// still produces a real, meaningful full-intensity core (just one
+			// that extends slightly past the geometric cone axis) rather than
+			// collapsing to cosFalloffStart=1.0 (no core at all), which is what
+			// clamping to 0 here used to produce.
 			const double delta = ld.params.getFloat("conedeltaangle", 5.0);
-			pl.falloffStartAngleDeg = std::fmax(0.0, pl.coneAngleDeg - delta);
+			pl.falloffStartAngleDeg = pl.coneAngleDeg - delta;
 			out.punctualLights.push_back(pl);
 			continue;
 		}
