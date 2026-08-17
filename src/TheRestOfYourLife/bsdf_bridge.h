@@ -201,6 +201,28 @@ inline void sppm_bsdf_f(const SPPMShadingContext& ctx, const double wo[3], const
 		return;
 	}
 
+	// lambertian fast path: f(wo,wi) = albedo/pi is a closed form (cosine_pdf
+	// cancels exactly against scattering_pdf()'s own cos_theta/pi - see this
+	// function's return statement below for the general form this collapses
+	// from), so skip material::scatter() entirely rather than pay for its
+	// srec.pdf_ptr = make_shared<cosine_pdf>(...) heap allocation just to
+	// read attenuation off the SAME texture get_texture() already exposes
+	// directly. This function is called from BDPT's O(maxDepth^2)-per-sample
+	// (s,t) connection loop and MLT's per-mutation path evaluation (both via
+	// BDPTVertex::f() -> this function), so the allocation this avoids would
+	// otherwise happen millions of times over an MLT render. attenuation is
+	// deterministic and direction-independent for lambertian (this file's
+	// own header comment on v1's original scope already established this is
+	// exact, not an approximation) - safe to skip scatter()'s random
+	// direction draw entirely, not just its allocation.
+	if (auto lam = dynamic_cast<const lambertian*>(ctx.mat.get())) {
+		if (cos_wi <= 0.0) return;
+		color c = lam->get_texture()->value(ctx.u, ctx.v, ctx.p);
+		double inv_pi = 1.0 / pi;
+		out[0] = c.x() * inv_pi; out[1] = c.y() * inv_pi; out[2] = c.z() * inv_pi;
+		return;
+	}
+
 	if (cos_wi <= 0.0) return;
 
 	hit_record rec = sppm_reconstruct_hit_record(ctx, n);
