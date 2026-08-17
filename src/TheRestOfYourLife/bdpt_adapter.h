@@ -187,6 +187,16 @@ class BDPTSceneAdapter {
 		emitter_alias_ = AliasTable(weights.empty() ? std::vector<double>{1.0} : weights);
 	}
 
+	// Number of real (diffuse_light) area emitters this adapter found in
+	// `world` - zero means SampleLight/SampleLightLe will unconditionally
+	// return false (see their own `if (nEmitters_ == 0) return false;`
+	// checks below), so BDPT/MLT will render a flat/black image with no
+	// error. Exposed so callers (bdpt_render_core()/mlt_render_core()) can
+	// warn about that up front instead of leaving it silent - see this
+	// class's own "Scope (v1)" comment for why area lights are the only
+	// kind sampled at all.
+	int EmitterCount() const { return nEmitters_; }
+
 	// ------------------------------------------------------------------
 	// Intersect / BSDFf / BSDFSampleF / BSDFPdf
 	// ------------------------------------------------------------------
@@ -407,9 +417,42 @@ class BDPTSceneAdapter {
 		double D = cam_.focus_dist;
 		if (A <= 0.0 || D <= 0.0) { pdfPos = 0.0; pdfDir = 0.0; return; }
 
+		// pdfDir is the solid-angle density of ray DIRECTIONS conditioned on
+		// a fixed ray origin - once the origin is fixed (whether that's the
+		// single pinhole point or one particular sampled point on the
+		// defocus disk), the geometric relationship between that point and
+		// the image plane is exactly the same pinhole cos^3(theta)/(A*D^2)
+		// form (pbrt-v4's own PerspectiveCamera::PDF_We() likewise leaves
+		// this formula's shape unchanged for a thin-lens camera - only
+		// pdfPos below picks up a lens-area factor). No defocus-angle
+		// correction belongs here.
 		double cos3 = cosTheta * cosTheta * cosTheta;
 		pdfDir = (D * D) / (A * cos3);
-		pdfPos = 1.0;
+
+		// pdfPos: with no lens (defocus_angle<=0, camera.h's get_ray() always
+		// uses the single fixed pinhole point), the camera position is a
+		// delta distribution - 1.0 is the conventional "point mass" pdfPos
+		// pbrt-v4 itself uses for a pinhole PerspectiveCamera. With a lens
+		// (defocus_angle>0), get_ray() instead samples ray_origin uniformly
+		// from a disk of radius focus_dist*tan(defocus_angle/2) (see
+		// camera.h's initialize()/defocus_disk_sample()), so pdfPos is
+		// really 1/lensArea, not 1.0.
+		//
+		// This is currently DEAD for BDPT/MLT's actual output: every call
+		// site in src/shared/bdpt.h reads pdfPos into a discarded/unused
+		// local (see this class's own file-header comment) - only pdfDir
+		// above ever reaches a real MIS weight. Computed correctly anyway
+		// (rather than left as the pinhole placeholder) so this value is
+		// right by construction if a future change ever does start using
+		// it (e.g. wiring up CameraSampleWi's t==1 light-tracing strategy),
+		// instead of silently inheriting a wrong assumption from here.
+		if (cam_.defocus_angle > 0.0) {
+			const double lens_radius = cam_.focus_dist * std::tan(degrees_to_radians(cam_.defocus_angle / 2.0));
+			const double lens_area = pi * lens_radius * lens_radius;
+			pdfPos = (lens_area > 0.0) ? (1.0 / lens_area) : 1.0;
+		} else {
+			pdfPos = 1.0;
+		}
 	}
 
 	// t==1 "light tracing" strategy -- intentionally unsupported. See this
@@ -781,7 +824,17 @@ inline void mlt_render_with_adapter(const BDPTSceneAdapter& scene, int width, in
 		chain_depth[c] = d;
 		++chains_per_depth[d];
 	}
+	// Floor to 1: nMutations/nDepths truncates to 0 whenever nMutations <
+	// nDepths (e.g. --mlt-mutations 5 --mlt-max-depth 10), which previously
+	// made every chain below skip its `mutations_for_chain <= 0` check
+	// entirely -- a genuinely empty run, not caught by any validation, that
+	// silently wrote out a fully black image with cpu_render_main_mlt still
+	// returning SUCCESS. A caller asking for fewer mutations than depths is
+	// asking for a noisier-than-useful render, not for one that renders
+	// nothing -- so this guarantees at least SOME real sampling happens per
+	// depth instead of a silent no-op.
 	int64_t mutations_per_depth = nMutations / nDepths;
+	if (mutations_per_depth < 1) mutations_per_depth = 1;
 
 	std::vector<std::vector<double>> thread_buffers(
 		nthreads, std::vector<double>(static_cast<size_t>(width) * height * 3, 0.0));
@@ -804,20 +857,38 @@ inline void mlt_render_with_adapter(const BDPTSceneAdapter& scene, int width, in
 			int depth = chain_depth[c];
 			double b_d = b_depth[depth];
 			if (b_d <= 0.0) continue;   // this depth's stratum is genuinely empty (e.g. maxDepth deeper than any light-bounce path reaches)
+			// Floor to 1: mutations_per_depth/chains_per_depth[depth] can
+			// still truncate to 0 even after mutations_per_depth's own floor
+			// above, whenever a depth has more chains assigned to it than its
+			// mutation budget (e.g. a modest --mlt-mutations on a
+			// many-thread machine, where nChains == nthreads spreads several
+			// chains per depth) -- every chain sharing that depth would
+			// independently compute the same 0 and skip, so that whole
+			// depth's stratum would silently contribute nothing to the
+			// image, same failure mode as the mutations_per_depth==0 case
+			// above just one level down.
 			int64_t mutations_for_chain = mutations_per_depth / chains_per_depth[depth];
-			if (mutations_for_chain <= 0) continue;
+			if (mutations_for_chain < 1) mutations_for_chain = 1;
 
 			// splitmix64-style per-chain seed -- see mlt.h's chainSeed doc
 			// comment (same reasoning: two chains must never collide, and 0
 			// is avoided as a degenerate PCG32 seed elsewhere in rng.h).
 			uint64_t seed = 0x9E3779B97F4A7C15ull * (static_cast<uint64_t>(c) + 1) + 1u;
-			// nMutationsNormalize = mutations_per_depth (the WHOLE depth's
-			// budget, shared by every chain covering it), not
-			// mutations_for_chain (this one chain's own share) -- see
-			// mlt_run_depth_chain()'s own doc comment for why conflating
-			// the two would over-count this depth's contribution by
-			// chains_per_depth[depth].
-			mlt_run_depth_chain(depth, b_d, mutations_for_chain, mutations_per_depth, maxDepth, sigma, largeStepProb,
+			// nMutationsNormalize must equal the REAL total mutations this
+			// depth's chains will actually run combined, not the theoretical
+			// mutations_per_depth target -- when the mutations_for_chain
+			// floor above kicks in, mutations_for_chain*chains_per_depth[depth]
+			// can exceed mutations_per_depth, and every chain sharing this
+			// depth independently computes this same product (same b_d,
+			// same chains_per_depth[depth]), so they all agree on one
+			// consistent normalizer without needing shared/atomic state.
+			// See mlt_run_depth_chain()'s own doc comment for why this must
+			// be the WHOLE depth's total, not mutations_for_chain alone (that
+			// would over-count this depth's contribution by
+			// chains_per_depth[depth]).
+			const int64_t mutations_normalize =
+				mutations_for_chain * static_cast<int64_t>(chains_per_depth[depth]);
+			mlt_run_depth_chain(depth, b_d, mutations_for_chain, mutations_normalize, maxDepth, sigma, largeStepProb,
 			                     scene, splat, seed);
 		}
 	};

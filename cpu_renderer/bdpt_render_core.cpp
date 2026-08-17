@@ -38,6 +38,15 @@ int bdpt_render_core(const hittable_list& world, camera& cam,
 		std::cout << "[TECH] -------------------------------------------------------" << std::endl;
 
 		BDPTSceneAdapter adapter(world, cam);
+		if (adapter.EmitterCount() == 0) {
+			std::cerr << "[bdpt_render_core] WARNING: this scene has no area-light emitters "
+			             "(diffuse_light shapes) - BDPT only samples area lights (v1, see "
+			             "bdpt_adapter.h's Scope comment), so this render will be entirely "
+			             "black even though it will report success. If this scene's only "
+			             "lighting is punctual (point/spot/distant) or sky/infinite, that is "
+			             "not yet supported by --bdpt/--mlt; use the default path tracer or "
+			             "--sppm instead." << std::endl;
+		}
 		std::vector<double> out_rgb;
 		bdpt_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, bdpt_max_depth, out_rgb);
 
@@ -82,6 +91,15 @@ int mlt_render_core(const hittable_list& world, camera& cam,
 		std::cout << "[TECH] -------------------------------------------------------" << std::endl;
 
 		BDPTSceneAdapter adapter(world, cam);
+		if (adapter.EmitterCount() == 0) {
+			std::cerr << "[mlt_render_core] WARNING: this scene has no area-light emitters "
+			             "(diffuse_light shapes) - MLT only samples area lights (v1, see "
+			             "bdpt_adapter.h's Scope comment), so this render will be entirely "
+			             "black even though it will report success. If this scene's only "
+			             "lighting is punctual (point/spot/distant) or sky/infinite, that is "
+			             "not yet supported by --bdpt/--mlt; use the default path tracer or "
+			             "--sppm instead." << std::endl;
+		}
 		std::vector<double> out_rgb;
 		mlt_render_with_adapter(adapter, cam.image_width, cam.image_height,
 		                         mlt_bootstrap, mlt_mutations, mlt_max_depth,
@@ -91,15 +109,15 @@ int mlt_render_core(const hittable_list& world, camera& cam,
 		return SUCCESS;
 
 	} catch (const std::bad_alloc& e) {
-		std::cerr << "[bdpt_render_core] " << ErrorInfo(ERR_CPU_MEMORY_ALLOCATION).to_string()
+		std::cerr << "[mlt_render_core] " << ErrorInfo(ERR_CPU_MEMORY_ALLOCATION).to_string()
 		           << " - " << e.what() << std::endl;
 		return ERR_CPU_MEMORY_ALLOCATION;
 	} catch (const std::exception& e) {
-		std::cerr << "[bdpt_render_core] " << ErrorInfo(ERR_CPU_RENDER_FAILED).to_string()
+		std::cerr << "[mlt_render_core] " << ErrorInfo(ERR_CPU_RENDER_FAILED).to_string()
 		           << " - " << e.what() << std::endl;
 		return ERR_CPU_RENDER_FAILED;
 	} catch (...) {
-		std::cerr << "[bdpt_render_core] " << ErrorInfo(ERR_UNKNOWN).to_string() << std::endl;
+		std::cerr << "[mlt_render_core] " << ErrorInfo(ERR_UNKNOWN).to_string() << std::endl;
 		return ERR_UNKNOWN;
 	}
 }
