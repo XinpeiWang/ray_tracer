@@ -371,6 +371,38 @@ enum class MaterialType : int {
 	Measured = 19
 };
 
+// The single canonical list of MaterialTypes GPU SPPM's camera/photon-pass
+// raygens (gpu/optix/sppm_programs.cu) actually implement BSDF sampling for
+// - Lambertian/DiffuseLight handled directly, RoughDielectric/Metal/
+// Dielectric/Conductor via sppm_is_delta_material()/
+// sppm_sample_delta_material()'s explicit dispatch. Any MaterialType NOT in
+// this list falls through sppm_programs.cu's own "treat as Lambertian"
+// default, silently reading that material's (possibly unset) albedo union
+// slot - which is exactly the class of bug gpu/optix/optix_interface.cpp's
+// sppm_gpu_unsupported_reason() exists to reject a scene for BEFORE it can
+// happen, rather than let it render silently wrong.
+//
+// Defined here, next to MaterialType's own definition, and used by both
+// sppm_gpu_unsupported_reason() (host-side rejection check,
+// optix_interface.cpp) and README/comment cross-references, SPECIFICALLY so
+// there is exactly one place to update when sppm_programs.cu's own
+// dispatch gains a new case - previously optix_interface.cpp carried its
+// own separately-hand-maintained copy of this set with nothing forcing it
+// to stay in sync with the device code it was describing.
+inline bool sppm_gpu_material_supported(MaterialType t) {
+	switch (t) {
+	case MaterialType::Lambertian:
+	case MaterialType::DiffuseLight:
+	case MaterialType::RoughDielectric:
+	case MaterialType::Metal:
+	case MaterialType::Dielectric:
+	case MaterialType::Conductor:
+		return true;
+	default:
+		return false;
+	}
+}
+
 // GPU flat-array mirror of one PiecewiseLinear2D<Dimension> instance (see
 // src/shared/piecewise_linear_2d.h's private members m_nx/m_ny/m_ps/m_pst/
 // m_pv/m_data/m_mcdf/m_ccdf, exposed read-only via the const accessors added

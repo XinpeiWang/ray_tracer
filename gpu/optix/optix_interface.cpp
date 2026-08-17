@@ -345,11 +345,11 @@ static std::string sppm_gpu_unsupported_reason(const SceneData& scene) {
 	}
 	for (size_t i = 0; i < scene.materials.size(); ++i) {
 		const MaterialType t = scene.materials[i].type;
-		const bool supported =
-			t == MaterialType::Lambertian || t == MaterialType::DiffuseLight ||
-			t == MaterialType::RoughDielectric || t == MaterialType::Metal ||
-			t == MaterialType::Dielectric || t == MaterialType::Conductor;
-		if (!supported) {
+		// The single canonical "does GPU SPPM support this MaterialType"
+		// list - see optix_types.h's sppm_gpu_material_supported() comment
+		// for why this used to be a second, separately hand-maintained copy
+		// of the material set sppm_programs.cu's own dispatch implements.
+		if (!sppm_gpu_material_supported(t)) {
 			return std::string("uses MaterialType::") + sppm_gpu_material_type_name(t) +
 			       " (material index " + std::to_string(i) + ") -- sppm_programs.cu's "
 			       "camera/photon passes don't implement a BSDF sampler for it yet";
@@ -381,18 +381,20 @@ extern "C" int optix_render_main_sppm(
 	int force_camera_override
 ) {
 	try {
-		if (!g_renderer) {
-			std::cout << "[OptiX] Initializing renderer...\n";
-			g_renderer = std::make_unique<OptiXRenderer>();
-			if (!g_renderer->initialize()) {
-				std::cerr << "[OptiX] Failed to initialize renderer\n";
-				return ERR_GPU_DEVICE_INIT_FAILED;
-			}
-		}
-
 		std::cout << "[OptiX] Building scene " << scene_id << " (SPPM)...\n";
 		std::cout << "[OptiX] Camera position: (" << cam_x << ", " << cam_y << ", " << cam_z << ")\n";
 
+		// build_scene() is pure host-side scene construction (parses the
+		// scene description, loads any mesh/.obj geometry from disk, fills
+		// `scene`/`camera_params` in host memory) - it makes no OptiX/CUDA
+		// calls and does not need g_renderer to exist yet, so it and the
+		// capability check below both run BEFORE renderer initialization.
+		// This used to run after g_renderer->initialize(), which meant an
+		// unsupported scene (e.g. a mesh-heavy one rejected below for using
+		// triangle geometry) paid for full GPU context/pipeline creation
+		// AND a potentially large mesh load from disk before finding out it
+		// was never going to be accepted - now that cost is only paid once
+		// the scene is already known to be supported.
 		SceneData scene;
 		float camera_params[12];
 		GpuCameraParams cameraExtra{};
@@ -404,15 +406,25 @@ extern "C" int optix_render_main_sppm(
 
 		// Dynamic capability check (see sppm_gpu_unsupported_reason()'s own
 		// comment for the full "what changed from Phase 1's blunt B3-only
-		// guard, and why" story) -- must happen here, after build_scene(),
-		// since it inspects the scene's actual material/geometry/light data,
-		// not just its id.
+		// guard, and why" story) -- must happen after build_scene() (not
+		// before it), since it inspects the scene's actual material/
+		// geometry/light data, not just its id - but still before renderer
+		// initialization, per this function's own reordering comment above.
 		{
 			const std::string reason = sppm_gpu_unsupported_reason(scene);
 			if (!reason.empty()) {
 				std::cerr << "[OptiX] GPU SPPM does not support scene " << scene_id << ": "
 				          << reason << ". Use CPU SPPM (--sppm without --gpu) instead.\n";
 				return ERR_GPU_UNSUPPORTED_SCENE;
+			}
+		}
+
+		if (!g_renderer) {
+			std::cout << "[OptiX] Initializing renderer...\n";
+			g_renderer = std::make_unique<OptiXRenderer>();
+			if (!g_renderer->initialize()) {
+				std::cerr << "[OptiX] Failed to initialize renderer\n";
+				return ERR_GPU_DEVICE_INIT_FAILED;
 			}
 		}
 

@@ -414,6 +414,18 @@ static __device__ __forceinline__ bool sppm_sample_rough_dielectric(
 // scene-capability check, which rejects any scene using a MaterialType not
 // covered by this function or by the Lambertian fallback below) rather than
 // silently mis-scattered through that fallback.
+//
+// IMPORTANT: this function's delta set, together with the Lambertian/
+// DiffuseLight handling elsewhere in the camera/photon-pass raygens, is
+// what optix_types.h's sppm_gpu_material_supported() is describing on the
+// host side. Adding a new MaterialType case here (or anywhere else in these
+// two raygens' dispatch) without also adding it to
+// sppm_gpu_material_supported() means a scene using that material still
+// gets rejected as unsupported even though it now works; the reverse
+// mismatch (editing sppm_gpu_material_supported() without a matching case
+// here) means such a scene gets silently mis-scattered through the
+// Lambertian fallback instead of rejected. Keep both in sync by hand -- see
+// sppm_gpu_material_supported()'s own comment.
 static __device__ __forceinline__ bool sppm_is_delta_material(MaterialType t) {
 	return t == MaterialType::RoughDielectric || t == MaterialType::Metal ||
 	       t == MaterialType::Dielectric || t == MaterialType::Conductor;
