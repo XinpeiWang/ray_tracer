@@ -127,17 +127,19 @@ TEST(PbrtSubdivTest, AMalformedLoopSubdivIsSkippedWithItsOwnMessage) {
 //
 // "infinite" itself is no longer one of these - it is now carried through
 // (see FlattenInfiniteLightTest in pbrt_flatten_tests.cpp) rather than
-// dropped-with-a-warning, which is what used to be pinned here. distant,
-// point and spot are still dropped, so that half of the guarantee still
-// applies to them.
+// dropped-with-a-warning, which is what used to be pinned here. point, spot,
+// distant, goniometric and projection are ALSO no longer dropped (see
+// FlattenPunctualLightTest, also in pbrt_flatten_tests.cpp) - pbrt-v4 has no
+// other standard light kinds left, so this test now exercises the generic
+// fallback with a made-up type rather than a real pbrt one.
 
 TEST(PbrtDroppedTest, EveryUnsupportedLightTypeIsNamedIndividually) {
 	const FlatScene s = build(
 		"WorldBegin\n"
-		"LightSource \"distant\"\n"
-		"LightSource \"point\"\n");
-	EXPECT_TRUE(warned(s, "distant"));
-	EXPECT_TRUE(warned(s, "point"));
+		"LightSource \"bogus\"\n"
+		"LightSource \"alsobogus\"\n");
+	EXPECT_TRUE(warned(s, "bogus"));
+	EXPECT_TRUE(warned(s, "alsobogus"));
 }
 
 TEST(PbrtDroppedTest, AnAreaLightIsNotWarnedAboutBecauseItIsSupported) {

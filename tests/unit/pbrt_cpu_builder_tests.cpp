@@ -176,3 +176,165 @@ TEST(PbrtCpuBuildTest, DiffuseTransmissionBuildsTheRealMaterialNotLambertian) {
 		<< "a pbrt diffusetransmission material must build the real "
 		   "diffuse_transmission class, not silently fall back to lambertian";
 }
+
+// ---------------------------------------------------------------------------
+// LightSource point/spot/distant/goniometric/projection
+//
+// pbrt_flatten_tests.cpp already pins the parsing (parameter defaults, CTM
+// handling); these pin the next stage - that a parsed pbrt_flatten::
+// PunctualLight actually becomes a real punctual_light_objects.h light a
+// shading point can sample, wired the same way build_point_light_punct() et
+// al. wire the hand-built C2-C6 showcase scenes (scenes_advanced.h).
+// ---------------------------------------------------------------------------
+
+TEST(PbrtCpuBuildTest, NoLightSourceLeavesPunctLightsNull) {
+	const pbrt_cpu::BuildResult b = buildFrom(kQuad);
+	EXPECT_EQ(b.punctLights, nullptr);
+}
+
+TEST(PbrtCpuBuildTest, PointLightSourceIsSampleableAtAShadingPoint) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"LightSource \"point\" \"point3 from\" [ 0 10 0 ] \"rgb I\" [ 1 1 1 ] "
+		"\"float scale\" [ 100 ]\n" + std::string(kQuad));
+	ASSERT_NE(b.punctLights, nullptr);
+	ASSERT_FALSE(b.punctLights->empty());
+
+	int samples = 0;
+	b.punctLights->for_each_sample(point3(0, 0, 0), [&](const PunctualLiSample &s) {
+		++samples;
+		// wi must point from the shading point TOWARD the light: straight up.
+		EXPECT_NEAR(s.wi.x(), 0.0, 1e-9);
+		EXPECT_NEAR(s.wi.y(), 1.0, 1e-9);
+		EXPECT_NEAR(s.wi.z(), 0.0, 1e-9);
+		// Li = I * scale / r^2 = 1 * 100 / 100 = 1.
+		EXPECT_NEAR(s.Li.x(), 1.0, 1e-6);
+		EXPECT_NEAR(s.t_max, 10.0, 1e-6);
+	});
+	EXPECT_EQ(samples, 1);
+}
+
+TEST(PbrtCpuBuildTest, SpotLightSourceAimsFromFromTowardTo) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"LightSource \"spot\" \"point3 from\" [ 0 0 -10 ] \"point3 to\" [ 0 0 0 ] "
+		"\"rgb I\" [ 1 1 1 ] \"float scale\" [ 100 ] \"float coneangle\" [ 60 ]\n"
+		+ std::string(kQuad));
+	ASSERT_NE(b.punctLights, nullptr);
+
+	// A point directly in front of the spot (along its axis) sees full
+	// intensity; the shadow-ray direction must point back toward the light.
+	int samples = 0;
+	b.punctLights->for_each_sample(point3(0, 0, 0), [&](const PunctualLiSample &s) {
+		++samples;
+		EXPECT_NEAR(s.wi.z(), -1.0, 1e-9);
+		EXPECT_GT(s.Li.x(), 0.0) << "on-axis point should be lit, not in the falloff";
+	});
+	EXPECT_EQ(samples, 1);
+}
+
+TEST(PbrtCpuBuildTest, DistantLightSourceHasNoDistanceFalloff) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"LightSource \"distant\" \"point3 from\" [ 0 1 0 ] \"point3 to\" [ 0 0 0 ] "
+		"\"rgb L\" [ 2 3 4 ] \"float scale\" [ 1 ]\n" + std::string(kQuad));
+	ASSERT_NE(b.punctLights, nullptr);
+
+	// Radiance must be identical at two very different distances - that is
+	// the entire point of a directional/parallel light.
+	color nearL, farL;
+	b.punctLights->for_each_sample(point3(0, 0, 0),
+		[&](const PunctualLiSample &s) { nearL = s.Li; });
+	b.punctLights->for_each_sample(point3(0, 1000, 0),
+		[&](const PunctualLiSample &s) { farL = s.Li; });
+	EXPECT_NEAR(nearL.x(), 2.0, 1e-6);
+	EXPECT_NEAR(nearL.x(), farL.x(), 1e-9);
+	EXPECT_NEAR(nearL.y(), farL.y(), 1e-9);
+	EXPECT_NEAR(nearL.z(), farL.z(), 1e-9);
+}
+
+TEST(PbrtCpuBuildTest, GoniometricLightSourceIsSampleableAtAShadingPoint) {
+	// pbrt-v4's GoniometricLight has no "from"/"to" of its own (unlike point/
+	// spot/distant) - its position/orientation come purely from the CTM, so
+	// this positions it with Translate rather than a "from" parameter (see
+	// PunctualLight::pos's own comment). No "filename" - flatten() falls
+	// back to an isotropic profile (see FlattenPunctualLightTest::
+	// GoniometricLightWithNoFilenameIsIsotropicAndUnwarned in
+	// pbrt_flatten_tests.cpp), so this should behave exactly like a plain
+	// point light: nonzero, direction-independent intensity.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Translate 0 10 0\n"
+		"LightSource \"goniometric\" \"rgb I\" [ 1 1 1 ] \"float scale\" [ 100 ]\n"
+		+ std::string(kQuad));
+	ASSERT_NE(b.punctLights, nullptr);
+
+	int samples = 0;
+	b.punctLights->for_each_sample(point3(0, 0, 0), [&](const PunctualLiSample &s) {
+		++samples;
+		EXPECT_GT(s.Li.x(), 0.0);
+	});
+	EXPECT_EQ(samples, 1);
+}
+
+TEST(PbrtCpuBuildTest, ProjectionLightSourceIsSampleableAtAShadingPoint) {
+	// Like GoniometricLight, pbrt-v4's ProjectionLight has no "from"/"to" -
+	// position/aim come purely from the CTM (Translate here places it at
+	// (0,0,-10) looking down its local +z, which with no Rotate is world
+	// +z - straight at the quad's shading point at the origin). No
+	// "filename" either (see flatten()'s own warning for this case) - the
+	// uniform-white-beam fallback should still light a point inside its fov.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Translate 0 0 -10\n"
+		"LightSource \"projection\" \"float scale\" [ 100 ] \"float fov\" [ 60 ]\n"
+		+ std::string(kQuad));
+	ASSERT_NE(b.punctLights, nullptr);
+
+	int samples = 0;
+	b.punctLights->for_each_sample(point3(0, 0, 0), [&](const PunctualLiSample &s) {
+		++samples;
+		EXPECT_GT(s.Li.x(), 0.0) << "on-axis point should fall inside the projected beam";
+	});
+	EXPECT_EQ(samples, 1);
+}
+
+// ---------------------------------------------------------------------------
+// Material "mix"
+//
+// pbrt_flatten_tests.cpp pins the name resolution; these pin the next stage -
+// that a resolved pbrt_flatten::Material with MaterialKind::Mix actually
+// becomes a real mix_material wrapping the real CPU classes its two named
+// sub-materials asked for (not two more Lambertians), matching how the
+// Coated/DiffuseTransmission tests above already pin their own real classes.
+// ---------------------------------------------------------------------------
+
+TEST(PbrtCpuBuildTest, MixMaterialBuildsTheRealMixOfItsTwoSubMaterials) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"MakeNamedMaterial \"a\" \"string type\" [ \"conductor\" ] \"rgb reflectance\" [ .2 .4 .6 ]\n"
+		"MakeNamedMaterial \"b\" \"string type\" [ \"dielectric\" ] \"float eta\" [ 1.7 ]\n"
+		"Material \"mix\" \"string materials\" [ \"a\" \"b\" ] \"float amount\" [ 0.75 ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *mix = dynamic_cast<mix_material *>(rec.mat.get());
+	ASSERT_NE(mix, nullptr)
+		<< "a pbrt mix material must build the real mix_material class, not "
+		   "silently fall back to lambertian";
+	EXPECT_NE(dynamic_cast<metal *>(mix->get_mat_a().get()), nullptr)
+		<< "sub-material 'a' (conductor) must build the real metal class";
+	EXPECT_NE(dynamic_cast<dielectric *>(mix->get_mat_b().get()), nullptr)
+		<< "sub-material 'b' (dielectric) must build the real dielectric class";
+	EXPECT_DOUBLE_EQ(mix->get_weight()->value(0, 0, point3(0, 0, 0)).x(), 0.75);
+}
+
+TEST(PbrtCpuBuildTest, MalformedMixFallsBackToLambertianLikeAnyOtherUnsupportedMaterial) {
+	// flatten() already downgrades an unresolvable mix to MaterialKind::
+	// Unsupported (pinned in pbrt_flatten_tests.cpp) - this just confirms
+	// the builder's existing Unsupported->lambertian fallback still applies,
+	// rather than the builder crashing or constructing a mix_material with
+	// dangling sub-material indices.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Material \"mix\" \"string materials\" [ \"nope\" \"alsonope\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	EXPECT_NE(dynamic_cast<lambertian *>(rec.mat.get()), nullptr);
+}

@@ -52,8 +52,16 @@ inline color reflectanceToConductorK(const color& r) {
 // construction rather than interpretation. An Unsupported material becomes
 // diffuse - flatten() has already warned about it by name, so failing here
 // would only turn a documented approximation into a refusal to open the file.
+// `allMaterials`/`depth` are only touched by the Mix case below (resolving
+// its two named sub-materials, which needs the full parallel-to-out.materials
+// list flatten() built - see pbrt_flatten::Material::mixMaterialA/B's own
+// comment on why those are indices into that list rather than something
+// self-contained); every other material kind ignores them, so a default
+// empty vector is fine for every existing call site.
 inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
-											  const pbrt_flatten::Emission *emission) {
+											  const pbrt_flatten::Emission *emission,
+											  const std::vector<pbrt_flatten::Material> &allMaterials = {},
+											  int depth = 0) {
 	// Emission wins: in pbrt an AreaLightSource attaches to the shape, and its
 	// material describes what the surface does with light arriving at it. Our
 	// diffuse_light is the emissive case, so an emissive shape becomes one
@@ -108,6 +116,34 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 			break;
 		return mat;
 	}
+	case pbrt_flatten::MaterialKind::Mix: {
+		// Real recursive resolution, not a documented approximation - see
+		// MaterialKind::Mix's own comment (pbrt_flatten.h) for why this is
+		// backed by the existing, generic `class mix_material`
+		// (material_pbrt.h) rather than a new one. flatten() already
+		// downgraded an unresolvable mix to Unsupported (see there), so
+		// mixMaterialA/B are valid indices into allMaterials whenever this
+		// case is reached with a non-empty allMaterials - the emptiness/
+		// depth checks below only guard the pathological cases (a stray
+		// direct call with the defaulted empty vector, or a cyclic/self-
+		// referential "materials" list a malformed scene could produce,
+		// neither of which this loader's own corpus has ever needed).
+		constexpr int kMaxMixDepth = 8;
+		if (depth >= kMaxMixDepth
+			|| m.mixMaterialA < 0 || static_cast<std::size_t>(m.mixMaterialA) >= allMaterials.size()
+			|| m.mixMaterialB < 0 || static_cast<std::size_t>(m.mixMaterialB) >= allMaterials.size())
+			break;
+		// Sub-materials of a mix are never emissive on their own in pbrt-v4
+		// (AreaLightSource attaches to the SHAPE, handled generically by the
+		// `emission` check at the top of this function - reached before this
+		// switch runs at all when the shape is emissive, so this recursive
+		// call never needs to pass one through).
+		auto matA = makeMaterial(allMaterials[static_cast<std::size_t>(m.mixMaterialA)],
+								 nullptr, allMaterials, depth + 1);
+		auto matB = makeMaterial(allMaterials[static_cast<std::size_t>(m.mixMaterialB)],
+								 nullptr, allMaterials, depth + 1);
+		return std::make_shared<mix_material>(matA, matB, m.mixWeight);
+	}
 	case pbrt_flatten::MaterialKind::Diffuse:
 	case pbrt_flatten::MaterialKind::Unsupported:
 		break;
@@ -145,6 +181,12 @@ struct BuildResult {
 	std::shared_ptr<hittable_list> world;
 	std::shared_ptr<hittable_list> lights;   // emissive shapes, for NEE
 	std::shared_ptr<sky_light> sky;          // null if the scene has no infinite light
+	// LightSource point/spot/distant/goniometric/projection - null if the
+	// scene has none (matches camera_t::punct_lights' own "nullptr = none"
+	// convention, which this feeds directly - see scene_registry.h's
+	// build_punct wiring). Never empty-but-non-null: left null unless
+	// scene.punctualLights actually held something, same as `sky` above.
+	std::shared_ptr<punctual_light_list> punctLights;
 	std::size_t triangleCount = 0;
 	std::size_t sphereCount = 0;
 	std::size_t bilinearPatchCount = 0;
@@ -176,7 +218,7 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			(materialIndex >= 0 && static_cast<std::size_t>(materialIndex) < scene.materials.size())
 				? scene.materials[static_cast<std::size_t>(materialIndex)]
 				: kDefault;
-		return makeMaterial(m, em);
+		return makeMaterial(m, em, scene.materials);
 	};
 
 	// One material instance per distinct (material, emission) pair.
@@ -363,6 +405,72 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 				scene.infiniteLight.L[2] * scene.infiniteLight.scale));
 		}
 	}
+
+	// ---- punctual (delta) lights -------------------------------------------
+	// LightSource point/spot/distant/goniometric/projection - see
+	// pbrt_flatten::PunctualLight's own comment for why this is a bridging
+	// job onto punctual_light_objects.h's existing constructors, already
+	// proven by this codebase's own C2-C6 showcase scenes, rather than new
+	// rendering math.
+	if (!scene.punctualLights.empty()) {
+		out.punctLights = std::make_shared<punctual_light_list>();
+		for (const pbrt_flatten::PunctualLight &pl : scene.punctualLights) {
+			switch (pl.kind) {
+			case pbrt_flatten::PunctualLightKind::Point:
+				out.punctLights->add_point(
+					point3(pl.pos[0], pl.pos[1], pl.pos[2]),
+					color(pl.intensity[0], pl.intensity[1], pl.intensity[2]),
+					pl.scale);
+				break;
+			case pbrt_flatten::PunctualLightKind::Spot:
+				out.punctLights->add_spot(
+					point3(pl.pos[0], pl.pos[1], pl.pos[2]),
+					vec3(pl.dir[0], pl.dir[1], pl.dir[2]),
+					color(pl.intensity[0], pl.intensity[1], pl.intensity[2]),
+					pl.coneAngleDeg, pl.falloffStartAngleDeg, pl.scale);
+				break;
+			case pbrt_flatten::PunctualLightKind::Distant:
+				out.punctLights->add_distant(
+					vec3(pl.dir[0], pl.dir[1], pl.dir[2]),
+					color(pl.intensity[0], pl.intensity[1], pl.intensity[2]),
+					pl.sceneRadius, pl.scale);
+				break;
+			case pbrt_flatten::PunctualLightKind::Goniometric: {
+				// No real IES-style profile is ever decoded (see
+				// PunctualLight::hadImageFilename's own comment) - a uniform
+				// 4x4 all-ones image is the same "isotropic" fallback
+				// GoniometricLight<T>::make_isotropic() already uses, just
+				// built explicitly here so the real worldToLight rotation
+				// (rather than that helper's hardcoded identity) still
+				// carries through for a scene that rotated the light even
+				// though the image itself is flat.
+				static const std::vector<double> kUniformImage(4 * 4, 1.0);
+				double id[9];
+				for (int c = 0; c < 9; ++c) id[c] = pl.worldToLight[c];
+				out.punctLights->add_gonio(
+					point3(pl.pos[0], pl.pos[1], pl.pos[2]),
+					color(pl.intensity[0], pl.intensity[1], pl.intensity[2]),
+					pl.scale, id, kUniformImage, 4, 4);
+				break;
+			}
+			case pbrt_flatten::PunctualLightKind::Projection: {
+				// No real slide image is ever decoded (see
+				// PunctualLight::hadImageFilename's own comment) - a uniform
+				// white 2x2 slide reproduces a plain cone-shaped beam of the
+				// requested fov/scale/aim, the same synthetic-pattern tier
+				// this loader's own C6 showcase scene already uses.
+				static const std::vector<double> kUniformSlide(2 * 2 * 3, 1.0);
+				double wtl[9];
+				for (int c = 0; c < 9; ++c) wtl[c] = pl.worldToLight[c];
+				out.punctLights->add_projection(
+					point3(pl.pos[0], pl.pos[1], pl.pos[2]),
+					pl.scale, wtl, pl.fovDeg, kUniformSlide, 2, 2);
+				break;
+			}
+			}
+		}
+	}
+
 	return out;
 }
 

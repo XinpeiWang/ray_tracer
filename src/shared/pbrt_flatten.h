@@ -26,6 +26,7 @@
 
 #include <cmath>
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -110,6 +111,21 @@ enum class MaterialKind {
 	DiffuseTransmission,
 	Subsurface,
 	Measured,
+	// A stochastic blend of two OTHER materials (pbrt-v4 MixMaterial),
+	// referenced by name via the "materials" parameter - see Material::
+	// mixMaterialA/mixMaterialB/mixWeight below and flatten()'s own mix-
+	// resolution code for how those names become indices. CPU-only: this
+	// codebase's own src/TheRestOfYourLife/material_pbrt.h `class
+	// mix_material` (added earlier for SPPM support) is a real, generic
+	// two-material blend - not SPPM-specific - so this backs a pbrt "mix"
+	// material directly, real support rather than a documented
+	// approximation. GPU has no equivalent (mix_material's own header
+	// comment already says so, for the same class) and keeps rendering it
+	// as flat diffuse - see gpu/optix/pbrt_gpu_builder.h's own comment on
+	// its Mix case, which exists only to preserve that fallback, now blended
+	// by colour rather than plain grey, now that this enumerator is no
+	// longer an alias for Unsupported.
+	Mix,
 	Unsupported,
 };
 
@@ -150,6 +166,22 @@ struct Material {
 	// pass, "could not be resolved/loaded") - either way the material falls
 	// back to a diffuse approximation.
 	std::string measuredFilename;
+
+	// Mix only: indices into FlatScene::materials of the two blended
+	// sub-materials - pbrt-v4's own "string materials" parameter names them
+	// (an array of exactly two named-material references, resolved against
+	// every MakeNamedMaterial in the scene, not just ones declared earlier -
+	// see flatten()'s own mix-resolution code), and mixWeight is pbrt-v4's
+	// "amount" (default 0.5): the probability of material B winning at any
+	// given shading point, matching mix_material's own "weight" parameter
+	// exactly (0 = pure A, 1 = pure B). -1 means "could not be resolved" -
+	// fewer than two names given, or a name that does not match any
+	// MakeNamedMaterial - in which case `kind` is downgraded to Unsupported
+	// by flatten() itself (see there), so pbrt_cpu_builder.h never has to
+	// check these fields are valid before indexing with them.
+	int mixMaterialA = -1;
+	int mixMaterialB = -1;
+	double mixWeight = 0.5;
 };
 
 struct Emission {
@@ -181,6 +213,107 @@ struct InfiniteLight {
 	// not black, but visibly wrong, which is easy to miss without a scene
 	// that actually has a directional feature to check against.
 	pbrt_scene::Matrix4 xform;
+};
+
+// pbrt-v4's five punctual (delta-distribution) LightSource kinds - "point",
+// "spot", "distant", "goniometric" and "projection". Unlike "infinite" there
+// can genuinely be several of these in one scene (a room lit by three
+// spotlights, say), so they collect into FlatScene::punctualLights rather
+// than a single optional field the way InfiniteLight does.
+//
+// Rendering support for every one of these already exists on both backends -
+// src/TheRestOfYourLife/punctual_light_objects.h (CPU) and
+// gpu/optix/optix_types.h's PunctualLightGPU/PunctualLightKind (GPU), proven
+// by this codebase's own hand-built showcase scenes C2-C6
+// (scenes_advanced.h). This struct only has to carry each type's pbrt
+// parameters far enough for pbrt_cpu_builder.h/pbrt_gpu_builder.h to feed
+// those existing constructors - it is a parsing/bridging job, not new
+// rendering math.
+enum class PunctualLightKind {
+	Point,
+	Spot,
+	Distant,
+	Goniometric,
+	Projection,
+};
+
+struct PunctualLight {
+	PunctualLightKind kind = PunctualLightKind::Point;
+
+	// Point/Spot/Goniometric/Projection: world-space position - pbrt's
+	// "from" point (default the origin) run through the LightSource
+	// directive's CTM, the same treatment InfiniteLight::xform documents.
+	// Goniometric/Projection have no "from"/"to" of their own in pbrt-v4 (see
+	// worldToLight below for how they instead use the CTM's rotation), so
+	// this is simply the CTM applied to the origin for those two kinds.
+	double pos[3] = {0, 0, 0};
+
+	// Spot: world-space unit direction the cone points toward - pbrt's "to"
+	// minus "from" (defaults (0,0,1) and (0,0,0)), both CTM-transformed,
+	// then renormalized.
+	// Distant: world-space unit direction FROM ANY POINT TOWARD THE LIGHT -
+	// exactly the `wi` this loader's punctual_light_list/PunctualLightGPU
+	// already expect (DistantLightData<T>::sample_wi returns this field
+	// verbatim, and camera.h's NEE block casts its shadow ray straight down
+	// it - see flatten()'s own comment at the distant-light parsing site for
+	// the from/to sign derivation). NOT the direction sunlight travels,
+	// which is this vector's negation.
+	double dir[3] = {0, 0, 1};
+
+	// Point/Spot/Goniometric: pbrt's "I" (peak intensity, RGB, candela).
+	// Distant: pbrt's "L" (radiance, RGB). Unused for Projection - pbrt-v4's
+	// ProjectionLight has no "I"/"L" of its own; the projected image supplies
+	// colour directly (see the image-file comment on `fovDeg` below).
+	double intensity[3] = {1, 1, 1};
+
+	// pbrt's "scale" parameter, read the same way for all five kinds.
+	double scale = 1.0;
+
+	// Spot only, in degrees. pbrt's "coneangle" is the OUTER edge (falloff
+	// reaches zero here); the INNER edge (full intensity inside) is
+	// coneangle - conedeltaangle, matching pbrt-v4 SpotLight::Create exactly.
+	double coneAngleDeg = 30.0;
+	double falloffStartAngleDeg = 25.0;
+
+	// Distant only. No pbrt parameter feeds this - pbrt-v4 itself only uses
+	// a scene's bounding radius to place DistantLight's virtual "reference
+	// point at infinity" for bidirectional techniques, and this loader's
+	// punctual lights are visited deterministically every NEE step rather
+	// than power-sampled (see camera.h's punct_lights block) - so it does
+	// not affect any image this loader actually renders. Kept at the same
+	// 1000.0 default scenes_advanced.h's own hand-built distant-light scene
+	// (C3, build_distant_light_punct()) uses, for parity if that ever
+	// changes.
+	double sceneRadius = 1000.0;
+
+	// Goniometric/Projection only: world -> light rotation, row-major 3x3,
+	// recovered from the LightSource directive's CTM by inverting its
+	// upper-left 3x3 (see detail::worldToLightRotation()) - both kinds have
+	// no "from"/"to" of their own in pbrt-v4, so a scene aims either one
+	// purely by rotating the CTM before the LightSource directive (e.g.
+	// `Rotate` then `LightSource "projection" ...`). Identity when the CTM
+	// is a pure translation, which covers every scene this loader's own
+	// corpus (C5/C6) uses either kind in.
+	double worldToLight[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+
+	// Projection only, degrees, pbrt's "fov".
+	double fovDeg = 90.0;
+
+	// Both image-based kinds (Goniometric/Projection) name a "filename" in
+	// real pbrt-v4 scenes - an IES-style directional profile for
+	// goniometric, the projected slide image for projection - neither of
+	// which this loader decodes. This is not a new gap: this codebase's own
+	// hand-built showcase scenes for both kinds (scenes_advanced.h's
+	// build_goniometric_punct()/build_projection_punct(), registry ids
+	// C5/C6) use a synthetic procedural pattern rather than a real image
+	// file too, so falling back to a uniform pattern here (see
+	// pbrt_cpu_builder.h/pbrt_gpu_builder.h's construction of these) matches
+	// the precedent this codebase already set for these exact light kinds
+	// rather than opening a new one. Only recorded so flatten() can warn
+	// when a scene actually names a file - the loss of the real projected
+	// picture/profile shape is then a legible, documented approximation
+	// rather than a silently plain light.
+	bool hadImageFilename = false;
 };
 
 // Our camera is described the way camera.h wants it - an eye point, a target
@@ -271,6 +404,7 @@ struct FlatScene {
 	std::vector<Material> materials;    // parallel to Scene::materials
 	std::vector<Emission> areaLights;   // parallel to Scene::areaLights
 	InfiniteLight infiniteLight;        // present=false if the scene has none
+	std::vector<PunctualLight> punctualLights;   // LightSource point/spot/distant/goniometric/projection
 
 	// Instanced geometry. `groups` hold object-space shapes; `instances` place
 	// them. A backend that ignores these renders a scene missing everything
@@ -366,6 +500,58 @@ inline void transformNormal(const pbrt_scene::Matrix4 &m,
 	out[0] = nx; out[1] = ny; out[2] = nz;
 }
 
+// True world -> light ROTATION (not the inverse-TRANSPOSE transformNormal
+// computes - a light's "aim" needs the plain inverse of its light -> world
+// rotation, the same sense pbrt-v4's own ApplyInverse(w) uses). Used only by
+// Goniometric/Projection, whose image lookup is defined in light space: a
+// world-space direction is rotated back into that space to index the
+// profile/slide image (see PunctualLight::worldToLight's own comment).
+//
+// General 3x3 inverse via cofactors/adjugate/determinant - the same cofactor
+// terms transformNormal already computes (c00..c22), just assembled as
+// adjugate/det (= cofactor^T/det) here instead of being used directly as the
+// inverse-transpose transformNormal wants. Degenerate (zero-determinant)
+// input - a scene that somehow projected its light's CTM flat - falls back
+// to identity rather than dividing by zero, matching transformNormal's own
+// "leave it alone" degenerate case.
+inline void worldToLightRotation(const pbrt_scene::Matrix4 &m, double *out) {
+	const double a = m.m[0], b = m.m[1], c = m.m[2];
+	const double d = m.m[4], e = m.m[5], f = m.m[6];
+	const double g = m.m[8], h = m.m[9], i = m.m[10];
+
+	const double c00 = e * i - f * h, c01 = f * g - d * i, c02 = d * h - e * g;
+	const double c10 = c * h - b * i, c11 = a * i - c * g, c12 = b * g - a * h;
+	const double c20 = b * f - c * e, c21 = c * d - a * f, c22 = a * e - b * d;
+
+	const double det = a * c00 + b * c01 + c * c02;
+	if (std::fabs(det) < 1e-18) {
+		out[0] = 1; out[1] = 0; out[2] = 0;
+		out[3] = 0; out[4] = 1; out[5] = 0;
+		out[6] = 0; out[7] = 0; out[8] = 1;
+		return;
+	}
+
+	// inverse = adjugate/det, adjugate = cofactor^T - so inverse row r is
+	// cofactor COLUMN r, scaled by 1/det.
+	const double invDet = 1.0 / det;
+	out[0] = c00 * invDet; out[1] = c10 * invDet; out[2] = c20 * invDet;
+	out[3] = c01 * invDet; out[4] = c11 * invDet; out[5] = c21 * invDet;
+	out[6] = c02 * invDet; out[7] = c12 * invDet; out[8] = c22 * invDet;
+}
+
+// Normalizes a 3-vector in place; a degenerate (near-zero) input is left as
+// the harmless default direction +Z rather than producing NaNs downstream -
+// a scene whose "from"/"to" happen to coincide is a malformed light, not a
+// reason to poison every ray direction computed from it.
+inline void normalizeOrDefault(double *v, double defX, double defY, double defZ) {
+	const double len = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+	if (len > 1e-12) {
+		v[0] /= len; v[1] /= len; v[2] /= len;
+	} else {
+		v[0] = defX; v[1] = defY; v[2] = defZ;
+	}
+}
+
 // The three basis vectors' lengths are the scale along each axis. Comparing
 // them is how a non-uniform scale is detected without decomposing the matrix
 // properly - enough to know a sphere cannot survive it.
@@ -386,7 +572,8 @@ inline MaterialKind materialKindFor(const std::string &type) {
 	if (type == "diffusetransmission") return MaterialKind::DiffuseTransmission;
 	if (type == "subsurface")          return MaterialKind::Subsurface;
 	if (type == "measured")            return MaterialKind::Measured;
-	return MaterialKind::Unsupported;   // mix, hair, ...
+	if (type == "mix")                 return MaterialKind::Mix;
+	return MaterialKind::Unsupported;   // hair, ...
 }
 
 // A subset of pbrt-v4's own named "measured scattering coefficient" table
@@ -461,6 +648,19 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 	};
 
 	// ---- materials -------------------------------------------------------
+	// Named materials, by name -> index in scene.materials. Built BEFORE the
+	// main loop below (rather than incrementally during it) because a "mix"
+	// material's "materials" parameter can name one declared LATER in the
+	// file - pbrt itself resolves MixMaterial's sub-materials against the
+	// full scene, not just what came before the mix directive - and because
+	// flatten() mirrors scene.materials into out.materials 1:1 (same order,
+	// no skipped entries), an index found here is already the right index
+	// into out.materials too.
+	std::map<std::string, int> namedMaterialIndex;
+	for (std::size_t i = 0; i < scene.materials.size(); ++i)
+		if (!scene.materials[i].name.empty())
+			namedMaterialIndex[scene.materials[i].name] = static_cast<int>(i);
+
 	for (const pbrt_scene::MaterialDecl &md : scene.materials) {
 		Material m;
 		m.pbrtType = md.type;
@@ -589,6 +789,42 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			}
 		}
 
+		// Mix: resolve "materials" (two names) against namedMaterialIndex,
+		// built above. A "mix" that cannot be resolved is downgraded to
+		// Unsupported here rather than left half-populated - the generic
+		// diffuse fallback below the main loop already exists and is exactly
+		// what an unresolvable mix should do, so reusing it (instead of a
+		// separate broken-mix code path in pbrt_cpu_builder.h) means that
+		// file never has to check mixMaterialA/B are valid before indexing
+		// with them (see those fields' own comment).
+		if (m.kind == MaterialKind::Mix) {
+			const pbrt_scene::Param *mats = md.params.find("materials");
+			if (!mats || mats->strings.size() < 2) {
+				warn("material 'mix' needs two names in \"materials\"; "
+					 "it will fall back to a diffuse approximation");
+				m.kind = MaterialKind::Unsupported;
+			} else {
+				const auto itA = namedMaterialIndex.find(mats->strings[0]);
+				const auto itB = namedMaterialIndex.find(mats->strings[1]);
+				if (itA == namedMaterialIndex.end() || itB == namedMaterialIndex.end()) {
+					warn("material 'mix' names an unknown material in \"materials\"; "
+						 "it will fall back to a diffuse approximation");
+					m.kind = MaterialKind::Unsupported;
+				} else {
+					m.mixMaterialA = itA->second;
+					m.mixMaterialB = itB->second;
+					// pbrt-v4's own default; "amount" may instead be bound to
+					// a texture, which the generic texture-binding warning
+					// above (the `for (const pbrt_scene::Param &p : ...)`
+					// loop near the top of this material's handling) already
+					// reports - this just reads the constant fallback either
+					// way, same as every other texture-eligible parameter in
+					// this function.
+					m.mixWeight = md.params.getFloat("amount", 0.5);
+				}
+			}
+		}
+
 		out.materials.push_back(m);
 	}
 
@@ -596,15 +832,21 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 	// "infinite" (the environment/sky light) is carried through below - it is
 	// usually a scene's main illumination, so dropping it silently produces a
 	// render that looks exactly like a shading bug and sends you hunting
-	// through the BSDF code instead. distant, point and spot lights are still
-	// dropped; saying so is the difference between a legible limitation and
-	// an inexplicable one.
+	// through the BSDF code instead. point/spot/distant/goniometric/
+	// projection are carried through too, into FlatScene::punctualLights -
+	// see PunctualLight's own comment for why this is a bridging job rather
+	// than new rendering math (this codebase's own C2-C6 showcase scenes
+	// already exercise every one of these five on both backends). Anything
+	// else genuinely unknown still gets the warn-and-drop this whole block
+	// used to give every non-infinite kind.
 	//
 	// Only the LAST "infinite" LightSource in the scene wins if there is more
 	// than one - real pbrt scenes have at most one (this codebase has never
 	// seen otherwise among the scenes it loads), and picking the last one
 	// matches how pbrt's own graphics-state model would apply them (each
-	// later directive's effect is visible, not merged).
+	// later directive's effect is visible, not merged). Punctual lights have
+	// no such restriction - a scene can genuinely want three spotlights - so
+	// every one of those is kept, not just the last.
 	for (const pbrt_scene::LightDecl &ld : scene.lights) {
 		if (ld.type == "infinite") {
 			out.infiniteLight.present = true;
@@ -615,6 +857,128 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			out.infiniteLight.xform = ld.xform;
 			continue;
 		}
+
+		if (ld.type == "point") {
+			PunctualLight pl;
+			pl.kind = PunctualLightKind::Point;
+			const pbrt_scene::Vec3 from = ld.params.getVec3("from", pbrt_scene::Vec3{0, 0, 0});
+			transformPoint(ld.xform, from.x, from.y, from.z, pl.pos);
+			const pbrt_scene::Vec3 I = ld.params.getVec3("I", pbrt_scene::Vec3{1, 1, 1});
+			pl.intensity[0] = I.x; pl.intensity[1] = I.y; pl.intensity[2] = I.z;
+			pl.scale = ld.params.getFloat("scale", 1.0);
+			out.punctualLights.push_back(pl);
+			continue;
+		}
+
+		if (ld.type == "spot") {
+			PunctualLight pl;
+			pl.kind = PunctualLightKind::Spot;
+			const pbrt_scene::Vec3 from = ld.params.getVec3("from", pbrt_scene::Vec3{0, 0, 0});
+			const pbrt_scene::Vec3 to = ld.params.getVec3("to", pbrt_scene::Vec3{0, 0, 1});
+			double worldFrom[3], worldTo[3];
+			transformPoint(ld.xform, from.x, from.y, from.z, worldFrom);
+			transformPoint(ld.xform, to.x, to.y, to.z, worldTo);
+			for (int c = 0; c < 3; ++c) pl.pos[c] = worldFrom[c];
+			// The cone axis - the direction the spot is AIMED, from `from`
+			// toward `to` - both already CTM-transformed, so subtracting
+			// cancels the translation and leaves exactly the CTM's rotation
+			// applied to pbrt's own local (to - from) (matches pbrt-v4
+			// SpotLight::Create's w = Normalize(to - from) exactly, just
+			// composed with the CTM by transforming the endpoints instead of
+			// building pbrt's own dirToZ rotation matrix - unnecessary here
+			// since SpotLightData only ever needs the resulting axis, not a
+			// full light-space frame).
+			for (int c = 0; c < 3; ++c) pl.dir[c] = worldTo[c] - worldFrom[c];
+			normalizeOrDefault(pl.dir, 0, -1, 0);
+			const pbrt_scene::Vec3 I = ld.params.getVec3("I", pbrt_scene::Vec3{1, 1, 1});
+			pl.intensity[0] = I.x; pl.intensity[1] = I.y; pl.intensity[2] = I.z;
+			pl.scale = ld.params.getFloat("scale", 1.0);
+			pl.coneAngleDeg = ld.params.getFloat("coneangle", 30.0);
+			const double delta = ld.params.getFloat("conedeltaangle", 5.0);
+			pl.falloffStartAngleDeg = std::fmax(0.0, pl.coneAngleDeg - delta);
+			out.punctualLights.push_back(pl);
+			continue;
+		}
+
+		if (ld.type == "distant") {
+			PunctualLight pl;
+			pl.kind = PunctualLightKind::Distant;
+			const pbrt_scene::Vec3 from = ld.params.getVec3("from", pbrt_scene::Vec3{0, 0, 0});
+			const pbrt_scene::Vec3 to = ld.params.getVec3("to", pbrt_scene::Vec3{0, 0, 1});
+			double worldFrom[3], worldTo[3];
+			transformPoint(ld.xform, from.x, from.y, from.z, worldFrom);
+			transformPoint(ld.xform, to.x, to.y, to.z, worldTo);
+			// dir must be `wi` - the direction FROM ANY SHADING POINT TOWARD
+			// THE LIGHT (see PunctualLight::dir's own comment) - i.e. the
+			// OPPOSITE of the direction sunlight travels, which runs from
+			// `from` toward `to`. pbrt-v4 DistantLight::Create builds this
+			// same vector (w = Normalize(from - to)) for exactly this reason
+			// - its own SampleLi later returns renderFromLight(local +Z),
+			// and its local +Z axis is constructed to already equal that
+			// (from - to) direction, so this is the same result reached
+			// without needing pbrt's intermediate rotation-to-Z matrix.
+			for (int c = 0; c < 3; ++c) pl.dir[c] = worldFrom[c] - worldTo[c];
+			normalizeOrDefault(pl.dir, 0, 1, 0);
+			const pbrt_scene::Vec3 L = ld.params.getVec3("L", pbrt_scene::Vec3{1, 1, 1});
+			pl.intensity[0] = L.x; pl.intensity[1] = L.y; pl.intensity[2] = L.z;
+			pl.scale = ld.params.getFloat("scale", 1.0);
+			out.punctualLights.push_back(pl);
+			continue;
+		}
+
+		if (ld.type == "goniometric") {
+			PunctualLight pl;
+			pl.kind = PunctualLightKind::Goniometric;
+			transformPoint(ld.xform, 0.0, 0.0, 0.0, pl.pos);
+			worldToLightRotation(ld.xform, pl.worldToLight);
+			const pbrt_scene::Vec3 I = ld.params.getVec3("I", pbrt_scene::Vec3{1, 1, 1});
+			pl.intensity[0] = I.x; pl.intensity[1] = I.y; pl.intensity[2] = I.z;
+			pl.scale = ld.params.getFloat("scale", 1.0);
+			const std::string file = ld.params.getString("filename", "");
+			if (!file.empty()) {
+				pl.hadImageFilename = true;
+				warn("light 'goniometric' names \"filename\" ('" + file +
+					 "'), whose IES-style directional profile is not decoded; "
+					 "the light is emitted as a plain isotropic point light instead "
+					 "(matches this loader's own C5 showcase scene, which uses a "
+					 "synthetic profile rather than a real image file too)");
+			}
+			out.punctualLights.push_back(pl);
+			continue;
+		}
+
+		if (ld.type == "projection") {
+			PunctualLight pl;
+			pl.kind = PunctualLightKind::Projection;
+			transformPoint(ld.xform, 0.0, 0.0, 0.0, pl.pos);
+			worldToLightRotation(ld.xform, pl.worldToLight);
+			pl.scale = ld.params.getFloat("scale", 1.0);
+			pl.fovDeg = ld.params.getFloat("fov", 90.0);
+			const std::string file = ld.params.getString("filename", "");
+			// pbrt-v4 requires "filename" (a projection light has no other
+			// way to describe what it projects) - a scene that omits it is
+			// itself malformed, and a scene that gives it names an image
+			// this loader still cannot decode (see hadImageFilename's own
+			// comment). Either way the light is emitted as a uniform white
+			// beam of the requested shape/scale/aim, which is the same
+			// synthetic-pattern approximation this loader's own C6 showcase
+			// scene already uses; only the wording differs by which case it is.
+			if (!file.empty()) {
+				pl.hadImageFilename = true;
+				warn("light 'projection' names \"filename\" ('" + file +
+					 "'), whose projected image is not decoded; the light is "
+					 "emitted as a uniform white beam instead (matches this "
+					 "loader's own C6 showcase scene, which uses a synthetic "
+					 "pattern rather than a real image file too)");
+			} else {
+				warn("light 'projection' has no \"filename\" (pbrt-v4 requires "
+					 "one); emitted as a uniform white beam of the requested "
+					 "shape/scale/aim instead of failing outright");
+			}
+			out.punctualLights.push_back(pl);
+			continue;
+		}
+
 		warn("light source '" + ld.type + "' is not supported and was dropped; "
 			 "the scene will be darker than intended");
 	}

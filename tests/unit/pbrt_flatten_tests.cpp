@@ -485,6 +485,83 @@ TEST(FlattenMaterialTest, MaterialIndicesOnGeometryStillLineUp) {
 }
 
 // ---------------------------------------------------------------------------
+// Material "mix"
+// ---------------------------------------------------------------------------
+// A stochastic blend of two OTHER named materials (pbrt-v4 MixMaterial).
+// src/TheRestOfYourLife/material_pbrt.h's `class mix_material` already backs
+// this generically (added earlier for SPPM support, but not SPPM-specific -
+// see MaterialKind::Mix's own comment) - these pin the name -> index
+// resolution flatten() has to do to bridge onto it: forward AND backward
+// references, and the "malformed mix" cases downgrading to the existing
+// diffuse-fallback tier rather than a new, separate failure mode.
+
+TEST(FlattenMaterialTest, MixResolvesBothNamedSubMaterials) {
+	const FlatScene s = flattenSource(
+		"MakeNamedMaterial \"a\" \"string type\" [ \"diffuse\" ] \"rgb reflectance\" [ 1 0 0 ]\n"
+		"MakeNamedMaterial \"b\" \"string type\" [ \"conductor\" ] \"rgb reflectance\" [ 0 0 1 ]\n"
+		"Material \"mix\" \"string materials\" [ \"a\" \"b\" ] \"float amount\" [ 0.25 ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 3u);
+	const Material &mix = s.materials[2];
+	EXPECT_EQ(mix.kind, MaterialKind::Mix);
+	ASSERT_GE(mix.mixMaterialA, 0);
+	ASSERT_GE(mix.mixMaterialB, 0);
+	EXPECT_EQ(s.materials[mix.mixMaterialA].kind, MaterialKind::Diffuse);
+	EXPECT_EQ(s.materials[mix.mixMaterialB].kind, MaterialKind::Conductor);
+	EXPECT_DOUBLE_EQ(mix.mixWeight, 0.25);
+	EXPECT_FALSE(warnedAbout(s, "not supported"));
+}
+
+TEST(FlattenMaterialTest, MixCanForwardReferenceAMaterialDeclaredLater) {
+	// pbrt-v4 resolves MixMaterial's "materials" names against the whole
+	// scene, not just what came textually before the mix directive itself -
+	// this is the reason flatten() builds its name->index map in a pre-pass
+	// rather than incrementally during the main per-material loop.
+	const FlatScene s = flattenSource(
+		"Material \"mix\" \"string materials\" [ \"later\" \"also_later\" ]\n"
+		"MakeNamedMaterial \"later\" \"string type\" [ \"diffuse\" ]\n"
+		"MakeNamedMaterial \"also_later\" \"string type\" [ \"conductor\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 3u);
+	const Material &mix = s.materials[0];
+	EXPECT_EQ(mix.kind, MaterialKind::Mix);
+	ASSERT_GE(mix.mixMaterialA, 0);
+	ASSERT_GE(mix.mixMaterialB, 0);
+	EXPECT_EQ(s.materials[mix.mixMaterialA].kind, MaterialKind::Diffuse);
+	EXPECT_EQ(s.materials[mix.mixMaterialB].kind, MaterialKind::Conductor);
+}
+
+TEST(FlattenMaterialTest, MixAmountDefaultsToOneHalf) {
+	const FlatScene s = flattenSource(
+		"MakeNamedMaterial \"a\" \"string type\" [ \"diffuse\" ]\n"
+		"MakeNamedMaterial \"b\" \"string type\" [ \"diffuse\" ]\n"
+		"Material \"mix\" \"string materials\" [ \"a\" \"b\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 3u);
+	EXPECT_DOUBLE_EQ(s.materials[2].mixWeight, 0.5);
+}
+
+TEST(FlattenMaterialTest, MixWithAnUnknownNameFallsBackToDiffuseAndWarns) {
+	const FlatScene s = flattenSource(
+		"MakeNamedMaterial \"a\" \"string type\" [ \"diffuse\" ]\n"
+		"Material \"mix\" \"string materials\" [ \"a\" \"does_not_exist\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 2u);
+	EXPECT_EQ(s.materials[1].kind, MaterialKind::Unsupported);
+	EXPECT_TRUE(warnedAbout(s, "mix"));
+}
+
+TEST(FlattenMaterialTest, MixWithFewerThanTwoNamesFallsBackToDiffuseAndWarns) {
+	const FlatScene s = flattenSource(
+		"MakeNamedMaterial \"a\" \"string type\" [ \"diffuse\" ]\n"
+		"Material \"mix\" \"string materials\" [ \"a\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 2u);
+	EXPECT_EQ(s.materials[1].kind, MaterialKind::Unsupported);
+	EXPECT_TRUE(warnedAbout(s, "mix"));
+}
+
+// ---------------------------------------------------------------------------
 // Focus distance
 // ---------------------------------------------------------------------------
 // focusDistanceFor() exists because pbrt's "no depth of field" default is the
@@ -603,12 +680,188 @@ TEST(FlattenInfiniteLightTest, OnlyTheLastInfiniteLightWins) {
 }
 
 TEST(FlattenInfiniteLightTest, OtherLightKindsAreStillDroppedWithAWarning) {
-	// Distant/point/spot are not carried through - only "infinite" is worth
-	// the extra plumbing (see InfiniteLight's own comment on why).
+	// point/spot/distant/goniometric/projection all now carry through (see
+	// the FlattenPunctualLightTest section below) - only a genuinely unknown
+	// kind still hits this fallback.
 	const FlatScene s = flattenSource(
-		"LightSource \"point\" \"rgb I\" [ 1 1 1 ]\n");
+		"LightSource \"bogus\" \"rgb I\" [ 1 1 1 ]\n");
 	EXPECT_FALSE(s.infiniteLight.present);
-	EXPECT_TRUE(warnedAbout(s, "point"));
+	EXPECT_TRUE(s.punctualLights.empty());
+	EXPECT_TRUE(warnedAbout(s, "bogus"));
+}
+
+// ===========================================================================
+// LightSource "point"/"spot"/"distant"/"goniometric"/"projection"
+// ===========================================================================
+// pbrt-v4's five punctual (delta-distribution) light kinds. Rendering support
+// for all five already exists on both backends, proven by this codebase's own
+// C2-C6 showcase scenes (scenes_advanced.h) - these tests pin the
+// parsing/bridging half: parameter defaults, the from/to -> position/
+// direction derivation, and that the CTM is honoured the same way
+// InfiniteLight::xform already is.
+
+TEST(FlattenPunctualLightTest, PointLightReadsPositionIntensityAndScale) {
+	const FlatScene s = flattenSource(
+		"LightSource \"point\" \"point3 from\" [ 1 2 3 ] \"rgb I\" [ 0.5 0.6 0.7 ] "
+		"\"float scale\" [ 10 ]\n");
+	ASSERT_EQ(s.punctualLights.size(), 1u);
+	const PunctualLight &pl = s.punctualLights[0];
+	EXPECT_EQ(pl.kind, PunctualLightKind::Point);
+	EXPECT_DOUBLE_EQ(pl.pos[0], 1.0);
+	EXPECT_DOUBLE_EQ(pl.pos[1], 2.0);
+	EXPECT_DOUBLE_EQ(pl.pos[2], 3.0);
+	EXPECT_DOUBLE_EQ(pl.intensity[0], 0.5);
+	EXPECT_DOUBLE_EQ(pl.intensity[1], 0.6);
+	EXPECT_DOUBLE_EQ(pl.intensity[2], 0.7);
+	EXPECT_DOUBLE_EQ(pl.scale, 10.0);
+}
+
+TEST(FlattenPunctualLightTest, PointLightDefaultsMatchPbrt) {
+	const FlatScene s = flattenSource("LightSource \"point\"\n");
+	ASSERT_EQ(s.punctualLights.size(), 1u);
+	const PunctualLight &pl = s.punctualLights[0];
+	EXPECT_DOUBLE_EQ(pl.pos[0], 0.0);
+	EXPECT_DOUBLE_EQ(pl.pos[1], 0.0);
+	EXPECT_DOUBLE_EQ(pl.pos[2], 0.0);
+	EXPECT_DOUBLE_EQ(pl.intensity[0], 1.0);
+	EXPECT_DOUBLE_EQ(pl.scale, 1.0);
+}
+
+TEST(FlattenPunctualLightTest, PointLightPositionHonoursTheCtm) {
+	// Same guard InfiniteLight's own RotationIsCarriedThroughInTheXform test
+	// makes: a light's placement dropped the CTM used to render in the wrong
+	// spot with nothing on screen to explain why.
+	const FlatScene s = flattenSource(
+		"Translate 10 20 30\nLightSource \"point\"\n");
+	ASSERT_EQ(s.punctualLights.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.punctualLights[0].pos[0], 10.0);
+	EXPECT_DOUBLE_EQ(s.punctualLights[0].pos[1], 20.0);
+	EXPECT_DOUBLE_EQ(s.punctualLights[0].pos[2], 30.0);
+}
+
+TEST(FlattenPunctualLightTest, MultiplePunctualLightsAreAllKept) {
+	// Unlike "infinite", where only the last one wins (see
+	// FlattenInfiniteLightTest::OnlyTheLastInfiniteLightWins), a scene with
+	// three spotlights genuinely wants all three.
+	const FlatScene s = flattenSource(
+		"LightSource \"point\"\nLightSource \"point\"\nLightSource \"point\"\n");
+	EXPECT_EQ(s.punctualLights.size(), 3u);
+}
+
+TEST(FlattenPunctualLightTest, SpotLightDerivesAxisFromFromAndTo) {
+	const FlatScene s = flattenSource(
+		"LightSource \"spot\" \"point3 from\" [ 0 0 0 ] \"point3 to\" [ 0 0 5 ] "
+		"\"float coneangle\" [ 40 ] \"float conedeltaangle\" [ 10 ]\n");
+	ASSERT_EQ(s.punctualLights.size(), 1u);
+	const PunctualLight &pl = s.punctualLights[0];
+	EXPECT_EQ(pl.kind, PunctualLightKind::Spot);
+	EXPECT_DOUBLE_EQ(pl.pos[0], 0.0);
+	EXPECT_DOUBLE_EQ(pl.pos[1], 0.0);
+	EXPECT_DOUBLE_EQ(pl.pos[2], 0.0);
+	EXPECT_NEAR(pl.dir[0], 0.0, 1e-9);
+	EXPECT_NEAR(pl.dir[1], 0.0, 1e-9);
+	EXPECT_NEAR(pl.dir[2], 1.0, 1e-9);
+	EXPECT_DOUBLE_EQ(pl.coneAngleDeg, 40.0);
+	EXPECT_DOUBLE_EQ(pl.falloffStartAngleDeg, 30.0);   // coneangle - conedeltaangle
+}
+
+TEST(FlattenPunctualLightTest, SpotLightDefaultConeMatchesPbrt) {
+	const FlatScene s = flattenSource("LightSource \"spot\"\n");
+	ASSERT_EQ(s.punctualLights.size(), 1u);
+	const PunctualLight &pl = s.punctualLights[0];
+	EXPECT_DOUBLE_EQ(pl.coneAngleDeg, 30.0);
+	EXPECT_DOUBLE_EQ(pl.falloffStartAngleDeg, 25.0);   // 30 - 5, pbrt-v4's own default delta
+	// Default "to" is (0,0,1): the axis points straight down +z.
+	EXPECT_NEAR(pl.dir[2], 1.0, 1e-9);
+}
+
+TEST(FlattenPunctualLightTest, SpotLightFalloffStartNeverGoesNegative) {
+	// conedeltaangle larger than coneangle is a malformed scene, not a
+	// licence to hand SpotLightData a negative angle.
+	const FlatScene s = flattenSource(
+		"LightSource \"spot\" \"float coneangle\" [ 10 ] \"float conedeltaangle\" [ 90 ]\n");
+	ASSERT_EQ(s.punctualLights.size(), 1u);
+	EXPECT_GE(s.punctualLights[0].falloffStartAngleDeg, 0.0);
+}
+
+TEST(FlattenPunctualLightTest, DistantLightPointsFromTowardFrom) {
+	// dir must be `wi` (toward the light) - see PunctualLight::dir's own
+	// comment. With "from" above "to", the light sits in +y, so wi should
+	// point in +y too.
+	const FlatScene s = flattenSource(
+		"LightSource \"distant\" \"point3 from\" [ 0 10 0 ] \"point3 to\" [ 0 0 0 ] "
+		"\"rgb L\" [ 2 2 2 ]\n");
+	ASSERT_EQ(s.punctualLights.size(), 1u);
+	const PunctualLight &pl = s.punctualLights[0];
+	EXPECT_EQ(pl.kind, PunctualLightKind::Distant);
+	EXPECT_NEAR(pl.dir[0], 0.0, 1e-9);
+	EXPECT_NEAR(pl.dir[1], 1.0, 1e-9);
+	EXPECT_NEAR(pl.dir[2], 0.0, 1e-9);
+	EXPECT_DOUBLE_EQ(pl.intensity[0], 2.0);
+}
+
+TEST(FlattenPunctualLightTest, DistantLightDefaultDirectionMatchesPbrt) {
+	// Default from=(0,0,0), to=(0,0,1): the light travels in +z, so wi
+	// (toward the light) is -z.
+	const FlatScene s = flattenSource("LightSource \"distant\"\n");
+	ASSERT_EQ(s.punctualLights.size(), 1u);
+	EXPECT_NEAR(s.punctualLights[0].dir[2], -1.0, 1e-9);
+}
+
+TEST(FlattenPunctualLightTest, GoniometricLightWithNoFilenameIsIsotropicAndUnwarned) {
+	const FlatScene s = flattenSource(
+		"LightSource \"goniometric\" \"rgb I\" [ 3 3 3 ] \"float scale\" [ 5 ]\n");
+	ASSERT_EQ(s.punctualLights.size(), 1u);
+	const PunctualLight &pl = s.punctualLights[0];
+	EXPECT_EQ(pl.kind, PunctualLightKind::Goniometric);
+	EXPECT_DOUBLE_EQ(pl.intensity[0], 3.0);
+	EXPECT_DOUBLE_EQ(pl.scale, 5.0);
+	EXPECT_FALSE(pl.hadImageFilename);
+	EXPECT_FALSE(warnedAbout(s, "goniometric"));
+}
+
+TEST(FlattenPunctualLightTest, GoniometricLightWithFilenameWarnsAndFallsBackToIsotropic) {
+	const FlatScene s = flattenSource(
+		"LightSource \"goniometric\" \"string filename\" [ \"profile.exr\" ]\n");
+	ASSERT_EQ(s.punctualLights.size(), 1u);
+	EXPECT_TRUE(s.punctualLights[0].hadImageFilename);
+	EXPECT_TRUE(warnedAbout(s, "goniometric"));
+	EXPECT_TRUE(warnedAbout(s, "profile.exr"));
+}
+
+TEST(FlattenPunctualLightTest, GoniometricLightRotationIsCarriedThroughInWorldToLight) {
+	const FlatScene s = flattenSource(
+		"Rotate 90 0 1 0\nLightSource \"goniometric\"\n");
+	ASSERT_EQ(s.punctualLights.size(), 1u);
+	const double *w2l = s.punctualLights[0].worldToLight;
+	const double identity[9] = {1,0,0, 0,1,0, 0,0,1};
+	bool differsFromIdentity = false;
+	for (int i = 0; i < 9; ++i)
+		if (std::abs(w2l[i] - identity[i]) > 1e-9) differsFromIdentity = true;
+	EXPECT_TRUE(differsFromIdentity);
+}
+
+TEST(FlattenPunctualLightTest, ProjectionLightReadsFovAndScale) {
+	const FlatScene s = flattenSource(
+		"LightSource \"projection\" \"float fov\" [ 25 ] \"float scale\" [ 8 ] "
+		"\"string filename\" [ \"slide.exr\" ]\n");
+	ASSERT_EQ(s.punctualLights.size(), 1u);
+	const PunctualLight &pl = s.punctualLights[0];
+	EXPECT_EQ(pl.kind, PunctualLightKind::Projection);
+	EXPECT_DOUBLE_EQ(pl.fovDeg, 25.0);
+	EXPECT_DOUBLE_EQ(pl.scale, 8.0);
+	EXPECT_TRUE(pl.hadImageFilename);
+	EXPECT_TRUE(warnedAbout(s, "projection"));
+}
+
+TEST(FlattenPunctualLightTest, ProjectionLightDefaultFovMatchesPbrt) {
+	const FlatScene s = flattenSource("LightSource \"projection\"\n");
+	ASSERT_EQ(s.punctualLights.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.punctualLights[0].fovDeg, 90.0);
+	// pbrt-v4 requires "filename"; a scene without one still renders (as a
+	// uniform beam) rather than being dropped outright, but is still
+	// worth a warning since it is itself malformed.
+	EXPECT_TRUE(warnedAbout(s, "projection"));
 }
 
 // ===========================================================================

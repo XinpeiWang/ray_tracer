@@ -213,6 +213,11 @@ Loaded loadAndAim(const std::string &text, int spp) {
 	// geometry in every loaded scene.
 	out.cam.defocus_angle = flat.camera.aperture;
 	out.cam.focus_dist = pbrt_flatten::focusDistanceFor(flat.camera);
+	// nullptr (no punctual lights) unless the scene declared LightSource
+	// point/spot/distant/goniometric/projection - same wiring
+	// cpu_interface.cpp does for every other pbrt scene (see scene_registry.h's
+	// build_punct). Harmless for the tests above, which have none.
+	out.cam.punct_lights = out.built.punctLights;
 	out.cam.initialize();
 	return out;
 }
@@ -414,4 +419,158 @@ TEST(PbrtSceneRender, MetalSphereIsNotAHoleInTheOpenCornellBox) {
 		   "sphere are non-zero - it is rendering as a hole, not a mirror";
 	EXPECT_GT(brightest, 0.05)
 		<< "nothing in the sphere reflects the lit walls beside it";
+}
+
+// ---------------------------------------------------------------------------
+// LightSource point/spot/distant/goniometric/projection: end-to-end
+//
+// Everything above proves AreaLightSource works end-to-end. These are the
+// same shape of test for the five punctual (delta) light kinds Priority 1
+// added: a box with NO emissive geometry at all, lit purely by one
+// LightSource directive - if flatten()'s parsing, pbrt_cpu_builder.h's
+// wiring, or camera.h's punct_lights NEE block disagreed about any of these,
+// the box renders black and every test below catches it exactly the way
+// RemovingTheLightMakesTheFrameBlack catches a missing area light.
+//
+// The box itself is kClosedBoxMetal's wall layout with no ceiling light quad
+// and a plain diffuse sphere instead of a conductor, so "is it lit" is a
+// direct, unambiguous read rather than something that also depends on a
+// mirror finding something to reflect.
+// ---------------------------------------------------------------------------
+
+const char *kPunctualLightBoxHeader = R"PBRT(
+LookAt 0 1 -4    0 1 0    0 1 0
+Camera "perspective" "float fov" [ 50 ]
+Film "rgb" "integer xresolution" [ 32 ] "integer yresolution" [ 32 ]
+WorldBegin
+
+Material "diffuse" "rgb reflectance" [ 0.75 0.75 0.75 ]
+# floor, back wall, ceiling, both side walls, and a wall behind the camera -
+# fully closed, so a light anywhere inside always has something to light.
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -2 0 -6   2 0 -6   2 0 2   -2 0 2 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -2 0 2   2 0 2   2 3 2   -2 3 2 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -2 3 -6   2 3 -6   2 3 2   -2 3 2 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -2 0 -6   -2 0 2   -2 3 2   -2 3 -6 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 2 0 -6   2 0 2   2 3 2   2 3 -6 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -2 0 -6   2 0 -6   2 3 -6   -2 3 -6 ]
+
+# A sphere sitting on the floor, in frame.
+Shape "sphere" "float radius" [ 0.5 ]
+)PBRT";
+
+// Renders `lightDirective` (a single LightSource line) inside the closed box
+// above and returns whether the frame is lit. Shared by all five kinds
+// below so a failure's cause is "this one light kind" rather than a copy-
+// pasted assertion block silently drifting between them.
+FrameStats renderPunctualLightBox(const std::string &lightDirective, int spp) {
+	const std::string text = std::string(kPunctualLightBoxHeader) + lightDirective + "\n";
+	Loaded l = loadAndAim(text, spp);
+	EXPECT_TRUE(l.built.lights->objects.empty())
+		<< "this scene has no AreaLightSource - anything in the light list "
+		   "would mean geometry was misclassified as emissive";
+	// EXPECT rather than ASSERT: this function returns a value, and ASSERT_*
+	// expands to a bare `return;`, which does not typecheck against
+	// FrameStats. A null punctLights still safely renders (as an unlit black
+	// box) below, so the meanLuminance/litPixels checks each caller makes
+	// catch this failure mode too - just with a less specific message.
+	EXPECT_NE(l.built.punctLights, nullptr)
+		<< "the LightSource directive was not recognised as a punctual light";
+
+	const power_light_list lights(*l.built.lights);
+	return renderStats(*l.built.world, lights, l.cam, spp);
+}
+
+TEST(PbrtPunctualLightRender, PointLightLitsTheBox) {
+	const FrameStats st = renderPunctualLightBox(
+		"LightSource \"point\" \"point3 from\" [ 0 2.5 0 ] \"rgb I\" [ 1 1 1 ] "
+		"\"float scale\" [ 40 ]", 8);
+	EXPECT_TRUE(st.allFinite);
+	EXPECT_GT(st.meanLuminance, 0.01)
+		<< "the box is essentially black under a point light overhead";
+	EXPECT_GT(st.litPixels, 100);
+}
+
+TEST(PbrtPunctualLightRender, SpotLightLitsTheBox) {
+	// CTM = Translate * Rotate, and pbrt applies the LAST-written transform
+	// to a point FIRST (gs_.ctm = gs_.ctm * newTransform in pbrt_scene.h) -
+	// so this rotates the light's default (0,0,1) aim 90 degrees about x
+	// BEFORE translating the whole thing up to y=2.5, turning "look toward
+	// +z" into "look toward -y": straight down at the sphere/floor below.
+	const FrameStats st = renderPunctualLightBox(
+		"Translate 0 2.5 0\nRotate 90 1 0 0\n"
+		"LightSource \"spot\" \"rgb I\" [ 1 1 1 ] \"float scale\" [ 60 ] "
+		"\"float coneangle\" [ 60 ]", 8);
+	EXPECT_TRUE(st.allFinite);
+	EXPECT_GT(st.meanLuminance, 0.01)
+		<< "the box is essentially black under an overhead spotlight";
+	EXPECT_GT(st.litPixels, 50);
+}
+
+// Distant is the one punctual kind renderPunctualLightBox's fully-closed six-
+// wall room cannot exercise: its shadow ray has t_max = infinity (see
+// distant_light_obj::sample_direct(), punctual_light_objects.h), and a ray
+// cast in ANY direction from inside a sealed room hits a wall before
+// infinity - a real physical fact (a sun has no way into a room with no
+// windows), not a bug. This reuses kMiniCornell's OPEN layout instead (floor
+// and back wall only - four full walls short of renderPunctualLightBox's
+// room), the same way scenes_advanced.h's own build_distant_light_punct()
+// needs cornell_walls_no_light()'s open front for the identical reason.
+TEST(PbrtPunctualLightRender, DistantLightLitsTheBox) {
+	std::string text = kMiniCornell;
+	// Strip the emissive ceiling quad (kMiniCornell's own light) so the only
+	// illumination in this render comes from the LightSource below - same
+	// removal RemovingTheLightMakesTheFrameBlack does, reused here to turn a
+	// lit fixture into an unlit one rather than authoring a third variant.
+	const std::string tag = "AreaLightSource \"diffuse\" \"rgb L\" [ 12 12 12 ]";
+	const std::size_t at = text.find(tag);
+	ASSERT_NE(at, std::string::npos);
+	text.erase(at, tag.size());
+	text += "LightSource \"distant\" \"point3 from\" [ 0 10 -2 ] \"point3 to\" [ 0 0 0 ] "
+			"\"rgb L\" [ 3 3 3 ]\n";
+
+	Loaded l = loadAndAim(text, 8);
+	EXPECT_TRUE(l.built.lights->objects.empty());
+	EXPECT_NE(l.built.punctLights, nullptr);
+	const power_light_list lights(*l.built.lights);
+	const FrameStats st = renderStats(*l.built.world, lights, l.cam, 8);
+
+	EXPECT_TRUE(st.allFinite);
+	EXPECT_GT(st.meanLuminance, 0.01)
+		<< "the box is essentially black under a distant (directional) light";
+	EXPECT_GT(st.litPixels, 100);
+}
+
+TEST(PbrtPunctualLightRender, GoniometricLightLitsTheBox) {
+	// No "filename" - falls back to an isotropic profile (see
+	// FlattenPunctualLightTest::GoniometricLightWithNoFilenameIsIsotropicAndUnwarned,
+	// pbrt_flatten_tests.cpp) - so this should light the box exactly like the
+	// plain point-light test above.
+	const FrameStats st = renderPunctualLightBox(
+		"Translate 0 2.5 0\n"
+		"LightSource \"goniometric\" \"rgb I\" [ 1 1 1 ] \"float scale\" [ 40 ]", 8);
+	EXPECT_TRUE(st.allFinite);
+	EXPECT_GT(st.meanLuminance, 0.01)
+		<< "the box is essentially black under an (isotropic-fallback) "
+		   "goniometric light";
+	EXPECT_GT(st.litPixels, 100);
+}
+
+TEST(PbrtPunctualLightRender, ProjectionLightLitsTheBox) {
+	// No "filename" either - falls back to a uniform white beam (see
+	// flatten()'s own warning for this case) - aimed from the camera's
+	// position straight down +z at the sphere/back wall.
+	const FrameStats st = renderPunctualLightBox(
+		"Translate 0 1 -4\n"
+		"LightSource \"projection\" \"float scale\" [ 30 ] \"float fov\" [ 60 ]", 8);
+	EXPECT_TRUE(st.allFinite);
+	EXPECT_GT(st.meanLuminance, 0.005)
+		<< "the box is essentially black under a (uniform-fallback) "
+		   "projection light aimed into it";
+	EXPECT_GT(st.litPixels, 30);
 }

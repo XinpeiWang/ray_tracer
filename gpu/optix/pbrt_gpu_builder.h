@@ -23,6 +23,7 @@
 // which cost real brightness and noise on GPU with nothing on screen to
 // explain it.
 
+#include <cmath>
 #include <cstddef>
 #include <map>
 #include <string>
@@ -246,13 +247,16 @@ inline int getOrBuildMeasuredTable(const std::string& resolvedPath, SceneData& o
 // renders as two different scenes depending on the backend.
 //
 // `out`/`bssrdfTableCache` are only touched by the Subsurface case below
-// (building/deduping this material's BSSRDFTable); every other material kind
-// ignores them.
+// (building/deduping this material's BSSRDFTable); `allMaterials` only by
+// Mix (looking up its two sub-materials' own base colours - see that case's
+// own comment for why this stops at a colour blend rather than a real
+// recursive MaterialData build); every other material kind ignores both.
 inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 								 const pbrt_flatten::Emission *emission,
 								 SceneData &out,
 								 std::map<std::pair<double,double>, int> &bssrdfTableCache,
-								 std::map<std::string, int> &measuredTableCache) {
+								 std::map<std::string, int> &measuredTableCache,
+								 const std::vector<pbrt_flatten::Material> &allMaterials = {}) {
 	MaterialData d = {};
 	d.textureIdx = -1;
 
@@ -364,6 +368,34 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		}
 		break;
 	}
+	// GPU has no material-blending machinery (mix_material's own header
+	// comment, material_pbrt.h, already says the same for the CPU class this
+	// mirrors - see MaterialKind::Mix's own comment in pbrt_flatten.h). This
+	// renders as flat Lambertian using the WEIGHTED AVERAGE of the two
+	// referenced sub-materials' own base colours (mixWeight = probability of
+	// B winning at any given shading point on CPU - matches mix_material's
+	// own convention) rather than the generic mid-grey every other
+	// Unsupported material still falls back to - a coloured approximation of
+	// the blend, not the real per-ray stochastic pick pbrt_cpu_builder.h's
+	// recursive makeMaterial() does. Falls back to mid-grey (d.albedo
+	// already holds m.color, generically assigned above) only if the sub-
+	// materials somehow are not resolvable here (should not happen:
+	// flatten() already downgraded an unresolvable mix to Unsupported
+	// before this MaterialKind is ever reached - see there).
+	case pbrt_flatten::MaterialKind::Mix: {
+		d.type = MaterialType::Lambertian;
+		if (m.mixMaterialA >= 0 && static_cast<std::size_t>(m.mixMaterialA) < allMaterials.size()
+			&& m.mixMaterialB >= 0 && static_cast<std::size_t>(m.mixMaterialB) < allMaterials.size()) {
+			const pbrt_flatten::Material &ma = allMaterials[static_cast<std::size_t>(m.mixMaterialA)];
+			const pbrt_flatten::Material &mb = allMaterials[static_cast<std::size_t>(m.mixMaterialB)];
+			const double w = m.mixWeight;
+			d.albedo = make_float3(
+				static_cast<float>(ma.color[0] * (1.0 - w) + mb.color[0] * w),
+				static_cast<float>(ma.color[1] * (1.0 - w) + mb.color[1] * w),
+				static_cast<float>(ma.color[2] * (1.0 - w) + mb.color[2] * w));
+		}
+		break;
+	}
 	}
 	return d;
 }
@@ -383,6 +415,7 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 	out.materials.clear();
 	out.lightIndices.clear();
 	out.lightKinds.clear();
+	out.punctualLights.clear();
 
 	// One MaterialData per distinct (material, emission) pair, exactly as the
 	// CPU builder caches them - a mesh with a thousand faces sharing one
@@ -412,7 +445,7 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 				: kDefault;
 
 		const int idx = static_cast<int>(out.materials.size());
-		out.materials.push_back(makeMaterial(m, em, out, bssrdfTableCache, measuredTableCache));
+		out.materials.push_back(makeMaterial(m, em, out, bssrdfTableCache, measuredTableCache, scene.materials));
 		cache.emplace(key, idx);
 		return idx;
 	};
@@ -675,6 +708,102 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 				static_cast<float>(sky.L[1] * sky.scale),
 				static_cast<float>(sky.L[2] * sky.scale));
 		}
+	}
+
+	// ---- punctual (delta) lights -------------------------------------------
+	// LightSource point/spot/distant/goniometric/projection - one
+	// PunctualLightGPU per parsed pbrt_flatten::PunctualLight. Mirrors
+	// scene_builder.cpp's own build_spotlight_cornell_gpu() and its four
+	// siblings (scenes 25-29) field for field - same PunctualLightKind
+	// tags, same struct layout - just filled from parsed values instead of
+	// hardcoded ones. optix_renderer.cpp uploads whatever ends up in
+	// SceneData::punctualLights generically (it does not know or care
+	// whether a scene is one of the hand-built C2-C6 showcases or a loaded
+	// .pbrt file), so nothing past this point needs touching for either GPU
+	// backend to render these.
+	constexpr double kDegToRad = 3.14159265358979323846 / 180.0;
+	for (const pbrt_flatten::PunctualLight &pl : scene.punctualLights) {
+		PunctualLightGPU light{};
+		switch (pl.kind) {
+		case pbrt_flatten::PunctualLightKind::Point:
+			light.kind = PunctualLightKind::Point;
+			light.point.pos_x = static_cast<float>(pl.pos[0]);
+			light.point.pos_y = static_cast<float>(pl.pos[1]);
+			light.point.pos_z = static_cast<float>(pl.pos[2]);
+			light.point.ir = static_cast<float>(pl.intensity[0]);
+			light.point.ig = static_cast<float>(pl.intensity[1]);
+			light.point.ib = static_cast<float>(pl.intensity[2]);
+			light.point.scale = static_cast<float>(pl.scale);
+			break;
+		case pbrt_flatten::PunctualLightKind::Spot:
+			light.kind = PunctualLightKind::Spot;
+			light.spot.pos_x = static_cast<float>(pl.pos[0]);
+			light.spot.pos_y = static_cast<float>(pl.pos[1]);
+			light.spot.pos_z = static_cast<float>(pl.pos[2]);
+			light.spot.dir_x = static_cast<float>(pl.dir[0]);
+			light.spot.dir_y = static_cast<float>(pl.dir[1]);
+			light.spot.dir_z = static_cast<float>(pl.dir[2]);
+			light.spot.ir = static_cast<float>(pl.intensity[0]);
+			light.spot.ig = static_cast<float>(pl.intensity[1]);
+			light.spot.ib = static_cast<float>(pl.intensity[2]);
+			light.spot.scale = static_cast<float>(pl.scale);
+			light.spot.cos_falloff_start =
+				static_cast<float>(std::cos(pl.falloffStartAngleDeg * kDegToRad));
+			light.spot.cos_falloff_end =
+				static_cast<float>(std::cos(pl.coneAngleDeg * kDegToRad));
+			break;
+		case pbrt_flatten::PunctualLightKind::Distant:
+			light.kind = PunctualLightKind::Distant;
+			light.distant.dir_x = static_cast<float>(pl.dir[0]);
+			light.distant.dir_y = static_cast<float>(pl.dir[1]);
+			light.distant.dir_z = static_cast<float>(pl.dir[2]);
+			light.distant.ir = static_cast<float>(pl.intensity[0]);
+			light.distant.ig = static_cast<float>(pl.intensity[1]);
+			light.distant.ib = static_cast<float>(pl.intensity[2]);
+			light.distant.scale = static_cast<float>(pl.scale);
+			light.distant.scene_radius = static_cast<float>(pl.sceneRadius);
+			break;
+		case pbrt_flatten::PunctualLightKind::Goniometric: {
+			light.kind = PunctualLightKind::Goniometric;
+			GoniometricLightGPU &g = light.gonio;
+			g.pos_x = static_cast<float>(pl.pos[0]);
+			g.pos_y = static_cast<float>(pl.pos[1]);
+			g.pos_z = static_cast<float>(pl.pos[2]);
+			for (int c = 0; c < 9; ++c) g.world_to_light[c] = static_cast<float>(pl.worldToLight[c]);
+			g.ir = static_cast<float>(pl.intensity[0]);
+			g.ig = static_cast<float>(pl.intensity[1]);
+			g.ib = static_cast<float>(pl.intensity[2]);
+			g.scale = static_cast<float>(pl.scale);
+			// Uniform (isotropic) image - see pbrt_flatten::PunctualLight::
+			// hadImageFilename's comment for why no real IES profile is ever
+			// decoded. Matches pbrt_cpu_builder.h's own kUniformImage.
+			g.nu = 4; g.nv = 4;
+			for (int i = 0; i < g.nu * g.nv; ++i) g.image[i] = 1.0f;
+			break;
+		}
+		case pbrt_flatten::PunctualLightKind::Projection: {
+			light.kind = PunctualLightKind::Projection;
+			ProjectionLightGPU &pr = light.proj;
+			pr.pos_x = static_cast<float>(pl.pos[0]);
+			pr.pos_y = static_cast<float>(pl.pos[1]);
+			pr.pos_z = static_cast<float>(pl.pos[2]);
+			for (int c = 0; c < 9; ++c) pr.world_to_light[c] = static_cast<float>(pl.worldToLight[c]);
+			pr.scale = static_cast<float>(pl.scale);
+			pr.hither = 1e-3f;
+			// Uniform white slide - see pbrt_flatten::PunctualLight::
+			// hadImageFilename's comment for why no real projected image is
+			// ever decoded. Matches pbrt_cpu_builder.h's own kUniformSlide
+			// (2x2, aspect 1 so sb_xmin/xmax below match
+			// ProjectionLight<T>::make's own aspect>=1 branch exactly).
+			pr.nx = 2; pr.ny = 2;
+			pr.sb_xmin = -1.0f; pr.sb_xmax = 1.0f;
+			pr.sb_ymin = -1.0f; pr.sb_ymax = 1.0f;
+			pr.inv_tan = 1.0f / static_cast<float>(std::tan(pl.fovDeg * kDegToRad * 0.5));
+			for (int i = 0; i < pr.nx * pr.ny * 3; ++i) pr.image_rgb[i] = 1.0f;
+			break;
+		}
+		}
+		out.punctualLights.push_back(light);
 	}
 
 	return stats;

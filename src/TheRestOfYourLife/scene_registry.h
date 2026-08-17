@@ -201,7 +201,15 @@ inline SceneDescriptor build_instanced_spheres_descriptor() {
         pbrt_cpu::BuildResult& b = ensure();
         return b.sky;
     };
-    s.build_punct = nullptr;
+    // instanced-spheres.pbrt has no LightSource point/spot/distant/
+    // goniometric/projection directives today, but this is the same
+    // ensure()-backed accessor build_sky uses just above rather than a
+    // hardcoded nullptr, so a future edit to that file picks up its
+    // punctual lights without anyone having to remember to wire this too.
+    s.build_punct = []() -> std::shared_ptr<punctual_light_list> {
+        pbrt_cpu::BuildResult& b = ensure();
+        return b.punctLights;
+    };
     // The file's Camera directive is plain perspective, so no non-default
     // setup_camera handling (ortho/spherical/realistic) is needed here,
     // unlike pbrt_scene_registry::append()'s generic per-file version.
@@ -1497,7 +1505,13 @@ inline void append(std::vector<SceneDescriptor>& registry) {
             pbrt_cpu::BuildResult& b = ensure();
             return b.sky;
         };
-        s.build_punct = nullptr;
+        // nullptr (no punctual lights) unless the file declared LightSource
+        // point/spot/distant/goniometric/projection - see
+        // pbrt_cpu_builder.h's build() for how b.punctLights gets populated.
+        s.build_punct = [ensure]() -> std::shared_ptr<punctual_light_list> {
+            pbrt_cpu::BuildResult& b = ensure();
+            return b.punctLights;
+        };
         // CameraConfig cannot express an up vector, but pbrt's LookAt can, and
         // a scene shot in Z-up renders sideways without this. setup_camera
         // runs after every config field is applied, so it is the right place.
