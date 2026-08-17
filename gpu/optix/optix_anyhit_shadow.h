@@ -32,13 +32,34 @@ extern "C" __global__ void __anyhit__shadow_sphere() {
 	// a light on the far side of one of these bounding spheres would be
 	// wrongly treated as fully occluded, rather than just passing through
 	// unattenuated.
+	//
+	// MaterialType::DielectricMedium belongs in this list for the identical
+	// reason, and its omission was a real bug (found while adding real NEE
+	// to that material's medium-interior phase-scatter case - see
+	// optix_intersection_sphere.h's DielectricMedium comment): CPU's
+	// equivalent two-hittable construction (an outer `class dielectric`
+	// shell wrapping a `constant_medium` fill, src/TheRestOfYourLife/
+	// scenes_advanced.h build_subsurface_slab()) is non-occluding for
+	// shadow rays on BOTH layers (dielectric::is_shadow_transmissive() and
+	// hg_phase_material::is_shadow_transmissive(), material_simple.h /
+	// constant_medium.h, both return true) - so CPU shadow rays pass
+	// straight through the wax slab/jade sphere entirely. Without
+	// DielectricMedium here, GPU's shadow any-hit instead treated that same
+	// sphere/box as a fully opaque occluder, so EVERY shadow ray whose path
+	// crossed the slab/jade sphere - not just the new phase-scatter NEE's
+	// own shadow rays, but any other surface's NEE shadow ray that happened
+	// to graze it too - was wrongly reported occluded. This alone made the
+	// phase-scatter NEE fix above measure as a no-op (every one of its
+	// shadow rays died right here, at the medium's own boundary, before
+	// ever reaching the light).
 	if (mat.type == MaterialType::Dielectric ||
 		mat.type == MaterialType::RoughDielectric ||
 		mat.type == MaterialType::ThinDielectric ||
 		mat.type == MaterialType::DiffuseTransmission ||
 		mat.type == MaterialType::Medium ||
 		mat.type == MaterialType::CloudMedium ||
-		mat.type == MaterialType::RgbGridMedium) {
+		mat.type == MaterialType::RgbGridMedium ||
+		mat.type == MaterialType::DielectricMedium) {
 		optixIgnoreIntersection();  // continue traversal (not an occluder)
 		return;
 	}

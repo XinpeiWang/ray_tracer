@@ -86,6 +86,31 @@ __device__ __forceinline__ float3 sample_henyey_greenstein(const float3& wo, flo
 	return normalize(sin_theta * cosf(phi) * t1 + sin_theta * sinf(phi) * t2 + cos_theta * wo);
 }
 
+// Henyey-Greenstein phase function VALUE p(cos_theta, g) - the same quantity
+// as both the phase "BSDF" f and its own pdf (a properly normalized phase
+// function is its own perfect importance sampler, exactly like
+// src/TheRestOfYourLife/constant_medium.h's hg_phase_pdf::value() ==
+// hg_phase_material::scattering_pdf(), both of which just call
+// HenyeyGreensteinPhaseFunction<double>::p()). Hand-duplicated as a free
+// function rather than calling src/shared/volume_scattering.h's
+// HenyeyGreensteinPhaseFunction<T>::p() member function directly, matching
+// sample_henyey_greenstein()'s own reason just above (this backend's
+// recursive mega-kernel has previously stalled on CPU_GPU-tagged struct
+// member-function calls - see this project's own notes on that issue; a
+// hand-duplicated free function sidesteps it entirely, the same fix already
+// applied there).
+//
+// Used by MaterialType::DielectricMedium's medium-interior phase-scatter
+// case (optix_intersection_sphere.h) to do real NEE+MIS at that scatter
+// event - see that call site's own comment for why (closing B13's
+// CPU-vs-GPU brightness gap).
+__device__ __forceinline__ float hg_phase_value(float cos_theta, float g) {
+	float gc = fminf(0.99f, fmaxf(-0.99f, g));
+	const float inv4pi = 1.0f / (4.0f * 3.14159265358979323846f);
+	float denom = 1.0f + gc * gc + 2.0f * gc * cos_theta;
+	return inv4pi * (1.0f - gc * gc) / (denom * sqrtf(fmaxf(1e-12f, denom)));
+}
+
 // MaterialType::Hair: Marschner/Chiang fiber scattering (src/shared/
 // bxdfs_hair.h's HairBxDF<T>), using the shading normal as a fiber-tangent
 // proxy - matches src/TheRestOfYourLife/hair_material.h::scatter() exactly
