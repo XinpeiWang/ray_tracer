@@ -1705,6 +1705,13 @@ extern "C" __global__ void evaluate_materials(
 		float3 cdbitan = cross(cdn, cdtan);
 		float3 cdwi = -normalize(h.rayDir);
 		float cdwi_x = dot(cdwi, cdtan), cdwi_y = dot(cdwi, cdbitan), cdwi_z = dot(cdwi, cdn);
+		// Grazing/back-facing incoming ray: no valid local frame to sample
+		// against - matches optix_device_helpers.h's shade_material()
+		// CoatedDiffuse case (`if (cdwi_z <= 0.0f) { scattered = false; }`),
+		// missing here let a grazing-angle ray fall through to Sample_wm()
+		// with a degenerate/negative-z local direction instead of
+		// terminating the path like the recursive backend does.
+		if (cdwi_z <= 0.0f) { scattered = false; break; }
 		TrowbridgeReitz<float> cd_dist(cd_alpha, cd_alpha);
 		float cdwm_x, cdwm_y, cdwm_z;
 		cd_dist.Sample_wm(cdwi_x, cdwi_y, cdwi_z, wf_rand(seed), wf_rand(seed), cdwm_x, cdwm_y, cdwm_z);

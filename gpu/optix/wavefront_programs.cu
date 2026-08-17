@@ -482,6 +482,9 @@ extern "C" __global__ void __closesthit__wf_bilinear_patch() {
 	payload->geomType    = 2;
 	payload->hit         = true;
 	payload->mediumTFar  = 0.0f;
+	// See __closesthit__wf_quad's comment on frontFace - same missing
+	// initialization here.
+	payload->frontFace   = front_face ? 1 : 0;
 	// No texturing support for bilinear patches on either backend yet - see
 	// __closesthit__wf_quad's own comment on the same convention.
 	payload->uv_u        = 0.0f;
@@ -674,6 +677,10 @@ extern "C" __global__ void __closesthit__wf_triangle() {
 	payload->geomType    = 3;
 	payload->hit         = true;
 	payload->mediumTFar  = 0.0f;
+	// See __closesthit__wf_quad's comment on frontFace - same missing
+	// initialization here. RoughDielectric OBJ meshes (e.g. glass triangles)
+	// are the case this actually affects.
+	payload->frontFace   = front_face ? 1 : 0;
 	payload->objNormal   = tri_dpdu;
 	payload->uv_u        = uv_u;
 	payload->uv_v        = uv_v;
@@ -807,6 +814,12 @@ extern "C" __global__ void __closesthit__wf_quad() {
 	payload->geomType    = 1;
 	payload->hit         = true;
 	payload->mediumTFar  = 0.0f;
+	// frontFace was left uninitialized here (only __closesthit__wf_sphere set
+	// it) - RoughDielectric/DielectricMedium in wavefront_kernels.cu read
+	// h.frontFace unconditionally regardless of which geometry type hit,
+	// so a quad-hit ray fed those cases garbage stack data instead of the
+	// real hit side.
+	payload->frontFace   = front_face ? 1 : 0;
 	// No per-quad UV exists on this codebase's GPU side (QuadData carries no
 	// uv0/1/2 the way TriangleData does) - matches the recursive path, which
 	// never textures a quad either (its shade_material() callers pass (0,0)
