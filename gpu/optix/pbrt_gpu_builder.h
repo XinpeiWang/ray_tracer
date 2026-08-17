@@ -240,6 +240,41 @@ inline int getOrBuildMeasuredTable(const std::string& resolvedPath, SceneData& o
 	return idx;
 }
 
+// Resolves a material's own effective flat colour for use as one side of a
+// Mix blend: `m.color` directly for every ordinary material kind, or - when
+// `m` is ITSELF a nested Mix (pbrt-v4 allows mix-of-mix) - the recursive
+// weighted average of ITS own two sub-materials' resolved colours, instead
+// of `m.color`, which a Mix-kind pbrt_flatten::Material never populates
+// (stays at the struct's generic {0.5,0.5,0.5} default - see that struct's
+// own comment). Reading `m.color` directly for a nested Mix would silently
+// blend in that placeholder grey instead of the nested mix's real colour, a
+// visible, silent CPU/GPU divergence for any scene nesting mix materials
+// (CPU's own makeMaterial() already recurses through real material objects
+// for exactly this case). Same depth cap and reasoning as CPU's
+// kMaxMixDepth - guards a cyclic/self-referential "materials" list a
+// malformed scene could produce, not a case this loader's own corpus has
+// ever needed.
+inline float3 resolveMixColor(const pbrt_flatten::Material &m,
+							  const std::vector<pbrt_flatten::Material> &allMaterials,
+							  int depth) {
+	constexpr int kMaxMixDepth = 8;
+	if (m.kind != pbrt_flatten::MaterialKind::Mix || depth >= kMaxMixDepth)
+		return make_float3(static_cast<float>(m.color[0]),
+						   static_cast<float>(m.color[1]),
+						   static_cast<float>(m.color[2]));
+	if (m.mixMaterialA < 0 || static_cast<std::size_t>(m.mixMaterialA) >= allMaterials.size()
+		|| m.mixMaterialB < 0 || static_cast<std::size_t>(m.mixMaterialB) >= allMaterials.size())
+		return make_float3(static_cast<float>(m.color[0]),
+						   static_cast<float>(m.color[1]),
+						   static_cast<float>(m.color[2]));
+	const float3 ca = resolveMixColor(allMaterials[static_cast<std::size_t>(m.mixMaterialA)], allMaterials, depth + 1);
+	const float3 cb = resolveMixColor(allMaterials[static_cast<std::size_t>(m.mixMaterialB)], allMaterials, depth + 1);
+	const float w = static_cast<float>(m.mixWeight);
+	return make_float3(ca.x * (1.0f - w) + cb.x * w,
+					   ca.y * (1.0f - w) + cb.y * w,
+					   ca.z * (1.0f - w) + cb.z * w);
+}
+
 // Mirrors pbrt_cpu_builder.h's makeMaterial() decision for decision, including
 // emission winning over the declared material - in pbrt an AreaLightSource
 // attaches to the shape, and the surface is an emitter regardless of what else
@@ -377,22 +412,26 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 	// own convention) rather than the generic mid-grey every other
 	// Unsupported material still falls back to - a coloured approximation of
 	// the blend, not the real per-ray stochastic pick pbrt_cpu_builder.h's
-	// recursive makeMaterial() does. Falls back to mid-grey (d.albedo
-	// already holds m.color, generically assigned above) only if the sub-
-	// materials somehow are not resolvable here (should not happen:
-	// flatten() already downgraded an unresolvable mix to Unsupported
-	// before this MaterialKind is ever reached - see there).
+	// recursive makeMaterial() does. Each side's colour is resolved via
+	// resolveMixColor() (not read directly off ma.color/mb.color) so a
+	// NESTED mix sub-material (pbrt-v4 allows mix-of-mix) recurses to its
+	// own real blended colour instead of silently reading the generic
+	// {0.5,0.5,0.5} placeholder a Mix-kind Material never populates. Falls
+	// back to mid-grey (d.albedo already holds m.color, generically
+	// assigned above) only if the sub-materials somehow are not resolvable
+	// here (should not happen: flatten() already downgraded an unresolvable
+	// mix to Unsupported before this MaterialKind is ever reached - see
+	// there).
 	case pbrt_flatten::MaterialKind::Mix: {
 		d.type = MaterialType::Lambertian;
 		if (m.mixMaterialA >= 0 && static_cast<std::size_t>(m.mixMaterialA) < allMaterials.size()
 			&& m.mixMaterialB >= 0 && static_cast<std::size_t>(m.mixMaterialB) < allMaterials.size()) {
-			const pbrt_flatten::Material &ma = allMaterials[static_cast<std::size_t>(m.mixMaterialA)];
-			const pbrt_flatten::Material &mb = allMaterials[static_cast<std::size_t>(m.mixMaterialB)];
-			const double w = m.mixWeight;
-			d.albedo = make_float3(
-				static_cast<float>(ma.color[0] * (1.0 - w) + mb.color[0] * w),
-				static_cast<float>(ma.color[1] * (1.0 - w) + mb.color[1] * w),
-				static_cast<float>(ma.color[2] * (1.0 - w) + mb.color[2] * w));
+			const float3 ca = resolveMixColor(allMaterials[static_cast<std::size_t>(m.mixMaterialA)], allMaterials, 1);
+			const float3 cb = resolveMixColor(allMaterials[static_cast<std::size_t>(m.mixMaterialB)], allMaterials, 1);
+			const float w = static_cast<float>(m.mixWeight);
+			d.albedo = make_float3(ca.x * (1.0f - w) + cb.x * w,
+			                       ca.y * (1.0f - w) + cb.y * w,
+			                       ca.z * (1.0f - w) + cb.z * w);
 		}
 		break;
 	}
