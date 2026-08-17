@@ -546,7 +546,13 @@ __device__ __forceinline__ bool wf_bssrdf_probe_walk(
 extern "C" __global__ void __raygen__wf_probe() {
 	const unsigned int idx = optixGetLaunchIndex().x;
 	const WorkQueue<BssrdfProbeWorkItem>& pq = wf_params.bssrdfProbeQueue;
-	if ((int)idx >= *pq.counter) return;
+	// Must also guard against pq.capacity, not just the live *pq.counter -
+	// see __raygen__wf_shadow's own version of this comment
+	// (wavefront_programs.cu) for why: WorkQueue::push() keeps incrementing
+	// the counter past a full queue even though it stops writing items[], so
+	// a queue that overflows would otherwise read pq.items[] past its
+	// cudaMalloc'd end here too.
+	if ((int)idx >= *pq.counter || (int)idx >= pq.capacity) return;
 
 	const BssrdfProbeWorkItem& item = pq.items[idx];
 	unsigned int seed = item.seed;

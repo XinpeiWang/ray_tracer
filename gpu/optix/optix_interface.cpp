@@ -130,7 +130,29 @@ extern "C" int optix_render_main(
 			std::cout << "[OptiX] Reusing already-uploaded scene " << scene_id << " (skipping GPU rebuild)\n";
 		}
 
-		// Enable wavefront mode if requested via env var RAY_TRACER_WAVEFRONT=1
+		// Enable/disable wavefront mode based on env var RAY_TRACER_WAVEFRONT=1.
+		// g_renderer is a process-lifetime singleton (see g_uploaded_scene_id's
+		// own comment above), so OptiXRenderer::useWavefront_ is a member that
+		// persists across calls just like the device buffers scene switches
+		// already have to reset - reading the env var and calling
+		// enableWavefront(true, ...) ONLY when it's "1", with no else branch,
+		// left useWavefront_ latched true forever after the first call that
+		// requested it: a LATER call with the env var unset/"0" (every caller
+		// that believes it is asking for plain recursive-mode rendering, e.g.
+		// a "GPU-recursive-only" pass explicitly meant to exclude wavefront
+		// entirely) never called enableWavefront(false, ...) to say so, so
+		// OptiXRenderer::render() kept routing to wavefrontTracer_->render()
+		// regardless. This silently ran scenes/backends never exercised
+		// together in wavefront mode, which is likely the real explanation
+		// behind this codebase's own "GPU-recursive-only pass still hits the
+		// CUDA-700 corruption" finding (material_cpu_gpu_parity_tests.cpp's
+		// file header comment) - those "recursive-only" renders may actually
+		// have been running under wavefront the whole time, once any earlier
+		// call in the same process (e.g. wavefront_tests.cpp) had set the env
+		// var to "1" once. Call enableWavefront() unconditionally on both
+		// branches so this render's own request is what decides the mode,
+		// every time, not whatever the last caller that asked for wavefront
+		// left behind.
 #pragma warning(suppress: 4996)
 		const char* wfEnv = std::getenv("RAY_TRACER_WAVEFRONT");
 		if (wfEnv && std::string(wfEnv) == "1") {
@@ -145,6 +167,8 @@ extern "C" int optix_render_main(
 				ptxPath = "wavefront_programs.ptx";
 			std::cout << "[OptiX] Wavefront mode enabled (PTX: " << ptxPath << ")\n";
 			g_renderer->enableWavefront(true, ptxPath);
+		} else {
+			g_renderer->enableWavefront(false);
 		}
 
 		// Allocate float framebuffer

@@ -2208,7 +2208,12 @@ extern "C" __global__ void resolve_bssrdf_exit(
 	GpuSkyDistribution skyDist
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
-	if (idx >= numExit) return;
+	// Same defensive capacity guard as accumulate_shadow's own version of
+	// this comment (this file, above) and __raygen__wf_shadow's (wavefront_
+	// programs.cu): numExit is a host-read counter value, which
+	// WorkQueue::push() can inflate past exitQueue.capacity without that
+	// many items actually being written.
+	if (idx >= numExit || idx >= exitQueue.capacity) return;
 
 	const BssrdfExitWorkItem& item = exitQueue.items[idx];
 
@@ -2357,7 +2362,19 @@ extern "C" __global__ void accumulate_shadow(
 	float3*                      framebuffer
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
-	if (idx >= numShadow) return;
+	// Must also guard against shadowQueue.capacity, not just the host-
+	// supplied numShadow: numShadow is *shadowCounter read back on the host
+	// (WavefrontPathTracer::render(), readQueueSize()), and WorkQueue::push()
+	// (wavefront_types.h) keeps incrementing that counter even once the
+	// backing d_shadowItems_/d_occluded_ buffers (sized to shadowQueue.
+	// capacity = queueCapacity_) are full - it only stops writing items[]
+	// past capacity. A bounce that legitimately queues more shadow rays than
+	// capacity (confirmed: scene B2/"Cornell Rough Metal" combines area-
+	// light NEE with a non-zero-backgroundColor sky-NEE push per hit - see
+	// __raygen__wf_shadow's own version of this comment, wavefront_
+	// programs.cu) would otherwise read occluded[idx]/shadowQueue.items[idx]
+	// past their allocations here too.
+	if (idx >= numShadow || idx >= shadowQueue.capacity) return;
 
 	if (!occluded[idx]) {
 		const ShadowRayWorkItem& s = shadowQueue.items[idx];

@@ -125,9 +125,18 @@ struct WfShadowPayload {
 // ============================================================================
 extern "C" __global__ void __raygen__wf_intersect() {
 	const unsigned int rayIdx = optixGetLaunchIndex().x;
-	// Bounds check (launch size is numRays, set by host)
+	// Bounds check (launch size is numRays, set by host). Must also guard
+	// against rq.capacity, not just the live *rq.counter: WorkQueue::push()
+	// (wavefront_types.h) increments the counter unconditionally even once
+	// the backing array is full - it only skips the actual item write past
+	// capacity (returns -1, "should not happen if capacity >= numPixels").
+	// A queue that legitimately overflows (see __raygen__wf_shadow's own
+	// version of this comment for a confirmed real case) would otherwise
+	// leave *rq.counter reporting more live entries than were ever written,
+	// so trusting it alone here reads rq.items[] past its cudaMalloc'd end -
+	// the exact "illegal memory access" this guard prevents.
 	const WorkQueue<RayWorkItem>& rq = wf_params.rayQueue;
-	if ((int)rayIdx >= *rq.counter) return;
+	if ((int)rayIdx >= *rq.counter || (int)rayIdx >= rq.capacity) return;
 
 	const RayWorkItem& ray = rq.items[rayIdx];
 
@@ -752,7 +761,34 @@ extern "C" __global__ void __miss__wf_radiance() {
 extern "C" __global__ void __raygen__wf_shadow() {
 	const unsigned int idx = optixGetLaunchIndex().x;
 	const WorkQueue<ShadowRayWorkItem>& sq = wf_params.shadowQueue;
-	if ((int)idx >= *sq.counter) return;
+	// Must also guard against sq.capacity, not just the live *sq.counter:
+	// WorkQueue::push() (wavefront_types.h) increments the counter
+	// unconditionally even once the backing array (d_shadowItems_, sized to
+	// queueCapacity_ = width*height) is full - it only skips the actual item
+	// write past capacity (returns -1). The shadow queue is genuinely NOT
+	// bounded by 1 push per hit: evaluate_materials's wf_finish_material_
+	// scatter() (wavefront_kernels.cu) can push once for area-light NEE,
+	// once more for sky NEE, and once per punctual light for the SAME hit,
+	// so a scene combining several of those (confirmed: scene B2/"Cornell
+	// Rough Metal", which sets a non-zero GpuCameraParams::backgroundColor -
+	// see scene_builder.cpp case 10 - so its own sky-NEE branch fires
+	// alongside its area light) can legitimately push more items in one
+	// bounce than queueCapacity_ holds. Before this fix, *sq.counter (e.g.
+	// 3934) exceeding sq.capacity (e.g. 3600) meant this raygen launched
+	// with more threads than the buffer has slots for, and every idx in
+	// [capacity, counter) read sq.items[idx]/occluded[idx] past their
+	// cudaMalloc'd end - confirmed via compute-sanitizer as an out-of-bounds
+	// __global__ read landing just past d_shadowItems_'s allocation. That
+	// stray read (and the matching one in accumulate_shadow, wavefront_
+	// kernels.cu) is what corrupted the CUDA/OptiX context: once enough
+	// prior scene switches left the right garbage in the allocator's
+	// adjacent memory, the read landed on unmapped/foreign memory instead of
+	// harmless padding, raising CUDA error 700 for the rest of the process.
+	// Excess pushes beyond capacity are still silently dropped (same
+	// WorkQueue::push() contract as before this fix) - this only stops the
+	// out-of-bounds READ of those dropped slots, it does not change which
+	// shadow rays get traced.
+	if ((int)idx >= *sq.counter || (int)idx >= sq.capacity) return;
 
 	const ShadowRayWorkItem& s = sq.items[idx];
 
