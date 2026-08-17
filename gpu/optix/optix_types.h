@@ -311,23 +311,24 @@ enum class MaterialType : int {
 	// Sphere-only, same reason as Medium/CloudMedium.
 	RgbGridMedium = 17,
 	// Real tabulated BSSRDF (pbrt-v4 TabulatedBSSRDF / SubsurfaceMaterial),
-	// RECURSIVE BACKEND ONLY (Phase 1 - see shade_material()'s own comment on
-	// this case, optix_device_helpers.h). Mirrors src/TheRestOfYourLife/
-	// material_pbrt.h's `class subsurface` + camera.h::sample_bssrdf_exit()'s
-	// 3-axis-MIS probe/exit-point algorithm exactly, replacing the flat-
-	// diffuse fallback pbrt_gpu_builder.h used to emit for
-	// pbrt_flatten::MaterialKind::Subsurface. The wavefront backend has NO
-	// real implementation of this type (deliberately out of scope for this
-	// phase - see wavefront_kernels.cu's own explicit fallback case) and
-	// treats it as flat diffuse using .albedo, exactly as it did before this
-	// MaterialType existed.
+	// on BOTH GPU backends. Mirrors src/TheRestOfYourLife/material_pbrt.h's
+	// `class subsurface` + camera.h::sample_bssrdf_exit()'s 3-axis-MIS
+	// probe/exit-point algorithm exactly, replacing the flat-diffuse
+	// fallback pbrt_gpu_builder.h used to emit for pbrt_flatten::
+	// MaterialKind::Subsurface. Landed in two phases: the recursive backend
+	// first (optix_bssrdf.h / optix_probe_hit.h - see shade_material()'s own
+	// comment, optix_device_helpers.h), then the wavefront backend as a real
+	// probe-walk stage (BssrdfProbeWorkItem -> wavefront_probe.h's
+	// wf_bssrdf_probe_walk() -> resolve_bssrdf_exit() in wavefront_kernels.cu)
+	// - both now share the same tabulated BSSRDFTable data and algorithm, at
+	// parity with each other and with CPU.
 	//
 	// Field reuse: .albedo stays `m.color` (the flat-gray fallback color,
-	// 0.5/0.5/0.5 by pbrt_flatten.h's own default) rather than being
-	// repurposed for sigma_a - this is what lets the wavefront fallback keep
-	// rendering exactly the same flat gray it always has, unaware this
-	// MaterialType even exists. .ior is eta (index of refraction, already
-	// assigned generically before this type's own switch case). sigma_a/
+	// 0.5/0.5/0.5 by pbrt_flatten.h's own default) - a real texture is never
+	// carried by a Subsurface material in this loader, so this slot is only
+	// ever read as the CPU-parity fallback color, never as a real albedo.
+	// .ior is eta (index of refraction, already assigned generically before
+	// this type's own switch case). sigma_a/
 	// sigma_s (RGB absorption/scattering coefficients, ALREADY scale-
 	// multiplied - see pbrt_flatten::Material::sigma_a/sigma_s's own comment)
 	// live in the emission/transmittance union and the k_c-aliased union

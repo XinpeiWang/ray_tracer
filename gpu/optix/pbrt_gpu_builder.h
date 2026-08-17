@@ -316,16 +316,16 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		d.k_c = reflectanceToConductorK(d.albedo);
 		break;
 	case pbrt_flatten::MaterialKind::Subsurface:
-		// Real tabulated BSSRDF, RECURSIVE GPU BACKEND ONLY (Phase 1 - see
-		// optix_types.h's MaterialType::Subsurface comment for the full
-		// field-reuse layout, and shade_material()'s own comment,
-		// optix_device_helpers.h, for the probe-walk algorithm). `d.albedo`
-		// is deliberately left as `m.color` (already assigned above,
-		// generically, before this switch) rather than repurposed for
-		// sigma_a - that is what lets the wavefront backend's own explicit
-		// Subsurface fallback (wavefront_kernels.cu) keep rendering exactly
-		// the same flat gray it always has, unaware this real GPU
-		// implementation exists at all.
+		// Real tabulated BSSRDF, on BOTH GPU backends (see optix_types.h's
+		// MaterialType::Subsurface comment for the full field-reuse layout
+		// and backend history, shade_material()'s own comment in
+		// optix_device_helpers.h for the recursive-backend probe-walk
+		// algorithm, and wavefront_probe.h/wavefront_kernels.cu for the
+		// wavefront backend's equivalent). `d.albedo` is deliberately left
+		// as `m.color` (already assigned above, generically, before this
+		// switch) rather than repurposed for sigma_a - a real Subsurface
+		// material never carries a texture in this loader, so this slot is
+		// only ever read as the CPU-parity fallback color.
 		d.type = MaterialType::Subsurface;
 		d.bssrdf_sigma_a = make_float3(static_cast<float>(m.sigma_a[0]),
 										static_cast<float>(m.sigma_a[1]),
