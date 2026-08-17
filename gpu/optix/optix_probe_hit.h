@@ -47,9 +47,20 @@ extern "C" __global__ void __closesthit__probe_sphere() {
 	const float3 ray_dir = optixGetWorldRayDirection();
 	const float3 hit_point = ray_orig + t * ray_dir;
 
+	// See GpuMediumShapeKind's comment in optix_types.h / optix_intersection_
+	// sphere.h's own __closesthit__sphere for why box bounds are re-read
+	// directly rather than via attributes. No scene currently combines a
+	// Subsurface probe walk with a box-shaped medium boundary (Subsurface
+	// never applies to spheres in this loader at all), so this branch is
+	// unreachable today, but kept consistent with the radiance closest-hit
+	// above rather than left silently wrong.
+	const bool is_box = (sphere.shapeKind == GpuMediumShapeKind::Box);
+
 	float3 obj_hit = hit_point;
 	if (instBase >= 0) obj_hit = optixTransformPointFromWorldToObjectSpace(hit_point);
-	const float3 obj_normal = (obj_hit - sphere_center) / sphere_radius;
+	const float3 obj_normal = is_box
+		? box_face_normal(obj_hit, sphere.boxMin, sphere.boxMax)
+		: (obj_hit - sphere_center) / sphere_radius;
 	float3 outward_normal = obj_normal;
 	if (instBase >= 0) outward_normal = normalize(optixTransformNormalFromObjectToWorldSpace(obj_normal));
 	const bool front_face = dot(ray_dir, outward_normal) < 0.0f;

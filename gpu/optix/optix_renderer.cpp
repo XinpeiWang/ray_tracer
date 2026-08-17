@@ -1274,15 +1274,26 @@ bool OptiXRenderer::buildScene(
 	std::vector<OptixAabb> aabbs;
 	aabbs.reserve(totalAabbGeoms);
 
-	// Build AABBs for spheres
+	// Build AABBs for spheres (and, for shapeKind==Box entries, real boxes -
+	// see GpuMediumShapeKind's comment in optix_types.h. A box's own bounds
+	// ARE its tight AABB already, unlike a sphere's center+-radius bound.)
 	for (const auto& s : spheres) {
 		OptixAabb aabb;
-		aabb.minX = s.center.x - s.radius;
-		aabb.minY = s.center.y - s.radius;
-		aabb.minZ = s.center.z - s.radius;
-		aabb.maxX = s.center.x + s.radius;
-		aabb.maxY = s.center.y + s.radius;
-		aabb.maxZ = s.center.z + s.radius;
+		if (s.shapeKind == GpuMediumShapeKind::Box) {
+			aabb.minX = s.boxMin.x;
+			aabb.minY = s.boxMin.y;
+			aabb.minZ = s.boxMin.z;
+			aabb.maxX = s.boxMax.x;
+			aabb.maxY = s.boxMax.y;
+			aabb.maxZ = s.boxMax.z;
+		} else {
+			aabb.minX = s.center.x - s.radius;
+			aabb.minY = s.center.y - s.radius;
+			aabb.minZ = s.center.z - s.radius;
+			aabb.maxX = s.center.x + s.radius;
+			aabb.maxY = s.center.y + s.radius;
+			aabb.maxZ = s.center.z + s.radius;
+		}
 		aabbs.push_back(aabb);
 	}
 
@@ -1355,12 +1366,24 @@ bool OptiXRenderer::buildScene(
 		aabbsKey1.reserve(totalAabbGeoms);
 		for (const auto& s : spheres) {
 			OptixAabb aabb;
-			aabb.minX = s.center1.x - s.radius;
-			aabb.minY = s.center1.y - s.radius;
-			aabb.minZ = s.center1.z - s.radius;
-			aabb.maxX = s.center1.x + s.radius;
-			aabb.maxY = s.center1.y + s.radius;
-			aabb.maxZ = s.center1.z + s.radius;
+			if (s.shapeKind == GpuMediumShapeKind::Box) {
+				// No scene combines motion blur with a box medium boundary -
+				// same (static) bounds at both motion keys, matching the t=0
+				// loop above.
+				aabb.minX = s.boxMin.x;
+				aabb.minY = s.boxMin.y;
+				aabb.minZ = s.boxMin.z;
+				aabb.maxX = s.boxMax.x;
+				aabb.maxY = s.boxMax.y;
+				aabb.maxZ = s.boxMax.z;
+			} else {
+				aabb.minX = s.center1.x - s.radius;
+				aabb.minY = s.center1.y - s.radius;
+				aabb.minZ = s.center1.z - s.radius;
+				aabb.maxX = s.center1.x + s.radius;
+				aabb.maxY = s.center1.y + s.radius;
+				aabb.maxZ = s.center1.z + s.radius;
+			}
 			aabbsKey1.push_back(aabb);
 		}
 		// Static primitives: duplicate the t=0 AABBs already computed above

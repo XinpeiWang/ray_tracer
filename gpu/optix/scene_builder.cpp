@@ -2790,10 +2790,18 @@ static void build_normal_mapped_cornell_gpu(SceneData& scene) {
 /// MaterialType::DielectricMedium already implements exactly (see that
 /// type's comment in optix_types.h) - no new device code needed. The jade
 /// sphere maps onto it with zero approximation (it's already a sphere);
-/// the wax slab's box boundary is approximated as a sphere sized to
-/// roughly its footprint, same "box boundary would need a second AABB-slab
-/// intersection path not worth the complexity" precedent as scene 7's own
-/// two constant_medium boxes (see build_cornell_smoke_gpu's comment).
+/// the wax slab's box boundary now uses a REAL axis-aligned box
+/// (SphereData::shapeKind == GpuMediumShapeKind::Box, see that enum's
+/// comment in optix_types.h) rather than the sphere-shaped approximation
+/// this used to be (a sphere sized to roughly match the box's footprint -
+/// bulging through its side walls while falling short of its floor/
+/// ceiling). This geometric mismatch was the original hypothesis for this
+/// scene's ~32-38% CPU/GPU brightness gap, but an isolated A/B measurement
+/// (sphere vs box, otherwise identical) showed the shape alone moves
+/// average brightness by under 1% - see GpuMediumShapeKind's own comment
+/// in optix_types.h for the measured numbers and why this fix is kept
+/// anyway (it makes the geometry genuinely correct) despite not explaining
+/// the brightness gap.
 static void build_subsurface_slab_gpu(SceneData& scene) {
 	using namespace cornell_box_data;
 
@@ -2829,15 +2837,17 @@ static void build_subsurface_slab_gpu(SceneData& scene) {
 	}
 
 	// Wax slab: CPU's box(0,0,0)-(200,300,160) translated by (270,0,230),
-	// i.e. world-space [270,470]x[0,300]x[230,390] - approximated as a
-	// sphere at the box's center with a radius chosen to roughly match its
-	// footprint. ior=1.4/sigma_t=0.04/albedo=(0.98,0.96,0.90), matching
-	// CPU's dielectric(1.4) + constant_medium(...,0.04,milky-white) exactly.
+	// i.e. world-space [270,470]x[0,300]x[230,390] - now a REAL box
+	// (GpuMediumShapeKind::Box), matching CPU's geometry exactly instead of
+	// the old sphere approximation. ior=1.4/sigma_t=0.04/
+	// albedo=(0.98,0.96,0.90), matching CPU's dielectric(1.4) +
+	// constant_medium(...,0.04,milky-white) exactly.
 	{
 		const int mat_slab = add_dielectric_medium(scene, make_float3(0.98f, 0.96f, 0.90f), 1.4f, 0.04f);
 		SphereData s{};
-		s.center = make_float3(370.0f, 150.0f, 310.0f);
-		s.radius = 140.0f;
+		s.shapeKind = GpuMediumShapeKind::Box;
+		s.boxMin = make_float3(270.0f, 0.0f, 230.0f);
+		s.boxMax = make_float3(470.0f, 300.0f, 390.0f);
 		s.materialIdx = mat_slab;
 		scene.spheres.push_back(s);
 	}

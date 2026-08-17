@@ -78,6 +78,63 @@ __device__ __forceinline__ float gpu_rgb_grid_trilinear(const float* d, int nx, 
 	return c0 + fz*(c1-c0);
 }
 
+// Standard ray/AABB slab test (object space) - the box-shaped counterpart of
+// the quadratic ray/sphere solve used everywhere else in this file, for
+// SphereData::shapeKind == GpuMediumShapeKind::Box (see that enum's own
+// comment in optix_types.h). Three pairs of plane tests, keeping the
+// tightest [t0,t1] interval - the same well-known algorithm as e.g. pbrt-v4's
+// Bounds3::IntersectP. t_near_out/t_far_out are always written (even when the
+// return is false, i.e. an empty/invalid interval) so every call site can use
+// them unconditionally the same way the sphere branch's unconditional
+// fmaxf(0, discriminant)-guarded sqrt already does.
+//
+// invd's zero-guard (ternary fallback to a large finite value rather than
+// relying on raw IEEE 1/0 == +-inf) matches this same file's existing
+// GpuRgbGridMedium slab test below, for consistency.
+__device__ __forceinline__ bool box_slab_intersect(
+		const float3& ray_orig, const float3& ray_dir,
+		const float3& bmin, const float3& bmax,
+		float& t_near_out, float& t_far_out) {
+	float t0 = -1e30f, t1 = 1e30f;
+	float invd, tn, tf;
+
+	invd = (ray_dir.x != 0.0f) ? (1.0f / ray_dir.x) : 1e30f;
+	tn = (bmin.x - ray_orig.x) * invd; tf = (bmax.x - ray_orig.x) * invd;
+	if (tn > tf) { float tmp = tn; tn = tf; tf = tmp; }
+	t0 = fmaxf(t0, tn); t1 = fminf(t1, tf);
+
+	invd = (ray_dir.y != 0.0f) ? (1.0f / ray_dir.y) : 1e30f;
+	tn = (bmin.y - ray_orig.y) * invd; tf = (bmax.y - ray_orig.y) * invd;
+	if (tn > tf) { float tmp = tn; tn = tf; tf = tmp; }
+	t0 = fmaxf(t0, tn); t1 = fminf(t1, tf);
+
+	invd = (ray_dir.z != 0.0f) ? (1.0f / ray_dir.z) : 1e30f;
+	tn = (bmin.z - ray_orig.z) * invd; tf = (bmax.z - ray_orig.z) * invd;
+	if (tn > tf) { float tmp = tn; tn = tf; tf = tmp; }
+	t0 = fmaxf(t0, tn); t1 = fminf(t1, tf);
+
+	t_near_out = t0;
+	t_far_out = t1;
+	return t0 <= t1;
+}
+
+// Outward-facing axis-aligned face normal at an object-space point already
+// known to lie on the box's surface (an actual intersection result, not an
+// arbitrary point) - picks whichever of the 6 candidate face planes the
+// point is nearest to, the standard "distance to each plane, keep the
+// minimum" box-normal technique.
+__device__ __forceinline__ float3 box_face_normal(const float3& p, const float3& bmin, const float3& bmax) {
+	float best = fabsf(p.x - bmin.x);
+	float3 n = make_float3(-1.0f, 0.0f, 0.0f);
+	float d;
+	d = fabsf(p.x - bmax.x); if (d < best) { best = d; n = make_float3(1.0f, 0.0f, 0.0f); }
+	d = fabsf(p.y - bmin.y); if (d < best) { best = d; n = make_float3(0.0f, -1.0f, 0.0f); }
+	d = fabsf(p.y - bmax.y); if (d < best) { best = d; n = make_float3(0.0f, 1.0f, 0.0f); }
+	d = fabsf(p.z - bmin.z); if (d < best) { best = d; n = make_float3(0.0f, 0.0f, -1.0f); }
+	d = fabsf(p.z - bmax.z); if (d < best) { best = d; n = make_float3(0.0f, 0.0f, 1.0f); }
+	return n;
+}
+
 extern "C" __global__ void __intersection__sphere() {
 	// Get primitive index from OptiX
 	const unsigned int primIdx = optixGetPrimitiveIndex();
@@ -125,6 +182,29 @@ extern "C" __global__ void __intersection__sphere() {
 	const float3 ray_dir = optixGetObjectRayDirection();
 	const float ray_tmin = optixGetRayTmin();
 	const float ray_tmax = optixGetRayTmax();
+
+	if (sphere.shapeKind == GpuMediumShapeKind::Box) {
+		// Box (AABB slab test) variant - see GpuMediumShapeKind's comment in
+		// optix_types.h. No motion blur combination exists for this shape
+		// (center/center1 above are unused), so this tests directly against
+		// the ray as given, exactly mirroring the sphere branch's own
+		// dual-root "nearest root in [ray_tmin,ray_tmax], else the far root"
+		// selection below. Attributes are unused by the box path of
+		// __closesthit__sphere (its box bounds are static, so it re-reads
+		// sphere.boxMin/boxMax directly instead - see that function's own
+		// comment), so 0 is reported for all four.
+		float t_near, t_far;
+		if (!box_slab_intersect(ray_orig, ray_dir, sphere.boxMin, sphere.boxMax, t_near, t_far))
+			return;  // No hit
+		float root = t_near;
+		if (root < ray_tmin || root > ray_tmax) {
+			root = t_far;
+			if (root < ray_tmin || root > ray_tmax)
+				return;  // No valid hit
+		}
+		optixReportIntersection(root, 0, 0, 0, 0, 0);
+		return;
+	}
 
 	// Sphere intersection
 	const float3 oc = ray_orig - center;
@@ -209,9 +289,18 @@ extern "C" __global__ void __closesthit__sphere() {
 	// Both transforms are skipped entirely, not merely applied as no-ops, for
 	// non-instanced geometry (instBase < 0) - so that path costs nothing and
 	// stays bit-for-bit what it computed before instancing existed.
+	// See GpuMediumShapeKind's comment in optix_types.h. Box bounds are
+	// static (no motion-blur combination exists for this shape), so they're
+	// re-read directly from `sphere` rather than via attributes the way
+	// sphere_center above has to be (attributes carry the time-interpolated
+	// value the raw struct doesn't have precomputed).
+	const bool is_box = (sphere.shapeKind == GpuMediumShapeKind::Box);
+
 	float3 obj_hit = hit_point;
 	if (instBase >= 0) obj_hit = optixTransformPointFromWorldToObjectSpace(hit_point);
-	const float3 obj_normal = (obj_hit - sphere_center) / sphere_radius;
+	const float3 obj_normal = is_box
+		? box_face_normal(obj_hit, sphere.boxMin, sphere.boxMax)
+		: (obj_hit - sphere_center) / sphere_radius;
 	float3 outward_normal = obj_normal;
 	if (instBase >= 0) {
 		outward_normal = normalize(optixTransformNormalFromObjectToWorldSpace(obj_normal));
@@ -278,13 +367,21 @@ extern "C" __global__ void __closesthit__sphere() {
 			// unreachable, and leaving these on world space keeps their
 			// verified output bit-for-bit unchanged.
 			float3 unit_dir = normalize(ray_dir);
-			float3 oc2 = ray_orig - sphere_center;
-			float half_b2 = dot(oc2, unit_dir);
-			float c2 = dot(oc2, oc2) - sphere_radius * sphere_radius;
-			float disc2 = fmaxf(0.0f, half_b2 * half_b2 - c2);
-			float sq2 = sqrtf(disc2);
-			float t_near = fmaxf(0.0f, -half_b2 - sq2);
-			float t_far  = -half_b2 + sq2;
+			float t_near, t_far;
+			if (is_box) {
+				float bn, bf;
+				box_slab_intersect(ray_orig, unit_dir, sphere.boxMin, sphere.boxMax, bn, bf);
+				t_near = fmaxf(0.0f, bn);
+				t_far  = bf;
+			} else {
+				float3 oc2 = ray_orig - sphere_center;
+				float half_b2 = dot(oc2, unit_dir);
+				float c2 = dot(oc2, oc2) - sphere_radius * sphere_radius;
+				float disc2 = fmaxf(0.0f, half_b2 * half_b2 - c2);
+				float sq2 = sqrtf(disc2);
+				t_near = fmaxf(0.0f, -half_b2 - sq2);
+				t_far  = -half_b2 + sq2;
+			}
 			float dist_inside = fmaxf(0.0f, t_far - t_near);
 
 			float sigma_t = mat.ior;
@@ -472,13 +569,21 @@ extern "C" __global__ void __closesthit__sphere() {
 				scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
 			} else {
 				float3 unit_dir = normalize(ray_dir);
-				float3 oc2 = ray_orig - sphere_center;
-				float half_b2 = dot(oc2, unit_dir);
-				float c2 = dot(oc2, oc2) - sphere_radius * sphere_radius;
-				float disc2 = fmaxf(0.0f, half_b2 * half_b2 - c2);
-				float sq2 = sqrtf(disc2);
-				float t_near = fmaxf(0.0f, -half_b2 - sq2);
-				float t_far  = -half_b2 + sq2;
+				float t_near, t_far;
+				if (is_box) {
+					float bn, bf;
+					box_slab_intersect(ray_orig, unit_dir, sphere.boxMin, sphere.boxMax, bn, bf);
+					t_near = fmaxf(0.0f, bn);
+					t_far  = bf;
+				} else {
+					float3 oc2 = ray_orig - sphere_center;
+					float half_b2 = dot(oc2, unit_dir);
+					float c2 = dot(oc2, oc2) - sphere_radius * sphere_radius;
+					float disc2 = fmaxf(0.0f, half_b2 * half_b2 - c2);
+					float sq2 = sqrtf(disc2);
+					t_near = fmaxf(0.0f, -half_b2 - sq2);
+					t_far  = -half_b2 + sq2;
+				}
 				float dist_inside = fmaxf(0.0f, t_far - t_near);
 
 				float sigma_t = mat.eta_c.x;

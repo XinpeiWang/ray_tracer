@@ -47,6 +47,31 @@ struct ShadowPayload {
 	bool occluded;  // True if ray hit anything (path is blocked)
 };
 
+// Which analytic shape a SphereData entry's near/far intersection math uses.
+// Sphere (0) is the default - every pre-existing SphereData{} zero-init (the
+// overwhelming majority of call sites) lands here with no changes needed, and
+// is the quadratic ray/sphere test __intersection__sphere/__closesthit__sphere
+// (optix_intersection_sphere.h) have always used. Box (1) is a standard
+// ray/AABB slab test instead, for the few scenes whose medium boundary is
+// actually an axis-aligned box rather than a sphere - e.g. scene 21's wax
+// slab (see build_subsurface_slab_gpu's comment in scene_builder.cpp), which
+// used to be approximated as a sphere sized to roughly match its footprint
+// (bulging through the box's side walls while falling short of its floor/
+// ceiling). Fixing this geometric mismatch was originally hypothesized to be
+// the dominant cause of scene 21's ~32-38% CPU/GPU brightness gap, but a
+// direct isolated-render A/B measurement (sphere vs box, GPU-recursive only,
+// same seeds) showed the shape change moves average brightness by well under
+// 1% (0.24428 -> 0.24566) - nowhere near enough to explain the ~30% gap. The
+// gap's real dominant cause remains unexplained; this fix is still correct
+// and worth keeping (it makes the rendered geometry actually match CPU's box
+// instead of a bulging/undershooting sphere), it just isn't the fix for the
+// brightness discrepancy itself. Deliberately additive: every
+// field below is reused as-is regardless of shapeKind (materialIdx, the GAS/
+// SBT/instancing/shadow-ray machinery, ...) - only the geometric test
+// changes. center/center1/radius are unused (left zero) when shapeKind==Box;
+// boxMin/boxMax are unused (left zero) when shapeKind==Sphere.
+enum class GpuMediumShapeKind : int { Sphere = 0, Box = 1 };
+
 // Sphere geometry data (custom primitive)
 struct SphereData {
 	float3 center;   // position at ray-time t=0 (the only position, for a static sphere)
@@ -60,10 +85,23 @@ struct SphereData {
 	// regardless of b. Only scenes that actually build moving spheres (with
 	// center1 != center) need to also enable LaunchParams::motionBlurEnabled
 	// and give their sphere GAS build 2 motion keys - see
-	// OptiXRenderer::buildScene()'s sceneHasMotion_ detection.
+	// OptiXRenderer::buildScene()'s sceneHasMotion_ detection. Unused (left
+	// zero) for shapeKind==Box - no scene combines motion blur with a box
+	// medium boundary, and center1==center==0 trivially keeps
+	// sceneHasMotion_ detection from false-triggering on a box entry.
 	float3 center1;
 	float radius;
 	int materialIdx;
+	// See GpuMediumShapeKind's own comment above. Zero-init default (every
+	// pre-existing `SphereData s{}` call site) is GpuMediumShapeKind::Sphere.
+	GpuMediumShapeKind shapeKind;
+	// Box (shapeKind==Box) world-space (equivalently object-space - every
+	// scene using this is non-instanced, see GpuMediumShapeKind's comment)
+	// min/max corners, mirroring the CPU box() representation exactly
+	// (src/TheRestOfYourLife/quad.h) - an axis-aligned box from corner `a`
+	// to corner `b`. Unused (left zero) for shapeKind==Sphere.
+	float3 boxMin;
+	float3 boxMax;
 };
 
 // Quad geometry data (custom primitive)
