@@ -712,6 +712,23 @@ class camera {
             // Specular bounce: no NEE, update beta and advance ray
             if (srec.skip_pdf && !bssrdf_exit) {
                 color new_beta = clamp_throughput(beta * srec.attenuation);
+                // Update etaScale for transmission bounces BEFORE the RR test
+                // below, matching pbrt-v4's actual VolPathIntegrator ordering
+                // (etaScale *= Sqr(bs->eta) precedes rrBeta = beta * etaScale
+                // there) - this used to run after, so rr_beta was computed
+                // from THIS bounce's beta but the PREVIOUS bounce's
+                // etaScale, one bounce stale. eta_scale only ever grows on a
+                // refraction (Sqr of eta ratio > 1 whichever direction light
+                // crosses) specifically to counteract RR's tendency to kill
+                // transmission-heavy paths too aggressively (a ray that
+                // refracted into a denser medium carries more radiance per
+                // pbrt's non-symmetric transport scaling, so RR must not
+                // judge it by beta alone) - using the stale, smaller
+                // etaScale understated rr_beta right after a refraction,
+                // giving RR a higher kill probability than pbrt-v4 intends
+                // for exactly the paths this mechanism exists to protect.
+                if (srec.is_transmission)
+                    eta_scale *= srec.eta * srec.eta;
                 if (bounces_left < depth) {
                     // pbrt-v4: rrBeta = beta * etaScale to avoid killing transmission paths
                     color rr_beta = new_beta * eta_scale;
@@ -722,9 +739,6 @@ class camera {
                         new_beta = new_beta / (1.0 - q);
                     }
                 }
-                // Update etaScale for transmission bounces (pbrt-v4: etaScale *= Sqr(bs->eta))
-                if (srec.is_transmission)
-                    eta_scale *= srec.eta * srec.eta;
                 beta            = new_beta;
                 current_ray     = srec.skip_pdf_ray;
                 specular_bounce = true;
@@ -751,8 +765,10 @@ class camera {
                         if (shadow_ray_hit(world, shadow_ray, light_rec)) {
                             color Le_d = light_rec.mat->emitted(
                                 shadow_ray, light_rec, light_rec.u, light_rec.v, light_rec.p);
-                            if (Le_d.x() > 0 || Le_d.y() > 0 || Le_d.z() > 0)
-                                L += beta * w_l * srec.attenuation * f_pdf * Le_d / pdf_l;
+                            if (Le_d.x() > 0 || Le_d.y() > 0 || Le_d.z() > 0) {
+                                color atten = rec.mat->scattering_attenuation(rec, shadow_ray, srec.attenuation);
+                                L += beta * w_l * atten * f_pdf * Le_d / pdf_l;
+                            }
                         }
                     }
                 }
@@ -774,7 +790,8 @@ class camera {
                         hit_record sky_rec;
                         if (!shadow_ray_hit(world, sky_shadow, sky_rec)) {
                             color Le_sky = sky->Le(unit_vector(sky_dir));
-                            L += beta * w_sky * srec.attenuation * f_pdf * Le_sky / pdf_sky;
+                            color atten = rec.mat->scattering_attenuation(rec, sky_shadow, srec.attenuation);
+                            L += beta * w_sky * atten * f_pdf * Le_sky / pdf_sky;
                         }
                     }
                 }
@@ -786,15 +803,15 @@ class camera {
             if (punct_lights && !punct_lights->empty()) {
                 punct_lights->for_each_sample(rec.p, [&](const PunctualLiSample& ps) {
                     if (ps.Li.x() <= 0 && ps.Li.y() <= 0 && ps.Li.z() <= 0) return;
-                    double f_pdf = rec.mat->scattering_pdf(current_ray, rec,
-                                                           ray(rec.p, ps.wi, current_ray.time()));
+                    ray punct_ray(rec.p, ps.wi, current_ray.time());
+                    double f_pdf = rec.mat->scattering_pdf(current_ray, rec, punct_ray);
                     if (f_pdf <= 0.0) return;
                     hit_record shadow_rec;
                     double shadow_t_max = (ps.t_max == infinity) ? infinity : (ps.t_max - 0.001);
-                    if (!shadow_ray_hit(world, ray(rec.p, ps.wi, current_ray.time()),
-                                        shadow_rec, shadow_t_max)) {
+                    if (!shadow_ray_hit(world, punct_ray, shadow_rec, shadow_t_max)) {
                         // delta light: pdf=1, no MIS weight needed
-                        L += beta * srec.attenuation * f_pdf * ps.Li;
+                        color atten = rec.mat->scattering_attenuation(rec, punct_ray, srec.attenuation);
+                        L += beta * atten * f_pdf * ps.Li;
                     }
                 });
             }
@@ -808,6 +825,22 @@ class camera {
                 ray    bsdf_ray(rec.p, bsdf_dir, current_ray.time());
                 double f_pdf = rec.mat->scattering_pdf(current_ray, rec, bsdf_ray);
                 if (f_pdf <= 0.0) break;
+
+                // Update etaScale for transmission bounces BEFORE the RR test
+                // below - same ordering as the specular branch above (see its
+                // own comment). This branch never touched eta_scale at all
+                // despite srec.is_transmission being a general field, not a
+                // skip_pdf-only one: pbrt-v4's VolPathIntegrator updates
+                // etaScale after every BSDF sample, specular or not. No
+                // current material sets is_transmission=true on this
+                // non-specular path (diffuse_transmission's own R/T lobes
+                // are geometric hemisphere flips, not IOR refractions), so
+                // this is latent today, but a future non-specular
+                // refractive material (e.g. a rough dielectric with real
+                // NEE) would silently skip pbrt-v4's transmission-path RR
+                // protection here without this.
+                if (srec.is_transmission)
+                    eta_scale *= srec.eta * srec.eta;
 
                 // Russian Roulette after first bounce
                 color new_beta = clamp_throughput(beta * srec.attenuation * f_pdf / pdf_b);

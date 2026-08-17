@@ -497,6 +497,24 @@ class diffuse_transmission : public material {
             return (pt / (pr + pt)) * (-cos_theta / pi);  // transmission
     }
 
+    // See material::scattering_attenuation()'s own comment for why this
+    // exists: scatter() above fixes srec.attenuation to R or T based on a
+    // ONE-TIME stochastic pick, before camera.h's NEE code even knows which
+    // direction (toward a light) it will evaluate. Reusing that fixed value
+    // for an NEE ray on the OPPOSITE hemisphere from what the pick landed on
+    // silently applied the wrong color (R's tint on transmitted light, or
+    // T's on reflected light) with probability pr/(pr+pt) or pt/(pr+pt) -
+    // deterministic per scattering event, not noise that ever averaged out.
+    // This mirrors scattering_pdf() above exactly: pick R or T by the
+    // QUERIED direction's actual hemisphere, not by re-deriving scatter()'s
+    // earlier coin flip.
+    color scattering_attenuation(const hit_record& rec, const ray& scattered,
+                                  const color& srec_attenuation) const override {
+        (void)srec_attenuation;
+        double cos_theta = dot(rec.normal, unit_vector(scattered.direction()));
+        return (cos_theta > 0.0) ? R : T;
+    }
+
     color get_reflectance()   const { return R; }
     color get_transmittance() const { return T; }
 
@@ -572,6 +590,24 @@ class normalized_fresnel : public material {
 };
 
 
+// Deterministic pseudo-random value in [0,1) from a world-space point - used
+// by mix_material/diffuse_transmission below to pick a sub-material/lobe
+// branch. scatter(), scattering_pdf() and is_shadow_transmissive() are
+// separate stateless calls (the `material` interface threads no state
+// between them) with no shared RNG draw - a fresh random_double() in each
+// let them silently disagree about which branch a given scattering event
+// actually used: scatter() might commit to mat_a (attenuation and pdf_ptr
+// both from mat_a), while a later scattering_pdf() call for that exact same
+// event independently re-rolled and evaluated mat_b instead, mismatching the
+// term multiplied into the same estimator. Hashing rec.p pins the decision
+// to the hit point so every call about the same scattering event agrees,
+// matching pbrt-v4's actual MixMaterial semantics (a single per-intersection
+// stochastic material choice, not a true blended BxDF evaluation).
+inline double branch_hash01(const point3& p) {
+    double h = std::sin(p.x() * 127.1 + p.y() * 311.7 + p.z() * 74.7) * 43758.5453;
+    return h - std::floor(h);
+}
+
 // ---------------------------------------------------------------------------
 // mix_material -- stochastic blend of two materials (pbrt-v4 MixMaterial)
 //
@@ -605,8 +641,11 @@ class mix_material : public material {
                  bool do_regularize = false) const override {
         double w = weight_tex->value(rec.u, rec.v, rec.p).x();
         w = w < 0.0 ? 0.0 : (w > 1.0 ? 1.0 : w);
-        // Stochastic selection (pbrt-v4 MixMaterial)
-        if (random_double() >= w)
+        // Stochastic selection (pbrt-v4 MixMaterial) - deterministic given
+        // rec.p, not random_double(), so scattering_pdf()/
+        // is_shadow_transmissive() below agree with whichever sub-material
+        // this call committed to. See branch_hash01()'s own comment.
+        if (branch_hash01(rec.p) >= w)
             return mat_a->scatter(r_in, rec, srec, do_regularize);
         else
             return mat_b->scatter(r_in, rec, srec, do_regularize);
@@ -625,9 +664,15 @@ class mix_material : public material {
                           const ray& scattered) const override {
         double w = weight_tex->value(rec.u, rec.v, rec.p).x();
         w = w < 0.0 ? 0.0 : (w > 1.0 ? 1.0 : w);
-        double pa = mat_a->scattering_pdf(r_in, rec, scattered);
-        double pb = mat_b->scattering_pdf(r_in, rec, scattered);
-        return (1.0 - w) * pa + w * pb;
+        // Same deterministic branch as scatter() above - NOT a blend of both
+        // sub-materials' scattering_pdf. Blending here while scatter() above
+        // committed srec.attenuation/pdf_ptr entirely to one sub-material
+        // mismatched the two terms of the same Monte Carlo estimator (see
+        // branch_hash01()'s comment).
+        if (branch_hash01(rec.p) >= w)
+            return mat_a->scattering_pdf(r_in, rec, scattered);
+        else
+            return mat_b->scattering_pdf(r_in, rec, scattered);
     }
 
     shared_ptr<material> get_mat_a()   const { return mat_a; }
@@ -639,12 +684,15 @@ class mix_material : public material {
     // CPU-only correctness improvement, extending the same principle
     // scatter() already uses: stochastically resolve to whichever sub-material
     // this particular shadow ray would have hit, weighted the same way a
-    // scatter event would be.
+    // scatter event would be. Deterministic given rec.p (branch_hash01()),
+    // not random_double(), for the same reason scatter()/scattering_pdf()
+    // above are - a shadow ray probing this exact point should agree with
+    // what a scatter event at that same point would have committed to.
     bool is_shadow_transmissive(const hit_record& rec) const override {
         double w = weight_tex->value(rec.u, rec.v, rec.p).x();
         w = w < 0.0 ? 0.0 : (w > 1.0 ? 1.0 : w);
-        return (random_double() >= w) ? mat_a->is_shadow_transmissive(rec)
-                                       : mat_b->is_shadow_transmissive(rec);
+        return (branch_hash01(rec.p) >= w) ? mat_a->is_shadow_transmissive(rec)
+                                            : mat_b->is_shadow_transmissive(rec);
     }
 
   private:

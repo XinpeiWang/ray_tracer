@@ -75,16 +75,30 @@ TEST(MixMaterialTest, WeightOneAlwaysB) {
 }
 
 // ---------------------------------------------------------------------------
-// w=0.5: should split ~50/50 over many samples
+// w=0.5: should split ~50/50 over a spread of shading points.
+//
+// mix_material::scatter()'s branch choice is deterministic given rec.p (see
+// branch_hash01()'s comment in material_pbrt.h) - scattering_pdf() and
+// is_shadow_transmissive() re-derive the SAME hash for the same point so all
+// three calls about one scattering event agree, instead of each
+// independently re-rolling random_double() and silently disagreeing about
+// which sub-material a given event actually used. That means repeating
+// scatter() on the exact same hit_record (as this test used to do) always
+// returns the same branch now - by design, not a regression - so the ~50/50
+// split has to come from varying rec.p across iterations instead, mirroring
+// SharedMixMaterialTest.WeightHalfReturnsBothMaterials's own spread-of-points
+// approach for the GPU-side MixMaterial<float>, which already models this
+// same deterministic-per-point contract.
 // ---------------------------------------------------------------------------
 TEST(MixMaterialTest, HalfWeightSplits) {
 	auto mat_a = make_shared<lambertian>(color(1.0, 0.0, 0.0));  // red
 	auto mat_b = make_shared<lambertian>(color(0.0, 0.0, 1.0));  // blue
 	auto mix   = make_shared<mix_material>(mat_a, mat_b, 0.5);
 
-	hit_record rec = make_hit();
 	int a_count = 0, total = 0;
 	for (int i = 0; i < 2000; ++i) {
+		hit_record rec = make_hit();
+		rec.p = point3(i * 0.137, i * 0.251, i * 0.373);
 		scatter_record srec;
 		ray r_in(point3(0, 0, -1), vec3(0, 0, 1));
 		if (mix->scatter(r_in, rec, srec)) {
@@ -95,6 +109,31 @@ TEST(MixMaterialTest, HalfWeightSplits) {
 	ASSERT_GT(total, 1500);
 	double fraction = static_cast<double>(a_count) / total;
 	EXPECT_NEAR(fraction, 0.5, 0.05);
+}
+
+// ---------------------------------------------------------------------------
+// The same shading point must always resolve to the same sub-material -
+// this is the actual property fix #12 introduced (scatter()/scattering_pdf()/
+// is_shadow_transmissive() no longer independently re-roll and disagree).
+// ---------------------------------------------------------------------------
+TEST(MixMaterialTest, ChoiceIsDeterministicPerPoint) {
+	auto mat_a = make_shared<lambertian>(color(1.0, 0.0, 0.0));  // red
+	auto mat_b = make_shared<lambertian>(color(0.0, 0.0, 1.0));  // blue
+	auto mix   = make_shared<mix_material>(mat_a, mat_b, 0.5);
+
+	hit_record rec = make_hit();
+	rec.p = point3(1.234, 5.678, -9.012);
+	ray r_in(point3(0, 0, -1), vec3(0, 0, 1));
+
+	scatter_record first_srec;
+	ASSERT_TRUE(mix->scatter(r_in, rec, first_srec));
+	bool first_is_a = first_srec.attenuation.x() > 0.5;
+
+	for (int i = 0; i < 20; ++i) {
+		scatter_record srec;
+		ASSERT_TRUE(mix->scatter(r_in, rec, srec));
+		EXPECT_EQ(srec.attenuation.x() > 0.5, first_is_a);
+	}
 }
 
 // ---------------------------------------------------------------------------

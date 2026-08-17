@@ -74,6 +74,26 @@ class material {
         return 0;
     }
 
+    // The attenuation color to pair with scattering_pdf(..., scattered) for
+    // THAT specific direction - defaults to srec_attenuation (the value
+    // scatter() already stored in scatter_record for the direction IT
+    // sampled), which is exactly right for every material whose color never
+    // varies by direction (Lambertian, metal, coated_diffuse, ...: the
+    // overwhelming majority). camera.h's NEE strategies (light/sky/punctual)
+    // evaluate scattering_pdf() at a shadow ray toward a light - a DIFFERENT
+    // direction than whatever scatter() itself sampled - and pair it with
+    // this call instead of blindly reusing scatter_record::attenuation, so a
+    // material like diffuse_transmission (whose color genuinely differs
+    // between the reflection and transmission hemispheres: R vs T) can
+    // return the color matching the hemisphere actually being evaluated
+    // rather than whichever one scatter()'s own stochastic pick landed on.
+    // See diffuse_transmission's own override.
+    virtual color scattering_attenuation(const hit_record& rec, const ray& scattered,
+                                          const color& srec_attenuation) const {
+        (void)rec; (void)scattered;
+        return srec_attenuation;
+    }
+
     // Whether a SHADOW ray's occlusion test should treat a hit on this
     // material as "nothing there" and keep going, rather than as a blocker.
     // Default false (opaque) is the conservative, correct default for
