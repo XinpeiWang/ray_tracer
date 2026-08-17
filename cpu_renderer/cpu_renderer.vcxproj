@@ -76,15 +76,13 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="cpu_interface.cpp" />
-    <!-- Separate translation unit from cpu_interface.cpp: see
-         cpu_interface_bdpt.cpp's own file comment for why (avoids an
-         AliasTable ODR collision between power_light_sampler.h, needed by
-         cpu_interface.cpp's existing SPPM path, and reservoir_sampler.h,
-         needed by src/shared/mlt.h). -->
+    <!-- BDPT/MLT CLI entry points - see cpu_interface_bdpt.cpp's own file
+         comment. Kept as its own translation unit organizationally (keeps
+         the BDPT/MLT-specific includes/logic out of cpu_interface.cpp) but
+         no longer split further into a second .cpp file joined by a bridge
+         header - that extra split existed only to route around an
+         AliasTable ODR collision that no longer exists. -->
     <ClCompile Include="cpu_interface_bdpt.cpp" />
-    <!-- The rendering half of that same split - see bdpt_render_core.cpp's
-         own file comment. Never includes scene_registry.h. -->
-    <ClCompile Include="bdpt_render_core.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cpu_interface.h" />

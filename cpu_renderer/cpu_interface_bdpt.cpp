@@ -1,20 +1,27 @@
 // ============================================================================
-// cpu_interface_bdpt.cpp -- BDPT / MLT Render Entry Points (scene-building half)
+// cpu_interface_bdpt.cpp -- BDPT / MLT Render Entry Points
 // ============================================================================
 // The extern "C" entry points cpu_interface.h declares for --bdpt/--mlt.
 // Builds the scene via scene_registry.h -- the SAME closures
-// cpu_render_main()/cpu_render_main_sppm() (cpu_interface.cpp) use -- and
-// hands the built world/camera to bdpt_render_core()/mlt_render_core()
-// (cpu_renderer/bdpt_render_core.cpp) to actually render.
+// cpu_render_main()/cpu_render_main_sppm() (cpu_interface.cpp) use -- then
+// runs bdpt_render_core()/mlt_render_core() (below) to actually render via
+// BDPTSceneAdapter + bdpt_render_with_adapter()/mlt_render_with_adapter().
 //
-// Deliberately does NOT include bdpt_adapter.h or src/shared/mlt.h directly
-// -- see src/TheRestOfYourLife/bdpt_render_bridge.h's own file comment for
-// why: scene_registry.h (needed here) and mlt.h (needed by the actual BDPT/
-// MLT render loops) each transitively pull in a DIFFERENT, same-named
-// global `class AliasTable` (power_light_sampler.h vs. reservoir_sampler.h)
-// that can never coexist in one translation unit. This file only ever
-// builds a scene and calls across bdpt_render_bridge.h's narrow interface;
-// bdpt_render_core.cpp is the other half, and never includes scene_registry.h.
+// A separate translation unit from cpu_interface.cpp specifically to avoid
+// an AliasTable ODR collision: scene_registry.h (needed here, for
+// find_scene()) pulls in src/TheRestOfYourLife/power_light_sampler.h, while
+// src/shared/mlt.h (needed by BDPT/MLT's own rendering code below) pulls in
+// src/shared/reservoir_sampler.h - both used to define their own,
+// differently-implemented global `class AliasTable`, an ODR violation if
+// both headers were ever included in the same translation unit. That
+// collision no longer exists (power_light_sampler.h now includes
+// reservoir_sampler.h's AliasTable directly instead of hand-porting its own
+// copy - see power_light_sampler.h's own comment), which is also why the
+// scene-building and rendering halves of this file no longer need to be two
+// separate .cpp files joined by a narrow bridge header (this file used to be
+// split as cpu_interface_bdpt.cpp + bdpt_render_core.cpp +
+// src/TheRestOfYourLife/bdpt_render_bridge.h purely to keep scene_registry.h
+// and bdpt_adapter.h/mlt.h from ever coexisting in one TU).
 // ============================================================================
 
 #include "cpu_interface.h"
@@ -22,11 +29,12 @@
 #include "../src/TheRestOfYourLife/camera.h"
 #include "../src/TheRestOfYourLife/scene_registry.h"
 #include "../src/TheRestOfYourLife/hittable_list.h"
-#include "../src/TheRestOfYourLife/bdpt_render_bridge.h"
+#include "../src/TheRestOfYourLife/bdpt_adapter.h"
 #include "../src/TheRestOfYourLife/error_codes.h"
 #include <iostream>
 #include <filesystem>
 #include <cstring>
+#include <thread>
 
 namespace {
 
@@ -88,6 +96,110 @@ const SceneDescriptor* build_scene_for_bdpt(const char* scene_id, int width, int
 		scene_desc->setup_camera(out_cam);
 
 	return scene_desc;
+}
+
+// bdpt_render_core/mlt_render_core -- given an already-built world/camera
+// (`cam` fully configured but NOT yet initialize()'d, matching
+// cpu_render_main_sppm()'s own convention), run BDPT/MLT via
+// BDPTSceneAdapter + bdpt_render_with_adapter()/mlt_render_with_adapter()
+// and write the result.
+int bdpt_render_core(const hittable_list& world, camera& cam,
+                      int spp, int bdpt_max_depth,
+                      const std::string& output_path) {
+	try {
+		cam.initialize();
+
+		std::cout << "[TECH] -- Render Technique Summary --------------------------" << std::endl;
+		std::cout << "[TECH] Integrator     : Bidirectional Path Tracing (pbrt-v4 BDPTIntegrator style)" << std::endl;
+		std::cout << "[TECH] MIS            : Balanced multi-strategy weight over all (s,t) connections" << std::endl;
+		std::cout << "[TECH] Light coverage : area lights only (v1 -- see bdpt_adapter.h's Scope comment)" << std::endl;
+		std::cout << "[TECH] BSDF coverage  : lambertian/normalized_fresnel/diffuse_transmission (full) + 8 delta materials (resampled)" << std::endl;
+		std::cout << "[TECH] Threading      : " << std::thread::hardware_concurrency() << " logical cores, row-parallel" << std::endl;
+		std::cout << "[TECH] -------------------------------------------------------" << std::endl;
+
+		BDPTSceneAdapter adapter(world, cam);
+		if (adapter.EmitterCount() == 0) {
+			std::cerr << "[bdpt_render_core] WARNING: this scene has no area-light emitters "
+			             "(diffuse_light shapes) - BDPT only samples area lights (v1, see "
+			             "bdpt_adapter.h's Scope comment), so this render will be entirely "
+			             "black even though it will report success. If this scene's only "
+			             "lighting is punctual (point/spot/distant) or sky/infinite, that is "
+			             "not yet supported by --bdpt/--mlt; use the default path tracer or "
+			             "--sppm instead." << std::endl;
+		}
+		std::vector<double> out_rgb;
+		bdpt_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, bdpt_max_depth, out_rgb);
+
+		bdpt_write_ppm(output_path, cam.image_width, cam.image_height, out_rgb);
+		return SUCCESS;
+
+	} catch (const std::bad_alloc& e) {
+		std::cerr << "[bdpt_render_core] " << ErrorInfo(ERR_CPU_MEMORY_ALLOCATION).to_string()
+		           << " - " << e.what() << std::endl;
+		return ERR_CPU_MEMORY_ALLOCATION;
+	} catch (const std::exception& e) {
+		std::cerr << "[bdpt_render_core] " << ErrorInfo(ERR_CPU_RENDER_FAILED).to_string()
+		           << " - " << e.what() << std::endl;
+		return ERR_CPU_RENDER_FAILED;
+	} catch (...) {
+		std::cerr << "[bdpt_render_core] " << ErrorInfo(ERR_UNKNOWN).to_string() << std::endl;
+		return ERR_UNKNOWN;
+	}
+}
+
+int mlt_render_core(const hittable_list& world, camera& cam,
+                     int mlt_bootstrap, int64_t mlt_mutations, int mlt_max_depth,
+                     const std::string& output_path) {
+	try {
+		cam.initialize();
+
+		// pbrt-v4's own MLT defaults (Render.cpp / mlt.pbrt): sigma=0.01,
+		// largeStepProbability=0.3 -- not exposed as CLI flags (see
+		// launcher_args.h's --mlt-* flag list) since these tune the Markov
+		// chain's mixing behavior, not something a typical render needs to
+		// retune per scene the way iteration/sample counts do.
+		constexpr double kSigma = 0.01;
+		constexpr double kLargeStepProb = 0.3;
+
+		std::cout << "[TECH] -- Render Technique Summary --------------------------" << std::endl;
+		std::cout << "[TECH] Integrator     : Metropolis Light Transport (pbrt-v4 MLTIntegrator style)" << std::endl;
+		std::cout << "[TECH] Sampler        : Primary-sample-space Markov chain (bootstrap + small/large steps)" << std::endl;
+		std::cout << "[TECH] sigma=" << kSigma << "  largeStepProb=" << kLargeStepProb << std::endl;
+		std::cout << "[TECH] Light coverage : area lights only (v1 -- see bdpt_adapter.h's Scope comment)" << std::endl;
+		std::cout << "[TECH] Threading      : " << std::thread::hardware_concurrency()
+		           << " independent Markov chains (see mlt_render_with_adapter())" << std::endl;
+		std::cout << "[TECH] -------------------------------------------------------" << std::endl;
+
+		BDPTSceneAdapter adapter(world, cam);
+		if (adapter.EmitterCount() == 0) {
+			std::cerr << "[mlt_render_core] WARNING: this scene has no area-light emitters "
+			             "(diffuse_light shapes) - MLT only samples area lights (v1, see "
+			             "bdpt_adapter.h's Scope comment), so this render will be entirely "
+			             "black even though it will report success. If this scene's only "
+			             "lighting is punctual (point/spot/distant) or sky/infinite, that is "
+			             "not yet supported by --bdpt/--mlt; use the default path tracer or "
+			             "--sppm instead." << std::endl;
+		}
+		std::vector<double> out_rgb;
+		mlt_render_with_adapter(adapter, cam.image_width, cam.image_height,
+		                         mlt_bootstrap, mlt_mutations, mlt_max_depth,
+		                         kSigma, kLargeStepProb, out_rgb);
+
+		bdpt_write_ppm(output_path, cam.image_width, cam.image_height, out_rgb);
+		return SUCCESS;
+
+	} catch (const std::bad_alloc& e) {
+		std::cerr << "[mlt_render_core] " << ErrorInfo(ERR_CPU_MEMORY_ALLOCATION).to_string()
+		           << " - " << e.what() << std::endl;
+		return ERR_CPU_MEMORY_ALLOCATION;
+	} catch (const std::exception& e) {
+		std::cerr << "[mlt_render_core] " << ErrorInfo(ERR_CPU_RENDER_FAILED).to_string()
+		           << " - " << e.what() << std::endl;
+		return ERR_CPU_RENDER_FAILED;
+	} catch (...) {
+		std::cerr << "[mlt_render_core] " << ErrorInfo(ERR_UNKNOWN).to_string() << std::endl;
+		return ERR_UNKNOWN;
+	}
 }
 
 } // namespace

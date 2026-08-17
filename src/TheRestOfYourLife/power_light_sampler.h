@@ -22,77 +22,25 @@
 #include "hittable_list.h"
 #include "rtweekend.h"
 
+// AliasTable used to live here as its own hand-ported copy - an independent
+// implementation of the identical pbrt-v4 AliasTable algorithm that
+// src/shared/reservoir_sampler.h also carries, unnamespaced under the same
+// global class name. Neither header could be included in the same
+// translation unit as the other without an ODR collision, which is the
+// entire reason src/TheRestOfYourLife/bdpt_render_bridge.h's two-.cpp-file
+// split exists (see its own file comment) - scene_registry.h needs THIS
+// header (for build_cornell_box_power_lights()) while bdpt_adapter.h needs
+// reservoir_sampler.h's (via src/shared/mlt.h), and the two used to be
+// mutually exclusive. reservoir_sampler.h's version is a strict superset
+// (optional out_pmf/out_u_remapped params on sample(), an (ptr,n)
+// constructor, empty()) of what this file's call sites (power_light_list's
+// sample(random_double())/pmf(i)/size()) ever used, so including it here
+// instead is a drop-in replacement, not a behavior change.
+#include "../shared/reservoir_sampler.h"
+
 #include <vector>
 #include <numeric>
 #include <algorithm>
-
-
-// ---------------------------------------------------------------------------
-// AliasTable -- O(1) weighted sampling, direct port of pbrt-v4 AliasTable
-// ---------------------------------------------------------------------------
-class AliasTable {
-  public:
-    AliasTable() = default;
-
-    explicit AliasTable(const std::vector<double>& weights) {
-        int n = (int)weights.size();
-        bins.resize(n);
-
-        // Normalize weights -> PMF stored in bins[i].p
-        double sum = std::accumulate(weights.begin(), weights.end(), 0.0);
-        if (sum <= 0.0) sum = 1.0;
-        for (int i = 0; i < n; ++i)
-            bins[i].p = weights[i] / sum;
-
-        // Build alias table using Vose's algorithm (pbrt-v4 pattern)
-        struct Outcome { double pHat; int index; };
-        std::vector<Outcome> under, over;
-        for (int i = 0; i < n; ++i) {
-            double pHat = bins[i].p * n;
-            if (pHat < 1.0)
-                under.push_back({pHat, i});
-            else
-                over.push_back({pHat, i});
-        }
-
-        while (!under.empty() && !over.empty()) {
-            Outcome un = under.back(); under.pop_back();
-            Outcome ov = over.back();  over.pop_back();
-
-            bins[un.index].q     = un.pHat;
-            bins[un.index].alias = ov.index;
-
-            double pExcess = un.pHat + ov.pHat - 1.0;
-            if (pExcess < 1.0)
-                under.push_back({pExcess, ov.index});
-            else
-                over.push_back({pExcess, ov.index});
-        }
-        // Remaining items have full probability in their own bin
-        while (!over.empty())  { auto ov = over.back();  over.pop_back();  bins[ov.index].q = 1.0; bins[ov.index].alias = -1; }
-        while (!under.empty()) { auto un = under.back(); under.pop_back(); bins[un.index].q = 1.0; bins[un.index].alias = -1; }
-    }
-
-    // Sample a bin index in O(1) given a uniform random u in [0,1)
-    int sample(double u) const {
-        int n = (int)bins.size();
-        int offset = (int)(u * n);
-        if (offset >= n) offset = n - 1;
-        double up = u * n - offset;
-        if (up < bins[offset].q)
-            return offset;
-        return bins[offset].alias;
-    }
-
-    // PMF for bin index i
-    double pmf(int i) const { return bins[i].p; }
-
-    int size() const { return (int)bins.size(); }
-
-  private:
-    struct Bin { double q = 1.0, p = 1.0; int alias = -1; };
-    std::vector<Bin> bins;
-};
 
 
 // ---------------------------------------------------------------------------

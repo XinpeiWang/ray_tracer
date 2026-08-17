@@ -12,7 +12,7 @@
  * quality/convergence).
  *
  * Uses bdpt_adapter.h's shared bdpt_render_with_adapter()/bdpt_write_ppm()
- * helpers (also used by cpu_renderer/bdpt_render_core.cpp's --bdpt CLI
+ * helpers (also used by cpu_renderer/cpu_interface_bdpt.cpp's --bdpt CLI
  * path) rather than duplicating the render loop here.
  */
 

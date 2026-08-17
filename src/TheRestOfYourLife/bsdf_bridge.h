@@ -11,24 +11,19 @@
 // be shared by BOTH sppm_adapter.h (SPPMSceneAdapter) and bdpt_adapter.h
 // (BDPTSceneAdapter) without either one pulling in the other's dependencies.
 //
-// Why this had to move: sppm_adapter.h also includes
-// src/TheRestOfYourLife/power_light_sampler.h, which defines a global
-// `class AliasTable`. bdpt.h's Metropolis Light Transport counterpart,
-// src/shared/mlt.h, independently includes src/shared/reservoir_sampler.h,
-// which defines its OWN, differently-implemented global `class AliasTable`.
-// Both are legitimate, independently-evolved ports of the same pbrt-v4
-// concept for two different subsystems (power-weighted arts sampling for
-// SPPM/path tracing vs. bootstrap-weight sampling for MLT) -- neither is
-// wrong, they just can't both be visible in the same translation unit
-// (ODR: two distinct class bodies with the same unqualified name). Since
-// cpu_interface.cpp's existing SPPM path already needs sppm_adapter.h (->
-// power_light_sampler.h) and the new MLT path needs mlt.h (->
-// reservoir_sampler.h), the fix is for the BSDF bridge -- the part BOTH
-// SPPMSceneAdapter and BDPTSceneAdapter actually need -- to depend on
-// neither AliasTable at all, and for BDPTSceneAdapter's own translation
-// unit (cpu_renderer/cpu_interface_bdpt.cpp) to never include
-// sppm_adapter.h/power_light_sampler.h in the first place. See
-// cpu_interface_bdpt.cpp's own file comment for the other half of this.
+// Originally motivated by an AliasTable ODR collision: sppm_adapter.h
+// includes src/TheRestOfYourLife/power_light_sampler.h, and bdpt.h's
+// Metropolis Light Transport counterpart (src/shared/mlt.h) independently
+// includes src/shared/reservoir_sampler.h - both used to define their own,
+// differently-implemented global `class AliasTable`, which could never both
+// be visible in the same translation unit. That collision no longer exists
+// (power_light_sampler.h now includes reservoir_sampler.h's AliasTable
+// directly - see power_light_sampler.h's own comment), but this split is
+// kept anyway: it's independently good layering regardless - the BSDF
+// bridge is the part BOTH SPPMSceneAdapter and BDPTSceneAdapter actually
+// need, and neither adapter has to pull in the other's full dependency set
+// (power_light_sampler.h's power-weighted light list for SPPM, mlt.h's
+// bootstrap-weight Markov chain machinery for MLT) just to get it.
 //
 // sppm_adapter.h now `#include`s this header instead of defining Layer 1
 // inline -- every name that used to live there (SPPMShadingContext,
