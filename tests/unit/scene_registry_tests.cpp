@@ -192,6 +192,29 @@ TEST(SceneRegistryTest, EveryCategoryHasAtLeastOneScene) {
 	}
 }
 
+// SceneCategories::letter_for_category() derives a category's id letter
+// from its POSITION in kAll/kAllLetters (see scene_descriptor.h) - but
+// every builtin scene's id is a hand-typed literal like "B10", not computed
+// through that function (only the UserScenes discovery loop actually calls
+// it - see scene_registry.h). Nothing previously checked that a builtin
+// id's letter still matched its category's position: reordering kAll for a
+// cosmetic tab-order change, or a copy-paste typo giving a scene the wrong
+// id prefix, would silently reassign what every id under one or more
+// categories means, with every other registry test still passing (they
+// check ids are unique and categories are known constants, not that the
+// two agree with each other).
+TEST(SceneRegistryTest, BuiltinIdLetterMatchesItsCategory) {
+	for (const auto& s : get_builtin_scene_registry()) {
+		ASSERT_FALSE(s.id.empty()) << "Empty id in builtin registry";
+		const char expected = SceneCategories::letter_for_category(s.category);
+		EXPECT_EQ(s.id[0], expected)
+			<< "Scene '" << s.name << "' has id " << s.id << " (letter '" << s.id[0]
+			<< "') but its category '" << s.category << "' maps to letter '"
+			<< expected << "' - the id's category letter and its declared "
+			<< "category have drifted apart.";
+	}
+}
+
 TEST(SceneRegistryTest, AllRecommendedSppArePositive) {
 	for (const auto& s : get_scene_registry()) {
 		EXPECT_GT(s.recommended_spp, 0) << "Bad spp for id " << s.id;
