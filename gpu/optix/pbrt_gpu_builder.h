@@ -320,6 +320,19 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		d.type = MaterialType::Metal;
 		break;
 	case pbrt_flatten::MaterialKind::Dielectric:
+		// A nonzero "roughness"/"uroughness"/"vroughness" (m.roughness,
+		// already copied into d.roughness above generically) means the scene
+		// asked for a GGX microfacet dielectric (pbrt-v4 DielectricBxDF's
+		// rough path) - matches pbrt_cpu_builder.h's identical branch. This
+		// codebase already has a real GPU model for that
+		// (MaterialType::RoughDielectric), it just wasn't wired up here.
+		// RoughDielectric doesn't read d.albedo/transmission_filter at all
+		// (see its own field-reuse comment in optix_types.h), so no reset
+		// needed on this branch the way the smooth path needs below.
+		if (m.roughness > 0.0) {
+			d.type = MaterialType::RoughDielectric;
+			break;
+		}
 		d.type = MaterialType::Dielectric;
 		// d.albedo was just set to m.color above (same union slot as
 		// Dielectric's own transmission_filter - see optix_types.h's

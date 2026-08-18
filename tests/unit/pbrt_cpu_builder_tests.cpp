@@ -295,6 +295,42 @@ TEST(PbrtCpuBuildTest, ProjectionLightSourceIsSampleableAtAShadingPoint) {
 }
 
 // ---------------------------------------------------------------------------
+// Material "dielectric" with/without roughness
+//
+// A nonzero "roughness" on a pbrt dielectric asks for the GGX microfacet
+// variant (pbrt-v4 DielectricBxDF's rough path) - this codebase's real model
+// for that is rough_dielectric, not plain dielectric. Pins that the roughness
+// parameter actually routes to the different class rather than being parsed
+// and silently dropped (a pre-existing gap fixed alongside the Metal/
+// rough_metal GPU mismatch this session).
+// ---------------------------------------------------------------------------
+
+TEST(PbrtCpuBuildTest, SmoothDielectricBuildsThePlainDielectricClass) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Material \"dielectric\" \"float eta\" [ 1.5 ]\n" + std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	EXPECT_NE(dynamic_cast<dielectric *>(rec.mat.get()), nullptr)
+		<< "a pbrt dielectric with no roughness must build the plain smooth "
+		   "dielectric class";
+	EXPECT_EQ(dynamic_cast<rough_dielectric *>(rec.mat.get()), nullptr);
+}
+
+TEST(PbrtCpuBuildTest, RoughDielectricRoughnessBuildsTheRealRoughDielectricClass) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Material \"dielectric\" \"float eta\" [ 1.5 ] \"float roughness\" [ 0.2 ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	EXPECT_NE(dynamic_cast<rough_dielectric *>(rec.mat.get()), nullptr)
+		<< "a pbrt dielectric with nonzero roughness must build the real "
+		   "rough_dielectric (GGX) class, not silently drop the roughness "
+		   "and render a perfect mirror/refractor";
+}
+
+// ---------------------------------------------------------------------------
 // Material "mix"
 //
 // pbrt_flatten_tests.cpp pins the name resolution; these pin the next stage -

@@ -80,6 +80,15 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		// a fuzz, so roughness maps onto fuzz directly.
 		return std::make_shared<metal>(albedo, m.roughness);
 	case pbrt_flatten::MaterialKind::Dielectric:
+		// A nonzero "roughness"/"uroughness"/"vroughness" (m.roughness - see
+		// flatten()'s own fallback-chain comment) means the scene asked for a
+		// GGX microfacet dielectric (pbrt-v4 DielectricBxDF's rough path), not
+		// a perfect-specular one - this codebase already has a real model for
+		// that (rough_dielectric, RoughDielectricBxDF), it just wasn't wired
+		// up here, so any scene with a rough glass/window silently rendered
+		// as a perfect mirror-and-refract surface instead.
+		if (m.roughness > 0.0)
+			return std::make_shared<rough_dielectric>(m.ior, m.roughness);
 		return std::make_shared<dielectric>(m.ior);
 	case pbrt_flatten::MaterialKind::ThinDielectric:
 		// A zero-thickness slab (thin_dielectric, material_pbrt.h) is NOT the
