@@ -169,6 +169,9 @@ void MainWindow::onRenderClicked() {
 	if (m_previewInfoLabel) m_previewInfoLabel->clear();
 	m_lastOutputPath.clear();
 	m_lastPreviewImagePath.clear();
+	if (m_mediaPlayer) m_mediaPlayer->stop();
+	if (m_videoControlsWidget) m_videoControlsWidget->setVisible(false);
+	if (m_previewStack && m_previewLabel) m_previewStack->setCurrentWidget(m_previewLabel);
 
 	// Start elapsed timer. Its 1 Hz tick doubles as the ETA sampling clock,
 	// which is the same cadence HandBrake samples at.
@@ -483,6 +486,12 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 					if (!pixmap.isNull() && m_previewLabel) {
 						m_lastPreviewImagePath = pngPath;
 						m_previewLabel->setPreviewPixmap(pixmap);
+						// A prior video-mode render may have left the Preview
+						// tab on the video widget / mid-playback - switch back
+						// to the image and silence it.
+						if (m_mediaPlayer) m_mediaPlayer->stop();
+						if (m_videoControlsWidget) m_videoControlsWidget->setVisible(false);
+						if (m_previewStack) m_previewStack->setCurrentWidget(m_previewLabel);
 						if (m_previewInfoLabel) {
 							m_previewInfoLabel->setText(QString("%1  •  %2×%3  •  %4 KB  •  %5s")
 								.arg(pngInfo.fileName())
@@ -797,7 +806,45 @@ void MainWindow::assembleVideoAutomatically() {
 	onLogMessage(QString("✅ Video assembled successfully: %1").arg(videoPath));
 	onLogMessage(QString("Video size: %1 MB").arg(videoInfo.size() / (1024.0 * 1024.0), 0, 'f', 2));
 
-	// Auto-open the video
-	onLogMessage(QString("Opening video: %1").arg(videoPath));
-	QDesktopServices::openUrl(QUrl::fromLocalFile(videoPath));
+	// Play the finished video inline on the Preview tab via QMediaPlayer/
+	// QVideoWidget. onRenderComplete()'s image-mode branch is the only place
+	// that otherwise touches the Preview tab - the video branch goes
+	// straight from render to assembleVideoAutomatically() without it, so
+	// without this the tab would stay exactly as it was before the render
+	// (empty, or whatever a prior image-mode render left there) even on a
+	// fully successful video render. An earlier version of this function
+	// showed a static poster-frame thumbnail instead (QLabel can't play
+	// video); m_previewStack now swaps to the real QVideoWidget pane
+	// (createPreviewTab()) so playback happens in place, with transport
+	// controls (m_videoControlsWidget) shown alongside it. "Open Viewer" is
+	// still pointed at the .mp4 itself for opening it externally on demand;
+	// "Open Folder" likewise points at the video's folder.
+	//
+	// Frame count for the info label still comes from the enc_*.png
+	// sequence - main.cpp's BackgroundPngConverter (launcher/main.cpp)
+	// converts each frame_NNNN.ppm straight to a contiguously-renumbered
+	// enc_NNNN.png for ffmpeg's sequential-input requirement, and those
+	// files are never cleaned up after a successful assembly, so they're
+	// still there to count.
+	QString framesDir = QCoreApplication::applicationDirPath() + "/output/frames";
+	QDir framesDirForPreview(framesDir);
+	QStringList frameFiles = framesDirForPreview.entryList(QStringList() << "enc_*.png", QDir::Files, QDir::Name);
+	m_lastOutputPath = videoPath;
+	m_lastPreviewImagePath = videoPath;
+	if (m_mediaPlayer && m_videoWidget && m_previewStack) {
+		if (m_previewInfoLabel) {
+			m_previewInfoLabel->setText(QString("%1  •  %2 MB  •  %3 frames")
+				.arg(videoInfo.fileName())
+				.arg(videoInfo.size() / (1024.0 * 1024.0), 0, 'f', 1)
+				.arg(frameFiles.count()));
+		}
+		m_previewStack->setCurrentWidget(m_videoWidget);
+		if (m_videoControlsWidget) m_videoControlsWidget->setVisible(true);
+		if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
+		m_mediaPlayer->setSource(QUrl::fromLocalFile(videoPath));
+		m_mediaPlayer->play();
+	}
+	updateActionStates();
+
+	onLogMessage(QString("Playing video inline: %1").arg(videoPath));
 }

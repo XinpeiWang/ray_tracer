@@ -1,7 +1,11 @@
 # svg is required for QIcon to load the SVG icons in resources.qrc. Without
 # the module (and without imageformats/qsvg.dll alongside the exe) QIcon
 # silently renders nothing at all rather than reporting an error.
-QT += core gui widgets svg
+# multimedia/multimediawidgets back the Preview tab's embedded QVideoWidget/
+# QMediaPlayer playback for video-mode renders (see assembleVideoAutomatically()
+# in mainwindow_slots.cpp) - needs Qt6Multimedia.dll/Qt6MultimediaWidgets.dll
+# plus the ffmpeg backend plugin/runtime DLLs deployed alongside the exe.
+QT += core gui widgets svg multimedia multimediawidgets
 
 CONFIG += c++17
 

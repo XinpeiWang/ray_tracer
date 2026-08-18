@@ -23,6 +23,11 @@
 #include <QPixmap>
 #include <QResizeEvent>
 #include <QSystemTrayIcon>
+#include <QStackedWidget>
+#include <QSlider>
+#include <QMediaPlayer>
+#include <QAudioOutput>
+#include <QVideoWidget>
 
 #include "camera_math.h"
 #include "render_output_parser.h"
@@ -406,6 +411,17 @@ private:
 	int m_previewTabIndex = -1;         // Index of the Preview tab within m_tabWidget
 	QString m_lastOutputPath;           // Most recent render's raw output path (.ppm)
 	QString m_lastPreviewImagePath;     // Most recent render's displayed image path (.png)
+
+	// Preview tab - embedded video playback for video-mode renders. A
+	// QStackedWidget swaps between m_previewLabel (image mode) and
+	// m_videoWidget (video mode); see assembleVideoAutomatically().
+	QStackedWidget *m_previewStack;     // Switches between image and video display
+	QVideoWidget *m_videoWidget;        // Renders QMediaPlayer's frames inline
+	QMediaPlayer *m_mediaPlayer;
+	QAudioOutput *m_audioOutput;
+	QWidget *m_videoControlsWidget;     // Play/pause + seek row, hidden until a video plays
+	QPushButton *m_videoPlayPauseButton;
+	QSlider *m_videoPositionSlider;
 
 	// Log output
 	QTextEdit *m_logTextEdit;           // Log output display

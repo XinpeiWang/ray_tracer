@@ -25,6 +25,8 @@
 #include <QDesktopServices>
 #include <QUrl>
 #include <QSplitter>
+#include <QStackedWidget>
+#include <QSlider>
 #include <cmath>
 
 // Refills the scene dropdown with just one category's scenes.
@@ -601,15 +603,75 @@ void MainWindow::createPreviewTab() {
 	splitter->setChildrenCollapsible(false);
 	outerLayout->addWidget(splitter);
 
-	// Shows the rendered PNG scaled to fit (see main.cpp's Format Conversion
-	// step, which always writes a same-basename .png next to a successful
-	// render's .ppm output) - populated by onRenderComplete() instead of
-	// this app shelling out to the OS's default image viewer for every render.
+	// Image mode and video mode share this one pane via a QStackedWidget:
+	// m_previewLabel shows the rendered PNG scaled to fit (see main.cpp's
+	// Format Conversion step, which always writes a same-basename .png next
+	// to a successful render's .ppm output) - populated by
+	// onRenderComplete(). m_videoWidget plays a finished video-mode render
+	// inline via QMediaPlayer - populated by assembleVideoAutomatically().
+	// Both replace this app shelling out to the OS's default viewer for
+	// every render.
+	QWidget *mediaContainer = new QWidget();
+	QVBoxLayout *mediaLayout = new QVBoxLayout(mediaContainer);
+	mediaLayout->setContentsMargins(0, 0, 0, 0);
+	mediaLayout->setSpacing(6);
+
+	m_previewStack = new QStackedWidget();
+	m_previewStack->setMinimumSize(200, 200);
+
 	m_previewLabel = new ScaledImageLabel();
 	m_previewLabel->setPlaceholderText("No render yet — start a render to see a preview here.");
 	m_previewLabel->setMinimumSize(200, 200);
 	// Styled globally by class name - see the ScaledImageLabel rule.
-	splitter->addWidget(m_previewLabel);
+	m_previewStack->addWidget(m_previewLabel);
+
+	m_videoWidget = new QVideoWidget();
+	m_videoWidget->setMinimumSize(200, 200);
+	m_previewStack->addWidget(m_videoWidget);
+
+	mediaLayout->addWidget(m_previewStack, 1);
+
+	m_mediaPlayer = new QMediaPlayer(this);
+	m_audioOutput = new QAudioOutput(this);
+	m_mediaPlayer->setAudioOutput(m_audioOutput);
+	m_mediaPlayer->setVideoOutput(m_videoWidget);
+
+	// Play/pause + seek row, only meaningful once a video is loaded - stays
+	// hidden until assembleVideoAutomatically() actually plays one.
+	m_videoControlsWidget = new QWidget();
+	QHBoxLayout *videoControlsLayout = new QHBoxLayout(m_videoControlsWidget);
+	videoControlsLayout->setContentsMargins(0, 0, 0, 0);
+	videoControlsLayout->setSpacing(8);
+
+	m_videoPlayPauseButton = new QPushButton("Pause");
+	m_videoPlayPauseButton->setFixedWidth(70);
+	connect(m_videoPlayPauseButton, &QPushButton::clicked, this, [this]() {
+		if (!m_mediaPlayer) return;
+		if (m_mediaPlayer->playbackState() == QMediaPlayer::PlayingState) m_mediaPlayer->pause();
+		else m_mediaPlayer->play();
+	});
+	videoControlsLayout->addWidget(m_videoPlayPauseButton);
+
+	m_videoPositionSlider = new QSlider(Qt::Horizontal);
+	videoControlsLayout->addWidget(m_videoPositionSlider, 1);
+	mediaLayout->addWidget(m_videoControlsWidget);
+	m_videoControlsWidget->setVisible(false);
+
+	connect(m_mediaPlayer, &QMediaPlayer::playbackStateChanged, this, [this](QMediaPlayer::PlaybackState state) {
+		if (m_videoPlayPauseButton) m_videoPlayPauseButton->setText(state == QMediaPlayer::PlayingState ? "Pause" : "Play");
+	});
+	connect(m_mediaPlayer, &QMediaPlayer::durationChanged, this, [this](qint64 duration) {
+		if (m_videoPositionSlider) m_videoPositionSlider->setRange(0, static_cast<int>(duration));
+	});
+	connect(m_mediaPlayer, &QMediaPlayer::positionChanged, this, [this](qint64 position) {
+		if (m_videoPositionSlider && !m_videoPositionSlider->isSliderDown())
+			m_videoPositionSlider->setValue(static_cast<int>(position));
+	});
+	connect(m_videoPositionSlider, &QSlider::sliderMoved, this, [this](int position) {
+		if (m_mediaPlayer) m_mediaPlayer->setPosition(position);
+	});
+
+	splitter->addWidget(mediaContainer);
 
 	QWidget *sidebar = new QWidget();
 	sidebar->setMinimumWidth(200);
