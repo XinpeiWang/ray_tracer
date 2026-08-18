@@ -1,0 +1,206 @@
+// gpu_sky_light_shared.h -- Device-side real importance-sampled HDR sky math
+// (LightSource "infinite" with an image), shared between the GPU-recursive
+// backend (optix_sky_light.h) and the GPU-wavefront backend
+// (wavefront_sky_light.h). Both backends used to independently hand-port
+// this exact math under a `wf_`-vs-unprefixed naming convention - the two
+// copies were verified byte-for-byte identical modulo naming and one
+// calling-convention difference (see below), so unlike this codebase's
+// other recursive/wavefront device-code duplication (which is a real
+// consequence of the two backends being separately-compiled OptiX modules
+// that can't share device code touching OptiX intrinsics or a `__constant__`
+// launch-params global), this file has neither: no OptiX intrinsic appears
+// anywhere below, and every function takes its data as plain explicit
+// parameters rather than reading a `params`/`wf_params` global, so both
+// backends can include and call it directly.
+//
+// The one real difference the two backends had: sky_sample_Li() used to
+// read its 2 uniform random numbers directly off a `seed` via each
+// backend's own RNG (random_float()/wf_rand()) - harmless to unify too,
+// since neither RNG call needs anything backend-specific beyond "give me a
+// float in [0,1)": sky_sample_Li() below takes those 2 floats as plain
+// parameters, and each backend's own thin wrapper (in optix_sky_light.h /
+// wavefront_sky_light.h) generates them via its own RNG before calling in.
+// The one function that still can't be shared outright is each backend's
+// top-level sample_sky_nee()-equivalent, whose no-image fallback path calls
+// random_unit_vector()/wf_rand_unit() - a rejection-sampling loop that
+// calls the RNG a variable number of times, not something that can be
+// pre-generated as a fixed small tuple of floats - so that one function
+// stays a thin per-backend wrapper around this file's sky_sample_Li().
+//
+// A float, raw-pointer/array reimplementation of:
+//   - src/shared/piecewise_dist.h's PiecewiseConstant1D::sample()/pdf() and
+//     PiecewiseConstant2D::sample()/pdf(),
+//   - src/TheRestOfYourLife/sky_light.h's dir_to_uv()/sample_Le()/pdf_Li()/
+//     Le() (the equirectangular mapping + Jacobian correction - see that
+//     file's own header comment for the derivation, NOT re-derived here).
+// NOT a call to those CPU functions, which use std::vector and double
+// precision throughout.
+
+#pragma once
+
+// ---------------------------------------------------------------------------
+// pc1d_sample() / pc1d_pdf() -- PiecewiseConstant1D::sample()/pdf() ports.
+// `cdf` has n+1 entries, `func` has n entries, matching piecewise_dist.h's
+// own layout exactly (cdf[0]=0, cdf[n]=1, func_int already folded out of the
+// upload - see pbrt_gpu_builder.h). func_int is guaranteed > 0 here: a
+// degenerate (all-zero-weight) row/marginal is normalized to a uniform
+// distribution CPU-side, at construction time, before upload - see
+// PiecewiseConstant1D's own constructor comment - so device code never needs
+// to special-case it.
+// ---------------------------------------------------------------------------
+__device__ __forceinline__ float gpu_sky_pc1d_sample(const float* cdf, const float* func, float func_int,
+                                                       int n, float u, float& pdf_out) {
+	// Binary search: largest o such that cdf[o] <= u (mirrors std::upper_
+	// bound(u)-1, clamped to a valid bin).
+	int lo = 0, hi = n;
+	while (lo < hi) {
+		int mid = (lo + hi) >> 1;
+		if (cdf[mid] <= u) lo = mid + 1; else hi = mid;
+	}
+	int o = lo - 1;
+	if (o < 0) o = 0;
+	if (o >= n) o = n - 1;
+
+	float du = u - cdf[o];
+	float dcdf = cdf[o + 1] - cdf[o];
+	if (dcdf > 0.0f) du /= dcdf;
+
+	pdf_out = func[o] / func_int;
+	return (o + du) / (float)n;
+}
+
+__device__ __forceinline__ float gpu_sky_pc1d_pdf(const float* func, float func_int, int n, float x) {
+	int o = (int)(x * (float)n);
+	if (o < 0) o = 0;
+	if (o >= n) o = n - 1;
+	return func[o] / func_int;
+}
+
+// ---------------------------------------------------------------------------
+// pc2d_sample() / pc2d_pdf() -- PiecewiseConstant2D::sample()/pdf() ports.
+// Row r's conditional cdf/func slices sit at fixed strides (r*(width+1) /
+// r*width) since every row shares the same width - unlike GpuPL2DTable's
+// per-axis variable offsets, this needs no per-row offset table.
+// ---------------------------------------------------------------------------
+__device__ __forceinline__ void gpu_sky_pc2d_sample(const GpuSkyDistribution& d, float ru, float rv,
+                                                      float& u_out, float& v_out, float& pdf_out) {
+	float pdf_v;
+	float v = gpu_sky_pc1d_sample(d.marginalCdf, d.marginalFunc, d.marginalFuncInt, d.height, rv, pdf_v);
+
+	int row = (int)(v * (float)d.height);
+	if (row < 0) row = 0;
+	if (row >= d.height) row = d.height - 1;
+
+	const float* rowCdf  = d.conditionalCdf  + row * (d.width + 1);
+	const float* rowFunc = d.conditionalFunc + row * d.width;
+	const float  rowFuncInt = d.conditionalFuncInt[row];
+
+	float pdf_u;
+	float u = gpu_sky_pc1d_sample(rowCdf, rowFunc, rowFuncInt, d.width, ru, pdf_u);
+
+	u_out = u; v_out = v; pdf_out = pdf_u * pdf_v;
+}
+
+__device__ __forceinline__ float gpu_sky_pc2d_pdf(const GpuSkyDistribution& d, float u, float v) {
+	int row = (int)(v * (float)d.height);
+	if (row < 0) row = 0;
+	if (row >= d.height) row = d.height - 1;
+
+	const float* rowFunc = d.conditionalFunc + row * d.width;
+	const float  rowFuncInt = d.conditionalFuncInt[row];
+
+	const float pdf_u = gpu_sky_pc1d_pdf(rowFunc, rowFuncInt, d.width, u);
+	const float pdf_v = gpu_sky_pc1d_pdf(d.marginalFunc, d.marginalFuncInt, d.height, v);
+	return pdf_u * pdf_v;
+}
+
+// ---------------------------------------------------------------------------
+// sky_dir_to_uv() / sky_uv_to_dir() -- the equirectangular mapping, mirrors
+// sky_light.h's private dir_to_uv() and sample_Le()'s inverse exactly
+// (theta=acos(-dir.y), phi=atan2(-dir.z,dir.x)+pi -- and back).
+// ---------------------------------------------------------------------------
+__device__ __forceinline__ void gpu_sky_dir_to_uv(const float3& dir, float& u, float& v) {
+	const float kPi = 3.14159265358979323846f;
+	float ct = -dir.y;
+	ct = fminf(1.0f, fmaxf(-1.0f, ct));
+	const float theta = acosf(ct);
+	const float phi = atan2f(-dir.z, dir.x) + kPi;
+	u = phi / (2.0f * kPi);
+	v = theta / kPi;
+}
+
+__device__ __forceinline__ float3 gpu_sky_uv_to_dir(float u, float v, float& sin_theta_out) {
+	const float kPi = 3.14159265358979323846f;
+	const float phi = u * 2.0f * kPi;
+	const float theta = v * kPi;
+	const float sin_theta = sinf(theta);
+	const float cos_theta = cosf(theta);
+	sin_theta_out = sin_theta;
+	return normalize(make_float3(sin_theta * cosf(phi), cos_theta, -sin_theta * sinf(phi)));
+}
+
+// ---------------------------------------------------------------------------
+// sky_Le() -- per-direction radiance lookup. Mirrors sky_light::Le(), which
+// samples env_tex (hdr_image_texture::value()) at dir_to_uv(dir): that
+// function flips v (v_image = 1-v, image origin top-left) and nearest-
+// samples, clamped [0,size) - both replicated exactly here, including the
+// v-flip, which is NOT the same convention the distribution's own row index
+// uses (see PiecewiseConstant2D's own construction in pbrt_gpu_builder.h,
+// which indexes image row v directly, unflipped) - a real but harmless CPU
+// quirk (affects sampling efficiency, not correctness - see this codebase's
+// own notes) that must be mirrored bit-for-bit for GPU/CPU visual parity,
+// not "fixed" here.
+// ---------------------------------------------------------------------------
+__device__ __forceinline__ float3 gpu_sky_Le(const GpuSkyDistribution& d, const float3& dir) {
+	float u, v;
+	gpu_sky_dir_to_uv(dir, u, v);
+	u = fminf(1.0f, fmaxf(0.0f, u));
+	v = fminf(1.0f, fmaxf(0.0f, v));
+	const float v_img = 1.0f - v; // mirrors hdr_image_texture::value()'s v-flip
+
+	int i = (int)(u * (float)d.width);
+	int j = (int)(v_img * (float)d.height);
+	if (i < 0) i = 0; if (i >= d.width)  i = d.width  - 1;
+	if (j < 0) j = 0; if (j >= d.height) j = d.height - 1;
+
+	const float* px = d.imagePixels + (j * d.width + i) * 3;
+	return d.scale * make_float3(px[0], px[1], px[2]);
+}
+
+// ---------------------------------------------------------------------------
+// sky_sample_Li() -- direction + solid-angle pdf for one NEE sample, given
+// 2 already-generated uniform random numbers (see this file's own header
+// comment for why callers pass these in rather than a seed). Mirrors
+// sky_light::sample_Le()'s image branch (the Jacobian pdf_omega = pdf_image /
+// (2*pi^2*sin_theta)). Returns false at the pole-singularity guard (mirrors
+// CPU's own `if (sin_theta < 1e-10)` fallback) - the caller should then take
+// the SAME uniform-sphere + flat-colour path it already has for a constant-
+// colour sky, exactly as sky_light::sample_Le() itself falls back to
+// random_unit_vector()/1/(4*pi) there.
+// ---------------------------------------------------------------------------
+__device__ __forceinline__ bool gpu_sky_sample_Li(const GpuSkyDistribution& d, float ru, float rv,
+                                                    float3& dir_out, float& pdf_out) {
+	float us, vs, pdf_img;
+	gpu_sky_pc2d_sample(d, ru, rv, us, vs, pdf_img);
+
+	float sin_theta;
+	const float3 dir = gpu_sky_uv_to_dir(us, vs, sin_theta);
+	if (sin_theta < 1e-6f) return false;
+
+	const float kPi = 3.14159265358979323846f;
+	dir_out = dir;
+	pdf_out = pdf_img / (2.0f * kPi * kPi * sin_theta);
+	return true;
+}
+
+// pdf_Li() -- solid-angle PDF for a GIVEN direction (MIS weight in the miss
+// case + NEE). Mirrors sky_light::pdf_Li(vec3)'s image branch exactly,
+// including its own pole guard (returns 0, matching CPU).
+__device__ __forceinline__ float gpu_sky_pdf_Li(const GpuSkyDistribution& d, const float3& dir) {
+	float u, v;
+	gpu_sky_dir_to_uv(dir, u, v);
+	const float kPi = 3.14159265358979323846f;
+	const float sin_theta = sinf(v * kPi);
+	if (sin_theta < 1e-6f) return 0.0f;
+	return gpu_sky_pc2d_pdf(d, u, v) / (2.0f * kPi * kPi * sin_theta);
+}

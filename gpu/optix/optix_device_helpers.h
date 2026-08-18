@@ -190,7 +190,11 @@ __device__ __forceinline__ bool sample_principled_material(
 // Device-side real importance-sampled HDR sky (LightSource "infinite" with
 // an image) - needs `params` and random_float()/random_unit_vector() (all
 // defined above), so this include must stay below them too. See that file's
-// own header comment.
+// own header comment. The actual math (shared with the wavefront backend)
+// lives in gpu_sky_light_shared.h, included first - it needs nothing above
+// it (no OptiX intrinsics, no `params`), so its own position here is only
+// "before optix_sky_light.h, which calls into it" not a hard requirement.
+#include "gpu_sky_light_shared.h"
 #include "optix_sky_light.h"
 
 __device__ __forceinline__ float3 random_on_hemisphere(const float3& normal, unsigned int& seed) {

@@ -271,7 +271,10 @@ __device__ __forceinline__ bool wf_sample_principled_material(
 
 // Device-side real importance-sampled HDR sky for the wavefront backend
 // (mirrors optix_sky_light.h - see wavefront_sky_light.h's own header
-// comment). Needs wf_rand()/wf_rand_unit() (defined above).
+// comment). Needs wf_rand()/wf_rand_unit() (defined above). The actual math
+// (shared with the recursive backend) lives in gpu_sky_light_shared.h,
+// included first.
+#include "gpu_sky_light_shared.h"
 #include "wavefront_sky_light.h"
 
 // reflect/refract wrappers
