@@ -158,10 +158,38 @@ TEST(GPUInterfaceTest, ValidParameters) {
 
 /**
  * Test GPU renderer with different camera positions (if GPU available)
- * Note: OptiX interface uses fixed Cornell box scene, so this test is skipped
  */
 TEST(GPUInterfaceTest, DifferentCameraPositions) {
-	GTEST_SKIP() << "OptiX interface uses fixed Cornell box scene";
+	if (!optix_is_available()) {
+		GTEST_SKIP() << "OptiX not available, skipping test";
+	}
+
+	struct TestCase {
+		const char* name;
+		double cam_x, cam_y, cam_z;
+	};
+
+	TestCase cases[] = {
+		{"Front View", 278, 278, -800},
+		{"Left Wall", 50, 278, 278},
+		{"Right Wall", 506, 278, 278},
+		{"Top View", 278, 506, 278},
+	};
+
+	for (const auto& test : cases) {
+		std::string output_path = std::string("test_gpu_") + test.name + ".ppm";
+
+		int result = optix_render_main(
+			32, 32, 50, 3,  // Small, fast render
+			output_path.c_str(),
+			"A1", test.cam_x, test.cam_y, test.cam_z
+		);
+
+		EXPECT_EQ(result, 0) << "Failed for: " << test.name;
+
+		// Clean up
+		std::remove(output_path.c_str());
+	}
 }
 
 // ============================================================================
