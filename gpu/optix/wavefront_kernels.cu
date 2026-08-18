@@ -1064,7 +1064,16 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		float wi_x = dot(phaseWo, tanv), wi_y = dot(phaseWo, bitv), wi_z = dot(phaseWo, n);
 		if (wi_z <= 0.0f) return false;
 		float wo_x = dot(queryDir, tanv), wo_y = dot(queryDir, bitv), wo_z = dot(queryDir, n);
-		if (wo_z <= 0.0f) return false;
+		// RoughDielectric reaches both hemispheres (wo_z<0 = transmission,
+		// "seen through the glass" - RoughDielectricBxDF::f()/pdf() already
+		// handle either sign, matching optix_device_helpers.h's identical
+		// `llz != 0.0f` gate); every other glossy type here is reflection-
+		// only, unchanged.
+		if (matType == MaterialType::RoughDielectric) {
+			if (wo_z == 0.0f) return false;
+		} else if (wo_z <= 0.0f) {
+			return false;
+		}
 		const MaterialData& fm = materials[matIdx];
 		float alpha = sqrtf(fm.fuzz);
 		float fr = 0.0f, fg = 0.0f, fb = 0.0f;
@@ -1175,12 +1184,25 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		}
 
 		float light_pdf = selection_pdf * geom_pdf;
-		if (light_pdf > 1e-6f && (isPhase || dot(to_light, normal) > 0.0f)) {
+		// RoughDielectric NEE can reach lights on EITHER side of the
+		// interface (reflection when raw_cos>0, transmission/"seen through
+		// the glass" when raw_cos<0) - see evalGlossyF's own comment and
+		// optix_device_helpers.h's identical two-sided RoughDielectric NEE,
+		// which this now matches. Every other material stays reflection-
+		// only (raw_cos>0 required), same as before.
+		float raw_cos = dot(to_light, normal);
+		if (light_pdf > 1e-6f && (isPhase || matType == MaterialType::RoughDielectric || raw_cos > 0.0f)) {
 			// A phase function has no hemisphere/cosine restriction (it's
 			// normalized over the full sphere, unlike a surface BRDF) - the
 			// `cos_l` slot is set to 1 so the shared `bsdf_val * cos_l`
-			// formula below reduces to the phase value alone.
-			float cos_l = isPhase ? 1.0f : fmaxf(dot(to_light, normal), 0.0f);
+			// formula below reduces to the phase value alone. RoughDielectric
+			// uses the absolute cosine (matches optix_device_helpers.h's
+			// fabsf(llz)): the sign only selects reflection vs. transmission,
+			// already handled inside evalGlossyF/RoughDielectricBxDF, not a
+			// zero-below-the-hemisphere cutoff like the other glossy types.
+			float cos_l = isPhase ? 1.0f
+				: (matType == MaterialType::RoughDielectric) ? fabsf(raw_cos)
+				: fmaxf(raw_cos, 0.0f);
 			float bsdf_val = 1.0f / 3.14159265f; // Lambertian default
 			// Lambertian's BRDF is albedo/pi, direction-independent - `attenuation`
 			// already equals albedoSpectrum(mat.albedo) from the caller, so reuse
@@ -1289,8 +1311,16 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			// direction-only is exactly what optix_device_helpers.h's own
 			// trace_shadow_ray() already uses for this same phase-scatter NEE
 			// on the recursive backend (see that call site's comment).
+			// The normal-offset nudges toward whichever side to_light is
+			// actually on (copysignf(shadow_eps, raw_cos), not always
+			// +shadow_eps): for every material except RoughDielectric's new
+			// transmission-side case raw_cos>0 always holds here (the gate
+			// above still requires it), so this is exactly +shadow_eps as
+			// before - only RoughDielectric's transmission side (raw_cos<0)
+			// newly nudges the origin to the far side of the surface instead
+			// of back into the same hemisphere the ray isn't going toward.
 			ShadowRayWorkItem shadow;
-			shadow.origin    = hit_point + (isPhase ? make_float3(0.0f, 0.0f, 0.0f) : shadow_eps * normal)
+			shadow.origin    = hit_point + (isPhase ? make_float3(0.0f, 0.0f, 0.0f) : copysignf(shadow_eps, raw_cos) * normal)
 				+ shadow_eps * normalize(to_light);
 			shadow.direction = to_light;
 			shadow.tMax      = max_dist - 0.002f;
@@ -1323,8 +1353,13 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		// algorithm comment.
 		float3 sky_dir, sky_Le_val; float pdf_sky;
 		wf_sample_sky_nee(skyDist, seed, skyColor, sky_dir, pdf_sky, sky_Le_val);
-		float  cos_l   = isPhase ? 1.0f : dot(sky_dir, normal);
-		if (isPhase || cos_l > 0.0f) {
+		// See the area-light block above for the RoughDielectric two-sided
+		// rationale (matches optix_device_helpers.h's sky-NEE block).
+		float  raw_cos = dot(sky_dir, normal);
+		float  cos_l   = isPhase ? 1.0f
+			: (matType == MaterialType::RoughDielectric) ? fabsf(raw_cos)
+			: raw_cos;
+		if (isPhase || matType == MaterialType::RoughDielectric || cos_l > 0.0f) {
 			float bsdf_val = 1.0f / 3.14159265f; // Lambertian default
 			// See the area-light block above: attenuation == albedoSpectrum(mat.albedo)
 			// for Lambertian (direction-independent BRDF, safe to reuse here);
@@ -1385,10 +1420,11 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			SS Ld = (mis_w * bsdf_val * cos_l / pdf_sky) * throughput * bsdf_color * sky_spec;
 
 			// See the area-light block above for why this is a combined
-			// normal+direction offset (not the normal alone), and why isPhase
-			// skips the normal term entirely.
+			// normal+direction offset (not the normal alone), why isPhase
+			// skips the normal term entirely, and why the normal term uses
+			// copysignf(shadow_eps, raw_cos) rather than always +shadow_eps.
 			ShadowRayWorkItem shadow;
-			shadow.origin    = hit_point + (isPhase ? make_float3(0.0f, 0.0f, 0.0f) : shadow_eps * normal)
+			shadow.origin    = hit_point + (isPhase ? make_float3(0.0f, 0.0f, 0.0f) : copysignf(shadow_eps, raw_cos) * normal)
 				+ shadow_eps * normalize(sky_dir);
 			shadow.direction = sky_dir;
 			shadow.tMax      = 1e30f;
@@ -1413,8 +1449,13 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	for (unsigned int pli = 0; pli < numPunctualLights; ++pli) {
 		float3 wi, Li; float t_max;
 		if (!wf_eval_punctual_light(punctualLights[pli], hit_point, wi, Li, t_max)) continue;
-		float cos_l = dot(wi, normal);
-		if (cos_l <= 0.0f) continue;
+		// See the area-light block above for the RoughDielectric two-sided
+		// rationale (matches optix_device_helpers.h's punctual-light NEE,
+		// which only excludes exact grazing (plz==0), not either sign).
+		float raw_cos = dot(wi, normal);
+		if (matType != MaterialType::RoughDielectric && raw_cos <= 0.0f) continue;
+		if (matType == MaterialType::RoughDielectric && raw_cos == 0.0f) continue;
+		float cos_l = (matType == MaterialType::RoughDielectric) ? fabsf(raw_cos) : raw_cos;
 
 		float bsdf_val = 1.0f / 3.14159265f; // Lambertian default
 		// See the area-light block above: attenuation == albedoSpectrum(mat.albedo)
@@ -1464,9 +1505,11 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		SS Ld = (bsdf_val * cos_l) * throughput * bsdf_color * Li_spec;
 
 		// See the area-light block above for why this is a combined
-		// normal+direction offset, not the normal alone.
+		// normal+direction offset, not the normal alone, and why the normal
+		// term uses copysignf(shadow_eps, raw_cos) rather than always
+		// +shadow_eps (RoughDielectric's transmission side).
 		ShadowRayWorkItem shadow;
-		shadow.origin    = hit_point + shadow_eps * normal + shadow_eps * normalize(wi);
+		shadow.origin    = hit_point + copysignf(shadow_eps, raw_cos) * normal + shadow_eps * normalize(wi);
 		shadow.direction = wi;
 		shadow.tMax      = t_max - 0.002f;
 		for (int i = 0; i < kWFNWavelengths; ++i) {
