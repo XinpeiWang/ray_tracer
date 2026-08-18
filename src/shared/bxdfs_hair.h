@@ -1,6 +1,24 @@
 #pragma once
 #include "bxdfs_base.h"
 
+// ===========================================================================
+// 13. HairBxDF  (Marschner 2003 + Chiang 2016, mirrors pbrt-v4 HairBxDF)
+//
+// Coordinate system: hair fiber tangent = +X in local frame (pbrt-v4 convention)
+//   sinTheta = wi.x (longitudinal angle component)
+//   phi      = atan2(wi.z, wi.y)  (azimuthal angle)
+//
+// Parameters:
+//   h          : fiber offset in [-1,1] (cross-section hit position)
+//   eta        : fiber IOR (typically ~1.55 for human hair)
+//   sigma_a_r/g/b : absorption coefficients (RGB)
+//   beta_m     : longitudinal roughness [0,1]
+//   beta_n     : azimuthal roughness [0,1]
+//   alpha      : scale tilt angle in degrees (typically ~2)
+//
+// Lobes (pMax=3):  p=0 R, p=1 TT, p=2 TRT, p=3 remainder
+// ===========================================================================
+template<typename T>
 struct HairBxDF {
 	static constexpr int pMax = 3;
 

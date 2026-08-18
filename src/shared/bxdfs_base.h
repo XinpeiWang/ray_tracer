@@ -144,11 +144,3 @@ CPU_GPU void normalize3(T& x, T& y, T& z) {
 #endif
 	if (len > T(1e-8)) { x /= len; y /= len; z /= len; }
 }
-
-// ===========================================================================
-// 1. DiffuseBxDF  (Lambertian diffuse reflection)
-//    Mirrors pbrt-v4 DiffuseBxDF
-//    f(wo,wi) = albedo / pi
-//    PDF      = cos(theta_wi) / pi
-// ===========================================================================
-template<typename T>

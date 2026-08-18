@@ -1,6 +1,22 @@
 #pragma once
 #include "bxdfs_base.h"
 
+// ===========================================================================
+// 8. CoatedDiffuseBxDF  (rough dielectric coat over Lambertian base)
+//    Mirrors pbrt-v4 CoatedDiffuseBxDF = LayeredBxDF<DielectricBxDF, DiffuseBxDF, true>
+//
+//    Full random-walk evaluation (pbrt-v4 LayeredBxDF::Sample_f):
+//      - Top interface: GGX dielectric (coat_ior)
+//      - Bottom interface: Lambertian (albedo)
+//      - Optional medium albedo and HG phase (set albedo_medium > 0)
+//      - maxDepth bounces; terminates via Russian roulette after depth 3
+//
+//    sample_local(wi_x,wi_y,wi_z, seed0, seed1):
+//      - Returns the sampled exit direction + throughput weight (no pdf division)
+//      - seed0/seed1 are 64-bit values from the caller's RNG state
+//    All in local frame (z = surface normal).
+// ===========================================================================
+template<typename T>
 struct CoatedDiffuseBxDF {
 	T albedo_r, albedo_g, albedo_b;   // Lambertian base color
 	T coat_ior;                        // dielectric coat IOR (>1, e.g. 1.5)
@@ -493,28 +509,3 @@ struct NormalizedFresnelBxDF {
 	}
 };
 
-// ===========================================================================
-// 12. PrincipledBxDF  (Disney/pbrt-v4 CoatedDiffuse / CoatedConductor style)
-//
-// A three-lobe artist-friendly BSDF:
-//   Lobe 0 (diffuse):   Lambertian, weight = base_color * (1-metallic) * (1-F_spec)
-//   Lobe 1 (specular):  GGX microfacet with Schlick Fresnel (dielectric blend)
-//                       or conductor Fresnel (metallic=1)
-//   Lobe 2 (clearcoat): GGX with fixed IOR=1.5 and separate low roughness
-//
-// pbrt-v4 alignment:
-//   - CoatedDiffuseBxDF  = dielectric top + diffuse bottom (metallic=0)
-//   - CoatedConductorBxDF = dielectric top + conductor bottom (metallic=1)
-//   Here metallic continuously blends the two.
-//
-// Parameters:
-//   base_r/g/b       -- base (diffuse) color
-//   metallic         -- 0=dielectric/plastic, 1=pure metal
-//   roughness        -- perceptual roughness [0,1], mapped to GGX alpha = sqrt(r)
-//   ior              -- interface IOR for dielectric Fresnel (default 1.5)
-//   clearcoat        -- clearcoat weight [0,1] (0 = off)
-//   clearcoat_rough  -- clearcoat roughness (default 0.1 = glossy)
-//
-// Caller provides 4 uniform randoms: u1 (lobe select), u2,u3 (direction), u4 (unused)
-// ===========================================================================
-template<typename T>

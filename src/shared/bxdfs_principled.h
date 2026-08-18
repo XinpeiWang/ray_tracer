@@ -1,6 +1,31 @@
 #pragma once
 #include "bxdfs_base.h"
 
+// ===========================================================================
+// 12. PrincipledBxDF  (Disney/pbrt-v4 CoatedDiffuse / CoatedConductor style)
+//
+// A three-lobe artist-friendly BSDF:
+//   Lobe 0 (diffuse):   Lambertian, weight = base_color * (1-metallic) * (1-F_spec)
+//   Lobe 1 (specular):  GGX microfacet with Schlick Fresnel (dielectric blend)
+//                       or conductor Fresnel (metallic=1)
+//   Lobe 2 (clearcoat): GGX with fixed IOR=1.5 and separate low roughness
+//
+// pbrt-v4 alignment:
+//   - CoatedDiffuseBxDF  = dielectric top + diffuse bottom (metallic=0)
+//   - CoatedConductorBxDF = dielectric top + conductor bottom (metallic=1)
+//   Here metallic continuously blends the two.
+//
+// Parameters:
+//   base_r/g/b       -- base (diffuse) color
+//   metallic         -- 0=dielectric/plastic, 1=pure metal
+//   roughness        -- perceptual roughness [0,1], mapped to GGX alpha = sqrt(r)
+//   ior              -- interface IOR for dielectric Fresnel (default 1.5)
+//   clearcoat        -- clearcoat weight [0,1] (0 = off)
+//   clearcoat_rough  -- clearcoat roughness (default 0.1 = glossy)
+//
+// Caller provides 4 uniform randoms: u1 (lobe select), u2,u3 (direction), u4 (unused)
+// ===========================================================================
+template<typename T>
 struct PrincipledBxDF {
 	T base_r, base_g, base_b;
 	T metallic;
@@ -381,21 +406,3 @@ CPU_GPU T hair_SafeAsin(T x) {
 #endif
 }
 
-// ===========================================================================
-// 13. HairBxDF  (Marschner 2003 + Chiang 2016, mirrors pbrt-v4 HairBxDF)
-//
-// Coordinate system: hair fiber tangent = +X in local frame (pbrt-v4 convention)
-//   sinTheta = wi.x (longitudinal angle component)
-//   phi      = atan2(wi.z, wi.y)  (azimuthal angle)
-//
-// Parameters:
-//   h          : fiber offset in [-1,1] (cross-section hit position)
-//   eta        : fiber IOR (typically ~1.55 for human hair)
-//   sigma_a_r/g/b : absorption coefficients (RGB)
-//   beta_m     : longitudinal roughness [0,1]
-//   beta_n     : azimuthal roughness [0,1]
-//   alpha      : scale tilt angle in degrees (typically ~2)
-//
-// Lobes (pMax=3):  p=0 R, p=1 TT, p=2 TRT, p=3 remainder
-// ===========================================================================
-template<typename T>

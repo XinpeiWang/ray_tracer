@@ -1,6 +1,13 @@
 #pragma once
 #include "bxdfs_base.h"
 
+// ===========================================================================
+// 5. RoughMetalBxDF  (GGX microfacet + constant-color Fresnel)
+//    Mirrors RTOW rough_metal: VNDF sampling, weight = G/G1, attenuation = albedo*weight
+//    u1, u2 in [0,1) for VNDF microfacet sample.
+//    Works in local shading frame (z = surface normal).
+// ===========================================================================
+template<typename T>
 struct RoughMetalBxDF {
 	T albedo_r, albedo_g, albedo_b;
 	T alpha_x;  // GGX alpha u-direction (caller applies TrowbridgeReitz::RoughnessToAlpha)
@@ -223,20 +230,3 @@ CPU_GPU T hg_eval(T cos_theta, T g) {
 }
 
 } // namespace layered_detail
-
-// ===========================================================================
-// 8. CoatedDiffuseBxDF  (rough dielectric coat over Lambertian base)
-//    Mirrors pbrt-v4 CoatedDiffuseBxDF = LayeredBxDF<DielectricBxDF, DiffuseBxDF, true>
-//
-//    Full random-walk evaluation (pbrt-v4 LayeredBxDF::Sample_f):
-//      - Top interface: GGX dielectric (coat_ior)
-//      - Bottom interface: Lambertian (albedo)
-//      - Optional medium albedo and HG phase (set albedo_medium > 0)
-//      - maxDepth bounces; terminates via Russian roulette after depth 3
-//
-//    sample_local(wi_x,wi_y,wi_z, seed0, seed1):
-//      - Returns the sampled exit direction + throughput weight (no pdf division)
-//      - seed0/seed1 are 64-bit values from the caller's RNG state
-//    All in local frame (z = surface normal).
-// ===========================================================================
-template<typename T>

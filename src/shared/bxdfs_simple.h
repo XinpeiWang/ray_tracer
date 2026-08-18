@@ -1,6 +1,13 @@
 #pragma once
 #include "bxdfs_base.h"
 
+// ===========================================================================
+// 1. DiffuseBxDF  (Lambertian diffuse reflection)
+//    Mirrors pbrt-v4 DiffuseBxDF
+//    f(wo,wi) = albedo / pi
+//    PDF      = cos(theta_wi) / pi
+// ===========================================================================
+template<typename T>
 struct DiffuseBxDF {
 	T albedo_r, albedo_g, albedo_b;
 
@@ -166,11 +173,3 @@ struct ThinDielectricBxDF {
 		return res;
 	}
 };
-
-// ===========================================================================
-// 5. RoughMetalBxDF  (GGX microfacet + constant-color Fresnel)
-//    Mirrors RTOW rough_metal: VNDF sampling, weight = G/G1, attenuation = albedo*weight
-//    u1, u2 in [0,1) for VNDF microfacet sample.
-//    Works in local shading frame (z = surface normal).
-// ===========================================================================
-template<typename T>
