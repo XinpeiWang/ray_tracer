@@ -178,7 +178,12 @@ inline SceneDescriptor build_instanced_spheres_descriptor() {
         "placement) can produce";
     s.performance = "Fast";
     s.recommended_spp = 200;
-    s.requires_files = true;
+    // pbrt_scenes/instanced-spheres.pbrt is git-tracked and self-contained
+    // (no external assets beyond the repo checkout) - the same file's
+    // auto-discovered "I<N>" User Scene copy correctly reports false via
+    // pbrt_discover::Discovered::nested (see that field's comment), so this
+    // curated entry needs to agree rather than hardcode the opposite.
+    s.requires_files = false;
     s.gpu_compatible = true;
     // Matches the file's own `LookAt 278 278 -800  278 278 0  0 1 0` /
     // `Camera "perspective" "float fov" [ 40 ]` directives.

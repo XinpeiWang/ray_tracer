@@ -362,9 +362,22 @@ TEST_P(CpuGpuLightParityTest, LightCountMatches) {
 	// pairing), so it is always a flat, accurate, un-BVH'd mirror of the
 	// world's emissive shapes for these scenes specifically. Every other
 	// category keeps using build_world() - unchanged from before - since
-	// build_lights() isn't guaranteed complete there (e.g. legacy scenes
-	// with a no_lights placeholder despite real area lights in the world).
-	const bool isPbrtLoaded = std::string(s->category) == SceneCategories::UserScenes;
+	// build_lights() isn't guaranteed to carry real emissive materials
+	// there: e.g. cornell_box_scene.h's build_cornell_box_lights() (used by
+	// A1 and several others) returns NEE sampling-target shapes built with
+	// an empty_material placeholder, not the actual emissive objects -
+	// correct for its own purpose (picking directions toward known light
+	// shapes) but a silent 0 if fed through count_cpu_emissive_lights here.
+	//
+	// F3 is included alongside category UserScenes despite being a curated
+	// Geometry-category entry, not an auto-generated "I<N>" one: its
+	// build_lights lambda (scene_registry.h) returns pbrt_cpu::BuildResult's
+	// own `lights` list, identical in shape and origin to every UserScenes
+	// entry's - see its own header comment on why it exists as a curated
+	// entry "rather than an auto-generated I<N> User Scene" while still
+	// loading pbrt_scenes/instanced-spheres.pbrt through the same pipeline.
+	const bool isPbrtLoaded =
+		std::string(s->category) == SceneCategories::UserScenes || s->id == "F3";
 	int cpuLights = isPbrtLoaded
 		? count_cpu_emissive_lights_list(s->build_lights())
 		: count_cpu_emissive_lights_list(s->build_world());
