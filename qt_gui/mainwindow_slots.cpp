@@ -4,6 +4,7 @@
 #include "win_taskbar.h"
 #include "render_output_parser.h"
 #include "camera_math.h"
+#include "../src/shared/video_preset.h"
 #include <QApplication>
 #include <QFileDialog>
 #include <QMessageBox>
@@ -268,6 +269,38 @@ void MainWindow::onCameraPresetChanged(int index) {
 	// (either the preset's fixed position, or whatever Custom was already
 	// showing) so it never displays a stale value.
 	refreshCameraDistanceDisplay();
+}
+
+// ============================================================================
+// MainWindow::onVideoPresetChanged
+// ============================================================================
+// Called when the user picks a named bundle from the Video tab's Preset
+// combo (see video_preset.h and createVideoTab()'s own setup comment).
+// Index 0 is the always-present "(custom)" placeholder with empty itemData -
+// selecting it is a no-op, since its whole point is "I'm choosing the four
+// controls below myself" rather than pointing at anything to apply.
+// ============================================================================
+void MainWindow::onVideoPresetChanged(int index) {
+	if (index <= 0 || !m_videoPresetCombo) return;
+	const QString id = m_videoPresetCombo->itemData(index).toString();
+	const video_preset::VideoPreset* preset = video_preset::find(id.toUtf8().constData());
+	if (!preset) return;
+
+	// Switch to Generate Video first: onModeChanged()'s own side effects
+	// (render button text/icon, status label) should already be in place
+	// before selectSceneById() below runs onSceneChanged(), which also
+	// touches status-adjacent labels.
+	if (m_modeCombo && m_modeCombo->currentIndex() != 1)
+		m_modeCombo->setCurrentIndex(1);
+
+	selectSceneById(QString::fromUtf8(preset->scene_id));
+
+	const int pathIndex = m_cameraPathCombo ? m_cameraPathCombo->findData(QString::fromUtf8(preset->camera_path)) : -1;
+	if (pathIndex >= 0) m_cameraPathCombo->setCurrentIndex(pathIndex);
+
+	if (m_videoFramesSpinBox) m_videoFramesSpinBox->setValue(preset->frames);
+	if (m_videoFPSSpinBox) m_videoFPSSpinBox->setValue(preset->fps);
+	if (m_videoSpeedSpinBox) m_videoSpeedSpinBox->setValue(preset->speed);
 }
 
 // ============================================================================

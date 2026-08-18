@@ -2,6 +2,7 @@
 #include "icon_tint.h"
 
 #include "../src/shared/scene_descriptor.h"
+#include "../src/shared/video_preset.h"
 
 #include <QTabBar>
 #include "scene_metadata_client.h"
@@ -63,6 +64,49 @@ void MainWindow::populateSceneCombo(const QString &category) {
 		m_sceneCombo->addItem(
 			QString("[%1] %2").arg(id).arg(SceneMetadataClient::sceneName(id)), id);
 	}
+}
+
+// Drives the availability tab, category tab, and m_sceneCombo to the scene
+// matching `id` - see this function's own declaration comment (mainwindow.h)
+// for why it exists (the video preset combo needs it). Unconditionally
+// (re)builds the category tab set and repopulates the combo at the end
+// rather than trying to predict which of the intermediate setCurrentIndex()
+// calls below actually changed anything and fired their own signal chain -
+// same "don't trust signal timing, just do the work explicitly" approach
+// m_sceneCategoryTabs' own currentChanged handler already takes, just
+// applied one level further out. A little redundant work on the (common)
+// case where the target scene is already in the current bucket/category is
+// a small, one-time cost for a user-initiated action, not a hot path.
+void MainWindow::selectSceneById(const QString &id) {
+	if (!m_sceneCombo || id.isEmpty()) return;
+
+	const QString category = SceneMetadataClient::sceneCategory(id);
+	if (category.isEmpty()) {
+		onLogMessage(QString("WARNING: video preset points at unknown scene id \"%1\"").arg(id));
+		return;
+	}
+	const bool requiresFiles = SceneMetadataClient::sceneRequiresFiles(id);
+
+	if (m_sceneAvailabilityTabs)
+		m_sceneAvailabilityTabs->setCurrentIndex(requiresFiles ? 1 : 0);
+	rebuildCategoryTabs(requiresFiles);
+	if (!m_sceneCategoryTabs) return;
+	for (int i = 0; i < m_sceneCategoryTabs->count(); ++i) {
+		if (m_sceneCategoryTabs->tabData(i).toString() == category) {
+			m_sceneCategoryTabs->setCurrentIndex(i);
+			break;
+		}
+	}
+
+	populateSceneCombo(category);
+	const int itemIndex = m_sceneCombo->findData(id);
+	if (itemIndex < 0) {
+		onLogMessage(QString("WARNING: video preset's scene \"%1\" not found under category \"%2\"")
+			.arg(id, category));
+		return;
+	}
+	m_sceneCombo->setCurrentIndex(itemIndex);
+	onSceneChanged(itemIndex);
 }
 
 // Rebuilds m_sceneCategoryTabs for the given availability filter - see this
@@ -818,6 +862,26 @@ void MainWindow::createVideoTab() {
 	videoLayout->setVerticalSpacing(10);
 	videoLayout->setHorizontalSpacing(10);
 	videoLayout->setContentsMargins(15, 22, 15, 12);
+
+	// Preset selector - sets the scene picker (on the Basic tab), camera
+	// path, and the three spinboxes below all at once from one of
+	// video_preset.h's named bundles. First row, above Camera Path, since
+	// picking one is meant to replace tuning the other four controls, not
+	// sit alongside them as a fifth independent setting.
+	m_videoPresetCombo = new QComboBox();
+	m_videoPresetCombo->addItem("(custom - choose settings below)", QString());
+	for (const video_preset::VideoPreset& p : video_preset::kAll)
+		m_videoPresetCombo->addItem(QString::fromUtf8(p.name), QString::fromUtf8(p.id));
+	m_videoPresetCombo->setToolTip(
+		"Famous ray-tracing reference scenes and motions, pre-tuned so you don't\n"
+		"have to set the scene, camera path, frame count, fps, and speed by hand.\n"
+		"Selecting one changes the scene on the Basic tab too. Choosing any of the\n"
+		"other controls on this tab afterward is fine - they simply stop matching\n"
+		"the preset, the same as if you had built the same settings by hand.");
+	styleComboBox(m_videoPresetCombo);
+	connect(m_videoPresetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+			this, &MainWindow::onVideoPresetChanged);
+	videoLayout->addRow("Preset:", m_videoPresetCombo);
 
 	// Camera path selector
 	m_cameraPathCombo = new QComboBox();

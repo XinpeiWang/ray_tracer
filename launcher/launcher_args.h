@@ -12,6 +12,8 @@
 #include <algorithm>
 #include <cctype>
 
+#include "../src/shared/video_preset.h"
+
 namespace {
 	constexpr int kDefaultWidth = 600;
 	constexpr int kDefaultHeight = 600;
@@ -248,6 +250,30 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			consumed_args.insert(i);
 			consumed_args.insert(i + 1);
 			++i;
+		} else if (arg == "--video-preset" && i + 1 < argc) {
+			// Sets video_mode plus all five video_preset::VideoPreset fields
+			// in one shot - see src/shared/video_preset.h's own comment for
+			// why this lives there rather than being duplicated per-CLI/GUI.
+			// Applied immediately, same as every other flag here, so a flag
+			// placed AFTER --video-preset on the command line overrides just
+			// that one field - e.g. `--video-preset cornell-orbit --fps 60`
+			// keeps the preset's scene/path/frames/speed but renders at 60fps.
+			if (const video_preset::VideoPreset* preset = video_preset::find(argv[i + 1])) {
+				out.video_mode = true;
+				out.scene_id = preset->scene_id;
+				out.camera_path = preset->camera_path;
+				out.video_frames = preset->frames;
+				out.video_fps = preset->fps;
+				out.video_speed = preset->speed;
+			} else {
+				std::cerr << "Invalid --video-preset \"" << argv[i + 1] << "\" - valid presets:\n";
+				for (const video_preset::VideoPreset& p : video_preset::kAll)
+					std::cerr << "  " << p.id << " - " << p.name << "\n";
+				return false;
+			}
+			consumed_args.insert(i);
+			consumed_args.insert(i + 1);
+			++i;
 		} else if (arg == "--help" || arg == "-h") {
 			std::cout << "Usage: " << argv[0]
 					  << " [--cpu|--gpu] [--output PATH] [width] [spp] [max_depth] [scene_id] [cam_x] [cam_y] [cam_z]\n"
@@ -291,6 +317,12 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "  --fps      : Frames per second for video (default: 30)\n"
 					  << "  --speed    : Camera movement speed multiplier for video (default: 1.0)\n"
 					  << "  --camera-path,-p: Camera animation path (orbit|linear|figure8|spiral)\n"
+					  << "  --video-preset NAME: Sets --video plus scene_id/camera-path/frames/fps/speed\n"
+					  << "               together from one of src/shared/video_preset.h's named bundles\n"
+					  << "               (cornell-orbit|teapot-spin|one-weekend-flyby|next-week-finale|\n"
+					  << "               glass-dragon-caustics|sponza-flythrough); any of those five flags\n"
+					  << "               placed AFTER --video-preset on the command line overrides just\n"
+					  << "               that one field.\n"
 					  << "  --help,-h  : Show this help message\n"
 					  << "  width      : Image width (default " << kDefaultWidth << ", square aspect)\n"
 					  << "  spp        : Samples per pixel (default " << kDefaultSamplesPerPixel << ")\n"

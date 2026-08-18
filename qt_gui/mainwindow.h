@@ -234,6 +234,7 @@ private slots:
 	void onStopClicked();
 	void onQualityPresetChanged(int index);
 	void onCameraPresetChanged(int index);  // Updates camera spinboxes when preset changes
+	void onVideoPresetChanged(int index);   // Points scene/camera-path/frames/fps/speed at a named preset
 	void onCameraDistanceChanged(double distance);  // Repositions camera X/Y/Z along its current direction from lookat
 	void onSceneChanged(int index);         // Updates UI when scene selection changes
 	void onModeChanged(int index);          // Switches between Image and Video modes
@@ -394,9 +395,19 @@ private:
 	// currentIndexChanged per insertion - callers apply the resulting selection
 	// themselves with a single onSceneChanged() call.
 	void populateSceneCombo(const QString &category);
+
+	// Drives all three scene-selection widgets (availability tab, category
+	// tab, m_sceneCombo) to the scene matching `id`, as if the user had
+	// clicked through to it by hand - switching availability/category tabs
+	// first if `id` isn't already visible under the current ones. Used by
+	// the video preset combo (see onVideoPresetChanged()) to point the
+	// scene picker at a preset's scene without duplicating this tab-
+	// cascading logic. No-op (logs a warning) if `id` isn't a real scene id.
+	void selectSceneById(const QString &id);
 	QLabel *m_sceneInfoLabel;           // Scene description and performance info
 
 	// Video Tab
+	QComboBox *m_videoPresetCombo;      // Named scene+path+frames/fps/speed bundle - see video_preset.h
 	QComboBox *m_cameraPathCombo;       // Camera animation path selector
 	QSpinBox *m_videoFramesSpinBox;     // Number of frames to render
 	QSpinBox *m_videoFPSSpinBox;        // Target FPS for video
