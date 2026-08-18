@@ -1271,13 +1271,10 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 				// contribution, so explicitly re-check matType here rather
 				// than trusting evalGlossyF's return value alone.
 				float3 fRgb;
-				bool isGlossyType = (matType == MaterialType::Conductor || matType == MaterialType::RoughDielectric ||
-					matType == MaterialType::CoatedDiffuse || matType == MaterialType::CoatedConductor ||
-					matType == MaterialType::RoughMetal);
 				if (evalGlossyF(to_light, fRgb, glossyPdf)) {
 					bsdf_val = 1.0f;
 					bsdf_color = liftUnboundedRGB(fRgb);
-				} else if (isGlossyType) {
+				} else if (glossy_isType) {
 					bsdf_val = 0.0f;
 				}
 			}
@@ -1404,15 +1401,12 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 				bsdf_color = attenuation;
 			} else {
 				// See the area-light block's identical else-branch for the
-				// full rationale (evalGlossyF/isGlossyType split).
+				// full rationale (evalGlossyF/glossy_isType split).
 				float3 fRgb;
-				bool isGlossyType = (matType == MaterialType::Conductor || matType == MaterialType::RoughDielectric ||
-					matType == MaterialType::CoatedDiffuse || matType == MaterialType::CoatedConductor ||
-					matType == MaterialType::RoughMetal);
 				if (evalGlossyF(sky_dir, fRgb, glossyPdf)) {
 					bsdf_val = 1.0f;
 					bsdf_color = liftUnboundedRGB(fRgb);
-				} else if (isGlossyType) {
+				} else if (glossy_isType) {
 					bsdf_val = 0.0f;
 				}
 			}
@@ -1495,18 +1489,15 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			bsdf_val = (1.0f - fr_l) / (nf_c * 3.14159265f);
 		} else {
 			// See the area-light block's identical else-branch for the full
-			// rationale (evalGlossyF/isGlossyType split). No MIS weight for
+			// rationale (evalGlossyF/glossy_isType split). No MIS weight for
 			// punctual (delta) lights, same as every other material here -
 			// the pdf-at-wi output isn't needed here, unlike the area/sky
 			// NEE blocks above.
 			float3 fRgb; float unusedPdf;
-			bool isGlossyType = (matType == MaterialType::Conductor || matType == MaterialType::RoughDielectric ||
-				matType == MaterialType::CoatedDiffuse || matType == MaterialType::CoatedConductor ||
-				matType == MaterialType::RoughMetal);
 			if (evalGlossyF(wi, fRgb, unusedPdf)) {
 				bsdf_val = 1.0f;
 				bsdf_color = liftUnboundedRGB(fRgb);
-			} else if (isGlossyType) {
+			} else if (glossy_isType) {
 				bsdf_val = 0.0f;
 			}
 		}
