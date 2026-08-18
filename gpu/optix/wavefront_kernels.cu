@@ -1052,18 +1052,37 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// documented choice exactly - they reuse the coat's top-surface GGX
 	// VNDF pdf as a cheap shape-matched proxy (any valid pdf keeps MIS
 	// unbiased; this only affects variance, not correctness).
+	// Shared per-shading-point setup for evalGlossyF below, computed ONCE
+	// instead of on each of the (up to) 3 calls it gets per shading point
+	// (area-light NEE, sky NEE, punctual-light NEE) - normal/phaseWo/
+	// matType/matIdx are all invariant across those calls within a single
+	// wf_finish_material_scatter() invocation, so re-deriving the local
+	// frame, wi, and material lookup on every call redid identical work up
+	// to 3x for no reason. glossy_valid folds both of evalGlossyF's old
+	// early-outs (wrong matType, wi_z<=0) into one check the lambda itself
+	// no longer needs to redo.
+	bool glossy_isType = (matType == MaterialType::Conductor || matType == MaterialType::RoughDielectric ||
+		matType == MaterialType::CoatedDiffuse || matType == MaterialType::CoatedConductor ||
+		matType == MaterialType::RoughMetal);
+	float3 glossy_tan = make_float3(0.0f,0.0f,0.0f), glossy_bit = make_float3(0.0f,0.0f,0.0f);
+	float glossy_wi_x = 0.0f, glossy_wi_y = 0.0f, glossy_wi_z = 0.0f, glossy_alpha = 0.0f;
+	bool glossy_valid = false;
+	if (glossy_isType) {
+		float3 up = (fabsf(normal.x) > 0.9f) ? make_float3(0.0f,1.0f,0.0f) : make_float3(1.0f,0.0f,0.0f);
+		glossy_tan = normalize(cross(up, normal));
+		glossy_bit = cross(normal, glossy_tan);
+		glossy_wi_x = dot(phaseWo, glossy_tan);
+		glossy_wi_y = dot(phaseWo, glossy_bit);
+		glossy_wi_z = dot(phaseWo, normal);
+		if (glossy_wi_z > 0.0f) {
+			glossy_valid = true;
+			glossy_alpha = sqrtf(materials[matIdx].fuzz);
+		}
+	}
+
 	auto evalGlossyF = [&](const float3& queryDir, float3& outF, float& outPdf) -> bool {
-		if (matType != MaterialType::Conductor && matType != MaterialType::RoughDielectric &&
-			matType != MaterialType::CoatedDiffuse && matType != MaterialType::CoatedConductor &&
-			matType != MaterialType::RoughMetal)
-			return false;
-		float3 n = normal;
-		float3 up = (fabsf(n.x) > 0.9f) ? make_float3(0.0f,1.0f,0.0f) : make_float3(1.0f,0.0f,0.0f);
-		float3 tanv = normalize(cross(up, n));
-		float3 bitv = cross(n, tanv);
-		float wi_x = dot(phaseWo, tanv), wi_y = dot(phaseWo, bitv), wi_z = dot(phaseWo, n);
-		if (wi_z <= 0.0f) return false;
-		float wo_x = dot(queryDir, tanv), wo_y = dot(queryDir, bitv), wo_z = dot(queryDir, n);
+		if (!glossy_valid) return false;
+		float wo_x = dot(queryDir, glossy_tan), wo_y = dot(queryDir, glossy_bit), wo_z = dot(queryDir, normal);
 		// RoughDielectric reaches both hemispheres (wo_z<0 = transmission,
 		// "seen through the glass" - RoughDielectricBxDF::f()/pdf() already
 		// handle either sign, matching optix_device_helpers.h's identical
@@ -1075,31 +1094,30 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			return false;
 		}
 		const MaterialData& fm = materials[matIdx];
-		float alpha = sqrtf(fm.fuzz);
 		float fr = 0.0f, fg = 0.0f, fb = 0.0f;
 		if (matType == MaterialType::Conductor) {
-			ConductorBxDF<float> bx{ fm.eta_c.x, fm.eta_c.y, fm.eta_c.z, fm.k_c.x, fm.k_c.y, fm.k_c.z, alpha, alpha };
-			bx.f(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, fr, fg, fb);
-			outPdf = bx.pdf(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z);
+			ConductorBxDF<float> bx{ fm.eta_c.x, fm.eta_c.y, fm.eta_c.z, fm.k_c.x, fm.k_c.y, fm.k_c.z, glossy_alpha, glossy_alpha };
+			bx.f(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, fr, fg, fb);
+			outPdf = bx.pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z);
 		} else if (matType == MaterialType::RoughMetal) {
-			RoughMetalBxDF<float> bx{ fm.albedo.x, fm.albedo.y, fm.albedo.z, alpha, alpha };
-			bx.f(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, fr, fg, fb);
-			outPdf = bx.pdf(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z);
+			RoughMetalBxDF<float> bx{ fm.albedo.x, fm.albedo.y, fm.albedo.z, glossy_alpha, glossy_alpha };
+			bx.f(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, fr, fg, fb);
+			outPdf = bx.pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z);
 		} else if (matType == MaterialType::RoughDielectric) {
-			RoughDielectricBxDF<float> bx{ fm.ior, alpha, alpha };
-			float v = bx.f(wi_x, wi_y, wi_z, nfEta, wo_x, wo_y, wo_z);
+			RoughDielectricBxDF<float> bx{ fm.ior, glossy_alpha, glossy_alpha };
+			float v = bx.f(glossy_wi_x, glossy_wi_y, glossy_wi_z, nfEta, wo_x, wo_y, wo_z);
 			fr = fg = fb = v;
-			outPdf = bx.pdf(wi_x, wi_y, wi_z, nfEta, wo_x, wo_y, wo_z);
+			outPdf = bx.pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, nfEta, wo_x, wo_y, wo_z);
 		} else if (matType == MaterialType::CoatedDiffuse) {
-			CoatedDiffuseBxDF<float> bx{ fm.albedo.x, fm.albedo.y, fm.albedo.z, fm.ior, alpha, alpha };
+			CoatedDiffuseBxDF<float> bx{ fm.albedo.x, fm.albedo.y, fm.albedo.z, fm.ior, glossy_alpha, glossy_alpha };
 			uint64_t s0, s1; wf_random_seed64_pair(seed, s0, s1);
-			bx.f(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, s0, s1, fr, fg, fb);
-			outPdf = ggx_vndf_reflection_pdf(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, alpha, alpha);
+			bx.f(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, s0, s1, fr, fg, fb);
+			outPdf = ggx_vndf_reflection_pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, glossy_alpha, glossy_alpha);
 		} else {
-			CoatedConductorBxDF<float> bx{ fm.eta_c.x, fm.eta_c.y, fm.eta_c.z, fm.k_c.x, fm.k_c.y, fm.k_c.z, fm.ior, alpha, alpha };
+			CoatedConductorBxDF<float> bx{ fm.eta_c.x, fm.eta_c.y, fm.eta_c.z, fm.k_c.x, fm.k_c.y, fm.k_c.z, fm.ior, glossy_alpha, glossy_alpha };
 			uint64_t s0, s1; wf_random_seed64_pair(seed, s0, s1);
-			bx.f(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, s0, s1, fr, fg, fb);
-			outPdf = ggx_vndf_reflection_pdf(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, alpha, alpha);
+			bx.f(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, s0, s1, fr, fg, fb);
+			outPdf = ggx_vndf_reflection_pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, glossy_alpha, glossy_alpha);
 		}
 		outF = make_float3(fr, fg, fb);
 		return true;
