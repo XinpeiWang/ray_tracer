@@ -76,8 +76,20 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 	const color albedo(m.color[0], m.color[1], m.color[2]);
 	switch (m.kind) {
 	case pbrt_flatten::MaterialKind::Conductor:
-		// pbrt describes conductors spectrally; our metal takes an albedo and
-		// a fuzz, so roughness maps onto fuzz directly.
+		// A recognized named conductor spectrum ("metal-Ag-eta"/"metal-Ag-k"
+		// etc. - see pbrt_flatten.h's conductorElementFromSpectrumName() and
+		// src/shared/conductor_data.h's own table) gets the real GGX +
+		// complex-Fresnel model (`conductor`, matching this codebase's
+		// native scenes' own B5/B7 - #229/#230's real-NEE work applies here
+		// too). Anything else (explicit RGB k, or an unrecognized/non-metal
+		// named spectrum) keeps the pre-existing approximation: our `metal`
+		// takes a flat albedo and a fuzz, so roughness maps onto fuzz
+		// directly.
+		if (m.hasConductorPreset)
+			return std::make_shared<conductor>(
+				m.conductorEta[0], m.conductorEta[1], m.conductorEta[2],
+				m.conductorK[0], m.conductorK[1], m.conductorK[2],
+				m.roughness);
 		return std::make_shared<metal>(albedo, m.roughness);
 	case pbrt_flatten::MaterialKind::Dielectric:
 		// A nonzero "roughness"/"uroughness"/"vroughness" (m.roughness - see

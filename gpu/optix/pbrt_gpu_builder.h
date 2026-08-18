@@ -312,12 +312,26 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 
 	switch (m.kind) {
 	case pbrt_flatten::MaterialKind::Conductor:
-		// Metal rather than MaterialType::Conductor on purpose: Conductor is
-		// described by a complex IOR (eta_c/k_c) that a pbrt scene only
-		// supplies as named spectra we do not parse. Metal takes the albedo
-		// and roughness we actually have, and matches what the CPU builder
-		// does with the same material.
-		d.type = MaterialType::Metal;
+		// A recognized named conductor spectrum ("metal-Ag-eta"/"metal-Ag-k"
+		// etc. - see pbrt_flatten.h's conductorElementFromSpectrumName())
+		// gets the real GGX + complex-Fresnel MaterialType::Conductor,
+		// matching pbrt_cpu_builder.h's identical branch and this codebase's
+		// native B5/B7 scenes. Anything else (explicit RGB k, or an
+		// unrecognized/non-metal named spectrum) keeps the pre-existing
+		// Metal (fuzz-mirror) approximation - a pbrt scene only supplies a
+		// complex IOR as a named spectrum, which is what this case can't
+		// resolve on its own.
+		if (m.hasConductorPreset) {
+			d.type = MaterialType::Conductor;
+			d.eta_c = make_float3(static_cast<float>(m.conductorEta[0]),
+								   static_cast<float>(m.conductorEta[1]),
+								   static_cast<float>(m.conductorEta[2]));
+			d.k_c = make_float3(static_cast<float>(m.conductorK[0]),
+								 static_cast<float>(m.conductorK[1]),
+								 static_cast<float>(m.conductorK[2]));
+		} else {
+			d.type = MaterialType::Metal;
+		}
 		break;
 	case pbrt_flatten::MaterialKind::Dielectric:
 		// A nonzero "roughness"/"uroughness"/"vroughness" (m.roughness,

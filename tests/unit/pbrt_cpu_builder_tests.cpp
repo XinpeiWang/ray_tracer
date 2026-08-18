@@ -331,6 +331,45 @@ TEST(PbrtCpuBuildTest, RoughDielectricRoughnessBuildsTheRealRoughDielectricClass
 }
 
 // ---------------------------------------------------------------------------
+// Material "conductor"
+//
+// pbrt describes a conductor's complex IOR via "spectrum eta"/"spectrum k"
+// bound to a NAMED spectrum ("metal-Ag-eta"/"metal-Ag-k") - a recognized
+// metal name should build the real `conductor` class (GGX + complex
+// Fresnel), not the flat-albedo `metal` fuzz-mirror approximation every
+// pbrt conductor silently fell back to before.
+// ---------------------------------------------------------------------------
+
+TEST(PbrtCpuBuildTest, NamedMetalSpectrumConductorBuildsTheRealConductorClass) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Material \"conductor\" \"spectrum eta\" [ \"metal-Ag-eta\" ] "
+		"\"spectrum k\" [ \"metal-Ag-k\" ] \"float roughness\" [ 0.1 ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	EXPECT_NE(dynamic_cast<conductor *>(rec.mat.get()), nullptr)
+		<< "a pbrt conductor bound to a recognized named metal spectrum "
+		   "(metal-Ag-eta/metal-Ag-k) must build the real conductor (GGX + "
+		   "complex Fresnel) class, not fall back to the flat-albedo metal "
+		   "fuzz-mirror approximation";
+}
+
+TEST(PbrtCpuBuildTest, UnrecognizedConductorSpectrumFallsBackToMetal) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Material \"conductor\" \"rgb reflectance\" [ .8 .8 .8 ] "
+		"\"float roughness\" [ 0.1 ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	EXPECT_NE(dynamic_cast<metal *>(rec.mat.get()), nullptr)
+		<< "a pbrt conductor with no eta/k (or an explicit RGB k) must keep "
+		   "the pre-existing metal fuzz-mirror approximation";
+	EXPECT_EQ(dynamic_cast<conductor *>(rec.mat.get()), nullptr);
+}
+
+// ---------------------------------------------------------------------------
 // Material "mix"
 //
 // pbrt_flatten_tests.cpp pins the name resolution; these pin the next stage -

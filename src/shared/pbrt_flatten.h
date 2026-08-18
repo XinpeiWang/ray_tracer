@@ -32,6 +32,7 @@
 
 #include "pbrt_scene.h"
 #include "loop_subdivide.h"
+#include "conductor_data.h"
 
 // Refinement is exponential: every level multiplies the triangle count by
 // four, so a scene asking for 8 turns a 10k-triangle cage into 650 million.
@@ -183,7 +184,40 @@ struct Material {
 	int mixMaterialA = -1;
 	int mixMaterialB = -1;
 	double mixWeight = 0.5;
+
+	// Conductor only: real complex IOR, resolved when "spectrum eta"/
+	// "spectrum k" named one of this codebase's known metals (see
+	// conductorElementFromSpectrumName()/src/shared/conductor_data.h's
+	// FindConductorPreset() below) - pbrt's conductors are normally
+	// described this way ("metal-Ag-eta"/"metal-Ag-k"), not via plain
+	// floats/RGB, which flatten() used to just fail to parse silently.
+	// hasConductorPreset stays false (and the builders keep falling back to
+	// the existing metal/fuzz-mirror approximation, exactly as before this
+	// field existed) for an explicit RGB k, an unrecognized named spectrum,
+	// or no eta/k given at all.
+	bool hasConductorPreset = false;
+	double conductorEta[3] = {0.0, 0.0, 0.0};
+	double conductorK[3] = {0.0, 0.0, 0.0};
 };
+
+// Extracts "Ag" from pbrt-v4's "metal-Ag-eta"/"metal-Ag-k" named-spectrum
+// convention (the only shape this loader's bundled scene corpus uses for
+// conductor eta/k - see conductor_data.h's own table for which elements are
+// recognized once extracted). Returns "" for anything that doesn't match
+// the "metal-<elem>-eta"/"metal-<elem>-k" shape at all (an explicit RGB
+// value, or an unrecognized/non-metal named spectrum).
+inline std::string conductorElementFromSpectrumName(const std::string &name) {
+	const std::string prefix = "metal-";
+	if (name.rfind(prefix, 0) != 0) return "";
+	for (const char *suffix : {"-eta", "-k"}) {
+		const std::string suf(suffix);
+		if (name.size() > prefix.size() + suf.size() &&
+			name.compare(name.size() - suf.size(), suf.size(), suf) == 0) {
+			return name.substr(prefix.size(), name.size() - prefix.size() - suf.size());
+		}
+	}
+	return "";
+}
 
 struct Emission {
 	double L[3] = {1.0, 1.0, 1.0};
@@ -733,6 +767,25 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 								md.params.getFloat("vroughness", 0.0)));
 		// "eta" is pbrt's name for index of refraction on dielectrics.
 		m.ior = md.params.getFloat("eta", md.params.getFloat("ior", 1.5));
+
+		// Conductor only: pbrt describes a conductor's complex IOR via
+		// "spectrum eta"/"spectrum k" bound to a NAMED spectrum
+		// ("metal-Ag-eta"/"metal-Ag-k", etc.), not the plain floats/RGB
+		// getFloat()/getVec3() above can read - resolve the common named-
+		// metal case against this codebase's own RGB-approximated conductor
+		// table instead of always falling back to the metal/fuzz-mirror
+		// approximation (getString() only inspects the param's `strings`
+		// vector, so this is safe to call even when "eta"/"k" turn out to be
+		// an explicit RGB value instead - it just won't find one there).
+		if (m.kind == MaterialKind::Conductor) {
+			std::string elem = conductorElementFromSpectrumName(md.params.getString("eta", ""));
+			if (elem.empty()) elem = conductorElementFromSpectrumName(md.params.getString("k", ""));
+			if (const ConductorPreset* preset = elem.empty() ? nullptr : FindConductorPreset(elem.c_str())) {
+				m.hasConductorPreset = true;
+				m.conductorEta[0] = preset->eta_r; m.conductorEta[1] = preset->eta_g; m.conductorEta[2] = preset->eta_b;
+				m.conductorK[0]   = preset->k_r;   m.conductorK[1]   = preset->k_g;   m.conductorK[2]   = preset->k_b;
+			}
+		}
 
 		// DiffuseTransmission only, but harmless to read unconditionally: no
 		// other material kind has a "transmittance" parameter to collide with.
