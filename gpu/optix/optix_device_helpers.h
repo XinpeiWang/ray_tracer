@@ -1770,11 +1770,16 @@ __device__ __forceinline__ void shade_material(
 			if (!rd_dist.EffectivelySmooth()) {
 				is_specular = false;
 				RoughDielectricBxDF<float> rd_bxdf{ mat.ior, rd_alpha, rd_alpha };
-				{
-					float bwo_x = wo_local.x, bwo_y = wo_local.y, bwo_z = wo_local.z;
-					if (rd_flip) { bwo_x=-bwo_x; bwo_y=-bwo_y; bwo_z=-bwo_z; }
-					brdf_pdf_override = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, bwo_x, bwo_y, bwo_z);
-				}
+				// wo_local was already derived (above) from the flip-adjusted
+				// wi_x/wi_y/wi_z - it's already in the same mirrored frame as
+				// wi, same as the attenuation-weight G2/G1 computation just
+				// above uses it unflipped. Re-flipping it here would double-
+				// flip it relative to wi, breaking RoughDielectricBxDF::pdf()'s
+				// documented "wo expressed in the same flipped frame as wi"
+				// contract (src/shared/bxdfs_conductor.h) - matches
+				// wavefront_kernels.cu's identical computation, which passes
+				// wo_local's components through unmodified.
+				brdf_pdf_override = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, wo_local.x, wo_local.y, wo_local.z);
 
 				if (params.numLights > 0) {
 					int light_idx; float selection_pdf;
