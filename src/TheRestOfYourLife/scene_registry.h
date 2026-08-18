@@ -1514,7 +1514,22 @@ namespace pbrt_scene_registry {
 std::map<std::string, std::string>& paths();   // defined below, used by append()
 
 inline void append(std::vector<SceneDescriptor>& registry) {
-    const std::vector<pbrt_discover::Discovered> found = pbrt_discover::scanDefaultPaths();
+    std::vector<pbrt_discover::Discovered> found = pbrt_discover::scanDefaultPaths();
+
+    // Bundled (non-nested) scenes are numbered first, in their own stable
+    // alphabetical group; downloaded collections (nested) are numbered
+    // after. stable_partition preserves each group's existing alphabetical
+    // order (scanDefaultPaths() already sorted the whole list by path)
+    // while making a bundled scene's id depend only on what else is
+    // bundled - never on what unrelated downloaded collections happen to
+    // be sitting alongside it locally. Confirmed empirically: without
+    // this, a bundled example scene got id "I14" instead of "I1" purely
+    // because other locally-downloaded pbrt collections happened to sort
+    // before it on that machine. A downloaded collection's own ids are
+    // still free to shift when collections are added/removed - expected,
+    // since those genuinely aren't the same fixed set on every machine.
+    std::stable_partition(found.begin(), found.end(),
+        [](const pbrt_discover::Discovered& d) { return !d.nested; });
 
     // SceneDescriptor holds `const char*`, so the strings have to outlive the
     // registry. A deque is used rather than a vector because it never
