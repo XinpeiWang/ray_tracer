@@ -75,12 +75,22 @@ bool allFinite(const RenderResult& r) {
 
 // The self-contained example scenes, named by file stem (not id - see
 // find_example_scene()'s comment on why a stable id can't be hardcoded).
+// The last 4 were added specifically to close feature-coverage gaps the
+// first 5 left open (see docs/PBRT_SUPPORT.md's capability matrix): those 5
+// only ever exercised 4 of 11 material kinds, 1 of 9 light kinds, and 1 of 6
+// camera kinds between them - no punctual light, alternate camera, or "mix"
+// material (the documented largest CPU/GPU gap) had render-level coverage
+// from this folder at all.
 constexpr const char* kExampleSceneStems[] = {
 	"example-cornell",
 	"instanced-spheres",
 	"killeroo-simple",
 	"triangle-fan-light",
 	"two-sphere-lights",
+	"mix-material",
+	"punctual-lights",
+	"depth-of-field",
+	"orthographic-camera",
 };
 
 // Resolved by NAME at test-run time rather than a hardcoded id string:

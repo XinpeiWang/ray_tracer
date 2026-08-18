@@ -1,0 +1,63 @@
+# orthographic-camera.pbrt -- exercises pbrt-v4's "orthographic" camera
+# (parallel projection, no perspective foreshortening). No bundled example
+# scene used anything but "perspective" before this one, so the loaded-
+# pbrt-scene orthographic path (both backends convert the same way -
+# docs/PBRT_SUPPORT.md's Cameras table - falling back to a computed default
+# "screenwindow" here since none is given explicitly) had no render-level
+# regression coverage from this folder.
+#
+# Two same-size spheres at different depths: under perspective they'd
+# differ in apparent size; under orthographic they should read identically
+# sized - the clearest single-glance check that this is really parallel
+# projection and not a pinhole camera with a very long lens.
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  278 278 -800    278 278 278    0 1 0
+# Orthographic has no fov to derive a scale from - without an explicit
+# "screenwindow" it defaults to a window sized for a roughly 1-unit-across
+# scene (pbrt-v4's own default too), which on this ~555-unit Cornell-box-
+# scale room framed nothing but an extreme close-up of a single wall - a
+# solid color, no visible geometry at all. Sized here to roughly match the
+# room's own extent instead.
+Camera "orthographic" "float screenwindow" [ -320 320 -320 320 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 18 15 8 ]
+  Translate 278 554 278
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -65 0 -52   65 0 -52   65 0 52   -65 0 52 ]
+AttributeEnd
+
+# ---------------------------------------------------------------- walls
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   555 0 0   555 0 555   0 0 555 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 555 0   555 555 0   555 555 555   0 555 555 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   555 0 555   555 555 555   0 555 555 ]
+Material "diffuse" "rgb reflectance" [ 0.65 0.05 0.05 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 0   555 0 555   555 555 555   555 555 0 ]
+Material "diffuse" "rgb reflectance" [ 0.12 0.45 0.15 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   0 0 555   0 555 555   0 555 0 ]
+
+Material "diffuse" "rgb reflectance" [ 0.8 0.8 0.2 ]
+AttributeBegin
+  Translate 180 90 150
+  Shape "sphere" "float radius" [ 60 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.2 0.8 0.8 ]
+AttributeBegin
+  Translate 380 90 420
+  Shape "sphere" "float radius" [ 60 ]
+AttributeEnd
