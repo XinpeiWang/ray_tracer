@@ -43,6 +43,20 @@ __device__ __forceinline__ float3 random_float3(unsigned int& seed) {
 	return make_float3(random_float(seed), random_float(seed), random_float(seed));
 }
 
+// Builds two independent 64-bit seeds (each from two chained pcg_hash draws,
+// advancing the caller's 32-bit `seed` state) for the layered_detail::PCG32
+// RNG that CoatedDiffuseBxDF::f()/CoatedConductorBxDF::f() (src/shared/
+// bxdfs_layered.h) run their internal random walk with - used when NEE needs
+// a fresh stochastic f() evaluation toward a light direction.
+__device__ __forceinline__ void random_seed64_pair(unsigned int& seed, uint64_t& s0, uint64_t& s1) {
+	unsigned int a = (seed = pcg_hash(seed));
+	unsigned int b = (seed = pcg_hash(seed));
+	unsigned int c = (seed = pcg_hash(seed));
+	unsigned int d = (seed = pcg_hash(seed));
+	s0 = (uint64_t(a) << 32) | uint64_t(b);
+	s1 = (uint64_t(c) << 32) | uint64_t(d);
+}
+
 __device__ __forceinline__ float3 random_in_unit_sphere(unsigned int& seed) {
 	while (true) {
 		float3 p = 2.0f * random_float3(seed) - make_float3(1.0f, 1.0f, 1.0f);
@@ -1553,7 +1567,85 @@ __device__ __forceinline__ void shade_material(
 				}
 			scattered_dir = normalize(cc_wo.x*cc_tan + cc_wo.y*cc_bit + cc_wo.z*cc_n);
 			scattered   = true;
-			is_specular = true;
+
+			// Real NEE/MIS for glossy (non-EffectivelySmooth) coats - see
+			// MaterialType::CoatedDiffuse's identical-shape block above for
+			// the full rationale (shared CoatedConductorBxDF<float>::f()
+			// stochastic estimator from src/shared/bxdfs_layered.h, GGX
+			// top-surface VNDF pdf used as the MIS proxy for both the
+			// sampled continuation and each NEE light sample).
+			if (!cc_dist.EffectivelySmooth()) {
+				is_specular = false;
+				CoatedConductorBxDF<float> cc_bxdf{ mat.eta_c.x, mat.eta_c.y, mat.eta_c.z,
+													 mat.k_c.x, mat.k_c.y, mat.k_c.z,
+													 mat.ior, cc_alpha, cc_alpha };
+
+				float swo_x = dot(scattered_dir, cc_tan), swo_y = dot(scattered_dir, cc_bit), swo_z = dot(scattered_dir, cc_n);
+				brdf_pdf_override = (swo_z > 0.0f) ? ggx_vndf_reflection_pdf(cc_wi_x, cc_wi_y, cc_wi_z, swo_x, swo_y, swo_z, cc_alpha, cc_alpha) : 0.0f;
+
+				if (params.numLights > 0) {
+					int light_idx; float selection_pdf;
+					if (params.aliasTable) {
+						int slot = int(random_float(seed) * float(params.numLights));
+						if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
+						const GpuAliasEntry& entry = params.aliasTable[slot];
+						light_idx = (random_float(seed) < entry.q) ? slot : entry.alias;
+						selection_pdf = params.aliasTable[light_idx].pdf;
+					} else {
+						light_idx = int(random_float(seed) * float(params.numLights));
+						if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
+						selection_pdf = 1.0f / float(params.numLights);
+					}
+					float geom_pdf = 0.0f; float max_dist = 0.0f;
+					float3 sampled_light_emission = make_float3(0.0f, 0.0f, 0.0f);
+					float3 to_light = sample_area_light_by_kind(
+						light_idx, hit_point, seed, geom_pdf, max_dist, sampled_light_emission);
+					float light_pdf = selection_pdf * geom_pdf;
+					if (light_pdf > 1e-6f) {
+						float llx = dot(to_light, cc_tan), lly = dot(to_light, cc_bit), llz = dot(to_light, cc_n);
+						if (llz > 0.0f && trace_shadow_ray(hit_point, to_light, max_dist)) {
+							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
+							float fr, fg, fb;
+							cc_bxdf.f(cc_wi_x, cc_wi_y, cc_wi_z, llx, lly, llz, ns0, ns1, fr, fg, fb);
+							float brdf_pdf = ggx_vndf_reflection_pdf(cc_wi_x, cc_wi_y, cc_wi_z, llx, lly, llz, cc_alpha, cc_alpha);
+							float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
+							emission = emission + mis_weight * make_float3(fr, fg, fb) * sampled_light_emission * llz / light_pdf;
+						}
+					}
+				}
+
+				for (unsigned int pi = 0; pi < params.numPunctualLights; ++pi) {
+					float3 wi_p, Li_p; float t_max_p;
+					if (!eval_punctual_light(params.punctualLights[pi], hit_point, wi_p, Li_p, t_max_p)) continue;
+					float plx = dot(wi_p, cc_tan), ply = dot(wi_p, cc_bit), plz = dot(wi_p, cc_n);
+					if (plz <= 0.0f) continue;
+					if (trace_shadow_ray(hit_point, wi_p, t_max_p)) {
+						uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
+						float fr, fg, fb;
+						cc_bxdf.f(cc_wi_x, cc_wi_y, cc_wi_z, plx, ply, plz, ns0, ns1, fr, fg, fb);
+						emission = emission + make_float3(fr, fg, fb) * Li_p * plz;
+					}
+				}
+
+				{
+					const float3& skyColor = params.camera.backgroundColor;
+					if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
+						float3 sky_dir, sky_Le_val; float pdf_sky;
+						sample_sky_nee(seed, skyColor, sky_dir, pdf_sky, sky_Le_val);
+						float skx = dot(sky_dir, cc_tan), sky_y = dot(sky_dir, cc_bit), skz = dot(sky_dir, cc_n);
+						if (skz > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
+							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
+							float fr, fg, fb;
+							cc_bxdf.f(cc_wi_x, cc_wi_y, cc_wi_z, skx, sky_y, skz, ns0, ns1, fr, fg, fb);
+							float brdf_pdf_sky = ggx_vndf_reflection_pdf(cc_wi_x, cc_wi_y, cc_wi_z, skx, sky_y, skz, cc_alpha, cc_alpha);
+							float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
+							emission = emission + mis_weight * make_float3(fr, fg, fb) * sky_Le_val * skz / pdf_sky;
+						}
+					}
+				}
+			} else {
+				is_specular = true;
+			}
 			break;
 		}
 
@@ -1572,7 +1664,15 @@ __device__ __forceinline__ void shade_material(
 
 			float3 wi_w = normalize(-ray_dir);
 			float wi_x = dot(wi_w, tan), wi_y = dot(wi_w, bitan), wi_z = dot(wi_w, n);
-			if (wi_z < 0.0f) { wi_z=-wi_z; wi_x=-wi_x; wi_y=-wi_y; }
+			// Track whether wi got sign-flipped below so any OTHER direction
+			// queried against this same local wi (NEE light directions, see
+			// below) can be put through the identical flip - f()/pdf() (see
+			// RoughDielectricBxDF in src/shared/bxdfs_conductor.h) branch on
+			// wo_z's sign relative to THIS wi, so a queried direction must be
+			// expressed in the same mirrored coordinate system, not just
+			// dotted against the raw (tan,bitan,n) basis.
+			bool rd_flip = (wi_z < 0.0f);
+			if (rd_flip) { wi_z=-wi_z; wi_x=-wi_x; wi_y=-wi_y; }
 
 			TrowbridgeReitz<float> rd_dist(rd_alpha, rd_alpha);
 			float wm_x, wm_y, wm_z;
@@ -1624,7 +1724,87 @@ __device__ __forceinline__ void shade_material(
 				attenuation = make_float3(w, w, w);
 			}
 			scattered     = true;
-			is_specular   = true;
+
+			// Real NEE/MIS for glossy (non-EffectivelySmooth) rough glass,
+			// mirroring MaterialType::Conductor's NEE block above but via
+			// the shared RoughDielectricBxDF<float>'s scalar (achromatic)
+			// f()/pdf() - the same CPU_GPU template already verified on CPU
+			// for #222/#226/#227. NEE here can reach lights on EITHER side
+			// of the interface (reflection when the local light direction's
+			// z is positive, transmission/"seen through the glass" when
+			// negative) - trace_shadow_ray() nudges its origin along the
+			// shadow ray's OWN direction (not the surface normal), so a
+			// transmission-side shadow ray correctly steps through the
+			// interface instead of immediately self-intersecting it.
+			if (!rd_dist.EffectivelySmooth()) {
+				is_specular = false;
+				RoughDielectricBxDF<float> rd_bxdf{ mat.ior, rd_alpha, rd_alpha };
+				{
+					float bwo_x = wo_local.x, bwo_y = wo_local.y, bwo_z = wo_local.z;
+					if (rd_flip) { bwo_x=-bwo_x; bwo_y=-bwo_y; bwo_z=-bwo_z; }
+					brdf_pdf_override = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, bwo_x, bwo_y, bwo_z);
+				}
+
+				if (params.numLights > 0) {
+					int light_idx; float selection_pdf;
+					if (params.aliasTable) {
+						int slot = int(random_float(seed) * float(params.numLights));
+						if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
+						const GpuAliasEntry& entry = params.aliasTable[slot];
+						light_idx = (random_float(seed) < entry.q) ? slot : entry.alias;
+						selection_pdf = params.aliasTable[light_idx].pdf;
+					} else {
+						light_idx = int(random_float(seed) * float(params.numLights));
+						if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
+						selection_pdf = 1.0f / float(params.numLights);
+					}
+					float geom_pdf = 0.0f; float max_dist = 0.0f;
+					float3 sampled_light_emission = make_float3(0.0f, 0.0f, 0.0f);
+					float3 to_light = sample_area_light_by_kind(
+						light_idx, hit_point, seed, geom_pdf, max_dist, sampled_light_emission);
+					float light_pdf = selection_pdf * geom_pdf;
+					if (light_pdf > 1e-6f) {
+						float llx = dot(to_light, tan), lly = dot(to_light, bitan), llz = dot(to_light, n);
+						if (rd_flip) { llx=-llx; lly=-lly; llz=-llz; }
+						if (llz != 0.0f && trace_shadow_ray(hit_point, to_light, max_dist)) {
+							float fval = rd_bxdf.f(wi_x, wi_y, wi_z, rd_ri, llx, lly, llz);
+							float brdf_pdf = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, llx, lly, llz);
+							float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
+							emission = emission + mis_weight * make_float3(fval, fval, fval) * sampled_light_emission * fabsf(llz) / light_pdf;
+						}
+					}
+				}
+
+				for (unsigned int pi = 0; pi < params.numPunctualLights; ++pi) {
+					float3 wi_p, Li_p; float t_max_p;
+					if (!eval_punctual_light(params.punctualLights[pi], hit_point, wi_p, Li_p, t_max_p)) continue;
+					float plx = dot(wi_p, tan), ply = dot(wi_p, bitan), plz = dot(wi_p, n);
+					if (rd_flip) { plx=-plx; ply=-ply; plz=-plz; }
+					if (plz == 0.0f) continue;
+					if (trace_shadow_ray(hit_point, wi_p, t_max_p)) {
+						float fval = rd_bxdf.f(wi_x, wi_y, wi_z, rd_ri, plx, ply, plz);
+						emission = emission + make_float3(fval, fval, fval) * Li_p * fabsf(plz);
+					}
+				}
+
+				{
+					const float3& skyColor = params.camera.backgroundColor;
+					if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
+						float3 sky_dir, sky_Le_val; float pdf_sky;
+						sample_sky_nee(seed, skyColor, sky_dir, pdf_sky, sky_Le_val);
+						float skx = dot(sky_dir, tan), sky_y = dot(sky_dir, bitan), skz = dot(sky_dir, n);
+						if (rd_flip) { skx=-skx; sky_y=-sky_y; skz=-skz; }
+						if (skz != 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
+							float fval = rd_bxdf.f(wi_x, wi_y, wi_z, rd_ri, skx, sky_y, skz);
+							float brdf_pdf_sky = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, skx, sky_y, skz);
+							float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
+							emission = emission + mis_weight * make_float3(fval, fval, fval) * sky_Le_val * fabsf(skz) / pdf_sky;
+						}
+					}
+				}
+			} else {
+				is_specular = true;
+			}
 			break;
 		}
 
@@ -1653,7 +1833,86 @@ __device__ __forceinline__ void shade_material(
 			attenuation = make_float3(c_F.x * c_weight, c_F.y * c_weight, c_F.z * c_weight);
 			scattered_dir = normalize(cwo_x*ctan + cwo_y*cbitan + cwo_z*cn);
 			scattered     = true;
-			is_specular   = true;
+
+			// Real NEE/MIS for glossy (non-EffectivelySmooth) conductors,
+			// mirroring the Lambertian NEE block above but evaluated in the
+			// local (tangent) frame via the shared ConductorBxDF<float>'s
+			// real f()/pdf() (src/shared/bxdfs_conductor.h) - the same
+			// CPU_GPU template already verified on CPU for #222. The
+			// existing VNDF-sampled `attenuation`/`scattered_dir` above are
+			// left untouched (self-normalizing G/G1 weight, mathematically
+			// equivalent to f()*cos/pdf() - see conductor::scatter() in
+			// material_pbrt.h for the identity this relies on); this block
+			// only adds direct-light contributions and switches off the
+			// specular MIS-skip so future bounces off area/sky lights get
+			// properly weighted.
+			if (!c_dist.EffectivelySmooth()) {
+				is_specular = false;
+				ConductorBxDF<float> c_bxdf{ mat.eta_c.x, mat.eta_c.y, mat.eta_c.z,
+											  mat.k_c.x, mat.k_c.y, mat.k_c.z,
+											  c_alpha, c_alpha };
+				brdf_pdf_override = c_bxdf.pdf(cwi_x, cwi_y, cwi_z, cwo_x, cwo_y, cwo_z);
+
+				if (params.numLights > 0) {
+					int light_idx; float selection_pdf;
+					if (params.aliasTable) {
+						int slot = int(random_float(seed) * float(params.numLights));
+						if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
+						const GpuAliasEntry& entry = params.aliasTable[slot];
+						light_idx = (random_float(seed) < entry.q) ? slot : entry.alias;
+						selection_pdf = params.aliasTable[light_idx].pdf;
+					} else {
+						light_idx = int(random_float(seed) * float(params.numLights));
+						if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
+						selection_pdf = 1.0f / float(params.numLights);
+					}
+					float geom_pdf = 0.0f; float max_dist = 0.0f;
+					float3 sampled_light_emission = make_float3(0.0f, 0.0f, 0.0f);
+					float3 to_light = sample_area_light_by_kind(
+						light_idx, hit_point, seed, geom_pdf, max_dist, sampled_light_emission);
+					float light_pdf = selection_pdf * geom_pdf;
+					if (light_pdf > 1e-6f) {
+						float llx = dot(to_light, ctan), lly = dot(to_light, cbitan), llz = dot(to_light, cn);
+						if (llz > 0.0f && trace_shadow_ray(hit_point, to_light, max_dist)) {
+							float fr, fg, fb;
+							c_bxdf.f(cwi_x, cwi_y, cwi_z, llx, lly, llz, fr, fg, fb);
+							float brdf_pdf = c_bxdf.pdf(cwi_x, cwi_y, cwi_z, llx, lly, llz);
+							float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
+							emission = emission + mis_weight * make_float3(fr, fg, fb) * sampled_light_emission * llz / light_pdf;
+						}
+					}
+				}
+
+				for (unsigned int pi = 0; pi < params.numPunctualLights; ++pi) {
+					float3 wi_p, Li_p; float t_max_p;
+					if (!eval_punctual_light(params.punctualLights[pi], hit_point, wi_p, Li_p, t_max_p)) continue;
+					float plx = dot(wi_p, ctan), ply = dot(wi_p, cbitan), plz = dot(wi_p, cn);
+					if (plz <= 0.0f) continue;
+					if (trace_shadow_ray(hit_point, wi_p, t_max_p)) {
+						float fr, fg, fb;
+						c_bxdf.f(cwi_x, cwi_y, cwi_z, plx, ply, plz, fr, fg, fb);
+						emission = emission + make_float3(fr, fg, fb) * Li_p * plz;
+					}
+				}
+
+				{
+					const float3& skyColor = params.camera.backgroundColor;
+					if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
+						float3 sky_dir, sky_Le_val; float pdf_sky;
+						sample_sky_nee(seed, skyColor, sky_dir, pdf_sky, sky_Le_val);
+						float skx = dot(sky_dir, ctan), sky_y = dot(sky_dir, cbitan), skz = dot(sky_dir, cn);
+						if (skz > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
+							float fr, fg, fb;
+							c_bxdf.f(cwi_x, cwi_y, cwi_z, skx, sky_y, skz, fr, fg, fb);
+							float brdf_pdf_sky = c_bxdf.pdf(cwi_x, cwi_y, cwi_z, skx, sky_y, skz);
+							float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
+							emission = emission + mis_weight * make_float3(fr, fg, fb) * sky_Le_val * skz / pdf_sky;
+						}
+					}
+				}
+			} else {
+				is_specular = true;
+			}
 			break;
 		}
 
@@ -1684,7 +1943,6 @@ __device__ __forceinline__ void shade_material(
 				attenuation   = make_float3(fw, fw, fw);
 				scattered_dir = normalize(cwo_x2*cdtan + cwo_y2*cdbit + cwo_z2*cdn);
 				scattered     = true;
-				is_specular   = true;
 			} else {
 				// Multi-bounce escape through the coat, mirroring the actual
 				// random walk in src/shared/bxdfs_layered.h's
@@ -1742,7 +2000,90 @@ __device__ __forceinline__ void shade_material(
 				attenuation   = beta;
 				scattered_dir = diff_dir;
 				scattered     = true;
-				is_specular   = true;
+			}
+
+			// Real NEE/MIS for glossy (non-EffectivelySmooth) coats, using
+			// the shared CoatedDiffuseBxDF<float>'s stochastic f()
+			// (src/shared/bxdfs_layered.h) - the same simplified top-exit-
+			// only random-walk estimator already verified on CPU for #228.
+			// No closed-form pdf exists for an unbounded-depth random walk,
+			// so (matching CPU's coated_diffuse::scatter() in
+			// material_pbrt.h, which uses ggx_reflection_pdf as a proxy
+			// srec.pdf_ptr) both the MIS pdf for the sampled continuation
+			// and the MIS pdf for each NEE light sample use the coat's own
+			// top-surface GGX-reflection VNDF pdf (ggx_vndf_reflection_pdf,
+			// src/shared/bxdfs_conductor.h) as a cheap shape-matched proxy,
+			// not the walk's true (unknown) density - any valid pdf keeps
+			// MIS/NEE unbiased, this only affects variance.
+			if (!cd_dist.EffectivelySmooth()) {
+				is_specular = false;
+				CoatedDiffuseBxDF<float> cd_bxdf{ mat.albedo.x, mat.albedo.y, mat.albedo.z, mat.ior, cd_alpha, cd_alpha };
+
+				float swo_x = dot(scattered_dir, cdtan), swo_y = dot(scattered_dir, cdbit), swo_z = dot(scattered_dir, cdn);
+				brdf_pdf_override = (swo_z > 0.0f) ? ggx_vndf_reflection_pdf(cdwi_x, cdwi_y, cdwi_z, swo_x, swo_y, swo_z, cd_alpha, cd_alpha) : 0.0f;
+
+				if (params.numLights > 0) {
+					int light_idx; float selection_pdf;
+					if (params.aliasTable) {
+						int slot = int(random_float(seed) * float(params.numLights));
+						if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
+						const GpuAliasEntry& entry = params.aliasTable[slot];
+						light_idx = (random_float(seed) < entry.q) ? slot : entry.alias;
+						selection_pdf = params.aliasTable[light_idx].pdf;
+					} else {
+						light_idx = int(random_float(seed) * float(params.numLights));
+						if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
+						selection_pdf = 1.0f / float(params.numLights);
+					}
+					float geom_pdf = 0.0f; float max_dist = 0.0f;
+					float3 sampled_light_emission = make_float3(0.0f, 0.0f, 0.0f);
+					float3 to_light = sample_area_light_by_kind(
+						light_idx, hit_point, seed, geom_pdf, max_dist, sampled_light_emission);
+					float light_pdf = selection_pdf * geom_pdf;
+					if (light_pdf > 1e-6f) {
+						float llx = dot(to_light, cdtan), lly = dot(to_light, cdbit), llz = dot(to_light, cdn);
+						if (llz > 0.0f && trace_shadow_ray(hit_point, to_light, max_dist)) {
+							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
+							float fr, fg, fb;
+							cd_bxdf.f(cdwi_x, cdwi_y, cdwi_z, llx, lly, llz, ns0, ns1, fr, fg, fb);
+							float brdf_pdf = ggx_vndf_reflection_pdf(cdwi_x, cdwi_y, cdwi_z, llx, lly, llz, cd_alpha, cd_alpha);
+							float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
+							emission = emission + mis_weight * make_float3(fr, fg, fb) * sampled_light_emission * llz / light_pdf;
+						}
+					}
+				}
+
+				for (unsigned int pi = 0; pi < params.numPunctualLights; ++pi) {
+					float3 wi_p, Li_p; float t_max_p;
+					if (!eval_punctual_light(params.punctualLights[pi], hit_point, wi_p, Li_p, t_max_p)) continue;
+					float plx = dot(wi_p, cdtan), ply = dot(wi_p, cdbit), plz = dot(wi_p, cdn);
+					if (plz <= 0.0f) continue;
+					if (trace_shadow_ray(hit_point, wi_p, t_max_p)) {
+						uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
+						float fr, fg, fb;
+						cd_bxdf.f(cdwi_x, cdwi_y, cdwi_z, plx, ply, plz, ns0, ns1, fr, fg, fb);
+						emission = emission + make_float3(fr, fg, fb) * Li_p * plz;
+					}
+				}
+
+				{
+					const float3& skyColor = params.camera.backgroundColor;
+					if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
+						float3 sky_dir, sky_Le_val; float pdf_sky;
+						sample_sky_nee(seed, skyColor, sky_dir, pdf_sky, sky_Le_val);
+						float skx = dot(sky_dir, cdtan), sky_y = dot(sky_dir, cdbit), skz = dot(sky_dir, cdn);
+						if (skz > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
+							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
+							float fr, fg, fb;
+							cd_bxdf.f(cdwi_x, cdwi_y, cdwi_z, skx, sky_y, skz, ns0, ns1, fr, fg, fb);
+							float brdf_pdf_sky = ggx_vndf_reflection_pdf(cdwi_x, cdwi_y, cdwi_z, skx, sky_y, skz, cd_alpha, cd_alpha);
+							float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
+							emission = emission + mis_weight * make_float3(fr, fg, fb) * sky_Le_val * skz / pdf_sky;
+						}
+					}
+				}
+			} else {
+				is_specular = true;
 			}
 			break;
 		}
