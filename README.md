@@ -64,7 +64,7 @@ Pinhole, depth-of-field (thin-lens), orthographic, spherical/equirectangular 360
 
 ### Dual Rendering Modes
 - **CPU Renderer**: Multi-threaded, importance-sampled, the most feature-complete and battle-tested path
-- **GPU Renderer**: OptiX-accelerated, dramatically faster for complex scenes — has near-complete feature parity with CPU (see [Known Limitations](#-known-limitations) for the remaining gaps), plus an alternate queue-based **wavefront** path tracer (opt-in via `RAY_TRACER_WAVEFRONT=1`)
+- **GPU Renderer**: OptiX-accelerated, dramatically faster for complex scenes — has near-complete feature parity with CPU (see [Known Limitations](#-known-limitations) for the remaining gaps), plus an alternate queue-based **wavefront** path tracer (opt-in via `--wavefront`)
 
 ### Qt GUI
 Scene picker with live metadata (description, GPU compatibility, perf hint), camera presets, quality/resolution presets, GPU/CPU toggle, image vs. video mode with camera-path selection, and one-click render.
@@ -485,7 +485,7 @@ ray_tracer/
 ### CPU Renderer
 
 **Pros:**
-- Most feature-complete (all materials/lights/integrators, including SPPM broadly and BDPT/MLT as tested libraries)
+- Most feature-complete (all materials/lights/integrators, including SPPM broadly and BDPT/MLT via `--bdpt`/`--mlt`)
 - Portable, easy to debug, stable and well-tested
 
 **Cons:**
@@ -501,7 +501,7 @@ ray_tracer.exe --cpu
 **Pros:**
 - **10-100×+ faster** than CPU for most scenes
 - Near feature-complete: same material library, most lights/cameras, mesh+texture support, and SPPM on one reference scene
-- Two backends: the default recursive mega-kernel path tracer, and an opt-in wavefront (queue-based) path tracer (`RAY_TRACER_WAVEFRONT=1`)
+- Two backends: the default recursive mega-kernel path tracer, and an opt-in wavefront (queue-based) path tracer (`--wavefront`)
 
 **Cons:**
 - Requires NVIDIA GPU + CUDA/OptiX setup
@@ -616,17 +616,17 @@ External mesh/texture assets (`models/`) come from the Stanford 3D Scanning Repo
 Being upfront about what's incomplete rather than overselling:
 
 - **GPU SPPM is scene-limited**: the GPU photon-mapping backend has only been verified end-to-end on one reference scene (Cornell Rough Glass). CPU SPPM works across a much broader set of materials/lights, though it too is primarily verified on lambertian + delta-BSDF scenes.
-- **BDPT and MLT are libraries, not exposed render modes**: `src/shared/bdpt.h` and `mlt.h` exist with their own unit test coverage, but aren't wired into the CLI or GUI as a selectable integrator yet.
-- **Hair/fur has no literal fiber geometry**: the Marschner/Chiang BxDF math is real, but it's applied via a shading-normal proxy on sphere primitives (one scene), not actual curve/strand geometry.
-- **GPU wavefront path tracer is opt-in and less exercised**: enabled via `RAY_TRACER_WAVEFRONT=1` rather than a first-class CLI flag; the default recursive GPU backend is the primary, best-tested GPU path.
+- **BDPT and MLT are CPU-only and narrow in scope**: selectable via `--bdpt`/`--mlt`, but there's no GPU/OptiX implementation (`--gpu` is ignored with a warning), only area lights are supported for NEE (no punctual/sky-light sampling yet), and both are verified end-to-end on scene A1 (Cornell Box) only — other scenes are unverified.
+- **Hair/fur has two different fidelity levels**: scene F4 (Curve Fibers) uses real Bezier curve/strand geometry (`CurveShape`, exact ray-curve intersection on CPU, tessellated bilinear-patch tubes on GPU); the older scene B11 instead applies the Marschner/Chiang BxDF math via a shading-normal proxy on sphere primitives, not actual fiber geometry.
+- **GPU wavefront path tracer is opt-in and less exercised**: enabled via the `--wavefront` flag; the default recursive GPU backend is the primary, best-tested GPU path.
 - **Windows only**: platform-specific code throughout (file paths, CUDA/OptiX integration, build system).
 - **No adaptive sampling**: fixed samples-per-pixel for standard path tracing (SPPM itself is progressive by design).
 
 ### Planned / possible future work
 
-- [ ] Selectable BDPT/MLT integrators from the CLI/GUI
+- [ ] GPU/OptiX implementation of BDPT/MLT, plus punctual/sky-light NEE support
 - [ ] Broader GPU SPPM scene support
-- [ ] Real curve/strand hair geometry
+- [ ] Real curve/strand geometry for scene B11's hair fibers (matching scene F4's approach)
 - [ ] Adaptive sampling based on variance
 - [ ] Cross-platform support (Linux, macOS)
 
@@ -634,8 +634,8 @@ Being upfront about what's incomplete rather than overselling:
 
 Contributions are welcome! Areas for improvement:
 
-1. **Integrators**: wiring BDPT/MLT into the CLI, broadening GPU SPPM scene support
-2. **Geometry**: real curve/hair geometry, more mesh formats
+1. **Integrators**: porting BDPT/MLT to GPU, broadening their light-sampling and scene coverage, broadening GPU SPPM scene support
+2. **Geometry**: real curve/hair geometry for scene B11 (scene F4 already has it), more mesh formats
 3. **Scenes**: more example scenes, a scene file format (JSON/XML) instead of hardcoded registry entries
 4. **Portability**: Linux/macOS support
 5. **Documentation**: tutorials, code comments
