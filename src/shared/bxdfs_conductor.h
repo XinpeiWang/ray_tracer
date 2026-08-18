@@ -1,6 +1,60 @@
 #pragma once
 #include "bxdfs_base.h"
 
+// ggx_reflection_shape -- pure geometric GGX reflection shape D*G/(4*cosO*cosI)
+// with NO Fresnel/color factor. RoughMetalBxDF::f() is just this shape times
+// a constant per-channel albedo (its Fresnel is a flat, direction-independent
+// tint). ConductorBxDF's real per-channel complex Fresnel DOES vary by
+// queried direction, so its CPU material wrapper (conductor::
+// scattering_attenuation() in material_pbrt.h) needs this shape and the
+// Fresnel term as SEPARATE pieces rather than the fused f() below -- this
+// codebase's material::scattering_pdf() returns a scalar, not a color, so a
+// direction-varying color has to be threaded through
+// scattering_attenuation() instead (see diffuse_transmission's own R/T
+// split for the established precedent).
+template<typename T>
+CPU_GPU T ggx_reflection_shape(T wi_x, T wi_y, T wi_z, T wo_x, T wo_y, T wo_z,
+								 T alpha_x, T alpha_y) {
+	if (wi_z <= T(0) || wo_z <= T(0)) return T(0);
+	TrowbridgeReitz<T> dist(alpha_x, alpha_y);
+	T hx = wi_x + wo_x, hy = wi_y + wo_y, hz = wi_z + wo_z;
+#if defined(__CUDACC__)
+	T hlen = sqrtf(hx*hx + hy*hy + hz*hz);
+#else
+	T hlen = std::sqrt(hx*hx + hy*hy + hz*hz);
+#endif
+	if (hlen < T(1e-8)) return T(0);
+	hx /= hlen; hy /= hlen; hz /= hlen;
+	T D = dist.D(hx, hy, hz);
+	T G = dist.G(wo_x, wo_y, wo_z, wi_x, wi_y, wi_z);
+	return D * G / (T(4) * wi_z * wo_z);
+}
+
+// ggx_vndf_reflection_pdf -- VNDF-sampling density for a GGX reflection
+// lobe, shared by RoughMetalBxDF::pdf() and ConductorBxDF::pdf() (and by
+// the CPU-side ggx_reflection_pdf wrapper in pdf.h, used as srec.pdf_ptr
+// for real NEE/MIS): Fresnel doesn't affect the sampling density, only
+// f(), so both BxDFs share this one geometric formula rather than each
+// re-deriving it.
+template<typename T>
+CPU_GPU T ggx_vndf_reflection_pdf(T wi_x, T wi_y, T wi_z, T wo_x, T wo_y, T wo_z,
+									T alpha_x, T alpha_y) {
+	if (wi_z <= T(0) || wo_z <= T(0)) return T(0);
+	TrowbridgeReitz<T> dist(alpha_x, alpha_y);
+	T hx = wi_x + wo_x, hy = wi_y + wo_y, hz = wi_z + wo_z;
+#if defined(__CUDACC__)
+	T hlen = sqrtf(hx*hx + hy*hy + hz*hz);
+#else
+	T hlen = std::sqrt(hx*hx + hy*hy + hz*hz);
+#endif
+	if (hlen < T(1e-8)) return T(0);
+	hx /= hlen; hy /= hlen; hz /= hlen;
+	T pdf_wm = dist.PDF(wi_x, wi_y, wi_z, hx, hy, hz);
+	T dot_wi_wm = wi_x*hx + wi_y*hy + wi_z*hz;
+	if (dot_wi_wm <= T(0)) return T(0);
+	return pdf_wm / (T(4) * dot_wi_wm);
+}
+
 // ===========================================================================
 // 5. RoughMetalBxDF  (GGX microfacet + constant-color Fresnel)
 //    Mirrors RTOW rough_metal: VNDF sampling, weight = G/G1, attenuation = albedo*weight
@@ -39,6 +93,49 @@ struct RoughMetalBxDF {
 		res.is_specular = true;
 		res.valid = true;
 		return res;
+	}
+
+	// f(wi, wo) -- real closed-form BSDF value at an arbitrary QUERIED
+	// direction wo (both directions local frame, z=normal). Unlike
+	// sample_local(), which only ever returns a wo it importance-sampled
+	// itself, this evaluates the BSDF for whatever direction the caller is
+	// aiming a shadow ray toward (real NEE/MIS) -- mirrors
+	// PrincipledBxDF::ggx_brdf (bxdfs_principled.h), with a constant-color
+	// tint standing in for Fresnel since this struct has no real Fresnel
+	// model (see the header comment above).
+	CPU_GPU void f(T wi_x, T wi_y, T wi_z, T wo_x, T wo_y, T wo_z,
+					T& fr, T& fg, T& fb) const {
+		fr = fg = fb = T(0);
+		if (wi_z <= T(0) || wo_z <= T(0)) return;
+		TrowbridgeReitz<T> dist(alpha_x, alpha_y);
+		T hx = wi_x + wo_x, hy = wi_y + wo_y, hz = wi_z + wo_z;
+#if defined(__CUDACC__)
+		T hlen = sqrtf(hx*hx + hy*hy + hz*hz);
+#else
+		T hlen = std::sqrt(hx*hx + hy*hy + hz*hz);
+#endif
+		if (hlen < T(1e-8)) return;
+		hx /= hlen; hy /= hlen; hz /= hlen;
+		T D = dist.D(hx, hy, hz);
+		T G = dist.G(wo_x, wo_y, wo_z, wi_x, wi_y, wi_z);
+		T val = D * G / (T(4) * wi_z * wo_z);
+		fr = albedo_r * val; fg = albedo_g * val; fb = albedo_b * val;
+	}
+
+	// pdf(wi, wo) -- VNDF sampling density for the same queried wo. Mirrors
+	// PrincipledBxDF::ggx_pdf.
+	CPU_GPU T pdf(T wi_x, T wi_y, T wi_z, T wo_x, T wo_y, T wo_z) const {
+		return ggx_vndf_reflection_pdf(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, alpha_x, alpha_y);
+	}
+
+	// Roughness-based specular/glossy classification (pbrt-v4
+	// TrowbridgeReitz::EffectivelySmooth threshold, alpha < 1e-3): callers
+	// use this to decide whether the material is a perfect specular delta
+	// BSDF (no finite-solid-angle f()/pdf() to evaluate, NEE impossible --
+	// what this codebase's is_specular=true previously meant unconditionally)
+	// or genuinely glossy (real NEE/MIS via f()/pdf() above applies).
+	CPU_GPU bool effectively_smooth() const {
+		return TrowbridgeReitz<T>(alpha_x, alpha_y).EffectivelySmooth();
 	}
 };
 
@@ -81,6 +178,47 @@ struct ConductorBxDF {
 		res.is_specular = true;
 		res.valid = true;
 		return res;
+	}
+
+	// f(wi, wo) -- real closed-form BSDF value at an arbitrary queried
+	// direction wo. See RoughMetalBxDF::f()'s comment for why this exists;
+	// unlike RoughMetalBxDF, the Fresnel term here is the real per-channel
+	// complex conductor Fresnel, evaluated at the half-vector between the
+	// two GIVEN directions (not the internally-sampled wm) -- mirrors
+	// PrincipledBxDF's own Fresnel-at-half-vector convention.
+	CPU_GPU void f(T wi_x, T wi_y, T wi_z, T wo_x, T wo_y, T wo_z,
+					T& fr, T& fg, T& fb) const {
+		fr = fg = fb = T(0);
+		if (wi_z <= T(0) || wo_z <= T(0)) return;
+		TrowbridgeReitz<T> dist(alpha_x, alpha_y);
+		T hx = wi_x + wo_x, hy = wi_y + wo_y, hz = wi_z + wo_z;
+#if defined(__CUDACC__)
+		T hlen = sqrtf(hx*hx + hy*hy + hz*hz);
+#else
+		T hlen = std::sqrt(hx*hx + hy*hy + hz*hz);
+#endif
+		if (hlen < T(1e-8)) return;
+		hx /= hlen; hy /= hlen; hz /= hlen;
+		T D = dist.D(hx, hy, hz);
+		T G = dist.G(wo_x, wo_y, wo_z, wi_x, wi_y, wi_z);
+		T dot_wi_wm = wi_x*hx + wi_y*hy + wi_z*hz;
+		T val = D * G / (T(4) * wi_z * wo_z);
+		fr = FrComplex(dot_wi_wm, eta_r, k_r) * val;
+		fg = FrComplex(dot_wi_wm, eta_g, k_g) * val;
+		fb = FrComplex(dot_wi_wm, eta_b, k_b) * val;
+	}
+
+	// pdf(wi, wo) -- VNDF sampling density for the same queried wo.
+	// Purely geometric (no Fresnel term), same formula as
+	// RoughMetalBxDF::pdf().
+	CPU_GPU T pdf(T wi_x, T wi_y, T wi_z, T wo_x, T wo_y, T wo_z) const {
+		return ggx_vndf_reflection_pdf(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, alpha_x, alpha_y);
+	}
+
+	// Roughness-based specular/glossy classification -- see
+	// RoughMetalBxDF::effectively_smooth()'s comment.
+	CPU_GPU bool effectively_smooth() const {
+		return TrowbridgeReitz<T>(alpha_x, alpha_y).EffectivelySmooth();
 	}
 };
 

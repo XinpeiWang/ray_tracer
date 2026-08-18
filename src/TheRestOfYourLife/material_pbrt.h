@@ -29,6 +29,13 @@ class rough_metal : public material {
         return BxDF{ albedo.x(), albedo.y(), albedo.z(), alpha_x, alpha_y };
     }
 
+    // Real NEE/MIS below the roughness threshold RoughMetalBxDF::
+    // effectively_smooth() considers "glossy" (pbrt-v4's TrowbridgeReitz::
+    // EffectivelySmooth, alpha >= 1e-3): albedo is a flat, direction-
+    // independent tint (RoughMetalBxDF has no real Fresnel model), so it can
+    // stay a fixed srec.attenuation exactly like lambertian's Kd -- no
+    // scattering_attenuation() override needed, unlike conductor's real
+    // per-direction complex Fresnel below.
     bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
                  bool do_regularize = false) const override {
         auto ctx  = MaterialContext<double>::from_hit(rec, r_in);
@@ -40,16 +47,55 @@ class rough_metal : public material {
         double wi_x, wi_y, wi_z;
         frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
 
-        auto res = bxdf.sample_local(wi_x, wi_y, wi_z, random_double(), random_double());
-        if (!res.valid) return false;
+        // Smooth/glossy branch on the TRUE (unregularized) roughness, not
+        // ex/ey: scattering_pdf() below has no do_regularize parameter to
+        // work with (material::scattering_pdf()'s virtual signature is
+        // fixed), so it can only ever use the raw alpha_x/alpha_y members.
+        // Branching on ex/ey here would let do_regularize push a truly-
+        // specular material into this glossy path while scattering_pdf()
+        // still evaluated the ORIGINAL near-delta alpha -- an inconsistent,
+        // nearly-degenerate pdf. Branching on the true alpha instead leaves
+        // do_regularize's existing effect exactly as it was: it only widens
+        // the alpha actually used inside the smooth branch's sample_local()
+        // call below, same as before this NEE feature existed.
+        if (TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth()) {
+            auto res = bxdf.sample_local(wi_x, wi_y, wi_z, random_double(), random_double());
+            if (!res.valid) return false;
 
-        double wd_x, wd_y, wd_z;
-        frame.to_world(res.wo_x, res.wo_y, res.wo_z, wd_x, wd_y, wd_z);
-        srec.attenuation  = color(res.r, res.g, res.b);
-        srec.pdf_ptr      = nullptr;
-        srec.skip_pdf     = true;
-        srec.skip_pdf_ray = ray(rec.p, unit_vector(vec3(wd_x, wd_y, wd_z)), r_in.time());
+            double wd_x, wd_y, wd_z;
+            frame.to_world(res.wo_x, res.wo_y, res.wo_z, wd_x, wd_y, wd_z);
+            srec.attenuation  = color(res.r, res.g, res.b);
+            srec.pdf_ptr      = nullptr;
+            srec.skip_pdf     = true;
+            srec.skip_pdf_ray = ray(rec.p, unit_vector(vec3(wd_x, wd_y, wd_z)), r_in.time());
+            return true;
+        }
+
+        // Glossy: srec.attenuation is the material's constant color; the
+        // VNDF pdf_ptr drives both real NEE (Strategy A) and the BSDF-
+        // sampled continuation (Strategy B) in camera.h, with
+        // scattering_pdf() below supplying the matching f*cos shape.
+        srec.attenuation = albedo;
+        srec.pdf_ptr      = make_shared<ggx_reflection_pdf>(
+            rec.normal, vec3(ctx.wo_x, ctx.wo_y, ctx.wo_z), alpha_x, alpha_y);
+        srec.skip_pdf     = false;
         return true;
+    }
+
+    // f*cos at an arbitrary queried direction (scattered), for real NEE/MIS.
+    // Pure geometric GGX shape -- the constant albedo tint is supplied
+    // separately via srec.attenuation (default scattering_attenuation()).
+    double scattering_pdf(const ray& r_in, const hit_record& rec,
+                          const ray& scattered) const override {
+        auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
+        auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
+        double wi_x, wi_y, wi_z;
+        frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
+        vec3 dir = unit_vector(scattered.direction());
+        double wo_x, wo_y, wo_z;
+        frame.to_local(dir.x(), dir.y(), dir.z(), wo_x, wo_y, wo_z);
+        double shape = ggx_reflection_shape(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, alpha_x, alpha_y);
+        return shape * wo_z;
     }
 
     double get_roughness() const { return alpha_x * alpha_x; }
@@ -105,6 +151,18 @@ class conductor : public material {
         return BxDF{ eta_r, eta_g, eta_b, k_r, k_g, k_b, alpha_x, alpha_y };
     }
 
+    // Real NEE/MIS below the roughness threshold (see rough_metal's own
+    // comment). Unlike rough_metal's flat albedo, real per-channel complex
+    // Fresnel varies with the queried direction's half-vector angle -- but
+    // camera.h's Strategy B (BSDF-sampled continuation) always multiplies
+    // by the FIXED srec.attenuation set here, with no per-direction hook
+    // (unlike the NEE strategies, which do call scattering_attenuation()).
+    // Rather than leaving Strategy B's continuation weight wrong, this uses
+    // Fresnel evaluated at the fixed view angle (dot(wo, normal), i.e.
+    // Schlick-style single-value Fresnel) as a documented approximation --
+    // real per-half-vector variation is only exact within a single
+    // GGX lobe's variance, and this is a large improvement over the
+    // previous skip_pdf=true (zero NEE at any roughness) baseline.
     bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
                  bool do_regularize = false) const override {
         auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
@@ -116,16 +174,45 @@ class conductor : public material {
         double wi_x, wi_y, wi_z;
         frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
 
-        auto res = bxdf.sample_local(wi_x, wi_y, wi_z, random_double(), random_double());
-        if (!res.valid) return false;
+        // Branch on the TRUE (unregularized) roughness -- see rough_metal's
+        // own comment on why scattering_pdf() forces this.
+        if (TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth()) {
+            auto res = bxdf.sample_local(wi_x, wi_y, wi_z, random_double(), random_double());
+            if (!res.valid) return false;
 
-        double wd_x, wd_y, wd_z;
-        frame.to_world(res.wo_x, res.wo_y, res.wo_z, wd_x, wd_y, wd_z);
-        srec.attenuation  = color(res.r, res.g, res.b);
-        srec.pdf_ptr      = nullptr;
-        srec.skip_pdf     = true;
-        srec.skip_pdf_ray = ray(rec.p, unit_vector(vec3(wd_x, wd_y, wd_z)), r_in.time());
+            double wd_x, wd_y, wd_z;
+            frame.to_world(res.wo_x, res.wo_y, res.wo_z, wd_x, wd_y, wd_z);
+            srec.attenuation  = color(res.r, res.g, res.b);
+            srec.pdf_ptr      = nullptr;
+            srec.skip_pdf     = true;
+            srec.skip_pdf_ray = ray(rec.p, unit_vector(vec3(wd_x, wd_y, wd_z)), r_in.time());
+            return true;
+        }
+
+        double fr_view = std::max(0.0, wi_z);
+        srec.attenuation = color(FrComplex(fr_view, eta_r, k_r),
+                                  FrComplex(fr_view, eta_g, k_g),
+                                  FrComplex(fr_view, eta_b, k_b));
+        srec.pdf_ptr      = make_shared<ggx_reflection_pdf>(
+            rec.normal, vec3(ctx.wo_x, ctx.wo_y, ctx.wo_z), alpha_x, alpha_y);
+        srec.skip_pdf     = false;
         return true;
+    }
+
+    // f*cos at an arbitrary queried direction (scattered), for real NEE/MIS.
+    // Pure geometric GGX shape -- the (approximated, view-angle) Fresnel
+    // color is supplied separately via srec.attenuation.
+    double scattering_pdf(const ray& r_in, const hit_record& rec,
+                          const ray& scattered) const override {
+        auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
+        auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
+        double wi_x, wi_y, wi_z;
+        frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
+        vec3 dir = unit_vector(scattered.direction());
+        double wo_x, wo_y, wo_z;
+        frame.to_local(dir.x(), dir.y(), dir.z(), wo_x, wo_y, wo_z);
+        double shape = ggx_reflection_shape(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, alpha_x, alpha_y);
+        return shape * wo_z;
     }
 
     double get_roughness()  const { return alpha_x * alpha_x; }

@@ -1176,7 +1176,17 @@ TEST(ConductorMaterialTest, AttenuationInRange) {
 	}
 }
 
-// Scattered direction should stay in the upper hemisphere (dot > 0 with normal).
+// Scattered direction should stay in the upper hemisphere OR have zero
+// sampling density -- roughness=0.2 is well above the EffectivelySmooth
+// threshold (alpha < 1e-3), so conductor::scatter() takes the glossy
+// real-NEE path (skip_pdf=false, no skip_pdf_ray; see conductor::scatter()'s
+// own comment in material_pbrt.h). Unlike cosine-weighted sampling, VNDF
+// reflection sampling can legitimately produce a below-horizon direction on
+// a grazing microfacet sample (same as the old sample_local()'s own
+// wo_z<=0 rejection) -- camera.h handles this correctly by checking
+// pdf_ptr->value(dir) <= 0 before using the direction (Strategy B, camera.h),
+// so this test checks that same invariant rather than assuming every
+// generate() call lands above the horizon.
 TEST(ConductorMaterialTest, ScatteredDirectionInUpperHemisphere) {
 	conductor mat(kConductorAl, 0.2);
 	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
@@ -1184,27 +1194,59 @@ TEST(ConductorMaterialTest, ScatteredDirectionInUpperHemisphere) {
 	vec3 normal = rec.normal;
 
 	int successes = 0;
+	int above_horizon = 0;
 	for (int trial = 0; trial < 200; ++trial) {
 		scatter_record srec;
 		if (mat.scatter(r_in, rec, srec)) {
 			++successes;
-			vec3 dir = srec.skip_pdf_ray.direction();
-			EXPECT_GT(dot(dir, normal), 0.0)
-				<< "Scattered direction must stay in upper hemisphere";
+			ASSERT_FALSE(srec.skip_pdf) << "roughness=0.2 is glossy, not specular";
+			ASSERT_NE(srec.pdf_ptr, nullptr);
+			vec3 dir = srec.pdf_ptr->generate();
+			double cos_dir = dot(dir, normal);
+			if (cos_dir > 0.0) {
+				++above_horizon;
+			} else {
+				EXPECT_LE(srec.pdf_ptr->value(dir), 0.0)
+					<< "below-horizon sample must carry zero sampling density";
+			}
 		}
 	}
 	EXPECT_GT(successes, 150) << "High scatter success rate expected for non-grazing incidence";
+	EXPECT_GT(above_horizon, 0) << "Most VNDF samples should land above the horizon";
 }
 
-// skip_pdf must be true (conductor is always a specular bounce).
-TEST(ConductorMaterialTest, SkipPdfIsTrue) {
-	conductor mat(kConductorCu, 0.15);
+// skip_pdf reflects roughness: glossy (roughness=0.15, well above the
+// EffectivelySmooth alpha<1e-3 threshold) gets real NEE (skip_pdf=false).
+// Previously conductor unconditionally set skip_pdf=true regardless of
+// roughness, meaning even a fairly rough (0.15) conductor got zero NEE --
+// this test used to assert exactly that bug. The material's constructors
+// floor alpha at RoughnessToAlpha(1e-4)=0.01 (a pre-existing, unrelated
+// clamp -- see conductor's constructors), which is itself already above
+// the EffectivelySmooth threshold (alpha<1e-3), so the specular/skip_pdf=
+// true branch isn't reachable through the public roughness constructors at
+// all; the underlying classification is exercised directly on the BxDF
+// instead (ConductorBxDF::effectively_smooth()).
+TEST(ConductorMaterialTest, SkipPdfReflectsRoughness) {
+	conductor mat_glossy(kConductorCu, 0.15);
 	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
 	hit_record rec = make_conductor_hit();
-	scatter_record srec;
-	if (mat.scatter(r_in, rec, srec)) {
-		EXPECT_TRUE(srec.skip_pdf) << "conductor must always set skip_pdf=true";
+	scatter_record srec_glossy;
+	if (mat_glossy.scatter(r_in, rec, srec_glossy)) {
+		EXPECT_FALSE(srec_glossy.skip_pdf) << "roughness=0.15 is glossy, must get real NEE";
+		EXPECT_NE(srec_glossy.pdf_ptr, nullptr);
 	}
+
+	ConductorBxDF<double> bxdf_smooth{
+		(double)kConductorCu.eta_r, (double)kConductorCu.eta_g, (double)kConductorCu.eta_b,
+		(double)kConductorCu.k_r,   (double)kConductorCu.k_g,   (double)kConductorCu.k_b,
+		0.0, 0.0};
+	EXPECT_TRUE(bxdf_smooth.effectively_smooth()) << "alpha=0 must classify as specular";
+
+	ConductorBxDF<double> bxdf_glossy{
+		(double)kConductorCu.eta_r, (double)kConductorCu.eta_g, (double)kConductorCu.eta_b,
+		(double)kConductorCu.k_r,   (double)kConductorCu.k_g,   (double)kConductorCu.k_b,
+		0.2, 0.2};
+	EXPECT_FALSE(bxdf_glossy.effectively_smooth()) << "alpha=0.2 must classify as glossy";
 }
 
 // kConductorAg (silver) should produce near-achromatic reflectance at normal incidence.

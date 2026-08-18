@@ -13,6 +13,8 @@
 
 #include "hittable_list.h"
 #include "onb.h"
+#include "../shared/shading_frame.h"
+#include "../shared/bxdfs_conductor.h"
 
 
 class pdf {
@@ -73,6 +75,50 @@ class hittable_pdf : public pdf {
   private:
     const hittable& objects;
     point3 origin;
+};
+
+
+// ggx_reflection_pdf -- VNDF-based sampling density for a GGX rough-
+// conductor reflection lobe (RoughMetalBxDF / ConductorBxDF share the
+// identical geometric sampling density -- Fresnel affects f(), not pdf(),
+// see ggx_vndf_reflection_pdf in bxdfs_conductor.h). Used as srec.pdf_ptr
+// for real NEE/MIS on rough_metal/conductor: generate() draws the same
+// VNDF-sampled direction sample_local() would, value() evaluates the
+// sampling density at an ARBITRARY queried direction (e.g. a shadow ray
+// toward a light).
+class ggx_reflection_pdf : public pdf {
+  public:
+    ggx_reflection_pdf(const vec3& normal_, const vec3& wo_world_,
+                        double alpha_x_, double alpha_y_)
+        : frame(ShadingFrame<double>::from_normal(normal_.x(), normal_.y(), normal_.z())),
+          alpha_x(alpha_x_), alpha_y(alpha_y_) {
+        frame.to_local(wo_world_.x(), wo_world_.y(), wo_world_.z(), wi_x, wi_y, wi_z);
+    }
+
+    double value(const vec3& direction) const override {
+        vec3 d = unit_vector(direction);
+        double lx, ly, lz;
+        frame.to_local(d.x(), d.y(), d.z(), lx, ly, lz);
+        return ggx_vndf_reflection_pdf(wi_x, wi_y, wi_z, lx, ly, lz, alpha_x, alpha_y);
+    }
+
+    vec3 generate() const override {
+        TrowbridgeReitz<double> dist(alpha_x, alpha_y);
+        double wm_x, wm_y, wm_z;
+        dist.Sample_wm(wi_x, wi_y, wi_z, random_double(), random_double(), wm_x, wm_y, wm_z);
+        double dot_wi_wm = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
+        double lo_x = 2*dot_wi_wm*wm_x - wi_x;
+        double lo_y = 2*dot_wi_wm*wm_y - wi_y;
+        double lo_z = 2*dot_wi_wm*wm_z - wi_z;
+        double wo_x, wo_y, wo_z;
+        frame.to_world(lo_x, lo_y, lo_z, wo_x, wo_y, wo_z);
+        return unit_vector(vec3(wo_x, wo_y, wo_z));
+    }
+
+  private:
+    ShadingFrame<double> frame;
+    double wi_x, wi_y, wi_z;
+    double alpha_x, alpha_y;
 };
 
 
