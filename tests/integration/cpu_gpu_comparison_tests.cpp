@@ -347,7 +347,7 @@ TEST_P(CpuGpuLightParityTest, LightCountMatches) {
 	if (!s->gpu_compatible) GTEST_SKIP() << s->name << " is not GPU-compatible";
 	if (s->requires_files) GTEST_SKIP() << s->name << " requires external assets";
 
-	// pbrt-loaded scenes (category UserScenes) are the one case where
+	// pbrt-loaded scenes (category CustomScenes) are the one case where
 	// build_world()'s top-level walk can't see the lights at all:
 	// pbrt_cpu_builder.h's build() wraps the ENTIRE world - lights included -
 	// in a single bvh_node for trace performance (see its own "a flat list
@@ -369,15 +369,15 @@ TEST_P(CpuGpuLightParityTest, LightCountMatches) {
 	// correct for its own purpose (picking directions toward known light
 	// shapes) but a silent 0 if fed through count_cpu_emissive_lights here.
 	//
-	// F3 is included alongside category UserScenes despite being a curated
+	// F3 is included alongside category CustomScenes despite being a curated
 	// Geometry-category entry, not an auto-generated "I<N>" one: its
 	// build_lights lambda (scene_registry.h) returns pbrt_cpu::BuildResult's
-	// own `lights` list, identical in shape and origin to every UserScenes
+	// own `lights` list, identical in shape and origin to every CustomScenes
 	// entry's - see its own header comment on why it exists as a curated
-	// entry "rather than an auto-generated I<N> User Scene" while still
+	// entry "rather than an auto-generated I<N> Custom Scene" while still
 	// loading pbrt_scenes/instanced-spheres.pbrt through the same pipeline.
 	const bool isPbrtLoaded =
-		std::string(s->category) == SceneCategories::UserScenes || s->id == "F3";
+		std::string(s->category) == SceneCategories::CustomScenes || s->id == "F3";
 	int cpuLights = isPbrtLoaded
 		? count_cpu_emissive_lights_list(s->build_lights())
 		: count_cpu_emissive_lights_list(s->build_world());

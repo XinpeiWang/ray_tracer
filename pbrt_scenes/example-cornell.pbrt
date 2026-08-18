@@ -1,6 +1,6 @@
 # example-cornell.pbrt -- a small Cornell box, written by hand.
 #
-# This file exists so the User Scenes feature is demonstrable without
+# This file exists so the Custom Scenes feature is demonstrable without
 # downloading anything: drop a .pbrt in this folder and it becomes a scene.
 # It is also a readable starting point for editing - every directive it uses
 # is one the loader supports.

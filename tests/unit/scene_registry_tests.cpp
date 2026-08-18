@@ -66,15 +66,15 @@ TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem)
 		EXPECT_EQ(all[i].id, builtins[i].id);
 		EXPECT_STREQ(all[i].name, builtins[i].name);
 	}
-	// No built-in scene uses category UserScenes ("I"), so loaded scenes
+	// No built-in scene uses category CustomScenes ("I"), so loaded scenes
 	// start numbering at I1 - see pbrt_scene_registry::append()'s
 	// user_number comment in scene_registry.h.
 	int user_number = 1;
 	for (std::size_t i = builtins.size(); i < all.size(); ++i) {
-		EXPECT_STREQ(all[i].category, SceneCategories::UserScenes)
+		EXPECT_STREQ(all[i].category, SceneCategories::CustomScenes)
 			<< "a scene past the built-ins should be a loaded one";
 		EXPECT_EQ(all[i].id, "I" + std::to_string(user_number++))
-			<< "loaded scene ids must continue the UserScenes sequence without gaps";
+			<< "loaded scene ids must continue the CustomScenes sequence without gaps";
 	}
 }
 
@@ -180,11 +180,11 @@ TEST(SceneRegistryTest, EveryCategoryHasAtLeastOneScene) {
 		if (s.category) used.insert(s.category);
 
 	for (std::size_t i = 0; i < SceneCategories::kAllCount; ++i) {
-		// UserScenes is populated from .pbrt files found on disk, so it is
+		// CustomScenes is populated from .pbrt files found on disk, so it is
 		// legitimately empty on a machine with no scene collection installed -
 		// including every CI machine. Every other category is compiled in, so
 		// an empty one there really is the bug this test is looking for.
-		if (std::string(SceneCategories::kAll[i]) == SceneCategories::UserScenes)
+		if (std::string(SceneCategories::kAll[i]) == SceneCategories::CustomScenes)
 			continue;
 		EXPECT_GT(used.count(SceneCategories::kAll[i]), 0u)
 			<< "Category '" << SceneCategories::kAll[i]
@@ -195,7 +195,7 @@ TEST(SceneRegistryTest, EveryCategoryHasAtLeastOneScene) {
 // SceneCategories::letter_for_category() derives a category's id letter
 // from its POSITION in kAll/kAllLetters (see scene_descriptor.h) - but
 // every builtin scene's id is a hand-typed literal like "B10", not computed
-// through that function (only the UserScenes discovery loop actually calls
+// through that function (only the CustomScenes discovery loop actually calls
 // it - see scene_registry.h). Nothing previously checked that a builtin
 // id's letter still matched its category's position: reordering kAll for a
 // cosmetic tab-order change, or a copy-paste typo giving a scene the wrong

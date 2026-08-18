@@ -155,14 +155,19 @@ namespace SceneCategories {
     // Unlike every category above it, this one is populated at runtime and is
     // legitimately empty when the user has no scene collection installed -
     // which is why the registry tests exempt it from "every category has at
-    // least one scene".
-    constexpr const char* UserScenes = "User Scenes";
+    // least one scene". Named CustomScenes rather than the more generic-
+    // sounding "UserScenes" this used to be - see git history for the
+    // rename - since what actually distinguishes this category is that its
+    // scenes are described by a file on disk rather than compiled in, not
+    // that a "user" made them (a git-tracked, bundled pbrt_scenes/*.pbrt
+    // example is just as "yours" as anything in the other categories).
+    constexpr const char* CustomScenes = "Custom Scenes";
 
-    // Display order for the GUI's category tabs. UserScenes is last so the
+    // Display order for the GUI's category tabs. CustomScenes is last so the
     // built-in tabs never shift position when a scene folder appears.
     constexpr const char* kAll[] = {
         Basics, Materials, Lights, Cameras, Volumes, Geometry, Models, LargeScene,
-        UserScenes
+        CustomScenes
     };
     constexpr std::size_t kAllCount = sizeof(kAll) / sizeof(kAll[0]);
 

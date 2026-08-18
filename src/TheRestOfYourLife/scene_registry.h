@@ -304,7 +304,7 @@ namespace pbrt_scene_registry {
 // the same lazy-load pbrt pipeline pbrt_scene_registry::append() uses for
 // files discovered at startup, but as a curated Geometry-category entry
 // with its own id/name/description rather than an auto-generated "I<N>"
-// User Scene. See that file's own header comment for why it exists: one
+// Custom Scene. See that file's own header comment for why it exists: one
 // object definition ("cairn": slab + metal ball + glass ball) placed three
 // times - plain, rotated, and non-uniformly scaled. The scaled placement's
 // spheres only render as true ellipsoids under real instancing (the ray is
@@ -354,7 +354,7 @@ inline SceneDescriptor build_instanced_spheres_descriptor() {
     s.performance = "Fast";
     // pbrt_scenes/instanced-spheres.pbrt is git-tracked and self-contained
     // (no external assets beyond the repo checkout) - the same file's
-    // auto-discovered "I<N>" User Scene copy correctly reports false via
+    // auto-discovered "I<N>" Custom Scene copy correctly reports false via
     // pbrt_discover::Discovered::nested (see that field's comment), so this
     // curated entry needs to agree rather than hardcode the opposite.
     s.requires_files = false;
@@ -1544,8 +1544,8 @@ inline void append(std::vector<SceneDescriptor>& registry) {
     // so any future gap can't reopen the same collision silently.
     //
     // user_number is the NEW id's counter, independent and always 1-based -
-    // all pbrt scenes share category UserScenes ("I"), so this is simply
-    // "the Nth pbrt scene loaded this run", with no static UserScenes
+    // all pbrt scenes share category CustomScenes ("I"), so this is simply
+    // "the Nth pbrt scene loaded this run", with no static CustomScenes
     // entries in the builtin registry to continue from today.
     int legacy_id = 0;
     for (const SceneDescriptor& b : get_builtin_scene_registry())
@@ -1572,11 +1572,11 @@ inline void append(std::vector<SceneDescriptor>& registry) {
         // hardcoded 'I', so this can't silently drift from
         // SceneCategories::kAll's declared order (see that function's
         // comment in scene_descriptor.h).
-        s.id = std::string(1, SceneCategories::letter_for_category(SceneCategories::UserScenes))
+        s.id = std::string(1, SceneCategories::letter_for_category(SceneCategories::CustomScenes))
              + std::to_string(user_number++);
         s.legacy_id = legacy_id++;
         s.name = names.back().c_str();
-        s.category = SceneCategories::UserScenes;
+        s.category = SceneCategories::CustomScenes;
         s.description = descriptions.back().c_str();
         // Honest rather than flattering: a .pbrt file can hold anything from
         // three triangles to ten million, and nothing in the header says

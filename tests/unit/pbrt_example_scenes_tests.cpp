@@ -117,7 +117,7 @@ constexpr const char* kExampleSceneStems[] = {
 // alongside these 5.
 const SceneDescriptor* find_example_scene(const char* stem) {
 	for (const auto& s : get_scene_registry()) {
-		if (s.category == SceneCategories::UserScenes && s.name && std::string(s.name) == stem)
+		if (s.category == SceneCategories::CustomScenes && s.name && std::string(s.name) == stem)
 			return &s;
 	}
 	return nullptr;

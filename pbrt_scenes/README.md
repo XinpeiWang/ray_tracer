@@ -1,7 +1,7 @@
-# User scenes
+# Custom scenes
 
 Any `.pbrt` file placed directly in this folder appears in the renderer as a
-scene, in the CLI (`--scene <id>`) and in the GUI's **User Scenes** tab, with
+scene, in the CLI (`--scene <id>`) and in the GUI's **Custom Scenes** tab, with
 no rebuild.
 
 Point the renderer at a different folder with the `RAY_TRACER_PBRT_DIR`
