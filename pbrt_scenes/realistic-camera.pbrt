@@ -1,0 +1,73 @@
+# realistic-camera.pbrt -- exercises pbrt-v4's "realistic" camera (a real
+# multi-element lens simulation, not the thin-lens approximation
+# "lensradius"/depth-of-field.pbrt already covers). No bundled example
+# scene used one before this - only the compiled-in D4/D8 showcase scenes
+# exercised this camera type, never a scene loaded from a .pbrt file, so
+# the lensfile-loading half of this path (pbrt_load::loadFileNear(),
+# pbrt_load::parseLensFile()) had no render-level coverage from here.
+#
+# The lens table itself (geometry/simple-biconvex.dat) is reused from
+# tests/unit/realistic_camera_tests.cpp's simple_lens_params() - already
+# unit-tested there - rather than a newly hand-guessed one; aperturediameter
+# uses that table's own native 17mm aperture-stop diameter unmodified (no
+# artificial upscaling). focusdistance is set to this scene's own
+# lookfrom-to-lookat distance (1078 world units), the convention the
+# compiled-in D8 showcase scene's own comment documents.
+#
+# Honest note on what to expect: this is a bare 2-glass-element lens with
+# no aberration correction, tested elsewhere only for its MATH (focus
+# solving, LensRearZ, exit-pupil bounds), never for image quality. At this
+# aperture/focus-distance/film combination it resolves this Cornell-box-
+# scale room as a heavily blurred brightness gradient (bright toward the
+# ceiling light, dark toward the floor) rather than sharp geometry -
+# confirmed to be the lens's genuine optical response (aperturediameter,
+# filmdiag, and focusdistance were each independently varied across a wide
+# range while developing this scene; none produced materially sharper
+# output), not a scene-authoring bug. What this scene actually verifies is
+# the lensfile-loading and multi-element-simulation PATH end to end - real
+# lens data parsed from a file, uploaded to the GPU (confirmed via
+# "Uploaded N lens elements, M exit-pupil bounds" in its own render log),
+# and producing a real (if soft) image on both backends - not a polished
+# demonstration of lens bokeh the way the compiled-in D4/D8 scenes are,
+# whose own lens tables and film sizes were tuned by hand for exactly that.
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  278 278 -800    278 278 278    0 1 0
+Camera "realistic" "string lensfile" [ "geometry/simple-biconvex.dat" ]
+  "float aperturediameter" [ 17.0 ] "float filmdiag" [ 15.0 ]
+  "float focusdistance" [ 1078 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 120 100 60 ]
+  Translate 278 554 278
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -65 0 -52   65 0 -52   65 0 52   -65 0 52 ]
+AttributeEnd
+
+# ---------------------------------------------------------------- walls
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   555 0 0   555 0 555   0 0 555 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 555 0   555 555 0   555 555 555   0 555 555 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   555 0 555   555 555 555   0 555 555 ]
+Material "diffuse" "rgb reflectance" [ 0.65 0.05 0.05 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 0   555 0 555   555 555 555   555 555 0 ]
+Material "diffuse" "rgb reflectance" [ 0.12 0.45 0.15 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   0 0 555   0 555 555   0 555 0 ]
+
+Material "conductor" "float roughness" [ 0.05 ]
+AttributeBegin
+  Translate 278 90 278
+  Shape "sphere" "float radius" [ 90 ]
+AttributeEnd

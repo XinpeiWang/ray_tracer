@@ -1,0 +1,22 @@
+ply
+format ascii 1.0
+comment Synthetic pyramid, hand-authored for pbrt_scenes/plymesh-geometry.pbrt
+comment Base is a single 4-gon face (exercises ply_mesh.h's fan-triangulation
+comment of non-triangular faces); the 4 sides are already triangles.
+element vertex 5
+property float x
+property float y
+property float z
+element face 5
+property list uchar int vertex_indices
+end_header
+-80 0 -80
+80 0 -80
+80 0 80
+-80 0 80
+0 140 0
+4 0 1 2 3
+3 0 1 4
+3 1 2 4
+3 2 3 4
+3 3 0 4

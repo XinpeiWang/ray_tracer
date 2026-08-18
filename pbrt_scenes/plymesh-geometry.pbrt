@@ -1,0 +1,48 @@
+# plymesh-geometry.pbrt -- exercises Shape "plymesh", loading a real
+# external .ply file (geometry/synthetic-pyramid.ply) via
+# src/shared/ply_mesh.h. No bundled example scene referenced a .ply file
+# before this one - trianglemesh geometry is inlined as text everywhere
+# else in this folder, so the file-loading half of pbrt's plymesh path
+# (relative-to-scene resolution, ASCII parsing, and specifically
+# fan-triangulation of the pyramid's one non-triangular base face) had no
+# render-level coverage.
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints. The referenced .ply is likewise hand-authored (see its own
+# header comment), not extracted from any published mesh.
+
+LookAt  278 278 -800    278 278 278    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 18 15 8 ]
+  Translate 278 554 278
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -65 0 -52   65 0 -52   65 0 52   -65 0 52 ]
+AttributeEnd
+
+# ---------------------------------------------------------------- walls
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   555 0 0   555 0 555   0 0 555 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 555 0   555 555 0   555 555 555   0 555 555 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   555 0 555   555 555 555   0 555 555 ]
+Material "diffuse" "rgb reflectance" [ 0.65 0.05 0.05 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 0   555 0 555   555 555 555   555 555 0 ]
+Material "diffuse" "rgb reflectance" [ 0.12 0.45 0.15 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   0 0 555   0 555 555   0 555 0 ]
+
+Material "diffuse" "rgb reflectance" [ 0.85 0.7 0.2 ]
+AttributeBegin
+  Translate 278 0 278
+  Shape "plymesh" "string filename" [ "geometry/synthetic-pyramid.ply" ]
+AttributeEnd

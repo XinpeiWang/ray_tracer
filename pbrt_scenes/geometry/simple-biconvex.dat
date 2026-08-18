@@ -1,0 +1,15 @@
+# simple-biconvex.dat -- a minimal 4-element singlet biconvex lens,
+# front to back (scene side to film side), in pbrt-v4's own lens-file
+# format (radius thickness eta aperture-diameter, millimetres).
+#
+# Not invented for this file: reused verbatim from
+# tests/unit/realistic_camera_tests.cpp's simple_lens_params(), which is
+# already unit-tested there (construction, LensRearZ, focus behaviour) -
+# using it here means this fixture is exercising a lens table already
+# known to be well-formed, not a new hand-guessed one.
+#
+# radius   thickness  eta   aperture-diameter
+35.98      4.0        1.5   25.0
+0.0        2.0        0.0   17.0
+-35.98     4.0        1.5   25.0
+0.0        50.0       0.0   25.0
