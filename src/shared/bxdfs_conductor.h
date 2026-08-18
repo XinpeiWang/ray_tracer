@@ -298,6 +298,142 @@ struct RoughDielectricBxDF {
 		res.valid = true;
 		return res;
 	}
+
+	// f(wi, eta, wo) -- real closed-form BSDF value (reflection + transmission
+	// lobes) at an arbitrary queried direction wo, for real NEE/MIS. Mirrors
+	// pbrt-v4 DielectricBxDF::f(), translated into this struct's own
+	// conventions: eta = eta_i/eta_t (matching sample_local()'s Refract-style
+	// parameter, NOT pbrt-v4's raw DielectricBxDF::eta member), and wi_z > 0
+	// always (the caller pre-flips wi into the upper hemisphere for both
+	// entering and exiting rays -- see rough_dielectric::scatter() in
+	// material_pbrt.h); wo_z's sign alone then distinguishes reflection
+	// (wo_z>0) from transmission (wo_z<0), unlike pbrt-v4's own wi/wo signs
+	// which are never pre-flipped.
+	//
+	// Includes the standard microfacet G(wo,wi) masking-shadowing term
+	// (Smith), matching pbrt-v4's DielectricBxDF::f() exactly -- this is
+	// the textbook VNDF-consistent formula (Heitz 2018 / Walter et al.
+	// 2007), verified via a dedicated white-furnace-style energy test
+	// against THIS f()/pdf() pair (tests/unit/bsdf_chi2_tests.cpp), not
+	// against sample_local()'s own per-sample weight: sample_local() above
+	// hardcodes weight=1 unconditionally for both lobes (no G/G1-style
+	// correction at all), which does NOT reduce to 1 under the standard
+	// VNDF identity for either lobe -- a real, pre-existing discrepancy
+	// between this file's two dielectric-sampling code paths, unrelated to
+	// and out of scope for adding NEE, flagged separately rather than
+	// silently perpetuated into this new f()/pdf() pair.
+	CPU_GPU T f(T wi_x, T wi_y, T wi_z, T eta, T wo_x, T wo_y, T wo_z) const {
+		if (wi_z == T(0) || wo_z == T(0)) return T(0);
+		bool reflect = wo_z > T(0);
+
+		T hx, hy, hz;
+		if (reflect) { hx = wi_x+wo_x; hy = wi_y+wo_y; hz = wi_z+wo_z; }
+		else         { hx = eta*wi_x+wo_x; hy = eta*wi_y+wo_y; hz = eta*wi_z+wo_z; }
+#if defined(__CUDACC__)
+		T hlen = sqrtf(hx*hx + hy*hy + hz*hz);
+#else
+		T hlen = std::sqrt(hx*hx + hy*hy + hz*hz);
+#endif
+		if (hlen < T(1e-8)) return T(0);
+		hx /= hlen; hy /= hlen; hz /= hlen;
+		if (hz < T(0)) { hx = -hx; hy = -hy; hz = -hz; }  // face toward wi's hemisphere
+
+		T cos_wi_wm = wi_x*hx + wi_y*hy + wi_z*hz;
+		T cos_wo_wm = wo_x*hx + wo_y*hy + wo_z*hz;
+		if (cos_wi_wm == T(0) || cos_wo_wm == T(0)) return T(0);
+
+		TrowbridgeReitz<T> dist(alpha_x, alpha_y);
+		T D = dist.D(hx, hy, hz);
+		T G = dist.G(wo_x, wo_y, wo_z, wi_x, wi_y, wi_z);
+		T F = FrDielectric(cos_wi_wm, T(1) / eta);
+
+		if (reflect) {
+#if defined(__CUDACC__)
+			return D * G * F / fabsf(T(4) * wi_z * wo_z);
+#else
+			return D * G * F / std::fabs(T(4) * wi_z * wo_z);
+#endif
+		} else {
+			T denom_base = cos_wi_wm + cos_wo_wm / eta;
+			T denom = denom_base * denom_base * wi_z * wo_z;
+#if defined(__CUDACC__)
+			if (fabsf(denom) < T(1e-12)) return T(0);
+			T ft = D * (T(1) - F) * G * fabsf(cos_wi_wm * cos_wo_wm / denom);
+#else
+			if (std::fabs(denom) < T(1e-12)) return T(0);
+			T ft = D * (T(1) - F) * G * std::fabs(cos_wi_wm * cos_wo_wm / denom);
+#endif
+			// NOTE: no extra 1/eta^2 "radiance transport" factor here --
+			// unlike pbrt-v4's DielectricBxDF::f(), which divides by
+			// Sqr(etap) (their own, differently-scoped per-call ratio).
+			// Deriving this formula directly from Walter et al. 2007's
+			// transmission BTDF using ONLY the relative eta=eta_i/eta_t
+			// (never absolute eta_i/eta_t separately, since this struct is
+			// never given them) shows the medium-IOR-squared factor cancels
+			// out entirely once denom_base is expressed in relative-eta
+			// form -- confirmed empirically via the dedicated energy-
+			// conservation test in tests/unit/bsdf_chi2_tests.cpp
+			// (BxDFWhiteFurnace.RoughDielectric*): including a 1/eta^2
+			// term here measurably broke energy conservation (~2.2x over
+			// for eta<1, ~0.45x under for eta>1, matching 1/eta^2 exactly),
+			// and removing it brings every tested eta/alpha combination
+			// back to the expected ~1.0.
+			return ft;
+		}
+	}
+
+	// pdf(wi, eta, wo) -- sampling density INCLUDING the discrete reflect/
+	// transmit branch probability (F / 1-F), matching sample_local()'s own
+	// two-stage sampling (VNDF wm, then reflect-or-transmit by comparing u3
+	// against F). See this struct's f()'s own comment for conventions.
+	CPU_GPU T pdf(T wi_x, T wi_y, T wi_z, T eta, T wo_x, T wo_y, T wo_z) const {
+		if (wi_z == T(0) || wo_z == T(0)) return T(0);
+		bool reflect = wo_z > T(0);
+
+		T hx, hy, hz;
+		if (reflect) { hx = wi_x+wo_x; hy = wi_y+wo_y; hz = wi_z+wo_z; }
+		else         { hx = eta*wi_x+wo_x; hy = eta*wi_y+wo_y; hz = eta*wi_z+wo_z; }
+#if defined(__CUDACC__)
+		T hlen = sqrtf(hx*hx + hy*hy + hz*hz);
+#else
+		T hlen = std::sqrt(hx*hx + hy*hy + hz*hz);
+#endif
+		if (hlen < T(1e-8)) return T(0);
+		hx /= hlen; hy /= hlen; hz /= hlen;
+		if (hz < T(0)) { hx = -hx; hy = -hy; hz = -hz; }
+
+		T cos_wi_wm = wi_x*hx + wi_y*hy + wi_z*hz;
+		T cos_wo_wm = wo_x*hx + wo_y*hy + wo_z*hz;
+		if (cos_wi_wm == T(0)) return T(0);
+
+		TrowbridgeReitz<T> dist(alpha_x, alpha_y);
+		T F = FrDielectric(cos_wi_wm, T(1) / eta);
+		T pdf_wm = dist.D_visible(wi_x, wi_y, wi_z, hx, hy, hz);
+
+		if (reflect) {
+#if defined(__CUDACC__)
+			return pdf_wm / (T(4) * fabsf(cos_wi_wm)) * F;
+#else
+			return pdf_wm / (T(4) * std::fabs(cos_wi_wm)) * F;
+#endif
+		} else {
+			T denom_base = cos_wi_wm + cos_wo_wm / eta;
+			T denom = denom_base * denom_base;
+			if (denom < T(1e-12)) return T(0);
+#if defined(__CUDACC__)
+			T dwm_dwo = fabsf(cos_wo_wm) / denom;
+#else
+			T dwm_dwo = std::fabs(cos_wo_wm) / denom;
+#endif
+			return pdf_wm * dwm_dwo * (T(1) - F);
+		}
+	}
+
+	// Roughness-based specular/glossy classification -- see
+	// RoughMetalBxDF::effectively_smooth()'s comment.
+	CPU_GPU bool effectively_smooth() const {
+		return TrowbridgeReitz<T>(alpha_x, alpha_y).EffectivelySmooth();
+	}
 };
 
 // ===========================================================================

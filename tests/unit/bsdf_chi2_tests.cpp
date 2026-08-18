@@ -417,3 +417,73 @@ TEST(BxDFWhiteFurnace, NormalizedFresnel) {
 		}
 	);
 }
+
+// ===========================================================================
+// RoughDielectricBxDF (GGX reflection + transmission, real f(wi,eta,wo) /
+// pdf(wi,eta,wo) added for real NEE/MIS -- see bxdfs_conductor.h's own
+// comment on why this is verified against ITS OWN f()/pdf() pair rather
+// than sample_local()'s per-sample weight, which is hardcoded to 1
+// unconditionally for both lobes and does not reduce to 1 under the
+// standard VNDF identity for either lobe (a separate, pre-existing
+// discrepancy, out of scope here).
+//
+// sample_local()'s actual sampling procedure (Sample_wm density =
+// D_visible(wi,wm), transformed to solid-angle-of-wo space, times the
+// discrete reflect/transmit branch probability F/(1-F)) is EXACTLY what
+// pdf(wi,eta,wo) computes -- the Smith G masking-shadowing term only
+// appears in f(), never in the sampling density itself -- so
+// weight = f(wi,eta,wo)*|cos(wo)| / pdf(wi,eta,wo), averaged over samples
+// drawn from sample_local(), is a valid, unbiased Monte Carlo estimator of
+// the total reflectance+transmittance integral over the FULL sphere (both
+// lobes). A lossless dielectric (no absorption modeled) must integrate to
+// ~1, not just <=1 -- true energy conservation, not just an upper bound --
+// this is the real "white furnace" invariant for a non-absorbing object.
+// ===========================================================================
+
+static void run_dielectric_energy_conservation(
+	const std::string& name, double eta, double alpha, int n_samp = 20000)
+{
+	RoughDielectricBxDF<double> bxdf{ /*ior placeholder, unused by f/pdf*/ 1.5, alpha, alpha };
+	const double wix = 0, wiy = 0, wiz = 1;
+
+	double sum = 0; int cnt = 0;
+	for (int j = 0; j < n_samp; ++j) {
+		double u1 = ri2(j + 1), u2 = ri3(j + 1), u3 = ri5(j + 1);
+		auto s = bxdf.sample_local(wix, wiy, wiz, eta, u1, u2, u3);
+		if (!s.valid) continue;
+		double f_val   = bxdf.f(wix, wiy, wiz, eta, s.wo_x, s.wo_y, s.wo_z);
+		double pdf_val = bxdf.pdf(wix, wiy, wiz, eta, s.wo_x, s.wo_y, s.wo_z);
+		if (pdf_val <= 0.0) continue;
+		sum += f_val * std::fabs(s.wo_z) / pdf_val;
+		++cnt;
+	}
+	ASSERT_GT(cnt, n_samp / 2) << "[" << name << "] too many invalid/rejected samples";
+	double avg = sum / cnt;
+	EXPECT_NEAR(avg, 1.0, 0.08)
+		<< "[" << name << "] energy-conservation estimate (eta=" << eta
+		<< ", alpha=" << alpha << ") should be ~1 (lossless dielectric)";
+}
+
+TEST(BxDFWhiteFurnace, RoughDielectricEnteringAlpha05) {
+	// Entering a denser medium (eta = eta_i/eta_t = 1/1.5, matches
+	// rough_dielectric::scatter()'s front_face=true case).
+	run_dielectric_energy_conservation("RoughDielectric entering alpha=0.5", 1.0/1.5, 0.5);
+}
+
+TEST(BxDFWhiteFurnace, RoughDielectricExitingAlpha05) {
+	// Exiting into a rarer medium (eta = ior, matches front_face=false).
+	run_dielectric_energy_conservation("RoughDielectric exiting alpha=0.5", 1.5, 0.5);
+}
+
+TEST(BxDFWhiteFurnace, RoughDielectricEnteringAlpha02) {
+	run_dielectric_energy_conservation("RoughDielectric entering alpha=0.2", 1.0/1.5, 0.2);
+}
+
+TEST(BxDFWhiteFurnace, RoughDielectricExitingAlpha02) {
+	run_dielectric_energy_conservation("RoughDielectric exiting alpha=0.2", 1.5, 0.2);
+}
+
+TEST(BxDFWhiteFurnace, RoughDielectricHighIorEntering) {
+	// Higher IOR (diamond-like, eta=2.42) stresses the TIR fallback path harder.
+	run_dielectric_energy_conservation("RoughDielectric entering eta_ior=2.42", 1.0/2.42, 0.3);
+}

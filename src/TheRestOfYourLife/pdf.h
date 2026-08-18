@@ -122,6 +122,60 @@ class ggx_reflection_pdf : public pdf {
 };
 
 
+// ggx_dielectric_pdf -- VNDF-based sampling density for rough dielectric
+// reflection + transmission (both lobes, including the discrete Fresnel
+// branch choice), used as srec.pdf_ptr for rough_dielectric's real
+// NEE/MIS. generate() reuses RoughDielectricBxDF::sample_local() directly
+// (same VNDF + Fresnel-branch + TIR-fallback logic, not re-derived here);
+// value() evaluates RoughDielectricBxDF::pdf() at an arbitrary queried
+// direction (e.g. a shadow ray toward a light). `eta` matches
+// sample_local()'s own convention (eta_i/eta_t, resolved once by the
+// caller for entering vs exiting -- see rough_dielectric::scatter()).
+class ggx_dielectric_pdf : public pdf {
+  public:
+    ggx_dielectric_pdf(const vec3& normal_, const vec3& wo_world_,
+                        double eta_, double alpha_x_, double alpha_y_)
+        : frame(ShadingFrame<double>::from_normal(normal_.x(), normal_.y(), normal_.z())),
+          eta(eta_), bxdf{1.5, alpha_x_, alpha_y_} {
+        frame.to_local(wo_world_.x(), wo_world_.y(), wo_world_.z(), wi_x, wi_y, wi_z);
+        if (wi_z < 0.0) { wi_z = -wi_z; wi_x = -wi_x; wi_y = -wi_y; }
+    }
+
+    double value(const vec3& direction) const override {
+        vec3 d = unit_vector(direction);
+        double lx, ly, lz;
+        frame.to_local(d.x(), d.y(), d.z(), lx, ly, lz);
+        return bxdf.pdf(wi_x, wi_y, wi_z, eta, lx, ly, lz);
+    }
+
+    vec3 generate() const override {
+        auto res = bxdf.sample_local(wi_x, wi_y, wi_z, eta,
+                                      random_double(), random_double(), random_double());
+        if (!res.valid) {
+            // sample_local() rejects rare grazing-reflect edge cases (see
+            // its own comment) -- return a tangent direction (wo_z=0 in
+            // local frame), which value() above correctly evaluates to
+            // exactly 0 (both f() and pdf() early-return 0 when wo_z==0).
+            // camera.h's NEE/Strategy-B both check the density <= 0 before
+            // using a direction, so this is a safe, zero-contribution
+            // placeholder.
+            double tx, ty, tz;
+            frame.to_world(1.0, 0.0, 0.0, tx, ty, tz);
+            return vec3(tx, ty, tz);
+        }
+        double wo_x, wo_y, wo_z;
+        frame.to_world(res.wo_x, res.wo_y, res.wo_z, wo_x, wo_y, wo_z);
+        return unit_vector(vec3(wo_x, wo_y, wo_z));
+    }
+
+  private:
+    ShadingFrame<double> frame;
+    double wi_x, wi_y, wi_z;
+    double eta;
+    RoughDielectricBxDF<double> bxdf;
+};
+
+
 class mixture_pdf : public pdf {
   public:
     mixture_pdf(shared_ptr<pdf> p0, shared_ptr<pdf> p1) {

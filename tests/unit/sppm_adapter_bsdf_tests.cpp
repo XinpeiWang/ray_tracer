@@ -377,7 +377,16 @@ TEST(SppmBsdfSampleF, NormalizedFresnelEnergyConservationConvergesToOne) {
 // rough_dielectric (scene 11's actual sphere material) sanity
 // ============================================================================
 
-TEST(SppmBsdfSampleF, RoughDielectricReportsSpecularAndValidDirections) {
+// roughness=0.2 (alpha=sqrt(0.2)~0.447) is well above rough_dielectric's
+// EffectivelySmooth threshold, so scatter() now takes the glossy real-NEE
+// path (skip_pdf=false) rather than the delta/specular fast path this test
+// used to assume unconditionally -- exactly the bug #222 fixed. The bridge's
+// existing generic non-specular branch (sppm_bsdf_sample_f's `srec.pdf_ptr->
+// generate()` path, see bsdf_bridge.h) already handles this correctly with
+// zero code changes: it calls scattering_pdf()/scatter() through the same
+// generic path lambertian's non-fast-path materials already use, so this
+// test just needed its stale delta-only assertions updated to match.
+TEST(SppmBsdfSampleF, RoughDielectricReportsRealPdfAndValidDirections) {
 	auto mat = make_shared<rough_dielectric>(1.5, 0.2);   // matches scene 11's actual sphere material
 	SPPMShadingContext ctx;
 	ctx.p = point3(0, 0, 0);
@@ -391,9 +400,9 @@ TEST(SppmBsdfSampleF, RoughDielectricReportsSpecularAndValidDirections) {
 		double new_dir[3], f_val[3], pdf;
 		bool is_specular;
 		bool ok = sppm_bsdf_sample_f(ctx, wo, n, 0.0, 0.0, new_dir, f_val, pdf, is_specular);
-		if (!ok) continue;   // TIR / degenerate sample is acceptable
-		EXPECT_TRUE(is_specular) << "rough_dielectric must be treated as delta by this bridge";
-		EXPECT_DOUBLE_EQ(pdf, 1.0);
+		if (!ok) continue;   // TIR / degenerate/zero-density sample is acceptable
+		EXPECT_FALSE(is_specular) << "roughness=0.2 is glossy, must get real NEE";
+		EXPECT_GT(pdf, 0.0);
 		double len = std::sqrt(new_dir[0]*new_dir[0] + new_dir[1]*new_dir[1] + new_dir[2]*new_dir[2]);
 		EXPECT_NEAR(len, 1.0, 1e-6);
 		for (int c = 0; c < 3; ++c) EXPECT_TRUE(std::isfinite(f_val[c]));

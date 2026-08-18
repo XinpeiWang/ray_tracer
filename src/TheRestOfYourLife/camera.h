@@ -828,19 +828,31 @@ class camera {
 
                 // Update etaScale for transmission bounces BEFORE the RR test
                 // below - same ordering as the specular branch above (see its
-                // own comment). This branch never touched eta_scale at all
-                // despite srec.is_transmission being a general field, not a
-                // skip_pdf-only one: pbrt-v4's VolPathIntegrator updates
-                // etaScale after every BSDF sample, specular or not. No
-                // current material sets is_transmission=true on this
-                // non-specular path (diffuse_transmission's own R/T lobes
-                // are geometric hemisphere flips, not IOR refractions), so
-                // this is latent today, but a future non-specular
-                // refractive material (e.g. a rough dielectric with real
-                // NEE) would silently skip pbrt-v4's transmission-path RR
-                // protection here without this.
-                if (srec.is_transmission)
-                    eta_scale *= srec.eta * srec.eta;
+                // own comment). pbrt-v4's VolPathIntegrator updates etaScale
+                // after every BSDF sample, specular or not.
+                //
+                // srec.is_transmission here means "this material has real
+                // refraction physics with ratio srec.eta" (a fixed, direction-
+                // independent per-scatter-event constant a material sets once
+                // in scatter()) -- NOT "scatter()'s own single sample happened
+                // to transmit", since on this non-specular path the actual
+                // bounce direction (bsdf_dir) is resampled fresh from
+                // srec.pdf_ptr, independently of whatever scatter() itself
+                // may or may not have sampled. Whether THIS SPECIFIC bsdf_dir
+                // is a transmission is therefore re-derived geometrically
+                // (crossed to the opposite side of the surface from the view
+                // direction) rather than trusted from scatter()-time. Every
+                // material that never sets is_transmission=true on this path
+                // (the overwhelming majority - diffuse_transmission's own R/T
+                // lobes are geometric hemisphere flips, not IOR refractions)
+                // is completely unaffected, since the `&&` short-circuits.
+                if (srec.is_transmission) {
+                    bool crossed_boundary =
+                        dot(bsdf_dir, rec.normal) *
+                        dot(-unit_vector(current_ray.direction()), rec.normal) < 0.0;
+                    if (crossed_boundary)
+                        eta_scale *= srec.eta * srec.eta;
+                }
 
                 // Russian Roulette after first bounce
                 color new_beta = clamp_throughput(beta * srec.attenuation * f_pdf / pdf_b);

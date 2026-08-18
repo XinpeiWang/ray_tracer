@@ -983,7 +983,13 @@ TEST(RoughDielectricTest, ConstructorAlpha) {
 	EXPECT_NEAR(mat.get_roughness(), 0.25, 1e-10);
 }
 
-// Test: attenuation is always white (energy-neutral glass)
+// Test: attenuation is always white (energy-neutral glass). roughness=0.2
+// is well above the EffectivelySmooth threshold (alpha=sqrt(0.2)~0.447 >>
+// 1e-3), so rough_dielectric::scatter() takes the glossy real-NEE path:
+// skip_pdf=false, attenuation stays white there too (RoughDielectricBxDF
+// has no color of its own) -- see rough_dielectric::scatter()'s own
+// comment in material_pbrt.h. Previously this test asserted skip_pdf must
+// ALWAYS be true regardless of roughness -- exactly the bug #222 fixed.
 TEST(RoughDielectricTest, AttenuationIsWhite) {
 	rough_dielectric mat(1.5, 0.2);
 	hit_record rec = make_hit_front();
@@ -998,15 +1004,19 @@ TEST(RoughDielectricTest, AttenuationIsWhite) {
 			EXPECT_NEAR(srec.attenuation.x(), 1.0, 1e-9);
 			EXPECT_NEAR(srec.attenuation.y(), 1.0, 1e-9);
 			EXPECT_NEAR(srec.attenuation.z(), 1.0, 1e-9);
-			EXPECT_TRUE(srec.skip_pdf)
-				<< "rough_dielectric must use skip_pdf path (specular)";
+			EXPECT_FALSE(srec.skip_pdf)
+				<< "roughness=0.2 is glossy, must get real NEE";
+			EXPECT_NE(srec.pdf_ptr, nullptr);
 		}
 	}
-	// At roughness 0.2 some rays will refract and some reflect, but most scatter
+	// The glossy path always returns true (no res.valid rejection -- see
+	// rough_metal's own comment on why), so this should now be exactly N.
 	EXPECT_GT(scattered_count, N / 2);
 }
 
-// Test: scattered ray direction is a unit vector (never degenerate)
+// Test: scattered ray direction is a unit vector (never degenerate).
+// roughness=0.3 is glossy (see AttenuationIsWhite's comment) -- direction
+// comes from pdf_ptr->generate() rather than the now-unused skip_pdf_ray.
 TEST(RoughDielectricTest, ScatteredDirIsUnit) {
 	rough_dielectric mat(1.5, 0.3);
 	hit_record rec = make_hit_front();
@@ -1016,13 +1026,16 @@ TEST(RoughDielectricTest, ScatteredDirIsUnit) {
 	for (int i = 0; i < 1000; ++i) {
 		scatter_record srec;
 		if (mat.scatter(r_in, rec, srec)) {
-			double len = srec.skip_pdf_ray.direction().length();
+			ASSERT_FALSE(srec.skip_pdf);
+			ASSERT_NE(srec.pdf_ptr, nullptr);
+			vec3 dir = srec.pdf_ptr->generate();
+			double len = dir.length();
 			EXPECT_NEAR(len, 1.0, 1e-6)
 				<< "scattered direction is not unit-length at sample " << i;
 			// No NaN
-			EXPECT_FALSE(std::isnan(srec.skip_pdf_ray.direction().x()));
-			EXPECT_FALSE(std::isnan(srec.skip_pdf_ray.direction().y()));
-			EXPECT_FALSE(std::isnan(srec.skip_pdf_ray.direction().z()));
+			EXPECT_FALSE(std::isnan(dir.x()));
+			EXPECT_FALSE(std::isnan(dir.y()));
+			EXPECT_FALSE(std::isnan(dir.z()));
 			++ok;
 		}
 	}
@@ -1032,7 +1045,9 @@ TEST(RoughDielectricTest, ScatteredDirIsUnit) {
 // Test: transmitted rays cross the boundary (z < 0 in world space when entering)
 // For a ray hitting a flat surface from above, refracted rays must go downward.
 TEST(RoughDielectricTest, TransmissionCrossesBoundary) {
-	// Very low roughness so almost all rays refract (F << 1 at normal incidence)
+	// roughness=0.01 -> alpha=sqrt(0.01)=0.1, still glossy (>>1e-3), so this
+	// takes the real-NEE path (skip_pdf=false) same as AttenuationIsWhite's
+	// comment explains -- direction comes from pdf_ptr->generate().
 	rough_dielectric mat(1.5, 0.01);
 	hit_record rec = make_hit_front(point3(0,0,0), vec3(0,0,1));
 	// Ray coming straight down along -z into the surface
@@ -1043,7 +1058,9 @@ TEST(RoughDielectricTest, TransmissionCrossesBoundary) {
 	for (int i = 0; i < 2000; ++i) {
 		scatter_record srec;
 		if (!mat.scatter(r_in, rec, srec)) continue;
-		double dz = srec.skip_pdf_ray.direction().z();
+		ASSERT_FALSE(srec.skip_pdf);
+		ASSERT_NE(srec.pdf_ptr, nullptr);
+		double dz = srec.pdf_ptr->generate().z();
 		if (dz < 0.0) ++refracted_count;  // Crossed boundary: correct
 		else          ++reflected_count;  // Reflected back: also valid
 	}

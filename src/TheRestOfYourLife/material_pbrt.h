@@ -254,6 +254,14 @@ class rough_dielectric : public material {
         return BxDF{ ior, alpha_x, alpha_y };
     }
 
+    // Real NEE/MIS below the roughness threshold (see rough_metal's own
+    // comment). The glossy branch spans BOTH reflection and transmission
+    // lobes via ggx_dielectric_pdf (pdf.h); srec.is_transmission=true there
+    // signals "this material has real refraction physics with ratio
+    // srec.eta", not "this specific scatter() sample transmitted" -- see
+    // camera.h's Strategy B, which re-derives whether the actual resampled
+    // bounce crossed the boundary geometrically, since srec.pdf_ptr's
+    // sampled direction isn't known until Strategy B draws it.
     bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
                  bool do_regularize = false) const override {
         auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
@@ -268,19 +276,53 @@ class rough_dielectric : public material {
         frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
         if (wi_z < 0.0) { wi_z = -wi_z; wi_x = -wi_x; wi_y = -wi_y; }
 
-        auto res = bxdf.sample_local(wi_x, wi_y, wi_z, eta,
-                                     random_double(), random_double(), random_double());
-        if (!res.valid) return false;
+        // Branch on the TRUE (unregularized) roughness -- see rough_metal's
+        // own comment on why scattering_pdf() forces this.
+        if (TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth()) {
+            auto res = bxdf.sample_local(wi_x, wi_y, wi_z, eta,
+                                         random_double(), random_double(), random_double());
+            if (!res.valid) return false;
 
-        double wd_x, wd_y, wd_z;
-        frame.to_world(res.wo_x, res.wo_y, res.wo_z, wd_x, wd_y, wd_z);
-        srec.attenuation     = color(res.r, res.g, res.b);
-        srec.pdf_ptr         = nullptr;
-        srec.skip_pdf        = true;
-        srec.skip_pdf_ray    = ray(rec.p, unit_vector(vec3(wd_x, wd_y, wd_z)), r_in.time());
-        srec.eta             = res.is_transmission ? res.eta : 1.0;
-        srec.is_transmission = res.is_transmission;
+            double wd_x, wd_y, wd_z;
+            frame.to_world(res.wo_x, res.wo_y, res.wo_z, wd_x, wd_y, wd_z);
+            srec.attenuation     = color(res.r, res.g, res.b);
+            srec.pdf_ptr         = nullptr;
+            srec.skip_pdf        = true;
+            srec.skip_pdf_ray    = ray(rec.p, unit_vector(vec3(wd_x, wd_y, wd_z)), r_in.time());
+            srec.eta             = res.is_transmission ? res.eta : 1.0;
+            srec.is_transmission = res.is_transmission;
+            return true;
+        }
+
+        srec.attenuation     = color(1.0, 1.0, 1.0);
+        srec.pdf_ptr          = make_shared<ggx_dielectric_pdf>(
+            rec.normal, vec3(ctx.wo_x, ctx.wo_y, ctx.wo_z), eta, alpha_x, alpha_y);
+        srec.skip_pdf         = false;
+        srec.eta              = eta;
+        srec.is_transmission  = true;
         return true;
+    }
+
+    // f*cos at an arbitrary queried direction (scattered), for real NEE/MIS.
+    // Achromatic (RoughDielectricBxDF is colorless glass) -- attenuation
+    // stays the default white srec.attenuation.
+    double scattering_pdf(const ray& r_in, const hit_record& rec,
+                          const ray& scattered) const override {
+        auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
+        auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
+        double eta = ctx.front_face ? (1.0 / ior) : ior;
+
+        double wi_x, wi_y, wi_z;
+        frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
+        if (wi_z < 0.0) { wi_z = -wi_z; wi_x = -wi_x; wi_y = -wi_y; }
+
+        vec3 dir = unit_vector(scattered.direction());
+        double wo_x, wo_y, wo_z;
+        frame.to_local(dir.x(), dir.y(), dir.z(), wo_x, wo_y, wo_z);
+
+        BxDF bxdf{ ior, alpha_x, alpha_y };
+        double f_val = bxdf.f(wi_x, wi_y, wi_z, eta, wo_x, wo_y, wo_z);
+        return f_val * std::fabs(wo_z);
     }
 
     double get_ior()       const { return ior; }
