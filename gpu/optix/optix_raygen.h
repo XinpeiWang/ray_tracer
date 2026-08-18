@@ -41,6 +41,22 @@ extern "C" __global__ void __raygen__rg() {
 		float u = (float(px) + halton2(s, px, py)) / float(params.width - 1);
 		float v = (float(params.height - 1 - py) + halton3(s, px, py)) / float(params.height - 1);  // Flip Y
 
+		// NOTE for future CameraKind additions: this `v` is Y-flipped to a
+		// lower-left-origin convention (py=0/top row -> v=1) to match
+		// Perspective/Orthographic's `lower_left_corner + u*horizontal +
+		// v*vertical` construction. Any new camera whose REFERENCE model
+		// (e.g. a pbrt-v4 GenerateRay) assumes raw raster order (v=0 at the
+		// top row) needs to locally undo this flip - `float v_x = 1.0f - v;`
+		// - before feeding it to that reference formula, or the image comes
+		// out vertically mirrored. generate_primary_ray()'s Spherical case
+		// (`v_sph`) and sample_realistic_camera_ray()'s Realistic case
+		// (`v_raw`), both in optix_device_helpers.h, are two prior instances
+		// of this same trap being discovered and fixed independently -
+		// check whether it applies before wiring up a new CameraKind rather
+		// than rediscovering it a third time. wavefront_kernels.cu's
+		// wf_generate_primary_rays kernel applies the identical flip for the
+		// same reason.
+
 		// Generate camera ray (perspective/orthographic/spherical/realistic,
 		// see generate_primary_ray in optix_device_helpers.h). `cam_weight`
 		// is the Realistic lens' cos^4(theta)/pdf vignetting term (1.0 for

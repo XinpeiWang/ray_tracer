@@ -893,6 +893,11 @@ extern "C" __global__ void generate_camera_rays(
 	// every wavefront-mode render using those camera kinds came out
 	// vertically mirrored relative to the recursive path.
 	float v = (float(height - 1 - py) + wf_rand(seed)) / float(height - 1);
+	// NOTE for future CameraKind additions: same lower-left-origin `v` as
+	// optix_raygen.h's __raygen__rg (see that function's matching comment) -
+	// a camera whose reference model assumes raw raster order (v=0 at the
+	// top row) needs to locally undo this flip before using it, the way
+	// wf_generate_primary_ray's Spherical/Realistic cases already do.
 
 	RayWorkItem item;
 	float cam_weight;
