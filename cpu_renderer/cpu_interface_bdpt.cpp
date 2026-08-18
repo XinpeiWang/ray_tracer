@@ -221,6 +221,10 @@ extern "C" int cpu_render_main_bdpt(int width, int height, int spp, int bdpt_max
 			std::cerr << ErrorInfo(ERR_INVALID_MAX_DEPTH).to_string() << std::endl;
 			return ERR_INVALID_MAX_DEPTH;
 		}
+		if (!output_path) {
+			std::cerr << ErrorInfo(ERR_OUTPUT_PATH_INVALID).to_string() << std::endl;
+			return ERR_OUTPUT_PATH_INVALID;
+		}
 
 		std::clog << "[cpu_interface_bdpt] cpu_render_main_bdpt start: " << width << "x" << height
 		           << " spp=" << spp << " bdpt_max_depth=" << bdpt_max_depth << " scene_id=" << scene_id
@@ -277,6 +281,10 @@ extern "C" int cpu_render_main_mlt(int width, int height, int mlt_bootstrap, lon
 		if (mlt_max_depth <= 0) {
 			std::cerr << ErrorInfo(ERR_INVALID_MAX_DEPTH).to_string() << std::endl;
 			return ERR_INVALID_MAX_DEPTH;
+		}
+		if (!output_path) {
+			std::cerr << ErrorInfo(ERR_OUTPUT_PATH_INVALID).to_string() << std::endl;
+			return ERR_OUTPUT_PATH_INVALID;
 		}
 
 		std::clog << "[cpu_interface_bdpt] cpu_render_main_mlt start: " << width << "x" << height

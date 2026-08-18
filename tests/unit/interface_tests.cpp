@@ -215,10 +215,13 @@ TEST(InterfaceValidationTest, NegativeSamples) {
  * Test null output path
  */
 TEST(InterfaceValidationTest, NullOutputPath) {
-	// cpu_render_main dereferences the output path without null-checking.
-	// Passing nullptr crashes with an access violation -- skip until the
-	// interface adds null validation.
-	GTEST_SKIP() << "cpu_render_main does not guard against null output path";
+	int result = cpu_render_main(
+		16, 16, 1, 5,
+		nullptr,
+		"A1", 278, 278, -800
+	);
+
+	EXPECT_EQ(result, ERR_OUTPUT_PATH_INVALID);
 }
 
 // ============================================================================

@@ -66,6 +66,14 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 			return ERR_INVALID_MAX_DEPTH;
 		}
 
+		// Validate output path - streaming a null const char* below (the
+		// start-of-render log line) and later calls that treat it as a
+		// filesystem path are both undefined behavior on a null pointer.
+		if (!output_path) {
+			std::cerr << ErrorInfo(ERR_OUTPUT_PATH_INVALID).to_string() << std::endl;
+			return ERR_OUTPUT_PATH_INVALID;
+		}
+
 		// Validate scene ID against registry
 		const SceneDescriptor* scene_desc = find_scene(scene_id);
 		if (!scene_desc) {
@@ -276,6 +284,10 @@ extern "C" int cpu_render_main_sppm(int width, int height, int iterations, int p
 		if (max_depth <= 0) {
 			std::cerr << ErrorInfo(ERR_INVALID_MAX_DEPTH).to_string() << std::endl;
 			return ERR_INVALID_MAX_DEPTH;
+		}
+		if (!output_path) {
+			std::cerr << ErrorInfo(ERR_OUTPUT_PATH_INVALID).to_string() << std::endl;
+			return ERR_OUTPUT_PATH_INVALID;
 		}
 
 		const SceneDescriptor* scene_desc = find_scene(scene_id);

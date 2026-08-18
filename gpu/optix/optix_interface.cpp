@@ -40,6 +40,14 @@ extern "C" int optix_render_main(
 	int force_camera_override
 ) {
 	try {
+		// std::string(output_path) below (and the ofstream open further down)
+		// are both undefined behavior on a null pointer - same guard as
+		// cpu_render_main's (cpu_interface.cpp).
+		if (!output_path) {
+			std::cerr << ErrorInfo(ERR_OUTPUT_PATH_INVALID).to_string() << "\n";
+			return ERR_OUTPUT_PATH_INVALID;
+		}
+
 		// Initialize renderer on first call
 		if (!g_renderer) {
 			std::cout << "[OptiX] Initializing renderer...\n";
@@ -381,6 +389,12 @@ extern "C" int optix_render_main_sppm(
 	int force_camera_override
 ) {
 	try {
+		// Same null-output_path guard as optix_render_main() above.
+		if (!output_path) {
+			std::cerr << ErrorInfo(ERR_OUTPUT_PATH_INVALID).to_string() << "\n";
+			return ERR_OUTPUT_PATH_INVALID;
+		}
+
 		std::cout << "[OptiX] Building scene " << scene_id << " (SPPM)...\n";
 		std::cout << "[OptiX] Camera position: (" << cam_x << ", " << cam_y << ", " << cam_z << ")\n";
 
