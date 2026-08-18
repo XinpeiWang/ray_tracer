@@ -1,0 +1,37 @@
+# infinite-light.pbrt -- exercises "infinite" (constant-colour) infinite
+# light. No bundled example scene used one before this - every other scene
+# in this folder is an enclosed room lit by AreaLightSource/LightSource, so
+# the sky-light bridging code (pbrt_flatten.h's InfiniteLight parsing, both
+# backends' constant-background path) had no render-level coverage from
+# here. Open geometry (no ceiling), so the sky is actually visible and
+# actually lights the scene from every direction rather than being blocked
+# by a room the way it would be in the other example scenes.
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  278 200 -800    278 150 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.6 0.7 0.9 ]
+
+Material "diffuse" "rgb reflectance" [ 0.6 0.6 0.6 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -400 0 -400   800 0 -400   800 0 800   -400 0 800 ]
+
+Material "diffuse" "rgb reflectance" [ 0.8 0.2 0.2 ]
+AttributeBegin
+  Translate 150 90 200
+  Shape "sphere" "float radius" [ 90 ]
+AttributeEnd
+
+Material "conductor" "float roughness" [ 0.05 ]
+AttributeBegin
+  Translate 400 100 350
+  Shape "sphere" "float radius" [ 100 ]
+AttributeEnd

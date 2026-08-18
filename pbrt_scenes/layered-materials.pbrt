@@ -1,0 +1,79 @@
+# layered-materials.pbrt -- exercises 4 more pbrt-v4 material kinds no
+# other bundled example scene touched: thindielectric, coatedconductor,
+# diffusetransmission, and subsurface (via a named measured-scattering
+# preset, "Marble" - no external file needed, see
+# src/shared/pbrt_flatten.h's subsurfacePresetFor()). Between them,
+# docs/PBRT_SUPPORT.md's Materials table already documents every one of
+# these as "Full" on both CPU and GPU, but none had ever actually been
+# rendered from a loaded .pbrt file before this scene - only via the
+# compiled-in scene registry or inline-source unit tests.
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  278 278 -800    278 278 278    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 18 15 8 ]
+  Translate 278 554 278
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -65 0 -52   65 0 -52   65 0 52   -65 0 52 ]
+AttributeEnd
+
+# ---------------------------------------------------------------- walls
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   555 0 0   555 0 555   0 0 555 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 555 0   555 555 0   555 555 555   0 555 555 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   555 0 555   555 555 555   0 555 555 ]
+Material "diffuse" "rgb reflectance" [ 0.65 0.05 0.05 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 0   555 0 555   555 555 555   555 555 0 ]
+Material "diffuse" "rgb reflectance" [ 0.12 0.45 0.15 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   0 0 555   0 555 555   0 555 0 ]
+
+# thindielectric: a flat pane, not a solid lump, so the un-refracted
+# closed-form transmission this material exists for is actually visible
+# (a thick sphere of it would look almost like plain glass).
+Material "thindielectric"
+AttributeBegin
+  Translate 140 280 60
+  Rotate 20 0 1 0
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -70 -70 0   70 -70 0   70 70 0   -70 70 0 ]
+AttributeEnd
+
+# coatedconductor: rough dielectric coat over a conductor base - "rgb
+# reflectance" here is reinterpreted as normal-incidence reflectance
+# (docs/PBRT_SUPPORT.md's Approx note), not pbrt's real eta/k sub-params.
+Material "coatedconductor" "rgb reflectance" [ 0.9 0.75 0.3 ] "float roughness" [ 0.08 ]
+AttributeBegin
+  Translate 340 90 130
+  Shape "sphere" "float radius" [ 70 ]
+AttributeEnd
+
+# diffusetransmission: separate reflectance (front) and transmittance
+# (back) colours - deliberately very different so a render immediately
+# shows whether the wrong one leaked through.
+Material "diffusetransmission" "rgb reflectance" [ 0.1 0.6 0.9 ] "rgb transmittance" [ 0.9 0.2 0.1 ]
+AttributeBegin
+  Translate 180 90 380
+  Shape "sphere" "float radius" [ 70 ]
+AttributeEnd
+
+# subsurface: the "Marble" measured-scattering preset (real tabulated
+# sigma_a/sigma_s, no file needed).
+Material "subsurface" "string name" [ "Marble" ]
+AttributeBegin
+  Translate 400 90 420
+  Shape "sphere" "float radius" [ 70 ]
+AttributeEnd

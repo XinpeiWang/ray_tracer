@@ -1,0 +1,77 @@
+# named-material-and-texture.pbrt -- exercises 3 directives no other
+# bundled example scene used standalone:
+#  - MakeNamedMaterial/NamedMaterial OUTSIDE of a "mix" material (mix-
+#    material.pbrt already covers MakeNamedMaterial as mix's two named
+#    sub-materials, but never NamedMaterial referencing one directly for a
+#    shape - a materially different code path).
+#  - Texture, bound to a material's "reflectance" - docs/PBRT_SUPPORT.md's
+#    cross-cutting note says a texture-bound parameter is dropped to a
+#    constant colour on both backends (no MaterialKind here carries a
+#    texture through this loader), so the expected result is that this
+#    renders as plain flat grey rather than a checkerboard - worth pinning
+#    that this degrades gracefully (parses and renders something reasonable)
+#    rather than being silently dropped or crashing.
+#  - AreaLightSource's "twosided" parameter, which pbrt_flatten.h parses
+#    nowhere (every area light stays one-sided on both backends regardless).
+#    Included here specifically UNSET-then-SET on two different lights so a
+#    render difference between them would be the signal this parameter is
+#    silently ignored, which is the documented, deliberate behaviour.
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  278 278 -800    278 278 278    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 200 ]
+
+WorldBegin
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 18 15 8 ]
+  Translate 278 554 278
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -65 0 -52   65 0 -52   65 0 52   -65 0 52 ]
+AttributeEnd
+
+# A second, smaller light with "twosided" set - documented as parsed
+# nowhere, so this should behave identically to one without it.
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 6 6 8 ] "bool twosided" [ true ]
+  Translate 278 554 150
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -25 0 -20   25 0 -20   25 0 20   -25 0 20 ]
+AttributeEnd
+
+# ---------------------------------------------------------------- walls
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   555 0 0   555 0 555   0 0 555 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 555 0   555 555 0   555 555 555   0 555 555 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   555 0 555   555 555 555   0 555 555 ]
+Material "diffuse" "rgb reflectance" [ 0.65 0.05 0.05 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 555 0 0   555 0 555   555 555 555   555 555 0 ]
+Material "diffuse" "rgb reflectance" [ 0.12 0.45 0.15 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   0 0 555   0 555 555   0 555 0 ]
+
+# MakeNamedMaterial + NamedMaterial, used directly rather than through "mix".
+MakeNamedMaterial "named-gold" "string type" [ "conductor" ] "float roughness" [ 0.12 ]
+NamedMaterial "named-gold"
+AttributeBegin
+  Translate 180 90 300
+  Shape "sphere" "float radius" [ 80 ]
+AttributeEnd
+
+# Texture bound to "reflectance" - see the file header comment on the
+# expected (graceful constant-colour) fallback.
+Texture "floor-check" "spectrum" "checkerboard" "float uscale" [ 8 ] "float vscale" [ 8 ]
+Material "diffuse" "texture reflectance" [ "floor-check" ]
+AttributeBegin
+  Translate 380 90 300
+  Shape "sphere" "float radius" [ 80 ]
+AttributeEnd
