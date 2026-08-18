@@ -35,6 +35,8 @@
 #include <cstdlib>
 #include <utility>
 
+#include "../shared/mtl_parse.h"
+
 
 // ---------------------------------------------------------------------------
 // load_obj
@@ -281,117 +283,46 @@ class triangle_mesh : public hittable {
 
 
 // ---------------------------------------------------------------------------
-// parse_mtl
-// Minimal Wavefront .mtl parser: maps material name -> diffuse (Kd) color.
-// Only Kd is read here -- see parse_mtl_textures() for map_Kd and
-// parse_mtl_emission() for Ke, kept as separate functions rather than
-// widening this one's return type so parse_mtl()'s existing color-only
-// signature (and its test coverage) stays unchanged.
-// Returns an empty map (never throws) if the file can't be found, so
-// callers can fall back to a flat material.
+// parse_mtl / mtl_specular_params / parse_mtl_specular / parse_mtl_textures /
+// parse_mtl_ke_textures / parse_mtl_emission / parse_mtl_bump_textures /
+// parse_mtl_alpha_textures / resolve_mtl_texture_path / mtl_has_real_
+// transmission_filter / phong_to_roughness / is_grayscale_image
+//
+// Thin `color`-typed wrappers over src/shared/mtl_parse.h's renderer-
+// agnostic parser (RGB triples, not `color`) - the actual .mtl text-parsing
+// logic used to be independently hand-duplicated here and in gpu/optix/
+// scene_builder.cpp (two copies of 7 near-identical functions each, one per
+// .mtl property). Names/signatures/behavior are unchanged from before this
+// consolidation, so load_obj_mtl() below (and every test exercising these
+// functions by name) needs no changes.
 // ---------------------------------------------------------------------------
+
+inline color to_color(const mtl_parse::RGB& c) { return color(c.r, c.g, c.b); }
+
 inline std::unordered_map<std::string, color> parse_mtl(const std::string& filepath) {
 	std::unordered_map<std::string, color> result;
-
-	std::ifstream file(filepath);
-	if (!file.is_open()) {
-		static const char* kSearchPrefixes[] = {
-			"models/", "../models/", "../../models/",
-			"../../../models/", "../../../../models/", "../../../../../models/"
-		};
-		for (const char* prefix : kSearchPrefixes) {
-			file.clear();
-			file.open(prefix + filepath);
-			if (file.is_open()) break;
-		}
-	}
-	if (!file.is_open()) return result;
-
-	std::string line, current;
-	while (std::getline(file, line)) {
-		if (line.empty() || line[0] == '#') continue;
-		std::istringstream ss(line);
-		std::string tok;
-		ss >> tok;
-		if (tok == "newmtl") {
-			ss >> current;
-		} else if (tok == "Kd" && !current.empty()) {
-			double r, g, b;
-			ss >> r >> g >> b;
-			result[current] = color(r, g, b);
-		}
-	}
+	for (const auto& [name, c] : mtl_parse::parse_kd(filepath)) result[name] = to_color(c);
 	return result;
 }
 
-
-// ---------------------------------------------------------------------------
-// mtl_specular_params / parse_mtl_specular
-// Companion to parse_mtl(): maps material name -> its classic Blinn-Phong
-// specular parameters (Ks, Ns, illum, Ni), read together in one pass since
-// dispatching a material to lambertian/metal/dielectric needs all of them
-// jointly (see load_obj_mtl()'s material-resolution loop). illum/ni default
-// to -1 ("not specified in the file") rather than 0/1.5, so callers can
-// distinguish "this .mtl declares illum 0" from "this .mtl says nothing
-// about illum at all".
-// ---------------------------------------------------------------------------
 struct mtl_specular_params {
 	color  ks = color(0, 0, 0);
 	double ns = 0.0;
 	int    illum = -1;
 	double ni = -1.0;
-	// Transmission filter - defaults to (1,1,1) ("no filtering") per the
-	// .mtl spec's own default, matching what every non-glass material in
-	// every H-family scene either omits or writes as explicit boilerplate
-	// "Tf 1 1 1". A handful of real glass materials (Sibenik's stained-
-	// glass windows) write a genuinely non-neutral Tf instead - see
-	// load_obj_mtl()'s illum 4/6 dispatch comment for why that's used as
-	// the "this material really is glass" signal rather than illum alone
-	// (illum 4 is also written, as an unrelated exporter default, on every
-	// material in some Blender-exported .mtl files regardless of type).
 	color  tf = color(1, 1, 1);
 };
 
 inline std::unordered_map<std::string, mtl_specular_params> parse_mtl_specular(const std::string& filepath) {
 	std::unordered_map<std::string, mtl_specular_params> result;
-
-	std::ifstream file(filepath);
-	if (!file.is_open()) {
-		static const char* kSearchPrefixes[] = {
-			"models/", "../models/", "../../models/",
-			"../../../models/", "../../../../models/", "../../../../../models/"
-		};
-		for (const char* prefix : kSearchPrefixes) {
-			file.clear();
-			file.open(prefix + filepath);
-			if (file.is_open()) break;
-		}
-	}
-	if (!file.is_open()) return result;
-
-	std::string line, current;
-	while (std::getline(file, line)) {
-		if (line.empty() || line[0] == '#') continue;
-		std::istringstream ss(line);
-		std::string tok;
-		ss >> tok;
-		if (tok == "newmtl") {
-			ss >> current;
-		} else if (tok == "Ks" && !current.empty()) {
-			double r, g, b;
-			ss >> r >> g >> b;
-			result[current].ks = color(r, g, b);
-		} else if (tok == "Ns" && !current.empty()) {
-			ss >> result[current].ns;
-		} else if (tok == "illum" && !current.empty()) {
-			ss >> result[current].illum;
-		} else if (tok == "Ni" && !current.empty()) {
-			ss >> result[current].ni;
-		} else if (tok == "Tf" && !current.empty()) {
-			double r, g, b;
-			ss >> r >> g >> b;
-			result[current].tf = color(r, g, b);
-		}
+	for (const auto& [name, sp] : mtl_parse::parse_specular(filepath)) {
+		mtl_specular_params out;
+		out.ks = to_color(sp.ks);
+		out.ns = sp.ns;
+		out.illum = sp.illum;
+		out.ni = sp.ni;
+		out.tf = to_color(sp.tf);
+		result[name] = out;
 	}
 	return result;
 }
@@ -399,275 +330,37 @@ inline std::unordered_map<std::string, mtl_specular_params> parse_mtl_specular(c
 // True when a material's Tf is meaningfully different from the .mtl spec's
 // own neutral default (1,1,1) - see mtl_specular_params::tf's comment.
 inline bool mtl_has_real_transmission_filter(const color& tf) {
-	constexpr double kEpsilon = 0.05;
-	return std::fabs(tf.x() - 1.0) > kEpsilon ||
-		   std::fabs(tf.y() - 1.0) > kEpsilon ||
-		   std::fabs(tf.z() - 1.0) > kEpsilon;
+	return mtl_parse::has_real_transmission_filter(mtl_parse::RGB{tf.x(), tf.y(), tf.z()});
 }
 
-// Standard Phong-exponent-to-roughness conversion, mapping a classic OBJ/
-// .mtl Ns (specular exponent, typically 1-1000) onto a physically-based
-// roughness in (0, 1]. At Ns=0 (the boilerplate default most exporters
-// write when they don't otherwise populate it) this returns 1.0 (fully
-// rough), which metal's own constructor clamps to anyway.
-inline double phong_to_roughness(double ns) {
-	return std::sqrt(2.0 / (ns + 2.0));
-}
+// Standard Phong-exponent-to-roughness conversion.
+inline double phong_to_roughness(double ns) { return mtl_parse::phong_to_roughness(ns); }
 
-
-// ---------------------------------------------------------------------------
-// parse_mtl_textures
-// Companion to parse_mtl(): maps material name -> its map_Kd (diffuse
-// texture) path, exactly as written in the .mtl (backslashes, "..", etc.
-// un-normalized -- see resolve_mtl_texture_path() for that). Only materials
-// with a map_Kd line appear in the result. Kept separate from parse_mtl()
-// rather than folded into its return value so parse_mtl()'s existing
-// color-only signature (and its test coverage) stays unchanged.
-// ---------------------------------------------------------------------------
 inline std::unordered_map<std::string, std::string> parse_mtl_textures(const std::string& filepath) {
-	std::unordered_map<std::string, std::string> result;
-
-	std::ifstream file(filepath);
-	if (!file.is_open()) {
-		static const char* kSearchPrefixes[] = {
-			"models/", "../models/", "../../models/",
-			"../../../models/", "../../../../models/", "../../../../../models/"
-		};
-		for (const char* prefix : kSearchPrefixes) {
-			file.clear();
-			file.open(prefix + filepath);
-			if (file.is_open()) break;
-		}
-	}
-	if (!file.is_open()) return result;
-
-	std::string line, current;
-	while (std::getline(file, line)) {
-		if (line.empty() || line[0] == '#') continue;
-		std::istringstream ss(line);
-		std::string tok;
-		ss >> tok;
-		if (tok == "newmtl") {
-			ss >> current;
-		} else if (tok == "map_Kd" && !current.empty()) {
-			// Take the rest of the line (minus surrounding whitespace) as
-			// the filename rather than a single ss >> token: real texture
-			// filenames in these archives can contain literal spaces (e.g.
-			// Bistro's "Metal_ RollDoor_01/Metal_ RollDoor_01_diff.png"),
-			// which a single >> would silently truncate at.
-			//
-			// Real-world "map_Kd" lines can also carry options (-o, -s,
-			// -bm, -mm, ...) before the filename -- e.g. the Gallery scene's
-			// own .mtl has "map_Kd -bm 0.7 gallery.jpg". Skip any leading
-			// "-option" tokens together with their numeric arguments (1-3
-			// depending on the option; detected here by "does this token
-			// parse fully as a number" rather than hardcoding a count per
-			// option) before taking the remainder as the filename. None of
-			// this was needed for Sponza/Bistro/Rungholt/Fireplace Room/
-			// San Miguel (no leading options in their map_Kd lines), so this
-			// is purely additive for them.
-			std::string path;
-			std::getline(ss, path);
-			size_t pos = path.find_first_not_of(" \t");
-			while (pos != std::string::npos && path[pos] == '-') {
-				size_t tokEnd = path.find_first_of(" \t", pos);
-				pos = (tokEnd == std::string::npos) ? std::string::npos
-													 : path.find_first_not_of(" \t", tokEnd);
-				while (pos != std::string::npos) {
-					size_t argEnd = path.find_first_of(" \t", pos);
-					std::string argTok = path.substr(pos, argEnd == std::string::npos ? std::string::npos : argEnd - pos);
-					char* endp = nullptr;
-					std::strtod(argTok.c_str(), &endp);
-					if (endp == argTok.c_str() || *endp != '\0') break;  // not purely numeric
-					pos = (argEnd == std::string::npos) ? std::string::npos
-														 : path.find_first_not_of(" \t", argEnd);
-				}
-			}
-			if (pos != std::string::npos) {
-				size_t end = path.find_last_not_of(" \t\r");
-				result[current] = path.substr(pos, end - pos + 1);
-			}
-		}
-	}
-	return result;
+	return mtl_parse::parse_map_kd(filepath);
 }
 
-
-// ---------------------------------------------------------------------------
-// parse_mtl_ke_textures
-// Companion to parse_mtl_textures(): maps material name -> its map_Ke
-// (emissive texture) path. Distinct from parse_mtl_emission() below, which
-// only reads the scalar "Ke r g b" line - a material can have a real
-// map_Ke with no scalar Ke at all (Gallery's own .mtl: "map_Ke -bm 0.3
-// gallery.jpg", no plain "Ke" line anywhere), which parse_mtl_emission()
-// alone would miss entirely. Same leading-option-skipping logic as
-// parse_mtl_textures() (map_Ke lines can carry the same "-bm"-style options
-// map_Kd lines do - confirmed on Gallery's own map_Ke line).
-// ---------------------------------------------------------------------------
 inline std::unordered_map<std::string, std::string> parse_mtl_ke_textures(const std::string& filepath) {
-	std::unordered_map<std::string, std::string> result;
-
-	std::ifstream file(filepath);
-	if (!file.is_open()) {
-		static const char* kSearchPrefixes[] = {
-			"models/", "../models/", "../../models/",
-			"../../../models/", "../../../../models/", "../../../../../models/"
-		};
-		for (const char* prefix : kSearchPrefixes) {
-			file.clear();
-			file.open(prefix + filepath);
-			if (file.is_open()) break;
-		}
-	}
-	if (!file.is_open()) return result;
-
-	std::string line, current;
-	while (std::getline(file, line)) {
-		if (line.empty() || line[0] == '#') continue;
-		std::istringstream ss(line);
-		std::string tok;
-		ss >> tok;
-		if (tok == "newmtl") {
-			ss >> current;
-		} else if (tok == "map_Ke" && !current.empty()) {
-			std::string path;
-			std::getline(ss, path);
-			size_t pos = path.find_first_not_of(" \t");
-			while (pos != std::string::npos && path[pos] == '-') {
-				size_t tokEnd = path.find_first_of(" \t", pos);
-				pos = (tokEnd == std::string::npos) ? std::string::npos
-													 : path.find_first_not_of(" \t", tokEnd);
-				while (pos != std::string::npos) {
-					size_t argEnd = path.find_first_of(" \t", pos);
-					std::string argTok = path.substr(pos, argEnd == std::string::npos ? std::string::npos : argEnd - pos);
-					char* endp = nullptr;
-					std::strtod(argTok.c_str(), &endp);
-					if (endp == argTok.c_str() || *endp != '\0') break;  // not purely numeric
-					pos = (argEnd == std::string::npos) ? std::string::npos
-														 : path.find_first_not_of(" \t", argEnd);
-				}
-			}
-			if (pos != std::string::npos) {
-				size_t end = path.find_last_not_of(" \t\r");
-				result[current] = path.substr(pos, end - pos + 1);
-			}
-		}
-	}
-	return result;
+	return mtl_parse::parse_map_ke(filepath);
 }
 
-
-// ---------------------------------------------------------------------------
-// parse_mtl_emission
-// Companion to parse_mtl(): maps material name -> its Ke (emission) color.
-// An explicit "Ke 0 0 0" (the boilerplate default many exporters always
-// write, confirmed to be the case for every material in sponza.mtl,
-// exterior.mtl, and rungholt.mtl) is treated the same as no Ke line at all --
-// only materials with a non-degenerate Ke appear in the result, so callers
-// can use "is this name present" directly as "is this material a light",
-// without re-deriving it from a returned all-black color.
-// ---------------------------------------------------------------------------
 inline std::unordered_map<std::string, color> parse_mtl_emission(const std::string& filepath) {
 	std::unordered_map<std::string, color> result;
-
-	std::ifstream file(filepath);
-	if (!file.is_open()) {
-		static const char* kSearchPrefixes[] = {
-			"models/", "../models/", "../../models/",
-			"../../../models/", "../../../../models/", "../../../../../models/"
-		};
-		for (const char* prefix : kSearchPrefixes) {
-			file.clear();
-			file.open(prefix + filepath);
-			if (file.is_open()) break;
-		}
-	}
-	if (!file.is_open()) return result;
-
-	std::string line, current;
-	while (std::getline(file, line)) {
-		if (line.empty() || line[0] == '#') continue;
-		std::istringstream ss(line);
-		std::string tok;
-		ss >> tok;
-		if (tok == "newmtl") {
-			ss >> current;
-		} else if (tok == "Ke" && !current.empty()) {
-			double r, g, b;
-			ss >> r >> g >> b;
-			if (r > 1e-6 || g > 1e-6 || b > 1e-6)
-				result[current] = color(r, g, b);
-		}
-	}
+	for (const auto& [name, c] : mtl_parse::parse_ke(filepath)) result[name] = to_color(c);
 	return result;
 }
 
-
-// ---------------------------------------------------------------------------
-// parse_mtl_bump_textures
-// Companion to parse_mtl_textures(): maps material name -> its map_Bump
-// (bump/normal) texture path. Matches "map_Bump" (the OBJ/.mtl spec's own
-// casing), the all-lowercase "map_bump" actually used throughout this
-// renderer's own Sponza/Bistro .mtl files, and the bare "bump" alias some
-// exporters use.
-//
-// The OBJ/.mtl spec's map_Bump statement is genuinely ambiguous in the
-// wild: it's used for both a real scalar height/displacement map AND a
-// tangent-space RGB normal map, with nothing in the .mtl text itself to
-// tell them apart -- confirmed directly in this renderer's own two asset
-// packs (Sponza's map_bump files are real grayscale bump maps; Bistro's
-// are tangent-space normal maps, both referenced via the identical
-// "map_bump" keyword). Only the material name -> path mapping is resolved
-// here; is_grayscale_image() in load_obj_mtl() inspects the loaded image's
-// actual pixel content to decide bump_map_material vs normal_map_material.
-// ---------------------------------------------------------------------------
 inline std::unordered_map<std::string, std::string> parse_mtl_bump_textures(const std::string& filepath) {
-	std::unordered_map<std::string, std::string> result;
-
-	std::ifstream file(filepath);
-	if (!file.is_open()) {
-		static const char* kSearchPrefixes[] = {
-			"models/", "../models/", "../../models/",
-			"../../../models/", "../../../../models/", "../../../../../models/"
-		};
-		for (const char* prefix : kSearchPrefixes) {
-			file.clear();
-			file.open(prefix + filepath);
-			if (file.is_open()) break;
-		}
-	}
-	if (!file.is_open()) return result;
-
-	std::string line, current;
-	while (std::getline(file, line)) {
-		if (line.empty() || line[0] == '#') continue;
-		std::istringstream ss(line);
-		std::string tok;
-		ss >> tok;
-		if (tok == "newmtl") {
-			ss >> current;
-		} else if ((tok == "map_Bump" || tok == "map_bump" || tok == "bump") && !current.empty()) {
-			std::string path;
-			std::getline(ss, path);
-			size_t start = path.find_first_not_of(" \t");
-			if (start != std::string::npos) {
-				size_t end = path.find_last_not_of(" \t\r");
-				result[current] = path.substr(start, end - start + 1);
-			}
-		}
-	}
-	return result;
+	return mtl_parse::parse_map_bump(filepath);
 }
 
 // Distinguishes a genuine grayscale height/displacement map from a
-// tangent-space RGB normal map by sampling an 8x8 grid of pixels: a real
-// grayscale image has R==G==B (or very close -- lossy compression can
-// introduce a few units of per-channel noise) at every pixel, while a
-// tangent-space normal map is visibly blue/purple-tinted (Z-dominant),
-// with a large, consistent R/G-vs-B split. 10 (out of 255) sits
-// comfortably above compression noise and well below a real normal map's
-// channel spread -- verified directly against one real sample of each
-// kind from this renderer's own Sponza/Bistro texture sets.
+// tangent-space RGB normal map by sampling an 8x8 grid of pixels - see
+// src/shared/mtl_parse.h's own file comment for why this stays CPU-side
+// rather than moving into that shared header (it inspects `rtw_image`,
+// a CPU-only representation; GPU's mirror, is_grayscale_texture_gpu() in
+// scene_builder.cpp, does the same algorithm against its own device pixel
+// buffer instead).
 inline bool is_grayscale_image(const rtw_image& img) {
 	int w = img.width(), h = img.height();
 	if (w <= 0 || h <= 0) return true; // degenerate load; harmless default
@@ -685,74 +378,12 @@ inline bool is_grayscale_image(const rtw_image& img) {
 	return max_diff <= 10;
 }
 
-
-// ---------------------------------------------------------------------------
-// parse_mtl_alpha_textures
-// Companion to parse_mtl_textures(): maps material name -> its map_d
-// (alpha-cutout mask) texture path. Matches "map_d" and, per the OBJ/.mtl
-// spec's own alternate spelling, "map_D".
-// ---------------------------------------------------------------------------
 inline std::unordered_map<std::string, std::string> parse_mtl_alpha_textures(const std::string& filepath) {
-	std::unordered_map<std::string, std::string> result;
-
-	std::ifstream file(filepath);
-	if (!file.is_open()) {
-		static const char* kSearchPrefixes[] = {
-			"models/", "../models/", "../../models/",
-			"../../../models/", "../../../../models/", "../../../../../models/"
-		};
-		for (const char* prefix : kSearchPrefixes) {
-			file.clear();
-			file.open(prefix + filepath);
-			if (file.is_open()) break;
-		}
-	}
-	if (!file.is_open()) return result;
-
-	std::string line, current;
-	while (std::getline(file, line)) {
-		if (line.empty() || line[0] == '#') continue;
-		std::istringstream ss(line);
-		std::string tok;
-		ss >> tok;
-		if (tok == "newmtl") {
-			ss >> current;
-		} else if ((tok == "map_d" || tok == "map_D") && !current.empty()) {
-			std::string path;
-			std::getline(ss, path);
-			size_t start = path.find_first_not_of(" \t");
-			if (start != std::string::npos) {
-				size_t end = path.find_last_not_of(" \t\r");
-				result[current] = path.substr(start, end - start + 1);
-			}
-		}
-	}
-	return result;
+	return mtl_parse::parse_map_d(filepath);
 }
 
-
-// ---------------------------------------------------------------------------
-// resolve_mtl_texture_path
-// Rewrites a .mtl-relative texture path (as read by parse_mtl_textures, e.g.
-// "textures\foo.png" or "..\BuildingTextures\bar.png") into a path under
-// texture_dir. Backslashes are normalized to forward slashes and any
-// leading "../"/"./" segments are stripped rather than resolved literally --
-// callers relocate the actual texture files under texture_dir instead of
-// mirroring the original archive's exact directory nesting relative to the
-// .mtl file, so only the meaningful tail (e.g. "BuildingTextures/bar.png")
-// matters.
-// ---------------------------------------------------------------------------
 inline std::string resolve_mtl_texture_path(const std::string& relative_path, const std::string& texture_dir) {
-	std::string p = relative_path;
-	for (auto& c : p) if (c == '\\') c = '/';
-
-	size_t pos = 0;
-	while (true) {
-		if (p.compare(pos, 3, "../") == 0) pos += 3;
-		else if (p.compare(pos, 2, "./") == 0) pos += 2;
-		else break;
-	}
-	return texture_dir + "/" + p.substr(pos);
+	return mtl_parse::resolve_texture_path(relative_path, texture_dir);
 }
 
 

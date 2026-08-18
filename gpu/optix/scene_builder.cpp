@@ -28,6 +28,7 @@
 #include "../../src/shared/rgb_nebula_generator.h"
 #include "../../src/shared/curve_tessellate.h"
 #include "../../src/shared/cameras.h"
+#include "../../src/shared/mtl_parse.h"
 #include "../../src/shared/cornell_box_data.h"
 // Declarations only (no STB_IMAGE_IMPLEMENTATION) - the actual
 // implementation is already compiled once into cpu_renderer.lib (see
@@ -682,355 +683,77 @@ namespace {
 		}
 	}
 
-	// Minimal Wavefront .mtl parser (GPU-side counterpart of CPU's
-	// src/TheRestOfYourLife/mesh.h::parse_mtl()): maps material name ->
-	// diffuse (Kd) color. Only Kd is read, matching this renderer's
-	// no-texture mesh convention. Returns an empty map (never throws) if
-	// the file can't be found.
+	// GPU-side (float3-typed) thin wrappers over src/shared/mtl_parse.h's
+	// renderer-agnostic parser - see that header's own file comment for why
+	// this used to be an independently hand-ported copy of CPU's
+	// src/TheRestOfYourLife/mesh.h equivalents, and mtl_parse.h's own
+	// per-function comments for the parsing behavior each of these mirrors.
+	// Names/signatures/behavior are unchanged from before this
+	// consolidation, so load_obj_triangles_mtl_gpu() below needs no changes.
+
+	inline float3 to_float3_mtl(const mtl_parse::RGB& c) { return make_float3((float)c.r, (float)c.g, (float)c.b); }
+
 	inline std::unordered_map<std::string, float3> parse_mtl_gpu(const std::string& filename) {
 		std::unordered_map<std::string, float3> result;
-		std::ifstream file(filename);
-		if (!file.is_open()) {
-			static const char* kSearchPrefixes[] = {
-				"models/", "../models/", "../../models/",
-				"../../../models/", "../../../../models/", "../../../../../models/"
-			};
-			for (const char* prefix : kSearchPrefixes) {
-				file.clear();
-				file.open(std::string(prefix) + filename);
-				if (file.is_open()) break;
-			}
-		}
-		if (!file.is_open()) return result;
-
-		std::string line, current;
-		while (std::getline(file, line)) {
-			if (line.empty() || line[0] == '#') continue;
-			std::istringstream ss(line);
-			std::string tok;
-			ss >> tok;
-			if (tok == "newmtl") {
-				ss >> current;
-			} else if (tok == "Kd" && !current.empty()) {
-				float r, g, b;
-				ss >> r >> g >> b;
-				result[current] = make_float3(r, g, b);
-			}
-		}
+		for (const auto& [name, c] : mtl_parse::parse_kd(filename)) result[name] = to_float3_mtl(c);
 		return result;
 	}
 
-	// GPU counterpart of CPU's parse_mtl_textures(): maps material name ->
-	// its map_Kd (diffuse texture) path, exactly as written in the .mtl.
-	// Only materials with a map_Kd line appear in the result.
 	inline std::unordered_map<std::string, std::string> parse_mtl_textures_gpu(const std::string& filename) {
-		std::unordered_map<std::string, std::string> result;
-		std::ifstream file(filename);
-		if (!file.is_open()) {
-			static const char* kSearchPrefixes[] = {
-				"models/", "../models/", "../../models/",
-				"../../../models/", "../../../../models/", "../../../../../models/"
-			};
-			for (const char* prefix : kSearchPrefixes) {
-				file.clear();
-				file.open(std::string(prefix) + filename);
-				if (file.is_open()) break;
-			}
-		}
-		if (!file.is_open()) return result;
-
-		std::string line, current;
-		while (std::getline(file, line)) {
-			if (line.empty() || line[0] == '#') continue;
-			std::istringstream ss(line);
-			std::string tok;
-			ss >> tok;
-			if (tok == "newmtl") {
-				ss >> current;
-			} else if (tok == "map_Kd" && !current.empty()) {
-				// Rest-of-line rather than a single ss >> token: real
-				// texture filenames in these archives can contain literal
-				// spaces (e.g. Bistro's "Metal_ RollDoor_01/..."), which a
-				// single >> would silently truncate at. Also skips leading
-				// "-option numeric_args..." tokens (e.g. Gallery's own
-				// "map_Kd -bm 0.7 gallery.jpg") before the filename. See
-				// CPU's parse_mtl_textures() comment for the full rationale.
-				std::string path;
-				std::getline(ss, path);
-				size_t pos = path.find_first_not_of(" \t");
-				while (pos != std::string::npos && path[pos] == '-') {
-					size_t tokEnd = path.find_first_of(" \t", pos);
-					pos = (tokEnd == std::string::npos) ? std::string::npos
-														 : path.find_first_not_of(" \t", tokEnd);
-					while (pos != std::string::npos) {
-						size_t argEnd = path.find_first_of(" \t", pos);
-						std::string argTok = path.substr(pos, argEnd == std::string::npos ? std::string::npos : argEnd - pos);
-						char* endp = nullptr;
-						std::strtod(argTok.c_str(), &endp);
-						if (endp == argTok.c_str() || *endp != '\0') break;  // not purely numeric
-						pos = (argEnd == std::string::npos) ? std::string::npos
-															 : path.find_first_not_of(" \t", argEnd);
-					}
-				}
-				if (pos != std::string::npos) {
-					size_t end = path.find_last_not_of(" \t\r");
-					result[current] = path.substr(pos, end - pos + 1);
-				}
-			}
-		}
-		return result;
+		return mtl_parse::parse_map_kd(filename);
 	}
 
-	// GPU counterpart of CPU's parse_mtl_ke_textures(): maps material name
-	// -> its map_Ke (emissive texture) path, for materials with a real
-	// map_Ke but no plain scalar "Ke r g b" line (Gallery's own case).
 	inline std::unordered_map<std::string, std::string> parse_mtl_ke_textures_gpu(const std::string& filename) {
-		std::unordered_map<std::string, std::string> result;
-		std::ifstream file(filename);
-		if (!file.is_open()) {
-			static const char* kSearchPrefixes[] = {
-				"models/", "../models/", "../../models/",
-				"../../../models/", "../../../../models/", "../../../../../models/"
-			};
-			for (const char* prefix : kSearchPrefixes) {
-				file.clear();
-				file.open(std::string(prefix) + filename);
-				if (file.is_open()) break;
-			}
-		}
-		if (!file.is_open()) return result;
-
-		std::string line, current;
-		while (std::getline(file, line)) {
-			if (line.empty() || line[0] == '#') continue;
-			std::istringstream ss(line);
-			std::string tok;
-			ss >> tok;
-			if (tok == "newmtl") {
-				ss >> current;
-			} else if (tok == "map_Ke" && !current.empty()) {
-				std::string path;
-				std::getline(ss, path);
-				size_t pos = path.find_first_not_of(" \t");
-				while (pos != std::string::npos && path[pos] == '-') {
-					size_t tokEnd = path.find_first_of(" \t", pos);
-					pos = (tokEnd == std::string::npos) ? std::string::npos
-														 : path.find_first_not_of(" \t", tokEnd);
-					while (pos != std::string::npos) {
-						size_t argEnd = path.find_first_of(" \t", pos);
-						std::string argTok = path.substr(pos, argEnd == std::string::npos ? std::string::npos : argEnd - pos);
-						char* endp = nullptr;
-						std::strtod(argTok.c_str(), &endp);
-						if (endp == argTok.c_str() || *endp != '\0') break;  // not purely numeric
-						pos = (argEnd == std::string::npos) ? std::string::npos
-															 : path.find_first_not_of(" \t", argEnd);
-					}
-				}
-				if (pos != std::string::npos) {
-					size_t end = path.find_last_not_of(" \t\r");
-					result[current] = path.substr(pos, end - pos + 1);
-				}
-			}
-		}
-		return result;
+		return mtl_parse::parse_map_ke(filename);
 	}
 
-	// GPU counterpart of CPU's mtl_specular_params/parse_mtl_specular():
-	// maps material name -> its classic Blinn-Phong specular parameters
-	// (Ks, Ns, illum, Ni), read together in one pass since dispatching a
-	// material to Lambertian/Metal/Dielectric needs all of them jointly.
-	// illum/ni default to -1 ("not specified in the file").
 	struct MtlSpecularParamsGpu {
 		float3 ks = make_float3(0.0f, 0.0f, 0.0f);
 		float  ns = 0.0f;
 		int    illum = -1;
 		float  ni = -1.0f;
-		// See CPU's mtl_specular_params::tf comment - same default/meaning.
 		float3 tf = make_float3(1.0f, 1.0f, 1.0f);
 	};
 
 	inline std::unordered_map<std::string, MtlSpecularParamsGpu> parse_mtl_specular_gpu(const std::string& filename) {
 		std::unordered_map<std::string, MtlSpecularParamsGpu> result;
-		std::ifstream file(filename);
-		if (!file.is_open()) {
-			static const char* kSearchPrefixes[] = {
-				"models/", "../models/", "../../models/",
-				"../../../models/", "../../../../models/", "../../../../../models/"
-			};
-			for (const char* prefix : kSearchPrefixes) {
-				file.clear();
-				file.open(std::string(prefix) + filename);
-				if (file.is_open()) break;
-			}
-		}
-		if (!file.is_open()) return result;
-
-		std::string line, current;
-		while (std::getline(file, line)) {
-			if (line.empty() || line[0] == '#') continue;
-			std::istringstream ss(line);
-			std::string tok;
-			ss >> tok;
-			if (tok == "newmtl") {
-				ss >> current;
-			} else if (tok == "Ks" && !current.empty()) {
-				float r, g, b;
-				ss >> r >> g >> b;
-				result[current].ks = make_float3(r, g, b);
-			} else if (tok == "Ns" && !current.empty()) {
-				ss >> result[current].ns;
-			} else if (tok == "illum" && !current.empty()) {
-				ss >> result[current].illum;
-			} else if (tok == "Ni" && !current.empty()) {
-				ss >> result[current].ni;
-			} else if (tok == "Tf" && !current.empty()) {
-				float r, g, b;
-				ss >> r >> g >> b;
-				result[current].tf = make_float3(r, g, b);
-			}
+		for (const auto& [name, sp] : mtl_parse::parse_specular(filename)) {
+			MtlSpecularParamsGpu out;
+			out.ks = to_float3_mtl(sp.ks);
+			out.ns = (float)sp.ns;
+			out.illum = sp.illum;
+			out.ni = (float)sp.ni;
+			out.tf = to_float3_mtl(sp.tf);
+			result[name] = out;
 		}
 		return result;
 	}
 
-	// GPU counterpart of CPU's mtl_has_real_transmission_filter().
 	inline bool mtl_has_real_transmission_filter_gpu(const float3& tf) {
-		constexpr float kEpsilon = 0.05f;
-		return fabsf(tf.x - 1.0f) > kEpsilon ||
-			   fabsf(tf.y - 1.0f) > kEpsilon ||
-			   fabsf(tf.z - 1.0f) > kEpsilon;
+		return mtl_parse::has_real_transmission_filter(mtl_parse::RGB{tf.x, tf.y, tf.z});
 	}
 
-	// GPU counterpart of CPU's parse_mtl_alpha_textures(): maps material
-	// name -> its map_d (alpha-cutout mask) texture path. Matches "map_d"
-	// and, per the OBJ/.mtl spec's own alternate spelling, "map_D".
 	inline std::unordered_map<std::string, std::string> parse_mtl_alpha_textures_gpu(const std::string& filename) {
-		std::unordered_map<std::string, std::string> result;
-		std::ifstream file(filename);
-		if (!file.is_open()) {
-			static const char* kSearchPrefixes[] = {
-				"models/", "../models/", "../../models/",
-				"../../../models/", "../../../../models/", "../../../../../models/"
-			};
-			for (const char* prefix : kSearchPrefixes) {
-				file.clear();
-				file.open(std::string(prefix) + filename);
-				if (file.is_open()) break;
-			}
-		}
-		if (!file.is_open()) return result;
-
-		std::string line, current;
-		while (std::getline(file, line)) {
-			if (line.empty() || line[0] == '#') continue;
-			std::istringstream ss(line);
-			std::string tok;
-			ss >> tok;
-			if (tok == "newmtl") {
-				ss >> current;
-			} else if ((tok == "map_d" || tok == "map_D") && !current.empty()) {
-				std::string path;
-				std::getline(ss, path);
-				size_t start = path.find_first_not_of(" \t");
-				if (start != std::string::npos) {
-					size_t end = path.find_last_not_of(" \t\r");
-					result[current] = path.substr(start, end - start + 1);
-				}
-			}
-		}
-		return result;
+		return mtl_parse::parse_map_d(filename);
 	}
 
-	// GPU counterpart of CPU's phong_to_roughness().
 	inline float phong_to_roughness_gpu(float ns) {
-		return sqrtf(2.0f / (ns + 2.0f));
+		return (float)mtl_parse::phong_to_roughness(ns);
 	}
 
-	// GPU counterpart of CPU's kMeaningfulKsComponent: below this, an
-	// illum-2 material's Ks is treated as exporter boilerplate (near-zero
-	// rounding noise) rather than a real "this material is glossy" signal.
+	// Below this, an illum-2 material's Ks is treated as exporter
+	// boilerplate (near-zero rounding noise) rather than a real "this
+	// material is glossy" signal.
 	constexpr float kMeaningfulKsComponentGpu = 0.02f;
 
-	// GPU counterpart of CPU's parse_mtl_emission(): maps material name ->
-	// its Ke (emission) color. An explicit "Ke 0 0 0" is treated the same
-	// as no Ke line at all (see CPU's own comment for why) -- only
-	// materials with a non-degenerate Ke appear in the result.
 	inline std::unordered_map<std::string, float3> parse_mtl_emission_gpu(const std::string& filename) {
 		std::unordered_map<std::string, float3> result;
-		std::ifstream file(filename);
-		if (!file.is_open()) {
-			static const char* kSearchPrefixes[] = {
-				"models/", "../models/", "../../models/",
-				"../../../models/", "../../../../models/", "../../../../../models/"
-			};
-			for (const char* prefix : kSearchPrefixes) {
-				file.clear();
-				file.open(std::string(prefix) + filename);
-				if (file.is_open()) break;
-			}
-		}
-		if (!file.is_open()) return result;
-
-		std::string line, current;
-		while (std::getline(file, line)) {
-			if (line.empty() || line[0] == '#') continue;
-			std::istringstream ss(line);
-			std::string tok;
-			ss >> tok;
-			if (tok == "newmtl") {
-				ss >> current;
-			} else if (tok == "Ke" && !current.empty()) {
-				float r, g, b;
-				ss >> r >> g >> b;
-				if (r > 1e-6f || g > 1e-6f || b > 1e-6f)
-					result[current] = make_float3(r, g, b);
-			}
-		}
+		for (const auto& [name, c] : mtl_parse::parse_ke(filename)) result[name] = to_float3_mtl(c);
 		return result;
 	}
 
-	// GPU counterpart of CPU's parse_mtl_bump_textures(): maps material
-	// name -> its map_Bump (bump/normal) texture path. Matches "map_Bump",
-	// the all-lowercase "map_bump" actually used throughout this renderer's
-	// own Sponza/Bistro .mtl files, and the bare "bump" alias. See CPU's
-	// own comment for why the .mtl keyword alone can't say whether a given
-	// reference is a real scalar height map or a tangent-space RGB normal
-	// map -- is_grayscale_texture_gpu() below inspects the loaded pixel
-	// content to decide, mirroring CPU's is_grayscale_image().
 	inline std::unordered_map<std::string, std::string> parse_mtl_bump_textures_gpu(const std::string& filename) {
-		std::unordered_map<std::string, std::string> result;
-		std::ifstream file(filename);
-		if (!file.is_open()) {
-			static const char* kSearchPrefixes[] = {
-				"models/", "../models/", "../../models/",
-				"../../../models/", "../../../../models/", "../../../../../models/"
-			};
-			for (const char* prefix : kSearchPrefixes) {
-				file.clear();
-				file.open(std::string(prefix) + filename);
-				if (file.is_open()) break;
-			}
-		}
-		if (!file.is_open()) return result;
-
-		std::string line, current;
-		while (std::getline(file, line)) {
-			if (line.empty() || line[0] == '#') continue;
-			std::istringstream ss(line);
-			std::string tok;
-			ss >> tok;
-			if (tok == "newmtl") {
-				ss >> current;
-			} else if ((tok == "map_Bump" || tok == "map_bump" || tok == "bump") && !current.empty()) {
-				std::string path;
-				std::getline(ss, path);
-				size_t start = path.find_first_not_of(" \t");
-				if (start != std::string::npos) {
-					size_t end = path.find_last_not_of(" \t\r");
-					result[current] = path.substr(start, end - start + 1);
-				}
-			}
-		}
-		return result;
+		return mtl_parse::parse_map_bump(filename);
 	}
 
 	// GPU counterpart of CPU's is_grayscale_image(): samples an 8x8 grid of
@@ -1038,7 +761,10 @@ namespace {
 	// tex.pixelOffset) to distinguish a genuine grayscale height/
 	// displacement map (R==G==B everywhere) from a tangent-space RGB normal
 	// map (visibly blue/purple-tinted). See CPU's own comment for the
-	// threshold rationale.
+	// threshold rationale, and src/shared/mtl_parse.h's file comment for why
+	// this stays a separate per-backend implementation rather than moving
+	// into that shared header (it operates on this backend's own
+	// already-uploaded device pixel buffer, not a portable image type).
 	inline bool is_grayscale_texture_gpu(const SceneData& scene, int texIdx) {
 		if (texIdx < 0 || texIdx >= static_cast<int>(scene.textures.size())) return true;
 		const TextureData& tex = scene.textures[texIdx];
@@ -1057,21 +783,8 @@ namespace {
 		return max_diff <= 10;
 	}
 
-	// GPU counterpart of CPU's resolve_mtl_texture_path(): normalizes
-	// backslashes to forward slashes and strips leading "../"/"./"
-	// segments, then joins onto textureDir. See CPU's own comment
-	// (mesh.h) for why literal relative-path resolution isn't used.
 	inline std::string resolve_mtl_texture_path_gpu(const std::string& relativePath, const std::string& textureDir) {
-		std::string p = relativePath;
-		for (auto& c : p) if (c == '\\') c = '/';
-
-		size_t pos = 0;
-		while (true) {
-			if (p.compare(pos, 3, "../") == 0) pos += 3;
-			else if (p.compare(pos, 2, "./") == 0) pos += 2;
-			else break;
-		}
-		return textureDir + "/" + p.substr(pos);
+		return mtl_parse::resolve_texture_path(relativePath, textureDir);
 	}
 
 	// GPU counterpart of CPU's load_obj_mtl(): like load_obj_triangles_gpu()
