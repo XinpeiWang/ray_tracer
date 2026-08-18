@@ -428,7 +428,8 @@ static __device__ __forceinline__ bool sppm_sample_rough_dielectric(
 // sppm_gpu_material_supported()'s own comment.
 static __device__ __forceinline__ bool sppm_is_delta_material(MaterialType t) {
 	return t == MaterialType::RoughDielectric || t == MaterialType::Metal ||
-	       t == MaterialType::Dielectric || t == MaterialType::Conductor;
+	       t == MaterialType::Dielectric || t == MaterialType::Conductor ||
+	       t == MaterialType::RoughMetal;
 }
 
 // Importance-samples a new direction + beta multiplier at a Metal/Dielectric/
@@ -500,6 +501,35 @@ static __device__ __forceinline__ bool sppm_sample_delta_material(
 		float weight = (G1_wi > 1e-8f) ? G_wowi / G1_wi : 0.0f;
 		float3 F = FrConductorRGB(c_dot, mat.eta_c.x, mat.eta_c.y, mat.eta_c.z, mat.k_c.x, mat.k_c.y, mat.k_c.z);
 		out_atten = make_float3(F.x * weight, F.y * weight, F.z * weight);
+		out_dir   = normalize(wo_x*tan_v + wo_y*bitan + wo_z*n);
+		return true;
+	}
+	case MaterialType::RoughMetal: {
+		// GGX VNDF + flat-tint reflectance, no complex Fresnel (pbrt-v4/RTOW
+		// rough_metal) - same shape as MaterialType::Conductor above, minus
+		// FrConductorRGB (RoughMetalBxDF has no real Fresnel model). Direct,
+		// unmodified-math port of wavefront_kernels.cu's own
+		// MaterialType::RoughMetal case, matching this function's own header
+		// comment for Metal/Dielectric/Conductor.
+		float alpha  = sqrtf(mat.fuzz);
+		float3 up_v  = (fabsf(n.x) > 0.9f) ? make_float3(0, 1, 0) : make_float3(1, 0, 0);
+		float3 tan_v = normalize(cross(up_v, n));
+		float3 bitan = cross(n, tan_v);
+		float3 wi_w  = normalize(-dir_in);
+		float wi_x = dot(wi_w, tan_v), wi_y = dot(wi_w, bitan), wi_z = dot(wi_w, n);
+		if (wi_z <= 0.0f) return false;
+		TrowbridgeReitz<float> dist(alpha, alpha);
+		float wm_x, wm_y, wm_z;
+		dist.Sample_wm(wi_x, wi_y, wi_z, sppm_rand(seed), sppm_rand(seed), wm_x, wm_y, wm_z);
+		float c_dot = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
+		float wo_x = 2.0f*c_dot*wm_x - wi_x;
+		float wo_y = 2.0f*c_dot*wm_y - wi_y;
+		float wo_z = 2.0f*c_dot*wm_z - wi_z;
+		if (wo_z <= 0.0f) return false;
+		float G1_wi  = dist.G1(wi_x, wi_y, wi_z);
+		float G_wowi = dist.G(wo_x, wo_y, wo_z, wi_x, wi_y, wi_z);
+		float weight = (G1_wi > 1e-8f) ? G_wowi / G1_wi : 0.0f;
+		out_atten = make_float3(mat.albedo.x * weight, mat.albedo.y * weight, mat.albedo.z * weight);
 		out_dir   = normalize(wo_x*tan_v + wo_y*bitan + wo_z*n);
 		return true;
 	}
@@ -629,13 +659,15 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 		}
 
 		if (mat.type == MaterialType::Metal || mat.type == MaterialType::Dielectric ||
-		    mat.type == MaterialType::Conductor) {
+		    mat.type == MaterialType::Conductor || mat.type == MaterialType::RoughMetal) {
 			// Generalization beyond Phase 1's original RoughDielectric-only
 			// delta set (see sppm_is_delta_material()/sppm_sample_delta_
 			// material()'s own comments) -- covers B1/B2's rough metal
-			// spheres, A1's smooth glass sphere, and B4's polished-conductor
-			// gold/aluminium, none of which recorded a (physically wrong)
-			// Lambertian visible point before this change.
+			// spheres (MaterialType::RoughMetal since the Metal/rough_metal
+			// model-mismatch fix routed them off the plain Metal fuzz-mirror
+			// approximation), A1's smooth glass sphere, and B4's polished-
+			// conductor gold/aluminium, none of which recorded a (physically
+			// wrong) Lambertian visible point before this change.
 			float3 new_dir, atten;
 			if (!sppm_sample_delta_material(dir, payload.normal, mat, seed, new_dir, atten)) break;
 
@@ -829,7 +861,7 @@ extern "C" __global__ void __raygen__sppm_photon_pass() {
 			if (!sppm_sample_rough_dielectric(dir_cur, payload.normal, mat, seed, new_dir)) break;
 			beta_new = beta * mat.albedo;
 		} else if (mat.type == MaterialType::Metal || mat.type == MaterialType::Dielectric ||
-		           mat.type == MaterialType::Conductor) {
+		           mat.type == MaterialType::Conductor || mat.type == MaterialType::RoughMetal) {
 			// Generalization beyond Phase 1's original RoughDielectric-only
 			// delta set -- see sppm_sample_delta_material()'s own comment.
 			float3 atten;
