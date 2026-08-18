@@ -1037,7 +1037,22 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// coat/dielectric's own reflection hemisphere - see RoughDielectric's
 	// wo_z<=0 check and this function's own header comment on why
 	// transmission-side NEE is out of scope here).
-	auto evalGlossyF = [&](const float3& queryDir, float3& outF) -> bool {
+	//
+	// Also returns outPdf: the BSDF pdf AT THIS QUERIED DIRECTION (not the
+	// separately-tracked brdf_pdf_override, which is the pdf at the BSDF-
+	// sampled CONTINUATION direction computed once in evaluate_materials() -
+	// a different quantity). MIS needs the pdf at the direction actually
+	// being weighted; mirrors optix_device_helpers.h's NEE blocks, which
+	// compute a fresh {c,rm,rd,cd,cc}_bxdf.pdf(wi,...,ll/sk...) per light/sky
+	// sample rather than reusing the continuation-direction pdf. For
+	// Conductor/RoughMetal this is the BxDF's own real pdf() (a thin wrapper
+	// over ggx_vndf_reflection_pdf); RoughDielectric uses its own real
+	// pdf(); CoatedDiffuse/CoatedConductor have no closed-form pdf for their
+	// unbounded-depth random walk, so - matching optix_device_helpers.h's
+	// documented choice exactly - they reuse the coat's top-surface GGX
+	// VNDF pdf as a cheap shape-matched proxy (any valid pdf keeps MIS
+	// unbiased; this only affects variance, not correctness).
+	auto evalGlossyF = [&](const float3& queryDir, float3& outF, float& outPdf) -> bool {
 		if (matType != MaterialType::Conductor && matType != MaterialType::RoughDielectric &&
 			matType != MaterialType::CoatedDiffuse && matType != MaterialType::CoatedConductor &&
 			matType != MaterialType::RoughMetal)
@@ -1056,21 +1071,26 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		if (matType == MaterialType::Conductor) {
 			ConductorBxDF<float> bx{ fm.eta_c.x, fm.eta_c.y, fm.eta_c.z, fm.k_c.x, fm.k_c.y, fm.k_c.z, alpha, alpha };
 			bx.f(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, fr, fg, fb);
+			outPdf = bx.pdf(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z);
 		} else if (matType == MaterialType::RoughMetal) {
 			RoughMetalBxDF<float> bx{ fm.albedo.x, fm.albedo.y, fm.albedo.z, alpha, alpha };
 			bx.f(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, fr, fg, fb);
+			outPdf = bx.pdf(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z);
 		} else if (matType == MaterialType::RoughDielectric) {
 			RoughDielectricBxDF<float> bx{ fm.ior, alpha, alpha };
 			float v = bx.f(wi_x, wi_y, wi_z, nfEta, wo_x, wo_y, wo_z);
 			fr = fg = fb = v;
+			outPdf = bx.pdf(wi_x, wi_y, wi_z, nfEta, wo_x, wo_y, wo_z);
 		} else if (matType == MaterialType::CoatedDiffuse) {
 			CoatedDiffuseBxDF<float> bx{ fm.albedo.x, fm.albedo.y, fm.albedo.z, fm.ior, alpha, alpha };
 			uint64_t s0, s1; wf_random_seed64_pair(seed, s0, s1);
 			bx.f(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, s0, s1, fr, fg, fb);
+			outPdf = ggx_vndf_reflection_pdf(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, alpha, alpha);
 		} else {
 			CoatedConductorBxDF<float> bx{ fm.eta_c.x, fm.eta_c.y, fm.eta_c.z, fm.k_c.x, fm.k_c.y, fm.k_c.z, fm.ior, alpha, alpha };
 			uint64_t s0, s1; wf_random_seed64_pair(seed, s0, s1);
 			bx.f(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, s0, s1, fr, fg, fb);
+			outPdf = ggx_vndf_reflection_pdf(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, alpha, alpha);
 		}
 		outF = make_float3(fr, fg, fb);
 		return true;
@@ -1171,6 +1191,11 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			// applies to the phase-scatter case: `attenuation` there already
 			// equals the medium's single-scatter albedo (mat.albedo).
 			SS bsdf_color(1.f);
+			// Set inside the glossy else-branch below (evalGlossyF's outPdf,
+			// the BSDF pdf at to_light) - 0 for every non-glossy material,
+			// declared here (not nested inside that branch) so it's visible
+			// where brdf_pdf_l is computed just below the if/else chain.
+			float glossyPdf = 0.0f;
 			if (matType == MaterialType::Lambertian) {
 				bsdf_color = attenuation;
 			} else if (matType == MaterialType::NormalizedFresnel) {
@@ -1204,14 +1229,22 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 				bool isGlossyType = (matType == MaterialType::Conductor || matType == MaterialType::RoughDielectric ||
 					matType == MaterialType::CoatedDiffuse || matType == MaterialType::CoatedConductor ||
 					matType == MaterialType::RoughMetal);
-				if (evalGlossyF(to_light, fRgb)) {
+				if (evalGlossyF(to_light, fRgb, glossyPdf)) {
 					bsdf_val = 1.0f;
 					bsdf_color = liftUnboundedRGB(fRgb);
 				} else if (isGlossyType) {
 					bsdf_val = 0.0f;
 				}
 			}
-			float brdf_pdf_l = (brdf_pdf_override > 0.0f) ? brdf_pdf_override : (bsdf_val * cos_l);
+			// glossyPdf (the BSDF pdf evaluated AT to_light, from evalGlossyF
+			// above) takes priority for the 5 glossy types - brdf_pdf_override
+			// is the pdf at the unrelated BSDF-sampled continuation direction
+			// and must not be reused here (see evalGlossyF's own header
+			// comment). glossyPdf is 0 (falls through to the non-glossy
+			// branches) for every other material type, matching prior
+			// behavior exactly.
+			float brdf_pdf_l = (glossyPdf > 0.0f) ? glossyPdf
+				: (brdf_pdf_override > 0.0f) ? brdf_pdf_override : (bsdf_val * cos_l);
 			float mis_w = wf_mis(light_pdf, brdf_pdf_l);
 
 			// Spectral direct-light contribution
@@ -1297,6 +1330,9 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			// for Lambertian (direction-independent BRDF, safe to reuse here);
 			// NormalizedFresnel's bsdf_val is already a complete achromatic value.
 			SS bsdf_color(1.f);
+			// See the area-light block above for why this is declared here
+			// rather than nested inside the glossy else-branch.
+			float glossyPdf = 0.0f;
 			if (matType == MaterialType::Lambertian) {
 				bsdf_color = attenuation;
 			} else if (matType == MaterialType::NormalizedFresnel) {
@@ -1315,14 +1351,18 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 				bool isGlossyType = (matType == MaterialType::Conductor || matType == MaterialType::RoughDielectric ||
 					matType == MaterialType::CoatedDiffuse || matType == MaterialType::CoatedConductor ||
 					matType == MaterialType::RoughMetal);
-				if (evalGlossyF(sky_dir, fRgb)) {
+				if (evalGlossyF(sky_dir, fRgb, glossyPdf)) {
 					bsdf_val = 1.0f;
 					bsdf_color = liftUnboundedRGB(fRgb);
 				} else if (isGlossyType) {
 					bsdf_val = 0.0f;
 				}
 			}
-			float brdf_pdf_sky = (brdf_pdf_override > 0.0f) ? brdf_pdf_override : (bsdf_val * cos_l);
+			// See the area-light block above: glossyPdf (pdf at sky_dir) takes
+			// priority over brdf_pdf_override (pdf at the unrelated
+			// continuation direction) for the 5 glossy types.
+			float brdf_pdf_sky = (glossyPdf > 0.0f) ? glossyPdf
+				: (brdf_pdf_override > 0.0f) ? brdf_pdf_override : (bsdf_val * cos_l);
 			float mis_w = wf_mis(pdf_sky, brdf_pdf_sky);
 
 			// Uplift RGB sky_Le_val (the real per-direction radiance for an
@@ -1392,12 +1432,14 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		} else {
 			// See the area-light block's identical else-branch for the full
 			// rationale (evalGlossyF/isGlossyType split). No MIS weight for
-			// punctual (delta) lights, same as every other material here.
-			float3 fRgb;
+			// punctual (delta) lights, same as every other material here -
+			// the pdf-at-wi output isn't needed here, unlike the area/sky
+			// NEE blocks above.
+			float3 fRgb; float unusedPdf;
 			bool isGlossyType = (matType == MaterialType::Conductor || matType == MaterialType::RoughDielectric ||
 				matType == MaterialType::CoatedDiffuse || matType == MaterialType::CoatedConductor ||
 				matType == MaterialType::RoughMetal);
-			if (evalGlossyF(wi, fRgb)) {
+			if (evalGlossyF(wi, fRgb, unusedPdf)) {
 				bsdf_val = 1.0f;
 				bsdf_color = liftUnboundedRGB(fRgb);
 			} else if (isGlossyType) {
