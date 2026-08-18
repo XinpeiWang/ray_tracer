@@ -216,6 +216,22 @@ TEST_F(ScanTree, DescendsOneLevelIntoSubdirectoriesToFindEachScenesOwnFolder) {
 	EXPECT_EQ(found[1].name, "top");
 }
 
+TEST_F(ScanTree, NestedFlagDistinguishesDownloadedCollectionsFromBundledScenes) {
+	// scene_registry.h reads this to set SceneDescriptor::requires_files: a
+	// scene tucked into its own subdirectory (the "one folder per scene"
+	// shape a downloaded collection like github.com/mmp/pbrt-v4-scenes
+	// uses) needs assets beyond what ships in this repo; one sitting flat in
+	// the scanned directory doesn't.
+	write("top.pbrt", "Camera \"perspective\"\nFilm \"rgb\"\n");
+	write("ganesha/ganesha.pbrt", "Camera \"perspective\"\nFilm \"rgb\"\n");
+
+	const std::vector<pbrt_discover::Discovered> found =
+		pbrt_discover::scanDirectory(root_);
+	ASSERT_EQ(found.size(), 2u);
+	EXPECT_TRUE(found[0].nested) << "ganesha/ganesha.pbrt is one level down";
+	EXPECT_FALSE(found[1].nested) << "top.pbrt sits directly in the scanned directory";
+}
+
 TEST_F(ScanTree, DoesNotDescendMoreThanOneLevel) {
 	// A fragment's own nested asset folders (geometry/, textures/) must stay
 	// unlisted - only the one level that separates a scene's own folder from

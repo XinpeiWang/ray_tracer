@@ -6,14 +6,20 @@
  *
  * These exist to demonstrate the Custom Scenes discovery feature and, until
  * now, had no automated coverage at all: CpuGpuLightParityTest
- * (cpu_gpu_comparison_tests.cpp) skips every pbrt-loaded scene outright
- * (SceneDescriptor::requires_files is true for all of them, large downloaded
- * collection or small bundled file alike), and BundledPbrtLightCoverageTest
- * (pbrt_gpu_light_coverage_tests.cpp) only checks that the GPU can sample
- * every emissive shape - it never actually renders a frame. Unlike the large
- * pbrt-v4-scenes downloads (gitignored, not always present - see
- * pbrt_scenes/README.md), these 5 files are git-tracked and need no external
- * assets beyond what ships in the repo (killeroo-simple.pbrt's `Include` of
+ * (cpu_gpu_comparison_tests.cpp) used to skip every pbrt-loaded scene
+ * outright, because SceneDescriptor::requires_files was set unconditionally
+ * true for anything pbrt_discover found - large downloaded collection or
+ * small bundled file alike, with nothing distinguishing them. It now reads
+ * pbrt_discover::Discovered::nested instead (see that field's comment), so a
+ * scene sitting flat in pbrt_scenes/ - like these - reports requires_files
+ * false and is no longer skipped there; this fixture remains useful as a
+ * fast, targeted, always-on regression check independent of that broader
+ * suite. BundledPbrtLightCoverageTest (pbrt_gpu_light_coverage_tests.cpp)
+ * only checks that the GPU can sample every emissive shape - it never
+ * actually renders a frame. Unlike the large pbrt-v4-scenes downloads
+ * (gitignored, not always present - see pbrt_scenes/README.md), these 5
+ * files are git-tracked and need no external assets beyond what ships in
+ * the repo (killeroo-simple.pbrt's `Include` of
  * pbrt_scenes/geometry/killeroo.pbrt is itself bundled), so they are always
  * present and cheap to render - exactly what a fast regression fixture needs.
  */

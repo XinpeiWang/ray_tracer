@@ -292,17 +292,27 @@ TEST_F(CPUGPUComparisonTest, BothProduceSameDimensions) {
 // emissive primitives - which is exact, not statistical.
 // ============================================================================
 
-// Recursively counts emissive (diffuse_light-material) quad/sphere primitives
-// in a CPU hittable subtree. Descends through hittable_list/translate/
-// rotate_y, the only wrapper types this codebase's scene builders place area
-// lights inside/under. Treated as opaque (0 lights) otherwise: bvh_node,
-// constant_medium, triangle, bilinear_patch, curve, etc. - verified against
+// Recursively counts emissive (diffuse_light-material) quad/sphere/triangle
+// primitives in a CPU hittable subtree. Descends through hittable_list/
+// translate/rotate_y, the only wrapper types this codebase's scene builders
+// place area lights inside/under. Treated as opaque (0 lights) otherwise:
+// bvh_node, constant_medium, bilinear_patch, curve, etc. - verified against
 // every current scene builder that no light is ever nested inside one of
 // these (bvh_node in particular wraps bulk non-emissive geometry piles, e.g.
 // build_triangle_mesh_scene's icosahedron, with lights always added as
 // separate top-level/translate/rotate_y siblings). If a future scene breaks
 // that assumption, this under-counts on the CPU side and the test below
 // fails loudly rather than silently passing.
+//
+// triangle is counted alongside quad/sphere, not left opaque like the rest
+// of that list: pbrt_cpu_builder.h's AreaLightSource handling (see
+// pbrt_cpu_builder.h) adds individual emissive triangles straight to the
+// world/lights lists for a trianglemesh area light - exactly the shape every
+// bundled pbrt_scenes/*.pbrt example scene's light uses (two triangles
+// forming a quad), so leaving triangle opaque here silently reported 0 CPU
+// lights against a real, non-zero GPU count (GpuLightKind::Triangle) for
+// every one of them the moment they stopped being skipped by
+// SceneDescriptor::requires_files.
 static int count_cpu_emissive_lights(const std::shared_ptr<hittable>& h);
 
 static int count_cpu_emissive_lights_list(const hittable_list& list) {
@@ -320,6 +330,8 @@ static int count_cpu_emissive_lights(const std::shared_ptr<hittable>& h) {
 		return std::dynamic_pointer_cast<diffuse_light>(q->get_material()) ? 1 : 0;
 	if (auto s = std::dynamic_pointer_cast<sphere>(h))
 		return std::dynamic_pointer_cast<diffuse_light>(s->get_material()) ? 1 : 0;
+	if (auto t = std::dynamic_pointer_cast<triangle>(h))
+		return std::dynamic_pointer_cast<diffuse_light>(t->get_material()) ? 1 : 0;
 	return 0;
 }
 
@@ -335,15 +347,64 @@ TEST_P(CpuGpuLightParityTest, LightCountMatches) {
 	if (!s->gpu_compatible) GTEST_SKIP() << s->name << " is not GPU-compatible";
 	if (s->requires_files) GTEST_SKIP() << s->name << " requires external assets";
 
-	hittable_list world = s->build_world();
-	int cpuLights = count_cpu_emissive_lights_list(world);
+	// pbrt-loaded scenes (category UserScenes) are the one case where
+	// build_world()'s top-level walk can't see the lights at all:
+	// pbrt_cpu_builder.h's build() wraps the ENTIRE world - lights included -
+	// in a single bvh_node for trace performance (see its own "a flat list
+	// would make every ray test every primitive" comment), and bvh_node is
+	// intentionally opaque to count_cpu_emissive_lights (its own comment
+	// explains why: every OTHER scene builder keeps lights as un-BVH'd
+	// top-level/translate/rotate_y siblings, so walking past a bvh_node was
+	// safe to skip - until a builder came along that BVH-wraps the lights
+	// too). build_lights() sidesteps this cleanly: pbrt_cpu_builder.h adds
+	// every emissive triangle/sphere/patch to it in the same statement that
+	// adds it to world (see e.g. its `world.add(tri); ... lights.add(tri);`
+	// pairing), so it is always a flat, accurate, un-BVH'd mirror of the
+	// world's emissive shapes for these scenes specifically. Every other
+	// category keeps using build_world() - unchanged from before - since
+	// build_lights() isn't guaranteed complete there (e.g. legacy scenes
+	// with a no_lights placeholder despite real area lights in the world).
+	const bool isPbrtLoaded = std::string(s->category) == SceneCategories::UserScenes;
+	int cpuLights = isPbrtLoaded
+		? count_cpu_emissive_lights_list(s->build_lights())
+		: count_cpu_emissive_lights_list(s->build_world());
 	int gpuLights = gpu_scene_light_count(s->id.c_str(), 100, 100);
 
 	ASSERT_GE(gpuLights, 0) << s->name << " (id " << s->id << "): GPU scene build failed";
-	EXPECT_EQ(cpuLights, gpuLights)
-		<< s->name << " (id " << s->id << "): CPU scene has " << cpuLights
-		<< " emissive light(s), GPU scene has " << gpuLights
-		<< " - the two builders have drifted out of sync.";
+
+	if (isPbrtLoaded) {
+		// Exact equality doesn't hold here for a real, deliberate reason:
+		// pbrt_gpu_builder.h merges a pair of coplanar, same-emission
+		// triangles that together form a parallelogram into ONE quad-
+		// sampled light (see scene_builder.cpp's own "took the per-triangle
+		// path rather than the cheaper merged-quad one" comment) - a real
+		// GPU-side sampling-efficiency optimization pbrt_cpu_builder.h's
+		// flat per-triangle `lights` list has no equivalent for (every
+		// bundled pbrt_scenes/*.pbrt example's light is authored as exactly
+		// this two-triangle-rectangle shape, which is why this was never
+		// exercised before these scenes had the correct requires_files
+		// value). Each merge accounts for EXACTLY two CPU triangles - never
+		// more, never a triangle vanishing outright - so gpuLights is
+		// bounded tightly: at most cpuLights (nothing merges away for
+		// free), at least half of it rounded up (the most any merge pass
+		// could combine). A real drift - a light present on one side and
+		// silently missing on the other - still falls outside this range
+		// and fails loudly.
+		const int minPlausibleGpuLights = (cpuLights + 1) / 2;
+		EXPECT_GE(gpuLights, minPlausibleGpuLights)
+			<< s->name << " (id " << s->id << "): CPU scene has " << cpuLights
+			<< " emissive light(s), GPU scene has only " << gpuLights
+			<< " - more than a parallelogram-pair merge can explain.";
+		EXPECT_LE(gpuLights, cpuLights)
+			<< s->name << " (id " << s->id << "): GPU scene has " << gpuLights
+			<< " emissive light(s), more than CPU's " << cpuLights
+			<< " - a merge can only reduce the count, never grow it.";
+	} else {
+		EXPECT_EQ(cpuLights, gpuLights)
+			<< s->name << " (id " << s->id << "): CPU scene has " << cpuLights
+			<< " emissive light(s), GPU scene has " << gpuLights
+			<< " - the two builders have drifted out of sync.";
+	}
 }
 
 INSTANTIATE_TEST_SUITE_P(

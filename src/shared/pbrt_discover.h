@@ -51,6 +51,17 @@ struct Discovered {
 	// this to tell a real top-level scene apart from a fragment that just
 	// happens to parse cleanly.
 	bool declaresCamera = false;
+	// True when this file was found one level down, inside a subdirectory
+	// of the scanned directory, rather than directly in it. scanDirectory()'s
+	// own comment documents why: published collections (e.g.
+	// github.com/mmp/pbrt-v4-scenes) package each scene as its own folder of
+	// a .pbrt plus that scene's geometry/textures/bsdfs, which is exactly
+	// what the one-level descent is there to find. A hand-authored scene
+	// meant to be self-contained and checked into this repo has no reason to
+	// need that folder-of-assets shape, so it sits directly in the scanned
+	// directory instead. scene_registry.h uses this - not a per-file guess -
+	// to set SceneDescriptor::requires_files.
+	bool nested = false;
 };
 
 namespace detail {
@@ -173,16 +184,26 @@ inline std::vector<Discovered> scanDirectory(const std::string &dir) {
 	std::error_code ec;
 	if (!std::filesystem::is_directory(dir, ec)) return found;
 
-	std::vector<std::string> paths;
-	detail::collectPbrtFiles(dir, paths);
+	// Collected separately, not into one list, so each path can be tagged
+	// with which pass found it before everything is sorted back together -
+	// see Discovered::nested's comment for what that tag drives.
+	std::vector<std::string> topLevelPaths, nestedPaths;
+	detail::collectPbrtFiles(dir, topLevelPaths);
 	for (const auto &entry : std::filesystem::directory_iterator(dir, ec)) {
 		if (ec) break;
-		if (entry.is_directory(ec)) detail::collectPbrtFiles(entry.path(), paths);
+		if (entry.is_directory(ec)) detail::collectPbrtFiles(entry.path(), nestedPaths);
 	}
-	std::sort(paths.begin(), paths.end());
 
-	for (const std::string &p : paths) {
+	std::vector<std::pair<std::string, bool>> paths;
+	paths.reserve(topLevelPaths.size() + nestedPaths.size());
+	for (std::string &p : topLevelPaths) paths.emplace_back(std::move(p), false);
+	for (std::string &p : nestedPaths) paths.emplace_back(std::move(p), true);
+	std::sort(paths.begin(), paths.end(),
+			  [](const auto &a, const auto &b) { return a.first < b.first; });
+
+	for (const auto &[p, isNested] : paths) {
 		Discovered d = describeFile(p);
+		d.nested = isNested;
 		if (d.ok && !d.declaresCamera) continue;
 		found.push_back(d);
 	}

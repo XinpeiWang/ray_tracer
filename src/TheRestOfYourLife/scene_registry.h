@@ -1466,7 +1466,14 @@ inline void append(std::vector<SceneDescriptor>& registry) {
         // which. "Unknown" is the truthful answer at this point.
         s.performance = "Unknown";
         s.recommended_spp = d.samplesPerPixel;
-        s.requires_files = true;
+        // Not unconditionally true: a hand-authored scene bundled directly
+        // in pbrt_scenes/ (git-tracked, no assets beyond the repo checkout)
+        // is exactly as self-contained as a builtin scene, but a scene from
+        // a downloaded per-scene-folder collection (gitignored, possibly
+        // hundreds of MB of its own geometry/textures) is not - see
+        // pbrt_discover::Discovered::nested's comment for how that
+        // distinction is made.
+        s.requires_files = d.nested;
         // gpu/optix/pbrt_gpu_builder.h consumes the same FlatScene this does,
         // so both backends render the same file, and they now agree on what
         // they can sample: sphere, parallelogram AND individual-triangle area
