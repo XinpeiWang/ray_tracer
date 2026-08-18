@@ -113,6 +113,20 @@ __device__ __forceinline__ float3 wf_rand3(unsigned int& seed) {
 	return make_float3(wf_rand(seed), wf_rand(seed), wf_rand(seed));
 }
 
+// Builds two independent 64-bit seeds (mirrors optix_device_helpers.h's
+// random_seed64_pair()) for the layered_detail::PCG32 RNG that
+// CoatedDiffuseBxDF::f()/CoatedConductorBxDF::f() (src/shared/bxdfs_layered.h)
+// run their internal random walk with - used when NEE needs a fresh
+// stochastic f() evaluation toward a light direction.
+__device__ __forceinline__ void wf_random_seed64_pair(unsigned int& seed, uint64_t& s0, uint64_t& s1) {
+	unsigned int a = (seed = wf_pcg(seed));
+	unsigned int b = (seed = wf_pcg(seed));
+	unsigned int c = (seed = wf_pcg(seed));
+	unsigned int d = (seed = wf_pcg(seed));
+	s0 = (uint64_t(a) << 32) | uint64_t(b);
+	s1 = (uint64_t(c) << 32) | uint64_t(d);
+}
+
 __device__ __forceinline__ float3 wf_rand_unit(unsigned int& seed) {
 	while (true) {
 		float3 p = 2.0f * wf_rand3(seed) - make_float3(1.0f, 1.0f, 1.0f);
@@ -893,12 +907,28 @@ extern "C" __global__ void generate_camera_rays(
 // MaterialType::NormalizedFresnel (nfEta = mat.ior for a genuine hit, or the
 // Subsurface material's own eta for a BSSRDF exit point - see
 // resolve_bssrdf_exit()) recomputes the achromatic Fresnel-weighted formula;
-// anything else falls back to the flat Lambertian default (every non-
-// specular material either caller ever reaches this with is one of the two
+// MaterialType::Conductor/RoughDielectric/CoatedDiffuse/CoatedConductor (glossy
+// - EffectivelySmooth() surfaces stay is_specular=true and never reach here)
+// recompute a real per-direction, per-channel f() via the shared CPU_GPU BxDF
+// templates (src/shared/bxdfs_conductor.h, bxdfs_layered.h) using `matIdx` to
+// look up the full MaterialData (fuzz/ior/eta_c/k_c/albedo - `nfEta` alone
+// isn't enough for these); RoughDielectric reuses the `nfEta` slot to carry
+// its own precomputed eta (front_face ? 1/ior : ior) instead of mat.ior
+// directly, mirroring how the two uses are already mutually exclusive.
+// `phaseWo`/`matIdx`-driven materials also reuse phaseWo as `wi_world` (see
+// its own comment below) to reconstruct the local shading frame; anything
+// else falls back to the flat Lambertian default (every remaining non-
+// specular material either caller ever reaches this with is one of the
 // above - is_specular materials skip the whole NEE block, matching the
-// original inline code's own `if (!is_specular)` gate).
+// original inline code's own `if (!is_specular)` gate). RoughDielectric's NEE
+// here only covers the reflection hemisphere (cos_l > 0, same gate every
+// other material gets) - unlike the recursive backend's two-sided glass NEE,
+// extending the transmission side would mean threading a flip flag through
+// every one of this shared function's 3 NEE blocks; skipped as a deliberate,
+// documented scope reduction (still correct/unbiased, just misses the rare
+// "light seen straight through frosted glass" contribution).
 __device__ __forceinline__ void wf_finish_material_scatter(
-	MaterialType matType, float nfEta,
+	MaterialType matType, float nfEta, int matIdx,
 	const float3& normal, const float3& hit_point,
 	unsigned int& seed,
 	const SampledSpectrum<kWFNWavelengths>& throughput,
@@ -914,7 +944,10 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// specular and never clear the `if (!is_specular)` gate below). phaseWo is
 	// the direction back toward where the ray came from (-incoming ray dir,
 	// matching CPU hg_phase_pdf's own `wo`); phaseG is the material's HG
-	// asymmetry (mat.fuzz). Harmless/unused for every other material type.
+	// asymmetry (mat.fuzz). ALSO reused (same "-incoming ray dir" meaning) as
+	// `wi_world` by the Conductor/RoughDielectric/CoatedDiffuse/CoatedConductor
+	// glossy branches above to rebuild their local shading frame - harmless/
+	// unused for every other material type.
 	const float3& phaseWo, float phaseG,
 	int pixelIndex, int depth,
 	const SphereData* spheres, const QuadData* quads,
@@ -944,6 +977,72 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		atomicAdd(&framebuffer[pixIdx].x, r);
 		atomicAdd(&framebuffer[pixIdx].y, g);
 		atomicAdd(&framebuffer[pixIdx].z, b);
+	};
+
+	// Real per-direction, per-channel f() for the 4 glossy (non-
+	// EffectivelySmooth) BxDF-templated materials, via the same CPU_GPU
+	// structs already verified on CPU (#222) and the recursive backend
+	// (#229) - reconstructs the local shading frame from `normal` alone
+	// (deterministic, matches every per-material frame-construction formula
+	// in evaluate_materials()'s own switch exactly) and `phaseWo` as wi_world
+	// (see that parameter's own comment). Returns false - meaning "no
+	// contribution, not an error" - for a matType this function doesn't
+	// handle, or when the queried direction falls in a hemisphere the
+	// material can't reach from wi (grazing/back-facing wi, or wo below the
+	// coat/dielectric's own reflection hemisphere - see RoughDielectric's
+	// wo_z<=0 check and this function's own header comment on why
+	// transmission-side NEE is out of scope here).
+	auto evalGlossyF = [&](const float3& queryDir, float3& outF) -> bool {
+		if (matType != MaterialType::Conductor && matType != MaterialType::RoughDielectric &&
+			matType != MaterialType::CoatedDiffuse && matType != MaterialType::CoatedConductor)
+			return false;
+		float3 n = normal;
+		float3 up = (fabsf(n.x) > 0.9f) ? make_float3(0.0f,1.0f,0.0f) : make_float3(1.0f,0.0f,0.0f);
+		float3 tanv = normalize(cross(up, n));
+		float3 bitv = cross(n, tanv);
+		float wi_x = dot(phaseWo, tanv), wi_y = dot(phaseWo, bitv), wi_z = dot(phaseWo, n);
+		if (wi_z <= 0.0f) return false;
+		float wo_x = dot(queryDir, tanv), wo_y = dot(queryDir, bitv), wo_z = dot(queryDir, n);
+		if (wo_z <= 0.0f) return false;
+		const MaterialData& fm = materials[matIdx];
+		float alpha = sqrtf(fm.fuzz);
+		float fr = 0.0f, fg = 0.0f, fb = 0.0f;
+		if (matType == MaterialType::Conductor) {
+			ConductorBxDF<float> bx{ fm.eta_c.x, fm.eta_c.y, fm.eta_c.z, fm.k_c.x, fm.k_c.y, fm.k_c.z, alpha, alpha };
+			bx.f(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, fr, fg, fb);
+		} else if (matType == MaterialType::RoughDielectric) {
+			RoughDielectricBxDF<float> bx{ fm.ior, alpha, alpha };
+			float v = bx.f(wi_x, wi_y, wi_z, nfEta, wo_x, wo_y, wo_z);
+			fr = fg = fb = v;
+		} else if (matType == MaterialType::CoatedDiffuse) {
+			CoatedDiffuseBxDF<float> bx{ fm.albedo.x, fm.albedo.y, fm.albedo.z, fm.ior, alpha, alpha };
+			uint64_t s0, s1; wf_random_seed64_pair(seed, s0, s1);
+			bx.f(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, s0, s1, fr, fg, fb);
+		} else {
+			CoatedConductorBxDF<float> bx{ fm.eta_c.x, fm.eta_c.y, fm.eta_c.z, fm.k_c.x, fm.k_c.y, fm.k_c.z, fm.ior, alpha, alpha };
+			uint64_t s0, s1; wf_random_seed64_pair(seed, s0, s1);
+			bx.f(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, s0, s1, fr, fg, fb);
+		}
+		outF = make_float3(fr, fg, fb);
+		return true;
+	};
+
+	// Uplift an unbounded-positive RGB f() value (can exceed 1, unlike a
+	// plain reflectance) to spectral - same technique as evaluate_materials()'s
+	// own unboundedSpectrum lambda, deliberately WITHOUT the D65 illuminant
+	// factor liftEmission below applies (that factor belongs to light sources,
+	// not BRDF values).
+	auto liftUnboundedRGB = [&](float3 rgb) -> SS {
+		float m = rgb.x > rgb.y ? (rgb.x > rgb.z ? rgb.x : rgb.z) : (rgb.y > rgb.z ? rgb.y : rgb.z);
+		float sc = 2.f * m;
+		if (sc <= 0.f) return SS(0.f);
+		float c0, c1, c2;
+		dev_srgb_to_coeffs(rgb.x / sc, rgb.y / sc, rgb.z / sc, c0, c1, c2);
+		RGBSigmoidPolynomial poly(c0, c1, c2);
+		SS s(0.f);
+		for (int i = 0; i < kWFNWavelengths; ++i)
+			s[i] = sc * poly(swl.lambda[i]);
+		return s;
 	};
 
 	// -------------------------------------------------------------------------
@@ -1034,6 +1133,33 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			} else if (isPhase) {
 				bsdf_val = wf_hg_phase_value(dot(phaseWo, to_light), phaseG);
 				bsdf_color = attenuation;
+			} else {
+				// Conductor/RoughDielectric/CoatedDiffuse/CoatedConductor
+				// (glossy) - see evalGlossyF's own comment. bsdf_val=1 folds
+				// the whole per-channel f() into bsdf_color instead of
+				// splitting it into a scalar shape * color like the
+				// Lambertian/NormalizedFresnel cases above (those have an
+				// achromatic BRDF shape; this one doesn't). evalGlossyF
+				// itself returns false both for "not one of my 4 types" (in
+				// which case leave bsdf_val/bsdf_color at their Lambertian-
+				// shaped defaults, unchanged from before this else - matches
+				// e.g. NormalMappedLambertian's existing behavior, which
+				// reaches here as matType==NormalMappedLambertian, not
+				// Lambertian, and has relied on that same fallback since
+				// before this NEE extension existed) and "wrong hemisphere
+				// for one of my 4 types" (this light sits behind the glass'
+				// reflection side) - only the second case should zero the
+				// contribution, so explicitly re-check matType here rather
+				// than trusting evalGlossyF's return value alone.
+				float3 fRgb;
+				bool isGlossyType = (matType == MaterialType::Conductor || matType == MaterialType::RoughDielectric ||
+					matType == MaterialType::CoatedDiffuse || matType == MaterialType::CoatedConductor);
+				if (evalGlossyF(to_light, fRgb)) {
+					bsdf_val = 1.0f;
+					bsdf_color = liftUnboundedRGB(fRgb);
+				} else if (isGlossyType) {
+					bsdf_val = 0.0f;
+				}
 			}
 			float brdf_pdf_l = (brdf_pdf_override > 0.0f) ? brdf_pdf_override : (bsdf_val * cos_l);
 			float mis_w = wf_mis(light_pdf, brdf_pdf_l);
@@ -1132,6 +1258,18 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			} else if (isPhase) {
 				bsdf_val = wf_hg_phase_value(dot(phaseWo, sky_dir), phaseG);
 				bsdf_color = attenuation;
+			} else {
+				// See the area-light block's identical else-branch for the
+				// full rationale (evalGlossyF/isGlossyType split).
+				float3 fRgb;
+				bool isGlossyType = (matType == MaterialType::Conductor || matType == MaterialType::RoughDielectric ||
+					matType == MaterialType::CoatedDiffuse || matType == MaterialType::CoatedConductor);
+				if (evalGlossyF(sky_dir, fRgb)) {
+					bsdf_val = 1.0f;
+					bsdf_color = liftUnboundedRGB(fRgb);
+				} else if (isGlossyType) {
+					bsdf_val = 0.0f;
+				}
 			}
 			float brdf_pdf_sky = (brdf_pdf_override > 0.0f) ? brdf_pdf_override : (bsdf_val * cos_l);
 			float mis_w = wf_mis(pdf_sky, brdf_pdf_sky);
@@ -1200,6 +1338,19 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			if (nf_c <= 0.0f) nf_c = 1e-6f;
 			float fr_l = FrDielectric(cos_l, nfEta);
 			bsdf_val = (1.0f - fr_l) / (nf_c * 3.14159265f);
+		} else {
+			// See the area-light block's identical else-branch for the full
+			// rationale (evalGlossyF/isGlossyType split). No MIS weight for
+			// punctual (delta) lights, same as every other material here.
+			float3 fRgb;
+			bool isGlossyType = (matType == MaterialType::Conductor || matType == MaterialType::RoughDielectric ||
+				matType == MaterialType::CoatedDiffuse || matType == MaterialType::CoatedConductor);
+			if (evalGlossyF(wi, fRgb)) {
+				bsdf_val = 1.0f;
+				bsdf_color = liftUnboundedRGB(fRgb);
+			} else if (isGlossyType) {
+				bsdf_val = 0.0f;
+			}
 		}
 
 		// Uplift RGB Li to spectrum (same pattern as liftEmission above,
@@ -1426,6 +1577,12 @@ extern "C" __global__ void evaluate_materials(
 	// wf_finish_material_scatter's NEE block for real phase-function NEE+MIS.
 	// Unused (harmless zero) for every other material type.
 	float3 phaseWo = make_float3(0.0f, 0.0f, 0.0f);
+	// wf_finish_material_scatter's `nfEta` slot - mat.ior by default
+	// (correct for MaterialType::NormalizedFresnel); MaterialType::
+	// RoughDielectric's glossy branch overrides this to its own precomputed
+	// eta (front_face ? 1/ior : ior), which is NOT the same value for a
+	// back-face hit - see that case's own comment.
+	float matEta = mat.ior;
 	float  phaseG  = 0.0f;
 
 	// Helper: uplift RGB albedo to SampledSpectrum via device sigmoid polynomial
@@ -1669,7 +1826,34 @@ extern "C" __global__ void evaluate_materials(
 			attenuation = SS(w);
 		}
 		scattered   = true;
-		is_specular = true;
+
+		// Real NEE/MIS for glossy (non-EffectivelySmooth) rough glass, via
+		// wf_finish_material_scatter's shared evalGlossyF (see its own
+		// comment - reflection-hemisphere-only, a documented scope
+		// reduction vs. the recursive backend's two-sided glass NEE).
+		// matEta is overridden to rd_ri (front_face ? 1/ior : ior) since
+		// wf_finish_material_scatter's `nfEta` slot otherwise carries plain
+		// mat.ior (correct for NormalizedFresnel, wrong for a back-face
+		// RoughDielectric hit). phaseWo carries the UNFLIPPED wi_w (matches
+		// evalGlossyF's own, equally unflipped, frame reconstruction -
+		// the defensive wi_z<0 flip a few lines up is a rare-edge-case
+		// safety net for the BSDF-sampled continuation only, not something
+		// evalGlossyF needs to replicate: a genuinely non-front-facing wi
+		// there just yields zero NEE contribution instead of the wrong
+		// answer). pdf uses the REAL RoughDielectricBxDF::pdf() (not the
+		// GGX-reflection-shape proxy Conductor/CoatedDiffuse/CoatedConductor
+		// use below) since it already correctly spans both lobes - needed
+		// because the BSDF-sampled continuation direction can legitimately
+		// be a refraction even when NEE itself only covers reflection.
+		if (!rd_dist.EffectivelySmooth()) {
+			is_specular = false;
+			matEta = rd_ri;
+			RoughDielectricBxDF<float> rd_bxdf{ mat.ior, rd_alpha, rd_alpha };
+			brdf_pdf_override = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, wo_x, wo_y, wo_z);
+			phaseWo = wi_w;
+		} else {
+			is_specular = true;
+		}
 		break;
 	}
 	case MaterialType::Conductor: {
@@ -1697,7 +1881,22 @@ extern "C" __global__ void evaluate_materials(
 		attenuation = albedoSpectrum(make_float3(c_F.x * c_weight, c_F.y * c_weight, c_F.z * c_weight));
 		scattered_dir = normalize(cwo_x*ctan + cwo_y*cbitan + cwo_z*cn);
 		scattered   = true;
-		is_specular = true;
+
+		// Real NEE/MIS for glossy (non-EffectivelySmooth) conductors, via
+		// wf_finish_material_scatter's shared evalGlossyF (see its own
+		// comment). brdf_pdf_override uses the GGX-reflection VNDF pdf
+		// (ggx_vndf_reflection_pdf, src/shared/bxdfs_conductor.h) at the
+		// sampled direction - Conductor is reflection-only to begin with,
+		// so this is the exact (not proxy) pdf, unlike CoatedDiffuse/
+		// CoatedConductor below. phaseWo carries cwi (already `-ray_dir`,
+		// matching evalGlossyF's `wi_world` convention).
+		if (!c_dist.EffectivelySmooth()) {
+			is_specular = false;
+			brdf_pdf_override = ggx_vndf_reflection_pdf(cwi_x, cwi_y, cwi_z, cwo_x, cwo_y, cwo_z, c_alpha, c_alpha);
+			phaseWo = cwi;
+		} else {
+			is_specular = true;
+		}
 		break;
 	}
 	case MaterialType::CoatedDiffuse: {
@@ -1726,7 +1925,6 @@ extern "C" __global__ void evaluate_materials(
 			float cdwo_z = 2.0f*cd_dot*cdwm_z - cdwi_z;
 			scattered_dir = normalize(cdwo_x*cdtan + cdwo_y*cdbitan + cdwo_z*cdn);
 			attenuation   = SS(1.f);
-			is_specular   = true;
 		} else {
 			// Multi-bounce escape through the coat, matching
 			// optix_device_helpers.h's shade_material() CoatedDiffuse case
@@ -1734,10 +1932,13 @@ extern "C" __global__ void evaluate_materials(
 			// bounce + one exit attempt: giving up immediately on a failed
 			// exit test discards that sample's energy entirely, rendering
 			// far too dark, rather than retrying like the real layered
-			// material's random walk does). No explicit NEE here either,
-			// matching CPU's coated_diffuse (skip_pdf - pbrt-v4's
-			// LayeredBxDF has no closed-form f(wo,wi) to aim a shadow ray
-			// at), which is why `is_specular` is true even on this branch.
+			// material's random walk does). is_specular is decided once,
+			// uniformly, after this if/else (see below) rather than per-
+			// branch now that glossy coats get real NEE via CoatedDiffuseBxDF
+			// ::f() - pbrt-v4's LayeredBxDF has no closed-form f(wo,wi)
+			// either, but the shared BxDF template's own stochastic estimator
+			// (src/shared/bxdfs_layered.h, already verified on CPU for #228
+			// and the recursive backend for #229) gives us one anyway.
 			constexpr int kMaxCoatBounces = 8;
 			float3 beta = make_float3(1.0f - Fr, 1.0f - Fr, 1.0f - Fr);
 			float3 diff_dir = cdn;
@@ -1761,9 +1962,28 @@ extern "C" __global__ void evaluate_materials(
 			if (!escaped) { scattered = false; break; }
 			attenuation   = albedoSpectrum(beta);
 			scattered_dir = diff_dir;
-			is_specular   = true;
 		}
 		scattered = (dot(scattered_dir, normal) > 0.0f);
+
+		// Real NEE/MIS for glossy (non-EffectivelySmooth) coats, via
+		// wf_finish_material_scatter's shared evalGlossyF (see its own
+		// comment and MaterialType::Conductor's identical-shape block
+		// above). brdf_pdf_override uses the coat's own top-surface GGX-
+		// reflection VNDF pdf as a proxy for the walk's true (unknown, no
+		// closed form) density - matches CPU's coated_diffuse::scatter()
+		// (material_pbrt.h), which uses the same ggx_reflection_pdf proxy
+		// for its own srec.pdf_ptr. phaseWo carries cdwi (already
+		// `-ray_dir`, matching evalGlossyF's `wi_world` convention).
+		if (scattered && !cd_dist.EffectivelySmooth()) {
+			is_specular = false;
+			float swo_x = dot(scattered_dir, cdtan), swo_y = dot(scattered_dir, cdbitan), swo_z = dot(scattered_dir, cdn);
+			brdf_pdf_override = (swo_z > 0.0f)
+				? ggx_vndf_reflection_pdf(cdwi_x, cdwi_y, cdwi_z, swo_x, swo_y, swo_z, cd_alpha, cd_alpha)
+				: 0.0f;
+			phaseWo = cdwi;
+		} else {
+			is_specular = true;
+		}
 		break;
 	}
 	case MaterialType::ThinDielectric: {
@@ -1857,7 +2077,21 @@ extern "C" __global__ void evaluate_materials(
 		}
 		scattered_dir = normalize(ccwo.x*cctan + ccwo.y*ccbitan + ccwo.z*ccn);
 		scattered   = (dot(scattered_dir, normal) > 0.0f);
-		is_specular = true;
+
+		// Real NEE/MIS for glossy (non-EffectivelySmooth) coats - see
+		// MaterialType::CoatedDiffuse's identical-shape block above for the
+		// full rationale (shared CoatedConductorBxDF<float>::f() stochastic
+		// estimator, GGX top-surface VNDF pdf as the MIS proxy).
+		if (scattered && !cc_dist.EffectivelySmooth()) {
+			is_specular = false;
+			float swo_x = dot(scattered_dir, cctan), swo_y = dot(scattered_dir, ccbitan), swo_z = dot(scattered_dir, ccn);
+			brdf_pdf_override = (swo_z > 0.0f)
+				? ggx_vndf_reflection_pdf(ccwi_x, ccwi_y, ccwi_z, swo_x, swo_y, swo_z, cc_alpha, cc_alpha)
+				: 0.0f;
+			phaseWo = ccwi;
+		} else {
+			is_specular = true;
+		}
 		break;
 	}
 	case MaterialType::DiffuseTransmission: {
@@ -2224,7 +2458,7 @@ extern "C" __global__ void evaluate_materials(
 		return;
 	}
 
-	wf_finish_material_scatter(mat.type, mat.ior, normal, hit_point, seed,
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, normal, hit_point, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -2377,7 +2611,7 @@ extern "C" __global__ void resolve_bssrdf_exit(
 	wf_sample_normalized_fresnel(eta, item.exitNormal, seed, scattered_dir, weight, brdf_pdf_override);
 	SS attenuation = SS(weight);
 
-	wf_finish_material_scatter(MaterialType::NormalizedFresnel, eta,
+	wf_finish_material_scatter(MaterialType::NormalizedFresnel, eta, /*matIdx=*/-1,
 		item.exitNormal, item.exitPos, seed,
 		weightedThroughput, radiance, swl, attenuation, scattered_dir,
 		/*is_specular=*/false, brdf_pdf_override,
