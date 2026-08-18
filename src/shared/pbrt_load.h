@@ -99,6 +99,108 @@ inline bool endsWithCaseInsensitive(const std::string &path, const std::string &
 		});
 }
 
+// Re-samples a decoded equirectangular environment image so its pixel data
+// bakes in LightSource "infinite"'s own CTM (pbrt_flatten::InfiniteLight::
+// xform) - a sun/horizon feature otherwise faces the wrong way, since
+// nothing downstream of this loader (sky_light.h on CPU, optix_sky_light.h/
+// wavefront_sky_light.h on GPU - three independent sampling
+// implementations) ever reads InfiniteLight::xform at all. Doing it once,
+// here, on the raw pixel buffer means none of those three need to change:
+// each already converts a world-space direction to/from an image (u,v) via
+// the same latlong mapping pbrt uses (see sky_light.h's own header
+// comment), so pre-rotating the SOURCE pixels is exactly equivalent to
+// rotating the light and is invisible to every consumer.
+//
+// Only the transform's linear (3x3) part is used - translating an infinite
+// light is meaningless (it has no position). This deliberately does not
+// special-case a non-rotation linear part (anisotropic scale, or a
+// reflection like sportscar-sky.pbrt's "Scale -1 1 1") - the general
+// inverse-and-resample approach below handles those the same way, just
+// with the image locally stretched/mirrored instead of purely rotated,
+// matching what pbrt itself would render.
+//
+// Uses its OWN forward/inverse latlong mapping (matching sky_light.h's
+// documented `sample()` formula: dir = (sin(theta)cos(phi), cos(theta),
+// -sin(theta)sin(phi))), NOT sky_light.h's private dir_to_uv() - the two
+// disagree (dir_to_uv negates y and offsets phi by pi rather than deriving
+// the closed-form inverse of that same sample() formula), which looks like
+// a real, separate, pre-existing bug in dir_to_uv() found while deriving
+// this; flagged separately rather than touched here, since fixing it
+// changes every unrotated sky render's importance-sampling PDF too and
+// deserves its own verification, not a drive-by inside an unrelated fix.
+inline void applyInfiniteLightOrientation(const pbrt_scene::Matrix4 &xform,
+										  std::vector<float> &pixels, int w, int h) {
+	// Identity (the overwhelmingly common case - most scenes never rotate
+	// their sky) is a free no-op; skip the O(w*h) resample entirely.
+	bool isIdentity = true;
+	for (int i = 0; i < 16 && isIdentity; ++i) {
+		double expected = (i % 5 == 0) ? 1.0 : 0.0;  // diagonal = 1, else 0
+		if (xform.m[i] != expected) isIdentity = false;
+	}
+	if (isIdentity || w <= 0 || h <= 0) return;
+
+	pbrt_scene::Matrix4 inv;
+	if (!xform.inverseAffine(inv)) return;  // singular CTM - leave unrotated rather than guess
+
+	const double pi = 3.14159265358979323846;
+	std::vector<float> rotated(pixels.size());
+
+	auto wrapX = [w](int xx) { xx %= w; if (xx < 0) xx += w; return xx; };
+	auto clampY = [h](int yy) { return yy < 0 ? 0 : (yy >= h ? h - 1 : yy); };
+
+	for (int y = 0; y < h; ++y) {
+		double v = (y + 0.5) / h;
+		double theta = v * pi;
+		double sinTheta = std::sin(theta), cosTheta = std::cos(theta);
+		for (int x = 0; x < w; ++x) {
+			double u = (x + 0.5) / w;
+			double phi = u * 2.0 * pi;
+			// World-space direction this OUTPUT pixel represents.
+			double dx = sinTheta * std::cos(phi);
+			double dy = cosTheta;
+			double dz = -sinTheta * std::sin(phi);
+
+			// Rotate back into the image's own local frame via the CTM's
+			// inverse linear part (3x3, translation ignored - a direction,
+			// not a point).
+			double lx = inv.m[0]*dx + inv.m[1]*dy + inv.m[2]*dz;
+			double ly = inv.m[4]*dx + inv.m[5]*dy + inv.m[6]*dz;
+			double lz = inv.m[8]*dx + inv.m[9]*dy + inv.m[10]*dz;
+			double len = std::sqrt(lx*lx + ly*ly + lz*lz);
+			if (len < 1e-12) {
+				for (int c = 0; c < 3; ++c) rotated[(y*w+x)*3+c] = 0.0f;
+				continue;
+			}
+			lx /= len; ly /= len; lz /= len;
+
+			// Closed-form inverse of dir = (sin(theta)cos(phi), cos(theta),
+			// -sin(theta)sin(phi)): theta = acos(dir.y), phi = atan2(-dir.z, dir.x).
+			double ct = ly; if (ct > 1.0) ct = 1.0; if (ct < -1.0) ct = -1.0;
+			double srcTheta = std::acos(ct);
+			double srcPhi = std::atan2(-lz, lx);
+			if (srcPhi < 0.0) srcPhi += 2.0 * pi;
+			double srcU = srcPhi / (2.0 * pi);
+			double srcV = srcTheta / pi;
+
+			// Bilinear sample of the ORIGINAL image at (srcU, srcV): phi
+			// wraps around horizontally (periodic), theta clamps vertically
+			// (the poles are real edges, not a seam).
+			double fx = srcU * w - 0.5, fy = srcV * h - 0.5;
+			int x0 = static_cast<int>(std::floor(fx)), y0 = static_cast<int>(std::floor(fy));
+			double tx = fx - x0, ty = fy - y0;
+			int X0 = wrapX(x0), X1 = wrapX(x0 + 1), Y0 = clampY(y0), Y1 = clampY(y0 + 1);
+			for (int c = 0; c < 3; ++c) {
+				double p00 = pixels[(Y0*w+X0)*3+c], p10 = pixels[(Y0*w+X1)*3+c];
+				double p01 = pixels[(Y1*w+X0)*3+c], p11 = pixels[(Y1*w+X1)*3+c];
+				double top = p00 + (p10 - p00) * tx;
+				double bot = p01 + (p11 - p01) * tx;
+				rotated[(y*w+x)*3+c] = static_cast<float>(top + (bot - top) * ty);
+			}
+		}
+	}
+	pixels.swap(rotated);
+}
+
 // Decodes an infinite light's environment-map bytes into row-major RGB float
 // pixels (3 floats/pixel, linear) - the format sky_light's raw-buffer
 // constructor (sky_light.h) accepts. Dispatches purely on `filename`'s
@@ -228,6 +330,12 @@ inline LoadResult loadFile(const std::string &path) {
 				r.scene.warnings.push_back(
 					{0, path, "infinite light image '" + sky.imageFile +
 						"' could not be decoded; using its constant colour instead"});
+			} else {
+				// Bakes the LightSource "infinite" directive's own CTM into
+				// the pixels themselves - see applyInfiniteLightOrientation()'s
+				// own comment for why this is done once here instead of in
+				// either backend's sampling code.
+				applyInfiniteLightOrientation(sky.xform, sky.imagePixels, sky.imageWidth, sky.imageHeight);
 			}
 		} else {
 			r.scene.warnings.push_back(
