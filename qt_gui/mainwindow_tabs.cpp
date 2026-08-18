@@ -667,8 +667,27 @@ void MainWindow::createPreviewTab() {
 		if (m_videoPositionSlider && !m_videoPositionSlider->isSliderDown())
 			m_videoPositionSlider->setValue(static_cast<int>(position));
 	});
+	connect(m_mediaPlayer, &QMediaPlayer::errorOccurred, this, [this](QMediaPlayer::Error error, const QString &errorString) {
+		onLogMessage(QString("Video playback error (%1): %2").arg(static_cast<int>(error)).arg(errorString));
+	});
+	// Pausing before setPosition() (and resuming after, if it was playing)
+	// is the standard fix for scrubbing that "doesn't seem to do anything":
+	// while playing, the player's own clock keeps advancing on its own
+	// timeline in parallel with each setPosition() call from the drag, so
+	// the seek and normal playback fight over what frame gets shown next -
+	// on some backends the dragged-to frame never visibly lands at all.
+	// Seeking while paused is a single deterministic jump with nothing
+	// racing it.
+	connect(m_videoPositionSlider, &QSlider::sliderPressed, this, [this]() {
+		if (!m_mediaPlayer) return;
+		m_wasPlayingBeforeScrub = m_mediaPlayer->playbackState() == QMediaPlayer::PlayingState;
+		m_mediaPlayer->pause();
+	});
 	connect(m_videoPositionSlider, &QSlider::sliderMoved, this, [this](int position) {
 		if (m_mediaPlayer) m_mediaPlayer->setPosition(position);
+	});
+	connect(m_videoPositionSlider, &QSlider::sliderReleased, this, [this]() {
+		if (m_mediaPlayer && m_wasPlayingBeforeScrub) m_mediaPlayer->play();
 	});
 
 	splitter->addWidget(mediaContainer);

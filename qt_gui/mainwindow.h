@@ -422,6 +422,7 @@ private:
 	QWidget *m_videoControlsWidget;     // Play/pause + seek row, hidden until a video plays
 	QPushButton *m_videoPlayPauseButton;
 	QSlider *m_videoPositionSlider;
+	bool m_wasPlayingBeforeScrub = false; // Remembers playback state across a seek-slider drag
 
 	// Log output
 	QTextEdit *m_logTextEdit;           // Log output display

@@ -533,6 +533,13 @@ int main(int argc, char** argv) {
         std::cout << "ASSEMBLING VIDEO WITH FFMPEG" << std::endl;
         std::cout << "========================================" << std::endl;
 
+        // -g (one keyframe per second) and -movflags +faststart: without
+        // them libx264's default ~250-frame GOP can leave a short render
+        // with just its very first frame as a keyframe, and the moov atom
+        // (seek index) lands at the end of the file - together those made
+        // seeking backward in the GUI's embedded QMediaPlayer preview
+        // unreliable (seeking forward mostly worked by chance since it
+        // could just keep decoding ahead to the target).
         std::string enc_pattern = (frames_dir / "enc_%04d.png").string();
         std::vector<std::string> ffmpeg_argv = {
             "ffmpeg", "-y",
@@ -540,10 +547,13 @@ int main(int argc, char** argv) {
             "-i", enc_pattern,
             "-c:v", "libx264",
             "-pix_fmt", "yuv420p",
+            "-g", std::to_string(video_fps),
+            "-movflags", "+faststart",
             video_path.string()
         };
         std::string manual_cmd = "ffmpeg -y -r " + std::to_string(video_fps) + " -i \"" + enc_pattern +
-                                  "\" -c:v libx264 -pix_fmt yuv420p \"" + video_path.string() + "\"";
+                                  "\" -c:v libx264 -pix_fmt yuv420p -g " + std::to_string(video_fps) +
+                                  " -movflags +faststart \"" + video_path.string() + "\"";
 
         std::cout << "Running: " << manual_cmd << std::endl;
         int ffmpeg_result = run_subprocess(ffmpeg_argv);
