@@ -2448,9 +2448,21 @@ __device__ __forceinline__ void generate_primary_ray(
 			// for the reference this mirrors, both mappings finish with a
 			// swap(dir.y, dir.z) folded directly into which raw component
 			// feeds ly vs lz below (rather than an actual runtime swap).
+			// `v` here already carries the Y-flip optix_raygen.h applies for
+			// every CameraKind (v=1 at the top framebuffer row), matching
+			// Perspective/Orthographic's `vertical` basis vector, which
+			// points world-up - so v=1 (top row) adds the full +up vector,
+			// correctly landing "up" at the top of the frame for those two.
+			// CPU's SphericalCamera::generate_ray, by contrast, uses raw
+			// pFilm_y/res_y with NO such flip (v=0 at its own top row) - its
+			// theta=v*pi formula relies on THAT convention to put dir.y=+1
+			// (up) at the top row. Feeding it this shared, already-flipped
+			// `v` directly would put "down" at the top of the frame instead
+			// - undo the flip locally so both mappings match CPU exactly.
+			const float v_sph = 1.0f - v;
 			float lx, ly, lz;
 			if (cam.sphericalMapping == 1) {  // EqualArea
-				double ud = (double)u, vd = (double)v;
+				double ud = (double)u, vd = (double)v_sph;
 				dev_wrap_equal_area_square(ud, vd);
 				double ewx, ewy, ewz;
 				dev_equal_area_square_to_sphere(ud, vd, ewx, ewy, ewz);
@@ -2458,7 +2470,7 @@ __device__ __forceinline__ void generate_primary_ray(
 				ly = (float)ewz;  // swap(wy,wz): final y = raw z
 				lz = (float)ewy;  // swap(wy,wz): final z = raw y
 			} else {  // EquiRectangular: theta in [0,pi], phi in [0,2pi]
-				float theta = 3.14159265358979323846f * v;
+				float theta = 3.14159265358979323846f * v_sph;
 				float phi   = 2.0f * 3.14159265358979323846f * u;
 				float sin_t = sinf(theta), cos_t = cosf(theta);
 				lx = sin_t * cosf(phi);
