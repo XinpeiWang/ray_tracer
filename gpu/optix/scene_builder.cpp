@@ -146,6 +146,20 @@ namespace {
 		return idx;
 	}
 
+	// Real GGX metal (pbrt-v4/RTOW rough_metal, flat-tint Fresnel stand-in,
+	// no complex IOR) - see MaterialType::RoughMetal's own comment. NOT the
+	// same as add_metal() above (fuzz-perturbed mirror, a different model -
+	// CPU's `class metal` vs `class rough_metal`).
+	inline int add_rough_metal(SceneData& scene, float3 albedo, float roughness) {
+		const int idx = safe_cast_to_int(scene.materials.size());
+		MaterialData m{};
+		m.type = MaterialType::RoughMetal;
+		m.albedo = albedo;
+		m.roughness = roughness;
+		scene.materials.push_back(m);
+		return idx;
+	}
+
 	inline int add_coated_diffuse(SceneData& scene, float3 albedo, float coatRoughness, float coatIor) {
 		const int idx = safe_cast_to_int(scene.materials.size());
 		MaterialData m{};
@@ -1210,11 +1224,13 @@ static void build_rough_metal_spheres(SceneData& scene) {
     add_diffuse_light(scene, make_float3(kRMSLightIntensity, kRMSLightIntensity, kRMSLightIntensity));
 
     // Five rough-metal sphere materials: roughness 0.05, 0.2, 0.4, 0.6, 0.8
+    // (real GGX via add_rough_metal() - matches CPU's `rough_metal`, NOT
+    // add_metal()'s unrelated fuzz-perturbed-mirror model)
     const float roughnesses[5] = { 0.05f, 0.2f, 0.4f, 0.6f, 0.8f };
     int mat_metal[5];
     for (int i = 0; i < 5; ++i) {
         mat_metal[i] = safe_cast_to_int(scene.materials.size());
-        add_metal(scene, make_float3(0.95f, 0.85f, 0.55f), roughnesses[i]);
+        add_rough_metal(scene, make_float3(0.95f, 0.85f, 0.55f), roughnesses[i]);
     }
 
     // Ground sphere: center (0,-1000,0), radius 1000
@@ -1287,11 +1303,12 @@ static void add_cornell_walls_and_main_light(SceneData& scene) {
 static void build_cornell_rough_metal(SceneData& scene) {
     add_cornell_walls_and_main_light(scene);
 
-    // Rough aluminum box material (roughness 0.15)
-    const int mat_alum = add_metal(scene, make_float3(0.8f, 0.85f, 0.88f), 0.15f);
+    // Rough aluminum box material (roughness 0.15, real GGX via
+    // add_rough_metal() - matches CPU's `rough_metal`)
+    const int mat_alum = add_rough_metal(scene, make_float3(0.8f, 0.85f, 0.88f), 0.15f);
 
     // Rough gold sphere material (roughness 0.3)
-    const int mat_gold = add_metal(scene, make_float3(0.95f, 0.78f, 0.28f), 0.3f);
+    const int mat_gold = add_rough_metal(scene, make_float3(0.95f, 0.78f, 0.28f), 0.3f);
 
     // Rough gold sphere (center 190, 90, 190), radius 90
     SphereData sphere{};

@@ -994,7 +994,8 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// transmission-side NEE is out of scope here).
 	auto evalGlossyF = [&](const float3& queryDir, float3& outF) -> bool {
 		if (matType != MaterialType::Conductor && matType != MaterialType::RoughDielectric &&
-			matType != MaterialType::CoatedDiffuse && matType != MaterialType::CoatedConductor)
+			matType != MaterialType::CoatedDiffuse && matType != MaterialType::CoatedConductor &&
+			matType != MaterialType::RoughMetal)
 			return false;
 		float3 n = normal;
 		float3 up = (fabsf(n.x) > 0.9f) ? make_float3(0.0f,1.0f,0.0f) : make_float3(1.0f,0.0f,0.0f);
@@ -1009,6 +1010,9 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		float fr = 0.0f, fg = 0.0f, fb = 0.0f;
 		if (matType == MaterialType::Conductor) {
 			ConductorBxDF<float> bx{ fm.eta_c.x, fm.eta_c.y, fm.eta_c.z, fm.k_c.x, fm.k_c.y, fm.k_c.z, alpha, alpha };
+			bx.f(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, fr, fg, fb);
+		} else if (matType == MaterialType::RoughMetal) {
+			RoughMetalBxDF<float> bx{ fm.albedo.x, fm.albedo.y, fm.albedo.z, alpha, alpha };
 			bx.f(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, fr, fg, fb);
 		} else if (matType == MaterialType::RoughDielectric) {
 			RoughDielectricBxDF<float> bx{ fm.ior, alpha, alpha };
@@ -1153,7 +1157,8 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 				// than trusting evalGlossyF's return value alone.
 				float3 fRgb;
 				bool isGlossyType = (matType == MaterialType::Conductor || matType == MaterialType::RoughDielectric ||
-					matType == MaterialType::CoatedDiffuse || matType == MaterialType::CoatedConductor);
+					matType == MaterialType::CoatedDiffuse || matType == MaterialType::CoatedConductor ||
+					matType == MaterialType::RoughMetal);
 				if (evalGlossyF(to_light, fRgb)) {
 					bsdf_val = 1.0f;
 					bsdf_color = liftUnboundedRGB(fRgb);
@@ -1263,7 +1268,8 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 				// full rationale (evalGlossyF/isGlossyType split).
 				float3 fRgb;
 				bool isGlossyType = (matType == MaterialType::Conductor || matType == MaterialType::RoughDielectric ||
-					matType == MaterialType::CoatedDiffuse || matType == MaterialType::CoatedConductor);
+					matType == MaterialType::CoatedDiffuse || matType == MaterialType::CoatedConductor ||
+					matType == MaterialType::RoughMetal);
 				if (evalGlossyF(sky_dir, fRgb)) {
 					bsdf_val = 1.0f;
 					bsdf_color = liftUnboundedRGB(fRgb);
@@ -1344,7 +1350,8 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			// punctual (delta) lights, same as every other material here.
 			float3 fRgb;
 			bool isGlossyType = (matType == MaterialType::Conductor || matType == MaterialType::RoughDielectric ||
-				matType == MaterialType::CoatedDiffuse || matType == MaterialType::CoatedConductor);
+				matType == MaterialType::CoatedDiffuse || matType == MaterialType::CoatedConductor ||
+				matType == MaterialType::RoughMetal);
 			if (evalGlossyF(wi, fRgb)) {
 				bsdf_val = 1.0f;
 				bsdf_color = liftUnboundedRGB(fRgb);
@@ -1894,6 +1901,47 @@ extern "C" __global__ void evaluate_materials(
 			is_specular = false;
 			brdf_pdf_override = ggx_vndf_reflection_pdf(cwi_x, cwi_y, cwi_z, cwo_x, cwo_y, cwo_z, c_alpha, c_alpha);
 			phaseWo = cwi;
+		} else {
+			is_specular = true;
+		}
+		break;
+	}
+	case MaterialType::RoughMetal: {
+		// GGX VNDF + flat-tint reflectance, no complex Fresnel (pbrt-v4/RTOW
+		// rough_metal) - same shape as MaterialType::Conductor above, minus
+		// FrConductorRGB (RoughMetalBxDF has no real Fresnel model). NOT the
+		// same material as MaterialType::Metal (fuzz-perturbed mirror, a
+		// different model - CPU's plain `metal` class).
+		float rm_alpha = sqrtf(mat.fuzz);
+		float3 rmn = normal;
+		float3 rmup = (fabsf(rmn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
+		float3 rmtan   = normalize(cross(rmup, rmn));
+		float3 rmbitan = cross(rmn, rmtan);
+		float3 rmwi = -normalize(h.rayDir);
+		float rmwi_x = dot(rmwi, rmtan), rmwi_y = dot(rmwi, rmbitan), rmwi_z = dot(rmwi, rmn);
+		if (rmwi_z <= 0.0f) { scattered = false; break; }
+		TrowbridgeReitz<float> rm_dist(rm_alpha, rm_alpha);
+		float rmwm_x, rmwm_y, rmwm_z;
+		rm_dist.Sample_wm(rmwi_x, rmwi_y, rmwi_z, wf_rand(seed), wf_rand(seed), rmwm_x, rmwm_y, rmwm_z);
+		float rm_dot = rmwi_x*rmwm_x + rmwi_y*rmwm_y + rmwi_z*rmwm_z;
+		float rmwo_x = 2.0f*rm_dot*rmwm_x - rmwi_x;
+		float rmwo_y = 2.0f*rm_dot*rmwm_y - rmwi_y;
+		float rmwo_z = 2.0f*rm_dot*rmwm_z - rmwi_z;
+		if (rmwo_z <= 0.0f) { scattered = false; break; }
+		float rm_G1_wi  = rm_dist.G1(rmwi_x, rmwi_y, rmwi_z);
+		float rm_G_wowi = rm_dist.G(rmwo_x, rmwo_y, rmwo_z, rmwi_x, rmwi_y, rmwi_z);
+		float rm_weight = (rm_G1_wi > 1e-8f) ? rm_G_wowi / rm_G1_wi : 0.0f;
+		attenuation = albedoSpectrum(make_float3(mat.albedo.x * rm_weight, mat.albedo.y * rm_weight, mat.albedo.z * rm_weight));
+		scattered_dir = normalize(rmwo_x*rmtan + rmwo_y*rmbitan + rmwo_z*rmn);
+		scattered   = true;
+
+		// Real NEE/MIS for glossy (non-EffectivelySmooth) rough metal, via
+		// wf_finish_material_scatter's shared evalGlossyF - see
+		// MaterialType::Conductor's identical-shape block above.
+		if (!rm_dist.EffectivelySmooth()) {
+			is_specular = false;
+			brdf_pdf_override = ggx_vndf_reflection_pdf(rmwi_x, rmwi_y, rmwi_z, rmwo_x, rmwo_y, rmwo_z, rm_alpha, rm_alpha);
+			phaseWo = rmwi;
 		} else {
 			is_specular = true;
 		}

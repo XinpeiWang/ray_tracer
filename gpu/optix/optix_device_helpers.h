@@ -1916,6 +1916,109 @@ __device__ __forceinline__ void shade_material(
 			break;
 		}
 
+		case MaterialType::RoughMetal: {
+			// GGX VNDF + flat-tint reflectance, no complex Fresnel (pbrt-v4/
+			// RTOW rough_metal) -- sphere version. Same shape as
+			// MaterialType::Conductor above, minus FrConductorRGB (RoughMetalBxDF
+			// has no real Fresnel model - see src/shared/bxdfs_conductor.h's own
+			// header comment and material_pbrt.h's `rough_metal`, which this
+			// mirrors exactly). NOT the same material as MaterialType::Metal
+			// (a fuzz-perturbed mirror, a different model entirely - CPU's
+			// plain `metal` class).
+			float rm_alpha = sqrtf(mat.fuzz);
+			float3 rmn = normal;
+			float3 rmup = (fabsf(rmn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
+			float3 rmtan   = normalize(cross(rmup, rmn));
+			float3 rmbitan = cross(rmn, rmtan);
+			float3 rmwi = normalize(-ray_dir);
+			float rmwi_x = dot(rmwi, rmtan), rmwi_y = dot(rmwi, rmbitan), rmwi_z = dot(rmwi, rmn);
+			if (rmwi_z <= 0.0f) { scattered = false; break; }
+			TrowbridgeReitz<float> rm_dist(rm_alpha, rm_alpha);
+			float rmwm_x, rmwm_y, rmwm_z;
+			rm_dist.Sample_wm(rmwi_x, rmwi_y, rmwi_z, random_float(seed), random_float(seed), rmwm_x, rmwm_y, rmwm_z);
+			float rm_dot = rmwi_x*rmwm_x + rmwi_y*rmwm_y + rmwi_z*rmwm_z;
+			float rmwo_x = 2.0f*rm_dot*rmwm_x - rmwi_x;
+			float rmwo_y = 2.0f*rm_dot*rmwm_y - rmwi_y;
+			float rmwo_z = 2.0f*rm_dot*rmwm_z - rmwi_z;
+			if (rmwo_z <= 0.0f) { scattered = false; break; }
+			float rm_G1_wi  = rm_dist.G1(rmwi_x, rmwi_y, rmwi_z);
+			float rm_G_wowi = rm_dist.G(rmwo_x, rmwo_y, rmwo_z, rmwi_x, rmwi_y, rmwi_z);
+			float rm_weight = (rm_G1_wi > 1e-8f) ? rm_G_wowi / rm_G1_wi : 0.0f;
+			attenuation = make_float3(mat.albedo.x * rm_weight, mat.albedo.y * rm_weight, mat.albedo.z * rm_weight);
+			scattered_dir = normalize(rmwo_x*rmtan + rmwo_y*rmbitan + rmwo_z*rmn);
+			scattered     = true;
+
+			// Real NEE/MIS for glossy (non-EffectivelySmooth) rough metal -
+			// see MaterialType::Conductor's identical-shape block above for
+			// the full rationale.
+			if (!rm_dist.EffectivelySmooth()) {
+				is_specular = false;
+				RoughMetalBxDF<float> rm_bxdf{ mat.albedo.x, mat.albedo.y, mat.albedo.z, rm_alpha, rm_alpha };
+				brdf_pdf_override = rm_bxdf.pdf(rmwi_x, rmwi_y, rmwi_z, rmwo_x, rmwo_y, rmwo_z);
+
+				if (params.numLights > 0) {
+					int light_idx; float selection_pdf;
+					if (params.aliasTable) {
+						int slot = int(random_float(seed) * float(params.numLights));
+						if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
+						const GpuAliasEntry& entry = params.aliasTable[slot];
+						light_idx = (random_float(seed) < entry.q) ? slot : entry.alias;
+						selection_pdf = params.aliasTable[light_idx].pdf;
+					} else {
+						light_idx = int(random_float(seed) * float(params.numLights));
+						if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
+						selection_pdf = 1.0f / float(params.numLights);
+					}
+					float geom_pdf = 0.0f; float max_dist = 0.0f;
+					float3 sampled_light_emission = make_float3(0.0f, 0.0f, 0.0f);
+					float3 to_light = sample_area_light_by_kind(
+						light_idx, hit_point, seed, geom_pdf, max_dist, sampled_light_emission);
+					float light_pdf = selection_pdf * geom_pdf;
+					if (light_pdf > 1e-6f) {
+						float llx = dot(to_light, rmtan), lly = dot(to_light, rmbitan), llz = dot(to_light, rmn);
+						if (llz > 0.0f && trace_shadow_ray(hit_point, to_light, max_dist)) {
+							float fr, fg, fb;
+							rm_bxdf.f(rmwi_x, rmwi_y, rmwi_z, llx, lly, llz, fr, fg, fb);
+							float brdf_pdf = rm_bxdf.pdf(rmwi_x, rmwi_y, rmwi_z, llx, lly, llz);
+							float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
+							emission = emission + mis_weight * make_float3(fr, fg, fb) * sampled_light_emission * llz / light_pdf;
+						}
+					}
+				}
+
+				for (unsigned int pi = 0; pi < params.numPunctualLights; ++pi) {
+					float3 wi_p, Li_p; float t_max_p;
+					if (!eval_punctual_light(params.punctualLights[pi], hit_point, wi_p, Li_p, t_max_p)) continue;
+					float plx = dot(wi_p, rmtan), ply = dot(wi_p, rmbitan), plz = dot(wi_p, rmn);
+					if (plz <= 0.0f) continue;
+					if (trace_shadow_ray(hit_point, wi_p, t_max_p)) {
+						float fr, fg, fb;
+						rm_bxdf.f(rmwi_x, rmwi_y, rmwi_z, plx, ply, plz, fr, fg, fb);
+						emission = emission + make_float3(fr, fg, fb) * Li_p * plz;
+					}
+				}
+
+				{
+					const float3& skyColor = params.camera.backgroundColor;
+					if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
+						float3 sky_dir, sky_Le_val; float pdf_sky;
+						sample_sky_nee(seed, skyColor, sky_dir, pdf_sky, sky_Le_val);
+						float skx = dot(sky_dir, rmtan), sky_y = dot(sky_dir, rmbitan), skz = dot(sky_dir, rmn);
+						if (skz > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
+							float fr, fg, fb;
+							rm_bxdf.f(rmwi_x, rmwi_y, rmwi_z, skx, sky_y, skz, fr, fg, fb);
+							float brdf_pdf_sky = rm_bxdf.pdf(rmwi_x, rmwi_y, rmwi_z, skx, sky_y, skz);
+							float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
+							emission = emission + mis_weight * make_float3(fr, fg, fb) * sky_Le_val * skz / pdf_sky;
+						}
+					}
+				}
+			} else {
+				is_specular = true;
+			}
+			break;
+		}
+
 		case MaterialType::CoatedDiffuse: {
 			// Rough dielectric coat over Lambertian base (pbrt-v4 CoatedDiffuseBxDF) -- sphere version
 			float cd_alpha = sqrtf(mat.fuzz);

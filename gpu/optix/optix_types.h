@@ -368,7 +368,23 @@ enum class MaterialType : int {
 	// MaterialData field is used - the query wavelengths (612/549/465nm,
 	// approximating sRGB primaries, matching `class measured`'s kLambdaR/G/B
 	// exactly) are fixed constants in the device code, not per-material data.
-	Measured = 19
+	Measured = 19,
+	// GGX microfacet metal with a flat RGB tint standing in for Fresnel, no
+	// complex IOR (pbrt-v4/RTOW rough_metal, src/shared/bxdfs_conductor.h's
+	// RoughMetalBxDF) - matches src/TheRestOfYourLife/material_pbrt.h's
+	// `class rough_metal` exactly, and is NOT the same model as
+	// MaterialType::Metal above (that one is a fuzz-perturbed mirror with no
+	// real microfacet distribution at all - CPU's plain `class metal`, a
+	// different class). Scenes B1 (RoughMetalSpheres) and B2
+	// (CornellRoughMetal) previously called add_metal() for their "rough
+	// metal" spheres/box, which silently rendered the wrong model on GPU
+	// (confirmed via the CPU builder always using `rough_metal`) - fixed by
+	// routing those two scenes through add_rough_metal() instead.
+	// Field reuse: .albedo = flat tint, .fuzz (aliased .roughness) = GGX
+	// roughness (RoughnessToAlpha'd device-side, same as Conductor/
+	// RoughDielectric/CoatedDiffuse/CoatedConductor) - no eta_c/k_c, unlike
+	// Conductor, since RoughMetalBxDF has no real Fresnel model.
+	RoughMetal = 20
 };
 
 // The single canonical list of MaterialTypes GPU SPPM's camera/photon-pass
