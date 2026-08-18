@@ -486,6 +486,48 @@ __device__ __forceinline__ float3 sample_area_light_by_kind(
 	}
 }
 
+// Selects one area light (power-weighted alias table, falling back to
+// uniform selection when no alias table was built), samples a direction
+// toward it via sample_area_light_by_kind(), and returns the combined
+// selection*geometric PDF. Every NEE call site in shade_material() used to
+// spell this exact selection dance out by hand - one helper keeps them
+// from drifting into slightly different selection logic per material.
+// Returns false (light_pdf left untouched) when there are no lights, or
+// when the sampled direction's combined pdf is too small to divide by -
+// callers should skip their light contribution in that case, exactly as
+// they did before this was factored out.
+__device__ __forceinline__ bool sample_nee_light(
+	const float3& origin,
+	unsigned int& seed,
+	float3& to_light,
+	float3& sampled_light_emission,
+	float& max_dist,
+	float& light_pdf
+) {
+	if (params.numLights <= 0) return false;
+
+	int light_idx;
+	float selection_pdf;
+	if (params.aliasTable) {
+		int slot = int(random_float(seed) * float(params.numLights));
+		if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
+		const GpuAliasEntry& entry = params.aliasTable[slot];
+		light_idx = (random_float(seed) < entry.q) ? slot : entry.alias;
+		selection_pdf = params.aliasTable[light_idx].pdf;
+	} else {
+		light_idx = int(random_float(seed) * float(params.numLights));
+		if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
+		selection_pdf = 1.0f / float(params.numLights);
+	}
+
+	float geom_pdf = 0.0f;
+	to_light = sample_area_light_by_kind(
+		light_idx, origin, seed, geom_pdf, max_dist, sampled_light_emission);
+
+	light_pdf = selection_pdf * geom_pdf;
+	return light_pdf > 1e-6f;
+}
+
 // Evaluate quad light PDF for a given direction
 __device__ __forceinline__ float quad_light_pdf(
 	const QuadData& quad,
@@ -972,29 +1014,9 @@ __device__ __forceinline__ void shade_normalized_fresnel(
 	// p12: correct BSDF PDF for MIS on next bounce: (1-Fr)*cos/(c*pi)
 	float brdf_pdf_override = (1.0f - fr) * cos_wi / (nf_c * 3.14159265358979323846f);
 
-	if (params.numLights > 0) {
-		int light_idx;
-		float selection_pdf;
-		if (params.aliasTable) {
-			int slot = int(random_float(seed) * float(params.numLights));
-			if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
-			const GpuAliasEntry& entry = params.aliasTable[slot];
-			light_idx = (random_float(seed) < entry.q) ? slot : entry.alias;
-			selection_pdf = params.aliasTable[light_idx].pdf;
-		} else {
-			light_idx = int(random_float(seed) * float(params.numLights));
-			if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
-			selection_pdf = 1.0f / float(params.numLights);
-		}
-
-		float geom_pdf = 0.0f;
-		float max_dist = 0.0f;
-		float3 light_emission = make_float3(0.0f, 0.0f, 0.0f);
-		float3 to_light = sample_area_light_by_kind(
-			light_idx, hit_point, seed, geom_pdf, max_dist, light_emission);
-
-		float light_pdf = selection_pdf * geom_pdf;
-		if (light_pdf > 1e-6f) {
+	{
+		float3 to_light, light_emission; float max_dist, light_pdf;
+		if (sample_nee_light(hit_point, seed, to_light, light_emission, max_dist, light_pdf)) {
 			bool visible = trace_shadow_ray(hit_point, to_light, max_dist);
 			if (visible) {
 				float cos_to_light = fmaxf(dot(to_light, normal), 0.0f);
@@ -1233,35 +1255,9 @@ __device__ __forceinline__ void shade_material(
 			scattered = true;
 
 			// Add direct lighting via explicit light sampling (Next Event Estimation)
-			if (params.numLights > 0) {
-				// Power-weighted light selection via alias table (pbrt-v4 PowerLightSampler pattern)
-				int light_idx;
-				float selection_pdf;
-				if (params.aliasTable) {
-					// O(1) alias-table sample: pick slot, accept or redirect
-					int slot = int(random_float(seed) * float(params.numLights));
-					if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
-					const GpuAliasEntry& entry = params.aliasTable[slot];
-					light_idx = (random_float(seed) < entry.q) ? slot : entry.alias;
-					selection_pdf = params.aliasTable[light_idx].pdf;
-				} else {
-					// Fallback: uniform selection
-					light_idx = int(random_float(seed) * float(params.numLights));
-					if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
-					selection_pdf = 1.0f / float(params.numLights);
-				}
-
-				// Sample direction toward light
-				float geom_pdf = 0.0f;  // PDF of the sampled direction (geometry term)
-				float max_dist = 0.0f;
-				float3 sampled_light_emission = make_float3(0.0f, 0.0f, 0.0f);
-				float3 to_light = sample_area_light_by_kind(
-					light_idx, hit_point, seed, geom_pdf, max_dist, sampled_light_emission);
-
-				// Combined PDF = selection_pdf * geometric_pdf
-				float light_pdf = selection_pdf * geom_pdf;
-
-				if (light_pdf > 1e-6f) {
+			{
+				float3 to_light, sampled_light_emission; float max_dist, light_pdf;
+				if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf)) {
 					// Check if light is visible (shadow ray)
 					bool visible = trace_shadow_ray(hit_point, to_light, max_dist);
 
@@ -1614,25 +1610,9 @@ __device__ __forceinline__ void shade_material(
 				float swo_x = dot(scattered_dir, cc_tan), swo_y = dot(scattered_dir, cc_bit), swo_z = dot(scattered_dir, cc_n);
 				brdf_pdf_override = (swo_z > 0.0f) ? ggx_vndf_reflection_pdf(cc_wi_x, cc_wi_y, cc_wi_z, swo_x, swo_y, swo_z, cc_alpha, cc_alpha) : 0.0f;
 
-				if (params.numLights > 0) {
-					int light_idx; float selection_pdf;
-					if (params.aliasTable) {
-						int slot = int(random_float(seed) * float(params.numLights));
-						if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
-						const GpuAliasEntry& entry = params.aliasTable[slot];
-						light_idx = (random_float(seed) < entry.q) ? slot : entry.alias;
-						selection_pdf = params.aliasTable[light_idx].pdf;
-					} else {
-						light_idx = int(random_float(seed) * float(params.numLights));
-						if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
-						selection_pdf = 1.0f / float(params.numLights);
-					}
-					float geom_pdf = 0.0f; float max_dist = 0.0f;
-					float3 sampled_light_emission = make_float3(0.0f, 0.0f, 0.0f);
-					float3 to_light = sample_area_light_by_kind(
-						light_idx, hit_point, seed, geom_pdf, max_dist, sampled_light_emission);
-					float light_pdf = selection_pdf * geom_pdf;
-					if (light_pdf > 1e-6f) {
+				{
+					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
+					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf)) {
 						float llx = dot(to_light, cc_tan), lly = dot(to_light, cc_bit), llz = dot(to_light, cc_n);
 						if (llz > 0.0f && trace_shadow_ray(hit_point, to_light, max_dist)) {
 							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
@@ -1781,25 +1761,9 @@ __device__ __forceinline__ void shade_material(
 				// wo_local's components through unmodified.
 				brdf_pdf_override = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, wo_local.x, wo_local.y, wo_local.z);
 
-				if (params.numLights > 0) {
-					int light_idx; float selection_pdf;
-					if (params.aliasTable) {
-						int slot = int(random_float(seed) * float(params.numLights));
-						if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
-						const GpuAliasEntry& entry = params.aliasTable[slot];
-						light_idx = (random_float(seed) < entry.q) ? slot : entry.alias;
-						selection_pdf = params.aliasTable[light_idx].pdf;
-					} else {
-						light_idx = int(random_float(seed) * float(params.numLights));
-						if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
-						selection_pdf = 1.0f / float(params.numLights);
-					}
-					float geom_pdf = 0.0f; float max_dist = 0.0f;
-					float3 sampled_light_emission = make_float3(0.0f, 0.0f, 0.0f);
-					float3 to_light = sample_area_light_by_kind(
-						light_idx, hit_point, seed, geom_pdf, max_dist, sampled_light_emission);
-					float light_pdf = selection_pdf * geom_pdf;
-					if (light_pdf > 1e-6f) {
+				{
+					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
+					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf)) {
 						float llx = dot(to_light, tan), lly = dot(to_light, bitan), llz = dot(to_light, n);
 						if (rd_flip) { llx=-llx; lly=-lly; llz=-llz; }
 						if (llz != 0.0f && trace_shadow_ray(hit_point, to_light, max_dist)) {
@@ -1889,25 +1853,9 @@ __device__ __forceinline__ void shade_material(
 											  c_alpha, c_alpha };
 				brdf_pdf_override = c_bxdf.pdf(cwi_x, cwi_y, cwi_z, cwo_x, cwo_y, cwo_z);
 
-				if (params.numLights > 0) {
-					int light_idx; float selection_pdf;
-					if (params.aliasTable) {
-						int slot = int(random_float(seed) * float(params.numLights));
-						if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
-						const GpuAliasEntry& entry = params.aliasTable[slot];
-						light_idx = (random_float(seed) < entry.q) ? slot : entry.alias;
-						selection_pdf = params.aliasTable[light_idx].pdf;
-					} else {
-						light_idx = int(random_float(seed) * float(params.numLights));
-						if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
-						selection_pdf = 1.0f / float(params.numLights);
-					}
-					float geom_pdf = 0.0f; float max_dist = 0.0f;
-					float3 sampled_light_emission = make_float3(0.0f, 0.0f, 0.0f);
-					float3 to_light = sample_area_light_by_kind(
-						light_idx, hit_point, seed, geom_pdf, max_dist, sampled_light_emission);
-					float light_pdf = selection_pdf * geom_pdf;
-					if (light_pdf > 1e-6f) {
+				{
+					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
+					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf)) {
 						float llx = dot(to_light, ctan), lly = dot(to_light, cbitan), llz = dot(to_light, cn);
 						if (llz > 0.0f && trace_shadow_ray(hit_point, to_light, max_dist)) {
 							float fr, fg, fb;
@@ -1992,25 +1940,9 @@ __device__ __forceinline__ void shade_material(
 				RoughMetalBxDF<float> rm_bxdf{ mat.albedo.x, mat.albedo.y, mat.albedo.z, rm_alpha, rm_alpha };
 				brdf_pdf_override = rm_bxdf.pdf(rmwi_x, rmwi_y, rmwi_z, rmwo_x, rmwo_y, rmwo_z);
 
-				if (params.numLights > 0) {
-					int light_idx; float selection_pdf;
-					if (params.aliasTable) {
-						int slot = int(random_float(seed) * float(params.numLights));
-						if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
-						const GpuAliasEntry& entry = params.aliasTable[slot];
-						light_idx = (random_float(seed) < entry.q) ? slot : entry.alias;
-						selection_pdf = params.aliasTable[light_idx].pdf;
-					} else {
-						light_idx = int(random_float(seed) * float(params.numLights));
-						if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
-						selection_pdf = 1.0f / float(params.numLights);
-					}
-					float geom_pdf = 0.0f; float max_dist = 0.0f;
-					float3 sampled_light_emission = make_float3(0.0f, 0.0f, 0.0f);
-					float3 to_light = sample_area_light_by_kind(
-						light_idx, hit_point, seed, geom_pdf, max_dist, sampled_light_emission);
-					float light_pdf = selection_pdf * geom_pdf;
-					if (light_pdf > 1e-6f) {
+				{
+					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
+					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf)) {
 						float llx = dot(to_light, rmtan), lly = dot(to_light, rmbitan), llz = dot(to_light, rmn);
 						if (llz > 0.0f && trace_shadow_ray(hit_point, to_light, max_dist)) {
 							float fr, fg, fb;
@@ -2161,25 +2093,9 @@ __device__ __forceinline__ void shade_material(
 				float swo_x = dot(scattered_dir, cdtan), swo_y = dot(scattered_dir, cdbit), swo_z = dot(scattered_dir, cdn);
 				brdf_pdf_override = (swo_z > 0.0f) ? ggx_vndf_reflection_pdf(cdwi_x, cdwi_y, cdwi_z, swo_x, swo_y, swo_z, cd_alpha, cd_alpha) : 0.0f;
 
-				if (params.numLights > 0) {
-					int light_idx; float selection_pdf;
-					if (params.aliasTable) {
-						int slot = int(random_float(seed) * float(params.numLights));
-						if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
-						const GpuAliasEntry& entry = params.aliasTable[slot];
-						light_idx = (random_float(seed) < entry.q) ? slot : entry.alias;
-						selection_pdf = params.aliasTable[light_idx].pdf;
-					} else {
-						light_idx = int(random_float(seed) * float(params.numLights));
-						if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
-						selection_pdf = 1.0f / float(params.numLights);
-					}
-					float geom_pdf = 0.0f; float max_dist = 0.0f;
-					float3 sampled_light_emission = make_float3(0.0f, 0.0f, 0.0f);
-					float3 to_light = sample_area_light_by_kind(
-						light_idx, hit_point, seed, geom_pdf, max_dist, sampled_light_emission);
-					float light_pdf = selection_pdf * geom_pdf;
-					if (light_pdf > 1e-6f) {
+				{
+					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
+					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf)) {
 						float llx = dot(to_light, cdtan), lly = dot(to_light, cdbit), llz = dot(to_light, cdn);
 						if (llz > 0.0f && trace_shadow_ray(hit_point, to_light, max_dist)) {
 							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
