@@ -1,6 +1,6 @@
 # Ray Tracer
 
-A physically-based renderer with parallel **CPU** and **GPU (OptiX)** implementations, built up from the "Ray Tracing in One Weekend" book series into a much broader pbrt-v4-style feature set: 69 scenes, a wide material library, multiple light types, real triangle-mesh/texture support, BVH acceleration, volumetrics, and an experimental SPPM (photon-mapping) integrator alongside standard path tracing.
+A physically-based renderer with parallel **CPU** and **GPU (OptiX)** implementations, built up from the "Ray Tracing in One Weekend" book series into a much broader pbrt-v4-style feature set: 78 scenes, a wide material library, multiple light types, real triangle-mesh/texture support, BVH acceleration, volumetrics, and an experimental SPPM (photon-mapping) integrator alongside standard path tracing.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
@@ -40,7 +40,7 @@ For detailed build instructions, see **[BUILD.md](BUILD.md)**.
 ### Core Rendering
 - ✅ **Path tracing** with next-event estimation and multiple importance sampling (power heuristic)
 - ✅ **BVH acceleration** on both CPU and GPU (SAH-based CPU BVH; OptiX's native BVH/GAS on GPU) — not a linear scan
-- ✅ **69 built-in scenes** (ids 0-68) spanning the "Ray Tracing" book series, a pbrt-v4-style material/light/camera showcase, ~25 real-world statue/object meshes, and three "movie-level" environment scenes (Sponza, Amazon Lumberyard Bistro, Rungholt) — see [Scenes](#-scenes) below
+- ✅ **78 built-in scenes** (ids 0-78, id 53 retired) spanning the "Ray Tracing" book series, a pbrt-v4-style material/light/camera showcase, ~25 real-world statue/object meshes, and nine "movie-level" environment scenes (Sponza, Amazon Lumberyard Bistro, Rungholt, Fireplace Room, San Miguel, Sibenik Cathedral, Breakfast Room, Salle de Bain, Gallery) — see [Scenes](#-scenes) below
 - ✅ **Real triangle meshes**: OBJ loading with BVH, per-face `.mtl` materials, and real `map_Kd` image-texture sampling (not just flat colors) on both CPU and GPU
 - ✅ **Stochastic Progressive Photon Mapping (SPPM)**, an alternative integrator for hard caustic/glass scenes a standard path tracer struggles to converge — CPU-verified broadly, GPU-verified on one reference scene (see [Known Limitations](#-known-limitations))
 - ✅ **Volumetric media**: homogeneous participating media and procedural (Perlin-noise) cloud/fog
@@ -184,7 +184,7 @@ See [BUILD.md](BUILD.md) for full details, advanced options, and troubleshooting
 
 ### Running Tests
 
-The test suite uses **Google Test** and covers roughly **2,850+ unit and integration tests** across ~140 test files.
+The test suite uses **Google Test** and covers roughly **3,300+ unit and integration tests** across ~170 test files.
 
 #### Option A: Automated script (builds + runs in one step)
 ```powershell
@@ -282,7 +282,7 @@ Both formats are generated after each render completes.
 
 ## 🖼️ Scenes
 
-69 scenes (ids 0-68), selected via the `scene_id` CLI argument or the GUI's scene dropdown. Full descriptions and camera defaults live in [src/TheRestOfYourLife/scene_registry.h](src/TheRestOfYourLife/scene_registry.h).
+78 scenes (ids 0-78, id 53 retired), selected via the `scene_id` CLI argument or the GUI's scene dropdown. Full descriptions and camera defaults live in [src/TheRestOfYourLife/scene_registry.h](src/TheRestOfYourLife/scene_registry.h).
 
 | Range | Category |
 |---|---|
@@ -290,10 +290,12 @@ Both formats are generated after each render completes.
 | 9-21, 23 | pbrt-v4 material/BxDF showcase — mostly Cornell-box variants exercising rough metal, conductor, coated diffuse/conductor, thin glass, hair, subsurface, bilinear patches |
 | 24-36 | pbrt-v4 light/camera/medium showcase — HDRI sky, spot/distant/point/goniometric/projection lights, homogeneous & cloud media, orthographic/spherical/realistic-lens cameras, measured BRDFs |
 | 37-61 | Real-world statue/object meshes (Stanford Bunny, Armadillo, Happy Buddha, Lucy, XYZRGB Dragon, Utah Teapot, Suzanne, Nefertiti, and ~15 more) — one object per scene, checkered floor, overhead light |
-| 62-64 | "Movie-level" environment scenes: Crytek Sponza (262K tris), Amazon Lumberyard Bistro Exterior (2.84M tris), Rungholt (6.7M tris) — real per-face `.mtl` materials, with real `map_Kd` image textures on Sponza/Bistro |
+| 62-64, 73-78 | "Movie-level" environment scenes: Crytek Sponza (262K tris), Amazon Lumberyard Bistro Exterior (2.84M tris), Rungholt (6.7M tris), Fireplace Room, San Miguel (9.9M tris), Sibenik Cathedral, Breakfast Room, Salle de Bain, Gallery — real per-face `.mtl` materials, with real `map_Kd` image textures on all nine |
 | 65-68 | The classic Cornell box (same scene as A1/id 0), rendered by each of D1-D4's camera models in turn (defocus blur, orthographic, 360° spherical panorama, realistic-lens bokeh) — a fixed reference scene for directly comparing the four camera types |
+| 69-70 | Additional volumetric-media showcases (a combined dielectric+medium sphere; a heterogeneous RGB-grid medium) — same category as 24-36's E1/E2, added later so non-contiguous |
+| 71-72 | Additional geometry showcases (real object instancing; real Bezier curve/hair-fiber geometry, not the shading-normal proxy scene 19 uses) — same category as scene 23/37, added later so non-contiguous |
 
-Scenes 37-64 load external `.obj` assets from `models/` (Git LFS for the large ones); scenes 62-63 additionally need their texture directories (`models/sponza_textures/`, `models/bistro_textures/`).
+Scenes 37-64, 73-78 load external `.obj` assets from `models/` (Git LFS for the large ones); scenes 62-63 and 73-78 additionally need their own texture directories (`models/sponza_textures/`, `models/bistro_textures/`, `models/fireplace_room_textures/`, `models/san_miguel_textures/`, `models/sibenik_cathedral_textures/`, `models/breakfast_room_textures/`, `models/salle_de_bain_textures/`, `models/gallery_textures/`).
 
 ## 📦 Distribution & Release Process
 
@@ -436,7 +438,7 @@ ray_tracer/
 │   ├── sppm_*.cu/.h              # GPU SPPM (photon mapping) backend
 │   ├── optix_renderer.cpp/.h     # OptiX host-side renderer
 │   ├── optix_interface.cpp/.h    # C API wrapper
-│   ├── scene_builder.cpp/.h      # Scene conversion to OptiX format (all 69 scenes)
+│   ├── scene_builder.cpp/.h      # Scene conversion to OptiX format (all 78 scenes)
 │   └── optix_types.h             # Shared structures (materials, geometry, launch params)
 │
 ├── qt_gui/                        # Qt 6 graphical interface
@@ -446,7 +448,7 @@ ray_tracer/
 │
 ├── models/                        # Mesh (.obj) and texture assets, Git LFS for the large ones
 │
-├── tests/                         # Google Test suite (~2,850 tests)
+├── tests/                         # Google Test suite (~3,300 tests)
 │   ├── unit/                     # Unit tests
 │   └── integration/              # Integration tests
 │

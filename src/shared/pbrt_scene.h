@@ -3,7 +3,7 @@
 //
 // WHY PBRT'S FORMAT RATHER THAN OUR OWN
 // -------------------------------------
-// Every one of the 69 built-in scenes is a C++ builder in scene_registry.h
+// Every one of the 78 built-in scenes is a C++ builder in scene_registry.h
 // plus a hand-written case in gpu/optix/scene_builder.cpp, with the GPU camera
 // block copied from the CPU CameraConfig by hand (the comments there say so).
 // Adding a scene means editing two files and rebuilding.

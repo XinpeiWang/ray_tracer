@@ -37,8 +37,8 @@ GPU: `gpu/optix/pbrt_gpu_builder.h`'s material switch.
 | pbrt kind | CPU | GPU | Note |
 |---|---|---|---|
 | `diffuse` | Full | Full | Plain Lambertian on both. |
-| `conductor` | Approx | Approx | Both drop pbrt's spectral eta/k and use the fuzz-sphere metal model (roughness fed directly as fuzz, not GGX alpha) — symmetric, but neither side reaches the complex-IOR GGX `conductor`/`MaterialType::Conductor` model both backends actually have. |
-| `dielectric` | Approx | Approx | Smooth-only on both; a nonzero `roughness` is silently ignored (no `RoughDielectric` routing), even though both backends have that model too. |
+| `conductor` | Approx | Approx | A named metal spectrum (`"spectrum eta"`/`"spectrum k"` = `"metal-<Name>-eta"`/`"-k"`, e.g. Ag/Au/Al/Cu/Fe) resolves to the real complex-IOR GGX `conductor`/`MaterialType::Conductor` model with tabulated eta/k, on both backends. An explicit RGB `eta`/`k`, or an unrecognized spectrum name, still falls back to the fuzz-sphere metal model (roughness fed directly as fuzz, not GGX alpha) on both — symmetric either way. |
+| `dielectric` | Full | Full | Smooth by default; a nonzero `roughness` routes to the real `rough_dielectric`/`MaterialType::RoughDielectric` GGX model on both. pbrt's separate `uroughness`/`vroughness` (anisotropic) aren't parsed independently — whichever one is present is used as a single isotropic roughness. |
 | `thindielectric` | Full | Full | Both use the correct closed-form un-refracted transmission (`R_eff = R + T²R/(1-R²)`), not a solid-glass approximation. |
 | `coateddiffuse` | Full | Full | Same layered rough-coat-over-Lambertian model, same 3 parameters (albedo, ior, roughness), on both. |
 | `coatedconductor` | Approx | Approx | Symmetric approximation: base color reinterpreted as normal-incidence reflectance (eta=1, k solved from it). pbrt's real `conductor.eta`/`conductor.k` sub-parameters aren't parsed. |
@@ -68,11 +68,6 @@ GPU: `pbrt_gpu_builder.h`'s light-building code.
 | `infinite` (HDRI image) | Full | Full | Same equirectangular importance-sampling distribution (luminance-weighted, sin θ Jacobian) built and used on both. |
 | `AreaLightSource "diffuse"` | Approx | Approx | Real NEE-samplable geometry (sphere/quad/triangle/bilinear patch) on both, one-sided on both. `twosided` is not parsed on either backend (silently always one-sided, no warning); `blackbody` emission is read as a raw number rather than converted, on both (warned). |
 | anything else | Unsupported | Unsupported | Dropped with a warning; not visible on either backend. |
-
-**Known gap, not yet backend-specific:** a rotated `LightSource "infinite"`
-(`InfiniteLight::xform`) is parsed but never applied by either builder — an
-HDRI environment renders unrotated on both CPU and GPU regardless of the
-scene's own transform. Symmetric today, but worth fixing once, not per-backend.
 
 ## Cameras (`Camera::type`)
 

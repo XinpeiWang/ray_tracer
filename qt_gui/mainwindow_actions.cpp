@@ -248,7 +248,7 @@ void MainWindow::showAboutDialog() {
 		"<p>A physically-based path tracer with parallel CPU and GPU (OptiX) "
 		"backends, built up from the <i>Ray Tracing in One Weekend</i> series "
 		"into a pbrt-v4-style feature set.</p>"
-		"<p>69 scenes, a wide BxDF library, multiple light and camera types, "
+		"<p>78 scenes, a wide BxDF library, multiple light and camera types, "
 		"triangle-mesh and texture support, BVH acceleration, volumetrics, and "
 		"an SPPM photon-mapping integrator alongside standard path tracing.</p>"
 		"<p>This window drives <code>ray_tracer.exe</code> as a subprocess.</p>");

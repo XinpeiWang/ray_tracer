@@ -280,10 +280,13 @@ TEST(GPUSceneSwitchTest, TriangleThenNonTriangleSceneInSameProcess) {
 }
 
 // Confirms scene 18 (Principled) -> scene 0 in the same process is fine on
-// the recursive backend - a wavefront-only crash reproduces for this exact
-// scene pair (see wavefront_tests.cpp's DISABLED_ZeroLightSceneThenLitSceneCrashes,
-// tracked as task #106), which rules out a shared-code bug in PrincipledBxDF
-// or scene teardown and narrows it to wavefront-specific plumbing.
+// the recursive backend - a wavefront-only crash used to reproduce for this
+// exact scene pair (see wavefront_tests.cpp's
+// ZeroLightSceneThenLitSceneDoesNotCrash, task #106's regression test - the
+// underlying bug, an out-of-bounds missSBTIndex in __raygen__wf_shadow, was
+// found and fixed while fixing task #107, so it no longer crashes there
+// either), which ruled out a shared-code bug in PrincipledBxDF or scene
+// teardown and narrowed it to wavefront-specific plumbing.
 TEST(GPUSceneSwitchTest, RecursivePrincipledThenZeroSucceeds) {
 	if (!optix_is_available()) {
 		GTEST_SKIP() << "OptiX not available on this system";

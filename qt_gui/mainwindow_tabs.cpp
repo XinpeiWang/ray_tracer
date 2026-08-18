@@ -117,7 +117,7 @@ void MainWindow::createBasicTab() {
 	sceneGroupLayout->setContentsMargins(12, 20, 12, 10);
 	sceneGroupLayout->setSpacing(8);
 
-	// A category filter above the dropdown. With 69 scenes and counting, one
+	// A category filter above the dropdown. With 78 scenes and counting, one
 	// flat list had become a scroll-and-hunt exercise; the tabs cut it to at
 	// most a couple of dozen at a time. The categories come from the registry
 	// itself (SceneDescriptor::category, served by scene_metadata.dll), not

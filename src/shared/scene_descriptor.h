@@ -133,7 +133,7 @@ namespace SceneNames {
 // Canonical scene category constants
 // -----------------------------------------------------------------------
 // Categories group scenes by WHAT THEY DEMONSTRATE, which is the question a
-// user browsing 69 scenes is actually asking - not by which book chapter or
+// user browsing 78 scenes is actually asking - not by which book chapter or
 // source file they came from. The Qt GUI turns these into a filter tab bar
 // above the scene list (see qt_gui/mainwindow_tabs.cpp).
 //
