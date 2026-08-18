@@ -692,6 +692,37 @@ __device__ __forceinline__ void dev_equal_area_sphere_to_square(
 	v = 0.5*(vv + 1.0);
 }
 
+// Forward direction of the mapping above: (u,v) in [0,1]^2 -> unit sphere
+// direction, equal-area. Direct copy of src/shared/sampling_sphere.h's
+// EqualAreaSquareToSphere (same "small self-contained device helper" reason
+// as dev_equal_area_sphere_to_square just above - avoids pulling in that
+// header's ~1400 lines of mostly CPU-only sampling code).
+__device__ __forceinline__ void dev_equal_area_square_to_sphere(
+	double u, double v, double& wx, double& wy, double& wz
+) {
+	double uu = 2.0*u - 1.0, vv = 2.0*v - 1.0;
+	double up = fabs(uu), vp = fabs(vv);
+	double signed_dist = 1.0 - (up + vp);
+	double d = fabs(signed_dist);
+	double r = 1.0 - d;
+	double phi = (r == 0.0 ? 1.0 : (vp - up) / r + 1.0) * (3.14159265358979323846 / 4.0);
+	wz = copysign(1.0 - r*r, signed_dist);
+	double cos_phi = cos(phi);
+	double sin_phi = sin(phi);
+	double xy_r = r * sqrt(fmax(0.0, 2.0 - r*r));
+	wx = copysign(cos_phi * xy_r, uu);
+	wy = copysign(sin_phi * xy_r, vv);
+}
+
+// Mirror (u,v) outside [0,1]^2 back onto the equal-area square. Direct copy
+// of src/shared/sampling_sphere.h's WrapEqualAreaSquare.
+__device__ __forceinline__ void dev_wrap_equal_area_square(double& u, double& v) {
+	if (u < 0.0) { u = -u; v = 1.0 - v; }
+	else if (u > 1.0) { u = 2.0 - u; v = 1.0 - v; }
+	if (v < 0.0) { u = 1.0 - u; v = -v; }
+	else if (v > 1.0) { u = 1.0 - u; v = 2.0 - v; }
+}
+
 // Mirrors src/TheRestOfYourLife/punctual_light_objects.h's PunctualLiSample /
 // sample_direct() on the CPU - pdf is always 1 for these delta lights, so
 // callers add the contribution directly with no MIS weight or pdf division
@@ -2413,15 +2444,27 @@ __device__ __forceinline__ void generate_primary_ray(
 			break;
 		}
 		case CameraKind::Spherical: {
-			// pbrt-v4 SphericalCamera::GenerateRay (EquiRectangular mapping):
-			// theta in [0,pi], phi in [0,2pi], then swap(dir.y, dir.z) - see
-			// src/shared/cameras.h for the reference this mirrors.
-			float theta = 3.14159265358979323846f * v;
-			float phi   = 2.0f * 3.14159265358979323846f * u;
-			float sin_t = sinf(theta), cos_t = cosf(theta);
-			float lx = sin_t * cosf(phi);
-			float ly = cos_t;             // swapped with lz below (pbrt-v4 convention)
-			float lz = sin_t * sinf(phi); // swapped with ly above
+			// pbrt-v4 SphericalCamera::GenerateRay - see src/shared/cameras.h
+			// for the reference this mirrors, both mappings finish with a
+			// swap(dir.y, dir.z) folded directly into which raw component
+			// feeds ly vs lz below (rather than an actual runtime swap).
+			float lx, ly, lz;
+			if (cam.sphericalMapping == 1) {  // EqualArea
+				double ud = (double)u, vd = (double)v;
+				dev_wrap_equal_area_square(ud, vd);
+				double ewx, ewy, ewz;
+				dev_equal_area_square_to_sphere(ud, vd, ewx, ewy, ewz);
+				lx = (float)ewx;
+				ly = (float)ewz;  // swap(wy,wz): final y = raw z
+				lz = (float)ewy;  // swap(wy,wz): final z = raw y
+			} else {  // EquiRectangular: theta in [0,pi], phi in [0,2pi]
+				float theta = 3.14159265358979323846f * v;
+				float phi   = 2.0f * 3.14159265358979323846f * u;
+				float sin_t = sinf(theta), cos_t = cosf(theta);
+				lx = sin_t * cosf(phi);
+				ly = cos_t;
+				lz = sin_t * sinf(phi);
+			}
 			origin = cam.origin;
 			direction = normalize(lx * cam.su + ly * cam.sv + lz * cam.sw);
 			break;

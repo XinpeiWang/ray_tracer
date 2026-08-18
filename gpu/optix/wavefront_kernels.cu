@@ -561,6 +561,34 @@ __device__ __forceinline__ void wf_equal_area_sphere_to_square(
 	v = 0.5*(vv + 1.0);
 }
 
+// Forward direction of the mapping above, for the Spherical camera's
+// EqualArea raygen case below. Duplicated from optix_device_helpers.h's
+// dev_equal_area_square_to_sphere / dev_wrap_equal_area_square (same
+// no-cross-file-sharing reason as wf_equal_area_sphere_to_square above).
+__device__ __forceinline__ void wf_equal_area_square_to_sphere(
+	double u, double v, double& wx, double& wy, double& wz
+) {
+	double uu = 2.0*u - 1.0, vv = 2.0*v - 1.0;
+	double up = fabs(uu), vp = fabs(vv);
+	double signed_dist = 1.0 - (up + vp);
+	double d = fabs(signed_dist);
+	double r = 1.0 - d;
+	double phi = (r == 0.0 ? 1.0 : (vp - up) / r + 1.0) * (3.14159265358979323846 / 4.0);
+	wz = copysign(1.0 - r*r, signed_dist);
+	double cos_phi = cos(phi);
+	double sin_phi = sin(phi);
+	double xy_r = r * sqrt(fmax(0.0, 2.0 - r*r));
+	wx = copysign(cos_phi * xy_r, uu);
+	wy = copysign(sin_phi * xy_r, vv);
+}
+
+__device__ __forceinline__ void wf_wrap_equal_area_square(double& u, double& v) {
+	if (u < 0.0) { u = -u; v = 1.0 - v; }
+	else if (u > 1.0) { u = 2.0 - u; v = 1.0 - v; }
+	if (v < 0.0) { u = 1.0 - u; v = -v; }
+	else if (v > 1.0) { u = 1.0 - u; v = 2.0 - v; }
+}
+
 // Evaluate one punctual (point/spot/distant/goniometric/projection) light at
 // shading point p: same dispatch as optix_device_helpers.h's
 // eval_punctual_light(), duplicated here (with the wf_ prefix) rather than
@@ -790,12 +818,27 @@ __device__ __forceinline__ void wf_generate_primary_ray(
 			break;
 		}
 		case CameraKind::Spherical: {
-			float theta = 3.14159265358979323846f * v;
-			float phi   = 2.0f * 3.14159265358979323846f * u;
-			float sin_t = sinf(theta), cos_t = cosf(theta);
-			float lx = sin_t * cosf(phi);
-			float ly = cos_t;
-			float lz = sin_t * sinf(phi);
+			// Both mappings finish with a swap(dir.y, dir.z) folded directly
+			// into which raw component feeds ly vs lz below - see
+			// optix_device_helpers.h's generate_primary_ray for the same
+			// pattern and src/shared/cameras.h for the CPU reference.
+			float lx, ly, lz;
+			if (cam.sphericalMapping == 1) {  // EqualArea
+				double ud = (double)u, vd = (double)v;
+				wf_wrap_equal_area_square(ud, vd);
+				double ewx, ewy, ewz;
+				wf_equal_area_square_to_sphere(ud, vd, ewx, ewy, ewz);
+				lx = (float)ewx;
+				ly = (float)ewz;  // swap(wy,wz): final y = raw z
+				lz = (float)ewy;  // swap(wy,wz): final z = raw y
+			} else {  // EquiRectangular
+				float theta = 3.14159265358979323846f * v;
+				float phi   = 2.0f * 3.14159265358979323846f * u;
+				float sin_t = sinf(theta), cos_t = cosf(theta);
+				lx = sin_t * cosf(phi);
+				ly = cos_t;
+				lz = sin_t * sinf(phi);
+			}
 			origin = cam.origin;
 			direction = normalize(lx * cam.su + ly * cam.sv + lz * cam.sw);
 			break;

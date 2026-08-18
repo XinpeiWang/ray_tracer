@@ -859,6 +859,10 @@ struct GpuCameraParams {
 	                        // also reused by Realistic for its camera-to-world rotation
 	                        // (su=right, sv=up, sw=forward) - `origin` above doubles as
 	                        // its camera-to-world translation.
+	int    sphericalMapping; // Spherical only: 0 = equirectangular (default, matches every
+	                        // zero-initialized scene before this field existed), 1 = equal-
+	                        // area (pbrt-v4's concentric-octahedral square-to-sphere map,
+	                        // src/shared/sampling_sphere.h's EqualAreaSquareToSphere on CPU).
 
 	// Realistic (CameraKind::Realistic): fixed scalars + device buffers for the
 	// host-precomputed (focus-adjusted) lens table and exit-pupil bounds table -

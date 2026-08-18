@@ -86,7 +86,7 @@ loaded pbrt scenes. GPU: `gpu/optix/scene_builder.cpp`'s
 | `perspective` + `lensradius` (depth of field) | Full | Full | Both convert pbrt's `lensradius` (a world-space lens radius) through the same shared `defocusAngleDegreesFor()`/`focusDistanceFor()` helpers before applying it, so there's no unit mismatch between them. |
 | `orthographic` | Full | Full | Both honor an explicit `screenwindow`, and fall back to the same computed default window otherwise. |
 | `spherical` — equirectangular | Full | Full | `"environment"` accepted as an alias for `"spherical"` on both. |
-| `spherical` — equalarea | Full | **Fallback** | GPU has no equal-area raygen; it warns and renders as equirectangular instead. CPU does the real equal-area mapping. |
+| `spherical` — equalarea | Full | Full | Both do the real pbrt-v4 concentric-octahedral equal-area mapping (`EqualAreaSquareToSphere`); GPU keeps a small local device-side copy of the math on each backend rather than including the CPU header (same pattern as the rest of this codebase's device helpers). |
 | `realistic` (lens file) | Full | Full | Both parse the same lens-file format and build a real multi-element lens simulation (GPU reuses the same host-side `RealisticCamera` and flattens it to device buffers); both fall back to perspective with a warning if the lens file is missing/unreadable. |
 
 ## Stale comments corrected while building this table

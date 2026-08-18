@@ -4200,16 +4200,6 @@ static bool build_loaded_pbrt_scene(
 			out_camera_extra->vertical = vertical;
 			out_camera_extra->w = make_float3(-w.x, -w.y, -w.z);
 		} else if (c.type == "spherical" || c.type == "environment") {
-			if (c.sphericalMapping == "equalarea") {
-				// The device raygen (optix_device_helpers.h / wavefront_kernels.cu)
-				// only implements EquiRectangular - no GPU EqualArea mapping
-				// exists yet. Still route to Spherical (closer than staying
-				// Perspective) but say so, the same "warn, use the closer
-				// approximation" convention as pbrt_flatten.h's own gaps.
-				std::cerr << "[OptiX] warning: " << path
-					  << ": spherical camera's \"equalarea\" mapping has no GPU "
-					     "implementation; rendering as equirectangular instead\n";
-			}
 			const Mat4<float> ctw = make_look_at<float>(
 				lookfrom.x, lookfrom.y, lookfrom.z,
 				lookat.x, lookat.y, lookat.z,
@@ -4222,6 +4212,7 @@ static bool build_loaded_pbrt_scene(
 			out_camera_extra->su = make_float3(su.x, su.y, su.z);
 			out_camera_extra->sv = make_float3(sv.x, sv.y, sv.z);
 			out_camera_extra->sw = make_float3(sw.x, sw.y, sw.z);
+			out_camera_extra->sphericalMapping = (c.sphericalMapping == "equalarea") ? 1 : 0;
 		} else if (c.type == "realistic") {
 			// c.lensFile is guaranteed non-empty here - pbrt_flatten.h already
 			// fell back to "perspective" at flatten() time if the scene gave
