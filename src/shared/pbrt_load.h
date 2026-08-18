@@ -121,13 +121,15 @@ inline bool endsWithCaseInsensitive(const std::string &path, const std::string &
 //
 // Uses its OWN forward/inverse latlong mapping (matching sky_light.h's
 // documented `sample()` formula: dir = (sin(theta)cos(phi), cos(theta),
-// -sin(theta)sin(phi))), NOT sky_light.h's private dir_to_uv() - the two
-// disagree (dir_to_uv negates y and offsets phi by pi rather than deriving
-// the closed-form inverse of that same sample() formula), which looks like
-// a real, separate, pre-existing bug in dir_to_uv() found while deriving
-// this; flagged separately rather than touched here, since fixing it
-// changes every unrotated sky render's importance-sampling PDF too and
-// deserves its own verification, not a drive-by inside an unrelated fix.
+// -sin(theta)sin(phi))) rather than calling sky_light.h's private
+// dir_to_uv() (this loader has no access to it anyway - dir_to_uv is a
+// private static member). At the time this was written, dir_to_uv() had a
+// real, separate, pre-existing bug (negated y, +pi phase offset instead of
+// the closed-form inverse of sample()) discovered while deriving this
+// function's own correct mapping; that bug has since been fixed (dir_to_uv
+// now matches this function's formula exactly), so the two are equivalent
+// again - this still keeps its own copy rather than depending on a private
+// member, not because of any remaining disagreement.
 inline void applyInfiniteLightOrientation(const pbrt_scene::Matrix4 &xform,
 										  std::vector<float> &pixels, int w, int h) {
 	// Identity (the overwhelmingly common case - most scenes never rotate

@@ -132,11 +132,18 @@ class sky_light {
     bool                 has_dist = false;
     int                  img_w = 0, img_h = 0;
     PiecewiseConstant2D  dist;
+    // Inverse of the forward mapping documented at the top of this file
+    // (dir = (sin(theta)*cos(phi), cos(theta), -sin(theta)*sin(phi)), theta =
+    // v*pi, phi = u*2*pi): theta = acos(dir.y), phi = atan2(-dir.z, dir.x)
+    // wrapped into [0, 2*pi). Also mirrored bit-for-bit in
+    // gpu/optix/gpu_sky_light_shared.h's gpu_sky_dir_to_uv() - keep both in
+    // sync if this ever changes again.
     static std::pair<double,double> dir_to_uv(const vec3& d) {
-        double ct = -d.y();
-        if (ct > 1.0) ct = 1.0; if (ct < -1.0) ct = -1.0;
-        double theta = std::acos(ct);
-        double phi = std::atan2(-d.z(), d.x()) + pi;
+        double cy = d.y();
+        if (cy > 1.0) cy = 1.0; if (cy < -1.0) cy = -1.0;
+        double theta = std::acos(cy);
+        double phi = std::atan2(-d.z(), d.x());
+        if (phi < 0.0) phi += 2.0*pi;
         return { phi/(2.0*pi), theta/pi };
     }
 };

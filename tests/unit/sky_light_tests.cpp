@@ -14,6 +14,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <vector>
 #include "rtweekend.h"
 #include "sky_light.h"
 
@@ -116,6 +117,45 @@ TEST(SkyLightTest, PolarDirectionsNoNaN) {
 	color le_down = sky.Le(vec3( 0, -1,  0));
 	EXPECT_FALSE(std::isnan(le_up.x())   || std::isnan(le_up.y())   || std::isnan(le_up.z()));
 	EXPECT_FALSE(std::isnan(le_down.x()) || std::isnan(le_down.y()) || std::isnan(le_down.z()));
+}
+
+// -----------------------------------------------------------------------
+// dir_to_uv() correctness -- private, so tested indirectly via pdf_Li().
+// A synthetic HDR image with a dim uniform baseline plus one bright pixel
+// gives dist a sharp (but non-degenerate) peak; pdf_Li() must peak at the
+// direction that pixel's own (u,v) maps to under the class's documented
+// forward formula (the same formula sample_Le() uses), far above the
+// baseline pdf elsewhere. The baseline keeps every row/column non-degenerate
+// so PiecewiseConstant1D's own all-zero-bin uniform fallback (see
+// piecewise_dist.h) never kicks in and confounds the comparison. This test
+// fails under the old dir_to_uv() (wrong sign on y, spurious +pi phase
+// offset on phi), which pointed pdf_Li() at the wrong row/column.
+// -----------------------------------------------------------------------
+
+TEST(SkyLightTest, PdfLiPeaksAtTheBrightPixelsOwnDirection) {
+	const int W = 16, H = 16;
+	const int hot_row = 4, hot_col = 12;
+	std::vector<float> pixels(static_cast<size_t>(W) * H * 3, 0.01f);
+	size_t hot = (static_cast<size_t>(hot_row) * W + hot_col) * 3;
+	pixels[hot] = pixels[hot + 1] = pixels[hot + 2] = 50.0f;
+
+	sky_light sky(W, H, pixels.data());
+	ASSERT_TRUE(sky.has_importance_sampling());
+
+	// Same forward formula documented at the top of sky_light.h / used by
+	// sample_Le() -- the direction the hot pixel's own (u,v) center maps to.
+	double u_c = (hot_col + 0.5) / W;
+	double v_c = (hot_row + 0.5) / H;
+	double phi = u_c * 2.0 * pi;
+	double theta = v_c * pi;
+	double sin_t = std::sin(theta), cos_t = std::cos(theta);
+	vec3 dir_hot = unit_vector(vec3(sin_t * std::cos(phi), cos_t, -sin_t * std::sin(phi)));
+
+	double pdf_hot = sky.pdf_Li(dir_hot);
+	double pdf_opposite = sky.pdf_Li(-dir_hot);
+
+	EXPECT_GT(pdf_hot, 0.0);
+	EXPECT_GT(pdf_hot, pdf_opposite * 100.0);
 }
 
 // -----------------------------------------------------------------------

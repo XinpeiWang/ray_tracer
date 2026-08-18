@@ -117,14 +117,16 @@ __device__ __forceinline__ float gpu_sky_pc2d_pdf(const GpuSkyDistribution& d, f
 // ---------------------------------------------------------------------------
 // sky_dir_to_uv() / sky_uv_to_dir() -- the equirectangular mapping, mirrors
 // sky_light.h's private dir_to_uv() and sample_Le()'s inverse exactly
-// (theta=acos(-dir.y), phi=atan2(-dir.z,dir.x)+pi -- and back).
+// (theta=acos(dir.y), phi=atan2(-dir.z,dir.x) wrapped into [0,2*pi) -- and
+// back). Keep in sync with sky_light.h's dir_to_uv() if this ever changes.
 // ---------------------------------------------------------------------------
 __device__ __forceinline__ void gpu_sky_dir_to_uv(const float3& dir, float& u, float& v) {
 	const float kPi = 3.14159265358979323846f;
-	float ct = -dir.y;
-	ct = fminf(1.0f, fmaxf(-1.0f, ct));
-	const float theta = acosf(ct);
-	const float phi = atan2f(-dir.z, dir.x) + kPi;
+	float cy = dir.y;
+	cy = fminf(1.0f, fmaxf(-1.0f, cy));
+	const float theta = acosf(cy);
+	float phi = atan2f(-dir.z, dir.x);
+	if (phi < 0.0f) phi += 2.0f * kPi;
 	u = phi / (2.0f * kPi);
 	v = theta / kPi;
 }
