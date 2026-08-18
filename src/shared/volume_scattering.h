@@ -17,6 +17,7 @@
 // ---------------------------------------------------------------------------
 
 #include "cpu_gpu.h"
+#include "scalar_math.h"
 
 #if defined(__CUDACC__)
 #   include <math_functions.h>
@@ -31,11 +32,7 @@ namespace vol_detail {
 
 template<typename T>
 CPU_GPU T safe_sqrt(T x) {
-#if defined(__CUDACC__)
-	return sqrtf(x > T(0) ? x : T(0));
-#else
-	return std::sqrt(x > T(0) ? x : T(0));
-#endif
+	return SafeSqrt(x);
 }
 
 template<typename T>

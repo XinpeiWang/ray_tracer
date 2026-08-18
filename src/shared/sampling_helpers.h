@@ -35,7 +35,7 @@ namespace sampling_detail {
 
 template<typename T>
 CPU_GPU T safe_sqrt(T x) {
-	return std::sqrt(x > T(0) ? x : T(0));
+	return SafeSqrt(x);
 }
 
 template<typename T>

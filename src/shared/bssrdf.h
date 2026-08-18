@@ -27,6 +27,7 @@
 // ---------------------------------------------------------------------------
 
 #include "cpu_gpu.h"
+#include "scalar_math.h"
 
 #include "sampling.h"   // catmull_rom_weights, integrate_catmull_rom, SampleCatmullRom2D, InvertCatmullRom
 #include "fresnel.h"    // FresnelMoment1, FrDielectric
@@ -45,7 +46,7 @@ static const double kPi    = 3.14159265358979323846;
 static const double kInv4Pi = 1.0 / (4.0 * kPi);
 
 inline double fast_exp(double x) { return std::exp(x); }
-inline double safe_sqrt(double x) { return std::sqrt(x > 0.0 ? x : 0.0); }
+inline double safe_sqrt(double x) { return SafeSqrt(x); }
 inline double sqr(double x) { return x * x; }
 inline double pow3(double x) { return x * x * x; }
 

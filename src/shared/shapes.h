@@ -29,6 +29,7 @@
 // ---------------------------------------------------------------------------
 
 #include "cpu_gpu.h"
+#include "scalar_math.h"
 
 #include "sampling_sphere_cone.h"   // SampleUniformSphere, SampleUniformDiskConcentric,
 								// SampleUniformCone, UniformConePDF, etc.
@@ -72,7 +73,7 @@ template<typename T> CPU_GPU T safe_acos(T x) {
 
 // Safe sqrt (clamps negative argument to zero)
 template<typename T> CPU_GPU T safe_sqrt(T x) {
-	return std::sqrt(std::max(T(0), x));
+	return SafeSqrt(x);
 }
 
 // Length of 3-vector

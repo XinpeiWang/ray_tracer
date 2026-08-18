@@ -161,6 +161,8 @@ struct RoughDielectricBxDF {
 //
 // pbrt-v4 reference: LayeredBxDF (bxdfs.h), RNG (util/rng.h), Tr (bxdfs.h)
 // ===========================================================================
+#include "scalar_math.h"
+
 namespace layered_detail {
 
 // Use the shared canonical RNG (src/shared/rng.h, ported from pbrt-v4 util/rng.h).
@@ -190,11 +192,7 @@ CPU_GPU T SampleExponential(T u, T rate) {
 // safe_sqrt
 template<typename T>
 CPU_GPU T safe_sqrt(T x) {
-#if defined(__CUDACC__)
-	return sqrtf(x > T(0) ? x : T(0));
-#else
-	return std::sqrt(x > T(0) ? x : T(0));
-#endif
+	return SafeSqrt(x);
 }
 
 
