@@ -487,3 +487,79 @@ TEST(BxDFWhiteFurnace, RoughDielectricHighIorEntering) {
 	// Higher IOR (diamond-like, eta=2.42) stresses the TIR fallback path harder.
 	run_dielectric_energy_conservation("RoughDielectric entering eta_ior=2.42", 1.0/2.42, 0.3);
 }
+
+// ===========================================================================
+// CoatedDiffuseBxDF / CoatedConductorBxDF -- stochastic f(wi,wo,seed) added
+// for real NEE/MIS (task #228). Unlike RoughMetal/Conductor/RoughDielectric,
+// there is no analytic sampling pdf to importance-sample against (the
+// underlying distribution is an unbounded-depth random walk) -- verified
+// instead via UNIFORM hemisphere Monte Carlo integration of f(wi,wo)*cos(wo)
+// over wo, an independent, pdf-free total-reflectance check: a passive,
+// non-emitting layered BSDF must integrate to <= 1 over the hemisphere. This
+// sidesteps needing any pdf function at all, at the cost of higher variance
+// than importance sampling (mitigated with more samples).
+// ===========================================================================
+
+static double coated_hemisphere_energy_estimate(
+	std::function<void(double, double, double, double, double, double, uint64_t, uint64_t,
+						double&, double&, double&)> f_fn,
+	double wix, double wiy, double wiz, int n_samp = 20000)
+{
+	double sum = 0;
+	for (int j = 0; j < n_samp; ++j) {
+		// Uniform hemisphere sample (NOT cosine-weighted): z uniform in
+		// [0,1], matching pdf = 1/(2*pi) over the hemisphere.
+		double u1 = ri2(j + 1), u2 = ri3(j + 1);
+		double z = u1;
+		double r = std::sqrt(std::max(0.0, 1.0 - z*z));
+		double phi = k2Pi * u2;
+		double wox = r * std::cos(phi), woy = r * std::sin(phi), woz = z;
+
+		double fr, fg, fb;
+		f_fn(wix, wiy, wiz, wox, woy, woz,
+			 (uint64_t)(j * 2654435761u + 1), (uint64_t)(j * 40503u + 1), fr, fg, fb);
+		double favg = (fr + fg + fb) / 3.0;
+		sum += favg * woz;
+	}
+	return (sum / n_samp) * (2.0 * kPi);
+}
+
+TEST(BxDFWhiteFurnace, CoatedDiffuseEnergyConservation) {
+	CoatedDiffuseBxDF<double> bxdf{};
+	bxdf.albedo_r = bxdf.albedo_g = bxdf.albedo_b = 0.8;
+	bxdf.coat_ior = 1.5;
+	bxdf.alpha_x = bxdf.alpha_y = 0.3;
+	bxdf.nSamples = 4;
+
+	double estimate = coated_hemisphere_energy_estimate(
+		[&](double wix, double wiy, double wiz, double wox, double woy, double woz,
+			uint64_t s0, uint64_t s1, double& fr, double& fg, double& fb) {
+			bxdf.f(wix, wiy, wiz, wox, woy, woz, s0, s1, fr, fg, fb);
+		},
+		0.0, 0.0, 1.0);
+	EXPECT_LE(estimate, 1.05)
+		<< "CoatedDiffuseBxDF total reflectance should be <= 1, got " << estimate;
+	EXPECT_GT(estimate, 0.1)
+		<< "CoatedDiffuseBxDF total reflectance implausibly low: " << estimate;
+}
+
+TEST(BxDFWhiteFurnace, CoatedConductorEnergyConservation) {
+	CoatedConductorBxDF<double> bxdf{};
+	// Gold-like conductor under the coat.
+	bxdf.eta_r = 0.143; bxdf.eta_g = 0.375; bxdf.eta_b = 1.442;
+	bxdf.k_r = 3.983;   bxdf.k_g = 2.386;   bxdf.k_b = 1.603;
+	bxdf.coat_ior = 1.5;
+	bxdf.alpha_x = bxdf.alpha_y = 0.3;
+	bxdf.nSamples = 4;
+
+	double estimate = coated_hemisphere_energy_estimate(
+		[&](double wix, double wiy, double wiz, double wox, double woy, double woz,
+			uint64_t s0, uint64_t s1, double& fr, double& fg, double& fb) {
+			bxdf.f(wix, wiy, wiz, wox, woy, woz, s0, s1, fr, fg, fb);
+		},
+		0.0, 0.0, 1.0);
+	EXPECT_LE(estimate, 1.05)
+		<< "CoatedConductorBxDF total reflectance should be <= 1, got " << estimate;
+	EXPECT_GT(estimate, 0.1)
+		<< "CoatedConductorBxDF total reflectance implausibly low: " << estimate;
+}

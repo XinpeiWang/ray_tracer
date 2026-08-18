@@ -1353,7 +1353,15 @@ TEST(CoatedDiffuseMaterialTest, AttenuationInRange) {
 	}
 }
 
-// Scattered direction must stay in the upper hemisphere (dot > 0 with normal).
+// Scattered direction must stay in the upper hemisphere OR carry zero
+// sampling density (dot > 0 with normal). roughness=0.15 is well above the
+// EffectivelySmooth threshold, so coated_diffuse::scatter() takes the
+// glossy real-NEE path (skip_pdf=false, no skip_pdf_ray) -- direction
+// comes from pdf_ptr->generate() instead, which (being VNDF-based, unlike
+// cosine sampling) can legitimately produce a below-horizon grazing
+// sample -- see ConductorMaterialTest.ScatteredDirectionInUpperHemisphere's
+// identical reasoning in this same file. See rough_metal's own comment in
+// material_pbrt.h for why this branch exists (#222).
 TEST(CoatedDiffuseMaterialTest, ScatteredDirectionInUpperHemisphere) {
 	coated_diffuse mat(color(0.2, 0.3, 0.9), 1.5, 0.15);
 	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
@@ -1365,15 +1373,23 @@ TEST(CoatedDiffuseMaterialTest, ScatteredDirectionInUpperHemisphere) {
 		scatter_record srec;
 		if (mat.scatter(r_in, rec, srec)) {
 			++successes;
-			vec3 dir = srec.skip_pdf_ray.direction();
-			EXPECT_GT(dot(dir, normal), 0.0)
-				<< "Scattered direction must stay in upper hemisphere";
+			ASSERT_FALSE(srec.skip_pdf) << "roughness=0.15 is glossy, not specular";
+			ASSERT_NE(srec.pdf_ptr, nullptr);
+			vec3 dir = srec.pdf_ptr->generate();
+			double cos_dir = dot(dir, normal);
+			if (cos_dir <= 0.0) {
+				EXPECT_LE(srec.pdf_ptr->value(dir), 0.0)
+					<< "below-horizon sample must carry zero sampling density";
+			}
 		}
 	}
 	EXPECT_GT(successes, 150) << "High scatter success rate expected for non-grazing incidence";
 }
 
-// skip_pdf must always be true (coated_diffuse always uses skip_pdf path).
+// skip_pdf reflects roughness: glossy (roughness=0.1) gets real NEE
+// (skip_pdf=false). Previously coated_diffuse unconditionally set
+// skip_pdf=true regardless of roughness -- this test used to assert
+// exactly that bug (#222).
 TEST(CoatedDiffuseMaterialTest, SkipPdfIsTrue) {
 	coated_diffuse mat(color(0.5, 0.5, 0.5), 1.5, 0.1);
 	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
@@ -1381,7 +1397,8 @@ TEST(CoatedDiffuseMaterialTest, SkipPdfIsTrue) {
 	for (int trial = 0; trial < 50; ++trial) {
 		scatter_record srec;
 		if (mat.scatter(r_in, rec, srec)) {
-			EXPECT_TRUE(srec.skip_pdf) << "coated_diffuse must always set skip_pdf=true";
+			EXPECT_FALSE(srec.skip_pdf) << "roughness=0.1 is glossy, must get real NEE";
+			EXPECT_NE(srec.pdf_ptr, nullptr);
 		}
 	}
 }
@@ -1606,7 +1623,11 @@ TEST(CoatedConductorMaterialTest, ScatterSucceedsFromAbove) {
 	EXPECT_GE(successes, 80) << "Most rays from above should scatter";
 }
 
-// skip_pdf must always be true (specular path).
+// skip_pdf reflects roughness: make_gold_lacquer()'s roughness=0.1 is
+// glossy (alpha well above the EffectivelySmooth threshold), so this now
+// gets real NEE (skip_pdf=false) -- previously coated_conductor
+// unconditionally set skip_pdf=true regardless of roughness, and this test
+// asserted exactly that bug (#222).
 TEST(CoatedConductorMaterialTest, SkipPdfIsTrue) {
 	auto mat = make_gold_lacquer();
 	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
@@ -1614,7 +1635,8 @@ TEST(CoatedConductorMaterialTest, SkipPdfIsTrue) {
 	for (int i = 0; i < 50; ++i) {
 		scatter_record srec;
 		if (mat.scatter(r_in, rec, srec)) {
-			EXPECT_TRUE(srec.skip_pdf);
+			EXPECT_FALSE(srec.skip_pdf) << "roughness=0.1 is glossy, must get real NEE";
+			EXPECT_NE(srec.pdf_ptr, nullptr);
 		}
 	}
 }
@@ -1637,7 +1659,13 @@ TEST(CoatedConductorMaterialTest, AttenuationIsNonNegativeAndBounded) {
 	}
 }
 
-// Scattered direction must stay in the upper hemisphere (normal = (0,1,0)).
+// Scattered direction must stay in the upper hemisphere OR carry zero
+// sampling density (normal = (0,1,0)) -- roughness=0.1 is glossy, so this
+// takes the real-NEE path (skip_pdf=false); direction comes from
+// pdf_ptr->generate(), which (being VNDF-based, unlike cosine sampling)
+// can legitimately produce a below-horizon grazing sample -- see
+// ConductorMaterialTest.ScatteredDirectionInUpperHemisphere's identical
+// reasoning in this same file.
 TEST(CoatedConductorMaterialTest, ScatteredDirectionIsInUpperHemisphere) {
 	auto mat = make_gold_lacquer();
 	ray r_in(point3(0, 1, 0), vec3(0, -1, 0));
@@ -1645,8 +1673,14 @@ TEST(CoatedConductorMaterialTest, ScatteredDirectionIsInUpperHemisphere) {
 	for (int i = 0; i < 200; ++i) {
 		scatter_record srec;
 		if (mat.scatter(r_in, rec, srec)) {
-			EXPECT_GT(dot(srec.skip_pdf_ray.direction(), rec.normal), 0.0)
-				<< "Scattered ray must be in the upper hemisphere";
+			ASSERT_FALSE(srec.skip_pdf) << "roughness=0.1 is glossy, not specular";
+			ASSERT_NE(srec.pdf_ptr, nullptr);
+			vec3 dir = srec.pdf_ptr->generate();
+			double cos_dir = dot(dir, rec.normal);
+			if (cos_dir <= 0.0) {
+				EXPECT_LE(srec.pdf_ptr->value(dir), 0.0)
+					<< "below-horizon sample must carry zero sampling density";
+			}
 		}
 	}
 }

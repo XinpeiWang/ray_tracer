@@ -2,6 +2,30 @@
 #include "material_base.h"
 #include "../shared/bssrdf.h"
 #include "../shared/measured_bxdf_loader.h"
+#include <cstring>
+
+// coated_seed_from_dir -- deterministic 64-bit hash of a direction vector,
+// used by coated_diffuse/coated_conductor's real-NEE path (below) to derive
+// the CoatedDiffuseBxDF<T>::f() / CoatedConductorBxDF<T>::f() random-walk
+// seed. scattering_pdf() and scattering_attenuation() are two SEPARATE
+// calls for the same (rec, scattered) query (see material_base.h's own
+// comment on why NEE needs both), and f()'s random walk must give the SAME
+// per-channel/scalar split across both calls for a given queried direction
+// -- a fresh random_double()-derived seed each call would let the two calls
+// silently disagree (extra noise, not bias, but avoidable). Hashing only
+// the queried direction (not rec.p) is sufficient: both calls are always
+// for the same scatter() event's fixed wi/rec, only `scattered` varies
+// across the different NEE/MIS strategies querying this material.
+inline uint64_t coated_seed_from_dir(const vec3& d) {
+	uint64_t h = 0x9E3779B97F4A7C15ull;
+	auto mix = [&](double v) {
+		uint64_t bits;
+		std::memcpy(&bits, &v, sizeof(bits));
+		h ^= bits + 0x9E3779B97F4A7C15ull + (h << 6) + (h >> 2);
+	};
+	mix(d.x()); mix(d.y()); mix(d.z());
+	return h;
+}
 
 // ---------------------------------------------------------------------------
 // rough_metal -- GGX microfacet BRDF (pbrt-v4 TrowbridgeReitzDistribution)
@@ -375,6 +399,24 @@ class coated_diffuse : public material {
         return BxDF{ albedo.x(), albedo.y(), albedo.z(), ior, alpha_x, alpha_y };
     }
 
+    // Real NEE/MIS below the roughness threshold (see rough_metal's own
+    // comment). CoatedDiffuseBxDF::f() is a genuinely stochastic,
+    // random-walk BSDF value (see that method's own header comment in
+    // bxdfs_layered.h) with real per-channel color (from the Lambertian
+    // base's albedo) -- unlike RoughDielectricBxDF, it isn't colorless, so
+    // scattering_pdf()'s scalar return can't carry the full RGB alone.
+    // material::scattering_attenuation()'s signature has no incoming
+    // direction to work with (unlike scattering_pdf(), which gets r_in),
+    // so unlike diffuse_transmission's exact per-direction R/T split, this
+    // uses the material's own base albedo as a fixed representative color
+    // (srec.attenuation), with scattering_pdf() below returning
+    // luminance(f)*cos / luminance(albedo) so that attenuation*
+    // scattering_pdf() reproduces f()'s overall magnitude correctly, tinted
+    // by albedo's own hue -- an approximation (the true per-direction
+    // Fresnel-driven color shift is averaged away), but a large improvement
+    // over the flat-white/no-color alternative, following the same
+    // documented-approximation precedent as conductor's fixed-view-angle
+    // Fresnel above.
     bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
                  bool do_regularize = false) const override {
         auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
@@ -387,19 +429,51 @@ class coated_diffuse : public material {
         frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
         if (wi_z <= 0.0) return false;
 
-        auto res = bxdf.sample_local(wi_x, wi_y, wi_z,
-                                     random_double(), random_double(),
-                                     random_double(),
-                                     random_double(), random_double());
-        if (!res.valid) return false;
+        if (TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth()) {
+            auto res = bxdf.sample_local(wi_x, wi_y, wi_z,
+                                         random_double(), random_double(),
+                                         random_double(),
+                                         random_double(), random_double());
+            if (!res.valid) return false;
 
-        double wd_x, wd_y, wd_z;
-        frame.to_world(res.wo_x, res.wo_y, res.wo_z, wd_x, wd_y, wd_z);
-        srec.attenuation  = color(res.r, res.g, res.b);
-        srec.pdf_ptr      = nullptr;
-        srec.skip_pdf     = true;
-        srec.skip_pdf_ray = ray(rec.p, unit_vector(vec3(wd_x, wd_y, wd_z)), r_in.time());
+            double wd_x, wd_y, wd_z;
+            frame.to_world(res.wo_x, res.wo_y, res.wo_z, wd_x, wd_y, wd_z);
+            srec.attenuation  = color(res.r, res.g, res.b);
+            srec.pdf_ptr      = nullptr;
+            srec.skip_pdf     = true;
+            srec.skip_pdf_ray = ray(rec.p, unit_vector(vec3(wd_x, wd_y, wd_z)), r_in.time());
+            return true;
+        }
+
+        srec.attenuation = albedo;
+        srec.pdf_ptr      = make_shared<ggx_reflection_pdf>(
+            rec.normal, vec3(ctx.wo_x, ctx.wo_y, ctx.wo_z), alpha_x, alpha_y);
+        srec.skip_pdf     = false;
         return true;
+    }
+
+    // luminance(f)*cos at an arbitrary queried direction, normalized by the
+    // fixed attenuation's own luminance -- see scatter()'s own comment.
+    double scattering_pdf(const ray& r_in, const hit_record& rec,
+                          const ray& scattered) const override {
+        auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
+        auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
+        double wi_x, wi_y, wi_z;
+        frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
+        if (wi_z <= 0.0) return 0.0;
+
+        vec3 dir = unit_vector(scattered.direction());
+        double wo_x, wo_y, wo_z;
+        frame.to_local(dir.x(), dir.y(), dir.z(), wo_x, wo_y, wo_z);
+        if (wo_z <= 0.0) return 0.0;
+
+        BxDF bxdf{ albedo.x(), albedo.y(), albedo.z(), ior, alpha_x, alpha_y };
+        uint64_t seed0 = coated_seed_from_dir(dir);
+        double fr, fg, fb;
+        bxdf.f(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, seed0, seed0 ^ 0xABCDEF1234567890ull, fr, fg, fb);
+        double f_lum = (fr + fg + fb) / 3.0;
+        double albedo_lum = std::max(1e-6, (albedo.x() + albedo.y() + albedo.z()) / 3.0);
+        return f_lum * wo_z / albedo_lum;
     }
 
     double get_ior()       const { return ior; }
@@ -538,19 +612,57 @@ class coated_conductor : public material {
         frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
         if (wi_z <= 0.0) return false;
 
-        auto res = bxdf.sample_local(wi_x, wi_y, wi_z,
-                                     random_double(), random_double(),
-                                     random_double(),
-                                     random_double(), random_double());
-        if (!res.valid) return false;
+        // See coated_diffuse::scatter()'s own comment for the roughness
+        // gate + fixed-representative-color rationale; here the
+        // representative color is the conductor's own normal-incidence
+        // Fresnel (get_conductor_f0()), the natural analog of albedo.
+        if (TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth()) {
+            auto res = bxdf.sample_local(wi_x, wi_y, wi_z,
+                                         random_double(), random_double(),
+                                         random_double(),
+                                         random_double(), random_double());
+            if (!res.valid) return false;
 
-        double wd_x, wd_y, wd_z;
-        frame.to_world(res.wo_x, res.wo_y, res.wo_z, wd_x, wd_y, wd_z);
-        srec.attenuation  = color(res.r, res.g, res.b);
-        srec.pdf_ptr      = nullptr;
-        srec.skip_pdf     = true;
-        srec.skip_pdf_ray = ray(rec.p, unit_vector(vec3(wd_x, wd_y, wd_z)), r_in.time());
+            double wd_x, wd_y, wd_z;
+            frame.to_world(res.wo_x, res.wo_y, res.wo_z, wd_x, wd_y, wd_z);
+            srec.attenuation  = color(res.r, res.g, res.b);
+            srec.pdf_ptr      = nullptr;
+            srec.skip_pdf     = true;
+            srec.skip_pdf_ray = ray(rec.p, unit_vector(vec3(wd_x, wd_y, wd_z)), r_in.time());
+            return true;
+        }
+
+        srec.attenuation = get_conductor_f0();
+        srec.pdf_ptr      = make_shared<ggx_reflection_pdf>(
+            rec.normal, vec3(ctx.wo_x, ctx.wo_y, ctx.wo_z), alpha_x, alpha_y);
+        srec.skip_pdf     = false;
         return true;
+    }
+
+    // luminance(f)*cos at an arbitrary queried direction, normalized by the
+    // fixed attenuation's own luminance -- see coated_diffuse::
+    // scattering_pdf()'s identical pattern.
+    double scattering_pdf(const ray& r_in, const hit_record& rec,
+                          const ray& scattered) const override {
+        auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
+        auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
+        double wi_x, wi_y, wi_z;
+        frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
+        if (wi_z <= 0.0) return 0.0;
+
+        vec3 dir = unit_vector(scattered.direction());
+        double wo_x, wo_y, wo_z;
+        frame.to_local(dir.x(), dir.y(), dir.z(), wo_x, wo_y, wo_z);
+        if (wo_z <= 0.0) return 0.0;
+
+        BxDF bxdf{ eta_r, eta_g, eta_b, k_r, k_g, k_b, coat_ior, alpha_x, alpha_y };
+        uint64_t seed0 = coated_seed_from_dir(dir);
+        double fr, fg, fb;
+        bxdf.f(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, seed0, seed0 ^ 0xABCDEF1234567890ull, fr, fg, fb);
+        double f_lum = (fr + fg + fb) / 3.0;
+        color f0 = get_conductor_f0();
+        double f0_lum = std::max(1e-6, (f0.x() + f0.y() + f0.z()) / 3.0);
+        return f_lum * wo_z / f0_lum;
     }
 
     double get_coat_ior()       const { return coat_ior; }
