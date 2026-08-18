@@ -85,22 +85,23 @@ struct BilinearPatch {
 // Subsurface IS a real, CPU-supported kind (src/TheRestOfYourLife/
 // material_pbrt.h's `class subsurface` + camera.h's BSSRDF probe/exit-point
 // branch) - it earns its own enumerator rather than staying Unsupported. GPU
-// has no BSSRDF implementation (out of scope - see gpu/optix/
-// pbrt_gpu_builder.h's own comment on its Subsurface case) and keeps
-// rendering it as flat diffuse, exactly as it did back when this kind was
-// still Unsupported; the only behaviour change is that the shared "not
-// supported" warning below no longer fires for it, since it is genuinely
-// supported on at least one backend now.
+// ALSO has a real BSSRDF implementation now (a tabulated-BSSRDF probe-walk,
+// added after this comment was originally written - present on both the
+// GPU-recursive and GPU-wavefront backends; see gpu/optix/
+// pbrt_gpu_builder.h's Subsurface case and docs/PBRT_SUPPORT.md for the
+// current per-backend support matrix), so both backends render this for
+// real rather than falling back to flat diffuse.
 //
 // Measured is the same story: a real, CPU-supported kind (src/
 // TheRestOfYourLife/material_pbrt.h's `class measured`, backed by src/
 // shared/measured_bxdf.h's ported pbrt-v4 MeasuredBxDF + src/shared/
 // measured_bxdf_loader.h's .bsdf tensor-file reader) rather than the flat
-// diffuse fallback every other Unsupported material still gets. GPU has no
-// measured-BRDF implementation (out of scope) and keeps rendering it as
-// flat diffuse - see gpu/optix/pbrt_gpu_builder.h's own comment on its
-// Measured case, which exists only to preserve that exact fallback now that
-// this enumerator is no longer an alias for Unsupported.
+// diffuse fallback every other Unsupported material still gets. GPU also
+// flattens and uploads the same tensor tables now (see gpu/optix/
+// pbrt_gpu_builder.h's Measured case) - both backends fall back to flat
+// diffuse only on the shared "filename didn't resolve/load" gate, not as a
+// standing GPU limitation. See docs/PBRT_SUPPORT.md for the current
+// per-backend support matrix.
 enum class MaterialKind {
 	Diffuse,
 	Conductor,
@@ -189,11 +190,13 @@ struct Emission {
 	double scale = 1.0;
 };
 
-// LightSource "infinite" - a scene's environment/sky light. Distant, point
-// and spot lights are still dropped (see the warning loop in flatten()) -
-// this is the one non-area light kind worth carrying through, because it is
-// usually a scene's main illumination (see flatten()'s own comment on why
-// dropping it silently is worse than most warnings).
+// LightSource "infinite" - a scene's environment/sky light. This is the one
+// non-area light kind worth carrying through here, because it is usually a
+// scene's main illumination (see flatten()'s own comment on why dropping it
+// silently is worse than most warnings). All 5 punctual kinds (distant,
+// point, spot, goniometric, projection) are also supported - see
+// PunctualLight below - not dropped; see docs/PBRT_SUPPORT.md for the full
+// per-light-kind CPU/GPU support matrix.
 struct InfiniteLight {
 	bool present = false;
 	double L[3] = {1.0, 1.0, 1.0};   // used as-is when imageWidth/imageHeight are 0
