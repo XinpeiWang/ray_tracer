@@ -103,10 +103,202 @@ static inline hittable_list sky_dummy_lights() {
 
 static inline hittable_list no_lights() { return hittable_list{}; }
 
-// Defined at the bottom of this file; forward-declared here so a curated
-// builtin entry can register its own .pbrt path the same way
+// paths() is defined at the bottom of this file; forward-declared here so a
+// curated builtin entry can register its own .pbrt path the same way
 // pbrt_scene_registry::append() does for dynamically-discovered ones.
-namespace pbrt_scene_registry { std::map<std::string, std::string>& paths(); }
+// Loaded and wire_pbrt_backed_scene are defined here (not at the bottom)
+// because build_instanced_spheres_descriptor() below needs them - having
+// their only definition up here, rather than forward-declaring them too,
+// keeps append() (which reopens this namespace at the bottom of the file)
+// from being tempted to redefine its own copy.
+namespace pbrt_scene_registry {
+    std::map<std::string, std::string>& paths();
+
+    // Loading is deferred AND shared between build_world()/build_lights()/
+    // etc (see wire_pbrt_backed_scene below), which is why callers keep
+    // this behind a shared_ptr rather than a plain local.
+    struct Loaded {
+        bool attempted = false;
+        pbrt_cpu::BuildResult built;
+    };
+
+    // Wires every field of `s` that must be derived from - and stay
+    // consistent with - a pbrt-v4 file on disk: the lazy-load/cache,
+    // world/lights/sky/punct accessors, recommended_spp, the camera itself,
+    // and setup_camera's ortho/spherical/realistic dispatch (read from the
+    // file's own Camera directive, never hand-transcribed). Shared by both
+    // append() (below), which discovers files at startup, and any curated
+    // builtin entry that wraps a specific bundled file under its own id/
+    // category/description (build_instanced_spheres_descriptor() today).
+    //
+    // This exists because "the same file, wired independently by hand
+    // twice" is exactly what let those two wirings drift out of sync
+    // before this function did: once on SceneDescriptor::requires_files
+    // (a curated entry hardcoded true for a file the discovery path had
+    // just correctly started reporting false for), and again on the CPU/
+    // GPU light-count parity test's assumptions about build_lights()'s
+    // shape. One implementation, called from both places, makes that
+    // specific class of drift impossible rather than merely caught later.
+    //
+    // `path` only needs to be valid for the duration of this call: every
+    // lambda below captures it BY VALUE (`[state, path]`, `[..., path]`),
+    // so each gets its own copy and neither `s` nor the closures it holds
+    // reference the caller's string after this function returns.
+    inline void wire_pbrt_backed_scene(SceneDescriptor& s,
+                                        const pbrt_discover::Discovered& d,
+                                        const std::string& path) {
+        const auto state = std::make_shared<Loaded>();
+        const auto ensure = [state, path]() -> pbrt_cpu::BuildResult& {
+            if (!state->attempted) {
+                state->attempted = true;
+                const pbrt_load::LoadResult r = pbrt_load::loadFile(path);
+                if (!r.ok) {
+                    std::cerr << "error: " << r.error << "\n";
+                } else {
+                    for (const pbrt_scene::Warning& w : r.scene.warnings)
+                        std::cerr << "warning: " << path << ": " << w.message << "\n";
+                    state->built = pbrt_cpu::build(r.scene);
+                    // Worth printing rather than inferring from the
+                    // picture: instanced geometry that failed to be placed
+                    // looks identical to geometry the scene never had.
+                    std::cerr << "[pbrt] " << path << ": "
+                              << state->built.triangleCount << " triangles, "
+                              << state->built.sphereCount << " spheres, "
+                              << state->built.instanceCount << " instance placements\n";
+                }
+            }
+            return state->built;
+        };
+
+        s.recommended_spp = d.samplesPerPixel;
+        s.camera = CameraConfig{
+            d.camera.vfov,
+            d.camera.lookfrom[0], d.camera.lookfrom[1], d.camera.lookfrom[2],
+            d.camera.lookat[0],   d.camera.lookat[1],   d.camera.lookat[2],
+            0.0, 0.0, 0.0,                      // pbrt has no flat background
+            CameraMode::Fixed,
+            // NOT d.camera.aperture directly - see defocusAngleDegreesFor()'s
+            // comment: that field is a world-space lens DIAMETER (pbrt's
+            // lensradius*2), not a degrees value, and camera.h's
+            // defocus_angle is a full angle in degrees.
+            pbrt_flatten::defocusAngleDegreesFor(d.camera, pbrt_flatten::focusDistanceFor(d.camera)),
+            // NOT d.camera.focusDistance - see focusDistanceFor()'s comment.
+            // Passing pbrt's raw default here made near geometry vanish.
+            pbrt_flatten::focusDistanceFor(d.camera)
+        };
+
+        // A failed load yields an empty world rather than a crash - the
+        // error above already said why, and an empty render is a legible
+        // symptom.
+        s.build_world = [ensure]() {
+            pbrt_cpu::BuildResult& b = ensure();
+            return b.world ? *b.world : hittable_list{};
+        };
+        s.build_lights = [ensure]() {
+            pbrt_cpu::BuildResult& b = ensure();
+            return b.lights ? *b.lights : hittable_list{};
+        };
+        // nullptr (flat background) unless the scene declared its own
+        // LightSource "infinite" - see pbrt_cpu_builder.h's build() for how
+        // b.sky gets populated (constant-colour form now; image-backed form
+        // once the image resolver lands).
+        s.build_sky = [ensure]() -> std::shared_ptr<sky_light> {
+            pbrt_cpu::BuildResult& b = ensure();
+            return b.sky;
+        };
+        // nullptr (no punctual lights) unless the file declared LightSource
+        // point/spot/distant/goniometric/projection - see
+        // pbrt_cpu_builder.h's build() for how b.punctLights gets populated.
+        s.build_punct = [ensure]() -> std::shared_ptr<punctual_light_list> {
+            pbrt_cpu::BuildResult& b = ensure();
+            return b.punctLights;
+        };
+
+        // CameraConfig cannot express an up vector, but pbrt's LookAt can,
+        // and a scene shot in Z-up renders sideways without this.
+        // setup_camera runs after every config field is applied, so it is
+        // the right place.
+        //
+        // It is also the only hook that can give a pbrt scene a non-
+        // perspective camera: camera_t's alt_ortho_cam/alt_spherical_cam/
+        // alt_realistic_cam slots (see camera.h) are the same generic
+        // mechanism the built-in OrthographicCamera/SphericalCamera/
+        // RealisticCamera scenes already use, populated here from whatever
+        // pbrt_flatten.h read off the Camera directive instead of a
+        // hardcoded scene. Before this, `Camera "orthographic"` (or
+        // "realistic"/"spherical"/"environment") in a loaded .pbrt file was
+        // parsed and then silently never looked at again - every pbrt scene
+        // rendered through the standard perspective path regardless of what
+        // its own Camera directive asked for, with no warning, even though
+        // this renderer already has real support for all three.
+        const double ux = d.camera.up[0], uy = d.camera.up[1], uz = d.camera.up[2];
+        const pbrt_flatten::Camera pcam = d.camera;
+        s.setup_camera = [ux, uy, uz, pcam, path](camera_t& cam) {
+            cam.vup = vec3(ux, uy, uz);
+            if (pcam.type == "perspective") return;
+
+            Mat4<double> ctw = make_look_at<double>(
+                cam.lookfrom.x(), cam.lookfrom.y(), cam.lookfrom.z(),
+                cam.lookat.x(),   cam.lookat.y(),   cam.lookat.z(),
+                ux, uy, uz);
+
+            if (pcam.type == "orthographic") {
+                double xmin, xmax, ymin, ymax;
+                if (pcam.hasScreenWindow) {
+                    // The scene gave its own extent explicitly - orthographic
+                    // has no fov to derive one from any other way, so without
+                    // this a scene authored at any scale other than roughly
+                    // 1 world unit across needs it to see anything at all.
+                    xmin = pcam.screenWindow[0]; xmax = pcam.screenWindow[1];
+                    ymin = pcam.screenWindow[2]; ymax = pcam.screenWindow[3];
+                } else {
+                    compute_screen_window<double>(cam.image_width, cam.image_height,
+                                                  xmin, xmax, ymin, ymax);
+                }
+                cam.alt_ortho_cam = std::make_shared<OrthographicCamera<double>>(
+                    xmin, xmax, ymin, ymax, cam.image_width, cam.image_height, ctw);
+            } else if (pcam.type == "spherical" || pcam.type == "environment") {
+                const auto mapping = (pcam.sphericalMapping == "equalarea")
+                    ? SphericalCamera<double>::EqualArea
+                    : SphericalCamera<double>::EquiRectangular;
+                cam.alt_spherical_cam = std::make_shared<SphericalCamera<double>>(
+                    cam.image_width, cam.image_height, mapping, ctw);
+            } else if (pcam.type == "realistic") {
+                // flatten() already turned a missing lensfile into a warning
+                // and fell back to "perspective" (see pbrt_flatten.h), so
+                // reaching this branch means a filename really was given -
+                // what's left to fail is the file itself, checked here
+                // rather than at flatten() time because reading it needs a
+                // resolver, and pbrt_flatten.h deliberately has no file
+                // access of its own (see pbrt_load.h's header comment).
+                std::string lensText;
+                if (!pbrt_load::loadFileNear(path, pcam.lensFile, lensText)) {
+                    std::cerr << "warning: " << path << ": realistic camera's lensfile '"
+                              << pcam.lensFile << "' could not be found; "
+                                 "rendering with a perspective camera instead\n";
+                    return;
+                }
+                const std::vector<double> lens = pbrt_load::parseLensFile(lensText);
+                if (lens.empty()) {
+                    std::cerr << "warning: " << path << ": lensfile '" << pcam.lensFile
+                              << "' had no usable lens elements; "
+                                 "rendering with a perspective camera instead\n";
+                    return;
+                }
+                // Film half-extents from the diagonal and the image's own
+                // aspect ratio - pbrt-v4's own convention, and the same
+                // relationship the built-in RealisticCamera scene's
+                // hardcoded 18mm x 12mm half-extents satisfy for its 3:2 frame.
+                const double aspect = (cam.image_height > 0)
+                    ? static_cast<double>(cam.image_width) / cam.image_height : 1.0;
+                const double halfY = pcam.filmDiagonalMM / (2.0 * std::sqrt(aspect * aspect + 1.0));
+                const double halfX = aspect * halfY;
+                cam.alt_realistic_cam = std::make_shared<RealisticCamera<double>>(
+                    ctw, halfX, halfY, cam.focus_dist, pcam.apertureDiameterMM, lens);
+            }
+        };
+    }
+} // namespace pbrt_scene_registry
 
 // F3: Instanced Spheres. Loads pbrt_scenes/instanced-spheres.pbrt through
 // the same lazy-load pbrt pipeline pbrt_scene_registry::append() uses for
@@ -123,10 +315,6 @@ namespace pbrt_scene_registry { std::map<std::string, std::string>& paths(); }
 // case in gpu/optix/scene_builder.cpp) already handles arbitrary loaded
 // .pbrt files, provided paths()["F3"] resolves, which this sets below.
 inline SceneDescriptor build_instanced_spheres_descriptor() {
-    struct Loaded {
-        bool attempted = false;
-        pbrt_cpu::BuildResult built;
-    };
     // Resolved the same way pbrt_discover::scanDefaultPaths() finds every
     // other .pbrt file: the working directory differs between running from
     // the repo root (development) and from RayTracer_Package/ (GUI/CLI
@@ -143,27 +331,14 @@ inline SceneDescriptor build_instanced_spheres_descriptor() {
         }
         return "pbrt_scenes/instanced-spheres.pbrt";  // not found anywhere - fails loudly below
     }();
-    static const auto state = std::make_shared<Loaded>();
-    // No captures needed: both locals above have static storage duration,
-    // so referencing them here doesn't require (or allow, cleanly) capture.
-    static const auto ensure = []() -> pbrt_cpu::BuildResult& {
-        if (!state->attempted) {
-            state->attempted = true;
-            const pbrt_load::LoadResult r = pbrt_load::loadFile(path);
-            if (!r.ok) {
-                std::cerr << "error: " << r.error << "\n";
-            } else {
-                for (const pbrt_scene::Warning& w : r.scene.warnings)
-                    std::cerr << "warning: " << path << ": " << w.message << "\n";
-                state->built = pbrt_cpu::build(r.scene);
-                std::cerr << "[pbrt] " << path << ": "
-                          << state->built.triangleCount << " triangles, "
-                          << state->built.sphereCount << " spheres, "
-                          << state->built.instanceCount << " instance placements\n";
-            }
-        }
-        return state->built;
-    };
+    // Same lightweight header-only parse pbrt_discover::scanDefaultPaths()
+    // uses for every other file - not the full geometry load, just camera/
+    // resolution/sample-count, cheap enough to do unconditionally here.
+    // This is what lets wire_pbrt_backed_scene() below derive the camera
+    // and recommended_spp from the file itself instead of a second,
+    // hand-transcribed copy of the same numbers that could silently drift
+    // if the file were ever edited.
+    static const pbrt_discover::Discovered d = pbrt_discover::describeFile(path);
 
     SceneDescriptor s;
     s.id = "F3";
@@ -177,7 +352,6 @@ inline SceneDescriptor build_instanced_spheres_descriptor() {
         "ellipsoids, which only real instancing (not baked world-space "
         "placement) can produce";
     s.performance = "Fast";
-    s.recommended_spp = 200;
     // pbrt_scenes/instanced-spheres.pbrt is git-tracked and self-contained
     // (no external assets beyond the repo checkout) - the same file's
     // auto-discovered "I<N>" User Scene copy correctly reports false via
@@ -185,40 +359,12 @@ inline SceneDescriptor build_instanced_spheres_descriptor() {
     // curated entry needs to agree rather than hardcode the opposite.
     s.requires_files = false;
     s.gpu_compatible = true;
-    // Matches the file's own `LookAt 278 278 -800  278 278 0  0 1 0` /
-    // `Camera "perspective" "float fov" [ 40 ]` directives.
-    s.camera = CameraConfig{
-        40, 278, 278, -800,  278, 278, 0,  0, 0, 0,
-        CameraMode::Fixed, 0.0, 10.0
-    };
-    // No captures: `ensure` has static storage duration (see above), and
-    // MSVC rejects capturing such a variable by name (C3495) - it doesn't
-    // need capturing to be referenced here either.
-    s.build_world = []() {
-        pbrt_cpu::BuildResult& b = ensure();
-        return b.world ? *b.world : hittable_list{};
-    };
-    s.build_lights = []() {
-        pbrt_cpu::BuildResult& b = ensure();
-        return b.lights ? *b.lights : hittable_list{};
-    };
-    s.build_sky = []() -> std::shared_ptr<sky_light> {
-        pbrt_cpu::BuildResult& b = ensure();
-        return b.sky;
-    };
-    // instanced-spheres.pbrt has no LightSource point/spot/distant/
-    // goniometric/projection directives today, but this is the same
-    // ensure()-backed accessor build_sky uses just above rather than a
-    // hardcoded nullptr, so a future edit to that file picks up its
-    // punctual lights without anyone having to remember to wire this too.
-    s.build_punct = []() -> std::shared_ptr<punctual_light_list> {
-        pbrt_cpu::BuildResult& b = ensure();
-        return b.punctLights;
-    };
-    // The file's Camera directive is plain perspective, so no non-default
-    // setup_camera handling (ortho/spherical/realistic) is needed here,
-    // unlike pbrt_scene_registry::append()'s generic per-file version.
-    s.setup_camera = nullptr;
+
+    // Camera, recommended_spp, lazy-load/cache, and world/lights/sky/punct
+    // accessors all come from the file itself - see this function's own
+    // comment for why sharing this with append()'s per-discovered-file
+    // wiring, instead of each hand-writing its own copy, is the point.
+    pbrt_scene_registry::wire_pbrt_backed_scene(s, d, path);
 
     pbrt_scene_registry::paths()["F3"] = path;
     return s;
@@ -1365,13 +1511,6 @@ inline int builtin_scene_count() {
 // render would parse and triangulate the entire file twice.
 namespace pbrt_scene_registry {
 
-// Loading is deferred AND shared between the two callbacks below, which is
-// why this is a shared_ptr the lambdas capture rather than a local.
-struct Loaded {
-    bool attempted = false;
-    pbrt_cpu::BuildResult built;
-};
-
 std::map<std::string, std::string>& paths();   // defined below, used by append()
 
 inline void append(std::vector<SceneDescriptor>& registry) {
@@ -1428,33 +1567,6 @@ inline void append(std::vector<SceneDescriptor>& registry) {
             "sample count come from the file itself; geometry is read on first "
             "render, so the first frame of a large scene starts slowly.");
 
-        const auto state = std::make_shared<Loaded>();
-        const std::string path = d.path;
-
-        // Both callbacks run the load exactly once between them.
-        const auto ensure = [state, path]() -> pbrt_cpu::BuildResult& {
-            if (!state->attempted) {
-                state->attempted = true;
-                const pbrt_load::LoadResult r = pbrt_load::loadFile(path);
-                if (!r.ok) {
-                    std::cerr << "error: " << r.error << "\n";
-                } else {
-                    for (const pbrt_scene::Warning& w : r.scene.warnings)
-                        std::cerr << "warning: " << path << ": " << w.message << "\n";
-                    state->built = pbrt_cpu::build(r.scene);
-                    // Worth printing rather than inferring from the picture:
-                    // instanced geometry that failed to be placed looks
-                    // identical to geometry the scene never had.
-                    std::cerr << "[pbrt] " << path << ": "
-                              << state->built.triangleCount << " triangles, "
-                              << state->built.sphereCount << " spheres, "
-                              << state->built.instanceCount << " instance placements\n";
-
-                }
-            }
-            return state->built;
-        };
-
         SceneDescriptor s;
         // Uses SceneCategories::letter_for_category() rather than a
         // hardcoded 'I', so this can't silently drift from
@@ -1470,7 +1582,6 @@ inline void append(std::vector<SceneDescriptor>& registry) {
         // three triangles to ten million, and nothing in the header says
         // which. "Unknown" is the truthful answer at this point.
         s.performance = "Unknown";
-        s.recommended_spp = d.samplesPerPixel;
         // Not unconditionally true: a hand-authored scene bundled directly
         // in pbrt_scenes/ (git-tracked, no assets beyond the repo checkout)
         // is exactly as self-contained as a builtin scene, but a scene from
@@ -1487,131 +1598,15 @@ inline void append(std::vector<SceneDescriptor>& registry) {
         // were spheres or parallelograms - which is no longer true and is why
         // this no longer carries a caveat.
         s.gpu_compatible = true;
-        s.camera = CameraConfig{
-            d.camera.vfov,
-            d.camera.lookfrom[0], d.camera.lookfrom[1], d.camera.lookfrom[2],
-            d.camera.lookat[0],   d.camera.lookat[1],   d.camera.lookat[2],
-            0.0, 0.0, 0.0,                      // pbrt has no flat background
-            CameraMode::Fixed,
-            // NOT d.camera.aperture directly - see defocusAngleDegreesFor()'s
-            // comment: that field is a world-space lens DIAMETER (pbrt's
-            // lensradius*2), not a degrees value, and camera.h's
-            // defocus_angle is a full angle in degrees.
-            pbrt_flatten::defocusAngleDegreesFor(d.camera, pbrt_flatten::focusDistanceFor(d.camera)),
-            // NOT d.camera.focusDistance - see focusDistanceFor()'s comment.
-            // Passing pbrt's raw default here made near geometry vanish.
-            pbrt_flatten::focusDistanceFor(d.camera)
-        };
 
-        // A failed load yields an empty world rather than a crash - the error
-        // above already said why, and an empty render is a legible symptom.
-        s.build_world  = [ensure]() {
-            pbrt_cpu::BuildResult& b = ensure();
-            return b.world ? *b.world : hittable_list{};
-        };
-        s.build_lights = [ensure]() {
-            pbrt_cpu::BuildResult& b = ensure();
-            return b.lights ? *b.lights : hittable_list{};
-        };
-        // nullptr (flat background) unless the scene declared its own
-        // LightSource "infinite" - see pbrt_cpu_builder.h's build() for how
-        // b.sky gets populated (constant-colour form now; image-backed form
-        // once the image resolver lands).
-        s.build_sky = [ensure]() -> std::shared_ptr<sky_light> {
-            pbrt_cpu::BuildResult& b = ensure();
-            return b.sky;
-        };
-        // nullptr (no punctual lights) unless the file declared LightSource
-        // point/spot/distant/goniometric/projection - see
-        // pbrt_cpu_builder.h's build() for how b.punctLights gets populated.
-        s.build_punct = [ensure]() -> std::shared_ptr<punctual_light_list> {
-            pbrt_cpu::BuildResult& b = ensure();
-            return b.punctLights;
-        };
-        // CameraConfig cannot express an up vector, but pbrt's LookAt can, and
-        // a scene shot in Z-up renders sideways without this. setup_camera
-        // runs after every config field is applied, so it is the right place.
-        //
-        // It is also the only hook that can give a pbrt scene a non-
-        // perspective camera: camera_t's alt_ortho_cam/alt_spherical_cam/
-        // alt_realistic_cam slots (see camera.h) are the same generic
-        // mechanism the built-in OrthographicCamera/SphericalCamera/
-        // RealisticCamera scenes already use, populated here from whatever
-        // pbrt_flatten.h read off the Camera directive instead of a
-        // hardcoded scene. Before this, `Camera "orthographic"` (or
-        // "realistic"/"spherical"/"environment") in a loaded .pbrt file was
-        // parsed and then silently never looked at again - every pbrt scene
-        // rendered through the standard perspective path regardless of what
-        // its own Camera directive asked for, with no warning, even though
-        // this renderer already has real support for all three.
-        const double ux = d.camera.up[0], uy = d.camera.up[1], uz = d.camera.up[2];
-        const pbrt_flatten::Camera pcam = d.camera;
-        s.setup_camera = [ux, uy, uz, pcam, path](camera_t& cam) {
-            cam.vup = vec3(ux, uy, uz);
-            if (pcam.type == "perspective") return;
+        // Camera, recommended_spp, lazy-load/cache, and world/lights/sky/
+        // punct accessors all come from the file itself - see
+        // wire_pbrt_backed_scene's own comment for why this is shared with
+        // build_instanced_spheres_descriptor()'s curated entry instead of
+        // each hand-writing its own copy.
+        wire_pbrt_backed_scene(s, d, d.path);
 
-            Mat4<double> ctw = make_look_at<double>(
-                cam.lookfrom.x(), cam.lookfrom.y(), cam.lookfrom.z(),
-                cam.lookat.x(),   cam.lookat.y(),   cam.lookat.z(),
-                ux, uy, uz);
-
-            if (pcam.type == "orthographic") {
-                double xmin, xmax, ymin, ymax;
-                if (pcam.hasScreenWindow) {
-                    // The scene gave its own extent explicitly - orthographic
-                    // has no fov to derive one from any other way, so without
-                    // this a scene authored at any scale other than roughly
-                    // 1 world unit across needs it to see anything at all.
-                    xmin = pcam.screenWindow[0]; xmax = pcam.screenWindow[1];
-                    ymin = pcam.screenWindow[2]; ymax = pcam.screenWindow[3];
-                } else {
-                    compute_screen_window<double>(cam.image_width, cam.image_height,
-                                                  xmin, xmax, ymin, ymax);
-                }
-                cam.alt_ortho_cam = std::make_shared<OrthographicCamera<double>>(
-                    xmin, xmax, ymin, ymax, cam.image_width, cam.image_height, ctw);
-            } else if (pcam.type == "spherical" || pcam.type == "environment") {
-                const auto mapping = (pcam.sphericalMapping == "equalarea")
-                    ? SphericalCamera<double>::EqualArea
-                    : SphericalCamera<double>::EquiRectangular;
-                cam.alt_spherical_cam = std::make_shared<SphericalCamera<double>>(
-                    cam.image_width, cam.image_height, mapping, ctw);
-            } else if (pcam.type == "realistic") {
-                // flatten() already turned a missing lensfile into a warning
-                // and fell back to "perspective" (see pbrt_flatten.h), so
-                // reaching this branch means a filename really was given -
-                // what's left to fail is the file itself, checked here
-                // rather than at flatten() time because reading it needs a
-                // resolver, and pbrt_flatten.h deliberately has no file
-                // access of its own (see pbrt_load.h's header comment).
-                std::string lensText;
-                if (!pbrt_load::loadFileNear(path, pcam.lensFile, lensText)) {
-                    std::cerr << "warning: " << path << ": realistic camera's lensfile '"
-                              << pcam.lensFile << "' could not be found; "
-                                 "rendering with a perspective camera instead\n";
-                    return;
-                }
-                const std::vector<double> lens = pbrt_load::parseLensFile(lensText);
-                if (lens.empty()) {
-                    std::cerr << "warning: " << path << ": lensfile '" << pcam.lensFile
-                              << "' had no usable lens elements; "
-                                 "rendering with a perspective camera instead\n";
-                    return;
-                }
-                // Film half-extents from the diagonal and the image's own
-                // aspect ratio - pbrt-v4's own convention, and the same
-                // relationship the built-in RealisticCamera scene's
-                // hardcoded 18mm x 12mm half-extents satisfy for its 3:2 frame.
-                const double aspect = (cam.image_height > 0)
-                    ? static_cast<double>(cam.image_width) / cam.image_height : 1.0;
-                const double halfY = pcam.filmDiagonalMM / (2.0 * std::sqrt(aspect * aspect + 1.0));
-                const double halfX = aspect * halfY;
-                cam.alt_realistic_cam = std::make_shared<RealisticCamera<double>>(
-                    ctw, halfX, halfY, cam.focus_dist, pcam.apertureDiameterMM, lens);
-            }
-        };
-
-        paths()[s.id] = path;
+        paths()[s.id] = d.path;
         registry.push_back(s);
     }
 }
