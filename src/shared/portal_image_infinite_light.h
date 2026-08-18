@@ -35,63 +35,29 @@
 
 #include "summed_area_table.h"   // SummedAreaTable, WindowedPiecewiseConstant2D, Array2D, SAT_Bounds2f, SAT_Point2f
 #include "sampling.h"             // EqualAreaSphereToSquare, EqualAreaSquareToSphere
+#include "vec3_frame.h"
 
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 namespace pil_detail {
 
-// 3-component vector and helpers
-template<typename T>
-struct Vec3 { T x, y, z; };
-
-template<typename T>
-CPU_GPU T dot(Vec3<T> a, Vec3<T> b) { return a.x*b.x + a.y*b.y + a.z*b.z; }
-
-template<typename T>
-CPU_GPU Vec3<T> cross(Vec3<T> a, Vec3<T> b) {
-	return { a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x };
-}
-
-template<typename T>
-CPU_GPU Vec3<T> normalize(Vec3<T> v) {
-	T len = std::sqrt(v.x*v.x + v.y*v.y + v.z*v.z);
-	if (len == T(0)) return v;
-	return { v.x/len, v.y/len, v.z/len };
-}
-
-template<typename T>
-CPU_GPU Vec3<T> sub(Vec3<T> a, Vec3<T> b) { return { a.x-b.x, a.y-b.y, a.z-b.z }; }
-
-template<typename T>
-CPU_GPU T length(Vec3<T> v) { return std::sqrt(v.x*v.x + v.y*v.y + v.z*v.z); }
-
-// Frame: orthonormal frame with x, y, z axes (matches pbrt-v4 Frame).
-// portalFrame = Frame::FromXY(p03, p01) where p03 = portal[3]-portal[0], p01 = portal[1]-portal[0].
-template<typename T>
-struct Frame {
-	Vec3<T> x, y, z;
-
-	// Build from two basis vectors (Gram-Schmidt). Matches pbrt-v4 Frame::FromXY.
-	static Frame FromXY(Vec3<T> vx, Vec3<T> vy) {
-		Vec3<T> nx = normalize(vx);
-		Vec3<T> nz = normalize(cross(nx, vy));
-		Vec3<T> ny = cross(nz, nx);
-		return { nx, ny, nz };
-	}
-
-	// Transform a render-space vector to frame-local space.
-	CPU_GPU Vec3<T> ToLocal(Vec3<T> v) const {
-		return { dot(v, x), dot(v, y), dot(v, z) };
-	}
-
-	// Transform a frame-local vector to render space.
-	CPU_GPU Vec3<T> FromLocal(Vec3<T> v) const {
-		return { x.x*v.x + y.x*v.y + z.x*v.z,
-				 x.y*v.x + y.y*v.y + z.y*v.z,
-				 x.z*v.x + y.z*v.y + z.z*v.z };
-	}
-};
+// Vec3<T> / Frame<T> -- canonical definitions now live in vec3_frame.h
+// (shared with sampling_detail in sampling_helpers.h). These aliases plus
+// using-declarations keep this namespace's existing call-site spelling
+// (pil_detail::Vec3<T>, pil_detail::Frame<T>, pil_detail::dot/cross/
+// normalize/sub/length, Frame::FromXY/ToLocal/FromLocal) unchanged --
+// callers below use explicit pil_detail:: qualification, so dot/cross/
+// normalize/sub/length must actually be members of this namespace, not
+// just reachable via ADL (unlike sampling_detail, which relies on
+// "using namespace sampling_detail;" plus ordinary lookup instead).
+template<typename T> using Vec3 = ::Vec3<T>;
+template<typename T> using Frame = ::Frame<T>;
+using ::dot;
+using ::cross;
+using ::normalize;
+using ::sub;
+using ::length;
 
 // Bilinear nearest-neighbour lookup (rectified image stored row-major RGB).
 // Mirrors pbrt-v4 image.LookupNearestChannel.

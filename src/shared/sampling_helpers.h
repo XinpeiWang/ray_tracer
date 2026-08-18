@@ -27,6 +27,7 @@
 #   include <cstring>
 #endif
 #include "scalar_math.h"
+#include "vec3_frame.h"
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -43,69 +44,13 @@ CPU_GPU T clamp01(T x) {
 	return x < T(0) ? T(0) : (x > T(1) ? T(1) : x);
 }
 
-// 3-component vector for internal use (avoids dependency on vec3.h)
-template<typename T>
-struct Vec3 {
-	T x, y, z;
-	CPU_GPU Vec3() : x(0), y(0), z(0) {}
-	CPU_GPU Vec3(T x, T y, T z) : x(x), y(y), z(z) {}
-	CPU_GPU Vec3 operator+(const Vec3& b) const { return {x+b.x, y+b.y, z+b.z}; }
-	CPU_GPU Vec3 operator-(const Vec3& b) const { return {x-b.x, y-b.y, z-b.z}; }
-	CPU_GPU Vec3 operator*(T s)           const { return {x*s,   y*s,   z*s};   }
-	CPU_GPU T    dot(const Vec3& b)       const { return x*b.x + y*b.y + z*b.z; }
-	CPU_GPU T    length_squared()         const { return dot(*this); }
-	CPU_GPU T    length()                 const { return std::sqrt(length_squared()); }
-	CPU_GPU Vec3 normalized()             const {
-		T l = length();
-		return l > T(0) ? Vec3(x/l, y/l, z/l) : Vec3(T(0),T(0),T(0));
-	}
-	CPU_GPU Vec3 cross(const Vec3& b) const {
-		return { y*b.z - z*b.y, z*b.x - x*b.z, x*b.y - y*b.x };
-	}
-};
-
-// AngleBetween two unit vectors -- numerically stable across all angles.
-// Mirrors pbrt-v4 AngleBetween (vecmath.h line 972):
-//   dot < 0: Pi - 2*asin(|a+b|/2)   (stable near pi)
-//   dot >= 0: 2*asin(|b-a|/2)        (stable near 0)
-template<typename T>
-CPU_GPU T angle_between(Vec3<T> a, Vec3<T> b) {
-	if (a.dot(b) < T(0)) {
-		Vec3<T> s = a + b;
-		T half_len = std::sqrt(s.length_squared()) * T(0.5);
-		half_len = half_len > T(1) ? T(1) : half_len;  // SafeASin clamp
-		return T(3.14159265358979323846) - T(2) * std::asin(half_len);
-	} else {
-		Vec3<T> d = b - a;
-		T half_len = std::sqrt(d.length_squared()) * T(0.5);
-		half_len = half_len > T(1) ? T(1) : half_len;
-		return T(2) * std::asin(half_len);
-	}
-}
-
-// Minimal orthonormal Frame from two axes (pbrt-v4 Frame::FromXY)
-template<typename T>
-struct Frame {
-	Vec3<T> x, y, z;
-
-	CPU_GPU static Frame from_xy(Vec3<T> ex_n, Vec3<T> ey_n) {
-		Frame f;
-		f.x = ex_n;
-		f.y = ey_n;
-		f.z = ex_n.cross(ey_n).normalized();
-		return f;
-	}
-
-	// Project world vector into local frame
-	CPU_GPU Vec3<T> to_local(Vec3<T> v) const {
-		return Vec3<T>(v.dot(x), v.dot(y), v.dot(z));
-	}
-
-	// Reconstruct world vector from local coords
-	CPU_GPU Vec3<T> from_local(Vec3<T> v) const {
-		return x*v.x + y*v.y + z*v.z;
-	}
-};
+// Vec3<T> / angle_between<T> / Frame<T> -- canonical definitions now live in
+// vec3_frame.h (shared with pil_detail in portal_image_infinite_light.h),
+// included above. Deliberately NOT re-declared as aliases in this namespace:
+// this file's call sites reach them unqualified via
+// "using namespace sampling_detail;" plus ordinary lookup finding the
+// global ::Vec3/::Frame/::angle_between directly -- a same-named alias
+// here would make both candidates visible at once and be ambiguous.
 
 } // namespace sampling_detail
 
