@@ -183,6 +183,7 @@ void MainWindow::startRenderJob(const RenderJob &job) {
 	// mode combo for a job queued behind this one - describes the job that
 	// actually ran, not whatever the form happens to show by then.
 	m_currentJob = job;
+	m_currentJobLabel->setText(describeRenderJob(job));
 
 	// ========================================================================
 	// Launch Render
@@ -675,6 +676,13 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 			QMessageBox::critical(this, "Render Failed", message);
 		}
 	}
+
+	// Cleared unconditionally rather than only on the "nothing queued" path:
+	// if processQueueIfIdle() below does start the next job, startRenderJob()
+	// overwrites this again before the next repaint, so there's no visible
+	// flicker - and it means this code doesn't have to duplicate the queue's
+	// own idle/non-idle logic to decide whether to clear it.
+	m_currentJobLabel->clear();
 
 	// Continue automatically on natural completion (success or a genuine
 	// failure); a user-requested Stop pauses the queue instead of skipping

@@ -489,6 +489,12 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			color: %TEXT_MUTED%;
 			font-size: 9pt;
 		}
+		QLabel#currentJobLabel {
+			color: %ACCENT_1%;
+			font-size: 11pt;
+			font-weight: bold;
+			padding-bottom: 4px;
+		}
 		QLabel#previewSceneDesc {
 			color: %TEXT_MUTED%;
 			background-color: %SURFACE2%;

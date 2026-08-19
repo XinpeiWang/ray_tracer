@@ -782,6 +782,7 @@ private:
 	QPushButton *m_stopButton;
 	QProgressBar *m_progressBar;
 	QLabel *m_statusLabel;
+	QLabel *m_currentJobLabel;          // Which job is actually rendering - see startRenderJob()/describeRenderJob()
 	int m_progressTabIndex = -1;        // Index of the Progress tab within m_tabWidget (see createProgressTab())
 
 	// Advanced Tab - Manual Controls

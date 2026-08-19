@@ -920,6 +920,15 @@ void MainWindow::createProgressTab() {
 	QGroupBox *progressGroup = new QGroupBox("Progress", progressWidget);
 	QVBoxLayout *progressLayout = new QVBoxLayout(progressGroup);
 
+	// Which job is actually running (scene/resolution/samples/renderer, same
+	// one-line format as a queue row) - set from m_currentJob in
+	// startRenderJob(), not the live Basic Settings form, since the user may
+	// have already changed the form for a job queued behind this one.
+	m_currentJobLabel = new QLabel(progressGroup);
+	m_currentJobLabel->setAlignment(Qt::AlignCenter);
+	m_currentJobLabel->setObjectName("currentJobLabel");
+	m_currentJobLabel->setWordWrap(true);
+
 	m_progressBar = new QProgressBar(progressGroup);
 	m_progressBar->setRange(0, 100);
 	m_progressBar->setValue(0);
@@ -928,6 +937,7 @@ void MainWindow::createProgressTab() {
 	m_statusLabel = new QLabel("Ready to render", progressGroup);
 	m_statusLabel->setAlignment(Qt::AlignCenter);
 
+	progressLayout->addWidget(m_currentJobLabel);
 	progressLayout->addWidget(m_progressBar);
 	progressLayout->addWidget(m_statusLabel);
 	layout->addWidget(progressGroup);
