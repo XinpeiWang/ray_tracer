@@ -280,7 +280,6 @@ void MainWindow::refreshQueuePanel() {
 		m_queueListWidget->addItem(describeRenderJob(job));
 	}
 	m_queueGroup->setTitle(QString("Render Queue (%1)").arg(m_renderQueue.size()));
-	m_queueGroup->setVisible(!m_renderQueue.isEmpty());
 }
 
 void MainWindow::onRemoveSelectedQueueItem() {

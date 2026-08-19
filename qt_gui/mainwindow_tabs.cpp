@@ -932,11 +932,11 @@ void MainWindow::createProgressTab() {
 	progressLayout->addWidget(m_statusLabel);
 	layout->addWidget(progressGroup);
 
-	// Render queue - hidden whenever the queue is empty (see
-	// refreshQueuePanel()), so a single render - the common case - shows
-	// just the progress bar above.
+	// Render queue - stays visible even when empty (unlike when this lived
+	// outside the tabs alongside other always-on controls, hiding it here
+	// would leave the Progress tab looking like it lost a section every
+	// time the queue drains, rather than like a stable panel).
 	m_queueGroup = new QGroupBox("Render Queue", progressWidget);
-	m_queueGroup->setVisible(false);
 	QVBoxLayout *queueLayout = new QVBoxLayout(m_queueGroup);
 
 	m_queueListWidget = new QListWidget(m_queueGroup);
