@@ -2380,3 +2380,91 @@ inline hittable_list build_gallery_lights() {
 inline std::shared_ptr<sky_light> build_gallery_sky() {
 	return std::make_shared<sky_light>(color(3.0, 3.2, 3.6));
 }
+
+// ============================================================================
+// Scene 79: Lost Empire
+// Tenth "whole environment" mesh scene, and the first sourced from a
+// Minecraft world export rather than a photogrammetry/CAD scan - a large
+// half-buried ancient city (temple platforms, staircases, a lava chamber)
+// exported from the "Vokselia" Minecraft world via Mineways. Blocky
+// low-poly geometry, but at a genuinely large scale (165 units deep) that
+// suits a long video flythrough far better than the single-room scenes
+// above. Uses per-face .mtl materials and an image texture loaded from
+// models/lost_empire_textures/ (requires models/lost_empire.obj).
+//
+// Source: McGuire Computer Graphics Archive (casual-effects.com/data),
+// CC BY 3.0.
+//
+// Scale/offset: raw OBJ units, no rescale (same convention as Gallery
+// above). Raw bbox x=[-37.10,38.12] y=[0,49.00] z=[-82.00,83.12], offset by
+// (-0.51, 0, -0.56) to center the (x,z) plan on the origin - y is already
+// floored at 0.
+//
+// Camera: found by direct CPU-render iteration, framing the temple's front
+// staircase from ground level outside the entrance.
+// ============================================================================
+inline std::shared_ptr<triangle_mesh_mtl> lost_empire_mesh() {
+	static const auto mesh = std::make_shared<triangle_mesh_mtl>(
+		"lost_empire.obj", make_shared<lambertian>(color(0.6, 0.6, 0.6)),
+		/*scale=*/1.0, point3(-0.51, 0.0, -0.56),
+		/*smooth_normals=*/false, "lost_empire_textures");
+	return mesh;
+}
+
+inline hittable_list build_lost_empire() {
+	hittable_list world;
+	world.add(lost_empire_mesh());
+	return world;
+}
+
+inline hittable_list build_lost_empire_lights() {
+	return lost_empire_mesh()->lights();
+}
+
+inline std::shared_ptr<sky_light> build_lost_empire_sky() {
+	return std::make_shared<sky_light>(color(0.5, 0.6, 0.8));
+}
+
+// ============================================================================
+// Scene 80: Vokselia Spawn
+// Eleventh "whole environment" mesh scene - a small floating voxel island,
+// also exported from Minecraft via Mineways (the same "Vokselia" world as
+// Lost Empire above, from its spawn point rather than the buried city).
+// Much smaller and flatter than every other environment scene here (under
+// 4 units across), which makes it a good deliberately-different pace change
+// for a video flythrough - a slow orbit around a small floating world
+// rather than a long corridor traversal. Uses per-face .mtl materials and
+// a single image texture loaded from models/vokselia_spawn_textures/
+// (requires models/vokselia_spawn.obj).
+//
+// Source: McGuire Computer Graphics Archive (casual-effects.com/data),
+// CC BY 3.0.
+//
+// Scale/offset: raw OBJ units, no rescale. Raw bbox x=[-1.93,1.93]
+// y=[0,0.66] z=[-1.92,1.92] is already centered on (x,z) with y floored at
+// 0, so no offset is needed.
+//
+// Camera: found by direct CPU-render iteration, pulled back far enough to
+// frame the whole floating island against open sky.
+// ============================================================================
+inline std::shared_ptr<triangle_mesh_mtl> vokselia_spawn_mesh() {
+	static const auto mesh = std::make_shared<triangle_mesh_mtl>(
+		"vokselia_spawn.obj", make_shared<lambertian>(color(0.6, 0.6, 0.6)),
+		/*scale=*/1.0, point3(0.0, 0.0, 0.0),
+		/*smooth_normals=*/false, "vokselia_spawn_textures");
+	return mesh;
+}
+
+inline hittable_list build_vokselia_spawn() {
+	hittable_list world;
+	world.add(vokselia_spawn_mesh());
+	return world;
+}
+
+inline hittable_list build_vokselia_spawn_lights() {
+	return vokselia_spawn_mesh()->lights();
+}
+
+inline std::shared_ptr<sky_light> build_vokselia_spawn_sky() {
+	return std::make_shared<sky_light>(color(0.5, 0.6, 0.8));
+}

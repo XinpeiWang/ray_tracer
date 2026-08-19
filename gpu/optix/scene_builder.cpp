@@ -976,6 +976,26 @@ namespace {
 		// NormalMappedLambertian when the loaded image is a real tangent-
 		// space normal map (see is_grayscale_texture_gpu()'s own comment for
 		// the full bump-vs-normal-map dispatch and its GPU-specific limits).
+		// Caches load_image_texture_gpu() results by resolved file path: many
+		// OBJ/.mtl assets (Lost Empire's 45 materials chief among them) point
+		// several distinct materials at the very same image file (here, two
+		// 8192x8192 atlases shared by ~20-27 materials each). Without this,
+		// every one of those materials would independently decode and
+		// permanently retain its own full-resolution copy in
+		// scene.texturePixels - tens of redundant ~200MB copies of the same
+		// bytes, enough to exhaust host memory and crash scene building
+		// before a single triangle reaches the GPU. Keyed on the resolved
+		// path (not the material name), so two materials referencing the
+		// same file always share one texture index regardless of which
+		// map_X slot (Kd/Ke/Bump/d) first requested it.
+		std::unordered_map<std::string, int> textureCache;
+		auto loadTextureCached = [&](const std::string& path) -> int {
+			auto it = textureCache.find(path);
+			if (it != textureCache.end()) return it->second;
+			int idx = load_image_texture_gpu(scene, path.c_str());
+			textureCache[path] = idx;
+			return idx;
+		};
 		std::unordered_map<std::string, int> matCache;
 		for (const auto& f : faces) {
 			int materialIdx = fallbackMaterialIdx;
@@ -1001,7 +1021,7 @@ namespace {
 							// painting, and would blow up the alias table the
 							// same way it blew up CPU's hittable_pdf light list.
 							std::string keImgPath = resolve_mtl_texture_path_gpu(keTexIt->second, foundPrefix + textureDir);
-							int keTexIdx = load_image_texture_gpu(scene, keImgPath.c_str());
+							int keTexIdx = loadTextureCached(keImgPath);
 							if (scene.textures[keTexIdx].width > 0)
 								resolvedIdx = add_diffuse_light(scene, make_float3(0.0f, 0.0f, 0.0f), keTexIdx);
 						}
@@ -1034,7 +1054,7 @@ namespace {
 						auto texIt = mtlTextures.find(f.mtl);
 						if (texIt != mtlTextures.end()) {
 							std::string imgPath = resolve_mtl_texture_path_gpu(texIt->second, foundPrefix + textureDir);
-							int texIdx = load_image_texture_gpu(scene, imgPath.c_str());
+							int texIdx = loadTextureCached(imgPath);
 							if (scene.textures[texIdx].width > 0) {
 								auto colorForTexIt = mtlColors.find(f.mtl);
 								float3 albedo = (colorForTexIt != mtlColors.end())
@@ -1074,7 +1094,7 @@ namespace {
 						auto bumpIt = mtlBump.find(f.mtl);
 						if (bumpIt != mtlBump.end()) {
 							std::string bumpPath = resolve_mtl_texture_path_gpu(bumpIt->second, foundPrefix + textureDir);
-							int bumpTexIdx = load_image_texture_gpu(scene, bumpPath.c_str());
+							int bumpTexIdx = loadTextureCached(bumpPath);
 							if (scene.textures[bumpTexIdx].width > 0) {
 								if (is_grayscale_texture_gpu(scene, bumpTexIdx)) {
 									// Real scalar height/displacement map
@@ -1120,7 +1140,7 @@ namespace {
 						auto alphaIt = mtlAlpha.find(f.mtl);
 						if (alphaIt != mtlAlpha.end()) {
 							std::string alphaPath = resolve_mtl_texture_path_gpu(alphaIt->second, foundPrefix + textureDir);
-							int alphaTexIdx = load_image_texture_gpu(scene, alphaPath.c_str());
+							int alphaTexIdx = loadTextureCached(alphaPath);
 							if (scene.textures[alphaTexIdx].width > 0)
 								scene.materials[resolvedIdx].alphaMaskTexIdx = alphaTexIdx;
 						}
@@ -4039,6 +4059,23 @@ static void build_gallery_gpu(SceneData& scene) {
 		/*scale=*/1.0f, make_float3(0.60f, -0.06f, 1.33f), "gallery_textures");
 }
 
+/// @brief Scene 79: Lost Empire. Matches CPU build_lost_empire() exactly. See
+/// build_sponza_gpu()'s own comment for the shared design rationale.
+static void build_lost_empire_gpu(SceneData& scene) {
+	const int mat_room = add_lambertian(scene, make_float3(0.6f, 0.6f, 0.6f));
+	load_obj_triangles_mtl_gpu(scene, "lost_empire.obj", mat_room,
+		/*scale=*/1.0f, make_float3(-0.51f, 0.0f, -0.56f), "lost_empire_textures");
+}
+
+/// @brief Scene 80: Vokselia Spawn. Matches CPU build_vokselia_spawn()
+/// exactly. See build_sponza_gpu()'s own comment for the shared design
+/// rationale.
+static void build_vokselia_spawn_gpu(SceneData& scene) {
+	const int mat_room = add_lambertian(scene, make_float3(0.6f, 0.6f, 0.6f));
+	load_obj_triangles_mtl_gpu(scene, "vokselia_spawn.obj", mat_room,
+		/*scale=*/1.0f, make_float3(0.0f, 0.0f, 0.0f), "vokselia_spawn_textures");
+}
+
 /// @brief Build a scene and configure the camera
 /// @param scene_id Scene identifier, category letter + number ("A1" = Cornell Box)
 /// @param image_width Output image width in pixels
@@ -5679,6 +5716,34 @@ bool build_scene(
 									// Matches CPU build_gallery_sky()'s brightened sky_light(3.0,3.2,3.6) -
 									// see that function's comment.
 									out_camera_extra->backgroundColor = make_float3(3.0f, 3.2f, 3.6f);
+								}
+								break;
+							}
+
+							case 79: {  // Lost Empire (see build_lost_empire_gpu's comment)
+								build_lost_empire_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 60.0f, 100.0f);
+								const float3 lookat   = make_float3(0.0f, 10.0f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 55.0f, aspect, 1.0f, camera_params);  // 55: matches CPU CameraConfig row for scene 79
+								if (out_camera_extra) {
+									// Matches CPU build_lost_empire_sky()'s open sky_light(0.5,0.6,0.8).
+									out_camera_extra->backgroundColor = make_float3(0.5f, 0.6f, 0.8f);
+								}
+								break;
+							}
+
+							case 80: {  // Vokselia Spawn (see build_vokselia_spawn_gpu's comment)
+								build_vokselia_spawn_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 4.5f, 0.9f, 4.5f);
+								const float3 lookat   = make_float3(0.0f, 0.25f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);  // 40: matches CPU CameraConfig row for scene 80
+								if (out_camera_extra) {
+									// Matches CPU build_vokselia_spawn_sky()'s open sky_light(0.5,0.6,0.8).
+									out_camera_extra->backgroundColor = make_float3(0.5f, 0.6f, 0.8f);
 								}
 								break;
 							}

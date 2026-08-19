@@ -1483,6 +1483,26 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             build_gallery_sky,
             nullptr
         },
+        {
+            "H10", 79, SceneNames::LostEmpire, SceneCategories::LargeScene,
+            "Lost Empire - a large half-buried ancient city exported from a Minecraft world, with temple platforms, staircases, and a lava chamber, with real per-face .mtl materials and an image texture loaded from models/lost_empire_textures/, lit by an open sky, loaded from an external .obj file (requires models/lost_empire.obj). Tenth 'whole environment' mesh scene, and the first at a scale (165 units deep) that suits a long video flythrough -- see build_lost_empire()'s own comment.",
+            "Slow", 150, true, true,
+            { 55, 0, 60, 100,  0, 10, 0,  0, 0, 0 },
+            build_lost_empire,
+            build_lost_empire_lights,
+            build_lost_empire_sky,
+            nullptr
+        },
+        {
+            "H11", 80, SceneNames::VokseliaSpawn, SceneCategories::LargeScene,
+            "Vokselia Spawn - a small floating voxel island, exported from the same Minecraft world as Lost Empire from its spawn point, with a real per-face .mtl material and an image texture loaded from models/vokselia_spawn_textures/, lit by an open sky, loaded from an external .obj file (requires models/vokselia_spawn.obj). Eleventh 'whole environment' mesh scene -- see build_vokselia_spawn()'s own comment.",
+            "Medium", 100, true, true,
+            { 40, 4.5, 0.9, 4.5,  0, 0.25, 0,  0, 0, 0 },
+            build_vokselia_spawn,
+            build_vokselia_spawn_lights,
+            build_vokselia_spawn_sky,
+            nullptr
+        },
     };
     return registry;
 }
