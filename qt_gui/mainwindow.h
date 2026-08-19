@@ -137,17 +137,35 @@ private:
 // off of (mainwindow_style.cpp's own QTabBar#previewSubTabsBar::tab rule),
 // applied by MainWindow::applyTheme() whenever the scheme changes.
 //
-// tabSizeHint() still double-transposes for the same reason it did with the
-// rotation approach: QCommonStyle already transposes its own size hint once
-// for a West-shaped bar (narrow width, height sized to fit the label
-// lengthwise), and undoing that gets back a normal horizontal-tab footprint
-// (width sized to the label, one line tall) arranged in a vertical stack
-// instead of a horizontal row - independent of how the label itself ends up
-// painted.
+// tabSizeHint()/sizing is hand-rolled too, for the same "stylesheet breaks
+// the textbook approach" reason as the label: routed through
+// QStyleSheetStyle for a West-shaped bar under this app's stylesheet, it
+// came out far taller per tab than a single-line label needs, and
+// overriding just its height (or width) changed nothing - evidence
+// something downstream (most likely "expanding", which stretches a lone
+// tab to fill whatever vertical room the widget has) wasn't consulting it
+// the way the docs imply. tabSizeHint() now returns a nominal per-row
+// height with expanding turned off, and updateFixedHeight() pins the
+// widget's own height directly to (tab count) rows - see both methods'
+// own comments.
 class HorizontalTabBar : public QTabBar {
 	Q_OBJECT
 public:
-	explicit HorizontalTabBar(QWidget *parent = nullptr) : QTabBar(parent) {}
+	explicit HorizontalTabBar(QWidget *parent = nullptr) : QTabBar(parent) {
+		// Tabs are hand-painted at a fixed per-row height (see
+		// updateFixedHeight()), not sized through Qt's own tabSizeHint/
+		// layout machinery - QTabBar::sizeHint()'s handling of that
+		// machinery for a West-shaped bar under this app's stylesheet came
+		// out far taller than a single-line label needs, and neither
+		// overriding tabSizeHint()'s height nor width actually changed the
+		// rendered result (evidence it isn't consulted the way the docs
+		// imply here). "Expanding" would stretch a lone tab to fill
+		// whatever extra vertical room the widget has anyway, which is
+		// exactly the failure mode - turned off so there is nothing left
+		// for it to stretch into once the widget's real height is pinned
+		// down directly instead.
+		setExpanding(false);
+	}
 
 	// Kept in sync with the active theme's palette by MainWindow::
 	// applyTheme() - see this class's own comment on why the label can't
@@ -159,6 +177,14 @@ public:
 		update();
 	}
 
+	// Pins the widget's own height to exactly (tab count) rows - called by
+	// SplitPreviewTabs after every addTab()/removeTab(), once the bar's own
+	// insertion/removal bookkeeping has fully returned rather than from
+	// inside a tabInserted()/tabRemoved() hook, since resizing the widget
+	// from within one of those (still on QTabBarPrivate's own call stack)
+	// risks reentering its still-in-progress layout.
+	void updateFixedHeight() { setFixedHeight(qMax(1, count()) * rowHeight()); }
+
 signals:
 	// Emitted on a left-click inside a tab's close glyph. Connected to
 	// MainWindow::closePreviewSubTab() by createPreviewTab() - a plain
@@ -168,10 +194,16 @@ signals:
 	void closeRequested(int index);
 
 protected:
+	// Width is irrelevant here - paintEvent()/closeGlyphRect() both read
+	// stretchedTabRect() instead, which substitutes the bar's own actual
+	// current width at paint/hit-test time (see that method's own comment).
+	// Height matches rowHeight(), the same value updateFixedHeight() uses
+	// for the widget's own fixed height, so Qt's internal per-tab stacking
+	// (tabRect(i)'s y/height, still read as-is by stretchedTabRect()) lines
+	// up with one tab per row.
 	QSize tabSizeHint(int index) const override {
-		QSize s = QTabBar::tabSizeHint(index);
-		s.transpose();
-		return s;
+		Q_UNUSED(index);
+		return QSize(100, rowHeight());
 	}
 
 	void paintEvent(QPaintEvent * /*event*/) override {
@@ -243,17 +275,16 @@ protected:
 	}
 
 private:
-	// Qt's own tabRect(index) only ever spans the label's natural text
-	// width (see tabSizeHint() above, deliberately left alone) - stretching
-	// that would mean feeding width() back through tabSizeHint(), but
-	// tabSizeHint() output feeds Qt's own layout/sizeHint bookkeeping for
-	// this bar, and QSplitter consults that bookkeeping too (see
-	// SplitPreviewTabs), so a self-referential width() there turned live
-	// splitter drags into a feedback loop that collapsed the bar instead of
-	// growing it. Painting, close-glyph hit-testing, and text elision all
-	// read this instead: same rect, width swapped for the bar's actual
-	// current width - a pure paint/hit-test-time adjustment that never
-	// reaches anything Qt's layout system queries.
+	// tabSizeHint() reports a nominal width of 1px (see above) since Qt's
+	// own per-tab width bookkeeping isn't used for anything - painting,
+	// close-glyph hit-testing, and text elision all read this instead: same
+	// rect as tabRect(index) (y/height still Qt's own per-row stacking),
+	// width swapped for the bar's actual current width. A pure paint/
+	// hit-test-time adjustment, not fed back through tabSizeHint(): an
+	// earlier attempt did that (self-referential width() feeding the very
+	// hint Qt uses to decide this bar's width) and it turned live splitter
+	// drags into a feedback loop that collapsed the bar instead of growing
+	// it.
 	QRect stretchedTabRect(int index) const {
 		QRect r = tabRect(index);
 		r.setWidth(qMax(60, width() - r.x()));
@@ -264,6 +295,8 @@ private:
 		const QRect r = stretchedTabRect(index);
 		return QRect(r.left() + 6, r.center().y() - 8, 18, 18);
 	}
+
+	int rowHeight() const { return fontMetrics().height() + 20; }
 
 	QColor m_normalColor;
 	QColor m_hoverColor;
@@ -375,6 +408,7 @@ public:
 		const int stackIndex = m_stack->addWidget(page);
 		const int tabIndex = m_tabBar->addTab(label);
 		Q_ASSERT(stackIndex == tabIndex);
+		m_tabBar->updateFixedHeight();
 		m_outerStack->setCurrentWidget(m_splitter);
 		return tabIndex;
 	}
@@ -398,6 +432,7 @@ public:
 			m_tabBar->removeTab(index);
 		}
 		if (page) m_stack->removeWidget(page);
+		m_tabBar->updateFixedHeight();
 		const int newIndex = m_tabBar->currentIndex();
 		m_stack->setCurrentIndex(newIndex);
 		if (m_tabBar->count() == 0) m_outerStack->setCurrentWidget(m_emptyState);
