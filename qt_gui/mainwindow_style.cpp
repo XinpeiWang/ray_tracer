@@ -106,6 +106,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 	// still does. Matches that QSS rule's normal/hover/selected colours.
 	if (m_previewSubTabs) {
 		m_previewSubTabs->tabBar()->setColors(p.textMuted, p.textBody, p.accentSecondary);
+		m_previewSubTabs->setEmptyStateColors(p.textMuted, p.textBody, p.textMuted);
 	}
 
 	// Qt's own palette still matters: it is what non-stylesheet painting and

@@ -39,6 +39,7 @@
 #include "camera_math.h"
 #include "render_output_parser.h"
 #include "theme.h"
+#include "icon_tint.h"
 
 class QMenu;
 class QTabBar;
@@ -262,9 +263,40 @@ public:
 		layout->setContentsMargins(0, 0, 0, 0);
 		layout->setSpacing(0);
 
-		m_splitter = new QSplitter(Qt::Horizontal, this);
+		// Swaps between the empty-state prompt (no renders yet, or every
+		// tab closed) and the real tab bar/page splitter below - rather
+		// than leaving the whole pane blank but for the sidebar, which is
+		// what a bare, always-present splitter would do while count() == 0.
+		m_outerStack = new QStackedWidget(this);
+		layout->addWidget(m_outerStack);
+
+		m_emptyState = new QWidget(m_outerStack);
+		QVBoxLayout *emptyLayout = new QVBoxLayout(m_emptyState);
+		emptyLayout->addStretch(1);
+		m_emptyIcon = new QLabel(m_emptyState);
+		m_emptyIcon->setAlignment(Qt::AlignCenter);
+		emptyLayout->addWidget(m_emptyIcon);
+		m_emptyTitle = new QLabel(tr("No renders yet"), m_emptyState);
+		m_emptyTitle->setAlignment(Qt::AlignCenter);
+		QFont titleFont = m_emptyTitle->font();
+		titleFont.setPointSizeF(titleFont.pointSizeF() * 1.3);
+		titleFont.setBold(true);
+		m_emptyTitle->setFont(titleFont);
+		emptyLayout->addWidget(m_emptyTitle);
+		m_emptySubtitle = new QLabel(
+			tr("Start a render from Basic Settings - each finished image\n"
+			   "or video opens in its own tab here, so past renders stay\n"
+			   "around while you compare or tweak settings."),
+			m_emptyState);
+		m_emptySubtitle->setAlignment(Qt::AlignCenter);
+		m_emptySubtitle->setWordWrap(true);
+		emptyLayout->addWidget(m_emptySubtitle);
+		emptyLayout->addStretch(1);
+		m_outerStack->addWidget(m_emptyState);
+
+		m_splitter = new QSplitter(Qt::Horizontal, m_outerStack);
 		m_splitter->setChildrenCollapsible(false);
-		layout->addWidget(m_splitter);
+		m_outerStack->addWidget(m_splitter);
 
 		// QSplitter always stretches a pane to the splitter's full
 		// perpendicular extent (here, full height) - but QTabBar, given more
@@ -317,6 +349,7 @@ public:
 		const int stackIndex = m_stack->addWidget(page);
 		const int tabIndex = m_tabBar->addTab(label);
 		Q_ASSERT(stackIndex == tabIndex);
+		m_outerStack->setCurrentWidget(m_splitter);
 		return tabIndex;
 	}
 
@@ -341,13 +374,30 @@ public:
 		if (page) m_stack->removeWidget(page);
 		const int newIndex = m_tabBar->currentIndex();
 		m_stack->setCurrentIndex(newIndex);
+		if (m_tabBar->count() == 0) m_outerStack->setCurrentWidget(m_emptyState);
 		emit currentChanged(newIndex);
+	}
+
+	// Kept in sync with the active theme by MainWindow::applyTheme(), same
+	// as HorizontalTabBar::setColors() - the empty-state prompt is plain
+	// QLabels, not QSS-styled chrome, so it needs its colours (and the
+	// icon's tint, baked into the pixmap at paint time rather than
+	// stylesheet-recolourable) hand-fed the same way.
+	void setEmptyStateColors(const QColor &iconColor, const QColor &titleColor, const QColor &subtitleColor) {
+		m_emptyIcon->setPixmap(icon_tint::tinted(":/icons/image.svg", iconColor).pixmap(56, 56));
+		m_emptyTitle->setStyleSheet(QStringLiteral("color: %1;").arg(titleColor.name()));
+		m_emptySubtitle->setStyleSheet(QStringLiteral("color: %1;").arg(subtitleColor.name()));
 	}
 
 signals:
 	void currentChanged(int index);
 
 private:
+	QStackedWidget *m_outerStack;
+	QWidget *m_emptyState;
+	QLabel *m_emptyIcon;
+	QLabel *m_emptyTitle;
+	QLabel *m_emptySubtitle;
 	QSplitter *m_splitter;
 	HorizontalTabBar *m_tabBar;
 	QStackedWidget *m_stack;
