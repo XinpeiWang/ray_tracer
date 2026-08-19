@@ -110,7 +110,11 @@ void RenderController::start() {
 	//   - These are passed to both CPU and GPU renderers through their interfaces
 	// ========================================================================
 
+#ifdef Q_OS_WIN
 	QString exePath = QCoreApplication::applicationDirPath() + "/ray_tracer.exe";
+#else
+	QString exePath = QCoreApplication::applicationDirPath() + "/ray_tracer";
+#endif
 	QStringList args;
 
 	// Render mode flag: --gpu or --cpu
@@ -486,7 +490,12 @@ void MainWindow::setupUI() {
 	connect(m_renderModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
 			this, [this](int) {
 				refreshStatusBarInfo();
-				m_gpuBackendCombo->setEnabled(m_renderModeCombo->currentData().toBool());
+				// m_gpuBackendCombo is nullptr on a build with no GPU support
+				// at all (RT_GUI_HAVE_GPU undefined - see mainwindow_tabs.cpp's
+				// Renderer combo setup, which never creates it there).
+				if (m_gpuBackendCombo) {
+					m_gpuBackendCombo->setEnabled(m_renderModeCombo->currentData().toBool());
+				}
 			});
 	connect(m_widthSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
 			this, [this](int) { refreshStatusBarInfo(); });

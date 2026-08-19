@@ -99,7 +99,7 @@ Download the portable package and run it directly - see the [📦 Download secti
 #### Prerequisites
 
 **Required:**
-- **Windows 10/11** (64-bit)
+- **Windows 10/11** (64-bit) — for the full build (CPU + GPU/OptiX renderer + Qt GUI)
 - **Visual Studio 2022 or 2026** with C++ desktop development
 - **C++17 compatible compiler**
 
@@ -107,6 +107,8 @@ Download the portable package and run it directly - see the [📦 Download secti
 - **NVIDIA GPU** (RTX series or GTX 16xx+, Compute Capability 7.5+)
 - **CUDA Toolkit 13.2+** ([download](https://developer.nvidia.com/cuda-downloads))
 - **Updated NVIDIA drivers**
+
+**macOS**: the CPU renderer, CLI, and Qt GUI build via the root `CMakeLists.txt` and `qt_gui/RayTracerGUI.pro` — see [macOS (CPU-only)](#macos-cpu-only) below. GPU rendering (`gpu/optix/`, `optix_renderer/`) is CUDA/OptiX and has no macOS equivalent — Apple dropped NVIDIA GPU support and Apple Silicon has no CUDA at all, so this isn't a "not ported yet" gap, it's a different renderer that would need to be built from scratch (e.g. on Metal/MetalRT). This macOS path has not been build-tested on real macOS hardware (this project was developed on Windows) — treat it as best-effort until confirmed on a real Mac.
 
 **Optional (for video generation):**
 - **ffmpeg** on `PATH` — video rendering assembles frames into MP4 via an `ffmpeg` subprocess; without it, frames are still rendered to disk but not muxed into a video.
@@ -181,6 +183,31 @@ msbuild ray_tracer.sln /p:Configuration=Release /p:Platform=x64
 | Deployed package | `RayTracer_Package\RayTracerGUI.exe` |
 
 See [BUILD.md](BUILD.md) for full details, advanced options, and troubleshooting common issues (missing MSBuild, OptiX/CUDA errors, Qt not found).
+
+### macOS (CPU-only)
+
+No GPU/OptiX support (see the note above) — this builds the CPU path tracer,
+the `ray_tracer` CLI, and (optionally) the Qt GUI, purely additive alongside
+the Windows MSBuild solution.
+
+**CLI + CPU renderer**, via the root `CMakeLists.txt`:
+```bash
+cmake -B build && cmake --build build
+./build/ray_tracer 800 100 50 A1   # width, spp, max_depth, scene_id
+```
+Produces `cpu_renderer` (static lib), `ray_tracer` (CLI, always CPU — `--gpu`
+prints a warning and falls back), and `scene_metadata.dylib`.
+
+**Qt GUI**, via `qt_gui/RayTracerGUI.pro` (Qt 6, same as Windows):
+```bash
+cd qt_gui
+qmake && make
+```
+Copy the `ray_tracer` binary and `scene_metadata.dylib` built above alongside
+the resulting app bundle so the GUI can find them at runtime (mirrors what
+the Windows build's `RayTracer_Package` deploy step does — there's no
+equivalent packaging script for macOS yet). The GUI's Renderer dropdown only
+offers CPU on this build; there's no GPU option to hide manually.
 
 ### Running Tests
 
@@ -621,7 +648,7 @@ Being upfront about what's incomplete rather than overselling:
 - **BDPT and MLT are CPU-only and narrow in scope**: selectable via `--bdpt`/`--mlt`, but there's no GPU/OptiX implementation (`--gpu` is ignored with a warning), only area lights are supported for NEE (no punctual/sky-light sampling yet), and both are verified end-to-end on scene A1 (Cornell Box) only — other scenes are unverified.
 - **Hair/fur has two different fidelity levels**: scene F4 (Curve Fibers) uses real Bezier curve/strand geometry (`CurveShape`, exact ray-curve intersection on CPU, tessellated bilinear-patch tubes on GPU); the older scene B11 instead applies the Marschner/Chiang BxDF math via a shading-normal proxy on sphere primitives, not actual fiber geometry.
 - **GPU wavefront path tracer is opt-in and less exercised**: enabled via the `--wavefront` flag; the default recursive GPU backend is the primary, best-tested GPU path.
-- **Windows only**: platform-specific code throughout (file paths, CUDA/OptiX integration, build system).
+- **GPU/OptiX rendering is Windows+NVIDIA only, with no fallback**: the CPU renderer, CLI, and Qt GUI now also build on macOS (see [macOS (CPU-only)](#macos-cpu-only)) via a purely-additive CMake path, unverified on real macOS hardware since this project is developed on Windows. GPU rendering has no macOS equivalent at all — CUDA/OptiX isn't available there (Apple dropped NVIDIA GPU support; Apple Silicon has no CUDA), so this is a genuinely different renderer (e.g. Metal/MetalRT), not a porting gap.
 - **No adaptive sampling**: fixed samples-per-pixel for standard path tracing (SPPM itself is progressive by design).
 
 ### Planned / possible future work
@@ -630,7 +657,8 @@ Being upfront about what's incomplete rather than overselling:
 - [ ] Broader GPU SPPM scene support
 - [ ] Real curve/strand geometry for scene B11's hair fibers (matching scene F4's approach)
 - [ ] Adaptive sampling based on variance
-- [ ] Cross-platform support (Linux, macOS)
+- [ ] Build-verify the new macOS CPU/CLI/GUI path on real macOS hardware (or CI)
+- [ ] Linux support (likely a small extension of the same CMake/POSIX groundwork the macOS port added)
 
 ## 🤝 Contributing
 
@@ -639,7 +667,7 @@ Contributions are welcome! Areas for improvement:
 1. **Integrators**: porting BDPT/MLT to GPU, broadening their light-sampling and scene coverage, broadening GPU SPPM scene support
 2. **Geometry**: real curve/hair geometry for scene B11 (scene F4 already has it), more mesh formats
 3. **Scenes**: more example scenes, a scene file format (JSON/XML) instead of hardcoded registry entries
-4. **Portability**: Linux/macOS support
+4. **Portability**: build-verifying the new macOS CPU/CLI/GUI path on real hardware, Linux support
 5. **Documentation**: tutorials, code comments
 
 ## 📝 License

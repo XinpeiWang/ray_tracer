@@ -347,6 +347,11 @@ tests/build_test/dda_mini.cpp
 *.py
 total.txt
 *.txt
+# CMakeLists.txt files are real, hand-written build files, not stray logs -
+# the blanket *.txt rule above was catching them incidentally (confirmed:
+# tests/CMakeLists.txt was already untracked because of this, despite being
+# a real, documented (README.md's "Option B: CMake (manual)") build file).
+!CMakeLists.txt
 # Generated/preprocessed test artifacts
 tests/generated/
 

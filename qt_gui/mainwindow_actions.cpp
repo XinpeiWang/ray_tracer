@@ -252,6 +252,11 @@ void MainWindow::clearLog() {
 }
 
 void MainWindow::showAboutDialog() {
+#ifdef Q_OS_WIN
+	const char* rendererBinaryName = "ray_tracer.exe";
+#else
+	const char* rendererBinaryName = "ray_tracer";
+#endif
 	QMessageBox::about(this, "About Ray Tracer",
 		"<h3>Ray Tracer</h3>"
 		"<p>A physically-based path tracer with parallel CPU and GPU (OptiX) "
@@ -260,5 +265,5 @@ void MainWindow::showAboutDialog() {
 		"<p>78 scenes, a wide BxDF library, multiple light and camera types, "
 		"triangle-mesh and texture support, BVH acceleration, volumetrics, and "
 		"an SPPM photon-mapping integrator alongside standard path tracing.</p>"
-		"<p>This window drives <code>ray_tracer.exe</code> as a subprocess.</p>");
+		"<p>This window drives <code>" + QString(rendererBinaryName) + "</code> as a subprocess.</p>");
 }

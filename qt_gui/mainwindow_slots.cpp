@@ -80,8 +80,12 @@ RenderJob MainWindow::captureRenderJob() {
 	// Render mode: GPU (true) or CPU (false)
 	job.useGPU = m_renderModeCombo->currentData().toBool();
 	// GPU backend: recursive (false, default) or wavefront (true). Meaningless
-	// under CPU, so only honored when useGPU is also true.
-	job.useWavefront = job.useGPU && m_gpuBackendCombo->currentData().toBool();
+	// under CPU, so only honored when useGPU is also true. m_gpuBackendCombo
+	// is nullptr on a build with no GPU support at all (RT_GUI_HAVE_GPU
+	// undefined), in which case job.useGPU is already always false and the
+	// short-circuit below never reaches it - the explicit null check just
+	// makes that safety non-fragile against future reordering.
+	job.useWavefront = job.useGPU && m_gpuBackendCombo && m_gpuBackendCombo->currentData().toBool();
 
 	// Resolution: either from preset dropdown or custom values from Advanced tab
 	if (m_qualityPresetCombo->currentIndex() == 6) {

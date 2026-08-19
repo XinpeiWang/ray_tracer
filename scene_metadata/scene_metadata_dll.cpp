@@ -20,7 +20,18 @@
 // cpu_interface.cpp would be the fix if it ever does.
 #include "../cpu_renderer/cpu_interface.h"
 
+// __declspec(dllexport) is MSVC/MinGW-only; every other platform (this file
+// builds as scene_metadata.dylib/.so via the new root CMakeLists.txt, loaded
+// through qt_gui/scene_metadata_client.cpp's dlopen()/dlsym() branch there)
+// exports symbols by default at ELF/Mach-O visibility "default" instead -
+// __attribute__((visibility("default"))) makes that explicit rather than
+// relying on the compiler's default (which can be flipped to hidden by a
+// -fvisibility=hidden build flag elsewhere in the project).
+#if defined(_WIN32)
 #define SCENE_METADATA_API extern "C" __declspec(dllexport)
+#else
+#define SCENE_METADATA_API extern "C" __attribute__((visibility("default")))
+#endif
 
 SCENE_METADATA_API int scene_metadata_gpu_compatible(const char* scene_id) {
 	return cpu_scene_gpu_compatible_by_id(scene_id);

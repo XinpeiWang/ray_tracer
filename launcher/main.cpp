@@ -35,25 +35,51 @@
 #include <mutex>
 #include <condition_variable>
 #include <queue>
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#else
+#include <spawn.h>
+#include <sys/wait.h>
+#include <unistd.h>
+extern char** environ;
+#endif
 #include "cpu_renderer/cpu_interface.h"
+#ifdef RT_HAVE_OPTIX
 #include "gpu/optix/optix_interface.h"
+#else
+#include "launcher/optix_stub.h"
+#endif
 #include "src/external/image_writer.h"
 #include "src/TheRestOfYourLife/error_codes.h"
 #include "src/TheRestOfYourLife/thread_count.h"
 #include "launcher/camera_path.h"
 #include "launcher/launcher_args.h"   // Argument parsing
 
-// Run a subprocess with the given argv directly via CreateProcess (no shell,
-// so there's no cmd.exe quoting/percent-expansion to worry about - important
+// Run a subprocess with the given argv directly (no shell, so there's no
+// cmd.exe/sh quoting or percent/glob expansion to worry about - important
 // since ffmpeg's "%04d" frame-pattern argument would otherwise be at the
-// mercy of cmd.exe's own "%" parsing rules). Every argument is wrapped in
-// quotes; safe here since none of the arguments we build contain literal
-// quote characters. Returns the child's exit code, or -1 if it could not be
-// launched (e.g. the executable isn't found on PATH).
+// mercy of the shell's own parsing rules). Returns the child's exit code, or
+// -1 if it could not be launched (e.g. the executable isn't found on PATH).
+//
+// Windows: CreateProcess re-tokenizes a single command-line string, so every
+// argument is wrapped in quotes (safe here since none of the arguments we
+// build contain literal quote characters).
+//
+// POSIX (macOS/Linux): posix_spawnp takes argv[] directly with no
+// re-parsing, so no quoting is needed at all - the same argv vector is
+// passed through byte-for-byte. posix_spawnp (not fork+exec) is used
+// deliberately: this process already runs a background thread
+// (BackgroundPngConverter below), and fork() in a multithreaded process only
+// clones the calling thread, risking the child deadlocking on a libc lock
+// another thread held at fork time. No file_actions/chdir setup is needed -
+// the child inherits fds 0/1/2 and the CWD by default, matching
+// CreateProcess's behavior above. A signal-killed child is mapped to
+// 128+signal so it can't collide with this function's own -1 "launch
+// failed" sentinel.
 static int run_subprocess(const std::vector<std::string>& argv) {
+#ifdef _WIN32
     std::string cmdline;
     for (size_t i = 0; i < argv.size(); ++i) {
         if (i > 0) cmdline += ' ';
@@ -80,6 +106,32 @@ static int run_subprocess(const std::vector<std::string>& argv) {
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
     return static_cast<int>(exitCode);
+#else
+    if (argv.empty()) return -1;
+
+    std::vector<char*> cargv;
+    cargv.reserve(argv.size() + 1);
+    for (const auto& a : argv) cargv.push_back(const_cast<char*>(a.c_str()));
+    cargv.push_back(nullptr);
+
+    pid_t pid = 0;
+    int spawnRc = posix_spawnp(&pid, cargv[0], nullptr, nullptr, cargv.data(), environ);
+    if (spawnRc != 0) {
+        return -1;
+    }
+
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0) {
+        return -1;
+    }
+    if (WIFEXITED(status)) {
+        return WEXITSTATUS(status);
+    }
+    if (WIFSIGNALED(status)) {
+        return 128 + WTERMSIG(status);
+    }
+    return 1;
+#endif
 }
 
 // Converts rendered PPM frames to PNG on a background thread while the main
@@ -166,6 +218,27 @@ int main(int argc, char** argv) {
 
 	// Unpack for readability in the rest of main
 	bool use_gpu            = args.use_gpu;
+#ifndef RT_HAVE_OPTIX
+	// This build has no CUDA/OptiX SDK - GPU rendering was never compiled in
+	// (see launcher/optix_stub.h). Deliberately applied here, after parsing,
+	// rather than inside parse_launch_args() itself: that function's
+	// LaunchArgs::use_gpu default (true) is covered by its own unit tests
+	// (tests/unit/launcher_args_bdpt_mlt_tests.cpp) independent of platform,
+	// so the platform-capability decision belongs at the call site, next to
+	// where every other use_gpu-affecting concern in main is applied - not
+	// baked into the parser itself. Force CPU rendering unconditionally
+	// rather than letting the true default reach the optix_is_available()
+	// check below and hard-fail every plain invocation; only warn when the
+	// user actually typed --gpu, so a build known ahead of time to be
+	// CPU-only degrades gracefully instead of refusing to render at all.
+	if (use_gpu) {
+		if (args.gpu_flag_explicit) {
+			std::cerr << "Warning: --gpu was requested, but this build has no "
+						 "GPU/OptiX support - rendering on CPU instead.\n";
+		}
+		use_gpu = false;
+	}
+#endif
 	int  image_width        = args.image_width;
 	int  image_height       = args.image_height;
 	int  samples_per_pixel  = args.samples_per_pixel;

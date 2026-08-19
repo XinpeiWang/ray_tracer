@@ -171,9 +171,15 @@ void MainWindow::createBasicTab() {
 	// drifted before and got scene_descriptor.h's mirror table deleted.
 	const int sceneCount = SceneMetadataClient::sceneCount();
 	if (sceneCount <= 0) {
+#ifdef Q_OS_WIN
 		QMessageBox::critical(basicTab, "Scene Metadata Unavailable",
 			"Could not load scene_metadata.dll, so the scene list is empty. "
 			"Make sure scene_metadata.dll is present alongside RayTracerGUI.exe.");
+#else
+		QMessageBox::critical(basicTab, "Scene Metadata Unavailable",
+			"Could not load scene_metadata.dylib/.so, so the scene list is empty. "
+			"Make sure scene_metadata.dylib/.so is present alongside RayTracerGUI.");
+#endif
 	}
 
 	// A second, higher-level filter above the letter-category tabs: every
@@ -299,17 +305,29 @@ void MainWindow::createBasicTab() {
 		"Generate Video renders a camera path frame by frame and assembles an MP4.");
 
 	m_renderModeCombo = new QComboBox(basicTab);
+#ifdef RT_GUI_HAVE_GPU
 	icon_tint::addItem(m_renderModeCombo, ":/icons/gpu.svg", "GPU (CUDA) - Fast", true, m_activeTheme.textBody);
+#endif
 	icon_tint::addItem(m_renderModeCombo, ":/icons/cpu.svg", "CPU - High Quality", false, m_activeTheme.textBody);
 	styleComboBox(m_renderModeCombo);
 	// Tooltips carry what the label cannot: the actual trade-off, not a repeat
 	// of the visible text.
+#ifdef RT_GUI_HAVE_GPU
 	m_renderModeCombo->setToolTip(
 		"GPU: OptiX hardware ray tracing — typically orders of magnitude faster.\n"
 		"CPU: importance-sampled path tracer — supports every scene and material,\n"
 		"including the handful the GPU backend does not implement.");
+#else
+	// This build's CLI (ray_tracer, from root CMakeLists.txt) has no
+	// CUDA/OptiX support at all - see launcher/optix_stub.h - so GPU was
+	// never a real option here and isn't offered as one.
+	m_renderModeCombo->setToolTip(
+		"Importance-sampled CPU path tracer — supports every scene and material.\n"
+		"GPU rendering is not available in this build.");
+#endif
 	renderLayout->addRow("Renderer:", m_renderModeCombo);
 
+#ifdef RT_GUI_HAVE_GPU
 	m_gpuBackendCombo = new QComboBox(basicTab);
 	icon_tint::addItem(m_gpuBackendCombo, ":/icons/gpu.svg", "Recursive (Default)", false, m_activeTheme.textBody);
 	icon_tint::addItem(m_gpuBackendCombo, ":/icons/gpu.svg", "Wavefront (Experimental)", true, m_activeTheme.textBody);
@@ -325,6 +343,13 @@ void MainWindow::createBasicTab() {
 	// afterwards whenever the user changes Renderer.
 	m_gpuBackendCombo->setEnabled(m_renderModeCombo->currentData().toBool());
 	renderLayout->addRow("GPU Backend:", m_gpuBackendCombo);
+#else
+	// No GPU support in this build (see above) - the combo simply doesn't
+	// exist, rather than existing permanently disabled. Every other file
+	// that touches m_gpuBackendCombo (mainwindow.cpp's connect(), etc.) is
+	// itself gated the same way - see those sites for the matching #ifdef.
+	m_gpuBackendCombo = nullptr;
+#endif
 
 	// Quality preset
 	m_qualityPresetCombo = new QComboBox(basicTab);

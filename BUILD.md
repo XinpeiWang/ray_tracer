@@ -1,6 +1,12 @@
 # Build System Guide
 
-This document describes how to build the entire Ray Tracer project.
+This document describes how to build the entire Ray Tracer project on
+**Windows** - the full build, including the GPU/OptiX renderer (CUDA/OptiX is
+Windows+NVIDIA only, with no macOS equivalent). For building the CPU
+renderer, CLI, and Qt GUI on **macOS** instead, see the
+[macOS (CPU-only)](README.md#macos-cpu-only) section of README.md - it's a
+separate, purely-additive CMake/qmake path that this document's MSBuild
+instructions don't cover.
 
 ## Quick Start
 

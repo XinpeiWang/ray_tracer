@@ -45,11 +45,11 @@ HEADERS += \
 	theme.h \
 	win_taskbar.h
 
-# scene_metadata.dll (MSVC-built, loaded dynamically at runtime via
-# LoadLibrary/GetProcAddress from kernel32 - see scene_metadata_client.cpp,
-# already linked implicitly by MinGW) is not linked here; it just needs to
-# end up alongside RayTracerGUI.exe in RayTracer_Package, which its own
-# post-build step already handles.
+# scene_metadata.dll/.dylib/.so (loaded dynamically at runtime - see
+# scene_metadata_client.cpp's LoadLibrary/dlopen branches) is not linked
+# here; it just needs to end up alongside the GUI binary, which the
+# Windows post-build step (RayTracer_Package) or the equivalent macOS
+# packaging step handles.
 
 # Platform-specific settings
 win32 {
@@ -65,6 +65,21 @@ win32 {
 	# and its replacement bugs are still open - so it goes through COM directly,
 	# which needs ole32 for CoCreateInstance/CoInitializeEx.
 	LIBS += -lole32
+
+	# Only the Windows build links against a scene_metadata.dll built by the
+	# CUDA/OptiX-enabled MSBuild launcher (ray_tracer.exe, RT_HAVE_OPTIX - see
+	# launcher.vcxproj). RT_GUI_HAVE_GPU tells mainwindow.cpp's setup code the
+	# "Use GPU" toggle is meaningful here; it's absent on every other platform
+	# scope below, where the CLI this GUI launches is always the CPU-only
+	# CMake build (root CMakeLists.txt's ray_tracer target, no RT_HAVE_OPTIX).
+	DEFINES += RT_GUI_HAVE_GPU
+}
+
+macx {
+	# No .icns is generated yet - app_icon.png (already in the repo) is the
+	# source to run through iconutil/sips if/when a polished bundle icon is
+	# wanted. Cosmetic only; omitting ICON just falls back to Qt's default.
+	# ICON = app_icon.icns
 }
 
 # Default rules for deployment
