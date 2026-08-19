@@ -28,6 +28,7 @@
 #include <QMediaPlayer>
 #include <QAudioOutput>
 #include <QVideoWidget>
+#include <QMap>
 
 #include "camera_math.h"
 #include "render_output_parser.h"
@@ -306,8 +307,32 @@ private:
 	void applyComboPopupPalette(QComboBox *combo);
 	void styleSpinBox(QAbstractSpinBox *spinBox);
 	void styleGroupBox(QGroupBox *box);
-	void assembleVideoAutomatically();  // Automatically assembles video after frames are rendered
+	// baseOutputPath is the render's own --output argument (see
+	// onRenderClicked()) so the assembled video's expected path
+	// ("<stem>_video.mp4") can be derived directly instead of guessing at a
+	// shared directory - necessary now that every render's base path is
+	// unique. Automatically assembles/locates the video after frames are
+	// rendered and adds it as a new Preview sub-tab.
+	void assembleVideoAutomatically(const QString &baseOutputPath);
 	void refreshCameraDistanceDisplay(); // Recomputes m_cameraDistance's shown value from X/Y/Z and m_currentLookat*, without re-triggering onCameraDistanceChanged
+
+	// Preview sub-tabs (see m_previewSubTabs's own comment). Both add*
+	// functions build a self-contained tab page, register it, and make it
+	// current; tooltip is the full scene/preset description, shown on
+	// hover since the tab bar itself only has room for a short title.
+	void addImagePreviewTab(const QString &title, const QString &tooltip, const QPixmap &pixmap,
+							 const QString &infoText, const QString &outputPath, const QString &previewPath);
+	void addVideoPreviewTab(const QString &title, const QString &tooltip, const QString &videoPath,
+							 const QString &infoText);
+	// First use of a title returns it unchanged; each repeat appends " (N)".
+	QString uniquePreviewTabTitle(const QString &baseTitle);
+	// Reads a property (see m_previewSubTabs's comment) off the currently
+	// active sub-tab's page widget; empty string if there is no active tab.
+	QString currentPreviewProperty(const char *name) const;
+	// Refreshes m_previewInfoLabel and the Open Folder/Viewer actions from
+	// whichever sub-tab just became active - connected to m_previewSubTabs's
+	// currentChanged signal.
+	void updatePreviewSidebarForActiveTab();
 
 	// Camera arithmetic lives in camera_math.h (Qt-free, unit tested); these
 	// just read the current values out of the widgets for it.
@@ -414,26 +439,23 @@ private:
 	QDoubleSpinBox *m_videoSpeedSpinBox; // Camera movement speed multiplier
 	QLabel *m_videoInfoLabel;           // Video duration and path info
 
-	// Preview tab - shows the rendered image inline instead of shelling out
-	// to the OS's default image viewer (see onRenderComplete()).
-	ScaledImageLabel *m_previewLabel;   // Displays the rendered PNG, scaled to fit
-	QLabel *m_previewInfoLabel;         // Filename / resolution / size / render time
+	// Preview tab - each completed render gets its own closable sub-tab
+	// (see addImagePreviewTab()/addVideoPreviewTab()) instead of a single
+	// shared pane that the next render overwrites, so switching between
+	// sub-tabs keeps every past render's image/video around. Each sub-tab
+	// page widget carries its own "outputPath"/"previewPath"/"infoText"
+	// Qt properties (image mode: a ScaledImageLabel; video mode: its own
+	// QVideoWidget/QMediaPlayer/QAudioOutput, all parented to the page so
+	// closing the tab tears them down too) - see createPreviewTab() and
+	// currentPreviewProperty()/updatePreviewSidebarForActiveTab().
+	QTabWidget *m_previewSubTabs = nullptr;
+	QLabel *m_previewInfoLabel;         // Filename / resolution / size / render time - reflects whichever sub-tab is active
 	QLabel *m_previewSceneDescLabel;    // Selected scene's description - see onSceneChanged()
 	int m_previewTabIndex = -1;         // Index of the Preview tab within m_tabWidget
-	QString m_lastOutputPath;           // Most recent render's raw output path (.ppm)
-	QString m_lastPreviewImagePath;     // Most recent render's displayed image path (.png)
-
-	// Preview tab - embedded video playback for video-mode renders. A
-	// QStackedWidget swaps between m_previewLabel (image mode) and
-	// m_videoWidget (video mode); see assembleVideoAutomatically().
-	QStackedWidget *m_previewStack;     // Switches between image and video display
-	QVideoWidget *m_videoWidget;        // Renders QMediaPlayer's frames inline
-	QMediaPlayer *m_mediaPlayer;
-	QAudioOutput *m_audioOutput;
-	QWidget *m_videoControlsWidget;     // Play/pause + seek row, hidden until a video plays
-	QPushButton *m_videoPlayPauseButton;
-	QSlider *m_videoPositionSlider;
-	bool m_wasPlayingBeforeScrub = false; // Remembers playback state across a seek-slider drag
+	// Counts repeat sub-tab titles ("Cornell Box" -> "Cornell Box (2)") so
+	// re-rendering the same scene/preset in one session doesn't produce
+	// indistinguishable tabs - see uniquePreviewTabTitle().
+	QMap<QString, int> m_previewTitleCounts;
 
 	// Log output
 	QTextEdit *m_logTextEdit;           // Log output display

@@ -129,9 +129,19 @@ void RenderController::start() {
 		args << "--speed" << QString::number(m_videoSpeed);
 		args << "--camera-path" << m_cameraPath;
 
-		// In video mode, explicitly set output path to ensure frames go to the right directory
-		// The launcher will create frames in <output_dir>/frames/
-		QString videoOutputPath = QCoreApplication::applicationDirPath() + "/output/video.ppm";
+		// Use the same per-render output path image mode does (see
+		// onRenderClicked()'s comment on why it's refreshed with a fresh
+		// timestamp before every render) rather than a fixed
+		// "output/video.ppm" every time - the fixed name meant every
+		// video-mode render overwrote the previous one's .mp4 on disk,
+		// which both broke keeping past renders around in the Preview tab
+		// and fed QMediaPlayer's own known "reload a changed file at an
+		// already-seen path" failure mode. Frames still land in
+		// <output_dir>/frames/, derived from whatever directory this path
+		// is in.
+		QString videoOutputPath = !m_outputPath.isEmpty()
+			? m_outputPath
+			: QCoreApplication::applicationDirPath() + "/output/video.ppm";
 		args << "--output" << videoOutputPath;
 	} else {
 		// Image mode: use custom output path if provided

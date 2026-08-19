@@ -91,12 +91,31 @@ void MainWindow::onRenderClicked() {
 	int samples = m_samplesSpinBox->value();    // Samples per pixel (higher = smoother but slower)
 	int maxDepth = m_maxDepthSpinBox->value();  // Max ray bounce depth (higher = more realistic lighting)
 
-	// Output file path (timestamped by default to avoid overwriting)
-	QString outputPath = m_outputPathEdit->text();
-
 	// Camera position (lookfrom) - read from spinboxes
 	// These reflect either the selected preset or custom user input
 	QString sceneId = m_sceneCombo->currentData().toString();
+
+	// Output file path - the field's own placeholder text promises a
+	// timestamp "to avoid overwriting", but that timestamp was only ever
+	// generated once, when the field was created at app startup - every
+	// render in the same session reused that same name. Refreshed here
+	// instead, on every render, keeping whatever directory the user chose
+	// (via Browse) but replacing the filename - so each render gets its own
+	// file and an earlier render's Preview sub-tab (see addImagePreviewTab/
+	// addVideoPreviewTab) still has something real to point "Open Folder"/
+	// "Open Viewer" at after a later render completes. Video mode reuses
+	// this same field (see mainwindow.cpp's buildCommandLine) rather than
+	// its own fixed "output/video.ppm", for the same reason.
+	{
+		QFileInfo prevInfo(m_outputPathEdit->text());
+		QString dir = prevInfo.absolutePath();
+		QString ext = m_videoMode ? "ppm" : (prevInfo.suffix().isEmpty() ? "png" : prevInfo.suffix());
+		QString base = m_videoMode ? "video" : "render";
+		QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss_zzz");
+		QString newName = QString("%1_%2_%3.%4").arg(base, sceneId, timestamp, ext);
+		m_outputPathEdit->setText(QDir::toNativeSeparators(dir + "/" + newName));
+	}
+	QString outputPath = m_outputPathEdit->text();
 	double camX = m_cameraPosX->value();
 	double camY = m_cameraPosY->value();
 	double camZ = m_cameraPosZ->value();
@@ -163,16 +182,6 @@ void MainWindow::onRenderClicked() {
 	refreshStatusBarInfo();
 	m_progressBar->setValue(0);
 	m_statusLabel->setText(m_videoMode ? "Rendering video frames..." : "Rendering...");
-
-	// Clear any previous render's preview so a stale image doesn't linger
-	// confusingly while this one is in progress.
-	if (m_previewLabel) m_previewLabel->clearPreviewPixmap();
-	if (m_previewInfoLabel) m_previewInfoLabel->clear();
-	m_lastOutputPath.clear();
-	m_lastPreviewImagePath.clear();
-	if (m_mediaPlayer) m_mediaPlayer->stop();
-	if (m_videoControlsWidget) m_videoControlsWidget->setVisible(false);
-	if (m_previewStack && m_previewLabel) m_previewStack->setCurrentWidget(m_previewLabel);
 
 	// Start elapsed timer. Its 1 Hz tick doubles as the ETA sampling clock,
 	// which is the same cadence HandBrake samples at.
@@ -499,43 +508,39 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 			onLogMessage("Video frames rendered successfully. Starting video assembly...");
 			m_statusLabel->setText("⚙️ Assembling video from frames...");
 
-			// Trigger automatic video assembly
-			QTimer::singleShot(500, this, &MainWindow::assembleVideoAutomatically);
+			// Trigger automatic video assembly. outputPath is threaded through
+			// so assembleVideoAutomatically() can derive the expected
+			// "<stem>_video.mp4" directly (see main.cpp's own stem-based
+			// naming) instead of globbing a hardcoded directory - necessary
+			// now that each render's base path is unique (see this
+			// function's own comment on m_outputPathEdit) rather than
+			// always landing in the same app-relative "output/" folder.
+			QTimer::singleShot(500, this, [this, outputPath]() { assembleVideoAutomatically(outputPath); });
 		} else {
-			// Image mode: show the rendered image inline on the Preview tab
-			// instead of shelling out to the OS's default image viewer.
-			// main.cpp's Format Conversion step always writes a same-
-			// basename .png next to a successful render's .ppm output -
+			// Image mode: show the rendered image inline as a new Preview
+			// sub-tab instead of shelling out to the OS's default image
+			// viewer. main.cpp's Format Conversion step always writes a
+			// same-basename .png next to a successful render's .ppm output -
 			// load that (smaller, simpler than parsing PPM by hand).
 			if (!outputPath.isEmpty()) {
 				QFileInfo fileInfo(outputPath);
 				QString pngPath = fileInfo.absolutePath() + "/" + fileInfo.completeBaseName() + ".png";
 				QFileInfo pngInfo(pngPath);
 
-				m_lastOutputPath = outputPath;
-
 				if (pngInfo.exists()) {
 					QPixmap pixmap(pngPath);
-					if (!pixmap.isNull() && m_previewLabel) {
-						m_lastPreviewImagePath = pngPath;
-						m_previewLabel->setPreviewPixmap(pixmap);
-						// A prior video-mode render may have left the Preview
-						// tab on the video widget / mid-playback - switch back
-						// to the image and silence it.
-						if (m_mediaPlayer) m_mediaPlayer->stop();
-						if (m_videoControlsWidget) m_videoControlsWidget->setVisible(false);
-						if (m_previewStack) m_previewStack->setCurrentWidget(m_previewLabel);
-						if (m_previewInfoLabel) {
-							m_previewInfoLabel->setText(QString("%1  •  %2×%3  •  %4 KB  •  %5s")
-								.arg(pngInfo.fileName())
-								.arg(pixmap.width()).arg(pixmap.height())
-								.arg(pngInfo.size() / 1024)
-								.arg(totalTime, 0, 'f', 2));
-						}
+					if (!pixmap.isNull()) {
+						const QString sceneId = m_sceneCombo ? m_sceneCombo->currentData().toString() : QString();
+						QString title = SceneMetadataClient::sceneName(sceneId);
+						if (title.isEmpty()) title = sceneId.isEmpty() ? QStringLiteral("Render") : sceneId;
+						const QString infoText = QString("%1  •  %2×%3  •  %4 KB  •  %5s")
+							.arg(pngInfo.fileName())
+							.arg(pixmap.width()).arg(pixmap.height())
+							.arg(pngInfo.size() / 1024)
+							.arg(totalTime, 0, 'f', 2);
+						addImagePreviewTab(title, m_previewSceneDescLabel ? m_previewSceneDescLabel->text() : QString(),
+											pixmap, infoText, outputPath, pngPath);
 						if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
-						// Open Folder / Open Viewer only become meaningful once
-						// there is actually something to open.
-						updateActionStates();
 					} else {
 						m_statusLabel->setText(QString("✅ Render complete (%1s) - Warning: preview image failed to load at %2")
 							.arg(totalTime, 0, 'f', 2).arg(pngPath));
@@ -774,31 +779,46 @@ void MainWindow::onModeChanged(int index) {
 	onLogMessage(QString("Mode changed to: %1").arg(m_videoMode ? "Video Generation" : "Single Image"));
 }
 
-void MainWindow::assembleVideoAutomatically() {
+void MainWindow::assembleVideoAutomatically(const QString &baseOutputPath) {
 	// ray_tracer.exe assembles the video itself (via ffmpeg) before it exits.
 	// This just finds and opens the resulting file. In the normal case
 	// ray_tracer.exe already exits non-zero if ffmpeg failed - see
-	// onRenderComplete()'s failure branch - so this is mainly a defensive
-	// fallback for the case where the process exited 0 but the expected
-	// video filename wasn't where we expect it.
+	// onRenderComplete()'s failure branch - so the directory-glob fallback
+	// below is mainly a defensive path for the case where the process
+	// exited 0 but the expected video filename wasn't where we expect it.
 
 	// Wait a moment for file to be fully written
 	QThread::msleep(500);
 
-	// Search for any *_video.mp4 file in the output directory
-	QString outputDir = QCoreApplication::applicationDirPath() + "/output";
-	QDir dir(outputDir);
-	QStringList filters;
-	filters << "*_video.mp4" << "video.mp4";
-	QFileInfoList videoFiles = dir.entryInfoList(filters, QDir::Files, QDir::Time);
+	// main.cpp derives the final video's name from the SAME stem it was
+	// given via --output (see its own "Output Video" step: "<stem>_video.
+	// mp4"), so the expected path can be computed directly from
+	// baseOutputPath - QFileInfo::completeBaseName() strips exactly one
+	// extension, matching std::filesystem::path::stem(), so this lands on
+	// the same name regardless of whether baseOutputPath still has its
+	// original .ppm extension or was already normalized to .png upstream.
+	QFileInfo baseInfo(baseOutputPath);
+	const QString outputDir = baseInfo.absolutePath();
+	const QString expectedVideoPath = outputDir + "/" + baseInfo.completeBaseName() + "_video.mp4";
 
 	QString videoPath;
 	QFileInfo videoInfo;
 
-	// Get the most recently modified video file
-	if (!videoFiles.isEmpty()) {
-		videoInfo = videoFiles.first();
-		videoPath = videoInfo.absoluteFilePath();
+	if (!baseOutputPath.isEmpty() && QFileInfo::exists(expectedVideoPath)) {
+		videoPath = expectedVideoPath;
+		videoInfo = QFileInfo(videoPath);
+	} else {
+		// Fallback: search the same directory the render actually wrote to
+		// (not a hardcoded app-relative one - now that every render's base
+		// path is unique, that would never find anything).
+		QDir dir(outputDir);
+		QStringList filters;
+		filters << "*_video.mp4" << "video.mp4";
+		QFileInfoList videoFiles = dir.entryInfoList(filters, QDir::Files, QDir::Time);
+		if (!videoFiles.isEmpty()) {
+			videoInfo = videoFiles.first();
+			videoPath = videoInfo.absoluteFilePath();
+		}
 	}
 
 	if (videoPath.isEmpty()) {
@@ -806,7 +826,7 @@ void MainWindow::assembleVideoAutomatically() {
 		onLogMessage("WARNING: Video file not found at any of the expected locations");
 
 		// Check if frames exist (fallback diagnostic)
-		QString framesDir = QCoreApplication::applicationDirPath() + "/output/frames";
+		QString framesDir = outputDir + "/frames";
 		QDir framesDirObj(framesDir);
 
 		if (framesDirObj.exists()) {
@@ -816,19 +836,18 @@ void MainWindow::assembleVideoAutomatically() {
 				onLogMessage(QString("Frames were rendered (%1 files) but video assembly may have failed.").arg(frames.count()));
 				QMessageBox::warning(this, "Video Not Created",
 					QString("Frames were rendered successfully (%1 files), but the video file was not created.\n\n"
-							"Expected video in: %2\n"
-							"with pattern: *_video.mp4 or video.mp4\n\n"
-							"Please check the render log for ffmpeg errors.").arg(frames.count()).arg(outputDir));
+							"Expected video at: %2\n\n"
+							"Please check the render log for ffmpeg errors.").arg(frames.count()).arg(expectedVideoPath));
 			} else {
 				m_statusLabel->setText("❌ No frames or video found");
 				onLogMessage("ERROR: No frames or video file found");
-				QMessageBox::critical(this, "Render Failed", 
+				QMessageBox::critical(this, "Render Failed",
 					"Neither frames nor video file were created.\n\nPlease check the render log for errors.");
 			}
 		} else {
 			m_statusLabel->setText("❌ Frames directory not found");
 			onLogMessage(QString("ERROR: Frames directory not found: %1").arg(framesDir));
-			QMessageBox::critical(this, "Directory Not Found", 
+			QMessageBox::critical(this, "Directory Not Found",
 				QString("Frames directory not found:\n%1\n\nThe render may have failed to create output.").arg(framesDir));
 		}
 		return;
@@ -839,59 +858,43 @@ void MainWindow::assembleVideoAutomatically() {
 	onLogMessage(QString("✅ Video assembled successfully: %1").arg(videoPath));
 	onLogMessage(QString("Video size: %1 MB").arg(videoInfo.size() / (1024.0 * 1024.0), 0, 'f', 2));
 
-	// Play the finished video inline on the Preview tab via QMediaPlayer/
-	// QVideoWidget. onRenderComplete()'s image-mode branch is the only place
-	// that otherwise touches the Preview tab - the video branch goes
-	// straight from render to assembleVideoAutomatically() without it, so
-	// without this the tab would stay exactly as it was before the render
-	// (empty, or whatever a prior image-mode render left there) even on a
-	// fully successful video render. An earlier version of this function
-	// showed a static poster-frame thumbnail instead (QLabel can't play
-	// video); m_previewStack now swaps to the real QVideoWidget pane
-	// (createPreviewTab()) so playback happens in place, with transport
-	// controls (m_videoControlsWidget) shown alongside it. "Open Viewer" is
-	// still pointed at the .mp4 itself for opening it externally on demand;
-	// "Open Folder" likewise points at the video's folder.
+	// Add it as a new Preview sub-tab (see addVideoPreviewTab()) - its own
+	// player, its own tab, sitting alongside whatever earlier renders are
+	// already there rather than replacing a single shared pane.
 	//
-	// Frame count for the info label still comes from the enc_*.png
-	// sequence - main.cpp's BackgroundPngConverter (launcher/main.cpp)
-	// converts each frame_NNNN.ppm straight to a contiguously-renumbered
-	// enc_NNNN.png for ffmpeg's sequential-input requirement, and those
-	// files are never cleaned up after a successful assembly, so they're
-	// still there to count.
-	QString framesDir = QCoreApplication::applicationDirPath() + "/output/frames";
-	QDir framesDirForPreview(framesDir);
+	// Frame count for the info label comes from the enc_*.png sequence -
+	// main.cpp's BackgroundPngConverter (launcher/main.cpp) converts each
+	// frame_NNNN.ppm straight to a contiguously-renumbered enc_NNNN.png for
+	// ffmpeg's sequential-input requirement, and those files are never
+	// cleaned up after a successful assembly, so they're still there to
+	// count.
+	QDir framesDirForPreview(outputDir + "/frames");
 	QStringList frameFiles = framesDirForPreview.entryList(QStringList() << "enc_*.png", QDir::Files, QDir::Name);
-	m_lastOutputPath = videoPath;
-	m_lastPreviewImagePath = videoPath;
-	if (m_mediaPlayer && m_videoWidget && m_previewStack) {
-		if (m_previewInfoLabel) {
-			m_previewInfoLabel->setText(QString("%1  •  %2 MB  •  %3 frames")
-				.arg(videoInfo.fileName())
-				.arg(videoInfo.size() / (1024.0 * 1024.0), 0, 'f', 1)
-				.arg(frameFiles.count()));
-		}
-		m_previewStack->setCurrentWidget(m_videoWidget);
-		if (m_videoControlsWidget) m_videoControlsWidget->setVisible(true);
-		if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
-		// Every render writes to the SAME path (main.cpp derives it from the
-		// output stem, so it's "video_video.mp4" every time in the GUI) - a
-		// later render's file has completely different bytes at a path the
-		// player may already have open/cached from a previous render in this
-		// same session. Qt's FFmpeg-backed QMediaPlayer has a known failure
-		// mode here: reloading a changed file at an already-seen local path
-		// can come back "Invalid data found when processing input" even
-		// though the file itself is perfectly valid (confirmed via ffprobe/
-		// a full ffmpeg decode on an affected file) - stale demuxer/format-
-		// context state tied to the path, not the actual bytes. stop() plus
-		// clearing the source first forces the backend to fully let go of
-		// whatever it had before asking it to open the new content.
-		m_mediaPlayer->stop();
-		m_mediaPlayer->setSource(QUrl());
-		m_mediaPlayer->setSource(QUrl::fromLocalFile(videoPath));
-		m_mediaPlayer->play();
+
+	// Named scene+path+frames/fps/speed bundle if one was selected (see
+	// video_preset.h); a custom (non-preset) render falls back to the
+	// scene's own name, distinguished with a "(Video)" suffix so it can't
+	// be confused with an image-mode tab of the same scene.
+	QString title;
+	if (m_videoPresetCombo && m_videoPresetCombo->currentIndex() > 0) {
+		const QString id = m_videoPresetCombo->currentData().toString();
+		if (const video_preset::VideoPreset *preset = video_preset::find(id.toUtf8().constData()))
+			title = QString::fromUtf8(preset->name);
 	}
-	updateActionStates();
+	if (title.isEmpty()) {
+		const QString sceneId = m_sceneCombo ? m_sceneCombo->currentData().toString() : QString();
+		QString sceneName = SceneMetadataClient::sceneName(sceneId);
+		if (sceneName.isEmpty()) sceneName = sceneId.isEmpty() ? QStringLiteral("Video") : sceneId;
+		title = sceneName + " (Video)";
+	}
+
+	const QString infoText = QString("%1  •  %2 MB  •  %3 frames")
+		.arg(videoInfo.fileName())
+		.arg(videoInfo.size() / (1024.0 * 1024.0), 0, 'f', 1)
+		.arg(frameFiles.count());
+	addVideoPreviewTab(title, m_previewSceneDescLabel ? m_previewSceneDescLabel->text() : QString(),
+						videoPath, infoText);
+	if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
 
 	onLogMessage(QString("Playing video inline: %1").arg(videoPath));
 }

@@ -638,103 +638,39 @@ void MainWindow::createPreviewTab() {
 	outerLayout->setContentsMargins(12, 12, 12, 12);
 	outerLayout->setSpacing(0);
 
-	// Image on the left in a large, dominant pane; info/buttons in a narrow
-	// sidebar on the right, so the image gets most of the tab's space instead
-	// of splitting height with a full-width info/button strip underneath it.
-	// A QSplitter (not a fixed QHBoxLayout split) so the user can still drag
-	// the sidebar narrower/wider if they want even more image space.
+	// Sub-tabs on the left in a large, dominant pane; info/buttons in a
+	// narrow sidebar on the right, so the render gets most of the tab's
+	// space instead of splitting height with a full-width info/button strip
+	// underneath it. A QSplitter (not a fixed QHBoxLayout split) so the
+	// user can still drag the sidebar narrower/wider if they want even more
+	// render space.
 	QSplitter *splitter = new QSplitter(Qt::Horizontal, previewWidget);
 	splitter->setChildrenCollapsible(false);
 	outerLayout->addWidget(splitter);
 
-	// Image mode and video mode share this one pane via a QStackedWidget:
-	// m_previewLabel shows the rendered PNG scaled to fit (see main.cpp's
-	// Format Conversion step, which always writes a same-basename .png next
-	// to a successful render's .ppm output) - populated by
-	// onRenderComplete(). m_videoWidget plays a finished video-mode render
-	// inline via QMediaPlayer - populated by assembleVideoAutomatically().
-	// Both replace this app shelling out to the OS's default viewer for
-	// every render.
-	QWidget *mediaContainer = new QWidget();
-	QVBoxLayout *mediaLayout = new QVBoxLayout(mediaContainer);
-	mediaLayout->setContentsMargins(0, 0, 0, 0);
-	mediaLayout->setSpacing(6);
-
-	m_previewStack = new QStackedWidget();
-	m_previewStack->setMinimumSize(200, 200);
-
-	m_previewLabel = new ScaledImageLabel();
-	m_previewLabel->setPlaceholderText("No render yet — start a render to see a preview here.");
-	m_previewLabel->setMinimumSize(200, 200);
-	// Styled globally by class name - see the ScaledImageLabel rule.
-	m_previewStack->addWidget(m_previewLabel);
-
-	m_videoWidget = new QVideoWidget();
-	m_videoWidget->setMinimumSize(200, 200);
-	m_previewStack->addWidget(m_videoWidget);
-
-	mediaLayout->addWidget(m_previewStack, 1);
-
-	m_mediaPlayer = new QMediaPlayer(this);
-	m_audioOutput = new QAudioOutput(this);
-	m_mediaPlayer->setAudioOutput(m_audioOutput);
-	m_mediaPlayer->setVideoOutput(m_videoWidget);
-
-	// Play/pause + seek row, only meaningful once a video is loaded - stays
-	// hidden until assembleVideoAutomatically() actually plays one.
-	m_videoControlsWidget = new QWidget();
-	QHBoxLayout *videoControlsLayout = new QHBoxLayout(m_videoControlsWidget);
-	videoControlsLayout->setContentsMargins(0, 0, 0, 0);
-	videoControlsLayout->setSpacing(8);
-
-	m_videoPlayPauseButton = new QPushButton("Pause");
-	m_videoPlayPauseButton->setFixedWidth(70);
-	connect(m_videoPlayPauseButton, &QPushButton::clicked, this, [this]() {
-		if (!m_mediaPlayer) return;
-		if (m_mediaPlayer->playbackState() == QMediaPlayer::PlayingState) m_mediaPlayer->pause();
-		else m_mediaPlayer->play();
+	// Each completed render gets its own closable sub-tab (see
+	// addImagePreviewTab()/addVideoPreviewTab()) rather than a single
+	// shared pane the next render overwrites - switching between sub-tabs
+	// keeps every past render's image/video around. Not movable: tab order
+	// (render order) is itself informative, and reordering would also
+	// complicate m_previewTitleCounts' de-duplication.
+	m_previewSubTabs = new QTabWidget();
+	m_previewSubTabs->setMinimumSize(200, 200);
+	m_previewSubTabs->setTabsClosable(true);
+	m_previewSubTabs->setMovable(false);
+	connect(m_previewSubTabs, &QTabWidget::tabCloseRequested, this, [this](int index) {
+		QWidget *page = m_previewSubTabs->widget(index);
+		m_previewSubTabs->removeTab(index);
+		// Any QMediaPlayer/QVideoWidget a video tab owns is a CHILD of
+		// `page` (see addVideoPreviewTab()), so deleting it tears those
+		// down too rather than leaking a player per closed tab.
+		if (page) page->deleteLater();
+		updatePreviewSidebarForActiveTab();
 	});
-	videoControlsLayout->addWidget(m_videoPlayPauseButton);
-
-	m_videoPositionSlider = new QSlider(Qt::Horizontal);
-	videoControlsLayout->addWidget(m_videoPositionSlider, 1);
-	mediaLayout->addWidget(m_videoControlsWidget);
-	m_videoControlsWidget->setVisible(false);
-
-	connect(m_mediaPlayer, &QMediaPlayer::playbackStateChanged, this, [this](QMediaPlayer::PlaybackState state) {
-		if (m_videoPlayPauseButton) m_videoPlayPauseButton->setText(state == QMediaPlayer::PlayingState ? "Pause" : "Play");
+	connect(m_previewSubTabs, &QTabWidget::currentChanged, this, [this](int) {
+		updatePreviewSidebarForActiveTab();
 	});
-	connect(m_mediaPlayer, &QMediaPlayer::durationChanged, this, [this](qint64 duration) {
-		if (m_videoPositionSlider) m_videoPositionSlider->setRange(0, static_cast<int>(duration));
-	});
-	connect(m_mediaPlayer, &QMediaPlayer::positionChanged, this, [this](qint64 position) {
-		if (m_videoPositionSlider && !m_videoPositionSlider->isSliderDown())
-			m_videoPositionSlider->setValue(static_cast<int>(position));
-	});
-	connect(m_mediaPlayer, &QMediaPlayer::errorOccurred, this, [this](QMediaPlayer::Error error, const QString &errorString) {
-		onLogMessage(QString("Video playback error (%1): %2").arg(static_cast<int>(error)).arg(errorString));
-	});
-	// Pausing before setPosition() (and resuming after, if it was playing)
-	// is the standard fix for scrubbing that "doesn't seem to do anything":
-	// while playing, the player's own clock keeps advancing on its own
-	// timeline in parallel with each setPosition() call from the drag, so
-	// the seek and normal playback fight over what frame gets shown next -
-	// on some backends the dragged-to frame never visibly lands at all.
-	// Seeking while paused is a single deterministic jump with nothing
-	// racing it.
-	connect(m_videoPositionSlider, &QSlider::sliderPressed, this, [this]() {
-		if (!m_mediaPlayer) return;
-		m_wasPlayingBeforeScrub = m_mediaPlayer->playbackState() == QMediaPlayer::PlayingState;
-		m_mediaPlayer->pause();
-	});
-	connect(m_videoPositionSlider, &QSlider::sliderMoved, this, [this](int position) {
-		if (m_mediaPlayer) m_mediaPlayer->setPosition(position);
-	});
-	connect(m_videoPositionSlider, &QSlider::sliderReleased, this, [this]() {
-		if (m_mediaPlayer && m_wasPlayingBeforeScrub) m_mediaPlayer->play();
-	});
-
-	splitter->addWidget(mediaContainer);
+	splitter->addWidget(m_previewSubTabs);
 
 	QWidget *sidebar = new QWidget();
 	sidebar->setMinimumWidth(200);
@@ -762,17 +698,20 @@ void MainWindow::createPreviewTab() {
 	// Geometry only - colour and hover/focus states come from the global
 	// theme so every secondary button behaves identically. Full sidebar
 	// width and stacked vertically now that they're beside the image, not
-	// centered in a horizontal strip underneath it.
+	// centered in a horizontal strip underneath it. Both act on whichever
+	// sub-tab is currently active, not just the most recent render - see
+	// currentPreviewProperty().
 	QString previewBtnStyle =
 		"QPushButton { min-height: 28px; max-height: 28px; padding: 0px 20px; font-size: 11pt; }";
 
 	QPushButton *openFolderButton = new QPushButton("Open Output &Folder");
 	icon_tint::apply(openFolderButton, ":/icons/folder.svg", icon_tint::Role::Body, m_activeTheme.textBody);
 	openFolderButton->setStyleSheet(previewBtnStyle);
-	openFolderButton->setToolTip("Show the folder containing the last render in Explorer");
+	openFolderButton->setToolTip("Show the folder containing the active tab's render in Explorer");
 	connect(openFolderButton, &QPushButton::clicked, this, [this]() {
-		if (m_lastOutputPath.isEmpty()) return;
-		QFileInfo fileInfo(m_lastOutputPath);
+		const QString path = currentPreviewProperty("outputPath");
+		if (path.isEmpty()) return;
+		QFileInfo fileInfo(path);
 		QDesktopServices::openUrl(QUrl::fromLocalFile(fileInfo.absolutePath()));
 	});
 	sideLayout->addWidget(openFolderButton);
@@ -780,23 +719,154 @@ void MainWindow::createPreviewTab() {
 	QPushButton *openViewerButton = new QPushButton("Open in Default &Viewer");
 	icon_tint::apply(openViewerButton, ":/icons/image.svg", icon_tint::Role::Body, m_activeTheme.textBody);
 	openViewerButton->setStyleSheet(previewBtnStyle);
-	openViewerButton->setToolTip("Open the rendered image in the system image viewer");
+	openViewerButton->setToolTip("Open the active tab's render in the system viewer");
 	connect(openViewerButton, &QPushButton::clicked, this, [this]() {
-		if (m_lastPreviewImagePath.isEmpty()) return;
-		QDesktopServices::openUrl(QUrl::fromLocalFile(m_lastPreviewImagePath));
+		const QString path = currentPreviewProperty("previewPath");
+		if (path.isEmpty()) return;
+		QDesktopServices::openUrl(QUrl::fromLocalFile(path));
 	});
 	sideLayout->addWidget(openViewerButton);
 
 	sideLayout->addStretch(1);
 	splitter->addWidget(sidebar);
 
-	// Bias initial space toward the image - the sidebar only needs enough
+	// Bias initial space toward the render - the sidebar only needs enough
 	// width for its buttons/info text, everything else goes to the render.
 	splitter->setStretchFactor(0, 1);
 	splitter->setStretchFactor(1, 0);
 	splitter->setSizes({700, 220});
 
 	m_previewTabIndex = m_tabWidget->addTab(previewWidget, "Preview");
+}
+
+QString MainWindow::uniquePreviewTabTitle(const QString &baseTitle) {
+	int &count = m_previewTitleCounts[baseTitle];
+	++count;
+	return count == 1 ? baseTitle : QString("%1 (%2)").arg(baseTitle).arg(count);
+}
+
+QString MainWindow::currentPreviewProperty(const char *name) const {
+	if (!m_previewSubTabs) return QString();
+	QWidget *page = m_previewSubTabs->currentWidget();
+	if (!page) return QString();
+	return page->property(name).toString();
+}
+
+void MainWindow::updatePreviewSidebarForActiveTab() {
+	if (m_previewInfoLabel) m_previewInfoLabel->setText(currentPreviewProperty("infoText"));
+	updateActionStates();
+}
+
+void MainWindow::addImagePreviewTab(const QString &title, const QString &tooltip, const QPixmap &pixmap,
+									 const QString &infoText, const QString &outputPath, const QString &previewPath) {
+	if (!m_previewSubTabs) return;
+
+	QWidget *page = new QWidget();
+	QVBoxLayout *layout = new QVBoxLayout(page);
+	layout->setContentsMargins(0, 0, 0, 0);
+
+	ScaledImageLabel *label = new ScaledImageLabel();
+	label->setMinimumSize(200, 200);
+	label->setPreviewPixmap(pixmap);
+	// Styled globally by class name - see the ScaledImageLabel rule.
+	layout->addWidget(label);
+
+	page->setProperty("outputPath", outputPath);
+	page->setProperty("previewPath", previewPath);
+	page->setProperty("infoText", infoText);
+
+	const int index = m_previewSubTabs->addTab(page, uniquePreviewTabTitle(title));
+	m_previewSubTabs->setTabToolTip(index, tooltip);
+	m_previewSubTabs->setCurrentIndex(index);
+}
+
+void MainWindow::addVideoPreviewTab(const QString &title, const QString &tooltip,
+									 const QString &videoPath, const QString &infoText) {
+	if (!m_previewSubTabs) return;
+
+	QWidget *page = new QWidget();
+	QVBoxLayout *layout = new QVBoxLayout(page);
+	layout->setContentsMargins(0, 0, 0, 0);
+	layout->setSpacing(6);
+
+	QVideoWidget *videoWidget = new QVideoWidget();
+	videoWidget->setMinimumSize(200, 200);
+	layout->addWidget(videoWidget, 1);
+
+	// Parented to `page`, not `this` - a self-contained player per tab that
+	// only ever loads ONE file, once. Besides being the natural way to give
+	// each tab independent playback state, this sidesteps the QMediaPlayer/
+	// FFmpeg-backend failure mode a single shared, reused player used to
+	// hit (reloading a DIFFERENT file at a path it had already opened
+	// before could come back "Invalid data found when processing input"
+	// even though the file itself was perfectly valid) - with one player
+	// per unique file, that scenario can no longer arise.
+	QMediaPlayer *player = new QMediaPlayer(page);
+	QAudioOutput *audioOutput = new QAudioOutput(page);
+	player->setAudioOutput(audioOutput);
+	player->setVideoOutput(videoWidget);
+
+	QWidget *controls = new QWidget();
+	QHBoxLayout *controlsLayout = new QHBoxLayout(controls);
+	controlsLayout->setContentsMargins(0, 0, 0, 0);
+	controlsLayout->setSpacing(8);
+
+	QPushButton *playPauseButton = new QPushButton("Pause");
+	playPauseButton->setFixedWidth(70);
+	connect(playPauseButton, &QPushButton::clicked, page, [player]() {
+		if (player->playbackState() == QMediaPlayer::PlayingState) player->pause();
+		else player->play();
+	});
+	controlsLayout->addWidget(playPauseButton);
+
+	QSlider *positionSlider = new QSlider(Qt::Horizontal);
+	controlsLayout->addWidget(positionSlider, 1);
+	layout->addWidget(controls);
+
+	connect(player, &QMediaPlayer::playbackStateChanged, page, [playPauseButton](QMediaPlayer::PlaybackState state) {
+		playPauseButton->setText(state == QMediaPlayer::PlayingState ? "Pause" : "Play");
+	});
+	connect(player, &QMediaPlayer::durationChanged, page, [positionSlider](qint64 duration) {
+		positionSlider->setRange(0, static_cast<int>(duration));
+	});
+	connect(player, &QMediaPlayer::positionChanged, page, [positionSlider](qint64 position) {
+		if (!positionSlider->isSliderDown())
+			positionSlider->setValue(static_cast<int>(position));
+	});
+	connect(player, &QMediaPlayer::errorOccurred, page, [this](QMediaPlayer::Error error, const QString &errorString) {
+		onLogMessage(QString("Video playback error (%1): %2").arg(static_cast<int>(error)).arg(errorString));
+	});
+	// Pausing before setPosition() (and resuming after, if it was playing)
+	// is the standard fix for scrubbing that "doesn't seem to do anything":
+	// while playing, the player's own clock keeps advancing on its own
+	// timeline in parallel with each setPosition() call from the drag, so
+	// the seek and normal playback fight over what frame gets shown next -
+	// on some backends the dragged-to frame never visibly lands at all.
+	// Seeking while paused is a single deterministic jump with nothing
+	// racing it. "Was playing" rides as a property on the slider itself
+	// rather than a captured variable, since this tab's own connections are
+	// the only thing that needs it.
+	connect(positionSlider, &QSlider::sliderPressed, page, [player, positionSlider]() {
+		positionSlider->setProperty("wasPlaying", player->playbackState() == QMediaPlayer::PlayingState);
+		player->pause();
+	});
+	connect(positionSlider, &QSlider::sliderMoved, page, [player](int position) {
+		player->setPosition(position);
+	});
+	connect(positionSlider, &QSlider::sliderReleased, page, [player, positionSlider]() {
+		if (positionSlider->property("wasPlaying").toBool()) player->play();
+	});
+
+	page->setProperty("outputPath", videoPath);
+	page->setProperty("previewPath", videoPath);
+	page->setProperty("infoText", infoText);
+
+	const int index = m_previewSubTabs->addTab(page, uniquePreviewTabTitle(title));
+	m_previewSubTabs->setTabToolTip(index, tooltip);
+	m_previewSubTabs->setCurrentIndex(index);
+
+	player->setSource(QUrl::fromLocalFile(videoPath));
+	player->play();
 }
 
 void MainWindow::createLogTab() {

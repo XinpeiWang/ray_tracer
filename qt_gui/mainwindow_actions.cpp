@@ -74,18 +74,20 @@ void MainWindow::createActions() {
 	m_actOpenFolder = new QAction("Open Output &Folder", this);
 	icon_tint::apply(m_actOpenFolder, ":/icons/folder.svg", kBody, m_activeTheme.textBody);
 	m_actOpenFolder->setShortcut(QKeySequence("Ctrl+Shift+O"));
-	m_actOpenFolder->setStatusTip("Show the folder containing the last render");
+	m_actOpenFolder->setStatusTip("Show the folder containing the active Preview tab's render");
 	connect(m_actOpenFolder, &QAction::triggered, this, [this]() {
-		if (m_lastOutputPath.isEmpty()) return;
-		QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(m_lastOutputPath).absolutePath()));
+		const QString path = currentPreviewProperty("outputPath");
+		if (path.isEmpty()) return;
+		QDesktopServices::openUrl(QUrl::fromLocalFile(QFileInfo(path).absolutePath()));
 	});
 
 	m_actOpenViewer = new QAction("Open in Default &Viewer", this);
 	icon_tint::apply(m_actOpenViewer, ":/icons/image.svg", kBody, m_activeTheme.textBody);
-	m_actOpenViewer->setStatusTip("Open the rendered image in the system image viewer");
+	m_actOpenViewer->setStatusTip("Open the active Preview tab's render in the system viewer");
 	connect(m_actOpenViewer, &QAction::triggered, this, [this]() {
-		if (m_lastPreviewImagePath.isEmpty()) return;
-		QDesktopServices::openUrl(QUrl::fromLocalFile(m_lastPreviewImagePath));
+		const QString path = currentPreviewProperty("previewPath");
+		if (path.isEmpty()) return;
+		QDesktopServices::openUrl(QUrl::fromLocalFile(path));
 	});
 
 	m_actCopyLog = new QAction("&Copy Log", this);
@@ -198,8 +200,10 @@ void MainWindow::updateActionStates() {
 	// Esc only exists while there's something to cancel - see the header
 	// comment in this file.
 	if (m_actStop)        m_actStop->setEnabled(m_isRendering);
-	if (m_actOpenFolder)  m_actOpenFolder->setEnabled(!m_lastOutputPath.isEmpty());
-	if (m_actOpenViewer)  m_actOpenViewer->setEnabled(!m_lastPreviewImagePath.isEmpty());
+	// Reflect whichever Preview sub-tab is currently active, not just the
+	// most recent render - see currentPreviewProperty().
+	if (m_actOpenFolder)  m_actOpenFolder->setEnabled(!currentPreviewProperty("outputPath").isEmpty());
+	if (m_actOpenViewer)  m_actOpenViewer->setEnabled(!currentPreviewProperty("previewPath").isEmpty());
 }
 
 // ----------------------------------------------------------------------------
