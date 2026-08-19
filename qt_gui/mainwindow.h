@@ -66,6 +66,30 @@ protected:
 };
 
 // ============================================================================
+// ListEmptyAreaDeselectFilter
+// ============================================================================
+// QListWidget's SingleSelection mode has no built-in way to click empty space
+// below the items to clear the selection - once a row is selected it stays
+// selected no matter where else in the list you click. Install on the list's
+// viewport (see the Render Queue list in createProgressTab()) to add that.
+// ============================================================================
+class ListEmptyAreaDeselectFilter : public QObject {
+    Q_OBJECT
+public:
+    explicit ListEmptyAreaDeselectFilter(QListWidget *list) : QObject(list), m_list(list) {}
+protected:
+    bool eventFilter(QObject *obj, QEvent *event) override {
+        if (event->type() == QEvent::MouseButtonPress &&
+            !m_list->indexAt(static_cast<QMouseEvent *>(event)->pos()).isValid()) {
+            m_list->clearSelection();
+        }
+        return QObject::eventFilter(obj, event);
+    }
+private:
+    QListWidget *m_list;
+};
+
+// ============================================================================
 // ScaledImageLabel
 // ============================================================================
 // A QLabel that shows an image scaled to fit its current size (preserving

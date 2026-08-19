@@ -942,6 +942,9 @@ void MainWindow::createProgressTab() {
 	m_queueListWidget = new QListWidget(m_queueGroup);
 	m_queueListWidget->setSelectionMode(QAbstractItemView::SingleSelection);
 	m_queueListWidget->setMaximumHeight(120);
+	// Clicking empty space below the rows otherwise leaves whatever was
+	// selected stuck selected - see ListEmptyAreaDeselectFilter's comment.
+	m_queueListWidget->viewport()->installEventFilter(new ListEmptyAreaDeselectFilter(m_queueListWidget));
 	queueLayout->addWidget(m_queueListWidget);
 
 	QHBoxLayout *queueButtonLayout = new QHBoxLayout();
