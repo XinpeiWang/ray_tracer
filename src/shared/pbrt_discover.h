@@ -27,6 +27,7 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -94,6 +95,43 @@ inline std::string stemOf(const std::string &path) {
 	const std::size_t dot = base.find_last_of('.');
 	if (dot != std::string::npos && dot > 0) base = base.substr(0, dot);
 	return base;
+}
+
+inline std::string basenameOf(const std::string &path) {
+	const std::size_t slash = path.find_last_of("/\\");
+	return (slash == std::string::npos) ? path : path.substr(slash + 1);
+}
+
+// The bare filenames (extension kept, directory component stripped) that
+// this file's own Include/Import directives name - a raw text scan, not a
+// real parse, so it still works on a file pbrt_scene::parse() rejects
+// outright. That matters here specifically: a geometry/materials library
+// with no WorldBegin of its own (see headerOf()'s "falls back to the whole
+// text" comment) gets its ENTIRE body read as header content, which for a
+// file that is nothing but geometry and NamedMaterial references can fail
+// to parse even though it is perfectly valid pbrt once actually spliced
+// into the real scene file that Includes it - see scanDirectory()'s own
+// comment for why that case needs this list rather than a parse-success
+// check to identify.
+inline void collectIncludedNames(const std::string &text, std::set<std::string> &out) {
+	for (const char *keyword : {"Include", "Import"}) {
+		const std::string kw = keyword;
+		std::size_t pos = 0;
+		while ((pos = text.find(kw, pos)) != std::string::npos) {
+			const std::size_t after = pos + kw.size();
+			pos = after;
+			// Reject a match that is part of a longer identifier (e.g. some
+			// future "IncludeOnce" directive), not a whole-word "Include".
+			if (after < text.size() &&
+				(std::isalnum(static_cast<unsigned char>(text[after])) || text[after] == '_'))
+				continue;
+			const std::size_t q1 = text.find('"', after);
+			if (q1 == std::string::npos) continue;
+			const std::size_t q2 = text.find('"', q1 + 1);
+			if (q2 == std::string::npos) continue;
+			out.insert(basenameOf(text.substr(q1 + 1, q2 - q1 - 1)));
+		}
+	}
 }
 
 } // namespace detail
@@ -177,8 +215,26 @@ inline void collectPbrtFiles(const std::filesystem::path &from, std::vector<std:
 // Include'd from a real scene file), not something renderable on its own.
 // Some collections keep these alongside the real scene file(s) rather than
 // tucked into a subdirectory, so location alone cannot tell them apart; see
-// pbrt_scene::Scene::cameraDeclared. A file that FAILS to parse still
-// surfaces regardless - hiding a parse error is worse than a spurious entry.
+// pbrt_scene::Scene::cameraDeclared.
+//
+// A file some sibling's own Include/Import directive names is excluded too,
+// unconditionally - even when it FAILS to parse standalone. That second
+// case is not hypothetical: mmp/pbrt-v4-scenes' barcelona-pavilion and
+// contemporary-bathroom each ship a geometry.pbrt with no WorldBegin of its
+// own, referencing NamedMaterials declared in a sibling materials.pbrt that
+// the real scene file Includes first. Fed to this parser alone, that
+// reference is unresolved and the header scan reports a parse error - but
+// that is not a gap in this parser relative to real pbrt-v4: pbrt-v4 also
+// requires MakeNamedMaterial before the NamedMaterial that names it, in
+// Include-expanded processing order (there is no forward-reference
+// tolerance in either implementation), so `pbrt geometry.pbrt` would fail
+// exactly the same way in real pbrt. The file was never meant to be loaded
+// on its own, and provably so - collectIncludedNames() reads that proof
+// straight from whichever real scene file names it - so it is excluded
+// before its own parse result is even consulted.
+//
+// Any other file that FAILS to parse still surfaces regardless - hiding a
+// parse error in a file nothing else claims is worse than a spurious entry.
 inline std::vector<Discovered> scanDirectory(const std::string &dir) {
 	std::vector<Discovered> found;
 	std::error_code ec;
@@ -201,7 +257,22 @@ inline std::vector<Discovered> scanDirectory(const std::string &dir) {
 	std::sort(paths.begin(), paths.end(),
 			  [](const auto &a, const auto &b) { return a.first < b.first; });
 
+	// A second raw-text read per file, on top of the one describeFile() does
+	// below - acceptable here the same way the rest of this header accepts
+	// it: these are small text files, not the geometry/texture payloads this
+	// design goes out of its way to avoid touching (see the file's own "WHY
+	// A HEADER PARSE RATHER THAN A FULL LOAD" comment).
+	std::set<std::string> includedBySomeone;
 	for (const auto &[p, isNested] : paths) {
+		std::ifstream in(p, std::ios::binary);
+		if (!in) continue;
+		std::ostringstream ss;
+		ss << in.rdbuf();
+		detail::collectIncludedNames(ss.str(), includedBySomeone);
+	}
+
+	for (const auto &[p, isNested] : paths) {
+		if (includedBySomeone.count(detail::basenameOf(p))) continue;
 		Discovered d = describeFile(p);
 		d.nested = isNested;
 		if (d.ok && !d.declaresCamera) continue;

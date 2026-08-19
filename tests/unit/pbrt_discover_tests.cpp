@@ -266,6 +266,25 @@ TEST_F(ScanTree, ExtensionMatchIsCaseInsensitive) {
 	EXPECT_EQ(pbrt_discover::scanDirectory(root_).size(), 1u);
 }
 
+TEST_F(ScanTree, ExcludesAFileASiblingIncludesEvenWhenItFailsToParseStandalone) {
+	// mmp/pbrt-v4-scenes' barcelona-pavilion ships exactly this shape:
+	// geometry.pbrt has no WorldBegin of its own (so its whole body is read
+	// as "header" text - see headerOf()'s fallback comment) and references
+	// a NamedMaterial that materials.pbrt declares. Neither fragment is
+	// meant to be loaded on its own; only real-scene.pbrt's own Include
+	// order makes the reference resolvable. Being named in a sibling's
+	// Include is proof enough to exclude it, independent of whether it
+	// happens to parse standalone.
+	write("geometry.pbrt", "NamedMaterial \"pavet\"\n");
+	write("real-scene.pbrt",
+		  "Camera \"perspective\"\nFilm \"rgb\"\nWorldBegin\nInclude \"geometry.pbrt\"\n");
+
+	const std::vector<pbrt_discover::Discovered> found =
+		pbrt_discover::scanDirectory(root_);
+	ASSERT_EQ(found.size(), 1u);
+	EXPECT_EQ(found[0].name, "real-scene");
+}
+
 TEST_F(ScanTree, AnUnparseableFileIsStillListedSoTheCallerCanReportIt) {
 	// Silently dropping it would leave a user staring at a scene folder
 	// wondering why one file never appears. The caller decides what to do;

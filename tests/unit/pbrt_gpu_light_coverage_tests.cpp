@@ -198,12 +198,16 @@ TEST_P(BundledPbrtLightCoverageTest, EveryEmissiveShapeIsSampleable) {
 
 	// loadFile() parses AND flattens, so this is already world-space geometry.
 	// A full load can still fail even though the lightweight header scan
-	// above succeeded - e.g. a NamedMaterial referenced before its
-	// MakeNamedMaterial is declared, which real pbrt-v4 tolerates (it
-	// resolves named entities in a deferred second pass) and this parser's
-	// single-pass model does not. That is a real gap in scene-format
-	// coverage, not something this drift check exists to catch, so it skips
-	// the same way an unparseable header does rather than failing the suite.
+	// above succeeded, since the header scan only reads the pre-WorldBegin
+	// portion (see pbrt_discover.h's own "WHY A HEADER PARSE RATHER THAN A
+	// FULL LOAD" comment) while a real failure - a malformed Include, a
+	// NamedMaterial referenced before its declaration in Include-expanded
+	// order (this parser requires declare-before-use here, same as real
+	// pbrt-v4 - see pbrt_discover.h's scanDirectory() comment on why a
+	// standalone geometry/materials fragment can legitimately fail this way
+	// without it being a parser gap) - can live entirely after WorldBegin.
+	// Not something this drift check exists to catch, so it skips the same
+	// way an unparseable header does rather than failing the suite.
 	const pbrt_load::LoadResult r = pbrt_load::loadFile(d.path);
 	if (!r.ok) GTEST_SKIP() << d.path << ": " << r.error;
 	const pbrt_flatten::FlatScene &flat = r.scene;
