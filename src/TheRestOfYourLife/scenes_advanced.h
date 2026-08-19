@@ -2468,3 +2468,56 @@ inline hittable_list build_vokselia_spawn_lights() {
 inline std::shared_ptr<sky_light> build_vokselia_spawn_sky() {
 	return std::make_shared<sky_light>(color(0.5, 0.6, 0.8));
 }
+
+// ============================================================================
+// Scene 81: Power Plant
+// Twelfth "whole environment" mesh scene, and by far the largest yet: a
+// complete model of an actual coal-fired power plant (12.76M triangles,
+// 5.98M vertices), originally released by UNC as 1,185 PLY files and merged
+// into a single OBJ/.mtl pair by Morgan McGuire and Guedis Cardenas. Flat
+// per-face .mtl colors only (66 materials, zero image textures), so this
+// exercises pure geometric scale rather than any texturing path - already
+// proven at comparable scale by San Miguel (H5: 9.93M triangles from a
+// 1.14GB OBJ), which is what made attempting this scene practical rather
+// than reckless.
+//
+// Source: McGuire Computer Graphics Archive (casual-effects.com/data),
+// non-commercial use only (UNC), requires models/powerplant.obj.
+//
+// Scale/offset: the ONLY "whole environment" scene so far that needs a real
+// rescale rather than the usual raw-units-as-is convention. The raw OBJ's
+// own units span x=[-205000,406335] y=[0,249000] z=[-25646.6,160098] - a
+// ~600,000-unit range, evidently the original CAD/engineering drawing's
+// native units rather than anything scene-scale. scale=0.0004 (1/2500)
+// brings that down to a ~245x100x74 unit structure, comparable in size to
+// Lost Empire's own 165-unit video-flythrough scale. offset is applied
+// AFTER scale (see triangle_mesh_mtl's positions.push_back(x*scale+offset.x,
+// ...)), so it must already be in scaled units: offset=(-center_x*scale, 0,
+// -center_z*scale) centers the plant on (x,z) with y floored at 0, exactly
+// like every other whole-environment scene's own centering, just computed
+// in the scaled frame instead of the raw one.
+//
+// Camera: found by direct CPU-render iteration, pulled back to frame the
+// whole industrial complex.
+// ============================================================================
+inline std::shared_ptr<triangle_mesh_mtl> power_plant_mesh() {
+	static const auto mesh = std::make_shared<triangle_mesh_mtl>(
+		"powerplant.obj", make_shared<lambertian>(color(0.6, 0.6, 0.6)),
+		/*scale=*/0.0004, point3(-40.267, 0.0, -26.8903),
+		/*smooth_normals=*/false);
+	return mesh;
+}
+
+inline hittable_list build_power_plant() {
+	hittable_list world;
+	world.add(power_plant_mesh());
+	return world;
+}
+
+inline hittable_list build_power_plant_lights() {
+	return power_plant_mesh()->lights();
+}
+
+inline std::shared_ptr<sky_light> build_power_plant_sky() {
+	return std::make_shared<sky_light>(color(0.5, 0.6, 0.8));
+}

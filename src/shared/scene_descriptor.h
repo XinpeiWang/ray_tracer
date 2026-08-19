@@ -129,6 +129,7 @@ namespace SceneNames {
     constexpr const char* Gallery              = "Gallery";
     constexpr const char* LostEmpire           = "Lost Empire";
     constexpr const char* VokseliaSpawn        = "Vokselia Spawn";
+    constexpr const char* PowerPlant           = "Power Plant";
 } // namespace SceneNames
 
 // -----------------------------------------------------------------------

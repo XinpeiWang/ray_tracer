@@ -637,7 +637,7 @@ void MainWindow::styleComboBox(QComboBox *combo) {
 	QAbstractItemView *view = combo->view();
 
 	// Cap the popup's visible rows so it scrolls instead of growing past
-	// the screen - matters most for m_sceneCombo (80 scenes and counting);
+	// the screen - matters most for m_sceneCombo (81 scenes and counting);
 	// harmless for the shorter dropdowns (mode/quality/resolution/camera
 	// presets), which never reach this count anyway.
 	// setMaxVisibleItems() alone doesn't reliably constrain the popup here
@@ -710,7 +710,7 @@ void MainWindow::applyComboPopupPalette(QComboBox *combo) {
 		   A :hover rule here would be dead code.
 
 		   The marker is a 3px accent bar plus a quiet background rather than a
-		   full-width accent fill: this list is 80 scenes long, and a saturated
+		   full-width accent fill: this list is 81 scenes long, and a saturated
 		   band sweeping down it as the cursor moves is exhausting to read
 		   against. The reserved-transparent border above keeps the text from
 		   shifting sideways when the bar appears. */

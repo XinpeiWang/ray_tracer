@@ -4076,6 +4076,16 @@ static void build_vokselia_spawn_gpu(SceneData& scene) {
 		/*scale=*/1.0f, make_float3(0.0f, 0.0f, 0.0f), "vokselia_spawn_textures");
 }
 
+/// @brief Scene 81: Power Plant. Matches CPU build_power_plant() exactly. See
+/// build_sponza_gpu()'s own comment for the shared design rationale. No
+/// textureDir - this .mtl has flat per-face colors only, zero image
+/// textures (see build_power_plant()'s own comment).
+static void build_power_plant_gpu(SceneData& scene) {
+	const int mat_room = add_lambertian(scene, make_float3(0.6f, 0.6f, 0.6f));
+	load_obj_triangles_mtl_gpu(scene, "powerplant.obj", mat_room,
+		/*scale=*/0.0004f, make_float3(-40.267f, 0.0f, -26.8903f));
+}
+
 /// @brief Build a scene and configure the camera
 /// @param scene_id Scene identifier, category letter + number ("A1" = Cornell Box)
 /// @param image_width Output image width in pixels
@@ -5743,6 +5753,20 @@ bool build_scene(
 								build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);  // 40: matches CPU CameraConfig row for scene 80
 								if (out_camera_extra) {
 									// Matches CPU build_vokselia_spawn_sky()'s open sky_light(0.5,0.6,0.8).
+									out_camera_extra->backgroundColor = make_float3(0.5f, 0.6f, 0.8f);
+								}
+								break;
+							}
+
+							case 81: {  // Power Plant (see build_power_plant_gpu's comment)
+								build_power_plant_gpu(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 130.0f, 85.0f, 130.0f);
+								const float3 lookat   = make_float3(-55.0f, 40.0f, -35.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);  // 40: matches CPU CameraConfig row for scene 81
+								if (out_camera_extra) {
+									// Matches CPU build_power_plant_sky()'s open sky_light(0.5,0.6,0.8).
 									out_camera_extra->backgroundColor = make_float3(0.5f, 0.6f, 0.8f);
 								}
 								break;

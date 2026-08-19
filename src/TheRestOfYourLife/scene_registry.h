@@ -1503,6 +1503,16 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             build_vokselia_spawn_sky,
             nullptr
         },
+        {
+            "H12", 81, SceneNames::PowerPlant, SceneCategories::LargeScene,
+            "Power Plant - a complete model of an actual coal-fired power plant (12.76M triangles, 5.98M vertices), the largest scene in this collection by triangle count, with flat per-face .mtl colors (no image textures), lit by an open sky, loaded from an external .obj file (requires models/powerplant.obj). Twelfth 'whole environment' mesh scene, and the first needing a real coordinate rescale rather than raw OBJ units -- see build_power_plant()'s own comment.",
+            "Slow", 150, true, true,
+            { 40, 130, 85, 130,  -55, 40, -35,  0, 0, 0 },
+            build_power_plant,
+            build_power_plant_lights,
+            build_power_plant_sky,
+            nullptr
+        },
     };
     return registry;
 }

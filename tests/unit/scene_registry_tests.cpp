@@ -50,7 +50,7 @@ TEST(SceneRegistryTest, RegistryHasExpectedCount) {
 	// also contains whatever .pbrt files happen to be on the machine running
 	// the tests, which is not a property of this source tree and must not
 	// decide whether the suite passes.
-	EXPECT_EQ(builtin_scene_count(), 80);
+	EXPECT_EQ(builtin_scene_count(), 81);
 }
 
 TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem) {
@@ -578,7 +578,7 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // double-checking the GUI/error-hint text that mentions specific scene
 // counts or ID ranges by hand.
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
-	constexpr int kGuiSceneCount = 80;
+	constexpr int kGuiSceneCount = 81;
 	EXPECT_EQ(builtin_scene_count(), kGuiSceneCount)
 		<< "Registry size changed -- update kGuiSceneCount here to match.";
 }
