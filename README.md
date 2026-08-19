@@ -203,11 +203,42 @@ prints a warning and falls back), and `scene_metadata.dylib`.
 cd qt_gui
 qmake && make
 ```
-Copy the `ray_tracer` binary and `scene_metadata.dylib` built above alongside
-the resulting app bundle so the GUI can find them at runtime (mirrors what
-the Windows build's `RayTracer_Package` deploy step does — there's no
-equivalent packaging script for macOS yet). The GUI's Renderer dropdown only
-offers CPU on this build; there's no GPU option to hide manually.
+Produces `RayTracerGUI.app`. Copy the `ray_tracer` binary and
+`scene_metadata.dylib` built above into `RayTracerGUI.app/Contents/MacOS/`
+(that exact path — it's where `QCoreApplication::applicationDirPath()`
+resolves for a bundled Mac app, which is what both the GUI's subprocess
+working directory and `scene_metadata_client.cpp`'s `dlopen()` call use to
+find them). The GUI's Renderer dropdown only offers CPU on this build;
+there's no GPU option to hide manually.
+
+**One-command build + `.app` + `.dmg`**, via `scripts/build_and_deploy_macos.sh`
+(does all of the above, then runs `macdeployqt` to bundle Qt's frameworks and
+produce a distributable disk image):
+```bash
+./scripts/build_and_deploy_macos.sh
+# ./scripts/build_and_deploy_macos.sh --skip-dmg   # .app only, no .dmg
+```
+Output lands in `RayTracer_Package_macOS/` (`RayTracerGUI.app` and
+`RayTracerGUI.dmg`). **Scenes that need external mesh/texture files
+(`requires_files=true` in `scene_registry.h` — Sponza, Bistro, every
+"Large Scene", most single-model scenes) are deliberately NOT bundled into
+the `.app`/`.dmg`**: many are hundreds of MB to 1GB+, and a few (Power
+Plant) carry non-commercial-only licenses that make redistributing them in
+an installer questionable regardless of size. Every scene that doesn't
+require external files (Basics/Materials/Lights/Cameras/Volumes/Geometry —
+most of the registry, all procedurally generated) works from the installed
+app with no extra setup. To also render the external-asset scenes after
+installing, copy this repo's `models/` directory into the installed app:
+```bash
+cp -R /path/to/ray_tracer/models "/Applications/RayTracerGUI.app/Contents/MacOS/models"
+```
+
+The `.app`/`.dmg` are **not code-signed or notarized** (that needs an Apple
+Developer account this project doesn't have) — macOS Gatekeeper will refuse
+to open it with a plain double-click on first launch. Right-click the app →
+**Open** (or System Settings → Privacy & Security → **Open Anyway**) once to
+run it; this is a one-time step per machine, standard for any indie/unsigned
+Mac app.
 
 ### Running Tests
 

@@ -1,2 +1,8 @@
 models/*.obj filter=lfs diff=lfs merge=lfs -text
 models/**/*.png filter=lfs diff=lfs merge=lfs -text
+
+# Shell scripts must stay LF-only regardless of a contributor's global
+# core.autocrlf - a CRLF shebang/body breaks bash execution outright on
+# macOS/Linux (this bit the new scripts/build_and_deploy_macos.sh: Windows
+# git was about to silently convert it to CRLF on the next checkout).
+*.sh text eol=lf
