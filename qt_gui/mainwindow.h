@@ -179,9 +179,14 @@ protected:
 		for (int i = 0; i < count(); ++i) {
 			QStyleOptionTab opt;
 			initStyleOption(&opt, i);
-			// Background/border only - QSS-aware (QTabBar#previewSubTabsBar
-			// ::tab in mainwindow_style.cpp), and unaffected by the label's
-			// own rect-mismatch problem since there is no text to hide here.
+			// Widened to the bar's actual current width rather than Qt's own
+			// (natural, text-width-only) tabRect(i) - stretchedTabRect()'s
+			// own comment explains why this can't be done by feeding
+			// width() back through tabSizeHint() instead. Background/border
+			// only here - QSS-aware (QTabBar#previewSubTabsBar::tab in
+			// mainwindow_style.cpp), and unaffected by the label's own
+			// rect-mismatch problem since there is no text to hide here.
+			opt.rect = stretchedTabRect(i);
 			painter.drawControl(QStyle::CE_TabBarTabShape, opt);
 
 			QColor color = m_normalColor;
@@ -214,8 +219,12 @@ protected:
 			// there is no rotation to undo here in the first place, unlike
 			// the style's own CE_TabBarTabLabel handling for West tabs.
 			// Left margin clears the close glyph; right margin is just
-			// breathing room before the tab's own edge.
-			const QRect textRect = tabRect(i).adjusted(30, 0, -8, 0);
+			// breathing room before the tab's own edge. Elided against
+			// stretchedTabRect()'s width, not tabRect()'s, so widening the
+			// bar (dragging the splitter - see SplitPreviewTabs) actually
+			// reveals more of the label instead of leaving it truncated in
+			// newly opened dead space to its right.
+			const QRect textRect = stretchedTabRect(i).adjusted(30, 0, -8, 0);
 			const QString elided = QFontMetrics(font).elidedText(tabText(i), Qt::ElideRight, textRect.width());
 			painter.drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, elided);
 		}
@@ -234,8 +243,25 @@ protected:
 	}
 
 private:
+	// Qt's own tabRect(index) only ever spans the label's natural text
+	// width (see tabSizeHint() above, deliberately left alone) - stretching
+	// that would mean feeding width() back through tabSizeHint(), but
+	// tabSizeHint() output feeds Qt's own layout/sizeHint bookkeeping for
+	// this bar, and QSplitter consults that bookkeeping too (see
+	// SplitPreviewTabs), so a self-referential width() there turned live
+	// splitter drags into a feedback loop that collapsed the bar instead of
+	// growing it. Painting, close-glyph hit-testing, and text elision all
+	// read this instead: same rect, width swapped for the bar's actual
+	// current width - a pure paint/hit-test-time adjustment that never
+	// reaches anything Qt's layout system queries.
+	QRect stretchedTabRect(int index) const {
+		QRect r = tabRect(index);
+		r.setWidth(qMax(60, width() - r.x()));
+		return r;
+	}
+
 	QRect closeGlyphRect(int index) const {
-		const QRect r = tabRect(index);
+		const QRect r = stretchedTabRect(index);
 		return QRect(r.left() + 6, r.center().y() - 8, 18, 18);
 	}
 
