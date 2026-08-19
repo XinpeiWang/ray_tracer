@@ -119,6 +119,9 @@ TEST(WavefrontTypes, WavefrontQueuesLayout) {
 	WavefrontQueues q = {};
 	EXPECT_EQ(q.rayQueue.items,    nullptr);
 	EXPECT_EQ(q.hitQueue.items,    nullptr);
+	// Lambertian/Metal hits route here instead of hitQueue - see
+	// WavefrontQueues::simpleHitQueue's comment (wavefront_types.h).
+	EXPECT_EQ(q.simpleHitQueue.items, nullptr);
 	EXPECT_EQ(q.missQueue.items,   nullptr);
 	EXPECT_EQ(q.shadowQueue.items, nullptr);
 	EXPECT_EQ(q.nextRayQueue.items, nullptr);
@@ -134,6 +137,7 @@ TEST(WavefrontTypes, WavefrontLaunchParamsLayout) {
 	EXPECT_EQ(lp.spheres,      nullptr);
 	EXPECT_EQ(lp.quads,        nullptr);
 	EXPECT_EQ(lp.materials,    nullptr);
+	EXPECT_EQ(lp.simpleHitQueue.items, nullptr);
 	EXPECT_EQ(lp.numSpheres,   0u);
 	EXPECT_EQ(lp.numQuads,     0u);
 	EXPECT_EQ(lp.numMaterials, 0u);

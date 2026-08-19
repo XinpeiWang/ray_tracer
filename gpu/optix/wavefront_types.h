@@ -261,7 +261,16 @@ struct WorkQueue {
 struct WavefrontQueues {
 	WorkQueue<RayWorkItem>    rayQueue;       // rays pending intersection
 	WorkQueue<RayWorkItem>    nextRayQueue;   // rays for the next bounce
-	WorkQueue<HitWorkItem>    hitQueue;       // intersection results
+	WorkQueue<HitWorkItem>    hitQueue;       // intersection results (complex materials)
+	// Hits on cheap materials (Lambertian/Metal - no texture/layered-BxDF work),
+	// routed here at push time (see wavefront_programs.cu) instead of hitQueue
+	// so evaluate_materials_simple() can process them with a 2-way if/else
+	// instead of the big switch, avoiding register pressure from the switch's
+	// expensive arms (CoatedDiffuse/Principled/RoughDielectric/...) for rays
+	// that don't need it. Same HitWorkItem layout as hitQueue - reused as-is
+	// rather than a trimmed struct, since the memory win is marginal and a
+	// second struct would mean duplicated fill-out/test code.
+	WorkQueue<HitWorkItem>    simpleHitQueue;
 	WorkQueue<MissWorkItem>   missQueue;      // escaped rays
 	WorkQueue<ShadowRayWorkItem> shadowQueue; // shadow rays pending occlusion test
 };
@@ -276,6 +285,9 @@ struct WavefrontLaunchParams {
 	// Queues
 	WorkQueue<RayWorkItem>       rayQueue;
 	WorkQueue<HitWorkItem>       hitQueue;
+	// See WavefrontQueues::simpleHitQueue above - same purpose, mirrored here
+	// since this is the struct actually passed to the OptiX launch params.
+	WorkQueue<HitWorkItem>       simpleHitQueue;
 	WorkQueue<MissWorkItem>      missQueue;
 
 	// Shadow ray queue is traced separately via a second optixLaunch.

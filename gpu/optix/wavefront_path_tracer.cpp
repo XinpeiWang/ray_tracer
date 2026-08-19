@@ -53,6 +53,21 @@ extern "C" void wf_launch_evaluate_materials(
 	const float*, const float*, const float*, const float*,
 	float3, float, GpuSkyDistribution,
 	cudaStream_t);
+extern "C" void wf_launch_evaluate_materials_simple(
+	WorkQueue<HitWorkItem>, int,
+	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
+	float3*,
+	const SphereData*, unsigned int,
+	const QuadData*, unsigned int,
+	const TriangleData*, unsigned int,
+	const BilinearPatchData*, unsigned int,
+	const MaterialData*, unsigned int,
+	const int*, const GpuLightKind*, const GpuAliasEntry*, unsigned int,
+	const PunctualLightGPU*, unsigned int,
+	const TextureData*, const unsigned char*,
+	int,
+	float3, float, GpuSkyDistribution,
+	cudaStream_t);
 extern "C" void wf_launch_accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, GpuSkyDistribution, cudaStream_t);
 extern "C" void wf_launch_accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*, cudaStream_t);
 extern "C" void wf_launch_resolve_bssrdf_exit(
@@ -895,6 +910,7 @@ bool WavefrontPathTracer::allocateQueues(int numPixels) {
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_rayItems_),     rayItemSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nextRayItems_), rayItemSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_hitItems_),     hitItemSz));
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_simpleHitItems_), hitItemSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_missItems_),    missItemSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_shadowItems_),  shadowItemSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_occluded_),     occludedSz));
@@ -904,6 +920,7 @@ bool WavefrontPathTracer::allocateQueues(int numPixels) {
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_rayCounter_),     counterSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nextRayCounter_), counterSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_hitCounter_),     counterSz));
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_simpleHitCounter_), counterSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_missCounter_),    counterSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_shadowCounter_),  counterSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_probeCounter_),   counterSz));
@@ -917,11 +934,13 @@ void WavefrontPathTracer::freeQueues() {
 		if (p) { cudaFree(reinterpret_cast<void*>(p)); p = 0; }
 	};
 	freeDev(d_rayItems_);      freeDev(d_nextRayItems_);
-	freeDev(d_hitItems_);      freeDev(d_missItems_);
+	freeDev(d_hitItems_);      freeDev(d_simpleHitItems_);
+	freeDev(d_missItems_);
 	freeDev(d_shadowItems_);   freeDev(d_occluded_);
 	freeDev(d_probeItems_);    freeDev(d_exitItems_);
 	freeDev(d_rayCounter_);    freeDev(d_nextRayCounter_);
-	freeDev(d_hitCounter_);    freeDev(d_missCounter_);
+	freeDev(d_hitCounter_);    freeDev(d_simpleHitCounter_);
+	freeDev(d_missCounter_);
 	freeDev(d_shadowCounter_);
 	freeDev(d_probeCounter_);  freeDev(d_exitCounter_);
 	queueCapacity_ = 0;
@@ -1014,6 +1033,54 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		reinterpret_cast<const float*>(d_measuredData_),
 		reinterpret_cast<const float*>(d_measuredMcdf_),
 		reinterpret_cast<const float*>(d_measuredCcdf_),
+		skyColor, shadowRayEpsilon, skyDist,
+		stream_);
+}
+
+// Twin of launchEvaluateMaterials() above, scoped to simpleHitQueue's
+// Lambertian/Metal hits - see wavefront_kernels.cu's evaluate_materials_simple()
+// and wavefront_types.h's WavefrontQueues::simpleHitQueue comment.
+void WavefrontPathTracer::launchEvaluateMaterialsSimple(
+	int numHits, int maxDepth,
+	const SphereData*    d_spheres,   unsigned int numSpheres,
+	const QuadData*      d_quads,     unsigned int numQuads,
+	const TriangleData*  d_triangles, unsigned int numTriangles,
+	const BilinearPatchData* d_bilinearPatches, unsigned int numBilinearPatches,
+	const MaterialData*  d_materials, unsigned int numMaterials,
+	const int*           d_lightIndices, const GpuLightKind* d_lightKinds,
+	const GpuAliasEntry* d_aliasTable,  unsigned int numLights,
+	const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
+	float3*              d_framebuffer, float3 skyColor, float shadowRayEpsilon,
+	GpuSkyDistribution skyDist)
+{
+	if (numHits == 0) return;
+
+	WorkQueue<HitWorkItem> hq;
+	hq.items    = reinterpret_cast<HitWorkItem*>(d_simpleHitItems_);
+	hq.counter  = reinterpret_cast<int*>(d_simpleHitCounter_);
+	hq.capacity = queueCapacity_;
+
+	WorkQueue<RayWorkItem> nq;
+	nq.items    = reinterpret_cast<RayWorkItem*>(d_nextRayItems_);
+	nq.counter  = reinterpret_cast<int*>(d_nextRayCounter_);
+	nq.capacity = queueCapacity_;
+
+	WorkQueue<ShadowRayWorkItem> sq;
+	sq.items    = reinterpret_cast<ShadowRayWorkItem*>(d_shadowItems_);
+	sq.counter  = reinterpret_cast<int*>(d_shadowCounter_);
+	sq.capacity = queueCapacity_;
+
+	wf_launch_evaluate_materials_simple(hq, numHits, nq, sq, d_framebuffer,
+		d_spheres, numSpheres,
+		d_quads, numQuads,
+		d_triangles, numTriangles,
+		d_bilinearPatches, numBilinearPatches,
+		d_materials, numMaterials,
+		d_lightIndices, d_lightKinds, d_aliasTable, numLights,
+		d_punctualLights, numPunctualLights,
+		reinterpret_cast<const TextureData*>(d_textures_),
+		reinterpret_cast<const unsigned char*>(d_texturePixels_),
+		maxDepth,
 		skyColor, shadowRayEpsilon, skyDist,
 		stream_);
 }
@@ -1202,6 +1269,7 @@ bool WavefrontPathTracer::render(
 
 			// Reset output queue counters
 			resetQueueCounter(reinterpret_cast<int*>(d_hitCounter_));
+			resetQueueCounter(reinterpret_cast<int*>(d_simpleHitCounter_));
 			resetQueueCounter(reinterpret_cast<int*>(d_missCounter_));
 			resetQueueCounter(reinterpret_cast<int*>(d_shadowCounter_));
 			resetQueueCounter(reinterpret_cast<int*>(d_nextRayCounter_));
@@ -1219,6 +1287,10 @@ bool WavefrontPathTracer::render(
 			lp.hitQueue.counter  = reinterpret_cast<int*>(d_hitCounter_);
 			lp.hitQueue.capacity = queueCapacity_;
 
+			lp.simpleHitQueue.items    = reinterpret_cast<HitWorkItem*>(d_simpleHitItems_);
+			lp.simpleHitQueue.counter  = reinterpret_cast<int*>(d_simpleHitCounter_);
+			lp.simpleHitQueue.capacity = queueCapacity_;
+
 			lp.missQueue.items    = reinterpret_cast<MissWorkItem*>(d_missItems_);
 			lp.missQueue.counter  = reinterpret_cast<int*>(d_missCounter_);
 			lp.missQueue.capacity = queueCapacity_;
@@ -1234,14 +1306,40 @@ bool WavefrontPathTracer::render(
 
 			CUDA_CHECK(cudaStreamSynchronize(stream_));
 
-			int numHits   = readQueueSize(reinterpret_cast<int*>(d_hitCounter_));
-			int numMiss   = readQueueSize(reinterpret_cast<int*>(d_missCounter_));
+			int numHits       = readQueueSize(reinterpret_cast<int*>(d_hitCounter_));
+			int numSimpleHits = readQueueSize(reinterpret_cast<int*>(d_simpleHitCounter_));
+			int numMiss       = readQueueSize(reinterpret_cast<int*>(d_missCounter_));
 
 			// ------------------------------------------------------------------
 			// Phase 3: Evaluate materials (fills shadowQueue + nextRayQueue)
 			// ------------------------------------------------------------------
 			launchEvaluateMaterials(
 				numHits, max_depth,
+				reinterpret_cast<const SphereData*>(d_spheres), num_spheres,
+				reinterpret_cast<const QuadData*>(d_quads),     num_quads,
+				reinterpret_cast<const TriangleData*>(d_triangles), num_triangles,
+				reinterpret_cast<const BilinearPatchData*>(d_bilinear_patches), num_bilinear_patches,
+				reinterpret_cast<const MaterialData*>(d_materials), num_materials,
+				reinterpret_cast<const int*>(d_light_indices),
+				reinterpret_cast<const GpuLightKind*>(d_lightKinds),
+				reinterpret_cast<const GpuAliasEntry*>(d_alias_table),
+				num_lights,
+				reinterpret_cast<const PunctualLightGPU*>(d_punctual_lights),
+				num_punctual_lights,
+				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist);
+
+			// ------------------------------------------------------------------
+			// Phase 3b: Evaluate simple materials (Lambertian/Metal hits
+			// routed to simpleHitQueue at push time - see wavefront_types.h's
+			// WavefrontQueues::simpleHitQueue comment). Independent of the
+			// launch above - reads its own queue, writes into the same
+			// shadowQueue/nextRayQueue/framebuffer. Order relative to the
+			// launchEvaluateMaterials call above doesn't matter (both run on
+			// stream_ and complete before the sync below), only that both
+			// finish before numMiss/numShadow are read.
+			// ------------------------------------------------------------------
+			launchEvaluateMaterialsSimple(
+				numSimpleHits, max_depth,
 				reinterpret_cast<const SphereData*>(d_spheres), num_spheres,
 				reinterpret_cast<const QuadData*>(d_quads),     num_quads,
 				reinterpret_cast<const TriangleData*>(d_triangles), num_triangles,

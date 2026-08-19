@@ -7,7 +7,10 @@
 //   __raygen__wf_intersect  - Dispatches one optixTrace per RayWorkItem.
 //                             One thread per ray in the queue (launch dim = numRays).
 //   __closesthit__wf_sphere / __closesthit__wf_quad
-//                           - Append a HitWorkItem to hitQueue.
+//                           - Fill the hit payload; __raygen__wf_intersect
+//                             then builds a HitWorkItem and routes it to
+//                             hitQueue or simpleHitQueue (Lambertian/Metal)
+//                             based on material type.
 //   __miss__wf_radiance     - Append a MissWorkItem to missQueue.
 //
 // Shadow phase (separate optixLaunch):
@@ -21,7 +24,7 @@
 //   __miss__wf_shadow            - Writes occluded[rayIndex] = false.
 //
 // The host (wavefront_path_tracer.cpp) drives two launches per bounce:
-//   1. optixLaunch(intersectPipeline, numRays)   -> fills hitQueue + missQueue
+//   1. optixLaunch(intersectPipeline, numRays)   -> fills hitQueue/simpleHitQueue + missQueue
 //   2. optixLaunch(shadowPipeline,   numShadow)  -> fills occluded[] array
 
 #include <optix.h>
@@ -185,7 +188,16 @@ extern "C" __global__ void __raygen__wf_intersect() {
 		h.pixelIndex  = ray.pixelIndex;
 		h.depth       = ray.depth;
 		h.specular_bounce = ray.specular_bounce;
-		wf_params.hitQueue.push(h);
+		// Route cheap materials (no texture/layered-BxDF work) into their
+		// own queue so evaluate_materials_simple() can process them without
+		// the big switch's register pressure - see WavefrontQueues::
+		// simpleHitQueue's comment (wavefront_types.h).
+		const MaterialType mt = wf_params.materials[h.materialIdx].type;
+		if (mt == MaterialType::Lambertian || mt == MaterialType::Metal) {
+			wf_params.simpleHitQueue.push(h);
+		} else {
+			wf_params.hitQueue.push(h);
+		}
 	} else {
 		MissWorkItem m;
 		for (int i = 0; i < kWFNWavelengths; ++i) {

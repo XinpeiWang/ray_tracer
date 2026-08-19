@@ -2678,6 +2678,151 @@ extern "C" __global__ void evaluate_materials(
 		shadowQueue, nextRayQueue, framebuffer);
 }
 
+// ============================================================================
+// evaluate_materials_simple
+//
+// Twin of evaluate_materials() above, scoped to just MaterialType::Lambertian
+// and MaterialType::Metal - the two cheap material types routed into
+// simpleHitQueue at push time (see wavefront_programs.cu's
+// __raygen__wf_intersect). Everything shared with evaluate_materials() below
+// (the spectral-state preamble, the maxDepth cutoff, the Lambertian/Metal
+// case bodies themselves, the wf_finish_material_scatter tail call) is copied
+// verbatim, not reimplemented - this kernel exists ONLY to replace the big
+// switch with a 2-way if/else, so the compiler doesn't have to reserve
+// registers for the switch's expensive arms (CoatedDiffuse/CoatedConductor/
+// Principled/RoughDielectric/...) for threads that will never take them,
+// improving occupancy for this launch. No DiffuseLight early-exit and no
+// default:/__trap() guard are needed here - the routing at push time
+// guarantees only Lambertian/Metal hits ever reach this queue, so unlike
+// evaluate_materials() there is no "genuinely new MaterialType" case to
+// defend against structurally (a routing bug would show up immediately as a
+// visibly wrong render, not a silent gap, since it's a two-way branch over a
+// closed set of exactly two types this kernel is defined to handle).
+//
+// Fewer scene-data parameters than evaluate_materials(): no bssrdfProbeQueue
+// (Subsurface-only), no cloud/RGB-grid medium buffers or measured-BRDF
+// tables (none of those material types can reach this queue).
+// ============================================================================
+extern "C" __global__ void evaluate_materials_simple(
+	WorkQueue<HitWorkItem>       hitQueue,
+	int                          numHits,
+	WorkQueue<RayWorkItem>       nextRayQueue,
+	WorkQueue<ShadowRayWorkItem> shadowQueue,
+	float3*                      framebuffer,
+	// Scene data
+	const SphereData*   spheres,
+	const QuadData*     quads,
+	const TriangleData* triangles,
+	const BilinearPatchData* bilinearPatches,
+	const MaterialData* materials,
+	const int*          lightIndices,
+	const GpuLightKind* lightKinds,
+	const GpuAliasEntry* aliasTable,
+	unsigned int numLights,
+	const PunctualLightGPU* punctualLights,
+	unsigned int numPunctualLights,
+	const TextureData*  textures,
+	const unsigned char* texturePixels,
+	int maxDepth,
+	float3 skyColor,
+	float shadowRayEpsilon,
+	GpuSkyDistribution skyDist
+) {
+	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	if (idx >= numHits) return;
+
+	const HitWorkItem& h = hitQueue.items[idx];
+	const MaterialData& mat = materials[h.materialIdx];
+
+	float3 normal    = h.normal;
+	float3 hit_point = h.hitPoint;
+	unsigned int seed = h.seed;
+	const float shadow_eps = (shadowRayEpsilon > 0.0f) ? shadowRayEpsilon : 0.01f;
+
+	using SS  = SampledSpectrum<kWFNWavelengths>;
+	using SWL = SampledWavelengths<kWFNWavelengths>;
+	SS throughput(h.throughput);
+	SS radiance(h.radiance);
+	SWL swl;
+	for (int i = 0; i < kWFNWavelengths; ++i) {
+		swl.lambda[i] = h.wavelengths[i];
+		swl.pdf[i]    = h.wavelength_pdfs[i];
+	}
+
+	auto addToFramebuffer = [&](int pixIdx, const SS& L) {
+		auto xyz = SampledSpectrumToXYZ(L, swl, d_cie_x, d_cie_y, d_cie_z,
+										kDevCIEMin, kDevCIENSamples);
+		float r, g, b;
+		wf_xyz_to_linear_rgb(xyz.x, xyz.y, xyz.z, r, g, b);
+		atomicAdd(&framebuffer[pixIdx].x, r);
+		atomicAdd(&framebuffer[pixIdx].y, g);
+		atomicAdd(&framebuffer[pixIdx].z, b);
+	};
+
+	if (h.depth >= maxDepth) {
+		// Max depth reached — just accumulate what we have.
+		addToFramebuffer(h.pixelIndex, radiance);
+		return;
+	}
+
+	float3 scattered_dir    = make_float3(0, 0, 0);
+	SS     attenuation(0.f);
+	bool   scattered        = false;
+	bool   is_specular      = false;
+	float  brdf_pdf_override = -1.0f;
+	// Never set by Lambertian/Metal - passed through to wf_finish_material_
+	// scatter as harmless zero, matching evaluate_materials()'s own default
+	// for every material type that doesn't use them.
+	float3 phaseWo = make_float3(0.0f, 0.0f, 0.0f);
+	float matEta = mat.ior;
+	float  phaseG  = 0.0f;
+
+	auto albedoSpectrum = [&](float3 rgb) -> SS {
+		float c0, c1, c2;
+		float r = rgb.x < 0.f ? 0.f : (rgb.x > 1.f ? 1.f : rgb.x);
+		float g = rgb.y < 0.f ? 0.f : (rgb.y > 1.f ? 1.f : rgb.y);
+		float b = rgb.z < 0.f ? 0.f : (rgb.z > 1.f ? 1.f : rgb.z);
+		dev_srgb_to_coeffs(r, g, b, c0, c1, c2);
+		RGBSigmoidPolynomial poly(c0, c1, c2);
+		SS s(0.f);
+		for (int i = 0; i < kWFNWavelengths; ++i)
+			s[i] = poly(swl.lambda[i]);
+		return s;
+	};
+
+	if (mat.type == MaterialType::Lambertian) {
+		scattered_dir = normalize(normal + wf_rand_unit(seed));
+		if (wf_near_zero(scattered_dir)) scattered_dir = normal;
+		const float3 lambertianColor = (mat.textureIdx >= 0)
+			? wf_sample_texture(textures, texturePixels, mat.textureIdx, h.uv_u, h.uv_v, hit_point)
+			: mat.albedo;
+		attenuation = albedoSpectrum(lambertianColor);
+		scattered   = true;
+		is_specular = false;
+	} else { // MaterialType::Metal
+		float3 reflected = wf_reflect(normalize(h.rayDir), normal);
+		scattered_dir    = normalize(reflected + mat.fuzz * wf_rand_unit(seed));
+		attenuation      = albedoSpectrum(mat.albedo);
+		scattered        = (dot(scattered_dir, normal) > 0.0f);
+		is_specular      = true;
+	}
+
+	if (!scattered) {
+		addToFramebuffer(h.pixelIndex, radiance);
+		return;
+	}
+
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, normal, hit_point, seed,
+		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
+		phaseWo, phaseG,
+		h.pixelIndex, h.depth,
+		spheres, quads, triangles, bilinearPatches, materials,
+		lightIndices, lightKinds, aliasTable, numLights,
+		punctualLights, numPunctualLights,
+		skyColor, shadow_eps, skyDist,
+		shadowQueue, nextRayQueue, framebuffer);
+}
+
 // Uplift a flat RGB color to a spectral sample at the given hero
 // wavelengths. Standalone copy of the `liftEmission` lambda used inside
 // evaluate_materials below (that one captures its `swl` by reference from

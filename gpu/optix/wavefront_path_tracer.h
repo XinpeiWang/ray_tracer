@@ -154,6 +154,21 @@ private:
         const GpuAliasEntry* d_aliasTable, unsigned int numLights,
         const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
         float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist);
+    // Twin of launchEvaluateMaterials() above, scoped to simpleHitQueue's
+    // Lambertian/Metal hits (see wavefront_types.h's WavefrontQueues::
+    // simpleHitQueue and wavefront_kernels.cu's evaluate_materials_simple()).
+    // Fewer scene-data params - no cloud/RGB-grid medium or measured-BRDF
+    // tables, since none of those material types can reach this queue.
+    void launchEvaluateMaterialsSimple(int numHits, int maxDepth,
+        const SphereData* d_spheres, unsigned int numSpheres,
+        const QuadData* d_quads, unsigned int numQuads,
+        const TriangleData* d_triangles, unsigned int numTriangles,
+        const BilinearPatchData* d_bilinearPatches, unsigned int numBilinearPatches,
+        const MaterialData* d_materials, unsigned int numMaterials,
+        const int* d_lightIndices, const GpuLightKind* d_lightKinds,
+        const GpuAliasEntry* d_aliasTable, unsigned int numLights,
+        const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
+        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist);
     // Not a launchX-style param above deliberately - see setTextures()'s
     // comment for why textures travel via member state instead.
     void launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor, GpuSkyDistribution skyDist);
@@ -223,6 +238,7 @@ private:
     CUdeviceptr d_rayItems_         = 0;
     CUdeviceptr d_nextRayItems_     = 0;
     CUdeviceptr d_hitItems_         = 0;
+    CUdeviceptr d_simpleHitItems_   = 0;   ///< see WavefrontQueues::simpleHitQueue
     CUdeviceptr d_missItems_        = 0;
     CUdeviceptr d_shadowItems_      = 0;
     CUdeviceptr d_occluded_         = 0;
@@ -231,6 +247,7 @@ private:
     CUdeviceptr d_rayCounter_       = 0;
     CUdeviceptr d_nextRayCounter_   = 0;
     CUdeviceptr d_hitCounter_       = 0;
+    CUdeviceptr d_simpleHitCounter_ = 0;   ///< see d_simpleHitItems_
     CUdeviceptr d_missCounter_      = 0;
     CUdeviceptr d_shadowCounter_    = 0;
     CUdeviceptr d_probeCounter_     = 0;
