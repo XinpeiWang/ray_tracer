@@ -646,6 +646,7 @@ private:
 	void createAdvancedTab();
 	void createVideoTab();
 	void createPreviewTab();
+	void createProgressTab();
 	void createLogTab();
 
 	// ------------------------------------------------------------------
@@ -757,6 +758,7 @@ private:
 	QPushButton *m_stopButton;
 	QProgressBar *m_progressBar;
 	QLabel *m_statusLabel;
+	int m_progressTabIndex = -1;        // Index of the Progress tab within m_tabWidget (see createProgressTab())
 
 	// Advanced Tab - Manual Controls
 	QSpinBox *m_widthSpinBox;           // Custom width

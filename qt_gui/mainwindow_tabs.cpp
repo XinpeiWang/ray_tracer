@@ -913,6 +913,54 @@ void MainWindow::addVideoPreviewTab(const QString &title, const QString &tooltip
 	player->play();
 }
 
+void MainWindow::createProgressTab() {
+	QWidget *progressWidget = new QWidget();
+	QVBoxLayout *layout = new QVBoxLayout(progressWidget);
+
+	QGroupBox *progressGroup = new QGroupBox("Progress", progressWidget);
+	QVBoxLayout *progressLayout = new QVBoxLayout(progressGroup);
+
+	m_progressBar = new QProgressBar(progressGroup);
+	m_progressBar->setRange(0, 100);
+	m_progressBar->setValue(0);
+	m_progressBar->setTextVisible(true);
+
+	m_statusLabel = new QLabel("Ready to render", progressGroup);
+	m_statusLabel->setAlignment(Qt::AlignCenter);
+
+	progressLayout->addWidget(m_progressBar);
+	progressLayout->addWidget(m_statusLabel);
+	layout->addWidget(progressGroup);
+
+	// Render queue - hidden whenever the queue is empty (see
+	// refreshQueuePanel()), so a single render - the common case - shows
+	// just the progress bar above.
+	m_queueGroup = new QGroupBox("Render Queue", progressWidget);
+	m_queueGroup->setVisible(false);
+	QVBoxLayout *queueLayout = new QVBoxLayout(m_queueGroup);
+
+	m_queueListWidget = new QListWidget(m_queueGroup);
+	m_queueListWidget->setSelectionMode(QAbstractItemView::SingleSelection);
+	m_queueListWidget->setMaximumHeight(120);
+	queueLayout->addWidget(m_queueListWidget);
+
+	QHBoxLayout *queueButtonLayout = new QHBoxLayout();
+	QPushButton *removeQueueItemButton = new QPushButton("Re&move Selected", m_queueGroup);
+	removeQueueItemButton->setToolTip("Remove the selected job from the render queue");
+	connect(removeQueueItemButton, &QPushButton::clicked, this, &MainWindow::onRemoveSelectedQueueItem);
+	QPushButton *clearQueueButton = new QPushButton("Clear &Queue", m_queueGroup);
+	clearQueueButton->setToolTip("Remove every job from the render queue");
+	connect(clearQueueButton, &QPushButton::clicked, this, &MainWindow::onClearQueue);
+	queueButtonLayout->addWidget(removeQueueItemButton);
+	queueButtonLayout->addWidget(clearQueueButton);
+	queueLayout->addLayout(queueButtonLayout);
+
+	layout->addWidget(m_queueGroup);
+	layout->addStretch(1);
+
+	m_progressTabIndex = m_tabWidget->addTab(progressWidget, "Progress");
+}
+
 void MainWindow::createLogTab() {
 	QWidget *logWidget = new QWidget();
 	QVBoxLayout *layout = new QVBoxLayout(logWidget);

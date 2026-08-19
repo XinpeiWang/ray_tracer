@@ -248,8 +248,10 @@ void MainWindow::startRenderJob(const RenderJob &job) {
 	}
 	m_elapsedTimer->start(1000);
 
-	// Auto-switch to Log tab so user sees live output immediately
-	if (m_logTabIndex >= 0) m_tabWidget->setCurrentIndex(m_logTabIndex);
+	// Auto-switch to the Progress tab so the user sees render status
+	// immediately, without stealing focus from whichever results tab
+	// (Preview/Log) they may already be looking at from an earlier job.
+	if (m_progressTabIndex >= 0) m_tabWidget->setCurrentIndex(m_progressTabIndex);
 
 	m_renderController->start();
 }

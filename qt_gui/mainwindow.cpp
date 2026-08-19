@@ -469,6 +469,7 @@ void MainWindow::setupUI() {
 	createAdvancedTab();
 	createVideoTab();
 	createPreviewTab();
+	createProgressTab();
 	createLogTab();
 
 	// Initialize scene info AFTER tabs are created (onSceneChanged uses m_samplesSpinBox)
@@ -496,23 +497,10 @@ void MainWindow::setupUI() {
 
 	mainLayout->addWidget(m_tabWidget);
 
-	// Progress section
-	QGroupBox *progressGroup = new QGroupBox("Progress", this);
-	progressGroup->setContentsMargins(0, 16, 0, 0);
-	QVBoxLayout *progressLayout = new QVBoxLayout(progressGroup);
-
-	m_progressBar = new QProgressBar(this);
-	m_progressBar->setRange(0, 100);
-	m_progressBar->setValue(0);
-	m_progressBar->setTextVisible(true);
-
-	m_statusLabel = new QLabel("Ready to render", this);
-	m_statusLabel->setAlignment(Qt::AlignCenter);
-
-	progressLayout->addWidget(m_progressBar);
-	progressLayout->addWidget(m_statusLabel);
-
-	mainLayout->addWidget(progressGroup);
+	// Progress bar and Render Queue panel live in their own tab (see
+	// createProgressTab()) rather than always-visible widgets below the tab
+	// strip - only the Render/Stop buttons stay pinned outside the tabs, since
+	// those are the controls you need reachable no matter which tab you're on.
 
 	// Render button.
 	// Mnemonics ("&R" -> Alt+R) are assigned so every button is reachable
@@ -559,33 +547,6 @@ void MainWindow::setupUI() {
 	buttonLayout->addWidget(m_renderButton);
 	buttonLayout->addWidget(m_stopButton);
 	mainLayout->addLayout(buttonLayout);
-
-	// Render queue - added after the button row (rather than before, next to
-	// Progress) so the primary controls stay in a fixed position regardless
-	// of how many jobs are queued. Hidden whenever the queue is empty (see
-	// refreshQueuePanel()), so a single render - the common case - looks
-	// exactly like it did before this existed.
-	m_queueGroup = new QGroupBox("Render Queue", this);
-	m_queueGroup->setVisible(false);
-	QVBoxLayout *queueLayout = new QVBoxLayout(m_queueGroup);
-
-	m_queueListWidget = new QListWidget(m_queueGroup);
-	m_queueListWidget->setSelectionMode(QAbstractItemView::SingleSelection);
-	m_queueListWidget->setMaximumHeight(120);
-	queueLayout->addWidget(m_queueListWidget);
-
-	QHBoxLayout *queueButtonLayout = new QHBoxLayout();
-	QPushButton *removeQueueItemButton = new QPushButton("Re&move Selected", m_queueGroup);
-	removeQueueItemButton->setToolTip("Remove the selected job from the render queue");
-	connect(removeQueueItemButton, &QPushButton::clicked, this, &MainWindow::onRemoveSelectedQueueItem);
-	QPushButton *clearQueueButton = new QPushButton("Clear &Queue", m_queueGroup);
-	clearQueueButton->setToolTip("Remove every job from the render queue");
-	connect(clearQueueButton, &QPushButton::clicked, this, &MainWindow::onClearQueue);
-	queueButtonLayout->addWidget(removeQueueItemButton);
-	queueButtonLayout->addWidget(clearQueueButton);
-	queueLayout->addLayout(queueButtonLayout);
-
-	mainLayout->addWidget(m_queueGroup);
 
 	setCentralWidget(centralWidget);
 }
