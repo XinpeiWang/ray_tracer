@@ -751,6 +751,7 @@ private:
 	// closing the tab tears them down too) - see createPreviewTab() and
 	// currentPreviewProperty()/updatePreviewSidebarForActiveTab().
 	SplitPreviewTabs *m_previewSubTabs = nullptr;
+	QWidget *m_previewSidebar = nullptr; // Info/buttons pane; hidden while there are no sub-tabs - see updatePreviewSidebarForActiveTab()
 	QLabel *m_previewInfoLabel;         // Filename / resolution / size / render time - reflects whichever sub-tab is active
 	QLabel *m_previewSceneDescLabel;    // Selected scene's description - see onSceneChanged()
 	int m_previewTabIndex = -1;         // Index of the Preview tab within m_tabWidget

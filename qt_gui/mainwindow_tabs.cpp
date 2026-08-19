@@ -691,6 +691,7 @@ void MainWindow::createPreviewTab() {
 	splitter->addWidget(m_previewSubTabs);
 
 	QWidget *sidebar = new QWidget();
+	m_previewSidebar = sidebar;
 	sidebar->setMinimumWidth(200);
 	sidebar->setMaximumWidth(320);
 	QVBoxLayout *sideLayout = new QVBoxLayout(sidebar);
@@ -754,6 +755,11 @@ void MainWindow::createPreviewTab() {
 	splitter->setStretchFactor(1, 0);
 	splitter->setSizes({700, 220});
 
+	// Starts hidden - no tabs exist yet at construction time, so there is
+	// nothing for the sidebar to describe. updatePreviewSidebarForActiveTab()
+	// takes over from here once real tabs come and go.
+	sidebar->setVisible(false);
+
 	m_previewTabIndex = m_tabWidget->addTab(previewWidget, "Preview");
 }
 
@@ -772,6 +778,15 @@ QString MainWindow::currentPreviewProperty(const char *name) const {
 
 void MainWindow::updatePreviewSidebarForActiveTab() {
 	if (m_previewInfoLabel) m_previewInfoLabel->setText(currentPreviewProperty("infoText"));
+	// Nothing in the sidebar (render info, Open Folder/Viewer) means anything
+	// without an active render tab to point at - hidden rather than left
+	// showing stale info/dead buttons alongside the empty-state prompt (see
+	// SplitPreviewTabs's own empty-state widget in mainwindow.h), and it also
+	// lets that prompt use the pane's full width instead of being squeezed
+	// down to whatever the splitter left it.
+	if (m_previewSidebar && m_previewSubTabs) {
+		m_previewSidebar->setVisible(m_previewSubTabs->tabBar()->count() > 0);
+	}
 	updateActionStates();
 }
 
