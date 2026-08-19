@@ -871,7 +871,9 @@ void MainWindow::createVideoTab() {
 	m_videoPresetCombo = new QComboBox();
 	m_videoPresetCombo->addItem("(custom - choose settings below)", QString());
 	for (const video_preset::VideoPreset& p : video_preset::kAll)
-		m_videoPresetCombo->addItem(QString::fromUtf8(p.name), QString::fromUtf8(p.id));
+		m_videoPresetCombo->addItem(
+			QString("[%1] %2").arg(QString::fromUtf8(p.id), QString::fromUtf8(p.name)),
+			QString::fromUtf8(p.id));
 	m_videoPresetCombo->setToolTip(
 		"Famous ray-tracing reference scenes and motions, pre-tuned so you don't\n"
 		"have to set the scene, camera path, frame count, fps, and speed by hand.\n"

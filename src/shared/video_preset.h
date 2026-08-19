@@ -24,7 +24,16 @@
 namespace video_preset {
 
 struct VideoPreset {
-    const char* id;           // stable key, e.g. "cornell-orbit" - used by --video-preset
+    const char* id;           // short scene-registry-style id, e.g. "V1" - stable
+                               // for the lifetime of this table's ordering (see
+                               // kAll's own comment), used by --video-preset and
+                               // shown as the GUI combo's "[V1]" prefix, mirroring
+                               // how scene_registry.h's SceneDescriptor::id ("A1",
+                               // "G6"...) is displayed in the scene combo.
+    const char* key;          // descriptive slug, e.g. "cornell-orbit" - also
+                               // accepted by --video-preset, since it stays
+                               // meaningful in a shell history the way a bare "V1"
+                               // does not.
     const char* name;         // "Cornell Box Orbit" - shown in the GUI combo
     const char* description;  // one line, shown as a tooltip
     const char* scene_id;     // SceneDescriptor::id, e.g. "A1"
@@ -38,38 +47,40 @@ struct VideoPreset {
 // camera path already implemented in camera_path.h - no new rendering
 // features, just known-good bundles of existing ones. Ordered roughly by
 // render cost (fastest first) so the GUI combo's default selection is cheap
-// to try.
+// to try. `id` follows that same order (V1..V6) - like scene ids, it is a
+// stable label for a specific preset, not a live rank, so inserting a new
+// preset later should append rather than renumber the ones before it.
 inline const VideoPreset kAll[] = {
     {
-        "cornell-orbit", "Cornell Box Orbit",
+        "V1", "cornell-orbit", "Cornell Box Orbit",
         "A slow 360-degree orbit around ray tracing's most iconic reference scene.",
         "A1", "orbit", 90, 30, 1.0
     },
     {
-        "teapot-spin", "Utah Teapot Spin",
+        "V2", "teapot-spin", "Utah Teapot Spin",
         "The Utah teapot - computer graphics' most iconic test object - rotating in place.",
         "G6", "orbit", 90, 30, 1.0
     },
     {
-        "one-weekend-flyby", "One Weekend Flyby",
+        "V3", "one-weekend-flyby", "One Weekend Flyby",
         "A flythrough of the Ray Tracing in One Weekend cover scene - hundreds of "
         "random spheres with real per-object motion blur.",
         "A2", "linear", 90, 30, 0.8
     },
     {
-        "next-week-finale", "Next Week Finale",
+        "V4", "next-week-finale", "Next Week Finale",
         "The Ray Tracing: The Next Week finale scene - moving spheres, volumes, and "
         "a subsurface sphere over a box-grid ground.",
         "A9", "figure8", 120, 30, 0.6
     },
     {
-        "glass-dragon-caustics", "Glass Dragon Caustics",
+        "V5", "glass-dragon-caustics", "Glass Dragon Caustics",
         "A spiral zoom into a refractive glass dragon, showing off dielectric "
         "caustics as the camera closes in.",
         "G13", "spiral", 120, 30, 0.5
     },
     {
-        "sponza-flythrough", "Sponza Flythrough",
+        "V6", "sponza-flythrough", "Sponza Flythrough",
         "A flythrough of Crytek Sponza, the rendering community's canonical "
         "global-illumination showcase scene.",
         "H1", "linear", 120, 24, 0.5
@@ -77,10 +88,14 @@ inline const VideoPreset kAll[] = {
 };
 inline constexpr int kAllCount = sizeof(kAll) / sizeof(kAll[0]);
 
-inline const VideoPreset* find(const char* id) {
-    if (!id) return nullptr;
+// Matches against either id ("V1") or key ("cornell-orbit") - the caller
+// (CLI flag parsing, GUI combo lookup) never needs to know which form it
+// was handed.
+inline const VideoPreset* find(const char* id_or_key) {
+    if (!id_or_key) return nullptr;
     for (const VideoPreset& p : kAll) {
-        if (std::strcmp(p.id, id) == 0) return &p;
+        if (std::strcmp(p.id, id_or_key) == 0 || std::strcmp(p.key, id_or_key) == 0)
+            return &p;
     }
     return nullptr;
 }

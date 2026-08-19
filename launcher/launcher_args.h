@@ -268,7 +268,7 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			} else {
 				std::cerr << "Invalid --video-preset \"" << argv[i + 1] << "\" - valid presets:\n";
 				for (const video_preset::VideoPreset& p : video_preset::kAll)
-					std::cerr << "  " << p.id << " - " << p.name << "\n";
+					std::cerr << "  " << p.id << " / " << p.key << " - " << p.name << "\n";
 				return false;
 			}
 			consumed_args.insert(i);
@@ -317,12 +317,13 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "  --fps      : Frames per second for video (default: 30)\n"
 					  << "  --speed    : Camera movement speed multiplier for video (default: 1.0)\n"
 					  << "  --camera-path,-p: Camera animation path (orbit|linear|figure8|spiral)\n"
-					  << "  --video-preset NAME: Sets --video plus scene_id/camera-path/frames/fps/speed\n"
-					  << "               together from one of src/shared/video_preset.h's named bundles\n"
-					  << "               (cornell-orbit|teapot-spin|one-weekend-flyby|next-week-finale|\n"
-					  << "               glass-dragon-caustics|sponza-flythrough); any of those five flags\n"
-					  << "               placed AFTER --video-preset on the command line overrides just\n"
-					  << "               that one field.\n"
+					  << "  --video-preset ID: Sets --video plus scene_id/camera-path/frames/fps/speed\n"
+					  << "               together from one of src/shared/video_preset.h's named bundles.\n"
+					  << "               Accepts either short id or descriptive key:\n"
+					  << "               V1/cornell-orbit, V2/teapot-spin, V3/one-weekend-flyby,\n"
+					  << "               V4/next-week-finale, V5/glass-dragon-caustics,\n"
+					  << "               V6/sponza-flythrough. Any of those five flags placed AFTER\n"
+					  << "               --video-preset on the command line overrides just that one field.\n"
 					  << "  --help,-h  : Show this help message\n"
 					  << "  width      : Image width (default " << kDefaultWidth << ", square aspect)\n"
 					  << "  spp        : Samples per pixel (default " << kDefaultSamplesPerPixel << ")\n"
