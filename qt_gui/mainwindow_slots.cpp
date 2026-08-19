@@ -874,6 +874,20 @@ void MainWindow::assembleVideoAutomatically() {
 		m_previewStack->setCurrentWidget(m_videoWidget);
 		if (m_videoControlsWidget) m_videoControlsWidget->setVisible(true);
 		if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
+		// Every render writes to the SAME path (main.cpp derives it from the
+		// output stem, so it's "video_video.mp4" every time in the GUI) - a
+		// later render's file has completely different bytes at a path the
+		// player may already have open/cached from a previous render in this
+		// same session. Qt's FFmpeg-backed QMediaPlayer has a known failure
+		// mode here: reloading a changed file at an already-seen local path
+		// can come back "Invalid data found when processing input" even
+		// though the file itself is perfectly valid (confirmed via ffprobe/
+		// a full ffmpeg decode on an affected file) - stale demuxer/format-
+		// context state tied to the path, not the actual bytes. stop() plus
+		// clearing the source first forces the backend to fully let go of
+		// whatever it had before asking it to open the new content.
+		m_mediaPlayer->stop();
+		m_mediaPlayer->setSource(QUrl());
 		m_mediaPlayer->setSource(QUrl::fromLocalFile(videoPath));
 		m_mediaPlayer->play();
 	}
