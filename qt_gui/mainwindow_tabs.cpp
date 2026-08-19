@@ -654,22 +654,40 @@ void MainWindow::createPreviewTab() {
 	// keeps every past render's image/video around. Not movable: tab order
 	// (render order) is itself informative, and reordering would also
 	// complicate m_previewTitleCounts' de-duplication.
-	m_previewSubTabs = new QTabWidget();
+	m_previewSubTabs = new SplitPreviewTabs();
 	m_previewSubTabs->setMinimumSize(200, 200);
-	m_previewSubTabs->setTabsClosable(true);
-	m_previewSubTabs->setMovable(false);
-	connect(m_previewSubTabs, &QTabWidget::tabCloseRequested, this, [this](int index) {
-		QWidget *page = m_previewSubTabs->widget(index);
-		m_previewSubTabs->removeTab(index);
-		// Any QMediaPlayer/QVideoWidget a video tab owns is a CHILD of
-		// `page` (see addVideoPreviewTab()), so deleting it tears those
-		// down too rather than leaking a player per closed tab.
-		if (page) page->deleteLater();
+	// Qt's own auto-managed close button is deliberately left off - its
+	// placement follows a style hint (SH_TabBar_CloseButtonPosition) that
+	// this app's active stylesheet does not reliably let a per-widget style
+	// override, so it always landed on the wrong side regardless.
+	// HorizontalTabBar instead hand-paints and hand-hit-tests its own close
+	// glyph directly on the left of each tab's label (see paintEvent()/
+	// mousePressEvent() in mainwindow.h), which sidesteps that negotiation
+	// entirely. Not movable either (QTabBar's own default): tab order
+	// (render order) is itself informative, and reordering would also
+	// complicate m_previewTitleCounts' de-duplication.
+	//
+	// Left side rather than across the top - a render can accumulate many
+	// of these over a session, and a vertical list scales far better than
+	// a widening horizontal strip. setUsesScrollButtons() is what keeps the
+	// list reachable once it overflows the pane's height (Qt's tab bar has
+	// no literal scrollbar, but this is its own equivalent: small up/down
+	// arrow buttons appear once the tabs no longer fit). objectName'd so
+	// its QSS rule (mainwindow_style.cpp) can give it left-rounded corners
+	// and a right-edge accent border instead of the main tab strip's
+	// top-rounded/bottom-underline styling, which is built for a
+	// horizontal bar and would land on the wrong edges here. The West
+	// shape itself is set in SplitPreviewTabs's own constructor
+	// (mainwindow.h), since that's a QTabBar property independent of
+	// QTabWidget - SplitPreviewTabs doesn't use one.
+	m_previewSubTabs->tabBar()->setObjectName("previewSubTabsBar");
+	m_previewSubTabs->tabBar()->setUsesScrollButtons(true);
+	m_previewSubTabs->setElideMode(Qt::ElideRight);
+	connect(m_previewSubTabs, &SplitPreviewTabs::currentChanged, this, [this](int) {
 		updatePreviewSidebarForActiveTab();
 	});
-	connect(m_previewSubTabs, &QTabWidget::currentChanged, this, [this](int) {
-		updatePreviewSidebarForActiveTab();
-	});
+	connect(m_previewSubTabs->tabBar(), &HorizontalTabBar::closeRequested,
+	        this, &MainWindow::closePreviewSubTab);
 	splitter->addWidget(m_previewSubTabs);
 
 	QWidget *sidebar = new QWidget();
@@ -755,6 +773,17 @@ QString MainWindow::currentPreviewProperty(const char *name) const {
 void MainWindow::updatePreviewSidebarForActiveTab() {
 	if (m_previewInfoLabel) m_previewInfoLabel->setText(currentPreviewProperty("infoText"));
 	updateActionStates();
+}
+
+void MainWindow::closePreviewSubTab(int index) {
+	if (!m_previewSubTabs) return;
+	QWidget *page = m_previewSubTabs->widget(index);
+	m_previewSubTabs->removeTab(index);
+	// Any QMediaPlayer/QVideoWidget a video tab owns is a CHILD of `page`
+	// (see addVideoPreviewTab()), so deleting it tears those down too
+	// rather than leaking a player per closed tab.
+	if (page) page->deleteLater();
+	updatePreviewSidebarForActiveTab();
 }
 
 void MainWindow::addImagePreviewTab(const QString &title, const QString &tooltip, const QPixmap &pixmap,

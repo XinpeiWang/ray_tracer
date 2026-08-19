@@ -17,6 +17,7 @@
 #include <QVector3D>
 #include <QTextEdit>
 #include <QEvent>
+#include <QMouseEvent>
 #include <QTimer>
 #include <QDateTime>
 #include <QElapsedTimer>
@@ -29,6 +30,11 @@
 #include <QAudioOutput>
 #include <QVideoWidget>
 #include <QMap>
+#include <QStylePainter>
+#include <QStyleOptionTab>
+#include <QHBoxLayout>
+#include <QSplitter>
+#include <QSignalBlocker>
 
 #include "camera_math.h"
 #include "render_output_parser.h"
@@ -105,6 +111,246 @@ private:
 
 	QPixmap m_original;
 	QString m_placeholderText;
+};
+
+// ============================================================================
+// HorizontalTabBar / SplitPreviewTabs
+// ============================================================================
+// A West-positioned (left-side) QTabBar whose labels stay upright/horizontal
+// instead of Qt's default rendering for that position, which rotates the
+// text 90 degrees to read top-to-bottom - readable for a handful of tabs,
+// but not what "tabs on the left" means for the Preview tab's per-render
+// sub-tabs (createPreviewTab()), which are titled with real scene/preset
+// names.
+//
+// The label is painted by hand (setColors() + paintEvent() below) rather
+// than by counter-rotating the painter and calling the style's own
+// CE_TabBarTabLabel - that is the textbook technique for this, but with a
+// stylesheet active it draws nothing: QStyleSheetStyle's CE_TabBarTabLabel
+// matches each tab against its own cached geometry to pick a rule, and this
+// bar's very own transposed opt.rect (needed for the rotation) is exactly
+// what breaks that match, silently producing invisible (not just
+// mis-rotated) text. Drawing the shape via CE_TabBarTabShape still works
+// fine - only the label needs the hand-rolled path - so setColors() is fed
+// the same three colours the (still QSS-driven) shape rule already keys
+// off of (mainwindow_style.cpp's own QTabBar#previewSubTabsBar::tab rule),
+// applied by MainWindow::applyTheme() whenever the scheme changes.
+//
+// tabSizeHint() still double-transposes for the same reason it did with the
+// rotation approach: QCommonStyle already transposes its own size hint once
+// for a West-shaped bar (narrow width, height sized to fit the label
+// lengthwise), and undoing that gets back a normal horizontal-tab footprint
+// (width sized to the label, one line tall) arranged in a vertical stack
+// instead of a horizontal row - independent of how the label itself ends up
+// painted.
+class HorizontalTabBar : public QTabBar {
+	Q_OBJECT
+public:
+	explicit HorizontalTabBar(QWidget *parent = nullptr) : QTabBar(parent) {}
+
+	// Kept in sync with the active theme's palette by MainWindow::
+	// applyTheme() - see this class's own comment on why the label can't
+	// just read colours out of the stylesheet the way the shape does.
+	void setColors(const QColor &normal, const QColor &hover, const QColor &selected) {
+		m_normalColor = normal;
+		m_hoverColor = hover;
+		m_selectedColor = selected;
+		update();
+	}
+
+signals:
+	// Emitted on a left-click inside a tab's close glyph. Connected to
+	// MainWindow::closePreviewSubTab() by createPreviewTab() - a plain
+	// signal/slot connection, in place of the QTabBar::tabCloseRequested a
+	// normal closable tab bar would emit, since this bar manages its close
+	// affordance by hand (see closeGlyphRect()'s own comment on why).
+	void closeRequested(int index);
+
+protected:
+	QSize tabSizeHint(int index) const override {
+		QSize s = QTabBar::tabSizeHint(index);
+		s.transpose();
+		return s;
+	}
+
+	void paintEvent(QPaintEvent * /*event*/) override {
+		QStylePainter painter(this);
+		for (int i = 0; i < count(); ++i) {
+			QStyleOptionTab opt;
+			initStyleOption(&opt, i);
+			// Background/border only - QSS-aware (QTabBar#previewSubTabsBar
+			// ::tab in mainwindow_style.cpp), and unaffected by the label's
+			// own rect-mismatch problem since there is no text to hide here.
+			painter.drawControl(QStyle::CE_TabBarTabShape, opt);
+
+			QColor color = m_normalColor;
+			QFont font = painter.font();
+			if (opt.state & QStyle::State_Selected) {
+				color = m_selectedColor;
+				font.setBold(true);
+			} else if (opt.state & QStyle::State_MouseOver) {
+				color = m_hoverColor;
+			}
+			painter.setPen(color);
+			painter.setFont(font);
+
+			// Close glyph, drawn (and hit-tested - see mousePressEvent())
+			// by hand for the same reason the label is: Qt's automatic
+			// close-button placement (setTabButton()/tabsClosable(true))
+			// positions relative to the tab bar's shape/orientation
+			// semantics, not the screen - for a West-shaped bar,
+			// QTabBar::LeftSide lands the button at the tab's physical
+			// TOP edge, not its visual left, no matter what this bar's own
+			// painting does to make the tab read as a normal horizontal
+			// one. A real child widget positioned by Qt's layout can't be
+			// told "screen-left" directly, so the glyph is drawn as plain
+			// text instead, exactly where this bar's own coordinate space
+			// says left actually is.
+			painter.setPen(color);
+			painter.drawText(closeGlyphRect(i), Qt::AlignCenter, QStringLiteral("×"));
+
+			// Drawn upright in the bar's own (unrotated) coordinate space -
+			// there is no rotation to undo here in the first place, unlike
+			// the style's own CE_TabBarTabLabel handling for West tabs.
+			// Left margin clears the close glyph; right margin is just
+			// breathing room before the tab's own edge.
+			const QRect textRect = tabRect(i).adjusted(30, 0, -8, 0);
+			const QString elided = QFontMetrics(font).elidedText(tabText(i), Qt::ElideRight, textRect.width());
+			painter.drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, elided);
+		}
+	}
+
+	void mousePressEvent(QMouseEvent *event) override {
+		if (event->button() == Qt::LeftButton) {
+			for (int i = 0; i < count(); ++i) {
+				if (closeGlyphRect(i).contains(event->pos())) {
+					emit closeRequested(i);
+					return; // Swallowed - a close click is not a tab-select click.
+				}
+			}
+		}
+		QTabBar::mousePressEvent(event);
+	}
+
+private:
+	QRect closeGlyphRect(int index) const {
+		const QRect r = tabRect(index);
+		return QRect(r.left() + 6, r.center().y() - 8, 18, 18);
+	}
+
+	QColor m_normalColor;
+	QColor m_hoverColor;
+	QColor m_selectedColor;
+};
+
+// A hand-rolled stand-in for QTabWidget, built from a HorizontalTabBar and a
+// QStackedWidget placed in a QSplitter instead of QTabWidget's fixed internal
+// layout. QTabWidget offers no way to make the boundary between its tab bar
+// and its pages user-draggable - that boundary isn't a QSplitter at all, just
+// a plain layout - so there was no way to give the tab strip's width the same
+// drag-to-resize affordance as the splitter on the sidebar's edge (see
+// createPreviewTab()). Splitting the two halves out into real QSplitter
+// children gets that same handle "for free", matching the sidebar one
+// exactly since both come from the same default QSplitter::handle styling.
+// Only the subset of QTabWidget's API createPreviewTab() and friends
+// actually use is reimplemented here.
+class SplitPreviewTabs : public QWidget {
+	Q_OBJECT
+public:
+	explicit SplitPreviewTabs(QWidget *parent = nullptr) : QWidget(parent) {
+		auto *layout = new QHBoxLayout(this);
+		layout->setContentsMargins(0, 0, 0, 0);
+		layout->setSpacing(0);
+
+		m_splitter = new QSplitter(Qt::Horizontal, this);
+		m_splitter->setChildrenCollapsible(false);
+		layout->addWidget(m_splitter);
+
+		// QSplitter always stretches a pane to the splitter's full
+		// perpendicular extent (here, full height) - but QTabBar, given more
+		// height than its tabs need, centers the tab group in the extra
+		// space rather than pinning it to the top the way QTabWidget's own
+		// (non-QSplitter) internal layout does. Wrapping the bar in its own
+		// top-anchoring container - tab bar, then a stretch - keeps the
+		// splitter pane full height (so the drag handle still runs the
+		// whole column) while restoring the top-anchored tab list.
+		QWidget *tabBarContainer = new QWidget(m_splitter);
+		QVBoxLayout *tabBarLayout = new QVBoxLayout(tabBarContainer);
+		tabBarLayout->setContentsMargins(0, 0, 0, 0);
+		tabBarLayout->setSpacing(0);
+		m_tabBar = new HorizontalTabBar(tabBarContainer);
+		m_tabBar->setShape(QTabBar::RoundedWest);
+		tabBarLayout->addWidget(m_tabBar);
+		tabBarLayout->addStretch(1);
+		m_splitter->addWidget(tabBarContainer);
+
+		m_stack = new QStackedWidget(m_splitter);
+		m_splitter->addWidget(m_stack);
+
+		// The tab strip keeps its own width on a splitter drag; the page
+		// area absorbs the rest - mirrors setStretchFactor() on the outer
+		// splitter between this widget and the sidebar.
+		m_splitter->setStretchFactor(0, 0);
+		m_splitter->setStretchFactor(1, 1);
+		// setStretchFactor() only governs how space is redistributed on a
+		// live resize; it does nothing for the very first layout, which
+		// QSplitter seeds from each pane's sizeHint() - and m_stack's hint
+		// is whatever an empty QStackedWidget reports (tiny), since this
+		// runs at construction time, long before the first render ever adds
+		// a page. Without this, that tiny initial split sticks: the page
+		// area never claims the rest of the width on its own, so the first
+		// image/video added would render small and centered in a pane far
+		// smaller than what's actually available. A lopsided requested
+		// split (mostly to the stack) forces QSplitter to hand it virtually
+		// all the space up front instead.
+		m_splitter->setSizes({1, 1'000'000});
+
+		connect(m_tabBar, &QTabBar::currentChanged, this, [this](int index) {
+			m_stack->setCurrentIndex(index);
+			emit currentChanged(index);
+		});
+	}
+
+	HorizontalTabBar *tabBar() const { return m_tabBar; }
+
+	int addTab(QWidget *page, const QString &label) {
+		const int stackIndex = m_stack->addWidget(page);
+		const int tabIndex = m_tabBar->addTab(label);
+		Q_ASSERT(stackIndex == tabIndex);
+		return tabIndex;
+	}
+
+	void setTabToolTip(int index, const QString &tip) { m_tabBar->setTabToolTip(index, tip); }
+	void setCurrentIndex(int index) { m_tabBar->setCurrentIndex(index); }
+	QWidget *currentWidget() const { return m_stack->currentWidget(); }
+	QWidget *widget(int index) const { return m_stack->widget(index); }
+	void setElideMode(Qt::TextElideMode mode) { m_tabBar->setElideMode(mode); }
+
+	// Removes the tab/page pair at index without deleting the page - same
+	// ownership contract as QTabWidget::removeTab(), so closePreviewSubTab()
+	// (mainwindow_tabs.cpp) still does its own deleteLater() afterward.
+	// The tab bar's own removeTab() can auto-select and emit currentChanged
+	// before the stack has caught up (index i+1's old page still sitting at
+	// index i) - blocked here and re-emitted once both sides agree.
+	void removeTab(int index) {
+		QWidget *page = m_stack->widget(index);
+		{
+			const QSignalBlocker blocker(m_tabBar);
+			m_tabBar->removeTab(index);
+		}
+		if (page) m_stack->removeWidget(page);
+		const int newIndex = m_tabBar->currentIndex();
+		m_stack->setCurrentIndex(newIndex);
+		emit currentChanged(newIndex);
+	}
+
+signals:
+	void currentChanged(int index);
+
+private:
+	QSplitter *m_splitter;
+	HorizontalTabBar *m_tabBar;
+	QStackedWidget *m_stack;
 };
 
 // ============================================================================
@@ -333,6 +579,12 @@ private:
 	// whichever sub-tab just became active - connected to m_previewSubTabs's
 	// currentChanged signal.
 	void updatePreviewSidebarForActiveTab();
+	// Removes and deletes a Preview sub-tab. Called from each tab's own
+	// left-side close button (see addImagePreviewTab()/addVideoPreviewTab())
+	// rather than QTabWidget::tabCloseRequested, since Qt's own auto-managed
+	// close button is turned off entirely - see createPreviewTab()'s comment
+	// on why.
+	void closePreviewSubTab(int index);
 
 	// Camera arithmetic lives in camera_math.h (Qt-free, unit tested); these
 	// just read the current values out of the widgets for it.
@@ -448,7 +700,7 @@ private:
 	// QVideoWidget/QMediaPlayer/QAudioOutput, all parented to the page so
 	// closing the tab tears them down too) - see createPreviewTab() and
 	// currentPreviewProperty()/updatePreviewSidebarForActiveTab().
-	QTabWidget *m_previewSubTabs = nullptr;
+	SplitPreviewTabs *m_previewSubTabs = nullptr;
 	QLabel *m_previewInfoLabel;         // Filename / resolution / size / render time - reflects whichever sub-tab is active
 	QLabel *m_previewSceneDescLabel;    // Selected scene's description - see onSceneChanged()
 	int m_previewTabIndex = -1;         // Index of the Preview tab within m_tabWidget

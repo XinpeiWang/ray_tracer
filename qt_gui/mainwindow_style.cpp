@@ -99,6 +99,15 @@ QString paneBackgroundRule(const theme::Palette &p) {
 void MainWindow::applyTheme(const theme::Palette &p) {
 	m_activeTheme = p;
 
+	// HorizontalTabBar's label paints itself rather than going through the
+	// stylesheet (see that class's own comment on why), so it needs these
+	// three colours handed to it directly instead of picking them up from
+	// QTabBar#previewSubTabsBar::tab the way the tab's shape/background
+	// still does. Matches that QSS rule's normal/hover/selected colours.
+	if (m_previewSubTabs) {
+		m_previewSubTabs->tabBar()->setColors(p.textMuted, p.textBody, p.accentSecondary);
+	}
+
 	// Qt's own palette still matters: it is what non-stylesheet painting and
 	// native dialogs read, so it has to track the scheme too rather than being
 	// left on whatever the first theme set.
@@ -329,6 +338,36 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 		}
 		QTabBar#sceneCategoryTabs::tab:selected {
 			border-bottom: 1px solid %ACCENT_2%;
+		}
+		/* The Preview tab's per-render sub-tabs (createPreviewTab()) sit on
+		   the LEFT (QTabWidget::West) rather than across the top, so the
+		   corners and the selected-tab accent move to match: left-rounded
+		   (not top-rounded) and a right-side border (not bottom) - the main
+		   tab strip's rule above is built for a horizontal bar and its
+		   bottom-edge underline would land on the wrong side entirely here. */
+		QTabBar#previewSubTabsBar::tab {
+			background-color: transparent;
+			border: 1px solid transparent;
+			border-right: 1px solid %BORDER%;
+			border-top-left-radius: %RADIUS%;
+			border-bottom-left-radius: %RADIUS%;
+			padding: 10px 14px;
+			color: %TEXT_MUTED%;
+			font-size: 10pt;
+			min-width: 0px;
+			min-height: 32px;
+			margin-bottom: 2px;
+		}
+		QTabBar#previewSubTabsBar::tab:selected {
+			background-color: %SURFACE0%;
+			border-color: %BORDER%;
+			border-right: 2px solid %ACCENT_2%;
+			color: %ACCENT_2%;
+			font-weight: bold;
+		}
+		QTabBar#previewSubTabsBar::tab:hover:!selected {
+			background-color: %SURFACE1%;
+			color: %TEXT%;
 		}
 		QSpinBox, QDoubleSpinBox, QComboBox, QLineEdit {
 			background-color: %SURFACE1%;
