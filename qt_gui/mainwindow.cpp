@@ -518,7 +518,8 @@ void MainWindow::setupUI() {
 	// Mnemonics ("&R" -> Alt+R) are assigned so every button is reachable
 	// without the mouse. They're deliberately collision-free across the whole
 	// window, including buttons that live on different tabs: R=Render,
-	// T=sTop, B=Browse, C=Copy, S=Save, L=cLear, F=Folder, V=Viewer.
+	// T=sTop, B=Browse, C=Copy, S=Save, L=cLear, F=Folder, V=Viewer,
+	// M=re&Move (queue), Q=&Queue (clear queue).
 	// Icons come from resources.qrc rather than emoji in the label text.
 	// A colour emoji carries its own palette, so it cannot be tinted to the
 	// theme and stays fully saturated when the button is disabled; QIcon
@@ -539,7 +540,8 @@ void MainWindow::setupUI() {
 	// The style's default 16px icon is dwarfed by a 50px-tall button with
 	// 13pt bold text; 20px sits correctly against the cap height.
 	m_renderButton->setIconSize(QSize(20, 20));
-	m_renderButton->setToolTip("Render the selected scene with the current settings");
+	m_renderButton->setToolTip("Render the selected scene with the current settings\n"
+	                           "(queues behind it instead if a render is already running)");
 	connect(m_renderButton, &QPushButton::clicked, this, &MainWindow::onRenderClicked);
 
 	// Stop button
@@ -557,6 +559,33 @@ void MainWindow::setupUI() {
 	buttonLayout->addWidget(m_renderButton);
 	buttonLayout->addWidget(m_stopButton);
 	mainLayout->addLayout(buttonLayout);
+
+	// Render queue - added after the button row (rather than before, next to
+	// Progress) so the primary controls stay in a fixed position regardless
+	// of how many jobs are queued. Hidden whenever the queue is empty (see
+	// refreshQueuePanel()), so a single render - the common case - looks
+	// exactly like it did before this existed.
+	m_queueGroup = new QGroupBox("Render Queue", this);
+	m_queueGroup->setVisible(false);
+	QVBoxLayout *queueLayout = new QVBoxLayout(m_queueGroup);
+
+	m_queueListWidget = new QListWidget(m_queueGroup);
+	m_queueListWidget->setSelectionMode(QAbstractItemView::SingleSelection);
+	m_queueListWidget->setMaximumHeight(120);
+	queueLayout->addWidget(m_queueListWidget);
+
+	QHBoxLayout *queueButtonLayout = new QHBoxLayout();
+	QPushButton *removeQueueItemButton = new QPushButton("Re&move Selected", m_queueGroup);
+	removeQueueItemButton->setToolTip("Remove the selected job from the render queue");
+	connect(removeQueueItemButton, &QPushButton::clicked, this, &MainWindow::onRemoveSelectedQueueItem);
+	QPushButton *clearQueueButton = new QPushButton("Clear &Queue", m_queueGroup);
+	clearQueueButton->setToolTip("Remove every job from the render queue");
+	connect(clearQueueButton, &QPushButton::clicked, this, &MainWindow::onClearQueue);
+	queueButtonLayout->addWidget(removeQueueItemButton);
+	queueButtonLayout->addWidget(clearQueueButton);
+	queueLayout->addLayout(queueButtonLayout);
+
+	mainLayout->addWidget(m_queueGroup);
 
 	setCentralWidget(centralWidget);
 }

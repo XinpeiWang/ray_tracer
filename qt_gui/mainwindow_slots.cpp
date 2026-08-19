@@ -59,66 +59,79 @@ QString styleLogLine(const render_output::LogCategory &cat, const QString &colou
 } // namespace
 
 void MainWindow::onRenderClicked() {
-	if (m_isRendering) {
-		QMessageBox::warning(this, "Render In Progress", "A render is already in progress!");
-		return;
-	}
+	// Always enqueue, then start the front of the queue if nothing is
+	// currently running - the everyday single-render case is just "enqueue
+	// one job into an empty, immediately-idle queue", so there is no
+	// separate "start immediately" branch whose behaviour could drift from
+	// the queued path. See processQueueIfIdle()'s own comment for what
+	// happens after a render this triggers actually finishes.
+	m_renderQueue.enqueue(captureRenderJob());
+	refreshQueuePanel();
+	processQueueIfIdle();
+}
+
+RenderJob MainWindow::captureRenderJob() {
+	RenderJob job;
 
 	// ========================================================================
 	// Collect Render Parameters
 	// ========================================================================
 
 	// Render mode: GPU (true) or CPU (false)
-	bool useGPU = m_renderModeCombo->currentData().toBool();
+	job.useGPU = m_renderModeCombo->currentData().toBool();
 	// GPU backend: recursive (false, default) or wavefront (true). Meaningless
 	// under CPU, so only honored when useGPU is also true.
-	bool useWavefront = useGPU && m_gpuBackendCombo->currentData().toBool();
+	job.useWavefront = job.useGPU && m_gpuBackendCombo->currentData().toBool();
 
 	// Resolution: either from preset dropdown or custom values from Advanced tab
-	int width, height;
 	if (m_qualityPresetCombo->currentIndex() == 6) {
 		// Custom quality preset - use manual width/height from Advanced tab
-		width = m_widthSpinBox->value();
-		height = m_heightSpinBox->value();
+		job.width = m_widthSpinBox->value();
+		job.height = m_heightSpinBox->value();
 	} else {
 		// Standard quality preset - use resolution from dropdown
 		QSize res = m_resolutionCombo->currentData().toSize();
-		width = res.width();
-		height = res.height();
+		job.width = res.width();
+		job.height = res.height();
 	}
 
 	// Ray tracing quality parameters
-	int samples = m_samplesSpinBox->value();    // Samples per pixel (higher = smoother but slower)
-	int maxDepth = m_maxDepthSpinBox->value();  // Max ray bounce depth (higher = more realistic lighting)
+	job.samples = m_samplesSpinBox->value();    // Samples per pixel (higher = smoother but slower)
+	job.maxDepth = m_maxDepthSpinBox->value();  // Max ray bounce depth (higher = more realistic lighting)
 
 	// Camera position (lookfrom) - read from spinboxes
 	// These reflect either the selected preset or custom user input
-	QString sceneId = m_sceneCombo->currentData().toString();
+	job.sceneId = m_sceneCombo->currentData().toString();
+	job.displayTitle = SceneMetadataClient::sceneName(job.sceneId);
+	if (job.displayTitle.isEmpty())
+		job.displayTitle = job.sceneId.isEmpty() ? QStringLiteral("Render") : job.sceneId;
+	job.sceneDescription = SceneMetadataClient::sceneDescription(job.sceneId);
 
 	// Output file path - the field's own placeholder text promises a
 	// timestamp "to avoid overwriting", but that timestamp was only ever
 	// generated once, when the field was created at app startup - every
 	// render in the same session reused that same name. Refreshed here
-	// instead, on every render, keeping whatever directory the user chose
-	// (via Browse) but replacing the filename - so each render gets its own
-	// file and an earlier render's Preview sub-tab (see addImagePreviewTab/
-	// addVideoPreviewTab) still has something real to point "Open Folder"/
-	// "Open Viewer" at after a later render completes. Video mode reuses
-	// this same field (see mainwindow.cpp's buildCommandLine) rather than
-	// its own fixed "output/video.ppm", for the same reason.
+	// instead, on every capture (including ones that only get queued rather
+	// than started immediately - each still needs its own unique path),
+	// keeping whatever directory the user chose (via Browse) but replacing
+	// the filename - so each render gets its own file and an earlier
+	// render's Preview sub-tab (see addImagePreviewTab/addVideoPreviewTab)
+	// still has something real to point "Open Folder"/"Open Viewer" at
+	// after a later render completes. Video mode reuses this same field
+	// rather than its own fixed "output/video.ppm", for the same reason.
 	{
 		QFileInfo prevInfo(m_outputPathEdit->text());
 		QString dir = prevInfo.absolutePath();
 		QString ext = m_videoMode ? "ppm" : (prevInfo.suffix().isEmpty() ? "png" : prevInfo.suffix());
 		QString base = m_videoMode ? "video" : "render";
 		QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss_zzz");
-		QString newName = QString("%1_%2_%3.%4").arg(base, sceneId, timestamp, ext);
+		QString newName = QString("%1_%2_%3.%4").arg(base, job.sceneId, timestamp, ext);
 		m_outputPathEdit->setText(QDir::toNativeSeparators(dir + "/" + newName));
 	}
-	QString outputPath = m_outputPathEdit->text();
-	double camX = m_cameraPosX->value();
-	double camY = m_cameraPosY->value();
-	double camZ = m_cameraPosZ->value();
+	job.outputPath = m_outputPathEdit->text();
+	job.camX = m_cameraPosX->value();
+	job.camY = m_cameraPosY->value();
+	job.camZ = m_cameraPosZ->value();
 
 	// Only treat the camera as "explicit" (see RenderController::setParameters's
 	// comment) if it actually differs from this scene's own recommended
@@ -126,9 +139,9 @@ void MainWindow::onRenderClicked() {
 	// default to explicit: the worse outcome is an unnecessary (but
 	// harmless, since it'd be the same value anyway) cam_x/y/z on the
 	// command line, not a silently wrong camera.
-	bool camExplicit = true;
+	job.camExplicit = true;
 	double recCamX = 0.0, recCamY = 0.0, recCamZ = 0.0, recLookatX = 0.0, recLookatY = 0.0, recLookatZ = 0.0;
-	if (SceneMetadataClient::recommendedCamera(sceneId, recCamX, recCamY, recCamZ, recLookatX, recLookatY, recLookatZ)) {
+	if (SceneMetadataClient::recommendedCamera(job.sceneId, recCamX, recCamY, recCamZ, recLookatX, recLookatY, recLookatZ)) {
 		// m_cameraPosX/Y/Z are QDoubleSpinBoxes with the default 2 decimal
 		// places, so a recommended value round-trips through setValue()/
 		// value() rounded to the nearest 0.01 - the epsilon has to be
@@ -137,10 +150,39 @@ void MainWindow::onRenderClicked() {
 		// never compare equal, permanently forcing camExplicit=true (still
 		// harmless, just pointlessly defeats this check for that scene).
 		constexpr double kEpsilon = 0.005;
-		camExplicit = std::abs(camX - recCamX) > kEpsilon
-			|| std::abs(camY - recCamY) > kEpsilon
-			|| std::abs(camZ - recCamZ) > kEpsilon;
+		job.camExplicit = std::abs(job.camX - recCamX) > kEpsilon
+			|| std::abs(job.camY - recCamY) > kEpsilon
+			|| std::abs(job.camZ - recCamZ) > kEpsilon;
 	}
+
+	job.videoMode = m_videoMode;
+	if (m_videoMode) {
+		job.videoFrames = m_videoFramesSpinBox->value();
+		job.videoFPS = m_videoFPSSpinBox->value();
+		job.videoSpeed = m_videoSpeedSpinBox->value();
+		job.cameraPath = m_cameraPathCombo->currentData().toString();
+
+		// Named scene+path+frames/fps/speed bundle, if one is selected - see
+		// video_preset.h. Captured now (rather than re-read by
+		// assembleVideoAutomatically() later) since that runs on a ~500ms
+		// deferred timer, by which point the user may already have changed
+		// this combo for a different queued job.
+		if (m_videoPresetCombo && m_videoPresetCombo->currentIndex() > 0) {
+			const QString id = m_videoPresetCombo->currentData().toString();
+			if (const video_preset::VideoPreset *preset = video_preset::find(id.toUtf8().constData()))
+				job.videoPresetName = QString::fromUtf8(preset->name);
+		}
+	}
+
+	return job;
+}
+
+void MainWindow::startRenderJob(const RenderJob &job) {
+	// Recorded before anything else so onRenderComplete() - which fires
+	// asynchronously, possibly after the user has already changed the scene/
+	// mode combo for a job queued behind this one - describes the job that
+	// actually ran, not whatever the form happens to show by then.
+	m_currentJob = job;
 
 	// ========================================================================
 	// Launch Render
@@ -150,15 +192,12 @@ void MainWindow::onRenderClicked() {
 	// QProcess is already asynchronous). The executable will call either the
 	// CPU or GPU renderer based on the useGPU flag.
 	m_renderController = new RenderController(this);
-	m_renderController->setParameters(useGPU, width, height, samples, maxDepth, sceneId, camX, camY, camZ, camExplicit, outputPath, useWavefront);
+	m_renderController->setParameters(job.useGPU, job.width, job.height, job.samples, job.maxDepth,
+	                                   job.sceneId, job.camX, job.camY, job.camZ, job.camExplicit,
+	                                   job.outputPath, job.useWavefront);
 
-	// Set video parameters if in video mode
-	if (m_videoMode) {
-		int videoFrames = m_videoFramesSpinBox->value();
-		int videoFPS = m_videoFPSSpinBox->value();
-		double videoSpeed = m_videoSpeedSpinBox->value();
-		QString cameraPath = m_cameraPathCombo->currentData().toString();
-		m_renderController->setVideoParameters(true, videoFrames, videoFPS, cameraPath, videoSpeed);
+	if (job.videoMode) {
+		m_renderController->setVideoParameters(true, job.videoFrames, job.videoFPS, job.cameraPath, job.videoSpeed);
 	} else {
 		m_renderController->setVideoParameters(false, 0, 0, "", 1.0);
 	}
@@ -169,19 +208,29 @@ void MainWindow::onRenderClicked() {
 
 	// The controller is done once it reports completion; drop it so
 	// m_renderController is only non-null while a render is actually active.
-	connect(m_renderController, &RenderController::renderComplete, this, [this]() {
-		if (!m_renderController) return;
-		m_renderController->deleteLater();
-		m_renderController = nullptr;
+	// Captures the controller by value rather than reading the m_renderController
+	// member at delete time: onRenderComplete (connected above, so it runs first)
+	// can synchronously start the next queued job before this lambda runs, which
+	// would otherwise repoint m_renderController at the new job's controller and
+	// make this delete the wrong (brand new, still-running) instance out from
+	// under it.
+	RenderController *controllerToRetire = m_renderController;
+	connect(m_renderController, &RenderController::renderComplete, this, [this, controllerToRetire]() {
+		if (m_renderController == controllerToRetire) m_renderController = nullptr;
+		controllerToRetire->deleteLater();
 	});
 
 	m_isRendering = true;
-	m_renderButton->setEnabled(false);
+	// m_renderButton stays enabled (unlike m_stopButton) - it's still valid
+	// to click while a render is running, since doing so now just queues
+	// another job instead of starting one immediately.
 	m_stopButton->setEnabled(true);
 	updateActionStates();
 	refreshStatusBarInfo();
 	m_progressBar->setValue(0);
-	m_statusLabel->setText(m_videoMode ? "Rendering video frames..." : "Rendering...");
+	QString statusText = job.videoMode ? "Rendering video frames..." : "Rendering...";
+	if (!m_renderQueue.isEmpty()) statusText += QString(" (%1 more queued)").arg(m_renderQueue.size());
+	m_statusLabel->setText(statusText);
 
 	// Start elapsed timer. Its 1 Hz tick doubles as the ETA sampling clock,
 	// which is the same cadence HandBrake samples at.
@@ -203,6 +252,46 @@ void MainWindow::onRenderClicked() {
 	if (m_logTabIndex >= 0) m_tabWidget->setCurrentIndex(m_logTabIndex);
 
 	m_renderController->start();
+}
+
+void MainWindow::processQueueIfIdle() {
+	if (m_isRendering || m_renderQueue.isEmpty()) return;
+	RenderJob job = m_renderQueue.dequeue();
+	refreshQueuePanel();
+	startRenderJob(job);
+}
+
+QString MainWindow::describeRenderJob(const RenderJob &job) {
+	const QString renderer = job.useGPU ? (job.useWavefront ? "GPU-WF" : "GPU") : "CPU";
+	const QString modeSuffix = job.videoMode ? QString(" · Video (%1f)").arg(job.videoFrames) : QString();
+	return QString("%1 — %2×%3 · %4spp · %5%6")
+		.arg(job.displayTitle)
+		.arg(job.width).arg(job.height)
+		.arg(job.samples)
+		.arg(renderer, modeSuffix);
+}
+
+void MainWindow::refreshQueuePanel() {
+	if (!m_queueGroup || !m_queueListWidget) return;
+	m_queueListWidget->clear();
+	for (const RenderJob &job : m_renderQueue) {
+		m_queueListWidget->addItem(describeRenderJob(job));
+	}
+	m_queueGroup->setTitle(QString("Render Queue (%1)").arg(m_renderQueue.size()));
+	m_queueGroup->setVisible(!m_renderQueue.isEmpty());
+}
+
+void MainWindow::onRemoveSelectedQueueItem() {
+	if (!m_queueListWidget) return;
+	const int row = m_queueListWidget->currentRow();
+	if (row < 0 || row >= m_renderQueue.size()) return;
+	m_renderQueue.removeAt(row);
+	refreshQueuePanel();
+}
+
+void MainWindow::onClearQueue() {
+	m_renderQueue.clear();
+	refreshQueuePanel();
 }
 
 void MainWindow::onStopClicked() {
@@ -485,11 +574,20 @@ void MainWindow::onProgressUpdate(int percentage) {
 }
 
 void MainWindow::onRenderComplete(bool success, const QString &message, double totalTime, const QString &outputPath) {
+	// Snapshotted once, up front: this function (indirectly, via the
+	// deferred singleShot below) can end up running after m_currentJob has
+	// already been overwritten by a queued next job - see m_currentJob's own
+	// comment. Everything below reads finishedJob, never m_currentJob
+	// directly.
+	const RenderJob finishedJob = m_currentJob;
+
 	m_isRendering = false;
 	m_renderButton->setEnabled(true);
 	m_stopButton->setEnabled(false);
 	if (m_elapsedTimer) m_elapsedTimer->stop();
 	updateActionStates();
+
+	const bool stoppedByUser = !success && message.contains("stopped by user", Qt::CaseInsensitive);
 
 	// A failed render leaves the taskbar button red so the outcome is visible
 	// without switching to the window; anything else clears it. Leaving a
@@ -503,19 +601,25 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 		setProgressResultState("success");
 		m_statusLabel->setText(QString("✅ %1 - Total time: %2 seconds").arg(message).arg(totalTime, 0, 'f', 2));
 
-		// If video mode, automatically assemble the video
-		if (m_videoMode) {
+		if (finishedJob.videoMode) {
 			onLogMessage("Video frames rendered successfully. Starting video assembly...");
 			m_statusLabel->setText("⚙️ Assembling video from frames...");
 
-			// Trigger automatic video assembly. outputPath is threaded through
-			// so assembleVideoAutomatically() can derive the expected
-			// "<stem>_video.mp4" directly (see main.cpp's own stem-based
-			// naming) instead of globbing a hardcoded directory - necessary
-			// now that each render's base path is unique (see this
-			// function's own comment on m_outputPathEdit) rather than
-			// always landing in the same app-relative "output/" folder.
-			QTimer::singleShot(500, this, [this, outputPath]() { assembleVideoAutomatically(outputPath); });
+			// Trigger automatic video assembly. outputPath and finishedJob
+			// are both threaded through explicitly (rather than read back
+			// from m_currentJob when this fires) so assembleVideoAutomatically()
+			// - which runs on a ~500ms deferred timer - still describes the
+			// job that actually rendered even if a queued next job has
+			// already started and overwritten m_currentJob by then. It can
+			// derive the expected "<stem>_video.mp4" directly from
+			// outputPath (see main.cpp's own stem-based naming) instead of
+			// globbing a hardcoded directory - necessary now that each
+			// render's base path is unique (see captureRenderJob()'s own
+			// comment on m_outputPathEdit) rather than always landing in the
+			// same app-relative "output/" folder.
+			QTimer::singleShot(500, this, [this, outputPath, finishedJob]() {
+				assembleVideoAutomatically(outputPath, finishedJob);
+			});
 		} else {
 			// Image mode: show the rendered image inline as a new Preview
 			// sub-tab instead of shelling out to the OS's default image
@@ -530,15 +634,12 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 				if (pngInfo.exists()) {
 					QPixmap pixmap(pngPath);
 					if (!pixmap.isNull()) {
-						const QString sceneId = m_sceneCombo ? m_sceneCombo->currentData().toString() : QString();
-						QString title = SceneMetadataClient::sceneName(sceneId);
-						if (title.isEmpty()) title = sceneId.isEmpty() ? QStringLiteral("Render") : sceneId;
 						const QString infoText = QString("%1  •  %2×%3  •  %4 KB  •  %5s")
 							.arg(pngInfo.fileName())
 							.arg(pixmap.width()).arg(pixmap.height())
 							.arg(pngInfo.size() / 1024)
 							.arg(totalTime, 0, 'f', 2);
-						addImagePreviewTab(title, m_previewSceneDescLabel ? m_previewSceneDescLabel->text() : QString(),
+						addImagePreviewTab(finishedJob.displayTitle, finishedJob.sceneDescription,
 											pixmap, infoText, outputPath, pngPath);
 						if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
 					} else {
@@ -557,8 +658,6 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 			}
 		}
 	} else {
-		const bool stoppedByUser = message.contains("stopped by user", Qt::CaseInsensitive);
-
 		// A user-requested stop isn't a failure, so it clears back to neutral;
 		// a genuine failure leaves the bar where it died and turns it red, so
 		// the outcome is still readable after the dialog is dismissed.
@@ -574,6 +673,17 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 		if (!stoppedByUser) {
 			QMessageBox::critical(this, "Render Failed", message);
 		}
+	}
+
+	// Continue automatically on natural completion (success or a genuine
+	// failure); a user-requested Stop pauses the queue instead of skipping
+	// straight to the next job. The remaining jobs stay queued, and the next
+	// click of Start Render both resumes them and appends whatever's in the
+	// form as one more job at the back - see onRenderClicked()'s own comment.
+	if (!stoppedByUser) {
+		processQueueIfIdle();
+	} else if (!m_renderQueue.isEmpty()) {
+		m_statusLabel->setText(QString("Stopped - %1 more queued (click Start Render to resume)").arg(m_renderQueue.size()));
 	}
 }
 
@@ -779,7 +889,7 @@ void MainWindow::onModeChanged(int index) {
 	onLogMessage(QString("Mode changed to: %1").arg(m_videoMode ? "Video Generation" : "Single Image"));
 }
 
-void MainWindow::assembleVideoAutomatically(const QString &baseOutputPath) {
+void MainWindow::assembleVideoAutomatically(const QString &baseOutputPath, const RenderJob &job) {
 	// ray_tracer.exe assembles the video itself (via ffmpeg) before it exits.
 	// This just finds and opens the resulting file. In the normal case
 	// ray_tracer.exe already exits non-zero if ffmpeg failed - see
@@ -872,28 +982,18 @@ void MainWindow::assembleVideoAutomatically(const QString &baseOutputPath) {
 	QStringList frameFiles = framesDirForPreview.entryList(QStringList() << "enc_*.png", QDir::Files, QDir::Name);
 
 	// Named scene+path+frames/fps/speed bundle if one was selected (see
-	// video_preset.h); a custom (non-preset) render falls back to the
+	// video_preset.h and captureRenderJob()'s own comment on job.
+	// videoPresetName); a custom (non-preset) render falls back to the
 	// scene's own name, distinguished with a "(Video)" suffix so it can't
 	// be confused with an image-mode tab of the same scene.
-	QString title;
-	if (m_videoPresetCombo && m_videoPresetCombo->currentIndex() > 0) {
-		const QString id = m_videoPresetCombo->currentData().toString();
-		if (const video_preset::VideoPreset *preset = video_preset::find(id.toUtf8().constData()))
-			title = QString::fromUtf8(preset->name);
-	}
-	if (title.isEmpty()) {
-		const QString sceneId = m_sceneCombo ? m_sceneCombo->currentData().toString() : QString();
-		QString sceneName = SceneMetadataClient::sceneName(sceneId);
-		if (sceneName.isEmpty()) sceneName = sceneId.isEmpty() ? QStringLiteral("Video") : sceneId;
-		title = sceneName + " (Video)";
-	}
+	QString title = job.videoPresetName;
+	if (title.isEmpty()) title = job.displayTitle + " (Video)";
 
 	const QString infoText = QString("%1  •  %2 MB  •  %3 frames")
 		.arg(videoInfo.fileName())
 		.arg(videoInfo.size() / (1024.0 * 1024.0), 0, 'f', 1)
 		.arg(frameFiles.count());
-	addVideoPreviewTab(title, m_previewSceneDescLabel ? m_previewSceneDescLabel->text() : QString(),
-						videoPath, infoText);
+	addVideoPreviewTab(title, job.sceneDescription, videoPath, infoText);
 	if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
 
 	onLogMessage(QString("Playing video inline: %1").arg(videoPath));

@@ -195,8 +195,13 @@ void MainWindow::refreshStatusBarInfo() {
 }
 
 void MainWindow::updateActionStates() {
-	if (m_actRender)      m_actRender->setEnabled(!m_isRendering);
-	if (m_actRenderVideo) m_actRenderVideo->setEnabled(!m_isRendering);
+	// Both stay enabled regardless of m_isRendering: onRenderClicked() (which
+	// both ultimately call, after flipping the mode combo) always enqueues
+	// now, so triggering either while a render is already running just adds
+	// a job to the queue instead of erroring - see onRenderClicked()'s own
+	// comment.
+	if (m_actRender)      m_actRender->setEnabled(true);
+	if (m_actRenderVideo) m_actRenderVideo->setEnabled(true);
 	// Esc only exists while there's something to cancel - see the header
 	// comment in this file.
 	if (m_actStop)        m_actStop->setEnabled(m_isRendering);

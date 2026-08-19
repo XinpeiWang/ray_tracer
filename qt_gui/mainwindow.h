@@ -35,6 +35,8 @@
 #include <QHBoxLayout>
 #include <QSplitter>
 #include <QSignalBlocker>
+#include <QQueue>
+#include <QListWidget>
 
 #include "camera_math.h"
 #include "render_output_parser.h"
@@ -573,6 +575,35 @@ private:
 	QString m_cameraPath;   // Camera animation path (orbit, linear, figure8, spiral)
 };
 
+// A snapshot of every render-affecting UI field at the moment "Start Render"
+// was clicked, so a queued job is unaffected by any further changes the user
+// makes to the form while an earlier job is still running. Mirrors
+// RenderController::setParameters()/setVideoParameters()'s own parameter
+// list exactly - see MainWindow::captureRenderJob()/startRenderJob()
+// (mainwindow_slots.cpp).
+struct RenderJob {
+	bool useGPU = false;
+	bool useWavefront = false;
+	int width = 0;
+	int height = 0;
+	int samples = 0;
+	int maxDepth = 0;
+	QString sceneId;
+	QString outputPath;
+	double camX = 0.0;
+	double camY = 0.0;
+	double camZ = 0.0;
+	bool camExplicit = true;
+	bool videoMode = false;
+	int videoFrames = 0;
+	int videoFPS = 0;
+	double videoSpeed = 1.0;
+	QString cameraPath;
+	QString displayTitle;      // Scene name, for the queue list row - see describeRenderJob()
+	QString sceneDescription;  // Scene's own description, for the finished Preview tab's tooltip
+	QString videoPresetName;   // Named video preset's display name, if one was selected; empty otherwise
+};
+
 // ============================================================================
 // MainWindow
 // ============================================================================
@@ -600,6 +631,8 @@ private slots:
 	void onRenderComplete(bool success, const QString &message, double totalTime, const QString &outputPath);
 	void onLogMessage(const QString &message);
 	void onElapsedTick();        // fires every second during render to update status label
+	void onRemoveSelectedQueueItem();  // Removes the currently-selected row from m_renderQueue
+	void onClearQueue();               // Empties m_renderQueue entirely
 
 	// Shared by the log tab's buttons and the File menu's actions.
 	void copyLogToClipboard();
@@ -669,8 +702,13 @@ private:
 	// ("<stem>_video.mp4") can be derived directly instead of guessing at a
 	// shared directory - necessary now that every render's base path is
 	// unique. Automatically assembles/locates the video after frames are
-	// rendered and adds it as a new Preview sub-tab.
-	void assembleVideoAutomatically(const QString &baseOutputPath);
+	// rendered and adds it as a new Preview sub-tab. `job` is the RenderJob
+	// that was actually rendered, captured by value into the caller's
+	// deferred QTimer::singleShot rather than read back from m_currentJob -
+	// this runs ~500ms after onRenderComplete() returns, by which time a
+	// queued next job may already have overwritten it (see m_currentJob's
+	// own comment).
+	void assembleVideoAutomatically(const QString &baseOutputPath, const RenderJob &job);
 	void refreshCameraDistanceDisplay(); // Recomputes m_cameraDistance's shown value from X/Y/Z and m_currentLookat*, without re-triggering onCameraDistanceChanged
 
 	// Preview sub-tabs (see m_previewSubTabs's own comment). Both add*
@@ -846,6 +884,30 @@ private:
 	// State
 	bool m_isRendering;                 // true when a render is in progress
 	bool m_videoMode;                   // true = video generation mode, false = single image mode
+
+	// ------------------------------------------------------------------
+	// Render queue
+	// ------------------------------------------------------------------
+	// onRenderClicked() (mainwindow_slots.cpp) always enqueues a captured
+	// RenderJob and then calls processQueueIfIdle() - which starts the front
+	// job only if nothing is currently running. The everyday single-render
+	// case is just "enqueue one job into an empty, immediately-idle queue",
+	// so there is no separate "start now" code path to keep in sync with
+	// the queued one.
+	QQueue<RenderJob> m_renderQueue;
+	// The job actually passed to the RenderController currently running (or
+	// most recently run). onRenderComplete() reads its videoMode/sceneId/
+	// displayTitle from here, not from the live UI widgets - once renders
+	// can queue, the user may have already changed the scene/mode combo for
+	// the *next* job by the time an earlier one's completion signal arrives.
+	RenderJob m_currentJob;
+	QGroupBox *m_queueGroup = nullptr;       // Hidden whenever m_renderQueue is empty
+	QListWidget *m_queueListWidget = nullptr;
+	RenderJob captureRenderJob();             // Snapshots every render field currently in the UI
+	void startRenderJob(const RenderJob &job); // Builds a RenderController for `job` and starts it
+	void processQueueIfIdle();                // Dequeues and starts the front job if nothing is running
+	void refreshQueuePanel();                 // Rebuilds m_queueListWidget from m_renderQueue
+	static QString describeRenderJob(const RenderJob &job); // One-line queue-row summary
 
 	// Elapsed render timer
 	QTimer *m_elapsedTimer;             // fires every second during render
