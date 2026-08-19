@@ -115,6 +115,23 @@ class material {
         return false;
     }
 
+    // Real attenuation a shadow ray picks up passing through this material,
+    // for materials where is_shadow_transmissive() is true. Default 1.0 (no
+    // attenuation) is correct for ordinary transmissive surfaces like glass -
+    // a shadow ray is a visibility test, not a light-transport simulation,
+    // and glass doesn't dim what's behind it enough to matter here. Media
+    // (hg_phase_material) override this with real Beer-Lambert/ratio-
+    // tracking transmittance instead: unlike glass, a thick fog bank
+    // measurably dims a light behind it, and shadow_ray.h's walker used to
+    // treat every medium as fully transmissive with no attenuation at all
+    // (see hg_phase_material::is_shadow_transmissive()'s own comment for
+    // the history - the "unoccluded" simplification was correct as far as
+    // it went, but stopped short of actually attenuating).
+    virtual color shadow_transmittance(const ray& r) const {
+        (void)r;
+        return color(1, 1, 1);
+    }
+
     // Non-null only for `class subsurface` (material_pbrt.h): a material
     // carrying a real BSSRDF diffusion profile. camera.h's ray_color loop
     // uses this to detect when a specular-transmission scatter event should

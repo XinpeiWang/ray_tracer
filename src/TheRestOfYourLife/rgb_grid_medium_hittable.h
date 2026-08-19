@@ -97,7 +97,8 @@ class rgb_grid_medium_hittable : public hittable {
 
                     double maxc = std::max({ ss[0], ss[1], ss[2], 1e-6 });
                     color albedo(ss[0]/maxc, ss[1]/maxc, ss[2]/maxc);
-                    rec.mat = make_shared<hg_phase_material>(albedo, phase_g);
+                    rec.mat = make_shared<hg_phase_material>(albedo, phase_g,
+                        [this](const ray& sr) { return shadow_transmittance_impl(sr); });
                     return true;
                 }
                 // Null collision: keep marching within this segment.
@@ -110,6 +111,61 @@ class rgb_grid_medium_hittable : public hittable {
     }
 
   private:
+    // Per-channel ratio-tracking transmittance (same technique as
+    // cloud_medium_hittable's own shadow_transmittance_impl(), see that
+    // file's comment) - but walking ALL of grid.sample_ray()'s DDA
+    // segments the way hit() above already does (grid's majorant varies
+    // per voxel, unlike CloudMedium's single global majorant), and tracked
+    // per-RGB-channel since this grid's whole point is spatially-varying
+    // COLOR, not just density (see file header comment).
+    color shadow_transmittance_impl(const ray& r) const {
+        point3 o = r.origin();
+        vec3   d = r.direction();
+        double mox = mat_[0]*o.x() + mat_[1]*o.y() + mat_[2]*o.z() + translate_[0];
+        double moy = mat_[3]*o.x() + mat_[4]*o.y() + mat_[5]*o.z() + translate_[1];
+        double moz = mat_[6]*o.x() + mat_[7]*o.y() + mat_[8]*o.z() + translate_[2];
+        double mdx = mat_[0]*d.x() + mat_[1]*d.y() + mat_[2]*d.z();
+        double mdy = mat_[3]*d.x() + mat_[4]*d.y() + mat_[5]*d.z();
+        double mdz = mat_[6]*d.x() + mat_[7]*d.y() + mat_[8]*d.z();
+
+        Ray3<double> mray(mox, moy, moz, mdx, mdy, mdz);
+        double tMin, tMax;
+        if (!grid.intersect_ray(mray, infinity, tMin, tMax)) return color(1, 1, 1);
+        if (tMin < 0) tMin = 0;
+        if (tMin >= tMax) return color(1, 1, 1);
+
+        double Tr[3] = { 1.0, 1.0, 1.0 };
+        // Safety cap, same spirit as shadow_ray.h's kMaxTransmissiveSkips.
+        constexpr int kMaxNullCollisions = 100000;
+        int collisions = 0;
+
+        auto it = grid.sample_ray(mray, tMin, tMax);
+        for (;;) {
+            auto seg = it.Next();
+            if (!seg.has_value()) break;  // ray exited the medium's AABB: done
+            if (seg->sigma_maj <= 0.0) continue;  // empty segment, try the next one
+
+            double tt = seg->tMin;
+            for (;;) {
+                if (++collisions > kMaxNullCollisions)
+                    return color(Tr[0], Tr[1], Tr[2]);  // bail out, same as cloud's cap
+
+                double dt = -std::log(1.0 - random_double()) / seg->sigma_maj;
+                tt += dt;
+                if (tt >= seg->tMax) break;  // exited this segment - advance to the next
+
+                double px = mox + tt*mdx, py = moy + tt*mdy, pz = moz + tt*mdz;
+                double sa[3], ss[3], le[3];
+                grid.sample_point(px, py, pz, sa, ss, le);
+                for (int c = 0; c < 3; ++c) {
+                    double sigma_t_c = sa[c] + ss[c];
+                    Tr[c] *= 1.0 - (sigma_t_c / seg->sigma_maj);
+                }
+            }
+        }
+        return color(Tr[0], Tr[1], Tr[2]);
+    }
+
     RGBGridMediumData<double> grid;
     double phase_g;
     double mat_[9], translate_[3];

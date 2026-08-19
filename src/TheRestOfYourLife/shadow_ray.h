@@ -44,9 +44,20 @@
 // t_max defaults to infinity for the common area-light/sky case, where the
 // caller identifies the light by testing out_hit itself (emitted() > 0)
 // rather than by distance.
+//
+// out_transmittance, when non-null, accumulates each transmissive hit's
+// material::shadow_transmittance() (default 1.0/no attenuation for
+// ordinary transmissive surfaces like glass; real Beer-Lambert/ratio-
+// tracking attenuation for media - see material_base.h's
+// shadow_transmittance() comment). An optional trailing pointer rather
+// than a required parameter so every pre-existing call site (SPPM/BDPT
+// adapters, the unit tests) keeps compiling unchanged - only camera.h's
+// real NEE call sites need it, and should multiply their light
+// contribution by it regardless of whether this returns true or false,
+// since a light can be dimmed by fog without being fully occluded by it.
 inline bool shadow_ray_hit(
     const hittable& world, const ray& r, hit_record& out_hit,
-    double t_max = infinity
+    double t_max = infinity, color* out_transmittance = nullptr
 ) {
     // Bounds a stack of transmissive objects in a row (several glass panes,
     // say) rather than looping until t_max is exhausted one epsilon-sized
@@ -58,6 +69,7 @@ inline bool shadow_ray_hit(
     ray current = r;
     double t_min = 0.001;
     double remaining = t_max;
+    if (out_transmittance) *out_transmittance = color(1, 1, 1);
 
     for (int i = 0; i < kMaxTransmissiveSkips; ++i) {
         hit_record rec;
@@ -68,6 +80,9 @@ inline bool shadow_ray_hit(
             out_hit = rec;
             return true;
         }
+
+        if (out_transmittance)
+            *out_transmittance = *out_transmittance * rec.mat->shadow_transmittance(current);
 
         // Transmissive: step past this point and keep going in the SAME
         // direction - matches optixIgnoreIntersection()'s effect exactly,

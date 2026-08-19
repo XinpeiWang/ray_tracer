@@ -25,6 +25,7 @@
 #include "texture.h"
 #include "../shared/volume_scattering.h"
 #include "pdf.h"
+#include <functional>
 
 
 // ---------------------------------------------------------------------------
@@ -71,8 +72,18 @@ class hg_phase_material : public material {
   public:
     // albedo: single-scattering albedo (sigma_s / sigma_t) per channel
     // g: HG asymmetry parameter in (-1, 1)
-    hg_phase_material(const color& albedo, double g)
-        : albedo(albedo), phase(g) {}
+    // transmittance_fn: computes real shadow-ray transmittance through
+    // THIS specific medium instance's geometry - a callback rather than a
+    // subclass because the math needed differs per medium shape
+    // (constant_medium's closed-form Beer-Lambert vs. cloud_medium_hittable/
+    // rgb_grid_medium_hittable's stochastic ratio tracking) while the phase
+    // function/scatter() logic below is identical for all three. Default
+    // nullptr means "no real attenuation available" - falls back to
+    // material::shadow_transmittance()'s own default (fully transmissive),
+    // same behavior as before this feature existed.
+    hg_phase_material(const color& albedo, double g,
+                       std::function<color(const ray&)> transmittance_fn = nullptr)
+        : albedo(albedo), phase(g), transmittance_fn_(std::move(transmittance_fn)) {}
 
     bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
                  bool /*do_regularize*/ = false) const override {
@@ -109,18 +120,20 @@ class hg_phase_material : public material {
         return phase.pdf(wo.x(), wo.y(), wo.z(), wi.x(), wi.y(), wi.z());
     }
 
-    // See material::is_shadow_transmissive()'s comment - matches
-    // optix_anyhit_shadow.h's MaterialType::Medium skip. Both sides make the
-    // same simplification here: a shadow ray through fog is treated as fully
-    // unattenuated rather than integrating real Beer-Lambert transmittance
-    // (constant_medium::transmittance() exists for that but nothing calls
-    // it yet) - "unoccluded" is closer to correct than "fully blocked", which
-    // is what happened before this override existed.
+    // See optix_anyhit_shadow.h's MaterialType::Medium skip (GPU's matching
+    // treatment) - a shadow ray through fog keeps going rather than being
+    // treated as a hard blocker; how much it's dimmed on the way is
+    // shadow_transmittance()'s job below, not this one's.
     bool is_shadow_transmissive(const hit_record&) const override { return true; }
+
+    color shadow_transmittance(const ray& r) const override {
+        return transmittance_fn_ ? transmittance_fn_(r) : material::shadow_transmittance(r);
+    }
 
   private:
     color albedo;
     HenyeyGreensteinPhaseFunction<double> phase;
+    std::function<color(const ray&)> transmittance_fn_;
 };
 
 
@@ -145,14 +158,16 @@ class constant_medium : public hittable {
         // and multiply by texture value there.  For simplicity we use the texture
         // to set a constant albedo color:
         color tex_color = tex->value(0.5, 0.5, point3(0,0,0));
-        phase_mat = make_shared<hg_phase_material>(tex_color, g);
+        phase_mat = make_shared<hg_phase_material>(tex_color, g,
+            [this](const ray& r) { return shadow_transmittance_impl(r); });
     }
 
     constant_medium(shared_ptr<hittable> boundary, double density,
                     const color& albedo, double g = 0.0)
         : boundary(boundary) {
         med = HomogeneousMediumData<double>(/*sa=*/0.0, /*ss=*/density, g);
-        phase_mat = make_shared<hg_phase_material>(albedo, g);
+        phase_mat = make_shared<hg_phase_material>(albedo, g,
+            [this](const ray& r) { return shadow_transmittance_impl(r); });
     }
 
     // Full pbrt-v4-style constructor: separate absorption and scattering coefficients.
@@ -167,7 +182,8 @@ class constant_medium : public hittable {
                                                          sigma_s / sigma_t,
                                                          sigma_s / sigma_t)
                                         : color(0,0,0);
-        phase_mat = make_shared<hg_phase_material>(ss_albedo, g);
+        phase_mat = make_shared<hg_phase_material>(ss_albedo, g,
+            [this](const ray& r) { return shadow_transmittance_impl(r); });
     }
 
     bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
@@ -220,6 +236,27 @@ class constant_medium : public hittable {
     aabb bounding_box() const override { return boundary->bounding_box(); }
 
   private:
+    // Deterministic Beer-Lambert transmittance for a shadow ray's full
+    // traversal of THIS medium's boundary - same rec1/rec2 entry/exit
+    // computation as hit() above (lines ~186-205), just without the
+    // stochastic free-path sampling: a shadow ray wants the real
+    // attenuation over the whole segment it crosses, not a scatter-event
+    // decision. Returns (1,1,1) (no attenuation) if the ray doesn't
+    // actually cross the boundary - defensive only, shadow_ray.h only
+    // calls this once it already knows this material was hit.
+    color shadow_transmittance_impl(const ray& r) const {
+        hit_record rec1, rec2;
+        if (!boundary->hit(r, interval::universe, rec1)) return color(1, 1, 1);
+        if (!boundary->hit(r, interval(rec1.t + 0.0001, infinity), rec2)) return color(1, 1, 1);
+
+        double t0 = rec1.t < 0 ? 0 : rec1.t;
+        if (t0 >= rec2.t) return color(1, 1, 1);
+
+        double ray_length      = r.direction().length();
+        double distance_inside = (rec2.t - t0) * ray_length;
+        return transmittance(distance_inside);
+    }
+
     shared_ptr<hittable>         boundary;
     HomogeneousMediumData<double> med;
     shared_ptr<hg_phase_material> phase_mat;

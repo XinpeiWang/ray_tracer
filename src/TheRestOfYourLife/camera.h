@@ -762,12 +762,13 @@ class camera {
                         double pdf_b_at_l = srec.pdf_ptr->value(light_dir);
                         double w_l        = mis_power_heuristic(pdf_l, pdf_b_at_l);
                         hit_record light_rec;
-                        if (shadow_ray_hit(world, shadow_ray, light_rec)) {
+                        color trans;
+                        if (shadow_ray_hit(world, shadow_ray, light_rec, infinity, &trans)) {
                             color Le_d = light_rec.mat->emitted(
                                 shadow_ray, light_rec, light_rec.u, light_rec.v, light_rec.p);
                             if (Le_d.x() > 0 || Le_d.y() > 0 || Le_d.z() > 0) {
                                 color atten = rec.mat->scattering_attenuation(rec, shadow_ray, srec.attenuation);
-                                L += beta * w_l * atten * f_pdf * Le_d / pdf_l;
+                                L += beta * w_l * atten * trans * f_pdf * Le_d / pdf_l;
                             }
                         }
                     }
@@ -788,10 +789,11 @@ class camera {
                         double pdf_b_at_sky = srec.pdf_ptr->value(sky_dir);
                         double w_sky        = mis_power_heuristic(pdf_sky, pdf_b_at_sky);
                         hit_record sky_rec;
-                        if (!shadow_ray_hit(world, sky_shadow, sky_rec)) {
+                        color trans;
+                        if (!shadow_ray_hit(world, sky_shadow, sky_rec, infinity, &trans)) {
                             color Le_sky = sky->Le(unit_vector(sky_dir));
                             color atten = rec.mat->scattering_attenuation(rec, sky_shadow, srec.attenuation);
-                            L += beta * w_sky * atten * f_pdf * Le_sky / pdf_sky;
+                            L += beta * w_sky * atten * trans * f_pdf * Le_sky / pdf_sky;
                         }
                     }
                 }
@@ -808,10 +810,11 @@ class camera {
                     if (f_pdf <= 0.0) return;
                     hit_record shadow_rec;
                     double shadow_t_max = (ps.t_max == infinity) ? infinity : (ps.t_max - 0.001);
-                    if (!shadow_ray_hit(world, punct_ray, shadow_rec, shadow_t_max)) {
+                    color trans;
+                    if (!shadow_ray_hit(world, punct_ray, shadow_rec, shadow_t_max, &trans)) {
                         // delta light: pdf=1, no MIS weight needed
                         color atten = rec.mat->scattering_attenuation(rec, punct_ray, srec.attenuation);
-                        L += beta * atten * f_pdf * ps.Li;
+                        L += beta * atten * trans * f_pdf * ps.Li;
                     }
                 });
             }
