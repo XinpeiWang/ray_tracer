@@ -2200,10 +2200,33 @@ __device__ __forceinline__ void shade_material(
 			break;
 		}
 
+		// Everything else either (a) is one of the 7 MaterialTypes never
+		// meant to reach this switch - each special-cased earlier, before
+		// shade_material() is even called, and documented as such on its own
+		// MaterialType enumerator (optix_types.h): Medium/DielectricMedium/
+		// CloudMedium/RgbGridMedium (participating media, handled inline in
+		// optix_intersection_sphere.h's shape-specific near/far
+		// re-intersection), Hair (HairBxDF sampled directly, see
+		// sample_principled_material()'s sibling dispatch above this
+		// function), Principled (same sibling dispatch, PrincipledBxDF),
+		// NormalMappedLambertian (perturbs the normal in
+		// optix_intersection_sphere.h then re-enters THIS switch's own
+		// Lambertian case with a temporary MaterialType::Lambertian view) -
+		// or (b) a genuinely new MaterialType nobody wired into this switch
+		// yet. Either way it's a real bug, and the compiler can't catch it
+		// for us: nvcc's device-code frontend (confirmed empirically against
+		// this project's CUDA 13.2 toolchain, including every --diag-warn
+		// flag it exposes) does not implement switch/enum exhaustiveness
+		// diagnostics the way MSVC's C4062 or clang's -Wswitch do, so a
+		// missing case here compiles silently clean. Trap loudly instead of
+		// absorbing the ray, so the gap surfaces the moment a real render
+		// exercises it rather than being found reactively later (this
+		// project's own history, more than once). Not gated behind NDEBUG -
+		// nvcc's own invocation for this file never defines it either way
+		// (see build_optix.targets), so the guard is simply always on.
 		default: {
-			// Unknown material - absorb
-			scattered = false;
-			break;
+			printf("[SHADE-MATERIAL] unhandled MaterialType %d\n", (int)mat.type);
+			__trap();
 		}
 	}
 

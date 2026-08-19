@@ -2639,9 +2639,26 @@ extern "C" __global__ void evaluate_materials(
 		is_specular = true;
 		break;
 	}
-	default:
-		scattered = false;
-		break;
+	// Every MaterialType except DiffuseLight (handled via the early-exit
+	// above, before this switch) has a real case above - this default: is
+	// only ever reached by a genuinely new MaterialType nobody wired into
+	// this backend yet, exactly the class of gap this project's own history
+	// has had to find and fix reactively more than once (see e.g.
+	// "Wavefront gaps" in prior commits). The obvious fix - drop the
+	// catch-all and let the compiler's missing-enum-case-in-switch warning
+	// catch it at compile time - does not actually work here: nvcc's
+	// device-code frontend (confirmed empirically against this project's
+	// CUDA 13.2 toolchain, including every --diag-warn flag it exposes)
+	// does not implement that diagnostic the way MSVC's C4062 or clang's
+	// -Wswitch do, so a missing case compiles silently clean either way.
+	// Trap loudly instead of absorbing the ray, so the gap surfaces the
+	// moment a real render exercises it. Not gated behind NDEBUG - nvcc's
+	// own invocation for this file never defines it either way (see
+	// build_optix.targets), so the guard is simply always on.
+	default: {
+		printf("[EVAL-MATERIALS] unhandled MaterialType %d\n", (int)mat.type);
+		__trap();
+	}
 	}
 
 	if (!scattered) {
