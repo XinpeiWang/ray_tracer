@@ -68,6 +68,39 @@ struct Sphere {
 	int medium = -1;
 };
 
+// Shape "disk" / "cylinder" - unlike Sphere (rotation-invariant, so baked
+// straight to a world-space center+radius) these are NOT rotation-invariant,
+// so baking them the sphere's way would need the same "warn on anisotropic
+// scale" approximation sphere already accepts, except wrong far more often -
+// an arbitrary rotation changes which way a disk faces or a cylinder's axis
+// points, not just its size. So the object-space parameters (pbrt-v4's own
+// convention: a disk in the z=height plane on the z-axis, a cylinder along
+// the z-axis) are kept as-is, and `xform` (the CTM at the point this shape
+// was declared, row-major - same convention as Instance::xform below) is
+// carried through unbaked for pbrt_cpu_builder.h/pbrt_gpu_builder.h to apply
+// at intersection time instead, exactly the technique transform_instance.h
+// already uses for object instancing.
+struct Disk {
+	double radius = 1.0, innerRadius = 0.0, height = 0.0;
+	// Degrees, matching PunctualLight::coneAngleDeg's own precedent just
+	// above - pbrt scene-file angle params are stored as-written and
+	// converted to radians at the CPU/GPU builders' point of use, not here.
+	double phiMaxDeg = 360.0;
+	double xform[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+	int material = -1;
+	int areaLight = -1;
+	int medium = -1;
+};
+
+struct Cylinder {
+	double radius = 1.0, zMin = -1.0, zMax = 1.0;
+	double phiMaxDeg = 360.0;
+	double xform[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+	int material = -1;
+	int areaLight = -1;
+	int medium = -1;
+};
+
 // MakeNamedMedium "homogeneous" - a constant-density participating medium.
 // pbrt-v4's real HomogeneousMedium is per-channel RGB sigma_a/sigma_s; both
 // builders' actual medium primitive (src/TheRestOfYourLife/constant_medium.h,
@@ -476,6 +509,8 @@ struct Instance {
 struct FlatScene {
 	std::vector<Triangle> triangles;
 	std::vector<Sphere> spheres;
+	std::vector<Disk> disks;
+	std::vector<Cylinder> cylinders;
 	std::vector<BilinearPatch> bilinearPatches;
 	std::vector<Material> materials;    // parallel to Scene::materials
 	std::vector<Emission> areaLights;   // parallel to Scene::areaLights
@@ -518,6 +553,13 @@ struct ShapeWork {
 	std::vector<Triangle> *triangles = nullptr;
 	std::vector<Sphere> *spheres = nullptr;
 	std::vector<BilinearPatch> *bilinearPatches = nullptr;
+	// Left null for an instance DEFINITION's own (object-space) shape list,
+	// same as bilinearPatches above - Disk/Cylinder inside an ObjectBegin/End
+	// block fall through to the generic unsupported-shape warning rather than
+	// silently being dropped with no explanation, matching that precedent
+	// exactly rather than inventing a new one.
+	std::vector<Disk> *disks = nullptr;
+	std::vector<Cylinder> *cylinders = nullptr;
 };
 
 // Row-major 4x4 multiply: `a` applied after `b`, i.e. the result maps a point
@@ -1219,7 +1261,8 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 	std::vector<detail::ShapeWork> work;
 
 	for (const pbrt_scene::ShapeDecl &shape : scene.shapes)
-		work.push_back({&shape, shape.xform, &out.triangles, &out.spheres, &out.bilinearPatches});
+		work.push_back({&shape, shape.xform, &out.triangles, &out.spheres, &out.bilinearPatches,
+						&out.disks, &out.cylinders});
 
 	// Sized up front so the pointers taken below stay valid as work is added.
 	out.groups.resize(scene.objects.size());
@@ -1268,7 +1311,8 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				 scene.objects[static_cast<std::size_t>(group)].shapes) {
 			if (shape.areaLightIndex < 0) continue;
 			work.push_back({&shape, detail::compose(inst.xform, shape.xform),
-							&out.triangles, &out.spheres, &out.bilinearPatches});
+							&out.triangles, &out.spheres, &out.bilinearPatches,
+							&out.disks, &out.cylinders});
 		}
 	}
 
@@ -1293,6 +1337,34 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			s.areaLight = shape.areaLightIndex;
 			s.medium = shape.insideMedium;
 			w.spheres->push_back(s);
+			continue;
+		}
+
+		if (shape.type == "disk" && w.disks) {
+			Disk d;
+			d.height = shape.params.getFloat("height", 0.0);
+			d.radius = shape.params.getFloat("radius", 1.0);
+			d.innerRadius = shape.params.getFloat("innerradius", 0.0);
+			d.phiMaxDeg = shape.params.getFloat("phimax", 360.0);
+			for (int i = 0; i < 16; ++i) d.xform[i] = xform.m[i];
+			d.material = shape.materialIndex;
+			d.areaLight = shape.areaLightIndex;
+			d.medium = shape.insideMedium;
+			w.disks->push_back(d);
+			continue;
+		}
+
+		if (shape.type == "cylinder" && w.cylinders) {
+			Cylinder c;
+			c.radius = shape.params.getFloat("radius", 1.0);
+			c.zMin = shape.params.getFloat("zmin", -1.0);
+			c.zMax = shape.params.getFloat("zmax", 1.0);
+			c.phiMaxDeg = shape.params.getFloat("phimax", 360.0);
+			for (int i = 0; i < 16; ++i) c.xform[i] = xform.m[i];
+			c.material = shape.materialIndex;
+			c.areaLight = shape.areaLightIndex;
+			c.medium = shape.insideMedium;
+			w.cylinders->push_back(c);
 			continue;
 		}
 

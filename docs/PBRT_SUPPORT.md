@@ -102,6 +102,11 @@ loader and no longer match the code:
 
 - `AreaLightSource`'s `twosided` parameter is parsed nowhere; every area
   light is one-sided on both backends regardless of what the scene requests.
+- `Shape "disk"`/`Shape "cylinder"` are CPU-only for now — flattened,
+  built as real hittables (including NEE sampling for use as an area light),
+  and unbaked-CTM correct under arbitrary rotation, but neither GPU backend
+  (recursive or wavefront) builds them yet; a loaded scene using either shape
+  renders that geometry as CPU-only until the GPU work lands.
 
 (The `dielectric roughness` and `conductor` routing gaps once listed here were
 fixed — see the Materials table above, which is the source of truth for

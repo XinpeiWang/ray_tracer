@@ -17,6 +17,7 @@
 
 #include "bvh.h"
 #include "constant_medium.h"
+#include "disk_cylinder_hittable.h"
 #include "hittable_list.h"
 #include "material.h"
 #include "scenes_advanced.h"   // bilinear_patch_hittable
@@ -220,6 +221,8 @@ struct BuildResult {
 	std::shared_ptr<punctual_light_list> punctLights;
 	std::size_t triangleCount = 0;
 	std::size_t sphereCount = 0;
+	std::size_t diskCount = 0;
+	std::size_t cylinderCount = 0;
 	std::size_t bilinearPatchCount = 0;
 	std::size_t uniqueVertexCount = 0;
 	// Instance placements actually added to the world. Each shares one
@@ -269,6 +272,8 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	// it always was; only its inputs and outputs became parameters.
 	const auto emitGeometry = [&](const std::vector<pbrt_flatten::Triangle> &tris,
 								  const std::vector<pbrt_flatten::Sphere> &sphs,
+								  const std::vector<pbrt_flatten::Disk> &disks,
+								  const std::vector<pbrt_flatten::Cylinder> &cylinders,
 								  const std::vector<pbrt_flatten::BilinearPatch> &patches,
 								  hittable_list &world, hittable_list &lights) {
 	// ---- triangles -------------------------------------------------------
@@ -370,6 +375,34 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	}
 	out.sphereCount += sphs.size();
 
+	// ---- disks / cylinders -------------------------------------------------
+	// Shape "disk"/"cylinder" - unlike Sphere, these keep their CTM unbaked
+	// (see pbrt_flatten::Disk/Cylinder's own comment for why) and apply it at
+	// intersection time via disk_hittable/cylinder_hittable, the same
+	// ray-into-object-space technique transform_instance.h already uses for
+	// object instancing.
+	for (const pbrt_flatten::Disk &d : disks) {
+		auto mat = cachedMaterial(d.material, d.areaLight);
+		pbrt_scene::Matrix4 xform;
+		for (int i = 0; i < 16; ++i) xform.m[i] = d.xform[i];
+		auto disk = std::make_shared<disk_hittable>(
+			d.radius, d.innerRadius, d.height, degrees_to_radians(d.phiMaxDeg), xform, mat);
+		world.add(disk);
+		if (d.areaLight >= 0) lights.add(disk);
+	}
+	out.diskCount += disks.size();
+
+	for (const pbrt_flatten::Cylinder &c : cylinders) {
+		auto mat = cachedMaterial(c.material, c.areaLight);
+		pbrt_scene::Matrix4 xform;
+		for (int i = 0; i < 16; ++i) xform.m[i] = c.xform[i];
+		auto cyl = std::make_shared<cylinder_hittable>(
+			c.radius, c.zMin, c.zMax, degrees_to_radians(c.phiMaxDeg), xform, mat);
+		world.add(cyl);
+		if (c.areaLight >= 0) lights.add(cyl);
+	}
+	out.cylinderCount += cylinders.size();
+
 	// ---- bilinear patches -------------------------------------------------
 	// Shape "bilinearmesh" - see pbrt_flatten.h's BilinearPatch comment for
 	// why only the single-patch form reaches here. bilinear_patch_hittable
@@ -390,7 +423,8 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	};
 
 
-	emitGeometry(scene.triangles, scene.spheres, scene.bilinearPatches, *out.world, *out.lights);
+	emitGeometry(scene.triangles, scene.spheres, scene.disks, scene.cylinders,
+				 scene.bilinearPatches, *out.world, *out.lights);
 
 	// ---- instances -------------------------------------------------------
 	// Each definition is built once, into its own BVH, and then placed by a
@@ -411,11 +445,15 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 
 		auto geometry = std::make_shared<hittable_list>();
 		hittable_list unusedLights;
-		// No InstanceGroup::bilinearPatches - object-space bilinear patches
-		// inside an instance definition are out of scope (see flatten()'s
-		// null-bilinearPatches comment on why), so this is always empty.
+		// No InstanceGroup::bilinearPatches/disks/cylinders - object-space
+		// bilinear patches, disks and cylinders inside an instance definition
+		// are all out of scope (see flatten()'s null-bilinearPatches/disks/
+		// cylinders comments on why), so these are always empty.
 		static const std::vector<pbrt_flatten::BilinearPatch> kNoBilinearPatches;
-		emitGeometry(grp.triangles, grp.spheres, kNoBilinearPatches, *geometry, unusedLights);
+		static const std::vector<pbrt_flatten::Disk> kNoDisks;
+		static const std::vector<pbrt_flatten::Cylinder> kNoCylinders;
+		emitGeometry(grp.triangles, grp.spheres, kNoDisks, kNoCylinders,
+					 kNoBilinearPatches, *geometry, unusedLights);
 		if (!geometry->objects.empty())
 			groupBVHs[g] = std::make_shared<bvh_node>(*geometry);
 	}

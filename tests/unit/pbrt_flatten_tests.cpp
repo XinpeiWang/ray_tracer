@@ -127,6 +127,87 @@ TEST(FlattenTest, NonUniformScaleOnASphereIsReportedNotSilentlyRounded) {
 }
 
 // ===========================================================================
+// Disks / Cylinders
+// ===========================================================================
+
+TEST(FlattenTest, DiskParamsAreReadWithPbrtDefaults) {
+	const FlatScene s = flattenSource("Shape \"disk\"\n");
+	ASSERT_EQ(s.disks.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.disks[0].radius, 1.0);
+	EXPECT_DOUBLE_EQ(s.disks[0].innerRadius, 0.0);
+	EXPECT_DOUBLE_EQ(s.disks[0].height, 0.0);
+	EXPECT_DOUBLE_EQ(s.disks[0].phiMaxDeg, 360.0);
+}
+
+TEST(FlattenTest, DiskParamsAreReadWhenGiven) {
+	const FlatScene s = flattenSource(
+		"Shape \"disk\" \"float radius\" [ 3 ] \"float innerradius\" [ 1 ] "
+		"\"float height\" [ 2 ] \"float phimax\" [ 270 ]\n");
+	ASSERT_EQ(s.disks.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.disks[0].radius, 3.0);
+	EXPECT_DOUBLE_EQ(s.disks[0].innerRadius, 1.0);
+	EXPECT_DOUBLE_EQ(s.disks[0].height, 2.0);
+	EXPECT_DOUBLE_EQ(s.disks[0].phiMaxDeg, 270.0);
+}
+
+TEST(FlattenTest, DiskCarriesItsCTMUnbakedRatherThanBeingApproximated) {
+	// Unlike Sphere (rotation-invariant, baked to world-space center+radius -
+	// see NonUniformScaleOnASphereIsReportedNotSilentlyRounded above), a disk
+	// is not rotation-invariant, so its xform is kept as-is for the CPU/GPU
+	// builders to apply exactly at intersection time - see pbrt_flatten::
+	// Disk's own comment for why. This just pins that the CTM in effect at
+	// the Shape directive is what ends up on the flat struct.
+	const FlatScene s = flattenSource("Translate 10 20 30\nShape \"disk\"\n");
+	ASSERT_EQ(s.disks.size(), 1u);
+	// Row-major affine: translation lives in column 3 of each row (m[3],
+	// m[7], m[11] - see pbrt_scene::Matrix4's own layout, matching
+	// transform_instance.h's apply_point()).
+	EXPECT_DOUBLE_EQ(s.disks[0].xform[3], 10.0);
+	EXPECT_DOUBLE_EQ(s.disks[0].xform[7], 20.0);
+	EXPECT_DOUBLE_EQ(s.disks[0].xform[11], 30.0);
+}
+
+TEST(FlattenTest, CylinderParamsAreReadWithPbrtDefaults) {
+	const FlatScene s = flattenSource("Shape \"cylinder\"\n");
+	ASSERT_EQ(s.cylinders.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.cylinders[0].radius, 1.0);
+	EXPECT_DOUBLE_EQ(s.cylinders[0].zMin, -1.0);
+	EXPECT_DOUBLE_EQ(s.cylinders[0].zMax, 1.0);
+	EXPECT_DOUBLE_EQ(s.cylinders[0].phiMaxDeg, 360.0);
+}
+
+TEST(FlattenTest, CylinderParamsAreReadWhenGiven) {
+	const FlatScene s = flattenSource(
+		"Shape \"cylinder\" \"float radius\" [ 2 ] \"float zmin\" [ -5 ] "
+		"\"float zmax\" [ 5 ] \"float phimax\" [ 180 ]\n");
+	ASSERT_EQ(s.cylinders.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.cylinders[0].radius, 2.0);
+	EXPECT_DOUBLE_EQ(s.cylinders[0].zMin, -5.0);
+	EXPECT_DOUBLE_EQ(s.cylinders[0].zMax, 5.0);
+	EXPECT_DOUBLE_EQ(s.cylinders[0].phiMaxDeg, 180.0);
+}
+
+TEST(FlattenTest, DiskAndCylinderRespectMaterialAreaLightAndMedium) {
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
+		"Material \"diffuse\" \"rgb reflectance\" [ .5 .5 .5 ]\n"
+		"AttributeBegin\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  AreaLightSource \"diffuse\" \"rgb L\" [ 5 5 5 ]\n"
+		"  Shape \"disk\"\n"
+		"  Shape \"cylinder\"\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(s.disks.size(), 1u);
+	ASSERT_EQ(s.cylinders.size(), 1u);
+	EXPECT_EQ(s.disks[0].material, 0);
+	EXPECT_EQ(s.disks[0].areaLight, 0);
+	EXPECT_EQ(s.disks[0].medium, 0);
+	EXPECT_EQ(s.cylinders[0].material, 0);
+	EXPECT_EQ(s.cylinders[0].areaLight, 0);
+	EXPECT_EQ(s.cylinders[0].medium, 0);
+}
+
+// ===========================================================================
 // MakeNamedMedium / MediumInterface
 // ===========================================================================
 
@@ -259,9 +340,12 @@ TEST(FlattenTest, MeshMissingItsParametersIsSkippedNotCrashed) {
 }
 
 TEST(FlattenTest, UnsupportedShapeTypesAreNamed) {
-	const FlatScene s = flattenSource("Shape \"cylinder\" \"float radius\" [ 1 ]\n");
+	// "cone" - not "cylinder"/"disk", which this loader now supports (see
+	// FlattenTest.MediumInterfaceAttachesTheNamedMediumToTheSphere's sibling
+	// tests above and pbrt_cpu_builder_tests.cpp's disk/cylinder coverage).
+	const FlatScene s = flattenSource("Shape \"cone\" \"float radius\" [ 1 ]\n");
 	EXPECT_TRUE(s.empty());
-	EXPECT_TRUE(warnedAbout(s, "cylinder"));
+	EXPECT_TRUE(warnedAbout(s, "cone"));
 }
 
 TEST(FlattenTest, ParserWarningsAreCarriedThrough) {

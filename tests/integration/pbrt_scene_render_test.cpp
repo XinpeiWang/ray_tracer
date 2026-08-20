@@ -302,6 +302,58 @@ AttributeEnd
 	EXPECT_GT(st.meanLuminance, 0.0) << "the frame is entirely black";
 }
 
+TEST(PbrtSceneRender, DiskAndCylinderRenderWithoutNaN) {
+	// kMiniCornell's sphere, replaced by a disk and a cylinder - the two new
+	// pbrt shape types this segment's loader work added end to end (pbrt_
+	// scene.h's Shape dispatch -> pbrt_flatten::Disk/Cylinder -> pbrt_cpu_
+	// builder.h's disk_hittable/cylinder_hittable). The precise ray-hit
+	// geometry is already covered in pbrt_cpu_builder_tests.cpp; this proves
+	// both shapes survive contact with the real shading/NEE render path
+	// (including the disk acting as an emissive area light) without
+	// producing non-finite pixels.
+	const char *kMiniCornellWithDiskAndCylinder = R"PBRT(
+LookAt 0 1 -4    0 1 0    0 1 0
+Camera "perspective" "float fov" [ 50 ]
+Film "rgb" "integer xresolution" [ 32 ] "integer yresolution" [ 32 ]
+WorldBegin
+
+# Ceiling light, now a disk instead of a quad
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 12 12 12 ]
+  Translate 0 2.0 0
+  Rotate 90 1 0 0
+  Shape "disk" "float radius" [ 0.6 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.75 0.75 0.75 ]
+
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -2 0 -2   2 0 -2   2 0 2   -2 0 2 ]
+
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -2 0 2   2 0 2   2 3 2   -2 3 2 ]
+
+Translate 0 0.5 0
+Shape "cylinder" "float radius" [ 0.4 ] "float zmin" [ -0.5 ] "float zmax" [ 0.5 ]
+)PBRT";
+
+	Loaded l = loadAndAim(kMiniCornellWithDiskAndCylinder, 8);
+	ASSERT_EQ(l.built.diskCount, 1u);
+	ASSERT_EQ(l.built.cylinderCount, 1u);
+	ASSERT_FALSE(l.built.lights->objects.empty())
+		<< "the disk ceiling light should have been collected as a light";
+
+	const power_light_list lights(*l.built.lights);
+	const FrameStats st = renderStats(*l.built.world, lights, l.cam, 8);
+
+	EXPECT_TRUE(st.allFinite) << "a NaN or infinity reached the film";
+	EXPECT_GT(st.meanLuminance, 0.005)
+		<< "the frame is essentially black - the disk light or cylinder "
+		   "geometry may not be where the scene says it is";
+	EXPECT_GT(st.maxLuminance, 1.0)
+		<< "nothing in frame is brighter than diffuse bounce light";
+}
+
 TEST(PbrtSceneRender, RemovingTheLightMakesTheFrameBlack) {
 	// The control for the test above. Without it, a bug that made every ray
 	// return a constant non-zero colour would pass "the frame is lit" happily.

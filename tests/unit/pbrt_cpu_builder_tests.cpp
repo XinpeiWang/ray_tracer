@@ -72,6 +72,69 @@ TEST(PbrtCpuBuildTest, SphereIsBuiltAtItsTransformedCentreAndRadius) {
 	EXPECT_NEAR(t, 8.0, 1e-6);
 }
 
+TEST(PbrtCpuBuildTest, DiskIsBuiltAtItsTransformedPositionAndRadius) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Translate 0 0 10\n"
+		"Scale 2 2 2\n"
+		"Shape \"disk\" \"float radius\" [ 1 ]\n");
+	EXPECT_EQ(b.diskCount, 1u);
+	double t = 0.0;
+	// A disk at object-space z=0, radius 1, scaled by 2 and moved to z=10:
+	// world-space disk of radius 2 centred at (0,0,10), still facing +Z.
+	ASSERT_TRUE(castRay(b, point3(0, 0, 0), vec3(0, 0, 1), t));
+	EXPECT_NEAR(t, 10.0, 1e-6);
+}
+
+TEST(PbrtCpuBuildTest, CylinderIsBuiltAtItsTransformedPositionAndRadius) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Translate 10 0 0\n"
+		"Shape \"cylinder\" \"float radius\" [ 1 ] \"float zmin\" [ -1 ] "
+		"\"float zmax\" [ 1 ]\n");
+	EXPECT_EQ(b.cylinderCount, 1u);
+	double t = 0.0;
+	// The cylinder's axis (object-space Z) moves to run through x=10, y=0.
+	// A ray fired along +X hits the near wall at x=10-radius=9.
+	ASSERT_TRUE(castRay(b, point3(0, 0, 0), vec3(1, 0, 0), t));
+	EXPECT_NEAR(t, 9.0, 1e-6);
+}
+
+TEST(PbrtCpuBuildTest, CylinderHasNoEndCaps) {
+	// pbrt's cylinder (and this project's CylinderShape<T> port) is an open
+	// tube, not a capped can - matching DiskShape/CylinderShape's own
+	// intersect() which only solves for the lateral surface. A ray travelling
+	// straight down the axis must pass through untouched.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Shape \"cylinder\" \"float radius\" [ 1 ] \"float zmin\" [ -1 ] "
+		"\"float zmax\" [ 1 ]\n");
+	double t = 0.0;
+	EXPECT_FALSE(castRay(b, point3(0, 0, -5), vec3(0, 0, 1), t))
+		<< "a ray down the cylinder's own axis should exit through the open "
+		   "end, not bounce off a cap that doesn't exist";
+}
+
+TEST(PbrtCpuBuildTest, DiskUnderRotationHitsAtTheExactTransformedPosition) {
+	// Disk/Cylinder deliberately keep their CTM unbaked (see
+	// disk_cylinder_hittable.h's own header comment) instead of following
+	// Sphere's "bake to world-space centre+radius, warn under anisotropic
+	// scale" approximation - Sphere can get away with that because it's
+	// rotation-invariant, but a disk's orientation is exactly what a rotation
+	// changes. This proves a rotated disk is hit exactly, not approximated.
+	//
+	// Rotating 90 degrees about X leaves the local X axis fixed and swaps
+	// local Y and Z, so a disk originally spanning the object-space XY plane
+	// (its outward normal along +/-Z) ends up spanning the world-space XZ
+	// plane instead - regardless of the handedness convention for the
+	// rotation's sign, since X is untouched either way.
+	const pbrt_cpu::BuildResult b =
+		buildFrom("Rotate 90 1 0 0\nShape \"disk\" \"float radius\" [ 1 ]\n");
+	EXPECT_EQ(b.diskCount, 1u);
+	double t = 0.0;
+	// Local point (x=0.5, z=0) is within the unit disk (radius 0.5 < 1) and
+	// keeps x=0.5 under the rotation, landing in the world-space y=0 plane.
+	ASSERT_TRUE(castRay(b, point3(0.5, -5, 0), vec3(0, 1, 0), t));
+	EXPECT_NEAR(t, 5.0, 1e-6);
+}
+
 TEST(PbrtCpuBuildTest, MediumInterfaceWrapsTheSphereInAParticipatingMedium) {
 	// The precise structural claim - the sphere resolves to the right
 	// FlatScene::media index, with the right coefficients - lives in
@@ -153,9 +216,12 @@ TEST(PbrtCpuBuildTest, NonEmissiveSceneHasAnEmptyLightList) {
 TEST(PbrtCpuBuildTest, AnEmptySceneBuildsWithoutCrashing) {
 	// flatten() drops unsupported shapes, so a scene can legitimately arrive
 	// with nothing in it. A BVH must not be built over zero primitives.
-	const pbrt_cpu::BuildResult b = buildFrom("Shape \"cylinder\"\n");
+	// "cone" - not "cylinder"/"disk", which this loader now supports.
+	const pbrt_cpu::BuildResult b = buildFrom("Shape \"cone\"\n");
 	EXPECT_EQ(b.triangleCount, 0u);
 	EXPECT_EQ(b.sphereCount, 0u);
+	EXPECT_EQ(b.diskCount, 0u);
+	EXPECT_EQ(b.cylinderCount, 0u);
 	ASSERT_NE(b.world, nullptr);
 	EXPECT_TRUE(b.world->objects.empty());
 }
