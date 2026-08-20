@@ -113,4 +113,5 @@ void MainWindow::restyleThemedWidgets() {
 	// they are re-rendered from the kept history instead. This used to print an
 	// apology telling the user the old lines would stay the wrong colour.
 	rebuildLogPane();
+	rebuildDiagPane();  // same constraint, same fix - see its own comment
 }

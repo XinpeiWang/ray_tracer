@@ -56,6 +56,58 @@ QString styleLogLine(const render_output::LogCategory &cat, const QString &colou
 		.arg(colour, timestamp, QString::fromLatin1(cat.label), escaped, timestampColour);
 }
 
+// Styles one line of the --diagnose report (see launcher/diagnostics.cpp,
+// which emits exactly one "Key: value" fact per line for this to key off).
+// Unlike styleLogLine() above, a diagnostics line carries no timestamp or
+// [LABEL] - it's a plain fact, so only two things vary: the "===" banner
+// rule, and whether the fact reports a problem (missing/unavailable/not
+// writable), a healthy state (available/writable/present), or a neutral
+// measurement (a count, a size, a version string).
+QString styleDiagnosticsLine(const theme::Palette &p, const QString &line) {
+	const QString mono = "font-family:Consolas,monospace;font-size:9pt;";
+
+	if (line.startsWith("===")) {
+		return QString("<span style='color:%1;%2'><b>%3</b></span>")
+			.arg(p.logSeparator.name(), mono, line.toHtmlEscaped());
+	}
+
+	int colon = line.indexOf(':');
+	if (colon < 0) {
+		return QString("<span style='color:%1;%2'>%3</span>")
+			.arg(p.textBody.name(), mono, line.toHtmlEscaped());
+	}
+
+	// Classified on the WHOLE line, not just the value: a fact like "Pbrt
+	// Scene Files Missing: a.pbrt, b.pbrt" carries its problem-word in the
+	// key, not the value. Order matters within the check itself - the
+	// negative phrasings ("not available", "NOT writable") must be tested
+	// before the positive ones they contain as a substring ("available",
+	// "writable"), or a missing GPU would render green.
+	const QString lower = line.toLower();
+	QColor factColour;
+	if (lower.contains("not available") || lower.contains("not detected") ||
+		lower.contains("not usable") || lower.contains("not writable") ||
+		lower.contains("missing")) {
+		factColour = p.logWarning;
+	} else if (lower.contains("failed")) {
+		factColour = p.logError;
+	} else if (lower.contains("available") || lower.contains("writable") ||
+			   lower.contains("present")) {
+		factColour = p.logSuccess;
+	} else {
+		factColour = p.textBody;
+	}
+
+	QString key = line.left(colon).toHtmlEscaped();
+	QString value = line.mid(colon + 1).toHtmlEscaped();
+	// The key stays a muted label (like a log line's [LABEL] tag) so the
+	// coloured value is what draws the eye; a neutral fact keeps the value
+	// in the same muted-adjacent body colour instead of standing out.
+	return QString("<span style='%1'><span style='color:%2;'>%3:</span>"
+				   "<span style='color:%4;'>%5</span></span>")
+		.arg(mono, p.textMuted.name(), key, factColour.name(), value);
+}
+
 } // namespace
 
 void MainWindow::onRenderClicked() {
@@ -305,6 +357,7 @@ void MainWindow::onRunDiagnosticsClicked() {
 	// QProcess and race both sets of signals into the same text edit.
 	if (m_diagnosticsRunner) return;
 
+	m_lastDiagReport.clear();  // no report to recolour until reportReady fires
 	if (m_diagTextEdit) {
 		m_diagTextEdit->clear();
 		m_diagTextEdit->setPlainText("Running diagnostics...");
@@ -335,10 +388,15 @@ void MainWindow::onRunDiagnosticsClicked() {
 }
 
 void MainWindow::onDiagnosticsReportReady(const QString &report) {
-	if (m_diagTextEdit) m_diagTextEdit->setPlainText(report);
+	m_lastDiagReport = report;
+	rebuildDiagPane();
 }
 
 void MainWindow::onDiagnosticsFailed(const QString &message) {
+	// Not a report - plain text, nothing to colour, and clearing
+	// m_lastDiagReport keeps a later theme change from trying to recolour
+	// a report that isn't showing anymore.
+	m_lastDiagReport.clear();
 	if (m_diagTextEdit) m_diagTextEdit->setPlainText("Diagnostics failed:\n\n" + message);
 }
 
@@ -799,6 +857,32 @@ void MainWindow::rebuildLogPane() {
 	// theme change should not move them.
 	if (!scrolledToBottom)
 		m_logTextEdit->moveCursor(QTextCursor::Start);
+}
+
+// Re-renders the diagnostics report in the current scheme, same reasoning
+// and same "replace, don't recolour" constraint as rebuildLogPane() above.
+// A no-op when the pane isn't currently showing a report (m_lastDiagReport
+// empty - e.g. it's showing "Running diagnostics..." or a failure message).
+void MainWindow::rebuildDiagPane() {
+	if (!m_diagTextEdit || m_lastDiagReport.isEmpty()) return;
+
+	const bool scrolledToBottom =
+		m_diagTextEdit->verticalScrollBar()->value() ==
+		m_diagTextEdit->verticalScrollBar()->maximum();
+
+	m_diagTextEdit->setUpdatesEnabled(false);
+	m_diagTextEdit->clear();
+	const QStringList lines = m_lastDiagReport.split('\n');
+	for (const QString &line : lines) {
+		if (line.isEmpty()) continue;
+		m_diagTextEdit->append(styleDiagnosticsLine(m_activeTheme, line));
+	}
+	m_diagTextEdit->setUpdatesEnabled(true);
+
+	if (!scrolledToBottom)
+		m_diagTextEdit->moveCursor(QTextCursor::Start);
+	else
+		m_diagTextEdit->moveCursor(QTextCursor::End);
 }
 
 namespace {

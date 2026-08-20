@@ -951,6 +951,14 @@ private:
 	QPushButton *m_runDiagnosticsButton;    // Disabled while a probe is running
 	int m_diagnosticsTabIndex = -1;         // Index of the Diagnostics tab within m_tabWidget
 	DiagnosticsRunner *m_diagnosticsRunner = nullptr;  // nullptr when not running
+	// Raw (unstyled) report text, kept for the same reason m_logHistory is:
+	// the pane holds styled HTML with the previous scheme's colours already
+	// baked in, so a theme change re-renders from this rather than trying to
+	// recolour existing spans in place. Empty when the pane is showing a
+	// plain (non-report) message, e.g. "Running diagnostics..." or a failure
+	// - see onDiagnosticsReportReady()/onDiagnosticsFailed().
+	QString m_lastDiagReport;
+	void rebuildDiagPane();
 
 	// Render driver (nullptr when not rendering)
 	RenderController *m_renderController;

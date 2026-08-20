@@ -59,8 +59,13 @@ void append_os_cpu_ram(std::ostringstream& report) {
 	MEMORYSTATUSEX statex{};
 	statex.dwLength = sizeof(statex);
 	if (GlobalMemoryStatusEx(&statex)) {
-		report << "RAM: " << format_bytes(statex.ullAvailPhys) << " free / "
-			   << format_bytes(statex.ullTotalPhys) << " total\n";
+		// One value per line (not "X free / Y total" on one line) so every
+		// line in the report is a single key: value pair - both for CLI
+		// readability and so the GUI's line-based colorizer (see
+		// mainwindow_slots.cpp's styleDiagnosticsLine) has exactly one fact
+		// to classify per line instead of two crammed together.
+		report << "RAM Free: " << format_bytes(statex.ullAvailPhys) << "\n";
+		report << "RAM Total: " << format_bytes(statex.ullTotalPhys) << "\n";
 	} else {
 		report << "RAM: not available\n";
 	}
@@ -76,16 +81,16 @@ void append_gpu(std::ostringstream& report) {
 	optix_get_diagnostics(&diag);
 	if (diag.available) {
 		report << "GPU: " << diag.device_name << "\n";
-		report << "Driver: " << format_cuda_version(diag.cuda_driver_version)
-			   << "   CUDA Runtime: " << format_cuda_version(diag.cuda_runtime_version) << "\n";
-		report << "VRAM: " << format_bytes(diag.vram_free_bytes) << " free / "
-			   << format_bytes(diag.vram_total_bytes) << " total\n";
+		report << "Driver Version: " << format_cuda_version(diag.cuda_driver_version) << "\n";
+		report << "CUDA Runtime: " << format_cuda_version(diag.cuda_runtime_version) << "\n";
+		report << "VRAM Free: " << format_bytes(diag.vram_free_bytes) << "\n";
+		report << "VRAM Total: " << format_bytes(diag.vram_total_bytes) << "\n";
 		report << "OptiX: available (ABI v" << diag.optix_abi_version << ")\n";
 	} else {
 		report << "GPU: not detected / not usable\n";
 		if (diag.cuda_driver_version > 0 || diag.cuda_runtime_version > 0) {
-			report << "Driver: " << format_cuda_version(diag.cuda_driver_version)
-				   << "   CUDA Runtime: " << format_cuda_version(diag.cuda_runtime_version) << "\n";
+			report << "Driver Version: " << format_cuda_version(diag.cuda_driver_version) << "\n";
+			report << "CUDA Runtime: " << format_cuda_version(diag.cuda_runtime_version) << "\n";
 		}
 		report << "OptiX: not available (" << diag.failure_reason << ")\n";
 	}
@@ -112,9 +117,9 @@ void append_disk(std::ostringstream& report, const std::string& custom_output_pa
 		fs::path space_target = fs::exists(dir, ec) ? dir : fs::current_path();
 		auto space_info = fs::space(space_target, ec);
 		if (!ec) {
-			report << "Disk free: " << format_bytes(space_info.free) << "\n";
+			report << "Disk Free: " << format_bytes(space_info.free) << "\n";
 		} else {
-			report << "Disk free: not available (" << ec.message() << ")\n";
+			report << "Disk Free: not available (" << ec.message() << ")\n";
 		}
 
 		fs::create_directories(dir, ec);
@@ -127,8 +132,8 @@ void append_disk(std::ostringstream& report, const std::string& custom_output_pa
 		if (writable) {
 			fs::remove(probe, ec);
 		}
-		report << "Output directory (" << dir.string() << "): "
-			   << (writable ? "writable" : "NOT writable") << "\n";
+		report << "Output Directory: " << dir.string() << " ("
+			   << (writable ? "writable" : "NOT writable") << ")\n";
 	} catch (const std::exception& e) {
 		report << "Disk/output-directory check failed: " << e.what() << "\n";
 	}
@@ -170,18 +175,21 @@ void append_scene_assets(std::ostringstream& report) {
 	std::error_code ec;
 	bool models_dir_present = fs::exists("models", ec) || fs::exists("../models", ec);
 
-	report << "Scene assets: models/ directory " << (models_dir_present ? "present" : "MISSING")
-		   << "; " << requires_files_count << " of " << total
-		   << " scenes need external files (see each scene's description for exact filenames)\n";
-	report << "  pbrt-backed scene files: " << pbrt_present << "/" << pbrt_checked << " present";
+	// One key: value pair per line - see append_os_cpu_ram()'s own comment
+	// for why (this used to be two facts crammed onto one "Scene assets:"
+	// line, plus a third crammed onto the "pbrt-backed scene files" line).
+	report << "Models Directory: " << (models_dir_present ? "present" : "MISSING") << "\n";
+	report << "Scenes Requiring External Files: " << requires_files_count << " of " << total
+		   << " (see each scene's description for exact filenames)\n";
+	report << "Pbrt Scene Files Present: " << pbrt_present << " of " << pbrt_checked << "\n";
 	if (!missing_pbrt.empty()) {
-		report << " - missing: ";
+		report << "Pbrt Scene Files Missing: ";
 		for (size_t i = 0; i < missing_pbrt.size(); ++i) {
 			if (i) report << ", ";
 			report << missing_pbrt[i];
 		}
+		report << "\n";
 	}
-	report << "\n";
 }
 
 } // namespace
