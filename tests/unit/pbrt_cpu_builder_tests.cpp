@@ -72,6 +72,50 @@ TEST(PbrtCpuBuildTest, SphereIsBuiltAtItsTransformedCentreAndRadius) {
 	EXPECT_NEAR(t, 8.0, 1e-6);
 }
 
+TEST(PbrtCpuBuildTest, MediumInterfaceWrapsTheSphereInAParticipatingMedium) {
+	// The precise structural claim - the sphere resolves to the right
+	// FlatScene::media index, with the right coefficients - lives in
+	// pbrt_flatten_tests.cpp, which can check it before pbrt_cpu_builder.h's
+	// own final BVH-folding step collapses every top-level hittable (sphere,
+	// constant_medium wrapper, everything else) into a single bvh_node,
+	// making world->objects.size() always 1 regardless of scene content and
+	// unusable as a "how many things got added" signal here. This test only
+	// confirms the CPU builder actually consumes that index without
+	// crashing and the geometry stays reachable.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
+		"  \"rgb sigma_a\" [ 0.1 0.1 0.1 ] \"rgb sigma_s\" [ 2 2 2 ]\n"
+		"AttributeBegin\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 1 ]\n"
+		"AttributeEnd\n");
+	EXPECT_EQ(b.sphereCount, 1u);
+
+	// constant_medium stochastically decides whether a ray scatters inside
+	// the volume, so this doesn't assert a specific outcome - only that the
+	// medium-wrapped sphere is still reachable at all, the same "did it
+	// build and can a ray find it" bar castRay() checks for plain geometry.
+	double t = 0.0;
+	EXPECT_TRUE(castRay(b, point3(0, 0, -5), vec3(0, 0, 1), t))
+		<< "a ray toward the medium-wrapped sphere should still hit something";
+}
+
+TEST(PbrtCpuBuildTest, UnknownMediumInterfaceNameIsTreatedAsVacuum) {
+	// No MakeNamedMedium declares "ghost" - the parser should warn and fall
+	// back to insideMedium=-1 (vacuum) rather than crash or misindex. See
+	// FlattenTest.UnresolvedMediumNameIsVacuumAndWarns for the precise
+	// index-level check; this only confirms the CPU builder still produces
+	// an ordinary, reachable sphere rather than failing to build at all.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"AttributeBegin\n"
+		"  MediumInterface \"ghost\" \"\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 1 ]\n"
+		"AttributeEnd\n");
+	EXPECT_EQ(b.sphereCount, 1u);
+	double t = 0.0;
+	EXPECT_TRUE(castRay(b, point3(0, 0, -5), vec3(0, 0, 1), t));
+}
+
 TEST(PbrtCpuBuildTest, SharedVerticesAreDeduplicated) {
 	// The two triangles of a quad share two corners. FlatScene stores all six
 	// vertices explicitly; the builder should recover the original four.

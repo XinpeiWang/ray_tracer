@@ -246,12 +246,30 @@ struct LightDecl {
 	Matrix4 xform;
 };
 
+// MakeNamedMedium - a participating medium (fog/smoke), named so a later
+// MediumInterface can refer back to it. Only "homogeneous" (pbrt-v4's
+// constant-density medium) is recognized; anything else falls through to
+// Scene::media as a decl whose params the CPU/GPU builders will not
+// recognize (same "not implemented, skipped" posture as an unhandled Shape).
+struct MediumDecl {
+	std::string name;
+	std::string type = "homogeneous";
+	ParamList params;
+};
+
 struct ShapeDecl {
 	std::string type;    // "sphere", "trianglemesh", "plymesh", "disk", ...
 	ParamList params;
 	Matrix4 xform;
 	int materialIndex = -1;    // index into Scene::materials, -1 = pbrt's default
 	int areaLightIndex = -1;   // index into Scene::areaLights, -1 = not emissive
+	// index into Scene::media, -1 = vacuum. Only the medium a ray enters by
+	// crossing INTO this shape is tracked - "outsideMedium" (ambient fog a
+	// camera ray already starts inside, before hitting anything) would need
+	// a scene-wide default medium threaded through every ray's origin, a
+	// materially bigger feature than "one more per-shape index" and not
+	// needed by any scene this loader has actually seen.
+	int insideMedium = -1;
 	bool reverseOrientation = false;
 };
 
@@ -307,6 +325,7 @@ struct Scene {
 	std::vector<TextureDecl> textures;
 	std::vector<LightDecl> lights;       // LightSource
 	std::vector<LightDecl> areaLights;   // AreaLightSource
+	std::vector<MediumDecl> media;       // MakeNamedMedium
 	std::vector<ShapeDecl> shapes;
 
 	// An instance definition: shapes recorded between ObjectBegin and
@@ -476,6 +495,7 @@ struct GraphicsState {
 	Matrix4 ctm;
 	int materialIndex = -1;
 	int areaLightIndex = -1;
+	int insideMedium = -1;      // set by MediumInterface, inherited by Shape
 	bool reverseOrientation = false;
 };
 
@@ -756,6 +776,31 @@ private:
 			s_.textures.push_back(tx);
 			return true;
 		}
+		if (d == "MakeNamedMedium") {
+			MediumDecl md;
+			if (pos_ < t_.size() && t_[pos_].quoted) { md.name = t_[pos_].text; ++pos_; }
+			md.params = readParams();
+			md.type = md.params.getString("type", "homogeneous");
+			s_.media.push_back(md);
+			return true;
+		}
+		if (d == "MediumInterface") {
+			// Two consecutive quoted names - "inside" "outside" - not a
+			// "type name" param list. An empty string names vacuum (pbrt's
+			// own convention); only "inside" is tracked (see ShapeDecl::
+			// insideMedium's comment on why "outside" is out of scope).
+			std::string insideName;
+			if (pos_ < t_.size() && t_[pos_].quoted) { insideName = t_[pos_].text; ++pos_; }
+			if (pos_ < t_.size() && t_[pos_].quoted) { ++pos_; }   // outside name, unused
+			int found = -1;
+			for (std::size_t i = 0; i < s_.media.size(); ++i)
+				if (s_.media[i].name == insideName) found = static_cast<int>(i);
+			if (!insideName.empty() && found < 0)
+				warn(line, "MediumInterface names '" + insideName +
+					 "', which was never declared by MakeNamedMedium; treated as vacuum");
+			gs_.insideMedium = found;
+			return true;
+		}
 		if (d == "LightSource" || d == "AreaLightSource") {
 			LightDecl l;
 			if (pos_ < t_.size() && t_[pos_].quoted) { l.type = t_[pos_].text; ++pos_; }
@@ -776,6 +821,7 @@ private:
 			sh.xform = gs_.ctm;
 			sh.materialIndex = gs_.materialIndex;
 			sh.areaLightIndex = gs_.areaLightIndex;
+			sh.insideMedium = gs_.insideMedium;
 			sh.reverseOrientation = gs_.reverseOrientation;
 			if (recordingObject_ >= 0)
 				s_.objects[static_cast<std::size_t>(recordingObject_)].shapes.push_back(sh);

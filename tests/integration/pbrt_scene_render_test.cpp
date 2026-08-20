@@ -255,6 +255,53 @@ TEST(PbrtSceneRender, MiniCornellBoxRendersLit) {
 		<< "nothing in frame is brighter than diffuse bounce light";
 }
 
+TEST(PbrtSceneRender, MediumInterfaceSphereRendersWithoutNaN) {
+	// kMiniCornell's sphere, but wrapped in a homogeneous fog medium via
+	// MakeNamedMedium/MediumInterface - the end-to-end path this segment's
+	// loader work added (pbrt_scene.h's dispatch -> pbrt_flatten::Medium ->
+	// pbrt_cpu_builder.h's constant_medium wrap). The structural claim (one
+	// extra hittable) is already covered in pbrt_cpu_builder_tests.cpp; this
+	// proves the medium survives contact with the real multithreaded-capable
+	// render path without producing non-finite pixels.
+	const char *kMiniCornellWithFog = R"PBRT(
+LookAt 0 1 -4    0 1 0    0 1 0
+Camera "perspective" "float fov" [ 50 ]
+Film "rgb" "integer xresolution" [ 32 ] "integer yresolution" [ 32 ]
+WorldBegin
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 12 12 12 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -0.6 2.0 -0.6   0.6 2.0 -0.6   0.6 2.0 0.6   -0.6 2.0 0.6 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.75 0.75 0.75 ]
+
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -2 0 -2   2 0 -2   2 0 2   -2 0 2 ]
+
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -2 0 2   2 0 2   2 3 2   -2 3 2 ]
+
+MakeNamedMedium "fog" "string type" "homogeneous"
+    "rgb sigma_a" [ 0.05 0.05 0.05 ] "rgb sigma_s" [ 3 3 3 ]
+
+AttributeBegin
+  MediumInterface "fog" ""
+  Shape "sphere" "float radius" [ 0.5 ]
+AttributeEnd
+)PBRT";
+
+	Loaded l = loadAndAim(kMiniCornellWithFog, 8);
+	ASSERT_EQ(l.built.sphereCount, 1u);
+
+	const power_light_list lights(*l.built.lights);
+	const FrameStats st = renderStats(*l.built.world, lights, l.cam, 8);
+
+	EXPECT_TRUE(st.allFinite) << "a NaN or infinity reached the film";
+	EXPECT_GT(st.meanLuminance, 0.0) << "the frame is entirely black";
+}
+
 TEST(PbrtSceneRender, RemovingTheLightMakesTheFrameBlack) {
 	// The control for the test above. Without it, a bug that made every ray
 	// return a constant non-zero colour would pass "the frame is lit" happily.

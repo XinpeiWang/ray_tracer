@@ -516,13 +516,59 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		return idx;
 	};
 
+	// MediumInterface "insideMedium" "" on a sphere. GPU's MaterialType::
+	// Medium is sphere-only (see optix_types.h's comment on that enumerator)
+	// AND takes over the sphere's material slot entirely, unlike the CPU
+	// builder's constant_medium, which wraps a separately-added boundary
+	// hittable around the sphere's own real surface material (pbrt_cpu_
+	// builder.h's identical sphere loop) - so a scene pairing MediumInterface
+	// with a dielectric surface (fog inside glass) loses the glass shell on
+	// GPU and renders as a plain fog sphere instead. Documented, scoped
+	// simplification (docs/PBRT_SUPPORT.md), not an oversight: layering a
+	// second material onto one sphere would need a real combined material
+	// slot (this codebase already has one for the dielectric+fog case
+	// specifically - MaterialType::DielectricMedium, gpu/optix/scene_
+	// builder.cpp's add_dielectric_medium() - but resolving here whether the
+	// shape's own Material directive was "dielectric" to pick between the
+	// two is more than this phase's scope). Same luminance/albedo-tint
+	// collapse as pbrt_cpu_builder.h's identical derivation - see its
+	// comment for why a scalar sigma_a/sigma_s plus a chromatic tint is
+	// what MaterialData::medium_albedo/g/sigma_t actually store.
+	std::map<int, int> mediumCache;
+	const auto mediumMaterialIndex = [&](int medIdx) {
+		const auto it = mediumCache.find(medIdx);
+		if (it != mediumCache.end()) return it->second;
+		const pbrt_flatten::Medium &md = scene.media[static_cast<std::size_t>(medIdx)];
+		const auto luminance = [](const double c[3]) {
+			return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+		};
+		const double sig_a = luminance(md.sigma_a);
+		const double sig_s = luminance(md.sigma_s);
+		const float3 albedo = (sig_s > 1e-9)
+			? make_float3(static_cast<float>(md.sigma_s[0] / sig_s),
+						  static_cast<float>(md.sigma_s[1] / sig_s),
+						  static_cast<float>(md.sigma_s[2] / sig_s))
+			: make_float3(1.0f, 1.0f, 1.0f);
+		MaterialData d = {};
+		d.type = MaterialType::Medium;
+		d.medium_albedo = albedo;
+		d.g = static_cast<float>(md.g);
+		d.sigma_t = static_cast<float>(sig_a + sig_s);
+		const int idx = static_cast<int>(out.materials.size());
+		out.materials.push_back(d);
+		mediumCache.emplace(medIdx, idx);
+		return idx;
+	};
+
 	// ---- spheres ---------------------------------------------------------
 	for (const pbrt_flatten::Sphere &s : scene.spheres) {
 		SphereData sd = {};
 		sd.center = f3(s.center);
 		sd.center1 = sd.center;          // static; see SphereData's comment
 		sd.radius = static_cast<float>(s.radius);
-		sd.materialIdx = materialIndex(s.material, s.areaLight);
+		sd.materialIdx = (s.medium >= 0 && static_cast<std::size_t>(s.medium) < scene.media.size())
+			? mediumMaterialIndex(s.medium)
+			: materialIndex(s.material, s.areaLight);
 		if (s.areaLight >= 0) {
 			out.lightIndices.push_back(static_cast<int>(out.spheres.size()));
 			out.lightKinds.push_back(GpuLightKind::Sphere);

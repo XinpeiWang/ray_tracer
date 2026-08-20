@@ -59,6 +59,26 @@ struct Sphere {
 	double radius = 1.0;
 	int material = -1;
 	int areaLight = -1;
+	// index into FlatScene::media, -1 = no participating medium. Sphere-only
+	// (not triangles/bilinear patches) because the GPU's own MaterialType::
+	// Medium is sphere-only - see gpu/optix/optix_types.h's comment on that
+	// enumerator - and this loader keeps both backends able to render every
+	// medium-bearing shape it accepts, rather than accepting shapes GPU
+	// would just drop.
+	int medium = -1;
+};
+
+// MakeNamedMedium "homogeneous" - a constant-density participating medium.
+// pbrt-v4's real HomogeneousMedium is per-channel RGB sigma_a/sigma_s; both
+// builders' actual medium primitive (src/TheRestOfYourLife/constant_medium.h,
+// gpu/optix/optix_types.h's MaterialType::Medium) instead takes a scalar
+// extinction plus a chromatic albedo tint - see pbrt_cpu_builder.h's and
+// pbrt_gpu_builder.h's own comments at their point of use for how this
+// struct's per-channel values are collapsed into that shape.
+struct Medium {
+	double sigma_a[3] = {1.0, 1.0, 1.0};
+	double sigma_s[3] = {1.0, 1.0, 1.0};
+	double g = 0.0;    // Henyey-Greenstein asymmetry
 };
 
 // Shape "bilinearmesh" - a single bilinear patch (4 corner points, not
@@ -459,6 +479,7 @@ struct FlatScene {
 	std::vector<BilinearPatch> bilinearPatches;
 	std::vector<Material> materials;    // parallel to Scene::materials
 	std::vector<Emission> areaLights;   // parallel to Scene::areaLights
+	std::vector<Medium> media;          // parallel to Scene::media
 	InfiniteLight infiniteLight;        // present=false if the scene has none
 	std::vector<PunctualLight> punctualLights;   // LightSource point/spot/distant/goniometric/projection
 
@@ -912,6 +933,28 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		out.materials.push_back(m);
 	}
 
+	// ---- media -------------------------------------------------------------
+	// MakeNamedMedium, mirrored 1:1 into out.media (same convention as
+	// materials above) - ShapeDecl::insideMedium already resolved names to
+	// indices during parsing (see pbrt_scene.h's MediumInterface dispatch),
+	// so this is a straight per-channel copy, not a second name lookup.
+	for (const pbrt_scene::MediumDecl &md : scene.media) {
+		Medium medium;
+		if (md.type != "homogeneous") {
+			warn("medium type '" + md.type + "' is not supported; "
+				 "treated as homogeneous with its given sigma_a/sigma_s");
+		}
+		const pbrt_scene::Vec3 defA{medium.sigma_a[0], medium.sigma_a[1], medium.sigma_a[2]};
+		const pbrt_scene::Vec3 defS{medium.sigma_s[0], medium.sigma_s[1], medium.sigma_s[2]};
+		pbrt_scene::Vec3 sa = md.params.getVec3("sigma_a", defA);
+		pbrt_scene::Vec3 ss = md.params.getVec3("sigma_s", defS);
+		const double scale = md.params.getFloat("scale", 1.0);
+		medium.sigma_a[0] = sa.x * scale; medium.sigma_a[1] = sa.y * scale; medium.sigma_a[2] = sa.z * scale;
+		medium.sigma_s[0] = ss.x * scale; medium.sigma_s[1] = ss.y * scale; medium.sigma_s[2] = ss.z * scale;
+		medium.g = md.params.getFloat("g", 0.0);
+		out.media.push_back(medium);
+	}
+
 	// ---- lights that are not area lights ---------------------------------
 	// "infinite" (the environment/sky light) is carried through below - it is
 	// usually a scene's main illumination, so dropping it silently produces a
@@ -1248,6 +1291,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			s.radius = r * hi;
 			s.material = shape.materialIndex;
 			s.areaLight = shape.areaLightIndex;
+			s.medium = shape.insideMedium;
 			w.spheres->push_back(s);
 			continue;
 		}

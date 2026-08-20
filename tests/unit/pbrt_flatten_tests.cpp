@@ -126,6 +126,66 @@ TEST(FlattenTest, NonUniformScaleOnASphereIsReportedNotSilentlyRounded) {
 	EXPECT_DOUBLE_EQ(s.spheres[0].radius, 5.0) << "largest axis is used";
 }
 
+// ===========================================================================
+// MakeNamedMedium / MediumInterface
+// ===========================================================================
+
+TEST(FlattenTest, MediumInterfaceAttachesTheNamedMediumToTheSphere) {
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
+		"  \"rgb sigma_a\" [ 0.1 0.2 0.3 ] \"rgb sigma_s\" [ 1 2 3 ] \"float scale\" [ 2 ]\n"
+		"AttributeBegin\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 1 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(s.spheres.size(), 1u);
+	ASSERT_EQ(s.media.size(), 1u);
+	ASSERT_EQ(s.spheres[0].medium, 0)
+		<< "the sphere should resolve to media[0], the only declared medium";
+
+	// scale multiplies both coefficients (pbrt-v4 semantics), so 0.1*2=0.2 etc.
+	EXPECT_DOUBLE_EQ(s.media[0].sigma_a[0], 0.2);
+	EXPECT_DOUBLE_EQ(s.media[0].sigma_a[1], 0.4);
+	EXPECT_DOUBLE_EQ(s.media[0].sigma_a[2], 0.6);
+	EXPECT_DOUBLE_EQ(s.media[0].sigma_s[0], 2.0);
+	EXPECT_DOUBLE_EQ(s.media[0].sigma_s[1], 4.0);
+	EXPECT_DOUBLE_EQ(s.media[0].sigma_s[2], 6.0);
+}
+
+TEST(FlattenTest, SphereWithNoMediumInterfaceIsVacuum) {
+	const FlatScene s = flattenSource("Shape \"sphere\" \"float radius\" [ 1 ]\n");
+	ASSERT_EQ(s.spheres.size(), 1u);
+	EXPECT_EQ(s.spheres[0].medium, -1);
+}
+
+TEST(FlattenTest, MediumInterfaceIsScopedByAttributeEnd) {
+	// A sphere declared AFTER AttributeEnd must not inherit the medium the
+	// first sphere picked up inside the block - the same scoping already
+	// proven for materialIndex, now exercised for insideMedium.
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
+		"AttributeBegin\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 1 ]\n"
+		"AttributeEnd\n"
+		"Shape \"sphere\" \"float radius\" [ 1 ]\n");
+	ASSERT_EQ(s.spheres.size(), 2u);
+	EXPECT_EQ(s.spheres[0].medium, 0);
+	EXPECT_EQ(s.spheres[1].medium, -1)
+		<< "the second sphere is outside the AttributeBegin/End block";
+}
+
+TEST(FlattenTest, UnresolvedMediumNameIsVacuumAndWarns) {
+	const FlatScene s = flattenSource(
+		"AttributeBegin\n"
+		"  MediumInterface \"ghost\" \"\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 1 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(s.spheres.size(), 1u);
+	EXPECT_EQ(s.spheres[0].medium, -1);
+	EXPECT_TRUE(warnedAbout(s, "ghost"));
+}
+
 TEST(FlattenTest, RotationAloneDoesNotCountAsNonUniformScale) {
 	// A rotation leaves all three basis lengths at 1; a naive check that looked
 	// at raw matrix entries rather than their lengths would warn here.

@@ -16,6 +16,7 @@
 #include "../shared/pbrt_flatten.h"
 
 #include "bvh.h"
+#include "constant_medium.h"
 #include "hittable_list.h"
 #include "material.h"
 #include "scenes_advanced.h"   // bilinear_patch_hittable
@@ -342,6 +343,30 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 										   s.radius, mat);
 		world.add(sp);
 		if (s.areaLight >= 0) lights.add(sp);
+
+		// MediumInterface "insideMedium" "" - layer a participating medium
+		// INSIDE the sphere already added above, exactly the pattern this
+		// codebase's own hand-built scenes use (e.g. scenes_advanced.h's
+		// build_dielectric_medium_scene: a real surface material - glass,
+		// or here whatever the shape's own Material directive resolved to -
+		// with fog/smoke boxed inside it). constant_medium's constructor
+		// wants a scalar sigma_a/sigma_s plus a chromatic albedo tint, not
+		// pbrt's own per-channel RGB pair (see pbrt_flatten::Medium's own
+		// comment) - luminance (this loader's existing weighting convention,
+		// e.g. power_light_sampler.h) collapses each to a scalar, and the
+		// scattering channel ratio survives as the albedo tint.
+		if (s.medium >= 0 && static_cast<std::size_t>(s.medium) < scene.media.size()) {
+			const pbrt_flatten::Medium &md = scene.media[static_cast<std::size_t>(s.medium)];
+			const auto luminance = [](const double c[3]) {
+				return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+			};
+			const double sig_a = luminance(md.sigma_a);
+			const double sig_s = luminance(md.sigma_s);
+			const color albedo = (sig_s > 1e-9)
+				? color(md.sigma_s[0] / sig_s, md.sigma_s[1] / sig_s, md.sigma_s[2] / sig_s)
+				: color(1, 1, 1);
+			world.add(std::make_shared<constant_medium>(sp, sig_a, sig_s, albedo, md.g));
+		}
 	}
 	out.sphereCount += sphs.size();
 
