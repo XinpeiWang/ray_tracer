@@ -32,13 +32,24 @@ class normal_map_material : public material {
 			out_nx, out_ny, out_nz);
 		hit_record r2 = rec;
 		r2.normal = vec3(out_nx, out_ny, out_nz);
-		// Recompute dpdu so it stays perpendicular to the new normal
-		// (pbrt-v4: *dpdu = Normalize(GramSchmidt(shading.dpdu, ns)) * ulen)
+		// Recompute dpdu AND dpdv so the shading frame stays orthonormal to
+		// the new normal (pbrt-v4 NormalMap, materials.h:
+		//   *dpdu = Normalize(GramSchmidt(shading.dpdu, ns)) * ulen;
+		//   *dpdv = Normalize(Cross(ns, *dpdu)) * vlen;
+		// ). Leaving dpdv at its pre-perturbation value - the bug this fixes -
+		// left it non-orthogonal to the new normal and, since GGX materials
+		// build their shading frame off dpdu/dpdv, skewed anisotropic-leaning
+		// glossy reflections (RoughMetal/Conductor) wherever a normal map
+		// combines with them.
 		double ulen = rec.dpdu.length();
+		double vlen = rec.dpdv.length();
 		vec3 ns_w(out_nx, out_ny, out_nz);
 		vec3 t = rec.dpdu - dot(rec.dpdu, ns_w) * ns_w;
 		if (t.length_squared() > 1e-12)
 			r2.dpdu = unit_vector(t) * ulen;
+		vec3 new_dpdv = cross(ns_w, r2.dpdu);
+		if (new_dpdv.length_squared() > 1e-12)
+			r2.dpdv = unit_vector(new_dpdv) * vlen;
 		return r2;
 	}
 
@@ -72,18 +83,31 @@ class bump_map_material : public material {
 
 	// Perturb rec.normal using finite differences of a scalar displacement texture.
 	hit_record apply(const hit_record& rec) const {
+		// Ray-differential-adaptive step (pbrt-v4 BumpMap, materials.h:116-127):
+		// du = 0.5*(|dudx|+|dudy|), matching normal_map.h's apply_bump_map()
+		// doc comment, which already documented this as the intended step and
+		// was never actually fed it. rec.dudx/dudy are only populated for a
+		// primary camera-ray hit (hit_record's own comment) and are 0 for
+		// every bounce/shadow/NEE ray, so this falls back to the constructor's
+		// fixed `step` there - the same "no footprint info" fallback
+		// texture.h's value_diff() already uses, and pbrt's own ".0005f only
+		// if zero" fallback. Without this, a fixed step samples a screen-
+		// space-constant texture footprint regardless of distance or grazing
+		// angle, aliasing into moiré wherever pbrt-v4 stays smooth.
+		double eff_step = 0.5 * (std::fabs(rec.dudx) + std::fabs(rec.dudy));
+		if (eff_step < 1e-8) eff_step = step;
 		auto sample_disp = [&](double u, double v) -> double {
 			return scale * bump_tex->value(u, v, rec.p).x();
 		};
-		double disp   = sample_disp(rec.u,        rec.v);
-		double disp_u = sample_disp(rec.u + step,  rec.v);
-		double disp_v = sample_disp(rec.u,         rec.v + step);
+		double disp   = sample_disp(rec.u,             rec.v);
+		double disp_u = sample_disp(rec.u + eff_step,  rec.v);
+		double disp_v = sample_disp(rec.u,             rec.v + eff_step);
 		vec3 n    = rec.normal;
 		vec3 dpdu = rec.dpdu;
 		vec3 dpdv = cross(n, dpdu);
 		if (dpdv.length_squared() < 1e-12) dpdv = vec3(0, 1, 0);
 		double out_nx, out_ny, out_nz;
-		apply_bump_map(disp, disp_u, disp_v, step, step,
+		apply_bump_map(disp, disp_u, disp_v, eff_step, eff_step,
 			n.x(), n.y(), n.z(),
 			dpdu.x(), dpdu.y(), dpdu.z(),
 			dpdv.x(), dpdv.y(), dpdv.z(),
