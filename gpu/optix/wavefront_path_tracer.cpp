@@ -1260,6 +1260,25 @@ bool WavefrontPathTracer::render(
 {
 	const int numPixels = width * height;
 
+	// Render-time instrumentation (pbrt-v4 STAT_COUNTER-inspired, see this
+	// project's own plan for why wavefront is the one backend that gets
+	// this for free: every field here is already a real, host-visible
+	// readQueueSize() result computed for launch sizing every bounce -
+	// summing them into a report is the only new work, no new device-side
+	// counters). Printed once at the end of render() as a [WF-STATS] block.
+	struct WavefrontRenderStats {
+		long long primaryRays = 0;      // sum of numRays across all bounces
+		long long hits = 0;             // regular hitQueue
+		long long simpleHits = 0;       // simpleHitQueue (Lambertian/Metal)
+		long long dielectricHits = 0;   // dielectricHitQueue
+		long long misses = 0;
+		long long shadowRays = 0;
+		long long probeRays = 0;        // BSSRDF probe walk
+		long long probeExits = 0;
+		long long bounceIterations = 0; // total inner-loop iterations across all samples
+		int samplesCompleted = 0;
+	} stats;
+
 	if (!allocateQueues(numPixels)) return false;
 
 	// Allocate device framebuffer (float3 accumulator, zeroed each frame)
@@ -1340,6 +1359,8 @@ bool WavefrontPathTracer::render(
 
 			int numRays = readQueueSize(reinterpret_cast<int*>(d_rayCounter_));
 			if (numRays == 0) break;
+			stats.primaryRays += numRays;
+			++stats.bounceIterations;
 
 			// Reset output queue counters
 			resetQueueCounter(reinterpret_cast<int*>(d_hitCounter_));
@@ -1389,6 +1410,10 @@ bool WavefrontPathTracer::render(
 			int numSimpleHits      = readQueueSize(reinterpret_cast<int*>(d_simpleHitCounter_));
 			int numDielectricHits  = readQueueSize(reinterpret_cast<int*>(d_dielectricHitCounter_));
 			int numMiss            = readQueueSize(reinterpret_cast<int*>(d_missCounter_));
+			stats.hits += numHits;
+			stats.simpleHits += numSimpleHits;
+			stats.dielectricHits += numDielectricHits;
+			stats.misses += numMiss;
 
 			// ------------------------------------------------------------------
 			// Phase 3: Evaluate materials (fills shadowQueue + nextRayQueue)
@@ -1487,6 +1512,7 @@ bool WavefrontPathTracer::render(
 			// counted before the shadow pass launches.
 			// ------------------------------------------------------------------
 			int numProbe = readQueueSize(reinterpret_cast<int*>(d_probeCounter_));
+			stats.probeRays += numProbe;
 			if (numProbe > 0) {
 				lp.bssrdfProbeQueue.items    = reinterpret_cast<BssrdfProbeWorkItem*>(d_probeItems_);
 				lp.bssrdfProbeQueue.counter  = reinterpret_cast<int*>(d_probeCounter_);
@@ -1508,6 +1534,7 @@ bool WavefrontPathTracer::render(
 				CUDA_CHECK(cudaStreamSynchronize(stream_));
 
 				int numExit = readQueueSize(reinterpret_cast<int*>(d_exitCounter_));
+				stats.probeExits += numExit;
 				launchResolveBssrdfExit(
 					numExit,
 					reinterpret_cast<const MaterialData*>(d_materials), num_materials,
@@ -1527,6 +1554,7 @@ bool WavefrontPathTracer::render(
 			}
 
 			int numShadow = readQueueSize(reinterpret_cast<int*>(d_shadowCounter_));
+			stats.shadowRays += numShadow;
 
 			// ------------------------------------------------------------------
 			// Phase 5: OptiX shadow launch (determine occlusion)
@@ -1588,6 +1616,7 @@ bool WavefrontPathTracer::render(
 			const int completed = (int)((long long)height * (sampleIdx + 1) / samples_per_pixel);
 			std::cout << "Scanlines remaining: " << (height - completed) << "\r" << std::flush;
 		}
+		++stats.samplesCompleted;
 	}
 
 	// -------------------------------------------------------------------------
@@ -1604,6 +1633,33 @@ bool WavefrontPathTracer::render(
 
 	std::cout << "[WavefrontPathTracer] Rendered " << width << "x" << height
 			  << " (" << samples_per_pixel << " spp, " << max_depth << " bounces)\n";
+
+	// [WF-STATS] summary block (pbrt-v4 STAT_COUNTER-inspired, see this
+	// project's own plan for scope: wavefront-only, since its per-bounce
+	// queue sizes are the one backend with real host-visible counters
+	// already computed for launch sizing - CPU/recursive-GPU have none).
+	// Always printed, mirroring this backend's own unconditional
+	// "[WavefrontPathTracer] Rendered..." line above - no new flag needed.
+	long long totalHitQueueHits = stats.hits + stats.simpleHits + stats.dielectricHits;
+	double avgBouncesPerSample = stats.samplesCompleted > 0
+		? double(stats.bounceIterations) / double(stats.samplesCompleted)
+		: 0.0;
+	std::cout << "[WF-STATS] ── Wavefront Render Statistics ──────────────────\n";
+	std::cout << "[WF-STATS] Samples completed  : " << stats.samplesCompleted << " / " << samples_per_pixel << "\n";
+	std::cout << "[WF-STATS] Bounce iterations  : " << stats.bounceIterations
+			  << "  (avg " << avgBouncesPerSample << " / sample, max_depth=" << max_depth << ")\n";
+	std::cout << "[WF-STATS] Primary+bounce rays: " << stats.primaryRays << "\n";
+	std::cout << "[WF-STATS] Hits (regular/simple/dielectric): "
+			  << stats.hits << " / " << stats.simpleHits << " / " << stats.dielectricHits
+			  << "  (total " << totalHitQueueHits << ")\n";
+	std::cout << "[WF-STATS] Misses             : " << stats.misses << "\n";
+	std::cout << "[WF-STATS] Shadow rays (NEE)  : " << stats.shadowRays << "\n";
+	if (stats.probeRays > 0 || stats.probeExits > 0) {
+		std::cout << "[WF-STATS] BSSRDF probe rays  : " << stats.probeRays
+				  << "  |  exits: " << stats.probeExits << "\n";
+	}
+	std::cout << "[WF-STATS] ─────────────────────────────────────────────────\n";
+
 	return true;
 }
 
