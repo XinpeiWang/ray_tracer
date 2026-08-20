@@ -92,6 +92,7 @@ target_include_directories(cpu_renderer PUBLIC
 # ---------------------------------------------------------------------------
 add_executable(ray_tracer
     launcher/main.cpp
+    launcher/diagnostics.cpp
     src/external/image_writer.cpp
 )
 target_include_directories(ray_tracer PRIVATE ${CMAKE_SOURCE_DIR})

@@ -16,11 +16,44 @@
 
 #pragma once
 
+#include <algorithm>
+#include <string>
+
+// Mirrors optix_interface.h's OptixDiagnostics exactly (same field layout) -
+// see that file's own comment for why this is a plain-POD struct rather than
+// a shared header: this file stands in for optix_interface.h wholesale, so
+// it must be self-contained, same as every function below.
+struct OptixDiagnostics {
+	bool available;
+	char device_name[256];
+	int  cuda_driver_version;
+	int  cuda_runtime_version;
+	int  optix_abi_version;
+	unsigned long long vram_free_bytes;
+	unsigned long long vram_total_bytes;
+	char failure_reason[256];
+};
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 inline bool optix_is_available() { return false; }
+
+inline bool optix_get_diagnostics(OptixDiagnostics* out) {
+	if (!out) return false;
+	*out = OptixDiagnostics{};
+	out->available = false;
+	// std::string::copy instead of strncpy - avoids MSVC's C4996 "unsafe
+	// function" flag (this header can be compiled under MSVC too: the root
+	// CMakeLists.txt's CPU-only ray_tracer target builds it there whenever
+	// RT_BUILD_GPU is off, not just on macOS/Linux).
+	std::string reason("Built without RT_HAVE_OPTIX (no CUDA/OptiX SDK at build time)");
+	size_t n = (std::min)(reason.size(), sizeof(out->failure_reason) - 1);
+	reason.copy(out->failure_reason, n);
+	out->failure_reason[n] = '\0';
+	return false;
+}
 
 inline int optix_render_main(
 	int /*image_width*/,

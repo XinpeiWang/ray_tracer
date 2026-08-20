@@ -56,6 +56,7 @@ extern char** environ;
 #include "src/TheRestOfYourLife/thread_count.h"
 #include "launcher/camera_path.h"
 #include "launcher/launcher_args.h"   // Argument parsing
+#include "launcher/diagnostics.h"     // --diagnose
 
 // Run a subprocess with the given argv directly (no shell, so there's no
 // cmd.exe/sh quoting or percent/glob expansion to worry about - important
@@ -265,6 +266,14 @@ int main(int argc, char** argv) {
 	}
 	if (use_gpu && !use_sppm && args.optix_validate) {
 		_putenv_s("RAY_TRACER_OPTIX_VALIDATION", "1");
+	}
+
+	// System-compatibility report instead of a render - see
+	// launcher/diagnostics.h. Runs before any scene-loading or
+	// output-directory side effects below, so this has no effect beyond
+	// what it itself prints/writes.
+	if (args.diagnose) {
+		return run_diagnostics(args);
 	}
 
 	// SPPM has no defined per-frame semantics (its progressive radius state

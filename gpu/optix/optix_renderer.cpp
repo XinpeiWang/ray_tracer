@@ -19,6 +19,7 @@
 #include <iostream>
 #include <sstream>
 #include <array>
+#include <algorithm>     // std::min, for getDiagnostics()'s bounded string copy
 #include <cstring>
 #include <cstdlib>       // getenv, for RAY_TRACER_OPTIX_VALIDATION
 #include <type_traits>   // remove_pointer_t, for the light-flag width assert
@@ -135,6 +136,94 @@ bool OptiXRenderer::isAvailable() noexcept {
 	}
 
 	std::cout << "[OptiX] OptiX is available and functional!\n";
+	return true;
+}
+
+bool OptiXRenderer::getDiagnostics(OptixDiagnostics& out) noexcept {
+	out = OptixDiagnostics{};
+	out.available = false;
+
+	auto fail = [&](const char* reason) {
+		// std::string::copy instead of strncpy - avoids MSVC's C4996
+		// "unsafe function" flag on strncpy without needing
+		// _CRT_SECURE_NO_WARNINGS or a Windows-only strncpy_s branch.
+		std::string s(reason);
+		size_t n = (std::min)(s.size(), sizeof(out.failure_reason) - 1);
+		s.copy(out.failure_reason, n);
+		out.failure_reason[n] = '\0';
+		return false;
+	};
+
+	// Step 1: Check CUDA device availability (mirrors isAvailable() exactly -
+	// see that function's own comments for why each step is checked in this
+	// order).
+	int deviceCount = 0;
+	const cudaError_t cudaErr = cudaGetDeviceCount(&deviceCount);
+	if (cudaErr != cudaSuccess || deviceCount == 0) {
+		return fail(cudaErr != cudaSuccess ? cudaGetErrorString(cudaErr)
+											: "No CUDA devices found");
+	}
+
+	if (const cudaError_t setErr = cudaSetDevice(kDefaultCudaDevice); setErr != cudaSuccess) {
+		return fail(cudaGetErrorString(setErr));
+	}
+
+	// Driver/runtime version and VRAM are available as soon as a device is
+	// selected - captured here even though the OptiX-specific steps below
+	// haven't run yet, so a driver/runtime mismatch is visible in the report
+	// even when OptiX itself later fails to initialize.
+	int driverVer = 0, runtimeVer = 0;
+	cudaDriverGetVersion(&driverVer);
+	cudaRuntimeGetVersion(&runtimeVer);
+	out.cuda_driver_version  = driverVer;
+	out.cuda_runtime_version = runtimeVer;
+
+	size_t freeBytes = 0, totalBytes = 0;
+	if (cudaMemGetInfo(&freeBytes, &totalBytes) == cudaSuccess) {
+		out.vram_free_bytes  = static_cast<unsigned long long>(freeBytes);
+		out.vram_total_bytes = static_cast<unsigned long long>(totalBytes);
+	}
+
+	if (const OptixResult initRes = optixInit(); initRes != OPTIX_SUCCESS) {
+		return fail(optixGetErrorString(initRes));
+	}
+	out.optix_abi_version = OPTIX_VERSION;
+
+	if (const CUresult cuInitErr = cuInit(0); cuInitErr != CUDA_SUCCESS) {
+		return fail("cuInit failed");
+	}
+
+	CUdevice cuDevice;
+	if (const CUresult devErr = cuDeviceGet(&cuDevice, kDefaultCudaDevice); devErr != CUDA_SUCCESS) {
+		return fail("cuDeviceGet failed");
+	}
+
+	cuDeviceGetName(out.device_name, static_cast<int>(sizeof(out.device_name)), cuDevice);
+
+	CUcontext cuCtx = nullptr;
+	if (const CUresult ctxErr = cuDevicePrimaryCtxRetain(&cuCtx, cuDevice); ctxErr != CUDA_SUCCESS) {
+		return fail("cuDevicePrimaryCtxRetain failed");
+	}
+
+	OptixDeviceContext context = nullptr;
+	OptixDeviceContextOptions options{};
+	options.logCallbackFunction = &contextLogCallback;
+	options.logCallbackLevel   = kDefaultLogLevel;
+
+	const OptixResult ctxCreateRes = optixDeviceContextCreate(cuCtx, &options, &context);
+
+	if (context) {
+		optixDeviceContextDestroy(context);
+	}
+	if (cuCtx) {
+		cuDevicePrimaryCtxRelease(cuDevice);
+	}
+
+	if (ctxCreateRes != OPTIX_SUCCESS) {
+		return fail(optixGetErrorString(ctxCreateRes));
+	}
+
+	out.available = true;
 	return true;
 }
 

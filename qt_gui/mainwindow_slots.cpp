@@ -300,6 +300,48 @@ void MainWindow::onClearQueue() {
 	refreshQueuePanel();
 }
 
+void MainWindow::onRunDiagnosticsClicked() {
+	// A stray click while one is already running would leak a second
+	// QProcess and race both sets of signals into the same text edit.
+	if (m_diagnosticsRunner) return;
+
+	if (m_diagTextEdit) {
+		m_diagTextEdit->clear();
+		m_diagTextEdit->setPlainText("Running diagnostics...");
+	}
+	if (m_runDiagnosticsButton) m_runDiagnosticsButton->setEnabled(false);
+
+	m_diagnosticsRunner = new DiagnosticsRunner(this);
+	connect(m_diagnosticsRunner, &DiagnosticsRunner::reportReady,
+			this, &MainWindow::onDiagnosticsReportReady);
+	connect(m_diagnosticsRunner, &DiagnosticsRunner::reportFailed,
+			this, &MainWindow::onDiagnosticsFailed);
+
+	// Same "retire by captured value" reasoning as RenderController's own
+	// cleanup lambda above (mainwindow.cpp) - reportReady/reportFailed have
+	// already run by the time either lambda below fires (Qt delivers queued
+	// connections in connection order), so m_diagnosticsRunner is only
+	// nulled out if it's still pointing at the instance that just finished.
+	DiagnosticsRunner *runnerToRetire = m_diagnosticsRunner;
+	auto retire = [this, runnerToRetire]() {
+		if (m_diagnosticsRunner == runnerToRetire) m_diagnosticsRunner = nullptr;
+		if (m_runDiagnosticsButton) m_runDiagnosticsButton->setEnabled(true);
+		runnerToRetire->deleteLater();
+	};
+	connect(m_diagnosticsRunner, &DiagnosticsRunner::reportReady, this, retire);
+	connect(m_diagnosticsRunner, &DiagnosticsRunner::reportFailed, this, retire);
+
+	m_diagnosticsRunner->start();
+}
+
+void MainWindow::onDiagnosticsReportReady(const QString &report) {
+	if (m_diagTextEdit) m_diagTextEdit->setPlainText(report);
+}
+
+void MainWindow::onDiagnosticsFailed(const QString &message) {
+	if (m_diagTextEdit) m_diagTextEdit->setPlainText("Diagnostics failed:\n\n" + message);
+}
+
 void MainWindow::onStopClicked() {
 	if (!m_isRendering || !m_renderController) {
 		return;

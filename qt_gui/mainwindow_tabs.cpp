@@ -1049,6 +1049,55 @@ void MainWindow::createLogTab() {
 	m_logTabIndex = m_tabWidget->addTab(logWidget, "Log Output");
 }
 
+// Modeled directly on createLogTab() above: a read-only monospace text area
+// (no QScrollArea wrapper - it scrolls itself) plus a button bar. "Run
+// Diagnostics" launches ray_tracer.exe --diagnose via DiagnosticsRunner
+// (see mainwindow.h/.cpp) exactly the way RenderController launches a
+// render, just without any progress parsing - it's a one-shot report.
+void MainWindow::createDiagnosticsTab() {
+	QWidget *diagWidget = new QWidget();
+	QVBoxLayout *layout = new QVBoxLayout(diagWidget);
+
+	m_diagTextEdit = new QTextEdit();
+	m_diagTextEdit->setReadOnly(true);
+	m_diagTextEdit->setFont(QFont("Consolas", 9));
+	m_diagTextEdit->setLineWrapMode(QTextEdit::NoWrap);
+	m_diagTextEdit->setPlaceholderText(
+		"Click \"Run Diagnostics\" to check GPU/CUDA/OptiX availability, CPU/RAM, "
+		"disk space, and scene asset availability.");
+	layout->addWidget(m_diagTextEdit);
+
+	QHBoxLayout *btnLayout = new QHBoxLayout();
+	btnLayout->setContentsMargins(0, 4, 0, 0);
+
+	// Same geometry-only style as the Log tab's own button bar.
+	QString diagBtnStyle =
+		"QPushButton { min-height: 28px; max-height: 28px; min-width: 160px; padding: 0px 20px; font-size: 11pt; }";
+
+	m_runDiagnosticsButton = new QPushButton("&Run Diagnostics");
+	icon_tint::apply(m_runDiagnosticsButton, ":/icons/gpu.svg", icon_tint::Role::Body, m_activeTheme.textBody);
+	m_runDiagnosticsButton->setStyleSheet(diagBtnStyle);
+	connect(m_runDiagnosticsButton, &QPushButton::clicked, this, &MainWindow::onRunDiagnosticsClicked);
+
+	QPushButton *copyButton = new QPushButton("&Copy All");
+	icon_tint::apply(copyButton, ":/icons/copy.svg", icon_tint::Role::Body, m_activeTheme.textBody);
+	copyButton->setStyleSheet(diagBtnStyle);
+	connect(copyButton, &QPushButton::clicked, this, &MainWindow::copyDiagToClipboard);
+
+	QPushButton *saveButton = new QPushButton("&Save Report…");
+	icon_tint::apply(saveButton, ":/icons/save.svg", icon_tint::Role::Body, m_activeTheme.textBody);
+	saveButton->setStyleSheet(diagBtnStyle);
+	connect(saveButton, &QPushButton::clicked, this, &MainWindow::saveDiagReportToFile);
+
+	btnLayout->addWidget(m_runDiagnosticsButton);
+	btnLayout->addStretch();
+	btnLayout->addWidget(copyButton);
+	btnLayout->addWidget(saveButton);
+	layout->addLayout(btnLayout);
+
+	m_diagnosticsTabIndex = m_tabWidget->addTab(diagWidget, "Diagnostics");
+}
+
 void MainWindow::createVideoTab() {
 	QWidget *videoTab = new QWidget();
 	QVBoxLayout *layout = new QVBoxLayout(videoTab);

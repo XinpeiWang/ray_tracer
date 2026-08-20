@@ -9,6 +9,10 @@
 // For SceneData's instancing structs. No cycle: scene_builder.h pulls only
 // optix_types.h and <vector>.
 #include "scene_builder.h"
+// For OptixDiagnostics (getDiagnostics()'s out-param) - a plain-POD extern
+// "C" struct with no CUDA/OptiX types in it, safe to pull in here; no cycle
+// (optix_interface.h doesn't include this header).
+#include "optix_interface.h"
 #include <optix_stubs.h>
 #include <vector>
 #include <string>
@@ -126,6 +130,14 @@ public:
 	/// @details Verifies driver support and SDK availability
 	/// @return true if OptiX can be used, false otherwise
 	static bool isAvailable() noexcept;
+
+	/// @brief Full GPU/CUDA/OptiX capability probe for --diagnose.
+	/// @details Same probe sequence as isAvailable(), but populates `out`
+	/// with device name/versions/VRAM instead of discarding them, and
+	/// records which step failed in out.failure_reason instead of only
+	/// logging to stderr. See optix_interface.h's OptixDiagnostics comment.
+	/// @return out.available (true if the full probe succeeded)
+	static bool getDiagnostics(OptixDiagnostics& out) noexcept;
 
 	/// @brief Enable or disable wavefront GPU path tracing mode.
 	/// @details When enabled, render() uses the WavefrontPathTracer (queue-based,

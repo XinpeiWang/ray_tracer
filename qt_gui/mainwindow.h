@@ -599,6 +599,39 @@ private:
 	QString m_cameraPath;   // Camera animation path (orbit, linear, figure8, spiral)
 };
 
+// ============================================================================
+// DiagnosticsRunner
+// ============================================================================
+// Spawns `ray_tracer.exe --diagnose` and captures its full stdout as one
+// report string. A stripped-down sibling of RenderController above (same
+// QProcess-is-already-async reasoning, same not-a-QThread shape) - no
+// progress parsing, no video/scene parameters, just "run it, hand back
+// whatever it printed."
+// ============================================================================
+class DiagnosticsRunner : public QObject {
+	Q_OBJECT
+
+public:
+	explicit DiagnosticsRunner(QObject *parent = nullptr);
+
+	// Builds the command line and launches ray_tracer.exe --diagnose.
+	// Returns immediately; everything after is driven by the process's own
+	// signals.
+	void start();
+
+signals:
+	void reportReady(const QString &report);
+	void reportFailed(const QString &message);
+
+private slots:
+	void onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);
+	void onProcessErrorOccurred(QProcess::ProcessError error);
+
+private:
+	QProcess *m_process = nullptr;
+	bool m_finished = false;   // guards against double-emitting on error+finished
+};
+
 // A snapshot of every render-affecting UI field at the moment "Start Render"
 // was clicked, so a queued job is unaffected by any further changes the user
 // makes to the form while an earlier job is still running. Mirrors
@@ -657,12 +690,19 @@ private slots:
 	void onElapsedTick();        // fires every second during render to update status label
 	void onRemoveSelectedQueueItem();  // Removes the currently-selected row from m_renderQueue
 	void onClearQueue();               // Empties m_renderQueue entirely
+	void onRunDiagnosticsClicked();
+	void onDiagnosticsReportReady(const QString &report);
+	void onDiagnosticsFailed(const QString &message);
 
 	// Shared by the log tab's buttons and the File menu's actions.
 	void copyLogToClipboard();
 	void saveLogToFile();
 	void clearLog();
 	void showAboutDialog();
+
+	// Shared by the Diagnostics tab's buttons.
+	void copyDiagToClipboard();
+	void saveDiagReportToFile();
 
 private:
 	void setupUI();
@@ -672,6 +712,7 @@ private:
 	void createPreviewTab();
 	void createProgressTab();
 	void createLogTab();
+	void createDiagnosticsTab();
 
 	// ------------------------------------------------------------------
 	// Action layer
@@ -904,6 +945,12 @@ private:
 	};
 	QVector<LoggedLine> m_logHistory;
 	void rebuildLogPane();
+
+	// Diagnostics
+	QTextEdit *m_diagTextEdit;              // Diagnostics report display
+	QPushButton *m_runDiagnosticsButton;    // Disabled while a probe is running
+	int m_diagnosticsTabIndex = -1;         // Index of the Diagnostics tab within m_tabWidget
+	DiagnosticsRunner *m_diagnosticsRunner = nullptr;  // nullptr when not running
 
 	// Render driver (nullptr when not rendering)
 	RenderController *m_renderController;

@@ -3,12 +3,36 @@
 
 #pragma once
 
+// Plain-POD result of a full GPU/CUDA/OptiX capability probe (--diagnose,
+// see launcher/diagnostics.h). Fixed-size char buffers rather than
+// std::string, matching every other type that crosses this extern "C"
+// boundary - main.cpp never includes CUDA/OptiX headers directly, only this
+// file (see this file's own header comment / launcher/optix_stub.h's).
+struct OptixDiagnostics {
+	bool available;
+	char device_name[256];
+	int  cuda_driver_version;   // cudaDriverGetVersion(), e.g. 12040 = 12.4
+	int  cuda_runtime_version;  // cudaRuntimeGetVersion()
+	int  optix_abi_version;     // OPTIX_VERSION (compile-time SDK macro)
+	unsigned long long vram_free_bytes;
+	unsigned long long vram_total_bytes;
+	char failure_reason[256];   // populated only when available == false
+};
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 // Check if GPU/OptiX rendering is available
 bool optix_is_available();
+
+// Full capability probe for --diagnose: device name, driver/CUDA/OptiX
+// versions, VRAM. Runs the same probe sequence as optix_is_available() (see
+// OptiXRenderer::isAvailable()'s comment) but reports what it found instead
+// of just true/false, and fills failure_reason on the step that failed
+// rather than discarding it to stderr. Always returns the same bool as
+// out->available for convenience.
+bool optix_get_diagnostics(OptixDiagnostics* out);
 
 // Main OptiX rendering entry point
 // Supports multiple scenes via scene_id parameter

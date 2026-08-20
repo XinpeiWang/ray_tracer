@@ -73,6 +73,12 @@ struct LaunchArgs {
 	int    mlt_bootstrap    = kDefaultMltBootstrap;
 	long long mlt_mutations = kDefaultMltMutations;
 	int    mlt_max_depth    = kDefaultMltMaxDepth;
+	// System-compatibility report (see launcher/diagnostics.h) instead of a
+	// render - prints OS/CPU/GPU/CUDA/OptiX/disk/scene-asset info and exits.
+	// Reuses custom_output_path (below) for --output rather than a second
+	// flag: main.cpp checks this before any of the render-mode fields are
+	// otherwise used.
+	bool   diagnose         = false;
 	int  video_frames       = 120;
 	int  video_fps          = 30;
 	double video_speed      = 1.0;
@@ -146,6 +152,9 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			consumed_args.insert(i);
 			consumed_args.insert(i + 1);
 			++i;
+		} else if (arg == "--diagnose") {
+			out.diagnose = true;
+			consumed_args.insert(i);
 		} else if (arg == "--wavefront") {
 			out.use_wavefront = true;
 			consumed_args.insert(i);
@@ -279,6 +288,10 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << " [--cpu|--gpu] [--output PATH] [width] [spp] [max_depth] [scene_id] [cam_x] [cam_y] [cam_z]\n"
 					  << "  --cpu      : Force CPU rendering\n"
 					  << "  --gpu      : Force GPU rendering (default)\n"
+					  << "  --diagnose : Print a system-compatibility report (OS/CPU/RAM, GPU/CUDA/\n"
+					  << "               OptiX, disk space, scene asset availability) instead of\n"
+					  << "               rendering, and exit. Combine with --output PATH to also write\n"
+					  << "               the report to a file.\n"
 					  << "  --wavefront: Use the wavefront (queue-based) GPU path tracer instead of\n"
 					  << "               the default recursive one. GPU-only, ignored under --cpu/--sppm.\n"
 					  << "  --optix-validate: Enable OptiX validation mode (extra device-side checks,\n"

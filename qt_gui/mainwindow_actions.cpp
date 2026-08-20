@@ -251,6 +251,38 @@ void MainWindow::clearLog() {
 	if (m_logTextEdit) m_logTextEdit->clear();
 }
 
+// ----------------------------------------------------------------------------
+// Diagnostics commands - shared by the Diagnostics tab's buttons (see
+// createDiagnosticsTab(), mainwindow_tabs.cpp). Same shape as the Log
+// commands above, minus the history-replay concern (a diagnostics report
+// isn't re-themed the way the log's classified lines are).
+// ----------------------------------------------------------------------------
+
+void MainWindow::copyDiagToClipboard() {
+	if (!m_diagTextEdit) return;
+	m_diagTextEdit->selectAll();
+	m_diagTextEdit->copy();
+	m_diagTextEdit->moveCursor(QTextCursor::End);
+}
+
+void MainWindow::saveDiagReportToFile() {
+	if (!m_diagTextEdit) return;
+	const QString path = QFileDialog::getSaveFileName(this, "Save Diagnostics Report",
+		QDir::homePath() + "/ray_tracer_diagnostics.txt",
+		"Text Files (*.txt);;All Files (*.*)");
+	if (path.isEmpty()) return;
+
+	QFile file(path);
+	if (!file.open(QFile::WriteOnly | QFile::Text)) {
+		QMessageBox::warning(this, "Save Failed",
+			QString("Could not write diagnostics report to %1: %2").arg(path, file.errorString()));
+		return;
+	}
+	QTextStream out(&file);
+	out << m_diagTextEdit->toPlainText();
+	file.close();
+}
+
 void MainWindow::showAboutDialog() {
 #ifdef Q_OS_WIN
 	const char* rendererBinaryName = "ray_tracer.exe";

@@ -27,6 +27,11 @@ extern "C" bool optix_is_available() {
 	return OptiXRenderer::isAvailable();
 }
 
+extern "C" bool optix_get_diagnostics(OptixDiagnostics* out) {
+	if (!out) return false;
+	return OptiXRenderer::getDiagnostics(*out);
+}
+
 extern "C" int optix_render_main(
 	int image_width,
 	int image_height,

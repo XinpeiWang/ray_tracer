@@ -373,6 +373,56 @@ void RenderController::finish(bool success, const QString &message, const QStrin
 	emit renderComplete(success, message, totalTime, outputPath);
 }
 
+// DiagnosticsRunner Implementation
+DiagnosticsRunner::DiagnosticsRunner(QObject *parent)
+	: QObject(parent) {
+}
+
+void DiagnosticsRunner::start() {
+#ifdef Q_OS_WIN
+	QString exePath = QCoreApplication::applicationDirPath() + "/ray_tracer.exe";
+#else
+	QString exePath = QCoreApplication::applicationDirPath() + "/ray_tracer";
+#endif
+	QStringList args;
+	args << "--diagnose";
+
+	m_process = new QProcess(this);
+	m_process->setProcessChannelMode(QProcess::MergedChannels);
+	m_process->setWorkingDirectory(QCoreApplication::applicationDirPath());
+
+	connect(m_process, &QProcess::errorOccurred,
+			this, &DiagnosticsRunner::onProcessErrorOccurred);
+	connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+			this, &DiagnosticsRunner::onProcessFinished);
+
+	m_process->start(exePath, args);
+}
+
+void DiagnosticsRunner::onProcessErrorOccurred(QProcess::ProcessError error) {
+	// Only FailedToStart is terminal on its own - every other error is
+	// followed by finished(), which does the reporting (mirrors
+	// RenderController::onProcessErrorOccurred's own reasoning above).
+	if (error != QProcess::FailedToStart || m_finished) return;
+	m_finished = true;
+	emit reportFailed(QString("Failed to start ray_tracer.exe: %1").arg(m_process->errorString()));
+}
+
+void DiagnosticsRunner::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus) {
+	if (m_finished) return;
+	m_finished = true;
+
+	QString output = QString::fromUtf8(m_process->readAllStandardOutput());
+
+	if (exitStatus == QProcess::CrashExit) {
+		emit reportFailed(QString("Diagnostics process crashed (exit code %1)").arg(exitCode));
+	} else if (exitCode != 0) {
+		emit reportFailed(QString("Diagnostics process exited with code %1:\n%2").arg(exitCode).arg(output));
+	} else {
+		emit reportReady(output);
+	}
+}
+
 // MainWindow Implementation
 MainWindow::MainWindow(QWidget *parent)
 	: QMainWindow(parent), m_renderController(nullptr), m_isRendering(false), m_videoMode(false),
@@ -475,6 +525,7 @@ void MainWindow::setupUI() {
 	createPreviewTab();
 	createProgressTab();
 	createLogTab();
+	createDiagnosticsTab();
 
 	// Initialize scene info AFTER tabs are created (onSceneChanged uses m_samplesSpinBox)
 	onSceneChanged(0);
