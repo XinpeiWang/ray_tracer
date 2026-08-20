@@ -344,8 +344,11 @@ bool OptiXRenderer::createModule() {
 	// is the largest user: attenuation(3) + emission(3) + dir(3) + seed(1) +
 	// flag(1) + t(1) + brdf_or_light_pdf(1) + explicit_origin(3, flag==3
 	// only - MaterialType::Subsurface's probe-walk exit point, see
-	// optix_raygen.h) = 16.
-	pipelineCompileOptions_.numPayloadValues = 16;
+	// optix_raygen.h) = 16, plus denoiser guide-layer AOVs: albedo(3) +
+	// normal(3) = 6 more (p16-p21, see PathTracingPayload::albedo/normal's
+	// comment in optix_types.h) = 22 total. Comfortably under OptiX's
+	// 32-register hard limit.
+	pipelineCompileOptions_.numPayloadValues = 22;
 	pipelineCompileOptions_.numAttributeValues = 4;  // Sphere: center.xyz + radius (4 attrs)
 	pipelineCompileOptions_.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
 	pipelineCompileOptions_.pipelineLaunchParamsVariableName = "params";
@@ -2243,6 +2246,20 @@ bool OptiXRenderer::render(
 	size_t fbSize = width * height * sizeof(float3);
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_framebuffer), fbSize));
 
+	// Denoiser albedo/normal guide-layer AOV buffers (recursive backend
+	// only) - allocated only when this render will actually be denoised,
+	// same transient per-call lifecycle as d_framebuffer itself (unlike the
+	// denoiser's own state/scratch buffers, which persist - see denoise()'s
+	// comment). raygen only writes to these when the LaunchParams pointer is
+	// non-null (see optix_raygen.h's own null-check), so leaving them 0 here
+	// when not denoising costs nothing extra on the device side.
+	CUdeviceptr d_albedo = 0;
+	CUdeviceptr d_normal = 0;
+	if (denoiseEnabled_) {
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_albedo), fbSize));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_normal), fbSize));
+	}
+
 	// Setup launch params. Zero-initialised on purpose: LaunchParams is a POD
 	// whose fields are assigned one by one below, so any field NOT assigned
 	// here would otherwise hold stack garbage. instancePrimBase is read on the
@@ -2250,6 +2267,8 @@ bool OptiXRenderer::render(
 	// out-of-bounds read inside a hit program - among the hardest bugs to see.
 	LaunchParams params = {};
 	params.framebuffer = reinterpret_cast<float3*>(d_framebuffer);
+	params.albedoBuffer = reinterpret_cast<float3*>(d_albedo);  // null unless denoising - see alloc above
+	params.normalBuffer = reinterpret_cast<float3*>(d_normal);
 	params.width = width;
 	params.height = height;
 	params.samplesPerPixel = samplesPerPixel;
@@ -2336,7 +2355,7 @@ bool OptiXRenderer::render(
 	// (inside denoise() itself) and otherwise ignored - the already-valid
 	// noisy render is still a correct result.
 	if (denoiseEnabled_) {
-		denoise(d_framebuffer, width, height);
+		denoise(d_framebuffer, width, height, d_albedo, d_normal);
 	}
 
 	// Download framebuffer
@@ -2347,8 +2366,10 @@ bool OptiXRenderer::render(
 		cudaMemcpyDeviceToHost
 	));
 
-	// Cleanup framebuffer
+	// Cleanup framebuffer + AOV guide-layer buffers (transient, see alloc above)
 	cudaFree(reinterpret_cast<void*>(d_framebuffer));
+	if (d_albedo) cudaFree(reinterpret_cast<void*>(d_albedo));
+	if (d_normal) cudaFree(reinterpret_cast<void*>(d_normal));
 
 	std::cout << "[OptiX] Rendered " << width << "x" << height
 		<< " @ " << samplesPerPixel << " spp\n";
@@ -2359,14 +2380,14 @@ bool OptiXRenderer::render(
 // ============================================================================
 // denoise -- OptiX AI denoiser post-process (recursive backend only)
 // ============================================================================
-// See optix_renderer.h's enableDenoise()/denoise() comments for scope
-// (beauty-only, no albedo/normal guide layers - deferred follow-up).
+// See optix_renderer.h's enableDenoise()/denoise() comments for scope.
 // Struct shapes and function signatures below were verified against the
 // actual installed OptiX SDK 9.1.0 headers (optix_types.h/optix_host.h),
 // not assumed from pbrt-v4's source (which targets its own, possibly
 // different, SDK version) - see this project's Phase 3 plan for why that
 // verification step mattered.
-bool OptiXRenderer::denoise(CUdeviceptr d_buffer, unsigned int width, unsigned int height) {
+bool OptiXRenderer::denoise(CUdeviceptr d_buffer, unsigned int width, unsigned int height,
+	CUdeviceptr d_albedo, CUdeviceptr d_normal) {
 	// Every OptiX/CUDA call below can fail; unlike render()'s own launch
 	// sequence (which throws via OPTIX_CHECK/CUDA_CHECK - a failure there
 	// means the render itself is unusable), a denoiser failure should leave
@@ -2394,8 +2415,8 @@ bool OptiXRenderer::denoise(CUdeviceptr d_buffer, unsigned int width, unsigned i
 		destroyDenoiser();
 
 		OptixDenoiserOptions options = {};
-		options.guideAlbedo = 0;
-		options.guideNormal = 0;
+		options.guideAlbedo = d_albedo ? 1 : 0;
+		options.guideNormal = d_normal ? 1 : 0;
 		options.denoiseAlpha = OPTIX_DENOISER_ALPHA_MODE_COPY;
 
 		OptixResult res = optixDenoiserCreate(context_, OPTIX_DENOISER_MODEL_KIND_AOV, &options, &denoiser_);
@@ -2450,12 +2471,32 @@ bool OptiXRenderer::denoise(CUdeviceptr d_buffer, unsigned int width, unsigned i
 	params.hdrIntensity = denoiserIntensity_;
 	params.blendFactor = 0.0f;  // 100% denoised output
 
-	// No guide layer images (albedo/normal/flow all left zero-initialised -
-	// zero data pointers are the documented "not provided" state, matching
-	// options.guideAlbedo/guideNormal both being 0 above). AOV model kind
-	// with no guide layers still denoises, just less accurately than a
-	// guided pass would - see enableDenoise()'s comment.
+	// Albedo/normal guide layers (recursive backend's per-pixel AOV buffers
+	// - see optix_raygen.h's albedo_sum/normal_sum accumulation and this
+	// project's plan for why no atomics are needed to produce them). Left
+	// zero-initialised (data pointer 0, the documented "not provided" state)
+	// when the caller didn't pass a buffer, matching options.guideAlbedo/
+	// guideNormal being 0 in that case above - AOV model kind still denoises
+	// without them, just less accurately. `normal` is already world-space
+	// (no transform needed - see optix_intersection_sphere.h's own normal
+	// computation), matching what OPTIX_DENOISER_MODEL_KIND_AOV expects.
 	OptixDenoiserGuideLayer guideLayer = {};
+	if (d_albedo) {
+		guideLayer.albedo.data = d_albedo;
+		guideLayer.albedo.width = width;
+		guideLayer.albedo.height = height;
+		guideLayer.albedo.rowStrideInBytes = width * sizeof(float3);
+		guideLayer.albedo.pixelStrideInBytes = sizeof(float3);
+		guideLayer.albedo.format = OPTIX_PIXEL_FORMAT_FLOAT3;
+	}
+	if (d_normal) {
+		guideLayer.normal.data = d_normal;
+		guideLayer.normal.width = width;
+		guideLayer.normal.height = height;
+		guideLayer.normal.rowStrideInBytes = width * sizeof(float3);
+		guideLayer.normal.pixelStrideInBytes = sizeof(float3);
+		guideLayer.normal.format = OPTIX_PIXEL_FORMAT_FLOAT3;
+	}
 
 	OptixDenoiserLayer layer = {};
 	layer.input = image;

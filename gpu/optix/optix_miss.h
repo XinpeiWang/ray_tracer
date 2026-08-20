@@ -53,6 +53,20 @@ extern "C" __global__ void __miss__ms() {
 	optixSetPayload_9(seed);
 	optixSetPayload_10(0);  // absorbed (terminate path with no emission)
 	optixSetPayload_12(0);  // no brdf_pdf (path terminated)
+
+	// p16-p21: denoiser guide-layer AOVs (recursive backend only) - see
+	// PathTracingPayload::albedo/normal's own comment (optix_types.h). A
+	// miss has no material/surface, so there's no real albedo/normal to
+	// report - pack the sky/background color as the albedo proxy and the
+	// camera-facing direction (-rayDir) as a reasonable dummy normal, the
+	// common convention for sky pixels in denoiser guide layers (per the
+	// plan's own note).
+	optixSetPayload_16(__float_as_uint(color.x));
+	optixSetPayload_17(__float_as_uint(color.y));
+	optixSetPayload_18(__float_as_uint(color.z));
+	optixSetPayload_19(__float_as_uint(-rayDir.x));
+	optixSetPayload_20(__float_as_uint(-rayDir.y));
+	optixSetPayload_21(__float_as_uint(-rayDir.z));
 }
 
 //==============================================================================

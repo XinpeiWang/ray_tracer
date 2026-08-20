@@ -12,6 +12,14 @@ extern "C" __global__ void __raygen__rg() {
 
 	//Accumulate samples
 	float3 pixel_color = make_float3(0.0f, 0.0f, 0.0f);
+	// Denoiser guide-layer AOVs (see PathTracingPayload::albedo/normal's own
+	// comment) - accumulated across samples exactly like pixel_color, only
+	// from each sample's depth==0 (primary-ray) hit. Zero-cost when nobody
+	// consumes them: still just a few extra float3 adds per sample, and the
+	// final write below is skipped entirely when albedoBuffer/normalBuffer
+	// are null (denoising not requested for this render).
+	float3 albedo_sum = make_float3(0.0f, 0.0f, 0.0f);
+	float3 normal_sum = make_float3(0.0f, 0.0f, 0.0f);
 
 	for (unsigned int s = 0; s < params.samplesPerPixel; ++s) {
 		// Fresh, independently-hashed seed per sample (pixel, sample index, and
@@ -116,6 +124,14 @@ extern "C" __global__ void __raygen__rg() {
 			// p13-p15: explicit next-ray origin, only written (and only
 			// meaningful) when flag==3 below.
 			unsigned int p13 = 0, p14 = 0, p15 = 0;
+			// p16-p21: denoiser guide-layer AOVs (albedo.xyz, normal.xyz) -
+			// see PathTracingPayload::albedo/normal's own comment. Every
+			// closest-hit/miss program writes these unconditionally
+			// (regardless of depth - a hit program has no way to know which
+			// bounce it's shading), so init to 0 here is just a safety
+			// default, not something any program is expected to leave
+			// untouched.
+			unsigned int p16 = 0, p17 = 0, p18 = 0, p19 = 0, p20 = 0, p21 = 0;
 
 			optixTrace(
 				params.traversable,     // Acceleration structure
@@ -129,7 +145,8 @@ extern "C" __global__ void __raygen__rg() {
 				RAY_TYPE_RADIANCE,      // SBT offset
 				RAY_TYPE_COUNT,         // SBT stride
 				RAY_TYPE_RADIANCE,      // missSBTIndex
-				p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15
+				p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15,
+				p16, p17, p18, p19, p20, p21
 			);
 
 			// Unpack payload (16 registers)
@@ -151,6 +168,21 @@ extern "C" __global__ void __raygen__rg() {
 			// this ray, which `ray_origin + t_hit*ray_direction` below
 			// cannot represent).
 			float3 explicit_origin = make_float3(__uint_as_float(p13), __uint_as_float(p14), __uint_as_float(p15));
+			payload.albedo.x = __uint_as_float(p16);
+			payload.albedo.y = __uint_as_float(p17);
+			payload.albedo.z = __uint_as_float(p18);
+			payload.normal.x = __uint_as_float(p19);
+			payload.normal.y = __uint_as_float(p20);
+			payload.normal.z = __uint_as_float(p21);
+
+			// Denoiser guide-layer AOVs only matter on the primary ray -
+			// capture this sample's depth==0 hit regardless of which branch
+			// (scattered/hit_light/absorbed) it takes below, same "primary
+			// ray only" scope as the CPU/wavefront ray-differential feature.
+			if (depth == 0) {
+				albedo_sum = albedo_sum + payload.albedo;
+				normal_sum = normal_sum + payload.normal;
+			}
 
 			// Decode flag: 0=absorbed, 1=scattered, 2=hit_light
 			if (flag == 2) {
@@ -229,4 +261,15 @@ extern "C" __global__ void __raygen__rg() {
 	// Write to framebuffer
 	const unsigned int idx_flat = py * params.width + px;
 	params.framebuffer[idx_flat] = pixel_color;
+
+	// Denoiser guide-layer AOVs - only written when the caller actually
+	// allocated these buffers (denoising requested for this render; see
+	// OptiXRenderer::render()'s own alloc site). Skipping the write entirely
+	// when null avoids wasted bandwidth on the (default) non-denoise path.
+	if (params.albedoBuffer) {
+		params.albedoBuffer[idx_flat] = albedo_sum / float(params.samplesPerPixel);
+	}
+	if (params.normalBuffer) {
+		params.normalBuffer[idx_flat] = normal_sum / float(params.samplesPerPixel);
+	}
 }

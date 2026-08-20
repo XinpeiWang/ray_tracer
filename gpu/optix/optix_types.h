@@ -40,6 +40,15 @@ struct PathTracingPayload {
 	unsigned int seed;    // Random number seed
 	int depth;            // Current bounce depth
 	bool scattered;       // True if ray scattered (not absorbed)
+	// Denoiser guide-layer AOVs (recursive backend only) - only meaningful
+	// on the primary ray (depth==0); every closest-hit/miss program packs
+	// them unconditionally (p16-p21, see optix_raygen.h's own comment)
+	// regardless of depth, since a hit program has no way to know which
+	// bounce it's shading - raygen is the one that decides whether to
+	// accumulate them, exactly mirroring how ray-differential dudx/dvdx
+	// already only matters (and is only consumed) on depth==0.
+	float3 albedo;
+	float3 normal;
 };
 
 // Shadow ray payload (minimal - just occlusion result)
@@ -914,6 +923,12 @@ struct GpuCameraParams {
 struct LaunchParams {
 	// Output
 	float3* framebuffer;
+	// Denoiser guide-layer AOVs (recursive backend only) - null unless the
+	// caller is denoising this render (see OptiXRenderer::render()'s own
+	// alloc site); nothing reads a null albedoBuffer/normalBuffer since
+	// raygen only writes to them, never reads.
+	float3* albedoBuffer;
+	float3* normalBuffer;
 	unsigned int width;
 	unsigned int height;
 

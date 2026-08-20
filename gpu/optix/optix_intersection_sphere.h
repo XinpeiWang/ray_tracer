@@ -777,6 +777,24 @@ extern "C" __global__ void __closesthit__sphere() {
 	optixSetPayload_5(__float_as_uint(emission.z));
 	optixSetPayload_9(seed);
 
+	// p16-p21: denoiser guide-layer AOVs (recursive backend only) - see
+	// PathTracingPayload::albedo/normal's own comment (optix_types.h) and
+	// raygen's own comment for why this is unconditional (every branch
+	// below, not just `scattered`). `attenuation` is only guaranteed
+	// written when `scattered` is true (it's an uninitialized local
+	// otherwise, per its declaration above) - mat.albedo is the safe
+	// always-valid fallback for the DiffuseLight/absorbed branches. `normal`
+	// itself is always valid at this point regardless of branch.
+	{
+		float3 albedoAov = scattered ? attenuation : mat.albedo;
+		optixSetPayload_16(__float_as_uint(albedoAov.x));
+		optixSetPayload_17(__float_as_uint(albedoAov.y));
+		optixSetPayload_18(__float_as_uint(albedoAov.z));
+		optixSetPayload_19(__float_as_uint(normal.x));
+		optixSetPayload_20(__float_as_uint(normal.y));
+		optixSetPayload_21(__float_as_uint(normal.z));
+	}
+
 	if (scattered) {
 		// Return surface attenuation ONLY (raygen will multiply with throughput)
 		// Medium: the scatter/exit point is not the sphere's entry surface
