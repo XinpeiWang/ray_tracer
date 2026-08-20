@@ -23,11 +23,20 @@ class hit_record {
     point3 p;
     vec3 normal;
     vec3 dpdu;      // surface tangent along U (world space) -- for normal/bump mapping
+    vec3 dpdv;      // surface tangent along V (world space) -- for texture-differential filtering
     shared_ptr<material> mat;
     double t;
     double u;
     double v;
     bool front_face;
+
+    // Texture-lookup footprint (pbrt-v4 SurfaceInteraction's dudx/dvdx/
+    // dudy/dvdy) -- set only for the primary camera ray hit (see camera.h's
+    // ray_color()), left at their zero defaults for every bounce/shadow/NEE
+    // ray, which is also mipmap.h's own correct "no footprint info, fall
+    // back to plain bilinear" case (see texture.h's value_diff()).
+    bool has_differentials = false;
+    double dudx = 0, dvdx = 0, dudy = 0, dvdy = 0;
 
     void set_face_normal(const ray& r, const vec3& outward_normal) {
         // Sets the hit record normal vector.
@@ -184,6 +193,24 @@ class rotate_y : public hittable {
             (cos_theta * rec.normal.x()) + (sin_theta * rec.normal.z()),
             rec.normal.y(),
             (-sin_theta * rec.normal.x()) + (cos_theta * rec.normal.z())
+        );
+
+        // dpdu/dpdv are tangent VECTORS (not points), so they rotate the
+        // same way normal does (no translation component) -- a pre-existing
+        // gap (dpdu was never rotated here before texture-differential
+        // filtering existed to care), worth fixing now since rotate_y wraps
+        // textured meshes (cow/horse/trophy_cow) whose normal/bump maps and
+        // (as of this change) EWA texture filtering both depend on a
+        // correctly-oriented world-space tangent frame.
+        rec.dpdu = vec3(
+            (cos_theta * rec.dpdu.x()) + (sin_theta * rec.dpdu.z()),
+            rec.dpdu.y(),
+            (-sin_theta * rec.dpdu.x()) + (cos_theta * rec.dpdu.z())
+        );
+        rec.dpdv = vec3(
+            (cos_theta * rec.dpdv.x()) + (sin_theta * rec.dpdv.z()),
+            rec.dpdv.y(),
+            (-sin_theta * rec.dpdv.x()) + (cos_theta * rec.dpdv.z())
         );
 
         return true;

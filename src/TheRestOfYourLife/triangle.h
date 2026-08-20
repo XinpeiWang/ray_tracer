@@ -190,10 +190,38 @@ class triangle : public hittable {
 		if (alpha_mask && alpha_mask->value(rec.u, rec.v, rec.p).x() < kAlphaCutoutThreshold)
 			return false;
 
-		// dpdu: approximate tangent along u axis (used by normal maps)
+		// dpdu/dpdv: standard 2x2 UV-edge Jacobian solve (pbrt-v4's own
+		// technique) so both surface tangents fall out of one linear solve,
+		// used by normal maps (dpdu only, as before) and by texture-
+		// differential filtering (dpdu AND dpdv - see compute_differentials()
+		// in src/shared/surface_interaction.h). Mirrors the dpdu-only half
+		// of this exact Jacobian already computed on the GPU side for
+		// NormalMappedLambertian tangent computation
+		// (gpu/optix/optix_intersection_triangle.h) - same degenerate-UV
+		// fallback, so CPU/GPU stay visually consistent. Left UNNORMALIZED
+		// (a change from the previous unit-length-only dpdu): see sphere.h's
+		// own comment on why this is safe for existing dpdu consumers.
 		{
 			vec3 e1v = p1 - p0, e2v = p2 - p0;
-			rec.dpdu = e1v.length_squared() > 1e-14 ? unit_vector(e1v) : vec3(1,0,0);
+			if (mesh->has_uvs()) {
+				double u0 = mesh->uvs[2*idx[0]], v0 = mesh->uvs[2*idx[0]+1];
+				double u1 = mesh->uvs[2*idx[1]], v1 = mesh->uvs[2*idx[1]+1];
+				double u2 = mesh->uvs[2*idx[2]], v2 = mesh->uvs[2*idx[2]+1];
+				double du1 = u1 - u0, dv1 = v1 - v0;
+				double du2 = u2 - u0, dv2 = v2 - v0;
+				double det = du1*dv2 - dv1*du2;
+				if (std::fabs(det) > 1e-12) {
+					double invDet = 1.0 / det;
+					rec.dpdu =  invDet * (dv2*e1v - dv1*e2v);
+					rec.dpdv =  invDet * (-du2*e1v + du1*e2v);
+				} else {
+					rec.dpdu = e1v.length_squared() > 1e-14 ? unit_vector(e1v) : vec3(1,0,0);
+					rec.dpdv = cross(shading_n, rec.dpdu);
+				}
+			} else {
+				rec.dpdu = e1v.length_squared() > 1e-14 ? unit_vector(e1v) : vec3(1,0,0);
+				rec.dpdv = cross(shading_n, rec.dpdu);
+			}
 		}
 
 		rec.mat = mat;

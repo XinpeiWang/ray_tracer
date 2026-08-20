@@ -23,7 +23,8 @@ class lambertian : public material {
 
     bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
                  bool do_regularize = false) const override {
-        srec.attenuation = tex->value(rec.u, rec.v, rec.p);
+        srec.attenuation = tex->value_diff(rec.u, rec.v, rec.p,
+                                            rec.dudx, rec.dvdx, rec.dudy, rec.dvdy);
         srec.pdf_ptr = make_shared<cosine_pdf>(rec.normal);
         srec.skip_pdf = false;
         return true;
@@ -153,7 +154,7 @@ class diffuse_light : public material {
     const override {
         if (!rec.front_face)
             return color(0,0,0);
-        return tex->value(u, v, p);
+        return tex->value_diff(u, v, p, rec.dudx, rec.dvdx, rec.dudy, rec.dvdy);
     }
 
     shared_ptr<texture> get_texture() const { return tex; }

@@ -63,20 +63,44 @@ class sphere : public hittable {
         rec.set_face_normal(r, outward_normal);
         get_sphere_uv(outward_normal, rec.u, rec.v);
         rec.mat = mat;
-        // dpdu = tangent along U for sphere UV mapping (phi direction)
-        // ∂p/∂u ∝ (-sin(phi), 0, cos(phi)) in world space ∝ (-pz, 0, px) normalised.
-        // For the equirectangular parameterization used by get_sphere_uv:
-        //   p = (sin(theta)*cos(phi), -cos(theta), -sin(theta)*sin(phi)) * radius  [shifted]
-        // A stable tangent: use the cross product of world Y and outward normal.
+        // Analytic parametric derivatives, matching get_sphere_uv()'s own
+        // convention exactly (theta = pi*v, phi = 2*pi*u; inverting
+        // theta=acos(-p.y), phi=atan2(-p.z,p.x)+pi gives
+        // p(theta,phi) = (-sin(theta)*cos(phi), -cos(theta), sin(theta)*sin(phi))
+        // on the unit sphere, scaled by radius for the real surface point).
+        // Differentiating w.r.t. phi and theta (then chain-ruling through
+        // phi=2*pi*u, theta=pi*v) gives dpdu/dpdv directly - the same
+        // pbrt-v4 Sphere::Intersect technique, re-derived for this file's
+        // own sign convention rather than pbrt's.
+        //
+        // Deliberately left UNNORMALIZED (unlike the old cross(world_up,n)
+        // fallback this replaces): compute_differentials() (surface_
+        // interaction.h) needs dpdu/dpdv's true magnitude for its
+        // scale-sensitive least-squares solve, and normal_map_materials.h's
+        // own `ulen = rec.dpdu.length()` + rescale-after-Gram-Schmidt logic
+        // (mirroring pbrt-v4's own `Normalize(GramSchmidt(...)) * ulen`) was
+        // already written expecting a meaningful, non-unit dpdu length -
+        // this was previously a no-op since dpdu was always ~unit length in
+        // practice, not a new behavior it can't handle.
         {
-            vec3 n = outward_normal;
-            vec3 world_up(0, 1, 0);
-            vec3 tangent = cross(world_up, n);
-            double tlen = tangent.length();
-            if (tlen > 1e-6)
-                rec.dpdu = tangent / tlen;
-            else
-                rec.dpdu = vec3(1, 0, 0); // fallback at poles
+            double theta = pi * rec.v;
+            double phi   = 2.0 * pi * rec.u;
+            double sin_theta = std::sin(theta), cos_theta = std::cos(theta);
+            double sin_phi   = std::sin(phi),   cos_phi   = std::cos(phi);
+
+            rec.dpdu = radius * (2.0 * pi) * vec3(sin_theta * sin_phi, 0.0, sin_theta * cos_phi);
+            rec.dpdv = radius * pi * vec3(-cos_theta * cos_phi, sin_theta, cos_theta * sin_phi);
+
+            // Degenerate at the poles (sin_theta -> 0, dpdu -> 0): fall back
+            // to the old cross(world_up, n) direction for dpdu (still a
+            // valid, if arbitrary, tangent there) and an orthogonal dpdv,
+            // matching this file's own previous pole-fallback intent.
+            if (rec.dpdu.length_squared() < 1e-14) {
+                vec3 tangent = cross(vec3(0,1,0), outward_normal);
+                double tlen = tangent.length();
+                rec.dpdu = (tlen > 1e-6) ? tangent : vec3(1, 0, 0);
+                rec.dpdv = cross(outward_normal, rec.dpdu);
+            }
         }
 
         return true;

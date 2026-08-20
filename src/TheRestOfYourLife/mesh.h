@@ -685,7 +685,7 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 						std::string ke_img_path = resolve_mtl_texture_path(ke_tex_it->second, found_prefix + texture_dir);
 						rtw_image probe(ke_img_path.c_str());
 						if (probe.height() > 0) {
-							resolved = std::make_shared<diffuse_light>(std::make_shared<image_texture>(std::move(probe)));
+							resolved = std::make_shared<diffuse_light>(std::make_shared<mipmap_texture>(std::move(probe)));
 							emissive_mats.insert(name);
 						}
 					}
@@ -742,7 +742,7 @@ inline std::shared_ptr<hittable> load_obj_mtl(
 						// again (image_texture(rtw_image&&), texture.h).
 						rtw_image probe(img_path.c_str());
 						if (probe.height() > 0)
-							resolved = std::make_shared<lambertian>(std::make_shared<image_texture>(std::move(probe)));
+							resolved = std::make_shared<lambertian>(std::make_shared<mipmap_texture>(std::move(probe)));
 					}
 				}
 				if (!resolved) {

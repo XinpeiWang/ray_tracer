@@ -22,6 +22,7 @@
 #include "../shared/sobol_sampler.h"
 #include "../shared/filter.h"
 #include "../shared/cameras.h"
+#include "../shared/surface_interaction.h"  // compute_differentials() for texture-filtering footprint
 #include "thread_count.h"
 #include <fstream>
 #include <iostream>
@@ -331,7 +332,21 @@ class camera {
         auto ray_direction = pixel_sample - ray_origin;
         auto ray_time = random_double();
 
-        return ray(ray_origin, ray_direction, ray_time);
+        ray r(ray_origin, ray_direction, ray_time);
+
+        // Ray differentials (pbrt-v4 GenerateRayDifferential): two auxiliary
+        // rays offset by one pixel in x/y, reusing the SAME lens/origin
+        // sample as the primary ray - used downstream (ray_color()) to
+        // estimate a texture lookup's footprint for EWA/mipmap filtering
+        // (see ray.h's own comment). Only the primary pixel-sample path
+        // generates these; the alt-camera branch above returns early
+        // without them (has_differentials() stays false there).
+        auto rx_sample = pixel_sample + pixel_delta_u;
+        auto ry_sample = pixel_sample + pixel_delta_v;
+        r.set_differentials(ray_origin, rx_sample - ray_origin,
+                             ray_origin, ry_sample - ray_origin);
+
+        return r;
     }
 
     vec3 sample_square_stratified(int s_i, int s_j, int sample_idx = 0,
@@ -664,6 +679,35 @@ class camera {
                     L += beta * background;
                 }
                 break;
+            }
+
+            // Texture-lookup footprint (EWA/mipmap filtering) -- only for the
+            // PRIMARY camera-ray hit (bounces_left == depth, i.e. before any
+            // bounce has updated current_ray), since only that ray carries
+            // real differentials (see get_ray()'s own comment); every bounce/
+            // shadow/NEE ray leaves rec.has_differentials false, which is
+            // already texture.h's/mipmap.h's correct "no footprint info, use
+            // plain bilinear" fallback. Bridges hit_record's flat fields into
+            // a temporary SurfaceInteraction<double> purely to reuse the
+            // existing, unmodified compute_differentials() (surface_
+            // interaction.h) rather than reimplementing its least-squares
+            // solve here.
+            if (bounces_left == depth && current_ray.has_differentials()) {
+                SurfaceInteraction<double> si(
+                    rec.p.x(), rec.p.y(), rec.p.z(),
+                    rec.normal.x(), rec.normal.y(), rec.normal.z(),
+                    rec.u, rec.v, rec.t,
+                    0.0, 0.0, 0.0,   // wo unused by compute_differentials()
+                    rec.dpdu.x(), rec.dpdu.y(), rec.dpdu.z(),
+                    rec.dpdv.x(), rec.dpdv.y(), rec.dpdv.z());
+                si.compute_differentials(true,
+                    current_ray.rx_origin().x(), current_ray.rx_origin().y(), current_ray.rx_origin().z(),
+                    current_ray.rx_direction().x(), current_ray.rx_direction().y(), current_ray.rx_direction().z(),
+                    current_ray.ry_origin().x(), current_ray.ry_origin().y(), current_ray.ry_origin().z(),
+                    current_ray.ry_direction().x(), current_ray.ry_direction().y(), current_ray.ry_direction().z());
+                rec.dudx = si.dudx; rec.dvdx = si.dvdx;
+                rec.dudy = si.dudy; rec.dvdy = si.dvdy;
+                rec.has_differentials = true;
             }
 
             // Emission -- full Le on camera/specular hits; MIS-weighted otherwise.

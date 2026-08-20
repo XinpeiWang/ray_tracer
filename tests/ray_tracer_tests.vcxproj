@@ -237,6 +237,7 @@
     <ClCompile Include="unit\sobol_strat_tests.cpp" />
     <ClCompile Include="unit\tone_map_tests.cpp" />
     <ClCompile Include="unit\triangle_tests.cpp" />
+    <ClCompile Include="unit\texture_differentials_tests.cpp" />
     <ClCompile Include="unit\layered_bxdf_tests.cpp" />
     <ClCompile Include="unit\concentric_disk_tests.cpp" />
     <ClCompile Include="unit\anisotropic_ggx_tests.cpp" />

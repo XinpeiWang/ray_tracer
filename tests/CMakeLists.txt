@@ -128,6 +128,7 @@ add_executable(unit_tests
     unit/stratified_sampler_tests.cpp
     unit/summed_area_table_tests.cpp
     unit/surface_interaction_tests.cpp
+    unit/texture_differentials_tests.cpp
     unit/texture_mapping_tests.cpp
     unit/textures_tests.cpp
     unit/tone_map_tests.cpp

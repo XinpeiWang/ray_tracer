@@ -21,6 +21,19 @@ class texture {
     virtual ~texture() = default;
 
     virtual color value(double u, double v, const point3& p) const = 0;
+
+    // Differential-aware lookup: dudx/dvdx/dudy/dvdy are the UV screen-space
+    // derivatives from compute_differentials() (src/shared/surface_
+    // interaction.h), i.e. this hit's texture-lookup footprint - used by
+    // mipmap_texture to do EWA filtering instead of a single point sample.
+    // Default just forwards to value() and ignores the footprint, so every
+    // texture that has no notion of filtering (solid_color, checker_texture,
+    // noise/fbm/marble, hdr_image_texture) needs no changes at all.
+    virtual color value_diff(double u, double v, const point3& p,
+                              double /*dudx*/, double /*dvdx*/,
+                              double /*dudy*/, double /*dvdy*/) const {
+        return value(u, v, p);
+    }
 };
 
 
@@ -262,17 +275,15 @@ class mipmap_texture : public texture {
                    MipMapOptions opts = MipMapOptions{})
     {
         rtw_image img(filename);
-        if (img.height() <= 0) return;  // load failed — mip_ stays nullptr
+        build_from(std::move(img), opts);
+    }
 
-        int w = img.width(), h = img.height();
-        std::vector<color> pixels(w * h);
-        const double scale = 1.0 / 255.0;
-        for (int j = 0; j < h; ++j)
-            for (int i = 0; i < w; ++i) {
-                const unsigned char* p = img.pixel_data(i, j);
-                pixels[j * w + i] = color(p[0]*scale, p[1]*scale, p[2]*scale);
-            }
-        mip_ = std::make_shared<mipmap>(pixels, w, h, opts);
+    // Takes ownership of an already-loaded rtw_image instead of decoding the
+    // file a second time - mirrors image_texture(rtw_image&&)'s own
+    // rationale above (e.g. mesh.h's load_obj_mtl() probing a map_Kd texture
+    // before committing to it).
+    explicit mipmap_texture(rtw_image&& loaded, MipMapOptions opts = MipMapOptions{}) {
+        build_from(std::move(loaded), opts);
     }
 
     // Basic interface: trilinear with zero derivatives (LOD 0)
@@ -281,6 +292,17 @@ class mipmap_texture : public texture {
         u = std::max(0.0, std::min(1.0, u));
         v = 1.0 - std::max(0.0, std::min(1.0, v));  // flip V
         return mip_->filter((float)u, (float)v, 0,0, 0,0);
+    }
+
+    // Differential-aware lookup (texture base class) - routes into the EWA
+    // filter below using this hit's real UV screen-space footprint. mipmap's
+    // own filter() already degrades to plain bilinear-at-LOD-0 when the
+    // derivatives are exactly zero (the has_differentials=false case - see
+    // hit_record's own comment), so no separate fallback branch is needed
+    // here.
+    color value_diff(double u, double v, const point3& /*p*/,
+                      double dudx, double dvdx, double dudy, double dvdy) const override {
+        return value_ewa(u, v, dudx, dvdx, dudy, dvdy);
     }
 
     // Full EWA interface: caller provides UV screen-space derivatives
@@ -306,6 +328,20 @@ class mipmap_texture : public texture {
     int mip_levels() const { return mip_ ? mip_->levels() : 0; }
 
   private:
+    void build_from(rtw_image&& img, MipMapOptions opts) {
+        if (img.height() <= 0) return;  // load failed — mip_ stays nullptr
+
+        int w = img.width(), h = img.height();
+        std::vector<color> pixels(w * h);
+        const double scale = 1.0 / 255.0;
+        for (int j = 0; j < h; ++j)
+            for (int i = 0; i < w; ++i) {
+                const unsigned char* p = img.pixel_data(i, j);
+                pixels[j * w + i] = color(p[0]*scale, p[1]*scale, p[2]*scale);
+            }
+        mip_ = std::make_shared<mipmap>(pixels, w, h, opts);
+    }
+
     std::shared_ptr<mipmap> mip_;
 };
 
