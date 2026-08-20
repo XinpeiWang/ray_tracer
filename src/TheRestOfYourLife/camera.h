@@ -685,9 +685,9 @@ class camera {
             // PRIMARY camera-ray hit (bounces_left == depth, i.e. before any
             // bounce has updated current_ray), since only that ray carries
             // real differentials (see get_ray()'s own comment); every bounce/
-            // shadow/NEE ray leaves rec.has_differentials false, which is
-            // already texture.h's/mipmap.h's correct "no footprint info, use
-            // plain bilinear" fallback. Bridges hit_record's flat fields into
+            // shadow/NEE ray leaves rec.dudx/dvdx/dudy/dvdy at their zero
+            // defaults, which is already texture.h's/mipmap.h's correct "no
+            // footprint info, use plain bilinear" fallback. Bridges hit_record's flat fields into
             // a temporary SurfaceInteraction<double> purely to reuse the
             // existing, unmodified compute_differentials() (surface_
             // interaction.h) rather than reimplementing its least-squares
@@ -707,7 +707,6 @@ class camera {
                     current_ray.ry_direction().x(), current_ray.ry_direction().y(), current_ray.ry_direction().z());
                 rec.dudx = si.dudx; rec.dvdx = si.dvdx;
                 rec.dudy = si.dudy; rec.dvdy = si.dvdy;
-                rec.has_differentials = true;
             }
 
             // Emission -- full Le on camera/specular hits; MIS-weighted otherwise.

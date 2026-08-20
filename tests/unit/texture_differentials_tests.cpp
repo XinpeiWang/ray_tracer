@@ -85,8 +85,17 @@ TEST(SphereDifferentials, DpdvMatchesFiniteDifference) {
 
 TEST(SphereDifferentials, PoleFallbackIsFiniteAndNonDegenerate) {
     // theta ~ 0 (near the +Y pole): sin(theta) -> 0, dpdu's main-branch
-    // formula degenerates to (near) zero - confirm the fallback kicks in and
-    // produces finite, non-zero, orthogonal-ish tangent vectors instead.
+    // formula degenerates to (near) zero - confirm the fallback kicks in,
+    // stays finite, and its magnitude decays smoothly toward zero along
+    // with the general formula's own vanishing trend at the pole (a real
+    // coordinate singularity - dp/du genuinely has no length there, same as
+    // lines of longitude converging at Earth's poles) instead of jumping to
+    // an unrelated large magnitude (the old vec3(1,0,0) fallback used to
+    // make dpdu jump straight to length 1.0 right at the threshold).
+    // dpdv does NOT have this singularity - motion along a meridian (theta/
+    // latitude) stays perfectly well-defined at the pole, so its magnitude
+    // correctly stays at the general formula's own constant radius*pi,
+    // matching the non-fallback formula everywhere else on the sphere.
     const double R = 1.0;
     sphere s(point3(0,0,0), R, std::make_shared<lambertian>(color(1,1,1)));
     point3 origin(0, 2*R, 1e-9);
@@ -96,8 +105,8 @@ TEST(SphereDifferentials, PoleFallbackIsFiniteAndNonDegenerate) {
 
     EXPECT_TRUE(std::isfinite(rec.dpdu.x()) && std::isfinite(rec.dpdu.y()) && std::isfinite(rec.dpdu.z()));
     EXPECT_TRUE(std::isfinite(rec.dpdv.x()) && std::isfinite(rec.dpdv.y()) && std::isfinite(rec.dpdv.z()));
-    EXPECT_GT(rec.dpdu.length(), 1e-6);
-    EXPECT_GT(rec.dpdv.length(), 1e-6);
+    EXPECT_LT(rec.dpdu.length(), 1e-3);
+    EXPECT_NEAR(rec.dpdv.length(), R * pi, 1e-6);
 }
 
 // ===========================================================================

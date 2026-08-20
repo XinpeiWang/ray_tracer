@@ -249,6 +249,19 @@ private:
 	// OptiX AI Denoiser (optional post-process, recursive backend only)
 	// -------------------------------------------------------------------
 	bool denoiseEnabled_ = false;  ///< See enableDenoise()
+	// Persisted across render() calls rather than created/destroyed fresh
+	// each time - see denoise()'s own comment. Recreated only when the
+	// requested width/height differ from denoiserWidth_/denoiserHeight_
+	// (0/0 initially, so the first denoise() call always (re)creates).
+	OptixDenoiser denoiser_ = nullptr;
+	CUdeviceptr denoiserState_ = 0;
+	CUdeviceptr denoiserScratch_ = 0;
+	CUdeviceptr denoiserIntensity_ = 0;
+	size_t denoiserStateSizeInBytes_ = 0;
+	size_t denoiserScratchSizeInBytes_ = 0;
+	size_t denoiserComputeIntensitySizeInBytes_ = 0;
+	unsigned int denoiserWidth_ = 0;
+	unsigned int denoiserHeight_ = 0;
 
 	// -------------------------------------------------------------------
 	// SPPM path tracer (Phase 1 GPU port, see renderSPPMTrivial())
@@ -478,6 +491,13 @@ private:
 	///         non-fatal, since a failed denoise leaves the buffer's already-
 	///         valid noisy render intact.
 	bool denoise(CUdeviceptr d_buffer, unsigned int width, unsigned int height);
+
+	/// @brief Free the persisted denoiser and its device buffers (see
+	///        denoiser_'s own comment). Safe to call when nothing is
+	///        allocated (every member checked before freeing). Called from
+	///        cleanup() and from denoise() itself when the requested
+	///        resolution no longer matches denoiserWidth_/denoiserHeight_.
+	void destroyDenoiser() noexcept;
 
 	/// @brief Load PTX shader code from file
 	/// @param filename Path to PTX file

@@ -35,7 +35,6 @@ class hit_record {
     // ray_color()), left at their zero defaults for every bounce/shadow/NEE
     // ray, which is also mipmap.h's own correct "no footprint info, fall
     // back to plain bilinear" case (see texture.h's value_diff()).
-    bool has_differentials = false;
     double dudx = 0, dvdx = 0, dudy = 0, dvdy = 0;
 
     void set_face_normal(const ray& r, const vec3& outward_normal) {

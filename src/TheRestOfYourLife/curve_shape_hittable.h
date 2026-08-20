@@ -60,6 +60,16 @@ class curve_shape_hittable : public hittable {
         rec.u = ch.u;
         rec.v = ch.v;
         rec.dpdu = unit_vector(vec3(ch.dpdu_x, ch.dpdu_y, ch.dpdu_z));
+        // CurveShape::CurveHit has no dpdv output (shapes.h computes one
+        // internally for its own normal, but doesn't expose it) - derive one
+        // here orthogonal to dpdu/normal, same fallback pattern
+        // normal_map_materials.h's bump_map_material already uses when a
+        // real dpdv isn't available. Without this, dpdv stayed the
+        // hit_record default (0,0,0), making compute_differentials()'s
+        // least-squares solve degenerate (det=0) for every curve hit - EWA
+        // texture filtering was a silent no-op on curve/hair geometry.
+        rec.dpdv = cross(outward_normal, rec.dpdu);
+        if (rec.dpdv.length_squared() < 1e-12) rec.dpdv = vec3(0, 1, 0);
         rec.mat = mat;
         return true;
     }

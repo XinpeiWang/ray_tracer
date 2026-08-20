@@ -64,8 +64,15 @@ class quad : public hittable {
         rec.p = intersection;
         rec.mat = mat;
         rec.set_face_normal(r, normal);
-        // dpdu = normalised edge along U -- used by normal/bump mapping
-        rec.dpdu = unit_vector(u);
+        // dpdu/dpdv = the quad's own edge vectors, at their real (non-unit)
+        // length: alpha/beta span exactly [0,1] across u/v respectively, so
+        // these ARE the true parametric derivatives dp/du, dp/dv - matching
+        // sphere.h/triangle.h's real-magnitude convention (needed by
+        // compute_differentials()'s scale-sensitive least-squares solve;
+        // normal/bump mapping consumers already handle arbitrary magnitude,
+        // see normal_map_materials.h's own ulen-preserving comment).
+        rec.dpdu = u;
+        rec.dpdv = v;
 
         return true;
     }

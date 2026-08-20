@@ -91,15 +91,29 @@ class sphere : public hittable {
             rec.dpdu = radius * (2.0 * pi) * vec3(sin_theta * sin_phi, 0.0, sin_theta * cos_phi);
             rec.dpdv = radius * pi * vec3(-cos_theta * cos_phi, sin_theta, cos_theta * sin_phi);
 
-            // Degenerate at the poles (sin_theta -> 0, dpdu -> 0): fall back
-            // to the old cross(world_up, n) direction for dpdu (still a
-            // valid, if arbitrary, tangent there) and an orthogonal dpdv,
-            // matching this file's own previous pole-fallback intent.
+            // Degenerate at the poles (sin_theta -> 0, dpdu -> 0): the
+            // parametric derivative genuinely vanishes there (a coordinate
+            // singularity, same as lines of longitude converging at Earth's
+            // poles) - correct behavior, not a bug, and compute_differentials()
+            // already degrades gracefully to point-sampling when dpdu/dpdv
+            // are near-zero (det~0 -> non-finite inv_det -> zeroed). What
+            // needs fixing is only the DIRECTION, which is genuinely
+            // undefined when sin_theta==0: fall back to cross(world_up, n)
+            // for a valid (if arbitrary) tangent direction, but rescale it
+            // to match the general formula's own vanishing magnitude
+            // (radius*2*pi*sin_theta) rather than substituting the cross
+            // product's own unrelated magnitude - otherwise dpdu jumps
+            // discontinuously in SIZE right at this branch's 1e-14
+            // threshold (near-zero on one side, O(radius) on the other),
+            // which fed a large, wrong texture-footprint estimate into
+            // compute_differentials() for hits landing just inside the
+            // threshold.
             if (rec.dpdu.length_squared() < 1e-14) {
                 vec3 tangent = cross(vec3(0,1,0), outward_normal);
                 double tlen = tangent.length();
-                rec.dpdu = (tlen > 1e-6) ? tangent : vec3(1, 0, 0);
-                rec.dpdv = cross(outward_normal, rec.dpdu);
+                vec3 dir = (tlen > 1e-6) ? (tangent / tlen) : vec3(1, 0, 0);
+                rec.dpdu = dir * (radius * 2.0 * pi * sin_theta);
+                rec.dpdv = cross(outward_normal, dir) * (radius * pi);
             }
         }
 

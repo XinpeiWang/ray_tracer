@@ -2373,41 +2373,66 @@ bool OptiXRenderer::denoise(CUdeviceptr d_buffer, unsigned int width, unsigned i
 	// the caller's already-valid noisy render intact rather than crashing
 	// the whole render() call - hence catching here and returning false
 	// instead of using those throwing macros directly.
-	OptixDenoiser denoiser = nullptr;
-	CUdeviceptr d_state = 0, d_scratch = 0, d_intensity = 0;
-
 	auto fail = [&](const char* what, OptixResult res) {
 		std::cerr << "[OptiX] Denoiser " << what << " failed (code " << res << ")\n";
-		if (d_intensity) cudaFree(reinterpret_cast<void*>(d_intensity));
-		if (d_scratch) cudaFree(reinterpret_cast<void*>(d_scratch));
-		if (d_state) cudaFree(reinterpret_cast<void*>(d_state));
-		if (denoiser) optixDenoiserDestroy(denoiser);
+		destroyDenoiser();  // don't leave a half-built denoiser_ cached for next call
 		return false;
 	};
 
-	OptixDenoiserOptions options = {};
-	options.guideAlbedo = 0;
-	options.guideNormal = 0;
-	options.denoiseAlpha = OPTIX_DENOISER_ALPHA_MODE_COPY;
+	// denoiser_ (and its buffers) is persisted across render() calls - see
+	// its own header comment - only (re)created here when this is the first
+	// call, a previous call failed (destroyDenoiser() clears denoiser_), or
+	// the requested resolution changed (e.g. GUI window resize, or a
+	// different scene rendered at a different width/height in the same
+	// process - see g_uploaded_scene_id's own comment for the equivalent
+	// per-scene-switch cache-invalidation pattern in optix_interface.cpp).
+	// Fixes a real inefficiency: video mode's per-frame optix_render_main()
+	// calls (main.cpp) all share one resolution, so re-running denoiser
+	// create+setup+3 allocations on every one of hundreds of frames was
+	// pure waste - now only the first frame pays that cost.
+	if (!denoiser_ || width != denoiserWidth_ || height != denoiserHeight_) {
+		destroyDenoiser();
 
-	OptixResult res = optixDenoiserCreate(context_, OPTIX_DENOISER_MODEL_KIND_AOV, &options, &denoiser);
-	if (res != OPTIX_SUCCESS) return fail("create", res);
+		OptixDenoiserOptions options = {};
+		options.guideAlbedo = 0;
+		options.guideNormal = 0;
+		options.denoiseAlpha = OPTIX_DENOISER_ALPHA_MODE_COPY;
 
-	OptixDenoiserSizes sizes = {};
-	res = optixDenoiserComputeMemoryResources(denoiser, width, height, &sizes);
-	if (res != OPTIX_SUCCESS) return fail("computeMemoryResources", res);
+		OptixResult res = optixDenoiserCreate(context_, OPTIX_DENOISER_MODEL_KIND_AOV, &options, &denoiser_);
+		if (res != OPTIX_SUCCESS) return fail("create", res);
 
-	if (cudaMalloc(reinterpret_cast<void**>(&d_state), sizes.stateSizeInBytes) != cudaSuccess)
-		return fail("state alloc", OPTIX_ERROR_INTERNAL_ERROR);
-	// No tiling (full image in one call) - withoutOverlapScratchSizeInBytes
-	// is the smaller of the two sizes optixDenoiserComputeMemoryResources
-	// returns, per its own doc comment.
-	if (cudaMalloc(reinterpret_cast<void**>(&d_scratch), sizes.withoutOverlapScratchSizeInBytes) != cudaSuccess)
-		return fail("scratch alloc", OPTIX_ERROR_INTERNAL_ERROR);
+		OptixDenoiserSizes sizes = {};
+		res = optixDenoiserComputeMemoryResources(denoiser_, width, height, &sizes);
+		if (res != OPTIX_SUCCESS) return fail("computeMemoryResources", res);
 
-	res = optixDenoiserSetup(denoiser, stream_, width, height,
-		d_state, sizes.stateSizeInBytes, d_scratch, sizes.withoutOverlapScratchSizeInBytes);
-	if (res != OPTIX_SUCCESS) return fail("setup", res);
+		// denoiserScratch_ is shared by optixDenoiserSetup/Invoke (needs
+		// withoutOverlapScratchSizeInBytes - no tiling, full image in one
+		// call) AND optixDenoiserComputeIntensity (needs the separately-
+		// documented computeIntensitySizeInBytes) below. These are two
+		// independently-sized requirements per the SDK header, not
+		// guaranteed ordered either way, so allocate the max of both rather
+		// than assuming one covers the other.
+		denoiserStateSizeInBytes_ = sizes.stateSizeInBytes;
+		denoiserScratchSizeInBytes_ = sizes.withoutOverlapScratchSizeInBytes;
+		denoiserComputeIntensitySizeInBytes_ = sizes.computeIntensitySizeInBytes;
+		size_t scratchAllocSize = denoiserScratchSizeInBytes_;
+		if (denoiserComputeIntensitySizeInBytes_ > scratchAllocSize)
+			scratchAllocSize = denoiserComputeIntensitySizeInBytes_;
+
+		if (cudaMalloc(reinterpret_cast<void**>(&denoiserState_), denoiserStateSizeInBytes_) != cudaSuccess)
+			return fail("state alloc", OPTIX_ERROR_INTERNAL_ERROR);
+		if (cudaMalloc(reinterpret_cast<void**>(&denoiserScratch_), scratchAllocSize) != cudaSuccess)
+			return fail("scratch alloc", OPTIX_ERROR_INTERNAL_ERROR);
+		if (cudaMalloc(reinterpret_cast<void**>(&denoiserIntensity_), sizeof(float)) != cudaSuccess)
+			return fail("intensity alloc", OPTIX_ERROR_INTERNAL_ERROR);
+
+		res = optixDenoiserSetup(denoiser_, stream_, width, height,
+			denoiserState_, denoiserStateSizeInBytes_, denoiserScratch_, denoiserScratchSizeInBytes_);
+		if (res != OPTIX_SUCCESS) return fail("setup", res);
+
+		denoiserWidth_ = width;
+		denoiserHeight_ = height;
+	}
 
 	OptixImage2D image = {};
 	image.data = d_buffer;
@@ -2417,14 +2442,12 @@ bool OptiXRenderer::denoise(CUdeviceptr d_buffer, unsigned int width, unsigned i
 	image.pixelStrideInBytes = sizeof(float3);
 	image.format = OPTIX_PIXEL_FORMAT_FLOAT3;
 
-	if (cudaMalloc(reinterpret_cast<void**>(&d_intensity), sizeof(float)) != cudaSuccess)
-		return fail("intensity alloc", OPTIX_ERROR_INTERNAL_ERROR);
-	res = optixDenoiserComputeIntensity(denoiser, stream_, &image, d_intensity,
-		d_scratch, sizes.computeIntensitySizeInBytes);
+	OptixResult res = optixDenoiserComputeIntensity(denoiser_, stream_, &image, denoiserIntensity_,
+		denoiserScratch_, denoiserComputeIntensitySizeInBytes_);
 	if (res != OPTIX_SUCCESS) return fail("computeIntensity", res);
 
 	OptixDenoiserParams params = {};
-	params.hdrIntensity = d_intensity;
+	params.hdrIntensity = denoiserIntensity_;
 	params.blendFactor = 0.0f;  // 100% denoised output
 
 	// No guide layer images (albedo/normal/flow all left zero-initialised -
@@ -2442,21 +2465,26 @@ bool OptiXRenderer::denoise(CUdeviceptr d_buffer, unsigned int width, unsigned i
 	layer.output = image;
 	layer.type = OPTIX_DENOISER_AOV_TYPE_BEAUTY;
 
-	res = optixDenoiserInvoke(denoiser, stream_, &params,
-		d_state, sizes.stateSizeInBytes,
+	res = optixDenoiserInvoke(denoiser_, stream_, &params,
+		denoiserState_, denoiserStateSizeInBytes_,
 		&guideLayer, &layer, 1,
 		0, 0,
-		d_scratch, sizes.withoutOverlapScratchSizeInBytes);
+		denoiserScratch_, denoiserScratchSizeInBytes_);
 	if (res != OPTIX_SUCCESS) return fail("invoke", res);
 
 	if (cudaStreamSynchronize(stream_) != cudaSuccess)
 		return fail("sync", OPTIX_ERROR_INTERNAL_ERROR);
 
-	cudaFree(reinterpret_cast<void*>(d_intensity));
-	cudaFree(reinterpret_cast<void*>(d_scratch));
-	cudaFree(reinterpret_cast<void*>(d_state));
-	optixDenoiserDestroy(denoiser);
 	return true;
+}
+
+void OptiXRenderer::destroyDenoiser() noexcept {
+	if (denoiserIntensity_) { cudaFree(reinterpret_cast<void*>(denoiserIntensity_)); denoiserIntensity_ = 0; }
+	if (denoiserScratch_)   { cudaFree(reinterpret_cast<void*>(denoiserScratch_));   denoiserScratch_ = 0; }
+	if (denoiserState_)     { cudaFree(reinterpret_cast<void*>(denoiserState_));     denoiserState_ = 0; }
+	if (denoiser_)          { optixDenoiserDestroy(denoiser_); denoiser_ = nullptr; }
+	denoiserWidth_ = 0;
+	denoiserHeight_ = 0;
 }
 
 void OptiXRenderer::cleanup() noexcept {
@@ -2476,6 +2504,10 @@ void OptiXRenderer::cleanup() noexcept {
 	// happened to crash visibly before.
 	wavefrontTracer_.reset();
 	sppmTracer_.reset();
+
+	// Same before-context_-destruction ordering requirement as above -
+	// denoiser_ is an OptiX object created from context_.
+	destroyDenoiser();
 
 	// Free SBT records
 	if (d_raygenRecord_) cudaFree(reinterpret_cast<void*>(d_raygenRecord_));

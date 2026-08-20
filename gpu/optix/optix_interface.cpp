@@ -192,6 +192,17 @@ extern "C" int optix_render_main(
 		// an earlier call in this process happened to request.
 		g_renderer->enableDenoise(denoise != 0);
 
+		// enableDenoise(true) has no effect under wavefront mode (render()
+		// delegates to wavefrontTracer_->render() and returns before ever
+		// reaching the denoise step - see OptiXRenderer::render()'s own
+		// comment and enableDenoise()'s doc comment for why). Without this,
+		// a user combining --wavefront --denoise gets a normal, undenoised
+		// render with nothing telling them why.
+		if (denoise != 0 && wfEnv && std::string(wfEnv) == "1") {
+			std::cerr << "[OptiX] Warning: --denoise has no effect under --wavefront "
+						 "(wavefront backend does not support denoising) - rendering without it.\n";
+		}
+
 		// Allocate float framebuffer
 		size_t pixelCount = image_width * image_height;
 		std::vector<float> framebuffer(pixelCount * 3);

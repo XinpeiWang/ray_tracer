@@ -297,7 +297,7 @@ class mipmap_texture : public texture {
     // Differential-aware lookup (texture base class) - routes into the EWA
     // filter below using this hit's real UV screen-space footprint. mipmap's
     // own filter() already degrades to plain bilinear-at-LOD-0 when the
-    // derivatives are exactly zero (the has_differentials=false case - see
+    // derivatives are exactly zero (the no-differentials case - see
     // hit_record's own comment), so no separate fallback branch is needed
     // here.
     color value_diff(double u, double v, const point3& /*p*/,
@@ -312,9 +312,15 @@ class mipmap_texture : public texture {
         if (!mip_) return color(0,1,1);
         u = std::max(0.0, std::min(1.0, u));
         v = 1.0 - std::max(0.0, std::min(1.0, v));
+        // v is flipped above (v_mip = 1-v), so d(v_mip)/dx = -dv/dx: negate
+        // dt_dx/dt_dy to match, or the EWA ellipse's cross term (mipmap.h's
+        // ewa(), built from ds*dt sums) gets the wrong sign for any sheared/
+        // anisotropic footprint - exactly the grazing-angle case this filter
+        // exists for. ds_dx/ds_dy (the u derivatives) are unaffected since u
+        // isn't flipped.
         return mip_->filter((float)u,    (float)v,
-                            (float)ds_dx,(float)dt_dx,
-                            (float)ds_dy,(float)dt_dy);
+                            (float)ds_dx,(float)-dt_dx,
+                            (float)ds_dy,(float)-dt_dy);
     }
 
     // LOD-explicit lookup (e.g. supplied by ray differentials)
