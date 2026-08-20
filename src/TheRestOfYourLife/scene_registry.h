@@ -91,6 +91,23 @@ struct SceneDescriptor {
     std::function<std::shared_ptr<sky_light>()>          build_sky;      // nullptr = flat bg
     std::function<std::shared_ptr<punctual_light_list>()> build_punct;   // nullptr = none
     std::function<void(camera_t&)>                       setup_camera;   // nullptr = default perspective
+
+    // A pbrt-loaded scene's own Integrator directive - 0/empty for every
+    // hand-built scene above (none of them were ever declared via an
+    // Integrator directive to read in the first place). Deliberately last:
+    // the ~65 hand-built entries in get_builtin_scene_registry() below
+    // construct this struct with POSITIONAL brace-init, so a field inserted
+    // anywhere earlier silently reassigns every value after it to the wrong
+    // member. Not applied automatically (this renderer's CLI integrator/
+    // depth selection is a positional argument + explicit flags, not a
+    // per-scene default lookup) - cpu_interface.cpp compares against these
+    // to warn when what a render actually does diverges from what the scene
+    // asked for, rather than silently doing something else. See
+    // pbrt_scene_registry::wire_pbrt_backed_scene() below for where this
+    // gets set, and pbrt_discover::Discovered::maxDepth/integrator for
+    // where the values themselves come from.
+    int         recommended_max_depth = 0;
+    std::string recommended_integrator;
 };
 
 // Dummy sphere light used by scenes that have no explicit light geometry
@@ -171,6 +188,8 @@ namespace pbrt_scene_registry {
         };
 
         s.recommended_spp = d.samplesPerPixel;
+        s.recommended_max_depth = d.maxDepth;
+        s.recommended_integrator = d.integrator;
         s.camera = CameraConfig{
             d.camera.vfov,
             d.camera.lookfrom[0], d.camera.lookfrom[1], d.camera.lookfrom[2],

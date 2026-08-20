@@ -45,6 +45,15 @@ struct Discovered {
 	int samplesPerPixel = 16;
 	int xResolution = 1280;
 	int yResolution = 720;
+	// The file's own Integrator directive - "integer maxdepth" and the
+	// integrator name (e.g. "volpath", "bdpt") - matching pbrt_scene::
+	// Scene's own defaults exactly, so a file with no Integrator directive
+	// at all reports the same values a real pbrt would fall back to.
+	// scene_registry.h's wire_pbrt_backed_scene() copies these onto
+	// SceneDescriptor so a render can warn when what it's actually doing
+	// diverges from what the scene asked for (see cpu_interface.cpp).
+	int maxDepth = 5;
+	std::string integrator = "volpath";
 	bool ok = false;
 	std::string error;
 	// Whether the file itself declared a Camera directive (see
@@ -157,6 +166,8 @@ inline Discovered describe(const std::string &path, const std::string &text) {
 	d.xResolution = parsed.scene.xResolution;
 	d.yResolution = parsed.scene.yResolution;
 	d.declaresCamera = parsed.scene.cameraDeclared;
+	d.maxDepth = parsed.scene.maxDepth;
+	d.integrator = parsed.scene.integrator;
 
 	// flatten() with no mesh resolver still derives the camera - that comes
 	// from the world-to-camera matrix and the fov, neither of which needs a

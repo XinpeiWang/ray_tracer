@@ -83,8 +83,31 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		}
 
 		// Log render start with all parameters
-		std::clog << "[cpu_interface] cpu_render_main start: " << width << "x" << height 
+		std::clog << "[cpu_interface] cpu_render_main start: " << width << "x" << height
 				  << " spp=" << spp << " scene_id=" << scene_id << " camera=(" << cam_x << "," << cam_y << "," << cam_z << ") out=" << output_path << std::endl;
+
+		// A loaded .pbrt scene's own Integrator directive is otherwise
+		// silently ignored - this render always uses whatever max_depth the
+		// caller passed in, regardless of what the scene file itself asked
+		// for. Not auto-applied (see SceneDescriptor::recommended_max_depth's
+		// own comment for why), but at minimum made visible rather than a
+		// silent divergence between what the scene requested and what it got.
+		// recommended_integrator != "volpath" is checked too - "volpath" is
+		// both pbrt's own passthrough default AND what a scene with no
+		// Integrator directive at all reports, so warning on that value
+		// would fire for every ordinary scene, not just ones that actually
+		// asked for something this function isn't running.
+		if (scene_desc->recommended_max_depth > 0 && scene_desc->recommended_max_depth != max_depth) {
+			std::cerr << "Warning: scene '" << scene_id << "' requests Integrator maxdepth="
+					  << scene_desc->recommended_max_depth << " but this render is using max_depth="
+					  << max_depth << " - the scene's own request has no effect here.\n";
+		}
+		if (!scene_desc->recommended_integrator.empty() && scene_desc->recommended_integrator != "volpath") {
+			std::cerr << "Warning: scene '" << scene_id << "' requests Integrator \""
+					  << scene_desc->recommended_integrator
+					  << "\" but cpu_render_main always runs the default path tracer - "
+						 "pass --bdpt/--mlt/--sppm explicitly if that's what the scene wants.\n";
+		}
 
 		// ====================================================================
 		// Scene Construction

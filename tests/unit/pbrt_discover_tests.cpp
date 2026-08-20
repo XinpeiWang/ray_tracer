@@ -44,6 +44,48 @@ TEST(PbrtDiscover, ReadsCameraAndFilmFromTheHeader) {
 	EXPECT_NEAR(d.camera.lookfrom[2], 5.0, 1e-9);
 }
 
+TEST(PbrtDiscover, ReadsIntegratorTypeAndMaxDepthFromTheHeader) {
+	const char *kWithIntegrator = R"PBRT(
+LookAt 0 0 5   0 0 0   0 1 0
+Camera "perspective" "float fov" [ 40 ]
+Integrator "bdpt" "integer maxdepth" [ 12 ]
+WorldBegin
+)PBRT";
+	const pbrt_discover::Discovered d =
+		pbrt_discover::describe("scenes/bdpt-scene.pbrt", kWithIntegrator);
+	ASSERT_TRUE(d.ok) << d.error;
+	EXPECT_EQ(d.integrator, "bdpt");
+	EXPECT_EQ(d.maxDepth, 12);
+}
+
+TEST(PbrtDiscover, IntegratorWithNoParamsAtAllStillReadsItsType) {
+	// The exact shape real bundled scenes use, e.g. pbrt_scenes/barcelona-
+	// pavilion/pavilion-night.pbrt's bare "Integrator "bdpt"" with no
+	// maxdepth override at all - a different parse path than a directive
+	// with params (empty ParamList rather than one with entries).
+	const char *kBareIntegrator = R"PBRT(
+LookAt 0 0 5   0 0 0   0 1 0
+Camera "perspective" "float fov" [ 40 ]
+Integrator "bdpt"
+WorldBegin
+)PBRT";
+	const pbrt_discover::Discovered d =
+		pbrt_discover::describe("scenes/pavilion-night.pbrt", kBareIntegrator);
+	ASSERT_TRUE(d.ok) << d.error;
+	EXPECT_EQ(d.integrator, "bdpt");
+	EXPECT_EQ(d.maxDepth, 5) << "no maxdepth override, so pbrt's own default";
+}
+
+TEST(PbrtDiscover, DefaultsToVolpathAndMaxDepth5WithNoIntegratorDirective) {
+	const pbrt_discover::Discovered d =
+		pbrt_discover::describe("scenes/killeroo.pbrt", kHeaderAndWorld);
+	ASSERT_TRUE(d.ok) << d.error;
+	EXPECT_EQ(d.integrator, "volpath")
+		<< "matches pbrt_scene::Scene's own default, and what a real pbrt "
+		   "reports for a file with no Integrator directive at all";
+	EXPECT_EQ(d.maxDepth, 5);
+}
+
 TEST(PbrtDiscover, CarriesTheUpVectorThroughBecauseCameraConfigCannotHoldIt) {
 	// A Z-up scene renders sideways if this is dropped, and CameraConfig has
 	// no field for it - the registry has to route it through setup_camera.
