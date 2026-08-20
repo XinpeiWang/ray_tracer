@@ -179,7 +179,13 @@ extern "C" __global__ void __raygen__rg() {
 			// capture this sample's depth==0 hit regardless of which branch
 			// (scattered/hit_light/absorbed) it takes below, same "primary
 			// ray only" scope as the CPU/wavefront ray-differential feature.
-			if (depth == 0) {
+			// Gated on params.albedoBuffer (matches pack_aov_payload()'s own
+			// gate, optix_device_helpers.h) so the common non-denoised path
+			// skips this add - payload.albedo/normal are whatever p16-p21
+			// happened to default to (0, per their init above) when the hit/
+			// miss program skipped packing them, so summing would be a
+			// harmless no-op anyway, but skipping it avoids the wasted work.
+			if (depth == 0 && params.albedoBuffer) {
 				albedo_sum = albedo_sum + payload.albedo;
 				normal_sum = normal_sum + payload.normal;
 			}

@@ -156,15 +156,23 @@ public:
 	///          render()'s own call site) - wavefront mode ignores this flag,
 	///          same scope-reduction pattern as enableWavefront() being
 	///          recursive-only in reverse. Guided by albedo + world-space
-	///          normal AOV buffers (OptixDenoiserOptions::guideAlbedo/
-	///          guideNormal both 1 - see denoise()'s own comment): render()
-	///          allocates d_albedo/d_normal alongside the framebuffer and
-	///          every closest-hit/miss program packs them unconditionally
-	///          into 6 extra payload registers (p16-p21, see optix_types.h's
+	///          normal AOV buffers: render() allocates d_albedo/d_normal (via
+	///          ensureAovBuffers(), persisted across calls like the denoiser's
+	///          own state) and every closest-hit/miss program packs them into
+	///          6 extra payload registers (p16-p21, see optix_types.h's
 	///          PathTracingPayload::albedo/normal comment), accumulated at
 	///          depth==0 in raygen with zero atomics needed (same single-
 	///          thread-per-pixel pattern the existing pixel_color
-	///          accumulation already uses).
+	///          accumulation already uses). Both the packing
+	///          (pack_aov_payload(), optix_device_helpers.h) and the
+	///          accumulation are gated on params.albedoBuffer being non-null,
+	///          so this costs nothing extra when denoising is off.
+	///          denoise() itself derives OptixDenoiserOptions::guideAlbedo/
+	///          guideNormal from whether its own d_albedo/d_normal arguments
+	///          are non-null (not a hardcoded 1) - render() is the only
+	///          caller and always passes both together or neither, but that
+	///          pairing is this caller's contract, not something denoise()
+	///          enforces on its own.
 	/// @param enable true = denoise every render() call, false = off (default)
 	void enableDenoise(bool enable) { denoiseEnabled_ = enable; }
 
@@ -261,6 +269,16 @@ private:
 	size_t denoiserComputeIntensitySizeInBytes_ = 0;
 	unsigned int denoiserWidth_ = 0;
 	unsigned int denoiserHeight_ = 0;
+
+	// Albedo/normal AOV guide-layer buffers for the denoiser above -
+	// persisted across render() calls (same resolution-keyed recreate-on-
+	// change pattern as denoiser_ itself, see ensureAovBuffers()) rather
+	// than cudaMalloc/cudaFree'd fresh every call, which was wasted work
+	// on video mode's hundreds of same-resolution per-frame render() calls.
+	CUdeviceptr d_albedoAov_ = 0;
+	CUdeviceptr d_normalAov_ = 0;
+	unsigned int aovWidth_ = 0;
+	unsigned int aovHeight_ = 0;
 
 	// -------------------------------------------------------------------
 	// SPPM path tracer (Phase 1 GPU port, see renderSPPMTrivial())
@@ -502,6 +520,19 @@ private:
 	///        cleanup() and from denoise() itself when the requested
 	///        resolution no longer matches denoiserWidth_/denoiserHeight_.
 	void destroyDenoiser() noexcept;
+
+	/// @brief (Re)allocate d_albedoAov_/d_normalAov_ for the given
+	///        resolution, only if not yet allocated or the resolution
+	///        changed since the last call (same pattern as denoise()'s own
+	///        denoiser_ recreate-on-resolution-change check) - a no-op on
+	///        repeat calls at a steady resolution (e.g. video mode's per-
+	///        frame render() calls). Frees and reallocates on a genuine
+	///        resolution change.
+	void ensureAovBuffers(unsigned int width, unsigned int height);
+
+	/// @brief Free d_albedoAov_/d_normalAov_ (see their own comment). Safe
+	///        to call when nothing is allocated. Called from cleanup().
+	void destroyAovBuffers() noexcept;
 
 	/// @brief Load PTX shader code from file
 	/// @param filename Path to PTX file

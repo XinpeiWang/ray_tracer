@@ -1654,10 +1654,8 @@ bool WavefrontPathTracer::render(
 			  << "  (total " << totalHitQueueHits << ")\n";
 	std::cout << "[WF-STATS] Misses             : " << stats.misses << "\n";
 	std::cout << "[WF-STATS] Shadow rays (NEE)  : " << stats.shadowRays << "\n";
-	if (stats.probeRays > 0 || stats.probeExits > 0) {
-		std::cout << "[WF-STATS] BSSRDF probe rays  : " << stats.probeRays
-				  << "  |  exits: " << stats.probeExits << "\n";
-	}
+	std::cout << "[WF-STATS] BSSRDF probe rays  : " << stats.probeRays
+			  << "  |  exits: " << stats.probeExits << "\n";
 	std::cout << "[WF-STATS] ─────────────────────────────────────────────────\n";
 
 	return true;

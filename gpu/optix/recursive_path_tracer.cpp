@@ -26,7 +26,13 @@ bool RecursivePathTracer::initialize(
 	// Initialize pipeline compile options
 	pipelineCompileOptions_.usesMotionBlur = false;
 	pipelineCompileOptions_.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
-	pipelineCompileOptions_.numPayloadValues = 12;  // PathTracingPayload uses 12 registers
+	// 22 = 16 (base PathTracingPayload) + 6 (albedo/normal denoiser guide-
+	// layer AOVs, p16-p21 - see optix_renderer.cpp's own numPayloadValues
+	// for the authoritative count/breakdown; kept in sync here since this
+	// class shares the same optix_raygen.h/closest-hit headers, which now
+	// unconditionally pack all 22 registers regardless of which pipeline
+	// compiled them).
+	pipelineCompileOptions_.numPayloadValues = 22;
 	pipelineCompileOptions_.numAttributeValues = 4;  // Custom intersection attributes
 	pipelineCompileOptions_.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
 	pipelineCompileOptions_.pipelineLaunchParamsVariableName = "params";
@@ -283,8 +289,12 @@ bool RecursivePathTracer::render(
 	size_t fbSize = width * height * sizeof(float3);
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_framebuffer), fbSize));
 
-	// Setup launch params
-	LaunchParams params;
+	// Setup launch params. Zero-initialised: LaunchParams gained
+	// albedoBuffer/normalBuffer pointer fields this project never assigns
+	// here (this class doesn't support denoiser AOVs) - `= {}` keeps them
+	// null instead of stack garbage, matching optix_renderer.cpp's own
+	// render() (the pattern this class was already meant to mirror).
+	LaunchParams params = {};
 	params.framebuffer = reinterpret_cast<float3*>(d_framebuffer);
 	params.width = width;
 	params.height = height;

@@ -23,6 +23,8 @@
 #include <algorithm>
 #include <numeric>
 
+#include "../ppm_test_utils.h"
+
 extern "C" {
 	#include "optix_interface.h"
 }
@@ -30,43 +32,9 @@ extern "C" {
 // ============================================================================
 // PPM Helper Utilities (pbrt-v4 style: CheckSceneAverage)
 // ============================================================================
-
-struct PPMImage {
-	int width = 0;
-	int height = 0;
-	std::vector<float> pixels;  // RGB floats, normalized to [0,1]
-	bool valid = false;
-};
-
-/// Load a PPM (P3 ASCII) file and normalize pixel values to [0,1]
-PPMImage load_ppm(const char* path) {
-	PPMImage img;
-	std::ifstream file(path);
-	if (!file.good()) return img;
-
-	std::string magic;
-	int maxVal;
-	file >> magic >> img.width >> img.height >> maxVal;
-
-	if (magic != "P3" || maxVal <= 0) return img;
-
-	int total = img.width * img.height * 3;
-	img.pixels.resize(total);
-	for (int i = 0; i < total; ++i) {
-		int v;
-		file >> v;
-		img.pixels[i] = static_cast<float>(v) / static_cast<float>(maxVal);
-	}
-	img.valid = (file.good() || file.eof());
-	return img;
-}
-
-/// Average brightness across all pixels (0=black, 1=white)
-float average_brightness(const PPMImage& img) {
-	if (img.pixels.empty()) return 0.0f;
-	float sum = std::accumulate(img.pixels.begin(), img.pixels.end(), 0.0f);
-	return sum / static_cast<float>(img.pixels.size());
-}
+// PPMImage/load_ppm/average_brightness live in ../ppm_test_utils.h (shared
+// with tests/integration/render_tests.cpp - previously each file had its own
+// copy). Only the helpers unique to this file's own tests stay local below.
 
 /// Fraction of pixels that are exactly black (all channels == 0)
 float black_pixel_fraction(const PPMImage& img) {

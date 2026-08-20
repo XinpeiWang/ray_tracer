@@ -59,11 +59,14 @@ struct LaunchArgs {
 	// --cpu/--sppm/--bdpt/--mlt like use_wavefront/optix_validate above.
 	bool denoise            = false;
 	// Flat post-multiply on linear color right before tone-mapping, applied
-	// on both CPU and GPU output paths (camera.h / optix_interface.cpp).
-	// Mirrors pbrt-v4's PixelSensor::imagingRatio = exposureTime * ISO / 100
-	// (film.cpp) collapsed to a single scalar - the only brightness knob
-	// this project has outside of changing scene light intensity itself.
-	// Default 1.0 matches pbrt's own passthrough default (no-op).
+	// on both CPU and GPU output paths (camera.h / optix_interface.cpp) -
+	// the default path tracer only. Mirrors pbrt-v4's PixelSensor::
+	// imagingRatio = exposureTime * ISO / 100 (film.cpp) collapsed to a
+	// single scalar - the only brightness knob this project has outside of
+	// changing scene light intensity itself. Default 1.0 matches pbrt's own
+	// passthrough default (no-op). Has no effect under --bdpt/--mlt/--sppm
+	// (main.cpp warns) - none of those entry points take an exposure
+	// parameter, same scope cut as denoise's own --wavefront exclusion above.
 	double exposure         = 1.0;
 	bool video_mode         = false;
 	// Stochastic Progressive Photon Mapping - a separate CPU-only render
@@ -180,6 +183,14 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 		} else if (arg == "--exposure" && i + 1 < argc) {
 			try {
 				out.exposure = std::stod(argv[i + 1]);
+				// exposure <= 0 is a valid double but not a valid exposure -
+				// linear_to_srgb clamps non-positive input to 0, so this
+				// would otherwise silently render solid black with nothing
+				// telling the user their value was nonsensical.
+				if (out.exposure <= 0.0) {
+					std::cerr << "Warning: --exposure " << out.exposure
+							  << " is <= 0, image will render solid black\n";
+				}
 				consumed_args.insert(i);
 				consumed_args.insert(i + 1);
 				++i;
@@ -327,8 +338,9 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "               silently has no effect under --wavefront; ignored under\n"
 					  << "               --cpu/--sppm.\n"
 					  << "  --exposure VALUE: Flat multiplier on linear color before tone-mapping\n"
-					  << "               (default 1.0 = no-op). CPU and GPU both. E.g. 0.5 = darker,\n"
-					  << "               2.0 = brighter.\n"
+					  << "               (default 1.0 = no-op). CPU and GPU default path tracer only.\n"
+					  << "               E.g. 0.5 = darker, 2.0 = brighter. No effect under\n"
+					  << "               --bdpt/--mlt/--sppm (warns).\n"
 					  << "  --sppm     : Render with Stochastic Progressive Photon Mapping instead of\n"
 					  << "               the path tracer (incompatible with --video). Best for hard\n"
 					  << "               caustic/glass scenes. CPU: verified end-to-end on scene 11\n"

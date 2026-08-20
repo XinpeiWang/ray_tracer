@@ -2485,6 +2485,30 @@ __device__ __forceinline__ void generate_primary_ray(
 	}
 }
 
+// Denoiser guide-layer AOV payload packing (albedo/normal, p16-p21) - see
+// PathTracingPayload::albedo/normal's own comment (optix_types.h) and
+// raygen's own comment for why every closest-hit/miss program packs these
+// in every branch (scattered/DiffuseLight-hit/absorbed/miss) - raygen is
+// the one that decides whether to accumulate them, not the hit/miss
+// program. Shared by all 4 closest-hit programs (sphere/quad/triangle/
+// bilinear-patch) and the miss program instead of each hand-rolling the
+// same 6 optixSetPayload_* calls. Gated on params.albedoBuffer (set only
+// when this render will actually be denoised - see OptiXRenderer::render()'s
+// own alloc site) so the common non-denoised path doesn't pay 6 extra
+// register writes on every ray for a feature it isn't using; raygen's own
+// accumulation is gated the same way (see its depth==0 check), and the
+// payload registers left unwritten here are never read when albedoBuffer
+// is null, since raygen only accumulates/writes through that same guard.
+__device__ __forceinline__ void pack_aov_payload(float3 albedo, float3 normal) {
+	if (!params.albedoBuffer) return;
+	optixSetPayload_16(__float_as_uint(albedo.x));
+	optixSetPayload_17(__float_as_uint(albedo.y));
+	optixSetPayload_18(__float_as_uint(albedo.z));
+	optixSetPayload_19(__float_as_uint(normal.x));
+	optixSetPayload_20(__float_as_uint(normal.y));
+	optixSetPayload_21(__float_as_uint(normal.z));
+}
+
 //==============================================================================
 // Sphere Intersection Program
 //==============================================================================

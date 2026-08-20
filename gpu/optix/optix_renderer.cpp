@@ -2247,17 +2247,21 @@ bool OptiXRenderer::render(
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_framebuffer), fbSize));
 
 	// Denoiser albedo/normal guide-layer AOV buffers (recursive backend
-	// only) - allocated only when this render will actually be denoised,
-	// same transient per-call lifecycle as d_framebuffer itself (unlike the
-	// denoiser's own state/scratch buffers, which persist - see denoise()'s
-	// comment). raygen only writes to these when the LaunchParams pointer is
-	// non-null (see optix_raygen.h's own null-check), so leaving them 0 here
-	// when not denoising costs nothing extra on the device side.
+	// only) - only touched when this render will actually be denoised.
+	// Persisted across render() calls via ensureAovBuffers() (same
+	// resolution-keyed recreate-on-change pattern as the denoiser's own
+	// state/scratch buffers - see denoise()'s comment), instead of a fresh
+	// cudaMalloc/cudaFree every call, which was wasted work on video mode's
+	// hundreds of same-resolution per-frame render() calls. raygen only
+	// writes to these when the LaunchParams pointer is non-null (see
+	// optix_raygen.h's own null-check), so leaving them 0 here when not
+	// denoising costs nothing extra on the device side.
 	CUdeviceptr d_albedo = 0;
 	CUdeviceptr d_normal = 0;
 	if (denoiseEnabled_) {
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_albedo), fbSize));
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_normal), fbSize));
+		ensureAovBuffers(width, height);
+		d_albedo = d_albedoAov_;
+		d_normal = d_normalAov_;
 	}
 
 	// Setup launch params. Zero-initialised on purpose: LaunchParams is a POD
@@ -2366,10 +2370,9 @@ bool OptiXRenderer::render(
 		cudaMemcpyDeviceToHost
 	));
 
-	// Cleanup framebuffer + AOV guide-layer buffers (transient, see alloc above)
+	// Cleanup framebuffer (transient). d_albedo/d_normal are NOT freed here -
+	// they persist across render() calls, see ensureAovBuffers()'s comment.
 	cudaFree(reinterpret_cast<void*>(d_framebuffer));
-	if (d_albedo) cudaFree(reinterpret_cast<void*>(d_albedo));
-	if (d_normal) cudaFree(reinterpret_cast<void*>(d_normal));
 
 	std::cout << "[OptiX] Rendered " << width << "x" << height
 		<< " @ " << samplesPerPixel << " spp\n";
@@ -2528,6 +2531,25 @@ void OptiXRenderer::destroyDenoiser() noexcept {
 	denoiserHeight_ = 0;
 }
 
+void OptiXRenderer::ensureAovBuffers(unsigned int width, unsigned int height) {
+	if (d_albedoAov_ && d_normalAov_ && width == aovWidth_ && height == aovHeight_) {
+		return;  // already sized correctly - video mode's steady-state per-frame call
+	}
+	destroyAovBuffers();
+	size_t fbSize = static_cast<size_t>(width) * height * sizeof(float3);
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_albedoAov_), fbSize));
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_normalAov_), fbSize));
+	aovWidth_ = width;
+	aovHeight_ = height;
+}
+
+void OptiXRenderer::destroyAovBuffers() noexcept {
+	if (d_albedoAov_) { cudaFree(reinterpret_cast<void*>(d_albedoAov_)); d_albedoAov_ = 0; }
+	if (d_normalAov_) { cudaFree(reinterpret_cast<void*>(d_normalAov_)); d_normalAov_ = 0; }
+	aovWidth_ = 0;
+	aovHeight_ = 0;
+}
+
 void OptiXRenderer::cleanup() noexcept {
 	// Must happen before context_ is destroyed below: wavefrontTracer_ and
 	// sppmTracer_ each own their own OptiX program groups/pipelines/module,
@@ -2549,6 +2571,7 @@ void OptiXRenderer::cleanup() noexcept {
 	// Same before-context_-destruction ordering requirement as above -
 	// denoiser_ is an OptiX object created from context_.
 	destroyDenoiser();
+	destroyAovBuffers();
 
 	// Free SBT records
 	if (d_raygenRecord_) cudaFree(reinterpret_cast<void*>(d_raygenRecord_));

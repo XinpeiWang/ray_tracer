@@ -20,6 +20,7 @@
 #include <chrono>
 #include <filesystem>
 #include "../../src/TheRestOfYourLife/error_codes.h"
+#include "../ppm_test_utils.h"
 
 extern "C" {
 	#include "cpu_interface.h"
@@ -84,27 +85,18 @@ std::pair<int, int> get_ppm_dimensions(const char* path) {
 }
 
 /**
- * Average pixel brightness of a P3 PPM file, normalized to [0,1].
- * Used by the --exposure tests below to check monotonic brightness
- * ordering (darker/default/brighter), same style as gpu_render_tests.cpp's
- * own average_brightness() helper (that one is GPU-only and file-local, so
- * not reused directly here).
+ * Average pixel brightness of a P3 PPM file, normalized to [0,1]. Used by
+ * the --exposure tests below to check monotonic brightness ordering
+ * (darker/default/brighter). Thin wrapper over the shared load_ppm()/
+ * average_brightness() (../ppm_test_utils.h, also used by
+ * tests/unit/gpu_render_tests.cpp) - returns -1.0 instead of 0 on an
+ * invalid/unreadable file, preserving this file's own ASSERT_GE(avg, 0.0)
+ * validity check at call sites below.
  */
 double average_ppm_brightness(const char* path) {
-	std::ifstream file(path);
-	std::string magic;
-	int width, height, maxVal;
-	file >> magic >> width >> height >> maxVal;
-	if (magic != "P3" || maxVal <= 0) return -1.0;
-
-	long long total = static_cast<long long>(width) * height * 3;
-	double sum = 0.0;
-	for (long long i = 0; i < total; ++i) {
-		int v;
-		file >> v;
-		sum += v;
-	}
-	return (total > 0) ? (sum / total) / maxVal : -1.0;
+	PPMImage img = load_ppm(path);
+	if (!img.valid) return -1.0;
+	return static_cast<double>(average_brightness(img));
 }
 
 // ============================================================================

@@ -692,6 +692,16 @@ int main(int argc, char** argv) {
 
     int render_result = -1; // 0 = success, non-zero = error
 
+    // --exposure only reaches cpu_render_main()/optix_render_main() (the
+    // plain path-tracer entry points) - BDPT/MLT/SPPM (CPU and GPU) have no
+    // exposure parameter at all, so the flag would otherwise be silently
+    // swallowed with zero indication why. Same warn-instead-of-silently-
+    // drop pattern as --denoise's own --wavefront warning below.
+    if (args.exposure != 1.0 && (use_bdpt || use_mlt || use_sppm)) {
+        std::cerr << "Warning: --exposure has no effect under --bdpt/--mlt/--sppm "
+                     "(only the default path tracer supports it) - rendering at exposure=1.0.\n";
+    }
+
     if (use_bdpt) {
         // BDPT Renderer, CPU path (Bidirectional Path Tracing). Implemented
         // in cpu_renderer/cpu_interface_bdpt.cpp - checked before use_sppm/
