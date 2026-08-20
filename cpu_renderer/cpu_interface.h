@@ -57,6 +57,10 @@ extern "C" {
 ///                      comment on why) - the 0 default here only matters
 ///                      to direct callers that bypass main.cpp entirely
 ///                      (e.g. unit tests).
+/// @param exposure      Flat multiplier on linear color, applied right
+///                      before tone-mapping (see camera.h's render loop).
+///                      1.0 (default) is a no-op; mirrors pbrt-v4's
+///                      PixelSensor imagingRatio collapsed to one scalar.
 /// @return 0 on success, non-zero error code on failure
 int cpu_render_main(
     int width,
@@ -68,7 +72,8 @@ int cpu_render_main(
     double cam_x,
     double cam_y,
     double cam_z,
-    int force_camera_override = 0
+    int force_camera_override = 0,
+    double exposure = 1.0
 );
 
 /// @brief Render a scene using Stochastic Progressive Photon Mapping (SPPM)

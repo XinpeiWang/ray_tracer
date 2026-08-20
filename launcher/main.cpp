@@ -545,7 +545,8 @@ int main(int argc, char** argv) {
                         cam_pos.lookfrom_y,
                         cam_pos.lookfrom_z,
                         1,  // force_camera_override
-                        args.denoise ? 1 : 0
+                        args.denoise ? 1 : 0,
+                        args.exposure
                     );
                 } else {
                     std::cerr << "\nERROR: OptiX is not available!" << std::endl;
@@ -562,7 +563,8 @@ int main(int argc, char** argv) {
                     cam_pos.lookfrom_x,
                     cam_pos.lookfrom_y,
                     cam_pos.lookfrom_z,
-                    1  // force_camera_override
+                    1,  // force_camera_override
+                    args.exposure
                 );
             }
 
@@ -801,7 +803,8 @@ int main(int argc, char** argv) {
                 cam_y,
                 cam_z,
                 1,  // force_camera_override - see the comment above this section
-                args.denoise ? 1 : 0
+                args.denoise ? 1 : 0,
+                args.exposure
             );
             std::cout << "optix_render_main returned: " << render_result << std::endl;
             if (render_result == SUCCESS) {
@@ -823,7 +826,7 @@ int main(int argc, char** argv) {
         // CPU Renderer (multithreaded C++)
         // Implemented in cpu_renderer/cpu_interface.cpp
         std::cout << "Calling cpu_render_main(...) in-process..." << std::endl;
-        render_result = cpu_render_main(image_width, image_height, samples_per_pixel, max_ray_depth, out_path.c_str(), scene_id.c_str(), cam_x, cam_y, cam_z, 1);  // force_camera_override
+        render_result = cpu_render_main(image_width, image_height, samples_per_pixel, max_ray_depth, out_path.c_str(), scene_id.c_str(), cam_x, cam_y, cam_z, 1, args.exposure);  // force_camera_override
         std::cout << "cpu_render_main returned: " << render_result << std::endl;
         if (render_result == SUCCESS) {
             std::cout << "Rendered with in-process CPU renderer, output: " << out_path << std::endl;

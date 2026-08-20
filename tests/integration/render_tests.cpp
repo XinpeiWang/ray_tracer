@@ -83,6 +83,30 @@ std::pair<int, int> get_ppm_dimensions(const char* path) {
 	return {width, height};
 }
 
+/**
+ * Average pixel brightness of a P3 PPM file, normalized to [0,1].
+ * Used by the --exposure tests below to check monotonic brightness
+ * ordering (darker/default/brighter), same style as gpu_render_tests.cpp's
+ * own average_brightness() helper (that one is GPU-only and file-local, so
+ * not reused directly here).
+ */
+double average_ppm_brightness(const char* path) {
+	std::ifstream file(path);
+	std::string magic;
+	int width, height, maxVal;
+	file >> magic >> width >> height >> maxVal;
+	if (magic != "P3" || maxVal <= 0) return -1.0;
+
+	long long total = static_cast<long long>(width) * height * 3;
+	double sum = 0.0;
+	for (long long i = 0; i < total; ++i) {
+		int v;
+		file >> v;
+		sum += v;
+	}
+	return (total > 0) ? (sum / total) / maxVal : -1.0;
+}
+
 // ============================================================================
 // CPU Render Tests
 // ============================================================================
@@ -319,6 +343,71 @@ TEST(RenderIntegrationTest, OneSampleFast) {
 	EXPECT_LT(duration.count(), 5000) << "1 sample render took too long";
 
 	std::remove(output);
+}
+
+// ============================================================================
+// Exposure Tests (--exposure flat pre-tonemap multiplier)
+// ============================================================================
+
+/**
+ * exposure=1.0 (explicit) is a no-op multiply, so it should produce output
+ * statistically indistinguishable from omitting the parameter entirely (its
+ * default) - protects every pre-existing call site above that doesn't pass
+ * exposure at all. Compared via average brightness with a generous
+ * tolerance rather than an exact hash: per DeterministicRender's own
+ * comment below, this renderer's RNG is unseeded, so two separate calls
+ * with identical parameters are NOT byte-identical even without exposure
+ * in the picture at all.
+ */
+TEST(RenderIntegrationTest, ExposureDefaultIsNoOp) {
+	const char* output_default = "test_exposure_default.ppm";
+	const char* output_explicit_1x = "test_exposure_explicit_1x.ppm";
+
+	cpu_render_main(32, 32, 8, 5, output_default, "A1", 278, 278, -800);
+	cpu_render_main(32, 32, 8, 5, output_explicit_1x, "A1", 278, 278, -800, 0, 1.0);
+
+	double avg_default = average_ppm_brightness(output_default);
+	double avg_explicit = average_ppm_brightness(output_explicit_1x);
+
+	ASSERT_GE(avg_default, 0.0);
+	ASSERT_GE(avg_explicit, 0.0);
+	EXPECT_NEAR(avg_default, avg_explicit, 0.02)
+		<< "exposure=1.0 should be statistically indistinguishable from omitting --exposure";
+
+	std::remove(output_default);
+	std::remove(output_explicit_1x);
+}
+
+/**
+ * exposure > 1.0 should raise average brightness; exposure < 1.0 should
+ * lower it. Checked as a monotonic ordering across all three renders
+ * (same seed/scene/samples, only exposure varies) rather than an exact
+ * multiplier, since ACES tonemap + sRGB OETF are both nonlinear - only
+ * the ordering survives that, not "2x linear in equals ~2x byte out".
+ */
+TEST(RenderIntegrationTest, ExposureBrightensAndDarkensMonotonically) {
+	const char* output_dim = "test_exposure_dim.ppm";
+	const char* output_normal = "test_exposure_normal.ppm";
+	const char* output_bright = "test_exposure_bright.ppm";
+
+	cpu_render_main(32, 32, 4, 5, output_dim, "A1", 278, 278, -800, 0, 0.3);
+	cpu_render_main(32, 32, 4, 5, output_normal, "A1", 278, 278, -800, 0, 1.0);
+	cpu_render_main(32, 32, 4, 5, output_bright, "A1", 278, 278, -800, 0, 3.0);
+
+	double avg_dim = average_ppm_brightness(output_dim);
+	double avg_normal = average_ppm_brightness(output_normal);
+	double avg_bright = average_ppm_brightness(output_bright);
+
+	ASSERT_GE(avg_dim, 0.0);
+	ASSERT_GE(avg_normal, 0.0);
+	ASSERT_GE(avg_bright, 0.0);
+
+	EXPECT_LT(avg_dim, avg_normal) << "exposure=0.3 should be darker than exposure=1.0";
+	EXPECT_LT(avg_normal, avg_bright) << "exposure=3.0 should be brighter than exposure=1.0";
+
+	std::remove(output_dim);
+	std::remove(output_normal);
+	std::remove(output_bright);
 }
 
 // ============================================================================

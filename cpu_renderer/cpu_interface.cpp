@@ -42,7 +42,7 @@
 
 extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, const char* output_path,
 								 const char* scene_id, double cam_x, double cam_y, double cam_z,
-								 int force_camera_override) {
+								 int force_camera_override, double exposure) {
 	try {
 		// ====================================================================
 		// Parameter Validation
@@ -137,6 +137,7 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		cam.image_height      = (cam.image_height < 1) ? 1 : cam.image_height;
 		cam.samples_per_pixel = spp;
 		cam.max_depth         = max_depth;
+		cam.exposure          = exposure;
 		cam.vup               = vec3(0, 1, 0);  // Up direction is +Y
 
 		// Apply camera config from registry

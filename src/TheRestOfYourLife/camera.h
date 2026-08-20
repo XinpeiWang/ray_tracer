@@ -49,6 +49,11 @@ class camera {
     int    image_width       = 100;  // Rendered image width in pixel count
     int    samples_per_pixel = 10;   // Count of random samples for each pixel
     int    max_depth         = 10;   // Maximum number of ray bounces into scene
+    // Flat multiplier on linear color, applied right before tone-mapping
+    // (write_color()). Mirrors pbrt-v4's PixelSensor imagingRatio =
+    // exposureTime * ISO / 100 (film.cpp) collapsed to a single scalar -
+    // see launcher_args.h's --exposure flag. 1.0 (default) is a no-op.
+    double exposure          = 1.0;
     color  background;               // Scene background color (used when sky==nullptr)
     shared_ptr<sky_light> sky;               // HDR env map (pbrt-v4 ImageInfiniteLight); nullptr = flat background
     shared_ptr<punctual_light_list> punct_lights; // pbrt-v4 PointLight/SpotLight/DistantLight (delta); nullptr = none
@@ -199,6 +204,7 @@ class camera {
                     color pixel_color = (weight_sum > 0.0)
                         ? weighted_color / weight_sum
                         : color(0, 0, 0);
+                    pixel_color = pixel_color * exposure;
                     write_color(ss, pixel_color);
                 }
 

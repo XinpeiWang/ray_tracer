@@ -46,6 +46,10 @@ bool optix_get_diagnostics(OptixDiagnostics* out);
 // writing output_path (recursive GPU backend only - silently has no effect
 // under wavefront mode, see OptiXRenderer::enableDenoise()'s comment for
 // why). 0 (default) = off, matching every existing caller's prior behavior.
+// exposure: flat multiplier on linear color, applied right before tone-
+// mapping (see the final pixel-writing loop in optix_interface.cpp, which
+// covers both the recursive and wavefront backends). 1.0 (default) is a
+// no-op; mirrors cpu_render_main()'s own exposure parameter.
 int optix_render_main(
 	int image_width,
 	int image_height,
@@ -57,7 +61,8 @@ int optix_render_main(
 	double cam_y,
 	double cam_z,
 	int force_camera_override = 0,
-	int denoise = 0
+	int denoise = 0,
+	double exposure = 1.0
 );
 
 // GPU SPPM (Stochastic Progressive Photon Mapping) rendering entry point,

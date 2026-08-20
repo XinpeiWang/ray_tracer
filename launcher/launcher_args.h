@@ -53,11 +53,18 @@ struct LaunchArgs {
 	// Ignored under --cpu/--sppm.
 	bool optix_validate     = false;
 	// GPU-only, recursive backend only: run the OptiX AI denoiser on the
-	// finished render - see OptiXRenderer::enableDenoise()'s comment (beauty-
-	// only, no albedo/normal guiding). Silently has no effect under
+	// finished render - see OptiXRenderer::enableDenoise()'s comment
+	// (albedo/normal-guided AOV denoising). Silently has no effect under
 	// --wavefront (see optix_render_main()'s own comment); ignored under
 	// --cpu/--sppm/--bdpt/--mlt like use_wavefront/optix_validate above.
 	bool denoise            = false;
+	// Flat post-multiply on linear color right before tone-mapping, applied
+	// on both CPU and GPU output paths (camera.h / optix_interface.cpp).
+	// Mirrors pbrt-v4's PixelSensor::imagingRatio = exposureTime * ISO / 100
+	// (film.cpp) collapsed to a single scalar - the only brightness knob
+	// this project has outside of changing scene light intensity itself.
+	// Default 1.0 matches pbrt's own passthrough default (no-op).
+	double exposure         = 1.0;
 	bool video_mode         = false;
 	// Stochastic Progressive Photon Mapping - a separate CPU-only render
 	// mode (see cpu_renderer/cpu_interface.h's cpu_render_main_sppm() doc
@@ -170,6 +177,15 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 		} else if (arg == "--denoise") {
 			out.denoise = true;
 			consumed_args.insert(i);
+		} else if (arg == "--exposure" && i + 1 < argc) {
+			try {
+				out.exposure = std::stod(argv[i + 1]);
+				consumed_args.insert(i);
+				consumed_args.insert(i + 1);
+				++i;
+			} catch (const std::exception&) {
+				std::cerr << "Invalid --exposure value, using default\n";
+			}
 		} else if (arg == "--sppm") {
 			out.use_sppm = true;
 			consumed_args.insert(i);
@@ -306,10 +322,13 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "  --optix-validate: Enable OptiX validation mode (extra device-side checks,\n"
 					  << "               real per-launch cost - for debugging, not routine use).\n"
 					  << "               GPU-only, ignored under --cpu/--sppm.\n"
-					  << "  --denoise  : Run the OptiX AI denoiser on the finished render (beauty-only,\n"
-					  << "               no albedo/normal guiding). GPU-only, recursive backend only -\n"
+					  << "  --denoise  : Run the OptiX AI denoiser on the finished render, guided by\n"
+					  << "               albedo + normal AOV buffers. GPU-only, recursive backend only -\n"
 					  << "               silently has no effect under --wavefront; ignored under\n"
 					  << "               --cpu/--sppm.\n"
+					  << "  --exposure VALUE: Flat multiplier on linear color before tone-mapping\n"
+					  << "               (default 1.0 = no-op). CPU and GPU both. E.g. 0.5 = darker,\n"
+					  << "               2.0 = brighter.\n"
 					  << "  --sppm     : Render with Stochastic Progressive Photon Mapping instead of\n"
 					  << "               the path tracer (incompatible with --video). Best for hard\n"
 					  << "               caustic/glass scenes. CPU: verified end-to-end on scene 11\n"

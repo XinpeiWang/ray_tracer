@@ -43,7 +43,8 @@ extern "C" int optix_render_main(
 	double cam_y,
 	double cam_z,
 	int force_camera_override,
-	int denoise
+	int denoise,
+	double exposure
 ) {
 	try {
 		// std::string(output_path) below (and the ofstream open further down)
@@ -262,6 +263,15 @@ extern "C" int optix_render_main(
 			if (!std::isfinite(r)) r = 0.0;
 			if (!std::isfinite(g)) g = 0.0;
 			if (!std::isfinite(b)) b = 0.0;
+
+			// Flat exposure multiply on linear color, right before tone-
+			// mapping - see optix_render_main's own exposure parameter
+			// comment. 1.0 (default) is a no-op. Covers both the recursive
+			// and wavefront backends (this loop is the single shared output
+			// path for both, per this function's own file comment above).
+			r *= exposure;
+			g *= exposure;
+			b *= exposure;
 
 			r = linear_to_srgb(apply_tone_map(r, ToneMapMode::ACES));
 			g = linear_to_srgb(apply_tone_map(g, ToneMapMode::ACES));
