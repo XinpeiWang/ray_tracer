@@ -20,7 +20,8 @@ public:
     bool initialize(OptixDeviceContext context, OptixModule module, cudaStream_t stream) override;
     bool createProgramGroups() override;
     bool linkPipeline(unsigned int maxTraceDepth) override;
-    bool buildSBT(unsigned int numSpheres, unsigned int numQuads, unsigned int numBilinearPatches = 0, unsigned int numTriangles = 0) override;
+    bool buildSBT(unsigned int numSpheres, unsigned int numQuads, unsigned int numBilinearPatches = 0, unsigned int numTriangles = 0,
+                  unsigned int numDisks = 0, unsigned int numCylinders = 0) override;
     bool render(int width, int height, int samples_per_pixel, int max_depth,
         const GpuCameraParams& camera,
         float* framebuffer, OptixTraversableHandle gas_handle,
@@ -34,7 +35,11 @@ public:
         CUdeviceptr d_bilinear_patches = 0,
         unsigned int num_bilinear_patches = 0,
         CUdeviceptr d_triangles = 0,
-        unsigned int num_triangles = 0) override;
+        unsigned int num_triangles = 0,
+        CUdeviceptr d_disks = 0,
+        unsigned int num_disks = 0,
+        CUdeviceptr d_cylinders = 0,
+        unsigned int num_cylinders = 0) override;
     void cleanup() override;
     PathTracingMode getMode() const override { return PathTracingMode::WAVEFRONT; }
     const char* getName() const override { return "WavefrontPathTracer"; }
@@ -47,19 +52,6 @@ public:
     /// only this backend reads. 0 = no instancing, which is every built-in
     /// scene.
     void setInstancePrimBase(CUdeviceptr p) { d_instancePrimBase_ = p; }
-
-    /// Disk/Cylinder counts (see optix_types.h's DiskData/CylinderData
-    /// comment) - Phase 4b (GPU-recursive) doesn't extend to this backend
-    /// yet, so render() refuses a scene where either is nonzero rather than
-    /// tracing against gasHandle_'s disk/cylinder instance with an SBT that
-    /// has no idea it exists (see render()'s own guard for why that would
-    /// otherwise be an out-of-bounds SBT index, not just a shading bug).
-    /// Same setter-not-render()-parameter pattern as setInstancePrimBase()
-    /// above, for the same reason.
-    void setDiskCylinderCounts(unsigned int numDisks, unsigned int numCylinders) {
-        numDisks_ = numDisks;
-        numCylinders_ = numCylinders;
-    }
 
     /// Texture metadata + shared pixel buffer (OptiXRenderer's own
     /// d_textures_/d_texturePixels_, already uploaded once at buildScene()
@@ -223,12 +215,20 @@ private:
     OptixProgramGroup hitSpherePG_       = nullptr;
     OptixProgramGroup hitQuadPG_         = nullptr;
     OptixProgramGroup hitBilinearPatchPG_ = nullptr;
+    // Disk/Cylinder (Phase 4c) - see buildSBT()'s own comment for why these
+    // land at the very end of intersectSBT_/shadowSBT_/probeSBT_'s hit-record
+    // arrays, after triangle and the instanced-geometry pairs, mirroring
+    // OptiXRenderer::buildScene()'s diskCylinderSbtOffset placement exactly.
+    OptixProgramGroup hitDiskPG_         = nullptr;
+    OptixProgramGroup hitCylinderPG_     = nullptr;
     OptixProgramGroup hitTrianglePG_     = nullptr;
     OptixProgramGroup raygenShadowPG_        = nullptr;
     OptixProgramGroup missShadowPG_          = nullptr;
     OptixProgramGroup anyhitShadowSpherePG_  = nullptr;
     OptixProgramGroup anyhitShadowQuadPG_    = nullptr;
     OptixProgramGroup anyhitShadowBilinearPatchPG_ = nullptr;
+    OptixProgramGroup anyhitShadowDiskPG_    = nullptr;
+    OptixProgramGroup anyhitShadowCylinderPG_ = nullptr;
     OptixProgramGroup anyhitShadowTrianglePG_ = nullptr;
     // BSSRDF probe walk (MaterialType::Subsurface, Phase 2) - linked into
     // the SAME intersectPipeline_/wfModule_ as the intersect programs above
@@ -240,6 +240,8 @@ private:
     OptixProgramGroup hitProbeSpherePG_          = nullptr;
     OptixProgramGroup hitProbeQuadPG_            = nullptr;
     OptixProgramGroup hitProbeBilinearPatchPG_   = nullptr;
+    OptixProgramGroup hitProbeDiskPG_            = nullptr;
+    OptixProgramGroup hitProbeCylinderPG_        = nullptr;
     OptixProgramGroup hitProbeTrianglePG_        = nullptr;
     OptixProgramGroup exceptionPG_ = nullptr;  ///< CUDA-718 fix -- see initialize()'s exceptionFlags comment
     OptixPipeline intersectPipeline_ = nullptr;
@@ -314,8 +316,6 @@ private:
     CUdeviceptr  d_measuredCcdf_ = 0;
     std::string  ptxPath_;
     CUdeviceptr  d_instancePrimBase_ = 0;   ///< see setInstancePrimBase()
-    unsigned int numDisks_ = 0;             ///< see setDiskCylinderCounts()
-    unsigned int numCylinders_ = 0;
     CUdeviceptr  d_textures_ = 0;           ///< see setTextures()
     CUdeviceptr  d_texturePixels_ = 0;
     CUdeviceptr  d_cloudMediums_ = 0;       ///< see setCloudMediums()
@@ -330,6 +330,8 @@ private:
     unsigned int numQuads_    = 0;
     unsigned int numBilinearPatches_ = 0;
     unsigned int numTriangles_ = 0;
+    unsigned int numDisks_ = 0;
+    unsigned int numCylinders_ = 0;
     unsigned int frameNumber_ = 0;
 };
 

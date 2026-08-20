@@ -415,6 +415,29 @@ bool WavefrontPathTracer::createProgramGroups() {
 	OPTIX_CHECK(optixProgramGroupCreate(context_, &triHitDesc, 1, &pgOptions,
 										 log, &logSize, &hitTrianglePG_));
 
+	// Disk/Cylinder (Phase 4c) - appended last, after triangle, matching
+	// this backend's own trailing-region SBT placement (see buildSBT()'s
+	// own comment) and the recursive backend's diskCylinderSbtOffset.
+	OptixProgramGroupDesc diskHitDesc = {};
+	diskHitDesc.kind                            = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	diskHitDesc.hitgroup.moduleIS               = wfModule_;
+	diskHitDesc.hitgroup.entryFunctionNameIS    = "__intersection__wf_disk";
+	diskHitDesc.hitgroup.moduleCH               = wfModule_;
+	diskHitDesc.hitgroup.entryFunctionNameCH    = "__closesthit__wf_disk";
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(context_, &diskHitDesc, 1, &pgOptions,
+										 log, &logSize, &hitDiskPG_));
+
+	OptixProgramGroupDesc cylinderHitDesc = {};
+	cylinderHitDesc.kind                            = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	cylinderHitDesc.hitgroup.moduleIS               = wfModule_;
+	cylinderHitDesc.hitgroup.entryFunctionNameIS    = "__intersection__wf_cylinder";
+	cylinderHitDesc.hitgroup.moduleCH               = wfModule_;
+	cylinderHitDesc.hitgroup.entryFunctionNameCH    = "__closesthit__wf_cylinder";
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(context_, &cylinderHitDesc, 1, &pgOptions,
+										 log, &logSize, &hitCylinderPG_));
+
 	// ----- BSSRDF probe walk (MaterialType::Subsurface, Phase 2) -----
 	// Linked into the SAME intersect pipeline as the raygen/hit groups
 	// above (see linkPipeline()'s intersectGroups[] array and
@@ -480,6 +503,26 @@ bool WavefrontPathTracer::createProgramGroups() {
 	OPTIX_CHECK(optixProgramGroupCreate(context_, &probeTriDesc, 1, &pgOptions,
 										 log, &logSize, &hitProbeTrianglePG_));
 
+	OptixProgramGroupDesc probeDiskDesc = {};
+	probeDiskDesc.kind                         = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	probeDiskDesc.hitgroup.moduleIS            = wfModule_;
+	probeDiskDesc.hitgroup.entryFunctionNameIS = "__intersection__wf_disk";
+	probeDiskDesc.hitgroup.moduleCH            = wfModule_;
+	probeDiskDesc.hitgroup.entryFunctionNameCH = "__closesthit__wf_probe_disk";
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(context_, &probeDiskDesc, 1, &pgOptions,
+										 log, &logSize, &hitProbeDiskPG_));
+
+	OptixProgramGroupDesc probeCylinderDesc = {};
+	probeCylinderDesc.kind                         = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	probeCylinderDesc.hitgroup.moduleIS            = wfModule_;
+	probeCylinderDesc.hitgroup.entryFunctionNameIS = "__intersection__wf_cylinder";
+	probeCylinderDesc.hitgroup.moduleCH            = wfModule_;
+	probeCylinderDesc.hitgroup.entryFunctionNameCH = "__closesthit__wf_probe_cylinder";
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(context_, &probeCylinderDesc, 1, &pgOptions,
+										 log, &logSize, &hitProbeCylinderPG_));
+
 	// ----- Shadow pipeline -----
 
 	OptixProgramGroupDesc shadowRGDesc = {};
@@ -542,6 +585,27 @@ bool WavefrontPathTracer::createProgramGroups() {
 	OPTIX_CHECK(optixProgramGroupCreate(context_, &shadowTriDesc, 1, &pgOptions,
 										 log, &logSize, &anyhitShadowTrianglePG_));
 
+	// Shadow anyhit for disk/cylinder (Phase 4c)
+	OptixProgramGroupDesc shadowDiskDesc = {};
+	shadowDiskDesc.kind                          = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	shadowDiskDesc.hitgroup.moduleIS             = wfModule_;
+	shadowDiskDesc.hitgroup.entryFunctionNameIS  = "__intersection__wf_disk";
+	shadowDiskDesc.hitgroup.moduleAH             = wfModule_;
+	shadowDiskDesc.hitgroup.entryFunctionNameAH  = "__anyhit__wf_shadow_disk";
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(context_, &shadowDiskDesc, 1, &pgOptions,
+										 log, &logSize, &anyhitShadowDiskPG_));
+
+	OptixProgramGroupDesc shadowCylinderDesc = {};
+	shadowCylinderDesc.kind                          = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	shadowCylinderDesc.hitgroup.moduleIS             = wfModule_;
+	shadowCylinderDesc.hitgroup.entryFunctionNameIS  = "__intersection__wf_cylinder";
+	shadowCylinderDesc.hitgroup.moduleAH             = wfModule_;
+	shadowCylinderDesc.hitgroup.entryFunctionNameAH  = "__anyhit__wf_shadow_cylinder";
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(context_, &shadowCylinderDesc, 1, &pgOptions,
+										 log, &logSize, &anyhitShadowCylinderPG_));
+
 	// Exception program group -- see this file's pipelineCompileOptions_
 	// .exceptionFlags comment in initialize() for why this exists and why
 	// it's the real CUDA-718 fix, not just diagnostics.
@@ -553,7 +617,7 @@ bool WavefrontPathTracer::createProgramGroups() {
 	OPTIX_CHECK(optixProgramGroupCreate(context_, &excDesc, 1, &pgOptions,
 										 log, &logSize, &exceptionPG_));
 
-	std::cout << "[WavefrontPathTracer] Created 19 program groups\n";
+	std::cout << "[WavefrontPathTracer] Created 25 program groups\n";
 	return true;
 }
 
@@ -578,12 +642,16 @@ bool WavefrontPathTracer::linkPipeline(unsigned int maxTraceDepth) {
 		hitSpherePG_,
 		hitQuadPG_,
 		hitBilinearPatchPG_,
+		hitDiskPG_,
+		hitCylinderPG_,
 		hitTrianglePG_,
 		raygenProbePG_,
 		missProbePG_,
 		hitProbeSpherePG_,
 		hitProbeQuadPG_,
 		hitProbeBilinearPatchPG_,
+		hitProbeDiskPG_,
+		hitProbeCylinderPG_,
 		hitProbeTrianglePG_,
 		exceptionPG_
 	};
@@ -603,16 +671,19 @@ bool WavefrontPathTracer::linkPipeline(unsigned int maxTraceDepth) {
 		anyhitShadowSpherePG_,
 		anyhitShadowQuadPG_,
 		anyhitShadowBilinearPatchPG_,
+		anyhitShadowDiskPG_,
+		anyhitShadowCylinderPG_,
 		anyhitShadowTrianglePG_,
 		exceptionPG_
 	};
+	constexpr size_t kNumShadowGroups = sizeof(shadowGroups) / sizeof(shadowGroups[0]);
 	OptixPipelineLinkOptions shadowLinkOptions = {};
 	shadowLinkOptions.maxTraceDepth = 1;
 	{
 		logSize = sizeof(log);
 		OPTIX_CHECK(optixPipelineCreate(
 			context_, &pipelineCompileOptions_, &shadowLinkOptions,
-			shadowGroups, 7, log, &logSize, &shadowPipeline_));
+			shadowGroups, (unsigned int)kNumShadowGroups, log, &logSize, &shadowPipeline_));
 		std::cout << "[WavefrontPathTracer] Linked shadow pipeline\n";
 	}
 
@@ -657,7 +728,7 @@ bool WavefrontPathTracer::linkPipeline(unsigned int maxTraceDepth) {
 			/*maxTraversableGraphDepth*/ 2));  // IAS -> GAS, single-level instancing
 	};
 	setComputedStackSize(intersectPipeline_, intersectGroups, kNumIntersectGroups, maxTraceDepth);
-	setComputedStackSize(shadowPipeline_, shadowGroups, 7, 1);
+	setComputedStackSize(shadowPipeline_, shadowGroups, kNumShadowGroups, 1);
 
 	return true;
 }
@@ -666,7 +737,8 @@ bool WavefrontPathTracer::linkPipeline(unsigned int maxTraceDepth) {
 // buildSBT — create two separate SBTs
 // ============================================================================
 
-bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuads, unsigned int numBilinearPatches, unsigned int numTriangles) {
+bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuads, unsigned int numBilinearPatches, unsigned int numTriangles,
+									unsigned int numDisks, unsigned int numCylinders) {
 	// haveInstanced* come from setInstancedGeometryFlags(); see its comment.
 	const bool haveInstTri = haveInstancedTriangles_;
 	const bool haveInstSph = haveInstancedSpheres_;
@@ -674,6 +746,8 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 	numQuads_   = numQuads;
 	numBilinearPatches_ = numBilinearPatches;
 	numTriangles_ = numTriangles;
+	numDisks_ = numDisks;
+	numCylinders_ = numCylinders;
 
 	destroySBT();
 
@@ -688,6 +762,17 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 	const bool hasQuads   = numQuads > 0;
 	const bool hasBlp     = numBilinearPatches > 0;
 	const bool hasTri     = numTriangles > 0;
+	// Disk/Cylinder (Phase 4c) - appended AFTER the instanced-geometry pairs
+	// in all three SBTs below, matching OptiXRenderer::buildScene()'s own
+	// diskCylinderSbtOffset placement (its own dedicated GAS/IAS instance,
+	// added last - see that function's comment) so this backend's hit
+	// records land at the same absolute SBT position the shared IAS's baked
+	// instance.sbtOffset expects, regardless of the stride mismatch between
+	// this backend's 2-record-per-type layout and the recursive backend's
+	// 3-record one (see buildScene()'s own comment on why that's still
+	// consistent for a single-build-input GAS).
+	const bool hasDisks     = numDisks > 0;
+	const bool hasCylinders = numCylinders > 0;
 
 	// ---- Intersect SBT ----
 	{
@@ -739,6 +824,14 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 		if (haveInstSph) {
 			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
 			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
+		}
+		if (hasDisks) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitDiskPG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitDiskPG_, &hitRecs.back())); hitRecs.back().data = {};
+		}
+		if (hasCylinders) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitCylinderPG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitCylinderPG_, &hitRecs.back())); hitRecs.back().data = {};
 		}
 
 		size_t sz = hitRecs.size() * sizeof(HitGroupRecord);
@@ -812,6 +905,14 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
 			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
 		}
+		if (hasDisks) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeDiskPG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeDiskPG_, &hitRecs.back())); hitRecs.back().data = {};
+		}
+		if (hasCylinders) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeCylinderPG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeCylinderPG_, &hitRecs.back())); hitRecs.back().data = {};
+		}
 
 		size_t sz = hitRecs.size() * sizeof(HitGroupRecord);
 		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_probeHitRecords_), sz));
@@ -878,6 +979,14 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
 			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
 		}
+		if (hasDisks) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowDiskPG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowDiskPG_, &hitRecs.back())); hitRecs.back().data = {};
+		}
+		if (hasCylinders) {
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowCylinderPG_, &hitRecs.back())); hitRecs.back().data = {};
+			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowCylinderPG_, &hitRecs.back())); hitRecs.back().data = {};
+		}
 
 		size_t sz = hitRecs.size() * sizeof(HitGroupRecord);
 		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_shadowHitRecords_), sz));
@@ -905,6 +1014,8 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 	std::cout << "[WavefrontPathTracer] Built SBTs (probe SBT included) (spheres=" << numSpheres
 			  << " quads=" << numQuads
 			  << " bilinearPatches=" << numBilinearPatches
+			  << " disks=" << numDisks
+			  << " cylinders=" << numCylinders
 			  << " triangles=" << numTriangles << ")\n";
 	return true;
 }
@@ -1256,23 +1367,12 @@ bool WavefrontPathTracer::render(
 	CUdeviceptr d_bilinear_patches,
 	unsigned int num_bilinear_patches,
 	CUdeviceptr d_triangles,
-	unsigned int num_triangles)
+	unsigned int num_triangles,
+	CUdeviceptr d_disks,
+	unsigned int num_disks,
+	CUdeviceptr d_cylinders,
+	unsigned int num_cylinders)
 {
-	// Disk/Cylinder (Phase 4b, recursive backend only - see setDiskCylinderCounts()'s
-	// own comment) aren't understood by this backend's SBT, which OptiXRenderer::
-	// render() builds without any idea they exist. Tracing against gasHandle_
-	// anyway would let a ray reach their instance's sbtOffset - an index this
-	// backend's own (shorter) hitgroupRecords array has no entry for, an out-
-	// of-bounds SBT read rather than a shading bug. Fail loudly here instead.
-	if (numDisks_ > 0 || numCylinders_ > 0) {
-		std::cerr << "[Wavefront] This scene has " << numDisks_ << " disk(s) and "
-			<< numCylinders_ << " cylinder(s), which the wavefront backend does not "
-			"support yet (Phase 4c) - rendering it here would corrupt the SBT lookup "
-			"for any ray that hits one. Render without --wavefront, or remove Shape "
-			"\"disk\"/\"cylinder\" from the scene.\n";
-		return false;
-	}
-
 	const int numPixels = width * height;
 
 	// Render-time instrumentation (pbrt-v4 STAT_COUNTER-inspired, see this
@@ -1318,6 +1418,10 @@ bool WavefrontPathTracer::render(
 	lp.numBilinearPatches = num_bilinear_patches;
 	lp.triangles     = reinterpret_cast<TriangleData*>(d_triangles);
 	lp.numTriangles  = num_triangles;
+	lp.disks         = reinterpret_cast<DiskData*>(d_disks);
+	lp.numDisks      = num_disks;
+	lp.cylinders     = reinterpret_cast<CylinderData*>(d_cylinders);
+	lp.numCylinders  = num_cylinders;
 	lp.materials     = reinterpret_cast<MaterialData*>(d_materials);
 	lp.numMaterials  = num_materials;
 	lp.textures       = reinterpret_cast<TextureData*>(d_textures_);

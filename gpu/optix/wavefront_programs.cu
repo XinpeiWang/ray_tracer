@@ -95,6 +95,37 @@ static __device__ __forceinline__ void* unpackPointer(unsigned int p0, unsigned 
 }
 
 // ============================================================================
+// Disk/Cylinder object<->world transform helpers (Phase 4c) - wavefront-
+// native duplicates of optix_intersection_disk_cylinder.h's identically-
+// named recursive-backend functions (dc_apply_point/dc_apply_vector/
+// dc_apply_normal_from_w2o), applying DiskData::o2w/w2o and CylinderData::
+// o2w/w2o (row-major 3x4 affine, implicit [0,0,0,1] bottom row) by hand.
+// Declared here (before wavefront_probe.h's own #include below) because
+// that file's __closesthit__wf_probe_disk/probe_cylinder need them too, not
+// just this file's own __intersection__wf_disk/wf_cylinder further down.
+// ============================================================================
+__device__ __forceinline__ float3 wf_dc_apply_point(const float m[12], const float3& p) {
+	return make_float3(
+		m[0] * p.x + m[1] * p.y + m[2]  * p.z + m[3],
+		m[4] * p.x + m[5] * p.y + m[6]  * p.z + m[7],
+		m[8] * p.x + m[9] * p.y + m[10] * p.z + m[11]);
+}
+
+__device__ __forceinline__ float3 wf_dc_apply_vector(const float m[12], const float3& v) {
+	return make_float3(
+		m[0] * v.x + m[1] * v.y + m[2]  * v.z,
+		m[4] * v.x + m[5] * v.y + m[6]  * v.z,
+		m[8] * v.x + m[9] * v.y + m[10] * v.z);
+}
+
+__device__ __forceinline__ float3 wf_dc_apply_normal_from_w2o(const float w2o[12], const float3& n) {
+	return make_float3(
+		w2o[0] * n.x + w2o[4] * n.y + w2o[8]  * n.z,
+		w2o[1] * n.x + w2o[5] * n.y + w2o[9]  * n.z,
+		w2o[2] * n.x + w2o[6] * n.y + w2o[10] * n.z);
+}
+
+// ============================================================================
 // Payload structs (passed by pointer via p0/p1)
 // ============================================================================
 
@@ -103,7 +134,7 @@ struct WfHitPayload {
 	float3 normal;
 	float  t;
 	int    materialIdx;
-	int    geomType;   // 0 = sphere, 1 = quad
+	int    geomType;   // 0 = sphere, 1 = quad, 4 = disk, 5 = cylinder
 	bool   hit;
 	float  mediumTFar; // MaterialType::Medium/DielectricMedium only - see HitWorkItem::mediumTFar
 	int    frontFace;  // see HitWorkItem::frontFace
@@ -843,6 +874,185 @@ extern "C" __global__ void __closesthit__wf_quad() {
 }
 
 // ============================================================================
+// __intersection__wf_disk / __intersection__wf_cylinder,
+// __closesthit__wf_disk / __closesthit__wf_cylinder (Phase 4c)
+//
+// Wavefront-native duplicates of the recursive backend's
+// optix_intersection_disk_cylinder.h (see that file's own header comment for
+// the full design rationale: both shapes carry their own object<->world
+// transform - DiskData::o2w/w2o, CylinderData::o2w/w2o - applied BY HAND
+// here rather than through OptiX's per-GAS-instance transform, since
+// neither shape is instanced). Duplicated rather than shared because
+// wavefront_programs.cu and optix_programs.cu are two separate OptiX
+// modules (see this file's own top-of-file header comment on why every
+// other wf_ intersection program here is likewise a native copy, not
+// cross-module reuse).
+//
+// Unlike the recursive backend's __closesthit__disk/__closesthit__cylinder,
+// these don't call shade_material() - they only fill WfHitPayload, exactly
+// like __closesthit__wf_quad above; evaluate_materials() (wavefront_
+// kernels.cu) shades the hit later from the queued HitWorkItem.
+//
+// wf_dc_apply_point()/wf_dc_apply_vector()/wf_dc_apply_normal_from_w2o()
+// (the object<->world transform helpers both shapes need) are defined
+// earlier in this file, right after packPointer()/unpackPointer() - before
+// the "#include wavefront_probe.h" line, since that file's own probe-disk/
+// probe-cylinder closest-hit programs need them too.
+// ============================================================================
+
+extern "C" __global__ void __intersection__wf_disk() {
+	const unsigned int primIdx = optixGetPrimitiveIndex();
+	const DiskData& disk = wf_params.disks[primIdx];
+
+	const float3 ray_orig_w = optixGetWorldRayOrigin();
+	const float3 ray_dir_w  = optixGetWorldRayDirection();
+	const float ray_tmin = optixGetRayTmin();
+	const float ray_tmax = optixGetRayTmax();
+
+	const float3 ro = wf_dc_apply_point(disk.w2o, ray_orig_w);
+	const float3 rd = wf_dc_apply_vector(disk.w2o, ray_dir_w);
+
+	if (rd.z == 0.0f) return;
+	const float t = (disk.height - ro.z) / rd.z;
+	if (t < ray_tmin || t > ray_tmax) return;
+
+	const float hx = ro.x + t * rd.x;
+	const float hy = ro.y + t * rd.y;
+	const float dist2 = hx * hx + hy * hy;
+	if (dist2 > disk.radius * disk.radius || dist2 < disk.innerRadius * disk.innerRadius) return;
+
+	float phi = atan2f(hy, hx);
+	if (phi < 0.0f) phi += 6.283185307179586f;
+	if (phi > disk.phiMax) return;
+
+	optixReportIntersection(t, 0, 0, 0, 0, 0);
+}
+
+extern "C" __global__ void __closesthit__wf_disk() {
+	WfHitPayload* payload = (WfHitPayload*)unpackPointer(
+		optixGetPayload_0(), optixGetPayload_1());
+
+	const unsigned int primIdx = optixGetPrimitiveIndex();
+	const DiskData& disk = wf_params.disks[primIdx];
+
+	const float t_hit = optixGetRayTmax();
+	const float3 ray_orig = optixGetWorldRayOrigin();
+	const float3 ray_dir  = optixGetWorldRayDirection();
+	const float3 hit_point = ray_orig + t_hit * ray_dir;
+
+	// A disk is flat: its object-space normal is the constant +Z everywhere
+	// on its surface, unlike Cylinder's (see __closesthit__wf_cylinder),
+	// which varies with hit position.
+	const float3 obj_normal = make_float3(0.0f, 0.0f, 1.0f);
+	float3 outward_normal = normalize(wf_dc_apply_normal_from_w2o(disk.w2o, obj_normal));
+	const bool front_face = dot(ray_dir, outward_normal) < 0.0f;
+	const float3 normal = front_face ? outward_normal : -outward_normal;
+
+	payload->hitPoint    = hit_point;
+	payload->normal      = normal;
+	payload->t           = t_hit;
+	payload->materialIdx = disk.materialIdx;
+	payload->geomType    = 4;
+	payload->hit         = true;
+	payload->mediumTFar  = 0.0f;
+	payload->frontFace   = front_face ? 1 : 0;
+	payload->uv_u        = 0.0f;
+	payload->uv_v        = 0.0f;
+}
+
+// One candidate root: in range, inside the object-space Z clip, and inside
+// the phi sweep. A free device function rather than a lambda, matching this
+// file's own established style (no CUDA extended-lambda dependency).
+__device__ __forceinline__ bool wf_dc_cylinder_check(const CylinderData& cyl, const float3& ro, const float3& rd,
+													   float t, float ray_tmin, float ray_tmax) {
+	if (t < ray_tmin || t > ray_tmax) return false;
+	const float hz = ro.z + t * rd.z;
+	if (hz < cyl.zMin || hz > cyl.zMax) return false;
+	const float hx = ro.x + t * rd.x;
+	const float hy = ro.y + t * rd.y;
+	float phi = atan2f(hy, hx);
+	if (phi < 0.0f) phi += 6.283185307179586f;
+	return phi <= cyl.phiMax;
+}
+
+extern "C" __global__ void __intersection__wf_cylinder() {
+	const unsigned int primIdx = optixGetPrimitiveIndex();
+	const CylinderData& cyl = wf_params.cylinders[primIdx];
+
+	const float3 ray_orig_w = optixGetWorldRayOrigin();
+	const float3 ray_dir_w  = optixGetWorldRayDirection();
+	const float ray_tmin = optixGetRayTmin();
+	const float ray_tmax = optixGetRayTmax();
+
+	const float3 ro = wf_dc_apply_point(cyl.w2o, ray_orig_w);
+	const float3 rd = wf_dc_apply_vector(cyl.w2o, ray_dir_w);
+
+	// Stable quadratic solve in double precision - see optix_intersection_
+	// disk_cylinder.h's own __intersection__cylinder for why (avoids
+	// catastrophic cancellation for a thin cylinder seen nearly edge-on).
+	const double da = (double)rd.x, db = (double)rd.y;
+	const double oa = (double)ro.x, ob = (double)ro.y;
+	const double a = da * da + db * db;
+	const double b = 2.0 * (oa * da + ob * db);
+	const double c = oa * oa + ob * ob - (double)cyl.radius * (double)cyl.radius;
+	if (a == 0.0) return;
+	const double f = b / (2.0 * a);
+	const double vx = oa - f * da, vy = ob - f * db;
+	const double len_v = sqrt(vx * vx + vy * vy);
+	const double discrim = 4.0 * a * ((double)cyl.radius + len_v) * ((double)cyl.radius - len_v);
+	if (discrim < 0.0) return;
+	const double sqrt_disc = sqrt(discrim);
+	const double q = (b < 0.0) ? -0.5 * (b - sqrt_disc) : -0.5 * (b + sqrt_disc);
+	float t0 = (float)(q / a), t1 = (float)(c / q);
+	if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
+	if (t0 > ray_tmax || t1 < ray_tmin) return;
+
+	float t = t0;
+	if (!wf_dc_cylinder_check(cyl, ro, rd, t0, ray_tmin, ray_tmax)) {
+		t = t1;
+		if (!wf_dc_cylinder_check(cyl, ro, rd, t1, ray_tmin, ray_tmax)) return;
+	}
+
+	optixReportIntersection(t, 0, 0, 0, 0, 0);
+}
+
+extern "C" __global__ void __closesthit__wf_cylinder() {
+	WfHitPayload* payload = (WfHitPayload*)unpackPointer(
+		optixGetPayload_0(), optixGetPayload_1());
+
+	const unsigned int primIdx = optixGetPrimitiveIndex();
+	const CylinderData& cyl = wf_params.cylinders[primIdx];
+
+	const float t_hit = optixGetRayTmax();
+	const float3 ray_orig = optixGetWorldRayOrigin();
+	const float3 ray_dir  = optixGetWorldRayDirection();
+	const float3 hit_point = ray_orig + t_hit * ray_dir;
+
+	// Cylinder's normal varies with hit position (radial, from the axis) -
+	// recover the object-space hit point to compute it, same technique as
+	// the recursive backend's __closesthit__cylinder.
+	const float3 obj_hit = wf_dc_apply_point(cyl.w2o, hit_point);
+	const float obj_hit_len = sqrtf(obj_hit.x * obj_hit.x + obj_hit.y * obj_hit.y);
+	const float3 obj_normal = (obj_hit_len > 1e-8f)
+		? make_float3(obj_hit.x / obj_hit_len, obj_hit.y / obj_hit_len, 0.0f)
+		: make_float3(1.0f, 0.0f, 0.0f);
+	float3 outward_normal = normalize(wf_dc_apply_normal_from_w2o(cyl.w2o, obj_normal));
+	const bool front_face = dot(ray_dir, outward_normal) < 0.0f;
+	const float3 normal = front_face ? outward_normal : -outward_normal;
+
+	payload->hitPoint    = hit_point;
+	payload->normal      = normal;
+	payload->t           = t_hit;
+	payload->materialIdx = cyl.materialIdx;
+	payload->geomType    = 5;
+	payload->hit         = true;
+	payload->mediumTFar  = 0.0f;
+	payload->frontFace   = front_face ? 1 : 0;
+	payload->uv_u        = 0.0f;
+	payload->uv_v        = 0.0f;
+}
+
+// ============================================================================
 // __miss__wf_radiance
 //   Ray escaped — payload.hit stays false; raygen will add to missQueue.
 // ============================================================================
@@ -1058,6 +1268,58 @@ extern "C" __global__ void __anyhit__wf_shadow_triangle() {
 			return;
 		}
 	}
+
+	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
+		optixGetPayload_0(), optixGetPayload_1());
+
+	if (mat.type == MaterialType::DiffuseLight) {
+		sp->occluded = false;
+		optixTerminateRay();
+		return;
+	}
+	if (mat.type == MaterialType::Dielectric ||
+		mat.type == MaterialType::RoughDielectric ||
+		mat.type == MaterialType::ThinDielectric ||
+		mat.type == MaterialType::DiffuseTransmission) {
+		optixIgnoreIntersection();
+		return;
+	}
+	sp->occluded = true;
+	optixTerminateRay();
+}
+
+// Disk/Cylinder (Phase 4c) - same simple DiffuseLight/dielectric-family/
+// opaque list as quad/bilinear-patch above, matching the recursive backend's
+// __anyhit__shadow_disk/__anyhit__shadow_cylinder (optix_anyhit_shadow.h)
+// exactly - the pbrt loader never assigns Medium/DielectricMedium to a
+// disk/cylinder (see pbrt_gpu_builder.h's disk/cylinder loop), so no
+// CloudMedium/RgbGridMedium/Medium/DielectricMedium entries are needed here.
+extern "C" __global__ void __anyhit__wf_shadow_disk() {
+	const DiskData& disk = wf_params.disks[optixGetPrimitiveIndex()];
+	const MaterialData& mat = wf_params.materials[disk.materialIdx];
+
+	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
+		optixGetPayload_0(), optixGetPayload_1());
+
+	if (mat.type == MaterialType::DiffuseLight) {
+		sp->occluded = false;
+		optixTerminateRay();
+		return;
+	}
+	if (mat.type == MaterialType::Dielectric ||
+		mat.type == MaterialType::RoughDielectric ||
+		mat.type == MaterialType::ThinDielectric ||
+		mat.type == MaterialType::DiffuseTransmission) {
+		optixIgnoreIntersection();
+		return;
+	}
+	sp->occluded = true;
+	optixTerminateRay();
+}
+
+extern "C" __global__ void __anyhit__wf_shadow_cylinder() {
+	const CylinderData& cyl = wf_params.cylinders[optixGetPrimitiveIndex()];
+	const MaterialData& mat = wf_params.materials[cyl.materialIdx];
 
 	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
 		optixGetPayload_0(), optixGetPayload_1());

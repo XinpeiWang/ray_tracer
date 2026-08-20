@@ -75,7 +75,8 @@ public:
 	 * @param numTriangles Number of triangle primitives in scene
 	 * @return true if SBT built successfully
 	 */
-	virtual bool buildSBT(unsigned int numSpheres, unsigned int numQuads, unsigned int numBilinearPatches = 0, unsigned int numTriangles = 0) = 0;
+	virtual bool buildSBT(unsigned int numSpheres, unsigned int numQuads, unsigned int numBilinearPatches = 0, unsigned int numTriangles = 0,
+						  unsigned int numDisks = 0, unsigned int numCylinders = 0) = 0;
 
 	/**
 	 * @brief Execute path tracing for the given parameters
@@ -131,7 +132,11 @@ public:
 		CUdeviceptr d_bilinear_patches = 0,
 		unsigned int num_bilinear_patches = 0,
 		CUdeviceptr d_triangles = 0,
-		unsigned int num_triangles = 0
+		unsigned int num_triangles = 0,
+		CUdeviceptr d_disks = 0,
+		unsigned int num_disks = 0,
+		CUdeviceptr d_cylinders = 0,
+		unsigned int num_cylinders = 0
 	) = 0;
 
 	/**

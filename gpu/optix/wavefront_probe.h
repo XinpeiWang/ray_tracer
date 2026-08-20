@@ -379,6 +379,59 @@ extern "C" __global__ void __closesthit__wf_probe_triangle() {
 	payload->materialIdx = tri.materialIdx;
 }
 
+// Disk/Cylinder (Phase 4c) - see wavefront_programs.cu's __intersection__
+// wf_disk/wf_cylinder for the object<->world transform helpers these reuse
+// (wf_dc_apply_point/wf_dc_apply_normal_from_w2o), defined earlier in the
+// same translation unit (this file is #included into wavefront_programs.cu
+// after them - see this file's own header comment).
+extern "C" __global__ void __closesthit__wf_probe_disk() {
+	WfProbePayload* payload = (WfProbePayload*)unpackPointer(optixGetPayload_0(), optixGetPayload_1());
+
+	const unsigned int primIdx = optixGetPrimitiveIndex();
+	const DiskData& disk = wf_params.disks[primIdx];
+
+	const float3 ray_orig = optixGetWorldRayOrigin();
+	const float3 ray_dir  = optixGetWorldRayDirection();
+	const float  t        = optixGetRayTmax();
+	const float3 hit_point = ray_orig + t * ray_dir;
+
+	const float3 obj_normal = make_float3(0.0f, 0.0f, 1.0f);
+	float3 outward_normal = normalize(wf_dc_apply_normal_from_w2o(disk.w2o, obj_normal));
+	const bool front_face = dot(ray_dir, outward_normal) < 0.0f;
+	const float3 normal = front_face ? outward_normal : -outward_normal;
+
+	payload->found       = true;
+	payload->position    = hit_point;
+	payload->normal      = normal;
+	payload->materialIdx = disk.materialIdx;
+}
+
+extern "C" __global__ void __closesthit__wf_probe_cylinder() {
+	WfProbePayload* payload = (WfProbePayload*)unpackPointer(optixGetPayload_0(), optixGetPayload_1());
+
+	const unsigned int primIdx = optixGetPrimitiveIndex();
+	const CylinderData& cyl = wf_params.cylinders[primIdx];
+
+	const float3 ray_orig = optixGetWorldRayOrigin();
+	const float3 ray_dir  = optixGetWorldRayDirection();
+	const float  t        = optixGetRayTmax();
+	const float3 hit_point = ray_orig + t * ray_dir;
+
+	const float3 obj_hit = wf_dc_apply_point(cyl.w2o, hit_point);
+	const float obj_hit_len = sqrtf(obj_hit.x * obj_hit.x + obj_hit.y * obj_hit.y);
+	const float3 obj_normal = (obj_hit_len > 1e-8f)
+		? make_float3(obj_hit.x / obj_hit_len, obj_hit.y / obj_hit_len, 0.0f)
+		: make_float3(1.0f, 0.0f, 0.0f);
+	float3 outward_normal = normalize(wf_dc_apply_normal_from_w2o(cyl.w2o, obj_normal));
+	const bool front_face = dot(ray_dir, outward_normal) < 0.0f;
+	const float3 normal = front_face ? outward_normal : -outward_normal;
+
+	payload->found       = true;
+	payload->position    = hit_point;
+	payload->normal      = normal;
+	payload->materialIdx = cyl.materialIdx;
+}
+
 // No-op: leaves payload->found == false, exactly as wf_trace_probe_ray()
 // initialised it (matches optix_probe_hit.h's __miss__probe sentinel
 // convention).

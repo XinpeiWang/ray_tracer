@@ -60,7 +60,7 @@ struct HitWorkItem {
 
 	// Material info
 	int    materialIdx;
-	int    geomType;           // 0 = sphere, 1 = quad, 2 = bilinear patch, 3 = triangle (unused beyond bookkeeping - not read anywhere)
+	int    geomType;           // 0 = sphere, 1 = quad, 2 = bilinear patch, 3 = triangle, 4 = disk, 5 = cylinder (read in the NormalMappedLambertian case only - see evaluate_materials())
 
 	// MaterialType::Medium and MaterialType::DielectricMedium (exit surface,
 	// i.e. front-facing false) only: `t` above holds the entry (near) root of
@@ -327,6 +327,10 @@ struct WavefrontLaunchParams {
 	unsigned int numQuads;
 	BilinearPatchData* bilinearPatches;
 	unsigned int numBilinearPatches;
+	DiskData*    disks;
+	unsigned int numDisks;
+	CylinderData* cylinders;
+	unsigned int numCylinders;
 	TriangleData* triangles;
 	unsigned int numTriangles;
 

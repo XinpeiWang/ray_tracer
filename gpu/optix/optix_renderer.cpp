@@ -2540,13 +2540,6 @@ bool OptiXRenderer::render(
 			d_bssrdfRhoSamples_, d_bssrdfRadiusSamples_, d_bssrdfProfile_, d_bssrdfProfileCdf_);
 		wavefrontTracer_->setMeasuredTables(d_measuredTables_, numMeasuredTables_,
 			d_measuredParamValues_, d_measuredData_, d_measuredMcdf_, d_measuredCcdf_);
-		// Wavefront doesn't understand Disk/Cylinder geometry yet (Phase 4c) -
-		// its own SBT (built without any knowledge of them) would be too
-		// short for a ray that actually reaches gasDiskCylinderHandle_'s
-		// instance, an out-of-bounds SBT index rather than a clean failure.
-		// Set the counts so render() can refuse loudly instead - see
-		// WavefrontPathTracer::render()'s own guard.
-		wavefrontTracer_->setDiskCylinderCounts(numDisks_, numCylinders_);
 		return wavefrontTracer_->render(
 			(int)width, (int)height, (int)samplesPerPixel, (int)maxDepth,
 			gpuCam,
@@ -2557,7 +2550,8 @@ bool OptiXRenderer::render(
 			numMaterials_, numSpheres_, numQuads_, numLights_,
 			d_punctualLights_, numPunctualLights_,
 			d_bilinearPatches_, numBilinearPatches_,
-			d_triangles_, numTriangles_);
+			d_triangles_, numTriangles_,
+			d_disks_, numDisks_, d_cylinders_, numCylinders_);
 	}
 
 	// Allocate framebuffer on device
@@ -3046,7 +3040,8 @@ void OptiXRenderer::enableWavefront(bool enable, const std::string& ptxPath) {
 	wavefrontTracer_->setInstancedGeometryFlags(!instanceTriangles_.empty(),
 												!instanceSpheres_.empty());
 	if (!wavefrontTracer_->buildSBT(sceneSphereCount_, numQuads_,
-									numBilinearPatches_, sceneTriangleCount_)) {
+									numBilinearPatches_, sceneTriangleCount_,
+									numDisks_, numCylinders_)) {
 		std::cerr << "[OptiXRenderer] WavefrontPathTracer::buildSBT failed\n";
 		wavefrontTracer_.reset();
 		useWavefront_ = false;

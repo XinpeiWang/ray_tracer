@@ -30,7 +30,8 @@ public:
 
 	bool createProgramGroups() override;
 	bool linkPipeline(unsigned int maxTraceDepth) override;
-	bool buildSBT(unsigned int numSpheres, unsigned int numQuads, unsigned int numBilinearPatches = 0, unsigned int numTriangles = 0) override;
+	bool buildSBT(unsigned int numSpheres, unsigned int numQuads, unsigned int numBilinearPatches = 0, unsigned int numTriangles = 0,
+				 unsigned int numDisks = 0, unsigned int numCylinders = 0) override;
 
 	// NOTE: this class is currently dead code (createPathTracingStrategy(),
 	// the only place that would instantiate it, is itself never called -
@@ -62,7 +63,11 @@ public:
 		CUdeviceptr d_bilinear_patches = 0,
 		unsigned int num_bilinear_patches = 0,
 		CUdeviceptr d_triangles = 0,
-		unsigned int num_triangles = 0
+		unsigned int num_triangles = 0,
+		CUdeviceptr d_disks = 0,
+		unsigned int num_disks = 0,
+		CUdeviceptr d_cylinders = 0,
+		unsigned int num_cylinders = 0
 	) override;
 
 	void cleanup() override;

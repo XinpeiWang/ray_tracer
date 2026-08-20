@@ -137,55 +137,43 @@ TEST(PbrtGpuDiskCylinderTest, MaterialAndAreaLightAreResolved) {
 }
 
 // ---------------------------------------------------------------------------
-// Real GPU-recursive render (skipped when no OptiX-capable device is present)
+// Real GPU render (skipped when no OptiX-capable device is present) - both
+// backends, since Phase 4c ports Disk/Cylinder to wavefront on top of
+// Phase 4b's recursive-backend support.
 // ---------------------------------------------------------------------------
 
-TEST(PbrtGpuDiskCylinderRenderTest, DiskLightAndCylinderRenderWithoutNaN) {
-	if (!optix_is_available()) {
-		GTEST_SKIP() << "OptiX not available on this system";
-	}
+namespace {
 
-	// Same scene as PbrtSceneRender.DiskAndCylinderRenderWithoutNaN
-	// (tests/integration/pbrt_scene_render_test.cpp) - a disk ceiling light
-	// (rotated flat via Translate+Rotate, exactly the transform combination
-	// W2OIsTheGenuineInverseOfO2WUnderRotationAndTranslation above checks)
-	// plus a free-floating cylinder, so both new GPU program-group/SBT
-	// regions (disk AND cylinder) are exercised by the same launch.
-	const pbrt_flatten::FlatScene flat = flattenSource(
-		"LookAt 0 1 -4    0 1 0    0 1 0\n"
-		"Camera \"perspective\" \"float fov\" [ 50 ]\n"
-		"WorldBegin\n"
-		"AttributeBegin\n"
-		"  AreaLightSource \"diffuse\" \"rgb L\" [ 12 12 12 ]\n"
-		"  Translate 0 2.0 0\n"
-		"  Rotate 90 1 0 0\n"
-		"  Shape \"disk\" \"float radius\" [ 0.6 ]\n"
-		"AttributeEnd\n"
-		"Material \"diffuse\" \"rgb reflectance\" [ 0.75 0.75 0.75 ]\n"
-		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2  0 2 3 ]\n"
-		"  \"point3 P\" [ -2 0 -2   2 0 -2   2 0 2   -2 0 2 ]\n"
-		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2  0 2 3 ]\n"
-		"  \"point3 P\" [ -2 0 2   2 0 2   2 3 2   -2 3 2 ]\n"
-		"Translate 0 0.5 0\n"
-		"Shape \"cylinder\" \"float radius\" [ 0.4 ] \"float zmin\" [ -0.5 ] \"float zmax\" [ 0.5 ]\n");
+// Same scene as PbrtSceneRender.DiskAndCylinderRenderWithoutNaN
+// (tests/integration/pbrt_scene_render_test.cpp) - a disk ceiling light
+// (rotated flat via Translate+Rotate, exactly the transform combination
+// W2OIsTheGenuineInverseOfO2WUnderRotationAndTranslation above checks) plus
+// a free-floating cylinder, so both new GPU program-group/SBT regions (disk
+// AND cylinder) are exercised by the same launch.
+const char *kDiskCylinderScene =
+	"LookAt 0 1 -4    0 1 0    0 1 0\n"
+	"Camera \"perspective\" \"float fov\" [ 50 ]\n"
+	"WorldBegin\n"
+	"AttributeBegin\n"
+	"  AreaLightSource \"diffuse\" \"rgb L\" [ 12 12 12 ]\n"
+	"  Translate 0 2.0 0\n"
+	"  Rotate 90 1 0 0\n"
+	"  Shape \"disk\" \"float radius\" [ 0.6 ]\n"
+	"AttributeEnd\n"
+	"Material \"diffuse\" \"rgb reflectance\" [ 0.75 0.75 0.75 ]\n"
+	"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2  0 2 3 ]\n"
+	"  \"point3 P\" [ -2 0 -2   2 0 -2   2 0 2   -2 0 2 ]\n"
+	"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2  0 2 3 ]\n"
+	"  \"point3 P\" [ -2 0 2   2 0 2   2 3 2   -2 3 2 ]\n"
+	"Translate 0 0.5 0\n"
+	"Shape \"cylinder\" \"float radius\" [ 0.4 ] \"float zmin\" [ -0.5 ] \"float zmax\" [ 0.5 ]\n";
 
-	SceneData scene;
-	const pbrt_gpu::BuildStats stats = pbrt_gpu::build(flat, scene);
-	ASSERT_EQ(stats.disks, 1u);
-	ASSERT_EQ(stats.cylinders, 1u);
-	ASSERT_FALSE(scene.triangles.empty());
+constexpr int kRenderW = 32, kRenderH = 32;
 
-	OptiXRenderer renderer;
-	ASSERT_TRUE(renderer.initialize()) << "OptiX device init failed";
-	ASSERT_TRUE(renderer.buildScene(
-		scene.spheres, scene.quads, scene.materials,
-		scene.lightIndices, scene.lightKinds, scene.punctualLights,
-		scene.bilinearPatches, scene.triangles, scene.disks, scene.cylinders))
-		<< "buildScene() failed - GAS/SBT wiring for the new disk/cylinder region";
-
-	// Pinhole camera, same math as scene_builder.cpp's own (file-local)
-	// build_pinhole_camera_params(), replicated here since that helper isn't
-	// exported - matches flat.camera (LookAt 0 1 -4 -> 0 1 0, fov 50) exactly.
+// Pinhole camera, same math as scene_builder.cpp's own (file-local)
+// build_pinhole_camera_params(), replicated here since that helper isn't
+// exported - matches kDiskCylinderScene's own LookAt/fov exactly.
+GpuCameraParams pinholeCameraFor(const pbrt_flatten::FlatScene &flat) {
 	const float3 lookfrom = make_float3(static_cast<float>(flat.camera.lookfrom[0]),
 										static_cast<float>(flat.camera.lookfrom[1]),
 										static_cast<float>(flat.camera.lookfrom[2]));
@@ -195,9 +183,8 @@ TEST(PbrtGpuDiskCylinderRenderTest, DiskLightAndCylinderRenderWithoutNaN) {
 	const float3 vup = make_float3(static_cast<float>(flat.camera.up[0]),
 								   static_cast<float>(flat.camera.up[1]),
 								   static_cast<float>(flat.camera.up[2]));
-	constexpr int kW = 32, kH = 32;
 	constexpr float kPi = 3.14159265358979323846f;
-	const float aspect = static_cast<float>(kW) / static_cast<float>(kH);
+	const float aspect = static_cast<float>(kRenderW) / static_cast<float>(kRenderH);
 	const float theta = static_cast<float>(flat.camera.vfov) * kPi / 180.0f;
 	const float h = tanf(theta / 2.0f);
 	const float viewport_height = 2.0f * h;
@@ -219,11 +206,10 @@ TEST(PbrtGpuDiskCylinderRenderTest, DiskLightAndCylinderRenderWithoutNaN) {
 	cam.lower_left_corner = lower_left;
 	cam.horizontal = horizontal;
 	cam.vertical = vertical;
+	return cam;
+}
 
-	std::vector<float> framebuffer(static_cast<std::size_t>(kW) * kH * 3);
-	ASSERT_TRUE(renderer.render(kW, kH, /*spp=*/32, /*maxDepth=*/8, cam, framebuffer.data()))
-		<< "render() failed";
-
+void expectFiniteAndLit(const std::vector<float> &framebuffer, const char *backendName) {
 	bool allFinite = true;
 	float maxVal = 0.0f;
 	double sum = 0.0;
@@ -232,9 +218,75 @@ TEST(PbrtGpuDiskCylinderRenderTest, DiskLightAndCylinderRenderWithoutNaN) {
 		maxVal = std::max(maxVal, v);
 		sum += v;
 	}
-	EXPECT_TRUE(allFinite) << "a NaN or infinity reached the GPU framebuffer";
-	EXPECT_GT(maxVal, 0.0f) << "the frame is entirely black - disk light or cylinder "
-		"geometry may not be where the scene says it is, or the new GAS/SBT region "
+	EXPECT_TRUE(allFinite) << backendName << ": a NaN or infinity reached the GPU framebuffer";
+	EXPECT_GT(maxVal, 0.0f) << backendName << ": the frame is entirely black - disk light or "
+		"cylinder geometry may not be where the scene says it is, or the new GAS/SBT region "
 		"never got traced";
-	EXPECT_GT(sum / framebuffer.size(), 0.0) << "the frame is entirely black";
+	EXPECT_GT(sum / framebuffer.size(), 0.0) << backendName << ": the frame is entirely black";
+}
+
+} // namespace
+
+TEST(PbrtGpuDiskCylinderRenderTest, DiskLightAndCylinderRenderWithoutNaN) {
+	if (!optix_is_available()) {
+		GTEST_SKIP() << "OptiX not available on this system";
+	}
+
+	const pbrt_flatten::FlatScene flat = flattenSource(kDiskCylinderScene);
+	SceneData scene;
+	const pbrt_gpu::BuildStats stats = pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(stats.disks, 1u);
+	ASSERT_EQ(stats.cylinders, 1u);
+	ASSERT_FALSE(scene.triangles.empty());
+
+	OptiXRenderer renderer;
+	ASSERT_TRUE(renderer.initialize()) << "OptiX device init failed";
+	ASSERT_TRUE(renderer.buildScene(
+		scene.spheres, scene.quads, scene.materials,
+		scene.lightIndices, scene.lightKinds, scene.punctualLights,
+		scene.bilinearPatches, scene.triangles, scene.disks, scene.cylinders))
+		<< "buildScene() failed - GAS/SBT wiring for the new disk/cylinder region";
+
+	const GpuCameraParams cam = pinholeCameraFor(flat);
+	std::vector<float> framebuffer(static_cast<std::size_t>(kRenderW) * kRenderH * 3);
+	ASSERT_TRUE(renderer.render(kRenderW, kRenderH, /*spp=*/32, /*maxDepth=*/8, cam, framebuffer.data()))
+		<< "render() failed";
+
+	expectFiniteAndLit(framebuffer, "recursive");
+}
+
+TEST(PbrtGpuDiskCylinderRenderTest, WavefrontDiskLightAndCylinderRenderWithoutNaN) {
+	if (!optix_is_available()) {
+		GTEST_SKIP() << "OptiX not available on this system";
+	}
+
+	const pbrt_flatten::FlatScene flat = flattenSource(kDiskCylinderScene);
+	SceneData scene;
+	const pbrt_gpu::BuildStats stats = pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(stats.disks, 1u);
+	ASSERT_EQ(stats.cylinders, 1u);
+	ASSERT_FALSE(scene.triangles.empty());
+
+	OptiXRenderer renderer;
+	ASSERT_TRUE(renderer.initialize()) << "OptiX device init failed";
+	ASSERT_TRUE(renderer.buildScene(
+		scene.spheres, scene.quads, scene.materials,
+		scene.lightIndices, scene.lightKinds, scene.punctualLights,
+		scene.bilinearPatches, scene.triangles, scene.disks, scene.cylinders))
+		<< "buildScene() failed - GAS/SBT wiring for the new disk/cylinder region";
+
+	// Empty ptxPath: enableWavefront() looks for wavefront_programs.ptx next
+	// to optix_programs.ptx, same default gpu_render_tests.cpp's own
+	// RAY_TRACER_WAVEFRONT=1 path relies on.
+	renderer.enableWavefront(true);
+
+	const GpuCameraParams cam = pinholeCameraFor(flat);
+	std::vector<float> framebuffer(static_cast<std::size_t>(kRenderW) * kRenderH * 3);
+	ASSERT_TRUE(renderer.render(kRenderW, kRenderH, /*spp=*/32, /*maxDepth=*/8, cam, framebuffer.data()))
+		<< "render() failed - this is exactly the SBT-layout risk "
+		   "WavefrontPathTracer::buildSBT()'s disk/cylinder trailing-region "
+		   "placement (mirroring OptiXRenderer::buildScene()'s "
+		   "diskCylinderSbtOffset) exists to avoid";
+
+	expectFiniteAndLit(framebuffer, "wavefront");
 }
