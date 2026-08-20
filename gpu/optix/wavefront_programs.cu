@@ -195,6 +195,8 @@ extern "C" __global__ void __raygen__wf_intersect() {
 		const MaterialType mt = wf_params.materials[h.materialIdx].type;
 		if (mt == MaterialType::Lambertian || mt == MaterialType::Metal) {
 			wf_params.simpleHitQueue.push(h);
+		} else if (mt == MaterialType::Dielectric || mt == MaterialType::RoughDielectric) {
+			wf_params.dielectricHitQueue.push(h);
 		} else {
 			wf_params.hitQueue.push(h);
 		}

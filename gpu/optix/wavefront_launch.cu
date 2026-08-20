@@ -38,6 +38,16 @@ extern "C" __global__ void evaluate_materials_simple(
 	const TextureData*, const unsigned char*,
 	int,
 	float3, float, GpuSkyDistribution);
+extern "C" __global__ void evaluate_materials_dielectric(
+	WorkQueue<HitWorkItem>, int,
+	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
+	float3*,
+	const SphereData*, const QuadData*, const TriangleData*, const BilinearPatchData*, const MaterialData*,
+	const int*, const GpuLightKind*, const GpuAliasEntry*,
+	unsigned int,
+	const PunctualLightGPU*, unsigned int,
+	int,
+	float3, float, GpuSkyDistribution);
 extern "C" __global__ void accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, GpuSkyDistribution);
 extern "C" __global__ void accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*);
 extern "C" __global__ void resolve_bssrdf_exit(
@@ -157,6 +167,43 @@ extern "C" void wf_launch_evaluate_materials_simple(
 		d_lightIndices, d_lightKinds, d_aliasTable,
 		numLights, d_punctualLights, numPunctualLights,
 		d_textures, d_texturePixels, maxDepth,
+		skyColor, shadowRayEpsilon, skyDist);
+}
+
+extern "C" void wf_launch_evaluate_materials_dielectric(
+	WorkQueue<HitWorkItem>       hq,
+	int                          numHits,
+	WorkQueue<RayWorkItem>       nextRayQueue,
+	WorkQueue<ShadowRayWorkItem> shadowQueue,
+	float3*                      d_framebuffer,
+	const SphereData*            d_spheres,   unsigned int numSpheres,
+	const QuadData*              d_quads,     unsigned int numQuads,
+	const TriangleData*          d_triangles, unsigned int numTriangles,
+	const BilinearPatchData*     d_bilinearPatches, unsigned int numBilinearPatches,
+	const MaterialData*          d_materials, unsigned int numMaterials,
+	const int*                   d_lightIndices,
+	const GpuLightKind*          d_lightKinds,
+	const GpuAliasEntry*         d_aliasTable,
+	unsigned int                 numLights,
+	const PunctualLightGPU*      d_punctualLights,
+	unsigned int                 numPunctualLights,
+	int                          maxDepth,
+	float3                       skyColor,
+	float                        shadowRayEpsilon,
+	GpuSkyDistribution           skyDist,
+	cudaStream_t                     stream)
+{
+	if (numHits == 0) return;
+	dim3 block(256);
+	dim3 grid((numHits + 255) / 256);
+	evaluate_materials_dielectric<<<grid, block, 0, (cudaStream_t)stream>>>(
+		hq, numHits,
+		nextRayQueue, shadowQueue,
+		d_framebuffer,
+		d_spheres, d_quads, d_triangles, d_bilinearPatches, d_materials,
+		d_lightIndices, d_lightKinds, d_aliasTable,
+		numLights, d_punctualLights, numPunctualLights,
+		maxDepth,
 		skyColor, shadowRayEpsilon, skyDist);
 }
 

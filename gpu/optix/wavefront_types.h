@@ -271,6 +271,13 @@ struct WavefrontQueues {
 	// rather than a trimmed struct, since the memory win is marginal and a
 	// second struct would mean duplicated fill-out/test code.
 	WorkQueue<HitWorkItem>    simpleHitQueue;
+	// Hits on MaterialType::Dielectric/RoughDielectric, routed here at push
+	// time (see wavefront_programs.cu) for the same register-pressure reason
+	// as simpleHitQueue - a 3rd tier alongside simpleHitQueue/hitQueue so
+	// evaluate_materials_dielectric() only ever compiles the dielectric arms,
+	// not the CoatedDiffuse/Principled/... arms of the big switch. Same
+	// HitWorkItem layout, reused as-is.
+	WorkQueue<HitWorkItem>    dielectricHitQueue;
 	WorkQueue<MissWorkItem>   missQueue;      // escaped rays
 	WorkQueue<ShadowRayWorkItem> shadowQueue; // shadow rays pending occlusion test
 };
@@ -288,6 +295,9 @@ struct WavefrontLaunchParams {
 	// See WavefrontQueues::simpleHitQueue above - same purpose, mirrored here
 	// since this is the struct actually passed to the OptiX launch params.
 	WorkQueue<HitWorkItem>       simpleHitQueue;
+	// See WavefrontQueues::dielectricHitQueue above - same purpose, mirrored
+	// here since this is the struct actually passed to the OptiX launch params.
+	WorkQueue<HitWorkItem>       dielectricHitQueue;
 	WorkQueue<MissWorkItem>      missQueue;
 
 	// Shadow ray queue is traced separately via a second optixLaunch.

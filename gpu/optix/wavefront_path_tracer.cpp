@@ -68,6 +68,20 @@ extern "C" void wf_launch_evaluate_materials_simple(
 	int,
 	float3, float, GpuSkyDistribution,
 	cudaStream_t);
+extern "C" void wf_launch_evaluate_materials_dielectric(
+	WorkQueue<HitWorkItem>, int,
+	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
+	float3*,
+	const SphereData*, unsigned int,
+	const QuadData*, unsigned int,
+	const TriangleData*, unsigned int,
+	const BilinearPatchData*, unsigned int,
+	const MaterialData*, unsigned int,
+	const int*, const GpuLightKind*, const GpuAliasEntry*, unsigned int,
+	const PunctualLightGPU*, unsigned int,
+	int,
+	float3, float, GpuSkyDistribution,
+	cudaStream_t);
 extern "C" void wf_launch_accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, GpuSkyDistribution, cudaStream_t);
 extern "C" void wf_launch_accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*, cudaStream_t);
 extern "C" void wf_launch_resolve_bssrdf_exit(
@@ -123,6 +137,9 @@ bool WavefrontPathTracer::initialize(OptixDeviceContext context,
 	// member comment in the header for why this needs to be separate from
 	// stream_.
 	CUDA_CHECK(cudaStreamCreate(&simpleMaterialStream_));
+	// Own stream for launchEvaluateMaterialsDielectric()'s kernel - same
+	// reasoning, see its member comment in the header.
+	CUDA_CHECK(cudaStreamCreate(&dielectricMaterialStream_));
 
 	// Must be true, not false: the traversable this pipeline traces against
 	// is the SAME IAS/GAS OptiXRenderer::buildScene() builds for the
@@ -916,6 +933,7 @@ bool WavefrontPathTracer::allocateQueues(int numPixels) {
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nextRayItems_), rayItemSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_hitItems_),     hitItemSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_simpleHitItems_), hitItemSz));
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_dielectricHitItems_), hitItemSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_missItems_),    missItemSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_shadowItems_),  shadowItemSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_occluded_),     occludedSz));
@@ -926,6 +944,7 @@ bool WavefrontPathTracer::allocateQueues(int numPixels) {
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_nextRayCounter_), counterSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_hitCounter_),     counterSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_simpleHitCounter_), counterSz));
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_dielectricHitCounter_), counterSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_missCounter_),    counterSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_shadowCounter_),  counterSz));
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_probeCounter_),   counterSz));
@@ -940,11 +959,13 @@ void WavefrontPathTracer::freeQueues() {
 	};
 	freeDev(d_rayItems_);      freeDev(d_nextRayItems_);
 	freeDev(d_hitItems_);      freeDev(d_simpleHitItems_);
+	freeDev(d_dielectricHitItems_);
 	freeDev(d_missItems_);
 	freeDev(d_shadowItems_);   freeDev(d_occluded_);
 	freeDev(d_probeItems_);    freeDev(d_exitItems_);
 	freeDev(d_rayCounter_);    freeDev(d_nextRayCounter_);
 	freeDev(d_hitCounter_);    freeDev(d_simpleHitCounter_);
+	freeDev(d_dielectricHitCounter_);
 	freeDev(d_missCounter_);
 	freeDev(d_shadowCounter_);
 	freeDev(d_probeCounter_);  freeDev(d_exitCounter_);
@@ -1088,6 +1109,54 @@ void WavefrontPathTracer::launchEvaluateMaterialsSimple(
 		maxDepth,
 		skyColor, shadowRayEpsilon, skyDist,
 		simpleMaterialStream_);
+}
+
+// Twin of launchEvaluateMaterialsSimple() above, scoped to dielectricHitQueue's
+// Dielectric/RoughDielectric hits - see wavefront_kernels.cu's
+// evaluate_materials_dielectric() and wavefront_types.h's WavefrontQueues::
+// dielectricHitQueue comment. No texture params - neither material type reads
+// mat.textureIdx.
+void WavefrontPathTracer::launchEvaluateMaterialsDielectric(
+	int numHits, int maxDepth,
+	const SphereData*    d_spheres,   unsigned int numSpheres,
+	const QuadData*      d_quads,     unsigned int numQuads,
+	const TriangleData*  d_triangles, unsigned int numTriangles,
+	const BilinearPatchData* d_bilinearPatches, unsigned int numBilinearPatches,
+	const MaterialData*  d_materials, unsigned int numMaterials,
+	const int*           d_lightIndices, const GpuLightKind* d_lightKinds,
+	const GpuAliasEntry* d_aliasTable,  unsigned int numLights,
+	const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
+	float3*              d_framebuffer, float3 skyColor, float shadowRayEpsilon,
+	GpuSkyDistribution skyDist)
+{
+	if (numHits == 0) return;
+
+	WorkQueue<HitWorkItem> hq;
+	hq.items    = reinterpret_cast<HitWorkItem*>(d_dielectricHitItems_);
+	hq.counter  = reinterpret_cast<int*>(d_dielectricHitCounter_);
+	hq.capacity = queueCapacity_;
+
+	WorkQueue<RayWorkItem> nq;
+	nq.items    = reinterpret_cast<RayWorkItem*>(d_nextRayItems_);
+	nq.counter  = reinterpret_cast<int*>(d_nextRayCounter_);
+	nq.capacity = queueCapacity_;
+
+	WorkQueue<ShadowRayWorkItem> sq;
+	sq.items    = reinterpret_cast<ShadowRayWorkItem*>(d_shadowItems_);
+	sq.counter  = reinterpret_cast<int*>(d_shadowCounter_);
+	sq.capacity = queueCapacity_;
+
+	wf_launch_evaluate_materials_dielectric(hq, numHits, nq, sq, d_framebuffer,
+		d_spheres, numSpheres,
+		d_quads, numQuads,
+		d_triangles, numTriangles,
+		d_bilinearPatches, numBilinearPatches,
+		d_materials, numMaterials,
+		d_lightIndices, d_lightKinds, d_aliasTable, numLights,
+		d_punctualLights, numPunctualLights,
+		maxDepth,
+		skyColor, shadowRayEpsilon, skyDist,
+		dielectricMaterialStream_);
 }
 
 void WavefrontPathTracer::launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor,
@@ -1275,6 +1344,7 @@ bool WavefrontPathTracer::render(
 			// Reset output queue counters
 			resetQueueCounter(reinterpret_cast<int*>(d_hitCounter_));
 			resetQueueCounter(reinterpret_cast<int*>(d_simpleHitCounter_));
+			resetQueueCounter(reinterpret_cast<int*>(d_dielectricHitCounter_));
 			resetQueueCounter(reinterpret_cast<int*>(d_missCounter_));
 			resetQueueCounter(reinterpret_cast<int*>(d_shadowCounter_));
 			resetQueueCounter(reinterpret_cast<int*>(d_nextRayCounter_));
@@ -1296,6 +1366,10 @@ bool WavefrontPathTracer::render(
 			lp.simpleHitQueue.counter  = reinterpret_cast<int*>(d_simpleHitCounter_);
 			lp.simpleHitQueue.capacity = queueCapacity_;
 
+			lp.dielectricHitQueue.items    = reinterpret_cast<HitWorkItem*>(d_dielectricHitItems_);
+			lp.dielectricHitQueue.counter  = reinterpret_cast<int*>(d_dielectricHitCounter_);
+			lp.dielectricHitQueue.capacity = queueCapacity_;
+
 			lp.missQueue.items    = reinterpret_cast<MissWorkItem*>(d_missItems_);
 			lp.missQueue.counter  = reinterpret_cast<int*>(d_missCounter_);
 			lp.missQueue.capacity = queueCapacity_;
@@ -1311,9 +1385,10 @@ bool WavefrontPathTracer::render(
 
 			CUDA_CHECK(cudaStreamSynchronize(stream_));
 
-			int numHits       = readQueueSize(reinterpret_cast<int*>(d_hitCounter_));
-			int numSimpleHits = readQueueSize(reinterpret_cast<int*>(d_simpleHitCounter_));
-			int numMiss       = readQueueSize(reinterpret_cast<int*>(d_missCounter_));
+			int numHits            = readQueueSize(reinterpret_cast<int*>(d_hitCounter_));
+			int numSimpleHits      = readQueueSize(reinterpret_cast<int*>(d_simpleHitCounter_));
+			int numDielectricHits  = readQueueSize(reinterpret_cast<int*>(d_dielectricHitCounter_));
+			int numMiss            = readQueueSize(reinterpret_cast<int*>(d_missCounter_));
 
 			// ------------------------------------------------------------------
 			// Phase 3: Evaluate materials (fills shadowQueue + nextRayQueue)
@@ -1364,12 +1439,36 @@ bool WavefrontPathTracer::render(
 				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist);
 
 			// ------------------------------------------------------------------
+			// Phase 3c: Evaluate dielectric materials (Dielectric/RoughDielectric
+			// hits routed to dielectricHitQueue at push time - see
+			// wavefront_types.h's WavefrontQueues::dielectricHitQueue comment).
+			// Same independent-queue/own-stream overlap reasoning as Phase 3b
+			// above - launched on dielectricMaterialStream_, synced below
+			// alongside simpleMaterialStream_ before numMiss/numShadow are read.
+			// ------------------------------------------------------------------
+			launchEvaluateMaterialsDielectric(
+				numDielectricHits, max_depth,
+				reinterpret_cast<const SphereData*>(d_spheres), num_spheres,
+				reinterpret_cast<const QuadData*>(d_quads),     num_quads,
+				reinterpret_cast<const TriangleData*>(d_triangles), num_triangles,
+				reinterpret_cast<const BilinearPatchData*>(d_bilinear_patches), num_bilinear_patches,
+				reinterpret_cast<const MaterialData*>(d_materials), num_materials,
+				reinterpret_cast<const int*>(d_light_indices),
+				reinterpret_cast<const GpuLightKind*>(d_lightKinds),
+				reinterpret_cast<const GpuAliasEntry*>(d_alias_table),
+				num_lights,
+				reinterpret_cast<const PunctualLightGPU*>(d_punctual_lights),
+				num_punctual_lights,
+				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist);
+
+			// ------------------------------------------------------------------
 			// Phase 4: Accumulate miss (escaped rays → background)
 			// ------------------------------------------------------------------
 			launchAccumulateMiss(numMiss, d_fbPtr, camera.backgroundColor, camera.skyDist);
 
 			CUDA_CHECK(cudaStreamSynchronize(stream_));
 			CUDA_CHECK(cudaStreamSynchronize(simpleMaterialStream_));
+			CUDA_CHECK(cudaStreamSynchronize(dielectricMaterialStream_));
 
 			// ------------------------------------------------------------------
 			// Phase 4b: BSSRDF probe walk + exit resolve (MaterialType::
@@ -1548,6 +1647,7 @@ void WavefrontPathTracer::cleanup() {
 	if (wfModule_)          { optixModuleDestroy(wfModule_);            wfModule_          = nullptr; }
 	if (d_wfLaunchParams_)  { cudaFree(reinterpret_cast<void*>(d_wfLaunchParams_)); d_wfLaunchParams_ = 0; }
 	if (simpleMaterialStream_) { cudaStreamDestroy(simpleMaterialStream_); simpleMaterialStream_ = nullptr; }
+	if (dielectricMaterialStream_) { cudaStreamDestroy(dielectricMaterialStream_); dielectricMaterialStream_ = nullptr; }
 }
 
 } // namespace optix_renderer

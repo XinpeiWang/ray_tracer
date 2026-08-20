@@ -169,6 +169,22 @@ private:
         const GpuAliasEntry* d_aliasTable, unsigned int numLights,
         const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
         float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist);
+    // Twin of launchEvaluateMaterialsSimple() above, scoped to
+    // dielectricHitQueue's Dielectric/RoughDielectric hits (see
+    // wavefront_types.h's WavefrontQueues::dielectricHitQueue and
+    // wavefront_kernels.cu's evaluate_materials_dielectric()). No texture or
+    // scene-medium/measured-BRDF params at all - neither material type ever
+    // reads them.
+    void launchEvaluateMaterialsDielectric(int numHits, int maxDepth,
+        const SphereData* d_spheres, unsigned int numSpheres,
+        const QuadData* d_quads, unsigned int numQuads,
+        const TriangleData* d_triangles, unsigned int numTriangles,
+        const BilinearPatchData* d_bilinearPatches, unsigned int numBilinearPatches,
+        const MaterialData* d_materials, unsigned int numMaterials,
+        const int* d_lightIndices, const GpuLightKind* d_lightKinds,
+        const GpuAliasEntry* d_aliasTable, unsigned int numLights,
+        const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
+        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist);
     // Not a launchX-style param above deliberately - see setTextures()'s
     // comment for why textures travel via member state instead.
     void launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor, GpuSkyDistribution skyDist);
@@ -239,6 +255,7 @@ private:
     CUdeviceptr d_nextRayItems_     = 0;
     CUdeviceptr d_hitItems_         = 0;
     CUdeviceptr d_simpleHitItems_   = 0;   ///< see WavefrontQueues::simpleHitQueue
+    CUdeviceptr d_dielectricHitItems_ = 0; ///< see WavefrontQueues::dielectricHitQueue
     CUdeviceptr d_missItems_        = 0;
     CUdeviceptr d_shadowItems_      = 0;
     CUdeviceptr d_occluded_         = 0;
@@ -248,6 +265,7 @@ private:
     CUdeviceptr d_nextRayCounter_   = 0;
     CUdeviceptr d_hitCounter_       = 0;
     CUdeviceptr d_simpleHitCounter_ = 0;   ///< see d_simpleHitItems_
+    CUdeviceptr d_dielectricHitCounter_ = 0; ///< see d_dielectricHitItems_
     CUdeviceptr d_missCounter_      = 0;
     CUdeviceptr d_shadowCounter_    = 0;
     CUdeviceptr d_probeCounter_     = 0;
@@ -263,6 +281,10 @@ private:
     // instead of serializing two kernels that have no real dependency on
     // each other. Owned and destroyed by this class (unlike stream_).
     cudaStream_t simpleMaterialStream_ = nullptr;
+    // Own stream for launchEvaluateMaterialsDielectric()'s kernel, same
+    // overlap reasoning as simpleMaterialStream_ above - hitQueue/
+    // simpleHitQueue/dielectricHitQueue are mutually disjoint at push time.
+    cudaStream_t dielectricMaterialStream_ = nullptr;
     int          queueCapacity_ = 0;
     CUdeviceptr  d_bssrdfTables_ = 0;         ///< see setBssrdfTables()
     unsigned int numBssrdfTables_ = 0;

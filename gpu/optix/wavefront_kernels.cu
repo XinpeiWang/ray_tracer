@@ -2833,6 +2833,206 @@ extern "C" __global__ void evaluate_materials_simple(
 		shadowQueue, nextRayQueue, framebuffer);
 }
 
+// ============================================================================
+// evaluate_materials_dielectric
+//
+// Third twin of evaluate_materials(), scoped to MaterialType::Dielectric and
+// MaterialType::RoughDielectric - the two material types routed into
+// dielectricHitQueue at push time (see wavefront_programs.cu's
+// __raygen__wf_intersect), for the same register-pressure reason as
+// evaluate_materials_simple() above (see its own comment). The Dielectric/
+// RoughDielectric case bodies below are copied verbatim from
+// evaluate_materials()'s switch, not reimplemented. Same trap-on-unexpected-
+// type guard as evaluate_materials_simple(), for the same reason (the push-
+// site routing condition living in a different file than this kernel).
+//
+// No textures/texturePixels params - neither Dielectric nor RoughDielectric
+// ever reads mat.textureIdx (grepped: no call site exists), so they're
+// dropped from this kernel's signature entirely rather than carried as dead
+// parameters, unlike evaluate_materials_simple() which does need them for
+// Lambertian's textured-albedo case.
+// ============================================================================
+extern "C" __global__ void evaluate_materials_dielectric(
+	WorkQueue<HitWorkItem>       hitQueue,
+	int                          numHits,
+	WorkQueue<RayWorkItem>       nextRayQueue,
+	WorkQueue<ShadowRayWorkItem> shadowQueue,
+	float3*                      framebuffer,
+	// Scene data
+	const SphereData*   spheres,
+	const QuadData*     quads,
+	const TriangleData* triangles,
+	const BilinearPatchData* bilinearPatches,
+	const MaterialData* materials,
+	const int*          lightIndices,
+	const GpuLightKind* lightKinds,
+	const GpuAliasEntry* aliasTable,
+	unsigned int numLights,
+	const PunctualLightGPU* punctualLights,
+	unsigned int numPunctualLights,
+	int maxDepth,
+	float3 skyColor,
+	float shadowRayEpsilon,
+	GpuSkyDistribution skyDist
+) {
+	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	if (idx >= numHits) return;
+
+	const HitWorkItem& h = hitQueue.items[idx];
+	const MaterialData& mat = materials[h.materialIdx];
+
+	float3 normal    = h.normal;
+	float3 hit_point = h.hitPoint;
+	unsigned int seed = h.seed;
+	const float shadow_eps = (shadowRayEpsilon > 0.0f) ? shadowRayEpsilon : 0.01f;
+
+	using SS  = SampledSpectrum<kWFNWavelengths>;
+	using SWL = SampledWavelengths<kWFNWavelengths>;
+	SS throughput(h.throughput);
+	SS radiance(h.radiance);
+	SWL swl;
+	for (int i = 0; i < kWFNWavelengths; ++i) {
+		swl.lambda[i] = h.wavelengths[i];
+		swl.pdf[i]    = h.wavelength_pdfs[i];
+	}
+
+	auto addToFramebuffer = [&](int pixIdx, const SS& L) {
+		auto xyz = SampledSpectrumToXYZ(L, swl, d_cie_x, d_cie_y, d_cie_z,
+										kDevCIEMin, kDevCIENSamples);
+		float r, g, b;
+		wf_xyz_to_linear_rgb(xyz.x, xyz.y, xyz.z, r, g, b);
+		atomicAdd(&framebuffer[pixIdx].x, r);
+		atomicAdd(&framebuffer[pixIdx].y, g);
+		atomicAdd(&framebuffer[pixIdx].z, b);
+	};
+
+	if (h.depth >= maxDepth) {
+		addToFramebuffer(h.pixelIndex, radiance);
+		return;
+	}
+
+	float3 scattered_dir    = make_float3(0, 0, 0);
+	SS     attenuation(0.f);
+	bool   scattered        = false;
+	bool   is_specular      = false;
+	float  brdf_pdf_override = -1.0f;
+	float3 phaseWo = make_float3(0.0f, 0.0f, 0.0f);
+	float matEta = mat.ior;
+	float  phaseG  = 0.0f;
+
+	auto albedoSpectrum = [&](float3 rgb) -> SS {
+		float c0, c1, c2;
+		float r = rgb.x < 0.f ? 0.f : (rgb.x > 1.f ? 1.f : rgb.x);
+		float g = rgb.y < 0.f ? 0.f : (rgb.y > 1.f ? 1.f : rgb.y);
+		float b = rgb.z < 0.f ? 0.f : (rgb.z > 1.f ? 1.f : rgb.z);
+		dev_srgb_to_coeffs(r, g, b, c0, c1, c2);
+		RGBSigmoidPolynomial poly(c0, c1, c2);
+		SS s(0.f);
+		for (int i = 0; i < kWFNWavelengths; ++i)
+			s[i] = poly(swl.lambda[i]);
+		return s;
+	};
+
+	switch (mat.type) {
+	case MaterialType::Dielectric: {
+		float eta = dot(h.rayDir, normal) < 0.0f ? (1.0f / mat.ior) : mat.ior;
+		float3 unit_dir = normalize(h.rayDir);
+		float  cos_t = fminf(dot(-unit_dir, normal), 1.0f);
+		float  sin_t = sqrtf(1.0f - cos_t * cos_t);
+		bool   cannot_refract = eta * sin_t > 1.0f;
+		float  r0 = (1.0f - mat.ior) / (1.0f + mat.ior);
+		r0 = r0 * r0;
+		float schlick = r0 + (1.0f - r0) * powf(1.0f - cos_t, 5.0f);
+		bool is_transmission;
+		if (cannot_refract || schlick > wf_rand(seed)) {
+			scattered_dir = wf_reflect(unit_dir, normal);
+			is_transmission = false;
+		} else {
+			scattered_dir = wf_refract(unit_dir, normal, eta);
+			is_transmission = true;
+		}
+		attenuation = is_transmission ? albedoSpectrum(mat.transmission_filter) : SS(1.f);
+		scattered   = true;
+		is_specular = true;
+		break;
+	}
+	case MaterialType::RoughDielectric: {
+		float rd_alpha = sqrtf(mat.fuzz);
+		bool rd_front_face = h.frontFace != 0;
+		float rd_ri = rd_front_face ? (1.0f / mat.ior) : mat.ior;
+		float3 n = normal;
+		float3 up_v = (fabsf(n.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
+		float3 tan_v  = normalize(cross(up_v, n));
+		float3 bitan = cross(n, tan_v);
+		float3 wi_w = normalize(-h.rayDir);
+		float wi_x = dot(wi_w, tan_v), wi_y = dot(wi_w, bitan), wi_z = dot(wi_w, n);
+		if (wi_z < 0.0f) { wi_z = -wi_z; wi_x = -wi_x; wi_y = -wi_y; }
+		TrowbridgeReitz<float> rd_dist(rd_alpha, rd_alpha);
+		float wm_x, wm_y, wm_z;
+		rd_dist.Sample_wm(wi_x, wi_y, wi_z, wf_rand(seed), wf_rand(seed), wm_x, wm_y, wm_z);
+		float rd_dot = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
+		float Fr = FrDielectric(rd_dot, 1.0f / rd_ri);
+		float wo_x, wo_y, wo_z;
+		if (wf_rand(seed) < Fr) {
+			// Reflect
+			wo_x = 2.0f*rd_dot*wm_x - wi_x;
+			wo_y = 2.0f*rd_dot*wm_y - wi_y;
+			wo_z = 2.0f*rd_dot*wm_z - wi_z;
+			if (wo_z <= 0.0f) { scattered = false; break; }
+			scattered_dir = normalize(wo_x*tan_v + wo_y*bitan + wo_z*n);
+		} else {
+			// Refract
+			float3 wm_world = wm_x*tan_v + wm_y*bitan + wm_z*n;
+			float eta = rd_front_face ? (1.0f / mat.ior) : mat.ior;
+			float3 refracted = wf_refract(normalize(h.rayDir), wm_world, eta);
+			wo_x = dot(refracted, tan_v); wo_y = dot(refracted, bitan); wo_z = dot(refracted, n);
+			scattered_dir = refracted;
+		}
+		{
+			float wo_z_abs = fabsf(wo_z);
+			float G2 = rd_dist.G(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z_abs);
+			float G1_wi = rd_dist.G1(wi_x, wi_y, wi_z);
+			float w = (G1_wi > 1e-8f) ? (G2 / G1_wi) : 0.0f;
+			attenuation = SS(w);
+		}
+		scattered   = true;
+
+		if (!rd_dist.EffectivelySmooth()) {
+			is_specular = false;
+			matEta = rd_ri;
+			RoughDielectricBxDF<float> rd_bxdf{ mat.ior, rd_alpha, rd_alpha };
+			brdf_pdf_override = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, wo_x, wo_y, wo_z);
+			phaseWo = wi_w;
+		} else {
+			is_specular = true;
+		}
+		break;
+	}
+	default:
+		// Should be unreachable - dielectricHitQueue is only ever populated
+		// with Dielectric/RoughDielectric hits (see this kernel's own header
+		// comment). Trap loudly rather than silently mis-shading whatever
+		// this actually is, matching evaluate_materials_simple()'s guard.
+		printf("[EVAL-MATERIALS-DIELECTRIC] unexpected MaterialType %d in dielectricHitQueue\n", (int)mat.type);
+		__trap();
+	}
+
+	if (!scattered) {
+		addToFramebuffer(h.pixelIndex, radiance);
+		return;
+	}
+
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, normal, hit_point, seed,
+		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
+		phaseWo, phaseG,
+		h.pixelIndex, h.depth,
+		spheres, quads, triangles, bilinearPatches, materials,
+		lightIndices, lightKinds, aliasTable, numLights,
+		punctualLights, numPunctualLights,
+		skyColor, shadow_eps, skyDist,
+		shadowQueue, nextRayQueue, framebuffer);
+}
+
 // Uplift a flat RGB color to a spectral sample at the given hero
 // wavelengths. Standalone copy of the `liftEmission` lambda used inside
 // evaluate_materials below (that one captures its `swl` by reference from
