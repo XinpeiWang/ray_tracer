@@ -118,6 +118,7 @@
     <ClCompile Include="unit\pbrt_gpu_instance_sphere_tests.cpp" />
     <ClCompile Include="unit\pbrt_gpu_triangle_light_tests.cpp" />
     <ClCompile Include="unit\pbrt_gpu_bilinear_light_tests.cpp" />
+    <ClCompile Include="unit\pbrt_gpu_disk_cylinder_tests.cpp" />
     <ClCompile Include="unit\pbrt_gpu_light_coverage_tests.cpp" />
     <ClCompile Include="unit\pbrt_example_scenes_tests.cpp" />
     <ClCompile Include="unit\spherical_rectangle_adjudication_tests.cpp" />

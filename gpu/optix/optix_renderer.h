@@ -77,6 +77,12 @@ public:
 		const std::vector<PunctualLightGPU>& punctualLights = {},
 		const std::vector<BilinearPatchData>& bilinearPatches = {},
 		const std::vector<TriangleData>& triangles = {},
+		// Disk/Cylinder - recursive backend only (Phase 4b); see DiskData/
+		// CylinderData's own comment in optix_types.h and gasDiskCylinderHandle_'s
+		// comment above for why these get their own child GAS rather than
+		// joining spheres/quads/bilinearPatches in the shared one.
+		const std::vector<DiskData>& disks = {},
+		const std::vector<CylinderData>& cylinders = {},
 		const std::vector<GpuLensElement>& lensElements = {},
 		const std::vector<GpuExitPupilBounds>& exitPupilBounds = {},
 		const std::vector<TextureData>& textures = {},
@@ -299,10 +305,14 @@ private:
 	OptixProgramGroup hitgroupSpherePG_ = nullptr;///< Sphere hit group (radiance)
 	OptixProgramGroup hitgroupQuadPG_ = nullptr;  ///< Quad hit group (radiance)
 	OptixProgramGroup hitgroupBilinearPatchPG_ = nullptr; ///< Bilinear patch hit group (radiance)
+	OptixProgramGroup hitgroupDiskPG_ = nullptr;          ///< Disk hit group (radiance)
+	OptixProgramGroup hitgroupCylinderPG_ = nullptr;      ///< Cylinder hit group (radiance)
 	OptixProgramGroup hitgroupTrianglePG_ = nullptr;      ///< Triangle hit group (radiance)
 	OptixProgramGroup shadowHitgroupSpherePG_ = nullptr; ///< Sphere shadow hit group
 	OptixProgramGroup shadowHitgroupQuadPG_ = nullptr;   ///< Quad shadow hit group
 	OptixProgramGroup shadowHitgroupBilinearPatchPG_ = nullptr; ///< Bilinear patch shadow hit group
+	OptixProgramGroup shadowHitgroupDiskPG_ = nullptr;          ///< Disk shadow hit group
+	OptixProgramGroup shadowHitgroupCylinderPG_ = nullptr;      ///< Cylinder shadow hit group
 	OptixProgramGroup shadowHitgroupTrianglePG_ = nullptr;      ///< Triangle shadow hit group
 
 	// RAY_TYPE_PROBE program groups (recursive backend only, Phase 1 BSSRDF
@@ -311,6 +321,8 @@ private:
 	OptixProgramGroup probeHitgroupSpherePG_ = nullptr;          ///< Sphere probe hit group
 	OptixProgramGroup probeHitgroupQuadPG_ = nullptr;            ///< Quad probe hit group
 	OptixProgramGroup probeHitgroupBilinearPatchPG_ = nullptr;   ///< Bilinear patch probe hit group
+	OptixProgramGroup probeHitgroupDiskPG_ = nullptr;            ///< Disk probe hit group
+	OptixProgramGroup probeHitgroupCylinderPG_ = nullptr;        ///< Cylinder probe hit group
 	OptixProgramGroup probeHitgroupTrianglePG_ = nullptr;        ///< Triangle probe hit group
 
 	// -------------------------------------------------------------------
@@ -337,6 +349,21 @@ private:
 	CUdeviceptr d_gasCustom_ = 0;                ///< Device memory for the custom-primitive GAS
 	OptixTraversableHandle gasTriHandle_ = 0;    ///< Child GAS: triangles (native OptiX geometry)
 	CUdeviceptr d_gasTri_ = 0;                   ///< Device memory for the triangle GAS
+	// Disk/Cylinder get their OWN child GAS + IAS instance, appended AFTER
+	// every other instance (see buildScene()'s own comment at the disk/
+	// cylinder instance site) - deliberately NOT folded into gasCustomHandle_
+	// alongside sphere/quad/bilinear-patch, so their presence can never shift
+	// those types' build_input_index/SBT offsets. That matters because the
+	// wavefront backend traces against this SAME shared traversable with its
+	// OWN, separately-built SBT that has no idea disks/cylinders exist
+	// (Phase 4c) - had they shared gasCustomHandle_, adding a disk/cylinder
+	// to a scene could silently corrupt wavefront's SBT indexing for
+	// geometry types wavefront DOES support. Appending a whole new instance
+	// instead costs one extra GAS but keeps every existing type's offsets
+	// byte-for-byte unchanged whether or not the scene has any disks/
+	// cylinders at all.
+	OptixTraversableHandle gasDiskCylinderHandle_ = 0;
+	CUdeviceptr d_gasDiskCylinder_ = 0;
 	bool sceneHasMotion_ = false;          ///< True if the uploaded scene has >=1 moving sphere (see buildScene())
 
 	// -------------------------------------------------------------------
@@ -353,6 +380,10 @@ private:
 	unsigned int numQuads_ = 0;       ///< Number of quads
 	CUdeviceptr d_bilinearPatches_ = 0; ///< Device bilinear patch array
 	unsigned int numBilinearPatches_ = 0; ///< Number of bilinear patches
+	CUdeviceptr d_disks_ = 0;         ///< Device disk array
+	unsigned int numDisks_ = 0;       ///< Number of disks
+	CUdeviceptr d_cylinders_ = 0;     ///< Device cylinder array
+	unsigned int numCylinders_ = 0;   ///< Number of cylinders
 	CUdeviceptr d_triangles_ = 0;      ///< Device triangle array
 	unsigned int numTriangles_ = 0;    ///< Number of triangles
 
@@ -488,7 +519,9 @@ private:
 		const std::vector<BilinearPatchData>& bilinearPatches,
 		const std::vector<TriangleData>& triangles,
 		bool haveInstancedTriangles,
-		bool haveInstancedSpheres
+		bool haveInstancedSpheres,
+		const std::vector<DiskData>& disks = {},
+		const std::vector<CylinderData>& cylinders = {}
 	);
 
 	/// @brief Release all GPU resources

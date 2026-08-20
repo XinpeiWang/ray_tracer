@@ -131,6 +131,56 @@ extern "C" __global__ void __closesthit__probe_bilinear_patch() {
 	optixSetPayload_6(__float_as_uint(normal.z));
 }
 
+extern "C" __global__ void __closesthit__probe_disk() {
+	const unsigned int primIdx = optixGetPrimitiveIndex();
+	const DiskData& disk = params.disks[primIdx];
+
+	const float t = optixGetRayTmax();
+	const float3 ray_orig = optixGetWorldRayOrigin();
+	const float3 ray_dir = optixGetWorldRayDirection();
+	const float3 hit_point = ray_orig + t * ray_dir;
+
+	const float3 obj_normal = make_float3(0.0f, 0.0f, 1.0f);
+	float3 outward_normal = normalize(dc_apply_normal_from_w2o(disk.w2o, obj_normal));
+	const bool front_face = dot(ray_dir, outward_normal) < 0.0f;
+	const float3 normal = front_face ? outward_normal : -outward_normal;
+
+	optixSetPayload_0((unsigned int)disk.materialIdx);
+	optixSetPayload_1(__float_as_uint(hit_point.x));
+	optixSetPayload_2(__float_as_uint(hit_point.y));
+	optixSetPayload_3(__float_as_uint(hit_point.z));
+	optixSetPayload_4(__float_as_uint(normal.x));
+	optixSetPayload_5(__float_as_uint(normal.y));
+	optixSetPayload_6(__float_as_uint(normal.z));
+}
+
+extern "C" __global__ void __closesthit__probe_cylinder() {
+	const unsigned int primIdx = optixGetPrimitiveIndex();
+	const CylinderData& cyl = params.cylinders[primIdx];
+
+	const float t = optixGetRayTmax();
+	const float3 ray_orig = optixGetWorldRayOrigin();
+	const float3 ray_dir = optixGetWorldRayDirection();
+	const float3 hit_point = ray_orig + t * ray_dir;
+
+	const float3 obj_hit = dc_apply_point(cyl.w2o, hit_point);
+	const float obj_hit_len = sqrtf(obj_hit.x * obj_hit.x + obj_hit.y * obj_hit.y);
+	const float3 obj_normal = (obj_hit_len > 1e-8f)
+		? make_float3(obj_hit.x / obj_hit_len, obj_hit.y / obj_hit_len, 0.0f)
+		: make_float3(1.0f, 0.0f, 0.0f);
+	float3 outward_normal = normalize(dc_apply_normal_from_w2o(cyl.w2o, obj_normal));
+	const bool front_face = dot(ray_dir, outward_normal) < 0.0f;
+	const float3 normal = front_face ? outward_normal : -outward_normal;
+
+	optixSetPayload_0((unsigned int)cyl.materialIdx);
+	optixSetPayload_1(__float_as_uint(hit_point.x));
+	optixSetPayload_2(__float_as_uint(hit_point.y));
+	optixSetPayload_3(__float_as_uint(hit_point.z));
+	optixSetPayload_4(__float_as_uint(normal.x));
+	optixSetPayload_5(__float_as_uint(normal.y));
+	optixSetPayload_6(__float_as_uint(normal.z));
+}
+
 extern "C" __global__ void __closesthit__probe_triangle() {
 	const unsigned int primIdx = optixGetPrimitiveIndex();
 	const int instBase = params.instancePrimBase

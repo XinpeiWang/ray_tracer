@@ -495,6 +495,44 @@ bool OptiXRenderer::createProgramGroups() {
 		&hitgroupBilinearPatchPG_
 	));
 
+	// Disk hit group (intersection + closest-hit)
+	OptixProgramGroupDesc diskHitDesc = {};
+	diskHitDesc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	diskHitDesc.hitgroup.moduleIS = module_;
+	diskHitDesc.hitgroup.entryFunctionNameIS = "__intersection__disk";
+	diskHitDesc.hitgroup.moduleCH = module_;
+	diskHitDesc.hitgroup.entryFunctionNameCH = "__closesthit__disk";
+
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(
+		context_,
+		&diskHitDesc,
+		1,
+		&pgOptions,
+		log,
+		&logSize,
+		&hitgroupDiskPG_
+	));
+
+	// Cylinder hit group (intersection + closest-hit)
+	OptixProgramGroupDesc cylinderHitDesc = {};
+	cylinderHitDesc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	cylinderHitDesc.hitgroup.moduleIS = module_;
+	cylinderHitDesc.hitgroup.entryFunctionNameIS = "__intersection__cylinder";
+	cylinderHitDesc.hitgroup.moduleCH = module_;
+	cylinderHitDesc.hitgroup.entryFunctionNameCH = "__closesthit__cylinder";
+
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(
+		context_,
+		&cylinderHitDesc,
+		1,
+		&pgOptions,
+		log,
+		&logSize,
+		&hitgroupCylinderPG_
+	));
+
 	// Triangle hit group (closest-hit + any-hit - intersection is OptiX's
 	// built-in hardware triangle test, no custom IS program bound). The
 	// any-hit program is new: it's a no-op for the overwhelming majority of
@@ -576,6 +614,44 @@ bool OptiXRenderer::createProgramGroups() {
 		log,
 		&logSize,
 		&shadowHitgroupBilinearPatchPG_
+	));
+
+	// Shadow hit group for disks (any-hit only, no closest-hit)
+	OptixProgramGroupDesc shadowDiskHitDesc = {};
+	shadowDiskHitDesc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	shadowDiskHitDesc.hitgroup.moduleIS = module_;
+	shadowDiskHitDesc.hitgroup.entryFunctionNameIS = "__intersection__disk";
+	shadowDiskHitDesc.hitgroup.moduleAH = module_;
+	shadowDiskHitDesc.hitgroup.entryFunctionNameAH = "__anyhit__shadow_disk";
+
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(
+		context_,
+		&shadowDiskHitDesc,
+		1,
+		&pgOptions,
+		log,
+		&logSize,
+		&shadowHitgroupDiskPG_
+	));
+
+	// Shadow hit group for cylinders (any-hit only, no closest-hit)
+	OptixProgramGroupDesc shadowCylinderHitDesc = {};
+	shadowCylinderHitDesc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	shadowCylinderHitDesc.hitgroup.moduleIS = module_;
+	shadowCylinderHitDesc.hitgroup.entryFunctionNameIS = "__intersection__cylinder";
+	shadowCylinderHitDesc.hitgroup.moduleAH = module_;
+	shadowCylinderHitDesc.hitgroup.entryFunctionNameAH = "__anyhit__shadow_cylinder";
+
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(
+		context_,
+		&shadowCylinderHitDesc,
+		1,
+		&pgOptions,
+		log,
+		&logSize,
+		&shadowHitgroupCylinderPG_
 	));
 
 	// Shadow hit group for triangles (any-hit only, no closest-hit, no
@@ -672,6 +748,42 @@ bool OptiXRenderer::createProgramGroups() {
 		&probeHitgroupBilinearPatchPG_
 	));
 
+	OptixProgramGroupDesc probeDiskHitDesc = {};
+	probeDiskHitDesc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	probeDiskHitDesc.hitgroup.moduleIS = module_;
+	probeDiskHitDesc.hitgroup.entryFunctionNameIS = "__intersection__disk";
+	probeDiskHitDesc.hitgroup.moduleCH = module_;
+	probeDiskHitDesc.hitgroup.entryFunctionNameCH = "__closesthit__probe_disk";
+
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(
+		context_,
+		&probeDiskHitDesc,
+		1,
+		&pgOptions,
+		log,
+		&logSize,
+		&probeHitgroupDiskPG_
+	));
+
+	OptixProgramGroupDesc probeCylinderHitDesc = {};
+	probeCylinderHitDesc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
+	probeCylinderHitDesc.hitgroup.moduleIS = module_;
+	probeCylinderHitDesc.hitgroup.entryFunctionNameIS = "__intersection__cylinder";
+	probeCylinderHitDesc.hitgroup.moduleCH = module_;
+	probeCylinderHitDesc.hitgroup.entryFunctionNameCH = "__closesthit__probe_cylinder";
+
+	logSize = sizeof(log);
+	OPTIX_CHECK(optixProgramGroupCreate(
+		context_,
+		&probeCylinderHitDesc,
+		1,
+		&pgOptions,
+		log,
+		&logSize,
+		&probeHitgroupCylinderPG_
+	));
+
 	OptixProgramGroupDesc probeTriangleHitDesc = {};
 	probeTriangleHitDesc.kind = OPTIX_PROGRAM_GROUP_KIND_HITGROUP;
 	probeTriangleHitDesc.hitgroup.moduleCH = module_;
@@ -688,7 +800,7 @@ bool OptiXRenderer::createProgramGroups() {
 		&probeHitgroupTrianglePG_
 	));
 
-	std::cout << "[OptiX] Created program groups: raygen, miss (radiance + shadow + probe), sphere hit (radiance + shadow + probe), quad hit (radiance + shadow + probe), bilinear patch hit (radiance + shadow + probe), triangle hit (radiance + shadow + probe)\n";
+	std::cout << "[OptiX] Created program groups: raygen, miss (radiance + shadow + probe), sphere hit (radiance + shadow + probe), quad hit (radiance + shadow + probe), bilinear patch hit (radiance + shadow + probe), disk hit (radiance + shadow + probe), cylinder hit (radiance + shadow + probe), triangle hit (radiance + shadow + probe)\n";
 	return true;
 }
 
@@ -702,14 +814,20 @@ bool OptiXRenderer::linkPipeline() {
 		hitgroupSpherePG_,
 		hitgroupQuadPG_,
 		hitgroupBilinearPatchPG_,
+		hitgroupDiskPG_,
+		hitgroupCylinderPG_,
 		hitgroupTrianglePG_,
 		shadowHitgroupSpherePG_,
 		shadowHitgroupQuadPG_,
 		shadowHitgroupBilinearPatchPG_,
+		shadowHitgroupDiskPG_,
+		shadowHitgroupCylinderPG_,
 		shadowHitgroupTrianglePG_,
 		probeHitgroupSpherePG_,
 		probeHitgroupQuadPG_,
 		probeHitgroupBilinearPatchPG_,
+		probeHitgroupDiskPG_,
+		probeHitgroupCylinderPG_,
 		probeHitgroupTrianglePG_
 	};
 
@@ -785,6 +903,8 @@ bool OptiXRenderer::buildScene(
 	const std::vector<PunctualLightGPU>& punctualLights,
 	const std::vector<BilinearPatchData>& bilinearPatches,
 	const std::vector<TriangleData>& triangles,
+	const std::vector<DiskData>& disks,
+	const std::vector<CylinderData>& cylinders,
 	const std::vector<GpuLensElement>& lensElements,
 	const std::vector<GpuExitPupilBounds>& exitPupilBounds,
 	const std::vector<TextureData>& textures,
@@ -934,6 +1054,48 @@ bool OptiXRenderer::buildScene(
 	}
 
 	std::cout << "[OptiX] Uploaded " << bilinearPatches.size() << " bilinear patches to GPU\n";
+
+	// Store disk data on device
+	numDisks_ = static_cast<unsigned int>(disks.size());
+	size_t diskSize = disks.size() * sizeof(DiskData);
+
+	if (d_disks_) {
+		cudaFree(reinterpret_cast<void*>(d_disks_));
+		d_disks_ = 0;
+	}
+
+	if (numDisks_ > 0) {
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_disks_), diskSize));
+		CUDA_CHECK(cudaMemcpy(
+			reinterpret_cast<void*>(d_disks_),
+			disks.data(),
+			diskSize,
+			cudaMemcpyHostToDevice
+		));
+	}
+
+	std::cout << "[OptiX] Uploaded " << disks.size() << " disks to GPU\n";
+
+	// Store cylinder data on device
+	numCylinders_ = static_cast<unsigned int>(cylinders.size());
+	size_t cylinderSize = cylinders.size() * sizeof(CylinderData);
+
+	if (d_cylinders_) {
+		cudaFree(reinterpret_cast<void*>(d_cylinders_));
+		d_cylinders_ = 0;
+	}
+
+	if (numCylinders_ > 0) {
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_cylinders_), cylinderSize));
+		CUDA_CHECK(cudaMemcpy(
+			reinterpret_cast<void*>(d_cylinders_),
+			cylinders.data(),
+			cylinderSize,
+			cudaMemcpyHostToDevice
+		));
+	}
+
+	std::cout << "[OptiX] Uploaded " << cylinders.size() << " cylinders to GPU\n";
 
 	// Store triangle data on device. This single array holds BOTH the
 	// scene's own world-space triangles AND every instance definition's
@@ -1355,7 +1517,8 @@ bool OptiXRenderer::buildScene(
 	// Build acceleration structure for custom primitives
 	// We'll use AABB (axis-aligned bounding box) custom primitives
 
-	if (spheres.empty() && quads.empty() && bilinearPatches.empty() && triangles.empty()) {
+	if (spheres.empty() && quads.empty() && bilinearPatches.empty() && triangles.empty() &&
+		disks.empty() && cylinders.empty()) {
 		std::cerr << "[OptiX] Error: Scene contains no geometry" << std::endl;
 		return false;
 	}
@@ -1651,6 +1814,7 @@ bool OptiXRenderer::buildScene(
 	// loudly here.
 	gasCustomHandle_ = 0;
 	gasTriHandle_ = 0;
+	gasDiskCylinderHandle_ = 0;
 
 	CUdeviceptr d_gasCustomOutput = 0;
 	if (!customBuildInputVec.empty()) {
@@ -1705,6 +1869,109 @@ bool OptiXRenderer::buildScene(
 		cudaFree(reinterpret_cast<void*>(d_triTemp));
 	}
 	cudaFree(reinterpret_cast<void*>(d_triVertices));  // cudaFree(0) is a no-op when there were no triangles
+
+	// Disk/Cylinder: their OWN GAS, deliberately separate from both the
+	// shared custom-prim GAS (spheres/quads/bilinear-patches) and the
+	// triangle GAS - see gasDiskCylinderHandle_'s own comment (optix_renderer.h)
+	// for why. World-space AABBs are computed corner-by-corner from each
+	// primitive's own stored o2w transform (same technique as disk_cylinder_
+	// hittable.h's CPU-side transformed_bbox() - a naive transform of the
+	// object-space box's own min/max would clip the geometry the moment a
+	// rotation is involved).
+	const auto diskCylinderWorldAabb = [](const float o2w[12],
+										   float xlo, float xhi, float ylo, float yhi,
+										   float zlo, float zhi) -> OptixAabb {
+		OptixAabb box{};
+		float lox = 0, loy = 0, loz = 0, hix = 0, hiy = 0, hiz = 0;
+		bool first = true;
+		for (int corner = 0; corner < 8; ++corner) {
+			const float x = (corner & 1) ? xhi : xlo;
+			const float y = (corner & 2) ? yhi : ylo;
+			const float z = (corner & 4) ? zhi : zlo;
+			const float wx = o2w[0] * x + o2w[1] * y + o2w[2]  * z + o2w[3];
+			const float wy = o2w[4] * x + o2w[5] * y + o2w[6]  * z + o2w[7];
+			const float wz = o2w[8] * x + o2w[9] * y + o2w[10] * z + o2w[11];
+			if (first) { lox = hix = wx; loy = hiy = wy; loz = hiz = wz; first = false; continue; }
+			lox = fminf(lox, wx); hix = fmaxf(hix, wx);
+			loy = fminf(loy, wy); hiy = fmaxf(hiy, wy);
+			loz = fminf(loz, wz); hiz = fmaxf(hiz, wz);
+		}
+		box.minX = lox; box.minY = loy; box.minZ = loz;
+		box.maxX = hix; box.maxY = hiy; box.maxZ = hiz;
+		return box;
+	};
+
+	std::vector<OptixAabb> diskCylinderAabbs;
+	diskCylinderAabbs.reserve(disks.size() + cylinders.size());
+	for (const auto& d : disks) {
+		diskCylinderAabbs.push_back(diskCylinderWorldAabb(
+			d.o2w, -d.radius, d.radius, -d.radius, d.radius, d.height, d.height));
+	}
+	for (const auto& c : cylinders) {
+		diskCylinderAabbs.push_back(diskCylinderWorldAabb(
+			c.o2w, -c.radius, c.radius, -c.radius, c.radius, c.zMin, c.zMax));
+	}
+
+	CUdeviceptr d_diskCylinderAabb = 0;
+	CUdeviceptr d_gasDiskCylinderOutput = 0;
+	if (!diskCylinderAabbs.empty()) {
+		size_t dcAabbSize = diskCylinderAabbs.size() * sizeof(OptixAabb);
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_diskCylinderAabb), dcAabbSize));
+		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_diskCylinderAabb), diskCylinderAabbs.data(),
+			dcAabbSize, cudaMemcpyHostToDevice));
+
+		CUdeviceptr d_disk_aabb_keys[1] = { d_diskCylinderAabb };
+		std::vector<uint32_t> diskFlags(disks.size(), OPTIX_GEOMETRY_FLAG_NONE);
+		OptixBuildInput diskBuildInput = {};
+		diskBuildInput.type = OPTIX_BUILD_INPUT_TYPE_CUSTOM_PRIMITIVES;
+		diskBuildInput.customPrimitiveArray.aabbBuffers = disks.empty() ? nullptr : d_disk_aabb_keys;
+		diskBuildInput.customPrimitiveArray.numPrimitives = static_cast<unsigned int>(disks.size());
+		diskBuildInput.customPrimitiveArray.flags = diskFlags.data();
+		diskBuildInput.customPrimitiveArray.numSbtRecords = 1;
+		diskBuildInput.customPrimitiveArray.sbtIndexOffsetBuffer = 0;
+		diskBuildInput.customPrimitiveArray.sbtIndexOffsetSizeInBytes = 0;
+		diskBuildInput.customPrimitiveArray.sbtIndexOffsetStrideInBytes = 0;
+
+		CUdeviceptr d_cylinder_aabb_keys[1] = { d_diskCylinderAabb + (disks.size() * sizeof(OptixAabb)) };
+		std::vector<uint32_t> cylinderFlags(cylinders.size(), OPTIX_GEOMETRY_FLAG_NONE);
+		OptixBuildInput cylinderBuildInput = {};
+		cylinderBuildInput.type = OPTIX_BUILD_INPUT_TYPE_CUSTOM_PRIMITIVES;
+		cylinderBuildInput.customPrimitiveArray.aabbBuffers = cylinders.empty() ? nullptr : d_cylinder_aabb_keys;
+		cylinderBuildInput.customPrimitiveArray.numPrimitives = static_cast<unsigned int>(cylinders.size());
+		cylinderBuildInput.customPrimitiveArray.flags = cylinderFlags.data();
+		cylinderBuildInput.customPrimitiveArray.numSbtRecords = 1;
+		cylinderBuildInput.customPrimitiveArray.sbtIndexOffsetBuffer = 0;
+		cylinderBuildInput.customPrimitiveArray.sbtIndexOffsetSizeInBytes = 0;
+		cylinderBuildInput.customPrimitiveArray.sbtIndexOffsetStrideInBytes = 0;
+
+		// No gaps for an absent type, matching the shared custom-prim GAS's
+		// own rule (see numCustomPrimSbtRecords' comment further down).
+		std::vector<OptixBuildInput> diskCylinderBuildInputVec;
+		if (!disks.empty()) diskCylinderBuildInputVec.push_back(diskBuildInput);
+		if (!cylinders.empty()) diskCylinderBuildInputVec.push_back(cylinderBuildInput);
+
+		// triAccelOptions, not customAccelOptions: neither shape supports
+		// motion blur, matching every other static (numKeys=0) GAS here.
+		OptixAccelBufferSizes dcBufferSizes;
+		OPTIX_CHECK(optixAccelComputeMemoryUsage(
+			context_, &triAccelOptions, diskCylinderBuildInputVec.data(),
+			static_cast<unsigned int>(diskCylinderBuildInputVec.size()), &dcBufferSizes));
+
+		CUdeviceptr d_dcTemp;
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_dcTemp), dcBufferSizes.tempSizeInBytes));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_gasDiskCylinderOutput), dcBufferSizes.outputSizeInBytes));
+
+		OPTIX_CHECK(optixAccelBuild(
+			context_, stream_, &triAccelOptions, diskCylinderBuildInputVec.data(),
+			static_cast<unsigned int>(diskCylinderBuildInputVec.size()),
+			d_dcTemp, dcBufferSizes.tempSizeInBytes,
+			d_gasDiskCylinderOutput, dcBufferSizes.outputSizeInBytes,
+			&gasDiskCylinderHandle_, nullptr, 0
+		));
+		CUDA_CHECK(cudaStreamSynchronize(stream_));
+		cudaFree(reinterpret_cast<void*>(d_dcTemp));
+	}
+	cudaFree(reinterpret_cast<void*>(d_diskCylinderAabb));  // cudaFree(0) is a no-op when there were none
 
 	// ---- object instancing: one GAS per instance DEFINITION -----------------
 	// Built once here regardless of how many times it's placed; each IAS
@@ -1844,6 +2111,8 @@ bool OptiXRenderer::buildScene(
 	d_gasCustom_ = d_gasCustomOutput;
 	if (d_gasTri_) cudaFree(reinterpret_cast<void*>(d_gasTri_));
 	d_gasTri_ = d_gasTriOutput;
+	if (d_gasDiskCylinder_) cudaFree(reinterpret_cast<void*>(d_gasDiskCylinder_));
+	d_gasDiskCylinder_ = d_gasDiskCylinderOutput;
 
 	// Top-level IAS: one static-identity instance per non-empty child GAS,
 	// then one further instance per instanced-geometry placement.
@@ -1871,6 +2140,15 @@ bool OptiXRenderer::buildScene(
 	const int sceneTriSbtOffset = numCustomPrimSbtRecords;
 	const int instTriSbtOffset = numCustomPrimSbtRecords + (triangles.empty() ? 0 : RAY_TYPE_COUNT);
 	const int instSphereSbtOffset = instTriSbtOffset + (haveInstancedTriangles ? RAY_TYPE_COUNT : 0);
+	// Disk/Cylinder's own dedicated GAS gets its own instance, appended after
+	// every other region (including instanced geometry) - see
+	// gasDiskCylinderHandle_'s own comment (optix_renderer.h) for why this
+	// can never shift any other type's offset regardless of whether the
+	// scene has any disks/cylinders at all. Disk comes first (build_input
+	// index 0), cylinder second, with no gap when one of the two is absent -
+	// same "packed, no gaps for absent types" rule as every other region.
+	const int diskCylinderSbtOffset =
+		instSphereSbtOffset + (haveInstancedSpheres ? RAY_TYPE_COUNT : 0);
 
 	static const float kIdentity[12] = { 1,0,0,0, 0,1,0,0, 0,0,1,0 };
 	std::vector<OptixInstance> instances;
@@ -1895,6 +2173,7 @@ bool OptiXRenderer::buildScene(
 
 	if (gasCustomHandle_) addInstance(gasCustomHandle_, kIdentity, 0, -1);
 	if (gasTriHandle_) addInstance(gasTriHandle_, kIdentity, sceneTriSbtOffset, -1);
+	if (gasDiskCylinderHandle_) addInstance(gasDiskCylinderHandle_, kIdentity, diskCylinderSbtOffset, -1);
 
 	// One instance per PLACEMENT, not per group: the same group GAS is
 	// referenced by every placement of it, each with its own transform, and
@@ -1972,13 +2251,16 @@ bool OptiXRenderer::buildScene(
 		<< spheres.size() << " spheres, "
 		<< quads.size() << " quads, "
 		<< bilinearPatches.size() << " bilinear patches, "
+		<< disks.size() << " disks, "
+		<< cylinders.size() << " cylinders, "
 		<< triangles.size() << " triangles\n";
 
 	// Build Shader Binding Table (SBT). The scene-only geometry decides the
 	// packed record region; instanced geometry gets appended pairs of its own,
-	// which the instTri/instSphere offsets computed above address.
+	// which the instTri/instSphere offsets computed above address; disks/
+	// cylinders get their own trailing region the same way (diskCylinderSbtOffset).
 	if (!buildSBT(spheres, quads, bilinearPatches, triangles,
-				  haveInstancedTriangles, haveInstancedSpheres)) {
+				  haveInstancedTriangles, haveInstancedSpheres, disks, cylinders)) {
 		std::cerr << "Failed to build SBT\n";
 		return false;
 	}
@@ -1992,7 +2274,9 @@ bool OptiXRenderer::buildSBT(
 	const std::vector<BilinearPatchData>& bilinearPatches,
 	const std::vector<TriangleData>& triangles,
 	bool haveInstancedTriangles,
-	bool haveInstancedSpheres
+	bool haveInstancedSpheres,
+	const std::vector<DiskData>& disks,
+	const std::vector<CylinderData>& cylinders
 ) {
 	// Raygen record
 	RaygenRecord raygenRecord;
@@ -2123,6 +2407,33 @@ bool OptiXRenderer::buildSBT(
 		hitGroupRecords.back().data = {};
 	}
 
+	// Disk/Cylinder's own trailing region (see gasDiskCylinderHandle_'s and
+	// diskCylinderSbtOffset's own comments in buildScene()) - appended last,
+	// same "packed, no gaps for absent types" rule as everything above, in
+	// the same [disk, cylinder] order their shared GAS's build inputs use.
+	if (!disks.empty()) {
+		hitGroupRecords.emplace_back();
+		OPTIX_CHECK(optixSbtRecordPackHeader(hitgroupDiskPG_, &hitGroupRecords.back()));
+		hitGroupRecords.back().data = {};
+		hitGroupRecords.emplace_back();
+		OPTIX_CHECK(optixSbtRecordPackHeader(shadowHitgroupDiskPG_, &hitGroupRecords.back()));
+		hitGroupRecords.back().data = {};
+		hitGroupRecords.emplace_back();
+		OPTIX_CHECK(optixSbtRecordPackHeader(probeHitgroupDiskPG_, &hitGroupRecords.back()));
+		hitGroupRecords.back().data = {};
+	}
+	if (!cylinders.empty()) {
+		hitGroupRecords.emplace_back();
+		OPTIX_CHECK(optixSbtRecordPackHeader(hitgroupCylinderPG_, &hitGroupRecords.back()));
+		hitGroupRecords.back().data = {};
+		hitGroupRecords.emplace_back();
+		OPTIX_CHECK(optixSbtRecordPackHeader(shadowHitgroupCylinderPG_, &hitGroupRecords.back()));
+		hitGroupRecords.back().data = {};
+		hitGroupRecords.emplace_back();
+		OPTIX_CHECK(optixSbtRecordPackHeader(probeHitgroupCylinderPG_, &hitGroupRecords.back()));
+		hitGroupRecords.back().data = {};
+	}
+
 	if (d_hitgroupRecords_) cudaFree(reinterpret_cast<void*>(d_hitgroupRecords_));
 	size_t hitRecordSize = hitGroupRecords.size() * sizeof(HitGroupRecord);
 	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_hitgroupRecords_), hitRecordSize));
@@ -2145,7 +2456,8 @@ bool OptiXRenderer::buildSBT(
 	sbt_.hitgroupRecordCount = static_cast<unsigned int>(hitGroupRecords.size());
 
 	std::cout << "[OptiX] Built SBT: " << missRecords.size() << " miss records (radiance + shadow + probe), "
-		<< hitGroupRecords.size() << " hit records (one radiance+shadow+probe triple per present geometry type)\n";
+		<< hitGroupRecords.size() << " hit records (one radiance+shadow+probe triple per present geometry type"
+		<< (disks.empty() && cylinders.empty() ? "" : ", including disk/cylinder's own trailing region") << ")\n";
 	return true;
 }
 
@@ -2228,6 +2540,13 @@ bool OptiXRenderer::render(
 			d_bssrdfRhoSamples_, d_bssrdfRadiusSamples_, d_bssrdfProfile_, d_bssrdfProfileCdf_);
 		wavefrontTracer_->setMeasuredTables(d_measuredTables_, numMeasuredTables_,
 			d_measuredParamValues_, d_measuredData_, d_measuredMcdf_, d_measuredCcdf_);
+		// Wavefront doesn't understand Disk/Cylinder geometry yet (Phase 4c) -
+		// its own SBT (built without any knowledge of them) would be too
+		// short for a ray that actually reaches gasDiskCylinderHandle_'s
+		// instance, an out-of-bounds SBT index rather than a clean failure.
+		// Set the counts so render() can refuse loudly instead - see
+		// WavefrontPathTracer::render()'s own guard.
+		wavefrontTracer_->setDiskCylinderCounts(numDisks_, numCylinders_);
 		return wavefrontTracer_->render(
 			(int)width, (int)height, (int)samplesPerPixel, (int)maxDepth,
 			gpuCam,
@@ -2313,6 +2632,10 @@ bool OptiXRenderer::render(
 	params.numQuads = numQuads_;
 	params.bilinearPatches = reinterpret_cast<BilinearPatchData*>(d_bilinearPatches_);
 	params.numBilinearPatches = numBilinearPatches_;
+	params.disks = reinterpret_cast<DiskData*>(d_disks_);
+	params.numDisks = numDisks_;
+	params.cylinders = reinterpret_cast<CylinderData*>(d_cylinders_);
+	params.numCylinders = numCylinders_;
 	params.triangles = reinterpret_cast<TriangleData*>(d_triangles_);
 	params.instancePrimBase = reinterpret_cast<int*>(d_instanceBase_);  // null unless the scene has placements
 	params.numTriangles = numTriangles_;
@@ -2583,6 +2906,7 @@ void OptiXRenderer::cleanup() noexcept {
 	if (d_gas_) cudaFree(reinterpret_cast<void*>(d_gas_));
 	if (d_gasCustom_) cudaFree(reinterpret_cast<void*>(d_gasCustom_));
 	if (d_gasTri_) cudaFree(reinterpret_cast<void*>(d_gasTri_));
+	if (d_gasDiskCylinder_) cudaFree(reinterpret_cast<void*>(d_gasDiskCylinder_));
 	for (CUdeviceptr p : d_gasGroupTri_) if (p) cudaFree(reinterpret_cast<void*>(p));
 	for (CUdeviceptr p : d_gasGroupSphere_) if (p) cudaFree(reinterpret_cast<void*>(p));
 	if (d_instanceBase_) cudaFree(reinterpret_cast<void*>(d_instanceBase_));
@@ -2594,6 +2918,8 @@ void OptiXRenderer::cleanup() noexcept {
 	if (d_spheres_) cudaFree(reinterpret_cast<void*>(d_spheres_));
 	if (d_quads_) cudaFree(reinterpret_cast<void*>(d_quads_));
 	if (d_bilinearPatches_) cudaFree(reinterpret_cast<void*>(d_bilinearPatches_));
+	if (d_disks_) cudaFree(reinterpret_cast<void*>(d_disks_));
+	if (d_cylinders_) cudaFree(reinterpret_cast<void*>(d_cylinders_));
 	if (d_triangles_) cudaFree(reinterpret_cast<void*>(d_triangles_));
 	if (d_lensElements_) cudaFree(reinterpret_cast<void*>(d_lensElements_));
 	if (d_exitPupilBounds_) cudaFree(reinterpret_cast<void*>(d_exitPupilBounds_));

@@ -136,6 +136,44 @@ struct BilinearPatchData {
 	int materialIdx;
 };
 
+// Disk/Cylinder geometry data (custom primitives) - Shape "disk"/"cylinder"
+// from a loaded .pbrt scene (see src/shared/pbrt_flatten.h's Disk/Cylinder
+// and src/TheRestOfYourLife/disk_cylinder_hittable.h, the CPU backend these
+// mirror). Unlike every other shape here, these are NOT baked to world
+// space - a disk/cylinder is not rotation-invariant the way a sphere is, so
+// baking would mean either re-deriving Sphere's own "warn under anisotropic
+// scale" approximation or getting rotation silently wrong. Instead each
+// carries its own object<->world affine transform (o2w/w2o, row-major 3x4 -
+// same convention as SceneData::InstancePlacementGPU::transform), computed
+// once host-side (pbrt_gpu_builder.h, via pbrt_scene::Matrix4::
+// inverseAffine()) from the flat scene's raw double xform[16]. The device
+// intersection/closest-hit programs (gpu/optix/optix_intersection_disk_
+// cylinder.h) apply these manually - carrying the RAY into object space,
+// exactly mirroring the CPU hittable's own technique - rather than through
+// OptiX's per-GAS-instance transform, since neither shape is instanced
+// (no ObjectInstance support for them yet, matching the CPU loader's own
+// current scope): giving each one its own GAS+IAS-instance just to reach
+// OptiX's instance-transform machinery would be heavier than applying the
+// same 3x4 by hand in the two device programs that need it.
+struct DiskData {
+	float radius;       // outer radius
+	float innerRadius;  // 0 for a solid disk
+	float height;       // object-space z of the disk's plane
+	float phiMax;       // azimuthal sweep, RADIANS (converted from pbrt's degrees host-side)
+	int materialIdx;
+	float o2w[12];  // object -> world
+	float w2o[12];  // world -> object
+};
+
+struct CylinderData {
+	float radius;
+	float zMin, zMax;   // object-space Z extent (axis is object-space Z)
+	float phiMax;       // azimuthal sweep, RADIANS
+	int materialIdx;
+	float o2w[12];
+	float w2o[12];
+};
+
 // Triangle geometry data (native OptiX triangle, see optix_renderer.cpp's
 // buildAccelerationStructure). Shading normal is per-vertex-interpolated
 // (barycentric, via optixGetTriangleBarycentrics()) when the source mesh
@@ -950,6 +988,14 @@ struct LaunchParams {
 	unsigned int numQuads;
 	BilinearPatchData* bilinearPatches;
 	unsigned int numBilinearPatches;
+	// Disk/Cylinder (see DiskData/CylinderData's own comment) - recursive
+	// backend only for now (Phase 4b); the wavefront backend refuses a scene
+	// containing either rather than silently mis-rendering it (see
+	// WavefrontPathTracer::render()'s own guard).
+	DiskData* disks;
+	unsigned int numDisks;
+	CylinderData* cylinders;
+	unsigned int numCylinders;
 	TriangleData* triangles;
 	unsigned int numTriangles;
 

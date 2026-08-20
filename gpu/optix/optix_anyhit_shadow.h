@@ -123,6 +123,58 @@ extern "C" __global__ void __anyhit__shadow_bilinear_patch() {
 	optixTerminateRay();
 }
 
+// Shadow any-hit for disks. Same simple (DiffuseLight not-occluding,
+// dielectric-family ignored, everything else opaque) list as quad/bilinear
+// patch above - the pbrt loader never assigns a Medium/DielectricMedium
+// material to a disk (see pbrt_gpu_builder.h's disk loop), so no CloudMedium/
+// RgbGridMedium/Medium/DielectricMedium entries are needed here.
+extern "C" __global__ void __anyhit__shadow_disk() {
+	const unsigned int primIdx = optixGetPrimitiveIndex();
+	const DiskData& disk = params.disks[primIdx];
+	const MaterialData& mat = params.materials[disk.materialIdx];
+
+	if (mat.type == MaterialType::DiffuseLight) {
+		optixSetPayload_0(0);
+		optixTerminateRay();
+		return;
+	}
+
+	if (mat.type == MaterialType::Dielectric ||
+		mat.type == MaterialType::RoughDielectric ||
+		mat.type == MaterialType::ThinDielectric ||
+		mat.type == MaterialType::DiffuseTransmission) {
+		optixIgnoreIntersection();
+		return;
+	}
+
+	optixSetPayload_0(1);  // occluded = true
+	optixTerminateRay();
+}
+
+// Shadow any-hit for cylinders - same list as disk above.
+extern "C" __global__ void __anyhit__shadow_cylinder() {
+	const unsigned int primIdx = optixGetPrimitiveIndex();
+	const CylinderData& cyl = params.cylinders[primIdx];
+	const MaterialData& mat = params.materials[cyl.materialIdx];
+
+	if (mat.type == MaterialType::DiffuseLight) {
+		optixSetPayload_0(0);
+		optixTerminateRay();
+		return;
+	}
+
+	if (mat.type == MaterialType::Dielectric ||
+		mat.type == MaterialType::RoughDielectric ||
+		mat.type == MaterialType::ThinDielectric ||
+		mat.type == MaterialType::DiffuseTransmission) {
+		optixIgnoreIntersection();
+		return;
+	}
+
+	optixSetPayload_0(1);  // occluded = true
+	optixTerminateRay();
+}
+
 // Shadow any-hit for triangles
 extern "C" __global__ void __anyhit__shadow_triangle() {
 	const unsigned int primIdx = optixGetPrimitiveIndex();

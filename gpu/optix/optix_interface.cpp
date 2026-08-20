@@ -122,7 +122,8 @@ extern "C" int optix_render_main(
 			if (!g_renderer->buildScene(scene.spheres, scene.quads, scene.materials,
 										 scene.lightIndices, scene.lightKinds,
 										 scene.punctualLights, scene.bilinearPatches,
-										 scene.triangles, scene.lensElements,
+										 scene.triangles, scene.disks, scene.cylinders,
+										 scene.lensElements,
 										 scene.exitPupilBounds, scene.textures,
 										 scene.texturePixels, scene.cloudMediums,
 										 scene.rgbGridMediums, scene.rgbGridData,
@@ -370,6 +371,11 @@ static std::string sppm_gpu_unsupported_reason(const SceneData& scene) {
 		return "uses bilinear-patch geometry, which GPU SPPM's OptiX programs have no "
 		       "intersection/hit-group support for (spheres and quads only)";
 	}
+	if (!scene.disks.empty() || !scene.cylinders.empty()) {
+		return "uses disk/cylinder geometry (Phase 4b, recursive backend only) -- GPU "
+		       "SPPM's OptiX programs have no intersection/hit-group support for either "
+		       "shape (spheres and quads only)";
+	}
 	if (!scene.punctualLights.empty()) {
 		return "uses punctual (point/spot) lights -- GPU SPPM's camera/photon-pass "
 		       "raygens only sample the scene's area-light alias table";
@@ -496,7 +502,8 @@ extern "C" int optix_render_main_sppm(
 			if (!g_renderer->buildScene(scene.spheres, scene.quads, scene.materials,
 			                             scene.lightIndices, scene.lightKinds,
 			                             scene.punctualLights, scene.bilinearPatches,
-			                             scene.triangles, scene.lensElements,
+			                             scene.triangles, scene.disks, scene.cylinders,
+			                             scene.lensElements,
 			                             scene.exitPupilBounds, scene.textures,
 			                             scene.texturePixels, scene.cloudMediums,
 										 scene.rgbGridMediums, scene.rgbGridData,

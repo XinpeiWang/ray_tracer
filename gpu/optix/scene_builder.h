@@ -11,6 +11,11 @@ struct SceneData {
 	std::vector<SphereData> spheres;
 	std::vector<QuadData> quads;
 	std::vector<BilinearPatchData> bilinearPatches;
+	// Shape "disk"/"cylinder" from a loaded .pbrt scene - recursive GPU
+	// backend only for now (see optix_types.h's DiskData/CylinderData
+	// comment); empty for every hand-built (non-pbrt-loaded) scene.
+	std::vector<DiskData> disks;
+	std::vector<CylinderData> cylinders;
 	std::vector<TriangleData> triangles;
 	std::vector<MaterialData> materials;
 	std::vector<CloudMedium<float>> cloudMediums;  // indexed by MaterialType::CloudMedium's cloud_medium_extra.cloudMediumIdx

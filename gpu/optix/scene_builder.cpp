@@ -4121,6 +4121,7 @@ static bool build_loaded_pbrt_scene(
 	std::cerr << "[OptiX] Loaded " << path << ": " << stats.triangles
 		  << " triangles, " << stats.spheres << " spheres, "
 		  << stats.quadLights << " quads, "
+		  << stats.disks << " disks, " << stats.cylinders << " cylinders, "
 		  << scene.lightIndices.size() << " sampled lights\n";
 
 	// Flat-colour GPU approximation of the scene's own LightSource "infinite"

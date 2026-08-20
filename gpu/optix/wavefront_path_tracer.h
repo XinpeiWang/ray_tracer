@@ -48,6 +48,19 @@ public:
     /// scene.
     void setInstancePrimBase(CUdeviceptr p) { d_instancePrimBase_ = p; }
 
+    /// Disk/Cylinder counts (see optix_types.h's DiskData/CylinderData
+    /// comment) - Phase 4b (GPU-recursive) doesn't extend to this backend
+    /// yet, so render() refuses a scene where either is nonzero rather than
+    /// tracing against gasHandle_'s disk/cylinder instance with an SBT that
+    /// has no idea it exists (see render()'s own guard for why that would
+    /// otherwise be an out-of-bounds SBT index, not just a shading bug).
+    /// Same setter-not-render()-parameter pattern as setInstancePrimBase()
+    /// above, for the same reason.
+    void setDiskCylinderCounts(unsigned int numDisks, unsigned int numCylinders) {
+        numDisks_ = numDisks;
+        numCylinders_ = numCylinders;
+    }
+
     /// Texture metadata + shared pixel buffer (OptiXRenderer's own
     /// d_textures_/d_texturePixels_, already uploaded once at buildScene()
     /// time for the recursive path). Same setter-not-render()-parameter
@@ -301,6 +314,8 @@ private:
     CUdeviceptr  d_measuredCcdf_ = 0;
     std::string  ptxPath_;
     CUdeviceptr  d_instancePrimBase_ = 0;   ///< see setInstancePrimBase()
+    unsigned int numDisks_ = 0;             ///< see setDiskCylinderCounts()
+    unsigned int numCylinders_ = 0;
     CUdeviceptr  d_textures_ = 0;           ///< see setTextures()
     CUdeviceptr  d_texturePixels_ = 0;
     CUdeviceptr  d_cloudMediums_ = 0;       ///< see setCloudMediums()

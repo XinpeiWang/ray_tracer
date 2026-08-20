@@ -34,6 +34,11 @@
 #include "optix_math_helpers.h"   // cross(), dot(), length() - used below
 #include "../../src/shared/pbrt_flatten.h"
 #include "../../src/shared/pbrt_quadify.h"
+// pbrt_scene::Matrix4::inverseAffine() - used below (disks/cylinders loop) to
+// precompute each primitive's w2o from its flattened o2w, host-side, once,
+// the same "invert once at scene-build time, never on device" split
+// src/TheRestOfYourLife/disk_cylinder_hittable.h's CPU backend also uses.
+#include "../../src/shared/pbrt_scene.h"
 // ComputeBeamDiffusionBSSRDF/BSSRDFTable - the SAME CPU-side table builder
 // src/TheRestOfYourLife/material_pbrt.h's `class subsurface` already uses,
 // called here once per unique (g,eta) pair to build the table this builder
@@ -67,6 +72,10 @@ struct BuildStats {
 	std::size_t triangles = 0;
 	std::size_t spheres = 0;
 	std::size_t bilinearPatches = 0;
+	// Shape "disk"/"cylinder" - recursive backend only (Phase 4b); see
+	// optix_types.h's DiskData/CylinderData comment.
+	std::size_t disks = 0;
+	std::size_t cylinders = 0;
 	std::size_t quadLights = 0;
 	std::size_t emissiveTrianglesSampledIndividually = 0;
 	// Placements the builder prepared; optix_renderer.cpp's buildScene()
@@ -596,6 +605,61 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		out.bilinearPatches.push_back(bd);
 	}
 	stats.bilinearPatches = out.bilinearPatches.size();
+
+	// ---- disks / cylinders -------------------------------------------------
+	// Shape "disk"/"cylinder" - recursive GPU backend only (Phase 4b; see
+	// optix_types.h's DiskData/CylinderData comment for why these carry
+	// their own transform rather than being baked to world space the way
+	// Sphere is). Not registered as NEE-samplable lights yet even when
+	// areaLight >= 0 (no GpuLightKind::Disk/Cylinder exists) - an emissive
+	// one still emits when directly hit, just without explicit light
+	// sampling, same "hit but not aimed-at" tier documented in
+	// docs/PBRT_SUPPORT.md. The medium field (d.medium/c.medium) is
+	// intentionally unread here too, matching pbrt_cpu_builder.h's own
+	// disk/cylinder loop, which doesn't consume it either - not a new
+	// GPU-only gap.
+	const auto flattenTransform = [](const double xform[16], float out12[12]) {
+		for (int row = 0; row < 3; ++row)
+			for (int col = 0; col < 4; ++col)
+				out12[row * 4 + col] = static_cast<float>(xform[row * 4 + col]);
+	};
+	const double kDiskCylDegToRad = 3.14159265358979323846 / 180.0;
+
+	for (const pbrt_flatten::Disk &d : scene.disks) {
+		pbrt_scene::Matrix4 o2w;
+		for (int i = 0; i < 16; ++i) o2w.m[i] = d.xform[i];
+		pbrt_scene::Matrix4 w2o;
+		if (!o2w.inverseAffine(w2o)) continue;  // singular - drop, matching disk_hittable's own valid_ guard
+
+		DiskData dd = {};
+		dd.radius = static_cast<float>(d.radius);
+		dd.innerRadius = static_cast<float>(d.innerRadius);
+		dd.height = static_cast<float>(d.height);
+		dd.phiMax = static_cast<float>(d.phiMaxDeg * kDiskCylDegToRad);
+		dd.materialIdx = materialIndex(d.material, d.areaLight);
+		flattenTransform(o2w.m, dd.o2w);
+		flattenTransform(w2o.m, dd.w2o);
+		out.disks.push_back(dd);
+	}
+	stats.disks = out.disks.size();
+
+	for (const pbrt_flatten::Cylinder &c : scene.cylinders) {
+		pbrt_scene::Matrix4 o2w;
+		for (int i = 0; i < 16; ++i) o2w.m[i] = c.xform[i];
+		pbrt_scene::Matrix4 w2o;
+		if (!o2w.inverseAffine(w2o)) continue;
+
+		CylinderData cd = {};
+		cd.radius = static_cast<float>(c.radius);
+		cd.zMin = static_cast<float>(c.zMin);
+		cd.zMax = static_cast<float>(c.zMax);
+		cd.phiMax = static_cast<float>(c.phiMaxDeg * kDiskCylDegToRad);
+		cd.materialIdx = materialIndex(c.material, c.areaLight);
+		flattenTransform(o2w.m, cd.o2w);
+		flattenTransform(w2o.m, cd.w2o);
+		out.cylinders.push_back(cd);
+	}
+	stats.cylinders = out.cylinders.size();
 
 	// ---- lights recovered as quads, then everything else as triangles ----
 	const pbrt_quadify::Result merged = pbrt_quadify::quadify(scene.triangles);

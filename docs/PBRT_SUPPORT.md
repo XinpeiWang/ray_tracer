@@ -102,11 +102,18 @@ loader and no longer match the code:
 
 - `AreaLightSource`'s `twosided` parameter is parsed nowhere; every area
   light is one-sided on both backends regardless of what the scene requests.
-- `Shape "disk"`/`Shape "cylinder"` are CPU-only for now — flattened,
-  built as real hittables (including NEE sampling for use as an area light),
-  and unbaked-CTM correct under arbitrary rotation, but neither GPU backend
-  (recursive or wavefront) builds them yet; a loaded scene using either shape
-  renders that geometry as CPU-only until the GPU work lands.
+- `Shape "disk"`/`Shape "cylinder"` are supported on CPU and the GPU-recursive
+  backend; the GPU-wavefront backend does not build them yet (it refuses to
+  render a scene containing either, rather than mis-rendering it — see
+  `WavefrontPathTracer::render()`'s own guard). CPU keeps the CTM unbaked and
+  is exactly correct under arbitrary rotation (see `disk_cylinder_hittable.h`);
+  the GPU-recursive port carries the same unbaked object↔world transform in
+  `DiskData`/`CylinderData` and applies it by hand in the intersection/
+  closest-hit programs, so it's exactly correct under rotation too — but
+  unlike CPU, a GPU-recursive disk/cylinder used as an `AreaLightSource` is
+  not yet registered for explicit NEE sampling (no `GpuLightKind::Disk`/
+  `::Cylinder`), so it still emits when directly hit but converges noisier
+  than the CPU render of the same scene.
 
 (The `dielectric roughness` and `conductor` routing gaps once listed here were
 fixed — see the Materials table above, which is the source of truth for

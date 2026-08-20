@@ -1258,6 +1258,21 @@ bool WavefrontPathTracer::render(
 	CUdeviceptr d_triangles,
 	unsigned int num_triangles)
 {
+	// Disk/Cylinder (Phase 4b, recursive backend only - see setDiskCylinderCounts()'s
+	// own comment) aren't understood by this backend's SBT, which OptiXRenderer::
+	// render() builds without any idea they exist. Tracing against gasHandle_
+	// anyway would let a ray reach their instance's sbtOffset - an index this
+	// backend's own (shorter) hitgroupRecords array has no entry for, an out-
+	// of-bounds SBT read rather than a shading bug. Fail loudly here instead.
+	if (numDisks_ > 0 || numCylinders_ > 0) {
+		std::cerr << "[Wavefront] This scene has " << numDisks_ << " disk(s) and "
+			<< numCylinders_ << " cylinder(s), which the wavefront backend does not "
+			"support yet (Phase 4c) - rendering it here would corrupt the SBT lookup "
+			"for any ray that hits one. Render without --wavefront, or remove Shape "
+			"\"disk\"/\"cylinder\" from the scene.\n";
+		return false;
+	}
+
 	const int numPixels = width * height;
 
 	// Render-time instrumentation (pbrt-v4 STAT_COUNTER-inspired, see this
