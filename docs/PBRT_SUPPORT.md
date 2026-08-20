@@ -100,10 +100,9 @@ loader and no longer match the code:
 
 ## Other known gaps (not backend-asymmetric, but worth knowing)
 
-- `dielectric`'s `roughness` parameter is accepted by the parser but ignored
-  by both builders (no rough-dielectric routing), despite both backends
-  having a real rough-dielectric BxDF elsewhere in the codebase.
-- `conductor` never reaches either backend's real complex-IOR GGX conductor
-  model — both route it through the simpler fuzz-metal approximation instead.
 - `AreaLightSource`'s `twosided` parameter is parsed nowhere; every area
   light is one-sided on both backends regardless of what the scene requests.
+
+(The `dielectric roughness` and `conductor` routing gaps once listed here were
+fixed — see the Materials table above, which is the source of truth for
+per-`MaterialKind` behavior.)

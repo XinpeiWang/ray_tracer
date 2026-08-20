@@ -12,6 +12,7 @@
 #include "sphere.h"
 #include "material.h"
 #include "power_light_sampler.h"
+#include "bvh_light_sampler.h"
 
 // Build the standard Cornell box scene with a glass sphere and rotated box
 inline hittable_list build_cornell_box_scene() {
@@ -123,12 +124,20 @@ inline hittable_list build_homogeneous_medium_lights() {
 	return lights;
 }
 
-// Build a power_light_list with power weights computed from geometry + emission.
+// Build a light sampler with power weights computed from geometry + emission.
 // Mirrors pbrt-v4 PowerLightSampler: phi = light.Phi() = area * Le_avg * pi
 // For a quad area light:  phi = |u x v| * luminance(emission) * pi
 // For a sphere geometry target (glass, no emission): phi = pi*r^2 * 1 (geometry weight)
-inline power_light_list build_cornell_box_power_lights() {
-	power_light_list lights;
+//
+// Templated on the sampler type so the same weights populate either
+// power_light_list (flat alias-table selection) or bvh_light_sampler
+// (bounding-cone BVH selection) - both expose the identical
+// add(shared_ptr<hittable>, double phi) interface, so only the return type
+// differs between build_cornell_box_power_lights() and
+// build_cornell_box_bvh_lights() below.
+template <class Sampler>
+inline Sampler build_cornell_box_lights_weighted() {
+	Sampler lights;
 	auto empty_material = shared_ptr<material>();
 
 	// Helper: quad area = |u x v|, luminance from emission color
@@ -157,6 +166,14 @@ inline power_light_list build_cornell_box_power_lights() {
 		quad_phi(vec3(0,0,150), vec3(0,200,0), color(4,2,1)));
 
 	return lights;
+}
+
+inline power_light_list build_cornell_box_power_lights() {
+	return build_cornell_box_lights_weighted<power_light_list>();
+}
+
+inline bvh_light_sampler build_cornell_box_bvh_lights() {
+	return build_cornell_box_lights_weighted<bvh_light_sampler>();
 }
 
 #endif

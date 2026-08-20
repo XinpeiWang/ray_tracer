@@ -25,6 +25,7 @@
 #include "../src/TheRestOfYourLife/scene_registry.h"
 #include "../src/TheRestOfYourLife/hittable_list.h"
 #include "../src/TheRestOfYourLife/power_light_sampler.h"
+#include "../src/TheRestOfYourLife/bvh_light_sampler.h"
 #include "../src/TheRestOfYourLife/sppm_adapter.h"
 #include "../src/TheRestOfYourLife/error_codes.h"
 #include <iostream>
@@ -95,8 +96,12 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		hittable_list world      = scene_desc->build_world();
 		hittable_list lights_raw = scene_desc->build_lights();
 
-		// For Cornell box scenes use explicitly-weighted power_light_list;
-		// for all others wrap uniformly (equal weights = same as old hittable_list).
+		// For Cornell box scenes use explicitly-weighted BVH light sampling
+		// (pbrt-v4 Â§12.6's bounding-cone importance sampler, replacing the
+		// flat power_light_list this used to build - same power weights,
+		// but now picked with spatial/directional locality instead of a
+		// single global PMF; see bvh_light_sampler.h); for all others wrap
+		// uniformly (equal weights = same as old hittable_list).
 		// Scene 7 (Cornell Smoke) used to be included here too, but its light
 		// is a different size/color than build_cornell_box_power_lights()
 		// assumes and it has no glass sphere - the uniform-weight path below
@@ -105,11 +110,11 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		// light in the list, equivalent to power weighting anyway.
 		// "A1"/"B2" are scene 0 (Cornell Box) / scene 10 (Cornell Rough Metal)
 		// under the old flat numbering - see scene_registry.h's SceneDescriptor::id.
-		power_light_list lights;
+		bvh_light_sampler lights;
 		if (std::strcmp(scene_id, "A1") == 0 || std::strcmp(scene_id, "B2") == 0) {
-			lights = build_cornell_box_power_lights();
+			lights = build_cornell_box_bvh_lights();
 		} else {
-			lights = power_light_list(lights_raw);
+			lights = bvh_light_sampler(lights_raw);
 		}
 
 			// Validate that scene was built successfully
@@ -191,7 +196,7 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		std::cout << "[TECH] Sampler        : Stratified grid + Halton LDS (base-2/3, per-pixel decorrelated) + Sobol-Owen per bounce" << std::endl;
 		std::cout << "[TECH] Reconstruction : Mitchell-Netravali filter  B=1/3  C=1/3  radius=0.5 px" << std::endl;
 		std::cout << "[TECH] Acceleration   : SAH BVH  |  12 buckets  |  max 4 prims/leaf  |  C_trav=1  C_isect=2" << std::endl;
-		std::cout << "[TECH] Light sampling : Power-weighted alias table (Vose method)  phi = area * Le * pi" << std::endl;
+		std::cout << "[TECH] Light sampling : Bounding-cone BVH (pbrt-v4 sec. 12.6)  phi = area * Le * pi" << std::endl;
 		std::cout << "[TECH] MIS            : Power heuristic  beta=2  (BSDF sample + NEE light sample)" << std::endl;
 		std::cout << "[TECH] Path termination: Russian Roulette per-bounce, etaScale-aware" << std::endl;
 		std::cout << "[TECH] Firefly guard  : NaN / Inf samples clamped to 0" << std::endl;
@@ -305,11 +310,11 @@ extern "C" int cpu_render_main_sppm(int width, int height, int iterations, int p
 		hittable_list world      = scene_desc->build_world();
 		hittable_list lights_raw = scene_desc->build_lights();
 
-		power_light_list lights;
+		bvh_light_sampler lights;
 		if (std::strcmp(scene_id, "A1") == 0 || std::strcmp(scene_id, "B2") == 0) {
-			lights = build_cornell_box_power_lights();
+			lights = build_cornell_box_bvh_lights();
 		} else {
-			lights = power_light_list(lights_raw);
+			lights = bvh_light_sampler(lights_raw);
 		}
 
 		if (world.objects.size() == 0) {

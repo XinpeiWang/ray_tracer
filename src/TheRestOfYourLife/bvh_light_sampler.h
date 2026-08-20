@@ -38,8 +38,10 @@
 
 #include <vector>
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cassert>
+#include <mutex>
 #include <numeric>
 
 // ---------------------------------------------------------------------------
@@ -220,12 +222,46 @@ class bvh_light_sampler : public hittable {
   public:
 	bvh_light_sampler() = default;
 
+	// Build from an existing hittable_list with equal (uniform) weights -
+	// mirrors power_light_list's identical-signature constructor, so a
+	// call site written against that class can switch types with no other
+	// change (see power_light_list(const hittable_list&) in
+	// power_light_sampler.h).
+	explicit bvh_light_sampler(const hittable_list& list) {
+		for (const auto& obj : list.objects)
+			add(obj, 1.0);
+	}
+
+	// Hand-written copy ctor/assignment: build_mutex_ is neither copyable nor
+	// movable (std::mutex), and dirty_ is std::atomic<bool> (also neither),
+	// so the implicit versions would be deleted - which would break every
+	// call site that builds one of these by value and returns/assigns it
+	// (e.g. build_cornell_box_bvh_lights() in cornell_box_scene.h). A fresh
+	// mutex is correct here regardless: it only ever guards this object's
+	// OWN first-build race (see ensure_built()'s comment), so a copy/move
+	// target needs its own, not the source's.
+	bvh_light_sampler(const bvh_light_sampler& other)
+		: lights_(other.lights_), light_bounds_(other.light_bounds_),
+		  nodes_(other.nodes_), bit_trail_(other.bit_trail_), bbox_(other.bbox_),
+		  dirty_(other.dirty_.load(std::memory_order_acquire)) {}
+
+	bvh_light_sampler& operator=(const bvh_light_sampler& other) {
+		if (this == &other) return *this;
+		lights_ = other.lights_;
+		light_bounds_ = other.light_bounds_;
+		nodes_ = other.nodes_;
+		bit_trail_ = other.bit_trail_;
+		bbox_ = other.bbox_;
+		dirty_.store(other.dirty_.load(std::memory_order_acquire), std::memory_order_release);
+		return *this;
+	}
+
 	// Add a light with its BvhLightBounds.
 	void add(std::shared_ptr<hittable> obj, const BvhLightBounds& lb) {
 		lights_.push_back(obj);
 		light_bounds_.push_back(lb);
 		bbox_ = aabb(bbox_, obj->bounding_box());
-		dirty_ = true;
+		dirty_.store(true, std::memory_order_relaxed);
 	}
 
 	// Convenience: add with just a power estimate (full-sphere cone).
@@ -234,17 +270,18 @@ class bvh_light_sampler : public hittable {
 	}
 
 	// Must be called before any sample/pdf call if lights were added.
-	// build() is called lazily on first use if dirty_.
+	// build() is called lazily (and thread-safely - see ensure_built()) on
+	// first use if dirty_.
 	void build() const {
 		nodes_.clear();
 		bit_trail_.assign(lights_.size(), 0u);
-		if (lights_.empty()) { dirty_ = false; return; }
+		if (lights_.empty()) { dirty_.store(false, std::memory_order_release); return; }
 
 		// Build with indices 0..N-1
 		std::vector<int> indices(lights_.size());
 		std::iota(indices.begin(), indices.end(), 0);
 		build_recursive(indices, 0, (int)indices.size(), 0);
-		dirty_ = false;
+		dirty_.store(false, std::memory_order_release);
 	}
 
 	// ---- hittable interface ------------------------------------------------
@@ -308,10 +345,25 @@ class bvh_light_sampler : public hittable {
 	mutable std::vector<BVHLightNode>      nodes_;
 	mutable std::vector<uint32_t>          bit_trail_;  // per-light BVH path
 	aabb                                   bbox_;
-	mutable bool                           dirty_ = true;
+	mutable std::atomic<bool>              dirty_{true};
+	mutable std::mutex                     build_mutex_;
 
+	// camera::render() (src/TheRestOfYourLife/camera.h) spawns many worker
+	// threads that all call random()/pdf_value() on this SAME instance for
+	// NEE, starting from each thread's very first sample - so the lazy
+	// "build on first use" this class advertises must be safe under
+	// concurrent first-touch, not just single-threaded convenience. The
+	// unguarded `if (dirty_) build()` this used to be let two threads both
+	// enter build() at once, racing push_back/clear on nodes_/bit_trail_
+	// (this is what actually happened - see CameraParametersTest.
+	// ExtremeCoordinates, which segfaulted mid-render before this fix).
+	// dirty_'s acquire/release pairing with build()'s final store makes the
+	// fast path safe to read lock-free once built; the lock only serializes
+	// the (rare) actual build.
 	void ensure_built() const {
-		if (dirty_) build();
+		if (!dirty_.load(std::memory_order_acquire)) return;
+		std::lock_guard<std::mutex> lock(build_mutex_);
+		if (dirty_.load(std::memory_order_relaxed)) build();
 	}
 
 	// ---- BVH build (recursive, depth-first, nodes stored in pre-order) ----
