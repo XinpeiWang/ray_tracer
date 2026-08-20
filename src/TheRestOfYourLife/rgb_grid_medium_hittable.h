@@ -51,20 +51,8 @@ class rgb_grid_medium_hittable : public hittable {
     }
 
     bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
-        // Transform ray into medium space. Direction transforms by the
-        // matrix only (no translation) - same as CloudMedium::world_to_medium_pt.
-        // Applying the SAME matrix to both origin and direction means the
-        // medium-space ray is still parametrized by the identical `t` as the
-        // world-space ray (o+t*d transforms to (mat*o+translate)+t*(mat*d)),
-        // so segment/hit `t` values read back directly with no rescaling.
-        point3 o = r.origin();
-        vec3   d = r.direction();
-        double mox = mat_[0]*o.x() + mat_[1]*o.y() + mat_[2]*o.z() + translate_[0];
-        double moy = mat_[3]*o.x() + mat_[4]*o.y() + mat_[5]*o.z() + translate_[1];
-        double moz = mat_[6]*o.x() + mat_[7]*o.y() + mat_[8]*o.z() + translate_[2];
-        double mdx = mat_[0]*d.x() + mat_[1]*d.y() + mat_[2]*d.z();
-        double mdy = mat_[3]*d.x() + mat_[4]*d.y() + mat_[5]*d.z();
-        double mdz = mat_[6]*d.x() + mat_[7]*d.y() + mat_[8]*d.z();
+        double mox, moy, moz, mdx, mdy, mdz;
+        world_to_medium(r, mox, moy, moz, mdx, mdy, mdz);
 
         Ray3<double> mray(mox, moy, moz, mdx, mdy, mdz);
         double tMin, tMax;
@@ -72,38 +60,29 @@ class rgb_grid_medium_hittable : public hittable {
         if (tMin < ray_t.min) tMin = ray_t.min;
         if (tMin >= tMax) return false;
 
-        auto it = grid.sample_ray(mray, tMin, tMax);
-        for (;;) {
-            auto seg = it.Next();
-            if (!seg.has_value()) return false;  // ray exited the medium's AABB
-            if (seg->sigma_maj <= 0.0) continue; // empty segment, try the next one
+        bool got_hit = false;
+        march_segments(mray, tMin, tMax, [&](double tt, double seg_sigma_maj) {
+            double px = mox + tt*mdx, py = moy + tt*mdy, pz = moz + tt*mdz;
+            double sa[3], ss[3], le[3];
+            grid.sample_point(px, py, pz, sa, ss, le);
+            double sigma_t_local = std::max({ sa[0]+ss[0], sa[1]+ss[1], sa[2]+ss[2] });
 
-            double tt = seg->tMin;
-            for (;;) {
-                double dt = -std::log(1.0 - random_double()) / seg->sigma_maj;
-                tt += dt;
-                if (tt >= seg->tMax) break;  // exited this segment - advance to the next
+            if (random_double() < sigma_t_local / seg_sigma_maj) {
+                rec.t = tt;
+                rec.p = r.at(tt);
+                rec.normal     = vec3(1, 0, 0);  // arbitrary (volume has no surface normal)
+                rec.front_face = true;
 
-                double px = mox + tt*mdx, py = moy + tt*mdy, pz = moz + tt*mdz;
-                double sa[3], ss[3], le[3];
-                grid.sample_point(px, py, pz, sa, ss, le);
-                double sigma_t_local = std::max({ sa[0]+ss[0], sa[1]+ss[1], sa[2]+ss[2] });
-
-                if (random_double() < sigma_t_local / seg->sigma_maj) {
-                    rec.t = tt;
-                    rec.p = r.at(tt);
-                    rec.normal     = vec3(1, 0, 0);  // arbitrary (volume has no surface normal)
-                    rec.front_face = true;
-
-                    double maxc = std::max({ ss[0], ss[1], ss[2], 1e-6 });
-                    color albedo(ss[0]/maxc, ss[1]/maxc, ss[2]/maxc);
-                    rec.mat = make_shared<hg_phase_material>(albedo, phase_g,
-                        [this](const ray& sr) { return shadow_transmittance_impl(sr); });
-                    return true;
-                }
-                // Null collision: keep marching within this segment.
+                double maxc = std::max({ ss[0], ss[1], ss[2], 1e-6 });
+                color albedo(ss[0]/maxc, ss[1]/maxc, ss[2]/maxc);
+                rec.mat = make_shared<hg_phase_material>(albedo, phase_g,
+                    [this](const ray& sr, double t_max) { return shadow_transmittance_impl(sr, t_max); });
+                got_hit = true;
+                return true;  // real scatter event: stop marching
             }
-        }
+            return false;  // null collision: keep marching
+        });
+        return got_hit;
     }
 
     aabb bounding_box() const override {
@@ -111,26 +90,70 @@ class rgb_grid_medium_hittable : public hittable {
     }
 
   private:
-    // Per-channel ratio-tracking transmittance (same technique as
-    // cloud_medium_hittable's own shadow_transmittance_impl(), see that
-    // file's comment) - but walking ALL of grid.sample_ray()'s DDA
-    // segments the way hit() above already does (grid's majorant varies
-    // per voxel, unlike CloudMedium's single global majorant), and tracked
-    // per-RGB-channel since this grid's whole point is spatially-varying
-    // COLOR, not just density (see file header comment).
-    color shadow_transmittance_impl(const ray& r) const {
+    // Transforms r into medium space. Direction transforms by the matrix
+    // only (no translation) - same as CloudMedium::world_to_medium_pt.
+    // Applying the SAME matrix to both origin and direction means the
+    // medium-space ray is still parametrized by the identical `t` as the
+    // world-space ray (o+t*d transforms to (mat*o+translate)+t*(mat*d)),
+    // so segment/hit `t` values read back directly with no rescaling.
+    // Shared by hit() and shadow_transmittance_impl() - previously
+    // duplicated inline in both.
+    void world_to_medium(const ray& r, double& mox, double& moy, double& moz,
+                          double& mdx, double& mdy, double& mdz) const {
         point3 o = r.origin();
         vec3   d = r.direction();
-        double mox = mat_[0]*o.x() + mat_[1]*o.y() + mat_[2]*o.z() + translate_[0];
-        double moy = mat_[3]*o.x() + mat_[4]*o.y() + mat_[5]*o.z() + translate_[1];
-        double moz = mat_[6]*o.x() + mat_[7]*o.y() + mat_[8]*o.z() + translate_[2];
-        double mdx = mat_[0]*d.x() + mat_[1]*d.y() + mat_[2]*d.z();
-        double mdy = mat_[3]*d.x() + mat_[4]*d.y() + mat_[5]*d.z();
-        double mdz = mat_[6]*d.x() + mat_[7]*d.y() + mat_[8]*d.z();
+        mox = mat_[0]*o.x() + mat_[1]*o.y() + mat_[2]*o.z() + translate_[0];
+        moy = mat_[3]*o.x() + mat_[4]*o.y() + mat_[5]*o.z() + translate_[1];
+        moz = mat_[6]*o.x() + mat_[7]*o.y() + mat_[8]*o.z() + translate_[2];
+        mdx = mat_[0]*d.x() + mat_[1]*d.y() + mat_[2]*d.z();
+        mdy = mat_[3]*d.x() + mat_[4]*d.y() + mat_[5]*d.z();
+        mdz = mat_[6]*d.x() + mat_[7]*d.y() + mat_[8]*d.z();
+    }
+
+    // Walks grid's majorant-DDA segments across [tMin, tMax] (medium
+    // space), calling on_candidate(t, seg_sigma_maj) for each stochastic
+    // candidate point along the way. Stops as soon as on_candidate returns
+    // true; otherwise walks every segment to exhaustion and returns false.
+    // Shared by hit() (stops at the first accepted real-scatter event) and
+    // shadow_transmittance_impl() (walks every candidate, accumulating) -
+    // previously each duplicated this same segment-marching loop inline.
+    template <typename CandidateFn>
+    bool march_segments(const Ray3<double>& mray, double tMin, double tMax,
+                         CandidateFn&& on_candidate) const {
+        auto it = grid.sample_ray(mray, tMin, tMax);
+        for (;;) {
+            auto seg = it.Next();
+            if (!seg.has_value()) return false;  // ray exited the medium's AABB
+            if (seg->sigma_maj <= 0.0) continue;  // empty segment, try the next one
+
+            double tt = seg->tMin;
+            for (;;) {
+                double dt = -std::log(1.0 - random_double()) / seg->sigma_maj;
+                tt += dt;
+                if (tt >= seg->tMax) break;  // exited this segment - advance to the next
+                if (on_candidate(tt, seg->sigma_maj)) return true;
+            }
+        }
+    }
+
+    // Per-channel ratio-tracking transmittance (same technique as
+    // cloud_medium_hittable's own shadow_transmittance_impl(), see that
+    // file's comment) via march_segments() above, bounded by t_max - the
+    // shadow ray's real target distance (e.g. a punctual light) - rather
+    // than the medium's full extent. Tracked per-RGB-channel (unlike
+    // cloud_medium_hittable's single shared RatioTrackingTrHeterogeneous
+    // call) since this grid's whole point is spatially-varying COLOR, not
+    // just density (see file header comment) - a single random walk
+    // position shared across all 3 channels' weights, not 3 independent
+    // walks, which is why this stays its own loop rather than 3 calls into
+    // ratio_tracking.h's single-channel helper.
+    color shadow_transmittance_impl(const ray& r, double t_max) const {
+        double mox, moy, moz, mdx, mdy, mdz;
+        world_to_medium(r, mox, moy, moz, mdx, mdy, mdz);
 
         Ray3<double> mray(mox, moy, moz, mdx, mdy, mdz);
         double tMin, tMax;
-        if (!grid.intersect_ray(mray, infinity, tMin, tMax)) return color(1, 1, 1);
+        if (!grid.intersect_ray(mray, t_max, tMin, tMax)) return color(1, 1, 1);
         if (tMin < 0) tMin = 0;
         if (tMin >= tMax) return color(1, 1, 1);
 
@@ -139,30 +162,21 @@ class rgb_grid_medium_hittable : public hittable {
         constexpr int kMaxNullCollisions = 100000;
         int collisions = 0;
 
-        auto it = grid.sample_ray(mray, tMin, tMax);
-        for (;;) {
-            auto seg = it.Next();
-            if (!seg.has_value()) break;  // ray exited the medium's AABB: done
-            if (seg->sigma_maj <= 0.0) continue;  // empty segment, try the next one
+        march_segments(mray, tMin, tMax, [&](double tt, double seg_sigma_maj) {
+            if (++collisions > kMaxNullCollisions) return true;  // bail out, same as cloud's cap
 
-            double tt = seg->tMin;
-            for (;;) {
-                if (++collisions > kMaxNullCollisions)
-                    return color(Tr[0], Tr[1], Tr[2]);  // bail out, same as cloud's cap
-
-                double dt = -std::log(1.0 - random_double()) / seg->sigma_maj;
-                tt += dt;
-                if (tt >= seg->tMax) break;  // exited this segment - advance to the next
-
-                double px = mox + tt*mdx, py = moy + tt*mdy, pz = moz + tt*mdz;
-                double sa[3], ss[3], le[3];
-                grid.sample_point(px, py, pz, sa, ss, le);
-                for (int c = 0; c < 3; ++c) {
-                    double sigma_t_c = sa[c] + ss[c];
-                    Tr[c] *= 1.0 - (sigma_t_c / seg->sigma_maj);
-                }
+            double px = mox + tt*mdx, py = moy + tt*mdy, pz = moz + tt*mdz;
+            double sa[3], ss[3], le[3];
+            grid.sample_point(px, py, pz, sa, ss, le);
+            for (int c = 0; c < 3; ++c) {
+                double sigma_t_c = sa[c] + ss[c];
+                Tr[c] *= 1.0 - (sigma_t_c / seg_sigma_maj);
             }
-        }
+            // Fully opaque already - no need to keep marching (mirrors
+            // cloud_medium_hittable's single-channel Tr<=0 early exit).
+            if (Tr[0] <= 0.0 && Tr[1] <= 0.0 && Tr[2] <= 0.0) return true;
+            return false;
+        });
         return color(Tr[0], Tr[1], Tr[2]);
     }
 

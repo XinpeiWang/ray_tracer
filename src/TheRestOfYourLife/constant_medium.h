@@ -82,7 +82,7 @@ class hg_phase_material : public material {
     // material::shadow_transmittance()'s own default (fully transmissive),
     // same behavior as before this feature existed.
     hg_phase_material(const color& albedo, double g,
-                       std::function<color(const ray&)> transmittance_fn = nullptr)
+                       std::function<color(const ray&, double)> transmittance_fn = nullptr)
         : albedo(albedo), phase(g), transmittance_fn_(std::move(transmittance_fn)) {}
 
     bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
@@ -126,14 +126,15 @@ class hg_phase_material : public material {
     // shadow_transmittance()'s job below, not this one's.
     bool is_shadow_transmissive(const hit_record&) const override { return true; }
 
-    color shadow_transmittance(const ray& r) const override {
-        return transmittance_fn_ ? transmittance_fn_(r) : material::shadow_transmittance(r);
+    color shadow_transmittance(const ray& r, double t_max) const override {
+        return transmittance_fn_ ? transmittance_fn_(r, t_max)
+                                  : material::shadow_transmittance(r, t_max);
     }
 
   private:
     color albedo;
     HenyeyGreensteinPhaseFunction<double> phase;
-    std::function<color(const ray&)> transmittance_fn_;
+    std::function<color(const ray&, double)> transmittance_fn_;
 };
 
 
@@ -159,7 +160,7 @@ class constant_medium : public hittable {
         // to set a constant albedo color:
         color tex_color = tex->value(0.5, 0.5, point3(0,0,0));
         phase_mat = make_shared<hg_phase_material>(tex_color, g,
-            [this](const ray& r) { return shadow_transmittance_impl(r); });
+            [this](const ray& r, double t_max) { return shadow_transmittance_impl(r, t_max); });
     }
 
     constant_medium(shared_ptr<hittable> boundary, double density,
@@ -167,7 +168,7 @@ class constant_medium : public hittable {
         : boundary(boundary) {
         med = HomogeneousMediumData<double>(/*sa=*/0.0, /*ss=*/density, g);
         phase_mat = make_shared<hg_phase_material>(albedo, g,
-            [this](const ray& r) { return shadow_transmittance_impl(r); });
+            [this](const ray& r, double t_max) { return shadow_transmittance_impl(r, t_max); });
     }
 
     // Full pbrt-v4-style constructor: separate absorption and scattering coefficients.
@@ -183,7 +184,7 @@ class constant_medium : public hittable {
                                                          sigma_s / sigma_t)
                                         : color(0,0,0);
         phase_mat = make_shared<hg_phase_material>(ss_albedo, g,
-            [this](const ray& r) { return shadow_transmittance_impl(r); });
+            [this](const ray& r, double t_max) { return shadow_transmittance_impl(r, t_max); });
     }
 
     bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
@@ -236,24 +237,28 @@ class constant_medium : public hittable {
     aabb bounding_box() const override { return boundary->bounding_box(); }
 
   private:
-    // Deterministic Beer-Lambert transmittance for a shadow ray's full
-    // traversal of THIS medium's boundary - same rec1/rec2 entry/exit
-    // computation as hit() above (lines ~186-205), just without the
-    // stochastic free-path sampling: a shadow ray wants the real
-    // attenuation over the whole segment it crosses, not a scatter-event
-    // decision. Returns (1,1,1) (no attenuation) if the ray doesn't
-    // actually cross the boundary - defensive only, shadow_ray.h only
-    // calls this once it already knows this material was hit.
-    color shadow_transmittance_impl(const ray& r) const {
+    // Deterministic Beer-Lambert transmittance for a shadow ray's
+    // traversal of THIS medium's boundary, bounded by t_max (the shadow
+    // ray's real target distance, e.g. a punctual light) - same rec1/rec2
+    // entry/exit computation as hit() above (lines ~186-205), just without
+    // the stochastic free-path sampling: a shadow ray wants the real
+    // attenuation over the segment it actually needs (entry up to whichever
+    // is closer, the medium's exit or the light), not a scatter-event
+    // decision, and not the medium's full extent if the light is closer
+    // than the far boundary. Returns (1,1,1) (no attenuation) if the ray
+    // doesn't actually cross the boundary - defensive only, shadow_ray.h
+    // only calls this once it already knows this material was hit.
+    color shadow_transmittance_impl(const ray& r, double t_max) const {
         hit_record rec1, rec2;
         if (!boundary->hit(r, interval::universe, rec1)) return color(1, 1, 1);
         if (!boundary->hit(r, interval(rec1.t + 0.0001, infinity), rec2)) return color(1, 1, 1);
 
         double t0 = rec1.t < 0 ? 0 : rec1.t;
-        if (t0 >= rec2.t) return color(1, 1, 1);
+        double t1 = std::min(rec2.t, t_max);
+        if (t0 >= t1) return color(1, 1, 1);
 
         double ray_length      = r.direction().length();
-        double distance_inside = (rec2.t - t0) * ray_length;
+        double distance_inside = (t1 - t0) * ray_length;
         return transmittance(distance_inside);
     }
 

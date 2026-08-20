@@ -252,6 +252,17 @@ private:
     CUdeviceptr d_shadowCounter_    = 0;
     CUdeviceptr d_probeCounter_     = 0;
     CUdeviceptr d_exitCounter_      = 0;
+
+    // Own stream for launchEvaluateMaterialsSimple()'s kernel, separate from
+    // the base class's stream_ (externally owned by OptiXRenderer, shared
+    // across every backend strategy - see PathTracingStrategy::stream_).
+    // hitQueue and simpleHitQueue are disjoint (routed at push time in
+    // wavefront_programs.cu) and both evaluate-materials kernels only ever
+    // write into shared queues via atomicAdd-based WorkQueue::push(), so
+    // running them on separate streams lets the GPU actually overlap them
+    // instead of serializing two kernels that have no real dependency on
+    // each other. Owned and destroyed by this class (unlike stream_).
+    cudaStream_t simpleMaterialStream_ = nullptr;
     int          queueCapacity_ = 0;
     CUdeviceptr  d_bssrdfTables_ = 0;         ///< see setBssrdfTables()
     unsigned int numBssrdfTables_ = 0;

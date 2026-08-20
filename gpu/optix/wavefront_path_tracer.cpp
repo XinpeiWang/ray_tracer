@@ -119,6 +119,11 @@ bool WavefrontPathTracer::initialize(OptixDeviceContext context,
 	module_  = module;
 	stream_  = stream;
 
+	// Own stream for launchEvaluateMaterialsSimple()'s kernel - see its
+	// member comment in the header for why this needs to be separate from
+	// stream_.
+	CUDA_CHECK(cudaStreamCreate(&simpleMaterialStream_));
+
 	// Must be true, not false: the traversable this pipeline traces against
 	// is the SAME IAS/GAS OptiXRenderer::buildScene() builds for the
 	// recursive backend, and that GAS gets motionOptions.numKeys=2 whenever
@@ -1082,7 +1087,7 @@ void WavefrontPathTracer::launchEvaluateMaterialsSimple(
 		reinterpret_cast<const unsigned char*>(d_texturePixels_),
 		maxDepth,
 		skyColor, shadowRayEpsilon, skyDist,
-		stream_);
+		simpleMaterialStream_);
 }
 
 void WavefrontPathTracer::launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor,
@@ -1333,10 +1338,15 @@ bool WavefrontPathTracer::render(
 			// routed to simpleHitQueue at push time - see wavefront_types.h's
 			// WavefrontQueues::simpleHitQueue comment). Independent of the
 			// launch above - reads its own queue, writes into the same
-			// shadowQueue/nextRayQueue/framebuffer. Order relative to the
-			// launchEvaluateMaterials call above doesn't matter (both run on
-			// stream_ and complete before the sync below), only that both
-			// finish before numMiss/numShadow are read.
+			// shadowQueue/nextRayQueue/framebuffer via the same atomicAdd-
+			// based WorkQueue::push() (safe for concurrent writers) and
+			// disjoint per-pixel framebuffer slots (a ray belongs to exactly
+			// one queue per bounce). Launched on simpleMaterialStream_ (its
+			// own stream, separate from stream_ - see that member's header
+			// comment) so this genuinely overlaps launchEvaluateMaterials
+			// above on the GPU instead of serializing two kernels with no
+			// real dependency on each other - both streams are synced below,
+			// before numMiss/numShadow are read.
 			// ------------------------------------------------------------------
 			launchEvaluateMaterialsSimple(
 				numSimpleHits, max_depth,
@@ -1359,6 +1369,7 @@ bool WavefrontPathTracer::render(
 			launchAccumulateMiss(numMiss, d_fbPtr, camera.backgroundColor, camera.skyDist);
 
 			CUDA_CHECK(cudaStreamSynchronize(stream_));
+			CUDA_CHECK(cudaStreamSynchronize(simpleMaterialStream_));
 
 			// ------------------------------------------------------------------
 			// Phase 4b: BSSRDF probe walk + exit resolve (MaterialType::
@@ -1536,6 +1547,7 @@ void WavefrontPathTracer::cleanup() {
 	if (shadowPipeline_)    { optixPipelineDestroy(shadowPipeline_);    shadowPipeline_    = nullptr; }
 	if (wfModule_)          { optixModuleDestroy(wfModule_);            wfModule_          = nullptr; }
 	if (d_wfLaunchParams_)  { cudaFree(reinterpret_cast<void*>(d_wfLaunchParams_)); d_wfLaunchParams_ = 0; }
+	if (simpleMaterialStream_) { cudaStreamDestroy(simpleMaterialStream_); simpleMaterialStream_ = nullptr; }
 }
 
 } // namespace optix_renderer

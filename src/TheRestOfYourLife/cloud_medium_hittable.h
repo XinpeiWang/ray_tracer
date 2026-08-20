@@ -27,6 +27,7 @@
 #include "hittable.h"
 #include "constant_medium.h"  // hg_phase_material
 #include "../shared/cloud_medium.h"
+#include "../shared/ratio_tracking.h"  // RatioTrackingTrHeterogeneous
 
 class cloud_medium_hittable : public hittable {
   public:
@@ -38,7 +39,7 @@ class cloud_medium_hittable : public hittable {
                           const point3& world_min, const point3& world_max)
         : cloud(medium), world_min(world_min), world_max(world_max) {
         phase_mat = make_shared<hg_phase_material>(albedo, medium.phase_g,
-            [this](const ray& r) { return shadow_transmittance_impl(r); });
+            [this](const ray& r, double t_max) { return shadow_transmittance_impl(r, t_max); });
     }
 
     bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
@@ -83,51 +84,50 @@ class cloud_medium_hittable : public hittable {
 
   private:
     // Ratio-tracking transmittance estimator (Novak et al.; pbrt-v4
-    // VolPathIntegrator's SampleLd uses the same technique) - unlike
-    // hit()'s free-path sample above (which decides ONE stochastic
-    // scatter-or-not outcome), a shadow ray needs the aggregate
-    // attenuation over the WHOLE segment it crosses, so this walks every
-    // majorant-driven candidate point across the segment, multiplying in
-    // (1 - sigma_t(point)/sigma_maj) at each null collision - the
-    // probability that candidate point was NOT a real interaction.
-    // Unbiased, noisy per-call like every other stochastic estimator in
-    // this renderer (NEE, BSDF sampling, ...), not a special case.
+    // VolPathIntegrator's SampleLd uses the same technique), bounded by
+    // t_max - the shadow ray's real target distance (e.g. a punctual
+    // light) - rather than always integrating to the medium's true exit.
+    // Routed through src/shared/ratio_tracking.h's
+    // RatioTrackingTrHeterogeneous(), the generic heterogeneous-medium
+    // overload that file's own RatioTrackingTr() comment anticipated
+    // ("can be added when a HeterogeneousMediumData type is introduced") -
+    // this is that overload, parameterized by callables instead of tied to
+    // one medium's density representation, since CloudMedium's procedural
+    // FBm density and rgb_grid_medium_hittable's per-voxel grid don't share
+    // a lookup interface.
     //
     // Single majorant segment only, matching hit()'s own single
     // maj_it.next() call above - see this file's header comment on
     // CloudMedium's majorant iterator; a multi-segment cloud medium would
     // need both this and hit() extended together, out of scope here.
-    color shadow_transmittance_impl(const ray& r) const {
+    color shadow_transmittance_impl(const ray& r, double t_max) const {
         double ray_o[3] = { r.origin().x(), r.origin().y(), r.origin().z() };
         double ray_d[3] = { r.direction().x(), r.direction().y(), r.direction().z() };
 
-        auto maj_it = cloud.sample_ray(ray_o, ray_d, infinity);
+        auto maj_it = cloud.sample_ray(ray_o, ray_d, t_max);
         double tMin, tMax, sigma_maj;
         if (!maj_it.next(tMin, tMax, sigma_maj)) return color(1, 1, 1);
         if (sigma_maj <= 0.0) return color(1, 1, 1);
         if (tMin < 0) tMin = 0;
         if (tMin >= tMax) return color(1, 1, 1);
 
-        double Tr = 1.0;
-        double t  = tMin;
         // Safety cap, same spirit as shadow_ray.h's kMaxTransmissiveSkips -
         // bounds worst-case cost for a pathologically dense/thick medium
         // rather than looping until Tr underflows to exactly 0.
         constexpr int kMaxNullCollisions = 100000;
-        for (int i = 0; i < kMaxNullCollisions; ++i) {
-            double dt = -std::log(1.0 - random_double()) / sigma_maj;
-            t += dt;
-            if (t >= tMax) break;  // exited the medium: done
 
-            point3 p = r.at(t);
-            double mx, my, mz;
-            cloud.world_to_medium_pt(p.x(), p.y(), p.z(), mx, my, mz);
-            double d = cloud.compute_density(mx, my, mz);
-            double sigma_t_local = d * cloud.sigma_s;  // sigma_a=0 (file header comment)
+        double Tr = RatioTrackingTrHeterogeneous<double>(
+            tMin, tMax, sigma_maj,
+            []() { return random_double(); },
+            [&](double t) {
+                point3 p = r.at(t);
+                double mx, my, mz;
+                cloud.world_to_medium_pt(p.x(), p.y(), p.z(), mx, my, mz);
+                double d = cloud.compute_density(mx, my, mz);
+                return d * cloud.sigma_s;  // sigma_a=0 (file header comment)
+            },
+            kMaxNullCollisions);
 
-            Tr *= 1.0 - (sigma_t_local / sigma_maj);
-            if (Tr <= 0.0) return color(0, 0, 0);
-        }
         return color(Tr, Tr, Tr);  // grayscale density, no per-channel sigma_t here
     }
 

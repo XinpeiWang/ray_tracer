@@ -81,8 +81,12 @@ inline bool shadow_ray_hit(
             return true;
         }
 
+        // Bound the transmittance search to `remaining` (this iteration's
+        // real target distance, e.g. the light) rather than letting a
+        // medium integrate all the way to its own far geometric boundary -
+        // see material_base.h's shadow_transmittance() comment.
         if (out_transmittance)
-            *out_transmittance = *out_transmittance * rec.mat->shadow_transmittance(current);
+            *out_transmittance = *out_transmittance * rec.mat->shadow_transmittance(current, remaining);
 
         // Transmissive: step past this point and keep going in the SAME
         // direction - matches optixIgnoreIntersection()'s effect exactly,
@@ -91,7 +95,14 @@ inline bool shadow_ray_hit(
         if (remaining <= t_min) return false;
         current = ray(rec.p, r.direction(), r.time());
     }
-    return false;  // too many transmissive hits in a row; treat as occluded
+    // Too many transmissive hits in a row - treat as occluded. Every NEE
+    // call site multiplies its light contribution by *out_transmittance
+    // regardless of this function's true/false return (see this function's
+    // own doc comment above), so zeroing it here is what actually excludes
+    // the light - returning false alone would not, since false means
+    // "visible" to every caller.
+    if (out_transmittance) *out_transmittance = color(0, 0, 0);
+    return false;
 }
 
 #endif

@@ -30,7 +30,7 @@
 # support unless -DRT_BUILD_GPU=ON), scene_metadata (shared lib:
 # scene_metadata.dylib on macOS, scene_metadata.so on Linux).
 
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.14)
 option(RT_BUILD_GPU "Also build the CUDA/OptiX GPU renderer (Windows + NVIDIA GPU + CUDA/OptiX SDK only)" OFF)
 project(ray_tracer_cpu CXX C)
 
@@ -39,6 +39,14 @@ project(ray_tracer_cpu CXX C)
 # language-detection error - same soft-optional posture pbrt-v4's own
 # CMakeLists.txt uses for its CUDA/OptiX support.
 if(RT_BUILD_GPU)
+    # Raises the requirement only for the GPU path, which is the only part
+    # of this file that actually needs it (CUDA_ARCHITECTURES' "86-real"/
+    # "86-virtual" suffix syntax below is a CMake 3.18 feature) - the
+    # CPU-only build this file exists for in the first place (see header
+    # comment: macOS/Linux support) has no reason to require anything newer
+    # than the 3.14 floor above. cmake_minimum_required() can be called more
+    # than once to raise the requirement partway through a file.
+    cmake_minimum_required(VERSION 3.18)
     include(CheckLanguage)
     check_language(CUDA)
     if(NOT CMAKE_CUDA_COMPILER)

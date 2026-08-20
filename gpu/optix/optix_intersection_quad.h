@@ -100,6 +100,18 @@ extern "C" __global__ void __closesthit__quad() {
 	bool bssrdf_exit = false;
 	float3 bssrdf_exit_pos = make_float3(0.0f, 0.0f, 0.0f);
 
+	// Medium/DielectricMedium/CloudMedium/RgbGridMedium/Hair/Principled need
+	// sphere-specific handling this file doesn't implement (see
+	// material_requires_sphere_only_handling()'s comment); NormalMappedLambertian
+	// has a real implementation on triangles but not here either. Trap with a
+	// specific message rather than falling through to shade_material()'s own
+	// generic "unhandled MaterialType" default.
+	if (material_requires_sphere_only_handling(mat.type) ||
+		mat.type == MaterialType::NormalMappedLambertian) {
+		printf("[QUAD-SHADE] MaterialType %d is not supported on quad geometry\n", (int)mat.type);
+		__trap();
+	}
+
 	shade_material(mat, matIdx, final_normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
 		attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
 		bssrdf_exit, bssrdf_exit_pos);

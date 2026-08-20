@@ -127,8 +127,13 @@ class material {
     // (see hg_phase_material::is_shadow_transmissive()'s own comment for
     // the history - the "unoccluded" simplification was correct as far as
     // it went, but stopped short of actually attenuating).
-    virtual color shadow_transmittance(const ray& r) const {
-        (void)r;
+    // t_max bounds the search to the shadow ray's real target distance (the
+    // light) rather than the medium's full geometric extent - a punctual
+    // light sitting inside or just past a medium's near boundary should only
+    // be attenuated by the medium between the entry point and the light, not
+    // by however much further the medium happens to continue past it.
+    virtual color shadow_transmittance(const ray& r, double t_max) const {
+        (void)r; (void)t_max;
         return color(1, 1, 1);
     }
 

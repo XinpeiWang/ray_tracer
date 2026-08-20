@@ -62,6 +62,14 @@
  *         systematic to be Monte-Carlo noise or a corruption artifact.
  *         This looks like a genuine, currently-unexplained CPU vs GPU
  *         BSSRDF discrepancy.
+ *         SUPERSEDED: this CPU-brighter gap was since fixed (root cause no
+ *         longer reproduces - confirmed by re-running against a pre-
+ *         shadow-transmittance build, where B13 passed at the standard 30%
+ *         tolerance). A NEW, opposite-signed gap (CPU ~32% DARKER) appeared
+ *         after CPU shadow rays gained real transmittance through media -
+ *         see kSubsurfaceSlabRelTolerance's own comment below for that
+ *         gap's cause. The paragraph above is kept as history for why 30%
+ *         was the original standard tolerance, not as the current gap.
  *       - B1: measured CPU-vs-GPU-wavefront B-channel gap sits right at the
  *         30% edge (30.08% / 30.03% / 30.10% across repeated isolated runs)
  *         and is confined to that one backend pair and one channel -
@@ -185,13 +193,16 @@
  * Summary of what this suite's own calibration surfaced that is NOT fixed
  * here (out of scope per this task - reported for a human to triage):
  *
- *   1. B13 (SubsurfaceSlab) fails BrightnessAndChannelsConsistentAcrossBackends
+ *   1. [SUPERSEDED - see kSubsurfaceSlabRelTolerance's comment below] B13
+ *      (SubsurfaceSlab) used to fail BrightnessAndChannelsConsistentAcrossBackends
  *      at the standard 30% tolerance, verified in single-scene process
- *      isolation: CPU is consistently ~32-38% brighter than BOTH
+ *      isolation: CPU was consistently ~32-38% brighter than BOTH
  *      GPU-recursive and GPU-wavefront, across avg brightness and every
  *      channel. See the tolerance-calibration note above for why this reads
  *      as a real discrepancy rather than noise or cross-scene corruption.
- *      Left failing deliberately.
+ *      That gap has since been fixed; B13 now gets a dedicated, narrower
+ *      tolerance for a new, differently-signed (CPU darker) gap instead -
+ *      this paragraph is kept as history, not the current state.
  *
  *   2. B1 (RoughMetalSpheres) fails the same test on its B channel alone,
  *      CPU vs GPU-wavefront only (GPU-recursive matches CPU fine), also

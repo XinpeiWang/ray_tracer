@@ -2691,13 +2691,16 @@ extern "C" __global__ void evaluate_materials(
 // switch with a 2-way if/else, so the compiler doesn't have to reserve
 // registers for the switch's expensive arms (CoatedDiffuse/CoatedConductor/
 // Principled/RoughDielectric/...) for threads that will never take them,
-// improving occupancy for this launch. No DiffuseLight early-exit and no
-// default:/__trap() guard are needed here - the routing at push time
-// guarantees only Lambertian/Metal hits ever reach this queue, so unlike
-// evaluate_materials() there is no "genuinely new MaterialType" case to
-// defend against structurally (a routing bug would show up immediately as a
-// visibly wrong render, not a silent gap, since it's a two-way branch over a
-// closed set of exactly two types this kernel is defined to handle).
+// improving occupancy for this launch. No DiffuseLight early-exit is needed
+// here - the routing at push time guarantees only Lambertian/Metal hits ever
+// reach this queue. That routing lives in a different file
+// (wavefront_programs.cu's __raygen__wf_intersect) than this kernel, though,
+// so nothing here structurally prevents the two from drifting apart (e.g. a
+// future edit widening the push-site condition without updating this
+// kernel) - explicitly checking MaterialType::Metal rather than assuming
+// "must be Metal" in an unconditional else, with the same trap-on-default
+// this file's evaluate_materials() switch uses, catches that drift loudly
+// instead of silently mis-shading whatever slipped through as Metal.
 //
 // Fewer scene-data parameters than evaluate_materials(): no bssrdfProbeQueue
 // (Subsurface-only), no cloud/RGB-grid medium buffers or measured-BRDF
@@ -2799,12 +2802,19 @@ extern "C" __global__ void evaluate_materials_simple(
 		attenuation = albedoSpectrum(lambertianColor);
 		scattered   = true;
 		is_specular = false;
-	} else { // MaterialType::Metal
+	} else if (mat.type == MaterialType::Metal) {
 		float3 reflected = wf_reflect(normalize(h.rayDir), normal);
 		scattered_dir    = normalize(reflected + mat.fuzz * wf_rand_unit(seed));
 		attenuation      = albedoSpectrum(mat.albedo);
 		scattered        = (dot(scattered_dir, normal) > 0.0f);
 		is_specular      = true;
+	} else {
+		// Should be unreachable - simpleHitQueue is only ever populated with
+		// Lambertian/Metal hits (see this kernel's own header comment). Trap
+		// loudly rather than silently mis-shading whatever this actually is
+		// as Metal, matching evaluate_materials()'s own default: guard.
+		printf("[EVAL-MATERIALS-SIMPLE] unexpected MaterialType %d in simpleHitQueue\n", (int)mat.type);
+		__trap();
 	}
 
 	if (!scattered) {

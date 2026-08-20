@@ -201,6 +201,14 @@ extern "C" __global__ void __closesthit__triangle() {
 		// path's identical effective-material substitution.
 		shade_mat.type = MaterialType::Lambertian;
 		shade_mat.textureIdx = -1;
+	} else if (material_requires_sphere_only_handling(mat.type)) {
+		// Medium/DielectricMedium/CloudMedium/RgbGridMedium/Hair/Principled
+		// need sphere-specific handling this file doesn't implement (see
+		// material_requires_sphere_only_handling()'s comment). Trap with a
+		// specific message rather than falling through to shade_material()'s
+		// own generic "unhandled MaterialType" default.
+		printf("[TRIANGLE-SHADE] MaterialType %d is not supported on triangle geometry\n", (int)mat.type);
+		__trap();
 	}
 
 	shade_material(shade_mat, tri.materialIdx, shade_normal, ray_dir, hit_point, front_face, uv_u, uv_v, seed,

@@ -273,3 +273,43 @@ CPU_GPU void RatioTrackingTr(
 	Tr_g = std::exp(-(medium.sigma_ag + medium.sigma_sg) * d);
 	Tr_b = std::exp(-(medium.sigma_ab + medium.sigma_sb) * d);
 }
+
+// ===========================================================================
+// 7. RatioTrackingTrHeterogeneous
+//
+//    Single-channel stochastic ratio-tracking transmittance estimator for a
+//    HETEROGENEOUS medium - the extension RatioTrackingTr's comment above
+//    anticipated ("can be added when a HeterogeneousMediumData type is
+//    introduced"). Mirrors pbrt-v4 VolPathIntegrator::SampleLd's
+//    ratio-tracking loop (integrators.cpp lines 330-365): march at the
+//    majorant rate, multiply in (1 - sigma_t(point)/sigma_maj) at every
+//    null collision.
+//
+//    Templated on caller-supplied callables rather than tied to one
+//    medium's density representation or one RNG convention: this project
+//    has more than one of each (CloudMedium<T>'s procedural FBm density vs.
+//    RGBGridMediumData<T>'s per-voxel grid; this file's own RNG class vs.
+//    TheRestOfYourLife's global random_double()).
+//
+//    uniform():      () -> T, a uniform sample in [0,1)
+//    sigma_t_at(t):   T -> T, local sigma_t at parametric distance t
+// ===========================================================================
+template <typename T, typename UniformFn, typename SigmaTFn>
+CPU_GPU T RatioTrackingTrHeterogeneous(
+	T tMin, T tMax, T sigma_maj,
+	UniformFn&& uniform, SigmaTFn&& sigma_t_at,
+	int max_steps = 100000)
+{
+	if (sigma_maj <= T(0)) return T(1);
+	T Tr = T(1);
+	T t  = tMin;
+	for (int i = 0; i < max_steps; ++i) {
+		T dt = SampleExponential(uniform(), sigma_maj);
+		t += dt;
+		if (t >= tMax) break;  // exited the medium: done
+		T sigma_t = sigma_t_at(t);
+		Tr *= T(1) - sigma_t / sigma_maj;
+		if (Tr <= T(0)) return T(0);
+	}
+	return Tr;
+}

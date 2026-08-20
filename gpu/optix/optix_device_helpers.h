@@ -2239,6 +2239,42 @@ __device__ __forceinline__ void shade_material(
 	out_bssrdf_exit_pos = bssrdf_exit_pos;
 }
 
+// True for the 6 MaterialTypes that need sphere/box-specific handling -
+// Medium/DielectricMedium/CloudMedium/RgbGridMedium (volume ray-marching
+// against a sphere's own two intersection roots, or a box's slab test -
+// see optix_intersection_sphere.h's shape-specific branches) and Hair/
+// Principled (sampled directly via a sibling dispatch alongside
+// shade_material(), never through it - see shade_material()'s own default:
+// comment above). NormalMappedLambertian is deliberately NOT included here:
+// unlike these 6, it has a real, working implementation on triangles too
+// (optix_intersection_triangle.h's own tangent-frame branch), just not on
+// quads or bilinear patches - callers decide separately whether to also
+// reject that type.
+//
+// A primitive type that does not implement one of these 6 has no
+// physically-sensible fallback to construct (there is no "inside" to a
+// flat quad/triangle/bilinear-patch to ray-march a medium through), so
+// scene authors assigning one of these types to an unsupported primitive
+// is a real authoring bug, not a recoverable render state. Callers should
+// trap on this BEFORE ever reaching shade_material(), with a message
+// identifying the actual type/primitive mismatch - shade_material()'s own
+// default: trap would still catch it, but with a generic "unhandled
+// MaterialType" message that doesn't reveal it was actually a valid type
+// used on the wrong geometry.
+__device__ __forceinline__ bool material_requires_sphere_only_handling(MaterialType type) {
+	switch (type) {
+		case MaterialType::Medium:
+		case MaterialType::DielectricMedium:
+		case MaterialType::CloudMedium:
+		case MaterialType::RgbGridMedium:
+		case MaterialType::Hair:
+		case MaterialType::Principled:
+			return true;
+		default:
+			return false;
+	}
+}
+
 // Realistic multi-element lens camera (pbrt-v4 RealisticCamera, src/shared/
 // cameras.h). Host-side precompute (focus-adjusted lens table + exit-pupil
 // bounds table) happens once in scene_builder.cpp by directly constructing a
