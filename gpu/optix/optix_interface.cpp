@@ -42,7 +42,8 @@ extern "C" int optix_render_main(
 	double cam_x,
 	double cam_y,
 	double cam_z,
-	int force_camera_override
+	int force_camera_override,
+	int denoise
 ) {
 	try {
 		// std::string(output_path) below (and the ofstream open further down)
@@ -183,6 +184,13 @@ extern "C" int optix_render_main(
 		} else {
 			g_renderer->enableWavefront(false);
 		}
+
+		// g_renderer is a process-lifetime singleton (see enableWavefront()'s
+		// call above and g_uploaded_scene_id's own comment) - called
+		// unconditionally, same reasoning as enableWavefront(): this render's
+		// own `denoise` argument must be what decides the mode, not whatever
+		// an earlier call in this process happened to request.
+		g_renderer->enableDenoise(denoise != 0);
 
 		// Allocate float framebuffer
 		size_t pixelCount = image_width * image_height;

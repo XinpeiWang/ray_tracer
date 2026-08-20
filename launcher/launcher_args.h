@@ -52,6 +52,12 @@ struct LaunchArgs {
 	// per-launch cost) - see OptiXRenderer::createContext()'s own comment.
 	// Ignored under --cpu/--sppm.
 	bool optix_validate     = false;
+	// GPU-only, recursive backend only: run the OptiX AI denoiser on the
+	// finished render - see OptiXRenderer::enableDenoise()'s comment (beauty-
+	// only, no albedo/normal guiding). Silently has no effect under
+	// --wavefront (see optix_render_main()'s own comment); ignored under
+	// --cpu/--sppm/--bdpt/--mlt like use_wavefront/optix_validate above.
+	bool denoise            = false;
 	bool video_mode         = false;
 	// Stochastic Progressive Photon Mapping - a separate CPU-only render
 	// mode (see cpu_renderer/cpu_interface.h's cpu_render_main_sppm() doc
@@ -160,6 +166,9 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			consumed_args.insert(i);
 		} else if (arg == "--optix-validate") {
 			out.optix_validate = true;
+			consumed_args.insert(i);
+		} else if (arg == "--denoise") {
+			out.denoise = true;
 			consumed_args.insert(i);
 		} else if (arg == "--sppm") {
 			out.use_sppm = true;
@@ -297,6 +306,10 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "  --optix-validate: Enable OptiX validation mode (extra device-side checks,\n"
 					  << "               real per-launch cost - for debugging, not routine use).\n"
 					  << "               GPU-only, ignored under --cpu/--sppm.\n"
+					  << "  --denoise  : Run the OptiX AI denoiser on the finished render (beauty-only,\n"
+					  << "               no albedo/normal guiding). GPU-only, recursive backend only -\n"
+					  << "               silently has no effect under --wavefront; ignored under\n"
+					  << "               --cpu/--sppm.\n"
 					  << "  --sppm     : Render with Stochastic Progressive Photon Mapping instead of\n"
 					  << "               the path tracer (incompatible with --video). Best for hard\n"
 					  << "               caustic/glass scenes. CPU: verified end-to-end on scene 11\n"

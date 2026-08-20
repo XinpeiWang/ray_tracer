@@ -65,7 +65,8 @@ inline int optix_render_main(
 	double /*cam_x*/,
 	double /*cam_y*/,
 	double /*cam_z*/,
-	int /*force_camera_override*/ = 0
+	int /*force_camera_override*/ = 0,
+	int /*denoise*/ = 0
 ) {
 	return -1;
 }

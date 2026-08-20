@@ -42,6 +42,10 @@ bool optix_get_diagnostics(OptixDiagnostics* out);
 // passes 1, since a video needs to honor its per-frame animated camera
 // regardless of the scene's single-image default; single-image rendering
 // passes 0 (default).
+// denoise: 1 = run the OptiX AI denoiser on the finished render before
+// writing output_path (recursive GPU backend only - silently has no effect
+// under wavefront mode, see OptiXRenderer::enableDenoise()'s comment for
+// why). 0 (default) = off, matching every existing caller's prior behavior.
 int optix_render_main(
 	int image_width,
 	int image_height,
@@ -52,7 +56,8 @@ int optix_render_main(
 	double cam_x,
 	double cam_y,
 	double cam_z,
-	int force_camera_override = 0
+	int force_camera_override = 0,
+	int denoise = 0
 );
 
 // GPU SPPM (Stochastic Progressive Photon Mapping) rendering entry point,

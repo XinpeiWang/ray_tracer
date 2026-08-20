@@ -148,6 +148,27 @@ public:
 	///                If empty, looks in the same directory as optix_programs.ptx.
 	void enableWavefront(bool enable, const std::string& ptxPath = "");
 
+	/// @brief Enable or disable the OptiX AI (post-process) denoiser.
+	/// @details When enabled, render() runs the built-in OptiX denoiser model
+	///          on the accumulated framebuffer, on-device, right after the
+	///          main path-tracing launch completes and before the result is
+	///          copied back to host memory. Recursive backend only (see
+	///          render()'s own call site) - wavefront mode ignores this flag,
+	///          same scope-reduction pattern as enableWavefront() being
+	///          recursive-only in reverse. Scoped to beauty-only denoising
+	///          (no albedo/normal guide layers): OptixDenoiserOptions::
+	///          guideAlbedo/guideNormal are left at 0, since guiding would
+	///          need new per-pixel AOV buffers populated from inside the
+	///          raygen/closest-hit chain (new payload registers threaded
+	///          through all 4 geometry types' hit programs) - a materially
+	///          bigger, riskier change than the actual noise-reduction
+	///          feature this exists to deliver. Documented follow-up, not
+	///          attempted here - mirrors this project's existing pattern for
+	///          other backend/scope gaps (e.g. wavefront's own dielectric-
+	///          tier comment in wavefront_types.h).
+	/// @param enable true = denoise every render() call, false = off (default)
+	void enableDenoise(bool enable) { denoiseEnabled_ = enable; }
+
 	/// @brief Whether the OptiX device context was created with
 	///        OPTIX_DEVICE_CONTEXT_VALIDATION_MODE_ALL (see createContext()'s
 	///        own comment for what that buys and costs). Read once via the
@@ -223,6 +244,11 @@ private:
 	// -------------------------------------------------------------------
 	std::unique_ptr<optix_renderer::WavefrontPathTracer> wavefrontTracer_;
 	bool useWavefront_ = false;  ///< If true, render() delegates to wavefrontTracer_
+
+	// -------------------------------------------------------------------
+	// OptiX AI Denoiser (optional post-process, recursive backend only)
+	// -------------------------------------------------------------------
+	bool denoiseEnabled_ = false;  ///< See enableDenoise()
 
 	// -------------------------------------------------------------------
 	// SPPM path tracer (Phase 1 GPU port, see renderSPPMTrivial())
@@ -437,6 +463,21 @@ private:
 
 	/// @brief Release all GPU resources
 	void cleanup() noexcept;
+
+	/// @brief Run the OptiX AI denoiser on an in-device float3 buffer,
+	///        in place. Creates, sets up, invokes, and destroys the denoiser
+	///        fresh each call - simplest correct implementation for a
+	///        single-shot CLI render; no persistent denoiser state to manage
+	///        across scene switches or resolution changes. See
+	///        enableDenoise()'s comment for why this is beauty-only (no
+	///        albedo/normal guide layers).
+	/// @param d_buffer Device float3 RGB buffer, width*height, already
+	///        accumulated/averaged (same layout as LaunchParams::framebuffer).
+	/// @return true on success; false (with a logged reason) if any OptiX/CUDA
+	///         call in the sequence fails - render() treats this as
+	///         non-fatal, since a failed denoise leaves the buffer's already-
+	///         valid noisy render intact.
+	bool denoise(CUdeviceptr d_buffer, unsigned int width, unsigned int height);
 
 	/// @brief Load PTX shader code from file
 	/// @param filename Path to PTX file

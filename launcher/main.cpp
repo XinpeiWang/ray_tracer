@@ -544,7 +544,8 @@ int main(int argc, char** argv) {
                         cam_pos.lookfrom_x,
                         cam_pos.lookfrom_y,
                         cam_pos.lookfrom_z,
-                        1  // force_camera_override
+                        1,  // force_camera_override
+                        args.denoise ? 1 : 0
                     );
                 } else {
                     std::cerr << "\nERROR: OptiX is not available!" << std::endl;
@@ -799,7 +800,8 @@ int main(int argc, char** argv) {
                 cam_x,
                 cam_y,
                 cam_z,
-                1  // force_camera_override - see the comment above this section
+                1,  // force_camera_override - see the comment above this section
+                args.denoise ? 1 : 0
             );
             std::cout << "optix_render_main returned: " << render_result << std::endl;
             if (render_result == SUCCESS) {
