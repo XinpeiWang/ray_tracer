@@ -445,6 +445,26 @@ inline LoadResult loadFile(const std::string &path) {
 		m.displacementTextureFilename = resolved;
 	}
 
+	// AreaLightSource "diffuse"'s "filename" (spatially-varying image
+	// emission - Emission::filename's own comment). Same resolution
+	// convention as textureFilename/alphaTextureFilename/
+	// displacementTextureFilename above; decoding is likewise left to the
+	// CPU/GPU builders.
+	for (pbrt_flatten::Emission &e : r.scene.areaLights) {
+		if (e.filename.empty()) continue;
+
+		const std::string resolved = resolveExistingPath(sceneDir, e.filename);
+		if (resolved.empty()) {
+			r.scene.warnings.push_back(
+				{0, path, "area light's image emission file '" + e.filename +
+					"' could not be found; falling back to its flat colour instead"});
+			e.filename.clear();
+			continue;
+		}
+
+		e.filename = resolved;
+	}
+
 	return r;
 }
 

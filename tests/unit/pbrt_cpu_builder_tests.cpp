@@ -274,6 +274,43 @@ TEST(PbrtCpuBuildTest, EmissiveShapesGoIntoTheLightList) {
 		<< "only the triangles inside the attribute scope are emissive";
 }
 
+TEST(PbrtCpuBuildTest, AreaLightFilenameBuildsATextureBackedTwoSidedDiffuseLight) {
+	// buildFrom() only runs flatten(), not pbrt_load.h's resolution pass (see
+	// DiffuseReflectanceImagemapBuildsATextureBackedLambertian's own comment
+	// on the same trade-off), so this only checks that a non-empty
+	// Emission::filename makes it all the way to a texture-backed,
+	// is_two_sided() diffuse_light - makeMaterial()'s own filename branch -
+	// rather than the flat-L solid_color-backed one.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		std::string("AttributeBegin\n"
+					"  AreaLightSource \"diffuse\" \"string filename\" [ \"glow.png\" ]"
+					" \"bool twosided\" [ true ]\n")
+		+ kQuad + "AttributeEnd\n");
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *dl = dynamic_cast<diffuse_light *>(rec.mat.get());
+	ASSERT_NE(dl, nullptr);
+	EXPECT_TRUE(dl->is_two_sided());
+	EXPECT_EQ(dynamic_cast<mipmap_texture *>(dl->get_texture().get()), dl->get_texture().get())
+		<< "a \"filename\" area light must build a mipmap_texture-backed "
+		   "diffuse_light, not a flat solid_color one";
+}
+
+TEST(PbrtCpuBuildTest, AreaLightWithoutFilenameBuildsAPlainSolidColorDiffuseLight) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		std::string("AttributeBegin\n"
+					"  AreaLightSource \"diffuse\" \"rgb L\" [ 5 5 5 ]\n")
+		+ kQuad + "AttributeEnd\n");
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *dl = dynamic_cast<diffuse_light *>(rec.mat.get());
+	ASSERT_NE(dl, nullptr);
+	EXPECT_FALSE(dl->is_two_sided());
+	EXPECT_EQ(dynamic_cast<mipmap_texture *>(dl->get_texture().get()), nullptr);
+}
+
 TEST(PbrtCpuBuildTest, NonEmissiveSceneHasAnEmptyLightList) {
 	const pbrt_cpu::BuildResult b = buildFrom(kQuad);
 	EXPECT_TRUE(b.lights->objects.empty());

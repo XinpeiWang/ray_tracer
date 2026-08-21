@@ -185,6 +185,7 @@ class BDPTSceneAdapter {
 			color e = dl->get_texture()->value(probe.u, probe.v, probe.p);
 			double lum = 0.2126*e.x() + 0.7152*e.y() + 0.0722*e.z();
 			double power = area * lum * pi;   // pbrt-v4 / power_light_sampler.h convention: phi = area*Le*pi
+			if (dl->is_two_sided()) power *= 2.0;   // emits from both faces -- pbrt-v4 doubles phi to match
 			emitters_.push_back(obj);
 			emitter_dl_.push_back(dl);
 			emitter_pdf_pos_.push_back(probe.pdf_pos);
@@ -397,10 +398,22 @@ class BDPTSceneAdapter {
 		AreaLightSample as;
 		if (!light->sample_area(u0a, u0b, as)) return false;
 
-		onb uvw(as.n);
+		// Two-sided lights emit from either face with equal probability
+		// (pbrt-v4's own DiffuseAreaLight::SampleLe convention) -- halving
+		// pdf_dir below accounts for that extra binary choice, keeping the
+		// direction density correctly normalized over the full sphere
+		// instead of just the +as.n hemisphere.
+		const bool two_sided = emitter_dl_[idx]->is_two_sided();
+		vec3 n_emit = as.n;
+		double side_pdf = 1.0;
+		if (two_sided) {
+			if (random_double() < 0.5) n_emit = -as.n;
+			side_pdf = 0.5;
+		}
+		onb uvw(n_emit);
 		vec3 dir = uvw.transform(random_cosine_direction());
 		(void)u1a; (void)u1b;   // this codebase's random_cosine_direction() draws its own randomness (see SampleLightLe's own note)
-		double cos_theta = dot(dir, as.n);
+		double cos_theta = dot(dir, n_emit);
 		if (cos_theta <= 0.0) return false;
 
 		color Le = emitter_dl_[idx]->get_texture()->value(as.u, as.v, as.p);
@@ -409,7 +422,7 @@ class BDPTSceneAdapter {
 		les.ray_d[0]=dir.x();  les.ray_d[1]=dir.y();  les.ray_d[2]=dir.z();
 		les.Le[0]=Le.x(); les.Le[1]=Le.y(); les.Le[2]=Le.z();
 		les.pdf_pos = as.pdf_pos * emitter_alias_.pmf(idx);
-		les.pdf_dir = cos_theta / pi;
+		les.pdf_dir = side_pdf * cos_theta / pi;
 		les.p_light = emitter_alias_.pmf(idx);
 		les.abs_cos_theta = cos_theta;
 		les.has_surface = true;
@@ -567,6 +580,13 @@ class BDPTSceneAdapter {
 		if (dist < 1e-9) return false;
 		vec3 wi = to_light / dist;
 
+		// quad/sphere's own pdf_value() intersects from either side (no
+		// backface culling), so a one-sided light needs an explicit check
+		// here to match diffuse_light::emitted()'s own front-face gate --
+		// otherwise NEE would light points sitting behind a one-sided
+		// emitter's declared normal. Two-sided lights need no such gate.
+		if (!emitter_dl_[idx]->is_two_sided() && dot(wi, as.n) >= 0.0) return false;
+
 		// light->pdf_value() already performs the area->solid-angle Jacobian
 		// conversion for THIS one shape (quad.h/sphere.h's own pdf_value()
 		// implementations) -- multiplying by the light-selection PMF gives
@@ -603,9 +623,19 @@ class BDPTSceneAdapter {
 		AreaLightSample as;
 		if (!light->sample_area(random_double(), random_double(), as)) return false;
 
-		onb uvw(as.n);
+		// Two-sided lights emit from either face with equal probability --
+		// see SampleLightEmission()'s own comment on the matching side_pdf
+		// halving above.
+		const bool two_sided = emitter_dl_[idx]->is_two_sided();
+		vec3 n_emit = as.n;
+		double side_pdf = 1.0;
+		if (two_sided) {
+			if (random_double() < 0.5) n_emit = -as.n;
+			side_pdf = 0.5;
+		}
+		onb uvw(n_emit);
 		vec3 dir = uvw.transform(random_cosine_direction());
-		double cos_theta = dot(dir, as.n);
+		double cos_theta = dot(dir, n_emit);
 		if (cos_theta <= 0.0) return false;   // degenerate onb edge case
 
 		color Le = emitter_dl_[idx]->get_texture()->value(as.u, as.v, as.p);
@@ -616,7 +646,7 @@ class BDPTSceneAdapter {
 		les.n_on_light[0]=as.n.x(); les.n_on_light[1]=as.n.y(); les.n_on_light[2]=as.n.z();
 		les.L[0]=Le.x(); les.L[1]=Le.y(); les.L[2]=Le.z();
 		les.pdf_pos = as.pdf_pos * emitter_alias_.pmf(idx);   // combined light-choice * position pdf
-		les.pdf_dir = cos_theta / pi;                          // cosine_pdf's own value() formula
+		les.pdf_dir = side_pdf * cos_theta / pi;               // cosine_pdf's own value() formula, halved for two-sided
 		les.abs_cos_theta = cos_theta;
 		les.is_on_surface = true;
 		les.is_infinite = false;

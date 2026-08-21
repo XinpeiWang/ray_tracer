@@ -302,25 +302,25 @@ class marble_texture : public texture {
 // ---------------------------------------------------------------------------
 // scaled_texture -- flat scalar multiplier over another texture.
 //
-// Round 6 Phase 4: AreaLightSource "diffuse"'s "scale" parameter still
-// applies when "filename" is given (pbrt-v4's real DiffuseAreaLight scales
-// the image-sampled radiance the same way it scales a flat "L"), but a
+// AreaLightSource "diffuse"'s "scale" parameter still applies when
+// "filename" is given (pbrt-v4's real DiffuseAreaLight scales the
+// image-sampled radiance the same way it scales a flat "L"), but a
 // filename-backed light builds a mipmap_texture directly rather than going
 // through pbrt_flatten::Material::color the way flat-L lights do, so there
 // is no existing place to fold the multiply in - this wraps any inner
-// texture with one.
+// texture with one. No value_diff() override: its only caller
+// (diffuse_light) always uses point-sampled emission for this wrapper (see
+// diffuse_light's own point_sample comment), so the base class's
+// value_diff()->value() default already does the right thing and stays
+// reachable, unlike a dedicated override would be.
 // ---------------------------------------------------------------------------
 class scaled_texture : public texture {
   public:
     scaled_texture(shared_ptr<texture> inner, double scale) : inner(inner), scale(scale) {}
 
     color value(double u, double v, const point3& p) const override {
+        if (scale == 0.0) return color(0,0,0);   // skip the inner lookup entirely -- "scale" 0 disables a light
         return scale * inner->value(u, v, p);
-    }
-
-    color value_diff(double u, double v, const point3& p,
-                      double dudx, double dvdx, double dudy, double dvdy) const override {
-        return scale * inner->value_diff(u, v, p, dudx, dvdx, dudy, dvdy);
     }
 
   private:

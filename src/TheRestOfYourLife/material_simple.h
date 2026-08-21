@@ -148,7 +148,16 @@ class dielectric : public material {
 
 class diffuse_light : public material {
   public:
-    diffuse_light(shared_ptr<texture> tex, bool two_sided = false) : tex(tex), two_sided(two_sided) {}
+    // point_sample: bypasses value_diff()'s EWA/mip filtering in favor of a
+    // plain bilinear tap at u,v (matches pbrt-v4's own DiffuseAreaLight
+    // image lookup, which point-samples too). Opt-in, not the class default:
+    // scoped to pbrt AreaLightSource "diffuse" "filename" lights specifically
+    // (pbrt_cpu_builder.h passes true there) because that's the one call
+    // site the flag was added for; mesh.h's pre-existing map_Ke emissive
+    // textures pass false (the default) to keep the real anisotropic
+    // filtering they already had.
+    diffuse_light(shared_ptr<texture> tex, bool two_sided = false, bool point_sample = false)
+        : tex(tex), two_sided(two_sided), point_sample(point_sample) {}
     diffuse_light(const color& emit, bool two_sided = false)
         : tex(make_shared<solid_color>(emit)), two_sided(two_sided) {}
 
@@ -156,16 +165,9 @@ class diffuse_light : public material {
     const override {
         if (!rec.front_face && !two_sided)
             return color(0,0,0);
-        // Plain point sample, not value_diff()'s EWA/mip filtering: a
-        // directly-viewed emitter's UV footprint (this hit's own
-        // dudx/dvdx/dudy/dvdy) isn't the same kind of minification a
-        // reflectance texture sees stretched across a receding surface, and
-        // for AreaLightSource "diffuse"'s own image parameter (Round 6
-        // Phase 4) footprint-based filtering was picking the coarsest mip
-        // level (the whole image's average color) rather than the intended
-        // per-texel emission - matches pbrt-v4's own DiffuseAreaLight image
-        // lookup, which is a plain bilinear sample too, not EWA-filtered.
-        return tex->value(u, v, p);
+        if (point_sample)
+            return tex->value(u, v, p);
+        return tex->value_diff(u, v, p, rec.dudx, rec.dvdx, rec.dudy, rec.dvdy);
     }
 
     shared_ptr<texture> get_texture() const { return tex; }
@@ -174,6 +176,7 @@ class diffuse_light : public material {
   private:
     shared_ptr<texture> tex;
     bool two_sided;
+    bool point_sample = false;
 };
 
 

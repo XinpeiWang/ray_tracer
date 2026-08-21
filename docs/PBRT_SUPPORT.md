@@ -66,7 +66,7 @@ GPU: `pbrt_gpu_builder.h`'s light-building code.
 | `projection` | Approx | Approx | Same story as goniometric: neither backend decodes the real projected slide image, both use a uniform white slide instead. Warns when a scene names a real image. |
 | `infinite` (constant color) | Full | Full | |
 | `infinite` (HDRI image) | Full | Full | Same equirectangular importance-sampling distribution (luminance-weighted, sin θ Jacobian) built and used on both. |
-| `AreaLightSource "diffuse"` | Approx | Approx | Real NEE-samplable geometry (sphere/quad/triangle/bilinear patch) on both, one-sided on both. `twosided` is not parsed on either backend (silently always one-sided, no warning); `blackbody` emission is read as a raw number rather than converted, on both (warned). |
+| `AreaLightSource "diffuse"` | Approx | Approx | Real NEE-samplable geometry (sphere/quad/triangle/bilinear patch) on both. CPU parses and honors `filename` (spatially-varying image emission, point-sampled) and `twosided`; GPU parses neither yet (always one-sided, `filename` silently falls back to `L`, no warning). `blackbody` emission is read as a raw number rather than converted, on both (warned). |
 | anything else | Unsupported | Unsupported | Dropped with a warning; not visible on either backend. |
 
 ## Cameras (`Camera::type`)
@@ -100,8 +100,9 @@ loader and no longer match the code:
 
 ## Other known gaps (not backend-asymmetric, but worth knowing)
 
-- `AreaLightSource`'s `twosided` parameter is parsed nowhere; every area
-  light is one-sided on both backends regardless of what the scene requests.
+- `AreaLightSource`'s `twosided` and `filename` parameters are parsed and
+  honored on CPU only; GPU still ignores both (see the backend-asymmetric
+  table above) - tracked as follow-up GPU work.
 - `Shape "disk"`/`Shape "cylinder"` are supported on CPU and both GPU
   backends (recursive and wavefront). CPU keeps the CTM unbaked and is
   exactly correct under arbitrary rotation (see `disk_cylinder_hittable.h`);

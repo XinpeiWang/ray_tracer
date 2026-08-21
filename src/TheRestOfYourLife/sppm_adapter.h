@@ -105,6 +105,7 @@ class SPPMSceneAdapter {
 			color e = dl->get_texture()->value(probe.u, probe.v, probe.p);
 			double lum = 0.2126*e.x() + 0.7152*e.y() + 0.0722*e.z();
 			double power = area * lum * pi;   // pbrt-v4 / power_light_sampler.h convention: phi = area*Le*pi
+			if (dl->is_two_sided()) power *= 2.0;   // emits from both faces -- pbrt-v4 doubles phi to match
 			emitters_.push_back(obj);
 			weights.push_back(std::max(power, 1e-9));
 		}
@@ -348,13 +349,24 @@ class SPPMSceneAdapter {
 		AreaLightSample as;
 		if (!light->sample_area(random_double(), random_double(), as)) return false;
 
-		onb uvw(as.n);
-		vec3 dir = uvw.transform(random_cosine_direction());
-		double cos_theta = dot(dir, as.n);
-		if (cos_theta <= 0.0) return false;   // degenerate onb edge case
-
 		shared_ptr<material> m = hittable_material(light);
 		auto dl = std::dynamic_pointer_cast<diffuse_light>(m);
+
+		// Two-sided lights emit from either face with equal probability --
+		// see bdpt_adapter.h's SampleLightEmission() for the matching
+		// pdf_dir halving this mirrors.
+		const bool two_sided = dl && dl->is_two_sided();
+		vec3 n_emit = as.n;
+		double side_pdf = 1.0;
+		if (two_sided) {
+			if (random_double() < 0.5) n_emit = -as.n;
+			side_pdf = 0.5;
+		}
+		onb uvw(n_emit);
+		vec3 dir = uvw.transform(random_cosine_direction());
+		double cos_theta = dot(dir, n_emit);
+		if (cos_theta <= 0.0) return false;   // degenerate onb edge case
+
 		color Le = dl ? dl->get_texture()->value(as.u, as.v, as.p) : color(0, 0, 0);
 
 		les.ray_o[0] = as.p.x(); les.ray_o[1] = as.p.y(); les.ray_o[2] = as.p.z();
@@ -363,7 +375,7 @@ class SPPMSceneAdapter {
 		les.n_on_light[0] = as.n.x(); les.n_on_light[1] = as.n.y(); les.n_on_light[2] = as.n.z();
 		les.L[0] = Le.x(); les.L[1] = Le.y(); les.L[2] = Le.z();
 		les.pdf_pos = as.pdf_pos * emitter_alias_.pmf(idx);   // combined light-choice * position pdf
-		les.pdf_dir = cos_theta / pi;                         // cosine_pdf's own value() formula
+		les.pdf_dir = side_pdf * cos_theta / pi;               // cosine_pdf's own value() formula, halved for two-sided
 		les.abs_cos_theta = cos_theta;
 		les.is_on_surface = true;
 		les.is_infinite = false;

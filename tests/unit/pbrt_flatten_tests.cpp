@@ -94,6 +94,27 @@ TEST(FlattenTest, MaterialAndAreaLightIndicesSurvive) {
 	EXPECT_GE(s.triangles[0].material, 0);
 }
 
+TEST(FlattenTest, AreaLightFilenameAndTwoSidedAreParsed) {
+	const FlatScene s = flattenSource(
+		std::string("AttributeBegin\n"
+					"  AreaLightSource \"diffuse\" \"string filename\" [ \"glow.png\" ]"
+					" \"bool twosided\" [ true ]\n")
+		+ kQuadMesh + "AttributeEnd\n");
+	ASSERT_EQ(s.triangles[0].areaLight, 0);
+	ASSERT_EQ(s.areaLights.size(), 1u);
+	EXPECT_EQ(s.areaLights[0].filename, "glow.png");
+	EXPECT_TRUE(s.areaLights[0].twoSided);
+}
+
+TEST(FlattenTest, AreaLightFilenameAndTwoSidedDefaultToUnsetAndFalse) {
+	const FlatScene s = flattenSource(
+		std::string("AttributeBegin\n  AreaLightSource \"diffuse\" \"rgb L\" [ 5 5 5 ]\n")
+		+ kQuadMesh + "AttributeEnd\n");
+	ASSERT_EQ(s.areaLights.size(), 1u);
+	EXPECT_TRUE(s.areaLights[0].filename.empty());
+	EXPECT_FALSE(s.areaLights[0].twoSided);
+}
+
 // ===========================================================================
 // Spheres
 // ===========================================================================

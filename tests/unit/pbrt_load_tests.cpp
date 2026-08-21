@@ -165,6 +165,43 @@ TEST_F(TempTree, MissingReflectanceImagemapWarnsAndFallsBackToConstantColour) {
 	EXPECT_TRUE(warned);
 }
 
+TEST_F(TempTree, AreaLightFilenameResolvesRelativeToTheScene) {
+	// Emission::filename's own comment: this needs the same scene-directory-
+	// first resolution as textureFilename/alphaTextureFilename above - it
+	// was added to Emission without a matching pbrt_load.h resolution pass,
+	// so a relative "filename" silently failed to load whenever the working
+	// directory wasn't the scene's own directory (exactly what this test's
+	// working directory - the build output folder - proves).
+	write("scene.pbrt",
+		  "AttributeBegin\n"
+		  "  AreaLightSource \"diffuse\" \"string filename\" [ \"textures/glow.png\" ]\n"
+		  "  Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		  "    \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n"
+		  "AttributeEnd\n");
+	write("textures/glow.png", "not a real png, only existence is checked here");
+	const pbrt_load::LoadResult r = pbrt_load::loadFile(path("scene.pbrt"));
+	ASSERT_TRUE(r.ok) << r.error;
+	ASSERT_EQ(r.scene.areaLights.size(), 1u);
+	EXPECT_EQ(r.scene.areaLights[0].filename, path("textures/glow.png"));
+}
+
+TEST_F(TempTree, MissingAreaLightFilenameWarnsAndFallsBackToFlatColour) {
+	write("scene.pbrt",
+		  "AttributeBegin\n"
+		  "  AreaLightSource \"diffuse\" \"string filename\" [ \"nope.png\" ]\n"
+		  "  Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		  "    \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n"
+		  "AttributeEnd\n");
+	const pbrt_load::LoadResult r = pbrt_load::loadFile(path("scene.pbrt"));
+	ASSERT_TRUE(r.ok) << r.error;
+	ASSERT_EQ(r.scene.areaLights.size(), 1u);
+	EXPECT_TRUE(r.scene.areaLights[0].filename.empty());
+	bool warned = false;
+	for (const pbrt_scene::Warning &w : r.scene.warnings)
+		if (w.message.find("nope.png") != std::string::npos) warned = true;
+	EXPECT_TRUE(warned);
+}
+
 TEST_F(TempTree, ShapeAlphaImagemapResolvesRelativeToTheScene) {
 	write("scene.pbrt",
 		  "Texture \"leafAlpha\" \"float\" \"imagemap\" \"string filename\" [ \"geometry/leaf.png\" ]\n"
