@@ -74,6 +74,7 @@ TEST(WavefrontTypes, RayWorkItemFieldCoverage) {
 	EXPECT_EQ(r.pixelIndex,  0);
 	EXPECT_EQ(r.depth,       0);
 	EXPECT_EQ(r.specular_bounce, 0);
+	EXPECT_EQ(r.any_nonspecular, 0);
 	EXPECT_EQ(r.tMin,        0.0f);
 	EXPECT_EQ(r.tMax,        0.0f);
 }
@@ -96,6 +97,7 @@ TEST(WavefrontTypes, HitWorkItemFieldCoverage) {
 	EXPECT_EQ(h.pixelIndex,  0);
 	EXPECT_EQ(h.depth,       0);
 	EXPECT_EQ(h.specular_bounce, 0);
+	EXPECT_EQ(h.any_nonspecular, 0);
 }
 
 TEST(WavefrontTypes, ShadowRayWorkItemFieldCoverage) {
@@ -184,6 +186,30 @@ TEST(WavefrontTypes, SpecularBounceFlag) {
 	specular_bounce.specular_bounce = 1;
 	EXPECT_EQ(specular_bounce.specular_bounce, 1)
 		<< "Specular bounces must have specular_bounce=1";
+}
+
+// ============================================================================
+// pbrt-v4 alignment: any_nonspecular flag semantics (path regularization -
+// see RayWorkItem::any_nonspecular's own comment, wavefront_types.h)
+// ============================================================================
+
+TEST(WavefrontTypes, PrimaryRayHasNoRegularizationHistory) {
+	// The primary camera ray has no prior bounce to regularize against.
+	RayWorkItem primary = {};
+	primary.depth           = 0;
+	primary.any_nonspecular = 0;
+	EXPECT_EQ(primary.any_nonspecular, 0)
+		<< "Primary rays must start with any_nonspecular=0";
+}
+
+TEST(WavefrontTypes, RegularizationFlagPersistsOnceSet) {
+	// Once a path has taken a non-specular bounce, any_nonspecular is never
+	// cleared by a later specular bounce (mirrors camera.h's any_nonspecular
+	// local, which is only ever OR'd, never reset).
+	RayWorkItem after_diffuse_then_specular = {};
+	after_diffuse_then_specular.any_nonspecular = 1;
+	EXPECT_EQ(after_diffuse_then_specular.any_nonspecular, 1)
+		<< "any_nonspecular must persist across a subsequent specular bounce";
 }
 
 // ============================================================================

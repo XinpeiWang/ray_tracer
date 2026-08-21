@@ -223,6 +223,7 @@ extern "C" __global__ void __raygen__wf_intersect() {
 		h.pixelIndex  = ray.pixelIndex;
 		h.depth       = ray.depth;
 		h.specular_bounce = ray.specular_bounce;
+		h.any_nonspecular = ray.any_nonspecular;
 		// Route cheap materials (no texture/layered-BxDF work) into their
 		// own queue so evaluate_materials_simple() can process them without
 		// the big switch's register pressure - see WavefrontQueues::

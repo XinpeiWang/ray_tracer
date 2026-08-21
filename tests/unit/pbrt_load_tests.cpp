@@ -28,6 +28,7 @@ protected:
 		root_ = std::string(tmp ? tmp : ".") + "/pbrt_load_tests/";
 		makeDir(root_);
 		makeDir(root_ + "geometry/");
+		makeDir(root_ + "textures/");
 	}
 	void TearDown() override {
 		for (const std::string &f : written_) std::remove(f.c_str());

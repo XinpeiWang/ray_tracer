@@ -140,6 +140,31 @@ __device__ __forceinline__ bool wf_near_zero(const float3& v) {
 	return fabsf(v.x) < s && fabsf(v.y) < s && fabsf(v.z) < s;
 }
 
+// Wavefront-native duplicate (float, not CPU's double) of material_simple.h's
+// regularize_alpha() - pbrt-v4's path-regularization heuristic: once a path
+// has taken a non-specular bounce, widen every subsequent GGX lobe it hits
+// (Conductor/RoughMetal/RoughDielectric/CoatedDiffuse/CoatedConductor - the
+// same 5 classes material_pbrt.h gates behind do_regularize) to cut fireflies
+// from near-specular-but-not-quite surfaces catching a hard-to-sample light
+// path late in a bounce chain. Applied consistently to BOTH the BSDF-sampling
+// alpha (each glossy case's own switch-arm, evaluate_materials()/
+// evaluate_materials_dielectric()) AND the NEE alpha (wf_finish_material_
+// scatter's glossy_alpha) - unlike CPU, which only ever regularizes the
+// scatter() side (scattering_pdf() takes no do_regularize parameter, see that
+// class's own comment), this backend's shared wf_finish_material_scatter tail
+// re-derives alpha from the same materials[matIdx] lookup for NEE, so
+// regularizing just one side would desync the BSDF-sampled continuation's
+// true pdf from what evalGlossyF/brdf_pdf_override reports for it - a real
+// MIS-weight mismatch, not just a stylistic difference from CPU's scope.
+__device__ __forceinline__ float wf_regularize_alpha(float a) {
+	if (a < 0.3f) {
+		a *= 2.0f;
+		if (a < 0.1f) a = 0.1f;
+		else if (a > 0.3f) a = 0.3f;
+	}
+	return a;
+}
+
 // Duplicated from optix_device_helpers.h's material_requires_sphere_only_
 // handling() (with the wf_ prefix), matching this file's existing pattern of
 // not sharing device helpers with the recursive path. See that function's
@@ -941,6 +966,7 @@ extern "C" __global__ void generate_camera_rays(
 	item.pixelIndex = pixelIdx;
 	item.depth      = 0;
 	item.specular_bounce = 1;  // primary ray: always allow emissive hit
+	item.any_nonspecular = 0; // primary ray: no prior bounce to regularize against
 	item.brdf_pdf   = 0.0f;    // primary ray: no MIS on an escaped camera ray
 	item.tMin       = 0.001f;
 	item.tMax       = 1e30f;
@@ -1005,6 +1031,13 @@ extern "C" __global__ void generate_camera_rays(
 // "light seen straight through frosted glass" contribution).
 __device__ __forceinline__ void wf_finish_material_scatter(
 	MaterialType matType, float nfEta, int matIdx,
+	// True once any PRIOR bounce along this path was non-specular (see
+	// RayWorkItem::any_nonspecular's own comment, wavefront_types.h) -
+	// widens glossy_alpha below via wf_regularize_alpha() for the 5 GGX-
+	// distributed material types, and is folded (OR'd with !is_specular) into
+	// the pushed next-bounce RayWorkItem's own any_nonspecular at this
+	// function's tail, regardless of matType.
+	bool do_regularize,
 	const float3& normal, const float3& hit_point,
 	unsigned int& seed,
 	const SampledSpectrum<kWFNWavelengths>& throughput,
@@ -1108,6 +1141,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		if (glossy_wi_z > 0.0f) {
 			glossy_valid = true;
 			glossy_alpha = sqrtf(materials[matIdx].fuzz);
+			if (do_regularize) glossy_alpha = wf_regularize_alpha(glossy_alpha);
 		}
 	}
 
@@ -1588,6 +1622,9 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	next.pixelIndex      = pixelIndex;
 	next.depth           = depth + 1;
 	next.specular_bounce = is_specular ? 1 : 0;
+	// See RayWorkItem::any_nonspecular's own comment - never cleared, only
+	// ever set once this bounce (or an earlier one) was non-specular.
+	next.any_nonspecular = (do_regularize || !is_specular) ? 1 : 0;
 	// BRDF PDF of this new direction, for MIS if this ray escapes the scene
 	// on its next bounce (see RayWorkItem::brdf_pdf's own comment) - mirrors
 	// optix_intersection_sphere.h's brdf_pdf_out exactly (0 for specular,
@@ -1897,6 +1934,7 @@ extern "C" __global__ void evaluate_materials(
 			}
 			probeItem.pixelIndex = h.pixelIndex;
 			probeItem.depth      = h.depth;
+			probeItem.any_nonspecular = h.any_nonspecular;
 			bssrdfProbeQueue.push(probeItem);
 		}
 		return;
@@ -1982,6 +2020,7 @@ extern "C" __global__ void evaluate_materials(
 		//     cos, and pdf terms cancel under VNDF importance sampling,
 		//     matching pbrt-v4's RoughDielectricBxDF exactly.
 		float rd_alpha = sqrtf(mat.fuzz);
+		if (h.any_nonspecular) rd_alpha = wf_regularize_alpha(rd_alpha);
 		bool rd_front_face = h.frontFace != 0;
 		float rd_ri = rd_front_face ? (1.0f / mat.ior) : mat.ior;
 		float3 n = normal;
@@ -2052,6 +2091,7 @@ extern "C" __global__ void evaluate_materials(
 	}
 	case MaterialType::Conductor: {
 		float c_alpha = sqrtf(mat.fuzz);
+		if (h.any_nonspecular) c_alpha = wf_regularize_alpha(c_alpha);
 		float3 cn = normal;
 		float3 cup = (fabsf(cn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
 		float3 ctan   = normalize(cross(cup, cn));
@@ -2100,6 +2140,7 @@ extern "C" __global__ void evaluate_materials(
 		// same material as MaterialType::Metal (fuzz-perturbed mirror, a
 		// different model - CPU's plain `metal` class).
 		float rm_alpha = sqrtf(mat.fuzz);
+		if (h.any_nonspecular) rm_alpha = wf_regularize_alpha(rm_alpha);
 		float3 rmn = normal;
 		float3 rmup = (fabsf(rmn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
 		float3 rmtan   = normalize(cross(rmup, rmn));
@@ -2136,6 +2177,7 @@ extern "C" __global__ void evaluate_materials(
 	}
 	case MaterialType::CoatedDiffuse: {
 		float cd_alpha = sqrtf(mat.fuzz);
+		if (h.any_nonspecular) cd_alpha = wf_regularize_alpha(cd_alpha);
 		float3 cdn = normal;
 		float3 cdup = (fabsf(cdn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
 		float3 cdtan   = normalize(cross(cdup, cdn));
@@ -2248,6 +2290,7 @@ extern "C" __global__ void evaluate_materials(
 		// step and the T_in/T_out weighting entirely, making the conductor
 		// visible at full strength as if the coat weren't there.
 		float cc_alpha = sqrtf(mat.fuzz);
+		if (h.any_nonspecular) cc_alpha = wf_regularize_alpha(cc_alpha);
 		float3 ccn = normal;
 		float3 ccup = (fabsf(ccn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
 		float3 cctan   = normalize(cross(ccup, ccn));
@@ -2710,7 +2753,7 @@ extern "C" __global__ void evaluate_materials(
 		return;
 	}
 
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, normal, hit_point, seed,
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, normal, hit_point, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -2865,7 +2908,7 @@ extern "C" __global__ void evaluate_materials_simple(
 		return;
 	}
 
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, normal, hit_point, seed,
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, normal, hit_point, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -3001,6 +3044,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	}
 	case MaterialType::RoughDielectric: {
 		float rd_alpha = sqrtf(mat.fuzz);
+		if (h.any_nonspecular) rd_alpha = wf_regularize_alpha(rd_alpha);
 		bool rd_front_face = h.frontFace != 0;
 		float rd_ri = rd_front_face ? (1.0f / mat.ior) : mat.ior;
 		float3 n = normal;
@@ -3065,7 +3109,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		return;
 	}
 
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, normal, hit_point, seed,
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, normal, hit_point, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -3219,6 +3263,7 @@ extern "C" __global__ void resolve_bssrdf_exit(
 	SS attenuation = SS(weight);
 
 	wf_finish_material_scatter(MaterialType::NormalizedFresnel, eta, /*matIdx=*/-1,
+		(bool)item.any_nonspecular,
 		item.exitNormal, item.exitPos, seed,
 		weightedThroughput, radiance, swl, attenuation, scattered_dir,
 		/*is_specular=*/false, brdf_pdf_override,

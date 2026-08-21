@@ -40,6 +40,18 @@ struct RayWorkItem {
 	int          pixelIndex;       // flat pixel index (y*width + x)
 	int          depth;            // current bounce (0 = primary)
 	int          specular_bounce;  // 1 if this ray was spawned by a specular event
+	// 1 once any PRIOR bounce along this path was non-specular (0 for the
+	// primary ray - see wf_generate_primary_ray). Read by evaluate_materials()/
+	// evaluate_materials_dielectric() as the do_regularize flag for the 5
+	// GGX-distributed materials (Conductor/RoughMetal/RoughDielectric/
+	// CoatedDiffuse/CoatedConductor - see wf_regularize_alpha's own comment,
+	// wavefront_kernels.cu), then updated (never cleared) in
+	// wf_finish_material_scatter's next-ray tail from THIS bounce's own
+	// is_specular - mirrors camera.h's any_nonspecular local exactly (see
+	// that file's ray_color() loop), just carried across bounce iterations
+	// via this field instead of a stack-resident C++ local, since each
+	// bounce here is a separate kernel launch.
+	int          any_nonspecular;
 	// BRDF PDF of this ray's own scatter direction, for MIS if it escapes the
 	// scene on the next bounce (accumulate_miss's own comment) - mirrors the
 	// recursive backend's prev_brdf_pdf (optix_raygen.h/optix_miss.h). 0 for
@@ -121,6 +133,9 @@ struct HitWorkItem {
 	int    pixelIndex;
 	int    depth;
 	int    specular_bounce;    // 1 if this path arrived via a specular event
+	// Carried from RayWorkItem::any_nonspecular (see its own comment) - the
+	// do_regularize flag for this hit's material evaluation.
+	int    any_nonspecular;
 };
 
 // A shadow ray: if it reaches tMax unoccluded, Ld is added to the framebuffer.
@@ -190,6 +205,12 @@ struct BssrdfProbeWorkItem {
 	float  wavelength_pdfs[kWFNWavelengths];
 	int    pixelIndex;
 	int    depth;
+	// Carried from HitWorkItem::any_nonspecular (see its own comment) -
+	// resumed as-is by BssrdfExitWorkItem::any_nonspecular once the probe
+	// walk resolves, since the dielectric entry transmission that queued
+	// this probe is itself a specular event (see MaterialType::Subsurface's
+	// case in evaluate_materials, wavefront_kernels.cu) and doesn't change it.
+	int    any_nonspecular;
 };
 
 // Result of one BSSRDF probe walk (__raygen__wf_probe, wavefront_probe.h) -
@@ -218,6 +239,13 @@ struct BssrdfExitWorkItem {
 	float  wavelength_pdfs[kWFNWavelengths];
 	int    pixelIndex;
 	int    depth;
+	// Carried from BssrdfProbeWorkItem::any_nonspecular (see its own
+	// comment) - resolve_bssrdf_exit() passes this as wf_finish_material_
+	// scatter's do_regularize (harmless here, MaterialType::NormalizedFresnel
+	// isn't one of the 5 regularized types), which then folds it into the
+	// resumed path's own next.any_nonspecular alongside the exit bounce's
+	// own is_specular=false.
+	int    any_nonspecular;
 };
 
 // ============================================================================

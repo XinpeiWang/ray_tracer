@@ -384,7 +384,7 @@ TEST(PbrtCpuBuildTest, DiffuseReflectanceCheckerboardBuildsAUVCheckerBackedLambe
 		<< "a diffuse material with a checkerboard-bound reflectance must "
 		   "build a uv_checker_texture-backed lambertian";
 	const color c00 = chk->value(0.25, 0.25, rec.p);
-	const color c10 = chk->value(0.75, 0.25, rec.p);
+	const color c10 = chk->value(1.25, 0.25, rec.p);
 	EXPECT_NE(c00.x(), c10.x())
 		<< "adjacent UV checker cells (one uscale apart) must differ";
 }
