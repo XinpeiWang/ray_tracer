@@ -254,8 +254,8 @@ struct Material {
 	// shared by shapes with different alpha masks), so this 1:1 shape<->
 	// material correspondence holds in practice; a scene that violated it
 	// would have the last such Shape's alpha win for every shape sharing
-	// that material index - not enforced, but not a case this loader's own
-	// bundled scenes exercise either.
+	// that material index - flatten() warns when this happens (see its own
+	// Shape "alpha" handling), but does not prevent it.
 	std::string alphaTextureFilename;
 
 	// Mix only: indices into FlatScene::materials of the two blended
@@ -1449,21 +1449,47 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// Material::alphaTextureFilename's own comment for why it lands
 			// on the Shape's resolved material rather than a new per-
 			// triangle field). Only the texture-bound form is handled here;
-			// a literal "float alpha" constant has no bundled scene using it
-			// and is left for the generic "not supported" path below like
-			// any other unhandled shape parameter.
-			if (shape.materialIndex >= 0 &&
-					static_cast<std::size_t>(shape.materialIndex) < out.materials.size()) {
-				if (const pbrt_scene::Param *pa = shape.params.find("alpha");
-						pa && pa->type == "texture" && !pa->strings.empty()) {
+			// a literal "float alpha" constant has no bundled scene using it.
+			// Every failure to resolve is warned about (mirroring the
+			// Diffuse-"reflectance"-texture handling above) rather than
+			// silently leaving the shape opaque with no diagnostic.
+			if (const pbrt_scene::Param *pa = shape.params.find("alpha")) {
+				if (shape.materialIndex < 0 ||
+						static_cast<std::size_t>(shape.materialIndex) >= out.materials.size()) {
+					warn("shape '" + shape.type + "' binds \"alpha\" but has no "
+						 "resolved material to attach the cutout mask to; the "
+						 "shape will render fully opaque");
+				} else {
 					const pbrt_scene::TextureDecl *tex = nullptr;
-					for (const pbrt_scene::TextureDecl &t : scene.textures)
-						if (t.name == pa->strings[0]) tex = &t;
-					if (tex && tex->cls == "imagemap") {
-						const std::string filename = tex->params.getString("filename", "");
-						if (!filename.empty())
-							out.materials[static_cast<std::size_t>(shape.materialIndex)]
-								.alphaTextureFilename = filename;
+					if (pa->type == "texture" && !pa->strings.empty()) {
+						for (const pbrt_scene::TextureDecl &t : scene.textures)
+							if (t.name == pa->strings[0]) tex = &t;
+					}
+					const std::string filename = (tex && tex->cls == "imagemap")
+						? tex->params.getString("filename", "") : std::string();
+					if (filename.empty()) {
+						warn("shape's \"alpha\" texture" +
+							 (pa->strings.empty() ? std::string() : " '" + pa->strings[0] + "'") +
+							 " could not be resolved to an imagemap; the shape "
+							 "will render fully opaque");
+					} else {
+						Material &mat = out.materials[static_cast<std::size_t>(shape.materialIndex)];
+						// A NamedMaterial shared by shapes with different
+						// alpha masks (the one case Material::alphaTextureFilename's
+						// own comment documents as unenforced) silently lets
+						// the last shape processed win; warn about it here
+						// since scene.materials[i].name (populated only for
+						// NamedMaterial declarations) is already in scope.
+						if (!mat.alphaTextureFilename.empty() && mat.alphaTextureFilename != filename &&
+								!scene.materials[static_cast<std::size_t>(shape.materialIndex)].name.empty()) {
+							warn("shape's \"alpha\" texture '" + filename + "' overwrites "
+								 "material '" + scene.materials[static_cast<std::size_t>(shape.materialIndex)].name +
+								 "'s already-assigned alpha mask '" + mat.alphaTextureFilename +
+								 "' - this material is shared via NamedMaterial by multiple "
+								 "shapes with different alpha masks; only the last one "
+								 "processed will actually be used");
+						}
+						mat.alphaTextureFilename = filename;
 					}
 				}
 			}

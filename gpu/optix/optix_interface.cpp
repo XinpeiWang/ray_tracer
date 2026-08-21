@@ -245,18 +245,28 @@ extern "C" int optix_render_main(
 		// exr_output field comment for the rationale (extension, not a
 		// separate flag, mirrors how PNG conversion already auto-triggers
 		// off the extension in launcher/main.cpp).
-		std::string reqExt = std::filesystem::path(output_path).extension().string();
-		for (char &c : reqExt) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-		const bool exrOutput = (reqExt == ".exr");
+		const bool exrOutput = is_exr_output_path(output_path);
 
 		if (exrOutput) {
 			// Linear, pre-tonemap radiance straight off the GPU (`framebuffer`
-			// above) - no exposure/tonemap applied, matching camera.h's own
+			// above) - no display tone-map applied, matching camera.h's own
 			// exr_output path and EXR's whole reason for existing (preserving
 			// HDR range for downstream compositing, not baking in a display
-			// transform). Unlike CPU's convoluted temp-file-then-copy
-			// architecture (camera.h render()), this backend already writes
-			// straight to output_path, so no fallback-path juggling is needed.
+			// transform). exposure IS applied here though (a linear multiply,
+			// not a tonemap) so it stays in parity with CPU's exr_output path
+			// (camera.h applies `pixel_color * exposure` unconditionally,
+			// before branching on exr_output) - and the same NaN/Inf firefly
+			// guard the PPM loop below and CPU's per-sample guard both apply,
+			// so a stray firefly doesn't land unfiltered in the saved EXR.
+			// Unlike CPU's convoluted temp-file-then-copy architecture
+			// (camera.h render()), this backend already writes straight to
+			// output_path, so no fallback-path juggling is needed.
+			for (size_t i = 0; i < pixelCount * 3; ++i) {
+				float &v = framebuffer[i];
+				if (!std::isfinite(v)) v = 0.0f;
+				v = static_cast<float>(v * exposure);
+			}
+
 			std::string exrError;
 			if (!write_exr_image(output_path, framebuffer.data(), image_width, image_height, exrError)) {
 				std::cerr << "[OptiX] Failed to write EXR '" << output_path << "': " << exrError << "\n";
@@ -270,25 +280,34 @@ extern "C" int optix_render_main(
 			// from render()'s own denoise step - see readAovBuffers()'s own
 			// comment). Silently skipped (not an error) otherwise: AOVs are
 			// a bonus on top of the beauty EXR this function already wrote
-			// successfully, not something --exr alone promises.
+			// successfully, not something --exr alone promises. Wrapped in
+			// its own try/catch so a transient failure here (readAovBuffers()
+			// throws via CUDA_CHECK on any device-side error) is reported and
+			// skipped rather than escalating into ERR_GPU_EXCEPTION for a
+			// render whose actual requested output (the beauty EXR above)
+			// already succeeded.
 			if (denoise != 0 && !(wfEnv && std::string(wfEnv) == "1")) {
-				std::vector<float> albedo, normal;
-				if (g_renderer->readAovBuffers(static_cast<unsigned int>(image_width),
-						static_cast<unsigned int>(image_height), albedo, normal)) {
-					const std::filesystem::path base(output_path);
-					const std::filesystem::path albedoPath =
-						base.parent_path() / (base.stem().string() + "_albedo.exr");
-					const std::filesystem::path normalPath =
-						base.parent_path() / (base.stem().string() + "_normal.exr");
-					std::string aErr, nErr;
-					if (write_exr_image(albedoPath.string(), albedo.data(), image_width, image_height, aErr))
-						std::cout << "[OptiX] Wrote AOV: " << albedoPath.string() << "\n";
-					else
-						std::cerr << "[OptiX] Failed to write albedo AOV '" << albedoPath.string() << "': " << aErr << "\n";
-					if (write_exr_image(normalPath.string(), normal.data(), image_width, image_height, nErr))
-						std::cout << "[OptiX] Wrote AOV: " << normalPath.string() << "\n";
-					else
-						std::cerr << "[OptiX] Failed to write normal AOV '" << normalPath.string() << "': " << nErr << "\n";
+				try {
+					std::vector<float> albedo, normal;
+					if (g_renderer->readAovBuffers(static_cast<unsigned int>(image_width),
+							static_cast<unsigned int>(image_height), albedo, normal)) {
+						const std::filesystem::path base(output_path);
+						const std::filesystem::path albedoPath =
+							base.parent_path() / (base.stem().string() + "_albedo.exr");
+						const std::filesystem::path normalPath =
+							base.parent_path() / (base.stem().string() + "_normal.exr");
+						std::string aErr, nErr;
+						if (write_exr_image(albedoPath.string(), albedo.data(), image_width, image_height, aErr))
+							std::cout << "[OptiX] Wrote AOV: " << albedoPath.string() << "\n";
+						else
+							std::cerr << "[OptiX] Failed to write albedo AOV '" << albedoPath.string() << "': " << aErr << "\n";
+						if (write_exr_image(normalPath.string(), normal.data(), image_width, image_height, nErr))
+							std::cout << "[OptiX] Wrote AOV: " << normalPath.string() << "\n";
+						else
+							std::cerr << "[OptiX] Failed to write normal AOV '" << normalPath.string() << "': " << nErr << "\n";
+					}
+				} catch (const std::exception &e) {
+					std::cerr << "[OptiX] AOV export failed (beauty EXR above is still valid): " << e.what() << "\n";
 				}
 			}
 
@@ -617,6 +636,22 @@ extern "C" int optix_render_main_sppm(
 			return ERR_GPU_RENDER_FAILED;
 		}
 
+		// NaN/Inf firefly guard, applied before either output path (matches
+		// the PPM loop below and optix_render_main's own EXR/PPM guards).
+		for (size_t i = 0; i < pixelCount * 3; ++i) {
+			if (!std::isfinite(framebuffer[i])) framebuffer[i] = 0.0f;
+		}
+
+		if (is_exr_output_path(output_path)) {
+			std::string exrError;
+			if (!write_exr_image(output_path, framebuffer.data(), image_width, image_height, exrError)) {
+				std::cerr << "[OptiX] Failed to write EXR '" << output_path << "': " << exrError << "\n";
+				return ERR_FILE_WRITE_FAILED;
+			}
+			std::cout << "[OptiX] SPPM render complete! Output: " << output_path << "\n";
+			return 0;
+		}
+
 		std::ofstream outFile(output_path, std::ios::binary);
 		if (!outFile) {
 			std::cerr << "[OptiX] Failed to open output file: " << output_path << "\n";
@@ -627,9 +662,6 @@ extern "C" int optix_render_main_sppm(
 			double r = framebuffer[i * 3 + 0];
 			double g = framebuffer[i * 3 + 1];
 			double b = framebuffer[i * 3 + 2];
-			if (!std::isfinite(r)) r = 0.0;
-			if (!std::isfinite(g)) g = 0.0;
-			if (!std::isfinite(b)) b = 0.0;
 			r = linear_to_srgb(apply_tone_map(r, ToneMapMode::ACES));
 			g = linear_to_srgb(apply_tone_map(g, ToneMapMode::ACES));
 			b = linear_to_srgb(apply_tone_map(b, ToneMapMode::ACES));

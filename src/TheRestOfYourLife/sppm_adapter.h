@@ -41,6 +41,7 @@
 #include "bsdf_bridge.h"      // Layer 1 -- SPPMShadingContext + BSDF bridge (shared with bdpt_adapter.h)
 #include "../shared/bdpt.h"   // BDPTHit, BDPTLightLeSample
 #include "../shared/sppm.h"   // SPPMPixel, SPPMCameraPass, SPPMPhotonPass, SPPMUpdateRadius, SPPMFinalImage
+#include "../shared/exr_writer.h"
 
 #include <vector>
 #include <algorithm>
@@ -864,4 +865,16 @@ inline void sppm_write_ppm(const std::string& path, int width, int height,
 		color c(rgb[i * 3 + 0], rgb[i * 3 + 1], rgb[i * 3 + 2]);
 		write_color(out, c);
 	}
+}
+
+// Writes the same flat RGB double buffer as sppm_write_ppm(), but straight
+// to linear-HDR EXR (no tone mapping/quantization) via write_exr_image() --
+// the SPPM counterpart to camera.h's exr_output path, so --sppm --output
+// *.exr doesn't silently fall through to sppm_write_ppm() and produce a PPM
+// mislabeled with an .exr extension.
+inline bool sppm_write_exr(const std::string& path, int width, int height,
+                            const std::vector<double>& rgb, std::string& error) {
+	std::vector<float> pixels(rgb.size());
+	for (size_t i = 0; i < rgb.size(); ++i) pixels[i] = static_cast<float>(rgb[i]);
+	return write_exr_image(path, pixels.data(), width, height, error);
 }

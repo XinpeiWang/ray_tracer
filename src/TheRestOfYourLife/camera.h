@@ -202,10 +202,14 @@ class camera {
         if (!exr_output)
             out << "P3\n" << image_width << ' ' << image_height << "\n255\n";
 
-        // Multithreaded rendering: each worker renders scanlines into a buffer
-        std::vector<std::string> scanlines(image_height);
+        // Multithreaded rendering: each worker renders scanlines into a buffer.
+        // Empty (0 elements) when exr_output, matching exr_pixels' own
+        // conditional sizing below - the PPM-text `scanlines[j] = ss.str()`
+        // write further down is skipped in that mode too, so this buffer
+        // does zero work either way, not just zero allocation.
+        std::vector<std::string> scanlines(exr_output ? 0 : image_height);
         // Linear, pre-tonemap pixel buffer for exr_output - filled alongside
-        // (not instead of) `scanlines` below, at zero extra cost when
+        // (not instead of) `scanlines` above, at zero extra cost when
         // exr_output is false (stays empty; every worker's write is guarded
         // on the same flag). Interleaved RGB, row-major, matching
         // write_exr_image()/SaveEXR's own expected layout exactly.
@@ -356,7 +360,7 @@ class camera {
                     }
                 }
 
-                scanlines[j] = ss.str();
+                if (!exr_output) scanlines[j] = ss.str();
                 int done = ++completed_lines;
                 if ((done % 10) == 0 || done == image_height) {
                     std::lock_guard<std::mutex> lg(log_mutex);

@@ -28,6 +28,7 @@
 #include "../src/TheRestOfYourLife/bvh_light_sampler.h"
 #include "../src/TheRestOfYourLife/sppm_adapter.h"
 #include "../src/TheRestOfYourLife/error_codes.h"
+#include "../src/shared/exr_writer.h"
 #include <iostream>
 #include <fstream>
 #include <filesystem>
@@ -189,13 +190,8 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		// launcher/main.cpp already auto-triggers PNG conversion off the
 		// output extension rather than a separate flag - see camera.h's own
 		// exr_output field comment for what this actually changes in
-		// render(). Case-insensitive: Windows paths commonly vary in case.
-		{
-			std::filesystem::path req_ext(output_path);
-			std::string ext = req_ext.extension().string();
-			for (char &c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-			cam.exr_output = (ext == ".exr");
-		}
+		// render().
+		cam.exr_output = is_exr_output_path(output_path);
 		// sampler==nullptr (every existing caller that predates this param)
 		// or an unrecognized name both fall back to Sobol - see
 		// sampler_kind_from_name()'s own comment.
@@ -448,7 +444,15 @@ extern "C" int cpu_render_main_sppm(int width, int height, int iterations, int p
 								   iterations, photons, max_depth,
 								   /*initialRadius=*/10.0, out_rgb);
 
-		sppm_write_ppm(output_path, cam.image_width, cam.image_height, out_rgb);
+		if (is_exr_output_path(output_path)) {
+			std::string exr_error;
+			if (!sppm_write_exr(output_path, cam.image_width, cam.image_height, out_rgb, exr_error)) {
+				std::cerr << "[cpu_interface] Failed to write EXR '" << output_path << "': " << exr_error << std::endl;
+				return ERR_FILE_WRITE_FAILED;
+			}
+		} else {
+			sppm_write_ppm(output_path, cam.image_width, cam.image_height, out_rgb);
+		}
 
 		std::clog << "[cpu_interface] SPPM render complete: " << output_path << std::endl;
 		return SUCCESS;

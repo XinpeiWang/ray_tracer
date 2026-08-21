@@ -130,7 +130,15 @@ int bdpt_render_core(const hittable_list& world, camera& cam,
 		std::vector<double> out_rgb;
 		bdpt_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, bdpt_max_depth, out_rgb);
 
-		bdpt_write_ppm(output_path, cam.image_width, cam.image_height, out_rgb);
+		if (is_exr_output_path(output_path)) {
+			std::string exr_error;
+			if (!bdpt_write_exr(output_path, cam.image_width, cam.image_height, out_rgb, exr_error)) {
+				std::cerr << "[bdpt_render_core] Failed to write EXR '" << output_path << "': " << exr_error << std::endl;
+				return ERR_FILE_WRITE_FAILED;
+			}
+		} else {
+			bdpt_write_ppm(output_path, cam.image_width, cam.image_height, out_rgb);
+		}
 		return SUCCESS;
 
 	} catch (const std::bad_alloc& e) {
@@ -185,7 +193,15 @@ int mlt_render_core(const hittable_list& world, camera& cam,
 		                         mlt_bootstrap, mlt_mutations, mlt_max_depth,
 		                         kSigma, kLargeStepProb, out_rgb);
 
-		bdpt_write_ppm(output_path, cam.image_width, cam.image_height, out_rgb);
+		if (is_exr_output_path(output_path)) {
+			std::string exr_error;
+			if (!bdpt_write_exr(output_path, cam.image_width, cam.image_height, out_rgb, exr_error)) {
+				std::cerr << "[mlt_render_core] Failed to write EXR '" << output_path << "': " << exr_error << std::endl;
+				return ERR_FILE_WRITE_FAILED;
+			}
+		} else {
+			bdpt_write_ppm(output_path, cam.image_width, cam.image_height, out_rgb);
+		}
 		return SUCCESS;
 
 	} catch (const std::bad_alloc& e) {

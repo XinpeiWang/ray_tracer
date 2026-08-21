@@ -130,6 +130,7 @@
 #include "bsdf_bridge.h"         // Layer 1 -- SPPMShadingContext + BSDF bridge (shared with sppm_adapter.h)
 #include "../shared/bdpt.h"      // BDPTHit, BDPTVertex, BDPTLi, ...
 #include "../shared/mlt.h"       // MLTRenderLoop (pulls in reservoir_sampler.h's AliasTable)
+#include "../shared/exr_writer.h"
 
 #include <vector>
 #include <thread>
@@ -940,4 +941,14 @@ inline void bdpt_write_ppm(const std::string& path, int width, int height,
 		color c(rgb[i * 3 + 0], rgb[i * 3 + 1], rgb[i * 3 + 2]);
 		write_color(out, c);
 	}
+}
+
+// EXR counterpart to bdpt_write_ppm() -- see sppm_adapter.h's sppm_write_exr()
+// for why this exists (--bdpt/--mlt --output *.exr must not silently fall
+// through to bdpt_write_ppm() and produce a PPM mislabeled as EXR).
+inline bool bdpt_write_exr(const std::string& path, int width, int height,
+                            const std::vector<double>& rgb, std::string& error) {
+	std::vector<float> pixels(rgb.size());
+	for (size_t i = 0; i < rgb.size(); ++i) pixels[i] = static_cast<float>(rgb[i]);
+	return write_exr_image(path, pixels.data(), width, height, error);
 }

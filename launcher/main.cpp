@@ -55,6 +55,7 @@ extern char** environ;
 #include "src/external/image_writer.h"
 #include "src/TheRestOfYourLife/error_codes.h"
 #include "src/TheRestOfYourLife/thread_count.h"
+#include "src/shared/exr_writer.h"
 #include "launcher/camera_path.h"
 #include "launcher/launcher_args.h"   // Argument parsing
 #include "launcher/diagnostics.h"     // --diagnose
@@ -891,13 +892,13 @@ int main(int argc, char** argv) {
 
     if (render_result == 0) {
         std::filesystem::path ppm_path_obj(out_path);
-        std::string reqExt = ppm_path_obj.extension().string();
-        for (char& c : reqExt) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 
-        if (reqExt == ".exr") {
-            // cpu_render_main()/optix_render_main() already wrote a real EXR
-            // directly at out_path (see camera.h's exr_output field comment
-            // and optix_interface.cpp's own extension-detection branch) -
+        if (is_exr_output_path(out_path)) {
+            // Every CLI render entry point (cpu_render_main()/optix_render_main()
+            // and the BDPT/MLT/SPPM CPU+GPU entry points) is extension-aware
+            // and already wrote a real EXR directly at out_path - see
+            // camera.h's exr_output field comment, optix_interface.cpp's own
+            // extension-detection branch, and sppm_write_exr()/bdpt_write_exr().
             // convert_ppm_to_png() below assumes PPM input, which an EXR is
             // not (its own PPM-header parser fails loudly on EXR's binary
             // magic bytes), and EXR is already a directly viewable/

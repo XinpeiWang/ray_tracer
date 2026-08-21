@@ -20,6 +20,7 @@
 #include "disk_cylinder_hittable.h"
 #include "hittable_list.h"
 #include "material.h"
+#include "rtw_stb_image.h"     // stbi_load() - see alphaMaskFor()'s own comment
 #include "scenes_advanced.h"   // bilinear_patch_hittable
 #include "sky_light.h"
 #include "sphere.h"
@@ -280,12 +281,26 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 
 	// A pbrt Shape "alpha" cutout mask (Material::alphaTextureFilename - see
 	// that field's own comment: attached to the Shape's own resolved
-	// material, one entry per unique materialIndex). Same decode-once-then-
-	// move pattern as OBJ/MTL's own map_d handling in mesh.h - and, like
-	// that path, image_texture rather than mipmap_texture: an alpha-cutout
-	// test only ever needs a single point sample (triangle::hit()'s alpha
-	// test), never mip filtering. nullptr (the default) for every material
-	// with no alpha texture, matching triangle's own zero-cost default.
+	// material, one entry per unique materialIndex). image_texture rather
+	// than mipmap_texture: an alpha-cutout test only ever needs a single
+	// point sample (triangle::hit()'s alpha test), never mip filtering.
+	// nullptr (the default) for every material with no alpha texture,
+	// matching triangle's own zero-cost default.
+	//
+	// Deliberately NOT rtw_image's own load() (which calls stbi_loadf() -
+	// see OBJ/MTL's map_d handling in mesh.h for that same pattern): for an
+	// 8-bit/LDR source image, stbi_loadf silently applies stb_image's
+	// default gamma-2.2 decode (its "LDR-to-HDR" conversion, meant for
+	// colour data going sRGB -> linear). An alpha/opacity mask is a linear
+	// coverage fraction, not a display colour, so that decode would
+	// systematically bias the cutout threshold (e.g. an authored 0.6 alpha,
+	// byte 153/255, decodes to pow(0.6, 2.2) =~ 0.32 and silently flips
+	// which side of triangle.h's kAlphaCutoutThreshold it falls on).
+	// stbi_load() (the plain 8-bit loader - no float conversion, no gamma of
+	// any kind) plus a manual byte/255 divide is the exact linear
+	// reconstruction pbrt's own alpha-cutout convention expects; the result
+	// is fed into rtw_image's raw-pixel constructor (already used elsewhere
+	// for pre-decoded HDR data) rather than rtw_image::load().
 	std::map<int, std::shared_ptr<texture>> alphaMaskCache;
 	const auto alphaMaskFor = [&](int mi) -> std::shared_ptr<texture> {
 		if (mi < 0 || static_cast<std::size_t>(mi) >= scene.materials.size()) return nullptr;
@@ -294,8 +309,14 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		std::shared_ptr<texture> mask;
 		const std::string &fn = scene.materials[static_cast<std::size_t>(mi)].alphaTextureFilename;
 		if (!fn.empty()) {
-			rtw_image probe(fn.c_str());
-			if (probe.height() > 0) mask = std::make_shared<image_texture>(std::move(probe));
+			int w = 0, h = 0, channels = 0;
+			unsigned char *bdata = stbi_load(fn.c_str(), &w, &h, &channels, 3);
+			if (bdata) {
+				std::vector<float> pixels(static_cast<std::size_t>(w) * h * 3);
+				for (std::size_t i = 0; i < pixels.size(); ++i) pixels[i] = bdata[i] / 255.0f;
+				stbi_image_free(bdata);
+				mask = std::make_shared<image_texture>(rtw_image(w, h, pixels.data()));
+			}
 		}
 		alphaMaskCache.emplace(mi, mask);
 		return mask;

@@ -15,7 +15,19 @@
 
 #include "../external/tinyexr.h"
 
+#include <cctype>
 #include <string>
+
+// Case-insensitive ".exr" extension check, shared by every render entry
+// point that decides EXR-vs-PPM/PNG output by sniffing output_path (CPU/GPU
+// recursive, BDPT/MLT/SPPM, and the launcher's post-render step) so the
+// four independent copies of this check can't drift out of sync.
+inline bool is_exr_output_path(const std::string &path) {
+	if (path.size() < 4) return false;
+	std::string ext = path.substr(path.size() - 4);
+	for (char &c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+	return ext == ".exr";
+}
 
 inline bool write_exr_image(const std::string &path, const float *rgb,
 							int width, int height, std::string &error) {

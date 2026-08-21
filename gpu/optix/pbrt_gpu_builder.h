@@ -25,6 +25,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <map>
 #include <string>
 #include <utility>
@@ -306,6 +307,49 @@ inline int getOrBuildPbrtImageTexture(const std::string& resolvedPath, SceneData
 	return idx;
 }
 
+// Loads a Shape "alpha" cutout mask (Material::alphaTextureFilename) into
+// `out`'s shared texture table. A SEPARATE function/cache from
+// getOrBuildPbrtImageTexture() above rather than a reused call, because that
+// one goes through stbi_loadf() - which, for an ordinary 8-bit/LDR source
+// image, silently applies stb_image's default gamma-2.2 decode (its
+// "LDR-to-HDR" conversion, meant for genuine colour data going from sRGB to
+// linear). An alpha/opacity mask is a linear coverage fraction, not a
+// display colour, so that decode would systematically bias every cutout
+// threshold comparison (e.g. an authored 0.6 alpha, byte 153/255, would
+// decode to pow(0.6, 2.2) =~ 0.32 and silently flip which side of the 0.5
+// cutout threshold - triangle.h's kAlphaCutoutThreshold - it falls on).
+// stbi_load() (the plain 8-bit loader, no float conversion, no gamma of any
+// kind) sidesteps this entirely; the byte/255 divide below is the exact
+// linear reconstruction pbrt's own alpha-cutout convention expects.
+inline int getOrBuildPbrtAlphaMaskTexture(const std::string& resolvedPath, SceneData& out,
+										   std::map<std::string, int>& cache) {
+	const auto it = cache.find(resolvedPath);
+	if (it != cache.end()) return it->second;
+
+	int width = 0, height = 0, channels = 0;
+	unsigned char* bdata = stbi_load(resolvedPath.c_str(), &width, &height, &channels, 3);
+	if (!bdata) {
+		cache.emplace(resolvedPath, -1);
+		return -1;
+	}
+
+	TextureData tex{};
+	tex.kind = TextureKind::Image;
+	tex.noiseScale = 0.0f;
+	tex.pixelOffset = static_cast<int>(out.texturePixels.size());
+	tex.width = width;
+	tex.height = height;
+	const std::size_t total = static_cast<std::size_t>(width) * height * 3;
+	out.texturePixels.resize(out.texturePixels.size() + total);
+	std::memcpy(out.texturePixels.data() + tex.pixelOffset, bdata, total);
+	stbi_image_free(bdata);
+
+	const int idx = static_cast<int>(out.textures.size());
+	out.textures.push_back(tex);
+	cache.emplace(resolvedPath, idx);
+	return idx;
+}
+
 // Resolves a material's own effective flat colour for use as one side of a
 // Mix blend: `m.color` directly for every ordinary material kind, or - when
 // `m` is ITSELF a nested Mix (pbrt-v4 allows mix-of-mix) - the recursive
@@ -358,6 +402,7 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 								 std::map<std::pair<double,double>, int> &bssrdfTableCache,
 								 std::map<std::string, int> &measuredTableCache,
 								 std::map<std::string, int> &imageTextureCache,
+								 std::map<std::string, int> &alphaMaskTextureCache,
 								 const std::vector<pbrt_flatten::Material> &allMaterials = {}) {
 	MaterialData d = {};
 	d.textureIdx = -1;
@@ -367,11 +412,13 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 	// since it's orthogonal to material kind/emission - CPU's own
 	// alphaMaskFor() (pbrt_cpu_builder.h) likewise applies regardless of
 	// whether the owning triangle turns out emissive, so a leaf-shaped area
-	// light stays consistent between backends. Reuses the same decode-and-
-	// cache helper (and the same imageTextureCache/out.textures table) as
-	// MaterialKind::Diffuse's reflectance texture below.
+	// light stays consistent between backends. A SEPARATE decode/cache
+	// (getOrBuildPbrtAlphaMaskTexture(), its own alphaMaskTextureCache/
+	// out.textures entries - not imageTextureCache below) because alpha
+	// masks must NOT get the gamma decode reflectance imagemaps need - see
+	// that function's own comment.
 	if (!m.alphaTextureFilename.empty())
-		d.alphaMaskTexIdx = getOrBuildPbrtImageTexture(m.alphaTextureFilename, out, imageTextureCache);
+		d.alphaMaskTexIdx = getOrBuildPbrtAlphaMaskTexture(m.alphaTextureFilename, out, alphaMaskTextureCache);
 
 	if (emission) {
 		d.type = MaterialType::DiffuseLight;
@@ -590,6 +637,11 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 	// getOrBuildPbrtImageTexture()'s own comment. Only Diffuse materials with
 	// an imagemap-bound reflectance touch this; stays empty otherwise.
 	std::map<std::string, int> imageTextureCache;
+	// Separate dedup cache for Shape "alpha" cutout masks - see
+	// getOrBuildPbrtAlphaMaskTexture()'s own comment on why this can't share
+	// imageTextureCache above even when the same file is used for both (its
+	// decode must skip the gamma correction imageTextureCache's applies).
+	std::map<std::string, int> alphaMaskTextureCache;
 	const auto materialIndex = [&](int mi, int ai) {
 		const auto key = std::make_pair(mi, ai);
 		const auto it = cache.find(key);
@@ -606,7 +658,7 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 				: kDefault;
 
 		const int idx = static_cast<int>(out.materials.size());
-		out.materials.push_back(makeMaterial(m, em, out, bssrdfTableCache, measuredTableCache, imageTextureCache, scene.materials));
+		out.materials.push_back(makeMaterial(m, em, out, bssrdfTableCache, measuredTableCache, imageTextureCache, alphaMaskTextureCache, scene.materials));
 		cache.emplace(key, idx);
 		return idx;
 	};
