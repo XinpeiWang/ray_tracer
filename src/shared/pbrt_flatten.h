@@ -401,6 +401,19 @@ inline std::string conductorElementFromSpectrumName(const std::string &name) {
 struct Emission {
 	double L[3] = {1.0, 1.0, 1.0};
 	double scale = 1.0;
+	// Round 6 Phase 4: pbrt-v4's real AreaLightSource "diffuse" also accepts
+	// a "filename" parameter for spatially-varying emission (an image
+	// mapped onto the shape instead of a flat L) - when set, this wins over
+	// L entirely (matches pbrt-v4's own DiffuseAreaLight, which ignores L
+	// once an image is given). Empty (default) means "use L", this
+	// struct's pre-existing behavior.
+	std::string filename;
+	// "twosided" - parsed nowhere before this (see docs/PBRT_SUPPORT.md and
+	// named-material-and-texture.pbrt's own comments flagging this gap) -
+	// every area light emitted only from its geometric front face
+	// regardless of what the scene asked for. false (default) preserves
+	// that exact pre-existing one-sided behavior.
+	bool twoSided = false;
 };
 
 // LightSource "infinite" - a scene's environment/sky light. This is the one
@@ -1419,6 +1432,11 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			warn("an area light is given as a blackbody temperature, which is "
 				 "approximated rather than converted spectrally");
 		}
+		// Round 6 Phase 4: spatially-varying emission (an image mapped onto
+		// the shape) and real two-sided emission - see Emission's own
+		// comment on each field.
+		e.filename = ld.params.getString("filename", "");
+		e.twoSided = ld.params.getBool("twosided", false);
 		out.areaLights.push_back(e);
 	}
 

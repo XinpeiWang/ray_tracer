@@ -9,6 +9,7 @@
 // counterpart, which consume the same FlatScene.
 
 #include <cmath>
+#include <iostream>
 #include <map>
 #include <memory>
 #include <vector>
@@ -70,10 +71,21 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 	// diffuse_light is the emissive case, so an emissive shape becomes one
 	// regardless of the material it also declared.
 	if (emission) {
+		// Round 6 Phase 4: a "filename" area light wins over "L" entirely
+		// (matches pbrt-v4's own DiffuseAreaLight - see Emission::filename's
+		// own comment), still honoring "scale" via scaled_texture since a
+		// filename-backed light never touches pbrt_flatten::Material::color
+		// the way a flat-L light implicitly could.
+		if (!emission->filename.empty()) {
+			shared_ptr<texture> tex = std::make_shared<mipmap_texture>(emission->filename.c_str());
+			if (emission->scale != 1.0)
+				tex = std::make_shared<scaled_texture>(tex, emission->scale);
+			return std::make_shared<diffuse_light>(tex, emission->twoSided);
+		}
 		const color L(emission->L[0] * emission->scale,
 					  emission->L[1] * emission->scale,
 					  emission->L[2] * emission->scale);
-		return std::make_shared<diffuse_light>(L);
+		return std::make_shared<diffuse_light>(L, emission->twoSided);
 	}
 
 	const color albedo(m.color[0], m.color[1], m.color[2]);

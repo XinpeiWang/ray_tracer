@@ -148,20 +148,32 @@ class dielectric : public material {
 
 class diffuse_light : public material {
   public:
-    diffuse_light(shared_ptr<texture> tex) : tex(tex) {}
-    diffuse_light(const color& emit) : tex(make_shared<solid_color>(emit)) {}
+    diffuse_light(shared_ptr<texture> tex, bool two_sided = false) : tex(tex), two_sided(two_sided) {}
+    diffuse_light(const color& emit, bool two_sided = false)
+        : tex(make_shared<solid_color>(emit)), two_sided(two_sided) {}
 
     color emitted(const ray& r_in, const hit_record& rec, double u, double v, const point3& p)
     const override {
-        if (!rec.front_face)
+        if (!rec.front_face && !two_sided)
             return color(0,0,0);
-        return tex->value_diff(u, v, p, rec.dudx, rec.dvdx, rec.dudy, rec.dvdy);
+        // Plain point sample, not value_diff()'s EWA/mip filtering: a
+        // directly-viewed emitter's UV footprint (this hit's own
+        // dudx/dvdx/dudy/dvdy) isn't the same kind of minification a
+        // reflectance texture sees stretched across a receding surface, and
+        // for AreaLightSource "diffuse"'s own image parameter (Round 6
+        // Phase 4) footprint-based filtering was picking the coarsest mip
+        // level (the whole image's average color) rather than the intended
+        // per-texel emission - matches pbrt-v4's own DiffuseAreaLight image
+        // lookup, which is a plain bilinear sample too, not EWA-filtered.
+        return tex->value(u, v, p);
     }
 
     shared_ptr<texture> get_texture() const { return tex; }
+    bool is_two_sided() const { return two_sided; }
 
   private:
     shared_ptr<texture> tex;
+    bool two_sided;
 };
 
 

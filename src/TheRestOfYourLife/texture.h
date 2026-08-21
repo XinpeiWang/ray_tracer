@@ -299,6 +299,36 @@ class marble_texture : public texture {
 // hasMixReflectance comment for why), matching checker_texture/
 // uv_checker_texture's own established scope.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// scaled_texture -- flat scalar multiplier over another texture.
+//
+// Round 6 Phase 4: AreaLightSource "diffuse"'s "scale" parameter still
+// applies when "filename" is given (pbrt-v4's real DiffuseAreaLight scales
+// the image-sampled radiance the same way it scales a flat "L"), but a
+// filename-backed light builds a mipmap_texture directly rather than going
+// through pbrt_flatten::Material::color the way flat-L lights do, so there
+// is no existing place to fold the multiply in - this wraps any inner
+// texture with one.
+// ---------------------------------------------------------------------------
+class scaled_texture : public texture {
+  public:
+    scaled_texture(shared_ptr<texture> inner, double scale) : inner(inner), scale(scale) {}
+
+    color value(double u, double v, const point3& p) const override {
+        return scale * inner->value(u, v, p);
+    }
+
+    color value_diff(double u, double v, const point3& p,
+                      double dudx, double dvdx, double dudy, double dvdy) const override {
+        return scale * inner->value_diff(u, v, p, dudx, dvdx, dudy, dvdy);
+    }
+
+  private:
+    shared_ptr<texture> inner;
+    double scale;
+};
+
+
 class mix_texture : public texture {
   public:
     mix_texture(const color& tex1, const color& tex2, double amount)
