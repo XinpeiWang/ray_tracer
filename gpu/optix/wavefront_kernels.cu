@@ -252,6 +252,13 @@ __device__ __forceinline__ float3 wf_sample_texture(
 		const int zi = static_cast<int>(floorf(tex.noiseScale * p.z));
 		const bool is_even = ((xi + yi + zi) % 2) == 0;
 		return is_even ? tex.color1 : tex.color2;
+	} else if (tex.kind == TextureKind::UVChecker) {
+		// Matches optix_device_helpers.h's sample_texture() UVChecker branch
+		// (and uv_checker_texture::value(), texture.h) exactly.
+		const int ui = static_cast<int>(floorf(u * tex.uScale));
+		const int vi = static_cast<int>(floorf(v * tex.vScale));
+		const bool is_even = ((ui + vi) % 2) == 0;
+		return is_even ? tex.color1 : tex.color2;
 	} else {
 		const float turb = turbulence_simple<float>(p.x, p.y, p.z, 0.5f, 7);
 		const float s = 0.5f * (1.0f + sinf(tex.noiseScale * p.z + 10.0f * turb));

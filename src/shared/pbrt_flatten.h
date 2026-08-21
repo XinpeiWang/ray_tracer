@@ -236,6 +236,26 @@ struct Material {
 	// procedural-texture pipeline in one pass.
 	std::string textureFilename;
 
+	// A Diffuse material's "reflectance" bound to a "checkerboard" Texture
+	// instead of an "imagemap" one (e.g. named-material-and-texture.pbrt's
+	// "floor-check": Texture "floor-check" "spectrum" "checkerboard"
+	// "float uscale" [8] "float vscale" [8] - no tex1/tex2 given, so
+	// pbrt-v4's own defaults apply). Unlike textureFilename, this can't be
+	// represented as a plain filename (there is no file - it's two flat
+	// colours procedurally tiled by UV), hence the separate fields below
+	// rather than overloading textureFilename's meaning. Only the flat-
+	// colour tex1/tex2 case is supported - a checkerboard whose tex1/tex2
+	// are THEMSELVES texture references (rather than float/rgb literals)
+	// falls through to the generic "not supported" warning instead of
+	// attempting a recursive resolve. hasCheckerReflectance is the "is
+	// this meaningful" flag, since an all-default checkerboard's fields
+	// are otherwise indistinguishable from "unset".
+	bool hasCheckerReflectance = false;
+	double checkerColor1[3] = {1.0, 1.0, 1.0};  // pbrt-v4 tex1 default: white
+	double checkerColor2[3] = {0.0, 0.0, 0.0};  // pbrt-v4 tex2 default: black
+	double checkerUScale = 1.0;
+	double checkerVScale = 1.0;
+
 	// A pbrt Shape's own "alpha" parameter (bound to a "float"/"imagemap"
 	// Texture - e.g. barcelona-pavilion's foliage, "Shape \"plymesh\"
 	// \"texture alpha\" [ \"leaf_alpha\" ]"), NOT a Material directive
@@ -864,16 +884,19 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// material still renders, but with a constant colour where the scene
 		// asked for a pattern. pbrt's ganesha is the case that showed this -
 		// its statue's reflectance is an imagemap, and without a word about
-		// it the render just looks like a shading bug. "reflectance" bound to
-		// an "imagemap" texture on a Diffuse material, and "displacement"
-		// bound to an imagemap (optionally wrapped in a "scale" texture) on
-		// ANY material kind, are the two cases actually wired up below
-		// (Material::textureFilename's/displacementTextureFilename's own
-		// comments) - reflectance is gated on `kind` so a coateddiffuse/
-		// conductor/etc. with the same binding still warns instead of
-		// silently keeping its texture reference unused; every
-		// other texture binding (other parameters, other texture classes like
-		// checkerboard/scale/mix) also still just warns.
+		// it the render just looks like a shading bug. Three cases are
+		// actually wired up below (each field's own comment has the detail):
+		// "reflectance" bound to an "imagemap" or flat-colour "checkerboard"
+		// texture on a Diffuse material (Material::textureFilename /
+		// hasCheckerReflectance), and "displacement" bound to an imagemap
+		// (optionally wrapped in a "scale" texture) on ANY material kind
+		// (displacementTextureFilename). reflectance is gated on `kind` so a
+		// coateddiffuse/conductor/etc. with the same binding still warns
+		// instead of silently keeping its texture reference unused; every
+		// other texture binding (other parameters, other texture classes
+		// like "scale"/"mix" bound directly to reflectance, or a
+		// checkerboard whose tex1/tex2 are themselves texture references)
+		// also still just warns.
 		for (const pbrt_scene::Param &p : md.params.items) {
 			if (p.type != "texture") continue;
 			if (m.kind == MaterialKind::Diffuse && p.name == "reflectance" && !p.strings.empty()) {
@@ -885,6 +908,26 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					if (!filename.empty()) {
 						m.textureFilename = filename;
 						continue;   // resolved to an image, not a "not supported" warning
+					}
+				}
+				if (tex && tex->cls == "checkerboard") {
+					// tex1/tex2 THEMSELVES bound to a nested texture (rather
+					// than a flat float/rgb literal) isn't supported - see
+					// hasCheckerReflectance's own comment - so fall through
+					// to the generic warning below in that case.
+					const pbrt_scene::Param *tex1p = tex->params.find("tex1");
+					const pbrt_scene::Param *tex2p = tex->params.find("tex2");
+					const bool tex1IsNested = tex1p && tex1p->type == "texture";
+					const bool tex2IsNested = tex2p && tex2p->type == "texture";
+					if (!tex1IsNested && !tex2IsNested) {
+						const pbrt_scene::Vec3 c1 = tex->params.getVec3("tex1", {1.0, 1.0, 1.0});
+						const pbrt_scene::Vec3 c2 = tex->params.getVec3("tex2", {0.0, 0.0, 0.0});
+						m.checkerColor1[0] = c1.x; m.checkerColor1[1] = c1.y; m.checkerColor1[2] = c1.z;
+						m.checkerColor2[0] = c2.x; m.checkerColor2[1] = c2.y; m.checkerColor2[2] = c2.z;
+						m.checkerUScale = tex->params.getFloat("uscale", 1.0);
+						m.checkerVScale = tex->params.getFloat("vscale", 1.0);
+						m.hasCheckerReflectance = true;
+						continue;   // resolved to a procedural checker, not a "not supported" warning
 					}
 				}
 			}

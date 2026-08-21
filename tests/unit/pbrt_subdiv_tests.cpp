@@ -183,6 +183,69 @@ TEST(PbrtDroppedTest, ADiffuseReflectanceImagemapIsResolvedNotWarned) {
 	EXPECT_EQ(s.materials[0].textureFilename, "t.png");
 }
 
+TEST(PbrtDroppedTest, DiffuseReflectanceCheckerboardIsResolvedNotWarned) {
+	// Round 5 Phase 2: named-material-and-texture.pbrt's "floor-check" -
+	// Texture "floor-check" "spectrum" "checkerboard" "float uscale" [8]
+	// "float vscale" [8] - no tex1/tex2 given, so pbrt-v4's own defaults
+	// (white/black) apply. Must resolve to Material::hasCheckerReflectance,
+	// not the generic "not supported" warning.
+	const FlatScene s = build(
+		"Texture \"floor-check\" \"spectrum\" \"checkerboard\" "
+		"\"float uscale\" [ 8 ] \"float vscale\" [ 8 ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"floor-check\" ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	EXPECT_FALSE(warned(s, "not supported"));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].hasCheckerReflectance);
+	EXPECT_DOUBLE_EQ(s.materials[0].checkerColor1[0], 1.0);
+	EXPECT_DOUBLE_EQ(s.materials[0].checkerColor2[0], 0.0);
+	EXPECT_DOUBLE_EQ(s.materials[0].checkerUScale, 8.0);
+	EXPECT_DOUBLE_EQ(s.materials[0].checkerVScale, 8.0);
+}
+
+TEST(PbrtDroppedTest, CheckerboardWithExplicitColoursOverridesTheDefaults) {
+	const FlatScene s = build(
+		"Texture \"chk\" \"spectrum\" \"checkerboard\" "
+		"\"rgb tex1\" [ 1 0 0 ] \"rgb tex2\" [ 0 0 1 ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"chk\" ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	ASSERT_EQ(s.materials.size(), 1u);
+	ASSERT_TRUE(s.materials[0].hasCheckerReflectance);
+	EXPECT_DOUBLE_EQ(s.materials[0].checkerColor1[0], 1.0);
+	EXPECT_DOUBLE_EQ(s.materials[0].checkerColor1[2], 0.0);
+	EXPECT_DOUBLE_EQ(s.materials[0].checkerColor2[2], 1.0);
+}
+
+TEST(PbrtDroppedTest, CheckerboardOnANonDiffuseMaterialStillWarns) {
+	// Matches ATextureBoundToAMaterialIsReportedWithItsParameterName's own
+	// scope cut for imagemap: reflectance-texture resolution (of any class)
+	// is gated on MaterialKind::Diffuse.
+	const FlatScene s = build(
+		"Texture \"chk\" \"spectrum\" \"checkerboard\"\n"
+		"Material \"coateddiffuse\" \"texture reflectance\" [ \"chk\" ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	EXPECT_TRUE(warned(s, "reflectance"));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_FALSE(s.materials[0].hasCheckerReflectance);
+}
+
+TEST(PbrtDroppedTest, CheckerboardWithNestedTex1StillWarns) {
+	// tex1/tex2 bound to another Texture (rather than a float/rgb literal)
+	// isn't supported - see Material::hasCheckerReflectance's own comment.
+	const FlatScene s = build(
+		"Texture \"leaf\" \"spectrum\" \"imagemap\" \"string filename\" [ \"leaf.png\" ]\n"
+		"Texture \"chk\" \"spectrum\" \"checkerboard\" \"texture tex1\" [ \"leaf\" ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"chk\" ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	EXPECT_TRUE(warned(s, "reflectance"));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_FALSE(s.materials[0].hasCheckerReflectance);
+}
+
 TEST(PbrtDroppedTest, ShapeAlphaImagemapResolvesOntoTheOwningMaterial) {
 	// barcelona-pavilion's foliage: each leaf Shape "plymesh" gives its own
 	// "texture alpha" naming a "float"/"imagemap" Texture, independent of

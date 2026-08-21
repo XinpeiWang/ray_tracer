@@ -80,6 +80,35 @@ class checker_texture : public texture {
 };
 
 
+// pbrt-v4's "checkerboard" texture class: a 2D, UV-tiled checker (parity of
+// floor(u*uscale)+floor(v*vscale)), NOT the 3D world-space checker
+// checker_texture above already implements (that one is this project's own
+// original Shirley-book pattern, keyed on world position - a materially
+// different, scale/position-dependent result, not a drop-in match for
+// pbrt's UV-based convention). Kept as a separate class rather than a
+// checker_texture variant so neither one's semantics have to compromise.
+class uv_checker_texture : public texture {
+  public:
+    uv_checker_texture(double uscale, double vscale,
+                        shared_ptr<texture> tex1, shared_ptr<texture> tex2)
+      : uscale(uscale), vscale(vscale), tex1(tex1), tex2(tex2) {}
+
+    uv_checker_texture(double uscale, double vscale, const color& c1, const color& c2)
+      : uv_checker_texture(uscale, vscale, make_shared<solid_color>(c1), make_shared<solid_color>(c2)) {}
+
+    color value(double u, double v, const point3& p) const override {
+        const int ui = int(std::floor(u * uscale));
+        const int vi = int(std::floor(v * vscale));
+        const bool isEven = (ui + vi) % 2 == 0;
+        return isEven ? tex1->value(u, v, p) : tex2->value(u, v, p);
+    }
+
+  private:
+    double uscale, vscale;
+    shared_ptr<texture> tex1, tex2;
+};
+
+
 class image_texture : public texture {
   public:
     image_texture(const char* filename) : image(filename) {}

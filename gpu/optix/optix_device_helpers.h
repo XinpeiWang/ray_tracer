@@ -917,6 +917,15 @@ __device__ __forceinline__ float3 sample_texture(int textureIdx, float u, float 
 		const int zi = static_cast<int>(floorf(tex.noiseScale * p.z));
 		const bool is_even = ((xi + yi + zi) % 2) == 0;
 		return is_even ? tex.color1 : tex.color2;
+	} else if (tex.kind == TextureKind::UVChecker) {
+		// Matches uv_checker_texture::value() (texture.h) exactly: parity of
+		// floor(u*uscale)+floor(v*vscale) - pbrt-v4's own UV-tiled
+		// checkerboard convention, deliberately NOT the world-space Checker
+		// case above (see TextureKind::UVChecker's own comment).
+		const int ui = static_cast<int>(floorf(u * tex.uScale));
+		const int vi = static_cast<int>(floorf(v * tex.vScale));
+		const bool is_even = ((ui + vi) % 2) == 0;
+		return is_even ? tex.color1 : tex.color2;
 	} else {
 		// Matches noise_texture::value() (texture.h:127-129) exactly:
 		// color(.5,.5,.5) * (1 + sin(scale*p.z + 10*turb(p,7))), where

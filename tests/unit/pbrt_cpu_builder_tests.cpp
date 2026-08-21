@@ -363,6 +363,32 @@ TEST(PbrtCpuBuildTest, DiffuseReflectanceImagemapBuildsATextureBackedLambertian)
 		   "texture-backed lambertian, not the flat-colour fallback";
 }
 
+TEST(PbrtCpuBuildTest, DiffuseReflectanceCheckerboardBuildsAUVCheckerBackedLambertian) {
+	// Round 5 Phase 2: hasCheckerReflectance must make it all the way to a
+	// uv_checker_texture-backed lambertian, and that texture must actually
+	// tile by UV (not the unrelated 3D world-space checker_texture) - probed
+	// here via value() at two UVs one checker cell apart.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Texture \"chk\" \"spectrum\" \"checkerboard\" "
+		"\"rgb tex1\" [ 1 0 0 ] \"rgb tex2\" [ 0 0 1 ] "
+		"\"float uscale\" [ 1 ] \"float vscale\" [ 1 ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"chk\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.25, 0.25, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *lam = dynamic_cast<lambertian *>(rec.mat.get());
+	ASSERT_NE(lam, nullptr);
+	auto *chk = dynamic_cast<uv_checker_texture *>(lam->get_texture().get());
+	ASSERT_NE(chk, nullptr)
+		<< "a diffuse material with a checkerboard-bound reflectance must "
+		   "build a uv_checker_texture-backed lambertian";
+	const color c00 = chk->value(0.25, 0.25, rec.p);
+	const color c10 = chk->value(0.75, 0.25, rec.p);
+	EXPECT_NE(c00.x(), c10.x())
+		<< "adjacent UV checker cells (one uscale apart) must differ";
+}
+
 TEST_F(CpuBuilderTempTree, DisplacementWithARealGrayscaleBumpMapWrapsInBumpMapMaterial) {
 	// Round 5 Phase 1: Material::displacementTextureFilename (see that
 	// field's own comment) must reach the CPU builder's materialFor()

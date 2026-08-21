@@ -568,6 +568,26 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		d.type = MaterialType::Lambertian;
 		if (!m.textureFilename.empty())
 			d.textureIdx = getOrBuildPbrtImageTexture(m.textureFilename, out, imageTextureCache);
+		// m.hasCheckerReflectance (Material::hasCheckerReflectance's own
+		// comment) - a procedural pbrt-v4 checkerboard, appended directly to
+		// out.textures as a TextureKind::UVChecker entry (no cache/dedup:
+		// each pbrt Texture declaration is already deduped 1:1 with the
+		// Material referencing it by materialCache in build(), so this
+		// runs at most once per distinct checkerboard material).
+		else if (m.hasCheckerReflectance) {
+			TextureData tex{};
+			tex.kind = TextureKind::UVChecker;
+			tex.color1 = make_float3(static_cast<float>(m.checkerColor1[0]),
+									 static_cast<float>(m.checkerColor1[1]),
+									 static_cast<float>(m.checkerColor1[2]));
+			tex.color2 = make_float3(static_cast<float>(m.checkerColor2[0]),
+									 static_cast<float>(m.checkerColor2[1]),
+									 static_cast<float>(m.checkerColor2[2]));
+			tex.uScale = static_cast<float>(m.checkerUScale);
+			tex.vScale = static_cast<float>(m.checkerVScale);
+			d.textureIdx = static_cast<int>(out.textures.size());
+			out.textures.push_back(tex);
+		}
 		break;
 	case pbrt_flatten::MaterialKind::Unsupported:
 		d.type = MaterialType::Lambertian;

@@ -269,3 +269,34 @@ TEST(PbrtGpuTextureTest, NoDisplacementParameterLeavesMaterialUnperturbed) {
 	EXPECT_EQ(scene.materials[0].type, MaterialType::Lambertian);
 	EXPECT_EQ(scene.materials[0].textureIdx, -1);
 }
+
+TEST(PbrtGpuTextureTest, CheckerReflectanceBuildsAUVCheckerTexture) {
+	// Round 5 Phase 2: Material::hasCheckerReflectance must reach a real
+	// TextureKind::UVChecker entry in out.textures with the resolved
+	// colours/scales, and MaterialData::textureIdx pointing at it.
+	pbrt_flatten::Material m;
+	m.kind = pbrt_flatten::MaterialKind::Diffuse;
+	m.hasCheckerReflectance = true;
+	m.checkerColor1[0] = 1.0; m.checkerColor1[1] = 0.0; m.checkerColor1[2] = 0.0;
+	m.checkerColor2[0] = 0.0; m.checkerColor2[1] = 0.0; m.checkerColor2[2] = 1.0;
+	m.checkerUScale = 4.0;
+	m.checkerVScale = 8.0;
+	pbrt_flatten::FlatScene flat;
+	flat.materials.push_back(m);
+	pbrt_flatten::Triangle tri{};
+	tri.material = 0;
+	tri.areaLight = -1;
+	flat.triangles.push_back(tri);
+
+	SceneData scene;
+	pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(scene.materials.size(), 1u);
+	EXPECT_EQ(scene.materials[0].type, MaterialType::Lambertian);
+	ASSERT_GE(scene.materials[0].textureIdx, 0);
+	const TextureData &tex = scene.textures[static_cast<std::size_t>(scene.materials[0].textureIdx)];
+	EXPECT_EQ(tex.kind, TextureKind::UVChecker);
+	EXPECT_FLOAT_EQ(tex.color1.x, 1.0f);
+	EXPECT_FLOAT_EQ(tex.color2.z, 1.0f);
+	EXPECT_FLOAT_EQ(tex.uScale, 4.0f);
+	EXPECT_FLOAT_EQ(tex.vScale, 8.0f);
+}

@@ -573,7 +573,15 @@ struct GpuRgbGridMedium {
 enum class TextureKind : int {
 	Image = 0,
 	Noise = 1,
-	Checker = 2
+	Checker = 2,
+	// pbrt-v4's UV-tiled 2D "checkerboard" texture class - deliberately a
+	// SEPARATE kind from Checker above rather than a variant of it: Checker
+	// is this project's own original 3D world-space checker (parity of
+	// floor(p.xyz * scale), keyed on the hit point), while pbrt's
+	// checkerboard tiles by (u,v) * (uscale,vscale) - a materially
+	// different result for the same "scale" the two shouldn't share a code
+	// path over (see texture.h's uv_checker_texture, the CPU counterpart).
+	UVChecker = 3
 };
 
 // One entry per texture, indexed by MaterialData::textureIdx. Image
@@ -587,9 +595,11 @@ struct TextureData {
 	int pixelOffset;   // Image: byte offset into texturePixels. Unused otherwise.
 	int width;         // Image: pixel width. Unused otherwise.
 	int height;        // Image: pixel height. Unused otherwise.
-	float noiseScale;  // Noise: scale param. Checker: 1/scale (checker_texture's own inv_scale). Unused for Image.
-	float3 color1;     // Checker: "even" cell color. Unused otherwise.
-	float3 color2;     // Checker: "odd" cell color. Unused otherwise.
+	float noiseScale;  // Noise: scale param. Checker: 1/scale (checker_texture's own inv_scale). Unused for Image/UVChecker.
+	float3 color1;     // Checker/UVChecker: "even"/tex1 cell color. Unused otherwise.
+	float3 color2;     // Checker/UVChecker: "odd"/tex2 cell color. Unused otherwise.
+	float uScale;      // UVChecker: u-axis tile frequency (pbrt-v4 "uscale"). Unused otherwise.
+	float vScale;      // UVChecker: v-axis tile frequency (pbrt-v4 "vscale"). Unused otherwise.
 };
 
 // Material data (packed for SBT).

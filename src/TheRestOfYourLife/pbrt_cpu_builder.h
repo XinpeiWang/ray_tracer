@@ -189,6 +189,15 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		// worth a second probe-and-fallback dance here.
 		if (!m.textureFilename.empty())
 			return std::make_shared<lambertian>(std::make_shared<mipmap_texture>(m.textureFilename.c_str()));
+		// m.hasCheckerReflectance (Material::hasCheckerReflectance's own
+		// comment) - a procedural pbrt-v4 checkerboard, not an image file,
+		// so uv_checker_texture (texture.h) is built directly from the
+		// resolved colours/scales rather than decoded from disk.
+		if (m.hasCheckerReflectance)
+			return std::make_shared<lambertian>(std::make_shared<uv_checker_texture>(
+				m.checkerUScale, m.checkerVScale,
+				color(m.checkerColor1[0], m.checkerColor1[1], m.checkerColor1[2]),
+				color(m.checkerColor2[0], m.checkerColor2[1], m.checkerColor2[2])));
 		break;
 	case pbrt_flatten::MaterialKind::Unsupported:
 		break;
