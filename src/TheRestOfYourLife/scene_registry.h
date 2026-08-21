@@ -108,6 +108,12 @@ struct SceneDescriptor {
     // where the values themselves come from.
     int         recommended_max_depth = 0;
     std::string recommended_integrator;
+    // Same shape as recommended_integrator above (empty for every hand-built
+    // scene; not auto-applied; cpu_interface.cpp warns rather than switches
+    // samplers) - the loaded scene's own Sampler directive type name. Also
+    // deliberately last, same positional-brace-init reason as
+    // recommended_integrator's own comment.
+    std::string recommended_sampler;
 };
 
 // Dummy sphere light used by scenes that have no explicit light geometry
@@ -190,6 +196,7 @@ namespace pbrt_scene_registry {
         s.recommended_spp = d.samplesPerPixel;
         s.recommended_max_depth = d.maxDepth;
         s.recommended_integrator = d.integrator;
+        s.recommended_sampler = d.samplerType;
         s.camera = CameraConfig{
             d.camera.vfov,
             d.camera.lookfrom[0], d.camera.lookfrom[1], d.camera.lookfrom[2],

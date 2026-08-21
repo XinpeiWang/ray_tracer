@@ -403,6 +403,43 @@ TEST(RenderIntegrationTest, ExposureBrightensAndDarkensMonotonically) {
 }
 
 // ============================================================================
+// Sampler Selection Tests (--sampler / SamplerKind, camera.h)
+// ============================================================================
+
+/**
+ * Every ported pbrt-v4 sampler (see camera.h's SamplerKind/
+ * sampler_kind_from_name()) must actually be selectable and produce a valid,
+ * lit render - not just compile. Each is constructed once per worker thread
+ * with a different signature/setup than SobolSampler's own per-ray
+ * construction (see camera.h's worker lambda comment), so this is real
+ * coverage that a plain build success wouldn't catch.
+ */
+TEST(RenderIntegrationTest, EverySamplerKindProducesAValidRender) {
+	const char* names[] = {"sobol", "zsobol", "paddedsobol", "stratified", "pmj02bn", "halton"};
+	for (const char* name : names) {
+		std::string output = std::string("test_sampler_") + name + ".ppm";
+		int result = cpu_render_main(24, 24, 4, 5, output.c_str(), "A1", 278, 278, -800, 0, 1.0, name);
+		EXPECT_EQ(result, 0) << "sampler \"" << name << "\" failed to render";
+		double avg = average_ppm_brightness(output.c_str());
+		EXPECT_GT(avg, 0.0) << "sampler \"" << name << "\" produced an entirely black/invalid render";
+		std::remove(output.c_str());
+	}
+}
+
+/**
+ * An unrecognized --sampler name must fall back to sobol (with a warning,
+ * not a crash) - see cpu_interface.cpp's own sampler_kind_from_name() call.
+ */
+TEST(RenderIntegrationTest, UnknownSamplerNameFallsBackToSobol) {
+	const char* output = "test_sampler_unknown.ppm";
+	int result = cpu_render_main(24, 24, 4, 5, output, "A1", 278, 278, -800, 0, 1.0, "not-a-real-sampler");
+	EXPECT_EQ(result, 0);
+	double avg = average_ppm_brightness(output);
+	EXPECT_GT(avg, 0.0);
+	std::remove(output);
+}
+
+// ============================================================================
 // Max Depth Tests
 // ============================================================================
 

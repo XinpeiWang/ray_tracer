@@ -68,6 +68,15 @@ struct LaunchArgs {
 	// (main.cpp warns) - none of those entry points take an exposure
 	// parameter, same scope cut as denoise's own --wavefront exclusion above.
 	double exposure         = 1.0;
+	// Which ported pbrt-v4 sampler (src/shared/sobol_sampler.h,
+	// stratified_sampler.h, pmj02_sampler.h, halton_sampler.h) drives
+	// camera.h's random decisions this render - see camera.h's SamplerKind/
+	// sampler_kind_from_name(). Empty (default) means "use sobol", this
+	// project's pre-existing hardcoded default - CPU only, same "only the
+	// default path tracer supports it" scope cut as exposure above (no GPU
+	// sampler-selection exists yet, and BDPT/MLT/SPPM each have their own
+	// sampling scheme already).
+	std::string sampler     = "";
 	bool video_mode         = false;
 	// Stochastic Progressive Photon Mapping - a separate CPU-only render
 	// mode (see cpu_renderer/cpu_interface.h's cpu_render_main_sppm() doc
@@ -197,6 +206,21 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			} catch (const std::exception&) {
 				std::cerr << "Invalid --exposure value, using default\n";
 			}
+		} else if (arg == "--sampler" && i + 1 < argc) {
+			std::string name = argv[i + 1];
+			std::transform(name.begin(), name.end(), name.begin(),
+							[](unsigned char c) { return std::tolower(c); });
+			static const std::set<std::string> kValidSamplers = {
+				"sobol", "zsobol", "paddedsobol", "stratified", "pmj02bn", "halton"};
+			if (kValidSamplers.count(name)) {
+				out.sampler = name;
+			} else {
+				std::cerr << "Invalid --sampler \"" << argv[i + 1] << "\", using default (sobol). "
+							 "Valid: sobol, zsobol, paddedsobol, stratified, pmj02bn, halton\n";
+			}
+			consumed_args.insert(i);
+			consumed_args.insert(i + 1);
+			++i;
 		} else if (arg == "--sppm") {
 			out.use_sppm = true;
 			consumed_args.insert(i);
@@ -341,6 +365,10 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "               (default 1.0 = no-op). CPU and GPU default path tracer only.\n"
 					  << "               E.g. 0.5 = darker, 2.0 = brighter. No effect under\n"
 					  << "               --bdpt/--mlt/--sppm (warns).\n"
+					  << "  --sampler NAME: Which ported pbrt-v4 sampler drives random decisions\n"
+					  << "               (default sobol, this project's pre-existing behavior).\n"
+					  << "               One of sobol, zsobol, paddedsobol, stratified, pmj02bn, halton.\n"
+					  << "               CPU default path tracer only.\n"
 					  << "  --sppm     : Render with Stochastic Progressive Photon Mapping instead of\n"
 					  << "               the path tracer (incompatible with --video). Best for hard\n"
 					  << "               caustic/glass scenes. CPU: verified end-to-end on scene 11\n"

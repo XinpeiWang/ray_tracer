@@ -61,6 +61,15 @@ extern "C" {
 ///                      before tone-mapping (see camera.h's render loop).
 ///                      1.0 (default) is a no-op; mirrors pbrt-v4's
 ///                      PixelSensor imagingRatio collapsed to one scalar.
+/// @param sampler       Which ported pbrt-v4 sampler (src/shared/
+///                      sobol_sampler.h, stratified_sampler.h,
+///                      pmj02_sampler.h, halton_sampler.h) drives
+///                      ray_color()'s random decisions - see camera.h's
+///                      SamplerKind/sampler_kind_from_name(). One of
+///                      "sobol"/"zsobol"/"paddedsobol"/"stratified"/
+///                      "pmj02bn"/"halton"; nullptr, empty, or an
+///                      unrecognized name all fall back to "sobol" (this
+///                      project's pre-existing hardcoded default).
 /// @return 0 on success, non-zero error code on failure
 int cpu_render_main(
     int width,
@@ -73,7 +82,8 @@ int cpu_render_main(
     double cam_y,
     double cam_z,
     int force_camera_override = 0,
-    double exposure = 1.0
+    double exposure = 1.0,
+    const char* sampler = nullptr
 );
 
 /// @brief Render a scene using Stochastic Progressive Photon Mapping (SPPM)

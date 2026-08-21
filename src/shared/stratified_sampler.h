@@ -172,6 +172,11 @@ public:
 	// Convenience: current dimension index
 	CPU_GPU int dimension() const { return dim_; }
 
+	// Single-scalar convenience, matching SobolSampler's own get() - lets
+	// camera.h's ray_color() (templated, duck-typed on `Sampler& sampler`
+	// calling only sampler.get()) treat this class as a drop-in replacement.
+	CPU_GPU double get() { return get_1d(); }
+
 private:
 	int  nx_, ny_, seed_;
 	bool jitter_;

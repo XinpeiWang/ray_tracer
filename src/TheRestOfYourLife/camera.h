@@ -20,6 +20,9 @@
 #include "shadow_ray.h"
 #include "../shared/path_sampler.h"
 #include "../shared/sobol_sampler.h"
+#include "../shared/stratified_sampler.h"
+#include "../shared/pmj02_sampler.h"
+#include "../shared/halton_sampler.h"
 #include "../shared/filter.h"
 #include "../shared/cameras.h"
 #include "../shared/surface_interaction.h"  // compute_differentials() for texture-filtering footprint
@@ -35,6 +38,7 @@
 #include <sstream>
 #include <mutex>
 #include <chrono>
+#include <optional>
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -42,6 +46,39 @@
 #include <windows.h>
 #endif
 
+
+// Which of this codebase's ported pbrt-v4 sampler classes (src/shared/
+// sobol_sampler.h, stratified_sampler.h, pmj02_sampler.h, halton_sampler.h)
+// drives ray_color()'s random decisions this render. Sobol (this project's
+// long-standing default, matching pbrt-v4's ZSobol-adjacent quality without
+// the extra Morton-curve bookkeeping) stays the default so existing renders
+// are pixel-identical unless --sampler is passed - see launcher_args.h's
+// own --sampler flag and camera.h's render() dispatch switch for where this
+// is actually consumed.
+enum class SamplerKind {
+    Sobol,
+    ZSobol,
+    PaddedSobol,
+    Stratified,
+    PMJ02BN,
+    Halton,
+};
+
+// Parses a pbrt-v4 Sampler directive's/--sampler flag's type name
+// ("sobol"/"zsobol"/"paddedsobol"/"stratified"/"pmj02bn"/"halton") into a
+// SamplerKind. Unrecognized names (including pbrt-v4 names this project
+// doesn't port, like "independent") fall back to Sobol - matching the
+// existing Integrator-directive precedent of warning rather than failing
+// the render (see SceneDescriptor::recommended_integrator's own comment).
+inline bool sampler_kind_from_name(const std::string& name, SamplerKind& out) {
+    if (name == "sobol")        { out = SamplerKind::Sobol;       return true; }
+    if (name == "zsobol")       { out = SamplerKind::ZSobol;      return true; }
+    if (name == "paddedsobol")  { out = SamplerKind::PaddedSobol; return true; }
+    if (name == "stratified")   { out = SamplerKind::Stratified;  return true; }
+    if (name == "pmj02bn")      { out = SamplerKind::PMJ02BN;     return true; }
+    if (name == "halton")       { out = SamplerKind::Halton;      return true; }
+    return false;
+}
 
 class camera {
   public:
@@ -54,6 +91,10 @@ class camera {
     // exposureTime * ISO / 100 (film.cpp) collapsed to a single scalar -
     // see launcher_args.h's --exposure flag. 1.0 (default) is a no-op.
     double exposure          = 1.0;
+    // Which sampler drives ray_color()'s random decisions - see SamplerKind's
+    // own comment. Default Sobol matches this project's pre-existing,
+    // hardcoded behavior exactly.
+    SamplerKind sampler_kind = SamplerKind::Sobol;
     color  background;               // Scene background color (used when sky==nullptr)
     shared_ptr<sky_light> sky;               // HDR env map (pbrt-v4 ImageInfiniteLight); nullptr = flat background
     shared_ptr<punctual_light_list> punct_lights; // pbrt-v4 PointLight/SpotLight/DistantLight (delta); nullptr = none
@@ -159,6 +200,44 @@ class camera {
 
         auto worker = [&](unsigned int tid) {
             std::ostringstream ss;
+            // Construct the ONE stateful sampler this render actually asked
+            // for (sampler_kind), once per worker thread rather than once
+            // per ray - PMJ02BNSampler in particular precomputes a whole
+            // per-pixel-tile table in its constructor, and ZSobol/
+            // PaddedSobol/Stratified/Halton all carry per-(px,py,dim) state
+            // reset via start_pixel_sample() rather than being cheap to
+            // rebuild per ray the way SobolSampler is (see its own case
+            // below, which still constructs fresh per ray - zero behavior
+            // change for this project's pre-existing default). Every ctor
+            // here seeds purely from (px, py, dim, a fixed global seed=0),
+            // never from `tid`, so which thread renders a given pixel still
+            // can't change that pixel's random sequence - same determinism
+            // SobolSampler already had.
+            std::optional<ZSobolSampler>      zsobol_sampler;
+            std::optional<PaddedSobolSampler> padded_sobol_sampler;
+            std::optional<StratifiedSampler>  stratified_sampler;
+            std::optional<PMJ02BNSampler>     pmj02bn_sampler;
+            std::optional<halton_sampler>     halton_smp;
+            switch (sampler_kind) {
+                case SamplerKind::ZSobol:
+                    zsobol_sampler.emplace(samples_per_pixel, image_width, image_height);
+                    break;
+                case SamplerKind::PaddedSobol:
+                    padded_sobol_sampler.emplace(samples_per_pixel);
+                    break;
+                case SamplerKind::Stratified:
+                    stratified_sampler.emplace(sqrt_spp, sqrt_spp);
+                    break;
+                case SamplerKind::PMJ02BN:
+                    pmj02bn_sampler.emplace(samples_per_pixel);
+                    break;
+                case SamplerKind::Halton:
+                    halton_smp.emplace(samples_per_pixel, image_width, image_height);
+                    break;
+                case SamplerKind::Sobol:
+                default:
+                    break;  // SobolSampler needs no persistent per-thread state
+            }
             while (true) {
                 int j = next_j.fetch_sub(1);
                 if (j < 0) break;
@@ -182,8 +261,45 @@ class camera {
                                     vec3 offset = sample_square_stratified(s_i, s_j, sample_idx, i, j);
                                     double camera_weight = 1.0;
                                     ray r = get_ray(i, j, s_i, s_j, offset, &camera_weight);
-                                    SobolSampler ps(sample_idx, i, j);  // pbrt-v4 Sobol+FastOwen
-                                color sample = ray_color(r, max_depth, world, lights, ps);
+                                    // Dispatch to whichever sampler this render asked for
+                                    // (sampler_kind) - see SamplerKind's own comment and the
+                                    // per-worker construction above. ray_color() is templated
+                                    // and duck-typed on `Sampler&`, so each branch instantiates
+                                    // its own copy; kept to a two-line construct+call per case.
+                                    color sample;
+                                    switch (sampler_kind) {
+                                        case SamplerKind::ZSobol: {
+                                            zsobol_sampler->start_pixel_sample(i, j, sample_idx);
+                                            sample = ray_color(r, max_depth, world, lights, *zsobol_sampler);
+                                            break;
+                                        }
+                                        case SamplerKind::PaddedSobol: {
+                                            padded_sobol_sampler->start_pixel_sample(i, j, sample_idx);
+                                            sample = ray_color(r, max_depth, world, lights, *padded_sobol_sampler);
+                                            break;
+                                        }
+                                        case SamplerKind::Stratified: {
+                                            stratified_sampler->start_pixel_sample(i, j, sample_idx);
+                                            sample = ray_color(r, max_depth, world, lights, *stratified_sampler);
+                                            break;
+                                        }
+                                        case SamplerKind::PMJ02BN: {
+                                            pmj02bn_sampler->start_pixel_sample(i, j, sample_idx);
+                                            sample = ray_color(r, max_depth, world, lights, *pmj02bn_sampler);
+                                            break;
+                                        }
+                                        case SamplerKind::Halton: {
+                                            halton_smp->start_pixel_sample(i, j, sample_idx);
+                                            sample = ray_color(r, max_depth, world, lights, *halton_smp);
+                                            break;
+                                        }
+                                        case SamplerKind::Sobol:
+                                        default: {
+                                            SobolSampler ps(sample_idx, i, j);  // pbrt-v4 Sobol+FastOwen
+                                            sample = ray_color(r, max_depth, world, lights, ps);
+                                            break;
+                                        }
+                                    }
                                 // Apply the camera's exposure weight (pbrt-v4: L *= cameraRay->weight).
                                 // Always 1.0 for pinhole/Ortho/Spherical; for RealisticCamera this is
                                 // the cos^4(theta)/(pdf*LensRearZ^2) factor that converts the traced

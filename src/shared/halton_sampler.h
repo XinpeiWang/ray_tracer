@@ -328,6 +328,11 @@ public:
 		return sample_dimension(dimension_++);
 	}
 
+	// Single-scalar convenience, matching SobolSampler's own get() - lets
+	// camera.h's ray_color() (templated, duck-typed on `Sampler& sampler`
+	// calling only sampler.get()) treat this class as a drop-in replacement.
+	double get() { return get_1d(); }
+
 	// -----------------------------------------------------------------------
 	// get_2d -- next 2D sample in [0,1)^2
 	// -----------------------------------------------------------------------
@@ -345,10 +350,14 @@ public:
 	// Matches pbrt-v4 HaltonSampler::GetPixel2D().
 	// -----------------------------------------------------------------------
 	std::pair<double,double> get_pixel_2d() const {
-		using namespace halton_detail;
+		// Qualified - path_sampler.h (already #include'd by any TU that also
+		// wants SamplerKind, e.g. camera.h) declares its own global,
+		// same-signature radical_inverse(int, uint64_t), which an unqualified
+		// call here would find ambiguous against halton_detail's own once
+		// both headers are included together.
 		return {
-			radical_inverse(0, halton_index_ >> base_exponents_[0]),
-			radical_inverse(1, halton_index_ / base_scales_[1])
+			halton_detail::radical_inverse(0, halton_index_ >> base_exponents_[0]),
+			halton_detail::radical_inverse(1, halton_index_ / base_scales_[1])
 		};
 	}
 
@@ -364,7 +373,10 @@ private:
 	double sample_dimension(int dim) const {
 		using namespace halton_detail;
 		if (randomize_ == HaltonRandomize::None)
-			return radical_inverse(dim, halton_index_);
+			// Qualified - see get_pixel_2d()'s own comment on why an
+			// unqualified call here is ambiguous once path_sampler.h is
+			// also included.
+			return halton_detail::radical_inverse(dim, halton_index_);
 		return scrambled_radical_inverse(dim, halton_index_, get_perm(dim));
 	}
 

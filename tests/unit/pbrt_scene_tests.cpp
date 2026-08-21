@@ -277,11 +277,19 @@ TEST(PbrtSettingsTest, CameraFilmSamplerAndIntegratorAreRead) {
 		"Shape \"sphere\"\n");
 	EXPECT_EQ(s.cameraType, "perspective");
 	EXPECT_DOUBLE_EQ(s.cameraFov(), 45.0);
+	EXPECT_EQ(s.samplerType, "halton");
 	EXPECT_EQ(s.samplesPerPixel, 128);
 	EXPECT_EQ(s.xResolution, 800);
 	EXPECT_EQ(s.yResolution, 600);
 	EXPECT_EQ(s.integrator, "volpath");
 	EXPECT_EQ(s.maxDepth, 12);
+}
+
+TEST(PbrtSettingsTest, SamplerDefaultsToSobolWithNoDirective) {
+	const Scene s = parseOk(
+		"WorldBegin\n"
+		"Shape \"sphere\"\n");
+	EXPECT_EQ(s.samplerType, "sobol");
 }
 
 // ===========================================================================

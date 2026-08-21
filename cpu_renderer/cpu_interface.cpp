@@ -43,7 +43,7 @@
 
 extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, const char* output_path,
 								 const char* scene_id, double cam_x, double cam_y, double cam_z,
-								 int force_camera_override, double exposure) {
+								 int force_camera_override, double exposure, const char* sampler) {
 	try {
 		// ====================================================================
 		// Parameter Validation
@@ -108,6 +108,24 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 					  << "\" but cpu_render_main always runs the default path tracer - "
 						 "pass --bdpt/--mlt/--sppm explicitly if that's what the scene wants.\n";
 		}
+		// Same "advisory, not auto-applied" shape as maxdepth/integrator above
+		// - "sobol" is skipped for the same reason "volpath" is above (both
+		// the loader's own passthrough default AND what a scene with no
+		// Sampler directive reports), and unlike maxdepth/exposure there's
+		// no positional CLI argument for --sampler to compare against here
+		// (main.cpp already resolved the string to a SamplerKind before this
+		// call), so this only fires for an outright empty/unset --sampler -
+		// i.e. the render is about to use Sobol regardless of what the scene
+		// itself asked for.
+		if (sampler == nullptr || sampler[0] == '\0') {
+			if (!scene_desc->recommended_sampler.empty() && scene_desc->recommended_sampler != "sobol") {
+				std::cerr << "Warning: scene '" << scene_id << "' requests Sampler \""
+						  << scene_desc->recommended_sampler
+						  << "\" but no --sampler was passed, so this render uses sobol - "
+							 "pass --sampler " << scene_desc->recommended_sampler
+						  << " explicitly if that's what the scene wants.\n";
+			}
+		}
 
 		// ====================================================================
 		// Scene Construction
@@ -166,6 +184,19 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		cam.samples_per_pixel = spp;
 		cam.max_depth         = max_depth;
 		cam.exposure          = exposure;
+		// sampler==nullptr (every existing caller that predates this param)
+		// or an unrecognized name both fall back to Sobol - see
+		// sampler_kind_from_name()'s own comment.
+		if (sampler != nullptr) {
+			SamplerKind kind;
+			if (sampler_kind_from_name(sampler, kind)) {
+				cam.sampler_kind = kind;
+			} else if (sampler[0] != '\0') {
+				std::cerr << "Warning: unrecognized --sampler \"" << sampler
+						  << "\", using sobol. Valid: sobol, zsobol, paddedsobol, "
+							 "stratified, pmj02bn, halton.\n";
+			}
+		}
 		cam.vup               = vec3(0, 1, 0);  // Up direction is +Y
 
 		// Apply camera config from registry

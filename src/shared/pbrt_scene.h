@@ -318,6 +318,14 @@ struct Scene {
 	int yResolution = 720;
 	std::string filmFilename;
 	std::string integrator = "volpath";
+	// Sampler directive's type name (e.g. "sobol", "zsobol", "halton") -
+	// like `integrator` above, purely informational: nothing in this parser
+	// or the builders it feeds selects a sampler implementation from this
+	// string. "sobol" is both pbrt-v4's actual default AND what this
+	// project's own CPU render loop already hardcoded before SamplerKind
+	// existed (camera.h), so a scene with no Sampler directive at all
+	// reports the same value a render already produces.
+	std::string samplerType = "sobol";
 	int samplesPerPixel = 16;
 	int maxDepth = 5;
 
@@ -732,7 +740,7 @@ private:
 			return true;
 		}
 		if (d == "Sampler") {
-			if (pos_ < t_.size() && t_[pos_].quoted) ++pos_;
+			if (pos_ < t_.size() && t_[pos_].quoted) { s_.samplerType = t_[pos_].text; ++pos_; }
 			s_.samplesPerPixel = readParams().getInt("pixelsamples", s_.samplesPerPixel);
 			return true;
 		}

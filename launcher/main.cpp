@@ -564,7 +564,8 @@ int main(int argc, char** argv) {
                     cam_pos.lookfrom_y,
                     cam_pos.lookfrom_z,
                     1,  // force_camera_override
-                    args.exposure
+                    args.exposure,
+                    args.sampler.empty() ? nullptr : args.sampler.c_str()
                 );
             }
 
@@ -701,6 +702,14 @@ int main(int argc, char** argv) {
         std::cerr << "Warning: --exposure has no effect under --bdpt/--mlt/--sppm "
                      "(only the default path tracer supports it) - rendering at exposure=1.0.\n";
     }
+    // --sampler only reaches cpu_render_main() (the CPU default path tracer)
+    // - GPU has no sampler-selection wiring yet, and BDPT/MLT/SPPM each use
+    // their own sampling scheme already. Same warn-instead-of-silently-drop
+    // shape as --exposure's own warning above.
+    if (!args.sampler.empty() && (use_gpu || use_bdpt || use_mlt || use_sppm)) {
+        std::cerr << "Warning: --sampler has no effect under --gpu/--bdpt/--mlt/--sppm "
+                     "(only the CPU default path tracer supports it) - ignoring.\n";
+    }
 
     if (use_bdpt) {
         // BDPT Renderer, CPU path (Bidirectional Path Tracing). Implemented
@@ -836,7 +845,7 @@ int main(int argc, char** argv) {
         // CPU Renderer (multithreaded C++)
         // Implemented in cpu_renderer/cpu_interface.cpp
         std::cout << "Calling cpu_render_main(...) in-process..." << std::endl;
-        render_result = cpu_render_main(image_width, image_height, samples_per_pixel, max_ray_depth, out_path.c_str(), scene_id.c_str(), cam_x, cam_y, cam_z, 1, args.exposure);  // force_camera_override
+        render_result = cpu_render_main(image_width, image_height, samples_per_pixel, max_ray_depth, out_path.c_str(), scene_id.c_str(), cam_x, cam_y, cam_z, 1, args.exposure, args.sampler.empty() ? nullptr : args.sampler.c_str());  // force_camera_override
         std::cout << "cpu_render_main returned: " << render_result << std::endl;
         if (render_result == SUCCESS) {
             std::cout << "Rendered with in-process CPU renderer, output: " << out_path << std::endl;

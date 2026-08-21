@@ -208,6 +208,7 @@
     <ClCompile Include="unit\sky_light_tests.cpp" />
     <ClCompile Include="unit\sobol_sampler_tests.cpp" />
         <ClCompile Include="unit\z_sobol_sampler_tests.cpp" />
+    <ClCompile Include="unit\sampler_kind_tests.cpp" />
             <ClCompile Include="unit\bilinear_sampling_tests.cpp" />
                 <ClCompile Include="unit\catmull_rom_tests.cpp" />
                     <ClCompile Include="unit\equal_area_tests.cpp" />

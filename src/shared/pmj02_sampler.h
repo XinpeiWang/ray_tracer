@@ -246,7 +246,13 @@ public:
 		if (pmj_instance >= nPMJ02bnSets) {
 			// Fall back to permuted index for extra dimensions
 			uint64_t h = pmj_hash(px_, py_, dim, seed_);
-			index = (int)permutation_element((uint32_t)sample_, (uint32_t)spp_, (uint32_t)h);
+			// Qualified (unlike get_1d()'s own call two lines up would suggest
+			// is unnecessary) because this file's own using-namespace brings
+			// pmj02_detail::permutation_element into scope unqualified, which
+			// becomes ambiguous against sobol_sampler.h's global same-
+			// signature permutation_element once both headers are included
+			// together (as camera.h now does for SamplerKind's sake).
+			index = (int)pmj02_detail::permutation_element((uint32_t)sample_, (uint32_t)spp_, (uint32_t)h);
 		}
 
 		auto [u, v] = get_pmj02bn_sample(pmj_instance, index);
@@ -262,6 +268,11 @@ public:
 
 	int samples_per_pixel() const { return spp_; }
 	bool is_power_of4_spp()  const { return pmj02_detail::is_power_of4(spp_); }
+
+	// Single-scalar convenience, matching SobolSampler's own get() - lets
+	// camera.h's ray_color() (templated, duck-typed on `Sampler& sampler`
+	// calling only sampler.get()) treat this class as a drop-in replacement.
+	double get() { return static_cast<double>(get_1d()); }
 
 private:
 	int spp_;
