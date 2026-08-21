@@ -183,6 +183,31 @@ TEST(PbrtDroppedTest, ADiffuseReflectanceImagemapIsResolvedNotWarned) {
 	EXPECT_EQ(s.materials[0].textureFilename, "t.png");
 }
 
+TEST(PbrtDroppedTest, ShapeAlphaImagemapResolvesOntoTheOwningMaterial) {
+	// barcelona-pavilion's foliage: each leaf Shape "plymesh" gives its own
+	// "texture alpha" naming a "float"/"imagemap" Texture, independent of
+	// (but declared right alongside) its own Material - see Material::
+	// alphaTextureFilename's own comment for why this lands on the Shape's
+	// resolved material rather than a new per-triangle field.
+	const FlatScene s = build(
+		"Texture \"leafAlpha\" \"float\" \"imagemap\" \"string filename\" [ \"leaf.png\" ]\n"
+		"Material \"diffusetransmission\"\n"
+		"Shape \"trianglemesh\" \"texture alpha\" [ \"leafAlpha\" ]\n"
+		"  \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].alphaTextureFilename, "leaf.png");
+}
+
+TEST(PbrtDroppedTest, AShapeWithNoAlphaParameterLeavesItsMaterialUnmasked) {
+	const FlatScene s = build(
+		"Material \"diffuse\" \"rgb reflectance\" [ .5 .5 .5 ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].alphaTextureFilename.empty());
+}
+
 TEST(PbrtDroppedTest, APlainColourMaterialIsNotWarnedAbout) {
 	const FlatScene s = build(
 		"Material \"diffuse\" \"rgb reflectance\" [ 0.5 0.5 0.5 ]\n"

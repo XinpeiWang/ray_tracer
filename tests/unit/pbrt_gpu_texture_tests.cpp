@@ -89,3 +89,47 @@ TEST(PbrtGpuTextureTest, RealImagemapFileBuildsATextureIdxAndUploadsPixels) {
 	EXPECT_GT(tex.height, 0);
 	EXPECT_FALSE(scene.texturePixels.empty());
 }
+
+TEST(PbrtGpuTextureTest, ShapeAlphaSetsAlphaMaskTexIdxOnTheOwningMaterial) {
+	// Round 4 Phase 3: Material::alphaTextureFilename (a Shape "alpha"
+	// cutout mask, see that field's own comment) must reach
+	// MaterialData::alphaMaskTexIdx - the SAME field OBJ/MTL's own map_d
+	// already wires into both GPU backends' any-hit/closest-hit alpha tests
+	// (optix_anyhit_shadow.h, optix_intersection_triangle.h,
+	// wavefront_programs.cu), so setting it here is sufficient to make both
+	// backends respect a pbrt-authored alpha mask with no further wiring.
+	pbrt_flatten::Material m;
+	m.kind = pbrt_flatten::MaterialKind::Diffuse;
+	m.alphaTextureFilename = "pbrt_scenes/ganesha/textures/ganesha.png";
+	pbrt_flatten::FlatScene flat;
+	flat.materials.push_back(m);
+	pbrt_flatten::Triangle tri{};
+	tri.material = 0;
+	tri.areaLight = -1;
+	flat.triangles.push_back(tri);
+
+	SceneData scene;
+	pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(scene.materials.size(), 1u);
+	ASSERT_GE(scene.materials[0].alphaMaskTexIdx, 0)
+		<< "ganesha.png must decode successfully when run from the repo root";
+	const TextureData &tex = scene.textures[static_cast<std::size_t>(scene.materials[0].alphaMaskTexIdx)];
+	EXPECT_EQ(tex.kind, TextureKind::Image);
+	EXPECT_GT(tex.width, 0);
+}
+
+TEST(PbrtGpuTextureTest, NoAlphaParameterLeavesAlphaMaskTexIdxUnset) {
+	pbrt_flatten::Material m;
+	m.kind = pbrt_flatten::MaterialKind::Diffuse;
+	pbrt_flatten::FlatScene flat;
+	flat.materials.push_back(m);
+	pbrt_flatten::Triangle tri{};
+	tri.material = 0;
+	tri.areaLight = -1;
+	flat.triangles.push_back(tri);
+
+	SceneData scene;
+	pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(scene.materials.size(), 1u);
+	EXPECT_EQ(scene.materials[0].alphaMaskTexIdx, -1);
+}

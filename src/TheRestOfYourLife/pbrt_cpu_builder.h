@@ -278,6 +278,29 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		return made;
 	};
 
+	// A pbrt Shape "alpha" cutout mask (Material::alphaTextureFilename - see
+	// that field's own comment: attached to the Shape's own resolved
+	// material, one entry per unique materialIndex). Same decode-once-then-
+	// move pattern as OBJ/MTL's own map_d handling in mesh.h - and, like
+	// that path, image_texture rather than mipmap_texture: an alpha-cutout
+	// test only ever needs a single point sample (triangle::hit()'s alpha
+	// test), never mip filtering. nullptr (the default) for every material
+	// with no alpha texture, matching triangle's own zero-cost default.
+	std::map<int, std::shared_ptr<texture>> alphaMaskCache;
+	const auto alphaMaskFor = [&](int mi) -> std::shared_ptr<texture> {
+		if (mi < 0 || static_cast<std::size_t>(mi) >= scene.materials.size()) return nullptr;
+		const auto it = alphaMaskCache.find(mi);
+		if (it != alphaMaskCache.end()) return it->second;
+		std::shared_ptr<texture> mask;
+		const std::string &fn = scene.materials[static_cast<std::size_t>(mi)].alphaTextureFilename;
+		if (!fn.empty()) {
+			rtw_image probe(fn.c_str());
+			if (probe.height() > 0) mask = std::make_shared<image_texture>(std::move(probe));
+		}
+		alphaMaskCache.emplace(mi, mask);
+		return mask;
+	};
+
 	// Emitting geometry is now done more than once - for the scene itself, and
 	// again for each instance definition, whose geometry stays in object space
 	// and is placed by a transform rather than baked. Everything below is what
@@ -346,7 +369,8 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		for (std::size_t i = 0; i < perTriangleMaterial.size(); ++i) {
 			auto mat = cachedMaterial(perTriangleMaterial[i].first,
 									  perTriangleMaterial[i].second);
-			auto tri = std::make_shared<triangle>(mesh, static_cast<int>(i), mat);
+			auto tri = std::make_shared<triangle>(mesh, static_cast<int>(i), mat,
+												   alphaMaskFor(perTriangleMaterial[i].first));
 			world.add(tri);
 			if (perTriangleMaterial[i].second >= 0) lights.add(tri);
 		}

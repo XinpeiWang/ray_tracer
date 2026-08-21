@@ -236,6 +236,28 @@ struct Material {
 	// procedural-texture pipeline in one pass.
 	std::string textureFilename;
 
+	// A pbrt Shape's own "alpha" parameter (bound to a "float"/"imagemap"
+	// Texture - e.g. barcelona-pavilion's foliage, "Shape \"plymesh\"
+	// \"texture alpha\" [ \"leaf_alpha\" ]"), NOT a Material directive
+	// parameter - pbrt's alpha-cutout mask is authored per-Shape, one leaf
+	// mesh at a time, reusing the same colour texture's alpha/luminance
+	// channel. Stored here anyway (rather than as a new field on Triangle/
+	// FlatScene) because both this loader's Material-building convention
+	// (measuredFilename/textureFilename, both "raw as written, resolved
+	// later by pbrt_load.h") and the GPU backend's actual layout
+	// (MaterialData::alphaMaskTexIdx is per-material, not per-triangle) are
+	// already per-material - flatten() writes this onto whichever Material
+	// the owning Shape resolved to (out.materials[shape.materialIndex]) at
+	// the point the Shape is processed. Every scene in this loader's own
+	// corpus that uses "texture alpha" gives each alpha-masked Shape its own
+	// unnamed Material declared immediately before it (never a NamedMaterial
+	// shared by shapes with different alpha masks), so this 1:1 shape<->
+	// material correspondence holds in practice; a scene that violated it
+	// would have the last such Shape's alpha win for every shape sharing
+	// that material index - not enforced, but not a case this loader's own
+	// bundled scenes exercise either.
+	std::string alphaTextureFilename;
+
 	// Mix only: indices into FlatScene::materials of the two blended
 	// sub-materials - pbrt-v4's own "string materials" parameter names them
 	// (an array of exactly two named-material references, resolved against
@@ -1423,6 +1445,29 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 
 		if (shape.type == "trianglemesh" || shape.type == "plymesh"
 				|| shape.type == "loopsubdiv") {
+			// "texture alpha" - an alpha-cutout mask authored per-Shape (see
+			// Material::alphaTextureFilename's own comment for why it lands
+			// on the Shape's resolved material rather than a new per-
+			// triangle field). Only the texture-bound form is handled here;
+			// a literal "float alpha" constant has no bundled scene using it
+			// and is left for the generic "not supported" path below like
+			// any other unhandled shape parameter.
+			if (shape.materialIndex >= 0 &&
+					static_cast<std::size_t>(shape.materialIndex) < out.materials.size()) {
+				if (const pbrt_scene::Param *pa = shape.params.find("alpha");
+						pa && pa->type == "texture" && !pa->strings.empty()) {
+					const pbrt_scene::TextureDecl *tex = nullptr;
+					for (const pbrt_scene::TextureDecl &t : scene.textures)
+						if (t.name == pa->strings[0]) tex = &t;
+					if (tex && tex->cls == "imagemap") {
+						const std::string filename = tex->params.getString("filename", "");
+						if (!filename.empty())
+							out.materials[static_cast<std::size_t>(shape.materialIndex)]
+								.alphaTextureFilename = filename;
+					}
+				}
+			}
+
 			std::vector<double> P;
 			std::vector<int> indices;
 			std::vector<double> N;    // per-vertex, object space; empty = none

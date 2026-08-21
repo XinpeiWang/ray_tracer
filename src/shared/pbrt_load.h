@@ -408,6 +408,24 @@ inline LoadResult loadFile(const std::string &path) {
 		m.textureFilename = resolved;
 	}
 
+	// Shape "alpha" cutout masks (Material::alphaTextureFilename - see that
+	// field's own comment). Same resolution convention as textureFilename
+	// just above; decoding is likewise left to the CPU/GPU builders.
+	for (pbrt_flatten::Material &m : r.scene.materials) {
+		if (m.alphaTextureFilename.empty()) continue;
+
+		const std::string resolved = resolveExistingPath(sceneDir, m.alphaTextureFilename);
+		if (resolved.empty()) {
+			r.scene.warnings.push_back(
+				{0, path, "shape's alpha-cutout texture image '" + m.alphaTextureFilename +
+					"' could not be found; the shape will render fully opaque"});
+			m.alphaTextureFilename.clear();
+			continue;
+		}
+
+		m.alphaTextureFilename = resolved;
+	}
+
 	return r;
 }
 

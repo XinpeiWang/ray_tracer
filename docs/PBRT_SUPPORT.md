@@ -139,3 +139,23 @@ per-`MaterialKind` behavior.)
   path. Fixing this needs UV added to `pbrt_flatten::Triangle` and threaded
   through both builders' triangle-construction loops — a separate, real gap,
   not something this texture-upload work fixes on its own.
+
+- A pbrt `Shape`'s own `"alpha"` parameter (an alpha-cutout mask, distinct
+  from a Material's own texture-bound parameters above — pbrt authors it
+  per-shape, e.g. `barcelona-pavilion`'s foliage: each leaf `Shape "plymesh"`
+  gives its own `"texture alpha"`, reusing its colour photo's red channel as
+  the mask, matching OBJ/MTL's own `map_d` convention) is now decoded and
+  wired into `MaterialData::alphaMaskTexIdx` — the SAME field `map_d` already
+  drives on both GPU backends' any-hit/closest-hit alpha tests, and CPU's own
+  `triangle::hit()` — see `Material::alphaTextureFilename` in
+  `pbrt_flatten.h`. Attached to the Shape's own resolved *material* (not a
+  new per-triangle field): every scene in this loader's own corpus gives each
+  alpha-masked Shape its own unnamed Material declared immediately before it,
+  never a `NamedMaterial` shared by shapes with different alpha masks, so
+  this holds in practice though it is not enforced. Shares the reflectance
+  case's own UV-threading gap above (pbrt trianglemesh/plymesh has no real
+  per-vertex UV) — verified in practice on `barcelona-pavilion`'s own
+  foliage anyway: individual leaf/branch silhouettes are visibly cut out
+  rather than rendering as solid quads, likely because each leaf's own
+  triangles are small enough that the barycentric UV fallback still varies
+  usefully across them.

@@ -362,6 +362,17 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 	MaterialData d = {};
 	d.textureIdx = -1;
 
+	// Shape "alpha" cutout mask (Material::alphaTextureFilename - see that
+	// field's own comment). Computed before the emission early-return below
+	// since it's orthogonal to material kind/emission - CPU's own
+	// alphaMaskFor() (pbrt_cpu_builder.h) likewise applies regardless of
+	// whether the owning triangle turns out emissive, so a leaf-shaped area
+	// light stays consistent between backends. Reuses the same decode-and-
+	// cache helper (and the same imageTextureCache/out.textures table) as
+	// MaterialKind::Diffuse's reflectance texture below.
+	if (!m.alphaTextureFilename.empty())
+		d.alphaMaskTexIdx = getOrBuildPbrtImageTexture(m.alphaTextureFilename, out, imageTextureCache);
+
 	if (emission) {
 		d.type = MaterialType::DiffuseLight;
 		d.emission = make_float3(

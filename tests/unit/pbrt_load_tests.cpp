@@ -164,6 +164,37 @@ TEST_F(TempTree, MissingReflectanceImagemapWarnsAndFallsBackToConstantColour) {
 	EXPECT_TRUE(warned);
 }
 
+TEST_F(TempTree, ShapeAlphaImagemapResolvesRelativeToTheScene) {
+	write("scene.pbrt",
+		  "Texture \"leafAlpha\" \"float\" \"imagemap\" \"string filename\" [ \"geometry/leaf.png\" ]\n"
+		  "Material \"diffusetransmission\"\n"
+		  "Shape \"trianglemesh\" \"texture alpha\" [ \"leafAlpha\" ]\n"
+		  "  \"integer indices\" [ 0 1 2 ]\n"
+		  "  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	write("geometry/leaf.png", "not a real png, only existence is checked here");
+	const pbrt_load::LoadResult r = pbrt_load::loadFile(path("scene.pbrt"));
+	ASSERT_TRUE(r.ok) << r.error;
+	ASSERT_EQ(r.scene.materials.size(), 1u);
+	EXPECT_EQ(r.scene.materials[0].alphaTextureFilename, path("geometry/leaf.png"));
+}
+
+TEST_F(TempTree, MissingShapeAlphaImagemapWarnsAndRendersOpaque) {
+	write("scene.pbrt",
+		  "Texture \"leafAlpha\" \"float\" \"imagemap\" \"string filename\" [ \"nope.png\" ]\n"
+		  "Material \"diffusetransmission\"\n"
+		  "Shape \"trianglemesh\" \"texture alpha\" [ \"leafAlpha\" ]\n"
+		  "  \"integer indices\" [ 0 1 2 ]\n"
+		  "  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	const pbrt_load::LoadResult r = pbrt_load::loadFile(path("scene.pbrt"));
+	ASSERT_TRUE(r.ok) << r.error;
+	ASSERT_EQ(r.scene.materials.size(), 1u);
+	EXPECT_TRUE(r.scene.materials[0].alphaTextureFilename.empty());
+	bool warned = false;
+	for (const pbrt_scene::Warning &w : r.scene.warnings)
+		if (w.message.find("nope.png") != std::string::npos) warned = true;
+	EXPECT_TRUE(warned);
+}
+
 TEST_F(TempTree, MissingSceneFileIsNamed) {
 	const pbrt_load::LoadResult r = pbrt_load::loadFile(path("nope.pbrt"));
 	EXPECT_FALSE(r.ok);
