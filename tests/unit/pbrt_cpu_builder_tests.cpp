@@ -12,9 +12,14 @@
 
 #include "pbrt_cpu_builder.h"
 #include "pbrt_flatten.h"
+#include "pbrt_load.h"
 #include "pbrt_scene.h"
 
+#include <cstdio>
+#include <cstdlib>
+#include <fstream>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -38,6 +43,67 @@ bool castRay(const pbrt_cpu::BuildResult &b, const point3 &origin,
 const char *kQuad =
 	"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2  0 2 3 ]\n"
 	"  \"point3 P\" [ 0 0 0  1 0 0  1 1 0  0 1 0 ]\n";
+
+// Hand-authored minimal 1x1 24bpp BMP - same technique as pbrt_alpha_cutout_
+// tests.cpp's own solidBmp1x1() (duplicated, not shared - small self-
+// contained test-file helpers). A uniform-gray pixel decodes as a genuine
+// grayscale bump/displacement map (is_grayscale_image()'s own convention).
+std::string solidGrayBmp1x1() {
+	std::string bytes;
+	const auto u16 = [&](unsigned short v) {
+		bytes.push_back(static_cast<char>(v & 0xFF));
+		bytes.push_back(static_cast<char>((v >> 8) & 0xFF));
+	};
+	const auto u32 = [&](unsigned int v) {
+		bytes.push_back(static_cast<char>(v & 0xFF));
+		bytes.push_back(static_cast<char>((v >> 8) & 0xFF));
+		bytes.push_back(static_cast<char>((v >> 16) & 0xFF));
+		bytes.push_back(static_cast<char>((v >> 24) & 0xFF));
+	};
+	bytes.push_back('B'); bytes.push_back('M');
+	u32(14 + 40 + 4);
+	u32(0);
+	u32(14 + 40);
+	u32(40);
+	u32(1);
+	u32(1);
+	u16(1);
+	u16(24);
+	u32(0);
+	u32(4);
+	u32(0); u32(0);
+	u32(0); u32(0);
+	bytes.push_back(static_cast<char>(128));
+	bytes.push_back(static_cast<char>(128));
+	bytes.push_back(static_cast<char>(128));
+	bytes.push_back('\0');
+	return bytes;
+}
+
+class CpuBuilderTempTree : public ::testing::Test {
+protected:
+	void SetUp() override {
+		const char *tmp = std::getenv("TEMP");
+		root_ = std::string(tmp ? tmp : ".") + "/pbrt_cpu_builder_tests/";
+		std::string cmd = "if not exist \"" + root_ + "\" mkdir \"" + root_ + "\" >nul 2>&1";
+		for (char &c : cmd) if (c == '/') c = '\\';
+		std::system(cmd.c_str());
+	}
+	void TearDown() override {
+		for (const std::string &f : written_) std::remove(f.c_str());
+	}
+	void write(const std::string &relative, const std::string &contents) {
+		const std::string full = root_ + relative;
+		std::ofstream out(full, std::ios::binary);
+		out << contents;
+		out.close();
+		written_.push_back(full);
+	}
+	std::string path(const std::string &relative) const { return root_ + relative; }
+private:
+	std::string root_;
+	std::vector<std::string> written_;
+};
 
 } // namespace
 
@@ -295,6 +361,36 @@ TEST(PbrtCpuBuildTest, DiffuseReflectanceImagemapBuildsATextureBackedLambertian)
 	EXPECT_NE(dynamic_cast<mipmap_texture *>(lam->get_texture().get()), nullptr)
 		<< "a diffuse material with an imagemap-bound reflectance must build a "
 		   "texture-backed lambertian, not the flat-colour fallback";
+}
+
+TEST_F(CpuBuilderTempTree, DisplacementWithARealGrayscaleBumpMapWrapsInBumpMapMaterial) {
+	// Round 5 Phase 1: Material::displacementTextureFilename (see that
+	// field's own comment) must reach the CPU builder's materialFor()
+	// lambda and wrap the base material in bump_map_material - the same
+	// decorator mesh.h's own OBJ/MTL map_Bump dispatch already uses for a
+	// genuine grayscale height/displacement image. Goes through the real
+	// pbrt_load::loadFile() resolution pass (not just flatten()) so the
+	// path is a real, existence-tested, absolute file pbrt_cpu_builder.h's
+	// rtw_image probe can actually decode.
+	write("scene.pbrt",
+		  "Texture \"bmap\" \"float\" \"imagemap\" \"string filename\" [ \"bump.bmp\" ]\n"
+		  "Material \"diffuse\" \"rgb reflectance\" [ .5 .5 .5 ] "
+		  "\"texture displacement\" [ \"bmap\" ]\n"
+		  + std::string(kQuad));
+	write("bump.bmp", solidGrayBmp1x1());
+
+	const pbrt_load::LoadResult loaded = pbrt_load::loadFile(path("scene.pbrt"));
+	ASSERT_TRUE(loaded.ok) << loaded.error;
+	ASSERT_EQ(loaded.scene.materials.size(), 1u);
+	ASSERT_EQ(loaded.scene.materials[0].displacementTextureFilename, path("bump.bmp"));
+
+	const pbrt_cpu::BuildResult b = pbrt_cpu::build(loaded.scene);
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	EXPECT_NE(dynamic_cast<bump_map_material *>(rec.mat.get()), nullptr)
+		<< "a material with a resolved, decodable displacement texture must "
+		   "wrap the base material in bump_map_material";
 }
 
 TEST(PbrtCpuBuildTest, DiffuseTransmissionBuildsTheRealMaterialNotLambertian) {

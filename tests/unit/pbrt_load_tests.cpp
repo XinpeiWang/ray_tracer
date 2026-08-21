@@ -195,6 +195,35 @@ TEST_F(TempTree, MissingShapeAlphaImagemapWarnsAndRendersOpaque) {
 	EXPECT_TRUE(warned);
 }
 
+TEST_F(TempTree, DisplacementImagemapResolvesRelativeToTheScene) {
+	write("scene.pbrt",
+		  "Texture \"bmap\" \"float\" \"imagemap\" \"string filename\" [ \"textures/bump.png\" ]\n"
+		  "Material \"coateddiffuse\" \"texture displacement\" [ \"bmap\" ]\n"
+		  "Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		  "  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	write("textures/bump.png", "not a real png, only existence is checked here");
+	const pbrt_load::LoadResult r = pbrt_load::loadFile(path("scene.pbrt"));
+	ASSERT_TRUE(r.ok) << r.error;
+	ASSERT_EQ(r.scene.materials.size(), 1u);
+	EXPECT_EQ(r.scene.materials[0].displacementTextureFilename, path("textures/bump.png"));
+}
+
+TEST_F(TempTree, MissingDisplacementImagemapWarnsAndRendersWithoutBumpDetail) {
+	write("scene.pbrt",
+		  "Texture \"bmap\" \"float\" \"imagemap\" \"string filename\" [ \"nope.png\" ]\n"
+		  "Material \"coateddiffuse\" \"texture displacement\" [ \"bmap\" ]\n"
+		  "Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		  "  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	const pbrt_load::LoadResult r = pbrt_load::loadFile(path("scene.pbrt"));
+	ASSERT_TRUE(r.ok) << r.error;
+	ASSERT_EQ(r.scene.materials.size(), 1u);
+	EXPECT_TRUE(r.scene.materials[0].displacementTextureFilename.empty());
+	bool warned = false;
+	for (const pbrt_scene::Warning &w : r.scene.warnings)
+		if (w.message.find("nope.png") != std::string::npos) warned = true;
+	EXPECT_TRUE(warned);
+}
+
 TEST_F(TempTree, MissingSceneFileIsNamed) {
 	const pbrt_load::LoadResult r = pbrt_load::loadFile(path("nope.pbrt"));
 	EXPECT_FALSE(r.ok);

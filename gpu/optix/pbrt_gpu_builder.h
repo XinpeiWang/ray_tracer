@@ -23,8 +23,10 @@
 // which cost real brightness and noise on GPU with nothing on screen to
 // explain it.
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdlib>
 #include <cstring>
 #include <map>
 #include <string>
@@ -350,6 +352,30 @@ inline int getOrBuildPbrtAlphaMaskTexture(const std::string& resolvedPath, Scene
 	return idx;
 }
 
+// Duplicates scene_builder.cpp's own is_grayscale_texture_gpu() exactly
+// (same 8x8-grid pixel-content sample, same threshold) for the same reason
+// getOrBuildPbrtImageTexture() above duplicates load_image_texture_gpu(): a
+// link-order constraint, not a design choice - that function lives in
+// scene_builder.cpp's own file-local anonymous namespace, defined AFTER
+// this header is #include'd there.
+inline bool isPbrtTextureGrayscale(const SceneData& scene, int texIdx) {
+	if (texIdx < 0 || texIdx >= static_cast<int>(scene.textures.size())) return true;
+	const TextureData& tex = scene.textures[texIdx];
+	if (tex.width <= 0 || tex.height <= 0) return true;
+	constexpr int kGrid = 8;
+	int max_diff = 0;
+	for (int sy = 0; sy < kGrid; ++sy) {
+		int y = (sy * tex.height) / kGrid;
+		for (int sx = 0; sx < kGrid; ++sx) {
+			int x = (sx * tex.width) / kGrid;
+			std::size_t idx = static_cast<std::size_t>(tex.pixelOffset) + (static_cast<std::size_t>(y) * tex.width + x) * 3;
+			int r = scene.texturePixels[idx], g = scene.texturePixels[idx + 1], b = scene.texturePixels[idx + 2];
+			max_diff = std::max({max_diff, std::abs(r - g), std::abs(g - b), std::abs(r - b)});
+		}
+	}
+	return max_diff <= 10;
+}
+
 // Resolves a material's own effective flat colour for use as one side of a
 // Mix blend: `m.color` directly for every ordinary material kind, or - when
 // `m` is ITSELF a nested Mix (pbrt-v4 allows mix-of-mix) - the recursive
@@ -601,6 +627,26 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		break;
 	}
 	}
+
+	// Material "texture displacement" (bump mapping - Material::
+	// displacementTextureFilename's own comment). Mirrors scene_builder.cpp's
+	// own OBJ/MTL map_Bump dispatch exactly, including its scope: only a
+	// Lambertian material with no existing diffuse texture can host
+	// NormalMappedLambertian (MaterialData has one shared textureIdx slot
+	// per material - see add_normal_mapped_lambertian()'s own comment for
+	// why), and only the RGB tangent-space normal-map case is wired at all -
+	// GPU has no device-side scalar bump/height perturbation path today
+	// (the grayscale case is a real, pre-existing, documented gap shared
+	// with OBJ/MTL - see is_grayscale_texture_gpu()'s own comment - not
+	// something pbrt-specific wiring alone can close).
+	if (!m.displacementTextureFilename.empty() && d.type == MaterialType::Lambertian && d.textureIdx < 0) {
+		const int dispTexIdx = getOrBuildPbrtImageTexture(m.displacementTextureFilename, out, imageTextureCache);
+		if (dispTexIdx >= 0 && !isPbrtTextureGrayscale(out, dispTexIdx)) {
+			d.type = MaterialType::NormalMappedLambertian;
+			d.textureIdx = dispTexIdx;
+		}
+	}
+
 	return d;
 }
 

@@ -426,6 +426,25 @@ inline LoadResult loadFile(const std::string &path) {
 		m.alphaTextureFilename = resolved;
 	}
 
+	// Material "texture displacement" (bump mapping - Material::
+	// displacementTextureFilename's own comment). Same resolution
+	// convention as textureFilename/alphaTextureFilename above;
+	// displacementScale needs no resolution (already a final numeric value).
+	for (pbrt_flatten::Material &m : r.scene.materials) {
+		if (m.displacementTextureFilename.empty()) continue;
+
+		const std::string resolved = resolveExistingPath(sceneDir, m.displacementTextureFilename);
+		if (resolved.empty()) {
+			r.scene.warnings.push_back(
+				{0, path, "material's displacement (bump) texture image '" + m.displacementTextureFilename +
+					"' could not be found; the surface will render without bump detail"});
+			m.displacementTextureFilename.clear();
+			continue;
+		}
+
+		m.displacementTextureFilename = resolved;
+	}
+
 	return r;
 }
 

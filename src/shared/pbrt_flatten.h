@@ -258,6 +258,25 @@ struct Material {
 	// Shape "alpha" handling), but does not prevent it.
 	std::string alphaTextureFilename;
 
+	// A Material's own "texture displacement" parameter (pbrt-v4 bump
+	// mapping, e.g. barcelona-pavilion's "pavet" material: MakeNamedMaterial
+	// ... "texture displacement" ["pavet-bump"]) - a "float" texture, NOT
+	// gated on MaterialKind::Diffuse the way textureFilename's reflectance
+	// binding is, since real scenes bind displacement on coateddiffuse,
+	// dielectric, and other kinds too. Raw as written, resolved later by
+	// pbrt_load.h - same convention as textureFilename/measuredFilename/
+	// alphaTextureFilename above. Mirrors OBJ/MTL's own map_Bump handling
+	// (mesh.h) once resolved - see pbrt_cpu_builder.h/pbrt_gpu_builder.h's
+	// own comments on how this field is consumed.
+	std::string displacementTextureFilename;
+	// A scale factor from a "scale"-class texture wrapping the actual
+	// imagemap (e.g. barcelona-pavilion's water material: "texture
+	// displacement" ["water-bump"], where "water-bump" is itself
+	// "float" "scale" { "float scale" [0.005], "texture tex" ["water-bump-base"] }).
+	// 1.0 (no-op) when displacement resolves directly to an imagemap with no
+	// wrapping scale texture.
+	double displacementScale = 1.0;
+
 	// Mix only: indices into FlatScene::materials of the two blended
 	// sub-materials - pbrt-v4's own "string materials" parameter names them
 	// (an array of exactly two named-material references, resolved against
@@ -846,11 +865,13 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// asked for a pattern. pbrt's ganesha is the case that showed this -
 		// its statue's reflectance is an imagemap, and without a word about
 		// it the render just looks like a shading bug. "reflectance" bound to
-		// an "imagemap" texture on a Diffuse material is the one case
-		// actually wired up below (Material::textureFilename's own comment,
-		// pbrt_cpu_builder.h's MaterialKind::Diffuse case) - gated on `kind`
-		// so a coateddiffuse/conductor/etc. with the same binding still warns
-		// instead of silently keeping its texture reference unused; every
+		// an "imagemap" texture on a Diffuse material, and "displacement"
+		// bound to an imagemap (optionally wrapped in a "scale" texture) on
+		// ANY material kind, are the two cases actually wired up below
+		// (Material::textureFilename's/displacementTextureFilename's own
+		// comments) - reflectance is gated on `kind` so a coateddiffuse/
+		// conductor/etc. with the same binding still warns instead of
+		// silently keeping its texture reference unused; every
 		// other texture binding (other parameters, other texture classes like
 		// checkerboard/scale/mix) also still just warns.
 		for (const pbrt_scene::Param &p : md.params.items) {
@@ -863,6 +884,35 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					const std::string filename = tex->params.getString("filename", "");
 					if (!filename.empty()) {
 						m.textureFilename = filename;
+						continue;   // resolved to an image, not a "not supported" warning
+					}
+				}
+			}
+			// "displacement" (bump mapping) - not gated on `kind`, since real
+			// scenes bind it on coateddiffuse/dielectric/etc, not just
+			// Diffuse. Handles both forms real scenes use (barcelona-
+			// pavilion): a direct "imagemap" texture, or one wrapped in a
+			// "scale"-class texture (its own "texture tex" naming the real
+			// imagemap, its "float scale" becoming displacementScale).
+			if (p.name == "displacement" && !p.strings.empty()) {
+				const pbrt_scene::TextureDecl *tex = nullptr;
+				for (const pbrt_scene::TextureDecl &t : scene.textures)
+					if (t.name == p.strings[0]) tex = &t;
+				double scale = 1.0;
+				if (tex && tex->cls == "scale") {
+					scale = tex->params.getFloat("scale", 1.0);
+					const pbrt_scene::Param *inner = tex->params.find("tex");
+					tex = nullptr;
+					if (inner && inner->type == "texture" && !inner->strings.empty()) {
+						for (const pbrt_scene::TextureDecl &t : scene.textures)
+							if (t.name == inner->strings[0]) tex = &t;
+					}
+				}
+				if (tex && tex->cls == "imagemap") {
+					const std::string filename = tex->params.getString("filename", "");
+					if (!filename.empty()) {
+						m.displacementTextureFilename = filename;
+						m.displacementScale = scale;
 						continue;   // resolved to an image, not a "not supported" warning
 					}
 				}

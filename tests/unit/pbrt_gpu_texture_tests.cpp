@@ -11,6 +11,10 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdio>
+#include <cstdlib>
+#include <fstream>
+
 #include "pbrt_gpu_builder.h"
 #include "../../src/shared/pbrt_flatten.h"
 #include "../../src/shared/pbrt_scene.h"
@@ -22,6 +26,68 @@ pbrt_flatten::FlatScene flattenSource(const std::string &text) {
 	EXPECT_TRUE(r.ok) << r.error;
 	return pbrt_flatten::flatten(r.scene);
 }
+
+// Hand-authored minimal 1x1 24bpp BMP, same technique as pbrt_alpha_cutout_
+// tests.cpp's own solidBmp1x1() (duplicated rather than shared - these are
+// small, self-contained test-file helpers, not production code). A 1x1
+// image is sufficient for is_grayscale_texture_gpu()/isPbrtTextureGrayscale()
+// - its 8x8 sample grid maps every sample to pixel (0,0) regardless.
+std::string solidBmp1x1(unsigned char r, unsigned char g, unsigned char b) {
+	std::string bytes;
+	const auto u16 = [&](unsigned short v) {
+		bytes.push_back(static_cast<char>(v & 0xFF));
+		bytes.push_back(static_cast<char>((v >> 8) & 0xFF));
+	};
+	const auto u32 = [&](unsigned int v) {
+		bytes.push_back(static_cast<char>(v & 0xFF));
+		bytes.push_back(static_cast<char>((v >> 8) & 0xFF));
+		bytes.push_back(static_cast<char>((v >> 16) & 0xFF));
+		bytes.push_back(static_cast<char>((v >> 24) & 0xFF));
+	};
+	bytes.push_back('B'); bytes.push_back('M');
+	u32(14 + 40 + 4);
+	u32(0);
+	u32(14 + 40);
+	u32(40);
+	u32(1);
+	u32(1);
+	u16(1);
+	u16(24);
+	u32(0);
+	u32(4);
+	u32(0); u32(0);
+	u32(0); u32(0);
+	bytes.push_back(static_cast<char>(b));
+	bytes.push_back(static_cast<char>(g));
+	bytes.push_back(static_cast<char>(r));
+	bytes.push_back('\0');
+	return bytes;
+}
+
+class GpuTextureTempTree : public ::testing::Test {
+protected:
+	void SetUp() override {
+		const char *tmp = std::getenv("TEMP");
+		root_ = std::string(tmp ? tmp : ".") + "/pbrt_gpu_texture_tests/";
+		std::string cmd = "if not exist \"" + root_ + "\" mkdir \"" + root_ + "\" >nul 2>&1";
+		for (char &c : cmd) if (c == '/') c = '\\';
+		std::system(cmd.c_str());
+	}
+	void TearDown() override {
+		for (const std::string &f : written_) std::remove(f.c_str());
+	}
+	void write(const std::string &relative, const std::string &contents) {
+		const std::string full = root_ + relative;
+		std::ofstream out(full, std::ios::binary);
+		out << contents;
+		out.close();
+		written_.push_back(full);
+	}
+	std::string path(const std::string &relative) const { return root_ + relative; }
+private:
+	std::string root_;
+	std::vector<std::string> written_;
+};
 
 } // namespace
 
@@ -132,4 +198,74 @@ TEST(PbrtGpuTextureTest, NoAlphaParameterLeavesAlphaMaskTexIdxUnset) {
 	pbrt_gpu::build(flat, scene);
 	ASSERT_EQ(scene.materials.size(), 1u);
 	EXPECT_EQ(scene.materials[0].alphaMaskTexIdx, -1);
+}
+
+TEST_F(GpuTextureTempTree, DisplacementWithARealNormalMapBecomesNormalMappedLambertian) {
+	// Round 5 Phase 1: a Lambertian material with a "texture displacement"
+	// binding, resolved to a tangent-space RGB normal map (not grayscale -
+	// see isPbrtTextureGrayscale()'s own comment), must upgrade from plain
+	// Lambertian to MaterialType::NormalMappedLambertian with textureIdx
+	// pointing at the decoded normal map - mirroring scene_builder.cpp's own
+	// OBJ/MTL map_Bump dispatch for the RGB case exactly.
+	write("normal.bmp", solidBmp1x1(128, 128, 255));
+
+	pbrt_flatten::Material m;
+	m.kind = pbrt_flatten::MaterialKind::Diffuse;
+	m.displacementTextureFilename = path("normal.bmp");
+	pbrt_flatten::FlatScene flat;
+	flat.materials.push_back(m);
+	pbrt_flatten::Triangle tri{};
+	tri.material = 0;
+	tri.areaLight = -1;
+	flat.triangles.push_back(tri);
+
+	SceneData scene;
+	pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(scene.materials.size(), 1u);
+	EXPECT_EQ(scene.materials[0].type, MaterialType::NormalMappedLambertian);
+	ASSERT_GE(scene.materials[0].textureIdx, 0);
+	const TextureData &tex = scene.textures[static_cast<std::size_t>(scene.materials[0].textureIdx)];
+	EXPECT_EQ(tex.kind, TextureKind::Image);
+}
+
+TEST_F(GpuTextureTempTree, DisplacementWithARealGrayscaleBumpMapStaysPlainLambertian) {
+	// The scalar/grayscale case: GPU has no device-side scalar bump
+	// perturbation path (see makeMaterial()'s own comment on this), so a
+	// real grayscale displacement image must leave the material as plain
+	// Lambertian rather than mis-rendering it through the normal-map unpack
+	// path (which would decode a flat R==G==B image as a degenerate normal
+	// offset only along one fixed diagonal).
+	write("bump.bmp", solidBmp1x1(128, 128, 128));
+
+	pbrt_flatten::Material m;
+	m.kind = pbrt_flatten::MaterialKind::Diffuse;
+	m.displacementTextureFilename = path("bump.bmp");
+	pbrt_flatten::FlatScene flat;
+	flat.materials.push_back(m);
+	pbrt_flatten::Triangle tri{};
+	tri.material = 0;
+	tri.areaLight = -1;
+	flat.triangles.push_back(tri);
+
+	SceneData scene;
+	pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(scene.materials.size(), 1u);
+	EXPECT_EQ(scene.materials[0].type, MaterialType::Lambertian);
+}
+
+TEST(PbrtGpuTextureTest, NoDisplacementParameterLeavesMaterialUnperturbed) {
+	pbrt_flatten::Material m;
+	m.kind = pbrt_flatten::MaterialKind::Diffuse;
+	pbrt_flatten::FlatScene flat;
+	flat.materials.push_back(m);
+	pbrt_flatten::Triangle tri{};
+	tri.material = 0;
+	tri.areaLight = -1;
+	flat.triangles.push_back(tri);
+
+	SceneData scene;
+	pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(scene.materials.size(), 1u);
+	EXPECT_EQ(scene.materials[0].type, MaterialType::Lambertian);
+	EXPECT_EQ(scene.materials[0].textureIdx, -1);
 }

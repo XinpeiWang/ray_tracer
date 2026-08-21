@@ -208,6 +208,59 @@ TEST(PbrtDroppedTest, AShapeWithNoAlphaParameterLeavesItsMaterialUnmasked) {
 	EXPECT_TRUE(s.materials[0].alphaTextureFilename.empty());
 }
 
+TEST(PbrtDroppedTest, DisplacementImagemapResolvesOntoTheMaterialRegardlessOfKind) {
+	// barcelona-pavilion's "pavet" material: MakeNamedMaterial ... "string
+	// type" ["coateddiffuse"] "texture displacement" ["pavet-bump"] - real
+	// scenes bind displacement on coateddiffuse/dielectric/etc, not just
+	// Diffuse, so this must NOT be gated on MaterialKind the way
+	// textureFilename's reflectance binding is.
+	const FlatScene s = build(
+		"Texture \"bmap\" \"float\" \"imagemap\" \"string filename\" [ \"bump.png\" ]\n"
+		"Material \"coateddiffuse\" \"texture displacement\" [ \"bmap\" ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	EXPECT_FALSE(warned(s, "not supported"));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].displacementTextureFilename, "bump.png");
+	EXPECT_DOUBLE_EQ(s.materials[0].displacementScale, 1.0);
+}
+
+TEST(PbrtDroppedTest, DisplacementWrappedInAScaleTextureCapturesTheScaleFactor) {
+	// barcelona-pavilion's water material: "texture displacement"
+	// ["water-bump"], where "water-bump" is itself "float" "scale"
+	// wrapping a nested "texture tex" imagemap.
+	const FlatScene s = build(
+		"Texture \"waterBase\" \"float\" \"imagemap\" \"string filename\" [ \"water.png\" ]\n"
+		"Texture \"waterBump\" \"float\" \"scale\" \"float scale\" [ 0.005 ]"
+		" \"texture tex\" [ \"waterBase\" ]\n"
+		"Material \"dielectric\" \"texture displacement\" [ \"waterBump\" ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].displacementTextureFilename, "water.png");
+	EXPECT_DOUBLE_EQ(s.materials[0].displacementScale, 0.005);
+}
+
+TEST(PbrtDroppedTest, AnUnresolvableDisplacementTextureFallsBackToTheGenericWarning) {
+	const FlatScene s = build(
+		"Texture \"notAnImage\" \"float\" \"checkerboard\"\n"
+		"Material \"diffuse\" \"texture displacement\" [ \"notAnImage\" ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	EXPECT_TRUE(warned(s, "displacement"));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].displacementTextureFilename.empty());
+}
+
+TEST(PbrtDroppedTest, AShapeWithNoDisplacementParameterLeavesItsMaterialUnbumped) {
+	const FlatScene s = build(
+		"Material \"diffuse\" \"rgb reflectance\" [ .5 .5 .5 ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].displacementTextureFilename.empty());
+}
+
 TEST(PbrtDroppedTest, APlainColourMaterialIsNotWarnedAbout) {
 	const FlatScene s = build(
 		"Material \"diffuse\" \"rgb reflectance\" [ 0.5 0.5 0.5 ]\n"

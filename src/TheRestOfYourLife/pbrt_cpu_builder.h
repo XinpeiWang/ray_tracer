@@ -265,7 +265,30 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			(materialIndex >= 0 && static_cast<std::size_t>(materialIndex) < scene.materials.size())
 				? scene.materials[static_cast<std::size_t>(materialIndex)]
 				: kDefault;
-		return makeMaterial(m, em, scene.materials);
+		std::shared_ptr<material> base = makeMaterial(m, em, scene.materials);
+
+		// Material "texture displacement" (bump mapping - Material::
+		// displacementTextureFilename's own comment). Wraps whatever base
+		// material was just built, mirroring mesh.h's own OBJ/MTL map_Bump
+		// dispatch exactly: skipped for emissive materials (perturbing an
+		// emitter's normal has no meaningful effect), classified grayscale-
+		// vs-RGB by real pixel content (is_grayscale_image(), not filename)
+		// since a real scene's displacement image could in principle be
+		// either, even though every bundled pbrt scene's own "*bump*.png"
+		// naming is grayscale in practice.
+		if (base && !em && !m.displacementTextureFilename.empty()) {
+			rtw_image disp_probe(m.displacementTextureFilename.c_str());
+			if (disp_probe.height() > 0) {
+				const bool grayscale = is_grayscale_image(disp_probe);
+				auto disp_tex = std::make_shared<image_texture>(std::move(disp_probe));
+				base = grayscale
+					? std::static_pointer_cast<material>(
+						  std::make_shared<bump_map_material>(disp_tex, base, m.displacementScale))
+					: std::static_pointer_cast<material>(
+						  std::make_shared<normal_map_material>(disp_tex, base));
+			}
+		}
+		return base;
 	};
 
 	// One material instance per distinct (material, emission) pair.
