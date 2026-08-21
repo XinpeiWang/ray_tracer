@@ -309,6 +309,39 @@ inline int getOrBuildPbrtImageTexture(const std::string& resolvedPath, SceneData
 	return idx;
 }
 
+// A representative average color for an already-built Image texture (see
+// getOrBuildPbrtImageTexture() above) - used ONLY as a light-selection
+// power estimate for a textured DiffuseLight (see that emission branch's
+// own comment in makeMaterial()), never for actual per-sample radiance
+// (which always goes through the real per-pixel lookup at render time).
+// Strided rather than a full per-pixel walk - a few thousand samples is
+// plenty for an importance-sampling weight, and this runs once per unique
+// texture at scene build, not per frame, but a multi-megapixel image
+// (a real risk for pbrt scenes) shouldn't become an O(width*height) scene-
+// build-time cost for a value this approximate.
+inline float3 averageTextureColor(int textureIdx, const SceneData& out) {
+	if (textureIdx < 0 || textureIdx >= static_cast<int>(out.textures.size()))
+		return make_float3(0.5f, 0.5f, 0.5f);
+	const TextureData& tex = out.textures[textureIdx];
+	const std::size_t pixelCount = static_cast<std::size_t>(tex.width) * tex.height;
+	if (pixelCount == 0) return make_float3(0.5f, 0.5f, 0.5f);
+
+	constexpr std::size_t kMaxSamples = 4096;
+	const std::size_t stride = (pixelCount > kMaxSamples) ? (pixelCount / kMaxSamples) : 1;
+	const unsigned char* base = out.texturePixels.data() + tex.pixelOffset;
+	double sumR = 0.0, sumG = 0.0, sumB = 0.0;
+	std::size_t sampled = 0;
+	for (std::size_t p = 0; p < pixelCount; p += stride) {
+		const unsigned char* px = base + p * 3;
+		sumR += px[0]; sumG += px[1]; sumB += px[2];
+		++sampled;
+	}
+	const double norm = 1.0 / (255.0 * static_cast<double>(sampled ? sampled : 1));
+	return make_float3(static_cast<float>(sumR * norm),
+						static_cast<float>(sumG * norm),
+						static_cast<float>(sumB * norm));
+}
+
 // Loads a Shape "alpha" cutout mask (Material::alphaTextureFilename) into
 // `out`'s shared texture table. A SEPARATE function/cache from
 // getOrBuildPbrtImageTexture() above rather than a reused call, because that
@@ -448,10 +481,38 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 
 	if (emission) {
 		d.type = MaterialType::DiffuseLight;
-		d.emission = make_float3(
-			static_cast<float>(emission->L[0] * emission->scale),
-			static_cast<float>(emission->L[1] * emission->scale),
-			static_cast<float>(emission->L[2] * emission->scale));
+		d.twoSided = emission->twoSided;
+		// A "filename" area light wins over "L" entirely (matches CPU's
+		// pbrt_cpu_builder.h and pbrt-v4's own DiffuseAreaLight) - see
+		// Emission::filename's own comment. "scale" is applied at
+		// emission-lookup time via emissionScale instead of baked in here,
+		// since the image data itself is shared/cached across materials.
+		if (!emission->filename.empty()) {
+			d.textureIdx = getOrBuildPbrtImageTexture(emission->filename, out, imageTextureCache);
+			d.emissionScale = static_cast<float>(emission->scale);
+			// d.emission itself is never READ for a textured light's actual
+			// per-sample radiance (material_emission()/sample_area_light_by_
+			// kind()'s NEE path both go through textureIdx/emissionScale
+			// instead - see each one's own comment), but optix_renderer.cpp's
+			// power-weighted light alias table reads raw MaterialData::
+			// emission unconditionally to estimate every light's selection
+			// weight, with no textureIdx awareness of its own - leaving this
+			// at its zero default would make a textured light's true (often
+			// substantial) contribution to NEE severely under-sampled,
+			// without changing its final per-sample radiance at all (a
+			// pure-variance bug, confirmed by a much darker room than an
+			// equally-bright flat-color light in the same scene).
+			d.emission = averageTextureColor(d.textureIdx, out) * d.emissionScale;
+		}
+		if (d.textureIdx < 0) {
+			// Either no filename was given, or the image failed to decode -
+			// same flat-L fallback pbrt_cpu_builder.h's mipmap_texture(mip_==
+			// nullptr) degradation uses for the same case.
+			d.emission = make_float3(
+				static_cast<float>(emission->L[0] * emission->scale),
+				static_cast<float>(emission->L[1] * emission->scale),
+				static_cast<float>(emission->L[2] * emission->scale));
+		}
 		return d;
 	}
 

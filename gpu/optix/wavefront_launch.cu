@@ -46,6 +46,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	const int*, const GpuLightKind*, const GpuAliasEntry*,
 	unsigned int,
 	const PunctualLightGPU*, unsigned int,
+	const TextureData*, const unsigned char*,
 	int,
 	float3, float, GpuSkyDistribution);
 extern "C" __global__ void accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, GpuSkyDistribution);
@@ -58,6 +59,7 @@ extern "C" __global__ void resolve_bssrdf_exit(
 	const int*, const GpuLightKind*, const GpuAliasEntry*,
 	unsigned int,
 	const PunctualLightGPU*, unsigned int,
+	const TextureData*, const unsigned char*,
 	float3, float, GpuSkyDistribution);
 extern "C" __global__ void reset_queue_counter(int*);
 extern "C" __global__ void normalize_framebuffer(float3*, unsigned int, float);
@@ -187,6 +189,8 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 	unsigned int                 numLights,
 	const PunctualLightGPU*      d_punctualLights,
 	unsigned int                 numPunctualLights,
+	const TextureData*           d_textures,
+	const unsigned char*         d_texturePixels,
 	int                          maxDepth,
 	float3                       skyColor,
 	float                        shadowRayEpsilon,
@@ -203,6 +207,7 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 		d_spheres, d_quads, d_triangles, d_bilinearPatches, d_materials,
 		d_lightIndices, d_lightKinds, d_aliasTable,
 		numLights, d_punctualLights, numPunctualLights,
+		d_textures, d_texturePixels,
 		maxDepth,
 		skyColor, shadowRayEpsilon, skyDist);
 }
@@ -244,6 +249,8 @@ extern "C" void wf_launch_resolve_bssrdf_exit(
 	unsigned int                 numLights,
 	const PunctualLightGPU*      d_punctualLights,
 	unsigned int                 numPunctualLights,
+	const TextureData*           d_textures,
+	const unsigned char*         d_texturePixels,
 	float3                       skyColor,
 	float                        shadowRayEpsilon,
 	GpuSkyDistribution           skyDist,
@@ -259,6 +266,7 @@ extern "C" void wf_launch_resolve_bssrdf_exit(
 		d_spheres, d_quads, d_triangles, d_bilinearPatches, d_materials,
 		d_lightIndices, d_lightKinds, d_aliasTable,
 		numLights, d_punctualLights, numPunctualLights,
+		d_textures, d_texturePixels,
 		skyColor, shadowRayEpsilon, skyDist);
 }
 

@@ -357,7 +357,9 @@ __device__ __forceinline__ float3 sample_triangle_light(
 	const float3& origin,
 	unsigned int& seed,
 	float& pdf,
-	float& out_dist
+	float& out_dist,
+	float& out_u,
+	float& out_v
 ) {
 	// Uniform point on the triangle by folding the unit square onto it: draw
 	// (a,b) in [0,1]^2 and reflect the half that falls outside a+b<=1 back
@@ -370,6 +372,18 @@ __device__ __forceinline__ float3 sample_triangle_light(
 	const float3 e1 = tri.p1 - tri.p0;
 	const float3 e2 = tri.p2 - tri.p0;
 	const float3 point = tri.p0 + a * e1 + b * e2;
+
+	// Same b0/b1/b2 = (1-a-b, a, b) convention __anyhit__triangle/
+	// __closesthit__triangle use via optixGetTriangleBarycentrics() (see
+	// optix_intersection_triangle.h's own comment) - a weights p1, b weights
+	// p2, so this needs no reordering to land on the same UV a direct hit
+	// on this exact sampled point would compute.
+	out_u = out_v = 0.0f;
+	if (tri.hasUVs) {
+		const float b0 = 1.0f - a - b;
+		out_u = b0 * tri.uv0.x + a * tri.uv1.x + b * tri.uv2.x;
+		out_v = b0 * tri.uv0.y + a * tri.uv1.y + b * tri.uv2.y;
+	}
 
 	float3 to_light = point - origin;
 	float dist_sq = dot(to_light, to_light);
@@ -466,8 +480,49 @@ __device__ __forceinline__ float3 sample_area_light_by_kind(
 		// emissive (flatten() bakes emitters per placement into world space),
 		// so no per-instance base offset applies here.
 		const TriangleData& t = params.triangles[prim_idx];
-		const float3 dir = sample_triangle_light(t, origin, seed, geom_pdf, max_dist);
-		emission = params.materials[t.materialIdx].emission;
+		float lu, lv;
+		const float3 dir = sample_triangle_light(t, origin, seed, geom_pdf, max_dist, lu, lv);
+		const MaterialData& lm = params.materials[t.materialIdx];
+		// A pbrt AreaLightSource "filename" triangle light needs the real
+		// sampled UV to look up its image, matching material_emission()'s
+		// direct-hit texture lookup (this is the NEE counterpart of it) -
+		// everything else (map_Ke-textured triangles, flat-color lights)
+		// keeps reading mat.emission raw exactly as before.
+		//
+		// Deliberately NOT a call to the shared sample_texture() helper
+		// (used successfully by material_emission() and Lambertian albedo
+		// lookups elsewhere in this same file): calling it from THIS call
+		// site specifically produced a reproducible CUDA 700 illegal-
+		// memory-access as soon as a scene actually exercised NEE against a
+		// textured light (a plain direct-hit-only scene never crashed) -
+		// confirmed by bisection: reverting to this identical hand-inlined
+		// copy of sample_texture()'s own Image-kind logic made the crash
+		// disappear with no other change. Root cause not established
+		// (suspected codegen/inlining-depth interaction specific to this
+		// call site inside the recursive backend's single-module mega-
+		// kernel - sample_area_light_by_kind() is itself already inlined
+		// into every one of shade_material()'s many NEE call sites), so
+		// this stays a hand-inlined duplicate rather than a call, matching
+		// this codebase's own established fallback for GPU codegen
+		// surprises (see the recursive-backend member-call stall memory/
+		// this file's own precedent for hand-duplicating rather than
+		// calling in a hazardous context).
+		if (lm.textureIdx >= 0) {
+			const TextureData& dtex = params.textures[lm.textureIdx];
+			if (dtex.kind == TextureKind::Image && dtex.width > 0 && dtex.height > 0) {
+				const float uc = fminf(fmaxf(lu, 0.0f), 1.0f);
+				const float vc = 1.0f - fminf(fmaxf(lv, 0.0f), 1.0f);
+				const int ti = min(static_cast<int>(uc * dtex.width), dtex.width - 1);
+				const int tj = min(static_cast<int>(vc * dtex.height), dtex.height - 1);
+				const unsigned char* px = params.texturePixels + dtex.pixelOffset + (tj * dtex.width + ti) * 3;
+				constexpr float kCS = 1.0f / 255.0f;
+				emission = make_float3(px[0]*kCS*lm.emissionScale, px[1]*kCS*lm.emissionScale, px[2]*kCS*lm.emissionScale);
+			} else {
+				emission = make_float3(0.0f, 1.0f, 1.0f);
+			}
+		} else {
+			emission = lm.emission;
+		}
 		return dir;
 	}
 	case GpuLightKind::BilinearPatch: {
@@ -1000,20 +1055,24 @@ __device__ __forceinline__ float3 sample_texture(int textureIdx, float u, float 
 // remembering to reset it back to zero - previously TWO separate cases each
 // carried a near-identical "don't forget to zero this" comment doing that
 // reset by hand; a third material reusing this slot in the future would
-// silently need a fourth. One-sided per front_face, matching CPU's
-// diffuse_light::emitted(). textureIdx>=0 samples a real map_Ke texture at
-// the given UV (only triangles currently ever populate this for DiffuseLight
-// - see add_diffuse_light()'s textureIdx comment - but any future geometry
-// type gets it for free by going through this accessor instead of reading
-// mat.emission raw).
+// silently need a fourth. One-sided per front_face UNLESS mat.twoSided
+// (matches CPU's diffuse_light::emitted()/is_two_sided()). textureIdx>=0
+// samples a real texture at the given UV - map_Ke on triangles (see
+// add_diffuse_light()'s textureIdx comment) or a pbrt AreaLightSource
+// "filename" image (any geometry the caller passes real UV for) - scaled by
+// emissionScale (a no-op 1.0 multiply when the light wasn't built with a
+// "scale" param). Any future geometry type gets both for free by going
+// through this accessor instead of reading mat.emission raw.
 __device__ __forceinline__ float3 material_emission(
 		const MaterialData& mat, bool front_face,
 		float uv_u = 0.0f, float uv_v = 0.0f,
 		float3 hit_point = make_float3(0.0f, 0.0f, 0.0f)) {
-	if (mat.type != MaterialType::DiffuseLight || !front_face)
+	if (mat.type != MaterialType::DiffuseLight || (!mat.twoSided && !front_face))
 		return make_float3(0.0f, 0.0f, 0.0f);
-	if (mat.textureIdx >= 0)
-		return sample_texture(mat.textureIdx, uv_u, uv_v, hit_point);
+	if (mat.textureIdx >= 0) {
+		const float3 texel = sample_texture(mat.textureIdx, uv_u, uv_v, hit_point);
+		return make_float3(texel.x * mat.emissionScale, texel.y * mat.emissionScale, texel.z * mat.emissionScale);
+	}
 	return mat.emission;
 }
 

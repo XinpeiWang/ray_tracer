@@ -137,8 +137,10 @@ extern "C" __global__ void __closesthit__bilinear_patch() {
 
 	// Get emission from material - see material_emission()'s own comment
 	// (optix_device_helpers.h) for why this goes through an accessor rather
-	// than reading mat.emission raw.
-	float3 emission = material_emission(mat, front_face);
+	// than reading mat.emission raw. Real UV passed through so a pbrt
+	// AreaLightSource "filename" bilinear-patch light samples its image
+	// correctly instead of always reading texel (0,0).
+	float3 emission = material_emission(mat, front_face, u, v, hit_point);
 
 	// Material scattering (same as sphere/quad)
 	float3 attenuation;

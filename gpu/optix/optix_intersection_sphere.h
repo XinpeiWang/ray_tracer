@@ -331,8 +331,10 @@ extern "C" __global__ void __closesthit__sphere() {
 
 	// Get emission from material - see material_emission()'s own comment for
 	// why this goes through an accessor rather than reading mat.emission raw
-	// (that field is a reused union slot for several material types).
-	float3 emission = material_emission(mat, front_face);
+	// (that field is a reused union slot for several material types). Real
+	// UV passed through so a pbrt AreaLightSource "filename" sphere light
+	// samples its image correctly instead of always reading texel (0,0).
+	float3 emission = material_emission(mat, front_face, sphere_uv_u, sphere_uv_v, hit_point);
 
 	// Material scattering
 	float3 attenuation;

@@ -1395,10 +1395,12 @@ bool OptiXRenderer::buildScene(
 			int prim_idx = lightIndices[i];
 			float3 emission = make_float3(0.f, 0.f, 0.f);
 			float area = 1.0f;
+			bool twoSided = false;
 			if (lightKinds[i] == GpuLightKind::Sphere) {
 				const SphereData& s = spheres[prim_idx];
 				const MaterialData& m = materials[s.materialIdx];
 				emission = m.emission;
+				twoSided = m.twoSided;
 				area = 4.0f * 3.14159265f * s.radius * s.radius;  // surface area of sphere
 			} else if (lightKinds[i] == GpuLightKind::Triangle) {
 				// Indexes `triangles`, not `quads` - and note this is the
@@ -1408,6 +1410,7 @@ bool OptiXRenderer::buildScene(
 				const TriangleData& t = triangles[prim_idx];
 				const MaterialData& m = materials[t.materialIdx];
 				emission = m.emission;
+				twoSided = m.twoSided;
 				// Half the parallelogram the two edges span.
 				const float3 e1 = t.p1 - t.p0;
 				const float3 e2 = t.p2 - t.p0;
@@ -1423,6 +1426,7 @@ bool OptiXRenderer::buildScene(
 				const BilinearPatchData& bp = bilinearPatches[prim_idx];
 				const MaterialData& m = materials[bp.materialIdx];
 				emission = m.emission;
+				twoSided = m.twoSided;
 				const float p00[3] = {bp.p00.x, bp.p00.y, bp.p00.z};
 				const float p10[3] = {bp.p10.x, bp.p10.y, bp.p10.z};
 				const float p01[3] = {bp.p01.x, bp.p01.y, bp.p01.z};
@@ -1432,6 +1436,7 @@ bool OptiXRenderer::buildScene(
 				const QuadData& q = quads[prim_idx];
 				const MaterialData& m = materials[q.materialIdx];
 				emission = m.emission;
+				twoSided = m.twoSided;
 				// area = |u x v|
 				float3 cr = make_float3(
 					q.u.y*q.v.z - q.u.z*q.v.y,
@@ -1441,6 +1446,7 @@ bool OptiXRenderer::buildScene(
 			}
 			float lum = 0.2126f*emission.x + 0.7152f*emission.y + 0.0722f*emission.z;
 			powers[i] = area * lum * 3.14159265f;  // phi = area * Le * pi
+			if (twoSided) powers[i] *= 2.0f;  // emits from both faces - pbrt-v4 doubles phi to match
 			if (powers[i] <= 0.f) powers[i] = 1e-6f;  // geometry-only target
 		}
 

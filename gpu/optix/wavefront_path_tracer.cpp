@@ -79,6 +79,7 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 	const MaterialData*, unsigned int,
 	const int*, const GpuLightKind*, const GpuAliasEntry*, unsigned int,
 	const PunctualLightGPU*, unsigned int,
+	const TextureData*, const unsigned char*,
 	int,
 	float3, float, GpuSkyDistribution,
 	cudaStream_t);
@@ -95,6 +96,7 @@ extern "C" void wf_launch_resolve_bssrdf_exit(
 	const MaterialData*, unsigned int,
 	const int*, const GpuLightKind*, const GpuAliasEntry*, unsigned int,
 	const PunctualLightGPU*, unsigned int,
+	const TextureData*, const unsigned char*,
 	float3, float, GpuSkyDistribution,
 	cudaStream_t);
 extern "C" void wf_launch_normalize_framebuffer(unsigned int, float, float3*, cudaStream_t);
@@ -1225,6 +1227,8 @@ void WavefrontPathTracer::launchEvaluateMaterialsDielectric(
 		d_materials, numMaterials,
 		d_lightIndices, d_lightKinds, d_aliasTable, numLights,
 		d_punctualLights, numPunctualLights,
+		reinterpret_cast<const TextureData*>(d_textures_),
+		reinterpret_cast<const unsigned char*>(d_texturePixels_),
 		maxDepth,
 		skyColor, shadowRayEpsilon, skyDist,
 		dielectricMaterialStream_);
@@ -1293,6 +1297,8 @@ void WavefrontPathTracer::launchResolveBssrdfExit(
 		d_materials, numMaterials,
 		d_lightIndices, d_lightKinds, d_aliasTable, numLights,
 		d_punctualLights, numPunctualLights,
+		reinterpret_cast<const TextureData*>(d_textures_),
+		reinterpret_cast<const unsigned char*>(d_texturePixels_),
 		skyColor, shadowRayEpsilon, skyDist,
 		stream_);
 }

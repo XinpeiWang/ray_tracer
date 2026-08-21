@@ -741,6 +741,21 @@ struct MaterialData {
 	// initializer trick as textureIdx: every brace-init call site gets -1
 	// automatically, no existing call site needs updating.
 	int alphaMaskTexIdx = -1;
+
+	// DiffuseLight only (matches CPU's diffuse_light::is_two_sided()): when
+	// true, material_emission()/its wavefront equivalent emit from both
+	// faces instead of gating on front_face. false (the default) preserves
+	// every pre-existing light's one-sided behavior - no call site needed
+	// updating.
+	bool twoSided = false;
+
+	// DiffuseLight only, and only meaningful when textureIdx >= 0: a flat
+	// scalar multiplier applied to the sampled texel at emission-lookup time
+	// (mirrors CPU's scaled_texture wrapper - see that class's own comment).
+	// A flat-color DiffuseLight already bakes "scale" into `emission`
+	// directly at build time and never reads this field. Defaults to a
+	// no-op multiply so no existing call site needed updating.
+	float emissionScale = 1.0f;
 };
 
 // Punctual (delta) light kinds - point/spot/distant. These are evaluated

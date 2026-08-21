@@ -569,12 +569,23 @@ __device__ float3 wf_sample_quad_light(const QuadData& q, const float3& hit,
 // by any real scene (no scene combines wavefront mode with a bilinear-patch
 // light yet) but no longer a live landmine either.
 __device__ float3 wf_sample_triangle_light(const TriangleData& tri, const float3& hit,
-											unsigned int& seed, float& geom_pdf, float& maxDist) {
+											unsigned int& seed, float& geom_pdf, float& maxDist,
+											float& out_u, float& out_v) {
 	float a = wf_rand(seed), b = wf_rand(seed);
 	if (a + b > 1.0f) { a = 1.0f - a; b = 1.0f - b; }
 	const float3 e1 = tri.p1 - tri.p0;
 	const float3 e2 = tri.p2 - tri.p0;
 	const float3 point = tri.p0 + a * e1 + b * e2;
+
+	// Same b0/b1/b2 = (1-a-b, a, b) convention __closesthit__wf_triangle
+	// uses (real barycentric UV) - see optix_device_helpers.h's
+	// sample_triangle_light() for the identical derivation.
+	out_u = out_v = 0.0f;
+	if (tri.hasUVs) {
+		const float b0 = 1.0f - a - b;
+		out_u = b0 * tri.uv0.x + a * tri.uv1.x + b * tri.uv2.x;
+		out_v = b0 * tri.uv0.y + a * tri.uv1.y + b * tri.uv2.y;
+	}
 
 	float3 dir = point - hit;
 	maxDist = length(dir);
@@ -1130,7 +1141,14 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	float3 skyColor, float shadow_eps, const GpuSkyDistribution& skyDist,
 	WorkQueue<ShadowRayWorkItem>& shadowQueue,
 	WorkQueue<RayWorkItem>& nextRayQueue,
-	float3* framebuffer)
+	float3* framebuffer,
+	// Needed only for a textured (pbrt AreaLightSource "filename") NEE
+	// target - see this function's own Triangle-light NEE branch below.
+	// Every caller already has these in scope (evaluate_materials/
+	// evaluate_materials_simple as kernel params, evaluate_materials_dielectric/
+	// resolve_bssrdf_exit newly threaded through for this same reason - see
+	// wavefront_launch.cu/wavefront_path_tracer.cpp).
+	const TextureData* textures, const unsigned char* texturePixels)
 {
 	using SS = SampledSpectrum<kWFNWavelengths>;
 
@@ -1315,8 +1333,18 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			light_emission_spec = liftEmission(materials[s.materialIdx].emission);
 		} else if (kind == GpuLightKind::Triangle) {
 			const TriangleData& tri = triangles[prim_idx];
-			to_light = wf_sample_triangle_light(tri, hit_point, seed, geom_pdf, max_dist);
-			light_emission_spec = liftEmission(materials[tri.materialIdx].emission);
+			float lu, lv;
+			to_light = wf_sample_triangle_light(tri, hit_point, seed, geom_pdf, max_dist, lu, lv);
+			const MaterialData& lm = materials[tri.materialIdx];
+			// A pbrt AreaLightSource "filename" triangle light needs the real
+			// sampled UV to look up its image - see the recursive backend's
+			// identical sample_area_light_by_kind() Triangle case.
+			if (lm.textureIdx >= 0) {
+				float3 texel = wf_sample_texture(textures, texturePixels, lm.textureIdx, lu, lv, hit_point + to_light * max_dist);
+				light_emission_spec = liftEmission(make_float3(texel.x * lm.emissionScale, texel.y * lm.emissionScale, texel.z * lm.emissionScale));
+			} else {
+				light_emission_spec = liftEmission(lm.emission);
+			}
 		} else if (kind == GpuLightKind::BilinearPatch) {
 			const BilinearPatchData& bp = bilinearPatches[prim_idx];
 			to_light = wf_sample_bilinear_patch_light(bp, hit_point, seed, geom_pdf, max_dist);
@@ -1816,18 +1844,36 @@ extern "C" __global__ void evaluate_materials(
 	// -------------------------------------------------------------------------
 	if (mat.type == MaterialType::DiffuseLight) {
 		if (h.specular_bounce || h.depth == 0) {
-			float cos_face = dot(-h.rayDir, normal);
-			if (cos_face > 0.0f) {
+			// mat.twoSided (pbrt AreaLightSource "diffuse" "bool twosided") lets
+			// a light emit from both faces instead of gating on frontFace - see
+			// CPU's diffuse_light::is_two_sided()/the recursive backend's
+			// material_emission() for the matching gate. h.frontFace, NOT
+			// dot(-h.rayDir, normal): every __closesthit__wf_* program already
+			// flips `normal` to face the incoming ray before packing it into
+			// the payload (matching CPU's own set_face_normal() convention),
+			// so that dot product is always positive by construction and can
+			// never discriminate front from back - a pre-existing bug (predates
+			// this twoSided feature entirely) that silently made every
+			// wavefront-rendered area light two-sided regardless of what the
+			// scene asked for, only surfaced now by testing twosided=false
+			// end-to-end.
+			if (mat.twoSided || h.frontFace) {
 				// Uplift RGB emission to spectrum via device sRGB table
 				// (deferred: emissionSpectrum helper is declared below; use inline here)
-				// A real map_Ke texture (Gallery's painted-canvas glow) is
-				// sampled at the hit UV instead of the flat mat.emission -
-				// see add_diffuse_light()'s textureIdx comment and the
-				// recursive backend's identical optix_intersection_triangle.h
-				// change.
+				// A real map_Ke texture (Gallery's painted-canvas glow) or a
+				// pbrt AreaLightSource "filename" image is sampled at the hit
+				// UV instead of the flat mat.emission - see add_diffuse_light()'s
+				// textureIdx comment and the recursive backend's identical
+				// material_emission() change. emissionScale is a no-op 1.0
+				// multiply unless the light was built with a "scale" param.
 				float3 le = (mat.textureIdx >= 0)
 					? wf_sample_texture(textures, texturePixels, mat.textureIdx, h.uv_u, h.uv_v, hit_point)
 					: mat.emission;
+				if (mat.textureIdx >= 0) {
+					le.x *= mat.emissionScale;
+					le.y *= mat.emissionScale;
+					le.z *= mat.emissionScale;
+				}
 				float m_le = le.x > le.y ? (le.x > le.z ? le.x : le.z)
 										  : (le.y > le.z ? le.y : le.z);
 				float sc = 2.f * m_le;
@@ -2745,7 +2791,8 @@ extern "C" __global__ void evaluate_materials(
 		lightIndices, lightKinds, aliasTable, numLights,
 		punctualLights, numPunctualLights,
 		skyColor, shadow_eps, skyDist,
-		shadowQueue, nextRayQueue, framebuffer);
+		shadowQueue, nextRayQueue, framebuffer,
+		textures, texturePixels);
 }
 
 // ============================================================================
@@ -2908,7 +2955,8 @@ extern "C" __global__ void evaluate_materials_simple(
 		lightIndices, lightKinds, aliasTable, numLights,
 		punctualLights, numPunctualLights,
 		skyColor, shadow_eps, skyDist,
-		shadowQueue, nextRayQueue, framebuffer);
+		shadowQueue, nextRayQueue, framebuffer,
+		textures, texturePixels);
 }
 
 // ============================================================================
@@ -2948,6 +2996,10 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	unsigned int numLights,
 	const PunctualLightGPU* punctualLights,
 	unsigned int numPunctualLights,
+	// Needed only for a textured (pbrt AreaLightSource "filename") NEE
+	// target - see wf_finish_material_scatter()'s own comment.
+	const TextureData* textures,
+	const unsigned char* texturePixels,
 	int maxDepth,
 	float3 skyColor,
 	float shadowRayEpsilon,
@@ -3117,7 +3169,8 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		lightIndices, lightKinds, aliasTable, numLights,
 		punctualLights, numPunctualLights,
 		skyColor, shadow_eps, skyDist,
-		shadowQueue, nextRayQueue, framebuffer);
+		shadowQueue, nextRayQueue, framebuffer,
+		textures, texturePixels);
 }
 
 // Uplift a flat RGB color to a spectral sample at the given hero
@@ -3197,6 +3250,10 @@ extern "C" __global__ void resolve_bssrdf_exit(
 	unsigned int numLights,
 	const PunctualLightGPU* punctualLights,
 	unsigned int numPunctualLights,
+	// Needed only for a textured (pbrt AreaLightSource "filename") NEE
+	// target - see wf_finish_material_scatter()'s own comment.
+	const TextureData* textures,
+	const unsigned char* texturePixels,
 	float3 skyColor,
 	float shadowRayEpsilon,
 	GpuSkyDistribution skyDist
@@ -3279,7 +3336,8 @@ extern "C" __global__ void resolve_bssrdf_exit(
 		lightIndices, lightKinds, aliasTable, numLights,
 		punctualLights, numPunctualLights,
 		skyColor, shadow_eps, skyDist,
-		shadowQueue, nextRayQueue, framebuffer);
+		shadowQueue, nextRayQueue, framebuffer,
+		textures, texturePixels);
 }
 
 // ============================================================================
