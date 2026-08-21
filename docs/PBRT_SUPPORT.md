@@ -120,3 +120,22 @@ loader and no longer match the code:
 (The `dielectric roughness` and `conductor` routing gaps once listed here were
 fixed — see the Materials table above, which is the source of truth for
 per-`MaterialKind` behavior.)
+
+- A `Diffuse` material's `"reflectance"` parameter bound to an `"imagemap"`
+  `Texture` is decoded and uploaded on both CPU (`mipmap_texture`-backed
+  `lambertian`) and GPU (`MaterialData::textureIdx` into the same texture
+  table OBJ/MTL `map_Kd` already uses) — see `Material::textureFilename` in
+  `pbrt_flatten.h`. Every OTHER material kind's texture-bound parameter (e.g.
+  `coateddiffuse`'s `"reflectance"` — pbrt's own `ganesha` example scene uses
+  exactly this) and every other `Texture` class (`checkerboard`, `scale`,
+  `mix`, ...) still falls back to a flat colour with a warning, unchanged.
+  **Known limitation even for the supported Diffuse+imagemap case**: pbrt
+  `Shape "trianglemesh"`/`"plymesh"`'s own per-vertex `"uv"`/`"st"` data is not
+  threaded through `pbrt_flatten::Triangle` at all (no `u`/`v` fields on that
+  struct) — confirmed by hand: a synthetic `Material "diffuse"` +
+  `"imagemap"` scene renders a real (if not correctly UV-mapped) texture on
+  CPU, but solid black on GPU-recursive, because the two backends' triangle
+  code disagrees about what UV to use when none was authored through this
+  path. Fixing this needs UV added to `pbrt_flatten::Triangle` and threaded
+  through both builders' triangle-construction loops — a separate, real gap,
+  not something this texture-upload work fixes on its own.

@@ -222,6 +222,20 @@ struct Material {
 	// back to a diffuse approximation.
 	std::string measuredFilename;
 
+	// Diffuse only: an "imagemap" Texture bound to "reflectance", naming the
+	// image file exactly AS WRITTEN in the scene - same "stays filesystem-
+	// free, resolved later by pbrt_load.h" convention as measuredFilename
+	// above (see that field's own comment). Empty means either no texture was
+	// bound, the bound texture wasn't an imagemap, or (after pbrt_load.h's
+	// pass) the file could not be found - any of which falls back to `color`
+	// as a flat reflectance, same as today. Only "reflectance" is handled
+	// (not every texture-bindable parameter on every material kind): pbrt's
+	// ganesha is the motivating case (a Diffuse statue whose reflectance is
+	// an imagemap - see the warning loop below), and scoping to that one
+	// parameter keeps this addition bounded rather than building a general
+	// procedural-texture pipeline in one pass.
+	std::string textureFilename;
+
 	// Mix only: indices into FlatScene::materials of the two blended
 	// sub-materials - pbrt-v4's own "string materials" parameter names them
 	// (an array of exactly two named-material references, resolved against
@@ -809,9 +823,28 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// material still renders, but with a constant colour where the scene
 		// asked for a pattern. pbrt's ganesha is the case that showed this -
 		// its statue's reflectance is an imagemap, and without a word about
-		// it the render just looks like a shading bug.
+		// it the render just looks like a shading bug. "reflectance" bound to
+		// an "imagemap" texture on a Diffuse material is the one case
+		// actually wired up below (Material::textureFilename's own comment,
+		// pbrt_cpu_builder.h's MaterialKind::Diffuse case) - gated on `kind`
+		// so a coateddiffuse/conductor/etc. with the same binding still warns
+		// instead of silently keeping its texture reference unused; every
+		// other texture binding (other parameters, other texture classes like
+		// checkerboard/scale/mix) also still just warns.
 		for (const pbrt_scene::Param &p : md.params.items) {
 			if (p.type != "texture") continue;
+			if (m.kind == MaterialKind::Diffuse && p.name == "reflectance" && !p.strings.empty()) {
+				const pbrt_scene::TextureDecl *tex = nullptr;
+				for (const pbrt_scene::TextureDecl &t : scene.textures)
+					if (t.name == p.strings[0]) tex = &t;
+				if (tex && tex->cls == "imagemap") {
+					const std::string filename = tex->params.getString("filename", "");
+					if (!filename.empty()) {
+						m.textureFilename = filename;
+						continue;   // resolved to an image, not a "not supported" warning
+					}
+				}
+			}
 			warn("material '" + md.type + "' binds its '" + p.name +
 				 "' to a texture, which is not supported; a constant colour is "
 				 "used instead");

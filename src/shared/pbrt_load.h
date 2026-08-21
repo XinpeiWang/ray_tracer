@@ -385,6 +385,29 @@ inline LoadResult loadFile(const std::string &path) {
 		m.measuredFilename = resolved;
 	}
 
+	// Diffuse materials' imagemap "reflectance" texture (Material::
+	// textureFilename - see that field's own comment). Same scene-directory-
+	// then-as-given resolution as everything else here; unlike the measured-
+	// material tensor above, decoding is left to pbrt_cpu_builder.h (an
+	// mipmap_texture-backed lambertian, mirroring the OBJ/MTL map_Kd path in
+	// mesh.h) rather than validated here, since a plain image decode has
+	// nothing worth caching ahead of time the way the .bsdf tensor reader
+	// does.
+	for (pbrt_flatten::Material &m : r.scene.materials) {
+		if (m.textureFilename.empty()) continue;
+
+		const std::string resolved = resolveExistingPath(sceneDir, m.textureFilename);
+		if (resolved.empty()) {
+			r.scene.warnings.push_back(
+				{0, path, "material's reflectance texture image '" + m.textureFilename +
+					"' could not be found; falling back to a constant colour instead"});
+			m.textureFilename.clear();
+			continue;
+		}
+
+		m.textureFilename = resolved;
+	}
+
 	return r;
 }
 

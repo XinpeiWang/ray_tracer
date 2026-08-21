@@ -131,6 +131,39 @@ TEST_F(TempTree, SceneTransformsStillApplyToAnIncludedPlyMesh) {
 	EXPECT_DOUBLE_EQ(r.scene.triangles[0].v[0], 100.0);
 }
 
+TEST_F(TempTree, DiffuseReflectanceImagemapResolvesRelativeToTheScene) {
+	// Material::textureFilename's own comment: pbrt_load.h resolves it the
+	// same scene-directory-first way as measuredFilename/plymesh/lensfile -
+	// content doesn't matter here (mipmap_texture decodes it later, in
+	// pbrt_cpu_builder.h), only that resolveExistingPath finds it.
+	write("scene.pbrt",
+		  "Texture \"tmap\" \"spectrum\" \"imagemap\" \"string filename\" [ \"geometry/t.png\" ]\n"
+		  "Material \"diffuse\" \"texture reflectance\" [ \"tmap\" ]\n"
+		  "Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		  "  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	write("geometry/t.png", "not a real png, only existence is checked here");
+	const pbrt_load::LoadResult r = pbrt_load::loadFile(path("scene.pbrt"));
+	ASSERT_TRUE(r.ok) << r.error;
+	ASSERT_EQ(r.scene.materials.size(), 1u);
+	EXPECT_EQ(r.scene.materials[0].textureFilename, path("geometry/t.png"));
+}
+
+TEST_F(TempTree, MissingReflectanceImagemapWarnsAndFallsBackToConstantColour) {
+	write("scene.pbrt",
+		  "Texture \"tmap\" \"spectrum\" \"imagemap\" \"string filename\" [ \"nope.png\" ]\n"
+		  "Material \"diffuse\" \"texture reflectance\" [ \"tmap\" ]\n"
+		  "Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		  "  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	const pbrt_load::LoadResult r = pbrt_load::loadFile(path("scene.pbrt"));
+	ASSERT_TRUE(r.ok) << r.error;
+	ASSERT_EQ(r.scene.materials.size(), 1u);
+	EXPECT_TRUE(r.scene.materials[0].textureFilename.empty());
+	bool warned = false;
+	for (const pbrt_scene::Warning &w : r.scene.warnings)
+		if (w.message.find("nope.png") != std::string::npos) warned = true;
+	EXPECT_TRUE(warned);
+}
+
 TEST_F(TempTree, MissingSceneFileIsNamed) {
 	const pbrt_load::LoadResult r = pbrt_load::loadFile(path("nope.pbrt"));
 	EXPECT_FALSE(r.ok);

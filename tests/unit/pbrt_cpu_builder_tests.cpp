@@ -276,6 +276,27 @@ TEST(PbrtCpuBuildTest, CoatedConductorBuildsTheRealMaterialNotLambertian) {
 		   "coated_conductor class, not silently fall back to lambertian";
 }
 
+TEST(PbrtCpuBuildTest, DiffuseReflectanceImagemapBuildsATextureBackedLambertian) {
+	// buildFrom() only runs flatten(), not pbrt_load.h's resolution pass, so
+	// Material::textureFilename stays "as written" here ("t.png") rather than
+	// an absolute path - fine for this test, which only checks that a
+	// non-empty textureFilename makes it all the way to a mipmap_texture-
+	// backed lambertian (this Diffuse case's own branch in makeMaterial()),
+	// not a plain solid_color-backed one built from `reflectance`.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Texture \"tmap\" \"spectrum\" \"imagemap\" \"string filename\" [ \"t.png\" ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"tmap\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *lam = dynamic_cast<lambertian *>(rec.mat.get());
+	ASSERT_NE(lam, nullptr);
+	EXPECT_NE(dynamic_cast<mipmap_texture *>(lam->get_texture().get()), nullptr)
+		<< "a diffuse material with an imagemap-bound reflectance must build a "
+		   "texture-backed lambertian, not the flat-colour fallback";
+}
+
 TEST(PbrtCpuBuildTest, DiffuseTransmissionBuildsTheRealMaterialNotLambertian) {
 	const pbrt_cpu::BuildResult b = buildFrom(
 		"Material \"diffusetransmission\"\n" + std::string(kQuad));

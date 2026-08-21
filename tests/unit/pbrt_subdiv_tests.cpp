@@ -166,6 +166,23 @@ TEST(PbrtDroppedTest, ATextureBoundToAMaterialIsReportedWithItsParameterName) {
 	EXPECT_TRUE(warned(s, "constant colour"));
 }
 
+TEST(PbrtDroppedTest, ADiffuseReflectanceImagemapIsResolvedNotWarned) {
+	// The one case ATextureBoundToAMaterialIsReportedWithItsParameterName
+	// deliberately does NOT cover: a plain "diffuse" material (not
+	// coateddiffuse) whose "reflectance" is bound to an "imagemap" texture -
+	// pbrt's ganesha statue is exactly this, and it should resolve to a real
+	// image reference (Material::textureFilename) instead of the generic
+	// "not supported" warning.
+	const FlatScene s = build(
+		"Texture \"tmap\" \"spectrum\" \"imagemap\" \"string filename\" [ \"t.png\" ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"tmap\" ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	EXPECT_FALSE(warned(s, "not supported"));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].textureFilename, "t.png");
+}
+
 TEST(PbrtDroppedTest, APlainColourMaterialIsNotWarnedAbout) {
 	const FlatScene s = build(
 		"Material \"diffuse\" \"rgb reflectance\" [ 0.5 0.5 0.5 ]\n"

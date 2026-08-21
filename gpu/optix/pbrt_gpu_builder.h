@@ -65,6 +65,17 @@
 // the scene's already-decoded infinite-light image) purely to flatten and
 // upload - see the "infinite/sky light" block at the end of build() below.
 #include "../../src/shared/piecewise_dist.h"
+// stbi_loadf - loading a Diffuse material's imagemap-bound reflectance
+// texture (Material::textureFilename) into scene.texturePixels, the exact
+// same shared flat pixel buffer + TextureData table scene_builder.cpp's own
+// load_image_texture_gpu() (OBJ/MTL map_Kd's GPU path) already uses. That
+// function itself is not reusable here: it lives in scene_builder.cpp's file-
+// local anonymous namespace, defined AFTER this header is #include'd there,
+// so getOrBuildPbrtImageTexture() below duplicates its handful of lines
+// rather than depending on link order. Declarations only, like
+// scene_builder.cpp's own include - the implementation (STB_IMAGE_
+// IMPLEMENTATION) is linked once from src/external/stb_image_impl.cpp.
+#include "../../src/external/stb_image.h"
 
 namespace pbrt_gpu {
 
@@ -250,6 +261,51 @@ inline int getOrBuildMeasuredTable(const std::string& resolvedPath, SceneData& o
 	return idx;
 }
 
+// Loads a Diffuse material's imagemap-bound reflectance texture (Material::
+// textureFilename - already a resolved, existence-tested absolute path by
+// this point, pbrt_load.h having run during CPU scene loading before this
+// builder ever sees the FlatScene, same convention as measuredFilename
+// above) into `out`'s shared texture table, returning its MaterialData::
+// textureIdx. Mirrors scene_builder.cpp's load_image_texture_gpu() exactly
+// (same search behaviour, same float-to-byte conversion), plus a filename
+// cache so a texture shared by many materials is decoded once. Returns -1
+// only if stb_image itself fails to decode an existence-tested file (a
+// corrupt-but-present image) - the caller falls back to Lambertian's flat
+// `albedo` colour, matching pbrt_cpu_builder.h's own mipmap_texture(mip_==
+// nullptr) degradation for the same case.
+inline int getOrBuildPbrtImageTexture(const std::string& resolvedPath, SceneData& out,
+									  std::map<std::string, int>& cache) {
+	const auto it = cache.find(resolvedPath);
+	if (it != cache.end()) return it->second;
+
+	int width = 0, height = 0, channels = 0;
+	float* fdata = stbi_loadf(resolvedPath.c_str(), &width, &height, &channels, 3);
+	if (!fdata) {
+		cache.emplace(resolvedPath, -1);
+		return -1;
+	}
+
+	TextureData tex{};
+	tex.kind = TextureKind::Image;
+	tex.noiseScale = 0.0f;
+	tex.pixelOffset = static_cast<int>(out.texturePixels.size());
+	tex.width = width;
+	tex.height = height;
+	const std::size_t total = static_cast<std::size_t>(width) * height * 3;
+	out.texturePixels.resize(out.texturePixels.size() + total);
+	unsigned char* dst = out.texturePixels.data() + tex.pixelOffset;
+	for (std::size_t i = 0; i < total; ++i) {
+		const float v = fdata[i];
+		dst[i] = (v <= 0.0f) ? 0 : (v >= 1.0f ? 255 : static_cast<unsigned char>(256.0f * v));
+	}
+	stbi_image_free(fdata);
+
+	const int idx = static_cast<int>(out.textures.size());
+	out.textures.push_back(tex);
+	cache.emplace(resolvedPath, idx);
+	return idx;
+}
+
 // Resolves a material's own effective flat colour for use as one side of a
 // Mix blend: `m.color` directly for every ordinary material kind, or - when
 // `m` is ITSELF a nested Mix (pbrt-v4 allows mix-of-mix) - the recursive
@@ -301,6 +357,7 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 								 SceneData &out,
 								 std::map<std::pair<double,double>, int> &bssrdfTableCache,
 								 std::map<std::string, int> &measuredTableCache,
+								 std::map<std::string, int> &imageTextureCache,
 								 const std::vector<pbrt_flatten::Material> &allMaterials = {}) {
 	MaterialData d = {};
 	d.textureIdx = -1;
@@ -415,6 +472,19 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		d.textureIdx = getOrBuildBssrdfTable(m.g, m.ior, out, bssrdfTableCache);
 		break;
 	case pbrt_flatten::MaterialKind::Diffuse:
+		// m.textureFilename mirrors measuredFilename: already a resolved,
+		// existence-tested absolute path by this point (pbrt_load.h's own
+		// pass, see Material::textureFilename's comment) or empty. A -1 from
+		// getOrBuildPbrtImageTexture (corrupt-but-present file) leaves
+		// d.textureIdx at its -1 default, so sample_texture()
+		// (optix_device_helpers.h) falls through to solid_color-equivalent
+		// behaviour reading `d.albedo` - same degrade-to-flat-colour the
+		// Diffuse/Unsupported fallback below already gives every other
+		// material without a texture.
+		d.type = MaterialType::Lambertian;
+		if (!m.textureFilename.empty())
+			d.textureIdx = getOrBuildPbrtImageTexture(m.textureFilename, out, imageTextureCache);
+		break;
 	case pbrt_flatten::MaterialKind::Unsupported:
 		d.type = MaterialType::Lambertian;
 		break;
@@ -505,6 +575,10 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 	// getOrBuildMeasuredTable()'s own comment. Only Measured materials touch
 	// this; stays empty for every scene without one.
 	std::map<std::string, int> measuredTableCache;
+	// Separate dedup cache for GPU image textures-by-resolved-path - see
+	// getOrBuildPbrtImageTexture()'s own comment. Only Diffuse materials with
+	// an imagemap-bound reflectance touch this; stays empty otherwise.
+	std::map<std::string, int> imageTextureCache;
 	const auto materialIndex = [&](int mi, int ai) {
 		const auto key = std::make_pair(mi, ai);
 		const auto it = cache.find(key);
@@ -521,7 +595,7 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 				: kDefault;
 
 		const int idx = static_cast<int>(out.materials.size());
-		out.materials.push_back(makeMaterial(m, em, out, bssrdfTableCache, measuredTableCache, scene.materials));
+		out.materials.push_back(makeMaterial(m, em, out, bssrdfTableCache, measuredTableCache, imageTextureCache, scene.materials));
 		cache.emplace(key, idx);
 		return idx;
 	};

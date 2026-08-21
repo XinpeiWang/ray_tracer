@@ -177,6 +177,18 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		return std::make_shared<mix_material>(matA, matB, m.mixWeight);
 	}
 	case pbrt_flatten::MaterialKind::Diffuse:
+		// m.textureFilename is only ever non-empty after pbrt_load.h's post-
+		// flatten pass confirmed the file exists (Material::textureFilename's
+		// own comment) - mirrors mesh.h's load_obj_mtl() map_Kd path: decode
+		// once, hand the pixels straight to a mipmap_texture-backed
+		// lambertian instead of the flat-colour one below. A corrupt-but-
+		// present file (mip_ stays null) degrades to mipmap_texture's own
+		// cyan debug colour rather than a silent flat-colour fallback - rare
+		// enough (pbrt_load.h already validated the file opens) not to be
+		// worth a second probe-and-fallback dance here.
+		if (!m.textureFilename.empty())
+			return std::make_shared<lambertian>(std::make_shared<mipmap_texture>(m.textureFilename.c_str()));
+		break;
 	case pbrt_flatten::MaterialKind::Unsupported:
 		break;
 	}
