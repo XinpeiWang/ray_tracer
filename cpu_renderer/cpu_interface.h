@@ -220,6 +220,176 @@ int cpu_render_main_mlt(
     int force_camera_override = 0
 );
 
+/// @brief Render a scene using RandomWalkIntegrator -- pbrt-v4's unbiased
+/// reference path tracer (uniform-sphere sampling at every bounce, no NEE,
+/// no MIS, no importance sampling at all). Slow to converge and noisy by
+/// design -- a correctness reference for other integrators, not a
+/// production render mode. See src/shared/utility_integrators.h's own file
+/// comment. CPU only. Works on any scene (no light-sampling dependency,
+/// unlike --bdpt/--mlt/--lightpath -- an emissive surface only contributes
+/// when a bounce happens to hit it directly).
+/// @param width/height    Image dimensions in pixels
+/// @param spp             Samples per pixel
+/// @param max_depth       Maximum bounce depth
+/// @param output_path     Output PPM/EXR file path
+/// @param scene_id        Scene selector (see scene_registry.h)
+/// @param cam_x/y/z       Camera position (see cpu_render_main's own doc)
+/// @param force_camera_override  Same semantics as cpu_render_main's own parameter
+/// @return 0 on success, non-zero error code on failure
+int cpu_render_main_randomwalk(
+    int width,
+    int height,
+    int spp,
+    int max_depth,
+    const char* output_path,
+    const char* scene_id,
+    double cam_x,
+    double cam_y,
+    double cam_z,
+    int force_camera_override = 0
+);
+
+/// @brief Render a scene using AOIntegrator -- ambient occlusion only (a
+/// single hemisphere shadow ray per camera-ray hit, no indirect lighting,
+/// no material colors). A debugging/visualization tool (occlusion mask),
+/// not a lit render. See src/shared/utility_integrators.h's own file
+/// comment. CPU only.
+/// @param width/height    Image dimensions in pixels
+/// @param spp             Samples per pixel
+/// @param max_dist        Occlusion test distance (pbrt-v4 "maxdistance";
+///                        a very large value, e.g. 1e10, means unbounded)
+/// @param cos_sample      1 = cosine-hemisphere sampling, 0 = uniform-hemisphere
+/// @param illum_scale     Flat multiplier on the occlusion color
+/// @param illum_r/g/b     Occlusion color (pbrt-v4 "illuminant"; default white)
+/// @param output_path     Output PPM/EXR file path
+/// @param scene_id        Scene selector (see scene_registry.h)
+/// @param cam_x/y/z       Camera position (see cpu_render_main's own doc)
+/// @param force_camera_override  Same semantics as cpu_render_main's own parameter
+/// @return 0 on success, non-zero error code on failure
+int cpu_render_main_ao(
+    int width,
+    int height,
+    int spp,
+    double max_dist,
+    int cos_sample,
+    double illum_scale,
+    double illum_r,
+    double illum_g,
+    double illum_b,
+    const char* output_path,
+    const char* scene_id,
+    double cam_x,
+    double cam_y,
+    double cam_z,
+    int force_camera_override = 0
+);
+
+/// @brief Render a scene using SimplePathIntegrator -- pbrt-v4's canonical
+/// reference path tracer with optional NEE and optional BSDF importance
+/// sampling. See src/shared/simple_path.h's own file comment. CPU only.
+/// Area lights only for NEE (same "Scope v1" as --bdpt/--mlt -- see
+/// bdpt_adapter.h's own comment); with sample_lights=0 this restriction is
+/// moot (no light sampling happens at all).
+/// @param width/height    Image dimensions in pixels
+/// @param spp             Samples per pixel
+/// @param max_depth       Maximum path length
+/// @param sample_lights   1 = perform NEE at each diffuse vertex (pbrt-v4 default)
+/// @param sample_bsdf     1 = BSDF-importance-sample the next direction,
+///                        0 = uniform hemisphere (pbrt-v4 default: 1)
+/// @param output_path     Output PPM/EXR file path
+/// @param scene_id        Scene selector (see scene_registry.h)
+/// @param cam_x/y/z       Camera position (see cpu_render_main's own doc)
+/// @param force_camera_override  Same semantics as cpu_render_main's own parameter
+/// @return 0 on success, non-zero error code on failure
+int cpu_render_main_simplepath(
+    int width,
+    int height,
+    int spp,
+    int max_depth,
+    int sample_lights,
+    int sample_bsdf,
+    const char* output_path,
+    const char* scene_id,
+    double cam_x,
+    double cam_y,
+    double cam_z,
+    int force_camera_override = 0
+);
+
+/// @brief Render a scene using SimpleVolPathIntegrator -- pbrt-v4's
+/// simplest volumetric path tracer (pure delta tracking, no NEE, no
+/// surface BSDFs). See src/shared/simple_vol_path.h's own file comment.
+/// CPU only.
+///
+/// This integration is reachable but medium-FREE: BDPTSceneAdapter's
+/// HasMedium() always returns false (no participating-media wiring in this
+/// adapter -- see bdpt_adapter.h's own comment on that method), so on
+/// today's ordinary solid-geometry scenes this behaves exactly like
+/// pbrt-v4's own SimpleVolPathIntegrator on a medium-free scene: it
+/// terminates at the first surface hit, adding only that surface's own
+/// area emission (SimpleVolPathIntegrator has no surface BSDF support at
+/// all, matching upstream) -- so most scenes render mostly black except
+/// where camera rays land directly on a light. Full participating-media
+/// support (constant_medium.h/cloud_medium.h/rgb_grid_medium.h) is future
+/// work.
+/// @param width/height    Image dimensions in pixels
+/// @param spp             Samples per pixel
+/// @param max_depth       Maximum scattering-event depth (medium scenes only)
+/// @param output_path     Output PPM/EXR file path
+/// @param scene_id        Scene selector (see scene_registry.h)
+/// @param cam_x/y/z       Camera position (see cpu_render_main's own doc)
+/// @param force_camera_override  Same semantics as cpu_render_main's own parameter
+/// @return 0 on success, non-zero error code on failure
+int cpu_render_main_simplevolpath(
+    int width,
+    int height,
+    int spp,
+    int max_depth,
+    const char* output_path,
+    const char* scene_id,
+    double cam_x,
+    double cam_y,
+    double cam_z,
+    int force_camera_override = 0
+);
+
+/// @brief Render a scene using LightPathIntegrator -- a pure light-tracer:
+/// every sample starts at a light and walks forward, splatting a
+/// camera-connection contribution into the film at each vertex (the
+/// opposite direction of every other integrator this project has, which
+/// all start at the camera). See src/shared/light_path.h's own file
+/// comment. CPU only. Area lights only (SampleLightEmission only samples
+/// this adapter's diffuse_light emitters -- same v1 scope as --bdpt/--mlt).
+///
+/// Uses BDPTSceneAdapter's importance-transport BSDF hooks
+/// (BSDFfImportance/BSDFSampleFImportance), which do not apply the eta^2
+/// non-symmetric-scattering correction real refraction needs -- exact for
+/// every purely-reflective material this codebase's BSDF bridge supports,
+/// an approximation through the dielectric family. See bdpt_adapter.h's
+/// own comment on those two methods.
+/// @param width/height    Image dimensions in pixels
+/// @param spp             Samples per pixel (light paths traced per pixel,
+///                        matching pbrt-v4's own LightPathIntegrator
+///                        convention -- total paths traced = spp*width*height)
+/// @param max_depth       Maximum light-path length
+/// @param output_path     Output PPM/EXR file path
+/// @param scene_id        Scene selector (see scene_registry.h)
+/// @param cam_x/y/z       Camera position (see cpu_render_main's own doc)
+/// @param force_camera_override  Same semantics as cpu_render_main's own parameter
+/// @return 0 on success, non-zero error code on failure
+int cpu_render_main_lightpath(
+    int width,
+    int height,
+    int spp,
+    int max_depth,
+    const char* output_path,
+    const char* scene_id,
+    double cam_x,
+    double cam_y,
+    double cam_z,
+    int force_camera_override = 0
+);
+
 /// Scene metadata C API -- lets the GUI query the registry without C++ headers
 /// @return total number of registered scenes
 int cpu_scene_count();

@@ -131,15 +131,21 @@
 #include "../shared/bdpt.h"      // BDPTHit, BDPTVertex, BDPTLi, ...
 #include "../shared/mlt.h"       // MLTRenderLoop (pulls in reservoir_sampler.h's AliasTable)
 #include "../shared/exr_writer.h"
+#include "../shared/utility_integrators.h"  // RandomWalkLi, AOLi
+#include "../shared/simple_path.h"          // SimplePathLi
+#include "../shared/simple_vol_path.h"      // SimpleVolPathLi, VolPathMediumProps
+#include "../shared/light_path.h"           // LightPathTrace, LightEmissionSample, CameraConnection
 
 #include <vector>
 #include <thread>
 #include <atomic>
+#include <mutex>
 #include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <string>
 #include <algorithm>
+#include <functional>
 
 // ===========================================================================
 // BDPTSceneAdapter
@@ -259,6 +265,263 @@ class BDPTSceneAdapter {
 		const SPPMShadingContext* ctx = context_for(id);
 		if (!ctx) return 0.0;
 		return sppm_bsdf_pdf(*ctx, wo, wi, n);
+	}
+
+	// ------------------------------------------------------------------
+	// Extensions for RandomWalk/AO/SimplePath/SimpleVolPath/LightPath
+	// ------------------------------------------------------------------
+	// Round 6 Phase 2: the 5 debug/reference integrators in utility_
+	// integrators.h/simple_path.h/simple_vol_path.h/light_path.h each need a
+	// subset of this same duck-typed Scene concept, mostly already satisfied
+	// by the BDPT/MLT members above (Intersect/BSDFf/BSDFSampleF/
+	// SampleLight/Unoccluded/InfiniteLightLe). These methods fill the
+	// remaining gaps, reusing this adapter's existing emitter list/context
+	// pool rather than a second adapter class.
+
+	// SurfaceLe: RandomWalkLi/SimplePathLi's own emission query, at a hit
+	// already produced by Intersect() above -- which, like
+	// SPPMSceneAdapter's, computes area_Le eagerly rather than lazily, so
+	// this is a direct copy (wo unused, matching this codebase's one-sided
+	// diffuse_light convention -- see named-material-and-texture.pbrt's own
+	// "twosided parsed nowhere" comment for the same convention elsewhere).
+	void SurfaceLe(const BDPTHit<double>& hit, const double* /*wo*/, double out[3]) const {
+		out[0] = hit.area_Le[0]; out[1] = hit.area_Le[1]; out[2] = hit.area_Le[2];
+	}
+
+	// No medium-boundary primitives in this adapter's scope (Intersect()
+	// always sets is_medium_boundary=false -- "constant_medium scenes out
+	// of scope, matching SPPMSceneAdapter" per its own comment above), so
+	// every real hit has a real BSDF.
+	bool BSDFIsNull(int /*bsdf_id*/) const { return false; }
+
+	// Offsets along the geometric normal, SIGNED by which side `dir` exits
+	// on -- unlike the unit tests' own SpawnRay mocks (which always offset
+	// along +geo_n, fine for their reflection-only synthetic scenes), a real
+	// dielectric sphere (scene A1's glass sphere) can hand SpawnRay a `dir`
+	// that transmits through the surface, and offsetting into the wrong
+	// side would immediately self-intersect the same surface again. Mirrors
+	// pbrt-v4's own OffsetRayOrigin() convention (offset on the side the new
+	// ray direction actually points to).
+	void SpawnRay(const BDPTHit<double>& hit, const double dir[3],
+	              double new_o[3], double new_d[3]) const {
+		constexpr double kEps = 1e-3;
+		double side = (dir[0]*hit.geo_n[0] + dir[1]*hit.geo_n[1] + dir[2]*hit.geo_n[2] >= 0.0) ? 1.0 : -1.0;
+		new_o[0] = hit.p[0] + side * kEps * hit.geo_n[0];
+		new_o[1] = hit.p[1] + side * kEps * hit.geo_n[1];
+		new_o[2] = hit.p[2] + side * kEps * hit.geo_n[2];
+		new_d[0] = dir[0]; new_d[1] = dir[1]; new_d[2] = dir[2];
+	}
+
+	// AOLi's shadow-ray-with-a-distance-cap -- same shadow_ray_hit()
+	// transmittance-aware occlusion test as Unoccluded() below, just bounded
+	// by max_dist along dir instead of a fixed endpoint.
+	bool UnoccludedWithin(const double p[3], const double dir[3], double max_dist) const {
+		if (max_dist <= 0.002) return true;
+		ray r(point3(p[0], p[1], p[2]), vec3(dir[0], dir[1], dir[2]));
+		hit_record rec;
+		return !shadow_ray_hit(world_, r, rec, max_dist - 0.002);
+	}
+
+	// SimplePathLi's uniform-sphere-vs-hemisphere fallback selector -- true
+	// for the dielectric family (the only materials in this codebase's
+	// BSDF bridge that transmit as well as reflect), same class set
+	// bsdf_bridge.h's sppm_is_delta_material() already tests against.
+	bool BSDFIsReflectiveAndTransmissive(int id) const {
+		const SPPMShadingContext* ctx = context_for(id);
+		if (!ctx || !ctx->mat) return false;
+		const material* m = ctx->mat.get();
+		return dynamic_cast<const dielectric*>(m) != nullptr ||
+		       dynamic_cast<const rough_dielectric*>(m) != nullptr ||
+		       dynamic_cast<const thin_dielectric*>(m) != nullptr;
+	}
+
+	// SimpleVolPathLi's medium hooks -- no participating-media scenes are in
+	// this adapter's scope (see BSDFIsNull's own comment above), so
+	// HasMedium() unconditionally false makes SampleTMaj/SamplePhase dead
+	// code by construction: SimpleVolPathLi only calls them inside its own
+	// `if (scene.HasMedium(...))` guard. --simplevolpath is consequently
+	// reachable and correct on ordinary solid-geometry scenes (it reduces
+	// to pbrt-v4's own SimpleVolPathIntegrator behaviour on a medium-free
+	// scene: it terminates at the first surface hit, adding that surface's
+	// area_Le and nothing else -- SimpleVolPathIntegrator has no surface
+	// BSDF support at all, matching the upstream reference exactly, not a
+	// simplification introduced here). Full participating-media wiring
+	// (reusing constant_medium.h/cloud_medium.h/rgb_grid_medium.h's own
+	// delta-tracking, the way camera.h's main path tracer does) is future
+	// work -- see launcher_args.h's --simplevolpath help text.
+	bool HasMedium(const double* /*org*/, const double* /*dir*/) const { return false; }
+	double SampleTMaj(const double* /*org*/, const double* /*dir*/, double /*t_max*/, double /*u_maj*/,
+	                   const std::function<bool(const double p[3], const VolPathMediumProps<double>& mp,
+	                                             double sigma_maj, double T_maj)>& /*callback*/) const {
+		return 1.0;   // unreachable: HasMedium() is always false
+	}
+	bool SamplePhase(const double* /*wo*/, double /*g*/, double /*u1*/, double /*u2*/,
+	                  double* /*wi*/, double& /*pdf*/) const {
+		return false;   // unreachable: HasMedium() is always false
+	}
+	double PhaseP(const double* /*wo*/, const double* /*wi*/, double /*g*/) const {
+		return 0.0;   // unreachable: HasMedium() is always false
+	}
+
+	// LightPathTrace's importance-transport BSDF hooks. Radiance and
+	// importance transport only differ for non-symmetric scattering (real
+	// refraction through a dielectric interface picks up an eta^2 factor --
+	// see pbrt-v4's own BxDF::Sample_f(..., TransportMode::Importance)
+	// documentation) -- this adapter does not apply that correction, so
+	// --lightpath output through the dielectric family is an approximation
+	// (exact for every purely-reflective material this codebase's BSDF
+	// bridge supports). Documented, not hidden -- see launcher_args.h's
+	// --lightpath help text, same "debug/reference integrator, not
+	// radiometrically exact everywhere" framing as --ao/--randomwalk.
+	void BSDFfImportance(int id, const double wo[3], const double wi[3], const double n[3], double out[3]) const {
+		BSDFf(id, wo, wi, n, out);
+	}
+	bool BSDFSampleFImportance(int id, const double wo[3], const double n[3], double u1, double u2,
+	                            double new_dir[3], double f_val[3], double& pdf) const {
+		bool is_specular = false;
+		return BSDFSampleF(id, wo, n, u1, u2, new_dir, f_val, pdf, is_specular);
+	}
+
+	// LightPathTrace's own light-emission sample -- same power-weighted-
+	// emitter / uniform-area-position / cosine-weighted-direction scheme as
+	// SampleLightLe() above (LightEmissionSample<T> is a differently-shaped
+	// struct than BDPTLightLeSample<T>, so this can't just forward), plus a
+	// filled-in BDPTHit for LightSurfaceLe()/the has_surface direct-
+	// connection path below to read back from.
+	bool SampleLightEmission(double /*u_light*/, double u0a, double u0b, double u1a, double u1b,
+	                          LightEmissionSample<double>& les) const {
+		if (nEmitters_ == 0) return false;
+		int idx = emitter_alias_.sample(random_double());
+		const auto& light = emitters_[idx];
+
+		AreaLightSample as;
+		if (!light->sample_area(u0a, u0b, as)) return false;
+
+		onb uvw(as.n);
+		vec3 dir = uvw.transform(random_cosine_direction());
+		(void)u1a; (void)u1b;   // this codebase's random_cosine_direction() draws its own randomness (see SampleLightLe's own note)
+		double cos_theta = dot(dir, as.n);
+		if (cos_theta <= 0.0) return false;
+
+		color Le = emitter_dl_[idx]->get_texture()->value(as.u, as.v, as.p);
+
+		les.ray_o[0]=as.p.x(); les.ray_o[1]=as.p.y(); les.ray_o[2]=as.p.z();
+		les.ray_d[0]=dir.x();  les.ray_d[1]=dir.y();  les.ray_d[2]=dir.z();
+		les.Le[0]=Le.x(); les.Le[1]=Le.y(); les.Le[2]=Le.z();
+		les.pdf_pos = as.pdf_pos * emitter_alias_.pmf(idx);
+		les.pdf_dir = cos_theta / pi;
+		les.p_light = emitter_alias_.pmf(idx);
+		les.abs_cos_theta = cos_theta;
+		les.has_surface = true;
+
+		BDPTHit<double>& sh = les.surface_hit;
+		sh.p[0]=as.p.x(); sh.p[1]=as.p.y(); sh.p[2]=as.p.z();
+		sh.geo_n[0]=as.n.x(); sh.geo_n[1]=as.n.y(); sh.geo_n[2]=as.n.z();
+		sh.shading_n[0]=sh.geo_n[0]; sh.shading_n[1]=sh.geo_n[1]; sh.shading_n[2]=sh.geo_n[2];
+		sh.wo[0]=sh.wo[1]=sh.wo[2]=0.0;
+		sh.uv[0]=as.u; sh.uv[1]=as.v;
+		sh.area_Le[0]=Le.x(); sh.area_Le[1]=Le.y(); sh.area_Le[2]=Le.z();
+		sh.t_hit = 0.0;
+		sh.is_medium_boundary = false;
+		sh.is_delta_bsdf = false;
+		sh.bsdf_id = -1;      // never read: LightSurfaceLe() below reads area_Le directly, not a material
+		sh.light_id = idx;
+		les.light_id = idx;
+		return true;
+	}
+
+	// A light surface's emitted radiance toward the camera -- already
+	// computed by SampleLightEmission() above into surface_hit.area_Le
+	// (this codebase's diffuse_light emission has no view-angle dependence,
+	// matching SurfaceLe()'s own "wo unused" convention).
+	void LightSurfaceLe(const BDPTHit<double>& light_hit, const double* /*wi_to_camera*/, double out[3]) const {
+		out[0] = light_hit.area_Le[0]; out[1] = light_hit.area_Le[1]; out[2] = light_hit.area_Le[2];
+	}
+
+	// pbrt-v4's light.PDF_Li(pLens, -wi) -- the solid-angle density of
+	// sampling THIS light's direction from p_lens, i.e. exactly what
+	// SampleLight() above already computes inline as
+	// `light->pdf_value(P, wi) * emitter_alias_.pmf(idx)`; factored out
+	// here so LightPathTrace's direct area-light-to-camera splat can query
+	// it independently of drawing a new sample.
+	double LightPdfLi(int light_id, const double* p_lens, const double* neg_wi) const {
+		if (light_id < 0 || light_id >= nEmitters_) return 0.0;
+		point3 P(p_lens[0], p_lens[1], p_lens[2]);
+		vec3 wi(neg_wi[0], neg_wi[1], neg_wi[2]);
+		return emitters_[light_id]->pdf_value(P, wi) * emitter_alias_.pmf(light_id);
+	}
+
+	// LightPathTrace's camera-connection sample -- the one piece of real
+	// NEW math here, not a repackaging of an existing method: BDPT/MLT never
+	// needed this (CameraSampleWi() above is intentionally stubbed false --
+	// see its own comment), but light tracing's whole mechanism IS
+	// light-vertex-to-camera connections, so this has to actually work.
+	//
+	// Re-derives camera.h's own initialize() formulas (viewport_width/
+	// height from vfov/focus_dist/aspect, the u/v/w basis from lookfrom/
+	// lookat/vup, pixel00_loc's mapping from raster to viewport-plane
+	// position) from cam_'s public fields, the same "stay byte-for-byte
+	// consistent with whatever camera.h's own get_ray() actually generates"
+	// approach CameraPDFWe() above already takes -- algebraically inverted
+	// (viewport position -> raster position instead of raster -> ray)
+	// rather than duplicating camera.h's private u_/v_/w_/pixel00_loc_
+	// members directly.
+	//
+	// Ignores lens sampling (defocus_angle) -- treats the camera as a
+	// single pinhole at cam_.center for this connection, same simplification
+	// CameraPDFWe's own pdfDir already makes (only pdfPos there picks up a
+	// lens-area factor, and that value is documented dead -- see its own
+	// comment). Wi/pdf use the standard pinhole importance response
+	// We = D^2/(A*cos^4(theta)) and the matching solid-angle pdf
+	// dist^2/cos(theta) (lensArea=1 for a point lens) -- consistent with
+	// CameraPDFWe's own pdfDir = D^2/(A*cos^3(theta)) (We = pdfDir/cosTheta).
+	bool SampleCameraConnection(const BDPTHit<double>& hit, double /*u1*/, double /*u2*/,
+	                             CameraConnection<double>& cc) const {
+		vec3 to_cam = cam_.center - point3(hit.p[0], hit.p[1], hit.p[2]);
+		double dist = to_cam.length();
+		if (dist < 1e-9) return false;
+		vec3 wi = to_cam / dist;
+
+		vec3 forward = unit_vector(cam_.lookat - cam_.lookfrom);
+		vec3 cam_to_p = point3(hit.p[0], hit.p[1], hit.p[2]) - cam_.center;
+		double t_forward = dot(cam_to_p, forward);
+		double cosTheta = t_forward / dist;   // = dot(cam_to_p/dist, forward)
+		if (cosTheta <= 0.0) return false;   // hit point is behind the camera
+
+		double theta = degrees_to_radians(cam_.vfov);
+		double h = std::tan(theta / 2.0);
+		double viewport_height = 2.0 * h * cam_.focus_dist;
+		double viewport_width  = viewport_height * (double(cam_.image_width) / double(cam_.image_height));
+		double A = viewport_width * viewport_height;
+		double D = cam_.focus_dist;
+		if (A <= 0.0 || D <= 0.0) return false;
+
+		vec3 w_cam = -forward;   // camera.h's own w = lookfrom-lookat direction
+		vec3 right = unit_vector(cross(cam_.vup, w_cam));
+		vec3 up    = cross(w_cam, right);
+
+		vec3 plane_point = cam_.center + cam_to_p * (D / t_forward);
+		vec3 viewport_center = cam_.center - D * w_cam;
+		vec3 offset = plane_point - viewport_center;
+		double su = dot(offset, right);
+		double sv = dot(offset, up);
+
+		double px = 0.5 + su / viewport_width;
+		double py = 0.5 - sv / viewport_height;
+		if (px < 0.0 || px >= 1.0 || py < 0.0 || py >= 1.0) return false;   // off-screen
+
+		double cos4 = cosTheta * cosTheta * cosTheta * cosTheta;
+		double We = (D * D) / (A * cos4);
+		double pdf = (dist * dist) / cosTheta;
+		if (!(We > 0.0) || !(pdf > 0.0)) return false;
+
+		cc.p_lens[0] = cam_.center.x(); cc.p_lens[1] = cam_.center.y(); cc.p_lens[2] = cam_.center.z();
+		cc.p_raster[0] = px * cam_.image_width;
+		cc.p_raster[1] = py * cam_.image_height;
+		cc.Wi[0] = cc.Wi[1] = cc.Wi[2] = We;
+		cc.wi[0] = wi.x(); cc.wi[1] = wi.y(); cc.wi[2] = wi.z();
+		cc.pdf = pdf;
+		return true;
 	}
 
 	// ------------------------------------------------------------------
@@ -951,4 +1214,241 @@ inline bool bdpt_write_exr(const std::string& path, int width, int height,
 	std::vector<float> pixels(rgb.size());
 	for (size_t i = 0; i < rgb.size(); ++i) pixels[i] = static_cast<float>(rgb[i]);
 	return write_exr_image(path, pixels.data(), width, height, error);
+}
+
+// ===========================================================================
+// Round 6 Phase 2 -- render-loop drivers for RandomWalk/AO/SimplePath/
+// SimpleVolPath/LightPath, reusing BDPTSceneAdapter (extended above) as
+// their Scene. RandomWalk/AO/SimplePath/SimpleVolPath mirror
+// bdpt_render_with_adapter()'s own row-parallel per-pixel/per-sample loop
+// exactly (generate a camera ray via PixelToRay(), call the integrator,
+// average); LightPath is shaped completely differently (it SPLATS into
+// arbitrary pixels rather than returning one pixel's own radiance), so it
+// gets its own driver and its own tiny Film type below.
+// ===========================================================================
+
+inline void randomwalk_render_with_adapter(const BDPTSceneAdapter& scene, int width, int height,
+                                            int spp, int maxDepth, std::vector<double>& out_rgb) {
+	out_rgb.assign(static_cast<size_t>(width) * height * 3, 0.0);
+	unsigned int nthreads = determine_render_thread_count();
+	std::atomic<int> next_row(0);
+	auto worker = [&]() {
+		auto rand2d = []() { return std::pair<double, double>(random_double(), random_double()); };
+		while (true) {
+			int iy = next_row.fetch_add(1);
+			if (iy >= height) break;
+			for (int ix = 0; ix < width; ++ix) {
+				double sum[3] = {0.0, 0.0, 0.0};
+				for (int s = 0; s < spp; ++s) {
+					double px = (ix + random_double()) / width;
+					double py = (iy + random_double()) / height;
+					double cam_p[3], cam_n[3], ray_d[3];
+					if (!scene.PixelToRay(px, py, cam_p, ray_d, cam_n)) continue;
+					double L[3];
+					RandomWalkLi<double>(cam_p, ray_d, scene, maxDepth, rand2d, L);
+					for (int c = 0; c < 3; ++c) {
+						double v = L[c];
+						if (!std::isfinite(v) || v < 0.0) v = 0.0;
+						sum[c] += v;
+					}
+				}
+				int idx = (iy * width + ix) * 3;
+				out_rgb[idx + 0] = sum[0] / spp;
+				out_rgb[idx + 1] = sum[1] / spp;
+				out_rgb[idx + 2] = sum[2] / spp;
+			}
+		}
+	};
+	std::vector<std::thread> threads;
+	threads.reserve(nthreads);
+	for (unsigned int t = 0; t < nthreads; ++t) threads.emplace_back(worker);
+	for (auto& th : threads) th.join();
+}
+
+inline void ao_render_with_adapter(const BDPTSceneAdapter& scene, int width, int height, int spp,
+                                    double maxDist, bool cosSample, double illumScale, const double illumRgb[3],
+                                    std::vector<double>& out_rgb) {
+	out_rgb.assign(static_cast<size_t>(width) * height * 3, 0.0);
+	unsigned int nthreads = determine_render_thread_count();
+	std::atomic<int> next_row(0);
+	auto worker = [&]() {
+		auto rand2d = []() { return std::pair<double, double>(random_double(), random_double()); };
+		while (true) {
+			int iy = next_row.fetch_add(1);
+			if (iy >= height) break;
+			for (int ix = 0; ix < width; ++ix) {
+				double sum[3] = {0.0, 0.0, 0.0};
+				for (int s = 0; s < spp; ++s) {
+					double px = (ix + random_double()) / width;
+					double py = (iy + random_double()) / height;
+					double cam_p[3], cam_n[3], ray_d[3];
+					if (!scene.PixelToRay(px, py, cam_p, ray_d, cam_n)) continue;
+					double L[3];
+					AOLi<double>(cam_p, ray_d, scene, maxDist, cosSample, illumScale, illumRgb, rand2d, L);
+					for (int c = 0; c < 3; ++c) {
+						double v = L[c];
+						if (!std::isfinite(v) || v < 0.0) v = 0.0;
+						sum[c] += v;
+					}
+				}
+				int idx = (iy * width + ix) * 3;
+				out_rgb[idx + 0] = sum[0] / spp;
+				out_rgb[idx + 1] = sum[1] / spp;
+				out_rgb[idx + 2] = sum[2] / spp;
+			}
+		}
+	};
+	std::vector<std::thread> threads;
+	threads.reserve(nthreads);
+	for (unsigned int t = 0; t < nthreads; ++t) threads.emplace_back(worker);
+	for (auto& th : threads) th.join();
+}
+
+inline void simplepath_render_with_adapter(const BDPTSceneAdapter& scene, int width, int height, int spp,
+                                            int maxDepth, bool sampleLights, bool sampleBsdf,
+                                            std::vector<double>& out_rgb) {
+	out_rgb.assign(static_cast<size_t>(width) * height * 3, 0.0);
+	unsigned int nthreads = determine_render_thread_count();
+	std::atomic<int> next_row(0);
+	auto worker = [&]() {
+		auto rand2d = []() { return std::pair<double, double>(random_double(), random_double()); };
+		auto rand1d = []() { return random_double(); };
+		while (true) {
+			int iy = next_row.fetch_add(1);
+			if (iy >= height) break;
+			for (int ix = 0; ix < width; ++ix) {
+				double sum[3] = {0.0, 0.0, 0.0};
+				for (int s = 0; s < spp; ++s) {
+					double px = (ix + random_double()) / width;
+					double py = (iy + random_double()) / height;
+					double cam_p[3], cam_n[3], ray_d[3];
+					if (!scene.PixelToRay(px, py, cam_p, ray_d, cam_n)) continue;
+					double L[3] = {0.0, 0.0, 0.0};
+					SimplePathLi<double>(cam_p, ray_d, scene, maxDepth, sampleLights, sampleBsdf,
+					                      rand2d, rand1d, L);
+					for (int c = 0; c < 3; ++c) {
+						double v = L[c];
+						if (!std::isfinite(v) || v < 0.0) v = 0.0;
+						sum[c] += v;
+					}
+				}
+				int idx = (iy * width + ix) * 3;
+				out_rgb[idx + 0] = sum[0] / spp;
+				out_rgb[idx + 1] = sum[1] / spp;
+				out_rgb[idx + 2] = sum[2] / spp;
+			}
+		}
+	};
+	std::vector<std::thread> threads;
+	threads.reserve(nthreads);
+	for (unsigned int t = 0; t < nthreads; ++t) threads.emplace_back(worker);
+	for (auto& th : threads) th.join();
+}
+
+inline void simplevolpath_render_with_adapter(const BDPTSceneAdapter& scene, int width, int height, int spp,
+                                               int maxDepth, std::vector<double>& out_rgb) {
+	out_rgb.assign(static_cast<size_t>(width) * height * 3, 0.0);
+	unsigned int nthreads = determine_render_thread_count();
+	std::atomic<int> next_row(0);
+	auto worker = [&]() {
+		while (true) {
+			int iy = next_row.fetch_add(1);
+			if (iy >= height) break;
+			for (int ix = 0; ix < width; ++ix) {
+				double sum[3] = {0.0, 0.0, 0.0};
+				for (int s = 0; s < spp; ++s) {
+					double px = (ix + random_double()) / width;
+					double py = (iy + random_double()) / height;
+					double cam_p[3], cam_n[3], ray_d[3];
+					if (!scene.PixelToRay(px, py, cam_p, ray_d, cam_n)) continue;
+					double L[3] = {0.0, 0.0, 0.0};
+					SimpleVolPathLi<double>(cam_p, ray_d, scene, maxDepth, L);
+					for (int c = 0; c < 3; ++c) {
+						double v = L[c];
+						if (!std::isfinite(v) || v < 0.0) v = 0.0;
+						sum[c] += v;
+					}
+				}
+				int idx = (iy * width + ix) * 3;
+				out_rgb[idx + 0] = sum[0] / spp;
+				out_rgb[idx + 1] = sum[1] / spp;
+				out_rgb[idx + 2] = sum[2] / spp;
+			}
+		}
+	};
+	std::vector<std::thread> threads;
+	threads.reserve(nthreads);
+	for (unsigned int t = 0; t < nthreads; ++t) threads.emplace_back(worker);
+	for (auto& th : threads) th.join();
+}
+
+// ---------------------------------------------------------------------------
+// SplatFilm -- LightPathTrace's Film concept (a single Splat(px,py,L) method).
+// Splats land at essentially arbitrary pixels (a light path can connect to
+// the camera from anywhere it happens to walk to), unlike every other driver
+// above's own-pixel-only accumulation, so this needs real cross-thread
+// synchronization -- one std::mutex per pixel, the same granularity
+// sppm_adapter.h's own photon pass already uses for its per-pixel splat
+// accumulation (see its pixel_mutexes vector) -- coarser (one mutex for the
+// whole image) would serialize every worker thread through a single lock;
+// finer isn't meaningful (a pixel is the atomic unit of accumulation here).
+// ---------------------------------------------------------------------------
+class SplatFilm {
+  public:
+	SplatFilm(int width, int height)
+		: width_(width), height_(height),
+		  buf_(static_cast<size_t>(width) * height * 3, 0.0),
+		  mutexes_(static_cast<size_t>(width) * height) {}
+
+	void Splat(double px, double py, const double L[3]) {
+		int ix = static_cast<int>(px);
+		int iy = static_cast<int>(py);
+		if (ix < 0 || ix >= width_ || iy < 0 || iy >= height_) return;
+		size_t pidx = static_cast<size_t>(iy) * width_ + ix;
+		std::lock_guard<std::mutex> lg(mutexes_[pidx]);
+		for (int c = 0; c < 3; ++c) {
+			double v = L[c];
+			if (!std::isfinite(v) || v < 0.0) v = 0.0;
+			buf_[pidx * 3 + c] += v;
+		}
+	}
+
+	// norm: total samples PER PIXEL across the whole image (spp) -- NOT
+	// divided by pixel count again, since each splat already lands at a
+	// specific pixel; this mirrors pbrt-v4's own LightPathIntegrator film
+	// reconstruction (splat weight accumulates raw, normalized once by the
+	// image's total sample count at the end).
+	void ToRGB(std::vector<double>& out_rgb, double norm) const {
+		out_rgb.resize(buf_.size());
+		for (size_t i = 0; i < buf_.size(); ++i) out_rgb[i] = buf_[i] / norm;
+	}
+
+  private:
+	int width_, height_;
+	std::vector<double> buf_;
+	std::vector<std::mutex> mutexes_;
+};
+
+inline void lightpath_render_with_adapter(const BDPTSceneAdapter& scene, int width, int height, int spp,
+                                           int maxDepth, std::vector<double>& out_rgb) {
+	SplatFilm film(width, height);
+	unsigned int nthreads = determine_render_thread_count();
+	long long total_paths = static_cast<long long>(spp) * width * height;
+	std::atomic<long long> next_path(0);
+
+	auto worker = [&]() {
+		auto rand1d = []() { return random_double(); };
+		auto rand2d = []() { return std::pair<double, double>(random_double(), random_double()); };
+		while (true) {
+			long long idx = next_path.fetch_add(1);
+			if (idx >= total_paths) break;
+			LightPathTrace<double>(scene, film, maxDepth, rand1d, rand2d);
+		}
+	};
+	std::vector<std::thread> threads;
+	threads.reserve(nthreads);
+	for (unsigned int t = 0; t < nthreads; ++t) threads.emplace_back(worker);
+	for (auto& th : threads) th.join();
+
+	film.ToRGB(out_rgb, static_cast<double>(spp));
 }

@@ -39,6 +39,13 @@ namespace {
 	constexpr int kDefaultMltBootstrap = 100000;
 	constexpr long long kDefaultMltMutations = 4000000;
 	constexpr int kDefaultMltMaxDepth = 5;
+	// Round 6 Phase 2 debug integrators: RandomWalk/SimplePath share
+	// kDefaultMaxDepth's own value (20) rather than BDPT/MLT's smaller
+	// kDefaultBdptMaxDepth -- both are single-subpath integrators (like the
+	// default path tracer, O(maxDepth) cost), not bidirectional, so there's
+	// no O(maxDepth^2) cost blowup to defend against the way BDPT/MLT have.
+	constexpr double kDefaultAoMaxDist = 1e10;   // pbrt-v4's own "effectively unbounded" default
+	constexpr double kDefaultAoIllumScale = 1.0;
 }
 
 struct LaunchArgs {
@@ -98,6 +105,25 @@ struct LaunchArgs {
 	int    mlt_bootstrap    = kDefaultMltBootstrap;
 	long long mlt_mutations = kDefaultMltMutations;
 	int    mlt_max_depth    = kDefaultMltMaxDepth;
+	// Round 6 Phase 2 -- 5 debug/reference integrators (see
+	// src/TheRestOfYourLife/bdpt_adapter.h's own "Round 6 Phase 2" comment
+	// for the render-loop drivers, cpu_interface.h's cpu_render_main_*
+	// doc comments for each integrator's own scope). Same "separate
+	// CPU-only render mode, mutually exclusive with the others, takes
+	// priority over use_gpu/force_cpu" shape as use_bdpt/use_mlt/use_sppm.
+	bool   use_randomwalk    = false;
+	bool   use_ao            = false;
+	double ao_max_dist       = kDefaultAoMaxDist;
+	bool   ao_cosine         = true;    // pbrt-v4 AmbientOcclusionIntegrator's own default (cossample=true)
+	double ao_illum_scale    = kDefaultAoIllumScale;
+	double ao_illum_r        = 1.0;
+	double ao_illum_g        = 1.0;
+	double ao_illum_b        = 1.0;
+	bool   use_simplepath    = false;
+	bool   simplepath_sample_lights = true;   // pbrt-v4 SimplePathIntegrator's own default
+	bool   simplepath_sample_bsdf   = true;   // pbrt-v4 SimplePathIntegrator's own default
+	bool   use_simplevolpath = false;
+	bool   use_lightpath     = false;
 	// System-compatibility report (see launcher/diagnostics.h) instead of a
 	// render - prints OS/CPU/GPU/CUDA/OptiX/disk/scene-asset info and exits.
 	// Reuses custom_output_path (below) for --output rather than a second
@@ -284,6 +310,61 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			} catch (const std::exception&) {
 				std::cerr << "Invalid --mlt-max-depth value, using default\n";
 			}
+		} else if (arg == "--randomwalk") {
+			out.use_randomwalk = true;
+			consumed_args.insert(i);
+		} else if (arg == "--ao") {
+			out.use_ao = true;
+			consumed_args.insert(i);
+		} else if (arg == "--ao-max-dist" && i + 1 < argc) {
+			try {
+				out.ao_max_dist = std::stod(argv[i + 1]);
+				consumed_args.insert(i);
+				consumed_args.insert(i + 1);
+				++i;
+			} catch (const std::exception&) {
+				std::cerr << "Invalid --ao-max-dist value, using default\n";
+			}
+		} else if (arg == "--ao-uniform") {
+			out.ao_cosine = false;
+			consumed_args.insert(i);
+		} else if (arg == "--ao-illum-scale" && i + 1 < argc) {
+			try {
+				out.ao_illum_scale = std::stod(argv[i + 1]);
+				consumed_args.insert(i);
+				consumed_args.insert(i + 1);
+				++i;
+			} catch (const std::exception&) {
+				std::cerr << "Invalid --ao-illum-scale value, using default\n";
+			}
+		} else if (arg == "--ao-illum-rgb" && i + 3 < argc) {
+			try {
+				out.ao_illum_r = std::stod(argv[i + 1]);
+				out.ao_illum_g = std::stod(argv[i + 2]);
+				out.ao_illum_b = std::stod(argv[i + 3]);
+				consumed_args.insert(i);
+				consumed_args.insert(i + 1);
+				consumed_args.insert(i + 2);
+				consumed_args.insert(i + 3);
+				i += 3;
+			} catch (const std::exception&) {
+				std::cerr << "Invalid --ao-illum-rgb value, using default\n";
+			}
+		} else if (arg == "--simplepath") {
+			out.use_simplepath = true;
+			consumed_args.insert(i);
+		} else if (arg == "--simplepath-no-lights") {
+			out.simplepath_sample_lights = false;
+			consumed_args.insert(i);
+		} else if (arg == "--simplepath-no-bsdf") {
+			out.simplepath_sample_bsdf = false;
+			consumed_args.insert(i);
+		} else if (arg == "--simplevolpath") {
+			out.use_simplevolpath = true;
+			consumed_args.insert(i);
+		} else if (arg == "--lightpath") {
+			out.use_lightpath = true;
+			consumed_args.insert(i);
 		} else if (arg == "--video") {
 			out.video_mode = true;
 			consumed_args.insert(i);
@@ -396,6 +477,39 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "  --mlt-mutations N  : Total Metropolis mutations, all chains combined\n"
 					  << "                       (default " << kDefaultMltMutations << ")\n"
 					  << "  --mlt-max-depth N  : Maximum BDPT path depth per MLT sample (default " << kDefaultMltMaxDepth << ")\n"
+					  << "  --randomwalk : Render with RandomWalkIntegrator (pbrt-v4's unbiased\n"
+					  << "               reference path tracer - uniform-sphere sampling, no NEE/MIS).\n"
+					  << "               CPU only, incompatible with --video/--sppm/--bdpt/--mlt.\n"
+					  << "  --ao       : Render with AOIntegrator (ambient occlusion only - no\n"
+					  << "               indirect lighting or material color, a visualization/debug\n"
+					  << "               mode, not a lit render). CPU only, same incompatibilities as\n"
+					  << "               --randomwalk.\n"
+					  << "  --ao-max-dist N    : Occlusion test distance (default " << kDefaultAoMaxDist << " = unbounded)\n"
+					  << "  --ao-uniform       : Uniform-hemisphere sampling instead of the default\n"
+					  << "                       cosine-hemisphere sampling\n"
+					  << "  --ao-illum-scale N : Flat multiplier on the occlusion color (default " << kDefaultAoIllumScale << ")\n"
+					  << "  --ao-illum-rgb R G B : Occlusion color (default 1 1 1 = white)\n"
+					  << "  --simplepath : Render with SimplePathIntegrator (pbrt-v4's canonical\n"
+					  << "               reference path tracer, optional NEE + optional BSDF\n"
+					  << "               importance sampling - both on by default). CPU only, same\n"
+					  << "               incompatibilities as --randomwalk. NEE (when enabled) is\n"
+					  << "               area-lights-only, same v1 scope as --bdpt/--mlt.\n"
+					  << "  --simplepath-no-lights : Disable NEE (direct light sampling)\n"
+					  << "  --simplepath-no-bsdf   : Disable BSDF importance sampling (falls back to\n"
+					  << "                           uniform hemisphere)\n"
+					  << "  --simplevolpath : Render with SimpleVolPathIntegrator (pbrt-v4's simplest\n"
+					  << "               volumetric path tracer - pure delta tracking, no NEE/MIS/\n"
+					  << "               surface BSDFs). CPU only, same incompatibilities as\n"
+					  << "               --randomwalk. Reachable but medium-FREE in this integration\n"
+					  << "               (see cpu_interface.h's cpu_render_main_simplevolpath() doc\n"
+					  << "               comment) - renders mostly black on ordinary solid-geometry\n"
+					  << "               scenes except where camera rays land directly on a light,\n"
+					  << "               matching pbrt-v4's own upstream behavior on medium-free scenes.\n"
+					  << "  --lightpath : Render with LightPathIntegrator (a pure light tracer - every\n"
+					  << "               sample starts at a light and splats camera-connection\n"
+					  << "               contributions into the film, the opposite direction of every\n"
+					  << "               other integrator here). CPU only, same incompatibilities as\n"
+					  << "               --randomwalk. Area lights only (same v1 scope as --bdpt/--mlt).\n"
 					  << "  --output,-o: Output file path (default: ./output/image.ppm). A \".exr\"\n"
 					  << "               extension switches to linear HDR EXR output instead of\n"
 					  << "               tonemapped PPM/PNG (both backends); combine with --denoise\n"

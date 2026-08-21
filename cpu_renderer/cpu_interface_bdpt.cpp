@@ -218,6 +218,179 @@ int mlt_render_core(const hittable_list& world, camera& cam,
 	}
 }
 
+// ============================================================================
+// Round 6 Phase 2 -- RandomWalk / AO / SimplePath / SimpleVolPath / LightPath
+// render cores. Same build_scene_for_bdpt() scene-building helper above,
+// same try/catch/ErrorInfo shape as bdpt_render_core/mlt_render_core.
+// ============================================================================
+
+int randomwalk_render_core(const hittable_list& world, camera& cam, int spp, int max_depth,
+                            const std::string& output_path) {
+	try {
+		cam.initialize();
+		std::cout << "[TECH] Integrator: RandomWalk (pbrt-v4 reference, unbiased, no NEE/MIS)" << std::endl;
+		BDPTSceneAdapter adapter(world, cam);
+		std::vector<double> out_rgb;
+		randomwalk_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, max_depth, out_rgb);
+		if (is_exr_output_path(output_path)) {
+			std::string exr_error;
+			if (!bdpt_write_exr(output_path, cam.image_width, cam.image_height, out_rgb, exr_error)) {
+				std::cerr << "[randomwalk_render_core] Failed to write EXR '" << output_path << "': " << exr_error << std::endl;
+				return ERR_FILE_WRITE_FAILED;
+			}
+		} else {
+			bdpt_write_ppm(output_path, cam.image_width, cam.image_height, out_rgb);
+		}
+		return SUCCESS;
+	} catch (const std::bad_alloc& e) {
+		std::cerr << "[randomwalk_render_core] " << ErrorInfo(ERR_CPU_MEMORY_ALLOCATION).to_string() << " - " << e.what() << std::endl;
+		return ERR_CPU_MEMORY_ALLOCATION;
+	} catch (const std::exception& e) {
+		std::cerr << "[randomwalk_render_core] " << ErrorInfo(ERR_CPU_RENDER_FAILED).to_string() << " - " << e.what() << std::endl;
+		return ERR_CPU_RENDER_FAILED;
+	} catch (...) {
+		std::cerr << "[randomwalk_render_core] " << ErrorInfo(ERR_UNKNOWN).to_string() << std::endl;
+		return ERR_UNKNOWN;
+	}
+}
+
+int ao_render_core(const hittable_list& world, camera& cam, int spp, double max_dist, bool cos_sample,
+                    double illum_scale, const double illum_rgb[3], const std::string& output_path) {
+	try {
+		cam.initialize();
+		std::cout << "[TECH] Integrator: AO (ambient occlusion only, no indirect lighting)" << std::endl;
+		BDPTSceneAdapter adapter(world, cam);
+		std::vector<double> out_rgb;
+		ao_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, max_dist, cos_sample,
+		                        illum_scale, illum_rgb, out_rgb);
+		if (is_exr_output_path(output_path)) {
+			std::string exr_error;
+			if (!bdpt_write_exr(output_path, cam.image_width, cam.image_height, out_rgb, exr_error)) {
+				std::cerr << "[ao_render_core] Failed to write EXR '" << output_path << "': " << exr_error << std::endl;
+				return ERR_FILE_WRITE_FAILED;
+			}
+		} else {
+			bdpt_write_ppm(output_path, cam.image_width, cam.image_height, out_rgb);
+		}
+		return SUCCESS;
+	} catch (const std::bad_alloc& e) {
+		std::cerr << "[ao_render_core] " << ErrorInfo(ERR_CPU_MEMORY_ALLOCATION).to_string() << " - " << e.what() << std::endl;
+		return ERR_CPU_MEMORY_ALLOCATION;
+	} catch (const std::exception& e) {
+		std::cerr << "[ao_render_core] " << ErrorInfo(ERR_CPU_RENDER_FAILED).to_string() << " - " << e.what() << std::endl;
+		return ERR_CPU_RENDER_FAILED;
+	} catch (...) {
+		std::cerr << "[ao_render_core] " << ErrorInfo(ERR_UNKNOWN).to_string() << std::endl;
+		return ERR_UNKNOWN;
+	}
+}
+
+int simplepath_render_core(const hittable_list& world, camera& cam, int spp, int max_depth,
+                            bool sample_lights, bool sample_bsdf, const std::string& output_path) {
+	try {
+		cam.initialize();
+		std::cout << "[TECH] Integrator: SimplePath (sample_lights=" << sample_lights
+		           << " sample_bsdf=" << sample_bsdf << ")" << std::endl;
+		BDPTSceneAdapter adapter(world, cam);
+		if (sample_lights && adapter.EmitterCount() == 0) {
+			std::cerr << "[simplepath_render_core] WARNING: this scene has no area-light emitters - "
+			             "NEE (sample_lights=1) only samples area lights (v1, see bdpt_adapter.h's "
+			             "Scope comment), so direct lighting will contribute nothing even though "
+			             "this render will report success." << std::endl;
+		}
+		std::vector<double> out_rgb;
+		simplepath_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, max_depth,
+		                                sample_lights, sample_bsdf, out_rgb);
+		if (is_exr_output_path(output_path)) {
+			std::string exr_error;
+			if (!bdpt_write_exr(output_path, cam.image_width, cam.image_height, out_rgb, exr_error)) {
+				std::cerr << "[simplepath_render_core] Failed to write EXR '" << output_path << "': " << exr_error << std::endl;
+				return ERR_FILE_WRITE_FAILED;
+			}
+		} else {
+			bdpt_write_ppm(output_path, cam.image_width, cam.image_height, out_rgb);
+		}
+		return SUCCESS;
+	} catch (const std::bad_alloc& e) {
+		std::cerr << "[simplepath_render_core] " << ErrorInfo(ERR_CPU_MEMORY_ALLOCATION).to_string() << " - " << e.what() << std::endl;
+		return ERR_CPU_MEMORY_ALLOCATION;
+	} catch (const std::exception& e) {
+		std::cerr << "[simplepath_render_core] " << ErrorInfo(ERR_CPU_RENDER_FAILED).to_string() << " - " << e.what() << std::endl;
+		return ERR_CPU_RENDER_FAILED;
+	} catch (...) {
+		std::cerr << "[simplepath_render_core] " << ErrorInfo(ERR_UNKNOWN).to_string() << std::endl;
+		return ERR_UNKNOWN;
+	}
+}
+
+int simplevolpath_render_core(const hittable_list& world, camera& cam, int spp, int max_depth,
+                               const std::string& output_path) {
+	try {
+		cam.initialize();
+		std::cout << "[TECH] Integrator: SimpleVolPath (medium-free in this integration - see "
+		             "cpu_interface.h's cpu_render_main_simplevolpath() doc comment)" << std::endl;
+		BDPTSceneAdapter adapter(world, cam);
+		std::vector<double> out_rgb;
+		simplevolpath_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, max_depth, out_rgb);
+		if (is_exr_output_path(output_path)) {
+			std::string exr_error;
+			if (!bdpt_write_exr(output_path, cam.image_width, cam.image_height, out_rgb, exr_error)) {
+				std::cerr << "[simplevolpath_render_core] Failed to write EXR '" << output_path << "': " << exr_error << std::endl;
+				return ERR_FILE_WRITE_FAILED;
+			}
+		} else {
+			bdpt_write_ppm(output_path, cam.image_width, cam.image_height, out_rgb);
+		}
+		return SUCCESS;
+	} catch (const std::bad_alloc& e) {
+		std::cerr << "[simplevolpath_render_core] " << ErrorInfo(ERR_CPU_MEMORY_ALLOCATION).to_string() << " - " << e.what() << std::endl;
+		return ERR_CPU_MEMORY_ALLOCATION;
+	} catch (const std::exception& e) {
+		std::cerr << "[simplevolpath_render_core] " << ErrorInfo(ERR_CPU_RENDER_FAILED).to_string() << " - " << e.what() << std::endl;
+		return ERR_CPU_RENDER_FAILED;
+	} catch (...) {
+		std::cerr << "[simplevolpath_render_core] " << ErrorInfo(ERR_UNKNOWN).to_string() << std::endl;
+		return ERR_UNKNOWN;
+	}
+}
+
+int lightpath_render_core(const hittable_list& world, camera& cam, int spp, int max_depth,
+                           const std::string& output_path) {
+	try {
+		cam.initialize();
+		std::cout << "[TECH] Integrator: LightPath (light-traced, film-splat -- see bdpt_adapter.h's "
+		             "SampleCameraConnection() comment)" << std::endl;
+		BDPTSceneAdapter adapter(world, cam);
+		if (adapter.EmitterCount() == 0) {
+			std::cerr << "[lightpath_render_core] WARNING: this scene has no area-light emitters - "
+			             "LightPath only samples area lights (v1, see bdpt_adapter.h's Scope "
+			             "comment), so this render will be entirely black even though it will "
+			             "report success." << std::endl;
+		}
+		std::vector<double> out_rgb;
+		lightpath_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, max_depth, out_rgb);
+		if (is_exr_output_path(output_path)) {
+			std::string exr_error;
+			if (!bdpt_write_exr(output_path, cam.image_width, cam.image_height, out_rgb, exr_error)) {
+				std::cerr << "[lightpath_render_core] Failed to write EXR '" << output_path << "': " << exr_error << std::endl;
+				return ERR_FILE_WRITE_FAILED;
+			}
+		} else {
+			bdpt_write_ppm(output_path, cam.image_width, cam.image_height, out_rgb);
+		}
+		return SUCCESS;
+	} catch (const std::bad_alloc& e) {
+		std::cerr << "[lightpath_render_core] " << ErrorInfo(ERR_CPU_MEMORY_ALLOCATION).to_string() << " - " << e.what() << std::endl;
+		return ERR_CPU_MEMORY_ALLOCATION;
+	} catch (const std::exception& e) {
+		std::cerr << "[lightpath_render_core] " << ErrorInfo(ERR_CPU_RENDER_FAILED).to_string() << " - " << e.what() << std::endl;
+		return ERR_CPU_RENDER_FAILED;
+	} catch (...) {
+		std::cerr << "[lightpath_render_core] " << ErrorInfo(ERR_UNKNOWN).to_string() << std::endl;
+		return ERR_UNKNOWN;
+	}
+}
+
 } // namespace
 
 extern "C" int cpu_render_main_bdpt(int width, int height, int spp, int bdpt_max_depth,
@@ -338,6 +511,206 @@ extern "C" int cpu_render_main_mlt(int width, int height, int mlt_bootstrap, lon
 	} catch (const std::exception& e) {
 		std::cerr << "[cpu_interface_bdpt] " << ErrorInfo(ERR_CPU_RENDER_FAILED).to_string()
 		           << " - " << e.what() << std::endl;
+		return ERR_CPU_RENDER_FAILED;
+	} catch (...) {
+		std::cerr << "[cpu_interface_bdpt] " << ErrorInfo(ERR_UNKNOWN).to_string() << std::endl;
+		return ERR_UNKNOWN;
+	}
+}
+
+// ============================================================================
+// Round 6 Phase 2 -- RandomWalk / AO / SimplePath / SimpleVolPath / LightPath
+// entry points. Same build_scene_for_bdpt() scene-building helper and
+// try/catch/ErrorInfo shape as cpu_render_main_bdpt/_mlt above.
+// ============================================================================
+
+extern "C" int cpu_render_main_randomwalk(int width, int height, int spp, int max_depth,
+                                           const char* output_path, const char* scene_id,
+                                           double cam_x, double cam_y, double cam_z,
+                                           int force_camera_override) {
+	try {
+		if (width <= 0 || height <= 0) { std::cerr << ErrorInfo(ERR_INVALID_DIMENSIONS).to_string() << std::endl; return ERR_INVALID_DIMENSIONS; }
+		if (spp <= 0) { std::cerr << ErrorInfo(ERR_INVALID_SAMPLE_COUNT).to_string() << std::endl; return ERR_INVALID_SAMPLE_COUNT; }
+		if (max_depth <= 0) { std::cerr << ErrorInfo(ERR_INVALID_MAX_DEPTH).to_string() << std::endl; return ERR_INVALID_MAX_DEPTH; }
+		if (!output_path) { std::cerr << ErrorInfo(ERR_OUTPUT_PATH_INVALID).to_string() << std::endl; return ERR_OUTPUT_PATH_INVALID; }
+
+		hittable_list world;
+		camera cam;
+		int err = SUCCESS;
+		const SceneDescriptor* scene_desc = build_scene_for_bdpt(
+			scene_id, width, height, cam_x, cam_y, cam_z, force_camera_override, world, cam, err);
+		if (!scene_desc) return err;
+		std::cout << "[cpu_interface_bdpt] Built scene " << scene_id << " (" << scene_desc->name << ") for RandomWalk" << std::endl;
+
+		std::filesystem::path out_fs_path(output_path);
+		if (!out_fs_path.parent_path().empty() && !std::filesystem::exists(out_fs_path.parent_path()))
+			std::filesystem::create_directories(out_fs_path.parent_path());
+
+		int render_result = randomwalk_render_core(world, cam, spp, max_depth, std::string(output_path));
+		if (render_result == SUCCESS)
+			std::clog << "[cpu_interface_bdpt] RandomWalk render complete: " << output_path << std::endl;
+		return render_result;
+	} catch (const std::bad_alloc& e) {
+		std::cerr << "[cpu_interface_bdpt] " << ErrorInfo(ERR_CPU_MEMORY_ALLOCATION).to_string() << " - " << e.what() << std::endl;
+		return ERR_CPU_MEMORY_ALLOCATION;
+	} catch (const std::exception& e) {
+		std::cerr << "[cpu_interface_bdpt] " << ErrorInfo(ERR_CPU_RENDER_FAILED).to_string() << " - " << e.what() << std::endl;
+		return ERR_CPU_RENDER_FAILED;
+	} catch (...) {
+		std::cerr << "[cpu_interface_bdpt] " << ErrorInfo(ERR_UNKNOWN).to_string() << std::endl;
+		return ERR_UNKNOWN;
+	}
+}
+
+extern "C" int cpu_render_main_ao(int width, int height, int spp, double max_dist, int cos_sample,
+                                   double illum_scale, double illum_r, double illum_g, double illum_b,
+                                   const char* output_path, const char* scene_id,
+                                   double cam_x, double cam_y, double cam_z,
+                                   int force_camera_override) {
+	try {
+		if (width <= 0 || height <= 0) { std::cerr << ErrorInfo(ERR_INVALID_DIMENSIONS).to_string() << std::endl; return ERR_INVALID_DIMENSIONS; }
+		if (spp <= 0) { std::cerr << ErrorInfo(ERR_INVALID_SAMPLE_COUNT).to_string() << std::endl; return ERR_INVALID_SAMPLE_COUNT; }
+		if (!output_path) { std::cerr << ErrorInfo(ERR_OUTPUT_PATH_INVALID).to_string() << std::endl; return ERR_OUTPUT_PATH_INVALID; }
+
+		hittable_list world;
+		camera cam;
+		int err = SUCCESS;
+		const SceneDescriptor* scene_desc = build_scene_for_bdpt(
+			scene_id, width, height, cam_x, cam_y, cam_z, force_camera_override, world, cam, err);
+		if (!scene_desc) return err;
+		std::cout << "[cpu_interface_bdpt] Built scene " << scene_id << " (" << scene_desc->name << ") for AO" << std::endl;
+
+		std::filesystem::path out_fs_path(output_path);
+		if (!out_fs_path.parent_path().empty() && !std::filesystem::exists(out_fs_path.parent_path()))
+			std::filesystem::create_directories(out_fs_path.parent_path());
+
+		double illum_rgb[3] = { illum_r, illum_g, illum_b };
+		int render_result = ao_render_core(world, cam, spp, max_dist, cos_sample != 0, illum_scale,
+		                                    illum_rgb, std::string(output_path));
+		if (render_result == SUCCESS)
+			std::clog << "[cpu_interface_bdpt] AO render complete: " << output_path << std::endl;
+		return render_result;
+	} catch (const std::bad_alloc& e) {
+		std::cerr << "[cpu_interface_bdpt] " << ErrorInfo(ERR_CPU_MEMORY_ALLOCATION).to_string() << " - " << e.what() << std::endl;
+		return ERR_CPU_MEMORY_ALLOCATION;
+	} catch (const std::exception& e) {
+		std::cerr << "[cpu_interface_bdpt] " << ErrorInfo(ERR_CPU_RENDER_FAILED).to_string() << " - " << e.what() << std::endl;
+		return ERR_CPU_RENDER_FAILED;
+	} catch (...) {
+		std::cerr << "[cpu_interface_bdpt] " << ErrorInfo(ERR_UNKNOWN).to_string() << std::endl;
+		return ERR_UNKNOWN;
+	}
+}
+
+extern "C" int cpu_render_main_simplepath(int width, int height, int spp, int max_depth,
+                                           int sample_lights, int sample_bsdf,
+                                           const char* output_path, const char* scene_id,
+                                           double cam_x, double cam_y, double cam_z,
+                                           int force_camera_override) {
+	try {
+		if (width <= 0 || height <= 0) { std::cerr << ErrorInfo(ERR_INVALID_DIMENSIONS).to_string() << std::endl; return ERR_INVALID_DIMENSIONS; }
+		if (spp <= 0) { std::cerr << ErrorInfo(ERR_INVALID_SAMPLE_COUNT).to_string() << std::endl; return ERR_INVALID_SAMPLE_COUNT; }
+		if (max_depth <= 0) { std::cerr << ErrorInfo(ERR_INVALID_MAX_DEPTH).to_string() << std::endl; return ERR_INVALID_MAX_DEPTH; }
+		if (!output_path) { std::cerr << ErrorInfo(ERR_OUTPUT_PATH_INVALID).to_string() << std::endl; return ERR_OUTPUT_PATH_INVALID; }
+
+		hittable_list world;
+		camera cam;
+		int err = SUCCESS;
+		const SceneDescriptor* scene_desc = build_scene_for_bdpt(
+			scene_id, width, height, cam_x, cam_y, cam_z, force_camera_override, world, cam, err);
+		if (!scene_desc) return err;
+		std::cout << "[cpu_interface_bdpt] Built scene " << scene_id << " (" << scene_desc->name << ") for SimplePath" << std::endl;
+
+		std::filesystem::path out_fs_path(output_path);
+		if (!out_fs_path.parent_path().empty() && !std::filesystem::exists(out_fs_path.parent_path()))
+			std::filesystem::create_directories(out_fs_path.parent_path());
+
+		int render_result = simplepath_render_core(world, cam, spp, max_depth, sample_lights != 0,
+		                                             sample_bsdf != 0, std::string(output_path));
+		if (render_result == SUCCESS)
+			std::clog << "[cpu_interface_bdpt] SimplePath render complete: " << output_path << std::endl;
+		return render_result;
+	} catch (const std::bad_alloc& e) {
+		std::cerr << "[cpu_interface_bdpt] " << ErrorInfo(ERR_CPU_MEMORY_ALLOCATION).to_string() << " - " << e.what() << std::endl;
+		return ERR_CPU_MEMORY_ALLOCATION;
+	} catch (const std::exception& e) {
+		std::cerr << "[cpu_interface_bdpt] " << ErrorInfo(ERR_CPU_RENDER_FAILED).to_string() << " - " << e.what() << std::endl;
+		return ERR_CPU_RENDER_FAILED;
+	} catch (...) {
+		std::cerr << "[cpu_interface_bdpt] " << ErrorInfo(ERR_UNKNOWN).to_string() << std::endl;
+		return ERR_UNKNOWN;
+	}
+}
+
+extern "C" int cpu_render_main_simplevolpath(int width, int height, int spp, int max_depth,
+                                              const char* output_path, const char* scene_id,
+                                              double cam_x, double cam_y, double cam_z,
+                                              int force_camera_override) {
+	try {
+		if (width <= 0 || height <= 0) { std::cerr << ErrorInfo(ERR_INVALID_DIMENSIONS).to_string() << std::endl; return ERR_INVALID_DIMENSIONS; }
+		if (spp <= 0) { std::cerr << ErrorInfo(ERR_INVALID_SAMPLE_COUNT).to_string() << std::endl; return ERR_INVALID_SAMPLE_COUNT; }
+		if (max_depth <= 0) { std::cerr << ErrorInfo(ERR_INVALID_MAX_DEPTH).to_string() << std::endl; return ERR_INVALID_MAX_DEPTH; }
+		if (!output_path) { std::cerr << ErrorInfo(ERR_OUTPUT_PATH_INVALID).to_string() << std::endl; return ERR_OUTPUT_PATH_INVALID; }
+
+		hittable_list world;
+		camera cam;
+		int err = SUCCESS;
+		const SceneDescriptor* scene_desc = build_scene_for_bdpt(
+			scene_id, width, height, cam_x, cam_y, cam_z, force_camera_override, world, cam, err);
+		if (!scene_desc) return err;
+		std::cout << "[cpu_interface_bdpt] Built scene " << scene_id << " (" << scene_desc->name << ") for SimpleVolPath" << std::endl;
+
+		std::filesystem::path out_fs_path(output_path);
+		if (!out_fs_path.parent_path().empty() && !std::filesystem::exists(out_fs_path.parent_path()))
+			std::filesystem::create_directories(out_fs_path.parent_path());
+
+		int render_result = simplevolpath_render_core(world, cam, spp, max_depth, std::string(output_path));
+		if (render_result == SUCCESS)
+			std::clog << "[cpu_interface_bdpt] SimpleVolPath render complete: " << output_path << std::endl;
+		return render_result;
+	} catch (const std::bad_alloc& e) {
+		std::cerr << "[cpu_interface_bdpt] " << ErrorInfo(ERR_CPU_MEMORY_ALLOCATION).to_string() << " - " << e.what() << std::endl;
+		return ERR_CPU_MEMORY_ALLOCATION;
+	} catch (const std::exception& e) {
+		std::cerr << "[cpu_interface_bdpt] " << ErrorInfo(ERR_CPU_RENDER_FAILED).to_string() << " - " << e.what() << std::endl;
+		return ERR_CPU_RENDER_FAILED;
+	} catch (...) {
+		std::cerr << "[cpu_interface_bdpt] " << ErrorInfo(ERR_UNKNOWN).to_string() << std::endl;
+		return ERR_UNKNOWN;
+	}
+}
+
+extern "C" int cpu_render_main_lightpath(int width, int height, int spp, int max_depth,
+                                          const char* output_path, const char* scene_id,
+                                          double cam_x, double cam_y, double cam_z,
+                                          int force_camera_override) {
+	try {
+		if (width <= 0 || height <= 0) { std::cerr << ErrorInfo(ERR_INVALID_DIMENSIONS).to_string() << std::endl; return ERR_INVALID_DIMENSIONS; }
+		if (spp <= 0) { std::cerr << ErrorInfo(ERR_INVALID_SAMPLE_COUNT).to_string() << std::endl; return ERR_INVALID_SAMPLE_COUNT; }
+		if (max_depth <= 0) { std::cerr << ErrorInfo(ERR_INVALID_MAX_DEPTH).to_string() << std::endl; return ERR_INVALID_MAX_DEPTH; }
+		if (!output_path) { std::cerr << ErrorInfo(ERR_OUTPUT_PATH_INVALID).to_string() << std::endl; return ERR_OUTPUT_PATH_INVALID; }
+
+		hittable_list world;
+		camera cam;
+		int err = SUCCESS;
+		const SceneDescriptor* scene_desc = build_scene_for_bdpt(
+			scene_id, width, height, cam_x, cam_y, cam_z, force_camera_override, world, cam, err);
+		if (!scene_desc) return err;
+		std::cout << "[cpu_interface_bdpt] Built scene " << scene_id << " (" << scene_desc->name << ") for LightPath" << std::endl;
+
+		std::filesystem::path out_fs_path(output_path);
+		if (!out_fs_path.parent_path().empty() && !std::filesystem::exists(out_fs_path.parent_path()))
+			std::filesystem::create_directories(out_fs_path.parent_path());
+
+		int render_result = lightpath_render_core(world, cam, spp, max_depth, std::string(output_path));
+		if (render_result == SUCCESS)
+			std::clog << "[cpu_interface_bdpt] LightPath render complete: " << output_path << std::endl;
+		return render_result;
+	} catch (const std::bad_alloc& e) {
+		std::cerr << "[cpu_interface_bdpt] " << ErrorInfo(ERR_CPU_MEMORY_ALLOCATION).to_string() << " - " << e.what() << std::endl;
+		return ERR_CPU_MEMORY_ALLOCATION;
+	} catch (const std::exception& e) {
+		std::cerr << "[cpu_interface_bdpt] " << ErrorInfo(ERR_CPU_RENDER_FAILED).to_string() << " - " << e.what() << std::endl;
 		return ERR_CPU_RENDER_FAILED;
 	} catch (...) {
 		std::cerr << "[cpu_interface_bdpt] " << ErrorInfo(ERR_UNKNOWN).to_string() << std::endl;

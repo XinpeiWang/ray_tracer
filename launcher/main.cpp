@@ -258,6 +258,19 @@ int main(int argc, char** argv) {
 	bool use_sppm           = args.use_sppm;
 	bool use_bdpt           = args.use_bdpt;
 	bool use_mlt            = args.use_mlt;
+	bool use_randomwalk     = args.use_randomwalk;
+	bool use_ao             = args.use_ao;
+	bool use_simplepath     = args.use_simplepath;
+	bool use_simplevolpath  = args.use_simplevolpath;
+	bool use_lightpath      = args.use_lightpath;
+	// Round 6 Phase 2: any one of these 5 debug integrators being active,
+	// collapsed to a single flag - every check below that already treats
+	// use_bdpt/use_mlt as "another special CPU-only render mode" (mutual
+	// exclusion, --video rejection, --gpu warning) needs the same
+	// treatment for these, and OR-ing 5 more names into every one of those
+	// conditions individually would bury the actual logic.
+	bool use_debug_integrator = use_randomwalk || use_ao || use_simplepath ||
+	                             use_simplevolpath || use_lightpath;
 
 	// optix_render_main() reads this env var itself (gpu/optix/optix_interface.cpp)
 	// to pick the wavefront GPU backend over the default recursive one - set it
@@ -317,6 +330,27 @@ int main(int argc, char** argv) {
 		std::cerr << "WARNING: --gpu is ignored under --bdpt/--mlt (CPU-only, no GPU/OptiX implementation exists) - rendering on CPU" << std::endl;
 	}
 
+	// Round 6 Phase 2 debug integrators - same "one special render mode at a
+	// time, no --video, CPU-only" shape as --bdpt/--mlt above.
+	if (use_debug_integrator && (use_bdpt || use_mlt || use_sppm)) {
+		std::cerr << ErrorInfo(ERR_INVALID_ARGUMENTS).to_string()
+				  << " - --randomwalk/--ao/--simplepath/--simplevolpath/--lightpath cannot be combined with --bdpt/--mlt/--sppm" << std::endl;
+		return ERR_INVALID_ARGUMENTS;
+	}
+	if (use_randomwalk + use_ao + use_simplepath + use_simplevolpath + use_lightpath > 1) {
+		std::cerr << ErrorInfo(ERR_INVALID_ARGUMENTS).to_string()
+				  << " - --randomwalk, --ao, --simplepath, --simplevolpath, and --lightpath are mutually exclusive render modes" << std::endl;
+		return ERR_INVALID_ARGUMENTS;
+	}
+	if (use_debug_integrator && video_mode) {
+		std::cerr << ErrorInfo(ERR_INVALID_ARGUMENTS).to_string()
+				  << " - --randomwalk/--ao/--simplepath/--simplevolpath/--lightpath and --video cannot be combined" << std::endl;
+		return ERR_INVALID_ARGUMENTS;
+	}
+	if (use_debug_integrator && args.gpu_flag_explicit) {
+		std::cerr << "WARNING: --gpu is ignored under --randomwalk/--ao/--simplepath/--simplevolpath/--lightpath (CPU-only, no GPU/OptiX implementation exists) - rendering on CPU" << std::endl;
+	}
+
     if (video_mode) {
         std::cout << "\n========================================" << std::endl;
         std::cout << "VIDEO GENERATION MODE" << std::endl;
@@ -331,6 +365,11 @@ int main(int argc, char** argv) {
                    << (use_bdpt ? "CPU BDPT"
                        : use_mlt ? "CPU MLT"
                        : use_sppm ? (use_gpu ? "GPU SPPM" : "CPU SPPM")
+                       : use_randomwalk ? "CPU RandomWalk"
+                       : use_ao ? "CPU AO"
+                       : use_simplepath ? "CPU SimplePath"
+                       : use_simplevolpath ? "CPU SimpleVolPath"
+                       : use_lightpath ? "CPU LightPath"
                                   : (use_gpu ? (args.use_wavefront ? "GPU wavefront" : "GPU") : "CPU"))
                    << " mode)..." << std::endl;
     }
@@ -700,16 +739,18 @@ int main(int argc, char** argv) {
     // exposure parameter at all, so the flag would otherwise be silently
     // swallowed with zero indication why. Same warn-instead-of-silently-
     // drop pattern as --denoise's own --wavefront warning below.
-    if (args.exposure != 1.0 && (use_bdpt || use_mlt || use_sppm)) {
-        std::cerr << "Warning: --exposure has no effect under --bdpt/--mlt/--sppm "
+    if (args.exposure != 1.0 && (use_bdpt || use_mlt || use_sppm || use_debug_integrator)) {
+        std::cerr << "Warning: --exposure has no effect under --bdpt/--mlt/--sppm/"
+                     "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
                      "(only the default path tracer supports it) - rendering at exposure=1.0.\n";
     }
     // --sampler only reaches cpu_render_main() (the CPU default path tracer)
-    // - GPU has no sampler-selection wiring yet, and BDPT/MLT/SPPM each use
-    // their own sampling scheme already. Same warn-instead-of-silently-drop
-    // shape as --exposure's own warning above.
-    if (!args.sampler.empty() && (use_gpu || use_bdpt || use_mlt || use_sppm)) {
-        std::cerr << "Warning: --sampler has no effect under --gpu/--bdpt/--mlt/--sppm "
+    // - GPU has no sampler-selection wiring yet, and BDPT/MLT/SPPM/the Round 6
+    // debug integrators each use their own sampling scheme already. Same
+    // warn-instead-of-silently-drop shape as --exposure's own warning above.
+    if (!args.sampler.empty() && (use_gpu || use_bdpt || use_mlt || use_sppm || use_debug_integrator)) {
+        std::cerr << "Warning: --sampler has no effect under --gpu/--bdpt/--mlt/--sppm/"
+                     "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
                      "(only the CPU default path tracer supports it) - ignoring.\n";
     }
 
@@ -752,6 +793,93 @@ int main(int argc, char** argv) {
             ErrorInfo err(render_result);
             std::cerr << "\n" << std::string(60, '=') << std::endl;
             std::cerr << "MLT RENDER FAILED" << std::endl;
+            std::cerr << std::string(60, '=') << std::endl;
+            std::cerr << err.to_string() << std::endl;
+            std::cerr << std::string(60, '=') << "\n" << std::endl;
+            return render_result;
+        }
+    } else if (use_randomwalk) {
+        std::cout << "Calling cpu_render_main_randomwalk(...) in-process..." << std::endl;
+        render_result = cpu_render_main_randomwalk(image_width, image_height, samples_per_pixel,
+                                                     max_ray_depth, out_path.c_str(),
+                                                     scene_id.c_str(), cam_x, cam_y, cam_z, 1);
+        std::cout << "cpu_render_main_randomwalk returned: " << render_result << std::endl;
+        if (render_result == SUCCESS) {
+            std::cout << "Rendered with RandomWalk renderer, output: " << out_path << std::endl;
+        } else {
+            ErrorInfo err(render_result);
+            std::cerr << "\n" << std::string(60, '=') << std::endl;
+            std::cerr << "RANDOMWALK RENDER FAILED" << std::endl;
+            std::cerr << std::string(60, '=') << std::endl;
+            std::cerr << err.to_string() << std::endl;
+            std::cerr << std::string(60, '=') << "\n" << std::endl;
+            return render_result;
+        }
+    } else if (use_ao) {
+        std::cout << "Calling cpu_render_main_ao(...) in-process..." << std::endl;
+        render_result = cpu_render_main_ao(image_width, image_height, samples_per_pixel,
+                                            args.ao_max_dist, args.ao_cosine ? 1 : 0, args.ao_illum_scale,
+                                            args.ao_illum_r, args.ao_illum_g, args.ao_illum_b,
+                                            out_path.c_str(), scene_id.c_str(), cam_x, cam_y, cam_z, 1);
+        std::cout << "cpu_render_main_ao returned: " << render_result << std::endl;
+        if (render_result == SUCCESS) {
+            std::cout << "Rendered with AO renderer, output: " << out_path << std::endl;
+        } else {
+            ErrorInfo err(render_result);
+            std::cerr << "\n" << std::string(60, '=') << std::endl;
+            std::cerr << "AO RENDER FAILED" << std::endl;
+            std::cerr << std::string(60, '=') << std::endl;
+            std::cerr << err.to_string() << std::endl;
+            std::cerr << std::string(60, '=') << "\n" << std::endl;
+            return render_result;
+        }
+    } else if (use_simplepath) {
+        std::cout << "Calling cpu_render_main_simplepath(...) in-process..." << std::endl;
+        render_result = cpu_render_main_simplepath(image_width, image_height, samples_per_pixel,
+                                                     max_ray_depth, args.simplepath_sample_lights ? 1 : 0,
+                                                     args.simplepath_sample_bsdf ? 1 : 0, out_path.c_str(),
+                                                     scene_id.c_str(), cam_x, cam_y, cam_z, 1);
+        std::cout << "cpu_render_main_simplepath returned: " << render_result << std::endl;
+        if (render_result == SUCCESS) {
+            std::cout << "Rendered with SimplePath renderer, output: " << out_path << std::endl;
+        } else {
+            ErrorInfo err(render_result);
+            std::cerr << "\n" << std::string(60, '=') << std::endl;
+            std::cerr << "SIMPLEPATH RENDER FAILED" << std::endl;
+            std::cerr << std::string(60, '=') << std::endl;
+            std::cerr << err.to_string() << std::endl;
+            std::cerr << std::string(60, '=') << "\n" << std::endl;
+            return render_result;
+        }
+    } else if (use_simplevolpath) {
+        std::cout << "Calling cpu_render_main_simplevolpath(...) in-process..." << std::endl;
+        render_result = cpu_render_main_simplevolpath(image_width, image_height, samples_per_pixel,
+                                                        max_ray_depth, out_path.c_str(),
+                                                        scene_id.c_str(), cam_x, cam_y, cam_z, 1);
+        std::cout << "cpu_render_main_simplevolpath returned: " << render_result << std::endl;
+        if (render_result == SUCCESS) {
+            std::cout << "Rendered with SimpleVolPath renderer, output: " << out_path << std::endl;
+        } else {
+            ErrorInfo err(render_result);
+            std::cerr << "\n" << std::string(60, '=') << std::endl;
+            std::cerr << "SIMPLEVOLPATH RENDER FAILED" << std::endl;
+            std::cerr << std::string(60, '=') << std::endl;
+            std::cerr << err.to_string() << std::endl;
+            std::cerr << std::string(60, '=') << "\n" << std::endl;
+            return render_result;
+        }
+    } else if (use_lightpath) {
+        std::cout << "Calling cpu_render_main_lightpath(...) in-process..." << std::endl;
+        render_result = cpu_render_main_lightpath(image_width, image_height, samples_per_pixel,
+                                                    max_ray_depth, out_path.c_str(),
+                                                    scene_id.c_str(), cam_x, cam_y, cam_z, 1);
+        std::cout << "cpu_render_main_lightpath returned: " << render_result << std::endl;
+        if (render_result == SUCCESS) {
+            std::cout << "Rendered with LightPath renderer, output: " << out_path << std::endl;
+        } else {
+            ErrorInfo err(render_result);
+            std::cerr << "\n" << std::string(60, '=') << std::endl;
+            std::cerr << "LIGHTPATH RENDER FAILED" << std::endl;
             std::cerr << std::string(60, '=') << std::endl;
             std::cerr << err.to_string() << std::endl;
             std::cerr << std::string(60, '=') << "\n" << std::endl;
