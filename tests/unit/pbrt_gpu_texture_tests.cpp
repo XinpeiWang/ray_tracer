@@ -300,3 +300,88 @@ TEST(PbrtGpuTextureTest, CheckerReflectanceBuildsAUVCheckerTexture) {
 	EXPECT_FLOAT_EQ(tex.uScale, 4.0f);
 	EXPECT_FLOAT_EQ(tex.vScale, 8.0f);
 }
+
+TEST(PbrtGpuTextureTest, FbmReflectanceBuildsAnFBmTexture) {
+	// Round 6 Phase 1: Material::hasFbmReflectance must reach a real
+	// TextureKind::FBm entry with the resolved octaves/roughness.
+	pbrt_flatten::Material m;
+	m.kind = pbrt_flatten::MaterialKind::Diffuse;
+	m.hasFbmReflectance = true;
+	m.fbmOctaves = 4;
+	m.fbmRoughness = 0.3;
+	pbrt_flatten::FlatScene flat;
+	flat.materials.push_back(m);
+	pbrt_flatten::Triangle tri{};
+	tri.material = 0;
+	tri.areaLight = -1;
+	flat.triangles.push_back(tri);
+
+	SceneData scene;
+	pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(scene.materials.size(), 1u);
+	EXPECT_EQ(scene.materials[0].type, MaterialType::Lambertian);
+	ASSERT_GE(scene.materials[0].textureIdx, 0);
+	const TextureData &tex = scene.textures[static_cast<std::size_t>(scene.materials[0].textureIdx)];
+	EXPECT_EQ(tex.kind, TextureKind::FBm);
+	EXPECT_EQ(tex.octaves, 4);
+	EXPECT_FLOAT_EQ(tex.omega, 0.3f);
+}
+
+TEST(PbrtGpuTextureTest, MarbleReflectanceBuildsAMarbleTexture) {
+	// Round 6 Phase 1: Material::hasMarbleReflectance must reach a real
+	// TextureKind::Marble entry with the resolved octaves/roughness/scale/
+	// variation.
+	pbrt_flatten::Material m;
+	m.kind = pbrt_flatten::MaterialKind::Diffuse;
+	m.hasMarbleReflectance = true;
+	m.marbleOctaves = 6;
+	m.marbleRoughness = 0.4;
+	m.marbleScale = 2.0;
+	m.marbleVariation = 0.3;
+	pbrt_flatten::FlatScene flat;
+	flat.materials.push_back(m);
+	pbrt_flatten::Triangle tri{};
+	tri.material = 0;
+	tri.areaLight = -1;
+	flat.triangles.push_back(tri);
+
+	SceneData scene;
+	pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(scene.materials.size(), 1u);
+	EXPECT_EQ(scene.materials[0].type, MaterialType::Lambertian);
+	ASSERT_GE(scene.materials[0].textureIdx, 0);
+	const TextureData &tex = scene.textures[static_cast<std::size_t>(scene.materials[0].textureIdx)];
+	EXPECT_EQ(tex.kind, TextureKind::Marble);
+	EXPECT_EQ(tex.octaves, 6);
+	EXPECT_FLOAT_EQ(tex.omega, 0.4f);
+	EXPECT_FLOAT_EQ(tex.marbleScale, 2.0f);
+	EXPECT_FLOAT_EQ(tex.marbleVariation, 0.3f);
+}
+
+TEST(PbrtGpuTextureTest, MixReflectanceBuildsAMixTexture) {
+	// Round 6 Phase 1: Material::hasMixReflectance must reach a real
+	// TextureKind::Mix entry with the resolved colours/amount.
+	pbrt_flatten::Material m;
+	m.kind = pbrt_flatten::MaterialKind::Diffuse;
+	m.hasMixReflectance = true;
+	m.mixColor1[0] = 1.0; m.mixColor1[1] = 0.0; m.mixColor1[2] = 0.0;
+	m.mixColor2[0] = 0.0; m.mixColor2[1] = 0.0; m.mixColor2[2] = 1.0;
+	m.mixAmount = 0.25;
+	pbrt_flatten::FlatScene flat;
+	flat.materials.push_back(m);
+	pbrt_flatten::Triangle tri{};
+	tri.material = 0;
+	tri.areaLight = -1;
+	flat.triangles.push_back(tri);
+
+	SceneData scene;
+	pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(scene.materials.size(), 1u);
+	EXPECT_EQ(scene.materials[0].type, MaterialType::Lambertian);
+	ASSERT_GE(scene.materials[0].textureIdx, 0);
+	const TextureData &tex = scene.textures[static_cast<std::size_t>(scene.materials[0].textureIdx)];
+	EXPECT_EQ(tex.kind, TextureKind::Mix);
+	EXPECT_FLOAT_EQ(tex.color1.x, 1.0f);
+	EXPECT_FLOAT_EQ(tex.color2.z, 1.0f);
+	EXPECT_FLOAT_EQ(tex.mixAmount, 0.25f);
+}

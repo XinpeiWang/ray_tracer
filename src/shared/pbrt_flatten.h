@@ -256,6 +256,43 @@ struct Material {
 	double checkerUScale = 1.0;
 	double checkerVScale = 1.0;
 
+	// A Diffuse material's "reflectance" bound to an "fbm" Texture (pbrt-v4
+	// FBmTexture - fractional Brownian motion noise, e.g. a cloudy/mottled
+	// pattern). Same flat-literal-only scope as checkerboard above - "fbm"
+	// takes no tex1/tex2 to begin with (it IS the pattern, not a blend of
+	// two others), so there's no nested-texture case to fall through on.
+	// Param names match pbrt-v4 exactly: "octaves" (int) and "roughness"
+	// (float, internally called omega) - see fbm_texture (src/TheRestOfYourLife/
+	// texture.h), the existing CPU class this resolves to (already used by
+	// non-pbrt scenes; this just gives the pbrt loader a way to reach it).
+	bool hasFbmReflectance = false;
+	int fbmOctaves = 8;
+	double fbmRoughness = 0.5;
+
+	// A Diffuse material's "reflectance" bound to a "marble" Texture
+	// (pbrt-v4 MarbleTexture - FBm-perturbed sine wave through a marble
+	// colour spline). Resolves to the existing marble_texture CPU class
+	// (src/TheRestOfYourLife/texture.h). Param names match pbrt-v4 exactly.
+	bool hasMarbleReflectance = false;
+	int marbleOctaves = 8;
+	double marbleRoughness = 0.5;
+	double marbleScale = 1.0;
+	double marbleVariation = 0.2;
+
+	// A Diffuse material's "reflectance" bound to a "mix" Texture (pbrt-v4
+	// SpectrumMixTexture - lerp between two colours by "amount"). Same
+	// flat-literal-only scope as checkerboard: tex1/tex2 THEMSELVES bound to
+	// a nested texture (e.g. "amount" driven by an fbm pattern for a dirt/
+	// wear mask, pbrt-v4's most common real use of "mix") falls through to
+	// the generic "not supported" warning instead of a recursive resolve -
+	// same documented, deliberate scope cut as checkerboard's own tex1/tex2,
+	// not a new limitation. Defaults match pbrt-v4's SpectrumMixTexture
+	// exactly (tex1 black, tex2 white, amount 0.5).
+	bool hasMixReflectance = false;
+	double mixColor1[3] = {0.0, 0.0, 0.0};
+	double mixColor2[3] = {1.0, 1.0, 1.0};
+	double mixAmount = 0.5;
+
 	// A pbrt Shape's own "alpha" parameter (bound to a "float"/"imagemap"
 	// Texture - e.g. barcelona-pavilion's foliage, "Shape \"plymesh\"
 	// \"texture alpha\" [ \"leaf_alpha\" ]"), NOT a Material directive
@@ -928,6 +965,41 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 						m.checkerVScale = tex->params.getFloat("vscale", 1.0);
 						m.hasCheckerReflectance = true;
 						continue;   // resolved to a procedural checker, not a "not supported" warning
+					}
+				}
+				if (tex && tex->cls == "fbm") {
+					m.fbmOctaves = tex->params.getInt("octaves", 8);
+					m.fbmRoughness = tex->params.getFloat("roughness", 0.5);
+					m.hasFbmReflectance = true;
+					continue;   // resolved to procedural fbm noise, not a "not supported" warning
+				}
+				if (tex && tex->cls == "marble") {
+					m.marbleOctaves = tex->params.getInt("octaves", 8);
+					m.marbleRoughness = tex->params.getFloat("roughness", 0.5);
+					m.marbleScale = tex->params.getFloat("scale", 1.0);
+					m.marbleVariation = tex->params.getFloat("variation", 0.2);
+					m.hasMarbleReflectance = true;
+					continue;   // resolved to procedural marble, not a "not supported" warning
+				}
+				if (tex && tex->cls == "mix") {
+					// See hasMixReflectance's own comment - tex1/tex2/amount
+					// THEMSELVES bound to nested textures fall through to the
+					// generic warning below, same scope cut as checkerboard's
+					// tex1/tex2.
+					const pbrt_scene::Param *tex1p = tex->params.find("tex1");
+					const pbrt_scene::Param *tex2p = tex->params.find("tex2");
+					const pbrt_scene::Param *amountp = tex->params.find("amount");
+					const bool tex1IsNested = tex1p && tex1p->type == "texture";
+					const bool tex2IsNested = tex2p && tex2p->type == "texture";
+					const bool amountIsNested = amountp && amountp->type == "texture";
+					if (!tex1IsNested && !tex2IsNested && !amountIsNested) {
+						const pbrt_scene::Vec3 c1 = tex->params.getVec3("tex1", {0.0, 0.0, 0.0});
+						const pbrt_scene::Vec3 c2 = tex->params.getVec3("tex2", {1.0, 1.0, 1.0});
+						m.mixColor1[0] = c1.x; m.mixColor1[1] = c1.y; m.mixColor1[2] = c1.z;
+						m.mixColor2[0] = c2.x; m.mixColor2[1] = c2.y; m.mixColor2[2] = c2.z;
+						m.mixAmount = tex->params.getFloat("amount", 0.5);
+						m.hasMixReflectance = true;
+						continue;   // resolved to a procedural mix, not a "not supported" warning
 					}
 				}
 			}

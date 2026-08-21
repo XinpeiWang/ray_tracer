@@ -246,6 +246,114 @@ TEST(PbrtDroppedTest, CheckerboardWithNestedTex1StillWarns) {
 	EXPECT_FALSE(s.materials[0].hasCheckerReflectance);
 }
 
+TEST(PbrtDroppedTest, DiffuseReflectanceFbmIsResolvedNotWarned) {
+	// Round 6 Phase 1: pbrt-v4 FBmTexture bound to reflectance - param names
+	// match pbrt-v4 exactly ("octaves", "roughness"), resolving to
+	// Material::hasFbmReflectance rather than the generic "not supported"
+	// warning.
+	const FlatScene s = build(
+		"Texture \"cloud\" \"float\" \"fbm\" \"integer octaves\" [ 4 ] "
+		"\"float roughness\" [ 0.3 ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"cloud\" ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	EXPECT_FALSE(warned(s, "not supported"));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].hasFbmReflectance);
+	EXPECT_EQ(s.materials[0].fbmOctaves, 4);
+	EXPECT_DOUBLE_EQ(s.materials[0].fbmRoughness, 0.3);
+}
+
+TEST(PbrtDroppedTest, DiffuseReflectanceFbmDefaultsMatchPbrtV4) {
+	const FlatScene s = build(
+		"Texture \"cloud\" \"float\" \"fbm\"\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"cloud\" ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	ASSERT_EQ(s.materials.size(), 1u);
+	ASSERT_TRUE(s.materials[0].hasFbmReflectance);
+	EXPECT_EQ(s.materials[0].fbmOctaves, 8);
+	EXPECT_DOUBLE_EQ(s.materials[0].fbmRoughness, 0.5);
+}
+
+TEST(PbrtDroppedTest, DiffuseReflectanceMarbleIsResolvedNotWarned) {
+	// Round 6 Phase 1: pbrt-v4 MarbleTexture bound to reflectance.
+	const FlatScene s = build(
+		"Texture \"stone\" \"spectrum\" \"marble\" \"integer octaves\" [ 6 ] "
+		"\"float roughness\" [ 0.4 ] \"float scale\" [ 2.0 ] "
+		"\"float variation\" [ 0.3 ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"stone\" ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	EXPECT_FALSE(warned(s, "not supported"));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].hasMarbleReflectance);
+	EXPECT_EQ(s.materials[0].marbleOctaves, 6);
+	EXPECT_DOUBLE_EQ(s.materials[0].marbleRoughness, 0.4);
+	EXPECT_DOUBLE_EQ(s.materials[0].marbleScale, 2.0);
+	EXPECT_DOUBLE_EQ(s.materials[0].marbleVariation, 0.3);
+}
+
+TEST(PbrtDroppedTest, DiffuseReflectanceMarbleDefaultsMatchPbrtV4) {
+	const FlatScene s = build(
+		"Texture \"stone\" \"spectrum\" \"marble\"\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"stone\" ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	ASSERT_EQ(s.materials.size(), 1u);
+	ASSERT_TRUE(s.materials[0].hasMarbleReflectance);
+	EXPECT_EQ(s.materials[0].marbleOctaves, 8);
+	EXPECT_DOUBLE_EQ(s.materials[0].marbleRoughness, 0.5);
+	EXPECT_DOUBLE_EQ(s.materials[0].marbleScale, 1.0);
+	EXPECT_DOUBLE_EQ(s.materials[0].marbleVariation, 0.2);
+}
+
+TEST(PbrtDroppedTest, DiffuseReflectanceMixIsResolvedNotWarned) {
+	// Round 6 Phase 1: pbrt-v4 SpectrumMixTexture bound to reflectance,
+	// flat-literal tex1/tex2/amount only (see Material::hasMixReflectance's
+	// own comment) - same scope cut as checkerboard's tex1/tex2.
+	const FlatScene s = build(
+		"Texture \"dirt\" \"spectrum\" \"mix\" \"rgb tex1\" [ 1 0 0 ] "
+		"\"rgb tex2\" [ 0 0 1 ] \"float amount\" [ 0.25 ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"dirt\" ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	EXPECT_FALSE(warned(s, "not supported"));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].hasMixReflectance);
+	EXPECT_DOUBLE_EQ(s.materials[0].mixColor1[0], 1.0);
+	EXPECT_DOUBLE_EQ(s.materials[0].mixColor2[2], 1.0);
+	EXPECT_DOUBLE_EQ(s.materials[0].mixAmount, 0.25);
+}
+
+TEST(PbrtDroppedTest, DiffuseReflectanceMixDefaultsMatchPbrtV4) {
+	const FlatScene s = build(
+		"Texture \"dirt\" \"spectrum\" \"mix\"\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"dirt\" ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	ASSERT_EQ(s.materials.size(), 1u);
+	ASSERT_TRUE(s.materials[0].hasMixReflectance);
+	EXPECT_DOUBLE_EQ(s.materials[0].mixColor1[0], 0.0);
+	EXPECT_DOUBLE_EQ(s.materials[0].mixColor2[0], 1.0);
+	EXPECT_DOUBLE_EQ(s.materials[0].mixAmount, 0.5);
+}
+
+TEST(PbrtDroppedTest, MixWithNestedAmountStillWarns) {
+	// "amount" bound to another Texture (rather than a float literal) isn't
+	// supported - see Material::hasMixReflectance's own comment, same scope
+	// cut as checkerboard's tex1/tex2.
+	const FlatScene s = build(
+		"Texture \"grime\" \"float\" \"fbm\"\n"
+		"Texture \"dirt\" \"spectrum\" \"mix\" \"texture amount\" [ \"grime\" ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"dirt\" ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	EXPECT_TRUE(warned(s, "reflectance"));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_FALSE(s.materials[0].hasMixReflectance);
+}
+
 TEST(PbrtDroppedTest, ShapeAlphaImagemapResolvesOntoTheOwningMaterial) {
 	// barcelona-pavilion's foliage: each leaf Shape "plymesh" gives its own
 	// "texture alpha" naming a "float"/"imagemap" Texture, independent of

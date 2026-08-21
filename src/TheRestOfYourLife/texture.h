@@ -291,6 +291,30 @@ class marble_texture : public texture {
 
 
 // ---------------------------------------------------------------------------
+// mix_texture
+// Linear interpolation between two flat colours by a flat amount.
+// pbrt-v4 reference: SpectrumMixTexture (textures.h/.cpp) - the general
+// class also supports both tex1/tex2/amount bound to nested textures; this
+// port is scoped to flat-literal children only (see pbrt_flatten.h's
+// hasMixReflectance comment for why), matching checker_texture/
+// uv_checker_texture's own established scope.
+// ---------------------------------------------------------------------------
+class mix_texture : public texture {
+  public:
+    mix_texture(const color& tex1, const color& tex2, double amount)
+        : tex1(tex1), tex2(tex2), amount(amount) {}
+
+    color value(double /*u*/, double /*v*/, const point3& /*p*/) const override {
+        return (1.0 - amount) * tex1 + amount * tex2;
+    }
+
+  private:
+    color tex1, tex2;
+    double amount;
+};
+
+
+// ---------------------------------------------------------------------------
 // mipmap_texture -- pbrt-v4-style MipMap-filtered image texture (§10.4)
 //
 // Builds a mip pyramid from the loaded image at construction time.

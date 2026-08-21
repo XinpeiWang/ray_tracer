@@ -566,10 +566,10 @@ struct GpuRgbGridMedium {
 	float phase_g;       // Henyey-Greenstein asymmetry
 };
 
-// Texture kinds - see TextureData below. Matches three CPU texture classes
-// (src/TheRestOfYourLife/texture.h's image_texture, noise_texture, and
-// checker_texture); other CPU texture classes (marble_texture,
-// mipmap_texture, ...) have no GPU equivalent yet.
+// Texture kinds - see TextureData below. Matches CPU texture classes in
+// src/TheRestOfYourLife/texture.h: image_texture, noise_texture,
+// checker_texture, uv_checker_texture, fbm_texture, marble_texture, and
+// mix_texture. mipmap_texture still has no GPU equivalent.
 enum class TextureKind : int {
 	Image = 0,
 	Noise = 1,
@@ -581,7 +581,17 @@ enum class TextureKind : int {
 	// checkerboard tiles by (u,v) * (uscale,vscale) - a materially
 	// different result for the same "scale" the two shouldn't share a code
 	// path over (see texture.h's uv_checker_texture, the CPU counterpart).
-	UVChecker = 3
+	UVChecker = 3,
+	// pbrt-v4 FBmTexture (fractional Brownian motion) - matches CPU's
+	// fbm_texture exactly (fbm_simple<T>, noise.h).
+	FBm = 4,
+	// pbrt-v4 MarbleTexture - matches CPU's marble_texture exactly (FBm-
+	// perturbed sine wave through the same 9-knot RGB Bezier spline).
+	Marble = 5,
+	// pbrt-v4 SpectrumMixTexture, flat-literal tex1/tex2 only (see
+	// pbrt_flatten.h's Material::hasMixReflectance comment) - matches CPU's
+	// new mix_texture exactly.
+	Mix = 6
 };
 
 // One entry per texture, indexed by MaterialData::textureIdx. Image
@@ -595,11 +605,16 @@ struct TextureData {
 	int pixelOffset;   // Image: byte offset into texturePixels. Unused otherwise.
 	int width;         // Image: pixel width. Unused otherwise.
 	int height;        // Image: pixel height. Unused otherwise.
-	float noiseScale;  // Noise: scale param. Checker: 1/scale (checker_texture's own inv_scale). Unused for Image/UVChecker.
-	float3 color1;     // Checker/UVChecker: "even"/tex1 cell color. Unused otherwise.
-	float3 color2;     // Checker/UVChecker: "odd"/tex2 cell color. Unused otherwise.
+	float noiseScale;  // Noise: scale param. Checker: 1/scale (checker_texture's own inv_scale). Unused otherwise.
+	float3 color1;     // Checker/UVChecker: "even"/tex1 cell color. Mix: tex1. Unused otherwise.
+	float3 color2;     // Checker/UVChecker: "odd"/tex2 cell color. Mix: tex2. Unused otherwise.
 	float uScale;      // UVChecker: u-axis tile frequency (pbrt-v4 "uscale"). Unused otherwise.
 	float vScale;      // UVChecker: v-axis tile frequency (pbrt-v4 "vscale"). Unused otherwise.
+	float omega;       // FBm/Marble: persistence/roughness param. Unused otherwise.
+	int   octaves;     // FBm/Marble: octave count. Unused otherwise.
+	float marbleScale;     // Marble: spatial frequency multiplier (pbrt-v4 "scale"). Unused otherwise.
+	float marbleVariation; // Marble: FBm displacement amplitude (pbrt-v4 "variation"). Unused otherwise.
+	float mixAmount;   // Mix: blend weight, 0->color1 1->color2 (pbrt-v4 "amount"). Unused otherwise.
 };
 
 // Material data (packed for SBT).

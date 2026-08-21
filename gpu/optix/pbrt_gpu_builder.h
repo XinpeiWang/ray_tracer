@@ -588,6 +588,40 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 			d.textureIdx = static_cast<int>(out.textures.size());
 			out.textures.push_back(tex);
 		}
+		// m.hasFbmReflectance/hasMarbleReflectance/hasMixReflectance
+		// (Material's own comments) - same procedural-not-file,
+		// append-one-TextureData pattern as hasCheckerReflectance above.
+		else if (m.hasFbmReflectance) {
+			TextureData tex{};
+			tex.kind = TextureKind::FBm;
+			tex.omega = static_cast<float>(m.fbmRoughness);
+			tex.octaves = m.fbmOctaves;
+			d.textureIdx = static_cast<int>(out.textures.size());
+			out.textures.push_back(tex);
+		}
+		else if (m.hasMarbleReflectance) {
+			TextureData tex{};
+			tex.kind = TextureKind::Marble;
+			tex.omega = static_cast<float>(m.marbleRoughness);
+			tex.octaves = m.marbleOctaves;
+			tex.marbleScale = static_cast<float>(m.marbleScale);
+			tex.marbleVariation = static_cast<float>(m.marbleVariation);
+			d.textureIdx = static_cast<int>(out.textures.size());
+			out.textures.push_back(tex);
+		}
+		else if (m.hasMixReflectance) {
+			TextureData tex{};
+			tex.kind = TextureKind::Mix;
+			tex.color1 = make_float3(static_cast<float>(m.mixColor1[0]),
+									 static_cast<float>(m.mixColor1[1]),
+									 static_cast<float>(m.mixColor1[2]));
+			tex.color2 = make_float3(static_cast<float>(m.mixColor2[0]),
+									 static_cast<float>(m.mixColor2[1]),
+									 static_cast<float>(m.mixColor2[2]));
+			tex.mixAmount = static_cast<float>(m.mixAmount);
+			d.textureIdx = static_cast<int>(out.textures.size());
+			out.textures.push_back(tex);
+		}
 		break;
 	case pbrt_flatten::MaterialKind::Unsupported:
 		d.type = MaterialType::Lambertian;

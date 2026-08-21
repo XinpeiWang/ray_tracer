@@ -389,6 +389,65 @@ TEST(PbrtCpuBuildTest, DiffuseReflectanceCheckerboardBuildsAUVCheckerBackedLambe
 		<< "adjacent UV checker cells (one uscale apart) must differ";
 }
 
+TEST(PbrtCpuBuildTest, DiffuseReflectanceFbmBuildsAnFbmBackedLambertian) {
+	// Round 6 Phase 1: hasFbmReflectance must make it all the way to an
+	// fbm_texture-backed lambertian, reusing the existing CPU class rather
+	// than falling back to a flat colour.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Texture \"cloud\" \"float\" \"fbm\" \"integer octaves\" [ 4 ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"cloud\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *lam = dynamic_cast<lambertian *>(rec.mat.get());
+	ASSERT_NE(lam, nullptr);
+	EXPECT_NE(dynamic_cast<fbm_texture *>(lam->get_texture().get()), nullptr)
+		<< "a diffuse material with an fbm-bound reflectance must build an "
+		   "fbm_texture-backed lambertian, not the flat-colour fallback";
+}
+
+TEST(PbrtCpuBuildTest, DiffuseReflectanceMarbleBuildsAMarbleBackedLambertian) {
+	// Round 6 Phase 1: hasMarbleReflectance must make it all the way to a
+	// marble_texture-backed lambertian.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Texture \"stone\" \"spectrum\" \"marble\"\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"stone\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *lam = dynamic_cast<lambertian *>(rec.mat.get());
+	ASSERT_NE(lam, nullptr);
+	EXPECT_NE(dynamic_cast<marble_texture *>(lam->get_texture().get()), nullptr)
+		<< "a diffuse material with a marble-bound reflectance must build a "
+		   "marble_texture-backed lambertian, not the flat-colour fallback";
+}
+
+TEST(PbrtCpuBuildTest, DiffuseReflectanceMixBuildsAMixBackedLambertian) {
+	// Round 6 Phase 1: hasMixReflectance must make it all the way to a
+	// mix_texture-backed lambertian that actually blends tex1/tex2 by
+	// amount (deterministic, unlike fbm/marble - so the resulting colour
+	// can be checked exactly).
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Texture \"dirt\" \"spectrum\" \"mix\" \"rgb tex1\" [ 1 0 0 ] "
+		"\"rgb tex2\" [ 0 0 1 ] \"float amount\" [ 0.25 ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"dirt\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *lam = dynamic_cast<lambertian *>(rec.mat.get());
+	ASSERT_NE(lam, nullptr);
+	auto *mix = dynamic_cast<mix_texture *>(lam->get_texture().get());
+	ASSERT_NE(mix, nullptr)
+		<< "a diffuse material with a mix-bound reflectance must build a "
+		   "mix_texture-backed lambertian, not the flat-colour fallback";
+	const color c = mix->value(0.0, 0.0, rec.p);
+	EXPECT_NEAR(c.x(), 0.75, 1e-9);  // (1-0.25)*1 + 0.25*0
+	EXPECT_NEAR(c.z(), 0.25, 1e-9);  // (1-0.25)*0 + 0.25*1
+}
+
 TEST_F(CpuBuilderTempTree, DisplacementWithARealGrayscaleBumpMapWrapsInBumpMapMaterial) {
 	// Round 5 Phase 1: Material::displacementTextureFilename (see that
 	// field's own comment) must reach the CPU builder's materialFor()

@@ -198,6 +198,25 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 				m.checkerUScale, m.checkerVScale,
 				color(m.checkerColor1[0], m.checkerColor1[1], m.checkerColor1[2]),
 				color(m.checkerColor2[0], m.checkerColor2[1], m.checkerColor2[2])));
+		// m.hasFbmReflectance/hasMarbleReflectance/hasMixReflectance
+		// (Material's own comments) - same procedural-not-file pattern as
+		// hasCheckerReflectance above, resolving to the existing fbm_
+		// texture/marble_texture CPU classes (texture.h) or the new
+		// mix_texture. No separate world-space "scale" param exists for
+		// pbrt-v4's real FBmTexture (only octaves/roughness), so 1.0 (no
+		// extra scaling beyond the world-space point itself) is passed for
+		// fbm_texture's own scale argument - matches pbrt-v4 semantics.
+		if (m.hasFbmReflectance)
+			return std::make_shared<lambertian>(std::make_shared<fbm_texture>(
+				1.0, m.fbmOctaves, m.fbmRoughness));
+		if (m.hasMarbleReflectance)
+			return std::make_shared<lambertian>(std::make_shared<marble_texture>(
+				m.marbleScale, m.marbleOctaves, m.marbleRoughness, m.marbleVariation));
+		if (m.hasMixReflectance)
+			return std::make_shared<lambertian>(std::make_shared<mix_texture>(
+				color(m.mixColor1[0], m.mixColor1[1], m.mixColor1[2]),
+				color(m.mixColor2[0], m.mixColor2[1], m.mixColor2[2]),
+				m.mixAmount));
 		break;
 	case pbrt_flatten::MaterialKind::Unsupported:
 		break;

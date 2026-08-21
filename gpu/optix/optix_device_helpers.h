@@ -880,6 +880,46 @@ __device__ __forceinline__ void add_punctual_lights_lambertian(
 	}
 }
 
+// De Casteljau cubic Bezier evaluation at t in [0,1] over 4 RGB control
+// points - matches marble_texture::cubic_bezier4 (texture.h) exactly.
+__device__ __forceinline__ float3 marble_cubic_bezier4(
+		const float3& p0, const float3& p1, const float3& p2, const float3& p3, float t) {
+	const float s = 1.0f - t;
+	const float w0 = s*s*s, w1 = 3.0f*s*s*t, w2 = 3.0f*s*t*t, w3 = t*t*t;
+	return make_float3(
+		w0*p0.x + w1*p1.x + w2*p2.x + w3*p3.x,
+		w0*p0.y + w1*p1.y + w2*p2.y + w3*p3.y,
+		w0*p0.z + w1*p1.z + w2*p2.z + w3*p3.z);
+}
+
+// Matches marble_texture::value() (texture.h) exactly: FBm-perturbed sine
+// wave mapped through the same 9-knot pbrt-v4 marble colour spline. A
+// standalone function (not inlined into sample_texture's own if/else chain)
+// since resolve_bssrdf_exit-style callers never need it and the 9-knot
+// table is sizeable to duplicate inline twice (recursive backend here,
+// wavefront's own copy in wavefront_kernels.cu per this file's established
+// no-shared-device-helpers-across-backends convention).
+__device__ __forceinline__ float3 sample_marble_texture(const TextureData& tex, const float3& p) {
+	const float px = p.x * tex.marbleScale, py = p.y * tex.marbleScale, pz = p.z * tex.marbleScale;
+	const float fbm_val = fbm_simple<float>(px, py, pz, tex.omega, tex.octaves);
+	const float marble = py + tex.marbleVariation * fbm_val;
+	float t = 0.5f + 0.5f * sinf(marble);
+
+	constexpr int kN = 9;
+	const float3 knots[kN] = {
+		make_float3(.58f,.58f,.60f), make_float3(.58f,.58f,.60f), make_float3(.58f,.58f,.60f),
+		make_float3(.50f,.50f,.50f), make_float3(.60f,.59f,.58f), make_float3(.58f,.58f,.60f),
+		make_float3(.58f,.58f,.60f), make_float3(.20f,.20f,.33f), make_float3(.58f,.58f,.60f)
+	};
+	constexpr int nSeg = kN - 3;
+	int first = static_cast<int>(t * nSeg);
+	if (first >= nSeg) first = nSeg - 1;
+	const float lt = t * nSeg - first;
+
+	float3 rgb = marble_cubic_bezier4(knots[first], knots[first+1], knots[first+2], knots[first+3], lt);
+	return make_float3(fminf(rgb.x * 1.5f, 1.0f), fminf(rgb.y * 1.5f, 1.0f), fminf(rgb.z * 1.5f, 1.0f));
+}
+
 // Samples a texture by index (see TextureData in optix_types.h), matching
 // CPU's texture::value(u, v, p) dispatch (src/TheRestOfYourLife/texture.h)
 // for the two kinds ported so far - only called when
@@ -926,6 +966,19 @@ __device__ __forceinline__ float3 sample_texture(int textureIdx, float u, float 
 		const int vi = static_cast<int>(floorf(v * tex.vScale));
 		const bool is_even = ((ui + vi) % 2) == 0;
 		return is_even ? tex.color1 : tex.color2;
+	} else if (tex.kind == TextureKind::FBm) {
+		// Matches fbm_texture::value() (texture.h) exactly: fbm_simple(p,
+		// omega, octaves) mapped from [-~1,~1] to a clamped [0,1] greyscale.
+		const float v = fbm_simple<float>(p.x, p.y, p.z, tex.omega, tex.octaves);
+		float t = 0.5f + 0.5f * v;
+		t = fminf(fmaxf(t, 0.0f), 1.0f);
+		return make_float3(t, t, t);
+	} else if (tex.kind == TextureKind::Marble) {
+		return sample_marble_texture(tex, p);
+	} else if (tex.kind == TextureKind::Mix) {
+		// Matches mix_texture::value() (texture.h) exactly: flat lerp, no
+		// footprint/UV dependence.
+		return (1.0f - tex.mixAmount) * tex.color1 + tex.mixAmount * tex.color2;
 	} else {
 		// Matches noise_texture::value() (texture.h:127-129) exactly:
 		// color(.5,.5,.5) * (1 + sin(scale*p.z + 10*turb(p,7))), where

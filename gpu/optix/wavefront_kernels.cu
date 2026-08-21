@@ -253,6 +253,44 @@ __device__ __forceinline__ bool wf_sample_hair_material(
 	return true;
 }
 
+// De Casteljau cubic Bezier evaluation - duplicated from optix_device_
+// helpers.h's marble_cubic_bezier4 (with the wf_ prefix), matching this
+// file's existing pattern of not sharing device helpers with the recursive
+// path.
+__device__ __forceinline__ float3 wf_marble_cubic_bezier4(
+		const float3& p0, const float3& p1, const float3& p2, const float3& p3, float t) {
+	const float s = 1.0f - t;
+	const float w0 = s*s*s, w1 = 3.0f*s*s*t, w2 = 3.0f*s*t*t, w3 = t*t*t;
+	return make_float3(
+		w0*p0.x + w1*p1.x + w2*p2.x + w3*p3.x,
+		w0*p0.y + w1*p1.y + w2*p2.y + w3*p3.y,
+		w0*p0.z + w1*p1.z + w2*p2.z + w3*p3.z);
+}
+
+// Matches marble_texture::value() (texture.h) exactly - duplicated from
+// optix_device_helpers.h's sample_marble_texture (with the wf_ prefix),
+// same no-shared-device-helpers convention as wf_marble_cubic_bezier4 above.
+__device__ __forceinline__ float3 wf_sample_marble_texture(const TextureData& tex, const float3& p) {
+	const float px = p.x * tex.marbleScale, py = p.y * tex.marbleScale, pz = p.z * tex.marbleScale;
+	const float fbm_val = fbm_simple<float>(px, py, pz, tex.omega, tex.octaves);
+	const float marble = py + tex.marbleVariation * fbm_val;
+	float t = 0.5f + 0.5f * sinf(marble);
+
+	constexpr int kN = 9;
+	const float3 knots[kN] = {
+		make_float3(.58f,.58f,.60f), make_float3(.58f,.58f,.60f), make_float3(.58f,.58f,.60f),
+		make_float3(.50f,.50f,.50f), make_float3(.60f,.59f,.58f), make_float3(.58f,.58f,.60f),
+		make_float3(.58f,.58f,.60f), make_float3(.20f,.20f,.33f), make_float3(.58f,.58f,.60f)
+	};
+	constexpr int nSeg = kN - 3;
+	int first = static_cast<int>(t * nSeg);
+	if (first >= nSeg) first = nSeg - 1;
+	const float lt = t * nSeg - first;
+
+	float3 rgb = wf_marble_cubic_bezier4(knots[first], knots[first+1], knots[first+2], knots[first+3], lt);
+	return make_float3(fminf(rgb.x * 1.5f, 1.0f), fminf(rgb.y * 1.5f, 1.0f), fminf(rgb.z * 1.5f, 1.0f));
+}
+
 // Samples a texture by index - duplicated from optix_device_helpers.h's
 // sample_texture (with the wf_ prefix), matching this file's existing
 // pattern of not sharing device helpers with the recursive path. Only
@@ -284,6 +322,17 @@ __device__ __forceinline__ float3 wf_sample_texture(
 		const int vi = static_cast<int>(floorf(v * tex.vScale));
 		const bool is_even = ((ui + vi) % 2) == 0;
 		return is_even ? tex.color1 : tex.color2;
+	} else if (tex.kind == TextureKind::FBm) {
+		// Matches optix_device_helpers.h's sample_texture() FBm branch (and
+		// fbm_texture::value(), texture.h) exactly.
+		const float v = fbm_simple<float>(p.x, p.y, p.z, tex.omega, tex.octaves);
+		float t = 0.5f + 0.5f * v;
+		t = fminf(fmaxf(t, 0.0f), 1.0f);
+		return make_float3(t, t, t);
+	} else if (tex.kind == TextureKind::Marble) {
+		return wf_sample_marble_texture(tex, p);
+	} else if (tex.kind == TextureKind::Mix) {
+		return (1.0f - tex.mixAmount) * tex.color1 + tex.mixAmount * tex.color2;
 	} else {
 		const float turb = turbulence_simple<float>(p.x, p.y, p.z, 0.5f, 7);
 		const float s = 0.5f * (1.0f + sinf(tex.noiseScale * p.z + 10.0f * turb));
