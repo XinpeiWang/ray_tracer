@@ -66,7 +66,7 @@ GPU: `pbrt_gpu_builder.h`'s light-building code.
 | `projection` | Approx | Approx | Same story as goniometric: neither backend decodes the real projected slide image, both use a uniform white slide instead. Warns when a scene names a real image. |
 | `infinite` (constant color) | Full | Full | |
 | `infinite` (HDRI image) | Full | Full | Same equirectangular importance-sampling distribution (luminance-weighted, sin θ Jacobian) built and used on both. |
-| `AreaLightSource "diffuse"` | Approx | Approx | Real NEE-samplable geometry (sphere/quad/triangle/bilinear patch) on both. CPU parses and honors `filename` (spatially-varying image emission, point-sampled) and `twosided`; GPU parses neither yet (always one-sided, `filename` silently falls back to `L`, no warning). `blackbody` emission is read as a raw number rather than converted, on both (warned). |
+| `AreaLightSource "diffuse"` | Approx | Approx | Real NEE-samplable geometry (sphere/quad/triangle/bilinear patch) on both. CPU parses and honors `filename` (spatially-varying image emission, point-sampled) and `twosided` on any shape. GPU honors both too, but triangle-only (both backends) - the only shape a raw pbrt trianglemesh light ever builds as; a `filename`/`twosided` on a `Shape "sphere"`/`"disk"`/`"cylinder"` area light silently falls back to flat `L`/one-sided on GPU. A GPU triangle light's `filename` image also samples a fixed texel rather than varying spatially, since pbrt trianglemesh `"point2 uv"` isn't parsed at all yet (see "Other known gaps" below) - real on CPU only by accident, via triangle.h's barycentric UV fallback. `blackbody` emission is read as a raw number rather than converted, on both (warned). |
 | anything else | Unsupported | Unsupported | Dropped with a warning; not visible on either backend. |
 
 ## Cameras (`Camera::type`)
@@ -100,9 +100,19 @@ loader and no longer match the code:
 
 ## Other known gaps (not backend-asymmetric, but worth knowing)
 
-- `AreaLightSource`'s `twosided` and `filename` parameters are parsed and
-  honored on CPU only; GPU still ignores both (see the backend-asymmetric
-  table above) - tracked as follow-up GPU work.
+- `AreaLightSource`'s `twosided` and `filename` parameters are honored on
+  CPU for any shape, and on GPU for triangle lights only (see the
+  backend-asymmetric table above) - a sphere/disk/cylinder area light with
+  either param set falls back to flat/one-sided on GPU, tracked as
+  follow-up work.
+- A raw pbrt `Shape "trianglemesh"`'s `"point2 uv"` parameter is never
+  parsed anywhere in this codebase's loader (`pbrt_scene.h`/
+  `pbrt_flatten.h`), on either backend. CPU usually looks correct anyway
+  via `triangle.h`'s barycentric-coordinates-as-UV fallback when no real
+  UV was ever set; GPU's `TriangleData` has no equivalent fallback
+  (`hasUVs` stays false, so UV stays a fixed (0,0) instead), which is most
+  visible on a `filename`-textured GPU triangle light: it samples one fixed
+  texel instead of the image's real per-point detail.
 - `Shape "disk"`/`Shape "cylinder"` are supported on CPU and both GPU
   backends (recursive and wavefront). CPU keeps the CTM unbaked and is
   exactly correct under arbitrary rotation (see `disk_cylinder_hittable.h`);
