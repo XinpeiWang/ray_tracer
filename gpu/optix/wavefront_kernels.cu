@@ -140,6 +140,25 @@ __device__ __forceinline__ bool wf_near_zero(const float3& v) {
 	return fabsf(v.x) < s && fabsf(v.y) < s && fabsf(v.z) < s;
 }
 
+// Duplicated from optix_device_helpers.h's material_requires_sphere_only_
+// handling() (with the wf_ prefix), matching this file's existing pattern of
+// not sharing device helpers with the recursive path. See that function's
+// own comment for why these types have no physically-sensible fallback on a
+// flat/curved-but-non-spherical primitive.
+__device__ __forceinline__ bool wf_material_requires_sphere_only_handling(MaterialType type) {
+	switch (type) {
+		case MaterialType::Medium:
+		case MaterialType::DielectricMedium:
+		case MaterialType::CloudMedium:
+		case MaterialType::RgbGridMedium:
+		case MaterialType::Hair:
+		case MaterialType::Principled:
+			return true;
+		default:
+			return false;
+	}
+}
+
 // Henyey-Greenstein phase function direction sample. Duplicated from
 // optix_device_helpers.h's sample_henyey_greenstein (with the wf_ prefix)
 // rather than shared, matching this file's existing pattern of not sharing
@@ -1637,6 +1656,23 @@ extern "C" __global__ void evaluate_materials(
 
 	const HitWorkItem& h = hitQueue.items[idx];
 	const MaterialData& mat = materials[h.materialIdx];
+
+	// Mirrors optix_intersection_disk_cylinder.h's own trap: the pbrt loader
+	// never assigns these material types to a disk/cylinder (see
+	// pbrt_gpu_builder.h's disk/cylinder loop), so this is unreachable
+	// today, but kept loud rather than silently wrong if that ever changes -
+	// unlike the recursive backend, this backend has no shape-specific
+	// handling for any of these on disk/cylinder geometry (geomType 4/5).
+	// Only this general queue needs the check: simpleHitQueue/
+	// dielectricHitQueue only ever receive Lambertian/Metal and
+	// Dielectric/RoughDielectric hits respectively, never these types.
+	if ((h.geomType == 4 || h.geomType == 5) &&
+		(wf_material_requires_sphere_only_handling(mat.type) ||
+		 mat.type == MaterialType::NormalMappedLambertian)) {
+		printf("[WF-DISK-CYL-SHADE] MaterialType %d is not supported on disk/cylinder geometry (geomType=%d)\n",
+			   (int)mat.type, h.geomType);
+		__trap();
+	}
 
 	float3 normal    = h.normal;
 	float3 hit_point = h.hitPoint;

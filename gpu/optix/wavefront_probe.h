@@ -442,10 +442,10 @@ extern "C" __global__ void __miss__wf_probe() {}
 // __raygen__wf_shadow's own optixTrace() call above (same SBT-offset/
 // stride/miss-index shape, just against probeSBT_'s own hit records instead
 // of the shadow ones - see WavefrontPathTracer::buildSBT()'s probeSBT_,
-// which mirrors intersectSBT_'s own per-present-type, stride-2 layout
-// exactly so the shared IAS instance sbtOffset math stays correct - see
-// that method's own comment). Unlike the recursive backend's trace_probe_
-// ray() (optix_device_helpers.h), no self-intersection epsilon nudge is
+// which mirrors intersectSBT_'s own per-present-type, stride-RAY_TYPE_COUNT
+// layout exactly so the shared IAS instance sbtOffset math stays correct -
+// see that method's own pushTriple comment). Unlike the recursive backend's
+// trace_probe_ray() (optix_device_helpers.h), no self-intersection epsilon nudge is
 // needed here either, for the identical reason: wf_bssrdf_probe_walk()
 // below already advances `base` past each hit by t+1e-4 before the next
 // call.
@@ -469,7 +469,7 @@ __device__ __forceinline__ WfProbePayload wf_trace_probe_ray(
 		OptixVisibilityMask(255),
 		OPTIX_RAY_FLAG_NONE,   // real closest-hit, not occlusion-only
 		0,                     // SBT offset - probeSBT_'s own dedicated hit records
-		2,                     // SBT stride - mirrors intersectSBT_'s own per-type layout
+		RAY_TYPE_COUNT,        // SBT stride - mirrors intersectSBT_'s own per-type layout
 		0,                     // miss SBT index - probeSBT_ has exactly one miss record
 		p0, p1
 	);

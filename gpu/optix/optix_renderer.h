@@ -77,10 +77,11 @@ public:
 		const std::vector<PunctualLightGPU>& punctualLights = {},
 		const std::vector<BilinearPatchData>& bilinearPatches = {},
 		const std::vector<TriangleData>& triangles = {},
-		// Disk/Cylinder - recursive backend only (Phase 4b); see DiskData/
-		// CylinderData's own comment in optix_types.h and gasDiskCylinderHandle_'s
-		// comment above for why these get their own child GAS rather than
-		// joining spheres/quads/bilinearPatches in the shared one.
+		// Disk/Cylinder - supported on both the recursive (Phase 4b) and
+		// wavefront (Phase 4c) backends; see DiskData/CylinderData's own
+		// comment in optix_types.h and gasDiskCylinderHandle_'s comment
+		// above for why these get their own child GAS rather than joining
+		// spheres/quads/bilinearPatches in the shared one.
 		const std::vector<DiskData>& disks = {},
 		const std::vector<CylinderData>& cylinders = {},
 		const std::vector<GpuLensElement>& lensElements = {},
@@ -354,14 +355,18 @@ private:
 	// cylinder instance site) - deliberately NOT folded into gasCustomHandle_
 	// alongside sphere/quad/bilinear-patch, so their presence can never shift
 	// those types' build_input_index/SBT offsets. That matters because the
-	// wavefront backend traces against this SAME shared traversable with its
-	// OWN, separately-built SBT that has no idea disks/cylinders exist
-	// (Phase 4c) - had they shared gasCustomHandle_, adding a disk/cylinder
-	// to a scene could silently corrupt wavefront's SBT indexing for
-	// geometry types wavefront DOES support. Appending a whole new instance
-	// instead costs one extra GAS but keeps every existing type's offsets
-	// byte-for-byte unchanged whether or not the scene has any disks/
-	// cylinders at all.
+	// wavefront backend (Phase 4c) traces against this SAME shared
+	// traversable with its OWN, separately-built SBT - both backends'
+	// buildSBT() need every other type's baked instance.sbtOffset to stay
+	// exactly where it was, whether or not the scene has any disks/cylinders
+	// at all. It also matters for disk/cylinder's OWN offset: wavefront's
+	// buildSBT() pads every type-group to RAY_TYPE_COUNT identical records
+	// (see that function's pushTriple comment) specifically so its own
+	// cumulative record count matches this backend's stride-RAY_TYPE_COUNT
+	// baked offsets exactly, for any number of preceding type-groups - had
+	// disk/cylinder shared gasCustomHandle_ instead of appending a trailing
+	// instance, their build_input_index would depend on which OTHER custom
+	// types the scene has, defeating that padding's whole purpose.
 	OptixTraversableHandle gasDiskCylinderHandle_ = 0;
 	CUdeviceptr d_gasDiskCylinder_ = 0;
 	bool sceneHasMotion_ = false;          ///< True if the uploaded scene has >=1 moving sphere (see buildScene())

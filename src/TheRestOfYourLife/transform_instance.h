@@ -36,6 +36,7 @@
 #include "../shared/pbrt_scene.h"
 
 #include "aabb.h"
+#include "affine_transform_apply.h"
 #include "hittable.h"
 
 class transform_instance : public hittable {
@@ -56,36 +57,25 @@ class transform_instance : public hittable {
         // a rotation is involved, and using the wrong one produces a box that
         // clips the object it is supposed to contain.
         const aabb b = object->bounding_box();
-        bool first = true;
-        point3 lo(0, 0, 0), hi(0, 0, 0);
-        for (int corner = 0; corner < 8; ++corner) {
-            const double x = (corner & 1) ? b.x.max : b.x.min;
-            const double y = (corner & 2) ? b.y.max : b.y.min;
-            const double z = (corner & 4) ? b.z.max : b.z.min;
-            const point3 p = apply_point(o2w, point3(x, y, z));
-            if (first) { lo = hi = p; first = false; continue; }
-            lo = point3(std::fmin(lo.x(), p.x()), std::fmin(lo.y(), p.y()),
-                        std::fmin(lo.z(), p.z()));
-            hi = point3(std::fmax(hi.x(), p.x()), std::fmax(hi.y(), p.y()),
-                        std::fmax(hi.z(), p.z()));
-        }
-        bbox = aabb(lo, hi);
+        bbox = affine_transform::transformed_bbox(o2w, b.x.min, b.x.max,
+                                                   b.y.min, b.y.max,
+                                                   b.z.min, b.z.max);
     }
 
     bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
         if (!valid) return false;
 
-        const ray local(apply_point(w2o, r.origin()),
-                        apply_vector(w2o, r.direction()),   // NOT normalised - see header
+        const ray local(affine_transform::apply_point(w2o, r.origin()),
+                        affine_transform::apply_vector(w2o, r.direction()),   // NOT normalised - see header
                         r.time());
         if (!object->hit(local, ray_t, rec)) return false;
 
-        rec.p = apply_point(o2w, rec.p);
+        rec.p = affine_transform::apply_point(o2w, rec.p);
         // set_face_normal() decides front/back from the ray direction, so it
         // is given the WORLD ray. Calling it again rather than transforming
         // the child's flag keeps a mirroring transform (negative determinant,
         // which flips winding) consistent with the geometry the camera sees.
-        vec3 n = apply_normal(w2o, rec.normal);
+        vec3 n = affine_transform::apply_normal(w2o, rec.normal);
         const double len = n.length();
         if (len > 0) n = n / len;
         rec.set_face_normal(r, n);
@@ -95,30 +85,6 @@ class transform_instance : public hittable {
     aabb bounding_box() const override { return bbox; }
 
   private:
-    static point3 apply_point(const pbrt_scene::Matrix4& m, const point3& p) {
-        return point3(
-            m.m[0] * p.x() + m.m[1] * p.y() + m.m[2]  * p.z() + m.m[3],
-            m.m[4] * p.x() + m.m[5] * p.y() + m.m[6]  * p.z() + m.m[7],
-            m.m[8] * p.x() + m.m[9] * p.y() + m.m[10] * p.z() + m.m[11]);
-    }
-
-    // A direction, so the translation column is deliberately not applied.
-    static vec3 apply_vector(const pbrt_scene::Matrix4& m, const vec3& v) {
-        return vec3(
-            m.m[0] * v.x() + m.m[1] * v.y() + m.m[2]  * v.z(),
-            m.m[4] * v.x() + m.m[5] * v.y() + m.m[6]  * v.z(),
-            m.m[8] * v.x() + m.m[9] * v.y() + m.m[10] * v.z());
-    }
-
-    // Object -> world for a normal is the TRANSPOSE of world -> object, which
-    // is why this takes w2o and reads it column-wise.
-    static vec3 apply_normal(const pbrt_scene::Matrix4& w2o, const vec3& n) {
-        return vec3(
-            w2o.m[0] * n.x() + w2o.m[4] * n.y() + w2o.m[8]  * n.z(),
-            w2o.m[1] * n.x() + w2o.m[5] * n.y() + w2o.m[9]  * n.z(),
-            w2o.m[2] * n.x() + w2o.m[6] * n.y() + w2o.m[10] * n.z());
-    }
-
     std::shared_ptr<hittable> object;
     pbrt_scene::Matrix4 o2w;
     pbrt_scene::Matrix4 w2o;

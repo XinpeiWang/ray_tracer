@@ -190,7 +190,11 @@ extern "C" __global__ void __raygen__wf_intersect() {
 		OptixVisibilityMask(255),
 		OPTIX_RAY_FLAG_NONE,
 		0,                                // SBT offset (radiance)
-		2,                                // SBT stride (sphere=0, quad=1)
+		RAY_TYPE_COUNT,                   // SBT stride - see WavefrontPathTracer::
+										   // buildSBT()'s pushTriple comment for why
+										   // this must match the shared IAS's baked
+										   // instance.sbtOffset stride, not a smaller
+										   // per-type record count
 		0,                                // miss SBT index (radiance miss)
 		p0, p1
 	);
@@ -1119,8 +1123,10 @@ extern "C" __global__ void __raygen__wf_shadow() {
 		0.0f,
 		OptixVisibilityMask(255),
 		OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT | OPTIX_RAY_FLAG_DISABLE_CLOSESTHIT,
-		1,                  // SBT offset (shadow)
-		2,                  // SBT stride
+		1,                  // SBT offset (shadow) -- still a valid slot within
+							// each type's now-RAY_TYPE_COUNT-record block; see
+							// __raygen__wf_intersect's own SBT stride comment
+		RAY_TYPE_COUNT,     // SBT stride
 		0,                  // miss SBT index -- shadowSBT_ has its OWN dedicated
 							// missRecordBase with exactly ONE record (see
 							// buildSBT()'s shadowSBT_.missRecordCount = 1), unlike

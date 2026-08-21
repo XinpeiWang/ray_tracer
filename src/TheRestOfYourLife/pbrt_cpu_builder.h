@@ -341,6 +341,32 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		out.triangleCount += perTriangleMaterial.size();
 	}
 
+	// MediumInterface "insideMedium" "" - layer a participating medium INSIDE
+	// a shape already added to world above, exactly the pattern this
+	// codebase's own hand-built scenes use (e.g. scenes_advanced.h's
+	// build_dielectric_medium_scene: a real surface material - glass, or
+	// here whatever the shape's own Material directive resolved to - with
+	// fog/smoke boxed inside it). constant_medium's constructor wants a
+	// scalar sigma_a/sigma_s plus a chromatic albedo tint, not pbrt's own
+	// per-channel RGB pair (see pbrt_flatten::Medium's own comment) -
+	// luminance (this loader's existing weighting convention, e.g.
+	// power_light_sampler.h) collapses each to a scalar, and the scattering
+	// channel ratio survives as the albedo tint. Shared across every shape
+	// kind below (sphere, disk, cylinder) that carries a `medium` field.
+	const auto addMediumIfPresent = [&](const std::shared_ptr<hittable> &shape, int mediumIndex) {
+		if (mediumIndex < 0 || static_cast<std::size_t>(mediumIndex) >= scene.media.size()) return;
+		const pbrt_flatten::Medium &md = scene.media[static_cast<std::size_t>(mediumIndex)];
+		const auto luminance = [](const double c[3]) {
+			return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+		};
+		const double sig_a = luminance(md.sigma_a);
+		const double sig_s = luminance(md.sigma_s);
+		const color albedo = (sig_s > 1e-9)
+			? color(md.sigma_s[0] / sig_s, md.sigma_s[1] / sig_s, md.sigma_s[2] / sig_s)
+			: color(1, 1, 1);
+		world.add(std::make_shared<constant_medium>(shape, sig_a, sig_s, albedo, md.g));
+	};
+
 	// ---- spheres ---------------------------------------------------------
 	for (const pbrt_flatten::Sphere &s : sphs) {
 		auto mat = cachedMaterial(s.material, s.areaLight);
@@ -348,30 +374,7 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 										   s.radius, mat);
 		world.add(sp);
 		if (s.areaLight >= 0) lights.add(sp);
-
-		// MediumInterface "insideMedium" "" - layer a participating medium
-		// INSIDE the sphere already added above, exactly the pattern this
-		// codebase's own hand-built scenes use (e.g. scenes_advanced.h's
-		// build_dielectric_medium_scene: a real surface material - glass,
-		// or here whatever the shape's own Material directive resolved to -
-		// with fog/smoke boxed inside it). constant_medium's constructor
-		// wants a scalar sigma_a/sigma_s plus a chromatic albedo tint, not
-		// pbrt's own per-channel RGB pair (see pbrt_flatten::Medium's own
-		// comment) - luminance (this loader's existing weighting convention,
-		// e.g. power_light_sampler.h) collapses each to a scalar, and the
-		// scattering channel ratio survives as the albedo tint.
-		if (s.medium >= 0 && static_cast<std::size_t>(s.medium) < scene.media.size()) {
-			const pbrt_flatten::Medium &md = scene.media[static_cast<std::size_t>(s.medium)];
-			const auto luminance = [](const double c[3]) {
-				return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-			};
-			const double sig_a = luminance(md.sigma_a);
-			const double sig_s = luminance(md.sigma_s);
-			const color albedo = (sig_s > 1e-9)
-				? color(md.sigma_s[0] / sig_s, md.sigma_s[1] / sig_s, md.sigma_s[2] / sig_s)
-				: color(1, 1, 1);
-			world.add(std::make_shared<constant_medium>(sp, sig_a, sig_s, albedo, md.g));
-		}
+		addMediumIfPresent(sp, s.medium);
 	}
 	out.sphereCount += sphs.size();
 
@@ -389,6 +392,7 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			d.radius, d.innerRadius, d.height, degrees_to_radians(d.phiMaxDeg), xform, mat);
 		world.add(disk);
 		if (d.areaLight >= 0) lights.add(disk);
+		addMediumIfPresent(disk, d.medium);
 	}
 	out.diskCount += disks.size();
 
@@ -400,6 +404,7 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			c.radius, c.zMin, c.zMax, degrees_to_radians(c.phiMaxDeg), xform, mat);
 		world.add(cyl);
 		if (c.areaLight >= 0) lights.add(cyl);
+		addMediumIfPresent(cyl, c.medium);
 	}
 	out.cylinderCount += cylinders.size();
 

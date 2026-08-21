@@ -762,17 +762,46 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 	const bool hasQuads   = numQuads > 0;
 	const bool hasBlp     = numBilinearPatches > 0;
 	const bool hasTri     = numTriangles > 0;
-	// Disk/Cylinder (Phase 4c) - appended AFTER the instanced-geometry pairs
-	// in all three SBTs below, matching OptiXRenderer::buildScene()'s own
-	// diskCylinderSbtOffset placement (its own dedicated GAS/IAS instance,
-	// added last - see that function's comment) so this backend's hit
-	// records land at the same absolute SBT position the shared IAS's baked
-	// instance.sbtOffset expects, regardless of the stride mismatch between
-	// this backend's 2-record-per-type layout and the recursive backend's
-	// 3-record one (see buildScene()'s own comment on why that's still
-	// consistent for a single-build-input GAS).
+	// Disk/Cylinder (Phase 4c) - appended AFTER the instanced-geometry
+	// records in all three SBTs below, matching OptiXRenderer::buildScene()'s
+	// own diskCylinderSbtOffset placement (its own dedicated GAS/IAS
+	// instance, added last - see that function's comment) so this backend's
+	// hit records land at the same absolute SBT position the shared IAS's
+	// baked instance.sbtOffset expects.
 	const bool hasDisks     = numDisks > 0;
 	const bool hasCylinders = numCylinders > 0;
+
+	// Every present type-group below gets RAY_TYPE_COUNT (3) identical
+	// records, not 2. This is NOT about the recursive backend's real
+	// [radiance, shadow, probe] triple - this backend uses three entirely
+	// separate SBTs (Intersect/Probe/Shadow below), each single-purpose, so
+	// one real record per type would suffice on its own. It has to be 3
+	// anyway: this backend's hit-group records live in the SAME shared IAS
+	// (gasHandle_) the recursive backend builds, and OptiX resolves a hit
+	// record as `instance.sbtOffset + build_input_index * sbtStride +
+	// traceOffset`. The instance.sbtOffset values are baked once, by the
+	// recursive backend, using ITS stride (RAY_TYPE_COUNT=3) to account for
+	// every type-group that precedes a given GAS. If this backend's own
+	// array used a different per-type record count (2, as a prior version
+	// of this function did), its cumulative offsets would only agree with
+	// the shared baked values when at most one type-group precedes the
+	// affected one - a discrepancy of `3*N - 2*N = N` records opens up for
+	// N>=2 preceding groups, silently landing on a DIFFERENT type's program
+	// group or past the end of the array (confirmed: a scene with a sphere
+	// AND a triangle mesh present ahead of a disk/cylinder pair reads two
+	// records past where the cylinder's own pair actually starts). Using
+	// RAY_TYPE_COUNT here too makes this backend's cumulative offsets
+	// numerically IDENTICAL to the shared baked ones for any N, not just
+	// N<=1 - the two extra records per type are pure padding (all three
+	// slots of a type's block point at the same program group), the price
+	// of staying on the shared IAS instead of building a second one.
+	const auto pushTriple = [](std::vector<HitGroupRecord>& recs, OptixProgramGroup pg) {
+		for (int i = 0; i < RAY_TYPE_COUNT; ++i) {
+			recs.emplace_back();
+			OPTIX_CHECK(optixSbtRecordPackHeader(pg, &recs.back()));
+			recs.back().data = {};
+		}
+	};
 
 	// ---- Intersect SBT ----
 	{
@@ -792,47 +821,25 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(d_intersectMissRecord_), &missRec,
 							  sizeof(MissRecord), cudaMemcpyHostToDevice));
 
-		// Hit records: SBT offset=0, stride=2 means each PRESENT type (in
-		// [sphere, quad, bilinear patch] order, absent types omitted) needs a
-		// (radiance, unused) pair - see the hasSpheres/hasQuads/hasBlp comment
-		// above for why position among present types, not fixed geometry-type
-		// index, determines the slot.
+		// Hit records: SBT offset=0, stride=RAY_TYPE_COUNT means each PRESENT
+		// type (in [sphere, quad, bilinear patch] order, absent types
+		// omitted) needs RAY_TYPE_COUNT identical records - see the
+		// hasSpheres/hasQuads/hasBlp comment above for why position among
+		// present types, not fixed geometry-type index, determines the slot,
+		// and the pushTriple comment above for why RAY_TYPE_COUNT records
+		// rather than 1.
 		std::vector<HitGroupRecord> hitRecs;
-		if (hasSpheres) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitSpherePG_, &hitRecs.back())); hitRecs.back().data = {}; // unused slot
-		}
-		if (hasQuads) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitQuadPG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitQuadPG_, &hitRecs.back())); hitRecs.back().data = {}; // unused slot
-		}
-		if (hasBlp) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitBilinearPatchPG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitBilinearPatchPG_, &hitRecs.back())); hitRecs.back().data = {}; // unused slot
-		}
-		if (hasTri) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitTrianglePG_, &hitRecs.back())); hitRecs.back().data = {}; // unused slot
-		}
-		// Instanced geometry's own pairs, appended after the scene's packed
-		// region in the same order OptiXRenderer::buildSBT() uses - see
-		// setInstancedGeometryFlags().
-		if (haveInstTri) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
-		}
-		if (haveInstSph) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
-		}
-		if (hasDisks) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitDiskPG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitDiskPG_, &hitRecs.back())); hitRecs.back().data = {};
-		}
-		if (hasCylinders) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitCylinderPG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitCylinderPG_, &hitRecs.back())); hitRecs.back().data = {};
-		}
+		if (hasSpheres) pushTriple(hitRecs, hitSpherePG_);
+		if (hasQuads)   pushTriple(hitRecs, hitQuadPG_);
+		if (hasBlp)     pushTriple(hitRecs, hitBilinearPatchPG_);
+		if (hasTri)     pushTriple(hitRecs, hitTrianglePG_);
+		// Instanced geometry's own records, appended after the scene's
+		// packed region in the same order OptiXRenderer::buildSBT() uses -
+		// see setInstancedGeometryFlags().
+		if (haveInstTri) pushTriple(hitRecs, hitTrianglePG_);
+		if (haveInstSph) pushTriple(hitRecs, hitSpherePG_);
+		if (hasDisks)     pushTriple(hitRecs, hitDiskPG_);
+		if (hasCylinders) pushTriple(hitRecs, hitCylinderPG_);
 
 		size_t sz = hitRecs.size() * sizeof(HitGroupRecord);
 		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_intersectHitRecords_), sz));
@@ -859,12 +866,13 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 
 	// ---- Probe SBT (BSSRDF probe walk, Phase 2) ----
 	// Mirrors the Intersect SBT's own layout EXACTLY (same present-type
-	// ordering, same stride=2 pairing, same instanced-geometry append order)
-	// so the shared IAS instances' baked sbtOffset values resolve correctly
-	// against this SBT too, at the SAME trace-time SBTOffset=0/SBTStride=2
-	// wf_trace_probe_ray() (wavefront_probe.h) already passes - see that
-	// function's own comment. Uses this same pipeline (intersectPipeline_),
-	// just a different SBT/program groups.
+	// ordering, same stride=RAY_TYPE_COUNT padding, same instanced-geometry
+	// append order) so the shared IAS instances' baked sbtOffset values
+	// resolve correctly against this SBT too, at the SAME trace-time
+	// SBTOffset=0/SBTStride=RAY_TYPE_COUNT wf_trace_probe_ray()
+	// (wavefront_probe.h) already passes - see that function's own comment.
+	// Uses this same pipeline (intersectPipeline_), just a different
+	// SBT/program groups.
 	{
 		RaygenRecord rg;
 		OPTIX_CHECK(optixSbtRecordPackHeader(raygenProbePG_, &rg));
@@ -881,38 +889,14 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 							  sizeof(MissRecord), cudaMemcpyHostToDevice));
 
 		std::vector<HitGroupRecord> hitRecs;
-		if (hasSpheres) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
-		}
-		if (hasQuads) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeQuadPG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeQuadPG_, &hitRecs.back())); hitRecs.back().data = {};
-		}
-		if (hasBlp) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeBilinearPatchPG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeBilinearPatchPG_, &hitRecs.back())); hitRecs.back().data = {};
-		}
-		if (hasTri) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
-		}
-		if (haveInstTri) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
-		}
-		if (haveInstSph) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
-		}
-		if (hasDisks) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeDiskPG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeDiskPG_, &hitRecs.back())); hitRecs.back().data = {};
-		}
-		if (hasCylinders) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeCylinderPG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(hitProbeCylinderPG_, &hitRecs.back())); hitRecs.back().data = {};
-		}
+		if (hasSpheres)   pushTriple(hitRecs, hitProbeSpherePG_);
+		if (hasQuads)     pushTriple(hitRecs, hitProbeQuadPG_);
+		if (hasBlp)       pushTriple(hitRecs, hitProbeBilinearPatchPG_);
+		if (hasTri)       pushTriple(hitRecs, hitProbeTrianglePG_);
+		if (haveInstTri)  pushTriple(hitRecs, hitProbeTrianglePG_);
+		if (haveInstSph)  pushTriple(hitRecs, hitProbeSpherePG_);
+		if (hasDisks)     pushTriple(hitRecs, hitProbeDiskPG_);
+		if (hasCylinders) pushTriple(hitRecs, hitProbeCylinderPG_);
 
 		size_t sz = hitRecs.size() * sizeof(HitGroupRecord);
 		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_probeHitRecords_), sz));
@@ -953,40 +937,16 @@ bool WavefrontPathTracer::buildSBT(unsigned int numSpheres, unsigned int numQuad
 							  sizeof(MissRecord), cudaMemcpyHostToDevice));
 
 		std::vector<HitGroupRecord> hitRecs;
-		if (hasSpheres) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
-		}
-		if (hasQuads) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowQuadPG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowQuadPG_, &hitRecs.back())); hitRecs.back().data = {};
-		}
-		if (hasBlp) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowBilinearPatchPG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowBilinearPatchPG_, &hitRecs.back())); hitRecs.back().data = {};
-		}
-		if (hasTri) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
-		}
-		// Same appended pairs as the intersect SBT above - both are indexed
-		// by the same per-instance sbtOffset.
-		if (haveInstTri) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowTrianglePG_, &hitRecs.back())); hitRecs.back().data = {};
-		}
-		if (haveInstSph) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowSpherePG_, &hitRecs.back())); hitRecs.back().data = {};
-		}
-		if (hasDisks) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowDiskPG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowDiskPG_, &hitRecs.back())); hitRecs.back().data = {};
-		}
-		if (hasCylinders) {
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowCylinderPG_, &hitRecs.back())); hitRecs.back().data = {};
-			hitRecs.emplace_back(); OPTIX_CHECK(optixSbtRecordPackHeader(anyhitShadowCylinderPG_, &hitRecs.back())); hitRecs.back().data = {};
-		}
+		if (hasSpheres) pushTriple(hitRecs, anyhitShadowSpherePG_);
+		if (hasQuads)   pushTriple(hitRecs, anyhitShadowQuadPG_);
+		if (hasBlp)     pushTriple(hitRecs, anyhitShadowBilinearPatchPG_);
+		if (hasTri)     pushTriple(hitRecs, anyhitShadowTrianglePG_);
+		// Same appended records as the intersect SBT above - both are
+		// indexed by the same per-instance sbtOffset.
+		if (haveInstTri)  pushTriple(hitRecs, anyhitShadowTrianglePG_);
+		if (haveInstSph)  pushTriple(hitRecs, anyhitShadowSpherePG_);
+		if (hasDisks)     pushTriple(hitRecs, anyhitShadowDiskPG_);
+		if (hasCylinders) pushTriple(hitRecs, anyhitShadowCylinderPG_);
 
 		size_t sz = hitRecs.size() * sizeof(HitGroupRecord);
 		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_shadowHitRecords_), sz));

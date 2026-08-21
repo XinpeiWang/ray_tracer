@@ -249,9 +249,9 @@ private:
     OptixShaderBindingTable intersectSBT_ = {};
     OptixShaderBindingTable shadowSBT_    = {};
     // Probe SBT - same intersectPipeline_, own raygen/hit records (mirrors
-    // intersectSBT_'s own per-present-type/stride-2 hit-record layout
-    // exactly, just pointing at the probe hit groups instead of the
-    // radiance ones - see buildSBT()'s own comment).
+    // intersectSBT_'s own per-present-type/stride-RAY_TYPE_COUNT hit-record
+    // layout exactly, just pointing at the probe hit groups instead of the
+    // radiance ones - see buildSBT()'s own pushTriple comment).
     OptixShaderBindingTable probeSBT_     = {};
     CUdeviceptr d_intersectRaygenRecord_ = 0;
     CUdeviceptr d_intersectMissRecord_   = 0;

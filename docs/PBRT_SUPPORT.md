@@ -111,7 +111,11 @@ loader and no longer match the code:
   unlike CPU, a GPU disk/cylinder used as an `AreaLightSource` is not yet
   registered for explicit NEE sampling on either backend (no
   `GpuLightKind::Disk`/`::Cylinder`), so it still emits when directly hit but
-  converges noisier than the CPU render of the same scene.
+  converges noisier than the CPU render of the same scene. Similarly, CPU
+  wraps a disk/cylinder in a participating medium when `MediumInterface`
+  assigns one (matching Sphere's own handling); GPU does not yet read
+  `DiskData`/`CylinderData`'s medium field on either backend, so the same
+  directive silently produces a disk/cylinder with no medium on GPU.
 
 (The `dielectric roughness` and `conductor` routing gaps once listed here were
 fixed — see the Materials table above, which is the source of truth for

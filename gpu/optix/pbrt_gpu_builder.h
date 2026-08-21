@@ -72,8 +72,9 @@ struct BuildStats {
 	std::size_t triangles = 0;
 	std::size_t spheres = 0;
 	std::size_t bilinearPatches = 0;
-	// Shape "disk"/"cylinder" - recursive backend only (Phase 4b); see
-	// optix_types.h's DiskData/CylinderData comment.
+	// Shape "disk"/"cylinder" - supported on both the recursive (Phase 4b)
+	// and wavefront (Phase 4c) backends; see optix_types.h's DiskData/
+	// CylinderData comment.
 	std::size_t disks = 0;
 	std::size_t cylinders = 0;
 	std::size_t quadLights = 0;
@@ -607,17 +608,18 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 	stats.bilinearPatches = out.bilinearPatches.size();
 
 	// ---- disks / cylinders -------------------------------------------------
-	// Shape "disk"/"cylinder" - recursive GPU backend only (Phase 4b; see
-	// optix_types.h's DiskData/CylinderData comment for why these carry
-	// their own transform rather than being baked to world space the way
-	// Sphere is). Not registered as NEE-samplable lights yet even when
-	// areaLight >= 0 (no GpuLightKind::Disk/Cylinder exists) - an emissive
-	// one still emits when directly hit, just without explicit light
-	// sampling, same "hit but not aimed-at" tier documented in
-	// docs/PBRT_SUPPORT.md. The medium field (d.medium/c.medium) is
-	// intentionally unread here too, matching pbrt_cpu_builder.h's own
-	// disk/cylinder loop, which doesn't consume it either - not a new
-	// GPU-only gap.
+	// Shape "disk"/"cylinder" - supported on both the recursive (Phase 4b)
+	// and wavefront (Phase 4c) GPU backends; see optix_types.h's DiskData/
+	// CylinderData comment for why these carry their own transform rather
+	// than being baked to world space the way Sphere is. Not registered as
+	// NEE-samplable lights yet even when areaLight >= 0 (no
+	// GpuLightKind::Disk/Cylinder exists) - an emissive one still emits when
+	// directly hit, just without explicit light sampling, same "hit but not
+	// aimed-at" tier documented in docs/PBRT_SUPPORT.md. The medium field
+	// (d.medium/c.medium) is intentionally unread here, UNLIKE the sphere
+	// loop above (which resolves s.medium via mediumMaterialIndex()) - a
+	// real, known GPU-only gap (a MediumInterface around a disk/cylinder is
+	// silently dropped on GPU), not yet fixed here.
 	const auto flattenTransform = [](const double xform[16], float out12[12]) {
 		for (int row = 0; row < 3; ++row)
 			for (int col = 0; col < 4; ++col)

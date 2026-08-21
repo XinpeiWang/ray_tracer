@@ -290,3 +290,69 @@ TEST(PbrtGpuDiskCylinderRenderTest, WavefrontDiskLightAndCylinderRenderWithoutNa
 
 	expectFiniteAndLit(framebuffer, "wavefront");
 }
+
+// ---------------------------------------------------------------------------
+// Regression test for the wavefront SBT stride mismatch found in code review:
+// WavefrontPathTracer::buildSBT() padded every present type-group to only 2
+// records, but the shared IAS's baked instance.sbtOffset values are computed
+// by OptiXRenderer::buildScene() using stride=RAY_TYPE_COUNT(3) - correct
+// only when at most one type-group precedes the affected one. kDiskCylinderScene
+// above (triangle, then disk, then cylinder - one group before disk/cylinder)
+// happened to stay inside that safe margin and passed even with the bug
+// present. This scene adds a SPHERE ahead of the triangle, putting TWO
+// type-groups (sphere, then triangle) before the disk/cylinder region, which
+// is exactly the case that spilled disk hits into the cylinder's own SBT
+// records (and cylinder hits one record past the end of the array) before
+// buildSBT()'s pushTriple fix (padding every group to RAY_TYPE_COUNT records
+// so its own cumulative offsets match the shared baked ones exactly, for any
+// number of preceding groups).
+// ---------------------------------------------------------------------------
+TEST(PbrtGpuDiskCylinderRenderTest, WavefrontSphereTriangleDiskCylinderRenderWithoutNaN) {
+	if (!optix_is_available()) {
+		GTEST_SKIP() << "OptiX not available on this system";
+	}
+
+	const pbrt_flatten::FlatScene flat = flattenSource(
+		"LookAt 0 1 -4    0 1 0    0 1 0\n"
+		"Camera \"perspective\" \"float fov\" [ 50 ]\n"
+		"WorldBegin\n"
+		"AttributeBegin\n"
+		"  AreaLightSource \"diffuse\" \"rgb L\" [ 12 12 12 ]\n"
+		"  Translate 0 2.0 0\n"
+		"  Rotate 90 1 0 0\n"
+		"  Shape \"disk\" \"float radius\" [ 0.6 ]\n"
+		"AttributeEnd\n"
+		"Material \"diffuse\" \"rgb reflectance\" [ 0.75 0.75 0.75 ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2  0 2 3 ]\n"
+		"  \"point3 P\" [ -2 0 -2   2 0 -2   2 0 2   -2 0 2 ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2  0 2 3 ]\n"
+		"  \"point3 P\" [ -2 0 2   2 0 2   2 3 2   -2 3 2 ]\n"
+		"Translate -0.8 0.4 0\n"
+		"Shape \"sphere\" \"float radius\" [ 0.4 ]\n"
+		"Translate 0.8 0.1 0\n"
+		"Shape \"cylinder\" \"float radius\" [ 0.4 ] \"float zmin\" [ -0.5 ] \"float zmax\" [ 0.5 ]\n");
+
+	SceneData scene;
+	const pbrt_gpu::BuildStats stats = pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(stats.spheres, 1u);
+	ASSERT_EQ(stats.disks, 1u);
+	ASSERT_EQ(stats.cylinders, 1u);
+	ASSERT_FALSE(scene.triangles.empty());
+
+	OptiXRenderer renderer;
+	ASSERT_TRUE(renderer.initialize()) << "OptiX device init failed";
+	ASSERT_TRUE(renderer.buildScene(
+		scene.spheres, scene.quads, scene.materials,
+		scene.lightIndices, scene.lightKinds, scene.punctualLights,
+		scene.bilinearPatches, scene.triangles, scene.disks, scene.cylinders))
+		<< "buildScene() failed - GAS/SBT wiring for the new disk/cylinder region";
+
+	renderer.enableWavefront(true);
+
+	const GpuCameraParams cam = pinholeCameraFor(flat);
+	std::vector<float> framebuffer(static_cast<std::size_t>(kRenderW) * kRenderH * 3);
+	ASSERT_TRUE(renderer.render(kRenderW, kRenderH, /*spp=*/32, /*maxDepth=*/8, cam, framebuffer.data()))
+		<< "render() failed";
+
+	expectFiniteAndLit(framebuffer, "wavefront sphere+triangle+disk+cylinder");
+}

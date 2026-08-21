@@ -988,10 +988,9 @@ struct LaunchParams {
 	unsigned int numQuads;
 	BilinearPatchData* bilinearPatches;
 	unsigned int numBilinearPatches;
-	// Disk/Cylinder (see DiskData/CylinderData's own comment) - recursive
-	// backend only for now (Phase 4b); the wavefront backend refuses a scene
-	// containing either rather than silently mis-rendering it (see
-	// WavefrontPathTracer::render()'s own guard).
+	// Disk/Cylinder (see DiskData/CylinderData's own comment) - supported on
+	// both the recursive backend (Phase 4b) and the wavefront backend
+	// (Phase 4c, WavefrontLaunchParams' own disks/cylinders fields).
 	DiskData* disks;
 	unsigned int numDisks;
 	CylinderData* cylinders;
