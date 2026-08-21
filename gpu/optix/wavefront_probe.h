@@ -626,7 +626,6 @@ extern "C" __global__ void __raygen__wf_probe() {
 	}
 	exitItem.pixelIndex = item.pixelIndex;
 	exitItem.depth      = item.depth;
-	exitItem.any_nonspecular = item.any_nonspecular;
 
 	float3 exitPos, exitNormal, Sp;
 	float pdf, sampleProb;

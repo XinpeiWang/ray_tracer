@@ -205,12 +205,13 @@ struct BssrdfProbeWorkItem {
 	float  wavelength_pdfs[kWFNWavelengths];
 	int    pixelIndex;
 	int    depth;
-	// Carried from HitWorkItem::any_nonspecular (see its own comment) -
-	// resumed as-is by BssrdfExitWorkItem::any_nonspecular once the probe
-	// walk resolves, since the dielectric entry transmission that queued
-	// this probe is itself a specular event (see MaterialType::Subsurface's
-	// case in evaluate_materials, wavefront_kernels.cu) and doesn't change it.
-	int    any_nonspecular;
+	// Deliberately does NOT carry any_nonspecular (unlike RayWorkItem/
+	// HitWorkItem): resolve_bssrdf_exit() always resumes the exit bounce as
+	// MaterialType::NormalizedFresnel with is_specular=false, which
+	// unconditionally sets the resumed path's own any_nonspecular to 1
+	// regardless of what came before, and NormalizedFresnel is never one of
+	// the 5 regularized GGX types either - so a carried-through flag here
+	// would read correctly but influence nothing observable.
 };
 
 // Result of one BSSRDF probe walk (__raygen__wf_probe, wavefront_probe.h) -
@@ -239,13 +240,8 @@ struct BssrdfExitWorkItem {
 	float  wavelength_pdfs[kWFNWavelengths];
 	int    pixelIndex;
 	int    depth;
-	// Carried from BssrdfProbeWorkItem::any_nonspecular (see its own
-	// comment) - resolve_bssrdf_exit() passes this as wf_finish_material_
-	// scatter's do_regularize (harmless here, MaterialType::NormalizedFresnel
-	// isn't one of the 5 regularized types), which then folds it into the
-	// resumed path's own next.any_nonspecular alongside the exit bounce's
-	// own is_specular=false.
-	int    any_nonspecular;
+	// See BssrdfProbeWorkItem's own comment - any_nonspecular deliberately
+	// omitted here too, for the same reason.
 };
 
 // ============================================================================

@@ -33,6 +33,24 @@ template<typename T> CPU_GPU T GGX_AbsCosTheta(T x,T y,T z){
 }
 
 // TrowbridgeReitz NDF
+// pbrt-v4 path-regularization clamp (Clamp(2*alpha, 0.1, 0.3)) - widens a
+// near-specular GGX alpha once a path has taken a prior non-specular bounce,
+// to cut fireflies from hard-to-sample glossy lobes late in a bounce chain.
+// Single CPU_GPU source of truth for this formula: TrowbridgeReitz::
+// Regularize() below delegates to it, as does the CPU integrator's
+// material_simple.h::regularize_alpha() and the GPU wavefront backend's
+// wavefront_kernels.cu call sites - previously three independently
+// maintained (float/double) copies of the same five lines.
+template<typename T>
+CPU_GPU T RegularizeAlpha(T a) {
+  if (a < T(0.3)) {
+    a *= T(2);
+    if (a < T(0.1)) a = T(0.1);
+    else if (a > T(0.3)) a = T(0.3);
+  }
+  return a;
+}
+
 template<typename T>
 struct TrowbridgeReitz {
   T alpha_x, alpha_y;
@@ -184,9 +202,8 @@ struct TrowbridgeReitz {
 
   // Regularize (pbrt-v4: void Regularize()) -- bump low alphas for subsurface use
   CPU_GPU void Regularize(){
-    // pbrt-v4: Clamp(2*alpha, 0.1, 0.3)
-    if(alpha_x<T(0.3)){alpha_x*=T(2); if(alpha_x<T(0.1))alpha_x=T(0.1); else if(alpha_x>T(0.3))alpha_x=T(0.3);}
-    if(alpha_y<T(0.3)){alpha_y*=T(2); if(alpha_y<T(0.1))alpha_y=T(0.1); else if(alpha_y>T(0.3))alpha_y=T(0.3);}
+    alpha_x = RegularizeAlpha(alpha_x);
+    alpha_y = RegularizeAlpha(alpha_y);
   }
 
   CPU_GPU static T RoughnessToAlpha(T r){

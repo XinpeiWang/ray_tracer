@@ -140,29 +140,29 @@ __device__ __forceinline__ bool wf_near_zero(const float3& v) {
 	return fabsf(v.x) < s && fabsf(v.y) < s && fabsf(v.z) < s;
 }
 
-// Wavefront-native duplicate (float, not CPU's double) of material_simple.h's
-// regularize_alpha() - pbrt-v4's path-regularization heuristic: once a path
-// has taken a non-specular bounce, widen every subsequent GGX lobe it hits
-// (Conductor/RoughMetal/RoughDielectric/CoatedDiffuse/CoatedConductor - the
-// same 5 classes material_pbrt.h gates behind do_regularize) to cut fireflies
-// from near-specular-but-not-quite surfaces catching a hard-to-sample light
-// path late in a bounce chain. Applied consistently to BOTH the BSDF-sampling
-// alpha (each glossy case's own switch-arm, evaluate_materials()/
-// evaluate_materials_dielectric()) AND the NEE alpha (wf_finish_material_
-// scatter's glossy_alpha) - unlike CPU, which only ever regularizes the
-// scatter() side (scattering_pdf() takes no do_regularize parameter, see that
-// class's own comment), this backend's shared wf_finish_material_scatter tail
-// re-derives alpha from the same materials[matIdx] lookup for NEE, so
-// regularizing just one side would desync the BSDF-sampled continuation's
-// true pdf from what evalGlossyF/brdf_pdf_override reports for it - a real
-// MIS-weight mismatch, not just a stylistic difference from CPU's scope.
-__device__ __forceinline__ float wf_regularize_alpha(float a) {
-	if (a < 0.3f) {
-		a *= 2.0f;
-		if (a < 0.1f) a = 0.1f;
-		else if (a > 0.3f) a = 0.3f;
-	}
-	return a;
+// GGX alpha for one of the 5 pbrt-v4 rough/layered material types (Conductor/
+// RoughMetal/RoughDielectric/CoatedDiffuse/CoatedConductor - the same 5
+// classes material_pbrt.h gates behind do_regularize), optionally widened by
+// path regularization: once a path has taken a non-specular bounce, widen
+// every subsequent GGX lobe it hits to cut fireflies from near-specular-but-
+// not-quite surfaces catching a hard-to-sample light path late in a bounce
+// chain. RegularizeAlpha() (src/shared/microfacet.h) is the single CPU_GPU
+// source of truth for the widening formula, shared with TrowbridgeReitz::
+// Regularize() and material_simple.h's CPU-side regularize_alpha() - this is
+// just the "derive alpha from mat.fuzz, then conditionally widen" pairing
+// every one of this file's glossy call sites needs, hoisted into one place
+// (mirrors the project's own prior "Hoist repeated isGlossyType check"
+// precedent in this same function) so the BSDF-sampling side (each glossy
+// switch-arm below) and the NEE side (wf_finish_material_scatter's
+// glossy_alpha, which callers now pass in rather than re-deriving) always
+// agree - unlike CPU, which only ever regularizes the scatter() side
+// (scattering_pdf() takes no do_regularize parameter, see that class's own
+// comment), disagreeing here would desync the BSDF-sampled continuation's
+// true pdf from what evalGlossyF/brdf_pdf_override reports for it, a real
+// MIS-weight mismatch.
+__device__ __forceinline__ float wf_glossy_alpha(const MaterialData& mat, bool do_regularize) {
+	float a = sqrtf(mat.fuzz);
+	return do_regularize ? RegularizeAlpha(a) : a;
 }
 
 // Duplicated from optix_device_helpers.h's material_requires_sphere_only_
@@ -1032,12 +1032,25 @@ extern "C" __global__ void generate_camera_rays(
 __device__ __forceinline__ void wf_finish_material_scatter(
 	MaterialType matType, float nfEta, int matIdx,
 	// True once any PRIOR bounce along this path was non-specular (see
-	// RayWorkItem::any_nonspecular's own comment, wavefront_types.h) -
-	// widens glossy_alpha below via wf_regularize_alpha() for the 5 GGX-
-	// distributed material types, and is folded (OR'd with !is_specular) into
-	// the pushed next-bounce RayWorkItem's own any_nonspecular at this
-	// function's tail, regardless of matType.
+	// RayWorkItem::any_nonspecular's own comment, wavefront_types.h) - folded
+	// (OR'd with !is_specular) into the pushed next-bounce RayWorkItem's own
+	// any_nonspecular at this function's tail, regardless of matType. Does
+	// NOT drive glossy_alpha's regularization directly (see glossyAlpha's
+	// own comment below) - kept only for this tail-propagation role.
 	bool do_regularize,
+	// Pre-computed via wf_glossy_alpha() by whichever glossy switch-arm this
+	// call follows (Conductor/RoughDielectric/RoughMetal/CoatedDiffuse/
+	// CoatedConductor - see that function's own comment), already folding in
+	// do_regularize's widening. Passed in rather than re-derived from
+	// materials[matIdx].fuzz here, so the NEE alpha (glossy_alpha below) is
+	// always bit-identical to the alpha the caller's own BSDF-sampling step
+	// just used - re-deriving independently would risk the two silently
+	// drifting apart if either formula is ever edited without the other.
+	// Meaningless/unread for every non-glossy matType (glossy_isType below
+	// gates its only use) - callers that never reach a glossy case (e.g.
+	// evaluate_materials_simple's Lambertian/Metal, resolve_bssrdf_exit's
+	// NormalizedFresnel) just pass 0.0f.
+	float glossyAlpha,
 	const float3& normal, const float3& hit_point,
 	unsigned int& seed,
 	const SampledSpectrum<kWFNWavelengths>& throughput,
@@ -1129,7 +1142,10 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		matType == MaterialType::CoatedDiffuse || matType == MaterialType::CoatedConductor ||
 		matType == MaterialType::RoughMetal);
 	float3 glossy_tan = make_float3(0.0f,0.0f,0.0f), glossy_bit = make_float3(0.0f,0.0f,0.0f);
-	float glossy_wi_x = 0.0f, glossy_wi_y = 0.0f, glossy_wi_z = 0.0f, glossy_alpha = 0.0f;
+	float glossy_wi_x = 0.0f, glossy_wi_y = 0.0f, glossy_wi_z = 0.0f;
+	// See glossyAlpha's own parameter comment - already regularized by the
+	// caller, not re-derived here.
+	float glossy_alpha = glossyAlpha;
 	bool glossy_valid = false;
 	if (glossy_isType) {
 		float3 up = (fabsf(normal.x) > 0.9f) ? make_float3(0.0f,1.0f,0.0f) : make_float3(1.0f,0.0f,0.0f);
@@ -1138,11 +1154,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		glossy_wi_x = dot(phaseWo, glossy_tan);
 		glossy_wi_y = dot(phaseWo, glossy_bit);
 		glossy_wi_z = dot(phaseWo, normal);
-		if (glossy_wi_z > 0.0f) {
-			glossy_valid = true;
-			glossy_alpha = sqrtf(materials[matIdx].fuzz);
-			if (do_regularize) glossy_alpha = wf_regularize_alpha(glossy_alpha);
-		}
+		if (glossy_wi_z > 0.0f) glossy_valid = true;
 	}
 
 	auto evalGlossyF = [&](const float3& queryDir, float3& outF, float& outPdf) -> bool {
@@ -1815,6 +1827,14 @@ extern "C" __global__ void evaluate_materials(
 	// back-face hit - see that case's own comment.
 	float matEta = mat.ior;
 	float  phaseG  = 0.0f;
+	// Set inside whichever glossy case (Conductor/RoughMetal/RoughDielectric/
+	// CoatedDiffuse/CoatedConductor) this hit takes, via wf_glossy_alpha() -
+	// passed to wf_finish_material_scatter's glossyAlpha parameter below so
+	// NEE reuses the exact same regularized alpha the switch case's own
+	// BSDF-sampling step just used, instead of re-deriving it a second time.
+	// Left at 0 (harmless - see that parameter's own comment) for every
+	// non-glossy case.
+	float glossyAlphaForNEE = 0.0f;
 
 	// Helper: uplift RGB albedo to SampledSpectrum via device sigmoid polynomial
 	auto albedoSpectrum = [&](float3 rgb) -> SS {
@@ -1934,7 +1954,6 @@ extern "C" __global__ void evaluate_materials(
 			}
 			probeItem.pixelIndex = h.pixelIndex;
 			probeItem.depth      = h.depth;
-			probeItem.any_nonspecular = h.any_nonspecular;
 			bssrdfProbeQueue.push(probeItem);
 		}
 		return;
@@ -1996,102 +2015,18 @@ extern "C" __global__ void evaluate_materials(
 		is_specular = true;
 		break;
 	}
-	case MaterialType::RoughDielectric: {
-		// Ported from optix_device_helpers.h's recursive-path case (see its
-		// own comments) - this one previously diverged in three ways that
-		// together made every rough-dielectric surface render pure black:
-		//  1. wi_z<=0 terminated the path instead of flipping wi into the
-		//     upper hemisphere - a ray exiting the glass from inside
-		//     legitimately lands with wi_z<0 in the local frame, and killing
-		//     it there means light that entered the sphere almost never
-		//     found its way back out.
-		//  2. Fresnel used mat.ior directly with no front/back-face
-		//     adjustment, instead of pbrt-v4's front_face ? 1/ior : ior
-		//     convention (see FrDielectric's own eta contract).
-		//  3. attenuation read mat.albedo, which optix_types.h's own
-		//     MaterialData comment documents as unused/undefined for
-		//     RoughDielectric (a union slot shared with Hair/Medium/
-		//     DiffuseTransmission/Principled's own fields) - for a material
-		//     built via add_rough_dielectric() (scene_builder.cpp), which
-		//     never writes albedo, that slot is always zero, so every
-		//     scatter event was multiplied by black regardless of what
-		//     light actually reached the surface. The correct weight is the
-		//     VNDF-sampling shadow-masking ratio G(wo,wi)/G1(wi) - the D,
-		//     cos, and pdf terms cancel under VNDF importance sampling,
-		//     matching pbrt-v4's RoughDielectricBxDF exactly.
-		float rd_alpha = sqrtf(mat.fuzz);
-		if (h.any_nonspecular) rd_alpha = wf_regularize_alpha(rd_alpha);
-		bool rd_front_face = h.frontFace != 0;
-		float rd_ri = rd_front_face ? (1.0f / mat.ior) : mat.ior;
-		float3 n = normal;
-		float3 up_v = (fabsf(n.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
-		float3 tan_v  = normalize(cross(up_v, n));
-		float3 bitan = cross(n, tan_v);
-		float3 wi_w = normalize(-h.rayDir);
-		float wi_x = dot(wi_w, tan_v), wi_y = dot(wi_w, bitan), wi_z = dot(wi_w, n);
-		if (wi_z < 0.0f) { wi_z = -wi_z; wi_x = -wi_x; wi_y = -wi_y; }
-		TrowbridgeReitz<float> rd_dist(rd_alpha, rd_alpha);
-		float wm_x, wm_y, wm_z;
-		rd_dist.Sample_wm(wi_x, wi_y, wi_z, wf_rand(seed), wf_rand(seed), wm_x, wm_y, wm_z);
-		float rd_dot = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
-		float Fr = FrDielectric(rd_dot, 1.0f / rd_ri);
-		float wo_x, wo_y, wo_z;
-		if (wf_rand(seed) < Fr) {
-			// Reflect
-			wo_x = 2.0f*rd_dot*wm_x - wi_x;
-			wo_y = 2.0f*rd_dot*wm_y - wi_y;
-			wo_z = 2.0f*rd_dot*wm_z - wi_z;
-			if (wo_z <= 0.0f) { scattered = false; break; }
-			scattered_dir = normalize(wo_x*tan_v + wo_y*bitan + wo_z*n);
-		} else {
-			// Refract
-			float3 wm_world = wm_x*tan_v + wm_y*bitan + wm_z*n;
-			float eta = rd_front_face ? (1.0f / mat.ior) : mat.ior;
-			float3 refracted = wf_refract(normalize(h.rayDir), wm_world, eta);
-			wo_x = dot(refracted, tan_v); wo_y = dot(refracted, bitan); wo_z = dot(refracted, n);
-			scattered_dir = refracted;
-		}
-		{
-			float wo_z_abs = fabsf(wo_z);
-			float G2 = rd_dist.G(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z_abs);
-			float G1_wi = rd_dist.G1(wi_x, wi_y, wi_z);
-			float w = (G1_wi > 1e-8f) ? (G2 / G1_wi) : 0.0f;
-			attenuation = SS(w);
-		}
-		scattered   = true;
-
-		// Real NEE/MIS for glossy (non-EffectivelySmooth) rough glass, via
-		// wf_finish_material_scatter's shared evalGlossyF (see its own
-		// comment - reflection-hemisphere-only, a documented scope
-		// reduction vs. the recursive backend's two-sided glass NEE).
-		// matEta is overridden to rd_ri (front_face ? 1/ior : ior) since
-		// wf_finish_material_scatter's `nfEta` slot otherwise carries plain
-		// mat.ior (correct for NormalizedFresnel, wrong for a back-face
-		// RoughDielectric hit). phaseWo carries the UNFLIPPED wi_w (matches
-		// evalGlossyF's own, equally unflipped, frame reconstruction -
-		// the defensive wi_z<0 flip a few lines up is a rare-edge-case
-		// safety net for the BSDF-sampled continuation only, not something
-		// evalGlossyF needs to replicate: a genuinely non-front-facing wi
-		// there just yields zero NEE contribution instead of the wrong
-		// answer). pdf uses the REAL RoughDielectricBxDF::pdf() (not the
-		// GGX-reflection-shape proxy Conductor/CoatedDiffuse/CoatedConductor
-		// use below) since it already correctly spans both lobes - needed
-		// because the BSDF-sampled continuation direction can legitimately
-		// be a refraction even when NEE itself only covers reflection.
-		if (!rd_dist.EffectivelySmooth()) {
-			is_specular = false;
-			matEta = rd_ri;
-			RoughDielectricBxDF<float> rd_bxdf{ mat.ior, rd_alpha, rd_alpha };
-			brdf_pdf_override = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, wo_x, wo_y, wo_z);
-			phaseWo = wi_w;
-		} else {
-			is_specular = true;
-		}
-		break;
-	}
+	// MaterialType::RoughDielectric has no case here (unlike the other 4
+	// glossy types below) - wavefront_programs.cu's __raygen__wf_intersect
+	// routes every Dielectric/RoughDielectric hit into dielectricHitQueue
+	// (consumed only by evaluate_materials_dielectric(), which has the real,
+	// live copy of this case), so hitQueue - and therefore this kernel - can
+	// never actually see one. A RoughDielectric case here would be dead code
+	// that looks live; if that routing ever changes, the `default:` trap
+	// below will catch the drift loudly instead of silently running stale
+	// unmaintained logic.
 	case MaterialType::Conductor: {
-		float c_alpha = sqrtf(mat.fuzz);
-		if (h.any_nonspecular) c_alpha = wf_regularize_alpha(c_alpha);
+		float c_alpha = wf_glossy_alpha(mat, (bool)h.any_nonspecular);
+		glossyAlphaForNEE = c_alpha;
 		float3 cn = normal;
 		float3 cup = (fabsf(cn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
 		float3 ctan   = normalize(cross(cup, cn));
@@ -2139,8 +2074,8 @@ extern "C" __global__ void evaluate_materials(
 		// FrConductorRGB (RoughMetalBxDF has no real Fresnel model). NOT the
 		// same material as MaterialType::Metal (fuzz-perturbed mirror, a
 		// different model - CPU's plain `metal` class).
-		float rm_alpha = sqrtf(mat.fuzz);
-		if (h.any_nonspecular) rm_alpha = wf_regularize_alpha(rm_alpha);
+		float rm_alpha = wf_glossy_alpha(mat, (bool)h.any_nonspecular);
+		glossyAlphaForNEE = rm_alpha;
 		float3 rmn = normal;
 		float3 rmup = (fabsf(rmn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
 		float3 rmtan   = normalize(cross(rmup, rmn));
@@ -2176,8 +2111,8 @@ extern "C" __global__ void evaluate_materials(
 		break;
 	}
 	case MaterialType::CoatedDiffuse: {
-		float cd_alpha = sqrtf(mat.fuzz);
-		if (h.any_nonspecular) cd_alpha = wf_regularize_alpha(cd_alpha);
+		float cd_alpha = wf_glossy_alpha(mat, (bool)h.any_nonspecular);
+		glossyAlphaForNEE = cd_alpha;
 		float3 cdn = normal;
 		float3 cdup = (fabsf(cdn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
 		float3 cdtan   = normalize(cross(cdup, cdn));
@@ -2289,8 +2224,8 @@ extern "C" __global__ void evaluate_materials(
 		// viewing direction and skipped both the refraction-into-the-coat
 		// step and the T_in/T_out weighting entirely, making the conductor
 		// visible at full strength as if the coat weren't there.
-		float cc_alpha = sqrtf(mat.fuzz);
-		if (h.any_nonspecular) cc_alpha = wf_regularize_alpha(cc_alpha);
+		float cc_alpha = wf_glossy_alpha(mat, (bool)h.any_nonspecular);
+		glossyAlphaForNEE = cc_alpha;
 		float3 ccn = normal;
 		float3 ccup = (fabsf(ccn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
 		float3 cctan   = normalize(cross(ccup, ccn));
@@ -2753,7 +2688,7 @@ extern "C" __global__ void evaluate_materials(
 		return;
 	}
 
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, normal, hit_point, seed,
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, normal, hit_point, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -2865,6 +2800,14 @@ extern "C" __global__ void evaluate_materials_simple(
 	float3 phaseWo = make_float3(0.0f, 0.0f, 0.0f);
 	float matEta = mat.ior;
 	float  phaseG  = 0.0f;
+	// Set inside whichever glossy case (Conductor/RoughMetal/RoughDielectric/
+	// CoatedDiffuse/CoatedConductor) this hit takes, via wf_glossy_alpha() -
+	// passed to wf_finish_material_scatter's glossyAlpha parameter below so
+	// NEE reuses the exact same regularized alpha the switch case's own
+	// BSDF-sampling step just used, instead of re-deriving it a second time.
+	// Left at 0 (harmless - see that parameter's own comment) for every
+	// non-glossy case.
+	float glossyAlphaForNEE = 0.0f;
 
 	auto albedoSpectrum = [&](float3 rgb) -> SS {
 		float c0, c1, c2;
@@ -2908,7 +2851,7 @@ extern "C" __global__ void evaluate_materials_simple(
 		return;
 	}
 
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, normal, hit_point, seed,
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, normal, hit_point, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -3005,6 +2948,14 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	float3 phaseWo = make_float3(0.0f, 0.0f, 0.0f);
 	float matEta = mat.ior;
 	float  phaseG  = 0.0f;
+	// Set inside whichever glossy case (Conductor/RoughMetal/RoughDielectric/
+	// CoatedDiffuse/CoatedConductor) this hit takes, via wf_glossy_alpha() -
+	// passed to wf_finish_material_scatter's glossyAlpha parameter below so
+	// NEE reuses the exact same regularized alpha the switch case's own
+	// BSDF-sampling step just used, instead of re-deriving it a second time.
+	// Left at 0 (harmless - see that parameter's own comment) for every
+	// non-glossy case.
+	float glossyAlphaForNEE = 0.0f;
 
 	auto albedoSpectrum = [&](float3 rgb) -> SS {
 		float c0, c1, c2;
@@ -3043,8 +2994,8 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		break;
 	}
 	case MaterialType::RoughDielectric: {
-		float rd_alpha = sqrtf(mat.fuzz);
-		if (h.any_nonspecular) rd_alpha = wf_regularize_alpha(rd_alpha);
+		float rd_alpha = wf_glossy_alpha(mat, (bool)h.any_nonspecular);
+		glossyAlphaForNEE = rd_alpha;
 		bool rd_front_face = h.frontFace != 0;
 		float rd_ri = rd_front_face ? (1.0f / mat.ior) : mat.ior;
 		float3 n = normal;
@@ -3109,7 +3060,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		return;
 	}
 
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, normal, hit_point, seed,
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, normal, hit_point, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -3263,7 +3214,13 @@ extern "C" __global__ void resolve_bssrdf_exit(
 	SS attenuation = SS(weight);
 
 	wf_finish_material_scatter(MaterialType::NormalizedFresnel, eta, /*matIdx=*/-1,
-		(bool)item.any_nonspecular,
+		// do_regularize is inert here regardless of value: is_specular=false
+		// below already forces next.any_nonspecular=1 unconditionally, and
+		// NormalizedFresnel never reaches glossy_isType (see BssrdfProbeWorkItem
+		// any_nonspecular's own comment, wavefront_types.h, for why this item
+		// doesn't carry a real one through).
+		/*do_regularize=*/false,
+		/*glossyAlpha=*/0.0f, // NormalizedFresnel never reaches glossy_isType
 		item.exitNormal, item.exitPos, seed,
 		weightedThroughput, radiance, swl, attenuation, scattered_dir,
 		/*is_specular=*/false, brdf_pdf_override,

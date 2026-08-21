@@ -1,5 +1,6 @@
 #pragma once
 #include "material_base.h"
+#include "../shared/microfacet.h"
 
 
 class lambertian : public material {
@@ -188,13 +189,11 @@ class isotropic : public material {
 
 
 // Shared helper: regularize a GGX alpha value (pbrt-v4 Regularize() semantics).
-// Widens the lobe for near-specular surfaces to reduce variance on subsequent bounces.
+// Widens the lobe for near-specular surfaces to reduce variance on subsequent
+// bounces. Thin wrapper over the CPU_GPU RegularizeAlpha<T>() in
+// src/shared/microfacet.h - the single source of truth for this formula,
+// also used by TrowbridgeReitz::Regularize() and the GPU wavefront backend.
 inline double regularize_alpha(double a) {
-    if (a < 0.3) {
-        a *= 2.0;
-        if (a < 0.1) a = 0.1;
-        else if (a > 0.3) a = 0.3;
-    }
-    return a;
+    return RegularizeAlpha(a);
 }
 
