@@ -338,6 +338,8 @@ The ray tracer automatically generates multiple output formats for convenience:
 
 Both formats are generated after each render completes.
 
+**EXR output**: give `--output` a `.exr` path instead (either backend) to get a linear, full-float-precision HDR EXR — no tonemapping/quantization, useful for compositing — instead of the PPM/PNG pair above. Combine with `--denoise` to also get `<name>_albedo.exr`/`<name>_normal.exr` AOV files alongside the beauty image (GPU recursive backend only, reusing the denoiser's own guide-layer buffers).
+
 ## 🖼️ Scenes
 
 78 scenes (ids 0-78, id 53 retired), selected via the `scene_id` CLI argument or the GUI's scene dropdown. Full descriptions and camera defaults live in [src/TheRestOfYourLife/scene_registry.h](src/TheRestOfYourLife/scene_registry.h).

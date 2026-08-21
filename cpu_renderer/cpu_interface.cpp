@@ -33,6 +33,7 @@
 #include <filesystem>
 #include <cmath>
 #include <cstring>
+#include <cctype>
 
 // ============================================================================
 // cpu_render_main - CPU Render Entry Point
@@ -184,6 +185,17 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		cam.samples_per_pixel = spp;
 		cam.max_depth         = max_depth;
 		cam.exposure          = exposure;
+		// Auto-detected from the caller's requested extension, matching how
+		// launcher/main.cpp already auto-triggers PNG conversion off the
+		// output extension rather than a separate flag - see camera.h's own
+		// exr_output field comment for what this actually changes in
+		// render(). Case-insensitive: Windows paths commonly vary in case.
+		{
+			std::filesystem::path req_ext(output_path);
+			std::string ext = req_ext.extension().string();
+			for (char &c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+			cam.exr_output = (ext == ".exr");
+		}
 		// sampler==nullptr (every existing caller that predates this param)
 		// or an unrecognized name both fall back to Sobol - see
 		// sampler_kind_from_name()'s own comment.
@@ -275,17 +287,21 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 
 		// Determine where the camera actually wrote the file
 		// Priority: OneDrive Desktop > regular Desktop > current directory
+		// Same filename render() itself computed (camera.h's exr_output-
+		// gated `filename` local) - must match exactly or this copy finds
+		// nothing.
+		const char* written_filename = cam.exr_output ? "image.exr" : "image.ppm";
 		std::string actual_output;
 		if (const char* od = std::getenv("OneDrive")) {
-			actual_output = std::string(od) + "\\Desktop\\image.ppm";
+			actual_output = std::string(od) + "\\Desktop\\" + written_filename;
 		} else if (const char* up = std::getenv("USERPROFILE")) {
 			if (std::filesystem::exists(std::filesystem::path(std::string(up) + "\\OneDrive"))) {
-				actual_output = std::string(up) + "\\OneDrive\\Desktop\\image.ppm";
+				actual_output = std::string(up) + "\\OneDrive\\Desktop\\" + written_filename;
 			} else {
-				actual_output = std::string(up) + "\\Desktop\\image.ppm";
+				actual_output = std::string(up) + "\\Desktop\\" + written_filename;
 			}
 		} else {
-			actual_output = "image.ppm";
+			actual_output = written_filename;
 		}
 
 		// Copy the file to the requested location if different

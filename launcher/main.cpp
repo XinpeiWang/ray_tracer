@@ -31,6 +31,7 @@
 #include <filesystem>
 #include <chrono>
 #include <cmath>
+#include <cctype>
 #include <thread>
 #include <mutex>
 #include <condition_variable>
@@ -889,22 +890,37 @@ int main(int argc, char** argv) {
     // PNG is more convenient for viewing and sharing
 
     if (render_result == 0) {
-        std::cout << "\nConverting to PNG format..." << std::endl;
-
-        // Generate output path for PNG
         std::filesystem::path ppm_path_obj(out_path);
-        std::filesystem::path png_path = ppm_path_obj.parent_path() / (ppm_path_obj.stem().string() + ".png");
+        std::string reqExt = ppm_path_obj.extension().string();
+        for (char& c : reqExt) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
 
-        // Convert PPM to PNG using external image_writer library
-        if (convert_ppm_to_png(out_path.c_str(), png_path.string().c_str())) {
-            std::cout << "✓ PNG saved: " << png_path << std::endl;
+        if (reqExt == ".exr") {
+            // cpu_render_main()/optix_render_main() already wrote a real EXR
+            // directly at out_path (see camera.h's exr_output field comment
+            // and optix_interface.cpp's own extension-detection branch) -
+            // convert_ppm_to_png() below assumes PPM input, which an EXR is
+            // not (its own PPM-header parser fails loudly on EXR's binary
+            // magic bytes), and EXR is already a directly viewable/
+            // compositable format that doesn't need a PNG derivative anyway.
+            std::cout << "\nRender complete! You can now open:" << std::endl;
+            std::cout << "  - " << ppm_path_obj.filename() << " (EXR - linear HDR, full float precision)" << std::endl;
         } else {
-            std::cout << "✗ PNG conversion failed" << std::endl;
-        }
+            std::cout << "\nConverting to PNG format..." << std::endl;
 
-        std::cout << "\nRender complete! You can now open:" << std::endl;
-        std::cout << "  - " << png_path.filename() << " (PNG - lossless, widely supported)" << std::endl;
-        std::cout << "  - " << ppm_path_obj.filename() << " (PPM - raw data)" << std::endl;
+            // Generate output path for PNG
+            std::filesystem::path png_path = ppm_path_obj.parent_path() / (ppm_path_obj.stem().string() + ".png");
+
+            // Convert PPM to PNG using external image_writer library
+            if (convert_ppm_to_png(out_path.c_str(), png_path.string().c_str())) {
+                std::cout << "✓ PNG saved: " << png_path << std::endl;
+            } else {
+                std::cout << "✗ PNG conversion failed" << std::endl;
+            }
+
+            std::cout << "\nRender complete! You can now open:" << std::endl;
+            std::cout << "  - " << png_path.filename() << " (PNG - lossless, widely supported)" << std::endl;
+            std::cout << "  - " << ppm_path_obj.filename() << " (PPM - raw data)" << std::endl;
+        }
     }
 
     return render_result;

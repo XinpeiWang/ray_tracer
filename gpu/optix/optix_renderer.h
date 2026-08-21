@@ -229,6 +229,22 @@ public:
 	                 const GpuCameraParams& camera, float* outputFramebuffer,
 	                 const std::string& ptxPath = "");
 
+	/// @brief Read back the persisted albedo/normal AOV buffers (see their
+	///        own comment, in the private section below) to host memory -
+	///        used for EXR AOV export (see optix_render_main()'s own AOV-
+	///        export branch), a second consumer of the exact same buffers
+	///        the denoiser guide layer already fills. Only valid after
+	///        ensureAovBuffers() has run at this resolution (currently only
+	///        denoise()/render() with denoising enabled does so - see that
+	///        method's own comment); returns false (leaving the output
+	///        vectors untouched) rather than reading a null or differently-
+	///        sized buffer if that hasn't happened.
+	/// @param albedoOut,normalOut Resized to width*height*3 floats
+	///        (interleaved RGB, row-major - same layout write_exr_image()
+	///        expects) on success.
+	bool readAovBuffers(unsigned int width, unsigned int height,
+		std::vector<float>& albedoOut, std::vector<float>& normalOut) const;
+
 private:
 	// Lazily creates + initializes sppmTracer_ (module/program groups/
 	// pipeline/SBT), shared by renderSPPMTrivial() and renderSPPM() so the

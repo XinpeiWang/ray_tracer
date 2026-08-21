@@ -26,6 +26,7 @@
 #include "../shared/filter.h"
 #include "../shared/cameras.h"
 #include "../shared/surface_interaction.h"  // compute_differentials() for texture-filtering footprint
+#include "../shared/exr_writer.h"
 #include "thread_count.h"
 #include <fstream>
 #include <iostream>
@@ -95,6 +96,12 @@ class camera {
     // own comment. Default Sobol matches this project's pre-existing,
     // hardcoded behavior exactly.
     SamplerKind sampler_kind = SamplerKind::Sobol;
+    // When set, render() writes a linear (pre-tonemap), full-float EXR
+    // instead of the tonemapped/quantized PPM it writes by default - see
+    // exr_writer.h. Set by cpu_interface.cpp when the caller's requested
+    // output path ends in ".exr"; false (PPM) is the pre-existing default
+    // and behavior for every other extension is unchanged.
+    bool   exr_output = false;
     color  background;               // Scene background color (used when sky==nullptr)
     shared_ptr<sky_light> sky;               // HDR env map (pbrt-v4 ImageInfiniteLight); nullptr = flat background
     shared_ptr<punctual_light_list> punct_lights; // pbrt-v4 PointLight/SpotLight/DistantLight (delta); nullptr = none
@@ -120,27 +127,32 @@ class camera {
 
         // Try writing image to the user's Desktop. If that fails, fall back to
         // the current working directory, then to the system temp directory.
+        // The filename itself (not just its directory) depends on exr_output -
+        // see that field's own comment - so cpu_interface.cpp's copy-out step
+        // (which mirrors this exact fallback chain to find what render()
+        // actually wrote) can look for the same extension it requested.
+        const std::string filename = exr_output ? "image.exr" : "image.ppm";
         std::string out_path;
         // Prefer OneDrive Desktop when available (common on Windows). Fall back to
         // %USERPROFILE%\OneDrive\Desktop, then %USERPROFILE%\Desktop, then HOME/Desktop.
         if (const char* od = std::getenv("OneDrive")) {
-            out_path = std::string(od) + "\\Desktop\\image.ppm";
+            out_path = std::string(od) + "\\Desktop\\" + filename;
         } else if (const char* up = std::getenv("USERPROFILE")) {
             // If OneDrive folder exists under the user profile prefer it, otherwise use Desktop
-            std::string od_candidate = std::string(up) + "\\OneDrive\\Desktop\\image.ppm";
+            std::string od_candidate = std::string(up) + "\\OneDrive\\Desktop\\" + filename;
             try {
                 if (std::filesystem::exists(std::filesystem::path(std::string(up) + "\\OneDrive"))) {
                     out_path = od_candidate;
                 } else {
-                    out_path = std::string(up) + "\\Desktop\\image.ppm";
+                    out_path = std::string(up) + "\\Desktop\\" + filename;
                 }
             } catch (...) {
-                out_path = std::string(up) + "\\Desktop\\image.ppm";
+                out_path = std::string(up) + "\\Desktop\\" + filename;
             }
         } else if (const char* home = std::getenv("HOME")) {
-            out_path = std::string(home) + "/Desktop/image.ppm";
+            out_path = std::string(home) + "/Desktop/" + filename;
         } else {
-            out_path = "image.ppm";
+            out_path = filename;
         }
 
         std::clog << "Attempting to write image to: " << out_path << std::endl;
@@ -160,7 +172,7 @@ class camera {
         std::ofstream out(out_path, std::ios::out | std::ios::binary);
         if (!out) {
             // Fallback to current directory
-            out_path = "image.ppm";
+            out_path = filename;
             std::clog << "Desktop write failed, falling back to: " << out_path << std::endl;
             out.open(out_path, std::ios::out | std::ios::binary);
         }
@@ -168,9 +180,9 @@ class camera {
         if (!out) {
             // Fallback to TEMP
             if (const char* tmp = std::getenv("TEMP")) {
-                out_path = std::string(tmp) + "\\image.ppm";
+                out_path = std::string(tmp) + "\\" + filename;
             } else if (const char* tmp2 = std::getenv("TMP")) {
-                out_path = std::string(tmp2) + "\\image.ppm";
+                out_path = std::string(tmp2) + "\\" + filename;
             }
             std::clog << "Attempting temp path: " << out_path << std::endl;
             out.open(out_path, std::ios::out | std::ios::binary);
@@ -182,10 +194,23 @@ class camera {
         }
 
         std::clog << "Writing image to: " << out_path << std::endl;
-        out << "P3\n" << image_width << ' ' << image_height << "\n255\n";
+        // exr_output writes through write_exr_image() below instead - `out`
+        // above only exists to prove out_path is writable via the exact same
+        // Desktop/cwd/TEMP fallback chain the PPM path already used, so it is
+        // opened (and then simply closed unused) rather than duplicating that
+        // fallback logic a second time for the EXR case.
+        if (!exr_output)
+            out << "P3\n" << image_width << ' ' << image_height << "\n255\n";
 
         // Multithreaded rendering: each worker renders scanlines into a buffer
         std::vector<std::string> scanlines(image_height);
+        // Linear, pre-tonemap pixel buffer for exr_output - filled alongside
+        // (not instead of) `scanlines` below, at zero extra cost when
+        // exr_output is false (stays empty; every worker's write is guarded
+        // on the same flag). Interleaved RGB, row-major, matching
+        // write_exr_image()/SaveEXR's own expected layout exactly.
+        std::vector<float> exr_pixels(
+            exr_output ? static_cast<size_t>(image_width) * image_height * 3 : 0);
         std::atomic<int> next_j(image_height - 1);
         std::atomic<int> completed_lines(0);
         std::mutex log_mutex;
@@ -321,7 +346,14 @@ class camera {
                         ? weighted_color / weight_sum
                         : color(0, 0, 0);
                     pixel_color = pixel_color * exposure;
-                    write_color(ss, pixel_color);
+                    if (exr_output) {
+                        const size_t idx = (static_cast<size_t>(j) * image_width + i) * 3;
+                        exr_pixels[idx + 0] = static_cast<float>(pixel_color.x());
+                        exr_pixels[idx + 1] = static_cast<float>(pixel_color.y());
+                        exr_pixels[idx + 2] = static_cast<float>(pixel_color.z());
+                    } else {
+                        write_color(ss, pixel_color);
+                    }
                 }
 
                 scanlines[j] = ss.str();
@@ -340,13 +372,26 @@ class camera {
 
         for (auto &th : threads) th.join();
 
-        // Write buffered scanlines in order
-        for (int j = 0; j < image_height; ++j) {
-            out << scanlines[j];
+        if (exr_output) {
+            // `out` was only opened to validate out_path is writable (see
+            // the comment where it was opened above) - close it unused and
+            // let write_exr_image() create the real file at that same path.
+            out.close();
+            std::string exr_error;
+            if (write_exr_image(out_path, exr_pixels.data(), image_width, image_height, exr_error)) {
+                std::clog << "\rWrote EXR: " << out_path << "\n";
+            } else {
+                std::cerr << "Failed to write EXR '" << out_path << "': " << exr_error << std::endl;
+            }
+        } else {
+            // Write buffered scanlines in order
+            for (int j = 0; j < image_height; ++j) {
+                out << scanlines[j];
+            }
+            out.close();
         }
 
         std::clog << "\rDone.                 \n";
-        out.close();
     }
 
   private:

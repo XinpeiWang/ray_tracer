@@ -121,6 +121,7 @@
     <ClCompile Include="unit\pbrt_gpu_disk_cylinder_tests.cpp" />
     <ClCompile Include="unit\pbrt_gpu_texture_tests.cpp" />
     <ClCompile Include="unit\pbrt_alpha_cutout_tests.cpp" />
+    <ClCompile Include="unit\exr_writer_tests.cpp" />
     <ClCompile Include="unit\pbrt_gpu_light_coverage_tests.cpp" />
     <ClCompile Include="unit\pbrt_example_scenes_tests.cpp" />
     <ClCompile Include="unit\spherical_rectangle_adjudication_tests.cpp" />

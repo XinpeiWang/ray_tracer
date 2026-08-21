@@ -2867,6 +2867,20 @@ void OptiXRenderer::destroyAovBuffers() noexcept {
 	aovHeight_ = 0;
 }
 
+bool OptiXRenderer::readAovBuffers(unsigned int width, unsigned int height,
+		std::vector<float>& albedoOut, std::vector<float>& normalOut) const {
+	if (!d_albedoAov_ || !d_normalAov_ || width != aovWidth_ || height != aovHeight_)
+		return false;
+	const size_t count = static_cast<size_t>(width) * height * 3;
+	albedoOut.resize(count);
+	normalOut.resize(count);
+	CUDA_CHECK(cudaMemcpy(albedoOut.data(), reinterpret_cast<void*>(d_albedoAov_),
+		count * sizeof(float), cudaMemcpyDeviceToHost));
+	CUDA_CHECK(cudaMemcpy(normalOut.data(), reinterpret_cast<void*>(d_normalAov_),
+		count * sizeof(float), cudaMemcpyDeviceToHost));
+	return true;
+}
+
 void OptiXRenderer::cleanup() noexcept {
 	// Must happen before context_ is destroyed below: wavefrontTracer_ and
 	// sppmTracer_ each own their own OptiX program groups/pipelines/module,

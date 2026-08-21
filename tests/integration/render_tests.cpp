@@ -20,6 +20,7 @@
 #include <chrono>
 #include <filesystem>
 #include "../../src/TheRestOfYourLife/error_codes.h"
+#include "../../src/external/tinyexr.h"
 #include "../ppm_test_utils.h"
 
 extern "C" {
@@ -437,6 +438,94 @@ TEST(RenderIntegrationTest, UnknownSamplerNameFallsBackToSobol) {
 	double avg = average_ppm_brightness(output);
 	EXPECT_GT(avg, 0.0);
 	std::remove(output);
+}
+
+// ============================================================================
+// EXR Output Tests (Round 4 Phase 4 - camera.h's exr_output /
+// optix_interface.cpp's own extension-detection branch)
+// ============================================================================
+
+/**
+ * A ".exr" output path must produce a real, valid EXR file on CPU - the
+ * exact extension-detection convention cpu_interface.cpp uses (see
+ * camera.h's exr_output field comment). Only the extension changes here
+ * versus every other cpu_render_main() test in this file - proving this
+ * path doesn't just fall back to writing a PPM with the wrong name.
+ */
+TEST(RenderIntegrationTest, CpuExrOutputWritesAValidExrFile) {
+	const char* output = "test_cpu_output.exr";
+	int result = cpu_render_main(24, 24, 4, 5, output, "A1", 278, 278, -800);
+	EXPECT_EQ(result, 0);
+	ASSERT_TRUE(file_exists(output));
+	EXPECT_EQ(IsEXR(output), TINYEXR_SUCCESS)
+		<< "cpu_render_main's .exr output must be a real, valid EXR file";
+	std::remove(output);
+}
+
+/**
+ * The pre-existing default (no ".exr" extension) must still write a plain
+ * PPM, unaffected by exr_output's addition - regression coverage for the
+ * shared `filename`/`out_path` plumbing camera.h's render() now threads
+ * through both the PPM and EXR cases.
+ */
+TEST(RenderIntegrationTest, CpuNonExrOutputStillWritesAPpm) {
+	const char* output = "test_cpu_output_still_ppm.ppm";
+	int result = cpu_render_main(24, 24, 4, 5, output, "A1", 278, 278, -800);
+	EXPECT_EQ(result, 0);
+	ASSERT_TRUE(file_exists(output));
+	EXPECT_TRUE(has_valid_ppm_header(output));
+	std::remove(output);
+}
+
+/**
+ * Same extension-detection contract on the GPU backend (optix_interface.cpp) -
+ * this backend writes straight to output_path (no temp-file/copy dance), so
+ * this is a more direct test than the CPU one above.
+ */
+TEST(RenderIntegrationTest, GpuExrOutputWritesAValidExrFile) {
+	if (!optix_is_available()) {
+		GTEST_SKIP() << "OptiX not available";
+	}
+	const char* output = "test_gpu_output.exr";
+	int result = optix_render_main(32, 32, 16, 5, output, "A1", 278.0, 278.0, -800.0);
+	EXPECT_EQ(result, 0);
+	ASSERT_TRUE(file_exists(output));
+	EXPECT_EQ(IsEXR(output), TINYEXR_SUCCESS)
+		<< "optix_render_main's .exr output must be a real, valid EXR file";
+	std::remove(output);
+}
+
+/**
+ * --denoise + a ".exr" output must also emit "<stem>_albedo.exr"/
+ * "<stem>_normal.exr" AOV siblings, reusing the exact buffers the denoiser
+ * guide layer already computes (OptiXRenderer::readAovBuffers()) rather
+ * than a separate device-side computation. GPU-recursive only, matching
+ * this project's own established denoise-is-recursive-only scope (see
+ * OptiXRenderer::enableDenoise()'s comment) - no --wavefront here.
+ */
+TEST(RenderIntegrationTest, GpuExrDenoiseWritesAlbedoAndNormalAovs) {
+	if (!optix_is_available()) {
+		GTEST_SKIP() << "OptiX not available";
+	}
+	const char* output = "test_gpu_aov.exr";
+	const char* albedoOut = "test_gpu_aov_albedo.exr";
+	const char* normalOut = "test_gpu_aov_normal.exr";
+	std::remove(albedoOut);
+	std::remove(normalOut);
+
+	int result = optix_render_main(32, 32, 16, 5, output, "A1", 278.0, 278.0, -800.0,
+									/*force_camera_override=*/0, /*denoise=*/1);
+	EXPECT_EQ(result, 0);
+	ASSERT_TRUE(file_exists(output));
+	EXPECT_EQ(IsEXR(output), TINYEXR_SUCCESS);
+	ASSERT_TRUE(file_exists(albedoOut)) << "denoise=1 + .exr output must also write an albedo AOV";
+	ASSERT_TRUE(file_exists(normalOut)) << "denoise=1 + .exr output must also write a normal AOV";
+	EXPECT_EQ(IsEXR(albedoOut), TINYEXR_SUCCESS);
+	EXPECT_EQ(IsEXR(normalOut), TINYEXR_SUCCESS);
+
+	std::remove(output);
+	std::remove(albedoOut);
+	std::remove(normalOut);
 }
 
 // ============================================================================

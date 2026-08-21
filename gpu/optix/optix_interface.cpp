@@ -6,12 +6,15 @@
 #include "scene_builder.h"
 #include "../../src/TheRestOfYourLife/error_codes.h"
 #include "../../src/shared/tone_map.h"
+#include "../../src/shared/exr_writer.h"
 #include <iostream>
 #include <fstream>
+#include <filesystem>
 #include <memory>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <cctype>
 #include <string>
 
 // Global renderer instance
@@ -235,6 +238,61 @@ extern "C" int optix_render_main(
 		)) {
 			std::cerr << "[OptiX] Render failed\n";
 			return ERR_GPU_RENDER_FAILED;
+		}
+
+		// Auto-detected from the caller's requested extension, matching
+		// cpu_interface.cpp's own exr_output detection - see camera.h's
+		// exr_output field comment for the rationale (extension, not a
+		// separate flag, mirrors how PNG conversion already auto-triggers
+		// off the extension in launcher/main.cpp).
+		std::string reqExt = std::filesystem::path(output_path).extension().string();
+		for (char &c : reqExt) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+		const bool exrOutput = (reqExt == ".exr");
+
+		if (exrOutput) {
+			// Linear, pre-tonemap radiance straight off the GPU (`framebuffer`
+			// above) - no exposure/tonemap applied, matching camera.h's own
+			// exr_output path and EXR's whole reason for existing (preserving
+			// HDR range for downstream compositing, not baking in a display
+			// transform). Unlike CPU's convoluted temp-file-then-copy
+			// architecture (camera.h render()), this backend already writes
+			// straight to output_path, so no fallback-path juggling is needed.
+			std::string exrError;
+			if (!write_exr_image(output_path, framebuffer.data(), image_width, image_height, exrError)) {
+				std::cerr << "[OptiX] Failed to write EXR '" << output_path << "': " << exrError << "\n";
+				return ERR_FILE_WRITE_FAILED;
+			}
+			std::cout << "[OptiX] Wrote EXR: " << output_path << "\n";
+
+			// Albedo/normal AOV export - only possible when denoise was
+			// requested, since that is what allocates/fills d_albedoAov_/
+			// d_normalAov_ in the first place (ensureAovBuffers(), called
+			// from render()'s own denoise step - see readAovBuffers()'s own
+			// comment). Silently skipped (not an error) otherwise: AOVs are
+			// a bonus on top of the beauty EXR this function already wrote
+			// successfully, not something --exr alone promises.
+			if (denoise != 0 && !(wfEnv && std::string(wfEnv) == "1")) {
+				std::vector<float> albedo, normal;
+				if (g_renderer->readAovBuffers(static_cast<unsigned int>(image_width),
+						static_cast<unsigned int>(image_height), albedo, normal)) {
+					const std::filesystem::path base(output_path);
+					const std::filesystem::path albedoPath =
+						base.parent_path() / (base.stem().string() + "_albedo.exr");
+					const std::filesystem::path normalPath =
+						base.parent_path() / (base.stem().string() + "_normal.exr");
+					std::string aErr, nErr;
+					if (write_exr_image(albedoPath.string(), albedo.data(), image_width, image_height, aErr))
+						std::cout << "[OptiX] Wrote AOV: " << albedoPath.string() << "\n";
+					else
+						std::cerr << "[OptiX] Failed to write albedo AOV '" << albedoPath.string() << "': " << aErr << "\n";
+					if (write_exr_image(normalPath.string(), normal.data(), image_width, image_height, nErr))
+						std::cout << "[OptiX] Wrote AOV: " << normalPath.string() << "\n";
+					else
+						std::cerr << "[OptiX] Failed to write normal AOV '" << normalPath.string() << "': " << nErr << "\n";
+				}
+			}
+
+			return 0;  // Success
 		}
 
 		// Write to PPM file
