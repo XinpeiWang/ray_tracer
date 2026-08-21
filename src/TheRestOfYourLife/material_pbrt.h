@@ -66,7 +66,7 @@ class rough_metal : public material {
         double ex = do_regularize ? regularize_alpha(alpha_x) : alpha_x;
         double ey = do_regularize ? regularize_alpha(alpha_y) : alpha_y;
         BxDF bxdf{ albedo.x(), albedo.y(), albedo.z(), ex, ey };
-        auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
+        auto frame = ShadingFrame<double>::from_dpdu(ctx.dpdu_x, ctx.dpdu_y, ctx.dpdu_z, ctx.nx, ctx.ny, ctx.nz);
 
         double wi_x, wi_y, wi_z;
         frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
@@ -112,7 +112,7 @@ class rough_metal : public material {
     double scattering_pdf(const ray& r_in, const hit_record& rec,
                           const ray& scattered) const override {
         auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
-        auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
+        auto frame = ShadingFrame<double>::from_dpdu(ctx.dpdu_x, ctx.dpdu_y, ctx.dpdu_z, ctx.nx, ctx.ny, ctx.nz);
         double wi_x, wi_y, wi_z;
         frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
         vec3 dir = unit_vector(scattered.direction());
@@ -193,7 +193,7 @@ class conductor : public material {
         double ex = do_regularize ? regularize_alpha(alpha_x) : alpha_x;
         double ey = do_regularize ? regularize_alpha(alpha_y) : alpha_y;
         BxDF bxdf{ eta_r, eta_g, eta_b, k_r, k_g, k_b, ex, ey };
-        auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
+        auto frame = ShadingFrame<double>::from_dpdu(ctx.dpdu_x, ctx.dpdu_y, ctx.dpdu_z, ctx.nx, ctx.ny, ctx.nz);
 
         double wi_x, wi_y, wi_z;
         frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
@@ -229,7 +229,7 @@ class conductor : public material {
     double scattering_pdf(const ray& r_in, const hit_record& rec,
                           const ray& scattered) const override {
         auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
-        auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
+        auto frame = ShadingFrame<double>::from_dpdu(ctx.dpdu_x, ctx.dpdu_y, ctx.dpdu_z, ctx.nx, ctx.ny, ctx.nz);
         double wi_x, wi_y, wi_z;
         frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
         vec3 dir = unit_vector(scattered.direction());
@@ -292,7 +292,7 @@ class rough_dielectric : public material {
         double ex = do_regularize ? regularize_alpha(alpha_x) : alpha_x;
         double ey = do_regularize ? regularize_alpha(alpha_y) : alpha_y;
         BxDF bxdf{ ior, ex, ey };
-        auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
+        auto frame = ShadingFrame<double>::from_dpdu(ctx.dpdu_x, ctx.dpdu_y, ctx.dpdu_z, ctx.nx, ctx.ny, ctx.nz);
 
         double eta = ctx.front_face ? (1.0 / ior) : ior;
 
@@ -333,7 +333,7 @@ class rough_dielectric : public material {
     double scattering_pdf(const ray& r_in, const hit_record& rec,
                           const ray& scattered) const override {
         auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
-        auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
+        auto frame = ShadingFrame<double>::from_dpdu(ctx.dpdu_x, ctx.dpdu_y, ctx.dpdu_z, ctx.nx, ctx.ny, ctx.nz);
         double eta = ctx.front_face ? (1.0 / ior) : ior;
 
         double wi_x, wi_y, wi_z;
@@ -423,7 +423,7 @@ class coated_diffuse : public material {
         double ex = do_regularize ? regularize_alpha(alpha_x) : alpha_x;
         double ey = do_regularize ? regularize_alpha(alpha_y) : alpha_y;
         BxDF bxdf{ albedo.x(), albedo.y(), albedo.z(), ior, ex, ey };
-        auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
+        auto frame = ShadingFrame<double>::from_dpdu(ctx.dpdu_x, ctx.dpdu_y, ctx.dpdu_z, ctx.nx, ctx.ny, ctx.nz);
 
         double wi_x, wi_y, wi_z;
         frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
@@ -457,7 +457,7 @@ class coated_diffuse : public material {
     double scattering_pdf(const ray& r_in, const hit_record& rec,
                           const ray& scattered) const override {
         auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
-        auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
+        auto frame = ShadingFrame<double>::from_dpdu(ctx.dpdu_x, ctx.dpdu_y, ctx.dpdu_z, ctx.nx, ctx.ny, ctx.nz);
         double wi_x, wi_y, wi_z;
         frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
         if (wi_z <= 0.0) return 0.0;
@@ -606,7 +606,7 @@ class coated_conductor : public material {
         double ex = do_regularize ? regularize_alpha(alpha_x) : alpha_x;
         double ey = do_regularize ? regularize_alpha(alpha_y) : alpha_y;
         BxDF bxdf{ eta_r, eta_g, eta_b, k_r, k_g, k_b, coat_ior, ex, ey };
-        auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
+        auto frame = ShadingFrame<double>::from_dpdu(ctx.dpdu_x, ctx.dpdu_y, ctx.dpdu_z, ctx.nx, ctx.ny, ctx.nz);
 
         double wi_x, wi_y, wi_z;
         frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
@@ -645,7 +645,7 @@ class coated_conductor : public material {
     double scattering_pdf(const ray& r_in, const hit_record& rec,
                           const ray& scattered) const override {
         auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
-        auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
+        auto frame = ShadingFrame<double>::from_dpdu(ctx.dpdu_x, ctx.dpdu_y, ctx.dpdu_z, ctx.nx, ctx.ny, ctx.nz);
         double wi_x, wi_y, wi_z;
         frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
         if (wi_z <= 0.0) return 0.0;

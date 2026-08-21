@@ -189,6 +189,20 @@ struct Material {
 	std::string pbrtType;              // as written, for diagnostics
 	double color[3] = {0.5, 0.5, 0.5}; // reflectance / albedo
 	double roughness = 0.0;
+	// Independent GGX roughness along the surface's own tangent (u) and
+	// bitangent (v) directions - pbrt-v4's real anisotropic spelling
+	// ("uroughness"/"vroughness"). Populated alongside `roughness` above
+	// (which stays exactly as before, an isotropic fallback derived the
+	// same way it always has, for callers that haven't been updated to
+	// read these two instead - see Round 6 Phase 3). Each independently
+	// falls back to plain "roughness" when its own name isn't present, so
+	// an ordinary isotropic scene (only "roughness" set) yields
+	// roughness_u == roughness_v == roughness, and Round 6 Phase 3's own
+	// downstream wiring (pbrt_cpu_builder.h/pbrt_gpu_builder.h) degrades
+	// to the exact isotropic construction it used before whenever the two
+	// happen to be equal.
+	double roughness_u = 0.0;
+	double roughness_v = 0.0;
 	double ior = 1.5;
 	// DiffuseTransmission only: the light that passes through rather than
 	// reflects. pbrt-v4's own default (0.25) is closer to that material's
@@ -1048,6 +1062,13 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		m.roughness = md.params.getFloat("roughness",
 							md.params.getFloat("uroughness",
 								md.params.getFloat("vroughness", 0.0)));
+		// True anisotropic roughness (Round 6 Phase 3) - each axis
+		// independently falls back to "roughness" when its own name is
+		// absent, matching pbrt-v4's own per-axis default (real pbrt-v4
+		// material parsing: uroughness/vroughness each individually
+		// default to the material's "roughness" parameter, not to 0).
+		m.roughness_u = md.params.getFloat("uroughness", md.params.getFloat("roughness", 0.0));
+		m.roughness_v = md.params.getFloat("vroughness", md.params.getFloat("roughness", 0.0));
 		// "eta" is pbrt's name for index of refraction on dielectrics.
 		m.ior = md.params.getFloat("eta", md.params.getFloat("ior", 1.5));
 
