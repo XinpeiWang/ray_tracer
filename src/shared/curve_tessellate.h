@@ -115,9 +115,23 @@ inline void tessellate(
 		for (int j = 0; j < n_radial; ++j) {
 			int j2 = (j + 1) % n_radial;
 			Quad q;
+			// p00->p10 (the "u" edge) must be the along-length direction and
+			// p00->p01 (the "v" edge) the circumferential one, matching this
+			// struct's own comment above and BilinearPatchData's convention -
+			// so p10 varies the length-ring index i (not the angle index j)
+			// and p01 varies the angle. A same-ring/different-angle pairing
+			// here was a real, previously-latent bug: nothing before Round 7
+			// Phase 3 ever read dpdu directionally (only cross(dpdu,dpdv) for
+			// a face normal, which doesn't care which edge is "u" vs "v" -
+			// swapping them just flips the pre-face-forward-correction sign,
+			// harmless). Phase 3's Hair-fiber-tangent code was the first
+			// consumer to actually need dpdu to mean "along the strand," and
+			// with the old i/j assignment it silently got the circumferential
+			// direction instead - a ~90-degree-rotated Marschner highlight on
+			// every curve+hair render on both GPU backends.
 			ring_point(i,     j,  q.p00);
-			ring_point(i,     j2, q.p10);
-			ring_point(i + 1, j,  q.p01);
+			ring_point(i + 1, j,  q.p10);
+			ring_point(i,     j2, q.p01);
 			ring_point(i + 1, j2, q.p11);
 			out.push_back(q);
 		}

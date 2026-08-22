@@ -266,6 +266,7 @@
     <ClCompile Include="unit\bvh_aggregate_tests.cpp" />
     <ClCompile Include="unit\cloud_medium_tests.cpp" />
     <ClCompile Include="unit\curve_shape_tests.cpp" />
+    <ClCompile Include="unit\curve_tessellate_tests.cpp" />
     <ClCompile Include="unit\exhaustive_light_sampler_tests.cpp" />
     <ClCompile Include="unit\function_integrator_tests.cpp" />
     <ClCompile Include="unit\goniometric_light_tests.cpp" />

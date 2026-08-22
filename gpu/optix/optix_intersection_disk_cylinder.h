@@ -110,23 +110,37 @@ extern "C" __global__ void __closesthit__disk() {
 	bool bssrdf_exit = false;
 	float3 bssrdf_exit_pos = make_float3(0.0f, 0.0f, 0.0f);
 
-	// Same scope boundary as quad's own closest-hit: Medium/DielectricMedium/
-	// CloudMedium/RgbGridMedium/Hair/Principled/NormalMappedLambertian need
-	// shape-specific handling this file doesn't implement (the pbrt loader
-	// never assigns Medium/DielectricMedium to a disk/cylinder in the first
-	// place - see pbrt_gpu_builder.h's disk/cylinder loop - so this trap is
-	// unreachable today, but kept loud rather than silently wrong if that
-	// ever changes).
-	if (material_requires_sphere_only_handling(mat.type) ||
-		mat.type == MaterialType::NormalMappedLambertian) {
-		printf("[DISK-SHADE] MaterialType %d is not supported on disk geometry\n", (int)mat.type);
-		__trap();
-	}
+	// Real Hair support on disk geometry, using the shading normal as the
+	// fiber-tangent proxy - same simplification as sphere's own Hair branch.
+	// Unlike Medium/DielectricMedium (which the pbrt loader genuinely never
+	// assigns to a disk - MediumInterface stays sphere-only, see
+	// pbrt_gpu_builder.h's disk/cylinder loop comment), Material "hair" +
+	// Shape "disk" is an ordinary, reachable pbrt combination once Round 7
+	// wired "hair" into the loader for real - trapping it here would have
+	// been a genuine regression from "falls back to Lambertian", not the
+	// unreachable-defensive-code every other trapped type here still is.
+	float out_eta = 1.0f;
+	if (mat.type == MaterialType::Hair) {
+		scattered   = sample_hair_material(ray_dir, normal, mat, seed, scattered_dir, attenuation);
+		is_specular = true;
+	} else {
+		// Same scope boundary as quad's own closest-hit: Medium/DielectricMedium/
+		// CloudMedium/RgbGridMedium/Principled/NormalMappedLambertian need
+		// shape-specific handling this file doesn't implement (the pbrt loader
+		// never assigns Medium/DielectricMedium to a disk/cylinder in the first
+		// place - see pbrt_gpu_builder.h's disk/cylinder loop - so this trap is
+		// unreachable today, but kept loud rather than silently wrong if that
+		// ever changes).
+		if (material_requires_sphere_only_handling(mat.type) ||
+			mat.type == MaterialType::NormalMappedLambertian) {
+			printf("[DISK-SHADE] MaterialType %d is not supported on disk geometry\n", (int)mat.type);
+			__trap();
+		}
 
-	float out_eta;
-	shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
-		attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
-		bssrdf_exit, bssrdf_exit_pos, out_eta);
+		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
+			attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
+			bssrdf_exit, bssrdf_exit_pos, out_eta);
+	}
 
 	optixSetPayload_3(__float_as_uint(emission.x));
 	optixSetPayload_4(__float_as_uint(emission.y));
@@ -269,16 +283,23 @@ extern "C" __global__ void __closesthit__cylinder() {
 	bool bssrdf_exit = false;
 	float3 bssrdf_exit_pos = make_float3(0.0f, 0.0f, 0.0f);
 
-	if (material_requires_sphere_only_handling(mat.type) ||
-		mat.type == MaterialType::NormalMappedLambertian) {
-		printf("[CYLINDER-SHADE] MaterialType %d is not supported on cylinder geometry\n", (int)mat.type);
-		__trap();
-	}
+	// Real Hair support on cylinder geometry - see __closesthit__disk's
+	// identical branch (this file, above) for why this moved out of the trap.
+	float out_eta = 1.0f;
+	if (mat.type == MaterialType::Hair) {
+		scattered   = sample_hair_material(ray_dir, normal, mat, seed, scattered_dir, attenuation);
+		is_specular = true;
+	} else {
+		if (material_requires_sphere_only_handling(mat.type) ||
+			mat.type == MaterialType::NormalMappedLambertian) {
+			printf("[CYLINDER-SHADE] MaterialType %d is not supported on cylinder geometry\n", (int)mat.type);
+			__trap();
+		}
 
-	float out_eta;
-	shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
-		attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
-		bssrdf_exit, bssrdf_exit_pos, out_eta);
+		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
+			attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
+			bssrdf_exit, bssrdf_exit_pos, out_eta);
+	}
 
 	optixSetPayload_3(__float_as_uint(emission.x));
 	optixSetPayload_4(__float_as_uint(emission.y));

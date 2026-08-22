@@ -390,12 +390,56 @@ TEST(FlattenTest, HairMaterialWithNothingSpecifiedUsesDefaultBrown) {
 	EXPECT_NEAR(s.materials[0].sigma_a[2], 1.3 * 1.37, 1e-9);
 }
 
-TEST(FlattenTest, HairMaterialWithReflectanceWarnsAndFallsBackToDefaultBrown) {
+namespace {
+// pbrt-v4 HairBxDF::SigmaAFromReflectance (bxdfs.cpp) - mirrors
+// pbrt_flatten.h's own sigmaAFromReflectanceChannel lambda exactly, so this
+// test verifies the loader against the real formula rather than a magic
+// literal.
+double sigmaAFromReflectanceChannelRef(double c, double bn) {
+	c = c < 1e-4 ? 1e-4 : (c > 1.0 - 1e-4 ? 1.0 - 1e-4 : c);
+	const double bn2 = bn * bn, bn3 = bn2 * bn, bn4 = bn3 * bn, bn5 = bn4 * bn;
+	const double denom = 5.969 - 0.215 * bn + 2.532 * bn2
+		- 10.73 * bn3 + 5.574 * bn4 + 0.245 * bn5;
+	const double x = std::log(c) / denom;
+	return x * x;
+}
+} // namespace
+
+TEST(FlattenTest, HairMaterialWithReflectanceInvertsToSigmaA) {
+	// beta_n stays at its 0.3 default - matches pbrt-v4's own priority
+	// (reflectance wins over eumelanin/pheomelanin, and no longer falls back
+	// to the default brown preset the way it used to before this loader
+	// implemented the closed-form inversion).
 	const FlatScene s = flattenSource(
 		"Material \"hair\" \"rgb reflectance\" [ 0.5 0.3 0.2 ]\n"
 		"Shape \"sphere\"\n");
 	ASSERT_EQ(s.materials.size(), 1u);
-	EXPECT_NEAR(s.materials[0].sigma_a[0], 1.3 * 0.419, 1e-9);
+	EXPECT_NEAR(s.materials[0].sigma_a[0], sigmaAFromReflectanceChannelRef(0.5, 0.3), 1e-9);
+	EXPECT_NEAR(s.materials[0].sigma_a[1], sigmaAFromReflectanceChannelRef(0.3, 0.3), 1e-9);
+	EXPECT_NEAR(s.materials[0].sigma_a[2], sigmaAFromReflectanceChannelRef(0.2, 0.3), 1e-9);
+	EXPECT_FALSE(warnedAbout(s, "reflectance"));
+}
+
+TEST(FlattenTest, HairMaterialWithReflectanceAndBetaNUsesTheGivenBetaN) {
+	// beta_n must be read BEFORE sigma_a resolution, since the reflectance
+	// inversion formula depends on it - this pins that ordering.
+	const FlatScene s = flattenSource(
+		"Material \"hair\" \"rgb reflectance\" [ 0.5 0.3 0.2 ] \"float beta_n\" [ 0.6 ]\n"
+		"Shape \"sphere\"\n");
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_NEAR(s.materials[0].sigma_a[0], sigmaAFromReflectanceChannelRef(0.5, 0.6), 1e-9);
+	// Sanity: using the WRONG (default 0.3) beta_n would give a visibly
+	// different value, so this also proves beta_n is actually threaded
+	// through rather than silently ignored.
+	EXPECT_NE(s.materials[0].sigma_a[0], sigmaAFromReflectanceChannelRef(0.5, 0.3));
+}
+
+TEST(FlattenTest, HairMaterialWithReflectanceAndEumelaninWarnsReflectanceWins) {
+	const FlatScene s = flattenSource(
+		"Material \"hair\" \"rgb reflectance\" [ 0.5 0.3 0.2 ] \"float eumelanin\" [ 2.0 ]\n"
+		"Shape \"sphere\"\n");
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_NEAR(s.materials[0].sigma_a[0], sigmaAFromReflectanceChannelRef(0.5, 0.3), 1e-9);
 	EXPECT_TRUE(warnedAbout(s, "reflectance"));
 }
 

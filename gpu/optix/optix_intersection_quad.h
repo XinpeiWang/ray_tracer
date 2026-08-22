@@ -100,22 +100,35 @@ extern "C" __global__ void __closesthit__quad() {
 	bool bssrdf_exit = false;
 	float3 bssrdf_exit_pos = make_float3(0.0f, 0.0f, 0.0f);
 
-	// Medium/DielectricMedium/CloudMedium/RgbGridMedium/Hair/Principled need
-	// sphere-specific handling this file doesn't implement (see
-	// material_requires_sphere_only_handling()'s comment); NormalMappedLambertian
-	// has a real implementation on triangles but not here either. Trap with a
-	// specific message rather than falling through to shade_material()'s own
-	// generic "unhandled MaterialType" default.
-	if (material_requires_sphere_only_handling(mat.type) ||
-		mat.type == MaterialType::NormalMappedLambertian) {
-		printf("[QUAD-SHADE] MaterialType %d is not supported on quad geometry\n", (int)mat.type);
-		__trap();
-	}
+	// Real Hair support on quad geometry, using the shading normal as the
+	// fiber-tangent proxy - same simplification as sphere's own Hair branch
+	// (optix_intersection_sphere.h). See optix_intersection_triangle.h's
+	// identical branch for why this moved out of the trap below: Material
+	// "hair" could never reach a quad's material index before Round 7 wired
+	// it into the pbrt loader for real, so trapping it here used to be dead
+	// code, not a real regression risk.
+	float out_eta = 1.0f;
+	if (mat.type == MaterialType::Hair) {
+		scattered   = sample_hair_material(ray_dir, final_normal, mat, seed, scattered_dir, attenuation);
+		is_specular = true;
+	} else {
+		// Medium/DielectricMedium/CloudMedium/RgbGridMedium/Principled need
+		// sphere-specific handling this file doesn't implement (see
+		// material_requires_sphere_only_handling()'s comment);
+		// NormalMappedLambertian has a real implementation on triangles but
+		// not here either. Trap with a specific message rather than falling
+		// through to shade_material()'s own generic "unhandled MaterialType"
+		// default.
+		if (material_requires_sphere_only_handling(mat.type) ||
+			mat.type == MaterialType::NormalMappedLambertian) {
+			printf("[QUAD-SHADE] MaterialType %d is not supported on quad geometry\n", (int)mat.type);
+			__trap();
+		}
 
-	float out_eta;
-	shade_material(mat, matIdx, final_normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
-		attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
-		bssrdf_exit, bssrdf_exit_pos, out_eta);
+		shade_material(mat, matIdx, final_normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
+			attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
+			bssrdf_exit, bssrdf_exit_pos, out_eta);
+	}
 			// Pack updated payload back into registers
 			// p0-p2: surface attenuation (BRDF albedo - raygen multiplies with throughput)
 	// p3-p5: emission from this surface hit

@@ -137,9 +137,12 @@ struct HitWorkItem {
 	//     __closesthit__wf_triangle, mirroring optix_intersection_triangle.h)
 	//     - wavefront_kernels.cu uses it directly, no further derivation.
 	//   - Bilinear patch: also an already-computed, world-space dpdu (the
-	//     patch's own tangent, normalized) - see __closesthit__wf_bilinear_
-	//     patch. Only meaningful for MaterialType::Hair (the tessellated-
-	//     curve GPU path's fiber tangent - see hair_material.h's
+	//     patch's own tangent) - see __closesthit__wf_bilinear_patch. Stored
+	//     UNNORMALIZED (unlike the sphere/triangle uses above) - the
+	//     normalize() is deferred to evaluate_materials()'s own Hair case,
+	//     the only reader, so the (much more common) non-Hair bilinear-patch
+	//     hit doesn't pay for it. Only meaningful for MaterialType::Hair (the
+	//     tessellated-curve GPU path's fiber tangent - see hair_material.h's
 	//     tangent_is_dpdu comment for the identical CPU-side reasoning).
 	// Zero for quad hits and for any sphere/triangle/bilinear-patch material
 	// that doesn't read it.

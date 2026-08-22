@@ -140,12 +140,12 @@ struct WfHitPayload {
 	int    frontFace;  // see HitWorkItem::frontFace
 	// Dual-purpose carrier - see HitWorkItem::objNormal's own comment for the
 	// sphere/triangle uses this mirrors. Bilinear patch (geomType==2) is a
-	// third use: the patch's own normalized dpdu ("along the tube's length"
-	// for a tessellated curve - curve_tessellate.h's own Quad corner
-	// convention), read only for MaterialType::Hair - the genuine fiber
-	// tangent this primitive has, unlike its own `normal` (perpendicular to
-	// the tube) - see hair_material.h's tangent_is_dpdu comment for the
-	// identical CPU-side reasoning.
+	// third use: the patch's own dpdu ("along the tube's length" for a
+	// tessellated curve - curve_tessellate.h's own Quad corner convention),
+	// UNNORMALIZED (evaluate_materials()'s Hair case, the only reader,
+	// normalizes it) - the genuine fiber tangent this primitive has, unlike
+	// its own `normal` (perpendicular to the tube) - see hair_material.h's
+	// tangent_is_dpdu comment for the identical CPU-side reasoning.
 	float3 objNormal;
 	float  uv_u, uv_v; // see HitWorkItem::uv_u/uv_v
 };
@@ -556,8 +556,11 @@ extern "C" __global__ void __closesthit__wf_bilinear_patch() {
 	payload->uv_u        = 0.0f;
 	payload->uv_v        = 0.0f;
 	// See WfHitPayload::objNormal's own comment - the bilinear-patch use,
-	// only meaningful for MaterialType::Hair.
-	payload->objNormal   = normalize(dpdu);
+	// only meaningful for MaterialType::Hair. Stored UNNORMALIZED - the
+	// normalize() (sqrt + 3 divides) is deferred to evaluate_materials()'s
+	// own Hair case, the only reader, so every non-Hair bilinear-patch hit
+	// (most of them - see that field's own comment) doesn't pay for it.
+	payload->objNormal   = dpdu;
 }
 
 // ============================================================================

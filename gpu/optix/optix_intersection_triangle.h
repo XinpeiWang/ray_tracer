@@ -201,20 +201,37 @@ extern "C" __global__ void __closesthit__triangle() {
 		// path's identical effective-material substitution.
 		shade_mat.type = MaterialType::Lambertian;
 		shade_mat.textureIdx = -1;
+	} else if (mat.type == MaterialType::Hair) {
+		// Real Hair support on triangle geometry, using the shading normal as
+		// the fiber-tangent proxy - same simplification as sphere's own Hair
+		// branch (optix_intersection_sphere.h) for any non-curve shape (real
+		// curve geometry never produces triangles - see curve_tessellate.h,
+		// bilinear patches only). Was previously part of the sphere-only trap
+		// below - safe while Material "hair" could never actually reach a
+		// triangle's material index (pbrt_flatten.h mapped it to
+		// MaterialKind::Unsupported), but once Round 7 wired it up for real,
+		// an ordinary Shape "trianglemesh" with Material "hair" trapped the
+		// whole render instead of falling back the way every other
+		// unsupported combination does.
+		scattered   = sample_hair_material(ray_dir, final_normal, mat, seed, scattered_dir, attenuation);
+		is_specular = true;
 	} else if (material_requires_sphere_only_handling(mat.type)) {
-		// Medium/DielectricMedium/CloudMedium/RgbGridMedium/Hair/Principled
-		// need sphere-specific handling this file doesn't implement (see
-		// material_requires_sphere_only_handling()'s comment). Trap with a
+		// Medium/DielectricMedium/CloudMedium/RgbGridMedium/Principled need
+		// sphere-specific handling this file doesn't implement (see
+		// material_requires_sphere_only_handling()'s comment - Hair no longer
+		// belongs to this trapped set, see the branch above). Trap with a
 		// specific message rather than falling through to shade_material()'s
 		// own generic "unhandled MaterialType" default.
 		printf("[TRIANGLE-SHADE] MaterialType %d is not supported on triangle geometry\n", (int)mat.type);
 		__trap();
 	}
 
-	float out_eta;
-	shade_material(shade_mat, tri.materialIdx, shade_normal, ray_dir, hit_point, front_face, uv_u, uv_v, seed,
-		attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
-		bssrdf_exit, bssrdf_exit_pos, out_eta);
+	float out_eta = 1.0f;
+	if (mat.type != MaterialType::Hair) {
+		shade_material(shade_mat, tri.materialIdx, shade_normal, ray_dir, hit_point, front_face, uv_u, uv_v, seed,
+			attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
+			bssrdf_exit, bssrdf_exit_pos, out_eta);
+	}
 
 	optixSetPayload_3(__float_as_uint(emission.x));
 	optixSetPayload_4(__float_as_uint(emission.y));

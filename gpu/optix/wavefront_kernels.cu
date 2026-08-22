@@ -1924,7 +1924,19 @@ extern "C" __global__ void evaluate_materials(
 	// Only this general queue needs the check: simpleHitQueue/
 	// dielectricHitQueue only ever receive Lambertian/Metal and
 	// Dielectric/RoughDielectric hits respectively, never these types.
-	if ((h.geomType == 4 || h.geomType == 5) &&
+	//
+	// Hair is excluded from this trap (unlike the recursive backend's
+	// disk/cylinder files, which need their own explicit branch since each
+	// closest-hit program dispatches materials itself): this single shared
+	// queue already has a real MaterialType::Hair case below, keyed only on
+	// mat.type - so a disk/cylinder hit just falls through to it like any
+	// other geometry, using h.normal as the fiber-tangent proxy. Material
+	// "hair" + Shape "disk"/"cylinder" is an ordinary, reachable pbrt
+	// combination once Round 7 wired "hair" into the loader for real -
+	// trapping it here would be a genuine regression from "falls back to
+	// Lambertian", not the unreachable-defensive-code every other trapped
+	// type here still is.
+	if ((h.geomType == 4 || h.geomType == 5) && mat.type != MaterialType::Hair &&
 		(wf_material_requires_sphere_only_handling(mat.type) ||
 		 mat.type == MaterialType::NormalMappedLambertian)) {
 		printf("[WF-DISK-CYL-SHADE] MaterialType %d is not supported on disk/cylinder geometry (geomType=%d)\n",
@@ -2844,8 +2856,12 @@ extern "C" __global__ void evaluate_materials(
 		// __closesthit__wf_bilinear_patch) - the real fiber axis, unlike
 		// `normal` (perpendicular to the tube). Every other geomType falls
 		// back to the shading-normal proxy, matching hair_material.h's own
-		// default (tangent_is_dpdu=false) exactly.
-		const float3 hairTangent = (h.geomType == 2) ? h.objNormal : normal;
+		// default (tangent_is_dpdu=false) exactly. h.objNormal is stored
+		// UNNORMALIZED (see __closesthit__wf_bilinear_patch's own comment) -
+		// normalized here, the only reader, with the same degenerate-dpdu
+		// fallback hair_material.h's CPU-side fiber_tangent() uses.
+		const bool hasCurveTangent = (h.geomType == 2) && (dot(h.objNormal, h.objNormal) > 1e-12f);
+		const float3 hairTangent = hasCurveTangent ? normalize(h.objNormal) : normal;
 		float3 sdir, atten;
 		if (wf_sample_hair_material(h.rayDir, hairTangent, mat, seed, sdir, atten)) {
 			scattered_dir = sdir;

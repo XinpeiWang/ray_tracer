@@ -66,12 +66,7 @@ public:
 			beta_m, beta_n,
 			m_alpha);
 
-		// See tangent_is_dpdu's own comment above. A degenerate dpdu (only
-		// possible if a future non-curve caller ever passed tangent_is_dpdu
-		// without a real dpdu set) falls back to the normal proxy rather than
-		// sampling from a zero-length axis.
-		const vec3& tangent = (m_tangent_is_dpdu && rec.dpdu.length_squared() > 1e-12)
-			? rec.dpdu : rec.normal;
+		const vec3 tangent = fiber_tangent(rec);
 		double tx = tangent.x();
 		double ty = tangent.y();
 		double tz = tangent.z();
@@ -108,9 +103,7 @@ public:
 			m_beta_m, m_beta_n,
 			m_alpha);
 
-		// See scatter()'s identical tangent selection above.
-		const vec3& tangent = (m_tangent_is_dpdu && rec.dpdu.length_squared() > 1e-12)
-			? rec.dpdu : rec.normal;
+		const vec3 tangent = fiber_tangent(rec);
 		double tx = tangent.x(), ty = tangent.y(), tz = tangent.z();
 		vec3 in_dir  = unit_vector(r_in.direction());
 		vec3 out_dir = unit_vector(scattered.direction());
@@ -132,6 +125,15 @@ public:
 	bool   tangent_is_dpdu() const { return m_tangent_is_dpdu; }
 
 private:
+	// See tangent_is_dpdu's own comment above. A degenerate dpdu (only
+	// possible if a future non-curve caller ever passed tangent_is_dpdu
+	// without a real dpdu set) falls back to the normal proxy rather than
+	// sampling from a zero-length axis.
+	vec3 fiber_tangent(const hit_record& rec) const {
+		return (m_tangent_is_dpdu && rec.dpdu.length_squared() > 1e-12)
+			? rec.dpdu : rec.normal;
+	}
+
 	double m_sar, m_sag, m_sab;
 	double m_beta_m, m_beta_n;
 	double m_alpha;
