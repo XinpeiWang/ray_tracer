@@ -136,6 +136,37 @@ TEST(PbrtGpuDiskCylinderTest, MaterialAndAreaLightAreResolved) {
 	EXPECT_EQ(scene.materials[scene.cylinders[0].materialIdx].type, MaterialType::DiffuseLight);
 }
 
+// A disk/cylinder AreaLightSource must be registered for real NEE sampling
+// (GpuLightKind::Disk/Cylinder), not merely emit when directly hit - see
+// docs/PBRT_SUPPORT.md's disk/cylinder entry and optix_disk_cylinder_
+// helpers.h. A non-emissive disk/cylinder (no AreaLightSource) must NOT be
+// registered at all, matching every other shape kind's own convention.
+TEST(PbrtGpuDiskCylinderTest, EmissiveDiskAndCylinderAreRegisteredAsNeeLights) {
+	const pbrt_flatten::FlatScene flat = flattenSource(
+		"AttributeBegin\n"
+		"  AreaLightSource \"diffuse\" \"rgb L\" [ 5 5 5 ]\n"
+		"  Shape \"disk\" \"float radius\" [ 1 ]\n"
+		"AttributeEnd\n"
+		"AttributeBegin\n"
+		"  AreaLightSource \"diffuse\" \"rgb L\" [ 3 3 3 ]\n"
+		"  Shape \"cylinder\" \"float radius\" [ 1 ] \"float zmin\" [ 0 ] \"float zmax\" [ 2 ]\n"
+		"AttributeEnd\n"
+		// A non-emissive disk must not show up in the light list at all.
+		"Material \"diffuse\"\n"
+		"Shape \"disk\" \"float radius\" [ 1 ]\n");
+	SceneData scene;
+	pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(scene.disks.size(), 2u);
+	ASSERT_EQ(scene.cylinders.size(), 1u);
+	ASSERT_EQ(scene.lightIndices.size(), scene.lightKinds.size());
+	ASSERT_EQ(scene.lightIndices.size(), 2u);
+
+	EXPECT_EQ(scene.lightKinds[0], GpuLightKind::Disk);
+	EXPECT_EQ(scene.lightIndices[0], 0);
+	EXPECT_EQ(scene.lightKinds[1], GpuLightKind::Cylinder);
+	EXPECT_EQ(scene.lightIndices[1], 0);
+}
+
 // ---------------------------------------------------------------------------
 // Real GPU render (skipped when no OptiX-capable device is present) - both
 // backends, since Phase 4c ports Disk/Cylinder to wavefront on top of

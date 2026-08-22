@@ -31,6 +31,7 @@
 #include <cctype>
 
 #include "scene_registry.h"
+#include "disk_cylinder_hittable.h"
 
 extern "C" {
 	#include "cpu_interface.h"
@@ -313,6 +314,13 @@ TEST_F(CPUGPUComparisonTest, BothProduceSameDimensions) {
 // lights against a real, non-zero GPU count (GpuLightKind::Triangle) for
 // every one of them the moment they stopped being skipped by
 // SceneDescriptor::requires_files.
+//
+// disk_hittable/cylinder_hittable, same reasoning: pbrt_cpu_builder.h's
+// AreaLightSource handling adds an emissive Shape "disk"/"cylinder" straight
+// to world/lights too, and GPU now registers the same shapes as real NEE
+// lights (GpuLightKind::Disk/Cylinder) - leaving these opaque here silently
+// reported 0 CPU lights against disk-cylinder-light.pbrt's real GPU count of
+// 2 the moment that feature landed (caught by this exact test).
 static int count_cpu_emissive_lights(const std::shared_ptr<hittable>& h);
 
 static int count_cpu_emissive_lights_list(const hittable_list& list) {
@@ -332,6 +340,10 @@ static int count_cpu_emissive_lights(const std::shared_ptr<hittable>& h) {
 		return std::dynamic_pointer_cast<diffuse_light>(s->get_material()) ? 1 : 0;
 	if (auto t = std::dynamic_pointer_cast<triangle>(h))
 		return std::dynamic_pointer_cast<diffuse_light>(t->get_material()) ? 1 : 0;
+	if (auto d = std::dynamic_pointer_cast<disk_hittable>(h))
+		return std::dynamic_pointer_cast<diffuse_light>(d->get_material()) ? 1 : 0;
+	if (auto c = std::dynamic_pointer_cast<cylinder_hittable>(h))
+		return std::dynamic_pointer_cast<diffuse_light>(c->get_material()) ? 1 : 0;
 	return 0;
 }
 

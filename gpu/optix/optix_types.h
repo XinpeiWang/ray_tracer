@@ -249,6 +249,14 @@ enum class GpuLightKind : int {
 	// Same "used to glow but not be aimable" gap Triangle closed, for the one
 	// shape kind that gap didn't cover.
 	BilinearPatch = 3,
+	// Shape "disk"/"cylinder" carrying an AreaLightSource - same "used to
+	// glow but not be aimable" gap Triangle/BilinearPatch closed, for the
+	// last two shape kinds that gap didn't cover. Sampling/pdf go through
+	// optix_disk_cylinder_helpers.h's dc_sample_disk/dc_pdf_disk (real
+	// device-safe ports of src/shared/shapes.h's DiskShape<T>/pdf_from, not
+	// direct template instantiation - see that header's own comment for why).
+	Disk = 4,
+	Cylinder = 5,
 };
 
 // Material types

@@ -17,36 +17,12 @@
 // since intersection solved t against ro=w2o*world_orig and rd=w2o*world_dir
 // (both linear maps, no renormalisation), o2w*(ro+t*rd) == world_orig +
 // t*world_dir exactly.
-
-// Row-major 3x4 affine transform, dropping the implicit [0,0,0,1] bottom row
-// - same convention as SceneData::InstancePlacementGPU::transform.
-__device__ __forceinline__ float3 dc_apply_point(const float m[12], const float3& p) {
-	return make_float3(
-		m[0] * p.x + m[1] * p.y + m[2]  * p.z + m[3],
-		m[4] * p.x + m[5] * p.y + m[6]  * p.z + m[7],
-		m[8] * p.x + m[9] * p.y + m[10] * p.z + m[11]);
-}
-
-// A direction: the translation column is deliberately not applied. NOT
-// renormalised on purpose (see this file's header comment and disk_cylinder_
-// hittable.h's own apply_vector) - that's what lets t survive unmodified
-// between object and world space.
-__device__ __forceinline__ float3 dc_apply_vector(const float m[12], const float3& v) {
-	return make_float3(
-		m[0] * v.x + m[1] * v.y + m[2]  * v.z,
-		m[4] * v.x + m[5] * v.y + m[6]  * v.z,
-		m[8] * v.x + m[9] * v.y + m[10] * v.z);
-}
-
-// Object -> world for a normal is the TRANSPOSE of world -> object (same
-// reasoning as disk_cylinder_hittable.h's apply_normal), so this reads w2o
-// column-wise rather than taking o2w row-wise.
-__device__ __forceinline__ float3 dc_apply_normal_from_w2o(const float w2o[12], const float3& n) {
-	return make_float3(
-		w2o[0] * n.x + w2o[4] * n.y + w2o[8]  * n.z,
-		w2o[1] * n.x + w2o[5] * n.y + w2o[9]  * n.z,
-		w2o[2] * n.x + w2o[6] * n.y + w2o[10] * n.z);
-}
+//
+// dc_apply_point/dc_apply_vector/dc_apply_normal_from_w2o/dc_cylinder_check
+// now live in optix_disk_cylinder_helpers.h (included earlier by optix_
+// programs.cu, before optix_device_helpers.h - see that file's own header
+// comment for why: sample_disk_light()/sample_cylinder_light() need them
+// too, and optix_device_helpers.h is included before this file).
 
 //==============================================================================
 // Disk
@@ -176,12 +152,30 @@ extern "C" __global__ void __closesthit__disk() {
 			optixSetPayload_15(__float_as_uint(bssrdf_exit_pos.z));
 		}
 	} else if (mat.type == MaterialType::DiffuseLight) {
-		// Disk/Cylinder aren't registered in the NEE light list yet (see
-		// optix_types.h's DiskData/CylinderData comment and PBRT_SUPPORT.md) -
-		// light_pdf_for_incoming stays 0, same "hit but not aimed-at" tier as
-		// any emissive shape this loader doesn't add to the alias table.
+		// Real NEE-aware MIS weight now (mirrors __closesthit__quad's
+		// identical alias-table-scan pattern) - a disk area light is
+		// registered in the NEE list whenever pbrt_gpu_builder.h's disk loop
+		// gave it one (d.areaLight >= 0), so a ray that happened to hit it via
+		// a BSDF bounce (not NEE) can correctly weight against the NEE
+		// strategy via mis_power_heuristic(), instead of always treating this
+		// as an un-aimable light (light_pdf_for_incoming == 0).
+		float light_pdf_for_incoming = 0.0f;
+		if (params.aliasTable && params.numLights > 0) {
+			const int prim_idx = (int)primIdx;
+			float sel_pdf = 0.0f;
+			for (unsigned int li = 0; li < params.numLights; ++li) {
+				if (params.lightIndices[li] == prim_idx && params.lightKinds[li] == GpuLightKind::Disk) {
+					sel_pdf = params.aliasTable[li].pdf;
+					break;
+				}
+			}
+			if (sel_pdf > 0.0f) {
+				const float geom_pdf = dc_pdf_disk(disk, ray_orig, normalize(ray_dir));
+				light_pdf_for_incoming = sel_pdf * geom_pdf;
+			}
+		}
 		optixSetPayload_10(2);
-		optixSetPayload_12(0);
+		optixSetPayload_12(__float_as_uint(light_pdf_for_incoming));
 	} else {
 		optixSetPayload_10(0);
 		optixSetPayload_12(0);
@@ -192,22 +186,8 @@ extern "C" __global__ void __closesthit__disk() {
 // Cylinder
 //==============================================================================
 
-// One candidate root: in range, inside the object-space Z clip, and inside
-// the phi sweep. Mirrors CylinderShape<T>::intersect's check() lambda
-// (src/shared/shapes.h) exactly, ported to float/CUDA math rather than
-// instantiating that template device-side - see this project's own precedent
-// for why (optix_intersection_sphere.h's gpu_cloud_density comment).
-__device__ __forceinline__ bool dc_cylinder_check(const CylinderData& cyl, const float3& ro, const float3& rd,
-													float t, float ray_tmin, float ray_tmax) {
-	if (t < ray_tmin || t > ray_tmax) return false;
-	const float hz = ro.z + t * rd.z;
-	if (hz < cyl.zMin || hz > cyl.zMax) return false;
-	const float hx = ro.x + t * rd.x;
-	const float hy = ro.y + t * rd.y;
-	float phi = atan2f(hy, hx);
-	if (phi < 0.0f) phi += 6.283185307179586f;
-	return phi <= cyl.phiMax;
-}
+// dc_cylinder_check now lives in optix_disk_cylinder_helpers.h - see this
+// file's own top-of-file comment.
 
 extern "C" __global__ void __intersection__cylinder() {
 	const unsigned int primIdx = optixGetPrimitiveIndex();
@@ -338,8 +318,24 @@ extern "C" __global__ void __closesthit__cylinder() {
 			optixSetPayload_15(__float_as_uint(bssrdf_exit_pos.z));
 		}
 	} else if (mat.type == MaterialType::DiffuseLight) {
+		// See __closesthit__disk's identical pattern (this file, above).
+		float light_pdf_for_incoming = 0.0f;
+		if (params.aliasTable && params.numLights > 0) {
+			const int prim_idx = (int)primIdx;
+			float sel_pdf = 0.0f;
+			for (unsigned int li = 0; li < params.numLights; ++li) {
+				if (params.lightIndices[li] == prim_idx && params.lightKinds[li] == GpuLightKind::Cylinder) {
+					sel_pdf = params.aliasTable[li].pdf;
+					break;
+				}
+			}
+			if (sel_pdf > 0.0f) {
+				const float geom_pdf = dc_pdf_cylinder(cyl, ray_orig, normalize(ray_dir));
+				light_pdf_for_incoming = sel_pdf * geom_pdf;
+			}
+		}
 		optixSetPayload_10(2);
-		optixSetPayload_12(0);
+		optixSetPayload_12(__float_as_uint(light_pdf_for_incoming));
 	} else {
 		optixSetPayload_10(0);
 		optixSetPayload_12(0);

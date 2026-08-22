@@ -113,6 +113,8 @@ class disk_hittable : public hittable {
 		return shape_.pdf_from(ctx, dir_obj.x(), dir_obj.y(), dir_obj.z());
 	}
 
+	shared_ptr<material> get_material() const { return mat_; }
+
   private:
 	DiskShape<double> shape_;
 	shared_ptr<material> mat_;
@@ -190,6 +192,8 @@ class cylinder_hittable : public hittable {
 		const SamplingContext<double> ctx{ctx_obj.x(), ctx_obj.y(), ctx_obj.z(), 0, 0, 0};
 		return shape_.pdf_from(ctx, dir_obj.x(), dir_obj.y(), dir_obj.z());
 	}
+
+	shared_ptr<material> get_material() const { return mat_; }
 
   private:
 	CylinderShape<double> shape_;

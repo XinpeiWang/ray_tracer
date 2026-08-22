@@ -1,0 +1,43 @@
+# disk-cylinder-light.pbrt -- exercises Shape "disk"/"cylinder" as real
+# NEE-samplable area lights (GpuLightKind::Disk/Cylinder), now wired on both
+# GPU backends (previously an emissive disk/cylinder still emitted when
+# directly hit but was invisible to next-event estimation, converging
+# noisier than CPU's real solid-angle-sampled light for the identical
+# scene - see docs/PBRT_SUPPORT.md).
+#
+# A horizontal disk light and a vertical cylinder light, each above a
+# diffuse floor patch, at a low sample count where the noise difference
+# between "aimed-at NEE light" and "hit-only, uniform-hemisphere-sampled
+# light" is visually obvious - CPU, GPU-recursive and GPU-wavefront should
+# now converge at a similar, much-reduced noise level, not GPU looking
+# visibly grainier than CPU at the same low spp.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  0 3 8    0 0 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 480 ] "integer yresolution" [ 320 ]
+Sampler "halton" "integer pixelsamples" [ 16 ]
+
+WorldBegin
+
+Material "diffuse" "rgb reflectance" [ 0.6 0.6 0.65 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -6 0 -6   6 0 -6   6 0 6   -6 0 6 ]
+
+AttributeBegin
+  Translate -2 3 0
+  Rotate 90 1 0 0
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 10 10 10 ]
+  Shape "disk" "float radius" [ 1 ]
+AttributeEnd
+
+AttributeBegin
+  Translate 2 0.01 0
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 8 8 8 ]
+  Shape "cylinder" "float radius" [ 0.5 ] "float zmin" [ 0 ] "float zmax" [ 3 ]
+AttributeEnd

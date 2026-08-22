@@ -130,15 +130,28 @@ loader and no longer match the code:
   exactly correct under arbitrary rotation (see `disk_cylinder_hittable.h`);
   both GPU ports carry the same unbaked object↔world transform in
   `DiskData`/`CylinderData` and apply it by hand in the intersection/
-  closest-hit programs, so they're exactly correct under rotation too — but
-  unlike CPU, a GPU disk/cylinder used as an `AreaLightSource` is not yet
-  registered for explicit NEE sampling on either backend (no
-  `GpuLightKind::Disk`/`::Cylinder`), so it still emits when directly hit but
-  converges noisier than the CPU render of the same scene. Similarly, CPU
-  wraps a disk/cylinder in a participating medium when `MediumInterface`
-  assigns one (matching Sphere's own handling); GPU does not yet read
-  `DiskData`/`CylinderData`'s medium field on either backend, so the same
-  directive silently produces a disk/cylinder with no medium on GPU.
+  closest-hit programs, so they're exactly correct under rotation too. A
+  GPU disk/cylinder used as an `AreaLightSource` is now registered for real
+  NEE sampling on both backends too (`GpuLightKind::Disk`/`::Cylinder`,
+  `optix_disk_cylinder_helpers.h`'s `dc_sample_disk`/`dc_sample_cylinder`/
+  `dc_pdf_disk`/`dc_pdf_cylinder` - hand-ported device-safe twins of
+  `src/shared/shapes.h`'s `DiskShape<T>`/`CylinderShape<T>`, same reason
+  `bilinear_patch.h`'s `blp_*` free functions exist instead of instantiating
+  those `std::optional`-returning templates on device), matching every other
+  GPU light shape - see `pbrt_scenes/disk-cylinder-light.pbrt`. World-space
+  area (needed for the NEE sampling weight and the power-weighted alias
+  table) is estimated from a single representative scale factor of the
+  object→world transform - exact under a similarity transform (rotation/
+  translation/uniform scale), approximate under anisotropic scale, the same
+  accepted simplification every other GPU area-light kind already carries.
+  Separately, CPU wraps a disk/cylinder in a participating medium when
+  `MediumInterface` assigns one (matching Sphere's own handling); GPU still
+  does not read `DiskData`/`CylinderData`'s medium field on either backend,
+  so the same directive silently produces a disk/cylinder with no medium on
+  GPU - cylinder is a plausible future port (its intersection is already a
+  two-root quadratic, like sphere's), but disk is structurally not
+  meaningful (a zero-thickness plane has no "inside" volume for a
+  homogeneous medium's entry/exit pair to bound) and isn't planned.
 
 - `Shape "curve"` (a cubic Bezier hair/fiber strand) is supported on CPU
   (`src/shared/shapes.h`'s `CurveShape<T>`, wrapped by

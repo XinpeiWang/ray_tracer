@@ -1160,15 +1160,19 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 	// Shape "disk"/"cylinder" - supported on both the recursive (Phase 4b)
 	// and wavefront (Phase 4c) GPU backends; see optix_types.h's DiskData/
 	// CylinderData comment for why these carry their own transform rather
-	// than being baked to world space the way Sphere is. Not registered as
-	// NEE-samplable lights yet even when areaLight >= 0 (no
-	// GpuLightKind::Disk/Cylinder exists) - an emissive one still emits when
-	// directly hit, just without explicit light sampling, same "hit but not
-	// aimed-at" tier documented in docs/PBRT_SUPPORT.md. The medium field
-	// (d.medium/c.medium) is intentionally unread here, UNLIKE the sphere
-	// loop above (which resolves s.medium via mediumMaterialIndex()) - a
-	// real, known GPU-only gap (a MediumInterface around a disk/cylinder is
-	// silently dropped on GPU), not yet fixed here.
+	// than being baked to world space the way Sphere is. Now registered as
+	// real NEE-samplable lights (GpuLightKind::Disk/Cylinder) when
+	// areaLight >= 0, same as every other shape kind - see optix_types.h's
+	// GpuLightKind::Disk/Cylinder comment and optix_disk_cylinder_helpers.h
+	// for the sampling/pdf machinery this needed. The medium field
+	// (d.medium/c.medium) is still intentionally unread here, UNLIKE the
+	// sphere loop above (which resolves s.medium via mediumMaterialIndex())
+	// - a real, known GPU-only gap (a MediumInterface around a disk/cylinder
+	// is silently dropped on GPU) - see docs/PBRT_SUPPORT.md: cylinder is a
+	// plausible future port (its intersection is already a two-root
+	// quadratic, like sphere), disk is structurally not meaningful (a zero-
+	// thickness plane has no "inside" volume for a homogeneous medium's
+	// entry/exit pair) and is not planned.
 	const auto flattenTransform = [](const double xform[16], float out12[12]) {
 		for (int row = 0; row < 3; ++row)
 			for (int col = 0; col < 4; ++col)
@@ -1190,6 +1194,10 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		dd.materialIdx = materialIndex(d.material, d.areaLight);
 		flattenTransform(o2w.m, dd.o2w);
 		flattenTransform(w2o.m, dd.w2o);
+		if (d.areaLight >= 0) {
+			out.lightIndices.push_back(static_cast<int>(out.disks.size()));
+			out.lightKinds.push_back(GpuLightKind::Disk);
+		}
 		out.disks.push_back(dd);
 	}
 	stats.disks = out.disks.size();
@@ -1208,6 +1216,10 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		cd.materialIdx = materialIndex(c.material, c.areaLight);
 		flattenTransform(o2w.m, cd.o2w);
 		flattenTransform(w2o.m, cd.w2o);
+		if (c.areaLight >= 0) {
+			out.lightIndices.push_back(static_cast<int>(out.cylinders.size()));
+			out.lightKinds.push_back(GpuLightKind::Cylinder);
+		}
 		out.cylinders.push_back(cd);
 	}
 	stats.cylinders = out.cylinders.size();

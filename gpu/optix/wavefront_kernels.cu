@@ -33,6 +33,7 @@
 #include "../../src/shared/normal_map.h"  // apply_normal_map - see MaterialType::NormalMappedLambertian
 #include "../../src/shared/bilinear_patch.h"  // blp_sample - see wf_sample_bilinear_patch_light()
 #include "../../src/shared/shading_frame.h"   // ShadingFrame<T> (CPU+GPU) - see MaterialType::Measured
+#include "../../src/shared/sampling_helpers.h"  // SampleUniformDiskConcentric - see wf_sample_disk_light()
 
 // ============================================================================
 // Device helpers (shared with optix_programs.cu logic)
@@ -696,6 +697,96 @@ __device__ float3 wf_sample_bilinear_patch_light(const BilinearPatchData& bp, co
 	return dir;
 }
 
+// wf_dc_apply_point/wf_dc_apply_vector/wf_dc_apply_normal_from_w2o -
+// wavefront-native duplicates of optix_disk_cylinder_helpers.h's identically
+// named recursive-backend functions (same cross-module reason every other
+// wf_ helper in this file is duplicated, not shared via #include - see
+// optix_disk_cylinder_helpers.h's own header comment).
+__device__ __forceinline__ float3 wf_dc_apply_point(const float m[12], const float3& p) {
+	return make_float3(
+		m[0] * p.x + m[1] * p.y + m[2]  * p.z + m[3],
+		m[4] * p.x + m[5] * p.y + m[6]  * p.z + m[7],
+		m[8] * p.x + m[9] * p.y + m[10] * p.z + m[11]);
+}
+__device__ __forceinline__ float3 wf_dc_apply_vector(const float m[12], const float3& v) {
+	return make_float3(
+		m[0] * v.x + m[1] * v.y + m[2]  * v.z,
+		m[4] * v.x + m[5] * v.y + m[6]  * v.z,
+		m[8] * v.x + m[9] * v.y + m[10] * v.z);
+}
+__device__ __forceinline__ float3 wf_dc_apply_normal_from_w2o(const float w2o[12], const float3& n) {
+	return make_float3(
+		w2o[0] * n.x + w2o[4] * n.y + w2o[8]  * n.z,
+		w2o[1] * n.x + w2o[5] * n.y + w2o[9]  * n.z,
+		w2o[2] * n.x + w2o[6] * n.y + w2o[10] * n.z);
+}
+__device__ __forceinline__ float wf_dc_representative_scale(const float o2w[12]) {
+	return length(make_float3(o2w[0], o2w[4], o2w[8]));
+}
+__device__ __forceinline__ float wf_dc_area_disk(const DiskData& disk) {
+	const float scale = wf_dc_representative_scale(disk.o2w);
+	const float objArea = disk.phiMax * 0.5f * (disk.radius * disk.radius - disk.innerRadius * disk.innerRadius);
+	return objArea * scale * scale;
+}
+__device__ __forceinline__ float wf_dc_area_cylinder(const CylinderData& cyl) {
+	const float scale = wf_dc_representative_scale(cyl.o2w);
+	const float objArea = (cyl.zMax - cyl.zMin) * cyl.radius * cyl.phiMax;
+	return objArea * scale * scale;
+}
+
+// Sample a point on a disk light. Object-space uniform-area concentric
+// sample (SampleUniformDiskConcentric, src/shared/sampling_helpers.h -
+// CPU_GPU-tagged, safe to call directly here, same reasoning as blp_sample's
+// own comment above) transformed to world space via the disk's own o2w -
+// same math as optix_disk_cylinder_helpers.h's dc_sample_disk()/
+// sample_disk_light(), duplicated here for the same cross-module reason
+// every other wf_sample_*_light function in this file is.
+__device__ float3 wf_sample_disk_light(const DiskData& disk, const float3& hit,
+										unsigned int& seed, float& geom_pdf, float& maxDist) {
+	float dx, dy;
+	SampleUniformDiskConcentric<float>(wf_rand(seed), wf_rand(seed), dx, dy);
+	const float3 obj_point = make_float3(dx * disk.radius, dy * disk.radius, disk.height);
+	const float3 point = wf_dc_apply_point(disk.o2w, obj_point);
+	const float3 normal = normalize(wf_dc_apply_normal_from_w2o(disk.w2o, make_float3(0.0f, 0.0f, 1.0f)));
+	const float area = wf_dc_area_disk(disk);
+	const float area_pdf = (area > 1e-12f) ? (1.0f / area) : 0.0f;
+
+	float3 dir = point - hit;
+	maxDist = length(dir);
+	if (maxDist < 1e-6f || area_pdf <= 0.0f) { geom_pdf = 0.0f; return make_float3(0.0f, 0.0f, 1.0f); }
+	dir = dir / maxDist;
+
+	const float cosine = fabsf(dot(dir, normal));
+	if (cosine < 1e-6f) { geom_pdf = 0.0f; return dir; }
+	geom_pdf = area_pdf * maxDist * maxDist / cosine;
+	return dir;
+}
+
+// Sample a point on a cylinder light. Uniform Z along the axis, uniform phi
+// within the sweep, same math as optix_disk_cylinder_helpers.h's
+// dc_sample_cylinder()/sample_cylinder_light().
+__device__ float3 wf_sample_cylinder_light(const CylinderData& cyl, const float3& hit,
+											unsigned int& seed, float& geom_pdf, float& maxDist) {
+	const float z = cyl.zMin + wf_rand(seed) * (cyl.zMax - cyl.zMin);
+	const float phi = wf_rand(seed) * cyl.phiMax;
+	const float3 obj_normal = make_float3(cosf(phi), sinf(phi), 0.0f);
+	const float3 obj_point = make_float3(cyl.radius * obj_normal.x, cyl.radius * obj_normal.y, z);
+	const float3 point = wf_dc_apply_point(cyl.o2w, obj_point);
+	const float3 normal = normalize(wf_dc_apply_normal_from_w2o(cyl.w2o, obj_normal));
+	const float area = wf_dc_area_cylinder(cyl);
+	const float area_pdf = (area > 1e-12f) ? (1.0f / area) : 0.0f;
+
+	float3 dir = point - hit;
+	maxDist = length(dir);
+	if (maxDist < 1e-6f || area_pdf <= 0.0f) { geom_pdf = 0.0f; return make_float3(0.0f, 0.0f, 1.0f); }
+	dir = dir / maxDist;
+
+	const float cosine = fabsf(dot(dir, normal));
+	if (cosine < 1e-6f) { geom_pdf = 0.0f; return dir; }
+	geom_pdf = area_pdf * maxDist * maxDist / cosine;
+	return dir;
+}
+
 // Equal-area sphere->square mapping for the goniometric light's image
 // lookup. Duplicated from optix_device_helpers.h's dev_equal_area_sphere_to_square
 // (itself a local copy of src/shared/sampling_patched.h's EqualAreaSphereToSquare -
@@ -1237,6 +1328,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	int pixelIndex, int depth,
 	const SphereData* spheres, const QuadData* quads,
 	const TriangleData* triangles, const BilinearPatchData* bilinearPatches,
+	const DiskData* disks, const CylinderData* cylinders,
 	const MaterialData* materials,
 	const int* lightIndices, const GpuLightKind* lightKinds,
 	const GpuAliasEntry* aliasTable, unsigned int numLights,
@@ -1452,6 +1544,14 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			const BilinearPatchData& bp = bilinearPatches[prim_idx];
 			to_light = wf_sample_bilinear_patch_light(bp, hit_point, seed, geom_pdf, max_dist);
 			light_emission_spec = liftEmission(materials[bp.materialIdx].emission);
+		} else if (kind == GpuLightKind::Disk) {
+			const DiskData& d = disks[prim_idx];
+			to_light = wf_sample_disk_light(d, hit_point, seed, geom_pdf, max_dist);
+			light_emission_spec = liftEmission(materials[d.materialIdx].emission);
+		} else if (kind == GpuLightKind::Cylinder) {
+			const CylinderData& c = cylinders[prim_idx];
+			to_light = wf_sample_cylinder_light(c, hit_point, seed, geom_pdf, max_dist);
+			light_emission_spec = liftEmission(materials[c.materialIdx].emission);
 		} else {
 			const QuadData& q = quads[prim_idx];
 			to_light = wf_sample_quad_light(q, hit_point, seed, geom_pdf, max_dist);
@@ -1871,6 +1971,8 @@ extern "C" __global__ void evaluate_materials(
 	const QuadData*     quads,
 	const TriangleData* triangles,
 	const BilinearPatchData* bilinearPatches,
+	const DiskData*     disks,
+	const CylinderData* cylinders,
 	const MaterialData* materials,
 	const int*          lightIndices,
 	const GpuLightKind* lightKinds,
@@ -3036,7 +3138,7 @@ extern "C" __global__ void evaluate_materials(
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
-		spheres, quads, triangles, bilinearPatches, materials,
+		spheres, quads, triangles, bilinearPatches, disks, cylinders, materials,
 		lightIndices, lightKinds, aliasTable, numLights,
 		punctualLights, numPunctualLights,
 		skyColor, shadow_eps, skyDist,
@@ -3083,6 +3185,8 @@ extern "C" __global__ void evaluate_materials_simple(
 	const QuadData*     quads,
 	const TriangleData* triangles,
 	const BilinearPatchData* bilinearPatches,
+	const DiskData*     disks,
+	const CylinderData* cylinders,
 	const MaterialData* materials,
 	const int*          lightIndices,
 	const GpuLightKind* lightKinds,
@@ -3202,7 +3306,7 @@ extern "C" __global__ void evaluate_materials_simple(
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
-		spheres, quads, triangles, bilinearPatches, materials,
+		spheres, quads, triangles, bilinearPatches, disks, cylinders, materials,
 		lightIndices, lightKinds, aliasTable, numLights,
 		punctualLights, numPunctualLights,
 		skyColor, shadow_eps, skyDist,
@@ -3240,6 +3344,8 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	const QuadData*     quads,
 	const TriangleData* triangles,
 	const BilinearPatchData* bilinearPatches,
+	const DiskData*     disks,
+	const CylinderData* cylinders,
 	const MaterialData* materials,
 	const int*          lightIndices,
 	const GpuLightKind* lightKinds,
@@ -3427,7 +3533,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
-		spheres, quads, triangles, bilinearPatches, materials,
+		spheres, quads, triangles, bilinearPatches, disks, cylinders, materials,
 		lightIndices, lightKinds, aliasTable, numLights,
 		punctualLights, numPunctualLights,
 		skyColor, shadow_eps, skyDist,
@@ -3505,6 +3611,8 @@ extern "C" __global__ void resolve_bssrdf_exit(
 	const QuadData*     quads,
 	const TriangleData* triangles,
 	const BilinearPatchData* bilinearPatches,
+	const DiskData*     disks,
+	const CylinderData* cylinders,
 	const MaterialData* materials,
 	const int*          lightIndices,
 	const GpuLightKind* lightKinds,
@@ -3600,7 +3708,7 @@ extern "C" __global__ void resolve_bssrdf_exit(
 		/*is_specular=*/false, brdf_pdf_override,
 		/*phaseWo=*/make_float3(0.0f, 0.0f, 0.0f), /*phaseG=*/0.0f,
 		item.pixelIndex, item.depth,
-		spheres, quads, triangles, bilinearPatches, materials,
+		spheres, quads, triangles, bilinearPatches, disks, cylinders, materials,
 		lightIndices, lightKinds, aliasTable, numLights,
 		punctualLights, numPunctualLights,
 		skyColor, shadow_eps, skyDist,

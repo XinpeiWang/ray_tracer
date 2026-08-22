@@ -504,6 +504,57 @@ __device__ __forceinline__ float3 sample_bilinear_patch_light(
 	return direction;
 }
 
+// Same shape of answer as sample_quad_light/sample_bilinear_patch_light
+// above, for Shape "disk"/"cylinder" area lights (GpuLightKind::Disk/
+// Cylinder). dc_sample_disk (optix_disk_cylinder_helpers.h, included
+// earlier by optix_programs.cu specifically so it's available here - see
+// that header's own comment) draws a uniform-area point in WORLD space and
+// returns an AREA-domain pdf; the area-to-solid-angle Jacobian conversion
+// below is the same one every other *_light sampler in this file applies.
+__device__ __forceinline__ float3 sample_disk_light(
+	const DiskData& disk,
+	const float3& origin,
+	unsigned int& seed,
+	float& pdf,
+	float& out_dist
+) {
+	float3 point, normal; float area_pdf;
+	dc_sample_disk(disk, random_float(seed), random_float(seed), point, normal, area_pdf);
+	float3 to_light = point - origin;
+	float dist_sq = dot(to_light, to_light);
+	out_dist = sqrtf(dist_sq);
+	if (out_dist < 1e-6f || area_pdf <= 0.0f) { pdf = 0.0f; return make_float3(0.0f, 0.0f, 1.0f); }
+	float3 direction = to_light / out_dist;
+
+	const float cosine = fabsf(dot(direction, normal));
+	if (cosine < 1e-6f) { pdf = 0.0f; return direction; }
+
+	pdf = area_pdf * dist_sq / cosine;
+	return direction;
+}
+
+__device__ __forceinline__ float3 sample_cylinder_light(
+	const CylinderData& cyl,
+	const float3& origin,
+	unsigned int& seed,
+	float& pdf,
+	float& out_dist
+) {
+	float3 point, normal; float area_pdf;
+	dc_sample_cylinder(cyl, random_float(seed), random_float(seed), point, normal, area_pdf);
+	float3 to_light = point - origin;
+	float dist_sq = dot(to_light, to_light);
+	out_dist = sqrtf(dist_sq);
+	if (out_dist < 1e-6f || area_pdf <= 0.0f) { pdf = 0.0f; return make_float3(0.0f, 0.0f, 1.0f); }
+	float3 direction = to_light / out_dist;
+
+	const float cosine = fabsf(dot(direction, normal));
+	if (cosine < 1e-6f) { pdf = 0.0f; return direction; }
+
+	pdf = area_pdf * dist_sq / cosine;
+	return direction;
+}
+
 // Sample whichever kind of area light `light_idx` names, and report the
 // emitter's radiance alongside it.
 //
@@ -585,6 +636,18 @@ __device__ __forceinline__ float3 sample_area_light_by_kind(
 		const BilinearPatchData& bp = params.bilinearPatches[prim_idx];
 		const float3 dir = sample_bilinear_patch_light(bp, origin, seed, geom_pdf, max_dist);
 		emission = params.materials[bp.materialIdx].emission;
+		return dir;
+	}
+	case GpuLightKind::Disk: {
+		const DiskData& d = params.disks[prim_idx];
+		const float3 dir = sample_disk_light(d, origin, seed, geom_pdf, max_dist);
+		emission = params.materials[d.materialIdx].emission;
+		return dir;
+	}
+	case GpuLightKind::Cylinder: {
+		const CylinderData& c = params.cylinders[prim_idx];
+		const float3 dir = sample_cylinder_light(c, origin, seed, geom_pdf, max_dist);
+		emission = params.materials[c.materialIdx].emission;
 		return dir;
 	}
 	case GpuLightKind::Quad:

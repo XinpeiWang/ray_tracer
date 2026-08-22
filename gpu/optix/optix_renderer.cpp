@@ -1475,6 +1475,33 @@ bool OptiXRenderer::buildScene(
 				const float p01[3] = {bp.p01.x, bp.p01.y, bp.p01.z};
 				const float p11[3] = {bp.p11.x, bp.p11.y, bp.p11.z};
 				area = blp_area(p00, p10, p01, p11);
+			} else if (lightKinds[i] == GpuLightKind::Disk) {
+				// Indexes `disks`, not `quads` - same "must stay explicit"
+				// reasoning as the BilinearPatch branch above. Object-space
+				// area scaled by the square of a representative world-space
+				// scale factor (the length of o2w's transformed local-X
+				// basis vector) - exact under a similarity transform
+				// (rotation/translation/uniform scale), approximate under
+				// anisotropic scale, matching optix_disk_cylinder_helpers.h's
+				// dc_area_disk() (this is a separate, host-side copy of that
+				// same formula - this file is plain host C++, not compiled
+				// as CUDA device code, so it can't call that __device__
+				// function directly).
+				const DiskData& d = disks[prim_idx];
+				const MaterialData& m = materials[d.materialIdx];
+				emission = m.emission;
+				twoSided = m.twoSided;
+				const float3 xAxis = make_float3(d.o2w[0], d.o2w[4], d.o2w[8]);
+				const float scale = length(xAxis);
+				area = d.phiMax * 0.5f * (d.radius*d.radius - d.innerRadius*d.innerRadius) * scale * scale;
+			} else if (lightKinds[i] == GpuLightKind::Cylinder) {
+				const CylinderData& c = cylinders[prim_idx];
+				const MaterialData& m = materials[c.materialIdx];
+				emission = m.emission;
+				twoSided = m.twoSided;
+				const float3 xAxis = make_float3(c.o2w[0], c.o2w[4], c.o2w[8]);
+				const float scale = length(xAxis);
+				area = (c.zMax - c.zMin) * c.radius * c.phiMax * scale * scale;
 			} else {
 				const QuadData& q = quads[prim_idx];
 				const MaterialData& m = materials[q.materialIdx];
