@@ -11,7 +11,7 @@
 // ---- forward declarations of kernels from wavefront_kernels.cu ----
 extern "C" __global__ void generate_camera_rays(
 	WorkQueue<RayWorkItem>, unsigned int, unsigned int,
-	GpuCameraParams, unsigned int, unsigned int);
+	GpuCameraParams, unsigned int, unsigned int, float*);
 extern "C" __global__ void evaluate_materials(
 	WorkQueue<HitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>, WorkQueue<BssrdfProbeWorkItem>,
@@ -62,7 +62,7 @@ extern "C" __global__ void resolve_bssrdf_exit(
 	const TextureData*, const unsigned char*,
 	float3, float, GpuSkyDistribution);
 extern "C" __global__ void reset_queue_counter(int*);
-extern "C" __global__ void normalize_framebuffer(float3*, unsigned int, float);
+extern "C" __global__ void normalize_framebuffer(float3*, unsigned int, const float*);
 
 // ---- plain C launcher wrappers ----
 
@@ -71,6 +71,7 @@ extern "C" void wf_launch_generate_camera_rays(
 	int width, int height, int sampleIdx,
 	GpuCameraParams camera,
 	unsigned int frameNumber,
+	float* d_weightBuffer,
 	cudaStream_t stream)
 {
 	dim3 block(16, 16);
@@ -78,7 +79,7 @@ extern "C" void wf_launch_generate_camera_rays(
 	generate_camera_rays<<<grid, block, 0, (cudaStream_t)stream>>>(
 		rq, (unsigned int)width, (unsigned int)height,
 		camera,
-		(unsigned int)sampleIdx, frameNumber);
+		(unsigned int)sampleIdx, frameNumber, d_weightBuffer);
 }
 
 extern "C" void wf_launch_evaluate_materials(
@@ -271,11 +272,11 @@ extern "C" void wf_launch_resolve_bssrdf_exit(
 }
 
 extern "C" void wf_launch_normalize_framebuffer(
-	unsigned int numPixels, float invSPP, float3* d_framebuffer, cudaStream_t stream)
+	unsigned int numPixels, const float* d_weightBuffer, float3* d_framebuffer, cudaStream_t stream)
 {
 	dim3 block(256);
 	dim3 grid((numPixels + 255) / 256);
-	normalize_framebuffer<<<grid, block, 0, (cudaStream_t)stream>>>(d_framebuffer, numPixels, invSPP);
+	normalize_framebuffer<<<grid, block, 0, (cudaStream_t)stream>>>(d_framebuffer, numPixels, d_weightBuffer);
 }
 
 extern "C" void wf_reset_queue_counter(int* d_counter, cudaStream_t stream)

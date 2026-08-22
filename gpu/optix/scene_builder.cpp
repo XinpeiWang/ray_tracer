@@ -4131,6 +4131,23 @@ static bool build_loaded_pbrt_scene(
 	// (matches CPU bg=(0,0,0)) for a scene with no infinite light.
 	if (out_camera_extra) out_camera_extra->backgroundColor = stats.backgroundColor;
 
+	// PixelFilter directive - matches CPU's own scene_registry.h wiring
+	// (setup_camera's cam.filter_kind/B/C/sigma/tau, unconditional like
+	// this) via the same FlatScene::filter field. See GpuCameraParams::
+	// filterKind's own comment for the string->int mapping and defaults.
+	if (out_camera_extra) {
+		const pbrt_flatten::PixelFilter& pf = loaded.scene.filter;
+		out_camera_extra->filterKind = (pf.kind == "box") ? 1
+			: (pf.kind == "triangle") ? 2
+			: (pf.kind == "mitchell") ? 3
+			: (pf.kind == "sinc") ? 4
+			: 0;  // "gaussian", or anything unrecognized
+		out_camera_extra->filterB = static_cast<float>(pf.B);
+		out_camera_extra->filterC = static_cast<float>(pf.C);
+		out_camera_extra->filterSigma = static_cast<float>(pf.sigma);
+		out_camera_extra->filterTau = static_cast<float>(pf.tau);
+	}
+
 	// Reported, not warned about: these are sampled properly now (as
 	// GpuLightKind::Triangle), so the only thing worth saying is that they
 	// took the per-triangle path rather than the cheaper merged-quad one.

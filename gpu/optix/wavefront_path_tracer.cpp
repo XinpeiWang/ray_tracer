@@ -33,7 +33,7 @@
 // Forward declarations for wavefront_launch.cu C wrappers (no <<<>>> in .cpp)
 extern "C" void wf_launch_generate_camera_rays(
 	WorkQueue<RayWorkItem>, int, int, int,
-	GpuCameraParams, unsigned int, cudaStream_t);
+	GpuCameraParams, unsigned int, float*, cudaStream_t);
 extern "C" void wf_launch_evaluate_materials(
 	WorkQueue<HitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>, WorkQueue<BssrdfProbeWorkItem>,
@@ -99,7 +99,7 @@ extern "C" void wf_launch_resolve_bssrdf_exit(
 	const TextureData*, const unsigned char*,
 	float3, float, GpuSkyDistribution,
 	cudaStream_t);
-extern "C" void wf_launch_normalize_framebuffer(unsigned int, float, float3*, cudaStream_t);
+extern "C" void wf_launch_normalize_framebuffer(unsigned int, const float*, float3*, cudaStream_t);
 extern "C" void wf_reset_queue_counter(int*, cudaStream_t);
 extern "C" void wf_upload_cie_tables(const float*, const float*, const float*, int);
 extern "C" void wf_upload_srgb_table(const float*, const float*, int);
@@ -1066,13 +1066,13 @@ void WavefrontPathTracer::resetQueueCounter(int* d_counter) {
 
 void WavefrontPathTracer::launchGenerateCameraRays(
 	int width, int height, int sampleIdx,
-	const GpuCameraParams& camera)
+	const GpuCameraParams& camera, float* d_weightBuffer)
 {
 	WorkQueue<RayWorkItem> rq;
 	rq.items    = reinterpret_cast<RayWorkItem*>(d_rayItems_);
 	rq.counter  = reinterpret_cast<int*>(d_rayCounter_);
 	rq.capacity = queueCapacity_;
-	wf_launch_generate_camera_rays(rq, width, height, sampleIdx, camera, frameNumber_, stream_);
+	wf_launch_generate_camera_rays(rq, width, height, sampleIdx, camera, frameNumber_, d_weightBuffer, stream_);
 }
 
 void WavefrontPathTracer::launchEvaluateMaterials(
@@ -1304,9 +1304,9 @@ void WavefrontPathTracer::launchResolveBssrdfExit(
 }
 
 void WavefrontPathTracer::launchNormalizeFramebuffer(
-	unsigned int numPixels, float invSPP, float3* d_framebuffer)
+	unsigned int numPixels, const float* d_weightBuffer, float3* d_framebuffer)
 {
-	wf_launch_normalize_framebuffer(numPixels, invSPP, d_framebuffer, stream_);
+	wf_launch_normalize_framebuffer(numPixels, d_weightBuffer, d_framebuffer, stream_);
 }
 
 // ============================================================================
@@ -1369,6 +1369,16 @@ bool WavefrontPathTracer::render(
 							   numPixels * sizeof(float3), stream_));
 
 	float3* d_fbPtr = reinterpret_cast<float3*>(d_fb);
+
+	// Per-pixel sum of this render's filter weights (pbrt-v4 film
+	// reconstruction formula) - same transient per-call alloc/free
+	// lifecycle as d_fb itself, zeroed each render. See generate_camera_
+	// rays's own filter_w comment and normalize_framebuffer's own comment.
+	CUdeviceptr d_weight = 0;
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_weight), numPixels * sizeof(float)));
+	CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_weight), 0,
+							   numPixels * sizeof(float), stream_));
+	float* d_weightPtr = reinterpret_cast<float*>(d_weight);
 
 	// Build WavefrontLaunchParams template (queue pointers filled per phase)
 	WavefrontLaunchParams lp = {};
@@ -1434,7 +1444,7 @@ bool WavefrontPathTracer::render(
 
 		// Reset ray queue counter, generate primary rays
 		resetQueueCounter(reinterpret_cast<int*>(d_rayCounter_));
-		launchGenerateCameraRays(width, height, sampleIdx, camera);
+		launchGenerateCameraRays(width, height, sampleIdx, camera, d_weightPtr);
 		CUDA_CHECK(cudaStreamSynchronize(stream_));
 
 		// -------------------------------------------------------------------------
@@ -1707,14 +1717,14 @@ bool WavefrontPathTracer::render(
 	// -------------------------------------------------------------------------
 	// Normalize and copy to host
 	// -------------------------------------------------------------------------
-	launchNormalizeFramebuffer((unsigned int)numPixels,
-							   1.0f / float(samples_per_pixel), d_fbPtr);
+	launchNormalizeFramebuffer((unsigned int)numPixels, d_weightPtr, d_fbPtr);
 	CUDA_CHECK(cudaStreamSynchronize(stream_));
 
 	CUDA_CHECK(cudaMemcpy(framebuffer, reinterpret_cast<void*>(d_fb),
 						  numPixels * sizeof(float3), cudaMemcpyDeviceToHost));
 
 	cudaFree(reinterpret_cast<void*>(d_fb));
+	cudaFree(reinterpret_cast<void*>(d_weight));
 
 	std::cout << "[WavefrontPathTracer] Rendered " << width << "x" << height
 			  << " (" << samples_per_pixel << " spp, " << max_depth << " bounces)\n";

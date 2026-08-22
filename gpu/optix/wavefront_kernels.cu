@@ -63,6 +63,57 @@ __device__ __forceinline__ float gpu_cloud_density(const CloudMedium<float>& clo
 	return fminf(1.0f, fmaxf(0.0f, d + extra));
 }
 
+// Pixel reconstruction filter weight - matches optix_device_helpers.h's
+// identical gpu_filter_evaluate() exactly (own definition here since this
+// is a separate translation unit, same "duplicate rather than share across
+// a .cpp/.h boundary" convention gpu_cloud_density above already uses).
+// See that copy's own comment (or src/shared/filter.h's PixelFilterDispatch,
+// the CPU reference both port) for the full explanation.
+__device__ __forceinline__ float gpu_filter_evaluate(
+		int kind, float B, float C, float sigma, float tau, float ox, float oy) {
+	const float radius = 0.5f;
+	if (kind == 1) return 1.0f;  // box
+	if (kind == 2) {  // triangle (tent)
+		float tx = fmaxf(0.0f, radius - fabsf(ox));
+		float ty = fmaxf(0.0f, radius - fabsf(oy));
+		return tx * ty;
+	}
+	if (kind == 3) {  // mitchell
+		auto mitchell1d = [B, C](float x) -> float {
+			x = fabsf(x);
+			if (x <= 1.0f)
+				return ((12.0f - 9.0f*B - 6.0f*C) * x*x*x
+					  + (-18.0f + 12.0f*B + 6.0f*C) * x*x
+					  + (6.0f - 2.0f*B)) * (1.0f / 6.0f);
+			else if (x <= 2.0f)
+				return ((-B - 6.0f*C) * x*x*x
+					  + (6.0f*B + 30.0f*C) * x*x
+					  + (-12.0f*B - 48.0f*C) * x
+					  + (8.0f*B + 24.0f*C)) * (1.0f / 6.0f);
+			return 0.0f;
+		};
+		return mitchell1d(2.0f*ox/radius) * mitchell1d(2.0f*oy/radius);
+	}
+	if (tau <= 0.0f) tau = 3.0f;  // GpuCameraParams has no in-class defaults
+	                              // (see optix_types.h's filterKind comment) -
+	                              // guard the zero-init value here instead.
+	if (kind == 4) {  // sinc
+		return WindowedSinc(ox, radius, tau) * WindowedSinc(oy, radius, tau);
+	}
+	// gaussian (kind == 0, or anything unrecognized). sigma<=0 (zero-init
+	// default) would zero every sample's weight - guard to pbrt-v4's own
+	// real default instead.
+	if (sigma <= 0.0f) sigma = 0.5f;
+	{
+		const float expVal = expf(-sigma*sigma*radius*radius);
+		auto gauss1d = [sigma, expVal](float x) -> float {
+			float v = expf(-sigma*sigma*x*x) - expVal;
+			return (v > 0.0f) ? v : 0.0f;
+		};
+		return gauss1d(ox) * gauss1d(oy);
+	}
+}
+
 // Matches optix_intersection_sphere.h's gpu_rgb_grid_at/gpu_rgb_grid_
 // trilinear exactly - see that copy's comment for why this is a from-
 // scratch reimplementation rather than a call into RGBGridMediumData<T>/
@@ -991,7 +1042,11 @@ extern "C" __global__ void generate_camera_rays(
 	unsigned int height,
 	GpuCameraParams camera,
 	unsigned int sampleIdx,
-	unsigned int frameNumber
+	unsigned int frameNumber,
+	// Per-pixel sum of this render's filter weights so far - see this
+	// kernel's own filter_w comment. Same size/lifetime as framebuffer,
+	// zeroed once per render before the sample loop starts.
+	float* weightBuffer
 ) {
 	int px = blockIdx.x * blockDim.x + threadIdx.x;
 	int py = blockIdx.y * blockDim.y + threadIdx.y;
@@ -1000,19 +1055,34 @@ extern "C" __global__ void generate_camera_rays(
 	int pixelIdx = py * (int)width + px;
 	unsigned int seed = wf_pcg(wf_pcg(pixelIdx + sampleIdx * width * height) ^ frameNumber);
 
-	float u = (float(px) + wf_rand(seed)) / float(width  - 1);
+	// Captured once so the same two draws drive both the film position AND
+	// the reconstruction filter's sub-pixel offset below (see
+	// gpu_filter_evaluate()'s own comment) - matches the recursive
+	// backend's identical reuse of its own Halton hx/hy for both purposes.
+	float rx = wf_rand(seed);
+	float ry = wf_rand(seed);
+	float u = (float(px) + rx) / float(width  - 1);
 	// Flip Y to match optix_raygen.h's lower-left-origin viewport convention
 	// (py=0/top row -> v=1, matching how lower_left_corner+u*horizontal+
 	// v*vertical is constructed for Perspective/Orthographic, and how
 	// Spherical's theta=pi*v expects v=0 at the bottom). Without this flip
 	// every wavefront-mode render using those camera kinds came out
 	// vertically mirrored relative to the recursive path.
-	float v = (float(height - 1 - py) + wf_rand(seed)) / float(height - 1);
+	float v = (float(height - 1 - py) + ry) / float(height - 1);
 	// NOTE for future CameraKind additions: same lower-left-origin `v` as
 	// optix_raygen.h's __raygen__rg (see that function's matching comment) -
 	// a camera whose reference model assumes raw raster order (v=0 at the
 	// top row) needs to locally undo this flip before using it, the way
 	// wf_generate_primary_ray's Spherical/Realistic cases already do.
+
+	// Sub-pixel offset in [-0.5, 0.5] for the reconstruction filter - see
+	// optix_raygen.h's identical computation for why the offset's sign
+	// convention doesn't need to match CPU's own (every filter shape is an
+	// even function in each axis).
+	float ox = rx - 0.5f;
+	float oy = ry - 0.5f;
+	float filter_w = gpu_filter_evaluate(camera.filterKind, camera.filterB,
+		camera.filterC, camera.filterSigma, camera.filterTau, ox, oy);
 
 	RayWorkItem item;
 	float cam_weight;
@@ -1020,12 +1090,21 @@ extern "C" __global__ void generate_camera_rays(
 	// Sample hero wavelengths for spectral rendering (pbrt-v4: SampledWavelengths::SampleVisible)
 	float lambda_u = wf_rand(seed);
 	SampledWavelengths<kWFNWavelengths> swl = SampledWavelengths<kWFNWavelengths>::SampleVisible(lambda_u);
+	// filter_w folded in here (same slot cam_weight already uses) so it
+	// propagates through every downstream radiance contribution for free -
+	// every NEE/hit-light/emission term this path ever atomicAdd's into the
+	// framebuffer is already `throughput * ...`, same reasoning as
+	// optix_raygen.h's identical fold. weightBuffer accumulates once per
+	// (pixel, sample) here regardless of how many downstream kernels this
+	// ray's radiance eventually flows through - normalize_framebuffer
+	// divides by it instead of a flat 1/samplesPerPixel.
 	for (int i = 0; i < kWFNWavelengths; ++i) {
-		item.throughput[i]     = cam_weight;
+		item.throughput[i]     = cam_weight * filter_w;
 		item.radiance[i]       = 0.0f;
 		item.wavelengths[i]    = swl.lambda[i];
 		item.wavelength_pdfs[i] = swl.pdf[i];
 	}
+	atomicAdd(&weightBuffer[pixelIdx], filter_w);
 	item.seed       = seed;
 	item.pixelIndex = pixelIdx;
 	item.depth      = 0;
@@ -3540,15 +3619,21 @@ extern "C" __global__ void reset_queue_counter(int* counter) {
 
 // ============================================================================
 // Kernel 6 — normalize_framebuffer
-//   Divides accumulated radiance by samplesPerPixel for the final image.
+//   Divides accumulated radiance by this pixel's own filter-weight sum
+//   (pbrt-v4 film reconstruction formula: rgbSum / weightSum) - see
+//   generate_camera_rays's own filter_w comment. Replaces the old flat
+//   1/samplesPerPixel box-average division; every sample already carries
+//   its own filter weight folded into its throughput, so this is just the
+//   matching per-pixel divisor.
 // ============================================================================
 
 extern "C" __global__ void normalize_framebuffer(
 	float3*      framebuffer,
 	unsigned int numPixels,
-	float        invSPP
+	const float* weightBuffer
 ) {
 	unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numPixels) return;
-	framebuffer[idx] = framebuffer[idx] * invSPP;
+	float w = weightBuffer[idx];
+	framebuffer[idx] = (w > 0.0f) ? (framebuffer[idx] * (1.0f / w)) : make_float3(0.0f, 0.0f, 0.0f);
 }

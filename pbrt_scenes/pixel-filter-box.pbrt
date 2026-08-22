@@ -1,0 +1,45 @@
+# pixel-filter-box.pbrt -- exercises the "PixelFilter" directive end-to-end
+# on both backends (pbrt_scene.h/pbrt_flatten.h parsing, CPU's
+# PixelFilterDispatch in camera.h, and the new GPU port -
+# gpu_filter_evaluate() in optix_device_helpers.h/wavefront_kernels.cu).
+#
+# A box filter (uniform weight, no reconstruction blur) is the sharpest,
+# most aliasing-prone choice - at a low sample count it should show visibly
+# harder/jaggier edges on the sphere's silhouette than this codebase's own
+# default (Gaussian, pbrt-v4's real default, used when no PixelFilter
+# directive is given at all - see every OTHER example scene in this folder).
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+PixelFilter "box"
+
+LookAt  278 278 -800    278 278 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 500 ] "integer yresolution" [ 500 ]
+Sampler "halton" "integer pixelsamples" [ 32 ]
+
+WorldBegin
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 18 15 8 ]
+  Shape "trianglemesh"
+    "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 213 548.7 227   343 548.7 227   343 548.7 332   213 548.7 332 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.73 0.73 0.73 ]
+
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   555 0 0   555 0 555   0 0 555 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 555 0   555 555 0   555 555 555   0 555 555 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 555   555 0 555   555 555 555   0 555 555 ]
+
+AttributeBegin
+  Translate 278 278 200
+  Material "conductor" "float roughness" [ 0.02 ]
+  Shape "sphere" "float radius" [ 150 ]
+AttributeEnd

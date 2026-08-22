@@ -1022,6 +1022,27 @@ struct GpuCameraParams {
 	// field existed - every scene with a constant-colour sky, or no infinite
 	// light at all, is completely unaffected.
 	GpuSkyDistribution skyDist;
+
+	// Pixel reconstruction filter (pbrt-v4 PixelFilter directive) - the GPU
+	// twin of src/shared/filter.h's PixelFilterDispatch (CPU); gpu_filter_
+	// evaluate() (optix_device_helpers.h) is the device-side port of its
+	// evaluate(). filterKind 0 (the zero-init default, matching every scene
+	// that never set one, hand-built or pbrt-loaded) = Gaussian, pbrt-v4's
+	// own real default - see that enum's own values just below. NO in-class
+	// member initializers here (unlike the rest of this struct's own
+	// convention elsewhere) - `LaunchParams params` is declared `__constant__`
+	// (optix_device_helpers.h), which nvcc requires to be static/zero-
+	// initializable; a non-trivial default constructor (which member
+	// initializers would introduce) breaks that with "dynamic initialization
+	// is not supported for a __constant__ variable". filterSigma/filterTau
+	// default to 0.0f via plain zero-init instead, which would be a
+	// degenerate Gaussian - gpu_filter_evaluate() defends against exactly
+	// this (sigma<=0 -> 0.5f, tau<=0 -> 3.0f) rather than relying on this
+	// struct's own initialization. Radius is always 0.5 pixel on both
+	// backends, matching CPU's own PixelFilterDispatch (no cross-pixel
+	// splatting - see that class's own comment for why).
+	int   filterKind;   // 0=gaussian 1=box 2=triangle 3=mitchell 4=sinc
+	float filterB, filterC, filterSigma, filterTau;
 };
 
 // Launch parameters (passed to all OptiX programs)

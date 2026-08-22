@@ -12,6 +12,11 @@ extern "C" __global__ void __raygen__rg() {
 
 	//Accumulate samples
 	float3 pixel_color = make_float3(0.0f, 0.0f, 0.0f);
+	// Sum of this pixel's per-sample filter weights (see gpu_filter_evaluate()'s
+	// own comment) - the final pixel value divides by this instead of
+	// samplesPerPixel, matching CPU camera.h's `weighted_color / weight_sum`
+	// pbrt-v4 film-reconstruction formula.
+	float  weight_sum = 0.0f;
 	// Denoiser guide-layer AOVs (see PathTracingPayload::albedo/normal's own
 	// comment) - accumulated across samples exactly like pixel_color, only
 	// from each sample's depth==0 (primary-ray) hit. Zero-cost when nobody
@@ -46,8 +51,23 @@ extern "C" __global__ void __raygen__rg() {
 		// sample index for per-pixel decorrelation — adjacent pixels use different
 		// sub-sequences, avoiding a structured grid artifact across the image.
 		// Bounce RNG (seed) keeps using PCG32 for scatter/light directions.
-		float u = (float(px) + halton2(s, px, py)) / float(params.width - 1);
-		float v = (float(params.height - 1 - py) + halton3(s, px, py)) / float(params.height - 1);  // Flip Y
+		float hx = halton2(s, px, py);
+		float hy = halton3(s, px, py);
+		float u = (float(px) + hx) / float(params.width - 1);
+		float v = (float(params.height - 1 - py) + hy) / float(params.height - 1);  // Flip Y
+
+		// Sub-pixel offset in [-0.5, 0.5] for the reconstruction filter -
+		// same underlying Halton values as u/v above (u/v's own pixel-
+		// center-relative math is unaffected by this re-centering: see
+		// gpu_filter_evaluate()'s own comment; every filter shape here is
+		// an even function in each axis, so the offset's sign convention
+		// relative to CPU's own doesn't matter).
+		float ox = hx - 0.5f;
+		float oy = hy - 0.5f;
+		float filter_w = gpu_filter_evaluate(params.camera.filterKind,
+			params.camera.filterB, params.camera.filterC,
+			params.camera.filterSigma, params.camera.filterTau, ox, oy);
+		weight_sum += filter_w;
 
 		// NOTE for future CameraKind additions: this `v` is Y-flipped to a
 		// lower-left-origin convention (py=0/top row -> v=1) to match
@@ -83,7 +103,13 @@ extern "C" __global__ void __raygen__rg() {
 		float ray_time = params.motionBlurEnabled ? random_float(seed) : 0.0f;
 
 		// Path tracing loop
-		float3 throughput = make_float3(cam_weight, cam_weight, cam_weight);
+		// filter_w folded in here (same slot cam_weight already uses) so it
+		// propagates through every downstream radiance contribution for
+		// free, without threading a separate weight through the whole
+		// bounce loop - every NEE/hit-light/emission term this sample ever
+		// contributes is already `throughput * ...`.
+		const float cw = cam_weight * filter_w;
+		float3 throughput = make_float3(cw, cw, cw);
 		float3 radiance = make_float3(0.0f, 0.0f, 0.0f);
 		float  prev_brdf_pdf = 0.0f;  // BRDF PDF of the ray that arrived at this bounce (0 = primary)
 		// pbrt-v4 etaScale: product of eta^2 over every transmission event
@@ -287,8 +313,12 @@ extern "C" __global__ void __raygen__rg() {
 		pixel_color = pixel_color + radiance;
 	}  // end sample loop
 
-	// Average samples
-	pixel_color = pixel_color / float(params.samplesPerPixel);
+	// Reconstruction filter: weighted_sum / weight_sum (pbrt-v4 film
+	// formula), matching CPU camera.h exactly - see this loop's own
+	// weight_sum comment. Guards weight_sum<=0 (a pathological filter
+	// parameterization giving every sample zero weight) rather than
+	// dividing by zero.
+	pixel_color = (weight_sum > 0.0f) ? pixel_color / weight_sum : make_float3(0.0f, 0.0f, 0.0f);
 
 	// Write to framebuffer
 	const unsigned int idx_flat = py * params.width + px;

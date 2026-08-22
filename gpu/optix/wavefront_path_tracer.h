@@ -148,7 +148,7 @@ private:
     bool allocateQueues(int numPixels);
     void freeQueues();
     void launchGenerateCameraRays(int width, int height, int sampleIdx,
-        const GpuCameraParams& camera);
+        const GpuCameraParams& camera, float* d_weightBuffer);
     void launchEvaluateMaterials(int numHits, int maxDepth,
         const SphereData* d_spheres, unsigned int numSpheres,
         const QuadData* d_quads, unsigned int numQuads,
@@ -204,7 +204,7 @@ private:
         const GpuAliasEntry* d_aliasTable, unsigned int numLights,
         const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
         float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist);
-    void launchNormalizeFramebuffer(unsigned int numPixels, float invSPP, float3* d_framebuffer);
+    void launchNormalizeFramebuffer(unsigned int numPixels, const float* d_weightBuffer, float3* d_framebuffer);
     int  readQueueSize(int* d_counter);
     void resetQueueCounter(int* d_counter);
 

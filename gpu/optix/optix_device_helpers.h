@@ -39,6 +39,62 @@ __device__ __forceinline__ float random_float(unsigned int& seed) {
 	return float(seed) / 4294967296.0f;
 }
 
+// Pixel reconstruction filter weight for a sample at sub-pixel offset
+// (ox, oy) in [-0.5, 0.5] - device-side port of src/shared/filter.h's
+// PixelFilterDispatch::evaluate(), same 5 shapes, same hardcoded radius=0.5
+// (see that class's own comment for why: no cross-pixel splatting in this
+// renderer's per-pixel-only sampling loop). kind: 0=gaussian 1=box
+// 2=triangle 3=mitchell 4=sinc (GpuCameraParams::filterKind). Shared by
+// both GPU backends (optix_raygen.h, wavefront_kernels.cu's
+// generate_camera_rays).
+__device__ __forceinline__ float gpu_filter_evaluate(
+		int kind, float B, float C, float sigma, float tau, float ox, float oy) {
+	const float radius = 0.5f;
+	if (kind == 1) return 1.0f;  // box: uniform weight
+	if (kind == 2) {  // triangle (tent): max(0, radius-|x|) * max(0, radius-|y|)
+		float tx = fmaxf(0.0f, radius - fabsf(ox));
+		float ty = fmaxf(0.0f, radius - fabsf(oy));
+		return tx * ty;
+	}
+	if (kind == 3) {  // mitchell (pbrt-v4 Mitchell1D, separable)
+		auto mitchell1d = [B, C](float x) -> float {
+			x = fabsf(x);
+			if (x <= 1.0f)
+				return ((12.0f - 9.0f*B - 6.0f*C) * x*x*x
+					  + (-18.0f + 12.0f*B + 6.0f*C) * x*x
+					  + (6.0f - 2.0f*B)) * (1.0f / 6.0f);
+			else if (x <= 2.0f)
+				return ((-B - 6.0f*C) * x*x*x
+					  + (6.0f*B + 30.0f*C) * x*x
+					  + (-12.0f*B - 48.0f*C) * x
+					  + (8.0f*B + 24.0f*C)) * (1.0f / 6.0f);
+			return 0.0f;
+		};
+		return mitchell1d(2.0f*ox/radius) * mitchell1d(2.0f*oy/radius);
+	}
+	if (tau <= 0.0f) tau = 3.0f;  // GpuCameraParams has no in-class defaults
+	                              // (see its own filterKind comment) - guard
+	                              // the zero-init value here instead.
+	if (kind == 4) {  // sinc (windowed Lanczos) - Sinc/WindowedSinc from
+		// src/shared/scalar_math.h (already CPU_GPU-tagged, pulled in
+		// transitively via noise.h above).
+		return WindowedSinc(ox, radius, tau) * WindowedSinc(oy, radius, tau);
+	}
+	// gaussian (kind == 0, or anything unrecognized - matches CPU's own
+	// fallback default). sigma<=0 (the zero-init default) would make
+	// gauss1d(x) = exp(0)-exp(0) = 0 for every x, zeroing every sample's
+	// weight - guard it to pbrt-v4's own real default instead.
+	if (sigma <= 0.0f) sigma = 0.5f;
+	{
+		const float expVal = expf(-sigma*sigma*radius*radius);
+		auto gauss1d = [sigma, expVal](float x) -> float {
+			float v = expf(-sigma*sigma*x*x) - expVal;
+			return (v > 0.0f) ? v : 0.0f;
+		};
+		return gauss1d(ox) * gauss1d(oy);
+	}
+}
+
 __device__ __forceinline__ float3 random_float3(unsigned int& seed) {
 	return make_float3(random_float(seed), random_float(seed), random_float(seed));
 }
