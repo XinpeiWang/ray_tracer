@@ -119,6 +119,7 @@
     <ClCompile Include="unit\pbrt_gpu_triangle_light_tests.cpp" />
     <ClCompile Include="unit\pbrt_gpu_bilinear_light_tests.cpp" />
     <ClCompile Include="unit\pbrt_gpu_disk_cylinder_tests.cpp" />
+    <ClCompile Include="unit\pbrt_gpu_mix_material_tests.cpp" />
     <ClCompile Include="unit\pbrt_gpu_texture_tests.cpp" />
     <ClCompile Include="unit\pbrt_alpha_cutout_tests.cpp" />
     <ClCompile Include="unit\exr_writer_tests.cpp" />

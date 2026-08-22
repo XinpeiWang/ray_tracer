@@ -283,17 +283,18 @@ enum class MaterialKind {
 	// A stochastic blend of two OTHER materials (pbrt-v4 MixMaterial),
 	// referenced by name via the "materials" parameter - see Material::
 	// mixMaterialA/mixMaterialB/mixWeight below and flatten()'s own mix-
-	// resolution code for how those names become indices. CPU-only: this
-	// codebase's own src/TheRestOfYourLife/material_pbrt.h `class
-	// mix_material` (added earlier for SPPM support) is a real, generic
-	// two-material blend - not SPPM-specific - so this backs a pbrt "mix"
-	// material directly, real support rather than a documented
-	// approximation. GPU has no equivalent (mix_material's own header
-	// comment already says so, for the same class) and keeps rendering it
-	// as flat diffuse - see gpu/optix/pbrt_gpu_builder.h's own comment on
-	// its Mix case, which exists only to preserve that fallback, now blended
-	// by colour rather than plain grey, now that this enumerator is no
-	// longer an alias for Unsupported.
+	// resolution code for how those names become indices. Real on all three
+	// backends: CPU's src/TheRestOfYourLife/material_pbrt.h `class
+	// mix_material` (added earlier for SPPM support, a real generic
+	// two-material blend, not SPPM-specific) backs it directly; both GPU
+	// backends resolve it at each shading point to a real sub-material
+	// (deterministically, hashed from the hit point - not a per-ray random
+	// draw, matching mix_material's own scatter()/scattering_pdf()/shadow-
+	// ray-classification agreement requirement) via MaterialType::Mix - see
+	// that enumerator's own comment (gpu/optix/optix_types.h) and gpu/optix/
+	// pbrt_gpu_builder.h's Mix case, which only falls back to a flat-colour
+	// average (its pre-existing, now-secondary behavior) for a
+	// pathologically deep/cyclic mix-of-mix chain.
 	Mix,
 	// Marschner/Chiang fiber scattering (src/shared/bxdfs_hair.h's
 	// HairBxDF<T>) - real on both CPU (src/TheRestOfYourLife/

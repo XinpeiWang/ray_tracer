@@ -106,8 +106,6 @@ extern "C" __global__ void __intersection__bilinear_patch() {
 extern "C" __global__ void __closesthit__bilinear_patch() {
 	const unsigned int primIdx = optixGetPrimitiveIndex();
 	const BilinearPatchData& patch = params.bilinearPatches[primIdx];
-	const int matIdx = patch.materialIdx;
-	const MaterialData& mat = params.materials[matIdx];
 
 	const float u = __int_as_float(optixGetAttribute_0());
 	const float v = __int_as_float(optixGetAttribute_1());
@@ -116,6 +114,11 @@ extern "C" __global__ void __closesthit__bilinear_patch() {
 	const float3 ray_orig = optixGetWorldRayOrigin();
 	const float3 ray_dir = optixGetWorldRayDirection();
 	const float3 hit_point = ray_orig + t * ray_dir;
+
+	// Resolved to a real, non-Mix material before any mat.type branch below -
+	// see MaterialType::Mix's own comment (optix_types.h).
+	int matIdx = patch.materialIdx;
+	const MaterialData mat = resolve_mix_material(params.materials[matIdx], matIdx, hit_point, matIdx);
 
 	// dpdu/dpdv at (u,v) - see bilinear_patch.h's blp_point
 	const float3 pu0 = lerp(patch.p00, patch.p01, v);

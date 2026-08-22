@@ -28,6 +28,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <map>
 #include <string>
 #include <utility>
@@ -461,10 +462,10 @@ inline float3 resolveMixColor(const pbrt_flatten::Material &m,
 // renders as two different scenes depending on the backend.
 //
 // `out`/`bssrdfTableCache` are only touched by the Subsurface case below
-// (building/deduping this material's BSSRDFTable); `allMaterials` only by
-// Mix (looking up its two sub-materials' own base colours - see that case's
-// own comment for why this stops at a colour blend rather than a real
-// recursive MaterialData build); every other material kind ignores both.
+// (building/deduping this material's BSSRDFTable); `allMaterials`/
+// `resolveMaterialIndex`/`mixDepth` only by Mix (recursively resolving its
+// two sub-materials to real out.materials indices - see that case's own
+// comment); every other material kind ignores all four.
 inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 								 const pbrt_flatten::Emission *emission,
 								 SceneData &out,
@@ -472,7 +473,9 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 								 std::map<std::string, int> &measuredTableCache,
 								 std::map<std::string, int> &imageTextureCache,
 								 std::map<std::string, int> &alphaMaskTextureCache,
-								 const std::vector<pbrt_flatten::Material> &allMaterials = {}) {
+								 const std::vector<pbrt_flatten::Material> &allMaterials = {},
+								 const std::function<int(int,int,int)> &resolveMaterialIndex = {},
+								 int mixDepth = 0) {
 	MaterialData d = {};
 	d.textureIdx = -1;
 
@@ -736,35 +739,48 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		}
 		break;
 	}
-	// GPU has no material-blending machinery (mix_material's own header
-	// comment, material_pbrt.h, already says the same for the CPU class this
-	// mirrors - see MaterialKind::Mix's own comment in pbrt_flatten.h). This
-	// renders as flat Lambertian using the WEIGHTED AVERAGE of the two
-	// referenced sub-materials' own base colours (mixWeight = probability of
-	// B winning at any given shading point on CPU - matches mix_material's
-	// own convention) rather than the generic mid-grey every other
-	// Unsupported material still falls back to - a coloured approximation of
-	// the blend, not the real per-ray stochastic pick pbrt_cpu_builder.h's
-	// recursive makeMaterial() does. Each side's colour is resolved via
-	// resolveMixColor() (not read directly off ma.color/mb.color) so a
-	// NESTED mix sub-material (pbrt-v4 allows mix-of-mix) recurses to its
-	// own real blended colour instead of silently reading the generic
-	// {0.5,0.5,0.5} placeholder a Mix-kind Material never populates. Falls
-	// back to mid-grey (d.albedo already holds m.color, generically
-	// assigned above) only if the sub-materials somehow are not resolvable
-	// here (should not happen: flatten() already downgraded an unresolvable
-	// mix to Unsupported before this MaterialKind is ever reached - see
-	// there).
+	// Real stochastic two-material blend on GPU (pbrt-v4 MixMaterial), on
+	// BOTH backends - see MaterialType::Mix's own comment (optix_types.h)
+	// and resolve_mix_material()/wf_resolve_mix_material() (optix_device_
+	// helpers.h/wavefront_kernels.cu) for the device-side per-shading-point
+	// resolution this MaterialData only supplies indices/weight for; this
+	// replaces the flat-Lambertian-averaged-colour approximation GPU used
+	// to render every Mix as. `resolveMaterialIndex` is materialIndexDepth()
+	// itself (build()'s own comment) - calling back into it, mutually
+	// recursive through this function, gets each sub-material's REAL
+	// out.materials index (not merely its flat colour the way the old
+	// fallback did), so a Mix of e.g. Metal+Diffuse now renders as a real
+	// per-point stochastic pick on GPU, matching CPU's mix_material exactly
+	// instead of one averaged flat colour. Depth-capped (mirrors
+	// resolveMixColor()'s own pre-existing kMaxMixDepth) and falls back to
+	// that same flat-colour-average Lambertian beyond the cap or when the
+	// sub-materials are not resolvable/no callback was supplied - guards a
+	// cyclic/self-referential "materials" list a malformed scene could
+	// produce (should not happen otherwise: flatten() already downgraded an
+	// unresolvable mix to Unsupported before this MaterialKind is ever
+	// reached - see there).
 	case pbrt_flatten::MaterialKind::Mix: {
-		d.type = MaterialType::Lambertian;
-		if (m.mixMaterialA >= 0 && static_cast<std::size_t>(m.mixMaterialA) < allMaterials.size()
-			&& m.mixMaterialB >= 0 && static_cast<std::size_t>(m.mixMaterialB) < allMaterials.size()) {
-			const float3 ca = resolveMixColor(allMaterials[static_cast<std::size_t>(m.mixMaterialA)], allMaterials, 1);
-			const float3 cb = resolveMixColor(allMaterials[static_cast<std::size_t>(m.mixMaterialB)], allMaterials, 1);
-			const float w = static_cast<float>(m.mixWeight);
-			d.albedo = make_float3(ca.x * (1.0f - w) + cb.x * w,
-			                       ca.y * (1.0f - w) + cb.y * w,
-			                       ca.z * (1.0f - w) + cb.z * w);
+		constexpr int kMaxMixDepth = 8;
+		const bool resolvable =
+			m.mixMaterialA >= 0 && static_cast<std::size_t>(m.mixMaterialA) < allMaterials.size()
+			&& m.mixMaterialB >= 0 && static_cast<std::size_t>(m.mixMaterialB) < allMaterials.size();
+		if (resolvable && mixDepth < kMaxMixDepth && resolveMaterialIndex) {
+			const int idxA = resolveMaterialIndex(m.mixMaterialA, -1, mixDepth + 1);
+			const int idxB = resolveMaterialIndex(m.mixMaterialB, -1, mixDepth + 1);
+			d.type = MaterialType::Mix;
+			d.mix_extra.mixMaterialAIdx = static_cast<float>(idxA);
+			d.mix_extra.mixMaterialBIdx = static_cast<float>(idxB);
+			d.mix_extra.mixWeight = static_cast<float>(m.mixWeight);
+		} else {
+			d.type = MaterialType::Lambertian;
+			if (resolvable) {
+				const float3 ca = resolveMixColor(allMaterials[static_cast<std::size_t>(m.mixMaterialA)], allMaterials, 1);
+				const float3 cb = resolveMixColor(allMaterials[static_cast<std::size_t>(m.mixMaterialB)], allMaterials, 1);
+				const float w = static_cast<float>(m.mixWeight);
+				d.albedo = make_float3(ca.x * (1.0f - w) + cb.x * w,
+				                       ca.y * (1.0f - w) + cb.y * w,
+				                       ca.z * (1.0f - w) + cb.z * w);
+			}
 		}
 		break;
 	}
@@ -830,7 +846,21 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 	// imageTextureCache above even when the same file is used for both (its
 	// decode must skip the gamma correction imageTextureCache's applies).
 	std::map<std::string, int> alphaMaskTextureCache;
-	const auto materialIndex = [&](int mi, int ai) {
+	// Two lambdas sharing the same `cache`/`out` state: materialIndexDepth is
+	// the real, depth-threaded implementation (needed so MaterialKind::Mix's
+	// own case in makeMaterial() below can recursively resolve its two
+	// sub-materials to REAL out.materials indices - not just a flat colour,
+	// see that case's own comment - while still bounding a cyclic/self-
+	// referential "materials" list a malformed scene could produce, same
+	// kMaxMixDepth guard as resolveMixColor()'s own pre-existing depth cap).
+	// materialIndex is the ordinary 2-arg entry point every non-Mix call
+	// site below already uses, unchanged, always starting at depth 0.
+	// std::function (not an ordinary lambda) because it must be passed BY
+	// REFERENCE into makeMaterial() so Mix can call back into it - an
+	// ordinary `const auto` lambda can't appear in its own not-yet-deduced
+	// type this way.
+	std::function<int(int,int,int)> materialIndexDepth;
+	materialIndexDepth = [&](int mi, int ai, int depth) -> int {
 		const auto key = std::make_pair(mi, ai);
 		const auto it = cache.find(key);
 		if (it != cache.end()) return it->second;
@@ -845,10 +875,24 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 				? scene.materials[static_cast<std::size_t>(mi)]
 				: kDefault;
 
+		// makeMaterial() is evaluated BEFORE `idx` is computed (not the other
+		// way around, despite every other cache-then-push site in this file
+		// looking that way) - a Mix material's own construction recursively
+		// calls back into materialIndexDepth for its two sub-materials,
+		// pushing THEM into out.materials as a side effect DURING this call.
+		// Computing idx = out.materials.size() up front (the naive order)
+		// would capture the size BEFORE those nested pushes, then push this
+		// material at a LATER index once they've already grown the vector -
+		// caching the wrong index for it. Every other material kind has no
+		// such side effect, so this reordering is a no-op for them.
+		MaterialData built = makeMaterial(m, em, out, bssrdfTableCache, measuredTableCache, imageTextureCache, alphaMaskTextureCache, scene.materials, materialIndexDepth, depth);
 		const int idx = static_cast<int>(out.materials.size());
-		out.materials.push_back(makeMaterial(m, em, out, bssrdfTableCache, measuredTableCache, imageTextureCache, alphaMaskTextureCache, scene.materials));
+		out.materials.push_back(built);
 		cache.emplace(key, idx);
 		return idx;
+	};
+	const auto materialIndex = [&](int mi, int ai) {
+		return materialIndexDepth(mi, ai, 0);
 	};
 
 	// MediumInterface "insideMedium" "" on a sphere. GPU's MaterialType::

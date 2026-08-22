@@ -83,13 +83,16 @@ extern "C" __global__ void __intersection__disk() {
 extern "C" __global__ void __closesthit__disk() {
 	const unsigned int primIdx = optixGetPrimitiveIndex();
 	const DiskData& disk = params.disks[primIdx];
-	const int matIdx = disk.materialIdx;
-	const MaterialData& mat = params.materials[matIdx];
 
 	const float t = optixGetRayTmax();
 	const float3 ray_orig = optixGetWorldRayOrigin();
 	const float3 ray_dir = optixGetWorldRayDirection();
 	const float3 hit_point = ray_orig + t * ray_dir;
+
+	// Resolved to a real, non-Mix material before any mat.type branch below -
+	// see MaterialType::Mix's own comment (optix_types.h).
+	int matIdx = disk.materialIdx;
+	const MaterialData mat = resolve_mix_material(params.materials[matIdx], matIdx, hit_point, matIdx);
 
 	// A disk is flat: its object-space normal is the constant +Z everywhere
 	// on its surface, unlike Cylinder's (see __closesthit__cylinder), which
@@ -251,13 +254,16 @@ extern "C" __global__ void __intersection__cylinder() {
 extern "C" __global__ void __closesthit__cylinder() {
 	const unsigned int primIdx = optixGetPrimitiveIndex();
 	const CylinderData& cyl = params.cylinders[primIdx];
-	const int matIdx = cyl.materialIdx;
-	const MaterialData& mat = params.materials[matIdx];
 
 	const float t = optixGetRayTmax();
 	const float3 ray_orig = optixGetWorldRayOrigin();
 	const float3 ray_dir = optixGetWorldRayDirection();
 	const float3 hit_point = ray_orig + t * ray_dir;
+
+	// Resolved to a real, non-Mix material before any mat.type branch below -
+	// see MaterialType::Mix's own comment (optix_types.h).
+	int matIdx = cyl.materialIdx;
+	const MaterialData mat = resolve_mix_material(params.materials[matIdx], matIdx, hit_point, matIdx);
 
 	// Cylinder's normal varies with hit position (radial, from the axis) -
 	// unlike disk's constant one - so the object-space hit point has to be

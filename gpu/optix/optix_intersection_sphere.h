@@ -253,8 +253,6 @@ extern "C" __global__ void __closesthit__sphere() {
 
 	// Fetch sphere data from device array
 	const SphereData& sphere = params.spheres[sphBase + primIdx];
-	const int matIdx = sphere.materialIdx;
-	const MaterialData& mat = params.materials[matIdx];
 
 	// Reconstruct sphere data from attributes. OBJECT space, matching the
 	// intersection program that reported them; identical to world space for
@@ -273,6 +271,16 @@ extern "C" __global__ void __closesthit__sphere() {
 	const float3 ray_orig = optixGetWorldRayOrigin();
 	const float3 ray_dir = optixGetWorldRayDirection();
 	const float3 hit_point = ray_orig + t * ray_dir;
+
+	// Resolved to a real, non-Mix material before any mat.type branch below -
+	// see MaterialType::Mix's own comment (optix_types.h). Sphere geometry
+	// handles every MaterialType (it's the trap lists' own "everything else
+	// falls through here" baseline), so unlike triangle/quad/bilinear-patch/
+	// disk/cylinder this resolution never needs a sphere-only-handling
+	// check of its own - whatever the sub-material resolves to is already
+	// exactly as supported here as if it had been assigned directly.
+	int matIdx = sphere.materialIdx;
+	const MaterialData mat = resolve_mix_material(params.materials[matIdx], matIdx, hit_point, matIdx);
 
 	// Compute the normal in the sphere's own space, where it is exactly radial
 	// and unit length however the placement scales it, then carry it to world

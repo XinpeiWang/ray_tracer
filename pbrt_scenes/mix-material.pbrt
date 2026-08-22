@@ -1,11 +1,14 @@
-# mix-material.pbrt -- exercises pbrt-v4's "mix" material, the largest
-# remaining documented CPU/GPU gap in this loader (see docs/PBRT_SUPPORT.md's
-# Materials table): CPU does a real recursive stochastic blend between the
-# two named sub-materials; GPU flattens the same directive to one flat
-# Lambertian whose albedo is the mix-weighted average of the two resolved
-# colours. No bundled example scene exercised "mix" at all before this one,
-# so neither code path had render-level regression coverage - only unit
-# tests against inline pbrt source.
+# mix-material.pbrt -- exercises pbrt-v4's "mix" material. Originally
+# written to keep watch on this loader's largest CPU/GPU material gap: CPU
+# did a real recursive stochastic blend between the two named sub-materials
+# while GPU flattened the same directive to one flat Lambertian (the mix-
+# weighted average of the two resolved colours). Real per-shading-point
+# stochastic resolution now lands on both GPU backends too (MaterialType::
+# Mix, see optix_types.h and docs/PBRT_SUPPORT.md's Materials table) - all
+# three backends should render this scene's sphere with the same visible
+# character: a fine-grained speckle of the matte red diffuse and the shiny
+# copper-ish conductor's real specular highlights, not one smooth averaged
+# colour.
 #
 # Original, not derived from any distributed scene, so it carries no licence
 # constraints.

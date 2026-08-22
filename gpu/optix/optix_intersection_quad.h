@@ -58,8 +58,6 @@ extern "C" __global__ void __closesthit__quad() {
 
 	// Fetch quad data from device array
 	const QuadData& quad = params.quads[primIdx];
-	const int matIdx = quad.materialIdx;
-	const MaterialData& mat = params.materials[matIdx];
 
 	// Reconstruct normal from attributes
 	const float3 normal = make_float3(
@@ -73,6 +71,11 @@ extern "C" __global__ void __closesthit__quad() {
 	const float3 ray_orig = optixGetWorldRayOrigin();
 	const float3 ray_dir = optixGetWorldRayDirection();
 	const float3 hit_point = ray_orig + t * ray_dir;
+
+	// Resolved to a real, non-Mix material before any mat.type branch below -
+	// see MaterialType::Mix's own comment (optix_types.h).
+	int matIdx = quad.materialIdx;
+	const MaterialData mat = resolve_mix_material(params.materials[matIdx], matIdx, hit_point, matIdx);
 
 	// Determine front face
 	const bool front_face = dot(ray_dir, normal) < 0.0f;

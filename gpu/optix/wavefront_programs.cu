@@ -76,6 +76,40 @@ __device__ __forceinline__ bool wf_passes_alpha_cutout(int alphaMaskTexIdx, floa
 	return (px[0] * (1.0f / 255.0f)) >= kAlphaCutoutThreshold;
 }
 
+// Wavefront-native duplicate of optix_device_helpers.h's mix_branch_hash01()/
+// resolve_mix_material() (recursive backend) - see this codebase's own
+// established "no shared device helpers between the two backends" convention
+// (wf_material_requires_sphere_only_handling, wf_passes_alpha_cutout above,
+// etc. are all likewise wavefront-native copies). Deterministic [0,1) hash
+// from a world-space point, matching CPU's branch_hash01() (src/
+// TheRestOfYourLife/material_pbrt.h) exactly - NOT a fresh random draw, so a
+// radiance hit and its later shadow ray agree on which sub-material a Mix
+// resolved to.
+__device__ __forceinline__ float wf_mix_branch_hash01(const float3& p) {
+	float h = sinf(p.x * 127.1f + p.y * 311.7f + p.z * 74.7f) * 43758.5453f;
+	return h - floorf(h);
+}
+
+// Resolves a (possibly Mix) MaterialData to a real, non-Mix MaterialData,
+// looping (not recursing) while the result is itself another Mix - see
+// MaterialType::Mix's own comment (optix_types.h) and resolve_mix_material()'s
+// identical recursive-backend twin (optix_device_helpers.h) for the full
+// rationale. `outMatIdx` receives the resolved index into wf_params.materials.
+__device__ __forceinline__ MaterialData wf_resolve_mix_material(MaterialData mat, int matIdx,
+																 const float3& hit_point, int& outMatIdx) {
+	constexpr int kMaxMixDepth = 8;
+	for (int depth = 0; mat.type == MaterialType::Mix && depth < kMaxMixDepth; ++depth) {
+		const float w = mat.mix_extra.mixWeight;
+		const float h = wf_mix_branch_hash01(hit_point);
+		const int subIdx = (h >= w) ? static_cast<int>(mat.mix_extra.mixMaterialAIdx)
+									 : static_cast<int>(mat.mix_extra.mixMaterialBIdx);
+		matIdx = subIdx;
+		mat = wf_params.materials[subIdx];
+	}
+	outMatIdx = matIdx;
+	return mat;
+}
+
 // Per-shadow-ray occlusion output (device pointer passed via launch params extension).
 // We reuse a float3* slot in WavefrontLaunchParams — see wavefront_path_tracer.cpp
 // which passes d_occluded via the misuse of framebuffer during the shadow pass.
@@ -234,6 +268,18 @@ extern "C" __global__ void __raygen__wf_intersect() {
 		h.any_nonspecular = ray.any_nonspecular;
 		h.etaScale        = ray.etaScale;
 		h.filterWeight    = ray.filterWeight;
+		// Resolve Mix HERE, once, before routing - not in each consumer
+		// kernel. h.materialIdx is overwritten with the RESOLVED index, so
+		// evaluate_materials()/_simple()/_dielectric() (wavefront_kernels.cu)
+		// need no Mix-awareness of their own: they read materials[h.materialIdx]
+		// and see the real sub-material directly, exactly as if it had been
+		// assigned to this hit's primitive to begin with. See MaterialType::
+		// Mix's own comment (optix_types.h).
+		{
+			int resolvedIdx = h.materialIdx;
+			wf_resolve_mix_material(wf_params.materials[h.materialIdx], h.materialIdx, h.hitPoint, resolvedIdx);
+			h.materialIdx = resolvedIdx;
+		}
 		// Route cheap materials (no texture/layered-BxDF work) into their
 		// own queue so evaluate_materials_simple() can process them without
 		// the big switch's register pressure - see WavefrontQueues::
@@ -1206,7 +1252,14 @@ extern "C" __global__ void __raygen__wf_shadow() {
 extern "C" __global__ void __anyhit__wf_shadow_sphere() {
 	const int instBase = wf_instance_base();
 	const SphereData& sph = wf_params.spheres[wf_prim_base(instBase) + optixGetPrimitiveIndex()];
-	const MaterialData& mat = wf_params.materials[sph.materialIdx];
+	// Resolved to a real, non-Mix material before any mat.type check below -
+	// see MaterialType::Mix's own comment (optix_types.h). Matches CPU's
+	// mix_material::is_shadow_transmissive(), which delegates to the same
+	// deterministic (hashed-hit-point) sub-material pick as scatter().
+	const float shadow_t = optixGetRayTmax();
+	const float3 shadow_hit_point = optixGetWorldRayOrigin() + shadow_t * optixGetWorldRayDirection();
+	int matIdx = sph.materialIdx;
+	const MaterialData mat = wf_resolve_mix_material(wf_params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
 
 	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
 		optixGetPayload_0(), optixGetPayload_1());
@@ -1238,7 +1291,11 @@ extern "C" __global__ void __anyhit__wf_shadow_sphere() {
 
 extern "C" __global__ void __anyhit__wf_shadow_quad() {
 	const QuadData& quad = wf_params.quads[optixGetPrimitiveIndex()];
-	const MaterialData& mat = wf_params.materials[quad.materialIdx];
+	// See __anyhit__wf_shadow_sphere's own comment for why Mix must resolve here.
+	const float shadow_t = optixGetRayTmax();
+	const float3 shadow_hit_point = optixGetWorldRayOrigin() + shadow_t * optixGetWorldRayDirection();
+	int matIdx = quad.materialIdx;
+	const MaterialData mat = wf_resolve_mix_material(wf_params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
 
 	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
 		optixGetPayload_0(), optixGetPayload_1());
@@ -1261,7 +1318,11 @@ extern "C" __global__ void __anyhit__wf_shadow_quad() {
 
 extern "C" __global__ void __anyhit__wf_shadow_bilinear_patch() {
 	const BilinearPatchData& patch = wf_params.bilinearPatches[optixGetPrimitiveIndex()];
-	const MaterialData& mat = wf_params.materials[patch.materialIdx];
+	// See __anyhit__wf_shadow_sphere's own comment for why Mix must resolve here.
+	const float shadow_t = optixGetRayTmax();
+	const float3 shadow_hit_point = optixGetWorldRayOrigin() + shadow_t * optixGetWorldRayDirection();
+	int matIdx = patch.materialIdx;
+	const MaterialData mat = wf_resolve_mix_material(wf_params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
 
 	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
 		optixGetPayload_0(), optixGetPayload_1());
@@ -1285,7 +1346,14 @@ extern "C" __global__ void __anyhit__wf_shadow_bilinear_patch() {
 extern "C" __global__ void __anyhit__wf_shadow_triangle() {
 	const int instBase = wf_instance_base();
 	const TriangleData& tri = wf_params.triangles[wf_prim_base(instBase) + optixGetPrimitiveIndex()];
-	const MaterialData& mat = wf_params.materials[tri.materialIdx];
+	// Mix must resolve before even the alpha-cutout check just below - a Mix
+	// wrapper's own alphaMaskTexIdx is always -1, so checking it unresolved
+	// would silently skip a sub-material's real alpha cutout. See
+	// __anyhit__wf_shadow_sphere's own comment.
+	const float shadow_t = optixGetRayTmax();
+	const float3 shadow_hit_point = optixGetWorldRayOrigin() + shadow_t * optixGetWorldRayDirection();
+	int matIdx = tri.materialIdx;
+	const MaterialData mat = wf_resolve_mix_material(wf_params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
 
 	// Alpha-cutout: a transparent pixel of a leaf/foliage material casts no
 	// shadow there - see __anyhit__wf_triangle's own comment for why
@@ -1335,7 +1403,11 @@ extern "C" __global__ void __anyhit__wf_shadow_triangle() {
 // CloudMedium/RgbGridMedium/Medium/DielectricMedium entries are needed here.
 extern "C" __global__ void __anyhit__wf_shadow_disk() {
 	const DiskData& disk = wf_params.disks[optixGetPrimitiveIndex()];
-	const MaterialData& mat = wf_params.materials[disk.materialIdx];
+	// See __anyhit__wf_shadow_sphere's own comment for why Mix must resolve here.
+	const float shadow_t = optixGetRayTmax();
+	const float3 shadow_hit_point = optixGetWorldRayOrigin() + shadow_t * optixGetWorldRayDirection();
+	int matIdx = disk.materialIdx;
+	const MaterialData mat = wf_resolve_mix_material(wf_params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
 
 	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
 		optixGetPayload_0(), optixGetPayload_1());
@@ -1358,7 +1430,11 @@ extern "C" __global__ void __anyhit__wf_shadow_disk() {
 
 extern "C" __global__ void __anyhit__wf_shadow_cylinder() {
 	const CylinderData& cyl = wf_params.cylinders[optixGetPrimitiveIndex()];
-	const MaterialData& mat = wf_params.materials[cyl.materialIdx];
+	// See __anyhit__wf_shadow_sphere's own comment for why Mix must resolve here.
+	const float shadow_t = optixGetRayTmax();
+	const float3 shadow_hit_point = optixGetWorldRayOrigin() + shadow_t * optixGetWorldRayDirection();
+	int matIdx = cyl.materialIdx;
+	const MaterialData mat = wf_resolve_mix_material(wf_params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
 
 	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
 		optixGetPayload_0(), optixGetPayload_1());

@@ -48,7 +48,14 @@ extern "C" __global__ void __anyhit__triangle() {
 		? params.instancePrimBase[optixGetInstanceId()] : -1;
 	const unsigned int triBase = (instBase >= 0) ? (unsigned int)instBase : 0u;
 	const TriangleData& tri = params.triangles[triBase + primIdx];
-	const MaterialData& mat = params.materials[tri.materialIdx];
+	const float t = optixGetRayTmax();
+	const float3 hit_point = optixGetWorldRayOrigin() + t * optixGetWorldRayDirection();
+	// Mix must resolve before alphaMaskTexIdx is read - a Mix wrapper's own
+	// alphaMaskTexIdx is always -1 (never authored directly on it), so
+	// checking it unresolved would silently skip a sub-material's real alpha
+	// cutout. See MaterialType::Mix's own comment (optix_types.h).
+	int matIdx = tri.materialIdx;
+	const MaterialData mat = resolve_mix_material(params.materials[matIdx], matIdx, hit_point, matIdx);
 	if (mat.alphaMaskTexIdx < 0) return;
 
 	// Real UV when authored, else the same barycentric fallback CPU's own
@@ -63,8 +70,6 @@ extern "C" __global__ void __anyhit__triangle() {
 		uv_u = b0 * tri.uv0.x + b1 * tri.uv1.x + b2 * tri.uv2.x;
 		uv_v = b0 * tri.uv0.y + b1 * tri.uv1.y + b2 * tri.uv2.y;
 	}
-	const float t = optixGetRayTmax();
-	const float3 hit_point = optixGetWorldRayOrigin() + t * optixGetWorldRayDirection();
 	if (!passes_alpha_cutout(mat.alphaMaskTexIdx, uv_u, uv_v, hit_point))
 		optixIgnoreIntersection();
 }
@@ -89,12 +94,16 @@ extern "C" __global__ void __closesthit__triangle() {
 		? params.instancePrimBase[optixGetInstanceId()] : -1;
 	const unsigned int triBase = (instBase >= 0) ? (unsigned int)instBase : 0u;
 	const TriangleData& tri = params.triangles[triBase + primIdx];
-	const MaterialData& mat = params.materials[tri.materialIdx];
 
 	const float t = optixGetRayTmax();
 	const float3 ray_orig = optixGetWorldRayOrigin();
 	const float3 ray_dir = optixGetWorldRayDirection();
 	const float3 hit_point = ray_orig + t * ray_dir;
+
+	// Resolved to a real, non-Mix material before any mat.type branch below -
+	// see MaterialType::Mix's own comment (optix_types.h).
+	int matIdx = tri.materialIdx;
+	const MaterialData mat = resolve_mix_material(params.materials[matIdx], matIdx, hit_point, matIdx);
 
 	float3 shading_normal;
 	// Real UV when authored, else the same barycentric fallback CPU's own
@@ -240,7 +249,7 @@ extern "C" __global__ void __closesthit__triangle() {
 
 	float out_eta = 1.0f;
 	if (mat.type != MaterialType::Hair) {
-		shade_material(shade_mat, tri.materialIdx, shade_normal, ray_dir, hit_point, front_face, uv_u, uv_v, seed,
+		shade_material(shade_mat, matIdx, shade_normal, ray_dir, hit_point, front_face, uv_u, uv_v, seed,
 			attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
 			bssrdf_exit, bssrdf_exit_pos, out_eta);
 	}

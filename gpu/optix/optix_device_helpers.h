@@ -2463,6 +2463,52 @@ __device__ __forceinline__ void shade_material(
 // default: trap would still catch it, but with a generic "unhandled
 // MaterialType" message that doesn't reveal it was actually a valid type
 // used on the wrong geometry.
+// Device-side port of CPU's branch_hash01() (src/TheRestOfYourLife/
+// material_pbrt.h) - deterministic [0,1) value from a world-space point, NOT
+// a fresh random_float()/seed draw. Mix resolution needs this determinism:
+// a single scattering event's radiance closest-hit, its shadow any-hit, and
+// (on re-intersection) any later ray touching the same point must all agree
+// on which sub-material a Mix resolved to - a per-call RNG draw would let
+// them silently disagree, exactly the bug branch_hash01's own CPU comment
+// describes for scatter()/scattering_pdf()/is_shadow_transmissive().
+__device__ __forceinline__ float mix_branch_hash01(const float3& p) {
+	float h = sinf(p.x * 127.1f + p.y * 311.7f + p.z * 74.7f) * 43758.5453f;
+	return h - floorf(h);
+}
+
+// Resolves a (possibly Mix) MaterialData to a real, non-Mix MaterialData by
+// hashing `hit_point` and iteratively picking sub-material A or B -
+// LOOPING, not recursing (a Mix's own sub-material can itself be another
+// Mix - pbrt-v4 allows mix-of-mix, matches pbrt_gpu_builder.h's build-time
+// resolveMixColor()/makeMaterial() recursion), so this never adds to
+// shade_material()'s call graph. Must run before ANY other mat.type branch
+// in a shape's closest-hit/intersection program or shadow any-hit program
+// (see MaterialType::Mix's own comment) - in particular before
+// material_requires_sphere_only_handling() below, so a Mix resolving to a
+// sphere-only type on the wrong geometry still traps correctly, and before
+// shade_material() itself, since Hair/Subsurface/Medium-family are
+// dispatched via sibling paths this function never touches.
+//
+// `outMatIdx` receives the resolved material's own index into
+// params.materials (updated even when `mat` was never Mix, so callers can
+// use it unconditionally) - needed by callers that separately look up
+// per-material auxiliary data by index (e.g. Subsurface's bssrdfTables,
+// Measured's measuredTables) after resolution.
+__device__ __forceinline__ MaterialData resolve_mix_material(MaterialData mat, int matIdx,
+															  const float3& hit_point, int& outMatIdx) {
+	constexpr int kMaxMixDepth = 8;
+	for (int depth = 0; mat.type == MaterialType::Mix && depth < kMaxMixDepth; ++depth) {
+		const float w = mat.mix_extra.mixWeight;
+		const float h = mix_branch_hash01(hit_point);
+		const int subIdx = (h >= w) ? static_cast<int>(mat.mix_extra.mixMaterialAIdx)
+									 : static_cast<int>(mat.mix_extra.mixMaterialBIdx);
+		matIdx = subIdx;
+		mat = params.materials[subIdx];
+	}
+	outMatIdx = matIdx;
+	return mat;
+}
+
 __device__ __forceinline__ bool material_requires_sphere_only_handling(MaterialType type) {
 	switch (type) {
 		case MaterialType::Medium:

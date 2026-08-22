@@ -461,7 +461,28 @@ enum class MaterialType : int {
 	// since GridMediumData<T> can't be used directly on device either (same
 	// std::vector-backed SampledGrid<T> problem). Sphere-only, same reason
 	// as Medium/CloudMedium/RgbGridMedium.
-	GridMedium = 21
+	GridMedium = 21,
+	// Stochastic two-material blend (pbrt-v4 MixMaterial) - matches
+	// src/TheRestOfYourLife/material_pbrt.h's `mix_material`/`branch_hash01`
+	// exactly: at each shading point, deterministically (hashed from the
+	// world-space hit point, NOT a fresh random draw - see branch_hash01's
+	// own CPU-side comment for why: scatter()/scattering_pdf()/shadow-ray
+	// classification must all agree about which sub-material a given
+	// scattering event used) picks sub-material A or B and delegates
+	// entirely to it - not a real blended BxDF evaluation. This MaterialType
+	// itself has NO shading case anywhere; every shape's closest-hit/
+	// intersection program and every shadow any-hit program resolves it
+	// (mix_extra below -> LaunchParams::materials[chosen index], looping
+	// while the result is itself another Mix, capped the same kMaxMixDepth
+	// pbrt_gpu_builder.h's build-time resolveMixColor()/recursive
+	// makeMaterial() already use) to a REAL MaterialType before any other
+	// mat.type branch runs - see resolve_mix_material()/wf_resolve_mix_
+	// material() in optix_device_helpers.h/wavefront_kernels.cu. Shape-
+	// agnostic (unlike Hair/Subsurface/Medium-family): it never needs its
+	// own entry in material_requires_sphere_only_handling()/wf_material_
+	// requires_sphere_only_handling(), since resolution always happens
+	// before those checks see the (by-then-real) resolved type.
+	Mix = 22
 };
 
 // The single canonical list of MaterialTypes GPU SPPM's camera/photon-pass
@@ -758,6 +779,13 @@ struct MaterialData {
 		// GridMedium: index into LaunchParams::gridMediums - same
 		// index-not-direct-field-reuse reasoning as cloud_medium_extra above.
 		struct { float gridMediumIdx, _grid_medium_pad1, _grid_medium_pad2; } grid_medium_extra;
+		// Mix: both sub-materials' indices into LaunchParams::materials
+		// (stored as floats, same "index in an otherwise-unused union slot"
+		// convention as cloudMediumIdx/rgbGridMediumIdx/gridMediumIdx above -
+		// cast to int on read) plus the blend weight (pbrt-v4 "amount":
+		// probability of B winning at any given shading point, matching CPU's
+		// mix_material/pbrt_flatten::Material::mixWeight convention exactly).
+		struct { float mixMaterialAIdx, mixMaterialBIdx, mixWeight; } mix_extra;
 	};
 
 	union {
