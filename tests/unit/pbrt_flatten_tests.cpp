@@ -229,6 +229,126 @@ TEST(FlattenTest, DiskAndCylinderRespectMaterialAreaLightAndMedium) {
 }
 
 // ===========================================================================
+// Curve
+// ===========================================================================
+
+namespace {
+const char *kSingleSegmentCurve =
+	"Shape \"curve\"\n"
+	"  \"point3 P\" [ 0 0 0  1 1 0  2 1 0  3 0 0 ]\n";
+} // namespace
+
+TEST(FlattenTest, CurveParamsAreReadWithPbrtDefaults) {
+	const FlatScene s = flattenSource(kSingleSegmentCurve);
+	ASSERT_EQ(s.curves.size(), 1u);
+	EXPECT_EQ(s.curves[0].nSegments, 1);
+	EXPECT_DOUBLE_EQ(s.curves[0].width0, 1.0);
+	EXPECT_DOUBLE_EQ(s.curves[0].width1, 1.0);
+	EXPECT_EQ(s.curves[0].curveType, "flat");
+	ASSERT_EQ(s.curves[0].cp.size(), 12u);
+	EXPECT_DOUBLE_EQ(s.curves[0].cp[0], 0.0);
+	EXPECT_DOUBLE_EQ(s.curves[0].cp[9], 3.0);
+}
+
+TEST(FlattenTest, CurveWidthParamsAreReadWhenGiven) {
+	const FlatScene s = flattenSource(
+		"Shape \"curve\" \"string type\" [ \"cylinder\" ] "
+		"\"float width0\" [ 0.2 ] \"float width1\" [ 0.05 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 1 0  2 1 0  3 0 0 ]\n");
+	ASSERT_EQ(s.curves.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.curves[0].width0, 0.2);
+	EXPECT_DOUBLE_EQ(s.curves[0].width1, 0.05);
+	EXPECT_EQ(s.curves[0].curveType, "cylinder");
+}
+
+TEST(FlattenTest, CurveWidthShorthandSetsBothEndpoints) {
+	const FlatScene s = flattenSource(
+		std::string("Shape \"curve\" \"float width\" [ 0.3 ]\n") +
+		"  \"point3 P\" [ 0 0 0  1 1 0  2 1 0  3 0 0 ]\n");
+	ASSERT_EQ(s.curves.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.curves[0].width0, 0.3);
+	EXPECT_DOUBLE_EQ(s.curves[0].width1, 0.3);
+}
+
+TEST(FlattenTest, CurveControlPointsAreTransformedByTheCTM) {
+	const FlatScene s = flattenSource(std::string("Translate 10 20 30\n") + kSingleSegmentCurve);
+	ASSERT_EQ(s.curves.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.curves[0].cp[0], 10.0);
+	EXPECT_DOUBLE_EQ(s.curves[0].cp[1], 20.0);
+	EXPECT_DOUBLE_EQ(s.curves[0].cp[2], 30.0);
+	// Fourth (last) control point: (3,0,0) + translate.
+	EXPECT_DOUBLE_EQ(s.curves[0].cp[9], 13.0);
+	EXPECT_DOUBLE_EQ(s.curves[0].cp[10], 20.0);
+	EXPECT_DOUBLE_EQ(s.curves[0].cp[11], 30.0);
+}
+
+TEST(FlattenTest, CurveWithSevenControlPointsSplitsIntoTwoSegments) {
+	// (N-1)/3 = 2 segments; pbrt-v4's own Curve::Create splitting convention
+	// (shapes.cpp) - segment 2 shares its first control point with segment
+	// 1's last.
+	const FlatScene s = flattenSource(
+		"Shape \"curve\"\n"
+		"  \"point3 P\" [ 0 0 0  1 1 0  2 1 0  3 0 0  4 1 0  5 1 0  6 0 0 ]\n");
+	ASSERT_EQ(s.curves.size(), 1u);
+	EXPECT_EQ(s.curves[0].nSegments, 2);
+	ASSERT_EQ(s.curves[0].cp.size(), 24u);
+	// Segment 0's last point (index 3) and segment 1's first point (index 4)
+	// are both (3,0,0), the shared endpoint.
+	EXPECT_DOUBLE_EQ(s.curves[0].cp[9], 3.0);
+	EXPECT_DOUBLE_EQ(s.curves[0].cp[12], 3.0);
+}
+
+TEST(FlattenTest, CurveWithInvalidControlPointCountWarnsAndSkips) {
+	// 5 points: (5-1) % 3 != 0.
+	const FlatScene s = flattenSource(
+		"Shape \"curve\"\n"
+		"  \"point3 P\" [ 0 0 0  1 1 0  2 1 0  3 0 0  4 0 0 ]\n");
+	EXPECT_EQ(s.curves.size(), 0u);
+	EXPECT_TRUE(warnedAbout(s, "control points"));
+}
+
+TEST(FlattenTest, CurveWithUnsupportedDegreeWarnsAndSkips) {
+	const FlatScene s = flattenSource(
+		std::string("Shape \"curve\" \"integer degree\" [ 2 ]\n") +
+		"  \"point3 P\" [ 0 0 0  1 1 0  2 1 0 ]\n");
+	EXPECT_EQ(s.curves.size(), 0u);
+	EXPECT_TRUE(warnedAbout(s, "degree"));
+}
+
+TEST(FlattenTest, RibbonCurveWithoutNormalsWarnsAndSkips) {
+	const FlatScene s = flattenSource(
+		std::string("Shape \"curve\" \"string type\" [ \"ribbon\" ]\n") +
+		"  \"point3 P\" [ 0 0 0  1 1 0  2 1 0  3 0 0 ]\n");
+	EXPECT_EQ(s.curves.size(), 0u);
+	EXPECT_TRUE(warnedAbout(s, "normal"));
+}
+
+TEST(FlattenTest, RibbonCurveWithNormalsBuilds) {
+	const FlatScene s = flattenSource(
+		"Shape \"curve\" \"string type\" [ \"ribbon\" ]\n"
+		"  \"point3 P\" [ 0 0 0  1 1 0  2 1 0  3 0 0 ]\n"
+		"  \"normal N\" [ 0 0 1  0 0 1 ]\n");
+	ASSERT_EQ(s.curves.size(), 1u);
+	EXPECT_EQ(s.curves[0].curveType, "ribbon");
+	ASSERT_EQ(s.curves[0].n.size(), 6u);
+	EXPECT_DOUBLE_EQ(s.curves[0].n[2], 1.0);
+	EXPECT_DOUBLE_EQ(s.curves[0].n[5], 1.0);
+}
+
+TEST(FlattenTest, CurveRespectsMaterialAndAreaLight) {
+	const FlatScene s = flattenSource(
+		"Material \"diffuse\" \"rgb reflectance\" [ .5 .5 .5 ]\n"
+		"AttributeBegin\n"
+		"  AreaLightSource \"diffuse\" \"rgb L\" [ 5 5 5 ]\n"
+		"  Shape \"curve\"\n"
+		"    \"point3 P\" [ 0 0 0  1 1 0  2 1 0  3 0 0 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(s.curves.size(), 1u);
+	EXPECT_EQ(s.curves[0].material, 0);
+	EXPECT_EQ(s.curves[0].areaLight, 0);
+}
+
+// ===========================================================================
 // MakeNamedMedium / MediumInterface
 // ===========================================================================
 

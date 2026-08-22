@@ -37,6 +37,7 @@
 #include "optix_math_helpers.h"   // cross(), dot(), length() - used below
 #include "../../src/shared/pbrt_flatten.h"
 #include "../../src/shared/pbrt_quadify.h"
+#include "../../src/shared/curve_tessellate.h"
 // pbrt_scene::Matrix4::inverseAffine() - used below (disks/cylinders loop) to
 // precompute each primitive's w2o from its flattened o2w, host-side, once,
 // the same "invert once at scene-build time, never on device" split
@@ -91,6 +92,11 @@ struct BuildStats {
 	// CylinderData comment.
 	std::size_t disks = 0;
 	std::size_t cylinders = 0;
+	// Shape "curve" - each strand's segments are diced into bilinear-patch
+	// quads (see pbrt_gpu_builder.h's own curve loop comment), so this counts
+	// source curve segments, not the resulting patch count (already folded
+	// into `bilinearPatches` above).
+	std::size_t curveSegments = 0;
 	std::size_t quadLights = 0;
 	std::size_t emissiveTrianglesSampledIndividually = 0;
 	// Placements the builder prepared; optix_renderer.cpp's buildScene()
@@ -1039,6 +1045,52 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		out.bilinearPatches.push_back(bd);
 	}
 	stats.bilinearPatches = out.bilinearPatches.size();
+
+	// ---- curves -------------------------------------------------------------
+	// Shape "curve" - neither GPU backend has a native curve-intersection
+	// program (see src/shared/curve_tessellate.h's own comment - pbrt-v4's
+	// GPU path makes the identical choice, for the identical reason), so each
+	// already-per-segment-split Curve (pbrt_flatten::Curve, see its own
+	// comment) is diced into a tapered tube of bilinear-patch quads via the
+	// same curve_tessellate::tessellate() call build_curve_fibers_scene_gpu()
+	// (scene_builder.cpp) already uses for its native (non-pbrt) curve demo,
+	// with that function's own density constants (n_length=10, n_radial=8) as
+	// a reasonable default. Curve `type` (flat/cylinder/ribbon) is NOT
+	// distinguished here - the tessellator only emits a round tube regardless
+	// - a real, documented CPU/GPU visual divergence (see docs/
+	// PBRT_SUPPORT.md), not an oversight; pbrt-v4's own GPU dicing has the
+	// identical divergence for the identical reason.
+	for (const pbrt_flatten::Curve &cv : scene.curves) {
+		const int matIdx = materialIndex(cv.material, cv.areaLight);
+		const int n_length = 10, n_radial = 8;
+		std::vector<curve_tessellate::Quad> quads;
+		for (int seg = 0; seg < cv.nSegments; ++seg) {
+			const std::size_t base = static_cast<std::size_t>(seg) * 4;
+			float cp[4][3];
+			for (int i = 0; i < 4; ++i) {
+				const std::size_t idx = (base + static_cast<std::size_t>(i)) * 3;
+				cp[i][0] = static_cast<float>(cv.cp[idx]);
+				cp[i][1] = static_cast<float>(cv.cp[idx + 1]);
+				cp[i][2] = static_cast<float>(cv.cp[idx + 2]);
+			}
+			const double t0 = static_cast<double>(seg) / cv.nSegments;
+			const double t1 = static_cast<double>(seg + 1) / cv.nSegments;
+			const float segW0 = static_cast<float>(cv.width0 + (cv.width1 - cv.width0) * t0);
+			const float segW1 = static_cast<float>(cv.width0 + (cv.width1 - cv.width0) * t1);
+			quads.clear();
+			curve_tessellate::tessellate(cp, 0.0f, 1.0f, segW0, segW1, n_length, n_radial, quads);
+			for (const curve_tessellate::Quad &q : quads) {
+				BilinearPatchData bd = {};
+				bd.p00 = make_float3(q.p00[0], q.p00[1], q.p00[2]);
+				bd.p10 = make_float3(q.p10[0], q.p10[1], q.p10[2]);
+				bd.p01 = make_float3(q.p01[0], q.p01[1], q.p01[2]);
+				bd.p11 = make_float3(q.p11[0], q.p11[1], q.p11[2]);
+				bd.materialIdx = matIdx;
+				out.bilinearPatches.push_back(bd);
+			}
+		}
+		stats.curveSegments += static_cast<std::size_t>(cv.nSegments);
+	}
 
 	// ---- disks / cylinders -------------------------------------------------
 	// Shape "disk"/"cylinder" - supported on both the recursive (Phase 4b)

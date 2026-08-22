@@ -128,6 +128,26 @@ loader and no longer match the code:
   `DiskData`/`CylinderData`'s medium field on either backend, so the same
   directive silently produces a disk/cylinder with no medium on GPU.
 
+- `Shape "curve"` (a cubic Bezier hair/fiber strand) is supported on CPU
+  (`src/shared/shapes.h`'s `CurveShape<T>`, wrapped by
+  `curve_shape_hittable.h` - real ray-Bezier recursive-subdivision
+  intersection) and both GPU backends via tessellation into a tube of
+  bilinear patches (`src/shared/curve_tessellate.h`) rather than a native
+  curve-intersection program - neither GPU backend has one, matching
+  pbrt-v4's own GPU strategy for the same reason (dicing curves is a much
+  better fit for the GPU than porting the CPU's recursive-subdivision
+  algorithm). This means GPU renders a close but not pixel-identical
+  approximation of a curve's exact silhouette, and does not distinguish
+  `"type"` (flat/cylinder/ribbon all tessellate to the same round tube) -
+  pbrt-v4 has the identical divergence for the identical reason. Only cubic
+  (`"integer degree"` 3), Bezier-basis (`"string basis"` `"bezier"`) curves
+  are built; a b-spline basis or non-cubic degree falls back to the generic
+  "shape not supported" warning. `"integer splitdepth"` is not implemented -
+  pbrt-v4 itself forces it to 0 whenever GPU rendering is active, so omitting
+  it matches pbrt-v4's own GPU-mode behavior. See `pbrt_scenes/curve-tuft.pbrt`
+  for a worked example (paired with an ordinary `Material "diffuse"` - see
+  the materials table above for `"hair"`'s own separate support status).
+
 - `MakeNamedMedium`'s `"type"` parameter supports `"homogeneous"` (the
   default), `"cloud"` (Perlin-FBm density, `src/shared/cloud_medium.h`),
   `"rgbgrid"` (a flat per-voxel `"rgb sigma_a"`/`"rgb sigma_s"` grid,

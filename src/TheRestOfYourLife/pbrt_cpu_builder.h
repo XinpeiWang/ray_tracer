@@ -17,6 +17,7 @@
 
 #include "bvh.h"
 #include "constant_medium.h"
+#include "curve_shape_hittable.h"
 #include "disk_cylinder_hittable.h"
 #include "grid_medium_hittable.h"
 #include "hittable_list.h"
@@ -282,6 +283,7 @@ struct BuildResult {
 	std::size_t diskCount = 0;
 	std::size_t cylinderCount = 0;
 	std::size_t bilinearPatchCount = 0;
+	std::size_t curveCount = 0;
 	std::size_t uniqueVertexCount = 0;
 	// Instance placements actually added to the world. Each shares one
 	// BVH with every other placement of the same definition.
@@ -399,6 +401,7 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 								  const std::vector<pbrt_flatten::Disk> &disks,
 								  const std::vector<pbrt_flatten::Cylinder> &cylinders,
 								  const std::vector<pbrt_flatten::BilinearPatch> &patches,
+								  const std::vector<pbrt_flatten::Curve> &curveDecls,
 								  hittable_list &world, hittable_list &lights) {
 	// ---- triangles -------------------------------------------------------
 	if (!tris.empty()) {
@@ -612,11 +615,48 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		if (bp.areaLight >= 0) lights.add(patch);
 	}
 	out.bilinearPatchCount += patches.size();
+
+	// ---- curves ------------------------------------------------------------
+	// Shape "curve" - see pbrt_flatten::Curve's own comment for scope (cubic
+	// Bezier, "bezier" basis only, already split into independent per-segment
+	// 4-control-point Bezier curves by flatten()). One CurveShape<double> per
+	// segment, wrapped in the existing curve_shape_hittable. width0/width1 are
+	// re-lerped per segment (matching pbrt-v4's own Curve::Create,
+	// shapes.cpp:894-895 exactly: Lerp(seg/nSegments, width0,width1)) so a
+	// multi-segment strand tapers smoothly across its whole length rather than
+	// each segment re-tapering its own full width0->width1 range.
+	for (const pbrt_flatten::Curve &cd : curveDecls) {
+		auto mat = cachedMaterial(cd.material, cd.areaLight);
+		const CurveType type = (cd.curveType == "cylinder") ? CurveType::Cylinder
+			: (cd.curveType == "ribbon") ? CurveType::Ribbon : CurveType::Flat;
+		for (int seg = 0; seg < cd.nSegments; ++seg) {
+			double cpx[4], cpy[4], cpz[4];
+			for (int i = 0; i < 4; ++i) {
+				const std::size_t idx = (static_cast<std::size_t>(seg) * 4 + i) * 3;
+				cpx[i] = cd.cp[idx]; cpy[i] = cd.cp[idx + 1]; cpz[i] = cd.cp[idx + 2];
+			}
+			const double t0 = static_cast<double>(seg) / cd.nSegments;
+			const double t1 = static_cast<double>(seg + 1) / cd.nSegments;
+			const double segW0 = cd.width0 + (cd.width1 - cd.width0) * t0;
+			const double segW1 = cd.width0 + (cd.width1 - cd.width0) * t1;
+			CurveShape<double> curve = (type == CurveType::Ribbon)
+				? CurveShape<double>::make_ribbon(cpx, cpy, cpz, 0.0, 1.0, segW0, segW1,
+					cd.n[static_cast<std::size_t>(seg) * 3], cd.n[static_cast<std::size_t>(seg) * 3 + 1],
+					cd.n[static_cast<std::size_t>(seg) * 3 + 2],
+					cd.n[static_cast<std::size_t>(seg + 1) * 3], cd.n[static_cast<std::size_t>(seg + 1) * 3 + 1],
+					cd.n[static_cast<std::size_t>(seg + 1) * 3 + 2])
+				: CurveShape<double>::make(cpx, cpy, cpz, 0.0, 1.0, segW0, segW1, type);
+			auto ch = std::make_shared<curve_shape_hittable>(curve, mat);
+			world.add(ch);
+			if (cd.areaLight >= 0) lights.add(ch);
+		}
+	}
+	out.curveCount += curveDecls.size();
 	};
 
 
 	emitGeometry(scene.triangles, scene.spheres, scene.disks, scene.cylinders,
-				 scene.bilinearPatches, *out.world, *out.lights);
+				 scene.bilinearPatches, scene.curves, *out.world, *out.lights);
 
 	// ---- instances -------------------------------------------------------
 	// Each definition is built once, into its own BVH, and then placed by a
@@ -637,15 +677,17 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 
 		auto geometry = std::make_shared<hittable_list>();
 		hittable_list unusedLights;
-		// No InstanceGroup::bilinearPatches/disks/cylinders - object-space
-		// bilinear patches, disks and cylinders inside an instance definition
-		// are all out of scope (see flatten()'s null-bilinearPatches/disks/
-		// cylinders comments on why), so these are always empty.
+		// No InstanceGroup::bilinearPatches/disks/cylinders/curves - object-
+		// space bilinear patches, disks, cylinders and curves inside an
+		// instance definition are all out of scope (see flatten()'s null-
+		// bilinearPatches/disks/cylinders/curves comments on why), so these
+		// are always empty.
 		static const std::vector<pbrt_flatten::BilinearPatch> kNoBilinearPatches;
 		static const std::vector<pbrt_flatten::Disk> kNoDisks;
 		static const std::vector<pbrt_flatten::Cylinder> kNoCylinders;
+		static const std::vector<pbrt_flatten::Curve> kNoCurves;
 		emitGeometry(grp.triangles, grp.spheres, kNoDisks, kNoCylinders,
-					 kNoBilinearPatches, *geometry, unusedLights);
+					 kNoBilinearPatches, kNoCurves, *geometry, unusedLights);
 		if (!geometry->objects.empty())
 			groupBVHs[g] = std::make_shared<bvh_node>(*geometry);
 	}

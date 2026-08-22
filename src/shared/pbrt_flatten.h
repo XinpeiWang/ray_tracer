@@ -193,6 +193,46 @@ struct BilinearPatch {
 	int areaLight = -1;
 };
 
+// Shape "curve" - a cubic Bezier hair/fiber strand (src/shared/shapes.h's
+// CurveShape<T>, CPU builder) / a tessellated tube of bilinear patches (GPU
+// builder, since neither GPU backend has a native curve-intersection program -
+// see src/shared/curve_tessellate.h's own comment, and pbrt-v4 itself makes
+// the identical choice on its own GPU path). Only cubic ("integer degree" 3,
+// the CurveShape/pbrt-v4 default) Bezier-basis ("string basis" "bezier", also
+// the default) curves are built; b-spline basis or a non-cubic degree falls
+// through to flatten()'s generic "shape not supported" warning rather than
+// attempting the basis-conversion math pbrt-v4's own Curve::Create does
+// (shapes.cpp's ElevateQuadraticBezierToCubic/CubicBSplineToBezier) - no
+// scene this loader has actually seen needs it.
+//
+// World-space control points, one segment's worth (4 points = 12 doubles)
+// per contiguous block - mirrors pbrt-v4's own Curve::Create segment-
+// splitting loop exactly: an N-point "point3 P" array with (N-1) a multiple
+// of 3 becomes nSegments = (N-1)/3 independent cubic segments, each sharing
+// its first control point with the previous segment's last (cpOffset += 3
+// per iteration). Each segment becomes its own CurveShape/tessellated tube
+// with its own-local uMin=0/uMax=1 - no uMin/uMax sub-range splitting is
+// needed for this. "splitdepth" (pbrt-v4's separate, BVH-bounds-tightening
+// recursive sub-splitting) is deliberately not implemented: pbrt-v4 itself
+// forces splitdepth=0 whenever GPU rendering is active (shapes.cpp: "since
+// we dice curves on the GPU we really don't want to have them split here"),
+// so omitting it matches pbrt-v4's own GPU-mode behavior, not a corner cut.
+struct Curve {
+	std::vector<double> cp;   // nSegments * 4 * 3 doubles, world space
+	int nSegments = 0;
+	// pbrt-v4's own default: "float width" (1.0) sets both, "width0"/
+	// "width1" each independently override it.
+	double width0 = 1.0, width1 = 1.0;
+	std::string curveType = "flat";   // "flat" | "cylinder" | "ribbon"
+	// Ribbon only - one shading normal per segment ENDPOINT (nSegments+1
+	// total, world space, unit length, transformed via transformNormal not
+	// transformPoint) - see flatten()'s own ribbon-normal validation, which
+	// mirrors pbrt-v4's Curve::Create (shapes.cpp:824-841) exactly.
+	std::vector<double> n;    // (nSegments+1)*3 doubles, ribbon only
+	int material = -1;
+	int areaLight = -1;
+};
+
 // pbrt's material set and ours are the same set under the same names - the
 // MaterialType enum in gpu/optix/optix_types.h cites pbrt's BxDFs by name - so
 // this is a rename, not a translation. Anything genuinely absent maps to
@@ -743,6 +783,7 @@ struct FlatScene {
 	std::vector<Disk> disks;
 	std::vector<Cylinder> cylinders;
 	std::vector<BilinearPatch> bilinearPatches;
+	std::vector<Curve> curves;
 	std::vector<Material> materials;    // parallel to Scene::materials
 	std::vector<Emission> areaLights;   // parallel to Scene::areaLights
 	std::vector<Medium> media;          // parallel to Scene::media
@@ -792,6 +833,10 @@ struct ShapeWork {
 	// exactly rather than inventing a new one.
 	std::vector<Disk> *disks = nullptr;
 	std::vector<Cylinder> *cylinders = nullptr;
+	// Same "left null inside an ObjectBegin/End instance definition falls
+	// through to the generic unsupported-shape warning" precedent as disks/
+	// cylinders above.
+	std::vector<Curve> *curves = nullptr;
 };
 
 // Row-major 4x4 multiply: `a` applied after `b`, i.e. the result maps a point
@@ -1786,7 +1831,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 
 	for (const pbrt_scene::ShapeDecl &shape : scene.shapes)
 		work.push_back({&shape, shape.xform, &out.triangles, &out.spheres, &out.bilinearPatches,
-						&out.disks, &out.cylinders});
+						&out.disks, &out.cylinders, &out.curves});
 
 	// Sized up front so the pointers taken below stay valid as work is added.
 	out.groups.resize(scene.objects.size());
@@ -2116,9 +2161,81 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			continue;
 		}
 
-		// disk, cylinder, curve, bilinearmesh, ... Recognised as geometry we
-		// cannot build, which is worth saying: the scene will render with a
-		// hole in it rather than looking subtly wrong.
+		if (shape.type == "curve" && w.curves) {
+			const int degree = shape.params.getInt("degree", 3);
+			const std::string basis = shape.params.getString("basis", "bezier");
+			const pbrt_scene::Param *pp = shape.params.find("P");
+			if (degree != 3 || basis != "bezier") {
+				warn("a curve uses degree " + std::to_string(degree) + "/basis '" +
+					 basis + "' - only cubic (degree 3) Bezier-basis curves are "
+					 "supported; skipped");
+				continue;
+			}
+			if (!pp || pp->numbers.size() < 12) {
+				warn("a curve is missing its \"point3 P\" control points (need "
+					 "at least 4); skipped");
+				continue;
+			}
+			const std::size_t numPoints = pp->numbers.size() / 3;
+			if ((numPoints - 1) % 3 != 0) {
+				warn("a curve's \"point3 P\" has " + std::to_string(numPoints) +
+					 " control points; a cubic Bezier curve needs 3*n+1 control "
+					 "points (4, 7, 10, ...); skipped");
+				continue;
+			}
+
+			Curve c;
+			c.nSegments = static_cast<int>((numPoints - 1) / 3);
+			c.cp.resize(static_cast<std::size_t>(c.nSegments) * 4 * 3);
+			for (int seg = 0; seg < c.nSegments; ++seg) {
+				for (int i = 0; i < 4; ++i) {
+					const std::size_t srcIdx = (static_cast<std::size_t>(seg) * 3 + i) * 3;
+					double world[3];
+					transformPoint(xform, pp->numbers[srcIdx], pp->numbers[srcIdx + 1],
+									pp->numbers[srcIdx + 2], world);
+					const std::size_t dstIdx = (static_cast<std::size_t>(seg) * 4 + i) * 3;
+					c.cp[dstIdx] = world[0]; c.cp[dstIdx + 1] = world[1]; c.cp[dstIdx + 2] = world[2];
+				}
+			}
+
+			const double width = shape.params.getFloat("width", 1.0);
+			c.width0 = shape.params.getFloat("width0", width);
+			c.width1 = shape.params.getFloat("width1", width);
+			c.curveType = shape.params.getString("type", "flat");
+			if (c.curveType != "flat" && c.curveType != "cylinder" && c.curveType != "ribbon") {
+				warn("a curve has unknown \"type\" '" + c.curveType +
+					 "'; using \"flat\" instead");
+				c.curveType = "flat";
+			}
+
+			if (c.curveType == "ribbon") {
+				const pbrt_scene::Param *pn = shape.params.find("N");
+				const std::size_t needed = static_cast<std::size_t>(c.nSegments) + 1;
+				if (!pn || pn->numbers.size() != needed * 3) {
+					warn("a ribbon curve needs " + std::to_string(needed) +
+						 " \"normal N\" endpoint normals (one per segment "
+						 "endpoint); skipped");
+					continue;
+				}
+				c.n.resize(needed * 3);
+				for (std::size_t i = 0; i < needed; ++i) {
+					double worldN[3];
+					transformNormal(xform, pn->numbers[i * 3], pn->numbers[i * 3 + 1],
+									 pn->numbers[i * 3 + 2], worldN);
+					normalizeOrDefault(worldN, 0.0, 1.0, 0.0);
+					c.n[i * 3] = worldN[0]; c.n[i * 3 + 1] = worldN[1]; c.n[i * 3 + 2] = worldN[2];
+				}
+			}
+
+			c.material = shape.materialIndex;
+			c.areaLight = shape.areaLightIndex;
+			w.curves->push_back(std::move(c));
+			continue;
+		}
+
+		// disk, cylinder, bilinearmesh, ... Recognised as geometry we cannot
+		// build, which is worth saying: the scene will render with a hole in
+		// it rather than looking subtly wrong.
 		warn("shape '" + shape.type + "' is not supported; skipped");
 	}
 

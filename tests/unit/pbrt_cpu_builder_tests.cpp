@@ -201,6 +201,41 @@ TEST(PbrtCpuBuildTest, DiskUnderRotationHitsAtTheExactTransformedPosition) {
 	EXPECT_NEAR(t, 5.0, 1e-6);
 }
 
+TEST(PbrtCpuBuildTest, CurveIsBuiltAtItsTransformedPositionAndWidth) {
+	// A straight cylinder-type curve along world-space Z, width0=width1=0.2
+	// (a "thickened 1D curve" - like pbrt-v4's own Curve, CurveShape's hit
+	// distance is where the ray crosses the curve's own centerline, not a
+	// true swept-cylinder surface offset by radius; width only gates the
+	// transverse-distance ACCEPTANCE threshold - see CurveShape::intersect's
+	// hitWidth/halfW comment, shapes.h). This mirrors curve_shape_tests.cpp's
+	// own FlatHitCentre/FlatMissOffset tests (t = exact axis-crossing
+	// distance; width changes hit/miss at an offset, not t itself).
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Translate 3 0 0\n"
+		"Shape \"curve\" \"string type\" [ \"cylinder\" ] \"float width\" [ 0.2 ]\n"
+		"  \"point3 P\" [ 0 0 0  0 0 1  0 0 2  0 0 3 ]\n");
+	EXPECT_EQ(b.curveCount, 1u);
+	double t = 0.0;
+	// Curve's world-space axis runs through x=3, y=0; a ray from x=-2 toward
+	// +X aimed exactly at the axis (y=0) hits at the axis-crossing distance.
+	ASSERT_TRUE(castRay(b, point3(-2, 0, 1.5), vec3(1, 0, 0), t));
+	EXPECT_NEAR(t, 5.0, 1e-3);
+
+	// A ray offset by less than the half-width (0.1) still hits...
+	ASSERT_TRUE(castRay(b, point3(-2, 0.05, 1.5), vec3(1, 0, 0), t));
+	// ...but one offset well past the half-width misses - proving the
+	// authored width (not some other default) is what's actually reaching
+	// CurveShape, the one thing the axis-crossing hit above doesn't prove.
+	EXPECT_FALSE(castRay(b, point3(-2, 0.5, 1.5), vec3(1, 0, 0), t));
+}
+
+TEST(PbrtCpuBuildTest, CurveWithInvalidControlPointCountIsNotBuilt) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Shape \"curve\"\n"
+		"  \"point3 P\" [ 0 0 0  1 1 0  2 1 0  3 0 0  4 0 0 ]\n");
+	EXPECT_EQ(b.curveCount, 0u);
+}
+
 TEST(PbrtCpuBuildTest, MediumInterfaceWrapsTheSphereInAParticipatingMedium) {
 	// The precise structural claim - the sphere resolves to the right
 	// FlatScene::media index, with the right coefficients - lives in
