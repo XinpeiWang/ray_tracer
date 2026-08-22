@@ -336,3 +336,71 @@ TEST(HairMaterial, ScatteringPDFNonNegative) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// tangent_is_dpdu: real curve geometry's fiber tangent vs. the shading-
+// normal proxy every other Hair-material shape (e.g. a plain sphere) still
+// uses - see hair_material.h's own tangent_is_dpdu parameter comment.
+// scattering_pdf() takes h=0 deterministically (no RNG), so it's a clean way
+// to prove the flag actually switches which axis HairBxDF is built around,
+// without needing many stochastic scatter() samples.
+// ---------------------------------------------------------------------------
+
+TEST(HairMaterial, TangentIsDpduDefaultsFalseAndMatchesOmittedArgument) {
+	// The 8th constructor parameter's default must be false - every existing
+	// call site (this file's own tests above, hair-material.pbrt's sphere
+	// demo via pbrt_cpu_builder.h, the native scene 19/B11 demo) constructs
+	// hair_material with 7 or fewer arguments and must keep its exact
+	// pre-existing (shading-normal-proxy) behavior.
+	hair_material implicit;
+	hair_material explicitFalse(0.06, 0.10, 0.20, 0.3, 0.3, 2.0, 1.55, false);
+	EXPECT_FALSE(implicit.tangent_is_dpdu());
+	EXPECT_FALSE(explicitFalse.tangent_is_dpdu());
+}
+
+TEST(HairMaterial, TangentIsDpduTrueUsesDpduNotNormalWhenBothAreSet) {
+	// normal and dpdu point in clearly different directions here - if
+	// tangent_is_dpdu is actually wired through to the fiber-axis choice,
+	// the two materials (identical in every other parameter) must disagree
+	// on scattering_pdf() for the same query rays, since HairBxDF's whole
+	// azimuthal frame rotates with the tangent axis.
+	hair_material matNormalProxy(0.06, 0.10, 0.20, 0.3, 0.3, 2.0, 1.55, /*tangent_is_dpdu=*/false);
+	hair_material matDpdu        (0.06, 0.10, 0.20, 0.3, 0.3, 2.0, 1.55, /*tangent_is_dpdu=*/true);
+
+	hit_record rec;
+	rec.p      = point3(0, 0, 0);
+	rec.normal = vec3(0, 1, 0);           // proxy axis: +Y
+	rec.dpdu   = vec3(1, 0, 0);           // real fiber axis: +X
+	rec.t      = 1.0;
+
+	ray r_in(point3(0, 0.3, 0.3), vec3(0.2, -0.5, -0.7));
+	ray scattered(point3(0, 0, 0), vec3(0.3, 0.6, -0.4));
+
+	const double pdfNormal = matNormalProxy.scattering_pdf(r_in, rec, scattered);
+	const double pdfDpdu   = matDpdu.scattering_pdf(r_in, rec, scattered);
+	EXPECT_NE(pdfNormal, pdfDpdu)
+		<< "tangent_is_dpdu=true must use rec.dpdu as the fiber axis, not "
+		   "rec.normal, when the two point in different directions";
+}
+
+TEST(HairMaterial, TangentIsDpduFallsBackToNormalWhenDpduIsDegenerate) {
+	// A degenerate (zero) dpdu can only happen if some future non-curve
+	// caller ever passes tangent_is_dpdu=true without a real dpdu set - see
+	// this fallback's own comment in hair_material.h. Confirms it falls back
+	// to rec.normal exactly (same pdf as an explicit false), rather than
+	// sampling from a zero-length axis.
+	hair_material matNormalProxy(0.06, 0.10, 0.20, 0.3, 0.3, 2.0, 1.55, /*tangent_is_dpdu=*/false);
+	hair_material matDpduButDegenerate(0.06, 0.10, 0.20, 0.3, 0.3, 2.0, 1.55, /*tangent_is_dpdu=*/true);
+
+	hit_record rec;
+	rec.p      = point3(0, 0, 0);
+	rec.normal = vec3(0, 1, 0);
+	rec.dpdu   = vec3(0, 0, 0);           // degenerate - falls back to normal
+	rec.t      = 1.0;
+
+	ray r_in(point3(0, 0.3, 0.3), vec3(0.2, -0.5, -0.7));
+	ray scattered(point3(0, 0, 0), vec3(0.3, 0.6, -0.4));
+
+	EXPECT_DOUBLE_EQ(matNormalProxy.scattering_pdf(r_in, rec, scattered),
+					 matDpduButDegenerate.scattering_pdf(r_in, rec, scattered));
+}

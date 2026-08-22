@@ -12,8 +12,21 @@
 //   eta            : fiber IOR              (default: 1.55)
 //
 // The cross-section offset h is sampled uniformly in [-1,1] per ray.
-// The fiber tangent uses the shading normal as a proxy (artistically valid
-// for fur/hair when normals are set along the strand direction).
+//
+// tangent_is_dpdu (default false, every pre-existing call site unaffected):
+// the fiber tangent axis HairBxDF needs is fundamentally a "along the
+// strand's length" direction, not a surface normal. By default this uses
+// the shading normal as a PROXY (artistically valid for fur/hair painted on
+// ordinary geometry like a sphere, where normals radiate outward in roughly
+// the right pattern for a furry look - this project's own native "Hair
+// Fibers" demo, scene 19/B11, relies on exactly this). Set true only when
+// the hit really is genuine curve/strand geometry (curve_shape_hittable,
+// whose hit_record::dpdu IS the real fiber tangent - see that class's own
+// hit() for where it's set) - see pbrt_cpu_builder.h's curve-building loop,
+// the one call site that passes true, for why this can't just always read
+// dpdu (every OTHER shape's dpdu means something else entirely, e.g. a
+// sphere's own around-the-equator tangent, which would misorient the
+// Marschner highlight just as much as the normal proxy does, differently).
 // ---------------------------------------------------------------------------
 
 #include "material.h"
@@ -30,10 +43,12 @@ public:
 		double beta_m    = 0.30,
 		double beta_n    = 0.30,
 		double alpha_deg = 2.0,
-		double eta       = 1.55)
+		double eta       = 1.55,
+		bool   tangent_is_dpdu = false)
 		: m_sar(sigma_a_r), m_sag(sigma_a_g), m_sab(sigma_a_b),
 		  m_beta_m(beta_m), m_beta_n(beta_n),
-		  m_alpha(alpha_deg), m_eta(eta)
+		  m_alpha(alpha_deg), m_eta(eta),
+		  m_tangent_is_dpdu(tangent_is_dpdu)
 	{}
 
 	bool scatter(const ray& r_in, const hit_record& rec,
@@ -51,10 +66,15 @@ public:
 			beta_m, beta_n,
 			m_alpha);
 
-		// Use the shading normal as fiber tangent proxy
-		double tx = rec.normal.x();
-		double ty = rec.normal.y();
-		double tz = rec.normal.z();
+		// See tangent_is_dpdu's own comment above. A degenerate dpdu (only
+		// possible if a future non-curve caller ever passed tangent_is_dpdu
+		// without a real dpdu set) falls back to the normal proxy rather than
+		// sampling from a zero-length axis.
+		const vec3& tangent = (m_tangent_is_dpdu && rec.dpdu.length_squared() > 1e-12)
+			? rec.dpdu : rec.normal;
+		double tx = tangent.x();
+		double ty = tangent.y();
+		double tz = tangent.z();
 
 		vec3 in_dir = unit_vector(r_in.direction());
 		double u1 = random_double();
@@ -88,7 +108,10 @@ public:
 			m_beta_m, m_beta_n,
 			m_alpha);
 
-		double tx = rec.normal.x(), ty = rec.normal.y(), tz = rec.normal.z();
+		// See scatter()'s identical tangent selection above.
+		const vec3& tangent = (m_tangent_is_dpdu && rec.dpdu.length_squared() > 1e-12)
+			? rec.dpdu : rec.normal;
+		double tx = tangent.x(), ty = tangent.y(), tz = tangent.z();
 		vec3 in_dir  = unit_vector(r_in.direction());
 		vec3 out_dir = unit_vector(scattered.direction());
 
@@ -106,10 +129,12 @@ public:
 	double get_beta_n() const { return m_beta_n; }
 	double get_alpha()  const { return m_alpha; }
 	double get_eta()    const { return m_eta; }
+	bool   tangent_is_dpdu() const { return m_tangent_is_dpdu; }
 
 private:
 	double m_sar, m_sag, m_sab;
 	double m_beta_m, m_beta_n;
 	double m_alpha;
 	double m_eta;
+	bool   m_tangent_is_dpdu;
 };

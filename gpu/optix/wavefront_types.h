@@ -136,8 +136,13 @@ struct HitWorkItem {
 	//     (solved from the UV-gradient 2x2 system in
 	//     __closesthit__wf_triangle, mirroring optix_intersection_triangle.h)
 	//     - wavefront_kernels.cu uses it directly, no further derivation.
-	// Zero for quad hits and for any sphere/triangle material that doesn't
-	// read it.
+	//   - Bilinear patch: also an already-computed, world-space dpdu (the
+	//     patch's own tangent, normalized) - see __closesthit__wf_bilinear_
+	//     patch. Only meaningful for MaterialType::Hair (the tessellated-
+	//     curve GPU path's fiber tangent - see hair_material.h's
+	//     tangent_is_dpdu comment for the identical CPU-side reasoning).
+	// Zero for quad hits and for any sphere/triangle/bilinear-patch material
+	// that doesn't read it.
 	float3 objNormal;
 
 	// Surface texture coordinates. Sphere: standard spherical (theta,phi)

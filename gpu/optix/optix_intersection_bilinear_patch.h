@@ -151,22 +151,40 @@ extern "C" __global__ void __closesthit__bilinear_patch() {
 	bool bssrdf_exit = false;
 	float3 bssrdf_exit_pos = make_float3(0.0f, 0.0f, 0.0f);
 
-	// Medium/DielectricMedium/CloudMedium/RgbGridMedium/Hair/Principled need
-	// sphere-specific handling this file doesn't implement (see
-	// material_requires_sphere_only_handling()'s comment); NormalMappedLambertian
-	// has a real implementation on triangles but not here either. Trap with a
-	// specific message rather than falling through to shade_material()'s own
-	// generic "unhandled MaterialType" default.
-	if (material_requires_sphere_only_handling(mat.type) ||
-		mat.type == MaterialType::NormalMappedLambertian) {
-		printf("[BILINEAR-PATCH-SHADE] MaterialType %d is not supported on bilinear patch geometry\n", (int)mat.type);
-		__trap();
-	}
+	// MaterialType::Hair gets real handling here, not the sphere-only trap
+	// below - the ONLY way a bilinear patch ever carries a Hair material is
+	// the tessellated-curve GPU path (curve_tessellate.h/pbrt_gpu_builder.h,
+	// Round 7's curve+hair loader wiring), which needs it to work. Uses this
+	// patch's own dpdu ("along the tube's length" - curve_tessellate.h's own
+	// Quad corner convention) as the fiber tangent axis - the genuine tangent
+	// this primitive has, unlike a sphere's dpdu (its own around-the-equator
+	// parametrization) or normal (perpendicular to the tube, not along it) -
+	// see hair_material.h's tangent_is_dpdu comment for the identical CPU-
+	// side reasoning. Hair never transmits, so out_eta stays at its 1.0f
+	// default (matches sphere/quad/triangle's own Hair branches, which don't
+	// touch out_eta either).
+	float out_eta = 1.0f;
+	if (mat.type == MaterialType::Hair) {
+		const float3 tangent = normalize(dpdu);
+		scattered   = sample_hair_material(ray_dir, tangent, mat, seed, scattered_dir, attenuation);
+		is_specular = true;
+	} else {
+		// Medium/DielectricMedium/CloudMedium/RgbGridMedium/Principled need
+		// sphere-specific handling this file doesn't implement (see
+		// material_requires_sphere_only_handling()'s comment); NormalMappedLambertian
+		// has a real implementation on triangles but not here either. Trap with
+		// a specific message rather than falling through to shade_material()'s
+		// own generic "unhandled MaterialType" default.
+		if (material_requires_sphere_only_handling(mat.type) ||
+			mat.type == MaterialType::NormalMappedLambertian) {
+			printf("[BILINEAR-PATCH-SHADE] MaterialType %d is not supported on bilinear patch geometry\n", (int)mat.type);
+			__trap();
+		}
 
-	float out_eta;
-	shade_material(mat, matIdx, final_normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
-		attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
-		bssrdf_exit, bssrdf_exit_pos, out_eta);
+		shade_material(mat, matIdx, final_normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
+			attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
+			bssrdf_exit, bssrdf_exit_pos, out_eta);
+	}
 
 	// Pack updated payload back into registers (see optix_intersection_quad.h
 	// for the p0-p15 layout - identical here)

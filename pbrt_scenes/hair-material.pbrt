@@ -7,10 +7,12 @@
 # Applied to ordinary spheres, matching this project's own native "Hair
 # Fibers" demo (src/TheRestOfYourLife/scenes_advanced.h's
 # build_hair_fibers(), scene 19/B11) - both use the shading normal as a
-# fiber-tangent proxy (documented simplification, see hair_material.h's own
-# comment), so this is a fair CPU/GPU/native-vs-pbrt-loader comparison. See
-# curve-tuft.pbrt for genuine curve GEOMETRY (a separate, later phase pairs
-# the two together for real fiber-on-a-strand shading).
+# fiber-tangent proxy for a non-curve shape like these spheres (documented
+# simplification, see hair_material.h's own tangent_is_dpdu comment), so
+# this is a fair CPU/GPU/native-vs-pbrt-loader comparison. See
+# curve-tuft.pbrt for genuine curve GEOMETRY, and curve-hair-tuft.pbrt for
+# the two combined (real fiber-on-a-strand shading, using the curve's own
+# tangent instead of this proxy).
 #
 # Exercises all three of Material "hair"'s supported sigma_a sources: direct
 # "sigma_a" (sphere 1), "eumelanin"/"pheomelanin" concentration (spheres 2-4),

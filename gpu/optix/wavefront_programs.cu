@@ -134,11 +134,19 @@ struct WfHitPayload {
 	float3 normal;
 	float  t;
 	int    materialIdx;
-	int    geomType;   // 0 = sphere, 1 = quad, 4 = disk, 5 = cylinder
+	int    geomType;   // 0 = sphere, 1 = quad, 2 = bilinear patch, 4 = disk, 5 = cylinder
 	bool   hit;
 	float  mediumTFar; // MaterialType::Medium/DielectricMedium only - see HitWorkItem::mediumTFar
 	int    frontFace;  // see HitWorkItem::frontFace
-	float3 objNormal;  // sphere-only - see HitWorkItem::objNormal
+	// Dual-purpose carrier - see HitWorkItem::objNormal's own comment for the
+	// sphere/triangle uses this mirrors. Bilinear patch (geomType==2) is a
+	// third use: the patch's own normalized dpdu ("along the tube's length"
+	// for a tessellated curve - curve_tessellate.h's own Quad corner
+	// convention), read only for MaterialType::Hair - the genuine fiber
+	// tangent this primitive has, unlike its own `normal` (perpendicular to
+	// the tube) - see hair_material.h's tangent_is_dpdu comment for the
+	// identical CPU-side reasoning.
+	float3 objNormal;
 	float  uv_u, uv_v; // see HitWorkItem::uv_u/uv_v
 };
 
@@ -547,6 +555,9 @@ extern "C" __global__ void __closesthit__wf_bilinear_patch() {
 	// __closesthit__wf_quad's own comment on the same convention.
 	payload->uv_u        = 0.0f;
 	payload->uv_v        = 0.0f;
+	// See WfHitPayload::objNormal's own comment - the bilinear-patch use,
+	// only meaningful for MaterialType::Hair.
+	payload->objNormal   = normalize(dpdu);
 }
 
 // ============================================================================

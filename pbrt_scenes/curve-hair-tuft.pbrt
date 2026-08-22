@@ -1,18 +1,21 @@
-# curve-tuft.pbrt -- exercises Shape "curve" (a cubic Bezier hair/fiber
-# strand, src/shared/shapes.h's CurveShape<T> on CPU, tessellated into
-# bilinear-patch quads on GPU - src/shared/curve_tessellate.h; neither GPU
-# backend has a native curve-intersection program, matching pbrt-v4's own
-# GPU strategy).
+# curve-hair-tuft.pbrt -- pairs Shape "curve" (genuine cubic-Bezier fiber
+# geometry - see curve-tuft.pbrt) with Material "hair" (real Marschner/
+# Chiang fiber scattering - see hair-material.pbrt) for the first time,
+# rather than testing either in isolation. This is the combination that
+# motivated hair_material.h's tangent_is_dpdu fix: HairBxDF needs a genuine
+# fiber-tangent axis, and real curve geometry is the one primitive here that
+# actually has one (curve_shape_hittable's own dpdu on CPU, a bilinear
+# patch's own dpdu on GPU - see pbrt_cpu_builder.h's curve-building loop and
+# optix_intersection_bilinear_patch.h/wavefront_kernels.cu's own Hair
+# branches for where each backend picks it up instead of the shading-normal
+# proxy every other Hair-material shape still uses).
 #
-# 24 strands via Fibonacci-sunflower disk placement, deterministic
-# per-strand hash-based height/lean - the exact same formula this project's
-# native (non-pbrt) curve-tuft demo scene uses
-# (src/TheRestOfYourLife/scenes_advanced.h's build_curve_fibers_scene(), and
-# gpu/optix/scene_builder.cpp's build_curve_fibers_scene_gpu()), so this is
-# a fair CPU/GPU/native-vs-pbrt-loader comparison. Ordinary Material
-# "diffuse" throughout - isolates curve GEOMETRY correctness from hair
-# SHADING correctness (see hair-material.pbrt for the latter, and
-# curve-hair-tuft.pbrt for the two combined).
+# Same 24-strand golden-angle tuft as curve-tuft.pbrt, cycling the same 5
+# hair-material presets hair-material.pbrt uses (auburn sigma_a, pure
+# eumelanin, mixed eumelanin/pheomelanin, pheomelanin-blonde, default brown)
+# instead of flat diffuse colors - look for the anisotropic Marschner
+# highlight running ALONG each strand's length (the visible signal the
+# tangent fix targets), not a flat/mottled tint.
 #
 # Original, not derived from any distributed scene, so it carries no
 # licence constraints.
@@ -39,99 +42,99 @@ AttributeBegin
     "point3 P" [ -1.5 0 -1.5   1.5 0 -1.5   1.5 0 1.5   -1.5 0 1.5 ]
 AttributeEnd
 
-Material "diffuse" "rgb reflectance" [ 0.250 0.140 0.060 ]
+Material "hair" "rgb sigma_a" [ 0.2 0.45 1.2 ] "float beta_m" [ 0.25 ] "float beta_n" [ 0.3 ]
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ 0.20207 0.00000 0.00000  0.29007 0.40892 0.00000  0.52473 0.86740 0.00000  0.78872 1.23914 0.00000 ]
 
-Material "diffuse" "rgb reflectance" [ 0.800 0.650 0.350 ]
+Material "hair" "float eumelanin" [ 2.5 ] "float pheomelanin" [ 0 ] "float beta_m" [ 0.3 ] "float beta_n" [ 0.3 ]
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ -0.25808 0.00000 0.23642  -0.18096 0.45307 0.23642  0.02470 0.96107 0.23642  0.25606 1.37295 0.23642 ]
 
-Material "diffuse" "rgb reflectance" [ 0.450 0.130 0.050 ]
+Material "hair" "float eumelanin" [ 0.5 ] "float pheomelanin" [ 1.2 ] "float beta_m" [ 0.3 ] "float beta_n" [ 0.3 ]
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ 0.03950 0.00000 -0.45012  0.15293 0.38822 -0.45012  0.45539 0.82350 -0.45012  0.79566 1.17642 -0.45012 ]
 
-Material "diffuse" "rgb reflectance" [ 0.750 0.750 0.780 ]
+Material "hair" "float eumelanin" [ 0.3 ] "float pheomelanin" [ 1.0 ] "float beta_m" [ 0.35 ] "float beta_n" [ 0.35 ]
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ 0.32529 0.00000 0.42429  0.41284 0.43580 0.42429  0.64630 0.92442 0.42429  0.90894 1.32060 0.42429 ]
 
-Material "diffuse" "rgb reflectance" [ 0.030 0.030 0.030 ]
+Material "hair"
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ -0.59695 0.00000 -0.10559  -0.54674 0.30050 -0.10559  -0.41286 0.63743 -0.10559  -0.26224 0.91061 -0.10559 ]
 
-Material "diffuse" "rgb reflectance" [ 0.250 0.140 0.060 ]
+Material "hair" "rgb sigma_a" [ 0.2 0.45 1.2 ] "float beta_m" [ 0.25 ] "float beta_n" [ 0.3 ]
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ 0.56548 0.00000 -0.35971  0.65874 0.31040 -0.35971  0.90741 0.65843 -0.35971  1.18717 0.94061 -0.35971 ]
 
-Material "diffuse" "rgb reflectance" [ 0.800 0.650 0.350 ]
+Material "hair" "float eumelanin" [ 2.5 ] "float pheomelanin" [ 0 ] "float beta_m" [ 0.3 ] "float beta_n" [ 0.3 ]
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ -0.18914 0.00000 0.70360  -0.09498 0.35100 0.70360  0.15612 0.74454 0.70360  0.43861 1.06362 0.70360 ]
 
-Material "diffuse" "rgb reflectance" [ 0.450 0.130 0.050 ]
+Material "hair" "float eumelanin" [ 0.5 ] "float pheomelanin" [ 1.2 ] "float beta_m" [ 0.3 ] "float beta_n" [ 0.3 ]
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ -0.36072 0.00000 -0.69454  -0.27123 0.40580 -0.69454  -0.03259 0.86079 -0.69454  0.23587 1.22970 -0.69454 ]
 
-Material "diffuse" "rgb reflectance" [ 0.750 0.750 0.780 ]
+Material "hair" "float eumelanin" [ 0.3 ] "float pheomelanin" [ 1.0 ] "float beta_m" [ 0.35 ] "float beta_n" [ 0.35 ]
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ 0.78261 0.00000 0.28581  0.85833 0.44168 0.28581  1.06023 0.93689 0.28581  1.28738 1.33841 0.28581 ]
 
-Material "diffuse" "rgb reflectance" [ 0.030 0.030 0.030 ]
+Material "hair"
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ -0.81418 0.00000 0.33608  -0.74028 0.32303 0.33608  -0.54323 0.68521 0.33608  -0.32154 0.97887 0.33608 ]
 
-Material "diffuse" "rgb reflectance" [ 0.250 0.140 0.060 ]
+Material "hair" "rgb sigma_a" [ 0.2 0.45 1.2 ] "float beta_m" [ 0.25 ] "float beta_n" [ 0.3 ]
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ 0.39249 0.00000 -0.83872  0.45195 0.32852 -0.83872  0.61051 0.69686 -0.83872  0.78889 0.99552 -0.83872 ]
 
-Material "diffuse" "rgb reflectance" [ 0.800 0.650 0.350 ]
+Material "hair" "float eumelanin" [ 2.5 ] "float pheomelanin" [ 0 ] "float beta_m" [ 0.3 ] "float beta_n" [ 0.3 ]
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ 0.29004 0.00000 0.92469  0.35821 0.30041 0.92469  0.54001 0.63722 0.92469  0.74453 0.91032 0.92469 ]
 
-Material "diffuse" "rgb reflectance" [ 0.450 0.130 0.050 ]
+Material "hair" "float eumelanin" [ 0.5 ] "float pheomelanin" [ 1.2 ] "float beta_m" [ 0.3 ] "float beta_n" [ 0.3 ]
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ -0.87418 0.00000 -0.50660  -0.79620 0.31224 -0.50660  -0.58827 0.66232 -0.50660  -0.35435 0.94617 -0.50660 ]
 
-Material "diffuse" "rgb reflectance" [ 0.750 0.750 0.780 ]
+Material "hair" "float eumelanin" [ 0.3 ] "float pheomelanin" [ 1.0 ] "float beta_m" [ 0.35 ] "float beta_n" [ 0.35 ]
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ 1.02551 0.00000 -0.22546  1.09352 0.31516 -0.22546  1.27488 0.66852 -0.22546  1.47891 0.95502 -0.22546 ]
 
-Material "diffuse" "rgb reflectance" [ 0.030 0.030 0.030 ]
+Material "hair"
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ -0.62585 0.00000 0.89021  -0.53697 0.43404 0.89021  -0.29994 0.92069 0.89021  -0.03329 1.31527 0.89021 ]
 
-Material "diffuse" "rgb reflectance" [ 0.250 0.140 0.060 ]
+Material "hair" "rgb sigma_a" [ 0.2 0.45 1.2 ] "float beta_m" [ 0.25 ] "float beta_n" [ 0.3 ]
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ -0.14459 0.00000 -1.11576  -0.04623 0.37656 -1.11576  0.21607 0.79876 -1.11576  0.51115 1.14108 -1.11576 ]
 
-Material "diffuse" "rgb reflectance" [ 0.800 0.650 0.350 ]
+Material "hair" "float eumelanin" [ 2.5 ] "float pheomelanin" [ 0 ] "float beta_m" [ 0.3 ] "float beta_n" [ 0.3 ]
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ 0.88762 0.00000 0.74809  0.98756 0.36391 0.74809  1.25406 0.77193 0.74809  1.55388 1.10276 0.74809 ]
 
-Material "diffuse" "rgb reflectance" [ 0.450 0.130 0.050 ]
+Material "hair" "float eumelanin" [ 0.5 ] "float pheomelanin" [ 1.2 ] "float beta_m" [ 0.3 ] "float beta_n" [ 0.3 ]
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ -1.19446 0.00000 0.04939  -1.10799 0.31644 0.04939  -0.87740 0.67124 0.04939  -0.61800 0.95891 0.04939 ]
 
-Material "diffuse" "rgb reflectance" [ 0.750 0.750 0.780 ]
+Material "hair" "float eumelanin" [ 0.3 ] "float pheomelanin" [ 1.0 ] "float beta_m" [ 0.35 ] "float beta_n" [ 0.35 ]
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ 0.87126 0.00000 -0.86702  0.96165 0.43952 -0.86702  1.20267 0.93232 -0.86702  1.47382 1.33189 -0.86702 ]
 
-Material "diffuse" "rgb reflectance" [ 0.030 0.030 0.030 ]
+Material "hair"
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ -0.05829 0.00000 1.26060  0.04087 0.35093 1.26060  0.30530 0.74440 1.26060  0.60278 1.06343 1.26060 ]
 
-Material "diffuse" "rgb reflectance" [ 0.250 0.140 0.060 ]
+Material "hair" "rgb sigma_a" [ 0.2 0.45 1.2 ] "float beta_m" [ 0.25 ] "float beta_n" [ 0.3 ]
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ -0.82901 0.00000 -0.99343  -0.75889 0.33375 -0.99343  -0.57191 0.70795 -0.99343  -0.36155 1.01136 -0.99343 ]
 
-Material "diffuse" "rgb reflectance" [ 0.800 0.650 0.350 ]
+Material "hair" "float eumelanin" [ 2.5 ] "float pheomelanin" [ 0 ] "float beta_m" [ 0.3 ] "float beta_n" [ 0.3 ]
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ 1.31324 0.00000 0.17670  1.42641 0.38592 0.17670  1.72817 0.81862 0.17670  2.06766 1.16946 0.17670 ]
 
-Material "diffuse" "rgb reflectance" [ 0.450 0.130 0.050 ]
+Material "hair" "float eumelanin" [ 0.5 ] "float pheomelanin" [ 1.2 ] "float beta_m" [ 0.3 ] "float beta_n" [ 0.3 ]
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ -1.11271 0.00000 0.77419  -1.00950 0.32676 0.77419  -0.73428 0.69313 0.77419  -0.42466 0.99018 0.77419 ]
 
-Material "diffuse" "rgb reflectance" [ 0.750 0.750 0.780 ]
+Material "hair" "float eumelanin" [ 0.3 ] "float pheomelanin" [ 1.0 ] "float beta_m" [ 0.35 ] "float beta_n" [ 0.35 ]
 Shape "curve" "string type" [ "cylinder" ] "float width0" [ 0.045 ] "float width1" [ 0.006 ]
   "point3 P" [ 0.30406 0.00000 -1.35156  0.41040 0.40016 -1.35156  0.69397 0.84882 -1.35156  1.01300 1.21261 -1.35156 ]
 

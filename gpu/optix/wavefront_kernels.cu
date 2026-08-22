@@ -2837,8 +2837,17 @@ extern "C" __global__ void evaluate_materials(
 		// comment above. Matches hair_material.h's skip_pdf=true: no NEE/MIS
 		// (is_specular=true), and the result needs unboundedSpectrum (not
 		// albedoSpectrum) since it's already divided by the sample pdf.
+		//
+		// Fiber tangent: a bilinear patch (geomType==2, the tessellated-curve
+		// GPU path - see pbrt_gpu_builder.h/curve_tessellate.h) carries its
+		// own genuine dpdu in h.objNormal (see that field's own comment,
+		// __closesthit__wf_bilinear_patch) - the real fiber axis, unlike
+		// `normal` (perpendicular to the tube). Every other geomType falls
+		// back to the shading-normal proxy, matching hair_material.h's own
+		// default (tangent_is_dpdu=false) exactly.
+		const float3 hairTangent = (h.geomType == 2) ? h.objNormal : normal;
 		float3 sdir, atten;
-		if (wf_sample_hair_material(h.rayDir, normal, mat, seed, sdir, atten)) {
+		if (wf_sample_hair_material(h.rayDir, hairTangent, mat, seed, sdir, atten)) {
 			scattered_dir = sdir;
 			attenuation   = unboundedSpectrum(atten);
 			scattered     = true;

@@ -11,6 +11,7 @@
 #include <cmath>
 #include <map>
 #include <memory>
+#include <tuple>
 #include <vector>
 
 #include "../shared/pbrt_flatten.h"
@@ -64,10 +65,17 @@ inline color reflectanceToConductorK(const color& r) {
 // comment on why those are indices into that list rather than something
 // self-contained); every other material kind ignores them, so a default
 // empty vector is fine for every existing call site.
+//
+// `forCurve` is read only by the Hair case (see hair_material's own
+// tangentIsDpdu parameter comment) - every other kind ignores it. Threaded
+// through the Mix case's own recursive calls so a Mix containing a Hair
+// sub-material still gets the right tangent behavior when applied to real
+// curve geometry.
 inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 											  const pbrt_flatten::Emission *emission,
 											  const std::vector<pbrt_flatten::Material> &allMaterials = {},
-											  int depth = 0) {
+											  int depth = 0,
+											  bool forCurve = false) {
 	// Emission wins: in pbrt an AreaLightSource attaches to the shape, and its
 	// material describes what the surface does with light arriving at it. Our
 	// diffuse_light is the emissive case, so an emissive shape becomes one
@@ -149,7 +157,7 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 	case pbrt_flatten::MaterialKind::Hair:
 		return std::make_shared<hair_material>(
 			m.sigma_a[0], m.sigma_a[1], m.sigma_a[2],
-			m.betaM, m.betaN, m.alphaDeg, m.ior);
+			m.betaM, m.betaN, m.alphaDeg, m.ior, forCurve);
 	case pbrt_flatten::MaterialKind::Measured: {
 		// m.measuredFilename is empty unless pbrt_load.h's post-flatten pass
 		// both resolved AND successfully load-tested it (see pbrt_flatten.h's
@@ -195,9 +203,9 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		// switch runs at all when the shape is emissive, so this recursive
 		// call never needs to pass one through).
 		auto matA = makeMaterial(allMaterials[static_cast<std::size_t>(m.mixMaterialA)],
-								 nullptr, allMaterials, depth + 1);
+								 nullptr, allMaterials, depth + 1, forCurve);
 		auto matB = makeMaterial(allMaterials[static_cast<std::size_t>(m.mixMaterialB)],
-								 nullptr, allMaterials, depth + 1);
+								 nullptr, allMaterials, depth + 1, forCurve);
 		return std::make_shared<mix_material>(matA, matB, m.mixWeight);
 	}
 	case pbrt_flatten::MaterialKind::Diffuse:
@@ -306,7 +314,11 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	out.lights = std::make_shared<hittable_list>();
 
 
-	const auto materialFor = [&scene](int materialIndex, int areaLightIndex)
+	// forCurve: see makeMaterial's own comment - only affects the Hair case,
+	// picked by the one caller (the curve loop below) that actually has real
+	// curve geometry under the resolved material.
+	const auto materialFor = [&scene](int materialIndex, int areaLightIndex,
+									   bool forCurve = false)
 			-> std::shared_ptr<material> {
 		const pbrt_flatten::Emission *em =
 			(areaLightIndex >= 0 && static_cast<std::size_t>(areaLightIndex) < scene.areaLights.size())
@@ -317,7 +329,7 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			(materialIndex >= 0 && static_cast<std::size_t>(materialIndex) < scene.materials.size())
 				? scene.materials[static_cast<std::size_t>(materialIndex)]
 				: kDefault;
-		std::shared_ptr<material> base = makeMaterial(m, em, scene.materials);
+		std::shared_ptr<material> base = makeMaterial(m, em, scene.materials, /*depth=*/0, forCurve);
 
 		// Material "texture displacement" (bump mapping - Material::
 		// displacementTextureFilename's own comment). Wraps whatever base
@@ -343,13 +355,18 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		return base;
 	};
 
-	// One material instance per distinct (material, emission) pair.
-	std::map<std::pair<int, int>, std::shared_ptr<material>> materialCache;
-	const auto cachedMaterial = [&](int mi, int ai) {
-		const auto key = std::make_pair(mi, ai);
+	// One material instance per distinct (material, emission, forCurve) triple
+	// - forCurve is part of the key (not just an argument materialFor reads)
+	// so a materialIndex shared between a curve and a non-curve shape (e.g.
+	// via NamedMaterial reuse - unusual but valid pbrt) gets two distinct
+	// hair_material instances with the right tangent behavior each, instead
+	// of whichever shape asks first silently winning for both.
+	std::map<std::tuple<int, int, bool>, std::shared_ptr<material>> materialCache;
+	const auto cachedMaterial = [&](int mi, int ai, bool forCurve = false) {
+		const auto key = std::make_tuple(mi, ai, forCurve);
 		auto it = materialCache.find(key);
 		if (it != materialCache.end()) return it->second;
-		auto made = materialFor(mi, ai);
+		auto made = materialFor(mi, ai, forCurve);
 		materialCache.emplace(key, made);
 		return made;
 	};
@@ -631,7 +648,11 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	// multi-segment strand tapers smoothly across its whole length rather than
 	// each segment re-tapering its own full width0->width1 range.
 	for (const pbrt_flatten::Curve &cd : curveDecls) {
-		auto mat = cachedMaterial(cd.material, cd.areaLight);
+		// forCurve=true: see hair_material's own tangentIsDpdu comment - real
+		// curve geometry has a genuine fiber tangent (dpdu) available, unlike
+		// every other shape here, which only offers the shading normal as a
+		// proxy.
+		auto mat = cachedMaterial(cd.material, cd.areaLight, /*forCurve=*/true);
 		const CurveType type = (cd.curveType == "cylinder") ? CurveType::Cylinder
 			: (cd.curveType == "ribbon") ? CurveType::Ribbon : CurveType::Flat;
 		for (int seg = 0; seg < cd.nSegments; ++seg) {

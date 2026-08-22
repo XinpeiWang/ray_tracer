@@ -46,7 +46,7 @@ GPU: `gpu/optix/pbrt_gpu_builder.h`'s material switch.
 | `subsurface` | Full | Full | Real tabulated BSSRDF with device probe-walk on both GPU backends (recursive and wavefront), matching CPU's own tabulated BSSRDF. |
 | `measured` (real `.bsdf` file) | Full | Full | Both load and flatten the same tensor tables; both fall back to Lambertian on the same "unresolved filename" gate, so they can't disagree about when the fallback applies. |
 | `mix` | Full | **Fallback** | CPU does a real recursive stochastic two-material blend. **GPU flattens it to a single flat Lambertian** whose albedo is the mix-weighted average of the two sub-materials' resolved colors — the largest remaining CPU/GPU material gap in this loader. |
-| `hair` | Full | Full | Real Marschner/Chiang fiber scattering (`HairBxDF<T>`) on both — `MaterialType::Hair` was already fully wired for GPU shading before this loader could reach it (see `pbrt_scenes/hair-material.pbrt`). `"sigma_a"` wins if given; else `"eumelanin"`/`"pheomelanin"` (closed-form `SigmaAFromConcentration`); else the default brown preset. `"reflectance"`/`"color"` is not inverted into a fiber absorption coefficient (`SigmaAFromReflectance` needs an iterative spectral fit) — falls back to the default brown with a warning. Uses the shading normal as a fiber-tangent proxy on both backends (same simplification as this project's own native `build_hair_fibers()` demo) — correct-enough for an ordinary shape, but not yet the real tangent when paired with genuine `Shape "curve"` geometry (a separate, later gap, not fixed by this entry). |
+| `hair` | Full | Full | Real Marschner/Chiang fiber scattering (`HairBxDF<T>`) on both — `MaterialType::Hair` was already fully wired for GPU shading before this loader could reach it (see `pbrt_scenes/hair-material.pbrt`). `"sigma_a"` wins if given; else `"eumelanin"`/`"pheomelanin"` (closed-form `SigmaAFromConcentration`); else the default brown preset. `"reflectance"`/`"color"` is not inverted into a fiber absorption coefficient (`SigmaAFromReflectance` needs an iterative spectral fit) — falls back to the default brown with a warning. Uses the shading normal as a fiber-tangent proxy on both backends for any non-curve shape (same simplification as this project's own native `build_hair_fibers()` demo) — but paired with real `Shape "curve"` geometry, both backends use the curve's own genuine tangent instead (see that entry above and `pbrt_scenes/curve-hair-tuft.pbrt`). |
 | unrecognized | Fallback | Fallback | Falls back to flat Lambertian using the material's base color; the loader warns by name. |
 
 Cross-cutting: a material parameter bound to a pbrt `texture` (rather than a
@@ -146,8 +146,18 @@ loader and no longer match the code:
   "shape not supported" warning. `"integer splitdepth"` is not implemented -
   pbrt-v4 itself forces it to 0 whenever GPU rendering is active, so omitting
   it matches pbrt-v4's own GPU-mode behavior. See `pbrt_scenes/curve-tuft.pbrt`
-  for a worked example (paired with an ordinary `Material "diffuse"` - see
-  the materials table above for `"hair"`'s own separate support status).
+  for a worked example paired with an ordinary `Material "diffuse"`, and
+  `pbrt_scenes/curve-hair-tuft.pbrt` paired with real `Material "hair"`
+  fiber shading (see the materials table above) — the latter needs a real
+  fiber-tangent axis, which real curve geometry is the one shape here that
+  actually has: CPU's `curve_shape_hittable` sets `hit_record::dpdu` to it,
+  and both GPU backends' bilinear-patch closest-hit programs (the
+  tessellated-curve primitive) compute their own patch dpdu and pass it to
+  the Hair branch instead of the shading normal every other Hair-material
+  shape (e.g. a plain sphere) still uses as a proxy — see
+  `hair_material.h`'s `tangent_is_dpdu` parameter comment for the full
+  reasoning and `optix_intersection_bilinear_patch.h`/`wavefront_kernels.cu`'s
+  own Hair branches for the GPU mirror.
 
 - `MakeNamedMedium`'s `"type"` parameter supports `"homogeneous"` (the
   default), `"cloud"` (Perlin-FBm density, `src/shared/cloud_medium.h`),
