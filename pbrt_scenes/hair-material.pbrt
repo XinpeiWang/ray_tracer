@@ -1,0 +1,87 @@
+# hair-material.pbrt -- exercises Material "hair" (Marschner/Chiang fiber
+# scattering, src/shared/bxdfs_hair.h's HairBxDF<T>, real on CPU -
+# src/TheRestOfYourLife/hair_material.h - and both GPU backends -
+# MaterialType::Hair, already fully wired for shading before this loader
+# gave it a way to reach a pbrt scene at all).
+#
+# Applied to ordinary spheres, matching this project's own native "Hair
+# Fibers" demo (src/TheRestOfYourLife/scenes_advanced.h's
+# build_hair_fibers(), scene 19/B11) - both use the shading normal as a
+# fiber-tangent proxy (documented simplification, see hair_material.h's own
+# comment), so this is a fair CPU/GPU/native-vs-pbrt-loader comparison. See
+# curve-tuft.pbrt for genuine curve GEOMETRY (a separate, later phase pairs
+# the two together for real fiber-on-a-strand shading).
+#
+# Exercises all three of Material "hair"'s supported sigma_a sources: direct
+# "sigma_a" (sphere 1), "eumelanin"/"pheomelanin" concentration (spheres 2-4),
+# and the "nothing specified" default brown (sphere 5).
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  0 2 15    0 1 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 500 ] "integer yresolution" [ 500 ]
+Sampler "halton" "integer pixelsamples" [ 128 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.5 0.55 0.65 ]
+
+Material "diffuse" "rgb reflectance" [ 0.6 0.6 0.6 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -10 0 -10   10 0 -10   10 0 10   -10 0 10 ]
+
+AttributeBegin
+  Translate 0 5 0
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 2.5 2.5 2.5 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -3 0 -3   3 0 -3   3 0 3   -3 0 3 ]
+AttributeEnd
+
+# Sphere 1: direct "sigma_a" - dark auburn. Absorption values on the same
+# order as spheres 2-4's own eumelanin/pheomelanin-derived sigma_a (roughly
+# 1-3 per channel) - much lower values read as pale/near-white hair (low
+# pigment, mostly transmissive), which is correct HairBxDF behavior, not a
+# bug, but makes a poor "visibly auburn" demonstration. Least absorption in
+# red (survives most, giving the warm tint), most in blue - the reverse
+# order gives a cool cyan tint instead, not auburn.
+AttributeBegin
+  Translate -3.6 1 0
+  Material "hair" "rgb sigma_a" [ 0.2 0.45 1.2 ] "float beta_m" [ 0.25 ]
+    "float beta_n" [ 0.3 ] "float alpha" [ 2 ]
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+# Sphere 2: pure eumelanin (dark brown/black - high melanin, no pheomelanin).
+AttributeBegin
+  Translate -1.8 1 0
+  Material "hair" "float eumelanin" [ 2.5 ] "float pheomelanin" [ 0 ]
+    "float beta_m" [ 0.3 ] "float beta_n" [ 0.3 ]
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+# Sphere 3: mixed eumelanin/pheomelanin (auburn/red).
+AttributeBegin
+  Translate 0 1 0
+  Material "hair" "float eumelanin" [ 0.5 ] "float pheomelanin" [ 1.2 ]
+    "float beta_m" [ 0.3 ] "float beta_n" [ 0.3 ]
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+# Sphere 4: pheomelanin-dominant (blonde).
+AttributeBegin
+  Translate 1.8 1 0
+  Material "hair" "float eumelanin" [ 0.3 ] "float pheomelanin" [ 1.0 ]
+    "float beta_m" [ 0.35 ] "float beta_n" [ 0.35 ]
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+# Sphere 5: nothing specified - pbrt-v4's own default brown preset.
+AttributeBegin
+  Translate 3.6 1 0
+  Material "hair"
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd

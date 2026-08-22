@@ -24,6 +24,7 @@
 // the scene wanted a squashed one is the kind of difference nobody spots
 // against a reference image.
 
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <map>
@@ -284,6 +285,15 @@ enum class MaterialKind {
 	// by colour rather than plain grey, now that this enumerator is no
 	// longer an alias for Unsupported.
 	Mix,
+	// Marschner/Chiang fiber scattering (src/shared/bxdfs_hair.h's
+	// HairBxDF<T>) - real on both CPU (src/TheRestOfYourLife/
+	// hair_material.h) and GPU (MaterialType::Hair, already fully wired for
+	// shading on both GPU backends - this loader only needed to populate its
+	// existing fields). See flatten()'s own Hair branch for the
+	// sigma_a/reflectance/eumelanin-pheomelanin priority order (matches
+	// pbrt-v4's HairMaterial::Create exactly) and Material::betaM/betaN/
+	// alphaDeg's own comments for the remaining parameters.
+	Hair,
 	Unsupported,
 };
 
@@ -312,6 +322,9 @@ struct Material {
 	// GGX alpha; when false, they already ARE the alpha value. See
 	// material_pbrt.h's roughness_or_alpha() for where this gets applied.
 	bool remapRoughness = true;
+	// Also reused for Hair's own "eta" (fiber IOR) - flatten()'s Hair branch
+	// overrides this field's default to pbrt-v4's own Hair-specific 1.55
+	// (HairMaterial::Create) rather than this field's general 1.5.
 	double ior = 1.5;
 	// DiffuseTransmission only: the light that passes through rather than
 	// reflects. pbrt-v4's own default (0.25) is closer to that material's
@@ -327,9 +340,22 @@ struct Material {
 	// Defaults are pbrt-v4's own "nothing specified" preset
 	// (SubsurfaceMaterial::Create's case 4, materials.cpp), which happens to
 	// equal the "Wholemilk" named preset.
+	//
+	// ALSO reused for Hair's own absorption coefficient (see flatten()'s Hair
+	// branch) - the struct-level default above is meaningless for Hair
+	// (always overwritten there, never left at this Subsurface-shaped
+	// default): a genuine Hair material always resolves sigma_a[] to one of
+	// a literal "sigma_a", a computed eumelanin/pheomelanin concentration, or
+	// pbrt-v4's own default-brown fallback.
 	double sigma_a[3] = {0.0011, 0.0024, 0.014};
 	double sigma_s[3] = {2.55, 3.21, 3.77};
 	double g = 0.0;   // Henyey-Greenstein asymmetry (subsurface only)
+
+	// Hair only - longitudinal/azimuthal roughness and cuticle scale-tilt
+	// angle (degrees). Defaults match pbrt-v4's own HairMaterial::Create
+	// exactly (materials.cpp), which happen to already match hair_material.h's
+	// own pre-existing constructor defaults.
+	double betaM = 0.3, betaN = 0.3, alphaDeg = 2.0;
 
 	// Measured only: the "filename" parameter naming the .bsdf tensor file,
 	// exactly AS WRITTEN in the scene ("bsdfs/foo.bsdf" - relative to the
@@ -978,7 +1004,8 @@ inline MaterialKind materialKindFor(const std::string &type) {
 	if (type == "subsurface")          return MaterialKind::Subsurface;
 	if (type == "measured")            return MaterialKind::Measured;
 	if (type == "mix")                 return MaterialKind::Mix;
-	return MaterialKind::Unsupported;   // hair, ...
+	if (type == "hair")                return MaterialKind::Hair;
+	return MaterialKind::Unsupported;
 }
 
 // A subset of pbrt-v4's own named "measured scattering coefficient" table
@@ -1335,6 +1362,70 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// here with the right default when the scene gave neither.
 			if (!md.params.find("eta") && !md.params.find("ior"))
 				m.ior = 1.33;
+		}
+
+		// Hair: resolve sigma_a the way pbrt-v4's own HairMaterial::Create
+		// does (materials.cpp) - "sigma_a" wins if present; else
+		// "reflectance"/"color"; else "eumelanin"/"pheomelanin"; else the
+		// default brown preset (eumelanin=1.3, pheomelanin=0). Only the
+		// first, third, and fourth are actually built here - "reflectance"
+		// falls back to the default brown instead (see that branch's own
+		// comment for why).
+		if (m.kind == MaterialKind::Hair) {
+			const bool hasSigmaA = md.params.find("sigma_a") != nullptr;
+			const bool hasReflectance = md.params.find("reflectance") != nullptr ||
+										 md.params.find("color") != nullptr;
+			const bool hasEumelanin = md.params.find("eumelanin") != nullptr;
+			const bool hasPheomelanin = md.params.find("pheomelanin") != nullptr;
+
+			// pbrt-v4 HairBxDF::SigmaAFromConcentration (bxdfs.cpp) - a
+			// closed-form RGB fit (eumelanin/pheomelanin absorption spectra
+			// pre-integrated against sRGB), not a real per-wavelength
+			// spectral upsample. Shared by the eumelanin/pheomelanin branch
+			// below and the "nothing specified" default (pbrt-v4's own
+			// SigmaAFromConcentration(1.3, 0.) fallback).
+			const auto sigmaAFromConcentration = [&](double ce, double cp) {
+				m.sigma_a[0] = ce * 0.419 + cp * 0.187;
+				m.sigma_a[1] = ce * 0.697 + cp * 0.4;
+				m.sigma_a[2] = ce * 1.37  + cp * 1.05;
+			};
+
+			if (hasSigmaA) {
+				if (hasReflectance || hasEumelanin || hasPheomelanin)
+					warn("material 'hair' gives \"sigma_a\" together with "
+						 "\"reflectance\"/\"eumelanin\"/\"pheomelanin\"; "
+						 "\"sigma_a\" wins (matches pbrt-v4)");
+				const pbrt_scene::Vec3 a = md.params.getVec3("sigma_a",
+					pbrt_scene::Vec3{m.sigma_a[0], m.sigma_a[1], m.sigma_a[2]});
+				m.sigma_a[0] = a.x; m.sigma_a[1] = a.y; m.sigma_a[2] = a.z;
+			} else if (hasReflectance) {
+				// pbrt-v4 inverts reflectance through HairBxDF::
+				// SigmaAFromReflectance - an iterative fit over the full
+				// sampled spectrum, not a closed-form formula like
+				// SigmaAFromConcentration above. Not implemented here (no
+				// scene in this loader's corpus needs it); falls back to the
+				// same default-brown preset "nothing specified" uses.
+				warn("material 'hair' gives \"reflectance\"/\"color\"; this "
+					 "loader does not invert reflectance into a fiber "
+					 "absorption coefficient, so the default brown "
+					 "coefficients are used instead");
+				sigmaAFromConcentration(1.3, 0.0);
+			} else if (hasEumelanin || hasPheomelanin) {
+				const double ce = std::max(0.0, md.params.getFloat("eumelanin", 0.0));
+				const double cp = std::max(0.0, md.params.getFloat("pheomelanin", 0.0));
+				sigmaAFromConcentration(ce, cp);
+			} else {
+				sigmaAFromConcentration(1.3, 0.0);
+			}
+
+			m.betaM = md.params.getFloat("beta_m", m.betaM);
+			m.betaN = md.params.getFloat("beta_n", m.betaN);
+			m.alphaDeg = md.params.getFloat("alpha", m.alphaDeg);
+			// pbrt-v4's HairMaterial defaults eta to 1.55, not the 1.5
+			// (glass-like) default the generic "eta"/"ior" read above
+			// already applied for every material kind.
+			if (!md.params.find("eta") && !md.params.find("ior"))
+				m.ior = 1.55;
 		}
 
 		// Measured: just the as-written filename (see Material::

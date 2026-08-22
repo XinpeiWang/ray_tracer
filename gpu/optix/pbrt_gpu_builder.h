@@ -623,6 +623,22 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		// point (shade_material()'s probe-walk success path).
 		d.textureIdx = getOrBuildBssrdfTable(m.g, m.ior, out, bssrdfTableCache);
 		break;
+	case pbrt_flatten::MaterialKind::Hair:
+		// MaterialType::Hair is already fully wired for shading on both GPU
+		// backends (sample_hair_material(), optix_device_helpers.h/
+		// wavefront_kernels.cu) via 4 REUSED fields, not dedicated ones - see
+		// that function's own comment for the exact mapping this mirrors:
+		// d.ior=eta, d.albedo=sigma_a (RGB absorption - overrides the m.color
+		// generic default assigned above, the same way Dielectric's own
+		// branch resets its reused slot), d.fuzz=beta_m,
+		// d.eta_c.x/y=beta_n/alpha_deg (eta_c.z unused).
+		d.type = MaterialType::Hair;
+		d.albedo = make_float3(static_cast<float>(m.sigma_a[0]),
+								static_cast<float>(m.sigma_a[1]),
+								static_cast<float>(m.sigma_a[2]));
+		d.fuzz = static_cast<float>(m.betaM);
+		d.eta_c = make_float3(static_cast<float>(m.betaN), static_cast<float>(m.alphaDeg), 0.0f);
+		break;
 	case pbrt_flatten::MaterialKind::Diffuse:
 		// m.textureFilename mirrors measuredFilename: already a resolved,
 		// existence-tested absolute path by this point (pbrt_load.h's own

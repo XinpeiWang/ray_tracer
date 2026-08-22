@@ -20,6 +20,7 @@
 #include "curve_shape_hittable.h"
 #include "disk_cylinder_hittable.h"
 #include "grid_medium_hittable.h"
+#include "hair_material.h"
 #include "hittable_list.h"
 #include "material.h"
 #include "rtw_stb_image.h"     // stbi_load() - see alphaMaskFor()'s own comment
@@ -145,6 +146,10 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 			albedo, color(m.transmittance[0], m.transmittance[1], m.transmittance[2]));
 	case pbrt_flatten::MaterialKind::Subsurface:
 		return std::make_shared<subsurface>(m.ior, m.sigma_a, m.sigma_s, m.g);
+	case pbrt_flatten::MaterialKind::Hair:
+		return std::make_shared<hair_material>(
+			m.sigma_a[0], m.sigma_a[1], m.sigma_a[2],
+			m.betaM, m.betaN, m.alphaDeg, m.ior);
 	case pbrt_flatten::MaterialKind::Measured: {
 		// m.measuredFilename is empty unless pbrt_load.h's post-flatten pass
 		// both resolved AND successfully load-tested it (see pbrt_flatten.h's

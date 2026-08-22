@@ -349,6 +349,65 @@ TEST(FlattenTest, CurveRespectsMaterialAndAreaLight) {
 }
 
 // ===========================================================================
+// Material "hair"
+// ===========================================================================
+
+TEST(FlattenTest, HairMaterialWithDirectSigmaA) {
+	const FlatScene s = flattenSource(
+		"Material \"hair\" \"rgb sigma_a\" [ 0.15 0.06 0.03 ] "
+		"\"float beta_m\" [ 0.25 ] \"float beta_n\" [ 0.35 ] \"float alpha\" [ 3 ]\n"
+		"Shape \"sphere\"\n");
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].kind, MaterialKind::Hair);
+	EXPECT_DOUBLE_EQ(s.materials[0].sigma_a[0], 0.15);
+	EXPECT_DOUBLE_EQ(s.materials[0].sigma_a[1], 0.06);
+	EXPECT_DOUBLE_EQ(s.materials[0].sigma_a[2], 0.03);
+	EXPECT_DOUBLE_EQ(s.materials[0].betaM, 0.25);
+	EXPECT_DOUBLE_EQ(s.materials[0].betaN, 0.35);
+	EXPECT_DOUBLE_EQ(s.materials[0].alphaDeg, 3.0);
+	// pbrt-v4's own Hair-specific eta default, not the generic 1.5.
+	EXPECT_DOUBLE_EQ(s.materials[0].ior, 1.55);
+}
+
+TEST(FlattenTest, HairMaterialWithEumelaninPheomelanin) {
+	// sigma_a = ce*(0.419,0.697,1.37) + cp*(0.187,0.4,1.05) - pbrt-v4's own
+	// HairBxDF::SigmaAFromConcentration (bxdfs.cpp).
+	const FlatScene s = flattenSource(
+		"Material \"hair\" \"float eumelanin\" [ 1.0 ] \"float pheomelanin\" [ 0.5 ]\n"
+		"Shape \"sphere\"\n");
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_NEAR(s.materials[0].sigma_a[0], 1.0 * 0.419 + 0.5 * 0.187, 1e-9);
+	EXPECT_NEAR(s.materials[0].sigma_a[1], 1.0 * 0.697 + 0.5 * 0.4, 1e-9);
+	EXPECT_NEAR(s.materials[0].sigma_a[2], 1.0 * 1.37 + 0.5 * 1.05, 1e-9);
+}
+
+TEST(FlattenTest, HairMaterialWithNothingSpecifiedUsesDefaultBrown) {
+	// pbrt-v4's own default: SigmaAFromConcentration(1.3, 0.).
+	const FlatScene s = flattenSource("Material \"hair\"\nShape \"sphere\"\n");
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_NEAR(s.materials[0].sigma_a[0], 1.3 * 0.419, 1e-9);
+	EXPECT_NEAR(s.materials[0].sigma_a[1], 1.3 * 0.697, 1e-9);
+	EXPECT_NEAR(s.materials[0].sigma_a[2], 1.3 * 1.37, 1e-9);
+}
+
+TEST(FlattenTest, HairMaterialWithReflectanceWarnsAndFallsBackToDefaultBrown) {
+	const FlatScene s = flattenSource(
+		"Material \"hair\" \"rgb reflectance\" [ 0.5 0.3 0.2 ]\n"
+		"Shape \"sphere\"\n");
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_NEAR(s.materials[0].sigma_a[0], 1.3 * 0.419, 1e-9);
+	EXPECT_TRUE(warnedAbout(s, "reflectance"));
+}
+
+TEST(FlattenTest, HairMaterialDefaultBetaAndAlphaMatchHairMaterialHDefaults) {
+	const FlatScene s = flattenSource("Material \"hair\"\nShape \"sphere\"\n");
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].betaM, 0.3);
+	EXPECT_DOUBLE_EQ(s.materials[0].betaN, 0.3);
+	EXPECT_DOUBLE_EQ(s.materials[0].alphaDeg, 2.0);
+}
+
+// ===========================================================================
 // MakeNamedMedium / MediumInterface
 // ===========================================================================
 
@@ -882,17 +941,20 @@ TEST(FlattenMaterialTest, DiffuseTransmissionDefaultsMatchPbrt) {
 
 TEST(FlattenMaterialTest, UnsupportedMaterialIsFlaggedNotSilentlySubstituted) {
 	// A material rendered as diffuse looks plausible and is wrong, so the
-	// substitution has to be announced. "subsurface" used to be the example
-	// here, but it is now a real, CPU-supported MaterialKind (see
-	// material_pbrt.h's `class subsurface` and camera.h::sample_bssrdf_exit) -
-	// "hair" (still genuinely unimplemented on both backends) takes its place
-	// as the still-Unsupported example.
+	// substitution has to be announced. "subsurface" then "hair" used to be
+	// the example here, in turn, until each became a real, CPU/GPU-supported
+	// MaterialKind - every real pbrt-v4 material name now maps to a genuine
+	// MaterialKind, so this uses a made-up, never-real type string instead
+	// (matching materialKindFor()'s own "anything not recognized" fallback,
+	// the actual case this Unsupported path exists for now - a typo'd or
+	// genuinely nonexistent material name, not a real pbrt-v4 kind this
+	// loader hasn't gotten to yet).
 	const FlatScene s = flattenSource(
-		"Material \"hair\"\n" + std::string(kQuadMesh));
+		"Material \"holographic\"\n" + std::string(kQuadMesh));
 	ASSERT_EQ(s.materials.size(), 1u);
 	EXPECT_EQ(s.materials[0].kind, MaterialKind::Unsupported);
-	EXPECT_EQ(s.materials[0].pbrtType, "hair");
-	EXPECT_TRUE(warnedAbout(s, "hair"));
+	EXPECT_EQ(s.materials[0].pbrtType, "holographic");
+	EXPECT_TRUE(warnedAbout(s, "holographic"));
 }
 
 TEST(FlattenMaterialTest, AreaLightRadianceAndScaleAreExtracted) {

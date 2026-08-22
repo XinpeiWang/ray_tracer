@@ -236,6 +236,21 @@ TEST(PbrtCpuBuildTest, CurveWithInvalidControlPointCountIsNotBuilt) {
 	EXPECT_EQ(b.curveCount, 0u);
 }
 
+TEST(PbrtCpuBuildTest, HairMaterialSphereIsReachable) {
+	// hair_material's scatter() is stochastic (Marschner lobe sampling) and
+	// can reject a sample, so this only confirms the built sphere is hit
+	// geometrically - the same "did it build and can a ray find it" bar
+	// CloudMediumIsReachable/UniformgridMediumIsReachable use below. The
+	// closed-form sigma_a math itself (direct/eumelanin-pheomelanin/default)
+	// is covered by pbrt_flatten_tests.cpp's own Hair tests.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Material \"hair\" \"float eumelanin\" [ 1.0 ] \"float pheomelanin\" [ 0.3 ]\n"
+		"Shape \"sphere\" \"float radius\" [ 1 ]\n");
+	double t = 0.0;
+	ASSERT_TRUE(castRay(b, point3(0, 0, -5), vec3(0, 0, 1), t));
+	EXPECT_NEAR(t, 4.0, 1e-6);
+}
+
 TEST(PbrtCpuBuildTest, MediumInterfaceWrapsTheSphereInAParticipatingMedium) {
 	// The precise structural claim - the sphere resolves to the right
 	// FlatScene::media index, with the right coefficients - lives in
