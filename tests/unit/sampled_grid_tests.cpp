@@ -327,3 +327,57 @@ TEST(GridMediumData, DDAUniformTransmittance) {
 	EXPECT_NEAR(optical_depth, sigma_t * 1.0 * (tMax - tMin), 1e-9);
 	EXPECT_NEAR(std::exp(-optical_depth), std::exp(-sigma_t * (tMax - tMin)), 1e-9);
 }
+
+// GridMediumData::intersect_ray/sample_ray (added for grid_medium_hittable.h,
+// src/TheRestOfYourLife - GridMediumData had no ray-facing API before that;
+// these mirror RGBGridMediumData's own identically-named methods). Confirms
+// they're equivalent to the manual bounds.intersect_ray() + DDAMajorantIterator
+// construction the two DDA tests just above already exercise directly.
+TEST(GridMediumData, IntersectRayMatchesBoundsIntersectRay) {
+	const int N = 4;
+	std::vector<double> density(N * N * N, 1.0);
+	Bounds3<double> bounds(0.0, 0.0, 0.0, 2.0, 1.0, 1.0);
+	GridMediumData<double> gm(density, N, N, N, bounds, 1.0, 1.0, 0.0);
+
+	Ray3<double> ray(0.0, 0.5, 0.5,  1.0, 0.0, 0.0);
+	double tMinExpected, tMaxExpected;
+	ASSERT_TRUE(bounds.intersect_ray(ray.o, ray.d, 1e10, &tMinExpected, &tMaxExpected));
+
+	double tMin, tMax;
+	ASSERT_TRUE(gm.intersect_ray(ray, 1e10, tMin, tMax));
+	EXPECT_NEAR(tMin, tMinExpected, 1e-12);
+	EXPECT_NEAR(tMax, tMaxExpected, 1e-12);
+
+	// A ray that misses the bounds entirely.
+	Ray3<double> missRay(10.0, 10.0, 10.0,  1.0, 0.0, 0.0);
+	double missTMin, missTMax;
+	EXPECT_FALSE(gm.intersect_ray(missRay, 1e10, missTMin, missTMax));
+}
+
+TEST(GridMediumData, SampleRayMatchesManualDDAConstruction) {
+	// Same uniform-density Beer-Lambert setup as DDAUniformTransmittance
+	// above, but going through sample_ray()'s own sigma_a+sigma_s multiplier
+	// (sigma_maj here stores raw density - see GridMediumData::sample_ray's
+	// own comment for why that multiplier can't just be T(1) the way
+	// RGBGridMediumData's own sample_ray() uses).
+	const int N = 4;
+	std::vector<double> density(N * N * N, 1.0);
+	Bounds3<double> bounds(0.0, 0.0, 0.0, 2.0, 1.0, 1.0);
+	const double sigma_a = 1.0, sigma_s = 2.0;  // sigma_t = 3.0, matches DDAUniformTransmittance
+	GridMediumData<double> gm(density, N, N, N, bounds, sigma_a, sigma_s, 0.0);
+
+	Ray3<double> ray(0.0, 0.5, 0.5,  1.0, 0.0, 0.0);
+	double tMin, tMax;
+	ASSERT_TRUE(gm.intersect_ray(ray, 1e10, tMin, tMax));
+
+	auto it = gm.sample_ray(ray, tMin, tMax);
+	double optical_depth = 0.0;
+	for (;;) {
+		auto seg = it.Next();
+		if (!seg.has_value()) break;
+		optical_depth += seg->sigma_maj * (seg->tMax - seg->tMin);
+	}
+
+	const double sigma_t = sigma_a + sigma_s;
+	EXPECT_NEAR(optical_depth, sigma_t * (tMax - tMin), 1e-9);
+}

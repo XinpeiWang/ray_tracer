@@ -946,6 +946,51 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 			mediumCache.emplace(medIdx, idx);
 			return idx;
 		}
+		if (md.type == "uniformgrid") {
+			// Single-channel twin of the rgbgrid branch just above - see
+			// that one's own comment. sigma_a is dropped the same way it is
+			// for cloud (pure scattering) - flatten() already warned about
+			// this. sig_s (luminance(md.sigma_s), already computed above for
+			// the cloud branch) is the per-voxel scattering multiplier,
+			// matching CPU's pbrt_cpu_builder.h uniformgrid branch exactly.
+			const std::size_t voxels = static_cast<std::size_t>(md.nx)
+				* static_cast<std::size_t>(md.ny) * static_cast<std::size_t>(md.nz);
+			const bool hasDensity = md.gridDensity.size() == voxels;
+			GpuGridMedium meta{};
+			for (int i = 0; i < 3; ++i) {
+				meta.bounds_min[i] = static_cast<float>(md.worldMin[i]);
+				meta.bounds_max[i] = static_cast<float>(md.worldMax[i]);
+				meta.translate[i] = static_cast<float>(md.toMediumTranslate[i]);
+			}
+			for (int i = 0; i < 9; ++i) meta.mat[i] = static_cast<float>(md.toMediumMat[i]);
+			meta.nx = md.nx; meta.ny = md.ny; meta.nz = md.nz;
+			meta.sigma_scale = static_cast<float>(sig_s);
+			meta.phase_g = static_cast<float>(md.g);
+			std::vector<float> df;
+			float max_density = 0.0f;
+			if (hasDensity) {
+				df.assign(md.gridDensity.begin(), md.gridDensity.end());
+				for (float v : df) max_density = std::fmax(max_density, v);
+			} else {
+				// No density data (missing/wrong-length "float density" -
+				// flatten() already warned) - degrade to an empty, invisible
+				// grid rather than reading past the end of an empty vector.
+				df.assign(voxels, 0.0f);
+			}
+			meta.sigma_maj = max_density * meta.sigma_scale * 1.01f;   // small safety margin, matches rgbgrid's own convention
+			meta.dataOffset = static_cast<int>(out.gridData.size());
+			out.gridData.insert(out.gridData.end(), df.begin(), df.end());
+			const int gridIdx = static_cast<int>(out.gridMediums.size());
+			out.gridMediums.push_back(meta);
+			MaterialData d = {};
+			d.type = MaterialType::GridMedium;
+			d.medium_albedo = make_float3(1.0f, 1.0f, 1.0f);
+			d.grid_medium_extra.gridMediumIdx = static_cast<float>(gridIdx);
+			const int idx = static_cast<int>(out.materials.size());
+			out.materials.push_back(d);
+			mediumCache.emplace(medIdx, idx);
+			return idx;
+		}
 
 		MaterialData d = {};
 		d.type = MaterialType::Medium;

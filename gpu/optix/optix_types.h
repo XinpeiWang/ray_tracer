@@ -447,7 +447,21 @@ enum class MaterialType : int {
 	// roughness (RoughnessToAlpha'd device-side, same as Conductor/
 	// RoughDielectric/CoatedDiffuse/CoatedConductor) - no eta_c/k_c, unlike
 	// Conductor, since RoughMetalBxDF has no real Fresnel model.
-	RoughMetal = 20
+	RoughMetal = 20,
+	// Heterogeneous participating medium with a single-channel per-voxel
+	// scalar density grid (pbrt-v4 GridMedium/"uniformgrid",
+	// src/shared/sampled_grid.h's GridMediumData<T>) - matches
+	// src/TheRestOfYourLife/grid_medium_hittable.h's delta tracking, the
+	// single-channel twin of MaterialType::RgbGridMedium just above (same
+	// "one global majorant, not CPU's real per-voxel DDA majorant grid"
+	// deliberate GPU simplification - see that enumerator's own comment).
+	// Only stores an INDEX (grid_medium_extra.gridMediumIdx) into
+	// LaunchParams::gridMediums, same "flat metadata struct + separate flat
+	// voxel-data buffer (LaunchParams::gridData)" shape as RgbGridMedium,
+	// since GridMediumData<T> can't be used directly on device either (same
+	// std::vector-backed SampledGrid<T> problem). Sphere-only, same reason
+	// as Medium/CloudMedium/RgbGridMedium.
+	GridMedium = 21
 };
 
 // The single canonical list of MaterialTypes GPU SPPM's camera/photon-pass
@@ -579,6 +593,26 @@ struct GpuRgbGridMedium {
 	float sigma_maj;    // precomputed global majorant = sigma_scale * max
 	                     // voxel value across all three channels, with a
 	                     // small safety margin - see the GPU scene builder.
+	float phase_g;       // Henyey-Greenstein asymmetry
+};
+
+// Single-channel twin of GpuRgbGridMedium above - see MaterialType::
+// GridMedium's own comment.
+struct GpuGridMedium {
+	float bounds_min[3], bounds_max[3];  // world-space AABB
+	float mat[9];                         // row-major 3x3 world->medium transform
+	float translate[3];
+	int   nx, ny, nz;                     // grid resolution
+	// Element offset into LaunchParams::gridData - one flat block of
+	// nx*ny*nz density values, no R/G/B split (unlike GpuRgbGridMedium's
+	// dataOffset).
+	int   dataOffset;
+	float sigma_scale;  // sigma_a+sigma_s collapsed to one scalar (matches
+	                     // GridMediumData<T>::sigma_a/sigma_s's own CPU-side
+	                     // luminance() collapse - see pbrt_gpu_builder.h)
+	float sigma_maj;    // precomputed global majorant = sigma_scale * max
+	                     // density value, with a small safety margin - see
+	                     // the GPU scene builder.
 	float phase_g;       // Henyey-Greenstein asymmetry
 };
 
@@ -721,6 +755,9 @@ struct MaterialData {
 		// RgbGridMedium: index into LaunchParams::rgbGridMediums - same
 		// index-not-direct-field-reuse reasoning as cloud_medium_extra above.
 		struct { float rgbGridMediumIdx, _rgb_grid_medium_pad1, _rgb_grid_medium_pad2; } rgb_grid_medium_extra;
+		// GridMedium: index into LaunchParams::gridMediums - same
+		// index-not-direct-field-reuse reasoning as cloud_medium_extra above.
+		struct { float gridMediumIdx, _grid_medium_pad1, _grid_medium_pad2; } grid_medium_extra;
 	};
 
 	union {
@@ -1127,6 +1164,16 @@ struct LaunchParams {
 	unsigned int numRgbGridMediums;
 	float* rgbGridData;
 	unsigned int rgbGridDataCount;
+
+	// Heterogeneous single-channel-density media (MaterialType::GridMedium),
+	// indexed by MaterialData::grid_medium_extra.gridMediumIdx - same
+	// flat-metadata-struct-plus-separate-voxel-buffer shape as
+	// rgbGridMediums/rgbGridData above, just one channel instead of three
+	// (see GpuGridMedium::dataOffset).
+	GpuGridMedium* gridMediums;
+	unsigned int numGridMediums;
+	float* gridData;
+	unsigned int gridDataCount;
 
 	// Tabulated BSSRDF profile tables (MaterialType::Subsurface, recursive
 	// backend only - see GpuBssrdfTable's own comment), indexed by

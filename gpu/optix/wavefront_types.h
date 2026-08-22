@@ -62,6 +62,26 @@ struct RayWorkItem {
 	// of a stack-resident C++ local" reasoning as any_nonspecular above,
 	// since each bounce is a separate kernel launch here.
 	float        etaScale;
+	// Pixel reconstruction filter weight for the sample this path belongs
+	// to (gpu_filter_evaluate() in wavefront_kernels.cu) - a pure
+	// reconstruction/blending weight, unrelated to how much light this path
+	// carries. Deliberately carried as its OWN field, separate from
+	// throughput: an earlier version of this feature folded it into
+	// throughput/cam_weight the way the recursive backend's cam_weight
+	// already works, which was a real, confirmed bug - Gaussian's own
+	// evaluate() is tiny in absolute magnitude (well under 1 even at dead
+	// center), so contaminating throughput with it made Russian Roulette
+	// see a near-zero beta from the first eligible bounce onward and kill
+	// the overwhelming majority of paths almost immediately (unbiased in
+	// expectation via RR's 1/(1-q) reweight, but a variance explosion that
+	// made any scene needing several bounces to converge render close to
+	// black at ordinary sample counts). Every atomicAdd into framebuffer
+	// (evaluate_materials's several branches, accumulate_miss,
+	// accumulate_shadow, resolve_bssrdf_exit) multiplies its own
+	// contribution by this field directly, exactly mirroring CPU camera.h's
+	// `weighted_color += w * sample;` - the filter weight touches only the
+	// FINAL contribution, never a transport decision.
+	float        filterWeight;
 	// BRDF PDF of this ray's own scatter direction, for MIS if it escapes the
 	// scene on the next bounce (accumulate_miss's own comment) - mirrors the
 	// recursive backend's prev_brdf_pdf (optix_raygen.h/optix_miss.h). 0 for
@@ -151,6 +171,9 @@ struct HitWorkItem {
 	// dielectric() fold this hit's own transmission eta (if any) into
 	// before passing to wf_finish_material_scatter.
 	float  etaScale;
+	// Carried from RayWorkItem::filterWeight (see its own comment) -
+	// multiplied into every radiance contribution this hit produces.
+	float  filterWeight;
 };
 
 // A shadow ray: if it reaches tMax unoccluded, Ld is added to the framebuffer.
@@ -235,6 +258,10 @@ struct BssrdfProbeWorkItem {
 	// test - matches CPU camera.h's `entry_eta`, captured before the
 	// exit-surface scatter overwrites srec.
 	float  etaScale;
+	// Also carried, same reasoning as etaScale - the eventual exit bounce's
+	// own radiance contribution still needs this path's filter weight (see
+	// RayWorkItem::filterWeight's own comment).
+	float  filterWeight;
 };
 
 // Result of one BSSRDF probe walk (__raygen__wf_probe, wavefront_probe.h) -
@@ -271,6 +298,9 @@ struct BssrdfExitWorkItem {
 	// material_scatter() unchanged (the exit-surface NormalizedFresnel
 	// shading doesn't add its own etaScale factor).
 	float  etaScale;
+	// filterWeight IS also carried, same as BssrdfProbeWorkItem - see
+	// RayWorkItem::filterWeight's own comment.
+	float  filterWeight;
 };
 
 // ============================================================================
@@ -417,6 +447,15 @@ struct WavefrontLaunchParams {
 	unsigned int      numRgbGridMediums;
 	float*            rgbGridData;
 	unsigned int      rgbGridDataCount;
+
+	// Heterogeneous single-channel grid media (MaterialType::GridMedium),
+	// same shared device buffers OptiXRenderer::buildScene() already
+	// uploads for the recursive path - see wavefront_kernels.cu's
+	// GridMedium case.
+	GpuGridMedium* gridMediums;
+	unsigned int   numGridMediums;
+	float*         gridData;
+	unsigned int   gridDataCount;
 
 	// Tabulated BSSRDF profile tables (MaterialType::Subsurface), same
 	// device buffers OptiXRenderer already uploads once for the recursive

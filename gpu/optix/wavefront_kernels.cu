@@ -231,6 +231,7 @@ __device__ __forceinline__ bool wf_material_requires_sphere_only_handling(Materi
 		case MaterialType::DielectricMedium:
 		case MaterialType::CloudMedium:
 		case MaterialType::RgbGridMedium:
+		case MaterialType::GridMedium:
 		case MaterialType::Hair:
 		case MaterialType::Principled:
 			return true;
@@ -1092,18 +1093,22 @@ extern "C" __global__ void generate_camera_rays(
 	SampledWavelengths<kWFNWavelengths> swl = SampledWavelengths<kWFNWavelengths>::SampleVisible(lambda_u);
 	// filter_w folded in here (same slot cam_weight already uses) so it
 	// propagates through every downstream radiance contribution for free -
-	// every NEE/hit-light/emission term this path ever atomicAdd's into the
-	// framebuffer is already `throughput * ...`, same reasoning as
-	// optix_raygen.h's identical fold. weightBuffer accumulates once per
-	// (pixel, sample) here regardless of how many downstream kernels this
-	// ray's radiance eventually flows through - normalize_framebuffer
+	// filter_w is carried as its OWN field (RayWorkItem::filterWeight), NOT
+	// folded into throughput - see that field's own comment for why: it's a
+	// pure reconstruction weight, and contaminating throughput with it
+	// (Gaussian's own evaluate() is tiny in absolute magnitude) was a real,
+	// confirmed bug that made Russian Roulette kill the overwhelming
+	// majority of paths almost immediately. weightBuffer accumulates once
+	// per (pixel, sample) here regardless of how many downstream kernels
+	// this ray's radiance eventually flows through - normalize_framebuffer
 	// divides by it instead of a flat 1/samplesPerPixel.
 	for (int i = 0; i < kWFNWavelengths; ++i) {
-		item.throughput[i]     = cam_weight * filter_w;
+		item.throughput[i]     = cam_weight;
 		item.radiance[i]       = 0.0f;
 		item.wavelengths[i]    = swl.lambda[i];
 		item.wavelength_pdfs[i] = swl.pdf[i];
 	}
+	item.filterWeight = filter_w;
 	atomicAdd(&weightBuffer[pixelIdx], filter_w);
 	item.seed       = seed;
 	item.pixelIndex = pixelIdx;
@@ -1203,6 +1208,12 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// eventEta local. Written unchanged into the pushed next RayWorkItem's
 	// own etaScale at this function's tail.
 	float etaScale,
+	// Pixel reconstruction filter weight for this path's own sample - see
+	// RayWorkItem::filterWeight's own comment. Multiplied into every
+	// radiance contribution this function adds to the framebuffer (NEE
+	// shadow rays, the RR-kill/hit-light flush) and written unchanged into
+	// the pushed next RayWorkItem's own filterWeight.
+	float filterWeight,
 	const float3& normal, const float3& hit_point,
 	unsigned int& seed,
 	const SampledSpectrum<kWFNWavelengths>& throughput,
@@ -1586,7 +1597,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			shadow.direction = to_light;
 			shadow.tMax      = max_dist - 0.002f;
 			for (int i = 0; i < kWFNWavelengths; ++i) {
-				shadow.Ld[i]             = Ld[i];
+				shadow.Ld[i]             = Ld[i] * filterWeight;  // see RayWorkItem::filterWeight's own comment
 				shadow.wavelengths[i]    = swl.lambda[i];
 				shadow.wavelength_pdfs[i] = swl.pdf[i];
 			}
@@ -1687,7 +1698,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			shadow.direction = sky_dir;
 			shadow.tMax      = 1e30f;
 			for (int i = 0; i < kWFNWavelengths; ++i) {
-				shadow.Ld[i]              = Ld[i];
+				shadow.Ld[i]              = Ld[i] * filterWeight;  // see RayWorkItem::filterWeight's own comment
 				shadow.wavelengths[i]     = swl.lambda[i];
 				shadow.wavelength_pdfs[i] = swl.pdf[i];
 			}
@@ -1768,7 +1779,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		shadow.direction = wi;
 		shadow.tMax      = t_max - 0.002f;
 		for (int i = 0; i < kWFNWavelengths; ++i) {
-			shadow.Ld[i]              = Ld[i];
+			shadow.Ld[i]              = Ld[i] * filterWeight;  // see RayWorkItem::filterWeight's own comment
 			shadow.wavelengths[i]     = swl.lambda[i];
 			shadow.wavelength_pdfs[i] = swl.pdf[i];
 		}
@@ -1778,7 +1789,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 
 	// Flush accumulated prior-bounce radiance (once, regardless of whether
 	// any area/punctual lights actually contributed above).
-	if ((bool)radiance) addToFramebuffer(pixelIndex, radiance);
+	if ((bool)radiance) addToFramebuffer(pixelIndex, radiance * filterWeight);
 	} // if (!is_specular) - NEE (area + punctual lights)
 
 	// -------------------------------------------------------------------------
@@ -1803,7 +1814,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		if (rr_max < 1.0f) {
 			float q = fmaxf(0.0f, 1.0f - rr_max);
 			if (wf_rand(seed) < q) {
-				if (is_specular) addToFramebuffer(pixelIndex, radiance);
+				if (is_specular) addToFramebuffer(pixelIndex, radiance * filterWeight);
 				return;
 			}
 			new_throughput = new_throughput / (1.0f - q);
@@ -1823,6 +1834,9 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// Already fully updated for this event - see this function's own
 	// etaScale parameter comment.
 	next.etaScale = etaScale;
+	// Pure reconstruction weight, carried unchanged - see
+	// RayWorkItem::filterWeight's own comment.
+	next.filterWeight = filterWeight;
 	// BRDF PDF of this new direction, for MIS if this ray escapes the scene
 	// on its next bounce (see RayWorkItem::brdf_pdf's own comment) - mirrors
 	// optix_intersection_sphere.h's brdf_pdf_out exactly (0 for specular,
@@ -1871,6 +1885,8 @@ extern "C" __global__ void evaluate_materials(
 	unsigned int numCloudMediums,
 	const GpuRgbGridMedium* rgbGridMediums,
 	const float* rgbGridData,
+	const GpuGridMedium* gridMediums,
+	const float* gridData,
 	// Real tabulated measured-BRDF tables (MaterialType::Measured) - see
 	// optix_types.h's GpuMeasuredTable comment and wavefront_measured_bxdf.h.
 	// Plain extra kernel parameters, same shape as cloudMediums/
@@ -2001,13 +2017,13 @@ extern "C" __global__ void evaluate_materials(
 				}
 			}
 		}
-		addToFramebuffer(h.pixelIndex, radiance);
+		addToFramebuffer(h.pixelIndex, radiance * h.filterWeight);
 		return; // path ends at emissive surface
 	}
 
 	if (h.depth >= maxDepth) {
 		// Max depth reached — just accumulate what we have.
-		addToFramebuffer(h.pixelIndex, radiance);
+		addToFramebuffer(h.pixelIndex, radiance * h.filterWeight);
 		return;
 	}
 
@@ -2166,6 +2182,9 @@ extern "C" __global__ void evaluate_materials(
 				const float entryEta = 1.0f / mat.ior;
 				probeItem.etaScale = h.etaScale * entryEta * entryEta;
 			}
+			// Pure reconstruction weight, carried unchanged through the probe
+			// walk - see RayWorkItem::filterWeight's own comment.
+			probeItem.filterWeight = h.filterWeight;
 			for (int i = 0; i < kWFNWavelengths; ++i) {
 				probeItem.throughput[i]      = throughput[i];
 				probeItem.radiance[i]        = radiance[i];
@@ -2742,6 +2761,77 @@ extern "C" __global__ void evaluate_materials(
 		is_specular = true;
 		break;
 	}
+	case MaterialType::GridMedium: {
+		// Heterogeneous single-channel scalar density grid - single-channel
+		// twin of the RgbGridMedium case just above (see that one's own
+		// comment; same single-GLOBAL-majorant simplification), and mirrors
+		// optix_intersection_sphere.h's closesthit GridMedium case exactly.
+		const GpuGridMedium& grid = gridMediums[(int)mat.grid_medium_extra.gridMediumIdx];
+		float3 unit_dir = normalize(h.rayDir);
+
+		float mox = grid.mat[0]*h.rayOrigin.x + grid.mat[1]*h.rayOrigin.y + grid.mat[2]*h.rayOrigin.z + grid.translate[0];
+		float moy = grid.mat[3]*h.rayOrigin.x + grid.mat[4]*h.rayOrigin.y + grid.mat[5]*h.rayOrigin.z + grid.translate[1];
+		float moz = grid.mat[6]*h.rayOrigin.x + grid.mat[7]*h.rayOrigin.y + grid.mat[8]*h.rayOrigin.z + grid.translate[2];
+		float mdx = grid.mat[0]*unit_dir.x + grid.mat[1]*unit_dir.y + grid.mat[2]*unit_dir.z;
+		float mdy = grid.mat[3]*unit_dir.x + grid.mat[4]*unit_dir.y + grid.mat[5]*unit_dir.z;
+		float mdz = grid.mat[6]*unit_dir.x + grid.mat[7]*unit_dir.y + grid.mat[8]*unit_dir.z;
+
+		float segMin = 0.0f, segMax = 1e30f;
+		bool has_seg = true;
+		{
+			float invd, s0, s1;
+			invd = (mdx != 0.0f) ? 1.0f/mdx : 1e30f;
+			s0 = (0.0f - mox)*invd; s1 = (1.0f - mox)*invd;
+			if (s0 > s1) { float tmp = s0; s0 = s1; s1 = tmp; }
+			segMin = fmaxf(segMin, s0); segMax = fminf(segMax, s1);
+			if (segMin > segMax) has_seg = false;
+
+			invd = (mdy != 0.0f) ? 1.0f/mdy : 1e30f;
+			s0 = (0.0f - moy)*invd; s1 = (1.0f - moy)*invd;
+			if (s0 > s1) { float tmp = s0; s0 = s1; s1 = tmp; }
+			segMin = fmaxf(segMin, s0); segMax = fminf(segMax, s1);
+			if (segMin > segMax) has_seg = false;
+
+			invd = (mdz != 0.0f) ? 1.0f/mdz : 1e30f;
+			s0 = (0.0f - moz)*invd; s1 = (1.0f - moz)*invd;
+			if (s0 > s1) { float tmp = s0; s0 = s1; s1 = tmp; }
+			segMin = fmaxf(segMin, s0); segMax = fminf(segMax, s1);
+			if (segMin > segMax) has_seg = false;
+		}
+
+		bool did_scatter = false;
+		float medium_t = 0.0f;
+		if (has_seg && grid.sigma_maj > 0.0f) {
+			if (segMin < 0.0f) segMin = 0.0f;
+			float tt = segMin;
+			const float* dData = gridData + grid.dataOffset;
+			for (int iter = 0; iter < 128 && !did_scatter; ++iter) {
+				float dt = -logf(fmaxf(1e-8f, 1.0f - wf_rand(seed))) / grid.sigma_maj;
+				tt += dt;
+				if (tt >= segMax) break;
+				float px = mox + tt*mdx, py = moy + tt*mdy, pz = moz + tt*mdz;
+				float d = gpu_rgb_grid_trilinear(dData, grid.nx, grid.ny, grid.nz, px, py, pz);
+				float sigma_t_local = d * grid.sigma_scale;
+				if (wf_rand(seed) < sigma_t_local / grid.sigma_maj) {
+					did_scatter = true;
+					medium_t      = tt;
+					scattered_dir = wf_sample_henyey_greenstein(unit_dir, grid.phase_g, seed);
+					attenuation   = albedoSpectrum(mat.albedo);  // no per-voxel colour - see grid_medium_hittable.h's own comment
+				}
+			}
+			if (!did_scatter) medium_t = segMax;
+		} else {
+			medium_t = h.t;
+		}
+		if (!did_scatter) {
+			scattered_dir = unit_dir;
+			attenuation   = SS(1.f);
+		}
+		hit_point   = h.rayOrigin + medium_t * unit_dir;
+		scattered   = true;
+		is_specular = true;
+		break;
+	}
 	case MaterialType::Hair: {
 		// Marschner/Chiang fiber scattering - see wf_sample_hair_material's
 		// comment above. Matches hair_material.h's skip_pdf=true: no NEE/MIS
@@ -2911,13 +3001,13 @@ extern "C" __global__ void evaluate_materials(
 
 	if (!scattered) {
 		// Path absorbed — accumulate what we have.
-		addToFramebuffer(h.pixelIndex, radiance);
+		addToFramebuffer(h.pixelIndex, radiance * h.filterWeight);
 		return;
 	}
 
 	// eventEta was set above only on a genuine transmission (DielectricMedium's
 	// entry/exit surfaces) - see this function's own eventEta local comment.
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, h.etaScale * eventEta * eventEta, normal, hit_point, seed,
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, h.etaScale * eventEta * eventEta, h.filterWeight, normal, hit_point, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -3015,7 +3105,7 @@ extern "C" __global__ void evaluate_materials_simple(
 
 	if (h.depth >= maxDepth) {
 		// Max depth reached — just accumulate what we have.
-		addToFramebuffer(h.pixelIndex, radiance);
+		addToFramebuffer(h.pixelIndex, radiance * h.filterWeight);
 		return;
 	}
 
@@ -3077,13 +3167,13 @@ extern "C" __global__ void evaluate_materials_simple(
 	}
 
 	if (!scattered) {
-		addToFramebuffer(h.pixelIndex, radiance);
+		addToFramebuffer(h.pixelIndex, radiance * h.filterWeight);
 		return;
 	}
 
 	// Lambertian/Metal never transmit - h.etaScale passes through unchanged
 	// (see RayWorkItem::etaScale's own comment).
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, h.etaScale, normal, hit_point, seed,
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, h.etaScale, h.filterWeight, normal, hit_point, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -3173,7 +3263,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	};
 
 	if (h.depth >= maxDepth) {
-		addToFramebuffer(h.pixelIndex, radiance);
+		addToFramebuffer(h.pixelIndex, radiance * h.filterWeight);
 		return;
 	}
 
@@ -3301,14 +3391,14 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	}
 
 	if (!scattered) {
-		addToFramebuffer(h.pixelIndex, radiance);
+		addToFramebuffer(h.pixelIndex, radiance * h.filterWeight);
 		return;
 	}
 
 	// eventEta was set above only on a genuine transmission (Dielectric or
 	// RoughDielectric's refract branch) - see this function's own eventEta
 	// local comment.
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, h.etaScale * eventEta * eventEta, normal, hit_point, seed,
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, h.etaScale * eventEta * eventEta, h.filterWeight, normal, hit_point, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -3434,7 +3524,7 @@ extern "C" __global__ void resolve_bssrdf_exit(
 		// Probe walk failed to find a valid exit point - path terminates,
 		// same as evaluate_materials's own `if (!scattered)` handling.
 		if ((bool)radiance) {
-			auto xyz = SampledSpectrumToXYZ(radiance, swl, d_cie_x, d_cie_y, d_cie_z,
+			auto xyz = SampledSpectrumToXYZ(radiance * item.filterWeight, swl, d_cie_x, d_cie_y, d_cie_z,
 											kDevCIEMin, kDevCIENSamples);
 			float r, g, b;
 			wf_xyz_to_linear_rgb(xyz.x, xyz.y, xyz.z, r, g, b);
@@ -3479,6 +3569,7 @@ extern "C" __global__ void resolve_bssrdf_exit(
 		// own comment); this exit-surface NormalizedFresnel shading doesn't
 		// add another factor, matching CPU camera.h's entry_eta convention.
 		item.etaScale,
+		item.filterWeight,
 		item.exitNormal, item.exitPos, seed,
 		weightedThroughput, radiance, swl, attenuation, scattered_dir,
 		/*is_specular=*/false, brdf_pdf_override,

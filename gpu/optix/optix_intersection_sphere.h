@@ -566,6 +566,73 @@ extern "C" __global__ void __closesthit__sphere() {
 			scattered    = true;
 			is_specular  = true;
 			is_medium    = true;
+	} else if (mat.type == MaterialType::GridMedium) {
+			// Heterogeneous single-channel scalar density grid - single-
+			// channel twin of the RgbGridMedium branch just above (see that
+			// one's own comment; same single-GLOBAL-majorant simplification).
+			const GpuGridMedium& grid = params.gridMediums[(int)mat.grid_medium_extra.gridMediumIdx];
+			float3 unit_dir3 = normalize(ray_dir);
+
+			float mox = grid.mat[0]*ray_orig.x + grid.mat[1]*ray_orig.y + grid.mat[2]*ray_orig.z + grid.translate[0];
+			float moy = grid.mat[3]*ray_orig.x + grid.mat[4]*ray_orig.y + grid.mat[5]*ray_orig.z + grid.translate[1];
+			float moz = grid.mat[6]*ray_orig.x + grid.mat[7]*ray_orig.y + grid.mat[8]*ray_orig.z + grid.translate[2];
+			float mdx = grid.mat[0]*unit_dir3.x + grid.mat[1]*unit_dir3.y + grid.mat[2]*unit_dir3.z;
+			float mdy = grid.mat[3]*unit_dir3.x + grid.mat[4]*unit_dir3.y + grid.mat[5]*unit_dir3.z;
+			float mdz = grid.mat[6]*unit_dir3.x + grid.mat[7]*unit_dir3.y + grid.mat[8]*unit_dir3.z;
+
+			float segMin = 0.0f, segMax = 1e30f;
+			bool has_seg = true;
+			{
+				float invd, s0, s1;
+				invd = (mdx != 0.0f) ? 1.0f/mdx : 1e30f;
+				s0 = (0.0f - mox)*invd; s1 = (1.0f - mox)*invd;
+				if (s0 > s1) { float tmp = s0; s0 = s1; s1 = tmp; }
+				segMin = fmaxf(segMin, s0); segMax = fminf(segMax, s1);
+				if (segMin > segMax) has_seg = false;
+
+				invd = (mdy != 0.0f) ? 1.0f/mdy : 1e30f;
+				s0 = (0.0f - moy)*invd; s1 = (1.0f - moy)*invd;
+				if (s0 > s1) { float tmp = s0; s0 = s1; s1 = tmp; }
+				segMin = fmaxf(segMin, s0); segMax = fminf(segMax, s1);
+				if (segMin > segMax) has_seg = false;
+
+				invd = (mdz != 0.0f) ? 1.0f/mdz : 1e30f;
+				s0 = (0.0f - moz)*invd; s1 = (1.0f - moz)*invd;
+				if (s0 > s1) { float tmp = s0; s0 = s1; s1 = tmp; }
+				segMin = fmaxf(segMin, s0); segMax = fminf(segMax, s1);
+				if (segMin > segMax) has_seg = false;
+			}
+
+			bool did_scatter = false;
+			if (has_seg && grid.sigma_maj > 0.0f) {
+				if (segMin < 0.0f) segMin = 0.0f;
+				float tt = segMin;
+				const float* dData = params.gridData + grid.dataOffset;
+				for (int iter = 0; iter < 128 && !did_scatter; ++iter) {
+					float dt = -logf(fmaxf(1e-8f, 1.0f - random_float(seed))) / grid.sigma_maj;
+					tt += dt;
+					if (tt >= segMax) break;
+					float px = mox + tt*mdx, py = moy + tt*mdy, pz = moz + tt*mdz;
+					float d = gpu_rgb_grid_trilinear(dData, grid.nx, grid.ny, grid.nz, px, py, pz);
+					float sigma_t_local = d * grid.sigma_scale;
+					if (random_float(seed) < sigma_t_local / grid.sigma_maj) {
+						did_scatter = true;
+						medium_t_hit  = tt;
+						scattered_dir = sample_henyey_greenstein(-unit_dir3, grid.phase_g, seed);
+						attenuation   = mat.albedo;  // no per-voxel colour (single-channel density) - see grid_medium_hittable.h's own comment
+					}
+				}
+				if (!did_scatter) medium_t_hit = segMax;
+			} else {
+				medium_t_hit = t;
+			}
+			if (!did_scatter) {
+				scattered_dir = unit_dir3;
+				attenuation   = make_float3(1.0f, 1.0f, 1.0f);
+			}
+			scattered    = true;
+			is_specular  = true;
+			is_medium    = true;
 	} else if (mat.type == MaterialType::Hair) {
 			// Marschner/Chiang fiber scattering - see sample_hair_material's
 			// comment in optix_device_helpers.h. Matches hair_material.h's

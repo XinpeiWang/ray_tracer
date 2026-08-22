@@ -287,6 +287,25 @@ TEST(PbrtCpuBuildTest, RgbGridMediumIsReachable) {
 		<< "a ray toward the rgbgrid medium's world AABB should still hit something";
 }
 
+TEST(PbrtCpuBuildTest, UniformgridMediumIsReachable) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"AttributeBegin\n"
+		"  Scale 2 2 2\n"
+		"  MakeNamedMedium \"fog\" \"string type\" [ \"uniformgrid\" ]\n"
+		"    \"integer nx\" [ 2 ] \"integer ny\" [ 1 ] \"integer nz\" [ 1 ]\n"
+		"    \"float density\" [ 0.5 1.0 ]\n"
+		"AttributeEnd\n"
+		"AttributeBegin\n"
+		"  Translate 1 1 1\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 2 ]\n"
+		"AttributeEnd\n");
+	EXPECT_EQ(b.sphereCount, 1u);
+	double t = 0.0;
+	EXPECT_TRUE(castRay(b, point3(1, 1, -5), vec3(0, 0, 1), t))
+		<< "a ray toward the uniformgrid medium's world AABB should still hit something";
+}
+
 TEST(PbrtCpuBuildTest, SharedVerticesAreDeduplicated) {
 	// The two triangles of a quad share two corners. FlatScene stores all six
 	// vertices explicitly; the builder should recover the original four.

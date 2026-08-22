@@ -21,6 +21,8 @@ struct SceneData {
 	std::vector<CloudMedium<float>> cloudMediums;  // indexed by MaterialType::CloudMedium's cloud_medium_extra.cloudMediumIdx
 	std::vector<GpuRgbGridMedium> rgbGridMediums;  // indexed by MaterialType::RgbGridMedium's rgb_grid_medium_extra.rgbGridMediumIdx
 	std::vector<float> rgbGridData;                // flat voxel data, sliced per-medium via GpuRgbGridMedium::dataOffset
+	std::vector<GpuGridMedium> gridMediums;        // indexed by MaterialType::GridMedium's grid_medium_extra.gridMediumIdx
+	std::vector<float> gridData;                   // flat voxel data, sliced per-medium via GpuGridMedium::dataOffset
 
 	// Tabulated BSSRDF profile tables (MaterialType::Subsurface, recursive
 	// backend only - see optix_types.h's GpuBssrdfTable/MaterialType::

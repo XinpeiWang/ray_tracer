@@ -288,15 +288,52 @@ TEST(FlattenTest, UnresolvedMediumNameIsVacuumAndWarns) {
 	EXPECT_TRUE(warnedAbout(s, "ghost"));
 }
 
-TEST(FlattenTest, UniformgridFallsBackToHomogeneousAndWarns) {
-	// GridMediumData exists (sampled_grid.h) but has no CPU hittable wrapper
-	// or GPU MaterialType yet - unlike cloud/rgbgrid, this type is still
-	// unsupported and must keep falling back.
+TEST(FlattenTest, UnsupportedMediumTypeFallsBackToHomogeneousAndWarns) {
+	// "nanovdb" (or any other type pbrt-v4 supports that this loader
+	// doesn't) still falls back to homogeneous with a warning - the
+	// generic case cloud/rgbgrid/uniformgrid all now opt out of.
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"g\" \"string type\" [ \"nanovdb\" ]\n");
+	ASSERT_EQ(s.media.size(), 1u);
+	EXPECT_EQ(s.media[0].type, "homogeneous");
+	EXPECT_TRUE(warnedAbout(s, "nanovdb"));
+}
+
+TEST(FlattenTest, UniformgridParsesDensityArray) {
+	// nx=2,ny=1,nz=1: 2 voxels, "float density" holds exactly 2 numbers,
+	// one per voxel.
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"g\" \"string type\" [ \"uniformgrid\" ]\n"
+		"  \"integer nx\" [ 2 ] \"integer ny\" [ 1 ] \"integer nz\" [ 1 ]\n"
+		"  \"float density\" [ 0.25 0.75 ]\n");
+	ASSERT_EQ(s.media.size(), 1u);
+	const Medium &m = s.media[0];
+	EXPECT_EQ(m.type, "uniformgrid");
+	EXPECT_EQ(m.nx, 2);
+	ASSERT_EQ(m.gridDensity.size(), 2u);
+	EXPECT_DOUBLE_EQ(m.gridDensity[0], 0.25);
+	EXPECT_DOUBLE_EQ(m.gridDensity[1], 0.75);
+}
+
+TEST(FlattenTest, UniformgridMissingDensityIsEmptyAndWarns) {
 	const FlatScene s = flattenSource(
 		"MakeNamedMedium \"g\" \"string type\" [ \"uniformgrid\" ]\n");
 	ASSERT_EQ(s.media.size(), 1u);
-	EXPECT_EQ(s.media[0].type, "homogeneous");
-	EXPECT_TRUE(warnedAbout(s, "uniformgrid"));
+	EXPECT_EQ(s.media[0].type, "uniformgrid");
+	EXPECT_TRUE(s.media[0].gridDensity.empty());
+	EXPECT_TRUE(warnedAbout(s, "density"));
+}
+
+TEST(FlattenTest, UniformgridWrongDensityLengthIsEmptyAndWarns) {
+	// nx=2,ny=1,nz=1 expects 2 numbers; giving only 1 must not be silently
+	// truncated/padded - dropped entirely, with a warning.
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"g\" \"string type\" [ \"uniformgrid\" ]\n"
+		"  \"integer nx\" [ 2 ] \"integer ny\" [ 1 ] \"integer nz\" [ 1 ]\n"
+		"  \"float density\" [ 0.5 ]\n");
+	ASSERT_EQ(s.media.size(), 1u);
+	EXPECT_TRUE(s.media[0].gridDensity.empty());
+	EXPECT_TRUE(warnedAbout(s, "g"));
 }
 
 TEST(FlattenTest, CloudMediumComputesWorldAabbAndInverseTransform) {

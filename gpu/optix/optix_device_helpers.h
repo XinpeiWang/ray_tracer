@@ -2401,12 +2401,12 @@ __device__ __forceinline__ void shade_material(
 			break;
 		}
 
-		// Everything else either (a) is one of the 7 MaterialTypes never
+		// Everything else either (a) is one of the 8 MaterialTypes never
 		// meant to reach this switch - each special-cased earlier, before
 		// shade_material() is even called, and documented as such on its own
 		// MaterialType enumerator (optix_types.h): Medium/DielectricMedium/
-		// CloudMedium/RgbGridMedium (participating media, handled inline in
-		// optix_intersection_sphere.h's shape-specific near/far
+		// CloudMedium/RgbGridMedium/GridMedium (participating media, handled
+		// inline in optix_intersection_sphere.h's shape-specific near/far
 		// re-intersection), Hair (HairBxDF sampled directly, see
 		// sample_principled_material()'s sibling dispatch above this
 		// function), Principled (same sibling dispatch, PrincipledBxDF),
@@ -2441,11 +2441,11 @@ __device__ __forceinline__ void shade_material(
 	out_eta = eta;
 }
 
-// True for the 6 MaterialTypes that need sphere/box-specific handling -
-// Medium/DielectricMedium/CloudMedium/RgbGridMedium (volume ray-marching
-// against a sphere's own two intersection roots, or a box's slab test -
-// see optix_intersection_sphere.h's shape-specific branches) and Hair/
-// Principled (sampled directly via a sibling dispatch alongside
+// True for the 7 MaterialTypes that need sphere/box-specific handling -
+// Medium/DielectricMedium/CloudMedium/RgbGridMedium/GridMedium (volume
+// ray-marching against a sphere's own two intersection roots, or a box's
+// slab test - see optix_intersection_sphere.h's shape-specific branches)
+// and Hair/Principled (sampled directly via a sibling dispatch alongside
 // shade_material(), never through it - see shade_material()'s own default:
 // comment above). NormalMappedLambertian is deliberately NOT included here:
 // unlike these 6, it has a real, working implementation on triangles too
@@ -2469,6 +2469,7 @@ __device__ __forceinline__ bool material_requires_sphere_only_handling(MaterialT
 		case MaterialType::DielectricMedium:
 		case MaterialType::CloudMedium:
 		case MaterialType::RgbGridMedium:
+		case MaterialType::GridMedium:
 		case MaterialType::Hair:
 		case MaterialType::Principled:
 			return true;

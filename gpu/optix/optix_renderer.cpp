@@ -913,6 +913,8 @@ bool OptiXRenderer::buildScene(
 	const std::vector<CloudMedium<float>>& cloudMediums,
 	const std::vector<GpuRgbGridMedium>& rgbGridMediums,
 	const std::vector<float>& rgbGridData,
+	const std::vector<GpuGridMedium>& gridMediums,
+	const std::vector<float>& gridData,
 	const std::vector<GpuBssrdfTable>& bssrdfTables,
 	const std::vector<float>& bssrdfRhoSamples,
 	const std::vector<float>& bssrdfRadiusSamples,
@@ -1244,6 +1246,46 @@ bool OptiXRenderer::buildScene(
 		));
 		std::cout << "[OptiX] Uploaded " << rgbGridMediums.size() << " RGB grid media ("
 			<< rgbGridData.size() << " voxel floats) to GPU\n";
+	}
+
+	// Heterogeneous single-channel grid media (MaterialType::GridMedium) -
+	// same two-array upload pattern as RGB grid media just above.
+	numGridMediums_ = static_cast<unsigned int>(gridMediums.size());
+	size_t gridMediumSize = gridMediums.size() * sizeof(GpuGridMedium);
+
+	if (d_gridMediums_) {
+		cudaFree(reinterpret_cast<void*>(d_gridMediums_));
+		d_gridMediums_ = 0;
+	}
+
+	if (numGridMediums_ > 0) {
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_gridMediums_), gridMediumSize));
+		CUDA_CHECK(cudaMemcpy(
+			reinterpret_cast<void*>(d_gridMediums_),
+			gridMediums.data(),
+			gridMediumSize,
+			cudaMemcpyHostToDevice
+		));
+	}
+
+	gridDataCount_ = static_cast<unsigned int>(gridData.size());
+	size_t gridDataSize = gridData.size() * sizeof(float);
+
+	if (d_gridData_) {
+		cudaFree(reinterpret_cast<void*>(d_gridData_));
+		d_gridData_ = 0;
+	}
+
+	if (gridDataCount_ > 0) {
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_gridData_), gridDataSize));
+		CUDA_CHECK(cudaMemcpy(
+			reinterpret_cast<void*>(d_gridData_),
+			gridData.data(),
+			gridDataSize,
+			cudaMemcpyHostToDevice
+		));
+		std::cout << "[OptiX] Uploaded " << gridMediums.size() << " grid media ("
+			<< gridData.size() << " voxel floats) to GPU\n";
 	}
 
 	// Tabulated BSSRDF tables (MaterialType::Subsurface, recursive backend
@@ -2543,6 +2585,7 @@ bool OptiXRenderer::render(
 		wavefrontTracer_->setTextures(d_textures_, d_texturePixels_);
 		wavefrontTracer_->setCloudMediums(d_cloudMediums_, numCloudMediums_);
 		wavefrontTracer_->setRgbGridMediums(d_rgbGridMediums_, numRgbGridMediums_, d_rgbGridData_, rgbGridDataCount_);
+		wavefrontTracer_->setGridMediums(d_gridMediums_, numGridMediums_, d_gridData_, gridDataCount_);
 		wavefrontTracer_->setBssrdfTables(d_bssrdfTables_, numBssrdfTables_,
 			d_bssrdfRhoSamples_, d_bssrdfRadiusSamples_, d_bssrdfProfile_, d_bssrdfProfileCdf_);
 		wavefrontTracer_->setMeasuredTables(d_measuredTables_, numMeasuredTables_,
@@ -2612,6 +2655,10 @@ bool OptiXRenderer::render(
 	params.numRgbGridMediums = numRgbGridMediums_;
 	params.rgbGridData = reinterpret_cast<float*>(d_rgbGridData_);
 	params.rgbGridDataCount = rgbGridDataCount_;
+	params.gridMediums = reinterpret_cast<GpuGridMedium*>(d_gridMediums_);
+	params.numGridMediums = numGridMediums_;
+	params.gridData = reinterpret_cast<float*>(d_gridData_);
+	params.gridDataCount = gridDataCount_;
 	params.bssrdfTables = reinterpret_cast<GpuBssrdfTable*>(d_bssrdfTables_);
 	params.numBssrdfTables = numBssrdfTables_;
 	params.bssrdfRhoSamples = reinterpret_cast<float*>(d_bssrdfRhoSamples_);

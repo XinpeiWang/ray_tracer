@@ -24,6 +24,7 @@ extern "C" __global__ void evaluate_materials(
 	int,
 	const CloudMedium<float>*, unsigned int,
 	const GpuRgbGridMedium*, const float*,
+	const GpuGridMedium*, const float*,
 	const GpuMeasuredTable*, unsigned int,
 	const float*, const float*, const float*, const float*,
 	float3, float, GpuSkyDistribution);
@@ -106,6 +107,8 @@ extern "C" void wf_launch_evaluate_materials(
 	const CloudMedium<float>*    d_cloudMediums, unsigned int numCloudMediums,
 	const GpuRgbGridMedium*      d_rgbGridMediums,
 	const float*                 d_rgbGridData,
+	const GpuGridMedium*         d_gridMediums,
+	const float*                 d_gridData,
 	const GpuMeasuredTable*      d_measuredTables, unsigned int numMeasuredTables,
 	const float*                 d_measuredParamValues,
 	const float*                 d_measuredData,
@@ -129,6 +132,7 @@ extern "C" void wf_launch_evaluate_materials(
 		d_textures, d_texturePixels, maxDepth,
 		d_cloudMediums, numCloudMediums,
 		d_rgbGridMediums, d_rgbGridData,
+		d_gridMediums, d_gridData,
 		d_measuredTables, numMeasuredTables,
 		d_measuredParamValues, d_measuredData, d_measuredMcdf, d_measuredCcdf,
 		skyColor, shadowRayEpsilon, skyDist);

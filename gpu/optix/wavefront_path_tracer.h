@@ -92,6 +92,18 @@ public:
         rgbGridDataCount_ = rgbGridDataCount;
     }
 
+    /// Heterogeneous single-channel grid media (MaterialType::GridMedium) -
+    /// same setter-not-render()-parameter pattern as setRgbGridMediums()
+    /// above, for the same reason. 0/0/0/0 (the default) is a valid "no
+    /// grid media in this scene" state.
+    void setGridMediums(CUdeviceptr d_gridMediums, unsigned int numGridMediums,
+                         CUdeviceptr d_gridData, unsigned int gridDataCount) {
+        d_gridMediums_ = d_gridMediums;
+        numGridMediums_ = numGridMediums;
+        d_gridData_ = d_gridData;
+        gridDataCount_ = gridDataCount;
+    }
+
     /// Tabulated BSSRDF profile tables (MaterialType::Subsurface) - same
     /// setter-not-render()-parameter pattern as setCloudMediums()/
     /// setRgbGridMediums() above, for the same reason. These are the SAME
@@ -324,6 +336,10 @@ private:
     unsigned int numRgbGridMediums_ = 0;
     CUdeviceptr  d_rgbGridData_ = 0;
     unsigned int rgbGridDataCount_ = 0;
+    CUdeviceptr  d_gridMediums_ = 0;        ///< see setGridMediums()
+    unsigned int numGridMediums_ = 0;
+    CUdeviceptr  d_gridData_ = 0;
+    unsigned int gridDataCount_ = 0;
     bool         haveInstancedTriangles_ = false;  ///< see setInstancedGeometryFlags()
     bool         haveInstancedSpheres_ = false;
     unsigned int numSpheres_  = 0;

@@ -91,6 +91,8 @@ public:
 		const std::vector<CloudMedium<float>>& cloudMediums = {},
 		const std::vector<GpuRgbGridMedium>& rgbGridMediums = {},
 		const std::vector<float>& rgbGridData = {},
+		const std::vector<GpuGridMedium>& gridMediums = {},
+		const std::vector<float>& gridData = {},
 		const std::vector<GpuBssrdfTable>& bssrdfTables = {},
 		const std::vector<float>& bssrdfRhoSamples = {},
 		const std::vector<float>& bssrdfRadiusSamples = {},
@@ -456,6 +458,10 @@ private:
 	unsigned int numRgbGridMediums_ = 0;   ///< Number of RGB grid media
 	CUdeviceptr d_rgbGridData_ = 0;        ///< Device flat voxel data for all RGB grid media
 	unsigned int rgbGridDataCount_ = 0;    ///< Number of floats in d_rgbGridData_
+	CUdeviceptr d_gridMediums_ = 0;        ///< Device GpuGridMedium table (MaterialType::GridMedium)
+	unsigned int numGridMediums_ = 0;      ///< Number of single-channel grid media
+	CUdeviceptr d_gridData_ = 0;           ///< Device flat voxel data for all single-channel grid media
+	unsigned int gridDataCount_ = 0;       ///< Number of floats in d_gridData_
 
 	// Tabulated BSSRDF tables (MaterialType::Subsurface, recursive backend
 	// only, Phase 1 - see optix_types.h's GpuBssrdfTable comment).

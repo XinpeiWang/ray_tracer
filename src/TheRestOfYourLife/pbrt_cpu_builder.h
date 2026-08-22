@@ -18,6 +18,7 @@
 #include "bvh.h"
 #include "constant_medium.h"
 #include "disk_cylinder_hittable.h"
+#include "grid_medium_hittable.h"
 #include "hittable_list.h"
 #include "material.h"
 #include "rtw_stb_image.h"     // stbi_load() - see alphaMaskFor()'s own comment
@@ -520,6 +521,28 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			const point3 world_max(md.worldMax[0], md.worldMax[1], md.worldMax[2]);
 			world.add(std::make_shared<rgb_grid_medium_hittable>(
 				grid, md.g, world_min, world_max, md.toMediumMat, md.toMediumTranslate));
+			return;
+		}
+		if (md.type == "uniformgrid") {
+			// gridDensity is empty when flatten() couldn't find a valid "float
+			// density" array (missing, or wrong length - see pbrt_flatten.h's
+			// own uniformgrid-parsing block, which already warned) -
+			// GridMediumData<T>'s constructor has no empty-vector safety net
+			// the way RGBGridMediumData::build()'s make_grid() sentinel does,
+			// so skip adding a hittable entirely rather than risk constructing
+			// a mismatched-size SampledGrid; an invisible medium is the
+			// correct, safe degradation for "no density data given" anyway.
+			if (md.gridDensity.empty()) return;
+			// sigma_a is always forced to 0 below (pure scattering), same
+			// convention/reason as cloud and rgbgrid above.
+			const Bounds3<double> bounds(md.p0[0], md.p0[1], md.p0[2], md.p1[0], md.p1[1], md.p1[2]);
+			const GridMediumData<double> grid(
+				md.gridDensity, md.nx, md.ny, md.nz, bounds,
+				/*sa=*/0.0, luminance(md.sigma_s), md.g);
+			const point3 world_min(md.worldMin[0], md.worldMin[1], md.worldMin[2]);
+			const point3 world_max(md.worldMax[0], md.worldMax[1], md.worldMax[2]);
+			world.add(std::make_shared<grid_medium_hittable>(
+				grid, color(1,1,1), md.g, world_min, world_max, md.toMediumMat, md.toMediumTranslate));
 			return;
 		}
 

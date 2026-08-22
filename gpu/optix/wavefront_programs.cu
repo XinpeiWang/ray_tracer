@@ -225,6 +225,7 @@ extern "C" __global__ void __raygen__wf_intersect() {
 		h.specular_bounce = ray.specular_bounce;
 		h.any_nonspecular = ray.any_nonspecular;
 		h.etaScale        = ray.etaScale;
+		h.filterWeight    = ray.filterWeight;
 		// Route cheap materials (no texture/layered-BxDF work) into their
 		// own queue so evaluate_materials_simple() can process them without
 		// the big switch's register pressure - see WavefrontQueues::
@@ -239,9 +240,15 @@ extern "C" __global__ void __raygen__wf_intersect() {
 		}
 	} else {
 		MissWorkItem m;
+		// MissWorkItem is a one-shot terminal type (no further bounces), so
+		// the pure reconstruction weight (ray.filterWeight - see RayWorkItem::
+		// filterWeight's own comment) is folded in here at creation rather
+		// than carried as its own field, matching ShadowRayWorkItem's Ld's
+		// identical treatment (__raygen__wf_shadow's own NEE-push sites) and
+		// wf_finish_material_scatter()'s "flush" sites.
 		for (int i = 0; i < kWFNWavelengths; ++i) {
-			m.throughput[i]      = ray.throughput[i];
-			m.radiance[i]        = ray.radiance[i];
+			m.throughput[i]      = ray.throughput[i] * ray.filterWeight;
+			m.radiance[i]        = ray.radiance[i] * ray.filterWeight;
 			m.wavelengths[i]     = ray.wavelengths[i];
 			m.wavelength_pdfs[i] = ray.wavelength_pdfs[i];
 		}

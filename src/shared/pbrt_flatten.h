@@ -114,36 +114,33 @@ struct Medium {
 	double g = 0.0;    // Henyey-Greenstein asymmetry
 
 	// "homogeneous" (default, uses sigma_a/sigma_s/g above only), "cloud",
-	// or "rgbgrid" - a real, genuinely different medium type each, with a
-	// real implementation on both backends (src/shared/cloud_medium.h,
-	// src/shared/rgb_grid_medium.h). Anything else pbrt-v4 supports
-	// ("uniformgrid", "nanovdb") still falls back to homogeneous with a
-	// warning - "uniformgrid" has a real CPU_GPU-tagged data structure
-	// (src/shared/sampled_grid.h's GridMediumData) but no hittable wrapper
-	// or GPU MaterialType exists for it yet, unlike cloud/rgbgrid which
-	// both already had complete plumbing on both backends (just unreachable
-	// from a loaded pbrt scene) before this field existed.
+	// "rgbgrid", or "uniformgrid" - a real, genuinely different medium type
+	// each, with a real implementation on both backends (src/shared/
+	// cloud_medium.h, src/shared/rgb_grid_medium.h, src/shared/
+	// sampled_grid.h's GridMediumData). Anything else pbrt-v4 supports
+	// ("nanovdb") still falls back to homogeneous with a warning.
 	std::string type = "homogeneous";
 
 	// World-space AABB the medium actually occupies - the medium-space box
 	// [p0,p1] below, transformed by the CTM captured at MakeNamedMedium
 	// declaration time (see pbrt_scene::MediumDecl::xform's own comment).
-	// Used for GPU's trigger-sphere-only dispatch (cloud/rgbgrid only - see
-	// pbrt_gpu_builder.h's own comment) and CPU's hittable bounding_box().
+	// Used for GPU's trigger-sphere-only dispatch (cloud/rgbgrid/uniformgrid
+	// only - see pbrt_gpu_builder.h's own comment) and CPU's hittable
+	// bounding_box().
 	double worldMin[3] = {0.0, 0.0, 0.0};
 	double worldMax[3] = {1.0, 1.0, 1.0};
 
 	// World -> medium-space affine transform (row-major 3x3 + translate) -
-	// the inverse of the CTM captured at declaration time. cloud/rgbgrid
-	// only; matches CloudMedium<T>::mat/translate and
+	// the inverse of the CTM captured at declaration time. cloud/rgbgrid/
+	// uniformgrid only; matches CloudMedium<T>::mat/translate and
 	// rgb_grid_medium_hittable's own world_to_medium_mat/translate
 	// convention exactly (no rearrangement needed at the call site).
 	double toMediumMat[9] = {1,0,0, 0,1,0, 0,0,1};
 	double toMediumTranslate[3] = {0.0, 0.0, 0.0};
 
 	// pbrt-v4's own "point3 p0"/"p1" - the medium's bounds IN medium space
-	// (default unit cube, matching pbrt-v4's real default for both cloud
-	// and rgbgrid). cloud/rgbgrid only.
+	// (default unit cube, matching pbrt-v4's real default for cloud,
+	// rgbgrid, AND uniformgrid alike). cloud/rgbgrid/uniformgrid only.
 	double p0[3] = {0.0, 0.0, 0.0};
 	double p1[3] = {1.0, 1.0, 1.0};
 
@@ -157,14 +154,27 @@ struct Medium {
 	double wispiness = 1.0;
 	double frequency = 5.0;
 
+	// "rgbgrid"/"uniformgrid" only, shared between them - grid resolution.
+	int nx = 1, ny = 1, nz = 1;
+
 	// "rgbgrid" only - de-interleaved flat per-channel voxel arrays, each
 	// either empty (that channel group absent, matching pbrt-v4's own
 	// "channel omitted -> defaults to 1 for sigma_a/s, no emission"
 	// convention - see RGBGridMediumData<T>::build()'s own comment) or
 	// length nx*ny*nz.
-	int nx = 1, ny = 1, nz = 1;
 	std::vector<double> sigma_a_r, sigma_a_g, sigma_a_b;
 	std::vector<double> sigma_s_r, sigma_s_g, sigma_s_b;
+
+	// "uniformgrid" only - pbrt-v4's own "float density" (a REQUIRED flat
+	// scalar array, length nx*ny*nz, one per-voxel density multiplier -
+	// NOT the same field as this struct's own scalar `density` above, which
+	// is "cloud"-only and means something entirely different). sigma_a/
+	// sigma_s above (the same generic RGB-triple fields homogeneous/cloud/
+	// rgbgrid already share) supply the base coefficients GridMediumData<T>
+	// scales per-voxel by this - see media.cpp's GridMedium::Create: a
+	// single Spectrum sigma_a/sigma_s each, not per-voxel like rgbgrid's
+	// own "rgb sigma_a"/"rgb sigma_s".
+	std::vector<double> gridDensity;
 };
 
 // Shape "bilinearmesh" - a single bilinear patch (4 corner points, not
@@ -1343,11 +1353,12 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		Medium medium;
 		const bool isCloud = (md.type == "cloud");
 		const bool isRgbGrid = (md.type == "rgbgrid");
-		if (!isCloud && !isRgbGrid && md.type != "homogeneous") {
+		const bool isUniformGrid = (md.type == "uniformgrid");
+		if (!isCloud && !isRgbGrid && !isUniformGrid && md.type != "homogeneous") {
 			warn("medium type '" + md.type + "' is not supported; "
 				 "treated as homogeneous with its given sigma_a/sigma_s");
 		}
-		medium.type = (isCloud || isRgbGrid) ? md.type : "homogeneous";
+		medium.type = (isCloud || isRgbGrid || isUniformGrid) ? md.type : "homogeneous";
 
 		// sigma_a/sigma_s/scale/g: for homogeneous, these ARE the medium
 		// (a flat RGB colour each). For rgbgrid, these same param NAMES
@@ -1364,7 +1375,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		medium.sigma_s[0] = ss.x * scale; medium.sigma_s[1] = ss.y * scale; medium.sigma_s[2] = ss.z * scale;
 		medium.g = md.params.getFloat("g", 0.0);
 
-		if (isCloud || isRgbGrid) {
+		if (isCloud || isRgbGrid || isUniformGrid) {
 			// Medium-space bounds (pbrt-v4's own "p0"/"p1", default unit
 			// cube - matches CloudMedium::Create/RGBGridMedium::Create's
 			// real defaults).
@@ -1434,12 +1445,15 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			}
 		}
 
-		if (isRgbGrid) {
+		if (isRgbGrid || isUniformGrid) {
 			medium.nx = md.params.getInt("nx", 1);
 			medium.ny = md.params.getInt("ny", 1);
 			medium.nz = md.params.getInt("nz", 1);
-			const std::size_t voxels = static_cast<std::size_t>(medium.nx)
-				* static_cast<std::size_t>(medium.ny) * static_cast<std::size_t>(medium.nz);
+		}
+		const std::size_t voxels = static_cast<std::size_t>(medium.nx)
+			* static_cast<std::size_t>(medium.ny) * static_cast<std::size_t>(medium.nz);
+
+		if (isRgbGrid) {
 			// "rgb sigma_a"/"rgb sigma_s": a flat array of one RGB triple
 			// PER VOXEL (length 3*nx*ny*nz), NOT the single flat colour the
 			// generic Vec3 read above assumed - de-interleave into
@@ -1466,6 +1480,37 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			};
 			deinterleave("sigma_a", medium.sigma_a_r, medium.sigma_a_g, medium.sigma_a_b);
 			deinterleave("sigma_s", medium.sigma_s_r, medium.sigma_s_g, medium.sigma_s_b);
+		}
+
+		if (isUniformGrid) {
+			// "float density": pbrt-v4's own REQUIRED flat scalar array,
+			// exactly one value per voxel (length nx*ny*nz) - not a colour,
+			// not the "cloud"-only scalar `density` field above. sigma_a/
+			// sigma_s (the generic Vec3 read at the top of this loop) supply
+			// the base coefficients each voxel's density multiplies (see
+			// GridMediumData<T>::sample_sigma()). A missing or wrong-length
+			// array is dropped with a warning (leaves gridDensity empty),
+			// matching rgbgrid's own "wrong length -> warn and ignore rather
+			// than read out of bounds" convention.
+			const pbrt_scene::Param *p = md.params.find("density");
+			if (!p || p->numbers.empty()) {
+				warn("uniformgrid medium '" + md.name + "' has no \"float density\" "
+					 "array (pbrt-v4 requires one); treated as empty (invisible)");
+			} else if (p->numbers.size() != voxels) {
+				warn("medium '" + md.name + "'s \"density\" array has "
+					 + std::to_string(p->numbers.size()) + " numbers, expected "
+					 + std::to_string(voxels) + " (nx*ny*nz); ignored");
+			} else {
+				medium.gridDensity = p->numbers;
+			}
+			// grid_medium_hittable.h forces sigma_a to 0 (pure scattering) -
+			// same convention/reason as cloud above (see that block's own
+			// comment) - so a scene that gave a real absorption coefficient
+			// silently loses it.
+			if (medium.sigma_a[0] > 1e-9 || medium.sigma_a[1] > 1e-9 || medium.sigma_a[2] > 1e-9) {
+				warn("uniformgrid medium '" + md.name + "' has a nonzero sigma_a; "
+					 "uniformgrid media only model scattering (sigma_a is forced to 0)");
+			}
 		}
 
 		out.media.push_back(medium);

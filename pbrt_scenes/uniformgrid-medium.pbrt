@@ -1,0 +1,118 @@
+# uniformgrid-medium.pbrt -- exercises MakeNamedMedium "uniformgrid" (a
+# single-channel 8x8x8 flat "float density" voxel grid,
+# src/shared/sampled_grid.h's GridMediumData) plus MediumInterface, both
+# loader-side (pbrt_scene.h/pbrt_flatten.h) and both render backends (CPU's
+# grid_medium_hittable, GPU's MaterialType::GridMedium).
+#
+# Like cloud-medium.pbrt/rgbgrid-medium.pbrt, the medium is declared inside
+# its own Translate+Scale block so the CTM captured at MakeNamedMedium time
+# (not an axis-aligned box picked by hand) is what places it. The trigger
+# sphere needs an explicit near-invisible material (eta~1) - see cloud-
+# medium.pbrt's own comment on why, and rgbgrid-medium.pbrt's identical one.
+# The voxel data is a single soft Gaussian-ish blob centered in the grid, so
+# the render should show a genuine soft-edged puff, not a hard-edged box.
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  278 260 -500    278 280 250    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 500 ] "integer yresolution" [ 500 ]
+Sampler "halton" "integer pixelsamples" [ 128 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.6 0.7 0.9 ]
+
+Material "diffuse" "rgb reflectance" [ 0.5 0.5 0.5 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -400 0 -400   900 0 -400   900 0 900   -400 0 900 ]
+
+Material "conductor" "float roughness" [ 0.05 ]
+AttributeBegin
+  Translate 60 60 -50
+  Shape "sphere" "float radius" [ 60 ]
+AttributeEnd
+
+# Medium-space bounds default to the unit cube [0,1]^3; the Translate+Scale
+# below places/sizes that cube in world space - the CTM at this exact point
+# is what gets captured. nx=ny=nz=8, so "float density" holds 8*8*8=512
+# numbers, one per voxel, in x-fastest, then y, then z order (matches
+# GridMediumData<T>'s own SampledGrid indexing).
+AttributeBegin
+  Translate 198 200 170
+  Scale 160 160 160
+  MakeNamedMedium "puff" "string type" [ "uniformgrid" ]
+    "integer nx" [ 8 ] "integer ny" [ 8 ] "integer nz" [ 8 ]
+    "rgb sigma_a" [ 0 0 0 ] "rgb sigma_s" [ 0.6 0.6 0.6 ] "float g" [ 0.2 ]
+    "float density" [
+    0.0061 0.0128 0.0212 0.0272 0.0272 0.0212 0.0128 0.0061 0.0128
+    0.0272 0.0448 0.0576 0.0576 0.0448 0.0272 0.0128 0.0212 0.0448
+    0.0739 0.0949 0.0949 0.0739 0.0448 0.0212 0.0272 0.0576 0.0949
+    0.1219 0.1219 0.0949 0.0576 0.0272 0.0272 0.0576 0.0949 0.1219
+    0.1219 0.0949 0.0576 0.0272 0.0212 0.0448 0.0739 0.0949 0.0949
+    0.0739 0.0448 0.0212 0.0128 0.0272 0.0448 0.0576 0.0576 0.0448
+    0.0272 0.0128 0.0061 0.0128 0.0212 0.0272 0.0272 0.0212 0.0128
+    0.0061 0.0128 0.0272 0.0448 0.0576 0.0576 0.0448 0.0272 0.0128
+    0.0272 0.0576 0.0949 0.1219 0.1219 0.0949 0.0576 0.0272 0.0448
+    0.0949 0.1565 0.2010 0.2010 0.1565 0.0949 0.0448 0.0576 0.1219
+    0.2010 0.2581 0.2581 0.2010 0.1219 0.0576 0.0576 0.1219 0.2010
+    0.2581 0.2581 0.2010 0.1219 0.0576 0.0448 0.0949 0.1565 0.2010
+    0.2010 0.1565 0.0949 0.0448 0.0272 0.0576 0.0949 0.1219 0.1219
+    0.0949 0.0576 0.0272 0.0128 0.0272 0.0448 0.0576 0.0576 0.0448
+    0.0272 0.0128 0.0212 0.0448 0.0739 0.0949 0.0949 0.0739 0.0448
+    0.0212 0.0448 0.0949 0.1565 0.2010 0.2010 0.1565 0.0949 0.0448
+    0.0739 0.1565 0.2581 0.3314 0.3314 0.2581 0.1565 0.0739 0.0949
+    0.2010 0.3314 0.4255 0.4255 0.3314 0.2010 0.0949 0.0949 0.2010
+    0.3314 0.4255 0.4255 0.3314 0.2010 0.0949 0.0739 0.1565 0.2581
+    0.3314 0.3314 0.2581 0.1565 0.0739 0.0448 0.0949 0.1565 0.2010
+    0.2010 0.1565 0.0949 0.0448 0.0212 0.0448 0.0739 0.0949 0.0949
+    0.0739 0.0448 0.0212 0.0272 0.0576 0.0949 0.1219 0.1219 0.0949
+    0.0576 0.0272 0.0576 0.1219 0.2010 0.2581 0.2581 0.2010 0.1219
+    0.0576 0.0949 0.2010 0.3314 0.4255 0.4255 0.3314 0.2010 0.0949
+    0.1219 0.2581 0.4255 0.5463 0.5463 0.4255 0.2581 0.1219 0.1219
+    0.2581 0.4255 0.5463 0.5463 0.4255 0.2581 0.1219 0.0949 0.2010
+    0.3314 0.4255 0.4255 0.3314 0.2010 0.0949 0.0576 0.1219 0.2010
+    0.2581 0.2581 0.2010 0.1219 0.0576 0.0272 0.0576 0.0949 0.1219
+    0.1219 0.0949 0.0576 0.0272 0.0272 0.0576 0.0949 0.1219 0.1219
+    0.0949 0.0576 0.0272 0.0576 0.1219 0.2010 0.2581 0.2581 0.2010
+    0.1219 0.0576 0.0949 0.2010 0.3314 0.4255 0.4255 0.3314 0.2010
+    0.0949 0.1219 0.2581 0.4255 0.5463 0.5463 0.4255 0.2581 0.1219
+    0.1219 0.2581 0.4255 0.5463 0.5463 0.4255 0.2581 0.1219 0.0949
+    0.2010 0.3314 0.4255 0.4255 0.3314 0.2010 0.0949 0.0576 0.1219
+    0.2010 0.2581 0.2581 0.2010 0.1219 0.0576 0.0272 0.0576 0.0949
+    0.1219 0.1219 0.0949 0.0576 0.0272 0.0212 0.0448 0.0739 0.0949
+    0.0949 0.0739 0.0448 0.0212 0.0448 0.0949 0.1565 0.2010 0.2010
+    0.1565 0.0949 0.0448 0.0739 0.1565 0.2581 0.3314 0.3314 0.2581
+    0.1565 0.0739 0.0949 0.2010 0.3314 0.4255 0.4255 0.3314 0.2010
+    0.0949 0.0949 0.2010 0.3314 0.4255 0.4255 0.3314 0.2010 0.0949
+    0.0739 0.1565 0.2581 0.3314 0.3314 0.2581 0.1565 0.0739 0.0448
+    0.0949 0.1565 0.2010 0.2010 0.1565 0.0949 0.0448 0.0212 0.0448
+    0.0739 0.0949 0.0949 0.0739 0.0448 0.0212 0.0128 0.0272 0.0448
+    0.0576 0.0576 0.0448 0.0272 0.0128 0.0272 0.0576 0.0949 0.1219
+    0.1219 0.0949 0.0576 0.0272 0.0448 0.0949 0.1565 0.2010 0.2010
+    0.1565 0.0949 0.0448 0.0576 0.1219 0.2010 0.2581 0.2581 0.2010
+    0.1219 0.0576 0.0576 0.1219 0.2010 0.2581 0.2581 0.2010 0.1219
+    0.0576 0.0448 0.0949 0.1565 0.2010 0.2010 0.1565 0.0949 0.0448
+    0.0272 0.0576 0.0949 0.1219 0.1219 0.0949 0.0576 0.0272 0.0128
+    0.0272 0.0448 0.0576 0.0576 0.0448 0.0272 0.0128 0.0061 0.0128
+    0.0212 0.0272 0.0272 0.0212 0.0128 0.0061 0.0128 0.0272 0.0448
+    0.0576 0.0576 0.0448 0.0272 0.0128 0.0212 0.0448 0.0739 0.0949
+    0.0949 0.0739 0.0448 0.0212 0.0272 0.0576 0.0949 0.1219 0.1219
+    0.0949 0.0576 0.0272 0.0272 0.0576 0.0949 0.1219 0.1219 0.0949
+    0.0576 0.0272 0.0212 0.0448 0.0739 0.0949 0.0949 0.0739 0.0448
+    0.0212 0.0128 0.0272 0.0448 0.0576 0.0576 0.0448 0.0272 0.0128
+    0.0061 0.0128 0.0212 0.0272 0.0272 0.0212 0.0128 0.0061
+    ]
+AttributeEnd
+
+# Trigger sphere: centered on the world-space box above (min (198,200,170),
+# max (358,360,330), center (278,280,250)), radius past its half-diagonal
+# (80*sqrt(3) =~ 138.6) so the whole box is enclosed.
+AttributeBegin
+  Translate 278 280 250
+  Material "dielectric" "float eta" [ 1.001 ]
+  MediumInterface "puff" ""
+  Shape "sphere" "float radius" [ 145 ]
+AttributeEnd

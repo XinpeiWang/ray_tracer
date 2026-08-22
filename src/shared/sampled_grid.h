@@ -239,6 +239,32 @@ struct GridMediumData {
 		ss_out = sigma_s * d;
 	}
 
+	// sample_ray / intersect_ray -- same shape as RGBGridMediumData<T>'s own
+	// (rgb_grid_medium.h), added so a CPU hittable wrapper (grid_medium_
+	// hittable.h) can call this type exactly like that one calls
+	// RGBGridMediumData. The one real difference: majorant_grid here stores
+	// RAW density (build_majorant_grid() above never scales it, unlike
+	// RGBGridMediumData::build_majorant_grid()'s `sigma_scale *
+	// sigma_t_max_channel(...)`), so sigma_t_ isn't a no-op T(1) multiplier
+	// the way rgb_grid_medium.h's sample_ray() passes - it has to be
+	// sigma_a+sigma_s here to turn a raw density majorant into a real
+	// sigma_t majorant. Caller must pre-clip the ray to the medium's AABB
+	// (tMin, tMax) and pass origin/direction already in normalized [0,1]^3
+	// medium space (matching RGBGridMediumData's own documented contract).
+	CPU_GPU DDAMajorantIterator<T> sample_ray(
+			const Ray3<T>& ray, T tMin, T tMax) const {
+		return DDAMajorantIterator<T>(ray, tMin, tMax, &majorant_grid, sigma_a + sigma_s);
+	}
+
+	// Ray/AABB intersection using the majorant grid's own stored bounds
+	// (GridMediumData has no separate top-level bounds member - unlike
+	// RGBGridMediumData's `bounds`, this type only ever stored them inside
+	// majorant_grid, since sample_ray/intersect_ray didn't exist before).
+	CPU_GPU bool intersect_ray(const Ray3<T>& ray, T ray_tMax,
+							   T& tMin_out, T& tMax_out) const {
+		return majorant_grid.bounds.intersect_ray(ray.o, ray.d, ray_tMax, &tMin_out, &tMax_out);
+	}
+
 private:
 	// Fill each majorant grid voxel with the maximum density in the
 	// corresponding normalized sub-bounds.

@@ -103,13 +103,26 @@ extern "C" __global__ void __raygen__rg() {
 		float ray_time = params.motionBlurEnabled ? random_float(seed) : 0.0f;
 
 		// Path tracing loop
-		// filter_w folded in here (same slot cam_weight already uses) so it
-		// propagates through every downstream radiance contribution for
-		// free, without threading a separate weight through the whole
-		// bounce loop - every NEE/hit-light/emission term this sample ever
-		// contributes is already `throughput * ...`.
-		const float cw = cam_weight * filter_w;
-		float3 throughput = make_float3(cw, cw, cw);
+		// filter_w is deliberately NOT folded in here (unlike cam_weight,
+		// which IS real physical lens throughput) - it's a pure
+		// reconstruction/blending weight, unrelated to how much light this
+		// path carries, and must never influence a stochastic transport
+		// decision. It's applied once, separately, when this sample's
+		// radiance is added to pixel_color below - exactly mirroring CPU
+		// camera.h's own `sample = sample * camera_weight; ... weighted_color
+		// += w * sample;` split (camera_weight early, filter weight late).
+		// Folding filter_w in here was a real, confirmed bug: Gaussian's own
+		// evaluate() is tiny in absolute magnitude (peaks around 0.06 per
+		// axis, ~0.004 for the 2D product, well under 1 even at dead
+		// center - see gpu_filter_evaluate()'s own comment) - contaminating
+		// throughput with it made Russian Roulette see a near-zero beta from
+		// depth 0 onward and kill the overwhelming majority of paths almost
+		// immediately. Still mathematically unbiased (RR's 1/(1-q) reweight
+		// compensates in expectation), but the variance explosion made any
+		// render with real bounce depth (e.g. a heterogeneous medium needing
+		// several bounces to random-walk out) converge to near-black at
+		// ordinary sample counts.
+		float3 throughput = make_float3(cam_weight, cam_weight, cam_weight);
 		float3 radiance = make_float3(0.0f, 0.0f, 0.0f);
 		float  prev_brdf_pdf = 0.0f;  // BRDF PDF of the ray that arrived at this bounce (0 = primary)
 		// pbrt-v4 etaScale: product of eta^2 over every transmission event
@@ -310,7 +323,9 @@ extern "C" __global__ void __raygen__rg() {
 			}
 		}  // end depth loop
 
-		pixel_color = pixel_color + radiance;
+		// filter_w applied here, not folded into throughput - see this
+		// sample's own throughput-declaration comment for why.
+		pixel_color = pixel_color + filter_w * radiance;
 	}  // end sample loop
 
 	// Reconstruction filter: weighted_sum / weight_sum (pbrt-v4 film
