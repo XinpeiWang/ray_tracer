@@ -123,9 +123,10 @@ extern "C" __global__ void __closesthit__disk() {
 		__trap();
 	}
 
+	float out_eta;
 	shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
 		attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
-		bssrdf_exit, bssrdf_exit_pos);
+		bssrdf_exit, bssrdf_exit_pos, out_eta);
 
 	optixSetPayload_3(__float_as_uint(emission.x));
 	optixSetPayload_4(__float_as_uint(emission.y));
@@ -136,6 +137,7 @@ extern "C" __global__ void __closesthit__disk() {
 		float3 albedoAov = scattered ? attenuation : mat.albedo;
 		pack_aov_payload(albedoAov, normal);
 	}
+	optixSetPayload_22(__float_as_uint(out_eta));  // pbrt-v4 etaScale - see PathTracingPayload::eta
 
 	if (scattered) {
 		float t_hit = optixGetRayTmax();
@@ -273,9 +275,10 @@ extern "C" __global__ void __closesthit__cylinder() {
 		__trap();
 	}
 
+	float out_eta;
 	shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
 		attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
-		bssrdf_exit, bssrdf_exit_pos);
+		bssrdf_exit, bssrdf_exit_pos, out_eta);
 
 	optixSetPayload_3(__float_as_uint(emission.x));
 	optixSetPayload_4(__float_as_uint(emission.y));
@@ -286,6 +289,7 @@ extern "C" __global__ void __closesthit__cylinder() {
 		float3 albedoAov = scattered ? attenuation : mat.albedo;
 		pack_aov_payload(albedoAov, normal);
 	}
+	optixSetPayload_22(__float_as_uint(out_eta));  // pbrt-v4 etaScale - see PathTracingPayload::eta
 
 	if (scattered) {
 		float t_hit = optixGetRayTmax();

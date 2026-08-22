@@ -86,6 +86,9 @@ extern "C" __global__ void __raygen__rg() {
 		float3 throughput = make_float3(cam_weight, cam_weight, cam_weight);
 		float3 radiance = make_float3(0.0f, 0.0f, 0.0f);
 		float  prev_brdf_pdf = 0.0f;  // BRDF PDF of the ray that arrived at this bounce (0 = primary)
+		// pbrt-v4 etaScale: product of eta^2 over every transmission event
+		// so far - see PathTracingPayload::eta's own comment.
+		float  eta_scale = 1.0f;
 
 		for (unsigned int depth = 0; depth < params.maxDepth; ++depth) {
 			// Initialize payload
@@ -132,6 +135,12 @@ extern "C" __global__ void __raygen__rg() {
 			// default, not something any program is expected to leave
 			// untouched.
 			unsigned int p16 = 0, p17 = 0, p18 = 0, p19 = 0, p20 = 0, p21 = 0;
+			// p22: eta - see PathTracingPayload::eta's own comment. Initialized
+			// to 1.0f (a no-op multiplier) here, the same "input survives if no
+			// program writes it" convention p12 already relies on for
+			// __miss__ms - only the closest-hit branches that produce a real
+			// transmission event ever call optixSetPayload_22.
+			unsigned int p22 = __float_as_uint(1.0f);
 
 			optixTrace(
 				params.traversable,     // Acceleration structure
@@ -146,7 +155,7 @@ extern "C" __global__ void __raygen__rg() {
 				RAY_TYPE_COUNT,         // SBT stride
 				RAY_TYPE_RADIANCE,      // missSBTIndex
 				p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15,
-				p16, p17, p18, p19, p20, p21
+				p16, p17, p18, p19, p20, p21, p22
 			);
 
 			// Unpack payload (16 registers)
@@ -174,6 +183,7 @@ extern "C" __global__ void __raygen__rg() {
 			payload.normal.x = __uint_as_float(p19);
 			payload.normal.y = __uint_as_float(p20);
 			payload.normal.z = __uint_as_float(p21);
+			payload.eta = __uint_as_float(p22);
 
 			// Denoiser guide-layer AOVs only matter on the primary ray -
 			// capture this sample's depth==0 hit regardless of which branch
@@ -233,18 +243,27 @@ extern "C" __global__ void __raygen__rg() {
 				// Multiply throughput by surface BRDF (attenuation from hit program)
 				throughput = throughput * payload.attenuation;
 
+				// pbrt-v4 etaScale: accumulated every bounce (payload.eta is
+				// 1.0f, a no-op, unless this hit was a real transmission
+				// event - see PathTracingPayload::eta's own comment), not
+				// just when RR actually runs below - matches CPU's camera.h
+				// (`if (srec.is_transmission) eta_scale *= srec.eta * srec.eta;`
+				// runs unconditionally on every bounce, independent of depth).
+				eta_scale *= payload.eta * payload.eta;
+
 				// Russian Roulette (pbrt-v4 PathIntegrator pattern)
-				// Start after depth > 1 so the primary ray and first bounce always survive.
-				// q = max(0, 1 - MaxComponent(throughput)); terminate if rand < q, else reweight.
-				// Missing pbrt-v4's etaScale correction (CPU's camera.h has
-				// it; see that file's own comment) - a per-refraction term
-				// that keeps RR from killing transmission-heavy paths too
-				// aggressively. Real, disclosed gap (both GPU backends lack
-				// it, wavefront_kernels.cu's own RR block has a matching
-				// note) - would need new payload registers threaded through
-				// every closest-hit program to track, not fixed here.
+				// Start after depth > 1 so the primary ray and first bounce
+				// always survive. rrBeta = throughput * etaScale (pbrt-v4:
+				// keeps RR from killing transmission-heavy/glass paths too
+				// aggressively - a path deep inside a chain of refractions
+				// has real throughput that raw beta alone underestimates).
+				// q = max(0, 1 - MaxComponent(rrBeta)); terminate if rand < q,
+				// else reweight (the raw throughput, matching CPU/pbrt-v4:
+				// only the SURVIVAL test uses rrBeta, the actual reweight
+				// stays in throughput's own units).
 				if (depth > 1) {
-					float rr_max = fmaxf(throughput.x, fmaxf(throughput.y, throughput.z));
+					float3 rr_beta = throughput * eta_scale;
+					float rr_max = fmaxf(rr_beta.x, fmaxf(rr_beta.y, rr_beta.z));
 					if (rr_max < 1.0f) {
 						float q = fmaxf(0.0f, 1.0f - rr_max);
 						if (random_float(seed) < q) break;   // terminate path

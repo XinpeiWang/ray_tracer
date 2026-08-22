@@ -52,6 +52,16 @@ struct RayWorkItem {
 	// via this field instead of a stack-resident C++ local, since each
 	// bounce here is a separate kernel launch.
 	int          any_nonspecular;
+	// pbrt-v4 etaScale: product of eta^2 over every transmission event so
+	// far along this path (PathIntegrator: `if (bs->IsTransmission())
+	// etaScale *= Sqr(bs->eta);`), read into the Russian Roulette throughput
+	// test in wf_finish_material_scatter - matches CPU's camera.h eta_scale
+	// and the recursive backend's PathTracingPayload::eta/optix_raygen.h
+	// eta_scale exactly. 1.0f for the primary ray (see wf_generate_primary_
+	// ray) - same "carried across bounce iterations via this field instead
+	// of a stack-resident C++ local" reasoning as any_nonspecular above,
+	// since each bounce is a separate kernel launch here.
+	float        etaScale;
 	// BRDF PDF of this ray's own scatter direction, for MIS if it escapes the
 	// scene on the next bounce (accumulate_miss's own comment) - mirrors the
 	// recursive backend's prev_brdf_pdf (optix_raygen.h/optix_miss.h). 0 for
@@ -136,6 +146,11 @@ struct HitWorkItem {
 	// Carried from RayWorkItem::any_nonspecular (see its own comment) - the
 	// do_regularize flag for this hit's material evaluation.
 	int    any_nonspecular;
+	// Carried from RayWorkItem::etaScale (see its own comment) - the
+	// accumulated-so-far value evaluate_materials()/evaluate_materials_
+	// dielectric() fold this hit's own transmission eta (if any) into
+	// before passing to wf_finish_material_scatter.
+	float  etaScale;
 };
 
 // A shadow ray: if it reaches tMax unoccluded, Ld is added to the framebuffer.
@@ -212,6 +227,14 @@ struct BssrdfProbeWorkItem {
 	// regardless of what came before, and NormalizedFresnel is never one of
 	// the 5 regularized GGX types either - so a carried-through flag here
 	// would read correctly but influence nothing observable.
+	//
+	// UNLIKE any_nonspecular, DOES carry etaScale: the entry interface this
+	// probe request follows was a genuine transmission event (see
+	// evaluate_materials()'s Subsurface case), so its eta^2 contribution
+	// must survive through the probe walk to the eventual exit bounce's RR
+	// test - matches CPU camera.h's `entry_eta`, captured before the
+	// exit-surface scatter overwrites srec.
+	float  etaScale;
 };
 
 // Result of one BSSRDF probe walk (__raygen__wf_probe, wavefront_probe.h) -
@@ -242,6 +265,12 @@ struct BssrdfExitWorkItem {
 	int    depth;
 	// See BssrdfProbeWorkItem's own comment - any_nonspecular deliberately
 	// omitted here too, for the same reason.
+	//
+	// etaScale IS carried, same as BssrdfProbeWorkItem - see that struct's
+	// own comment. resolve_bssrdf_exit() passes it through to wf_finish_
+	// material_scatter() unchanged (the exit-surface NormalizedFresnel
+	// shading doesn't add its own etaScale factor).
+	float  etaScale;
 };
 
 // ============================================================================

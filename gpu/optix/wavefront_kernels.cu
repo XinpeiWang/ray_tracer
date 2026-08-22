@@ -1031,6 +1031,7 @@ extern "C" __global__ void generate_camera_rays(
 	item.depth      = 0;
 	item.specular_bounce = 1;  // primary ray: always allow emissive hit
 	item.any_nonspecular = 0; // primary ray: no prior bounce to regularize against
+	item.etaScale   = 1.0f;    // primary ray: no transmission yet - see RayWorkItem::etaScale
 	item.brdf_pdf   = 0.0f;    // primary ray: no MIS on an escaped camera ray
 	item.tMin       = 0.001f;
 	item.tMax       = 1e30f;
@@ -1115,6 +1116,14 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// evaluate_materials_simple's Lambertian/Metal, resolve_bssrdf_exit's
 	// NormalizedFresnel) just pass 0.0f.
 	float glossyAlpha,
+	// pbrt-v4 etaScale for the Russian Roulette test below - already fully
+	// updated for THIS event (incoming RayWorkItem/HitWorkItem::etaScale
+	// times this bounce's own eta^2, or unchanged if this event wasn't a
+	// transmission) by whichever caller computed it - see RayWorkItem::
+	// etaScale's own comment (wavefront_types.h) and each call site's own
+	// eventEta local. Written unchanged into the pushed next RayWorkItem's
+	// own etaScale at this function's tail.
+	float etaScale,
 	const float3& normal, const float3& hit_point,
 	unsigned int& seed,
 	const SampledSpectrum<kWFNWavelengths>& throughput,
@@ -1700,21 +1709,18 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 
 	// Russian roulette (pbrt-v4 PathIntegrator formula - matches CPU's
 	// camera.h and the recursive backend's optix_raygen.h exactly):
-	// q = max(0, 1 - MaxComponent(beta)); terminate if rand < q, else
-	// reweight by 1/(1-q). This file used to compute p = MaxComponent(beta)
-	// directly and terminate on rand >= p - an older (pbrt-v3-style) scheme
-	// that isn't wrong on its own, but disagreed with the OTHER two
-	// backends in this codebase, and started at depth>=3 rather than the
-	// depth>1 both of those use (so the wavefront backend also spent one
-	// extra bounce before RR could kick in). Doesn't yet track pbrt-v4's
-	// etaScale (a per-refraction correction that avoids killing
-	// transmission-heavy paths too aggressively) - the recursive backend
-	// doesn't either; only CPU does. Real, disclosed gap on both GPU
-	// backends, not fixed here - would need a new RayWorkItem field and a
-	// bigger plumbing change through both this kernel and
-	// evaluate_materials_dielectric().
+	// rrBeta = beta * etaScale; q = max(0, 1 - MaxComponent(rrBeta));
+	// terminate if rand < q, else reweight beta itself by 1/(1-q). This
+	// file used to compute p = MaxComponent(beta) directly and terminate on
+	// rand >= p - an older (pbrt-v3-style) scheme that isn't wrong on its
+	// own, but disagreed with the OTHER two backends in this codebase, and
+	// started at depth>=3 rather than the depth>1 both of those use (so the
+	// wavefront backend also spent one extra bounce before RR could kick
+	// in). etaScale (pbrt-v4's per-refraction correction that avoids
+	// killing transmission-heavy paths too aggressively) now matches both
+	// other backends too - see this parameter's own comment.
 	if (depth > 1) {
-		float rr_max = new_throughput.MaxComponentValue();
+		float rr_max = (new_throughput * etaScale).MaxComponentValue();
 		if (rr_max < 1.0f) {
 			float q = fmaxf(0.0f, 1.0f - rr_max);
 			if (wf_rand(seed) < q) {
@@ -1735,6 +1741,9 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// See RayWorkItem::any_nonspecular's own comment - never cleared, only
 	// ever set once this bounce (or an earlier one) was non-specular.
 	next.any_nonspecular = (do_regularize || !is_specular) ? 1 : 0;
+	// Already fully updated for this event - see this function's own
+	// etaScale parameter comment.
+	next.etaScale = etaScale;
 	// BRDF PDF of this new direction, for MIS if this ray escapes the scene
 	// on its next bounce (see RayWorkItem::brdf_pdf's own comment) - mirrors
 	// optix_intersection_sphere.h's brdf_pdf_out exactly (0 for specular,
@@ -1942,6 +1951,14 @@ extern "C" __global__ void evaluate_materials(
 	// eta (front_face ? 1/ior : ior), which is NOT the same value for a
 	// back-face hit - see that case's own comment.
 	float matEta = mat.ior;
+	// pbrt-v4 etaScale term for THIS event only - see RayWorkItem::
+	// etaScale's own comment. 1.0f (a no-op) unless a case below sets it on
+	// a genuine transmission; combined with h.etaScale at this function's
+	// tail call to wf_finish_material_scatter. The Subsurface case's own
+	// TRANSMISSION sub-case doesn't use this at all (it returns early via
+	// bssrdfProbeQueue.push instead of reaching that tail) - it sets
+	// probeItem.etaScale directly.
+	float eventEta = 1.0f;
 	float  phaseG  = 0.0f;
 	// Set inside whichever glossy case (Conductor/RoughMetal/RoughDielectric/
 	// CoatedDiffuse/CoatedConductor) this hit takes, via wf_glossy_alpha() -
@@ -2062,6 +2079,14 @@ extern "C" __global__ void evaluate_materials(
 			probeItem.axis0  = normal;
 			probeItem.matIdx = h.materialIdx;
 			probeItem.seed   = seed;
+			// pbrt-v4 etaScale, entry interface only - front_face is
+			// hardcoded true here (see this case's own comment), so
+			// eta = 1/mat.ior. See BssrdfProbeWorkItem::etaScale's own
+			// comment for why this needs to survive the probe walk.
+			{
+				const float entryEta = 1.0f / mat.ior;
+				probeItem.etaScale = h.etaScale * entryEta * entryEta;
+			}
 			for (int i = 0; i < kWFNWavelengths; ++i) {
 				probeItem.throughput[i]      = throughput[i];
 				probeItem.radiance[i]        = radiance[i];
@@ -2670,6 +2695,9 @@ extern "C" __global__ void evaluate_materials(
 			attenuation   = SS(1.f);
 			scattered_dir = wf_dielectric_scatter(h.rayDir, normal, true, mat.ior, seed);
 			is_specular   = true;  // genuinely specular (Dirac-delta) dielectric bounce
+			// pbrt-v4 etaScale (entry surface) - see MaterialType::
+			// Dielectric's identical eta computation above.
+			if (dot(scattered_dir, normal) < 0.0f) eventEta = 1.0f / mat.ior;
 		} else {
 			float t_near = h.t;
 			float t_far  = h.mediumTFar;
@@ -2700,6 +2728,10 @@ extern "C" __global__ void evaluate_materials(
 				attenuation   = SS(1.f);
 				scattered_dir = wf_dielectric_scatter(h.rayDir, normal, false, mat.ior, seed);
 				is_specular   = true;  // genuinely specular exit refraction/reflection
+				// pbrt-v4 etaScale (exit surface, front_face is false here) -
+				// see MaterialType::Dielectric's identical eta computation
+				// above.
+				if (dot(scattered_dir, normal) < 0.0f) eventEta = mat.ior;
 			}
 		}
 		scattered   = true;
@@ -2804,7 +2836,9 @@ extern "C" __global__ void evaluate_materials(
 		return;
 	}
 
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, normal, hit_point, seed,
+	// eventEta was set above only on a genuine transmission (DielectricMedium's
+	// entry/exit surfaces) - see this function's own eventEta local comment.
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, h.etaScale * eventEta * eventEta, normal, hit_point, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -2968,7 +3002,9 @@ extern "C" __global__ void evaluate_materials_simple(
 		return;
 	}
 
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, normal, hit_point, seed,
+	// Lambertian/Metal never transmit - h.etaScale passes through unchanged
+	// (see RayWorkItem::etaScale's own comment).
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, h.etaScale, normal, hit_point, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -3078,6 +3114,10 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	// Left at 0 (harmless - see that parameter's own comment) for every
 	// non-glossy case.
 	float glossyAlphaForNEE = 0.0f;
+	// pbrt-v4 etaScale term for THIS event only - see RayWorkItem::
+	// etaScale's own comment. 1.0f (a no-op) unless a case below sets it on
+	// a genuine transmission; combined with h.etaScale at the call site.
+	float eventEta = 1.0f;
 
 	auto albedoSpectrum = [&](float3 rgb) -> SS {
 		float c0, c1, c2;
@@ -3113,6 +3153,8 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		attenuation = is_transmission ? albedoSpectrum(mat.transmission_filter) : SS(1.f);
 		scattered   = true;
 		is_specular = true;
+		// pbrt-v4 etaScale - see this function's own eventEta local comment.
+		if (is_transmission) eventEta = eta;
 		break;
 	}
 	case MaterialType::RoughDielectric: {
@@ -3147,6 +3189,8 @@ extern "C" __global__ void evaluate_materials_dielectric(
 			float3 refracted = wf_refract(normalize(h.rayDir), wm_world, eta);
 			wo_x = dot(refracted, tan_v); wo_y = dot(refracted, bitan); wo_z = dot(refracted, n);
 			scattered_dir = refracted;
+			// pbrt-v4 etaScale - see this function's own eventEta local comment.
+			eventEta = eta;
 		}
 		{
 			float wo_z_abs = fabsf(wo_z);
@@ -3182,7 +3226,10 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		return;
 	}
 
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, normal, hit_point, seed,
+	// eventEta was set above only on a genuine transmission (Dielectric or
+	// RoughDielectric's refract branch) - see this function's own eventEta
+	// local comment.
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, h.etaScale * eventEta * eventEta, normal, hit_point, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -3348,6 +3395,11 @@ extern "C" __global__ void resolve_bssrdf_exit(
 		// doesn't carry a real one through).
 		/*do_regularize=*/false,
 		/*glossyAlpha=*/0.0f, // NormalizedFresnel never reaches glossy_isType
+		// item.etaScale, unchanged - the entry interface's transmission
+		// already folded its eta^2 in (see BssrdfProbeWorkItem::etaScale's
+		// own comment); this exit-surface NormalizedFresnel shading doesn't
+		// add another factor, matching CPU camera.h's entry_eta convention.
+		item.etaScale,
 		item.exitNormal, item.exitPos, seed,
 		weightedThroughput, radiance, swl, attenuation, scattered_dir,
 		/*is_specular=*/false, brdf_pdf_override,

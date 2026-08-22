@@ -49,6 +49,22 @@ struct PathTracingPayload {
 	// already only matters (and is only consumed) on depth==0.
 	float3 albedo;
 	float3 normal;
+	// pbrt-v4's per-event refraction ratio (eta_i/eta_t, front_face ?
+	// 1/ior : ior) for this bounce's scatter event - 1.0f (a no-op) unless
+	// this hit was a genuine transmission through a dielectric interface.
+	// optix_raygen.h accumulates eta_scale *= eta*eta across every bounce
+	// (pbrt-v4 PathIntegrator: `if (bs->IsTransmission()) etaScale *=
+	// Sqr(bs->eta);`) and folds it into the Russian Roulette throughput
+	// test, matching CPU's camera.h eta_scale exactly - without it, RR
+	// terminates transmission-heavy (glass) paths too aggressively. Packed
+	// into payload register p22 (see optix_raygen.h): unlike p16-p21,
+	// which every closest-hit/miss program packs unconditionally, only the
+	// programs/branches that produce a real transmission event ever call
+	// optixSetPayload_22 - everywhere else the register keeps whatever
+	// value optix_raygen.h initialized it to before the trace call (1.0f),
+	// the same "closest-hit only writes, unset means input survives"
+	// convention p12 already relies on for __miss__ms.
+	float eta;
 };
 
 // Shadow ray payload (minimal - just occlusion result)

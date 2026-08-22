@@ -350,6 +350,12 @@ extern "C" __global__ void __closesthit__sphere() {
 	// signature is shared across all geometry types).
 	bool bssrdf_exit = false;
 	float3 bssrdf_exit_pos = make_float3(0.0f, 0.0f, 0.0f);
+	// pbrt-v4 etaScale term for this event - see PathTracingPayload::eta's
+	// own comment. 1.0f (a no-op) by default; the shade_material() call
+	// sites below fill in their own out_eta, and DielectricMedium's two
+	// dielectric_scatter() calls (entry/exit, not routed through
+	// shade_material()) set this directly.
+	float out_eta = 1.0f;
 
 	if (mat.type == MaterialType::Medium) {
 			// Homogeneous participating medium - see MaterialType::Medium's
@@ -584,6 +590,9 @@ extern "C" __global__ void __closesthit__sphere() {
 				attenuation = make_float3(1.0f, 1.0f, 1.0f);
 				scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
 				is_specular = true;
+				// pbrt-v4 etaScale (entry surface) - see MaterialType::
+				// Dielectric's identical eta computation above.
+				if (dot(scattered_dir, normal) < 0.0f) out_eta = front_face ? (1.0f / mat.ior) : mat.ior;
 			} else {
 				float3 unit_dir = normalize(ray_dir);
 				float t_near, t_far;
@@ -706,6 +715,10 @@ extern "C" __global__ void __closesthit__sphere() {
 					attenuation = make_float3(1.0f, 1.0f, 1.0f);
 					scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
 					is_specular = true;
+					// pbrt-v4 etaScale (exit surface, front_face is false
+					// here) - see MaterialType::Dielectric's identical eta
+					// computation above.
+					if (dot(scattered_dir, normal) < 0.0f) out_eta = front_face ? (1.0f / mat.ior) : mat.ior;
 				}
 			}
 			scattered   = true;
@@ -749,7 +762,7 @@ extern "C" __global__ void __closesthit__sphere() {
 			effective.textureIdx = -1;
 			shade_material(effective, matIdx, perturbed_normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, seed,
 				attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
-				bssrdf_exit, bssrdf_exit_pos);
+				bssrdf_exit, bssrdf_exit_pos, out_eta);
 	} else if (mat.type == MaterialType::Principled) {
 			// Disney/pbrt-v4 multi-lobe BSDF - see sample_principled_material's
 			// comment in optix_device_helpers.h. Matches principled_material.h's
@@ -761,7 +774,7 @@ extern "C" __global__ void __closesthit__sphere() {
 	} else {
 		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, seed,
 			attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
-			bssrdf_exit, bssrdf_exit_pos);
+			bssrdf_exit, bssrdf_exit_pos, out_eta);
 	}
 
 	// Pack updated payload back into registers
@@ -791,6 +804,7 @@ extern "C" __global__ void __closesthit__sphere() {
 		float3 albedoAov = scattered ? attenuation : mat.albedo;
 		pack_aov_payload(albedoAov, normal);
 	}
+	optixSetPayload_22(__float_as_uint(out_eta));  // pbrt-v4 etaScale - see PathTracingPayload::eta
 
 	if (scattered) {
 		// Return surface attenuation ONLY (raygen will multiply with throughput)

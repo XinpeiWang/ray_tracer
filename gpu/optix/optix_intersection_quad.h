@@ -112,9 +112,10 @@ extern "C" __global__ void __closesthit__quad() {
 		__trap();
 	}
 
+	float out_eta;
 	shade_material(mat, matIdx, final_normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
 		attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
-		bssrdf_exit, bssrdf_exit_pos);
+		bssrdf_exit, bssrdf_exit_pos, out_eta);
 			// Pack updated payload back into registers
 			// p0-p2: surface attenuation (BRDF albedo - raygen multiplies with throughput)
 	// p3-p5: emission from this surface hit
@@ -143,6 +144,7 @@ extern "C" __global__ void __closesthit__quad() {
 		float3 albedoAov = scattered ? attenuation : mat.albedo;
 		pack_aov_payload(albedoAov, final_normal);
 	}
+	optixSetPayload_22(__float_as_uint(out_eta));  // pbrt-v4 etaScale - see PathTracingPayload::eta
 
 	if (scattered) {
 		// Return surface attenuation ONLY (raygen will multiply with throughput)

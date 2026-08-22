@@ -346,9 +346,10 @@ bool OptiXRenderer::createModule() {
 	// only - MaterialType::Subsurface's probe-walk exit point, see
 	// optix_raygen.h) = 16, plus denoiser guide-layer AOVs: albedo(3) +
 	// normal(3) = 6 more (p16-p21, see PathTracingPayload::albedo/normal's
-	// comment in optix_types.h) = 22 total. Comfortably under OptiX's
-	// 32-register hard limit.
-	pipelineCompileOptions_.numPayloadValues = 22;
+	// comment in optix_types.h) = 22, plus eta(1) for pbrt-v4's Russian
+	// Roulette etaScale correction (p22, see PathTracingPayload::eta's
+	// comment) = 23 total. Comfortably under OptiX's 32-register hard limit.
+	pipelineCompileOptions_.numPayloadValues = 23;
 	pipelineCompileOptions_.numAttributeValues = 4;  // Sphere: center.xyz + radius (4 attrs)
 	pipelineCompileOptions_.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
 	pipelineCompileOptions_.pipelineLaunchParamsVariableName = "params";

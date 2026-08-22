@@ -1352,7 +1352,8 @@ __device__ __forceinline__ void shade_material(
 	float& out_brdf_pdf_override,
 	float3& emission,
 	bool& out_bssrdf_exit,
-	float3& out_bssrdf_exit_pos
+	float3& out_bssrdf_exit_pos,
+	float& out_eta
 ) {
 	float3 attenuation;
 	float3 scattered_dir;
@@ -1361,6 +1362,10 @@ __device__ __forceinline__ void shade_material(
 	float brdf_pdf_override = -1.0f;  // if >= 0, overrides cosine_pdf in payload packing
 	bool bssrdf_exit = false;
 	float3 bssrdf_exit_pos = make_float3(0.0f, 0.0f, 0.0f);
+	// pbrt-v4 etaScale term for this event - see PathTracingPayload::eta's
+	// own comment. 1.0f (a no-op) unless a case below sets it on a genuine
+	// transmission through a dielectric interface.
+	float eta = 1.0f;
 
 	switch (mat.type) {
 		case MaterialType::Lambertian: {
@@ -1517,6 +1522,13 @@ __device__ __forceinline__ void shade_material(
 			attenuation = is_transmission ? mat.transmission_filter : make_float3(1.0f, 1.0f, 1.0f);
 			scattered = true;
 			is_specular = true;  // specular bounce: next hit adds full emission, no MIS
+			// pbrt-v4 etaScale: eta = ri = front_face ? 1/ior : ior (same
+			// formula dielectric_scatter() used internally, recomputed here
+			// rather than threading it out of that function - see
+			// PathTracingPayload::eta's own comment), only on a genuine
+			// transmission event (matches CPU material_simple.h's
+			// `res.eta = ri` only in the refract branch, `T(1)` otherwise).
+			if (is_transmission) eta = front_face ? (1.0f / mat.ior) : mat.ior;
 			break;
 		}
 
@@ -1538,6 +1550,11 @@ __device__ __forceinline__ void shade_material(
 			// needed here anymore).
 			scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
 			bool is_transmission = dot(scattered_dir, normal) < 0.0f;
+			// pbrt-v4 etaScale, entry interface only - matches CPU camera.h's
+			// `entry_eta` (captured once here, before the exit-surface's own
+			// NormalizedFresnel shading below, which does NOT independently
+			// contribute another etaScale factor).
+			if (is_transmission) eta = front_face ? (1.0f / mat.ior) : mat.ior;
 			if (!is_transmission) {
 				// Specular reflection off the entry interface - identical
 				// to Dielectric's own reflection case.
@@ -1846,6 +1863,10 @@ __device__ __forceinline__ void shade_material(
 					float wo_y = rd_ri*(-wi_y) + (rd_ri*cos_i - cos_t)*wm_y;
 					float wo_z = -(rd_ri*wi_z  - (rd_ri*cos_i - cos_t)*wm_z);
 					wo_local = make_float3(wo_x, wo_y, wo_z);
+					// pbrt-v4 etaScale - a genuine transmission (not the TIR
+					// fallback-to-reflect branch above), eta = rd_ri exactly
+					// like plain Dielectric's own eta above.
+					eta = rd_ri;
 				}
 			}
 			scattered_dir = normalize(wo_local.x*tan + wo_local.y*bitan + wo_local.z*n);
@@ -2361,6 +2382,7 @@ __device__ __forceinline__ void shade_material(
 	out_brdf_pdf_override = brdf_pdf_override;
 	out_bssrdf_exit = bssrdf_exit;
 	out_bssrdf_exit_pos = bssrdf_exit_pos;
+	out_eta = eta;
 }
 
 // True for the 6 MaterialTypes that need sphere/box-specific handling -
