@@ -167,6 +167,11 @@ RayTracer_Package/styles/
 !models/sponza_textures/**/*.png
 !models/bistro_textures/**/*.png
 
+# ...and the hand-generated 4x4 UV-checker texture used by
+# pbrt_scenes/trianglemesh-uv.pbrt to verify "point2 uv" parsing - same
+# reasoning as images/*.png above, not generated render output.
+!pbrt_scenes/uv-checker.bmp
+
 # Test output
 test_*.ppm
 test_*.png

@@ -51,6 +51,16 @@ struct Triangle {
 	// renders as the polygon soup it was refined from.
 	double n[9] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
 	bool hasNormals = false;
+	// Per-vertex texture coordinates, (u,v) each - pbrt's own "point2 uv"
+	// trianglemesh parameter, only when actually given (see flatten()'s own
+	// trianglemesh branch for why pbrt-v4's real "no uv given" default is
+	// deliberately NOT synthesized here). loopsubdiv/plymesh don't thread
+	// UV through this loader at all yet either (a separate, smaller gap,
+	// tracked in docs/PBRT_SUPPORT.md) - hasUVs is false for both cases,
+	// and both builders' own barycentric fallback (matching CPU triangle.h's
+	// pre-existing `rec.u=b1,rec.v=b2`) covers all of them uniformly.
+	double uv[6] = {0, 0, 0, 0, 0, 0};
+	bool hasUVs = false;
 	int material = -1;        // index into Scene::materials, -1 = pbrt default
 	int areaLight = -1;       // index into Scene::areaLights, -1 = not emissive
 };
@@ -2118,6 +2128,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			std::vector<double> P;
 			std::vector<int> indices;
 			std::vector<double> N;    // per-vertex, object space; empty = none
+			std::vector<double> UV;   // per-vertex, (u,v) pairs; empty = none authored
 
 			if (shape.type == "loopsubdiv") {
 				// A subdivision surface is a control cage plus a refinement
@@ -2189,6 +2200,10 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				for (double d : pi->numbers) indices.push_back(static_cast<int>(d));
 				// pbrt's own name for per-vertex shading normals.
 				if (const pbrt_scene::Param *pn = shape.params.find("N")) N = pn->numbers;
+				// pbrt's own name for per-vertex texture coordinates - confirmed
+				// against pbrt-v4 source (shapes.cpp: GetPoint2fArray("uv")), no
+				// "st" alias in this pbrt-v4 version's own TriangleMesh loader.
+				if (const pbrt_scene::Param *puv = shape.params.find("uv")) UV = puv->numbers;
 			} else {
 				const std::string file = shape.params.getString("filename", "");
 				if (file.empty()) { warn("a plymesh has no filename; skipped"); continue; }
@@ -2233,6 +2248,31 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					 "they are ignored and it will render flat-shaded");
 			}
 
+			// UV: real per-vertex "point2 uv" when given (same "refused
+			// wholesale rather than partially used" validation as N above -
+			// no CTM transform, since a UV pair isn't a spatial coordinate).
+			//
+			// pbrt-v4's own real default when no "uv" is given is a fixed
+			// (0,0)/(1,0)/(1,1) triple PER TRIANGLE CORNER, not shared across
+			// faces the way an authored "uv" is - deliberately NOT
+			// synthesized here. Doing so would give two triangles that share
+			// a vertex position genuinely different UV at that shared
+			// vertex (a seam pbrt-v4 itself has too, in this exact case),
+			// which would silently inflate vertex-dedup counts for every
+			// untextured mesh in this loader's corpus - a real cost paid by
+			// scenes that never read UV at all. Left unset (hasUVs=false)
+			// instead; both builders' own barycentric fallback (matching
+			// triangle.h's existing `rec.u=b1,rec.v=b2` exactly - see
+			// optix_intersection_triangle.h/wavefront_programs.cu's mirrored
+			// fallback) already gives a non-degenerate, if not pbrt-v4-exact,
+			// per-point UV when a texture ever actually reads it.
+			std::vector<double> worldUV;
+			if (!UV.empty() && UV.size() / 2 >= vertexCount) {
+				worldUV = UV;
+			} else if (!UV.empty()) {
+				warn("a mesh supplied fewer uv pairs than vertices; they are ignored");
+			}
+
 			bool reportedRange = false;
 			for (std::size_t i = 0; i + 2 < indices.size(); i += 3) {
 				const int a = indices[i], b = indices[i + 1], c = indices[i + 2];
@@ -2260,6 +2300,14 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 						t.n[6 + k] = worldN[static_cast<std::size_t>(c) * 3 + k];
 					}
 					t.hasNormals = true;
+				}
+				if (!worldUV.empty()) {
+					for (int k = 0; k < 2; ++k) {
+						t.uv[0 + k] = worldUV[static_cast<std::size_t>(a) * 2 + k];
+						t.uv[2 + k] = worldUV[static_cast<std::size_t>(b) * 2 + k];
+						t.uv[4 + k] = worldUV[static_cast<std::size_t>(c) * 2 + k];
+					}
+					t.hasUVs = true;
 				}
 				t.material = shape.materialIndex;
 				t.areaLight = shape.areaLightIndex;

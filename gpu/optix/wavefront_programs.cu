@@ -660,11 +660,15 @@ extern "C" __global__ void __anyhit__wf_triangle() {
 	const MaterialData& mat = wf_params.materials[tri.materialIdx];
 	if (mat.alphaMaskTexIdx < 0) return;
 
-	float uv_u = 0.0f, uv_v = 0.0f;
+	// Real UV when authored, else the same barycentric fallback CPU's own
+	// triangle.h uses (rec.u=b1,rec.v=b2) - see __closesthit__wf_triangle's
+	// own comment for why a fixed (0,0) here was a real bug, not just a
+	// cosmetic gap.
+	const float b1 = __int_as_float(optixGetAttribute_0());
+	const float b2 = __int_as_float(optixGetAttribute_1());
+	const float b0 = 1.0f - b1 - b2;
+	float uv_u = b1, uv_v = b2;
 	if (tri.hasUVs) {
-		const float b1 = __int_as_float(optixGetAttribute_0());
-		const float b2 = __int_as_float(optixGetAttribute_1());
-		const float b0 = 1.0f - b1 - b2;
 		uv_u = b0 * tri.uv0.x + b1 * tri.uv1.x + b2 * tri.uv2.x;
 		uv_v = b0 * tri.uv0.y + b1 * tri.uv1.y + b2 * tri.uv2.y;
 	}
@@ -701,12 +705,17 @@ extern "C" __global__ void __closesthit__wf_triangle() {
 	// gates smooth-normal interpolation there (this program stays flat-shaded
 	// regardless, see this function's own header comment; UV is independent
 	// of that and is the one piece MaterialType::Lambertian's textureIdx
-	// actually needs).
-	float uv_u = 0.0f, uv_v = 0.0f;
+	// actually needs). Falls back to the barycentric weights themselves
+	// (matching CPU triangle.h's own rec.u=b1,rec.v=b2) rather than a fixed
+	// (0,0) when the mesh has no real UV - a fixed value here sampled the
+	// exact same texel for every point on the whole mesh, a real "solid
+	// black on GPU" bug for an untextured-UV mesh with a real texture bound
+	// (docs/PBRT_SUPPORT.md tracked this).
+	const float b1 = __int_as_float(optixGetAttribute_0());
+	const float b2 = __int_as_float(optixGetAttribute_1());
+	const float b0 = 1.0f - b1 - b2;
+	float uv_u = b1, uv_v = b2;
 	if (tri.hasUVs) {
-		const float b1 = __int_as_float(optixGetAttribute_0());
-		const float b2 = __int_as_float(optixGetAttribute_1());
-		const float b0 = 1.0f - b1 - b2;
 		uv_u = b0 * tri.uv0.x + b1 * tri.uv1.x + b2 * tri.uv2.x;
 		uv_v = b0 * tri.uv0.y + b1 * tri.uv1.y + b2 * tri.uv2.y;
 	}
@@ -1284,11 +1293,12 @@ extern "C" __global__ void __anyhit__wf_shadow_triangle() {
 	// barycentrics), not optixGetTriangleBarycentrics(). No-op for the
 	// overwhelming majority of triangles, whose material has no alpha mask.
 	if (mat.alphaMaskTexIdx >= 0) {
-		float uv_u = 0.0f, uv_v = 0.0f;
+		// Barycentric UV fallback - see __anyhit__wf_triangle's own comment.
+		const float b1 = __int_as_float(optixGetAttribute_0());
+		const float b2 = __int_as_float(optixGetAttribute_1());
+		const float b0 = 1.0f - b1 - b2;
+		float uv_u = b1, uv_v = b2;
 		if (tri.hasUVs) {
-			const float b1 = __int_as_float(optixGetAttribute_0());
-			const float b2 = __int_as_float(optixGetAttribute_1());
-			const float b0 = 1.0f - b1 - b2;
 			uv_u = b0 * tri.uv0.x + b1 * tri.uv1.x + b2 * tri.uv2.x;
 			uv_v = b0 * tri.uv0.y + b1 * tri.uv1.y + b2 * tri.uv2.y;
 		}

@@ -1,0 +1,43 @@
+# trianglemesh-uv.pbrt -- exercises Shape "trianglemesh"'s "point2 uv"
+# parameter (pbrt_flatten::Triangle::uv/hasUVs), now threaded through both
+# CPU (triangle_mesh_data::uvs, the same field OBJ/MTL "vt" data already
+# populates) and both GPU backends (TriangleData::uv0/1/2, likewise already
+# populated by OBJ/MTL loading - this loader just never fed it from a pbrt
+# scene before). Before this fix, GPU-recursive rendered this exact scene
+# solid black (a fixed (0,0) UV sampled the same, often-transparent/border
+# texel across the whole mesh); CPU "usually looked correct anyway" only by
+# accident, via a barycentric-coordinates-as-UV fallback unrelated to real
+# authored UV.
+#
+# A single quad (2 triangles) with an explicit "point2 uv" spanning the
+# full [0,1]x[0,1] range, textured with a small hand-generated 4x4
+# checkerboard BMP (uv-checker.bmp, 4 distinct quadrant colors: red/black
+# top, white/blue bottom) - a real, spatially-varying texture should show
+# all 4 colors distinctly across the quad's face, not one flat/wrong color.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  0.5 0.5 3    0.5 0.5 0    0 1 0
+Camera "perspective" "float fov" [ 35 ]
+
+Film "rgb" "integer xresolution" [ 400 ] "integer yresolution" [ 400 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.7 0.7 0.7 ]
+
+AttributeBegin
+  Translate 0 0 3.5
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 4 4 4 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -1 -1 0   1 -1 0   1 1 0   -1 1 0 ]
+AttributeEnd
+
+Texture "checker-tex" "spectrum" "imagemap" "string filename" [ "uv-checker.bmp" ]
+Material "diffuse" "texture reflectance" "checker-tex"
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   1 0 0   1 1 0   0 1 0 ]
+  "point2 uv" [ 0 0   1 0   1 1   0 1 ]

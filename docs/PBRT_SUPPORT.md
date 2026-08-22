@@ -67,7 +67,7 @@ GPU: `pbrt_gpu_builder.h`'s light-building code.
 | `projection` | Approx | Approx | Same story as goniometric: neither backend decodes the real projected slide image, both use a uniform white slide instead. Warns when a scene names a real image. |
 | `infinite` (constant color) | Full | Full | |
 | `infinite` (HDRI image) | Full | Full | Same equirectangular importance-sampling distribution (luminance-weighted, sin θ Jacobian) built and used on both. |
-| `AreaLightSource "diffuse"` | Approx | Approx | Real NEE-samplable geometry (sphere/quad/triangle/bilinear patch) on both. CPU parses and honors `filename` (spatially-varying image emission, point-sampled) and `twosided` on any shape. GPU honors both too, but triangle-only (both backends) - the only shape a raw pbrt trianglemesh light ever builds as; a `filename`/`twosided` on a `Shape "sphere"`/`"disk"`/`"cylinder"` area light silently falls back to flat `L`/one-sided on GPU. A GPU triangle light's `filename` image also samples a fixed texel rather than varying spatially, since pbrt trianglemesh `"point2 uv"` isn't parsed at all yet (see "Other known gaps" below) - real on CPU only by accident, via triangle.h's barycentric UV fallback. `blackbody` emission is read as a raw number rather than converted, on both (warned). |
+| `AreaLightSource "diffuse"` | Approx | Approx | Real NEE-samplable geometry (sphere/quad/triangle/bilinear patch) on both. CPU parses and honors `filename` (spatially-varying image emission, point-sampled) and `twosided` on any shape. GPU honors both too, but triangle-only (both backends) - the only shape a raw pbrt trianglemesh light ever builds as; a `filename`/`twosided` on a `Shape "sphere"`/`"disk"`/`"cylinder"` area light silently falls back to flat `L`/one-sided on GPU. A GPU triangle light's `filename` image now varies spatially with real per-point UV, matching CPU, once a trianglemesh authors `"point2 uv"` (see "Other known gaps" below) - a mesh with no `"uv"` at all still samples a per-point value on both backends now (the barycentric-weights fallback), just not spatially meaningful the way real authored UV is. `blackbody` emission is read as a raw number rather than converted, on both (warned). |
 | anything else | Unsupported | Unsupported | Dropped with a warning; not visible on either backend. |
 
 ## Cameras (`Camera::type`)
@@ -106,14 +106,25 @@ loader and no longer match the code:
   backend-asymmetric table above) - a sphere/disk/cylinder area light with
   either param set falls back to flat/one-sided on GPU, tracked as
   follow-up work.
-- A raw pbrt `Shape "trianglemesh"`'s `"point2 uv"` parameter is never
-  parsed anywhere in this codebase's loader (`pbrt_scene.h`/
-  `pbrt_flatten.h`), on either backend. CPU usually looks correct anyway
-  via `triangle.h`'s barycentric-coordinates-as-UV fallback when no real
-  UV was ever set; GPU's `TriangleData` has no equivalent fallback
-  (`hasUVs` stays false, so UV stays a fixed (0,0) instead), which is most
-  visible on a `filename`-textured GPU triangle light: it samples one fixed
-  texel instead of the image's real per-point detail.
+- `Shape "trianglemesh"`'s `"point2 uv"` parameter is now parsed
+  (`pbrt_flatten::Triangle::uv`/`hasUVs`) and threaded through both CPU
+  (`triangle_mesh_data::uvs`, the same field OBJ/MTL `vt` data already
+  populates) and both GPU backends (`TriangleData::uv0/1/2`, likewise
+  already populated by OBJ/MTL loading - this loader just never fed it from
+  a pbrt scene before). `loopsubdiv`/`plymesh` still don't thread UV through
+  this loader at all (a separate, smaller, still-open gap). When a
+  trianglemesh gives no `"uv"` at all, pbrt-v4's own real default (a fixed
+  `(0,0)/(1,0)/(1,1)` triple per triangle CORNER, not shared across faces)
+  is deliberately NOT synthesized - it would inflate vertex-dedup counts at
+  every shared vertex for scenes that never read UV at all. Both backends'
+  own barycentric-weights fallback (matching CPU `triangle.h`'s pre-existing
+  `rec.u=b1,rec.v=b2`) now covers the no-UV case uniformly instead of GPU's
+  previous fixed-`(0,0)` default, which is what actually caused the "solid
+  black on GPU-recursive" bug this entry used to describe (a fixed UV
+  samples the exact same, often-transparent-border texel across the whole
+  mesh) and the "GPU triangle light samples one fixed texel" symptom on the
+  materials table's `AreaLightSource` row above - both fixed by the same
+  change, since both read the same `uv_u`/`uv_v` computation.
 - `Shape "disk"`/`Shape "cylinder"` are supported on CPU and both GPU
   backends (recursive and wavefront). CPU keeps the CTM unbaked and is
   exactly correct under arbitrary rotation (see `disk_cylinder_hittable.h`);
@@ -189,16 +200,16 @@ per-`MaterialKind` behavior.)
   `coateddiffuse`'s `"reflectance"` — pbrt's own `ganesha` example scene uses
   exactly this) and every other `Texture` class (`checkerboard`, `scale`,
   `mix`, ...) still falls back to a flat colour with a warning, unchanged.
-  **Known limitation even for the supported Diffuse+imagemap case**: pbrt
-  `Shape "trianglemesh"`/`"plymesh"`'s own per-vertex `"uv"`/`"st"` data is not
-  threaded through `pbrt_flatten::Triangle` at all (no `u`/`v` fields on that
-  struct) — confirmed by hand: a synthetic `Material "diffuse"` +
-  `"imagemap"` scene renders a real (if not correctly UV-mapped) texture on
-  CPU, but solid black on GPU-recursive, because the two backends' triangle
-  code disagrees about what UV to use when none was authored through this
-  path. Fixing this needs UV added to `pbrt_flatten::Triangle` and threaded
-  through both builders' triangle-construction loops — a separate, real gap,
-  not something this texture-upload work fixes on its own.
+  **Update**: `Shape "trianglemesh"`'s own per-vertex `"point2 uv"` data
+  (`"st"` is not a pbrt-v4 alias for it - confirmed against pbrt-v4 source,
+  only `"uv"` is read) is now threaded through `pbrt_flatten::Triangle`
+  and both builders' triangle-construction loops, fixing the "solid black
+  on GPU-recursive" divergence this paragraph used to describe - both
+  backends now agree on what UV to use, real or a shared barycentric-weights
+  fallback, whether or not the scene ever authors `"uv"`. `"plymesh"`'s own
+  per-vertex UV (a PLY file property, read through a different code path -
+  the `MeshResolver` callback only returns positions/indices today) is
+  still not threaded through - a separate, smaller, still-open gap.
 
 - A pbrt `Shape`'s own `"alpha"` parameter (an alpha-cutout mask, distinct
   from a Material's own texture-bound parameters above — pbrt authors it

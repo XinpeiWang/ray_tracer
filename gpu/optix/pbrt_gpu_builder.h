@@ -124,6 +124,10 @@ inline float3 f3(const double *v) {
 					   static_cast<float>(v[2]));
 }
 
+inline float2 f2(const double *v) {
+	return make_float2(static_cast<float>(v[0]), static_cast<float>(v[1]));
+}
+
 // Mirrors pbrt_cpu_builder.h's reflectanceToConductorK() - see its comment
 // for why (a reflectance-only conductor, eta=1 solved for k via the
 // normal-incidence Schlick relation). Kept in sync by hand since one is
@@ -1213,7 +1217,12 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 			td.n2 = f3(&t.n[6]);
 		}
 		td.hasNormals = t.hasNormals;
-		td.hasUVs = false;               // flatten does not carry UVs yet
+		if (t.hasUVs) {
+			td.uv0 = f2(&t.uv[0]);
+			td.uv1 = f2(&t.uv[2]);
+			td.uv2 = f2(&t.uv[4]);
+		}
+		td.hasUVs = t.hasUVs;
 		td.materialIdx = materialIndex(t.material, t.areaLight);
 		// An emissive triangle that would not fold into a parallelogram is
 		// registered as a light in its own right. It used to be emitted as
@@ -1262,7 +1271,12 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 				td.n2 = f3(&t.n[6]);
 			}
 			td.hasNormals = t.hasNormals;
-			td.hasUVs = false;
+			if (t.hasUVs) {
+				td.uv0 = f2(&t.uv[0]);
+				td.uv1 = f2(&t.uv[2]);
+				td.uv2 = f2(&t.uv[4]);
+			}
+			td.hasUVs = t.hasUVs;
 			td.materialIdx = materialIndex(t.material, t.areaLight);
 			out.instanceTriangles.push_back(td);
 		}

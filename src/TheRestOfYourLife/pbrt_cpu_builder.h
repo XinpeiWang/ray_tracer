@@ -269,13 +269,21 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 struct VertexKey {
 	double x, y, z;
 	double nx, ny, nz;
+	// UV joins the dedup key for the same reason normals do: a real mesh can
+	// have a UV seam at a position it shares with a differently-textured
+	// neighbor (matching a hard-normal edge's own reason to NOT merge those
+	// vertices), so two otherwise-identical positions with different UV must
+	// stay distinct vertices too.
+	double u, v;
 	bool operator<(const VertexKey &o) const {
 		if (x != o.x) return x < o.x;
 		if (y != o.y) return y < o.y;
 		if (z != o.z) return z < o.z;
 		if (nx != o.nx) return nx < o.nx;
 		if (ny != o.ny) return ny < o.ny;
-		return nz < o.nz;
+		if (nz != o.nz) return nz < o.nz;
+		if (u != o.u) return u < o.u;
+		return v < o.v;
 	}
 };
 
@@ -432,19 +440,30 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 
 		// A mesh either has a normal for every vertex or for none: `triangle`
 		// gates interpolation on has_normals(), which is all-or-nothing, so a
-		// partially filled list would index past the end.
+		// partially filled list would index past the end. Same story for UV -
+		// `has_uvs()` (triangle.h) is the same all-or-nothing gate.
 		bool anyNormals = false;
-		for (const pbrt_flatten::Triangle &t : tris)
-			if (t.hasNormals) { anyNormals = true; break; }
+		bool anyUVs = false;
+		for (const pbrt_flatten::Triangle &t : tris) {
+			if (t.hasNormals) anyNormals = true;
+			if (t.hasUVs) anyUVs = true;
+		}
 
-		const auto vertexIndex = [&](const double *p, const double *n) {
+		const auto vertexIndex = [&](const double *p, const double *n, const double *uv) {
 			const VertexKey k{p[0], p[1], p[2],
-							  n ? n[0] : 0.0, n ? n[1] : 0.0, n ? n[2] : 0.0};
+							  n ? n[0] : 0.0, n ? n[1] : 0.0, n ? n[2] : 0.0,
+							  uv ? uv[0] : 0.0, uv ? uv[1] : 0.0};
 			auto it = seen.find(k);
 			if (it != seen.end()) return it->second;
 			const int idx = static_cast<int>(mesh->positions.size());
 			mesh->positions.push_back(point3(p[0], p[1], p[2]));
 			if (anyNormals) mesh->normals.push_back(vec3(n[0], n[1], n[2]));
+			// A triangle from a source that never threads UV (loopsubdiv/
+			// plymesh - see pbrt_flatten::Triangle::hasUVs's own comment) has
+			// no meaningful "geometric" UV to fall back to the way a face
+			// normal does - (0,0) is an arbitrary but harmless filler, same
+			// as GPU's own pre-this-fix "no data" default.
+			if (anyUVs) { mesh->uvs.push_back(uv ? uv[0] : 0.0); mesh->uvs.push_back(uv ? uv[1] : 0.0); }
 			seen.emplace(k, idx);
 			return idx;
 		};
@@ -472,10 +491,13 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			const double *n0 = t.hasNormals ? &t.n[0] : gn;
 			const double *n1 = t.hasNormals ? &t.n[3] : gn;
 			const double *n2 = t.hasNormals ? &t.n[6] : gn;
+			const double *uv0 = t.hasUVs ? &t.uv[0] : nullptr;
+			const double *uv1 = t.hasUVs ? &t.uv[2] : nullptr;
+			const double *uv2 = t.hasUVs ? &t.uv[4] : nullptr;
 
-			mesh->indices.push_back(vertexIndex(&t.v[0], n0));
-			mesh->indices.push_back(vertexIndex(&t.v[3], n1));
-			mesh->indices.push_back(vertexIndex(&t.v[6], n2));
+			mesh->indices.push_back(vertexIndex(&t.v[0], n0, uv0));
+			mesh->indices.push_back(vertexIndex(&t.v[3], n1, uv1));
+			mesh->indices.push_back(vertexIndex(&t.v[6], n2, uv2));
 			perTriangleMaterial.emplace_back(t.material, t.areaLight);
 		}
 		out.uniqueVertexCount += mesh->positions.size();

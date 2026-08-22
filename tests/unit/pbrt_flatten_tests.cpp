@@ -52,6 +52,75 @@ TEST(FlattenTest, UntransformedMeshKeepsItsCoordinates) {
 	EXPECT_DOUBLE_EQ(s.triangles[0].v[7], 1.0);   // third vertex y
 }
 
+TEST(FlattenTest, TrianglemeshWithNoUVLeavesHasUVsFalse) {
+	// pbrt-v4's own real "no uv given" default is a fixed (0,0)/(1,0)/(1,1)
+	// per triangle CORNER, not shared across faces sharing a vertex -
+	// deliberately not synthesized (see pbrt_flatten::Triangle::uv's own
+	// comment: it would silently inflate vertex-dedup counts at any shared
+	// vertex, a real cost paid by scenes that never read UV at all). Both
+	// builders' own barycentric fallback covers the "solid black on GPU"
+	// bug this loader used to have instead.
+	const FlatScene s = flattenSource(kQuadMesh);
+	ASSERT_EQ(s.triangles.size(), 2u);
+	EXPECT_FALSE(s.triangles[0].hasUVs);
+	EXPECT_FALSE(s.triangles[1].hasUVs);
+}
+
+TEST(FlattenTest, TrianglemeshWithRealUVIsThreadedThrough) {
+	const FlatScene s = flattenSource(
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2  0 2 3 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  1 1 0  0 1 0 ]\n"
+		"  \"point2 uv\" [ 0.1 0.2   0.3 0.4   0.5 0.6   0.7 0.8 ]\n");
+	ASSERT_EQ(s.triangles.size(), 2u);
+	EXPECT_TRUE(s.triangles[0].hasUVs);
+	// Face 0 = indices (0,1,2) -> uv pairs 0,1,2.
+	EXPECT_DOUBLE_EQ(s.triangles[0].uv[0], 0.1); EXPECT_DOUBLE_EQ(s.triangles[0].uv[1], 0.2);
+	EXPECT_DOUBLE_EQ(s.triangles[0].uv[2], 0.3); EXPECT_DOUBLE_EQ(s.triangles[0].uv[3], 0.4);
+	EXPECT_DOUBLE_EQ(s.triangles[0].uv[4], 0.5); EXPECT_DOUBLE_EQ(s.triangles[0].uv[5], 0.6);
+	// Face 1 = indices (0,2,3) -> uv pairs 0,2,3.
+	EXPECT_DOUBLE_EQ(s.triangles[1].uv[0], 0.1); EXPECT_DOUBLE_EQ(s.triangles[1].uv[1], 0.2);
+	EXPECT_DOUBLE_EQ(s.triangles[1].uv[2], 0.5); EXPECT_DOUBLE_EQ(s.triangles[1].uv[3], 0.6);
+	EXPECT_DOUBLE_EQ(s.triangles[1].uv[4], 0.7); EXPECT_DOUBLE_EQ(s.triangles[1].uv[5], 0.8);
+}
+
+TEST(FlattenTest, TrianglemeshUVIsNotSpatiallyTransformedByTheCTM) {
+	// A UV pair isn't a world-space point - Translate/Scale/Rotate on the
+	// shape must never touch it, unlike "point3 P".
+	const FlatScene s = flattenSource(
+		"Translate 10 20 30\nScale 2 2 2\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n"
+		"  \"point2 uv\" [ 0.25 0.75   0.1 0.2   0.9 0.4 ]\n");
+	ASSERT_EQ(s.triangles.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.triangles[0].uv[0], 0.25);
+	EXPECT_DOUBLE_EQ(s.triangles[0].uv[1], 0.75);
+}
+
+TEST(FlattenTest, TrianglemeshWithTooFewUVPairsWarnsAndIgnoresUV) {
+	const FlatScene s = flattenSource(
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2  0 2 3 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  1 1 0  0 1 0 ]\n"
+		"  \"point2 uv\" [ 0.1 0.2   0.3 0.4 ]\n");   // only 2 pairs, needs 4
+	ASSERT_EQ(s.triangles.size(), 2u);
+	EXPECT_TRUE(warnedAbout(s, "uv"));
+	// Same "refused wholesale" treatment as too-few normals - hasUVs stays
+	// false, same as no "uv" param at all.
+	EXPECT_FALSE(s.triangles[0].hasUVs);
+}
+
+TEST(FlattenTest, LoopsubdivDoesNotThreadUV) {
+	// UV parsing is scoped to trianglemesh only - loopsubdiv doesn't thread
+	// it through this loader at all yet (a separate, smaller, documented
+	// gap); its own "point3 P"/"integer indices" parsing is entirely
+	// separate code from trianglemesh's, so this just confirms hasUVs stays
+	// at its default false rather than somehow picking up stale state.
+	const FlatScene s = flattenSource(
+		"Shape \"loopsubdiv\" \"integer indices\" [ 0 1 2  0 2 3 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  1 1 0  0 1 0 ] \"integer levels\" [ 0 ]\n");
+	ASSERT_EQ(s.triangles.size(), 2u);
+	EXPECT_FALSE(s.triangles[0].hasUVs);
+}
+
 TEST(FlattenTest, TranslationIsBakedIntoEveryVertex) {
 	const FlatScene s = flattenSource(std::string("Translate 10 20 30\n") + kQuadMesh);
 	ASSERT_EQ(s.triangles.size(), 2u);

@@ -51,10 +51,15 @@ extern "C" __global__ void __anyhit__triangle() {
 	const MaterialData& mat = params.materials[tri.materialIdx];
 	if (mat.alphaMaskTexIdx < 0) return;
 
-	float uv_u = 0.0f, uv_v = 0.0f;
+	// Real UV when authored, else the same barycentric fallback CPU's own
+	// triangle.h uses (rec.u=b1,rec.v=b2) - a degenerate always-(0,0) UV
+	// here would sample the exact same alpha-mask texel for the whole
+	// mesh regardless of hit position, same bug class as untextured
+	// shading (see __closesthit__triangle's own comment below).
+	const float2 bary = optixGetTriangleBarycentrics();
+	const float b1 = bary.x, b2 = bary.y, b0 = 1.0f - b1 - b2;
+	float uv_u = b1, uv_v = b2;
 	if (tri.hasUVs) {
-		const float2 bary = optixGetTriangleBarycentrics();
-		const float b1 = bary.x, b2 = bary.y, b0 = 1.0f - b1 - b2;
 		uv_u = b0 * tri.uv0.x + b1 * tri.uv1.x + b2 * tri.uv2.x;
 		uv_v = b0 * tri.uv0.y + b1 * tri.uv1.y + b2 * tri.uv2.y;
 	}
@@ -92,10 +97,17 @@ extern "C" __global__ void __closesthit__triangle() {
 	const float3 hit_point = ray_orig + t * ray_dir;
 
 	float3 shading_normal;
-	float uv_u = 0.0f, uv_v = 0.0f;
+	// Real UV when authored, else the same barycentric fallback CPU's own
+	// triangle.h uses (rec.u=b1,rec.v=b2 - see that file's own "barycentric
+	// fallback" comment) - this used to stay at a fixed (0,0) for every
+	// point on every UV-less mesh, which for a textured material samples
+	// the exact same texel across the whole surface regardless of hit
+	// position (the "solid black on GPU" bug docs/PBRT_SUPPORT.md tracked -
+	// texel (0,0) commonly falls on a transparent/black image border).
+	const float2 bary = optixGetTriangleBarycentrics();
+	const float b1 = bary.x, b2 = bary.y, b0 = 1.0f - b1 - b2;
+	float uv_u = b1, uv_v = b2;
 	if (tri.hasNormals || tri.hasUVs) {
-		const float2 bary = optixGetTriangleBarycentrics();
-		const float b1 = bary.x, b2 = bary.y, b0 = 1.0f - b1 - b2;
 		if (tri.hasNormals) {
 			shading_normal = normalize(b0 * tri.n0 + b1 * tri.n1 + b2 * tri.n2);
 		} else {
