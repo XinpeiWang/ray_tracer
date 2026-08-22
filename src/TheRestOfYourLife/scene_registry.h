@@ -259,8 +259,18 @@ namespace pbrt_scene_registry {
         // this renderer already has real support for all three.
         const double ux = d.camera.up[0], uy = d.camera.up[1], uz = d.camera.up[2];
         const pbrt_flatten::Camera pcam = d.camera;
-        s.setup_camera = [ux, uy, uz, pcam, path](camera_t& cam) {
+        const pbrt_flatten::PixelFilter pfilter = d.filter;
+        s.setup_camera = [ux, uy, uz, pcam, pfilter, path](camera_t& cam) {
             cam.vup = vec3(ux, uy, uz);
+            // PixelFilter - see that struct's own comment (pbrt_flatten.h)
+            // for why this is applied unconditionally (unlike sampler_kind)
+            // and regardless of camera type, unlike the ortho/spherical/
+            // realistic dispatch below.
+            cam.filter_kind  = pfilter.kind;
+            cam.filter_B     = pfilter.B;
+            cam.filter_C     = pfilter.C;
+            cam.filter_sigma = pfilter.sigma;
+            cam.filter_tau   = pfilter.tau;
             if (pcam.type == "perspective") return;
 
             Mat4<double> ctw = make_look_at<double>(

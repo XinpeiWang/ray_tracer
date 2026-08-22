@@ -292,6 +292,25 @@ TEST(PbrtSettingsTest, SamplerDefaultsToSobolWithNoDirective) {
 	EXPECT_EQ(s.samplerType, "sobol");
 }
 
+TEST(PbrtSettingsTest, PixelFilterIsRead) {
+	const Scene s = parseOk(
+		"PixelFilter \"mitchell\" \"float B\" [ 0.2 ] \"float C\" [ 0.4 ]\n"
+		"WorldBegin\n"
+		"Shape \"sphere\"\n");
+	EXPECT_EQ(s.filterType, "mitchell");
+	EXPECT_DOUBLE_EQ(s.filterParams.getFloat("B", -1.0), 0.2);
+	EXPECT_DOUBLE_EQ(s.filterParams.getFloat("C", -1.0), 0.4);
+}
+
+TEST(PbrtSettingsTest, PixelFilterDefaultsToGaussianWithNoDirective) {
+	// pbrt-v4's real default (see pbrt_flatten::PixelFilter's own comment) -
+	// not box/triangle/mitchell.
+	const Scene s = parseOk(
+		"WorldBegin\n"
+		"Shape \"sphere\"\n");
+	EXPECT_EQ(s.filterType, "gaussian");
+}
+
 // ===========================================================================
 // Unsupported directives degrade rather than fail
 // ===========================================================================

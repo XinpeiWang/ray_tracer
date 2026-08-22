@@ -453,6 +453,30 @@ TEST(FlattenCameraTest, CameraTypeDefaultsToPerspective) {
 	EXPECT_EQ(s.camera.type, "perspective");
 }
 
+TEST(FlattenTest, PixelFilterDefaultsToGaussian) {
+	// pbrt-v4's real default (see pbrt_flatten::PixelFilter's own comment) -
+	// not box/triangle/mitchell.
+	const FlatScene s = flattenSource("WorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_EQ(s.filter.kind, "gaussian");
+	EXPECT_DOUBLE_EQ(s.filter.sigma, 0.5);
+}
+
+TEST(FlattenTest, PixelFilterParamsAreCarriedThrough) {
+	const FlatScene s = flattenSource(
+		std::string("PixelFilter \"mitchell\" \"float B\" [ 0.2 ] \"float C\" [ 0.4 ]\nWorldBegin\n")
+		+ kQuadMesh);
+	EXPECT_EQ(s.filter.kind, "mitchell");
+	EXPECT_DOUBLE_EQ(s.filter.B, 0.2);
+	EXPECT_DOUBLE_EQ(s.filter.C, 0.4);
+}
+
+TEST(FlattenTest, SincPixelFilterTauIsCarriedThrough) {
+	const FlatScene s = flattenSource(
+		std::string("PixelFilter \"sinc\" \"float tau\" [ 2.5 ]\nWorldBegin\n") + kQuadMesh);
+	EXPECT_EQ(s.filter.kind, "sinc");
+	EXPECT_DOUBLE_EQ(s.filter.tau, 2.5);
+}
+
 TEST(FlattenCameraTest, ScreenWindowOverrideIsCarriedThrough) {
 	// Orthographic has no fov to derive a scale from any other way - a scene
 	// authored larger than ~1 world unit across needs this to see anything.

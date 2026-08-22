@@ -234,3 +234,63 @@ TEST(TriangleFilterTest, IntegralMatchesPbrtV4) {
 		EXPECT_NEAR(f.integral(), r * r * r * r, 1e-12) << "r=" << r;
 	}
 }
+
+// ===========================================================================
+// PixelFilterDispatch -- runtime kind-string -> filter-class routing (see
+// pbrt_flatten::PixelFilter's own comment for why kind stays a string, not
+// an enum, and why radius is always fixed at 0.5)
+// ===========================================================================
+
+TEST(PixelFilterDispatchTest, BoxMatchesDirectConstruction) {
+	PixelFilterDispatch d("box");
+	BoxFilter f(0.5);
+	for (double ox : {-0.4, 0.0, 0.3})
+		for (double oy : {-0.2, 0.1, 0.45})
+			EXPECT_DOUBLE_EQ(d.evaluate(ox, oy), f.evaluate(ox, oy));
+}
+
+TEST(PixelFilterDispatchTest, TriangleMatchesDirectConstruction) {
+	PixelFilterDispatch d("triangle");
+	TriangleFilter f(0.5);
+	for (double ox : {-0.4, 0.0, 0.3})
+		for (double oy : {-0.2, 0.1, 0.45})
+			EXPECT_DOUBLE_EQ(d.evaluate(ox, oy), f.evaluate(ox, oy));
+}
+
+TEST(PixelFilterDispatchTest, SincMatchesDirectConstructionWithTau) {
+	PixelFilterDispatch d("sinc", 1.0/3.0, 1.0/3.0, 0.5, 2.5);
+	LanczosSincFilter f(0.5, 2.5);
+	for (double ox : {-0.4, 0.0, 0.3})
+		for (double oy : {-0.2, 0.1, 0.45})
+			EXPECT_DOUBLE_EQ(d.evaluate(ox, oy), f.evaluate(ox, oy));
+}
+
+TEST(PixelFilterDispatchTest, MitchellMatchesDirectConstructionWithBC) {
+	PixelFilterDispatch d("mitchell", 0.2, 0.4);
+	MitchellFilter f(0.5, 0.2, 0.4);
+	for (double ox : {-0.4, 0.0, 0.3})
+		for (double oy : {-0.2, 0.1, 0.45})
+			EXPECT_DOUBLE_EQ(d.evaluate(ox, oy), f.evaluate(ox, oy));
+}
+
+TEST(PixelFilterDispatchTest, GaussianMatchesDirectConstructionWithSigma) {
+	PixelFilterDispatch d("gaussian", 1.0/3.0, 1.0/3.0, 0.7);
+	GaussianFilter f(0.5, 0.7);
+	for (double ox : {-0.4, 0.0, 0.3})
+		for (double oy : {-0.2, 0.1, 0.45})
+			EXPECT_DOUBLE_EQ(d.evaluate(ox, oy), f.evaluate(ox, oy));
+}
+
+TEST(PixelFilterDispatchTest, UnrecognizedKindFallsBackToGaussian) {
+	// pbrt-v4's real default (confirmed against pbrt-v4/src/pbrt/scene.cpp),
+	// not box/triangle/mitchell - an easy default to assume wrong.
+	PixelFilterDispatch d("not-a-real-filter", 1.0/3.0, 1.0/3.0, 0.5);
+	GaussianFilter f(0.5, 0.5);
+	EXPECT_DOUBLE_EQ(d.evaluate(0.1, -0.2), f.evaluate(0.1, -0.2));
+}
+
+TEST(PixelFilterDispatchTest, DefaultConstructedIsGaussian) {
+	PixelFilterDispatch d;
+	GaussianFilter f(0.5, 0.5);
+	EXPECT_DOUBLE_EQ(d.evaluate(0.1, -0.2), f.evaluate(0.1, -0.2));
+}

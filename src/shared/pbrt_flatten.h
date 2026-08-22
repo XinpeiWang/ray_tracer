@@ -551,6 +551,29 @@ struct PunctualLight {
 	bool hadImageFilename = false;
 };
 
+// pbrt-v4's PixelFilter, resolved from Scene::filterType/filterParams into
+// the exact numeric params each of this project's own filter.h classes
+// needs. `kind` is left as pbrt's own name string (not an enum) so this
+// header doesn't need to depend on filter.h/know its class names - the
+// consumer (camera.h) owns the name->class mapping, matching how
+// Scene::samplerType is handled elsewhere in this loader. Unrecognized or
+// absent kind means "gaussian", pbrt-v4's real default (confirmed against
+// pbrt-v4/src/pbrt/scene.cpp - NOT "box"/"triangle"/"mitchell", easy
+// defaults to assume wrong). Only B/C/sigma/tau are threaded through, not
+// a radius: this codebase's own filter.h classes (and camera.h's own
+// per-pixel-only sampling loop, which never gathers samples from a
+// neighboring pixel) are built around a fixed 0.5-pixel footprint - see
+// camera.h's own comment on why pbrt-v4's real filter radii (e.g.
+// Mitchell's default 2) aren't supported. This still applies the actual
+// requested filter's SHAPE (its falloff curve), just clamped to the one
+// footprint every filter here already assumes.
+struct PixelFilter {
+	std::string kind = "gaussian";
+	double B = 1.0 / 3.0, C = 1.0 / 3.0;   // mitchell
+	double sigma = 0.5;                     // gaussian
+	double tau = 3.0;                       // sinc (LanczosSinc)
+};
+
 // Our camera is described the way camera.h wants it - an eye point, a target
 // and a vertical field of view - rather than as pbrt's world-to-camera matrix.
 struct Camera {
@@ -670,6 +693,7 @@ struct FlatScene {
 	std::vector<Instance> instances;
 
 	Camera camera;
+	PixelFilter filter;
 	std::vector<pbrt_scene::Warning> warnings;
 
 	bool empty() const {
@@ -1884,6 +1908,15 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// hole in it rather than looking subtly wrong.
 		warn("shape '" + shape.type + "' is not supported; skipped");
 	}
+
+	// PixelFilter - see PixelFilter's own struct comment for why only these
+	// four params are read (no radius) and why "gaussian" is the right
+	// fallback for an absent/unrecognized kind.
+	out.filter.kind = scene.filterType.empty() ? "gaussian" : scene.filterType;
+	out.filter.B = scene.filterParams.getFloat("B", out.filter.B);
+	out.filter.C = scene.filterParams.getFloat("C", out.filter.C);
+	out.filter.sigma = scene.filterParams.getFloat("sigma", out.filter.sigma);
+	out.filter.tau = scene.filterParams.getFloat("tau", out.filter.tau);
 
 	return out;
 }

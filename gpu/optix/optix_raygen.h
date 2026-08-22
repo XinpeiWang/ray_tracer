@@ -236,6 +236,13 @@ extern "C" __global__ void __raygen__rg() {
 				// Russian Roulette (pbrt-v4 PathIntegrator pattern)
 				// Start after depth > 1 so the primary ray and first bounce always survive.
 				// q = max(0, 1 - MaxComponent(throughput)); terminate if rand < q, else reweight.
+				// Missing pbrt-v4's etaScale correction (CPU's camera.h has
+				// it; see that file's own comment) - a per-refraction term
+				// that keeps RR from killing transmission-heavy paths too
+				// aggressively. Real, disclosed gap (both GPU backends lack
+				// it, wavefront_kernels.cu's own RR block has a matching
+				// note) - would need new payload registers threaded through
+				// every closest-hit program to track, not fixed here.
 				if (depth > 1) {
 					float rr_max = fmaxf(throughput.x, fmaxf(throughput.y, throughput.z));
 					if (rr_max < 1.0f) {

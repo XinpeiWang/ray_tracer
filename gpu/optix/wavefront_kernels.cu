@@ -1698,14 +1698,31 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// -------------------------------------------------------------------------
 	SS new_throughput = throughput * attenuation;
 
-	// Russian roulette after depth 3
-	if (depth >= 3) {
-		float p = new_throughput.MaxComponentValue();
-		if (wf_rand(seed) >= p) {
-			if (is_specular) addToFramebuffer(pixelIndex, radiance);
-			return;
+	// Russian roulette (pbrt-v4 PathIntegrator formula - matches CPU's
+	// camera.h and the recursive backend's optix_raygen.h exactly):
+	// q = max(0, 1 - MaxComponent(beta)); terminate if rand < q, else
+	// reweight by 1/(1-q). This file used to compute p = MaxComponent(beta)
+	// directly and terminate on rand >= p - an older (pbrt-v3-style) scheme
+	// that isn't wrong on its own, but disagreed with the OTHER two
+	// backends in this codebase, and started at depth>=3 rather than the
+	// depth>1 both of those use (so the wavefront backend also spent one
+	// extra bounce before RR could kick in). Doesn't yet track pbrt-v4's
+	// etaScale (a per-refraction correction that avoids killing
+	// transmission-heavy paths too aggressively) - the recursive backend
+	// doesn't either; only CPU does. Real, disclosed gap on both GPU
+	// backends, not fixed here - would need a new RayWorkItem field and a
+	// bigger plumbing change through both this kernel and
+	// evaluate_materials_dielectric().
+	if (depth > 1) {
+		float rr_max = new_throughput.MaxComponentValue();
+		if (rr_max < 1.0f) {
+			float q = fmaxf(0.0f, 1.0f - rr_max);
+			if (wf_rand(seed) < q) {
+				if (is_specular) addToFramebuffer(pixelIndex, radiance);
+				return;
+			}
+			new_throughput = new_throughput / (1.0f - q);
 		}
-		new_throughput = new_throughput / p;
 	}
 
 	RayWorkItem next;

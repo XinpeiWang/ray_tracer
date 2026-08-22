@@ -42,6 +42,11 @@ struct Discovered {
 	std::string path;                 // full path, what to load later
 	std::string name;                 // filename stem, shown in the UI
 	pbrt_flatten::Camera camera;      // derived from LookAt/Camera
+	// The file's own PixelFilter directive, already resolved to numeric
+	// params by flatten() - unlike samplerType/integrator/maxDepth below,
+	// this one IS applied at render time (see PixelFilter's own comment,
+	// pbrt_flatten.h), not just advisory.
+	pbrt_flatten::PixelFilter filter;
 	int samplesPerPixel = 16;
 	int xResolution = 1280;
 	int yResolution = 720;
@@ -176,9 +181,11 @@ inline Discovered describe(const std::string &path, const std::string &text) {
 
 	// flatten() with no mesh resolver still derives the camera - that comes
 	// from the world-to-camera matrix and the fov, neither of which needs a
-	// single triangle to exist.
+	// single triangle to exist. Same for the PixelFilter - flatten() has
+	// already resolved it to numeric params, no geometry needed either.
 	const pbrt_flatten::FlatScene flat = pbrt_flatten::flatten(parsed.scene);
 	d.camera = flat.camera;
+	d.filter = flat.filter;
 	d.ok = true;
 	return d;
 }

@@ -96,6 +96,20 @@ class camera {
     // own comment. Default Sobol matches this project's pre-existing,
     // hardcoded behavior exactly.
     SamplerKind sampler_kind = SamplerKind::Sobol;
+    // Which pixel reconstruction filter shape ray_color()'s samples are
+    // weighted by - see PixelFilterDispatch's own comment (filter.h) for
+    // why this drives the SHAPE only, always at this renderer's fixed
+    // 0.5-pixel radius. Unlike sampler_kind above (CLI-only, never
+    // auto-applied from a loaded scene's own Sampler directive - see that
+    // field's own comment), this one IS set from a loaded pbrt scene's
+    // PixelFilter directive automatically - see scene_registry.h's setup
+    // for a loaded pbrt scene. Defaults to pbrt-v4's own real default
+    // ("gaussian"), matching what an unset PixelFilter directive means.
+    std::string filter_kind  = "gaussian";
+    double filter_B          = 1.0 / 3.0;
+    double filter_C          = 1.0 / 3.0;
+    double filter_sigma      = 0.5;
+    double filter_tau        = 3.0;
     // When set, render() writes a linear (pre-tonemap), full-float EXR
     // instead of the tonemapped/quantized PPM it writes by default - see
     // exr_writer.h. Set by cpu_interface.cpp when the caller's requested
@@ -276,11 +290,13 @@ class camera {
                 for (int i = 0; i < image_width; i++) {
                     color  weighted_color(0,0,0);
                     double weight_sum = 0.0;
-                    // Mitchell-Netravali reconstruction filter (pbrt-v4 style).
-                    // radius=0.5 keeps the footprint within one pixel so we don't
-                    // need a film buffer for cross-pixel splatting (pbrt-v4 uses
-                    // radius=2 with a full film; we approximate with within-pixel).
-                    static const MitchellFilter filter(0.5, 1.0/3.0, 1.0/3.0);
+                    // Reconstruction filter (pbrt-v4 style), shape driven by
+                    // filter_kind/filter_B/filter_C/filter_sigma/filter_tau -
+                    // see PixelFilterDispatch's own comment (filter.h) for
+                    // why radius stays fixed at 0.5 (within one pixel, no
+                    // film buffer for cross-pixel splatting) regardless of
+                    // which shape was requested.
+                    const PixelFilterDispatch filter(filter_kind, filter_B, filter_C, filter_sigma, filter_tau);
                     for (int s_j = 0; s_j < sqrt_spp; s_j++) {
                             for (int s_i = 0; s_i < sqrt_spp; s_i++) {
                                 // Sample index for Halton: unique per (s_i, s_j) stratum

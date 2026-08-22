@@ -222,3 +222,36 @@ class TriangleFilter {
 
 	double radius_;
 };
+
+// ---------------------------------------------------------------------------
+// PixelFilterDispatch -- runtime-selectable wrapper over the 5 filter kinds
+// above, driven by a parsed pbrt-v4 PixelFilter directive (pbrt_flatten::
+// PixelFilter). Every kind is fixed to this codebase's own radius=0.5 (see
+// pbrt_flatten::PixelFilter's own comment on why - this renderer's
+// per-pixel-only sampling loop has no film-wide splatting to support a
+// larger footprint), so this only needs to pick which SHAPE's falloff
+// curve to use, not thread a variable radius through. No virtual dispatch:
+// each of the 5 filter classes is a small, side-effect-free value type,
+// cheap enough to construct fresh inside evaluate() the same way callers
+// already constructed a single static MitchellFilter before this existed.
+// ---------------------------------------------------------------------------
+class PixelFilterDispatch {
+  public:
+	explicit PixelFilterDispatch(const std::string& kind = "gaussian",
+								 double B = 1.0/3.0, double C = 1.0/3.0,
+								 double sigma = 0.5, double tau = 3.0)
+		: kind_(kind), B_(B), C_(C), sigma_(sigma), tau_(tau) {}
+
+	double evaluate(double ox, double oy) const {
+		if (kind_ == "box")      return BoxFilter(0.5).evaluate(ox, oy);
+		if (kind_ == "triangle") return TriangleFilter(0.5).evaluate(ox, oy);
+		if (kind_ == "sinc")     return LanczosSincFilter(0.5, tau_).evaluate(ox, oy);
+		if (kind_ == "mitchell") return MitchellFilter(0.5, B_, C_).evaluate(ox, oy);
+		// "gaussian", or anything unrecognized - pbrt-v4's own real default.
+		return GaussianFilter(0.5, sigma_).evaluate(ox, oy);
+	}
+
+  private:
+	std::string kind_;
+	double B_, C_, sigma_, tau_;
+};

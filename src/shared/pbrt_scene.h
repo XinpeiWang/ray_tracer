@@ -328,6 +328,18 @@ struct Scene {
 	std::string samplerType = "sobol";
 	int samplesPerPixel = 16;
 	int maxDepth = 5;
+	// PixelFilter directive's type name (pbrt-v4's real default is
+	// "gaussian" - confirmed against pbrt-v4/src/pbrt/scene.cpp's own
+	// SceneEntity default, NOT "box"/"triangle"/"mitchell") plus its raw
+	// params (radius/xradius/yradius/b/c/sigma/tau, kind-dependent) -
+	// unlike samplerType/integrator above, this ONE is actually applied
+	// (see camera.h's own filter dispatch), not just advisory: swapping
+	// which of this project's existing filter.h classes gets used doesn't
+	// change which C++ code path executes the way selecting a different
+	// Sampler/Integrator implementation would, so there's no reason to
+	// gate it behind a separate CLI opt-in the way those stay gated.
+	std::string filterType = "gaussian";
+	ParamList filterParams;
 
 	std::vector<MaterialDecl> materials;
 	std::vector<TextureDecl> textures;
@@ -742,6 +754,11 @@ private:
 		if (d == "Sampler") {
 			if (pos_ < t_.size() && t_[pos_].quoted) { s_.samplerType = t_[pos_].text; ++pos_; }
 			s_.samplesPerPixel = readParams().getInt("pixelsamples", s_.samplesPerPixel);
+			return true;
+		}
+		if (d == "PixelFilter") {
+			if (pos_ < t_.size() && t_[pos_].quoted) { s_.filterType = t_[pos_].text; ++pos_; }
+			s_.filterParams = readParams();
 			return true;
 		}
 		if (d == "Integrator") {
