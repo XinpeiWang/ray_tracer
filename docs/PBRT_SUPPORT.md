@@ -145,13 +145,22 @@ loader and no longer match the code:
   translation/uniform scale), approximate under anisotropic scale, the same
   accepted simplification every other GPU area-light kind already carries.
   Separately, CPU wraps a disk/cylinder in a participating medium when
-  `MediumInterface` assigns one (matching Sphere's own handling); GPU still
-  does not read `DiskData`/`CylinderData`'s medium field on either backend,
-  so the same directive silently produces a disk/cylinder with no medium on
-  GPU - cylinder is a plausible future port (its intersection is already a
-  two-root quadratic, like sphere's), but disk is structurally not
-  meaningful (a zero-thickness plane has no "inside" volume for a
-  homogeneous medium's entry/exit pair to bound) and isn't planned.
+  `MediumInterface` assigns one (matching Sphere's own handling). GPU now
+  does too for **cylinder** (`MaterialType::Medium`, homogeneous only):
+  `__closesthit__cylinder`/`__closesthit__wf_cylinder` recompute real
+  entry/exit roots as the cylinder's tube quadric intersected with its
+  z-slab, in object space - same technique as Sphere's own Medium case, see
+  `pbrt_scenes/cylinder-medium.pbrt`. Deliberately does not account for a
+  partial `phimax` sweep (a "pie slice" cross-section makes the volume
+  bound genuinely harder - documented as a scope limit, not handled) and
+  only the plain homogeneous medium type gets this - a `"cloud"`/
+  `"rgbgrid"`/`"uniformgrid"` `MediumInterface` on a cylinder still
+  correctly traps rather than silently misrendering, matching every other
+  still-sphere-only type's behavior on a shape it's never assigned to. Disk
+  stays entirely unsupported for `MediumInterface` on GPU, and CPU too in
+  practice - a zero-thickness plane has no "inside" volume for a
+  homogeneous medium's entry/exit pair to bound, so this is structurally
+  not meaningful, not merely unimplemented, and isn't planned.
 
 - `Shape "curve"` (a cubic Bezier hair/fiber strand) is supported on CPU
   (`src/shared/shapes.h`'s `CurveShape<T>`, wrapped by

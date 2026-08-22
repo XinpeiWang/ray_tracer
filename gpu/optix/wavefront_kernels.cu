@@ -2038,7 +2038,18 @@ extern "C" __global__ void evaluate_materials(
 	// trapping it here would be a genuine regression from "falls back to
 	// Lambertian", not the unreachable-defensive-code every other trapped
 	// type here still is.
-	if ((h.geomType == 4 || h.geomType == 5) && mat.type != MaterialType::Hair &&
+	//
+	// MaterialType::Medium is excluded the same way, but ONLY for cylinder
+	// (geomType==5) - a real, reachable combination now that pbrt_gpu_
+	// builder.h's cylinder loop resolves MediumInterface via mediumMaterial-
+	// Index() (see that loop's own comment) and __closesthit__wf_cylinder
+	// recomputes real entry/exit roots for it (wavefront_programs.cu).
+	// Disk (geomType==4) stays trapped - MediumInterface on a disk is
+	// structurally not meaningful (see docs/PBRT_SUPPORT.md) and
+	// pbrt_gpu_builder.h's disk loop still never resolves it, so this is
+	// unreachable there, same as every other still-trapped type.
+	const bool isMediumOnCylinder = (h.geomType == 5) && (mat.type == MaterialType::Medium);
+	if ((h.geomType == 4 || h.geomType == 5) && mat.type != MaterialType::Hair && !isMediumOnCylinder &&
 		(wf_material_requires_sphere_only_handling(mat.type) ||
 		 mat.type == MaterialType::NormalMappedLambertian)) {
 		printf("[WF-DISK-CYL-SHADE] MaterialType %d is not supported on disk/cylinder geometry (geomType=%d)\n",

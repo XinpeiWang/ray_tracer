@@ -167,6 +167,29 @@ TEST(PbrtGpuDiskCylinderTest, EmissiveDiskAndCylinderAreRegisteredAsNeeLights) {
 	EXPECT_EQ(scene.lightIndices[1], 0);
 }
 
+// MediumInterface on a cylinder now resolves to a real MaterialType::Medium
+// (see optix_intersection_disk_cylinder.h/wavefront_programs.cu's Medium
+// near/far re-intersection and docs/PBRT_SUPPORT.md's cylinder-medium
+// entry) - not the shape's own declared surface Material at all, matching
+// how the sphere loop already resolves s.medium via mediumMaterialIndex().
+// Disk's own medium field stays intentionally unresolved (structurally not
+// meaningful - a zero-thickness plane has no "inside" volume).
+TEST(PbrtGpuDiskCylinderTest, CylinderMediumInterfaceResolvesToRealMediumMaterial) {
+	const pbrt_flatten::FlatScene flat = flattenSource(
+		"MakeNamedMedium \"fog\" \"string type\" [ \"homogeneous\" ]\n"
+		"  \"rgb sigma_a\" [ 0.1 0.1 0.1 ] \"rgb sigma_s\" [ 1.0 1.0 1.0 ]\n"
+		"AttributeBegin\n"
+		"  Material \"dielectric\" \"float eta\" [ 1.001 ]\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Shape \"cylinder\" \"float radius\" [ 1 ] \"float zmin\" [ 0 ] \"float zmax\" [ 2 ]\n"
+		"AttributeEnd\n");
+	SceneData scene;
+	pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(scene.cylinders.size(), 1u);
+	ASSERT_GE(scene.cylinders[0].materialIdx, 0);
+	EXPECT_EQ(scene.materials[scene.cylinders[0].materialIdx].type, MaterialType::Medium);
+}
+
 // ---------------------------------------------------------------------------
 // Real GPU render (skipped when no OptiX-capable device is present) - both
 // backends, since Phase 4c ports Disk/Cylinder to wavefront on top of

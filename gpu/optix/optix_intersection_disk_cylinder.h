@@ -268,6 +268,12 @@ extern "C" __global__ void __closesthit__cylinder() {
 	float brdf_pdf_override = -1.0f;
 	bool bssrdf_exit = false;
 	float3 bssrdf_exit_pos = make_float3(0.0f, 0.0f, 0.0f);
+	// MaterialType::Medium: t_hit below must use medium_t_hit, not
+	// optixGetRayTmax() (which is just the cylinder's own entry root) - see
+	// that branch's own comment, mirrors optix_intersection_sphere.h's
+	// identical is_medium/medium_t_hit pair exactly.
+	bool is_medium = false;
+	float medium_t_hit = 0.0f;
 
 	// Real Hair support on cylinder geometry - see __closesthit__disk's
 	// identical branch (this file, above) for why this moved out of the trap.
@@ -275,6 +281,85 @@ extern "C" __global__ void __closesthit__cylinder() {
 	if (mat.type == MaterialType::Hair) {
 		scattered   = sample_hair_material(ray_dir, normal, mat, seed, scattered_dir, attenuation);
 		is_specular = true;
+	} else if (mat.type == MaterialType::Medium) {
+		// Homogeneous participating medium - see MaterialType::Medium's
+		// comment in optix_types.h and optix_intersection_sphere.h's
+		// identical closesthit case. Unlike sphere (a single closed
+		// quadric), a finite cylinder is a tube quadric CLIPPED to a z-slab
+		// (and a phi sweep, ignored here - see below); entry/exit is
+		// computed as the tube-quadric interval intersected with the
+		// z-slab interval, in OBJECT space (matching __intersection__
+		// cylinder's own ray transform) since CylinderData::zMin/zMax are
+		// object-space. Deliberately does NOT account for a partial phi
+		// sweep (phiMax < 2*pi) - a "pie slice" cross-section makes the
+		// entry/exit computation genuinely harder (the volume is no longer
+		// a simple slab-clipped tube), and MediumInterface on a phi-clipped
+		// cylinder is a rare enough combination that this scope limitation
+		// is documented (docs/PBRT_SUPPORT.md) rather than handled; a
+		// mismatch there under-estimates dist_inside rather than crashing
+		// or overestimating (the tube/z-slab bound is still a superset of
+		// the real phi-clipped volume), so this degrades gracefully.
+		const float3 ro = dc_apply_point(cyl.w2o, ray_orig);
+		const float3 rd = dc_apply_vector(cyl.w2o, ray_dir);  // NOT normalised - see file header comment
+		const double da = (double)rd.x, db = (double)rd.y;
+		const double oa = (double)ro.x, ob = (double)ro.y;
+		const double a = da * da + db * db;
+		float tube_t0 = -1e30f, tube_t1 = 1e30f;
+		bool hasTube = true;
+		if (a == 0.0) {
+			// Ray parallel to the axis: "tube" bound is unbounded in t
+			// whenever the ray's fixed (x,y) is inside the radius, else the
+			// ray never enters the tube at all.
+			hasTube = (oa * oa + ob * ob) <= (double)cyl.radius * (double)cyl.radius;
+		} else {
+			const double b = 2.0 * (oa * da + ob * db);
+			const double c = oa * oa + ob * ob - (double)cyl.radius * (double)cyl.radius;
+			const double f = b / (2.0 * a);
+			const double vx = oa - f * da, vy = ob - f * db;
+			const double len_v = sqrt(vx * vx + vy * vy);
+			const double discrim = 4.0 * a * ((double)cyl.radius + len_v) * ((double)cyl.radius - len_v);
+			if (discrim < 0.0) {
+				hasTube = false;
+			} else {
+				const double sqrt_disc = sqrt(discrim);
+				const double q = (b < 0.0) ? -0.5 * (b - sqrt_disc) : -0.5 * (b + sqrt_disc);
+				tube_t0 = (float)(q / a);
+				tube_t1 = (float)(c / q);
+				if (tube_t0 > tube_t1) { float tmp = tube_t0; tube_t0 = tube_t1; tube_t1 = tmp; }
+			}
+		}
+
+		float z_t0 = -1e30f, z_t1 = 1e30f;
+		bool hasZSlab = true;
+		if (rd.z == 0.0f) {
+			hasZSlab = (ro.z >= cyl.zMin && ro.z <= cyl.zMax);
+		} else {
+			float za = (cyl.zMin - ro.z) / rd.z;
+			float zb = (cyl.zMax - ro.z) / rd.z;
+			z_t0 = fminf(za, zb);
+			z_t1 = fmaxf(za, zb);
+		}
+
+		float t_near = fmaxf(0.0f, fmaxf(tube_t0, z_t0));
+		float t_far  = fminf(tube_t1, z_t1);
+		if (!hasTube || !hasZSlab || t_far < t_near) { t_near = 0.0f; t_far = 0.0f; }
+		float dist_inside = fmaxf(0.0f, t_far - t_near);
+
+		float sigma_t = mat.ior;
+		float free_path = (sigma_t > 1e-8f) ? (-logf(fmaxf(1e-8f, 1.0f - random_float(seed))) / sigma_t) : 1e30f;
+		float3 unit_dir = normalize(ray_dir);
+		if (free_path < dist_inside) {
+			medium_t_hit = t_near + free_path;
+			scattered_dir = sample_henyey_greenstein(-unit_dir, mat.fuzz, seed);
+			attenuation = mat.albedo;
+		} else {
+			medium_t_hit = t_far;
+			scattered_dir = unit_dir;
+			attenuation = make_float3(1.0f, 1.0f, 1.0f);
+		}
+		scattered   = true;
+		is_specular = true;  // no NEE/MIS for volume scattering (not yet implemented)
+		is_medium   = true;
 	} else {
 		if (material_requires_sphere_only_handling(mat.type) ||
 			mat.type == MaterialType::NormalMappedLambertian) {
@@ -299,7 +384,11 @@ extern "C" __global__ void __closesthit__cylinder() {
 	optixSetPayload_22(__float_as_uint(out_eta));  // pbrt-v4 etaScale - see PathTracingPayload::eta
 
 	if (scattered) {
-		float t_hit = optixGetRayTmax();
+		// Medium: the scatter/exit point is not the cylinder's entry root
+		// (optixGetRayTmax()) - use the distance computed in the Medium case
+		// above instead, same as optix_intersection_sphere.h's own
+		// is_medium/medium_t_hit handling.
+		float t_hit = is_medium ? medium_t_hit : optixGetRayTmax();
 		float brdf_pdf_out = is_specular ? 0.0f
 						  : (brdf_pdf_override >= 0.0f ? brdf_pdf_override : cosine_pdf(scattered_dir, normal));
 

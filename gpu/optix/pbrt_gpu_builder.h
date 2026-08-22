@@ -1164,15 +1164,15 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 	// real NEE-samplable lights (GpuLightKind::Disk/Cylinder) when
 	// areaLight >= 0, same as every other shape kind - see optix_types.h's
 	// GpuLightKind::Disk/Cylinder comment and optix_disk_cylinder_helpers.h
-	// for the sampling/pdf machinery this needed. The medium field
-	// (d.medium/c.medium) is still intentionally unread here, UNLIKE the
-	// sphere loop above (which resolves s.medium via mediumMaterialIndex())
-	// - a real, known GPU-only gap (a MediumInterface around a disk/cylinder
-	// is silently dropped on GPU) - see docs/PBRT_SUPPORT.md: cylinder is a
-	// plausible future port (its intersection is already a two-root
-	// quadratic, like sphere), disk is structurally not meaningful (a zero-
-	// thickness plane has no "inside" volume for a homogeneous medium's
-	// entry/exit pair) and is not planned.
+	// for the sampling/pdf machinery this needed. Cylinder's medium field
+	// (c.medium) now also resolves via mediumMaterialIndex() (below), same as
+	// the sphere loop above - see that call site's own comment for the exact
+	// scope (homogeneous MaterialType::Medium only gets real near/far support
+	// on cylinder; cloud/rgbgrid/uniformgrid stay correctly trapped). Disk's
+	// medium field (d.medium) is intentionally still unread - see
+	// docs/PBRT_SUPPORT.md: a zero-thickness plane has no "inside" volume for
+	// a homogeneous medium's entry/exit pair, so wrapping one in
+	// MediumInterface is structurally not meaningful and is not planned.
 	const auto flattenTransform = [](const double xform[16], float out12[12]) {
 		for (int row = 0; row < 3; ++row)
 			for (int col = 0; col < 4; ++col)
@@ -1213,7 +1213,23 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		cd.zMin = static_cast<float>(c.zMin);
 		cd.zMax = static_cast<float>(c.zMax);
 		cd.phiMax = static_cast<float>(c.phiMaxDeg * kDiskCylDegToRad);
-		cd.materialIdx = materialIndex(c.material, c.areaLight);
+		// MediumInterface on a cylinder - unlike disk (structurally not
+		// meaningful, see this loop's own comment above), a cylinder's
+		// intersection is already a two-root quadratic (like sphere's), so
+		// device shading can recompute real entry/exit roots the same way
+		// sphere's own Medium case does - see __closesthit__cylinder's own
+		// comment (optix_intersection_disk_cylinder.h) and __closesthit__wf_
+		// cylinder's (wavefront_programs.cu). mediumMaterialIndex() itself is
+		// shape-agnostic (also handles cloud/rgbgrid/uniformgrid media, not
+		// just homogeneous) - only the homogeneous MaterialType::Medium case
+		// gets real near/far support on cylinder in this pass, so a
+		// cloud/rgbgrid/uniformgrid MediumInterface on a cylinder still
+		// correctly traps (material_requires_sphere_only_handling()) rather
+		// than silently misrendering, exactly like every other still-
+		// sphere-only type does on any non-sphere shape.
+		cd.materialIdx = (c.medium >= 0 && static_cast<std::size_t>(c.medium) < scene.media.size())
+			? mediumMaterialIndex(c.medium)
+			: materialIndex(c.material, c.areaLight);
 		flattenTransform(o2w.m, cd.o2w);
 		flattenTransform(w2o.m, cd.w2o);
 		if (c.areaLight >= 0) {

@@ -1132,6 +1132,62 @@ extern "C" __global__ void __closesthit__wf_cylinder() {
 	payload->frontFace   = front_face ? 1 : 0;
 	payload->uv_u        = 0.0f;
 	payload->uv_v        = 0.0f;
+
+	// MaterialType::Medium: override with the entry (near) / exit (far)
+	// roots, matching __closesthit__wf_sphere's own needsNearFar block and
+	// the recursive backend's identical __closesthit__cylinder Medium case
+	// (optix_intersection_disk_cylinder.h - see that comment for the tube-
+	// quadric-clipped-to-a-z-slab derivation and its phi-sweep scope limit).
+	// Object space, since CylinderData::zMin/zMax are object-space.
+	const MaterialData& cyl_mat = wf_params.materials[cyl.materialIdx];
+	if (cyl_mat.type == MaterialType::Medium) {
+		const float3 ro = wf_dc_apply_point(cyl.w2o, ray_orig);
+		const float3 rd = wf_dc_apply_vector(cyl.w2o, ray_dir);
+		const double da = (double)rd.x, db = (double)rd.y;
+		const double oa = (double)ro.x, ob = (double)ro.y;
+		const double a = da * da + db * db;
+		float tube_t0 = -1e30f, tube_t1 = 1e30f;
+		bool hasTube = true;
+		if (a == 0.0) {
+			hasTube = (oa * oa + ob * ob) <= (double)cyl.radius * (double)cyl.radius;
+		} else {
+			const double b = 2.0 * (oa * da + ob * db);
+			const double c = oa * oa + ob * ob - (double)cyl.radius * (double)cyl.radius;
+			const double f = b / (2.0 * a);
+			const double vx = oa - f * da, vy = ob - f * db;
+			const double len_v = sqrt(vx * vx + vy * vy);
+			const double discrim = 4.0 * a * ((double)cyl.radius + len_v) * ((double)cyl.radius - len_v);
+			if (discrim < 0.0) {
+				hasTube = false;
+			} else {
+				const double sqrt_disc = sqrt(discrim);
+				const double q = (b < 0.0) ? -0.5 * (b - sqrt_disc) : -0.5 * (b + sqrt_disc);
+				tube_t0 = (float)(q / a);
+				tube_t1 = (float)(c / q);
+				if (tube_t0 > tube_t1) { float tmp = tube_t0; tube_t0 = tube_t1; tube_t1 = tmp; }
+			}
+		}
+
+		float z_t0 = -1e30f, z_t1 = 1e30f;
+		bool hasZSlab = true;
+		if (rd.z == 0.0f) {
+			hasZSlab = (ro.z >= cyl.zMin && ro.z <= cyl.zMax);
+		} else {
+			float za = (cyl.zMin - ro.z) / rd.z;
+			float zb = (cyl.zMax - ro.z) / rd.z;
+			z_t0 = fminf(za, zb);
+			z_t1 = fmaxf(za, zb);
+		}
+
+		float t_near = fmaxf(0.0f, fmaxf(tube_t0, z_t0));
+		float t_far  = fminf(tube_t1, z_t1);
+		if (!hasTube || !hasZSlab || t_far < t_near) { t_near = 0.0f; t_far = 0.0f; }
+
+		float3 unit_dir = normalize(ray_dir);
+		payload->t          = t_near;
+		payload->hitPoint   = ray_orig + t_near * unit_dir;
+		payload->mediumTFar = t_far;
+	}
 }
 
 // ============================================================================
