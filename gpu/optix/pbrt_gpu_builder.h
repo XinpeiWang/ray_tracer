@@ -520,6 +520,7 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 						   static_cast<float>(m.color[1]),
 						   static_cast<float>(m.color[2]));
 	d.roughness = static_cast<float>(m.roughness);
+	d.remapRoughness = m.remapRoughness;
 	d.ior = static_cast<float>(m.ior);
 
 	switch (m.kind) {

@@ -161,7 +161,11 @@ __device__ __forceinline__ bool wf_near_zero(const float3& v) {
 // true pdf from what evalGlossyF/brdf_pdf_override reports for it, a real
 // MIS-weight mismatch.
 __device__ __forceinline__ float wf_glossy_alpha(const MaterialData& mat, bool do_regularize) {
-	float a = sqrtf(mat.fuzz);
+	// mat.remapRoughness (pbrt-v4 "remaproughness", default true): when
+	// false, mat.fuzz already IS the GGX alpha (see MaterialData::
+	// remapRoughness's own comment) - skipping sqrtf() here matches
+	// material_pbrt.h's CPU-side roughness_or_alpha().
+	float a = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;
 	return do_regularize ? RegularizeAlpha(a) : a;
 }
 

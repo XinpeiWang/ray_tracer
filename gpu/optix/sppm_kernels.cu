@@ -83,7 +83,10 @@ extern "C" __global__ void sppm_radius_update_kernel(SPPMPixelGPU* pixels, int n
 }
 
 // Port of src/shared/sppm.h's SPPMFinalImage<T>(): L = Ld/nIterations +
-// tau/(n * totalPhotonPaths * pi * r^2).
+// tau/(totalPhotonPaths * pi * r^2). No `n` factor - see that function's
+// own comment for why (px.n belongs only to the radius-contraction step,
+// not this reconstruction; including it here darkened indirect light more
+// the longer a render ran instead of converging).
 extern "C" __global__ void sppm_final_image_kernel(
 	const SPPMPixelGPU* pixels, int numPixels,
 	int nIterations, float totalPhotonPaths, float3* framebuffer) {
@@ -93,7 +96,7 @@ extern "C" __global__ void sppm_final_image_kernel(
 	const SPPMPixelGPU& px = pixels[i];
 	const float kPi = 3.14159265358979323846f;
 	float invIter = (nIterations > 0) ? 1.0f / (float)nIterations : 0.0f;
-	float denom = px.n * totalPhotonPaths * kPi * px.radius * px.radius;
+	float denom = totalPhotonPaths * kPi * px.radius * px.radius;
 	float3 indirect = (denom > 0.0f) ? px.tau * (1.0f / denom) : make_float3(0.0f, 0.0f, 0.0f);
 	framebuffer[i] = px.Ld * invIter + indirect;
 }

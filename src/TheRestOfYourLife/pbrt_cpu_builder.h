@@ -105,7 +105,7 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 			return std::make_shared<conductor>(
 				m.conductorEta[0], m.conductorEta[1], m.conductorEta[2],
 				m.conductorK[0], m.conductorK[1], m.conductorK[2],
-				m.roughness_u, m.roughness_v);
+				m.roughness_u, m.roughness_v, m.remapRoughness);
 		return std::make_shared<metal>(albedo, m.roughness);
 	case pbrt_flatten::MaterialKind::Dielectric:
 		// A nonzero "roughness"/"uroughness"/"vroughness" (m.roughness_u/
@@ -119,7 +119,7 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		// u/v roughness (anisotropic GGX) instead of the single collapsed
 		// value.
 		if (m.roughness_u > 0.0 || m.roughness_v > 0.0)
-			return std::make_shared<rough_dielectric>(m.ior, m.roughness_u, m.roughness_v);
+			return std::make_shared<rough_dielectric>(m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
 		return std::make_shared<dielectric>(m.ior);
 	case pbrt_flatten::MaterialKind::ThinDielectric:
 		// A zero-thickness slab (thin_dielectric, material_pbrt.h) is NOT the
@@ -132,11 +132,11 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		// with the GPU backend's MaterialType::ThinDielectric either).
 		return std::make_shared<thin_dielectric>(m.ior);
 	case pbrt_flatten::MaterialKind::CoatedDiffuse:
-		return std::make_shared<coated_diffuse>(albedo, m.ior, m.roughness_u, m.roughness_v);
+		return std::make_shared<coated_diffuse>(albedo, m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
 	case pbrt_flatten::MaterialKind::CoatedConductor: {
 		const color k = reflectanceToConductorK(albedo);
 		return std::make_shared<coated_conductor>(
-			1.0, 1.0, 1.0, k.x(), k.y(), k.z(), m.ior, m.roughness_u, m.roughness_v);
+			1.0, 1.0, 1.0, k.x(), k.y(), k.z(), m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
 	}
 	case pbrt_flatten::MaterialKind::DiffuseTransmission:
 		return std::make_shared<diffuse_transmission>(

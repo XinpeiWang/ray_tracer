@@ -756,6 +756,17 @@ struct MaterialData {
 	// directly at build time and never reads this field. Defaults to a
 	// no-op multiply so no existing call site needed updating.
 	float emissionScale = 1.0f;
+
+	// pbrt-v4's "remaproughness" (default true): when true, `roughness`
+	// above is a perceptually-remapped authored value that still needs
+	// RoughnessToAlpha (sqrt) applied on-device before use as real GGX
+	// alpha (Conductor/RoughDielectric/CoatedDiffuse/CoatedConductor/
+	// RoughMetal); when false, `roughness` already IS the alpha value.
+	// Defaults to true (the pre-existing unconditional-sqrt behavior), so
+	// no existing call site needed updating. GPU has no anisotropic
+	// roughness yet (see roughness_u/roughness_v's CPU-only status), so
+	// this applies only to the isotropic `roughness` field.
+	bool remapRoughness = true;
 };
 
 // Punctual (delta) light kinds - point/spot/distant. These are evaluated

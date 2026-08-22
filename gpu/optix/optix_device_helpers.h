@@ -1631,7 +1631,7 @@ __device__ __forceinline__ void shade_material(
 		case MaterialType::CoatedConductor: {
 			// Rough dielectric coat over GGX conductor (pbrt-v4 CoatedConductorBxDF) -- sphere version
 			// coat: ior=mat.ior, roughness=mat.fuzz; conductor: eta_c, k_c per RGB
-			float cc_alpha = sqrtf(mat.fuzz);
+			float cc_alpha = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;  // pbrt-v4 remaproughness (see MaterialData::remapRoughness)
 			float3 cc_n   = normal;
 			float3 cc_up  = (fabsf(cc_n.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
 			float3 cc_tan  = normalize(cross(cc_up, cc_n));
@@ -1785,7 +1785,10 @@ __device__ __forceinline__ void shade_material(
 			// GGX microfacet BSDF (pbrt-v4 RoughDielectricBxDF)
 			// fuzz field stores GGX roughness; ior = index of refraction
 			float rd_alpha = mat.fuzz;
-			rd_alpha = sqrtf(rd_alpha);  // RoughnessToAlpha: alpha = sqrt(roughness)
+			// RoughnessToAlpha (sqrt), unless pbrt-v4 "remaproughness" is
+			// false (see MaterialData::remapRoughness) - then mat.fuzz
+			// already IS the alpha value.
+			if (mat.remapRoughness) rd_alpha = sqrtf(rd_alpha);
 			float rd_ri    = front_face ? (1.0f / mat.ior) : mat.ior;
 
 			// Local shading frame (n = +Z)
@@ -1931,7 +1934,7 @@ __device__ __forceinline__ void shade_material(
 
 		case MaterialType::Conductor: {
 			// GGX VNDF + complex Fresnel (pbrt-v4 ConductorBxDF) -- sphere version
-			float c_alpha = sqrtf(mat.fuzz);
+			float c_alpha = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;  // pbrt-v4 remaproughness (see MaterialData::remapRoughness)
 			float3 cn = normal;
 			float3 cup = (fabsf(cn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
 			float3 ctan   = normalize(cross(cup, cn));
@@ -2030,7 +2033,7 @@ __device__ __forceinline__ void shade_material(
 			// mirrors exactly). NOT the same material as MaterialType::Metal
 			// (a fuzz-perturbed mirror, a different model entirely - CPU's
 			// plain `metal` class).
-			float rm_alpha = sqrtf(mat.fuzz);
+			float rm_alpha = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;  // pbrt-v4 remaproughness (see MaterialData::remapRoughness)
 			float3 rmn = normal;
 			float3 rmup = (fabsf(rmn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
 			float3 rmtan   = normalize(cross(rmup, rmn));
@@ -2110,7 +2113,7 @@ __device__ __forceinline__ void shade_material(
 
 		case MaterialType::CoatedDiffuse: {
 			// Rough dielectric coat over Lambertian base (pbrt-v4 CoatedDiffuseBxDF) -- sphere version
-			float cd_alpha = sqrtf(mat.fuzz);
+			float cd_alpha = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;  // pbrt-v4 remaproughness (see MaterialData::remapRoughness)
 			float3 cdn  = normal;
 			float3 cdup = (fabsf(cdn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
 			float3 cdtan = normalize(cross(cdup, cdn));

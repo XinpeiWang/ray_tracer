@@ -358,11 +358,36 @@ TEST(SPPMFinalImage, ZeroPhotonsGivesOnlyLd) {
 }
 
 TEST(SPPMFinalImage, IndirectTermFormula) {
-	// tau=pi, n=1, photons=1, r=1 => indirect = tau/(n*photons*pi*r^2) = 1
+	// tau=pi, photons=1, r=1 => indirect = tau/(photons*pi*r^2) = 1
+	// pixels[0].n is deliberately left non-1 (see below) so this case alone
+	// can't hide a stray `* n` in the denominator the way n=1 always did.
 	std::vector<SPPMPixel<float>> pixels(1);
 	float kPi = 3.14159265358979f;
 	pixels[0].tau[0] = kPi; pixels[0].tau[1] = kPi; pixels[0].tau[2] = kPi;
 	pixels[0].n = 1.f;
+	pixels[0].radius = 1.f;
+	pixels[0].Ld[0]=pixels[0].Ld[1]=pixels[0].Ld[2]=0.f;
+
+	std::vector<float> img;
+	SPPMFinalImage(pixels, /*nIterations=*/1, /*totalPhotonPaths=*/1, img);
+	EXPECT_NEAR(img[0], 1.f, 1e-4f);
+	EXPECT_NEAR(img[1], 1.f, 1e-4f);
+	EXPECT_NEAR(img[2], 1.f, 1e-4f);
+}
+
+TEST(SPPMFinalImage, IndirectTermIgnoresN) {
+	// pbrt-v4's real formula (integrators.cpp's SPPMIntegrator::Render,
+	// e.g. line 3229) is L = Ld/(iter+1) + tau/(np*Pi*r^2) - SPPMPixel::n
+	// belongs only to the radius-contraction step, never this
+	// reconstruction. n=1 in the sibling test above can't distinguish
+	// "correctly ignores n" from "multiplies by n and it happened to be a
+	// no-op" - this pins n=4 and asserts the SAME indirect value as n=1
+	// would give, which fails outright if a stray `* px.n` ever creeps
+	// back into the denominator.
+	std::vector<SPPMPixel<float>> pixels(1);
+	float kPi = 3.14159265358979f;
+	pixels[0].tau[0] = kPi; pixels[0].tau[1] = kPi; pixels[0].tau[2] = kPi;
+	pixels[0].n = 4.f;
 	pixels[0].radius = 1.f;
 	pixels[0].Ld[0]=pixels[0].Ld[1]=pixels[0].Ld[2]=0.f;
 

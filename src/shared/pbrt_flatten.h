@@ -203,6 +203,12 @@ struct Material {
 	// happen to be equal.
 	double roughness_u = 0.0;
 	double roughness_v = 0.0;
+	// pbrt-v4's "remaproughness" (default true): when true, roughness/
+	// roughness_u/roughness_v above are perceptually-remapped authored
+	// values that still need RoughnessToAlpha applied before use as real
+	// GGX alpha; when false, they already ARE the alpha value. See
+	// material_pbrt.h's roughness_or_alpha() for where this gets applied.
+	bool remapRoughness = true;
 	double ior = 1.5;
 	// DiffuseTransmission only: the light that passes through rather than
 	// reflects. pbrt-v4's own default (0.25) is closer to that material's
@@ -1082,6 +1088,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// default to the material's "roughness" parameter, not to 0).
 		m.roughness_u = md.params.getFloat("uroughness", md.params.getFloat("roughness", 0.0));
 		m.roughness_v = md.params.getFloat("vroughness", md.params.getFloat("roughness", 0.0));
+		m.remapRoughness = md.params.getBool("remaproughness", true);
 		// "eta" is pbrt's name for index of refraction on dielectrics.
 		m.ior = md.params.getFloat("eta", md.params.getFloat("ior", 1.5));
 
@@ -1101,6 +1108,27 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				m.hasConductorPreset = true;
 				m.conductorEta[0] = preset->eta_r; m.conductorEta[1] = preset->eta_g; m.conductorEta[2] = preset->eta_b;
 				m.conductorK[0]   = preset->k_r;   m.conductorK[1]   = preset->k_g;   m.conductorK[2]   = preset->k_b;
+			} else if (!md.params.find("eta") && !md.params.find("k") && !md.params.find("reflectance")) {
+				// pbrt-v4's real default (materials.cpp's ConductorMaterial::
+				// Create: "if (!reflectance) { if (!eta) eta = Cu-eta; if
+				// (!k) k = Cu-k; }") when a scene gives NONE of eta/k/
+				// reflectance at all: real copper, not a neutral/generic
+				// reflector - this codebase's own bundled scenes
+				// (example-cornell.pbrt, infinite-light.pbrt,
+				// instanced-spheres.pbrt, realistic-camera.pbrt,
+				// spherical-camera.pbrt) all just write
+				// Material "conductor" "float roughness" [x] and expect
+				// real pbrt-v4's shiny-copper look, not the grey fuzz-mirror
+				// this fell back to before. An explicit (even if
+				// unrecognized-as-a-named-spectrum) eta/k/reflectance still
+				// falls through to that fuzz-mirror approximation below,
+				// unchanged - this only replaces the "gave nothing at all"
+				// case.
+				if (const ConductorPreset* cu = FindConductorPreset("Cu")) {
+					m.hasConductorPreset = true;
+					m.conductorEta[0] = cu->eta_r; m.conductorEta[1] = cu->eta_g; m.conductorEta[2] = cu->eta_b;
+					m.conductorK[0]   = cu->k_r;   m.conductorK[1]   = cu->k_g;   m.conductorK[2]   = cu->k_b;
+				}
 			}
 		}
 

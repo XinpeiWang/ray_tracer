@@ -27,6 +27,21 @@ inline uint64_t coated_seed_from_dir(const vec3& d) {
 	return h;
 }
 
+// pbrt-v4's "remaproughness" (materials.cpp's GetOneBool("remaproughness",
+// true), read by ConductorMaterial/DielectricMaterial/CoatedDiffuseMaterial/
+// CoatedConductorMaterial alike): when true (pbrt-v4's own default), an
+// authored roughness value is squeezed through RoughnessToAlpha (roughly
+// perceptual, matches how older/most pbrt scenes were authored); when
+// false, the value IS the GGX alpha directly, unconverted - a scene using
+// low, precise alpha values (e.g. this project's own ganesha.pbrt,
+// "remaproughness" false + "uroughness"/"vroughness" 0.01) needs this to
+// render as intended instead of unconditionally sqrt()'d into 10x the
+// roughness it asked for.
+inline double roughness_or_alpha(double roughness, bool remap_roughness) {
+	const double clamped = std::fmax(roughness, 1e-4);
+	return remap_roughness ? TrowbridgeReitz<double>::RoughnessToAlpha(clamped) : clamped;
+}
+
 // ---------------------------------------------------------------------------
 // rough_metal -- GGX microfacet BRDF (pbrt-v4 TrowbridgeReitzDistribution)
 // Physically-based rough conductor; replaces simple fuzz-sphere metal for
@@ -152,11 +167,11 @@ class conductor : public material {
 
     conductor(double eta_r, double eta_g, double eta_b,
               double k_r,   double k_g,   double k_b,
-              double u_roughness, double v_roughness)
+              double u_roughness, double v_roughness, bool remap_roughness = true)
         : eta_r(eta_r), eta_g(eta_g), eta_b(eta_b),
           k_r(k_r),     k_g(k_g),     k_b(k_b),
-          alpha_x(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(u_roughness, 1e-4))),
-          alpha_y(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(v_roughness, 1e-4))) {}
+          alpha_x(roughness_or_alpha(u_roughness, remap_roughness)),
+          alpha_y(roughness_or_alpha(v_roughness, remap_roughness)) {}
 
     conductor(const ConductorPreset& preset, double roughness)
         : eta_r(preset.eta_r), eta_g(preset.eta_g), eta_b(preset.eta_b),
@@ -269,10 +284,11 @@ class rough_dielectric : public material {
         alpha_x = alpha_y = a;
     }
 
-    rough_dielectric(double refraction_index, double u_roughness, double v_roughness)
+    rough_dielectric(double refraction_index, double u_roughness, double v_roughness,
+                      bool remap_roughness = true)
         : ior(refraction_index),
-          alpha_x(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(u_roughness, 1e-4))),
-          alpha_y(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(v_roughness, 1e-4))) {}
+          alpha_x(roughness_or_alpha(u_roughness, remap_roughness)),
+          alpha_y(roughness_or_alpha(v_roughness, remap_roughness)) {}
 
     BxDF get_bxdf(const MaterialContext<double>& ctx) const {
         return BxDF{ ior, alpha_x, alpha_y };
@@ -390,10 +406,11 @@ class coated_diffuse : public material {
         alpha_x = alpha_y = a;
     }
 
-    coated_diffuse(const color& albedo, double ior, double u_roughness, double v_roughness)
+    coated_diffuse(const color& albedo, double ior, double u_roughness, double v_roughness,
+                   bool remap_roughness = true)
         : albedo(albedo), ior(ior),
-          alpha_x(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(u_roughness, 1e-4))),
-          alpha_y(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(v_roughness, 1e-4))) {}
+          alpha_x(roughness_or_alpha(u_roughness, remap_roughness)),
+          alpha_y(roughness_or_alpha(v_roughness, remap_roughness)) {}
 
     BxDF get_bxdf(const MaterialContext<double>& ctx) const {
         return BxDF{ albedo.x(), albedo.y(), albedo.z(), ior, alpha_x, alpha_y };
@@ -573,12 +590,13 @@ class coated_conductor : public material {
 
     coated_conductor(double eta_r, double eta_g, double eta_b,
                      double k_r,   double k_g,   double k_b,
-                     double coat_ior, double u_roughness, double v_roughness)
+                     double coat_ior, double u_roughness, double v_roughness,
+                     bool remap_roughness = true)
         : eta_r(eta_r), eta_g(eta_g), eta_b(eta_b),
           k_r(k_r),     k_g(k_g),     k_b(k_b),
           coat_ior(coat_ior),
-          alpha_x(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(u_roughness, 1e-4))),
-          alpha_y(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(v_roughness, 1e-4))) {}
+          alpha_x(roughness_or_alpha(u_roughness, remap_roughness)),
+          alpha_y(roughness_or_alpha(v_roughness, remap_roughness)) {}
 
     coated_conductor(const ConductorPreset& preset, double coat_ior, double coat_roughness)
         : eta_r(preset.eta_r), eta_g(preset.eta_g), eta_b(preset.eta_b),

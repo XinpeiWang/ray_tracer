@@ -15,7 +15,7 @@
 //   SPPMCameraPass<T,Sc>   -- trace camera rays and deposit visible points
 //   SPPMPhotonPass<T,Sc>   -- trace photons and accumulate Phi/m per pixel
 //   SPPMUpdateRadius<T>    -- apply gamma=2/3 contraction after photon pass
-//   SPPMFinalImage<T>      -- compute output Ld + tau/(n*photonPaths*pi*r^2)
+//   SPPMFinalImage<T>      -- compute output Ld + tau/(photonPaths*pi*r^2)
 //   SPPMRender<T,Sc>       -- full multi-iteration render loop
 //
 // Design rules (same as bdpt.h / mlt.h):
@@ -462,17 +462,21 @@ void SPPMUpdateRadius(std::vector<SPPMPixel<T>>& pixels) {
 // Section 6 -- SPPMFinalImage
 // ===========================================================================
 // Reconstruct the final pixel radiance.
-// Mirrors pbrt-v4:
-//   L = Ld + tau / (n * totalPhotonPaths * pi * r^2)
+// Mirrors pbrt-v4 (integrators.cpp's SPPMIntegrator::Render, e.g. line 3229):
+//   L = pixel.Ld / (iter+1) + pixel.tau / (np * Pi * Sqr(pixel.radius))
+// No `n` factor: SPPMPixel::n is used ONLY by the radius-contraction step
+// (Section 5 above, pbrt-v4's own nNew/rNew), never in this reconstruction -
+// an earlier version of this file multiplied it into the denominator here
+// too, which (since n only grows across iterations) silently darkened the
+// indirect term more and more the longer a render ran, rather than
+// converging like SPPM is supposed to. The existing unit test happened to
+// use n=1 everywhere, which hid the bug (an extra factor of 1 is a no-op).
 //
 // Parameters:
 //   pixels           -- final pixel array
 //   nIterations      -- total number of SPPM iterations (used to normalise Ld)
 //   totalPhotonPaths -- nPhotons * nIterations
 //   out_rgb          -- flat array [width*height*3], row-major, R/G/B interleaved
-//
-// Mirrors pbrt-v4:
-//   L = pixel.Ld / (iter+1) + pixel.tau / (np * Pi * r^2)
 
 template<typename T>
 void SPPMFinalImage(const std::vector<SPPMPixel<T>>& pixels,
@@ -484,7 +488,7 @@ void SPPMFinalImage(const std::vector<SPPMPixel<T>>& pixels,
 	T invIter = (nIterations > 0) ? T(1) / (T)nIterations : T(0);
 	for (int i = 0; i < (int)pixels.size(); ++i) {
 		const SPPMPixel<T>& px = pixels[i];
-		T denom = px.n * (T)totalPhotonPaths * kPi * px.radius * px.radius;
+		T denom = (T)totalPhotonPaths * kPi * px.radius * px.radius;
 		for (int c = 0; c < 3; ++c) {
 			T indirect = (denom > T(0)) ? px.tau[c] / denom : T(0);
 			out_rgb[i*3 + c] = px.Ld[c] * invIter + indirect;
