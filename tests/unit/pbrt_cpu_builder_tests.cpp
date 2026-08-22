@@ -245,6 +245,48 @@ TEST(PbrtCpuBuildTest, UnknownMediumInterfaceNameIsTreatedAsVacuum) {
 	EXPECT_TRUE(castRay(b, point3(0, 0, -5), vec3(0, 0, 1), t));
 }
 
+TEST(PbrtCpuBuildTest, CloudMediumIsReachable) {
+	// Like MediumInterfaceWrapsTheSphereInAParticipatingMedium above, this
+	// only confirms the standalone cloud_medium_hittable (added independently
+	// of the declaring sphere - see addMediumIfPresent's own comment) builds
+	// without crashing and stays reachable; CloudMedium's own density math is
+	// covered by cloud_medium_hittable_tests.cpp / cloud_medium_tests.cpp.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"AttributeBegin\n"
+		"  Scale 2 2 2\n"
+		"  MakeNamedMedium \"puff\" \"string type\" [ \"cloud\" ]\n"
+		"    \"rgb sigma_s\" [ 5 5 5 ]\n"
+		"AttributeEnd\n"
+		"AttributeBegin\n"
+		"  Translate 1 1 1\n"
+		"  MediumInterface \"puff\" \"\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 2 ]\n"
+		"AttributeEnd\n");
+	EXPECT_EQ(b.sphereCount, 1u);
+	double t = 0.0;
+	EXPECT_TRUE(castRay(b, point3(1, 1, -5), vec3(0, 0, 1), t))
+		<< "a ray toward the cloud medium's world AABB should still hit something";
+}
+
+TEST(PbrtCpuBuildTest, RgbGridMediumIsReachable) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"AttributeBegin\n"
+		"  Scale 2 2 2\n"
+		"  MakeNamedMedium \"nebula\" \"string type\" [ \"rgbgrid\" ]\n"
+		"    \"integer nx\" [ 2 ] \"integer ny\" [ 1 ] \"integer nz\" [ 1 ]\n"
+		"    \"rgb sigma_s\" [ 1 1 1  2 2 2 ]\n"
+		"AttributeEnd\n"
+		"AttributeBegin\n"
+		"  Translate 1 1 1\n"
+		"  MediumInterface \"nebula\" \"\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 2 ]\n"
+		"AttributeEnd\n");
+	EXPECT_EQ(b.sphereCount, 1u);
+	double t = 0.0;
+	EXPECT_TRUE(castRay(b, point3(1, 1, -5), vec3(0, 0, 1), t))
+		<< "a ray toward the rgbgrid medium's world AABB should still hit something";
+}
+
 TEST(PbrtCpuBuildTest, SharedVerticesAreDeduplicated) {
 	// The two triangles of a quad share two corners. FlatScene stores all six
 	// vertices explicitly; the builder should recover the original four.

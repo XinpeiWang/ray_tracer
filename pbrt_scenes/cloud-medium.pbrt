@@ -1,0 +1,62 @@
+# cloud-medium.pbrt -- exercises MakeNamedMedium "cloud" (Perlin-noise-driven
+# heterogeneous scattering, src/shared/cloud_medium.h) plus MediumInterface,
+# both loader-side (pbrt_scene.h/pbrt_flatten.h) and both render backends
+# (CPU's cloud_medium_hittable, GPU's MaterialType::CloudMedium).
+#
+# The medium is declared inside its own Translate+Scale block, so the CTM
+# captured at MakeNamedMedium time (not just an axis-aligned box picked by
+# hand) is what actually places it - the general case, not the special one.
+# A separate sphere (GPU's medium dispatch is sphere-hit-triggered only)
+# encloses that same world-space box and carries the MediumInterface.
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+LookAt  278 260 -500    358 280 330    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 500 ] "integer yresolution" [ 500 ]
+Sampler "halton" "integer pixelsamples" [ 128 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.6 0.7 0.9 ]
+
+Material "diffuse" "rgb reflectance" [ 0.5 0.5 0.5 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -400 0 -400   900 0 -400   900 0 900   -400 0 900 ]
+
+Material "conductor" "float roughness" [ 0.05 ]
+AttributeBegin
+  Translate 100 60 -50
+  Shape "sphere" "float radius" [ 60 ]
+AttributeEnd
+
+# Medium-space bounds default to the unit cube [0,1]^3 (pbrt-v4's own
+# default for "cloud"); the Translate+Scale below places/sizes that cube
+# in world space - the CTM at this exact point is what gets captured.
+AttributeBegin
+  Translate 278 200 250
+  Scale 160 160 160
+  MakeNamedMedium "puffcloud" "string type" [ "cloud" ]
+    "rgb sigma_a" [ 0 0 0 ] "rgb sigma_s" [ 0.6 0.6 0.6 ] "float g" [ 0.3 ]
+    "float density" [ 1 ] "float wispiness" [ 1 ] "float frequency" [ 4 ]
+AttributeEnd
+
+# Trigger sphere: centered on the world-space box above (min (278,200,250),
+# max (438,360,410), center (358,280,330)), radius past its half-diagonal
+# (80*sqrt(3) =~ 138.6) so the whole box is enclosed. On CPU, MediumInterface
+# only tells the loader to also add a standalone cloud_medium_hittable using
+# the medium's own world AABB (pbrt_cpu_builder.h's addMediumIfPresent) - the
+# declaring shape itself is STILL added to the scene separately with its own
+# material (matching the homogeneous-medium "glass shell + fog inside"
+# convention, see build_dielectric_medium_scene), so it needs an explicitly
+# near-invisible one here (eta~1: negligible refraction/reflection) rather
+# than inheriting whatever Material was last set - otherwise it would render
+# as a solid opaque shell hiding the cloud entirely.
+AttributeBegin
+  Translate 358 280 330
+  Material "dielectric" "float eta" [ 1.001 ]
+  MediumInterface "puffcloud" ""
+  Shape "sphere" "float radius" [ 145 ]
+AttributeEnd

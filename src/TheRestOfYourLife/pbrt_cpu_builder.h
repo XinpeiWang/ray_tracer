@@ -483,6 +483,46 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		const auto luminance = [](const double c[3]) {
 			return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
 		};
+
+		// cloud/rgbgrid: real heterogeneous media (src/shared/cloud_medium.h,
+		// src/shared/rgb_grid_medium.h), wrapped in the SAME CPU hittables
+		// this codebase's own E2/E4 showcase scenes use - see
+		// pbrt_flatten::Medium's own comment for why only these two of
+		// pbrt-v4's several non-homogeneous types are wired here. Both
+		// wrap `shape` the same way constant_medium does below (visible
+		// bounds come from the shape's own bounding_box(); world-space
+		// AABB / world<->medium transform were already resolved at
+		// flatten() time).
+		if (md.type == "cloud") {
+			// sigma_a is always forced to 0 below (pure scattering) even if
+			// the scene gave a nonzero one - see cloud_medium_hittable.h's
+			// own comment for why (matches constant_medium's identical
+			// convention); flatten() already warned about this - see
+			// pbrt_flatten.h's own cloud-parsing block.
+			const auto cloud = CloudMedium<double>::make(
+				md.p0[0], md.p0[1], md.p0[2], md.p1[0], md.p1[1], md.p1[2],
+				md.toMediumMat, md.toMediumTranslate,
+				/*sigma_a=*/0.0, luminance(md.sigma_s), md.g,
+				md.density, md.wispiness, md.frequency);
+			const point3 world_min(md.worldMin[0], md.worldMin[1], md.worldMin[2]);
+			const point3 world_max(md.worldMax[0], md.worldMax[1], md.worldMax[2]);
+			world.add(std::make_shared<cloud_medium_hittable>(cloud, color(1,1,1), world_min, world_max));
+			return;
+		}
+		if (md.type == "rgbgrid") {
+			const Bounds3<double> bounds(md.p0[0], md.p0[1], md.p0[2], md.p1[0], md.p1[1], md.p1[2]);
+			const auto grid = RGBGridMediumData<double>::build(
+				md.sigma_a_r, md.sigma_a_g, md.sigma_a_b,
+				md.sigma_s_r, md.sigma_s_g, md.sigma_s_b,
+				{}, {}, {},   // no Le (emission) - not parsed from pbrt yet
+				md.nx, md.ny, md.nz, bounds, /*sigma_scale=*/1.0, /*Le_scale=*/0.0, md.g);
+			const point3 world_min(md.worldMin[0], md.worldMin[1], md.worldMin[2]);
+			const point3 world_max(md.worldMax[0], md.worldMax[1], md.worldMax[2]);
+			world.add(std::make_shared<rgb_grid_medium_hittable>(
+				grid, md.g, world_min, world_max, md.toMediumMat, md.toMediumTranslate));
+			return;
+		}
+
 		const double sig_a = luminance(md.sigma_a);
 		const double sig_s = luminance(md.sigma_s);
 		const color albedo = (sig_s > 1e-9)

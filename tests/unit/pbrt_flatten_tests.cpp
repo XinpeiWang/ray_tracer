@@ -288,6 +288,100 @@ TEST(FlattenTest, UnresolvedMediumNameIsVacuumAndWarns) {
 	EXPECT_TRUE(warnedAbout(s, "ghost"));
 }
 
+TEST(FlattenTest, UniformgridFallsBackToHomogeneousAndWarns) {
+	// GridMediumData exists (sampled_grid.h) but has no CPU hittable wrapper
+	// or GPU MaterialType yet - unlike cloud/rgbgrid, this type is still
+	// unsupported and must keep falling back.
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"g\" \"string type\" [ \"uniformgrid\" ]\n");
+	ASSERT_EQ(s.media.size(), 1u);
+	EXPECT_EQ(s.media[0].type, "homogeneous");
+	EXPECT_TRUE(warnedAbout(s, "uniformgrid"));
+}
+
+TEST(FlattenTest, CloudMediumComputesWorldAabbAndInverseTransform) {
+	// Default medium-space bounds are the unit cube; Translate+Scale places
+	// it in world space. World box: (0,0,0)->(10,20,30), (1,1,1)->(12,22,32).
+	const FlatScene s = flattenSource(
+		"AttributeBegin\n"
+		"  Translate 10 20 30\n"
+		"  Scale 2 2 2\n"
+		"  MakeNamedMedium \"puff\" \"string type\" [ \"cloud\" ]\n"
+		"    \"rgb sigma_s\" [ 1 1 1 ] \"float density\" [ 0.5 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(s.media.size(), 1u);
+	const Medium &m = s.media[0];
+	EXPECT_EQ(m.type, "cloud");
+	EXPECT_DOUBLE_EQ(m.p0[0], 0.0);
+	EXPECT_DOUBLE_EQ(m.p1[0], 1.0);
+	EXPECT_DOUBLE_EQ(m.density, 0.5);
+	EXPECT_DOUBLE_EQ(m.wispiness, 1.0);
+	EXPECT_DOUBLE_EQ(m.frequency, 5.0)
+		<< "pbrt-v4's real default, not this codebase's own E2 showcase scene's 4.0";
+
+	EXPECT_DOUBLE_EQ(m.worldMin[0], 10.0);
+	EXPECT_DOUBLE_EQ(m.worldMin[1], 20.0);
+	EXPECT_DOUBLE_EQ(m.worldMin[2], 30.0);
+	EXPECT_DOUBLE_EQ(m.worldMax[0], 12.0);
+	EXPECT_DOUBLE_EQ(m.worldMax[1], 22.0);
+	EXPECT_DOUBLE_EQ(m.worldMax[2], 32.0);
+
+	// world_to_medium = inverse(Translate(10,20,30)*Scale(2,2,2)):
+	// mat = diag(0.5,0.5,0.5), translate = -(10,20,30)*0.5.
+	EXPECT_DOUBLE_EQ(m.toMediumMat[0], 0.5);
+	EXPECT_DOUBLE_EQ(m.toMediumMat[4], 0.5);
+	EXPECT_DOUBLE_EQ(m.toMediumMat[8], 0.5);
+	EXPECT_DOUBLE_EQ(m.toMediumTranslate[0], -5.0);
+	EXPECT_DOUBLE_EQ(m.toMediumTranslate[1], -10.0);
+	EXPECT_DOUBLE_EQ(m.toMediumTranslate[2], -15.0);
+}
+
+TEST(FlattenTest, CloudMediumWithNonzeroSigmaAWarns) {
+	// cloud_medium_hittable/MaterialType::CloudMedium always force sigma_a
+	// to 0 (pure scattering) - a scene that set a real one silently loses
+	// it, which is worth a warning (see pbrt_flatten.h's own comment).
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"puff\" \"string type\" [ \"cloud\" ]\n"
+		"  \"rgb sigma_a\" [ 0.1 0.1 0.1 ]\n");
+	ASSERT_EQ(s.media.size(), 1u);
+	EXPECT_TRUE(warnedAbout(s, "sigma_a"));
+}
+
+TEST(FlattenTest, RgbGridDeinterleavesFlatTripleArray) {
+	// nx=2,ny=1,nz=1: 2 voxels, "rgb sigma_s" holds 2*3=6 numbers, one RGB
+	// triple per voxel (voxel 0 = (1,2,3), voxel 1 = (4,5,6)).
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"nebula\" \"string type\" [ \"rgbgrid\" ]\n"
+		"  \"integer nx\" [ 2 ] \"integer ny\" [ 1 ] \"integer nz\" [ 1 ]\n"
+		"  \"rgb sigma_s\" [ 1 2 3  4 5 6 ]\n");
+	ASSERT_EQ(s.media.size(), 1u);
+	const Medium &m = s.media[0];
+	EXPECT_EQ(m.type, "rgbgrid");
+	ASSERT_EQ(m.sigma_s_r.size(), 2u);
+	ASSERT_EQ(m.sigma_s_g.size(), 2u);
+	ASSERT_EQ(m.sigma_s_b.size(), 2u);
+	EXPECT_DOUBLE_EQ(m.sigma_s_r[0], 1.0);
+	EXPECT_DOUBLE_EQ(m.sigma_s_g[0], 2.0);
+	EXPECT_DOUBLE_EQ(m.sigma_s_b[0], 3.0);
+	EXPECT_DOUBLE_EQ(m.sigma_s_r[1], 4.0);
+	EXPECT_DOUBLE_EQ(m.sigma_s_g[1], 5.0);
+	EXPECT_DOUBLE_EQ(m.sigma_s_b[1], 6.0);
+	EXPECT_TRUE(m.sigma_a_r.empty())
+		<< "sigma_a was never given, so its channel vectors stay absent";
+}
+
+TEST(FlattenTest, RgbGridWrongArrayLengthIsDroppedWithWarning) {
+	// nx=2,ny=1,nz=1 expects 6 numbers; giving only 3 (one voxel) must not
+	// be silently truncated/padded - it's dropped entirely, with a warning.
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"nebula\" \"string type\" [ \"rgbgrid\" ]\n"
+		"  \"integer nx\" [ 2 ] \"integer ny\" [ 1 ] \"integer nz\" [ 1 ]\n"
+		"  \"rgb sigma_s\" [ 1 2 3 ]\n");
+	ASSERT_EQ(s.media.size(), 1u);
+	EXPECT_TRUE(s.media[0].sigma_s_r.empty());
+	EXPECT_TRUE(warnedAbout(s, "nebula"));
+}
+
 TEST(FlattenTest, RotationAloneDoesNotCountAsNonUniformScale) {
 	// A rotation leaves all three basis lengths at 1; a naive check that looked
 	// at raw matrix entries rather than their lengths would warn here.

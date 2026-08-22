@@ -858,6 +858,95 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 						  static_cast<float>(md.sigma_s[1] / sig_s),
 						  static_cast<float>(md.sigma_s[2] / sig_s))
 			: make_float3(1.0f, 1.0f, 1.0f);
+
+		// cloud/rgbgrid: real heterogeneous media, matching this codebase's
+		// own E2/E4 showcase scenes' GPU construction exactly (see
+		// gpu/optix/scene_builder.cpp's build_cloud_medium_scene_gpu/
+		// build_rgb_grid_medium_scene_gpu - not called directly since those
+		// live in a separate .cpp/translation unit; this mirrors their
+		// short field-population logic instead, same "each loader
+		// duplicates its own small helpers rather than sharing across a
+		// .cpp/.h boundary" convention this file already uses for
+		// getOrBuildPbrtImageTexture() etc). Same sphere-only, "replaces
+		// the sphere's whole material slot" limitation the pre-existing
+		// homogeneous MaterialType::Medium case above already has (see the
+		// sphere loop just below) - not a new constraint these two add.
+		if (md.type == "cloud") {
+			float toMediumMatF[9], toMediumTranslateF[3];
+			for (int i = 0; i < 9; ++i) toMediumMatF[i] = static_cast<float>(md.toMediumMat[i]);
+			for (int i = 0; i < 3; ++i) toMediumTranslateF[i] = static_cast<float>(md.toMediumTranslate[i]);
+			const CloudMedium<float> cloud = CloudMedium<float>::make(
+				static_cast<float>(md.p0[0]), static_cast<float>(md.p0[1]), static_cast<float>(md.p0[2]),
+				static_cast<float>(md.p1[0]), static_cast<float>(md.p1[1]), static_cast<float>(md.p1[2]),
+				toMediumMatF, toMediumTranslateF,
+				0.0f, static_cast<float>(sig_s), static_cast<float>(md.g),
+				static_cast<float>(md.density), static_cast<float>(md.wispiness), static_cast<float>(md.frequency));
+			const int cloudIdx = static_cast<int>(out.cloudMediums.size());
+			out.cloudMediums.push_back(cloud);
+			MaterialData d = {};
+			d.type = MaterialType::CloudMedium;
+			d.medium_albedo = make_float3(1.0f, 1.0f, 1.0f);
+			d.g = static_cast<float>(md.g);
+			d.cloud_medium_extra.cloudMediumIdx = static_cast<float>(cloudIdx);
+			const int idx = static_cast<int>(out.materials.size());
+			out.materials.push_back(d);
+			mediumCache.emplace(medIdx, idx);
+			return idx;
+		}
+		if (md.type == "rgbgrid") {
+			// Scattering channels only - GpuRgbGridMedium/add_rgb_grid_
+			// medium's own single (r,g,b) triple shape (see optix_types.h's
+			// GpuRgbGridMedium - one dataOffset, not two) has no separate
+			// absorption-grid slot the way CPU's RGBGridMediumData (real
+			// sigma_a_grids alongside sigma_s_grids) does - a real,
+			// GPU-specific simplification beyond CPU's fuller support, not
+			// something this pbrt-loader path is introducing on its own.
+			const std::size_t voxels = static_cast<std::size_t>(md.nx)
+				* static_cast<std::size_t>(md.ny) * static_cast<std::size_t>(md.nz);
+			const bool hasScattering = md.sigma_s_r.size() == voxels
+				&& md.sigma_s_g.size() == voxels && md.sigma_s_b.size() == voxels;
+			GpuRgbGridMedium meta{};
+			for (int i = 0; i < 3; ++i) {
+				meta.bounds_min[i] = static_cast<float>(md.worldMin[i]);
+				meta.bounds_max[i] = static_cast<float>(md.worldMax[i]);
+				meta.translate[i] = static_cast<float>(md.toMediumTranslate[i]);
+			}
+			for (int i = 0; i < 9; ++i) meta.mat[i] = static_cast<float>(md.toMediumMat[i]);
+			meta.nx = md.nx; meta.ny = md.ny; meta.nz = md.nz;
+			meta.sigma_scale = 1.0f;
+			meta.phase_g = static_cast<float>(md.g);
+			std::vector<float> rf, gf, bf;
+			float max_density = 0.0f;
+			if (hasScattering) {
+				rf.assign(md.sigma_s_r.begin(), md.sigma_s_r.end());
+				gf.assign(md.sigma_s_g.begin(), md.sigma_s_g.end());
+				bf.assign(md.sigma_s_b.begin(), md.sigma_s_b.end());
+				for (float v : rf) max_density = std::fmax(max_density, v);
+				for (float v : gf) max_density = std::fmax(max_density, v);
+				for (float v : bf) max_density = std::fmax(max_density, v);
+			} else {
+				// No scattering data (an absorption-only "rgbgrid" scene,
+				// or a size mismatch already warned about at flatten() time)
+				// - degrade to an empty, effectively invisible grid rather
+				// than reading past the end of an empty vector.
+				rf.assign(voxels, 0.0f); gf.assign(voxels, 0.0f); bf.assign(voxels, 0.0f);
+			}
+			meta.sigma_maj = max_density * meta.sigma_scale * 1.01f;   // small safety margin, matches scene_builder.cpp's own convention
+			meta.dataOffset = static_cast<int>(out.rgbGridData.size());
+			out.rgbGridData.insert(out.rgbGridData.end(), rf.begin(), rf.end());
+			out.rgbGridData.insert(out.rgbGridData.end(), gf.begin(), gf.end());
+			out.rgbGridData.insert(out.rgbGridData.end(), bf.begin(), bf.end());
+			const int gridIdx = static_cast<int>(out.rgbGridMediums.size());
+			out.rgbGridMediums.push_back(meta);
+			MaterialData d = {};
+			d.type = MaterialType::RgbGridMedium;
+			d.rgb_grid_medium_extra.rgbGridMediumIdx = static_cast<float>(gridIdx);
+			const int idx = static_cast<int>(out.materials.size());
+			out.materials.push_back(d);
+			mediumCache.emplace(medIdx, idx);
+			return idx;
+		}
+
 		MaterialData d = {};
 		d.type = MaterialType::Medium;
 		d.medium_albedo = albedo;

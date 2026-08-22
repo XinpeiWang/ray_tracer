@@ -128,6 +128,25 @@ loader and no longer match the code:
   `DiskData`/`CylinderData`'s medium field on either backend, so the same
   directive silently produces a disk/cylinder with no medium on GPU.
 
+- `MakeNamedMedium`'s `"type"` parameter supports `"homogeneous"` (the
+  default), `"cloud"` (Perlin-FBm density, `src/shared/cloud_medium.h`) and
+  `"rgbgrid"` (a flat per-voxel `"rgb sigma_a"`/`"rgb sigma_s"` grid,
+  `src/shared/rgb_grid_medium.h`) on both backends — CPU via
+  `cloud_medium_hittable`/`rgb_grid_medium_hittable`, GPU via
+  `MaterialType::CloudMedium`/`::RgbGridMedium`, both wired through
+  `pbrt_scene.h`'s `MediumDecl::xform` (the CTM captured at declaration
+  time) and `pbrt_flatten.h`'s world-space AABB/world↔medium-transform
+  computation. Like the pre-existing homogeneous case, GPU dispatch for
+  cloud/rgbgrid is sphere-hit-triggered only (a `MediumInterface` on a
+  disk/cylinder/trianglemesh has no GPU effect — see the disk/cylinder gap
+  above). `"uniformgrid"` still falls back to homogeneous with a warning:
+  its data structure (`GridMediumData`, `src/shared/sampled_grid.h`) exists
+  and is unit-tested but has no CPU hittable wrapper or GPU `MaterialType`
+  yet, unlike cloud/rgbgrid which both had complete plumbing on both
+  backends already (just unreachable from a loaded pbrt scene) before this.
+  `pbrt_scenes/cloud-medium.pbrt` and `pbrt_scenes/rgbgrid-medium.pbrt` are
+  worked examples of both.
+
 (The `dielectric roughness` and `conductor` routing gaps once listed here were
 fixed — see the Materials table above, which is the source of truth for
 per-`MaterialKind` behavior.)

@@ -112,6 +112,59 @@ struct Medium {
 	double sigma_a[3] = {1.0, 1.0, 1.0};
 	double sigma_s[3] = {1.0, 1.0, 1.0};
 	double g = 0.0;    // Henyey-Greenstein asymmetry
+
+	// "homogeneous" (default, uses sigma_a/sigma_s/g above only), "cloud",
+	// or "rgbgrid" - a real, genuinely different medium type each, with a
+	// real implementation on both backends (src/shared/cloud_medium.h,
+	// src/shared/rgb_grid_medium.h). Anything else pbrt-v4 supports
+	// ("uniformgrid", "nanovdb") still falls back to homogeneous with a
+	// warning - "uniformgrid" has a real CPU_GPU-tagged data structure
+	// (src/shared/sampled_grid.h's GridMediumData) but no hittable wrapper
+	// or GPU MaterialType exists for it yet, unlike cloud/rgbgrid which
+	// both already had complete plumbing on both backends (just unreachable
+	// from a loaded pbrt scene) before this field existed.
+	std::string type = "homogeneous";
+
+	// World-space AABB the medium actually occupies - the medium-space box
+	// [p0,p1] below, transformed by the CTM captured at MakeNamedMedium
+	// declaration time (see pbrt_scene::MediumDecl::xform's own comment).
+	// Used for GPU's trigger-sphere-only dispatch (cloud/rgbgrid only - see
+	// pbrt_gpu_builder.h's own comment) and CPU's hittable bounding_box().
+	double worldMin[3] = {0.0, 0.0, 0.0};
+	double worldMax[3] = {1.0, 1.0, 1.0};
+
+	// World -> medium-space affine transform (row-major 3x3 + translate) -
+	// the inverse of the CTM captured at declaration time. cloud/rgbgrid
+	// only; matches CloudMedium<T>::mat/translate and
+	// rgb_grid_medium_hittable's own world_to_medium_mat/translate
+	// convention exactly (no rearrangement needed at the call site).
+	double toMediumMat[9] = {1,0,0, 0,1,0, 0,0,1};
+	double toMediumTranslate[3] = {0.0, 0.0, 0.0};
+
+	// pbrt-v4's own "point3 p0"/"p1" - the medium's bounds IN medium space
+	// (default unit cube, matching pbrt-v4's real default for both cloud
+	// and rgbgrid). cloud/rgbgrid only.
+	double p0[3] = {0.0, 0.0, 0.0};
+	double p1[3] = {1.0, 1.0, 1.0};
+
+	// "cloud" only - pbrt-v4's real per-param defaults (media.cpp's
+	// CloudMedium::Create): density 1, wispiness 1, frequency 5. NOT the
+	// same defaults this codebase's own hand-built E2 showcase scene
+	// happens to use (frequency 4) - that scene picked its own look,
+	// this is pbrt-v4's actual spec default for a scene that omits the
+	// param entirely.
+	double density = 1.0;
+	double wispiness = 1.0;
+	double frequency = 5.0;
+
+	// "rgbgrid" only - de-interleaved flat per-channel voxel arrays, each
+	// either empty (that channel group absent, matching pbrt-v4's own
+	// "channel omitted -> defaults to 1 for sigma_a/s, no emission"
+	// convention - see RGBGridMediumData<T>::build()'s own comment) or
+	// length nx*ny*nz.
+	int nx = 1, ny = 1, nz = 1;
+	std::vector<double> sigma_a_r, sigma_a_g, sigma_a_b;
+	std::vector<double> sigma_s_r, sigma_s_g, sigma_s_b;
 };
 
 // Shape "bilinearmesh" - a single bilinear patch (4 corner points, not
@@ -1288,10 +1341,20 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 	// so this is a straight per-channel copy, not a second name lookup.
 	for (const pbrt_scene::MediumDecl &md : scene.media) {
 		Medium medium;
-		if (md.type != "homogeneous") {
+		const bool isCloud = (md.type == "cloud");
+		const bool isRgbGrid = (md.type == "rgbgrid");
+		if (!isCloud && !isRgbGrid && md.type != "homogeneous") {
 			warn("medium type '" + md.type + "' is not supported; "
 				 "treated as homogeneous with its given sigma_a/sigma_s");
 		}
+		medium.type = (isCloud || isRgbGrid) ? md.type : "homogeneous";
+
+		// sigma_a/sigma_s/scale/g: for homogeneous, these ARE the medium
+		// (a flat RGB colour each). For rgbgrid, these same param NAMES
+		// instead mean a flat array of one RGB triple per voxel (see
+		// below) - the plain Vec3 read here still runs for that case too
+		// (harmless; nothing reads medium.sigma_a/sigma_s for rgbgrid) so
+		// this stays one shared block rather than three divergent copies.
 		const pbrt_scene::Vec3 defA{medium.sigma_a[0], medium.sigma_a[1], medium.sigma_a[2]};
 		const pbrt_scene::Vec3 defS{medium.sigma_s[0], medium.sigma_s[1], medium.sigma_s[2]};
 		pbrt_scene::Vec3 sa = md.params.getVec3("sigma_a", defA);
@@ -1300,6 +1363,111 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		medium.sigma_a[0] = sa.x * scale; medium.sigma_a[1] = sa.y * scale; medium.sigma_a[2] = sa.z * scale;
 		medium.sigma_s[0] = ss.x * scale; medium.sigma_s[1] = ss.y * scale; medium.sigma_s[2] = ss.z * scale;
 		medium.g = md.params.getFloat("g", 0.0);
+
+		if (isCloud || isRgbGrid) {
+			// Medium-space bounds (pbrt-v4's own "p0"/"p1", default unit
+			// cube - matches CloudMedium::Create/RGBGridMedium::Create's
+			// real defaults).
+			const pbrt_scene::Vec3 p0 = md.params.getVec3("p0", pbrt_scene::Vec3{0,0,0});
+			const pbrt_scene::Vec3 p1 = md.params.getVec3("p1", pbrt_scene::Vec3{1,1,1});
+			medium.p0[0]=p0.x; medium.p0[1]=p0.y; medium.p0[2]=p0.z;
+			medium.p1[0]=p1.x; medium.p1[1]=p1.y; medium.p1[2]=p1.z;
+
+			// World -> medium-space transform: invert the CTM captured at
+			// MakeNamedMedium declaration time (world -> medium is what
+			// CloudMedium/rgb_grid_medium_hittable's own sample-time math
+			// wants - see each one's own world_to_medium_pt/world_to_medium
+			// comment).
+			pbrt_scene::Matrix4 worldToMedium;
+			if (md.xform.inverseAffine(worldToMedium)) {
+				for (int i = 0; i < 3; ++i)
+					for (int j = 0; j < 3; ++j)
+						medium.toMediumMat[i*3+j] = worldToMedium.m[i*4+j];
+				medium.toMediumTranslate[0] = worldToMedium.m[3];
+				medium.toMediumTranslate[1] = worldToMedium.m[7];
+				medium.toMediumTranslate[2] = worldToMedium.m[11];
+			} else {
+				warn("medium '" + md.name + "' has a singular transform "
+					 "(zero scale on some axis); it will not render correctly");
+			}
+
+			// World-space AABB: transform all 8 corners of the medium-space
+			// box [p0,p1] by the medium's own declared CTM (world_from_
+			// medium - the INVERSE of the transform just computed above) and
+			// take the axis-aligned min/max, so a rotated/non-uniformly-
+			// scaled MakeNamedMedium placement still gets a correct (if
+			// conservatively larger) world bound, not just a naive diagonal
+			// scale.
+			double worldMin[3] = {1e300, 1e300, 1e300};
+			double worldMax[3] = {-1e300, -1e300, -1e300};
+			for (int c = 0; c < 8; ++c) {
+				const double cx = (c & 1) ? p1.x : p0.x;
+				const double cy = (c & 2) ? p1.y : p0.y;
+				const double cz = (c & 4) ? p1.z : p0.z;
+				double w[3];
+				transformPoint(md.xform, cx, cy, cz, w);
+				for (int a = 0; a < 3; ++a) {
+					worldMin[a] = std::fmin(worldMin[a], w[a]);
+					worldMax[a] = std::fmax(worldMax[a], w[a]);
+				}
+			}
+			for (int a = 0; a < 3; ++a) { medium.worldMin[a] = worldMin[a]; medium.worldMax[a] = worldMax[a]; }
+		}
+
+		if (isCloud) {
+			// pbrt-v4's real per-param defaults (media.cpp's
+			// CloudMedium::Create) - see Medium::density's own comment for
+			// why these differ from this codebase's own E2 showcase scene.
+			medium.density = md.params.getFloat("density", 1.0);
+			medium.wispiness = md.params.getFloat("wispiness", 1.0);
+			medium.frequency = md.params.getFloat("frequency", 5.0);
+			// cloud_medium_hittable.h forces sigma_a to 0 (pure scattering) -
+			// same convention constant_medium already uses, see that
+			// header's own comment for why - so a scene that gave a real
+			// absorption coefficient silently loses it. Worth a warning:
+			// unlike most of this loader's approximations, this one can't
+			// be inferred from the render (a too-bright cloud looks like a
+			// lighting choice, not a dropped parameter).
+			if (medium.sigma_a[0] > 1e-9 || medium.sigma_a[1] > 1e-9 || medium.sigma_a[2] > 1e-9) {
+				warn("cloud medium '" + md.name + "' has a nonzero sigma_a; "
+					 "cloud media only model scattering (sigma_a is forced to 0)");
+			}
+		}
+
+		if (isRgbGrid) {
+			medium.nx = md.params.getInt("nx", 1);
+			medium.ny = md.params.getInt("ny", 1);
+			medium.nz = md.params.getInt("nz", 1);
+			const std::size_t voxels = static_cast<std::size_t>(medium.nx)
+				* static_cast<std::size_t>(medium.ny) * static_cast<std::size_t>(medium.nz);
+			// "rgb sigma_a"/"rgb sigma_s": a flat array of one RGB triple
+			// PER VOXEL (length 3*nx*ny*nz), NOT the single flat colour the
+			// generic Vec3 read above assumed - de-interleave into
+			// per-channel vectors here, matching RGBGridMediumData::build()'s
+			// own (sa_r,sa_g,sa_b,...) parameter shape. Either array is
+			// optional (empty vector = "channel group absent" - see
+			// RGBGridMediumData::build()'s own comment); a present array
+			// whose length doesn't match voxels*3 is dropped with a warning
+			// rather than read out of bounds or silently truncated/padded.
+			const auto deinterleave = [&](const char *name, std::vector<double> &r,
+										   std::vector<double> &g, std::vector<double> &b) {
+				const pbrt_scene::Param *p = md.params.find(name);
+				if (!p || p->numbers.empty()) return;
+				if (p->numbers.size() != voxels * 3) {
+					warn("medium '" + md.name + "'s \"" + name + "\" array has "
+						 + std::to_string(p->numbers.size()) + " numbers, expected "
+						 + std::to_string(voxels * 3) + " (3 * nx*ny*nz); ignored");
+					return;
+				}
+				r.resize(voxels); g.resize(voxels); b.resize(voxels);
+				for (std::size_t i = 0; i < voxels; ++i) {
+					r[i] = p->numbers[i*3+0]; g[i] = p->numbers[i*3+1]; b[i] = p->numbers[i*3+2];
+				}
+			};
+			deinterleave("sigma_a", medium.sigma_a_r, medium.sigma_a_g, medium.sigma_a_b);
+			deinterleave("sigma_s", medium.sigma_s_r, medium.sigma_s_g, medium.sigma_s_b);
+		}
+
 		out.media.push_back(medium);
 	}
 

@@ -255,6 +255,14 @@ struct MediumDecl {
 	std::string name;
 	std::string type = "homogeneous";
 	ParamList params;
+	// The CTM active at MakeNamedMedium declaration time - pbrt-v4's own
+	// "renderFromMedium" (BasicSceneBuilder::MakeNamedMedium,
+	// pbrt-v4/src/pbrt/scene.cpp), needed for a heterogeneous medium
+	// (cloud/rgbgrid) whose density lives in its own medium-space box, not
+	// world space. Same capture-at-declaration convention as ShapeDecl::
+	// xform/LightDecl::xform just below - identity if the medium was
+	// declared with no transform active.
+	Matrix4 xform;
 };
 
 struct ShapeDecl {
@@ -806,6 +814,7 @@ private:
 			if (pos_ < t_.size() && t_[pos_].quoted) { md.name = t_[pos_].text; ++pos_; }
 			md.params = readParams();
 			md.type = md.params.getString("type", "homogeneous");
+			md.xform = gs_.ctm;   // see MediumDecl::xform's own comment
 			s_.media.push_back(md);
 			return true;
 		}
