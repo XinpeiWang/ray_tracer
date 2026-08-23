@@ -2828,8 +2828,15 @@ extern "C" __global__ void evaluate_materials(
 		// both GPU backends, disabling it here removes the wrong, colour-blind
 		// contribution and matches what recursive already (implicitly) ships:
 		// zero explicit NEE, all illumination via the BSDF-sampled bounce.
-		float3 R = mat.albedo;
-		float3 T_col = mat.emission;
+		// Real per-point value when texture-bound (barcelona-pavilion's
+		// foliage - see pbrt_flatten::Material::textureFilename/
+		// transmittanceTextureFilename's own comments), else the flat
+		// mat.albedo/mat.emission fallback - mirrors optix_device_helpers.h's
+		// identical recursive-backend case.
+		float3 R = (mat.textureIdx >= 0)
+			? wf_sample_texture(textures, texturePixels, mat.textureIdx, h.uv_u, h.uv_v, hit_point) : mat.albedo;
+		float3 T_col = (mat.transmittanceTextureIdx >= 0)
+			? wf_sample_texture(textures, texturePixels, mat.transmittanceTextureIdx, h.uv_u, h.uv_v, hit_point) : mat.emission;
 		float pr = fmaxf(R.x, fmaxf(R.y, R.z));
 		float pt = fmaxf(T_col.x, fmaxf(T_col.y, T_col.z));
 		if (pr + pt <= 0.0f) { scattered = false; break; }

@@ -1,0 +1,71 @@
+# diffusetransmission-texture.pbrt -- exercises Material "diffusetransmission"'s
+# "texture reflectance"/"texture transmittance" parameters, real per-point
+# image decoding on both backends (previously both silently fell back to a
+# flat colour with a warning - see docs/PBRT_SUPPORT.md). This is
+# barcelona-pavilion's own real gap: its foliage binds both parameters to
+# the SAME bare imagemap (see pbrt_scenes/barcelona-pavilion/geometry.pbrt),
+# but that scene's own dusk lighting makes the effect hard to see at a
+# glance, so this uses two DIFFERENT images (one per parameter) and
+# deliberately one-sided point lights to isolate each channel visually.
+#
+# Left quad: lit only from the front (camera side) - shows "reflectance"'s
+# own texture (uv-checker.bmp - reddish/multicoloured) if reflectance
+# texturing works.
+# Right quad: lit only from behind - should show "transmittance"'s own
+# texture (gonio-profile.bmp - a pure GREYSCALE ramp, R=G=B always) glowing
+# through from the far side if transmittance texturing works. Both bundled
+# images happen to produce a similarly-shaped diagonal "wedge" silhouette
+# once mip-filtered across the quad (an unrelated coincidence of their 4x4
+# pixel layouts, not a code issue) - colour, not silhouette, is what
+# distinguishes them: the left quad should read as distinctly reddish/
+# saturated, the right quad as flat grey/white/black with no colour tint.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  2.5 0.5 6    2.5 0.5 0    0 1 0
+Camera "perspective" "float fov" [ 55 ]
+
+Film "rgb" "integer xresolution" [ 640 ] "integer yresolution" [ 320 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+Texture "checker-tex" "spectrum" "imagemap" "string filename" [ "uv-checker.bmp" ]
+Texture "gonio-tex" "spectrum" "imagemap" "string filename" [ "gonio-profile.bmp" ]
+
+# Area lights, not point lights: GPU's DiffuseTransmission shading has a
+# separate, pre-existing, documented gap (both backends skip NEE for this
+# material entirely - see wavefront_kernels.cu's own MaterialType::
+# DiffuseTransmission comment) - a zero-area point light can never be found
+# by pure BSDF-sampled bounce chance, so GPU would render solid black
+# regardless of texturing. "bool twosided" sidesteps guessing each light's
+# default one-sided emission normal from its winding order.
+#
+# Front area light, close to the LEFT quad only - the quads are spread far
+# enough apart (0..1 vs 4..5) that its contribution to the RIGHT quad is
+# negligible (inverse-square falloff over 4x the distance).
+AttributeBegin
+  Translate 0.5 0.5 1.5
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 6 6 6 ] "bool twosided" [ true ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -0.5 -0.5 0   0.5 -0.5 0   0.5 0.5 0   -0.5 0.5 0 ]
+AttributeEnd
+
+# Back area light, close to the RIGHT quad only - same isolation as above,
+# just from behind (the camera never sees this light directly).
+AttributeBegin
+  Translate 4.5 0.5 -1.5
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 6 6 6 ] "bool twosided" [ true ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -0.5 -0.5 0   0.5 -0.5 0   0.5 0.5 0   -0.5 0.5 0 ]
+AttributeEnd
+
+Material "diffusetransmission" "texture reflectance" [ "checker-tex" ] "texture transmittance" [ "gonio-tex" ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   1 0 0   1 1 0   0 1 0 ]
+
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 4 0 0   5 0 0   5 1 0   4 1 0 ]

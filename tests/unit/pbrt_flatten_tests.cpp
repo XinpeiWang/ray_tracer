@@ -1137,6 +1137,51 @@ TEST(FlattenMaterialTest, DiffuseTransmissionDefaultsMatchPbrt) {
 	EXPECT_DOUBLE_EQ(s.materials[0].transmittance[2], 0.25);
 }
 
+TEST(FlattenMaterialTest, DiffuseTransmissionReflectanceAndTransmittanceImagemapsAreThreadedThrough) {
+	// barcelona-pavilion's foliage binding shape - both params bound to the
+	// SAME bare imagemap - see Material::textureFilename/
+	// transmittanceTextureFilename's own comments.
+	const FlatScene s = flattenSource(
+		"Texture \"leaf\" \"spectrum\" \"imagemap\" \"string filename\" [ \"leaf.png\" ]\n"
+		"Material \"diffusetransmission\" \"texture reflectance\" [ \"leaf\" ] "
+		"\"texture transmittance\" [ \"leaf\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].textureFilename, "leaf.png");
+	EXPECT_EQ(s.materials[0].transmittanceTextureFilename, "leaf.png");
+	EXPECT_FALSE(warnedAbout(s, "diffusetransmission"));
+}
+
+TEST(FlattenMaterialTest, DiffuseTransmissionReflectanceAndTransmittanceUseDistinctTextures) {
+	// Regression guard: reflectance and transmittance must resolve to their
+	// OWN respective texture filename, not accidentally alias each other's.
+	const FlatScene s = flattenSource(
+		"Texture \"leaf-r\" \"spectrum\" \"imagemap\" \"string filename\" [ \"leaf-r.png\" ]\n"
+		"Texture \"leaf-t\" \"spectrum\" \"imagemap\" \"string filename\" [ \"leaf-t.png\" ]\n"
+		"Material \"diffusetransmission\" \"texture reflectance\" [ \"leaf-r\" ] "
+		"\"texture transmittance\" [ \"leaf-t\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].textureFilename, "leaf-r.png");
+	EXPECT_EQ(s.materials[0].transmittanceTextureFilename, "leaf-t.png");
+}
+
+TEST(FlattenMaterialTest, DiffuseTransmissionReflectanceScaleWrappedImagemapStillWarns) {
+	// Deliberate scope cut (Material::textureScale's own comment): the
+	// "scale"-unwrap stays CoatedDiffuse-only, since neither Diffuse's nor
+	// DiffuseTransmission's own consumer code applies a reflectance scale
+	// factor - no bundled scene needs it here either.
+	const FlatScene s = flattenSource(
+		"Texture \"leaf\" \"spectrum\" \"imagemap\" \"string filename\" [ \"leaf.png\" ]\n"
+		"Texture \"leaf-scaled\" \"spectrum\" \"scale\" \"texture tex\" [ \"leaf\" ] "
+		"\"float scale\" [ 0.5 ]\n"
+		"Material \"diffusetransmission\" \"texture reflectance\" [ \"leaf-scaled\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].textureFilename.empty());
+	EXPECT_TRUE(warnedAbout(s, "diffusetransmission"));
+}
+
 TEST(FlattenMaterialTest, UnsupportedMaterialIsFlaggedNotSilentlySubstituted) {
 	// A material rendered as diffuse looks plausible and is wrong, so the
 	// substitution has to be announced. "subsurface" then "hair" used to be

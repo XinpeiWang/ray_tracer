@@ -746,27 +746,52 @@ class diffuse_transmission : public material {
     diffuse_transmission(const color& reflectance, const color& transmittance)
         : R(reflectance), T(transmittance) {}
 
+    // "reflectance"/"transmittance" each optionally bound to a real Texture
+    // (barcelona-pavilion's foliage - see pbrt_flatten::Material::
+    // textureFilename/transmittanceTextureFilename's own comments) instead
+    // of a flat colour - either or both may be null, in which case that
+    // channel falls back to R/T above. Mirrors coated_diffuse's own
+    // two-constructor shape.
+    diffuse_transmission(const color& reflectance, const color& transmittance,
+                          shared_ptr<texture> reflectance_tex, shared_ptr<texture> transmittance_tex)
+        : R(reflectance), T(transmittance), rTex(reflectance_tex), tTex(transmittance_tex) {}
+
     BxDF get_bxdf(const MaterialContext<double>& ctx) const {
+        // No pixel-footprint differentials available from MaterialContext
+        // alone - same "no CPU-only tex pointer here, not a load-bearing
+        // path" limitation coated_diffuse::get_bxdf() already documents.
         return BxDF{ R.x(), R.y(), R.z(), T.x(), T.y(), T.z() };
+    }
+
+    // Per-point reflectance/transmittance when texture-bound, else the flat
+    // R/T - used by scatter()/scattering_pdf()/scattering_attenuation()
+    // below, each of which already has `rec` in scope.
+    color reflectance_at(const hit_record& rec) const {
+        return rTex ? rTex->value_diff(rec.u, rec.v, rec.p, rec.dudx, rec.dvdx, rec.dudy, rec.dvdy) : R;
+    }
+    color transmittance_at(const hit_record& rec) const {
+        return tTex ? tTex->value_diff(rec.u, rec.v, rec.p, rec.dudx, rec.dvdx, rec.dudy, rec.dvdy) : T;
     }
 
     bool scatter(const ray& r_in, const hit_record& rec,
                  scatter_record& srec, bool do_regularize = false) const override {
         // Probabilities proportional to max component (pbrt-v4 pattern)
-        double pr = std::fmax(std::fmax(R.x(), R.y()), R.z());
-        double pt = std::fmax(std::fmax(T.x(), T.y()), T.z());
+        color r = reflectance_at(rec);
+        color t = transmittance_at(rec);
+        double pr = std::fmax(std::fmax(r.x(), r.y()), r.z());
+        double pt = std::fmax(std::fmax(t.x(), t.y()), t.z());
         if (pr + pt <= 0.0) return false;
 
         if (random_double() < pr / (pr + pt)) {
             // Diffuse reflection: cosine-weighted same hemisphere as normal
-            srec.attenuation  = R;
+            srec.attenuation  = r;
             srec.pdf_ptr      = make_shared<cosine_pdf>(rec.normal);
             srec.skip_pdf     = false;
         } else {
             // Diffuse transmission: cosine-weighted opposite hemisphere
             // Use cosine_pdf around -normal so MIS and PDF evaluation are correct,
             // matching pbrt-v4 where transmission PDF = pt/(pr+pt) * cos/pi
-            srec.attenuation  = T;
+            srec.attenuation  = t;
             srec.pdf_ptr      = make_shared<cosine_pdf>(-rec.normal);
             srec.skip_pdf     = false;
         }
@@ -778,8 +803,10 @@ class diffuse_transmission : public material {
         // pbrt-v4 DiffuseTransmissionBxDF::PDF:
         //   same hemisphere  -> pr/(pr+pt) * cos(theta)/pi
         //   opposite hemisphere -> pt/(pr+pt) * cos(theta)/pi
-        double pr = std::fmax(std::fmax(R.x(), R.y()), R.z());
-        double pt = std::fmax(std::fmax(T.x(), T.y()), T.z());
+        color r = reflectance_at(rec);
+        color t = transmittance_at(rec);
+        double pr = std::fmax(std::fmax(r.x(), r.y()), r.z());
+        double pt = std::fmax(std::fmax(t.x(), t.y()), t.z());
         if (pr + pt <= 0.0) return 0.0;
 
         double cos_theta = dot(rec.normal, unit_vector(scattered.direction()));
@@ -804,7 +831,7 @@ class diffuse_transmission : public material {
                                   const color& srec_attenuation) const override {
         (void)srec_attenuation;
         double cos_theta = dot(rec.normal, unit_vector(scattered.direction()));
-        return (cos_theta > 0.0) ? R : T;
+        return (cos_theta > 0.0) ? reflectance_at(rec) : transmittance_at(rec);
     }
 
     color get_reflectance()   const { return R; }
@@ -821,6 +848,8 @@ class diffuse_transmission : public material {
   private:
     color R;  // reflectance (same-hemisphere diffuse)
     color T;  // transmittance (opposite-hemisphere diffuse)
+    shared_ptr<texture> rTex;  // optional, overrides R per-point when set
+    shared_ptr<texture> tTex;  // optional, overrides T per-point when set
 };
 
 // ---------------------------------------------------------------------------

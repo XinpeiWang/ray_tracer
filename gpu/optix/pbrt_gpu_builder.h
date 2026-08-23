@@ -620,6 +620,17 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		d.transmittance = make_float3(static_cast<float>(m.transmittance[0]),
 									  static_cast<float>(m.transmittance[1]),
 									  static_cast<float>(m.transmittance[2]));
+		// m.textureFilename/m.transmittanceTextureFilename (own comments in
+		// pbrt_flatten.h) - barcelona-pavilion's foliage binds both
+		// "reflectance" and "transmittance" to the SAME bare imagemap; bare
+		// imagemap only, no "scale"-wrap (see textureScale's own comment,
+		// CoatedDiffuse only). d.textureIdx covers reflectance (falls back
+		// to d.albedo, already assigned above), d.transmittanceTextureIdx
+		// covers transmittance (falls back to d.transmittance just above).
+		if (!m.textureFilename.empty())
+			d.textureIdx = getOrBuildPbrtImageTexture(m.textureFilename, out, imageTextureCache);
+		if (!m.transmittanceTextureFilename.empty())
+			d.transmittanceTextureIdx = getOrBuildPbrtImageTexture(m.transmittanceTextureFilename, out, imageTextureCache);
 		break;
 	case pbrt_flatten::MaterialKind::CoatedConductor:
 		// Same reflectance-only approximation pbrt_cpu_builder.h uses (see

@@ -42,7 +42,7 @@ GPU: `gpu/optix/pbrt_gpu_builder.h`'s material switch.
 | `thindielectric` | Full | Full | Both use the correct closed-form un-refracted transmission (`R_eff = R + T²R/(1-R²)`), not a solid-glass approximation. |
 | `coateddiffuse` | Full | Full | Same layered rough-coat-over-Lambertian model, same 3 parameters (albedo, ior, roughness), on both. `"reflectance"` bound to a real `"imagemap"` `Texture` (optionally `"scale"`-wrapped) is also decoded on both, including both GPU backends' NEE/MIS evaluation — see "Other known gaps" below. |
 | `coatedconductor` | Approx | Approx | Symmetric approximation: base color reinterpreted as normal-incidence reflectance (eta=1, k solved from it). pbrt's real `conductor.eta`/`conductor.k` sub-parameters aren't parsed. |
-| `diffusetransmission` | Full | Full | Separate reflectance/transmittance colors on both. |
+| `diffusetransmission` | Full | Full | Separate reflectance/transmittance colors on both. `"reflectance"`/`"transmittance"` bound to a bare `"imagemap"` `Texture` are also decoded on both (no `"scale"`-wrap support — no bundled scene needs it) — `barcelona-pavilion`'s foliage binds both to the same texture, the motivating case. See `pbrt_scenes/barcelona-pavilion` and "Other known gaps" below. |
 | `subsurface` | Full | Full | Real tabulated BSSRDF with device probe-walk on both GPU backends (recursive and wavefront), matching CPU's own tabulated BSSRDF. |
 | `measured` (real `.bsdf` file) | Full | Full | Both load and flatten the same tensor tables; both fall back to Lambertian on the same "unresolved filename" gate, so they can't disagree about when the fallback applies. |
 | `mix` | Full | Full | Real per-shading-point stochastic two-material blend on all three backends now (`MaterialType::Mix`, `optix_types.h`): each hit deterministically (hashed from the world-space hit point, not a fresh random draw — so a radiance bounce and its shadow ray agree on which sub-material won) resolves to sub-material A or B and shades through that material's own real GPU model — a Mix of e.g. `conductor`+`diffuse` keeps the conductor's real specular highlight on GPU, not an averaged flat color. Falls back to the old flat-Lambertian-averaged-color approximation only for a pathologically deep/cyclic mix-of-mix chain (depth-capped, matching CPU's own `kMaxMixDepth`) — not a case any scene in this loader's corpus has needed. See `pbrt_scenes/mix-material.pbrt`. |
@@ -220,11 +220,18 @@ loader and no longer match the code:
 fixed — see the Materials table above, which is the source of truth for
 per-`MaterialKind` behavior.)
 
-- A `Diffuse` OR `CoatedDiffuse` material's `"reflectance"` parameter bound to
-  a bare `"imagemap"` `Texture` is decoded and uploaded on both CPU
-  (`mipmap_texture`-backed `lambertian`/`coated_diffuse`) and GPU
-  (`MaterialData::textureIdx` into the same texture table OBJ/MTL `map_Kd`
-  already uses) — see `Material::textureFilename` in `pbrt_flatten.h`. A
+- A `Diffuse`, `CoatedDiffuse`, OR `DiffuseTransmission` material's
+  `"reflectance"` parameter bound to a bare `"imagemap"` `Texture` is decoded
+  and uploaded on both CPU (`mipmap_texture`-backed `lambertian`/
+  `coated_diffuse`/`diffuse_transmission`) and GPU (`MaterialData::
+  textureIdx` into the same texture table OBJ/MTL `map_Kd` already uses) —
+  see `Material::textureFilename` in `pbrt_flatten.h`. `DiffuseTransmission`
+  additionally supports its own `"transmittance"` parameter the same way
+  (`MaterialData::transmittanceTextureIdx`, a separate field — see
+  `Material::transmittanceTextureFilename`) — `barcelona-pavilion`'s foliage
+  binds both `"reflectance"` and `"transmittance"` to the identical bare
+  imagemap, the motivating (and only bundled) case; no `"scale"`-wrap support
+  for either parameter on this kind, since no bundled scene needs it. A
   `"scale"`-wrapped `"imagemap"` (`barcelona-pavilion`'s own dominant pattern
   for `coateddiffuse`) is supported for `CoatedDiffuse` ONLY (scale folded
   into the reused `emissionScale` field, see `Material::textureScale`) —
@@ -244,13 +251,13 @@ per-`MaterialKind` behavior.)
   `wf_finish_material_scatter` threads the current hit's own UV through for
   this), matching the scatter path exactly.
   Every OTHER material kind's texture-bound parameter (`conductor`'s
-  `"eta"`/`"k"`/`"reflectance"`, `dielectric`'s roughness, `diffusetransmission`'s
-  `"reflectance"`/`"transmittance"` — `barcelona-pavilion`'s foliage uses the
-  latter — etc.) and a nested (texture-referencing, not flat-literal)
-  `checkerboard`/`mix` still fall back to a flat colour with a warning,
-  unchanged; CPU's `uv_checker_texture` already supports nesting internally,
-  but GPU's `TextureData` has no composite/nested-texture mechanism at all,
-  so this would need new GPU infrastructure, not just loader plumbing.
+  `"eta"`/`"k"`/`"reflectance"`, `dielectric`'s roughness — neither is
+  texture-bound by any bundled scene, unlike `diffusetransmission` above)
+  and a nested (texture-referencing, not flat-literal) `checkerboard`/`mix`
+  still fall back to a flat colour with a warning, unchanged; CPU's
+  `uv_checker_texture` already supports nesting internally, but GPU's
+  `TextureData` has no composite/nested-texture mechanism at all, so this
+  would need new GPU infrastructure, not just loader plumbing.
   **Update**: `Shape "trianglemesh"`'s own per-vertex `"point2 uv"` data
   (`"st"` is not a pbrt-v4 alias for it - confirmed against pbrt-v4 source,
   only `"uv"` is read) is now threaded through `pbrt_flatten::Triangle`

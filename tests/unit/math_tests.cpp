@@ -1836,6 +1836,31 @@ TEST(DiffuseTransmissionMaterialTest, AccessorsReturnCorrectColors) {
 	EXPECT_DOUBLE_EQ(mat.get_transmittance().x(), T.x());
 }
 
+// Regression guard for the texture-bound constructor: reflectance_at()/
+// transmittance_at() must each read their OWN texture, not accidentally
+// swap or alias the other's - a real bug found via render inspection
+// (pbrt_scenes/diffusetransmission-texture.pbrt showed the reflectance
+// texture's colour on the transmission side too) that this earlier flat-
+// colour-only test suite never could have caught.
+TEST(DiffuseTransmissionMaterialTest, TexturedReflectanceAndTransmittanceStayDistinct) {
+	auto rTex = std::make_shared<solid_color>(color(1.0, 0.0, 0.0));  // red
+	auto tTex = std::make_shared<solid_color>(color(0.0, 0.0, 1.0));  // blue
+	diffuse_transmission mat(color(0.5,0.5,0.5), color(0.5,0.5,0.5), rTex, tTex);
+	hit_record rec = make_dt_hit();
+	rec.dudx = rec.dvdx = rec.dudy = rec.dvdy = 0.0;
+
+	ray toward_reflect(point3(0,0,0), vec3(0, 1, 0));   // same hemisphere as normal
+	ray toward_transmit(point3(0,0,0), vec3(0, -1, 0)); // opposite hemisphere
+
+	color reflectAtten = mat.scattering_attenuation(rec, toward_reflect, color(0,0,0));
+	color transmitAtten = mat.scattering_attenuation(rec, toward_transmit, color(0,0,0));
+
+	EXPECT_NEAR(reflectAtten.x(), 1.0, 1e-6) << "Reflection side must read rTex (red), not tTex";
+	EXPECT_NEAR(reflectAtten.z(), 0.0, 1e-6);
+	EXPECT_NEAR(transmitAtten.x(), 0.0, 1e-6) << "Transmission side must read tTex (blue), not rTex";
+	EXPECT_NEAR(transmitAtten.z(), 1.0, 1e-6);
+}
+
 // ===========================================================================
 // NormalizedFresnelMaterialTest
 // Mirrors pbrt-v4 NormalizedFresnelBxDF: Fresnel-weighted diffuse reflection.

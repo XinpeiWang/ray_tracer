@@ -831,6 +831,18 @@ struct MaterialData {
 	// automatically, no existing call site needs updating.
 	int alphaMaskTexIdx = -1;
 
+	// DiffuseTransmission only: index into LaunchParams::textures for a
+	// texture-bound "transmittance", or -1 to use the `transmittance` union
+	// field directly - independent of textureIdx above, which this same
+	// material kind reuses for its own texture-bound "reflectance"
+	// (barcelona-pavilion's foliage binds both to the SAME bare imagemap in
+	// practice, so they resolve to the same cached texture index there, but
+	// the fields are independent for a scene that binds them differently).
+	// Same default-member-initializer trick as textureIdx/alphaMaskTexIdx:
+	// every brace-init call site gets -1 automatically, no existing call
+	// site needs updating.
+	int transmittanceTextureIdx = -1;
+
 	// DiffuseLight only (matches CPU's diffuse_light::is_two_sided()): when
 	// true, material_emission()/its wavefront equivalent emit from both
 	// faces instead of gating on front_face. false (the default) preserves

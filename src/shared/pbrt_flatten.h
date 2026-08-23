@@ -382,24 +382,28 @@ struct Material {
 	// back to a diffuse approximation.
 	std::string measuredFilename;
 
-	// Diffuse or CoatedDiffuse only: an "imagemap" Texture bound to
-	// "reflectance", naming the image file exactly AS WRITTEN in the scene -
-	// same "stays filesystem-free, resolved later by pbrt_load.h" convention
-	// as measuredFilename above (see that field's own comment). Empty means
-	// either no texture was bound, the bound texture wasn't an imagemap (or
-	// a "scale" wrapping one - see textureScale below), or (after
-	// pbrt_load.h's pass) the file could not be found - any of which falls
-	// back to `color` as a flat reflectance, same as today. Only
-	// "reflectance" is handled (not every texture-bindable parameter on
-	// every material kind): pbrt's own ganesha scene (a CoatedDiffuse statue
-	// whose reflectance is an imagemap) and barcelona-pavilion (many
-	// CoatedDiffuse surfaces, mostly reflectance bound to a "scale" texture
-	// wrapping an imagemap - see the warning loop below) are the motivating
-	// cases, and scoping to reflectance on these two kinds keeps this
-	// addition bounded rather than building a general procedural-texture
-	// pipeline in one pass - checkerboard/fbm/marble/mix stay Diffuse-only
-	// (hasCheckerReflectance etc. below), since no bundled scene binds any
-	// of those to a CoatedDiffuse reflectance.
+	// Diffuse, CoatedDiffuse, or DiffuseTransmission's own "reflectance": an
+	// "imagemap" Texture bound to it, naming the image file exactly AS
+	// WRITTEN in the scene - same "stays filesystem-free, resolved later by
+	// pbrt_load.h" convention as measuredFilename above (see that field's
+	// own comment). Empty means either no texture was bound, the bound
+	// texture wasn't an imagemap (or a "scale" wrapping one - see
+	// textureScale below, CoatedDiffuse only), or (after pbrt_load.h's pass)
+	// the file could not be found - any of which falls back to `color` as a
+	// flat reflectance, same as today. Only "reflectance" is handled (not
+	// every texture-bindable parameter on every material kind): pbrt's own
+	// ganesha scene (a CoatedDiffuse statue whose reflectance is an
+	// imagemap), barcelona-pavilion's CoatedDiffuse surfaces (mostly
+	// reflectance bound to a "scale" texture wrapping an imagemap - see the
+	// warning loop below) and barcelona-pavilion's own foliage
+	// (DiffuseTransmission, "texture reflectance"/"texture transmittance"
+	// both bound to the SAME bare imagemap - see transmittanceTextureFilename
+	// below) are the motivating cases, and scoping to reflectance/
+	// transmittance on these three kinds keeps this addition bounded rather
+	// than building a general procedural-texture pipeline in one pass -
+	// checkerboard/fbm/marble/mix stay Diffuse-only (hasCheckerReflectance
+	// etc. below), and the "scale" unwrap stays CoatedDiffuse-only (see
+	// textureScale below), since no bundled scene needs either beyond that.
 	std::string textureFilename;
 
 	// A "scale"-class Texture's own "float scale" when textureFilename came
@@ -407,9 +411,25 @@ struct Material {
 	// Texture whose "texture tex" names the real imagemap - barcelona-
 	// pavilion's own dominant pattern for reflectance, already unwrapped the
 	// identical way for "displacement" below, see displacementScale's own
-	// comment). 1.0 (a no-op multiply) when textureFilename came from a bare
-	// imagemap with no wrapping "scale", or when textureFilename is empty.
+	// comment). CoatedDiffuse only - neither Diffuse's nor
+	// DiffuseTransmission's own consumer code applies a reflectance scale
+	// factor, so a scale-wrapped reflectance on either of those still falls
+	// back to the generic "not supported" warning instead of resolving
+	// unscaled (see the warning loop's own CoatedDiffuse-only gate). 1.0 (a
+	// no-op multiply) when textureFilename came from a bare imagemap with no
+	// wrapping "scale", or when textureFilename is empty.
 	double textureScale = 1.0;
+
+	// DiffuseTransmission only: an "imagemap" Texture bound to
+	// "transmittance", same "raw as written, resolved later by
+	// pbrt_load.h" convention as textureFilename above - bare imagemap
+	// only, no "scale"-wrap support (no bundled scene needs it: barcelona-
+	// pavilion's foliage, the only bundled use, binds both "reflectance"
+	// and "transmittance" to the identical bare-imagemap texture, so this
+	// resolves to the same path as textureFilename in practice and shares
+	// its cached decode via pbrt_load.h's/the GPU builder's own per-path
+	// image cache).
+	std::string transmittanceTextureFilename;
 
 	// A Diffuse material's "reflectance" bound to a "checkerboard" Texture
 	// instead of an "imagemap" one (e.g. named-material-and-texture.pbrt's
@@ -1158,14 +1178,17 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// texture wrapping an imagemap) are the cases that showed this -
 		// without a word about it the render just looks like a shading bug.
 		// The cases actually wired up below (each field's own comment has
-		// the detail): "reflectance" bound to an "imagemap" (optionally
-		// wrapped in a "scale" texture) on a Diffuse OR CoatedDiffuse
-		// material (Material::textureFilename/textureScale), "reflectance"
-		// bound to a flat-colour "checkerboard"/"fbm"/"marble"/"mix" texture
-		// on a Diffuse material ONLY (hasCheckerReflectance etc. - no
-		// bundled scene binds any of these to a CoatedDiffuse reflectance,
-		// so this scope stays narrower than the imagemap case), and
-		// "displacement" bound to an imagemap (optionally wrapped in a
+		// the detail): "reflectance" bound to a bare "imagemap" on a Diffuse,
+		// CoatedDiffuse, OR DiffuseTransmission material, optionally further
+		// wrapped in a "scale" texture for CoatedDiffuse only (Material::
+		// textureFilename/textureScale), "transmittance" bound to a bare
+		// imagemap on DiffuseTransmission ONLY
+		// (transmittanceTextureFilename), "reflectance" bound to a
+		// flat-colour "checkerboard"/"fbm"/"marble"/"mix" texture on a
+		// Diffuse material ONLY (hasCheckerReflectance etc. - no bundled
+		// scene binds any of these to a CoatedDiffuse or DiffuseTransmission
+		// reflectance, so this scope stays narrower than the imagemap case),
+		// and "displacement" bound to an imagemap (optionally wrapped in a
 		// "scale" texture) on ANY material kind (displacementTextureFilename).
 		// Every other texture binding (other parameters/kinds, "mix" bound
 		// directly to reflectance without a wrapping scale, or a
@@ -1173,7 +1196,8 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// references) still just warns.
 		for (const pbrt_scene::Param &p : md.params.items) {
 			if (p.type != "texture") continue;
-			if ((m.kind == MaterialKind::Diffuse || m.kind == MaterialKind::CoatedDiffuse) &&
+			if ((m.kind == MaterialKind::Diffuse || m.kind == MaterialKind::CoatedDiffuse ||
+				 m.kind == MaterialKind::DiffuseTransmission) &&
 				p.name == "reflectance" && !p.strings.empty()) {
 				const pbrt_scene::TextureDecl *tex = nullptr;
 				for (const pbrt_scene::TextureDecl &t : scene.textures)
@@ -1278,6 +1302,24 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 						m.mixAmount = tex->params.getFloat("amount", 0.5);
 						m.hasMixReflectance = true;
 						continue;   // resolved to a procedural mix, not a "not supported" warning
+					}
+				}
+			}
+			// DiffuseTransmission's own "transmittance" - bare imagemap only
+			// (see Material::transmittanceTextureFilename's own comment); no
+			// "scale"-wrap or procedural (checkerboard/fbm/marble/mix) support,
+			// since barcelona-pavilion's foliage - the only bundled use - binds
+			// a plain imagemap to both "reflectance" and "transmittance".
+			if (m.kind == MaterialKind::DiffuseTransmission &&
+				p.name == "transmittance" && !p.strings.empty()) {
+				const pbrt_scene::TextureDecl *tex = nullptr;
+				for (const pbrt_scene::TextureDecl &t : scene.textures)
+					if (t.name == p.strings[0]) tex = &t;
+				if (tex && tex->cls == "imagemap") {
+					const std::string filename = tex->params.getString("filename", "");
+					if (!filename.empty()) {
+						m.transmittanceTextureFilename = filename;
+						continue;   // resolved to an image, not a "not supported" warning
 					}
 				}
 			}

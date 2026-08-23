@@ -409,6 +409,24 @@ inline LoadResult loadFile(const std::string &path) {
 		m.textureFilename = resolved;
 	}
 
+	// DiffuseTransmission's own imagemap "transmittance" texture (Material::
+	// transmittanceTextureFilename - see that field's own comment). Same
+	// resolution convention as textureFilename just above.
+	for (pbrt_flatten::Material &m : r.scene.materials) {
+		if (m.transmittanceTextureFilename.empty()) continue;
+
+		const std::string resolved = resolveExistingPath(sceneDir, m.transmittanceTextureFilename);
+		if (resolved.empty()) {
+			r.scene.warnings.push_back(
+				{0, path, "material's transmittance texture image '" + m.transmittanceTextureFilename +
+					"' could not be found; falling back to a constant colour instead"});
+			m.transmittanceTextureFilename.clear();
+			continue;
+		}
+
+		m.transmittanceTextureFilename = resolved;
+	}
+
 	// Shape "alpha" cutout masks (Material::alphaTextureFilename - see that
 	// field's own comment). Same resolution convention as textureFilename
 	// just above; decoding is likewise left to the CPU/GPU builders.

@@ -167,9 +167,20 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		return std::make_shared<coated_conductor>(
 			1.0, 1.0, 1.0, k.x(), k.y(), k.z(), m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
 	}
-	case pbrt_flatten::MaterialKind::DiffuseTransmission:
-		return std::make_shared<diffuse_transmission>(
-			albedo, color(m.transmittance[0], m.transmittance[1], m.transmittance[2]));
+	case pbrt_flatten::MaterialKind::DiffuseTransmission: {
+		// m.textureFilename/m.transmittanceTextureFilename (own comments in
+		// pbrt_flatten.h) - barcelona-pavilion's foliage binds both
+		// "reflectance" and "transmittance" to the SAME bare imagemap; bare
+		// imagemap only, no "scale"-wrap (see textureScale's own comment).
+		const color transmittance(m.transmittance[0], m.transmittance[1], m.transmittance[2]);
+		if (m.textureFilename.empty() && m.transmittanceTextureFilename.empty())
+			return std::make_shared<diffuse_transmission>(albedo, transmittance);
+		shared_ptr<texture> rTex = m.textureFilename.empty()
+			? nullptr : std::make_shared<mipmap_texture>(m.textureFilename.c_str());
+		shared_ptr<texture> tTex = m.transmittanceTextureFilename.empty()
+			? nullptr : std::make_shared<mipmap_texture>(m.transmittanceTextureFilename.c_str());
+		return std::make_shared<diffuse_transmission>(albedo, transmittance, rTex, tTex);
+	}
 	case pbrt_flatten::MaterialKind::Subsurface:
 		return std::make_shared<subsurface>(m.ior, m.sigma_a, m.sigma_s, m.g);
 	case pbrt_flatten::MaterialKind::Hair:
