@@ -1,0 +1,50 @@
+# nested-checker-texture.pbrt -- exercises a "checkerboard" Texture whose
+# own "tex1" is bound to ANOTHER Texture (a bare "imagemap") instead of a
+# flat literal, one level of nesting, real per-point image decoding on both
+# backends (previously silently fell back to a flat colour with a warning -
+# see docs/PBRT_SUPPORT.md). No bundled scene needs this - the realistic
+# authoring pattern this represents is blending a real photo against a flat
+# colour in alternating checker cells - so this is a completeness fix, like
+# conductor-rgb-eta-k.pbrt alongside it in the same pass.
+#
+# Left quad: "checkerboard" with tex1 bound to a real imagemap
+# (uv-checker.bmp) and tex2 a flat green literal - alternating cells should
+# show the imagemap's own reddish/multicoloured content against flat green,
+# not a flat fallback colour with a warning.
+# Right quad: named-material-and-texture.pbrt's own EXISTING flat-literal-
+# only checkerboard ("floor-check", tex1/tex2 both left at pbrt-v4's
+# defaults) reproduced here as a regression check - the new nested-texture
+# code path must not change this still-flat-literal case's own result.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  1 0.5 3    1 0.5 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 640 ] "integer yresolution" [ 320 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 1.0 1.0 1.0 ]
+
+AttributeBegin
+  Translate 0.5 0.5 3.5
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 4 4 4 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -1 -1 0   1 -1 0   1 1 0   -1 1 0 ]
+AttributeEnd
+
+Texture "leaf" "spectrum" "imagemap" "string filename" [ "uv-checker.bmp" ]
+Texture "chk-nested" "spectrum" "checkerboard" "texture tex1" [ "leaf" ]
+  "rgb tex2" [ 0 0.6 0 ] "float uscale" [ 3 ] "float vscale" [ 3 ]
+Material "diffuse" "texture reflectance" [ "chk-nested" ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   1 0 0   1 1 0   0 1 0 ]
+
+Texture "floor-check" "spectrum" "checkerboard" "float uscale" [ 8 ] "float vscale" [ 8 ]
+Material "diffuse" "texture reflectance" [ "floor-check" ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 1.2 0 0   2.2 0 0   2.2 1 0   1.2 1 0 ]

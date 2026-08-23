@@ -722,6 +722,14 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 									 static_cast<float>(m.checkerColor2[2]));
 			tex.uScale = static_cast<float>(m.checkerUScale);
 			tex.vScale = static_cast<float>(m.checkerVScale);
+			// One-level-nested bare imagemap tex1/tex2 (Material::
+			// checkerTex1Filename/checkerTex2Filename's own comment) -
+			// tex1ImageIdx/tex2ImageIdx stay -1 (color1/color2 used
+			// directly) when that slot was a flat literal instead.
+			if (!m.checkerTex1Filename.empty())
+				tex.tex1ImageIdx = getOrBuildPbrtImageTexture(m.checkerTex1Filename, out, imageTextureCache);
+			if (!m.checkerTex2Filename.empty())
+				tex.tex2ImageIdx = getOrBuildPbrtImageTexture(m.checkerTex2Filename, out, imageTextureCache);
 			d.textureIdx = static_cast<int>(out.textures.size());
 			out.textures.push_back(tex);
 		}
@@ -756,6 +764,12 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 									 static_cast<float>(m.mixColor2[1]),
 									 static_cast<float>(m.mixColor2[2]));
 			tex.mixAmount = static_cast<float>(m.mixAmount);
+			// Same one-level-nested-imagemap support as UVChecker above
+			// (Material::mixTex1Filename/mixTex2Filename's own comment).
+			if (!m.mixTex1Filename.empty())
+				tex.tex1ImageIdx = getOrBuildPbrtImageTexture(m.mixTex1Filename, out, imageTextureCache);
+			if (!m.mixTex2Filename.empty())
+				tex.tex2ImageIdx = getOrBuildPbrtImageTexture(m.mixTex2Filename, out, imageTextureCache);
 			d.textureIdx = static_cast<int>(out.textures.size());
 			out.textures.push_back(tex);
 		}

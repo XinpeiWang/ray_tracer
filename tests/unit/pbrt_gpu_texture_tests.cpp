@@ -301,6 +301,41 @@ TEST(PbrtGpuTextureTest, CheckerReflectanceBuildsAUVCheckerTexture) {
 	EXPECT_FLOAT_EQ(tex.vScale, 8.0f);
 }
 
+TEST(PbrtGpuTextureTest, CheckerNestedImagemapTex1BuildsATex1ImageIdx) {
+	// One-level-nested tex1 (Material::checkerTex1Filename - see that
+	// field's own comment) must build a REAL decoded image entry and set
+	// TextureData::tex1ImageIdx to it, leaving color1 unused; tex2 stays the
+	// flat literal it always was. Uses the same real bundled image the
+	// RealImagemapFileBuildsATextureIdxAndUploadsPixels test above already
+	// proves decodes successfully from the repo root.
+	pbrt_flatten::Material m;
+	m.kind = pbrt_flatten::MaterialKind::Diffuse;
+	m.hasCheckerReflectance = true;
+	m.checkerTex1Filename = "pbrt_scenes/ganesha/textures/ganesha.png";
+	m.checkerColor2[0] = 0.0; m.checkerColor2[1] = 0.0; m.checkerColor2[2] = 1.0;
+	m.checkerUScale = 1.0;
+	m.checkerVScale = 1.0;
+	pbrt_flatten::FlatScene flat;
+	flat.materials.push_back(m);
+	pbrt_flatten::Triangle tri{};
+	tri.material = 0;
+	tri.areaLight = -1;
+	flat.triangles.push_back(tri);
+
+	SceneData scene;
+	pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(scene.materials.size(), 1u);
+	ASSERT_GE(scene.materials[0].textureIdx, 0);
+	const TextureData &tex = scene.textures[static_cast<std::size_t>(scene.materials[0].textureIdx)];
+	EXPECT_EQ(tex.kind, TextureKind::UVChecker);
+	ASSERT_GE(tex.tex1ImageIdx, 0) << "tex1 must resolve to a real decoded image entry";
+	EXPECT_EQ(tex.tex2ImageIdx, -1) << "tex2 stayed a flat literal, must not get an image index";
+	const TextureData &tex1Img = scene.textures[static_cast<std::size_t>(tex.tex1ImageIdx)];
+	EXPECT_EQ(tex1Img.kind, TextureKind::Image);
+	EXPECT_GT(tex1Img.width, 0);
+	EXPECT_FLOAT_EQ(tex.color2.z, 1.0f);
+}
+
 TEST(PbrtGpuTextureTest, FbmReflectanceBuildsAnFBmTexture) {
 	// Round 6 Phase 1: Material::hasFbmReflectance must reach a real
 	// TextureKind::FBm entry with the resolved octaves/roughness.

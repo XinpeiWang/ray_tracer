@@ -626,6 +626,37 @@ TEST(PbrtCpuBuildTest, DiffuseReflectanceCheckerboardBuildsAUVCheckerBackedLambe
 		<< "adjacent UV checker cells (one uscale apart) must differ";
 }
 
+TEST(PbrtCpuBuildTest, CheckerboardWithNestedImagemapTex1BuildsAMipmapBackedSlot) {
+	// One-level-nested tex1 (bound to a bare imagemap Texture) must build a
+	// REAL mipmap_texture for that slot, not silently fall back to reading
+	// checkerColor1 (which stays at its unused default here). buildFrom()
+	// skips pbrt_load.h's resolution pass, so "leaf.png" never actually
+	// resolves/decodes - mipmap_texture's own documented "corrupt-or-missing
+	// file -> cyan debug colour (0,1,1)" fallback (texture.h) is exactly the
+	// signal this test uses to confirm a REAL mipmap_texture is in that
+	// slot, as opposed to any flat colour (which could never coincidentally
+	// equal solid cyan).
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Texture \"leaf\" \"spectrum\" \"imagemap\" \"string filename\" [ \"leaf.png\" ]\n"
+		"Texture \"chk\" \"spectrum\" \"checkerboard\" \"texture tex1\" [ \"leaf\" ] "
+		"\"rgb tex2\" [ 0 0 1 ] \"float uscale\" [ 1 ] \"float vscale\" [ 1 ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"chk\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.25, 0.25, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *lam = dynamic_cast<lambertian *>(rec.mat.get());
+	ASSERT_NE(lam, nullptr);
+	auto *chk = dynamic_cast<uv_checker_texture *>(lam->get_texture().get());
+	ASSERT_NE(chk, nullptr);
+	const color tex1Cell = chk->value(0.25, 0.25, rec.p);   // (0,0) cell - tex1 (nested imagemap)
+	const color tex2Cell = chk->value(1.25, 0.25, rec.p);   // (1,0) cell - tex2 (flat blue literal)
+	EXPECT_NEAR(tex1Cell.x(), 0.0, 1e-9);
+	EXPECT_NEAR(tex1Cell.y(), 1.0, 1e-9);
+	EXPECT_NEAR(tex1Cell.z(), 1.0, 1e-9);
+	EXPECT_NEAR(tex2Cell.z(), 1.0, 1e-9) << "tex2 must stay the flat blue literal, unaffected";
+}
+
 TEST(PbrtCpuBuildTest, DiffuseReflectanceFbmBuildsAnFbmBackedLambertian) {
 	// Round 6 Phase 1: hasFbmReflectance must make it all the way to an
 	// fbm_texture-backed lambertian, reusing the existing CPU class rather

@@ -464,6 +464,32 @@ inline LoadResult loadFile(const std::string &path) {
 		m.displacementTextureFilename = resolved;
 	}
 
+	// Checkerboard/mix's own nested-imagemap tex1/tex2 (Material::
+	// checkerTex1Filename/checkerTex2Filename/mixTex1Filename/
+	// mixTex2Filename - see hasCheckerReflectance/hasMixReflectance's own
+	// comments in pbrt_flatten.h). Same resolve-or-warn-and-clear shape as
+	// every loop above, factored into a small local helper since this adds
+	// 4 more near-identical fields at once.
+	auto resolveNestedTextureField = [&](std::string pbrt_flatten::Material::*field, const char *what) {
+		for (pbrt_flatten::Material &m : r.scene.materials) {
+			std::string &f = m.*field;
+			if (f.empty()) continue;
+			const std::string resolved = resolveExistingPath(sceneDir, f);
+			if (resolved.empty()) {
+				r.scene.warnings.push_back(
+					{0, path, std::string("material's ") + what + " texture image '" + f +
+						"' could not be found; falling back to a constant colour instead"});
+				f.clear();
+				continue;
+			}
+			f = resolved;
+		}
+	};
+	resolveNestedTextureField(&pbrt_flatten::Material::checkerTex1Filename, "checkerboard tex1");
+	resolveNestedTextureField(&pbrt_flatten::Material::checkerTex2Filename, "checkerboard tex2");
+	resolveNestedTextureField(&pbrt_flatten::Material::mixTex1Filename, "mix tex1");
+	resolveNestedTextureField(&pbrt_flatten::Material::mixTex2Filename, "mix tex2");
+
 	// AreaLightSource "diffuse"'s "filename" (spatially-varying image
 	// emission - Emission::filename's own comment). Same resolution
 	// convention as textureFilename/alphaTextureFilename/

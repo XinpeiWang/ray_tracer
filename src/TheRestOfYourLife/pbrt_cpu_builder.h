@@ -262,12 +262,22 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		// m.hasCheckerReflectance (Material::hasCheckerReflectance's own
 		// comment) - a procedural pbrt-v4 checkerboard, not an image file,
 		// so uv_checker_texture (texture.h) is built directly from the
-		// resolved colours/scales rather than decoded from disk.
-		if (m.hasCheckerReflectance)
+		// resolved colours/scales rather than decoded from disk. tex1/tex2
+		// each independently use uv_checker_texture's own polymorphic
+		// constructor when checkerTex1Filename/checkerTex2Filename named a
+		// one-level-nested bare imagemap instead of a flat literal (see that
+		// field's own comment) - a mipmap_texture per nested slot instead of
+		// the flat solid_color the plain literal case still uses.
+		if (m.hasCheckerReflectance) {
+			shared_ptr<texture> tex1 = m.checkerTex1Filename.empty()
+				? std::static_pointer_cast<texture>(std::make_shared<solid_color>(color(m.checkerColor1[0], m.checkerColor1[1], m.checkerColor1[2])))
+				: std::static_pointer_cast<texture>(std::make_shared<mipmap_texture>(m.checkerTex1Filename.c_str()));
+			shared_ptr<texture> tex2 = m.checkerTex2Filename.empty()
+				? std::static_pointer_cast<texture>(std::make_shared<solid_color>(color(m.checkerColor2[0], m.checkerColor2[1], m.checkerColor2[2])))
+				: std::static_pointer_cast<texture>(std::make_shared<mipmap_texture>(m.checkerTex2Filename.c_str()));
 			return std::make_shared<lambertian>(std::make_shared<uv_checker_texture>(
-				m.checkerUScale, m.checkerVScale,
-				color(m.checkerColor1[0], m.checkerColor1[1], m.checkerColor1[2]),
-				color(m.checkerColor2[0], m.checkerColor2[1], m.checkerColor2[2])));
+				m.checkerUScale, m.checkerVScale, tex1, tex2));
+		}
 		// m.hasFbmReflectance/hasMarbleReflectance/hasMixReflectance
 		// (Material's own comments) - same procedural-not-file pattern as
 		// hasCheckerReflectance above, resolving to the existing fbm_
@@ -282,11 +292,17 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		if (m.hasMarbleReflectance)
 			return std::make_shared<lambertian>(std::make_shared<marble_texture>(
 				m.marbleScale, m.marbleOctaves, m.marbleRoughness, m.marbleVariation));
-		if (m.hasMixReflectance)
-			return std::make_shared<lambertian>(std::make_shared<mix_texture>(
-				color(m.mixColor1[0], m.mixColor1[1], m.mixColor1[2]),
-				color(m.mixColor2[0], m.mixColor2[1], m.mixColor2[2]),
-				m.mixAmount));
+		if (m.hasMixReflectance) {
+			// Same one-level-nested-imagemap support as checkerboard above,
+			// via mix_texture's own new polymorphic constructor.
+			shared_ptr<texture> tex1 = m.mixTex1Filename.empty()
+				? std::static_pointer_cast<texture>(std::make_shared<solid_color>(color(m.mixColor1[0], m.mixColor1[1], m.mixColor1[2])))
+				: std::static_pointer_cast<texture>(std::make_shared<mipmap_texture>(m.mixTex1Filename.c_str()));
+			shared_ptr<texture> tex2 = m.mixTex2Filename.empty()
+				? std::static_pointer_cast<texture>(std::make_shared<solid_color>(color(m.mixColor2[0], m.mixColor2[1], m.mixColor2[2])))
+				: std::static_pointer_cast<texture>(std::make_shared<mipmap_texture>(m.mixTex2Filename.c_str()));
+			return std::make_shared<lambertian>(std::make_shared<mix_texture>(tex1, tex2, m.mixAmount));
+		}
 		break;
 	case pbrt_flatten::MaterialKind::Unsupported:
 		break;

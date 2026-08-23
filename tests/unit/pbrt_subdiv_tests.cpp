@@ -251,12 +251,31 @@ TEST(PbrtDroppedTest, CheckerboardOnANonDiffuseMaterialStillWarns) {
 	EXPECT_FALSE(s.materials[0].hasCheckerReflectance);
 }
 
-TEST(PbrtDroppedTest, CheckerboardWithNestedTex1StillWarns) {
-	// tex1/tex2 bound to another Texture (rather than a float/rgb literal)
-	// isn't supported - see Material::hasCheckerReflectance's own comment.
+TEST(PbrtDroppedTest, CheckerboardWithNestedImagemapTex1IsResolvedNotWarned) {
+	// One level of nesting: tex1 bound to another Texture that is ITSELF a
+	// bare "imagemap" now resolves to Material::checkerTex1Filename instead
+	// of warning - see hasCheckerReflectance's own comment. tex2 stays the
+	// flat literal default (white), independently.
 	const FlatScene s = build(
 		"Texture \"leaf\" \"spectrum\" \"imagemap\" \"string filename\" [ \"leaf.png\" ]\n"
 		"Texture \"chk\" \"spectrum\" \"checkerboard\" \"texture tex1\" [ \"leaf\" ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"chk\" ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	EXPECT_FALSE(warned(s, "not supported"));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].hasCheckerReflectance);
+	EXPECT_EQ(s.materials[0].checkerTex1Filename, "leaf.png");
+	EXPECT_TRUE(s.materials[0].checkerTex2Filename.empty());
+}
+
+TEST(PbrtDroppedTest, CheckerboardWithTex1NestedToANonImagemapStillWarns) {
+	// TWO levels of nesting (tex1 -> a Texture that is itself a checkerboard,
+	// not a bare imagemap) stays unsupported - a documented scope cut, not a
+	// regression of the one-level case above.
+	const FlatScene s = build(
+		"Texture \"inner\" \"spectrum\" \"checkerboard\"\n"
+		"Texture \"chk\" \"spectrum\" \"checkerboard\" \"texture tex1\" [ \"inner\" ]\n"
 		"Material \"diffuse\" \"texture reflectance\" [ \"chk\" ]\n"
 		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
 		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
@@ -356,6 +375,37 @@ TEST(PbrtDroppedTest, DiffuseReflectanceMixDefaultsMatchPbrtV4) {
 	EXPECT_DOUBLE_EQ(s.materials[0].mixColor1[0], 0.0);
 	EXPECT_DOUBLE_EQ(s.materials[0].mixColor2[0], 1.0);
 	EXPECT_DOUBLE_EQ(s.materials[0].mixAmount, 0.5);
+}
+
+TEST(PbrtDroppedTest, MixWithNestedImagemapTex2IsResolvedNotWarned) {
+	// One level of nesting for mix's own tex1/tex2 - same support as
+	// checkerboard's identical tex1/tex2 above.
+	const FlatScene s = build(
+		"Texture \"leaf\" \"spectrum\" \"imagemap\" \"string filename\" [ \"leaf.png\" ]\n"
+		"Texture \"dirt\" \"spectrum\" \"mix\" \"texture tex2\" [ \"leaf\" ] \"float amount\" [ 0.4 ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"dirt\" ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	EXPECT_FALSE(warned(s, "not supported"));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].hasMixReflectance);
+	EXPECT_TRUE(s.materials[0].mixTex1Filename.empty());
+	EXPECT_EQ(s.materials[0].mixTex2Filename, "leaf.png");
+	EXPECT_DOUBLE_EQ(s.materials[0].mixAmount, 0.4);
+}
+
+TEST(PbrtDroppedTest, MixWithTex1NestedToANonImagemapStillWarns) {
+	// TWO levels of nesting stays unsupported, same scope cut as
+	// checkerboard's identical case above.
+	const FlatScene s = build(
+		"Texture \"inner\" \"float\" \"fbm\"\n"
+		"Texture \"dirt\" \"spectrum\" \"mix\" \"texture tex1\" [ \"inner\" ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"dirt\" ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	EXPECT_TRUE(warned(s, "reflectance"));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_FALSE(s.materials[0].hasMixReflectance);
 }
 
 TEST(PbrtDroppedTest, MixWithNestedAmountStillWarns) {

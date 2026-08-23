@@ -253,11 +253,23 @@ per-`MaterialKind` behavior.)
   Every OTHER material kind's texture-bound parameter (`conductor`'s
   `"eta"`/`"k"`/`"reflectance"`, `dielectric`'s roughness — neither is
   texture-bound by any bundled scene, unlike `diffusetransmission` above)
-  and a nested (texture-referencing, not flat-literal) `checkerboard`/`mix`
-  still fall back to a flat colour with a warning, unchanged; CPU's
-  `uv_checker_texture` already supports nesting internally, but GPU's
-  `TextureData` has no composite/nested-texture mechanism at all, so this
-  would need new GPU infrastructure, not just loader plumbing.
+  still falls back to a flat colour with a warning, unchanged.
+  A `checkerboard`/`mix` `Texture`'s own `tex1`/`tex2` now supports ONE
+  level of nesting on both backends: either may independently be a flat
+  literal (unchanged) OR a reference to another `Texture` that is itself a
+  bare `"imagemap"` (`Material::checkerTex1Filename`/`checkerTex2Filename`/
+  `mixTex1Filename`/`mixTex2Filename` in `pbrt_flatten.h`) — GPU's
+  `TextureData` gained `tex1ImageIdx`/`tex2ImageIdx` for this (`optix_types.h`),
+  read by both `sample_texture()` (recursive backend) and
+  `wf_sample_texture()` (wavefront); CPU's `uv_checker_texture` already had
+  a polymorphic tex1/tex2 constructor (previously unused by this loader),
+  and `mix_texture` gained one to match. `mix`'s own `"amount"` bound to a
+  texture, or a SECOND level of nesting (tex1/tex2 naming a Texture that is
+  itself a checkerboard/fbm/marble/mix, not a bare imagemap), still falls
+  back to the generic "not supported" warning — a documented scope cut, not
+  a new limitation: no bundled scene needs either, and going further would
+  need real cycle/recursion-depth guarding on GPU that a single level
+  doesn't.
   **Update**: `Shape "trianglemesh"`'s own per-vertex `"point2 uv"` data
   (`"st"` is not a pbrt-v4 alias for it - confirmed against pbrt-v4 source,
   only `"uv"` is read) is now threaded through `pbrt_flatten::Triangle`

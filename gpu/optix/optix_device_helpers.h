@@ -1244,22 +1244,30 @@ __device__ __forceinline__ float3 sample_marble_texture(const TextureData& tex, 
 // same here.
 __device__ __forceinline__ float3 sample_texture(int textureIdx, float u, float v, const float3& p) {
 	const TextureData& tex = params.textures[textureIdx];
-	if (tex.kind == TextureKind::Image) {
-		// Matches image_texture::value() (texture.h:74-88) exactly: clamp
-		// uv to [0,1], flip v (stored image rows are top-to-bottom, v=0 is
-		// the bottom of the [0,1] texture-coordinate convention), clamp the
-		// resulting integer pixel index to the image bounds (rtw_image::
-		// pixel_data()'s own clamp), nearest-neighbor, 8-bit -> [0,1] float.
-		// A failed image load (width/height <= 0) matches CPU's own solid-
-		// cyan debugging fallback (texture.h:76) exactly.
-		if (tex.width <= 0 || tex.height <= 0) return make_float3(0.0f, 1.0f, 1.0f);
+	// Shared by the Image case below and by UVChecker/Mix's own
+	// tex1ImageIdx/tex2ImageIdx (a one-level-nested bare imagemap bound to
+	// tex1/tex2 instead of a flat literal - see TextureData's own comment)
+	// - factored out so both call sites share one copy of the pixel-lookup
+	// math instead of duplicating it. Matches image_texture::value()
+	// (texture.h:74-88) exactly: clamp uv to [0,1], flip v (stored image
+	// rows are top-to-bottom, v=0 is the bottom of the [0,1] texture-
+	// coordinate convention), clamp the resulting integer pixel index to
+	// the image bounds (rtw_image::pixel_data()'s own clamp), nearest-
+	// neighbor, 8-bit -> [0,1] float. A failed image load (width/height <=
+	// 0) matches CPU's own solid-cyan debugging fallback (texture.h:76)
+	// exactly.
+	auto sampleImage = [&](const TextureData& t) -> float3 {
+		if (t.width <= 0 || t.height <= 0) return make_float3(0.0f, 1.0f, 1.0f);
 		const float uc = fminf(fmaxf(u, 0.0f), 1.0f);
 		const float vc = 1.0f - fminf(fmaxf(v, 0.0f), 1.0f);
-		const int i = min(static_cast<int>(uc * tex.width), tex.width - 1);
-		const int j = min(static_cast<int>(vc * tex.height), tex.height - 1);
-		const unsigned char* px = params.texturePixels + tex.pixelOffset + (j * tex.width + i) * 3;
+		const int i = min(static_cast<int>(uc * t.width), t.width - 1);
+		const int j = min(static_cast<int>(vc * t.height), t.height - 1);
+		const unsigned char* px = params.texturePixels + t.pixelOffset + (j * t.width + i) * 3;
 		constexpr float kColorScale = 1.0f / 255.0f;
 		return make_float3(px[0] * kColorScale, px[1] * kColorScale, px[2] * kColorScale);
+	};
+	if (tex.kind == TextureKind::Image) {
+		return sampleImage(tex);
 	} else if (tex.kind == TextureKind::Checker) {
 		// Matches checker_texture::value() (texture.h:53-61) exactly: floor
 		// each world-space coordinate scaled by 1/scale, sum the three
@@ -1275,11 +1283,15 @@ __device__ __forceinline__ float3 sample_texture(int textureIdx, float u, float 
 		// Matches uv_checker_texture::value() (texture.h) exactly: parity of
 		// floor(u*uscale)+floor(v*vscale) - pbrt-v4's own UV-tiled
 		// checkerboard convention, deliberately NOT the world-space Checker
-		// case above (see TextureKind::UVChecker's own comment).
+		// case above (see TextureKind::UVChecker's own comment). tex1ImageIdx/
+		// tex2ImageIdx (-1 by default) let either cell colour instead be a
+		// one-level-nested bare imagemap - see TextureData's own comment.
 		const int ui = static_cast<int>(floorf(u * tex.uScale));
 		const int vi = static_cast<int>(floorf(v * tex.vScale));
 		const bool is_even = ((ui + vi) % 2) == 0;
-		return is_even ? tex.color1 : tex.color2;
+		const float3 c1 = (tex.tex1ImageIdx >= 0) ? sampleImage(params.textures[tex.tex1ImageIdx]) : tex.color1;
+		const float3 c2 = (tex.tex2ImageIdx >= 0) ? sampleImage(params.textures[tex.tex2ImageIdx]) : tex.color2;
+		return is_even ? c1 : c2;
 	} else if (tex.kind == TextureKind::FBm) {
 		// Matches fbm_texture::value() (texture.h) exactly: fbm_simple(p,
 		// omega, octaves) mapped from [-~1,~1] to a clamped [0,1] greyscale.
@@ -1291,8 +1303,11 @@ __device__ __forceinline__ float3 sample_texture(int textureIdx, float u, float 
 		return sample_marble_texture(tex, p);
 	} else if (tex.kind == TextureKind::Mix) {
 		// Matches mix_texture::value() (texture.h) exactly: flat lerp, no
-		// footprint/UV dependence.
-		return (1.0f - tex.mixAmount) * tex.color1 + tex.mixAmount * tex.color2;
+		// footprint/UV dependence. tex1ImageIdx/tex2ImageIdx - see
+		// UVChecker's own identical comment just above.
+		const float3 c1 = (tex.tex1ImageIdx >= 0) ? sampleImage(params.textures[tex.tex1ImageIdx]) : tex.color1;
+		const float3 c2 = (tex.tex2ImageIdx >= 0) ? sampleImage(params.textures[tex.tex2ImageIdx]) : tex.color2;
+		return (1.0f - tex.mixAmount) * c1 + tex.mixAmount * c2;
 	} else {
 		// Matches noise_texture::value() (texture.h:127-129) exactly:
 		// color(.5,.5,.5) * (1 + sin(scale*p.z + 10*turb(p,7))), where

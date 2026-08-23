@@ -331,15 +331,20 @@ class scaled_texture : public texture {
 
 class mix_texture : public texture {
   public:
-    mix_texture(const color& tex1, const color& tex2, double amount)
+    mix_texture(shared_ptr<texture> tex1, shared_ptr<texture> tex2, double amount)
         : tex1(tex1), tex2(tex2), amount(amount) {}
 
-    color value(double /*u*/, double /*v*/, const point3& /*p*/) const override {
-        return (1.0 - amount) * tex1 + amount * tex2;
+    // Flat-colour convenience constructor - mirrors checker_texture/
+    // uv_checker_texture's own identical two-constructor shape exactly.
+    mix_texture(const color& c1, const color& c2, double amount)
+        : mix_texture(make_shared<solid_color>(c1), make_shared<solid_color>(c2), amount) {}
+
+    color value(double u, double v, const point3& p) const override {
+        return (1.0 - amount) * tex1->value(u, v, p) + amount * tex2->value(u, v, p);
     }
 
   private:
-    color tex1, tex2;
+    shared_ptr<texture> tex1, tex2;
     double amount;
 };
 

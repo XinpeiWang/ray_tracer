@@ -438,16 +438,25 @@ struct Material {
 	// pbrt-v4's own defaults apply). Unlike textureFilename, this can't be
 	// represented as a plain filename (there is no file - it's two flat
 	// colours procedurally tiled by UV), hence the separate fields below
-	// rather than overloading textureFilename's meaning. Only the flat-
-	// colour tex1/tex2 case is supported - a checkerboard whose tex1/tex2
-	// are THEMSELVES texture references (rather than float/rgb literals)
-	// falls through to the generic "not supported" warning instead of
-	// attempting a recursive resolve. hasCheckerReflectance is the "is
-	// this meaningful" flag, since an all-default checkerboard's fields
-	// are otherwise indistinguishable from "unset".
+	// rather than overloading textureFilename's meaning. hasCheckerReflectance
+	// is the "is this meaningful" flag, since an all-default checkerboard's
+	// fields are otherwise indistinguishable from "unset".
+	//
+	// tex1/tex2 each independently support ONE level of nesting: either a
+	// flat float/rgb literal (checkerColor1/2 below), OR a reference to
+	// another Texture that is itself a bare "imagemap" (checkerTex1Filename/
+	// checkerTex2Filename below) - NOT a reference to a further procedural
+	// texture (checkerboard-of-checkerboard etc still falls through to the
+	// generic "not supported" warning, a documented scope cut - no bundled
+	// scene needs more than one level, and it would need real cycle/depth
+	// guarding on GPU that a single level doesn't). Exactly one of each
+	// pair (checkerColorN vs checkerTexNFilename) is meaningful per slot -
+	// see flatten()'s own checkerboard-resolution code for which.
 	bool hasCheckerReflectance = false;
 	double checkerColor1[3] = {1.0, 1.0, 1.0};  // pbrt-v4 tex1 default: white
 	double checkerColor2[3] = {0.0, 0.0, 0.0};  // pbrt-v4 tex2 default: black
+	std::string checkerTex1Filename;  // set instead of checkerColor1 when tex1 nests a bare imagemap
+	std::string checkerTex2Filename;  // set instead of checkerColor2 when tex2 nests a bare imagemap
 	double checkerUScale = 1.0;
 	double checkerVScale = 1.0;
 
@@ -475,17 +484,21 @@ struct Material {
 	double marbleVariation = 0.2;
 
 	// A Diffuse material's "reflectance" bound to a "mix" Texture (pbrt-v4
-	// SpectrumMixTexture - lerp between two colours by "amount"). Same
-	// flat-literal-only scope as checkerboard: tex1/tex2 THEMSELVES bound to
-	// a nested texture (e.g. "amount" driven by an fbm pattern for a dirt/
-	// wear mask, pbrt-v4's most common real use of "mix") falls through to
-	// the generic "not supported" warning instead of a recursive resolve -
-	// same documented, deliberate scope cut as checkerboard's own tex1/tex2,
-	// not a new limitation. Defaults match pbrt-v4's SpectrumMixTexture
-	// exactly (tex1 black, tex2 white, amount 0.5).
+	// SpectrumMixTexture - lerp between two colours by "amount"). tex1/tex2
+	// support the SAME one-level bare-imagemap nesting as checkerboard's own
+	// tex1/tex2 above (mixTex1Filename/mixTex2Filename below) - "amount"
+	// ITSELF bound to a texture (e.g. driven by an fbm pattern for a dirt/
+	// wear mask, pbrt-v4's most common real use of "mix") stays unsupported
+	// and falls through to the generic "not supported" warning: that would
+	// need per-point luminance extraction from an image rather than a colour
+	// sample, real new machinery this one-level nesting pass doesn't add -
+	// no bundled scene needs it either. Defaults match pbrt-v4's
+	// SpectrumMixTexture exactly (tex1 black, tex2 white, amount 0.5).
 	bool hasMixReflectance = false;
 	double mixColor1[3] = {0.0, 0.0, 0.0};
 	double mixColor2[3] = {1.0, 1.0, 1.0};
+	std::string mixTex1Filename;  // set instead of mixColor1 when tex1 nests a bare imagemap
+	std::string mixTex2Filename;  // set instead of mixColor2 when tex2 nests a bare imagemap
 	double mixAmount = 0.5;
 
 	// A pbrt Shape's own "alpha" parameter (bound to a "float"/"imagemap"
@@ -1249,20 +1262,44 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 						continue;   // resolved to an image, not a "not supported" warning
 					}
 				}
+				// Shared by checkerboard/mix below: resolves a "texture"-typed
+				// tex1/tex2 param to a bare imagemap's filename, ONE level
+				// only - returns empty if the referenced Texture isn't a
+				// bare "imagemap" (itself nested further, or a different
+				// class), which the caller treats as "can't resolve, fall
+				// through to the generic warning" (see hasCheckerReflectance/
+				// hasMixReflectance's own comments).
+				auto resolveNestedImagemap = [&](const pbrt_scene::Param *p) -> std::string {
+					if (!p || p->strings.empty()) return std::string();
+					for (const pbrt_scene::TextureDecl &t : scene.textures)
+						if (t.name == p->strings[0] && t.cls == "imagemap")
+							return t.params.getString("filename", "");
+					return std::string();
+				};
 				if (m.kind == MaterialKind::Diffuse && tex && tex->cls == "checkerboard") {
-					// tex1/tex2 THEMSELVES bound to a nested texture (rather
-					// than a flat float/rgb literal) isn't supported - see
-					// hasCheckerReflectance's own comment - so fall through
-					// to the generic warning below in that case.
 					const pbrt_scene::Param *tex1p = tex->params.find("tex1");
 					const pbrt_scene::Param *tex2p = tex->params.find("tex2");
 					const bool tex1IsNested = tex1p && tex1p->type == "texture";
 					const bool tex2IsNested = tex2p && tex2p->type == "texture";
-					if (!tex1IsNested && !tex2IsNested) {
-						const pbrt_scene::Vec3 c1 = tex->params.getVec3("tex1", {1.0, 1.0, 1.0});
-						const pbrt_scene::Vec3 c2 = tex->params.getVec3("tex2", {0.0, 0.0, 0.0});
-						m.checkerColor1[0] = c1.x; m.checkerColor1[1] = c1.y; m.checkerColor1[2] = c1.z;
-						m.checkerColor2[0] = c2.x; m.checkerColor2[1] = c2.y; m.checkerColor2[2] = c2.z;
+					const std::string tex1Img = tex1IsNested ? resolveNestedImagemap(tex1p) : std::string();
+					const std::string tex2Img = tex2IsNested ? resolveNestedImagemap(tex2p) : std::string();
+					// Each slot resolves independently: a flat literal always
+					// succeeds; a nested reference only succeeds if it named a
+					// bare imagemap (empty tex*Img otherwise, blocking the
+					// whole checkerboard - see resolveNestedImagemap's comment).
+					if ((!tex1IsNested || !tex1Img.empty()) && (!tex2IsNested || !tex2Img.empty())) {
+						if (tex1IsNested) {
+							m.checkerTex1Filename = tex1Img;
+						} else {
+							const pbrt_scene::Vec3 c1 = tex->params.getVec3("tex1", {1.0, 1.0, 1.0});
+							m.checkerColor1[0] = c1.x; m.checkerColor1[1] = c1.y; m.checkerColor1[2] = c1.z;
+						}
+						if (tex2IsNested) {
+							m.checkerTex2Filename = tex2Img;
+						} else {
+							const pbrt_scene::Vec3 c2 = tex->params.getVec3("tex2", {0.0, 0.0, 0.0});
+							m.checkerColor2[0] = c2.x; m.checkerColor2[1] = c2.y; m.checkerColor2[2] = c2.z;
+						}
 						m.checkerUScale = tex->params.getFloat("uscale", 1.0);
 						m.checkerVScale = tex->params.getFloat("vscale", 1.0);
 						m.hasCheckerReflectance = true;
@@ -1284,21 +1321,33 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					continue;   // resolved to procedural marble, not a "not supported" warning
 				}
 				if (m.kind == MaterialKind::Diffuse && tex && tex->cls == "mix") {
-					// See hasMixReflectance's own comment - tex1/tex2/amount
-					// THEMSELVES bound to nested textures fall through to the
-					// generic warning below, same scope cut as checkerboard's
-					// tex1/tex2.
+					// See hasMixReflectance's own comment - tex1/tex2 each
+					// support one level of bare-imagemap nesting like
+					// checkerboard's own tex1/tex2 above; "amount" ITSELF
+					// bound to a texture stays unsupported (falls through to
+					// the generic warning below) regardless.
 					const pbrt_scene::Param *tex1p = tex->params.find("tex1");
 					const pbrt_scene::Param *tex2p = tex->params.find("tex2");
 					const pbrt_scene::Param *amountp = tex->params.find("amount");
 					const bool tex1IsNested = tex1p && tex1p->type == "texture";
 					const bool tex2IsNested = tex2p && tex2p->type == "texture";
 					const bool amountIsNested = amountp && amountp->type == "texture";
-					if (!tex1IsNested && !tex2IsNested && !amountIsNested) {
-						const pbrt_scene::Vec3 c1 = tex->params.getVec3("tex1", {0.0, 0.0, 0.0});
-						const pbrt_scene::Vec3 c2 = tex->params.getVec3("tex2", {1.0, 1.0, 1.0});
-						m.mixColor1[0] = c1.x; m.mixColor1[1] = c1.y; m.mixColor1[2] = c1.z;
-						m.mixColor2[0] = c2.x; m.mixColor2[1] = c2.y; m.mixColor2[2] = c2.z;
+					const std::string tex1Img = tex1IsNested ? resolveNestedImagemap(tex1p) : std::string();
+					const std::string tex2Img = tex2IsNested ? resolveNestedImagemap(tex2p) : std::string();
+					if (!amountIsNested &&
+						(!tex1IsNested || !tex1Img.empty()) && (!tex2IsNested || !tex2Img.empty())) {
+						if (tex1IsNested) {
+							m.mixTex1Filename = tex1Img;
+						} else {
+							const pbrt_scene::Vec3 c1 = tex->params.getVec3("tex1", {0.0, 0.0, 0.0});
+							m.mixColor1[0] = c1.x; m.mixColor1[1] = c1.y; m.mixColor1[2] = c1.z;
+						}
+						if (tex2IsNested) {
+							m.mixTex2Filename = tex2Img;
+						} else {
+							const pbrt_scene::Vec3 c2 = tex->params.getVec3("tex2", {1.0, 1.0, 1.0});
+							m.mixColor2[0] = c2.x; m.mixColor2[1] = c2.y; m.mixColor2[2] = c2.z;
+						}
 						m.mixAmount = tex->params.getFloat("amount", 0.5);
 						m.hasMixReflectance = true;
 						continue;   // resolved to a procedural mix, not a "not supported" warning

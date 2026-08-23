@@ -373,15 +373,23 @@ __device__ __forceinline__ float3 wf_sample_texture(
 	int textureIdx, float u, float v, const float3& p)
 {
 	const TextureData& tex = textures[textureIdx];
-	if (tex.kind == TextureKind::Image) {
-		if (tex.width <= 0 || tex.height <= 0) return make_float3(0.0f, 1.0f, 1.0f);
+	// Shared by the Image case below and by UVChecker/Mix's own
+	// tex1ImageIdx/tex2ImageIdx (a one-level-nested bare imagemap - see
+	// TextureData's own comment and optix_device_helpers.h's identical
+	// sampleImage lambda) - factored out so both call sites in THIS
+	// duplicated copy share one instance too.
+	auto sampleImage = [&](const TextureData& t) -> float3 {
+		if (t.width <= 0 || t.height <= 0) return make_float3(0.0f, 1.0f, 1.0f);
 		const float uc = fminf(fmaxf(u, 0.0f), 1.0f);
 		const float vc = 1.0f - fminf(fmaxf(v, 0.0f), 1.0f);
-		const int i = min(static_cast<int>(uc * tex.width), tex.width - 1);
-		const int j = min(static_cast<int>(vc * tex.height), tex.height - 1);
-		const unsigned char* px = texturePixels + tex.pixelOffset + (j * tex.width + i) * 3;
+		const int i = min(static_cast<int>(uc * t.width), t.width - 1);
+		const int j = min(static_cast<int>(vc * t.height), t.height - 1);
+		const unsigned char* px = texturePixels + t.pixelOffset + (j * t.width + i) * 3;
 		constexpr float kColorScale = 1.0f / 255.0f;
 		return make_float3(px[0] * kColorScale, px[1] * kColorScale, px[2] * kColorScale);
+	};
+	if (tex.kind == TextureKind::Image) {
+		return sampleImage(tex);
 	} else if (tex.kind == TextureKind::Checker) {
 		const int xi = static_cast<int>(floorf(tex.noiseScale * p.x));
 		const int yi = static_cast<int>(floorf(tex.noiseScale * p.y));
@@ -390,11 +398,14 @@ __device__ __forceinline__ float3 wf_sample_texture(
 		return is_even ? tex.color1 : tex.color2;
 	} else if (tex.kind == TextureKind::UVChecker) {
 		// Matches optix_device_helpers.h's sample_texture() UVChecker branch
-		// (and uv_checker_texture::value(), texture.h) exactly.
+		// (and uv_checker_texture::value(), texture.h) exactly, including
+		// tex1ImageIdx/tex2ImageIdx's one-level-nested bare imagemap support.
 		const int ui = static_cast<int>(floorf(u * tex.uScale));
 		const int vi = static_cast<int>(floorf(v * tex.vScale));
 		const bool is_even = ((ui + vi) % 2) == 0;
-		return is_even ? tex.color1 : tex.color2;
+		const float3 c1 = (tex.tex1ImageIdx >= 0) ? sampleImage(textures[tex.tex1ImageIdx]) : tex.color1;
+		const float3 c2 = (tex.tex2ImageIdx >= 0) ? sampleImage(textures[tex.tex2ImageIdx]) : tex.color2;
+		return is_even ? c1 : c2;
 	} else if (tex.kind == TextureKind::FBm) {
 		// Matches optix_device_helpers.h's sample_texture() FBm branch (and
 		// fbm_texture::value(), texture.h) exactly.
@@ -405,7 +416,9 @@ __device__ __forceinline__ float3 wf_sample_texture(
 	} else if (tex.kind == TextureKind::Marble) {
 		return wf_sample_marble_texture(tex, p);
 	} else if (tex.kind == TextureKind::Mix) {
-		return (1.0f - tex.mixAmount) * tex.color1 + tex.mixAmount * tex.color2;
+		const float3 c1 = (tex.tex1ImageIdx >= 0) ? sampleImage(textures[tex.tex1ImageIdx]) : tex.color1;
+		const float3 c2 = (tex.tex2ImageIdx >= 0) ? sampleImage(textures[tex.tex2ImageIdx]) : tex.color2;
+		return (1.0f - tex.mixAmount) * c1 + tex.mixAmount * c2;
 	} else {
 		const float turb = turbulence_simple<float>(p.x, p.y, p.z, 0.5f, 7);
 		const float s = 0.5f * (1.0f + sinf(tex.noiseScale * p.z + 10.0f * turb));
