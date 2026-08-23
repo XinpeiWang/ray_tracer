@@ -1,0 +1,39 @@
+# plymesh-uv.pbrt -- exercises Shape "plymesh" real per-vertex UV, read
+# straight out of a PLY file's "u"/"v" vertex properties
+# (geometry/uv-quad.ply) and threaded through pbrt_flatten::MeshResolver ->
+# pbrt_flatten::Triangle::uv/hasUVs -> both CPU and GPU builders - the same
+# generic Triangle-construction path Shape "trianglemesh"'s own "point2 uv"
+# parameter already uses (see trianglemesh-uv.pbrt, which this scene
+# otherwise mirrors exactly). Before this fix, MeshResolver had no UV
+# output parameter at all, so a plymesh's UV data was read by ply_mesh.h
+# and then silently dropped before ever reaching a Triangle.
+#
+# Same unit quad + 4-quadrant checkerboard texture as trianglemesh-uv.pbrt,
+# just sourced from an external .ply file instead of an inline
+# "point2 uv" parameter - a real, spatially-varying texture should show
+# all 4 colors distinctly across the quad's face, not one flat/wrong color.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints. geometry/uv-quad.ply is likewise hand-authored.
+
+LookAt  0.5 0.5 3    0.5 0.5 0    0 1 0
+Camera "perspective" "float fov" [ 35 ]
+
+Film "rgb" "integer xresolution" [ 400 ] "integer yresolution" [ 400 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.7 0.7 0.7 ]
+
+AttributeBegin
+  Translate 0.5 0.5 3.5
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 4 4 4 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -1 -1 0   1 -1 0   1 1 0   -1 1 0 ]
+AttributeEnd
+
+Texture "checker-tex" "spectrum" "imagemap" "string filename" [ "uv-checker.bmp" ]
+Material "diffuse" "texture reflectance" "checker-tex"
+Shape "plymesh" "string filename" [ "geometry/uv-quad.ply" ]

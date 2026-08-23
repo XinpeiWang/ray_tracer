@@ -113,6 +113,34 @@ TEST_F(TempTree, PlyMeshResolvesRelativeToTheScene) {
 	EXPECT_DOUBLE_EQ(r.scene.triangles[0].v[3], 1.0);
 }
 
+TEST_F(TempTree, PlyMeshWithUvPropertiesThreadsRealUV) {
+	// End-to-end: real PLY "u"/"v" vertex properties should survive the
+	// whole load -> ply_mesh::parse -> MeshResolver -> flatten pipeline as
+	// Triangle::uv/hasUVs, matching real pbrt-v4's own TriQuadMesh::ReadPLY
+	// behavior (see docs/PBRT_SUPPORT.md).
+	write("scene.pbrt",
+		  "Shape \"plymesh\" \"string filename\" [ \"geometry/tri.ply\" ]\n");
+	write("geometry/tri.ply",
+		  "ply\nformat ascii 1.0\n"
+		  "element vertex 3\n"
+		  "property float x\nproperty float y\nproperty float z\n"
+		  "property float u\nproperty float v\n"
+		  "element face 1\nproperty list uchar int vertex_indices\n"
+		  "end_header\n"
+		  "0 0 0 0 0\n1 0 0 1 0\n0 1 0 0 1\n"
+		  "3 0 1 2\n");
+	const pbrt_load::LoadResult r = pbrt_load::loadFile(path("scene.pbrt"));
+	ASSERT_TRUE(r.ok) << r.error;
+	ASSERT_EQ(r.scene.triangles.size(), 1u);
+	ASSERT_TRUE(r.scene.triangles[0].hasUVs);
+	EXPECT_DOUBLE_EQ(r.scene.triangles[0].uv[0], 0.0);
+	EXPECT_DOUBLE_EQ(r.scene.triangles[0].uv[1], 0.0);
+	EXPECT_DOUBLE_EQ(r.scene.triangles[0].uv[2], 1.0);
+	EXPECT_DOUBLE_EQ(r.scene.triangles[0].uv[3], 0.0);
+	EXPECT_DOUBLE_EQ(r.scene.triangles[0].uv[4], 0.0);
+	EXPECT_DOUBLE_EQ(r.scene.triangles[0].uv[5], 1.0);
+}
+
 TEST_F(TempTree, SceneTransformsStillApplyToAnIncludedPlyMesh) {
 	// Proves the whole chain composes: load -> include -> ply -> transform.
 	write("scene.pbrt",

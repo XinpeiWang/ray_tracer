@@ -842,13 +842,18 @@ struct FlatScene {
 	}
 };
 
-// Supplies a PLY mesh's positions and indices for `Shape "plymesh"`. Same
-// callback shape, and for the same reason, as pbrt_scene::FileResolver: keeps
-// this a pure function and lets the caller decide how a path resolves.
-// Returning false means the mesh could not be read.
+// Supplies a PLY mesh's positions, indices and (optionally) per-vertex UV for
+// `Shape "plymesh"`. Same callback shape, and for the same reason, as
+// pbrt_scene::FileResolver: keeps this a pure function and lets the caller
+// decide how a path resolves. Returning false means the mesh could not be
+// read. `uvs` is filled 2-per-vertex when the PLY file carries "u"/"v" (or
+// "s"/"t") vertex properties (see ply_mesh.h's own vertexSlotFor()), left
+// empty otherwise - mirroring how a `Shape "trianglemesh"` with no `"uv"`
+// parameter leaves this loader's own UV vector empty.
 using MeshResolver = std::function<bool(const std::string &path,
 										std::vector<float> &positions,
-										std::vector<int> &indices)>;
+										std::vector<int> &indices,
+										std::vector<float> &uvs)>;
 
 namespace detail {
 
@@ -2213,11 +2218,19 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					continue;
 				}
 				std::vector<float> pos;
-				if (!meshes(file, pos, indices)) {
+				std::vector<float> uvs;
+				if (!meshes(file, pos, indices, uvs)) {
 					warn("plymesh '" + file + "' could not be read; skipped");
 					continue;
 				}
 				P.assign(pos.begin(), pos.end());
+				// Real per-vertex UV when the PLY file carried "u"/"v" (or
+				// "s"/"t") vertex properties - see MeshResolver's own comment.
+				// Fed into the same `UV` local the trianglemesh branch above
+				// populates from its "uv" parameter, so the shared validation/
+				// Triangle-construction code below (worldUV, t.uv[]/hasUVs)
+				// needs no plymesh-specific handling.
+				if (!uvs.empty()) UV.assign(uvs.begin(), uvs.end());
 			}
 
 			const std::size_t vertexCount = P.size() / 3;

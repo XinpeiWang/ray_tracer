@@ -106,8 +106,19 @@ loader and no longer match the code:
   (`triangle_mesh_data::uvs`, the same field OBJ/MTL `vt` data already
   populates) and both GPU backends (`TriangleData::uv0/1/2`, likewise
   already populated by OBJ/MTL loading - this loader just never fed it from
-  a pbrt scene before). `loopsubdiv`/`plymesh` still don't thread UV through
-  this loader at all (a separate, smaller, still-open gap). When a
+  a pbrt scene before). `Shape "plymesh"` now threads real per-vertex UV too
+  (`pbrt_flatten::MeshResolver` gained a `uvs` out-parameter, filled from
+  `ply_mesh.h`'s own existing "u"/"v" (or "s"/"t") vertex-property support -
+  the PLY parser already read this data, it was just dropped at the
+  resolver-callback boundary before reaching a `Triangle`; no CPU/GPU
+  builder changes were needed, since both already consume `Triangle::uv`/
+  `hasUVs` generically regardless of which shape produced it). See
+  `pbrt_scenes/plymesh-uv.pbrt`. `Shape "loopsubdiv"` deliberately still
+  does not thread UV - this is not a gap relative to real pbrt-v4, which
+  has no UV support on `loopsubdiv` either (no `"uv"`-equivalent parameter
+  in its grammar, and `loopsubdiv.cpp`'s own refinement never touches UV) -
+  inventing subdivision-surface UV interpolation here would be a new
+  feature beyond pbrt-v4 parity, not a bug fix. When a
   trianglemesh gives no `"uv"` at all, pbrt-v4's own real default (a fixed
   `(0,0)/(1,0)/(1,1)` triple per triangle CORNER, not shared across faces)
   is deliberately NOT synthesized - it would inflate vertex-dedup counts at
@@ -224,9 +235,9 @@ per-`MaterialKind` behavior.)
   on GPU-recursive" divergence this paragraph used to describe - both
   backends now agree on what UV to use, real or a shared barycentric-weights
   fallback, whether or not the scene ever authors `"uv"`. `"plymesh"`'s own
-  per-vertex UV (a PLY file property, read through a different code path -
-  the `MeshResolver` callback only returns positions/indices today) is
-  still not threaded through - a separate, smaller, still-open gap.
+  per-vertex UV (a PLY file property, read through a different code path)
+  is now threaded through too - `MeshResolver` gained a `uvs` out-parameter,
+  fed by `ply_mesh.h`'s pre-existing "u"/"v" reader.
 
 - A pbrt `Shape`'s own `"alpha"` parameter (an alpha-cutout mask, distinct
   from a Material's own texture-bound parameters above — pbrt authors it
@@ -240,10 +251,11 @@ per-`MaterialKind` behavior.)
   new per-triangle field): every scene in this loader's own corpus gives each
   alpha-masked Shape its own unnamed Material declared immediately before it,
   never a `NamedMaterial` shared by shapes with different alpha masks, so
-  this holds in practice though it is not enforced. Shares the reflectance
-  case's own UV-threading gap above (pbrt trianglemesh/plymesh has no real
-  per-vertex UV) — verified in practice on `barcelona-pavilion`'s own
-  foliage anyway: individual leaf/branch silhouettes are visibly cut out
-  rather than rendering as solid quads, likely because each leaf's own
-  triangles are small enough that the barycentric UV fallback still varies
-  usefully across them.
+  this holds in practice though it is not enforced. `barcelona-pavilion`'s
+  own foliage (each leaf a `Shape "plymesh"`) now benefits from real
+  per-vertex UV on the alpha mask too, once its own `.ply` assets carry
+  UV data — individual leaf/branch silhouettes were already visibly cut
+  out rather than rendering as solid quads even before this fix, via the
+  barycentric UV fallback (small enough triangles that it varied usefully
+  across them), so this closes a latent accuracy gap rather than a visible
+  regression.

@@ -726,7 +726,8 @@ TEST(FlattenTest, RotationAloneDoesNotCountAsNonUniformScale) {
 
 TEST(FlattenTest, PlyMeshIsResolvedAndTransformed) {
 	const MeshResolver res = [](const std::string &path,
-								std::vector<float> &pos, std::vector<int> &idx) {
+								std::vector<float> &pos, std::vector<int> &idx,
+								std::vector<float> &) {
 		if (path != "geometry/tri.ply") return false;
 		pos = {0, 0, 0,  1, 0, 0,  0, 1, 0};
 		idx = {0, 1, 2};
@@ -738,10 +739,34 @@ TEST(FlattenTest, PlyMeshIsResolvedAndTransformed) {
 	ASSERT_EQ(s.triangles.size(), 1u);
 	EXPECT_DOUBLE_EQ(s.triangles[0].v[0], 5.0);
 	EXPECT_DOUBLE_EQ(s.triangles[0].v[3], 6.0);
+	EXPECT_FALSE(s.triangles[0].hasUVs) << "the mock resolver supplied no UV";
+}
+
+TEST(FlattenTest, PlyMeshThreadsRealUVFromTheResolver) {
+	const MeshResolver res = [](const std::string &path,
+								std::vector<float> &pos, std::vector<int> &idx,
+								std::vector<float> &uvs) {
+		if (path != "geometry/tri.ply") return false;
+		pos = {0, 0, 0,  1, 0, 0,  0, 1, 0};
+		idx = {0, 1, 2};
+		uvs = {0, 0,  1, 0,  0, 1};
+		return true;
+	};
+	const FlatScene s = flattenSource(
+		"Shape \"plymesh\" \"string filename\" [ \"geometry/tri.ply\" ]\n", res);
+	ASSERT_EQ(s.triangles.size(), 1u);
+	ASSERT_TRUE(s.triangles[0].hasUVs);
+	EXPECT_DOUBLE_EQ(s.triangles[0].uv[0], 0.0);
+	EXPECT_DOUBLE_EQ(s.triangles[0].uv[1], 0.0);
+	EXPECT_DOUBLE_EQ(s.triangles[0].uv[2], 1.0);
+	EXPECT_DOUBLE_EQ(s.triangles[0].uv[3], 0.0);
+	EXPECT_DOUBLE_EQ(s.triangles[0].uv[4], 0.0);
+	EXPECT_DOUBLE_EQ(s.triangles[0].uv[5], 1.0);
 }
 
 TEST(FlattenTest, UnreadablePlyMeshWarnsRatherThanAborting) {
-	const MeshResolver res = [](const std::string &, std::vector<float> &, std::vector<int> &) {
+	const MeshResolver res = [](const std::string &, std::vector<float> &, std::vector<int> &,
+								std::vector<float> &) {
 		return false;
 	};
 	const FlatScene s = flattenSource(

@@ -104,6 +104,7 @@ constexpr const char* kExampleSceneStems[] = {
 	"plymesh-geometry",
 	"realistic-camera",
 	"textured-twosided-lights",
+	"plymesh-uv",
 };
 
 // Resolved by NAME at test-run time rather than a hardcoded id string:

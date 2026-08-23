@@ -301,7 +301,7 @@ inline LoadResult loadFile(const std::string &path) {
 
 	const pbrt_flatten::MeshResolver meshes =
 		[&sceneDir](const std::string &want, std::vector<float> &positions,
-					std::vector<int> &indices) {
+					std::vector<int> &indices, std::vector<float> &uvs) {
 			ply_mesh::LoadResult m = ply_mesh::loadFile(join(sceneDir, want));
 			if (!m.ok) m = ply_mesh::loadFile(want);   // already absolute, or cwd-relative
 			// A scene naming "x.ply" when the folder ships "x.ply.gz" is common
@@ -312,6 +312,7 @@ inline LoadResult loadFile(const std::string &path) {
 			if (!m.ok) return false;
 			positions = std::move(m.mesh.positions);
 			indices = std::move(m.mesh.indices);
+			uvs = std::move(m.mesh.uvs);
 			return true;
 		};
 
