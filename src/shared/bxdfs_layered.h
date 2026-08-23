@@ -2,474 +2,276 @@
 #include "bxdfs_base.h"
 
 // ===========================================================================
-// 8. CoatedDiffuseBxDF  (rough dielectric coat over Lambertian base)
-//    Mirrors pbrt-v4 CoatedDiffuseBxDF = LayeredBxDF<DielectricBxDF, DiffuseBxDF, true>
+// Shared pbrt-v4 LayeredBxDF<Top,Bottom> random walk, factored out of
+// CoatedDiffuseBxDF and CoatedConductorBxDF below (see each struct's own
+// header comment). The two hand-duplicated ~300-line random walks (top
+// dielectric-coat interface, Russian roulette, optional medium scattering)
+// were byte-for-byte identical except for what happens when the walk hits
+// the BOTTOM interface -- a Lambertian cosine bounce for CoatedDiffuseBxDF,
+// a GGX-conductor specular bounce (complex Fresnel per RGB channel) for
+// CoatedConductorBxDF. layered_sample_local()/layered_f() below hold that
+// shared walk once; each struct supplies its own bottom-bounce behavior via
+// a small BottomBounce value type (DiffuseBottomBounce/ConductorBottomBounce
+// further down).
 //
-//    Full random-walk evaluation (pbrt-v4 LayeredBxDF::Sample_f):
-//      - Top interface: GGX dielectric (coat_ior)
-//      - Bottom interface: Lambertian (albedo)
-//      - Optional medium albedo and HG phase (set albedo_medium > 0)
-//      - maxDepth bounces; terminates via Russian roulette after depth 3
-//
-//    sample_local(wi_x,wi_y,wi_z, seed0, seed1):
-//      - Returns the sampled exit direction + throughput weight (no pdf division)
-//      - seed0/seed1 are 64-bit values from the caller's RNG state
-//    All in local frame (z = surface normal).
+// BottomBounce is built as a LOCAL temporary inside each struct's own
+// sample_local()/f(), never stored as a struct field -- CoatedDiffuseBxDF/
+// CoatedConductorBxDF stay plain aggregates with their original field order,
+// so every existing brace-init call site (materials.h,
+// gpu/optix/optix_device_helpers.h, gpu/optix/wavefront_kernels.cu) keeps
+// working unchanged.
 // ===========================================================================
-template<typename T>
-struct CoatedDiffuseBxDF {
-	T albedo_r, albedo_g, albedo_b;   // Lambertian base color
-	T coat_ior;                        // dielectric coat IOR (>1, e.g. 1.5)
-	T alpha_x;                         // GGX roughness u-direction
-	T alpha_y;                         // GGX roughness v-direction (equal = isotropic)
-	T thickness = T(0.01);             // layer thickness (pbrt-v4 default 0.01)
-	T g         = T(0);               // HG phase function asymmetry (0=none)
-	T medium_albedo = T(0);           // scattering albedo of medium (0=vacuum)
-	int maxDepth  = 10;               // max random-walk bounces
-	int nSamples  = 1;                // samples per call (averaged)
+namespace layered_detail {
 
-	CPU_GPU BxDFSampleResult<T> sample_local(
-		T wi_x, T wi_y, T wi_z,
-		uint64_t seed0, uint64_t seed1 = 0) const
-	{
-		BxDFSampleResult<T> res{};
-		if (wi_z <= T(0)) { res.valid = false; return res; }
+// BottomBounce must provide:
+//   CPU_GPU void bounce(T& w_x, T& w_y, T& w_z,
+//                        T& beta_r, T& beta_g, T& beta_b,
+//                        PCG32& rng, const TrowbridgeReitz<T>& dist) const;
+// mutating the current direction (arrives pointing down, into the bottom
+// interface; must leave pointing back up toward the top) and the path
+// throughput in place. `dist` is the SAME TrowbridgeReitz built from the
+// coat's own alpha_x/alpha_y (reused for the conductor bottom bounce's own
+// GGX sampling too, matching this codebase's pre-existing simplified model
+// -- not a per-interface roughness split).
+template<typename T, typename BottomBounce>
+CPU_GPU BxDFSampleResult<T> layered_sample_local(
+	T wi_x, T wi_y, T wi_z,
+	uint64_t seed0, uint64_t seed1,
+	T coat_ior, T alpha_x, T alpha_y, T thickness, T g, T medium_albedo,
+	int maxDepth, const BottomBounce& bottom)
+{
+	BxDFSampleResult<T> res{};
+	if (wi_z <= T(0)) { res.valid = false; return res; }
 
-		TrowbridgeReitz<T> dist(alpha_x, alpha_y);
-		layered_detail::PCG32 rng(seed0, seed1 ^ 0xdeadbeefull);
+	TrowbridgeReitz<T> dist(alpha_x, alpha_y);
+	layered_detail::PCG32 rng(seed0, seed1 ^ 0xdeadbeefull);
 
-		// pbrt-v4: Sample entrance (top) interface
-		T u1 = (T)rng.Uniform<float>(), u2 = (T)rng.Uniform<float>(), uc = (T)rng.Uniform<float>();
+	// pbrt-v4: Sample entrance (top) interface
+	T u1 = (T)rng.Uniform<float>(), u2 = (T)rng.Uniform<float>(), uc = (T)rng.Uniform<float>();
 
-		T wm_x, wm_y, wm_z;
-		dist.Sample_wm(wi_x, wi_y, wi_z, u1, u2, wm_x, wm_y, wm_z);
-		T cos_i = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
-		T F_in  = FrDielectric(cos_i, coat_ior);
+	T wm_x, wm_y, wm_z;
+	dist.Sample_wm(wi_x, wi_y, wi_z, u1, u2, wm_x, wm_y, wm_z);
+	T cos_i = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
+	T F_in  = FrDielectric(cos_i, coat_ior);
 
-		if (uc < F_in) {
-			// Reflect off the coat top -- specular (same as single-bounce)
-			T wo_x = T(2)*cos_i*wm_x - wi_x;
-			T wo_y = T(2)*cos_i*wm_y - wi_y;
-			T wo_z = T(2)*cos_i*wm_z - wi_z;
-			if (wo_z <= T(0)) { res.valid = false; return res; }
+	if (uc < F_in) {
+		// Reflect off the coat top -- specular (same as single-bounce)
+		T wo_x = T(2)*cos_i*wm_x - wi_x;
+		T wo_y = T(2)*cos_i*wm_y - wi_y;
+		T wo_z = T(2)*cos_i*wm_z - wi_z;
+		if (wo_z <= T(0)) { res.valid = false; return res; }
 
-			T G1 = dist.G1(wi_x, wi_y, wi_z);
-			T G  = dist.G(wo_x, wo_y, wo_z, wi_x, wi_y, wi_z);
-			T w  = (G1 > T(1e-8)) ? G / G1 : T(0);
-			T fv = F_in * w;
+		T G1 = dist.G1(wi_x, wi_y, wi_z);
+		T G  = dist.G(wo_x, wo_y, wo_z, wi_x, wi_y, wi_z);
+		T w  = (G1 > T(1e-8)) ? G / G1 : T(0);
+		T fv = F_in * w;
 
-			res.wo_x = wo_x; res.wo_y = wo_y; res.wo_z = wo_z;
-			res.r = fv; res.g = fv; res.b = fv;
-			res.is_specular = true;
-			res.valid = true;
-			return res;
-		}
-
-		// Transmitted into the layer -- start random walk toward bottom
-		// w is the current direction (travels downward after transmission)
-		T w_x = T(2)*cos_i*wm_x - wi_x;
-		T w_y = T(2)*cos_i*wm_y - wi_y;
-		T w_z = -(T(2)*cos_i*wm_z - wi_z);   // flip z: now going downward
-		if (w_z == T(0)) { res.valid = false; return res; }
-		// Ensure traveling downward (-z in layer)
-		if (w_z > T(0)) w_z = -w_z;
-
-		// pbrt-v4: beta starts with transmittance through top interface (1-F_in)
-		T beta_r = T(1) - F_in, beta_g = T(1) - F_in, beta_b = T(1) - F_in;
-		T z = thickness;   // started at top (z=thickness), going to bottom (z=0)
-
-		for (int depth = 0; depth < maxDepth; ++depth) {
-			// Russian roulette after depth 3 -- mirrors pbrt-v4: rrBeta = maxBeta < 0.25
-			if (depth > 3) {
-#if defined(__CUDACC__)
-				T rrBeta = fmaxf(beta_r, fmaxf(beta_g, beta_b));
-#else
-				T rrBeta = std::max(beta_r, std::max(beta_g, beta_b));
-#endif
-				if (rrBeta < T(0.25)) {
-					T q = std::max(T(0), T(1) - rrBeta);
-					if ((T)rng.Uniform<float>() < q) { res.valid = false; return res; }
-					beta_r /= T(1) - q; beta_g /= T(1) - q; beta_b /= T(1) - q;
-				}
-			}
-
-			// Medium scattering or direct boundary hit
-			if (medium_albedo > T(0)) {
-				T dz = layered_detail::SampleExponential((T)rng.Uniform<float>(), T(1) / (w_z < T(0) ? -w_z : w_z));
-				T zp = (w_z > T(0)) ? z + dz : z - dz;
-				if (zp > T(0) && zp < thickness) {
-					// pbrt-v4: beta *= albedo * ps->p / ps->pdf; for HG p/pdf=1
-					// sample phase direction
-					T cos_theta = layered_detail::hg_sample_cos(g, (T)rng.Uniform<float>());
-					beta_r *= medium_albedo;
-					beta_g *= medium_albedo;
-					beta_b *= medium_albedo;
-					// Update direction (simplified: only wz updated, wxy randomised)
-					T phi_s = T(6.28318530717958647692) * (T)rng.Uniform<float>();
-					T sin_theta = layered_detail::safe_sqrt(T(1) - cos_theta*cos_theta);
-#if defined(__CUDACC__)
-					w_x = sin_theta * cosf(phi_s);
-					w_y = sin_theta * sinf(phi_s);
-#else
-					w_x = sin_theta * std::cos(phi_s);
-					w_y = sin_theta * std::sin(phi_s);
-#endif
-					w_z = cos_theta;
-					z   = zp;
-					continue;
-				}
-#if defined(__CUDACC__)
-				z = fmaxf(T(0), fminf(zp, thickness));
-#else
-				z = std::max(T(0), std::min(zp, thickness));
-#endif
-			} else {
-				// No medium: advance directly to the other interface
-				beta_r *= layered_detail::Tr(thickness, w_z);
-				beta_g *= layered_detail::Tr(thickness, w_z);
-				beta_b *= layered_detail::Tr(thickness, w_z);
-				z = (w_z < T(0)) ? T(0) : thickness;
-			}
-
-			if (z <= T(0)) {
-				// Hit bottom: Lambertian bounce
-				layered_detail::cosine_sample((T)rng.Uniform<float>(), (T)rng.Uniform<float>(), w_x, w_y, w_z);
-				// w_z is positive (going up toward top)
-				beta_r *= albedo_r;
-				beta_g *= albedo_g;
-				beta_b *= albedo_b;
-				z = T(0);
-				// Next iteration will hit top interface
-			} else {
-				// Hit top interface from inside: try to exit
-				T wm2_x, wm2_y, wm2_z;
-				dist.Sample_wm(w_x, w_y, w_z, (T)rng.Uniform<float>(), (T)rng.Uniform<float>(), wm2_x, wm2_y, wm2_z);
-				T cos2 = w_x*wm2_x + w_y*wm2_y + w_z*wm2_z;
-				T F_out = FrDielectric(cos2, coat_ior);
-				if ((T)rng.Uniform<float>() < F_out) {
-					// Internal reflection: continue walk downward
-					T rx = T(2)*cos2*wm2_x - w_x;
-					T ry = T(2)*cos2*wm2_y - w_y;
-					T rz = T(2)*cos2*wm2_z - w_z;
-					w_x = rx; w_y = ry; w_z = rz;
-					if (w_z > T(0)) w_z = -w_z; // keep traveling downward
-					z = thickness;
-					continue;
-				}
-				// Exit through coat top
-				T out_x = T(2)*cos2*wm2_x - w_x;
-				T out_y = T(2)*cos2*wm2_y - w_y;
-				T out_z = T(2)*cos2*wm2_z - w_z;
-				if (out_z <= T(0)) { res.valid = false; return res; }
-
-				res.wo_x = out_x; res.wo_y = out_y; res.wo_z = out_z;
-				res.r    = beta_r * (T(1) - F_out);
-				res.g = beta_g * (T(1) - F_out);
-				res.b    = beta_b * (T(1) - F_out);
-				res.is_specular = false;
-				res.valid = true;
-				return res;
-			}
-		}
-		res.valid = false;
+		res.wo_x = wo_x; res.wo_y = wo_y; res.wo_z = wo_z;
+		res.r = fv; res.g = fv; res.b = fv;
+		res.is_specular = true;
+		res.valid = true;
 		return res;
 	}
 
-	// Backward-compat 5-float overload: derives a seed from the 5 input values
-	CPU_GPU BxDFSampleResult<T> sample_local(
-		T wi_x, T wi_y, T wi_z,
-		T u1, T u2, T u3, T u4, T u5) const
-	{
-		// Combine random inputs into a seed pair for the random walk
-		uint32_t s0, s1, s2, s3, s4;
-		s0 = (uint32_t)(u1 * 16777216.0f);
-		s1 = (uint32_t)(u2 * 16777216.0f);
-		s2 = (uint32_t)(u3 * 16777216.0f);
-		s3 = (uint32_t)(u4 * 16777216.0f);
-		s4 = (uint32_t)(u5 * 16777216.0f);
-		uint64_t seed0 = ((uint64_t)s0 << 32) | (uint64_t)s1;
-		uint64_t seed1 = ((uint64_t)s2 << 32) | ((uint64_t)s3 * 0x9e3779b97f4a7c15ULL + s4);
-		return sample_local(wi_x, wi_y, wi_z, seed0, seed1);
-	}
+	// Transmitted into the layer -- start random walk toward bottom
+	// w is the current direction (travels downward after transmission)
+	T w_x = T(2)*cos_i*wm_x - wi_x;
+	T w_y = T(2)*cos_i*wm_y - wi_y;
+	T w_z = -(T(2)*cos_i*wm_z - wi_z);   // flip z: now going downward
+	if (w_z == T(0)) { res.valid = false; return res; }
+	// Ensure traveling downward (-z in layer)
+	if (w_z > T(0)) w_z = -w_z;
 
-	// f(wi, wo, seed) -- stochastic BSDF value at an arbitrary queried
-	// direction wo, for real NEE/MIS (pbrt-v4's LayeredBxDF::f() is
-	// genuinely stochastic -- there is no closed form for a random-walk
-	// layered BSDF -- see this codebase's TASK #228 comment history).
-	//
-	// This is a SIMPLIFIED single-connection-per-bounce estimator, not a
-	// byte-for-byte port of pbrt-v4's full bidirectional-MIS LayeredBxDF::f()
-	// (which additionally connects at the diffuse bottom interface and
-	// power-heuristic-weights between phase-function and interface
-	// sampling for variance reduction). This version only connects toward
-	// wo each time the walk reaches the TOP interface from inside (the
-	// only exit point for this reflective BSDF), and advances the
-	// remaining walk deterministically (weighted by the interface
-	// reflectance, not a stochastic accept/reject) rather than needing a
-	// second re-sampled "shadow" path through the exit interface. It is
-	// still an unbiased Monte Carlo estimator of the same integral, just
-	// higher-variance for deep multi-bounce paths (rare -- Russian
-	// roulette after depth 3 already kills most of those) in exchange for
-	// being far simpler to derive and verify correctly under this
-	// session's time constraints -- verified via a dedicated white-furnace
-	// energy-conservation test (tests/unit/bsdf_chi2_tests.cpp) rather
-	// than trusted from derivation alone, matching this file's own
-	// RoughDielectricBxDF::f() precedent.
-	//
-	// Every interface crossing here (entrance transmission, internal
-	// reflection, exit) mirrors sample_local()'s own model EXACTLY: each
-	// is a standard specular reflection about a VNDF-sampled half-vector,
-	// with the OUTGOING direction's z-component then negated/mirrored to
-	// cross to the other side of the layer -- NOT a true Snell refraction
-	// (unlike RoughDielectricBxDF's f(), which models a real single
-	// dielectric interface). This is a real, pre-existing simplification
-	// already baked into sample_local()'s tested behavior (see this
-	// struct's own header comment), not something introduced here -- f()
-	// mirrors it for consistency rather than using a physically truer but
-	// sample_local()-inconsistent model.
-	CPU_GPU void f(T wi_x, T wi_y, T wi_z, T wo_x, T wo_y, T wo_z,
-					uint64_t seed0, uint64_t seed1,
-					T& fr, T& fg, T& fb) const {
-		fr = fg = fb = T(0);
-		if (wi_z <= T(0) || wo_z <= T(0)) return;
+	// pbrt-v4: beta starts with transmittance through top interface (1-F_in)
+	T beta_r = T(1) - F_in, beta_g = T(1) - F_in, beta_b = T(1) - F_in;
+	T z = thickness;   // started at top (z=thickness), going to bottom (z=0)
 
-		TrowbridgeReitz<T> dist(alpha_x, alpha_y);
-
-		// Zero-bounce term: direct reflection off the coat's own top
-		// surface (no penetration at all) -- matches sample_local()'s own
-		// entrance-reflect branch exactly (standard GGX reflection shape *
-		// FrDielectric at the wi/wo half-vector). Deterministic, not part
-		// of the stochastic average below.
-		{
-			T hx = wi_x + wo_x, hy = wi_y + wo_y, hz = wi_z + wo_z;
+	for (int depth = 0; depth < maxDepth; ++depth) {
+		// Russian roulette after depth 3 -- mirrors pbrt-v4: rrBeta = maxBeta < 0.25
+		if (depth > 3) {
 #if defined(__CUDACC__)
-			T hlen = sqrtf(hx*hx + hy*hy + hz*hz);
+			T rrBeta = fmaxf(beta_r, fmaxf(beta_g, beta_b));
 #else
-			T hlen = std::sqrt(hx*hx + hy*hy + hz*hz);
+			T rrBeta = std::max(beta_r, std::max(beta_g, beta_b));
 #endif
-			if (hlen > T(1e-8)) {
-				hx /= hlen; hy /= hlen; hz /= hlen;
-				T D = dist.D(hx, hy, hz);
-				T G = dist.G(wo_x, wo_y, wo_z, wi_x, wi_y, wi_z);
-				T cos_wi_h = wi_x*hx + wi_y*hy + wi_z*hz;
-				T F0 = FrDielectric(cos_wi_h, coat_ior);
-				T val = D * G * F0 / (T(4) * wi_z * wo_z);
-				fr = val; fg = val; fb = val;
+			if (rrBeta < T(0.25)) {
+				T q = std::max(T(0), T(1) - rrBeta);
+				if ((T)rng.Uniform<float>() < q) { res.valid = false; return res; }
+				beta_r /= T(1) - q; beta_g /= T(1) - q; beta_b /= T(1) - q;
 			}
 		}
 
-		layered_detail::PCG32 rng(seed0, seed1 ^ 0x9e3779b9ull);
-		int n = nSamples > 0 ? nSamples : 1;
-		T accum_r = T(0), accum_g = T(0), accum_b = T(0);
-
-		for (int s = 0; s < n; ++s) {
-			T u1 = (T)rng.Uniform<float>(), u2 = (T)rng.Uniform<float>();
-			T wm_x, wm_y, wm_z;
-			dist.Sample_wm(wi_x, wi_y, wi_z, u1, u2, wm_x, wm_y, wm_z);
-			T cos_i = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
-			T F_in = FrDielectric(cos_i, coat_ior);
-
-			T w_x = T(2)*cos_i*wm_x - wi_x;
-			T w_y = T(2)*cos_i*wm_y - wi_y;
-			T w_z = -(T(2)*cos_i*wm_z - wi_z);
-			if (w_z == T(0)) continue;
-			if (w_z > T(0)) w_z = -w_z;
-
-			T beta_r = T(1) - F_in, beta_g = T(1) - F_in, beta_b = T(1) - F_in;
-			T z = thickness;
-
-			for (int depth = 0; depth < maxDepth; ++depth) {
-				if (depth > 3) {
+		// Medium scattering or direct boundary hit
+		if (medium_albedo > T(0)) {
+			T dz = layered_detail::SampleExponential((T)rng.Uniform<float>(), T(1) / (w_z < T(0) ? -w_z : w_z));
+			T zp = (w_z > T(0)) ? z + dz : z - dz;
+			if (zp > T(0) && zp < thickness) {
+				// pbrt-v4: beta *= albedo * ps->p / ps->pdf; for HG p/pdf=1
+				// sample phase direction
+				T cos_theta = layered_detail::hg_sample_cos(g, (T)rng.Uniform<float>());
+				beta_r *= medium_albedo;
+				beta_g *= medium_albedo;
+				beta_b *= medium_albedo;
+				// Update direction (simplified: only wz updated, wxy randomised)
+				T phi_s = T(6.28318530717958647692) * (T)rng.Uniform<float>();
+				T sin_theta = layered_detail::safe_sqrt(T(1) - cos_theta*cos_theta);
 #if defined(__CUDACC__)
-					T rrBeta = fmaxf(beta_r, fmaxf(beta_g, beta_b));
+				w_x = sin_theta * cosf(phi_s);
+				w_y = sin_theta * sinf(phi_s);
 #else
-					T rrBeta = std::max(beta_r, std::max(beta_g, beta_b));
+				w_x = sin_theta * std::cos(phi_s);
+				w_y = sin_theta * std::sin(phi_s);
 #endif
-					if (rrBeta < T(0.25)) {
-						T q = std::max(T(0), T(1) - rrBeta);
-						if ((T)rng.Uniform<float>() < q) break;
-						beta_r /= T(1) - q; beta_g /= T(1) - q; beta_b /= T(1) - q;
-					}
-				}
-
-				if (medium_albedo > T(0)) {
-					T dz = layered_detail::SampleExponential((T)rng.Uniform<float>(), T(1) / (w_z < T(0) ? -w_z : w_z));
-					T zp = (w_z > T(0)) ? z + dz : z - dz;
-					if (zp > T(0) && zp < thickness) {
-						T cos_theta = layered_detail::hg_sample_cos(g, (T)rng.Uniform<float>());
-						beta_r *= medium_albedo; beta_g *= medium_albedo; beta_b *= medium_albedo;
-						T phi_s = T(6.28318530717958647692) * (T)rng.Uniform<float>();
-						T sin_theta = layered_detail::safe_sqrt(T(1) - cos_theta*cos_theta);
-#if defined(__CUDACC__)
-						w_x = sin_theta * cosf(phi_s);
-						w_y = sin_theta * sinf(phi_s);
-#else
-						w_x = sin_theta * std::cos(phi_s);
-						w_y = sin_theta * std::sin(phi_s);
-#endif
-						w_z = cos_theta;
-						z   = zp;
-						continue;
-					}
-#if defined(__CUDACC__)
-					z = fmaxf(T(0), fminf(zp, thickness));
-#else
-					z = std::max(T(0), std::min(zp, thickness));
-#endif
-				} else {
-					beta_r *= layered_detail::Tr(thickness, w_z);
-					beta_g *= layered_detail::Tr(thickness, w_z);
-					beta_b *= layered_detail::Tr(thickness, w_z);
-					z = (w_z < T(0)) ? T(0) : thickness;
-				}
-
-				if (z <= T(0)) {
-					// Lambertian bottom bounce (no connection here -- see
-					// this method's own header comment on the simplified,
-					// top-exit-only connection strategy).
-					layered_detail::cosine_sample((T)rng.Uniform<float>(), (T)rng.Uniform<float>(), w_x, w_y, w_z);
-					beta_r *= albedo_r; beta_g *= albedo_g; beta_b *= albedo_b;
-					z = T(0);
-				} else {
-					// At top interface from inside: connect toward wo using
-					// a plain reflection half-vector, matching
-					// sample_local()'s own exit formula (out=reflect(w,wm2))
-					// exactly. w arrives here with w_z > 0 (upward) --
-					// every path into this branch comes right after a
-					// bottom bounce (cosine_sample()'s own comment: "w_z is
-					// positive, going up toward top") or an internal
-					// reflection whose subsequent advance step sends it
-					// back to z=0 first -- so w is ALREADY on the same side
-					// as wo (wo_z > 0 too), needing no mirroring (an
-					// earlier version of this code incorrectly assumed
-					// w_z < 0 here, which only holds for the very first
-					// step right after entrance, a case this loop structure
-					// never actually reaches this branch on -- caught by
-					// this test file's own energy-conservation check
-					// returning ~0 instead of a plausible reflectance).
-					T hx = w_x + wo_x, hy = w_y + wo_y, hz = w_z + wo_z;
-#if defined(__CUDACC__)
-					T hlen2 = sqrtf(hx*hx + hy*hy + hz*hz);
-#else
-					T hlen2 = std::sqrt(hx*hx + hy*hy + hz*hz);
-#endif
-					if (hlen2 > T(1e-8)) {
-						hx /= hlen2; hy /= hlen2; hz /= hlen2;
-						T D = dist.D(hx, hy, hz);
-						T G = dist.G(wo_x, wo_y, wo_z, w_x, w_y, w_z);
-						T cos_w_h = w_x*hx + w_y*hy + w_z*hz;
-						T F_exit = FrDielectric(cos_w_h, coat_ior);
-						T shape = D * G / (T(4) * w_z * wo_z);
-						T connect_val = shape * (T(1) - F_exit);
-						accum_r += beta_r * connect_val * wo_z;
-						accum_g += beta_g * connect_val * wo_z;
-						accum_b += beta_b * connect_val * wo_z;
-					}
-
-					// Continue the walk: deterministic internal reflection,
-					// weighted by the ACTUAL reflectance F_out (the
-					// transmission possibility was already accounted for
-					// by the connection above, so no stochastic branch
-					// here -- see this method's own header comment).
-					T wm2_x, wm2_y, wm2_z;
-					dist.Sample_wm(w_x, w_y, w_z, (T)rng.Uniform<float>(), (T)rng.Uniform<float>(), wm2_x, wm2_y, wm2_z);
-					T cos2 = w_x*wm2_x + w_y*wm2_y + w_z*wm2_z;
-					T F_out = FrDielectric(cos2, coat_ior);
-					T rx = T(2)*cos2*wm2_x - w_x;
-					T ry = T(2)*cos2*wm2_y - w_y;
-					T rz = T(2)*cos2*wm2_z - w_z;
-					w_x = rx; w_y = ry; w_z = rz;
-					if (w_z > T(0)) w_z = -w_z;
-					beta_r *= F_out; beta_g *= F_out; beta_b *= F_out;
-					z = thickness;
-				}
+				w_z = cos_theta;
+				z   = zp;
+				continue;
 			}
+#if defined(__CUDACC__)
+			z = fmaxf(T(0), fminf(zp, thickness));
+#else
+			z = std::max(T(0), std::min(zp, thickness));
+#endif
+		} else {
+			// No medium: advance directly to the other interface
+			beta_r *= layered_detail::Tr(thickness, w_z);
+			beta_g *= layered_detail::Tr(thickness, w_z);
+			beta_b *= layered_detail::Tr(thickness, w_z);
+			z = (w_z < T(0)) ? T(0) : thickness;
 		}
 
-		fr += accum_r / (T)n;
-		fg += accum_g / (T)n;
-		fb += accum_b / (T)n;
-	}
-};
+		if (z <= T(0)) {
+			// Hit bottom interface: struct-specific bounce (Lambertian for
+			// CoatedDiffuseBxDF, GGX conductor for CoatedConductorBxDF).
+			bottom.bounce(w_x, w_y, w_z, beta_r, beta_g, beta_b, rng, dist);
+			z = T(0);
+			// Next iteration will hit top interface
+		} else {
+			// Hit top interface from inside: try to exit
+			T wm2_x, wm2_y, wm2_z;
+			dist.Sample_wm(w_x, w_y, w_z, (T)rng.Uniform<float>(), (T)rng.Uniform<float>(), wm2_x, wm2_y, wm2_z);
+			T cos2 = w_x*wm2_x + w_y*wm2_y + w_z*wm2_z;
+			T F_out = FrDielectric(cos2, coat_ior);
+			if ((T)rng.Uniform<float>() < F_out) {
+				// Internal reflection: continue walk downward
+				T rx = T(2)*cos2*wm2_x - w_x;
+				T ry = T(2)*cos2*wm2_y - w_y;
+				T rz = T(2)*cos2*wm2_z - w_z;
+				w_x = rx; w_y = ry; w_z = rz;
+				if (w_z > T(0)) w_z = -w_z; // keep traveling downward
+				z = thickness;
+				continue;
+			}
+			// Exit through coat top
+			T out_x = T(2)*cos2*wm2_x - w_x;
+			T out_y = T(2)*cos2*wm2_y - w_y;
+			T out_z = T(2)*cos2*wm2_z - w_z;
+			if (out_z <= T(0)) { res.valid = false; return res; }
 
-// ===========================================================================
-// 9. CoatedConductorBxDF  (rough dielectric coat over GGX conductor)
-//    Mirrors pbrt-v4 CoatedConductorBxDF = LayeredBxDF<DielectricBxDF, ConductorBxDF, true>
-//
-//    Full random-walk evaluation (pbrt-v4 LayeredBxDF::Sample_f):
-//      - Top interface: GGX dielectric (coat_ior)
-//      - Bottom interface: GGX conductor (complex Fresnel per RGB channel)
-//      - Optional medium scattering (medium_albedo + HG phase g)
-//      - maxDepth bounces; Russian roulette after depth 3
-//
-//    sample_local(wi_x,wi_y,wi_z, seed0, seed1):
-//      - Returns sampled exit direction + throughput (no pdf division)
-//    All in local frame (z = surface normal).
-// ===========================================================================
-template<typename T>
-struct CoatedConductorBxDF {
-	T eta_r, eta_g, eta_b;   // conductor real IOR
-	T k_r,   k_g,   k_b;    // conductor extinction
-	T coat_ior;              // dielectric coat IOR
-	T alpha_x;               // GGX roughness u-direction
-	T alpha_y;               // GGX roughness v-direction (equal = isotropic)
-	T thickness = T(0.01);
-	T g         = T(0);
-	T medium_albedo = T(0);
-	int maxDepth  = 10;
-	int nSamples  = 1;
-
-	CPU_GPU BxDFSampleResult<T> sample_local(
-		T wi_x, T wi_y, T wi_z,
-		uint64_t seed0, uint64_t seed1 = 0) const
-	{
-		BxDFSampleResult<T> res{};
-		if (wi_z <= T(0)) { res.valid = false; return res; }
-
-		TrowbridgeReitz<T> dist(alpha_x, alpha_y);
-		layered_detail::PCG32 rng(seed0, seed1 ^ 0xdeadbeefull);
-
-		T u1 = (T)rng.Uniform<float>(), u2 = (T)rng.Uniform<float>(), uc = (T)rng.Uniform<float>();
-
-		T wm_x, wm_y, wm_z;
-		dist.Sample_wm(wi_x, wi_y, wi_z, u1, u2, wm_x, wm_y, wm_z);
-		T cos_i = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
-		T F_in  = FrDielectric(cos_i, coat_ior);
-
-		if (uc < F_in) {
-			// Reflect off the coat top (achromatic)
-			T wo_x = T(2)*cos_i*wm_x - wi_x;
-			T wo_y = T(2)*cos_i*wm_y - wi_y;
-			T wo_z = T(2)*cos_i*wm_z - wi_z;
-			if (wo_z <= T(0)) { res.valid = false; return res; }
-
-			T G1 = dist.G1(wi_x, wi_y, wi_z);
-			T G  = dist.G(wo_x, wo_y, wo_z, wi_x, wi_y, wi_z);
-			T w  = (G1 > T(1e-8)) ? G / G1 : T(0);
-			T fv = F_in * w;
-
-			res.wo_x = wo_x; res.wo_y = wo_y; res.wo_z = wo_z;
-			res.r = fv; res.g = fv; res.b = fv;
-			res.is_specular = true;
+			res.wo_x = out_x; res.wo_y = out_y; res.wo_z = out_z;
+			res.r    = beta_r * (T(1) - F_out);
+			res.g = beta_g * (T(1) - F_out);
+			res.b    = beta_b * (T(1) - F_out);
+			res.is_specular = false;
 			res.valid = true;
 			return res;
 		}
+	}
+	res.valid = false;
+	return res;
+}
 
-		// Transmitted into the layer: random walk
+// f(wi, wo, seed) -- stochastic BSDF value at an arbitrary queried
+// direction wo, for real NEE/MIS (pbrt-v4's LayeredBxDF::f() is
+// genuinely stochastic -- there is no closed form for a random-walk
+// layered BSDF -- see this codebase's TASK #228 comment history).
+//
+// This is a SIMPLIFIED single-connection-per-bounce estimator, not a
+// byte-for-byte port of pbrt-v4's full bidirectional-MIS LayeredBxDF::f()
+// (which additionally connects at the diffuse bottom interface and
+// power-heuristic-weights between phase-function and interface
+// sampling for variance reduction). This version only connects toward
+// wo each time the walk reaches the TOP interface from inside (the
+// only exit point for this reflective BSDF), and advances the
+// remaining walk deterministically (weighted by the interface
+// reflectance, not a stochastic accept/reject) rather than needing a
+// second re-sampled "shadow" path through the exit interface. It is
+// still an unbiased Monte Carlo estimator of the same integral, just
+// higher-variance for deep multi-bounce paths (rare -- Russian
+// roulette after depth 3 already kills most of those) in exchange for
+// being far simpler to derive and verify correctly under this
+// session's time constraints -- verified via a dedicated white-furnace
+// energy-conservation test (tests/unit/bsdf_chi2_tests.cpp) rather
+// than trusted from derivation alone, matching this file's own
+// RoughDielectricBxDF::f() precedent.
+//
+// Every interface crossing here (entrance transmission, internal
+// reflection, exit) mirrors sample_local()'s own model EXACTLY: each
+// is a standard specular reflection about a VNDF-sampled half-vector,
+// with the OUTGOING direction's z-component then negated/mirrored to
+// cross to the other side of the layer -- NOT a true Snell refraction
+// (unlike RoughDielectricBxDF's f(), which models a real single
+// dielectric interface). This is a real, pre-existing simplification
+// already baked into sample_local()'s tested behavior (see this
+// struct's own header comment), not something introduced here -- f()
+// mirrors it for consistency rather than using a physically truer but
+// sample_local()-inconsistent model.
+template<typename T, typename BottomBounce>
+CPU_GPU void layered_f(
+	T wi_x, T wi_y, T wi_z, T wo_x, T wo_y, T wo_z,
+	uint64_t seed0, uint64_t seed1,
+	T coat_ior, T alpha_x, T alpha_y, T thickness, T g, T medium_albedo,
+	int maxDepth, int nSamples, const BottomBounce& bottom,
+	T& fr, T& fg, T& fb)
+{
+	fr = fg = fb = T(0);
+	if (wi_z <= T(0) || wo_z <= T(0)) return;
+
+	TrowbridgeReitz<T> dist(alpha_x, alpha_y);
+
+	// Zero-bounce term: direct reflection off the coat's own top
+	// surface (no penetration at all) -- matches sample_local()'s own
+	// entrance-reflect branch exactly (standard GGX reflection shape *
+	// FrDielectric at the wi/wo half-vector). Deterministic, not part
+	// of the stochastic average below.
+	{
+		T hx = wi_x + wo_x, hy = wi_y + wo_y, hz = wi_z + wo_z;
+#if defined(__CUDACC__)
+		T hlen = sqrtf(hx*hx + hy*hy + hz*hz);
+#else
+		T hlen = std::sqrt(hx*hx + hy*hy + hz*hz);
+#endif
+		if (hlen > T(1e-8)) {
+			hx /= hlen; hy /= hlen; hz /= hlen;
+			T D = dist.D(hx, hy, hz);
+			T G = dist.G(wo_x, wo_y, wo_z, wi_x, wi_y, wi_z);
+			T cos_wi_h = wi_x*hx + wi_y*hy + wi_z*hz;
+			T F0 = FrDielectric(cos_wi_h, coat_ior);
+			T val = D * G * F0 / (T(4) * wi_z * wo_z);
+			fr = val; fg = val; fb = val;
+		}
+	}
+
+	layered_detail::PCG32 rng(seed0, seed1 ^ 0x9e3779b9ull);
+	int n = nSamples > 0 ? nSamples : 1;
+	T accum_r = T(0), accum_g = T(0), accum_b = T(0);
+
+	for (int s = 0; s < n; ++s) {
+		T u1 = (T)rng.Uniform<float>(), u2 = (T)rng.Uniform<float>();
+		T wm_x, wm_y, wm_z;
+		dist.Sample_wm(wi_x, wi_y, wi_z, u1, u2, wm_x, wm_y, wm_z);
+		T cos_i = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
+		T F_in = FrDielectric(cos_i, coat_ior);
+
 		T w_x = T(2)*cos_i*wm_x - wi_x;
 		T w_y = T(2)*cos_i*wm_y - wi_y;
 		T w_z = -(T(2)*cos_i*wm_z - wi_z);
-		if (w_z == T(0)) { res.valid = false; return res; }
+		if (w_z == T(0)) continue;
 		if (w_z > T(0)) w_z = -w_z;
 
-		// pbrt-v4: beta starts with transmittance through top interface (1-F_in)
-		T beta_r = T(1) - F_in;
-		T beta_g = T(1) - F_in;
-		T beta_b = T(1) - F_in;
+		T beta_r = T(1) - F_in, beta_g = T(1) - F_in, beta_b = T(1) - F_in;
 		T z = thickness;
 
 		for (int depth = 0; depth < maxDepth; ++depth) {
-			// Russian roulette after depth 3 -- mirrors pbrt-v4: rrBeta = maxBeta < 0.25
 			if (depth > 3) {
 #if defined(__CUDACC__)
 				T rrBeta = fmaxf(beta_r, fmaxf(beta_g, beta_b));
@@ -478,7 +280,7 @@ struct CoatedConductorBxDF {
 #endif
 				if (rrBeta < T(0.25)) {
 					T q = std::max(T(0), T(1) - rrBeta);
-					if ((T)rng.Uniform<float>() < q) { res.valid = false; return res; }
+					if ((T)rng.Uniform<float>() < q) break;
 					beta_r /= T(1) - q; beta_g /= T(1) - q; beta_b /= T(1) - q;
 				}
 			}
@@ -487,7 +289,6 @@ struct CoatedConductorBxDF {
 				T dz = layered_detail::SampleExponential((T)rng.Uniform<float>(), T(1) / (w_z < T(0) ? -w_z : w_z));
 				T zp = (w_z > T(0)) ? z + dz : z - dz;
 				if (zp > T(0) && zp < thickness) {
-					// pbrt-v4: beta *= albedo * ps->p / ps->pdf; for HG p/pdf=1
 					T cos_theta = layered_detail::hg_sample_cos(g, (T)rng.Uniform<float>());
 					beta_r *= medium_albedo; beta_g *= medium_albedo; beta_b *= medium_albedo;
 					T phi_s = T(6.28318530717958647692) * (T)rng.Uniform<float>();
@@ -516,61 +317,238 @@ struct CoatedConductorBxDF {
 			}
 
 			if (z <= T(0)) {
-				// Hit conductor bottom: GGX VNDF + complex Fresnel
-				// Flip to local frame of bottom interface (z points upward into layer)
-				T fw_x = -w_x, fw_y = -w_y, fw_z = -w_z;  // now fw_z > 0 (incoming from top)
-				T bwm_x, bwm_y, bwm_z;
-				dist.Sample_wm(fw_x, fw_y, fw_z, (T)rng.Uniform<float>(), (T)rng.Uniform<float>(), bwm_x, bwm_y, bwm_z);
-				T cos_c = fw_x*bwm_x + fw_y*bwm_y + fw_z*bwm_z;
-				T rwo_x = T(2)*cos_c*bwm_x - fw_x;
-				T rwo_y = T(2)*cos_c*bwm_y - fw_y;
-				T rwo_z = T(2)*cos_c*bwm_z - fw_z;
-
-				T G1_c = dist.G1(fw_x, fw_y, fw_z);
-				T G_c  = dist.G(rwo_x, rwo_y, rwo_z, fw_x, fw_y, fw_z);
-				T wt_c = (G1_c > T(1e-8)) ? G_c / G1_c : T(0);
-
-				beta_r *= FrComplex(cos_c, eta_r, k_r) * wt_c;
-				beta_g *= FrComplex(cos_c, eta_g, k_g) * wt_c;
-				beta_b *= FrComplex(cos_c, eta_b, k_b) * wt_c;
-
-				// Reflected direction goes upward (+z in layer frame -> -bottom frame -> +layer)
-				w_x = rwo_x; w_y = rwo_y;
-				w_z = (rwo_z < T(0)) ? -rwo_z : rwo_z; // going upward toward top
+				// Bottom-interface bounce (no connection here -- see this
+				// function's own header comment on the simplified,
+				// top-exit-only connection strategy).
+				bottom.bounce(w_x, w_y, w_z, beta_r, beta_g, beta_b, rng, dist);
 				z = T(0);
 			} else {
-				// Hit top interface from inside: attempt exit
+				// At top interface from inside: connect toward wo using
+				// a plain reflection half-vector, matching
+				// sample_local()'s own exit formula (out=reflect(w,wm2))
+				// exactly. w arrives here with w_z > 0 (upward) --
+				// every path into this branch comes right after a
+				// bottom bounce (each BottomBounce leaves w_z > 0, see
+				// its own comment) or an internal reflection whose
+				// subsequent advance step sends it back to z=0 first --
+				// so w is ALREADY on the same side as wo (wo_z > 0 too),
+				// needing no mirroring (an earlier version of this code
+				// incorrectly assumed w_z < 0 here, which only holds for
+				// the very first step right after entrance, a case this
+				// loop structure never actually reaches this branch on --
+				// caught by this test file's own energy-conservation
+				// check returning ~0 instead of a plausible reflectance).
+				T hx = w_x + wo_x, hy = w_y + wo_y, hz = w_z + wo_z;
+#if defined(__CUDACC__)
+				T hlen2 = sqrtf(hx*hx + hy*hy + hz*hz);
+#else
+				T hlen2 = std::sqrt(hx*hx + hy*hy + hz*hz);
+#endif
+				if (hlen2 > T(1e-8)) {
+					hx /= hlen2; hy /= hlen2; hz /= hlen2;
+					T D = dist.D(hx, hy, hz);
+					T G = dist.G(wo_x, wo_y, wo_z, w_x, w_y, w_z);
+					T cos_w_h = w_x*hx + w_y*hy + w_z*hz;
+					T F_exit = FrDielectric(cos_w_h, coat_ior);
+					T shape = D * G / (T(4) * w_z * wo_z);
+					T connect_val = shape * (T(1) - F_exit);
+					accum_r += beta_r * connect_val * wo_z;
+					accum_g += beta_g * connect_val * wo_z;
+					accum_b += beta_b * connect_val * wo_z;
+				}
+
+				// Continue the walk: deterministic internal reflection,
+				// weighted by the ACTUAL reflectance F_out (the
+				// transmission possibility was already accounted for
+				// by the connection above, so no stochastic branch
+				// here -- see this method's own header comment).
 				T wm2_x, wm2_y, wm2_z;
 				dist.Sample_wm(w_x, w_y, w_z, (T)rng.Uniform<float>(), (T)rng.Uniform<float>(), wm2_x, wm2_y, wm2_z);
-				T cos2  = w_x*wm2_x + w_y*wm2_y + w_z*wm2_z;
+				T cos2 = w_x*wm2_x + w_y*wm2_y + w_z*wm2_z;
 				T F_out = FrDielectric(cos2, coat_ior);
-				if ((T)rng.Uniform<float>() < F_out) {
-					// Internal reflection
-					T rx = T(2)*cos2*wm2_x - w_x;
-					T ry = T(2)*cos2*wm2_y - w_y;
-					T rz = T(2)*cos2*wm2_z - w_z;
-					w_x = rx; w_y = ry; w_z = rz;
-					if (w_z > T(0)) w_z = -w_z;
-					z = thickness;
-					continue;
-				}
-				// Exit through coat
-				T out_x = T(2)*cos2*wm2_x - w_x;
-				T out_y = T(2)*cos2*wm2_y - w_y;
-				T out_z = T(2)*cos2*wm2_z - w_z;
-				if (out_z <= T(0)) { res.valid = false; return res; }
-
-				res.wo_x = out_x; res.wo_y = out_y; res.wo_z = out_z;
-				res.r    = beta_r * (T(1) - F_out);
-				res.g = beta_g * (T(1) - F_out);
-				res.b    = beta_b * (T(1) - F_out);
-				res.is_specular = false;
-				res.valid = true;
-				return res;
+				T rx = T(2)*cos2*wm2_x - w_x;
+				T ry = T(2)*cos2*wm2_y - w_y;
+				T rz = T(2)*cos2*wm2_z - w_z;
+				w_x = rx; w_y = ry; w_z = rz;
+				if (w_z > T(0)) w_z = -w_z;
+				beta_r *= F_out; beta_g *= F_out; beta_b *= F_out;
+				z = thickness;
 			}
 		}
-		res.valid = false;
-		return res;
+	}
+
+	fr += accum_r / (T)n;
+	fg += accum_g / (T)n;
+	fb += accum_b / (T)n;
+}
+
+// Bottom-interface bounce: Lambertian cosine bounce, used by
+// CoatedDiffuseBxDF. Leaves w pointing upward (cosine_sample() always
+// samples the +z hemisphere).
+template<typename T>
+struct DiffuseBottomBounce {
+	T albedo_r, albedo_g, albedo_b;
+	CPU_GPU void bounce(T& w_x, T& w_y, T& w_z, T& beta_r, T& beta_g, T& beta_b,
+						 PCG32& rng, const TrowbridgeReitz<T>& /*dist*/) const {
+		layered_detail::cosine_sample((T)rng.Uniform<float>(), (T)rng.Uniform<float>(), w_x, w_y, w_z);
+		beta_r *= albedo_r;
+		beta_g *= albedo_g;
+		beta_b *= albedo_b;
+	}
+};
+
+// Bottom-interface bounce: GGX conductor specular reflection (complex
+// Fresnel per RGB channel), used by CoatedConductorBxDF. Flips to the
+// bottom interface's own local frame (incoming direction gets fw_z > 0),
+// samples a VNDF half-vector with the SAME dist as the top coat (this
+// codebase's pre-existing simplified model, not a per-interface roughness
+// split), and forces the reflected direction's z back positive (upward)
+// before returning.
+template<typename T>
+struct ConductorBottomBounce {
+	T eta_r, eta_g, eta_b, k_r, k_g, k_b;
+	CPU_GPU void bounce(T& w_x, T& w_y, T& w_z, T& beta_r, T& beta_g, T& beta_b,
+						 PCG32& rng, const TrowbridgeReitz<T>& dist) const {
+		T fw_x = -w_x, fw_y = -w_y, fw_z = -w_z;  // now fw_z > 0 (incoming from top)
+		T bwm_x, bwm_y, bwm_z;
+		dist.Sample_wm(fw_x, fw_y, fw_z, (T)rng.Uniform<float>(), (T)rng.Uniform<float>(), bwm_x, bwm_y, bwm_z);
+		T cos_c = fw_x*bwm_x + fw_y*bwm_y + fw_z*bwm_z;
+		T rwo_x = T(2)*cos_c*bwm_x - fw_x;
+		T rwo_y = T(2)*cos_c*bwm_y - fw_y;
+		T rwo_z = T(2)*cos_c*bwm_z - fw_z;
+
+		T G1_c = dist.G1(fw_x, fw_y, fw_z);
+		T G_c  = dist.G(rwo_x, rwo_y, rwo_z, fw_x, fw_y, fw_z);
+		T wt_c = (G1_c > T(1e-8)) ? G_c / G1_c : T(0);
+
+		beta_r *= FrComplex(cos_c, eta_r, k_r) * wt_c;
+		beta_g *= FrComplex(cos_c, eta_g, k_g) * wt_c;
+		beta_b *= FrComplex(cos_c, eta_b, k_b) * wt_c;
+
+		// Reflected direction goes upward (+z in layer frame -> -bottom frame -> +layer)
+		w_x = rwo_x; w_y = rwo_y;
+		w_z = (rwo_z < T(0)) ? -rwo_z : rwo_z; // going upward toward top
+	}
+};
+
+} // namespace layered_detail
+
+// ===========================================================================
+// 8. CoatedDiffuseBxDF  (rough dielectric coat over Lambertian base)
+//    Mirrors pbrt-v4 CoatedDiffuseBxDF = LayeredBxDF<DielectricBxDF, DiffuseBxDF, true>
+//
+//    Full random-walk evaluation (pbrt-v4 LayeredBxDF::Sample_f):
+//      - Top interface: GGX dielectric (coat_ior)
+//      - Bottom interface: Lambertian (albedo)
+//      - Optional medium albedo and HG phase (set albedo_medium > 0)
+//      - maxDepth bounces; terminates via Russian roulette after depth 3
+//
+//    sample_local(wi_x,wi_y,wi_z, seed0, seed1):
+//      - Returns the sampled exit direction + throughput weight (no pdf division)
+//      - seed0/seed1 are 64-bit values from the caller's RNG state
+//    All in local frame (z = surface normal).
+//
+//    The random walk itself lives in layered_detail::layered_sample_local()/
+//    layered_f() above (shared with CoatedConductorBxDF below); this struct
+//    just supplies layered_detail::DiffuseBottomBounce<T> as the bottom-
+//    interface behavior. Field layout is unchanged from before that split --
+//    this stays a plain aggregate for existing brace-init call sites
+//    (materials.h, optix_device_helpers.h, wavefront_kernels.cu).
+// ===========================================================================
+template<typename T>
+struct CoatedDiffuseBxDF {
+	T albedo_r, albedo_g, albedo_b;   // Lambertian base color
+	T coat_ior;                        // dielectric coat IOR (>1, e.g. 1.5)
+	T alpha_x;                         // GGX roughness u-direction
+	T alpha_y;                         // GGX roughness v-direction (equal = isotropic)
+	T thickness = T(0.01);             // layer thickness (pbrt-v4 default 0.01)
+	T g         = T(0);               // HG phase function asymmetry (0=none)
+	T medium_albedo = T(0);           // scattering albedo of medium (0=vacuum)
+	int maxDepth  = 10;               // max random-walk bounces
+	int nSamples  = 1;                // samples per call (averaged)
+
+	CPU_GPU BxDFSampleResult<T> sample_local(
+		T wi_x, T wi_y, T wi_z,
+		uint64_t seed0, uint64_t seed1 = 0) const
+	{
+		return layered_detail::layered_sample_local<T>(
+			wi_x, wi_y, wi_z, seed0, seed1,
+			coat_ior, alpha_x, alpha_y, thickness, g, medium_albedo, maxDepth,
+			layered_detail::DiffuseBottomBounce<T>{albedo_r, albedo_g, albedo_b});
+	}
+
+	// Backward-compat 5-float overload: derives a seed from the 5 input values
+	CPU_GPU BxDFSampleResult<T> sample_local(
+		T wi_x, T wi_y, T wi_z,
+		T u1, T u2, T u3, T u4, T u5) const
+	{
+		// Combine random inputs into a seed pair for the random walk
+		uint32_t s0, s1, s2, s3, s4;
+		s0 = (uint32_t)(u1 * 16777216.0f);
+		s1 = (uint32_t)(u2 * 16777216.0f);
+		s2 = (uint32_t)(u3 * 16777216.0f);
+		s3 = (uint32_t)(u4 * 16777216.0f);
+		s4 = (uint32_t)(u5 * 16777216.0f);
+		uint64_t seed0 = ((uint64_t)s0 << 32) | (uint64_t)s1;
+		uint64_t seed1 = ((uint64_t)s2 << 32) | ((uint64_t)s3 * 0x9e3779b97f4a7c15ULL + s4);
+		return sample_local(wi_x, wi_y, wi_z, seed0, seed1);
+	}
+
+	// f(wi, wo, seed) -- see layered_detail::layered_f()'s own header
+	// comment for the full rationale (simplified single-connection
+	// stochastic estimator).
+	CPU_GPU void f(T wi_x, T wi_y, T wi_z, T wo_x, T wo_y, T wo_z,
+					uint64_t seed0, uint64_t seed1,
+					T& fr, T& fg, T& fb) const {
+		layered_detail::layered_f<T>(
+			wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, seed0, seed1,
+			coat_ior, alpha_x, alpha_y, thickness, g, medium_albedo, maxDepth, nSamples,
+			layered_detail::DiffuseBottomBounce<T>{albedo_r, albedo_g, albedo_b},
+			fr, fg, fb);
+	}
+};
+
+// ===========================================================================
+// 9. CoatedConductorBxDF  (rough dielectric coat over GGX conductor)
+//    Mirrors pbrt-v4 CoatedConductorBxDF = LayeredBxDF<DielectricBxDF, ConductorBxDF, true>
+//
+//    Full random-walk evaluation (pbrt-v4 LayeredBxDF::Sample_f):
+//      - Top interface: GGX dielectric (coat_ior)
+//      - Bottom interface: GGX conductor (complex Fresnel per RGB channel)
+//      - Optional medium scattering (medium_albedo + HG phase g)
+//      - maxDepth bounces; Russian roulette after depth 3
+//
+//    sample_local(wi_x,wi_y,wi_z, seed0, seed1):
+//      - Returns sampled exit direction + throughput (no pdf division)
+//    All in local frame (z = surface normal).
+//
+//    Shares its random walk with CoatedDiffuseBxDF above via
+//    layered_detail::layered_sample_local()/layered_f() -- see that
+//    struct's own header comment. This one supplies
+//    layered_detail::ConductorBottomBounce<T> as the bottom-interface
+//    behavior instead of a Lambertian bounce.
+// ===========================================================================
+template<typename T>
+struct CoatedConductorBxDF {
+	T eta_r, eta_g, eta_b;   // conductor real IOR
+	T k_r,   k_g,   k_b;    // conductor extinction
+	T coat_ior;              // dielectric coat IOR
+	T alpha_x;               // GGX roughness u-direction
+	T alpha_y;               // GGX roughness v-direction (equal = isotropic)
+	T thickness = T(0.01);
+	T g         = T(0);
+	T medium_albedo = T(0);
+	int maxDepth  = 10;
+	int nSamples  = 1;
+
+	CPU_GPU BxDFSampleResult<T> sample_local(
+		T wi_x, T wi_y, T wi_z,
+		uint64_t seed0, uint64_t seed1 = 0) const
+	{
+		return layered_detail::layered_sample_local<T>(
+			wi_x, wi_y, wi_z, seed0, seed1,
+			coat_ior, alpha_x, alpha_y, thickness, g, medium_albedo, maxDepth,
+			layered_detail::ConductorBottomBounce<T>{eta_r, eta_g, eta_b, k_r, k_g, k_b});
 	}
 
 	// Backward-compat 5-float overload
@@ -588,171 +566,19 @@ struct CoatedConductorBxDF {
 		return sample_local(wi_x, wi_y, wi_z, seed0, seed1);
 	}
 
-	// f(wi, wo, seed) -- stochastic BSDF value for real NEE/MIS. Identical
-	// structure and simplifications to CoatedDiffuseBxDF::f() (see that
-	// method's own header comment for the full rationale) -- only the
-	// bottom-interface bounce differs (GGX conductor reflection, matching
-	// this struct's own sample_local() bottom-bounce code, instead of a
-	// Lambertian cosine bounce).
+	// f(wi, wo, seed) -- identical structure and simplifications to
+	// CoatedDiffuseBxDF::f() (see layered_detail::layered_f()'s own header
+	// comment for the full rationale) -- only the bottom-interface bounce
+	// differs (GGX conductor reflection instead of a Lambertian cosine
+	// bounce), supplied via ConductorBottomBounce<T> below.
 	CPU_GPU void f(T wi_x, T wi_y, T wi_z, T wo_x, T wo_y, T wo_z,
 					uint64_t seed0, uint64_t seed1,
 					T& fr, T& fg, T& fb) const {
-		fr = fg = fb = T(0);
-		if (wi_z <= T(0) || wo_z <= T(0)) return;
-
-		TrowbridgeReitz<T> dist(alpha_x, alpha_y);
-
-		// Zero-bounce term: direct reflection off the coat's own top
-		// surface -- see CoatedDiffuseBxDF::f()'s identical term.
-		{
-			T hx = wi_x + wo_x, hy = wi_y + wo_y, hz = wi_z + wo_z;
-#if defined(__CUDACC__)
-			T hlen = sqrtf(hx*hx + hy*hy + hz*hz);
-#else
-			T hlen = std::sqrt(hx*hx + hy*hy + hz*hz);
-#endif
-			if (hlen > T(1e-8)) {
-				hx /= hlen; hy /= hlen; hz /= hlen;
-				T D = dist.D(hx, hy, hz);
-				T G = dist.G(wo_x, wo_y, wo_z, wi_x, wi_y, wi_z);
-				T cos_wi_h = wi_x*hx + wi_y*hy + wi_z*hz;
-				T F0 = FrDielectric(cos_wi_h, coat_ior);
-				T val = D * G * F0 / (T(4) * wi_z * wo_z);
-				fr = val; fg = val; fb = val;
-			}
-		}
-
-		layered_detail::PCG32 rng(seed0, seed1 ^ 0x9e3779b9ull);
-		int n = nSamples > 0 ? nSamples : 1;
-		T accum_r = T(0), accum_g = T(0), accum_b = T(0);
-
-		for (int s = 0; s < n; ++s) {
-			T u1 = (T)rng.Uniform<float>(), u2 = (T)rng.Uniform<float>();
-			T wm_x, wm_y, wm_z;
-			dist.Sample_wm(wi_x, wi_y, wi_z, u1, u2, wm_x, wm_y, wm_z);
-			T cos_i = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
-			T F_in = FrDielectric(cos_i, coat_ior);
-
-			T w_x = T(2)*cos_i*wm_x - wi_x;
-			T w_y = T(2)*cos_i*wm_y - wi_y;
-			T w_z = -(T(2)*cos_i*wm_z - wi_z);
-			if (w_z == T(0)) continue;
-			if (w_z > T(0)) w_z = -w_z;
-
-			T beta_r = T(1) - F_in, beta_g = T(1) - F_in, beta_b = T(1) - F_in;
-			T z = thickness;
-
-			for (int depth = 0; depth < maxDepth; ++depth) {
-				if (depth > 3) {
-#if defined(__CUDACC__)
-					T rrBeta = fmaxf(beta_r, fmaxf(beta_g, beta_b));
-#else
-					T rrBeta = std::max(beta_r, std::max(beta_g, beta_b));
-#endif
-					if (rrBeta < T(0.25)) {
-						T q = std::max(T(0), T(1) - rrBeta);
-						if ((T)rng.Uniform<float>() < q) break;
-						beta_r /= T(1) - q; beta_g /= T(1) - q; beta_b /= T(1) - q;
-					}
-				}
-
-				if (medium_albedo > T(0)) {
-					T dz = layered_detail::SampleExponential((T)rng.Uniform<float>(), T(1) / (w_z < T(0) ? -w_z : w_z));
-					T zp = (w_z > T(0)) ? z + dz : z - dz;
-					if (zp > T(0) && zp < thickness) {
-						T cos_theta = layered_detail::hg_sample_cos(g, (T)rng.Uniform<float>());
-						beta_r *= medium_albedo; beta_g *= medium_albedo; beta_b *= medium_albedo;
-						T phi_s = T(6.28318530717958647692) * (T)rng.Uniform<float>();
-						T sin_theta = layered_detail::safe_sqrt(T(1) - cos_theta*cos_theta);
-#if defined(__CUDACC__)
-						w_x = sin_theta * cosf(phi_s);
-						w_y = sin_theta * sinf(phi_s);
-#else
-						w_x = sin_theta * std::cos(phi_s);
-						w_y = sin_theta * std::sin(phi_s);
-#endif
-						w_z = cos_theta;
-						z   = zp;
-						continue;
-					}
-#if defined(__CUDACC__)
-					z = fmaxf(T(0), fminf(zp, thickness));
-#else
-					z = std::max(T(0), std::min(zp, thickness));
-#endif
-				} else {
-					beta_r *= layered_detail::Tr(thickness, w_z);
-					beta_g *= layered_detail::Tr(thickness, w_z);
-					beta_b *= layered_detail::Tr(thickness, w_z);
-					z = (w_z < T(0)) ? T(0) : thickness;
-				}
-
-				if (z <= T(0)) {
-					// Hit conductor bottom: GGX VNDF + complex Fresnel,
-					// matching sample_local()'s own bottom-bounce code
-					// exactly (flip to the bottom interface's own local
-					// frame, where the incoming direction has fw_z > 0).
-					T fw_x = -w_x, fw_y = -w_y, fw_z = -w_z;
-					T bwm_x, bwm_y, bwm_z;
-					dist.Sample_wm(fw_x, fw_y, fw_z, (T)rng.Uniform<float>(), (T)rng.Uniform<float>(), bwm_x, bwm_y, bwm_z);
-					T cos_c = fw_x*bwm_x + fw_y*bwm_y + fw_z*bwm_z;
-					T rwo_x = T(2)*cos_c*bwm_x - fw_x;
-					T rwo_y = T(2)*cos_c*bwm_y - fw_y;
-					T rwo_z = T(2)*cos_c*bwm_z - fw_z;
-
-					T G1_c = dist.G1(fw_x, fw_y, fw_z);
-					T G_c  = dist.G(rwo_x, rwo_y, rwo_z, fw_x, fw_y, fw_z);
-					T wt_c = (G1_c > T(1e-8)) ? G_c / G1_c : T(0);
-
-					beta_r *= FrComplex(cos_c, eta_r, k_r) * wt_c;
-					beta_g *= FrComplex(cos_c, eta_g, k_g) * wt_c;
-					beta_b *= FrComplex(cos_c, eta_b, k_b) * wt_c;
-
-					w_x = rwo_x; w_y = rwo_y;
-					w_z = (rwo_z < T(0)) ? -rwo_z : rwo_z;
-					z = T(0);
-				} else {
-					// At top interface from inside: connect toward wo --
-					// see CoatedDiffuseBxDF::f()'s identical connection
-					// step for the full derivation/rationale (w arrives
-					// here with w_z > 0, needing no mirroring).
-					T hx = w_x + wo_x, hy = w_y + wo_y, hz = w_z + wo_z;
-#if defined(__CUDACC__)
-					T hlen2 = sqrtf(hx*hx + hy*hy + hz*hz);
-#else
-					T hlen2 = std::sqrt(hx*hx + hy*hy + hz*hz);
-#endif
-					if (hlen2 > T(1e-8)) {
-						hx /= hlen2; hy /= hlen2; hz /= hlen2;
-						T D = dist.D(hx, hy, hz);
-						T G = dist.G(wo_x, wo_y, wo_z, w_x, w_y, w_z);
-						T cos_w_h = w_x*hx + w_y*hy + w_z*hz;
-						T F_exit = FrDielectric(cos_w_h, coat_ior);
-						T shape = D * G / (T(4) * w_z * wo_z);
-						T connect_val = shape * (T(1) - F_exit);
-						accum_r += beta_r * connect_val * wo_z;
-						accum_g += beta_g * connect_val * wo_z;
-						accum_b += beta_b * connect_val * wo_z;
-					}
-
-					T wm2_x, wm2_y, wm2_z;
-					dist.Sample_wm(w_x, w_y, w_z, (T)rng.Uniform<float>(), (T)rng.Uniform<float>(), wm2_x, wm2_y, wm2_z);
-					T cos2 = w_x*wm2_x + w_y*wm2_y + w_z*wm2_z;
-					T F_out = FrDielectric(cos2, coat_ior);
-					T rx = T(2)*cos2*wm2_x - w_x;
-					T ry = T(2)*cos2*wm2_y - w_y;
-					T rz = T(2)*cos2*wm2_z - w_z;
-					w_x = rx; w_y = ry; w_z = rz;
-					if (w_z > T(0)) w_z = -w_z;
-					beta_r *= F_out; beta_g *= F_out; beta_b *= F_out;
-					z = thickness;
-				}
-			}
-		}
-
-		fr += accum_r / (T)n;
-		fg += accum_g / (T)n;
-		fb += accum_b / (T)n;
+		layered_detail::layered_f<T>(
+			wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, seed0, seed1,
+			coat_ior, alpha_x, alpha_y, thickness, g, medium_albedo, maxDepth, nSamples,
+			layered_detail::ConductorBottomBounce<T>{eta_r, eta_g, eta_b, k_r, k_g, k_b},
+			fr, fg, fb);
 	}
 };
 
@@ -874,4 +700,3 @@ struct NormalizedFresnelBxDF {
 		return (T(1) - fr) * cos_wi / (cv * T(3.14159265358979323846));
 	}
 };
-
