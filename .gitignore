@@ -333,6 +333,44 @@ pbrt_scenes/sportscar/
 pbrt_scenes/landscape/
 
 ##############################################################################
+# Downloaded mesh-gallery scene assets (local only)
+##############################################################################
+
+# Large third-party "whole environment" scenes (Sponza, Bistro, Rungholt,
+# etc. - scenes_mesh_gallery.h's own gallery), same "not committed, download
+# locally" reasoning as pbrt_scenes/ above - several GB combined, unlike the
+# small statue-scale .obj models (bunny, armadillo, ...) that !models/*.obj
+# further up exists to keep tracked. Overrides that broader exception and
+# !models/sponza_textures|bistro_textures/**/*.png below it (later patterns
+# win) for these specific files/directories only.
+models/bistro_exterior.obj
+models/bistro_textures/
+models/breakfast_room.obj
+models/breakfast_room.mtl
+models/exterior.mtl
+models/fireplace_room.obj
+models/fireplace_room.mtl
+models/gallery.obj
+models/gallery.mtl
+models/lost_empire.obj
+models/lost_empire.mtl
+models/powerplant.obj
+models/powerplant.mtl
+models/rungholt.obj
+models/rungholt.mtl
+models/salle_de_bain.obj
+models/salle_de_bain.mtl
+models/san_miguel.obj
+models/san_miguel.mtl
+models/sibenik_cathedral.obj
+models/sibenik_cathedral.mtl
+models/sponza.obj
+models/sponza.mtl
+models/sponza_textures/
+models/vokselia_spawn.obj
+models/vokselia_spawn.mtl
+
+##############################################################################
 # CMake build directories
 ##############################################################################
 tests/build_test/Debug/
