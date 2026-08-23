@@ -96,7 +96,9 @@
     </Lib>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\gpu\optix\optix_renderer.cpp" />
+    <ClCompile Include="..\gpu\optix\optix_renderer_init.cpp" />
+    <ClCompile Include="..\gpu\optix\optix_renderer_scene.cpp" />
+    <ClCompile Include="..\gpu\optix\optix_renderer_render.cpp" />
     <ClCompile Include="..\gpu\optix\optix_interface.cpp" />
     <ClCompile Include="..\gpu\optix\scene_builder.cpp" />
     <ClCompile Include="..\gpu\optix\renderer_config.cpp" />
