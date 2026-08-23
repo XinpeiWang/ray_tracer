@@ -34,6 +34,8 @@
 #include "pbrt_scene.h"
 #include "loop_subdivide.h"
 #include "conductor_data.h"
+#include "spectrum_types.h"   // BlackbodySpectrum - see resolveEmissionColor()'s own comment
+#include "spectral_math.h"    // SpectrumToXYZ/InnerProduct/GetCIE_Y - ditto
 
 // Refinement is exponential: every level multiplies the triangle count by
 // four, so a scene asking for 8 turns a 10k-triangle cage into 650 million.
@@ -590,6 +592,54 @@ inline std::string conductorElementFromSpectrumName(const std::string &name) {
 		}
 	}
 	return "";
+}
+
+// Resolves an emission-colour parameter (pbrt-v4's "L" on AreaLightSource/
+// distant/infinite, "I" on point/spot/goniometric), handling both the
+// ordinary flat "rgb"/"float" case (delegates to ParamList::getVec3 exactly
+// as before - unaffected) and a "blackbody" temperature in Kelvin, which
+// this loader previously either warned-and-ignored (AreaLightSource) or
+// silently dropped with no warning at all (every punctual light kind) -
+// getVec3 requires >=3 numbers, and a "blackbody L" param has exactly 1, so
+// it always fell through to the flat default colour regardless of the
+// requested temperature (see docs/PBRT_SUPPORT.md's own note on this, and
+// barcelona-pavilion's/contemporary-bathroom's real "blackbody L" area
+// lights - the motivating case: every one of them rendered as flat white at
+// whatever "float scale" said, with zero hue difference between a 2500K and
+// a 6500K light).
+//
+// Converts via this codebase's own already-ported pbrt-v4 spectral pipeline
+// (BlackbodySpectrum -> SpectrumToXYZ -> RGBColorSpace::sRGB(), spectrum_
+// types.h/spectral_math.h/rgb_colorspace.h - no new spectral machinery
+// needed) exactly matching pbrt-v4's own light-construction code (e.g.
+// DiffuseAreaLight::Create, lights.cpp): the blackbody spectrum is
+// normalized so its own photometric integral (InnerProduct against the CIE
+// Y curve - matches pbrt-v4's SpectrumToPhotometric exactly, NOT the same
+// as SpectrumToXYZ's Y, which additionally divides by CIE_Y_integral) comes
+// out to ~1 nit, BEFORE any separate "float scale" the light also specifies
+// - that scale is applied afterward by the existing `L * scale` multiply
+// every consumer (CPU/GPU builder) already does downstream, unchanged, so
+// this function's return value slots into that exact same pattern.
+inline pbrt_scene::Vec3 resolveEmissionColor(const pbrt_scene::ParamList &params,
+                                              const char *name, pbrt_scene::Vec3 def) {
+	const pbrt_scene::Param *p = params.find(name);
+	if (p && p->type == "blackbody" && !p->numbers.empty()) {
+		const float T = static_cast<float>(p->numbers[0]);
+		const BlackbodySpectrum bb(T);
+		const XYZ xyz = SpectrumToXYZ(bb);
+		const float photometric = InnerProduct(GetCIE_Y(), bb);
+		const float norm = (photometric > 0.0f) ? (1.0f / photometric) : 0.0f;
+		float r, g, b;
+		RGBColorSpace::sRGB().FromXYZ(xyz.X * norm, xyz.Y * norm, xyz.Z * norm, r, g, b);
+		// Small negative components are possible near the edge of the sRGB
+		// gamut even for a physically real source - clamp rather than let a
+		// negative emission subtract light, matching every other colour
+		// path in this loader's own convention of clamping at the edges.
+		return pbrt_scene::Vec3{ std::fmax(0.0, static_cast<double>(r)),
+								  std::fmax(0.0, static_cast<double>(g)),
+								  std::fmax(0.0, static_cast<double>(b)) };
+	}
+	return params.getVec3(name, def);
 }
 
 struct Emission {
@@ -1906,7 +1956,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 	for (const pbrt_scene::LightDecl &ld : scene.lights) {
 		if (ld.type == "infinite") {
 			out.infiniteLight.present = true;
-			const pbrt_scene::Vec3 L = ld.params.getVec3("L", pbrt_scene::Vec3{1, 1, 1});
+			const pbrt_scene::Vec3 L = resolveEmissionColor(ld.params, "L", pbrt_scene::Vec3{1, 1, 1});
 			out.infiniteLight.L[0] = L.x; out.infiniteLight.L[1] = L.y; out.infiniteLight.L[2] = L.z;
 			out.infiniteLight.scale = ld.params.getFloat("scale", 1.0);
 			out.infiniteLight.imageFile = ld.params.getString("filename", "");
@@ -1919,7 +1969,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			pl.kind = PunctualLightKind::Point;
 			const pbrt_scene::Vec3 from = ld.params.getVec3("from", pbrt_scene::Vec3{0, 0, 0});
 			transformPoint(ld.xform, from.x, from.y, from.z, pl.pos);
-			const pbrt_scene::Vec3 I = ld.params.getVec3("I", pbrt_scene::Vec3{1, 1, 1});
+			const pbrt_scene::Vec3 I = resolveEmissionColor(ld.params, "I", pbrt_scene::Vec3{1, 1, 1});
 			pl.intensity[0] = I.x; pl.intensity[1] = I.y; pl.intensity[2] = I.z;
 			pl.scale = ld.params.getFloat("scale", 1.0);
 			out.punctualLights.push_back(pl);
@@ -1946,7 +1996,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// full light-space frame).
 			for (int c = 0; c < 3; ++c) pl.dir[c] = worldTo[c] - worldFrom[c];
 			normalizeOrDefault(pl.dir, 0, -1, 0);
-			const pbrt_scene::Vec3 I = ld.params.getVec3("I", pbrt_scene::Vec3{1, 1, 1});
+			const pbrt_scene::Vec3 I = resolveEmissionColor(ld.params, "I", pbrt_scene::Vec3{1, 1, 1});
 			pl.intensity[0] = I.x; pl.intensity[1] = I.y; pl.intensity[2] = I.z;
 			pl.scale = ld.params.getFloat("scale", 1.0);
 			pl.coneAngleDeg = ld.params.getFloat("coneangle", 30.0);
@@ -1984,7 +2034,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// without needing pbrt's intermediate rotation-to-Z matrix.
 			for (int c = 0; c < 3; ++c) pl.dir[c] = worldFrom[c] - worldTo[c];
 			normalizeOrDefault(pl.dir, 0, 1, 0);
-			const pbrt_scene::Vec3 L = ld.params.getVec3("L", pbrt_scene::Vec3{1, 1, 1});
+			const pbrt_scene::Vec3 L = resolveEmissionColor(ld.params, "L", pbrt_scene::Vec3{1, 1, 1});
 			pl.intensity[0] = L.x; pl.intensity[1] = L.y; pl.intensity[2] = L.z;
 			pl.scale = ld.params.getFloat("scale", 1.0);
 			out.punctualLights.push_back(pl);
@@ -1996,7 +2046,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			pl.kind = PunctualLightKind::Goniometric;
 			transformPoint(ld.xform, 0.0, 0.0, 0.0, pl.pos);
 			worldToLightRotation(ld.xform, pl.worldToLight);
-			const pbrt_scene::Vec3 I = ld.params.getVec3("I", pbrt_scene::Vec3{1, 1, 1});
+			const pbrt_scene::Vec3 I = resolveEmissionColor(ld.params, "I", pbrt_scene::Vec3{1, 1, 1});
 			pl.intensity[0] = I.x; pl.intensity[1] = I.y; pl.intensity[2] = I.z;
 			pl.scale = ld.params.getFloat("scale", 1.0);
 			const std::string file = ld.params.getString("filename", "");
@@ -2039,20 +2089,12 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 	// ---- area lights -----------------------------------------------------
 	for (const pbrt_scene::LightDecl &ld : scene.areaLights) {
 		Emission e;
-		const pbrt_scene::Vec3 L = ld.params.getVec3("L", pbrt_scene::Vec3{1, 1, 1});
+		// "blackbody L" declares a colour TEMPERATURE under the parameter
+		// name L (resolveEmissionColor's own comment) - barcelona-pavilion's/
+		// contemporary-bathroom's real night-lighting area lights use this.
+		const pbrt_scene::Vec3 L = resolveEmissionColor(ld.params, "L", pbrt_scene::Vec3{1, 1, 1});
 		e.L[0] = L.x; e.L[1] = L.y; e.L[2] = L.z;
 		e.scale = ld.params.getFloat("scale", 1.0);
-		// "blackbody L" declares a colour TEMPERATURE under the parameter name
-		// L, so this has to test the parameter's type, not look for a
-		// parameter called "blackbody" - the latter never matches and the
-		// warning never fires.
-		const pbrt_scene::Param *Lp = ld.params.find("L");
-		if (Lp && Lp->type == "blackbody") {
-			// Converting a temperature to radiance properly needs a spectral
-			// pipeline; say so rather than quietly emitting the raw number.
-			warn("an area light is given as a blackbody temperature, which is "
-				 "approximated rather than converted spectrally");
-		}
 		// Round 6 Phase 4: spatially-varying emission (an image mapped onto
 		// the shape) and real two-sided emission - see Emission's own
 		// comment on each field.

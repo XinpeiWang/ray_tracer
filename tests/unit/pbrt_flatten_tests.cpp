@@ -1211,12 +1211,54 @@ TEST(FlattenMaterialTest, AreaLightRadianceAndScaleAreExtracted) {
 	EXPECT_DOUBLE_EQ(s.areaLights[0].scale, 2.0);
 }
 
-TEST(FlattenMaterialTest, BlackbodyEmissionIsReportedAsApproximated) {
-	const FlatScene s = flattenSource(
+TEST(FlattenMaterialTest, BlackbodyEmissionIsConvertedToARealColour) {
+	// Previously warned-and-discarded the temperature entirely (getVec3
+	// requires >=3 numbers, a "blackbody L" param has exactly 1, so it
+	// silently fell back to flat white regardless of temperature) - now
+	// converted via resolveEmissionColor() to a real RGB colour. Verified
+	// against the real physical characteristic every blackbody radiator has
+	// (Planck's law + Wien's displacement law: low temperature -> warm/
+	// orange, high temperature -> cool/blue) rather than a hand-computed
+	// exact expected value - barcelona-pavilion's own night lighting uses
+	// exactly this range (2500K-3500K).
+	const FlatScene warmLight = flattenSource(
 		"AttributeBegin\n"
-		"  AreaLightSource \"diffuse\" \"blackbody L\" [ 6500 ]\n"
+		"  AreaLightSource \"diffuse\" \"blackbody L\" [ 2500 ]\n"
 		+ std::string(kQuadMesh) + "AttributeEnd\n");
-	EXPECT_TRUE(warnedAbout(s, "blackbody"));
+	const FlatScene coolLight = flattenSource(
+		"AttributeBegin\n"
+		"  AreaLightSource \"diffuse\" \"blackbody L\" [ 9000 ]\n"
+		+ std::string(kQuadMesh) + "AttributeEnd\n");
+	ASSERT_EQ(warmLight.areaLights.size(), 1u);
+	ASSERT_EQ(coolLight.areaLights.size(), 1u);
+	EXPECT_FALSE(warnedAbout(warmLight, "blackbody"))
+		<< "a blackbody temperature is now converted, not warned-and-discarded";
+
+	const double (&warm)[3] = warmLight.areaLights[0].L;
+	const double (&cool)[3] = coolLight.areaLights[0].L;
+	for (int c = 0; c < 3; ++c) {
+		EXPECT_GE(warm[c], 0.0);
+		EXPECT_GE(cool[c], 0.0);
+	}
+	EXPECT_FALSE(warm[0] == 1.0 && warm[1] == 1.0 && warm[2] == 1.0)
+		<< "must not be the pre-fix flat-white {1,1,1} fallback";
+	EXPECT_GT(warm[0] / warm[2], cool[0] / cool[2])
+		<< "a 2500K light must read warmer (redder relative to blue) than a 9000K light";
+}
+
+TEST(FlattenPunctualLightTest, PointLightBlackbodyIntensityIsConverted) {
+	// Punctual lights (point/spot/distant/goniometric) previously had NO
+	// blackbody handling at all - not even a warning, "blackbody I" silently
+	// became flat white with zero diagnostic. resolveEmissionColor() now
+	// covers these the same way as AreaLightSource.
+	const FlatScene s = flattenSource(
+		"LightSource \"point\" \"point3 from\" [ 0 0 0 ] \"blackbody I\" [ 3000 ]\n");
+	ASSERT_EQ(s.punctualLights.size(), 1u);
+	const double (&i)[3] = s.punctualLights[0].intensity;
+	for (int c = 0; c < 3; ++c) EXPECT_GE(i[c], 0.0);
+	EXPECT_FALSE(i[0] == 1.0 && i[1] == 1.0 && i[2] == 1.0)
+		<< "must not be the pre-fix flat-white {1,1,1} fallback";
+	EXPECT_GT(i[0], i[2]) << "a 3000K light must read warmer (more red than blue)";
 }
 
 TEST(FlattenMaterialTest, MaterialIndicesOnGeometryStillLineUp) {
