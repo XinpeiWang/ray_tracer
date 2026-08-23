@@ -15,6 +15,7 @@
 #include "pbrt_load.h"
 #include "pbrt_scene.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -77,6 +78,55 @@ std::string solidGrayBmp1x1() {
 	bytes.push_back(static_cast<char>(128));
 	bytes.push_back(static_cast<char>(128));
 	bytes.push_back('\0');
+	return bytes;
+}
+
+// Hand-authored minimal 2x2 24bpp BMP, two-tone (white/black by row) rather
+// than solidGrayBmp1x1()'s single uniform pixel - needed to prove a
+// goniometric/projection light's real decoded image (not the flat
+// kUniformImage/kUniformSlide fallback) is what reached eval_I/eval_I_rgb:
+// a uniform image gives identical intensity at every direction by
+// construction, so seeing ANY variance across sampled directions is only
+// possible with real, non-uniform pixel data actually decoded and used.
+std::string twoToneBmp2x2() {
+	std::string bytes;
+	const auto u16 = [&](unsigned short v) {
+		bytes.push_back(static_cast<char>(v & 0xFF));
+		bytes.push_back(static_cast<char>((v >> 8) & 0xFF));
+	};
+	const auto u32 = [&](unsigned int v) {
+		bytes.push_back(static_cast<char>(v & 0xFF));
+		bytes.push_back(static_cast<char>((v >> 8) & 0xFF));
+		bytes.push_back(static_cast<char>((v >> 16) & 0xFF));
+		bytes.push_back(static_cast<char>((v >> 24) & 0xFF));
+	};
+	const std::size_t rowBytes = 8;  // 2 px * 3 bytes, padded to a 4-byte boundary
+	const std::size_t dataSize = rowBytes * 2;
+	bytes.push_back('B'); bytes.push_back('M');
+	u32(static_cast<unsigned int>(14 + 40 + dataSize));
+	u32(0);
+	u32(14 + 40);
+	u32(40);
+	u32(2);
+	u32(2);
+	u16(1);
+	u16(24);
+	u32(0);
+	u32(static_cast<unsigned int>(dataSize));
+	u32(0); u32(0);
+	u32(0); u32(0);
+	// Bottom row first (BMP storage order) - black; top row - white.
+	// (B,G,R) byte order per pixel, but black/white are channel-symmetric so
+	// this doesn't matter here.
+	for (int row = 0; row < 2; ++row) {
+		const unsigned char v = (row == 0) ? 0 : 255;
+		for (int px = 0; px < 2; ++px) {
+			bytes.push_back(static_cast<char>(v));
+			bytes.push_back(static_cast<char>(v));
+			bytes.push_back(static_cast<char>(v));
+		}
+		bytes.push_back('\0'); bytes.push_back('\0');  // row padding to 8 bytes
+	}
 	return bytes;
 }
 
@@ -731,6 +781,92 @@ TEST(PbrtCpuBuildTest, GoniometricLightSourceIsSampleableAtAShadingPoint) {
 		EXPECT_GT(s.Li.x(), 0.0);
 	});
 	EXPECT_EQ(samples, 1);
+}
+
+TEST_F(CpuBuilderTempTree, GoniometricLightWithRealSquareImageProducesNonUniformIntensity) {
+	// Goes through the real pbrt_load::loadFile() resolution pass (not
+	// buildFrom()'s bare flatten()) so PunctualLight::filename is a real,
+	// existence-tested, absolute path pbrt_cpu_builder.h's decode can
+	// actually open - see decodePunctualLightImageFile()'s own comment.
+	write("scene.pbrt",
+		  "LightSource \"goniometric\" \"rgb I\" [ 1 1 1 ] \"float scale\" [ 100 ] "
+		  "\"string filename\" [ \"profile.bmp\" ]\n");
+	write("profile.bmp", twoToneBmp2x2());
+
+	const pbrt_load::LoadResult loaded = pbrt_load::loadFile(path("scene.pbrt"));
+	ASSERT_TRUE(loaded.ok) << loaded.error;
+	ASSERT_EQ(loaded.scene.punctualLights.size(), 1u);
+	ASSERT_EQ(loaded.scene.punctualLights[0].filename, path("profile.bmp"));
+
+	const pbrt_cpu::BuildResult b = pbrt_cpu::build(loaded.scene);
+	ASSERT_NE(b.punctLights, nullptr);
+
+	// Sample from points spread across genuinely different directions
+	// (not just a flat circle at one height, which - since the two-tone
+	// split is row-wise, i.e. along the equal-area square's v/polar axis -
+	// would keep every point in the same row band and defeat this test) -
+	// a real two-tone image gives a different eval_I() at different
+	// directions; the flat kUniformImage fallback would give the exact
+	// same value everywhere, since telling those two apart is the whole
+	// point of this test.
+	const point3 samplePoints[] = {
+		point3(10, 0, 0),  point3(-10, 0, 0),
+		point3(0, 10, 0),  point3(0, -10, 0),
+		point3(0, 0, 10),  point3(0, 0, -10),
+		point3(7, 7, 7),   point3(-7, -7, -7),
+	};
+	double maxLi = 0.0;
+	bool sawDifferentValue = false;
+	bool sawFirst = false;
+	double first = 0.0;
+	for (const point3 &p : samplePoints) {
+		b.punctLights->for_each_sample(p, [&](const PunctualLiSample &s) {
+			maxLi = std::max(maxLi, s.Li.x());
+			if (!sawFirst) { first = s.Li.x(); sawFirst = true; }
+			else if (std::abs(s.Li.x() - first) > 1e-9) sawDifferentValue = true;
+		});
+	}
+	EXPECT_GT(maxLi, 0.0);
+	EXPECT_TRUE(sawDifferentValue)
+		<< "identical intensity at every sampled direction means the real "
+		   "two-tone image was not actually used";
+}
+
+TEST_F(CpuBuilderTempTree, ProjectionLightWithRealImageProducesNonUniformIntensity) {
+	write("scene.pbrt",
+		  "Translate 0 0 -10\n"
+		  "LightSource \"projection\" \"float scale\" [ 100 ] \"float fov\" [ 80 ] "
+		  "\"string filename\" [ \"slide.bmp\" ]\n");
+	write("slide.bmp", twoToneBmp2x2());
+
+	const pbrt_load::LoadResult loaded = pbrt_load::loadFile(path("scene.pbrt"));
+	ASSERT_TRUE(loaded.ok) << loaded.error;
+	ASSERT_EQ(loaded.scene.punctualLights.size(), 1u);
+	ASSERT_EQ(loaded.scene.punctualLights[0].filename, path("slide.bmp"));
+
+	const pbrt_cpu::BuildResult b = pbrt_cpu::build(loaded.scene);
+	ASSERT_NE(b.punctLights, nullptr);
+
+	// Sample across a small grid of points inside the projected beam - a
+	// real two-tone slide gives different Li at different points within
+	// its fov; kUniformSlide's flat white fallback would give the exact
+	// same value everywhere inside the beam.
+	double first = -1.0;
+	bool sawDifferentValue = false;
+	for (int gx = -2; gx <= 2; ++gx) {
+		for (int gy = -2; gy <= 2; ++gy) {
+			const point3 p(gx * 0.5, gy * 0.5, 0.0);
+			b.punctLights->for_each_sample(p, [&](const PunctualLiSample &s) {
+				if (s.Li.x() <= 0.0) return;  // outside the beam/fov
+				if (first < 0.0) first = s.Li.x();
+				else if (std::abs(s.Li.x() - first) > 1e-9) sawDifferentValue = true;
+			});
+		}
+	}
+	EXPECT_GT(first, 0.0);
+	EXPECT_TRUE(sawDifferentValue)
+		<< "identical intensity at every sampled point means the real "
+		   "two-tone slide was not actually used";
 }
 
 TEST(PbrtCpuBuildTest, ProjectionLightSourceIsSampleableAtAShadingPoint) {

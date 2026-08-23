@@ -1,0 +1,56 @@
+# goniometric-projection.pbrt -- exercises LightSource "goniometric"/
+# "projection" real "filename" image decoding (previously both backends
+# always synthesized a uniform isotropic/white-beam pattern regardless of
+# what filename was given - see docs/PBRT_SUPPORT.md).
+#
+#  - Left: a goniometric light aimed straight down at the floor
+#    (Rotate 90 1 0 0, aligning the equal-area mapping's pole axis with
+#    "toward the floor" - a goniometric light aimed any other way still
+#    works, but the illuminated footprint's own shape is harder to read at
+#    a glance), using gonio-profile.bmp (hand-authored, 4 distinct
+#    grayscale bands - NOT colored, since a goniometric image is a scalar
+#    intensity multiplier only, per pbrt-v4's own real photometric model:
+#    "I" supplies the light's colour, the image only supplies per-direction
+#    brightness) as its equal-area directional profile. The floor shows the
+#    octahedral equal-area mapping's own characteristic diamond/X crease
+#    pattern - a direct, recognizable signature that a real 2D image (not a
+#    flat scalar) is driving the per-direction lookup.
+#  - Right: a projection light aimed straight down at the floor, using
+#    uv-checker.bmp (already bundled, 4x4, 4 distinct quadrant colors) as
+#    its projected slide - unlike goniometric, a projection light's image
+#    supplies real RGB colour directly, so the floor shows the actual
+#    checkerboard pattern, like a real slide projector, not a uniform
+#    white beam.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints. gonio-profile.bmp is likewise hand-authored.
+
+LookAt  0 10 14    0 0 0    0 1 0
+Camera "perspective" "float fov" [ 45 ]
+
+Film "rgb" "integer xresolution" [ 640 ] "integer yresolution" [ 400 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+Material "diffuse" "rgb reflectance" [ 0.2 0.2 0.22 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -14 0 -8   14 0 -8   14 0 8   -14 0 8 ]
+
+# ---- Goniometric light with a real equal-area profile image -------------
+AttributeBegin
+  Translate -5 6 0
+  Rotate 90 1 0 0
+  LightSource "goniometric" "rgb I" [ 1 1 1 ] "float scale" [ 3 ]
+    "string filename" [ "gonio-profile.bmp" ]
+AttributeEnd
+
+# ---- Projection light with a real projected slide image -----------------
+# Aimed straight down (-Y) at the floor from directly above, matching the
+# goniometric light's own vantage point so the two are easy to compare.
+AttributeBegin
+  Translate 5 6 0
+  Rotate 90 1 0 0
+  LightSource "projection" "float scale" [ 8 ] "float fov" [ 40 ]
+    "string filename" [ "uv-checker.bmp" ]
+AttributeEnd

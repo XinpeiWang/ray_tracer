@@ -466,6 +466,32 @@ inline LoadResult loadFile(const std::string &path) {
 		e.filename = resolved;
 	}
 
+	// LightSource "goniometric"/"projection"'s own "filename" (PunctualLight::
+	// filename's own comment) - same resolution convention as the other
+	// filename fields above; decoding (a real equal-area profile image for
+	// goniometric, an ordinary photo/slide for projection) is likewise left
+	// to the CPU/GPU builders, which already have a direct-from-resolved-
+	// path image decode utility to reuse (mipmap_texture/
+	// getOrBuildPbrtImageTexture) rather than one built specifically for
+	// this. On a resolve failure, `filename` is cleared (so the builders'
+	// existing empty-means-fall-back-to-uniform branch applies unchanged)
+	// but hadImageFilename is left true, so a caller can still tell "named
+	// but not found" apart from "never named" after this point.
+	for (pbrt_flatten::PunctualLight &pl : r.scene.punctualLights) {
+		if (pl.filename.empty()) continue;
+
+		const std::string resolved = resolveExistingPath(sceneDir, pl.filename);
+		if (resolved.empty()) {
+			r.scene.warnings.push_back(
+				{0, path, "punctual light's image file '" + pl.filename +
+					"' could not be found; falling back to a uniform profile/slide instead"});
+			pl.filename.clear();
+			continue;
+		}
+
+		pl.filename = resolved;
+	}
+
 	return r;
 }
 

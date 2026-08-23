@@ -1464,13 +1464,17 @@ TEST(FlattenPunctualLightTest, GoniometricLightWithNoFilenameIsIsotropicAndUnwar
 	EXPECT_FALSE(warnedAbout(s, "goniometric"));
 }
 
-TEST(FlattenPunctualLightTest, GoniometricLightWithFilenameWarnsAndFallsBackToIsotropic) {
+TEST(FlattenPunctualLightTest, GoniometricLightWithFilenameIsStoredForLaterResolution) {
+	// pbrt_flatten.h stays filesystem-free (see PunctualLight::filename's own
+	// comment) - resolving/decoding the name happens later, in pbrt_load.h/
+	// the CPU-GPU builders, so this stage should neither warn nor decode,
+	// just carry the raw name through unchanged.
 	const FlatScene s = flattenSource(
 		"LightSource \"goniometric\" \"string filename\" [ \"profile.exr\" ]\n");
 	ASSERT_EQ(s.punctualLights.size(), 1u);
 	EXPECT_TRUE(s.punctualLights[0].hadImageFilename);
-	EXPECT_TRUE(warnedAbout(s, "goniometric"));
-	EXPECT_TRUE(warnedAbout(s, "profile.exr"));
+	EXPECT_EQ(s.punctualLights[0].filename, "profile.exr");
+	EXPECT_FALSE(warnedAbout(s, "goniometric"));
 }
 
 TEST(FlattenPunctualLightTest, GoniometricLightRotationIsCarriedThroughInWorldToLight) {
@@ -1495,7 +1499,8 @@ TEST(FlattenPunctualLightTest, ProjectionLightReadsFovAndScale) {
 	EXPECT_DOUBLE_EQ(pl.fovDeg, 25.0);
 	EXPECT_DOUBLE_EQ(pl.scale, 8.0);
 	EXPECT_TRUE(pl.hadImageFilename);
-	EXPECT_TRUE(warnedAbout(s, "projection"));
+	EXPECT_EQ(pl.filename, "slide.exr");
+	EXPECT_FALSE(warnedAbout(s, "projection"));
 }
 
 TEST(FlattenPunctualLightTest, ProjectionLightDefaultFovMatchesPbrt) {

@@ -1576,11 +1576,39 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 			g.ig = static_cast<float>(pl.intensity[1]);
 			g.ib = static_cast<float>(pl.intensity[2]);
 			g.scale = static_cast<float>(pl.scale);
-			// Uniform (isotropic) image - see pbrt_flatten::PunctualLight::
-			// hadImageFilename's comment for why no real IES profile is ever
-			// decoded. Matches pbrt_cpu_builder.h's own kUniformImage.
-			g.nu = 4; g.nv = 4;
-			for (int i = 0; i < g.nu * g.nv; ++i) g.image[i] = 1.0f;
+			// pl.filename is only ever non-empty after pbrt_load.h's post-
+			// flatten pass confirmed the file exists - see
+			// pbrt_cpu_builder.h's identical decode for the CPU side and its
+			// own comment on the square-image requirement / greyscale
+			// collapse. Downsampled (nearest-neighbor) to kGonioImageMaxDim
+			// when larger, rather than falling back to uniform, so a real
+			// profile still shows on GPU even if this build's fixed inline
+			// cap can't hold it at full resolution.
+			bool usedRealProfile = false;
+			if (!pl.filename.empty()) {
+				int width = 0, height = 0, channels = 0;
+				float *fdata = stbi_loadf(pl.filename.c_str(), &width, &height, &channels, 3);
+				if (fdata && width > 0 && width == height) {
+					const int n = std::min(width, kGonioImageMaxDim);
+					g.nu = n; g.nv = n;
+					for (int v = 0; v < n; ++v) {
+						const int sv = v * height / n;
+						for (int u = 0; u < n; ++u) {
+							const int su = u * width / n;
+							const float *px = fdata + (static_cast<std::size_t>(sv) * width + su) * 3;
+							g.image[v * n + u] = (px[0] + px[1] + px[2]) / 3.0f;
+						}
+					}
+					usedRealProfile = true;
+				}
+				if (fdata) stbi_image_free(fdata);
+			}
+			if (!usedRealProfile) {
+				// Uniform (isotropic) fallback - matches
+				// pbrt_cpu_builder.h's own kUniformImage.
+				g.nu = 4; g.nv = 4;
+				for (int i = 0; i < g.nu * g.nv; ++i) g.image[i] = 1.0f;
+			}
 			break;
 		}
 		case pbrt_flatten::PunctualLightKind::Projection: {
@@ -1592,16 +1620,54 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 			for (int c = 0; c < 9; ++c) pr.world_to_light[c] = static_cast<float>(pl.worldToLight[c]);
 			pr.scale = static_cast<float>(pl.scale);
 			pr.hither = 1e-3f;
-			// Uniform white slide - see pbrt_flatten::PunctualLight::
-			// hadImageFilename's comment for why no real projected image is
-			// ever decoded. Matches pbrt_cpu_builder.h's own kUniformSlide
-			// (2x2, aspect 1 so sb_xmin/xmax below match
-			// ProjectionLight<T>::make's own aspect>=1 branch exactly).
-			pr.nx = 2; pr.ny = 2;
-			pr.sb_xmin = -1.0f; pr.sb_xmax = 1.0f;
-			pr.sb_ymin = -1.0f; pr.sb_ymax = 1.0f;
+			// pl.filename is only ever non-empty after pbrt_load.h's post-
+			// flatten pass confirmed the file exists. Downsampled (nearest-
+			// neighbor) to kProjImageMaxDim when larger - see the identical
+			// reasoning on the Goniometric case just above.
+			bool usedRealSlide = false;
+			if (!pl.filename.empty()) {
+				int width = 0, height = 0, channels = 0;
+				float *fdata = stbi_loadf(pl.filename.c_str(), &width, &height, &channels, 3);
+				if (fdata && width > 0 && height > 0) {
+					const int nx = std::min(width, kProjImageMaxDim);
+					const int ny = std::min(height, kProjImageMaxDim);
+					pr.nx = nx; pr.ny = ny;
+					for (int v = 0; v < ny; ++v) {
+						const int sv = v * height / ny;
+						for (int u = 0; u < nx; ++u) {
+							const int su = u * width / nx;
+							const float *px = fdata + (static_cast<std::size_t>(sv) * width + su) * 3;
+							const int i = (v * nx + u) * 3;
+							pr.image_rgb[i + 0] = px[0];
+							pr.image_rgb[i + 1] = px[1];
+							pr.image_rgb[i + 2] = px[2];
+						}
+					}
+					usedRealSlide = true;
+				}
+				if (fdata) stbi_image_free(fdata);
+			}
+			if (!usedRealSlide) {
+				// Uniform white 2x2 slide - matches pbrt_cpu_builder.h's own
+				// kUniformSlide (2x2, aspect 1 so sb_xmin/xmax below match
+				// ProjectionLight<T>::make's own aspect>=1 branch exactly).
+				pr.nx = 2; pr.ny = 2;
+				for (int i = 0; i < pr.nx * pr.ny * 3; ++i) pr.image_rgb[i] = 1.0f;
+			}
+			// Screen bounds depend on the FINAL nx/ny's aspect ratio (matches
+			// ProjectionLight<T>::make's own aspect-derived bounds), so this
+			// has to run after nx/ny are settled above, real or fallback.
+			{
+				const float aspect = static_cast<float>(pr.nx) / static_cast<float>(pr.ny);
+				if (aspect >= 1.0f) {
+					pr.sb_xmin = -aspect; pr.sb_xmax = aspect;
+					pr.sb_ymin = -1.0f;   pr.sb_ymax = 1.0f;
+				} else {
+					pr.sb_xmin = -1.0f;         pr.sb_xmax = 1.0f;
+					pr.sb_ymin = -1.0f / aspect; pr.sb_ymax = 1.0f / aspect;
+				}
+			}
 			pr.inv_tan = 1.0f / static_cast<float>(std::tan(pl.fovDeg * kDegToRad * 0.5));
-			for (int i = 0; i < pr.nx * pr.ny * 3; ++i) pr.image_rgb[i] = 1.0f;
 			break;
 		}
 		}

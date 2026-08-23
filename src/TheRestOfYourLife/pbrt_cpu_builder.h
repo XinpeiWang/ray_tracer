@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "../shared/pbrt_flatten.h"
+#include "../external/tinyexr.h"   // LoadEXR() - see decodePunctualLightImageFile()
 
 #include "bvh.h"
 #include "constant_medium.h"
@@ -310,6 +311,42 @@ struct BuildResult {
 	// BVH with every other placement of the same definition.
 	std::size_t instanceCount = 0;
 };
+
+// Decodes a resolved (existing) image file for a goniometric/projection
+// punctual light's "filename" into an rtw_image, EXR-aware - rtw_image's own
+// load() only understands stb_image's formats (PNG/JPG/BMP/HDR/...), not EXR
+// (see its raw-pixel constructor's own comment), so a real IES-derived
+// equal-area profile (commonly distributed as EXR, matching pbrt-v4's own
+// `imgtool makeequiarea` output) needs tinyexr decoded here first. Mirrors
+// pbrt_load.h's decodeInfiniteLightImage() dispatch exactly (extension-only,
+// not content-sniffed), just returning an rtw_image instead of a raw
+// std::vector<float> since this file's own callers want pixel_data()/
+// float_pixel_data() access, not a buffer to hand off further. Returns an
+// empty (width()==0) rtw_image on any decode failure - callers already
+// treat that as "no real image" identically to a missing file.
+inline rtw_image decodePunctualLightImageFile(const std::string &resolvedPath) {
+	if (resolvedPath.size() >= 4 &&
+		resolvedPath.compare(resolvedPath.size() - 4, 4, ".exr") == 0) {
+		float *rgba = nullptr;
+		int w = 0, h = 0;
+		const char *err = nullptr;
+		const int rc = LoadEXR(&rgba, &w, &h, resolvedPath.c_str(), &err);
+		if (err) FreeEXRErrorMessage(err);
+		if (rc != TINYEXR_SUCCESS || !rgba || w <= 0 || h <= 0) {
+			if (rgba) free(rgba);
+			return rtw_image();
+		}
+		std::vector<float> rgb(static_cast<std::size_t>(w) * h * 3);
+		for (int i = 0; i < w * h; ++i) {
+			rgb[i * 3 + 0] = rgba[i * 4 + 0];
+			rgb[i * 3 + 1] = rgba[i * 4 + 1];
+			rgb[i * 3 + 2] = rgba[i * 4 + 2];
+		}
+		free(rgba);
+		return rtw_image(w, h, rgb.data());
+	}
+	return rtw_image(resolvedPath.c_str());
+}
 
 // Turns flattened geometry into a BVH-accelerated world plus the light list
 // the integrator samples. Materials are created once per (material, emission)
@@ -811,35 +848,91 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 					pl.sceneRadius, pl.scale);
 				break;
 			case pbrt_flatten::PunctualLightKind::Goniometric: {
-				// No real IES-style profile is ever decoded (see
-				// PunctualLight::hadImageFilename's own comment) - a uniform
-				// 4x4 all-ones image is the same "isotropic" fallback
-				// GoniometricLight<T>::make_isotropic() already uses, just
-				// built explicitly here so the real worldToLight rotation
-				// (rather than that helper's hardcoded identity) still
-				// carries through for a scene that rotated the light even
-				// though the image itself is flat.
-				static const std::vector<double> kUniformImage(4 * 4, 1.0);
 				double id[9];
 				for (int c = 0; c < 9; ++c) id[c] = pl.worldToLight[c];
-				out.punctLights->add_gonio(
-					point3(pl.pos[0], pl.pos[1], pl.pos[2]),
-					color(pl.intensity[0], pl.intensity[1], pl.intensity[2]),
-					pl.scale, id, kUniformImage, 4, 4);
+				// pl.filename is only ever non-empty after pbrt_load.h's
+				// post-flatten pass confirmed the file exists (PunctualLight::
+				// filename's own comment). GoniometricLight<T>'s own equal-
+				// area mapping requires a SQUARE image (see its make()'s own
+				// comment) - matches pbrt-v4's own GoniometricLight::Create,
+				// which ErrorExits on a non-square image; softened here to a
+				// silent fallback (same "rare enough, not worth a second
+				// probe-and-fallback dance" precedent as the Diffuse
+				// imagemap-texture case above) rather than aborting the load.
+				// pbrt-v4 collapses a multi-channel image down to one
+				// greyscale channel before use (lights.cpp's own
+				// GoniometricLight::Create) - a plain per-pixel RGB average
+				// approximates that collapse without needing this loader's
+				// own luminance-weight table.
+				bool usedRealProfile = false;
+				if (!pl.filename.empty()) {
+					rtw_image img = decodePunctualLightImageFile(pl.filename);
+					if (img.width() > 0 && img.width() == img.height()) {
+						const int n = img.width();
+						std::vector<double> image(static_cast<std::size_t>(n) * n);
+						for (int v = 0; v < n; ++v) {
+							for (int u = 0; u < n; ++u) {
+								const float *px = img.float_pixel_data(u, v);
+								image[static_cast<std::size_t>(v) * n + u] =
+									(px[0] + px[1] + px[2]) / 3.0;
+							}
+						}
+						out.punctLights->add_gonio(
+							point3(pl.pos[0], pl.pos[1], pl.pos[2]),
+							color(pl.intensity[0], pl.intensity[1], pl.intensity[2]),
+							pl.scale, id, image, n, n);
+						usedRealProfile = true;
+					}
+				}
+				if (!usedRealProfile) {
+					// Uniform (isotropic) fallback - same shape as
+					// GoniometricLight<T>::make_isotropic(), just built
+					// explicitly here so the real worldToLight rotation
+					// (rather than that helper's hardcoded identity) still
+					// carries through for a scene that rotated the light.
+					static const std::vector<double> kUniformImage(4 * 4, 1.0);
+					out.punctLights->add_gonio(
+						point3(pl.pos[0], pl.pos[1], pl.pos[2]),
+						color(pl.intensity[0], pl.intensity[1], pl.intensity[2]),
+						pl.scale, id, kUniformImage, 4, 4);
+				}
 				break;
 			}
 			case pbrt_flatten::PunctualLightKind::Projection: {
-				// No real slide image is ever decoded (see
-				// PunctualLight::hadImageFilename's own comment) - a uniform
-				// white 2x2 slide reproduces a plain cone-shaped beam of the
-				// requested fov/scale/aim, the same synthetic-pattern tier
-				// this loader's own C6 showcase scene already uses.
-				static const std::vector<double> kUniformSlide(2 * 2 * 3, 1.0);
 				double wtl[9];
 				for (int c = 0; c < 9; ++c) wtl[c] = pl.worldToLight[c];
-				out.punctLights->add_projection(
-					point3(pl.pos[0], pl.pos[1], pl.pos[2]),
-					pl.scale, wtl, pl.fovDeg, kUniformSlide, 2, 2);
+				// pl.filename is only ever non-empty after pbrt_load.h's
+				// post-flatten pass confirmed the file exists.
+				bool usedRealSlide = false;
+				if (!pl.filename.empty()) {
+					rtw_image img = decodePunctualLightImageFile(pl.filename);
+					if (img.width() > 0 && img.height() > 0) {
+						const int nx = img.width(), ny = img.height();
+						std::vector<double> image(static_cast<std::size_t>(nx) * ny * 3);
+						for (int v = 0; v < ny; ++v) {
+							for (int u = 0; u < nx; ++u) {
+								const float *px = img.float_pixel_data(u, v);
+								const std::size_t i = (static_cast<std::size_t>(v) * nx + u) * 3;
+								image[i + 0] = px[0];
+								image[i + 1] = px[1];
+								image[i + 2] = px[2];
+							}
+						}
+						out.punctLights->add_projection(
+							point3(pl.pos[0], pl.pos[1], pl.pos[2]),
+							pl.scale, wtl, pl.fovDeg, image, nx, ny);
+						usedRealSlide = true;
+					}
+				}
+				if (!usedRealSlide) {
+					// Uniform white 2x2 slide - reproduces a plain cone-
+					// shaped beam of the requested fov/scale/aim, matching
+					// ProjectionLight<T>::make_uniform()'s own fallback.
+					static const std::vector<double> kUniformSlide(2 * 2 * 3, 1.0);
+					out.punctLights->add_projection(
+						point3(pl.pos[0], pl.pos[1], pl.pos[2]),
+						pl.scale, wtl, pl.fovDeg, kUniformSlide, 2, 2);
+				}
 				break;
 			}
 			}

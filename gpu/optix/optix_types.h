@@ -873,13 +873,21 @@ enum class PunctualLightKind : int {
 
 // Max image dimensions for goniometric/projection lights, stored inline in
 // PunctualLightGPU (see below) rather than as a separately-allocated device
-// buffer: light counts are tiny (1 per scene, matching src/TheRestOfYourLife/
-// scenes_advanced.h's scene 28/29) and the images themselves are tiny (16x8
-// and 8x8 respectively), so a fixed-size inline array avoids a second
-// device-buffer-management path (alloc/upload/free, extra SBT plumbing) for
-// data this small. Generous headroom over the actual scene data (16x8 / 8x8).
-static constexpr int kGonioImageMaxDim = 32;
-static constexpr int kProjImageMaxDim  = 32;
+// buffer: light counts are tiny (typically 1-3 per scene) and PunctualLightGPU
+// itself already lives behind a device POINTER sized to numPunctualLights at
+// runtime (LaunchParams::punctualLights, not a fixed __constant__ array), so
+// a fixed-size inline array per element avoids a second device-buffer-
+// management path (alloc/upload/free, extra SBT plumbing) without risking any
+// __constant__-memory budget. Raised from this codebase's original 32 (sized
+// only for its own hand-built showcase scenes' synthetic 16x8/8x8 patterns)
+// to 64 once real decoded profile/slide images could exceed that - pbrt-v4's
+// own `imgtool makeequiarea` typically emits goniometric profiles in this
+// range, and a real projection slide photo can be much larger still, so an
+// oversized real image is downsampled (nearest-neighbor) to fit this cap at
+// build time (pbrt_gpu_builder.h) rather than silently cropped or falling
+// back to a flat approximation - see that file's own comment.
+static constexpr int kGonioImageMaxDim = 64;
+static constexpr int kProjImageMaxDim  = 64;
 
 // GPU-side goniometric (IES-profile) point light. Mirrors the *evaluation*
 // half of src/shared/goniometric_light.h's GoniometricLight<T> (sample_li +

@@ -230,6 +230,36 @@ TEST_F(TempTree, MissingAreaLightFilenameWarnsAndFallsBackToFlatColour) {
 	EXPECT_TRUE(warned);
 }
 
+TEST_F(TempTree, GoniometricLightFilenameResolvesRelativeToTheScene) {
+	// PunctualLight::filename's own comment: same scene-directory-first
+	// resolution as textureFilename/Emission::filename above. Uses
+	// "textures/" (pre-created by SetUp(), unlike an arbitrary new
+	// subdirectory) since write() itself does not create parent directories.
+	write("scene.pbrt",
+		  "LightSource \"goniometric\" \"string filename\" [ \"textures/lamp.exr\" ]\n");
+	write("textures/lamp.exr", "not a real exr, only existence is checked here");
+	const pbrt_load::LoadResult r = pbrt_load::loadFile(path("scene.pbrt"));
+	ASSERT_TRUE(r.ok) << r.error;
+	ASSERT_EQ(r.scene.punctualLights.size(), 1u);
+	EXPECT_EQ(r.scene.punctualLights[0].filename, path("textures/lamp.exr"));
+	EXPECT_TRUE(r.scene.punctualLights[0].hadImageFilename);
+}
+
+TEST_F(TempTree, MissingGoniometricLightFilenameWarnsAndFallsBackToIsotropic) {
+	write("scene.pbrt",
+		  "LightSource \"goniometric\" \"string filename\" [ \"nope.exr\" ]\n");
+	const pbrt_load::LoadResult r = pbrt_load::loadFile(path("scene.pbrt"));
+	ASSERT_TRUE(r.ok) << r.error;
+	ASSERT_EQ(r.scene.punctualLights.size(), 1u);
+	EXPECT_TRUE(r.scene.punctualLights[0].filename.empty());
+	EXPECT_TRUE(r.scene.punctualLights[0].hadImageFilename)
+		<< "still true - a name was given, just not found";
+	bool warned = false;
+	for (const pbrt_scene::Warning &w : r.scene.warnings)
+		if (w.message.find("nope.exr") != std::string::npos) warned = true;
+	EXPECT_TRUE(warned);
+}
+
 TEST_F(TempTree, ShapeAlphaImagemapResolvesRelativeToTheScene) {
 	write("scene.pbrt",
 		  "Texture \"leafAlpha\" \"float\" \"imagemap\" \"string filename\" [ \"geometry/leaf.png\" ]\n"

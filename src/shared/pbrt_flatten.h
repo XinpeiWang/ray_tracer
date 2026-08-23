@@ -675,19 +675,29 @@ struct PunctualLight {
 	double fovDeg = 90.0;
 
 	// Both image-based kinds (Goniometric/Projection) name a "filename" in
-	// real pbrt-v4 scenes - an IES-style directional profile for
-	// goniometric, the projected slide image for projection - neither of
-	// which this loader decodes. This is not a new gap: this codebase's own
-	// hand-built showcase scenes for both kinds (scenes_advanced.h's
-	// build_goniometric_punct()/build_projection_punct(), registry ids
-	// C5/C6) use a synthetic procedural pattern rather than a real image
-	// file too, so falling back to a uniform pattern here (see
-	// pbrt_cpu_builder.h/pbrt_gpu_builder.h's construction of these) matches
-	// the precedent this codebase already set for these exact light kinds
-	// rather than opening a new one. Only recorded so flatten() can warn
-	// when a scene actually names a file - the loss of the real projected
-	// picture/profile shape is then a legible, documented approximation
-	// rather than a silently plain light.
+	// real pbrt-v4 scenes - an IES-derived equal-area profile image for
+	// goniometric (matching pbrt-v4's own convention: it reads this through
+	// its generic Image::Read(), not a raw .ies text parser - see
+	// docs/PBRT_SUPPORT.md), the projected slide image for projection. As
+	// given by the scene, NOT yet resolved to an existing file - mirrors
+	// Material::textureFilename/Emission::filename's own "resolved by
+	// pbrt_load.h post-flatten, decoded by pbrt_cpu_builder.h/
+	// pbrt_gpu_builder.h" convention (this header stays filesystem-free by
+	// design - see the file comment), rather than InfiniteLight's own
+	// decode-into-pixels-here-in-this-struct convention, since both builders
+	// already had a direct-from-resolved-path image decode utility to reuse
+	// (mipmap_texture/getOrBuildPbrtImageTexture) that InfiniteLight's
+	// sky_light raw-buffer constructor didn't.
+	std::string filename;
+
+	// True iff the scene named a "filename" at all, independent of whether
+	// it was later found/decoded - lets a caller (or a test) distinguish "no
+	// file was named" from "a file was named" without inspecting `filename`
+	// itself, same shape as Material::alphaTextureFilename's own empty-means-
+	// absent convention would give for free if this were the only signal
+	// needed, but pbrt_load.h clears `filename` back to empty on a resolve
+	// failure (see its own comment) so this bool is the only way to still
+	// tell "never named" apart from "named but not found" after that point.
 	bool hadImageFilename = false;
 };
 
@@ -1802,11 +1812,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			const std::string file = ld.params.getString("filename", "");
 			if (!file.empty()) {
 				pl.hadImageFilename = true;
-				warn("light 'goniometric' names \"filename\" ('" + file +
-					 "'), whose IES-style directional profile is not decoded; "
-					 "the light is emitted as a plain isotropic point light instead "
-					 "(matches this loader's own C5 showcase scene, which uses a "
-					 "synthetic profile rather than a real image file too)");
+				pl.filename = file;
 			}
 			out.punctualLights.push_back(pl);
 			continue;
@@ -1822,19 +1828,11 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			const std::string file = ld.params.getString("filename", "");
 			// pbrt-v4 requires "filename" (a projection light has no other
 			// way to describe what it projects) - a scene that omits it is
-			// itself malformed, and a scene that gives it names an image
-			// this loader still cannot decode (see hadImageFilename's own
-			// comment). Either way the light is emitted as a uniform white
-			// beam of the requested shape/scale/aim, which is the same
-			// synthetic-pattern approximation this loader's own C6 showcase
-			// scene already uses; only the wording differs by which case it is.
+			// itself malformed, worth a warning even though the light still
+			// renders (as a uniform white beam) rather than being dropped.
 			if (!file.empty()) {
 				pl.hadImageFilename = true;
-				warn("light 'projection' names \"filename\" ('" + file +
-					 "'), whose projected image is not decoded; the light is "
-					 "emitted as a uniform white beam instead (matches this "
-					 "loader's own C6 showcase scene, which uses a synthetic "
-					 "pattern rather than a real image file too)");
+				pl.filename = file;
 			} else {
 				warn("light 'projection' has no \"filename\" (pbrt-v4 requires "
 					 "one); emitted as a uniform white beam of the requested "
