@@ -256,6 +256,39 @@ TEST(SppmBsdfF, DiffuseTransmissionTransmissionHemisphereMatchesT) {
 	EXPECT_NEAR(out[2], 0.5 / pi, 1e-9);
 }
 
+TEST(SppmBsdfF, DiffuseTransmissionTexturedReflectanceAndTransmittanceAreUsed) {
+	// Regression guard: sppm_bsdf_f()'s diffuse_transmission special case
+	// must read the material's OWN per-point reflectance_at()/
+	// transmittance_at() (texture-aware when rTex/tTex are bound - see
+	// pbrt_scenes/diffusetransmission-texture.pbrt/barcelona-pavilion's
+	// foliage), not the flat get_reflectance()/get_transmittance()
+	// accessors, which would silently ignore a texture-bound reflectance/
+	// transmittance under --sppm/--bdpt/--mlt even though the plain path
+	// tracer (camera.h) renders it correctly.
+	auto rTex = std::make_shared<solid_color>(color(1.0, 0.0, 0.0));  // red
+	auto tTex = std::make_shared<solid_color>(color(0.0, 0.0, 1.0));  // blue
+	auto mat = std::make_shared<diffuse_transmission>(
+		color(0.5, 0.5, 0.5), color(0.5, 0.5, 0.5), rTex, tTex);
+	SPPMShadingContext ctx;
+	ctx.p = point3(0, 0, 0);
+	ctx.normal = vec3(0, 1, 0);
+	ctx.mat = mat;
+
+	double n[3] = { 0, 1, 0 };
+	double wo[3] = { 0, 1, 0 };
+	double out[3];
+
+	double wi_reflect[3] = { 0, 1, 0 };   // same hemisphere as n -> reflection (rTex)
+	sppm_bsdf_f(ctx, wo, wi_reflect, n, out);
+	EXPECT_NEAR(out[0], 1.0 / pi, 1e-9) << "reflection side must read rTex (red), not flat R";
+	EXPECT_NEAR(out[2], 0.0, 1e-9);
+
+	double wi_transmit[3] = { 0, -1, 0 };  // opposite hemisphere -> transmission (tTex)
+	sppm_bsdf_f(ctx, wo, wi_transmit, n, out);
+	EXPECT_NEAR(out[0], 0.0, 1e-9);
+	EXPECT_NEAR(out[2], 1.0 / pi, 1e-9) << "transmission side must read tTex (blue), not flat T";
+}
+
 TEST(SppmBsdfSampleF, DiffuseTransmissionEnergyConservationConvergesToRPlusT) {
 	// Grayscale R/T (equal across channels) so pr=R, pt=T as scalars and the
 	// expected value of f*|cosI|/pdf simplifies to exactly R+T on every

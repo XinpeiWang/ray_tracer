@@ -172,10 +172,17 @@ inline hit_record sppm_reconstruct_hit_record(const SPPMShadingContext& ctx, con
 // (attenuation=T), so reusing whichever was drawn for an externally-supplied
 // wi that might land in the OTHER lobe's hemisphere is wrong. Handled below
 // via the material's own closed-form f(wo,wi) = SameHemisphere(wi) ? R/pi :
-// T/pi (pbrt-v4 DiffuseTransmissionBxDF::f) computed directly from its
-// get_reflectance()/get_transmittance() accessors -- no scatter() call
+// T/pi (pbrt-v4 DiffuseTransmissionBxDF::f) computed directly via its
+// reflectance_at(rec)/transmittance_at(rec) accessors -- no scatter() call
 // needed at all for this material, sidestepping the stochastic-lobe problem
-// entirely rather than working around it.
+// entirely rather than working around it. Uses reflectance_at/
+// transmittance_at (per-point, texture-aware when the material's own rTex/
+// tTex are bound), NOT the flat get_reflectance()/get_transmittance() -
+// those two ignore a texture-bound reflectance/transmittance entirely
+// (barcelona-pavilion's own foliage binds both), which would have silently
+// rendered flat colours under --sppm/--bdpt/--mlt even though the plain
+// path tracer (camera.h, which calls scatter()/scattering_attenuation()
+// polymorphically) got the real per-point texture value.
 //
 // `mix_material` never reaches this function as such: the owning adapter's
 // Intersect() resolves it down to a concrete sub-material before it's ever
@@ -190,7 +197,8 @@ inline void sppm_bsdf_f(const SPPMShadingContext& ctx, const double wo[3], const
 	double cos_wi = wi[0]*n[0] + wi[1]*n[1] + wi[2]*n[2];
 
 	if (auto dt = dynamic_cast<const diffuse_transmission*>(ctx.mat.get())) {
-		color c = (cos_wi > 0.0) ? dt->get_reflectance() : dt->get_transmittance();
+		hit_record rec = sppm_reconstruct_hit_record(ctx, n);
+		color c = (cos_wi > 0.0) ? dt->reflectance_at(rec) : dt->transmittance_at(rec);
 		double inv_pi = 1.0 / pi;
 		out[0] = c.x() * inv_pi; out[1] = c.y() * inv_pi; out[2] = c.z() * inv_pi;
 		return;

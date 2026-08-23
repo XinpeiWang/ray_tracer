@@ -1271,9 +1271,19 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				// hasMixReflectance's own comments).
 				auto resolveNestedImagemap = [&](const pbrt_scene::Param *p) -> std::string {
 					if (!p || p->strings.empty()) return std::string();
+					// Last-declaration-wins, matching every other texture-
+					// name lookup in this loop (e.g. the "reflectance" tex
+					// lookup above) - pbrt's own redeclare-by-name-overrides
+					// convention. Keep walking rather than returning on the
+					// first match, or a scene that redeclares a Texture name
+					// (imagemap first, something else later) would silently
+					// resolve to the STALE earlier declaration instead of
+					// correctly falling through to the generic warning.
+					const pbrt_scene::TextureDecl *found = nullptr;
 					for (const pbrt_scene::TextureDecl &t : scene.textures)
-						if (t.name == p->strings[0] && t.cls == "imagemap")
-							return t.params.getString("filename", "");
+						if (t.name == p->strings[0]) found = &t;
+					if (found && found->cls == "imagemap")
+						return found->params.getString("filename", "");
 					return std::string();
 				};
 				if (m.kind == MaterialKind::Diffuse && tex && tex->cls == "checkerboard") {

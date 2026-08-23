@@ -269,6 +269,24 @@ TEST(PbrtDroppedTest, CheckerboardWithNestedImagemapTex1IsResolvedNotWarned) {
 	EXPECT_TRUE(s.materials[0].checkerTex2Filename.empty());
 }
 
+TEST(PbrtDroppedTest, CheckerboardNestedTex1UsesTheLastRedeclaredTexture) {
+	// Regression guard: resolveNestedImagemap() must honour pbrt's own
+	// "later Texture declaration with the same name overrides the earlier
+	// one" convention, matching every OTHER texture-name lookup in this same
+	// loop (e.g. the plain "reflectance" lookup) - it must NOT resolve to a
+	// stale earlier declaration just because it happened to be an imagemap.
+	const FlatScene s = build(
+		"Texture \"leaf\" \"spectrum\" \"imagemap\" \"string filename\" [ \"a.png\" ]\n"
+		"Texture \"leaf\" \"spectrum\" \"imagemap\" \"string filename\" [ \"b.png\" ]\n"
+		"Texture \"chk\" \"spectrum\" \"checkerboard\" \"texture tex1\" [ \"leaf\" ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"chk\" ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	ASSERT_EQ(s.materials.size(), 1u);
+	ASSERT_TRUE(s.materials[0].hasCheckerReflectance);
+	EXPECT_EQ(s.materials[0].checkerTex1Filename, "b.png");
+}
+
 TEST(PbrtDroppedTest, CheckerboardWithTex1NestedToANonImagemapStillWarns) {
 	// TWO levels of nesting (tex1 -> a Texture that is itself a checkerboard,
 	// not a bare imagemap) stays unsupported - a documented scope cut, not a

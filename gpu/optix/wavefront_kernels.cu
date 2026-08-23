@@ -403,9 +403,11 @@ __device__ __forceinline__ float3 wf_sample_texture(
 		const int ui = static_cast<int>(floorf(u * tex.uScale));
 		const int vi = static_cast<int>(floorf(v * tex.vScale));
 		const bool is_even = ((ui + vi) % 2) == 0;
-		const float3 c1 = (tex.tex1ImageIdx >= 0) ? sampleImage(textures[tex.tex1ImageIdx]) : tex.color1;
-		const float3 c2 = (tex.tex2ImageIdx >= 0) ? sampleImage(textures[tex.tex2ImageIdx]) : tex.color2;
-		return is_even ? c1 : c2;
+		// Only the winning cell's slot is sampled - see
+		// optix_device_helpers.h's identical UVChecker branch comment.
+		return is_even
+			? ((tex.tex1ImageIdx >= 0) ? sampleImage(textures[tex.tex1ImageIdx]) : tex.color1)
+			: ((tex.tex2ImageIdx >= 0) ? sampleImage(textures[tex.tex2ImageIdx]) : tex.color2);
 	} else if (tex.kind == TextureKind::FBm) {
 		// Matches optix_device_helpers.h's sample_texture() FBm branch (and
 		// fbm_texture::value(), texture.h) exactly.

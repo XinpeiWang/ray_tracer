@@ -103,6 +103,24 @@ class uv_checker_texture : public texture {
         return isEven ? tex1->value(u, v, p) : tex2->value(u, v, p);
     }
 
+    // Forwards the caller's real UV footprint to whichever cell wins,
+    // instead of falling back to the base class's derivative-discarding
+    // default - needed now that tex1/tex2 can be a REAL mipmap_texture (a
+    // one-level-nested bare imagemap, not just solid_color - see
+    // pbrt_flatten::Material::checkerTex1Filename's own comment): without
+    // this override, mipmap_texture::value_diff()'s EWA filtering would
+    // never be reached, silently degrading to its own LOD-0 point-sample
+    // fallback for every nested-imagemap checkerboard cell regardless of
+    // the surface's actual minification.
+    color value_diff(double u, double v, const point3& p,
+                      double dudx, double dvdx, double dudy, double dvdy) const override {
+        const int ui = int(std::floor(u * uscale));
+        const int vi = int(std::floor(v * vscale));
+        const bool isEven = (ui + vi) % 2 == 0;
+        return isEven ? tex1->value_diff(u, v, p, dudx, dvdx, dudy, dvdy)
+                      : tex2->value_diff(u, v, p, dudx, dvdx, dudy, dvdy);
+    }
+
   private:
     double uscale, vscale;
     shared_ptr<texture> tex1, tex2;
@@ -341,6 +359,18 @@ class mix_texture : public texture {
 
     color value(double u, double v, const point3& p) const override {
         return (1.0 - amount) * tex1->value(u, v, p) + amount * tex2->value(u, v, p);
+    }
+
+    // Forwards the caller's real UV footprint to BOTH slots before blending
+    // - see uv_checker_texture::value_diff()'s identical rationale (needed
+    // now that tex1/tex2 can be a real mipmap_texture, not just
+    // solid_color). Unlike uv_checker_texture's single-winning-cell case,
+    // mix blends both every time regardless of footprint, so both slots
+    // need the real differential lookup, not just one.
+    color value_diff(double u, double v, const point3& p,
+                      double dudx, double dvdx, double dudy, double dvdy) const override {
+        return (1.0 - amount) * tex1->value_diff(u, v, p, dudx, dvdx, dudy, dvdy)
+             + amount * tex2->value_diff(u, v, p, dudx, dvdx, dudy, dvdy);
     }
 
   private:

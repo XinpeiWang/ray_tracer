@@ -694,8 +694,9 @@ struct TextureData {
 	float marbleScale;     // Marble: spatial frequency multiplier (pbrt-v4 "scale"). Unused otherwise.
 	float marbleVariation; // Marble: FBm displacement amplitude (pbrt-v4 "variation"). Unused otherwise.
 	float mixAmount;   // Mix: blend weight, 0->color1 1->color2 (pbrt-v4 "amount"). Unused otherwise.
-	// Checker/UVChecker/Mix only: index into LaunchParams::textures for a
-	// ONE-LEVEL-nested bare imagemap Texture bound to tex1/tex2 instead of a
+	// UVChecker/Mix only (NOT the world-space Checker kind, which has no
+	// loader path that ever sets these): index into LaunchParams::textures
+	// for a ONE-LEVEL-nested bare imagemap Texture bound to tex1/tex2 instead of a
 	// flat literal (pbrt_flatten::Material::checkerTex1Filename/
 	// checkerTex2Filename/mixTex1Filename/mixTex2Filename's own comments),
 	// or -1 (the default, via `TextureData tex{};`'s aggregate-init - no

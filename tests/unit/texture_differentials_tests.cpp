@@ -220,6 +220,72 @@ TEST(MipmapTextureDifferentials, ValueDiffBlursMoreThanPointSampleUnderLargeFoot
     EXPECT_LT(blurred_extremeness, 0.15);  // should be close to the 0.5 average
 }
 
+TEST(UvCheckerTextureDifferentials, ValueDiffForwardsFootprintToNestedMipmapTexture) {
+    // Regression guard: uv_checker_texture must forward the caller's real
+    // UV footprint to whichever cell wins, not silently fall back to the
+    // texture base class's derivative-discarding default - needed since a
+    // one-level-nested checkerboard tex1/tex2 can now be a real
+    // mipmap_texture (pbrt_flatten::Material::checkerTex1Filename's own
+    // comment), not just solid_color (the only case this class ever wrapped
+    // before that feature landed, where the distinction was moot).
+    const int w = 32, h = 32;
+    std::vector<float> pixels(w * h * 3);
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) {
+            bool black = ((x/4 + y/4) % 2) == 0;
+            float v = black ? 0.0f : 1.0f;
+            int idx = (y * w + x) * 3;
+            pixels[idx+0] = v; pixels[idx+1] = v; pixels[idx+2] = v;
+        }
+    rtw_image img(w, h, pixels.data());
+    ASSERT_GT(img.height(), 0);
+    auto mip = std::make_shared<mipmap_texture>(std::move(img));
+
+    // uscale/vscale=1 keeps UV 0.3,0.3 in the SAME checker cell (tex1)
+    // regardless of footprint, so any difference below is purely the
+    // nested mipmap_texture's own EWA filtering kicking in (or not).
+    uv_checker_texture chk(1.0, 1.0, mip, std::make_shared<solid_color>(color(1, 0, 0)));
+
+    color point_sample = chk.value_diff(0.3, 0.3, point3(0, 0, 0), 0, 0, 0, 0);
+    double point_extremeness = std::fabs(point_sample.x() - 0.5);
+
+    color blurred = chk.value_diff(0.3, 0.3, point3(0, 0, 0), 1.0, 0.0, 0.0, 1.0);
+    double blurred_extremeness = std::fabs(blurred.x() - 0.5);
+
+    EXPECT_LT(blurred_extremeness, point_extremeness);
+    EXPECT_LT(blurred_extremeness, 0.15);
+}
+
+TEST(MixTextureDifferentials, ValueDiffForwardsFootprintToNestedMipmapTexture) {
+    // Same regression guard as UvCheckerTextureDifferentials above, for
+    // mix_texture's own new value_diff() override.
+    const int w = 32, h = 32;
+    std::vector<float> pixels(w * h * 3);
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) {
+            bool black = ((x/4 + y/4) % 2) == 0;
+            float v = black ? 0.0f : 1.0f;
+            int idx = (y * w + x) * 3;
+            pixels[idx+0] = v; pixels[idx+1] = v; pixels[idx+2] = v;
+        }
+    rtw_image img(w, h, pixels.data());
+    ASSERT_GT(img.height(), 0);
+    auto mip = std::make_shared<mipmap_texture>(std::move(img));
+
+    // amount=0 keeps the blend pinned entirely on tex1 (the mipmap), so the
+    // lerp itself introduces no extra variance to account for.
+    mix_texture mixTex(mip, std::make_shared<solid_color>(color(1, 0, 0)), 0.0);
+
+    color point_sample = mixTex.value_diff(0.3, 0.3, point3(0, 0, 0), 0, 0, 0, 0);
+    double point_extremeness = std::fabs(point_sample.x() - 0.5);
+
+    color blurred = mixTex.value_diff(0.3, 0.3, point3(0, 0, 0), 1.0, 0.0, 0.0, 1.0);
+    double blurred_extremeness = std::fabs(blurred.x() - 0.5);
+
+    EXPECT_LT(blurred_extremeness, point_extremeness);
+    EXPECT_LT(blurred_extremeness, 0.15);
+}
+
 TEST(TextureBaseClass, ValueDiffDefaultsToValueForNonImageTextures) {
     solid_color tex(color(0.2, 0.4, 0.6));
     color v  = tex.value(0.1, 0.2, point3(0,0,0));
