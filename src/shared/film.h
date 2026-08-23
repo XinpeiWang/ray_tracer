@@ -123,6 +123,85 @@ struct GBufferSample {
 };
 
 // ---------------------------------------------------------------------------
+// Shared clamp/accumulate/resolve helpers -- RGBFilm, GBufferFilm, and
+// SpectralFilm's add_sample()/add_splat()/get_pixel_rgb() all repeat the
+// same maxComponentValue clamp, rgbSum/weightSum accumulation, and
+// sensor->output-RGB resolution logic (mirrors pbrt-v4's own RGBFilm,
+// GBufferFilm, SpectralFilm, which share this via inheritance -- this
+// codebase's three film classes are independent templates instead, so the
+// shared pieces are free functions here rather than a common base).
+// Templated on the pixel type (FilmRGBPixel, GBufferPixel which inherits
+// it, or SpectralPixel which duck-types the same rgbSum/weightSum/rgbSplat
+// fields without inheriting) so each caller's own pixel type just works.
+// ---------------------------------------------------------------------------
+
+// clamp_sensor_rgb -- pbrt-v4's per-sample/per-splat maxComponentValue
+// clamp: if the largest of r,g,b exceeds max_component_value, scale all
+// three down by the same factor so the max component lands exactly at the
+// threshold. Templated on T (float or double) so it computes in the same
+// precision the original inline code did at each call site (SpectralFilm's
+// add_sample() clamps in double precision; every other call site in float).
+template <typename T>
+inline void clamp_sensor_rgb(T& r, T& g, T& b, float max_component_value) {
+	float m = std::max({static_cast<float>(r), static_cast<float>(g), static_cast<float>(b)});
+	if (m > max_component_value) {
+		float s = max_component_value / m;
+		r *= s; g *= s; b *= s;
+	}
+}
+
+// clamp_sampled_spectrum -- pbrt-v4's equivalent clamp for a spectral
+// radiance sample (SpectralFilm's own add_sample()/add_splat(), which each
+// clamp the sensor RGB above AND the spectral value separately).
+template <int N>
+inline void clamp_sampled_spectrum(SampledSpectrum<N>& L, float max_component_value) {
+	float lm = L.MaxComponentValue();
+	if (lm > max_component_value) L *= max_component_value / lm;
+}
+
+// accumulate_rgb_sample -- filter-weighted add into a pixel's rgbSum/weightSum.
+template <typename Pixel, typename T>
+inline void accumulate_rgb_sample(Pixel& pix, float weight, T r, T g, T b) {
+	pix.rgbSum[0] += weight * r;
+	pix.rgbSum[1] += weight * g;
+	pix.rgbSum[2] += weight * b;
+	pix.weightSum += weight;
+}
+
+// accumulate_rgb_splat -- filter-weighted atomic add into a pixel's rgbSplat.
+template <typename Pixel, typename T>
+inline void accumulate_rgb_splat(Pixel& pix, double wt, T r, T g, T b) {
+	pix.rgbSplat[0].add(wt * r);
+	pix.rgbSplat[1].add(wt * g);
+	pix.rgbSplat[2].add(wt * b);
+}
+
+// resolve_pixel_rgb -- normalize a pixel's rgbSum by its weightSum, add the
+// (filter-integral-scaled) splat contribution, and convert sensor space to
+// output color space. Shared body of RGBFilm/GBufferFilm/SpectralFilm's own
+// get_pixel_rgb().
+template <typename Pixel>
+inline FilmPixelRGB resolve_pixel_rgb(const Pixel& pix, float filter_integral,
+									   float splat_scale,
+									   const SquareMatrix<3>& output_rgb_from_sensor) {
+	double r = pix.rgbSum[0], g = pix.rgbSum[1], b = pix.rgbSum[2];
+	double ws = pix.weightSum;
+	if (ws != 0.0) { r /= ws; g /= ws; b /= ws; }
+
+	float inv_fi = (filter_integral > 0.f) ? splat_scale / filter_integral : 0.f;
+	r += inv_fi * pix.rgbSplat[0].load();
+	g += inv_fi * pix.rgbSplat[1].load();
+	b += inv_fi * pix.rgbSplat[2].load();
+
+	const auto& M = output_rgb_from_sensor;
+	FilmPixelRGB out;
+	out.r = static_cast<float>(M[0][0]*r + M[0][1]*g + M[0][2]*b);
+	out.g = static_cast<float>(M[1][0]*r + M[1][1]*g + M[1][2]*b);
+	out.b = static_cast<float>(M[2][0]*r + M[2][1]*g + M[2][2]*b);
+	return out;
+}
+
+// ---------------------------------------------------------------------------
 // RGBFilm<Filter>
 //
 // Mirrors pbrt-v4 RGBFilm: filter-weighted sample accumulation,
@@ -169,17 +248,9 @@ public:
 
 		// Optionally clamp (mirrors pbrt-v4 maxComponentValue clamp)
 		float r = srgb.r, g = srgb.g, b = srgb.b;
-		float m = std::max({r, g, b});
-		if (m > max_component_value_) {
-			float s = max_component_value_ / m;
-			r *= s; g *= s; b *= s;
-		}
+		clamp_sensor_rgb(r, g, b, max_component_value_);
 
-		FilmRGBPixel& pix = pixel(px, py);
-		pix.rgbSum[0] += weight * r;
-		pix.rgbSum[1] += weight * g;
-		pix.rgbSum[2] += weight * b;
-		pix.weightSum += weight;
+		accumulate_rgb_sample(pixel(px, py), weight, r, g, b);
 	}
 
 	// -----------------------------------------------------------------------
@@ -189,11 +260,7 @@ public:
 	// -----------------------------------------------------------------------
 	void add_splat(float x, float y, const SensorRGB& srgb) {
 		float r = srgb.r, g = srgb.g, b = srgb.b;
-		float m = std::max({r, g, b});
-		if (m > max_component_value_) {
-			float s = max_component_value_ / m;
-			r *= s; g *= s; b *= s;
-		}
+		clamp_sensor_rgb(r, g, b, max_component_value_);
 
 		// Compute bounds of affected pixels (mirrors pbrt-v4 splatBounds)
 		float px = x + 0.5f;
@@ -212,10 +279,7 @@ public:
 					static_cast<double>(x - ix - 0.5f),
 					static_cast<double>(y - iy - 0.5f));
 				if (wt == 0.0) continue;
-				FilmRGBPixel& pix = pixel(ix, iy);
-				pix.rgbSplat[0].add(wt * r);
-				pix.rgbSplat[1].add(wt * g);
-				pix.rgbSplat[2].add(wt * b);
+				accumulate_rgb_splat(pixel(ix, iy), wt, r, g, b);
 			}
 		}
 	}
@@ -227,26 +291,7 @@ public:
 	// -----------------------------------------------------------------------
 	FilmPixelRGB get_pixel_rgb(int px, int py, float splat_scale = 1.f) const {
 		assert(px >= 0 && px < res_x_ && py >= 0 && py < res_y_);
-		const FilmRGBPixel& pix = pixel(px, py);
-
-		double r = pix.rgbSum[0];
-		double g = pix.rgbSum[1];
-		double b = pix.rgbSum[2];
-
-		// Normalize by filter weight sum
-		double ws = pix.weightSum;
-		if (ws != 0.0) { r /= ws; g /= ws; b /= ws; }
-
-		// Add splat contribution (mirrors pbrt-v4: splatScale * splat / filterIntegral)
-		float inv_fi = (filter_integral_ > 0.f) ? splat_scale / filter_integral_ : 0.f;
-		r += inv_fi * pix.rgbSplat[0].load();
-		g += inv_fi * pix.rgbSplat[1].load();
-		b += inv_fi * pix.rgbSplat[2].load();
-
-		// Apply outputRGBFromSensorRGB (sensor space -> output color space)
-		return to_output_rgb(static_cast<float>(r),
-							 static_cast<float>(g),
-							 static_cast<float>(b));
+		return resolve_pixel_rgb(pixel(px, py), filter_integral_, splat_scale, output_rgb_from_sensor_);
 	}
 
 	// -----------------------------------------------------------------------
@@ -319,17 +364,10 @@ public:
 		assert(px >= 0 && px < res_x_ && py >= 0 && py < res_y_);
 
 		float r = srgb.r, g = srgb.g, b = srgb.b;
-		float m = std::max({r, g, b});
-		if (m > max_component_value_) {
-			float s = max_component_value_ / m;
-			r *= s; g *= s; b *= s;
-		}
+		clamp_sensor_rgb(r, g, b, max_component_value_);
 
 		GBufferPixel& pix = pixel(px, py);
-		pix.rgbSum[0] += weight * r;
-		pix.rgbSum[1] += weight * g;
-		pix.rgbSum[2] += weight * b;
-		pix.weightSum += weight;
+		accumulate_rgb_sample(pix, weight, r, g, b);
 
 		if (gbuf) {
 			pix.gBufWeightSum += weight;
@@ -351,11 +389,7 @@ public:
 	// -----------------------------------------------------------------------
 	void add_splat(float x, float y, const SensorRGB& srgb) {
 		float r = srgb.r, g = srgb.g, b = srgb.b;
-		float m = std::max({r, g, b});
-		if (m > max_component_value_) {
-			float s = max_component_value_ / m;
-			r *= s; g *= s; b *= s;
-		}
+		clamp_sensor_rgb(r, g, b, max_component_value_);
 
 		float px_ = x + 0.5f, py_ = y + 0.5f;
 		float rad = static_cast<float>(filter_.radius());
@@ -370,10 +404,7 @@ public:
 					static_cast<double>(x - ix - 0.5f),
 					static_cast<double>(y - iy - 0.5f));
 				if (wt == 0.0) continue;
-				GBufferPixel& pix = pixel(ix, iy);
-				pix.rgbSplat[0].add(wt * r);
-				pix.rgbSplat[1].add(wt * g);
-				pix.rgbSplat[2].add(wt * b);
+				accumulate_rgb_splat(pixel(ix, iy), wt, r, g, b);
 			}
 		}
 	}
@@ -383,24 +414,7 @@ public:
 	// -----------------------------------------------------------------------
 	FilmPixelRGB get_pixel_rgb(int px, int py, float splat_scale = 1.f) const {
 		assert(px >= 0 && px < res_x_ && py >= 0 && py < res_y_);
-		const GBufferPixel& pix = pixel(px, py);
-
-		double r = pix.rgbSum[0], g = pix.rgbSum[1], b = pix.rgbSum[2];
-		double ws = pix.weightSum;
-		if (ws != 0.0) { r /= ws; g /= ws; b /= ws; }
-
-		float inv_fi = (filter_integral_ > 0.f) ? splat_scale / filter_integral_ : 0.f;
-		r += inv_fi * pix.rgbSplat[0].load();
-		g += inv_fi * pix.rgbSplat[1].load();
-		b += inv_fi * pix.rgbSplat[2].load();
-
-		// Apply sensor→output matrix (mirrors pbrt-v4 outputRGBFromSensorRGB * rgb)
-		const auto& M = output_rgb_from_sensor_;
-		FilmPixelRGB out;
-		out.r = static_cast<float>(M[0][0]*r + M[0][1]*g + M[0][2]*b);
-		out.g = static_cast<float>(M[1][0]*r + M[1][1]*g + M[1][2]*b);
-		out.b = static_cast<float>(M[2][0]*r + M[2][1]*g + M[2][2]*b);
-		return out;
+		return resolve_pixel_rgb(pixel(px, py), filter_integral_, splat_scale, output_rgb_from_sensor_);
 	}
 
 	// -----------------------------------------------------------------------
@@ -594,24 +608,13 @@ public:
 
 		// --- RGB accumulation (identical to RGBFilm) -------------------------
 		double r = srgb.r, g = srgb.g, b = srgb.b;
-		// Clamp sensor RGB
-		float m = std::max({static_cast<float>(r), static_cast<float>(g),
-							static_cast<float>(b)});
-		if (m > max_component_value_) {
-			float s = max_component_value_ / m;
-			r *= s; g *= s; b *= s;
-		}
-		pix.rgbSum[0] += weight * r;
-		pix.rgbSum[1] += weight * g;
-		pix.rgbSum[2] += weight * b;
-		pix.weightSum += weight;
+		clamp_sensor_rgb(r, g, b, max_component_value_);
+		accumulate_rgb_sample(pix, weight, r, g, b);
 
 		// --- Spectral accumulation -------------------------------------------
 		// Clamp spectral radiance (per pbrt-v4 SpectralFilm::AddSample)
 		SampledSpectrum<N> Lc = L;
-		float lm = Lc.MaxComponentValue();
-		if (lm > max_component_value_)
-			Lc *= max_component_value_ / lm;
+		clamp_sampled_spectrum(Lc, max_component_value_);
 
 		// Scale by CIE_Y_integral to undo photometric normalisation.
 		// Since wavelengths are sampled uniformly within [lambdaMin,lambdaMax]
@@ -649,21 +652,12 @@ public:
 
 		// Clamp sensor RGB (mirrors pbrt-v4 AddSplat RGB path)
 		SensorRGB srgb_c = srgb;
-		{
-			float m = std::max({srgb_c.r, srgb_c.g, srgb_c.b});
-			if (m > max_component_value_) {
-				float s = max_component_value_ / m;
-				srgb_c.r *= s; srgb_c.g *= s; srgb_c.b *= s;
-			}
-		}
+		clamp_sensor_rgb(srgb_c.r, srgb_c.g, srgb_c.b, max_component_value_);
 
 		// Clamp and normalise spectral radiance.
 		// pbrt-v4: L = SafeDiv(L, lambda.PDF()) / NSpectrumSamples
 		SampledSpectrum<N> Ls = L;
-		{
-			float lm = Ls.MaxComponentValue();
-			if (lm > max_component_value_) Ls *= max_component_value_ / lm;
-		}
+		clamp_sampled_spectrum(Ls, max_component_value_);
 		SampledSpectrum<N> pdf = lambda.PDF();
 		for (int i = 0; i < N; ++i)
 			Ls[i] = (pdf[i] != 0.f) ? Ls[i] / (pdf[i] * N) : 0.f;
@@ -677,9 +671,7 @@ public:
 				SpectralPixel& pix = pixel(ix, iy);
 
 				// RGB splat (atomic)
-				pix.rgbSplat[0].add(wt * srgb_c.r);
-				pix.rgbSplat[1].add(wt * srgb_c.g);
-				pix.rgbSplat[2].add(wt * srgb_c.b);
+				accumulate_rgb_splat(pix, wt, srgb_c.r, srgb_c.g, srgb_c.b);
 
 				// Spectral splat (per bucket, plain double)
 				for (int i = 0; i < N; ++i) {
@@ -696,23 +688,7 @@ public:
 	// -----------------------------------------------------------------------
 	FilmPixelRGB get_pixel_rgb(int px, int py, float splat_scale = 1.f) const {
 		assert(px >= 0 && px < res_x_ && py >= 0 && py < res_y_);
-		const SpectralPixel& pix = pixel(px, py);
-
-		double r = pix.rgbSum[0], g = pix.rgbSum[1], b = pix.rgbSum[2];
-		double ws = pix.weightSum;
-		if (ws != 0.0) { r /= ws; g /= ws; b /= ws; }
-
-		float inv_fi = (filter_integral_ > 0.f) ? splat_scale / filter_integral_ : 0.f;
-		r += inv_fi * pix.rgbSplat[0].v.load(std::memory_order_relaxed);
-		g += inv_fi * pix.rgbSplat[1].v.load(std::memory_order_relaxed);
-		b += inv_fi * pix.rgbSplat[2].v.load(std::memory_order_relaxed);
-
-		const auto& M = output_rgb_from_sensor_;
-		FilmPixelRGB out;
-		out.r = static_cast<float>(M[0][0]*r + M[0][1]*g + M[0][2]*b);
-		out.g = static_cast<float>(M[1][0]*r + M[1][1]*g + M[1][2]*b);
-		out.b = static_cast<float>(M[2][0]*r + M[2][1]*g + M[2][2]*b);
-		return out;
+		return resolve_pixel_rgb(pixel(px, py), filter_integral_, splat_scale, output_rgb_from_sensor_);
 	}
 
 	// -----------------------------------------------------------------------
