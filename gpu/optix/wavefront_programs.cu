@@ -703,7 +703,15 @@ extern "C" __global__ void __anyhit__wf_triangle() {
 	const int instBase = wf_instance_base();
 	const int primIdx = (int)(wf_prim_base(instBase) + optixGetPrimitiveIndex());
 	const TriangleData& tri = wf_params.triangles[primIdx];
-	const MaterialData& mat = wf_params.materials[tri.materialIdx];
+	// Mix must resolve before alphaMaskTexIdx is read - a Mix wrapper's own
+	// alphaMaskTexIdx is always -1 (never authored directly on it), so
+	// checking it unresolved would silently skip a sub-material's real alpha
+	// cutout. See __anyhit__triangle's identical fix (optix_intersection_
+	// triangle.h) and MaterialType::Mix's own comment (optix_types.h).
+	const float wf_t = optixGetRayTmax();
+	const float3 wf_hit_point = optixGetWorldRayOrigin() + wf_t * optixGetWorldRayDirection();
+	int matIdx = tri.materialIdx;
+	const MaterialData mat = wf_resolve_mix_material(wf_params.materials[matIdx], matIdx, wf_hit_point, matIdx);
 	if (mat.alphaMaskTexIdx < 0) return;
 
 	// Real UV when authored, else the same barycentric fallback CPU's own
@@ -1500,10 +1508,14 @@ extern "C" __global__ void __anyhit__wf_shadow_cylinder() {
 		optixTerminateRay();
 		return;
 	}
+	// MaterialType::Medium: see __anyhit__shadow_cylinder's identical fix
+	// (optix_anyhit_shadow.h) - a shadow ray through a fog cylinder should
+	// pass through, not be reported as a hard occluder.
 	if (mat.type == MaterialType::Dielectric ||
 		mat.type == MaterialType::RoughDielectric ||
 		mat.type == MaterialType::ThinDielectric ||
-		mat.type == MaterialType::DiffuseTransmission) {
+		mat.type == MaterialType::DiffuseTransmission ||
+		mat.type == MaterialType::Medium) {
 		optixIgnoreIntersection();
 		return;
 	}

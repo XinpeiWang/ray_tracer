@@ -336034,12 +336034,12 @@ $L__BB16_5:
 	@%p5 bra 	$L__BB16_2;
 
 $L__BB16_6:
-	setp.gt.u32 	%p6, %r22, 9;
+	setp.gt.u32 	%p6, %r22, 11;
 	@%p6 bra 	$L__BB16_10;
 
 	mov.u32 	%r13, 1;
 	shl.b32 	%r14, %r13, %r22;
-	and.b32  	%r15, %r14, 660;
+	and.b32  	%r15, %r14, 2708;
 	setp.ne.s32 	%p7, %r15, 0;
 	@%p7 bra 	$L__BB16_12;
 	bra.uni 	$L__BB16_8;
@@ -336048,7 +336048,9 @@ $L__BB16_12:
 	// begin inline asm
 	call _optix_ignore_intersection, ();
 	// end inline asm
-	bra.uni 	$L__BB16_11;
+
+$L__BB16_11:
+	ret;
 
 $L__BB16_8:
 	setp.eq.s32 	%p8, %r22, 3;
@@ -336074,9 +336076,7 @@ $L__BB16_10:
 	// begin inline asm
 	call _optix_terminate_ray, ();
 	// end inline asm
-
-$L__BB16_11:
-	ret;
+	bra.uni 	$L__BB16_11;
 
 }
 	// .globl	__anyhit__shadow_triangle

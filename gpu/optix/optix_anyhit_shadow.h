@@ -186,10 +186,21 @@ extern "C" __global__ void __anyhit__shadow_cylinder() {
 		return;
 	}
 
+	// MaterialType::Medium belongs here for the same reason as
+	// __anyhit__shadow_sphere's own Medium entry: full Beer-Lambert shadow-
+	// ray transmittance through a fog cylinder isn't implemented, so it's
+	// treated as non-occluding (light passes straight through) rather than
+	// wrongly blocking NEE entirely. Real, reachable now that pbrt_gpu_
+	// builder.h's cylinder loop resolves MediumInterface via
+	// mediumMaterialIndex() - omitting it here was a real bug (a shadow ray
+	// toward a light on the far side of a fog cylinder was wrongly reported
+	// fully occluded), same bug class __anyhit__shadow_sphere's own comment
+	// already documents for that shape.
 	if (mat.type == MaterialType::Dielectric ||
 		mat.type == MaterialType::RoughDielectric ||
 		mat.type == MaterialType::ThinDielectric ||
-		mat.type == MaterialType::DiffuseTransmission) {
+		mat.type == MaterialType::DiffuseTransmission ||
+		mat.type == MaterialType::Medium) {
 		optixIgnoreIntersection();
 		return;
 	}
