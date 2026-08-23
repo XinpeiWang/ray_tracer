@@ -1379,8 +1379,8 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// "eta" is pbrt's name for index of refraction on dielectrics.
 		m.ior = md.params.getFloat("eta", md.params.getFloat("ior", 1.5));
 
-		// Conductor only: pbrt describes a conductor's complex IOR via
-		// "spectrum eta"/"spectrum k" bound to a NAMED spectrum
+		// Conductor OR CoatedConductor: pbrt describes a conductor's complex
+		// IOR via "spectrum eta"/"spectrum k" bound to a NAMED spectrum
 		// ("metal-Ag-eta"/"metal-Ag-k", etc.), not the plain floats/RGB
 		// getFloat()/getVec3() above can read - resolve the common named-
 		// metal case against this codebase's own RGB-approximated conductor
@@ -1388,14 +1388,39 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// approximation (getString() only inspects the param's `strings`
 		// vector, so this is safe to call even when "eta"/"k" turn out to be
 		// an explicit RGB value instead - it just won't find one there).
-		if (m.kind == MaterialKind::Conductor) {
+		// CoatedConductor previously never ran this at all (Conductor-only
+		// gate) - even "metal-Ag-eta" was silently ignored, always falling
+		// back to reflectanceToConductorK()'s approximation regardless of
+		// what the scene actually asked for.
+		if (m.kind == MaterialKind::Conductor || m.kind == MaterialKind::CoatedConductor) {
 			std::string elem = conductorElementFromSpectrumName(md.params.getString("eta", ""));
 			if (elem.empty()) elem = conductorElementFromSpectrumName(md.params.getString("k", ""));
 			if (const ConductorPreset* preset = elem.empty() ? nullptr : FindConductorPreset(elem.c_str())) {
 				m.hasConductorPreset = true;
 				m.conductorEta[0] = preset->eta_r; m.conductorEta[1] = preset->eta_g; m.conductorEta[2] = preset->eta_b;
 				m.conductorK[0]   = preset->k_r;   m.conductorK[1]   = preset->k_g;   m.conductorK[2]   = preset->k_b;
-			} else if (!md.params.find("eta") && !md.params.find("k") && !md.params.find("reflectance")) {
+			} else if (const pbrt_scene::Param* etaP = md.params.find("eta"); etaP && etaP->numbers.size() >= 3 &&
+					   md.params.find("k") && md.params.find("k")->numbers.size() >= 3) {
+				// An explicit "rgb eta"/"rgb k" (not a named spectrum, or
+				// pbrt_flatten.h wouldn't have reached here) - this
+				// codebase's own real GGX conductor BxDF (bxdfs_conductor.h,
+				// gpu/optix/optix_types.h's eta_c/k_c) is already a plain
+				// 3-float RGB model matching ConductorPreset's own shape
+				// exactly, unlike pbrt-v4's real per-wavelength spectral
+				// upsample for this same case (RGBUnboundedSpectrum) - so
+				// this just reads the 3 numbers directly, no spectral
+				// machinery needed. Requires BOTH eta and k as real RGB
+				// triples (not just one) to activate the real model, since a
+				// scene giving only one has no pbrt-v4-documented default
+				// for CoatedConductor to fall back to the way plain
+				// Conductor's own Cu-default branch below does.
+				const pbrt_scene::Vec3 eta = md.params.getVec3("eta", {0.0, 0.0, 0.0});
+				const pbrt_scene::Vec3 k   = md.params.getVec3("k",   {0.0, 0.0, 0.0});
+				m.hasConductorPreset = true;
+				m.conductorEta[0] = eta.x; m.conductorEta[1] = eta.y; m.conductorEta[2] = eta.z;
+				m.conductorK[0]   = k.x;   m.conductorK[1]   = k.y;   m.conductorK[2]   = k.z;
+			} else if (m.kind == MaterialKind::Conductor &&
+					   !md.params.find("eta") && !md.params.find("k") && !md.params.find("reflectance")) {
 				// pbrt-v4's real default (materials.cpp's ConductorMaterial::
 				// Create: "if (!reflectance) { if (!eta) eta = Cu-eta; if
 				// (!k) k = Cu-k; }") when a scene gives NONE of eta/k/
@@ -1410,7 +1435,11 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				// unrecognized-as-a-named-spectrum) eta/k/reflectance still
 				// falls through to that fuzz-mirror approximation below,
 				// unchanged - this only replaces the "gave nothing at all"
-				// case.
+				// case. Conductor ONLY: pbrt-v4 documents no equivalent
+				// "nothing given" default for CoatedConductorMaterial, so
+				// this doesn't extend to it - CoatedConductor's own
+				// reflectanceToConductorK() approximation stays the
+				// fallback for that kind's "nothing given" case, unchanged.
 				if (const ConductorPreset* cu = FindConductorPreset("Cu")) {
 					m.hasConductorPreset = true;
 					m.conductorEta[0] = cu->eta_r; m.conductorEta[1] = cu->eta_g; m.conductorEta[2] = cu->eta_b;

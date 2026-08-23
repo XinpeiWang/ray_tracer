@@ -163,6 +163,16 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		}
 		return std::make_shared<coated_diffuse>(albedo, m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
 	case pbrt_flatten::MaterialKind::CoatedConductor: {
+		// A recognized named conductor spectrum or an explicit "rgb eta"/
+		// "rgb k" (m.hasConductorPreset - see flatten()'s own Conductor-OR-
+		// CoatedConductor branch) gets the real complex-IOR model, same as
+		// the Conductor case above; "nothing given"/an unrecognized case
+		// keeps the pre-existing reflectanceToConductorK() approximation.
+		if (m.hasConductorPreset)
+			return std::make_shared<coated_conductor>(
+				m.conductorEta[0], m.conductorEta[1], m.conductorEta[2],
+				m.conductorK[0], m.conductorK[1], m.conductorK[2],
+				m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
 		const color k = reflectanceToConductorK(albedo);
 		return std::make_shared<coated_conductor>(
 			1.0, 1.0, 1.0, k.x(), k.y(), k.z(), m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);

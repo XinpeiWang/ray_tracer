@@ -990,6 +990,65 @@ TEST(PbrtCpuBuildTest, NamedMetalSpectrumConductorBuildsTheRealConductorClass) {
 		   "fuzz-mirror approximation";
 }
 
+TEST(PbrtCpuBuildTest, ExplicitRgbEtaKConductorBuildsTheRealConductorClass) {
+	// This codebase's own conductor BxDF is already a plain 3-float RGB
+	// model (matching its own named-spectrum table's shape), so an explicit
+	// "rgb eta"/"rgb k" pair (not a named spectrum) needs no spectral
+	// upsampling to build the real class - see flatten()'s own Conductor-
+	// OR-CoatedConductor branch.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Material \"conductor\" \"rgb eta\" [ 0.2 0.9 1.4 ] \"rgb k\" [ 3.9 2.5 2.1 ] "
+		"\"float roughness\" [ 0.1 ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	EXPECT_NE(dynamic_cast<conductor *>(rec.mat.get()), nullptr)
+		<< "a pbrt conductor bound to an explicit rgb eta/k pair must build "
+		   "the real conductor (GGX + complex Fresnel) class, not fall back "
+		   "to the flat-albedo metal fuzz-mirror approximation";
+}
+
+TEST(PbrtCpuBuildTest, ExplicitRgbEtaOnlyConductorFallsBackToMetal) {
+	// Giving only ONE of eta/k (not both) as an explicit RGB triple must NOT
+	// activate the real model - there's no well-defined "the other one
+	// defaults to what" for an arbitrary explicit pair (unlike the
+	// documented Cu-default for giving NEITHER).
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Material \"conductor\" \"rgb eta\" [ 0.2 0.9 1.4 ] \"float roughness\" [ 0.1 ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	EXPECT_NE(dynamic_cast<metal *>(rec.mat.get()), nullptr)
+		<< "a pbrt conductor with only eta (no k) as explicit RGB must keep "
+		   "the pre-existing metal fuzz-mirror approximation";
+}
+
+TEST(PbrtCpuBuildTest, CoatedConductorNamedSpectrumBuildsTheRealConductorFresnel) {
+	// CoatedConductor previously never resolved a named spectrum (or an
+	// explicit RGB eta/k) at all - even "metal-Au-eta" was silently ignored,
+	// always going through reflectanceToConductorK()'s approximation. Gold's
+	// real complex IOR has a strongly chromatic (red >> blue) normal-
+	// incidence Fresnel; the approximation would stay grey/achromatic here
+	// since no "reflectance" was even given (defaults to m.color's flat
+	// 0.5,0.5,0.5), so this distinguishes the two paths unambiguously.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Material \"coatedconductor\" \"spectrum eta\" [ \"metal-Au-eta\" ] "
+		"\"spectrum k\" [ \"metal-Au-k\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *cc = dynamic_cast<coated_conductor *>(rec.mat.get());
+	ASSERT_NE(cc, nullptr);
+	color f0 = cc->get_conductor_f0();
+	EXPECT_GT(f0.x(), f0.z())
+		<< "a coatedconductor bound to a recognized named metal spectrum "
+		   "must build the real complex-IOR Fresnel (gold: red F0 >> blue "
+		   "F0), not the pre-existing grey/achromatic approximation";
+}
+
 TEST(PbrtCpuBuildTest, UnrecognizedConductorSpectrumFallsBackToMetal) {
 	const pbrt_cpu::BuildResult b = buildFrom(
 		"Material \"conductor\" \"rgb reflectance\" [ .8 .8 .8 ] "

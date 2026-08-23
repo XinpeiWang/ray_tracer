@@ -633,12 +633,25 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 			d.transmittanceTextureIdx = getOrBuildPbrtImageTexture(m.transmittanceTextureFilename, out, imageTextureCache);
 		break;
 	case pbrt_flatten::MaterialKind::CoatedConductor:
-		// Same reflectance-only approximation pbrt_cpu_builder.h uses (see
-		// its reflectanceToConductorK() comment) - eta=1, k solved from the
-		// albedo already read above as a normal-incidence reflectance.
+		// A recognized named conductor spectrum or an explicit "rgb eta"/
+		// "rgb k" (m.hasConductorPreset - see flatten()'s own Conductor-OR-
+		// CoatedConductor branch, and pbrt_cpu_builder.h's identical
+		// branch) gets the real complex IOR; otherwise the same
+		// reflectance-only approximation as before (see
+		// reflectanceToConductorK()'s own comment) - eta=1, k solved from
+		// the albedo already read above as a normal-incidence reflectance.
 		d.type = MaterialType::CoatedConductor;
-		d.eta_c = make_float3(1.0f, 1.0f, 1.0f);
-		d.k_c = reflectanceToConductorK(d.albedo);
+		if (m.hasConductorPreset) {
+			d.eta_c = make_float3(static_cast<float>(m.conductorEta[0]),
+								   static_cast<float>(m.conductorEta[1]),
+								   static_cast<float>(m.conductorEta[2]));
+			d.k_c = make_float3(static_cast<float>(m.conductorK[0]),
+								 static_cast<float>(m.conductorK[1]),
+								 static_cast<float>(m.conductorK[2]));
+		} else {
+			d.eta_c = make_float3(1.0f, 1.0f, 1.0f);
+			d.k_c = reflectanceToConductorK(d.albedo);
+		}
 		break;
 	case pbrt_flatten::MaterialKind::Subsurface:
 		// Real tabulated BSSRDF, on BOTH GPU backends (see optix_types.h's
