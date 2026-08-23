@@ -48,12 +48,22 @@ extern "C" __global__ void __anyhit__triangle() {
 		? params.instancePrimBase[optixGetInstanceId()] : -1;
 	const unsigned int triBase = (instBase >= 0) ? (unsigned int)instBase : 0u;
 	const TriangleData& tri = params.triangles[triBase + primIdx];
+	// Cheap common-case gate BEFORE paying for hit_point/Mix-resolution: a
+	// triangle whose raw (unresolved) material is neither Mix nor
+	// alpha-masked can never need either, so skip both entirely - this
+	// program runs for every candidate BVH intersection along every ray,
+	// not just the eventual closest hit, and the overwhelming majority of
+	// triangles are neither. A Mix wrapper's own alphaMaskTexIdx is always
+	// -1 (never authored directly on it), so Mix must still fall through
+	// here even though its own alphaMaskTexIdx looks like "no mask" -
+	// resolution might reveal a sub-material that has one.
+	const MaterialData& raw_mat = params.materials[tri.materialIdx];
+	if (raw_mat.type != MaterialType::Mix && raw_mat.alphaMaskTexIdx < 0) return;
+
 	const float t = optixGetRayTmax();
 	const float3 hit_point = optixGetWorldRayOrigin() + t * optixGetWorldRayDirection();
-	// Mix must resolve before alphaMaskTexIdx is read - a Mix wrapper's own
-	// alphaMaskTexIdx is always -1 (never authored directly on it), so
-	// checking it unresolved would silently skip a sub-material's real alpha
-	// cutout. See MaterialType::Mix's own comment (optix_types.h).
+	// Mix must resolve before alphaMaskTexIdx is read - see MaterialType::
+	// Mix's own comment (optix_types.h).
 	int matIdx = tri.materialIdx;
 	const MaterialData mat = resolve_mix_material(params.materials[matIdx], matIdx, hit_point, matIdx);
 	if (mat.alphaMaskTexIdx < 0) return;

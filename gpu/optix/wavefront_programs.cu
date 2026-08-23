@@ -159,6 +159,37 @@ __device__ __forceinline__ float3 wf_dc_apply_normal_from_w2o(const float w2o[12
 		w2o[2] * n.x + w2o[6] * n.y + w2o[10] * n.z);
 }
 
+// Wavefront-native duplicate of optix_disk_cylinder_helpers.h's identically
+// named recursive-backend function (same cross-module reason every other
+// wf_dc_* helper in this file is duplicated, not shared via #include) -
+// factored out of __intersection__wf_cylinder/__closesthit__wf_cylinder's
+// Medium branch, which used to each carry their own copy of this exact
+// double-precision tube-quadric solve. See the recursive twin's own
+// comment for why ray-parallel-to-axis (a==0) returns false here
+// specifically (a SURFACE-crossing answer), and why a VOLUME/interval
+// caller (the Medium branch) must special-case that input itself rather
+// than getting an answer from this function.
+__device__ __forceinline__ bool wf_dc_solve_tube_quadratic(const float3& ro, const float3& rd, float radius,
+															 float& t0, float& t1) {
+	const double da = (double)rd.x, db = (double)rd.y;
+	const double oa = (double)ro.x, ob = (double)ro.y;
+	const double a = da * da + db * db;
+	if (a == 0.0) return false;
+	const double b = 2.0 * (oa * da + ob * db);
+	const double c = oa * oa + ob * ob - (double)radius * (double)radius;
+	const double f = b / (2.0 * a);
+	const double vx = oa - f * da, vy = ob - f * db;
+	const double len_v = sqrt(vx * vx + vy * vy);
+	const double discrim = 4.0 * a * ((double)radius + len_v) * ((double)radius - len_v);
+	if (discrim < 0.0) return false;
+	const double sqrt_disc = sqrt(discrim);
+	const double q = (b < 0.0) ? -0.5 * (b - sqrt_disc) : -0.5 * (b + sqrt_disc);
+	t0 = (float)(q / a);
+	t1 = (float)(c / q);
+	if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
+	return true;
+}
+
 // ============================================================================
 // Payload structs (passed by pointer via p0/p1)
 // ============================================================================
@@ -703,6 +734,14 @@ extern "C" __global__ void __anyhit__wf_triangle() {
 	const int instBase = wf_instance_base();
 	const int primIdx = (int)(wf_prim_base(instBase) + optixGetPrimitiveIndex());
 	const TriangleData& tri = wf_params.triangles[primIdx];
+	// Cheap common-case gate BEFORE paying for hit_point/Mix-resolution -
+	// see __anyhit__triangle's identical gate (optix_intersection_triangle.h)
+	// for the full reasoning (this program runs per candidate intersection,
+	// not just the closest hit, and the overwhelming majority of triangles
+	// are neither Mix nor alpha-masked).
+	const MaterialData& raw_mat = wf_params.materials[tri.materialIdx];
+	if (raw_mat.type != MaterialType::Mix && raw_mat.alphaMaskTexIdx < 0) return;
+
 	// Mix must resolve before alphaMaskTexIdx is read - a Mix wrapper's own
 	// alphaMaskTexIdx is always -1 (never authored directly on it), so
 	// checking it unresolved would silently skip a sub-material's real alpha
@@ -1079,22 +1118,11 @@ extern "C" __global__ void __intersection__wf_cylinder() {
 
 	// Stable quadratic solve in double precision - see optix_intersection_
 	// disk_cylinder.h's own __intersection__cylinder for why (avoids
-	// catastrophic cancellation for a thin cylinder seen nearly edge-on).
-	const double da = (double)rd.x, db = (double)rd.y;
-	const double oa = (double)ro.x, ob = (double)ro.y;
-	const double a = da * da + db * db;
-	const double b = 2.0 * (oa * da + ob * db);
-	const double c = oa * oa + ob * ob - (double)cyl.radius * (double)cyl.radius;
-	if (a == 0.0) return;
-	const double f = b / (2.0 * a);
-	const double vx = oa - f * da, vy = ob - f * db;
-	const double len_v = sqrt(vx * vx + vy * vy);
-	const double discrim = 4.0 * a * ((double)cyl.radius + len_v) * ((double)cyl.radius - len_v);
-	if (discrim < 0.0) return;
-	const double sqrt_disc = sqrt(discrim);
-	const double q = (b < 0.0) ? -0.5 * (b - sqrt_disc) : -0.5 * (b + sqrt_disc);
-	float t0 = (float)(q / a), t1 = (float)(c / q);
-	if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
+	// catastrophic cancellation for a thin cylinder seen nearly edge-on) -
+	// factored into wf_dc_solve_tube_quadratic (this file), shared with the
+	// Medium closest-hit case below.
+	float t0, t1;
+	if (!wf_dc_solve_tube_quadratic(ro, rd, cyl.radius, t0, t1)) return;
 	if (t0 > ray_tmax || t1 < ray_tmin) return;
 
 	float t = t0;
@@ -1151,29 +1179,18 @@ extern "C" __global__ void __closesthit__wf_cylinder() {
 	if (cyl_mat.type == MaterialType::Medium) {
 		const float3 ro = wf_dc_apply_point(cyl.w2o, ray_orig);
 		const float3 rd = wf_dc_apply_vector(cyl.w2o, ray_dir);
-		const double da = (double)rd.x, db = (double)rd.y;
-		const double oa = (double)ro.x, ob = (double)ro.y;
-		const double a = da * da + db * db;
+		// Ray parallel to the axis handled directly here, NOT via
+		// wf_dc_solve_tube_quadratic() below - see the recursive backend's
+		// identical __closesthit__cylinder Medium case (optix_intersection_
+		// disk_cylinder.h) for why: that function's a==0 case answers a
+		// SURFACE-crossing question (always no), the wrong question for
+		// this VOLUME/interval test.
 		float tube_t0 = -1e30f, tube_t1 = 1e30f;
-		bool hasTube = true;
-		if (a == 0.0) {
-			hasTube = (oa * oa + ob * ob) <= (double)cyl.radius * (double)cyl.radius;
+		bool hasTube;
+		if (rd.x == 0.0f && rd.y == 0.0f) {
+			hasTube = (double)ro.x * ro.x + (double)ro.y * ro.y <= (double)cyl.radius * (double)cyl.radius;
 		} else {
-			const double b = 2.0 * (oa * da + ob * db);
-			const double c = oa * oa + ob * ob - (double)cyl.radius * (double)cyl.radius;
-			const double f = b / (2.0 * a);
-			const double vx = oa - f * da, vy = ob - f * db;
-			const double len_v = sqrt(vx * vx + vy * vy);
-			const double discrim = 4.0 * a * ((double)cyl.radius + len_v) * ((double)cyl.radius - len_v);
-			if (discrim < 0.0) {
-				hasTube = false;
-			} else {
-				const double sqrt_disc = sqrt(discrim);
-				const double q = (b < 0.0) ? -0.5 * (b - sqrt_disc) : -0.5 * (b + sqrt_disc);
-				tube_t0 = (float)(q / a);
-				tube_t1 = (float)(c / q);
-				if (tube_t0 > tube_t1) { float tmp = tube_t0; tube_t0 = tube_t1; tube_t1 = tmp; }
-			}
+			hasTube = wf_dc_solve_tube_quadratic(ro, rd, cyl.radius, tube_t0, tube_t1);
 		}
 
 		float z_t0 = -1e30f, z_t1 = 1e30f;

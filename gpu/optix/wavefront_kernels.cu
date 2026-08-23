@@ -241,6 +241,22 @@ __device__ __forceinline__ bool wf_material_requires_sphere_only_handling(Materi
 	}
 }
 
+// Whether `type` has real shading support on disk/cylinder geometry
+// (evaluate_materials()'s geomType 4/5) in this shared kernel - the
+// positive inverse of "should trap", kept as one named predicate instead
+// of letting evaluate_materials()'s own trap condition accumulate a new
+// `&& !exemptionN` term for every (shape, material) combination that goes
+// from trapped to real support (Hair first, now Medium-on-cylinder) - see
+// wf_material_requires_sphere_only_handling()'s own switch list above for
+// why each of these types is trapped by DEFAULT; this function is where
+// that default gets overridden per shape, in one place, rather than at
+// each call site.
+__device__ __forceinline__ bool wf_material_supported_on_disk_cylinder_geom(MaterialType type, int geomType) {
+	if (type == MaterialType::Hair) return true;           // real support on disk (4) and cylinder (5) alike
+	if (type == MaterialType::Medium) return geomType == 5; // real support on cylinder only - see pbrt_gpu_builder.h's cylinder loop
+	return !wf_material_requires_sphere_only_handling(type) && type != MaterialType::NormalMappedLambertian;
+}
+
 // Henyey-Greenstein phase function direction sample. Duplicated from
 // optix_device_helpers.h's sample_henyey_greenstein (with the wf_ prefix)
 // rather than shared, matching this file's existing pattern of not sharing
@@ -2027,31 +2043,19 @@ extern "C" __global__ void evaluate_materials(
 	// dielectricHitQueue only ever receive Lambertian/Metal and
 	// Dielectric/RoughDielectric hits respectively, never these types.
 	//
-	// Hair is excluded from this trap (unlike the recursive backend's
-	// disk/cylinder files, which need their own explicit branch since each
-	// closest-hit program dispatches materials itself): this single shared
-	// queue already has a real MaterialType::Hair case below, keyed only on
-	// mat.type - so a disk/cylinder hit just falls through to it like any
-	// other geometry, using h.normal as the fiber-tangent proxy. Material
-	// "hair" + Shape "disk"/"cylinder" is an ordinary, reachable pbrt
-	// combination once Round 7 wired "hair" into the loader for real -
-	// trapping it here would be a genuine regression from "falls back to
-	// Lambertian", not the unreachable-defensive-code every other trapped
-	// type here still is.
-	//
-	// MaterialType::Medium is excluded the same way, but ONLY for cylinder
-	// (geomType==5) - a real, reachable combination now that pbrt_gpu_
-	// builder.h's cylinder loop resolves MediumInterface via mediumMaterial-
-	// Index() (see that loop's own comment) and __closesthit__wf_cylinder
-	// recomputes real entry/exit roots for it (wavefront_programs.cu).
-	// Disk (geomType==4) stays trapped - MediumInterface on a disk is
-	// structurally not meaningful (see docs/PBRT_SUPPORT.md) and
-	// pbrt_gpu_builder.h's disk loop still never resolves it, so this is
-	// unreachable there, same as every other still-trapped type.
-	const bool isMediumOnCylinder = (h.geomType == 5) && (mat.type == MaterialType::Medium);
-	if ((h.geomType == 4 || h.geomType == 5) && mat.type != MaterialType::Hair && !isMediumOnCylinder &&
-		(wf_material_requires_sphere_only_handling(mat.type) ||
-		 mat.type == MaterialType::NormalMappedLambertian)) {
+	// Hair and (cylinder-only) Medium are real, reachable combinations this
+	// single shared queue already knows how to shade (Hair via the real
+	// MaterialType::Hair case below, keyed only on mat.type; Medium via
+	// h.t/h.mediumTFar, recomputed by __closesthit__wf_cylinder - see
+	// pbrt_gpu_builder.h's cylinder loop comment) - trapping either here
+	// would be a genuine regression from real support to "falls back to
+	// Lambertian"/an abort, not the unreachable-defensive-code every other
+	// trapped type here still is. wf_material_supported_on_disk_cylinder_
+	// geom() (this file, above) is the one place these per-shape exemptions
+	// live, so this condition itself doesn't grow a new `&& !flagN` term
+	// each time another (shape, material) combination gains real support.
+	if ((h.geomType == 4 || h.geomType == 5) &&
+		!wf_material_supported_on_disk_cylinder_geom(mat.type, h.geomType)) {
 		printf("[WF-DISK-CYL-SHADE] MaterialType %d is not supported on disk/cylinder geometry (geomType=%d)\n",
 			   (int)mat.type, h.geomType);
 		__trap();

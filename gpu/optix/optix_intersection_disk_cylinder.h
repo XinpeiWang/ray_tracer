@@ -204,22 +204,13 @@ extern "C" __global__ void __intersection__cylinder() {
 	// Stable quadratic solve in double precision (matches pbrt-v4's own
 	// Cylinder::BasicIntersect and this project's CPU CylinderShape<T> -
 	// avoids the catastrophic cancellation a naive b*b-4ac has for a thin
-	// cylinder seen nearly edge-on).
-	const double da = (double)rd.x, db = (double)rd.y;
-	const double oa = (double)ro.x, ob = (double)ro.y;
-	const double a = da * da + db * db;
-	const double b = 2.0 * (oa * da + ob * db);
-	const double c = oa * oa + ob * ob - (double)cyl.radius * (double)cyl.radius;
-	if (a == 0.0) return;  // Ray parallel to the cylinder's axis
-	const double f = b / (2.0 * a);
-	const double vx = oa - f * da, vy = ob - f * db;
-	const double len_v = sqrt(vx * vx + vy * vy);
-	const double discrim = 4.0 * a * ((double)cyl.radius + len_v) * ((double)cyl.radius - len_v);
-	if (discrim < 0.0) return;
-	const double sqrt_disc = sqrt(discrim);
-	const double q = (b < 0.0) ? -0.5 * (b - sqrt_disc) : -0.5 * (b + sqrt_disc);
-	float t0 = (float)(q / a), t1 = (float)(c / q);
-	if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
+	// cylinder seen nearly edge-on) - factored into dc_solve_tube_quadratic
+	// (optix_disk_cylinder_helpers.h), shared with dc_pdf_cylinder and the
+	// Medium closest-hit case below (see that function's own comment for
+	// why a==0 - ray parallel to the axis - returns false here specifically,
+	// unlike the Medium case's own different a==0 handling).
+	float t0, t1;
+	if (!dc_solve_tube_quadratic(ro, rd, cyl.radius, t0, t1)) return;
 	if (t0 > ray_tmax || t1 < ray_tmin) return;
 
 	float t = t0;
@@ -301,32 +292,19 @@ extern "C" __global__ void __closesthit__cylinder() {
 		// the real phi-clipped volume), so this degrades gracefully.
 		const float3 ro = dc_apply_point(cyl.w2o, ray_orig);
 		const float3 rd = dc_apply_vector(cyl.w2o, ray_dir);  // NOT normalised - see file header comment
-		const double da = (double)rd.x, db = (double)rd.y;
-		const double oa = (double)ro.x, ob = (double)ro.y;
-		const double a = da * da + db * db;
+		// Ray parallel to the axis (rd.x==rd.y==0) is handled here directly,
+		// NOT via dc_solve_tube_quadratic() below - that function's a==0
+		// case answers "is there a discrete surface crossing" (always no),
+		// which is the wrong question for a VOLUME/interval test: a ray
+		// parallel to and inside the axis is entirely inside the medium for
+		// its whole length, a real non-degenerate answer dc_solve_tube_
+		// quadratic deliberately doesn't provide (see its own comment).
 		float tube_t0 = -1e30f, tube_t1 = 1e30f;
-		bool hasTube = true;
-		if (a == 0.0) {
-			// Ray parallel to the axis: "tube" bound is unbounded in t
-			// whenever the ray's fixed (x,y) is inside the radius, else the
-			// ray never enters the tube at all.
-			hasTube = (oa * oa + ob * ob) <= (double)cyl.radius * (double)cyl.radius;
+		bool hasTube;
+		if (rd.x == 0.0f && rd.y == 0.0f) {
+			hasTube = (double)ro.x * ro.x + (double)ro.y * ro.y <= (double)cyl.radius * (double)cyl.radius;
 		} else {
-			const double b = 2.0 * (oa * da + ob * db);
-			const double c = oa * oa + ob * ob - (double)cyl.radius * (double)cyl.radius;
-			const double f = b / (2.0 * a);
-			const double vx = oa - f * da, vy = ob - f * db;
-			const double len_v = sqrt(vx * vx + vy * vy);
-			const double discrim = 4.0 * a * ((double)cyl.radius + len_v) * ((double)cyl.radius - len_v);
-			if (discrim < 0.0) {
-				hasTube = false;
-			} else {
-				const double sqrt_disc = sqrt(discrim);
-				const double q = (b < 0.0) ? -0.5 * (b - sqrt_disc) : -0.5 * (b + sqrt_disc);
-				tube_t0 = (float)(q / a);
-				tube_t1 = (float)(c / q);
-				if (tube_t0 > tube_t1) { float tmp = tube_t0; tube_t0 = tube_t1; tube_t1 = tmp; }
-			}
+			hasTube = dc_solve_tube_quadratic(ro, rd, cyl.radius, tube_t0, tube_t1);
 		}
 
 		float z_t0 = -1e30f, z_t1 = 1e30f;

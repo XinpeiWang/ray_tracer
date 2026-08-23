@@ -12,6 +12,7 @@
 #include "wavefront_path_tracer.h"
 #include "sppm_path_tracer.h"
 #include "../../src/shared/bilinear_patch.h"  // blp_area - alias-table power for GpuLightKind::BilinearPatch
+#include "optix_disk_cylinder_helpers.h"  // dc_area_disk/dc_area_cylinder - alias-table power for GpuLightKind::Disk/Cylinder
 #include <optix_function_table_definition.h>
 #include <optix_stack_size.h>
 #include <cuda.h>
@@ -1477,31 +1478,21 @@ bool OptiXRenderer::buildScene(
 				area = blp_area(p00, p10, p01, p11);
 			} else if (lightKinds[i] == GpuLightKind::Disk) {
 				// Indexes `disks`, not `quads` - same "must stay explicit"
-				// reasoning as the BilinearPatch branch above. Object-space
-				// area scaled by the square of a representative world-space
-				// scale factor (the length of o2w's transformed local-X
-				// basis vector) - exact under a similarity transform
-				// (rotation/translation/uniform scale), approximate under
-				// anisotropic scale, matching optix_disk_cylinder_helpers.h's
-				// dc_area_disk() (this is a separate, host-side copy of that
-				// same formula - this file is plain host C++, not compiled
-				// as CUDA device code, so it can't call that __device__
-				// function directly).
+				// reasoning as the BilinearPatch branch above. dc_area_disk()
+				// (optix_disk_cylinder_helpers.h) is tagged __host__
+				// __device__ specifically so this plain host C++ file can
+				// call it directly instead of hand-copying the formula.
 				const DiskData& d = disks[prim_idx];
 				const MaterialData& m = materials[d.materialIdx];
 				emission = m.emission;
 				twoSided = m.twoSided;
-				const float3 xAxis = make_float3(d.o2w[0], d.o2w[4], d.o2w[8]);
-				const float scale = length(xAxis);
-				area = d.phiMax * 0.5f * (d.radius*d.radius - d.innerRadius*d.innerRadius) * scale * scale;
+				area = dc_area_disk(d);
 			} else if (lightKinds[i] == GpuLightKind::Cylinder) {
 				const CylinderData& c = cylinders[prim_idx];
 				const MaterialData& m = materials[c.materialIdx];
 				emission = m.emission;
 				twoSided = m.twoSided;
-				const float3 xAxis = make_float3(c.o2w[0], c.o2w[4], c.o2w[8]);
-				const float scale = length(xAxis);
-				area = (c.zMax - c.zMin) * c.radius * c.phiMax * scale * scale;
+				area = dc_area_cylinder(c);
 			} else {
 				const QuadData& q = quads[prim_idx];
 				const MaterialData& m = materials[q.materialIdx];

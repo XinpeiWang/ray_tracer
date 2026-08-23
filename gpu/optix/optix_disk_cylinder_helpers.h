@@ -77,12 +77,62 @@ __device__ __forceinline__ bool dc_cylinder_check(const CylinderData& cyl, const
 	return phi <= cyl.phiMax;
 }
 
+// Solves ray-vs-infinite-tube (radius `radius`, axis = object-space Z) for
+// t0<=t1, the two roots where the ray crosses the LATERAL surface. Object-
+// space ro/rd (NOT normalised - see this file's header comment). Stable
+// discriminant formulation (matches pbrt-v4 Cylinder::BasicIntersect,
+// avoids catastrophic cancellation for a thin cylinder seen nearly edge-on)
+// - factored out of __intersection__cylinder/dc_pdf_cylinder/
+// __closesthit__cylinder's Medium case, which used to each carry their own
+// copy of this exact ~15-line double-precision solve (and had already
+// started to disagree on the ray-parallel-to-axis edge case as a result).
+//
+// Ray parallel to the axis (a==0) returns false: there is no DISCRETE
+// surface crossing in that case (the ray runs at constant distance from
+// the axis its whole length), which is the correct answer for every
+// SURFACE-intersection caller (__intersection__cylinder, dc_pdf_cylinder).
+// A caller that instead wants "is the ray inside the tube's VOLUME" (e.g.
+// MaterialType::Medium's free-path bound, where a ray parallel to and
+// inside the axis IS entirely inside the medium for its whole length) has
+// a genuinely different, non-degenerate answer for that same input and
+// must special-case a==0 itself before falling back to this function for
+// the a!=0 case - see the Medium branches in __closesthit__cylinder/
+// __closesthit__wf_cylinder for that extra (and deliberately NOT shared,
+// since it answers a different question) branch.
+__device__ __forceinline__ bool dc_solve_tube_quadratic(const float3& ro, const float3& rd, float radius,
+														  float& t0, float& t1) {
+	const double da = (double)rd.x, db = (double)rd.y;
+	const double oa = (double)ro.x, ob = (double)ro.y;
+	const double a = da * da + db * db;
+	if (a == 0.0) return false;
+	const double b = 2.0 * (oa * da + ob * db);
+	const double c = oa * oa + ob * ob - (double)radius * (double)radius;
+	const double f = b / (2.0 * a);
+	const double vx = oa - f * da, vy = ob - f * db;
+	const double len_v = sqrt(vx * vx + vy * vy);
+	const double discrim = 4.0 * a * ((double)radius + len_v) * ((double)radius - len_v);
+	if (discrim < 0.0) return false;
+	const double sqrt_disc = sqrt(discrim);
+	const double q = (b < 0.0) ? -0.5 * (b - sqrt_disc) : -0.5 * (b + sqrt_disc);
+	t0 = (float)(q / a);
+	t1 = (float)(c / q);
+	if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
+	return true;
+}
+
 // World-space representative scale factor from an object->world transform's
 // linear part - the length of the transformed local-X unit vector. Exact
 // for a similarity transform (uniform scale, any rotation/translation);
 // an approximation under anisotropic scale, same accepted simplification
 // this whole file's header comment describes.
-__device__ __forceinline__ float dc_representative_scale(const float o2w[12]) {
+//
+// __host__ __device__ (not device-only, unlike this file's other helpers):
+// pure arithmetic, no device-only intrinsics, matching optix_math_helpers.h's
+// own length()/make_float3() convention - lets optix_renderer.cpp (plain
+// host C++, building the power-weighted alias table) call this and
+// dc_area_disk()/dc_area_cylinder() below directly instead of hand-copying
+// the same formulas as a third, separately-maintained implementation.
+inline __host__ __device__ float dc_representative_scale(const float o2w[12]) {
 	const float3 x_axis = make_float3(o2w[0], o2w[4], o2w[8]);
 	return length(x_axis);
 }
@@ -90,14 +140,14 @@ __device__ __forceinline__ float dc_representative_scale(const float o2w[12]) {
 // World-space area, mirroring DiskShape<T>::area() (src/shared/shapes.h)
 // scaled by the square of the representative scale (area is a squared-length
 // quantity).
-__device__ __forceinline__ float dc_area_disk(const DiskData& disk) {
+inline __host__ __device__ float dc_area_disk(const DiskData& disk) {
 	const float scale = dc_representative_scale(disk.o2w);
 	const float objArea = disk.phiMax * 0.5f * (disk.radius * disk.radius - disk.innerRadius * disk.innerRadius);
 	return objArea * scale * scale;
 }
 
 // Mirrors CylinderShape<T>::area() = (zMax-zMin)*radius*phiMax.
-__device__ __forceinline__ float dc_area_cylinder(const CylinderData& cyl) {
+inline __host__ __device__ float dc_area_cylinder(const CylinderData& cyl) {
 	const float scale = dc_representative_scale(cyl.o2w);
 	const float objArea = (cyl.zMax - cyl.zMin) * cyl.radius * cyl.phiMax;
 	return objArea * scale * scale;
@@ -179,28 +229,15 @@ __device__ __forceinline__ float dc_pdf_disk(const DiskData& disk, const float3&
 	return world_dist2 / (cosine * area);
 }
 
-// Same shape as dc_pdf_disk, cylinder side - reuses dc_cylinder_check() for
-// the object-space root validity test, matching __intersection__cylinder's
-// own two-root logic.
+// Same shape as dc_pdf_disk, cylinder side - reuses dc_solve_tube_quadratic()
+// for the two-root solve and dc_cylinder_check() for the object-space root
+// validity test, matching __intersection__cylinder's own two-root logic.
 __device__ __forceinline__ float dc_pdf_cylinder(const CylinderData& cyl, const float3& ctx,
 												   const float3& wi_world) {
 	const float3 ro = dc_apply_point(cyl.w2o, ctx);
 	const float3 rd = dc_apply_vector(cyl.w2o, wi_world);
-	const double da = (double)rd.x, db = (double)rd.y;
-	const double oa = (double)ro.x, ob = (double)ro.y;
-	const double a = da * da + db * db;
-	const double b = 2.0 * (oa * da + ob * db);
-	const double c = oa * oa + ob * ob - (double)cyl.radius * (double)cyl.radius;
-	if (a == 0.0) return 0.0f;
-	const double f = b / (2.0 * a);
-	const double vx = oa - f * da, vy = ob - f * db;
-	const double len_v = sqrt(vx * vx + vy * vy);
-	const double discrim = 4.0 * a * ((double)cyl.radius + len_v) * ((double)cyl.radius - len_v);
-	if (discrim < 0.0) return 0.0f;
-	const double sqrt_disc = sqrt(discrim);
-	const double q = (b < 0.0) ? -0.5 * (b - sqrt_disc) : -0.5 * (b + sqrt_disc);
-	float t0 = (float)(q / a), t1 = (float)(c / q);
-	if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
+	float t0, t1;
+	if (!dc_solve_tube_quadratic(ro, rd, cyl.radius, t0, t1)) return 0.0f;
 	const float ray_tmin = 1e-4f, ray_tmax = 1e30f;
 	if (t0 > ray_tmax || t1 < ray_tmin) return 0.0f;
 

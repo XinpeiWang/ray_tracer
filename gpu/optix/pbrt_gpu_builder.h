@@ -434,10 +434,17 @@ inline bool isPbrtTextureGrayscale(const SceneData& scene, int texIdx) {
 // kMaxMixDepth - guards a cyclic/self-referential "materials" list a
 // malformed scene could produce, not a case this loader's own corpus has
 // ever needed.
+// Shared by resolveMixColor() below and makeMaterial()'s own MaterialKind::
+// Mix case - a single file-scope constant instead of two independently-
+// declared local ones (they must stay in lockstep: makeMaterial()'s real
+// GPU-side Mix resolution and this flat-colour fallback need the identical
+// cap so a scene doesn't get a different effective mix-of-mix depth
+// depending on which of the two paths handles a given nesting level).
+inline constexpr int kMaxMixDepth = 8;
+
 inline float3 resolveMixColor(const pbrt_flatten::Material &m,
 							  const std::vector<pbrt_flatten::Material> &allMaterials,
 							  int depth) {
-	constexpr int kMaxMixDepth = 8;
 	if (m.kind != pbrt_flatten::MaterialKind::Mix || depth >= kMaxMixDepth)
 		return make_float3(static_cast<float>(m.color[0]),
 						   static_cast<float>(m.color[1]),
@@ -760,7 +767,6 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 	// unresolvable mix to Unsupported before this MaterialKind is ever
 	// reached - see there).
 	case pbrt_flatten::MaterialKind::Mix: {
-		constexpr int kMaxMixDepth = 8;
 		const bool resolvable =
 			m.mixMaterialA >= 0 && static_cast<std::size_t>(m.mixMaterialA) < allMaterials.size()
 			&& m.mixMaterialB >= 0 && static_cast<std::size_t>(m.mixMaterialB) < allMaterials.size();
@@ -772,15 +778,19 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 			d.mix_extra.mixMaterialBIdx = static_cast<float>(idxB);
 			d.mix_extra.mixWeight = static_cast<float>(m.mixWeight);
 		} else {
+			// Falls back to the same flat-colour-average resolveMixColor()
+			// already computes - passing `m` itself (not its sub-materials)
+			// at depth 0 reproduces the exact same two-call computation this
+			// branch used to duplicate inline: resolveMixColor() checks
+			// m.kind==Mix and the depth/resolvability conditions itself
+			// (identical to `resolvable` above), then recurses into
+			// mixMaterialA/B at depth+1 - matching the old code's own two
+			// resolveMixColor(..., 1) calls exactly. Also correctly handles
+			// the unresolvable case with no separate guard needed:
+			// resolveMixColor() falls back to m.color, the same default
+			// d.albedo already holds from the generic assignment above.
 			d.type = MaterialType::Lambertian;
-			if (resolvable) {
-				const float3 ca = resolveMixColor(allMaterials[static_cast<std::size_t>(m.mixMaterialA)], allMaterials, 1);
-				const float3 cb = resolveMixColor(allMaterials[static_cast<std::size_t>(m.mixMaterialB)], allMaterials, 1);
-				const float w = static_cast<float>(m.mixWeight);
-				d.albedo = make_float3(ca.x * (1.0f - w) + cb.x * w,
-				                       ca.y * (1.0f - w) + cb.y * w,
-				                       ca.z * (1.0f - w) + cb.z * w);
-			}
+			d.albedo = resolveMixColor(m, allMaterials, 0);
 		}
 		break;
 	}
@@ -1079,10 +1089,30 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		sd.center = f3(s.center);
 		sd.center1 = sd.center;          // static; see SphereData's comment
 		sd.radius = static_cast<float>(s.radius);
-		sd.materialIdx = (s.medium >= 0 && static_cast<std::size_t>(s.medium) < scene.media.size())
+		// MediumInterface wins the material slot entirely when both it and
+		// AreaLightSource are set on the same shape (a valid pbrt idiom - an
+		// emitting shell with fog inside) - this GPU builder has no combined
+		// material slot for "real dielectric/light surface AND a medium"
+		// (see mediumMaterialIndex()'s own comment), so the emissive
+		// material this sphere would otherwise have built is discarded. Only
+		// register as an NEE-samplable light when that emissive material
+		// actually survives - otherwise NEE would aim at a real geometric
+		// sphere whose resolved MaterialData has zero emission (a wasted,
+		// contribution-free sample every time it's selected), and the alias
+		// table's own power-weighting would keep it alive at a tiny
+		// geometry-only floor forever. CPU has no such gap (it keeps the
+		// shape's own emissive material AND layers a separate medium-wrapped
+		// hittable on top - see pbrt_cpu_builder.h's addMediumIfPresent), so
+		// this is a real, accepted GPU-only divergence for this specific
+		// combination, not a bug this loop can fix without a combined
+		// material slot (out of scope here - same "more than this phase's
+		// scope" reasoning mediumMaterialIndex()'s own comment already gives
+		// for the dielectric+fog case).
+		const bool sphereHasMedium = s.medium >= 0 && static_cast<std::size_t>(s.medium) < scene.media.size();
+		sd.materialIdx = sphereHasMedium
 			? mediumMaterialIndex(s.medium)
 			: materialIndex(s.material, s.areaLight);
-		if (s.areaLight >= 0) {
+		if (s.areaLight >= 0 && !sphereHasMedium) {
 			out.lightIndices.push_back(static_cast<int>(out.spheres.size()));
 			out.lightKinds.push_back(GpuLightKind::Sphere);
 		}
@@ -1227,12 +1257,19 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		// correctly traps (material_requires_sphere_only_handling()) rather
 		// than silently misrendering, exactly like every other still-
 		// sphere-only type does on any non-sphere shape.
-		cd.materialIdx = (c.medium >= 0 && static_cast<std::size_t>(c.medium) < scene.media.size())
+		// Same "medium wins the material slot, so don't register a now-non-
+		// emissive shape as an NEE light" fix as the sphere loop above - see
+		// its own comment for the full reasoning (CPU has no such gap; this
+		// is an accepted GPU-only divergence for MediumInterface + real
+		// emission on the same shape, not fixable here without a combined
+		// material slot).
+		const bool cylinderHasMedium = c.medium >= 0 && static_cast<std::size_t>(c.medium) < scene.media.size();
+		cd.materialIdx = cylinderHasMedium
 			? mediumMaterialIndex(c.medium)
 			: materialIndex(c.material, c.areaLight);
 		flattenTransform(o2w.m, cd.o2w);
 		flattenTransform(w2o.m, cd.w2o);
-		if (c.areaLight >= 0) {
+		if (c.areaLight >= 0 && !cylinderHasMedium) {
 			out.lightIndices.push_back(static_cast<int>(out.cylinders.size()));
 			out.lightKinds.push_back(GpuLightKind::Cylinder);
 		}
