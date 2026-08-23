@@ -1,0 +1,78 @@
+# textured-twosided-lights.pbrt -- exercises AreaLightSource "filename"
+# (real spatially-varying emission) and "twosided" on Shape "disk"/
+# "cylinder" GPU lights, both NEE-sampled and directly hit - previously a
+# real gap on both GPU backends (see docs/PBRT_SUPPORT.md): direct hits on
+# a non-triangle light always read texel (0,0) instead of a real UV lookup,
+# and NEE sampling of every non-triangle light kind ignored mat.twoSided
+# entirely, treating every light as two-sided regardless of the flag.
+#
+# Three groups, left to right:
+#  1. A textured disk light (uv-checker.bmp) facing straight down onto a
+#     floor patch - the floor's illumination should show the checker
+#     pattern, not a single flat colour, on CPU and both GPU backends.
+#  2. A textured cylinder light (same texture, wrapped around the tube) -
+#     sanity-checks the identical fix on cylinder geometry.
+#  3. A one-sided (twosided=false, the pbrt default) disk light facing +Z,
+#     with one bright floor patch in front (+Z, should be lit) and one
+#     directly behind (-Z, should stay DARK) - the NEE-side twosided gate
+#     under test. Before the fix, NEE treated every light as two-sided, so
+#     the back patch picked up light it should never have received.
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  -1 16 -14    -1 0 1    0 1 0
+Camera "perspective" "float fov" [ 55 ]
+
+Film "rgb" "integer xresolution" [ 640 ] "integer yresolution" [ 400 ]
+Sampler "halton" "integer pixelsamples" [ 48 ]
+
+WorldBegin
+
+# Dim ground plane so the lit/dark contrast in group 3 reads clearly.
+Material "diffuse" "rgb reflectance" [ 0.15 0.15 0.17 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -14 0 -8   14 0 -8   14 0 8   -14 0 8 ]
+
+# ---- Group 1: textured disk light -----------------------------------------
+AttributeBegin
+  Translate -8 3 0
+  Rotate 90 1 0 0
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "string filename" [ "uv-checker.bmp" ] "float scale" [ 6 ]
+  Shape "disk" "float radius" [ 1.4 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.85 0.85 0.85 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -10 0.01 -2   -6 0.01 -2   -6 0.01 2   -10 0.01 2 ]
+
+# ---- Group 2: textured cylinder light --------------------------------------
+AttributeBegin
+  Translate -2 0.01 0
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "string filename" [ "uv-checker.bmp" ] "float scale" [ 6 ]
+  Shape "cylinder" "float radius" [ 0.6 ] "float zmin" [ 0 ] "float zmax" [ 3 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.85 0.85 0.85 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -4 0.01 -2   0 0.01 -2   0 0.01 2   -4 0.01 2 ]
+
+# ---- Group 3: one-sided disk light + front/back floor patches -------------
+AttributeBegin
+  Translate 6 1.5 0
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 14 14 14 ] "bool twosided" [ false ]
+  Shape "disk" "float radius" [ 1.2 ]
+AttributeEnd
+
+# Front patch (+Z side the disk's default normal faces) - should be LIT.
+Material "diffuse" "rgb reflectance" [ 0.9 0.9 0.9 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 4 0.01 2.5   8 0.01 2.5   8 0.01 4.5   4 0.01 4.5 ]
+
+# Back patch (-Z side) - should stay DARK if the twosided gate is correct.
+Material "diffuse" "rgb reflectance" [ 0.9 0.9 0.9 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 4 0.01 -4.5   8 0.01 -4.5   8 0.01 -2.5   4 0.01 -2.5 ]

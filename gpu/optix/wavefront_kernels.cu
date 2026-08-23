@@ -570,7 +570,8 @@ __device__ __forceinline__ void wf_xyz_to_linear_rgb(float X, float Y, float Z,
 // caught before because no scene had ever registered a genuinely emissive
 // sphere as a light in wavefront mode until the spherical-camera scene.
 __device__ float3 wf_sample_sphere_light(const SphereData& sph, const float3& hit,
-										  unsigned int& seed, float& pdf, float& maxDist) {
+										  unsigned int& seed, float& pdf, float& maxDist,
+										  float& out_u, float& out_v, float3& out_normal) {
 	float3 to_c = sph.center - hit;
 	float dist  = length(to_c);
 	float r     = sph.radius;
@@ -605,13 +606,29 @@ __device__ float3 wf_sample_sphere_light(const SphereData& sph, const float3& hi
 	float sq = sqrtf(disc);
 	float tNear = -b - sq;
 	maxDist = (tNear > 1e-6f) ? tNear : fmaxf(0.0f, -b + sq);
+
+	// UV/normal at the recovered surface point - same theta/phi convention
+	// as __closesthit__sphere's direct-hit formula (optix_intersection_
+	// sphere.h), see optix_device_helpers.h's sample_sphere_light() for the
+	// identical derivation.
+	const float3 point = hit + maxDist * dir;
+	const float3 local = (point - sph.center) / r;
+	out_normal = local;
+	const float sphere_theta = acosf(fmaxf(-1.0f, fminf(1.0f, -local.y)));
+	const float sphere_phi = atan2f(-local.z, local.x) + 3.14159265358979323846f;
+	out_u = sphere_phi / (2.0f * 3.14159265358979323846f);
+	out_v = sphere_theta / 3.14159265358979323846f;
+
 	return dir;
 }
 
 // Sample a point on a quad light.
 __device__ float3 wf_sample_quad_light(const QuadData& q, const float3& hit,
-										unsigned int& seed, float& geom_pdf, float& maxDist) {
+										unsigned int& seed, float& geom_pdf, float& maxDist,
+										float& out_u, float& out_v) {
 	float s = wf_rand(seed), t = wf_rand(seed);
+	out_u = s;
+	out_v = t;
 	float3 p = q.Q + s * q.u + t * q.v;
 	float3 dir = p - hit;
 	maxDist     = length(dir);
@@ -643,7 +660,7 @@ __device__ float3 wf_sample_quad_light(const QuadData& q, const float3& hit,
 // light yet) but no longer a live landmine either.
 __device__ float3 wf_sample_triangle_light(const TriangleData& tri, const float3& hit,
 											unsigned int& seed, float& geom_pdf, float& maxDist,
-											float& out_u, float& out_v) {
+											float& out_u, float& out_v, float3& out_normal) {
 	float a = wf_rand(seed), b = wf_rand(seed);
 	if (a + b > 1.0f) { a = 1.0f - a; b = 1.0f - b; }
 	const float3 e1 = tri.p1 - tri.p0;
@@ -662,13 +679,14 @@ __device__ float3 wf_sample_triangle_light(const TriangleData& tri, const float3
 
 	float3 dir = point - hit;
 	maxDist = length(dir);
-	if (maxDist < 1e-6f) { geom_pdf = 0.0f; return make_float3(0.0f, 0.0f, 1.0f); }
+	if (maxDist < 1e-6f) { geom_pdf = 0.0f; out_normal = make_float3(0.0f, 0.0f, 1.0f); return make_float3(0.0f, 0.0f, 1.0f); }
 	dir = dir / maxDist;
 
 	const float3 n_unnorm = cross(e1, e2);
 	const float twice_area = length(n_unnorm);
-	if (twice_area < 1e-12f) { geom_pdf = 0.0f; return dir; }
+	if (twice_area < 1e-12f) { geom_pdf = 0.0f; out_normal = dir; return dir; }
 	const float3 normal = n_unnorm / twice_area;
+	out_normal = normal;
 	const float area = 0.5f * twice_area;
 
 	const float cosine = fabsf(dot(dir, normal));
@@ -689,17 +707,21 @@ __device__ float3 wf_sample_triangle_light(const TriangleData& tri, const float3
 // here for the same cross-module reason every other wf_sample_*_light
 // function in this file is.
 __device__ float3 wf_sample_bilinear_patch_light(const BilinearPatchData& bp, const float3& hit,
-												   unsigned int& seed, float& geom_pdf, float& maxDist) {
+												   unsigned int& seed, float& geom_pdf, float& maxDist,
+												   float& out_u, float& out_v, float3& out_normal) {
 	const float p00[3] = {bp.p00.x, bp.p00.y, bp.p00.z};
 	const float p10[3] = {bp.p10.x, bp.p10.y, bp.p10.z};
 	const float p01[3] = {bp.p01.x, bp.p01.y, bp.p01.z};
 	const float p11[3] = {bp.p11.x, bp.p11.y, bp.p11.z};
 	const float u2[2] = {wf_rand(seed), wf_rand(seed)};
-	float outP[3], outN[3], areaPdf = 0.0f;
-	blp_sample(p00, p10, p01, p11, u2, outP, outN, &areaPdf);
+	float outP[3], outN[3], areaPdf = 0.0f, su = 0.0f, sv = 0.0f;
+	blp_sample(p00, p10, p01, p11, u2, outP, outN, &areaPdf, &su, &sv);
+	out_u = su;
+	out_v = sv;
 
 	const float3 point  = make_float3(outP[0], outP[1], outP[2]);
 	const float3 normal = make_float3(outN[0], outN[1], outN[2]);
+	out_normal = normal;
 	float3 to_light = point - hit;
 	float dist_sq = dot(to_light, to_light);
 	maxDist = sqrtf(dist_sq);
@@ -758,14 +780,31 @@ __device__ __forceinline__ float wf_dc_area_cylinder(const CylinderData& cyl) {
 // sample_disk_light(), duplicated here for the same cross-module reason
 // every other wf_sample_*_light function in this file is.
 __device__ float3 wf_sample_disk_light(const DiskData& disk, const float3& hit,
-										unsigned int& seed, float& geom_pdf, float& maxDist) {
+										unsigned int& seed, float& geom_pdf, float& maxDist,
+										float& out_u, float& out_v, float3& out_normal) {
 	float dx, dy;
 	SampleUniformDiskConcentric<float>(wf_rand(seed), wf_rand(seed), dx, dy);
 	const float3 obj_point = make_float3(dx * disk.radius, dy * disk.radius, disk.height);
 	const float3 point = wf_dc_apply_point(disk.o2w, obj_point);
 	const float3 normal = normalize(wf_dc_apply_normal_from_w2o(disk.w2o, make_float3(0.0f, 0.0f, 1.0f)));
+	out_normal = normal;
 	const float area = wf_dc_area_disk(disk);
 	const float area_pdf = (area > 1e-12f) ? (1.0f / area) : 0.0f;
+
+	// Real UV (phi/phiMax, radial fraction) - same formula __closesthit__wf_disk
+	// recomputes for a direct hit. obj_point is already the object-space
+	// sampled point (before the o2w transform above), so no re-derivation
+	// via w2o is needed here, unlike the closest-hit path which only has the
+	// world-space hit point to start from.
+	{
+		float uv_phi = atan2f(dy, dx);
+		if (uv_phi < 0.0f) uv_phi += 6.283185307179586f;
+		const float uv_dist = sqrtf(dx * dx + dy * dy) * disk.radius;
+		out_u = uv_phi / disk.phiMax;
+		out_v = (disk.radius > disk.innerRadius)
+			? 1.0f - (uv_dist - disk.innerRadius) / (disk.radius - disk.innerRadius)
+			: 0.0f;
+	}
 
 	float3 dir = point - hit;
 	maxDist = length(dir);
@@ -782,15 +821,23 @@ __device__ float3 wf_sample_disk_light(const DiskData& disk, const float3& hit,
 // within the sweep, same math as optix_disk_cylinder_helpers.h's
 // dc_sample_cylinder()/sample_cylinder_light().
 __device__ float3 wf_sample_cylinder_light(const CylinderData& cyl, const float3& hit,
-											unsigned int& seed, float& geom_pdf, float& maxDist) {
+											unsigned int& seed, float& geom_pdf, float& maxDist,
+											float& out_u, float& out_v, float3& out_normal) {
 	const float z = cyl.zMin + wf_rand(seed) * (cyl.zMax - cyl.zMin);
 	const float phi = wf_rand(seed) * cyl.phiMax;
 	const float3 obj_normal = make_float3(cosf(phi), sinf(phi), 0.0f);
 	const float3 obj_point = make_float3(cyl.radius * obj_normal.x, cyl.radius * obj_normal.y, z);
 	const float3 point = wf_dc_apply_point(cyl.o2w, obj_point);
 	const float3 normal = normalize(wf_dc_apply_normal_from_w2o(cyl.w2o, obj_normal));
+	out_normal = normal;
 	const float area = wf_dc_area_cylinder(cyl);
 	const float area_pdf = (area > 1e-12f) ? (1.0f / area) : 0.0f;
+
+	// Real UV (phi/phiMax, z-fraction) - phi was already drawn directly above
+	// (not recovered from obj_point), matching __closesthit__wf_cylinder's
+	// direct-hit formula.
+	out_u = phi / cyl.phiMax;
+	out_v = (cyl.zMax > cyl.zMin) ? (z - cyl.zMin) / (cyl.zMax - cyl.zMin) : 0.0f;
 
 	float3 dir = point - hit;
 	maxDist = length(dir);
@@ -1538,40 +1585,85 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			return s;
 		};
 
+		// mat.twoSided (pbrt AreaLightSource "diffuse" "bool twosided") gate for
+		// NEE, mirroring material_emission()'s own front_face gate on a direct
+		// hit and the recursive backend's identical nee_gate_one_sided() -
+		// was previously never checked here for ANY light kind (including
+		// Triangle), so every one-sided area light was silently treated as
+		// two-sided by NEE. `dir` points from hit_point toward the light
+		// (same sense a direct-hit ray_dir has), so front-facing is
+		// dot(dir, light_normal) < 0.
+		auto geoAndGate = [&](float3 raw_emission, const MaterialData& lm, float3 dir, float3 light_normal) -> SS {
+			if (!lm.twoSided && dot(dir, light_normal) >= 0.0f) raw_emission = make_float3(0.0f, 0.0f, 0.0f);
+			return liftEmission(raw_emission);
+		};
+
 		if (kind == GpuLightKind::Sphere) {
 			const SphereData& s = spheres[prim_idx];
-			to_light = wf_sample_sphere_light(s, hit_point, seed, geom_pdf, max_dist);
-			light_emission_spec = liftEmission(materials[s.materialIdx].emission);
+			float su, sv; float3 snormal;
+			to_light = wf_sample_sphere_light(s, hit_point, seed, geom_pdf, max_dist, su, sv, snormal);
+			const MaterialData& lm = materials[s.materialIdx];
+			float3 raw = (lm.textureIdx >= 0)
+				? wf_sample_texture(textures, texturePixels, lm.textureIdx, su, sv, hit_point + to_light * max_dist)
+				: lm.emission;
+			if (lm.textureIdx >= 0) { raw.x *= lm.emissionScale; raw.y *= lm.emissionScale; raw.z *= lm.emissionScale; }
+			light_emission_spec = geoAndGate(raw, lm, to_light, snormal);
 		} else if (kind == GpuLightKind::Triangle) {
 			const TriangleData& tri = triangles[prim_idx];
-			float lu, lv;
-			to_light = wf_sample_triangle_light(tri, hit_point, seed, geom_pdf, max_dist, lu, lv);
+			float lu, lv; float3 tnormal;
+			to_light = wf_sample_triangle_light(tri, hit_point, seed, geom_pdf, max_dist, lu, lv, tnormal);
 			const MaterialData& lm = materials[tri.materialIdx];
 			// A pbrt AreaLightSource "filename" triangle light needs the real
 			// sampled UV to look up its image - see the recursive backend's
 			// identical sample_area_light_by_kind() Triangle case.
+			float3 raw;
 			if (lm.textureIdx >= 0) {
 				float3 texel = wf_sample_texture(textures, texturePixels, lm.textureIdx, lu, lv, hit_point + to_light * max_dist);
-				light_emission_spec = liftEmission(make_float3(texel.x * lm.emissionScale, texel.y * lm.emissionScale, texel.z * lm.emissionScale));
+				raw = make_float3(texel.x * lm.emissionScale, texel.y * lm.emissionScale, texel.z * lm.emissionScale);
 			} else {
-				light_emission_spec = liftEmission(lm.emission);
+				raw = lm.emission;
 			}
+			light_emission_spec = geoAndGate(raw, lm, to_light, tnormal);
 		} else if (kind == GpuLightKind::BilinearPatch) {
 			const BilinearPatchData& bp = bilinearPatches[prim_idx];
-			to_light = wf_sample_bilinear_patch_light(bp, hit_point, seed, geom_pdf, max_dist);
-			light_emission_spec = liftEmission(materials[bp.materialIdx].emission);
+			float bu, bv; float3 bnormal;
+			to_light = wf_sample_bilinear_patch_light(bp, hit_point, seed, geom_pdf, max_dist, bu, bv, bnormal);
+			const MaterialData& lm = materials[bp.materialIdx];
+			float3 raw = (lm.textureIdx >= 0)
+				? wf_sample_texture(textures, texturePixels, lm.textureIdx, bu, bv, hit_point + to_light * max_dist)
+				: lm.emission;
+			if (lm.textureIdx >= 0) { raw.x *= lm.emissionScale; raw.y *= lm.emissionScale; raw.z *= lm.emissionScale; }
+			light_emission_spec = geoAndGate(raw, lm, to_light, bnormal);
 		} else if (kind == GpuLightKind::Disk) {
 			const DiskData& d = disks[prim_idx];
-			to_light = wf_sample_disk_light(d, hit_point, seed, geom_pdf, max_dist);
-			light_emission_spec = liftEmission(materials[d.materialIdx].emission);
+			float du, dv; float3 dnormal;
+			to_light = wf_sample_disk_light(d, hit_point, seed, geom_pdf, max_dist, du, dv, dnormal);
+			const MaterialData& lm = materials[d.materialIdx];
+			float3 raw = (lm.textureIdx >= 0)
+				? wf_sample_texture(textures, texturePixels, lm.textureIdx, du, dv, hit_point + to_light * max_dist)
+				: lm.emission;
+			if (lm.textureIdx >= 0) { raw.x *= lm.emissionScale; raw.y *= lm.emissionScale; raw.z *= lm.emissionScale; }
+			light_emission_spec = geoAndGate(raw, lm, to_light, dnormal);
 		} else if (kind == GpuLightKind::Cylinder) {
 			const CylinderData& c = cylinders[prim_idx];
-			to_light = wf_sample_cylinder_light(c, hit_point, seed, geom_pdf, max_dist);
-			light_emission_spec = liftEmission(materials[c.materialIdx].emission);
+			float cu, cv; float3 cnormal;
+			to_light = wf_sample_cylinder_light(c, hit_point, seed, geom_pdf, max_dist, cu, cv, cnormal);
+			const MaterialData& lm = materials[c.materialIdx];
+			float3 raw = (lm.textureIdx >= 0)
+				? wf_sample_texture(textures, texturePixels, lm.textureIdx, cu, cv, hit_point + to_light * max_dist)
+				: lm.emission;
+			if (lm.textureIdx >= 0) { raw.x *= lm.emissionScale; raw.y *= lm.emissionScale; raw.z *= lm.emissionScale; }
+			light_emission_spec = geoAndGate(raw, lm, to_light, cnormal);
 		} else {
 			const QuadData& q = quads[prim_idx];
-			to_light = wf_sample_quad_light(q, hit_point, seed, geom_pdf, max_dist);
-			light_emission_spec = liftEmission(materials[q.materialIdx].emission);
+			float qu, qv;
+			to_light = wf_sample_quad_light(q, hit_point, seed, geom_pdf, max_dist, qu, qv);
+			const MaterialData& lm = materials[q.materialIdx];
+			float3 raw = (lm.textureIdx >= 0)
+				? wf_sample_texture(textures, texturePixels, lm.textureIdx, qu, qv, hit_point + to_light * max_dist)
+				: lm.emission;
+			if (lm.textureIdx >= 0) { raw.x *= lm.emissionScale; raw.y *= lm.emissionScale; raw.z *= lm.emissionScale; }
+			light_emission_spec = geoAndGate(raw, lm, to_light, q.normal);
 		}
 
 		float light_pdf = selection_pdf * geom_pdf;

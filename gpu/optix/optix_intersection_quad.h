@@ -89,10 +89,23 @@ extern "C" __global__ void __closesthit__quad() {
 	);
 	unsigned int seed = optixGetPayload_9();
 
+	// Real UV (alpha,beta - CPU quad.h's own rec.u=alpha,rec.v=beta
+	// convention) for a pbrt AreaLightSource "filename" quad light to
+	// sample its image correctly instead of always reading texel (0,0) -
+	// recomputed here from hit_point rather than a widened attribute
+	// budget, same "cheaper to recompute than widen attributes" reasoning
+	// optix_intersection_disk_cylinder.h's own closest-hit programs use for
+	// their own phi/z-fraction UV. Matches __intersection__quad's own
+	// alpha/beta formula exactly.
+	const float3 planar_vec = hit_point - quad.Q;
+	const float w_dot_w = dot(quad.w, quad.w);
+	const float uv_u = dot(quad.w, cross(planar_vec, quad.v)) / w_dot_w;
+	const float uv_v = dot(quad.w, cross(quad.u, planar_vec)) / w_dot_w;
+
 	// Get emission from material - see material_emission()'s own comment
 	// (optix_device_helpers.h) for why this goes through an accessor rather
 	// than reading mat.emission raw.
-	float3 emission = material_emission(mat, front_face);
+	float3 emission = material_emission(mat, front_face, uv_u, uv_v, hit_point);
 
 	// Material scattering (same as sphere)
 	float3 attenuation;
@@ -128,7 +141,7 @@ extern "C" __global__ void __closesthit__quad() {
 			__trap();
 		}
 
-		shade_material(mat, matIdx, final_normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
+		shade_material(mat, matIdx, final_normal, ray_dir, hit_point, front_face, uv_u, uv_v, seed,
 			attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
 			bssrdf_exit, bssrdf_exit_pos, out_eta);
 	}

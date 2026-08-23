@@ -390,7 +390,8 @@ CPU_GPU float blp_area(const float* p00, const float* p10,
 CPU_GPU void blp_sample(const float* p00, const float* p10,
                        const float* p01, const float* p11,
                        const float* u2,
-                       float* out_p, float* out_n, float* out_pdf)
+                       float* out_p, float* out_n, float* out_pdf,
+                       float* out_u = nullptr, float* out_v = nullptr)
 {
     using namespace blp_detail;
 
@@ -464,6 +465,9 @@ CPU_GPU void blp_sample(const float* p00, const float* p10,
         *out_pdf = pdf / dA;
     else
         *out_pdf = 0.f;
+
+    if (out_u) *out_u = su;
+    if (out_v) *out_v = sv;
 }
 
 // ---------------------------------------------------------------------------

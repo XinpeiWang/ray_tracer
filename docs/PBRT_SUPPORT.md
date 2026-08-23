@@ -67,7 +67,7 @@ GPU: `pbrt_gpu_builder.h`'s light-building code.
 | `projection` | Approx | Approx | Same story as goniometric: neither backend decodes the real projected slide image, both use a uniform white slide instead. Warns when a scene names a real image. |
 | `infinite` (constant color) | Full | Full | |
 | `infinite` (HDRI image) | Full | Full | Same equirectangular importance-sampling distribution (luminance-weighted, sin θ Jacobian) built and used on both. |
-| `AreaLightSource "diffuse"` | Approx | Approx | Real NEE-samplable geometry (sphere/quad/triangle/bilinear patch) on both. CPU parses and honors `filename` (spatially-varying image emission, point-sampled) and `twosided` on any shape. GPU honors both too, but triangle-only (both backends) - the only shape a raw pbrt trianglemesh light ever builds as; a `filename`/`twosided` on a `Shape "sphere"`/`"disk"`/`"cylinder"` area light silently falls back to flat `L`/one-sided on GPU. A GPU triangle light's `filename` image now varies spatially with real per-point UV, matching CPU, once a trianglemesh authors `"point2 uv"` (see "Other known gaps" below) - a mesh with no `"uv"` at all still samples a per-point value on both backends now (the barycentric-weights fallback), just not spatially meaningful the way real authored UV is. `blackbody` emission is read as a raw number rather than converted, on both (warned). |
+| `AreaLightSource "diffuse"` | Approx | Full | Real NEE-samplable geometry (sphere/quad/disk/cylinder/triangle/bilinear patch) on both. Both backends now honor `filename` (spatially-varying image emission, real per-point UV) and `twosided` on every shape kind, for both a direct hit and NEE sampling — previously GPU only did a real texture lookup for triangle lights, and every non-triangle GPU light kind fell back to reading texel (0,0); separately, NEE sampling for every light kind on GPU (including triangle) never checked `mat.twoSided` at all, silently treating every one-sided light as two-sided for next-event estimation while a direct BSDF-sampled hit already correctly gated on it. See `pbrt_scenes/textured-twosided-lights.pbrt` for a scene exercising both fixes on disk/cylinder lights. CPU stays "Approx" only for its own pre-existing `filename` limitation (point-sampled, no bilinear filtering) — not a CPU/GPU asymmetry. `blackbody` emission is read as a raw number rather than converted, on both (warned). |
 | anything else | Unsupported | Unsupported | Dropped with a warning; not visible on either backend. |
 
 ## Cameras (`Camera::type`)
@@ -101,11 +101,6 @@ loader and no longer match the code:
 
 ## Other known gaps (not backend-asymmetric, but worth knowing)
 
-- `AreaLightSource`'s `twosided` and `filename` parameters are honored on
-  CPU for any shape, and on GPU for triangle lights only (see the
-  backend-asymmetric table above) - a sphere/disk/cylinder area light with
-  either param set falls back to flat/one-sided on GPU, tracked as
-  follow-up work.
 - `Shape "trianglemesh"`'s `"point2 uv"` parameter is now parsed
   (`pbrt_flatten::Triangle::uv`/`hasUVs`) and threaded through both CPU
   (`triangle_mesh_data::uvs`, the same field OBJ/MTL `vt` data already

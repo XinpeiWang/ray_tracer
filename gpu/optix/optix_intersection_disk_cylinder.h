@@ -79,7 +79,25 @@ extern "C" __global__ void __closesthit__disk() {
 	const float3 normal = front_face ? outward_normal : -outward_normal;
 
 	unsigned int seed = optixGetPayload_9();
-	float3 emission = material_emission(mat, front_face);
+
+	// Real UV (phi/phiMax, radial fraction - CPU DiskShape<T>::intersect's own
+	// u=phi/phi_max, v=1-(dist-inner_r)/(outer_r-inner_r) convention, shapes.h
+	// :577-582) for a pbrt AreaLightSource "filename" disk light to sample its
+	// image correctly instead of always reading texel (0,0) - recomputed here
+	// from hit_point rather than a widened attribute budget, same "cheaper to
+	// recompute than widen attributes" reasoning __intersection__disk's own
+	// phi computation follows (this file, above) and __closesthit__quad's
+	// alpha/beta UV follows (optix_intersection_quad.h).
+	const float3 obj_hit_uv = dc_apply_point(disk.w2o, hit_point);
+	float uv_phi = atan2f(obj_hit_uv.y, obj_hit_uv.x);
+	if (uv_phi < 0.0f) uv_phi += 6.283185307179586f;
+	const float uv_dist = sqrtf(obj_hit_uv.x * obj_hit_uv.x + obj_hit_uv.y * obj_hit_uv.y);
+	const float uv_u = uv_phi / disk.phiMax;
+	const float uv_v = (disk.radius > disk.innerRadius)
+		? 1.0f - (uv_dist - disk.innerRadius) / (disk.radius - disk.innerRadius)
+		: 0.0f;
+
+	float3 emission = material_emission(mat, front_face, uv_u, uv_v, hit_point);
 
 	float3 attenuation;
 	float3 scattered_dir;
@@ -116,7 +134,7 @@ extern "C" __global__ void __closesthit__disk() {
 			__trap();
 		}
 
-		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
+		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, uv_u, uv_v, seed,
 			attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
 			bssrdf_exit, bssrdf_exit_pos, out_eta);
 	}
@@ -250,7 +268,22 @@ extern "C" __global__ void __closesthit__cylinder() {
 	const float3 normal = front_face ? outward_normal : -outward_normal;
 
 	unsigned int seed = optixGetPayload_9();
-	float3 emission = material_emission(mat, front_face);
+
+	// Real UV (phi/phiMax, z-fraction - CPU CylinderShape<T>'s own
+	// u=phi/phi_max, v=(hz-z_min)/(z_max-z_min) convention, shapes.h:760)
+	// for a pbrt AreaLightSource "filename" cylinder light to sample its
+	// image correctly instead of always reading texel (0,0) - recomputed
+	// here from obj_hit (already computed above for the normal) rather than
+	// a widened attribute budget, same reasoning __closesthit__disk's phi/
+	// radial-fraction UV follows (this file, above).
+	float uv_phi = atan2f(obj_hit.y, obj_hit.x);
+	if (uv_phi < 0.0f) uv_phi += 6.283185307179586f;
+	const float uv_u = uv_phi / cyl.phiMax;
+	const float uv_v = (cyl.zMax > cyl.zMin)
+		? (obj_hit.z - cyl.zMin) / (cyl.zMax - cyl.zMin)
+		: 0.0f;
+
+	float3 emission = material_emission(mat, front_face, uv_u, uv_v, hit_point);
 
 	float3 attenuation;
 	float3 scattered_dir;
@@ -345,7 +378,7 @@ extern "C" __global__ void __closesthit__cylinder() {
 			__trap();
 		}
 
-		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
+		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, uv_u, uv_v, seed,
 			attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
 			bssrdf_exit, bssrdf_exit_pos, out_eta);
 	}

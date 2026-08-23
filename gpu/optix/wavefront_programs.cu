@@ -628,10 +628,15 @@ extern "C" __global__ void __closesthit__wf_bilinear_patch() {
 	// See __closesthit__wf_quad's comment on frontFace - same missing
 	// initialization here.
 	payload->frontFace   = front_face ? 1 : 0;
-	// No texturing support for bilinear patches on either backend yet - see
-	// __closesthit__wf_quad's own comment on the same convention.
-	payload->uv_u        = 0.0f;
-	payload->uv_v        = 0.0f;
+	// Real UV: (u,v) are the patch's own bilinear parametric coordinates,
+	// already recovered from the intersection attributes above - matches
+	// the recursive backend's __closesthit__bilinear_patch, which passes
+	// this same (u,v) pair to material_emission()/shade_material() instead
+	// of always reading texel (0,0) (was previously zeroed here, a real gap
+	// between the two backends since the intersection program already
+	// computed the real values).
+	payload->uv_u        = u;
+	payload->uv_v        = v;
 	// See WfHitPayload::objNormal's own comment - the bilinear-patch use,
 	// only meaningful for MaterialType::Hair. Stored UNNORMALIZED - the
 	// normalize() (sqrt + 3 divides) is deferred to evaluate_materials()'s
@@ -994,12 +999,16 @@ extern "C" __global__ void __closesthit__wf_quad() {
 	// so a quad-hit ray fed those cases garbage stack data instead of the
 	// real hit side.
 	payload->frontFace   = front_face ? 1 : 0;
-	// No per-quad UV exists on this codebase's GPU side (QuadData carries no
-	// uv0/1/2 the way TriangleData does) - matches the recursive path, which
-	// never textures a quad either (its shade_material() callers pass (0,0)
-	// for every quad hit).
-	payload->uv_u        = 0.0f;
-	payload->uv_v        = 0.0f;
+	// Real UV (alpha,beta - same planar-decomposition formula the recursive
+	// backend's __closesthit__quad recomputes from hit_point, and matching
+	// CPU quad.h's own rec.u=alpha,rec.v=beta convention) - was previously
+	// always (0,0) here, a real gap vs. the recursive backend.
+	{
+		const float3 planar_vec = hit_point - q.Q;
+		const float w_dot_w = dot(q.w, q.w);
+		payload->uv_u = dot(q.w, cross(planar_vec, q.v)) / w_dot_w;
+		payload->uv_v = dot(q.w, cross(q.u, planar_vec)) / w_dot_w;
+	}
 }
 
 // ============================================================================
@@ -1085,8 +1094,21 @@ extern "C" __global__ void __closesthit__wf_disk() {
 	payload->hit         = true;
 	payload->mediumTFar  = 0.0f;
 	payload->frontFace   = front_face ? 1 : 0;
-	payload->uv_u        = 0.0f;
-	payload->uv_v        = 0.0f;
+	// Real UV (phi/phiMax, radial fraction) - same formula the recursive
+	// backend's __closesthit__disk recomputes from hit_point, matching CPU
+	// DiskShape<T>::intersect's own u=phi/phi_max, v=1-(dist-inner_r)/
+	// (outer_r-inner_r) convention (shapes.h:577-582). Was previously always
+	// (0,0) here, a real gap vs. the recursive backend.
+	{
+		const float3 obj_hit_uv = wf_dc_apply_point(disk.w2o, hit_point);
+		float uv_phi = atan2f(obj_hit_uv.y, obj_hit_uv.x);
+		if (uv_phi < 0.0f) uv_phi += 6.283185307179586f;
+		const float uv_dist = sqrtf(obj_hit_uv.x * obj_hit_uv.x + obj_hit_uv.y * obj_hit_uv.y);
+		payload->uv_u = uv_phi / disk.phiMax;
+		payload->uv_v = (disk.radius > disk.innerRadius)
+			? 1.0f - (uv_dist - disk.innerRadius) / (disk.radius - disk.innerRadius)
+			: 0.0f;
+	}
 }
 
 // One candidate root: in range, inside the object-space Z clip, and inside
@@ -1166,8 +1188,19 @@ extern "C" __global__ void __closesthit__wf_cylinder() {
 	payload->hit         = true;
 	payload->mediumTFar  = 0.0f;
 	payload->frontFace   = front_face ? 1 : 0;
-	payload->uv_u        = 0.0f;
-	payload->uv_v        = 0.0f;
+	// Real UV (phi/phiMax, z-fraction) - same formula the recursive backend's
+	// __closesthit__cylinder recomputes from obj_hit, matching CPU
+	// CylinderShape<T>'s own u=phi/phi_max, v=(hz-z_min)/(z_max-z_min)
+	// convention (shapes.h:760). Was previously always (0,0) here, a real
+	// gap vs. the recursive backend.
+	{
+		float uv_phi = atan2f(obj_hit.y, obj_hit.x);
+		if (uv_phi < 0.0f) uv_phi += 6.283185307179586f;
+		payload->uv_u = uv_phi / cyl.phiMax;
+		payload->uv_v = (cyl.zMax > cyl.zMin)
+			? (obj_hit.z - cyl.zMin) / (cyl.zMax - cyl.zMin)
+			: 0.0f;
+	}
 
 	// MaterialType::Medium: override with the entry (near) / exit (far)
 	// roots, matching __closesthit__wf_sphere's own needsNearFar block and

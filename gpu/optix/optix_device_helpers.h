@@ -327,11 +327,25 @@ __device__ __forceinline__ float cosine_pdf(const float3& direction, const float
 }
 
 // Sample a random point on a sphere light
+//
+// out_u/out_v/out_normal: the sampled surface point's UV (same theta/phi
+// convention as optix_intersection_sphere.h's direct-hit formula: theta=
+// acos(-p.y), phi=atan2(-p.z,p.x)+pi, u=phi/(2pi), v=theta/pi, evaluated on
+// the local unit-sphere point) and world-space outward normal - recovered
+// by re-intersecting the sampled cone direction against the sphere (the
+// near root), since cone sampling itself only produces a direction, not a
+// point. Needed so a pbrt AreaLightSource "filename" sphere light can be
+// sampled with a real UV instead of always reading texel (0,0), and so
+// mat.twoSided can be checked against the true surface orientation - see
+// sample_area_light_by_kind()'s own comment on both.
 __device__ __forceinline__ float3 sample_sphere_light(
 	const SphereData& sphere,
 	const float3& origin,
 	unsigned int& seed,
-	float& pdf
+	float& pdf,
+	float& out_u,
+	float& out_v,
+	float3& out_normal
 ) {
 	// Direction from origin to sphere center
 	float3 to_center = sphere.center - origin;
@@ -340,6 +354,8 @@ __device__ __forceinline__ float3 sample_sphere_light(
 	// Avoid division by zero
 	if (dist_sq < 1e-6f) {
 		pdf = 0.0f;
+		out_u = out_v = 0.0f;
+		out_normal = make_float3(0.0f, 0.0f, 1.0f);
 		return make_float3(0.0f, 0.0f, 1.0f);
 	}
 
@@ -359,22 +375,49 @@ __device__ __forceinline__ float3 sample_sphere_light(
 	float phi = 2.0f * 3.14159265358979323846f * random_float(seed);
 	float r = sqrtf(1.0f - z * z);
 
-	float3 direction = r * cosf(phi) * u + r * sinf(phi) * v + z * w;
-	return normalize(direction);
+	float3 direction = normalize(r * cosf(phi) * u + r * sinf(phi) * v + z * w);
+
+	// Recover the sampled surface point (near root of ray-sphere) to get its
+	// UV/normal - an algebraic identity given `direction` was drawn to hit
+	// the sphere, not an approximation.
+	float3 oc = origin - sphere.center;
+	float b = dot(oc, direction);
+	float c = dot(oc, oc) - sphere.radius * sphere.radius;
+	float disc = fmaxf(0.0f, b * b - c);
+	float t_near = -b - sqrtf(disc);
+	float3 point = origin + t_near * direction;
+	float3 local = (point - sphere.center) / sphere.radius;
+	out_normal = local;
+
+	const float sphere_theta = acosf(fmaxf(-1.0f, fminf(1.0f, -local.y)));
+	const float sphere_phi = atan2f(-local.z, local.x) + 3.14159265358979323846f;
+	out_u = sphere_phi / (2.0f * 3.14159265358979323846f);
+	out_v = sphere_theta / 3.14159265358979323846f;
+
+	return direction;
 }
 
 // Sample a random point on a quad light
+//
+// out_u/out_v: the sampled point's own (a,b) parametrization, which IS the
+// alpha/beta UV __closesthit__quad recomputes for a direct hit (same
+// planar-decomposition convention) - no extra work, just exposing the
+// (a,b) this function already draws.
 __device__ __forceinline__ float3 sample_quad_light(
 	const QuadData& quad,
 	const float3& origin,
 	unsigned int& seed,
 	float& pdf,
-	float& out_dist
+	float& out_dist,
+	float& out_u,
+	float& out_v
 ) {
 	// Random point on quad surface
 	float a = random_float(seed);
 	float b = random_float(seed);
 	float3 point = quad.Q + a * quad.u + b * quad.v;
+	out_u = a;
+	out_v = b;
 
 	// Direction to sampled point
 	float3 to_light = point - origin;
@@ -415,7 +458,8 @@ __device__ __forceinline__ float3 sample_triangle_light(
 	float& pdf,
 	float& out_dist,
 	float& out_u,
-	float& out_v
+	float& out_v,
+	float3& out_normal
 ) {
 	// Uniform point on the triangle by folding the unit square onto it: draw
 	// (a,b) in [0,1]^2 and reflect the half that falls outside a+b<=1 back
@@ -444,7 +488,7 @@ __device__ __forceinline__ float3 sample_triangle_light(
 	float3 to_light = point - origin;
 	float dist_sq = dot(to_light, to_light);
 	out_dist = sqrtf(dist_sq);
-	if (out_dist < 1e-6f) { pdf = 0.0f; return make_float3(0.0f, 0.0f, 1.0f); }
+	if (out_dist < 1e-6f) { pdf = 0.0f; out_normal = make_float3(0.0f, 0.0f, 1.0f); return make_float3(0.0f, 0.0f, 1.0f); }
 	float3 direction = to_light / out_dist;
 
 	// GEOMETRIC normal, not the interpolated shading normal: this converts an
@@ -453,8 +497,9 @@ __device__ __forceinline__ float3 sample_triangle_light(
 	const float3 n_unnorm = cross(e1, e2);
 	const float twice_area = length(n_unnorm);
 	const float area = 0.5f * twice_area;      // half the parallelogram
-	if (twice_area < 1e-12f) { pdf = 0.0f; return direction; }
+	if (twice_area < 1e-12f) { pdf = 0.0f; out_normal = direction; return direction; }
 	const float3 normal = n_unnorm / twice_area;
+	out_normal = normal;
 
 	const float cosine = fabsf(dot(direction, normal));
 	if (cosine < 1e-6f || area < 1e-12f) {
@@ -479,18 +524,24 @@ __device__ __forceinline__ float3 sample_bilinear_patch_light(
 	const float3& origin,
 	unsigned int& seed,
 	float& pdf,
-	float& out_dist
+	float& out_dist,
+	float& out_u,
+	float& out_v,
+	float3& out_normal
 ) {
 	const float p00[3] = {bp.p00.x, bp.p00.y, bp.p00.z};
 	const float p10[3] = {bp.p10.x, bp.p10.y, bp.p10.z};
 	const float p01[3] = {bp.p01.x, bp.p01.y, bp.p01.z};
 	const float p11[3] = {bp.p11.x, bp.p11.y, bp.p11.z};
 	const float u2[2] = {random_float(seed), random_float(seed)};
-	float outP[3], outN[3], areaPdf = 0.0f;
-	blp_sample(p00, p10, p01, p11, u2, outP, outN, &areaPdf);
+	float outP[3], outN[3], areaPdf = 0.0f, su = 0.0f, sv = 0.0f;
+	blp_sample(p00, p10, p01, p11, u2, outP, outN, &areaPdf, &su, &sv);
+	out_u = su;
+	out_v = sv;
 
 	const float3 point = make_float3(outP[0], outP[1], outP[2]);
 	const float3 normal = make_float3(outN[0], outN[1], outN[2]);
+	out_normal = normal;
 	float3 to_light = point - origin;
 	float dist_sq = dot(to_light, to_light);
 	out_dist = sqrtf(dist_sq);
@@ -511,15 +562,32 @@ __device__ __forceinline__ float3 sample_bilinear_patch_light(
 // that header's own comment) draws a uniform-area point in WORLD space and
 // returns an AREA-domain pdf; the area-to-solid-angle Jacobian conversion
 // below is the same one every other *_light sampler in this file applies.
+// out_u/out_v: recomputed from the sampled world point via the same
+// object-space phi/radial-fraction formula __closesthit__disk uses for a
+// direct hit (this file's own "recompute from the point" convention).
 __device__ __forceinline__ float3 sample_disk_light(
 	const DiskData& disk,
 	const float3& origin,
 	unsigned int& seed,
 	float& pdf,
-	float& out_dist
+	float& out_dist,
+	float& out_u,
+	float& out_v,
+	float3& out_normal
 ) {
 	float3 point, normal; float area_pdf;
 	dc_sample_disk(disk, random_float(seed), random_float(seed), point, normal, area_pdf);
+	out_normal = normal;
+	{
+		const float3 obj_pt = dc_apply_point(disk.w2o, point);
+		float uv_phi = atan2f(obj_pt.y, obj_pt.x);
+		if (uv_phi < 0.0f) uv_phi += 6.283185307179586f;
+		const float uv_dist = sqrtf(obj_pt.x * obj_pt.x + obj_pt.y * obj_pt.y);
+		out_u = uv_phi / disk.phiMax;
+		out_v = (disk.radius > disk.innerRadius)
+			? 1.0f - (uv_dist - disk.innerRadius) / (disk.radius - disk.innerRadius)
+			: 0.0f;
+	}
 	float3 to_light = point - origin;
 	float dist_sq = dot(to_light, to_light);
 	out_dist = sqrtf(dist_sq);
@@ -533,15 +601,29 @@ __device__ __forceinline__ float3 sample_disk_light(
 	return direction;
 }
 
+// out_u/out_v: recomputed from the sampled world point via the same
+// object-space phi/z-fraction formula __closesthit__cylinder uses for a
+// direct hit.
 __device__ __forceinline__ float3 sample_cylinder_light(
 	const CylinderData& cyl,
 	const float3& origin,
 	unsigned int& seed,
 	float& pdf,
-	float& out_dist
+	float& out_dist,
+	float& out_u,
+	float& out_v,
+	float3& out_normal
 ) {
 	float3 point, normal; float area_pdf;
 	dc_sample_cylinder(cyl, random_float(seed), random_float(seed), point, normal, area_pdf);
+	out_normal = normal;
+	{
+		const float3 obj_pt = dc_apply_point(cyl.w2o, point);
+		float uv_phi = atan2f(obj_pt.y, obj_pt.x);
+		if (uv_phi < 0.0f) uv_phi += 6.283185307179586f;
+		out_u = uv_phi / cyl.phiMax;
+		out_v = (cyl.zMax > cyl.zMin) ? (obj_pt.z - cyl.zMin) / (cyl.zMax - cyl.zMin) : 0.0f;
+	}
 	float3 to_light = point - origin;
 	float dist_sq = dot(to_light, to_light);
 	out_dist = sqrtf(dist_sq);
@@ -553,6 +635,48 @@ __device__ __forceinline__ float3 sample_cylinder_light(
 
 	pdf = area_pdf * dist_sq / cosine;
 	return direction;
+}
+
+// NEE texture lookup for a "filename"/map_Ke area light, shared by every
+// non-Triangle case in sample_area_light_by_kind() below. Deliberately the
+// same hand-inlined Image-kind logic as Triangle's own copy (this file, a
+// few lines below) rather than a call to the shared sample_texture() helper
+// - see Triangle's own comment for why that call specifically crashes from
+// inside this function; since __forceinline__ guarantees this collapses
+// into the caller exactly like a hand-copy would, one shared copy here is
+// the same generated code as five separate ones, just not five separately-
+// maintained ones.
+__device__ __forceinline__ float3 nee_light_texture_emission(const MaterialData& lm, float lu, float lv) {
+	if (lm.textureIdx < 0) return lm.emission;
+	const TextureData& dtex = params.textures[lm.textureIdx];
+	if (dtex.kind == TextureKind::Image && dtex.width > 0 && dtex.height > 0) {
+		const float uc = fminf(fmaxf(lu, 0.0f), 1.0f);
+		const float vc = 1.0f - fminf(fmaxf(lv, 0.0f), 1.0f);
+		const int ti = min(static_cast<int>(uc * dtex.width), dtex.width - 1);
+		const int tj = min(static_cast<int>(vc * dtex.height), dtex.height - 1);
+		const unsigned char* px = params.texturePixels + dtex.pixelOffset + (tj * dtex.width + ti) * 3;
+		constexpr float kCS = 1.0f / 255.0f;
+		return make_float3(px[0]*kCS*lm.emissionScale, px[1]*kCS*lm.emissionScale, px[2]*kCS*lm.emissionScale);
+	}
+	return make_float3(0.0f, 1.0f, 1.0f);
+}
+
+// Zeroes `emission` when the light material is one-sided (mat.twoSided ==
+// false) and the sampled surface point's outward normal faces AWAY from the
+// receiver - the NEE counterpart of material_emission()'s own front_face
+// gate on a direct hit (this file, above). `direction` points from the
+// receiver toward the light (same sense optix_intersection_*.h's `ray_dir`
+// has at a direct hit), so front-facing is dot(direction, light_normal) < 0,
+// matching front_face's own convention exactly. Was previously never
+// checked for ANY light kind here (including Triangle) - every one-sided
+// area light was silently treated as two-sided by NEE, contributing light
+// from its back face that a direct BSDF-sampled ray hitting the same face
+// would correctly have shown as unlit.
+__device__ __forceinline__ void nee_gate_one_sided(
+	const MaterialData& lm, const float3& direction, const float3& light_normal, float3& emission
+) {
+	if (!lm.twoSided && dot(direction, light_normal) >= 0.0f)
+		emission = make_float3(0.0f, 0.0f, 0.0f);
 }
 
 // Sample whichever kind of area light `light_idx` names, and report the
@@ -575,11 +699,14 @@ __device__ __forceinline__ float3 sample_area_light_by_kind(
 	switch (params.lightKinds[light_idx]) {
 	case GpuLightKind::Sphere: {
 		const SphereData& s = params.spheres[prim_idx];
-		const float3 dir = sample_sphere_light(s, origin, seed, geom_pdf);
+		float su, sv; float3 snormal;
+		const float3 dir = sample_sphere_light(s, origin, seed, geom_pdf, su, sv, snormal);
 		// Distance to the CENTRE, matching what this path has always used to
 		// bound the shadow ray for a sphere light.
 		max_dist = length(s.center - origin);
-		emission = params.materials[s.materialIdx].emission;
+		const MaterialData& sm = params.materials[s.materialIdx];
+		emission = nee_light_texture_emission(sm, su, sv);
+		nee_gate_one_sided(sm, dir, snormal, emission);
 		return dir;
 	}
 	case GpuLightKind::Triangle: {
@@ -587,8 +714,8 @@ __device__ __forceinline__ float3 sample_area_light_by_kind(
 		// emissive (flatten() bakes emitters per placement into world space),
 		// so no per-instance base offset applies here.
 		const TriangleData& t = params.triangles[prim_idx];
-		float lu, lv;
-		const float3 dir = sample_triangle_light(t, origin, seed, geom_pdf, max_dist, lu, lv);
+		float lu, lv; float3 tnormal;
+		const float3 dir = sample_triangle_light(t, origin, seed, geom_pdf, max_dist, lu, lv, tnormal);
 		const MaterialData& lm = params.materials[t.materialIdx];
 		// A pbrt AreaLightSource "filename" triangle light needs the real
 		// sampled UV to look up its image, matching material_emission()'s
@@ -630,31 +757,44 @@ __device__ __forceinline__ float3 sample_area_light_by_kind(
 		} else {
 			emission = lm.emission;
 		}
+		nee_gate_one_sided(lm, dir, tnormal, emission);
 		return dir;
 	}
 	case GpuLightKind::BilinearPatch: {
 		const BilinearPatchData& bp = params.bilinearPatches[prim_idx];
-		const float3 dir = sample_bilinear_patch_light(bp, origin, seed, geom_pdf, max_dist);
-		emission = params.materials[bp.materialIdx].emission;
+		float bu, bv; float3 bnormal;
+		const float3 dir = sample_bilinear_patch_light(bp, origin, seed, geom_pdf, max_dist, bu, bv, bnormal);
+		const MaterialData& bm = params.materials[bp.materialIdx];
+		emission = nee_light_texture_emission(bm, bu, bv);
+		nee_gate_one_sided(bm, dir, bnormal, emission);
 		return dir;
 	}
 	case GpuLightKind::Disk: {
 		const DiskData& d = params.disks[prim_idx];
-		const float3 dir = sample_disk_light(d, origin, seed, geom_pdf, max_dist);
-		emission = params.materials[d.materialIdx].emission;
+		float du, dv; float3 dnormal;
+		const float3 dir = sample_disk_light(d, origin, seed, geom_pdf, max_dist, du, dv, dnormal);
+		const MaterialData& dm = params.materials[d.materialIdx];
+		emission = nee_light_texture_emission(dm, du, dv);
+		nee_gate_one_sided(dm, dir, dnormal, emission);
 		return dir;
 	}
 	case GpuLightKind::Cylinder: {
 		const CylinderData& c = params.cylinders[prim_idx];
-		const float3 dir = sample_cylinder_light(c, origin, seed, geom_pdf, max_dist);
-		emission = params.materials[c.materialIdx].emission;
+		float cu, cv; float3 cnormal;
+		const float3 dir = sample_cylinder_light(c, origin, seed, geom_pdf, max_dist, cu, cv, cnormal);
+		const MaterialData& cm = params.materials[c.materialIdx];
+		emission = nee_light_texture_emission(cm, cu, cv);
+		nee_gate_one_sided(cm, dir, cnormal, emission);
 		return dir;
 	}
 	case GpuLightKind::Quad:
 	default: {
 		const QuadData& q = params.quads[prim_idx];
-		const float3 dir = sample_quad_light(q, origin, seed, geom_pdf, max_dist);
-		emission = params.materials[q.materialIdx].emission;
+		float qu, qv;
+		const float3 dir = sample_quad_light(q, origin, seed, geom_pdf, max_dist, qu, qv);
+		const MaterialData& qm = params.materials[q.materialIdx];
+		emission = nee_light_texture_emission(qm, qu, qv);
+		nee_gate_one_sided(qm, dir, q.normal, emission);
 		return dir;
 	}
 	}
