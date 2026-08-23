@@ -1185,6 +1185,20 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				// "displacement" below, applied here too so reflectance gets
 				// the same real-scene coverage rather than falling through
 				// to the generic warning for every scale-wrapped case.
+				// CoatedDiffuse ONLY: both builders apply m.textureScale for
+				// CoatedDiffuse (scaled_texture on CPU, MaterialData::
+				// emissionScale on GPU), but the Diffuse/Lambertian case in
+				// BOTH builders never reads m.textureScale at all - unwrapping
+				// "scale" for Diffuse too would silently resolve to an image
+				// and then render it at full (unscaled) brightness instead of
+				// the scene's requested scale, a real regression from the
+				// pre-existing "warn and fall back to flat colour" behavior a
+				// scale-wrapped Diffuse reflectance correctly got before this
+				// gate existed. No bundled scene needs Diffuse+scale+imagemap
+				// (only CoatedDiffuse's barcelona-pavilion/contemporary-
+				// bathroom materials do), so this stays narrower than the
+				// bare-imagemap case just below, which both kinds already
+				// handle correctly.
 				// Unwrapped into a SEPARATE variable (imgTex), not reassigned
 				// into `tex` itself: the checkerboard/fbm/marble/mix branches
 				// below must still see the ORIGINAL (possibly "scale") decl
@@ -1194,7 +1208,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				// bare checkerboard instead.
 				const pbrt_scene::TextureDecl *imgTex = tex;
 				double texScale = 1.0;
-				if (imgTex && imgTex->cls == "scale") {
+				if (m.kind == MaterialKind::CoatedDiffuse && imgTex && imgTex->cls == "scale") {
 					texScale = imgTex->params.getFloat("scale", 1.0);
 					const pbrt_scene::Param *inner = imgTex->params.find("tex");
 					imgTex = nullptr;

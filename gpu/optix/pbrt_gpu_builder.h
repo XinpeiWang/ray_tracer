@@ -1644,8 +1644,19 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 				int width = 0, height = 0, channels = 0;
 				float *fdata = stbi_loadf(pl.filename.c_str(), &width, &height, &channels, 3);
 				if (fdata && width > 0 && height > 0) {
-					const int nx = std::min(width, kProjImageMaxDim);
-					const int ny = std::min(height, kProjImageMaxDim);
+					// Cap the LARGER dimension to kProjImageMaxDim and scale
+					// the other one proportionally, not each dimension
+					// independently - independent per-axis caps would distort
+					// a non-square image's aspect ratio whenever only one
+					// axis exceeds the cap (e.g. a 1920x1080 photo would
+					// become 64x64, aspect 1.0 instead of ~1.78), which then
+					// corrupts the screen-bounds aspect computed below and
+					// visibly squishes the projected content relative to
+					// CPU's own uncapped (always-correct-aspect) version.
+					const float fitScale = std::min(1.0f,
+						static_cast<float>(kProjImageMaxDim) / static_cast<float>(std::max(width, height)));
+					const int nx = std::max(1, static_cast<int>(width * fitScale + 0.5f));
+					const int ny = std::max(1, static_cast<int>(height * fitScale + 0.5f));
 					pr.nx = nx; pr.ny = ny;
 					for (int v = 0; v < ny; ++v) {
 						const int sv = v * height / ny;

@@ -40,7 +40,7 @@ GPU: `gpu/optix/pbrt_gpu_builder.h`'s material switch.
 | `conductor` | Approx | Approx | A named metal spectrum (`"spectrum eta"`/`"spectrum k"` = `"metal-<Name>-eta"`/`"-k"`, e.g. Ag/Au/Al/Cu/Fe) resolves to the real complex-IOR GGX `conductor`/`MaterialType::Conductor` model with tabulated eta/k, on both backends. An explicit RGB `eta`/`k`, or an unrecognized spectrum name, still falls back to the fuzz-sphere metal model (roughness fed directly as fuzz, not GGX alpha) on both — symmetric either way. |
 | `dielectric` | Full | Full | Smooth by default; a nonzero `roughness` routes to the real `rough_dielectric`/`MaterialType::RoughDielectric` GGX model on both. pbrt's separate `uroughness`/`vroughness` (anisotropic) aren't parsed independently — whichever one is present is used as a single isotropic roughness. |
 | `thindielectric` | Full | Full | Both use the correct closed-form un-refracted transmission (`R_eff = R + T²R/(1-R²)`), not a solid-glass approximation. |
-| `coateddiffuse` | Full | Full | Same layered rough-coat-over-Lambertian model, same 3 parameters (albedo, ior, roughness), on both. `"reflectance"` bound to a real `"imagemap"` `Texture` (optionally `"scale"`-wrapped) is also decoded on both, matching `Diffuse`'s own imagemap support — see "Other known gaps" below for the one backend asymmetry (wavefront's NEE proxy stays flat-colour) this carries. |
+| `coateddiffuse` | Full | Full | Same layered rough-coat-over-Lambertian model, same 3 parameters (albedo, ior, roughness), on both. `"reflectance"` bound to a real `"imagemap"` `Texture` (optionally `"scale"`-wrapped) is also decoded on both, including both GPU backends' NEE/MIS evaluation — see "Other known gaps" below. |
 | `coatedconductor` | Approx | Approx | Symmetric approximation: base color reinterpreted as normal-incidence reflectance (eta=1, k solved from it). pbrt's real `conductor.eta`/`conductor.k` sub-parameters aren't parsed. |
 | `diffusetransmission` | Full | Full | Separate reflectance/transmittance colors on both. |
 | `subsurface` | Full | Full | Real tabulated BSSRDF with device probe-walk on both GPU backends (recursive and wavefront), matching CPU's own tabulated BSSRDF. |
@@ -221,26 +221,28 @@ fixed — see the Materials table above, which is the source of truth for
 per-`MaterialKind` behavior.)
 
 - A `Diffuse` OR `CoatedDiffuse` material's `"reflectance"` parameter bound to
-  an `"imagemap"` `Texture` (optionally wrapped in a `"scale"` `Texture`,
-  `barcelona-pavilion`'s own dominant pattern for `coateddiffuse`) is decoded
-  and uploaded on both CPU (`mipmap_texture`-backed `lambertian`/
-  `coated_diffuse`) and GPU (`MaterialData::textureIdx` into the same texture
-  table OBJ/MTL `map_Kd` already uses, scale folded into the reused
-  `emissionScale` field) — see `Material::textureFilename`/`textureScale` in
-  `pbrt_flatten.h`. `Diffuse` additionally supports `"checkerboard"`/`"fbm"`/
-  `"marble"`/`"mix"` procedural textures (flat-literal `tex1`/`tex2` only, no
-  nested texture references) — `CoatedDiffuse` does not, since no bundled
-  scene binds any of those to a `coateddiffuse` reflectance. pbrt's own
-  `ganesha` example scene (a `coateddiffuse` statue, bare imagemap) and
-  `barcelona-pavilion`/`contemporary-bathroom` (many `coateddiffuse` surfaces,
-  mostly scale-wrapped) are the motivating cases and now render with real
-  per-point texture data instead of a flat fallback colour on both backends -
-  see `pbrt_scenes/coateddiffuse-texture.pbrt`. On the wavefront GPU backend
-  specifically, the real per-point value is used for the material's own
-  BSDF-sampled scatter path, but NOT for `wf_finish_material_scatter`'s
-  shared NEE/MIS `f()` evaluation (no per-hit UV in scope there - see that
-  function's own comment) - the recursive backend has no such gap, since its
-  NEE block is inlined at the same call site as the real scatter path.
+  a bare `"imagemap"` `Texture` is decoded and uploaded on both CPU
+  (`mipmap_texture`-backed `lambertian`/`coated_diffuse`) and GPU
+  (`MaterialData::textureIdx` into the same texture table OBJ/MTL `map_Kd`
+  already uses) — see `Material::textureFilename` in `pbrt_flatten.h`. A
+  `"scale"`-wrapped `"imagemap"` (`barcelona-pavilion`'s own dominant pattern
+  for `coateddiffuse`) is supported for `CoatedDiffuse` ONLY (scale folded
+  into the reused `emissionScale` field, see `Material::textureScale`) —
+  `Diffuse` still falls back to a flat colour with a warning for the
+  scale-wrapped case, since none of its own consumer code (CPU or GPU) applies
+  a reflectance scale factor at all. `Diffuse` additionally supports
+  `"checkerboard"`/`"fbm"`/`"marble"`/`"mix"` procedural textures (flat-literal
+  `tex1`/`tex2` only, no nested texture references) — `CoatedDiffuse` does
+  not, since no bundled scene binds any of those to a `coateddiffuse`
+  reflectance. pbrt's own `ganesha` example scene (a `coateddiffuse` statue,
+  bare imagemap) and `barcelona-pavilion`/`contemporary-bathroom` (many
+  `coateddiffuse` surfaces, mostly scale-wrapped) are the motivating cases and
+  now render with real per-point texture data instead of a flat fallback
+  colour on both backends - see `pbrt_scenes/coateddiffuse-texture.pbrt`. Both
+  GPU backends' NEE/MIS evaluation also uses the real per-point value for a
+  texture-bound `CoatedDiffuse` (the wavefront backend's shared
+  `wf_finish_material_scatter` threads the current hit's own UV through for
+  this), matching the scatter path exactly.
   Every OTHER material kind's texture-bound parameter (`conductor`'s
   `"eta"`/`"k"`/`"reflectance"`, `dielectric`'s roughness, `diffusetransmission`'s
   `"reflectance"`/`"transmittance"` — `barcelona-pavilion`'s foliage uses the

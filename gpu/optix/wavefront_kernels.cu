@@ -1400,13 +1400,27 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	WorkQueue<ShadowRayWorkItem>& shadowQueue,
 	WorkQueue<RayWorkItem>& nextRayQueue,
 	float3* framebuffer,
-	// Needed only for a textured (pbrt AreaLightSource "filename") NEE
-	// target - see this function's own Triangle-light NEE branch below.
+	// Needed for a textured (pbrt AreaLightSource "filename") NEE target -
+	// see this function's own Triangle-light NEE branch below - AND for a
+	// texture-bound CoatedDiffuse's NEE/MIS f() (see uv_u/uv_v below).
 	// Every caller already has these in scope (evaluate_materials/
 	// evaluate_materials_simple as kernel params, evaluate_materials_dielectric/
 	// resolve_bssrdf_exit newly threaded through for this same reason - see
 	// wavefront_launch.cu/wavefront_path_tracer.cpp).
-	const TextureData* textures, const unsigned char* texturePixels)
+	const TextureData* textures, const unsigned char* texturePixels,
+	// The CURRENT hit's own UV (HitWorkItem::uv_u/uv_v) - lets evalGlossyF's
+	// CoatedDiffuse branch sample the material's real per-point reflectance
+	// texture for NEE/MIS, matching the scatter path's own lookup instead of
+	// falling back to fm.albedo. Every caller already holds `h.uv_u`/`h.uv_v`
+	// in scope (same HitWorkItem the caller's own scatter-path texture
+	// lookup already reads, e.g. evaluate_materials()'s Lambertian/
+	// CoatedDiffuse cases) - callers whose own material switch can never
+	// reach CoatedDiffuse (evaluate_materials_simple: Lambertian/Metal only;
+	// evaluate_materials_dielectric/resolve_bssrdf_exit: dielectric-only
+	// matTypes) just pass their own h.uv_u/h.uv_v too since it's free and
+	// harmless - evalGlossyF's CoatedDiffuse branch is simply never reached
+	// from those call sites.
+	float uv_u, float uv_v)
 {
 	using SS = SampledSpectrum<kWFNWavelengths>;
 
@@ -1511,14 +1525,15 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			fr = fg = fb = v;
 			outPdf = bx.pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, nfEta, wo_x, wo_y, wo_z);
 		} else if (matType == MaterialType::CoatedDiffuse) {
-			// fm.albedo (flat), not a real per-point texture lookup: this
-			// shared function has no UV in scope for the CURRENT hit (only
-			// for an NEE light TARGET, a separate concept - see its own
-			// textures/texturePixels parameter comment). A documented,
-			// accepted proxy for a texture-bound coateddiffuse's NEE/MIS f()
-			// - see evaluate_materials()'s own CoatedDiffuse case, where the
-			// main scatter path DOES use the real per-point texture value.
-			CoatedDiffuseBxDF<float> bx{ fm.albedo.x, fm.albedo.y, fm.albedo.z, fm.ior, glossy_alpha, glossy_alpha };
+			// Real per-point reflectance when texture-bound (uv_u/uv_v is
+			// the CURRENT hit's own UV, threaded in for exactly this - see
+			// this function's own uv_u/uv_v parameter comment), matching
+			// evaluate_materials()'s own scatter-path lookup for the same
+			// material exactly; fm.albedo (flat) otherwise.
+			const float3 coatedAlbedo = (fm.textureIdx >= 0)
+				? wf_sample_texture(textures, texturePixels, fm.textureIdx, uv_u, uv_v, hit_point) * fm.emissionScale
+				: fm.albedo;
+			CoatedDiffuseBxDF<float> bx{ coatedAlbedo.x, coatedAlbedo.y, coatedAlbedo.z, fm.ior, glossy_alpha, glossy_alpha };
 			uint64_t s0, s1; wf_random_seed64_pair(seed, s0, s1);
 			bx.f(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, s0, s1, fr, fg, fb);
 			outPdf = ggx_vndf_reflection_pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, glossy_alpha, glossy_alpha);
@@ -2584,15 +2599,11 @@ extern "C" __global__ void evaluate_materials(
 		// mat.albedo's flat colour when textureIdx>=0 - same pattern the
 		// Lambertian case above already uses, scaled by mat.emissionScale
 		// (reused here for CoatedDiffuse's own "scale"-wrapped-imagemap
-		// case - see that field's own comment in optix_types.h). Only the
-		// main scatter path below gets the real per-point value;
+		// case - see that field's own comment in optix_types.h).
 		// wf_finish_material_scatter's own evalGlossyF (its CoatedDiffuse
-		// branch) still reads the flat mat.albedo for its NEE/MIS f()
-		// evaluation - threading real UV through that shared, multi-caller
-        // function was judged not worth it for a value that's already a
-		// documented pdf/f() proxy approximation (see its own header
-		// comment), same accepted-tradeoff shape as CPU's own coated_diffuse
-		// ::scatter() using a "fixed representative color" for srec.attenuation.
+		// branch) does the identical lookup for its NEE/MIS f() evaluation
+		// too, via the uv_u/uv_v this function now threads through to it -
+		// see that function's own uv_u/uv_v parameter comment.
 		const float3 cd_albedo = (mat.textureIdx >= 0)
 			? wf_sample_texture(textures, texturePixels, mat.textureIdx, h.uv_u, h.uv_v, hit_point) * mat.emissionScale
 			: mat.albedo;
@@ -3275,7 +3286,7 @@ extern "C" __global__ void evaluate_materials(
 		punctualLights, numPunctualLights,
 		skyColor, shadow_eps, skyDist,
 		shadowQueue, nextRayQueue, framebuffer,
-		textures, texturePixels);
+		textures, texturePixels, h.uv_u, h.uv_v);
 }
 
 // ============================================================================
@@ -3443,7 +3454,7 @@ extern "C" __global__ void evaluate_materials_simple(
 		punctualLights, numPunctualLights,
 		skyColor, shadow_eps, skyDist,
 		shadowQueue, nextRayQueue, framebuffer,
-		textures, texturePixels);
+		textures, texturePixels, h.uv_u, h.uv_v);
 }
 
 // ============================================================================
@@ -3670,7 +3681,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		punctualLights, numPunctualLights,
 		skyColor, shadow_eps, skyDist,
 		shadowQueue, nextRayQueue, framebuffer,
-		textures, texturePixels);
+		textures, texturePixels, h.uv_u, h.uv_v);
 }
 
 // Uplift a flat RGB color to a spectral sample at the given hero
@@ -3845,7 +3856,7 @@ extern "C" __global__ void resolve_bssrdf_exit(
 		punctualLights, numPunctualLights,
 		skyColor, shadow_eps, skyDist,
 		shadowQueue, nextRayQueue, framebuffer,
-		textures, texturePixels);
+		textures, texturePixels, /*uv_u=*/0.0f, /*uv_v=*/0.0f);
 }
 
 // ============================================================================
