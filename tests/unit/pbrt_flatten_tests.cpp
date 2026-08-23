@@ -1016,6 +1016,66 @@ TEST(FlattenMaterialTest, PbrtNamesMapStraightAcross) {
 	EXPECT_DOUBLE_EQ(s.materials[0].roughness, 0.3);
 }
 
+TEST(FlattenMaterialTest, CoatedDiffuseReflectanceImagemapIsThreadedThrough) {
+	// pbrt's own ganesha scene's exact binding shape - Material::
+	// textureFilename's own comment on why CoatedDiffuse is gated in
+	// alongside Diffuse (previously Diffuse-only, warning for every other
+	// kind).
+	const FlatScene s = flattenSource(
+		"Texture \"tmap\" \"spectrum\" \"imagemap\" \"string filename\" [ \"statue.png\" ]\n"
+		"Material \"coateddiffuse\" \"texture reflectance\" [ \"tmap\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].textureFilename, "statue.png");
+	EXPECT_DOUBLE_EQ(s.materials[0].textureScale, 1.0);
+	EXPECT_FALSE(warnedAbout(s, "coateddiffuse"));
+}
+
+TEST(FlattenMaterialTest, CoatedDiffuseReflectanceScaleWrappedImagemapCarriesTheScale) {
+	// barcelona-pavilion's own dominant binding shape.
+	const FlatScene s = flattenSource(
+		"Texture \"tmap\" \"spectrum\" \"imagemap\" \"string filename\" [ \"concrete.png\" ]\n"
+		"Texture \"tmap-scaled\" \"spectrum\" \"scale\" \"texture tex\" [ \"tmap\" ] "
+		"\"float scale\" [ 0.7 ]\n"
+		"Material \"coateddiffuse\" \"texture reflectance\" [ \"tmap-scaled\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].textureFilename, "concrete.png");
+	EXPECT_DOUBLE_EQ(s.materials[0].textureScale, 0.7);
+}
+
+TEST(FlattenMaterialTest, CoatedDiffuseReflectanceCheckerboardStillWarns) {
+	// Deliberate scope cut (Material::textureFilename's own comment): only
+	// imagemap (optionally scale-wrapped) is wired up for CoatedDiffuse - no
+	// bundled scene binds a checkerboard/fbm/marble/mix to a coateddiffuse
+	// reflectance, so those stay Diffuse-only and this must still warn
+	// rather than silently building an unintended procedural pattern.
+	const FlatScene s = flattenSource(
+		"Texture \"chk\" \"spectrum\" \"checkerboard\"\n"
+		"Material \"coateddiffuse\" \"texture reflectance\" [ \"chk\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_FALSE(s.materials[0].hasCheckerReflectance);
+	EXPECT_TRUE(warnedAbout(s, "coateddiffuse"));
+}
+
+TEST(FlattenMaterialTest, DiffuseReflectanceScaleWrappingACheckerboardStillWarns) {
+	// A regression guard for the reflectance scale-unwrap added alongside
+	// CoatedDiffuse support: unwrapping "scale" must only ever feed the
+	// "imagemap" branch, never silently reveal a wrapped checkerboard/fbm/
+	// marble/mix underneath and drop its own scale factor unnoticed - see
+	// the unwrap's own "imgTex, not tex" comment in the flatten loop.
+	const FlatScene s = flattenSource(
+		"Texture \"chk\" \"spectrum\" \"checkerboard\"\n"
+		"Texture \"chk-scaled\" \"spectrum\" \"scale\" \"texture tex\" [ \"chk\" ] "
+		"\"float scale\" [ 0.5 ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"chk-scaled\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_FALSE(s.materials[0].hasCheckerReflectance);
+	EXPECT_TRUE(warnedAbout(s, "diffuse"));
+}
+
 TEST(FlattenMaterialTest, DielectricEtaIsReadAsIor) {
 	const FlatScene s = flattenSource(
 		"Material \"dielectric\" \"float eta\" [ 1.33 ]\n" + std::string(kQuadMesh));

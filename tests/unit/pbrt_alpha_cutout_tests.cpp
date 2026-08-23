@@ -131,7 +131,13 @@ TEST(AlphaCutoutBundledSceneTest, BarcelonaPavilionFoliageResolvesFiveAlphaTextu
 	int gpuWithAlpha = 0;
 	for (const auto &m : scene.materials) if (m.alphaMaskTexIdx >= 0) gpuWithAlpha++;
 	EXPECT_EQ(gpuWithAlpha, 5);
-	EXPECT_EQ(scene.textures.size(), 5u);
+	// >= 5, not == 5: this scene's own coateddiffuse materials (Gap 4 -
+	// pbrt_flatten::Material::textureFilename now covers CoatedDiffuse too,
+	// not just Diffuse) also build real reflectance textures now, growing
+	// scene.textures beyond just the 5 alpha masks this test is actually
+	// about - an exact count here would make this test fragile to any other
+	// legitimate texture-building feature touching this same bundled scene.
+	EXPECT_GE(scene.textures.size(), 5u);
 	EXPECT_FALSE(scene.texturePixels.empty());
 }
 

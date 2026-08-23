@@ -156,14 +156,33 @@ TEST(PbrtDroppedTest, AnAreaLightIsNotWarnedAboutBecauseItIsSupported) {
 }
 
 TEST(PbrtDroppedTest, ATextureBoundToAMaterialIsReportedWithItsParameterName) {
+	// "conductor" (not "coateddiffuse" - see
+	// CoatedDiffuseReflectanceImagemapIsResolvedNotWarned below for why that
+	// one now resolves instead of warning): a texture-bound "reflectance" on
+	// a material kind neither Diffuse nor CoatedDiffuse gate handles must
+	// still warn rather than silently rendering flat.
 	const FlatScene s = build(
 		"Texture \"tmap\" \"spectrum\" \"imagemap\" \"string filename\" [ \"t.png\" ]\n"
-		"Material \"coateddiffuse\" \"texture reflectance\" [ \"tmap\" ]\n"
+		"Material \"conductor\" \"texture reflectance\" [ \"tmap\" ]\n"
 		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
 		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
 	EXPECT_TRUE(warned(s, "reflectance"))
 		<< "a textured material renders flat and says nothing about it";
 	EXPECT_TRUE(warned(s, "constant colour"));
+}
+
+TEST(PbrtDroppedTest, CoatedDiffuseReflectanceImagemapIsResolvedNotWarned) {
+	// Gap 4 (pbrt's own ganesha/barcelona-pavilion scenes): CoatedDiffuse
+	// joined Diffuse in resolving a texture-bound "reflectance" bound to an
+	// "imagemap" for real, instead of warning and falling back to a flat
+	// colour - see pbrt_flatten::Material::textureFilename's own comment.
+	const FlatScene s = build(
+		"Texture \"tmap\" \"spectrum\" \"imagemap\" \"string filename\" [ \"t.png\" ]\n"
+		"Material \"coateddiffuse\" \"texture reflectance\" [ \"tmap\" ]\n"
+		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
+		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
+	EXPECT_FALSE(warned(s, "reflectance"));
+	EXPECT_EQ(s.materials[0].textureFilename, "t.png");
 }
 
 TEST(PbrtDroppedTest, ADiffuseReflectanceImagemapIsResolvedNotWarned) {

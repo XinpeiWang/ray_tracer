@@ -382,19 +382,34 @@ struct Material {
 	// back to a diffuse approximation.
 	std::string measuredFilename;
 
-	// Diffuse only: an "imagemap" Texture bound to "reflectance", naming the
-	// image file exactly AS WRITTEN in the scene - same "stays filesystem-
-	// free, resolved later by pbrt_load.h" convention as measuredFilename
-	// above (see that field's own comment). Empty means either no texture was
-	// bound, the bound texture wasn't an imagemap, or (after pbrt_load.h's
-	// pass) the file could not be found - any of which falls back to `color`
-	// as a flat reflectance, same as today. Only "reflectance" is handled
-	// (not every texture-bindable parameter on every material kind): pbrt's
-	// ganesha is the motivating case (a Diffuse statue whose reflectance is
-	// an imagemap - see the warning loop below), and scoping to that one
-	// parameter keeps this addition bounded rather than building a general
-	// procedural-texture pipeline in one pass.
+	// Diffuse or CoatedDiffuse only: an "imagemap" Texture bound to
+	// "reflectance", naming the image file exactly AS WRITTEN in the scene -
+	// same "stays filesystem-free, resolved later by pbrt_load.h" convention
+	// as measuredFilename above (see that field's own comment). Empty means
+	// either no texture was bound, the bound texture wasn't an imagemap (or
+	// a "scale" wrapping one - see textureScale below), or (after
+	// pbrt_load.h's pass) the file could not be found - any of which falls
+	// back to `color` as a flat reflectance, same as today. Only
+	// "reflectance" is handled (not every texture-bindable parameter on
+	// every material kind): pbrt's own ganesha scene (a CoatedDiffuse statue
+	// whose reflectance is an imagemap) and barcelona-pavilion (many
+	// CoatedDiffuse surfaces, mostly reflectance bound to a "scale" texture
+	// wrapping an imagemap - see the warning loop below) are the motivating
+	// cases, and scoping to reflectance on these two kinds keeps this
+	// addition bounded rather than building a general procedural-texture
+	// pipeline in one pass - checkerboard/fbm/marble/mix stay Diffuse-only
+	// (hasCheckerReflectance etc. below), since no bundled scene binds any
+	// of those to a CoatedDiffuse reflectance.
 	std::string textureFilename;
+
+	// A "scale"-class Texture's own "float scale" when textureFilename came
+	// from unwrapping one (pbrt's own real syntax for this: a named "scale"
+	// Texture whose "texture tex" names the real imagemap - barcelona-
+	// pavilion's own dominant pattern for reflectance, already unwrapped the
+	// identical way for "displacement" below, see displacementScale's own
+	// comment). 1.0 (a no-op multiply) when textureFilename came from a bare
+	// imagemap with no wrapping "scale", or when textureFilename is empty.
+	double textureScale = 1.0;
 
 	// A Diffuse material's "reflectance" bound to a "checkerboard" Texture
 	// instead of an "imagemap" one (e.g. named-material-and-texture.pbrt's
@@ -1137,35 +1152,66 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 
 		// A parameter bound to a Texture is silently worth a warning: the
 		// material still renders, but with a constant colour where the scene
-		// asked for a pattern. pbrt's ganesha is the case that showed this -
-		// its statue's reflectance is an imagemap, and without a word about
-		// it the render just looks like a shading bug. Three cases are
-		// actually wired up below (each field's own comment has the detail):
-		// "reflectance" bound to an "imagemap" or flat-colour "checkerboard"
-		// texture on a Diffuse material (Material::textureFilename /
-		// hasCheckerReflectance), and "displacement" bound to an imagemap
-		// (optionally wrapped in a "scale" texture) on ANY material kind
-		// (displacementTextureFilename). reflectance is gated on `kind` so a
-		// coateddiffuse/conductor/etc. with the same binding still warns
-		// instead of silently keeping its texture reference unused; every
-		// other texture binding (other parameters, other texture classes
-		// like "scale"/"mix" bound directly to reflectance, or a
-		// checkerboard whose tex1/tex2 are themselves texture references)
-		// also still just warns.
+		// asked for a pattern. pbrt's ganesha (a CoatedDiffuse statue whose
+		// reflectance is a bare imagemap) and barcelona-pavilion (many
+		// CoatedDiffuse surfaces, mostly reflectance bound to a "scale"
+		// texture wrapping an imagemap) are the cases that showed this -
+		// without a word about it the render just looks like a shading bug.
+		// The cases actually wired up below (each field's own comment has
+		// the detail): "reflectance" bound to an "imagemap" (optionally
+		// wrapped in a "scale" texture) on a Diffuse OR CoatedDiffuse
+		// material (Material::textureFilename/textureScale), "reflectance"
+		// bound to a flat-colour "checkerboard"/"fbm"/"marble"/"mix" texture
+		// on a Diffuse material ONLY (hasCheckerReflectance etc. - no
+		// bundled scene binds any of these to a CoatedDiffuse reflectance,
+		// so this scope stays narrower than the imagemap case), and
+		// "displacement" bound to an imagemap (optionally wrapped in a
+		// "scale" texture) on ANY material kind (displacementTextureFilename).
+		// Every other texture binding (other parameters/kinds, "mix" bound
+		// directly to reflectance without a wrapping scale, or a
+		// checkerboard/mix whose OWN tex1/tex2 are themselves texture
+		// references) still just warns.
 		for (const pbrt_scene::Param &p : md.params.items) {
 			if (p.type != "texture") continue;
-			if (m.kind == MaterialKind::Diffuse && p.name == "reflectance" && !p.strings.empty()) {
+			if ((m.kind == MaterialKind::Diffuse || m.kind == MaterialKind::CoatedDiffuse) &&
+				p.name == "reflectance" && !p.strings.empty()) {
 				const pbrt_scene::TextureDecl *tex = nullptr;
 				for (const pbrt_scene::TextureDecl &t : scene.textures)
 					if (t.name == p.strings[0]) tex = &t;
-				if (tex && tex->cls == "imagemap") {
-					const std::string filename = tex->params.getString("filename", "");
+				// "reflectance" bound to a "scale"-class Texture wrapping an
+				// imagemap (barcelona-pavilion's own dominant pattern, e.g.
+				// materials.pbrt's "concrete-kd": Texture "concrete-kd"
+				// "scale" "texture tex" ["concrete-kd-img"]) - same unwrap as
+				// "displacement" below, applied here too so reflectance gets
+				// the same real-scene coverage rather than falling through
+				// to the generic warning for every scale-wrapped case.
+				// Unwrapped into a SEPARATE variable (imgTex), not reassigned
+				// into `tex` itself: the checkerboard/fbm/marble/mix branches
+				// below must still see the ORIGINAL (possibly "scale") decl
+				// and correctly fall through to the generic warning for e.g.
+				// a scale-wrapped checkerboard - unwrapping `tex` in place
+				// would silently drop that scale factor and treat it as a
+				// bare checkerboard instead.
+				const pbrt_scene::TextureDecl *imgTex = tex;
+				double texScale = 1.0;
+				if (imgTex && imgTex->cls == "scale") {
+					texScale = imgTex->params.getFloat("scale", 1.0);
+					const pbrt_scene::Param *inner = imgTex->params.find("tex");
+					imgTex = nullptr;
+					if (inner && inner->type == "texture" && !inner->strings.empty()) {
+						for (const pbrt_scene::TextureDecl &t : scene.textures)
+							if (t.name == inner->strings[0]) imgTex = &t;
+					}
+				}
+				if (imgTex && imgTex->cls == "imagemap") {
+					const std::string filename = imgTex->params.getString("filename", "");
 					if (!filename.empty()) {
 						m.textureFilename = filename;
+						m.textureScale = texScale;
 						continue;   // resolved to an image, not a "not supported" warning
 					}
 				}
-				if (tex && tex->cls == "checkerboard") {
+				if (m.kind == MaterialKind::Diffuse && tex && tex->cls == "checkerboard") {
 					// tex1/tex2 THEMSELVES bound to a nested texture (rather
 					// than a flat float/rgb literal) isn't supported - see
 					// hasCheckerReflectance's own comment - so fall through
@@ -1185,13 +1231,13 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 						continue;   // resolved to a procedural checker, not a "not supported" warning
 					}
 				}
-				if (tex && tex->cls == "fbm") {
+				if (m.kind == MaterialKind::Diffuse && tex && tex->cls == "fbm") {
 					m.fbmOctaves = tex->params.getInt("octaves", 8);
 					m.fbmRoughness = tex->params.getFloat("roughness", 0.5);
 					m.hasFbmReflectance = true;
 					continue;   // resolved to procedural fbm noise, not a "not supported" warning
 				}
-				if (tex && tex->cls == "marble") {
+				if (m.kind == MaterialKind::Diffuse && tex && tex->cls == "marble") {
 					m.marbleOctaves = tex->params.getInt("octaves", 8);
 					m.marbleRoughness = tex->params.getFloat("roughness", 0.5);
 					m.marbleScale = tex->params.getFloat("scale", 1.0);
@@ -1199,7 +1245,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					m.hasMarbleReflectance = true;
 					continue;   // resolved to procedural marble, not a "not supported" warning
 				}
-				if (tex && tex->cls == "mix") {
+				if (m.kind == MaterialKind::Diffuse && tex && tex->cls == "mix") {
 					// See hasMixReflectance's own comment - tex1/tex2/amount
 					// THEMSELVES bound to nested textures fall through to the
 					// generic warning below, same scope cut as checkerboard's

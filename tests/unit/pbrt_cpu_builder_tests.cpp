@@ -561,6 +561,45 @@ TEST(PbrtCpuBuildTest, DiffuseReflectanceImagemapBuildsATextureBackedLambertian)
 		   "texture-backed lambertian, not the flat-colour fallback";
 }
 
+TEST(PbrtCpuBuildTest, CoatedDiffuseReflectanceImagemapBuildsATextureBackedCoatedDiffuse) {
+	// pbrt's own ganesha scene's exact binding shape (a bare imagemap, no
+	// wrapping "scale") - see pbrt_flatten::Material::textureFilename's own
+	// comment on why CoatedDiffuse is now gated in alongside Diffuse.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Texture \"tmap\" \"spectrum\" \"imagemap\" \"string filename\" [ \"t.png\" ]\n"
+		"Material \"coateddiffuse\" \"texture reflectance\" [ \"tmap\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *cd = dynamic_cast<coated_diffuse *>(rec.mat.get());
+	ASSERT_NE(cd, nullptr);
+	EXPECT_NE(dynamic_cast<mipmap_texture *>(cd->get_texture().get()), nullptr)
+		<< "a coateddiffuse material with an imagemap-bound reflectance must build a "
+		   "texture-backed coated_diffuse, not the flat-colour fallback";
+}
+
+TEST(PbrtCpuBuildTest, CoatedDiffuseReflectanceScaleWrappedImagemapAppliesTheScale) {
+	// barcelona-pavilion's own dominant binding shape (an imagemap wrapped
+	// in a "scale" texture, e.g. materials.pbrt's "concrete-kd") - Material::
+	// textureScale's own comment.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Texture \"tmap\" \"spectrum\" \"imagemap\" \"string filename\" [ \"t.png\" ]\n"
+		"Texture \"tmap-scaled\" \"spectrum\" \"scale\" \"texture tex\" [ \"tmap\" ] "
+		"\"float scale\" [ 0.5 ]\n"
+		"Material \"coateddiffuse\" \"texture reflectance\" [ \"tmap-scaled\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *cd = dynamic_cast<coated_diffuse *>(rec.mat.get());
+	ASSERT_NE(cd, nullptr);
+	auto *scaled = dynamic_cast<scaled_texture *>(cd->get_texture().get());
+	ASSERT_NE(scaled, nullptr)
+		<< "a scale-wrapped imagemap reflectance must build a scaled_texture "
+		   "wrapping the real mipmap_texture, not just the bare image";
+}
+
 TEST(PbrtCpuBuildTest, DiffuseReflectanceCheckerboardBuildsAUVCheckerBackedLambertian) {
 	// Round 5 Phase 2: hasCheckerReflectance must make it all the way to a
 	// uv_checker_texture-backed lambertian, and that texture must actually

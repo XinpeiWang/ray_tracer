@@ -2393,6 +2393,16 @@ __device__ __forceinline__ void shade_material(
 
 		case MaterialType::CoatedDiffuse: {
 			// Rough dielectric coat over Lambertian base (pbrt-v4 CoatedDiffuseBxDF) -- sphere version
+			// "reflectance" bound to a real Texture (pbrt's own ganesha/
+			// barcelona-pavilion "texture reflectance" - see
+			// pbrt_flatten::Material::textureFilename's own comment)
+			// instead of mat.albedo's flat colour when textureIdx>=0 -
+			// scaled by mat.emissionScale, reused here for CoatedDiffuse's
+			// own "scale"-wrapped-imagemap case (see that field's own
+			// comment in optix_types.h).
+			const float3 cd_albedo = (mat.textureIdx >= 0)
+				? sample_texture(mat.textureIdx, uv_u, uv_v, hit_point) * mat.emissionScale
+				: mat.albedo;
 			float cd_alpha = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;  // pbrt-v4 remaproughness (see MaterialData::remapRoughness)
 			float3 cdn  = normal;
 			float3 cdup = (fabsf(cdn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
@@ -2459,7 +2469,7 @@ __device__ __forceinline__ void shade_material(
 					diff_dir = cdn + random_unit_vector(seed);
 					if (near_zero(diff_dir)) diff_dir = cdn;
 					diff_dir = normalize(diff_dir);
-					beta.x *= mat.albedo.x; beta.y *= mat.albedo.y; beta.z *= mat.albedo.z;
+					beta.x *= cd_albedo.x; beta.y *= cd_albedo.y; beta.z *= cd_albedo.z;
 
 					float dw_x = dot(diff_dir, cdtan), dw_y = dot(diff_dir, cdbit), dw_z = dot(diff_dir, cdn);
 					float dwm_x, dwm_y, dwm_z;
@@ -2492,7 +2502,7 @@ __device__ __forceinline__ void shade_material(
 			// MIS/NEE unbiased, this only affects variance.
 			if (!cd_dist.EffectivelySmooth()) {
 				is_specular = false;
-				CoatedDiffuseBxDF<float> cd_bxdf{ mat.albedo.x, mat.albedo.y, mat.albedo.z, mat.ior, cd_alpha, cd_alpha };
+				CoatedDiffuseBxDF<float> cd_bxdf{ cd_albedo.x, cd_albedo.y, cd_albedo.z, mat.ior, cd_alpha, cd_alpha };
 
 				float swo_x = dot(scattered_dir, cdtan), swo_y = dot(scattered_dir, cdbit), swo_z = dot(scattered_dir, cdn);
 				brdf_pdf_override = (swo_z > 0.0f) ? ggx_vndf_reflection_pdf(cdwi_x, cdwi_y, cdwi_z, swo_x, swo_y, swo_z, cd_alpha, cd_alpha) : 0.0f;

@@ -594,7 +594,22 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		d.type = MaterialType::ThinDielectric;
 		break;
 	case pbrt_flatten::MaterialKind::CoatedDiffuse:
+		// m.textureFilename/m.textureScale (Material::textureFilename's own
+		// comment) - same resolved-by-pbrt_load.h convention, and the same
+		// getOrBuildPbrtImageTexture() call, the Diffuse case below already
+		// uses. d.emissionScale (reused, not a dedicated field - see its own
+		// comment in optix_types.h) carries a "scale"-class wrapper's
+		// multiplier (barcelona-pavilion's own dominant pattern); stays at
+		// its 1.0 no-op default for a bare imagemap (ganesha's pattern).
+		// A -1 from getOrBuildPbrtImageTexture (corrupt-but-present file)
+		// leaves d.textureIdx at its -1 default, falling back to `d.albedo`
+		// (already assigned generically above) - same degrade-to-flat-
+		// colour every other texture-bound material kind gets.
 		d.type = MaterialType::CoatedDiffuse;
+		if (!m.textureFilename.empty()) {
+			d.textureIdx = getOrBuildPbrtImageTexture(m.textureFilename, out, imageTextureCache);
+			d.emissionScale = static_cast<float>(m.textureScale);
+		}
 		break;
 	case pbrt_flatten::MaterialKind::DiffuseTransmission:
 		d.type = MaterialType::DiffuseTransmission;

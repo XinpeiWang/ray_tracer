@@ -1,0 +1,49 @@
+# coateddiffuse-texture.pbrt -- exercises Material "coateddiffuse"'s
+# "texture reflectance" parameter, real per-point image decoding on both
+# backends (previously only Material "diffuse" decoded a texture-bound
+# reflectance; coateddiffuse silently fell back to a flat colour with a
+# warning - see docs/PBRT_SUPPORT.md). This is pbrt's own real gap: its
+# "ganesha" example scene binds a coateddiffuse statue's reflectance to a
+# bare imagemap (see pbrt_scenes/ganesha/ganesha.pbrt), and
+# barcelona-pavilion's own materials mostly bind it through a "scale"
+# texture wrapping an imagemap - both forms are exercised here.
+#
+# Left quad: coateddiffuse reflectance bound directly to an "imagemap"
+# texture (ganesha's own pattern). Right quad: the same imagemap wrapped in
+# a "scale" texture (barcelona-pavilion's own pattern) - both should show
+# the same 4-quadrant checkerboard (uv-checker.bmp), just at half
+# brightness on the right (scale 0.5).
+#
+# Original, not derived from any distributed scene, so it carries no
+# licence constraints.
+
+LookAt  1 0.5 3    1 0.5 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 640 ] "integer yresolution" [ 320 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 1.0 1.0 1.0 ]
+
+AttributeBegin
+  Translate 0.5 0.5 3.5
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 4 4 4 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -1 -1 0   1 -1 0   1 1 0   -1 1 0 ]
+AttributeEnd
+
+# Bare imagemap - matches ganesha.pbrt's own binding shape exactly.
+Texture "gonio-tex" "spectrum" "imagemap" "string filename" [ "uv-checker.bmp" ]
+Material "coateddiffuse" "texture reflectance" [ "gonio-tex" ] "float roughness" [ 0.1 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 0 0 0   1 0 0   1 1 0   0 1 0 ]
+
+# imagemap wrapped in "scale" - matches barcelona-pavilion's own dominant
+# binding shape exactly ("concrete-kd" etc. in materials.pbrt).
+Texture "gonio-tex-scaled" "spectrum" "scale" "texture tex" [ "gonio-tex" ] "float scale" [ 0.5 ]
+Material "coateddiffuse" "texture reflectance" [ "gonio-tex-scaled" ] "float roughness" [ 0.1 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ 1.2 0 0   2.2 0 0   2.2 1 0   1.2 1 0 ]

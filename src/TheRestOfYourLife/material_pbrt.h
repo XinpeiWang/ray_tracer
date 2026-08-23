@@ -401,18 +401,37 @@ class coated_diffuse : public material {
     using BxDF = CoatedDiffuseBxDF<double>;
 
     coated_diffuse(const color& albedo, double ior, double roughness)
-        : albedo(albedo), ior(ior) {
+        : tex(make_shared<solid_color>(albedo)), ior(ior) {
         double a = TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(roughness, 1e-4));
         alpha_x = alpha_y = a;
     }
 
     coated_diffuse(const color& albedo, double ior, double u_roughness, double v_roughness,
                    bool remap_roughness = true)
-        : albedo(albedo), ior(ior),
+        : tex(make_shared<solid_color>(albedo)), ior(ior),
+          alpha_x(roughness_or_alpha(u_roughness, remap_roughness)),
+          alpha_y(roughness_or_alpha(v_roughness, remap_roughness)) {}
+
+    // "reflectance" bound to a real Texture (pbrt's own ganesha/barcelona-
+    // pavilion "texture reflectance" - see pbrt_flatten::Material::
+    // textureFilename's own comment) rather than a flat colour - mirrors
+    // lambertian's own two-constructor shape (material_simple.h) exactly.
+    coated_diffuse(shared_ptr<texture> tex, double ior, double u_roughness, double v_roughness,
+                   bool remap_roughness = true)
+        : tex(tex), ior(ior),
           alpha_x(roughness_or_alpha(u_roughness, remap_roughness)),
           alpha_y(roughness_or_alpha(v_roughness, remap_roughness)) {}
 
     BxDF get_bxdf(const MaterialContext<double>& ctx) const {
+        // No pixel-footprint differentials available from MaterialContext
+        // alone (unlike scatter()/scattering_pdf() below, which read them
+        // from the full hit_record) - same "no CPU-only tex pointer here"
+        // limitation lambertian's own get_bxdf() already documents; nothing
+        // in this codebase actually calls coated_diffuse::get_bxdf() today
+        // (grepped - only referenced in that comment), so this is a best-
+        // effort mirror of scatter()'s real per-point lookup, not a load-
+        // bearing path.
+        color albedo = tex->value(ctx.u, ctx.v, point3(ctx.px, ctx.py, ctx.pz));
         return BxDF{ albedo.x(), albedo.y(), albedo.z(), ior, alpha_x, alpha_y };
     }
 
@@ -437,6 +456,8 @@ class coated_diffuse : public material {
     bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
                  bool do_regularize = false) const override {
         auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
+        color albedo = tex->value_diff(rec.u, rec.v, rec.p,
+                                        rec.dudx, rec.dvdx, rec.dudy, rec.dvdy);
         double ex = do_regularize ? regularize_alpha(alpha_x) : alpha_x;
         double ey = do_regularize ? regularize_alpha(alpha_y) : alpha_y;
         BxDF bxdf{ albedo.x(), albedo.y(), albedo.z(), ior, ex, ey };
@@ -474,6 +495,8 @@ class coated_diffuse : public material {
     double scattering_pdf(const ray& r_in, const hit_record& rec,
                           const ray& scattered) const override {
         auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
+        color albedo = tex->value_diff(rec.u, rec.v, rec.p,
+                                        rec.dudx, rec.dvdx, rec.dudy, rec.dvdy);
         auto frame = ShadingFrame<double>::from_dpdu(ctx.dpdu_x, ctx.dpdu_y, ctx.dpdu_z, ctx.nx, ctx.ny, ctx.nz);
         double wi_x, wi_y, wi_z;
         frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
@@ -495,10 +518,20 @@ class coated_diffuse : public material {
 
     double get_ior()       const { return ior; }
     double get_roughness() const { return alpha_x * alpha_x; }
-    const color& get_albedo() const { return albedo; }
+    // A representative colour, not the real per-point value - callers
+    // wanting the latter should evaluate `tex` themselves at a real (u,v,p).
+    // No caller currently exists for this accessor at all (grepped); kept
+    // by-value (matching material_simple.h's own get_albedo() convention)
+    // since a texture-backed material has no single color to return by
+    // reference the way a flat one did.
+    color get_albedo() const { return tex->value(0.5, 0.5, point3(0, 0, 0)); }
+
+    // Accessor for testing/serialization - mirrors lambertian's own
+    // get_texture() (material_simple.h) exactly.
+    shared_ptr<texture> get_texture() const { return tex; }
 
   private:
-    color  albedo;
+    shared_ptr<texture> tex;
     double ior;
     double alpha_x, alpha_y;
 };

@@ -1511,6 +1511,13 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			fr = fg = fb = v;
 			outPdf = bx.pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, nfEta, wo_x, wo_y, wo_z);
 		} else if (matType == MaterialType::CoatedDiffuse) {
+			// fm.albedo (flat), not a real per-point texture lookup: this
+			// shared function has no UV in scope for the CURRENT hit (only
+			// for an NEE light TARGET, a separate concept - see its own
+			// textures/texturePixels parameter comment). A documented,
+			// accepted proxy for a texture-bound coateddiffuse's NEE/MIS f()
+			// - see evaluate_materials()'s own CoatedDiffuse case, where the
+			// main scatter path DOES use the real per-point texture value.
 			CoatedDiffuseBxDF<float> bx{ fm.albedo.x, fm.albedo.y, fm.albedo.z, fm.ior, glossy_alpha, glossy_alpha };
 			uint64_t s0, s1; wf_random_seed64_pair(seed, s0, s1);
 			bx.f(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, s0, s1, fr, fg, fb);
@@ -2571,6 +2578,24 @@ extern "C" __global__ void evaluate_materials(
 		break;
 	}
 	case MaterialType::CoatedDiffuse: {
+		// "reflectance" bound to a real Texture (pbrt's own ganesha/
+		// barcelona-pavilion "texture reflectance" - see
+		// pbrt_flatten::Material::textureFilename's own comment) instead of
+		// mat.albedo's flat colour when textureIdx>=0 - same pattern the
+		// Lambertian case above already uses, scaled by mat.emissionScale
+		// (reused here for CoatedDiffuse's own "scale"-wrapped-imagemap
+		// case - see that field's own comment in optix_types.h). Only the
+		// main scatter path below gets the real per-point value;
+		// wf_finish_material_scatter's own evalGlossyF (its CoatedDiffuse
+		// branch) still reads the flat mat.albedo for its NEE/MIS f()
+		// evaluation - threading real UV through that shared, multi-caller
+        // function was judged not worth it for a value that's already a
+		// documented pdf/f() proxy approximation (see its own header
+		// comment), same accepted-tradeoff shape as CPU's own coated_diffuse
+		// ::scatter() using a "fixed representative color" for srec.attenuation.
+		const float3 cd_albedo = (mat.textureIdx >= 0)
+			? wf_sample_texture(textures, texturePixels, mat.textureIdx, h.uv_u, h.uv_v, hit_point) * mat.emissionScale
+			: mat.albedo;
 		float cd_alpha = wf_glossy_alpha(mat, (bool)h.any_nonspecular);
 		glossyAlphaForNEE = cd_alpha;
 		float3 cdn = normal;
@@ -2619,7 +2644,7 @@ extern "C" __global__ void evaluate_materials(
 				diff_dir = cdn + wf_rand_unit(seed);
 				if (wf_near_zero(diff_dir)) diff_dir = cdn;
 				diff_dir = normalize(diff_dir);
-				beta.x *= mat.albedo.x; beta.y *= mat.albedo.y; beta.z *= mat.albedo.z;
+				beta.x *= cd_albedo.x; beta.y *= cd_albedo.y; beta.z *= cd_albedo.z;
 
 				float dw_x = dot(diff_dir, cdtan), dw_y = dot(diff_dir, cdbitan), dw_z = dot(diff_dir, cdn);
 				float dwm_x, dwm_y, dwm_z;

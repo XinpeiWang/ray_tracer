@@ -144,6 +144,23 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		// with the GPU backend's MaterialType::ThinDielectric either).
 		return std::make_shared<thin_dielectric>(m.ior);
 	case pbrt_flatten::MaterialKind::CoatedDiffuse:
+		// m.textureFilename (Material::textureFilename's own comment) - same
+		// resolved-by-pbrt_load.h convention the Diffuse case below already
+		// relies on. m.textureScale (default 1.0, a no-op) wraps a
+		// scale-class Texture's own multiplier when reflectance was bound to
+		// one wrapping an imagemap (barcelona-pavilion's dominant pattern) -
+		// scaled_texture has no value_diff() override (falls back to its
+		// base's non-differential value()), so a scale-wrapped
+		// coateddiffuse texture loses mipmap_texture's own mip-level
+		// filtering under minification; an accepted quality tradeoff, same
+		// scope scaled_texture's own header comment already documents for
+		// its original AreaLightSource caller.
+		if (!m.textureFilename.empty()) {
+			shared_ptr<texture> tex = std::make_shared<mipmap_texture>(m.textureFilename.c_str());
+			if (m.textureScale != 1.0)
+				tex = std::make_shared<scaled_texture>(tex, m.textureScale);
+			return std::make_shared<coated_diffuse>(tex, m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
+		}
 		return std::make_shared<coated_diffuse>(albedo, m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
 	case pbrt_flatten::MaterialKind::CoatedConductor: {
 		const color k = reflectanceToConductorK(albedo);
