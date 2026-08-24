@@ -5,6 +5,7 @@
 #include "render_output_parser.h"
 #include "camera_math.h"
 #include "../src/shared/video_preset.h"
+#include "../src/shared/scene_descriptor.h"
 #include <QApplication>
 #include <QFileDialog>
 #include <QMessageBox>
@@ -411,6 +412,67 @@ void MainWindow::onDiagnosticsFailed(const QString &message) {
 	if (m_diagTextEdit) m_diagTextEdit->setPlainText("Diagnostics failed:\n\n" + message);
 }
 
+// Fills in m_sceneGrid's preview tiles for the curated, self-contained,
+// fast-rendering subset (Basics/Materials/Cameras) - see the scene-gallery
+// plan's phased-coverage decision for why the rest of the ~154-scene
+// registry isn't covered yet. Disabled (see createBasicTab()'s button
+// tooltip) while a real render is in flight so thumbnail generation can
+// never compete with the user's own queued work - m_thumbnailGenerator owns
+// a private RenderController instead of reusing m_renderController/
+// m_renderQueue precisely so it never needs to cooperate with those at all,
+// only avoid running alongside them.
+void MainWindow::onGenerateThumbnailsClicked() {
+	if (m_isRendering || !m_renderQueue.isEmpty()) {
+		setStatusWarning("Can't generate thumbnails while a render is in progress or queued.");
+		return;
+	}
+	if (m_thumbnailGenerator && m_thumbnailGenerator->isRunning()) return;
+
+	if (!m_thumbnailGenerator) {
+		m_thumbnailGenerator = new ThumbnailGenerator(this);
+		connect(m_thumbnailGenerator, &ThumbnailGenerator::thumbnailReady,
+				this, &MainWindow::onThumbnailReady);
+		connect(m_thumbnailGenerator, &ThumbnailGenerator::allDone,
+				this, &MainWindow::onThumbnailsAllDone);
+	}
+
+	static const QStringList kThumbnailCategories = {
+		SceneCategories::Basics, SceneCategories::Materials, SceneCategories::Cameras
+	};
+	QStringList ids;
+	const int count = SceneMetadataClient::sceneCount();
+	for (int i = 0; i < count; ++i) {
+		const QString id = SceneMetadataClient::sceneIdAtIndex(i);
+		if (SceneMetadataClient::sceneRequiresFiles(id)) continue;
+		if (!kThumbnailCategories.contains(SceneMetadataClient::sceneCategory(id))) continue;
+		ids << id;
+	}
+
+	if (m_generateThumbnailsButton) m_generateThumbnailsButton->setEnabled(false);
+	onLogMessage(QString("Generating thumbnails for up to %1 scene(s)...").arg(ids.size()));
+	m_thumbnailGenerator->start(ids, [this](const QString &id) { return thumbnailCachePath(id); });
+}
+
+void MainWindow::onThumbnailReady(const QString &sceneId, bool success, const QString &outputPath) {
+	if (!success) {
+		onLogMessage(QString("Thumbnail generation failed for scene %1").arg(sceneId));
+		return;
+	}
+	if (!m_sceneGrid) return;
+	for (int i = 0; i < m_sceneGrid->count(); ++i) {
+		QListWidgetItem *item = m_sceneGrid->item(i);
+		if (item->data(Qt::UserRole).toString() == sceneId) {
+			item->setIcon(QIcon(outputPath));
+			break;
+		}
+	}
+}
+
+void MainWindow::onThumbnailsAllDone() {
+	if (m_generateThumbnailsButton) m_generateThumbnailsButton->setEnabled(true);
+	onLogMessage("Thumbnail generation finished.");
+}
+
 void MainWindow::onStopClicked() {
 	if (!m_isRendering || !m_renderController) {
 		return;
@@ -591,6 +653,24 @@ void MainWindow::onSceneChanged(int index) {
 	// resolves the id via the registry position instead.
 	QString scene_id = m_sceneCombo ? m_sceneCombo->itemData(index).toString()
 									 : SceneMetadataClient::sceneIdAtIndex(index);
+
+	// Keeps m_sceneGrid's highlighted tile in sync with whatever scene just
+	// became current, regardless of which view (combo, grid, search, tab
+	// switch, selectSceneById) drove the change - every one of those paths
+	// already funnels through here. Blocked so this never re-enters via the
+	// grid's own currentItemChanged handler (mainwindow_tabs.cpp).
+	if (m_sceneGrid) {
+		const QSignalBlocker blocker(m_sceneGrid);
+		bool found = false;
+		for (int i = 0; i < m_sceneGrid->count(); ++i) {
+			if (m_sceneGrid->item(i)->data(Qt::UserRole).toString() == scene_id) {
+				m_sceneGrid->setCurrentRow(i);
+				found = true;
+				break;
+			}
+		}
+		if (!found) m_sceneGrid->setCurrentRow(-1);
+	}
 
 	// Every field here is queried live from scene_metadata.dll (see
 	// scene_metadata_client.h) instead of a locally-duplicated table, so it

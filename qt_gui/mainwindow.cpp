@@ -31,6 +31,8 @@
 #include <QScrollArea>
 #include <QScreen>
 #include <QTimer>
+#include <QFile>
+#include <QFileInfo>
 
 // RenderController Implementation
 RenderController::RenderController(QObject *parent)
@@ -421,6 +423,88 @@ void DiagnosticsRunner::onProcessFinished(int exitCode, QProcess::ExitStatus exi
 	} else {
 		emit reportReady(output);
 	}
+}
+
+// ThumbnailGenerator Implementation
+//
+// outputPathForId(id) returns a ".png" path (see MainWindow::
+// thumbnailCachePath()), but RenderController is handed a ".ppm" path
+// instead - main.cpp's own render entry points write raw pixel data as PPM
+// to whatever --output path they're given (unless it's an EXR path) and
+// separately convert it to a same-basename ".png" alongside it (see
+// main.cpp's Format Conversion block); the rest of this GUI's render flow
+// already relies on that same PPM-in/PNG-sibling-out behavior (see
+// MainWindow::onRenderComplete's own pngPath derivation). Passing a ".png"
+// path straight through here would make the CLI write raw PPM bytes to a
+// file literally named ".png" and then reconvert it in place - fragile and
+// not what the rest of the app does.
+ThumbnailGenerator::ThumbnailGenerator(QObject *parent)
+	: QObject(parent), m_controller(new RenderController(this)) {
+	connect(m_controller, &RenderController::renderComplete, this,
+		[this](bool success, const QString &, double, const QString &) {
+			const QString finishedId = m_currentId;
+			emit thumbnailReady(finishedId, success, m_outputPathForId(finishedId));
+			if (m_stopRequested) {
+				m_stopRequested = false;
+				emit allDone();
+				return;
+			}
+			startNext();
+		});
+}
+
+void ThumbnailGenerator::start(const QStringList &sceneIds, std::function<QString(const QString &)> outputPathForId) {
+	if (isRunning()) return;
+	m_outputPathForId = outputPathForId;
+	m_pending.clear();
+	for (const QString &id : sceneIds) {
+		if (!QFile::exists(m_outputPathForId(id))) m_pending.enqueue(id);
+	}
+	m_stopRequested = false;
+	if (m_pending.isEmpty()) {
+		emit allDone();
+		return;
+	}
+	startNext();
+}
+
+void ThumbnailGenerator::stop() {
+	if (!isRunning()) {
+		m_pending.clear();
+		return;
+	}
+	m_stopRequested = true;
+	m_pending.clear();
+	m_controller->stopRender();
+}
+
+bool ThumbnailGenerator::isRunning() const {
+	return m_controller->isRunning();
+}
+
+void ThumbnailGenerator::startNext() {
+	if (m_pending.isEmpty()) {
+		emit allDone();
+		return;
+	}
+	m_currentId = m_pending.dequeue();
+
+	const QString pngPath = m_outputPathForId(m_currentId);
+	QDir().mkpath(QFileInfo(pngPath).absolutePath());
+	const QString ppmPath = QFileInfo(pngPath).absolutePath() + "/" +
+		QFileInfo(pngPath).completeBaseName() + ".ppm";
+
+	// Low-res/low-spp/CPU-only: a preview tile, not a real render - see the
+	// scene-gallery plan's phased-coverage decision (CPU-only avoids paying
+	// for a fresh GPU/OptiX context per scene for dozens of quick launches).
+	// camExplicit=false means camX/Y/Z below are never actually sent to
+	// ray_tracer.exe (see RenderController::start()'s own m_camExplicit
+	// gate) - the scene's own recommended camera is used instead, same
+	// fallback path this GUI's own untouched-camera renders already rely on.
+	m_controller->setParameters(/*useGPU=*/false, /*width=*/128, /*height=*/128,
+		/*samples=*/16, /*maxDepth=*/8, m_currentId, /*camX=*/0, /*camY=*/0, /*camZ=*/0,
+		/*camExplicit=*/false, ppmPath, /*useWavefront=*/false);
+	m_controller->start();
 }
 
 // MainWindow Implementation

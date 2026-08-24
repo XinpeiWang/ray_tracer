@@ -37,6 +37,8 @@
 #include <QSignalBlocker>
 #include <QQueue>
 #include <QListWidget>
+#include <QToolButton>
+#include <functional>
 
 #include "camera_math.h"
 #include "render_output_parser.h"
@@ -851,6 +853,56 @@ private:
 	bool m_finished = false;   // guards against double-emitting on error+finished
 };
 
+// ============================================================================
+// ThumbnailGenerator
+// ============================================================================
+// Renders the scene gallery grid's preview PNGs, one scene at a time, via its
+// own RenderController - deliberately NOT m_renderController/m_renderQueue.
+// Those are wired end-to-end into the visible progress bar, status label,
+// queue panel and stop button; routing thumbnail jobs through them would
+// hijack that chrome for invisible background work. This class owns a
+// private RenderController instead and only ever READS the real render
+// state (see MainWindow::onGenerateThumbnailsClicked()) to decide whether
+// it's safe to start - it never competes with a user-requested render.
+//
+// Generation is manual/one-shot (triggered by "Generate Thumbnails"), not a
+// background daemon, so there is no pause/resume logic here: start() walks
+// its whole queue to completion or until stop() is called.
+// ============================================================================
+class ThumbnailGenerator : public QObject {
+	Q_OBJECT
+
+public:
+	explicit ThumbnailGenerator(QObject *parent = nullptr);
+
+	// Renders every id in `sceneIds` that doesn't already have a cached PNG
+	// at outputPathForId(id), one at a time, low-res/low-spp/CPU-only (see
+	// .cpp for the exact RenderController::setParameters() call). Ignored if
+	// already running.
+	void start(const QStringList &sceneIds, std::function<QString(const QString &)> outputPathForId);
+
+	// Kills the in-flight render (if any) and drops the rest of the queue.
+	void stop();
+
+	bool isRunning() const;
+
+signals:
+	// One per finished scene (success or failure) - MainWindow uses this to
+	// update that scene's grid item icon in place and advance status text.
+	void thumbnailReady(const QString &sceneId, bool success, const QString &outputPath);
+	// Fires once after the last queued scene finishes (or stop() is called).
+	void allDone();
+
+private:
+	void startNext();
+
+	RenderController *m_controller;
+	QQueue<QString> m_pending;
+	std::function<QString(const QString &)> m_outputPathForId;
+	QString m_currentId;
+	bool m_stopRequested = false;
+};
+
 // A snapshot of every render-affecting UI field at the moment "Start Render"
 // was clicked, so a queued job is unaffected by any further changes the user
 // makes to the form while an earlier job is still running. Mirrors
@@ -912,6 +964,9 @@ private slots:
 	void onRunDiagnosticsClicked();
 	void onDiagnosticsReportReady(const QString &report);
 	void onDiagnosticsFailed(const QString &message);
+	void onGenerateThumbnailsClicked();
+	void onThumbnailReady(const QString &sceneId, bool success, const QString &outputPath);
+	void onThumbnailsAllDone();
 
 	// Shared by the log tab's buttons and the File menu's actions.
 	void copyLogToClipboard();
@@ -1144,6 +1199,21 @@ private:
 	QLineEdit *m_sceneSearchBox = nullptr;
 	QComboBox *m_sceneCombo;            // Scene selector dropdown, showing one category at a time
 
+	// Grid ("gallery") alternative to m_sceneCombo - same filtered scene set,
+	// shown as thumbnail tiles instead of text rows. Toggled against
+	// m_sceneCombo via m_sceneViewStack/m_sceneViewToggle; see
+	// populateSceneGrid()'s own comment. Thumbnails come from
+	// thumbnailCachePath() - a generated PNG if one exists, else a shared
+	// placeholder icon.
+	QListWidget *m_sceneGrid = nullptr;
+	QStackedWidget *m_sceneViewStack = nullptr;   // page 0 = m_sceneCombo, page 1 = m_sceneGrid
+	QToolButton *m_sceneViewToggle = nullptr;     // checked = grid page showing
+	QPushButton *m_generateThumbnailsButton = nullptr;
+	// Lazily created (and reused across multiple "Generate Thumbnails"
+	// clicks) by onGenerateThumbnailsClicked() the first time it's needed -
+	// see that slot's own comment.
+	ThumbnailGenerator *m_thumbnailGenerator = nullptr;
+
 	// Rebuilds m_sceneCategoryTabs' tab set for the given availability filter
 	// (true = only scenes with sceneRequiresFiles()==true, false = only
 	// scenes with sceneRequiresFiles()==false), skipping any letter category
@@ -1153,11 +1223,39 @@ private:
 	// populateSceneCombo() for whichever category tab ends up selected.
 	void rebuildCategoryTabs(bool requiresFiles);
 
+	// The scene ids matching `category` and m_sceneAvailabilityTabs' current
+	// selection, further narrowed by m_sceneSearchBox's text if any (name/id/
+	// description substring match) - the shared filter both
+	// populateSceneCombo() and populateSceneGrid() build their contents from,
+	// so category/availability/search apply identically to both views with
+	// no duplicated filter logic.
+	QStringList filteredSceneIds(const QString &category) const;
+
 	// Refills m_sceneCombo with just the scenes in `category` that also match
 	// m_sceneAvailabilityTabs' current selection. Does NOT emit
 	// currentIndexChanged per insertion - callers apply the resulting selection
 	// themselves with a single onSceneChanged() call.
 	void populateSceneCombo(const QString &category);
+
+	// Refills m_sceneGrid the same way populateSceneCombo() refills
+	// m_sceneCombo - same filteredSceneIds(category), one QListWidgetItem per
+	// scene (Qt::UserRole holds the scene id, mirroring the combo's item-data
+	// convention), icon set to the cached thumbnail if thumbnailCachePath(id)
+	// exists on disk, else a shared placeholder built once in
+	// createBasicTab(). Does NOT emit itemSelectionChanged - callers behave
+	// like populateSceneCombo()'s own callers.
+	void populateSceneGrid(const QString &category);
+
+	// Calls populateSceneCombo() and populateSceneGrid() together - every
+	// call site that used to call populateSceneCombo() alone now calls this,
+	// so both views always agree on what's currently filtered in.
+	void populateSceneViews(const QString &category);
+
+	// Absolute path a scene's cached thumbnail PNG would live at, under
+	// QStandardPaths::CacheLocation + "/thumbnails" (mirrors theme_load.cpp's
+	// own QStandardPaths convention for per-user files) - does not check
+	// whether the file actually exists.
+	QString thumbnailCachePath(const QString &sceneId) const;
 
 	// Drives all three scene-selection widgets (availability tab, category
 	// tab, m_sceneCombo) to the scene matching `id`, as if the user had

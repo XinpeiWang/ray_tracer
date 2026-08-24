@@ -28,6 +28,9 @@
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QSlider>
+#include <QStandardPaths>
+#include <QFile>
+#include <QToolButton>
 #include <cmath>
 #include <algorithm>
 
@@ -42,15 +45,8 @@
 // data and everything downstream reads THAT, never the row index, which is
 // what makes filtering the list safe: a scene keeps its identity no matter
 // which position it lands in.
-void MainWindow::populateSceneCombo(const QString &category) {
-	if (!m_sceneCombo) return;
-
-	// Silent while refilling: clear() plus one addItem() per scene would emit
-	// currentIndexChanged repeatedly, running onSceneChanged - which rewrites
-	// the SPP box and camera - once per insertion, on scenes the user never
-	// chose. The caller issues exactly one update for the final selection.
-	const QSignalBlocker blocker(m_sceneCombo);
-	m_sceneCombo->clear();
+QStringList MainWindow::filteredSceneIds(const QString &category) const {
+	QStringList result;
 
 	// requiresFiles==true on the "Requires External Files" tab, false on
 	// "Self-Contained" - matches rebuildCategoryTabs()'s own reading of the
@@ -74,8 +70,51 @@ void MainWindow::populateSceneCombo(const QString &category) {
 			!id.contains(searchTerm, Qt::CaseInsensitive) &&
 			!SceneMetadataClient::sceneDescription(id).contains(searchTerm, Qt::CaseInsensitive))
 			continue;
-		m_sceneCombo->addItem(QString("[%1] %2").arg(id).arg(name), id);
+		result << id;
 	}
+	return result;
+}
+
+void MainWindow::populateSceneCombo(const QString &category) {
+	if (!m_sceneCombo) return;
+
+	// Silent while refilling: clear() plus one addItem() per scene would emit
+	// currentIndexChanged repeatedly, running onSceneChanged - which rewrites
+	// the SPP box and camera - once per insertion, on scenes the user never
+	// chose. The caller issues exactly one update for the final selection.
+	const QSignalBlocker blocker(m_sceneCombo);
+	m_sceneCombo->clear();
+
+	for (const QString &id : filteredSceneIds(category))
+		m_sceneCombo->addItem(QString("[%1] %2").arg(id).arg(SceneMetadataClient::sceneName(id)), id);
+}
+
+void MainWindow::populateSceneGrid(const QString &category) {
+	if (!m_sceneGrid) return;
+
+	const QSignalBlocker blocker(m_sceneGrid);
+	m_sceneGrid->clear();
+
+	static QIcon placeholderIcon(":/icons/image.svg");
+
+	for (const QString &id : filteredSceneIds(category)) {
+		QListWidgetItem *item = new QListWidgetItem(SceneMetadataClient::sceneName(id));
+		item->setData(Qt::UserRole, id);
+		const QString cachePath = thumbnailCachePath(id);
+		item->setIcon(QFile::exists(cachePath) ? QIcon(cachePath) : placeholderIcon);
+		item->setToolTip(QString("[%1] %2").arg(id, SceneMetadataClient::sceneName(id)));
+		m_sceneGrid->addItem(item);
+	}
+}
+
+void MainWindow::populateSceneViews(const QString &category) {
+	populateSceneCombo(category);
+	populateSceneGrid(category);
+}
+
+QString MainWindow::thumbnailCachePath(const QString &sceneId) const {
+	const QString dir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/thumbnails";
+	return QDir(dir).filePath(sceneId + ".png");
 }
 
 // Drives the availability tab, category tab, and m_sceneCombo to the scene
@@ -110,7 +149,7 @@ void MainWindow::selectSceneById(const QString &id) {
 		}
 	}
 
-	populateSceneCombo(category);
+	populateSceneViews(category);
 	const int itemIndex = m_sceneCombo->findData(id);
 	if (itemIndex < 0) {
 		onLogMessage(QString("WARNING: video preset's scene \"%1\" not found under category \"%2\"")
@@ -118,7 +157,7 @@ void MainWindow::selectSceneById(const QString &id) {
 		return;
 	}
 	m_sceneCombo->setCurrentIndex(itemIndex);
-	onSceneChanged(itemIndex);
+	onSceneChanged(itemIndex);  // also syncs m_sceneGrid's highlighted tile
 }
 
 // Rebuilds m_sceneCategoryTabs for the given availability filter - see this
@@ -242,25 +281,78 @@ void MainWindow::createBasicTab() {
 	rebuildCategoryTabs(/*requiresFiles=*/false);
 	sceneGroupLayout->addWidget(m_sceneCategoryTabs);
 
-	// Narrows the combo below by substring, on top of (not instead of) the
-	// availability/category tabs above - see m_sceneSearchBox's own comment
-	// in mainwindow.h for why. setClearButtonEnabled gives it Qt's own
-	// built-in inline "x" rather than a hand-drawn one.
+	// Narrows the combo/grid below by substring, on top of (not instead of)
+	// the availability/category tabs above - see m_sceneSearchBox's own
+	// comment in mainwindow.h for why. setClearButtonEnabled gives it Qt's
+	// own built-in inline "x" rather than a hand-drawn one. The grid/list
+	// toggle sits on the same row, and "Generate Thumbnails" (grid-only, so
+	// it lives in the grid page rather than here) fills in cached preview
+	// images for it - see populateSceneGrid()'s own comment.
+	QHBoxLayout *searchRow = new QHBoxLayout();
 	m_sceneSearchBox = new QLineEdit(basicTab);
 	m_sceneSearchBox->setPlaceholderText("Search scenes by name or id...");
 	m_sceneSearchBox->setClearButtonEnabled(true);
-	sceneGroupLayout->addWidget(m_sceneSearchBox);
+	searchRow->addWidget(m_sceneSearchBox, 1);
 
-	QHBoxLayout *sceneRow = new QHBoxLayout();
+	m_sceneViewToggle = new QToolButton(basicTab);
+	m_sceneViewToggle->setCheckable(true);
+	m_sceneViewToggle->setText("Grid");
+	m_sceneViewToggle->setToolTip("Switch between the dropdown list and a thumbnail gallery grid");
+	searchRow->addWidget(m_sceneViewToggle);
+	sceneGroupLayout->addLayout(searchRow);
+
+	m_sceneViewStack = new QStackedWidget(basicTab);
+
+	QWidget *comboPage = new QWidget(m_sceneViewStack);
+	QHBoxLayout *sceneRow = new QHBoxLayout(comboPage);
+	sceneRow->setContentsMargins(0, 0, 0, 0);
 	m_sceneCombo = new QComboBox(basicTab);
 	styleComboBox(m_sceneCombo);
 	sceneRow->addWidget(new QLabel("Scene:"));
 	sceneRow->addWidget(m_sceneCombo, 1);
-	sceneGroupLayout->addLayout(sceneRow);
+	m_sceneViewStack->addWidget(comboPage);
 
-	// Fill the dropdown for whichever category the bar opened on.
+	QWidget *gridPage = new QWidget(m_sceneViewStack);
+	QVBoxLayout *gridPageLayout = new QVBoxLayout(gridPage);
+	gridPageLayout->setContentsMargins(0, 0, 0, 0);
+	m_sceneGrid = new QListWidget(basicTab);
+	m_sceneGrid->setViewMode(QListView::IconMode);
+	m_sceneGrid->setResizeMode(QListView::Adjust);
+	m_sceneGrid->setMovement(QListView::Static);
+	m_sceneGrid->setSelectionMode(QAbstractItemView::SingleSelection);
+	m_sceneGrid->setIconSize(QSize(96, 96));
+	m_sceneGrid->setGridSize(QSize(120, 132));
+	m_sceneGrid->setUniformItemSizes(true);
+	m_sceneGrid->setWordWrap(true);
+	m_sceneGrid->setMinimumHeight(260);
+	gridPageLayout->addWidget(m_sceneGrid, 1);
+	m_generateThumbnailsButton = new QPushButton("Generate Thumbnails", gridPage);
+	m_generateThumbnailsButton->setToolTip(
+		"Renders a small preview image for each self-contained Basics/Materials/Cameras\n"
+		"scene not already cached. CPU-only, low resolution - takes a while the first time.");
+	gridPageLayout->addWidget(m_generateThumbnailsButton);
+	m_sceneViewStack->addWidget(gridPage);
+
+	sceneGroupLayout->addWidget(m_sceneViewStack);
+
+	connect(m_sceneViewToggle, &QToolButton::toggled, this, [this](bool gridChecked) {
+		m_sceneViewStack->setCurrentIndex(gridChecked ? 1 : 0);
+	});
+	connect(m_generateThumbnailsButton, &QPushButton::clicked, this, &MainWindow::onGenerateThumbnailsClicked);
+	connect(m_sceneGrid, &QListWidget::currentItemChanged, this, [this](QListWidgetItem *current, QListWidgetItem *) {
+		if (!current) return;
+		const QString id = current->data(Qt::UserRole).toString();
+		const int comboIndex = m_sceneCombo->findData(id);
+		if (comboIndex < 0) return;
+		if (m_sceneCombo->currentIndex() == comboIndex) return;
+		const QSignalBlocker blocker(m_sceneCombo);
+		m_sceneCombo->setCurrentIndex(comboIndex);
+		onSceneChanged(comboIndex);
+	});
+
+	// Fill the dropdown/grid for whichever category the bar opened on.
 	if (m_sceneCategoryTabs->count() > 0)
-		populateSceneCombo(m_sceneCategoryTabs->tabData(0).toString());
+		populateSceneViews(m_sceneCategoryTabs->tabData(0).toString());
 
 	connect(m_sceneAvailabilityTabs, &QTabBar::currentChanged, this, [this](int tab) {
 		if (tab < 0) return;
@@ -274,28 +366,30 @@ void MainWindow::createBasicTab() {
 		// coincidence) - so this always refills explicitly rather than
 		// relying on that signal firing.
 		if (m_sceneCategoryTabs->count() > 0)
-			populateSceneCombo(m_sceneCategoryTabs->tabData(m_sceneCategoryTabs->currentIndex()).toString());
-		else
+			populateSceneViews(m_sceneCategoryTabs->tabData(m_sceneCategoryTabs->currentIndex()).toString());
+		else {
 			m_sceneCombo->clear();
+			if (m_sceneGrid) m_sceneGrid->clear();
+		}
 		onSceneChanged(m_sceneCombo->currentIndex());
 	});
 
 	connect(m_sceneCategoryTabs, &QTabBar::currentChanged, this, [this](int tab) {
 		if (tab < 0) return;
-		populateSceneCombo(m_sceneCategoryTabs->tabData(tab).toString());
-		// populateSceneCombo() deliberately stays silent, so the one update for
+		populateSceneViews(m_sceneCategoryTabs->tabData(tab).toString());
+		// populateSceneViews() deliberately stays silent, so the one update for
 		// the newly selected scene is issued here - otherwise switching category
 		// would leave the description, SPP and camera describing the old scene.
 		onSceneChanged(m_sceneCombo->currentIndex());
 	});
 
-	// Re-narrows the current category's combo on every keystroke -
-	// populateSceneCombo() reads m_sceneSearchBox->text() itself, so this
+	// Re-narrows the current category's combo/grid on every keystroke -
+	// populateSceneViews() reads m_sceneSearchBox->text() itself, so this
 	// only needs to trigger the same repopulate the tab handlers above
 	// already use, not duplicate the filtering logic here.
 	connect(m_sceneSearchBox, &QLineEdit::textChanged, this, [this](const QString &) {
 		if (m_sceneCategoryTabs->count() == 0) return;
-		populateSceneCombo(m_sceneCategoryTabs->tabData(m_sceneCategoryTabs->currentIndex()).toString());
+		populateSceneViews(m_sceneCategoryTabs->tabData(m_sceneCategoryTabs->currentIndex()).toString());
 		onSceneChanged(m_sceneCombo->currentIndex());
 	});
 
