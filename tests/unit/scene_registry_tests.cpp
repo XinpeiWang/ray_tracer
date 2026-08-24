@@ -50,7 +50,13 @@ TEST(SceneRegistryTest, RegistryHasExpectedCount) {
 	// also contains whatever .pbrt files happen to be on the machine running
 	// the tests, which is not a property of this source tree and must not
 	// decide whether the suite passes.
-	EXPECT_EQ(builtin_scene_count(), 81);
+	//
+	// 81 -> 112: 31 curated pbrt_scenes/*.pbrt example entries added under
+	// their real topic category (Materials/Lights/Cameras/Volumes/Geometry/
+	// Models) instead of only the generic auto-discovered "Custom Scenes"
+	// bucket - see pbrt_scene_registry::build_curated_pbrt_scene_descriptor()
+	// and its call sites in get_builtin_scene_registry().
+	EXPECT_EQ(builtin_scene_count(), 112);
 }
 
 TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem) {
@@ -578,7 +584,7 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // double-checking the GUI/error-hint text that mentions specific scene
 // counts or ID ranges by hand.
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
-	constexpr int kGuiSceneCount = 81;
+	constexpr int kGuiSceneCount = 112;
 	EXPECT_EQ(builtin_scene_count(), kGuiSceneCount)
 		<< "Registry size changed -- update kGuiSceneCount here to match.";
 }

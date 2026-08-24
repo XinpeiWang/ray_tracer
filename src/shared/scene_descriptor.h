@@ -130,6 +130,51 @@ namespace SceneNames {
     constexpr const char* LostEmpire           = "Lost Empire";
     constexpr const char* VokseliaSpawn        = "Vokselia Spawn";
     constexpr const char* PowerPlant           = "Power Plant";
+
+    // Curated entries for self-contained pbrt_scenes/*.pbrt example files
+    // (see scene_registry.h's pbrt_scene_registry::build_curated_pbrt_scene_
+    // descriptor() and its call sites) - each also still auto-discovers as
+    // a generic "Custom Scenes" entry, same as instanced-spheres.pbrt/F3
+    // (build_instanced_spheres_descriptor()) already did before these; this
+    // just additionally surfaces it under its real topic tab. "(pbrt
+    // example)" distinguishes the display name from any same-topic
+    // compiled-in scene (e.g. DepthOfField above vs. this file-loaded one).
+    constexpr const char* MixMaterialPbrtExample              = "Mix Material (pbrt example)";
+    constexpr const char* LayeredMaterialsPbrtExample         = "Layered Materials (pbrt example)";
+    constexpr const char* CoatedDiffuseTexturePbrtExample     = "CoatedDiffuse Texture (pbrt example)";
+    constexpr const char* ConductorRgbEtaKPbrtExample         = "Conductor RGB Eta/K (pbrt example)";
+    constexpr const char* DiffuseTransmissionTexturePbrtExample = "DiffuseTransmission Texture (pbrt example)";
+    constexpr const char* HairMaterialPbrtExample             = "Hair Material (pbrt example)";
+    constexpr const char* NestedCheckerTexturePbrtExample     = "Nested Checker Texture (pbrt example)";
+    constexpr const char* NamedMaterialAndTexturePbrtExample  = "Named Material & Texture (pbrt example)";
+
+    constexpr const char* PunctualLightsPbrtExample           = "Punctual Lights (pbrt example)";
+    constexpr const char* GoniometricProjectionPbrtExample    = "Goniometric & Projection Lights (pbrt example)";
+    constexpr const char* BlackbodyLightPbrtExample           = "Blackbody Light (pbrt example)";
+    constexpr const char* TexturedTwoSidedLightsPbrtExample   = "Textured Two-Sided Lights (pbrt example)";
+    constexpr const char* InfiniteLightPbrtExample            = "Infinite Light (pbrt example)";
+    constexpr const char* DiskCylinderLightPbrtExample        = "Disk & Cylinder Lights (pbrt example)";
+    constexpr const char* TwoSphereLightsPbrtExample          = "Two Sphere Lights (pbrt example)";
+    constexpr const char* TriangleFanLightPbrtExample         = "Triangle Fan Light (pbrt example)";
+
+    constexpr const char* DepthOfFieldPbrtExample             = "Depth of Field (pbrt example)";
+    constexpr const char* OrthographicCameraPbrtExample       = "Orthographic Camera (pbrt example)";
+    constexpr const char* SphericalCameraPbrtExample          = "Spherical Camera (pbrt example)";
+    constexpr const char* RealisticCameraPbrtExample          = "Realistic Camera (pbrt example)";
+
+    constexpr const char* CloudMediumPbrtExample              = "Cloud Medium (pbrt example)";
+    constexpr const char* CylinderMediumPbrtExample           = "Cylinder Medium (pbrt example)";
+    constexpr const char* RgbGridMediumPbrtExample            = "RGB Grid Medium (pbrt example)";
+    constexpr const char* UniformGridMediumPbrtExample        = "Uniform Grid Medium (pbrt example)";
+
+    constexpr const char* PlymeshUvPbrtExample                = "PLY Mesh UV (pbrt example)";
+    constexpr const char* PlymeshGeometryPbrtExample          = "PLY Mesh Geometry (pbrt example)";
+    constexpr const char* CurveTuftPbrtExample                = "Curve Tuft (pbrt example)";
+    constexpr const char* CurveHairTuftPbrtExample            = "Curve + Hair Tuft (pbrt example)";
+    constexpr const char* TrianglemeshUvPbrtExample           = "Triangle Mesh UV (pbrt example)";
+    constexpr const char* PixelFilterBoxPbrtExample           = "Pixel Filter: Box (pbrt example)";
+
+    constexpr const char* KillerooSimplePbrtExample           = "Killeroo (pbrt example)";
 } // namespace SceneNames
 
 // -----------------------------------------------------------------------

@@ -381,15 +381,17 @@ TEST_P(CpuGpuLightParityTest, LightCountMatches) {
 	// correct for its own purpose (picking directions toward known light
 	// shapes) but a silent 0 if fed through count_cpu_emissive_lights here.
 	//
-	// F3 is included alongside category CustomScenes despite being a curated
-	// Geometry-category entry, not an auto-generated "I<N>" one: its
-	// build_lights lambda (scene_registry.h) returns pbrt_cpu::BuildResult's
-	// own `lights` list, identical in shape and origin to every CustomScenes
-	// entry's - see its own header comment on why it exists as a curated
-	// entry "rather than an auto-generated I<N> Custom Scene" while still
-	// loading pbrt_scenes/instanced-spheres.pbrt through the same pipeline.
-	const bool isPbrtLoaded =
-		std::string(s->category) == SceneCategories::CustomScenes || s->id == "F3";
+	// Every pbrt-backed scene - not just category CustomScenes - has its
+	// build_lights lambda wired the same way (scene_registry.h's
+	// wire_pbrt_backed_scene(), shared by append()'s auto-discovered "I<N>"
+	// entries AND every curated entry under a real topic category, e.g. F3
+	// Instanced Spheres and the pbrt_scenes/*.pbrt example scenes curated
+	// under Materials/Lights/Cameras/Volumes/Geometry/Models - see
+	// pbrt_scene_registry::build_curated_pbrt_scene_descriptor()). Checking
+	// pbrt_scene_registry::paths() directly, rather than category or a
+	// hardcoded id, generalizes correctly to any future curated entry
+	// without needing this test updated again each time one is added.
+	const bool isPbrtLoaded = pbrt_scene_registry::paths().count(s->id) > 0;
 	int cpuLights = isPbrtLoaded
 		? count_cpu_emissive_lights_list(s->build_lights())
 		: count_cpu_emissive_lights_list(s->build_world());

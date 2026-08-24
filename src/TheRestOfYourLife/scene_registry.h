@@ -334,6 +334,57 @@ namespace pbrt_scene_registry {
             }
         };
     }
+
+    // Builds a curated SceneDescriptor for a specific bundled pbrt_scenes/
+    // file, under its own real topic id/category/description rather than an
+    // auto-generated "I<N>" Custom Scene - the same idea
+    // build_instanced_spheres_descriptor() above hand-wrote once, factored
+    // out so the ~30 recently-added self-contained example scenes (see their
+    // own call sites in get_builtin_scene_registry() below) don't each need
+    // their own copy of the same path-resolution/wiring boilerplate. The
+    // file still ALSO auto-discovers as a generic "I<N>" Custom Scene too
+    // (append() below has no way to know a curated entry exists for it, and
+    // doesn't need to - see this function's own callers for why that's
+    // intentional, matching the instanced-spheres/F3 precedent).
+    //
+    // Every caller here passes a self-contained, git-tracked file (no
+    // external assets beyond the repo checkout), so requires_files is always
+    // false and gpu_compatible always true - a curated entry exists
+    // specifically BECAUSE the scene is worth surfacing under a real topic
+    // tab, which only makes sense for a scene that's always present and
+    // renders on both backends.
+    inline SceneDescriptor build_curated_pbrt_scene_descriptor(
+            const char* id, int legacy_id, const char* name, const char* category,
+            const char* description, const char* performance, const char* filename) {
+        // Same search-path walk as build_instanced_spheres_descriptor()'s own
+        // comment explains: the working directory differs between running
+        // from the repo root (development) and from RayTracer_Package/ (GUI/
+        // CLI launch), so this can't be a single hardcoded relative path.
+        std::string path;
+        for (const std::string& dir : pbrt_discover::defaultSearchPaths()) {
+            std::filesystem::path candidate = std::filesystem::path(dir) / filename;
+            std::error_code ec;
+            if (std::filesystem::exists(candidate, ec)) { path = candidate.string(); break; }
+        }
+        if (path.empty()) path = std::string("pbrt_scenes/") + filename;  // not found anywhere - fails loudly below
+
+        const pbrt_discover::Discovered d = pbrt_discover::describeFile(path);
+
+        SceneDescriptor s;
+        s.id = id;
+        s.legacy_id = legacy_id;
+        s.name = name;
+        s.category = category;
+        s.description = description;
+        s.performance = performance;
+        s.requires_files = false;
+        s.gpu_compatible = true;
+
+        wire_pbrt_backed_scene(s, d, path);
+
+        paths()[id] = path;
+        return s;
+    }
 } // namespace pbrt_scene_registry
 
 // F3: Instanced Spheres. Loads pbrt_scenes/instanced-spheres.pbrt through
@@ -1549,6 +1600,152 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             build_power_plant_sky,
             nullptr
         },
+
+        // ---------------------------------------------------------------
+        // Curated pbrt_scenes/*.pbrt example scenes, under their real topic
+        // tab instead of only the generic "Custom Scenes" bucket every
+        // loaded .pbrt file auto-discovers into (see
+        // pbrt_scene_registry::build_curated_pbrt_scene_descriptor()'s own
+        // comment). Legacy ids 100+ - past every real case in
+        // gpu/optix/scene_builder.cpp's switch, same reasoning as
+        // append()'s own dynamically-assigned ids below.
+        // ---------------------------------------------------------------
+
+        // -- Materials --
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "B15", 100, SceneNames::MixMaterialPbrtExample, SceneCategories::Materials,
+            "Real per-shading-point stochastic pbrt \"mix\" material resolution on all three backends -- a fine-grained speckle of matte red diffuse and a conductor's real specular highlights, not one flat averaged color.",
+            "Fast", "mix-material.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "B16", 101, SceneNames::LayeredMaterialsPbrtExample, SceneCategories::Materials,
+            "Four pbrt material kinds no other bundled example scene touches: thindielectric, coatedconductor, diffusetransmission, and subsurface via a named measured-scattering preset (\"Marble\", no external file needed).",
+            "Fast", "layered-materials.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "B17", 102, SceneNames::CoatedDiffuseTexturePbrtExample, SceneCategories::Materials,
+            "Real texture-bound reflectance for pbrt's CoatedDiffuse material, which previously silently dropped to a flat color on both backends.",
+            "Fast", "coateddiffuse-texture.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "B18", 103, SceneNames::ConductorRgbEtaKPbrtExample, SceneCategories::Materials,
+            "Explicit RGB eta/k for pbrt's conductor material, plus named-metal-spectrum resolution for coatedconductor -- real complex-IOR GGX highlights instead of the flat fuzz-mirror/reflectance-only fallback.",
+            "Fast", "conductor-rgb-eta-k.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "B19", 104, SceneNames::DiffuseTransmissionTexturePbrtExample, SceneCategories::Materials,
+            "Texture-bound reflectance/transmittance for pbrt's DiffuseTransmission material, threaded through both backends.",
+            "Fast", "diffusetransmission-texture.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "B20", 105, SceneNames::HairMaterialPbrtExample, SceneCategories::Materials,
+            "pbrt's Material \"hair\" (Marschner/Chiang fiber scattering) applied to ordinary spheres, matching this project's own native Hair Fibers demo for a fair comparison.",
+            "Fast", "hair-material.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "B21", 106, SceneNames::NestedCheckerTexturePbrtExample, SceneCategories::Materials,
+            "One level of nested imagemap texture reference inside a pbrt checkerboard/mix texture -- tex1/tex2 bound to a real image instead of only a flat literal color.",
+            "Fast", "nested-checker-texture.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "B22", 107, SceneNames::NamedMaterialAndTexturePbrtExample, SceneCategories::Materials,
+            "pbrt's NamedMaterial referenced directly for a shape (not just as a \"mix\" sub-material), plus a texture-bound material parameter and AreaLightSource's twosided flag.",
+            "Fast", "named-material-and-texture.pbrt"),
+
+        // -- Lights --
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "C8", 108, SceneNames::PunctualLightsPbrtExample, SceneCategories::Lights,
+            "All five of pbrt-v4's punctual (delta-distribution) light kinds in one scene: point, spot, distant, goniometric, and projection.",
+            "Fast", "punctual-lights.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "C9", 109, SceneNames::GoniometricProjectionPbrtExample, SceneCategories::Lights,
+            "Real image decoding for pbrt's goniometric and projection lights, which previously silently ignored their own filename and fell back to a uniform beam.",
+            "Fast", "goniometric-projection.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "C10", 110, SceneNames::BlackbodyLightPbrtExample, SceneCategories::Lights,
+            "pbrt's \"blackbody L\" colour-temperature area lights -- two identical panels at 2500K and 9000K, so a regression back to flat-white emission would be immediately visible.",
+            "Fast", "blackbody-light.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "C11", 111, SceneNames::TexturedTwoSidedLightsPbrtExample, SceneCategories::Lights,
+            "A real filename-textured, two-sided AreaLightSource on a non-triangle (sphere/quad) shape, on both backends.",
+            "Fast", "textured-twosided-lights.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "C12", 112, SceneNames::InfiniteLightPbrtExample, SceneCategories::Lights,
+            "pbrt's \"infinite\" constant-colour sky light in open geometry, actually lighting the scene from every direction rather than being blocked by a room.",
+            "Fast", "infinite-light.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "C13", 113, SceneNames::DiskCylinderLightPbrtExample, SceneCategories::Lights,
+            "Disk and cylinder shapes as real NEE-samplable area lights on both GPU backends, converging as cleanly as CPU's solid-angle sampling instead of noisier hit-only emission.",
+            "Fast", "disk-cylinder-light.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "C14", 114, SceneNames::TwoSphereLightsPbrtExample, SceneCategories::Lights,
+            "Two sphere area lights in one scene, pinning a GPU light-type-table width bug where every light after the first silently misread its own type.",
+            "Fast", "two-sphere-lights.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "C15", 115, SceneNames::TriangleFanLightPbrtExample, SceneCategories::Lights,
+            "An area light that is NOT a parallelogram -- an irregular 5-triangle fan the quad-merge pass can't rejoin, exercising the GPU's per-triangle light sampling.",
+            "Fast", "triangle-fan-light.pbrt"),
+
+        // -- Cameras --
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "D9", 116, SceneNames::DepthOfFieldPbrtExample, SceneCategories::Cameras,
+            "A perspective camera's thin-lens depth-of-field (lensradius/focaldistance) loaded from a pbrt file, on both backends.",
+            "Fast", "depth-of-field.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "D10", 117, SceneNames::OrthographicCameraPbrtExample, SceneCategories::Cameras,
+            "pbrt's orthographic (parallel-projection) camera loaded from a file -- two same-size spheres at different depths read as equal size, not perspective-foreshortened.",
+            "Fast", "orthographic-camera.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "D11", 118, SceneNames::SphericalCameraPbrtExample, SceneCategories::Cameras,
+            "pbrt's spherical (equal-area) camera loaded from a file, positioned inside an enclosed room so it actually captures every direction at once.",
+            "Fast", "spherical-camera.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "D12", 119, SceneNames::RealisticCameraPbrtExample, SceneCategories::Cameras,
+            "pbrt's realistic multi-element lens camera loaded from a file, including the lensfile-loading path a compiled-in scene never exercised.",
+            "Fast", "realistic-camera.pbrt"),
+
+        // -- Volumes --
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "E5", 120, SceneNames::CloudMediumPbrtExample, SceneCategories::Volumes,
+            "pbrt's MakeNamedMedium \"cloud\" (Perlin-noise heterogeneous scattering) loaded from a file, on both backends.",
+            "Fast", "cloud-medium.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "E6", 121, SceneNames::CylinderMediumPbrtExample, SceneCategories::Volumes,
+            "A homogeneous fog medium on pbrt's Shape \"cylinder\", now real on both GPU backends instead of silently rendering as ordinary empty geometry.",
+            "Fast", "cylinder-medium.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "E7", 122, SceneNames::RgbGridMediumPbrtExample, SceneCategories::Volumes,
+            "pbrt's MakeNamedMedium \"rgbgrid\" (an RGB voxel grid) rendering as a soft coloured nebula, on both backends.",
+            "Fast", "rgbgrid-medium.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "E8", 123, SceneNames::UniformGridMediumPbrtExample, SceneCategories::Volumes,
+            "pbrt's MakeNamedMedium \"uniformgrid\" (a single-channel density voxel grid) rendering as a soft glowing blob, on both backends.",
+            "Fast", "uniformgrid-medium.pbrt"),
+
+        // -- Geometry --
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "F5", 124, SceneNames::PlymeshUvPbrtExample, SceneCategories::Geometry,
+            "pbrt's Shape \"plymesh\" real per-vertex UV data, threaded through both backends -- previously GPU-recursive rendered this exact scene solid black.",
+            "Fast", "plymesh-uv.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "F6", 125, SceneNames::PlymeshGeometryPbrtExample, SceneCategories::Geometry,
+            "pbrt's Shape \"plymesh\" loading a real external .ply file, including fan-triangulation of a non-triangular base face.",
+            "Fast", "plymesh-geometry.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "F7", 126, SceneNames::CurveTuftPbrtExample, SceneCategories::Geometry,
+            "pbrt's Shape \"curve\" (real cubic-Bezier fiber geometry, tessellated for GPU) compared against this project's own native curve-tuft demo.",
+            "Fast", "curve-tuft.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "F8", 127, SceneNames::CurveHairTuftPbrtExample, SceneCategories::Geometry,
+            "Real curve geometry paired with Material \"hair\" for the first time -- the exact combination that motivated HairBxDF's own fiber-tangent fix.",
+            "Fast", "curve-hair-tuft.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "F9", 128, SceneNames::TrianglemeshUvPbrtExample, SceneCategories::Geometry,
+            "pbrt's Shape \"trianglemesh\" \"point2 uv\" parameter threaded through both backends -- previously GPU-recursive rendered this exact scene solid black.",
+            "Fast", "trianglemesh-uv.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "F10", 129, SceneNames::PixelFilterBoxPbrtExample, SceneCategories::Geometry,
+            "pbrt's PixelFilter directive end-to-end on both backends -- a box filter's harder, more aliased silhouette edges compared to the default Gaussian.",
+            "Fast", "pixel-filter-box.pbrt"),
+
+        // -- Models --
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "G25", 130, SceneNames::KillerooSimplePbrtExample, SceneCategories::Models,
+            "The classic pbrt-v4 \"killeroo\" statue example scene, loaded end-to-end from its own .pbrt file rather than a compiled-in scene.",
+            "Medium", "killeroo-simple.pbrt"),
     };
     return registry;
 }
