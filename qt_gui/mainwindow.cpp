@@ -605,6 +605,13 @@ void MainWindow::setupUI() {
 
 	// Create tab widget
 	m_tabWidget = new QTabWidget(this);
+	// Stretches the tabs to fill the bar's full width when their natural
+	// content width leaves room, rather than left-aligning them with blank
+	// space to the right (see mainwindow_style.cpp's QTabBar::tab min-width
+	// comment for the other half of this - the two only work together).
+	// True by default, but set explicitly since this bar's fit is load-
+	// bearing, not an incidental style default this build happens to have.
+	m_tabWidget->tabBar()->setExpanding(true);
 	createBasicTab();
 	createAdvancedTab();
 	createVideoTab();

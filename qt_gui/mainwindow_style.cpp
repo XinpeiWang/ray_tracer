@@ -392,7 +392,15 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			padding: 10px 18px;
 			color: %TEXT_MUTED%;
 			font-size: 12pt;
-			min-width: 100px;
+			/* No minimum width: QTabBar's own "expanding" default (still on -
+			   see setupUI()) already stretches tabs to fill the bar when their
+			   natural content width is less than the available space. A fixed
+			   100px floor used to force that natural width past the window's
+			   typical size once a 7th tab (Diagnostics) was added, tipping the
+			   whole strip into scroll-button mode instead of just spreading
+			   tabs out - same reasoning sceneCategoryTabs below already
+			   applies with its own zero minimum. */
+			min-width: 0px;
 			margin-right: 2px;
 		}
 		/* The selected tab is marked by an accent underline rather than a
