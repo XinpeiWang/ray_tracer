@@ -56,6 +56,7 @@ extern char** environ;
 #include "src/TheRestOfYourLife/error_codes.h"
 #include "src/TheRestOfYourLife/thread_count.h"
 #include "src/shared/exr_writer.h"
+#include "src/shared/render_stats.h"
 #include "launcher/camera_path.h"
 #include "launcher/launcher_args.h"   // Argument parsing
 #include "launcher/diagnostics.h"     // --diagnose
@@ -282,6 +283,17 @@ int main(int argc, char** argv) {
 	if (use_gpu && !use_sppm && args.optix_validate) {
 		_putenv_s("RAY_TRACER_OPTIX_VALIDATION", "1");
 	}
+	// Same env-var pattern as RAY_TRACER_WAVEFRONT above, but read by
+	// wavefront_path_tracer.cpp's own "[WF-STATS]" block - not gated by
+	// use_gpu/use_sppm since render_stats.h (the CPU-side counterpart) also
+	// reads this env var, unconditionally of backend. render_stats::reset()
+	// clears the process-lifetime counters right before this render starts,
+	// so a leftover count from an earlier render (e.g. --video's per-frame
+	// loop below) never bleeds into this one's printed stats.
+	if (args.stats) {
+		_putenv_s("RAY_TRACER_STATS", "1");
+	}
+	render_stats::reset();
 
 	// System-compatibility report instead of a render - see
 	// launcher/diagnostics.h. Runs before any scene-loading or
@@ -1011,6 +1023,38 @@ int main(int argc, char** argv) {
         std::cout << minutes << " min " << std::fixed << std::setprecision(1) << remainingSeconds << " sec" << std::endl;
     }
     std::cout << "========================================" << std::endl;
+
+    // ========================================================================
+    // Stats reporting (--stats, opt-in - see src/shared/render_stats.h)
+    // ========================================================================
+    // Same "default path tracer only" scope cut as --exposure/--sampler
+    // above: BDPT/MLT/SPPM/the Round 6 debug integrators have their own
+    // render loops, none of which are wired into render_stats.h's counters.
+    // GPU-wavefront prints its own real, more detailed "[WF-STATS]" block
+    // from wavefront_path_tracer.cpp (gated by the same RAY_TRACER_STATS env
+    // var set above) - nothing to add here for that backend.
+    if (args.stats && !use_bdpt && !use_mlt && !use_sppm && !use_debug_integrator) {
+        const long long primary_rays = (long long)image_width * image_height * samples_per_pixel;
+        std::cout << "[STATS] ── Render Statistics ──────────────────────────\n";
+        if (!use_gpu) {
+            const uint64_t total_rays = render_stats::bounce_rays().load(std::memory_order_relaxed);
+            const uint64_t shadow_rays = render_stats::shadow_rays().load(std::memory_order_relaxed);
+            std::cout << "[STATS] Primary rays          : " << primary_rays << "\n";
+            std::cout << "[STATS] Total rays (incl. bounces): " << total_rays << "\n";
+            std::cout << "[STATS] Shadow rays (NEE)     : " << shadow_rays << "\n";
+        } else if (!args.use_wavefront) {
+            // Recursive GPU backend has no per-ray counting infra yet
+            // (Russian Roulette makes a real bounce count non-deterministic
+            // from launch parameters alone) - print only what's exactly
+            // knowable without it, rather than a misleading estimate.
+            std::cout << "[STATS] Primary rays          : " << primary_rays << "\n";
+            std::cout << "[STATS] (bounce/shadow-ray counts not yet tracked on the recursive GPU backend)\n";
+        }
+        std::cout << "[STATS] Samples/sec           : "
+                   << (seconds > 0.0 ? (double)image_width * image_height * samples_per_pixel / seconds : 0.0)
+                   << "\n";
+        std::cout << "[STATS] ─────────────────────────────────────────────\n";
+    }
 
     // ========================================================================
     // Format Conversion

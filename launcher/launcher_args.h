@@ -65,6 +65,18 @@ struct LaunchArgs {
 	// --wavefront (see optix_render_main()'s own comment); ignored under
 	// --cpu/--sppm/--bdpt/--mlt like use_wavefront/optix_validate above.
 	bool denoise            = false;
+	// Print a small end-of-render stats block (rays cast, bounces, shadow
+	// rays, samples/sec) - see main.cpp's own block right after "RENDER
+	// TIME". Observation-only: never changes what gets rendered, only what
+	// gets printed after it's done. Wavefront already computes real
+	// per-bounce counts (WavefrontRenderStats) for its own launch sizing;
+	// this just decides whether to also print them. CPU counts real rays
+	// via thread-local accumulators in camera.h's worker lambda. The
+	// recursive GPU backend has no per-ray counting infra yet, so it only
+	// prints the always-exact ray count (width*height*samples) here -
+	// Russian Roulette (optix_raygen.h) means a bounce count can't be
+	// inferred from launch parameters alone without one.
+	bool stats              = false;
 	// Flat post-multiply on linear color right before tone-mapping, applied
 	// on both CPU and GPU output paths (camera.h / optix_interface.cpp) -
 	// the default path tracer only. Mirrors pbrt-v4's PixelSensor::
@@ -214,6 +226,9 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			consumed_args.insert(i);
 		} else if (arg == "--denoise") {
 			out.denoise = true;
+			consumed_args.insert(i);
+		} else if (arg == "--stats") {
+			out.stats = true;
 			consumed_args.insert(i);
 		} else if (arg == "--exposure" && i + 1 < argc) {
 			try {
@@ -442,6 +457,9 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "               albedo + normal AOV buffers. GPU-only, recursive backend only -\n"
 					  << "               silently has no effect under --wavefront; ignored under\n"
 					  << "               --cpu/--sppm.\n"
+					  << "  --stats    : Print a small end-of-render stats block (rays cast, bounces,\n"
+					  << "               shadow rays, samples/sec) after the normal RENDER TIME output.\n"
+					  << "               Observation-only - never changes the rendered image.\n"
 					  << "  --exposure VALUE: Flat multiplier on linear color before tone-mapping\n"
 					  << "               (default 1.0 = no-op). CPU and GPU default path tracer only.\n"
 					  << "               E.g. 0.5 = darker, 2.0 = brighter. No effect under\n"

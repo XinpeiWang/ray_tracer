@@ -27,6 +27,7 @@
 #include "../shared/cameras.h"
 #include "../shared/surface_interaction.h"  // compute_differentials() for texture-filtering footprint
 #include "../shared/exr_writer.h"
+#include "../shared/render_stats.h"
 #include "thread_count.h"
 #include <fstream>
 #include <iostream>
@@ -844,6 +845,13 @@ class camera {
         };
 
         while (bounces_left > 0) {
+            // One iteration = one traced ray (the primary ray on the first
+            // pass, a bounce continuation after) - see render_stats.h's own
+            // comment for why this is gated behind enabled() rather than an
+            // unconditional atomic increment.
+            if (render_stats::enabled())
+                render_stats::bounce_rays().fetch_add(1, std::memory_order_relaxed);
+
             hit_record rec;
 
             // Miss -- query sky (HDR env map) or fall back to flat background.
@@ -993,6 +1001,8 @@ class camera {
                         double w_l        = mis_power_heuristic(pdf_l, pdf_b_at_l);
                         hit_record light_rec;
                         color trans;
+                        if (render_stats::enabled())
+                            render_stats::shadow_rays().fetch_add(1, std::memory_order_relaxed);
                         if (shadow_ray_hit(world, shadow_ray, light_rec, infinity, &trans)) {
                             color Le_d = light_rec.mat->emitted(
                                 shadow_ray, light_rec, light_rec.u, light_rec.v, light_rec.p);
@@ -1020,6 +1030,8 @@ class camera {
                         double w_sky        = mis_power_heuristic(pdf_sky, pdf_b_at_sky);
                         hit_record sky_rec;
                         color trans;
+                        if (render_stats::enabled())
+                            render_stats::shadow_rays().fetch_add(1, std::memory_order_relaxed);
                         if (!shadow_ray_hit(world, sky_shadow, sky_rec, infinity, &trans)) {
                             color Le_sky = sky->Le(unit_vector(sky_dir));
                             color atten = rec.mat->scattering_attenuation(rec, sky_shadow, srec.attenuation);
@@ -1041,6 +1053,8 @@ class camera {
                     hit_record shadow_rec;
                     double shadow_t_max = (ps.t_max == infinity) ? infinity : (ps.t_max - 0.001);
                     color trans;
+                    if (render_stats::enabled())
+                        render_stats::shadow_rays().fetch_add(1, std::memory_order_relaxed);
                     if (!shadow_ray_hit(world, punct_ray, shadow_rec, shadow_t_max, &trans)) {
                         // delta light: pdf=1, no MIS weight needed
                         color atten = rec.mat->scattering_attenuation(rec, punct_ray, srec.attenuation);

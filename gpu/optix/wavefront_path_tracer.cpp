@@ -29,6 +29,7 @@
 #include <sstream>
 #include <vector>
 #include <stdexcept>
+#include <cstdlib>
 
 // Forward declarations for wavefront_launch.cu C wrappers (no <<<>>> in .cpp)
 extern "C" void wf_launch_generate_camera_rays(
@@ -1764,29 +1765,36 @@ bool WavefrontPathTracer::render(
 	std::cout << "[WavefrontPathTracer] Rendered " << width << "x" << height
 			  << " (" << samples_per_pixel << " spp, " << max_depth << " bounces)\n";
 
-	// [WF-STATS] summary block (pbrt-v4 STAT_COUNTER-inspired, see this
-	// project's own plan for scope: wavefront-only, since its per-bounce
-	// queue sizes are the one backend with real host-visible counters
-	// already computed for launch sizing - CPU/recursive-GPU have none).
-	// Always printed, mirroring this backend's own unconditional
-	// "[WavefrontPathTracer] Rendered..." line above - no new flag needed.
-	long long totalHitQueueHits = stats.hits + stats.simpleHits + stats.dielectricHits;
-	double avgBouncesPerSample = stats.samplesCompleted > 0
-		? double(stats.bounceIterations) / double(stats.samplesCompleted)
-		: 0.0;
-	std::cout << "[WF-STATS] ── Wavefront Render Statistics ──────────────────\n";
-	std::cout << "[WF-STATS] Samples completed  : " << stats.samplesCompleted << " / " << samples_per_pixel << "\n";
-	std::cout << "[WF-STATS] Bounce iterations  : " << stats.bounceIterations
-			  << "  (avg " << avgBouncesPerSample << " / sample, max_depth=" << max_depth << ")\n";
-	std::cout << "[WF-STATS] Primary+bounce rays: " << stats.primaryRays << "\n";
-	std::cout << "[WF-STATS] Hits (regular/simple/dielectric): "
-			  << stats.hits << " / " << stats.simpleHits << " / " << stats.dielectricHits
-			  << "  (total " << totalHitQueueHits << ")\n";
-	std::cout << "[WF-STATS] Misses             : " << stats.misses << "\n";
-	std::cout << "[WF-STATS] Shadow rays (NEE)  : " << stats.shadowRays << "\n";
-	std::cout << "[WF-STATS] BSSRDF probe rays  : " << stats.probeRays
-			  << "  |  exits: " << stats.probeExits << "\n";
-	std::cout << "[WF-STATS] ─────────────────────────────────────────────────\n";
+	// [WF-STATS] summary block (pbrt-v4 STAT_COUNTER-inspired) - wavefront-
+	// only, since its per-bounce queue sizes are the one backend with real
+	// host-visible counters already computed for launch sizing (CPU/
+	// recursive-GPU need separate infra - see src/shared/render_stats.h and
+	// launcher/main.cpp's own "[STATS]" block). Gated behind the same
+	// RAY_TRACER_STATS env var main.cpp sets for --stats (same same-process
+	// env-var pattern as RAY_TRACER_WAVEFRONT above) - this used to print
+	// unconditionally; making --stats mean "opt-in on every backend" instead
+	// of "wavefront always, everything else never" is worth the one-time
+	// behavior change.
+#pragma warning(suppress: 4996)
+	if (std::getenv("RAY_TRACER_STATS")) {
+		long long totalHitQueueHits = stats.hits + stats.simpleHits + stats.dielectricHits;
+		double avgBouncesPerSample = stats.samplesCompleted > 0
+			? double(stats.bounceIterations) / double(stats.samplesCompleted)
+			: 0.0;
+		std::cout << "[WF-STATS] ── Wavefront Render Statistics ──────────────────\n";
+		std::cout << "[WF-STATS] Samples completed  : " << stats.samplesCompleted << " / " << samples_per_pixel << "\n";
+		std::cout << "[WF-STATS] Bounce iterations  : " << stats.bounceIterations
+				  << "  (avg " << avgBouncesPerSample << " / sample, max_depth=" << max_depth << ")\n";
+		std::cout << "[WF-STATS] Primary+bounce rays: " << stats.primaryRays << "\n";
+		std::cout << "[WF-STATS] Hits (regular/simple/dielectric): "
+				  << stats.hits << " / " << stats.simpleHits << " / " << stats.dielectricHits
+				  << "  (total " << totalHitQueueHits << ")\n";
+		std::cout << "[WF-STATS] Misses             : " << stats.misses << "\n";
+		std::cout << "[WF-STATS] Shadow rays (NEE)  : " << stats.shadowRays << "\n";
+		std::cout << "[WF-STATS] BSSRDF probe rays  : " << stats.probeRays
+				  << "  |  exits: " << stats.probeExits << "\n";
+		std::cout << "[WF-STATS] ─────────────────────────────────────────────────\n";
+	}
 
 	return true;
 }
