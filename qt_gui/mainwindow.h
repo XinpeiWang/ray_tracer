@@ -823,6 +823,14 @@ private:
 	QPushButton *m_stopButton;
 	QProgressBar *m_progressBar;
 	QLabel *m_statusLabel;
+	// A secondary caveat line below m_statusLabel (e.g. "render succeeded but
+	// the preview image couldn't be shown") - kept separate rather than
+	// appended into m_statusLabel's own text so it can carry the theme's
+	// warning colour without needing m_statusLabel's other ~15 call sites
+	// (success/failure/progress messages) to switch to rich text and start
+	// HTML-escaping arbitrary renderer output. Hidden whenever there is
+	// nothing to caveat - see setStatusWarning()/clearStatusWarning().
+	QLabel *m_statusWarningLabel;
 	QLabel *m_currentJobLabel;          // Which job is actually rendering - see startRenderJob()/describeRenderJob()
 	int m_progressTabIndex = -1;        // Index of the Progress tab within m_tabWidget (see createProgressTab())
 
@@ -1029,6 +1037,9 @@ private:
 	// Paints the progress bar green on success / red on failure, matching
 	// Qt Creator's ProgressBarColorFinished / ProgressBarColorError.
 	void setProgressResultState(const char *state);
+	// Shows/hides m_statusWarningLabel - see that member's own comment.
+	void setStatusWarning(const QString &text);
+	void clearStatusWarning();
 	// Clears or reddens the taskbar button and, if the window isn't the
 	// active one, raises a tray notification.
 	void notifyRenderFinished(bool success, const QString &message, double totalTime);

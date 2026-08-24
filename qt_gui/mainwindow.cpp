@@ -592,10 +592,12 @@ void MainWindow::setupUI() {
 	                           "(queues behind it instead if a render is already running)");
 	connect(m_renderButton, &QPushButton::clicked, this, &MainWindow::onRenderClicked);
 
-	// Stop button
+	// Stop button - a destructive action (discards the running render's
+	// output), so it takes the danger styling rather than an ordinary button.
 	m_stopButton = new QPushButton("S&TOP RENDER", this);
 	icon_tint::apply(m_stopButton, ":/icons/stop.svg",
-	                 icon_tint::Role::Body, m_activeTheme.textBody);
+	                 icon_tint::Role::Danger, m_activeTheme.error);
+	m_stopButton->setObjectName("dangerAction");
 	m_stopButton->setMinimumHeight(50);
 	m_stopButton->setIconSize(QSize(20, 20));
 	m_stopButton->setEnabled(false);

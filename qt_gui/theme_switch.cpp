@@ -98,7 +98,7 @@ void MainWindow::restyleThemedWidgets() {
 	// Icons are monochrome silhouettes recoloured at runtime, so they follow
 	// the scheme like any other painted element. Without this a light theme
 	// would show near-white icons on a near-white surface.
-	icon_tint::retint(this, p.textBody, p.accentPrimary);
+	icon_tint::retint(this, p.textBody, p.accentPrimary, p.error);
 
 	// Combo ITEM icons are copies held by the model, not by a widget, so
 	// retint() above cannot reach them. Each item carries its own resource path

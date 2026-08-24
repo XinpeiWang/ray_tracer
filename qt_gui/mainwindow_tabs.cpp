@@ -962,9 +962,20 @@ void MainWindow::createProgressTab() {
 	m_statusLabel = new QLabel("Ready to render", progressGroup);
 	m_statusLabel->setAlignment(Qt::AlignCenter);
 
+	// Caveat line below the main status (e.g. a succeeded render whose
+	// preview image couldn't be shown) - see its own comment in mainwindow.h.
+	// Hidden by default so it costs no layout space until there's something
+	// to say; setStatusWarning()/clearStatusWarning() show/hide it.
+	m_statusWarningLabel = new QLabel(progressGroup);
+	m_statusWarningLabel->setObjectName("statusWarning");
+	m_statusWarningLabel->setAlignment(Qt::AlignCenter);
+	m_statusWarningLabel->setWordWrap(true);
+	m_statusWarningLabel->hide();
+
 	progressLayout->addWidget(m_currentJobLabel);
 	progressLayout->addWidget(m_progressBar);
 	progressLayout->addWidget(m_statusLabel);
+	progressLayout->addWidget(m_statusWarningLabel);
 	layout->addWidget(progressGroup);
 
 	// Render queue - stays visible even when empty (unlike when this lived
@@ -986,7 +997,11 @@ void MainWindow::createProgressTab() {
 	QPushButton *removeQueueItemButton = new QPushButton("Re&move Selected", m_queueGroup);
 	removeQueueItemButton->setToolTip("Remove the selected job from the render queue");
 	connect(removeQueueItemButton, &QPushButton::clicked, this, &MainWindow::onRemoveSelectedQueueItem);
+	// Discards every queued job at once (unlike removeQueueItemButton above,
+	// which only drops the one job you selected), so it gets the danger
+	// styling too.
 	QPushButton *clearQueueButton = new QPushButton("Clear &Queue", m_queueGroup);
+	clearQueueButton->setObjectName("dangerAction");
 	clearQueueButton->setToolTip("Remove every job from the render queue");
 	connect(clearQueueButton, &QPushButton::clicked, this, &MainWindow::onClearQueue);
 	queueButtonLayout->addWidget(removeQueueItemButton);

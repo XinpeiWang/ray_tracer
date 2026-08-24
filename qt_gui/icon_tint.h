@@ -33,6 +33,7 @@ namespace icon_tint {
 enum class Role {
 	Body,       // ordinary chrome: menus, secondary buttons, combo items
 	Primary,    // sits on the primary action's gradient, matching its text
+	Danger,     // sits on a destructive action (Stop, Clear Queue), matching theme::Palette::error
 };
 
 // Recolours the resource at `path`, preserving its alpha.
@@ -43,8 +44,9 @@ void apply(QAction *action, const QString &path, Role role, const QColor &colour
 void apply(QAbstractButton *button, const QString &path, Role role, const QColor &colour);
 
 // Re-tints every action and button under `root` that went through apply().
-// bodyColour and primaryColour supply the two roles.
-void retint(QWidget *root, const QColor &bodyColour, const QColor &primaryColour);
+// bodyColour, primaryColour and dangerColour supply the three roles.
+void retint(QWidget *root, const QColor &bodyColour, const QColor &primaryColour,
+			const QColor &dangerColour);
 
 // Combo box ITEMS need their own pair, because an item's icon is a copy held by
 // the model rather than by any widget - retint() cannot reach it.

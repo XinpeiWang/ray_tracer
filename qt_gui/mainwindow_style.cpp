@@ -235,6 +235,30 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			border: 2px solid %BORDER%;
 			color: %TEXT_DISABLED%;
 		}
+		/* Destructive action (Stop Render, Clear Queue) - a quiet outline in
+		   the theme's error colour at rest, filling solid on hover so the
+		   irreversible click reads as a deliberate choice rather than an
+		   ordinary button. Reuses %ERROR%/%ON_ERROR% (already defined for
+		   the progress bar's failed state) rather than introducing a new
+		   token pair. */
+		QPushButton#dangerAction {
+			background-color: %SURFACE2%;
+			border: 1px solid %ERROR%;
+			color: %ERROR%;
+		}
+		QPushButton#dangerAction:hover {
+			background-color: %ERROR%;
+			border-color: %ERROR%;
+			color: %ON_ERROR%;
+		}
+		QPushButton#dangerAction:pressed {
+			background-color: %SURFACE1%;
+		}
+		QPushButton#dangerAction:disabled {
+			background-color: %SURFACE1%;
+			border-color: %BORDER%;
+			color: %TEXT_DISABLED%;
+		}
 		QProgressBar {
 			border: 1px solid %BORDER%;
 			border-radius: %RADIUS%;
@@ -517,6 +541,15 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			color: %TEXT_MUTED%;
 			padding: 0 8px;
 		}
+		/* A caveat below the main status line (e.g. render succeeded but its
+		   preview image failed to load) - reuses the theme's own logWarning
+		   colour (already tuned per-palette to read against %SURFACE0%,
+		   which the status bar/log share) rather than adding a new palette
+		   field just for this one label. */
+		QLabel#statusWarning {
+			color: %WARNING%;
+			font-size: 10pt;
+		}
 		ScaledImageLabel {
 			background-color: %SURFACE0%;
 			border: 1px solid %BORDER%;
@@ -590,6 +623,48 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 		QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
 			background: none;
 		}
+		/* Video scrubber (Preview tab's position slider). A plain drawn
+		   handle rather than an image asset - a themed circle over a
+		   two-tone groove, filled portion in the accent colour like the
+		   progress bar's own fill. */
+		QSlider::groove:horizontal {
+			height: 4px;
+			border-radius: 2px;
+			background-color: %SURFACE1%;
+		}
+		QSlider::sub-page:horizontal {
+			height: 4px;
+			border-radius: 2px;
+			background-color: %ACCENT_1%;
+		}
+		QSlider::handle:horizontal {
+			width: 14px;
+			height: 14px;
+			margin: -6px 0;
+			border-radius: 7px;
+			background-color: %ACCENT_1%;
+			border: 1px solid %ACCENT_DIM%;
+		}
+		QSlider::handle:horizontal:hover {
+			background-color: %ACCENT_2%;
+			border-color: %ACCENT_2%;
+		}
+		/* Preview tab's image/video splitter - a slim themed grip instead
+		   of the OS's default flat grey bar. */
+		QSplitter::handle:horizontal {
+			width: 6px;
+			background-color: %BORDER%;
+		}
+		QSplitter::handle:horizontal:hover {
+			background-color: %ACCENT_2%;
+		}
+		QSplitter::handle:vertical {
+			height: 6px;
+			background-color: %BORDER%;
+		}
+		QSplitter::handle:vertical:hover {
+			background-color: %ACCENT_2%;
+		}
 		QToolTip {
 			background-color: %SURFACE2%;
 			border: 1px solid %BORDER_STRONG%;
@@ -617,6 +692,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 		.replace("%ON_ERROR%",      hex(textOn(p.error, p)))
 		.replace("%SUCCESS%",       hex(p.success))
 		.replace("%ERROR%",         hex(p.error))
+		.replace("%WARNING%",       hex(p.logWarning))
 		.replace("%PRIMARY_TOP_HOVER%",    hex(p.primaryTopHover))
 		.replace("%PRIMARY_BOTTOM_HOVER%", hex(p.primaryBottomHover))
 		.replace("%PRIMARY_TOP%",          hex(p.primaryTop))

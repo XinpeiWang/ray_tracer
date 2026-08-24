@@ -692,6 +692,10 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 	m_stopButton->setEnabled(false);
 	if (m_elapsedTimer) m_elapsedTimer->stop();
 	updateActionStates();
+	// Cleared unconditionally, before either branch below runs: a warning
+	// left over from a previous job's preview failure must not linger next
+	// to this job's own (possibly unrelated) outcome.
+	clearStatusWarning();
 
 	const bool stoppedByUser = !success && message.contains("stopped by user", Qt::CaseInsensitive);
 
@@ -749,8 +753,8 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 											pixmap, infoText, outputPath, pngPath);
 						if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
 					} else {
-						m_statusLabel->setText(QString("✅ Render complete (%1s) - Warning: preview image failed to load at %2")
-							.arg(totalTime, 0, 'f', 2).arg(pngPath));
+						m_statusLabel->setText(QString("✅ Render complete (%1s)").arg(totalTime, 0, 'f', 2));
+						setStatusWarning(QString("Warning: preview image failed to load at %1").arg(pngPath));
 					}
 				} else if (fileInfo.exists()) {
 					// PNG conversion failed but the raw PPM output exists -
@@ -758,8 +762,8 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 					// than showing nothing.
 					QDesktopServices::openUrl(QUrl::fromLocalFile(outputPath));
 				} else {
-					m_statusLabel->setText(QString("✅ Render complete (%1s) - Warning: output file not found at %2")
-						.arg(totalTime, 0, 'f', 2).arg(outputPath));
+					m_statusLabel->setText(QString("✅ Render complete (%1s)").arg(totalTime, 0, 'f', 2));
+					setStatusWarning(QString("Warning: output file not found at %1").arg(outputPath));
 				}
 			}
 		}
@@ -995,6 +999,18 @@ void MainWindow::setProgressResultState(const char *state) {
 	m_progressBar->style()->unpolish(m_progressBar);
 	m_progressBar->style()->polish(m_progressBar);
 	m_progressBar->update();
+}
+
+void MainWindow::setStatusWarning(const QString &text) {
+	if (!m_statusWarningLabel) return;
+	m_statusWarningLabel->setText(text);
+	m_statusWarningLabel->show();
+}
+
+void MainWindow::clearStatusWarning() {
+	if (!m_statusWarningLabel) return;
+	m_statusWarningLabel->clear();
+	m_statusWarningLabel->hide();
 }
 
 void MainWindow::onElapsedTick() {

@@ -27,8 +27,10 @@ constexpr int kSizes[] = {16, 24, 32, 48};
 // this sits one past it.
 constexpr int kItemPathRole = Qt::UserRole + 1;
 
-QColor colourForRole(Role role, const QColor &body, const QColor &primary) {
-	return role == Role::Primary ? primary : body;
+QColor colourForRole(Role role, const QColor &body, const QColor &primary, const QColor &danger) {
+	if (role == Role::Primary) return primary;
+	if (role == Role::Danger)  return danger;
+	return body;
 }
 
 void remember(QObject *target, const QString &path, Role role) {
@@ -86,12 +88,13 @@ void retintItems(QComboBox *combo, const QColor &colour) {
 	}
 }
 
-void retint(QWidget *root, const QColor &bodyColour, const QColor &primaryColour) {
+void retint(QWidget *root, const QColor &bodyColour, const QColor &primaryColour,
+			const QColor &dangerColour) {
 	const auto redo = [&](QObject *object, auto setter) {
 		const QVariant path = object->property(kPathProperty);
 		if (!path.isValid()) return;
 		const Role role = static_cast<Role>(object->property(kRoleProperty).toInt());
-		setter(tinted(path.toString(), colourForRole(role, bodyColour, primaryColour)));
+		setter(tinted(path.toString(), colourForRole(role, bodyColour, primaryColour, dangerColour)));
 	};
 
 	for (QAction *action : root->findChildren<QAction *>())
