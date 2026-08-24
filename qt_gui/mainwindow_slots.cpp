@@ -363,16 +363,6 @@ void MainWindow::refreshQueuePanel() {
 		m_queueListWidget->addItem(describeRenderJob(job));
 	}
 	m_queueGroup->setTitle(QString("Render Queue (%1)").arg(m_renderQueue.size()));
-
-	if (m_queueBadge) {
-		const int count = m_renderQueue.size();
-		if (count > 0) {
-			m_queueBadge->setText(QString::number(count));
-			m_queueBadge->show();
-		} else {
-			m_queueBadge->hide();
-		}
-	}
 }
 
 void MainWindow::onRemoveSelectedQueueItem() {

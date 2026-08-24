@@ -1435,13 +1435,6 @@ private:
 	// The active-window complement to m_trayIcon's showMessage() below - see
 	// notifyRenderFinished()'s own comment for which one fires when.
 	ToastNotification *m_toast = nullptr;
-	// Queued-job count badge on the Progress tab itself (QTabBar::RightSide
-	// tab button) - m_queueGroup's own title already shows "Render Queue
-	// (N)", but that's only visible once you're already on this tab; this
-	// surfaces the same count from any other tab too. Shown/hidden by
-	// refreshQueuePanel(), the one place the queue's size can change.
-	QLabel *m_queueBadge = nullptr;
-
 	// Shared event filter that blocks accidental wheel-scroll on controls
 	WheelIgnoreFilter *m_wheelFilter;
 };
