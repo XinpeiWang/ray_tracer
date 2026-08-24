@@ -70,6 +70,15 @@ extern "C" {
 ///                      "pmj02bn"/"halton"; nullptr, empty, or an
 ///                      unrecognized name all fall back to "sobol" (this
 ///                      project's pre-existing hardcoded default).
+/// @param spectral      Real hero-wavelength spectral rendering
+///                      (camera.h's ray_color_spectral()) instead of the
+///                      default flat-RGB ray_color(). Only
+///                      lambertian/metal/dielectric/rough_dielectric/
+///                      conductor/diffuse_light scenes are supported - the
+///                      loaded scene tree is scanned before rendering
+///                      starts, and an unsupported material fails the call
+///                      (named in the error) rather than silently
+///                      rendering with the wrong color model.
 /// @return 0 on success, non-zero error code on failure
 int cpu_render_main(
     int width,
@@ -83,7 +92,8 @@ int cpu_render_main(
     double cam_z,
     int force_camera_override = 0,
     double exposure = 1.0,
-    const char* sampler = nullptr
+    const char* sampler = nullptr,
+    bool spectral = false
 );
 
 /// @brief Render a scene using Stochastic Progressive Photon Mapping (SPPM)

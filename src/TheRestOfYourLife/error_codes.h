@@ -169,6 +169,7 @@ inline const std::map<int, std::string>& troubleshooting_hint_table() {
 		{ERR_GPU_NO_DEVICE, "No CUDA-capable GPU found. Use CPU mode instead."},
 		{ERR_GPU_OUT_OF_MEMORY, "GPU out of memory. Try reducing resolution or sample count, or use CPU mode."},
 		{ERR_GPU_UNSUPPORTED_SCENE, "This scene has no GPU implementation. Use CPU mode for it - most other scenes do support GPU."},
+		{ERR_CPU_MATERIAL_INVALID, "This scene uses a material --spectral doesn't support yet (see the error text above for which one). Render without --spectral, or pick a scene using only lambertian/metal/dielectric/rough_dielectric/conductor/diffuse_light materials."},
 		{ERR_GPU_MEMORY_ALLOCATION, "GPU memory allocation failed. Try reducing resolution or switching to CPU mode."},
 		{ERR_INVALID_ARGUMENTS, "Check command-line syntax: ray_tracer.exe [--cpu|--gpu] [--output path] <width> <spp> <depth> <scene_id> <cam_x> <cam_y> <cam_z>"},
 		{ERR_VIDEO_ASSEMBLY_FAILED, "Install ffmpeg (https://ffmpeg.org/download.html) and ensure it is on PATH, or assemble the rendered frames manually using the ffmpeg command printed above."}

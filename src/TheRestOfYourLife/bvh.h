@@ -89,6 +89,10 @@ class bvh_leaf : public hittable {
   private:
     std::vector<shared_ptr<hittable>> prims;
     aabb bbox;
+  public:
+    // Accessor for the --spectral material-scan walker (cpu_interface.cpp) -
+    // see bvh_node::get_left()/get_right()'s own comment above.
+    const std::vector<shared_ptr<hittable>>& get_prims() const { return prims; }
 };
 
 
@@ -241,6 +245,13 @@ class bvh_node : public hittable {
     shared_ptr<hittable> left;
     shared_ptr<hittable> right;  // nullptr when left is a leaf
     aabb bbox;
+  public:
+    // Accessors for the --spectral material-scan walker (cpu_interface.cpp)
+    // to recurse through the tree without re-tracing rays through it -
+    // same "narrow, read-only accessor" pattern as translate/rotate_y's
+    // own get_object() (hittable.h).
+    shared_ptr<hittable> get_left() const { return left; }
+    shared_ptr<hittable> get_right() const { return right; }
 };
 
 

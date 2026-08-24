@@ -28,6 +28,10 @@
 #include "../src/TheRestOfYourLife/bvh_light_sampler.h"
 #include "../src/TheRestOfYourLife/sppm_adapter.h"
 #include "../src/TheRestOfYourLife/error_codes.h"
+#include "../src/TheRestOfYourLife/bvh.h"
+#include "../src/TheRestOfYourLife/triangle.h"
+#include "../src/TheRestOfYourLife/disk_cylinder_hittable.h"
+#include "../src/TheRestOfYourLife/constant_medium.h"
 #include "../src/shared/exr_writer.h"
 #include <iostream>
 #include <fstream>
@@ -35,6 +39,91 @@
 #include <cmath>
 #include <cstring>
 #include <cctype>
+#include <typeinfo>
+
+// ============================================================================
+// --spectral material-scan walker
+// ============================================================================
+// Recursively verifies every material reachable from a scene's `world` tree
+// is one camera.h's ray_color_spectral() actually knows how to uplift to
+// spectral (lambertian/metal/dielectric/rough_dielectric/conductor/
+// diffuse_light - see that function's own comment for why exactly these
+// six). Run once, before rendering starts, only when --spectral is passed -
+// see cpu_render_main()'s own call site below.
+//
+// Fails closed on unrecognized STRUCTURE too, not just unrecognized
+// materials: a hittable wrapper type this walker doesn't know how to
+// recurse into (the final `else` branch below) is itself reported as an
+// error, rather than silently skipped. A silent skip would turn "the
+// walker has a gap" into a silently-wrong render - exactly the failure
+// mode --spectral must never have. Any new hittable wrapper type added to
+// this codebase in the future needs a case added here before --spectral
+// can be used with a scene containing it.
+//
+// Returns true (and leaves error_out untouched) if every reachable
+// material/structure is recognized and supported; otherwise returns false
+// with error_out set to a human-readable description of the first
+// unsupported thing found.
+static bool spectral_scan_hittable(const hittable* h, std::string& error_out) {
+	if (!h) return true;
+
+	if (const auto* list = dynamic_cast<const hittable_list*>(h)) {
+		for (const auto& obj : list->objects)
+			if (!spectral_scan_hittable(obj.get(), error_out)) return false;
+		return true;
+	}
+	if (const auto* node = dynamic_cast<const bvh_node*>(h)) {
+		return spectral_scan_hittable(node->get_left().get(), error_out)
+			&& spectral_scan_hittable(node->get_right().get(), error_out);
+	}
+	if (const auto* leaf = dynamic_cast<const bvh_leaf*>(h)) {
+		for (const auto& p : leaf->get_prims())
+			if (!spectral_scan_hittable(p.get(), error_out)) return false;
+		return true;
+	}
+	if (const auto* t = dynamic_cast<const translate*>(h))
+		return spectral_scan_hittable(t->get_object().get(), error_out);
+	if (const auto* r = dynamic_cast<const rotate_y*>(h))
+		return spectral_scan_hittable(r->get_object().get(), error_out);
+
+	if (dynamic_cast<const constant_medium*>(h)) {
+		error_out = "constant_medium (volumetric fog/participating media - not "
+			"one of --spectral's supported materials)";
+		return false;
+	}
+
+	// Leaf primitive - resolve its material and check it against the
+	// whitelist. Unlike GPU SPPM's equivalent check (optix_types.h), there's
+	// no flat MaterialType enum here to switch on - each primitive type owns
+	// its own material via a get_material() accessor (sphere.h/quad.h/
+	// triangle.h/disk_cylinder_hittable.h), mirroring translate/rotate_y's
+	// own get_object() pattern above.
+	shared_ptr<material> mat;
+	if (const auto* s = dynamic_cast<const sphere*>(h)) mat = s->get_material();
+	else if (const auto* q = dynamic_cast<const quad*>(h)) mat = q->get_material();
+	else if (const auto* tr = dynamic_cast<const triangle*>(h)) mat = tr->get_material();
+	else if (const auto* d = dynamic_cast<const disk_hittable*>(h)) mat = d->get_material();
+	else if (const auto* c = dynamic_cast<const cylinder_hittable*>(h)) mat = c->get_material();
+	else {
+		error_out = std::string("an unrecognized hittable wrapper/primitive type (") +
+			typeid(*h).name() + ") - add support to the --spectral material-scan "
+			"walker (cpu_interface.cpp, spectral_scan_hittable()) before using "
+			"--spectral with a scene containing it";
+		return false;
+	}
+
+	if (!mat) return true;  // no material on this primitive - nothing to check
+
+	if (dynamic_cast<const lambertian*>(mat.get()))       return true;
+	if (dynamic_cast<const metal*>(mat.get()))            return true;
+	if (dynamic_cast<const dielectric*>(mat.get()))       return true;
+	if (dynamic_cast<const rough_dielectric*>(mat.get())) return true;
+	if (dynamic_cast<const conductor*>(mat.get()))        return true;
+	if (dynamic_cast<const diffuse_light*>(mat.get()))    return true;
+
+	error_out = typeid(*mat).name();
+	return false;
+}
 
 // ============================================================================
 // cpu_render_main - CPU Render Entry Point
@@ -45,7 +134,8 @@
 
 extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, const char* output_path,
 								 const char* scene_id, double cam_x, double cam_y, double cam_z,
-								 int force_camera_override, double exposure, const char* sampler) {
+								 int force_camera_override, double exposure, const char* sampler,
+								 bool spectral) {
 	try {
 		// ====================================================================
 		// Parameter Validation
@@ -166,6 +256,24 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 				return ERR_CPU_SCENE_EMPTY;
 			}
 
+			// --spectral only supports a bounded material set - see
+			// spectral_scan_hittable()'s own comment. Scanned here (after the
+			// world is built, before any pixel is traced) so an unsupported
+			// scene fails loudly and immediately rather than silently
+			// rendering with the wrong color model.
+			if (spectral) {
+				std::string bad;
+				for (const auto& obj : world.objects) {
+					if (!spectral_scan_hittable(obj.get(), bad)) break;
+				}
+				if (!bad.empty()) {
+					std::cerr << ErrorInfo(ERR_CPU_MATERIAL_INVALID).to_string()
+							  << " -- --spectral does not support scene " << scene_id
+							  << ": uses " << bad << ". Render without --spectral instead.\n";
+					return ERR_CPU_MATERIAL_INVALID;
+				}
+			}
+
 		// ====================================================================
 		// Camera Configuration
 		// ====================================================================
@@ -186,6 +294,7 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		cam.samples_per_pixel = spp;
 		cam.max_depth         = max_depth;
 		cam.exposure          = exposure;
+		cam.spectral          = spectral;
 		// Auto-detected from the caller's requested extension, matching how
 		// launcher/main.cpp already auto-triggers PNG conversion off the
 		// output extension rather than a separate flag - see camera.h's own

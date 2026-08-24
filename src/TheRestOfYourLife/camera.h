@@ -28,6 +28,9 @@
 #include "../shared/surface_interaction.h"  // compute_differentials() for texture-filtering footprint
 #include "../shared/exr_writer.h"
 #include "../shared/render_stats.h"
+#include "../shared/spectral_math.h"  // SampledSpectrum/SampledWavelengths, RGBAlbedoSpectrum/
+                                       // RGBIlluminantSpectrum (via cie_data.h -> spectrum_types.h),
+                                       // SampledSpectrumToXYZ/XYZToLinearRGB - see ray_color_spectral()
 #include "thread_count.h"
 #include <fstream>
 #include <iostream>
@@ -97,6 +100,13 @@ class camera {
     // own comment. Default Sobol matches this project's pre-existing,
     // hardcoded behavior exactly.
     SamplerKind sampler_kind = SamplerKind::Sobol;
+    // When true, render() dispatches to ray_color_spectral() instead of
+    // ray_color() - see that function's own comment. CPU-only, default
+    // path tracer only; opt-in via --spectral (launcher_args.h). Only
+    // lambertian/metal/dielectric/rough_dielectric/conductor/diffuse_light
+    // scenes are supported - cpu_interface.cpp refuses to render (loudly)
+    // before this is ever consulted if the loaded scene uses anything else.
+    bool spectral = false;
     // Which pixel reconstruction filter shape ray_color()'s samples are
     // weighted by - see PixelFilterDispatch's own comment (filter.h) for
     // why this drives the SHAPE only, always at this renderer's fixed
@@ -313,6 +323,47 @@ class camera {
                                     // and duck-typed on `Sampler&`, so each branch instantiates
                                     // its own copy; kept to a two-line construct+call per case.
                                     color sample;
+                                    // spectral mirrors the switch below verbatim, calling
+                                    // ray_color_spectral() instead of ray_color() - see that
+                                    // field's own comment (camera::spectral). Kept as a
+                                    // separate switch (not a branch inside each case) so the
+                                    // default RGB path below is byte-for-byte unchanged for
+                                    // anyone not passing --spectral.
+                                    if (spectral) {
+                                        switch (sampler_kind) {
+                                            case SamplerKind::ZSobol: {
+                                                zsobol_sampler->start_pixel_sample(i, j, sample_idx);
+                                                sample = ray_color_spectral(r, max_depth, world, lights, *zsobol_sampler);
+                                                break;
+                                            }
+                                            case SamplerKind::PaddedSobol: {
+                                                padded_sobol_sampler->start_pixel_sample(i, j, sample_idx);
+                                                sample = ray_color_spectral(r, max_depth, world, lights, *padded_sobol_sampler);
+                                                break;
+                                            }
+                                            case SamplerKind::Stratified: {
+                                                stratified_sampler->start_pixel_sample(i, j, sample_idx);
+                                                sample = ray_color_spectral(r, max_depth, world, lights, *stratified_sampler);
+                                                break;
+                                            }
+                                            case SamplerKind::PMJ02BN: {
+                                                pmj02bn_sampler->start_pixel_sample(i, j, sample_idx);
+                                                sample = ray_color_spectral(r, max_depth, world, lights, *pmj02bn_sampler);
+                                                break;
+                                            }
+                                            case SamplerKind::Halton: {
+                                                halton_smp->start_pixel_sample(i, j, sample_idx);
+                                                sample = ray_color_spectral(r, max_depth, world, lights, *halton_smp);
+                                                break;
+                                            }
+                                            case SamplerKind::Sobol:
+                                            default: {
+                                                SobolSampler ps(sample_idx, i, j);  // pbrt-v4 Sobol+FastOwen
+                                                sample = ray_color_spectral(r, max_depth, world, lights, ps);
+                                                break;
+                                            }
+                                        }
+                                    } else {
                                     switch (sampler_kind) {
                                         case SamplerKind::ZSobol: {
                                             zsobol_sampler->start_pixel_sample(i, j, sample_idx);
@@ -345,6 +396,7 @@ class camera {
                                             sample = ray_color(r, max_depth, world, lights, ps);
                                             break;
                                         }
+                                    }
                                     }
                                 // Apply the camera's exposure weight (pbrt-v4: L *= cameraRay->weight).
                                 // Always 1.0 for pinhole/Ortho/Spherical; for RealisticCamera this is
@@ -1124,6 +1176,277 @@ class camera {
         }
 
         return L;
+    }
+
+    // ray_color_spectral -- spectral variant of ray_color() (see that
+    // function's own comment for the control flow this mirrors, bounce for
+    // bounce). Samples 4 hero wavelengths once per path
+    // (SampledWavelengths<4>::SampleVisible) and carries a real
+    // SampledSpectrum<4> beta/L through every bounce - not just a one-time
+    // reduction at the end - since the whole point of --spectral is that
+    // wavelength sampling actually participates in the walk, giving a
+    // different noise pattern than RGB while converging to the same
+    // expected color on these non-dispersive materials. Reduces to RGB
+    // exactly once at the end via SampledSpectrumToXYZ + XYZToLinearRGB
+    // (sampled_spectrum.h) - the same technique already proven correct on
+    // the GPU wavefront backend (gpu/optix/wavefront_kernels.cu), not the
+    // never-live-tested PixelSensor/SpectralFilm classes (pixel_sensor.h/
+    // film.h) - see this port's own plan for why.
+    //
+    // Every RGB attenuation/reflectance value (srec.attenuation, NEE
+    // `atten`/`trans`) is uplifted via the BOUNDED technique
+    // (RGBAlbedoSpectrum) - all 5 materials --spectral supports produce a
+    // [0,1]-bounded reflectance/Fresnel value, never HDR (>1) output, so
+    // RGBUnboundedSpectrum (GPU wavefront's own Hair-only case) is never
+    // needed here. Every emission value (rec.mat->emitted(), sky/background
+    // Le, punctual light Li) is uplifted via the ILLUMINANT technique
+    // (RGBIlluminantSpectrum), always through GetNormalizedD65Illuminant()
+    // (cie_data.h) - NEVER the raw GetD65Illuminant() table, which would
+    // silently reproduce a real bug the GPU wavefront backend already
+    // shipped and fixed (missing D65 normalization -> inflated/desaturated
+    // colors, only caught by a parity test - see that function's own
+    // comment in cie_data.h).
+    //
+    // No BSSRDF branch: `subsurface` is not in --spectral's material
+    // whitelist, enforced at scene-load time (cpu_interface.cpp) before
+    // this function is ever called, so srec.is_transmission &&
+    // rec.mat->as_subsurface(rec) never fires here - the specular branch
+    // below is unconditional, unlike ray_color()'s own bssrdf_exit-gated
+    // version.
+    template <typename Sampler>
+    color ray_color_spectral(const ray& r, int depth, const hittable& world, const hittable& lights,
+                    Sampler& sampler)
+    const {
+        using SS  = SampledSpectrum<4>;
+        using SWL = SampledWavelengths<4>;
+
+        SWL swl = SWL::SampleVisible(static_cast<float>(sampler.get()));
+        const RGBColorSpace& cs = RGBColorSpace::sRGB();
+        const DenselySampledSpectrum* d65 = &GetNormalizedD65Illuminant();
+        auto albedo = [&](const color& c) -> SS {
+            return RGBAlbedoSpectrum(cs, (float)c.x(), (float)c.y(), (float)c.z()).Sample(swl);
+        };
+        auto illuminant = [&](const color& c) -> SS {
+            return RGBIlluminantSpectrum(cs, (float)c.x(), (float)c.y(), (float)c.z(), d65).Sample(swl);
+        };
+
+        SS     L            (0.f);
+        SS     beta         (1.f);
+        ray    current_ray  = r;
+        int    bounces_left = depth;
+        double prev_bsdf_pdf      = 0.0;
+        double eta_scale          = 1.0;
+        bool   specular_bounce    = true;
+        bool   any_nonspecular    = false;
+        point3 prev_surface_p     = r.origin();
+
+        // See ray_color()'s own kMaxPathThroughput comment - identical
+        // ceiling, applied per spectral channel instead of per RGB channel.
+        constexpr float kMaxPathThroughput = 50.f;
+        auto clamp_throughput = [&](const SS& c) {
+            SS out = c;
+            for (int i = 0; i < 4; ++i)
+                if (out[i] > kMaxPathThroughput) out[i] = kMaxPathThroughput;
+            return out;
+        };
+
+        while (bounces_left > 0) {
+            if (render_stats::enabled())
+                render_stats::bounce_rays().fetch_add(1, std::memory_order_relaxed);
+
+            hit_record rec;
+
+            if (!world.hit(current_ray, interval(0.001, infinity), rec)) {
+                if (sky) {
+                    SS Le = illuminant(sky->Le(unit_vector(current_ray.direction())));
+                    if (specular_bounce) {
+                        L += beta * Le;
+                    } else {
+                        double p_l = sky->pdf_Li(unit_vector(current_ray.direction()));
+                        double w_b = mis_power_heuristic(prev_bsdf_pdf, p_l);
+                        L += beta * static_cast<float>(w_b) * Le;
+                    }
+                } else {
+                    L += beta * illuminant(background);
+                }
+                break;
+            }
+
+            // Texture-lookup footprint - identical to ray_color(), no
+            // spectral dependence (see that function's own comment).
+            if (bounces_left == depth && current_ray.has_differentials()) {
+                SurfaceInteraction<double> si(
+                    rec.p.x(), rec.p.y(), rec.p.z(),
+                    rec.normal.x(), rec.normal.y(), rec.normal.z(),
+                    rec.u, rec.v, rec.t,
+                    0.0, 0.0, 0.0,
+                    rec.dpdu.x(), rec.dpdu.y(), rec.dpdu.z(),
+                    rec.dpdv.x(), rec.dpdv.y(), rec.dpdv.z());
+                si.compute_differentials(true,
+                    current_ray.rx_origin().x(), current_ray.rx_origin().y(), current_ray.rx_origin().z(),
+                    current_ray.rx_direction().x(), current_ray.rx_direction().y(), current_ray.rx_direction().z(),
+                    current_ray.ry_origin().x(), current_ray.ry_origin().y(), current_ray.ry_origin().z(),
+                    current_ray.ry_direction().x(), current_ray.ry_direction().y(), current_ray.ry_direction().z());
+                rec.dudx = si.dudx; rec.dvdx = si.dvdx;
+                rec.dudy = si.dudy; rec.dvdy = si.dvdy;
+            }
+
+            color Le_rgb = rec.mat->emitted(current_ray, rec, rec.u, rec.v, rec.p);
+            if (Le_rgb.x() > 0 || Le_rgb.y() > 0 || Le_rgb.z() > 0) {
+                SS Le = illuminant(Le_rgb);
+                if (specular_bounce) {
+                    L += beta * Le;
+                } else {
+                    hittable_pdf light_pdf_mis(lights, prev_surface_p);
+                    double pdf_l = light_pdf_mis.value(current_ray.direction());
+                    double w_b   = mis_power_heuristic(prev_bsdf_pdf, pdf_l);
+                    L += beta * static_cast<float>(w_b) * Le;
+                }
+            }
+
+            scatter_record srec;
+            if (!rec.mat->scatter(current_ray, rec, srec, any_nonspecular))
+                break;
+
+            // Specular bounce: no NEE, update beta and advance ray.
+            if (srec.skip_pdf) {
+                SS new_beta = clamp_throughput(beta * albedo(srec.attenuation));
+                if (srec.is_transmission)
+                    eta_scale *= srec.eta * srec.eta;
+                if (bounces_left < depth) {
+                    SS rr_beta = new_beta * static_cast<float>(eta_scale);
+                    float rr_max = rr_beta.MaxComponentValue();
+                    if (rr_max < 1.0f) {
+                        double q = std::max(0.0, 1.0 - static_cast<double>(rr_max));
+                        if (sampler.get() < q) break;
+                        new_beta = new_beta / static_cast<float>(1.0 - q);
+                    }
+                }
+                beta            = new_beta;
+                current_ray     = srec.skip_pdf_ray;
+                specular_bounce = true;
+                prev_bsdf_pdf   = 0.0;
+                --bounces_left;
+                continue;
+            }
+
+            // Non-specular: NEE shadow ray + BSDF path continuation
+            hittable_pdf light_pdf(lights, rec.p);
+
+            // Strategy A-1: NEE toward area lights
+            {
+                vec3   light_dir = light_pdf.generate();
+                double pdf_l     = light_pdf.value(light_dir);
+                if (pdf_l > 0.0) {
+                    ray    shadow_ray(rec.p, light_dir, current_ray.time());
+                    double f_pdf = rec.mat->scattering_pdf(current_ray, rec, shadow_ray);
+                    if (f_pdf > 0.0) {
+                        double pdf_b_at_l = srec.pdf_ptr->value(light_dir);
+                        double w_l        = mis_power_heuristic(pdf_l, pdf_b_at_l);
+                        hit_record light_rec;
+                        color trans;
+                        if (render_stats::enabled())
+                            render_stats::shadow_rays().fetch_add(1, std::memory_order_relaxed);
+                        if (shadow_ray_hit(world, shadow_ray, light_rec, infinity, &trans)) {
+                            color Le_d_rgb = light_rec.mat->emitted(
+                                shadow_ray, light_rec, light_rec.u, light_rec.v, light_rec.p);
+                            if (Le_d_rgb.x() > 0 || Le_d_rgb.y() > 0 || Le_d_rgb.z() > 0) {
+                                color atten_rgb = rec.mat->scattering_attenuation(rec, shadow_ray, srec.attenuation);
+                                float scale = static_cast<float>(w_l * f_pdf / pdf_l);
+                                L += beta * scale * albedo(atten_rgb) * albedo(trans) * illuminant(Le_d_rgb);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Strategy A-2: NEE toward sky
+            if (sky) {
+                SkyLiSample sky_smp = sky->sample_Le();
+                vec3   sky_dir  = sky_smp.direction;
+                double pdf_sky  = sky_smp.pdf;
+                if (pdf_sky > 0.0) {
+                    ray    sky_shadow(rec.p, sky_dir, current_ray.time());
+                    double f_pdf = rec.mat->scattering_pdf(current_ray, rec, sky_shadow);
+                    if (f_pdf > 0.0) {
+                        double pdf_b_at_sky = srec.pdf_ptr->value(sky_dir);
+                        double w_sky        = mis_power_heuristic(pdf_sky, pdf_b_at_sky);
+                        hit_record sky_rec;
+                        color trans;
+                        if (render_stats::enabled())
+                            render_stats::shadow_rays().fetch_add(1, std::memory_order_relaxed);
+                        if (!shadow_ray_hit(world, sky_shadow, sky_rec, infinity, &trans)) {
+                            color atten_rgb = rec.mat->scattering_attenuation(rec, sky_shadow, srec.attenuation);
+                            float scale = static_cast<float>(w_sky * f_pdf / pdf_sky);
+                            L += beta * scale * albedo(atten_rgb) * albedo(trans)
+                               * illuminant(sky->Le(unit_vector(sky_dir)));
+                        }
+                    }
+                }
+            }
+
+            // Strategy A-3: NEE toward punctual (delta) lights
+            if (punct_lights && !punct_lights->empty()) {
+                punct_lights->for_each_sample(rec.p, [&](const PunctualLiSample& ps) {
+                    if (ps.Li.x() <= 0 && ps.Li.y() <= 0 && ps.Li.z() <= 0) return;
+                    ray punct_ray(rec.p, ps.wi, current_ray.time());
+                    double f_pdf = rec.mat->scattering_pdf(current_ray, rec, punct_ray);
+                    if (f_pdf <= 0.0) return;
+                    hit_record shadow_rec;
+                    double shadow_t_max = (ps.t_max == infinity) ? infinity : (ps.t_max - 0.001);
+                    color trans;
+                    if (render_stats::enabled())
+                        render_stats::shadow_rays().fetch_add(1, std::memory_order_relaxed);
+                    if (!shadow_ray_hit(world, punct_ray, shadow_rec, shadow_t_max, &trans)) {
+                        color atten_rgb = rec.mat->scattering_attenuation(rec, punct_ray, srec.attenuation);
+                        L += beta * static_cast<float>(f_pdf) * albedo(atten_rgb) * albedo(trans) * illuminant(ps.Li);
+                    }
+                });
+            }
+
+            // Strategy B: BSDF sample becomes next path ray
+            {
+                vec3   bsdf_dir = srec.pdf_ptr->generate();
+                double pdf_b    = srec.pdf_ptr->value(bsdf_dir);
+                if (pdf_b <= 0.0) break;
+
+                ray    bsdf_ray(rec.p, bsdf_dir, current_ray.time());
+                double f_pdf = rec.mat->scattering_pdf(current_ray, rec, bsdf_ray);
+                if (f_pdf <= 0.0) break;
+
+                if (srec.is_transmission) {
+                    bool crossed_boundary =
+                        dot(bsdf_dir, rec.normal) *
+                        dot(-unit_vector(current_ray.direction()), rec.normal) < 0.0;
+                    if (crossed_boundary)
+                        eta_scale *= srec.eta * srec.eta;
+                }
+
+                SS new_beta = clamp_throughput(
+                    beta * albedo(srec.attenuation) * static_cast<float>(f_pdf / pdf_b));
+                if (bounces_left < depth) {
+                    SS rr_beta = new_beta * static_cast<float>(eta_scale);
+                    float rr_max = rr_beta.MaxComponentValue();
+                    if (rr_max < 1.0f) {
+                        double q = std::max(0.0, 1.0 - static_cast<double>(rr_max));
+                        if (sampler.get() < q) break;
+                        new_beta = new_beta / static_cast<float>(1.0 - q);
+                    }
+                }
+                beta            = new_beta;
+                current_ray     = bsdf_ray;
+                prev_bsdf_pdf   = pdf_b;
+                prev_surface_p  = rec.p;
+                specular_bounce = false;
+                any_nonspecular = true;
+                --bounces_left;
+            }
+        }
+
+        XYZResult xyz = SampledSpectrumToXYZ<4>(L, swl, CIE_X, CIE_Y, CIE_Z);
+        float out_r, out_g, out_b;
+        XYZToLinearRGB(xyz.x, xyz.y, xyz.z, out_r, out_g, out_b);
+        return color(static_cast<double>(out_r), static_cast<double>(out_g), static_cast<double>(out_b));
     }
 };
 

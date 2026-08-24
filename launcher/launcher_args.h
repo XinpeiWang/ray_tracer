@@ -96,6 +96,15 @@ struct LaunchArgs {
 	// sampler-selection exists yet, and BDPT/MLT/SPPM each have their own
 	// sampling scheme already).
 	std::string sampler     = "";
+	// Real hero-wavelength spectral rendering (camera.h's ray_color_spectral(),
+	// see its own comment) instead of the default flat-RGB ray_color() -
+	// CPU default path tracer only, same scope cut as exposure/sampler
+	// above. Only lambertian/metal/dielectric/rough_dielectric/conductor/
+	// diffuse_light scenes are supported - cpu_interface.cpp scans the
+	// loaded scene tree and refuses to render (with a named-material error,
+	// not silent RGB fallback) before this is ever consulted if the scene
+	// uses anything else.
+	bool spectral           = false;
 	bool video_mode         = false;
 	// Stochastic Progressive Photon Mapping - a separate CPU-only render
 	// mode (see cpu_renderer/cpu_interface.h's cpu_render_main_sppm() doc
@@ -262,6 +271,9 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			consumed_args.insert(i);
 			consumed_args.insert(i + 1);
 			++i;
+		} else if (arg == "--spectral") {
+			out.spectral = true;
+			consumed_args.insert(i);
 		} else if (arg == "--sppm") {
 			out.use_sppm = true;
 			consumed_args.insert(i);
@@ -468,6 +480,13 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "               (default sobol, this project's pre-existing behavior).\n"
 					  << "               One of sobol, zsobol, paddedsobol, stratified, pmj02bn, halton.\n"
 					  << "               CPU default path tracer only.\n"
+					  << "  --spectral : Real hero-wavelength spectral rendering instead of flat RGB.\n"
+					  << "               CPU default path tracer only. Only lambertian, metal,\n"
+					  << "               dielectric, rough_dielectric, conductor, and diffuse_light\n"
+					  << "               materials are supported - scenes using anything else fail\n"
+					  << "               loudly at load time rather than silently rendering wrong\n"
+					  << "               colors. Noticeably slower per-sample than the default RGB\n"
+					  << "               path (spectral upsampling table lookups every bounce).\n"
 					  << "  --sppm     : Render with Stochastic Progressive Photon Mapping instead of\n"
 					  << "               the path tracer (incompatible with --video). Best for hard\n"
 					  << "               caustic/glass scenes. CPU: verified end-to-end on scene 11\n"

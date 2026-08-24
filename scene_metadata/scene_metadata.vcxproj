@@ -46,6 +46,10 @@
       <WarningLevel>Level3</WarningLevel>
       <PreprocessorDefinitions>_DEBUG;_WINDOWS;_USRDLL;SCENE_METADATA_EXPORTS;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <!-- ..\src\shared - needed for rgb_spectrum_table_data.cpp's own
+           unqualified #include "rgb_to_spectrum_table.h" (see this
+           project's own ItemGroup comment on that ClCompile entry). -->
+      <AdditionalIncludeDirectories>..\src\shared;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>OldStyle</DebugInformationFormat>
     </ClCompile>
     <Link>
@@ -58,6 +62,10 @@
       <WarningLevel>Level3</WarningLevel>
       <PreprocessorDefinitions>NDEBUG;_WINDOWS;_USRDLL;SCENE_METADATA_EXPORTS;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <!-- ..\src\shared - needed for rgb_spectrum_table_data.cpp's own
+           unqualified #include "rgb_to_spectrum_table.h" (see this
+           project's own ItemGroup comment on that ClCompile entry). -->
+      <AdditionalIncludeDirectories>..\src\shared;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>OldStyle</DebugInformationFormat>
     </ClCompile>
     <Link>
@@ -67,6 +75,19 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="scene_metadata_dll.cpp" />
+    <!-- RGBToSpectrumTable::sRGB()'s backing data. scene_metadata_dll.cpp
+         links cpu_renderer.lib, which now (via camera.h's spectral render
+         path, ray_color_spectral()) references RGBToSpectrumTable::sRGB()
+         through RGBAlbedoSpectrum/RGBIlluminantSpectrum - even though that
+         function is only ever called at runtime when that flag is passed,
+         the symbol reference is unconditional at link time. Unlike
+         launcher.exe/ray_tracer_tests.exe (which also link optix_renderer.lib,
+         itself already providing this data), this DLL's link graph is just
+         cpu_renderer.lib alone, so it needs its own copy - added here
+         instead of to cpu_renderer.vcxproj to avoid a duplicate-symbol
+         clash with optix_renderer.lib's own copy in the two consumers that
+         link both libraries together. -->
+    <ClCompile Include="..\src\data\rgb_spectrum_table_data.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\cpu_renderer\cpu_renderer.vcxproj">

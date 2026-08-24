@@ -618,7 +618,8 @@ int main(int argc, char** argv) {
                     cam_pos.lookfrom_z,
                     1,  // force_camera_override
                     args.exposure,
-                    args.sampler.empty() ? nullptr : args.sampler.c_str()
+                    args.sampler.empty() ? nullptr : args.sampler.c_str(),
+                    args.spectral
                 );
             }
 
@@ -762,6 +763,15 @@ int main(int argc, char** argv) {
     // warn-instead-of-silently-drop shape as --exposure's own warning above.
     if (!args.sampler.empty() && (use_gpu || use_bdpt || use_mlt || use_sppm || use_debug_integrator)) {
         std::cerr << "Warning: --sampler has no effect under --gpu/--bdpt/--mlt/--sppm/"
+                     "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
+                     "(only the CPU default path tracer supports it) - ignoring.\n";
+    }
+    // --spectral only reaches cpu_render_main() (the CPU default path
+    // tracer) - same "default path tracer only" scope cut as --exposure/
+    // --sampler above (no GPU/BDPT/MLT/SPPM/debug-integrator spectral path
+    // exists).
+    if (args.spectral && (use_gpu || use_bdpt || use_mlt || use_sppm || use_debug_integrator)) {
+        std::cerr << "Warning: --spectral has no effect under --gpu/--bdpt/--mlt/--sppm/"
                      "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
                      "(only the CPU default path tracer supports it) - ignoring.\n";
     }
@@ -987,7 +997,7 @@ int main(int argc, char** argv) {
         // CPU Renderer (multithreaded C++)
         // Implemented in cpu_renderer/cpu_interface.cpp
         std::cout << "Calling cpu_render_main(...) in-process..." << std::endl;
-        render_result = cpu_render_main(image_width, image_height, samples_per_pixel, max_ray_depth, out_path.c_str(), scene_id.c_str(), cam_x, cam_y, cam_z, 1, args.exposure, args.sampler.empty() ? nullptr : args.sampler.c_str());  // force_camera_override
+        render_result = cpu_render_main(image_width, image_height, samples_per_pixel, max_ray_depth, out_path.c_str(), scene_id.c_str(), cam_x, cam_y, cam_z, 1, args.exposure, args.sampler.empty() ? nullptr : args.sampler.c_str(), args.spectral);  // force_camera_override
         std::cout << "cpu_render_main returned: " << render_result << std::endl;
         if (render_result == SUCCESS) {
             std::cout << "Rendered with in-process CPU renderer, output: " << out_path << std::endl;
