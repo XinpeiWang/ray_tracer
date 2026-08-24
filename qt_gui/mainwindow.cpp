@@ -591,6 +591,10 @@ void MainWindow::setupUI() {
 	m_renderButton->setToolTip("Render the selected scene with the current settings\n"
 	                           "(queues behind it instead if a render is already running)");
 	connect(m_renderButton, &QPushButton::clicked, this, &MainWindow::onRenderClicked);
+	// It's the app's one primary call-to-action, so it gets the strongest
+	// elevation and the widest hover/press lift range of anything in the UI.
+	applyElevation(m_renderButton, /*blurRadius=*/18, /*offsetY=*/4, /*alpha=*/110);
+	m_renderButton->installEventFilter(new HoverLiftFilter(m_renderButton, 18, 28, 8, m_renderButton));
 
 	// Stop button - a destructive action (discards the running render's
 	// output), so it takes the danger styling rather than an ordinary button.
@@ -603,6 +607,8 @@ void MainWindow::setupUI() {
 	m_stopButton->setEnabled(false);
 	m_stopButton->setToolTip("Stop the running render and discard its output");
 	connect(m_stopButton, &QPushButton::clicked, this, &MainWindow::onStopClicked);
+	applyElevation(m_stopButton, /*blurRadius=*/14, /*offsetY=*/3, /*alpha=*/90);
+	m_stopButton->installEventFilter(new HoverLiftFilter(m_stopButton, 14, 22, 6, m_stopButton));
 
 	// Button layout
 	QHBoxLayout *buttonLayout = new QHBoxLayout();

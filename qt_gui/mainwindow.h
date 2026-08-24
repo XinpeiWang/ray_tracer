@@ -43,6 +43,10 @@
 #include "theme.h"
 #include "icon_tint.h"
 
+#include <QGraphicsDropShadowEffect>
+#include <QPropertyAnimation>
+#include <QEasingCurve>
+
 class QMenu;
 class QTabBar;
 
@@ -87,6 +91,69 @@ protected:
     }
 private:
     QListWidget *m_list;
+};
+
+// ============================================================================
+// HoverLiftFilter
+// ============================================================================
+// QSS :hover/:pressed snap their colours instantly - Qt style sheets have no
+// transition property. This animates a widget's QGraphicsDropShadowEffect
+// (see MainWindow::applyElevation) between rest/hover/pressed blur radii
+// instead, so an elevated button (Render, Stop, Clear Queue) reads as
+// lifting toward the cursor on hover and settling back down on press,
+// smoothly, alongside its own QSS colour change rather than replacing it.
+// Install on a widget that already has an elevation effect set via
+// applyElevation() - a widget with no QGraphicsDropShadowEffect is a no-op.
+// ============================================================================
+class HoverLiftFilter : public QObject {
+    Q_OBJECT
+public:
+    HoverLiftFilter(QWidget *target, qreal restBlur, qreal hoverBlur, qreal pressedBlur,
+                     QObject *parent = nullptr)
+        : QObject(parent), m_target(target),
+          m_restBlur(restBlur), m_hoverBlur(hoverBlur), m_pressedBlur(pressedBlur) {}
+
+protected:
+    bool eventFilter(QObject *obj, QEvent *event) override {
+        auto *shadow = qobject_cast<QGraphicsDropShadowEffect *>(m_target->graphicsEffect());
+        if (shadow) {
+            switch (event->type()) {
+                case QEvent::Enter:            animateTo(shadow, m_hoverBlur); break;
+                case QEvent::Leave:             animateTo(shadow, m_restBlur); break;
+                case QEvent::MouseButtonPress:  animateTo(shadow, m_pressedBlur); break;
+                // Mouse may have already left before release fires (e.g. a
+                // drag off the button) - Leave's own animation already
+                // handles that case, this only needs to cover the ordinary
+                // "released while still hovering" click.
+                case QEvent::MouseButtonRelease: animateTo(shadow, m_hoverBlur); break;
+                default: break;
+            }
+        }
+        return QObject::eventFilter(obj, event);
+    }
+
+private:
+    // One animation object per shadow effect, created lazily and reused
+    // (parented to `shadow`, found again via findChild rather than stored
+    // here - this filter has no per-target storage of its own) - a rapid
+    // hover/leave/hover flicker just retargets whatever animation already
+    // exists instead of allocating a new one each time, restarting cleanly
+    // from the shadow's CURRENT blur so it never jumps.
+    void animateTo(QGraphicsDropShadowEffect *shadow, qreal blur) {
+        auto *anim = shadow->findChild<QPropertyAnimation *>(QString(), Qt::FindDirectChildrenOnly);
+        if (!anim) {
+            anim = new QPropertyAnimation(shadow, "blurRadius", shadow);
+            anim->setDuration(150);
+            anim->setEasingCurve(QEasingCurve::OutCubic);
+        }
+        anim->stop();
+        anim->setStartValue(shadow->blurRadius());
+        anim->setEndValue(blur);
+        anim->start();
+    }
+
+    QWidget *m_target;
+    qreal m_restBlur, m_hoverBlur, m_pressedBlur;
 };
 
 // ============================================================================
@@ -763,6 +830,12 @@ private:
 	void applyComboPopupPalette(QComboBox *combo);
 	void styleSpinBox(QAbstractSpinBox *spinBox);
 	void styleGroupBox(QGroupBox *box);
+	// A subtle "elevated card" drop shadow (QSS alone cannot do box-shadow) -
+	// neutral black at low alpha rather than theme-tinted, the same choice
+	// every real elevation system (Material, Fluent, CSS itself) makes,
+	// since a shadow reads as "surface above surface" on any hue, dark or
+	// light theme alike, without needing a per-palette shadow colour.
+	void applyElevation(QWidget *widget, qreal blurRadius, qreal offsetY, int alpha);
 	// baseOutputPath is the render's own --output argument (see
 	// onRenderClicked()) so the assembled video's expected path
 	// ("<stem>_video.mp4") can be derived directly instead of guessing at a

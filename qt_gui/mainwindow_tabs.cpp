@@ -1004,6 +1004,8 @@ void MainWindow::createProgressTab() {
 	clearQueueButton->setObjectName("dangerAction");
 	clearQueueButton->setToolTip("Remove every job from the render queue");
 	connect(clearQueueButton, &QPushButton::clicked, this, &MainWindow::onClearQueue);
+	applyElevation(clearQueueButton, /*blurRadius=*/14, /*offsetY=*/3, /*alpha=*/90);
+	clearQueueButton->installEventFilter(new HoverLiftFilter(clearQueueButton, 14, 22, 6, clearQueueButton));
 	queueButtonLayout->addWidget(removeQueueItemButton);
 	queueButtonLayout->addWidget(clearQueueButton);
 	queueLayout->addLayout(queueButtonLayout);

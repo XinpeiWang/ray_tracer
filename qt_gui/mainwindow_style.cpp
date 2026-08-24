@@ -707,6 +707,19 @@ void MainWindow::styleGroupBox(QGroupBox *box) {
 	// WA_StyledBackground forces Qt to paint the CSS background+border
 	// on QGroupBox (which by default ignores background-color in stylesheets).
 	box->setAttribute(Qt::WA_StyledBackground, true);
+	// A quiet elevation shadow - noticeably subtler than the buttons' own
+	// (see applyElevation() call sites in mainwindow.cpp/mainwindow_tabs.cpp),
+	// since there are 6 of these panels visible at once on some tabs and a
+	// strong shadow on all of them would read as clutter rather than depth.
+	applyElevation(box, /*blurRadius=*/16, /*offsetY=*/3, /*alpha=*/55);
+}
+
+void MainWindow::applyElevation(QWidget *widget, qreal blurRadius, qreal offsetY, int alpha) {
+	auto *shadow = new QGraphicsDropShadowEffect(widget);
+	shadow->setBlurRadius(blurRadius);
+	shadow->setOffset(0, offsetY);
+	shadow->setColor(QColor(0, 0, 0, alpha));
+	widget->setGraphicsEffect(shadow);
 }
 
 void MainWindow::styleComboBox(QComboBox *combo) {
