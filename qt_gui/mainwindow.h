@@ -1038,6 +1038,13 @@ private:
 	// category with zero scenes at all.
 	QTabBar *m_sceneAvailabilityTabs = nullptr;  // "Self-Contained" / "Requires External Files"
 	QTabBar *m_sceneCategoryTabs = nullptr;  // Category filter above the scene dropdown
+	// Narrows the current category's own combo list further by name/id/
+	// description substring - independent of, and applied on top of, the
+	// availability/category tab filters above. Scenes went from 78 to 154
+	// (curated pbrt examples added under real topic categories, see
+	// scene_registry.h), so a category tab alone can now hold 20+ scenes -
+	// exactly the point a flat dropdown starts wanting search.
+	QLineEdit *m_sceneSearchBox = nullptr;
 	QComboBox *m_sceneCombo;            // Scene selector dropdown, showing one category at a time
 
 	// Rebuilds m_sceneCategoryTabs' tab set for the given availability filter

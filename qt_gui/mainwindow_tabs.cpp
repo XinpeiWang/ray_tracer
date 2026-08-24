@@ -30,7 +30,9 @@
 #include <QSlider>
 #include <cmath>
 
-// Refills the scene dropdown with just one category's scenes.
+// Refills the scene dropdown with just one category's scenes, further
+// narrowed by m_sceneSearchBox's current text if any (name/id/description
+// substring match) - see that member's own comment in mainwindow.h.
 //
 // Ids are category letter + number now (e.g. "B10"), not contiguous ints
 // (see scene_registry.h's SceneDescriptor::id comment), so walking registry
@@ -56,13 +58,22 @@ void MainWindow::populateSceneCombo(const QString &category) {
 	// checkout.
 	const bool wantRequiresFiles = m_sceneAvailabilityTabs && m_sceneAvailabilityTabs->currentIndex() == 1;
 
+	// A further substring narrowing on top of category/availability, not a
+	// replacement for them - see m_sceneSearchBox's own comment.
+	const QString searchTerm = m_sceneSearchBox ? m_sceneSearchBox->text().trimmed() : QString();
+
 	const int count = SceneMetadataClient::sceneCount();
 	for (int i = 0; i < count; ++i) {
 		const QString id = SceneMetadataClient::sceneIdAtIndex(i);
 		if (SceneMetadataClient::sceneCategory(id) != category) continue;
 		if (SceneMetadataClient::sceneRequiresFiles(id) != wantRequiresFiles) continue;
-		m_sceneCombo->addItem(
-			QString("[%1] %2").arg(id).arg(SceneMetadataClient::sceneName(id)), id);
+		const QString name = SceneMetadataClient::sceneName(id);
+		if (!searchTerm.isEmpty() &&
+			!name.contains(searchTerm, Qt::CaseInsensitive) &&
+			!id.contains(searchTerm, Qt::CaseInsensitive) &&
+			!SceneMetadataClient::sceneDescription(id).contains(searchTerm, Qt::CaseInsensitive))
+			continue;
+		m_sceneCombo->addItem(QString("[%1] %2").arg(id).arg(name), id);
 	}
 }
 
@@ -230,6 +241,15 @@ void MainWindow::createBasicTab() {
 	rebuildCategoryTabs(/*requiresFiles=*/false);
 	sceneGroupLayout->addWidget(m_sceneCategoryTabs);
 
+	// Narrows the combo below by substring, on top of (not instead of) the
+	// availability/category tabs above - see m_sceneSearchBox's own comment
+	// in mainwindow.h for why. setClearButtonEnabled gives it Qt's own
+	// built-in inline "x" rather than a hand-drawn one.
+	m_sceneSearchBox = new QLineEdit(basicTab);
+	m_sceneSearchBox->setPlaceholderText("Search scenes by name or id...");
+	m_sceneSearchBox->setClearButtonEnabled(true);
+	sceneGroupLayout->addWidget(m_sceneSearchBox);
+
 	QHBoxLayout *sceneRow = new QHBoxLayout();
 	m_sceneCombo = new QComboBox(basicTab);
 	styleComboBox(m_sceneCombo);
@@ -265,6 +285,16 @@ void MainWindow::createBasicTab() {
 		// populateSceneCombo() deliberately stays silent, so the one update for
 		// the newly selected scene is issued here - otherwise switching category
 		// would leave the description, SPP and camera describing the old scene.
+		onSceneChanged(m_sceneCombo->currentIndex());
+	});
+
+	// Re-narrows the current category's combo on every keystroke -
+	// populateSceneCombo() reads m_sceneSearchBox->text() itself, so this
+	// only needs to trigger the same repopulate the tab handlers above
+	// already use, not duplicate the filtering logic here.
+	connect(m_sceneSearchBox, &QLineEdit::textChanged, this, [this](const QString &) {
+		if (m_sceneCategoryTabs->count() == 0) return;
+		populateSceneCombo(m_sceneCategoryTabs->tabData(m_sceneCategoryTabs->currentIndex()).toString());
 		onSceneChanged(m_sceneCombo->currentIndex());
 	});
 
