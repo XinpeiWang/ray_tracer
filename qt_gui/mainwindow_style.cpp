@@ -389,7 +389,12 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			border-bottom: 1px solid %BORDER%;
 			border-top-left-radius: %RADIUS%;
 			border-top-right-radius: %RADIUS%;
-			padding: 10px 18px;
+			/* Tighter than the old 10px 18px - every pixel of per-tab padding
+			   here is pixels sooner the whole strip gives up expanding and
+			   switches to scroll arrows as the window narrows (see
+			   setElideMode() in setupUI(), which lets a label truncate with
+			   an ellipsis instead of forcing that switch even earlier). */
+			padding: 8px 12px;
 			color: %TEXT_MUTED%;
 			font-size: 12pt;
 			/* No minimum width: QTabBar's own "expanding" default (still on -
