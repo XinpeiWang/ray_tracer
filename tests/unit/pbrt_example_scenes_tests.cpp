@@ -1,8 +1,9 @@
 /**
  * @file pbrt_example_scenes_tests.cpp
  * @brief Render-smoke tests for the small, self-contained example .pbrt
- * scenes bundled in pbrt_scenes/ (example-cornell.pbrt, instanced-spheres.pbrt,
- * killeroo-simple.pbrt, triangle-fan-light.pbrt, two-sphere-lights.pbrt).
+ * scenes bundled in pbrt_scenes/ (kExampleSceneStems below - grows as new
+ * pbrt-loader gaps get their own dedicated demo scene; add the new stem here
+ * too whenever one is created, or it gets zero automated render coverage).
  *
  * These exist to demonstrate the Custom Scenes discovery feature and, until
  * now, had no automated coverage at all: CpuGpuLightParityTest
@@ -17,7 +18,7 @@
  * suite. BundledPbrtLightCoverageTest (pbrt_gpu_light_coverage_tests.cpp)
  * only checks that the GPU can sample every emissive shape - it never
  * actually renders a frame. Unlike the large pbrt-v4-scenes downloads
- * (gitignored, not always present - see pbrt_scenes/README.md), these 5
+ * (gitignored, not always present - see pbrt_scenes/README.md), these
  * files are git-tracked and need no external assets beyond what ships in
  * the repo (killeroo-simple.pbrt's `Include` of
  * pbrt_scenes/geometry/killeroo.pbrt is itself bundled), so they are always
@@ -107,6 +108,10 @@ constexpr const char* kExampleSceneStems[] = {
 	"plymesh-uv",
 	"goniometric-projection",
 	"coateddiffuse-texture",
+	"diffusetransmission-texture",
+	"conductor-rgb-eta-k",
+	"nested-checker-texture",
+	"blackbody-light",
 };
 
 // Resolved by NAME at test-run time rather than a hardcoded id string:
