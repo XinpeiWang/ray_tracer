@@ -804,6 +804,14 @@ void MainWindow::applyElevation(QWidget *widget, qreal blurRadius, qreal offsetY
 	widget->setGraphicsEffect(shadow);
 }
 
+void MainWindow::applyGlow(QWidget *widget, qreal blurRadius, const QColor &color) {
+	auto *glow = new QGraphicsDropShadowEffect(widget);
+	glow->setBlurRadius(blurRadius);
+	glow->setOffset(0, 0);
+	glow->setColor(color);
+	widget->setGraphicsEffect(glow);
+}
+
 void MainWindow::styleComboBox(QComboBox *combo) {
 	QAbstractItemView *view = combo->view();
 

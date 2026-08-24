@@ -105,23 +105,46 @@ private:
 // smoothly, alongside its own QSS colour change rather than replacing it.
 // Install on a widget that already has an elevation effect set via
 // applyElevation() - a widget with no QGraphicsDropShadowEffect is a no-op.
+//
+// idlePulse (opt-in, only used for the primary Render button - a pulsing
+// Stop/Clear Queue would read as "click me" on a destructive action, the
+// wrong invitation) adds a slow, continuous "breathing" glow at rest: the
+// main-menu-button pulse every game's "Start"/"Play" control has, built
+// from the same shadow effect rather than a second one.
 // ============================================================================
 class HoverLiftFilter : public QObject {
     Q_OBJECT
 public:
     HoverLiftFilter(QWidget *target, qreal restBlur, qreal hoverBlur, qreal pressedBlur,
-                     QObject *parent = nullptr)
+                     bool idlePulse = false, QObject *parent = nullptr)
         : QObject(parent), m_target(target),
-          m_restBlur(restBlur), m_hoverBlur(hoverBlur), m_pressedBlur(pressedBlur) {}
+          m_restBlur(restBlur), m_hoverBlur(hoverBlur), m_pressedBlur(pressedBlur),
+          m_idlePulse(idlePulse)
+    {
+        if (m_idlePulse) restartIdlePulse();
+    }
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override {
         auto *shadow = qobject_cast<QGraphicsDropShadowEffect *>(m_target->graphicsEffect());
         if (shadow) {
             switch (event->type()) {
-                case QEvent::Enter:            animateTo(shadow, m_hoverBlur); break;
-                case QEvent::Leave:             animateTo(shadow, m_restBlur); break;
-                case QEvent::MouseButtonPress:  animateTo(shadow, m_pressedBlur); break;
+                case QEvent::Enter:
+                    if (m_idleAnim) m_idleAnim->stop();
+                    animateTo(shadow, m_hoverBlur);
+                    break;
+                case QEvent::Leave:
+                    animateTo(shadow, m_restBlur);
+                    // Given a moment to settle back to rest before the idle
+                    // loop resumes, rather than fighting the leave animation
+                    // for control of the same property mid-transition.
+                    if (m_idlePulse)
+                        QTimer::singleShot(180, this, [this]() { restartIdlePulse(); });
+                    break;
+                case QEvent::MouseButtonPress:
+                    if (m_idleAnim) m_idleAnim->stop();
+                    animateTo(shadow, m_pressedBlur);
+                    break;
                 // Mouse may have already left before release fires (e.g. a
                 // drag off the button) - Leave's own animation already
                 // handles that case, this only needs to cover the ordinary
@@ -139,7 +162,9 @@ private:
     // here - this filter has no per-target storage of its own) - a rapid
     // hover/leave/hover flicker just retargets whatever animation already
     // exists instead of allocating a new one each time, restarting cleanly
-    // from the shadow's CURRENT blur so it never jumps.
+    // from the shadow's CURRENT blur so it never jumps. m_idleAnim (below)
+    // is parented to `this`, not `shadow`, so it never collides with this
+    // lookup.
     void animateTo(QGraphicsDropShadowEffect *shadow, qreal blur) {
         auto *anim = shadow->findChild<QPropertyAnimation *>(QString(), Qt::FindDirectChildrenOnly);
         if (!anim) {
@@ -153,8 +178,29 @@ private:
         anim->start();
     }
 
+    // A seamless rest -> peak -> rest loop (one QPropertyAnimation with 3
+    // keyframes, repeated via setLoopCount(-1)) rather than two animations
+    // ping-ponging - a real back-and-forth "breathe", not a sawtooth reset.
+    void restartIdlePulse() {
+        auto *shadow = qobject_cast<QGraphicsDropShadowEffect *>(m_target->graphicsEffect());
+        if (!shadow) return;
+        if (!m_idleAnim) {
+            m_idleAnim = new QPropertyAnimation(shadow, "blurRadius", this);
+            m_idleAnim->setDuration(2200);
+            m_idleAnim->setLoopCount(-1);
+            m_idleAnim->setEasingCurve(QEasingCurve::InOutSine);
+            m_idleAnim->setKeyValueAt(0.0, m_restBlur);
+            m_idleAnim->setKeyValueAt(0.5, m_restBlur * 1.6);
+            m_idleAnim->setKeyValueAt(1.0, m_restBlur);
+        }
+        m_idleAnim->stop();
+        m_idleAnim->start();
+    }
+
     QWidget *m_target;
     qreal m_restBlur, m_hoverBlur, m_pressedBlur;
+    bool m_idlePulse;
+    QPropertyAnimation *m_idleAnim = nullptr;
 };
 
 // ============================================================================
@@ -197,6 +243,15 @@ public:
             if (m_opacityEffect->opacity() < 0.01) hide();
         });
 
+        // The entrance "pop" - starts slightly smaller than final size, same
+        // centre, and overshoots past it before settling (QEasingCurve::
+        // OutBack's whole point) - an achievement-banner bounce rather than
+        // a flat fade landing at rest immediately. geometry is a genuine
+        // QWidget Q_PROPERTY (QRect-valued), directly animatable.
+        m_popAnim = new QPropertyAnimation(this, "geometry", this);
+        m_popAnim->setDuration(320);
+        m_popAnim->setEasingCurve(QEasingCurve::OutBack);
+
         m_dismissTimer = new QTimer(this);
         m_dismissTimer->setSingleShot(true);
         connect(m_dismissTimer, &QTimer::timeout, this, [this]() { fadeTo(0.0, 300); });
@@ -216,7 +271,19 @@ public:
         if (QWidget *p = parentWidget()) {
             adjustSize();
             const QRect pg = p->geometry();
-            move(pg.center().x() - width() / 2, pg.top() + 48);
+            const QSize finalSize = size();
+            const QRect finalGeom(pg.center().x() - finalSize.width() / 2, pg.top() + 48,
+                                   finalSize.width(), finalSize.height());
+            const QSize startSize = finalSize * 0.85;
+            const QRect startGeom(finalGeom.center().x() - startSize.width() / 2,
+                                   finalGeom.center().y() - startSize.height() / 2,
+                                   startSize.width(), startSize.height());
+
+            setGeometry(startGeom);
+            m_popAnim->stop();
+            m_popAnim->setStartValue(startGeom);
+            m_popAnim->setEndValue(finalGeom);
+            m_popAnim->start();
         }
 
         show();
@@ -237,6 +304,7 @@ private:
     QLabel *m_label;
     QGraphicsOpacityEffect *m_opacityEffect;
     QPropertyAnimation *m_fadeAnim;
+    QPropertyAnimation *m_popAnim;
     QTimer *m_dismissTimer;
 };
 
@@ -920,6 +988,29 @@ private:
 	// since a shadow reads as "surface above surface" on any hue, dark or
 	// light theme alike, without needing a per-palette shadow colour.
 	void applyElevation(QWidget *widget, qreal blurRadius, qreal offsetY, int alpha);
+	// Same QGraphicsDropShadowEffect mechanism as applyElevation(), but
+	// centred (no offset) and theme-coloured rather than neutral black - a
+	// glow of energy around the widget rather than a cast shadow beneath
+	// it. Used for the progress bar's own pulse while actively rendering
+	// (see startProgressGlow()) - a different visual language deliberately
+	// kept separate from applyElevation() rather than folding a colour
+	// parameter into that one, since "surface depth" and "energy glow" read
+	// as two different things even though the underlying Qt mechanism is
+	// identical.
+	void applyGlow(QWidget *widget, qreal blurRadius, const QColor &color);
+	// Starts/stops the progress bar's pulsing glow - see applyGlow()'s own
+	// comment. Called from startRenderJob()/onRenderComplete() so the pulse
+	// runs exactly while m_isRendering is true, settling to a fixed glow
+	// once finished (the QSS resultState colouring already handles success/
+	// error at that point - this only ever controls whether it's animating).
+	void startProgressGlow();
+	void stopProgressGlow();
+	// Smoothly animates m_progressBar's own `value` property (a real
+	// QProgressBar Q_PROPERTY) toward `value` instead of snapping - Qt
+	// redraws the bar's built-in percentage text from that same live
+	// property each animation frame, so this animates the fill AND the
+	// number simultaneously for free, no separate text animation needed.
+	void animateProgressTo(int value);
 	// baseOutputPath is the render's own --output argument (see
 	// onRenderClicked()) so the assembled video's expected path
 	// ("<stem>_video.mp4") can be derived directly instead of guessing at a
@@ -979,6 +1070,12 @@ private:
 	QPushButton *m_renderButton;
 	QPushButton *m_stopButton;
 	QProgressBar *m_progressBar;
+	// See applyGlow()/startProgressGlow()'s own comments. Both lazily
+	// created on first use, not at construction - the progress bar's
+	// QGraphicsDropShadowEffect only needs to exist once rendering has
+	// actually started once.
+	QPropertyAnimation *m_progressGlowAnim = nullptr;
+	QPropertyAnimation *m_progressValueAnim = nullptr;
 	QLabel *m_statusLabel;
 	// A secondary caveat line below m_statusLabel (e.g. "render succeeded but
 	// the preview image couldn't be shown") - kept separate rather than

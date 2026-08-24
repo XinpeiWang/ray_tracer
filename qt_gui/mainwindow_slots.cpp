@@ -285,6 +285,7 @@ void MainWindow::startRenderJob(const RenderJob &job) {
 	updateActionStates();
 	refreshStatusBarInfo();
 	m_progressBar->setValue(0);
+	startProgressGlow();
 	QString statusText = job.videoMode ? "Rendering video frames..." : "Rendering...";
 	if (!m_renderQueue.isEmpty()) statusText += QString(" (%1 more queued)").arg(m_renderQueue.size());
 	m_statusLabel->setText(statusText);
@@ -686,7 +687,7 @@ void MainWindow::onSceneChanged(int index) {
 }
 
 void MainWindow::onProgressUpdate(int percentage) {
-	m_progressBar->setValue(percentage);
+	animateProgressTo(percentage);
 
 	// Mirror onto the taskbar button so progress is readable while the window
 	// is behind something else. Only pushed when the integer percent actually
@@ -720,6 +721,7 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 	// left over from a previous job's preview failure must not linger next
 	// to this job's own (possibly unrelated) outcome.
 	clearStatusWarning();
+	stopProgressGlow();
 
 	const bool stoppedByUser = !success && message.contains("stopped by user", Qt::CaseInsensitive);
 
@@ -729,7 +731,7 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 	notifyRenderFinished(success, message, totalTime);
 
 	if (success) {
-		m_progressBar->setValue(100);
+		animateProgressTo(100);
 		// A finished bar keeps its fill and turns green rather than resetting -
 		// the outcome stays visible after the fact (Qt Creator's behaviour).
 		setProgressResultState("success");
@@ -1039,6 +1041,58 @@ void MainWindow::setProgressResultState(const char *state) {
 	m_progressBar->style()->unpolish(m_progressBar);
 	m_progressBar->style()->polish(m_progressBar);
 	m_progressBar->update();
+}
+
+void MainWindow::startProgressGlow() {
+	if (!m_progressBar) return;
+	// Applied lazily here rather than at the bar's creation - it only ever
+	// needs to exist once a render has actually started once. Left in place
+	// afterward (stopProgressGlow() only stops the pulse, never removes the
+	// effect), so a second render job reuses the same glow object rather
+	// than replacing it.
+	constexpr qreal kRestGlow = 10.0, kPeakGlow = 24.0;
+	auto *glow = qobject_cast<QGraphicsDropShadowEffect *>(m_progressBar->graphicsEffect());
+	if (!glow) {
+		applyGlow(m_progressBar, kRestGlow, m_activeTheme.accentPrimary);
+		glow = qobject_cast<QGraphicsDropShadowEffect *>(m_progressBar->graphicsEffect());
+	}
+	if (!glow) return;
+
+	if (!m_progressGlowAnim) {
+		m_progressGlowAnim = new QPropertyAnimation(glow, "blurRadius", this);
+		m_progressGlowAnim->setDuration(1400);
+		m_progressGlowAnim->setLoopCount(-1);
+		m_progressGlowAnim->setEasingCurve(QEasingCurve::InOutSine);
+		m_progressGlowAnim->setKeyValueAt(0.0, kRestGlow);
+		m_progressGlowAnim->setKeyValueAt(0.5, kPeakGlow);
+		m_progressGlowAnim->setKeyValueAt(1.0, kRestGlow);
+	}
+	m_progressGlowAnim->stop();
+	m_progressGlowAnim->start();
+}
+
+void MainWindow::stopProgressGlow() {
+	if (m_progressGlowAnim) m_progressGlowAnim->stop();
+	// Settles to the same low ambient level the pulse breathes around,
+	// rather than 0 - a bar that only ever glows while active would pop
+	// abruptly back to flat the moment a render finishes; staying lit at a
+	// low level reads as "idle", not "broken".
+	if (auto *glow = qobject_cast<QGraphicsDropShadowEffect *>(
+			m_progressBar ? m_progressBar->graphicsEffect() : nullptr))
+		glow->setBlurRadius(10.0);
+}
+
+void MainWindow::animateProgressTo(int value) {
+	if (!m_progressBar) return;
+	if (!m_progressValueAnim) {
+		m_progressValueAnim = new QPropertyAnimation(m_progressBar, "value", this);
+		m_progressValueAnim->setEasingCurve(QEasingCurve::OutCubic);
+	}
+	m_progressValueAnim->stop();
+	m_progressValueAnim->setDuration(300);
+	m_progressValueAnim->setStartValue(m_progressBar->value());
+	m_progressValueAnim->setEndValue(value);
+	m_progressValueAnim->start();
 }
 
 void MainWindow::setStatusWarning(const QString &text) {
