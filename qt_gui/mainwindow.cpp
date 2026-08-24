@@ -623,24 +623,22 @@ void MainWindow::setupUI() {
 	QWidget *centralWidget = new QWidget(this);
 	QVBoxLayout *mainLayout = new QVBoxLayout(centralWidget);
 
-	// Create tab widget
-	m_tabWidget = new QTabWidget(this);
-	// Stretches the tabs to fill the bar's full width when their natural
-	// content width leaves room, rather than left-aligning them with blank
-	// space to the right (see mainwindow_style.cpp's QTabBar::tab min-width
-	// comment for the other half of this - the two only work together).
-	// True by default, but set explicitly since this bar's fit is load-
-	// bearing, not an incidental style default this build happens to have.
+	// Create tab widget - ExpandingTabWidget (mainwindow.h) stretches the 7
+	// tabs to fill the bar's full width when their natural content width
+	// leaves room, rather than left-aligning them with blank space to the
+	// right of "Diagnostics". See that class's own comment for why a plain
+	// QTabWidget + QTabBar::setExpanding(true) (tried first) does not
+	// actually do this despite reading like it should.
 	//
-	// Deliberately NOT setElideMode(Qt::ElideRight) here: tried it to delay
-	// the scroll-arrow fallback even further, but combined with this tab
-	// bar's QSS padding (mainwindow_style.cpp's QTabBar::tab rule) Qt drew
-	// labels clipped from the wrong side instead of a clean right-hand
-	// ellipsis - a real stylesheet/native-paint interaction bug, not a
-	// config mistake. min-width:0 + expanding + the tighter padding already
-	// pushes the scroll fallback well past this app's normal window sizes,
-	// so it wasn't worth chasing further.
-	m_tabWidget->tabBar()->setExpanding(true);
+	// Deliberately NOT setElideMode(Qt::ElideRight) on the tab bar: tried it
+	// to delay the narrow-window scroll-arrow fallback even further, but
+	// combined with this tab bar's QSS padding (mainwindow_style.cpp's
+	// QTabBar::tab rule) Qt drew labels clipped from the wrong side instead
+	// of a clean right-hand ellipsis - a real stylesheet/native-paint
+	// interaction bug, not a config mistake. min-width:0 + the tighter
+	// padding already pushes that fallback well past this app's normal
+	// window sizes, so it wasn't worth chasing further.
+	m_tabWidget = new ExpandingTabWidget(this);
 	createBasicTab();
 	createAdvancedTab();
 	createVideoTab();

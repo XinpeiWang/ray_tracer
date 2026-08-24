@@ -405,21 +405,19 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			border-top-left-radius: %RADIUS%;
 			border-top-right-radius: %RADIUS%;
 			/* Tighter than the old 10px 18px - every pixel of per-tab padding
-			   here is pixels sooner the whole strip gives up expanding and
-			   switches to scroll arrows as the window narrows (see
-			   setElideMode() in setupUI(), which lets a label truncate with
-			   an ellipsis instead of forcing that switch even earlier). */
+			   here is pixels sooner the whole strip gives up stretching (see
+			   ExpandingTabBar, mainwindow.h) and switches to scroll arrows as
+			   the window narrows. */
 			padding: 8px 12px;
 			color: %TEXT_MUTED%;
 			font-size: 12pt;
-			/* No minimum width: QTabBar's own "expanding" default (still on -
-			   see setupUI()) already stretches tabs to fill the bar when their
-			   natural content width is less than the available space. A fixed
-			   100px floor used to force that natural width past the window's
-			   typical size once a 7th tab (Diagnostics) was added, tipping the
-			   whole strip into scroll-button mode instead of just spreading
-			   tabs out - same reasoning sceneCategoryTabs below already
-			   applies with its own zero minimum. */
+			/* No minimum width: ExpandingTabBar (mainwindow.h) already grows
+			   each tab to fill the bar when there's room. A fixed 100px floor
+			   used to force the strip's natural width past the window's
+			   typical size once a 7th tab (Diagnostics) was added, tipping it
+			   into scroll-button mode instead of just spreading tabs out -
+			   same reasoning sceneCategoryTabs below already applies with its
+			   own zero minimum. */
 			min-width: 0px;
 			margin-right: 2px;
 		}

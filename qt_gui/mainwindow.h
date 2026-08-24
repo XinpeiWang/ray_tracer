@@ -943,6 +943,60 @@ struct RenderJob {
 };
 
 // ============================================================================
+// ExpandingTabBar / ExpandingTabWidget
+// ============================================================================
+// Makes the main tab strip's 7 tabs fill the window's full width instead of
+// sitting left-aligned with blank space to the right of "Diagnostics" once
+// the window is wider than the tabs' own natural size.
+//
+// QTabBar::setExpanding(true) - the documented-sounding way to do this - does
+// NOT do this: confirmed empirically (a standalone repro, logging every
+// tabSizeHint() call) that it only equalizes tab widths when tabs must
+// SHRINK to fit an overflowing bar, never grows them to fill idle space.
+// QTabWidget also never stretches its tab bar to the widget's own width in
+// the first place - the bar only ever claims its own sizeHint (the sum of
+// its tabs' natural widths), which is the real reason the strip left-aligns.
+//
+// The fix is a tabSizeHint() override that hands out width()/count() per
+// tab whenever that's wider than the tab's natural hint - but width() itself
+// is circular (the bar's width is DERIVED from summing these same hints), so
+// naively reading width() here just converges to some in-between value, not
+// the full window width (also confirmed empirically). Reading
+// parentWidget()->width() instead - the QTabWidget itself, stable and set
+// independently of the tab bar's own size - breaks that circularity.
+class ExpandingTabBar : public QTabBar {
+public:
+	explicit ExpandingTabBar(QWidget *parent = nullptr) : QTabBar(parent) {}
+
+protected:
+	QSize tabSizeHint(int index) const override {
+		QSize hint = QTabBar::tabSizeHint(index);
+		const int n = count();
+		if (n > 0 && parentWidget()) {
+			// The "- n * 4" isn't cosmetic: each tab's own QSS margin/border
+			// (mainwindow_style.cpp's QTabBar::tab rule) adds a few pixels
+			// this per-tab hint doesn't otherwise account for. Without this
+			// slack, the summed hints land a handful of pixels OVER the
+			// parent's actual width, tipping the whole bar into scroll-arrow
+			// mode - which then reserves its own space for the arrows and
+			// never revisits this hint, so only the first few (oversized)
+			// tabs end up visible at all. A few pixels of unused margin at
+			// the right edge is a far smaller cost than that cliff.
+			const int evenWidth = (parentWidget()->width() - n * 4) / n;
+			if (evenWidth > hint.width()) hint.setWidth(evenWidth);
+		}
+		return hint;
+	}
+};
+
+class ExpandingTabWidget : public QTabWidget {
+public:
+	explicit ExpandingTabWidget(QWidget *parent = nullptr) : QTabWidget(parent) {
+		setTabBar(new ExpandingTabBar(this));
+	}
+};
+
+// ============================================================================
 // MainWindow
 // ============================================================================
 // Main GUI window with tabbed interface for render controls
