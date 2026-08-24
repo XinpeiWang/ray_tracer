@@ -337,6 +337,16 @@ void MainWindow::refreshQueuePanel() {
 		m_queueListWidget->addItem(describeRenderJob(job));
 	}
 	m_queueGroup->setTitle(QString("Render Queue (%1)").arg(m_renderQueue.size()));
+
+	if (m_queueBadge) {
+		const int count = m_renderQueue.size();
+		if (count > 0) {
+			m_queueBadge->setText(QString::number(count));
+			m_queueBadge->show();
+		} else {
+			m_queueBadge->hide();
+		}
+	}
 }
 
 void MainWindow::onRemoveSelectedQueueItem() {
@@ -966,7 +976,28 @@ void MainWindow::notifyRenderFinished(bool success, const QString &message, doub
 	// build).
 	QApplication::alert(this, 3000);
 
-	if (isActiveWindow()) return;
+	const QString title = success ? "Render complete"
+								  : (stoppedByUser ? "Render stopped" : "Render failed");
+	const QString body = success
+		? QString("Finished in %1 seconds").arg(totalTime, 0, 'f', 2)
+		: message.section('<', 0, 0).left(120);
+
+	// While the window IS active, a toast inside it is the completion cue
+	// instead of a tray balloon - the user is plausibly looking right at the
+	// app already, so a corner-of-the-eye tray message is easy to miss and
+	// would just be a second, redundant notification for the same event.
+	if (isActiveWindow()) {
+		if (m_toast) {
+			const QColor fill = success ? m_activeTheme.success
+										: (stoppedByUser ? m_activeTheme.textMuted : m_activeTheme.error);
+			// Mirrors textOn()'s own threshold (mainwindow_style.cpp, internal
+			// linkage - not reachable from this file) rather than sharing it:
+			// one ternary isn't worth a cross-TU declaration.
+			const QColor onFill = fill.lightness() > 170 ? m_activeTheme.surface0 : QColor(Qt::white);
+			m_toast->showToast(QString("%1 – %2").arg(title, body), fill, onFill);
+		}
+		return;
+	}
 
 	// Log why a notification was or wasn't raised - a silently-swallowed
 	// showMessage() (which is what an invisible tray icon does) is otherwise
@@ -980,11 +1011,6 @@ void MainWindow::notifyRenderFinished(bool success, const QString &message, doub
 		return;
 	}
 
-	const QString title = success ? "Render complete"
-								  : (stoppedByUser ? "Render stopped" : "Render failed");
-	const QString body = success
-		? QString("Finished in %1 seconds").arg(totalTime, 0, 'f', 2)
-		: message.section('<', 0, 0).left(120);
 	m_trayIcon->showMessage(title, body,
 		success ? QSystemTrayIcon::Information : QSystemTrayIcon::Warning, 10000);
 }

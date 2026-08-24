@@ -550,6 +550,18 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			color: %WARNING%;
 			font-size: 10pt;
 		}
+		/* Queued-job count pill on the Progress tab itself - see its own
+		   comment in mainwindow.h. %SELECTED_TEXT% (already computed as the
+		   readable colour on accentDim, the closest existing token to this
+		   fill) doubles as the readable colour on accentPrimary too, rather
+		   than adding a new contrast token for one small badge. */
+		QLabel#queueBadge {
+			background-color: %ACCENT_1%;
+			color: %SELECTED_TEXT%;
+			border-radius: 10px;
+			font-size: 9pt;
+			font-weight: bold;
+		}
 		ScaledImageLabel {
 			background-color: %SURFACE0%;
 			border: 1px solid %BORDER%;

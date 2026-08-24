@@ -1014,6 +1014,18 @@ void MainWindow::createProgressTab() {
 	layout->addStretch(1);
 
 	m_progressTabIndex = m_tabWidget->addTab(progressWidget, "Progress");
+
+	// Queued-job count badge - see its own comment in mainwindow.h. Fixed
+	// small size rather than sizing to its text: a tab button that resizes
+	// itself as the count goes from "1" to "12" would jostle every tab to
+	// its right, which is worse than clipping a two-digit count would ever
+	// realistically be for a manually queued list.
+	m_queueBadge = new QLabel(m_tabWidget->tabBar());
+	m_queueBadge->setObjectName("queueBadge");
+	m_queueBadge->setAlignment(Qt::AlignCenter);
+	m_queueBadge->setFixedSize(20, 20);
+	m_queueBadge->hide();
+	m_tabWidget->tabBar()->setTabButton(m_progressTabIndex, QTabBar::RightSide, m_queueBadge);
 }
 
 void MainWindow::createLogTab() {

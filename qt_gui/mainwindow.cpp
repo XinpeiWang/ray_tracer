@@ -498,6 +498,8 @@ MainWindow::MainWindow(QWidget *parent)
 		});
 	}
 
+	m_toast = new ToastNotification(this);
+
 	// The taskbar button only exists once the window has been realised, so
 	// defer the COM setup to the event loop rather than doing it here.
 	QTimer::singleShot(0, this, []() { win_taskbar::init(); });

@@ -44,6 +44,7 @@
 #include "icon_tint.h"
 
 #include <QGraphicsDropShadowEffect>
+#include <QGraphicsOpacityEffect>
 #include <QPropertyAnimation>
 #include <QEasingCurve>
 
@@ -154,6 +155,89 @@ private:
 
     QWidget *m_target;
     qreal m_restBlur, m_hoverBlur, m_pressedBlur;
+};
+
+// ============================================================================
+// ToastNotification
+// ============================================================================
+// A single, self-dismissing completion toast - not Fluent Widgets' ~600-line
+// InfoBar/InfoBarManager (icon variants, 5 screen-corner docking positions, a
+// stack of several simultaneous bars): a render finishing is one event at a
+// time, never concurrent, so there is nothing to stack or dock.
+//
+// A frameless always-on-top Qt::Tool window rather than a child widget
+// floating over MainWindow's own layout, so showing it needs no manual
+// z-order/resize bookkeeping relative to the tab widget beneath it - it is
+// positioned once, near the parent window's top edge, each time it is shown.
+// WA_TranslucentBackground is what lets the rounded corners painted by
+// styleSheet() below show through as transparent instead of a square window
+// frame - a frameless top-level widget is otherwise still rectangular.
+// ============================================================================
+class ToastNotification : public QWidget {
+    Q_OBJECT
+public:
+    explicit ToastNotification(QWidget *parent)
+        : QWidget(parent, Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint)
+    {
+        setAttribute(Qt::WA_ShowWithoutActivating);   // never steals focus from the main window
+        setAttribute(Qt::WA_TranslucentBackground);
+
+        auto *layout = new QHBoxLayout(this);
+        layout->setContentsMargins(18, 12, 18, 12);
+        m_label = new QLabel(this);
+        m_label->setWordWrap(true);
+        layout->addWidget(m_label);
+
+        m_opacityEffect = new QGraphicsOpacityEffect(this);
+        m_opacityEffect->setOpacity(0.0);
+        setGraphicsEffect(m_opacityEffect);
+
+        m_fadeAnim = new QPropertyAnimation(m_opacityEffect, "opacity", this);
+        connect(m_fadeAnim, &QPropertyAnimation::finished, this, [this]() {
+            if (m_opacityEffect->opacity() < 0.01) hide();
+        });
+
+        m_dismissTimer = new QTimer(this);
+        m_dismissTimer->setSingleShot(true);
+        connect(m_dismissTimer, &QTimer::timeout, this, [this]() { fadeTo(0.0, 300); });
+    }
+
+    // background/foreground drive the fill and text colour directly (the
+    // caller already knows which theme role - success/error/muted - fits
+    // the outcome; this widget has no theme knowledge of its own).
+    void showToast(const QString &text, const QColor &background, const QColor &foreground,
+                   int durationMs = 3500) {
+        m_label->setText(text);
+        setStyleSheet(QString(
+            "QWidget { background-color: %1; border-radius: 8px; } "
+            "QLabel { color: %2; font-size: 11pt; font-weight: bold; background: transparent; }")
+            .arg(background.name(), foreground.name()));
+
+        if (QWidget *p = parentWidget()) {
+            adjustSize();
+            const QRect pg = p->geometry();
+            move(pg.center().x() - width() / 2, pg.top() + 48);
+        }
+
+        show();
+        raise();
+        fadeTo(1.0, 200);
+        m_dismissTimer->start(durationMs);
+    }
+
+private:
+    void fadeTo(qreal opacity, int durationMs) {
+        m_fadeAnim->stop();
+        m_fadeAnim->setDuration(durationMs);
+        m_fadeAnim->setStartValue(m_opacityEffect->opacity());
+        m_fadeAnim->setEndValue(opacity);
+        m_fadeAnim->start();
+    }
+
+    QLabel *m_label;
+    QGraphicsOpacityEffect *m_opacityEffect;
+    QPropertyAnimation *m_fadeAnim;
+    QTimer *m_dismissTimer;
 };
 
 // ============================================================================
@@ -1124,6 +1208,15 @@ private:
 	// Used only for completion notifications - the app has no tray UI.
 	// Null if the platform has no system tray.
 	QSystemTrayIcon *m_trayIcon = nullptr;
+	// The active-window complement to m_trayIcon's showMessage() below - see
+	// notifyRenderFinished()'s own comment for which one fires when.
+	ToastNotification *m_toast = nullptr;
+	// Queued-job count badge on the Progress tab itself (QTabBar::RightSide
+	// tab button) - m_queueGroup's own title already shows "Render Queue
+	// (N)", but that's only visible once you're already on this tab; this
+	// surfaces the same count from any other tab too. Shown/hidden by
+	// refreshQueuePanel(), the one place the queue's size can change.
+	QLabel *m_queueBadge = nullptr;
 
 	// Shared event filter that blocks accidental wheel-scroll on controls
 	WheelIgnoreFilter *m_wheelFilter;
