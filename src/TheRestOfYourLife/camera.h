@@ -1304,9 +1304,38 @@ class camera {
                 }
             }
 
+            // Dispersive dielectric: dynamic_cast-dispatch to
+            // scatter_dispersive() instead of the ordinary virtual
+            // scatter(), passing the path's hero wavelength so a dielectric
+            // built via the (eta_d, abbe_number) constructor
+            // (material_simple.h) actually refracts differently per
+            // wavelength. Every other material (and a non-dispersive
+            // dielectric) takes the unchanged scatter() path - see
+            // dielectric::scatter_dispersive()'s own comment for why this
+            // is a dynamic_cast dispatch here rather than a
+            // material::scatter() signature change touching every material
+            // class. Mirrors cpu_interface.cpp's spectral_scan_hittable()
+            // dispatch pattern.
             scatter_record srec;
-            if (!rec.mat->scatter(current_ray, rec, srec, any_nonspecular))
+            const dielectric* disp_mat = dynamic_cast<const dielectric*>(rec.mat.get());
+            bool scattered = disp_mat
+                ? disp_mat->scatter_dispersive(current_ray, rec, srec, static_cast<float>(swl.lambda[0]))
+                : rec.mat->scatter(current_ray, rec, srec, any_nonspecular);
+            if (!scattered)
                 break;
+
+            // Collapse to the hero wavelength once a REAL dispersive
+            // refraction happened - see TerminateSecondary()'s own comment
+            // (sampled_spectrum.h) for why the other 3 channels' PDFs must
+            // be zeroed after this (their shared pre-refraction direction
+            // is no longer valid per-wavelength). Gated on
+            // disp_mat->is_dispersive(), not just srec.is_transmission -
+            // calling this on a non-dispersive dielectric's transmission
+            // would only cost variance (all 4 channels still refract
+            // identically) for zero benefit, silently changing every
+            // existing --spectral scene's noise pattern for no reason.
+            if (srec.is_transmission && disp_mat && disp_mat->is_dispersive())
+                swl.TerminateSecondary();
 
             // Specular bounce: no NEE, update beta and advance ray.
             if (srec.skip_pdf) {
