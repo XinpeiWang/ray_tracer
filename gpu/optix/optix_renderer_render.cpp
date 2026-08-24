@@ -17,6 +17,7 @@
 #include "sppm_path_tracer.h"
 #include <cuda.h>
 #include <iostream>
+#include <cstdlib>
 
 bool OptiXRenderer::render(
 	unsigned int width,
@@ -113,6 +114,23 @@ bool OptiXRenderer::render(
 		d_normal = d_normalAov_;
 	}
 
+	// --stats device counters (see optix_types.h's LaunchParams::
+	// statsBounceRays/statsShadowRays own comment) - same "null unless
+	// requested, transient per-call alloc" shape as d_albedo/d_normal above,
+	// except these are cheap enough (8 bytes each) not to bother persisting
+	// across calls the way the AOV buffers do. Same RAY_TRACER_STATS env-var
+	// pattern main.cpp/wavefront_path_tracer.cpp already use.
+#pragma warning(suppress: 4996)
+	const bool statsEnabled = (std::getenv("RAY_TRACER_STATS") != nullptr);
+	CUdeviceptr d_statsBounceRays = 0;
+	CUdeviceptr d_statsShadowRays = 0;
+	if (statsEnabled) {
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_statsBounceRays), sizeof(unsigned long long)));
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_statsShadowRays), sizeof(unsigned long long)));
+		CUDA_CHECK(cudaMemset(reinterpret_cast<void*>(d_statsBounceRays), 0, sizeof(unsigned long long)));
+		CUDA_CHECK(cudaMemset(reinterpret_cast<void*>(d_statsShadowRays), 0, sizeof(unsigned long long)));
+	}
+
 	// Setup launch params. Zero-initialised on purpose: LaunchParams is a POD
 	// whose fields are assigned one by one below, so any field NOT assigned
 	// here would otherwise hold stack garbage. instancePrimBase is read on the
@@ -188,6 +206,10 @@ bool OptiXRenderer::render(
 	// buildScene()'s sceneHasMotion_ detection and optix_raygen.h's use of it.
 	params.motionBlurEnabled = sceneHasMotion_;
 
+	// --stats device counters - null unless statsEnabled (see alloc above).
+	params.statsBounceRays = reinterpret_cast<unsigned long long*>(d_statsBounceRays);
+	params.statsShadowRays = reinterpret_cast<unsigned long long*>(d_statsShadowRays);
+
 	// Upload launch params
 	CUDA_CHECK(cudaMemcpy(
 		reinterpret_cast<void*>(d_launchParams_),
@@ -233,6 +255,28 @@ bool OptiXRenderer::render(
 
 	std::cout << "[OptiX] Rendered " << width << "x" << height
 		<< " @ " << samplesPerPixel << " spp\n";
+
+	// [REC-STATS] - recursive-backend counterpart to wavefront's own
+	// "[WF-STATS]" block (wavefront_path_tracer.cpp), same RAY_TRACER_STATS
+	// gate. Only two counters exist yet (bounce rays, shadow rays) - see
+	// optix_types.h's LaunchParams::statsBounceRays/statsShadowRays comment
+	// for why a per-hit-type breakdown like wavefront's isn't available
+	// here without real per-hit-type device counters, a separate follow-up.
+	if (statsEnabled) {
+		unsigned long long bounceRays = 0, shadowRays = 0;
+		CUDA_CHECK(cudaMemcpy(&bounceRays, reinterpret_cast<void*>(d_statsBounceRays),
+			sizeof(unsigned long long), cudaMemcpyDeviceToHost));
+		CUDA_CHECK(cudaMemcpy(&shadowRays, reinterpret_cast<void*>(d_statsShadowRays),
+			sizeof(unsigned long long), cudaMemcpyDeviceToHost));
+		const unsigned long long primaryRays = (unsigned long long)width * height * samplesPerPixel;
+		std::cout << "[REC-STATS] ── Recursive GPU Render Statistics ───────────\n";
+		std::cout << "[REC-STATS] Primary rays            : " << primaryRays << "\n";
+		std::cout << "[REC-STATS] Total rays (incl. bounces): " << bounceRays << "\n";
+		std::cout << "[REC-STATS] Shadow rays (NEE)        : " << shadowRays << "\n";
+		std::cout << "[REC-STATS] ─────────────────────────────────────────────\n";
+	}
+	if (d_statsBounceRays) cudaFree(reinterpret_cast<void*>(d_statsBounceRays));
+	if (d_statsShadowRays) cudaFree(reinterpret_cast<void*>(d_statsShadowRays));
 
 	return true;
 }

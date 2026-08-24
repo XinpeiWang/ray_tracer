@@ -130,6 +130,13 @@ extern "C" __global__ void __raygen__rg() {
 		float  eta_scale = 1.0f;
 
 		for (unsigned int depth = 0; depth < params.maxDepth; ++depth) {
+			// --stats: one traced ray per iteration (primary on depth==0, a
+			// bounce continuation after) - see optix_types.h's
+			// LaunchParams::statsBounceRays own comment. Null unless --stats
+			// was requested (optix_renderer_render.cpp), so this is a single
+			// pointer-null check, not an atomic, on every other render.
+			if (params.statsBounceRays) atomicAdd(params.statsBounceRays, 1ull);
+
 			// Initialize payload
 			PathTracingPayload payload;
 			payload.attenuation = throughput;

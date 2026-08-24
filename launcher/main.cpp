@@ -1030,26 +1030,19 @@ int main(int argc, char** argv) {
     // Same "default path tracer only" scope cut as --exposure/--sampler
     // above: BDPT/MLT/SPPM/the Round 6 debug integrators have their own
     // render loops, none of which are wired into render_stats.h's counters.
-    // GPU-wavefront prints its own real, more detailed "[WF-STATS]" block
-    // from wavefront_path_tracer.cpp (gated by the same RAY_TRACER_STATS env
-    // var set above) - nothing to add here for that backend.
-    if (args.stats && !use_bdpt && !use_mlt && !use_sppm && !use_debug_integrator) {
+    // Both GPU backends print their own real, more detailed stats block
+    // directly (wavefront_path_tracer.cpp's "[WF-STATS]",
+    // optix_renderer_render.cpp's "[REC-STATS]" - both gated by the same
+    // RAY_TRACER_STATS env var set above) - this block only covers CPU,
+    // whose counters (render_stats.h) are only reachable from here.
+    if (args.stats && !use_gpu && !use_bdpt && !use_mlt && !use_sppm && !use_debug_integrator) {
         const long long primary_rays = (long long)image_width * image_height * samples_per_pixel;
+        const uint64_t total_rays = render_stats::bounce_rays().load(std::memory_order_relaxed);
+        const uint64_t shadow_rays = render_stats::shadow_rays().load(std::memory_order_relaxed);
         std::cout << "[STATS] ── Render Statistics ──────────────────────────\n";
-        if (!use_gpu) {
-            const uint64_t total_rays = render_stats::bounce_rays().load(std::memory_order_relaxed);
-            const uint64_t shadow_rays = render_stats::shadow_rays().load(std::memory_order_relaxed);
-            std::cout << "[STATS] Primary rays          : " << primary_rays << "\n";
-            std::cout << "[STATS] Total rays (incl. bounces): " << total_rays << "\n";
-            std::cout << "[STATS] Shadow rays (NEE)     : " << shadow_rays << "\n";
-        } else if (!args.use_wavefront) {
-            // Recursive GPU backend has no per-ray counting infra yet
-            // (Russian Roulette makes a real bounce count non-deterministic
-            // from launch parameters alone) - print only what's exactly
-            // knowable without it, rather than a misleading estimate.
-            std::cout << "[STATS] Primary rays          : " << primary_rays << "\n";
-            std::cout << "[STATS] (bounce/shadow-ray counts not yet tracked on the recursive GPU backend)\n";
-        }
+        std::cout << "[STATS] Primary rays          : " << primary_rays << "\n";
+        std::cout << "[STATS] Total rays (incl. bounces): " << total_rays << "\n";
+        std::cout << "[STATS] Shadow rays (NEE)     : " << shadow_rays << "\n";
         std::cout << "[STATS] Samples/sec           : "
                    << (seconds > 0.0 ? (double)image_width * image_height * samples_per_pixel / seconds : 0.0)
                    << "\n";

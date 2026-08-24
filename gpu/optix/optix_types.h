@@ -1302,6 +1302,19 @@ struct LaunchParams {
 	// raygen program to sample a random ray-time in [0,1] per pixel-sample
 	// (RTIOW shutter convention) instead of always using 0.0f.
 	bool motionBlurEnabled;
+
+	// --stats device counters (see launcher/main.cpp's own "[STATS]" block
+	// and src/shared/render_stats.h's CPU equivalent) - null unless --stats
+	// was requested, same "null buffer means disabled, no separate bool
+	// flag needed" convention albedoBuffer/normalBuffer above already use.
+	// atomicAdd'd once per bounce iteration / shadow-ray optixTrace in
+	// optix_raygen.h, read back to the host once after the launch completes
+	// (a single 8-byte cudaMemcpy each, negligible next to the framebuffer
+	// copy already happening). Russian Roulette makes these genuinely need
+	// counting - a static width*height*samplesPerPixel*maxDepth formula
+	// would overestimate whenever a path terminates early.
+	unsigned long long* statsBounceRays;
+	unsigned long long* statsShadowRays;
 };
 
 // Hit group data (per-geometry instance in SBT)

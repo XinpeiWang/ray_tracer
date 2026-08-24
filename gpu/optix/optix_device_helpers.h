@@ -934,6 +934,14 @@ __device__ __forceinline__ bool trace_shadow_ray(
 	const float shadow_eps = (params.camera.shadowRayEpsilon > 0.0f) ? params.camera.shadowRayEpsilon : 0.01f;
 	const float3 shadow_origin = origin + shadow_eps * normalize(direction);
 
+	// --stats: null unless --stats was requested - see optix_types.h's
+	// LaunchParams::statsShadowRays own comment. This helper is recursive-
+	// backend only (wavefront_kernels.cu never calls trace_shadow_ray(),
+	// confirmed by grep - it has its own separate shadow-ray path already
+	// counted by WavefrontRenderStats), so no double-counting risk from the
+	// two backends sharing this header.
+	if (params.statsShadowRays) atomicAdd(params.statsShadowRays, 1ull);
+
 	// Trace shadow ray with occlusion testing
 	optixTrace(
 		params.traversable,           // Acceleration structure
