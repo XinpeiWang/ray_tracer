@@ -213,6 +213,16 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			background-color: %BORDER%;
 			margin: 4px 8px;
 		}
+		/* QMessageBox::critical/::warning (used for save/error dialogs) are
+		   real Qt-painted QDialog subclasses on Windows, not native OS
+		   popups, so this reaches them - unlike QFileDialog elsewhere in
+		   this app, which uses the native picker (getSaveFileName() with
+		   no DontUseNativeDialog flag) and QSS genuinely cannot touch.
+		   QLabel's own global rule below already covers the message text
+		   colour, so only the background needs setting here. */
+		QDialog {
+			background-color: %SURFACE1%;
+		}
 		QGroupBox {
 			border: 1px solid %BORDER%;
 			border-radius: %RADIUS_LG%;

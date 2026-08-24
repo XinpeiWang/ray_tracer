@@ -569,7 +569,21 @@ void MainWindow::refreshCameraDistanceDisplay() {
 }
 
 void MainWindow::onSceneChanged(int index) {
-	if (index < 0) return;
+	if (index < 0) {
+		// The only realistic way to reach this once scenes have loaded is
+		// m_sceneSearchBox narrowing the current category to zero matches -
+		// every category tab always holds at least one scene otherwise
+		// (rebuildCategoryTabs() excludes empty categories outright).
+		// Leaving the description panel showing the PREVIOUS scene made a
+		// zero-match search look like nothing had happened.
+		if (m_sceneInfoLabel && m_sceneCombo && m_sceneCombo->count() == 0) {
+			const QString term = m_sceneSearchBox ? m_sceneSearchBox->text().trimmed() : QString();
+			m_sceneInfoLabel->setText(term.isEmpty()
+				? "No scenes in this category."
+				: QString("No scenes match \"%1\" in this category.").arg(term));
+		}
+		return;
+	}
 	// A raw combo-row index is no longer a valid id on its own (ids are
 	// category letter + number now - see scene_registry.h's
 	// SceneDescriptor::id comment), so the m_sceneCombo-null fallback
