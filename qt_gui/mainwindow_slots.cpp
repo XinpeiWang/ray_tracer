@@ -112,6 +112,30 @@ QString styleDiagnosticsLine(const theme::Palette &p, const QString &line) {
 } // namespace
 
 void MainWindow::onRenderClicked() {
+	// m_sceneCombo can legitimately be empty - a search term that matches
+	// nothing in the current category tab leaves it with no items and
+	// currentIndex()==-1 (see onSceneChanged()'s own comment on this case) -
+	// and the button itself is never disabled for that state. Without this
+	// guard, captureRenderJob() below would read an empty scene id and
+	// enqueue a render with no scene specified at all.
+	if (!m_sceneCombo || m_sceneCombo->currentIndex() < 0) {
+		setStatusWarning("Can't start a render - no scene is selected (try clearing the search box).");
+		return;
+	}
+
+	// ThumbnailGenerator's own design intent (see its comment in mainwindow.h)
+	// is to never compete with user-requested work - onGenerateThumbnailsClicked()
+	// already enforces that direction by refusing to start while a render is
+	// active/queued, but nothing enforced it the other way until now. A real,
+	// user-requested render always wins: stop() drops the rest of the
+	// thumbnail queue cleanly (already-generated thumbnails stay cached, and
+	// re-clicking "Generate Thumbnails" later just picks up where it left
+	// off), rather than letting two ray_tracer.exe processes run at once.
+	if (m_thumbnailGenerator && m_thumbnailGenerator->isRunning()) {
+		m_thumbnailGenerator->stop();
+		onLogMessage("Paused background thumbnail generation to start this render.");
+	}
+
 	// Always enqueue, then start the front of the queue if nothing is
 	// currently running - the everyday single-render case is just "enqueue
 	// one job into an empty, immediately-idle queue", so there is no
@@ -360,6 +384,18 @@ void MainWindow::onRemoveSelectedQueueItem() {
 }
 
 void MainWindow::onClearQueue() {
+	// The one destructive, irreversible action in this app with no undo -
+	// worth a confirmation given "Clear Queue" sits right next to "Remove
+	// Selected" in the same row (mainwindow_tabs.cpp) and a misclick would
+	// silently discard every queued job's configuration. Skipped when the
+	// queue is already empty - nothing destructive to confirm.
+	if (m_renderQueue.isEmpty()) return;
+	const auto choice = QMessageBox::question(this, "Clear Render Queue",
+		QString("Remove all %1 queued render%2? This can't be undone.")
+			.arg(m_renderQueue.size()).arg(m_renderQueue.size() == 1 ? "" : "s"),
+		QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+	if (choice != QMessageBox::Yes) return;
+
 	m_renderQueue.clear();
 	refreshQueuePanel();
 }
@@ -631,6 +667,36 @@ void MainWindow::refreshCameraDistanceDisplay() {
 	m_cameraDistance->setValue(dist);
 }
 
+void MainWindow::refreshSceneInfoLabel() {
+	if (!m_sceneCombo || !m_sceneInfoLabel) return;
+	const int index = m_sceneCombo->currentIndex();
+	if (index < 0) return;
+	const QString scene_id = m_sceneCombo->itemData(index).toString();
+	const QString description = SceneMetadataClient::sceneDescription(scene_id);
+	if (description.isEmpty()) return;
+
+	bool gpuSupported = true;
+	SceneMetadataClient::gpuCompatible(scene_id, gpuSupported);
+
+	QString infoText = QString("<b>Description:</b> %1<br>").arg(description);
+	infoText += QString("<b>Performance:</b> %1<br>").arg(SceneMetadataClient::scenePerformance(scene_id));
+	infoText += QString("<b>Recommended SPP:</b> %1<br>").arg(SceneMetadataClient::sceneRecommendedSpp(scene_id));
+	infoText += QString("<b>GPU Support:</b> %1<br>").arg(gpuSupported ? "Yes" : "CPU only");
+	// These two warnings are the only coloured text in the label, so they take
+	// their colours from the theme's log severities rather than fixed hex - a
+	// gold-on-cream warning is unreadable on the light schemes. Rebuilt fresh
+	// on every call (rather than cached) specifically so restyleThemedWidgets()
+	// calling this on a theme switch picks up the new theme's colours instead
+	// of leaving an already-shown badge stuck in the old one.
+	if (SceneMetadataClient::sceneRequiresFiles(scene_id))
+		infoText += QString("<br><b style='color: %1;'>&#9888; Requires external files</b>")
+			.arg(m_activeTheme.logWarning.name());
+	if (!gpuSupported)
+		infoText += QString("<br><b style='color: %1;'>&#9888; CPU renderer only</b>")
+			.arg(m_activeTheme.logError.name());
+	m_sceneInfoLabel->setText(infoText);
+}
+
 void MainWindow::onSceneChanged(int index) {
 	if (index < 0) {
 		// The only realistic way to reach this once scenes have loaded is
@@ -689,20 +755,7 @@ void MainWindow::onSceneChanged(int index) {
 
 	int recommendedSpp = SceneMetadataClient::sceneRecommendedSpp(scene_id);
 
-	QString infoText = QString("<b>Description:</b> %1<br>").arg(description);
-	infoText += QString("<b>Performance:</b> %1<br>").arg(SceneMetadataClient::scenePerformance(scene_id));
-	infoText += QString("<b>Recommended SPP:</b> %1<br>").arg(recommendedSpp);
-	infoText += QString("<b>GPU Support:</b> %1<br>").arg(gpuSupported ? "Yes" : "CPU only");
-	// These two warnings are the only coloured text in the label, so they take
-	// their colours from the theme's log severities rather than fixed hex - a
-	// gold-on-cream warning is unreadable on the light schemes.
-	if (SceneMetadataClient::sceneRequiresFiles(scene_id))
-		infoText += QString("<br><b style='color: %1;'>&#9888; Requires external files</b>")
-			.arg(m_activeTheme.logWarning.name());
-	if (!gpuSupported)
-		infoText += QString("<br><b style='color: %1;'>&#9888; CPU renderer only</b>")
-			.arg(m_activeTheme.logError.name());
-	m_sceneInfoLabel->setText(infoText);
+	refreshSceneInfoLabel();
 	// Same description text, shown in the Preview tab's sidebar too - see
 	// createPreviewTab()'s own comment on why this is kept in sync here
 	// rather than only refreshed on render completion.
@@ -1195,6 +1248,14 @@ void MainWindow::onElapsedTick() {
 
 void MainWindow::onModeChanged(int index) {
 	m_videoMode = (index == 1); // 0 = Image, 1 = Video
+
+	// Every control on Video Settings is inert unless Output Mode is
+	// "Generate Video" - disabling the tab itself (rather than leaving it
+	// fully interactive with no indication its contents are ignored) is
+	// what stops a user from configuring a video preset/camera path there,
+	// switching back to Basic Settings, and getting a silent single-frame
+	// render instead of the video they just set up.
+	if (m_videoTabIndex >= 0) m_tabWidget->setTabEnabled(m_videoTabIndex, m_videoMode);
 
 	// Update render button text based on mode
 	if (m_videoMode) {

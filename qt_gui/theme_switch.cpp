@@ -114,4 +114,18 @@ void MainWindow::restyleThemedWidgets() {
 	// apology telling the user the old lines would stay the wrong colour.
 	rebuildLogPane();
 	rebuildDiagPane();  // same constraint, same fix - see its own comment
+
+	// The progress bar's glow effect (startProgressGlow(), mainwindow_slots.cpp)
+	// is a QGraphicsDropShadowEffect outside the global stylesheet's reach,
+	// created once on the first render and left in place afterward - without
+	// this, it would keep pulsing in whichever theme's accent colour was active
+	// the first time a render ever started, for the rest of the session.
+	if (auto *glow = qobject_cast<QGraphicsDropShadowEffect *>(
+			m_progressBar ? m_progressBar->graphicsEffect() : nullptr))
+		glow->setColor(p.accentPrimary);
+
+	// Same "baked into inline HTML, QSS can't reach it" problem as the log/diag
+	// panes above, for the scene-info warning badges - see refreshSceneInfoLabel()'s
+	// own comment.
+	refreshSceneInfoLabel();
 }

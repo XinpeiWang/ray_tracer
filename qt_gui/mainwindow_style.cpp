@@ -290,6 +290,13 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 		QPushButton#primaryAction:pressed {
 			background-color: %PRIMARY_BOTTOM%;
 		}
+		/* Without this, keyboard focus on the app's single most-clicked
+		   button is invisible: an ID selector's own (unstyled-for-focus)
+		   rules outrank the generic QPushButton:focus rule above in Qt's
+		   stylesheet cascade, so that rule alone never reaches this button. */
+		QPushButton#primaryAction:focus {
+			border-color: %ACCENT_2%;
+		}
 		QPushButton#primaryAction:disabled {
 			background-color: %SURFACE1%;
 			border: 2px solid %BORDER%;
@@ -313,6 +320,14 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 		}
 		QPushButton#dangerAction:pressed {
 			background-color: %SURFACE1%;
+		}
+		/* Wider border (matches how #primaryAction's rest state already differs
+		   from #dangerAction's by width) so tabbing onto Stop/Clear Queue - this
+		   app's one unconfirmed destructive action - is visibly distinguishable
+		   from its unfocused rest state, same reasoning as #primaryAction's own
+		   :focus rule above. */
+		QPushButton#dangerAction:focus {
+			border: 2px solid %ERROR%;
 		}
 		QPushButton#dangerAction:disabled {
 			background-color: %SURFACE1%;

@@ -840,6 +840,16 @@ public:
 	// signals.
 	void start();
 
+	// Kill the diagnostics process. Safe to call when nothing is running.
+	// Mirrors RenderController::stopRender()/isRunning() - added so
+	// ~MainWindow() has a graceful way to end an in-flight diagnostics run
+	// at app exit instead of relying solely on QProcess's own destructor
+	// (which does forcibly kill a still-running child, but with a blocking
+	// wait and a logged warning rather than this app's own quieter path).
+	void stop();
+
+	bool isRunning() const;
+
 signals:
 	void reportReady(const QString &report);
 	void reportFailed(const QString &message);
@@ -1142,6 +1152,7 @@ private:
 	QLabel *m_statusWarningLabel;
 	QLabel *m_currentJobLabel;          // Which job is actually rendering - see startRenderJob()/describeRenderJob()
 	int m_progressTabIndex = -1;        // Index of the Progress tab within m_tabWidget (see createProgressTab())
+	int m_videoTabIndex = -1;           // Index of the Video Settings tab within m_tabWidget (see createVideoTab()/onModeChanged())
 
 	// Advanced Tab - Manual Controls
 	QSpinBox *m_widthSpinBox;           // Custom width
@@ -1266,6 +1277,17 @@ private:
 	// cascading logic. No-op (logs a warning) if `id` isn't a real scene id.
 	void selectSceneById(const QString &id);
 	QLabel *m_sceneInfoLabel;           // Scene description and performance info
+
+	// Rebuilds m_sceneInfoLabel's text (description/performance/SPP/GPU-
+	// support, plus the requires-files/CPU-only warning badges) for
+	// whichever scene m_sceneCombo currently has selected. Split out of
+	// onSceneChanged() so restyleThemedWidgets() can call this alone on a
+	// theme switch - the warning badges' colours are baked into inline HTML
+	// at build time (QSS can't reach them), so without a way to rebuild just
+	// the label, an already-shown badge would keep the previous theme's
+	// colour until the user reselected a scene. No-op if nothing is selected
+	// or the scene's metadata can't be queried.
+	void refreshSceneInfoLabel();
 
 	// Video Tab
 	QComboBox *m_videoPresetCombo;      // Named scene+path+frames/fps/speed bundle - see video_preset.h

@@ -138,14 +138,29 @@ void MainWindow::selectSceneById(const QString &id) {
 	}
 	const bool requiresFiles = SceneMetadataClient::sceneRequiresFiles(id);
 
-	if (m_sceneAvailabilityTabs)
+	// Blocked: both tab bars' own currentChanged handlers repopulate the
+	// combo/grid and call onSceneChanged() on whatever scene the newly
+	// selected bucket/category happens to default to - NOT `id` - so an
+	// unblocked cascade here could transiently evaluate the wrong scene
+	// (e.g. tripping onSceneChanged()'s one-directional GPU->CPU auto-
+	// downgrade for an intermediate CPU-only scene, which would then stick
+	// even once the real, GPU-capable target scene is selected below).
+	// populateSceneViews()+onSceneChanged() at the end of this function
+	// already do everything those handlers would have, for the correct
+	// scene, so nothing is lost by silencing them here.
+	if (m_sceneAvailabilityTabs) {
+		const QSignalBlocker blocker(m_sceneAvailabilityTabs);
 		m_sceneAvailabilityTabs->setCurrentIndex(requiresFiles ? 1 : 0);
+	}
 	rebuildCategoryTabs(requiresFiles);
 	if (!m_sceneCategoryTabs) return;
-	for (int i = 0; i < m_sceneCategoryTabs->count(); ++i) {
-		if (m_sceneCategoryTabs->tabData(i).toString() == category) {
-			m_sceneCategoryTabs->setCurrentIndex(i);
-			break;
+	{
+		const QSignalBlocker blocker(m_sceneCategoryTabs);
+		for (int i = 0; i < m_sceneCategoryTabs->count(); ++i) {
+			if (m_sceneCategoryTabs->tabData(i).toString() == category) {
+				m_sceneCategoryTabs->setCurrentIndex(i);
+				break;
+			}
 		}
 	}
 
@@ -1422,6 +1437,7 @@ void MainWindow::createVideoTab() {
 
 	// Requirements info
 	QGroupBox *requirementsGroup = new QGroupBox("ℹ️ Requirements", videoTab);
+	styleGroupBox(requirementsGroup);
 	QVBoxLayout *requirementsLayout = new QVBoxLayout(requirementsGroup);
 
 	QLabel *requirementsInfo = new QLabel(
@@ -1438,6 +1454,7 @@ void MainWindow::createVideoTab() {
 
 	// Usage instructions
 	QGroupBox *usageGroup = new QGroupBox("Usage Instructions", videoTab);
+	styleGroupBox(usageGroup);
 	QVBoxLayout *usageLayout = new QVBoxLayout(usageGroup);
 
 	QLabel *usageText = new QLabel(
@@ -1472,5 +1489,10 @@ void MainWindow::createVideoTab() {
 	// while the settings scroll past.
 	scrollArea->setObjectName("tabScroll");
 
-	m_tabWidget->addTab(scrollArea, "Video Settings");
+	m_videoTabIndex = m_tabWidget->addTab(scrollArea, "Video Settings");
+	// Starts disabled - the initial Output Mode (Basic Settings) is "Render
+	// Single Image" (see createBasicTab()'s m_modeCombo setup), under which
+	// every control here is inert. onModeChanged() keeps this in sync
+	// afterwards whenever Output Mode changes.
+	m_tabWidget->setTabEnabled(m_videoTabIndex, false);
 }

@@ -401,6 +401,15 @@ void DiagnosticsRunner::start() {
 	m_process->start(exePath, args);
 }
 
+bool DiagnosticsRunner::isRunning() const {
+	return m_process && m_process->state() != QProcess::NotRunning;
+}
+
+void DiagnosticsRunner::stop() {
+	if (!isRunning()) return;
+	m_process->kill();
+}
+
 void DiagnosticsRunner::onProcessErrorOccurred(QProcess::ProcessError error) {
 	// Only FailedToStart is terminal on its own - every other error is
 	// followed by finished(), which does the reporting (mirrors
@@ -592,6 +601,17 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::~MainWindow() {
 	if (m_renderController && m_renderController->isRunning()) {
 		m_renderController->stopRender();
+	}
+	// Same graceful-stop request as m_renderController above, extended to
+	// the other two subprocess-owning helpers - previously only the primary
+	// render path got this; both were left to Qt's own QProcess destructor
+	// (which does forcibly kill a still-running child, but via a blocking
+	// wait and a logged warning rather than this app's own quieter path).
+	if (m_thumbnailGenerator && m_thumbnailGenerator->isRunning()) {
+		m_thumbnailGenerator->stop();
+	}
+	if (m_diagnosticsRunner && m_diagnosticsRunner->isRunning()) {
+		m_diagnosticsRunner->stop();
 	}
 	// A progress state left set outlives the window on the taskbar button,
 	// so it must be cleared explicitly.
