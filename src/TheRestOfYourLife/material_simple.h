@@ -109,14 +109,69 @@ class dielectric : public material {
     dielectric(double refraction_index, const color& transmission_filter)
         : refraction_index(refraction_index), transmission_filter(transmission_filter) {}
 
+    // Dispersive glass: wavelength-dependent IOR via the two-term Cauchy
+    // formula (fresnel.h's CauchyEta), authored as the artist-facing
+    // (eta_d, Abbe number) pair real glass catalogs quote (e.g. crown glass
+    // ~=1.52/59, flint glass ~=1.62/36) rather than raw Cauchy coefficients.
+    // eta_d is the index at the sodium D line (589.3nm); A/B are derived
+    // once here via the standard closed form (F/C/D lines at
+    // 486.1/656.3/589.3nm, lambda in micrometers):
+    //   B = (eta_d - 1) / (abbe * (1/lambda_F^2 - 1/lambda_C^2))
+    //   A = eta_d - B / lambda_D^2
+    // `refraction_index` (used by the ordinary flat-IOR scatter() path,
+    // i.e. --spectral off or a non-dispersive-lookalike caller) is set to
+    // eta_d so both paths agree at the reference wavelength. Only reachable
+    // via ray_color_spectral()'s dynamic_cast dispatch to
+    // scatter_dispersive() below - see that function's own comment for why
+    // this needed a new non-virtual method rather than a material::scatter()
+    // signature change.
+    dielectric(double eta_d, double abbe_number, bool /*dispersive_tag*/)
+        : refraction_index(eta_d), dispersive_(true) {
+        constexpr double lambda_F = 0.4861, lambda_C = 0.6563, lambda_D = 0.5893;
+        cauchy_B_ = (eta_d - 1.0) / (abbe_number * (1.0 / (lambda_F * lambda_F) - 1.0 / (lambda_C * lambda_C)));
+        cauchy_A_ = eta_d - cauchy_B_ / (lambda_D * lambda_D);
+    }
+
     BxDF get_bxdf(const MaterialContext<double>& ctx) const {
         return BxDF{ refraction_index };
     }
 
     bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
                  bool do_regularize = false) const override {
+        return scatter_impl(r_in, rec, srec, refraction_index);
+    }
+
+    // Spectral-aware variant: computes eta from the path's hero wavelength
+    // via CauchyEta() instead of the flat refraction_index, when this
+    // instance was constructed dispersive - otherwise identical to
+    // scatter() (ignores lambda_nm). See camera.h's ray_color_spectral()
+    // for the only call site.
+    bool scatter_dispersive(const ray& r_in, const hit_record& rec,
+                             scatter_record& srec, float lambda_nm) const {
+        double eta = dispersive_ ? CauchyEta((double)lambda_nm, cauchy_A_, cauchy_B_)
+                                  : refraction_index;
+        return scatter_impl(r_in, rec, srec, eta);
+    }
+
+    // True when this instance was built via the (eta_d, abbe_number)
+    // dispersive constructor - see that constructor's own comment. Gates
+    // ray_color_spectral()'s TerminateSecondary() call: collapsing to the
+    // hero wavelength only makes sense (and is only worth the variance
+    // cost) once a real per-wavelength refraction actually happened.
+    bool is_dispersive() const { return dispersive_; }
+
+    // Accessor for serialization
+    double get_refraction_index() const { return refraction_index; }
+
+    // See material::is_shadow_transmissive()'s comment - matches
+    // optix_anyhit_shadow.h's MaterialType::Dielectric skip.
+    bool is_shadow_transmissive(const hit_record&) const override { return true; }
+
+  private:
+    bool scatter_impl(const ray& r_in, const hit_record& rec, scatter_record& srec,
+                       double eta) const {
         auto ctx = MaterialContext<double>::from_hit(rec, r_in);
-        auto bxdf = get_bxdf(ctx);
+        BxDF bxdf{ eta };
         vec3 in_dir = unit_vector(r_in.direction());
         auto res = bxdf.sample(in_dir.x(), in_dir.y(), in_dir.z(),
                                ctx.nx, ctx.ny, ctx.nz,
@@ -133,16 +188,10 @@ class dielectric : public material {
         return true;
     }
 
-    // Accessor for serialization
-    double get_refraction_index() const { return refraction_index; }
-
-    // See material::is_shadow_transmissive()'s comment - matches
-    // optix_anyhit_shadow.h's MaterialType::Dielectric skip.
-    bool is_shadow_transmissive(const hit_record&) const override { return true; }
-
-  private:
     double refraction_index;
     color transmission_filter = color(1, 1, 1);
+    bool dispersive_ = false;
+    double cauchy_A_ = 0.0, cauchy_B_ = 0.0;
 };
 
 

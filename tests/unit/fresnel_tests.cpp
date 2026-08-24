@@ -1,6 +1,6 @@
 // fresnel_tests.cpp -- Unit tests for src/shared/fresnel.h
 // Covers FrDielectric, FrComplex (eta_r/eta_k), FrComplex (std::complex),
-// FrConductorRGB (CPU stub), and FresnelMoment1.
+// FrConductorRGB (CPU stub), FresnelMoment1, and CauchyEta.
 
 #include "../../src/shared/fresnel.h"
 #include <gtest/gtest.h>
@@ -119,4 +119,41 @@ TEST(FresnelTest, FresnelMoment1PositiveRange) {
 	// Must be positive for all valid eta
 	for (float eta : {0.5f, 0.8f, 1.0f, 1.2f, 1.5f, 2.0f})
 		EXPECT_GT(FresnelMoment1(eta), 0.f) << "eta=" << eta;
+}
+
+// -----------------------------------------------------------------------
+// CauchyEta -- two-term Cauchy dispersion formula sanity checks
+// -----------------------------------------------------------------------
+TEST(FresnelTest, CauchyEtaNormalDispersion) {
+	// Normal dispersion: eta increases as wavelength decreases (violet
+	// bends more than red) - the defining physical signature of a real
+	// glass's Cauchy curve. Crown-glass-like coefficients derived from
+	// eta_d=1.52, Abbe=59 (see dielectric's own dispersive constructor,
+	// material_simple.h, for the exact closed-form derivation this mirrors).
+	const double lambda_F = 0.4861, lambda_C = 0.6563, lambda_D = 0.5893;
+	const double eta_d = 1.52, abbe = 59.0;
+	const double B = (eta_d - 1.0) / (abbe * (1.0 / (lambda_F * lambda_F) - 1.0 / (lambda_C * lambda_C)));
+	const double A = eta_d - B / (lambda_D * lambda_D);
+
+	double eta_red    = CauchyEta(650.0, A, B);
+	double eta_violet = CauchyEta(450.0, A, B);
+	EXPECT_LT(eta_red, eta_violet);
+}
+
+TEST(FresnelTest, CauchyEtaMatchesReferenceWavelength) {
+	// By construction, A/B derived from (eta_d, abbe) at the sodium D line
+	// (589.3nm) must reproduce eta_d there.
+	const double lambda_F = 0.4861, lambda_C = 0.6563, lambda_D = 0.5893;
+	const double eta_d = 1.62, abbe = 36.0;  // flint-glass-like
+	const double B = (eta_d - 1.0) / (abbe * (1.0 / (lambda_F * lambda_F) - 1.0 / (lambda_C * lambda_C)));
+	const double A = eta_d - B / (lambda_D * lambda_D);
+
+	EXPECT_NEAR(CauchyEta(589.3, A, B), eta_d, 1e-6);
+}
+
+TEST(FresnelTest, CauchyEtaFloatTemplateInstantiation) {
+	// Confirms the template also compiles/works for float (GPU-side
+	// instantiation, even though only CPU calls it today).
+	float r = CauchyEta(550.0f, 1.5f, 0.004f);
+	EXPECT_GT(r, 1.5f);
 }

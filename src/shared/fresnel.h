@@ -24,6 +24,20 @@
 #endif
 
 // ---------------------------------------------------------------------------
+// CauchyEta -- two-term Cauchy dispersion formula: n(lambda) = A + B/lambda^2
+// (lambda in micrometers). The simplest physically-reasonable wavelength-
+// dependent IOR model that doesn't need a measured spectral data table -
+// see dielectric's own dispersive constructor (material_simple.h) for how
+// A/B are derived from an artist-facing (eta_d, Abbe number) pair instead
+// of being authored directly.
+// ---------------------------------------------------------------------------
+template <typename T>
+CPU_GPU T CauchyEta(T lambda_nm, T A, T B) {
+	T lambda_um = lambda_nm * T(0.001);
+	return A + B / (lambda_um * lambda_um);
+}
+
+// ---------------------------------------------------------------------------
 // FrDielectric -- real-valued Fresnel for dielectric interfaces (pbrt-v4)
 // eta = eta_t / eta_i  (transmitted / incident IOR)
 // ---------------------------------------------------------------------------
