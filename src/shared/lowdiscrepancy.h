@@ -60,7 +60,14 @@
 #define SCALAR_MATH_REVERSE_BITS_DEFINED
 
 CPU_GPU uint32_t ReverseBits32(uint32_t n) {
-#if defined(__CUDACC__)
+// __CUDA_ARCH__ (only defined during nvcc's DEVICE compilation pass), not
+// __CUDACC__ (defined whenever nvcc is the compiler, for BOTH the host and
+// device passes of a CPU_GPU/__host__ __device__ function) - __brev is a
+// device-only intrinsic, so gating on __CUDACC__ alone tries to call it
+// from the host pass too and fails to compile the first time this function
+// is actually device-compiled - previously latent since nothing had
+// exercised it through nvcc's dual host+device compilation before now.
+#if defined(__CUDA_ARCH__)
     return __brev(n);
 #else
     n = (n << 16) | (n >> 16);
@@ -223,7 +230,17 @@ CPU_GPU float SobolSample(const uint32_t* matrices, int matrix_size,
 		if (a & 1)
 			v ^= C[i];
 	v = randomizer(v);
-	return std::min(v * 0x1p-32f, FloatOneMinusEpsilon);
+	// Literal 0x1.fffffep-1f inline (matches float_bits.h's own
+	// FloatOneMinusEpsilon exactly) rather than referencing that constant -
+	// it's a plain host-side static constexpr, not device-visible, and
+	// std::min's const-reference parameter forces the compiler to need real
+	// addressable storage for it rather than folding it away - the first
+	// actual device compilation of this CPU_GPU-tagged function (previously
+	// latent since nothing had exercised it on device before now) hit
+	// exactly that. Inlining locally here avoids retagging float_bits.h's
+	// own constant, which has other, purely host-side consumers this
+	// shouldn't risk.
+	return std::min(v * 0x1p-32f, 0x1.fffffep-1f);
 }
 
 // ===========================================================================
@@ -308,8 +325,10 @@ CPU_GPU float OwenScrambledRadicalInverse(int baseIndex, uint64_t a,
 		++digitIndex;
 		a = next;
 	}
+	// See SobolSample()'s own comment above for why this is an inline
+	// literal rather than a reference to float_bits.h's FloatOneMinusEpsilon.
 	return std::min(invBaseM * static_cast<float>(reversedDigits),
-					FloatOneMinusEpsilon);
+					0x1.fffffep-1f);
 }
 
 #ifdef _MSC_VER
