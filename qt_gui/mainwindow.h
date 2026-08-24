@@ -1350,6 +1350,10 @@ private:
 	QSpinBox *m_videoFPSSpinBox;        // Target FPS for video
 	QDoubleSpinBox *m_videoSpeedSpinBox; // Camera movement speed multiplier
 	QLabel *m_videoInfoLabel;           // Video duration and path info
+	// Visible whenever Output Mode (Basic Settings) isn't "Generate Video" -
+	// see createVideoTab()'s own comment for why this tab stays enabled and
+	// clickable rather than being disabled outright. Toggled by onModeChanged().
+	QLabel *m_videoModeWarningLabel = nullptr;
 
 	// Preview tab - each completed render gets its own closable sub-tab
 	// (see addImagePreviewTab()/addVideoPreviewTab()) instead of a single

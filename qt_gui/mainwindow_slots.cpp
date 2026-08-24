@@ -1240,12 +1240,11 @@ void MainWindow::onModeChanged(int index) {
 	m_videoMode = (index == 1); // 0 = Image, 1 = Video
 
 	// Every control on Video Settings is inert unless Output Mode is
-	// "Generate Video" - disabling the tab itself (rather than leaving it
-	// fully interactive with no indication its contents are ignored) is
-	// what stops a user from configuring a video preset/camera path there,
-	// switching back to Basic Settings, and getting a silent single-frame
-	// render instead of the video they just set up.
-	if (m_videoTabIndex >= 0) m_tabWidget->setTabEnabled(m_videoTabIndex, m_videoMode);
+	// "Generate Video" - the banner (see createVideoTab()'s own comment) is
+	// what surfaces that, rather than disabling the tab outright and
+	// blocking the user from browsing/configuring it ahead of switching
+	// modes.
+	if (m_videoModeWarningLabel) m_videoModeWarningLabel->setVisible(!m_videoMode);
 
 	// Update render button text based on mode
 	if (m_videoMode) {

@@ -1300,6 +1300,23 @@ void MainWindow::createVideoTab() {
 	layout->setSpacing(12);
 	layout->setContentsMargins(12, 12, 12, 12);
 
+	// The tab stays fully interactive regardless of Output Mode (a prior
+	// version disabled it outright when Output Mode wasn't "Generate Video",
+	// but that blocked browsing/configuring these settings ahead of
+	// switching modes) - this banner is the substitute warning, so a
+	// configured preset/camera path/frame count never gets silently ignored
+	// without the user having seen why. onModeChanged() toggles its
+	// visibility; the initial state matches m_videoMode's own default
+	// (false - see the MainWindow constructor), so no extra sync call is
+	// needed here.
+	m_videoModeWarningLabel = new QLabel(
+		"⚠ These settings only take effect when Output Mode (Basic Settings tab) is set to \"Generate Video\".",
+		videoTab);
+	m_videoModeWarningLabel->setObjectName("videoModeWarning");
+	m_videoModeWarningLabel->setWordWrap(true);
+	m_videoModeWarningLabel->setVisible(!m_videoMode);
+	layout->addWidget(m_videoModeWarningLabel);
+
 	// Video parameters group
 	QGroupBox *videoGroup = new QGroupBox("Video Generation Settings", videoTab);
 	styleGroupBox(videoGroup);
@@ -1478,9 +1495,4 @@ void MainWindow::createVideoTab() {
 	scrollArea->setObjectName("tabScroll");
 
 	m_videoTabIndex = m_tabWidget->addTab(scrollArea, "Video Settings");
-	// Starts disabled - the initial Output Mode (Basic Settings) is "Render
-	// Single Image" (see createBasicTab()'s m_modeCombo setup), under which
-	// every control here is inert. onModeChanged() keeps this in sync
-	// afterwards whenever Output Mode changes.
-	m_tabWidget->setTabEnabled(m_videoTabIndex, false);
 }
