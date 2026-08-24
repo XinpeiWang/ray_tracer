@@ -410,3 +410,35 @@ inline const DenselySampledSpectrum& GetD65Illuminant() {
 	return s;
 }
 
+// GetD65Illuminant() above is the raw published CIE D65 SPD (peak ~120 at
+// 460nm), not normalized to any particular integral. RGBIlluminantSpectrum
+// (spectrum_types.h) and every other spectral quantity in this codebase
+// assume a (1,1,1) illuminant reconstructs to XYZ Y=1 under
+// SampledSpectrumToXYZ's kCIE_Y_integral convention (sampled_spectrum.h) -
+// passing the raw D65 table directly as an illuminant silently violates
+// that convention and inflates/desaturates every light's reconstructed
+// color. This is not hypothetical: the GPU wavefront backend
+// (gpu/optix/wavefront_path_tracer.cpp) shipped exactly this bug first
+// (~20% R inflation, ~9% G/B suppression on achromatic input, caught only
+// by a parity test) before adding the rescale below - replicated here
+// verbatim rather than re-derived, since re-deriving is exactly how that
+// bug happened the first time.
+inline const DenselySampledSpectrum& GetNormalizedD65Illuminant() {
+	static const DenselySampledSpectrum s = []{
+		const DenselySampledSpectrum& raw = GetD65Illuminant();
+		float normConst = 0.f;
+		for (int i = 0; i < kCIENSamples; ++i) {
+			float lambda = static_cast<float>(kCIELambda_min + i);
+			normConst += CIE_Y[i] * raw(lambda);
+		}
+		// 106.856895f == sampled_spectrum.h's kCIE_Y_integral - inlined
+		// rather than included here to avoid pulling that (much larger)
+		// header into this foundational data-only header for one constant.
+		float scale = 106.856895f / normConst;
+		return DenselySampledSpectrum::SampleFunction(
+			[&raw, scale](float lambda) { return raw(lambda) * scale; },
+			kCIELambda_min, kCIELambda_max);
+	}();
+	return s;
+}
+

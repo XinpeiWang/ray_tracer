@@ -410,19 +410,35 @@ CPU_GPU XYZResult SampledSpectrumToXYZ(
 }
 
 // ---------------------------------------------------------------------------
-// XYZ -> sRGB (D65 white point, pbrt-v4 aligned)
+// XYZ -> linear sRGB (D65 white point, pbrt-v4 aligned) -- no gamma curve.
+//
+// For callers (e.g. a CPU/GPU path tracer's own per-sample radiance) that
+// still need to go through their existing tone-mapping + sRGB OETF exactly
+// once, downstream, after accumulation - using XYZToSRGB() below instead
+// would gamma-encode twice. Negatives are clamped to 0 here (the single
+// point a per-sample caller reduces spectral to RGB); XYZToSRGB() reuses
+// this and then applies gamma on top, so the two can never drift apart.
 // ---------------------------------------------------------------------------
-CPU_GPU void XYZToSRGB(float X, float Y, float Z,
-							   float& r, float& g, float& b)
+CPU_GPU void XYZToLinearRGB(float X, float Y, float Z,
+									float& r, float& g, float& b)
 {
 	// sRGB matrix (from pbrt-v4 RGBColorSpace::sRGB XYZ->RGB matrix)
 	r =  3.2404542f * X - 1.5371385f * Y - 0.4985314f * Z;
 	g = -0.9692660f * X + 1.8760108f * Y + 0.0415560f * Z;
 	b =  0.0556434f * X - 0.2040259f * Y + 1.0572252f * Z;
-	// Apply sRGB gamma (linear to gamma-encoded), clamp negatives
 	r = r < 0.f ? 0.f : r;
 	g = g < 0.f ? 0.f : g;
 	b = b < 0.f ? 0.f : b;
+}
+
+// ---------------------------------------------------------------------------
+// XYZ -> sRGB (D65 white point, pbrt-v4 aligned) -- gamma-encoded.
+// ---------------------------------------------------------------------------
+CPU_GPU void XYZToSRGB(float X, float Y, float Z,
+							   float& r, float& g, float& b)
+{
+	XYZToLinearRGB(X, Y, Z, r, g, b);
+	// Apply sRGB gamma (linear to gamma-encoded)
 	r = r <= 0.0031308f ? 12.92f * r : 1.055f * powf(r, 1.f / 2.4f) - 0.055f;
 	g = g <= 0.0031308f ? 12.92f * g : 1.055f * powf(g, 1.f / 2.4f) - 0.055f;
 	b = b <= 0.0031308f ? 12.92f * b : 1.055f * powf(b, 1.f / 2.4f) - 0.055f;

@@ -15,6 +15,7 @@
 
 #include "../../src/data/cie_data.h"
 #include "../../src/shared/spectral_math.h"
+#include "../../src/shared/sampled_spectrum.h"
 
 static constexpr float kEps    = 1e-5f;
 static constexpr float kRelEps = 1e-3f;  // Monte Carlo estimator tolerance
@@ -261,4 +262,77 @@ TEST(SpectralMathIntegration, Blackbody_ToXYZ_Consistent) {
 	// Normalized blackbody Y should be in (0, 1]
 	EXPECT_GT(yMean, 0.f);
 	EXPECT_LE(yMean, 1.1f);  // small tolerance for MC variance
+}
+
+// ---------------------------------------------------------------------------
+// GetNormalizedD65Illuminant() -- rescaled so a (1,1,1) RGBIlluminantSpectrum
+// reconstructs to XYZ Y=1, matching SampledSpectrumToXYZ's kCIE_Y_integral
+// convention. Formula replicated verbatim from the already-shipped, already
+// -bug-fixed GPU wavefront normalization (wavefront_path_tracer.cpp).
+// ---------------------------------------------------------------------------
+
+TEST(NormalizedD65, InnerProductWithCIE_Y_MatchesCIE_Y_Integral) {
+	const DenselySampledSpectrum& d65 = GetNormalizedD65Illuminant();
+	float sum = 0.f;
+	for (int i = 0; i < kCIENSamples; ++i) {
+		float lambda = static_cast<float>(kCIELambda_min + i);
+		sum += CIE_Y[i] * d65(lambda);
+	}
+	EXPECT_NEAR(sum, kCIE_Y_integral, kCIE_Y_integral * 1e-4f);
+}
+
+TEST(NormalizedD65, DifferentShapeFromRawD65) {
+	// The rescale is a single flat multiplier, so relative shape (chromaticity)
+	// is preserved -- only the absolute scale should differ from the raw table.
+	const DenselySampledSpectrum& raw   = GetD65Illuminant();
+	const DenselySampledSpectrum& norm  = GetNormalizedD65Illuminant();
+	EXPECT_GT(raw(560.f), 0.f);
+	float ratio1 = norm(560.f) / raw(560.f);
+	float ratio2 = norm(460.f) / raw(460.f);
+	EXPECT_NEAR(ratio1, ratio2, 1e-4f);
+	EXPECT_NE(ratio1, 1.0f);
+}
+
+TEST(NormalizedD65, Singleton_SameReference) {
+	EXPECT_EQ(&GetNormalizedD65Illuminant(), &GetNormalizedD65Illuminant());
+}
+
+// ---------------------------------------------------------------------------
+// XYZToLinearRGB() -- same matrix as XYZToSRGB(), no gamma curve.
+// ---------------------------------------------------------------------------
+
+TEST(XYZToLinearRGB, NoGammaCurveAppliedUnlikeXYZToSRGB) {
+	// A mid-grey XYZ: gamma encoding would push linear values up noticeably
+	// (sRGB OETF is well above the identity line in the mid-range), so the
+	// two outputs must differ once linear r is not already ~0 or ~1.
+	float lr, lg, lb, sr, sg, sb;
+	XYZToLinearRGB(0.2f, 0.2f, 0.2f, lr, lg, lb);
+	XYZToSRGB(0.2f, 0.2f, 0.2f, sr, sg, sb);
+	EXPECT_GT(lr, 0.f);
+	EXPECT_GT(sr, lr);  // gamma-encoded value is brighter than linear
+}
+
+TEST(XYZToLinearRGB, MatchesXYZToSRGB_BeforeGammaStep) {
+	// XYZToSRGB is now defined in terms of XYZToLinearRGB + gamma - verify
+	// applying the sRGB OETF to XYZToLinearRGB's output reproduces
+	// XYZToSRGB's output exactly, i.e. the two can never drift apart.
+	auto gamma = [](float v) {
+		return v <= 0.0031308f ? 12.92f * v : 1.055f * powf(v, 1.f / 2.4f) - 0.055f;
+	};
+	float lr, lg, lb, sr, sg, sb;
+	XYZToLinearRGB(0.4f, 0.35f, 0.3f, lr, lg, lb);
+	XYZToSRGB(0.4f, 0.35f, 0.3f, sr, sg, sb);
+	EXPECT_NEAR(gamma(lr), sr, 1e-6f);
+	EXPECT_NEAR(gamma(lg), sg, 1e-6f);
+	EXPECT_NEAR(gamma(lb), sb, 1e-6f);
+}
+
+TEST(XYZToLinearRGB, ClampsNegativesToZero) {
+	// A saturated/out-of-gamut XYZ can produce a negative RGB channel via
+	// the matrix - both functions must clamp rather than emit negative color.
+	float r, g, b;
+	XYZToLinearRGB(0.01f, 0.9f, 0.9f, r, g, b);
+	EXPECT_GE(r, 0.f);
+	EXPECT_GE(g, 0.f);
+	EXPECT_GE(b, 0.f);
 }
