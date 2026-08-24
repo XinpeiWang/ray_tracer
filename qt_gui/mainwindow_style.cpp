@@ -163,6 +163,56 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 
 	// Apply cyberpunk stylesheet for enhanced neon effects
 	QString stylesheet = QString(R"(
+		/* The menu bar and its dropdown menus previously had no rules at
+		   all here, so they rendered as plain native OS chrome - a bright
+		   white Windows menu bar across the top of an otherwise fully
+		   dark-themed window. Selected-state colours match the existing
+		   convention (QListView::item:hover/selected below) rather than
+		   inventing a new one: %HOVER_ROW%/%ACCENT_2% for a hovered top-
+		   level item, %ACCENT_DIM%/%SELECTED_TEXT% for a highlighted
+		   dropdown entry. */
+		QMenuBar {
+			background-color: %SURFACE0%;
+			color: %TEXT%;
+			border-bottom: 1px solid %BORDER%;
+			padding: 2px;
+		}
+		QMenuBar::item {
+			background: transparent;
+			padding: 6px 12px;
+			border-radius: 4px;
+		}
+		QMenuBar::item:selected {
+			background-color: %HOVER_ROW%;
+			color: %ACCENT_2%;
+		}
+		QMenuBar::item:pressed {
+			background-color: %SURFACE2%;
+		}
+		QMenu {
+			background-color: %SURFACE1%;
+			border: 1px solid %BORDER_STRONG%;
+			border-radius: %RADIUS%;
+			padding: 4px;
+		}
+		QMenu::item {
+			background: transparent;
+			color: %TEXT%;
+			padding: 6px 24px 6px 12px;
+			border-radius: 4px;
+		}
+		QMenu::item:selected {
+			background-color: %ACCENT_DIM%;
+			color: %SELECTED_TEXT%;
+		}
+		QMenu::item:disabled {
+			color: %TEXT_DISABLED%;
+		}
+		QMenu::separator {
+			height: 1px;
+			background-color: %BORDER%;
+			margin: 4px 8px;
+		}
 		QGroupBox {
 			border: 1px solid %BORDER%;
 			border-radius: %RADIUS_LG%;
@@ -660,6 +710,16 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 		QSlider::handle:horizontal:hover {
 			background-color: %ACCENT_2%;
 			border-color: %ACCENT_2%;
+		}
+		/* Scrub-position bubble that follows the video slider's handle while
+		   dragging - see addVideoPreviewTab()'s own comment. */
+		QLabel#scrubBubble {
+			background-color: %SURFACE3%;
+			color: %TEXT%;
+			border: 1px solid %BORDER_STRONG%;
+			border-radius: 4px;
+			padding: 2px 6px;
+			font-size: 9pt;
 		}
 		/* Preview tab's image/video splitter - a slim themed grip instead
 		   of the OS's default flat grey bar. */

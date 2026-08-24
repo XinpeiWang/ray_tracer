@@ -29,6 +29,7 @@
 #include <QStackedWidget>
 #include <QSlider>
 #include <cmath>
+#include <algorithm>
 
 // Refills the scene dropdown with just one category's scenes, further
 // narrowed by m_sceneSearchBox's current text if any (name/id/description
@@ -935,6 +936,35 @@ void MainWindow::addVideoPreviewTab(const QString &title, const QString &tooltip
 	connect(player, &QMediaPlayer::errorOccurred, page, [this](QMediaPlayer::Error error, const QString &errorString) {
 		onLogMessage(QString("Video playback error (%1): %2").arg(static_cast<int>(error)).arg(errorString));
 	});
+	// A small value bubble that follows the handle while scrubbing, showing
+	// the position being dragged to as M:SS - Fluent-style sliders do this
+	// by default; QSlider has no built-in equivalent. A plain child widget
+	// rather than a real QToolTip, which auto-hides on mouse movement -
+	// exactly what a drag never stops doing. Parented to positionSlider so
+	// it's destroyed with it automatically; each video preview tab gets its
+	// own slider (and so its own bubble), never a shared one.
+	QLabel *scrubBubble = new QLabel(positionSlider);
+	scrubBubble->setObjectName("scrubBubble");
+	scrubBubble->setAlignment(Qt::AlignCenter);
+	scrubBubble->hide();
+
+	const auto formatMs = [](qint64 ms) {
+		const qint64 totalSeconds = ms / 1000;
+		return QString("%1:%2").arg(totalSeconds / 60).arg(totalSeconds % 60, 2, 10, QChar('0'));
+	};
+	// Horizontal position only (handle height doesn't vary), placed just
+	// above the groove. Proportional to (value-min)/(max-min) across the
+	// slider's own current width - not a hand-tuned pixel offset - so it
+	// tracks correctly regardless of the tab's width or DPI.
+	const auto moveBubbleTo = [positionSlider, scrubBubble](int value) {
+		scrubBubble->adjustSize();
+		const int span = std::max(0, positionSlider->width() - scrubBubble->width());
+		const int range = positionSlider->maximum() - positionSlider->minimum();
+		const double t = range > 0
+			? double(value - positionSlider->minimum()) / range : 0.0;
+		scrubBubble->move(static_cast<int>(t * span), -scrubBubble->height() - 4);
+	};
+
 	// Pausing before setPosition() (and resuming after, if it was playing)
 	// is the standard fix for scrubbing that "doesn't seem to do anything":
 	// while playing, the player's own clock keeps advancing on its own
@@ -945,15 +975,24 @@ void MainWindow::addVideoPreviewTab(const QString &title, const QString &tooltip
 	// racing it. "Was playing" rides as a property on the slider itself
 	// rather than a captured variable, since this tab's own connections are
 	// the only thing that needs it.
-	connect(positionSlider, &QSlider::sliderPressed, page, [player, positionSlider]() {
+	connect(positionSlider, &QSlider::sliderPressed, page,
+			[player, positionSlider, scrubBubble, formatMs, moveBubbleTo]() {
 		positionSlider->setProperty("wasPlaying", player->playbackState() == QMediaPlayer::PlayingState);
 		player->pause();
+		scrubBubble->setText(formatMs(positionSlider->value()));
+		moveBubbleTo(positionSlider->value());
+		scrubBubble->show();
+		scrubBubble->raise();
 	});
-	connect(positionSlider, &QSlider::sliderMoved, page, [player](int position) {
+	connect(positionSlider, &QSlider::sliderMoved, page,
+			[player, scrubBubble, formatMs, moveBubbleTo](int position) {
 		player->setPosition(position);
+		scrubBubble->setText(formatMs(position));
+		moveBubbleTo(position);
 	});
-	connect(positionSlider, &QSlider::sliderReleased, page, [player, positionSlider]() {
+	connect(positionSlider, &QSlider::sliderReleased, page, [player, positionSlider, scrubBubble]() {
 		if (positionSlider->property("wasPlaying").toBool()) player->play();
+		scrubBubble->hide();
 	});
 
 	page->setProperty("outputPath", videoPath);
