@@ -1221,6 +1221,17 @@ private:
 	// the scene combo/grid's per-row tooltips (mainwindow_tabs.cpp) format
 	// scene_technique_notes.h's text the same way.
 	QString wrapTooltipHtml(const QString &plainText);
+	// Builds the wrapTooltipHtml()-formatted technique-note tooltip for
+	// `sceneId` - the one place that decides how to combine an id/name
+	// heading with scene_technique_notes::forScene()'s text, shared by the
+	// 3 call sites that used to each assemble this independently
+	// (mainwindow_tabs.cpp's populateSceneCombo()/populateSceneGrid(), and
+	// updateSceneTechInfoIcon() below). includeHeading=false when the id/name
+	// is already visible right next to the tooltip's own widget (the combo
+	// row's own text, the standalone info icon's neighboring scene picker);
+	// true when it isn't (the grid's tiles only show the scene's name, not
+	// its id, as their own label).
+	QString sceneTooltipHtml(const QString &sceneId, bool includeHeading);
 	// Rewrites m_sceneTechInfoIcon's tooltip for `sceneId` (see
 	// scene_technique_notes.h) - called from refreshSceneInfoLabel().
 	void updateSceneTechInfoIcon(const QString &sceneId);

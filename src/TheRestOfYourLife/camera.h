@@ -1332,34 +1332,36 @@ class camera {
                 }
             }
 
-            // Dispersive dielectric (smooth or rough): dispatch to
+            // Dispersive material (any kind - smooth dielectric, rough
+            // dielectric, or any future one): dispatch to
             // scatter_dispersive() instead of the ordinary virtual scatter(),
-            // passing the path's hero wavelength so a material built via
-            // dielectric::make_dispersive() or rough_dielectric::
-            // make_dispersive() (material_simple.h/material_pbrt.h) actually
-            // refracts differently per wavelength. Every other material
-            // (and a non-dispersive dielectric/rough_dielectric) takes the
-            // unchanged scatter() path. The two are mutually exclusive per
-            // rec (a hit is never both), and disp_rough stays alive past
-            // this point - unlike disp_mat, smooth dielectric's dispersive
-            // path never reaches NEE below, but rough_dielectric's does.
+            // passing the path's hero wavelength so a material built via its
+            // own make_dispersive() factory actually refracts differently
+            // per wavelength. Every other material (and a non-dispersive
+            // dielectric/rough_dielectric) takes the unchanged scatter()
+            // path. `disp` stays alive past this point for the NEE/Strategy-B
+            // dispatch below - smooth dielectric's dispersive path never
+            // reaches NEE (always skip_pdf), but rough_dielectric's does.
             //
-            // Uses material::as_dispersive_dielectric(rec)/
-            // as_dispersive_rough_dielectric(rec) - the same wrapper-
+            // Uses material::as_dispersive(rec) - the same wrapper-
             // forwarding pattern as as_subsurface() - rather than a raw
             // dynamic_cast, so a dispersive material mixed into a
             // mix_material is still found through the wrapper instead of
             // silently losing dispersion the moment rec.mat is the
             // mix_material rather than the material it stochastically
-            // picked.
+            // picked. One shared hook and one dispersive_material interface
+            // (material_base.h) cover every dispersive concrete type, so
+            // adding a future one needs no new dispatch arm here.
             scatter_record srec;
-            const dielectric* disp_mat = rec.mat->as_dispersive_dielectric(rec);
-            const rough_dielectric* disp_rough = rec.mat->as_dispersive_rough_dielectric(rec);
-            bool scattered = disp_mat
-                ? disp_mat->scatter_dispersive(current_ray, rec, srec, static_cast<float>(swl.lambda[0]))
-                : disp_rough
-                    ? disp_rough->scatter_dispersive(current_ray, rec, srec, static_cast<float>(swl.lambda[0]), any_nonspecular)
-                    : rec.mat->scatter(current_ray, rec, srec, any_nonspecular);
+            const dispersive_material* disp = rec.mat->as_dispersive(rec);
+            // Only meaningful once scatter_dispersive() below resolves it;
+            // reused by scattering_pdf_at() further down instead of every
+            // NEE/Strategy-B call re-deriving eta from lambda_nm itself.
+            double dispersive_eta = 0.0;
+            bool scattered = disp
+                ? disp->scatter_dispersive(current_ray, rec, srec, static_cast<float>(swl.lambda[0]),
+                                            any_nonspecular, dispersive_eta)
+                : rec.mat->scatter(current_ray, rec, srec, any_nonspecular);
             if (!scattered)
                 break;
 
@@ -1367,15 +1369,13 @@ class camera {
             // refraction happened - see TerminateSecondary()'s own comment
             // (sampled_spectrum.h) for why the other 3 channels' PDFs must
             // be zeroed after this (their shared pre-refraction direction
-            // is no longer valid per-wavelength). Gated on is_dispersive(),
-            // not just srec.is_transmission - calling this on a non-
-            // dispersive material's transmission would only cost variance
-            // (all 4 channels still refract identically) for zero benefit,
-            // silently changing every existing --spectral scene's noise
-            // pattern for no reason.
+            // is no longer valid per-wavelength). Gated on `disp` alone -
+            // as_dispersive() only ever returns non-null for an already-
+            // dispersive material (dispersive_material's own "non-null
+            // means yes" contract), so there's nothing further to re-check.
             //
-            // For disp_rough specifically this fires unconditionally on
-            // every hit, not just transmission-bound ones: rough_dielectric
+            // Fires unconditionally on every hit of a dispersive rough
+            // dielectric, not just transmission-bound ones: rough_dielectric
             // ::scatter()'s glossy branch always sets srec.is_transmission
             // = true regardless of which lobe eventually gets sampled (see
             // that function's own comment), and RoughDielectricBxDF::f()'s
@@ -1384,8 +1384,7 @@ class camera {
             // per-wavelength divergence is real the moment this material is
             // hit at all, not only when the sampled bounce happens to cross
             // the boundary.
-            if (srec.is_transmission &&
-                ((disp_mat && disp_mat->is_dispersive()) || (disp_rough && disp_rough->is_dispersive())))
+            if (srec.is_transmission && disp)
                 swl.TerminateSecondary();
 
             // Specular bounce: no NEE, update beta and advance ray.
@@ -1415,16 +1414,18 @@ class camera {
 
             // Every scattering_pdf() call below goes through this instead of
             // calling rec.mat->scattering_pdf(...) directly, so a dispersive
-            // rough_dielectric's real NEE/MIS path (the reason disp_rough
-            // was resolved above) evaluates f*cos at the path's hero
-            // wavelength instead of the material's flat, non-dispersive ior
-            // - see rough_dielectric::scattering_pdf_dispersive()'s own
-            // comment for why this matters even for reflection-bound
-            // samples. A no-op for every other material (disp_rough is
+            // material's real NEE/MIS path (currently only rough_dielectric
+            // reaches this - smooth dielectric is always skip_pdf and never
+            // gets here) evaluates f*cos at the SAME per-wavelength eta
+            // scatter_dispersive() already resolved above (dispersive_eta),
+            // instead of every NEE strategy/Strategy B independently
+            // re-deriving it from the hero wavelength - see
+            // dispersive_material::scattering_pdf_dispersive()'s own comment
+            // (material_base.h). A no-op for every other material (disp is
             // null), so this changes nothing for the common case.
             auto scattering_pdf_at = [&](const ray& scattered) -> double {
-                return disp_rough
-                    ? disp_rough->scattering_pdf_dispersive(current_ray, rec, scattered, static_cast<float>(swl.lambda[0]))
+                return disp
+                    ? disp->scattering_pdf_dispersive(current_ray, rec, scattered, dispersive_eta)
                     : rec.mat->scattering_pdf(current_ray, rec, scattered);
             };
 

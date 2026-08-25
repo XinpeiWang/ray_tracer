@@ -47,6 +47,19 @@ struct CameraConfig {
     double focus_dist    = 10.0;
 };
 
+// Shared CameraConfig rows for scenes that intentionally reuse another
+// scene's exact framing (Education/B24 - see their own comments in
+// get_builtin_scene_registry() below for why: same geometry, only the id/
+// category/description/material differ). Named constants instead of each
+// entry repeating the same literal row make "same camera as X" a fact the
+// compiler enforces rather than one only asserted by comment - if A1's or
+// B23's own row is ever retuned, every sibling below picks up the change
+// automatically instead of silently going out of sync with it.
+constexpr CameraConfig kCornellBoxCamera =
+    { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled };
+constexpr CameraConfig kPrismCamera =
+    { 30, 75, 60, -400,  75, 75, 250,  0, 0, 0, CameraMode::UserControlled };
+
 // Forward alias so std::function<void(camera_t&)> inside SceneDescriptor
 // doesn't conflict with the CameraConfig field named 'camera'.
 using camera_t = camera;
@@ -469,7 +482,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "A1", 0, SceneNames::CornellBox, SceneCategories::Basics,
             "Classic Cornell box with glass sphere and aluminum box",
             "Medium", 100, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
+            kCornellBoxCamera,
             build_cornell_box,
             build_cornell_box_lights
         },
@@ -885,7 +898,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B23", 131, SceneNames::GlassPrismDispersion, SceneCategories::Materials,
             "A real glass prism splitting a parallel white light into a visible chromatic fan (--spectral only - see dielectric's dispersive constructor, material_simple.h)",
             "Medium", 200, false, false,
-            { 30, 75, 60, -400,  75, 75, 250,  0, 0, 0, CameraMode::UserControlled },
+            kPrismCamera,
             build_prism_dispersion,
             no_lights,
             nullptr,
@@ -899,7 +912,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "B24", 136, SceneNames::FrostedPrismDispersion, SceneCategories::Materials,
             "The same glass prism as B23, frosted (rough_dielectric) instead of smooth - same chromatic fan, blurred by the roughness (--spectral only)",
             "Medium", 200, false, false,
-            { 30, 75, 60, -400,  75, 75, 250,  0, 0, 0, CameraMode::UserControlled },
+            kPrismCamera,
             build_prism_dispersion_rough,
             no_lights,
             nullptr,
@@ -1648,7 +1661,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "I1", 132, SceneNames::SamplerComparison, SceneCategories::Education,
             "Cornell box rendered at a deliberately low 16 spp so different Sampler choices (Render Options tab) leave visibly different noise/clumping in the soft shadow.",
             "Fast", 16, false, false,
-            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
+            kCornellBoxCamera,
             build_cornell_box,
             build_cornell_box_lights
         },
@@ -1662,7 +1675,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "I2", 133, SceneNames::SpectralDispersionEducation, SceneCategories::Education,
             "Same glass prism as B23: white light only fans into a visible spectrum with Spectral rendering (Render Options tab) switched on - off, every wavelength refracts by the same fixed amount.",
             "Medium", 200, false, false,
-            { 30, 75, 60, -400,  75, 75, 250,  0, 0, 0, CameraMode::UserControlled },
+            kPrismCamera,
             build_prism_dispersion,
             no_lights,
             nullptr,
@@ -1693,7 +1706,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "I4", 135, SceneNames::DenoiserComparison, SceneCategories::Education,
             "Cornell box at a deliberately low 32 spp - render once with the OptiX AI denoiser (Render Options tab, GPU recursive only) off, once on, and compare. The neighboring OptiX validation mode checkbox has no visual effect either way - it only adds debugging checks.",
             "Fast", 32, false, true,
-            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
+            kCornellBoxCamera,
             build_cornell_box,
             build_cornell_box_lights
         },
@@ -1919,9 +1932,11 @@ inline void append(std::vector<SceneDescriptor>& registry) {
     // so any future gap can't reopen the same collision silently.
     //
     // user_number is the NEW id's counter, independent and always 1-based -
-    // all pbrt scenes share category CustomScenes ("I"), so this is simply
-    // "the Nth pbrt scene loaded this run", with no static CustomScenes
-    // entries in the builtin registry to continue from today.
+    // all pbrt scenes share category CustomScenes (letter derived via
+    // SceneCategories::letter_for_category() below, not hardcoded - see
+    // that function's own comment for why), so this is simply "the Nth
+    // pbrt scene loaded this run", with no static CustomScenes entries in
+    // the builtin registry to continue from today.
     int legacy_id = 0;
     for (const SceneDescriptor& b : get_builtin_scene_registry())
         legacy_id = std::max(legacy_id, b.legacy_id + 1);

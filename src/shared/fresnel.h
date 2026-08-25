@@ -38,6 +38,26 @@ CPU_GPU T CauchyEta(T lambda_nm, T A, T B) {
 }
 
 // ---------------------------------------------------------------------------
+// CauchyCoefficientsFromAbbe -- derives CauchyEta()'s (A, B) pair from the
+// artist-facing (eta_d, Abbe number) pair real glass catalogs quote (e.g.
+// crown glass ~=1.52/59, flint glass ~=1.62/36), via the standard closed
+// form at the F/C/D spectral lines (486.1/656.3/589.3nm, lambda in
+// micrometers):
+//   B = (eta_d - 1) / (abbe * (1/lambda_F^2 - 1/lambda_C^2))
+//   A = eta_d - B / lambda_D^2
+// CPU-only (construction-time, not per-ray, unlike CauchyEta() above) -
+// shared by every dispersive material's make_dispersive() factory
+// (dielectric in material_simple.h, rough_dielectric in material_pbrt.h) so
+// the derivation can't silently drift between them the way two hand-copied
+// inline versions could.
+// ---------------------------------------------------------------------------
+inline void CauchyCoefficientsFromAbbe(double eta_d, double abbe_number, double& A, double& B) {
+	constexpr double lambda_F = 0.4861, lambda_C = 0.6563, lambda_D = 0.5893;
+	B = (eta_d - 1.0) / (abbe_number * (1.0 / (lambda_F * lambda_F) - 1.0 / (lambda_C * lambda_C)));
+	A = eta_d - B / (lambda_D * lambda_D);
+}
+
+// ---------------------------------------------------------------------------
 // FrDielectric -- real-valued Fresnel for dielectric interfaces (pbrt-v4)
 // eta = eta_t / eta_i  (transmitted / incident IOR)
 // ---------------------------------------------------------------------------

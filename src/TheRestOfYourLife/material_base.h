@@ -26,16 +26,6 @@
 // needing to know anything else about it.
 class subsurface;
 
-// Defined in material_simple.h. Forward-declared here for the same reason,
-// so `material::as_dispersive_dielectric()` below can return a pointer to
-// it without material_base.h needing to know anything else about it.
-class dielectric;
-
-// Defined in material_pbrt.h. Forward-declared here for the same reason, so
-// `material::as_dispersive_rough_dielectric()` below can return a pointer to
-// it without material_base.h needing to know anything else about it.
-class rough_dielectric;
-
 
 class scatter_record {
   public:
@@ -61,6 +51,61 @@ class scatter_record {
     // corrupted path and rendered correctly).
     double eta = 1.0;             // IOR ratio (1.0 unless refraction; pbrt-v4 bs->eta)
     bool is_transmission = false; // true when a refraction occurred (drives etaScale in integrator)
+};
+
+
+// Common interface for a material whose IOR is wavelength-dependent (real
+// dispersion, reachable only under --spectral) - implemented by `dielectric`
+// (material_simple.h) and `rough_dielectric` (material_pbrt.h), each via
+// their own make_dispersive() factory. `material::as_dispersive()` below is
+// the ONE hook camera.h's ray_color_spectral() dispatches through for every
+// dispersive material, regardless of how many concrete types exist.
+//
+// This replaces what used to be a separate virtual hook PER dispersive
+// concrete type (as_dispersive_dielectric()/as_dispersive_rough_dielectric()) -
+// that shape didn't scale: every new dispersive material needed its own
+// hook, its own mix_material forwarding override, and its own arm in 3
+// separate camera.h dispatch points, with nothing stopping a future
+// material from getting the hook and override right while still being
+// forgotten at one of those 3 call sites - silently reintroducing the exact
+// "loses dispersion through NEE" bug rough_dielectric's own dispersion
+// needed fixing once already, just for the next material instead.
+//
+// A material reachable through as_dispersive() IS, unconditionally,
+// dispersive - there is no separate is_dispersive() to re-check afterward;
+// the pointer itself is the answer, same "non-null means yes" contract
+// as_subsurface() already uses above.
+class dispersive_material {
+  public:
+    virtual ~dispersive_material() = default;
+
+    // Spectral-aware scatter: computes eta from the path's hero wavelength
+    // instead of a flat IOR, and reports that resolved eta back through
+    // eta_out so a later scattering_pdf_dispersive() call for the SAME
+    // bounce can reuse it instead of re-deriving eta from lambda_nm all
+    // over again (up to 4 more times, once per NEE strategy/Strategy B -
+    // camera.h calls this once per bounce, scattering_pdf_dispersive()
+    // potentially several times). do_regularize is accepted for parity with
+    // material::scatter() even though a material with no roughness of its
+    // own (smooth dielectric) simply ignores it.
+    virtual bool scatter_dispersive(const ray& r_in, const hit_record& rec,
+                                     scatter_record& srec, float lambda_nm,
+                                     bool do_regularize, double& eta_out) const = 0;
+
+    // Spectral-aware scattering_pdf, for a dispersive material whose glossy
+    // path reaches real NEE/MIS (rough_dielectric) - takes the SAME eta
+    // scatter_dispersive() already resolved for this bounce (see eta_out
+    // above), not lambda_nm again, so the two calls can't independently
+    // drift and NEE never pays for a second Cauchy-formula evaluation.
+    // Default 0 matches material::scattering_pdf()'s own default and is
+    // correct for any material whose scatter_dispersive() only ever leaves
+    // srec.skip_pdf=true (smooth dielectric: always specular, this is never
+    // actually called).
+    virtual double scattering_pdf_dispersive(const ray& r_in, const hit_record& rec,
+                                              const ray& scattered, double eta) const {
+        (void)r_in; (void)rec; (void)scattered; (void)eta;
+        return 0.0;
+    }
 };
 
 
@@ -167,33 +212,25 @@ class material {
         return nullptr;
     }
 
-    // Non-null only for a `dielectric` (material_simple.h) built via its
-    // dispersive (eta_d, abbe_number) factory: a material whose IOR is
-    // wavelength-dependent. camera.h's ray_color_spectral() uses this -
-    // instead of a raw dynamic_cast<const dielectric*>(rec.mat.get()) -
-    // to decide whether to route a transmission event through
-    // scatter_dispersive() at the path's hero wavelength.
+    // Non-null only for a material built via its own dispersive factory
+    // (dielectric::make_dispersive()/rough_dielectric::make_dispersive()):
+    // one whose IOR is wavelength-dependent. camera.h's ray_color_spectral()
+    // uses this - instead of a raw dynamic_cast<const T*>(rec.mat.get()) per
+    // concrete type - to decide whether to route a transmission event
+    // through dispersive_material::scatter_dispersive() at the path's hero
+    // wavelength. See dispersive_material's own comment (above) for why
+    // this is a single hook covering every dispersive concrete type rather
+    // than one hook per type.
     //
     // Mirrors as_subsurface() above and exists for the identical reason: a
     // wrapper material whose choice of sub-material varies by hit point
     // (mix_material) needs to report the SAME sub-material its own
     // scatter() call on this rec just committed to, or dispersion silently
-    // vanishes the moment a dispersive dielectric is mixed with anything -
+    // vanishes the moment a dispersive material is mixed with anything -
     // the dynamic_cast approach would see the outer mix_material, not the
-    // dielectric it stochastically picked, and fall back to flat-IOR
+    // material it stochastically picked, and fall back to flat-IOR
     // refraction with no error or warning.
-    virtual const dielectric* as_dispersive_dielectric(const hit_record& rec) const {
-        (void)rec;
-        return nullptr;
-    }
-
-    // Same purpose and reasoning as as_dispersive_dielectric() above, for
-    // `rough_dielectric` (material_pbrt.h) built via its own dispersive
-    // factory - a separate hook rather than reusing the one above because
-    // the two are unrelated concrete types (not a common dispersive base),
-    // and camera.h's ray_color_spectral() needs the real rough_dielectric*
-    // to reach its own scatter_dispersive()/scattering_pdf_dispersive().
-    virtual const rough_dielectric* as_dispersive_rough_dielectric(const hit_record& rec) const {
+    virtual const dispersive_material* as_dispersive(const hit_record& rec) const {
         (void)rec;
         return nullptr;
     }

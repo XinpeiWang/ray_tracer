@@ -56,8 +56,7 @@ numbered sections below for the narrative detail behind any row.
 | Materials | Hair (Marschner/Chiang) | Y / Y / Y | N/A |
 | Materials | Measured (`.bsdf` tensor) | Y / Y / Y | Unresolved filename → falls back to Lambertian (same gate on both backends) |
 | Materials | Principled | Y / Y / Y | N/A |
-| Materials | Dispersion (`dielectric` only) | CPU only | GPU request → falls back to flat, non-dispersive IOR, silently (no warning — not a scene-load failure) |
-| Materials | Dispersion (`rough_dielectric`) | N, no backend | Always flat, non-dispersive IOR |
+| Materials | Dispersion (`dielectric`, `rough_dielectric`) | CPU only | GPU request → falls back to flat, non-dispersive IOR, silently (no warning — not a scene-load failure) |
 | Materials | Unrecognized pbrt `Material` kind | N | Falls back to flat Lambertian using base color, warned by name |
 | Textures | Procedural (checker/noise/marble/windy/dots/etc.) | Y | N/A |
 | Textures | Image textures + mipmap/EWA filter | Y | N/A |
@@ -148,13 +147,19 @@ fiber scattering), `measured` (real Dupuy & Jakob tensor `.bsdf` loader +
 eval on all three backends), `principled`, `diffuse_light`, `isotropic`
 (medium phase-function material), normal/bump mapping wrappers.
 
-**Dispersion** (wavelength-dependent IOR): `dielectric` only, via a
-two-term Cauchy formula (`dielectric::make_dispersive(eta_d, abbe_number)`,
-`material_simple.h`) — **CPU only**, and only reachable through
-`--spectral`. `mix_material` forwards to a dispersive sub-material
-correctly. **Gaps**: no `rough_dielectric` dispersion (flat IOR only even
-under `--spectral`); no dispersion anywhere on GPU (recursive or
-wavefront).
+**Dispersion** (wavelength-dependent IOR): both `dielectric` and
+`rough_dielectric`, via the same two-term Cauchy formula
+(`dielectric::make_dispersive(eta_d, abbe_number)` /
+`rough_dielectric::make_dispersive(eta_d, abbe_number, roughness)`,
+`material_simple.h` / `material_pbrt.h`) — **CPU only**, and only reachable
+through `--spectral`. `rough_dielectric`'s dispersive path is real NEE/MIS,
+not an approximation reusing the smooth material's specular-only shortcut:
+a delta light (point/spot/distant) is reachable only via NEE, never by
+chance through BSDF sampling, so `scattering_pdf()` itself had to become
+wavelength-aware too (`scattering_pdf_dispersive()`), not just the initial
+`scatter()`. See `B24` (Frosted Prism Dispersion, Materials category) for
+the demo, a frosted sibling of `B23`'s smooth dispersive prism. **Gap**: no
+dispersion anywhere on GPU (recursive or wavefront).
 
 **Not a gap, just a scope note**: `--spectral`'s own material whitelist
 (`cpu_interface.cpp`'s `spectral_scan_hittable()`) only covers 6 of the
@@ -164,6 +169,15 @@ materials above — `lambertian`/`metal`/`dielectric`/`rough_dielectric`/
 at load time rather than silently rendering wrong. GPU-wavefront's own
 internal spectral pipeline (see §9) has no such restriction — it's
 always-on and covers every material GPU-wavefront supports at all.
+
+**Small gap worth knowing about**: `mix_material` isn't in that whitelist
+at all (no `dynamic_cast<mix_material*>` case in `spectral_scan_hittable()`,
+and it doesn't recurse into the sub-materials it wraps), so any scene using
+`mix_material` fails the `--spectral` pre-flight check outright — even
+`mix_material::as_dispersive_dielectric()`/`as_dispersive_rough_dielectric()`
+already correctly forward to a dispersive sub-material once inside
+`ray_color_spectral()`, that forwarding is currently unreachable from the
+CLI flag because the scan itself rejects the scene first.
 
 ## 3. Textures
 
@@ -301,8 +315,9 @@ and reducing once at the end (pbrt-v4's own architecture).
 
 **Gap**: GPU-recursive has no spectral path at all (RGB only).
 
-**Gap**: no dispersion on GPU, and no `rough_dielectric` dispersion
-anywhere (see §2).
+**Gap**: no dispersion on GPU (see §2) — CPU dispersion now covers both
+`dielectric` and `rough_dielectric`, GPU (recursive or wavefront) has
+neither.
 
 ## 10. Acceleration Structures
 
@@ -368,8 +383,9 @@ relative to it specifically).
    reduces to RGB every sample instead of accumulating spectral radiance
    pbrt-v4-style; the dead `PixelSensor`/`SpectralFilm` classes suggest
    this was planned and abandoned partway.
-3. **No GPU dispersion, no `rough_dielectric` dispersion anywhere** (§2, §9)
-   — dispersion exists only for smooth CPU `dielectric`.
+3. **No GPU dispersion** (§2, §9) — CPU dispersion now covers both smooth
+   (`dielectric`) and rough (`rough_dielectric`) glass; GPU (recursive or
+   wavefront) has neither.
 4. **No GPU light BVH** (§4) — GPU light sampling doesn't spatially scale
    the way CPU's does on many-light scenes.
 5. **`independent` sampler not ported** (§7) — minor; Sobol dominates it in
@@ -419,10 +435,9 @@ all of them, and it's worth knowing which is which before relying on one.
 - A `Shape` type this loader can't build (e.g. a non-cubic/non-Bezier
   `curve`) → dropped with a "shape not supported" warning; nothing is
   rendered in its place.
-- Dispersion on GPU, or on `rough_dielectric` anywhere → no approximate
-  dispersion; it's just flat, non-dispersive IOR, silently (no warning,
-  since this isn't a scene-loading failure — it's simply a code path that
-  was never built).
+- Dispersion on GPU (either backend) → no approximate dispersion; it's just
+  flat, non-dispersive IOR, silently (no warning, since this isn't a
+  scene-loading failure — it's simply a code path that was never built).
 - The orphaned scaffolding (§11: `UniformLightSampler`, `BVHLightSampler2`,
   `ExhaustiveLightSampler`, ReSTIR, `PixelSensor`/`SpectralFilm`) — these
   aren't fallbacks *for* anything and don't *have* fallbacks either; they're

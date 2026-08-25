@@ -81,7 +81,11 @@ class metal : public material {
 };
 
 
-class dielectric : public material {
+// Also implements dispersive_material (material_base.h) - the interface
+// camera.h's ray_color_spectral() dispatches through for every dispersive
+// material kind via one shared hook (material::as_dispersive()), rather
+// than a hook per concrete type. See dispersive_material's own comment.
+class dielectric : public material, public dispersive_material {
   public:
     using BxDF = DielectricBxDF<double>;
 
@@ -137,20 +141,31 @@ class dielectric : public material {
     // Spectral-aware variant: computes eta from the path's hero wavelength
     // via CauchyEta() instead of the flat refraction_index, when this
     // instance was constructed dispersive - otherwise identical to
-    // scatter() (ignores lambda_nm). See camera.h's ray_color_spectral()
-    // for the only call site.
+    // scatter() (ignores lambda_nm). do_regularize is accepted only to
+    // satisfy dispersive_material's shared interface (material_base.h) -
+    // smooth dielectric has no roughness to regularize, so it's unused here.
+    // eta_out reports the eta actually used back to the caller (camera.h),
+    // so a later scattering_pdf_dispersive() call for the same bounce - not
+    // that this class ever has one, see the comment on that method's
+    // default in dispersive_material - never has to re-derive it. See
+    // camera.h's ray_color_spectral() for the only call site.
     bool scatter_dispersive(const ray& r_in, const hit_record& rec,
-                             scatter_record& srec, float lambda_nm) const {
+                             scatter_record& srec, float lambda_nm,
+                             bool do_regularize, double& eta_out) const override {
+        (void)do_regularize;
         double eta = dispersive_ ? CauchyEta((double)lambda_nm, cauchy_A_, cauchy_B_)
                                   : refraction_index;
+        eta_out = eta;
         return scatter_impl(r_in, rec, srec, eta);
     }
 
     // True when this instance was built via the (eta_d, abbe_number)
-    // dispersive constructor - see that constructor's own comment. Gates
-    // ray_color_spectral()'s TerminateSecondary() call: collapsing to the
-    // hero wavelength only makes sense (and is only worth the variance
-    // cost) once a real per-wavelength refraction actually happened.
+    // dispersive constructor - see that constructor's own comment. Kept as
+    // a public accessor (used by tests) even though ray_color_spectral()
+    // itself no longer needs to re-check it: as_dispersive() below only
+    // ever returns non-null when this is already true - see
+    // dispersive_material's own comment on that "non-null means yes"
+    // contract.
     bool is_dispersive() const { return dispersive_; }
 
     // Accessor for serialization
@@ -160,11 +175,11 @@ class dielectric : public material {
     // optix_anyhit_shadow.h's MaterialType::Dielectric skip.
     bool is_shadow_transmissive(const hit_record&) const override { return true; }
 
-    // See material::as_dispersive_dielectric()'s comment. `this` (not
-    // nullptr) only when built via make_dispersive() above - lets
-    // ray_color_spectral() find this instance through a wrapper material
-    // (mix_material) the same way as_subsurface() already does for BSSRDF.
-    const dielectric* as_dispersive_dielectric(const hit_record&) const override {
+    // See material::as_dispersive()'s comment. `this` (not nullptr) only
+    // when built via make_dispersive() above - lets ray_color_spectral()
+    // find this instance through a wrapper material (mix_material) the
+    // same way as_subsurface() already does for BSSRDF.
+    const dispersive_material* as_dispersive(const hit_record&) const override {
         return dispersive_ ? this : nullptr;
     }
 
@@ -178,15 +193,14 @@ class dielectric : public material {
     // `refraction_index` (used by the ordinary flat-IOR scatter() path,
     // i.e. --spectral off or a non-dispersive-lookalike caller) is set to
     // eta_d so both paths agree at the reference wavelength. Only reachable
-    // via ray_color_spectral()'s as_dispersive_dielectric() dispatch to
+    // via ray_color_spectral()'s as_dispersive() dispatch to
     // scatter_dispersive() below - see that function's own comment for why
-    // this needed a new non-virtual method rather than a material::scatter()
-    // signature change. Private - construct via make_dispersive() above.
+    // this needed a new dispersive_material method rather than a
+    // material::scatter() signature change. Private - construct via
+    // make_dispersive() above.
     dielectric(double eta_d, double abbe_number)
         : refraction_index(eta_d), dispersive_(true) {
-        constexpr double lambda_F = 0.4861, lambda_C = 0.6563, lambda_D = 0.5893;
-        cauchy_B_ = (eta_d - 1.0) / (abbe_number * (1.0 / (lambda_F * lambda_F) - 1.0 / (lambda_C * lambda_C)));
-        cauchy_A_ = eta_d - cauchy_B_ / (lambda_D * lambda_D);
+        CauchyCoefficientsFromAbbe(eta_d, abbe_number, cauchy_A_, cauchy_B_);
     }
 
     bool scatter_impl(const ray& r_in, const hit_record& rec, scatter_record& srec,

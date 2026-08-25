@@ -107,14 +107,15 @@ TEST(ScatterRecordTransmission, DispersiveDielectricEtaVariesByWavelength) {
 	// (rejection loop, same reasoning as this file's own rough_dielectric
 	// test above).
 	double eta_red = 0.0, eta_violet = 0.0;
+	double eta_out = 0.0;  // dispersive_material::scatter_dispersive()'s resolved-eta out-param, unused by this test
 	for (int i = 0; i < 50 && eta_red == 0.0; ++i) {
 		scatter_record srec;
-		if (mat.scatter_dispersive(r_in, rec, srec, 650.f) && srec.is_transmission)
+		if (mat.scatter_dispersive(r_in, rec, srec, 650.f, false, eta_out) && srec.is_transmission)
 			eta_red = srec.eta;
 	}
 	for (int i = 0; i < 50 && eta_violet == 0.0; ++i) {
 		scatter_record srec;
-		if (mat.scatter_dispersive(r_in, rec, srec, 450.f) && srec.is_transmission)
+		if (mat.scatter_dispersive(r_in, rec, srec, 450.f, false, eta_out) && srec.is_transmission)
 			eta_violet = srec.eta;
 	}
 	ASSERT_NE(eta_red, 0.0) << "never got a transmission event at 650nm across 50 samples";
@@ -155,14 +156,15 @@ TEST(ScatterRecordTransmission, NonDispersiveDielectricIgnoresWavelength) {
 	ASSERT_NE(eta_reference, 0.0) << "never got a transmission event via scatter() across 50 samples";
 
 	double eta_red = 0.0, eta_violet = 0.0;
+	double eta_out = 0.0;  // dispersive_material::scatter_dispersive()'s resolved-eta out-param, unused by this test
 	for (int i = 0; i < 50 && eta_red == 0.0; ++i) {
 		scatter_record srec;
-		if (mat.scatter_dispersive(r_in, rec, srec, 650.f) && srec.is_transmission)
+		if (mat.scatter_dispersive(r_in, rec, srec, 650.f, false, eta_out) && srec.is_transmission)
 			eta_red = srec.eta;
 	}
 	for (int i = 0; i < 50 && eta_violet == 0.0; ++i) {
 		scatter_record srec;
-		if (mat.scatter_dispersive(r_in, rec, srec, 450.f) && srec.is_transmission)
+		if (mat.scatter_dispersive(r_in, rec, srec, 450.f, false, eta_out) && srec.is_transmission)
 			eta_violet = srec.eta;
 	}
 	ASSERT_NE(eta_red, 0.0);

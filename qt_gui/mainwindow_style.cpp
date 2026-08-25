@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "icon_tint.h"
 #include "scene_technique_notes.h"
+#include "scene_metadata_client.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -1080,16 +1081,28 @@ QWidget* MainWindow::checkboxWithInfo(QCheckBox *checkBox, const QString &helpTe
 	return row;
 }
 
+// Builds the technique-note tooltip for `sceneId`, shared by every widget
+// that shows one (this file's updateSceneTechInfoIcon() below, and
+// mainwindow_tabs.cpp's populateSceneCombo()/populateSceneGrid()) so the
+// choice of "heading + note, or just the note" lives in one place instead
+// of each call site independently deciding how to combine them.
+QString MainWindow::sceneTooltipHtml(const QString &sceneId, bool includeHeading) {
+	const QString note = scene_technique_notes::forScene(sceneId);
+	if (!includeHeading) return wrapTooltipHtml(note);
+	return wrapTooltipHtml(
+		QString("[%1] %2\n\n%3").arg(sceneId, SceneMetadataClient::sceneName(sceneId), note));
+}
+
 // Rewrites m_sceneTechInfoIcon's tooltip for the given scene - the one
 // standalone info icon in this app whose content changes after construction
 // instead of being fixed for its whole lifetime (see scene_technique_notes.h
 // for the per-scene text; the scene combo/grid in mainwindow_tabs.cpp show
-// the same text per-row instead, via wrapTooltipHtml() directly). Routed
+// the same text per-row instead, via sceneTooltipHtml() above). Routed
 // through here rather than called directly from refreshSceneInfoLabel()
 // (mainwindow_slots.cpp) so the "which widget does this icon belong to"
 // knowledge stays in one place.
 void MainWindow::updateSceneTechInfoIcon(const QString &sceneId) {
 	if (!m_sceneTechInfoIcon) return;
-	m_sceneTechInfoIcon->setToolTip(wrapTooltipHtml(scene_technique_notes::forScene(sceneId)));
+	m_sceneTechInfoIcon->setToolTip(sceneTooltipHtml(sceneId, /*includeHeading=*/false));
 }
 

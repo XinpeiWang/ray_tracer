@@ -91,13 +91,23 @@ void MainWindow::populateSceneCombo(const QString &category) {
 		// The same "(i)" mark createInfoIcon() uses elsewhere, one per row -
 		// so the dropdown itself shows there's a rendering-technique note to
 		// read, not just the single info icon next to the "Scene:" label
-		// (which only ever shows whichever scene is already selected).
+		// (which only ever shows whichever scene is already selected). Only
+		// for self-contained scenes though: scene_technique_notes.h is
+		// explicitly scoped to those (requires_files == false) and has no
+		// entry at all for the rest, so a mark on a "Requires External
+		// Files" row would promise a note every hover could only ever answer
+		// with the generic "not written yet" fallback - a plain addItem()
+		// for those instead, same as before this per-row mark existed.
+		if (SceneMetadataClient::sceneRequiresFiles(id)) {
+			m_sceneCombo->addItem(text, id);
+			continue;
+		}
 		// icon_tint::addItem() (not a plain combo->addItem()) so a theme
 		// switch's restyleThemedWidgets() -> retintItems() sweep recolours
 		// these the same way every other combo's icons already do.
 		icon_tint::addItem(m_sceneCombo, ":/icons/info.svg", text, id, m_activeTheme.textBody);
 		m_sceneCombo->setItemData(m_sceneCombo->count() - 1,
-			wrapTooltipHtml(scene_technique_notes::forScene(id)), Qt::ToolTipRole);
+			sceneTooltipHtml(id, /*includeHeading=*/false), Qt::ToolTipRole);
 	}
 }
 
@@ -114,13 +124,15 @@ void MainWindow::populateSceneGrid(const QString &category) {
 		item->setData(Qt::UserRole, id);
 		const QString cachePath = thumbnailCachePath(id);
 		item->setIcon(QFile::exists(cachePath) ? QIcon(cachePath) : placeholderIcon);
-		// Heading (what the combo's own tooltip would show) plus the same
-		// per-scene technique note the combo's "(i)" mark and the standalone
-		// scene-tech info icon both show - this view has no separate info
-		// icon of its own to carry it, so the tile's tooltip is it.
-		item->setToolTip(wrapTooltipHtml(
-			QString("[%1] %2\n\n%3").arg(id, SceneMetadataClient::sceneName(id),
-				scene_technique_notes::forScene(id))));
+		// Heading (this tile's own label is just the name, not the id) plus
+		// the technique note, same self-contained-only scoping as
+		// populateSceneCombo() above - a "Requires External Files" scene has
+		// no note to show, so its tooltip stays the plain id/name heading
+		// instead of promising one that can only ever fall back to
+		// "not written yet".
+		item->setToolTip(SceneMetadataClient::sceneRequiresFiles(id)
+			? wrapTooltipHtml(QString("[%1] %2").arg(id, SceneMetadataClient::sceneName(id)))
+			: sceneTooltipHtml(id, /*includeHeading=*/true));
 		m_sceneGrid->addItem(item);
 	}
 }
@@ -308,9 +320,9 @@ void MainWindow::createBasicTab() {
 	m_sceneCategoryTabs->setObjectName("sceneCategoryTabs");
 	m_sceneCategoryTabs->setDrawBase(false);
 	m_sceneCategoryTabs->setExpanding(false);
-	// Eight categories fit at this window's normal width, but the tab bar is
-	// inside a resizable group box - scroll buttons beat silently clipping the
-	// last category off the right edge when it isn't.
+	// The compiled-in categories fit at this window's normal width, but the
+	// tab bar is inside a resizable group box - scroll buttons beat silently
+	// clipping the last category off the right edge when it doesn't.
 	m_sceneCategoryTabs->setUsesScrollButtons(true);
 	// SceneCategories::kAll drives the ORDER (a curated reading order, not
 	// the order categories happen to first appear in the registry).
