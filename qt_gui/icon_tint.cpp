@@ -3,6 +3,7 @@
 #include <QAbstractButton>
 #include <QAction>
 #include <QComboBox>
+#include <QHash>
 #include <QVariant>
 #include <QPainter>
 #include <QPixmap>
@@ -41,6 +42,20 @@ void remember(QObject *target, const QString &path, Role role) {
 } // namespace
 
 QIcon tinted(const QString &path, const QColor &colour) {
+	// Cached by (path, colour): every caller of this file's public functions
+	// eventually funnels through here, and within one theme there are only
+	// as many distinct (path, colour) pairs as there are (icon, role)
+	// combinations actually used - a handful, reused across many call sites
+	// (e.g. all ~27 beginner info-icons share the exact same pair). Without
+	// this, each of those redundantly re-decodes the SVG and re-rasterizes
+	// all of kSizes for output that's byte-identical to one already computed.
+	// Never evicted: the key space is bounded by (icon count) x (theme
+	// count), which stays small for the lifetime of the process.
+	static QHash<QString, QIcon> cache;
+	const QString key = path + QLatin1Char('|') + colour.name(QColor::HexArgb);
+	const auto cached = cache.constFind(key);
+	if (cached != cache.constEnd()) return cached.value();
+
 	const QIcon source(path);
 	QIcon result;
 	for (int size : kSizes) {
@@ -60,6 +75,7 @@ QIcon tinted(const QString &path, const QColor &colour) {
 	// nothing - the same as before tinting existed. Returning the untinted
 	// source instead would be worse: it would paint the authored colour, which
 	// is only correct by accident on one theme.
+	cache.insert(key, result);
 	return result;
 }
 

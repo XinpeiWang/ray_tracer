@@ -1141,6 +1141,7 @@ private:
 	// (mainwindow_style.cpp) for the full design rationale.
 	QToolButton* createInfoIcon(const QString &helpText);
 	QWidget* labelWithInfo(const QString &labelText, const QString &helpText);
+	QWidget* checkboxWithInfo(QCheckBox *checkBox, const QString &helpText);
 	// A subtle "elevated card" drop shadow (QSS alone cannot do box-shadow) -
 	// neutral black at low alpha rather than theme-tinted, the same choice
 	// every real elevation system (Material, Fluent, CSS itself) makes,

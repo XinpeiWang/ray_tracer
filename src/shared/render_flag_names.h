@@ -37,4 +37,5 @@ namespace render_flags {
 	constexpr const char* kSampler       = "--sampler";
 	constexpr const char* kSpectral      = "--spectral";
 	constexpr const char* kTonemap       = "--tonemap";
+	constexpr const char* kDiagnose      = "--diagnose";
 }

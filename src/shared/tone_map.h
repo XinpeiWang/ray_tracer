@@ -112,6 +112,21 @@ inline bool tone_map_mode_from_name(const std::string& name, ToneMapMode& out) {
 }
 
 // ---------------------------------------------------------------------------
+// tone_map_mode_display_name -- human-readable label for a [TECH] startup
+// log line. Shared by both the CPU (cpu_interface.cpp) and GPU
+// (optix_interface.cpp) render paths so their startup banners can't drift
+// on what a given mode is called, the display-string counterpart to
+// tone_map_mode_from_name() above.
+// ---------------------------------------------------------------------------
+inline const char* tone_map_mode_display_name(ToneMapMode mode) {
+	switch (mode) {
+		case ToneMapMode::Reinhard: return "Reinhard L/(1+L)";
+		case ToneMapMode::None:     return "None (clamp only)";
+		default:                    return "ACES Narkowicz 2015";
+	}
+}
+
+// ---------------------------------------------------------------------------
 // apply_tone_map -- apply the selected operator to a single channel
 // ---------------------------------------------------------------------------
 inline double apply_tone_map(double x, ToneMapMode mode) {

@@ -168,12 +168,18 @@ RenderJob MainWindow::captureRenderJob() {
 	// sampler/tonemap use currentData() (empty for the "default" item)
 	// rather than currentText(), matching every other flag combo in this
 	// file (e.g. job.useWavefront above).
-	job.advancedFlags.denoise = m_denoiseCheck->isChecked();
+	//
+	// denoise/optixValidate/sampler/spectral are gated on isEnabled(): Qt
+	// does not clear a checkbox's checked state (or a combo's selection)
+	// just because setEnabled(false) grayed it out, so a value checked
+	// before a backend switch would otherwise survive into the CLI
+	// invocation even though the control now shows as inactive.
+	job.advancedFlags.denoise = m_denoiseCheck->isEnabled() && m_denoiseCheck->isChecked();
 	job.advancedFlags.stats = m_statsCheck->isChecked();
-	job.advancedFlags.optixValidate = m_optixValidateCheck->isChecked();
+	job.advancedFlags.optixValidate = m_optixValidateCheck->isEnabled() && m_optixValidateCheck->isChecked();
 	job.advancedFlags.exposure = m_exposureSpin->value();
-	job.advancedFlags.sampler = m_samplerCombo->currentData().toString();
-	job.advancedFlags.spectral = m_spectralCheck->isChecked();
+	job.advancedFlags.sampler = m_samplerCombo->isEnabled() ? m_samplerCombo->currentData().toString() : QString();
+	job.advancedFlags.spectral = m_spectralCheck->isEnabled() && m_spectralCheck->isChecked();
 	job.advancedFlags.tonemap = m_tonemapCombo->currentData().toString();
 
 	// Resolution: either from preset dropdown or custom values from Advanced tab

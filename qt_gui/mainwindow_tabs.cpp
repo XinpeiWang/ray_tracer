@@ -961,28 +961,19 @@ void MainWindow::createRenderOptionsTab() {
 		"supported - a scene using anything else fails to render rather\n"
 		"than silently rendering wrong colors. Noticeably slower per-sample.");
 	styleCheckBox(m_spectralCheck);
-	{
-		QWidget *row = new QWidget(optionsTab);
-		QHBoxLayout *rowLayout = new QHBoxLayout(row);
-		rowLayout->setContentsMargins(0, 0, 0, 0);
-		rowLayout->setSpacing(4);
-		rowLayout->addWidget(m_spectralCheck);
-		rowLayout->addWidget(createInfoIcon(
-			"Ordinary rendering tracks light as three numbers - red, "
-			"green, blue - the same way a screen displays color.\n\n"
-			"Real light is a continuous spectrum of wavelengths, and a "
-			"few physical effects (like a prism splitting white light "
-			"into a rainbow) only happen because different wavelengths "
-			"refract by different amounts - RGB alone can't represent "
-			"that. Spectral rendering tracks a handful of actual "
-			"wavelengths per ray instead of just RGB, at the cost of "
-			"being noisier and slower per sample.\n\n"
-			"Grayed out? This only exists on the CPU renderer's default "
-			"path tracer - switch Renderer to CPU on the Basic Settings "
-			"tab to use it."));
-		rowLayout->addStretch();
-		samplingLayout->addRow(row);
-	}
+	samplingLayout->addRow(checkboxWithInfo(m_spectralCheck,
+		"Ordinary rendering tracks light as three numbers - red, "
+		"green, blue - the same way a screen displays color.\n\n"
+		"Real light is a continuous spectrum of wavelengths, and a "
+		"few physical effects (like a prism splitting white light "
+		"into a rainbow) only happen because different wavelengths "
+		"refract by different amounts - RGB alone can't represent "
+		"that. Spectral rendering tracks a handful of actual "
+		"wavelengths per ray instead of just RGB, at the cost of "
+		"being noisier and slower per sample.\n\n"
+		"Grayed out? This only exists on the CPU renderer's default "
+		"path tracer - switch Renderer to CPU on the Basic Settings "
+		"tab to use it."));
 
 	m_exposureSpin = new QDoubleSpinBox(optionsTab);
 	m_exposureSpin->setRange(0.01, 100.0);
@@ -1039,21 +1030,12 @@ void MainWindow::createRenderOptionsTab() {
 		"shadow rays, samples/sec) to the Log tab. Observation-only -\n"
 		"never changes the rendered image.");
 	styleCheckBox(m_statsCheck);
-	{
-		QWidget *row = new QWidget(optionsTab);
-		QHBoxLayout *rowLayout = new QHBoxLayout(row);
-		rowLayout->setContentsMargins(0, 0, 0, 0);
-		rowLayout->setSpacing(4);
-		rowLayout->addWidget(m_statsCheck);
-		rowLayout->addWidget(createInfoIcon(
-			"Prints a short summary after the render finishes - how many "
-			"rays were cast, how many bounces happened, how many shadow "
-			"rays were traced, and samples per second.\n\n"
-			"Purely informational: it never changes the rendered image, "
-			"just tells you what the renderer actually did."));
-		rowLayout->addStretch();
-		outputLayout->addRow(row);
-	}
+	outputLayout->addRow(checkboxWithInfo(m_statsCheck,
+		"Prints a short summary after the render finishes - how many "
+		"rays were cast, how many bounces happened, how many shadow "
+		"rays were traced, and samples per second.\n\n"
+		"Purely informational: it never changes the rendered image, "
+		"just tells you what the renderer actually did."));
 
 	m_denoiseCheck = new QCheckBox("OptiX AI denoiser (GPU recursive only)", optionsTab);
 	m_denoiseCheck->setToolTip(
@@ -1061,52 +1043,34 @@ void MainWindow::createRenderOptionsTab() {
 		"albedo + normal buffers. GPU recursive backend only - silently\n"
 		"has no effect under the wavefront backend.");
 	styleCheckBox(m_denoiseCheck);
-	{
-		QWidget *row = new QWidget(optionsTab);
-		QHBoxLayout *rowLayout = new QHBoxLayout(row);
-		rowLayout->setContentsMargins(0, 0, 0, 0);
-		rowLayout->setSpacing(4);
-		rowLayout->addWidget(m_denoiseCheck);
-		rowLayout->addWidget(createInfoIcon(
-			"Ray tracing is noisy by nature - low sample counts leave a "
-			"grainy, speckled image, which is why more samples usually "
-			"means a cleaner picture.\n\n"
-			"A denoiser is a machine-learning model trained to recognize "
-			"that speckle pattern and smooth it away after the fact, "
-			"without needing to trace additional rays - a way to get a "
-			"clean-looking image faster, at some cost in fine detail.\n\n"
-			"Grayed out? This needs the GPU recursive backend - switch "
-			"Renderer to GPU (and GPU Backend to Recursive) on the Basic "
-			"Settings tab to use it."));
-		rowLayout->addStretch();
-		outputLayout->addRow(row);
-	}
+	outputLayout->addRow(checkboxWithInfo(m_denoiseCheck,
+		"Ray tracing is noisy by nature - low sample counts leave a "
+		"grainy, speckled image, which is why more samples usually "
+		"means a cleaner picture.\n\n"
+		"A denoiser is a machine-learning model trained to recognize "
+		"that speckle pattern and smooth it away after the fact, "
+		"without needing to trace additional rays - a way to get a "
+		"clean-looking image faster, at some cost in fine detail.\n\n"
+		"Grayed out? This needs the GPU recursive backend - switch "
+		"Renderer to GPU (and GPU Backend to Recursive) on the Basic "
+		"Settings tab to use it."));
 
 	m_optixValidateCheck = new QCheckBox("OptiX validation mode (slower, debugging only)", optionsTab);
 	m_optixValidateCheck->setToolTip(
 		"Enable OptiX validation mode - extra device-side checks with a\n"
 		"real per-launch cost. GPU only, for debugging, not routine use.");
 	styleCheckBox(m_optixValidateCheck);
-	{
-		QWidget *row = new QWidget(optionsTab);
-		QHBoxLayout *rowLayout = new QHBoxLayout(row);
-		rowLayout->setContentsMargins(0, 0, 0, 0);
-		rowLayout->setSpacing(4);
-		rowLayout->addWidget(m_optixValidateCheck);
-		rowLayout->addWidget(createInfoIcon(
-			"Turns on extra correctness checks inside the GPU ray-tracing "
-			"pipeline itself, catching certain classes of bugs that would "
-			"otherwise silently produce a wrong image or crash "
-			"unpredictably.\n\n"
-			"It's a debugging aid for people working on the renderer's "
-			"own GPU code, not something a normal render benefits from - "
-			"it has a real performance cost and doesn't change what a "
-			"correct render looks like.\n\n"
-			"Grayed out? This is GPU-only - switch Renderer to GPU on "
-			"the Basic Settings tab to use it."));
-		rowLayout->addStretch();
-		outputLayout->addRow(row);
-	}
+	outputLayout->addRow(checkboxWithInfo(m_optixValidateCheck,
+		"Turns on extra correctness checks inside the GPU ray-tracing "
+		"pipeline itself, catching certain classes of bugs that would "
+		"otherwise silently produce a wrong image or crash "
+		"unpredictably.\n\n"
+		"It's a debugging aid for people working on the renderer's "
+		"own GPU code, not something a normal render benefits from - "
+		"it has a real performance cost and doesn't change what a "
+		"correct render looks like.\n\n"
+		"Grayed out? This is GPU-only - switch Renderer to GPU on "
+		"the Basic Settings tab to use it."));
 
 	layout->addWidget(outputGroup);
 	layout->addStretch();
@@ -1119,7 +1083,11 @@ void MainWindow::createRenderOptionsTab() {
 	const bool gpuSelected = m_renderModeCombo->currentData().toBool();
 	m_samplerCombo->setEnabled(!gpuSelected);
 	m_spectralCheck->setEnabled(!gpuSelected);
-	m_denoiseCheck->setEnabled(gpuSelected);
+	// Denoise is recursive-only - must match the live-update lambdas in
+	// MainWindow's constructor (mainwindow.cpp) exactly, or the checkbox
+	// starts enabled under Wavefront whenever that ever becomes the default
+	// GPU backend.
+	m_denoiseCheck->setEnabled(gpuSelected && (!m_gpuBackendCombo || !m_gpuBackendCombo->currentData().toBool()));
 	m_optixValidateCheck->setEnabled(gpuSelected);
 
 	QScrollArea *scrollArea = new QScrollArea();

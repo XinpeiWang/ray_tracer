@@ -390,12 +390,7 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		std::cout << "[TECH] MIS            : Power heuristic  beta=2  (BSDF sample + NEE light sample)" << std::endl;
 		std::cout << "[TECH] Path termination: Russian Roulette per-bounce, etaScale-aware" << std::endl;
 		std::cout << "[TECH] Firefly guard  : NaN / Inf samples clamped to 0" << std::endl;
-		{
-			const char* toneMapName = cam.tone_map == ToneMapMode::Reinhard ? "Reinhard L/(1+L)"
-									 : cam.tone_map == ToneMapMode::None     ? "None (clamp only)"
-									 :                                         "ACES Narkowicz 2015";
-			std::cout << "[TECH] Tone mapping   : " << toneMapName << " --> sRGB OETF (IEC 61966-2-1)" << std::endl;
-		}
+		std::cout << "[TECH] Tone mapping   : " << tone_map_mode_display_name(cam.tone_map) << " --> sRGB OETF (IEC 61966-2-1)" << std::endl;
 		std::cout << "[TECH] Threading      : " << std::thread::hardware_concurrency() << " logical cores (auto idle-adjusted on Windows)" << std::endl;
 		std::cout << "[TECH] ─────────────────────────────────────────────────────" << std::endl;
 

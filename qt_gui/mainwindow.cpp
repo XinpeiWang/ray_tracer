@@ -404,7 +404,7 @@ void DiagnosticsRunner::start() {
 	QString exePath = QCoreApplication::applicationDirPath() + "/ray_tracer";
 #endif
 	QStringList args;
-	args << "--diagnose";
+	args << render_flags::kDiagnose;
 
 	m_process = new QProcess(this);
 	m_process->setProcessChannelMode(QProcess::MergedChannels);
@@ -665,17 +665,17 @@ void MainWindow::setupUI() {
 	createLogTab();
 	createDiagnosticsTab();
 
-	// Initialize scene info AFTER tabs are created (onSceneChanged uses m_samplesSpinBox)
-	onSceneChanged(0);
-
-	// Actions/menus come after the tabs because the View menu enumerates the
-	// tabs, and the status bar reads the renderer/size/samples widgets.
-	createActions();
-	createMenus();
-	createStatusBar();
-
 	// Keep the status bar's ambient readout honest when the user changes any
 	// of the settings it reports.
+	//
+	// Wired up BEFORE onSceneChanged(0) below (not after, as originally
+	// written): onSceneChanged() can force-switch m_renderModeCombo to CPU
+	// for a GPU-incompatible scene, and that setCurrentIndex() call needs
+	// this lambda already connected so the Render Options tab's enabled
+	// states get synced to the forced switch instead of staying stale until
+	// the user next touches a combo by hand. refreshStatusBarInfo() is
+	// null-safe against the status bar not existing yet (see its own
+	// early-return), so firing before createStatusBar() below is harmless.
 	connect(m_renderModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
 			this, [this](int) {
 				refreshStatusBarInfo();
@@ -705,6 +705,16 @@ void MainWindow::setupUI() {
 					m_denoiseCheck->setEnabled(gpuSelected && !m_gpuBackendCombo->currentData().toBool());
 				});
 	}
+
+	// Initialize scene info AFTER tabs are created (onSceneChanged uses m_samplesSpinBox)
+	onSceneChanged(0);
+
+	// Actions/menus come after the tabs because the View menu enumerates the
+	// tabs, and the status bar reads the renderer/size/samples widgets.
+	createActions();
+	createMenus();
+	createStatusBar();
+
 	connect(m_widthSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
 			this, [this](int) { refreshStatusBarInfo(); });
 	connect(m_heightSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),

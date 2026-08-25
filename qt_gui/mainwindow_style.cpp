@@ -1066,3 +1066,18 @@ QWidget* MainWindow::labelWithInfo(const QString &labelText, const QString &help
 	return container;
 }
 
+// Same row shape as labelWithInfo() above, for the label-less checkbox rows
+// on the Render Options tab (checkBox already carries its own label text, so
+// there's no separate QLabel to build) - addRow(checkboxWithInfo(...)) in
+// place of addRow(checkBox).
+QWidget* MainWindow::checkboxWithInfo(QCheckBox *checkBox, const QString &helpText) {
+	QWidget *row = new QWidget(this);
+	QHBoxLayout *rowLayout = new QHBoxLayout(row);
+	rowLayout->setContentsMargins(0, 0, 0, 0);
+	rowLayout->setSpacing(4);
+	rowLayout->addWidget(checkBox);
+	rowLayout->addWidget(createInfoIcon(helpText));
+	rowLayout->addStretch();
+	return row;
+}
+

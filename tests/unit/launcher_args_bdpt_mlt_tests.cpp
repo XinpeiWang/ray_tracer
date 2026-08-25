@@ -153,7 +153,7 @@ TEST(LauncherArgsBdptMlt, GpuFlagExplicitOnlyTrueWhenGpuTokenPresent) {
 	EXPECT_TRUE(args_no_gpu.use_gpu);   // struct default, not from an explicit token
 
 	LaunchArgs args_with_gpu;
-	ASSERT_TRUE(parse({"--bdpt", "--gpu"}, args_with_gpu));
+	ASSERT_TRUE(parse({"--bdpt", render_flags::kGpu}, args_with_gpu));
 	EXPECT_TRUE(args_with_gpu.gpu_flag_explicit);
 	EXPECT_TRUE(args_with_gpu.use_gpu);
 }

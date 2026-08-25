@@ -61,6 +61,21 @@ extern char** environ;
 #include "launcher/launcher_args.h"   // Argument parsing
 #include "launcher/diagnostics.h"     // --diagnose
 
+// Builds the RenderOptions the plain path-tracer branches pass to
+// cpu_render_main()/optix_render_main() from the parsed CLI args. Shared by
+// both the video-mode per-frame loop and the single-image dispatch below so
+// the two call sites can't drift out of sync on which LaunchArgs fields feed
+// RenderOptions.
+static RenderOptions render_options_from_args(const LaunchArgs& args) {
+    RenderOptions render_opts;
+    render_opts.exposure = args.exposure;
+    render_opts.sampler = args.sampler.empty() ? nullptr : args.sampler.c_str();
+    render_opts.spectral = args.spectral;
+    render_opts.tonemap = args.tonemap.empty() ? nullptr : args.tonemap.c_str();
+    render_opts.denoise = args.denoise;
+    return render_opts;
+}
+
 // Run a subprocess with the given argv directly (no shell, so there's no
 // cmd.exe/sh quoting or percent/glob expansion to worry about - important
 // since ffmpeg's "%04d" frame-pattern argument would otherwise be at the
@@ -578,12 +593,7 @@ int main(int argc, char** argv) {
         // Loop-invariant (args.* never changes mid-video) - built once
         // rather than reconstructed every frame. See src/shared/
         // render_options.h's own field comments.
-        RenderOptions render_opts;
-        render_opts.exposure = args.exposure;
-        render_opts.sampler = args.sampler.empty() ? nullptr : args.sampler.c_str();
-        render_opts.spectral = args.spectral;
-        render_opts.tonemap = args.tonemap.empty() ? nullptr : args.tonemap.c_str();
-        render_opts.denoise = args.denoise;
+        RenderOptions render_opts = render_options_from_args(args);
 
         // Render each frame with animated camera position
         for (int frame = 0; frame < render_frame_count; ++frame) {
@@ -795,12 +805,7 @@ int main(int argc, char** argv) {
     // BDPT/MLT/SPPM/the debug integrators have no RenderOptions parameter
     // at all (see the warnings just above). See src/shared/
     // render_options.h's own field comments.
-    RenderOptions render_opts;
-    render_opts.exposure = args.exposure;
-    render_opts.sampler = args.sampler.empty() ? nullptr : args.sampler.c_str();
-    render_opts.spectral = args.spectral;
-    render_opts.tonemap = args.tonemap.empty() ? nullptr : args.tonemap.c_str();
-    render_opts.denoise = args.denoise;
+    RenderOptions render_opts = render_options_from_args(args);
 
     if (use_bdpt) {
         // BDPT Renderer, CPU path (Bidirectional Path Tracing). Implemented

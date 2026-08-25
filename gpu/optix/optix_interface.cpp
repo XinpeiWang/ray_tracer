@@ -236,12 +236,7 @@ extern "C" int optix_render_main(
 		std::cout << "[TECH] Light sampling : Power-weighted alias table (Vose method)  phi = area * Le * pi" << std::endl;
 		std::cout << "[TECH] MIS            : Power heuristic  beta=2  (BSDF sample + NEE light sample)" << std::endl;
 		std::cout << "[TECH] Path termination: fixed max_depth=" << max_depth << "  (no Russian Roulette on GPU)" << std::endl;
-		{
-			const char* toneMapName = tone_map_mode == ToneMapMode::Reinhard ? "Reinhard L/(1+L)"
-									 : tone_map_mode == ToneMapMode::None     ? "None (clamp only)"
-									 :                                          "ACES filmic (Narkowicz)";
-			std::cout << "[TECH] Tone mapping   : " << toneMapName << " + sRGB OETF  (matches CPU's write_color())" << std::endl;
-		}
+		std::cout << "[TECH] Tone mapping   : " << tone_map_mode_display_name(tone_map_mode) << " + sRGB OETF  (matches CPU's write_color())" << std::endl;
 		std::cout << "[TECH] Device         : CUDA / OptiX 7+  (NVIDIA GPU)" << std::endl;
 		std::cout << "[TECH] ─────────────────────────────────────────────────────" << std::endl;
 
