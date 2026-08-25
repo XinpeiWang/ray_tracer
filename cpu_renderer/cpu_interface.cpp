@@ -62,6 +62,36 @@
 // this codebase in the future needs a case added here before --spectral
 // can be used with a scene containing it.
 //
+// Checks a single material against --spectral's supported set, recursing
+// into mix_material's own sub-materials (mat_a/mat_b) instead of rejecting
+// it outright - a mix_material carries no color/BSDF of its own to check,
+// only a stochastic choice between two others, so what actually matters is
+// whether THOSE are supported. Without this, mix_material::as_dispersive()'s
+// forwarding to a dispersive dielectric/rough_dielectric sub-material (see
+// that override's own comment, material_pbrt.h) was correct but dead code:
+// any scene using mix_material at all failed this scan before ever reaching
+// ray_color_spectral(), regardless of what was mixed inside it or whether
+// dispersion was involved at all. Recurses arbitrarily deep so a
+// mix_material nested inside another mix_material is checked too.
+static bool spectral_scan_material(const material* mat, std::string& error_out) {
+	if (!mat) return true;
+
+	if (dynamic_cast<const lambertian*>(mat))       return true;
+	if (dynamic_cast<const metal*>(mat))            return true;
+	if (dynamic_cast<const dielectric*>(mat))       return true;
+	if (dynamic_cast<const rough_dielectric*>(mat)) return true;
+	if (dynamic_cast<const conductor*>(mat))        return true;
+	if (dynamic_cast<const diffuse_light*>(mat))    return true;
+
+	if (const auto* mix = dynamic_cast<const mix_material*>(mat)) {
+		return spectral_scan_material(mix->get_mat_a().get(), error_out)
+			&& spectral_scan_material(mix->get_mat_b().get(), error_out);
+	}
+
+	error_out = typeid(*mat).name();
+	return false;
+}
+
 // Returns true (and leaves error_out untouched) if every reachable
 // material/structure is recognized and supported; otherwise returns false
 // with error_out set to a human-readable description of the first
@@ -122,15 +152,7 @@ static bool spectral_scan_hittable(const hittable* h, std::string& error_out) {
 
 	if (!mat) return true;  // no material on this primitive - nothing to check
 
-	if (dynamic_cast<const lambertian*>(mat.get()))       return true;
-	if (dynamic_cast<const metal*>(mat.get()))            return true;
-	if (dynamic_cast<const dielectric*>(mat.get()))       return true;
-	if (dynamic_cast<const rough_dielectric*>(mat.get())) return true;
-	if (dynamic_cast<const conductor*>(mat.get()))        return true;
-	if (dynamic_cast<const diffuse_light*>(mat.get()))    return true;
-
-	error_out = typeid(*mat).name();
-	return false;
+	return spectral_scan_material(mat.get(), error_out);
 }
 
 // ============================================================================

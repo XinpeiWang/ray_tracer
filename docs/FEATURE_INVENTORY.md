@@ -162,22 +162,16 @@ the demo, a frosted sibling of `B23`'s smooth dispersive prism. **Gap**: no
 dispersion anywhere on GPU (recursive or wavefront).
 
 **Not a gap, just a scope note**: `--spectral`'s own material whitelist
-(`cpu_interface.cpp`'s `spectral_scan_hittable()`) only covers 6 of the
-materials above — `lambertian`/`metal`/`dielectric`/`rough_dielectric`/
-`conductor`/`diffuse_light`. A scene using `coated_diffuse`, `mix_material`,
-`subsurface`, `hair`, `measured`, or any medium fails `--spectral` loudly
-at load time rather than silently rendering wrong. GPU-wavefront's own
-internal spectral pipeline (see §9) has no such restriction — it's
-always-on and covers every material GPU-wavefront supports at all.
-
-**Small gap worth knowing about**: `mix_material` isn't in that whitelist
-at all (no `dynamic_cast<mix_material*>` case in `spectral_scan_hittable()`,
-and it doesn't recurse into the sub-materials it wraps), so any scene using
-`mix_material` fails the `--spectral` pre-flight check outright — even
-`mix_material::as_dispersive_dielectric()`/`as_dispersive_rough_dielectric()`
-already correctly forward to a dispersive sub-material once inside
-`ray_color_spectral()`, that forwarding is currently unreachable from the
-CLI flag because the scan itself rejects the scene first.
+(`cpu_interface.cpp`'s `spectral_scan_hittable()`, via the `spectral_scan_material()`
+helper it calls per leaf primitive) covers 6 of the materials above —
+`lambertian`/`metal`/`dielectric`/`rough_dielectric`/`conductor`/
+`diffuse_light` — plus `mix_material`, which isn't itself a color/BSDF to
+check but recurses into whichever two of the above it mixes. A scene using
+`coated_diffuse`, `subsurface`, `hair`, `measured`, or any medium (or a
+`mix_material` wrapping one of those) fails `--spectral` loudly at load
+time rather than silently rendering wrong. GPU-wavefront's own internal
+spectral pipeline (see §9) has no such restriction — it's always-on and
+covers every material GPU-wavefront supports at all.
 
 ## 3. Textures
 
