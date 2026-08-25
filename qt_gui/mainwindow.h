@@ -1137,6 +1137,10 @@ private:
 	void styleSpinBox(QAbstractSpinBox *spinBox);
 	void styleGroupBox(QGroupBox *box);
 	void styleCheckBox(QCheckBox *box);
+	// Beginner-facing "(i)" info marks - see their own doc comments
+	// (mainwindow_style.cpp) for the full design rationale.
+	QToolButton* createInfoIcon(const QString &helpText);
+	QWidget* labelWithInfo(const QString &labelText, const QString &helpText);
 	// A subtle "elevated card" drop shadow (QSS alone cannot do box-shadow) -
 	// neutral black at low alpha rather than theme-tinted, the same choice
 	// every real elevation system (Material, Fluent, CSS itself) makes,

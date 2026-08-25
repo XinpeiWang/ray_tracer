@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "icon_tint.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -1007,5 +1008,61 @@ void MainWindow::styleCheckBox(QCheckBox *box) {
 	// styleSpinBox()/styleGroupBox() and as the one place to add per-widget
 	// checkbox behavior later if it's ever needed.
 	(void)box;
+}
+
+// Wraps plain, blank-line-separated paragraphs into HTML so Qt's rich-text
+// tooltip renderer word-wraps at a fixed width, instead of the unwrapped
+// single line (or manually-inserted \n breaks, like this file's other
+// setToolTip() calls) a plain-text tooltip would otherwise produce - the
+// beginner explanations createInfoIcon() carries are real paragraphs, long
+// enough that manual line breaks would be brittle to edit. Escaped via
+// QString::toHtmlEscaped() first so a "<" or "&" in the explanation text
+// itself can't be misread as markup.
+static QString wrapTooltipHtml(const QString &plainText) {
+	QStringList paragraphs = plainText.split("\n\n", Qt::SkipEmptyParts);
+	QString body;
+	for (const QString &para : paragraphs) {
+		body += "<p>" + para.toHtmlEscaped() + "</p>";
+	}
+	return "<html><body style=\"width:320px;\">" + body + "</body></html>";
+}
+
+// A small, flat, icon-only "(i)" mark - the beginner-facing explanation
+// layer this app didn't have before: every existing setToolTip() call in
+// this file describes what a control DOES, not the computer-graphics
+// concept behind it. Deliberately not connected to any click handler and
+// not focusable (setFocusPolicy(Qt::NoFocus)) - it exists purely as a
+// hover affordance, not an action, so it shouldn't behave like a button in
+// any way beyond being themed/tinted like one.
+QToolButton* MainWindow::createInfoIcon(const QString &helpText) {
+	QToolButton *icon = new QToolButton(this);
+	icon->setAutoRaise(true);
+	icon->setFixedSize(18, 18);
+	icon->setIconSize(QSize(14, 14));
+	icon->setFocusPolicy(Qt::NoFocus);
+	icon->setCursor(Qt::WhatsThisCursor);
+	// Role::Body, not Role::textMuted-as-initial-colour - retint()
+	// (theme_switch.cpp) hardcodes Role::Body to p.textBody on every theme
+	// switch, so initializing with anything else here would make the icon
+	// visibly change shade the first time the user switches themes.
+	icon_tint::apply(icon, ":/icons/info.svg", icon_tint::Role::Body, m_activeTheme.textBody);
+	icon->setToolTip(wrapTooltipHtml(helpText));
+	return icon;
+}
+
+// Composite {QLabel, info icon} widget for use as a QFormLayout::addRow()
+// label argument - addRow("text", field) only accepts a plain string, so a
+// row that wants an info icon next to its label needs the label built as
+// an actual widget instead. Tight spacing/zero margins so it reads as one
+// unit ("Samples per Pixel: (i)") rather than two separately-spaced items.
+QWidget* MainWindow::labelWithInfo(const QString &labelText, const QString &helpText) {
+	QWidget *container = new QWidget(this);
+	QHBoxLayout *layout = new QHBoxLayout(container);
+	layout->setContentsMargins(0, 0, 0, 0);
+	layout->setSpacing(4);
+	layout->addWidget(new QLabel(labelText, container));
+	layout->addWidget(createInfoIcon(helpText));
+	layout->addStretch();
+	return container;
 }
 

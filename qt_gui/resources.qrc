@@ -14,6 +14,7 @@
         <file>icons/clear.svg</file>
         <file>icons/gpu.svg</file>
         <file>icons/cpu.svg</file>
+        <file>icons/info.svg</file>
         <!-- Decorative motifs for the topical themes. Painted on the tab
              pane's background only - see theme::Palette::backgroundImage. -->
         <file>backgrounds/parchment.svg</file>

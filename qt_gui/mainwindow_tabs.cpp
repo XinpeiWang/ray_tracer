@@ -324,6 +324,14 @@ void MainWindow::createBasicTab() {
 	m_sceneCombo = new QComboBox(basicTab);
 	styleComboBox(m_sceneCombo);
 	sceneRow->addWidget(new QLabel("Scene:"));
+	sceneRow->addWidget(createInfoIcon(
+		"Every render starts from a scene - a description of what's in the "
+		"world: the geometry (shapes and meshes), materials (what surfaces "
+		"are made of), lights, and a camera.\n\n"
+		"This app ships with dozens of built-in scenes covering the basics "
+		"(a simple Cornell box) up through complex conductor/dielectric "
+		"materials, volumetric fog, and real photogrammetry-scale models - "
+		"pick one to render, or browse by category using the tabs above."));
 	sceneRow->addWidget(m_sceneCombo, 1);
 	m_sceneViewStack->addWidget(comboPage);
 
@@ -465,7 +473,15 @@ void MainWindow::createBasicTab() {
 		"Importance-sampled CPU path tracer — supports every scene and material.\n"
 		"GPU rendering is not available in this build.");
 #endif
-	renderLayout->addRow("Renderer:", m_renderModeCombo);
+	renderLayout->addRow(labelWithInfo("Renderer:",
+		"Both trace the exact same rays and produce the same image - the "
+		"difference is speed and hardware, not physics.\n\n"
+		"GPU (OptiX) uses NVIDIA's dedicated ray-tracing cores to trace "
+		"thousands of rays in parallel, typically far faster. CPU uses "
+		"ordinary processor cores instead: much slower, but works on any "
+		"machine and supports every material this app implements, "
+		"including a couple the GPU path hasn't caught up to yet."),
+		m_renderModeCombo);
 
 #ifdef RT_GUI_HAVE_GPU
 	m_gpuBackendCombo = new QComboBox(basicTab);
@@ -482,7 +498,17 @@ void MainWindow::createBasicTab() {
 	// index 0/true above) - the connect() in the constructor keeps it synced
 	// afterwards whenever the user changes Renderer.
 	m_gpuBackendCombo->setEnabled(m_renderModeCombo->currentData().toBool());
-	renderLayout->addRow("GPU Backend:", m_gpuBackendCombo);
+	renderLayout->addRow(labelWithInfo("GPU Backend:",
+		"Two different ways of organizing the SAME ray-tracing work on the "
+		"GPU.\n\n"
+		"Recursive traces one ray per thread from start to finish, "
+		"bouncing recursively - simple and battle-tested. Wavefront "
+		"instead groups all rays currently doing the same kind of work "
+		"(e.g. \"just hit glass\") into a batch and processes them "
+		"together - better use of the GPU's parallel hardware on complex "
+		"scenes with lots of different materials, at the cost of being a "
+		"newer, less-tested code path."),
+		m_gpuBackendCombo);
 #else
 	// No GPU support in this build (see above) - the combo simply doesn't
 	// exist, rather than existing permanently disabled. Every other file
@@ -517,7 +543,15 @@ void MainWindow::createBasicTab() {
 		"  Maximum 5000 spp, depth 100\n"
 		"Custom leaves the Advanced tab values untouched.\n"
 		"Render time scales roughly linearly with samples per pixel.");
-	renderLayout->addRow("Quality:", m_qualityPresetCombo);
+	renderLayout->addRow(labelWithInfo("Quality:",
+		"A shortcut that sets both Samples per Pixel and Max Ray Depth "
+		"together, since they're the two dials that trade render time "
+		"for image quality.\n\n"
+		"Each step up roughly doubles the render time in exchange for a "
+		"cleaner, less noisy image - Draft is for quickly checking a "
+		"scene looks right, Ultra/Maximum are for a final image you'd "
+		"actually want to look at closely."),
+		m_qualityPresetCombo);
 
 	// Resolution
 	m_resolutionCombo = new QComboBox(basicTab);
@@ -538,7 +572,14 @@ void MainWindow::createBasicTab() {
 	m_resolutionCombo->addItem("4096 x 4096", QSize(4096, 4096));
 	m_resolutionCombo->setCurrentIndex(5); // Default to 800x800
 	styleComboBox(m_resolutionCombo);
-	renderLayout->addRow("Resolution:", m_resolutionCombo);
+	renderLayout->addRow(labelWithInfo("Resolution:",
+		"How many pixels wide and tall the final image is.\n\n"
+		"Higher resolution means more individual pixels to trace - each "
+		"one independently sampled - so render time scales up roughly in "
+		"proportion to the pixel count (double the width AND height and "
+		"you're tracing about 4x as many pixels), independent of the "
+		"Samples per Pixel or Max Ray Depth settings."),
+		m_resolutionCombo);
 
 	layout->addWidget(renderGroup);
 
@@ -573,6 +614,12 @@ void MainWindow::createBasicTab() {
 		}
 	});
 
+	pathLayout->addWidget(createInfoIcon(
+		"Where the finished image is saved.\n\n"
+		"A raw .ppm file is always written, and a .png copy is generated "
+		"alongside it automatically - the Preview tab always shows the "
+		".png, since most image viewers (and this app's own preview) "
+		"can't open .ppm directly."));
 	pathLayout->addWidget(m_outputPathEdit);
 	pathLayout->addWidget(m_browseButton);
 	outputLayout->addLayout(pathLayout);
@@ -616,14 +663,23 @@ void MainWindow::createAdvancedTab() {
 	m_widthSpinBox->setRange(100, 4096);
 	m_widthSpinBox->setValue(800);
 	styleSpinBox(m_widthSpinBox);
-	formLayout->addRow("Width:", m_widthSpinBox);
+	formLayout->addRow(labelWithInfo("Width:",
+		"The image's pixel width.\n\n"
+		"Paired with Height below to set the resolution manually, "
+		"overriding whatever the Quality preset on the Basic tab would "
+		"otherwise use."),
+		m_widthSpinBox);
 
 	// Height
 	m_heightSpinBox = new QSpinBox(advancedTab);
 	m_heightSpinBox->setRange(100, 4096);
 	m_heightSpinBox->setValue(800);
 	styleSpinBox(m_heightSpinBox);
-	formLayout->addRow("Height:", m_heightSpinBox);
+	formLayout->addRow(labelWithInfo("Height:",
+		"The image's pixel height.\n\n"
+		"Paired with Width above - together they set the resolution "
+		"manually, overriding the Basic tab's Quality preset."),
+		m_heightSpinBox);
 
 	// Samples
 	m_samplesSpinBox = new QSpinBox(advancedTab);
@@ -634,7 +690,15 @@ void MainWindow::createAdvancedTab() {
 		"Rays traced per pixel. This is the main quality/time dial: noise falls\n"
 		"as the square root of this value, so halving the noise costs about 4x\n"
 		"the render time. Setting it here switches Quality to Custom.");
-	formLayout->addRow("Samples per Pixel:", m_samplesSpinBox);
+	formLayout->addRow(labelWithInfo("Samples per Pixel:",
+		"Ray tracing estimates each pixel's color by firing many random "
+		"rays and averaging the results, like polling a lot of people and "
+		"averaging their guesses.\n\n"
+		"More samples means a more accurate average, which shows up as "
+		"less speckly \"noise\" in the image - but each extra sample "
+		"costs render time. Doubling this value roughly halves the "
+		"noise, but takes about twice as long to render."),
+		m_samplesSpinBox);
 
 	// Max depth
 	m_maxDepthSpinBox = new QSpinBox(advancedTab);
@@ -645,7 +709,16 @@ void MainWindow::createAdvancedTab() {
 		"How many times a ray may bounce before it is terminated. Low values\n"
 		"darken glass and mirrors, which need many bounces to resolve; scenes\n"
 		"of plain diffuse surfaces look the same well below the maximum.");
-	formLayout->addRow("Max Ray Depth:", m_maxDepthSpinBox);
+	formLayout->addRow(labelWithInfo("Max Ray Depth:",
+		"A depth of 1 means a ray only sees what it hits directly, with "
+		"no bounced light at all - like a scene with no reflections or "
+		"indirect lighting.\n\n"
+		"Each extra bounce lets light travel one more surface before "
+		"giving up, which is what makes glass, mirrors, and soft "
+		"indirect lighting look correct. Most scenes look \"finished\" "
+		"well before the maximum - beyond that, extra depth mostly "
+		"traces light too dim to matter."),
+		m_maxDepthSpinBox);
 
 	layout->addWidget(advancedGroup);
 
@@ -721,7 +794,13 @@ void MainWindow::createAdvancedTab() {
 	m_cameraPresetCombo->addItem("Custom", QVariant::fromValue(QVector3D(0.0f, 0.0f, -1.0f)));
 
 	styleComboBox(m_cameraPresetCombo);
-	cameraLayout->addRow("Preset:", m_cameraPresetCombo);
+	cameraLayout->addRow(labelWithInfo("Preset:",
+		"A handful of hand-picked camera positions for this scene, framed "
+		"to show off something specific (e.g. looking in through the "
+		"front, or from inside a Cornell-box-style enclosure).\n\n"
+		"Choosing \"Custom\" unlocks the X/Y/Z fields below so you can "
+		"fly the camera anywhere you like instead."),
+		m_cameraPresetCombo);
 
 	// Camera position spinboxes (X, Y, Z coordinates)
 	// These are disabled by default; only enabled when "Custom" preset is selected
@@ -733,7 +812,13 @@ void MainWindow::createAdvancedTab() {
 	m_cameraPosX->setSingleStep(10);
 	m_cameraPosX->setEnabled(false);  // Disabled until "Custom" is selected
 	styleSpinBox(m_cameraPosX);
-	cameraLayout->addRow("Camera X:", m_cameraPosX);
+	cameraLayout->addRow(labelWithInfo("Camera X:",
+		"The camera's position along the world's X axis (left/right).\n\n"
+		"Only editable when the preset above is set to Custom - the "
+		"camera always looks toward the scene's own fixed look-at point, "
+		"so moving X/Y/Z changes the viewing angle and distance, not "
+		"just a straight left-right pan."),
+		m_cameraPosX);
 
 	m_cameraPosY = new QDoubleSpinBox(advancedTab);
 	m_cameraPosY->setRange(-2000, 2000);
@@ -741,7 +826,12 @@ void MainWindow::createAdvancedTab() {
 	m_cameraPosY->setSingleStep(10);
 	m_cameraPosY->setEnabled(false);  // Disabled until "Custom" is selected
 	styleSpinBox(m_cameraPosY);
-	cameraLayout->addRow("Camera Y:", m_cameraPosY);
+	cameraLayout->addRow(labelWithInfo("Camera Y:",
+		"The camera's position along the world's Y axis (up/down).\n\n"
+		"Same Custom-preset-only editing rule as Camera X - the camera "
+		"keeps looking at the scene's fixed look-at point as you move "
+		"it."),
+		m_cameraPosY);
 
 	m_cameraPosZ = new QDoubleSpinBox(advancedTab);
 	m_cameraPosZ->setRange(-2000, 2000);
@@ -749,7 +839,11 @@ void MainWindow::createAdvancedTab() {
 	m_cameraPosZ->setSingleStep(10);
 	m_cameraPosZ->setEnabled(false);  // Disabled until "Custom" is selected
 	styleSpinBox(m_cameraPosZ);
-	cameraLayout->addRow("Camera Z:", m_cameraPosZ);
+	cameraLayout->addRow(labelWithInfo("Camera Z:",
+		"The camera's position along the world's Z axis (forward/back, "
+		"into or out of the scene).\n\n"
+		"Same Custom-preset-only editing rule as Camera X/Y."),
+		m_cameraPosZ);
 
 	// Distance from the current scene's look-at point. Adjusting this moves
 	// the camera along its EXISTING viewing direction to the new distance
@@ -764,7 +858,13 @@ void MainWindow::createAdvancedTab() {
 	m_cameraDistance->setSingleStep(10);
 	m_cameraDistance->setEnabled(false);  // Disabled until "Custom" is selected
 	styleSpinBox(m_cameraDistance);
-	cameraLayout->addRow("Distance from Center:", m_cameraDistance);
+	cameraLayout->addRow(labelWithInfo("Distance from Center:",
+		"Moves the camera directly toward or away from the scene's "
+		"look-at point along whatever direction it's currently facing, "
+		"without changing which way it's pointed.\n\n"
+		"The quickest way to zoom in or pull back once you've already "
+		"found an angle you like via the X/Y/Z fields or a preset."),
+		m_cameraDistance);
 
 	// Connect preset combo to handler that updates spinboxes and enables/disables manual input
 	// Connection made AFTER all widgets are created to avoid null pointer issues
@@ -838,7 +938,17 @@ void MainWindow::createRenderOptionsTab() {
 		"CPU default path tracer only - no effect on GPU or under\n"
 		"BDPT/MLT/SPPM/the debug integrators.");
 	styleComboBox(m_samplerCombo);
-	samplingLayout->addRow("Sampler:", m_samplerCombo);
+	samplingLayout->addRow(labelWithInfo("Sampler:",
+		"Ray tracing needs a lot of random numbers - which direction to "
+		"bounce a ray, which point on a light to sample, and so on - and "
+		"HOW those \"random\" numbers are generated changes how quickly "
+		"the image converges to a clean result.\n\n"
+		"A naive random-number generator clusters and leaves gaps; the "
+		"samplers here (Sobol, Halton, etc.) are all low-discrepancy "
+		"sequences, deliberately spread out to cover the sampling space "
+		"more evenly, which converges to a clean image faster than true "
+		"randomness would for the same sample count."),
+		m_samplerCombo);
 
 	m_spectralCheck = new QCheckBox("Spectral rendering (--spectral)", optionsTab);
 	m_spectralCheck->setToolTip(
@@ -848,7 +958,25 @@ void MainWindow::createRenderOptionsTab() {
 		"supported - a scene using anything else fails to render rather\n"
 		"than silently rendering wrong colors. Noticeably slower per-sample.");
 	styleCheckBox(m_spectralCheck);
-	samplingLayout->addRow(m_spectralCheck);
+	{
+		QWidget *row = new QWidget(optionsTab);
+		QHBoxLayout *rowLayout = new QHBoxLayout(row);
+		rowLayout->setContentsMargins(0, 0, 0, 0);
+		rowLayout->setSpacing(4);
+		rowLayout->addWidget(m_spectralCheck);
+		rowLayout->addWidget(createInfoIcon(
+			"Ordinary rendering tracks light as three numbers - red, "
+			"green, blue - the same way a screen displays color.\n\n"
+			"Real light is a continuous spectrum of wavelengths, and a "
+			"few physical effects (like a prism splitting white light "
+			"into a rainbow) only happen because different wavelengths "
+			"refract by different amounts - RGB alone can't represent "
+			"that. Spectral rendering tracks a handful of actual "
+			"wavelengths per ray instead of just RGB, at the cost of "
+			"being noisier and slower per sample."));
+		rowLayout->addStretch();
+		samplingLayout->addRow(row);
+	}
 
 	m_exposureSpin = new QDoubleSpinBox(optionsTab);
 	m_exposureSpin->setRange(0.01, 100.0);
@@ -858,7 +986,14 @@ void MainWindow::createRenderOptionsTab() {
 		"Flat multiplier on linear color before tone-mapping (1.0 = no-op).\n"
 		"Both CPU and GPU default path tracer only.");
 	styleSpinBox(m_exposureSpin);
-	samplingLayout->addRow("Exposure:", m_exposureSpin);
+	samplingLayout->addRow(labelWithInfo("Exposure:",
+		"A flat brightness multiplier applied to the whole image, the "
+		"same knob a camera's exposure setting is.\n\n"
+		"1.0 leaves the image unchanged; below 1.0 darkens it, above 1.0 "
+		"brightens it - useful for a scene that's rendering correctly "
+		"but is just too dark or too bright to see clearly, without "
+		"changing any actual light in the scene."),
+		m_exposureSpin);
 
 	layout->addWidget(samplingGroup);
 
@@ -881,7 +1016,16 @@ void MainWindow::createRenderOptionsTab() {
 		"Applies to both CPU and GPU (recursive and wavefront) - no\n"
 		"effect under BDPT/MLT/SPPM/the debug integrators.");
 	styleComboBox(m_tonemapCombo);
-	outputLayout->addRow("Tone mapping:", m_tonemapCombo);
+	outputLayout->addRow(labelWithInfo("Tone mapping:",
+		"A raytraced scene's true brightness values are unbounded - a "
+		"light bulb might be a hundred times brighter than a wall - but "
+		"a screen can only display a fixed range. Tone mapping is the "
+		"curve that compresses that huge range down into something "
+		"displayable.\n\n"
+		"ACES rolls off bright highlights gently, the way film does; "
+		"Reinhard is a simpler, older compression; None just clips "
+		"anything too bright to flat white, which can look harsh."),
+		m_tonemapCombo);
 
 	m_statsCheck = new QCheckBox("Print render stats", optionsTab);
 	m_statsCheck->setToolTip(
@@ -889,7 +1033,21 @@ void MainWindow::createRenderOptionsTab() {
 		"shadow rays, samples/sec) to the Log tab. Observation-only -\n"
 		"never changes the rendered image.");
 	styleCheckBox(m_statsCheck);
-	outputLayout->addRow(m_statsCheck);
+	{
+		QWidget *row = new QWidget(optionsTab);
+		QHBoxLayout *rowLayout = new QHBoxLayout(row);
+		rowLayout->setContentsMargins(0, 0, 0, 0);
+		rowLayout->setSpacing(4);
+		rowLayout->addWidget(m_statsCheck);
+		rowLayout->addWidget(createInfoIcon(
+			"Prints a short summary after the render finishes - how many "
+			"rays were cast, how many bounces happened, how many shadow "
+			"rays were traced, and samples per second.\n\n"
+			"Purely informational: it never changes the rendered image, "
+			"just tells you what the renderer actually did."));
+		rowLayout->addStretch();
+		outputLayout->addRow(row);
+	}
 
 	m_denoiseCheck = new QCheckBox("OptiX AI denoiser (GPU recursive only)", optionsTab);
 	m_denoiseCheck->setToolTip(
@@ -897,14 +1055,47 @@ void MainWindow::createRenderOptionsTab() {
 		"albedo + normal buffers. GPU recursive backend only - silently\n"
 		"has no effect under the wavefront backend.");
 	styleCheckBox(m_denoiseCheck);
-	outputLayout->addRow(m_denoiseCheck);
+	{
+		QWidget *row = new QWidget(optionsTab);
+		QHBoxLayout *rowLayout = new QHBoxLayout(row);
+		rowLayout->setContentsMargins(0, 0, 0, 0);
+		rowLayout->setSpacing(4);
+		rowLayout->addWidget(m_denoiseCheck);
+		rowLayout->addWidget(createInfoIcon(
+			"Ray tracing is noisy by nature - low sample counts leave a "
+			"grainy, speckled image, which is why more samples usually "
+			"means a cleaner picture.\n\n"
+			"A denoiser is a machine-learning model trained to recognize "
+			"that speckle pattern and smooth it away after the fact, "
+			"without needing to trace additional rays - a way to get a "
+			"clean-looking image faster, at some cost in fine detail."));
+		rowLayout->addStretch();
+		outputLayout->addRow(row);
+	}
 
 	m_optixValidateCheck = new QCheckBox("OptiX validation mode (slower, debugging only)", optionsTab);
 	m_optixValidateCheck->setToolTip(
 		"Enable OptiX validation mode - extra device-side checks with a\n"
 		"real per-launch cost. GPU only, for debugging, not routine use.");
 	styleCheckBox(m_optixValidateCheck);
-	outputLayout->addRow(m_optixValidateCheck);
+	{
+		QWidget *row = new QWidget(optionsTab);
+		QHBoxLayout *rowLayout = new QHBoxLayout(row);
+		rowLayout->setContentsMargins(0, 0, 0, 0);
+		rowLayout->setSpacing(4);
+		rowLayout->addWidget(m_optixValidateCheck);
+		rowLayout->addWidget(createInfoIcon(
+			"Turns on extra correctness checks inside the GPU ray-tracing "
+			"pipeline itself, catching certain classes of bugs that would "
+			"otherwise silently produce a wrong image or crash "
+			"unpredictably.\n\n"
+			"It's a debugging aid for people working on the renderer's "
+			"own GPU code, not something a normal render benefits from - "
+			"it has a real performance cost and doesn't change what a "
+			"correct render looks like."));
+		rowLayout->addStretch();
+		outputLayout->addRow(row);
+	}
 
 	layout->addWidget(outputGroup);
 	layout->addStretch();
@@ -1479,7 +1670,14 @@ void MainWindow::createVideoTab() {
 	styleComboBox(m_videoPresetCombo);
 	connect(m_videoPresetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
 			this, &MainWindow::onVideoPresetChanged);
-	videoLayout->addRow("Preset:", m_videoPresetCombo);
+	videoLayout->addRow(labelWithInfo("Preset:",
+		"A ready-made bundle of scene + camera path + frame count + fps "
+		"+ speed, tuned so the resulting video actually looks good "
+		"without hand-picking every setting yourself.\n\n"
+		"Picking one fills in every field below (and the scene on the "
+		"Basic tab) - you can still change anything afterward, it just "
+		"stops matching the preset once you do."),
+		m_videoPresetCombo);
 
 	// Camera path selector
 	m_cameraPathCombo = new QComboBox();
@@ -1496,7 +1694,15 @@ void MainWindow::createVideoTab() {
 		"Every path starts from the camera position on the Advanced tab.");
 	m_cameraPathCombo->setCurrentIndex(0);
 	styleComboBox(m_cameraPathCombo);
-	videoLayout->addRow("Camera Path:", m_cameraPathCombo);
+	videoLayout->addRow(labelWithInfo("Camera Path:",
+		"How the camera moves across the sequence of frames.\n\n"
+		"Orbit circles fully around the scene, always facing its center "
+		"- the classic \"turntable\" shot. Linear sweeps past in a "
+		"straight line. Figure-8 traces a lemniscate, crossing back "
+		"through the middle. Spiral orbits while steadily moving closer. "
+		"Every path starts from wherever the camera is positioned on "
+		"the Advanced tab."),
+		m_cameraPathCombo);
 
 	// Frame count
 	m_videoFramesSpinBox = new QSpinBox();
@@ -1504,7 +1710,14 @@ void MainWindow::createVideoTab() {
 	m_videoFramesSpinBox->setValue(60);
 	m_videoFramesSpinBox->setSuffix(" frames");
 	styleSpinBox(m_videoFramesSpinBox);
-	videoLayout->addRow("Frame Count:", m_videoFramesSpinBox);
+	videoLayout->addRow(labelWithInfo("Frame Count:",
+		"How many individual images make up the video - each one is a "
+		"full, independent render, so this multiplies total render time "
+		"directly (100 frames takes roughly 100x as long as one image "
+		"at the same settings).\n\n"
+		"Paired with Frames Per Second below to determine the video's "
+		"total length in seconds."),
+		m_videoFramesSpinBox);
 
 	// FPS (frames per second)
 	m_videoFPSSpinBox = new QSpinBox();
@@ -1512,7 +1725,13 @@ void MainWindow::createVideoTab() {
 	m_videoFPSSpinBox->setValue(30);
 	m_videoFPSSpinBox->setSuffix(" fps");
 	styleSpinBox(m_videoFPSSpinBox);
-	videoLayout->addRow("Frames Per Second:", m_videoFPSSpinBox);
+	videoLayout->addRow(labelWithInfo("Frames Per Second:",
+		"How many of the rendered frames play per second of video.\n\n"
+		"Doesn't change how many frames get rendered (that's Frame "
+		"Count above) - only how fast they play back, and therefore how "
+		"many seconds long the finished video is (Frame Count divided "
+		"by FPS)."),
+		m_videoFPSSpinBox);
 
 	// Movement speed multiplier - does NOT change the camera path itself (it
 	// always completes the exact same full sweep: 1 rotation for
@@ -1529,7 +1748,14 @@ void MainWindow::createVideoTab() {
 	m_videoSpeedSpinBox->setValue(1.0);
 	m_videoSpeedSpinBox->setSuffix("x");
 	styleSpinBox(m_videoSpeedSpinBox);
-	videoLayout->addRow("Movement Speed:", m_videoSpeedSpinBox);
+	videoLayout->addRow(labelWithInfo("Movement Speed:",
+		"A multiplier on how many frames the camera's full path is "
+		"spread across - not a change to the path itself, which always "
+		"completes the same full sweep.\n\n"
+		"Speed 0.5x renders twice as many frames to cover the same "
+		"journey more slowly and smoothly; speed 2x renders half as "
+		"many frames, covering the same journey faster."),
+		m_videoSpeedSpinBox);
 
 	// Video duration info (calculated from frames/fps)
 	m_videoInfoLabel = new QLabel();
