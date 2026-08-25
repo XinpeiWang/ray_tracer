@@ -1139,12 +1139,14 @@ private:
 	void saveThemeId(const QString &themeId) const;
 
 	// Language selection and persistence - same shape as the theme menu just
-	// above, except switching takes effect after a restart rather than live
+	// above, except switching still needs a fresh process under the hood
 	// (see language_switch.cpp's own comment for why: no retranslateUi()
 	// split exists between building this app's widget tree and setting its
-	// text, unlike theme colour which is a re-derivable property). main.cpp
-	// reads loadSavedLanguageCode() and installs the matching QTranslator
-	// before MainWindow is ever constructed.
+	// text, unlike theme colour which is a re-derivable property) -
+	// switchLanguage() now does that relaunch itself instead of asking the
+	// user to do it. main.cpp reads loadSavedLanguageCode() and installs
+	// the matching QTranslator before MainWindow is ever constructed, on
+	// both a genuine cold start and the relaunched process alike.
 	QVector<QAction *> m_languageActions;
 	void switchLanguage(const QString &code);
 	void createLanguageMenu();

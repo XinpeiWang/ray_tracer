@@ -5,25 +5,30 @@
 #include <QCoreApplication>
 #include <QMenu>
 #include <QMenuBar>
+#include <QProcess>
 #include <QSettings>
 #include <QStatusBar>
+#include <QTimer>
 
 // ============================================================================
 // Language selection and persistence
 // ============================================================================
-// Unlike theme switching (theme_switch.cpp), a language change is NOT live:
-// it takes effect the next time the app starts. Theme colour is a property
-// re-derivable at any time from stored palette data (see
-// MainWindow::restyleThemedWidgets()), but text is not - every widget in
-// this app is built once, in one pass, inside the create*Tab() functions
-// called from the constructor, with no Designer-generated retranslateUi()
-// split between "build the widget tree" and "set its text" that would let a
-// second pass safely re-run just the text-setting half. Retrofitting that
-// split across ~1,750 lines of mainwindow_tabs.cpp to support live,
-// no-restart switching is possible but a much larger, separate undertaking;
-// restart-to-apply is standard behavior in real Qt/Electron/JetBrains apps
-// and gets the same top-level-menu, instant-persistence UX at a fraction of
-// the engineering cost.
+// A language change still needs a fresh process, same underlying reason as
+// before: theme colour is a property re-derivable at any time (see
+// MainWindow::restyleThemedWidgets()), but text is not - every widget here
+// is built once, in one pass, inside the create*Tab() functions called from
+// the constructor, with no Designer-generated retranslateUi() split between
+// "build the widget tree" and "set its text" that would let a second pass
+// safely re-run just the text-setting half. Retrofitting that split across
+// ~1,750 lines of mainwindow_tabs.cpp for true live switching is possible
+// but a much larger, separate undertaking.
+//
+// What changed: the app now does the restart itself. switchLanguage()
+// spawns a fresh instance of the same executable (which reads the
+// just-saved choice on its own startup, same as any cold start) and quits
+// this one - the user picks a language and the window briefly closes and
+// reopens already translated, instead of having to close and relaunch it
+// by hand.
 // ============================================================================
 
 namespace {
@@ -75,7 +80,18 @@ void MainWindow::switchLanguage(const QString &code) {
 	for (QAction *action : m_languageActions)
 		action->setChecked(action->data().toString() == code);
 
-	statusBar()->showMessage(tr("Language set to %1 - restart to apply.").arg(nativeName), 5000);
+	statusBar()->showMessage(tr("Language set to %1 - restarting...").arg(nativeName), 5000);
+
+	// A short delay rather than relaunching in the same call: lets the
+	// status message above and the menu's own checkmark repaint actually
+	// hit the screen (and the triggered QAction's own click handling
+	// unwind cleanly) before the window disappears, instead of the click
+	// seeming to do nothing right up until the app vanishes.
+	QTimer::singleShot(400, this, []() {
+		QProcess::startDetached(QCoreApplication::applicationFilePath(),
+								 QCoreApplication::arguments().mid(1));
+		qApp->quit();
+	});
 }
 
 // Top-level menu, same reasoning as createThemeMenu()'s own comment: a
