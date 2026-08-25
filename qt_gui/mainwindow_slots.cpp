@@ -164,17 +164,17 @@ RenderJob MainWindow::captureRenderJob() {
 	// makes that safety non-fragile against future reordering.
 	job.useWavefront = job.useGPU && m_gpuBackendCombo && m_gpuBackendCombo->currentData().toBool();
 
-	// Render Options tab - see RenderController::setAdvancedFlags()'s own
-	// comment. sampler/tonemap use currentData() (empty for the "default"
-	// item) rather than currentText(), matching every other flag combo in
-	// this file (e.g. job.useWavefront above).
-	job.denoise = m_denoiseCheck->isChecked();
-	job.stats = m_statsCheck->isChecked();
-	job.optixValidate = m_optixValidateCheck->isChecked();
-	job.exposure = m_exposureSpin->value();
-	job.sampler = m_samplerCombo->currentData().toString();
-	job.spectral = m_spectralCheck->isChecked();
-	job.tonemap = m_tonemapCombo->currentData().toString();
+	// Render Options tab - see AdvancedRenderFlags's own comment.
+	// sampler/tonemap use currentData() (empty for the "default" item)
+	// rather than currentText(), matching every other flag combo in this
+	// file (e.g. job.useWavefront above).
+	job.advancedFlags.denoise = m_denoiseCheck->isChecked();
+	job.advancedFlags.stats = m_statsCheck->isChecked();
+	job.advancedFlags.optixValidate = m_optixValidateCheck->isChecked();
+	job.advancedFlags.exposure = m_exposureSpin->value();
+	job.advancedFlags.sampler = m_samplerCombo->currentData().toString();
+	job.advancedFlags.spectral = m_spectralCheck->isChecked();
+	job.advancedFlags.tonemap = m_tonemapCombo->currentData().toString();
 
 	// Resolution: either from preset dropdown or custom values from Advanced tab
 	if (m_qualityPresetCombo->currentIndex() == 6) {
@@ -289,8 +289,7 @@ void MainWindow::startRenderJob(const RenderJob &job) {
 	m_renderController->setParameters(job.useGPU, job.width, job.height, job.samples, job.maxDepth,
 	                                   job.sceneId, job.camX, job.camY, job.camZ, job.camExplicit,
 	                                   job.outputPath, job.useWavefront);
-	m_renderController->setAdvancedFlags(job.denoise, job.stats, job.optixValidate, job.exposure,
-	                                      job.sampler, job.spectral, job.tonemap);
+	m_renderController->setAdvancedFlags(job.advancedFlags);
 
 	if (job.videoMode) {
 		m_renderController->setVideoParameters(true, job.videoFrames, job.videoFPS, job.cameraPath, job.videoSpeed);

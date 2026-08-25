@@ -4,6 +4,7 @@
 #include "scene_metadata_client.h"
 #include "win_taskbar.h"
 #include "render_output_parser.h"
+#include "../src/shared/render_flag_names.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -66,15 +67,8 @@ void RenderController::setVideoParameters(bool enabled, int frames, int fps, con
 	m_cameraPath = cameraPath;
 }
 
-void RenderController::setAdvancedFlags(bool denoise, bool stats, bool optixValidate, double exposure,
-										 const QString &sampler, bool spectral, const QString &tonemap) {
-	m_denoise = denoise;
-	m_stats = stats;
-	m_optixValidate = optixValidate;
-	m_exposure = exposure;
-	m_sampler = sampler;
-	m_spectral = spectral;
-	m_tonemap = tonemap;
+void RenderController::setAdvancedFlags(const AdvancedRenderFlags &flags) {
+	m_advancedFlags = flags;
 }
 
 bool RenderController::isRunning() const {
@@ -132,31 +126,31 @@ void RenderController::start() {
 
 	// Render mode flag: --gpu or --cpu
 	if (m_useGPU) {
-		args << "--gpu";
-		if (m_useWavefront) args << "--wavefront";
+		args << render_flags::kGpu;
+		if (m_useWavefront) args << render_flags::kWavefront;
 	} else {
-		args << "--cpu";
+		args << render_flags::kCpu;
 	}
 
-	// Render Options tab flags - see setAdvancedFlags()'s own comment.
+	// Render Options tab flags - see AdvancedRenderFlags's own comment.
 	// Each maps 1:1 to a CLI flag; only emitted when it differs from the
 	// CLI's own default, so a render with every toggle left untouched
 	// produces exactly the same command line this GUI always has.
-	if (m_denoise)       args << "--denoise";
-	if (m_stats)         args << "--stats";
-	if (m_optixValidate) args << "--optix-validate";
-	if (m_exposure != 1.0) args << "--exposure" << QString::number(m_exposure);
-	if (!m_sampler.isEmpty()) args << "--sampler" << m_sampler;
-	if (m_spectral)       args << "--spectral";
-	if (!m_tonemap.isEmpty()) args << "--tonemap" << m_tonemap;
+	if (m_advancedFlags.denoise)       args << render_flags::kDenoise;
+	if (m_advancedFlags.stats)         args << render_flags::kStats;
+	if (m_advancedFlags.optixValidate) args << render_flags::kOptixValidate;
+	if (m_advancedFlags.exposure != 1.0) args << render_flags::kExposure << QString::number(m_advancedFlags.exposure);
+	if (!m_advancedFlags.sampler.isEmpty()) args << render_flags::kSampler << m_advancedFlags.sampler;
+	if (m_advancedFlags.spectral)       args << render_flags::kSpectral;
+	if (!m_advancedFlags.tonemap.isEmpty()) args << render_flags::kTonemap << m_advancedFlags.tonemap;
 
 	// Video mode flags (if enabled)
 	if (m_videoMode) {
-		args << "--video";
-		args << "--frames" << QString::number(m_videoFrames);
-		args << "--fps" << QString::number(m_videoFPS);
-		args << "--speed" << QString::number(m_videoSpeed);
-		args << "--camera-path" << m_cameraPath;
+		args << render_flags::kVideo;
+		args << render_flags::kFrames << QString::number(m_videoFrames);
+		args << render_flags::kFps << QString::number(m_videoFPS);
+		args << render_flags::kSpeed << QString::number(m_videoSpeed);
+		args << render_flags::kCameraPath << m_cameraPath;
 
 		// Use the same per-render output path image mode does (see
 		// onRenderClicked()'s comment on why it's refreshed with a fresh
@@ -171,11 +165,11 @@ void RenderController::start() {
 		QString videoOutputPath = !m_outputPath.isEmpty()
 			? m_outputPath
 			: QCoreApplication::applicationDirPath() + "/output/video.ppm";
-		args << "--output" << videoOutputPath;
+		args << render_flags::kOutput << videoOutputPath;
 	} else {
 		// Image mode: use custom output path if provided
 		if (!m_outputPath.isEmpty()) {
-			args << "--output" << m_outputPath;
+			args << render_flags::kOutput << m_outputPath;
 		}
 	}
 

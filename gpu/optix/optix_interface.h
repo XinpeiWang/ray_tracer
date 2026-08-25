@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "../../src/shared/render_options.h"
+
 // Plain-POD result of a full GPU/CUDA/OptiX capability probe (--diagnose,
 // see launcher/diagnostics.h). Fixed-size char buffers rather than
 // std::string, matching every other type that crosses this extern "C"
@@ -42,20 +44,14 @@ bool optix_get_diagnostics(OptixDiagnostics* out);
 // passes 1, since a video needs to honor its per-frame animated camera
 // regardless of the scene's single-image default; single-image rendering
 // passes 0 (default).
-// denoise: 1 = run the OptiX AI denoiser on the finished render before
-// writing output_path (recursive GPU backend only - silently has no effect
-// under wavefront mode, see OptiXRenderer::enableDenoise()'s comment for
-// why). 0 (default) = off, matching every existing caller's prior behavior.
-// exposure: flat multiplier on linear color, applied right before tone-
-// mapping (see the final pixel-writing loop in optix_interface.cpp, which
-// covers both the recursive and wavefront backends). 1.0 (default) is a
-// no-op; mirrors cpu_render_main()'s own exposure parameter.
-// tonemap: which operator that same pixel-writing loop applies before the
-// sRGB OETF (src/shared/tone_map.h's ToneMapMode) - one of "aces"/
-// "reinhard"/"none"; nullptr, empty, or an unrecognized name all fall back
-// to "aces" (this project's pre-existing hardcoded default). Also covers
-// both the recursive and wavefront backends, for the same reason exposure
-// does; mirrors cpu_render_main()'s own tonemap parameter.
+// options: render-behavior flags (denoise/exposure/tonemap - sampler/
+// spectral are CPU-only and ignored here) bundled into one struct - see
+// src/shared/render_options.h's own field-by-field comments. A default-
+// constructed RenderOptions matches every existing caller's prior
+// behavior (no denoise, exposure=1.0/no-op, ACES tone mapping). exposure
+// and tonemap both apply to the recursive AND wavefront backends (the
+// final pixel-writing loop in optix_interface.cpp is the single shared
+// output path for both).
 int optix_render_main(
 	int image_width,
 	int image_height,
@@ -67,9 +63,7 @@ int optix_render_main(
 	double cam_y,
 	double cam_z,
 	int force_camera_override = 0,
-	int denoise = 0,
-	double exposure = 1.0,
-	const char* tonemap = nullptr
+	const RenderOptions& options = {}
 );
 
 // GPU SPPM (Stochastic Progressive Photon Mapping) rendering entry point,

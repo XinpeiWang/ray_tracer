@@ -142,8 +142,7 @@ static bool spectral_scan_hittable(const hittable* h, std::string& error_out) {
 
 extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, const char* output_path,
 								 const char* scene_id, double cam_x, double cam_y, double cam_z,
-								 int force_camera_override, double exposure, const char* sampler,
-								 bool spectral, const char* tonemap) {
+								 int force_camera_override, const RenderOptions& options) {
 	try {
 		// ====================================================================
 		// Parameter Validation
@@ -217,7 +216,7 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		// call), so this only fires for an outright empty/unset --sampler -
 		// i.e. the render is about to use Sobol regardless of what the scene
 		// itself asked for.
-		if (sampler == nullptr || sampler[0] == '\0') {
+		if (options.sampler == nullptr || options.sampler[0] == '\0') {
 			if (!scene_desc->recommended_sampler.empty() && scene_desc->recommended_sampler != "sobol") {
 				std::cerr << "Warning: scene '" << scene_id << "' requests Sampler \""
 						  << scene_desc->recommended_sampler
@@ -269,7 +268,7 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 			// world is built, before any pixel is traced) so an unsupported
 			// scene fails loudly and immediately rather than silently
 			// rendering with the wrong color model.
-			if (spectral) {
+			if (options.spectral) {
 				std::string bad;
 				for (const auto& obj : world.objects) {
 					if (!spectral_scan_hittable(obj.get(), bad)) break;
@@ -301,8 +300,8 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		cam.image_height      = (cam.image_height < 1) ? 1 : cam.image_height;
 		cam.samples_per_pixel = spp;
 		cam.max_depth         = max_depth;
-		cam.exposure          = exposure;
-		cam.spectral          = spectral;
+		cam.exposure          = options.exposure;
+		cam.spectral          = options.spectral;
 		// Auto-detected from the caller's requested extension, matching how
 		// launcher/main.cpp already auto-triggers PNG conversion off the
 		// output extension rather than a separate flag - see camera.h's own
@@ -312,12 +311,12 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		// sampler==nullptr (every existing caller that predates this param)
 		// or an unrecognized name both fall back to Sobol - see
 		// sampler_kind_from_name()'s own comment.
-		if (sampler != nullptr) {
+		if (options.sampler != nullptr) {
 			SamplerKind kind;
-			if (sampler_kind_from_name(sampler, kind)) {
+			if (sampler_kind_from_name(options.sampler, kind)) {
 				cam.sampler_kind = kind;
-			} else if (sampler[0] != '\0') {
-				std::cerr << "Warning: unrecognized --sampler \"" << sampler
+			} else if (options.sampler[0] != '\0') {
+				std::cerr << "Warning: unrecognized --sampler \"" << options.sampler
 						  << "\", using sobol. Valid: sobol, zsobol, paddedsobol, "
 							 "stratified, pmj02bn, halton.\n";
 			}
@@ -325,12 +324,12 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		// tonemap==nullptr (every existing caller that predates this param)
 		// or an unrecognized name both fall back to ACES - see
 		// tone_map_mode_from_name()'s own comment (src/shared/tone_map.h).
-		if (tonemap != nullptr) {
+		if (options.tonemap != nullptr) {
 			ToneMapMode mode;
-			if (tone_map_mode_from_name(tonemap, mode)) {
+			if (tone_map_mode_from_name(options.tonemap, mode)) {
 				cam.tone_map = mode;
-			} else if (tonemap[0] != '\0') {
-				std::cerr << "Warning: unrecognized --tonemap \"" << tonemap
+			} else if (options.tonemap[0] != '\0') {
+				std::cerr << "Warning: unrecognized --tonemap \"" << options.tonemap
 						  << "\", using aces. Valid: aces, reinhard, none.\n";
 			}
 		}

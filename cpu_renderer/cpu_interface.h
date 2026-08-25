@@ -18,6 +18,8 @@
 #ifndef CPU_INTERFACE_H
 #define CPU_INTERFACE_H
 
+#include "../src/shared/render_options.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -57,34 +59,15 @@ extern "C" {
 ///                      comment on why) - the 0 default here only matters
 ///                      to direct callers that bypass main.cpp entirely
 ///                      (e.g. unit tests).
-/// @param exposure      Flat multiplier on linear color, applied right
-///                      before tone-mapping (see camera.h's render loop).
-///                      1.0 (default) is a no-op; mirrors pbrt-v4's
-///                      PixelSensor imagingRatio collapsed to one scalar.
-/// @param sampler       Which ported pbrt-v4 sampler (src/shared/
-///                      sobol_sampler.h, stratified_sampler.h,
-///                      pmj02_sampler.h, halton_sampler.h) drives
-///                      ray_color()'s random decisions - see camera.h's
-///                      SamplerKind/sampler_kind_from_name(). One of
-///                      "sobol"/"zsobol"/"paddedsobol"/"stratified"/
-///                      "pmj02bn"/"halton"; nullptr, empty, or an
-///                      unrecognized name all fall back to "sobol" (this
-///                      project's pre-existing hardcoded default).
-/// @param spectral      Real hero-wavelength spectral rendering
-///                      (camera.h's ray_color_spectral()) instead of the
-///                      default flat-RGB ray_color(). Only
-///                      lambertian/metal/dielectric/rough_dielectric/
-///                      conductor/diffuse_light scenes are supported - the
-///                      loaded scene tree is scanned before rendering
-///                      starts, and an unsupported material fails the call
-///                      (named in the error) rather than silently
-///                      rendering with the wrong color model.
-/// @param tonemap       Which tone-mapping operator write_color() applies
-///                      before the sRGB OETF (src/shared/tone_map.h's
-///                      ToneMapMode) - one of "aces"/"reinhard"/"none";
-///                      nullptr, empty, or an unrecognized name all fall
-///                      back to "aces" (this project's pre-existing
-///                      hardcoded default).
+/// @param options       Render-behavior flags (exposure/sampler/spectral/
+///                      tonemap) bundled into one struct rather than
+///                      individual trailing parameters - see
+///                      src/shared/render_options.h's own field-by-field
+///                      comments for exact semantics/defaults/fallback
+///                      behavior. A default-constructed RenderOptions
+///                      reproduces this project's pre-existing hardcoded
+///                      behavior exactly (sobol sampler, flat RGB, ACES
+///                      tone mapping, no denoise).
 /// @return 0 on success, non-zero error code on failure
 int cpu_render_main(
     int width,
@@ -97,10 +80,7 @@ int cpu_render_main(
     double cam_y,
     double cam_z,
     int force_camera_override = 0,
-    double exposure = 1.0,
-    const char* sampler = nullptr,
-    bool spectral = false,
-    const char* tonemap = nullptr
+    const RenderOptions& options = {}
 );
 
 /// @brief Render a scene using Stochastic Progressive Photon Mapping (SPPM)

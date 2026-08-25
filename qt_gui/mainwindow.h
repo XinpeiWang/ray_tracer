@@ -728,6 +728,23 @@ private:
 // stop-request flag to be an atomic polled across threads. Being
 // single-threaded now, stopRender() can just kill the process directly.
 // ============================================================================
+// "Render Options" tab flags - one struct instead of 7 positional
+// parameters. Each field maps 1:1 to a CLI flag (see RenderController::
+// start()'s own arg-building); defaults here match the CLI's own
+// defaults, so code that never touches this (ThumbnailGenerator, in
+// particular, via a default-constructed RenderJob) renders exactly as it
+// always has. sampler/tonemap empty = use the CLI's own default (sobol/
+// aces) rather than passing the flag at all.
+struct AdvancedRenderFlags {
+	bool denoise = false;
+	bool stats = false;
+	bool optixValidate = false;
+	double exposure = 1.0;
+	QString sampler;
+	bool spectral = false;
+	QString tonemap;
+};
+
 class RenderController : public QObject {
 	Q_OBJECT
 
@@ -754,14 +771,11 @@ public:
 	void setVideoParameters(bool enabled, int frames, int fps, const QString &cameraPath, double speed = 1.0);
 
 	// Set the "Render Options" tab's flags - a separate setter rather than
-	// growing setParameters()'s already-large signature further. Each
-	// parameter maps 1:1 to a CLI flag (see start()'s own arg-building);
-	// defaults here match the CLI's own defaults, so a caller that never
-	// invokes this (ThumbnailGenerator, in particular) renders exactly as
-	// it always has. sampler/tonemap empty = use the CLI's own default
-	// (sobol/aces) rather than passing the flag at all.
-	void setAdvancedFlags(bool denoise, bool stats, bool optixValidate, double exposure,
-						   const QString &sampler, bool spectral, const QString &tonemap);
+	// growing setParameters()'s already-large signature further, and one
+	// struct rather than 7 positional parameters (see AdvancedRenderFlags's
+	// own comment above for why: three adjacent bools then two adjacent
+	// strings is exactly the shape a transposed-argument bug hides in).
+	void setAdvancedFlags(const AdvancedRenderFlags &flags);
 
 	// Builds the command line and launches ray_tracer.exe. Returns immediately;
 	// everything after this point is driven by the process's own signals.
@@ -808,17 +822,11 @@ private:
 	QString m_outputPath;   // Output file path for rendered image
 	QProcess *m_renderProcess = nullptr;  // Subprocess handle (child of this object)
 
-	// "Render Options" tab flags - see setAdvancedFlags()'s own comment.
-	// Defaults here match every existing caller's prior behavior (nothing
-	// passed = CLI default), so ThumbnailGenerator (which never calls
-	// setAdvancedFlags()) is unaffected.
-	bool m_denoise = false;
-	bool m_stats = false;
-	bool m_optixValidate = false;
-	double m_exposure = 1.0;
-	QString m_sampler;
-	bool m_spectral = false;
-	QString m_tonemap;
+	// "Render Options" tab flags - see AdvancedRenderFlags's own comment.
+	// Default-constructed matches every existing caller's prior behavior
+	// (nothing passed = CLI default), so ThumbnailGenerator (which never
+	// calls setAdvancedFlags()) is unaffected.
+	AdvancedRenderFlags m_advancedFlags;
 
 	// Whether the user asked to stop, tracked explicitly rather than inferred
 	// from exit status/code - a real crash (e.g. access violation) also
@@ -964,15 +972,8 @@ struct RenderJob {
 	QString sceneDescription;  // Scene's own description, for the finished Preview tab's tooltip
 	QString videoPresetName;   // Named video preset's display name, if one was selected; empty otherwise
 
-	// "Render Options" tab fields - see RenderController::setAdvancedFlags()'s
-	// own comment. sampler/tonemap empty = use the CLI's own default.
-	bool denoise = false;
-	bool stats = false;
-	bool optixValidate = false;
-	double exposure = 1.0;
-	QString sampler;
-	bool spectral = false;
-	QString tonemap;
+	// "Render Options" tab fields - see AdvancedRenderFlags's own comment.
+	AdvancedRenderFlags advancedFlags;
 };
 
 // ============================================================================

@@ -13,6 +13,7 @@
 #include <cctype>
 
 #include "../src/shared/video_preset.h"
+#include "../src/shared/render_flag_names.h"
 
 namespace {
 	constexpr int kDefaultWidth = 600;
@@ -221,16 +222,16 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 	for (int i = 1; i < argc; ++i) {
 		const std::string arg = argv[i];
 
-		if (arg == "--cpu" || arg == "-cpu") {
+		if (arg == render_flags::kCpu || arg == "-cpu") {
 			out.force_cpu = true;
 			out.use_gpu   = false;
 			consumed_args.insert(i);
-		} else if (arg == "--gpu" || arg == "-gpu") {
+		} else if (arg == render_flags::kGpu || arg == "-gpu") {
 			out.use_gpu   = true;
 			out.force_cpu = false;
 			out.gpu_flag_explicit = true;
 			consumed_args.insert(i);
-		} else if ((arg == "--output" || arg == "-o") && i + 1 < argc) {
+		} else if ((arg == render_flags::kOutput || arg == "-o") && i + 1 < argc) {
 			out.custom_output_path = argv[i + 1];
 			consumed_args.insert(i);
 			consumed_args.insert(i + 1);
@@ -238,19 +239,19 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 		} else if (arg == "--diagnose") {
 			out.diagnose = true;
 			consumed_args.insert(i);
-		} else if (arg == "--wavefront") {
+		} else if (arg == render_flags::kWavefront) {
 			out.use_wavefront = true;
 			consumed_args.insert(i);
-		} else if (arg == "--optix-validate") {
+		} else if (arg == render_flags::kOptixValidate) {
 			out.optix_validate = true;
 			consumed_args.insert(i);
-		} else if (arg == "--denoise") {
+		} else if (arg == render_flags::kDenoise) {
 			out.denoise = true;
 			consumed_args.insert(i);
-		} else if (arg == "--stats") {
+		} else if (arg == render_flags::kStats) {
 			out.stats = true;
 			consumed_args.insert(i);
-		} else if (arg == "--exposure" && i + 1 < argc) {
+		} else if (arg == render_flags::kExposure && i + 1 < argc) {
 			try {
 				out.exposure = std::stod(argv[i + 1]);
 				// exposure <= 0 is a valid double but not a valid exposure -
@@ -267,7 +268,7 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			} catch (const std::exception&) {
 				std::cerr << "Invalid --exposure value, using default\n";
 			}
-		} else if (arg == "--sampler" && i + 1 < argc) {
+		} else if (arg == render_flags::kSampler && i + 1 < argc) {
 			std::string name = argv[i + 1];
 			std::transform(name.begin(), name.end(), name.begin(),
 							[](unsigned char c) { return std::tolower(c); });
@@ -282,7 +283,7 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			consumed_args.insert(i);
 			consumed_args.insert(i + 1);
 			++i;
-		} else if (arg == "--tonemap" && i + 1 < argc) {
+		} else if (arg == render_flags::kTonemap && i + 1 < argc) {
 			std::string name = argv[i + 1];
 			std::transform(name.begin(), name.end(), name.begin(),
 							[](unsigned char c) { return std::tolower(c); });
@@ -296,7 +297,7 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			consumed_args.insert(i);
 			consumed_args.insert(i + 1);
 			++i;
-		} else if (arg == "--spectral") {
+		} else if (arg == render_flags::kSpectral) {
 			out.spectral = true;
 			consumed_args.insert(i);
 		} else if (arg == "--sppm") {
@@ -417,10 +418,10 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 		} else if (arg == "--lightpath") {
 			out.use_lightpath = true;
 			consumed_args.insert(i);
-		} else if (arg == "--video") {
+		} else if (arg == render_flags::kVideo) {
 			out.video_mode = true;
 			consumed_args.insert(i);
-		} else if ((arg == "--frames" || arg == "-f") && i + 1 < argc) {
+		} else if ((arg == render_flags::kFrames || arg == "-f") && i + 1 < argc) {
 			try {
 				out.video_frames = std::stoi(argv[i + 1]);
 				consumed_args.insert(i);
@@ -429,7 +430,7 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			} catch (const std::exception&) {
 				std::cerr << "Invalid frame count, using default\n";
 			}
-		} else if (arg == "--fps" && i + 1 < argc) {
+		} else if (arg == render_flags::kFps && i + 1 < argc) {
 			try {
 				out.video_fps = std::stoi(argv[i + 1]);
 				consumed_args.insert(i);
@@ -438,7 +439,7 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			} catch (const std::exception&) {
 				std::cerr << "Invalid FPS, using default\n";
 			}
-		} else if (arg == "--speed" && i + 1 < argc) {
+		} else if (arg == render_flags::kSpeed && i + 1 < argc) {
 			try {
 				out.video_speed = std::stod(argv[i + 1]);
 				consumed_args.insert(i);
@@ -447,7 +448,7 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			} catch (const std::exception&) {
 				std::cerr << "Invalid speed, using default\n";
 			}
-		} else if ((arg == "--camera-path" || arg == "-p") && i + 1 < argc) {
+		} else if ((arg == render_flags::kCameraPath || arg == "-p") && i + 1 < argc) {
 			out.camera_path = argv[i + 1];
 			consumed_args.insert(i);
 			consumed_args.insert(i + 1);

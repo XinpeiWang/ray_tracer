@@ -357,7 +357,9 @@ TEST(RenderIntegrationTest, ExposureDefaultIsNoOp) {
 	const char* output_explicit_1x = "test_exposure_explicit_1x.ppm";
 
 	cpu_render_main(32, 32, 8, 5, output_default, "A1", 278, 278, -800);
-	cpu_render_main(32, 32, 8, 5, output_explicit_1x, "A1", 278, 278, -800, 0, 1.0);
+	RenderOptions opts_1x;
+	opts_1x.exposure = 1.0;
+	cpu_render_main(32, 32, 8, 5, output_explicit_1x, "A1", 278, 278, -800, 0, opts_1x);
 
 	double avg_default = average_ppm_brightness(output_default);
 	double avg_explicit = average_ppm_brightness(output_explicit_1x);
@@ -383,9 +385,15 @@ TEST(RenderIntegrationTest, ExposureBrightensAndDarkensMonotonically) {
 	const char* output_normal = "test_exposure_normal.ppm";
 	const char* output_bright = "test_exposure_bright.ppm";
 
-	cpu_render_main(32, 32, 4, 5, output_dim, "A1", 278, 278, -800, 0, 0.3);
-	cpu_render_main(32, 32, 4, 5, output_normal, "A1", 278, 278, -800, 0, 1.0);
-	cpu_render_main(32, 32, 4, 5, output_bright, "A1", 278, 278, -800, 0, 3.0);
+	RenderOptions opts_dim;
+	opts_dim.exposure = 0.3;
+	cpu_render_main(32, 32, 4, 5, output_dim, "A1", 278, 278, -800, 0, opts_dim);
+	RenderOptions opts_normal;
+	opts_normal.exposure = 1.0;
+	cpu_render_main(32, 32, 4, 5, output_normal, "A1", 278, 278, -800, 0, opts_normal);
+	RenderOptions opts_bright;
+	opts_bright.exposure = 3.0;
+	cpu_render_main(32, 32, 4, 5, output_bright, "A1", 278, 278, -800, 0, opts_bright);
 
 	double avg_dim = average_ppm_brightness(output_dim);
 	double avg_normal = average_ppm_brightness(output_normal);
@@ -419,7 +427,9 @@ TEST(RenderIntegrationTest, EverySamplerKindProducesAValidRender) {
 	const char* names[] = {"sobol", "zsobol", "paddedsobol", "stratified", "pmj02bn", "halton"};
 	for (const char* name : names) {
 		std::string output = std::string("test_sampler_") + name + ".ppm";
-		int result = cpu_render_main(24, 24, 4, 5, output.c_str(), "A1", 278, 278, -800, 0, 1.0, name);
+		RenderOptions opts;
+		opts.sampler = name;
+		int result = cpu_render_main(24, 24, 4, 5, output.c_str(), "A1", 278, 278, -800, 0, opts);
 		EXPECT_EQ(result, 0) << "sampler \"" << name << "\" failed to render";
 		double avg = average_ppm_brightness(output.c_str());
 		EXPECT_GT(avg, 0.0) << "sampler \"" << name << "\" produced an entirely black/invalid render";
@@ -433,7 +443,9 @@ TEST(RenderIntegrationTest, EverySamplerKindProducesAValidRender) {
  */
 TEST(RenderIntegrationTest, UnknownSamplerNameFallsBackToSobol) {
 	const char* output = "test_sampler_unknown.ppm";
-	int result = cpu_render_main(24, 24, 4, 5, output, "A1", 278, 278, -800, 0, 1.0, "not-a-real-sampler");
+	RenderOptions opts;
+	opts.sampler = "not-a-real-sampler";
+	int result = cpu_render_main(24, 24, 4, 5, output, "A1", 278, 278, -800, 0, opts);
 	EXPECT_EQ(result, 0);
 	double avg = average_ppm_brightness(output);
 	EXPECT_GT(avg, 0.0);
@@ -513,8 +525,10 @@ TEST(RenderIntegrationTest, GpuExrDenoiseWritesAlbedoAndNormalAovs) {
 	std::remove(albedoOut);
 	std::remove(normalOut);
 
+	RenderOptions opts;
+	opts.denoise = true;
 	int result = optix_render_main(32, 32, 16, 5, output, "A1", 278.0, 278.0, -800.0,
-									/*force_camera_override=*/0, /*denoise=*/1);
+									/*force_camera_override=*/0, opts);
 	EXPECT_EQ(result, 0);
 	ASSERT_TRUE(file_exists(output));
 	EXPECT_EQ(IsEXR(output), TINYEXR_SUCCESS);

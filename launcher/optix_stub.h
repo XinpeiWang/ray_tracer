@@ -19,6 +19,13 @@
 #include <algorithm>
 #include <string>
 
+// RenderOptions has no CUDA/OptiX dependency at all (just doubles/bools/
+// const char*), so including it directly here doesn't compromise this
+// file's "no CUDA/OptiX SDK required" purpose the way including the real
+// optix_interface.h would - unlike OptixDiagnostics below, it doesn't
+// need a locally-duplicated mirror.
+#include "../src/shared/render_options.h"
+
 // Mirrors optix_interface.h's OptixDiagnostics exactly (same field layout) -
 // see that file's own comment for why this is a plain-POD struct rather than
 // a shared header: this file stands in for optix_interface.h wholesale, so
@@ -66,9 +73,7 @@ inline int optix_render_main(
 	double /*cam_y*/,
 	double /*cam_z*/,
 	int /*force_camera_override*/ = 0,
-	int /*denoise*/ = 0,
-	double /*exposure*/ = 1.0,
-	const char* /*tonemap*/ = nullptr
+	const RenderOptions& /*options*/ = {}
 ) {
 	return -1;
 }

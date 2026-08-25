@@ -575,6 +575,16 @@ int main(int argc, char** argv) {
         // GPU mode, where the CPU is otherwise idle while the GPU renders).
         BackgroundPngConverter png_converter(frames_dir);
 
+        // Loop-invariant (args.* never changes mid-video) - built once
+        // rather than reconstructed every frame. See src/shared/
+        // render_options.h's own field comments.
+        RenderOptions render_opts;
+        render_opts.exposure = args.exposure;
+        render_opts.sampler = args.sampler.empty() ? nullptr : args.sampler.c_str();
+        render_opts.spectral = args.spectral;
+        render_opts.tonemap = args.tonemap.empty() ? nullptr : args.tonemap.c_str();
+        render_opts.denoise = args.denoise;
+
         // Render each frame with animated camera position
         for (int frame = 0; frame < render_frame_count; ++frame) {
             // Get camera position for this frame
@@ -616,9 +626,7 @@ int main(int argc, char** argv) {
                         cam_pos.lookfrom_y,
                         cam_pos.lookfrom_z,
                         1,  // force_camera_override
-                        args.denoise ? 1 : 0,
-                        args.exposure,
-                        args.tonemap.empty() ? nullptr : args.tonemap.c_str()
+                        render_opts
                     );
                 } else {
                     std::cerr << "\nERROR: OptiX is not available!" << std::endl;
@@ -636,10 +644,7 @@ int main(int argc, char** argv) {
                     cam_pos.lookfrom_y,
                     cam_pos.lookfrom_z,
                     1,  // force_camera_override
-                    args.exposure,
-                    args.sampler.empty() ? nullptr : args.sampler.c_str(),
-                    args.spectral,
-                    args.tonemap.empty() ? nullptr : args.tonemap.c_str()
+                    render_opts
                 );
             }
 
@@ -785,6 +790,18 @@ int main(int argc, char** argv) {
                      "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
                      "(only the default path tracer supports it) - rendering with aces.\n";
     }
+
+    // Used by the plain path-tracer branches only (use_gpu/else below) -
+    // BDPT/MLT/SPPM/the debug integrators have no RenderOptions parameter
+    // at all (see the warnings just above). See src/shared/
+    // render_options.h's own field comments.
+    RenderOptions render_opts;
+    render_opts.exposure = args.exposure;
+    render_opts.sampler = args.sampler.empty() ? nullptr : args.sampler.c_str();
+    render_opts.spectral = args.spectral;
+    render_opts.tonemap = args.tonemap.empty() ? nullptr : args.tonemap.c_str();
+    render_opts.denoise = args.denoise;
+
     if (use_bdpt) {
         // BDPT Renderer, CPU path (Bidirectional Path Tracing). Implemented
         // in cpu_renderer/cpu_interface_bdpt.cpp - checked before use_sppm/
@@ -983,9 +1000,7 @@ int main(int argc, char** argv) {
                 cam_y,
                 cam_z,
                 1,  // force_camera_override - see the comment above this section
-                args.denoise ? 1 : 0,
-                args.exposure,
-                args.tonemap.empty() ? nullptr : args.tonemap.c_str()
+                render_opts
             );
             std::cout << "optix_render_main returned: " << render_result << std::endl;
             if (render_result == SUCCESS) {
@@ -1007,7 +1022,7 @@ int main(int argc, char** argv) {
         // CPU Renderer (multithreaded C++)
         // Implemented in cpu_renderer/cpu_interface.cpp
         std::cout << "Calling cpu_render_main(...) in-process..." << std::endl;
-        render_result = cpu_render_main(image_width, image_height, samples_per_pixel, max_ray_depth, out_path.c_str(), scene_id.c_str(), cam_x, cam_y, cam_z, 1, args.exposure, args.sampler.empty() ? nullptr : args.sampler.c_str(), args.spectral, args.tonemap.empty() ? nullptr : args.tonemap.c_str());  // force_camera_override
+        render_result = cpu_render_main(image_width, image_height, samples_per_pixel, max_ray_depth, out_path.c_str(), scene_id.c_str(), cam_x, cam_y, cam_z, 1, render_opts);  // force_camera_override
         std::cout << "cpu_render_main returned: " << render_result << std::endl;
         if (render_result == SUCCESS) {
             std::cout << "Rendered with in-process CPU renderer, output: " << out_path << std::endl;

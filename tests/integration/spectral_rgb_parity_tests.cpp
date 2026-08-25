@@ -93,9 +93,11 @@ constexpr int kSpp    = 200;
 static PPMImage render_once(const SceneDescriptor& s, bool spectral) {
 	const std::string fn = "specparity_" + s.id + (spectral ? "_spec.ppm" : "_rgb.ppm");
 	std::remove(fn.c_str());
+	RenderOptions opts;
+	opts.spectral = spectral;
 	cpu_render_main(kWidth, kHeight, kSpp, kDepth, fn.c_str(), s.id.c_str(),
 	                 s.camera.lookfrom_x, s.camera.lookfrom_y, s.camera.lookfrom_z,
-	                 0, 1.0, nullptr, spectral);
+	                 0, opts);
 	PPMImage img = load_ppm(fn.c_str());
 	std::remove(fn.c_str());
 	return img;
@@ -155,9 +157,11 @@ TEST(SpectralRgbParityTest, UnsupportedMaterialFailsClosed) {
 
 	const std::string fn = "specparity_B1_reject.ppm";
 	std::remove(fn.c_str());
+	RenderOptions opts;
+	opts.spectral = true;
 	int rc = cpu_render_main(kWidth, kHeight, 8, kDepth, fn.c_str(), s->id.c_str(),
 	                          s->camera.lookfrom_x, s->camera.lookfrom_y, s->camera.lookfrom_z,
-	                          0, 1.0, nullptr, /*spectral=*/true);
+	                          0, opts);
 
 	EXPECT_NE(rc, 0) << "B1 uses rough_metal, not in --spectral's material whitelist - "
 	                     "expected a non-zero error, not a silently-wrong render.";

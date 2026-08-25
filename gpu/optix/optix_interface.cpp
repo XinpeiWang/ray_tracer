@@ -46,9 +46,7 @@ extern "C" int optix_render_main(
 	double cam_y,
 	double cam_z,
 	int force_camera_override,
-	int denoise,
-	double exposure,
-	const char* tonemap
+	const RenderOptions& options
 ) {
 	try {
 		// std::string(output_path) below (and the ofstream open further down)
@@ -59,16 +57,16 @@ extern "C" int optix_render_main(
 			return ERR_OUTPUT_PATH_INVALID;
 		}
 
-		// tonemap==nullptr (every existing caller that predates this param)
-		// or an unrecognized name both fall back to ACES - see
+		// options.tonemap==nullptr (every existing caller that predates this
+		// param) or an unrecognized name both fall back to ACES - see
 		// tone_map_mode_from_name()'s own comment (src/shared/tone_map.h).
 		// Parsed once here and used by both PPM-writing call sites below
 		// (the single shared output path for the recursive and wavefront
 		// backends - see their own comment).
 		ToneMapMode tone_map_mode = ToneMapMode::ACES;
-		if (tonemap != nullptr) {
-			if (!tone_map_mode_from_name(tonemap, tone_map_mode) && tonemap[0] != '\0') {
-				std::cerr << "Warning: unrecognized --tonemap \"" << tonemap
+		if (options.tonemap != nullptr) {
+			if (!tone_map_mode_from_name(options.tonemap, tone_map_mode) && options.tonemap[0] != '\0') {
+				std::cerr << "Warning: unrecognized --tonemap \"" << options.tonemap
 						  << "\", using aces. Valid: aces, reinhard, none.\n";
 				tone_map_mode = ToneMapMode::ACES;
 			}
@@ -210,9 +208,9 @@ extern "C" int optix_render_main(
 		// g_renderer is a process-lifetime singleton (see enableWavefront()'s
 		// call above and g_uploaded_scene_id's own comment) - called
 		// unconditionally, same reasoning as enableWavefront(): this render's
-		// own `denoise` argument must be what decides the mode, not whatever
+		// own `options.denoise` must be what decides the mode, not whatever
 		// an earlier call in this process happened to request.
-		g_renderer->enableDenoise(denoise != 0);
+		g_renderer->enableDenoise(options.denoise);
 
 		// enableDenoise(true) has no effect under wavefront mode (render()
 		// delegates to wavefrontTracer_->render() and returns before ever
@@ -220,7 +218,7 @@ extern "C" int optix_render_main(
 		// comment and enableDenoise()'s doc comment for why). Without this,
 		// a user combining --wavefront --denoise gets a normal, undenoised
 		// render with nothing telling them why.
-		if (denoise != 0 && wfEnv && std::string(wfEnv) == "1") {
+		if (options.denoise && wfEnv && std::string(wfEnv) == "1") {
 			std::cerr << "[OptiX] Warning: --denoise has no effect under --wavefront "
 						 "(wavefront backend does not support denoising) - rendering without it.\n";
 		}
@@ -286,7 +284,7 @@ extern "C" int optix_render_main(
 			for (size_t i = 0; i < pixelCount * 3; ++i) {
 				float &v = framebuffer[i];
 				if (!std::isfinite(v)) v = 0.0f;
-				v = static_cast<float>(v * exposure);
+				v = static_cast<float>(v * options.exposure);
 			}
 
 			std::string exrError;
@@ -308,7 +306,7 @@ extern "C" int optix_render_main(
 			// skipped rather than escalating into ERR_GPU_EXCEPTION for a
 			// render whose actual requested output (the beauty EXR above)
 			// already succeeded.
-			if (denoise != 0 && !(wfEnv && std::string(wfEnv) == "1")) {
+			if (options.denoise && !(wfEnv && std::string(wfEnv) == "1")) {
 				try {
 					std::vector<float> albedo, normal;
 					if (g_renderer->readAovBuffers(static_cast<unsigned int>(image_width),
@@ -369,9 +367,9 @@ extern "C" int optix_render_main(
 			// comment. 1.0 (default) is a no-op. Covers both the recursive
 			// and wavefront backends (this loop is the single shared output
 			// path for both, per this function's own file comment above).
-			r *= exposure;
-			g *= exposure;
-			b *= exposure;
+			r *= options.exposure;
+			g *= options.exposure;
+			b *= options.exposure;
 
 			r = linear_to_srgb(apply_tone_map(r, tone_map_mode));
 			g = linear_to_srgb(apply_tone_map(g, tone_map_mode));
