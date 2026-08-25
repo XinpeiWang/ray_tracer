@@ -947,7 +947,10 @@ void MainWindow::createRenderOptionsTab() {
 		"samplers here (Sobol, Halton, etc.) are all low-discrepancy "
 		"sequences, deliberately spread out to cover the sampling space "
 		"more evenly, which converges to a clean image faster than true "
-		"randomness would for the same sample count."),
+		"randomness would for the same sample count.\n\n"
+		"Grayed out? This only affects the CPU renderer's default path "
+		"tracer - switch Renderer to CPU on the Basic Settings tab to "
+		"use it."),
 		m_samplerCombo);
 
 	m_spectralCheck = new QCheckBox("Spectral rendering (--spectral)", optionsTab);
@@ -973,7 +976,10 @@ void MainWindow::createRenderOptionsTab() {
 			"refract by different amounts - RGB alone can't represent "
 			"that. Spectral rendering tracks a handful of actual "
 			"wavelengths per ray instead of just RGB, at the cost of "
-			"being noisier and slower per sample."));
+			"being noisier and slower per sample.\n\n"
+			"Grayed out? This only exists on the CPU renderer's default "
+			"path tracer - switch Renderer to CPU on the Basic Settings "
+			"tab to use it."));
 		rowLayout->addStretch();
 		samplingLayout->addRow(row);
 	}
@@ -1068,7 +1074,10 @@ void MainWindow::createRenderOptionsTab() {
 			"A denoiser is a machine-learning model trained to recognize "
 			"that speckle pattern and smooth it away after the fact, "
 			"without needing to trace additional rays - a way to get a "
-			"clean-looking image faster, at some cost in fine detail."));
+			"clean-looking image faster, at some cost in fine detail.\n\n"
+			"Grayed out? This needs the GPU recursive backend - switch "
+			"Renderer to GPU (and GPU Backend to Recursive) on the Basic "
+			"Settings tab to use it."));
 		rowLayout->addStretch();
 		outputLayout->addRow(row);
 	}
@@ -1092,7 +1101,9 @@ void MainWindow::createRenderOptionsTab() {
 			"It's a debugging aid for people working on the renderer's "
 			"own GPU code, not something a normal render benefits from - "
 			"it has a real performance cost and doesn't change what a "
-			"correct render looks like."));
+			"correct render looks like.\n\n"
+			"Grayed out? This is GPU-only - switch Renderer to GPU on "
+			"the Basic Settings tab to use it."));
 		rowLayout->addStretch();
 		outputLayout->addRow(row);
 	}
