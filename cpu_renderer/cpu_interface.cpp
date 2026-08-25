@@ -71,9 +71,18 @@
 // that override's own comment, material_pbrt.h) was correct but dead code:
 // any scene using mix_material at all failed this scan before ever reaching
 // ray_color_spectral(), regardless of what was mixed inside it or whether
-// dispersion was involved at all. Recurses arbitrarily deep so a
-// mix_material nested inside another mix_material is checked too.
-static bool spectral_scan_material(const material* mat, std::string& error_out) {
+// dispersion was involved at all.
+//
+// This is deliberately a SEPARATE recursive case from mix_material's own
+// as_subsurface()/as_dispersive() overrides (material_pbrt.h), not a shared
+// walker with those - they resolve to whichever ONE of mat_a/mat_b a given
+// ray's branch_hash01() pick already committed to, while this has to check
+// BOTH unconditionally: --spectral must reject a scene up front if EITHER
+// possible pick would be unsupported, not just whichever one a probe query
+// happens to land on. If a third place ever needs to walk a mix_material's
+// reachable sub-materials, that's the point to weigh a shared traversal
+// utility against these two differently-shaped needs - not before.
+static bool spectral_scan_material(const material* mat, std::string& error_out, int depth = 0) {
 	if (!mat) return true;
 
 	if (dynamic_cast<const lambertian*>(mat))       return true;
@@ -84,8 +93,25 @@ static bool spectral_scan_material(const material* mat, std::string& error_out) 
 	if (dynamic_cast<const diffuse_light*>(mat))    return true;
 
 	if (const auto* mix = dynamic_cast<const mix_material*>(mat)) {
-		return spectral_scan_material(mix->get_mat_a().get(), error_out)
-			&& spectral_scan_material(mix->get_mat_b().get(), error_out);
+		// Depth-limited, not unbounded: a .pbrt "mix" material can name
+		// another "mix" material as one of its own two sub-materials, so a
+		// long chain of named mix materials each referencing the next would
+		// otherwise recurse once per level with no cap. 64 is far beyond any
+		// real scene (the deepest this codebase's own tests or curated
+		// examples go is 2 - see mix_material_tests.cpp/
+		// sppm_adapter_bsdf_tests.cpp's own inner_mix/outer_mix cases) - this
+		// only ever fires on a pathological, hand-authored .pbrt file, and
+		// failing closed here (same "unsupported thing found" reporting as
+		// every other case in this function) beats a stack overflow crashing
+		// the whole render before a single pixel traces.
+		constexpr int kMaxMixMaterialDepth = 64;
+		if (depth >= kMaxMixMaterialDepth) {
+			error_out = "a mix_material chain nested more than " +
+				std::to_string(kMaxMixMaterialDepth) + " levels deep";
+			return false;
+		}
+		return spectral_scan_material(mix->get_mat_a().get(), error_out, depth + 1)
+			&& spectral_scan_material(mix->get_mat_b().get(), error_out, depth + 1);
 	}
 
 	error_out = typeid(*mat).name();
