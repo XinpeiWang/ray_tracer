@@ -164,6 +164,18 @@ RenderJob MainWindow::captureRenderJob() {
 	// makes that safety non-fragile against future reordering.
 	job.useWavefront = job.useGPU && m_gpuBackendCombo && m_gpuBackendCombo->currentData().toBool();
 
+	// Render Options tab - see RenderController::setAdvancedFlags()'s own
+	// comment. sampler/tonemap use currentData() (empty for the "default"
+	// item) rather than currentText(), matching every other flag combo in
+	// this file (e.g. job.useWavefront above).
+	job.denoise = m_denoiseCheck->isChecked();
+	job.stats = m_statsCheck->isChecked();
+	job.optixValidate = m_optixValidateCheck->isChecked();
+	job.exposure = m_exposureSpin->value();
+	job.sampler = m_samplerCombo->currentData().toString();
+	job.spectral = m_spectralCheck->isChecked();
+	job.tonemap = m_tonemapCombo->currentData().toString();
+
 	// Resolution: either from preset dropdown or custom values from Advanced tab
 	if (m_qualityPresetCombo->currentIndex() == 6) {
 		// Custom quality preset - use manual width/height from Advanced tab
@@ -277,6 +289,8 @@ void MainWindow::startRenderJob(const RenderJob &job) {
 	m_renderController->setParameters(job.useGPU, job.width, job.height, job.samples, job.maxDepth,
 	                                   job.sceneId, job.camX, job.camY, job.camZ, job.camExplicit,
 	                                   job.outputPath, job.useWavefront);
+	m_renderController->setAdvancedFlags(job.denoise, job.stats, job.optixValidate, job.exposure,
+	                                      job.sampler, job.spectral, job.tonemap);
 
 	if (job.videoMode) {
 		m_renderController->setVideoParameters(true, job.videoFrames, job.videoFPS, job.cameraPath, job.videoSpeed);

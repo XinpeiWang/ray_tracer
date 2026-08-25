@@ -50,6 +50,12 @@ bool optix_get_diagnostics(OptixDiagnostics* out);
 // mapping (see the final pixel-writing loop in optix_interface.cpp, which
 // covers both the recursive and wavefront backends). 1.0 (default) is a
 // no-op; mirrors cpu_render_main()'s own exposure parameter.
+// tonemap: which operator that same pixel-writing loop applies before the
+// sRGB OETF (src/shared/tone_map.h's ToneMapMode) - one of "aces"/
+// "reinhard"/"none"; nullptr, empty, or an unrecognized name all fall back
+// to "aces" (this project's pre-existing hardcoded default). Also covers
+// both the recursive and wavefront backends, for the same reason exposure
+// does; mirrors cpu_render_main()'s own tonemap parameter.
 int optix_render_main(
 	int image_width,
 	int image_height,
@@ -62,7 +68,8 @@ int optix_render_main(
 	double cam_z,
 	int force_camera_override = 0,
 	int denoise = 0,
-	double exposure = 1.0
+	double exposure = 1.0,
+	const char* tonemap = nullptr
 );
 
 // GPU SPPM (Stochastic Progressive Photon Mapping) rendering entry point,

@@ -33,6 +33,7 @@
 //==============================================================================
 
 #include <cmath>
+#include <string>
 
 // ---------------------------------------------------------------------------
 // sRGB OETF  (linear float -> display-encoded float in [0,1])
@@ -93,6 +94,22 @@ enum class ToneMapMode {
 	Reinhard,   // Simple Reinhard operator
 	None        // No tone mapping -- clamp only (legacy behavior)
 };
+
+// ---------------------------------------------------------------------------
+// Parses a --tonemap flag value ("aces"/"reinhard"/"none") into a
+// ToneMapMode. Shared by both the CPU (camera.h) and GPU
+// (gpu/optix/optix_interface.cpp) render paths so the two can't drift on
+// what a given name means. Unrecognized names fail (return false) rather
+// than silently defaulting here - callers decide their own fallback
+// behavior and warning text, matching sampler_kind_from_name()'s own
+// contract (camera.h).
+// ---------------------------------------------------------------------------
+inline bool tone_map_mode_from_name(const std::string& name, ToneMapMode& out) {
+	if (name == "aces")     { out = ToneMapMode::ACES;     return true; }
+	if (name == "reinhard") { out = ToneMapMode::Reinhard; return true; }
+	if (name == "none")     { out = ToneMapMode::None;     return true; }
+	return false;
+}
 
 // ---------------------------------------------------------------------------
 // apply_tone_map -- apply the selected operator to a single channel

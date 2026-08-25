@@ -143,7 +143,7 @@ static bool spectral_scan_hittable(const hittable* h, std::string& error_out) {
 extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, const char* output_path,
 								 const char* scene_id, double cam_x, double cam_y, double cam_z,
 								 int force_camera_override, double exposure, const char* sampler,
-								 bool spectral) {
+								 bool spectral, const char* tonemap) {
 	try {
 		// ====================================================================
 		// Parameter Validation
@@ -322,6 +322,18 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 							 "stratified, pmj02bn, halton.\n";
 			}
 		}
+		// tonemap==nullptr (every existing caller that predates this param)
+		// or an unrecognized name both fall back to ACES - see
+		// tone_map_mode_from_name()'s own comment (src/shared/tone_map.h).
+		if (tonemap != nullptr) {
+			ToneMapMode mode;
+			if (tone_map_mode_from_name(tonemap, mode)) {
+				cam.tone_map = mode;
+			} else if (tonemap[0] != '\0') {
+				std::cerr << "Warning: unrecognized --tonemap \"" << tonemap
+						  << "\", using aces. Valid: aces, reinhard, none.\n";
+			}
+		}
 		cam.vup               = vec3(0, 1, 0);  // Up direction is +Y
 
 		// Apply camera config from registry
@@ -379,7 +391,12 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		std::cout << "[TECH] MIS            : Power heuristic  beta=2  (BSDF sample + NEE light sample)" << std::endl;
 		std::cout << "[TECH] Path termination: Russian Roulette per-bounce, etaScale-aware" << std::endl;
 		std::cout << "[TECH] Firefly guard  : NaN / Inf samples clamped to 0" << std::endl;
-		std::cout << "[TECH] Tone mapping   : ACES Narkowicz 2015 --> sRGB OETF (IEC 61966-2-1)" << std::endl;
+		{
+			const char* toneMapName = cam.tone_map == ToneMapMode::Reinhard ? "Reinhard L/(1+L)"
+									 : cam.tone_map == ToneMapMode::None     ? "None (clamp only)"
+									 :                                         "ACES Narkowicz 2015";
+			std::cout << "[TECH] Tone mapping   : " << toneMapName << " --> sRGB OETF (IEC 61966-2-1)" << std::endl;
+		}
 		std::cout << "[TECH] Threading      : " << std::thread::hardware_concurrency() << " logical cores (auto idle-adjusted on Windows)" << std::endl;
 		std::cout << "[TECH] ─────────────────────────────────────────────────────" << std::endl;
 

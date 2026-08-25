@@ -524,6 +524,44 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			border: 1px solid %ACCENT_2%;
 			color: %TEXT%;
 		}
+		/* Disabled state was previously unstyled, so a disabled combo/spin
+		   box (e.g. Render Options' sampler/exposure fields under GPU mode)
+		   looked nearly identical to an enabled one at a glance - only
+		   discoverable by actually clicking it. Matches QPushButton:disabled's
+		   own dimming below. */
+		QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabled, QLineEdit:disabled {
+			background-color: %SURFACE1%;
+			border-color: %BORDER%;
+			color: %TEXT_DISABLED%;
+		}
+		QCheckBox {
+			color: %TEXT%;
+			font-size: 11pt;
+			spacing: 8px;
+			padding: 4px 2px;
+		}
+		QCheckBox::indicator {
+			width: 18px;
+			height: 18px;
+			border: 1px solid %BORDER_STRONG%;
+			border-radius: 4px;
+			background-color: %SURFACE1%;
+		}
+		QCheckBox::indicator:hover {
+			border-color: %TEXT_MUTED%;
+			background-color: %SURFACE2%;
+		}
+		QCheckBox::indicator:checked {
+			background-color: %ACCENT_2%;
+			border-color: %ACCENT_2%;
+		}
+		QCheckBox:disabled {
+			color: %TEXT_DISABLED%;
+		}
+		QCheckBox::indicator:disabled {
+			background-color: %SURFACE1%;
+			border-color: %BORDER%;
+		}
 		/* No custom ::up-button/::down-button/::up-arrow/::down-arrow rules:
 		   every attempt to restyle them (custom background+border, image
 		   icons via border-triangle/data-URI/PNG resource, even native
@@ -959,5 +997,15 @@ void MainWindow::styleSpinBox(QAbstractSpinBox *spinBox) {
 	// same - including the Camera X/Y/Z fields, which now go through this
 	// function too instead of a bare installEventFilter() call.
 	spinBox->installEventFilter(m_wheelFilter);
+}
+
+void MainWindow::styleCheckBox(QCheckBox *box) {
+	// No wheel-filter/scroll-guard needed (unlike combo/spin boxes, a
+	// checkbox has no scrollable value a stray wheel event could change) -
+	// styling comes entirely from applyTheme()'s global QCheckBox rules, so
+	// this function exists mainly for symmetry with styleComboBox()/
+	// styleSpinBox()/styleGroupBox() and as the one place to add per-widget
+	// checkbox behavior later if it's ever needed.
+	(void)box;
 }
 

@@ -105,6 +105,17 @@ struct LaunchArgs {
 	// not silent RGB fallback) before this is ever consulted if the scene
 	// uses anything else.
 	bool spectral           = false;
+	// Which tone-mapping operator write_color() applies before the sRGB
+	// OETF (src/shared/tone_map.h's ToneMapMode) - "aces" (default, this
+	// project's pre-existing hardcoded behavior)/"reinhard"/"none". Unlike
+	// exposure/sampler/spectral above, this reaches BOTH the CPU default
+	// path tracer and GPU (gpu/optix/optix_interface.cpp's pixel-writeback
+	// loop is the single shared output path for both the recursive and
+	// wavefront backends) - see main.cpp's threading of this value into
+	// cpu_render_main()/optix_render_main(). Still has no effect under
+	// --bdpt/--mlt/--sppm/the debug integrators (main.cpp warns), same
+	// scope cut as exposure/sampler.
+	std::string tonemap     = "aces";
 	bool video_mode         = false;
 	// Stochastic Progressive Photon Mapping - a separate CPU-only render
 	// mode (see cpu_renderer/cpu_interface.h's cpu_render_main_sppm() doc
@@ -267,6 +278,20 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			} else {
 				std::cerr << "Invalid --sampler \"" << argv[i + 1] << "\", using default (sobol). "
 							 "Valid: sobol, zsobol, paddedsobol, stratified, pmj02bn, halton\n";
+			}
+			consumed_args.insert(i);
+			consumed_args.insert(i + 1);
+			++i;
+		} else if (arg == "--tonemap" && i + 1 < argc) {
+			std::string name = argv[i + 1];
+			std::transform(name.begin(), name.end(), name.begin(),
+							[](unsigned char c) { return std::tolower(c); });
+			static const std::set<std::string> kValidTonemaps = {"aces", "reinhard", "none"};
+			if (kValidTonemaps.count(name)) {
+				out.tonemap = name;
+			} else {
+				std::cerr << "Invalid --tonemap \"" << argv[i + 1] << "\", using default (aces). "
+							 "Valid: aces, reinhard, none\n";
 			}
 			consumed_args.insert(i);
 			consumed_args.insert(i + 1);
@@ -487,6 +512,11 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "               loudly at load time rather than silently rendering wrong\n"
 					  << "               colors. Noticeably slower per-sample than the default RGB\n"
 					  << "               path (spectral upsampling table lookups every bounce).\n"
+					  << "  --tonemap MODE: Which tone-mapping operator to apply before the sRGB\n"
+					  << "               OETF (default aces, this project's pre-existing behavior).\n"
+					  << "               One of aces, reinhard, none. Applies to both CPU and GPU\n"
+					  << "               (recursive and wavefront). No effect under\n"
+					  << "               --bdpt/--mlt/--sppm (warns).\n"
 					  << "  --sppm     : Render with Stochastic Progressive Photon Mapping instead of\n"
 					  << "               the path tracer (incompatible with --video). Best for hard\n"
 					  << "               caustic/glass scenes. CPU: verified end-to-end on scene 11\n"

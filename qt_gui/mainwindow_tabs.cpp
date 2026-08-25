@@ -797,6 +797,140 @@ void MainWindow::createAdvancedTab() {
 	m_tabWidget->addTab(scrollArea, "Advanced Settings");
 }
 
+// ============================================================================
+// Render Options Tab
+// ============================================================================
+// Exposes CLI flags RenderController::start() (mainwindow.cpp) already knows
+// how to emit but that no earlier tab surfaced: --sampler, --spectral,
+// --exposure, --tonemap, --stats, --denoise, --optix-validate. Deliberately
+// a separate tab from "Advanced Settings" above (resolution/samples/depth/
+// camera) rather than folded into it, since that name already means
+// something else and this tab is exclusively about render BEHAVIOR flags,
+// not image/camera parameters.
+void MainWindow::createRenderOptionsTab() {
+	QWidget *optionsTab = new QWidget();
+	QVBoxLayout *layout = new QVBoxLayout(optionsTab);
+	layout->setSpacing(14);
+	layout->setContentsMargins(12, 12, 12, 12);
+
+	// ------------------------------------------------------------------
+	// Sampling & Spectral group - CPU default path tracer only
+	// ------------------------------------------------------------------
+	// "&&" (not "&") - a single "&" is a Qt mnemonic-accelerator marker,
+	// which would eat the "&" and underline the next letter instead of
+	// showing a literal ampersand.
+	QGroupBox *samplingGroup = new QGroupBox("Sampling && Spectral", optionsTab);
+	styleGroupBox(samplingGroup);
+	QFormLayout *samplingLayout = new QFormLayout(samplingGroup);
+	samplingLayout->setVerticalSpacing(10);
+	samplingLayout->setHorizontalSpacing(10);
+	samplingLayout->setContentsMargins(15, 22, 15, 12);
+
+	m_samplerCombo = new QComboBox(optionsTab);
+	m_samplerCombo->addItem("Sobol (default)", QString());
+	m_samplerCombo->addItem("Z-Sobol", QStringLiteral("zsobol"));
+	m_samplerCombo->addItem("Padded Sobol", QStringLiteral("paddedsobol"));
+	m_samplerCombo->addItem("Stratified", QStringLiteral("stratified"));
+	m_samplerCombo->addItem("PMJ02BN", QStringLiteral("pmj02bn"));
+	m_samplerCombo->addItem("Halton", QStringLiteral("halton"));
+	m_samplerCombo->setToolTip(
+		"Which low-discrepancy sampler drives random decisions.\n"
+		"CPU default path tracer only - no effect on GPU or under\n"
+		"BDPT/MLT/SPPM/the debug integrators.");
+	styleComboBox(m_samplerCombo);
+	samplingLayout->addRow("Sampler:", m_samplerCombo);
+
+	m_spectralCheck = new QCheckBox("Spectral rendering (--spectral)", optionsTab);
+	m_spectralCheck->setToolTip(
+		"Real hero-wavelength spectral rendering instead of flat RGB.\n"
+		"CPU default path tracer only. Only lambertian, metal, dielectric,\n"
+		"rough_dielectric, conductor, and diffuse_light materials are\n"
+		"supported - a scene using anything else fails to render rather\n"
+		"than silently rendering wrong colors. Noticeably slower per-sample.");
+	styleCheckBox(m_spectralCheck);
+	samplingLayout->addRow(m_spectralCheck);
+
+	m_exposureSpin = new QDoubleSpinBox(optionsTab);
+	m_exposureSpin->setRange(0.01, 100.0);
+	m_exposureSpin->setValue(1.0);
+	m_exposureSpin->setSingleStep(0.1);
+	m_exposureSpin->setToolTip(
+		"Flat multiplier on linear color before tone-mapping (1.0 = no-op).\n"
+		"Both CPU and GPU default path tracer only.");
+	styleSpinBox(m_exposureSpin);
+	samplingLayout->addRow("Exposure:", m_exposureSpin);
+
+	layout->addWidget(samplingGroup);
+
+	// ------------------------------------------------------------------
+	// Output group
+	// ------------------------------------------------------------------
+	QGroupBox *outputGroup = new QGroupBox("Output", optionsTab);
+	styleGroupBox(outputGroup);
+	QFormLayout *outputLayout = new QFormLayout(outputGroup);
+	outputLayout->setVerticalSpacing(10);
+	outputLayout->setHorizontalSpacing(10);
+	outputLayout->setContentsMargins(15, 22, 15, 12);
+
+	m_tonemapCombo = new QComboBox(optionsTab);
+	m_tonemapCombo->addItem("ACES (default)", QString());
+	m_tonemapCombo->addItem("Reinhard", QStringLiteral("reinhard"));
+	m_tonemapCombo->addItem("None", QStringLiteral("none"));
+	m_tonemapCombo->setToolTip(
+		"Which tone-mapping operator to apply before the sRGB curve.\n"
+		"Applies to both CPU and GPU (recursive and wavefront) - no\n"
+		"effect under BDPT/MLT/SPPM/the debug integrators.");
+	styleComboBox(m_tonemapCombo);
+	outputLayout->addRow("Tone mapping:", m_tonemapCombo);
+
+	m_statsCheck = new QCheckBox("Print render stats", optionsTab);
+	m_statsCheck->setToolTip(
+		"Print a small end-of-render stats block (rays cast, bounces,\n"
+		"shadow rays, samples/sec) to the Log tab. Observation-only -\n"
+		"never changes the rendered image.");
+	styleCheckBox(m_statsCheck);
+	outputLayout->addRow(m_statsCheck);
+
+	m_denoiseCheck = new QCheckBox("OptiX AI denoiser (GPU recursive only)", optionsTab);
+	m_denoiseCheck->setToolTip(
+		"Run the OptiX AI denoiser on the finished render, guided by\n"
+		"albedo + normal buffers. GPU recursive backend only - silently\n"
+		"has no effect under the wavefront backend.");
+	styleCheckBox(m_denoiseCheck);
+	outputLayout->addRow(m_denoiseCheck);
+
+	m_optixValidateCheck = new QCheckBox("OptiX validation mode (slower, debugging only)", optionsTab);
+	m_optixValidateCheck->setToolTip(
+		"Enable OptiX validation mode - extra device-side checks with a\n"
+		"real per-launch cost. GPU only, for debugging, not routine use.");
+	styleCheckBox(m_optixValidateCheck);
+	outputLayout->addRow(m_optixValidateCheck);
+
+	layout->addWidget(outputGroup);
+	layout->addStretch();
+
+	// Initial enabled state matches whatever m_renderModeCombo/
+	// m_gpuBackendCombo already hold at this point in construction -
+	// mirrors m_gpuBackendCombo's own "set once here, updated live via the
+	// constructor's connect() lambda" pattern (see MainWindow's constructor,
+	// mainwindow.cpp).
+	const bool gpuSelected = m_renderModeCombo->currentData().toBool();
+	m_samplerCombo->setEnabled(!gpuSelected);
+	m_spectralCheck->setEnabled(!gpuSelected);
+	m_denoiseCheck->setEnabled(gpuSelected);
+	m_optixValidateCheck->setEnabled(gpuSelected);
+
+	QScrollArea *scrollArea = new QScrollArea();
+	scrollArea->setWidget(optionsTab);
+	scrollArea->setWidgetResizable(true);
+	scrollArea->setFrameShape(QFrame::NoFrame);
+	scrollArea->setObjectName("tabScroll");
+	scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+	scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+
+	m_tabWidget->addTab(scrollArea, "Render Options");
+}
+
 void MainWindow::createPreviewTab() {
 	QWidget *previewWidget = new QWidget();
 	QHBoxLayout *outerLayout = new QHBoxLayout(previewWidget);

@@ -79,6 +79,12 @@ extern "C" {
 ///                      starts, and an unsupported material fails the call
 ///                      (named in the error) rather than silently
 ///                      rendering with the wrong color model.
+/// @param tonemap       Which tone-mapping operator write_color() applies
+///                      before the sRGB OETF (src/shared/tone_map.h's
+///                      ToneMapMode) - one of "aces"/"reinhard"/"none";
+///                      nullptr, empty, or an unrecognized name all fall
+///                      back to "aces" (this project's pre-existing
+///                      hardcoded default).
 /// @return 0 on success, non-zero error code on failure
 int cpu_render_main(
     int width,
@@ -93,7 +99,8 @@ int cpu_render_main(
     int force_camera_override = 0,
     double exposure = 1.0,
     const char* sampler = nullptr,
-    bool spectral = false
+    bool spectral = false,
+    const char* tonemap = nullptr
 );
 
 /// @brief Render a scene using Stochastic Progressive Photon Mapping (SPPM)

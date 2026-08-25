@@ -148,3 +148,25 @@ TEST(ApplyToneMap, AllModesReturnAtMostOneForSaturated) {
 		EXPECT_LE(apply_tone_map(1000.0, mode), 1.0);
 	}
 }
+
+// ---------------------------------------------------------------------------
+// tone_map_mode_from_name -- --tonemap flag / launcher_args.h dispatch
+// ---------------------------------------------------------------------------
+
+TEST(ToneMapModeFromName, RecognizesAllThreeModes) {
+	ToneMapMode mode;
+	EXPECT_TRUE(tone_map_mode_from_name("aces", mode));
+	EXPECT_EQ(mode, ToneMapMode::ACES);
+	EXPECT_TRUE(tone_map_mode_from_name("reinhard", mode));
+	EXPECT_EQ(mode, ToneMapMode::Reinhard);
+	EXPECT_TRUE(tone_map_mode_from_name("none", mode));
+	EXPECT_EQ(mode, ToneMapMode::None);
+}
+
+TEST(ToneMapModeFromName, RejectsUnrecognizedNames) {
+	ToneMapMode mode = ToneMapMode::ACES;
+	EXPECT_FALSE(tone_map_mode_from_name("bogus", mode));
+	EXPECT_FALSE(tone_map_mode_from_name("", mode));
+	EXPECT_FALSE(tone_map_mode_from_name("ACES", mode))
+		<< "names are case-sensitive lowercase, matching --sampler's own convention";
+}

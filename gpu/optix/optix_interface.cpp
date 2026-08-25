@@ -47,7 +47,8 @@ extern "C" int optix_render_main(
 	double cam_z,
 	int force_camera_override,
 	int denoise,
-	double exposure
+	double exposure,
+	const char* tonemap
 ) {
 	try {
 		// std::string(output_path) below (and the ofstream open further down)
@@ -56,6 +57,21 @@ extern "C" int optix_render_main(
 		if (!output_path) {
 			std::cerr << ErrorInfo(ERR_OUTPUT_PATH_INVALID).to_string() << "\n";
 			return ERR_OUTPUT_PATH_INVALID;
+		}
+
+		// tonemap==nullptr (every existing caller that predates this param)
+		// or an unrecognized name both fall back to ACES - see
+		// tone_map_mode_from_name()'s own comment (src/shared/tone_map.h).
+		// Parsed once here and used by both PPM-writing call sites below
+		// (the single shared output path for the recursive and wavefront
+		// backends - see their own comment).
+		ToneMapMode tone_map_mode = ToneMapMode::ACES;
+		if (tonemap != nullptr) {
+			if (!tone_map_mode_from_name(tonemap, tone_map_mode) && tonemap[0] != '\0') {
+				std::cerr << "Warning: unrecognized --tonemap \"" << tonemap
+						  << "\", using aces. Valid: aces, reinhard, none.\n";
+				tone_map_mode = ToneMapMode::ACES;
+			}
 		}
 
 		// Initialize renderer on first call
@@ -222,7 +238,12 @@ extern "C" int optix_render_main(
 		std::cout << "[TECH] Light sampling : Power-weighted alias table (Vose method)  phi = area * Le * pi" << std::endl;
 		std::cout << "[TECH] MIS            : Power heuristic  beta=2  (BSDF sample + NEE light sample)" << std::endl;
 		std::cout << "[TECH] Path termination: fixed max_depth=" << max_depth << "  (no Russian Roulette on GPU)" << std::endl;
-		std::cout << "[TECH] Tone mapping   : ACES filmic (Narkowicz) + sRGB OETF  (matches CPU's write_color())" << std::endl;
+		{
+			const char* toneMapName = tone_map_mode == ToneMapMode::Reinhard ? "Reinhard L/(1+L)"
+									 : tone_map_mode == ToneMapMode::None     ? "None (clamp only)"
+									 :                                          "ACES filmic (Narkowicz)";
+			std::cout << "[TECH] Tone mapping   : " << toneMapName << " + sRGB OETF  (matches CPU's write_color())" << std::endl;
+		}
 		std::cout << "[TECH] Device         : CUDA / OptiX 7+  (NVIDIA GPU)" << std::endl;
 		std::cout << "[TECH] ─────────────────────────────────────────────────────" << std::endl;
 
@@ -352,9 +373,9 @@ extern "C" int optix_render_main(
 			g *= exposure;
 			b *= exposure;
 
-			r = linear_to_srgb(apply_tone_map(r, ToneMapMode::ACES));
-			g = linear_to_srgb(apply_tone_map(g, ToneMapMode::ACES));
-			b = linear_to_srgb(apply_tone_map(b, ToneMapMode::ACES));
+			r = linear_to_srgb(apply_tone_map(r, tone_map_mode));
+			g = linear_to_srgb(apply_tone_map(g, tone_map_mode));
+			b = linear_to_srgb(apply_tone_map(b, tone_map_mode));
 
 			// Clamp and convert to byte (matches write_color()'s
 			// interval(0.000, 0.999) clamp-then-*256 convention exactly).

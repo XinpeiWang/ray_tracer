@@ -15,6 +15,7 @@
 #include "pdf.h"
 #include <cmath>
 #include "material.h"
+#include "../shared/tone_map.h"
 #include "sky_light.h"
 #include "punctual_light_objects.h"
 #include "shadow_ray.h"
@@ -96,6 +97,12 @@ class camera {
     // exposureTime * ISO / 100 (film.cpp) collapsed to a single scalar -
     // see launcher_args.h's --exposure flag. 1.0 (default) is a no-op.
     double exposure          = 1.0;
+    // Which operator write_color() applies before the sRGB OETF - see
+    // launcher_args.h's --tonemap flag and tone_map.h's own ToneMapMode
+    // doc comment. ACES (default) matches this project's long-standing
+    // default behavior; every existing scene/test is unaffected unless
+    // --tonemap is explicitly passed.
+    ToneMapMode tone_map     = ToneMapMode::ACES;
     // Which sampler drives ray_color()'s random decisions - see SamplerKind's
     // own comment. Default Sobol matches this project's pre-existing,
     // hardcoded behavior exactly.
@@ -425,7 +432,7 @@ class camera {
                         exr_pixels[idx + 1] = static_cast<float>(pixel_color.y());
                         exr_pixels[idx + 2] = static_cast<float>(pixel_color.z());
                     } else {
-                        write_color(ss, pixel_color);
+                        write_color(ss, pixel_color, tone_map);
                     }
                 }
 

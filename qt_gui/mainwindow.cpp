@@ -66,6 +66,17 @@ void RenderController::setVideoParameters(bool enabled, int frames, int fps, con
 	m_cameraPath = cameraPath;
 }
 
+void RenderController::setAdvancedFlags(bool denoise, bool stats, bool optixValidate, double exposure,
+										 const QString &sampler, bool spectral, const QString &tonemap) {
+	m_denoise = denoise;
+	m_stats = stats;
+	m_optixValidate = optixValidate;
+	m_exposure = exposure;
+	m_sampler = sampler;
+	m_spectral = spectral;
+	m_tonemap = tonemap;
+}
+
 bool RenderController::isRunning() const {
 	return m_renderProcess && m_renderProcess->state() != QProcess::NotRunning;
 }
@@ -126,6 +137,18 @@ void RenderController::start() {
 	} else {
 		args << "--cpu";
 	}
+
+	// Render Options tab flags - see setAdvancedFlags()'s own comment.
+	// Each maps 1:1 to a CLI flag; only emitted when it differs from the
+	// CLI's own default, so a render with every toggle left untouched
+	// produces exactly the same command line this GUI always has.
+	if (m_denoise)       args << "--denoise";
+	if (m_stats)         args << "--stats";
+	if (m_optixValidate) args << "--optix-validate";
+	if (m_exposure != 1.0) args << "--exposure" << QString::number(m_exposure);
+	if (!m_sampler.isEmpty()) args << "--sampler" << m_sampler;
+	if (m_spectral)       args << "--spectral";
+	if (!m_tonemap.isEmpty()) args << "--tonemap" << m_tonemap;
 
 	// Video mode flags (if enabled)
 	if (m_videoMode) {
@@ -641,6 +664,7 @@ void MainWindow::setupUI() {
 	m_tabWidget = new ExpandingTabWidget(this);
 	createBasicTab();
 	createAdvancedTab();
+	createRenderOptionsTab();
 	createVideoTab();
 	createPreviewTab();
 	createProgressTab();
@@ -664,10 +688,29 @@ void MainWindow::setupUI() {
 				// m_gpuBackendCombo is nullptr on a build with no GPU support
 				// at all (RT_GUI_HAVE_GPU undefined - see mainwindow_tabs.cpp's
 				// Renderer combo setup, which never creates it there).
+				const bool gpuSelected = m_renderModeCombo->currentData().toBool();
 				if (m_gpuBackendCombo) {
-					m_gpuBackendCombo->setEnabled(m_renderModeCombo->currentData().toBool());
+					m_gpuBackendCombo->setEnabled(gpuSelected);
 				}
+				// Render Options tab: sampler/spectral are CPU default path
+				// tracer only, denoise/optix-validate are GPU only - see
+				// createRenderOptionsTab()'s own comment (mainwindow_tabs.cpp).
+				m_samplerCombo->setEnabled(!gpuSelected);
+				m_spectralCheck->setEnabled(!gpuSelected);
+				m_denoiseCheck->setEnabled(gpuSelected && (!m_gpuBackendCombo || !m_gpuBackendCombo->currentData().toBool()));
+				m_optixValidateCheck->setEnabled(gpuSelected);
 			});
+	// Denoise is recursive-backend-only (silently has no effect under
+	// wavefront - see createRenderOptionsTab()'s own tooltip) - a second,
+	// narrower live update on top of the m_renderModeCombo one above, which
+	// only knows about GPU-vs-CPU, not which GPU backend.
+	if (m_gpuBackendCombo) {
+		connect(m_gpuBackendCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+				this, [this](int) {
+					const bool gpuSelected = m_renderModeCombo->currentData().toBool();
+					m_denoiseCheck->setEnabled(gpuSelected && !m_gpuBackendCombo->currentData().toBool());
+				});
+	}
 	connect(m_widthSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
 			this, [this](int) { refreshStatusBarInfo(); });
 	connect(m_heightSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),

@@ -67,7 +67,8 @@ inline int optix_render_main(
 	double /*cam_z*/,
 	int /*force_camera_override*/ = 0,
 	int /*denoise*/ = 0,
-	double /*exposure*/ = 1.0
+	double /*exposure*/ = 1.0,
+	const char* /*tonemap*/ = nullptr
 ) {
 	return -1;
 }

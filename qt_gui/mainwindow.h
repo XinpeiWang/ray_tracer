@@ -12,6 +12,7 @@
 #include <QPushButton>
 #include <QAction>
 #include <QGroupBox>
+#include <QCheckBox>
 #include <QLineEdit>
 #include <QProcess>
 #include <QVector3D>
@@ -752,6 +753,16 @@ public:
 	// Set video generation parameters
 	void setVideoParameters(bool enabled, int frames, int fps, const QString &cameraPath, double speed = 1.0);
 
+	// Set the "Render Options" tab's flags - a separate setter rather than
+	// growing setParameters()'s already-large signature further. Each
+	// parameter maps 1:1 to a CLI flag (see start()'s own arg-building);
+	// defaults here match the CLI's own defaults, so a caller that never
+	// invokes this (ThumbnailGenerator, in particular) renders exactly as
+	// it always has. sampler/tonemap empty = use the CLI's own default
+	// (sobol/aces) rather than passing the flag at all.
+	void setAdvancedFlags(bool denoise, bool stats, bool optixValidate, double exposure,
+						   const QString &sampler, bool spectral, const QString &tonemap);
+
 	// Builds the command line and launches ray_tracer.exe. Returns immediately;
 	// everything after this point is driven by the process's own signals.
 	void start();
@@ -796,6 +807,18 @@ private:
 
 	QString m_outputPath;   // Output file path for rendered image
 	QProcess *m_renderProcess = nullptr;  // Subprocess handle (child of this object)
+
+	// "Render Options" tab flags - see setAdvancedFlags()'s own comment.
+	// Defaults here match every existing caller's prior behavior (nothing
+	// passed = CLI default), so ThumbnailGenerator (which never calls
+	// setAdvancedFlags()) is unaffected.
+	bool m_denoise = false;
+	bool m_stats = false;
+	bool m_optixValidate = false;
+	double m_exposure = 1.0;
+	QString m_sampler;
+	bool m_spectral = false;
+	QString m_tonemap;
 
 	// Whether the user asked to stop, tracked explicitly rather than inferred
 	// from exit status/code - a real crash (e.g. access violation) also
@@ -940,6 +963,16 @@ struct RenderJob {
 	QString displayTitle;      // Scene name, for the queue list row - see describeRenderJob()
 	QString sceneDescription;  // Scene's own description, for the finished Preview tab's tooltip
 	QString videoPresetName;   // Named video preset's display name, if one was selected; empty otherwise
+
+	// "Render Options" tab fields - see RenderController::setAdvancedFlags()'s
+	// own comment. sampler/tonemap empty = use the CLI's own default.
+	bool denoise = false;
+	bool stats = false;
+	bool optixValidate = false;
+	double exposure = 1.0;
+	QString sampler;
+	bool spectral = false;
+	QString tonemap;
 };
 
 // ============================================================================
@@ -1046,6 +1079,7 @@ private:
 	void setupUI();
 	void createBasicTab();
 	void createAdvancedTab();
+	void createRenderOptionsTab();
 	void createVideoTab();
 	void createPreviewTab();
 	void createProgressTab();
@@ -1101,6 +1135,7 @@ private:
 	void applyComboPopupPalette(QComboBox *combo);
 	void styleSpinBox(QAbstractSpinBox *spinBox);
 	void styleGroupBox(QGroupBox *box);
+	void styleCheckBox(QCheckBox *box);
 	// A subtle "elevated card" drop shadow (QSS alone cannot do box-shadow) -
 	// neutral black at low alpha rather than theme-tinted, the same choice
 	// every real elevation system (Material, Fluent, CSS itself) makes,
@@ -1213,6 +1248,22 @@ private:
 	QSpinBox *m_heightSpinBox;          // Custom height
 	QSpinBox *m_samplesSpinBox;         // Samples per pixel
 	QSpinBox *m_maxDepthSpinBox;        // Max ray depth
+
+	// Render Options tab (createRenderOptionsTab()) - one widget per CLI
+	// flag RenderController::start() can emit; see setAdvancedFlags()'s own
+	// comment. m_samplerCombo/m_spectralCheck are CPU-default-path-tracer
+	// only; m_denoiseCheck/m_optixValidateCheck are GPU-only (m_denoiseCheck
+	// further disabled under wavefront) - enabled state kept in sync with
+	// m_renderModeCombo/m_gpuBackendCombo, see the constructor's own
+	// connect() lambda for m_gpuBackendCombo's existing enable/disable
+	// pattern (mainwindow.cpp).
+	QComboBox *m_samplerCombo;          // --sampler (CPU default path tracer only)
+	QCheckBox *m_spectralCheck;         // --spectral (CPU default path tracer only)
+	QDoubleSpinBox *m_exposureSpin;     // --exposure (both backends, default path tracer only)
+	QComboBox *m_tonemapCombo;          // --tonemap (both backends, default path tracer only)
+	QCheckBox *m_statsCheck;            // --stats (always applicable)
+	QCheckBox *m_denoiseCheck;          // --denoise (GPU recursive backend only)
+	QCheckBox *m_optixValidateCheck;    // --optix-validate (GPU only)
 
 	// Camera controls
 	// Camera position (lookfrom) can be set via presets or custom X/Y/Z
