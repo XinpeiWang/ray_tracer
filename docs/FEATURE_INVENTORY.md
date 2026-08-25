@@ -19,6 +19,105 @@ via `--wavefront`).
 
 ---
 
+## Complete feature table
+
+Quick-reference index of every feature this doc covers, in one place.
+"Status" packs CPU/GPU-recursive/GPU-wavefront coverage as `Y/Y/Y`-style
+shorthand where that shape fits, or plain text where it doesn't (CLI flags,
+orphaned code, loader-only limits). "Fallback / Counterpart" is what
+actually happens when the feature isn't there — `N/A` means the feature
+works as stated and there's no fallback concept to speak of. See the
+numbered sections below for the narrative detail behind any row.
+
+| Category | Feature | Status | Fallback / Counterpart |
+|---|---|---|---|
+| Shapes | Sphere | Y / Y / Y | N/A |
+| Shapes | Quad | Y / Y / Y | N/A |
+| Shapes | Disk | Y / Y / Y | N/A (medium on a disk is structurally not meaningful, not merely unimplemented) |
+| Shapes | Cylinder | Y / Y / Y | N/A |
+| Shapes | Triangle / triangle mesh | Y / Y / Y | N/A |
+| Shapes | Bilinear patch | Y / Y / Y | N/A |
+| Shapes | Curves (hair/fiber strands) | Y (analytic) / Y (tessellated) / Y (tessellated) | GPU tessellates to a bilinear-patch tube instead of native curve intersection — matches pbrt-v4's own GPU strategy, not a degraded fallback |
+| Shapes | Loop-subdivision surfaces | Y / Y / Y | N/A (refined to triangles once at load, before either backend sees it) |
+| Shapes | OBJ mesh loader | Y / Y / Y | N/A |
+| Shapes | PLY mesh loader | Y / Y / Y | N/A |
+| Shapes | Instancing (`ObjectInstance`) | Y / Y / Y | N/A |
+| Shapes | Non-cubic / non-Bezier curve (`splitdepth`, other basis/degree) | N | Dropped with a "shape not supported" warning — nothing rendered in its place |
+| Materials | Lambertian | Y / Y / Y | N/A |
+| Materials | Metal (fuzz) / Conductor (real complex-IOR GGX) | Y / Y / Y | N/A |
+| Materials | Dielectric (smooth) | Y / Y / Y | N/A |
+| Materials | Rough dielectric | Y / Y / Y | N/A |
+| Materials | Thin dielectric | Y / Y / Y | N/A |
+| Materials | Coated diffuse | Y / Y / Y | N/A |
+| Materials | Coated conductor | Y / Y / Y | N/A |
+| Materials | Diffuse transmission | Y / Y / Y | N/A |
+| Materials | Mix material | Y / Y / Y | N/A |
+| Materials | Subsurface (tabulated BSSRDF) | Y / Y / Y | N/A |
+| Materials | Hair (Marschner/Chiang) | Y / Y / Y | N/A |
+| Materials | Measured (`.bsdf` tensor) | Y / Y / Y | Unresolved filename → falls back to Lambertian (same gate on both backends) |
+| Materials | Principled | Y / Y / Y | N/A |
+| Materials | Dispersion (`dielectric` only) | CPU only | GPU request → falls back to flat, non-dispersive IOR, silently (no warning — not a scene-load failure) |
+| Materials | Dispersion (`rough_dielectric`) | N, no backend | Always flat, non-dispersive IOR |
+| Materials | Unrecognized pbrt `Material` kind | N | Falls back to flat Lambertian using base color, warned by name |
+| Textures | Procedural (checker/noise/marble/windy/dots/etc.) | Y | N/A |
+| Textures | Image textures + mipmap/EWA filter | Y | N/A |
+| Textures | Texture mapping (UV/spherical/cylindrical/planar) | Y | N/A |
+| Textures | `mix` texture with texture-bound `amount` | N (loader only — class works via native API) | Falls back to flat colour with a warning when loaded from `.pbrt` |
+| Textures | Texture nesting beyond one level | N (loader only) | Same — falls back with a warning |
+| Lights | Point / spot / distant | Y / Y / Y | N/A |
+| Lights | Goniometric | Y / Y / Y | Missing/non-square profile image → falls back to a uniform isotropic distribution |
+| Lights | Projection | Y / Y / Y | Missing `filename` → warned (pbrt-v4 itself requires one) |
+| Lights | Area (any NEE-samplable shape) | Y / Y / Y | N/A |
+| Lights | Uniform infinite | Y / Y / Y | N/A |
+| Lights | Image infinite (HDRI, importance-sampled) | Y / Y / Y | N/A |
+| Lights | Portal light | Y / Y / Y | N/A |
+| Lights | Unrecognized pbrt light kind | N | Dropped, **no fallback rendered** — the one case in the whole loader with no safety net |
+| Light sampling | BVH light sampler (spatial + power) | CPU default | GPU counterpart is the flat `PowerLightSampler` — a real, permanent substitute, not a degraded fallback |
+| Light sampling | Power light sampler (flat) | CPU (superseded) / GPU (default) | N/A |
+| Light sampling | `UniformLightSampler` | Dead code, zero callers | N/A — orphaned, not part of any fallback chain |
+| Light sampling | `BVHLightSampler2` | Dead code, zero callers | N/A — orphaned |
+| Light sampling | `ExhaustiveLightSampler` | Dead code (only reachable from unwired `restir.h`) | N/A — orphaned |
+| Media | Homogeneous | Y / Y | N/A |
+| Media | Cloud (procedural Perlin-FBm) | Y / Y | N/A |
+| Media | RGB grid | Y / Y | N/A |
+| Media | Uniform grid | Y / Y | N/A |
+| Media | NanoVDB | N | Falls back to homogeneous medium, warned |
+| Media | Medium on disk / triangle mesh / etc. (GPU) | N | No fallback — GPU medium dispatch is sphere/cylinder-triggered only |
+| Cameras | Perspective (+ depth of field) | Y / Y / Y | N/A |
+| Cameras | Orthographic | Y / Y / Y | N/A |
+| Cameras | Spherical (equirect + equal-area) | Y / Y / Y | N/A |
+| Cameras | Realistic (lens-file simulation) | Y / Y / Y | Missing/unreadable lens file → falls back to perspective, warned |
+| Cameras | Motion blur (`AnimatedTransform`, native API) | Y | N/A |
+| Cameras | `ActiveTransform`/`TransformTimes` (`.pbrt`-authored animated camera) | N (loader only) | Directive skipped with a warning; native `AnimatedTransform` API still usable directly |
+| Samplers | Sobol / Z-Sobol / padded Sobol / stratified / PMJ02BN / Halton | Y (CPU) | N/A |
+| Samplers | Blue noise (bonus, non-pbrt-v4) | Y (CPU) | N/A |
+| Samplers | Independent | N | Falls back to Sobol, silently |
+| Samplers | `--sampler` under GPU/BDPT/MLT/SPPM/debug integrators | Out of scope by design | Warned and ignored, doesn't error |
+| Integrators | Path (default) | Y / Y / Y | N/A |
+| Integrators | VolPath (media-aware) | Y / folded into default / Y | N/A |
+| Integrators | SPPM | Y / dedicated GPU pipeline / — | N/A |
+| Integrators | BDPT | CPU only | `--gpu` request → forced onto CPU, warned, not an error |
+| Integrators | MLT | CPU only | Same — forced onto CPU, warned |
+| Integrators | RandomWalk / AO / SimplePath / SimpleVolPath / LightPath (debug) | CPU only | N/A (no GPU variant is ever attempted) |
+| Integrators | `--denoise` (OptiX AI denoiser) | GPU-recursive only | Silently a no-op under `--wavefront` |
+| Spectral | `--spectral` (hero-wavelength Monte Carlo) | CPU, default path tracer only | Combined with GPU/SPPM/BDPT/MLT/debug → flag silently dropped, warned; render proceeds without it |
+| Spectral | GPU-wavefront's internal spectral pipeline | Always-on, GPU-wavefront | N/A (not a flag, not togglable — this is just how the integrator works) |
+| Spectral | Real accumulating spectral film/sensor (`PixelSensor`/`SpectralFilm`) | N, dead code | N/A — not a fallback scenario, simply unused; every spectral computation reduces to RGB per-sample instead |
+| Acceleration | CPU hand-rolled BVH (`bvh.h`) | Y | N/A |
+| Acceleration | CPU SAH/HLBVH BVH (`bvh_aggregate.h`) | Y | N/A |
+| Acceleration | GPU hardware BVH (OptiX `OptixTraversableHandle`) | Y | N/A |
+| Acceleration | Light BVH on GPU | N | Falls back to the flat `PowerLightSampler` (see Light sampling row above) — permanent, not degraded |
+| Acceleration | `kd_tree.h` | Present, primary consumer unconfirmed from a source scan | N/A — worth a follow-up to confirm live vs orphaned |
+| Tooling | Interactive/real-time progressive preview | N | No fallback — Qt GUI only launches the CLI as a subprocess and parses output; pbrt-v4's own reference implementation also lacks this, so it tracks upstream |
+| Tooling | Tone mapping (ACES / Reinhard / none) | Y | N/A |
+| Tooling | Video generation (`--video`) | Y | N/A |
+| Tooling | System-compatibility diagnostics (`--diagnose`) | Y | N/A |
+| Orphaned scaffolding | ReSTIR / reservoir sampler (`restir.h`) | Present, unwired, beyond pbrt-v4 book scope | N/A — not part of any fallback chain |
+| Orphaned scaffolding | `PixelSensor` / `SpectralFilm` | Present, unwired | N/A |
+| Loader-only | `Accelerator`/`CoordinateSystem`/`ColorSpace` `.pbrt` directives | N | Warned and skipped; rest of scene still loads |
+
+---
+
 ## 1. Shapes
 
 | Shape | CPU | GPU-recursive | GPU-wavefront | Notes |
