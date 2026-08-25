@@ -137,9 +137,16 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 	qApp->setPalette(appPalette);
 	qApp->setStyle(QStyleFactory::create("Fusion"));
 
-	// Font is a fully independent choice now (see font_switch.cpp) - applied
-	// once at startup and whenever the Font menu changes it, never here, so
-	// switching themes can no longer silently reset it back to Cyberpunk.
+	// The font FAMILY is a fully independent choice (see font_switch.cpp) -
+	// applied once at startup and whenever the Font menu changes it, never
+	// here, so switching themes can no longer silently reset it back to
+	// Cyberpunk. Font SIZE is different: the rules below still set it per
+	// selector (that hierarchy - group box titles vs. captions vs. the
+	// primary button - is themeing, not something font_switch.cpp should
+	// know about), but every value is now an offset from m_activeFontId's
+	// own base size rather than a hardcoded number, so a font switch's point
+	// size is still visible everywhere instead of only in qApp->font().
+	const int basePt = fontPointSizeForId(m_activeFontId);
 
 	// Apply cyberpunk stylesheet for enhanced neon effects
 	QString stylesheet = QString(R"(
@@ -211,7 +218,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			padding: 4px 10px 10px 10px;
 			background-color: %SURFACE1%;
 			color: %TEXT%;
-			font-size: 12pt;
+			font-size: %FS_P1%;
 		}
 		QGroupBox::title {
 			subcontrol-origin: margin;
@@ -220,7 +227,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			left: 12px;
 			top: 2px;
 			color: %ACCENT_1%;
-			font-size: 12pt;
+			font-size: %FS_P1%;
 			font-weight: bold;
 			background-color: %SURFACE1%;
 		}
@@ -232,7 +239,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			border-radius: %RADIUS%;
 			color: %TEXT%;
 			padding: 8px 18px;
-			font-size: 12pt;
+			font-size: %FS_P1%;
 			min-height: 34px;
 		}
 		QPushButton:hover {
@@ -259,7 +266,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			border: 2px solid %ACCENT_DIM%;
 			color: %ACCENT_1%;
 			font-weight: bold;
-			font-size: 13pt;
+			font-size: %FS_P2%;
 		}
 		QPushButton#primaryAction:hover {
 			background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -320,7 +327,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			text-align: center;
 			background-color: %SURFACE0%;
 			color: %TEXT%;
-			font-size: 11pt;
+			font-size: %FS_0%;
 			min-height: 28px;
 		}
 		QProgressBar::chunk {
@@ -390,7 +397,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			   the window narrows. */
 			padding: 8px 12px;
 			color: %TEXT_MUTED%;
-			font-size: 12pt;
+			font-size: %FS_P1%;
 			/* No minimum width: ExpandingTabBar (mainwindow.h) already grows
 			   each tab to fill the bar when there's room. A fixed 100px floor
 			   used to force the strip's natural width past the window's
@@ -423,7 +430,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 		   read as subordinate to the tabs it sits under. */
 		QTabBar#sceneCategoryTabs::tab {
 			padding: 5px 12px;
-			font-size: 10pt;
+			font-size: %FS_M1%;
 			min-width: 0px;
 			margin-right: 1px;
 		}
@@ -444,7 +451,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			border-bottom-left-radius: %RADIUS%;
 			padding: 10px 14px;
 			color: %TEXT_MUTED%;
-			font-size: 10pt;
+			font-size: %FS_M1%;
 			min-width: 0px;
 			min-height: 32px;
 			margin-bottom: 2px;
@@ -466,7 +473,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			border-radius: %RADIUS%;
 			padding: 6px 8px;
 			color: %TEXT%;
-			font-size: 11pt;
+			font-size: %FS_0%;
 			min-height: 26px;
 			margin: 3px 2px;
 		}
@@ -516,7 +523,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 		}
 		QCheckBox {
 			color: %TEXT%;
-			font-size: 11pt;
+			font-size: %FS_0%;
 			spacing: 8px;
 			padding: 4px 2px;
 		}
@@ -595,7 +602,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 		}
 		QLabel {
 			color: %TEXT%;
-			font-size: 11pt;
+			font-size: %FS_0%;
 			padding: 4px 5px;
 			margin: 3px 2px;
 			background: transparent;
@@ -611,15 +618,15 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			border: 1px solid %BORDER%;
 			border-radius: %RADIUS%;
 			padding: 8px 12px;
-			font-size: 11px;
+			font-size: %FS_0%;
 		}
 		QLabel#previewInfo {
 			color: %TEXT_MUTED%;
-			font-size: 9pt;
+			font-size: %FS_M2%;
 		}
 		QLabel#currentJobLabel {
 			color: %ACCENT_1%;
-			font-size: 11pt;
+			font-size: %FS_0%;
 			font-weight: bold;
 			padding-bottom: 4px;
 		}
@@ -629,7 +636,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			border: 1px solid %BORDER%;
 			border-radius: %RADIUS%;
 			padding: 8px 10px;
-			font-size: 10px;
+			font-size: %FS_M1%;
 		}
 		QLabel#videoInfo {
 			color: %TEXT_MUTED%;
@@ -652,7 +659,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 		   field just for this one label. */
 		QLabel#statusWarning {
 			color: %WARNING%;
-			font-size: 10pt;
+			font-size: %FS_M1%;
 		}
 		/* Video Settings' "these controls are currently ignored" banner - see
 		   createVideoTab()'s own comment. Same %WARNING%/%SURFACE1%/%RADIUS%
@@ -665,14 +672,14 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			border: 1px solid %WARNING%;
 			border-radius: %RADIUS%;
 			padding: 8px 12px;
-			font-size: 10pt;
+			font-size: %FS_M1%;
 		}
 		ScaledImageLabel {
 			background-color: %SURFACE0%;
 			border: 1px solid %BORDER%;
 			border-radius: %RADIUS%;
 			color: %TEXT_MUTED%;
-			font-size: 11pt;
+			font-size: %FS_0%;
 		}
 		QStatusBar {
 			background-color: %SURFACE0%;
@@ -691,7 +698,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			color: %TEXT%;
 			selection-background-color: %ACCENT_DIM%;
 			selection-color: %SELECTED_TEXT%;
-			font-size: 10pt;
+			font-size: %FS_M1%;
 			padding: 5px;
 		}
 		/* Scroll bars are chrome: no border, transparent trough, and a
@@ -774,7 +781,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			border: 1px solid %BORDER_STRONG%;
 			border-radius: 4px;
 			padding: 2px 6px;
-			font-size: 9pt;
+			font-size: %FS_M2%;
 		}
 		/* Preview tab's image/video splitter - a slim themed grip instead
 		   of the OS's default flat grey bar. */
@@ -825,7 +832,17 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 		.replace("%PRIMARY_TOP%",          hex(p.primaryTop))
 		.replace("%PRIMARY_BOTTOM%",       hex(p.primaryBottom))
 		.replace("%RADIUS_LG%",     kRadiusLarge)
-		.replace("%RADIUS%",        kRadius);
+		.replace("%RADIUS%",        kRadius)
+		// Every font-size rule above is basePt plus a fixed offset from the
+		// hierarchy this stylesheet was originally authored with (group box
+		// titles/buttons one step up, captions/badges one or two steps down),
+		// not a hardcoded point size - so a font switch's point size actually
+		// scales the whole UI instead of only qApp->font()'s own default.
+		.replace("%FS_M2%", QStringLiteral("%1pt").arg(basePt - 2))
+		.replace("%FS_M1%", QStringLiteral("%1pt").arg(basePt - 1))
+		.replace("%FS_0%",  QStringLiteral("%1pt").arg(basePt))
+		.replace("%FS_P1%", QStringLiteral("%1pt").arg(basePt + 1))
+		.replace("%FS_P2%", QStringLiteral("%1pt").arg(basePt + 2));
 
 	qApp->setStyleSheet(stylesheet);
 }

@@ -36,7 +36,7 @@ int main(int argc, char *argv[]) {
 		// codebase's theme loader (palette_file.cpp) makes for a bad .theme file.
 	}
 
-	MainWindow window;
+	MainWindow window(nullptr, languageCode);
 	window.show();
 
 	return app.exec();

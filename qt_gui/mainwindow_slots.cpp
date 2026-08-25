@@ -400,8 +400,7 @@ void MainWindow::onClearQueue() {
 	// queue is already empty - nothing destructive to confirm.
 	if (m_renderQueue.isEmpty()) return;
 	const auto choice = QMessageBox::question(this, tr("Clear Render Queue"),
-		tr("Remove all %1 queued render%2? This can't be undone.")
-			.arg(m_renderQueue.size()).arg(m_renderQueue.size() == 1 ? "" : "s"),
+		tr("Remove all %n queued render(s)? This can't be undone.", "", m_renderQueue.size()),
 		QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
 	if (choice != QMessageBox::Yes) return;
 

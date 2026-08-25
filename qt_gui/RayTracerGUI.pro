@@ -15,9 +15,13 @@ RESOURCES += resources.qrc
 # call - see language_switch.cpp's own comment for why switching is
 # restart-to-apply rather than live. lrelease/embed_translations are qmake's
 # built-in features: lrelease auto-compiles each .ts to a .qm at build time,
-# and embed_translations packages the .qm files as Qt resources
-# (:/translations/raytracer_<code>.qm) - no manual resources.qrc entry
-# needed. Regenerate the .ts files after adding/changing tr() calls with:
+# and embed_translations packages the .qm files as Qt resources under an
+# "i18n" prefix (:/i18n/raytracer_<code>.qm), NOT ":/translations/..." even
+# though the source .ts files live in translations/ - confirmed against the
+# generated release/qmake_qmake_qm_files.qrc, and load-bearing: main.cpp's
+# QTranslator::load() call has to use the same ":/i18n/..." path. No manual
+# resources.qrc entry needed. Regenerate the .ts files after adding/changing
+# tr() calls with:
 #   lupdate RayTracerGUI.pro
 TRANSLATIONS += translations/raytracer_zh_CN.ts \
                 translations/raytracer_es.ts \

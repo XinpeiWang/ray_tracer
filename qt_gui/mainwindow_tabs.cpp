@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "icon_tint.h"
+#include "scene_technique_notes.h"
 
 #include "../src/shared/scene_descriptor.h"
 #include "../src/shared/video_preset.h"
@@ -208,7 +209,7 @@ void MainWindow::rebuildCategoryTabs(bool requiresFiles) {
 		const int tab = m_sceneCategoryTabs->addTab(category);
 		m_sceneCategoryTabs->setTabData(tab, category);
 		m_sceneCategoryTabs->setTabToolTip(tab,
-			QString("%1 scene%2").arg(inCategory).arg(inCategory == 1 ? "" : "s"));
+			tr("%n scene(s)", "", inCategory));
 		if (category == previousCategory) restoredTab = tab;
 	}
 
@@ -261,20 +262,28 @@ void MainWindow::createBasicTab() {
 	m_sceneAvailabilityTabs->setDrawBase(false);
 	m_sceneAvailabilityTabs->setExpanding(false);
 	{
-		int selfContainedCount = 0, requiresFilesCount = 0;
+		int requiresFilesCount = 0;
+		QStringList selfContainedIds;
 		for (int i = 0; i < sceneCount; ++i) {
 			const QString id = SceneMetadataClient::sceneIdAtIndex(i);
 			if (SceneMetadataClient::sceneRequiresFiles(id)) ++requiresFilesCount;
-			else ++selfContainedCount;
+			else selfContainedIds << id;
 		}
 		const int selfTab = m_sceneAvailabilityTabs->addTab(tr("Self-Contained"));
 		m_sceneAvailabilityTabs->setTabToolTip(selfTab,
-			tr("%1 scene%2 - no extra downloads needed")
-				.arg(selfContainedCount).arg(selfContainedCount == 1 ? "" : "s"));
+			tr("%n scene(s) - no extra downloads needed", "", selfContainedIds.size()));
 		const int filesTab = m_sceneAvailabilityTabs->addTab(tr("Requires External Files"));
 		m_sceneAvailabilityTabs->setTabToolTip(filesTab,
-			tr("%1 scene%2 - needs assets not included in a fresh checkout")
-				.arg(requiresFilesCount).arg(requiresFilesCount == 1 ? "" : "s"));
+			tr("%n scene(s) - needs assets not included in a fresh checkout", "", requiresFilesCount));
+
+#ifndef QT_NO_DEBUG
+		// One-time drift guard against scene_technique_notes.h - see that
+		// header's own comment on warnIfOutOfSync() for why this lives here
+		// (debug-only qWarning, not a gtest assertion) rather than beside
+		// scene_registry_tests.cpp's equivalent GuiSceneCountMatchesRegistry
+		// check for the scene count.
+		scene_technique_notes::warnIfOutOfSync(selfContainedIds);
+#endif
 	}
 	sceneGroupLayout->addWidget(m_sceneAvailabilityTabs);
 

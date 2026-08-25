@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "icon_tint.h"
+#include "settings_keys.h"
 
 #include <QAction>
 #include <QActionGroup>
@@ -19,22 +20,21 @@
 // work this costs.
 // ============================================================================
 
-namespace {
-// Organisation/app names give QSettings a stable location; without them it
-// falls back to names derived from the executable, which move if it is renamed.
-constexpr const char *kSettingsOrg = "RayTracer";
-constexpr const char *kSettingsApp = "RayTracerGUI";
-constexpr const char *kThemeKey = "ui/theme";
-} // namespace
-
 QString MainWindow::loadSavedThemeId() const {
-	QSettings settings(kSettingsOrg, kSettingsApp);
-	return settings.value(kThemeKey, theme::defaultPalette().id).toString();
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kThemeKey, theme::defaultPalette().id).toString();
 }
 
 void MainWindow::saveThemeId(const QString &themeId) const {
-	QSettings settings(kSettingsOrg, kSettingsApp);
-	settings.setValue(kThemeKey, themeId);
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kThemeKey, themeId);
+}
+
+// Shared by createThemeMenu()/createFontMenu()/createLanguageMenu() - see
+// this function's own declaration in mainwindow.h.
+void MainWindow::syncCheckedAction(const QVector<QAction *> &actions, const QString &activeValue) {
+	for (QAction *action : actions)
+		action->setChecked(action->data().toString() == activeValue);
 }
 
 void MainWindow::switchTheme(const QString &themeId) {
@@ -45,8 +45,7 @@ void MainWindow::switchTheme(const QString &themeId) {
 
 	// byId() falls back to the default for an unknown id, so re-sync the menu
 	// against what was actually applied rather than what was requested.
-	for (QAction *action : m_themeActions)
-		action->setChecked(action->data().toString() == p.id);
+	syncCheckedAction(m_themeActions, p.id);
 
 	statusBar()->showMessage(tr("Theme: %1").arg(p.name), 3000);
 }

@@ -1,7 +1,10 @@
 #pragma once
 #include <QCoreApplication>
+#include <QDebug>
 #include <QHash>
+#include <QSet>
 #include <QString>
+#include <QStringList>
 
 // scene_technique_notes.h -- per-scene "what rendering technique does this
 // demonstrate" text for the Basic Settings tab's dynamic info icon (see
@@ -169,6 +172,38 @@ inline QString forScene(const QString &sceneId) {
 		"No rendering-technique note is written for this scene yet - these are "
 		"only authored for the self-contained scene set (the \"Self-Contained\" "
 		"tab above) so far.");
+}
+
+// Debug-only drift guard, called once from createBasicTab() (mainwindow_tabs.cpp)
+// after it enumerates the live scene list. scene_registry.h already lost one
+// GUI-facing mirror table to exactly this failure mode once (see that file's
+// own comment on scene_descriptor.h's old kScenes[]) and this table is the
+// same shape of duplicate for a different field, so it gets the same kind of
+// tripwire scene_registry_tests.cpp's GuiSceneCountMatchesRegistry test is
+// for the scene count - just as a runtime qWarning() rather than a gtest
+// assertion, because this header depends on Qt and the core test binary is
+// deliberately Qt-free (see ray_tracer_tests.vcxproj's own comment on
+// palette_file.h) so it can't link scene_registry.h itself to compare against
+// (scene_metadata_client.h's comment: the GUI never links that header
+// directly, only through the DLL boundary this function's caller already
+// uses). Fails loud via qWarning, not a crash or a dialog - same "say so,
+// don't stay silent" choice paneBackgroundRule()'s missing-resource warning
+// makes elsewhere in this app.
+inline void warnIfOutOfSync(const QStringList &selfContainedSceneIds) {
+	const auto &map = notes();
+	for (const QString &id : selfContainedSceneIds) {
+		if (!map.contains(id)) {
+			qWarning() << "scene_technique_notes.h: self-contained scene" << id
+					   << "has no authored technique note - its info icon will show the generic fallback.";
+		}
+	}
+	const QSet<QString> selfContainedSet(selfContainedSceneIds.constBegin(), selfContainedSceneIds.constEnd());
+	for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
+		if (!selfContainedSet.contains(it.key())) {
+			qWarning() << "scene_technique_notes.h: entry" << it.key()
+					   << "does not match any current self-contained scene - stale, renamed, or moved to \"Requires External Files\"?";
+		}
+	}
 }
 
 } // namespace scene_technique_notes

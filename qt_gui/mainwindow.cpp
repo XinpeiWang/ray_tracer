@@ -534,9 +534,14 @@ void ThumbnailGenerator::startNext() {
 }
 
 // MainWindow Implementation
-MainWindow::MainWindow(QWidget *parent)
+MainWindow::MainWindow(QWidget *parent, const QString &startupLanguageCode)
 	: QMainWindow(parent), m_renderController(nullptr), m_isRendering(false), m_videoMode(false),
 	  m_elapsedTimer(nullptr) {
+
+	// Cached once so createLanguageMenu() (called from setupUI() below) reads
+	// the member instead of hitting QSettings a second time for the same
+	// value main.cpp already read to decide which QTranslator to install.
+	m_startupLanguageCode = startupLanguageCode.isEmpty() ? loadSavedLanguageCode() : startupLanguageCode;
 
 	// Create shared wheel filter (blocks accidental scroll on all controls)
 	m_wheelFilter = new WheelIgnoreFilter(this);
@@ -565,11 +570,21 @@ MainWindow::MainWindow(QWidget *parent)
 	}
 
 	// The theme must exist before setupUI(), because createThemeMenu() ticks
-	// the entry matching the active scheme.
+	// the entry matching the active scheme. Same reasoning for the font id -
+	// createFontMenu() (also called from setupUI()) needs it to tick its own
+	// entry, and caching it in m_startupFontId here means createFontMenu()
+	// doesn't need a second QSettings read for the value applyFont() below
+	// is about to apply anyway.
 	m_activeTheme = theme::byId(loadSavedThemeId());
+	m_startupFontId = loadSavedFontId();
+	// Set before the first applyTheme() call below (not just by applyFont(),
+	// which runs after it) so that first stylesheet build already scales to
+	// the right font instead of the "cyberpunk" default and needing a second
+	// rebuild moments later to correct itself.
+	m_activeFontId = m_startupFontId;
 	setupUI();
 	applyTheme(m_activeTheme);
-	applyFont(loadSavedFontId());
+	applyFont(m_startupFontId);
 	restyleThemedWidgets();
 
 	// Notification-only tray icon: the app has no tray menu and never hides

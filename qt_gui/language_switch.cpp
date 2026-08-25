@@ -1,13 +1,16 @@
 #include "mainwindow.h"
+#include "settings_keys.h"
 
 #include <QAction>
 #include <QActionGroup>
 #include <QCoreApplication>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMessageBox>
 #include <QProcess>
 #include <QSettings>
 #include <QStatusBar>
+#include <QStringList>
 #include <QTimer>
 
 // ============================================================================
@@ -29,18 +32,17 @@
 // this one - the user picks a language and the window briefly closes and
 // reopens already translated, instead of having to close and relaunch it
 // by hand.
+//
+// Two things that trick has to get right, both fixed here after review:
+// quitting is a real interruption if a render is in flight or jobs are
+// queued (see onClearQueue()'s own precedent for treating queue loss as
+// worth a confirmation - a running render is more destructive than that,
+// yet used to get none at all), and the relaunch can fail to spawn, in
+// which case quitting anyway would just end the app with nothing to
+// replace it.
 // ============================================================================
 
 namespace {
-// Same organisation/app names as theme_switch.cpp's QSettings location -
-// deliberately duplicated rather than shared, since this file's
-// loadSavedLanguageCode()/saveLanguageCode() are static (callable from
-// main.cpp before any MainWindow exists) and reaching into theme_switch.cpp's
-// anonymous-namespace constants isn't possible across translation units.
-constexpr const char *kSettingsOrg = "RayTracer";
-constexpr const char *kSettingsApp = "RayTracerGUI";
-constexpr const char *kLanguageKey = "ui/language";
-
 struct LanguageInfo {
 	const char *code;         // QTranslator/.qm filename suffix; "en" = built-in source text, no .qm to load
 	const char *nativeName;   // Shown in the language's own script, not translated itself
@@ -57,19 +59,59 @@ constexpr LanguageInfo kLanguages[] = {
 	{"es",    "Español"},
 	{"zh_CN", "简体中文"},
 };
+
+// "en" for any code not in kLanguages[] - the same thing main.cpp's
+// translator.load() effectively falls back to (a missing/unreadable .qm
+// fails soft into running with no translator installed, i.e. English source
+// text), so the menu's checkmark agrees with what actually renders instead
+// of matching nothing at all.
+QString resolveLanguageCode(const QString &code) {
+	for (const LanguageInfo &lang : kLanguages) {
+		if (code == QLatin1String(lang.code)) return code;
+	}
+	return QStringLiteral("en");
+}
 } // namespace
 
 QString MainWindow::loadSavedLanguageCode() {
-	QSettings settings(kSettingsOrg, kSettingsApp);
-	return settings.value(kLanguageKey, QStringLiteral("en")).toString();
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kLanguageKey, QStringLiteral("en")).toString();
 }
 
 void MainWindow::saveLanguageCode(const QString &code) {
-	QSettings settings(kSettingsOrg, kSettingsApp);
-	settings.setValue(kLanguageKey, code);
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLanguageKey, code);
 }
 
 void MainWindow::switchLanguage(const QString &code) {
+	// A second click (misclick-then-correct-choice, or a genuine double
+	// click) while the first switch's relaunch timer is still pending would
+	// otherwise schedule a second QProcess::startDetached() before the first
+	// one's qApp->quit() actually unwinds the event loop, spawning two
+	// windows from one user action.
+	if (m_languageSwitchPending) return;
+
+	// The relaunch is a real interruption if it happens mid-render or with
+	// jobs still queued - m_renderQueue is in-memory only (never round-
+	// tripped through QSettings) and MainWindow's destructor stops a running
+	// render rather than letting it finish. onClearQueue() already treats
+	// losing a queue alone as worth a confirmation ("the one destructive,
+	// irreversible action in this app with no undo"); this can lose a queue
+	// AND an active render, so it gets at least the same courtesy.
+	if (m_isRendering || !m_renderQueue.isEmpty()) {
+		QStringList consequences;
+		if (m_isRendering)
+			consequences << tr("stop the current render");
+		if (!m_renderQueue.isEmpty())
+			consequences << tr("discard %n queued job(s)", "", m_renderQueue.size());
+		const auto choice = QMessageBox::question(this, tr("Switch Language"),
+			tr("Switching languages restarts the app now, which will %1. Continue?")
+				.arg(consequences.join(tr(" and "))),
+			QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+		if (choice != QMessageBox::Yes) return;
+	}
+
+	m_languageSwitchPending = true;
 	saveLanguageCode(code);
 
 	QString nativeName = code;
@@ -77,8 +119,7 @@ void MainWindow::switchLanguage(const QString &code) {
 		if (code == QLatin1String(lang.code)) { nativeName = QString::fromUtf8(lang.nativeName); break; }
 	}
 
-	for (QAction *action : m_languageActions)
-		action->setChecked(action->data().toString() == code);
+	syncCheckedAction(m_languageActions, code);
 
 	statusBar()->showMessage(tr("Language set to %1 - restarting...").arg(nativeName), 5000);
 
@@ -87,23 +128,33 @@ void MainWindow::switchLanguage(const QString &code) {
 	// hit the screen (and the triggered QAction's own click handling
 	// unwind cleanly) before the window disappears, instead of the click
 	// seeming to do nothing right up until the app vanishes.
-	QTimer::singleShot(400, this, []() {
-		QProcess::startDetached(QCoreApplication::applicationFilePath(),
-								 QCoreApplication::arguments().mid(1));
+	QTimer::singleShot(400, this, [this]() {
+		const bool started = QProcess::startDetached(QCoreApplication::applicationFilePath(),
+													   QCoreApplication::arguments().mid(1));
+		if (!started) {
+			// Quitting anyway here would end the app with nothing to
+			// replace it - the exact failure mode the header comment above
+			// warns about. Stay open and say so instead.
+			m_languageSwitchPending = false;
+			statusBar()->showMessage(
+				tr("Could not restart automatically - please close and reopen the app to finish switching languages."),
+				8000);
+			return;
+		}
 		qApp->quit();
 	});
 }
 
 // Top-level menu, same reasoning as createThemeMenu()'s own comment: a
 // first-class preference worth one click to reach, not buried under View.
-// "L" is free as a mnemonic alongside File/Render/View/Theme/Help.
+// "L" is free as a mnemonic alongside File/Render/View/Theme/Font/Help.
 void MainWindow::createLanguageMenu() {
 	QMenu *languageMenu = menuBar()->addMenu(tr("&Language"));
 
 	auto *group = new QActionGroup(this);
 	group->setExclusive(true);
 
-	const QString activeCode = loadSavedLanguageCode();
+	const QString activeCode = resolveLanguageCode(m_startupLanguageCode);
 	for (const LanguageInfo &lang : kLanguages) {
 		const QString code = QString::fromUtf8(lang.code);
 		QAction *action = languageMenu->addAction(QString::fromUtf8(lang.nativeName));

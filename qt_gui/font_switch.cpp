@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "settings_keys.h"
 
 #include <QAction>
 #include <QActionGroup>
@@ -18,17 +19,15 @@
 // Live, like theme switching (theme_switch.cpp) - but qApp->setFont() alone
 // is NOT enough, unlike qApp->setPalette(). Confirmed by hand: switching
 // fonts after startup silently did nothing visible until applyFont() also
-// re-applies the app's own stylesheet (see its own comment) - a stylesheet-
-// styled widget's computed appearance, once polished under the active style
-// (Fusion) and this app's global QSS, does not retroactively pick up a
-// later application-font change on its own. applyTheme() happened to get
-// away with calling qApp->setFont() inline for years because it always ran
-// alongside a real qApp->setStyleSheet(...) rebuild in the same function -
-// the stylesheet rebuild was silently doing the work, not the font call by
-// itself. This file lifts the font logic out into its own independently
-// switchable system, so Theme and Font stop being entangled: switching one
-// no longer resets the other, the same independence Theme and Language
-// already have.
+// forced a full stylesheet repolish. That repolish trick used to just
+// re-apply the SAME stylesheet string, which turned out to only be half the
+// fix: applyTheme()'s own QSS (mainwindow_style.cpp) hardcodes font-size on
+// ~25 selectors, so a font choice's point size never reached most of the UI
+// even though its family did - Theme and Font looked decoupled but weren't,
+// for size specifically. applyTheme() now reads m_activeFontId to scale
+// those font-size rules to the active choice, so applyFont() calls
+// applyTheme(m_activeTheme) to rebuild the sheet with the new size baked in,
+// rather than re-setting an unchanged string that could never reflect it.
 //
 // No font files are bundled with this app (no .ttf/.otf, no
 // QFontDatabase::addApplicationFont), so every choice below is a fallback
@@ -38,14 +37,6 @@
 // ============================================================================
 
 namespace {
-// Same organisation/app names as theme_switch.cpp's/language_switch.cpp's
-// QSettings location - see language_switch.cpp's own comment on why this is
-// duplicated per file rather than shared.
-constexpr const char *kSettingsOrg = "RayTracer";
-constexpr const char *kSettingsApp = "RayTracerGUI";
-constexpr const char *kFontKey = "ui/font";
-constexpr const char *kDefaultFontId = "cyberpunk";
-
 struct FontChoice {
 	const char *id;      // QSettings value; stable, never shown to the user
 	const char *name;    // Shown in the Font menu
@@ -80,13 +71,20 @@ const FontChoice &fontChoiceById(const QString &id) {
 } // namespace
 
 QString MainWindow::loadSavedFontId() {
-	QSettings settings(kSettingsOrg, kSettingsApp);
-	return settings.value(kFontKey, QString::fromUtf8(kDefaultFontId)).toString();
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	return settings.value(settings_keys::kFontKey, QStringLiteral("cyberpunk")).toString();
 }
 
 void MainWindow::saveFontId(const QString &id) {
-	QSettings settings(kSettingsOrg, kSettingsApp);
-	settings.setValue(kFontKey, id);
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kFontKey, id);
+}
+
+// Exposed to mainwindow_style.cpp so applyTheme() can scale its font-size
+// rules without reaching into this file's anonymous namespace - see this
+// function's own declaration in mainwindow.h.
+int MainWindow::fontPointSizeForId(const QString &id) {
+	return fontChoiceById(id).pointSize;
 }
 
 // Walks a FontChoice's fallback chain and applies the first family QFontInfo
@@ -97,6 +95,10 @@ void MainWindow::saveFontId(const QString &id) {
 // only, not blanket-applied the way an earlier version of this app did.
 void MainWindow::applyFont(const QString &id) {
 	const FontChoice &choice = fontChoiceById(id);
+	// Resolved id (choice.id), not the raw argument - so a corrupt/unknown
+	// saved value settles on the same id the fallback actually applied,
+	// keeping this in agreement with createFontMenu()'s checkmark below.
+	m_activeFontId = QString::fromUtf8(choice.id);
 
 	QFont font;
 	bool familySet = false;
@@ -112,17 +114,12 @@ void MainWindow::applyFont(const QString &id) {
 	font.setWeight(QFont::Normal);
 	qApp->setFont(font);
 
-	// qApp->setFont() alone only reaches widgets created AFTER this call -
-	// every widget already on screen was already polished by the active
-	// style (Fusion, plus this app's own global stylesheet from
-	// applyTheme()) using whatever font was current at THAT time, and a
-	// stylesheet-driven widget's computed appearance doesn't retroactively
-	// invalidate on a later application-font change alone. Re-setting the
-	// same stylesheet string is Qt's standard way to force a full
-	// unpolish+polish pass across every styled widget, which is what
-	// actually makes the new font (not just the new QFont object) show up.
-	if (!qApp->styleSheet().isEmpty())
-		qApp->setStyleSheet(qApp->styleSheet());
+	// applyTheme()'s stylesheet bakes in font-size rules scaled from
+	// m_activeFontId (see this file's header comment), so making the new
+	// point size visible needs the sheet rebuilt from the current theme, not
+	// just reapplied unchanged - the same full unpolish+polish qApp->setFont()
+	// alone still can't trigger on its own for already-styled widgets.
+	applyTheme(m_activeTheme);
 }
 
 void MainWindow::switchFont(const QString &id) {
@@ -130,8 +127,7 @@ void MainWindow::switchFont(const QString &id) {
 	saveFontId(id);
 
 	const FontChoice &choice = fontChoiceById(id);
-	for (QAction *action : m_fontActions)
-		action->setChecked(action->data().toString() == QLatin1String(choice.id));
+	syncCheckedAction(m_fontActions, QString::fromUtf8(choice.id));
 
 	statusBar()->showMessage(tr("Font: %1").arg(tr(choice.name)), 3000);
 }
@@ -144,7 +140,9 @@ void MainWindow::createFontMenu() {
 	auto *group = new QActionGroup(this);
 	group->setExclusive(true);
 
-	const QString activeId = loadSavedFontId();
+	// Resolved id, not the raw m_startupFontId - see applyFont()'s own
+	// comment on why the resolved id is what has to match here too.
+	const QString activeId = QString::fromUtf8(fontChoiceById(m_startupFontId).id);
 	for (const FontChoice &choice : fontChoices()) {
 		const QString id = QString::fromUtf8(choice.id);
 		QAction *action = fontMenu->addAction(tr(choice.name));

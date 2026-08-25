@@ -1041,7 +1041,13 @@ class MainWindow : public QMainWindow {
 	Q_OBJECT
 
 public:
-	explicit MainWindow(QWidget *parent = nullptr);
+	// startupLanguageCode: main.cpp already has to call loadSavedLanguageCode()
+	// itself, before any MainWindow exists, to decide which QTranslator to
+	// install - passing that same value through here instead of reading it a
+	// second time inside the constructor avoids a second QSettings round trip
+	// for one value on the startup path. Left empty, the constructor reads it
+	// itself (keeps this callable the old way if ever needed).
+	explicit MainWindow(QWidget *parent = nullptr, const QString &startupLanguageCode = QString());
 	~MainWindow();
 
 	// Called from main.cpp, before any MainWindow exists, to decide which
@@ -1131,7 +1137,10 @@ private:
 	void restyleThemedWidgets();
 	void refreshStatusBarInfo();
 	// Applies a colour scheme to the whole app. Safe to call repeatedly: the
-	// theme menu re-invokes it to switch live rather than asking for a restart.
+	// theme menu re-invokes it to switch live rather than asking for a restart,
+	// and applyFont() below re-invokes it too - the stylesheet it builds reads
+	// its font-size rules from m_activeFontId, so a font change needs the same
+	// full rebuild-and-reapply a theme change does, not a cheaper substitute.
 	void applyTheme(const theme::Palette &palette);
 	void switchTheme(const QString &themeId);
 	void createThemeMenu();
@@ -1148,20 +1157,52 @@ private:
 	// the matching QTranslator before MainWindow is ever constructed, on
 	// both a genuine cold start and the relaunched process alike.
 	QVector<QAction *> m_languageActions;
+	// The relaunch a language switch triggers is destructive to an in-progress
+	// render/queue and to a launch that fails to spawn - see switchLanguage()'s
+	// own comment. m_languageSwitchPending guards against a second click
+	// scheduling a second relaunch while the first is still in its delay window.
+	bool m_languageSwitchPending = false;
+	// Read once at startup (main.cpp already reads it before MainWindow exists,
+	// to decide which QTranslator to install) and reused here so
+	// createLanguageMenu()'s initial checkmark doesn't cost a second QSettings
+	// round trip for the same value.
+	QString m_startupLanguageCode;
 	void switchLanguage(const QString &code);
 	void createLanguageMenu();
 	static void saveLanguageCode(const QString &code);
 
 	// Font selection and persistence - live, like the theme menu (see
-	// font_switch.cpp's own comment). Fully independent of applyTheme(),
-	// which used to hardcode this to one "Cyberpunk" choice - switching
-	// either no longer touches the other.
+	// font_switch.cpp's own comment). Decoupled from theme in the sense that
+	// switching one never resets the other's saved choice or menu checkmark -
+	// but applyTheme()'s stylesheet does read the active font's base point
+	// size (m_activeFontId) to scale its own font-size rules, so a font
+	// switch still goes through applyTheme() to make that visible everywhere.
 	QVector<QAction *> m_fontActions;
+	// Kept in sync by applyFont(); read by applyTheme() so the stylesheet's
+	// font-size tokens scale with whichever font is actually active, not a
+	// hardcoded baseline. Defaults to the same choice loadSavedFontId() does.
+	QString m_activeFontId = QStringLiteral("cyberpunk");
+	// Read once at startup and reused by createFontMenu(), same reasoning as
+	// m_startupLanguageCode above.
+	QString m_startupFontId;
 	void applyFont(const QString &id);
 	void switchFont(const QString &id);
 	void createFontMenu();
 	static QString loadSavedFontId();
 	static void saveFontId(const QString &id);
+	// Base point size for a FontChoice id, defined in font_switch.cpp;
+	// exposed here so applyTheme() (mainwindow_style.cpp) can scale its own
+	// font-size rules to the active choice without reaching into font_switch.cpp's
+	// anonymous namespace. Same "unknown id falls back to the default choice"
+	// rule fontChoiceById() uses internally.
+	static int fontPointSizeForId(const QString &id);
+
+	// Shared by createThemeMenu()/createFontMenu()/createLanguageMenu(): checks
+	// the one action in `actions` whose stored data matches `activeValue`,
+	// unchecking the rest. All three menus are an exclusive QActionGroup of
+	// QActions carrying their choice's id/code as setData(), so this one loop
+	// replaces three copies of the same four lines.
+	static void syncCheckedAction(const QVector<QAction *> &actions, const QString &activeValue);
 
 	void styleComboBox(QComboBox *combo);
 	void applyComboPopupPalette(QComboBox *combo);
