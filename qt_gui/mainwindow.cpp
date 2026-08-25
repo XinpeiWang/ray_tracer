@@ -569,6 +569,7 @@ MainWindow::MainWindow(QWidget *parent)
 	m_activeTheme = theme::byId(loadSavedThemeId());
 	setupUI();
 	applyTheme(m_activeTheme);
+	applyFont(loadSavedFontId());
 	restyleThemedWidgets();
 
 	// Notification-only tray icon: the app has no tray menu and never hides

@@ -1149,6 +1149,18 @@ private:
 	void switchLanguage(const QString &code);
 	void createLanguageMenu();
 	static void saveLanguageCode(const QString &code);
+
+	// Font selection and persistence - live, like the theme menu (see
+	// font_switch.cpp's own comment). Fully independent of applyTheme(),
+	// which used to hardcode this to one "Cyberpunk" choice - switching
+	// either no longer touches the other.
+	QVector<QAction *> m_fontActions;
+	void applyFont(const QString &id);
+	void switchFont(const QString &id);
+	void createFontMenu();
+	static QString loadSavedFontId();
+	static void saveFontId(const QString &id);
+
 	void styleComboBox(QComboBox *combo);
 	void applyComboPopupPalette(QComboBox *combo);
 	void styleSpinBox(QAbstractSpinBox *spinBox);

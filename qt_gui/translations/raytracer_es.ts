@@ -19,30 +19,30 @@
         <translation>Ray Tracer - Renderizador de Path Tracing</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="588"/>
+        <location filename="../mainwindow.cpp" line="589"/>
         <source>Ray Tracer</source>
         <translation>Ray Tracer</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="748"/>
+        <location filename="../mainwindow.cpp" line="749"/>
         <location filename="../mainwindow_slots.cpp" line="1282"/>
         <source>START &amp;RENDER</source>
         <translation>INICIAR &amp;RENDERIZADO</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="758"/>
+        <location filename="../mainwindow.cpp" line="759"/>
         <source>Render the selected scene with the current settings
 (queues behind it instead if a render is already running)</source>
         <translation>Renderiza la escena seleccionada con la configuración actual
 (se pondrá en cola si ya hay un renderizado en curso)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="769"/>
+        <location filename="../mainwindow.cpp" line="770"/>
         <source>S&amp;TOP RENDER</source>
         <translation>DE&amp;TENER RENDERIZADO</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="776"/>
+        <location filename="../mainwindow.cpp" line="777"/>
         <location filename="../mainwindow_actions.cpp" line="71"/>
         <source>Stop the running render and discard its output</source>
         <translation>Detiene el renderizado en curso y descarta su resultado</translation>
@@ -167,74 +167,74 @@
         <translation>&amp;Ver</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="166"/>
+        <location filename="../mainwindow_actions.cpp" line="168"/>
         <source>&amp;Help</source>
         <translation>A&amp;yuda</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="189"/>
+        <location filename="../mainwindow_actions.cpp" line="191"/>
         <source>GPU (OptiX, wavefront)</source>
         <translation>GPU (OptiX, wavefront)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="189"/>
+        <location filename="../mainwindow_actions.cpp" line="191"/>
         <source>GPU (OptiX)</source>
         <translation>GPU (OptiX)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="189"/>
+        <location filename="../mainwindow_actions.cpp" line="191"/>
         <location filename="../mainwindow_slots.cpp" line="369"/>
         <source>CPU</source>
         <translation>CPU</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="191"/>
+        <location filename="../mainwindow_actions.cpp" line="193"/>
         <source>%1x%2  ·  %3 spp</source>
         <translation>%1x%2  ·  %3 spp</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="228"/>
+        <location filename="../mainwindow_actions.cpp" line="230"/>
         <source>Save Log</source>
         <translation>Guardar registro</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="230"/>
-        <location filename="../mainwindow_actions.cpp" line="273"/>
+        <location filename="../mainwindow_actions.cpp" line="232"/>
+        <location filename="../mainwindow_actions.cpp" line="275"/>
         <source>Text Files (*.txt);;All Files (*.*)</source>
         <translation>Archivos de texto (*.txt);;Todos los archivos (*.*)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="237"/>
+        <location filename="../mainwindow_actions.cpp" line="239"/>
         <source>[ERROR] Could not write log to %1: %2</source>
         <translation>[ERROR] No se pudo escribir el registro en %1: %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="244"/>
+        <location filename="../mainwindow_actions.cpp" line="246"/>
         <source>[INFO] Log saved to %1</source>
         <translation>[INFO] Registro guardado en %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="271"/>
+        <location filename="../mainwindow_actions.cpp" line="273"/>
         <source>Save Diagnostics Report</source>
         <translation>Guardar informe de diagnóstico</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="278"/>
+        <location filename="../mainwindow_actions.cpp" line="280"/>
         <source>Save Failed</source>
         <translation>Error al guardar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="279"/>
+        <location filename="../mainwindow_actions.cpp" line="281"/>
         <source>Could not write diagnostics report to %1: %2</source>
         <translation>No se pudo escribir el informe de diagnóstico en %1: %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="293"/>
+        <location filename="../mainwindow_actions.cpp" line="295"/>
         <source>About Ray Tracer</source>
         <translation>Acerca de Ray Tracer</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="294"/>
+        <location filename="../mainwindow_actions.cpp" line="296"/>
         <source>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;A physically-based path tracer with parallel CPU and GPU (OptiX) backends, built up from the &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; series into a pbrt-v4-style feature set.&lt;/p&gt;&lt;p&gt;113 scenes, a wide BxDF library, multiple light and camera types, triangle-mesh and texture support, BVH acceleration, volumetrics, and an SPPM photon-mapping integrator alongside standard path tracing.&lt;/p&gt;&lt;p&gt;This window drives &lt;code&gt;%1&lt;/code&gt; as a subprocess.&lt;/p&gt;</source>
         <translation>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;Un path tracer físicamente basado con backends paralelos de CPU y GPU (OptiX), construido a partir de la serie &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; hasta alcanzar un conjunto de funciones al estilo de pbrt-v4.&lt;/p&gt;&lt;p&gt;113 escenas, una amplia biblioteca de BxDF, múltiples tipos de luces y cámaras, soporte para mallas de triángulos y texturas, aceleración mediante BVH, volumétricos y un integrador de mapeo de fotones SPPM junto con el path tracing estándar.&lt;/p&gt;&lt;p&gt;Esta ventana ejecuta &lt;code&gt;%1&lt;/code&gt; como subproceso.&lt;/p&gt;</translation>
     </message>
@@ -1731,6 +1731,41 @@ Una velocidad de 0.5x renderiza el doble de fotogramas para cubrir el mismo reco
         <location filename="../theme_switch.cpp" line="59"/>
         <source>&amp;Theme</source>
         <translation>&amp;Tema</translation>
+    </message>
+    <message>
+        <location filename="../font_switch.cpp" line="51"/>
+        <source>Cyberpunk (Default)</source>
+        <translation>Cyberpunk (predeterminada)</translation>
+    </message>
+    <message>
+        <location filename="../font_switch.cpp" line="54"/>
+        <source>System UI</source>
+        <translation>Interfaz del sistema</translation>
+    </message>
+    <message>
+        <location filename="../font_switch.cpp" line="56"/>
+        <source>Classic Serif</source>
+        <translation>Serif clásica</translation>
+    </message>
+    <message>
+        <location filename="../font_switch.cpp" line="58"/>
+        <source>Monospace</source>
+        <translation>Monoespaciada</translation>
+    </message>
+    <message>
+        <location filename="../font_switch.cpp" line="60"/>
+        <source>Rounded</source>
+        <translation>Redondeada</translation>
+    </message>
+    <message>
+        <location filename="../font_switch.cpp" line="129"/>
+        <source>Font: %1</source>
+        <translation>Fuente: %1</translation>
+    </message>
+    <message>
+        <location filename="../font_switch.cpp" line="135"/>
+        <source>F&amp;ont</source>
+        <translation>&amp;Fuente</translation>
     </message>
 </context>
 <context>

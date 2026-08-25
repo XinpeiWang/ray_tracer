@@ -19,30 +19,30 @@
         <translation>Ray Tracer - パストレーシングレンダラー</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="588"/>
+        <location filename="../mainwindow.cpp" line="589"/>
         <source>Ray Tracer</source>
         <translation>Ray Tracer</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="748"/>
+        <location filename="../mainwindow.cpp" line="749"/>
         <location filename="../mainwindow_slots.cpp" line="1282"/>
         <source>START &amp;RENDER</source>
         <translation>レンダリング開始(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="758"/>
+        <location filename="../mainwindow.cpp" line="759"/>
         <source>Render the selected scene with the current settings
 (queues behind it instead if a render is already running)</source>
         <translation>現在の設定で選択したシーンをレンダリングします
 (すでにレンダリング中の場合はキューに追加されます)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="769"/>
+        <location filename="../mainwindow.cpp" line="770"/>
         <source>S&amp;TOP RENDER</source>
         <translation>レンダリング停止(&amp;T)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="776"/>
+        <location filename="../mainwindow.cpp" line="777"/>
         <location filename="../mainwindow_actions.cpp" line="71"/>
         <source>Stop the running render and discard its output</source>
         <translation>実行中のレンダリングを停止し、出力を破棄します</translation>
@@ -167,74 +167,74 @@
         <translation>表示(&amp;V)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="166"/>
+        <location filename="../mainwindow_actions.cpp" line="168"/>
         <source>&amp;Help</source>
         <translation>ヘルプ(&amp;H)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="189"/>
+        <location filename="../mainwindow_actions.cpp" line="191"/>
         <source>GPU (OptiX, wavefront)</source>
         <translation>GPU (OptiX、Wavefront)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="189"/>
+        <location filename="../mainwindow_actions.cpp" line="191"/>
         <source>GPU (OptiX)</source>
         <translation>GPU (OptiX)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="189"/>
+        <location filename="../mainwindow_actions.cpp" line="191"/>
         <location filename="../mainwindow_slots.cpp" line="369"/>
         <source>CPU</source>
         <translation>CPU</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="191"/>
+        <location filename="../mainwindow_actions.cpp" line="193"/>
         <source>%1x%2  ·  %3 spp</source>
         <translation>%1x%2  ·  %3 spp</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="228"/>
+        <location filename="../mainwindow_actions.cpp" line="230"/>
         <source>Save Log</source>
         <translation>ログを保存</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="230"/>
-        <location filename="../mainwindow_actions.cpp" line="273"/>
+        <location filename="../mainwindow_actions.cpp" line="232"/>
+        <location filename="../mainwindow_actions.cpp" line="275"/>
         <source>Text Files (*.txt);;All Files (*.*)</source>
         <translation>テキストファイル (*.txt);;すべてのファイル (*.*)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="237"/>
+        <location filename="../mainwindow_actions.cpp" line="239"/>
         <source>[ERROR] Could not write log to %1: %2</source>
         <translation>[ERROR] ログを%1に書き込めませんでした: %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="244"/>
+        <location filename="../mainwindow_actions.cpp" line="246"/>
         <source>[INFO] Log saved to %1</source>
         <translation>[INFO] ログを%1に保存しました</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="271"/>
+        <location filename="../mainwindow_actions.cpp" line="273"/>
         <source>Save Diagnostics Report</source>
         <translation>診断レポートを保存</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="278"/>
+        <location filename="../mainwindow_actions.cpp" line="280"/>
         <source>Save Failed</source>
         <translation>保存に失敗しました</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="279"/>
+        <location filename="../mainwindow_actions.cpp" line="281"/>
         <source>Could not write diagnostics report to %1: %2</source>
         <translation>診断レポートを%1に書き込めませんでした: %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="293"/>
+        <location filename="../mainwindow_actions.cpp" line="295"/>
         <source>About Ray Tracer</source>
         <translation>Ray Tracerについて</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="294"/>
+        <location filename="../mainwindow_actions.cpp" line="296"/>
         <source>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;A physically-based path tracer with parallel CPU and GPU (OptiX) backends, built up from the &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; series into a pbrt-v4-style feature set.&lt;/p&gt;&lt;p&gt;113 scenes, a wide BxDF library, multiple light and camera types, triangle-mesh and texture support, BVH acceleration, volumetrics, and an SPPM photon-mapping integrator alongside standard path tracing.&lt;/p&gt;&lt;p&gt;This window drives &lt;code&gt;%1&lt;/code&gt; as a subprocess.&lt;/p&gt;</source>
         <translation>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;CPUとGPU (OptiX) の並列バックエンドを備えた物理ベースパストレーサーです。&lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt;シリーズをベースに、pbrt-v4相当の機能セットまで拡張されています。&lt;/p&gt;&lt;p&gt;113種類のシーン、豊富なBxDFライブラリ、複数のライトタイプとカメラタイプ、三角形メッシュおよびテクスチャのサポート、BVHによる高速化、ボリュメトリクス、そして標準的なパストレーシングに加えてSPPMフォトンマッピングインテグレーターを備えています。&lt;/p&gt;&lt;p&gt;このウィンドウはサブプロセスとして&lt;code&gt;%1&lt;/code&gt;を実行します。&lt;/p&gt;</translation>
     </message>
@@ -1716,6 +1716,41 @@ Speed 0.5x renders twice as many frames to cover the same journey more slowly an
         <location filename="../theme_switch.cpp" line="59"/>
         <source>&amp;Theme</source>
         <translation>テーマ(&amp;T)</translation>
+    </message>
+    <message>
+        <location filename="../font_switch.cpp" line="51"/>
+        <source>Cyberpunk (Default)</source>
+        <translation>サイバーパンク（デフォルト）</translation>
+    </message>
+    <message>
+        <location filename="../font_switch.cpp" line="54"/>
+        <source>System UI</source>
+        <translation>システムUI</translation>
+    </message>
+    <message>
+        <location filename="../font_switch.cpp" line="56"/>
+        <source>Classic Serif</source>
+        <translation>クラシックセリフ</translation>
+    </message>
+    <message>
+        <location filename="../font_switch.cpp" line="58"/>
+        <source>Monospace</source>
+        <translation>等幅フォント</translation>
+    </message>
+    <message>
+        <location filename="../font_switch.cpp" line="60"/>
+        <source>Rounded</source>
+        <translation>丸みのあるフォント</translation>
+    </message>
+    <message>
+        <location filename="../font_switch.cpp" line="129"/>
+        <source>Font: %1</source>
+        <translation>フォント: %1</translation>
+    </message>
+    <message>
+        <location filename="../font_switch.cpp" line="135"/>
+        <source>F&amp;ont</source>
+        <translation>フォント(&amp;O)</translation>
     </message>
 </context>
 <context>

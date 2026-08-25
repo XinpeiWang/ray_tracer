@@ -137,31 +137,9 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 	qApp->setPalette(appPalette);
 	qApp->setStyle(QStyleFactory::create("Fusion"));
 
-	// Set cyberpunk-style font
-	QFont cyberpunkFont;
-	// Try futuristic/tech fonts, fallback to system fonts
-	QStringList fontFamilies = {"Orbitron", "Rajdhani", "Exo 2", "Michroma", "Audiowide",
-								 "Chakra Petch", "Saira", "Teko", "Electrolize",
-								 "Bahnschrift", "Segoe UI", "Arial"};
-	bool fontSet = false;
-	for (const QString& fontFamily : fontFamilies) {
-		cyberpunkFont.setFamily(fontFamily);
-		if (QFontInfo(cyberpunkFont).family() == fontFamily) {
-			fontSet = true;
-			break;
-		}
-	}
-	if (!fontSet) {
-		cyberpunkFont.setFamily("Arial");
-	}
-	cyberpunkFont.setPointSize(11);
-	// Normal weight app-wide: bold was previously applied to EVERY widget,
-	// which meant nothing was actually emphasised. Bold is now opt-in, on
-	// group-box titles and the primary button only. Letter-spacing is also
-	// gone from body text (it belongs on short display strings, not on log
-	// lines and labels, where it measurably slows reading).
-	cyberpunkFont.setWeight(QFont::Normal);
-	qApp->setFont(cyberpunkFont);
+	// Font is a fully independent choice now (see font_switch.cpp) - applied
+	// once at startup and whenever the Font menu changes it, never here, so
+	// switching themes can no longer silently reset it back to Cyberpunk.
 
 	// Apply cyberpunk stylesheet for enhanced neon effects
 	QString stylesheet = QString(R"(

@@ -159,8 +159,10 @@ void MainWindow::createMenus() {
 	viewMenu->addAction(m_actClearLog);
 
 	// Between View and Help: Help is conventionally last in a menu bar, so a
-	// new menu goes before it rather than after.
+	// new menu goes before it rather than after. Font sits next to Theme -
+	// both are appearance choices.
 	createThemeMenu();
+	createFontMenu();
 	createLanguageMenu();
 
 	QMenu *helpMenu = menuBar()->addMenu(tr("&Help"));

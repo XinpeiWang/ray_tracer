@@ -19,30 +19,30 @@
         <translation>光线追踪渲染器 - 路径追踪渲染器</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="588"/>
+        <location filename="../mainwindow.cpp" line="589"/>
         <source>Ray Tracer</source>
         <translation>光线追踪渲染器</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="748"/>
+        <location filename="../mainwindow.cpp" line="749"/>
         <location filename="../mainwindow_slots.cpp" line="1282"/>
         <source>START &amp;RENDER</source>
         <translation>开始渲染(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="758"/>
+        <location filename="../mainwindow.cpp" line="759"/>
         <source>Render the selected scene with the current settings
 (queues behind it instead if a render is already running)</source>
         <translation>使用当前设置渲染所选场景
 （如果已有渲染正在进行，则改为加入队列排在其后）</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="769"/>
+        <location filename="../mainwindow.cpp" line="770"/>
         <source>S&amp;TOP RENDER</source>
         <translation>停止渲染(&amp;T)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="776"/>
+        <location filename="../mainwindow.cpp" line="777"/>
         <location filename="../mainwindow_actions.cpp" line="71"/>
         <source>Stop the running render and discard its output</source>
         <translation>停止正在运行的渲染并丢弃其输出</translation>
@@ -167,74 +167,74 @@
         <translation>视图(&amp;V)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="166"/>
+        <location filename="../mainwindow_actions.cpp" line="168"/>
         <source>&amp;Help</source>
         <translation>帮助(&amp;H)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="189"/>
+        <location filename="../mainwindow_actions.cpp" line="191"/>
         <source>GPU (OptiX, wavefront)</source>
         <translation>GPU（OptiX，wavefront）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="189"/>
+        <location filename="../mainwindow_actions.cpp" line="191"/>
         <source>GPU (OptiX)</source>
         <translation>GPU（OptiX）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="189"/>
+        <location filename="../mainwindow_actions.cpp" line="191"/>
         <location filename="../mainwindow_slots.cpp" line="369"/>
         <source>CPU</source>
         <translation>CPU</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="191"/>
+        <location filename="../mainwindow_actions.cpp" line="193"/>
         <source>%1x%2  ·  %3 spp</source>
         <translation>%1x%2  ·  %3 spp</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="228"/>
+        <location filename="../mainwindow_actions.cpp" line="230"/>
         <source>Save Log</source>
         <translation>保存日志</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="230"/>
-        <location filename="../mainwindow_actions.cpp" line="273"/>
+        <location filename="../mainwindow_actions.cpp" line="232"/>
+        <location filename="../mainwindow_actions.cpp" line="275"/>
         <source>Text Files (*.txt);;All Files (*.*)</source>
         <translation>文本文件 (*.txt);;所有文件 (*.*)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="237"/>
+        <location filename="../mainwindow_actions.cpp" line="239"/>
         <source>[ERROR] Could not write log to %1: %2</source>
         <translation>[错误] 无法将日志写入 %1：%2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="244"/>
+        <location filename="../mainwindow_actions.cpp" line="246"/>
         <source>[INFO] Log saved to %1</source>
         <translation>[信息] 日志已保存至 %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="271"/>
+        <location filename="../mainwindow_actions.cpp" line="273"/>
         <source>Save Diagnostics Report</source>
         <translation>保存诊断报告</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="278"/>
+        <location filename="../mainwindow_actions.cpp" line="280"/>
         <source>Save Failed</source>
         <translation>保存失败</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="279"/>
+        <location filename="../mainwindow_actions.cpp" line="281"/>
         <source>Could not write diagnostics report to %1: %2</source>
         <translation>无法将诊断报告写入 %1：%2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="293"/>
+        <location filename="../mainwindow_actions.cpp" line="295"/>
         <source>About Ray Tracer</source>
         <translation>关于光线追踪渲染器</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="294"/>
+        <location filename="../mainwindow_actions.cpp" line="296"/>
         <source>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;A physically-based path tracer with parallel CPU and GPU (OptiX) backends, built up from the &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; series into a pbrt-v4-style feature set.&lt;/p&gt;&lt;p&gt;113 scenes, a wide BxDF library, multiple light and camera types, triangle-mesh and texture support, BVH acceleration, volumetrics, and an SPPM photon-mapping integrator alongside standard path tracing.&lt;/p&gt;&lt;p&gt;This window drives &lt;code&gt;%1&lt;/code&gt; as a subprocess.&lt;/p&gt;</source>
         <translation>&lt;h3&gt;光线追踪渲染器&lt;/h3&gt;&lt;p&gt;一个基于物理的路径追踪渲染器，具有并行的 CPU 和 GPU（OptiX）后端，从 &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; 系列教程逐步扩展为 pbrt-v4 风格的功能集。&lt;/p&gt;&lt;p&gt;包含 113 个场景、丰富的 BxDF 库、多种光源与相机类型、三角网格与纹理支持、BVH 加速结构、体积渲染，以及在标准路径追踪之外的 SPPM 光子映射积分器。&lt;/p&gt;&lt;p&gt;本窗口以子进程方式驱动 &lt;code&gt;%1&lt;/code&gt;。&lt;/p&gt;</translation>
     </message>
@@ -1727,6 +1727,41 @@ Speed 0.5x renders twice as many frames to cover the same journey more slowly an
         <location filename="../theme_switch.cpp" line="59"/>
         <source>&amp;Theme</source>
         <translation>主题(&amp;T)</translation>
+    </message>
+    <message>
+        <location filename="../font_switch.cpp" line="51"/>
+        <source>Cyberpunk (Default)</source>
+        <translation>赛博朋克（默认）</translation>
+    </message>
+    <message>
+        <location filename="../font_switch.cpp" line="54"/>
+        <source>System UI</source>
+        <translation>系统界面</translation>
+    </message>
+    <message>
+        <location filename="../font_switch.cpp" line="56"/>
+        <source>Classic Serif</source>
+        <translation>经典衬线</translation>
+    </message>
+    <message>
+        <location filename="../font_switch.cpp" line="58"/>
+        <source>Monospace</source>
+        <translation>等宽字体</translation>
+    </message>
+    <message>
+        <location filename="../font_switch.cpp" line="60"/>
+        <source>Rounded</source>
+        <translation>圆润风格</translation>
+    </message>
+    <message>
+        <location filename="../font_switch.cpp" line="129"/>
+        <source>Font: %1</source>
+        <translation>字体：%1</translation>
+    </message>
+    <message>
+        <location filename="../font_switch.cpp" line="135"/>
+        <source>F&amp;ont</source>
+        <translation>字体(&amp;O)</translation>
     </message>
 </context>
 <context>
