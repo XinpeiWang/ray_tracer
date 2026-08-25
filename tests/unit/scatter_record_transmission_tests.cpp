@@ -92,11 +92,12 @@ TEST(ScatterRecordTransmission, MetalNeverReportsTransmission) {
 TEST(ScatterRecordTransmission, DispersiveDielectricEtaVariesByWavelength) {
 	// Same (eta_d=1.52, Abbe=59) crown-glass-like values as fresnel_tests.cpp's
 	// CauchyEtaNormalDispersion, constructed here via dielectric's own
-	// constructor instead of the raw formula.
-	dielectric mat(1.52, 59.0, /*dispersive_tag=*/true);
+	// factory instead of the raw formula.
+	auto mat_ptr = dielectric::make_dispersive(1.52, 59.0);
+	dielectric& mat = *mat_ptr;
 	EXPECT_TRUE(mat.is_dispersive());
 
-	sphere sph(point3(0, 0, 0), 1.0, std::make_shared<dielectric>(mat));
+	sphere sph(point3(0, 0, 0), 1.0, mat_ptr);
 	ray r_in(point3(0, 0, -5), unit_vector(vec3(0.3, 0.2, 5)));
 	hit_record rec;
 	ASSERT_TRUE(sph.hit(r_in, interval(0.001, infinity), rec));

@@ -32,6 +32,8 @@
 #include "../src/TheRestOfYourLife/triangle.h"
 #include "../src/TheRestOfYourLife/disk_cylinder_hittable.h"
 #include "../src/TheRestOfYourLife/constant_medium.h"
+#include "../src/TheRestOfYourLife/mesh.h"
+#include "../src/TheRestOfYourLife/transform_instance.h"
 #include "../src/shared/exr_writer.h"
 #include <iostream>
 #include <fstream>
@@ -85,6 +87,12 @@ static bool spectral_scan_hittable(const hittable* h, std::string& error_out) {
 		return spectral_scan_hittable(t->get_object().get(), error_out);
 	if (const auto* r = dynamic_cast<const rotate_y*>(h))
 		return spectral_scan_hittable(r->get_object().get(), error_out);
+	if (const auto* m = dynamic_cast<const triangle_mesh*>(h))
+		return spectral_scan_hittable(m->get_object().get(), error_out);
+	if (const auto* mm = dynamic_cast<const triangle_mesh_mtl*>(h))
+		return spectral_scan_hittable(mm->get_object().get(), error_out);
+	if (const auto* ti = dynamic_cast<const transform_instance*>(h))
+		return spectral_scan_hittable(ti->get_object().get(), error_out);
 
 	if (dynamic_cast<const constant_medium*>(h)) {
 		error_out = "constant_medium (volumetric fog/participating media - not "

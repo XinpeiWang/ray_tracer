@@ -860,6 +860,15 @@ class camera {
     //   prev_bsdf_pdf  -- BSDF PDF of the ray that arrived here (0=camera/specular)
     //                     used to MIS-weight emitter hits (mirrors pbrt-v4 p_b)
     //   specular_bounce -- true after a delta-BxDF bounce; suppresses MIS on emitters
+    //
+    // ray_color_spectral() below is a deliberate, hand-duplicated structural
+    // mirror of this function's NEE/MIS/Russian-Roulette control flow (see
+    // its own doc comment for why a shared templated core wasn't used - the
+    // same isolate-the-new-path-from-the-proven-path tradeoff this codebase
+    // already makes in bxdfs_layered.h/bdpt_adapter.h/mlt.h). A correctness
+    // fix here (NEE weighting, RR thresholds, MIS math) needs the SAME fix
+    // manually re-applied there, or the two integrators silently diverge -
+    // there is no compiler warning for a missed one.
     template <typename Sampler>
     color ray_color(const ray& r, int depth, const hittable& world, const hittable& lights,
                     Sampler& sampler)
@@ -1180,7 +1189,8 @@ class camera {
 
     // ray_color_spectral -- spectral variant of ray_color() (see that
     // function's own comment for the control flow this mirrors, bounce for
-    // bounce). Samples 4 hero wavelengths once per path
+    // bounce - and for the warning that a NEE/MIS/RR fix there needs to be
+    // manually re-applied here too). Samples 4 hero wavelengths once per path
     // (SampledWavelengths<4>::SampleVisible) and carries a real
     // SampledSpectrum<4> beta/L through every bounce - not just a one-time
     // reduction at the end - since the whole point of --spectral is that
@@ -1224,6 +1234,17 @@ class camera {
         const RGBColorSpace& cs = RGBColorSpace::sRGB();
         const DenselySampledSpectrum* d65 = &GetNormalizedD65Illuminant();
         auto albedo = [&](const color& c) -> SS {
+            // Fast path: exact white (1,1,1) is the identity reflectance -
+            // by construction the RGBToSpectrumTable lookup below always
+            // resolves it to the flat spectrum 1 at every wavelength, so
+            // skip the table lookup + sigmoid-polynomial eval entirely.
+            // This is the overwhelmingly common case for shadow-ray
+            // transmittance (`trans` at this function's NEE call sites):
+            // shadow_ray.h initializes it to color(1,1,1) and only touches
+            // it when the shadow ray actually crosses a transmissive
+            // surface/medium, so most NEE samples hit this path.
+            if (c.x() == 1.0 && c.y() == 1.0 && c.z() == 1.0)
+                return SS(1.f);
             return RGBAlbedoSpectrum(cs, (float)c.x(), (float)c.y(), (float)c.z()).Sample(swl);
         };
         auto illuminant = [&](const color& c) -> SS {
@@ -1304,20 +1325,23 @@ class camera {
                 }
             }
 
-            // Dispersive dielectric: dynamic_cast-dispatch to
-            // scatter_dispersive() instead of the ordinary virtual
-            // scatter(), passing the path's hero wavelength so a dielectric
-            // built via the (eta_d, abbe_number) constructor
-            // (material_simple.h) actually refracts differently per
-            // wavelength. Every other material (and a non-dispersive
-            // dielectric) takes the unchanged scatter() path - see
-            // dielectric::scatter_dispersive()'s own comment for why this
-            // is a dynamic_cast dispatch here rather than a
-            // material::scatter() signature change touching every material
-            // class. Mirrors cpu_interface.cpp's spectral_scan_hittable()
-            // dispatch pattern.
+            // Dispersive dielectric: dispatch to scatter_dispersive()
+            // instead of the ordinary virtual scatter(), passing the
+            // path's hero wavelength so a dielectric built via
+            // dielectric::make_dispersive() (material_simple.h) actually
+            // refracts differently per wavelength. Every other material
+            // (and a non-dispersive dielectric) takes the unchanged
+            // scatter() path.
+            //
+            // Uses material::as_dispersive_dielectric(rec) - the same
+            // wrapper-forwarding pattern as as_subsurface() - rather than a
+            // raw dynamic_cast<const dielectric*>(rec.mat.get()), so a
+            // dispersive dielectric mixed into a mix_material is still
+            // found through the wrapper instead of silently losing
+            // dispersion the moment rec.mat is the mix_material rather than
+            // the dielectric it stochastically picked.
             scatter_record srec;
-            const dielectric* disp_mat = dynamic_cast<const dielectric*>(rec.mat.get());
+            const dielectric* disp_mat = rec.mat->as_dispersive_dielectric(rec);
             bool scattered = disp_mat
                 ? disp_mat->scatter_dispersive(current_ray, rec, srec, static_cast<float>(swl.lambda[0]))
                 : rec.mat->scatter(current_ray, rec, srec, any_nonspecular);

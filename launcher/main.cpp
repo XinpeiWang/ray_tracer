@@ -363,6 +363,24 @@ int main(int argc, char** argv) {
 		std::cerr << "WARNING: --gpu is ignored under --randomwalk/--ao/--simplepath/--simplevolpath/--lightpath (CPU-only, no GPU/OptiX implementation exists) - rendering on CPU" << std::endl;
 	}
 
+    // --sampler/--spectral only reach cpu_render_main() (the CPU default
+    // path tracer) - checked here, before the video_mode branch below,
+    // rather than further down near --exposure's warning, because --video
+    // takes its own early return (see the `if (video_mode) { ... return...`
+    // block) well before that later code runs. Checking only there meant
+    // `--video --gpu --spectral`/`--sampler` silently dropped the flag with
+    // no warning at all, unlike the identical combination without --video.
+    if (!args.sampler.empty() && (use_gpu || use_bdpt || use_mlt || use_sppm || use_debug_integrator)) {
+        std::cerr << "Warning: --sampler has no effect under --gpu/--bdpt/--mlt/--sppm/"
+                     "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
+                     "(only the CPU default path tracer supports it) - ignoring.\n";
+    }
+    if (args.spectral && (use_gpu || use_bdpt || use_mlt || use_sppm || use_debug_integrator)) {
+        std::cerr << "Warning: --spectral has no effect under --gpu/--bdpt/--mlt/--sppm/"
+                     "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
+                     "(only the CPU default path tracer supports it) - ignoring.\n";
+    }
+
     if (video_mode) {
         std::cout << "\n========================================" << std::endl;
         std::cout << "VIDEO GENERATION MODE" << std::endl;
@@ -757,25 +775,6 @@ int main(int argc, char** argv) {
                      "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
                      "(only the default path tracer supports it) - rendering at exposure=1.0.\n";
     }
-    // --sampler only reaches cpu_render_main() (the CPU default path tracer)
-    // - GPU has no sampler-selection wiring yet, and BDPT/MLT/SPPM/the Round 6
-    // debug integrators each use their own sampling scheme already. Same
-    // warn-instead-of-silently-drop shape as --exposure's own warning above.
-    if (!args.sampler.empty() && (use_gpu || use_bdpt || use_mlt || use_sppm || use_debug_integrator)) {
-        std::cerr << "Warning: --sampler has no effect under --gpu/--bdpt/--mlt/--sppm/"
-                     "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
-                     "(only the CPU default path tracer supports it) - ignoring.\n";
-    }
-    // --spectral only reaches cpu_render_main() (the CPU default path
-    // tracer) - same "default path tracer only" scope cut as --exposure/
-    // --sampler above (no GPU/BDPT/MLT/SPPM/debug-integrator spectral path
-    // exists).
-    if (args.spectral && (use_gpu || use_bdpt || use_mlt || use_sppm || use_debug_integrator)) {
-        std::cerr << "Warning: --spectral has no effect under --gpu/--bdpt/--mlt/--sppm/"
-                     "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
-                     "(only the CPU default path tracer supports it) - ignoring.\n";
-    }
-
     if (use_bdpt) {
         // BDPT Renderer, CPU path (Bidirectional Path Tracing). Implemented
         // in cpu_renderer/cpu_interface_bdpt.cpp - checked before use_sppm/

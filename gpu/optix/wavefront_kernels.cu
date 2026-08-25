@@ -569,9 +569,10 @@ __device__ __forceinline__ float wf_mis(float a, float b) {
 // before the gamma curve; let it do the clamping.
 __device__ __forceinline__ void wf_xyz_to_linear_rgb(float X, float Y, float Z,
 													   float& r, float& g, float& b) {
-	r =  3.2404542f * X - 1.5371385f * Y - 0.4985314f * Z;
-	g = -0.9692660f * X + 1.8760108f * Y + 0.0415560f * Z;
-	b =  0.0556434f * X - 0.2040259f * Y + 1.0572252f * Z;
+	// Shared matrix-only core (sampled_spectrum.h) - deliberately NOT
+	// XYZToLinearRGB(), which clamps negatives; see this function's own
+	// comment above for why that clamp must not happen here.
+	XYZToLinearRGBMatrix(X, Y, Z, r, g, b);
 }
 
 // Sample a point on a sphere light; returns direction, sets geom_pdf, and

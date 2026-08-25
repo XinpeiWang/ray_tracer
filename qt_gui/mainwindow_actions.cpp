@@ -294,7 +294,13 @@ void MainWindow::showAboutDialog() {
 		"<p>A physically-based path tracer with parallel CPU and GPU (OptiX) "
 		"backends, built up from the <i>Ray Tracing in One Weekend</i> series "
 		"into a pbrt-v4-style feature set.</p>"
-		"<p>112 scenes, a wide BxDF library, multiple light and camera types, "
+		// Scene count is free-form text, not derived from
+		// builtin_scene_count() (src/TheRestOfYourLife/scene_registry.h) -
+		// the Qt GUI shells out to the CLI rather than linking
+		// cpu_renderer.lib directly, so there's no live count to read here.
+		// Keep this in sync by hand whenever scene_registry_tests.cpp's own
+		// builtin_scene_count()/kGuiSceneCount assertions change.
+		"<p>113 scenes, a wide BxDF library, multiple light and camera types, "
 		"triangle-mesh and texture support, BVH acceleration, volumetrics, and "
 		"an SPPM photon-mapping integrator alongside standard path tracing.</p>"
 		"<p>This window drives <code>" + QString(rendererBinaryName) + "</code> as a subprocess.</p>");

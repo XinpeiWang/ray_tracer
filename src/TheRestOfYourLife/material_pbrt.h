@@ -1029,6 +1029,21 @@ class mix_material : public material {
             return mat_b->as_subsurface(rec);
     }
 
+    // Same deterministic branch, same reason - without this override, the
+    // base class default (nullptr) applied unconditionally, so
+    // mix(dispersive_dielectric, X) would silently drop chromatic
+    // dispersion under --spectral regardless of which branch was picked
+    // (camera.h's ray_color_spectral() gates dispersive scattering on
+    // `rec.mat->as_dispersive_dielectric(rec)` being non-null).
+    const dielectric* as_dispersive_dielectric(const hit_record& rec) const override {
+        double w = weight_tex->value(rec.u, rec.v, rec.p).x();
+        w = w < 0.0 ? 0.0 : (w > 1.0 ? 1.0 : w);
+        if (branch_hash01(rec.p) >= w)
+            return mat_a->as_dispersive_dielectric(rec);
+        else
+            return mat_b->as_dispersive_dielectric(rec);
+    }
+
     shared_ptr<material> get_mat_a()   const { return mat_a; }
     shared_ptr<material> get_mat_b()   const { return mat_b; }
     shared_ptr<texture>  get_weight()  const { return weight_tex; }

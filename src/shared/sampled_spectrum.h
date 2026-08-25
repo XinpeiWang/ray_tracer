@@ -410,6 +410,27 @@ CPU_GPU XYZResult SampledSpectrumToXYZ(
 }
 
 // ---------------------------------------------------------------------------
+// XYZ -> linear sRGB matrix multiply only, no clamping - the single source
+// of truth for the sRGB/D65 XYZ->RGB matrix (pbrt-v4 RGBColorSpace::sRGB).
+// XYZToLinearRGB() below is this codebase's own final-reduction caller and
+// clamps; the GPU wavefront backend's wf_xyz_to_linear_rgb
+// (gpu/optix/wavefront_kernels.cu) calls this same function but does NOT
+// clamp, because it atomically accumulates possibly-negative per-sample
+// contributions straight into the framebuffer and only clamps once,
+// downstream, after the full per-pixel sum - see that function's own
+// comment. Both backends previously hardcoded these six matrix constants
+// independently; sharing one CPU_GPU implementation means a future
+// white-point/matrix update can't update one copy and miss the other.
+// ---------------------------------------------------------------------------
+CPU_GPU void XYZToLinearRGBMatrix(float X, float Y, float Z,
+										  float& r, float& g, float& b)
+{
+	r =  3.2404542f * X - 1.5371385f * Y - 0.4985314f * Z;
+	g = -0.9692660f * X + 1.8760108f * Y + 0.0415560f * Z;
+	b =  0.0556434f * X - 0.2040259f * Y + 1.0572252f * Z;
+}
+
+// ---------------------------------------------------------------------------
 // XYZ -> linear sRGB (D65 white point, pbrt-v4 aligned) -- no gamma curve.
 //
 // For callers (e.g. a CPU/GPU path tracer's own per-sample radiance) that
@@ -422,10 +443,7 @@ CPU_GPU XYZResult SampledSpectrumToXYZ(
 CPU_GPU void XYZToLinearRGB(float X, float Y, float Z,
 									float& r, float& g, float& b)
 {
-	// sRGB matrix (from pbrt-v4 RGBColorSpace::sRGB XYZ->RGB matrix)
-	r =  3.2404542f * X - 1.5371385f * Y - 0.4985314f * Z;
-	g = -0.9692660f * X + 1.8760108f * Y + 0.0415560f * Z;
-	b =  0.0556434f * X - 0.2040259f * Y + 1.0572252f * Z;
+	XYZToLinearRGBMatrix(X, Y, Z, r, g, b);
 	r = r < 0.f ? 0.f : r;
 	g = g < 0.f ? 0.f : g;
 	b = b < 0.f ? 0.f : b;

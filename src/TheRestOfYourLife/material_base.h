@@ -26,6 +26,11 @@
 // needing to know anything else about it.
 class subsurface;
 
+// Defined in material_simple.h. Forward-declared here for the same reason,
+// so `material::as_dispersive_dielectric()` below can return a pointer to
+// it without material_base.h needing to know anything else about it.
+class dielectric;
+
 
 class scatter_record {
   public:
@@ -153,6 +158,26 @@ class material {
     // mix_material previously had no override, so mix(subsurface, X)
     // silently dropped BSSRDF regardless of which branch was picked).
     virtual const subsurface* as_subsurface(const hit_record& rec) const {
+        (void)rec;
+        return nullptr;
+    }
+
+    // Non-null only for a `dielectric` (material_simple.h) built via its
+    // dispersive (eta_d, abbe_number) factory: a material whose IOR is
+    // wavelength-dependent. camera.h's ray_color_spectral() uses this -
+    // instead of a raw dynamic_cast<const dielectric*>(rec.mat.get()) -
+    // to decide whether to route a transmission event through
+    // scatter_dispersive() at the path's hero wavelength.
+    //
+    // Mirrors as_subsurface() above and exists for the identical reason: a
+    // wrapper material whose choice of sub-material varies by hit point
+    // (mix_material) needs to report the SAME sub-material its own
+    // scatter() call on this rec just committed to, or dispersion silently
+    // vanishes the moment a dispersive dielectric is mixed with anything -
+    // the dynamic_cast approach would see the outer mix_material, not the
+    // dielectric it stochastically picked, and fall back to flat-IOR
+    // refraction with no error or warning.
+    virtual const dielectric* as_dispersive_dielectric(const hit_record& rec) const {
         (void)rec;
         return nullptr;
     }

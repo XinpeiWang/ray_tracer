@@ -86,7 +86,21 @@
          cpu_renderer.lib alone, so it needs its own copy - added here
          instead of to cpu_renderer.vcxproj to avoid a duplicate-symbol
          clash with optix_renderer.lib's own copy in the two consumers that
-         link both libraries together. -->
+         link both libraries together.
+
+         This is now the THIRD independent place this one .cpp is wired
+         into a build: gpu/optix/wavefront_path_tracer.cpp #includes it
+         textually (giving optix_renderer.lib its copy), tests/CMakeLists.txt
+         lists it directly as a source for the standalone CMake test build,
+         and this ClCompile gives scene_metadata.vcxproj its own. There is
+         no shared static-lib target providing this dependency once for
+         every consumer - the next new project linking cpu_renderer.lib
+         alone will hit the same missing-symbol error and need this exact
+         recipe rediscovered/reapplied. A small dedicated static-lib project
+         referenced via ProjectReference by every consumer would remove this
+         per-project rediscovery cost, but restructuring the .sln for that
+         was judged too risky to do without rebuilding/testing every
+         Debug/Release x64 configuration - left as a known follow-up. -->
     <ClCompile Include="..\src\data\rgb_spectrum_table_data.cpp" />
   </ItemGroup>
   <ItemGroup>

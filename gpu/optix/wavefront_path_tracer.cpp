@@ -244,17 +244,21 @@ bool WavefrontPathTracer::initialize(OptixDeviceContext context,
 	// normalised D65 table reproduces CPU's naive per-channel RGB multiply
 	// to within 0.05% for B1's gold-metal-under-grey-light case.
 	{
+		// GetNormalizedD65Illuminant() (cie_data.h) does exactly this
+		// normalization already - sample it directly instead of
+		// re-deriving the same normConst/scale loop a second time in this
+		// file. That re-derivation is how the ~20%/~9% R/G/B skew this
+		// comment used to describe first shipped: two independent copies
+		// of the same computation drifted, and CPU's own --spectral
+		// (src/TheRestOfYourLife/camera.h) now depends on this exact
+		// function too, so there is only one implementation left to keep
+		// correct.
 		static float h_d65[kCIENSamples];
-		const DenselySampledSpectrum& d65 = GetD65Illuminant();
-		float normConst = 0.f;
+		const DenselySampledSpectrum& d65 = GetNormalizedD65Illuminant();
 		for (int i = 0; i < kCIENSamples; ++i) {
 			float lambda = static_cast<float>(kCIELambda_min + i);
-			float d65v = d65(lambda);
-			h_d65[i] = d65v;
-			normConst += CIE_Y[i] * d65v;
+			h_d65[i] = d65(lambda);
 		}
-		const float scale = kCIE_Y_integral / normConst;
-		for (int i = 0; i < kCIENSamples; ++i) h_d65[i] *= scale;
 		wf_upload_d65_table(h_d65, kCIENSamples);
 	}
 
@@ -1846,4 +1850,9 @@ void WavefrontPathTracer::cleanup() {
 
 // Pull in the sRGB spectral table data so it links into this TU
 // (avoids needing rgb_spectrum_table_data.cpp as a separate project source).
+// Two OTHER independent copies of this same wiring exist -
+// scene_metadata/scene_metadata.vcxproj's own ClCompile (see its comment
+// for why cpu_renderer.vcxproj itself can't carry this) and
+// tests/CMakeLists.txt's source list - there is no single shared target
+// providing this dependency to every consumer once.
 #include "../../src/data/rgb_spectrum_table_data.cpp"

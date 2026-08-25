@@ -281,6 +281,12 @@ class triangle_mesh : public hittable {
 
 	aabb bounding_box() const override { return bbox; }
 
+	// Accessor for structural walkers (e.g. --spectral's material-scan walker
+	// in cpu_interface.cpp) that need to recurse past this wrapper into the
+	// underlying triangle BVH, mirroring translate/rotate_y's own
+	// get_object() in hittable.h.
+	std::shared_ptr<hittable> get_object() const { return bvh; }
+
   private:
 	std::shared_ptr<hittable> bvh;
 	aabb bbox;

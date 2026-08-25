@@ -31,50 +31,29 @@
 #include <vector>
 
 #include "scene_registry.h"
+#include "../ppm_test_utils.h"
 
 extern "C" {
 	#include "cpu_interface.h"
 }
 
 // ============================================================================
-// Local, static-scoped PPM/RGB-average helpers - same shape as
-// cpu_gpu_comparison_tests.cpp's Image/avg_channels and
-// material_cpu_gpu_parity_tests.cpp's MPImage/mp_avg_channels, but `static`
-// (internal linkage) so this file can use the same short names without a
-// duplicate-symbol link error against those other translation units in the
-// same test binary - see material_cpu_gpu_parity_tests.cpp's own comment
-// on this exact naming convention.
+// Local, static-scoped RGB-average helper - same shape as
+// cpu_gpu_comparison_tests.cpp's avg_channels and material_cpu_gpu_parity_
+// tests.cpp's mp_avg_channels, but `static` (internal linkage) so this file
+// can use the same short name without a duplicate-symbol link error against
+// those other translation units in the same test binary - see
+// material_cpu_gpu_parity_tests.cpp's own comment on this exact naming
+// convention. The PPM loader itself is NOT re-derived here - ppm_test_utils.h
+// (PPMImage/load_ppm) already exists as a shared, header-only (inline, so
+// collision-free) implementation hoisted for exactly this reuse.
 // ============================================================================
 
 namespace {
 
-struct SRImage {
-	int width = 0, height = 0;
-	std::vector<float> pixels;  // RGB normalized [0,1]
-	bool valid = false;
-};
-
-static SRImage sr_load_image(const char* path) {
-	SRImage img;
-	std::ifstream f(path);
-	if (!f.good()) return img;
-	std::string magic;
-	int maxVal;
-	f >> magic >> img.width >> img.height >> maxVal;
-	if (magic != "P3" || maxVal <= 0) return img;
-	int total = img.width * img.height * 3;
-	img.pixels.resize(total);
-	for (int i = 0; i < total; ++i) {
-		int v; f >> v;
-		img.pixels[i] = static_cast<float>(v) / static_cast<float>(maxVal);
-	}
-	img.valid = true;
-	return img;
-}
-
 struct SRRGBAverage { float r, g, b; };
 
-static SRRGBAverage sr_avg_channels(const SRImage& img) {
+static SRRGBAverage sr_avg_channels(const PPMImage& img) {
 	SRRGBAverage out{0, 0, 0};
 	int n = img.width * img.height;
 	if (n == 0) return out;
@@ -111,13 +90,13 @@ constexpr int kHeight = 60;
 constexpr int kDepth  = 8;
 constexpr int kSpp    = 200;
 
-static SRImage render_once(const SceneDescriptor& s, bool spectral) {
+static PPMImage render_once(const SceneDescriptor& s, bool spectral) {
 	const std::string fn = "specparity_" + s.id + (spectral ? "_spec.ppm" : "_rgb.ppm");
 	std::remove(fn.c_str());
 	cpu_render_main(kWidth, kHeight, kSpp, kDepth, fn.c_str(), s.id.c_str(),
 	                 s.camera.lookfrom_x, s.camera.lookfrom_y, s.camera.lookfrom_z,
 	                 0, 1.0, nullptr, spectral);
-	SRImage img = sr_load_image(fn.c_str());
+	PPMImage img = load_ppm(fn.c_str());
 	std::remove(fn.c_str());
 	return img;
 }
@@ -141,8 +120,8 @@ TEST_P(SpectralRgbParityTest, MatchesDefaultRGBWithinTolerance) {
 	const SceneDescriptor* s = find_scene(GetParam());
 	ASSERT_NE(s, nullptr);
 
-	SRImage rgbImg  = render_once(*s, /*spectral=*/false);
-	SRImage specImg = render_once(*s, /*spectral=*/true);
+	PPMImage rgbImg  = render_once(*s, /*spectral=*/false);
+	PPMImage specImg = render_once(*s, /*spectral=*/true);
 
 	ASSERT_TRUE(rgbImg.valid)  << s->name << ": default-RGB render failed to produce a valid PPM";
 	ASSERT_TRUE(specImg.valid) << s->name << ": --spectral render failed to produce a valid PPM";

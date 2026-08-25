@@ -103,6 +103,10 @@ add_executable(unit_tests
     unit/rgb_colorspace_tests.cpp
     unit/rgb_grid_medium_tests.cpp
     unit/rgb_spectrum_types_tests.cpp
+    # Two OTHER independent copies of this same wiring exist - a textual
+    # #include in gpu/optix/wavefront_path_tracer.cpp and a raw ClCompile
+    # in scene_metadata/scene_metadata.vcxproj (see its comment) - there is
+    # no single shared target providing this dependency to every consumer.
     ${CMAKE_SOURCE_DIR}/../src/data/rgb_spectrum_table_data.cpp
     unit/rng_tests.cpp
     unit/sample_function_tests.cpp

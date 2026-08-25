@@ -311,7 +311,7 @@ inline hittable_list build_prism_dispersion() {
 	const point3 A(0, 0, 0), B(0, 0, 140), C(0, 121, 70);
 	const vec3 depth(150, 0, 0);
 
-	auto glass = make_shared<dielectric>(1.52, 59.0, /*dispersive_tag=*/true);
+	auto glass = dielectric::make_dispersive(1.52, 59.0);
 
 	// 3 rectangular sides (outward-normal winding - see this function's own
 	// comment). Note u/v order is (depth, edge) here, not (edge, depth) -
