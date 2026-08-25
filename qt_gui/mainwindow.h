@@ -1214,10 +1214,15 @@ private:
 	QToolButton* createInfoIcon(const QString &helpText);
 	QWidget* labelWithInfo(const QString &labelText, const QString &helpText);
 	QWidget* checkboxWithInfo(QCheckBox *checkBox, const QString &helpText);
+	// Wraps plain, blank-line-separated paragraphs into width-constrained HTML
+	// for a rich-text tooltip - see its own definition (mainwindow_style.cpp)
+	// for the full rationale. Shared rather than file-local so both the
+	// standalone scene-tech info icon (updateSceneTechInfoIcon() below) and
+	// the scene combo/grid's per-row tooltips (mainwindow_tabs.cpp) format
+	// scene_technique_notes.h's text the same way.
+	QString wrapTooltipHtml(const QString &plainText);
 	// Rewrites m_sceneTechInfoIcon's tooltip for `sceneId` (see
-	// scene_technique_notes.h) - called from refreshSceneInfoLabel()
-	// wherever wrapTooltipHtml() is already reachable, since that formatter
-	// is file-local to mainwindow_style.cpp.
+	// scene_technique_notes.h) - called from refreshSceneInfoLabel().
 	void updateSceneTechInfoIcon(const QString &sceneId);
 	// A subtle "elevated card" drop shadow (QSS alone cannot do box-shadow) -
 	// neutral black at low alpha rather than theme-tinted, the same choice

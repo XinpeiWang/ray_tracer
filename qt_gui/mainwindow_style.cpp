@@ -1010,11 +1010,14 @@ void MainWindow::styleCheckBox(QCheckBox *box) {
 // tooltip renderer word-wraps at a fixed width, instead of the unwrapped
 // single line (or manually-inserted \n breaks, like this file's other
 // setToolTip() calls) a plain-text tooltip would otherwise produce - the
-// beginner explanations createInfoIcon() carries are real paragraphs, long
-// enough that manual line breaks would be brittle to edit. Escaped via
-// QString::toHtmlEscaped() first so a "<" or "&" in the explanation text
-// itself can't be misread as markup.
-static QString wrapTooltipHtml(const QString &plainText) {
+// beginner explanations createInfoIcon() carries, and the per-scene notes
+// scene_technique_notes.h supplies (used here and from the scene combo/grid
+// in mainwindow_tabs.cpp), are real paragraphs, long enough that manual line
+// breaks would be brittle to edit. Escaped via QString::toHtmlEscaped()
+// first so a "<" or "&" in the explanation text itself can't be misread as
+// markup. A MainWindow member rather than file-local, so mainwindow_tabs.cpp
+// can reuse it instead of hand-rolling a second HTML-wrapping helper.
+QString MainWindow::wrapTooltipHtml(const QString &plainText) {
 	QStringList paragraphs = plainText.split("\n\n", Qt::SkipEmptyParts);
 	QString body;
 	for (const QString &para : paragraphs) {
@@ -1077,13 +1080,14 @@ QWidget* MainWindow::checkboxWithInfo(QCheckBox *checkBox, const QString &helpTe
 	return row;
 }
 
-// Rewrites m_sceneTechInfoIcon's tooltip for the given scene - the one info
-// icon in this app whose content changes after construction instead of
-// being fixed for its whole lifetime (see scene_technique_notes.h for the
-// per-scene text). Routed through here rather than called directly from
-// refreshSceneInfoLabel() (mainwindow_slots.cpp) because wrapTooltipHtml()
-// is file-local to this translation unit, same reasoning createInfoIcon()
-// itself is the only public entry point into it.
+// Rewrites m_sceneTechInfoIcon's tooltip for the given scene - the one
+// standalone info icon in this app whose content changes after construction
+// instead of being fixed for its whole lifetime (see scene_technique_notes.h
+// for the per-scene text; the scene combo/grid in mainwindow_tabs.cpp show
+// the same text per-row instead, via wrapTooltipHtml() directly). Routed
+// through here rather than called directly from refreshSceneInfoLabel()
+// (mainwindow_slots.cpp) so the "which widget does this icon belong to"
+// knowledge stays in one place.
 void MainWindow::updateSceneTechInfoIcon(const QString &sceneId) {
 	if (!m_sceneTechInfoIcon) return;
 	m_sceneTechInfoIcon->setToolTip(wrapTooltipHtml(scene_technique_notes::forScene(sceneId)));

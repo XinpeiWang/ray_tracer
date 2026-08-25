@@ -86,8 +86,19 @@ void MainWindow::populateSceneCombo(const QString &category) {
 	const QSignalBlocker blocker(m_sceneCombo);
 	m_sceneCombo->clear();
 
-	for (const QString &id : filteredSceneIds(category))
-		m_sceneCombo->addItem(QString("[%1] %2").arg(id).arg(SceneMetadataClient::sceneName(id)), id);
+	for (const QString &id : filteredSceneIds(category)) {
+		const QString text = QString("[%1] %2").arg(id).arg(SceneMetadataClient::sceneName(id));
+		// The same "(i)" mark createInfoIcon() uses elsewhere, one per row -
+		// so the dropdown itself shows there's a rendering-technique note to
+		// read, not just the single info icon next to the "Scene:" label
+		// (which only ever shows whichever scene is already selected).
+		// icon_tint::addItem() (not a plain combo->addItem()) so a theme
+		// switch's restyleThemedWidgets() -> retintItems() sweep recolours
+		// these the same way every other combo's icons already do.
+		icon_tint::addItem(m_sceneCombo, ":/icons/info.svg", text, id, m_activeTheme.textBody);
+		m_sceneCombo->setItemData(m_sceneCombo->count() - 1,
+			wrapTooltipHtml(scene_technique_notes::forScene(id)), Qt::ToolTipRole);
+	}
 }
 
 void MainWindow::populateSceneGrid(const QString &category) {
@@ -103,7 +114,13 @@ void MainWindow::populateSceneGrid(const QString &category) {
 		item->setData(Qt::UserRole, id);
 		const QString cachePath = thumbnailCachePath(id);
 		item->setIcon(QFile::exists(cachePath) ? QIcon(cachePath) : placeholderIcon);
-		item->setToolTip(QString("[%1] %2").arg(id, SceneMetadataClient::sceneName(id)));
+		// Heading (what the combo's own tooltip would show) plus the same
+		// per-scene technique note the combo's "(i)" mark and the standalone
+		// scene-tech info icon both show - this view has no separate info
+		// icon of its own to carry it, so the tile's tooltip is it.
+		item->setToolTip(wrapTooltipHtml(
+			QString("[%1] %2\n\n%3").arg(id, SceneMetadataClient::sceneName(id),
+				scene_technique_notes::forScene(id))));
 		m_sceneGrid->addItem(item);
 	}
 }
