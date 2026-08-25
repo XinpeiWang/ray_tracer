@@ -86,11 +86,11 @@ numbered sections below for the narrative detail behind any row.
 | Cameras | Orthographic | Y / Y / Y | N/A |
 | Cameras | Spherical (equirect + equal-area) | Y / Y / Y | N/A |
 | Cameras | Realistic (lens-file simulation) | Y / Y / Y | Missing/unreadable lens file → falls back to perspective, warned |
-| Cameras | Motion blur (`AnimatedTransform`, native API) | Y | N/A |
-| Cameras | `ActiveTransform`/`TransformTimes` (`.pbrt`-authored animated camera) | N (loader only) | Directive skipped with a warning; native `AnimatedTransform` API still usable directly |
+| Cameras | Motion blur (camera or object) | N | No fallback — static transform only, on every backend |
+| Cameras | `ActiveTransform`/`TransformTimes` (`.pbrt`-authored animated camera/object) | N | Directive skipped with a warning |
 | Samplers | Sobol / Z-Sobol / padded Sobol / stratified / PMJ02BN / Halton | Y (CPU) | N/A |
 | Samplers | Blue noise (bonus, non-pbrt-v4) | Y (CPU) | N/A |
-| Samplers | Independent | N | Falls back to Sobol, silently |
+| Samplers | Independent | Y (CPU) | N/A |
 | Samplers | `--sampler` under GPU/BDPT/MLT/SPPM/debug integrators | Out of scope by design | Warned and ignored, doesn't error |
 | Integrators | Path (default) | Y / Y / Y | N/A |
 | Integrators | VolPath (media-aware) | Y / folded into default / Y | N/A |
@@ -239,27 +239,40 @@ structurally not meaningful — zero-thickness, no "inside" to bound).
 
 All 4 pbrt-v4 camera types, full parity CPU/GPU: perspective (+ depth of
 field), orthographic, spherical (equirect + equal-area), realistic
-(lens-file-based, real multi-element simulation on both backends). Motion
-blur via `AnimatedTransform` keyframe interpolation.
+(lens-file-based, real multi-element simulation on both backends).
 
-**Gap**: pbrt's `ActiveTransform`/`TransformTimes` directives (per-keyframe
-animated-camera authoring inside a `.pbrt` file) aren't parsed — motion
-blur is reachable through this codebase's own native scene-building API,
-not from a loaded `.pbrt` file's animated-camera syntax.
+**Gap (corrected — a prior version of this doc understated it)**: there is
+**no motion blur anywhere in this codebase, camera or object**.
+`src/shared/animated_transform.h`'s `AnimatedTransform` class (keyframe
+`Transform` interpolation, constructor shape `(start, t0, end, t1)`) is a
+complete, tested (`tests/unit/animated_transform_tests.cpp`), but entirely
+**orphaned** utility — zero includes from `cpu_renderer/`, `gpu/`,
+`optix_renderer/`, `qt_gui/`, or the `.pbrt` loader. `src/shared/cameras.h`
+states outright that `camera_to_world` is a static `Mat4<T>` ("No motion
+blur"), and no render path ever reads `CameraSample::time` for a camera
+transform. `pbrt_scene.h`'s `ShapeDecl::xform` is likewise a single static
+`Matrix4`, so object-level motion blur (also legal in pbrt-v4, inside
+`AttributeBegin`/`ObjectBegin` blocks) isn't wired either. `ActiveTransform`/
+`TransformTimes` are consequently unrecognized `.pbrt` directives (skipped
+with a warning, `pbrt_scene.h`'s catch-all) — but even if parsed, there is
+currently no camera- or shape-side consumer for the two time-keyed
+transforms they'd produce. Closing this for real means wiring
+`AnimatedTransform` into `cameras.h`'s camera-to-world path and threading
+`CameraSample::time` through ray generation (and, if object motion blur is
+in scope too, an equivalent change to shape transforms) — a genuine,
+multi-file render-path feature, not a parser-only gap.
 
 No other camera gap.
 
 ## 7. Samplers
 
-Sobol, Z-order Sobol, padded Sobol, stratified, PMJ02BN, Halton — all real,
-selectable via `--sampler`. Bonus (non-pbrt-v4): blue-noise sampler.
-
-**Gap**: pbrt-v4's `independent` sampler is not ported — an unrecognized
-`--sampler` name (including `independent`) silently falls back to Sobol
-(`camera.h`'s own comment names this explicitly). Low-priority gap since
-Sobol strictly dominates independent sampling in practice, but it means a
-`.pbrt` file's own `Sampler "independent"` directive can't be honored
-faithfully.
+Sobol, Z-order Sobol, padded Sobol, stratified, PMJ02BN, Halton, and
+independent — all real, selectable via `--sampler` (`src/shared/
+independent_sampler.h` for the last one: a plain per-pixel-seeded
+`RNG`/PCG32 draw with no stratification, matching pbrt-v4's own
+`IndependentSampler` exactly — Sobol still strictly dominates it in
+practice, so it exists for `.pbrt`/`--sampler` fidelity, not as a
+recommended choice). Bonus (non-pbrt-v4): blue-noise sampler.
 
 **Gap**: `--sampler` is CPU-default-path-tracer-only — no effect on GPU, or
 under BDPT/MLT/SPPM/debug integrators (warns, doesn't error).
@@ -380,15 +393,19 @@ relative to it specifically).
 3. **No GPU dispersion** (§2, §9) — CPU dispersion now covers both smooth
    (`dielectric`) and rough (`rough_dielectric`) glass; GPU (recursive or
    wavefront) has neither.
-4. **No GPU light BVH** (§4) — GPU light sampling doesn't spatially scale
+4. **No motion blur anywhere, camera or object** (§6) — verified this isn't
+   just a loader gap: `AnimatedTransform` (`src/shared/animated_transform.h`)
+   is complete and unit-tested but wired into nothing; no backend's camera
+   or shape transform is ever time-varying. Real work (camera-to-world
+   interpolation + `CameraSample::time` threading through ray generation,
+   at minimum), not a parser tweak.
+5. **No GPU light BVH** (§4) — GPU light sampling doesn't spatially scale
    the way CPU's does on many-light scenes.
-5. **`independent` sampler not ported** (§7) — minor; Sobol dominates it in
-   practice.
-6. **`ActiveTransform`/`TransformTimes`, `Accelerator`, `CoordinateSystem`,
-   `ColorSpace` pbrt directives not parsed** — narrows what a *loaded*
-   `.pbrt` file can express, even though the underlying native features
-   (motion blur, BVH choice) exist and work through this codebase's own
-   scene-building API.
+6. **`Accelerator`, `CoordinateSystem`, `ColorSpace` pbrt directives not
+   parsed** — narrows what a *loaded* `.pbrt` file can express. Scope not
+   yet independently verified the way item 4 above was (see this doc's own
+   track record on trusting an unverified "loader-only" claim at face
+   value) — check before treating as a quick win.
 7. **BDPT/MLT/debug integrators CPU-only** — arguably tracks pbrt-v4's own
    GPU scope (path/volpath only), so more a parity-with-upstream item than
    a true gap.
@@ -402,8 +419,8 @@ all of them, and it's worth knowing which is which before relying on one.
 
 - `MakeNamedMedium "nanovdb"` → falls back to a homogeneous medium, with a
   warning. Not real VDB data, but the render doesn't break.
-- An unrecognized `--sampler` name (including `independent`) → silently
-  falls back to Sobol.
+- An unrecognized `--sampler` name → silently falls back to Sobol
+  (`independent` is now a real, recognized name — see §7).
 - An unrecognized pbrt `Material` kind → falls back to flat Lambertian
   using the material's base color, with a named warning.
 - `realistic` camera with a missing/unreadable lens file → falls back to

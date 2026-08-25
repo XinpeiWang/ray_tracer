@@ -988,10 +988,11 @@ void MainWindow::createRenderOptionsTab() {
 	m_samplerCombo->addItem(tr("Stratified"), QStringLiteral("stratified"));
 	m_samplerCombo->addItem(tr("PMJ02BN"), QStringLiteral("pmj02bn"));
 	m_samplerCombo->addItem(tr("Halton"), QStringLiteral("halton"));
+	m_samplerCombo->addItem(tr("Independent (no stratification)"), QStringLiteral("independent"));
 	m_samplerCombo->setToolTip(
-		tr("Which low-discrepancy sampler drives random decisions.\n"
-		"CPU default path tracer only - no effect on GPU or under\n"
-		"BDPT/MLT/SPPM/the debug integrators."));
+		tr("Which sampler drives random decisions (all but Independent are\n"
+		"low-discrepancy). CPU default path tracer only - no effect on GPU\n"
+		"or under BDPT/MLT/SPPM/the debug integrators."));
 	styleComboBox(m_samplerCombo);
 	samplingLayout->addRow(labelWithInfo(tr("Sampler:"),
 		tr("Ray tracing needs a lot of random numbers - which direction to "

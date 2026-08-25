@@ -1,7 +1,7 @@
 // sampler_kind_tests.cpp -- SamplerKind/sampler_kind_from_name() (camera.h),
 // the CPU render loop's --sampler/Sampler-directive dispatch added to adopt
 // this project's already-ported pbrt-v4 samplers (Sobol/ZSobol/PaddedSobol/
-// Stratified/PMJ02BN/Halton) into an actual runtime choice - see
+// Stratified/PMJ02BN/Halton/Independent) into an actual runtime choice - see
 // launcher_args.h's --sampler flag and cpu_interface.cpp's own wiring.
 
 #include <gtest/gtest.h>
@@ -22,13 +22,16 @@ TEST(SamplerKindFromName, RecognizesEveryPortedSampler) {
 	EXPECT_EQ(kind, SamplerKind::PMJ02BN);
 	EXPECT_TRUE(sampler_kind_from_name("halton", kind));
 	EXPECT_EQ(kind, SamplerKind::Halton);
+	EXPECT_TRUE(sampler_kind_from_name("independent", kind));
+	EXPECT_EQ(kind, SamplerKind::Independent);
 }
 
-TEST(SamplerKindFromName, RejectsUnrecognizedOrPbrtOnlyNames) {
+TEST(SamplerKindFromName, RejectsUnrecognizedNames) {
 	SamplerKind kind = SamplerKind::Sobol;
-	// "independent" is a real pbrt-v4 sampler this project never ported -
-	// must fail closed (false), not silently alias to something else.
-	EXPECT_FALSE(sampler_kind_from_name("independent", kind));
+	// A name this project has never had any sampler for, real pbrt-v4 or
+	// otherwise - must fail closed (false), not silently alias to something
+	// else.
+	EXPECT_FALSE(sampler_kind_from_name("bluenoise", kind));
 	EXPECT_FALSE(sampler_kind_from_name("", kind));
 	EXPECT_FALSE(sampler_kind_from_name("Sobol", kind))
 		<< "names are case-sensitive lowercase, matching pbrt's own directive spelling";

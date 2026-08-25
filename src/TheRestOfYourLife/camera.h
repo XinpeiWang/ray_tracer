@@ -24,6 +24,7 @@
 #include "../shared/stratified_sampler.h"
 #include "../shared/pmj02_sampler.h"
 #include "../shared/halton_sampler.h"
+#include "../shared/independent_sampler.h"
 #include "../shared/filter.h"
 #include "../shared/cameras.h"
 #include "../shared/surface_interaction.h"  // compute_differentials() for texture-filtering footprint
@@ -68,14 +69,15 @@ enum class SamplerKind {
     Stratified,
     PMJ02BN,
     Halton,
+    Independent,
 };
 
 // Parses a pbrt-v4 Sampler directive's/--sampler flag's type name
-// ("sobol"/"zsobol"/"paddedsobol"/"stratified"/"pmj02bn"/"halton") into a
-// SamplerKind. Unrecognized names (including pbrt-v4 names this project
-// doesn't port, like "independent") fall back to Sobol - matching the
-// existing Integrator-directive precedent of warning rather than failing
-// the render (see SceneDescriptor::recommended_integrator's own comment).
+// ("sobol"/"zsobol"/"paddedsobol"/"stratified"/"pmj02bn"/"halton"/
+// "independent") into a SamplerKind. Any other unrecognized name falls back
+// to Sobol - matching the existing Integrator-directive precedent of
+// warning rather than failing the render (see
+// SceneDescriptor::recommended_integrator's own comment).
 inline bool sampler_kind_from_name(const std::string& name, SamplerKind& out) {
     if (name == "sobol")        { out = SamplerKind::Sobol;       return true; }
     if (name == "zsobol")       { out = SamplerKind::ZSobol;      return true; }
@@ -83,6 +85,7 @@ inline bool sampler_kind_from_name(const std::string& name, SamplerKind& out) {
     if (name == "stratified")   { out = SamplerKind::Stratified;  return true; }
     if (name == "pmj02bn")      { out = SamplerKind::PMJ02BN;     return true; }
     if (name == "halton")       { out = SamplerKind::Halton;      return true; }
+    if (name == "independent")  { out = SamplerKind::Independent; return true; }
     return false;
 }
 
@@ -363,6 +366,11 @@ class camera {
                                                 sample = ray_color_spectral(r, max_depth, world, lights, *halton_smp);
                                                 break;
                                             }
+                                            case SamplerKind::Independent: {
+                                                IndependentSampler ps(sample_idx, i, j);  // pbrt-v4 IndependentSampler
+                                                sample = ray_color_spectral(r, max_depth, world, lights, ps);
+                                                break;
+                                            }
                                             case SamplerKind::Sobol:
                                             default: {
                                                 SobolSampler ps(sample_idx, i, j);  // pbrt-v4 Sobol+FastOwen
@@ -395,6 +403,11 @@ class camera {
                                         case SamplerKind::Halton: {
                                             halton_smp->start_pixel_sample(i, j, sample_idx);
                                             sample = ray_color(r, max_depth, world, lights, *halton_smp);
+                                            break;
+                                        }
+                                        case SamplerKind::Independent: {
+                                            IndependentSampler ps(sample_idx, i, j);  // pbrt-v4 IndependentSampler
+                                            sample = ray_color(r, max_depth, world, lights, ps);
                                             break;
                                         }
                                         case SamplerKind::Sobol:

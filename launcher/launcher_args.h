@@ -89,8 +89,9 @@ struct LaunchArgs {
 	// parameter, same scope cut as denoise's own --wavefront exclusion above.
 	double exposure         = 1.0;
 	// Which ported pbrt-v4 sampler (src/shared/sobol_sampler.h,
-	// stratified_sampler.h, pmj02_sampler.h, halton_sampler.h) drives
-	// camera.h's random decisions this render - see camera.h's SamplerKind/
+	// stratified_sampler.h, pmj02_sampler.h, halton_sampler.h,
+	// independent_sampler.h) drives camera.h's random decisions this
+	// render - see camera.h's SamplerKind/
 	// sampler_kind_from_name(). Empty (default) means "use sobol", this
 	// project's pre-existing hardcoded default - CPU only, same "only the
 	// default path tracer supports it" scope cut as exposure above (no GPU
@@ -276,12 +277,12 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			std::transform(name.begin(), name.end(), name.begin(),
 							[](unsigned char c) { return std::tolower(c); });
 			static const std::set<std::string> kValidSamplers = {
-				"sobol", "zsobol", "paddedsobol", "stratified", "pmj02bn", "halton"};
+				"sobol", "zsobol", "paddedsobol", "stratified", "pmj02bn", "halton", "independent"};
 			if (kValidSamplers.count(name)) {
 				out.sampler = name;
 			} else {
 				std::cerr << "Invalid --sampler \"" << argv[i + 1] << "\", using default (sobol). "
-							 "Valid: sobol, zsobol, paddedsobol, stratified, pmj02bn, halton\n";
+							 "Valid: sobol, zsobol, paddedsobol, stratified, pmj02bn, halton, independent\n";
 			}
 			consumed_args.insert(i);
 			consumed_args.insert(i + 1);
@@ -507,7 +508,8 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "               --bdpt/--mlt/--sppm (warns).\n"
 					  << "  " << render_flags::kSampler << " NAME: Which ported pbrt-v4 sampler drives random decisions\n"
 					  << "               (default sobol, this project's pre-existing behavior).\n"
-					  << "               One of sobol, zsobol, paddedsobol, stratified, pmj02bn, halton.\n"
+					  << "               One of sobol, zsobol, paddedsobol, stratified, pmj02bn, halton,\n"
+					  << "               independent.\n"
 					  << "               CPU default path tracer only.\n"
 					  << "  " << render_flags::kSpectral << " : Real hero-wavelength spectral rendering instead of flat RGB.\n"
 					  << "               CPU default path tracer only. Only lambertian, metal,\n"
