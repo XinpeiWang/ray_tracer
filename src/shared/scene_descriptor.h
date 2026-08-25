@@ -62,6 +62,7 @@ namespace SceneNames {
     constexpr const char* CornellCoatedConductor = "Cornell Coated Conductor";
     constexpr const char* CornellWaxSlab      = "Cornell Wax Slab";
     constexpr const char* CornellCrystal      = "Cornell Crystal";
+    constexpr const char* GlassPrismDispersion = "Glass Prism Dispersion";
     constexpr const char* PrincipledShowcase   = "Principled Showcase";
     constexpr const char* HairFibers           = "Hair Fibers";
     constexpr const char* NormalMappedCornell  = "Normal Mapped Cornell";

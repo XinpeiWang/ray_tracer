@@ -56,7 +56,7 @@ TEST(SceneRegistryTest, RegistryHasExpectedCount) {
 	// Models) instead of only the generic auto-discovered "Custom Scenes"
 	// bucket - see pbrt_scene_registry::build_curated_pbrt_scene_descriptor()
 	// and its call sites in get_builtin_scene_registry().
-	EXPECT_EQ(builtin_scene_count(), 112);
+	EXPECT_EQ(builtin_scene_count(), 113);
 }
 
 TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem) {
@@ -584,7 +584,7 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // double-checking the GUI/error-hint text that mentions specific scene
 // counts or ID ranges by hand.
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
-	constexpr int kGuiSceneCount = 112;
+	constexpr int kGuiSceneCount = 113;
 	EXPECT_EQ(builtin_scene_count(), kGuiSceneCount)
 		<< "Registry size changed -- update kGuiSceneCount here to match.";
 }

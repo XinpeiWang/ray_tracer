@@ -882,6 +882,16 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             }
         },
         {
+            "B23", 131, SceneNames::GlassPrismDispersion, SceneCategories::Materials,
+            "A real glass prism splitting a parallel white light into a visible chromatic fan (--spectral only - see dielectric's dispersive constructor, material_simple.h)",
+            "Medium", 200, false, false,
+            { 30, 75, 60, -400,  75, 75, 250,  0, 0, 0, CameraMode::UserControlled },
+            build_prism_dispersion,
+            no_lights,
+            nullptr,
+            build_prism_dispersion_punct
+        },
+        {
             "C7", 35, SceneNames::PortalInfiniteLight, SceneCategories::Lights,
             "Room scene with a portal window sampling the sky through a planar quad (pbrt-v4 PortalImageInfiniteLight)",
             "Slow", 300, false, true,
