@@ -455,6 +455,14 @@ Worth fixing separately (not done here — this is a survey, not a patch):
 
 - `launcher/launcher_args.h`'s SPPM doc comment calls it "a separate
   CPU-only render mode" — false; `main.cpp` has a fully wired GPU SPPM path.
+- Same file's `--help` text for `--sppm --gpu` also hardcodes a stale
+  material list ("Lambertian, Metal, Dielectric, RoughDielectric (GGX),
+  Conductor (GGX)") and says "scene 11 ONLY" — both predate the later
+  generalization to a capability-based `sppm_gpu_unsupported_reason()` check
+  (`gpu/optix/optix_interface.cpp`) and are now further behind:
+  `RoughMetal` and `DiffuseTransmission` (B8 Cornell Wax Slab) are both
+  GPU-SPPM-supported today (`gpu/optix/optix_types.h`'s
+  `sppm_gpu_material_supported()`) but neither is mentioned.
 - `src/shared/pbrt_scene.h`'s top-of-file comment says a real pbrt scene
   "will always contain something we do not implement yet (subsurface,
   curves, instancing, media)" — stale; all four are implemented and

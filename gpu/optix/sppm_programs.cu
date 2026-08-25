@@ -238,7 +238,8 @@ extern "C" __global__ void __miss__sppm_radiance() {
 // blocks the shadow ray" fallthrough is already the physically correct
 // behavior for them, same as it already is for Lambertian.
 static __device__ __forceinline__ bool sppm_is_transmissive_material(MaterialType t) {
-	return t == MaterialType::RoughDielectric || t == MaterialType::Dielectric;
+	return t == MaterialType::RoughDielectric || t == MaterialType::Dielectric ||
+	       t == MaterialType::DiffuseTransmission;
 }
 
 extern "C" __global__ void __anyhit__sppm_shadow_sphere() {
@@ -429,7 +430,7 @@ static __device__ __forceinline__ bool sppm_sample_rough_dielectric(
 static __device__ __forceinline__ bool sppm_is_delta_material(MaterialType t) {
 	return t == MaterialType::RoughDielectric || t == MaterialType::Metal ||
 	       t == MaterialType::Dielectric || t == MaterialType::Conductor ||
-	       t == MaterialType::RoughMetal;
+	       t == MaterialType::RoughMetal || t == MaterialType::DiffuseTransmission;
 }
 
 // Importance-samples a new direction + beta multiplier at a Metal/Dielectric/
@@ -531,6 +532,32 @@ static __device__ __forceinline__ bool sppm_sample_delta_material(
 		float weight = (G1_wi > 1e-8f) ? G_wowi / G1_wi : 0.0f;
 		out_atten = make_float3(mat.albedo.x * weight, mat.albedo.y * weight, mat.albedo.z * weight);
 		out_dir   = normalize(wo_x*tan_v + wo_y*bitan + wo_z*n);
+		return true;
+	}
+	case MaterialType::DiffuseTransmission: {
+		// pbrt-v4 DiffuseTransmissionBxDF -- direct, unmodified-math port of
+		// wavefront_kernels.cu's own MaterialType::DiffuseTransmission case.
+		// .albedo/.emission are genuine union aliases for R (reflectance) /
+		// T (transmittance) for this MaterialType (see optix_types.h's
+		// MaterialData), not real emission -- same field-reuse convention
+		// wavefront already relies on. No NEE (matches wavefront's own
+		// "zero explicit NEE, all illumination via the BSDF-sampled bounce"),
+		// which is exactly this function's delta-material shape. Texture-
+		// bound R/T deliberately omitted: scene_builder.cpp's
+		// add_diffuse_transmission() never sets a texture index, so no
+		// current GPU SPPM-eligible scene needs it.
+		float3 R = mat.albedo;
+		float3 T = mat.emission;
+		float pr = fmaxf(R.x, fmaxf(R.y, R.z));
+		float pt = fmaxf(T.x, fmaxf(T.y, T.z));
+		if (pr + pt <= 0.0f) return false;
+		if (sppm_rand(seed) < pr / (pr + pt)) {
+			out_dir   = normalize(n + sppm_rand_unit(seed));
+			out_atten = R;
+		} else {
+			out_dir   = normalize(-n + sppm_rand_unit(seed));
+			out_atten = T;
+		}
 		return true;
 	}
 	default:
@@ -659,14 +686,16 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 		}
 
 		if (mat.type == MaterialType::Metal || mat.type == MaterialType::Dielectric ||
-		    mat.type == MaterialType::Conductor || mat.type == MaterialType::RoughMetal) {
+		    mat.type == MaterialType::Conductor || mat.type == MaterialType::RoughMetal ||
+		    mat.type == MaterialType::DiffuseTransmission) {
 			// Generalization beyond Phase 1's original RoughDielectric-only
 			// delta set (see sppm_is_delta_material()/sppm_sample_delta_
 			// material()'s own comments) -- covers B1/B2's rough metal
 			// spheres (MaterialType::RoughMetal since the Metal/rough_metal
 			// model-mismatch fix routed them off the plain Metal fuzz-mirror
-			// approximation), A1's smooth glass sphere, and B4's polished-
-			// conductor gold/aluminium, none of which recorded a (physically
+			// approximation), A1's smooth glass sphere, B4's polished-
+			// conductor gold/aluminium, and B8's translucent wax sphere
+			// (DiffuseTransmission), none of which recorded a (physically
 			// wrong) Lambertian visible point before this change.
 			float3 new_dir, atten;
 			if (!sppm_sample_delta_material(dir, payload.normal, mat, seed, new_dir, atten)) break;
@@ -861,7 +890,8 @@ extern "C" __global__ void __raygen__sppm_photon_pass() {
 			if (!sppm_sample_rough_dielectric(dir_cur, payload.normal, mat, seed, new_dir)) break;
 			beta_new = beta * mat.albedo;
 		} else if (mat.type == MaterialType::Metal || mat.type == MaterialType::Dielectric ||
-		           mat.type == MaterialType::Conductor || mat.type == MaterialType::RoughMetal) {
+		           mat.type == MaterialType::Conductor || mat.type == MaterialType::RoughMetal ||
+		           mat.type == MaterialType::DiffuseTransmission) {
 			// Generalization beyond Phase 1's original RoughDielectric-only
 			// delta set -- see sppm_sample_delta_material()'s own comment.
 			float3 atten;

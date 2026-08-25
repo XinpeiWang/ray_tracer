@@ -520,6 +520,7 @@ inline bool sppm_gpu_material_supported(MaterialType t) {
 	case MaterialType::Dielectric:
 	case MaterialType::Conductor:
 	case MaterialType::RoughMetal:
+	case MaterialType::DiffuseTransmission:
 		return true;
 	default:
 		return false;
