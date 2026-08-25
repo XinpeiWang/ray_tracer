@@ -284,6 +284,63 @@ relative to it specifically).
    GPU scope (path/volpath only), so more a parity-with-upstream item than
    a true gap.
 
+## Fallback behavior: what happens when a feature is missing
+
+Most gaps above degrade gracefully rather than failing outright — but not
+all of them, and it's worth knowing which is which before relying on one.
+
+**Falls back to something functional (warns, keeps rendering):**
+
+- `MakeNamedMedium "nanovdb"` → falls back to a homogeneous medium, with a
+  warning. Not real VDB data, but the render doesn't break.
+- An unrecognized `--sampler` name (including `independent`) → silently
+  falls back to Sobol.
+- An unrecognized pbrt `Material` kind → falls back to flat Lambertian
+  using the material's base color, with a named warning.
+- `realistic` camera with a missing/unreadable lens file → falls back to
+  perspective, with a warning.
+- Goniometric/projection light with a missing or non-square image → falls
+  back to a uniform/isotropic distribution.
+- `--bdpt`/`--mlt` combined with `--gpu` → forced onto CPU with a warning
+  ("--gpu is ignored under --bdpt/--mlt"), not an error.
+- `--spectral` combined with `--gpu`/`--sppm`/`--bdpt`/`--mlt`/any debug
+  integrator → the flag is silently dropped with a warning; you still get
+  an ordinary render on whatever backend/mode you asked for.
+- A `.pbrt` directive this loader doesn't recognize at all (`Accelerator`,
+  `CoordinateSystem`, `ActiveTransform`, `ColorSpace`, etc.) → warned and
+  skipped; the rest of the scene still loads.
+
+**No counterpart — genuinely absent, dropped rather than approximated:**
+
+- An unrecognized pbrt *light* kind → dropped with a warning, and unlike
+  materials there is no fallback light rendered in its place — it's simply
+  invisible. This is the one case in the whole loader with no safety net:
+  everything else either substitutes something visible or forces a backend/
+  flag change loudly; an unsupported light just disappears.
+- A `Shape` type this loader can't build (e.g. a non-cubic/non-Bezier
+  `curve`) → dropped with a "shape not supported" warning; nothing is
+  rendered in its place.
+- Dispersion on GPU, or on `rough_dielectric` anywhere → no approximate
+  dispersion; it's just flat, non-dispersive IOR, silently (no warning,
+  since this isn't a scene-loading failure — it's simply a code path that
+  was never built).
+- The orphaned scaffolding (§11: `UniformLightSampler`, `BVHLightSampler2`,
+  `ExhaustiveLightSampler`, ReSTIR, `PixelSensor`/`SpectralFilm`) — these
+  aren't fallbacks *for* anything and don't *have* fallbacks either; they're
+  unreachable code with zero callers, not part of any fallback chain.
+
+**Working counterpart already in place (not a degraded fallback — just the
+permanent behavior):**
+
+- No GPU light BVH → GPU always uses the flat `PowerLightSampler` instead.
+  That's a real, working counterpart, not a failure mode — it's the
+  permanent GPU default, just with worse scaling on many-light scenes than
+  CPU's spatial BVH sampler.
+- No real spectral film accumulation → CPU `--spectral` reduces to RGB
+  every sample rather than accumulating spectral radiance. This isn't a
+  fallback triggered by failure — it's simply how the feature is
+  architected; there's no better mode it's falling back *from*.
+
 ## Stale comments found while building this doc
 
 Worth fixing separately (not done here — this is a survey, not a patch):
