@@ -305,13 +305,16 @@ inline hittable_list build_cornell_crystal() {
  * the solid's centroid) so each face's geometric normal (quad.h:
  * cross(u,v) / triangle.h: cross(p1-p0,p2-p0)) points OUTWARD.
  */
-inline hittable_list build_prism_dispersion() {
+// Shared geometry, parameterized on the glass material - both
+// build_prism_dispersion() (smooth) and build_prism_dispersion_rough()
+// (frosted, below) are the same physical prism, only the glass itself
+// differs. Kept as one function rather than two copies so the hand-derived
+// winding/positions above can only go stale in one place.
+inline hittable_list build_prism_dispersion_geometry(const shared_ptr<material>& glass) {
 	hittable_list world;
 
 	const point3 A(0, 0, 0), B(0, 0, 140), C(0, 121, 70);
 	const vec3 depth(150, 0, 0);
-
-	auto glass = dielectric::make_dispersive(1.52, 59.0);
 
 	// 3 rectangular sides (outward-normal winding - see this function's own
 	// comment). Note u/v order is (depth, edge) here, not (edge, depth) -
@@ -335,6 +338,25 @@ inline hittable_list build_prism_dispersion() {
 	world.add(make_shared<quad>(point3(-300, -300, 600), vec3(600, 0, 0), vec3(0, 700, 0), screen_mat));
 
 	return world;
+}
+
+inline hittable_list build_prism_dispersion() {
+	return build_prism_dispersion_geometry(dielectric::make_dispersive(1.52, 59.0));
+}
+
+// Same prism, same light, same catcher screen as build_prism_dispersion()
+// (B23) - only the glass is frosted (rough_dielectric::make_dispersive())
+// instead of perfectly smooth. Demonstrates that dispersion isn't special-
+// cased to smooth glass: the fan on the screen is the same hue order as
+// B23's, just blurred by the roughness, because rough_dielectric's real
+// NEE/MIS path (see that class's own comment in material_pbrt.h) had to
+// become wavelength-aware too, not just its initial scatter. Roughness
+// 0.08 is deliberately small - visibly frosted (not a sharp fan) while
+// staying well short of TrowbridgeReitz::EffectivelySmooth()'s threshold,
+// so the render actually exercises the glossy ggx_dielectric_pdf branch
+// rather than silently falling back to the same specular path B23 uses.
+inline hittable_list build_prism_dispersion_rough() {
+	return build_prism_dispersion_geometry(rough_dielectric::make_dispersive(1.52, 59.0, 0.08));
 }
 
 inline std::shared_ptr<punctual_light_list> build_prism_dispersion_punct() {

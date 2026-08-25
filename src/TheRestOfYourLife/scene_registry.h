@@ -892,6 +892,20 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             build_prism_dispersion_punct
         },
         {
+            // Same prism/light/screen as B23, frosted glass instead of
+            // smooth - see build_prism_dispersion_rough()'s own comment
+            // (scenes_materials.h) for why this exercises rough_dielectric's
+            // real NEE/MIS path, not just its initial scatter.
+            "B24", 136, SceneNames::FrostedPrismDispersion, SceneCategories::Materials,
+            "The same glass prism as B23, frosted (rough_dielectric) instead of smooth - same chromatic fan, blurred by the roughness (--spectral only)",
+            "Medium", 200, false, false,
+            { 30, 75, 60, -400,  75, 75, 250,  0, 0, 0, CameraMode::UserControlled },
+            build_prism_dispersion_rough,
+            no_lights,
+            nullptr,
+            build_prism_dispersion_punct
+        },
+        {
             "C7", 35, SceneNames::PortalInfiniteLight, SceneCategories::Lights,
             "Room scene with a portal window sampling the sky through a planar quad (pbrt-v4 PortalImageInfiniteLight)",
             "Slow", 300, false, true,

@@ -17,11 +17,11 @@
 // renderer behavior - the same reasoning every other info-icon tooltip is
 // GUI-only text, never round-tripped through the DLL.
 //
-// Scoped to self-contained scenes only (requires_files == false): the 49
+// Scoped to self-contained scenes only (requires_files == false): the 50
 // compiled-in procedural scenes (src/TheRestOfYourLife/scenes*.h, including
-// the 4 Education entries that reuse another scene's geometry - see their
-// own comment in scene_registry.h) plus the 31 curated pbrt-example scenes
-// (bundled pbrt_scenes/*.pbrt files,
+// the 4 Education entries and B24, all of which reuse another scene's
+// geometry - see their own comments in scene_registry.h) plus the 31
+// curated pbrt-example scenes (bundled pbrt_scenes/*.pbrt files,
 // registered via pbrt_scene_registry::build_curated_pbrt_scene_descriptor()
 // in scene_registry.h, which hardcodes requires_files=false). A scene id
 // with no entry here - every "Requires External Files" scene - falls back
@@ -61,6 +61,7 @@ inline const QHash<QString, QString>& notes() {
 		{"B13", QObject::tr(R"note(Not a true BSSRDF - light entering the milky wax slab and jade sphere passes through a dielectric shell into a constant_medium (homogeneous participating medium with its own density and tint), so the translucent glow comes from a real volumetric random walk inside the object bounded by refractive Fresnel at the surface, rather than a diffusion-based subsurface term.)note")},
 		{"B14", QObject::tr(R"note(Exercises the pbrt-v4 measured-BRDF data pipeline - synthetically generated tabulated NDF, sigma, VNDF, luminance and per-wavelength spectral tables (rather than a real captured material) across a row of five spheres. BSDF evaluation itself is simplified to cosine-hemisphere sampling with a flat tint rather than the full 5D importance-sampling warp chain, so this scene tests the tabulated-data plumbing more than a realistic measured-material result.)note")},
 		{"B23", QObject::tr(R"note(A literal triangular glass prism using a dispersive dielectric - a Cauchy-equation index of refraction that varies with wavelength, matching real crown glass - instead of a flat IOR. White light entering the prism splits by wavelength on exit, fanning across a catcher screen the way a physical glass prism does, but only under --spectral, which tracks per-wavelength rays through the renderer; without it, each RGB channel just refracts by a fixed, slightly different amount rather than a continuous spread.)note")},
+		{"B24", QObject::tr(R"note(The same dispersive prism as B23, ground to frosted glass (rough_dielectric) instead of polished smooth. Under --spectral, the same rainbow fan appears on the catcher screen, blurred by the surface roughness rather than sharp - the underlying physics (wavelength-dependent index of refraction) is identical, only the microfacet scattering added on top differs. Frosted glass needed more than a flat re-skin of B23 to disperse correctly: unlike smooth glass, a rough surface's light sampling has to reach an off-axis light (like this scene's directional beam) through explicit next-event estimation, so that sampling itself had to become wavelength-aware too, not just the initial refraction.)note")},
 
 		// ---------------------------------------------------------------
 		// Materials (B15-B22) - curated pbrt examples

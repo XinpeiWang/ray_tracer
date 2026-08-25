@@ -1332,26 +1332,34 @@ class camera {
                 }
             }
 
-            // Dispersive dielectric: dispatch to scatter_dispersive()
-            // instead of the ordinary virtual scatter(), passing the
-            // path's hero wavelength so a dielectric built via
-            // dielectric::make_dispersive() (material_simple.h) actually
+            // Dispersive dielectric (smooth or rough): dispatch to
+            // scatter_dispersive() instead of the ordinary virtual scatter(),
+            // passing the path's hero wavelength so a material built via
+            // dielectric::make_dispersive() or rough_dielectric::
+            // make_dispersive() (material_simple.h/material_pbrt.h) actually
             // refracts differently per wavelength. Every other material
-            // (and a non-dispersive dielectric) takes the unchanged
-            // scatter() path.
+            // (and a non-dispersive dielectric/rough_dielectric) takes the
+            // unchanged scatter() path. The two are mutually exclusive per
+            // rec (a hit is never both), and disp_rough stays alive past
+            // this point - unlike disp_mat, smooth dielectric's dispersive
+            // path never reaches NEE below, but rough_dielectric's does.
             //
-            // Uses material::as_dispersive_dielectric(rec) - the same
-            // wrapper-forwarding pattern as as_subsurface() - rather than a
-            // raw dynamic_cast<const dielectric*>(rec.mat.get()), so a
-            // dispersive dielectric mixed into a mix_material is still
-            // found through the wrapper instead of silently losing
-            // dispersion the moment rec.mat is the mix_material rather than
-            // the dielectric it stochastically picked.
+            // Uses material::as_dispersive_dielectric(rec)/
+            // as_dispersive_rough_dielectric(rec) - the same wrapper-
+            // forwarding pattern as as_subsurface() - rather than a raw
+            // dynamic_cast, so a dispersive material mixed into a
+            // mix_material is still found through the wrapper instead of
+            // silently losing dispersion the moment rec.mat is the
+            // mix_material rather than the material it stochastically
+            // picked.
             scatter_record srec;
             const dielectric* disp_mat = rec.mat->as_dispersive_dielectric(rec);
+            const rough_dielectric* disp_rough = rec.mat->as_dispersive_rough_dielectric(rec);
             bool scattered = disp_mat
                 ? disp_mat->scatter_dispersive(current_ray, rec, srec, static_cast<float>(swl.lambda[0]))
-                : rec.mat->scatter(current_ray, rec, srec, any_nonspecular);
+                : disp_rough
+                    ? disp_rough->scatter_dispersive(current_ray, rec, srec, static_cast<float>(swl.lambda[0]), any_nonspecular)
+                    : rec.mat->scatter(current_ray, rec, srec, any_nonspecular);
             if (!scattered)
                 break;
 
@@ -1359,13 +1367,25 @@ class camera {
             // refraction happened - see TerminateSecondary()'s own comment
             // (sampled_spectrum.h) for why the other 3 channels' PDFs must
             // be zeroed after this (their shared pre-refraction direction
-            // is no longer valid per-wavelength). Gated on
-            // disp_mat->is_dispersive(), not just srec.is_transmission -
-            // calling this on a non-dispersive dielectric's transmission
-            // would only cost variance (all 4 channels still refract
-            // identically) for zero benefit, silently changing every
-            // existing --spectral scene's noise pattern for no reason.
-            if (srec.is_transmission && disp_mat && disp_mat->is_dispersive())
+            // is no longer valid per-wavelength). Gated on is_dispersive(),
+            // not just srec.is_transmission - calling this on a non-
+            // dispersive material's transmission would only cost variance
+            // (all 4 channels still refract identically) for zero benefit,
+            // silently changing every existing --spectral scene's noise
+            // pattern for no reason.
+            //
+            // For disp_rough specifically this fires unconditionally on
+            // every hit, not just transmission-bound ones: rough_dielectric
+            // ::scatter()'s glossy branch always sets srec.is_transmission
+            // = true regardless of which lobe eventually gets sampled (see
+            // that function's own comment), and RoughDielectricBxDF::f()'s
+            // REFLECTION lobe is also Fresnel/eta-dependent, not just the
+            // transmission one - so a dispersive rough dielectric's
+            // per-wavelength divergence is real the moment this material is
+            // hit at all, not only when the sampled bounce happens to cross
+            // the boundary.
+            if (srec.is_transmission &&
+                ((disp_mat && disp_mat->is_dispersive()) || (disp_rough && disp_rough->is_dispersive())))
                 swl.TerminateSecondary();
 
             // Specular bounce: no NEE, update beta and advance ray.
@@ -1393,13 +1413,28 @@ class camera {
             // Non-specular: NEE shadow ray + BSDF path continuation
             hittable_pdf light_pdf(lights, rec.p);
 
+            // Every scattering_pdf() call below goes through this instead of
+            // calling rec.mat->scattering_pdf(...) directly, so a dispersive
+            // rough_dielectric's real NEE/MIS path (the reason disp_rough
+            // was resolved above) evaluates f*cos at the path's hero
+            // wavelength instead of the material's flat, non-dispersive ior
+            // - see rough_dielectric::scattering_pdf_dispersive()'s own
+            // comment for why this matters even for reflection-bound
+            // samples. A no-op for every other material (disp_rough is
+            // null), so this changes nothing for the common case.
+            auto scattering_pdf_at = [&](const ray& scattered) -> double {
+                return disp_rough
+                    ? disp_rough->scattering_pdf_dispersive(current_ray, rec, scattered, static_cast<float>(swl.lambda[0]))
+                    : rec.mat->scattering_pdf(current_ray, rec, scattered);
+            };
+
             // Strategy A-1: NEE toward area lights
             {
                 vec3   light_dir = light_pdf.generate();
                 double pdf_l     = light_pdf.value(light_dir);
                 if (pdf_l > 0.0) {
                     ray    shadow_ray(rec.p, light_dir, current_ray.time());
-                    double f_pdf = rec.mat->scattering_pdf(current_ray, rec, shadow_ray);
+                    double f_pdf = scattering_pdf_at(shadow_ray);
                     if (f_pdf > 0.0) {
                         double pdf_b_at_l = srec.pdf_ptr->value(light_dir);
                         double w_l        = mis_power_heuristic(pdf_l, pdf_b_at_l);
@@ -1427,7 +1462,7 @@ class camera {
                 double pdf_sky  = sky_smp.pdf;
                 if (pdf_sky > 0.0) {
                     ray    sky_shadow(rec.p, sky_dir, current_ray.time());
-                    double f_pdf = rec.mat->scattering_pdf(current_ray, rec, sky_shadow);
+                    double f_pdf = scattering_pdf_at(sky_shadow);
                     if (f_pdf > 0.0) {
                         double pdf_b_at_sky = srec.pdf_ptr->value(sky_dir);
                         double w_sky        = mis_power_heuristic(pdf_sky, pdf_b_at_sky);
@@ -1450,7 +1485,7 @@ class camera {
                 punct_lights->for_each_sample(rec.p, [&](const PunctualLiSample& ps) {
                     if (ps.Li.x() <= 0 && ps.Li.y() <= 0 && ps.Li.z() <= 0) return;
                     ray punct_ray(rec.p, ps.wi, current_ray.time());
-                    double f_pdf = rec.mat->scattering_pdf(current_ray, rec, punct_ray);
+                    double f_pdf = scattering_pdf_at(punct_ray);
                     if (f_pdf <= 0.0) return;
                     hit_record shadow_rec;
                     double shadow_t_max = (ps.t_max == infinity) ? infinity : (ps.t_max - 0.001);
@@ -1471,7 +1506,7 @@ class camera {
                 if (pdf_b <= 0.0) break;
 
                 ray    bsdf_ray(rec.p, bsdf_dir, current_ray.time());
-                double f_pdf = rec.mat->scattering_pdf(current_ray, rec, bsdf_ray);
+                double f_pdf = scattering_pdf_at(bsdf_ray);
                 if (f_pdf <= 0.0) break;
 
                 if (srec.is_transmission) {

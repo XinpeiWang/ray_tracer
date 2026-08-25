@@ -31,6 +31,11 @@ class subsurface;
 // it without material_base.h needing to know anything else about it.
 class dielectric;
 
+// Defined in material_pbrt.h. Forward-declared here for the same reason, so
+// `material::as_dispersive_rough_dielectric()` below can return a pointer to
+// it without material_base.h needing to know anything else about it.
+class rough_dielectric;
+
 
 class scatter_record {
   public:
@@ -178,6 +183,17 @@ class material {
     // dielectric it stochastically picked, and fall back to flat-IOR
     // refraction with no error or warning.
     virtual const dielectric* as_dispersive_dielectric(const hit_record& rec) const {
+        (void)rec;
+        return nullptr;
+    }
+
+    // Same purpose and reasoning as as_dispersive_dielectric() above, for
+    // `rough_dielectric` (material_pbrt.h) built via its own dispersive
+    // factory - a separate hook rather than reusing the one above because
+    // the two are unrelated concrete types (not a common dispersive base),
+    // and camera.h's ray_color_spectral() needs the real rough_dielectric*
+    // to reach its own scatter_dispersive()/scattering_pdf_dispersive().
+    virtual const rough_dielectric* as_dispersive_rough_dielectric(const hit_record& rec) const {
         (void)rec;
         return nullptr;
     }

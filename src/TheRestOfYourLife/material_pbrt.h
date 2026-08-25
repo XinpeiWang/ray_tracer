@@ -290,6 +290,21 @@ class rough_dielectric : public material {
           alpha_x(roughness_or_alpha(u_roughness, remap_roughness)),
           alpha_y(roughness_or_alpha(v_roughness, remap_roughness)) {}
 
+    // Named factory for dispersive (wavelength-dependent IOR) frosted glass -
+    // same artist-facing (eta_d, Abbe number) pair and Cauchy-coefficient
+    // derivation as dielectric::make_dispersive() (material_simple.h).
+    // Needed here too, not just for smooth dielectric: unlike smooth glass
+    // (always the skip_pdf specular branch below, never reaching NEE), a
+    // rough dielectric's glossy branch is real NEE/MIS - so dispersion has
+    // to reach scattering_pdf() as well as scatter(), or a directional/point
+    // light (reachable ONLY via NEE, never by chance through BSDF sampling)
+    // would see ordinary flat-IOR glass regardless of --spectral. See
+    // scatter_dispersive()/scattering_pdf_dispersive() below and camera.h's
+    // ray_color_spectral() for the dispatch.
+    static shared_ptr<rough_dielectric> make_dispersive(double eta_d, double abbe_number, double roughness) {
+        return shared_ptr<rough_dielectric>(new rough_dielectric(eta_d, abbe_number, roughness, dispersive_tag{}));
+    }
+
     BxDF get_bxdf(const MaterialContext<double>& ctx) const {
         return BxDF{ ior, alpha_x, alpha_y };
     }
@@ -304,13 +319,98 @@ class rough_dielectric : public material {
     // sampled direction isn't known until Strategy B draws it.
     bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
                  bool do_regularize = false) const override {
+        return scatter_impl(r_in, rec, srec, do_regularize, ior);
+    }
+
+    // Spectral-aware variant: computes eta from the path's hero wavelength
+    // via CauchyEta() instead of the flat ior, when this instance was built
+    // via make_dispersive() - otherwise identical to scatter(). Mirrors
+    // dielectric::scatter_dispersive() (material_simple.h); camera.h's
+    // ray_color_spectral() is the only call site.
+    bool scatter_dispersive(const ray& r_in, const hit_record& rec, scatter_record& srec,
+                             float lambda_nm, bool do_regularize = false) const {
+        double eta_ior = dispersive_ ? CauchyEta((double)lambda_nm, cauchy_A_, cauchy_B_) : ior;
+        return scatter_impl(r_in, rec, srec, do_regularize, eta_ior);
+    }
+
+    // f*cos at an arbitrary queried direction (scattered), for real NEE/MIS.
+    // Achromatic (RoughDielectricBxDF is colorless glass) -- attenuation
+    // stays the default white srec.attenuation.
+    double scattering_pdf(const ray& r_in, const hit_record& rec,
+                          const ray& scattered) const override {
+        return scattering_pdf_impl(r_in, rec, scattered, ior);
+    }
+
+    // Spectral-aware variant of scattering_pdf(), for the same reason
+    // scatter_dispersive() exists above: NEE evaluates the BSDF at a
+    // light-sampled direction through THIS function, not scatter_dispersive()
+    // - so a dispersive rough dielectric's NEE contribution needs the path's
+    // hero wavelength here too. See camera.h's ray_color_spectral() for the
+    // 4 call sites (3 NEE strategies + Strategy B) that use this instead of
+    // the plain scattering_pdf().
+    double scattering_pdf_dispersive(const ray& r_in, const hit_record& rec,
+                                      const ray& scattered, float lambda_nm) const {
+        double eta_ior = dispersive_ ? CauchyEta((double)lambda_nm, cauchy_A_, cauchy_B_) : ior;
+        return scattering_pdf_impl(r_in, rec, scattered, eta_ior);
+    }
+
+    // True when this instance was built via make_dispersive() above.
+    // Mirrors dielectric::is_dispersive().
+    bool is_dispersive() const { return dispersive_; }
+
+    double get_ior()       const { return ior; }
+    double get_roughness() const { return alpha_x * alpha_x; }
+
+    // See material::is_shadow_transmissive()'s comment - matches
+    // optix_anyhit_shadow.h's MaterialType::RoughDielectric skip.
+    bool is_shadow_transmissive(const hit_record&) const override { return true; }
+
+    // See material::as_dispersive_rough_dielectric()'s comment. `this` (not
+    // nullptr) only when built via make_dispersive() above - lets
+    // ray_color_spectral() find this instance through a wrapper material
+    // (mix_material) the same way as_dispersive_dielectric() already does
+    // for smooth dielectric.
+    const rough_dielectric* as_dispersive_rough_dielectric(const hit_record&) const override {
+        return dispersive_ ? this : nullptr;
+    }
+
+  private:
+    // Disambiguates the dispersive constructor below from the public
+    // (double, double, double, bool=true) constructor above: a bare 3-double
+    // call is otherwise genuinely ambiguous (the 4th bool param defaults),
+    // and a same-arity overload distinguished only by a trailing bool tag
+    // would give the type system nothing to enforce - exactly the trap
+    // dielectric::make_dispersive()'s own comment (material_simple.h)
+    // warns about. An empty tag type can't accidentally bind to anything
+    // else.
+    struct dispersive_tag {};
+
+    // Dispersive glass: wavelength-dependent IOR via the same two-term
+    // Cauchy formula dielectric's own dispersive constructor derives
+    // (material_simple.h) - eta_d/abbe_number are the same artist-facing
+    // pair, A/B computed identically. `ior` (used by the ordinary flat-IOR
+    // scatter()/scattering_pdf() path, i.e. --spectral off or a
+    // non-dispersive-lookalike caller) is set to eta_d so both paths agree
+    // at the reference wavelength. Private - construct via make_dispersive()
+    // above.
+    rough_dielectric(double eta_d, double abbe_number, double roughness, dispersive_tag)
+        : ior(eta_d), dispersive_(true) {
+        double a = TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(roughness, 1e-4));
+        alpha_x = alpha_y = a;
+        constexpr double lambda_F = 0.4861, lambda_C = 0.6563, lambda_D = 0.5893;
+        cauchy_B_ = (eta_d - 1.0) / (abbe_number * (1.0 / (lambda_F * lambda_F) - 1.0 / (lambda_C * lambda_C)));
+        cauchy_A_ = eta_d - cauchy_B_ / (lambda_D * lambda_D);
+    }
+
+    bool scatter_impl(const ray& r_in, const hit_record& rec, scatter_record& srec,
+                       bool do_regularize, double ior_value) const {
         auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
         double ex = do_regularize ? regularize_alpha(alpha_x) : alpha_x;
         double ey = do_regularize ? regularize_alpha(alpha_y) : alpha_y;
-        BxDF bxdf{ ior, ex, ey };
+        BxDF bxdf{ ior_value, ex, ey };
         auto frame = ShadingFrame<double>::from_dpdu(ctx.dpdu_x, ctx.dpdu_y, ctx.dpdu_z, ctx.nx, ctx.ny, ctx.nz);
 
-        double eta = ctx.front_face ? (1.0 / ior) : ior;
+        double eta = ctx.front_face ? (1.0 / ior_value) : ior_value;
 
         double wi_x, wi_y, wi_z;
         frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
@@ -343,14 +443,11 @@ class rough_dielectric : public material {
         return true;
     }
 
-    // f*cos at an arbitrary queried direction (scattered), for real NEE/MIS.
-    // Achromatic (RoughDielectricBxDF is colorless glass) -- attenuation
-    // stays the default white srec.attenuation.
-    double scattering_pdf(const ray& r_in, const hit_record& rec,
-                          const ray& scattered) const override {
+    double scattering_pdf_impl(const ray& r_in, const hit_record& rec,
+                                const ray& scattered, double ior_value) const {
         auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
         auto frame = ShadingFrame<double>::from_dpdu(ctx.dpdu_x, ctx.dpdu_y, ctx.dpdu_z, ctx.nx, ctx.ny, ctx.nz);
-        double eta = ctx.front_face ? (1.0 / ior) : ior;
+        double eta = ctx.front_face ? (1.0 / ior_value) : ior_value;
 
         double wi_x, wi_y, wi_z;
         frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
@@ -360,21 +457,15 @@ class rough_dielectric : public material {
         double wo_x, wo_y, wo_z;
         frame.to_local(dir.x(), dir.y(), dir.z(), wo_x, wo_y, wo_z);
 
-        BxDF bxdf{ ior, alpha_x, alpha_y };
+        BxDF bxdf{ ior_value, alpha_x, alpha_y };
         double f_val = bxdf.f(wi_x, wi_y, wi_z, eta, wo_x, wo_y, wo_z);
         return f_val * std::fabs(wo_z);
     }
 
-    double get_ior()       const { return ior; }
-    double get_roughness() const { return alpha_x * alpha_x; }
-
-    // See material::is_shadow_transmissive()'s comment - matches
-    // optix_anyhit_shadow.h's MaterialType::RoughDielectric skip.
-    bool is_shadow_transmissive(const hit_record&) const override { return true; }
-
-  private:
     double ior;
     double alpha_x, alpha_y;
+    bool dispersive_ = false;
+    double cauchy_A_ = 0.0, cauchy_B_ = 0.0;
 };
 
 
@@ -1042,6 +1133,18 @@ class mix_material : public material {
             return mat_a->as_dispersive_dielectric(rec);
         else
             return mat_b->as_dispersive_dielectric(rec);
+    }
+
+    // Same deterministic branch, same reason as as_dispersive_dielectric()
+    // above, for a dispersive rough_dielectric mixed in instead of a smooth
+    // one.
+    const rough_dielectric* as_dispersive_rough_dielectric(const hit_record& rec) const override {
+        double w = weight_tex->value(rec.u, rec.v, rec.p).x();
+        w = w < 0.0 ? 0.0 : (w > 1.0 ? 1.0 : w);
+        if (branch_hash01(rec.p) >= w)
+            return mat_a->as_dispersive_rough_dielectric(rec);
+        else
+            return mat_b->as_dispersive_rough_dielectric(rec);
     }
 
     shared_ptr<material> get_mat_a()   const { return mat_a; }

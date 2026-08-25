@@ -61,7 +61,11 @@ TEST(SceneRegistryTest, RegistryHasExpectedCount) {
 	// Options tab demos (Sampler/Spectral/Exposure+Tone mapping/Denoiser) -
 	// each reuses an existing scene's build functions rather than being new
 	// geometry, see their own comment block in get_builtin_scene_registry().
-	EXPECT_EQ(builtin_scene_count(), 117);
+	//
+	// 117 -> 118: B24 added, a frosted (rough_dielectric) sibling of B23's
+	// dispersive prism - closes the "no rough_dielectric dispersion" gap
+	// from docs/FEATURE_INVENTORY.md.
+	EXPECT_EQ(builtin_scene_count(), 118);
 }
 
 TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem) {
@@ -590,7 +594,7 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // double-checking the GUI/error-hint text that mentions specific scene
 // counts or ID ranges by hand.
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
-	constexpr int kGuiSceneCount = 117;
+	constexpr int kGuiSceneCount = 118;
 	EXPECT_EQ(builtin_scene_count(), kGuiSceneCount)
 		<< "Registry size changed -- update kGuiSceneCount here to match.";
 }
