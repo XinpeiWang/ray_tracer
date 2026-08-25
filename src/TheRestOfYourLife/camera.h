@@ -55,8 +55,9 @@
 
 
 // Which of this codebase's ported pbrt-v4 sampler classes (src/shared/
-// sobol_sampler.h, stratified_sampler.h, pmj02_sampler.h, halton_sampler.h)
-// drives ray_color()'s random decisions this render. Sobol (this project's
+// sobol_sampler.h, stratified_sampler.h, pmj02_sampler.h, halton_sampler.h,
+// independent_sampler.h) drives ray_color()'s random decisions this
+// render. Sobol (this project's
 // long-standing default, matching pbrt-v4's ZSobol-adjacent quality without
 // the extra Morton-curve bookkeeping) stays the default so existing renders
 // are pixel-identical unless --sampler is passed - see launcher_args.h's
