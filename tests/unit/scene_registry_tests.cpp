@@ -56,7 +56,12 @@ TEST(SceneRegistryTest, RegistryHasExpectedCount) {
 	// Models) instead of only the generic auto-discovered "Custom Scenes"
 	// bucket - see pbrt_scene_registry::build_curated_pbrt_scene_descriptor()
 	// and its call sites in get_builtin_scene_registry().
-	EXPECT_EQ(builtin_scene_count(), 113);
+	//
+	// 113 -> 117: I1-I4 added, a new Education category of curated Render
+	// Options tab demos (Sampler/Spectral/Exposure+Tone mapping/Denoiser) -
+	// each reuses an existing scene's build functions rather than being new
+	// geometry, see their own comment block in get_builtin_scene_registry().
+	EXPECT_EQ(builtin_scene_count(), 117);
 }
 
 TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem) {
@@ -72,14 +77,15 @@ TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem)
 		EXPECT_EQ(all[i].id, builtins[i].id);
 		EXPECT_STREQ(all[i].name, builtins[i].name);
 	}
-	// No built-in scene uses category CustomScenes ("I"), so loaded scenes
-	// start numbering at I1 - see pbrt_scene_registry::append()'s
-	// user_number comment in scene_registry.h.
+	// No built-in scene uses category CustomScenes ("J" - Education now
+	// takes "I", see SceneCategories::kAll), so loaded scenes start
+	// numbering at J1 - see pbrt_scene_registry::append()'s user_number
+	// comment in scene_registry.h.
 	int user_number = 1;
 	for (std::size_t i = builtins.size(); i < all.size(); ++i) {
 		EXPECT_STREQ(all[i].category, SceneCategories::CustomScenes)
 			<< "a scene past the built-ins should be a loaded one";
-		EXPECT_EQ(all[i].id, "I" + std::to_string(user_number++))
+		EXPECT_EQ(all[i].id, "J" + std::to_string(user_number++))
 			<< "loaded scene ids must continue the CustomScenes sequence without gaps";
 	}
 }
@@ -584,7 +590,7 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // double-checking the GUI/error-hint text that mentions specific scene
 // counts or ID ranges by hand.
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
-	constexpr int kGuiSceneCount = 113;
+	constexpr int kGuiSceneCount = 117;
 	EXPECT_EQ(builtin_scene_count(), kGuiSceneCount)
 		<< "Registry size changed -- update kGuiSceneCount here to match.";
 }

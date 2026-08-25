@@ -176,6 +176,14 @@ namespace SceneNames {
     constexpr const char* PixelFilterBoxPbrtExample           = "Pixel Filter: Box (pbrt example)";
 
     constexpr const char* KillerooSimplePbrtExample           = "Killeroo (pbrt example)";
+
+    // Education category - each reuses an existing scene's geometry (see
+    // that entry's own comment in scene_registry.h), so the name says what
+    // Render Options control it demonstrates rather than what's in frame.
+    constexpr const char* SamplerComparison    = "Sampler Comparison (Low Sample Count)";
+    constexpr const char* SpectralDispersionEducation = "Spectral Rendering: Prism Dispersion";
+    constexpr const char* ExposureToneMapping  = "Exposure & Tone Mapping (HDR Sky)";
+    constexpr const char* DenoiserComparison   = "GPU Denoiser: Before & After";
 } // namespace SceneNames
 
 // -----------------------------------------------------------------------
@@ -200,6 +208,13 @@ namespace SceneCategories {
     constexpr const char* Geometry   = "Geometry";     // shape primitives
     constexpr const char* Models     = "Models";       // single imported meshes
     constexpr const char* LargeScene = "Large Scenes"; // full textured environments
+    // Curated demos of the Render Options tab's own controls (Sampler,
+    // Spectral rendering, Exposure, Tone mapping, OptiX AI denoiser) - each
+    // entry reuses an existing scene's geometry (same technique B23/F3 already
+    // use to share content with another entry) rather than being new content
+    // in its own right, so the description/technique-note is the point: which
+    // control to try, and why this particular scene shows it clearly.
+    constexpr const char* Education  = "Education";
     // Scenes loaded from .pbrt files found on disk rather than compiled in.
     // Unlike every category above it, this one is populated at runtime and is
     // legitimately empty when the user has no scene collection installed -
@@ -212,11 +227,12 @@ namespace SceneCategories {
     // example is just as "yours" as anything in the other categories).
     constexpr const char* CustomScenes = "Custom Scenes";
 
-    // Display order for the GUI's category tabs. CustomScenes is last so the
-    // built-in tabs never shift position when a scene folder appears.
+    // Display order for the GUI's category tabs. Education sits after the
+    // other compiled-in categories and before CustomScenes, which stays last
+    // so the built-in tabs never shift position when a scene folder appears.
     constexpr const char* kAll[] = {
         Basics, Materials, Lights, Cameras, Volumes, Geometry, Models, LargeScene,
-        CustomScenes
+        Education, CustomScenes
     };
     constexpr std::size_t kAllCount = sizeof(kAll) / sizeof(kAll[0]);
 
@@ -224,9 +240,11 @@ namespace SceneCategories {
     // like "B10" (10th Materials scene) - see scene_registry.h's SceneDescriptor::id.
     // Parallel array rather than a struct-of-two-fields because kAll is
     // itself already consumed as a bare array by existing GUI/test code
-    // that shouldn't need to change shape for this.
+    // that shouldn't need to change shape for this. Education taking 'I'
+    // pushes CustomScenes from 'I' to 'J' - letter_for_category() below
+    // derives both purely from position, so nothing else needs to change.
     constexpr char kAllLetters[] = {
-        'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'
+        'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'
     };
     static_assert(sizeof(kAllLetters) / sizeof(kAllLetters[0]) == kAllCount,
                   "kAllLetters must have exactly one entry per kAll category");

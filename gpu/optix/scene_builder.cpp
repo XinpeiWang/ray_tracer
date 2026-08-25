@@ -5790,6 +5790,43 @@ bool build_scene(
 								break;
 							}
 
+							// Education (I1/I2 - legacy_id 132/133 - are CPU-only, matching the
+							// Render Options controls they demonstrate, so they have no case here
+							// at all and fall through to default:'s "not implemented for GPU"
+							// message if ever requested - see scene_registry.h's own comment on
+							// those two entries.)
+
+							case 134: {  // Education: Exposure & Tone Mapping (same world as C1 HDRI Sky - see that entry's own comment)
+								build_hdri_sky_world_gpu(scene);
+								// Identical camera setup to case 24 (C1) - same CameraConfig row,
+								// reused verbatim rather than re-derived.
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 0.0f, 2.3f, 15.0f);
+								const float3 lookat   = make_float3(0.0f, 1.0f, 0.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 42.0f, aspect, 1.0f, camera_params);
+								if (out_camera_extra) {
+									out_camera_extra->backgroundColor = make_float3(0.4f, 0.5f, 0.53f);
+								}
+								break;
+							}
+
+							case 135: {  // Education: GPU Denoiser Before & After (same world as A1 Cornell Box - see that entry's own comment)
+								build_cornell_box(scene);
+								// Identical camera setup to case 0 (A1) - same CameraConfig row
+								// (CameraMode::UserControlled), reused verbatim rather than re-derived.
+								const float3 lookfrom = make_float3(
+									static_cast<float>(cam_x),
+									static_cast<float>(cam_y),
+									static_cast<float>(cam_z)
+								);
+								const float3 lookat = make_float3(278.0f, 278.0f, 278.0f);
+								const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);
+								break;
+							}
+
 							default: {
 									// A scene loaded from a .pbrt file has no case of its
 									// own - it is not known at compile time. The CPU

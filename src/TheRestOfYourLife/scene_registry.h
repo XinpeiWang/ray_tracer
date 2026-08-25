@@ -1612,6 +1612,79 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         },
 
         // ---------------------------------------------------------------
+        // Education (I1-I4): curated demos of the Render Options tab's own
+        // controls (Sampler, Spectral rendering, Exposure, Tone mapping,
+        // OptiX AI denoiser). Each reuses an existing scene's build
+        // functions and CameraConfig verbatim - same technique B23/F3 use
+        // to share content with another entry - rather than being new
+        // renderer content: the description/technique-note is the point,
+        // not the geometry. No entry for OptiX validation mode - it has no
+        // visual effect by design (extra device-side checks only), so
+        // "which scene shows the difference" doesn't apply; I4's note says
+        // so instead.
+        // ---------------------------------------------------------------
+        {
+            // Same world/lights as A1 (Cornell Box) - only the id, category,
+            // description, and recommended_spp differ. 16 spp (vs A1's 100)
+            // is deliberately low: at that count, different Sampler choices
+            // (Sobol/Z-Sobol/Stratified/Halton/...) leave visibly different
+            // clumping in the soft shadow penumbra. CPU-only, matching the
+            // Sampler control's own tooltip (no effect on GPU) - so no GPU
+            // case is needed here.
+            "I1", 132, SceneNames::SamplerComparison, SceneCategories::Education,
+            "Cornell box rendered at a deliberately low 16 spp so different Sampler choices (Render Options tab) leave visibly different noise/clumping in the soft shadow.",
+            "Fast", 16, false, false,
+            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
+            build_cornell_box,
+            build_cornell_box_lights
+        },
+        {
+            // Same world/lights/punctual-lights as B23 (Glass Prism
+            // Dispersion) - the prism fan is already the clearest possible
+            // demonstration of --spectral in this registry, so this entry
+            // just re-frames it under Education with a description pointing
+            // at the Spectral rendering checkbox instead of duplicating the
+            // geometry. CPU-only, matching --spectral's own tooltip.
+            "I2", 133, SceneNames::SpectralDispersionEducation, SceneCategories::Education,
+            "Same glass prism as B23: white light only fans into a visible spectrum with Spectral rendering (Render Options tab) switched on - off, every wavelength refracts by the same fixed amount.",
+            "Medium", 200, false, false,
+            { 30, 75, 60, -400,  75, 75, 250,  0, 0, 0, CameraMode::UserControlled },
+            build_prism_dispersion,
+            no_lights,
+            nullptr,
+            build_prism_dispersion_punct
+        },
+        {
+            // Same world/lights/sky as C1 (HDRI Sky) - its bright procedural
+            // sky gradient against a shadowed diffuse sphere is a wide
+            // enough dynamic range to make both Exposure and Tone mapping
+            // (Render Options tab) visibly change the image. GPU-compatible:
+            // see gpu/optix/scene_builder.cpp's case 134 (a near-verbatim
+            // copy of case 24, C1's own GPU case).
+            "I3", 134, SceneNames::ExposureToneMapping, SceneCategories::Education,
+            "Same HDR sky gradient as C1: try raising/lowering Exposure, then compare ACES/Reinhard/None Tone mapping (both on the Render Options tab) against this scene's bright sky vs. shadowed sphere.",
+            "Medium", 200, false, true,
+            { 42, 0, 2.3, 15,  0, 1, 0,  0, 0, 0 },
+            build_hdri_sky_world,
+            no_lights,
+            build_hdri_sky,
+            nullptr
+        },
+        {
+            // Same world/lights as A1 (Cornell Box), at a deliberately low
+            // 32 spp (vs A1's 100) so it's genuinely noisy on the GPU
+            // recursive backend before denoising. GPU-compatible: see
+            // gpu/optix/scene_builder.cpp's case 135 (a near-verbatim copy
+            // of case 0, A1's own GPU case).
+            "I4", 135, SceneNames::DenoiserComparison, SceneCategories::Education,
+            "Cornell box at a deliberately low 32 spp - render once with the OptiX AI denoiser (Render Options tab, GPU recursive only) off, once on, and compare. The neighboring OptiX validation mode checkbox has no visual effect either way - it only adds debugging checks.",
+            "Fast", 32, false, true,
+            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0, CameraMode::UserControlled },
+            build_cornell_box,
+            build_cornell_box_lights
+        },
+
+        // ---------------------------------------------------------------
         // Curated pbrt_scenes/*.pbrt example scenes, under their real topic
         // tab instead of only the generic "Custom Scenes" bucket every
         // loaded .pbrt file auto-discovers into (see

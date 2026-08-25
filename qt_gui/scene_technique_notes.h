@@ -17,9 +17,11 @@
 // renderer behavior - the same reasoning every other info-icon tooltip is
 // GUI-only text, never round-tripped through the DLL.
 //
-// Scoped to self-contained scenes only (requires_files == false): the 45
-// compiled-in procedural scenes (src/TheRestOfYourLife/scenes*.h) plus the
-// 31 curated pbrt-example scenes (bundled pbrt_scenes/*.pbrt files,
+// Scoped to self-contained scenes only (requires_files == false): the 49
+// compiled-in procedural scenes (src/TheRestOfYourLife/scenes*.h, including
+// the 4 Education entries that reuse another scene's geometry - see their
+// own comment in scene_registry.h) plus the 31 curated pbrt-example scenes
+// (bundled pbrt_scenes/*.pbrt files,
 // registered via pbrt_scene_registry::build_curated_pbrt_scene_descriptor()
 // in scene_registry.h, which hardcodes requires_files=false). A scene id
 // with no entry here - every "Requires External Files" scene - falls back
@@ -152,6 +154,14 @@ inline const QHash<QString, QString>& notes() {
 		// Models (G25) - curated pbrt example
 		// ---------------------------------------------------------------
 		{"G25", QObject::tr(R"note(The classic pbrt-v4 "killeroo" statue example scene - a full end-to-end scene loaded from its own .pbrt file (geometry, materials, lights, camera all file-driven) rather than compiled directly into this renderer, the same file format and loading path a user's own custom pbrt scenes go through.)note")},
+
+		// ---------------------------------------------------------------
+		// Education (I1-I4) - Render Options tab demos
+		// ---------------------------------------------------------------
+		{"I1", QObject::tr(R"note(The exact same Cornell box as A1, rendered at a deliberately low 16 samples per pixel instead of the usual 100 - too few to converge cleanly. Switch Sampler on the Render Options tab (Sobol, Z-Sobol, Padded Sobol, Stratified, PMJ02BN, Halton) and re-render: every choice is a different low-discrepancy sequence for spreading those 16 samples across the pixel and the light, so the noise/clumping pattern in the soft shadow's penumbra changes with it even though nothing else about the scene does. CPU default path tracer only - the Sampler control has no effect on GPU.)note")},
+		{"I2", QObject::tr(R"note(The same glass prism as B23 (Spectral Dispersion), re-framed here as the Spectral rendering checkbox's own demo. With Spectral rendering (Render Options tab) switched off, the renderer tracks only red/green/blue and every wavelength bends by the same fixed amount through the glass; switched on, the renderer tracks real per-ray wavelengths and the prism's index of refraction genuinely varies with wavelength, fanning white light into a visible spectrum the same way a physical prism does. CPU default path tracer only.)note")},
+		{"I3", QObject::tr(R"note(The same HDR sky gradient as C1 (HDRI Sky): a bright procedural sky behind a diffuse sphere sitting in its own shadow - real brightness values from near-black to far past what a screen can display in one image. Two Render Options tab controls act on that range differently: Exposure is a flat multiplier applied before anything else, so raising it brightens the whole image evenly, sphere and sky alike; Tone mapping is the curve applied after that multiplier to compress the result into a displayable range - ACES rolls the sky's brightest highlights off gently, Reinhard compresses harder, and None just clips them to flat white. Try each Tone mapping choice at a couple of different Exposure values to see the two controls act independently. Works on both CPU and GPU.)note")},
+		{"I4", QObject::tr(R"note(The same Cornell box as A1, rendered at a deliberately low 32 samples per pixel so it's genuinely grainy before any cleanup - render it once with the OptiX AI denoiser (Render Options tab) off and once with it on. The denoiser is a machine-learning model that recognizes that speckle pattern (guided by the scene's own albedo and normal buffers) and smooths it away without tracing a single additional ray, trading a little fine detail for a dramatically cleaner-looking image at the same sample count. GPU recursive backend only. The neighboring OptiX validation mode checkbox is a different kind of control worth knowing about here too: it only turns on extra device-side correctness checks with a real performance cost - it never changes the rendered image, so there's nothing to visually compare for that one.)note")},
 	};
 	return kNotes;
 }
