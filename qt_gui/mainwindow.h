@@ -1142,6 +1142,11 @@ private:
 	QToolButton* createInfoIcon(const QString &helpText);
 	QWidget* labelWithInfo(const QString &labelText, const QString &helpText);
 	QWidget* checkboxWithInfo(QCheckBox *checkBox, const QString &helpText);
+	// Rewrites m_sceneTechInfoIcon's tooltip for `sceneId` (see
+	// scene_technique_notes.h) - called from refreshSceneInfoLabel()
+	// wherever wrapTooltipHtml() is already reachable, since that formatter
+	// is file-local to mainwindow_style.cpp.
+	void updateSceneTechInfoIcon(const QString &sceneId);
 	// A subtle "elevated card" drop shadow (QSS alone cannot do box-shadow) -
 	// neutral black at low alpha rather than theme-tinted, the same choice
 	// every real elevation system (Material, Fluent, CSS itself) makes,
@@ -1388,6 +1393,10 @@ private:
 	// cascading logic. No-op (logs a warning) if `id` isn't a real scene id.
 	void selectSceneById(const QString &id);
 	QLabel *m_sceneInfoLabel;           // Scene description and performance info
+	// Unlike every other info icon (fixed tooltip at construction), this
+	// one's tooltip is rewritten per selection by refreshSceneInfoLabel() -
+	// see scene_technique_notes.h for the per-scene content it reads from.
+	QToolButton *m_sceneTechInfoIcon = nullptr;
 
 	// Rebuilds m_sceneInfoLabel's text (description/performance/SPP/GPU-
 	// support, plus the requires-files/CPU-only warning badges) for

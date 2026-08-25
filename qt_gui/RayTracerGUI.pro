@@ -42,6 +42,7 @@ HEADERS += \
 	palette_file.h \
 	render_output_parser.h \
 	scene_metadata_client.h \
+	scene_technique_notes.h \
 	theme.h \
 	win_taskbar.h
 

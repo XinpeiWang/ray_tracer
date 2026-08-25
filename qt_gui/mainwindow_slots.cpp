@@ -681,6 +681,7 @@ void MainWindow::refreshSceneInfoLabel() {
 	const int index = m_sceneCombo->currentIndex();
 	if (index < 0) return;
 	const QString scene_id = m_sceneCombo->itemData(index).toString();
+	updateSceneTechInfoIcon(scene_id);
 	const QString description = SceneMetadataClient::sceneDescription(scene_id);
 	if (description.isEmpty()) return;
 
@@ -719,6 +720,7 @@ void MainWindow::onSceneChanged(int index) {
 			m_sceneInfoLabel->setText(term.isEmpty()
 				? "No scenes in this category."
 				: QString("No scenes match \"%1\" in this category.").arg(term));
+			updateSceneTechInfoIcon(QString());
 		}
 		return;
 	}

@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "icon_tint.h"
+#include "scene_technique_notes.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -1079,5 +1080,17 @@ QWidget* MainWindow::checkboxWithInfo(QCheckBox *checkBox, const QString &helpTe
 	rowLayout->addWidget(createInfoIcon(helpText));
 	rowLayout->addStretch();
 	return row;
+}
+
+// Rewrites m_sceneTechInfoIcon's tooltip for the given scene - the one info
+// icon in this app whose content changes after construction instead of
+// being fixed for its whole lifetime (see scene_technique_notes.h for the
+// per-scene text). Routed through here rather than called directly from
+// refreshSceneInfoLabel() (mainwindow_slots.cpp) because wrapTooltipHtml()
+// is file-local to this translation unit, same reasoning createInfoIcon()
+// itself is the only public entry point into it.
+void MainWindow::updateSceneTechInfoIcon(const QString &sceneId) {
+	if (!m_sceneTechInfoIcon) return;
+	m_sceneTechInfoIcon->setToolTip(wrapTooltipHtml(scene_technique_notes::forScene(sceneId)));
 }
 

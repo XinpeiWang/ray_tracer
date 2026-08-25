@@ -423,6 +423,23 @@ void MainWindow::createBasicTab() {
 	m_sceneInfoLabel->setObjectName("sceneInfo");
 	sceneGroupLayout->addWidget(m_sceneInfoLabel);
 
+	// Rendering-technique icon: same look as every other info icon, but its
+	// tooltip is rewritten per scene by refreshSceneInfoLabel() rather than
+	// fixed at construction - see scene_technique_notes.h. The placeholder
+	// text here is overwritten before the window is ever shown (the initial
+	// onSceneChanged(0) call further down the constructor triggers it).
+	{
+		QWidget *techRow = new QWidget(basicTab);
+		QHBoxLayout *techRowLayout = new QHBoxLayout(techRow);
+		techRowLayout->setContentsMargins(0, 0, 0, 0);
+		techRowLayout->setSpacing(4);
+		techRowLayout->addWidget(new QLabel("Rendering Technique:", techRow));
+		m_sceneTechInfoIcon = createInfoIcon("Select a scene to see the rendering technique it demonstrates.");
+		techRowLayout->addWidget(m_sceneTechInfoIcon);
+		techRowLayout->addStretch();
+		sceneGroupLayout->addWidget(techRow);
+	}
+
 	connect(m_sceneCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
 			this, &MainWindow::onSceneChanged);
 
