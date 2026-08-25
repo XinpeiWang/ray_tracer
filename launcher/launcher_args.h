@@ -118,10 +118,13 @@ struct LaunchArgs {
 	// scope cut as exposure/sampler.
 	std::string tonemap     = "aces";
 	bool video_mode         = false;
-	// Stochastic Progressive Photon Mapping - a separate CPU-only render
-	// mode (see cpu_renderer/cpu_interface.h's cpu_render_main_sppm() doc
-	// comment), not a flag on the existing --cpu/--gpu path tracer. Takes
-	// priority over use_gpu/force_cpu when set (main.cpp checks it first).
+	// Stochastic Progressive Photon Mapping - a separate render mode (see
+	// cpu_renderer/cpu_interface.h's cpu_render_main_sppm() doc comment for
+	// CPU, gpu/optix/optix_interface.cpp's optix_render_main_sppm() for
+	// GPU), not a flag on the existing --cpu/--gpu path tracer -- --gpu
+	// selects which SPPM backend runs, same as it does for the path tracer.
+	// Takes priority over use_gpu/force_cpu when set (main.cpp checks it
+	// first).
 	bool   use_sppm         = false;
 	int    sppm_iterations  = kDefaultSppmIterations;
 	int    sppm_photons     = kDefaultSppmPhotons;
@@ -523,9 +526,11 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "               caustic/glass scenes. CPU: verified end-to-end on scene 11\n"
 					  << "               (Cornell Rough Glass); other scenes are unverified and only\n"
 					  << "               support lambertian + delta-BSDF materials. GPU (--sppm --gpu):\n"
-					  << "               Phase 1, scene 11 ONLY (lambertian + rough-dielectric, area\n"
-					  << "               lights only) -- any other scene falls back to an error, use\n"
-					  << "               CPU SPPM (--sppm without --gpu) instead.\n"
+					  << "               capability-checked per scene -- Lambertian/DiffuseLight,\n"
+					  << "               RoughDielectric, Metal, Dielectric, Conductor, RoughMetal, and\n"
+					  << "               DiffuseTransmission are supported (area lights only); any scene\n"
+					  << "               using another material falls back to an error, use CPU SPPM\n"
+					  << "               (--sppm without --gpu) instead.\n"
 					  << "  --sppm-iterations N: SPPM iteration count (default " << kDefaultSppmIterations << ")\n"
 					  << "  --sppm-photons N   : Photons shot per SPPM iteration (default " << kDefaultSppmPhotons << ")\n"
 					  << "  --bdpt     : Render with Bidirectional Path Tracing instead of the path\n"
