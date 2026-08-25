@@ -541,7 +541,7 @@ MainWindow::MainWindow(QWidget *parent)
 	// Create shared wheel filter (blocks accidental scroll on all controls)
 	m_wheelFilter = new WheelIgnoreFilter(this);
 
-	setWindowTitle("Ray Tracer - Path Tracing Renderer");
+	setWindowTitle(tr("Ray Tracer - Path Tracing Renderer"));
 	setMinimumSize(600, 500);
 
 	// Auto-adjust initial size based on screen resolution
@@ -585,7 +585,7 @@ MainWindow::MainWindow(QWidget *parent)
 		if (icon.isNull()) icon = qApp->windowIcon();
 		if (icon.isNull()) icon = style()->standardIcon(QStyle::SP_ComputerIcon);
 		m_trayIcon = new QSystemTrayIcon(icon, this);
-		m_trayIcon->setToolTip("Ray Tracer");
+		m_trayIcon->setToolTip(tr("Ray Tracer"));
 		// Shown for the app's whole lifetime. Showing it lazily instead (only
 		// around a render, to avoid parking a do-nothing icon in the tray) was
 		// tried and reverted, but NOT because it was proven broken: after the
@@ -745,7 +745,7 @@ void MainWindow::setupUI() {
 	// colour, so its icon takes the same role - a body-coloured icon beside
 	// accent-coloured bold text reads as orphaned. This used to be a second
 	// hand-authored SVG with the accent baked in; tinting made it unnecessary.
-	m_renderButton = new QPushButton("START &RENDER", this);
+	m_renderButton = new QPushButton(tr("START &RENDER"), this);
 	icon_tint::apply(m_renderButton, ":/icons/render.svg",
 	                 icon_tint::Role::Primary, m_activeTheme.accentPrimary);
 	// Singles this out as the primary action in the stylesheet (2px accent
@@ -755,8 +755,8 @@ void MainWindow::setupUI() {
 	// The style's default 16px icon is dwarfed by a 50px-tall button with
 	// 13pt bold text; 20px sits correctly against the cap height.
 	m_renderButton->setIconSize(QSize(20, 20));
-	m_renderButton->setToolTip("Render the selected scene with the current settings\n"
-	                           "(queues behind it instead if a render is already running)");
+	m_renderButton->setToolTip(tr("Render the selected scene with the current settings\n"
+	                           "(queues behind it instead if a render is already running)"));
 	connect(m_renderButton, &QPushButton::clicked, this, &MainWindow::onRenderClicked);
 	// It's the app's one primary call-to-action, so it gets the strongest
 	// elevation and the widest hover/press lift range of anything in the UI.
@@ -766,14 +766,14 @@ void MainWindow::setupUI() {
 
 	// Stop button - a destructive action (discards the running render's
 	// output), so it takes the danger styling rather than an ordinary button.
-	m_stopButton = new QPushButton("S&TOP RENDER", this);
+	m_stopButton = new QPushButton(tr("S&TOP RENDER"), this);
 	icon_tint::apply(m_stopButton, ":/icons/stop.svg",
 	                 icon_tint::Role::Danger, m_activeTheme.error);
 	m_stopButton->setObjectName("dangerAction");
 	m_stopButton->setMinimumHeight(50);
 	m_stopButton->setIconSize(QSize(20, 20));
 	m_stopButton->setEnabled(false);
-	m_stopButton->setToolTip("Stop the running render and discard its output");
+	m_stopButton->setToolTip(tr("Stop the running render and discard its output"));
 	connect(m_stopButton, &QPushButton::clicked, this, &MainWindow::onStopClicked);
 	applyElevation(m_stopButton, /*blurRadius=*/14, /*offsetY=*/3, /*alpha=*/90);
 	m_stopButton->installEventFilter(

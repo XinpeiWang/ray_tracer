@@ -238,13 +238,13 @@ void MainWindow::createBasicTab() {
 	const int sceneCount = SceneMetadataClient::sceneCount();
 	if (sceneCount <= 0) {
 #ifdef Q_OS_WIN
-		QMessageBox::critical(basicTab, "Scene Metadata Unavailable",
-			"Could not load scene_metadata.dll, so the scene list is empty. "
-			"Make sure scene_metadata.dll is present alongside RayTracerGUI.exe.");
+		QMessageBox::critical(basicTab, tr("Scene Metadata Unavailable"),
+			tr("Could not load scene_metadata.dll, so the scene list is empty. "
+			"Make sure scene_metadata.dll is present alongside RayTracerGUI.exe."));
 #else
-		QMessageBox::critical(basicTab, "Scene Metadata Unavailable",
-			"Could not load scene_metadata.dylib/.so, so the scene list is empty. "
-			"Make sure scene_metadata.dylib/.so is present alongside RayTracerGUI.");
+		QMessageBox::critical(basicTab, tr("Scene Metadata Unavailable"),
+			tr("Could not load scene_metadata.dylib/.so, so the scene list is empty. "
+			"Make sure scene_metadata.dylib/.so is present alongside RayTracerGUI."));
 #endif
 	}
 
@@ -267,13 +267,13 @@ void MainWindow::createBasicTab() {
 			if (SceneMetadataClient::sceneRequiresFiles(id)) ++requiresFilesCount;
 			else ++selfContainedCount;
 		}
-		const int selfTab = m_sceneAvailabilityTabs->addTab("Self-Contained");
+		const int selfTab = m_sceneAvailabilityTabs->addTab(tr("Self-Contained"));
 		m_sceneAvailabilityTabs->setTabToolTip(selfTab,
-			QString("%1 scene%2 - no extra downloads needed")
+			tr("%1 scene%2 - no extra downloads needed")
 				.arg(selfContainedCount).arg(selfContainedCount == 1 ? "" : "s"));
-		const int filesTab = m_sceneAvailabilityTabs->addTab("Requires External Files");
+		const int filesTab = m_sceneAvailabilityTabs->addTab(tr("Requires External Files"));
 		m_sceneAvailabilityTabs->setTabToolTip(filesTab,
-			QString("%1 scene%2 - needs assets not included in a fresh checkout")
+			tr("%1 scene%2 - needs assets not included in a fresh checkout")
 				.arg(requiresFilesCount).arg(requiresFilesCount == 1 ? "" : "s"));
 	}
 	sceneGroupLayout->addWidget(m_sceneAvailabilityTabs);
@@ -305,14 +305,14 @@ void MainWindow::createBasicTab() {
 	// images for it - see populateSceneGrid()'s own comment.
 	QHBoxLayout *searchRow = new QHBoxLayout();
 	m_sceneSearchBox = new QLineEdit(basicTab);
-	m_sceneSearchBox->setPlaceholderText("Search scenes by name or id...");
+	m_sceneSearchBox->setPlaceholderText(tr("Search scenes by name or id..."));
 	m_sceneSearchBox->setClearButtonEnabled(true);
 	searchRow->addWidget(m_sceneSearchBox, 1);
 
 	m_sceneViewToggle = new QToolButton(basicTab);
 	m_sceneViewToggle->setCheckable(true);
-	m_sceneViewToggle->setText("Grid");
-	m_sceneViewToggle->setToolTip("Switch between the dropdown list and a thumbnail gallery grid");
+	m_sceneViewToggle->setText(tr("Grid"));
+	m_sceneViewToggle->setToolTip(tr("Switch between the dropdown list and a thumbnail gallery grid"));
 	searchRow->addWidget(m_sceneViewToggle);
 	sceneGroupLayout->addLayout(searchRow);
 
@@ -323,15 +323,15 @@ void MainWindow::createBasicTab() {
 	sceneRow->setContentsMargins(0, 0, 0, 0);
 	m_sceneCombo = new QComboBox(basicTab);
 	styleComboBox(m_sceneCombo);
-	sceneRow->addWidget(new QLabel("Scene:"));
+	sceneRow->addWidget(new QLabel(tr("Scene:")));
 	sceneRow->addWidget(createInfoIcon(
-		"Every render starts from a scene - a description of what's in the "
+		tr("Every render starts from a scene - a description of what's in the "
 		"world: the geometry (shapes and meshes), materials (what surfaces "
 		"are made of), lights, and a camera.\n\n"
 		"This app ships with dozens of built-in scenes covering the basics "
 		"(a simple Cornell box) up through complex conductor/dielectric "
 		"materials, volumetric fog, and real photogrammetry-scale models - "
-		"pick one to render, or browse by category using the tabs above."));
+		"pick one to render, or browse by category using the tabs above.")));
 	sceneRow->addWidget(m_sceneCombo, 1);
 	m_sceneViewStack->addWidget(comboPage);
 
@@ -349,10 +349,10 @@ void MainWindow::createBasicTab() {
 	m_sceneGrid->setWordWrap(true);
 	m_sceneGrid->setMinimumHeight(260);
 	gridPageLayout->addWidget(m_sceneGrid, 1);
-	m_generateThumbnailsButton = new QPushButton("Generate Thumbnails", gridPage);
+	m_generateThumbnailsButton = new QPushButton(tr("Generate Thumbnails"), gridPage);
 	m_generateThumbnailsButton->setToolTip(
-		"Renders a small preview image for each self-contained Basics/Materials/Cameras\n"
-		"scene not already cached. CPU-only, low resolution - takes a while the first time.");
+		tr("Renders a small preview image for each self-contained Basics/Materials/Cameras\n"
+		"scene not already cached. CPU-only, low resolution - takes a while the first time."));
 	gridPageLayout->addWidget(m_generateThumbnailsButton);
 	m_sceneViewStack->addWidget(gridPage);
 
@@ -433,8 +433,8 @@ void MainWindow::createBasicTab() {
 		QHBoxLayout *techRowLayout = new QHBoxLayout(techRow);
 		techRowLayout->setContentsMargins(0, 0, 0, 0);
 		techRowLayout->setSpacing(4);
-		techRowLayout->addWidget(new QLabel("Rendering Technique:", techRow));
-		m_sceneTechInfoIcon = createInfoIcon("Select a scene to see the rendering technique it demonstrates.");
+		techRowLayout->addWidget(new QLabel(tr("Rendering Technique:"), techRow));
+		m_sceneTechInfoIcon = createInfoIcon(tr("Select a scene to see the rendering technique it demonstrates."));
 		techRowLayout->addWidget(m_sceneTechInfoIcon);
 		techRowLayout->addStretch();
 		sceneGroupLayout->addWidget(techRow);
@@ -449,7 +449,7 @@ void MainWindow::createBasicTab() {
 	// One group instead of separate "Render Mode" + "Render Settings" boxes -
 	// they're all "how do I want this rendered" and splitting them just cost
 	// an extra group box's worth of border/title chrome for no real benefit.
-	QGroupBox *renderGroup = new QGroupBox("Render Settings", basicTab);
+	QGroupBox *renderGroup = new QGroupBox(tr("Render Settings"), basicTab);
 	styleGroupBox(renderGroup);
 	QFormLayout *renderLayout = new QFormLayout(renderGroup);
 	renderLayout->setVerticalSpacing(10);
@@ -457,66 +457,66 @@ void MainWindow::createBasicTab() {
 	renderLayout->setContentsMargins(15, 22, 15, 12);
 
 	m_modeCombo = new QComboBox(basicTab);
-	icon_tint::addItem(m_modeCombo, ":/icons/image.svg", "Render Single Image", {}, m_activeTheme.textBody);
-	icon_tint::addItem(m_modeCombo, ":/icons/video.svg", "Generate Video", {}, m_activeTheme.textBody);
+	icon_tint::addItem(m_modeCombo, ":/icons/image.svg", tr("Render Single Image"), {}, m_activeTheme.textBody);
+	icon_tint::addItem(m_modeCombo, ":/icons/video.svg", tr("Generate Video"), {}, m_activeTheme.textBody);
 	m_modeCombo->setCurrentIndex(0);
 	styleComboBox(m_modeCombo);
 	connect(m_modeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
 			this, &MainWindow::onModeChanged);
-	renderLayout->addRow("Output Mode:", m_modeCombo);
+	renderLayout->addRow(tr("Output Mode:"), m_modeCombo);
 
 	m_modeCombo->setToolTip(
-		"Single Image renders one frame.\n"
-		"Generate Video renders a camera path frame by frame and assembles an MP4.");
+		tr("Single Image renders one frame.\n"
+		"Generate Video renders a camera path frame by frame and assembles an MP4."));
 
 	m_renderModeCombo = new QComboBox(basicTab);
 #ifdef RT_GUI_HAVE_GPU
-	icon_tint::addItem(m_renderModeCombo, ":/icons/gpu.svg", "GPU (CUDA) - Fast", true, m_activeTheme.textBody);
+	icon_tint::addItem(m_renderModeCombo, ":/icons/gpu.svg", tr("GPU (CUDA) - Fast"), true, m_activeTheme.textBody);
 #endif
-	icon_tint::addItem(m_renderModeCombo, ":/icons/cpu.svg", "CPU - High Quality", false, m_activeTheme.textBody);
+	icon_tint::addItem(m_renderModeCombo, ":/icons/cpu.svg", tr("CPU - High Quality"), false, m_activeTheme.textBody);
 	styleComboBox(m_renderModeCombo);
 	// Tooltips carry what the label cannot: the actual trade-off, not a repeat
 	// of the visible text.
 #ifdef RT_GUI_HAVE_GPU
 	m_renderModeCombo->setToolTip(
-		"GPU: OptiX hardware ray tracing — typically orders of magnitude faster.\n"
+		tr("GPU: OptiX hardware ray tracing — typically orders of magnitude faster.\n"
 		"CPU: importance-sampled path tracer — supports every scene and material,\n"
-		"including the handful the GPU backend does not implement.");
+		"including the handful the GPU backend does not implement."));
 #else
 	// This build's CLI (ray_tracer, from root CMakeLists.txt) has no
 	// CUDA/OptiX support at all - see launcher/optix_stub.h - so GPU was
 	// never a real option here and isn't offered as one.
 	m_renderModeCombo->setToolTip(
-		"Importance-sampled CPU path tracer — supports every scene and material.\n"
-		"GPU rendering is not available in this build.");
+		tr("Importance-sampled CPU path tracer — supports every scene and material.\n"
+		"GPU rendering is not available in this build."));
 #endif
-	renderLayout->addRow(labelWithInfo("Renderer:",
-		"Both trace the exact same rays and produce the same image - the "
+	renderLayout->addRow(labelWithInfo(tr("Renderer:"),
+		tr("Both trace the exact same rays and produce the same image - the "
 		"difference is speed and hardware, not physics.\n\n"
 		"GPU (OptiX) uses NVIDIA's dedicated ray-tracing cores to trace "
 		"thousands of rays in parallel, typically far faster. CPU uses "
 		"ordinary processor cores instead: much slower, but works on any "
 		"machine and supports every material this app implements, "
-		"including a couple the GPU path hasn't caught up to yet."),
+		"including a couple the GPU path hasn't caught up to yet.")),
 		m_renderModeCombo);
 
 #ifdef RT_GUI_HAVE_GPU
 	m_gpuBackendCombo = new QComboBox(basicTab);
-	icon_tint::addItem(m_gpuBackendCombo, ":/icons/gpu.svg", "Recursive (Default)", false, m_activeTheme.textBody);
-	icon_tint::addItem(m_gpuBackendCombo, ":/icons/gpu.svg", "Wavefront (Experimental)", true, m_activeTheme.textBody);
+	icon_tint::addItem(m_gpuBackendCombo, ":/icons/gpu.svg", tr("Recursive (Default)"), false, m_activeTheme.textBody);
+	icon_tint::addItem(m_gpuBackendCombo, ":/icons/gpu.svg", tr("Wavefront (Experimental)"), true, m_activeTheme.textBody);
 	m_gpuBackendCombo->setCurrentIndex(0);
 	styleComboBox(m_gpuBackendCombo);
 	m_gpuBackendCombo->setToolTip(
-		"Recursive: one thread per pixel, the default GPU path tracer — broad, battle-tested coverage.\n"
+		tr("Recursive: one thread per pixel, the default GPU path tracer — broad, battle-tested coverage.\n"
 		"Wavefront: splits each bounce into separate queue-passed kernel launches — better GPU\n"
 		"utilization on complex/divergent scenes, but a newer, less exercised code path.\n"
-		"Only applies when Renderer is set to GPU.");
+		"Only applies when Renderer is set to GPU."));
 	// Starts disabled/enabled in sync with the initial Renderer selection (GPU,
 	// index 0/true above) - the connect() in the constructor keeps it synced
 	// afterwards whenever the user changes Renderer.
 	m_gpuBackendCombo->setEnabled(m_renderModeCombo->currentData().toBool());
-	renderLayout->addRow(labelWithInfo("GPU Backend:",
-		"Two different ways of organizing the SAME ray-tracing work on the "
+	renderLayout->addRow(labelWithInfo(tr("GPU Backend:"),
+		tr("Two different ways of organizing the SAME ray-tracing work on the "
 		"GPU.\n\n"
 		"Recursive traces one ray per thread from start to finish, "
 		"bouncing recursively - simple and battle-tested. Wavefront "
@@ -524,7 +524,7 @@ void MainWindow::createBasicTab() {
 		"(e.g. \"just hit glass\") into a batch and processes them "
 		"together - better use of the GPU's parallel hardware on complex "
 		"scenes with lots of different materials, at the cost of being a "
-		"newer, less-tested code path."),
+		"newer, less-tested code path.")),
 		m_gpuBackendCombo);
 #else
 	// No GPU support in this build (see above) - the combo simply doesn't
@@ -536,13 +536,13 @@ void MainWindow::createBasicTab() {
 
 	// Quality preset
 	m_qualityPresetCombo = new QComboBox(basicTab);
-	m_qualityPresetCombo->addItem("Draft (Very Fast)", 0);
-	m_qualityPresetCombo->addItem("Preview (Fast)", 1);
-	m_qualityPresetCombo->addItem("Good (Balanced)", 2);
-	m_qualityPresetCombo->addItem("High (Slow)", 3);
-	m_qualityPresetCombo->addItem("Ultra (Very Slow)", 4);
-	m_qualityPresetCombo->addItem("Maximum (Extreme)", 5);
-	m_qualityPresetCombo->addItem("Custom", 6);
+	m_qualityPresetCombo->addItem(tr("Draft (Very Fast)"), 0);
+	m_qualityPresetCombo->addItem(tr("Preview (Fast)"), 1);
+	m_qualityPresetCombo->addItem(tr("Good (Balanced)"), 2);
+	m_qualityPresetCombo->addItem(tr("High (Slow)"), 3);
+	m_qualityPresetCombo->addItem(tr("Ultra (Very Slow)"), 4);
+	m_qualityPresetCombo->addItem(tr("Maximum (Extreme)"), 5);
+	m_qualityPresetCombo->addItem(tr("Custom"), 6);
 	m_qualityPresetCombo->setCurrentIndex(2); // Default to Good
 	connect(m_qualityPresetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
 			this, &MainWindow::onQualityPresetChanged);
@@ -551,7 +551,7 @@ void MainWindow::createBasicTab() {
 	// quantitative; spell out what each actually sets. Keep in sync with
 	// onQualityPresetChanged()'s presetSamples/presetDepth tables.
 	m_qualityPresetCombo->setToolTip(
-		"Samples per pixel / max ray depth:\n"
+		tr("Samples per pixel / max ray depth:\n"
 		"  Draft    25 spp,  depth 10\n"
 		"  Preview  50 spp,  depth 20\n"
 		"  Good    100 spp,  depth 50\n"
@@ -559,49 +559,49 @@ void MainWindow::createBasicTab() {
 		"  Ultra  1000 spp,  depth 100\n"
 		"  Maximum 5000 spp, depth 100\n"
 		"Custom leaves the Advanced tab values untouched.\n"
-		"Render time scales roughly linearly with samples per pixel.");
-	renderLayout->addRow(labelWithInfo("Quality:",
-		"A shortcut that sets both Samples per Pixel and Max Ray Depth "
+		"Render time scales roughly linearly with samples per pixel."));
+	renderLayout->addRow(labelWithInfo(tr("Quality:"),
+		tr("A shortcut that sets both Samples per Pixel and Max Ray Depth "
 		"together, since they're the two dials that trade render time "
 		"for image quality.\n\n"
 		"Each step up roughly doubles the render time in exchange for a "
 		"cleaner, less noisy image - Draft is for quickly checking a "
 		"scene looks right, Ultra/Maximum are for a final image you'd "
-		"actually want to look at closely."),
+		"actually want to look at closely.")),
 		m_qualityPresetCombo);
 
 	// Resolution
 	m_resolutionCombo = new QComboBox(basicTab);
-	m_resolutionCombo->addItem("100 x 100 (Tiny)", QSize(100, 100));
-	m_resolutionCombo->addItem("200 x 200", QSize(200, 200));
-	m_resolutionCombo->addItem("400 x 400", QSize(400, 400));
-	m_resolutionCombo->addItem("512 x 512", QSize(512, 512));
-	m_resolutionCombo->addItem("600 x 600", QSize(600, 600));
-	m_resolutionCombo->addItem("800 x 800", QSize(800, 800));
-	m_resolutionCombo->addItem("1024 x 1024 (1K)", QSize(1024, 1024));
-	m_resolutionCombo->addItem("1080 x 1080 (Full HD)", QSize(1080, 1080));
-	m_resolutionCombo->addItem("1200 x 1200", QSize(1200, 1200));
-	m_resolutionCombo->addItem("1440 x 1440", QSize(1440, 1440));
-	m_resolutionCombo->addItem("1920 x 1920", QSize(1920, 1920));
-	m_resolutionCombo->addItem("2048 x 2048 (2K)", QSize(2048, 2048));
-	m_resolutionCombo->addItem("2560 x 2560", QSize(2560, 2560));
-	m_resolutionCombo->addItem("3840 x 3840 (4K)", QSize(3840, 3840));
-	m_resolutionCombo->addItem("4096 x 4096", QSize(4096, 4096));
+	m_resolutionCombo->addItem(tr("100 x 100 (Tiny)"), QSize(100, 100));
+	m_resolutionCombo->addItem(tr("200 x 200"), QSize(200, 200));
+	m_resolutionCombo->addItem(tr("400 x 400"), QSize(400, 400));
+	m_resolutionCombo->addItem(tr("512 x 512"), QSize(512, 512));
+	m_resolutionCombo->addItem(tr("600 x 600"), QSize(600, 600));
+	m_resolutionCombo->addItem(tr("800 x 800"), QSize(800, 800));
+	m_resolutionCombo->addItem(tr("1024 x 1024 (1K)"), QSize(1024, 1024));
+	m_resolutionCombo->addItem(tr("1080 x 1080 (Full HD)"), QSize(1080, 1080));
+	m_resolutionCombo->addItem(tr("1200 x 1200"), QSize(1200, 1200));
+	m_resolutionCombo->addItem(tr("1440 x 1440"), QSize(1440, 1440));
+	m_resolutionCombo->addItem(tr("1920 x 1920"), QSize(1920, 1920));
+	m_resolutionCombo->addItem(tr("2048 x 2048 (2K)"), QSize(2048, 2048));
+	m_resolutionCombo->addItem(tr("2560 x 2560"), QSize(2560, 2560));
+	m_resolutionCombo->addItem(tr("3840 x 3840 (4K)"), QSize(3840, 3840));
+	m_resolutionCombo->addItem(tr("4096 x 4096"), QSize(4096, 4096));
 	m_resolutionCombo->setCurrentIndex(5); // Default to 800x800
 	styleComboBox(m_resolutionCombo);
-	renderLayout->addRow(labelWithInfo("Resolution:",
-		"How many pixels wide and tall the final image is.\n\n"
+	renderLayout->addRow(labelWithInfo(tr("Resolution:"),
+		tr("How many pixels wide and tall the final image is.\n\n"
 		"Higher resolution means more individual pixels to trace - each "
 		"one independently sampled - so render time scales up roughly in "
 		"proportion to the pixel count (double the width AND height and "
 		"you're tracing about 4x as many pixels), independent of the "
-		"Samples per Pixel or Max Ray Depth settings."),
+		"Samples per Pixel or Max Ray Depth settings.")),
 		m_resolutionCombo);
 
 	layout->addWidget(renderGroup);
 
 	// Output group
-	QGroupBox *outputGroup = new QGroupBox("Output", basicTab);
+	QGroupBox *outputGroup = new QGroupBox(tr("Output"), basicTab);
 	styleGroupBox(outputGroup);
 	QVBoxLayout *outputLayout = new QVBoxLayout(outputGroup);
 	outputLayout->setSpacing(8);
@@ -616,27 +616,27 @@ void MainWindow::createBasicTab() {
 		"QLineEdit { font-size: 11pt; padding: 6px 8px; min-height: 32px; }"
 	);
 	m_outputPathEdit->setToolTip(
-		"Where the rendered image is written. A .png is always saved alongside\n"
-		"the raw .ppm, and it is the .png the Preview tab displays.");
+		tr("Where the rendered image is written. A .png is always saved alongside\n"
+		"the raw .ppm, and it is the .png the Preview tab displays."));
 	// Trailing ellipsis (U+2026, not three periods) marks an action that needs
 	// further input before it completes - a file dialog here. Buttons that act
 	// immediately (Open Output Folder, Clear Log) deliberately have none.
-	m_browseButton = new QPushButton("&Browse…", basicTab);
-	m_browseButton->setToolTip("Choose the output file name and location");
+	m_browseButton = new QPushButton(tr("&Browse…"), basicTab);
+	m_browseButton->setToolTip(tr("Choose the output file name and location"));
 	connect(m_browseButton, &QPushButton::clicked, [this]() {
-		QString path = QFileDialog::getSaveFileName(this, "Save Render Output",
-			m_outputPathEdit->text(), "PNG Image (*.png);;PPM Image (*.ppm)");
+		QString path = QFileDialog::getSaveFileName(this, tr("Save Render Output"),
+			m_outputPathEdit->text(), tr("PNG Image (*.png);;PPM Image (*.ppm)"));
 		if (!path.isEmpty()) {
 			m_outputPathEdit->setText(QDir::toNativeSeparators(path));
 		}
 	});
 
 	pathLayout->addWidget(createInfoIcon(
-		"Where the finished image is saved.\n\n"
+		tr("Where the finished image is saved.\n\n"
 		"A raw .ppm file is always written, and a .png copy is generated "
 		"alongside it automatically - the Preview tab always shows the "
 		".png, since most image viewers (and this app's own preview) "
-		"can't open .ppm directly."));
+		"can't open .ppm directly.")));
 	pathLayout->addWidget(m_outputPathEdit);
 	pathLayout->addWidget(m_browseButton);
 	outputLayout->addLayout(pathLayout);
@@ -659,7 +659,7 @@ void MainWindow::createBasicTab() {
 	scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 	scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
-	m_tabWidget->addTab(scrollArea, "Basic Settings");
+	m_tabWidget->addTab(scrollArea, tr("Basic Settings"));
 }
 
 void MainWindow::createAdvancedTab() {
@@ -668,7 +668,7 @@ void MainWindow::createAdvancedTab() {
 	layout->setSpacing(14);  // Space between group boxes
 	layout->setContentsMargins(12, 12, 12, 12);
 
-	QGroupBox *advancedGroup = new QGroupBox("Advanced Parameters", advancedTab);
+	QGroupBox *advancedGroup = new QGroupBox(tr("Advanced Parameters"), advancedTab);
 	styleGroupBox(advancedGroup);
 	QFormLayout *formLayout = new QFormLayout(advancedGroup);
 	formLayout->setVerticalSpacing(10);
@@ -680,11 +680,11 @@ void MainWindow::createAdvancedTab() {
 	m_widthSpinBox->setRange(100, 4096);
 	m_widthSpinBox->setValue(800);
 	styleSpinBox(m_widthSpinBox);
-	formLayout->addRow(labelWithInfo("Width:",
-		"The image's pixel width.\n\n"
+	formLayout->addRow(labelWithInfo(tr("Width:"),
+		tr("The image's pixel width.\n\n"
 		"Paired with Height below to set the resolution manually, "
 		"overriding whatever the Quality preset on the Basic tab would "
-		"otherwise use."),
+		"otherwise use.")),
 		m_widthSpinBox);
 
 	// Height
@@ -692,10 +692,10 @@ void MainWindow::createAdvancedTab() {
 	m_heightSpinBox->setRange(100, 4096);
 	m_heightSpinBox->setValue(800);
 	styleSpinBox(m_heightSpinBox);
-	formLayout->addRow(labelWithInfo("Height:",
-		"The image's pixel height.\n\n"
+	formLayout->addRow(labelWithInfo(tr("Height:"),
+		tr("The image's pixel height.\n\n"
 		"Paired with Width above - together they set the resolution "
-		"manually, overriding the Basic tab's Quality preset."),
+		"manually, overriding the Basic tab's Quality preset.")),
 		m_heightSpinBox);
 
 	// Samples
@@ -704,17 +704,17 @@ void MainWindow::createAdvancedTab() {
 	m_samplesSpinBox->setValue(100);
 	styleSpinBox(m_samplesSpinBox);
 	m_samplesSpinBox->setToolTip(
-		"Rays traced per pixel. This is the main quality/time dial: noise falls\n"
+		tr("Rays traced per pixel. This is the main quality/time dial: noise falls\n"
 		"as the square root of this value, so halving the noise costs about 4x\n"
-		"the render time. Setting it here switches Quality to Custom.");
-	formLayout->addRow(labelWithInfo("Samples per Pixel:",
-		"Ray tracing estimates each pixel's color by firing many random "
+		"the render time. Setting it here switches Quality to Custom."));
+	formLayout->addRow(labelWithInfo(tr("Samples per Pixel:"),
+		tr("Ray tracing estimates each pixel's color by firing many random "
 		"rays and averaging the results, like polling a lot of people and "
 		"averaging their guesses.\n\n"
 		"More samples means a more accurate average, which shows up as "
 		"less speckly \"noise\" in the image - but each extra sample "
 		"costs render time. Doubling this value roughly halves the "
-		"noise, but takes about twice as long to render."),
+		"noise, but takes about twice as long to render.")),
 		m_samplesSpinBox);
 
 	// Max depth
@@ -723,18 +723,18 @@ void MainWindow::createAdvancedTab() {
 	m_maxDepthSpinBox->setValue(50);
 	styleSpinBox(m_maxDepthSpinBox);
 	m_maxDepthSpinBox->setToolTip(
-		"How many times a ray may bounce before it is terminated. Low values\n"
+		tr("How many times a ray may bounce before it is terminated. Low values\n"
 		"darken glass and mirrors, which need many bounces to resolve; scenes\n"
-		"of plain diffuse surfaces look the same well below the maximum.");
-	formLayout->addRow(labelWithInfo("Max Ray Depth:",
-		"A depth of 1 means a ray only sees what it hits directly, with "
+		"of plain diffuse surfaces look the same well below the maximum."));
+	formLayout->addRow(labelWithInfo(tr("Max Ray Depth:"),
+		tr("A depth of 1 means a ray only sees what it hits directly, with "
 		"no bounced light at all - like a scene with no reflections or "
 		"indirect lighting.\n\n"
 		"Each extra bounce lets light travel one more surface before "
 		"giving up, which is what makes glass, mirrors, and soft "
 		"indirect lighting look correct. Most scenes look \"finished\" "
 		"well before the maximum - beyond that, extra depth mostly "
-		"traces light too dim to matter."),
+		"traces light too dim to matter.")),
 		m_maxDepthSpinBox);
 
 	layout->addWidget(advancedGroup);
@@ -758,7 +758,7 @@ void MainWindow::createAdvancedTab() {
 	//   - The camera can be positioned anywhere, inside or outside the box
 	// ============================================================================
 
-	QGroupBox *cameraGroup = new QGroupBox("Camera Position", advancedTab);
+	QGroupBox *cameraGroup = new QGroupBox(tr("Camera Position"), advancedTab);
 	styleGroupBox(cameraGroup);
 	QFormLayout *cameraLayout = new QFormLayout(cameraGroup);
 	cameraLayout->setVerticalSpacing(10);
@@ -791,32 +791,32 @@ void MainWindow::createAdvancedTab() {
 	// Default view: straight back from lookat, at the scene's own default
 	// viewing distance (ratio 1.0) - matches Cornell Box's own recommended
 	// camera exactly, since that's what this ratio was derived from.
-	m_cameraPresetCombo->addItem("Front View (Outside)", QVariant::fromValue(QVector3D(0.0f, 0.0f, -1.0f)));
+	m_cameraPresetCombo->addItem(tr("Front View (Outside)"), QVariant::fromValue(QVector3D(0.0f, 0.0f, -1.0f)));
 
 	// Inside views: camera positioned near walls, all looking toward center
-	m_cameraPresetCombo->addItem("Inside Front", QVariant::fromValue(QVector3D(0.0f, 0.0f, -0.211503f)));   // Near Z=0 opening
-	m_cameraPresetCombo->addItem("Inside Back", QVariant::fromValue(QVector3D(0.0f, 0.0f, 0.205937f)));     // Near Z=555 back wall
-	m_cameraPresetCombo->addItem("Right Wall (Green)", QVariant::fromValue(QVector3D(0.205937f, 0.0f, 0.0f))); // Near X=555 green wall
-	m_cameraPresetCombo->addItem("Left Wall (Red)", QVariant::fromValue(QVector3D(-0.211503f, 0.0f, 0.0f)));   // Near X=0 red wall
+	m_cameraPresetCombo->addItem(tr("Inside Front"), QVariant::fromValue(QVector3D(0.0f, 0.0f, -0.211503f)));   // Near Z=0 opening
+	m_cameraPresetCombo->addItem(tr("Inside Back"), QVariant::fromValue(QVector3D(0.0f, 0.0f, 0.205937f)));     // Near Z=555 back wall
+	m_cameraPresetCombo->addItem(tr("Right Wall (Green)"), QVariant::fromValue(QVector3D(0.205937f, 0.0f, 0.0f))); // Near X=555 green wall
+	m_cameraPresetCombo->addItem(tr("Left Wall (Red)"), QVariant::fromValue(QVector3D(-0.211503f, 0.0f, 0.0f)));   // Near X=0 red wall
 
 	// Corner views: diagonal perspectives from inside the box
-	m_cameraPresetCombo->addItem("Floor Corner", QVariant::fromValue(QVector3D(-0.165121f, -0.211503f, -0.165121f)));  // Low angle, near floor
-	m_cameraPresetCombo->addItem("Ceiling Corner", QVariant::fromValue(QVector3D(0.159555f, 0.205937f, 0.159555f)));   // High angle, near ceiling
+	m_cameraPresetCombo->addItem(tr("Floor Corner"), QVariant::fromValue(QVector3D(-0.165121f, -0.211503f, -0.165121f)));  // Low angle, near floor
+	m_cameraPresetCombo->addItem(tr("Ceiling Corner"), QVariant::fromValue(QVector3D(0.159555f, 0.205937f, 0.159555f)));   // High angle, near ceiling
 
 	// Custom: allows manual X/Y/Z input via spinboxes below. Its itemData is
 	// never read (onCameraPresetChanged skips the overwrite for Custom - see
 	// its own comment), so this value is unused, but keep it a plausible
 	// starting direction rather than leaving it as leftover absolute-position
 	// data of a different shape than every other item now stores.
-	m_cameraPresetCombo->addItem("Custom", QVariant::fromValue(QVector3D(0.0f, 0.0f, -1.0f)));
+	m_cameraPresetCombo->addItem(tr("Custom"), QVariant::fromValue(QVector3D(0.0f, 0.0f, -1.0f)));
 
 	styleComboBox(m_cameraPresetCombo);
-	cameraLayout->addRow(labelWithInfo("Preset:",
-		"A handful of hand-picked camera positions for this scene, framed "
+	cameraLayout->addRow(labelWithInfo(tr("Preset:"),
+		tr("A handful of hand-picked camera positions for this scene, framed "
 		"to show off something specific (e.g. looking in through the "
 		"front, or from inside a Cornell-box-style enclosure).\n\n"
 		"Choosing \"Custom\" unlocks the X/Y/Z fields below so you can "
-		"fly the camera anywhere you like instead."),
+		"fly the camera anywhere you like instead.")),
 		m_cameraPresetCombo);
 
 	// Camera position spinboxes (X, Y, Z coordinates)
@@ -829,12 +829,12 @@ void MainWindow::createAdvancedTab() {
 	m_cameraPosX->setSingleStep(10);
 	m_cameraPosX->setEnabled(false);  // Disabled until "Custom" is selected
 	styleSpinBox(m_cameraPosX);
-	cameraLayout->addRow(labelWithInfo("Camera X:",
-		"The camera's position along the world's X axis (left/right).\n\n"
+	cameraLayout->addRow(labelWithInfo(tr("Camera X:"),
+		tr("The camera's position along the world's X axis (left/right).\n\n"
 		"Only editable when the preset above is set to Custom - the "
 		"camera always looks toward the scene's own fixed look-at point, "
 		"so moving X/Y/Z changes the viewing angle and distance, not "
-		"just a straight left-right pan."),
+		"just a straight left-right pan.")),
 		m_cameraPosX);
 
 	m_cameraPosY = new QDoubleSpinBox(advancedTab);
@@ -843,11 +843,11 @@ void MainWindow::createAdvancedTab() {
 	m_cameraPosY->setSingleStep(10);
 	m_cameraPosY->setEnabled(false);  // Disabled until "Custom" is selected
 	styleSpinBox(m_cameraPosY);
-	cameraLayout->addRow(labelWithInfo("Camera Y:",
-		"The camera's position along the world's Y axis (up/down).\n\n"
+	cameraLayout->addRow(labelWithInfo(tr("Camera Y:"),
+		tr("The camera's position along the world's Y axis (up/down).\n\n"
 		"Same Custom-preset-only editing rule as Camera X - the camera "
 		"keeps looking at the scene's fixed look-at point as you move "
-		"it."),
+		"it.")),
 		m_cameraPosY);
 
 	m_cameraPosZ = new QDoubleSpinBox(advancedTab);
@@ -856,10 +856,10 @@ void MainWindow::createAdvancedTab() {
 	m_cameraPosZ->setSingleStep(10);
 	m_cameraPosZ->setEnabled(false);  // Disabled until "Custom" is selected
 	styleSpinBox(m_cameraPosZ);
-	cameraLayout->addRow(labelWithInfo("Camera Z:",
-		"The camera's position along the world's Z axis (forward/back, "
+	cameraLayout->addRow(labelWithInfo(tr("Camera Z:"),
+		tr("The camera's position along the world's Z axis (forward/back, "
 		"into or out of the scene).\n\n"
-		"Same Custom-preset-only editing rule as Camera X/Y."),
+		"Same Custom-preset-only editing rule as Camera X/Y.")),
 		m_cameraPosZ);
 
 	// Distance from the current scene's look-at point. Adjusting this moves
@@ -875,12 +875,12 @@ void MainWindow::createAdvancedTab() {
 	m_cameraDistance->setSingleStep(10);
 	m_cameraDistance->setEnabled(false);  // Disabled until "Custom" is selected
 	styleSpinBox(m_cameraDistance);
-	cameraLayout->addRow(labelWithInfo("Distance from Center:",
-		"Moves the camera directly toward or away from the scene's "
+	cameraLayout->addRow(labelWithInfo(tr("Distance from Center:"),
+		tr("Moves the camera directly toward or away from the scene's "
 		"look-at point along whatever direction it's currently facing, "
 		"without changing which way it's pointed.\n\n"
 		"The quickest way to zoom in or pull back once you've already "
-		"found an angle you like via the X/Y/Z fields or a preset."),
+		"found an angle you like via the X/Y/Z fields or a preset.")),
 		m_cameraDistance);
 
 	// Connect preset combo to handler that updates spinboxes and enables/disables manual input
@@ -911,7 +911,7 @@ void MainWindow::createAdvancedTab() {
 	scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 	scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
-	m_tabWidget->addTab(scrollArea, "Advanced Settings");
+	m_tabWidget->addTab(scrollArea, tr("Advanced Settings"));
 }
 
 // ============================================================================
@@ -936,7 +936,7 @@ void MainWindow::createRenderOptionsTab() {
 	// "&&" (not "&") - a single "&" is a Qt mnemonic-accelerator marker,
 	// which would eat the "&" and underline the next letter instead of
 	// showing a literal ampersand.
-	QGroupBox *samplingGroup = new QGroupBox("Sampling && Spectral", optionsTab);
+	QGroupBox *samplingGroup = new QGroupBox(tr("Sampling && Spectral"), optionsTab);
 	styleGroupBox(samplingGroup);
 	QFormLayout *samplingLayout = new QFormLayout(samplingGroup);
 	samplingLayout->setVerticalSpacing(10);
@@ -944,19 +944,19 @@ void MainWindow::createRenderOptionsTab() {
 	samplingLayout->setContentsMargins(15, 22, 15, 12);
 
 	m_samplerCombo = new QComboBox(optionsTab);
-	m_samplerCombo->addItem("Sobol (default)", QString());
-	m_samplerCombo->addItem("Z-Sobol", QStringLiteral("zsobol"));
-	m_samplerCombo->addItem("Padded Sobol", QStringLiteral("paddedsobol"));
-	m_samplerCombo->addItem("Stratified", QStringLiteral("stratified"));
-	m_samplerCombo->addItem("PMJ02BN", QStringLiteral("pmj02bn"));
-	m_samplerCombo->addItem("Halton", QStringLiteral("halton"));
+	m_samplerCombo->addItem(tr("Sobol (default)"), QString());
+	m_samplerCombo->addItem(tr("Z-Sobol"), QStringLiteral("zsobol"));
+	m_samplerCombo->addItem(tr("Padded Sobol"), QStringLiteral("paddedsobol"));
+	m_samplerCombo->addItem(tr("Stratified"), QStringLiteral("stratified"));
+	m_samplerCombo->addItem(tr("PMJ02BN"), QStringLiteral("pmj02bn"));
+	m_samplerCombo->addItem(tr("Halton"), QStringLiteral("halton"));
 	m_samplerCombo->setToolTip(
-		"Which low-discrepancy sampler drives random decisions.\n"
+		tr("Which low-discrepancy sampler drives random decisions.\n"
 		"CPU default path tracer only - no effect on GPU or under\n"
-		"BDPT/MLT/SPPM/the debug integrators.");
+		"BDPT/MLT/SPPM/the debug integrators."));
 	styleComboBox(m_samplerCombo);
-	samplingLayout->addRow(labelWithInfo("Sampler:",
-		"Ray tracing needs a lot of random numbers - which direction to "
+	samplingLayout->addRow(labelWithInfo(tr("Sampler:"),
+		tr("Ray tracing needs a lot of random numbers - which direction to "
 		"bounce a ray, which point on a light to sample, and so on - and "
 		"HOW those \"random\" numbers are generated changes how quickly "
 		"the image converges to a clean result.\n\n"
@@ -967,19 +967,19 @@ void MainWindow::createRenderOptionsTab() {
 		"randomness would for the same sample count.\n\n"
 		"Grayed out? This only affects the CPU renderer's default path "
 		"tracer - switch Renderer to CPU on the Basic Settings tab to "
-		"use it."),
+		"use it.")),
 		m_samplerCombo);
 
-	m_spectralCheck = new QCheckBox("Spectral rendering (--spectral)", optionsTab);
+	m_spectralCheck = new QCheckBox(tr("Spectral rendering (--spectral)"), optionsTab);
 	m_spectralCheck->setToolTip(
-		"Real hero-wavelength spectral rendering instead of flat RGB.\n"
+		tr("Real hero-wavelength spectral rendering instead of flat RGB.\n"
 		"CPU default path tracer only. Only lambertian, metal, dielectric,\n"
 		"rough_dielectric, conductor, and diffuse_light materials are\n"
 		"supported - a scene using anything else fails to render rather\n"
-		"than silently rendering wrong colors. Noticeably slower per-sample.");
+		"than silently rendering wrong colors. Noticeably slower per-sample."));
 	styleCheckBox(m_spectralCheck);
 	samplingLayout->addRow(checkboxWithInfo(m_spectralCheck,
-		"Ordinary rendering tracks light as three numbers - red, "
+		tr("Ordinary rendering tracks light as three numbers - red, "
 		"green, blue - the same way a screen displays color.\n\n"
 		"Real light is a continuous spectrum of wavelengths, and a "
 		"few physical effects (like a prism splitting white light "
@@ -990,23 +990,23 @@ void MainWindow::createRenderOptionsTab() {
 		"being noisier and slower per sample.\n\n"
 		"Grayed out? This only exists on the CPU renderer's default "
 		"path tracer - switch Renderer to CPU on the Basic Settings "
-		"tab to use it."));
+		"tab to use it.")));
 
 	m_exposureSpin = new QDoubleSpinBox(optionsTab);
 	m_exposureSpin->setRange(0.01, 100.0);
 	m_exposureSpin->setValue(1.0);
 	m_exposureSpin->setSingleStep(0.1);
 	m_exposureSpin->setToolTip(
-		"Flat multiplier on linear color before tone-mapping (1.0 = no-op).\n"
-		"Both CPU and GPU default path tracer only.");
+		tr("Flat multiplier on linear color before tone-mapping (1.0 = no-op).\n"
+		"Both CPU and GPU default path tracer only."));
 	styleSpinBox(m_exposureSpin);
-	samplingLayout->addRow(labelWithInfo("Exposure:",
-		"A flat brightness multiplier applied to the whole image, the "
+	samplingLayout->addRow(labelWithInfo(tr("Exposure:"),
+		tr("A flat brightness multiplier applied to the whole image, the "
 		"same knob a camera's exposure setting is.\n\n"
 		"1.0 leaves the image unchanged; below 1.0 darkens it, above 1.0 "
 		"brightens it - useful for a scene that's rendering correctly "
 		"but is just too dark or too bright to see clearly, without "
-		"changing any actual light in the scene."),
+		"changing any actual light in the scene.")),
 		m_exposureSpin);
 
 	layout->addWidget(samplingGroup);
@@ -1014,7 +1014,7 @@ void MainWindow::createRenderOptionsTab() {
 	// ------------------------------------------------------------------
 	// Output group
 	// ------------------------------------------------------------------
-	QGroupBox *outputGroup = new QGroupBox("Output", optionsTab);
+	QGroupBox *outputGroup = new QGroupBox(tr("Output"), optionsTab);
 	styleGroupBox(outputGroup);
 	QFormLayout *outputLayout = new QFormLayout(outputGroup);
 	outputLayout->setVerticalSpacing(10);
@@ -1022,46 +1022,46 @@ void MainWindow::createRenderOptionsTab() {
 	outputLayout->setContentsMargins(15, 22, 15, 12);
 
 	m_tonemapCombo = new QComboBox(optionsTab);
-	m_tonemapCombo->addItem("ACES (default)", QString());
-	m_tonemapCombo->addItem("Reinhard", QStringLiteral("reinhard"));
-	m_tonemapCombo->addItem("None", QStringLiteral("none"));
+	m_tonemapCombo->addItem(tr("ACES (default)"), QString());
+	m_tonemapCombo->addItem(tr("Reinhard"), QStringLiteral("reinhard"));
+	m_tonemapCombo->addItem(tr("None"), QStringLiteral("none"));
 	m_tonemapCombo->setToolTip(
-		"Which tone-mapping operator to apply before the sRGB curve.\n"
+		tr("Which tone-mapping operator to apply before the sRGB curve.\n"
 		"Applies to both CPU and GPU (recursive and wavefront) - no\n"
-		"effect under BDPT/MLT/SPPM/the debug integrators.");
+		"effect under BDPT/MLT/SPPM/the debug integrators."));
 	styleComboBox(m_tonemapCombo);
-	outputLayout->addRow(labelWithInfo("Tone mapping:",
-		"A raytraced scene's true brightness values are unbounded - a "
+	outputLayout->addRow(labelWithInfo(tr("Tone mapping:"),
+		tr("A raytraced scene's true brightness values are unbounded - a "
 		"light bulb might be a hundred times brighter than a wall - but "
 		"a screen can only display a fixed range. Tone mapping is the "
 		"curve that compresses that huge range down into something "
 		"displayable.\n\n"
 		"ACES rolls off bright highlights gently, the way film does; "
 		"Reinhard is a simpler, older compression; None just clips "
-		"anything too bright to flat white, which can look harsh."),
+		"anything too bright to flat white, which can look harsh.")),
 		m_tonemapCombo);
 
-	m_statsCheck = new QCheckBox("Print render stats", optionsTab);
+	m_statsCheck = new QCheckBox(tr("Print render stats"), optionsTab);
 	m_statsCheck->setToolTip(
-		"Print a small end-of-render stats block (rays cast, bounces,\n"
+		tr("Print a small end-of-render stats block (rays cast, bounces,\n"
 		"shadow rays, samples/sec) to the Log tab. Observation-only -\n"
-		"never changes the rendered image.");
+		"never changes the rendered image."));
 	styleCheckBox(m_statsCheck);
 	outputLayout->addRow(checkboxWithInfo(m_statsCheck,
-		"Prints a short summary after the render finishes - how many "
+		tr("Prints a short summary after the render finishes - how many "
 		"rays were cast, how many bounces happened, how many shadow "
 		"rays were traced, and samples per second.\n\n"
 		"Purely informational: it never changes the rendered image, "
-		"just tells you what the renderer actually did."));
+		"just tells you what the renderer actually did.")));
 
-	m_denoiseCheck = new QCheckBox("OptiX AI denoiser (GPU recursive only)", optionsTab);
+	m_denoiseCheck = new QCheckBox(tr("OptiX AI denoiser (GPU recursive only)"), optionsTab);
 	m_denoiseCheck->setToolTip(
-		"Run the OptiX AI denoiser on the finished render, guided by\n"
+		tr("Run the OptiX AI denoiser on the finished render, guided by\n"
 		"albedo + normal buffers. GPU recursive backend only - silently\n"
-		"has no effect under the wavefront backend.");
+		"has no effect under the wavefront backend."));
 	styleCheckBox(m_denoiseCheck);
 	outputLayout->addRow(checkboxWithInfo(m_denoiseCheck,
-		"Ray tracing is noisy by nature - low sample counts leave a "
+		tr("Ray tracing is noisy by nature - low sample counts leave a "
 		"grainy, speckled image, which is why more samples usually "
 		"means a cleaner picture.\n\n"
 		"A denoiser is a machine-learning model trained to recognize "
@@ -1070,15 +1070,15 @@ void MainWindow::createRenderOptionsTab() {
 		"clean-looking image faster, at some cost in fine detail.\n\n"
 		"Grayed out? This needs the GPU recursive backend - switch "
 		"Renderer to GPU (and GPU Backend to Recursive) on the Basic "
-		"Settings tab to use it."));
+		"Settings tab to use it.")));
 
-	m_optixValidateCheck = new QCheckBox("OptiX validation mode (slower, debugging only)", optionsTab);
+	m_optixValidateCheck = new QCheckBox(tr("OptiX validation mode (slower, debugging only)"), optionsTab);
 	m_optixValidateCheck->setToolTip(
-		"Enable OptiX validation mode - extra device-side checks with a\n"
-		"real per-launch cost. GPU only, for debugging, not routine use.");
+		tr("Enable OptiX validation mode - extra device-side checks with a\n"
+		"real per-launch cost. GPU only, for debugging, not routine use."));
 	styleCheckBox(m_optixValidateCheck);
 	outputLayout->addRow(checkboxWithInfo(m_optixValidateCheck,
-		"Turns on extra correctness checks inside the GPU ray-tracing "
+		tr("Turns on extra correctness checks inside the GPU ray-tracing "
 		"pipeline itself, catching certain classes of bugs that would "
 		"otherwise silently produce a wrong image or crash "
 		"unpredictably.\n\n"
@@ -1087,7 +1087,7 @@ void MainWindow::createRenderOptionsTab() {
 		"it has a real performance cost and doesn't change what a "
 		"correct render looks like.\n\n"
 		"Grayed out? This is GPU-only - switch Renderer to GPU on "
-		"the Basic Settings tab to use it."));
+		"the Basic Settings tab to use it.")));
 
 	layout->addWidget(outputGroup);
 	layout->addStretch();
@@ -1115,7 +1115,7 @@ void MainWindow::createRenderOptionsTab() {
 	scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 	scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
-	m_tabWidget->addTab(scrollArea, "Render Options");
+	m_tabWidget->addTab(scrollArea, tr("Render Options"));
 }
 
 void MainWindow::createPreviewTab() {
@@ -1209,10 +1209,10 @@ void MainWindow::createPreviewTab() {
 	QString previewBtnStyle =
 		"QPushButton { min-height: 28px; max-height: 28px; padding: 0px 20px; font-size: 11pt; }";
 
-	QPushButton *openFolderButton = new QPushButton("Open Output &Folder");
+	QPushButton *openFolderButton = new QPushButton(tr("Open Output &Folder"));
 	icon_tint::apply(openFolderButton, ":/icons/folder.svg", icon_tint::Role::Body, m_activeTheme.textBody);
 	openFolderButton->setStyleSheet(previewBtnStyle);
-	openFolderButton->setToolTip("Show the folder containing the active tab's render in Explorer");
+	openFolderButton->setToolTip(tr("Show the folder containing the active tab's render in Explorer"));
 	connect(openFolderButton, &QPushButton::clicked, this, [this]() {
 		const QString path = currentPreviewProperty("outputPath");
 		if (path.isEmpty()) return;
@@ -1221,10 +1221,10 @@ void MainWindow::createPreviewTab() {
 	});
 	sideLayout->addWidget(openFolderButton);
 
-	QPushButton *openViewerButton = new QPushButton("Open in Default &Viewer");
+	QPushButton *openViewerButton = new QPushButton(tr("Open in Default &Viewer"));
 	icon_tint::apply(openViewerButton, ":/icons/image.svg", icon_tint::Role::Body, m_activeTheme.textBody);
 	openViewerButton->setStyleSheet(previewBtnStyle);
-	openViewerButton->setToolTip("Open the active tab's render in the system viewer");
+	openViewerButton->setToolTip(tr("Open the active tab's render in the system viewer"));
 	connect(openViewerButton, &QPushButton::clicked, this, [this]() {
 		const QString path = currentPreviewProperty("previewPath");
 		if (path.isEmpty()) return;
@@ -1246,7 +1246,7 @@ void MainWindow::createPreviewTab() {
 	// takes over from here once real tabs come and go.
 	sidebar->setVisible(false);
 
-	m_previewTabIndex = m_tabWidget->addTab(previewWidget, "Preview");
+	m_previewTabIndex = m_tabWidget->addTab(previewWidget, tr("Preview"));
 }
 
 QString MainWindow::uniquePreviewTabTitle(const QString &baseTitle) {
@@ -1341,7 +1341,7 @@ void MainWindow::addVideoPreviewTab(const QString &title, const QString &tooltip
 	controlsLayout->setContentsMargins(0, 0, 0, 0);
 	controlsLayout->setSpacing(8);
 
-	QPushButton *playPauseButton = new QPushButton("Pause");
+	QPushButton *playPauseButton = new QPushButton(tr("Pause"));
 	playPauseButton->setFixedWidth(70);
 	connect(playPauseButton, &QPushButton::clicked, page, [player]() {
 		if (player->playbackState() == QMediaPlayer::PlayingState) player->pause();
@@ -1354,7 +1354,7 @@ void MainWindow::addVideoPreviewTab(const QString &title, const QString &tooltip
 	layout->addWidget(controls);
 
 	connect(player, &QMediaPlayer::playbackStateChanged, page, [playPauseButton](QMediaPlayer::PlaybackState state) {
-		playPauseButton->setText(state == QMediaPlayer::PlayingState ? "Pause" : "Play");
+		playPauseButton->setText(state == QMediaPlayer::PlayingState ? tr("Pause") : tr("Play"));
 	});
 	connect(player, &QMediaPlayer::durationChanged, page, [positionSlider](qint64 duration) {
 		positionSlider->setRange(0, static_cast<int>(duration));
@@ -1364,7 +1364,7 @@ void MainWindow::addVideoPreviewTab(const QString &title, const QString &tooltip
 			positionSlider->setValue(static_cast<int>(position));
 	});
 	connect(player, &QMediaPlayer::errorOccurred, page, [this](QMediaPlayer::Error error, const QString &errorString) {
-		onLogMessage(QString("Video playback error (%1): %2").arg(static_cast<int>(error)).arg(errorString));
+		onLogMessage(tr("Video playback error (%1): %2").arg(static_cast<int>(error)).arg(errorString));
 	});
 	// A small value bubble that follows the handle while scrubbing, showing
 	// the position being dragged to as M:SS - Fluent-style sliders do this
@@ -1441,7 +1441,7 @@ void MainWindow::createProgressTab() {
 	QWidget *progressWidget = new QWidget();
 	QVBoxLayout *layout = new QVBoxLayout(progressWidget);
 
-	QGroupBox *progressGroup = new QGroupBox("Progress", progressWidget);
+	QGroupBox *progressGroup = new QGroupBox(tr("Progress"), progressWidget);
 	QVBoxLayout *progressLayout = new QVBoxLayout(progressGroup);
 
 	// Which job is actually running (scene/resolution/samples/renderer, same
@@ -1458,7 +1458,7 @@ void MainWindow::createProgressTab() {
 	m_progressBar->setValue(0);
 	m_progressBar->setTextVisible(true);
 
-	m_statusLabel = new QLabel("Ready to render", progressGroup);
+	m_statusLabel = new QLabel(tr("Ready to render"), progressGroup);
 	m_statusLabel->setAlignment(Qt::AlignCenter);
 
 	// Caveat line below the main status (e.g. a succeeded render whose
@@ -1481,7 +1481,7 @@ void MainWindow::createProgressTab() {
 	// outside the tabs alongside other always-on controls, hiding it here
 	// would leave the Progress tab looking like it lost a section every
 	// time the queue drains, rather than like a stable panel).
-	m_queueGroup = new QGroupBox("Render Queue", progressWidget);
+	m_queueGroup = new QGroupBox(tr("Render Queue"), progressWidget);
 	QVBoxLayout *queueLayout = new QVBoxLayout(m_queueGroup);
 
 	m_queueListWidget = new QListWidget(m_queueGroup);
@@ -1493,15 +1493,15 @@ void MainWindow::createProgressTab() {
 	queueLayout->addWidget(m_queueListWidget);
 
 	QHBoxLayout *queueButtonLayout = new QHBoxLayout();
-	QPushButton *removeQueueItemButton = new QPushButton("Re&move Selected", m_queueGroup);
-	removeQueueItemButton->setToolTip("Remove the selected job from the render queue");
+	QPushButton *removeQueueItemButton = new QPushButton(tr("Re&move Selected"), m_queueGroup);
+	removeQueueItemButton->setToolTip(tr("Remove the selected job from the render queue"));
 	connect(removeQueueItemButton, &QPushButton::clicked, this, &MainWindow::onRemoveSelectedQueueItem);
 	// Discards every queued job at once (unlike removeQueueItemButton above,
 	// which only drops the one job you selected), so it gets the danger
 	// styling too.
-	QPushButton *clearQueueButton = new QPushButton("Clear &Queue", m_queueGroup);
+	QPushButton *clearQueueButton = new QPushButton(tr("Clear &Queue"), m_queueGroup);
 	clearQueueButton->setObjectName("dangerAction");
-	clearQueueButton->setToolTip("Remove every job from the render queue");
+	clearQueueButton->setToolTip(tr("Remove every job from the render queue"));
 	connect(clearQueueButton, &QPushButton::clicked, this, &MainWindow::onClearQueue);
 	applyElevation(clearQueueButton, /*blurRadius=*/14, /*offsetY=*/3, /*alpha=*/90);
 	clearQueueButton->installEventFilter(
@@ -1513,7 +1513,7 @@ void MainWindow::createProgressTab() {
 	layout->addWidget(m_queueGroup);
 	layout->addStretch(1);
 
-	m_progressTabIndex = m_tabWidget->addTab(progressWidget, "Progress");
+	m_progressTabIndex = m_tabWidget->addTab(progressWidget, tr("Progress"));
 }
 
 void MainWindow::createLogTab() {
@@ -1542,17 +1542,17 @@ void MainWindow::createLogTab() {
 	// (see createActions()), so the bodies live in slots rather than lambdas
 	// here - otherwise the menu entry and the button would be two separate
 	// copies of the same behaviour, free to drift apart.
-	QPushButton *copyButton = new QPushButton("&Copy All");
+	QPushButton *copyButton = new QPushButton(tr("&Copy All"));
 	icon_tint::apply(copyButton, ":/icons/copy.svg", icon_tint::Role::Body, m_activeTheme.textBody);
 	copyButton->setStyleSheet(logBtnStyle);
 	connect(copyButton, &QPushButton::clicked, this, &MainWindow::copyLogToClipboard);
 
-	QPushButton *saveButton = new QPushButton("&Save Log…");
+	QPushButton *saveButton = new QPushButton(tr("&Save Log…"));
 	icon_tint::apply(saveButton, ":/icons/save.svg", icon_tint::Role::Body, m_activeTheme.textBody);
 	saveButton->setStyleSheet(logBtnStyle);
 	connect(saveButton, &QPushButton::clicked, this, &MainWindow::saveLogToFile);
 
-	QPushButton *clearButton = new QPushButton("C&lear Log");
+	QPushButton *clearButton = new QPushButton(tr("C&lear Log"));
 	icon_tint::apply(clearButton, ":/icons/clear.svg", icon_tint::Role::Body, m_activeTheme.textBody);
 	clearButton->setStyleSheet(logBtnStyle);
 	connect(clearButton, &QPushButton::clicked, this, &MainWindow::clearLog);
@@ -1563,7 +1563,7 @@ void MainWindow::createLogTab() {
 	btnLayout->addWidget(clearButton);
 	layout->addLayout(btnLayout);
 
-	m_logTabIndex = m_tabWidget->addTab(logWidget, "Log Output");
+	m_logTabIndex = m_tabWidget->addTab(logWidget, tr("Log Output"));
 }
 
 // Modeled directly on createLogTab() above: a read-only monospace text area
@@ -1580,8 +1580,8 @@ void MainWindow::createDiagnosticsTab() {
 	m_diagTextEdit->setFont(QFont("Consolas", 9));
 	m_diagTextEdit->setLineWrapMode(QTextEdit::NoWrap);
 	m_diagTextEdit->setPlaceholderText(
-		"Click \"Run Diagnostics\" to check GPU/CUDA/OptiX availability, CPU/RAM, "
-		"disk space, and scene asset availability.");
+		tr("Click \"Run Diagnostics\" to check GPU/CUDA/OptiX availability, CPU/RAM, "
+		"disk space, and scene asset availability."));
 	layout->addWidget(m_diagTextEdit);
 
 	QHBoxLayout *btnLayout = new QHBoxLayout();
@@ -1591,17 +1591,17 @@ void MainWindow::createDiagnosticsTab() {
 	QString diagBtnStyle =
 		"QPushButton { min-height: 28px; max-height: 28px; min-width: 160px; padding: 0px 20px; font-size: 11pt; }";
 
-	m_runDiagnosticsButton = new QPushButton("&Run Diagnostics");
+	m_runDiagnosticsButton = new QPushButton(tr("&Run Diagnostics"));
 	icon_tint::apply(m_runDiagnosticsButton, ":/icons/gpu.svg", icon_tint::Role::Body, m_activeTheme.textBody);
 	m_runDiagnosticsButton->setStyleSheet(diagBtnStyle);
 	connect(m_runDiagnosticsButton, &QPushButton::clicked, this, &MainWindow::onRunDiagnosticsClicked);
 
-	QPushButton *copyButton = new QPushButton("&Copy All");
+	QPushButton *copyButton = new QPushButton(tr("&Copy All"));
 	icon_tint::apply(copyButton, ":/icons/copy.svg", icon_tint::Role::Body, m_activeTheme.textBody);
 	copyButton->setStyleSheet(diagBtnStyle);
 	connect(copyButton, &QPushButton::clicked, this, &MainWindow::copyDiagToClipboard);
 
-	QPushButton *saveButton = new QPushButton("&Save Report…");
+	QPushButton *saveButton = new QPushButton(tr("&Save Report…"));
 	icon_tint::apply(saveButton, ":/icons/save.svg", icon_tint::Role::Body, m_activeTheme.textBody);
 	saveButton->setStyleSheet(diagBtnStyle);
 	connect(saveButton, &QPushButton::clicked, this, &MainWindow::saveDiagReportToFile);
@@ -1612,7 +1612,7 @@ void MainWindow::createDiagnosticsTab() {
 	btnLayout->addWidget(saveButton);
 	layout->addLayout(btnLayout);
 
-	m_diagnosticsTabIndex = m_tabWidget->addTab(diagWidget, "Diagnostics");
+	m_diagnosticsTabIndex = m_tabWidget->addTab(diagWidget, tr("Diagnostics"));
 }
 
 void MainWindow::createVideoTab() {
@@ -1631,7 +1631,7 @@ void MainWindow::createVideoTab() {
 	// (false - see the MainWindow constructor), so no extra sync call is
 	// needed here.
 	m_videoModeWarningLabel = new QLabel(
-		"⚠ These settings only take effect when Output Mode (Basic Settings tab) is set to \"Generate Video\".",
+		tr("⚠ These settings only take effect when Output Mode (Basic Settings tab) is set to \"Generate Video\"."),
 		videoTab);
 	m_videoModeWarningLabel->setObjectName("videoModeWarning");
 	m_videoModeWarningLabel->setWordWrap(true);
@@ -1639,7 +1639,7 @@ void MainWindow::createVideoTab() {
 	layout->addWidget(m_videoModeWarningLabel);
 
 	// Video parameters group
-	QGroupBox *videoGroup = new QGroupBox("Video Generation Settings", videoTab);
+	QGroupBox *videoGroup = new QGroupBox(tr("Video Generation Settings"), videoTab);
 	styleGroupBox(videoGroup);
 	QFormLayout *videoLayout = new QFormLayout(videoGroup);
 	videoLayout->setVerticalSpacing(10);
@@ -1652,81 +1652,81 @@ void MainWindow::createVideoTab() {
 	// picking one is meant to replace tuning the other four controls, not
 	// sit alongside them as a fifth independent setting.
 	m_videoPresetCombo = new QComboBox();
-	m_videoPresetCombo->addItem("(custom - choose settings below)", QString());
+	m_videoPresetCombo->addItem(tr("(custom - choose settings below)"), QString());
 	for (const video_preset::VideoPreset& p : video_preset::kAll)
 		m_videoPresetCombo->addItem(
 			QString("[%1] %2").arg(QString::fromUtf8(p.id), QString::fromUtf8(p.name)),
 			QString::fromUtf8(p.id));
 	m_videoPresetCombo->setToolTip(
-		"Famous ray-tracing reference scenes and motions, pre-tuned so you don't\n"
+		tr("Famous ray-tracing reference scenes and motions, pre-tuned so you don't\n"
 		"have to set the scene, camera path, frame count, fps, and speed by hand.\n"
 		"Selecting one changes the scene on the Basic tab too. Choosing any of the\n"
 		"other controls on this tab afterward is fine - they simply stop matching\n"
-		"the preset, the same as if you had built the same settings by hand.");
+		"the preset, the same as if you had built the same settings by hand."));
 	styleComboBox(m_videoPresetCombo);
 	connect(m_videoPresetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
 			this, &MainWindow::onVideoPresetChanged);
-	videoLayout->addRow(labelWithInfo("Preset:",
-		"A ready-made bundle of scene + camera path + frame count + fps "
+	videoLayout->addRow(labelWithInfo(tr("Preset:"),
+		tr("A ready-made bundle of scene + camera path + frame count + fps "
 		"+ speed, tuned so the resulting video actually looks good "
 		"without hand-picking every setting yourself.\n\n"
 		"Picking one fills in every field below (and the scene on the "
 		"Basic tab) - you can still change anything afterward, it just "
-		"stops matching the preset once you do."),
+		"stops matching the preset once you do.")),
 		m_videoPresetCombo);
 
 	// Camera path selector
 	m_cameraPathCombo = new QComboBox();
-	m_cameraPathCombo->addItem("Orbit (Circular rotation)", "orbit");
-	m_cameraPathCombo->addItem("Linear (Straight path)", "linear");
-	m_cameraPathCombo->addItem("Figure-8 (Lemniscate)", "figure8");
-	m_cameraPathCombo->addItem("Spiral (Zoom-in)", "spiral");
+	m_cameraPathCombo->addItem(tr("Orbit (Circular rotation)"), "orbit");
+	m_cameraPathCombo->addItem(tr("Linear (Straight path)"), "linear");
+	m_cameraPathCombo->addItem(tr("Figure-8 (Lemniscate)"), "figure8");
+	m_cameraPathCombo->addItem(tr("Spiral (Zoom-in)"), "spiral");
 	m_cameraPathCombo->setToolTip(
-		"How the camera moves over the frame sequence:\n"
+		tr("How the camera moves over the frame sequence:\n"
 		"  Orbit     — full circle around the scene, always looking at its centre\n"
 		"  Linear    — straight sweep past the scene\n"
 		"  Figure-8  — lemniscate, crossing back through the middle\n"
 		"  Spiral    — orbits while moving steadily closer\n"
-		"Every path starts from the camera position on the Advanced tab.");
+		"Every path starts from the camera position on the Advanced tab."));
 	m_cameraPathCombo->setCurrentIndex(0);
 	styleComboBox(m_cameraPathCombo);
-	videoLayout->addRow(labelWithInfo("Camera Path:",
-		"How the camera moves across the sequence of frames.\n\n"
+	videoLayout->addRow(labelWithInfo(tr("Camera Path:"),
+		tr("How the camera moves across the sequence of frames.\n\n"
 		"Orbit circles fully around the scene, always facing its center "
 		"- the classic \"turntable\" shot. Linear sweeps past in a "
 		"straight line. Figure-8 traces a lemniscate, crossing back "
 		"through the middle. Spiral orbits while steadily moving closer. "
 		"Every path starts from wherever the camera is positioned on "
-		"the Advanced tab."),
+		"the Advanced tab.")),
 		m_cameraPathCombo);
 
 	// Frame count
 	m_videoFramesSpinBox = new QSpinBox();
 	m_videoFramesSpinBox->setRange(10, 1000);
 	m_videoFramesSpinBox->setValue(60);
-	m_videoFramesSpinBox->setSuffix(" frames");
+	m_videoFramesSpinBox->setSuffix(tr(" frames"));
 	styleSpinBox(m_videoFramesSpinBox);
-	videoLayout->addRow(labelWithInfo("Frame Count:",
-		"How many individual images make up the video - each one is a "
+	videoLayout->addRow(labelWithInfo(tr("Frame Count:"),
+		tr("How many individual images make up the video - each one is a "
 		"full, independent render, so this multiplies total render time "
 		"directly (100 frames takes roughly 100x as long as one image "
 		"at the same settings).\n\n"
 		"Paired with Frames Per Second below to determine the video's "
-		"total length in seconds."),
+		"total length in seconds.")),
 		m_videoFramesSpinBox);
 
 	// FPS (frames per second)
 	m_videoFPSSpinBox = new QSpinBox();
 	m_videoFPSSpinBox->setRange(15, 120);
 	m_videoFPSSpinBox->setValue(30);
-	m_videoFPSSpinBox->setSuffix(" fps");
+	m_videoFPSSpinBox->setSuffix(tr(" fps"));
 	styleSpinBox(m_videoFPSSpinBox);
-	videoLayout->addRow(labelWithInfo("Frames Per Second:",
-		"How many of the rendered frames play per second of video.\n\n"
+	videoLayout->addRow(labelWithInfo(tr("Frames Per Second:"),
+		tr("How many of the rendered frames play per second of video.\n\n"
 		"Doesn't change how many frames get rendered (that's Frame "
 		"Count above) - only how fast they play back, and therefore how "
 		"many seconds long the finished video is (Frame Count divided "
-		"by FPS)."),
+		"by FPS).")),
 		m_videoFPSSpinBox);
 
 	// Movement speed multiplier - does NOT change the camera path itself (it
@@ -1742,15 +1742,15 @@ void MainWindow::createVideoTab() {
 	m_videoSpeedSpinBox->setSingleStep(0.1);
 	m_videoSpeedSpinBox->setDecimals(2);
 	m_videoSpeedSpinBox->setValue(1.0);
-	m_videoSpeedSpinBox->setSuffix("x");
+	m_videoSpeedSpinBox->setSuffix(tr("x"));
 	styleSpinBox(m_videoSpeedSpinBox);
-	videoLayout->addRow(labelWithInfo("Movement Speed:",
-		"A multiplier on how many frames the camera's full path is "
+	videoLayout->addRow(labelWithInfo(tr("Movement Speed:"),
+		tr("A multiplier on how many frames the camera's full path is "
 		"spread across - not a change to the path itself, which always "
 		"completes the same full sweep.\n\n"
 		"Speed 0.5x renders twice as many frames to cover the same "
 		"journey more slowly and smoothly; speed 2x renders half as "
-		"many frames, covering the same journey faster."),
+		"many frames, covering the same journey faster.")),
 		m_videoSpeedSpinBox);
 
 	// Video duration info (calculated from frames/fps)
@@ -1774,12 +1774,12 @@ void MainWindow::createVideoTab() {
 		double duration = static_cast<double>(actualFrames) / fps;
 
 		QString framesLine = (actualFrames == baseFrames)
-			? QString("%1 frames").arg(actualFrames)
-			: QString("%1 frames (base %2 × 1/%3x speed)%4")
+			? tr("%1 frames").arg(actualFrames)
+			: tr("%1 frames (base %2 × 1/%3x speed)%4")
 				.arg(actualFrames).arg(baseFrames).arg(QString::number(speed, 'f', 2))
-				.arg(capped ? " - capped at 5000" : "");
+				.arg(capped ? tr(" - capped at 5000") : QString());
 
-		m_videoInfoLabel->setText(QString(
+		m_videoInfoLabel->setText(tr(
 			"<b>Video Duration:</b> %1 seconds (%2)<br>"
 			"<b>Camera Path:</b> %3, always completes its full sweep regardless of speed<br>"
 			"<b>Output:</b> Frames will be saved to <code>output/frames/</code>"
@@ -1797,14 +1797,14 @@ void MainWindow::createVideoTab() {
 	layout->addWidget(videoGroup);
 
 	// Requirements info
-	QGroupBox *requirementsGroup = new QGroupBox("ℹ️ Requirements", videoTab);
+	QGroupBox *requirementsGroup = new QGroupBox(tr("ℹ️ Requirements"), videoTab);
 	styleGroupBox(requirementsGroup);
 	QVBoxLayout *requirementsLayout = new QVBoxLayout(requirementsGroup);
 
 	QLabel *requirementsInfo = new QLabel(
-		"<b>Requires ffmpeg:</b> Video encoding uses ffmpeg (libx264), which must be installed and on your PATH.<br>"
+		tr("<b>Requires ffmpeg:</b> Video encoding uses ffmpeg (libx264), which must be installed and on your PATH.<br>"
 		"<small>Get it from <a href=\"https://ffmpeg.org/download.html\">ffmpeg.org</a> if the render log reports it's missing.</small><br><br>"
-		"<b>Automatic Assembly:</b> After rendering all frames, the video will be automatically assembled and opened."
+		"<b>Automatic Assembly:</b> After rendering all frames, the video will be automatically assembled and opened.")
 	);
 	requirementsInfo->setOpenExternalLinks(true);
 	requirementsInfo->setWordWrap(true);
@@ -1814,12 +1814,12 @@ void MainWindow::createVideoTab() {
 	layout->addWidget(requirementsGroup);
 
 	// Usage instructions
-	QGroupBox *usageGroup = new QGroupBox("Usage Instructions", videoTab);
+	QGroupBox *usageGroup = new QGroupBox(tr("Usage Instructions"), videoTab);
 	styleGroupBox(usageGroup);
 	QVBoxLayout *usageLayout = new QVBoxLayout(usageGroup);
 
 	QLabel *usageText = new QLabel(
-		"<b>Step 1:</b> Configure video settings (camera path, frames, FPS)<br>"
+		tr("<b>Step 1:</b> Configure video settings (camera path, frames, FPS)<br>"
 		"<b>Step 2:</b> Configure quality settings in Basic/Advanced tabs<br>"
 		"<b>Step 3:</b> Click START VIDEO RENDER and wait<br>"
 		"<b>Step 4:</b> Video automatically assembles and opens when done!<br><br>"
@@ -1827,7 +1827,7 @@ void MainWindow::createVideoTab() {
 		"• Use GPU mode for faster rendering<br>"
 		"• Lower samples/pixel for quick previews (10-50)<br>"
 		"• Higher samples/pixel for production quality (100-500)<br>"
-		"• Typical render time: 1-5 minutes (GPU), 15-60 minutes (CPU)"
+		"• Typical render time: 1-5 minutes (GPU), 15-60 minutes (CPU)")
 	);
 	usageText->setWordWrap(true);
 	usageText->setObjectName("mutedInfo");
@@ -1850,5 +1850,5 @@ void MainWindow::createVideoTab() {
 	// while the settings scroll past.
 	scrollArea->setObjectName("tabScroll");
 
-	m_videoTabIndex = m_tabWidget->addTab(scrollArea, "Video Settings");
+	m_videoTabIndex = m_tabWidget->addTab(scrollArea, tr("Video Settings"));
 }

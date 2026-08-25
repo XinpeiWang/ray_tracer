@@ -1044,6 +1044,11 @@ public:
 	explicit MainWindow(QWidget *parent = nullptr);
 	~MainWindow();
 
+	// Called from main.cpp, before any MainWindow exists, to decide which
+	// QTranslator (if any) to install - see language_switch.cpp's own
+	// comment for why language switching is restart-to-apply.
+	static QString loadSavedLanguageCode();
+
 private slots:
 	void onRenderClicked();
 	void onStopClicked();
@@ -1132,6 +1137,18 @@ private:
 	void createThemeMenu();
 	QString loadSavedThemeId() const;
 	void saveThemeId(const QString &themeId) const;
+
+	// Language selection and persistence - same shape as the theme menu just
+	// above, except switching takes effect after a restart rather than live
+	// (see language_switch.cpp's own comment for why: no retranslateUi()
+	// split exists between building this app's widget tree and setting its
+	// text, unlike theme colour which is a re-derivable property). main.cpp
+	// reads loadSavedLanguageCode() and installs the matching QTranslator
+	// before MainWindow is ever constructed.
+	QVector<QAction *> m_languageActions;
+	void switchLanguage(const QString &code);
+	void createLanguageMenu();
+	static void saveLanguageCode(const QString &code);
 	void styleComboBox(QComboBox *combo);
 	void applyComboPopupPalette(QComboBox *combo);
 	void styleSpinBox(QAbstractSpinBox *spinBox);

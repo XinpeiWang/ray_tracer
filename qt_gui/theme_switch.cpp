@@ -48,7 +48,7 @@ void MainWindow::switchTheme(const QString &themeId) {
 	for (QAction *action : m_themeActions)
 		action->setChecked(action->data().toString() == p.id);
 
-	statusBar()->showMessage(QString("Theme: %1").arg(p.name), 3000);
+	statusBar()->showMessage(tr("Theme: %1").arg(p.name), 3000);
 }
 
 // A top-level menu rather than a submenu of View. Themes are a first-class
@@ -56,7 +56,7 @@ void MainWindow::switchTheme(const QString &themeId) {
 // burying a twelve-item list one level down made it both harder to reach and
 // harder to discover. "T" is free as a mnemonic alongside File/Render/View/Help.
 void MainWindow::createThemeMenu() {
-	QMenu *themeMenu = menuBar()->addMenu("&Theme");
+	QMenu *themeMenu = menuBar()->addMenu(tr("&Theme"));
 
 	// Exclusive check marks: exactly one scheme is in force at a time.
 	auto *group = new QActionGroup(this);

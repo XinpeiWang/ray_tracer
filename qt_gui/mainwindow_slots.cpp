@@ -330,8 +330,8 @@ void MainWindow::startRenderJob(const RenderJob &job) {
 	refreshStatusBarInfo();
 	m_progressBar->setValue(0);
 	startProgressGlow();
-	QString statusText = job.videoMode ? "Rendering video frames..." : "Rendering...";
-	if (!m_renderQueue.isEmpty()) statusText += QString(" (%1 more queued)").arg(m_renderQueue.size());
+	QString statusText = job.videoMode ? tr("Rendering video frames...") : tr("Rendering...");
+	if (!m_renderQueue.isEmpty()) statusText += tr(" (%1 more queued)").arg(m_renderQueue.size());
 	m_statusLabel->setText(statusText);
 
 	// Start elapsed timer. Its 1 Hz tick doubles as the ETA sampling clock,
@@ -366,9 +366,9 @@ void MainWindow::processQueueIfIdle() {
 }
 
 QString MainWindow::describeRenderJob(const RenderJob &job) {
-	const QString renderer = job.useGPU ? (job.useWavefront ? "GPU-WF" : "GPU") : "CPU";
-	const QString modeSuffix = job.videoMode ? QString(" · Video (%1f)").arg(job.videoFrames) : QString();
-	return QString("%1 — %2×%3 · %4spp · %5%6")
+	const QString renderer = job.useGPU ? (job.useWavefront ? tr("GPU-WF") : tr("GPU")) : tr("CPU");
+	const QString modeSuffix = job.videoMode ? tr(" · Video (%1f)").arg(job.videoFrames) : QString();
+	return tr("%1 — %2×%3 · %4spp · %5%6")
 		.arg(job.displayTitle)
 		.arg(job.width).arg(job.height)
 		.arg(job.samples)
@@ -381,7 +381,7 @@ void MainWindow::refreshQueuePanel() {
 	for (const RenderJob &job : m_renderQueue) {
 		m_queueListWidget->addItem(describeRenderJob(job));
 	}
-	m_queueGroup->setTitle(QString("Render Queue (%1)").arg(m_renderQueue.size()));
+	m_queueGroup->setTitle(tr("Render Queue (%1)").arg(m_renderQueue.size()));
 }
 
 void MainWindow::onRemoveSelectedQueueItem() {
@@ -399,8 +399,8 @@ void MainWindow::onClearQueue() {
 	// silently discard every queued job's configuration. Skipped when the
 	// queue is already empty - nothing destructive to confirm.
 	if (m_renderQueue.isEmpty()) return;
-	const auto choice = QMessageBox::question(this, "Clear Render Queue",
-		QString("Remove all %1 queued render%2? This can't be undone.")
+	const auto choice = QMessageBox::question(this, tr("Clear Render Queue"),
+		tr("Remove all %1 queued render%2? This can't be undone.")
 			.arg(m_renderQueue.size()).arg(m_renderQueue.size() == 1 ? "" : "s"),
 		QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
 	if (choice != QMessageBox::Yes) return;
@@ -417,7 +417,7 @@ void MainWindow::onRunDiagnosticsClicked() {
 	m_lastDiagReport.clear();  // no report to recolour until reportReady fires
 	if (m_diagTextEdit) {
 		m_diagTextEdit->clear();
-		m_diagTextEdit->setPlainText("Running diagnostics...");
+		m_diagTextEdit->setPlainText(tr("Running diagnostics..."));
 	}
 	if (m_runDiagnosticsButton) m_runDiagnosticsButton->setEnabled(false);
 
@@ -454,7 +454,7 @@ void MainWindow::onDiagnosticsFailed(const QString &message) {
 	// m_lastDiagReport keeps a later theme change from trying to recolour
 	// a report that isn't showing anymore.
 	m_lastDiagReport.clear();
-	if (m_diagTextEdit) m_diagTextEdit->setPlainText("Diagnostics failed:\n\n" + message);
+	if (m_diagTextEdit) m_diagTextEdit->setPlainText(tr("Diagnostics failed:\n\n%1").arg(message));
 }
 
 // Fills in m_sceneGrid's preview tiles for the curated, self-contained,
@@ -515,7 +515,7 @@ void MainWindow::onThumbnailReady(const QString &sceneId, bool success, const QS
 
 void MainWindow::onThumbnailsAllDone() {
 	if (m_generateThumbnailsButton) m_generateThumbnailsButton->setEnabled(true);
-	onLogMessage("Thumbnail generation finished.");
+	onLogMessage(tr("Thumbnail generation finished."));
 }
 
 void MainWindow::onStopClicked() {
@@ -523,7 +523,7 @@ void MainWindow::onStopClicked() {
 		return;
 	}
 
-	m_statusLabel->setText("Stopping render...");
+	m_statusLabel->setText(tr("Stopping render..."));
 	m_stopButton->setEnabled(false);
 
 	m_renderController->stopRender();
@@ -688,10 +688,10 @@ void MainWindow::refreshSceneInfoLabel() {
 	bool gpuSupported = true;
 	SceneMetadataClient::gpuCompatible(scene_id, gpuSupported);
 
-	QString infoText = QString("<b>Description:</b> %1<br>").arg(description);
-	infoText += QString("<b>Performance:</b> %1<br>").arg(SceneMetadataClient::scenePerformance(scene_id));
-	infoText += QString("<b>Recommended SPP:</b> %1<br>").arg(SceneMetadataClient::sceneRecommendedSpp(scene_id));
-	infoText += QString("<b>GPU Support:</b> %1<br>").arg(gpuSupported ? "Yes" : "CPU only");
+	QString infoText = tr("<b>Description:</b> %1<br>").arg(description);
+	infoText += tr("<b>Performance:</b> %1<br>").arg(SceneMetadataClient::scenePerformance(scene_id));
+	infoText += tr("<b>Recommended SPP:</b> %1<br>").arg(SceneMetadataClient::sceneRecommendedSpp(scene_id));
+	infoText += tr("<b>GPU Support:</b> %1<br>").arg(gpuSupported ? tr("Yes") : tr("CPU only"));
 	// These two warnings are the only coloured text in the label, so they take
 	// their colours from the theme's log severities rather than fixed hex - a
 	// gold-on-cream warning is unreadable on the light schemes. Rebuilt fresh
@@ -699,10 +699,10 @@ void MainWindow::refreshSceneInfoLabel() {
 	// calling this on a theme switch picks up the new theme's colours instead
 	// of leaving an already-shown badge stuck in the old one.
 	if (SceneMetadataClient::sceneRequiresFiles(scene_id))
-		infoText += QString("<br><b style='color: %1;'>&#9888; Requires external files</b>")
+		infoText += tr("<br><b style='color: %1;'>&#9888; Requires external files</b>")
 			.arg(m_activeTheme.logWarning.name());
 	if (!gpuSupported)
-		infoText += QString("<br><b style='color: %1;'>&#9888; CPU renderer only</b>")
+		infoText += tr("<br><b style='color: %1;'>&#9888; CPU renderer only</b>")
 			.arg(m_activeTheme.logError.name());
 	m_sceneInfoLabel->setText(infoText);
 }
@@ -718,8 +718,8 @@ void MainWindow::onSceneChanged(int index) {
 		if (m_sceneInfoLabel && m_sceneCombo && m_sceneCombo->count() == 0) {
 			const QString term = m_sceneSearchBox ? m_sceneSearchBox->text().trimmed() : QString();
 			m_sceneInfoLabel->setText(term.isEmpty()
-				? "No scenes in this category."
-				: QString("No scenes match \"%1\" in this category.").arg(term));
+				? tr("No scenes in this category.")
+				: tr("No scenes match \"%1\" in this category.").arg(term));
 			updateSceneTechInfoIcon(QString());
 		}
 		return;
@@ -845,7 +845,7 @@ void MainWindow::onProgressUpdate(int percentage) {
 	// Let onElapsedTick handle status label text during rendering;
 	// just keep the progress bar updated here.
 	if (!m_isRendering)
-		m_statusLabel->setText(QString("Rendering... %1%").arg(percentage));
+		m_statusLabel->setText(tr("Rendering... %1%").arg(percentage));
 }
 
 void MainWindow::onRenderComplete(bool success, const QString &message, double totalTime, const QString &outputPath) {
@@ -879,11 +879,11 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 		// A finished bar keeps its fill and turns green rather than resetting -
 		// the outcome stays visible after the fact (Qt Creator's behaviour).
 		setProgressResultState("success");
-		m_statusLabel->setText(QString("✅ %1 - Total time: %2 seconds").arg(message).arg(totalTime, 0, 'f', 2));
+		m_statusLabel->setText(tr("✅ %1 - Total time: %2 seconds").arg(message).arg(totalTime, 0, 'f', 2));
 
 		if (finishedJob.videoMode) {
-			onLogMessage("Video frames rendered successfully. Starting video assembly...");
-			m_statusLabel->setText("⚙️ Assembling video from frames...");
+			onLogMessage(tr("Video frames rendered successfully. Starting video assembly..."));
+			m_statusLabel->setText(tr("⚙️ Assembling video from frames..."));
 
 			// Trigger automatic video assembly. outputPath and finishedJob
 			// are both threaded through explicitly (rather than read back
@@ -914,7 +914,7 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 				if (pngInfo.exists()) {
 					QPixmap pixmap(pngPath);
 					if (!pixmap.isNull()) {
-						const QString infoText = QString("%1  •  %2×%3  •  %4 KB  •  %5s")
+						const QString infoText = tr("%1  •  %2×%3  •  %4 KB  •  %5s")
 							.arg(pngInfo.fileName())
 							.arg(pixmap.width()).arg(pixmap.height())
 							.arg(pngInfo.size() / 1024)
@@ -923,8 +923,8 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 											pixmap, infoText, outputPath, pngPath);
 						if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
 					} else {
-						m_statusLabel->setText(QString("✅ Render complete (%1s)").arg(totalTime, 0, 'f', 2));
-						setStatusWarning(QString("Warning: preview image failed to load at %1").arg(pngPath));
+						m_statusLabel->setText(tr("✅ Render complete (%1s)").arg(totalTime, 0, 'f', 2));
+						setStatusWarning(tr("Warning: preview image failed to load at %1").arg(pngPath));
 					}
 				} else if (fileInfo.exists()) {
 					// PNG conversion failed but the raw PPM output exists -
@@ -932,8 +932,8 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 					// than showing nothing.
 					QDesktopServices::openUrl(QUrl::fromLocalFile(outputPath));
 				} else {
-					m_statusLabel->setText(QString("✅ Render complete (%1s)").arg(totalTime, 0, 'f', 2));
-					setStatusWarning(QString("Warning: output file not found at %1").arg(outputPath));
+					m_statusLabel->setText(tr("✅ Render complete (%1s)").arg(totalTime, 0, 'f', 2));
+					setStatusWarning(tr("Warning: output file not found at %1").arg(outputPath));
 				}
 			}
 		}
@@ -947,11 +947,11 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 		} else {
 			setProgressResultState("error");
 		}
-		m_statusLabel->setText(QString("❌ %1").arg(message));
+		m_statusLabel->setText(tr("❌ %1").arg(message));
 
 		// Only show error popup for actual failures, not for user-stopped renders
 		if (!stoppedByUser) {
-			QMessageBox::critical(this, "Render Failed", message);
+			QMessageBox::critical(this, tr("Render Failed"), message);
 		}
 	}
 
@@ -970,7 +970,7 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 	if (!stoppedByUser) {
 		processQueueIfIdle();
 	} else if (!m_renderQueue.isEmpty()) {
-		m_statusLabel->setText(QString("Stopped - %1 more queued (click Start Render to resume)").arg(m_renderQueue.size()));
+		m_statusLabel->setText(tr("Stopped - %1 more queued (click Start Render to resume)").arg(m_renderQueue.size()));
 	}
 }
 
@@ -1092,7 +1092,7 @@ QString MainWindow::formatProgressStatus(qint64 elapsedMs, int percent) {
 		m_progressRing[kProgressSamples - 1] = ProgressSample{elapsedMs, percent};
 	}
 
-	QString text = QString("Rendering  ·  %1%  ·  elapsed %2")
+	QString text = tr("Rendering  ·  %1%  ·  elapsed %2")
 		.arg(percent, 3)
 		.arg(formatDuration(elapsedMs / 1000));
 
@@ -1102,7 +1102,7 @@ QString MainWindow::formatProgressStatus(qint64 elapsedMs, int percent) {
 	if (m_progressRingCount == kProgressSamples && windowMs > 0) {
 		const double pctPerSec = 1000.0 * (percent - oldest.percent) / windowMs;
 		if (pctPerSec > 0.0)
-			text += QString("  ·  %1 %/s").arg(pctPerSec, 0, 'f', 1);
+			text += tr("  ·  %1 %/s").arg(pctPerSec, 0, 'f', 1);
 	}
 
 	// ETA from the cumulative rate, suppressed during warm-up.
@@ -1110,10 +1110,10 @@ QString MainWindow::formatProgressStatus(qint64 elapsedMs, int percent) {
 		const double pctPerMs = double(percent) / double(elapsedMs);
 		if (pctPerMs > 0.0) {
 			const qint64 remainingMs = qint64((100.0 - percent) / pctPerMs);
-			text += QString("  ·  ETA %1").arg(formatDuration(remainingMs / 1000));
+			text += tr("  ·  ETA %1").arg(formatDuration(remainingMs / 1000));
 		}
 	} else if (percent < 100) {
-		text += QStringLiteral("  ·  ETA --:--");
+		text += tr("  ·  ETA --:--");
 	}
 
 	return text;
@@ -1136,10 +1136,10 @@ void MainWindow::notifyRenderFinished(bool success, const QString &message, doub
 	// build).
 	QApplication::alert(this, 3000);
 
-	const QString title = success ? "Render complete"
-								  : (stoppedByUser ? "Render stopped" : "Render failed");
+	const QString title = success ? tr("Render complete")
+								  : (stoppedByUser ? tr("Render stopped") : tr("Render failed"));
 	const QString body = success
-		? QString("Finished in %1 seconds").arg(totalTime, 0, 'f', 2)
+		? tr("Finished in %1 seconds").arg(totalTime, 0, 'f', 2)
 		: message.section('<', 0, 0).left(120);
 
 	// While the window IS active, a toast inside it is the completion cue
@@ -1154,7 +1154,7 @@ void MainWindow::notifyRenderFinished(bool success, const QString &message, doub
 			// linkage - not reachable from this file) rather than sharing it:
 			// one ternary isn't worth a cross-TU declaration.
 			const QColor onFill = fill.lightness() > 170 ? m_activeTheme.surface0 : QColor(Qt::white);
-			m_toast->showToast(QString("%1 – %2").arg(title, body), fill, onFill);
+			m_toast->showToast(tr("%1 – %2").arg(title, body), fill, onFill);
 		}
 		return;
 	}
@@ -1163,11 +1163,11 @@ void MainWindow::notifyRenderFinished(bool success, const QString &message, doub
 	// showMessage() (which is what an invisible tray icon does) is otherwise
 	// indistinguishable from the feature simply not being wired up.
 	if (!m_trayIcon) {
-		onLogMessage("[DEBUG] No system tray available; skipping completion notification");
+		onLogMessage(tr("[DEBUG] No system tray available; skipping completion notification"));
 		return;
 	}
 	if (!QSystemTrayIcon::supportsMessages()) {
-		onLogMessage("[DEBUG] System tray does not support messages; skipping notification");
+		onLogMessage(tr("[DEBUG] System tray does not support messages; skipping notification"));
 		return;
 	}
 
@@ -1274,19 +1274,19 @@ void MainWindow::onModeChanged(int index) {
 		// leading glyph is gone from both labels: the button carries a real
 		// QIcon now, and a text-embedded emoji would sit next to it as a
 		// second, differently-styled icon.
-		m_renderButton->setText("START VIDEO &RENDER");
+		m_renderButton->setText(tr("START VIDEO &RENDER"));
 		icon_tint::apply(m_renderButton, ":/icons/video.svg",
 		                 icon_tint::Role::Primary, m_activeTheme.accentPrimary);
-		m_statusLabel->setText("Ready to render video frames");
+		m_statusLabel->setText(tr("Ready to render video frames"));
 	} else {
-		m_renderButton->setText("START &RENDER");
+		m_renderButton->setText(tr("START &RENDER"));
 		icon_tint::apply(m_renderButton, ":/icons/render.svg",
 		                 icon_tint::Role::Primary, m_activeTheme.accentPrimary);
-		m_statusLabel->setText("Ready to render");
+		m_statusLabel->setText(tr("Ready to render"));
 	}
 
 	// Log mode change
-	onLogMessage(QString("Mode changed to: %1").arg(m_videoMode ? "Video Generation" : "Single Image"));
+	onLogMessage(tr("Mode changed to: %1").arg(m_videoMode ? tr("Video Generation") : tr("Single Image")));
 }
 
 void MainWindow::assembleVideoAutomatically(const QString &baseOutputPath, const RenderJob &job) {
@@ -1332,8 +1332,8 @@ void MainWindow::assembleVideoAutomatically(const QString &baseOutputPath, const
 	}
 
 	if (videoPath.isEmpty()) {
-		m_statusLabel->setText("⚠️ Video file not found, checking for frames...");
-		onLogMessage("WARNING: Video file not found at any of the expected locations");
+		m_statusLabel->setText(tr("⚠️ Video file not found, checking for frames..."));
+		onLogMessage(tr("WARNING: Video file not found at any of the expected locations"));
 
 		// Check if frames exist (fallback diagnostic)
 		QString framesDir = outputDir + "/frames";
@@ -1342,31 +1342,31 @@ void MainWindow::assembleVideoAutomatically(const QString &baseOutputPath, const
 		if (framesDirObj.exists()) {
 			QStringList frames = framesDirObj.entryList(QStringList() << "frame_*.ppm", QDir::Files);
 			if (!frames.isEmpty()) {
-				m_statusLabel->setText(QString("⚠️ Found %1 frames but no video file").arg(frames.count()));
-				onLogMessage(QString("Frames were rendered (%1 files) but video assembly may have failed.").arg(frames.count()));
-				QMessageBox::warning(this, "Video Not Created",
-					QString("Frames were rendered successfully (%1 files), but the video file was not created.\n\n"
+				m_statusLabel->setText(tr("⚠️ Found %1 frames but no video file").arg(frames.count()));
+				onLogMessage(tr("Frames were rendered (%1 files) but video assembly may have failed.").arg(frames.count()));
+				QMessageBox::warning(this, tr("Video Not Created"),
+					tr("Frames were rendered successfully (%1 files), but the video file was not created.\n\n"
 							"Expected video at: %2\n\n"
 							"Please check the render log for ffmpeg errors.").arg(frames.count()).arg(expectedVideoPath));
 			} else {
-				m_statusLabel->setText("❌ No frames or video found");
-				onLogMessage("ERROR: No frames or video file found");
-				QMessageBox::critical(this, "Render Failed",
-					"Neither frames nor video file were created.\n\nPlease check the render log for errors.");
+				m_statusLabel->setText(tr("❌ No frames or video found"));
+				onLogMessage(tr("ERROR: No frames or video file found"));
+				QMessageBox::critical(this, tr("Render Failed"),
+					tr("Neither frames nor video file were created.\n\nPlease check the render log for errors."));
 			}
 		} else {
-			m_statusLabel->setText("❌ Frames directory not found");
-			onLogMessage(QString("ERROR: Frames directory not found: %1").arg(framesDir));
-			QMessageBox::critical(this, "Directory Not Found",
-				QString("Frames directory not found:\n%1\n\nThe render may have failed to create output.").arg(framesDir));
+			m_statusLabel->setText(tr("❌ Frames directory not found"));
+			onLogMessage(tr("ERROR: Frames directory not found: %1").arg(framesDir));
+			QMessageBox::critical(this, tr("Directory Not Found"),
+				tr("Frames directory not found:\n%1\n\nThe render may have failed to create output.").arg(framesDir));
 		}
 		return;
 	}
 
 	// Video file found! Open it
-	m_statusLabel->setText("✅ Video created successfully!");
-	onLogMessage(QString("✅ Video assembled successfully: %1").arg(videoPath));
-	onLogMessage(QString("Video size: %1 MB").arg(videoInfo.size() / (1024.0 * 1024.0), 0, 'f', 2));
+	m_statusLabel->setText(tr("✅ Video created successfully!"));
+	onLogMessage(tr("✅ Video assembled successfully: %1").arg(videoPath));
+	onLogMessage(tr("Video size: %1 MB").arg(videoInfo.size() / (1024.0 * 1024.0), 0, 'f', 2));
 
 	// Add it as a new Preview sub-tab (see addVideoPreviewTab()) - its own
 	// player, its own tab, sitting alongside whatever earlier renders are
@@ -1387,14 +1387,14 @@ void MainWindow::assembleVideoAutomatically(const QString &baseOutputPath, const
 	// scene's own name, distinguished with a "(Video)" suffix so it can't
 	// be confused with an image-mode tab of the same scene.
 	QString title = job.videoPresetName;
-	if (title.isEmpty()) title = job.displayTitle + " (Video)";
+	if (title.isEmpty()) title = tr("%1 (Video)").arg(job.displayTitle);
 
-	const QString infoText = QString("%1  •  %2 MB  •  %3 frames")
+	const QString infoText = tr("%1  •  %2 MB  •  %3 frames")
 		.arg(videoInfo.fileName())
 		.arg(videoInfo.size() / (1024.0 * 1024.0), 0, 'f', 1)
 		.arg(frameFiles.count());
 	addVideoPreviewTab(title, job.sceneDescription, videoPath, infoText);
 	if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
 
-	onLogMessage(QString("Playing video inline: %1").arg(videoPath));
+	onLogMessage(tr("Playing video inline: %1").arg(videoPath));
 }

@@ -11,6 +11,20 @@ CONFIG += c++17
 
 RESOURCES += resources.qrc
 
+# Translations: source text is English, written directly into every tr()
+# call - see language_switch.cpp's own comment for why switching is
+# restart-to-apply rather than live. lrelease/embed_translations are qmake's
+# built-in features: lrelease auto-compiles each .ts to a .qm at build time,
+# and embed_translations packages the .qm files as Qt resources
+# (:/translations/raytracer_<code>.qm) - no manual resources.qrc entry
+# needed. Regenerate the .ts files after adding/changing tr() calls with:
+#   lupdate RayTracerGUI.pro
+TRANSLATIONS += translations/raytracer_zh_CN.ts \
+                translations/raytracer_es.ts \
+                translations/raytracer_ja.ts \
+                translations/raytracer_fr.ts
+CONFIG += lrelease embed_translations
+
 TARGET = RayTracerGUI
 TEMPLATE = app
 
@@ -32,6 +46,7 @@ SOURCES += \
 	scene_metadata_client.cpp \
 	theme.cpp \
 	theme_switch.cpp \
+	language_switch.cpp \
 	win_taskbar.cpp
 
 HEADERS += \
