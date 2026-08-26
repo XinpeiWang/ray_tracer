@@ -19,6 +19,7 @@ add_executable(unit_tests
     unit/animated_transform_tests.cpp
     unit/anisotropic_ggx_tests.cpp
     unit/area_lights_tests.cpp
+    unit/bdpt_adapter_two_sided_tests.cpp
     unit/bdpt_tests.cpp
     unit/bilinear_patch_tests.cpp
     unit/bilinear_sampling_tests.cpp
@@ -127,6 +128,7 @@ add_executable(unit_tests
     unit/sobol_strat_tests.cpp
     unit/spectrum_types_tests.cpp
     unit/splines_tests.cpp
+    unit/sppm_adapter_bsdf_tests.cpp
     unit/sppm_tests.cpp
     unit/square_matrix_tests.cpp
     unit/stratified_sampler_tests.cpp
@@ -136,7 +138,7 @@ add_executable(unit_tests
     unit/texture_mapping_tests.cpp
     unit/textures_tests.cpp
     unit/tone_map_tests.cpp
-    unit/triangle_tests_patched.cpp
+    unit/triangle_tests.cpp
     unit/utility_integrators_tests.cpp
     unit/vol_path_tests.cpp
     unit/volume_scattering_tests.cpp

@@ -75,6 +75,11 @@ class metal : public material {
     color  get_albedo() const { return albedo; }
     double get_fuzz()   const { return fuzz; }
 
+    // No roughness parameter at all - fuzz perturbs the reflected direction
+    // but scatter() above always takes the skip_pdf=true path regardless of
+    // its value. See material::is_delta_bsdf()'s own comment.
+    bool is_delta_bsdf() const override { return true; }
+
   private:
     color albedo;
     double fuzz;
@@ -182,6 +187,11 @@ class dielectric : public material, public dispersive_material {
     const dispersive_material* as_dispersive(const hit_record&) const override {
         return dispersive_ ? this : nullptr;
     }
+
+    // No roughness parameter at all (that's rough_dielectric) - scatter_impl()
+    // above always takes the skip_pdf=true path. See material::
+    // is_delta_bsdf()'s own comment.
+    bool is_delta_bsdf() const override { return true; }
 
   private:
     // Dispersive glass: wavelength-dependent IOR via the two-term Cauchy

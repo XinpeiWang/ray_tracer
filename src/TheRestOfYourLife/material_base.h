@@ -129,6 +129,25 @@ class material {
         return 0;
     }
 
+    // Whether THIS material instance's scatter() sets srec.skip_pdf=true -
+    // i.e. behaves as a delta/specular BSDF that SPPM/BDPT/MLT
+    // (src/TheRestOfYourLife/bsdf_bridge.h's sppm_is_delta_material(), the
+    // only caller) should treat via BSDF-sampling resampling alone, with no
+    // NEE and no photon deposit at this vertex. Default false is correct
+    // for every material that never sets skip_pdf (lambertian,
+    // normalized_fresnel, diffuse_transmission, ...).
+    //
+    // Materials with a roughness parameter (rough_metal, conductor,
+    // rough_dielectric, coated_diffuse, coated_conductor) branch on
+    // TrowbridgeReitz::EffectivelySmooth() at RENDER time inside scatter()
+    // itself - near-zero roughness takes the delta fast path, anything
+    // above the threshold takes a real glossy NEE/MIS path - so their
+    // overrides consult that exact same check rather than returning a fixed
+    // answer. Materials with no roughness parameter at all (metal,
+    // dielectric, thin_dielectric) are unconditionally delta and override
+    // this to a fixed `true`.
+    virtual bool is_delta_bsdf() const { return false; }
+
     // The attenuation color to pair with scattering_pdf(..., scattered) for
     // THAT specific direction - defaults to srec_attenuation (the value
     // scatter() already stored in scatter_record for the direction IT

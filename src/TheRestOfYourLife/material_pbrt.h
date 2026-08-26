@@ -140,6 +140,10 @@ class rough_metal : public material {
     double get_roughness() const { return alpha_x * alpha_x; }
     const color& get_albedo() const { return albedo; }
 
+    // Mirrors scatter()'s own EffectivelySmooth() branch exactly - see
+    // material::is_delta_bsdf()'s own comment.
+    bool is_delta_bsdf() const override { return TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth(); }
+
   private:
     color  albedo;
     double alpha_x, alpha_y;
@@ -260,6 +264,10 @@ class conductor : public material {
                      FrComplex(1.0, eta_g, k_g),
                      FrComplex(1.0, eta_b, k_b));
     }
+
+    // Mirrors scatter()'s own EffectivelySmooth() branch exactly - see
+    // material::is_delta_bsdf()'s own comment.
+    bool is_delta_bsdf() const override { return TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth(); }
 
   private:
     double eta_r, eta_g, eta_b;
@@ -385,6 +393,13 @@ class rough_dielectric : public material, public dispersive_material {
     const dispersive_material* as_dispersive(const hit_record&) const override {
         return dispersive_ ? this : nullptr;
     }
+
+    // Mirrors scatter_impl()'s own EffectivelySmooth() branch exactly - see
+    // material::is_delta_bsdf()'s own comment. This is the fix for the bug
+    // that had SPPM/BDPT/MLT treating every rough_dielectric instance as
+    // delta regardless of roughness - see this class's own comment above on
+    // real NEE/MIS below the roughness threshold.
+    bool is_delta_bsdf() const override { return TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth(); }
 
   private:
     // Disambiguates the dispersive constructor below from the public
@@ -634,6 +649,10 @@ class coated_diffuse : public material {
     // get_texture() (material_simple.h) exactly.
     shared_ptr<texture> get_texture() const { return tex; }
 
+    // Mirrors scatter()'s own EffectivelySmooth() branch exactly - see
+    // material::is_delta_bsdf()'s own comment.
+    bool is_delta_bsdf() const override { return TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth(); }
+
   private:
     shared_ptr<texture> tex;
     double ior;
@@ -684,6 +703,10 @@ class thin_dielectric : public material {
     // See material::is_shadow_transmissive()'s comment - matches
     // optix_anyhit_shadow.h's MaterialType::ThinDielectric skip.
     bool is_shadow_transmissive(const hit_record&) const override { return true; }
+
+    // No roughness parameter at all - scatter() above always takes the
+    // skip_pdf=true path. See material::is_delta_bsdf()'s own comment.
+    bool is_delta_bsdf() const override { return true; }
 
   private:
     double ior;
@@ -827,6 +850,10 @@ class coated_conductor : public material {
                      FrComplex(1.0, eta_g, k_g),
                      FrComplex(1.0, eta_b, k_b));
     }
+
+    // Mirrors scatter()'s own EffectivelySmooth() branch exactly - see
+    // material::is_delta_bsdf()'s own comment.
+    bool is_delta_bsdf() const override { return TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth(); }
 
   private:
     double eta_r, eta_g, eta_b;

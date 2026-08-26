@@ -59,16 +59,26 @@ struct SPPMShadingContext {
 	shared_ptr<material> mat;
 };
 
-// True for materials whose scatter() sets srec.skip_pdf=true
-// unconditionally: metal, dielectric, rough_metal, rough_dielectric,
-// conductor, coated_diffuse, thin_dielectric, coated_conductor (confirmed
-// via material_simple.h/material_pbrt.h -- these are the only 8 material
-// classes with an unconditional `srec.skip_pdf = true`). Both SPPM's own
-// algorithm (sppm.h's SPPMCameraPass/SPPMPhotonPass) and BDPT/MLT's
-// (bdpt.h's BDPTRandomWalk, via hit.is_delta_bsdf) branch on this same
-// distinction and only ever call BSDFf/BSDFPdf for non-delta hits, treating
-// delta hits via BSDFSampleF resampling alone -- matching pbrt-v4's own
-// design for both integrators.
+// True when this material instance's scatter() sets srec.skip_pdf=true --
+// delegates to material::is_delta_bsdf() (material_base.h) rather than a
+// per-class dynamic_cast list, since that's no longer a static, per-class
+// property: rough_metal/conductor/rough_dielectric/coated_diffuse/
+// coated_conductor all branch on their own runtime roughness
+// (TrowbridgeReitz::EffectivelySmooth()) between a true delta fast path and
+// a real glossy NEE/MIS path (see each class's own is_delta_bsdf()
+// override) -- a previous version of this function treated all five as
+// unconditionally delta regardless of roughness, which silently starved
+// SPPM/BDPT/MLT of NEE and photon deposit at any GLOSSY (non-smooth)
+// instance of these materials (e.g. a frosted rough_dielectric sphere),
+// even though the default path tracer already rendered them correctly via
+// real NEE/MIS. metal/dielectric/thin_dielectric have no roughness
+// parameter at all and remain unconditionally delta.
+//
+// Both SPPM's own algorithm (sppm.h's SPPMCameraPass/SPPMPhotonPass) and
+// BDPT/MLT's (bdpt.h's BDPTRandomWalk, via hit.is_delta_bsdf) branch on
+// this distinction and only ever call BSDFf/BSDFPdf for non-delta hits,
+// treating delta hits via BSDFSampleF resampling alone -- matching
+// pbrt-v4's own design for both integrators.
 //
 // diffuse_transmission/normalized_fresnel are intentionally NOT delta
 // (skip_pdf=false) but are also not given full BSDFf support in this v1
@@ -78,14 +88,7 @@ struct SPPMShadingContext {
 // the time anything in this file classifies or evaluates a material, it's
 // always one of the real, concrete classes checked below.
 inline bool sppm_is_delta_material(const material* m) {
-	return dynamic_cast<const metal*>(m) != nullptr ||
-	       dynamic_cast<const dielectric*>(m) != nullptr ||
-	       dynamic_cast<const rough_metal*>(m) != nullptr ||
-	       dynamic_cast<const rough_dielectric*>(m) != nullptr ||
-	       dynamic_cast<const conductor*>(m) != nullptr ||
-	       dynamic_cast<const coated_diffuse*>(m) != nullptr ||
-	       dynamic_cast<const thin_dielectric*>(m) != nullptr ||
-	       dynamic_cast<const coated_conductor*>(m) != nullptr;
+	return m && m->is_delta_bsdf();
 }
 
 // Resolves a mix_material down to a concrete, non-mix sub-material, matching
@@ -201,6 +204,36 @@ inline void sppm_bsdf_f(const SPPMShadingContext& ctx, const double wo[3], const
 		color c = (cos_wi > 0.0) ? dt->reflectance_at(rec) : dt->transmittance_at(rec);
 		double inv_pi = 1.0 / pi;
 		out[0] = c.x() * inv_pi; out[1] = c.y() * inv_pi; out[2] = c.z() * inv_pi;
+		return;
+	}
+
+	// rough_dielectric needs its own case for the same reason
+	// diffuse_transmission does: it's the one other material here whose real
+	// f(wo,wi) is nonzero on BOTH sides of the hemisphere (transmission, not
+	// just reflection) - unlike diffuse_transmission's R vs T split though,
+	// rough_dielectric's glossy-branch scatter() always sets
+	// srec.attenuation to a fixed white (1,1,1) regardless of which lobe its
+	// own stochastic reflect-vs-refract draw picks (material_pbrt.h's
+	// scatter_impl()), so reusing scattering_pdf()'s already-correct,
+	// full-sphere GGX value (RoughDielectricBxDF::f() has no hemisphere
+	// restriction of its own) needs no extra scatter() call at all - just
+	// the same f_cos/cos_theta unnormalization the generic path below uses,
+	// with |cos_theta| instead of the generic path's cos_wi (which is
+	// negative, not just small, for a transmitted wi - dividing by the
+	// signed value would flip the sign of the whole result). Only reachable
+	// at all once this material can be classified non-delta - see
+	// material::is_delta_bsdf()'s own comment on why a rough_dielectric
+	// instance's glossy branch used to never reach this function.
+	if (auto rd = dynamic_cast<const rough_dielectric*>(ctx.mat.get())) {
+		double cos_theta = std::fabs(cos_wi);
+		if (cos_theta <= 0.0) return;
+		hit_record rec = sppm_reconstruct_hit_record(ctx, n);
+		ray fake_in(ctx.p, -vec3(wo[0], wo[1], wo[2]));
+		ray fake_scattered(ctx.p, vec3(wi[0], wi[1], wi[2]));
+		double f_cos = rd->scattering_pdf(fake_in, rec, fake_scattered);
+		if (f_cos <= 0.0) return;
+		double f = f_cos / cos_theta;
+		out[0] = out[1] = out[2] = f;
 		return;
 	}
 
