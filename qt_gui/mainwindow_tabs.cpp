@@ -1551,6 +1551,17 @@ void MainWindow::createPreviewTab() {
 	m_previewSceneDescLabel->setObjectName("previewSceneDesc");
 	sideLayout->addWidget(m_previewSceneDescLabel);
 
+	// The active render's own technique note (what the scene demonstrates
+	// and why it looks the way it does) - see updatePreviewSidebarForActiveTab(),
+	// which populates this from the tab's "sceneId" property and hides it
+	// when scene_technique_notes::hasNote() says there's nothing authored.
+	m_previewTechniqueLabel = new QLabel(sidebar);
+	m_previewTechniqueLabel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+	m_previewTechniqueLabel->setWordWrap(true);
+	m_previewTechniqueLabel->setObjectName("previewTechniqueNote");
+	m_previewTechniqueLabel->setVisible(false);
+	sideLayout->addWidget(m_previewTechniqueLabel);
+
 	// Geometry only - colour and hover/focus states come from the global
 	// theme so every secondary button behaves identically. Full sidebar
 	// width and stacked vertically now that they're beside the image, not
@@ -1615,6 +1626,15 @@ QString MainWindow::currentPreviewProperty(const char *name) const {
 
 void MainWindow::updatePreviewSidebarForActiveTab() {
 	if (m_previewInfoLabel) m_previewInfoLabel->setText(currentPreviewProperty("infoText"));
+	if (m_previewTechniqueLabel) {
+		const QString sceneId = currentPreviewProperty("sceneId");
+		const bool hasNote = !sceneId.isEmpty() && scene_technique_notes::hasNote(sceneId);
+		m_previewTechniqueLabel->setVisible(hasNote);
+		if (hasNote) {
+			m_previewTechniqueLabel->setText(
+				tr("<b>Why it looks this way</b><br>%1").arg(scene_technique_notes::forScene(sceneId)));
+		}
+	}
 	// Nothing in the sidebar (render info, Open Folder/Viewer) means anything
 	// without an active render tab to point at - hidden rather than left
 	// showing stale info/dead buttons alongside the empty-state prompt (see
@@ -1644,7 +1664,8 @@ void MainWindow::closePreviewSubTab(int index) {
 }
 
 void MainWindow::addImagePreviewTab(const QString &title, const QString &tooltip, const QPixmap &pixmap,
-									 const QString &infoText, const QString &outputPath, const QString &previewPath) {
+									 const QString &infoText, const QString &outputPath, const QString &previewPath,
+									 const QString &sceneId) {
 	if (!m_previewSubTabs) return;
 
 	QWidget *page = new QWidget();
@@ -1660,6 +1681,7 @@ void MainWindow::addImagePreviewTab(const QString &title, const QString &tooltip
 	page->setProperty("outputPath", outputPath);
 	page->setProperty("previewPath", previewPath);
 	page->setProperty("infoText", infoText);
+	page->setProperty("sceneId", sceneId);
 
 	const int index = m_previewSubTabs->addTab(page, uniquePreviewTabTitle(title));
 	m_previewSubTabs->setTabToolTip(index, tooltip);
@@ -1667,7 +1689,8 @@ void MainWindow::addImagePreviewTab(const QString &title, const QString &tooltip
 }
 
 void MainWindow::addVideoPreviewTab(const QString &title, const QString &tooltip,
-									 const QString &videoPath, const QString &infoText) {
+									 const QString &videoPath, const QString &infoText,
+									 const QString &sceneId) {
 	if (!m_previewSubTabs) return;
 
 	QWidget *page = new QWidget();
@@ -1784,6 +1807,7 @@ void MainWindow::addVideoPreviewTab(const QString &title, const QString &tooltip
 	page->setProperty("outputPath", videoPath);
 	page->setProperty("previewPath", videoPath);
 	page->setProperty("infoText", infoText);
+	page->setProperty("sceneId", sceneId);
 
 	const int index = m_previewSubTabs->addTab(page, uniquePreviewTabTitle(title));
 	m_previewSubTabs->setTabToolTip(index, tooltip);

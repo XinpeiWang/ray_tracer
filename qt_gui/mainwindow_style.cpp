@@ -631,7 +631,7 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			font-weight: bold;
 			padding-bottom: 4px;
 		}
-		QLabel#previewSceneDesc {
+		QLabel#previewSceneDesc, QLabel#previewTechniqueNote {
 			color: %TEXT_MUTED%;
 			background-color: %SURFACE2%;
 			border: 1px solid %BORDER%;

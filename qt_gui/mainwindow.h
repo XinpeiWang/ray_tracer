@@ -1408,9 +1408,10 @@ private:
 	// current; tooltip is the full scene/preset description, shown on
 	// hover since the tab bar itself only has room for a short title.
 	void addImagePreviewTab(const QString &title, const QString &tooltip, const QPixmap &pixmap,
-							 const QString &infoText, const QString &outputPath, const QString &previewPath);
+							 const QString &infoText, const QString &outputPath, const QString &previewPath,
+							 const QString &sceneId);
 	void addVideoPreviewTab(const QString &title, const QString &tooltip, const QString &videoPath,
-							 const QString &infoText);
+							 const QString &infoText, const QString &sceneId);
 	// First use of a title returns it unchanged; each repeat appends " (N)".
 	QString uniquePreviewTabTitle(const QString &baseTitle);
 	// Reads a property (see m_previewSubTabs's comment) off the currently
@@ -1700,6 +1701,12 @@ private:
 	QWidget *m_previewSidebar = nullptr; // Info/buttons pane; hidden while there are no sub-tabs - see updatePreviewSidebarForActiveTab()
 	QLabel *m_previewInfoLabel;         // Filename / resolution / size / render time - reflects whichever sub-tab is active
 	QLabel *m_previewSceneDescLabel;    // Selected scene's description - see onSceneChanged()
+	// The active sub-tab's own technique note (scene_technique_notes::
+	// forScene(), keyed by the "sceneId" tab property) - unlike
+	// m_previewSceneDescLabel above, tied to the actual render shown, not
+	// whichever scene is currently selected in the picker. Hidden when no
+	// note is authored for that scene id - see updatePreviewSidebarForActiveTab().
+	QLabel *m_previewTechniqueLabel = nullptr;
 	int m_previewTabIndex = -1;         // Index of the Preview tab within m_tabWidget
 	// Counts repeat sub-tab titles ("Cornell Box" -> "Cornell Box (2)") so
 	// re-rendering the same scene/preset in one session doesn't produce

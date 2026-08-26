@@ -968,13 +968,16 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 				if (pngInfo.exists()) {
 					QPixmap pixmap(pngPath);
 					if (!pixmap.isNull()) {
-						const QString infoText = tr("%1  •  %2×%3  •  %4 KB  •  %5s")
+						const QString infoText = tr("%1  •  %2×%3  •  %4 KB  •  %5s  •  %6spp · %7%8")
 							.arg(pngInfo.fileName())
 							.arg(pixmap.width()).arg(pixmap.height())
 							.arg(pngInfo.size() / 1024)
-							.arg(totalTime, 0, 'f', 2);
+							.arg(totalTime, 0, 'f', 2)
+							.arg(finishedJob.samples)
+							.arg(rendererLabel(finishedJob.useGPU, finishedJob.useWavefront),
+								 integratorSuffixTag(finishedJob.integratorOptions.mode));
 						addImagePreviewTab(finishedJob.displayTitle, finishedJob.sceneDescription,
-											pixmap, infoText, outputPath, pngPath);
+											pixmap, infoText, outputPath, pngPath, finishedJob.sceneId);
 						saveRecentRender(finishedJob, pngPath, /*isVideo=*/false);
 						refreshRecentRendersList();
 						if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
@@ -1503,11 +1506,13 @@ void MainWindow::assembleVideoAutomatically(const QString &baseOutputPath, const
 	QString title = job.videoPresetName;
 	if (title.isEmpty()) title = tr("%1 (Video)").arg(job.displayTitle);
 
-	const QString infoText = tr("%1  •  %2 MB  •  %3 frames")
+	const QString infoText = tr("%1  •  %2 MB  •  %3 frames  •  %4spp · %5%6")
 		.arg(videoInfo.fileName())
 		.arg(videoInfo.size() / (1024.0 * 1024.0), 0, 'f', 1)
-		.arg(frameFiles.count());
-	addVideoPreviewTab(title, job.sceneDescription, videoPath, infoText);
+		.arg(frameFiles.count())
+		.arg(job.samples)
+		.arg(rendererLabel(job.useGPU, job.useWavefront), integratorSuffixTag(job.integratorOptions.mode));
+	addVideoPreviewTab(title, job.sceneDescription, videoPath, infoText, job.sceneId);
 	saveRecentRender(job, videoPath, /*isVideo=*/true, title);
 	refreshRecentRendersList();
 	if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);

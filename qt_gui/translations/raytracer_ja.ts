@@ -61,7 +61,7 @@
     </message>
     <message>
         <location filename="../mainwindow.cpp" line="821"/>
-        <location filename="../mainwindow_slots.cpp" line="1345"/>
+        <location filename="../mainwindow_slots.cpp" line="1348"/>
         <source>START &amp;RENDER</source>
         <translation>レンダリング開始(&amp;R)</translation>
     </message>
@@ -110,7 +110,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="74"/>
-        <location filename="../mainwindow_tabs.cpp" line="1563"/>
+        <location filename="../mainwindow_tabs.cpp" line="1574"/>
         <source>Open Output &amp;Folder</source>
         <translation>出力フォルダーを開く(&amp;F)</translation>
     </message>
@@ -121,7 +121,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="84"/>
-        <location filename="../mainwindow_tabs.cpp" line="1575"/>
+        <location filename="../mainwindow_tabs.cpp" line="1586"/>
         <source>Open in Default &amp;Viewer</source>
         <translation>既定のビューアーで開く(&amp;V)</translation>
     </message>
@@ -142,7 +142,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="99"/>
-        <location filename="../mainwindow_tabs.cpp" line="1906"/>
+        <location filename="../mainwindow_tabs.cpp" line="1930"/>
         <source>&amp;Save Log…</source>
         <translation>ログを保存(&amp;S)…</translation>
     </message>
@@ -153,7 +153,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="110"/>
-        <location filename="../mainwindow_tabs.cpp" line="1911"/>
+        <location filename="../mainwindow_tabs.cpp" line="1935"/>
         <source>C&amp;lear Log</source>
         <translation>ログをクリア(&amp;L)</translation>
     </message>
@@ -473,160 +473,164 @@
         <translation>⚙️ フレームから動画を合成中...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="971"/>
         <source>%1  •  %2×%3  •  %4 KB  •  %5s</source>
-        <translation>%1  •  %2×%3  •  %4 KB  •  %5s</translation>
+        <translation type="vanished">%1  •  %2×%3  •  %4 KB  •  %5s</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="982"/>
-        <location filename="../mainwindow_slots.cpp" line="991"/>
+        <location filename="../mainwindow_slots.cpp" line="971"/>
+        <source>%1  •  %2×%3  •  %4 KB  •  %5s  •  %6spp · %7%8</source>
+        <translation>%1  •  %2×%3  •  %4 KB  •  %5s  •  %6spp · %7%8</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_slots.cpp" line="985"/>
+        <location filename="../mainwindow_slots.cpp" line="994"/>
         <source>✅ Render complete (%1s)</source>
         <translation>✅ レンダリング完了 (%1s)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="983"/>
+        <location filename="../mainwindow_slots.cpp" line="986"/>
         <source>Warning: preview image failed to load at %1</source>
         <translation>警告: プレビュー画像を%1から読み込めませんでした</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="992"/>
+        <location filename="../mainwindow_slots.cpp" line="995"/>
         <source>Warning: output file not found at %1</source>
         <translation>警告: 出力ファイルが%1に見つかりません</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1006"/>
+        <location filename="../mainwindow_slots.cpp" line="1009"/>
         <source>❌ %1</source>
         <translation>❌ %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1010"/>
-        <location filename="../mainwindow_slots.cpp" line="1468"/>
+        <location filename="../mainwindow_slots.cpp" line="1013"/>
+        <location filename="../mainwindow_slots.cpp" line="1471"/>
         <source>Render Failed</source>
         <translation>レンダリングに失敗しました</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1029"/>
+        <location filename="../mainwindow_slots.cpp" line="1032"/>
         <source>Stopped - %1 more queued (click Start Render to resume)</source>
         <translation>停止しました - 他に%1件がキュー待ち (再開するには「レンダリング開始」をクリック)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1151"/>
+        <location filename="../mainwindow_slots.cpp" line="1154"/>
         <source>Rendering  ·  %1%  ·  elapsed %2</source>
         <translation>レンダリング中  ·  %1%  ·  経過時間 %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1161"/>
+        <location filename="../mainwindow_slots.cpp" line="1164"/>
         <source>  ·  %1 %/s</source>
         <translation>  ·  %1 %/秒</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1169"/>
+        <location filename="../mainwindow_slots.cpp" line="1172"/>
         <source>  ·  ETA %1</source>
         <translation>  ·  残り時間 %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1172"/>
+        <location filename="../mainwindow_slots.cpp" line="1175"/>
         <source>  ·  ETA --:--</source>
         <translation>  ·  残り時間 --:--</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1195"/>
+        <location filename="../mainwindow_slots.cpp" line="1198"/>
         <source>Render complete</source>
         <translation>レンダリング完了</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1196"/>
+        <location filename="../mainwindow_slots.cpp" line="1199"/>
         <source>Render stopped</source>
         <translation>レンダリング停止</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1196"/>
+        <location filename="../mainwindow_slots.cpp" line="1199"/>
         <source>Render failed</source>
         <translation>レンダリング失敗</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1198"/>
+        <location filename="../mainwindow_slots.cpp" line="1201"/>
         <source>Finished in %1 seconds</source>
         <translation>%1秒で完了しました</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1213"/>
+        <location filename="../mainwindow_slots.cpp" line="1216"/>
         <source>%1 – %2</source>
         <translation>%1 – %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1222"/>
+        <location filename="../mainwindow_slots.cpp" line="1225"/>
         <source>[DEBUG] No system tray available; skipping completion notification</source>
         <translation>[DEBUG] システムトレイが利用できないため、完了通知をスキップします</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1226"/>
+        <location filename="../mainwindow_slots.cpp" line="1229"/>
         <source>[DEBUG] System tray does not support messages; skipping notification</source>
         <translation>[DEBUG] システムトレイがメッセージ表示に対応していないため、通知をスキップします</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1340"/>
+        <location filename="../mainwindow_slots.cpp" line="1343"/>
         <source>START VIDEO &amp;RENDER</source>
         <translation>動画レンダリング開始(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1343"/>
+        <location filename="../mainwindow_slots.cpp" line="1346"/>
         <source>Ready to render video frames</source>
         <translation>動画フレームのレンダリング準備完了</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1348"/>
-        <location filename="../mainwindow_tabs.cpp" line="1817"/>
+        <location filename="../mainwindow_slots.cpp" line="1351"/>
+        <location filename="../mainwindow_tabs.cpp" line="1841"/>
         <source>Ready to render</source>
         <translation>レンダリング準備完了</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1352"/>
+        <location filename="../mainwindow_slots.cpp" line="1355"/>
         <source>Mode changed to: %1</source>
         <translation>モードを%1に変更しました</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1352"/>
+        <location filename="../mainwindow_slots.cpp" line="1355"/>
         <source>Video Generation</source>
         <translation>動画生成</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1352"/>
+        <location filename="../mainwindow_slots.cpp" line="1355"/>
         <source>Single Image</source>
         <translation>単一画像</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1403"/>
+        <location filename="../mainwindow_slots.cpp" line="1406"/>
         <source>Integrator changed to: %1</source>
         <translation>インテグレータを変更しました: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1449"/>
+        <location filename="../mainwindow_slots.cpp" line="1452"/>
         <source>⚠️ Video file not found, checking for frames...</source>
         <translation>⚠️ 動画ファイルが見つかりません。フレームを確認中...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1450"/>
+        <location filename="../mainwindow_slots.cpp" line="1453"/>
         <source>WARNING: Video file not found at any of the expected locations</source>
         <translation>WARNING: 想定されるいずれの場所にも動画ファイルが見つかりません</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1459"/>
+        <location filename="../mainwindow_slots.cpp" line="1462"/>
         <source>⚠️ Found %1 frames but no video file</source>
         <translation>⚠️ %1個のフレームが見つかりましたが、動画ファイルがありません</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1460"/>
+        <location filename="../mainwindow_slots.cpp" line="1463"/>
         <source>Frames were rendered (%1 files) but video assembly may have failed.</source>
         <translation>フレームはレンダリングされました (%1ファイル) が、動画の合成に失敗した可能性があります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1461"/>
+        <location filename="../mainwindow_slots.cpp" line="1464"/>
         <source>Video Not Created</source>
         <translation>動画が作成されませんでした</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1462"/>
+        <location filename="../mainwindow_slots.cpp" line="1465"/>
         <source>Frames were rendered successfully (%1 files), but the video file was not created.
 
 Expected video at: %2
@@ -639,17 +643,17 @@ Please check the render log for ffmpeg errors.</source>
 ffmpegのエラーについてはレンダリングログを確認してください。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1466"/>
+        <location filename="../mainwindow_slots.cpp" line="1469"/>
         <source>❌ No frames or video found</source>
         <translation>❌ フレームも動画も見つかりません</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1467"/>
+        <location filename="../mainwindow_slots.cpp" line="1470"/>
         <source>ERROR: No frames or video file found</source>
         <translation>ERROR: フレームまたは動画ファイルが見つかりません</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1469"/>
+        <location filename="../mainwindow_slots.cpp" line="1472"/>
         <source>Neither frames nor video file were created.
 
 Please check the render log for errors.</source>
@@ -658,22 +662,22 @@ Please check the render log for errors.</source>
 エラーについてはレンダリングログを確認してください。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1472"/>
+        <location filename="../mainwindow_slots.cpp" line="1475"/>
         <source>❌ Frames directory not found</source>
         <translation>❌ フレームディレクトリが見つかりません</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1473"/>
+        <location filename="../mainwindow_slots.cpp" line="1476"/>
         <source>ERROR: Frames directory not found: %1</source>
         <translation>ERROR: フレームディレクトリが見つかりません: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1474"/>
+        <location filename="../mainwindow_slots.cpp" line="1477"/>
         <source>Directory Not Found</source>
         <translation>ディレクトリが見つかりません</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1475"/>
+        <location filename="../mainwindow_slots.cpp" line="1478"/>
         <source>Frames directory not found:
 %1
 
@@ -684,32 +688,36 @@ The render may have failed to create output.</source>
 レンダリングが出力の作成に失敗した可能性があります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1481"/>
+        <location filename="../mainwindow_slots.cpp" line="1484"/>
         <source>✅ Video created successfully!</source>
         <translation>✅ 動画の作成が完了しました!</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1482"/>
+        <location filename="../mainwindow_slots.cpp" line="1485"/>
         <source>✅ Video assembled successfully: %1</source>
         <translation>✅ 動画の合成が完了しました: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1483"/>
+        <location filename="../mainwindow_slots.cpp" line="1486"/>
         <source>Video size: %1 MB</source>
         <translation>動画サイズ: %1 MB</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1504"/>
+        <location filename="../mainwindow_slots.cpp" line="1507"/>
         <source>%1 (Video)</source>
         <translation>%1 (動画)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1506"/>
-        <source>%1  •  %2 MB  •  %3 frames</source>
-        <translation>%1  •  %2 MB  •  %3フレーム</translation>
+        <location filename="../mainwindow_slots.cpp" line="1509"/>
+        <source>%1  •  %2 MB  •  %3 frames  •  %4spp · %5%6</source>
+        <translation>%1  •  %2 MB  •  %3フレーム  •  %4spp · %5%6</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1515"/>
+        <source>%1  •  %2 MB  •  %3 frames</source>
+        <translation type="vanished">%1  •  %2 MB  •  %3フレーム</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_slots.cpp" line="1520"/>
         <source>Playing video inline: %1</source>
         <translation>動画をインライン再生中: %1</translation>
     </message>
@@ -1330,7 +1338,7 @@ Each extra bounce lets light travel one more surface before giving up, which is 
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="944"/>
-        <location filename="../mainwindow_tabs.cpp" line="2025"/>
+        <location filename="../mainwindow_tabs.cpp" line="2049"/>
         <source>Preset:</source>
         <translation>プリセット:</translation>
     </message>
@@ -1776,115 +1784,120 @@ Grayed out? This is GPU-only - switch Renderer to GPU on the Basic Settings tab 
         <translation>レンダリングオプション</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1566"/>
+        <location filename="../mainwindow_tabs.cpp" line="1577"/>
         <source>Show the folder containing the active tab&apos;s render in Explorer</source>
         <translation>アクティブなタブのレンダリング結果が格納されているフォルダをエクスプローラーで開く</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1578"/>
+        <location filename="../mainwindow_tabs.cpp" line="1589"/>
         <source>Open the active tab&apos;s render in the system viewer</source>
         <translation>アクティブなタブのレンダリング結果をシステムのビューアーで開く</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1600"/>
+        <location filename="../mainwindow_tabs.cpp" line="1611"/>
         <source>Preview</source>
         <translation>プレビュー</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1700"/>
-        <location filename="../mainwindow_tabs.cpp" line="1713"/>
+        <location filename="../mainwindow_tabs.cpp" line="1635"/>
+        <source>&lt;b&gt;Why it looks this way&lt;/b&gt;&lt;br&gt;%1</source>
+        <translation>&lt;b&gt;なぜこのように見えるのか&lt;/b&gt;&lt;br&gt;%1</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="1723"/>
+        <location filename="../mainwindow_tabs.cpp" line="1736"/>
         <source>Pause</source>
         <translation>一時停止</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1713"/>
+        <location filename="../mainwindow_tabs.cpp" line="1736"/>
         <source>Play</source>
         <translation>再生</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1723"/>
+        <location filename="../mainwindow_tabs.cpp" line="1746"/>
         <source>Video playback error (%1): %2</source>
         <translation>動画再生エラー(%1): %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1800"/>
-        <location filename="../mainwindow_tabs.cpp" line="1872"/>
+        <location filename="../mainwindow_tabs.cpp" line="1824"/>
+        <location filename="../mainwindow_tabs.cpp" line="1896"/>
         <source>Progress</source>
         <translation>進捗</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1840"/>
+        <location filename="../mainwindow_tabs.cpp" line="1864"/>
         <source>Render Queue</source>
         <translation>レンダリングキュー</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1852"/>
+        <location filename="../mainwindow_tabs.cpp" line="1876"/>
         <source>Re&amp;move Selected</source>
         <translation>選択項目を削除(&amp;M)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1853"/>
+        <location filename="../mainwindow_tabs.cpp" line="1877"/>
         <source>Remove the selected job from the render queue</source>
         <translation>選択したジョブをレンダリングキューから削除する</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1858"/>
+        <location filename="../mainwindow_tabs.cpp" line="1882"/>
         <source>Clear &amp;Queue</source>
         <translation>キューをクリア(&amp;Q)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1860"/>
+        <location filename="../mainwindow_tabs.cpp" line="1884"/>
         <source>Remove every job from the render queue</source>
         <translation>レンダリングキュー内のすべてのジョブを削除する</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1901"/>
-        <location filename="../mainwindow_tabs.cpp" line="1955"/>
+        <location filename="../mainwindow_tabs.cpp" line="1925"/>
+        <location filename="../mainwindow_tabs.cpp" line="1979"/>
         <source>&amp;Copy All</source>
         <translation>すべてコピー(&amp;C)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1922"/>
+        <location filename="../mainwindow_tabs.cpp" line="1946"/>
         <source>Log Output</source>
         <translation>ログ出力</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1939"/>
+        <location filename="../mainwindow_tabs.cpp" line="1963"/>
         <source>Click &quot;Run Diagnostics&quot; to check GPU/CUDA/OptiX availability, CPU/RAM, disk space, and scene asset availability.</source>
         <translation>「診断を実行」をクリックすると、GPU/CUDA/OptiXの利用可否、CPU/RAM、ディスク空き容量、シーンアセットの有無を確認します。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1950"/>
+        <location filename="../mainwindow_tabs.cpp" line="1974"/>
         <source>&amp;Run Diagnostics</source>
         <translation>診断を実行(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1960"/>
+        <location filename="../mainwindow_tabs.cpp" line="1984"/>
         <source>&amp;Save Report…</source>
         <translation>レポートを保存(&amp;S)…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1971"/>
+        <location filename="../mainwindow_tabs.cpp" line="1995"/>
         <source>Diagnostics</source>
         <translation>診断</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1990"/>
+        <location filename="../mainwindow_tabs.cpp" line="2014"/>
         <source>⚠ These settings only take effect when Output Mode (Basic Settings tab) is set to &quot;Generate Video&quot;.</source>
         <translation>⚠ これらの設定は、ベーシック設定タブの出力モードが「動画を生成」に設定されている場合のみ有効です。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1998"/>
+        <location filename="../mainwindow_tabs.cpp" line="2022"/>
         <source>Video Generation Settings</source>
         <translation>動画生成設定</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2011"/>
+        <location filename="../mainwindow_tabs.cpp" line="2035"/>
         <source>(custom - choose settings below)</source>
         <translation>(カスタム - 以下の設定から選択)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2017"/>
+        <location filename="../mainwindow_tabs.cpp" line="2041"/>
         <source>Famous ray-tracing reference scenes and motions, pre-tuned so you don&apos;t
 have to set the scene, camera path, frame count, fps, and speed by hand.
 Selecting one changes the scene on the Basic tab too. Choosing any of the
@@ -1894,7 +1907,7 @@ the preset, the same as if you had built the same settings by hand.</source>
 選択するとベーシックタブのシーンも連動して変更されます。その後このタブの他の項目を変更しても問題ありません。単にプリセットと一致しない状態になるだけで、同じ設定を自分で手動作成した場合と同じ扱いになります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2026"/>
+        <location filename="../mainwindow_tabs.cpp" line="2050"/>
         <source>A ready-made bundle of scene + camera path + frame count + fps + speed, tuned so the resulting video actually looks good without hand-picking every setting yourself.
 
 Picking one fills in every field below (and the scene on the Basic tab) - you can still change anything afterward, it just stops matching the preset once you do.</source>
@@ -1903,27 +1916,27 @@ Picking one fills in every field below (and the scene on the Basic tab) - you ca
 選択すると、以下のすべてのフィールド(およびベーシックタブのシーン)が自動入力されます。その後も自由に変更できますが、変更した時点でプリセットとは一致しなくなります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2036"/>
+        <location filename="../mainwindow_tabs.cpp" line="2060"/>
         <source>Orbit (Circular rotation)</source>
         <translation>オービット(円周回転)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2037"/>
+        <location filename="../mainwindow_tabs.cpp" line="2061"/>
         <source>Linear (Straight path)</source>
         <translation>リニア(直線移動)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2038"/>
+        <location filename="../mainwindow_tabs.cpp" line="2062"/>
         <source>Figure-8 (Lemniscate)</source>
         <translation>8の字(連珠形)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2039"/>
+        <location filename="../mainwindow_tabs.cpp" line="2063"/>
         <source>Spiral (Zoom-in)</source>
         <translation>スパイラル(ズームイン)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2041"/>
+        <location filename="../mainwindow_tabs.cpp" line="2065"/>
         <source>How the camera moves over the frame sequence:
   Orbit     — full circle around the scene, always looking at its centre
   Linear    — straight sweep past the scene
@@ -1938,12 +1951,12 @@ Every path starts from the camera position on the Advanced tab.</source>
 どのパスも、詳細設定タブで指定したカメラ位置から開始します。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2049"/>
+        <location filename="../mainwindow_tabs.cpp" line="2073"/>
         <source>Camera Path:</source>
         <translation>カメラパス:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2050"/>
+        <location filename="../mainwindow_tabs.cpp" line="2074"/>
         <source>How the camera moves across the sequence of frames.
 
 Orbit circles fully around the scene, always facing its center - the classic &quot;turntable&quot; shot. Linear sweeps past in a straight line. Figure-8 traces a lemniscate, crossing back through the middle. Spiral orbits while steadily moving closer. Every path starts from wherever the camera is positioned on the Advanced tab.</source>
@@ -1952,17 +1965,17 @@ Orbit circles fully around the scene, always facing its center - the classic &qu
 オービットはシーンの中心を常に見ながら周囲を一周する、いわゆる「ターンテーブル」ショットです。リニアは直線的にシーンの前を横切ります。8の字は連珠形を描き、中央を通過して交差します。スパイラルは周回しながら徐々に近づいていきます。どのパスも、詳細設定タブで指定したカメラ位置から開始します。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2063"/>
+        <location filename="../mainwindow_tabs.cpp" line="2087"/>
         <source> frames</source>
         <translation> フレーム</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2065"/>
+        <location filename="../mainwindow_tabs.cpp" line="2089"/>
         <source>Frame Count:</source>
         <translation>フレーム数:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2066"/>
+        <location filename="../mainwindow_tabs.cpp" line="2090"/>
         <source>How many individual images make up the video - each one is a full, independent render, so this multiplies total render time directly (100 frames takes roughly 100x as long as one image at the same settings).
 
 Paired with Frames Per Second below to determine the video&apos;s total length in seconds.</source>
@@ -1971,17 +1984,17 @@ Paired with Frames Per Second below to determine the video&apos;s total length i
 下のフレームレート(fps)と組み合わせることで、動画の合計秒数が決まります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2078"/>
+        <location filename="../mainwindow_tabs.cpp" line="2102"/>
         <source> fps</source>
         <translation> fps</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2080"/>
+        <location filename="../mainwindow_tabs.cpp" line="2104"/>
         <source>Frames Per Second:</source>
         <translation>フレームレート(fps):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2081"/>
+        <location filename="../mainwindow_tabs.cpp" line="2105"/>
         <source>How many of the rendered frames play per second of video.
 
 Doesn&apos;t change how many frames get rendered (that&apos;s Frame Count above) - only how fast they play back, and therefore how many seconds long the finished video is (Frame Count divided by FPS).</source>
@@ -1990,17 +2003,17 @@ Doesn&apos;t change how many frames get rendered (that&apos;s Frame Count above)
 レンダリングされるフレーム数自体(上のフレーム数)は変わりません。変わるのは再生速度、つまり完成した動画の長さ(秒)です(フレーム数をfpsで割った値になります)。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2101"/>
+        <location filename="../mainwindow_tabs.cpp" line="2125"/>
         <source>x</source>
         <translation>x</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2103"/>
+        <location filename="../mainwindow_tabs.cpp" line="2127"/>
         <source>Movement Speed:</source>
         <translation>移動速度:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2104"/>
+        <location filename="../mainwindow_tabs.cpp" line="2128"/>
         <source>A multiplier on how many frames the camera&apos;s full path is spread across - not a change to the path itself, which always completes the same full sweep.
 
 Speed 0.5x renders twice as many frames to cover the same journey more slowly and smoothly; speed 2x renders half as many frames, covering the same journey faster.</source>
@@ -2009,47 +2022,47 @@ Speed 0.5x renders twice as many frames to cover the same journey more slowly an
 速度0.5xでは、同じ経路をよりゆっくり滑らかにたどるため、レンダリングするフレーム数が2倍になります。速度2xでは、同じ経路をより速くたどるため、フレーム数は半分になります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2133"/>
+        <location filename="../mainwindow_tabs.cpp" line="2157"/>
         <source>%1 frames</source>
         <translation>%1 フレーム</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2134"/>
+        <location filename="../mainwindow_tabs.cpp" line="2158"/>
         <source>%1 frames (base %2 × 1/%3x speed)%4</source>
         <translation>%1 フレーム(基準 %2 × 1/%3x 速度)%4</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2136"/>
+        <location filename="../mainwindow_tabs.cpp" line="2160"/>
         <source> - capped at 5000</source>
         <translation> - 上限5000でクリップ</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2138"/>
+        <location filename="../mainwindow_tabs.cpp" line="2162"/>
         <source>&lt;b&gt;Video Duration:&lt;/b&gt; %1 seconds (%2)&lt;br&gt;&lt;b&gt;Camera Path:&lt;/b&gt; %3, always completes its full sweep regardless of speed&lt;br&gt;&lt;b&gt;Output:&lt;/b&gt; Frames will be saved to &lt;code&gt;output/frames/&lt;/code&gt;</source>
         <translation>&lt;b&gt;動画の長さ:&lt;/b&gt; %1 秒(%2)&lt;br&gt;&lt;b&gt;カメラパス:&lt;/b&gt; %3、速度に関わらず常に全経路を完走します&lt;br&gt;&lt;b&gt;出力先:&lt;/b&gt; フレームは &lt;code&gt;output/frames/&lt;/code&gt; に保存されます</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2156"/>
+        <location filename="../mainwindow_tabs.cpp" line="2180"/>
         <source>ℹ️ Requirements</source>
         <translation>ℹ️ 必要要件</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2161"/>
+        <location filename="../mainwindow_tabs.cpp" line="2185"/>
         <source>&lt;b&gt;Requires ffmpeg:&lt;/b&gt; Video encoding uses ffmpeg (libx264), which must be installed and on your PATH.&lt;br&gt;&lt;small&gt;Get it from &lt;a href=&quot;https://ffmpeg.org/download.html&quot;&gt;ffmpeg.org&lt;/a&gt; if the render log reports it&apos;s missing.&lt;/small&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;Automatic Assembly:&lt;/b&gt; After rendering all frames, the video will be automatically assembled and opened.</source>
         <translation>&lt;b&gt;ffmpegが必要です:&lt;/b&gt; 動画のエンコードにはffmpeg(libx264)を使用します。インストール済みで、PATHが通っている必要があります。&lt;br&gt;&lt;small&gt;レンダリングログで「見つからない」と表示された場合は、&lt;a href=&quot;https://ffmpeg.org/download.html&quot;&gt;ffmpeg.org&lt;/a&gt; から入手してください。&lt;/small&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;自動結合:&lt;/b&gt; 全フレームのレンダリング完了後、動画は自動的に結合され、自動的に開かれます。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2173"/>
+        <location filename="../mainwindow_tabs.cpp" line="2197"/>
         <source>Usage Instructions</source>
         <translation>使用方法</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2178"/>
+        <location filename="../mainwindow_tabs.cpp" line="2202"/>
         <source>&lt;b&gt;Step 1:&lt;/b&gt; Configure video settings (camera path, frames, FPS)&lt;br&gt;&lt;b&gt;Step 2:&lt;/b&gt; Configure quality settings in Basic/Advanced tabs&lt;br&gt;&lt;b&gt;Step 3:&lt;/b&gt; Click START VIDEO RENDER and wait&lt;br&gt;&lt;b&gt;Step 4:&lt;/b&gt; Video automatically assembles and opens when done!&lt;br&gt;&lt;br&gt;&lt;b&gt;Tips:&lt;/b&gt;&lt;br&gt;• Use GPU mode for faster rendering&lt;br&gt;• Lower samples/pixel for quick previews (10-50)&lt;br&gt;• Higher samples/pixel for production quality (100-500)&lt;br&gt;• Typical render time: 1-5 minutes (GPU), 15-60 minutes (CPU)</source>
         <translation>&lt;b&gt;手順1:&lt;/b&gt; 動画設定を行う(カメラパス、フレーム数、FPS)&lt;br&gt;&lt;b&gt;手順2:&lt;/b&gt; ベーシック/詳細設定タブで品質設定を行う&lt;br&gt;&lt;b&gt;手順3:&lt;/b&gt; 「動画レンダリング開始」をクリックして待つ&lt;br&gt;&lt;b&gt;手順4:&lt;/b&gt; 完了すると動画が自動的に結合・オープンされます!&lt;br&gt;&lt;br&gt;&lt;b&gt;ヒント:&lt;/b&gt;&lt;br&gt;• より高速にレンダリングするにはGPUモードを使用&lt;br&gt;• クイックプレビューにはサンプル数/ピクセルを少なめに(10~50)&lt;br&gt;• 本番品質にはサンプル数/ピクセルを多めに(100~500)&lt;br&gt;• 目安のレンダリング時間: 1~5分(GPU)、15~60分(CPU)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2209"/>
+        <location filename="../mainwindow_tabs.cpp" line="2233"/>
         <source>Video Settings</source>
         <translation>動画設定</translation>
     </message>
@@ -2642,12 +2655,12 @@ CPU専用です。面光源のみ対応。</translation>
         <translation>A1と同じCornell Boxですが、あえてピクセルあたり32サンプルという低い値でレンダリングしており、後処理を行う前の時点で本当に粒状感があります - OptiX AIデノイザー(レンダリングオプションタブ)をオフにした状態とオンにした状態で、それぞれ一度ずつレンダリングしてみてください。このデノイザーは機械学習モデルで、シーン自体のアルベドバッファとノーマルバッファに導かれながら、そのスペックル(斑点)パターンを認識し、追加のレイを1本も追跡することなく滑らかに除去します。細部をわずかに犠牲にする代わりに、同じサンプル数で見た目が劇的にクリーンな画像が得られます。GPU再帰バックエンド専用です。隣にあるOptiX検証モードのチェックボックスも、ここで知っておく価値のある別種のコントロールです - 実際の性能コストを伴う追加のデバイス側正当性チェックをオンにするだけで、レンダリング画像そのものを変えることは決してないため、この項目については視覚的に比較できるものはありません。</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="179"/>
+        <location filename="../scene_technique_notes.h" line="188"/>
         <source>Select a scene to see the rendering technique it demonstrates.</source>
         <translation>シーンを選択すると、そのシーンが示すレンダリング技法が表示されます。</translation>
     </message>
     <message>
-        <location filename="../scene_technique_notes.h" line="184"/>
+        <location filename="../scene_technique_notes.h" line="193"/>
         <source>No rendering-technique note is written for this scene yet - these are only authored for the self-contained scene set (the &quot;Self-Contained&quot; tab above) so far.</source>
         <translation>このシーンには、レンダリング技法の解説がまだ用意されていません。現時点では、上の「Self-Contained」タブにある自己完結型のシーン集についてのみ解説が用意されています。</translation>
     </message>

@@ -283,12 +283,12 @@ void MainWindow::refreshRecentRendersList() {
 		const RecentRenderEntry &entry = recents[item->data(Qt::UserRole).toInt()];
 		if (entry.isVideo) {
 			addVideoPreviewTab(entry.displayTitle, entry.sceneDescription, entry.previewPath,
-			                    describeRecentRenderEntry(entry));
+			                    describeRecentRenderEntry(entry), entry.sceneId);
 		} else {
 			QPixmap pixmap(entry.previewPath);
 			if (!pixmap.isNull()) {
 				addImagePreviewTab(entry.displayTitle, entry.sceneDescription, pixmap,
-				                    describeRecentRenderEntry(entry), entry.outputPath, entry.previewPath);
+				                    describeRecentRenderEntry(entry), entry.outputPath, entry.previewPath, entry.sceneId);
 			}
 		}
 		if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);

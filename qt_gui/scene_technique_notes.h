@@ -174,6 +174,15 @@ inline const QHash<QString, QString>& notes() {
 // zero matches) gets a neutral prompt; a real scene id with no authored
 // entry - every scene outside the self-contained set - gets a message
 // explaining why, rather than silently showing nothing or stale text.
+// Whether an authored note exists for `sceneId`, distinct from forScene()
+// having *some* text to return - forScene()'s own fallback text for a
+// not-yet-authored scene is written for the Basic Settings tab ("the tab
+// above"), so callers elsewhere (e.g. the Preview tab) that want to hide
+// rather than show that fallback should gate on this first.
+inline bool hasNote(const QString &sceneId) {
+	return notes().contains(sceneId);
+}
+
 inline QString forScene(const QString &sceneId) {
 	if (sceneId.isEmpty())
 		return QObject::tr("Select a scene to see the rendering technique it demonstrates.");
