@@ -598,20 +598,26 @@ void MainWindow::createBasicTab() {
 		"default Path Tracer - see each control's own tooltip."));
 	connect(m_integratorCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
 			this, &MainWindow::onIntegratorChanged);
-	renderLayout->addRow(labelWithInfo(tr("Integrator:"),
-		tr("The rendering algorithm itself, not just how fast it runs. Path "
-		"Tracer (the default) is the general-purpose, well-tested choice "
-		"used everywhere else in this app.\n\n"
-		"SPPM (Stochastic Progressive Photon Mapping) handles hard caustics/"
-		"glass scenes path tracing struggles with. BDPT and MLT (built on "
-		"BDPT) trace light paths from both the camera and the light source "
-		"and connect them - better for some difficult lighting, area lights "
-		"only. RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, "
-		"and LightPath are reference/debug integrators - simpler, often "
-		"noisier or narrower in scope (e.g. Ambient Occlusion isn't a lit "
-		"render at all), useful for isolating what a specific technique "
-		"contributes.")),
-		m_integratorCombo);
+	// Same inline {label, info icon, combo} shape as the Scene row above
+	// (not the two-column labelWithInfo() helper other Basic/Render Options
+	// controls use) so the icon can be captured as m_integratorInfoIcon and
+	// rewritten per selection - a fixed tooltip wouldn't need this, but this
+	// one answers "what does the CURRENTLY SELECTED integrator do", the
+	// same "content changes after construction" pattern as
+	// m_sceneTechInfoIcon. The placeholder text here is overwritten before
+	// the window is ever shown (see onIntegratorChanged()'s own initial
+	// call in the constructor, mirroring onSceneChanged(0)'s).
+	{
+		QWidget *integratorRow = new QWidget(basicTab);
+		QHBoxLayout *integratorRowLayout = new QHBoxLayout(integratorRow);
+		integratorRowLayout->setContentsMargins(0, 0, 0, 0);
+		integratorRowLayout->setSpacing(4);
+		integratorRowLayout->addWidget(new QLabel(tr("Integrator:"), integratorRow));
+		m_integratorInfoIcon = createInfoIcon(tr("Select an integrator to see what it does."));
+		integratorRowLayout->addWidget(m_integratorInfoIcon);
+		integratorRowLayout->addWidget(m_integratorCombo, 1);
+		renderLayout->addRow(integratorRow);
+	}
 
 	m_integratorVideoWarningLabel = new QLabel(
 		tr("⚠ Generate Video cannot be combined with an alternate integrator - "

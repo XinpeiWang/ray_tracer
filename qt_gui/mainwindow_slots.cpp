@@ -1345,6 +1345,8 @@ void MainWindow::onModeChanged(int index) {
 void MainWindow::onIntegratorChanged(int) {
 	const auto integrator = static_cast<IntegratorMode>(m_integratorCombo->currentData().toInt());
 
+	updateIntegratorInfoIcon(integrator);
+
 	// 7 of the 8 alternate integrators are CPU-only (the CLI just warns
 	// and forces CPU under --gpu, never rejects - see launcher/main.cpp's
 	// own gpu_flag_explicit warnings); SPPM is the one exception with a

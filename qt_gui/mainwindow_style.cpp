@@ -1106,3 +1106,98 @@ void MainWindow::updateSceneTechInfoIcon(const QString &sceneId) {
 	m_sceneTechInfoIcon->setToolTip(sceneTooltipHtml(sceneId, /*includeHeading=*/false));
 }
 
+// Text held inline (not an external file like scene_technique_notes.h)
+// since there are only 9 fixed entries, one per IntegratorMode value,
+// rather than a per-scene lookup keyed by an open-ended id. Content
+// mirrors the CLI's own --help text (launcher/launcher_args.h) - scope
+// caveats (CPU-only, area-lights-only, verification status) included
+// since those are exactly what a user picking an integrator needs to
+// know before relying on it.
+void MainWindow::updateIntegratorInfoIcon(IntegratorMode mode) {
+	if (!m_integratorInfoIcon) return;
+	QString text;
+	switch (mode) {
+		case IntegratorMode::Default:
+			text = tr("The general-purpose importance-sampled path tracer used "
+			"everywhere else in this app - next-event estimation plus BSDF "
+			"importance sampling, combined via the power heuristic (MIS). "
+			"The well-tested default; start here unless you have a specific "
+			"reason not to.\n\n"
+			"The alternates below trade that generality for a specific "
+			"technique - photon mapping, bidirectional/Metropolis light "
+			"transport, or a handful of unbiased reference and debug "
+			"integrators. All are CPU-only except SPPM, and none can be "
+			"combined with Generate Video mode. Sampler/Spectral/Exposure/"
+			"Tonemap/Stats above only affect this default Path Tracer.");
+			break;
+		case IntegratorMode::Sppm:
+			text = tr("Stochastic Progressive Photon Mapping (pbrt-v4 style). "
+			"Best for hard caustic/glass scenes ordinary path tracing "
+			"struggles to resolve.\n\n"
+			"CPU: verified end-to-end on the Cornell Rough Glass scene; "
+			"other scenes are unverified and only support lambertian + "
+			"delta-BSDF materials.\n\n"
+			"GPU: capability-checked per scene - Lambertian/DiffuseLight, "
+			"RoughDielectric, Metal, Dielectric, Conductor, RoughMetal, and "
+			"DiffuseTransmission are supported (area lights only); an "
+			"unsupported scene falls back to an error - use CPU SPPM "
+			"instead.");
+			break;
+		case IntegratorMode::Bdpt:
+			text = tr("Bidirectional Path Tracing - traces subpaths from both "
+			"the camera and the light source and connects every pair, "
+			"better for some difficult lighting configurations path "
+			"tracing alone struggles with.\n\n"
+			"CPU only. Area lights only (no punctual/sky-light NEE yet). "
+			"Verified end-to-end on the Cornell Box scene only; other "
+			"scenes are unverified.");
+			break;
+		case IntegratorMode::Mlt:
+			text = tr("Metropolis Light Transport, built directly on BDPT's "
+			"subpath machinery - uses a Markov chain to concentrate "
+			"samples on light paths that already contribute, useful for "
+			"scenes with hard-to-find bright paths.\n\n"
+			"CPU only. Same area-lights-only scope and single-scene "
+			"(Cornell Box) verification as BDPT.");
+			break;
+		case IntegratorMode::RandomWalk:
+			text = tr("pbrt-v4's unbiased reference path tracer - "
+			"uniform-sphere sampling, no next-event estimation or "
+			"multiple importance sampling. Simpler and noisier than the "
+			"default path tracer; useful as a ground-truth reference to "
+			"check other integrators against.\n\n"
+			"CPU only.");
+			break;
+		case IntegratorMode::Ao:
+			text = tr("A visualization/debug mode, not a lit render - "
+			"measures how occluded each point is by nearby geometry, "
+			"ignoring material color and indirect lighting entirely.\n\n"
+			"CPU only.");
+			break;
+		case IntegratorMode::SimplePath:
+			text = tr("pbrt-v4's canonical reference path tracer - optional "
+			"next-event estimation and optional BSDF importance sampling, "
+			"both on by default (see the toggles below).\n\n"
+			"CPU only. NEE, when enabled, is area-lights-only, the same "
+			"scope as BDPT/MLT.");
+			break;
+		case IntegratorMode::SimpleVolPath:
+			text = tr("pbrt-v4's simplest volumetric path tracer - pure "
+			"delta tracking, no NEE/MIS/surface BSDFs.\n\n"
+			"Reachable but medium-free in this integration, so it renders "
+			"mostly black on ordinary solid-geometry scenes except where "
+			"a camera ray lands directly on a light - matches pbrt-v4's "
+			"own upstream behavior on medium-free scenes.\n\n"
+			"CPU only.");
+			break;
+		case IntegratorMode::LightPath:
+			text = tr("A pure light tracer - the opposite direction of "
+			"every other integrator here: every sample starts at a light "
+			"and splats camera-connection contributions into the film, "
+			"instead of starting at the camera.\n\n"
+			"CPU only. Area lights only.");
+			break;
+	}
+	m_integratorInfoIcon->setToolTip(wrapTooltipHtml(text));
+}
+
