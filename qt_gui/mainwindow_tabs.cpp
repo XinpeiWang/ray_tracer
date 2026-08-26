@@ -598,8 +598,9 @@ void MainWindow::createBasicTab() {
 		// retintItems() sweep recolours these the same way every other
 		// combo's icons already do, and setItemData(..., Qt::ToolTipRole)
 		// so hovering a row in the OPEN dropdown shows what that specific
-		// integrator does, not just whichever one is currently selected
-		// (that's what m_integratorInfoIcon, built below, is for).
+		// integrator does. Qt also shows the current item's icon natively
+		// inside the closed combo box, so this single mechanism covers
+		// both "browsing the list" and "at a glance, what's selected".
 		const IntegratorMode modes[] = {
 			IntegratorMode::Default, IntegratorMode::Sppm, IntegratorMode::Bdpt,
 			IntegratorMode::Mlt, IntegratorMode::RandomWalk, IntegratorMode::Ao,
@@ -630,26 +631,30 @@ void MainWindow::createBasicTab() {
 		"default Path Tracer - see each control's own tooltip."));
 	connect(m_integratorCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
 			this, &MainWindow::onIntegratorChanged);
-	// Same inline {label, info icon, combo} shape as the Scene row above
-	// (not the two-column labelWithInfo() helper other Basic/Render Options
-	// controls use) so the icon can be captured as m_integratorInfoIcon and
-	// rewritten per selection - a fixed tooltip wouldn't need this, but this
-	// one answers "what does the CURRENTLY SELECTED integrator do", the
-	// same "content changes after construction" pattern as
-	// m_sceneTechInfoIcon. The placeholder text here is overwritten before
-	// the window is ever shown (see onIntegratorChanged()'s own initial
-	// call in the constructor, mirroring onSceneChanged(0)'s).
-	{
-		QWidget *integratorRow = new QWidget(basicTab);
-		QHBoxLayout *integratorRowLayout = new QHBoxLayout(integratorRow);
-		integratorRowLayout->setContentsMargins(0, 0, 0, 0);
-		integratorRowLayout->setSpacing(4);
-		integratorRowLayout->addWidget(new QLabel(tr("Integrator:"), integratorRow));
-		m_integratorInfoIcon = createInfoIcon(tr("Select an integrator to see what it does."));
-		integratorRowLayout->addWidget(m_integratorInfoIcon);
-		integratorRowLayout->addWidget(m_integratorCombo, 1);
-		renderLayout->addRow(integratorRow);
-	}
+	// Same two-column labelWithInfo() row shape every sibling control here
+	// uses (Renderer/GPU Backend/Quality/Resolution), so the label column
+	// stays aligned across all of them. A SEPARATE dynamic icon here (an
+	// earlier version of this row) turned out to duplicate the per-item
+	// icon Qt already shows natively inside the closed combo box (every
+	// item now carries its own "(i)" + tooltip, added above via
+	// icon_tint::addItem/setItemData(Qt::ToolTipRole)) - that already
+	// covers "what does the currently-selected integrator do" without a
+	// second, differently-aligned icon widget.
+	renderLayout->addRow(labelWithInfo(tr("Integrator:"),
+		tr("The rendering algorithm itself, not just how fast it runs. Path "
+		"Tracer (the default) is the general-purpose, well-tested choice "
+		"used everywhere else in this app.\n\n"
+		"SPPM (Stochastic Progressive Photon Mapping) handles hard caustics/"
+		"glass scenes path tracing struggles with. BDPT and MLT (built on "
+		"BDPT) trace light paths from both the camera and the light source "
+		"and connect them - better for some difficult lighting, area lights "
+		"only. RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, "
+		"and LightPath are reference/debug integrators - simpler, often "
+		"noisier or narrower in scope (e.g. Ambient Occlusion isn't a lit "
+		"render at all), useful for isolating what a specific technique "
+		"contributes.\n\nHover any item in the dropdown for details on that "
+		"specific integrator.")),
+		m_integratorCombo);
 
 	m_integratorVideoWarningLabel = new QLabel(
 		tr("⚠ Generate Video cannot be combined with an alternate integrator - "

@@ -776,10 +776,10 @@ void MainWindow::setupUI() {
 	// Initialize scene info AFTER tabs are created (onSceneChanged uses m_samplesSpinBox)
 	onSceneChanged(0);
 	// Same reasoning as onSceneChanged(0) above - addItem() doesn't fire
-	// currentIndexChanged, so m_integratorInfoIcon would otherwise be left
-	// showing its construction-time placeholder text instead of the
-	// default-selected Path Tracer's real description until the user
-	// changes the combo themselves.
+	// currentIndexChanged, so the Integrator Options stack page and the
+	// GPU-only-integrator auto-switch logic would otherwise stay at their
+	// construction-time state instead of reflecting the default-selected
+	// Path Tracer until the user changes the combo themselves.
 	onIntegratorChanged(0);
 
 	// Actions/menus come after the tabs because the View menu enumerates the

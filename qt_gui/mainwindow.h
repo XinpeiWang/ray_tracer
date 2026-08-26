@@ -1293,14 +1293,8 @@ private:
 	// Rewrites m_sceneTechInfoIcon's tooltip for `sceneId` (see
 	// scene_technique_notes.h) - called from refreshSceneInfoLabel().
 	void updateSceneTechInfoIcon(const QString &sceneId);
-	// Rewrites m_integratorInfoIcon's tooltip for `mode` - same "content
-	// changes after construction" pattern as updateSceneTechInfoIcon()
-	// above, just with the per-mode text held inline (9 fixed strings)
-	// rather than an external per-scene lookup. Called from
-	// onIntegratorChanged().
-	void updateIntegratorInfoIcon(IntegratorMode mode);
-	// Plain-text description of `mode`, shared by updateIntegratorInfoIcon()
-	// above and createBasicTab()'s per-item combo tooltips.
+	// Plain-text description of `mode` - used by createBasicTab()'s
+	// per-item combo tooltips (each Integrator dropdown row's own "(i)").
 	QString integratorDescription(IntegratorMode mode);
 	// A subtle "elevated card" drop shadow (QSS alone cannot do box-shadow) -
 	// neutral black at low alpha rather than theme-tinted, the same choice
@@ -1391,13 +1385,6 @@ private:
 	// onIntegratorChanged() auto-switches m_renderModeCombo to CPU and
 	// disables it whenever one of those 7 is picked.
 	QComboBox *m_integratorCombo;
-	// Unlike m_integratorCombo's own labelWithInfo() icon (a fixed,
-	// combined overview of the whole Integrator concept), this one's
-	// tooltip is rewritten per selection by updateIntegratorInfoIcon() -
-	// same "content changes after construction" pattern as
-	// m_sceneTechInfoIcon, just for whichever integrator is currently
-	// picked instead of whichever scene.
-	QToolButton *m_integratorInfoIcon = nullptr;
 	// --video hard-rejects any non-Default integrator (an animated
 	// camera-path flythrough and an alternate integrator's own render
 	// loop can't be combined) - same class of guaranteed CLI rejection as
