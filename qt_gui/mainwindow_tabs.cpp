@@ -396,8 +396,22 @@ void MainWindow::createBasicTab() {
 
 	sceneGroupLayout->addWidget(m_sceneViewStack);
 
-	connect(m_sceneViewToggle, &QToolButton::toggled, this, [this](bool gridChecked) {
+	// QStackedWidget sizes itself to fit the largest of ALL its pages by
+	// default, not just the current one - m_sceneGrid's 260px minimum
+	// height would otherwise force this whole area to stay that tall even
+	// while the much shorter combo page is showing (the common case). Only
+	// the currently-visible page keeps its natural size policy; the other
+	// is set to Ignored so it drops out of the stack's own size-hint
+	// calculation - the standard Qt workaround for this exact behavior.
+	// comboPage starts current (index 0), so gridPage starts Ignored.
+	gridPage->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+	connect(m_sceneViewToggle, &QToolButton::toggled, this, [this, comboPage, gridPage](bool gridChecked) {
 		m_sceneViewStack->setCurrentIndex(gridChecked ? 1 : 0);
+		comboPage->setSizePolicy(gridChecked ? QSizePolicy::Ignored : QSizePolicy::Preferred,
+		                          gridChecked ? QSizePolicy::Ignored : QSizePolicy::Preferred);
+		gridPage->setSizePolicy(gridChecked ? QSizePolicy::Preferred : QSizePolicy::Ignored,
+		                         gridChecked ? QSizePolicy::Preferred : QSizePolicy::Ignored);
+		m_sceneViewStack->updateGeometry();
 	});
 	connect(m_generateThumbnailsButton, &QPushButton::clicked, this, &MainWindow::onGenerateThumbnailsClicked);
 	connect(m_sceneGrid, &QListWidget::currentItemChanged, this, [this](QListWidgetItem *current, QListWidgetItem *) {
