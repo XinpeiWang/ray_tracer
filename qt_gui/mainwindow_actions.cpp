@@ -188,7 +188,27 @@ void MainWindow::refreshStatusBarInfo() {
 	if (!m_statusDevice || !m_statusSettings) return;
 	const bool useGPU = m_renderModeCombo && m_renderModeCombo->currentData().toBool();
 	const bool useWavefront = useGPU && m_gpuBackendCombo && m_gpuBackendCombo->currentData().toBool();
-	m_statusDevice->setText(useGPU ? (useWavefront ? tr("GPU (OptiX, wavefront)") : tr("GPU (OptiX)")) : tr("CPU"));
+	QString deviceText = useGPU ? (useWavefront ? tr("GPU (OptiX, wavefront)") : tr("GPU (OptiX)")) : tr("CPU");
+	// Append a short tag for a non-default Integrator - onIntegratorChanged()
+	// calls this after every change specifically so the status bar's
+	// ambient readout stays honest about more than just device/resolution/
+	// spp; a selected alternate integrator is just as much "the active
+	// configuration" as those.
+	if (m_integratorCombo) {
+		const auto integrator = static_cast<IntegratorMode>(m_integratorCombo->currentData().toInt());
+		switch (integrator) {
+			case IntegratorMode::Default: break;
+			case IntegratorMode::Sppm: deviceText += tr(" · SPPM"); break;
+			case IntegratorMode::Bdpt: deviceText += tr(" · BDPT"); break;
+			case IntegratorMode::Mlt: deviceText += tr(" · MLT"); break;
+			case IntegratorMode::RandomWalk: deviceText += tr(" · RandomWalk"); break;
+			case IntegratorMode::Ao: deviceText += tr(" · AO"); break;
+			case IntegratorMode::SimplePath: deviceText += tr(" · SimplePath"); break;
+			case IntegratorMode::SimpleVolPath: deviceText += tr(" · SimpleVolPath"); break;
+			case IntegratorMode::LightPath: deviceText += tr(" · LightPath"); break;
+		}
+	}
+	m_statusDevice->setText(deviceText);
 	if (m_widthSpinBox && m_heightSpinBox && m_samplesSpinBox) {
 		m_statusSettings->setText(tr("%1x%2  ·  %3 spp")
 			.arg(m_widthSpinBox->value())

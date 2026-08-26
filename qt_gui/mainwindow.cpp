@@ -170,7 +170,13 @@ void RenderController::start() {
 		case IntegratorMode::Ao:
 			args << render_flags::kAo;
 			if (m_integratorOptions.aoMaxDist != 1.0e10)
-				args << render_flags::kAoMaxDist << QString::number(m_integratorOptions.aoMaxDist);
+				// 'f', 2: matches m_aoMaxDistSpin's own setDecimals(2) exactly.
+				// QString::number(double)'s default ('g', 6 significant
+				// digits) would silently round a value like 123456789.99 down
+				// to 123457000 - fine for exposure/illum-scale (both capped
+				// well under 1e6), but aoMaxDist's advertised range (up to
+				// 1e12) can genuinely exceed 6 significant digits.
+				args << render_flags::kAoMaxDist << QString::number(m_integratorOptions.aoMaxDist, 'f', 2);
 			if (m_integratorOptions.aoUniform)
 				args << render_flags::kAoUniform;
 			if (m_integratorOptions.aoIllumScale != 1.0)
