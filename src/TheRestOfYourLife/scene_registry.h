@@ -1667,16 +1667,24 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         },
 
         // ---------------------------------------------------------------
-        // Education (I1-I4): curated demos of the Render Options tab's own
+        // Education (I1-I6): curated demos of the Render Options tab's own
         // controls (Sampler, Spectral rendering, Exposure, Tone mapping,
-        // OptiX AI denoiser). Each reuses an existing scene's build
-        // functions and CameraConfig verbatim - same technique B23/F3 use
-        // to share content with another entry - rather than being new
-        // renderer content: the description/technique-note is the point,
-        // not the geometry. No entry for OptiX validation mode - it has no
-        // visual effect by design (extra device-side checks only), so
-        // "which scene shows the difference" doesn't apply; I4's note says
-        // so instead.
+        // OptiX AI denoiser) and, as of I5/I6, the Basic Settings tab's
+        // Integrator selector (SPPM; BDPT/MLT). Each reuses an existing
+        // scene's build functions and CameraConfig verbatim - same
+        // technique B23/F3 use to share content with another entry - rather
+        // than being new renderer content: the description/technique-note
+        // is the point, not the geometry. No entry for OptiX validation
+        // mode - it has no visual effect by design (extra device-side
+        // checks only), so "which scene shows the difference" doesn't
+        // apply; I4's note says so instead. No entry for the 5 remaining
+        // debug/reference integrators (RandomWalk/AO/SimplePath/
+        // SimpleVolPath/LightPath) either - none has a distinct visual
+        // showcase angle the way SPPM's caustics or BDPT/MLT's bidirectional
+        // convergence do (AO isn't even a lit render), so their explanation
+        // stays in the GUI's own per-integrator description text
+        // (qt_gui/mainwindow_style.cpp's integratorDescription()) rather
+        // than a dedicated scene here.
         // ---------------------------------------------------------------
         {
             // Same world/lights as A1 (Cornell Box) - only the id, category,
@@ -1734,6 +1742,38 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "I4", 135, SceneNames::DenoiserComparison, SceneCategories::Education,
             "Cornell box at a deliberately low 32 spp - render once with the OptiX AI denoiser (Render Options tab, GPU recursive only) off, once on, and compare. The neighboring OptiX validation mode checkbox has no visual effect either way - it only adds debugging checks.",
             "Fast", 32, false, true,
+            kCornellBoxCamera,
+            build_cornell_box,
+            build_cornell_box_lights
+        },
+        {
+            // Same world/lights as B3 (Cornell Rough Glass) - the GGX
+            // rough-dielectric sphere's floor caustic is the one CPU scene
+            // launcher_args.h's --sppm help text calls "verified end-to-end",
+            // and it's specifically the "hard caustic/glass" case SPPM
+            // exists for. gpu_compatible=true carries over from B3 for the
+            // default path tracer's own GPU case - separately, SPPM's own
+            // GPU capability check (gpu/optix/optix_types.h's
+            // sppm_gpu_material_supported()) already whitelists
+            // RoughDielectric, so --sppm --gpu works here too, not just
+            // plain --sppm.
+            "I5", 139, SceneNames::SppmCausticsEducation, SceneCategories::Education,
+            "Same Cornell box as B3, with a rough-dielectric (frosted glass) sphere: render once with the default Path Tracer, once with SPPM (Integrator dropdown, Basic Settings tab), and compare how much faster the floor caustic cleans up - SPPM's photon mapping is built for exactly this case.",
+            "Medium", 200, false, true,
+            kCornellBoxCamera,
+            build_cornell_rough_glass,
+            build_cornell_box_lights
+        },
+        {
+            // Same world/lights as A1 (Cornell Box) - the one CPU scene
+            // launcher_args.h's --bdpt/--mlt help text calls "verified
+            // end-to-end". gpu_compatible=true carries over from A1 for the
+            // default path tracer's own GPU case - BDPT/MLT themselves have
+            // no GPU implementation at all (CPU only, unconditionally; see
+            // main.cpp's own --gpu-ignored warning under either flag).
+            "I6", 140, SceneNames::BdptMltEducation, SceneCategories::Education,
+            "Same Cornell box as A1: try BDPT or MLT (Integrator dropdown, Basic Settings tab) instead of the default Path Tracer - both trace light paths from the camera AND the light source and connect them, which can converge differently than the default on scenes with indirect lighting like this one.",
+            "Medium", 100, false, true,
             kCornellBoxCamera,
             build_cornell_box,
             build_cornell_box_lights

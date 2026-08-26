@@ -187,6 +187,8 @@ namespace SceneNames {
     constexpr const char* SpectralDispersionEducation = "Spectral Rendering: Prism Dispersion";
     constexpr const char* ExposureToneMapping  = "Exposure & Tone Mapping (HDR Sky)";
     constexpr const char* DenoiserComparison   = "GPU Denoiser: Before & After";
+    constexpr const char* SppmCausticsEducation = "SPPM: Rough Glass Caustic";
+    constexpr const char* BdptMltEducation      = "BDPT / MLT: Bidirectional Light Transport";
 } // namespace SceneNames
 
 // -----------------------------------------------------------------------
@@ -212,10 +214,11 @@ namespace SceneCategories {
     constexpr const char* Models     = "Models";       // single imported meshes
     constexpr const char* LargeScene = "Large Scenes"; // full textured environments
     // Curated demos of the Render Options tab's own controls (Sampler,
-    // Spectral rendering, Exposure, Tone mapping, OptiX AI denoiser) - each
-    // entry reuses an existing scene's geometry (same technique B23/F3 already
-    // use to share content with another entry) rather than being new content
-    // in its own right, so the description/technique-note is the point: which
+    // Spectral rendering, Exposure, Tone mapping, OptiX AI denoiser) and the
+    // Basic Settings tab's Integrator selector (SPPM/BDPT/MLT) - each entry
+    // reuses an existing scene's geometry (same technique B23/F3 already use
+    // to share content with another entry) rather than being new content in
+    // its own right, so the description/technique-note is the point: which
     // control to try, and why this particular scene shows it clearly.
     constexpr const char* Education  = "Education";
     // Scenes loaded from .pbrt files found on disk rather than compiled in.

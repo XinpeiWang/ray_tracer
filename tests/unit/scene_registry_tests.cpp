@@ -76,7 +76,12 @@ TEST(SceneRegistryTest, RegistryHasExpectedCount) {
 	// the newly-wired camera_is_animated/AnimatedTransform path - closes
 	// the CPU half of the "no motion blur anywhere" gap from
 	// docs/FEATURE_INVENTORY.md (GPU deferred).
-	EXPECT_EQ(builtin_scene_count(), 120);
+	//
+	// 120 -> 122: I5/I6 added, extending the Education category to the
+	// newly GUI-selectable Integrator dropdown - I5 reuses B3 (Cornell
+	// Rough Glass, the one CPU scene verified for --sppm) and I6 reuses A1
+	// (Cornell Box, the one scene verified for --bdpt/--mlt).
+	EXPECT_EQ(builtin_scene_count(), 122);
 }
 
 TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem) {
@@ -605,7 +610,7 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // double-checking the GUI/error-hint text that mentions specific scene
 // counts or ID ranges by hand.
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
-	constexpr int kGuiSceneCount = 120;
+	constexpr int kGuiSceneCount = 122;
 	EXPECT_EQ(builtin_scene_count(), kGuiSceneCount)
 		<< "Registry size changed -- update kGuiSceneCount here to match.";
 }
