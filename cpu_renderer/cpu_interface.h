@@ -444,6 +444,13 @@ int cpu_scene_recommended_camera(const char* scene_id,
 /// @return 1 if GPU compatible, 0 if not (including if scene_id isn't found)
 int cpu_scene_gpu_compatible_by_id(const char* scene_id);
 
+/// Whether this scene's CameraConfig.animated is set (real AnimatedTransform
+/// camera motion blur - see camera.h's camera_is_animated field comment).
+/// launcher/main.cpp uses this to reject --video combined with an
+/// animated-camera scene at argument-parsing time.
+/// @return 1 if animated, 0 if not (including if scene_id isn't found)
+int cpu_scene_camera_is_animated_by_id(const char* scene_id);
+
 /// The rest of this file's index-based accessors (cpu_scene_name/
 /// description/performance/recommended_spp/requires_files) are also
 /// available by id - lets a caller with just a scene_id (the GUI's scene

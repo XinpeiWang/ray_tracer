@@ -378,6 +378,23 @@ int main(int argc, char** argv) {
 		std::cerr << "WARNING: --gpu is ignored under --randomwalk/--ao/--simplepath/--simplevolpath/--lightpath (CPU-only, no GPU/OptiX implementation exists) - rendering on CPU" << std::endl;
 	}
 
+	// An animated-camera scene (camera.h's camera_is_animated, e.g. D13)
+	// already defines its own camera motion across one shutter interval -
+	// --video's per-frame camera-path flythrough has no sensible way to
+	// combine with that (which motion wins? does each frame get its own
+	// sub-interval of the shutter, or does the scene's motion just repeat
+	// identically every frame?). Rather than silently picking an answer
+	// nobody asked for, reject the combination outright at argument-parsing
+	// time - same "don't silently do something unexpected" shape as
+	// --sppm/--bdpt/--mlt/the debug integrators combined with --video above.
+	if (video_mode && cpu_scene_camera_is_animated_by_id(scene_id.c_str())) {
+		std::cerr << ErrorInfo(ERR_INVALID_ARGUMENTS).to_string()
+				  << " - --video cannot be combined with an animated-camera scene "
+				     "(this scene already defines its own camera motion across "
+				     "one shutter interval - use a single-frame render instead)" << std::endl;
+		return ERR_INVALID_ARGUMENTS;
+	}
+
     // --sampler/--spectral only reach cpu_render_main() (the CPU default
     // path tracer) - checked here, before the video_mode branch below,
     // rather than further down near --exposure's warning, because --video

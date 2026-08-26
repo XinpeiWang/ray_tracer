@@ -161,6 +161,13 @@ class camera {
     // roll during the exposure isn't supported by this simplified
     // two-keyframe setup). False (default) is the pre-existing static
     // camera behavior, unchanged.
+    // CAUTION: object motion blur (sphere.h's moving-sphere hit()) hard-
+    // assumes ray.time() in [0,1] - both its center.at() extrapolation and
+    // its precomputed bounding box are keyed to that exact range. Keep
+    // shutter_open/shutter_close at [0,1] (the default) in any scene that
+    // also uses a moving sphere, or the sphere's bounding box won't cover
+    // the ray's actual sampled time range and it can be placed/culled
+    // wrong. No scene combines the two yet (D13 uses [0,1] regardless).
     bool   camera_is_animated = false;
     point3 lookfrom1      = point3(0,0,-1);
     point3 lookat1        = point3(0,0,-2);
@@ -529,6 +536,19 @@ class camera {
     vec3   local_defocus_disk_v;
     AnimatedTransform anim_cam_to_world_;
 
+    // Shared by initialize()'s static u/v/w derivation and (camera_is_
+    // animated) build_cam_to_world()'s per-keyframe basis below - same
+    // right/up/back-from-lookat formula, evaluated against whichever
+    // (from,at) pair the caller passes in, so the two can't drift apart
+    // from independent copy-paste edits.
+    static void compute_lookat_basis(const point3& from, const point3& at,
+                                      const vec3& vup,
+                                      vec3& out_u, vec3& out_v, vec3& out_w) {
+        out_w = unit_vector(from - at);
+        out_u = unit_vector(cross(vup, out_w));
+        out_v = cross(out_w, out_u);
+    }
+
     // Shared by initialize()'s world-space and (camera_is_animated) local-
     // space viewport setups below - same formula, evaluated against
     // whichever (u,v,w,center) basis the caller passes in, so the two
@@ -567,9 +587,7 @@ class camera {
         auto viewport_width = viewport_height * (double(image_width)/image_height);
 
         // Calculate the u,v,w unit basis vectors for the camera coordinate frame.
-        w = unit_vector(lookfrom - lookat);
-        u = unit_vector(cross(vup, w));
-        v = cross(w, u);
+        compute_lookat_basis(lookfrom, lookat, vup, u, v, w);
 
         // Calculate the camera defocus disk radius.
         auto defocus_radius = focus_dist * std::tan(degrees_to_radians(defocus_angle / 2));
@@ -597,16 +615,15 @@ class camera {
                                        local_pixel00_loc, local_pixel_delta_u, local_pixel_delta_v,
                                        local_defocus_disk_u, local_defocus_disk_v);
 
-            // Two camera-to-world keyframes, built via the exact same u,v,w
-            // basis derivation as the static path above (lines ~549-552),
+            // Two camera-to-world keyframes, built via compute_lookat_basis()
+            // (the exact same u,v,w derivation the static path above uses),
             // just evaluated at (lookfrom,lookat) and (lookfrom1,lookat1)
             // respectively. Matrix columns are [u | v | w | origin] - maps
             // a local point/vector (expressed in the local_u/local_v/
             // local_w axes above) into world space.
             auto build_cam_to_world = [&](const point3& from, const point3& at) -> AT_Mat44 {
-                vec3 kw = unit_vector(from - at);
-                vec3 ku = unit_vector(cross(vup, kw));
-                vec3 kv = cross(kw, ku);
+                vec3 ku, kv, kw;
+                compute_lookat_basis(from, at, vup, ku, kv, kw);
                 AT_Mat44 m;
                 m.m[0][0]=ku.x(); m.m[0][1]=kv.x(); m.m[0][2]=kw.x(); m.m[0][3]=from.x();
                 m.m[1][0]=ku.y(); m.m[1][1]=kv.y(); m.m[1][2]=kw.y(); m.m[1][3]=from.y();

@@ -277,6 +277,13 @@ between two keyframes (`lookfrom`/`lookat` at `shutter_open`,
 `lookfrom1`/`lookat1` at `shutter_close`) — see `D13` (Cameras category) for
 a demo. Static cameras (`camera_is_animated=false`, every pre-existing
 scene) are a true no-op — the existing world-space fast path is untouched.
+SPPM's blur is real but visually subtle compared to the default path
+tracer's obvious streaking on the same scene — confirmed via debug tracing
+(the visible point genuinely swings across the full keyframe range per
+iteration) and a controlled crop comparison against a static SPPM render
+(D13's sphere silhouette is measurably softer than A1's) — SPPM's own
+photon-density smoothing partially masks the directional blur signal, not
+a bug.
 
 **Gap**: motion blur is otherwise still absent. Not wired: GPU-recursive or
 GPU-wavefront (deferred — camera motion blur specifically; see §2/§9's own

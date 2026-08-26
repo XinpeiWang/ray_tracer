@@ -80,6 +80,22 @@ const SceneDescriptor* build_scene_for_bdpt(const char* scene_id, int width, int
 		out_cam.lookfrom = point3(cc.lookfrom_x, cc.lookfrom_y, cc.lookfrom_z);
 	}
 	out_cam.lookat = point3(cc.lookat_x, cc.lookat_y, cc.lookat_z);
+	// Camera motion blur (camera.h's camera_is_animated) is deliberately
+	// out of scope for BDPT/MLT/the debug integrators - same "default path
+	// tracer (+SPPM, which reuses get_ray()) only" precedent as several
+	// other recent features - out_cam.camera_is_animated is left at its
+	// default false rather than wired up here. Warn rather than silently
+	// rendering a static first-keyframe frame with no indication anything
+	// was skipped, matching this codebase's existing pattern for other
+	// integrator/feature mismatches (e.g. --exposure/--tonemap's own
+	// warnings under --bdpt/--mlt/--sppm).
+	if (cc.animated) {
+		std::cerr << "Warning: this scene has an animated (motion-blur) camera - "
+		             "motion blur is not supported under --bdpt/--mlt/"
+		             "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
+		             "(only the default path tracer and --sppm apply it); "
+		             "rendering a static frame at the first keyframe.\n";
+	}
 	std::cout << "[cpu_interface_bdpt] Camera: vfov=" << cc.vfov
 	           << " lookfrom=(" << out_cam.lookfrom.x() << "," << out_cam.lookfrom.y() << "," << out_cam.lookfrom.z() << ")"
 	           << " lookat=(" << cc.lookat_x << "," << cc.lookat_y << "," << cc.lookat_z << ")" << std::endl;

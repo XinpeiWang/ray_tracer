@@ -195,21 +195,20 @@ static bool spectral_scan_hittable(const hittable* h, std::string& error_out) {
 // an explicit CLI arg or from the scene's own recommended camera via
 // cpu_scene_recommended_camera(), and force_camera_override=1 just means
 // "use whichever of those is now in cam_x/y/z"). So an animated
-// (cc.animated) camera always uses its own registered keyframes,
-// regardless of force_camera_override - the same way Fixed mode already
-// ignores it for non-animated scenes: a moving camera has no single
-// "current position" for an override to mean, and letting the override win
-// here would silently disable motion blur (cam.camera_is_animated=false)
-// on every ordinary, non-video render of an animated scene too, not just
-// fix --video mode.
-//
-// The real (if narrower) consequence: --video's per-frame fly-through
-// position has no way to combine with an animated scene's own keyframed
-// motion, so it is ignored for animated scenes (every frame renders the
-// SAME shutter-interval motion blur, not a flythrough) - warned about
-// below rather than silently doing so, matching this codebase's existing
-// pattern for other unsupported flag combinations (e.g. --exposure/
-// --tonemap with --bdpt/--mlt/--sppm).
+// (cc.animated) camera ALWAYS uses its own registered keyframes, ignoring
+// cam_x/y/z/force_camera_override AND cc.mode entirely (unlike the
+// non-animated branch below, where force_camera_override/UserControlled
+// mode both let the caller substitute cam_x/y/z) - a moving camera has no
+// single "current position" for either an override or a UserControlled-
+// style UI preset to mean. Letting force_camera_override win here would
+// silently disable motion blur (cam.camera_is_animated=false) on every
+// ordinary, non-video render of an animated scene, not just fix --video
+// mode - force_camera_override=1 on its own can't distinguish a genuine
+// --video-frame conflict from the ordinary single-frame case where it's
+// always set and never conflicts with anything. main.cpp separately
+// rejects --video combined with an animated-camera scene outright, before
+// any rendering starts (see that file's own comment) - the real conflict
+// case, so no per-render warning is needed here.
 static void applyCameraConfig(camera& cam, const CameraConfig& cc,
                                double cam_x, double cam_y, double cam_z,
                                bool force_camera_override) {
@@ -220,24 +219,17 @@ static void applyCameraConfig(camera& cam, const CameraConfig& cc,
 	cam.camera_is_animated = cc.animated;
 
 	if (cc.animated) {
-		if (force_camera_override) {
-			std::cerr << "Warning: this scene has an animated (motion-blur) camera - "
-			             "--camera-path/per-frame camera positions are not supported "
-			             "together with an animated camera and are ignored; every "
-			             "frame renders the scene's own registered keyframes.\n";
-		}
 		cam.lookfrom      = point3(cc.lookfrom_x, cc.lookfrom_y, cc.lookfrom_z);
 		cam.lookfrom1     = point3(cc.lookfrom_t1_x, cc.lookfrom_t1_y, cc.lookfrom_t1_z);
 		cam.lookat1       = point3(cc.lookat_t1_x, cc.lookat_t1_y, cc.lookat_t1_z);
 		cam.shutter_open  = cc.shutter_open;
 		cam.shutter_close = cc.shutter_close;
-	} else if (force_camera_override) {
+	} else if (force_camera_override || cc.mode == CameraMode::UserControlled) {
+		// Let caller override lookfrom (camera presets in UI, or the CLI's
+		// force_camera_override=1 for a single-frame render / --video frame).
 		cam.lookfrom = point3(cam_x, cam_y, cam_z);
-	} else if (cc.mode != CameraMode::UserControlled) {
-		cam.lookfrom = point3(cc.lookfrom_x, cc.lookfrom_y, cc.lookfrom_z);
 	} else {
-		// Let caller override lookfrom (camera presets in UI)
-		cam.lookfrom = point3(cam_x, cam_y, cam_z);
+		cam.lookfrom = point3(cc.lookfrom_x, cc.lookfrom_y, cc.lookfrom_z);
 	}
 	cam.lookat = point3(cc.lookat_x, cc.lookat_y, cc.lookat_z);
 }
@@ -762,6 +754,17 @@ extern "C" int cpu_scene_gpu_compatible_by_id(const char* scene_id) {
 	const SceneDescriptor* s = find_scene(scene_id);
 	if (!s) return 0;
 	return s->gpu_compatible ? 1 : 0;
+}
+
+// Lets launcher/main.cpp reject --video combined with an animated-camera
+// scene (e.g. D13) at argument-parsing time, before any rendering starts -
+// see main.cpp's own call site comment for why (the scene's own keyframed
+// motion and --video's per-frame flythrough path can't be meaningfully
+// composed).
+extern "C" int cpu_scene_camera_is_animated_by_id(const char* scene_id) {
+	const SceneDescriptor* s = find_scene(scene_id);
+	if (!s) return 0;
+	return s->camera.animated ? 1 : 0;
 }
 
 extern "C" const char* cpu_scene_name_by_id(const char* scene_id) {
