@@ -639,6 +639,18 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			padding: 8px 10px;
 			font-size: %FS_M1%;
 		}
+		/* Punches through the scroll area's own opaque viewport/content
+		   widgets (same reasoning as QScrollArea#tabScroll above) so the
+		   sidebar's plain background shows around previewTechniqueNote's
+		   own boxed look, rather than a second, undecorated rectangle
+		   appearing behind it. */
+		QScrollArea#previewTechniqueScroll {
+			background: transparent;
+			border: none;
+		}
+		QScrollArea#previewTechniqueScroll > QWidget {
+			background: transparent;
+		}
 		QLabel#videoInfo {
 			color: %TEXT_MUTED%;
 			font-style: italic;

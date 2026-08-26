@@ -1552,15 +1552,28 @@ void MainWindow::createPreviewTab() {
 	sideLayout->addWidget(m_previewSceneDescLabel);
 
 	// The active render's own technique note (what the scene demonstrates
-	// and why it looks the way it does) - see updatePreviewSidebarForActiveTab(),
-	// which populates this from the tab's "sceneId" property and hides it
-	// when scene_technique_notes::hasNote() says there's nothing authored.
-	m_previewTechniqueLabel = new QLabel(sidebar);
+	// and why it looks the way it does, plus the render's own technique/
+	// settings summary) - see updatePreviewSidebarForActiveTab(), which
+	// populates this from the tab's "sceneId"/"techniqueHtml" properties
+	// and hides the scroll wrapper when there's nothing to show at all.
+	// Scrollable (rather than a plain QLabel like previewInfo/
+	// previewSceneDesc above) since the combined content can run long -
+	// stretch factor 1 so it absorbs whatever vertical space is left in
+	// the sidebar instead of the whole sidebar growing past the visible
+	// area and pushing the buttons below out of view.
+	m_previewTechniqueLabel = new QLabel();
 	m_previewTechniqueLabel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
 	m_previewTechniqueLabel->setWordWrap(true);
 	m_previewTechniqueLabel->setObjectName("previewTechniqueNote");
-	m_previewTechniqueLabel->setVisible(false);
-	sideLayout->addWidget(m_previewTechniqueLabel);
+
+	m_previewTechniqueScroll = new QScrollArea(sidebar);
+	m_previewTechniqueScroll->setWidget(m_previewTechniqueLabel);
+	m_previewTechniqueScroll->setWidgetResizable(true);
+	m_previewTechniqueScroll->setFrameShape(QFrame::NoFrame);
+	m_previewTechniqueScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+	m_previewTechniqueScroll->setObjectName("previewTechniqueScroll");
+	m_previewTechniqueScroll->setVisible(false);
+	sideLayout->addWidget(m_previewTechniqueScroll, /*stretch=*/1);
 
 	// Geometry only - colour and hover/focus states come from the global
 	// theme so every secondary button behaves identically. Full sidebar
@@ -1594,7 +1607,11 @@ void MainWindow::createPreviewTab() {
 	});
 	sideLayout->addWidget(openViewerButton);
 
-	sideLayout->addStretch(1);
+	// No trailing addStretch() here - m_previewTechniqueScroll's own
+	// stretch factor (set above) already absorbs whatever vertical space
+	// is left when it's visible; when it's hidden (nothing to show), the
+	// buttons simply sit right after the info/scene-desc labels instead
+	// of being pushed toward the bottom of an otherwise-empty sidebar.
 	splitter->addWidget(sidebar);
 
 	// Bias initial space toward the render - the sidebar only needs enough
@@ -1626,20 +1643,28 @@ QString MainWindow::currentPreviewProperty(const char *name) const {
 
 void MainWindow::updatePreviewSidebarForActiveTab() {
 	if (m_previewInfoLabel) m_previewInfoLabel->setText(currentPreviewProperty("infoText"));
-	if (m_previewTechniqueLabel) {
+	if (m_previewTechniqueLabel && m_previewTechniqueScroll) {
 		const QString sceneId = currentPreviewProperty("sceneId");
-		// techniqueHtml is precomputed once at tab-creation time (see
-		// PreviewTechniqueInfo/MainWindow::renderTechniqueHtml()) since a
-		// completed render's own settings never change; the scene note
-		// below stays a live lookup instead, since scene_technique_notes.h
-		// is the single source of truth for that text.
-		QString html = currentPreviewProperty("techniqueHtml");
+		// Scene note first: it's what actually answers "what's special
+		// about this image / why does it look this way", so it leads:
+		// the generic integrator/settings text below is useful background,
+		// not the headline. techniqueHtml is precomputed once at
+		// tab-creation time (see PreviewTechniqueInfo/
+		// MainWindow::renderTechniqueHtml()) since a completed render's
+		// own settings never change; the scene note stays a live lookup
+		// instead, since scene_technique_notes.h is the single source of
+		// truth for that text.
+		QString html;
 		if (!sceneId.isEmpty() && scene_technique_notes::hasNote(sceneId)) {
-			if (!html.isEmpty()) html += "<br><br>";
-			html += tr("<b>Why it looks this way</b><br>%1")
+			html = tr("<b>Why it looks this way</b><br>%1")
 						.arg(plainTextToHtmlParagraphs(scene_technique_notes::forScene(sceneId)));
 		}
-		m_previewTechniqueLabel->setVisible(!html.isEmpty());
+		const QString techniqueHtml = currentPreviewProperty("techniqueHtml");
+		if (!techniqueHtml.isEmpty()) {
+			if (!html.isEmpty()) html += "<br><br>";
+			html += techniqueHtml;
+		}
+		m_previewTechniqueScroll->setVisible(!html.isEmpty());
 		if (!html.isEmpty()) m_previewTechniqueLabel->setText(html);
 	}
 	// Nothing in the sidebar (render info, Open Folder/Viewer) means anything

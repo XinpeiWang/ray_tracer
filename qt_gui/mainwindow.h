@@ -39,6 +39,7 @@
 #include <QQueue>
 #include <QListWidget>
 #include <QToolButton>
+#include <QScrollArea>
 #include <functional>
 
 #include "camera_math.h"
@@ -1741,11 +1742,19 @@ private:
 	QLabel *m_previewInfoLabel;         // Filename / resolution / size / render time - reflects whichever sub-tab is active
 	QLabel *m_previewSceneDescLabel;    // Selected scene's description - see onSceneChanged()
 	// The active sub-tab's own technique note (scene_technique_notes::
-	// forScene(), keyed by the "sceneId" tab property) - unlike
+	// forScene(), keyed by the "sceneId" tab property, plus the render's
+	// own technique/settings summary - see renderTechniqueHtml()) - unlike
 	// m_previewSceneDescLabel above, tied to the actual render shown, not
-	// whichever scene is currently selected in the picker. Hidden when no
-	// note is authored for that scene id - see updatePreviewSidebarForActiveTab().
+	// whichever scene is currently selected in the picker. Wrapped in
+	// m_previewTechniqueScroll (below) since combined content can run
+	// long; hidden when there's nothing to show at all - see
+	// updatePreviewSidebarForActiveTab().
 	QLabel *m_previewTechniqueLabel = nullptr;
+	// Scrolls m_previewTechniqueLabel internally, sized policy Expanding
+	// with a layout stretch factor, so long technique/scene-note text
+	// scrolls in its own bounded area instead of growing the whole
+	// sidebar and pushing the Open Folder/Viewer buttons out of view.
+	QScrollArea *m_previewTechniqueScroll = nullptr;
 	int m_previewTabIndex = -1;         // Index of the Preview tab within m_tabWidget
 	// Counts repeat sub-tab titles ("Cornell Box" -> "Cornell Box (2)") so
 	// re-rendering the same scene/preset in one session doesn't produce
