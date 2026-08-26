@@ -2224,7 +2224,7 @@ CPU only. Area lights only.</source>
     <message>
         <location filename="../mainwindow_style.cpp" line="1221"/>
         <source>OptiX validation: on</source>
-        <translation>OptiX 校验: 开启</translation>
+        <translation>OptiX 验证: 开启</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1222"/>
@@ -2764,7 +2764,7 @@ CPU only. Area lights only.</source>
     <message>
         <location filename="../scene_technique_notes.h" line="167"/>
         <source>The same Cornell box as A1, rendered at a deliberately low 32 samples per pixel so it&apos;s genuinely grainy before any cleanup - render it once with the OptiX AI denoiser (Render Options tab) off and once with it on. The denoiser is a machine-learning model that recognizes that speckle pattern (guided by the scene&apos;s own albedo and normal buffers) and smooths it away without tracing a single additional ray, trading a little fine detail for a dramatically cleaner-looking image at the same sample count. GPU recursive backend only. The neighboring OptiX validation mode checkbox is a different kind of control worth knowing about here too: it only turns on extra device-side correctness checks with a real performance cost - it never changes the rendered image, so there&apos;s nothing to visually compare for that one.</source>
-        <translation>与 A1 相同的康奈尔盒场景,但故意以较低的每像素 32 次采样进行渲染,因此在任何后处理之前画面本身就明显颗粒感十足——分别在关闭和开启 OptiX AI 降噪器(渲染选项标签页)的情况下各渲染一次。该降噪器是一个机器学习模型,能识别出这种斑点噪声模式(并借助场景自身的反照率与法线缓冲区加以引导),在不追加任何一条光线的情况下将其平滑消除,以牺牲少量细节为代价,在相同采样数下换来明显更干净的画面。仅限 GPU 递归后端。旁边的 OptiX 校验模式复选框则是另一类值得了解的控件:它只会开启带有真实性能开销的额外设备端正确性检查,不会改变渲染出的图像本身,因此这一项没有任何视觉效果可供对比。</translation>
+        <translation>与 A1 相同的康奈尔盒场景,但故意以较低的每像素 32 次采样进行渲染,因此在任何后处理之前画面本身就明显颗粒感十足——分别在关闭和开启 OptiX AI 降噪器(渲染选项标签页)的情况下各渲染一次。该降噪器是一个机器学习模型,能识别出这种斑点噪声模式(并借助场景自身的反照率与法线缓冲区加以引导),在不追加任何一条光线的情况下将其平滑消除,以牺牲少量细节为代价,在相同采样数下换来明显更干净的画面。仅限 GPU 递归后端。旁边的 OptiX 验证模式复选框则是另一类值得了解的控件:它只会开启带有真实性能开销的额外设备端正确性检查,不会改变渲染出的图像本身,因此这一项没有任何视觉效果可供对比。</translation>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="188"/>

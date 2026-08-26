@@ -1232,9 +1232,14 @@ QString MainWindow::advancedFlagsSummary(const AdvancedRenderFlags &flags) {
 	if (flags.stats) parts << tr("Stats: on");
 	if (flags.optixValidate) parts << tr("OptiX validation: on");
 	if (flags.exposure != 1.0) parts << tr("Exposure: %1").arg(flags.exposure);
-	if (!flags.sampler.isEmpty()) parts << tr("Sampler: %1").arg(flags.sampler);
+	// toHtmlEscaped(): these two are QStrings that round-trip through
+	// QSettings on the Recent Renders reopen path (recent_renders.cpp's
+	// readEntry()) with no validation, unlike every other field here -
+	// a hand-edited or corrupted config value could otherwise inject
+	// markup into renderTechniqueHtml()'s rich-text output.
+	if (!flags.sampler.isEmpty()) parts << tr("Sampler: %1").arg(flags.sampler.toHtmlEscaped());
 	if (flags.spectral) parts << tr("Spectral: on");
-	if (!flags.tonemap.isEmpty()) parts << tr("Tonemap: %1").arg(flags.tonemap);
+	if (!flags.tonemap.isEmpty()) parts << tr("Tonemap: %1").arg(flags.tonemap.toHtmlEscaped());
 	return parts.join(" · ");
 }
 

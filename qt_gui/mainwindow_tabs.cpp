@@ -20,6 +20,7 @@
 #include <QDir>
 #include <QDateTime>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QScreen>
 #include <QTimer>
 #include <QAbstractItemView>
@@ -1665,7 +1666,15 @@ void MainWindow::updatePreviewSidebarForActiveTab() {
 			html += techniqueHtml;
 		}
 		m_previewTechniqueScroll->setVisible(!html.isEmpty());
-		if (!html.isEmpty()) m_previewTechniqueLabel->setText(html);
+		if (!html.isEmpty()) {
+			m_previewTechniqueLabel->setText(html);
+			// QScrollArea only clamps an out-of-range scroll value to the
+			// new content's height on relayout, it doesn't zero it - without
+			// this, switching from a long-scrolled tab to a shorter one
+			// would open already scrolled toward the bottom instead of at
+			// the top.
+			m_previewTechniqueScroll->verticalScrollBar()->setValue(0);
+		}
 	}
 	// Nothing in the sidebar (render info, Open Folder/Viewer) means anything
 	// without an active render tab to point at - hidden rather than left
