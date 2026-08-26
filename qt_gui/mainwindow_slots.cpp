@@ -1360,33 +1360,27 @@ void MainWindow::onIntegratorChanged(int) {
 	// Switch the "Integrator Options" stack to this integrator's own
 	// sub-flag page - see m_integratorOptionsStack's own comment
 	// (mainwindow.h) for why only 5 of the 8 modes get a real page.
+	// Default/RandomWalk/SimpleVolPath/LightPath (no sub-flags) share page
+	// 0, whose text is the same integratorDescription() content the other
+	// 5 pages now show at their own top (mainwindow_tabs.cpp) and the
+	// per-item combo tooltips already use - one description per mode, not
+	// a separately-maintained shorter duplicate here.
 	int page = 0;
-	QString noOptionsText;
 	switch (integrator) {
 		case IntegratorMode::Sppm: page = 1; break;
 		case IntegratorMode::Bdpt: page = 2; break;
 		case IntegratorMode::Mlt: page = 3; break;
 		case IntegratorMode::Ao: page = 4; break;
 		case IntegratorMode::SimplePath: page = 5; break;
-		case IntegratorMode::RandomWalk:
-			page = 0;
-			noOptionsText = tr("RandomWalk is pbrt-v4's unbiased reference path tracer - uniform-sphere sampling, no next-event estimation or MIS. No options here.");
-			break;
-		case IntegratorMode::SimpleVolPath:
-			page = 0;
-			noOptionsText = tr("SimpleVolPath is pbrt-v4's simplest volumetric path tracer - pure delta tracking, no NEE/MIS/surface BSDFs. No options here.");
-			break;
-		case IntegratorMode::LightPath:
-			page = 0;
-			noOptionsText = tr("LightPath is a pure light tracer - every sample starts at a light and splats camera-connection contributions into the film. No options here.");
-			break;
 		case IntegratorMode::Default:
+		case IntegratorMode::RandomWalk:
+		case IntegratorMode::SimpleVolPath:
+		case IntegratorMode::LightPath:
 		default:
 			page = 0;
-			noOptionsText = tr("The default Path Tracer has no integrator-specific options here - see the Render Options above.");
 			break;
 	}
-	if (page == 0) m_integratorNoOptionsLabel->setText(noOptionsText);
+	if (page == 0) m_integratorNoOptionsLabel->setText(integratorDescription(integrator));
 	m_integratorOptionsStack->setCurrentIndex(page);
 
 	updateRenderOptionsEnabled();

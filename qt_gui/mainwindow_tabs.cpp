@@ -1073,6 +1073,20 @@ void MainWindow::createRenderOptionsTab() {
 
 	m_integratorOptionsStack = new QStackedWidget(m_integratorOptionsGroup);
 
+	// Prepends a word-wrapped description of `mode` as the first (full-
+	// width) row of `pageLayout` - reuses the exact same text the per-item
+	// combo tooltips already show (integratorDescription(),
+	// mainwindow_style.cpp), so SPPM/BDPT/MLT/AO/SimplePath's pages get the
+	// same persistent, always-visible explanation the shared placeholder
+	// page (Default/RandomWalk/SimpleVolPath/LightPath, below) already has
+	// via m_integratorNoOptionsLabel - not just a tooltip you'd only see by
+	// opening the dropdown and hovering.
+	auto addIntegratorDescription = [this](QFormLayout *pageLayout, IntegratorMode mode) {
+		QLabel *desc = new QLabel(integratorDescription(mode));
+		desc->setWordWrap(true);
+		pageLayout->addRow(desc);
+	};
+
 	// Page 0: shared placeholder for Default/RandomWalk/SimpleVolPath/
 	// LightPath - none of these four have any sub-flags, so they share
 	// one page instead of each getting a near-duplicate empty one. Text
@@ -1086,6 +1100,7 @@ void MainWindow::createRenderOptionsTab() {
 	QFormLayout *sppmLayout = new QFormLayout(sppmPage);
 	sppmLayout->setVerticalSpacing(10);
 	sppmLayout->setHorizontalSpacing(10);
+	addIntegratorDescription(sppmLayout, IntegratorMode::Sppm);
 	m_sppmIterationsSpin = new QSpinBox(sppmPage);
 	m_sppmIterationsSpin->setRange(1, 1000000);
 	m_sppmIterationsSpin->setValue(100);
@@ -1111,6 +1126,7 @@ void MainWindow::createRenderOptionsTab() {
 	QFormLayout *bdptLayout = new QFormLayout(bdptPage);
 	bdptLayout->setVerticalSpacing(10);
 	bdptLayout->setHorizontalSpacing(10);
+	addIntegratorDescription(bdptLayout, IntegratorMode::Bdpt);
 	m_bdptMaxDepthSpin = new QSpinBox(bdptPage);
 	m_bdptMaxDepthSpin->setRange(1, 100);
 	m_bdptMaxDepthSpin->setValue(5);
@@ -1126,6 +1142,7 @@ void MainWindow::createRenderOptionsTab() {
 	QFormLayout *mltLayout = new QFormLayout(mltPage);
 	mltLayout->setVerticalSpacing(10);
 	mltLayout->setHorizontalSpacing(10);
+	addIntegratorDescription(mltLayout, IntegratorMode::Mlt);
 	m_mltBootstrapSpin = new QSpinBox(mltPage);
 	m_mltBootstrapSpin->setRange(1, 10000000);
 	m_mltBootstrapSpin->setValue(100000);
@@ -1159,6 +1176,7 @@ void MainWindow::createRenderOptionsTab() {
 	QFormLayout *aoLayout = new QFormLayout(aoPage);
 	aoLayout->setVerticalSpacing(10);
 	aoLayout->setHorizontalSpacing(10);
+	addIntegratorDescription(aoLayout, IntegratorMode::Ao);
 	m_aoMaxDistSpin = new QDoubleSpinBox(aoPage);
 	m_aoMaxDistSpin->setRange(0.01, 1.0e12);
 	m_aoMaxDistSpin->setDecimals(2);
@@ -1209,6 +1227,7 @@ void MainWindow::createRenderOptionsTab() {
 	QFormLayout *simplepathLayout = new QFormLayout(simplepathPage);
 	simplepathLayout->setVerticalSpacing(10);
 	simplepathLayout->setHorizontalSpacing(10);
+	addIntegratorDescription(simplepathLayout, IntegratorMode::SimplePath);
 	m_simplepathNoLightsCheck = new QCheckBox(tr("Disable next-event estimation (direct light sampling)"), simplepathPage);
 	styleCheckBox(m_simplepathNoLightsCheck);
 	simplepathLayout->addRow(checkboxWithInfo(m_simplepathNoLightsCheck,
