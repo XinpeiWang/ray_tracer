@@ -1051,6 +1051,15 @@ struct RecentRenderEntry {
 	bool useGPU = false, useWavefront = false;
 	IntegratorMode integratorMode = IntegratorMode::Default;
 	qint64 timestampEpochSecs = 0;
+	// False for a best-effort entry backfilled by scanning the default
+	// output folder for pre-existing render_*.png/*_video.mp4 files this
+	// app produced before Recent Renders existed (or whose own persisted
+	// entry has since aged out) - see loadRecentRenders(). Only
+	// outputPath/previewPath/isVideo/sceneId (parsed from the filename,
+	// possibly empty)/displayTitle/timestampEpochSecs are meaningful then;
+	// describeRecentRenderEntry() omits the rest rather than showing
+	// fabricated zeros.
+	bool metadataKnown = true;
 };
 
 // ============================================================================

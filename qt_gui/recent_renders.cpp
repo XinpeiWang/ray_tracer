@@ -1,9 +1,14 @@
 #include "mainwindow.h"
+#include "scene_metadata_client.h"
 #include "settings_keys.h"
 
 #include <QDateTime>
+#include <QDir>
 #include <QFileInfo>
+#include <QSet>
 #include <QSettings>
+
+#include <algorithm>
 
 // ============================================================================
 // Recent Renders persistence
@@ -41,6 +46,46 @@ void writeEntry(QSettings &settings, const RecentRenderEntry &entry) {
 	settings.setValue("useWavefront", entry.useWavefront);
 	settings.setValue("integratorMode", static_cast<int>(entry.integratorMode));
 	settings.setValue("timestampEpochSecs", entry.timestampEpochSecs);
+	settings.setValue("metadataKnown", entry.metadataKnown);
+}
+
+// Best-effort entry for a render_*.png/*_video.mp4 file found sitting in
+// the default output folder that has no persisted RecentRenderEntry of its
+// own - either because it predates this feature entirely, or its entry has
+// since aged out past kMaxRecentRenders. Only what the filename itself
+// encodes is recoverable: captureRenderJob() (mainwindow_slots.cpp) always
+// names a file "<render|video>_<sceneId>_<timestamp...>.<ext>", and the
+// video pipeline further appends "_video" before ".mp4" - see
+// assembleVideoAutomatically()'s own comment on that naming. Everything
+// else (resolution, samples, backend, integrator) stays at the struct's
+// default/unknown state; describeRecentRenderEntry() knows to omit those
+// rather than show fabricated zeros (metadataKnown = false).
+RecentRenderEntry buildScannedEntry(const QFileInfo &fileInfo, bool isVideo) {
+	RecentRenderEntry entry;
+	entry.outputPath = fileInfo.absoluteFilePath();
+	entry.previewPath = fileInfo.absoluteFilePath();
+	entry.isVideo = isVideo;
+	entry.metadataKnown = false;
+
+	QString stem = fileInfo.completeBaseName(); // strips the final ".png"/".mp4" only
+	if (isVideo && stem.endsWith(QLatin1String("_video"))) stem.chop(6);
+	const QStringList parts = stem.split('_');
+	// parts[0] = "render"/"video", parts[1] = sceneId (this app's scene
+	// ids - "A1", "B23", "I5" - never contain an underscore themselves),
+	// parts[2..] = timestamp fragments.
+	const QString sceneId = parts.size() >= 2 ? parts[1] : QString();
+	entry.sceneId = sceneId;
+	const QString sceneName = sceneId.isEmpty() ? QString() : SceneMetadataClient::sceneName(sceneId);
+	// Falls back to the raw filename when the id can't be parsed or isn't
+	// recognized (e.g. a renamed/foreign file matching the glob by
+	// accident) - still enough to identify which file double-clicking it
+	// would open.
+	entry.displayTitle = sceneName.isEmpty() ? fileInfo.fileName() : sceneName;
+	entry.sceneDescription = sceneId.isEmpty() ? QString() : SceneMetadataClient::sceneDescription(sceneId);
+
+	const QDateTime birth = fileInfo.birthTime();
+	entry.timestampEpochSecs = (birth.isValid() ? birth : fileInfo.lastModified()).toSecsSinceEpoch();
+	return entry;
 }
 
 RecentRenderEntry readEntry(QSettings &settings) {
@@ -58,6 +103,11 @@ RecentRenderEntry readEntry(QSettings &settings) {
 	entry.useWavefront = settings.value("useWavefront").toBool();
 	entry.integratorMode = static_cast<IntegratorMode>(settings.value("integratorMode").toInt());
 	entry.timestampEpochSecs = settings.value("timestampEpochSecs").toLongLong();
+	// Default true (not the QVariant-invalid-default false) when the key
+	// is absent - an entry saved by a version of this app before
+	// metadataKnown existed was always a real, fully-known
+	// saveRecentRender() call, never a scanned best-effort one.
+	entry.metadataKnown = settings.value("metadataKnown", true).toBool();
 	return entry;
 }
 
@@ -83,12 +133,39 @@ QList<RecentRenderEntry> MainWindow::loadRecentRenders() const {
 	// distinct raw-render file from previewPath.
 	QList<RecentRenderEntry> existing;
 	existing.reserve(entries.size());
+	QSet<QString> knownPaths;
 	for (const RecentRenderEntry &entry : entries) {
 		if (!QFileInfo::exists(entry.previewPath)) continue;
 		if (!entry.isVideo && !QFileInfo::exists(entry.outputPath)) continue;
 		existing.append(entry);
+		knownPaths.insert(entry.previewPath);
 	}
-	return existing;
+
+	// Best-effort backfill: scan the default output folder (Desktop - see
+	// m_outputPathEdit's own default, mainwindow_tabs.cpp) for
+	// render_*.png/*_video.mp4 files this app produced that have no
+	// persisted entry of their own (predates this feature, or aged out
+	// past kMaxRecentRenders) - see buildScannedEntry()'s own comment.
+	// Anything Browse-saved outside Desktop is invisible to this scan, same
+	// as it always was before Recent Renders existed at all; this only
+	// covers the common default-path case.
+	const QDir desktop(QDir::homePath() + QStringLiteral("/Desktop"));
+	QList<RecentRenderEntry> scanned;
+	for (const QFileInfo &fileInfo : desktop.entryInfoList(QStringList() << QStringLiteral("render_*.png"), QDir::Files)) {
+		if (knownPaths.contains(fileInfo.absoluteFilePath())) continue;
+		scanned.append(buildScannedEntry(fileInfo, /*isVideo=*/false));
+	}
+	for (const QFileInfo &fileInfo : desktop.entryInfoList(QStringList() << QStringLiteral("*_video.mp4"), QDir::Files)) {
+		if (knownPaths.contains(fileInfo.absoluteFilePath())) continue;
+		scanned.append(buildScannedEntry(fileInfo, /*isVideo=*/true));
+	}
+
+	QList<RecentRenderEntry> merged = existing + scanned;
+	std::sort(merged.begin(), merged.end(), [](const RecentRenderEntry &a, const RecentRenderEntry &b) {
+		return a.timestampEpochSecs > b.timestampEpochSecs;
+	});
+	while (merged.size() > kMaxRecentRenders) merged.removeLast();
+	return merged;
 }
 
 void MainWindow::saveRecentRender(const RenderJob &job, const QString &previewPath, bool isVideo,
@@ -134,6 +211,24 @@ void MainWindow::saveRecentRender(const RenderJob &job, const QString &previewPa
 // since RecentRenderEntry isn't a RenderJob - plus a relative-time suffix
 // no other row format here needs.
 QString MainWindow::describeRecentRenderEntry(const RecentRenderEntry &entry) const {
+	const qint64 secsAgo = QDateTime::currentDateTime().toSecsSinceEpoch() - entry.timestampEpochSecs;
+	QString whenText;
+	if (secsAgo < 60) whenText = tr("just now");
+	else if (secsAgo < 3600) whenText = tr("%1 min ago").arg(secsAgo / 60);
+	else if (secsAgo < 86400) whenText = tr("%1 hr ago").arg(secsAgo / 3600);
+	else if (secsAgo < 86400 * 14) whenText = tr("%1 days ago").arg(secsAgo / 86400);
+	else whenText = QDateTime::fromSecsSinceEpoch(entry.timestampEpochSecs).date().toString(Qt::ISODate);
+
+	// A scanned (best-effort) entry only knows its file/scene id/timestamp -
+	// showing "0×0 · 0spp · CPU" for it would look like real data rather
+	// than the fact that this app never recorded it in the first place.
+	if (!entry.metadataKnown) {
+		return tr("%1%2 — %3")
+			.arg(entry.displayTitle)
+			.arg(entry.isVideo ? tr(" · Video") : QString())
+			.arg(whenText);
+	}
+
 	const QString renderer = entry.useGPU ? (entry.useWavefront ? tr("GPU-WF") : tr("GPU")) : tr("CPU");
 	const QString modeSuffix = entry.isVideo ? tr(" · Video") : QString();
 	QString integratorSuffix;
@@ -148,14 +243,6 @@ QString MainWindow::describeRecentRenderEntry(const RecentRenderEntry &entry) co
 		case IntegratorMode::SimpleVolPath: integratorSuffix = tr(" · SimpleVolPath"); break;
 		case IntegratorMode::LightPath: integratorSuffix = tr(" · LightPath"); break;
 	}
-
-	const qint64 secsAgo = QDateTime::currentDateTime().toSecsSinceEpoch() - entry.timestampEpochSecs;
-	QString whenText;
-	if (secsAgo < 60) whenText = tr("just now");
-	else if (secsAgo < 3600) whenText = tr("%1 min ago").arg(secsAgo / 60);
-	else if (secsAgo < 86400) whenText = tr("%1 hr ago").arg(secsAgo / 3600);
-	else if (secsAgo < 86400 * 14) whenText = tr("%1 days ago").arg(secsAgo / 86400);
-	else whenText = QDateTime::fromSecsSinceEpoch(entry.timestampEpochSecs).date().toString(Qt::ISODate);
 
 	return tr("%1 — %2×%3 · %4spp · %5%6%7 — %8")
 		.arg(entry.displayTitle)
