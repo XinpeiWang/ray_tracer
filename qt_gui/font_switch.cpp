@@ -101,15 +101,31 @@ void MainWindow::applyFont(const QString &id) {
 	m_activeFontId = QString::fromUtf8(choice.id);
 
 	QFont font;
+	QString primaryFamily = QStringLiteral("Arial");
 	bool familySet = false;
 	for (const QString &family : choice.families) {
 		font.setFamily(family);
 		if (QFontInfo(font).family() == family) {
+			primaryFamily = family;
 			familySet = true;
 			break;
 		}
 	}
-	if (!familySet) font.setFamily(QStringLiteral("Arial"));
+	if (!familySet) font.setFamily(primaryFamily);
+
+	// None of the decorative chains above (or the Arial fallback) carry CJK
+	// glyphs, so without this, Chinese/Japanese text was left entirely to
+	// Windows' own implicit font substitution - usually passable, but never
+	// a choice this app actually made. setFamilies() (not just setFamily())
+	// makes Qt do real per-glyph fallback across this whole list: Latin text
+	// still renders from primaryFamily exactly as before, but any CJK glyph
+	// Qt can't find there now falls through to a deliberately-picked font
+	// instead. Applies regardless of the active UI language, so e.g. a
+	// Chinese scene name still renders well even while the app itself is in
+	// English.
+	font.setFamilies({primaryFamily,
+		QStringLiteral("Microsoft YaHei UI"), QStringLiteral("Microsoft YaHei"),
+		QStringLiteral("Yu Gothic UI"), QStringLiteral("Meiryo UI")});
 	font.setPointSize(choice.pointSize);
 	font.setWeight(QFont::Normal);
 	qApp->setFont(font);
