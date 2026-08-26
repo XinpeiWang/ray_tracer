@@ -967,6 +967,7 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 							.arg(totalTime, 0, 'f', 2);
 						addImagePreviewTab(finishedJob.displayTitle, finishedJob.sceneDescription,
 											pixmap, infoText, outputPath, pngPath);
+						saveRecentRender(finishedJob, pngPath, /*isVideo=*/false);
 						if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
 					} else {
 						m_statusLabel->setText(tr("✅ Render complete (%1s)").arg(totalTime, 0, 'f', 2));
@@ -1498,6 +1499,7 @@ void MainWindow::assembleVideoAutomatically(const QString &baseOutputPath, const
 		.arg(videoInfo.size() / (1024.0 * 1024.0), 0, 'f', 1)
 		.arg(frameFiles.count());
 	addVideoPreviewTab(title, job.sceneDescription, videoPath, infoText);
+	saveRecentRender(job, videoPath, /*isVideo=*/true, title);
 	if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
 
 	onLogMessage(tr("Playing video inline: %1").arg(videoPath));

@@ -52,6 +52,7 @@ SOURCES += \
 	theme_switch.cpp \
 	language_switch.cpp \
 	font_switch.cpp \
+	recent_renders.cpp \
 	win_taskbar.cpp
 
 HEADERS += \

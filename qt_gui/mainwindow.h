@@ -698,6 +698,15 @@ public:
 		m_emptySubtitle->setStyleSheet(QStringLiteral("color: %1;").arg(subtitleColor.name()));
 	}
 
+	// Inserts `widget` into the empty-state prompt, just before its
+	// trailing stretch - used by createPreviewTab() to add the Recent
+	// Renders list beneath the subtitle text, so it's visible in exactly
+	// the state (no tabs open) where recovering a past render matters.
+	void addToEmptyState(QWidget *widget) {
+		auto *emptyLayout = qobject_cast<QVBoxLayout*>(m_emptyState->layout());
+		emptyLayout->insertWidget(emptyLayout->count() - 1, widget);
+	}
+
 signals:
 	void currentChanged(int index);
 
@@ -1025,6 +1034,25 @@ struct RenderJob {
 	IntegratorOptions integratorOptions;
 };
 
+// A finished render's metadata, persisted across app sessions (see
+// recent_renders.cpp) so the Preview tab's empty-state list can reopen
+// it later - deliberately smaller than RenderJob (which is never itself
+// persisted): only what a list row needs to display
+// (describeRecentRenderEntry()) and what reopening needs to pass back
+// into addImagePreviewTab()/addVideoPreviewTab().
+struct RecentRenderEntry {
+	QString outputPath;   // image: raw .ppm/original render path; video: same as previewPath
+	QString previewPath;  // image: converted .png; video: the .mp4 itself
+	bool isVideo = false;
+	QString sceneId;
+	QString displayTitle;      // for video, the preset name or "<scene> (Video)" title actually shown
+	QString sceneDescription;
+	int width = 0, height = 0, samples = 0;
+	bool useGPU = false, useWavefront = false;
+	IntegratorMode integratorMode = IntegratorMode::Default;
+	qint64 timestampEpochSecs = 0;
+};
+
 // ============================================================================
 // ExpandingTabBar / ExpandingTabWidget
 // ============================================================================
@@ -1204,6 +1232,27 @@ private:
 	void createThemeMenu();
 	QString loadSavedThemeId() const;
 	void saveThemeId(const QString &themeId) const;
+
+	// Recent Renders persistence (recent_renders.cpp) - same
+	// QSettings(settings_keys::kOrg, settings_keys::kApp) location as the
+	// theme/font/language prefs above, its own group
+	// (settings_keys::kRecentRendersGroup) since this is the first
+	// list-shaped value this app persists. saveRecentRender() is called
+	// from onRenderComplete()'s image branch and
+	// assembleVideoAutomatically() (mainwindow_slots.cpp), right after
+	// their existing addImagePreviewTab()/addVideoPreviewTab() calls.
+	// loadRecentRenders() filters out entries whose files no longer exist
+	// on disk (QFileInfo::exists()) - a correctness step, not polish,
+	// since files may have moved/been deleted between sessions.
+	// displayTitleOverride: assembleVideoAutomatically() computes its own
+	// tab title (named preset, or "<scene> (Video)") distinct from
+	// job.displayTitle - passed through here so a reopened entry shows the
+	// same title its live tab did, rather than the plain scene name.
+	// Defaults to job.displayTitle when empty (the image call site's case).
+	void saveRecentRender(const RenderJob &job, const QString &previewPath, bool isVideo,
+	                       const QString &displayTitleOverride = QString()) const;
+	QList<RecentRenderEntry> loadRecentRenders() const;
+	QString describeRecentRenderEntry(const RecentRenderEntry &entry) const;
 
 	// Language selection and persistence - same shape as the theme menu just
 	// above, except switching still needs a fresh process under the hood
@@ -1627,6 +1676,13 @@ private:
 	// closing the tab tears them down too) - see createPreviewTab() and
 	// currentPreviewProperty()/updatePreviewSidebarForActiveTab().
 	SplitPreviewTabs *m_previewSubTabs = nullptr;
+	// Recent Renders list, inserted into m_previewSubTabs' empty-state
+	// prompt (SplitPreviewTabs::addToEmptyState()) at construction time -
+	// see createPreviewTab(). Never rebuilt after that (a render started
+	// and finished in the same session already gets its own live tab via
+	// the normal addImagePreviewTab()/addVideoPreviewTab() path, not by
+	// refreshing this list).
+	QListWidget *m_recentRendersList = nullptr;
 	QWidget *m_previewSidebar = nullptr; // Info/buttons pane; hidden while there are no sub-tabs - see updatePreviewSidebarForActiveTab()
 	QLabel *m_previewInfoLabel;         // Filename / resolution / size / render time - reflects whichever sub-tab is active
 	QLabel *m_previewSceneDescLabel;    // Selected scene's description - see onSceneChanged()

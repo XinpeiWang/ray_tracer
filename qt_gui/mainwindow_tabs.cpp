@@ -1515,6 +1515,46 @@ void MainWindow::createPreviewTab() {
 	        this, &MainWindow::closePreviewSubTab);
 	splitter->addWidget(m_previewSubTabs);
 
+	// Recent Renders: past renders' output files are never deleted when
+	// their tab is closed (see closePreviewSubTab()), just no longer
+	// reachable from the UI once the session that created them ends - this
+	// list, inserted into the empty-state prompt (visible in exactly the
+	// state where recovering a past render matters), reopens one with a
+	// double-click via the same addImagePreviewTab()/addVideoPreviewTab()
+	// calls a fresh render itself uses. Text-only rows, no thumbnail
+	// decode - loadRecentRenders() runs at construction time, before the
+	// window is even shown, so decoding N QPixmaps here would be pure
+	// avoidable startup latency; the real image only loads on demand, on
+	// double-click, below.
+	{
+		const QList<RecentRenderEntry> recents = loadRecentRenders();
+		if (!recents.isEmpty()) {
+			m_recentRendersList = new QListWidget();
+			m_recentRendersList->setSelectionMode(QAbstractItemView::SingleSelection);
+			m_recentRendersList->setMaximumHeight(200);
+			m_recentRendersList->viewport()->installEventFilter(new ListEmptyAreaDeselectFilter(m_recentRendersList));
+			for (int i = 0; i < recents.size(); ++i) {
+				QListWidgetItem *item = new QListWidgetItem(describeRecentRenderEntry(recents[i]), m_recentRendersList);
+				item->setData(Qt::UserRole, i);
+			}
+			connect(m_recentRendersList, &QListWidget::itemDoubleClicked, this, [this, recents](QListWidgetItem *item) {
+				const RecentRenderEntry &entry = recents[item->data(Qt::UserRole).toInt()];
+				if (entry.isVideo) {
+					addVideoPreviewTab(entry.displayTitle, entry.sceneDescription, entry.previewPath,
+					                    describeRecentRenderEntry(entry));
+				} else {
+					QPixmap pixmap(entry.previewPath);
+					if (!pixmap.isNull()) {
+						addImagePreviewTab(entry.displayTitle, entry.sceneDescription, pixmap,
+						                    describeRecentRenderEntry(entry), entry.outputPath, entry.previewPath);
+					}
+				}
+				if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
+			});
+			m_previewSubTabs->addToEmptyState(m_recentRendersList);
+		}
+	}
+
 	QWidget *sidebar = new QWidget();
 	m_previewSidebar = sidebar;
 	sidebar->setMinimumWidth(200);

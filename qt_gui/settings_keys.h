@@ -15,4 +15,8 @@ constexpr const char *kApp = "RayTracerGUI";
 constexpr const char *kThemeKey = "ui/theme";
 constexpr const char *kFontKey = "ui/font";
 constexpr const char *kLanguageKey = "ui/language";
+// QSettings array group name (beginWriteArray/beginReadArray) for the
+// Recent Renders list - see recent_renders.cpp. The first list-shaped
+// value this app persists, hence its own group rather than a scalar key.
+constexpr const char *kRecentRendersGroup = "renders/recent";
 } // namespace settings_keys
