@@ -1299,6 +1299,9 @@ private:
 	// rather than an external per-scene lookup. Called from
 	// onIntegratorChanged().
 	void updateIntegratorInfoIcon(IntegratorMode mode);
+	// Plain-text description of `mode`, shared by updateIntegratorInfoIcon()
+	// above and createBasicTab()'s per-item combo tooltips.
+	QString integratorDescription(IntegratorMode mode);
 	// A subtle "elevated card" drop shadow (QSS alone cannot do box-shadow) -
 	// neutral black at low alpha rather than theme-tinted, the same choice
 	// every real elevation system (Material, Fluent, CSS itself) makes,

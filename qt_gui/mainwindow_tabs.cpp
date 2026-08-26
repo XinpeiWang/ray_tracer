@@ -577,15 +577,33 @@ void MainWindow::createBasicTab() {
 	// this is a combo (structural mutual exclusion) where the CLI itself
 	// uses 8 independent bool flags with hand-written guards.
 	m_integratorCombo = new QComboBox(basicTab);
-	m_integratorCombo->addItem(tr("Path Tracer (default)"), static_cast<int>(IntegratorMode::Default));
-	m_integratorCombo->addItem(tr("SPPM (Photon Mapping)"), static_cast<int>(IntegratorMode::Sppm));
-	m_integratorCombo->addItem(tr("BDPT (Bidirectional)"), static_cast<int>(IntegratorMode::Bdpt));
-	m_integratorCombo->addItem(tr("MLT (Metropolis Light Transport)"), static_cast<int>(IntegratorMode::Mlt));
-	m_integratorCombo->addItem(tr("RandomWalk (reference, unbiased)"), static_cast<int>(IntegratorMode::RandomWalk));
-	m_integratorCombo->addItem(tr("Ambient Occlusion (debug)"), static_cast<int>(IntegratorMode::Ao));
-	m_integratorCombo->addItem(tr("SimplePath (reference)"), static_cast<int>(IntegratorMode::SimplePath));
-	m_integratorCombo->addItem(tr("SimpleVolPath (reference, volumetric)"), static_cast<int>(IntegratorMode::SimpleVolPath));
-	m_integratorCombo->addItem(tr("LightPath (light tracer)"), static_cast<int>(IntegratorMode::LightPath));
+	{
+		// Same "(i)" mark + per-row tooltip as populateSceneCombo() gives
+		// each of its own rows - icon_tint::addItem() (not a plain
+		// combo->addItem()) so a theme switch's restyleThemedWidgets() ->
+		// retintItems() sweep recolours these the same way every other
+		// combo's icons already do, and setItemData(..., Qt::ToolTipRole)
+		// so hovering a row in the OPEN dropdown shows what that specific
+		// integrator does, not just whichever one is currently selected
+		// (that's what m_integratorInfoIcon, built below, is for).
+		const IntegratorMode modes[] = {
+			IntegratorMode::Default, IntegratorMode::Sppm, IntegratorMode::Bdpt,
+			IntegratorMode::Mlt, IntegratorMode::RandomWalk, IntegratorMode::Ao,
+			IntegratorMode::SimplePath, IntegratorMode::SimpleVolPath, IntegratorMode::LightPath,
+		};
+		const QString labels[] = {
+			tr("Path Tracer (default)"), tr("SPPM (Photon Mapping)"), tr("BDPT (Bidirectional)"),
+			tr("MLT (Metropolis Light Transport)"), tr("RandomWalk (reference, unbiased)"),
+			tr("Ambient Occlusion (debug)"), tr("SimplePath (reference)"),
+			tr("SimpleVolPath (reference, volumetric)"), tr("LightPath (light tracer)"),
+		};
+		for (size_t i = 0; i < sizeof(modes) / sizeof(modes[0]); ++i) {
+			icon_tint::addItem(m_integratorCombo, ":/icons/info.svg", labels[i],
+				static_cast<int>(modes[i]), m_activeTheme.textBody);
+			m_integratorCombo->setItemData(m_integratorCombo->count() - 1,
+				wrapTooltipHtml(integratorDescription(modes[i])), Qt::ToolTipRole);
+		}
+	}
 	styleComboBox(m_integratorCombo);
 	m_integratorCombo->setToolTip(
 		tr("Which rendering algorithm to use. Path Tracer (the default) is the\n"

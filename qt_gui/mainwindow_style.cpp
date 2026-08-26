@@ -1106,15 +1106,20 @@ void MainWindow::updateSceneTechInfoIcon(const QString &sceneId) {
 	m_sceneTechInfoIcon->setToolTip(sceneTooltipHtml(sceneId, /*includeHeading=*/false));
 }
 
-// Text held inline (not an external file like scene_technique_notes.h)
-// since there are only 9 fixed entries, one per IntegratorMode value,
-// rather than a per-scene lookup keyed by an open-ended id. Content
-// mirrors the CLI's own --help text (launcher/launcher_args.h) - scope
-// caveats (CPU-only, area-lights-only, verification status) included
-// since those are exactly what a user picking an integrator needs to
-// know before relying on it.
-void MainWindow::updateIntegratorInfoIcon(IntegratorMode mode) {
-	if (!m_integratorInfoIcon) return;
+// Plain-text (not HTML-wrapped) description of what `mode` does - shared
+// by updateIntegratorInfoIcon() (the label-row icon, rewritten for
+// whichever integrator is currently selected) and populateSceneCombo()-
+// style per-item tooltips (createBasicTab(), one fixed entry per combo
+// row, mirroring how the Scene combo gives each of its own rows an "(i)"
+// icon + tooltip via icon_tint::addItem()/setItemData(Qt::ToolTipRole)).
+// Held inline (not an external file like scene_technique_notes.h) since
+// there are only 9 fixed entries, one per IntegratorMode value, rather
+// than a per-scene lookup keyed by an open-ended id. Content mirrors the
+// CLI's own --help text (launcher/launcher_args.h) - scope caveats
+// (CPU-only, area-lights-only, verification status) included since those
+// are exactly what a user picking an integrator needs to know before
+// relying on it.
+QString MainWindow::integratorDescription(IntegratorMode mode) {
 	QString text;
 	switch (mode) {
 		case IntegratorMode::Default:
@@ -1198,6 +1203,11 @@ void MainWindow::updateIntegratorInfoIcon(IntegratorMode mode) {
 			"CPU only. Area lights only.");
 			break;
 	}
-	m_integratorInfoIcon->setToolTip(wrapTooltipHtml(text));
+	return text;
+}
+
+void MainWindow::updateIntegratorInfoIcon(IntegratorMode mode) {
+	if (!m_integratorInfoIcon) return;
+	m_integratorInfoIcon->setToolTip(wrapTooltipHtml(integratorDescription(mode)));
 }
 
