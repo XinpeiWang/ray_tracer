@@ -86,7 +86,8 @@ numbered sections below for the narrative detail behind any row.
 | Cameras | Orthographic | Y / Y / Y | N/A |
 | Cameras | Spherical (equirect + equal-area) | Y / Y / Y | N/A |
 | Cameras | Realistic (lens-file simulation) | Y / Y / Y | Missing/unreadable lens file → falls back to perspective, warned |
-| Cameras | Motion blur (camera or object) | N | No fallback — static transform only, on every backend |
+| Cameras | Motion blur (camera, default perspective camera) | Y (CPU) | GPU falls back to a static frame at the first keyframe |
+| Cameras | Motion blur (object; or camera, alt camera models) | N | No fallback — static transform only |
 | Cameras | `ActiveTransform`/`TransformTimes` (`.pbrt`-authored animated camera/object) | N | Directive skipped with a warning |
 | Samplers | Sobol / Z-Sobol / padded Sobol / stratified / PMJ02BN / Halton | Y (CPU) | N/A |
 | Samplers | Blue noise (bonus, non-pbrt-v4) | Y (CPU) | N/A |
@@ -262,26 +263,33 @@ All 4 pbrt-v4 camera types, full parity CPU/GPU: perspective (+ depth of
 field), orthographic, spherical (equirect + equal-area), realistic
 (lens-file-based, real multi-element simulation on both backends).
 
-**Gap (corrected — a prior version of this doc understated it)**: there is
-**no motion blur anywhere in this codebase, camera or object**.
-`src/shared/animated_transform.h`'s `AnimatedTransform` class (keyframe
-`Transform` interpolation, constructor shape `(start, t0, end, t1)`) is a
-complete, tested (`tests/unit/animated_transform_tests.cpp`), but entirely
-**orphaned** utility — zero includes from `cpu_renderer/`, `gpu/`,
-`optix_renderer/`, `qt_gui/`, or the `.pbrt` loader. `src/shared/cameras.h`
-states outright that `camera_to_world` is a static `Mat4<T>` ("No motion
-blur"), and no render path ever reads `CameraSample::time` for a camera
-transform. `pbrt_scene.h`'s `ShapeDecl::xform` is likewise a single static
-`Matrix4`, so object-level motion blur (also legal in pbrt-v4, inside
-`AttributeBegin`/`ObjectBegin` blocks) isn't wired either. `ActiveTransform`/
-`TransformTimes` are consequently unrecognized `.pbrt` directives (skipped
-with a warning, `pbrt_scene.h`'s catch-all) — but even if parsed, there is
-currently no camera- or shape-side consumer for the two time-keyed
-transforms they'd produce. Closing this for real means wiring
-`AnimatedTransform` into `cameras.h`'s camera-to-world path and threading
-`CameraSample::time` through ray generation (and, if object motion blur is
-in scope too, an equivalent change to shape transforms) — a genuine,
-multi-file render-path feature, not a parser-only gap.
+**Camera motion blur**: real, on **CPU only** (default path tracer + SPPM,
+both of which share `camera::get_ray()`) — `src/TheRestOfYourLife/camera.h`'s
+default perspective `camera` class now supports a `camera_is_animated`
+keyframed camera-to-world, built on `src/shared/animated_transform.h`'s
+`AnimatedTransform` (real keyframe interpolation, tested
+`tests/unit/animated_transform_tests.cpp`), which was a complete but wholly
+orphaned utility before. Design matches pbrt-v4's own `PerspectiveCamera`:
+the per-pixel viewport geometry (`pixel00_loc`/`pixel_delta_u/v`/
+`defocus_disk_u/v`) is computed once in **local camera space**, and each
+ray's sampled shutter time picks a camera-to-world transform interpolated
+between two keyframes (`lookfrom`/`lookat` at `shutter_open`,
+`lookfrom1`/`lookat1` at `shutter_close`) — see `D13` (Cameras category) for
+a demo. Static cameras (`camera_is_animated=false`, every pre-existing
+scene) are a true no-op — the existing world-space fast path is untouched.
+
+**Gap**: motion blur is otherwise still absent. Not wired: GPU-recursive or
+GPU-wavefront (deferred — camera motion blur specifically; see §2/§9's own
+notes on how far behind CPU's wavelength-tracking apparatus GPU-recursive
+is for an analogous reason); the three **alternate** camera models
+(`src/shared/cameras.h`'s Orthographic/Spherical/Realistic classes still
+have a static `camera_to_world`, unaffected by this - "No motion blur" is
+still literally true for those three); and **object/shape** motion blur
+(`pbrt_scene.h`'s `ShapeDecl::xform` is still a single static `Matrix4`,
+`AttributeBegin`/`ObjectBegin`-scoped in real pbrt-v4). `ActiveTransform`/
+`TransformTimes` remain unrecognized `.pbrt` directives (skipped with a
+warning) — this session's camera motion blur is native-scene-API only, no
+existing `.pbrt` scene in this repo's corpus uses those directives anyway.
 
 No other camera gap.
 
@@ -417,12 +425,12 @@ relative to it specifically).
    GPU-recursive has none, and would need its own wavelength-tracking
    apparatus built from scratch (no `SampledWavelengths` anywhere in that
    backend today, unlike wavefront's always-on hero-wavelength pipeline).
-4. **No motion blur anywhere, camera or object** (§6) — verified this isn't
-   just a loader gap: `AnimatedTransform` (`src/shared/animated_transform.h`)
-   is complete and unit-tested but wired into nothing; no backend's camera
-   or shape transform is ever time-varying. Real work (camera-to-world
-   interpolation + `CameraSample::time` threading through ray generation,
-   at minimum), not a parser tweak.
+4. **No motion blur on GPU, or for object transforms/alt camera models on
+   any backend** (§6) — CPU's default perspective camera now has real
+   camera motion blur (`AnimatedTransform`, previously wholly orphaned, now
+   wired into `camera::get_ray()`); GPU (either backend), object/shape
+   transforms, and the Orthographic/Spherical/Realistic alt camera classes
+   remain untouched.
 5. **No GPU light BVH** (§4) — GPU light sampling doesn't spatially scale
    the way CPU's does on many-light scenes.
 6. **`Accelerator` pbrt directive not parsed** — verified (unlike the

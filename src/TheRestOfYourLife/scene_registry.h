@@ -45,6 +45,17 @@ struct CameraConfig {
     CameraMode mode = CameraMode::Fixed;
     double defocus_angle = 0.0;  // 0 = no DOF
     double focus_dist    = 10.0;
+    // Camera motion blur (camera::camera_is_animated - see that field's own
+    // comment, camera.h). animated=false (default) leaves every existing
+    // scene's positional brace-initializer untouched - these fields simply
+    // zero-fill. An animated scene always uses its own keyframes regardless
+    // of `mode`/cam_x/y/z overrides (see cpu_interface.cpp's own comment) -
+    // a moving camera has no single "current position" for an override to
+    // mean.
+    bool   animated       = false;
+    double lookfrom_t1_x = 0.0, lookfrom_t1_y = 0.0, lookfrom_t1_z = 0.0;
+    double lookat_t1_x   = 0.0, lookat_t1_y   = 0.0, lookat_t1_z   = 0.0;
+    double shutter_open  = 0.0, shutter_close = 1.0;
 };
 
 // Shared CameraConfig rows for scenes that intentionally reuse another
@@ -1182,6 +1193,23 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
                     512     // pupil samples
                 );
             }
+        },
+        {
+            // Same Cornell box world as A1/D5-D8 - only the camera differs
+            // (keyframed across the exposure instead of static). closes the
+            // "no motion blur anywhere" gap from docs/FEATURE_INVENTORY.md -
+            // CPU default path tracer (+SPPM) only, see camera.h's own
+            // camera_is_animated comment; GPU (either backend) is deferred.
+            "D13", 138, SceneNames::CameraMotionBlur, SceneCategories::Cameras,
+            "The classic Cornell box (same scene as A1/D5-D8), camera trucking sideways (lookat stays fixed, so this is really a small combined translate+rotate) across the exposure for real AnimatedTransform-based motion blur - CPU only, GPU renders it as a static frame at the first keyframe",
+            "Medium", 200, false, false,
+            { 40, 278, 278, -800,  278, 278, 278,  0, 0, 0,
+              CameraMode::Fixed, 0.0, 10.0,
+              true, 378, 278, -800,  278, 278, 278,  0.0, 1.0 },
+            build_cornell_box,
+            build_cornell_box_lights,
+            nullptr,
+            nullptr
         },
         {
             "F2", 37, SceneNames::TriangleMesh, SceneCategories::Geometry,

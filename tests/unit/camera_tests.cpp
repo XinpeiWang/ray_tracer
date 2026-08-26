@@ -330,3 +330,104 @@ TEST(CameraTest, DegenerateLookFromEqualsLookAt) {
 	// (Camera implementation should handle this gracefully)
 	EXPECT_NO_THROW(cam.initialize());
 }
+
+// ============================================================================
+// Camera Motion Blur (camera_is_animated) Tests
+// ============================================================================
+
+/**
+ * An animated camera whose two keyframes are IDENTICAL (lookfrom1==lookfrom,
+ * lookat1==lookat) has nothing to interpolate - every ray_time in
+ * [shutter_open, shutter_close) should place the camera at exactly the same
+ * spot a plain static camera would. This is the cheapest possible check that
+ * the local-space-ray + AnimatedTransform machinery in camera.h's
+ * initialize()/get_ray() doesn't introduce a sign/axis error (which would
+ * silently mirror/rotate/offset every animated-camera ray without crashing
+ * or looking obviously wrong at a glance).
+ */
+TEST(CameraTest, AnimatedCameraWithIdenticalKeyframesMatchesStatic) {
+	camera static_cam;
+	static_cam.lookfrom = point3(278, 278, -800);
+	static_cam.lookat   = point3(278, 278, 278);
+	static_cam.vfov = 40;
+	static_cam.image_width = 200;
+	static_cam.samples_per_pixel = 1;
+	static_cam.max_depth = 5;
+	static_cam.background = color(0, 0, 0);
+	static_cam.initialize();
+
+	camera anim_cam;
+	anim_cam.lookfrom = point3(278, 278, -800);
+	anim_cam.lookat   = point3(278, 278, 278);
+	anim_cam.vfov = 40;
+	anim_cam.image_width = 200;
+	anim_cam.samples_per_pixel = 1;
+	anim_cam.max_depth = 5;
+	anim_cam.background = color(0, 0, 0);
+	anim_cam.camera_is_animated = true;
+	anim_cam.lookfrom1 = anim_cam.lookfrom;  // identical keyframes
+	anim_cam.lookat1   = anim_cam.lookat;
+	anim_cam.shutter_open  = 0.0;
+	anim_cam.shutter_close = 1.0;
+	anim_cam.initialize();
+
+	// A handful of pixels, including corners and center - offset (0.5,0.5)
+	// so both cameras sample the exact same sub-pixel point (get_ray()'s
+	// ray_time sampling is the only remaining source of per-ray randomness,
+	// and with identical keyframes it must not matter).
+	struct Px { int x, y; };
+	Px pixels[] = {
+		{0, 0}, {199, 0}, {0, 199}, {199, 199}, {100, 100},
+	};
+	const vec3 offset(0.5, 0.5, 0.0);
+
+	for (const auto& px : pixels) {
+		ray r_static = static_cam.get_ray(px.x, px.y, 0, 0, offset);
+		ray r_anim   = anim_cam.get_ray(px.x, px.y, 0, 0, offset);
+
+		EXPECT_NEAR(r_static.origin().x(), r_anim.origin().x(), 1e-9) << "px=(" << px.x << "," << px.y << ")";
+		EXPECT_NEAR(r_static.origin().y(), r_anim.origin().y(), 1e-9) << "px=(" << px.x << "," << px.y << ")";
+		EXPECT_NEAR(r_static.origin().z(), r_anim.origin().z(), 1e-9) << "px=(" << px.x << "," << px.y << ")";
+
+		vec3 d_static = unit_vector(r_static.direction());
+		vec3 d_anim   = unit_vector(r_anim.direction());
+		EXPECT_NEAR(d_static.x(), d_anim.x(), 1e-9) << "px=(" << px.x << "," << px.y << ")";
+		EXPECT_NEAR(d_static.y(), d_anim.y(), 1e-9) << "px=(" << px.x << "," << px.y << ")";
+		EXPECT_NEAR(d_static.z(), d_anim.z(), 1e-9) << "px=(" << px.x << "," << px.y << ")";
+	}
+}
+
+/**
+ * With DISTINCT keyframes, get_ray()'s per-ray time sampling should place
+ * rays somewhere on the segment between the two keyframe positions (never
+ * outside it) - a coarse but real check that Interpolate()'s translation
+ * lerp is wired correctly end to end through the local-space + AnimatedTransform
+ * path, not just a "doesn't crash" smoke test.
+ */
+TEST(CameraTest, AnimatedCameraStaysWithinKeyframeBounds) {
+	camera anim_cam;
+	anim_cam.lookfrom = point3(278, 278, -800);
+	anim_cam.lookat   = point3(278, 278, 278);
+	anim_cam.vfov = 40;
+	anim_cam.image_width = 100;
+	anim_cam.samples_per_pixel = 1;
+	anim_cam.max_depth = 5;
+	anim_cam.background = color(0, 0, 0);
+	anim_cam.camera_is_animated = true;
+	anim_cam.lookfrom1 = point3(378, 278, -800);  // 100-unit lateral truck, matches D13
+	anim_cam.lookat1   = anim_cam.lookat;
+	anim_cam.shutter_open  = 0.0;
+	anim_cam.shutter_close = 1.0;
+	anim_cam.initialize();
+
+	const vec3 offset(0.5, 0.5, 0.0);
+	for (int i = 0; i < 50; ++i) {
+		ray r = anim_cam.get_ray(50, 50, 0, 0, offset);
+		// Origin x must stay within [278, 378] regardless of sampled ray_time.
+		EXPECT_GE(r.origin().x(), 278.0 - 1e-6);
+		EXPECT_LE(r.origin().x(), 378.0 + 1e-6);
+		// y/z of lookfrom don't move between the two keyframes.
+		EXPECT_NEAR(r.origin().y(), 278.0, 1e-6);
+		EXPECT_NEAR(r.origin().z(), -800.0, 1e-6);
+	}
+}

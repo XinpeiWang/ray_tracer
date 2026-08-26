@@ -5975,6 +5975,16 @@ bool build_scene(
 								break;
 							}
 
+							case 138: {  // D13: Camera Motion Blur (Cornell Box) - GPU has no AnimatedTransform, so this renders a static frame at the first keyframe (lookfrom/lookat), matching CameraConfig's row for D13 and camera.h's camera_is_animated comment.
+								build_cornell_box(scene);
+								const float3 lookfrom = resolve_fixed_lookfrom(force_camera_override, cam_x, cam_y, cam_z, 278.0f, 278.0f, -800.0f);
+								const float3 lookat   = make_float3(278.0f, 278.0f, 278.0f);
+								const float3 vup       = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);
+								break;
+							}
+
 							default: {
 									// A scene loaded from a .pbrt file has no case of its
 									// own - it is not known at compile time. The CPU

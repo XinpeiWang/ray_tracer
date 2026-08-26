@@ -71,7 +71,12 @@ TEST(SceneRegistryTest, RegistryHasExpectedCount) {
 	// added "ColorSpace rec2020" line) - closes part of the "Accelerator/
 	// CoordinateSystem/ColorSpace pbrt directives not parsed" gap from
 	// docs/FEATURE_INVENTORY.md.
-	EXPECT_EQ(builtin_scene_count(), 119);
+	//
+	// 119 -> 120: D13 added, a Cornell Box panned across the exposure via
+	// the newly-wired camera_is_animated/AnimatedTransform path - closes
+	// the CPU half of the "no motion blur anywhere" gap from
+	// docs/FEATURE_INVENTORY.md (GPU deferred).
+	EXPECT_EQ(builtin_scene_count(), 120);
 }
 
 TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem) {
@@ -600,7 +605,7 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // double-checking the GUI/error-hint text that mentions specific scene
 // counts or ID ranges by hand.
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
-	constexpr int kGuiSceneCount = 119;
+	constexpr int kGuiSceneCount = 120;
 	EXPECT_EQ(builtin_scene_count(), kGuiSceneCount)
 		<< "Registry size changed -- update kGuiSceneCount here to match.";
 }

@@ -182,6 +182,67 @@ static bool spectral_scan_hittable(const hittable* h, std::string& error_out) {
 }
 
 // ============================================================================
+// applyCameraConfig - shared CameraConfig -> camera wiring
+// ============================================================================
+// Used identically by cpu_render_main() and cpu_render_main_sppm() below -
+// the two call sites became byte-for-byte duplicates once camera motion
+// blur was added, so this factors the logic out to one place.
+//
+// IMPORTANT: force_camera_override is NOT a "this is a --video frame"
+// signal - launcher/main.cpp passes force_camera_override=1 for EVERY
+// single-frame CLI render too (see that file's own comment above its
+// single-frame call sites: cam_x/y/z is always pre-populated, either from
+// an explicit CLI arg or from the scene's own recommended camera via
+// cpu_scene_recommended_camera(), and force_camera_override=1 just means
+// "use whichever of those is now in cam_x/y/z"). So an animated
+// (cc.animated) camera always uses its own registered keyframes,
+// regardless of force_camera_override - the same way Fixed mode already
+// ignores it for non-animated scenes: a moving camera has no single
+// "current position" for an override to mean, and letting the override win
+// here would silently disable motion blur (cam.camera_is_animated=false)
+// on every ordinary, non-video render of an animated scene too, not just
+// fix --video mode.
+//
+// The real (if narrower) consequence: --video's per-frame fly-through
+// position has no way to combine with an animated scene's own keyframed
+// motion, so it is ignored for animated scenes (every frame renders the
+// SAME shutter-interval motion blur, not a flythrough) - warned about
+// below rather than silently doing so, matching this codebase's existing
+// pattern for other unsupported flag combinations (e.g. --exposure/
+// --tonemap with --bdpt/--mlt/--sppm).
+static void applyCameraConfig(camera& cam, const CameraConfig& cc,
+                               double cam_x, double cam_y, double cam_z,
+                               bool force_camera_override) {
+	cam.vfov          = cc.vfov;
+	cam.background    = color(cc.bg_r, cc.bg_g, cc.bg_b);
+	cam.defocus_angle = cc.defocus_angle;  // 0 = no DOF blur
+	cam.focus_dist    = cc.focus_dist;
+	cam.camera_is_animated = cc.animated;
+
+	if (cc.animated) {
+		if (force_camera_override) {
+			std::cerr << "Warning: this scene has an animated (motion-blur) camera - "
+			             "--camera-path/per-frame camera positions are not supported "
+			             "together with an animated camera and are ignored; every "
+			             "frame renders the scene's own registered keyframes.\n";
+		}
+		cam.lookfrom      = point3(cc.lookfrom_x, cc.lookfrom_y, cc.lookfrom_z);
+		cam.lookfrom1     = point3(cc.lookfrom_t1_x, cc.lookfrom_t1_y, cc.lookfrom_t1_z);
+		cam.lookat1       = point3(cc.lookat_t1_x, cc.lookat_t1_y, cc.lookat_t1_z);
+		cam.shutter_open  = cc.shutter_open;
+		cam.shutter_close = cc.shutter_close;
+	} else if (force_camera_override) {
+		cam.lookfrom = point3(cam_x, cam_y, cam_z);
+	} else if (cc.mode != CameraMode::UserControlled) {
+		cam.lookfrom = point3(cc.lookfrom_x, cc.lookfrom_y, cc.lookfrom_z);
+	} else {
+		// Let caller override lookfrom (camera presets in UI)
+		cam.lookfrom = point3(cam_x, cam_y, cam_z);
+	}
+	cam.lookat = point3(cc.lookat_x, cc.lookat_y, cc.lookat_z);
+}
+
+// ============================================================================
 // cpu_render_main - CPU Render Entry Point
 // ============================================================================
 // C-linkage function that can be called from the launcher (main.cpp)
@@ -385,21 +446,7 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 
 		// Apply camera config from registry
 		const CameraConfig& cc = scene_desc->camera;
-		cam.vfov          = cc.vfov;
-		cam.background    = color(cc.bg_r, cc.bg_g, cc.bg_b);
-		cam.defocus_angle = cc.defocus_angle;  // 0 = no DOF blur
-		cam.focus_dist    = cc.focus_dist;
-		if (cc.mode == CameraMode::UserControlled || force_camera_override) {
-			// Let caller override lookfrom (camera presets in UI, or a
-			// video-mode frame's animated per-frame position - the latter
-			// must be honored regardless of CameraMode, since a "video" that
-			// silently ignores its own animated camera and stays frozen
-			// defeats the point of video mode)
-			cam.lookfrom = point3(cam_x, cam_y, cam_z);
-		} else {
-			cam.lookfrom = point3(cc.lookfrom_x, cc.lookfrom_y, cc.lookfrom_z);
-		}
-		cam.lookat = point3(cc.lookat_x, cc.lookat_y, cc.lookat_z);
+		applyCameraConfig(cam, cc, cam_x, cam_y, cam_z, force_camera_override);
 		std::cout << "[cpu_interface] Camera: vfov=" << cc.vfov
 				  << " lookfrom=(" << cam.lookfrom.x() << "," << cam.lookfrom.y() << "," << cam.lookfrom.z() << ")"
 				  << " lookat=(" << cc.lookat_x << "," << cc.lookat_y << "," << cc.lookat_z << ")" << std::endl;
@@ -572,16 +619,9 @@ extern "C" int cpu_render_main_sppm(int width, int height, int iterations, int p
 		cam.vup          = vec3(0, 1, 0);
 
 		const CameraConfig& cc = scene_desc->camera;
-		cam.vfov          = cc.vfov;
-		cam.background    = color(cc.bg_r, cc.bg_g, cc.bg_b);
-		cam.defocus_angle = cc.defocus_angle;
-		cam.focus_dist    = cc.focus_dist;
-		if (cc.mode == CameraMode::UserControlled || force_camera_override) {
-			cam.lookfrom = point3(cam_x, cam_y, cam_z);
-		} else {
-			cam.lookfrom = point3(cc.lookfrom_x, cc.lookfrom_y, cc.lookfrom_z);
-		}
-		cam.lookat = point3(cc.lookat_x, cc.lookat_y, cc.lookat_z);
+		// Camera motion blur - see applyCameraConfig()'s own comment (same
+		// CameraConfig fields, same reasoning, shared with cpu_render_main).
+		applyCameraConfig(cam, cc, cam_x, cam_y, cam_z, force_camera_override);
 		std::cout << "[cpu_interface] Camera: vfov=" << cc.vfov
 				   << " lookfrom=(" << cam.lookfrom.x() << "," << cam.lookfrom.y() << "," << cam.lookfrom.z() << ")"
 				   << " lookat=(" << cc.lookat_x << "," << cc.lookat_y << "," << cc.lookat_z << ")" << std::endl;

@@ -476,7 +476,13 @@ struct AnimatedTransform {
 	// pbrt-v4: Point3f AnimatedTransform::operator()(Point3f p, Float time)
 	// -----------------------------------------------------------------------
 	CPU_GPU void apply_point(const double in[3], double time, double out[3]) const {
-		AT_Mat44 mat = Interpolate(time);
+		apply_point_mat(Interpolate(time), in, out);
+	}
+
+	// Same as apply_point(), but against an already-interpolated matrix -
+	// lets a caller that needs both a point and a vector transformed at the
+	// same time (apply_ray(), below) call Interpolate() only once.
+	CPU_GPU static void apply_point_mat(const AT_Mat44& mat, const double in[3], double out[3]) {
 		double x = in[0], y = in[1], z = in[2];
 		double ox = mat.m[0][0]*x + mat.m[0][1]*y + mat.m[0][2]*z + mat.m[0][3];
 		double oy = mat.m[1][0]*x + mat.m[1][1]*y + mat.m[1][2]*z + mat.m[1][3];
@@ -492,7 +498,12 @@ struct AnimatedTransform {
 	// pbrt-v4: Vector3f AnimatedTransform::operator()(Vector3f v, Float time)
 	// -----------------------------------------------------------------------
 	CPU_GPU void apply_vector(const double in[3], double time, double out[3]) const {
-		AT_Mat44 mat = Interpolate(time);
+		apply_vector_mat(Interpolate(time), in, out);
+	}
+
+	// Same as apply_vector(), but against an already-interpolated matrix -
+	// see apply_point_mat()'s own comment.
+	CPU_GPU static void apply_vector_mat(const AT_Mat44& mat, const double in[3], double out[3]) {
 		double x = in[0], y = in[1], z = in[2];
 		out[0] = mat.m[0][0]*x + mat.m[0][1]*y + mat.m[0][2]*z;
 		out[1] = mat.m[1][0]*x + mat.m[1][1]*y + mat.m[1][2]*z;
@@ -523,8 +534,11 @@ struct AnimatedTransform {
 	CPU_GPU void apply_ray(const double orig[3], const double dir[3],
 							double time,
 							double out_orig[3], double out_dir[3]) const {
-		apply_point (orig, time, out_orig);
-		apply_vector(dir,  time, out_dir);
+		// One Interpolate() for both, not one each (apply_point()/
+		// apply_vector() would each redo the same slerp+matrix-compose).
+		AT_Mat44 mat = Interpolate(time);
+		apply_point_mat (mat, orig, out_orig);
+		apply_vector_mat(mat, dir,  out_dir);
 	}
 
 	// -----------------------------------------------------------------------

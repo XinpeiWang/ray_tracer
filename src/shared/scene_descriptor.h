@@ -94,6 +94,7 @@ namespace SceneNames {
     constexpr const char* OrthographicCameraCornellBox = "Orthographic Camera (Cornell Box)";
     constexpr const char* SphericalCameraCornellBox    = "Spherical Camera (Cornell Box)";
     constexpr const char* RealisticCameraCornellBox    = "Realistic Camera (Cornell Box)";
+    constexpr const char* CameraMotionBlur             = "Camera Motion Blur (Cornell Box)";
     constexpr const char* TriangleMesh         = "Triangle Mesh";
     constexpr const char* InstancedSpheres     = "Instanced Spheres";
     constexpr const char* CurveFibers          = "Curve Fibers";

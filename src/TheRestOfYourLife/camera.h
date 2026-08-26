@@ -19,6 +19,7 @@
 #include "sky_light.h"
 #include "punctual_light_objects.h"
 #include "shadow_ray.h"
+#include "../shared/animated_transform.h"
 #include "../shared/path_sampler.h"
 #include "../shared/sobol_sampler.h"
 #include "../shared/stratified_sampler.h"
@@ -149,6 +150,22 @@ class camera {
 
     double defocus_angle = 0;  // Variation angle of rays through each pixel
     double focus_dist = 10;    // Distance from camera lookfrom point to plane of perfect focus
+
+    // Camera motion blur (pbrt-v4 AnimatedTransform, src/shared/
+    // animated_transform.h) - when camera_is_animated is set, the camera-
+    // to-world transform is keyframed between (lookfrom,lookat) at
+    // shutter_open and (lookfrom1,lookat1) at shutter_close, and each ray
+    // samples its own time in [shutter_open, shutter_close) and is
+    // generated from the interpolated transform at that time - see
+    // get_ray()'s own comment. vup is shared by both keyframes (a camera
+    // roll during the exposure isn't supported by this simplified
+    // two-keyframe setup). False (default) is the pre-existing static
+    // camera behavior, unchanged.
+    bool   camera_is_animated = false;
+    point3 lookfrom1      = point3(0,0,-1);
+    point3 lookat1        = point3(0,0,-2);
+    double shutter_open   = 0.0;
+    double shutter_close  = 1.0;
 
     // Alternate camera models (pbrt-v4 cameras.h). When set, overrides default perspective.
     shared_ptr<OrthographicCamera<double>> alt_ortho_cam;
@@ -499,6 +516,39 @@ class camera {
     vec3   defocus_disk_u;       // Defocus disk horizontal radius
     vec3   defocus_disk_v;       // Defocus disk vertical radius
 
+    // Camera motion blur (camera_is_animated only) - the SAME quantities
+    // as pixel00_loc/pixel_delta_u/v/defocus_disk_u/v above, but expressed
+    // in local camera space (canonical axes, identity camera-to-world)
+    // rather than baked into world space - see get_ray()'s own comment for
+    // why. anim_cam_to_world_ interpolates the actual world placement per
+    // ray, applied to these fixed local quantities.
+    point3 local_pixel00_loc;
+    vec3   local_pixel_delta_u;
+    vec3   local_pixel_delta_v;
+    vec3   local_defocus_disk_u;
+    vec3   local_defocus_disk_v;
+    AnimatedTransform anim_cam_to_world_;
+
+    // Shared by initialize()'s world-space and (camera_is_animated) local-
+    // space viewport setups below - same formula, evaluated against
+    // whichever (u,v,w,center) basis the caller passes in, so the two
+    // can't drift apart from independent copy-paste edits.
+    static void compute_viewport_geometry(
+            const vec3& u, const vec3& v, const vec3& w, const point3& center,
+            double viewport_width, double viewport_height, double focus_dist,
+            double defocus_radius, int image_width, int image_height,
+            point3& out_pixel00_loc, vec3& out_pixel_delta_u, vec3& out_pixel_delta_v,
+            vec3& out_defocus_disk_u, vec3& out_defocus_disk_v) {
+        vec3 viewport_u = viewport_width * u;
+        vec3 viewport_v = viewport_height * -v;
+        out_pixel_delta_u = viewport_u / image_width;
+        out_pixel_delta_v = viewport_v / image_height;
+        auto viewport_upper_left = center - (focus_dist * w) - viewport_u/2 - viewport_v/2;
+        out_pixel00_loc = viewport_upper_left + 0.5 * (out_pixel_delta_u + out_pixel_delta_v);
+        out_defocus_disk_u = u * defocus_radius;
+        out_defocus_disk_v = v * defocus_radius;
+    }
+
   public:
     void initialize() {
         image_height = int(image_width / aspect_ratio);
@@ -521,22 +571,63 @@ class camera {
         u = unit_vector(cross(vup, w));
         v = cross(w, u);
 
-        // Calculate the vectors across the horizontal and down the vertical viewport edges.
-        vec3 viewport_u = viewport_width * u;    // Vector across viewport horizontal edge
-        vec3 viewport_v = viewport_height * -v;  // Vector down viewport vertical edge
-
-        // Calculate the horizontal and vertical delta vectors from pixel to pixel.
-        pixel_delta_u = viewport_u / image_width;
-        pixel_delta_v = viewport_v / image_height;
-
-        // Calculate the location of the upper left pixel.
-        auto viewport_upper_left = center - (focus_dist * w) - viewport_u/2 - viewport_v/2;
-        pixel00_loc = viewport_upper_left + 0.5 * (pixel_delta_u + pixel_delta_v);
-
-        // Calculate the camera defocus disk basis vectors.
+        // Calculate the camera defocus disk radius.
         auto defocus_radius = focus_dist * std::tan(degrees_to_radians(defocus_angle / 2));
-        defocus_disk_u = u * defocus_radius;
-        defocus_disk_v = v * defocus_radius;
+
+        // Calculate pixel00_loc/pixel_delta_u/v/defocus_disk_u/v from the
+        // world-space u,v,w,center basis above.
+        compute_viewport_geometry(u, v, w, center, viewport_width, viewport_height,
+                                   focus_dist, defocus_radius, image_width, image_height,
+                                   pixel00_loc, pixel_delta_u, pixel_delta_v,
+                                   defocus_disk_u, defocus_disk_v);
+
+        if (camera_is_animated) {
+            // Same 5 quantities as above, but in local camera space
+            // (canonical axes local_u=(1,0,0)/local_v=(0,1,0)/
+            // local_w=(0,0,1), local_center=(0,0,0)) instead of baked into
+            // world space via the (static) lookfrom/lookat/vup basis above -
+            // identical formulas, just with the canonical axes substituted
+            // for u/v/w/center. These never change per ray; only the
+            // camera-to-world placement applied to them in get_ray() does.
+            const vec3 local_u(1,0,0), local_v(0,1,0), local_w(0,0,1);
+            const point3 local_center(0,0,0);
+            compute_viewport_geometry(local_u, local_v, local_w, local_center,
+                                       viewport_width, viewport_height, focus_dist,
+                                       defocus_radius, image_width, image_height,
+                                       local_pixel00_loc, local_pixel_delta_u, local_pixel_delta_v,
+                                       local_defocus_disk_u, local_defocus_disk_v);
+
+            // Two camera-to-world keyframes, built via the exact same u,v,w
+            // basis derivation as the static path above (lines ~549-552),
+            // just evaluated at (lookfrom,lookat) and (lookfrom1,lookat1)
+            // respectively. Matrix columns are [u | v | w | origin] - maps
+            // a local point/vector (expressed in the local_u/local_v/
+            // local_w axes above) into world space.
+            auto build_cam_to_world = [&](const point3& from, const point3& at) -> AT_Mat44 {
+                vec3 kw = unit_vector(from - at);
+                vec3 ku = unit_vector(cross(vup, kw));
+                vec3 kv = cross(kw, ku);
+                AT_Mat44 m;
+                m.m[0][0]=ku.x(); m.m[0][1]=kv.x(); m.m[0][2]=kw.x(); m.m[0][3]=from.x();
+                m.m[1][0]=ku.y(); m.m[1][1]=kv.y(); m.m[1][2]=kw.y(); m.m[1][3]=from.y();
+                m.m[2][0]=ku.z(); m.m[2][1]=kv.z(); m.m[2][2]=kw.z(); m.m[2][3]=from.z();
+                m.m[3][0]=0;      m.m[3][1]=0;      m.m[3][2]=0;      m.m[3][3]=1;
+                return m;
+            };
+            anim_cam_to_world_ = AnimatedTransform(
+                build_cam_to_world(lookfrom, lookat), shutter_open,
+                build_cam_to_world(lookfrom1, lookat1), shutter_close);
+
+            // get_ray() checks the alt-camera-model pointers first, so if a
+            // scene ever set both, motion blur would be silently dropped
+            // with no diagnostic - warn instead of failing silently.
+            if (alt_ortho_cam || alt_spherical_cam || alt_realistic_cam) {
+                std::cerr << "Warning: camera_is_animated is set together with an "
+                             "alternate camera model (ortho/spherical/realistic) - "
+                             "the alternate camera model takes priority and motion "
+                             "blur will NOT be applied.\n";
+            }
+        }
     }
 
     ray get_ray(int i, int j, int s_i, int s_j, int sample_idx = 0, int px = 0, int py = 0) const {
@@ -583,6 +674,35 @@ class camera {
             point3 ro(res.origin.x, res.origin.y, res.origin.z);
             vec3   rd(res.direction.x, res.direction.y, res.direction.z);
             return ray(ro, rd, cs.time);
+        }
+
+        if (camera_is_animated) {
+            // Same pixel-sample/defocus-disk math as the default path below,
+            // against the LOCAL (canonical-axis) quantities initialize()
+            // built instead of the world-space ones - then a single
+            // interpolated camera-to-world transform (sampled at this ray's
+            // own time) carries the local origin+direction into world space
+            // in one step, matching pbrt-v4's own PerspectiveCamera
+            // approach (generate in camera space, transform by a possibly
+            // time-varying camera-to-world). No ray differentials on this
+            // path (matches the alt-camera branch above's own precedent).
+            auto local_pixel_sample = local_pixel00_loc
+                                     + ((i + offset.x()) * local_pixel_delta_u)
+                                     + ((j + offset.y()) * local_pixel_delta_v);
+            point3 local_origin(0,0,0);
+            if (defocus_angle > 0) {
+                auto p = random_in_unit_disk();
+                local_origin = point3(0,0,0) + (p[0] * local_defocus_disk_u) + (p[1] * local_defocus_disk_v);
+            }
+            auto local_direction = local_pixel_sample - local_origin;
+            auto ray_time = shutter_open + random_double() * (shutter_close - shutter_open);
+
+            double lo[3] = { local_origin.x(), local_origin.y(), local_origin.z() };
+            double ld[3] = { local_direction.x(), local_direction.y(), local_direction.z() };
+            double wo[3], wd[3];
+            anim_cam_to_world_.apply_ray(lo, ld, ray_time, wo, wd);
+
+            return ray(point3(wo[0], wo[1], wo[2]), vec3(wd[0], wd[1], wd[2]), ray_time);
         }
 
         auto pixel_sample = pixel00_loc
