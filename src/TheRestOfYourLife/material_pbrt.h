@@ -97,7 +97,7 @@ class rough_metal : public material {
         // do_regularize's existing effect exactly as it was: it only widens
         // the alpha actually used inside the smooth branch's sample_local()
         // call below, same as before this NEE feature existed.
-        if (TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth()) {
+        if (effectively_smooth()) {
             auto res = bxdf.sample_local(wi_x, wi_y, wi_z, random_double(), random_double());
             if (!res.valid) return false;
 
@@ -140,11 +140,22 @@ class rough_metal : public material {
     double get_roughness() const { return alpha_x * alpha_x; }
     const color& get_albedo() const { return albedo; }
 
-    // Mirrors scatter()'s own EffectivelySmooth() branch exactly - see
-    // material::is_delta_bsdf()'s own comment.
-    bool is_delta_bsdf() const override { return TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth(); }
+    // Delegates to the single effectively_smooth() helper below, the same
+    // one scatter()'s own branch consults - see material::is_delta_bsdf()'s
+    // own comment on why these two must never be allowed to drift apart
+    // again (they did once, for this exact class - see this class's own
+    // #222 comment further up).
+    bool is_delta_bsdf() const override { return effectively_smooth(); }
 
   private:
+    // The ONE place this class decides smooth-vs-glossy - both scatter()'s
+    // branch and is_delta_bsdf() above consult this instead of each
+    // independently re-writing TrowbridgeReitz<double>(alpha_x,
+    // alpha_y).EffectivelySmooth(), so there is no longer a second copy of
+    // this condition that could silently go stale if the roughness logic
+    // ever changes.
+    bool effectively_smooth() const { return TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth(); }
+
     color  albedo;
     double alpha_x, alpha_y;
 };
@@ -219,7 +230,7 @@ class conductor : public material {
 
         // Branch on the TRUE (unregularized) roughness -- see rough_metal's
         // own comment on why scattering_pdf() forces this.
-        if (TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth()) {
+        if (effectively_smooth()) {
             auto res = bxdf.sample_local(wi_x, wi_y, wi_z, random_double(), random_double());
             if (!res.valid) return false;
 
@@ -265,11 +276,16 @@ class conductor : public material {
                      FrComplex(1.0, eta_b, k_b));
     }
 
-    // Mirrors scatter()'s own EffectivelySmooth() branch exactly - see
-    // material::is_delta_bsdf()'s own comment.
-    bool is_delta_bsdf() const override { return TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth(); }
+    // Delegates to the single effectively_smooth() helper below, the same
+    // one scatter()'s own branch consults - see material::is_delta_bsdf()'s
+    // own comment on why these two must never be allowed to drift apart.
+    bool is_delta_bsdf() const override { return effectively_smooth(); }
 
   private:
+    // The ONE place this class decides smooth-vs-glossy - see
+    // rough_metal::effectively_smooth()'s own comment.
+    bool effectively_smooth() const { return TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth(); }
+
     double eta_r, eta_g, eta_b;
     double k_r,   k_g,   k_b;
     double alpha_x, alpha_y;
@@ -394,14 +410,21 @@ class rough_dielectric : public material, public dispersive_material {
         return dispersive_ ? this : nullptr;
     }
 
-    // Mirrors scatter_impl()'s own EffectivelySmooth() branch exactly - see
-    // material::is_delta_bsdf()'s own comment. This is the fix for the bug
-    // that had SPPM/BDPT/MLT treating every rough_dielectric instance as
-    // delta regardless of roughness - see this class's own comment above on
-    // real NEE/MIS below the roughness threshold.
-    bool is_delta_bsdf() const override { return TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth(); }
+    // Delegates to the single effectively_smooth() helper below, the same
+    // one scatter_impl()'s own branch consults - see material::
+    // is_delta_bsdf()'s own comment. This is the fix for the bug that had
+    // SPPM/BDPT/MLT treating every rough_dielectric instance as delta
+    // regardless of roughness - see this class's own comment above on real
+    // NEE/MIS below the roughness threshold. Collapsing both call sites
+    // onto one expression (rather than each independently re-deriving it)
+    // is what stops that exact bug from being able to recur here.
+    bool is_delta_bsdf() const override { return effectively_smooth(); }
 
   private:
+    // The ONE place this class decides smooth-vs-glossy - see
+    // rough_metal::effectively_smooth()'s own comment.
+    bool effectively_smooth() const { return TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth(); }
+
     // Disambiguates the dispersive constructor below from the public
     // (double, double, double, bool=true) constructor above: a bare 3-double
     // call is otherwise genuinely ambiguous (the 4th bool param defaults),
@@ -446,7 +469,7 @@ class rough_dielectric : public material, public dispersive_material {
 
         // Branch on the TRUE (unregularized) roughness -- see rough_metal's
         // own comment on why scattering_pdf() forces this.
-        if (TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth()) {
+        if (effectively_smooth()) {
             auto res = bxdf.sample_local(wi_x, wi_y, wi_z, eta,
                                          random_double(), random_double(), random_double());
             if (!res.valid) return false;
@@ -586,7 +609,7 @@ class coated_diffuse : public material {
         frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
         if (wi_z <= 0.0) return false;
 
-        if (TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth()) {
+        if (effectively_smooth()) {
             auto res = bxdf.sample_local(wi_x, wi_y, wi_z,
                                          random_double(), random_double(),
                                          random_double(),
@@ -649,11 +672,16 @@ class coated_diffuse : public material {
     // get_texture() (material_simple.h) exactly.
     shared_ptr<texture> get_texture() const { return tex; }
 
-    // Mirrors scatter()'s own EffectivelySmooth() branch exactly - see
-    // material::is_delta_bsdf()'s own comment.
-    bool is_delta_bsdf() const override { return TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth(); }
+    // Delegates to the single effectively_smooth() helper below, the same
+    // one scatter()'s own branch consults - see material::is_delta_bsdf()'s
+    // own comment on why these two must never be allowed to drift apart.
+    bool is_delta_bsdf() const override { return effectively_smooth(); }
 
   private:
+    // The ONE place this class decides smooth-vs-glossy - see
+    // rough_metal::effectively_smooth()'s own comment.
+    bool effectively_smooth() const { return TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth(); }
+
     shared_ptr<texture> tex;
     double ior;
     double alpha_x, alpha_y;
@@ -794,7 +822,7 @@ class coated_conductor : public material {
         // gate + fixed-representative-color rationale; here the
         // representative color is the conductor's own normal-incidence
         // Fresnel (get_conductor_f0()), the natural analog of albedo.
-        if (TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth()) {
+        if (effectively_smooth()) {
             auto res = bxdf.sample_local(wi_x, wi_y, wi_z,
                                          random_double(), random_double(),
                                          random_double(),
@@ -851,11 +879,16 @@ class coated_conductor : public material {
                      FrComplex(1.0, eta_b, k_b));
     }
 
-    // Mirrors scatter()'s own EffectivelySmooth() branch exactly - see
-    // material::is_delta_bsdf()'s own comment.
-    bool is_delta_bsdf() const override { return TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth(); }
+    // Delegates to the single effectively_smooth() helper below, the same
+    // one scatter()'s own branch consults - see material::is_delta_bsdf()'s
+    // own comment on why these two must never be allowed to drift apart.
+    bool is_delta_bsdf() const override { return effectively_smooth(); }
 
   private:
+    // The ONE place this class decides smooth-vs-glossy - see
+    // rough_metal::effectively_smooth()'s own comment.
+    bool effectively_smooth() const { return TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth(); }
+
     double eta_r, eta_g, eta_b;
     double k_r,   k_g,   k_b;
     double coat_ior;

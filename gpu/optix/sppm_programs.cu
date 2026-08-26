@@ -19,10 +19,12 @@
 // plus Metal/Dielectric/Conductor added in a later generalization pass -- see
 // sppm_is_delta_material()/sppm_sample_delta_material() below for the full,
 // current delta set and why it stops there) until it hits a non-delta
-// (Lambertian -- still the only non-delta material this camera pass records
-// a visible point for) surface, records that as the pixel's visible point,
-// and computes one NEE sample toward the scene's area light(s) via the same
-// power-weighted alias table the regular path tracers already use. Unlike
+// surface -- Lambertian always, or a glossy (non-smooth) Conductor/
+// RoughMetal instance as of a later fix (see sppm_is_delta_material()'s own
+// comment on why that classification is now per-instance, not per-type) --
+// records that as the pixel's visible point, and computes one NEE sample
+// toward the scene's area light(s) via the same power-weighted alias table
+// the regular path tracers already use. Unlike
 // the regular path tracers' NEE, there's no MIS weight here: SPPM's camera
 // pass calls this exactly once per pixel with no competing BSDF-sampled
 // continuation in the same estimate (matches sppm_adapter.h's own
@@ -45,6 +47,7 @@
 #include "math_utils.h"   // cpu_gpu_reflect/cpu_gpu_refract
 #include "fresnel.h"       // FrDielectric
 #include "microfacet.h"    // TrowbridgeReitz
+#include "bxdfs_conductor.h" // ConductorBxDF/RoughMetalBxDF - real glossy f()/effectively_smooth()
 
 extern "C" { __constant__ SPPMLaunchParams sppm_params; }
 
@@ -404,33 +407,79 @@ static __device__ __forceinline__ bool sppm_sample_rough_dielectric(
 	return true;
 }
 
-// True for the MaterialTypes GPU SPPM's camera/photon passes treat as a
-// delta (specular) BSDF -- i.e. resampled via BSDFSampleF-style importance
-// sampling alone, with no visible point recorded and no NEE/photon-deposit
-// evaluation at that hit. Matches CPU's sppm_is_delta_material()
-// (src/TheRestOfYourLife/sppm_adapter.h) restricted to the subset this GPU
-// port actually implements a sampler for: CPU's own delta set also includes
-// rough_metal, coated_diffuse, thin_dielectric, and coated_conductor --
-// those remain genuinely unsupported here (see optix_interface.cpp's
-// scene-capability check, which rejects any scene using a MaterialType not
-// covered by this function or by the Lambertian fallback below) rather than
-// silently mis-scattered through that fallback.
+// True for the MaterialTypes/instances GPU SPPM's camera/photon passes
+// treat as a delta (specular) BSDF -- i.e. resampled via BSDFSampleF-style
+// importance sampling alone, with no visible point recorded and no
+// NEE/photon-deposit evaluation at that hit. Matches CPU's
+// material::is_delta_bsdf() (src/TheRestOfYourLife/material_base.h)
+// restricted to the subset this GPU port actually implements a sampler
+// for: CPU's own delta set also includes coated_diffuse, thin_dielectric,
+// and coated_conductor -- those remain genuinely unsupported here (see
+// optix_interface.cpp's scene-capability check, which rejects any scene
+// using a MaterialType not covered by this function or by the Lambertian
+// fallback below) rather than silently mis-scattered through that
+// fallback.
 //
-// IMPORTANT: this function's delta set, together with the Lambertian/
-// DiffuseLight handling elsewhere in the camera/photon-pass raygens, is
-// what optix_types.h's sppm_gpu_material_supported() is describing on the
-// host side. Adding a new MaterialType case here (or anywhere else in these
-// two raygens' dispatch) without also adding it to
-// sppm_gpu_material_supported() means a scene using that material still
-// gets rejected as unsupported even though it now works; the reverse
-// mismatch (editing sppm_gpu_material_supported() without a matching case
-// here) means such a scene gets silently mis-scattered through the
-// Lambertian fallback instead of rejected. Keep both in sync by hand -- see
-// sppm_gpu_material_supported()'s own comment.
-static __device__ __forceinline__ bool sppm_is_delta_material(MaterialType t) {
-	return t == MaterialType::RoughDielectric || t == MaterialType::Metal ||
-	       t == MaterialType::Dielectric || t == MaterialType::Conductor ||
-	       t == MaterialType::RoughMetal || t == MaterialType::DiffuseTransmission;
+// Conductor/RoughMetal are NOT a fixed answer per MaterialType the way
+// Metal/Dielectric/DiffuseTransmission are: like their CPU material
+// counterparts (rough_metal::is_delta_bsdf()/conductor::is_delta_bsdf(),
+// material_pbrt.h), they branch on the instance's ACTUAL roughness via
+// BxDF::effectively_smooth() (bxdfs_conductor.h) -- this used to be a
+// static per-type answer here too, which silently starved every glossy
+// (non-smooth) Conductor/RoughMetal instance of NEE and photon deposit
+// exactly like the CPU bug this mirrors and was fixed alongside.
+static __device__ __forceinline__ bool sppm_is_delta_material(const MaterialData& mat) {
+	if (mat.type == MaterialType::Conductor) {
+		float alpha = sqrtf(mat.fuzz);   // same derivation sppm_sample_delta_material's Conductor case already uses
+		return ConductorBxDF<float>{ mat.eta_c.x, mat.eta_c.y, mat.eta_c.z,
+		                              mat.k_c.x, mat.k_c.y, mat.k_c.z, alpha, alpha }.effectively_smooth();
+	}
+	if (mat.type == MaterialType::RoughMetal) {
+		float alpha = sqrtf(mat.fuzz);   // same derivation sppm_sample_delta_material's RoughMetal case already uses
+		return RoughMetalBxDF<float>{ mat.albedo.x, mat.albedo.y, mat.albedo.z, alpha, alpha }.effectively_smooth();
+	}
+	return mat.type == MaterialType::RoughDielectric || mat.type == MaterialType::Metal ||
+	       mat.type == MaterialType::Dielectric || mat.type == MaterialType::DiffuseTransmission;
+}
+
+// f(wo,wi) for a non-delta material at a captured visible point, mirroring
+// CPU's sppm_bsdf_f() (src/TheRestOfYourLife/bsdf_bridge.h): `wo` is the
+// FIXED/view direction (the captured vp_wo, or the direction back toward
+// the previous photon vertex), `wi` is the QUERIED direction (toward the
+// light for camera-pass NEE, or the reversed current photon direction for
+// photon-pass deposit) -- both callers below supply these in that order.
+// Lambertian is Phase 1's original, only case; Conductor/RoughMetal are new
+// as of this fix, now reachable here because sppm_is_delta_material() above
+// can classify a glossy instance of either as non-delta.
+static __device__ __forceinline__ float3 sppm_bsdf_f(
+	const MaterialData& mat, const float3& wo, const float3& wi, const float3& n) {
+	if (mat.type == MaterialType::Conductor || mat.type == MaterialType::RoughMetal) {
+		float3 up_v  = (fabsf(n.x) > 0.9f) ? make_float3(0, 1, 0) : make_float3(1, 0, 0);
+		float3 tan_v = normalize(cross(up_v, n));
+		float3 bitan = cross(n, tan_v);
+		// BxDF struct convention in this codebase (see rough_metal::
+		// scattering_pdf(), material_pbrt.h): "wi" params take the FIXED/
+		// view direction, "wo" params take the newly QUERIED direction --
+		// inverted from the usual pbrt wo=view/wi=light naming, so `wo`
+		// (this function's fixed direction) maps to the BxDF's wi_x/y/z
+		// below, not its wo_x/y/z.
+		float bxdf_wi_x = dot(wo, tan_v), bxdf_wi_y = dot(wo, bitan), bxdf_wi_z = dot(wo, n);
+		float bxdf_wo_x = dot(wi, tan_v), bxdf_wo_y = dot(wi, bitan), bxdf_wo_z = dot(wi, n);
+		float alpha = sqrtf(mat.fuzz);
+		float fr, fg, fb;
+		if (mat.type == MaterialType::Conductor) {
+			ConductorBxDF<float> bx{ mat.eta_c.x, mat.eta_c.y, mat.eta_c.z,
+			                          mat.k_c.x, mat.k_c.y, mat.k_c.z, alpha, alpha };
+			bx.f(bxdf_wi_x, bxdf_wi_y, bxdf_wi_z, bxdf_wo_x, bxdf_wo_y, bxdf_wo_z, fr, fg, fb);
+		} else {
+			RoughMetalBxDF<float> bx{ mat.albedo.x, mat.albedo.y, mat.albedo.z, alpha, alpha };
+			bx.f(bxdf_wi_x, bxdf_wi_y, bxdf_wi_z, bxdf_wo_x, bxdf_wo_y, bxdf_wo_z, fr, fg, fb);
+		}
+		return make_float3(fr, fg, fb);
+	}
+	// Lambertian fast path (Phase 1's original, only case before this fix).
+	const float inv_pi = 1.0f / 3.14159265358979323846f;
+	return mat.albedo * inv_pi;
 }
 
 // Importance-samples a new direction + beta multiplier at a Metal/Dielectric/
@@ -685,9 +734,7 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 			continue;
 		}
 
-		if (mat.type == MaterialType::Metal || mat.type == MaterialType::Dielectric ||
-		    mat.type == MaterialType::Conductor || mat.type == MaterialType::RoughMetal ||
-		    mat.type == MaterialType::DiffuseTransmission) {
+		if (sppm_is_delta_material(mat)) {
 			// Generalization beyond Phase 1's original RoughDielectric-only
 			// delta set (see sppm_is_delta_material()/sppm_sample_delta_
 			// material()'s own comments) -- covers B1/B2's rough metal
@@ -696,7 +743,10 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 			// approximation), A1's smooth glass sphere, B4's polished-
 			// conductor gold/aluminium, and B8's translucent wax sphere
 			// (DiffuseTransmission), none of which recorded a (physically
-			// wrong) Lambertian visible point before this change.
+			// wrong) Lambertian visible point before this change. A glossy
+			// (non-smooth) Conductor/RoughMetal instance now falls through
+			// to the visible-point path below instead of landing here - see
+			// sppm_is_delta_material()'s own comment.
 			float3 new_dir, atten;
 			if (!sppm_sample_delta_material(dir, payload.normal, mat, seed, new_dir, atten)) break;
 
@@ -706,10 +756,13 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 			continue;
 		}
 
-		// Non-delta (Lambertian, Phase 1's only non-delta material): record
-		// the visible point and compute one NEE sample toward the scene's
-		// area light(s), then stop -- matches SPPMCameraPass()'s own
-		// "record visible point, compute Ld, break" structure exactly.
+		// Non-delta: record the visible point and compute one NEE sample
+		// toward the scene's area light(s), then stop -- matches
+		// SPPMCameraPass()'s own "record visible point, compute Ld, break"
+		// structure exactly. Originally Lambertian-only (Phase 1); a glossy
+		// Conductor/RoughMetal instance can reach here too as of this fix -
+		// sppm_bsdf_f() below dispatches per mat.type instead of assuming
+		// Lambertian.
 		pixel.vp_p           = payload.hitPoint;
 		pixel.vp_wo          = -normalize(dir);
 		pixel.vp_n           = payload.normal;
@@ -743,13 +796,12 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 			float light_pdf = selection_pdf * geom_pdf;
 			float cos_l = dot(to_light, pixel.vp_n);
 			if (light_pdf > 1e-6f && cos_l > 0.0f) {
-				// Lambertian f(wo,wi) = albedo/pi (this codebase's
-				// scattering_pdf() convention, matching sppm_bsdf_f's own
-				// lambertian branch on CPU). No MIS weight -- see this
-				// file's top comment for why SPPM's single-sample NEE
-				// doesn't need one, unlike the regular path tracers' NEE.
-				const float inv_pi = 1.0f / 3.14159265358979323846f;
-				float3 bsdf_val = mat.albedo * inv_pi;
+				// f(wo,wi) via the shared helper above (Lambertian's
+				// albedo/pi, or real GGX for a glossy Conductor/RoughMetal
+				// visible point). No MIS weight -- see this file's top
+				// comment for why SPPM's single-sample NEE doesn't need
+				// one, unlike the regular path tracers' NEE.
+				float3 bsdf_val = sppm_bsdf_f(mat, pixel.vp_wo, to_light, pixel.vp_n);
 				float3 Ld_contrib = beta * bsdf_val * cos_l * light_emission / light_pdf;
 
 				if (sppm_trace_shadow_ray(pixel.vp_p + 0.001f * pixel.vp_n, to_light, max_dist - 0.002f)) {
@@ -847,16 +899,16 @@ extern "C" __global__ void __raygen__sppm_photon_pass() {
 		// Deposit flux at nearby visible points -- depth>0 mirrors CPU (the
 		// first bounce is left for the camera pass's own NEE, avoiding
 		// double-counting direct illumination). Non-delta == "not one of
-		// sppm_is_delta_material()'s types" (generalized from the original
-		// Phase 1 "not RoughDielectric" check), matching CPU's
+		// sppm_is_delta_material()'s types/instances" (generalized from the
+		// original Phase 1 "not RoughDielectric" check), matching CPU's
 		// `!hit.is_delta_bsdf`. Uses the VISIBLE POINT's own recorded
 		// material (vp_materialIdx), not the photon's current hit material
-		// -- same as CPU's BSDFf(px.vp_bsdf_id, ...) call; every visible
-		// point the camera pass records is still Lambertian (the only
-		// non-delta material this GPU port's camera pass ever stops at), so
-		// the plain albedo/pi evaluation just below remains correct even
-		// after this generalization.
-		if (depth > 0 && !sppm_is_delta_material(mat.type) && mat.type != MaterialType::DiffuseLight) {
+		// -- same as CPU's BSDFf(px.vp_bsdf_id, ...) call. A visible point
+		// could be Lambertian OR a glossy Conductor/RoughMetal as of this
+		// fix (see sppm_is_delta_material()'s own comment) - sppm_bsdf_f()
+		// below dispatches per the visible point's own mat.type instead of
+		// assuming Lambertian.
+		if (depth > 0 && !sppm_is_delta_material(mat) && mat.type != MaterialType::DiffuseLight) {
 			int bucket = sppm_hash_bucket(sppm_params.hashGrid, payload.hitPoint.x, payload.hitPoint.y, payload.hitPoint.z);
 			int slotIdx = sppm_params.cellHead[bucket];
 			while (slotIdx != -1) {
@@ -868,9 +920,8 @@ extern "C" __global__ void __raygen__sppm_photon_pass() {
 						float3 wi = -dir_cur;
 						float cos_wi = dot(wi, vp.vp_n);
 						if (cos_wi > 0.0f) {
-							const float inv_pi = 1.0f / kPi;
 							const MaterialData& vpMat = sppm_params.materials[vp.vp_materialIdx];
-							float3 f = vpMat.albedo * inv_pi;
+							float3 f = sppm_bsdf_f(vpMat, vp.vp_wo, wi, vp.vp_n);
 							float3 phi_add = beta * vp.vp_beta * f;
 							atomicAdd(&vp.Phi.x, phi_add.x);
 							atomicAdd(&vp.Phi.y, phi_add.y);
@@ -894,6 +945,14 @@ extern "C" __global__ void __raygen__sppm_photon_pass() {
 		           mat.type == MaterialType::DiffuseTransmission) {
 			// Generalization beyond Phase 1's original RoughDielectric-only
 			// delta set -- see sppm_sample_delta_material()'s own comment.
+			// Dispatched unconditionally by TYPE here (not gated by
+			// sppm_is_delta_material()'s smooth/glossy classification, unlike
+			// the deposit check above): sppm_sample_delta_material()'s own
+			// VNDF-sampling identity makes its Conductor/RoughMetal cases the
+			// mathematically correct importance-sampled continuation for
+			// EITHER roughness regime, so a glossy hit (which may also have
+			// just deposited above) still continues the walk through here
+			// exactly like a smooth one always did.
 			float3 atten;
 			if (!sppm_sample_delta_material(dir_cur, payload.normal, mat, seed, new_dir, atten)) break;
 			beta_new = beta * atten;
