@@ -138,6 +138,80 @@ TEST(PbrtStateTest, AttributeEndRestoresTheTransform) {
 	EXPECT_DOUBLE_EQ(s.shapes[1].xform.m[3], 0.0);
 }
 
+TEST(PbrtStateTest, CoordinateSystemAndCoordSysTransformRoundTrip) {
+	const Scene s = parseOk(
+		"Translate 10 0 0\n"
+		"CoordinateSystem \"saved\"\n"
+		"Translate 5 0 0\n"
+		"Shape \"sphere\"\n"     // CTM is now translate(15,0,0)
+		"CoordSysTransform \"saved\"\n"
+		"Shape \"sphere\"\n");  // CTM restored to translate(10,0,0)
+	ASSERT_EQ(s.shapes.size(), 2u);
+	EXPECT_DOUBLE_EQ(s.shapes[0].xform.m[3], 15.0);
+	EXPECT_DOUBLE_EQ(s.shapes[1].xform.m[3], 10.0)
+		<< "CoordSysTransform must recall exactly the CTM CoordinateSystem saved, "
+		   "not just undo the Translate that happened after it";
+}
+
+TEST(PbrtStateTest, CoordSysTransformUnknownNameWarnsAndLeavesCtmUnchanged) {
+	const Scene s = parseOk(
+		"Translate 10 0 0\n"
+		"CoordSysTransform \"never-saved\"\n"
+		"Shape \"sphere\"\n");
+	ASSERT_EQ(s.shapes.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.shapes[0].xform.m[3], 10.0)
+		<< "an unresolvable CoordSysTransform must not silently reset the CTM";
+	EXPECT_TRUE(hasWarningContaining(s, "CoordSysTransform"));
+}
+
+TEST(PbrtStateTest, CoordinateSystemSavedInsideAttributeScopeSurvivesAttributeEnd) {
+	// namedCoordinateSystems_ is deliberately parser-level, not stack-scoped
+	// like gs_.ctm - a name saved inside an AttributeBegin/End block must
+	// still be recallable after that block closes (unlike the CTM itself,
+	// which AttributeEnd does reset).
+	const Scene s = parseOk(
+		"AttributeBegin\n"
+		"  Translate 7 0 0\n"
+		"  CoordinateSystem \"lightFrame\"\n"
+		"AttributeEnd\n"                  // CTM reverts to identity here
+		"CoordSysTransform \"lightFrame\"\n"
+		"Shape \"sphere\"\n");
+	ASSERT_EQ(s.shapes.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.shapes[0].xform.m[3], 7.0)
+		<< "a CoordinateSystem saved inside a now-closed AttributeBegin/End scope "
+		   "must still be recallable afterward";
+}
+
+TEST(PbrtStateTest, WorldBeginRegistersBuiltinWorldCoordinateSystem) {
+	// pbrt-v4 builtin: "world" always names the CTM in effect right after
+	// WorldBegin (identity), recallable without ever declaring it explicitly.
+	const Scene s = parseOk(
+		"WorldBegin\n"
+		"Translate 3 0 0\n"
+		"CoordSysTransform \"world\"\n"
+		"Shape \"sphere\"\n");
+	ASSERT_EQ(s.shapes.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.shapes[0].xform.m[3], 0.0)
+		<< "CoordSysTransform \"world\" must reset to the CTM at WorldBegin (identity), "
+		   "not warn as an unknown coordinate system";
+	EXPECT_FALSE(hasWarningContaining(s, "unknown coordinate system"));
+}
+
+TEST(PbrtStateTest, CameraDirectiveRegistersBuiltinCameraCoordinateSystem) {
+	// pbrt-v4 builtin: "camera" always names the CTM in effect at the Camera
+	// statement - the standard camera-relative-light idiom.
+	const Scene s = parseOk(
+		"Translate 5 0 0\n"
+		"Camera \"perspective\"\n"
+		"WorldBegin\n"
+		"CoordSysTransform \"camera\"\n"
+		"Shape \"sphere\"\n");
+	ASSERT_EQ(s.shapes.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.shapes[0].xform.m[3], 5.0)
+		<< "CoordSysTransform \"camera\" must recall the CTM in effect at the Camera directive";
+	EXPECT_FALSE(hasWarningContaining(s, "unknown coordinate system"));
+}
+
 TEST(PbrtStateTest, UnmatchedAttributeEndIsFatal) {
 	// Silently tolerating this would let every later shape inherit the wrong
 	// state, which is far harder to diagnose than a refusal.
@@ -309,6 +383,58 @@ TEST(PbrtSettingsTest, PixelFilterDefaultsToGaussianWithNoDirective) {
 		"WorldBegin\n"
 		"Shape \"sphere\"\n");
 	EXPECT_EQ(s.filterType, "gaussian");
+}
+
+// ColorSpace is captured onto each LightDecl at declaration time (like
+// xform), not stored as one Scene-wide setting - see GraphicsState::
+// colorSpaceName's own comment (pbrt_scene.h) for why. These tests check
+// a declared light's captured colorSpaceName, the only place it's visible.
+
+TEST(PbrtSettingsTest, ColorSpaceDefaultsToSRGBWithNoDirective) {
+	const Scene s = parseOk(
+		"WorldBegin\n"
+		"LightSource \"distant\"\n");
+	ASSERT_EQ(s.lights.size(), 1u);
+	EXPECT_EQ(s.lights[0].colorSpaceName, "srgb");
+}
+
+TEST(PbrtSettingsTest, ColorSpaceDirectiveIsRead) {
+	for (const std::string &name : {"srgb", "dci-p3", "rec2020", "aces2065-1"}) {
+		const Scene s = parseOk(
+			"ColorSpace \"" + name + "\"\n"
+			"WorldBegin\n"
+			"LightSource \"distant\"\n");
+		ASSERT_EQ(s.lights.size(), 1u);
+		EXPECT_EQ(s.lights[0].colorSpaceName, name);
+	}
+}
+
+TEST(PbrtSettingsTest, ColorSpaceUnrecognizedNameFallsBackToSRGBWithWarning) {
+	const Scene s = parseOk(
+		"ColorSpace \"not-a-real-colorspace\"\n"
+		"WorldBegin\n"
+		"LightSource \"distant\"\n");
+	ASSERT_EQ(s.lights.size(), 1u);
+	EXPECT_EQ(s.lights[0].colorSpaceName, "srgb");
+	EXPECT_TRUE(hasWarningContaining(s, "ColorSpace"));
+}
+
+TEST(PbrtStateTest, ColorSpaceIsScopedByAttributeBeginEnd) {
+	// The gap the code review caught: ColorSpace must behave like every
+	// other piece of graphics state (ctm, materialIndex, ...) and revert at
+	// AttributeEnd, not leak to lights declared afterward.
+	const Scene s = parseOk(
+		"WorldBegin\n"
+		"AttributeBegin\n"
+		"  ColorSpace \"rec2020\"\n"
+		"  LightSource \"distant\"\n"     // inside the scope: rec2020
+		"AttributeEnd\n"
+		"LightSource \"distant\"\n");     // after AttributeEnd: back to srgb
+	ASSERT_EQ(s.lights.size(), 2u);
+	EXPECT_EQ(s.lights[0].colorSpaceName, "rec2020");
+	EXPECT_EQ(s.lights[1].colorSpaceName, "srgb")
+		<< "AttributeEnd must restore the color space that was active before AttributeBegin, "
+		   "not leave the rec2020 set inside the scope in effect for later lights";
 }
 
 // ===========================================================================

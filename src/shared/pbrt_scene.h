@@ -244,6 +244,11 @@ struct LightDecl {
 	std::string type;    // "infinite", "distant", "point", "spot" / area: "diffuse"
 	ParamList params;
 	Matrix4 xform;
+	// The working color space (GraphicsState::colorSpaceName's own comment)
+	// in effect when this light was declared - captured here, not read from
+	// a single scene-wide setting, so a ColorSpace directive scoped to one
+	// AttributeBegin/End block affects only the lights declared inside it.
+	std::string colorSpaceName = "srgb";
 };
 
 // MakeNamedMedium - a participating medium (fog/smoke), named so a later
@@ -525,6 +530,22 @@ struct GraphicsState {
 	int areaLightIndex = -1;
 	int insideMedium = -1;      // set by MediumInterface, inherited by Shape
 	bool reverseOrientation = false;
+	// ColorSpace directive's chosen working color space name - scoped by
+	// AttributeBegin/AttributeEnd exactly like every other field here
+	// (matches real pbrt-v4's own GraphicsState.colorSpace). Consumed
+	// downstream via pbrt_flatten.h's resolveEmissionColor()/
+	// RGBColorSpaceFromName() (rgb_colorspace.h) for converting a
+	// "blackbody" emission temperature to RGB - the one place this loader
+	// ever needs a working color space at all, since every ordinary "rgb"/
+	// "color" parameter is just read as raw numbers with no color-space-
+	// aware conversion. Always one of "srgb" (default), "dci-p3",
+	// "rec2020", "aces2065-1" - the ColorSpace directive handler validates
+	// and warns rather than storing an unrecognized name here, so nothing
+	// downstream needs to re-validate it. Captured onto each LightDecl at
+	// declaration time (LightDecl::colorSpaceName, alongside xform) the
+	// same way the CTM is, so two lights under different ColorSpace scopes
+	// in the same file each resolve correctly.
+	std::string colorSpaceName = "srgb";
 };
 
 class Parser {
@@ -561,6 +582,18 @@ private:
 	// object and drawing one.
 	int recordingObject_ = -1;
 	bool inWorld_ = false;
+	// CoordinateSystem/CoordSysTransform: named snapshots of the CTM, saved
+	// and recalled by name - pure parser bookkeeping (mirrors pbrt-v4's own
+	// GraphicsState.namedCoordinateSystems), never read by anything past
+	// this parser since only the resolved gs_.ctm ever reaches Scene. A
+	// plain append + linear scan by name, matching this class's other
+	// "declare by name, recall later" bookkeeping (s_.objects/ObjectBegin,
+	// s_.materials/NamedMaterial, s_.media/MediumInterface just below) -
+	// a redefinition simply appends again and the scan below always finds
+	// the LAST match, same "later definition wins" rule those use. Never
+	// more than a handful of entries in a real scene, so this trades
+	// nothing for staying consistent with the established idiom here.
+	std::vector<std::pair<std::string, Matrix4>> namedCoordinateSystems_;
 
 	int curLine() const {
 		if (pos_ < t_.size()) return t_[pos_].line;
@@ -680,7 +713,23 @@ private:
 
 		if (d == "WorldBegin") {
 			s_.worldToCamera = gs_.ctm;
-			gs_ = GraphicsState{};      // pbrt resets the CTM to identity here
+			// pbrt resets the CTM (and the world-local pieces of graphics
+			// state - current material/area light/medium/orientation, which
+			// only ever make sense inside the world block) to their defaults
+			// here. colorSpaceName does NOT reset: ColorSpace is a legitimate
+			// pre-WorldBegin "options block" directive (declared once, near
+			// the top of the file, same as Sampler/Integrator/Film) and is
+			// expected to carry into the world block, not be wiped by it -
+			// this codebase's own colorspace-blackbody.pbrt demo scene
+			// relies on exactly this.
+			const std::string colorSpaceName = gs_.colorSpaceName;
+			gs_ = GraphicsState{};
+			gs_.colorSpaceName = colorSpaceName;
+			// pbrt-v4 builtin: "world" always names the CTM in effect right
+			// after WorldBegin (i.e. identity) - a scene can CoordSysTransform
+			// back to it later without ever having declared its own
+			// CoordinateSystem "world".
+			namedCoordinateSystems_.push_back({"world", gs_.ctm});
 			inWorld_ = true;
 			return true;
 		}
@@ -749,6 +798,10 @@ private:
 			s_.cameraDeclared = true;
 			if (pos_ < t_.size() && t_[pos_].quoted) { s_.cameraType = t_[pos_].text; ++pos_; }
 			s_.cameraParams = readParams();
+			// pbrt-v4 builtin: "camera" always names the CTM in effect at the
+			// Camera statement - the standard idiom for positioning a light
+			// relative to the camera via a later CoordSysTransform "camera".
+			namedCoordinateSystems_.push_back({"camera", gs_.ctm});
 			return true;
 		}
 		if (d == "Film") {
@@ -840,6 +893,7 @@ private:
 			if (pos_ < t_.size() && t_[pos_].quoted) { l.type = t_[pos_].text; ++pos_; }
 			l.params = readParams();
 			l.xform = gs_.ctm;
+			l.colorSpaceName = gs_.colorSpaceName;
 			if (d == "LightSource") {
 				s_.lights.push_back(l);
 			} else {
@@ -861,6 +915,46 @@ private:
 				s_.objects[static_cast<std::size_t>(recordingObject_)].shapes.push_back(sh);
 			else
 				s_.shapes.push_back(sh);
+			return true;
+		}
+
+		if (d == "ColorSpace") {
+			std::string name;
+			if (pos_ < t_.size() && t_[pos_].quoted) { name = t_[pos_].text; ++pos_; }
+			// Validated here, eagerly, rather than deferred to a downstream
+			// FromName-style helper (unlike samplerType/filterType above) so
+			// the warning gets this directive's real line number - matching
+			// this dispatch()'s own MediumInterface precedent just above,
+			// which validates its name inline for the same reason. Keep this
+			// name list in sync by hand with rgb_colorspace.h's
+			// RGBColorSpaceFromName() - pbrt_scene.h is parsing-only (see
+			// this file's own header comment) and deliberately does not
+			// depend on that header's colorimetry math, so the two lists
+			// can't just call one shared function.
+			if (name == "srgb" || name == "dci-p3" || name == "rec2020" || name == "aces2065-1") {
+				gs_.colorSpaceName = name;
+			} else {
+				warn(line, "ColorSpace \"" + name + "\": unrecognized name, using sRGB");
+			}
+			return true;
+		}
+		if (d == "CoordinateSystem") {
+			std::string name;
+			if (pos_ < t_.size() && t_[pos_].quoted) { name = t_[pos_].text; ++pos_; }
+			namedCoordinateSystems_.push_back({name, gs_.ctm});
+			return true;
+		}
+		if (d == "CoordSysTransform") {
+			std::string name;
+			if (pos_ < t_.size() && t_[pos_].quoted) { name = t_[pos_].text; ++pos_; }
+			int found = -1;
+			for (std::size_t i = 0; i < namedCoordinateSystems_.size(); ++i)
+				if (namedCoordinateSystems_[i].first == name) found = static_cast<int>(i);
+			if (found >= 0) {
+				gs_.ctm = namedCoordinateSystems_[static_cast<std::size_t>(found)].second;
+			} else {
+				warn(line, "CoordSysTransform: unknown coordinate system \"" + name + "\"");
+			}
 			return true;
 		}
 

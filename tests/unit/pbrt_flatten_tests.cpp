@@ -1246,6 +1246,30 @@ TEST(FlattenMaterialTest, BlackbodyEmissionIsConvertedToARealColour) {
 		<< "a 2500K light must read warmer (redder relative to blue) than a 9000K light";
 }
 
+TEST(FlattenMaterialTest, ColorSpaceDirectiveChangesBlackbodyConversion) {
+	// The one place a ColorSpace directive's selection actually reaches
+	// downstream (GraphicsState::colorSpaceName's own comment, pbrt_scene.h):
+	// the same blackbody temperature must convert to a genuinely different
+	// RGB triple under a different working color space's primaries, not
+	// just have the directive parse without effect.
+	const FlatScene srgbLight = flattenSource(
+		"AttributeBegin\n"
+		"  AreaLightSource \"diffuse\" \"blackbody L\" [ 4000 ]\n"
+		+ std::string(kQuadMesh) + "AttributeEnd\n");
+	const FlatScene rec2020Light = flattenSource(
+		"ColorSpace \"rec2020\"\n"
+		"AttributeBegin\n"
+		"  AreaLightSource \"diffuse\" \"blackbody L\" [ 4000 ]\n"
+		+ std::string(kQuadMesh) + "AttributeEnd\n");
+	ASSERT_EQ(srgbLight.areaLights.size(), 1u);
+	ASSERT_EQ(rec2020Light.areaLights.size(), 1u);
+	const double (&srgb)[3] = srgbLight.areaLights[0].L;
+	const double (&rec2020)[3] = rec2020Light.areaLights[0].L;
+	EXPECT_FALSE(srgb[0] == rec2020[0] && srgb[1] == rec2020[1] && srgb[2] == rec2020[2])
+		<< "same blackbody temperature must resolve to a different RGB triple "
+		   "under Rec.2020's wider primaries than under the sRGB default";
+}
+
 TEST(FlattenPunctualLightTest, PointLightBlackbodyIntensityIsConverted) {
 	// Punctual lights (point/spot/distant/goniometric) previously had NO
 	// blackbody handling at all - not even a warning, "blackbody I" silently

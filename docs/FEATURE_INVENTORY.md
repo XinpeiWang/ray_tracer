@@ -113,7 +113,9 @@ numbered sections below for the narrative detail behind any row.
 | Tooling | System-compatibility diagnostics (`--diagnose`) | Y | N/A |
 | Orphaned scaffolding | ReSTIR / reservoir sampler (`restir.h`) | Present, unwired, beyond pbrt-v4 book scope | N/A — not part of any fallback chain |
 | Orphaned scaffolding | `PixelSensor` / `SpectralFilm` | Present, unwired | N/A |
-| Loader-only | `Accelerator`/`CoordinateSystem`/`ColorSpace` `.pbrt` directives | N | Warned and skipped; rest of scene still loads |
+| Loader-only | `ColorSpace` `.pbrt` directive | Y | N/A |
+| Loader-only | `CoordinateSystem`/`CoordSysTransform` `.pbrt` directives | Y | N/A |
+| Loader-only | `Accelerator` `.pbrt` directive | N | Warned and skipped; rest of scene still loads |
 
 ---
 
@@ -401,11 +403,16 @@ relative to it specifically).
    at minimum), not a parser tweak.
 5. **No GPU light BVH** (§4) — GPU light sampling doesn't spatially scale
    the way CPU's does on many-light scenes.
-6. **`Accelerator`, `CoordinateSystem`, `ColorSpace` pbrt directives not
-   parsed** — narrows what a *loaded* `.pbrt` file can express. Scope not
-   yet independently verified the way item 4 above was (see this doc's own
-   track record on trusting an unverified "loader-only" claim at face
-   value) — check before treating as a quick win.
+6. **`Accelerator` pbrt directive not parsed** — verified (unlike the
+   now-closed `CoordinateSystem`/`ColorSpace` pair below) that this one is
+   genuinely NOT a quick loader-only win: the live CPU render path for
+   pbrt-loaded scenes builds its accelerator via a fixed, SAH-only
+   `bvh_node` (`src/TheRestOfYourLife/bvh.h`) with no split-method
+   parameter at all; the flexible, split-method-selectable `BvhAggregate`
+   (`src/shared/bvh_aggregate.h`) exists but is wired into nothing but its
+   own unit test. Wiring this directive for real means giving the live
+   render path a selectable accelerator for the first time, not just
+   reading params into a field.
 7. **BDPT/MLT/debug integrators CPU-only** — arguably tracks pbrt-v4's own
    GPU scope (path/volpath only), so more a parity-with-upstream item than
    a true gap.
@@ -433,8 +440,15 @@ all of them, and it's worth knowing which is which before relying on one.
   integrator → the flag is silently dropped with a warning; you still get
   an ordinary render on whatever backend/mode you asked for.
 - A `.pbrt` directive this loader doesn't recognize at all (`Accelerator`,
-  `CoordinateSystem`, `ActiveTransform`, `ColorSpace`, etc.) → warned and
-  skipped; the rest of the scene still loads.
+  `ActiveTransform`, etc.) → warned and skipped; the rest of the scene still
+  loads. (`CoordinateSystem`/`CoordSysTransform`/`ColorSpace` are now real,
+  recognized directives — see the "Loader-only" rows in the feature table
+  above.)
+- A `ColorSpace` directive naming something other than `srgb`/`dci-p3`/
+  `rec2020`/`aces2065-1` → warned, the scene's working color space stays
+  whatever it already was (`srgb` if never set).
+- A `CoordSysTransform` naming a coordinate system no `CoordinateSystem`
+  directive ever saved → warned, the current transform is left unchanged.
 
 **No counterpart — genuinely absent, dropped rather than approximated:**
 

@@ -1,0 +1,47 @@
+# colorspace-blackbody.pbrt -- exercises the "ColorSpace" directive
+# (previously unrecognized and silently dropped; see docs/FEATURE_INVENTORY.md
+# and Scene::colorSpaceName's own comment in pbrt_scene.h).
+#
+# Identical geometry/lighting to blackbody-light.pbrt (same two 2500K/9000K
+# panel lights, same "float scale", same camera) except for one added
+# "ColorSpace \"rec2020\"" directive near the top. The only consumer of a
+# scene's working color space in this loader is resolveEmissionColor()'s
+# blackbody-temperature-to-RGB conversion (pbrt_flatten.h) - so this scene's
+# panels should render a visibly different colour than blackbody-light.pbrt's
+# for the exact same Kelvin values, proving the directive is genuinely
+# threaded through rather than parsed-and-ignored. If ColorSpace regressed
+# back to "recognized but not implemented," this scene's output would become
+# pixel-identical to blackbody-light.pbrt's.
+#
+# Original, not derived from any distributed scene, so it carries no licence
+# constraints.
+
+ColorSpace "rec2020"
+
+LookAt  0 3 9    0 0 0    0 1 0
+Camera "perspective" "float fov" [ 45 ]
+
+Film "rgb" "integer xresolution" [ 640 ] "integer yresolution" [ 400 ]
+Sampler "halton" "integer pixelsamples" [ 128 ]
+
+WorldBegin
+
+Material "diffuse" "rgb reflectance" [ 0.8 0.8 0.8 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -4 0 -4   4 0 -4   4 0 4   -4 0 4 ]
+
+AttributeBegin
+  Translate -1.6 3 0
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "blackbody L" [ 2500 ] "float scale" [ 60 ] "bool twosided" [ true ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -1 0 -1   1 0 -1   1 0 1   -1 0 1 ]
+AttributeEnd
+
+AttributeBegin
+  Translate 1.6 3 0
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "blackbody L" [ 9000 ] "float scale" [ 60 ] "bool twosided" [ true ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ -1 0 -1   1 0 -1   1 0 1   -1 0 1 ]
+AttributeEnd

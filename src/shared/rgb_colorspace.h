@@ -215,3 +215,25 @@ inline SquareMatrix<3> ConvertRGBColorSpace(const RGBColorSpace& from,
 	// pbrt-v4: to.RGBFromXYZ * from.XYZFromRGB
 	return to.RGBFromXYZ * from.XYZFromRGB;
 }
+
+#ifndef __CUDACC__
+// ---------------------------------------------------------------------------
+// RGBColorSpaceFromName -- pbrt-v4 ColorSpace directive name lookup.
+//
+// The caller (src/shared/pbrt_scene.h's ColorSpace directive handling) is
+// expected to have already validated the name and warned on anything
+// unrecognized, so this trusts its input and only needs a default for a
+// name it's never been told about (defensive, not a real fallback path).
+// The 4 recognized names here must be kept in sync by hand with
+// pbrt_scene.h's own ColorSpace directive validation - see that dispatch
+// case's own comment for why the two can't just share one function
+// (pbrt_scene.h is parsing-only and deliberately doesn't depend on this
+// header's colorimetry math).
+// ---------------------------------------------------------------------------
+inline const RGBColorSpace& RGBColorSpaceFromName(const std::string& name) {
+	if (name == "dci-p3")     return RGBColorSpace::DCI_P3();
+	if (name == "rec2020")    return RGBColorSpace::Rec2020();
+	if (name == "aces2065-1") return RGBColorSpace::ACES2065_1();
+	return RGBColorSpace::sRGB();  // "srgb" and anything else
+}
+#endif

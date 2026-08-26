@@ -65,7 +65,13 @@ TEST(SceneRegistryTest, RegistryHasExpectedCount) {
 	// 117 -> 118: B24 added, a frosted (rough_dielectric) sibling of B23's
 	// dispersive prism - closes the "no rough_dielectric dispersion" gap
 	// from docs/FEATURE_INVENTORY.md.
-	EXPECT_EQ(builtin_scene_count(), 118);
+	//
+	// 118 -> 119: C16 added, exercising the newly-wired "ColorSpace"
+	// directive (identical to C10's blackbody-light.pbrt except for one
+	// added "ColorSpace rec2020" line) - closes part of the "Accelerator/
+	// CoordinateSystem/ColorSpace pbrt directives not parsed" gap from
+	// docs/FEATURE_INVENTORY.md.
+	EXPECT_EQ(builtin_scene_count(), 119);
 }
 
 TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem) {
@@ -594,7 +600,7 @@ TEST(SceneBuilderTest, CornellBoxBuildsDetAndRepeatably) {
 // double-checking the GUI/error-hint text that mentions specific scene
 // counts or ID ranges by hand.
 TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
-	constexpr int kGuiSceneCount = 118;
+	constexpr int kGuiSceneCount = 119;
 	EXPECT_EQ(builtin_scene_count(), kGuiSceneCount)
 		<< "Registry size changed -- update kGuiSceneCount here to match.";
 }

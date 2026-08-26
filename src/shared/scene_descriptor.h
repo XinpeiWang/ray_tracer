@@ -153,6 +153,7 @@ namespace SceneNames {
     constexpr const char* PunctualLightsPbrtExample           = "Punctual Lights (pbrt example)";
     constexpr const char* GoniometricProjectionPbrtExample    = "Goniometric & Projection Lights (pbrt example)";
     constexpr const char* BlackbodyLightPbrtExample           = "Blackbody Light (pbrt example)";
+    constexpr const char* ColorSpaceBlackbodyPbrtExample       = "ColorSpace + Blackbody Light (pbrt example)";
     constexpr const char* TexturedTwoSidedLightsPbrtExample   = "Textured Two-Sided Lights (pbrt example)";
     constexpr const char* InfiniteLightPbrtExample            = "Infinite Light (pbrt example)";
     constexpr const char* DiskCylinderLightPbrtExample        = "Disk & Cylinder Lights (pbrt example)";

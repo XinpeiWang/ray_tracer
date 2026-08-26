@@ -1788,6 +1788,10 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "C15", 115, SceneNames::TriangleFanLightPbrtExample, SceneCategories::Lights,
             "An area light that is NOT a parallelogram -- an irregular 5-triangle fan the quad-merge pass can't rejoin, exercising the GPU's per-triangle light sampling.",
             "Fast", "triangle-fan-light.pbrt"),
+        pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
+            "C16", 137, SceneNames::ColorSpaceBlackbodyPbrtExample, SceneCategories::Lights,
+            "Identical to the Blackbody Light example except for one added \"ColorSpace rec2020\" directive -- the same 2500K/9000K temperatures resolve to visibly different RGB under Rec.2020's wider primaries than the sRGB default.",
+            "Fast", "colorspace-blackbody.pbrt"),
 
         // -- Cameras --
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(

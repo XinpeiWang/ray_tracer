@@ -112,6 +112,7 @@ constexpr const char* kExampleSceneStems[] = {
 	"conductor-rgb-eta-k",
 	"nested-checker-texture",
 	"blackbody-light",
+	"colorspace-blackbody",
 };
 
 // Resolved by NAME at test-run time rather than a hardcoded id string:
