@@ -15,11 +15,11 @@
 // embeds its own copy of the string literal.
 //
 // Deliberately NOT exhaustive: only flags the GUI actually emits are
-// listed here. The ~25 CLI-only flags (--bdpt/--mlt/--sppm, the debug
-// integrators, their sub-flags) stay plain literals in launcher_args.h -
-// the GUI never builds them, so there's no cross-process duplication to
-// fix for those, and forcing them into this header would suggest a
-// GUI/CLI coupling that doesn't actually exist.
+// listed here. A handful of CLI-only flags with no GUI control at all
+// (e.g. --diagnose is GUI-adjacent but most debug/one-off flags aren't
+// listed) stay plain literals in launcher_args.h - forcing every CLI flag
+// into this header would suggest a GUI/CLI coupling that doesn't
+// actually exist for the ones the GUI never touches.
 namespace render_flags {
 	constexpr const char* kGpu           = "--gpu";
 	constexpr const char* kCpu           = "--cpu";
@@ -38,4 +38,29 @@ namespace render_flags {
 	constexpr const char* kSpectral      = "--spectral";
 	constexpr const char* kTonemap       = "--tonemap";
 	constexpr const char* kDiagnose      = "--diagnose";
+
+	// Alternate integrators (Integrator combo, Basic Settings tab) and
+	// their sub-flags (Integrator Options group, Render Options tab) -
+	// verified byte-for-byte against launcher/launcher_args.h's own
+	// `arg == "..."` parsing.
+	constexpr const char* kSppm               = "--sppm";
+	constexpr const char* kSppmIterations     = "--sppm-iterations";
+	constexpr const char* kSppmPhotons        = "--sppm-photons";
+	constexpr const char* kBdpt               = "--bdpt";
+	constexpr const char* kBdptMaxDepth       = "--bdpt-max-depth";
+	constexpr const char* kMlt                = "--mlt";
+	constexpr const char* kMltBootstrap       = "--mlt-bootstrap";
+	constexpr const char* kMltMutations       = "--mlt-mutations";
+	constexpr const char* kMltMaxDepth        = "--mlt-max-depth";
+	constexpr const char* kRandomwalk         = "--randomwalk";
+	constexpr const char* kAo                 = "--ao";
+	constexpr const char* kAoMaxDist          = "--ao-max-dist";
+	constexpr const char* kAoUniform          = "--ao-uniform";
+	constexpr const char* kAoIllumScale       = "--ao-illum-scale";
+	constexpr const char* kAoIllumRgb         = "--ao-illum-rgb";
+	constexpr const char* kSimplepath         = "--simplepath";
+	constexpr const char* kSimplepathNoLights = "--simplepath-no-lights";
+	constexpr const char* kSimplepathNoBsdf   = "--simplepath-no-bsdf";
+	constexpr const char* kSimplevolpath      = "--simplevolpath";
+	constexpr const char* kLightpath          = "--lightpath";
 }

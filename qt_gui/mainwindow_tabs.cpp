@@ -572,6 +572,55 @@ void MainWindow::createBasicTab() {
 	m_gpuBackendCombo = nullptr;
 #endif
 
+	// Integrator: which render algorithm to use instead of the default
+	// path tracer. See IntegratorMode's own comment (mainwindow.h) for why
+	// this is a combo (structural mutual exclusion) where the CLI itself
+	// uses 8 independent bool flags with hand-written guards.
+	m_integratorCombo = new QComboBox(basicTab);
+	m_integratorCombo->addItem(tr("Path Tracer (default)"), static_cast<int>(IntegratorMode::Default));
+	m_integratorCombo->addItem(tr("SPPM (Photon Mapping)"), static_cast<int>(IntegratorMode::Sppm));
+	m_integratorCombo->addItem(tr("BDPT (Bidirectional)"), static_cast<int>(IntegratorMode::Bdpt));
+	m_integratorCombo->addItem(tr("MLT (Metropolis Light Transport)"), static_cast<int>(IntegratorMode::Mlt));
+	m_integratorCombo->addItem(tr("RandomWalk (reference, unbiased)"), static_cast<int>(IntegratorMode::RandomWalk));
+	m_integratorCombo->addItem(tr("Ambient Occlusion (debug)"), static_cast<int>(IntegratorMode::Ao));
+	m_integratorCombo->addItem(tr("SimplePath (reference)"), static_cast<int>(IntegratorMode::SimplePath));
+	m_integratorCombo->addItem(tr("SimpleVolPath (reference, volumetric)"), static_cast<int>(IntegratorMode::SimpleVolPath));
+	m_integratorCombo->addItem(tr("LightPath (light tracer)"), static_cast<int>(IntegratorMode::LightPath));
+	styleComboBox(m_integratorCombo);
+	m_integratorCombo->setToolTip(
+		tr("Which rendering algorithm to use. Path Tracer (the default) is the\n"
+		"well-tested, general-purpose choice - the alternates below trade\n"
+		"generality for a specific technique (photon mapping, bidirectional/\n"
+		"Metropolis light transport, or a handful of unbiased reference and\n"
+		"debug integrators). All alternates are CPU-only except SPPM, and none\n"
+		"can be combined with Generate Video mode.\n\n"
+		"Sampler/Spectral/Exposure/Tonemap/Stats above only affect the\n"
+		"default Path Tracer - see each control's own tooltip."));
+	connect(m_integratorCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+			this, &MainWindow::onIntegratorChanged);
+	renderLayout->addRow(labelWithInfo(tr("Integrator:"),
+		tr("The rendering algorithm itself, not just how fast it runs. Path "
+		"Tracer (the default) is the general-purpose, well-tested choice "
+		"used everywhere else in this app.\n\n"
+		"SPPM (Stochastic Progressive Photon Mapping) handles hard caustics/"
+		"glass scenes path tracing struggles with. BDPT and MLT (built on "
+		"BDPT) trace light paths from both the camera and the light source "
+		"and connect them - better for some difficult lighting, area lights "
+		"only. RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, "
+		"and LightPath are reference/debug integrators - simpler, often "
+		"noisier or narrower in scope (e.g. Ambient Occlusion isn't a lit "
+		"render at all), useful for isolating what a specific technique "
+		"contributes.")),
+		m_integratorCombo);
+
+	m_integratorVideoWarningLabel = new QLabel(
+		tr("⚠ Generate Video cannot be combined with an alternate integrator - "
+		"switch back to Path Tracer, or to Single Image output."), basicTab);
+	m_integratorVideoWarningLabel->setObjectName("statusWarning");
+	m_integratorVideoWarningLabel->setWordWrap(true);
+	m_integratorVideoWarningLabel->setVisible(false);
+	renderLayout->addRow(QString(), m_integratorVideoWarningLabel);
+
 	// Quality preset
 	m_qualityPresetCombo = new QComboBox(basicTab);
 	m_qualityPresetCombo->addItem(tr("Draft (Very Fast)"), 0);
@@ -969,6 +1018,174 @@ void MainWindow::createRenderOptionsTab() {
 	layout->setContentsMargins(12, 12, 12, 12);
 
 	// ------------------------------------------------------------------
+	// Integrator Options group - sub-flags for whichever alternate
+	// integrator the Basic Settings tab's Integrator combo selects. Comes
+	// first (rather than after Sampling & Spectral/Output) since it's the
+	// direct continuation of that combo's choice, not a separate axis.
+	// ------------------------------------------------------------------
+	m_integratorOptionsGroup = new QGroupBox(tr("Integrator Options"), optionsTab);
+	styleGroupBox(m_integratorOptionsGroup);
+	QVBoxLayout *integratorGroupLayout = new QVBoxLayout(m_integratorOptionsGroup);
+	integratorGroupLayout->setContentsMargins(15, 22, 15, 12);
+
+	m_integratorOptionsStack = new QStackedWidget(m_integratorOptionsGroup);
+
+	// Page 0: shared placeholder for Default/RandomWalk/SimpleVolPath/
+	// LightPath - none of these four have any sub-flags, so they share
+	// one page instead of each getting a near-duplicate empty one. Text
+	// is swapped per-mode in onIntegratorChanged() (mainwindow_slots.cpp).
+	m_integratorNoOptionsLabel = new QLabel(tr("The default Path Tracer has no integrator-specific options here - see the Render Options above."), m_integratorOptionsStack);
+	m_integratorNoOptionsLabel->setWordWrap(true);
+	m_integratorOptionsStack->addWidget(m_integratorNoOptionsLabel);
+
+	// Page 1: SPPM
+	QWidget *sppmPage = new QWidget(m_integratorOptionsStack);
+	QFormLayout *sppmLayout = new QFormLayout(sppmPage);
+	sppmLayout->setVerticalSpacing(10);
+	sppmLayout->setHorizontalSpacing(10);
+	m_sppmIterationsSpin = new QSpinBox(sppmPage);
+	m_sppmIterationsSpin->setRange(1, 1000000);
+	m_sppmIterationsSpin->setValue(100);
+	styleSpinBox(m_sppmIterationsSpin);
+	sppmLayout->addRow(labelWithInfo(tr("Iterations:"),
+		tr("How many camera-pass + photon-pass rounds SPPM runs. More "
+		"iterations converge to a cleaner result, at a roughly linear "
+		"cost in render time.")),
+		m_sppmIterationsSpin);
+	m_sppmPhotonsSpin = new QSpinBox(sppmPage);
+	m_sppmPhotonsSpin->setRange(1, 100000000);
+	m_sppmPhotonsSpin->setValue(5000);
+	styleSpinBox(m_sppmPhotonsSpin);
+	sppmLayout->addRow(labelWithInfo(tr("Photons per iteration:"),
+		tr("How many photons are shot from the lights each iteration. "
+		"More photons reduce noise in indirect/caustic lighting at the "
+		"cost of a slower photon pass.")),
+		m_sppmPhotonsSpin);
+	m_integratorOptionsStack->addWidget(sppmPage);
+
+	// Page 2: BDPT
+	QWidget *bdptPage = new QWidget(m_integratorOptionsStack);
+	QFormLayout *bdptLayout = new QFormLayout(bdptPage);
+	bdptLayout->setVerticalSpacing(10);
+	bdptLayout->setHorizontalSpacing(10);
+	m_bdptMaxDepthSpin = new QSpinBox(bdptPage);
+	m_bdptMaxDepthSpin->setRange(1, 100);
+	m_bdptMaxDepthSpin->setValue(5);
+	styleSpinBox(m_bdptMaxDepthSpin);
+	bdptLayout->addRow(labelWithInfo(tr("Max path depth:"),
+		tr("Maximum bounces for each of the two subpaths (camera side and "
+		"light side) that BDPT connects together.")),
+		m_bdptMaxDepthSpin);
+	m_integratorOptionsStack->addWidget(bdptPage);
+
+	// Page 3: MLT
+	QWidget *mltPage = new QWidget(m_integratorOptionsStack);
+	QFormLayout *mltLayout = new QFormLayout(mltPage);
+	mltLayout->setVerticalSpacing(10);
+	mltLayout->setHorizontalSpacing(10);
+	m_mltBootstrapSpin = new QSpinBox(mltPage);
+	m_mltBootstrapSpin->setRange(1, 10000000);
+	m_mltBootstrapSpin->setValue(100000);
+	styleSpinBox(m_mltBootstrapSpin);
+	mltLayout->addRow(labelWithInfo(tr("Bootstrap samples:"),
+		tr("How many candidate light paths MLT samples up front, per "
+		"depth, to seed its Markov chains - more gives a better-informed "
+		"starting distribution.")),
+		m_mltBootstrapSpin);
+	m_mltMutationsSpin = new QSpinBox(mltPage);
+	m_mltMutationsSpin->setRange(1, 1000000000);
+	m_mltMutationsSpin->setValue(4000000);
+	styleSpinBox(m_mltMutationsSpin);
+	mltLayout->addRow(labelWithInfo(tr("Mutations:"),
+		tr("Total Metropolis mutations across all chains combined - the "
+		"main knob for render time/quality, analogous to samples per "
+		"pixel in the default path tracer.")),
+		m_mltMutationsSpin);
+	m_mltMaxDepthSpin = new QSpinBox(mltPage);
+	m_mltMaxDepthSpin->setRange(1, 100);
+	m_mltMaxDepthSpin->setValue(5);
+	styleSpinBox(m_mltMaxDepthSpin);
+	mltLayout->addRow(labelWithInfo(tr("Max path depth:"),
+		tr("Same meaning as BDPT's max path depth (MLT is built directly "
+		"on BDPT's subpath machinery).")),
+		m_mltMaxDepthSpin);
+	m_integratorOptionsStack->addWidget(mltPage);
+
+	// Page 4: Ambient Occlusion
+	QWidget *aoPage = new QWidget(m_integratorOptionsStack);
+	QFormLayout *aoLayout = new QFormLayout(aoPage);
+	aoLayout->setVerticalSpacing(10);
+	aoLayout->setHorizontalSpacing(10);
+	m_aoMaxDistSpin = new QDoubleSpinBox(aoPage);
+	m_aoMaxDistSpin->setRange(0.01, 1.0e12);
+	m_aoMaxDistSpin->setDecimals(2);
+	m_aoMaxDistSpin->setValue(1.0e10);
+	styleSpinBox(m_aoMaxDistSpin);
+	aoLayout->addRow(labelWithInfo(tr("Max occlusion distance:"),
+		tr("How far an occlusion test ray can reach before counting as "
+		"unoccluded. The default (10 billion) is effectively unbounded - "
+		"lower it to only count nearby geometry as occluding.")),
+		m_aoMaxDistSpin);
+	m_aoUniformCheck = new QCheckBox(tr("Uniform-hemisphere sampling (instead of cosine)"), aoPage);
+	styleCheckBox(m_aoUniformCheck);
+	aoLayout->addRow(checkboxWithInfo(m_aoUniformCheck,
+		tr("The default samples occlusion rays weighted toward the "
+		"surface normal (cosine-hemisphere), matching how a Lambertian "
+		"surface would actually be lit. Uniform-hemisphere spreads "
+		"samples evenly instead - a different, unweighted estimator.")));
+	m_aoIllumScaleSpin = new QDoubleSpinBox(aoPage);
+	m_aoIllumScaleSpin->setRange(0.0, 1000.0);
+	m_aoIllumScaleSpin->setValue(1.0);
+	styleSpinBox(m_aoIllumScaleSpin);
+	aoLayout->addRow(labelWithInfo(tr("Illumination scale:"),
+		tr("Flat multiplier on the occlusion color below.")),
+		m_aoIllumScaleSpin);
+	QWidget *aoIllumRgbRow = new QWidget(aoPage);
+	QHBoxLayout *aoIllumRgbLayout = new QHBoxLayout(aoIllumRgbRow);
+	aoIllumRgbLayout->setContentsMargins(0, 0, 0, 0);
+	aoIllumRgbLayout->setSpacing(6);
+	m_aoIllumRSpin = new QDoubleSpinBox(aoIllumRgbRow);
+	m_aoIllumGSpin = new QDoubleSpinBox(aoIllumRgbRow);
+	m_aoIllumBSpin = new QDoubleSpinBox(aoIllumRgbRow);
+	for (QDoubleSpinBox *spin : {m_aoIllumRSpin, m_aoIllumGSpin, m_aoIllumBSpin}) {
+		spin->setRange(0.0, 1.0);
+		spin->setSingleStep(0.05);
+		spin->setValue(1.0);
+		styleSpinBox(spin);
+		aoIllumRgbLayout->addWidget(spin);
+	}
+	aoLayout->addRow(labelWithInfo(tr("Occlusion color (R, G, B):"),
+		tr("The color ambient occlusion is visualized in - not a lit "
+		"render, so this is a visualization choice, not a light color. "
+		"Default is white (1, 1, 1).")),
+		aoIllumRgbRow);
+	m_integratorOptionsStack->addWidget(aoPage);
+
+	// Page 5: SimplePath
+	QWidget *simplepathPage = new QWidget(m_integratorOptionsStack);
+	QFormLayout *simplepathLayout = new QFormLayout(simplepathPage);
+	simplepathLayout->setVerticalSpacing(10);
+	simplepathLayout->setHorizontalSpacing(10);
+	m_simplepathNoLightsCheck = new QCheckBox(tr("Disable next-event estimation (direct light sampling)"), simplepathPage);
+	styleCheckBox(m_simplepathNoLightsCheck);
+	simplepathLayout->addRow(checkboxWithInfo(m_simplepathNoLightsCheck,
+		tr("On by default. Direct light sampling explicitly aims shadow "
+		"rays at lights each bounce, sharply reducing noise on scenes "
+		"with small/bright lights. Disabling it falls back to finding "
+		"lights only by chance, the way a purely unbiased path tracer "
+		"would.")));
+	m_simplepathNoBsdfCheck = new QCheckBox(tr("Disable BSDF importance sampling"), simplepathPage);
+	styleCheckBox(m_simplepathNoBsdfCheck);
+	simplepathLayout->addRow(checkboxWithInfo(m_simplepathNoBsdfCheck,
+		tr("On by default. Samples each bounce's new direction weighted "
+		"toward where the surface's material actually reflects light. "
+		"Disabling it falls back to uniform hemisphere sampling.")));
+	m_integratorOptionsStack->addWidget(simplepathPage);
+
+	integratorGroupLayout->addWidget(m_integratorOptionsStack);
+	layout->addWidget(m_integratorOptionsGroup);
+
+	// ------------------------------------------------------------------
 	// Sampling & Spectral group - CPU default path tracer only
 	// ------------------------------------------------------------------
 	// "&&" (not "&") - a single "&" is a Qt mnemonic-accelerator marker,
@@ -1135,19 +1352,11 @@ void MainWindow::createRenderOptionsTab() {
 	layout->addStretch();
 
 	// Initial enabled state matches whatever m_renderModeCombo/
-	// m_gpuBackendCombo already hold at this point in construction -
-	// mirrors m_gpuBackendCombo's own "set once here, updated live via the
-	// constructor's connect() lambda" pattern (see MainWindow's constructor,
-	// mainwindow.cpp).
-	const bool gpuSelected = m_renderModeCombo->currentData().toBool();
-	m_samplerCombo->setEnabled(!gpuSelected);
-	m_spectralCheck->setEnabled(!gpuSelected);
-	// Denoise is recursive-only - must match the live-update lambdas in
-	// MainWindow's constructor (mainwindow.cpp) exactly, or the checkbox
-	// starts enabled under Wavefront whenever that ever becomes the default
-	// GPU backend.
-	m_denoiseCheck->setEnabled(gpuSelected && (!m_gpuBackendCombo || !m_gpuBackendCombo->currentData().toBool()));
-	m_optixValidateCheck->setEnabled(gpuSelected);
+	// m_gpuBackendCombo/m_integratorCombo already hold at this point in
+	// construction - updateRenderOptionsEnabled() is the single source of
+	// truth for this, also called live from each of those combos' own
+	// change handlers (mainwindow.cpp/mainwindow_slots.cpp).
+	updateRenderOptionsEnabled();
 
 	QScrollArea *scrollArea = new QScrollArea();
 	scrollArea->setWidget(optionsTab);
@@ -1158,6 +1367,32 @@ void MainWindow::createRenderOptionsTab() {
 	scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
 	m_tabWidget->addTab(scrollArea, tr("Render Options"));
+}
+
+// Single source of truth for m_samplerCombo/m_spectralCheck/m_exposureSpin/
+// m_tonemapCombo/m_statsCheck/m_denoiseCheck/m_optixValidateCheck/
+// m_gpuBackendCombo's enabled state, replacing what used to be a
+// hand-duplicated 2-input (GPU/CPU x wavefront/recursive) condition
+// copy-pasted at construction and in two separate connect() lambdas -
+// adding Integrator as a third input would have made that a 3-site
+// hand-copy of an increasingly complex condition, so it's factored here
+// instead and called from all four controls' own change handlers
+// (construction, m_renderModeCombo's lambda, m_gpuBackendCombo's lambda,
+// onIntegratorChanged() - mainwindow.cpp/mainwindow_slots.cpp).
+void MainWindow::updateRenderOptionsEnabled() {
+	const bool gpuSelected = m_renderModeCombo->currentData().toBool();
+	const bool wavefrontSelected = gpuSelected && m_gpuBackendCombo && m_gpuBackendCombo->currentData().toBool();
+	const auto integrator = static_cast<IntegratorMode>(m_integratorCombo->currentData().toInt());
+	const bool isDefault = (integrator == IntegratorMode::Default);
+
+	if (m_gpuBackendCombo) m_gpuBackendCombo->setEnabled(isDefault && gpuSelected);
+	m_samplerCombo->setEnabled(isDefault && !gpuSelected);
+	m_spectralCheck->setEnabled(isDefault && !gpuSelected);
+	m_exposureSpin->setEnabled(isDefault);
+	m_tonemapCombo->setEnabled(isDefault);
+	m_statsCheck->setEnabled(isDefault);
+	m_denoiseCheck->setEnabled(isDefault && gpuSelected && !wavefrontSelected);
+	m_optixValidateCheck->setEnabled(isDefault && gpuSelected);
 }
 
 void MainWindow::createPreviewTab() {

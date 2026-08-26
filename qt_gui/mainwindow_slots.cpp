@@ -169,18 +169,42 @@ RenderJob MainWindow::captureRenderJob() {
 	// rather than currentText(), matching every other flag combo in this
 	// file (e.g. job.useWavefront above).
 	//
-	// denoise/optixValidate/sampler/spectral are gated on isEnabled(): Qt
-	// does not clear a checkbox's checked state (or a combo's selection)
-	// just because setEnabled(false) grayed it out, so a value checked
-	// before a backend switch would otherwise survive into the CLI
-	// invocation even though the control now shows as inactive.
+	// denoise/optixValidate/sampler/spectral/exposure/tonemap/stats are all
+	// gated on isEnabled() (see updateRenderOptionsEnabled(),
+	// mainwindow_tabs.cpp, for what disables each): Qt does not clear a
+	// checkbox's checked state (or a combo's selection, or a spinbox's
+	// value) just because setEnabled(false) grayed it out, so a value set
+	// before a backend/integrator switch would otherwise survive into the
+	// CLI invocation even though the control now shows as inactive.
 	job.advancedFlags.denoise = m_denoiseCheck->isEnabled() && m_denoiseCheck->isChecked();
-	job.advancedFlags.stats = m_statsCheck->isChecked();
+	job.advancedFlags.stats = m_statsCheck->isEnabled() && m_statsCheck->isChecked();
 	job.advancedFlags.optixValidate = m_optixValidateCheck->isEnabled() && m_optixValidateCheck->isChecked();
-	job.advancedFlags.exposure = m_exposureSpin->value();
+	job.advancedFlags.exposure = m_exposureSpin->isEnabled() ? m_exposureSpin->value() : 1.0;
 	job.advancedFlags.sampler = m_samplerCombo->isEnabled() ? m_samplerCombo->currentData().toString() : QString();
 	job.advancedFlags.spectral = m_spectralCheck->isEnabled() && m_spectralCheck->isChecked();
-	job.advancedFlags.tonemap = m_tonemapCombo->currentData().toString();
+	job.advancedFlags.tonemap = m_tonemapCombo->isEnabled() ? m_tonemapCombo->currentData().toString() : QString();
+
+	// Integrator combo + "Integrator Options" group - see
+	// IntegratorOptions's own comment (mainwindow.h). No isEnabled()
+	// gating needed on the sub-flag widgets themselves: only the
+	// currently-selected integrator's own fields are ever read by
+	// RenderController::start()'s switch, so a stale value from a hidden
+	// stack page is never emitted regardless.
+	job.integratorOptions.mode = static_cast<IntegratorMode>(m_integratorCombo->currentData().toInt());
+	job.integratorOptions.sppmIterations = m_sppmIterationsSpin->value();
+	job.integratorOptions.sppmPhotons = m_sppmPhotonsSpin->value();
+	job.integratorOptions.bdptMaxDepth = m_bdptMaxDepthSpin->value();
+	job.integratorOptions.mltBootstrap = m_mltBootstrapSpin->value();
+	job.integratorOptions.mltMutations = static_cast<long long>(m_mltMutationsSpin->value());
+	job.integratorOptions.mltMaxDepth = m_mltMaxDepthSpin->value();
+	job.integratorOptions.aoMaxDist = m_aoMaxDistSpin->value();
+	job.integratorOptions.aoUniform = m_aoUniformCheck->isChecked();
+	job.integratorOptions.aoIllumScale = m_aoIllumScaleSpin->value();
+	job.integratorOptions.aoIllumR = m_aoIllumRSpin->value();
+	job.integratorOptions.aoIllumG = m_aoIllumGSpin->value();
+	job.integratorOptions.aoIllumB = m_aoIllumBSpin->value();
+	job.integratorOptions.simplepathNoLights = m_simplepathNoLightsCheck->isChecked();
+	job.integratorOptions.simplepathNoBsdf = m_simplepathNoBsdfCheck->isChecked();
 
 	// Resolution: either from preset dropdown or custom values from Advanced tab
 	if (m_qualityPresetCombo->currentIndex() == 6) {
@@ -296,6 +320,7 @@ void MainWindow::startRenderJob(const RenderJob &job) {
 	                                   job.sceneId, job.camX, job.camY, job.camZ, job.camExplicit,
 	                                   job.outputPath, job.useWavefront);
 	m_renderController->setAdvancedFlags(job.advancedFlags);
+	m_renderController->setIntegratorOptions(job.integratorOptions);
 
 	if (job.videoMode) {
 		m_renderController->setVideoParameters(true, job.videoFrames, job.videoFPS, job.cameraPath, job.videoSpeed);
@@ -1266,6 +1291,13 @@ void MainWindow::onModeChanged(int index) {
 	// modes.
 	if (m_videoModeWarningLabel) m_videoModeWarningLabel->setVisible(!m_videoMode);
 
+	// --video hard-rejects any non-Default integrator (see
+	// m_integratorVideoWarningLabel's own comment, mainwindow.h) - also
+	// toggled from onIntegratorChanged() below, since either control can
+	// create or resolve the conflict.
+	const auto currentIntegrator = static_cast<IntegratorMode>(m_integratorCombo->currentData().toInt());
+	m_integratorVideoWarningLabel->setVisible(m_videoMode && currentIntegrator != IntegratorMode::Default);
+
 	// Update render button text based on mode
 	if (m_videoMode) {
 		// Keep the same Alt+R mnemonic as the single-image label below, so the
@@ -1286,6 +1318,63 @@ void MainWindow::onModeChanged(int index) {
 
 	// Log mode change
 	onLogMessage(tr("Mode changed to: %1").arg(m_videoMode ? tr("Video Generation") : tr("Single Image")));
+}
+
+void MainWindow::onIntegratorChanged(int) {
+	const auto integrator = static_cast<IntegratorMode>(m_integratorCombo->currentData().toInt());
+
+	// 7 of the 8 alternate integrators are CPU-only (the CLI just warns
+	// and forces CPU under --gpu, never rejects - see launcher/main.cpp's
+	// own gpu_flag_explicit warnings); SPPM is the one exception with a
+	// real, scene-dependent GPU path. Mirrors onSceneChanged()'s existing
+	// GPU-compat auto-switch (same "no failure, just a stale/misleading
+	// control" class of problem).
+	const bool cpuOnly = (integrator != IntegratorMode::Default && integrator != IntegratorMode::Sppm);
+	m_renderModeCombo->setEnabled(!cpuOnly);
+	if (cpuOnly && m_renderModeCombo->currentData().toBool()) {
+		m_renderModeCombo->setCurrentIndex(m_renderModeCombo->count() - 1); // last item = CPU; fires its own lambda -> updateRenderOptionsEnabled()
+	}
+
+	// Switch the "Integrator Options" stack to this integrator's own
+	// sub-flag page - see m_integratorOptionsStack's own comment
+	// (mainwindow.h) for why only 5 of the 8 modes get a real page.
+	int page = 0;
+	QString noOptionsText;
+	switch (integrator) {
+		case IntegratorMode::Sppm: page = 1; break;
+		case IntegratorMode::Bdpt: page = 2; break;
+		case IntegratorMode::Mlt: page = 3; break;
+		case IntegratorMode::Ao: page = 4; break;
+		case IntegratorMode::SimplePath: page = 5; break;
+		case IntegratorMode::RandomWalk:
+			page = 0;
+			noOptionsText = tr("RandomWalk is pbrt-v4's unbiased reference path tracer - uniform-sphere sampling, no next-event estimation or MIS. No options here.");
+			break;
+		case IntegratorMode::SimpleVolPath:
+			page = 0;
+			noOptionsText = tr("SimpleVolPath is pbrt-v4's simplest volumetric path tracer - pure delta tracking, no NEE/MIS/surface BSDFs. No options here.");
+			break;
+		case IntegratorMode::LightPath:
+			page = 0;
+			noOptionsText = tr("LightPath is a pure light tracer - every sample starts at a light and splats camera-connection contributions into the film. No options here.");
+			break;
+		case IntegratorMode::Default:
+		default:
+			page = 0;
+			noOptionsText = tr("The default Path Tracer has no integrator-specific options here - see the Render Options above.");
+			break;
+	}
+	if (page == 0) m_integratorNoOptionsLabel->setText(noOptionsText);
+	m_integratorOptionsStack->setCurrentIndex(page);
+
+	updateRenderOptionsEnabled();
+
+	// See onModeChanged()'s own comment - either control can create or
+	// resolve the --video + non-Default-integrator conflict.
+	m_integratorVideoWarningLabel->setVisible(m_videoMode && integrator != IntegratorMode::Default);
+
+	refreshStatusBarInfo();
+	onLogMessage(tr("Integrator changed to: %1").arg(m_integratorCombo->currentText()));
 }
 
 void MainWindow::assembleVideoAutomatically(const QString &baseOutputPath, const RenderJob &job) {

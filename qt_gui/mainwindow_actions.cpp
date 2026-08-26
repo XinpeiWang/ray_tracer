@@ -305,6 +305,9 @@ void MainWindow::showAboutDialog() {
 		// builtin_scene_count()/kGuiSceneCount assertions change.
 		"<p>120 scenes, a wide BxDF library, multiple light and camera types, "
 		"triangle-mesh and texture support, BVH acceleration, volumetrics, and "
-		"an SPPM photon-mapping integrator alongside standard path tracing.</p>"
+		"a choice of integrators alongside standard path tracing - SPPM photon "
+		"mapping, bidirectional path tracing (BDPT), Metropolis Light Transport, "
+		"and several reference/debug integrators (RandomWalk, Ambient Occlusion, "
+		"SimplePath, SimpleVolPath, LightPath).</p>"
 		"<p>This window drives <code>%1</code> as a subprocess.</p>").arg(rendererBinaryName));
 }

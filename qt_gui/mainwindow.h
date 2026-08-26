@@ -745,6 +745,40 @@ struct AdvancedRenderFlags {
 	QString tonemap;
 };
 
+// Which alternate integrator (--sppm/--bdpt/--mlt/--randomwalk/--ao/
+// --simplepath/--simplevolpath/--lightpath) to use instead of the default
+// path tracer - see the Integrator combo (Basic Settings tab) and the
+// "Integrator Options" group (Render Options tab). No CLI analog exists
+// for this as a single enum - launcher_args.h uses 8 independent bool
+// use_X fields with hand-written mutual exclusion in main.cpp - but a
+// combo box is naturally single-selection, so the GUI gets a real enum
+// instead of mirroring that shape.
+enum class IntegratorMode {
+	Default = 0, Sppm, Bdpt, Mlt, RandomWalk, Ao, SimplePath, SimpleVolPath, LightPath
+};
+
+// "Integrator Options" group's per-integrator sub-flags - one struct
+// instead of growing AdvancedRenderFlags or setParameters() further, same
+// reasoning as AdvancedRenderFlags's own comment. Defaults match
+// launcher_args.h's kDefaultXxx constants exactly, so a render with
+// Integrator left on Default (mode's own default) reproduces today's
+// command line unchanged.
+struct IntegratorOptions {
+	IntegratorMode mode = IntegratorMode::Default;
+	int sppmIterations = 100;          // kDefaultSppmIterations
+	int sppmPhotons = 5000;            // kDefaultSppmPhotons
+	int bdptMaxDepth = 5;              // kDefaultBdptMaxDepth
+	int mltBootstrap = 100000;         // kDefaultMltBootstrap
+	long long mltMutations = 4000000;  // kDefaultMltMutations
+	int mltMaxDepth = 5;               // kDefaultMltMaxDepth
+	double aoMaxDist = 1e10;           // kDefaultAoMaxDist
+	bool aoUniform = false;            // false = cosine (CLI ao_cosine default true)
+	double aoIllumScale = 1.0;         // kDefaultAoIllumScale
+	double aoIllumR = 1.0, aoIllumG = 1.0, aoIllumB = 1.0;
+	bool simplepathNoLights = false;   // CLI simplepath_sample_lights default true
+	bool simplepathNoBsdf = false;     // CLI simplepath_sample_bsdf default true
+};
+
 class RenderController : public QObject {
 	Q_OBJECT
 
@@ -776,6 +810,11 @@ public:
 	// own comment above for why: three adjacent bools then two adjacent
 	// strings is exactly the shape a transposed-argument bug hides in).
 	void setAdvancedFlags(const AdvancedRenderFlags &flags);
+
+	// Which alternate integrator to use and its sub-flags - see
+	// IntegratorOptions's own comment. Separate setter for the same reason
+	// setAdvancedFlags() is separate from setParameters().
+	void setIntegratorOptions(const IntegratorOptions &options);
 
 	// Builds the command line and launches ray_tracer.exe. Returns immediately;
 	// everything after this point is driven by the process's own signals.
@@ -827,6 +866,12 @@ private:
 	// (nothing passed = CLI default), so ThumbnailGenerator (which never
 	// calls setAdvancedFlags()) is unaffected.
 	AdvancedRenderFlags m_advancedFlags;
+
+	// Integrator combo + "Integrator Options" group's flags - see
+	// IntegratorOptions's own comment. Default-constructed (mode=Default)
+	// matches every existing caller's prior behavior, same reasoning as
+	// m_advancedFlags above.
+	IntegratorOptions m_integratorOptions;
 
 	// Whether the user asked to stop, tracked explicitly rather than inferred
 	// from exit status/code - a real crash (e.g. access violation) also
@@ -974,6 +1019,10 @@ struct RenderJob {
 
 	// "Render Options" tab fields - see AdvancedRenderFlags's own comment.
 	AdvancedRenderFlags advancedFlags;
+
+	// Integrator combo + "Integrator Options" group's fields - see
+	// IntegratorOptions's own comment.
+	IntegratorOptions integratorOptions;
 };
 
 // ============================================================================
@@ -1064,6 +1113,7 @@ private slots:
 	void onCameraDistanceChanged(double distance);  // Repositions camera X/Y/Z along its current direction from lookat
 	void onSceneChanged(int index);         // Updates UI when scene selection changes
 	void onModeChanged(int index);          // Switches between Image and Video modes
+	void onIntegratorChanged(int index);    // Switches the Integrator Options stack page, auto-corrects GPU/CPU, updates gating
 	void onProgressUpdate(int percentage);
 	void onRenderComplete(bool success, const QString &message, double totalTime, const QString &outputPath);
 	void onLogMessage(const QString &message);
@@ -1092,6 +1142,14 @@ private:
 	void createBasicTab();
 	void createAdvancedTab();
 	void createRenderOptionsTab();
+	// Single source of truth for m_samplerCombo/m_spectralCheck/
+	// m_exposureSpin/m_tonemapCombo/m_statsCheck/m_denoiseCheck/
+	// m_optixValidateCheck/m_gpuBackendCombo's enabled state - depends on
+	// m_renderModeCombo (GPU/CPU), m_gpuBackendCombo (recursive/wavefront),
+	// and m_integratorCombo (Default vs an alternate integrator), so it's
+	// called from all of those controls' own change handlers instead of
+	// hand-duplicating the same condition at each call site.
+	void updateRenderOptionsEnabled();
 	void createVideoTab();
 	void createPreviewTab();
 	void createProgressTab();
@@ -1316,6 +1374,22 @@ private:
 	// Basic Tab
 	QComboBox *m_renderModeCombo;       // GPU vs CPU selection
 	QComboBox *m_gpuBackendCombo;       // Recursive vs wavefront GPU path tracer (only meaningful under GPU)
+	// Which alternate integrator (--sppm/--bdpt/--mlt/--randomwalk/--ao/
+	// --simplepath/--simplevolpath/--lightpath) to use instead of the
+	// default path tracer - see IntegratorMode's own comment and
+	// onIntegratorChanged(). All 7 non-SPPM alternates are CPU-only (the
+	// CLI just warns and forces CPU under --gpu, never rejects), so
+	// onIntegratorChanged() auto-switches m_renderModeCombo to CPU and
+	// disables it whenever one of those 7 is picked.
+	QComboBox *m_integratorCombo;
+	// --video hard-rejects any non-Default integrator (an animated
+	// camera-path flythrough and an alternate integrator's own render
+	// loop can't be combined) - same class of guaranteed CLI rejection as
+	// an animated-camera scene + --video, which this GUI already doesn't
+	// block at the click, just lets fail through renderComplete(). This
+	// label adds a non-blocking heads-up before that happens, toggled by
+	// both onModeChanged() and onIntegratorChanged().
+	QLabel *m_integratorVideoWarningLabel;
 	QComboBox *m_qualityPresetCombo;    // Quality preset dropdown
 	QComboBox *m_resolutionCombo;       // Resolution preset dropdown
 	QLineEdit *m_outputPathEdit;        // Output file path (timestamped by default)
@@ -1352,17 +1426,48 @@ private:
 	// flag RenderController::start() can emit; see setAdvancedFlags()'s own
 	// comment. m_samplerCombo/m_spectralCheck are CPU-default-path-tracer
 	// only; m_denoiseCheck/m_optixValidateCheck are GPU-only (m_denoiseCheck
-	// further disabled under wavefront) - enabled state kept in sync with
-	// m_renderModeCombo/m_gpuBackendCombo, see the constructor's own
-	// connect() lambda for m_gpuBackendCombo's existing enable/disable
-	// pattern (mainwindow.cpp).
+	// further disabled under wavefront); m_exposureSpin/m_tonemapCombo/
+	// m_statsCheck are default-path-tracer-only (inert, not rejected,
+	// under any alternate integrator). Enabled state kept in sync with
+	// m_renderModeCombo/m_gpuBackendCombo/m_integratorCombo by
+	// updateRenderOptionsEnabled() (mainwindow_tabs.cpp), the single
+	// source of truth for this cross-product - called from all four
+	// controls' own change handlers.
 	QComboBox *m_samplerCombo;          // --sampler (CPU default path tracer only)
 	QCheckBox *m_spectralCheck;         // --spectral (CPU default path tracer only)
-	QDoubleSpinBox *m_exposureSpin;     // --exposure (both backends, default path tracer only)
-	QComboBox *m_tonemapCombo;          // --tonemap (both backends, default path tracer only)
-	QCheckBox *m_statsCheck;            // --stats (always applicable)
+	QDoubleSpinBox *m_exposureSpin;     // --exposure (default path tracer only)
+	QComboBox *m_tonemapCombo;          // --tonemap (default path tracer only)
+	QCheckBox *m_statsCheck;            // --stats (default path tracer only)
 	QCheckBox *m_denoiseCheck;          // --denoise (GPU recursive backend only)
 	QCheckBox *m_optixValidateCheck;    // --optix-validate (GPU only)
+
+	// "Integrator Options" group (createRenderOptionsTab()) - sub-flag
+	// widgets for the 5 alternate integrators that have any (SPPM/BDPT/
+	// MLT/AO/SimplePath); RandomWalk/SimpleVolPath/LightPath/Default share
+	// one placeholder page (m_integratorNoOptionsLabel) instead of an
+	// empty page each. m_integratorOptionsStack's page index per
+	// IntegratorMode is defined in onIntegratorChanged() (mainwindow_slots.cpp).
+	// No isEnabled() gating needed on these in captureRenderJob() - only
+	// the currently-selected integrator's own fields are ever read by
+	// RenderController::start()'s switch, so a stale value from a hidden
+	// page is never emitted.
+	QGroupBox *m_integratorOptionsGroup;
+	QStackedWidget *m_integratorOptionsStack;
+	QLabel *m_integratorNoOptionsLabel; // Placeholder page text, swapped per-mode
+	QSpinBox *m_sppmIterationsSpin;
+	QSpinBox *m_sppmPhotonsSpin;
+	QSpinBox *m_bdptMaxDepthSpin;
+	QSpinBox *m_mltBootstrapSpin;
+	QSpinBox *m_mltMutationsSpin;
+	QSpinBox *m_mltMaxDepthSpin;
+	QDoubleSpinBox *m_aoMaxDistSpin;
+	QCheckBox *m_aoUniformCheck;
+	QDoubleSpinBox *m_aoIllumScaleSpin;
+	QDoubleSpinBox *m_aoIllumRSpin;
+	QDoubleSpinBox *m_aoIllumGSpin;
+	QDoubleSpinBox *m_aoIllumBSpin;
+	QCheckBox *m_simplepathNoLightsCheck;
+	QCheckBox *m_simplepathNoBsdfCheck;
 
 	// Camera controls
 	// Camera position (lookfrom) can be set via presets or custom X/Y/Z

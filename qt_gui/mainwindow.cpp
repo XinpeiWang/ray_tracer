@@ -71,6 +71,10 @@ void RenderController::setAdvancedFlags(const AdvancedRenderFlags &flags) {
 	m_advancedFlags = flags;
 }
 
+void RenderController::setIntegratorOptions(const IntegratorOptions &options) {
+	m_integratorOptions = options;
+}
+
 bool RenderController::isRunning() const {
 	return m_renderProcess && m_renderProcess->state() != QProcess::NotRunning;
 }
@@ -130,6 +134,62 @@ void RenderController::start() {
 		if (m_useWavefront) args << render_flags::kWavefront;
 	} else {
 		args << render_flags::kCpu;
+	}
+
+	// Which alternate integrator, if any - see IntegratorOptions's own
+	// comment (mainwindow.h). Default emits nothing (the plain default
+	// path tracer). Sub-flags follow the same "only emit if it differs
+	// from the CLI default" rule as the Render Options flags just below.
+	switch (m_integratorOptions.mode) {
+		case IntegratorMode::Default:
+			break;
+		case IntegratorMode::Sppm:
+			args << render_flags::kSppm;
+			if (m_integratorOptions.sppmIterations != 100)
+				args << render_flags::kSppmIterations << QString::number(m_integratorOptions.sppmIterations);
+			if (m_integratorOptions.sppmPhotons != 5000)
+				args << render_flags::kSppmPhotons << QString::number(m_integratorOptions.sppmPhotons);
+			break;
+		case IntegratorMode::Bdpt:
+			args << render_flags::kBdpt;
+			if (m_integratorOptions.bdptMaxDepth != 5)
+				args << render_flags::kBdptMaxDepth << QString::number(m_integratorOptions.bdptMaxDepth);
+			break;
+		case IntegratorMode::Mlt:
+			args << render_flags::kMlt;
+			if (m_integratorOptions.mltBootstrap != 100000)
+				args << render_flags::kMltBootstrap << QString::number(m_integratorOptions.mltBootstrap);
+			if (m_integratorOptions.mltMutations != 4000000)
+				args << render_flags::kMltMutations << QString::number(m_integratorOptions.mltMutations);
+			if (m_integratorOptions.mltMaxDepth != 5)
+				args << render_flags::kMltMaxDepth << QString::number(m_integratorOptions.mltMaxDepth);
+			break;
+		case IntegratorMode::RandomWalk:
+			args << render_flags::kRandomwalk;
+			break;
+		case IntegratorMode::Ao:
+			args << render_flags::kAo;
+			if (m_integratorOptions.aoMaxDist != 1.0e10)
+				args << render_flags::kAoMaxDist << QString::number(m_integratorOptions.aoMaxDist);
+			if (m_integratorOptions.aoUniform)
+				args << render_flags::kAoUniform;
+			if (m_integratorOptions.aoIllumScale != 1.0)
+				args << render_flags::kAoIllumScale << QString::number(m_integratorOptions.aoIllumScale);
+			if (m_integratorOptions.aoIllumR != 1.0 || m_integratorOptions.aoIllumG != 1.0 || m_integratorOptions.aoIllumB != 1.0)
+				args << render_flags::kAoIllumRgb << QString::number(m_integratorOptions.aoIllumR)
+					 << QString::number(m_integratorOptions.aoIllumG) << QString::number(m_integratorOptions.aoIllumB);
+			break;
+		case IntegratorMode::SimplePath:
+			args << render_flags::kSimplepath;
+			if (m_integratorOptions.simplepathNoLights) args << render_flags::kSimplepathNoLights;
+			if (m_integratorOptions.simplepathNoBsdf) args << render_flags::kSimplepathNoBsdf;
+			break;
+		case IntegratorMode::SimpleVolPath:
+			args << render_flags::kSimplevolpath;
+			break;
+		case IntegratorMode::LightPath:
+			args << render_flags::kLightpath;
+			break;
 	}
 
 	// Render Options tab flags - see AdvancedRenderFlags's own comment.
@@ -695,31 +755,16 @@ void MainWindow::setupUI() {
 	connect(m_renderModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
 			this, [this](int) {
 				refreshStatusBarInfo();
-				// m_gpuBackendCombo is nullptr on a build with no GPU support
-				// at all (RT_GUI_HAVE_GPU undefined - see mainwindow_tabs.cpp's
-				// Renderer combo setup, which never creates it there).
-				const bool gpuSelected = m_renderModeCombo->currentData().toBool();
-				if (m_gpuBackendCombo) {
-					m_gpuBackendCombo->setEnabled(gpuSelected);
-				}
-				// Render Options tab: sampler/spectral are CPU default path
-				// tracer only, denoise/optix-validate are GPU only - see
-				// createRenderOptionsTab()'s own comment (mainwindow_tabs.cpp).
-				m_samplerCombo->setEnabled(!gpuSelected);
-				m_spectralCheck->setEnabled(!gpuSelected);
-				m_denoiseCheck->setEnabled(gpuSelected && (!m_gpuBackendCombo || !m_gpuBackendCombo->currentData().toBool()));
-				m_optixValidateCheck->setEnabled(gpuSelected);
+				updateRenderOptionsEnabled();
 			});
-	// Denoise is recursive-backend-only (silently has no effect under
-	// wavefront - see createRenderOptionsTab()'s own tooltip) - a second,
-	// narrower live update on top of the m_renderModeCombo one above, which
-	// only knows about GPU-vs-CPU, not which GPU backend.
+	// A second, narrower live update on top of the m_renderModeCombo one
+	// above, which only knows about GPU-vs-CPU, not which GPU backend -
+	// m_gpuBackendCombo is nullptr on a build with no GPU support at all
+	// (RT_GUI_HAVE_GPU undefined - see mainwindow_tabs.cpp's Renderer combo
+	// setup, which never creates it there).
 	if (m_gpuBackendCombo) {
 		connect(m_gpuBackendCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-				this, [this](int) {
-					const bool gpuSelected = m_renderModeCombo->currentData().toBool();
-					m_denoiseCheck->setEnabled(gpuSelected && !m_gpuBackendCombo->currentData().toBool());
-				});
+				this, [this](int) { updateRenderOptionsEnabled(); });
 	}
 
 	// Initialize scene info AFTER tabs are created (onSceneChanged uses m_samplesSpinBox)
