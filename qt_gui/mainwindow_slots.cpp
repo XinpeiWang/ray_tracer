@@ -190,7 +190,8 @@ RenderJob MainWindow::captureRenderJob() {
 	job.advancedFlags.spectral = m_spectralCheck->isEnabled() && m_spectralCheck->isChecked();
 	job.advancedFlags.tonemap = m_tonemapCombo->isEnabled() ? m_tonemapCombo->currentData().toString() : QString();
 
-	// Integrator combo + "Integrator Options" group - see
+	// Integrator combo + its sub-flags, both in the "Integrator" group on
+	// the Render Options tab - see
 	// IntegratorOptions's own comment (mainwindow.h). No isEnabled()
 	// gating needed on the sub-flag widgets themselves: only the
 	// currently-selected integrator's own fields are ever read by

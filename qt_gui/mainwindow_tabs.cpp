@@ -587,83 +587,10 @@ void MainWindow::createBasicTab() {
 	m_gpuBackendCombo = nullptr;
 #endif
 
-	// Integrator: which render algorithm to use instead of the default
-	// path tracer. See IntegratorMode's own comment (mainwindow.h) for why
-	// this is a combo (structural mutual exclusion) where the CLI itself
-	// uses 8 independent bool flags with hand-written guards.
-	m_integratorCombo = new QComboBox(basicTab);
-	{
-		// Same "(i)" mark + per-row tooltip as populateSceneCombo() gives
-		// each of its own rows - icon_tint::addItem() (not a plain
-		// combo->addItem()) so a theme switch's restyleThemedWidgets() ->
-		// retintItems() sweep recolours these the same way every other
-		// combo's icons already do, and setItemData(..., Qt::ToolTipRole)
-		// so hovering a row in the OPEN dropdown shows what that specific
-		// integrator does. Qt also shows the current item's icon natively
-		// inside the closed combo box, so this single mechanism covers
-		// both "browsing the list" and "at a glance, what's selected".
-		const IntegratorMode modes[] = {
-			IntegratorMode::Default, IntegratorMode::Sppm, IntegratorMode::Bdpt,
-			IntegratorMode::Mlt, IntegratorMode::RandomWalk, IntegratorMode::Ao,
-			IntegratorMode::SimplePath, IntegratorMode::SimpleVolPath, IntegratorMode::LightPath,
-		};
-		const QString labels[] = {
-			tr("Path Tracer (default)"), tr("SPPM (Photon Mapping)"), tr("BDPT (Bidirectional)"),
-			tr("MLT (Metropolis Light Transport)"), tr("RandomWalk (reference, unbiased)"),
-			tr("Ambient Occlusion (debug)"), tr("SimplePath (reference)"),
-			tr("SimpleVolPath (reference, volumetric)"), tr("LightPath (light tracer)"),
-		};
-		for (size_t i = 0; i < sizeof(modes) / sizeof(modes[0]); ++i) {
-			icon_tint::addItem(m_integratorCombo, ":/icons/info.svg", labels[i],
-				static_cast<int>(modes[i]), m_activeTheme.textBody);
-			m_integratorCombo->setItemData(m_integratorCombo->count() - 1,
-				wrapTooltipHtml(integratorDescription(modes[i])), Qt::ToolTipRole);
-		}
-	}
-	styleComboBox(m_integratorCombo);
-	m_integratorCombo->setToolTip(
-		tr("Which rendering algorithm to use. Path Tracer (the default) is the\n"
-		"well-tested, general-purpose choice - the alternates below trade\n"
-		"generality for a specific technique (photon mapping, bidirectional/\n"
-		"Metropolis light transport, or a handful of unbiased reference and\n"
-		"debug integrators). All alternates are CPU-only except SPPM, and none\n"
-		"can be combined with Generate Video mode.\n\n"
-		"Sampler/Spectral/Exposure/Tonemap/Stats above only affect the\n"
-		"default Path Tracer - see each control's own tooltip."));
-	connect(m_integratorCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
-			this, &MainWindow::onIntegratorChanged);
-	// Same two-column labelWithInfo() row shape every sibling control here
-	// uses (Renderer/GPU Backend/Quality/Resolution), so the label column
-	// stays aligned across all of them. A SEPARATE dynamic icon here (an
-	// earlier version of this row) turned out to duplicate the per-item
-	// icon Qt already shows natively inside the closed combo box (every
-	// item now carries its own "(i)" + tooltip, added above via
-	// icon_tint::addItem/setItemData(Qt::ToolTipRole)) - that already
-	// covers "what does the currently-selected integrator do" without a
-	// second, differently-aligned icon widget.
-	renderLayout->addRow(labelWithInfo(tr("Integrator:"),
-		tr("The rendering algorithm itself, not just how fast it runs. Path "
-		"Tracer (the default) is the general-purpose, well-tested choice "
-		"used everywhere else in this app.\n\n"
-		"SPPM (Stochastic Progressive Photon Mapping) handles hard caustics/"
-		"glass scenes path tracing struggles with. BDPT and MLT (built on "
-		"BDPT) trace light paths from both the camera and the light source "
-		"and connect them - better for some difficult lighting, area lights "
-		"only. RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, "
-		"and LightPath are reference/debug integrators - simpler, often "
-		"noisier or narrower in scope (e.g. Ambient Occlusion isn't a lit "
-		"render at all), useful for isolating what a specific technique "
-		"contributes.\n\nHover any item in the dropdown for details on that "
-		"specific integrator.")),
-		m_integratorCombo);
-
-	m_integratorVideoWarningLabel = new QLabel(
-		tr("⚠ Generate Video cannot be combined with an alternate integrator - "
-		"switch back to Path Tracer, or to Single Image output."), basicTab);
-	m_integratorVideoWarningLabel->setObjectName("statusWarning");
-	m_integratorVideoWarningLabel->setWordWrap(true);
-	m_integratorVideoWarningLabel->setVisible(false);
-	renderLayout->addRow(QString(), m_integratorVideoWarningLabel);
+	// Integrator selector lives on the Render Options tab now (colocated
+	// with its own per-mode Integrator Options group, immediately below
+	// it) - see createRenderOptionsTab() for m_integratorCombo/
+	// m_integratorVideoWarningLabel's construction.
 
 	// Quality preset
 	m_qualityPresetCombo = new QComboBox(basicTab);
@@ -1062,15 +989,98 @@ void MainWindow::createRenderOptionsTab() {
 	layout->setContentsMargins(12, 12, 12, 12);
 
 	// ------------------------------------------------------------------
-	// Integrator Options group - sub-flags for whichever alternate
-	// integrator the Basic Settings tab's Integrator combo selects. Comes
-	// first (rather than after Sampling & Spectral/Output) since it's the
-	// direct continuation of that combo's choice, not a separate axis.
+	// Integrator group - the algorithm selector itself, plus sub-flags for
+	// whichever alternate integrator it selects. Comes first (rather than
+	// after Sampling & Spectral/Output) since it's this tab's primary
+	// choice, not a separate axis - everything below only applies to
+	// whichever integrator is picked here.
 	// ------------------------------------------------------------------
-	m_integratorOptionsGroup = new QGroupBox(tr("Integrator Options"), optionsTab);
+	m_integratorOptionsGroup = new QGroupBox(tr("Integrator"), optionsTab);
 	styleGroupBox(m_integratorOptionsGroup);
 	QVBoxLayout *integratorGroupLayout = new QVBoxLayout(m_integratorOptionsGroup);
 	integratorGroupLayout->setContentsMargins(15, 22, 15, 12);
+
+	// Which render algorithm to use instead of the default path tracer.
+	// See IntegratorMode's own comment (mainwindow.h) for why this is a
+	// combo (structural mutual exclusion) where the CLI itself uses 8
+	// independent bool flags with hand-written guards.
+	m_integratorCombo = new QComboBox(optionsTab);
+	{
+		// Same "(i)" mark + per-row tooltip as populateSceneCombo() gives
+		// each of its own rows - icon_tint::addItem() (not a plain
+		// combo->addItem()) so a theme switch's restyleThemedWidgets() ->
+		// retintItems() sweep recolours these the same way every other
+		// combo's icons already do, and setItemData(..., Qt::ToolTipRole)
+		// so hovering a row in the OPEN dropdown shows what that specific
+		// integrator does. Qt also shows the current item's icon natively
+		// inside the closed combo box, so this single mechanism covers
+		// both "browsing the list" and "at a glance, what's selected".
+		const IntegratorMode modes[] = {
+			IntegratorMode::Default, IntegratorMode::Sppm, IntegratorMode::Bdpt,
+			IntegratorMode::Mlt, IntegratorMode::RandomWalk, IntegratorMode::Ao,
+			IntegratorMode::SimplePath, IntegratorMode::SimpleVolPath, IntegratorMode::LightPath,
+		};
+		const QString labels[] = {
+			tr("Path Tracer (default)"), tr("SPPM (Photon Mapping)"), tr("BDPT (Bidirectional)"),
+			tr("MLT (Metropolis Light Transport)"), tr("RandomWalk (reference, unbiased)"),
+			tr("Ambient Occlusion (debug)"), tr("SimplePath (reference)"),
+			tr("SimpleVolPath (reference, volumetric)"), tr("LightPath (light tracer)"),
+		};
+		for (size_t i = 0; i < sizeof(modes) / sizeof(modes[0]); ++i) {
+			icon_tint::addItem(m_integratorCombo, ":/icons/info.svg", labels[i],
+				static_cast<int>(modes[i]), m_activeTheme.textBody);
+			m_integratorCombo->setItemData(m_integratorCombo->count() - 1,
+				wrapTooltipHtml(integratorDescription(modes[i])), Qt::ToolTipRole);
+		}
+	}
+	styleComboBox(m_integratorCombo);
+	m_integratorCombo->setToolTip(
+		tr("Which rendering algorithm to use. Path Tracer (the default) is the\n"
+		"well-tested, general-purpose choice - the alternates below trade\n"
+		"generality for a specific technique (photon mapping, bidirectional/\n"
+		"Metropolis light transport, or a handful of unbiased reference and\n"
+		"debug integrators). All alternates are CPU-only except SPPM, and none\n"
+		"can be combined with Generate Video mode.\n\n"
+		"Sampler/Spectral/Exposure/Tonemap/Stats below only affect the\n"
+		"default Path Tracer - see each control's own tooltip."));
+	connect(m_integratorCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+			this, &MainWindow::onIntegratorChanged);
+	QFormLayout *integratorSelectorLayout = new QFormLayout();
+	integratorSelectorLayout->setVerticalSpacing(10);
+	integratorSelectorLayout->setHorizontalSpacing(10);
+	// Same two-column labelWithInfo() row shape every sibling control on
+	// the Basic Settings tab uses (Renderer/GPU Backend/Quality/
+	// Resolution), so the label column stays aligned across all of them. A
+	// SEPARATE dynamic icon here (an earlier version of this row) turned
+	// out to duplicate the per-item icon Qt already shows natively inside
+	// the closed combo box (every item now carries its own "(i)" +
+	// tooltip, added above via icon_tint::addItem/setItemData(Qt::ToolTipRole))
+	// - that already covers "what does the currently-selected integrator
+	// do" without a second, differently-aligned icon widget.
+	integratorSelectorLayout->addRow(labelWithInfo(tr("Integrator:"),
+		tr("The rendering algorithm itself, not just how fast it runs. Path "
+		"Tracer (the default) is the general-purpose, well-tested choice "
+		"used everywhere else in this app.\n\n"
+		"SPPM (Stochastic Progressive Photon Mapping) handles hard caustics/"
+		"glass scenes path tracing struggles with. BDPT and MLT (built on "
+		"BDPT) trace light paths from both the camera and the light source "
+		"and connect them - better for some difficult lighting, area lights "
+		"only. RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, "
+		"and LightPath are reference/debug integrators - simpler, often "
+		"noisier or narrower in scope (e.g. Ambient Occlusion isn't a lit "
+		"render at all), useful for isolating what a specific technique "
+		"contributes.\n\nHover any item in the dropdown for details on that "
+		"specific integrator.")),
+		m_integratorCombo);
+	integratorGroupLayout->addLayout(integratorSelectorLayout);
+
+	m_integratorVideoWarningLabel = new QLabel(
+		tr("⚠ Generate Video cannot be combined with an alternate integrator - "
+		"switch back to Path Tracer, or to Single Image output."), optionsTab);
+	m_integratorVideoWarningLabel->setObjectName("statusWarning");
+	m_integratorVideoWarningLabel->setWordWrap(true);
+	m_integratorVideoWarningLabel->setVisible(false);
+	integratorGroupLayout->addWidget(m_integratorVideoWarningLabel);
 
 	m_integratorOptionsStack = new QStackedWidget(m_integratorOptionsGroup);
 

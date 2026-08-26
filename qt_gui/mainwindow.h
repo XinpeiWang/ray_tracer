@@ -757,8 +757,8 @@ struct AdvancedRenderFlags {
 
 // Which alternate integrator (--sppm/--bdpt/--mlt/--randomwalk/--ao/
 // --simplepath/--simplevolpath/--lightpath) to use instead of the default
-// path tracer - see the Integrator combo (Basic Settings tab) and the
-// "Integrator Options" group (Render Options tab). No CLI analog exists
+// path tracer - see the Integrator combo and its per-mode sub-flags, both
+// in the "Integrator" group on the Render Options tab. No CLI analog exists
 // for this as a single enum - launcher_args.h uses 8 independent bool
 // use_X fields with hand-written mutual exclusion in main.cpp - but a
 // combo box is naturally single-selection, so the GUI gets a real enum
@@ -1482,22 +1482,6 @@ private:
 	// Basic Tab
 	QComboBox *m_renderModeCombo;       // GPU vs CPU selection
 	QComboBox *m_gpuBackendCombo;       // Recursive vs wavefront GPU path tracer (only meaningful under GPU)
-	// Which alternate integrator (--sppm/--bdpt/--mlt/--randomwalk/--ao/
-	// --simplepath/--simplevolpath/--lightpath) to use instead of the
-	// default path tracer - see IntegratorMode's own comment and
-	// onIntegratorChanged(). All 7 non-SPPM alternates are CPU-only (the
-	// CLI just warns and forces CPU under --gpu, never rejects), so
-	// onIntegratorChanged() auto-switches m_renderModeCombo to CPU and
-	// disables it whenever one of those 7 is picked.
-	QComboBox *m_integratorCombo;
-	// --video hard-rejects any non-Default integrator (an animated
-	// camera-path flythrough and an alternate integrator's own render
-	// loop can't be combined) - same class of guaranteed CLI rejection as
-	// an animated-camera scene + --video, which this GUI already doesn't
-	// block at the click, just lets fail through renderComplete(). This
-	// label adds a non-blocking heads-up before that happens, toggled by
-	// both onModeChanged() and onIntegratorChanged().
-	QLabel *m_integratorVideoWarningLabel;
 	QComboBox *m_qualityPresetCombo;    // Quality preset dropdown
 	QComboBox *m_resolutionCombo;       // Resolution preset dropdown
 	QLineEdit *m_outputPathEdit;        // Output file path (timestamped by default)
@@ -1549,12 +1533,29 @@ private:
 	QCheckBox *m_denoiseCheck;          // --denoise (GPU recursive backend only)
 	QCheckBox *m_optixValidateCheck;    // --optix-validate (GPU only)
 
-	// "Integrator Options" group (createRenderOptionsTab()) - sub-flag
-	// widgets for the 5 alternate integrators that have any (SPPM/BDPT/
-	// MLT/AO/SimplePath); RandomWalk/SimpleVolPath/LightPath/Default share
-	// one placeholder page (m_integratorNoOptionsLabel) instead of an
-	// empty page each. m_integratorOptionsStack's page index per
-	// IntegratorMode is defined in onIntegratorChanged() (mainwindow_slots.cpp).
+	// "Integrator" group (createRenderOptionsTab()): the algorithm selector
+	// itself, plus sub-flag widgets for the 5 alternate integrators that
+	// have any (SPPM/BDPT/MLT/AO/SimplePath); RandomWalk/SimpleVolPath/
+	// LightPath/Default share one placeholder page (m_integratorNoOptionsLabel)
+	// instead of an empty page each. m_integratorOptionsStack's page index
+	// per IntegratorMode is defined in onIntegratorChanged() (mainwindow_slots.cpp).
+	//
+	// Which alternate integrator (--sppm/--bdpt/--mlt/--randomwalk/--ao/
+	// --simplepath/--simplevolpath/--lightpath) to use instead of the
+	// default path tracer - see IntegratorMode's own comment and
+	// onIntegratorChanged(). All 7 non-SPPM alternates are CPU-only (the
+	// CLI just warns and forces CPU under --gpu, never rejects), so
+	// onIntegratorChanged() auto-switches m_renderModeCombo to CPU and
+	// disables it whenever one of those 7 is picked.
+	QComboBox *m_integratorCombo;
+	// --video hard-rejects any non-Default integrator (an animated
+	// camera-path flythrough and an alternate integrator's own render
+	// loop can't be combined) - same class of guaranteed CLI rejection as
+	// an animated-camera scene + --video, which this GUI already doesn't
+	// block at the click, just lets fail through renderComplete(). This
+	// label adds a non-blocking heads-up before that happens, toggled by
+	// both onModeChanged() and onIntegratorChanged().
+	QLabel *m_integratorVideoWarningLabel;
 	// No isEnabled() gating needed on these in captureRenderJob() - only
 	// the currently-selected integrator's own fields are ever read by
 	// RenderController::start()'s switch, so a stale value from a hidden
