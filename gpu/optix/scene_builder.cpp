@@ -30,6 +30,7 @@
 #include "../../src/shared/cameras.h"
 #include "../../src/shared/mtl_parse.h"
 #include "../../src/shared/cornell_box_data.h"
+#include "../../src/shared/fresnel.h"  // CauchyCoefficientsFromAbbe() - add_dispersive_dielectric/add_dispersive_rough_dielectric
 // Declarations only (no STB_IMAGE_IMPLEMENTATION) - the actual
 // implementation is already compiled once into cpu_renderer.lib (see
 // src/external/stb_image_impl.cpp), and launcher.vcxproj always links
@@ -110,6 +111,31 @@ namespace {
 		return idx;
 	}
 
+	// Wavelength-dependent (chromatic dispersion) Dielectric - GPU-wavefront
+	// counterpart of CPU's dielectric::make_dispersive(eta_d, abbe_number).
+	// eta_d/abbe_number are the same two Abbe-number inputs CPU takes; the
+	// Cauchy (A, B) pair is derived once here, at scene-build time (host-
+	// side, CauchyCoefficientsFromAbbe() is not CPU_GPU-tagged - it doesn't
+	// need to be, this never runs per-ray), and stored in MaterialData's
+	// dispersive_extra union slot for wavefront_kernels.cu's
+	// evaluate_materials_dielectric() to read per-hit. m.ior stays the flat
+	// eta_d value - unused once dispersive_extra.cauchy_A > 0 marks this
+	// material dispersive, but harmless to leave set (matches what a
+	// non-dispersive add_dielectric() call already looks like).
+	inline int add_dispersive_dielectric(SceneData& scene, float eta_d, float abbe_number,
+										  float3 transmissionFilter = make_float3(1.0f, 1.0f, 1.0f)) {
+		const int idx = safe_cast_to_int(scene.materials.size());
+		double A, B;
+		CauchyCoefficientsFromAbbe(static_cast<double>(eta_d), static_cast<double>(abbe_number), A, B);
+		MaterialData m{};
+		m.type = MaterialType::Dielectric;
+		m.ior = eta_d;
+		m.transmission_filter = transmissionFilter;
+		m.dispersive_extra = { static_cast<float>(A), static_cast<float>(B), 0.0f };
+		scene.materials.push_back(m);
+		return idx;
+	}
+
 	inline int add_diffuse_light(SceneData& scene, float3 emission, int textureIdx = -1) {
 		const int idx = safe_cast_to_int(scene.materials.size());
 		MaterialData m{};
@@ -131,6 +157,22 @@ namespace {
 		m.type = MaterialType::RoughDielectric;
 		m.roughness = roughness;
 		m.ior = ior;
+		scene.materials.push_back(m);
+		return idx;
+	}
+
+	// Wavelength-dependent RoughDielectric - see add_dispersive_dielectric()'s
+	// own comment, same shape, GPU-wavefront counterpart of CPU's
+	// rough_dielectric::make_dispersive(eta_d, abbe_number, roughness).
+	inline int add_dispersive_rough_dielectric(SceneData& scene, float roughness, float eta_d, float abbe_number) {
+		const int idx = safe_cast_to_int(scene.materials.size());
+		double A, B;
+		CauchyCoefficientsFromAbbe(static_cast<double>(eta_d), static_cast<double>(abbe_number), A, B);
+		MaterialData m{};
+		m.type = MaterialType::RoughDielectric;
+		m.roughness = roughness;
+		m.ior = eta_d;
+		m.dispersive_extra = { static_cast<float>(A), static_cast<float>(B), 0.0f };
 		scene.materials.push_back(m);
 		return idx;
 	}
@@ -2295,6 +2337,70 @@ static void build_realistic_camera_scene_gpu(SceneData& scene) {
 	scene.spheres.push_back(lightSphere);
 	scene.lightIndices.push_back(static_cast<int>(scene.spheres.size()) - 1);
 	scene.lightKinds.push_back(GpuLightKind::Sphere);
+}
+
+/// @brief B23/B24: Glass/Frosted Prism Dispersion geometry, screen, and
+/// light - shared by both scenes (case 131/136 below), parameterized on the
+/// glass material the same way CPU's own build_prism_dispersion_geometry()
+/// is (src/TheRestOfYourLife/scenes_materials.h) - only the material itself
+/// (smooth vs. frosted dispersive dielectric) differs between the two.
+/// Direct GPU port of that function plus build_prism_dispersion_punct():
+/// same prism cross-section, catcher screen, and distant light, byte-for-
+/// byte the same coordinates.
+static void build_prism_dispersion_gpu(SceneData& scene, int mat_glass) {
+	const int mat_screen = add_lambertian(scene, make_float3(0.9f, 0.9f, 0.9f));
+
+	const float3 A(make_float3(0.0f, 0.0f, 0.0f));
+	const float3 B(make_float3(0.0f, 0.0f, 140.0f));
+	const float3 C(make_float3(0.0f, 121.0f, 70.0f));
+	const float3 depth = make_float3(150.0f, 0.0f, 0.0f);
+
+	auto push_quad = [&](float3 Q, float3 u, float3 v, int matIdx) {
+		QuadData q{};
+		q.Q = Q; q.u = u; q.v = v;
+		const float3 c = cross(u, v);
+		q.w = c;
+		q.normal = normalize(c);
+		q.D = dot(q.normal, q.Q);
+		q.materialIdx = matIdx;
+		scene.quads.push_back(q);
+	};
+	// 3 rectangular sides - same outward-normal winding as the CPU
+	// geometry's own comment (scenes_materials.h).
+	push_quad(A, depth, B - A, mat_glass);  // base
+	push_quad(B, depth, C - B, mat_glass);  // exit slant
+	push_quad(C, depth, A - C, mat_glass);  // entry slant
+
+	// 2 triangular end caps - same winding as CPU's mesh_data
+	// (indices {0,1,2, 3,5,4} into {A,B,C,A+depth,B+depth,C+depth}).
+	{
+		TriangleData t{};
+		t.p0 = A; t.p1 = B; t.p2 = C;
+		t.materialIdx = mat_glass;
+		scene.triangles.push_back(t);
+	}
+	{
+		TriangleData t{};
+		t.p0 = A + depth; t.p1 = C + depth; t.p2 = B + depth;
+		t.materialIdx = mat_glass;
+		scene.triangles.push_back(t);
+	}
+
+	// Catcher screen.
+	push_quad(make_float3(-300.0f, -300.0f, 600.0f),
+			  make_float3(600.0f, 0.0f, 0.0f),
+			  make_float3(0.0f, 700.0f, 0.0f), mat_screen);
+
+	// Distant light - dir is TOWARD the light, see DistantLightData's own
+	// comment (src/shared/punctual_lights.h).
+	float3 dir = normalize(make_float3(0.0f, 0.06f, -1.0f));
+	PunctualLightGPU light{};
+	light.kind = PunctualLightKind::Distant;
+	light.distant.dir_x = dir.x; light.distant.dir_y = dir.y; light.distant.dir_z = dir.z;
+	light.distant.ir = 1.0f; light.distant.ig = 1.0f; light.distant.ib = 1.0f;
+	light.distant.scale = 3.0f;
+	light.distant.scene_radius = 1000.0f;
+	scene.punctualLights.push_back(light);
 }
 
 /// @brief Scene 24: HDRI Sky. Matches CPU build_hdri_sky_world() (ground +
@@ -5824,6 +5930,48 @@ bool build_scene(
 								const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
 								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
 								build_pinhole_camera_params(lookfrom, lookat, vup, 40.0f, aspect, 1.0f, camera_params);
+								break;
+							}
+
+							case 136: {  // B24: Frosted Prism Dispersion (same prism as B23, rough_dielectric instead of dielectric)
+								// Geometry/screen/light shared with case 131 (B23) via
+								// build_prism_dispersion_gpu() - only the glass material
+								// differs (frosted instead of smooth).
+								const int mat_glass = add_dispersive_rough_dielectric(scene, 0.08f, 1.52f, 59.0f);
+								build_prism_dispersion_gpu(scene, mat_glass);
+
+								const float3 lookfrom = make_float3(
+									static_cast<float>(cam_x),
+									static_cast<float>(cam_y),
+									static_cast<float>(cam_z)
+								);
+								const float3 lookat = make_float3(75.0f, 75.0f, 250.0f);
+								const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 30.0f, aspect, 1.0f, camera_params);
+								break;
+							}
+
+							case 131: {  // B23: Glass Prism Dispersion (GPU wavefront - see MaterialData::dispersive_extra's own comment)
+								// Geometry/screen/light: build_prism_dispersion_gpu() above -
+								// direct GPU port of CPU build_prism_dispersion_geometry()/
+								// build_prism_dispersion()/build_prism_dispersion_punct()
+								// (src/TheRestOfYourLife/scenes_materials.h), byte-for-byte
+								// the same coordinates.
+								const int mat_glass = add_dispersive_dielectric(scene, 1.52f, 59.0f);
+								build_prism_dispersion_gpu(scene, mat_glass);
+
+								// Camera: identical to CameraConfig kPrismCamera (scene_registry.h)
+								// - CameraMode::UserControlled, same shape as case 0/135 above.
+								const float3 lookfrom = make_float3(
+									static_cast<float>(cam_x),
+									static_cast<float>(cam_y),
+									static_cast<float>(cam_z)
+								);
+								const float3 lookat = make_float3(75.0f, 75.0f, 250.0f);
+								const float3 vup = make_float3(0.0f, 1.0f, 0.0f);
+								const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+								build_pinhole_camera_params(lookfrom, lookat, vup, 30.0f, aspect, 1.0f, camera_params);
 								break;
 							}
 

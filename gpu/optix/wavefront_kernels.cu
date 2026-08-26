@@ -2488,7 +2488,15 @@ extern "C" __global__ void evaluate_materials(
 		break;
 	}
 	case MaterialType::Dielectric: {
-		float eta = dot(h.rayDir, normal) < 0.0f ? (1.0f / mat.ior) : mat.ior;
+		// h.frontFace, NOT dot(h.rayDir, normal) - see
+		// evaluate_materials_dielectric()'s identical Dielectric case (this
+		// file) for why the dot-product re-derivation is always wrong
+		// (always negative by construction against the pre-flipped
+		// `normal`). This case is unreachable in practice (see the comment
+		// below), but kept bug-for-bug consistent with the live case rather
+		// than left as a misleading template for anyone extending this
+		// switch.
+		float eta = h.frontFace ? (1.0f / mat.ior) : mat.ior;
 		float3 unit_dir = normalize(h.rayDir);
 		float  cos_t = fminf(dot(-unit_dir, normal), 1.0f);
 		float  sin_t = sqrtf(1.0f - cos_t * cos_t);
@@ -3598,14 +3606,40 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		return s;
 	};
 
+	// Dielectric/RoughDielectric only: this hit's material ior, unless
+	// MaterialData::dispersive_extra marks it dispersive (cauchy_A > 0), in
+	// which case the flat .ior is replaced by the Cauchy-formula ior at this
+	// path's hero wavelength (swl.lambda[0]) - CauchyEta() is already
+	// CPU_GPU-tagged (src/shared/fresnel.h), no device-side port needed,
+	// same formula CPU's already-shipped dielectric/rough_dielectric
+	// dispersion uses. See MaterialData::dispersive_extra's own comment
+	// (optix_types.h) for the sentinel convention.
+	const bool matIsDispersive = mat.dispersive_extra.cauchy_A > 0.0f;
+	const float dispersiveIor = matIsDispersive
+		? CauchyEta(swl.lambda[0], mat.dispersive_extra.cauchy_A, mat.dispersive_extra.cauchy_B)
+		: mat.ior;
+
 	switch (mat.type) {
 	case MaterialType::Dielectric: {
-		float eta = dot(h.rayDir, normal) < 0.0f ? (1.0f / mat.ior) : mat.ior;
+		// h.frontFace, NOT dot(h.rayDir, normal) - `normal` here is already
+		// flipped to face the incoming ray (see __closesthit__wf_quad/
+		// __closesthit__wf_sphere's own "Flip to face the ray" comment), so
+		// dot(h.rayDir, normal) is always negative BY CONSTRUCTION regardless
+		// of which side was actually hit - re-deriving front/back from it
+		// silently always took the "entering" branch, using 1/ior even when
+		// exiting the glass. h.frontFace is the pre-flip boolean this needs,
+		// same fix the RoughDielectric case below already gets right via its
+		// own rd_front_face. Bug found while verifying B23 (Glass Prism
+		// Dispersion) on wavefront: harmless-looking for a single-bounce
+		// sphere (A1), but compounds badly over the prism's many internal
+		// TIR bounces, making the whole solid render far too transparent.
+		bool front_face = h.frontFace != 0;
+		float eta = front_face ? (1.0f / dispersiveIor) : dispersiveIor;
 		float3 unit_dir = normalize(h.rayDir);
 		float  cos_t = fminf(dot(-unit_dir, normal), 1.0f);
 		float  sin_t = sqrtf(1.0f - cos_t * cos_t);
 		bool   cannot_refract = eta * sin_t > 1.0f;
-		float  r0 = (1.0f - mat.ior) / (1.0f + mat.ior);
+		float  r0 = (1.0f - dispersiveIor) / (1.0f + dispersiveIor);
 		r0 = r0 * r0;
 		float schlick = r0 + (1.0f - r0) * powf(1.0f - cos_t, 5.0f);
 		bool is_transmission;
@@ -3621,13 +3655,21 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		is_specular = true;
 		// pbrt-v4 etaScale - see this function's own eventEta local comment.
 		if (is_transmission) eventEta = eta;
+		// Collapse the hero-wavelength set to lambda[0] on the one event
+		// that's actually wavelength-dependent for smooth Dielectric (the
+		// refraction itself - the Fresnel-weighted reflect/refract COIN FLIP
+		// above already used the dispersive eta, but a reflected ray leaves
+		// this surface with no further per-wavelength distinction to carry).
+		// Matches CPU dielectric's own TerminateSecondary() gate exactly
+		// (camera.h: `if (srec.is_transmission && disp) swl.TerminateSecondary();`).
+		if (matIsDispersive && is_transmission) swl.TerminateSecondary();
 		break;
 	}
 	case MaterialType::RoughDielectric: {
 		float rd_alpha = wf_glossy_alpha(mat, (bool)h.any_nonspecular);
 		glossyAlphaForNEE = rd_alpha;
 		bool rd_front_face = h.frontFace != 0;
-		float rd_ri = rd_front_face ? (1.0f / mat.ior) : mat.ior;
+		float rd_ri = rd_front_face ? (1.0f / dispersiveIor) : dispersiveIor;
 		float3 n = normal;
 		float3 up_v = (fabsf(n.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
 		float3 tan_v  = normalize(cross(up_v, n));
@@ -3651,7 +3693,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		} else {
 			// Refract
 			float3 wm_world = wm_x*tan_v + wm_y*bitan + wm_z*n;
-			float eta = rd_front_face ? (1.0f / mat.ior) : mat.ior;
+			float eta = rd_front_face ? (1.0f / dispersiveIor) : dispersiveIor;
 			float3 refracted = wf_refract(normalize(h.rayDir), wm_world, eta);
 			wo_x = dot(refracted, tan_v); wo_y = dot(refracted, bitan); wo_z = dot(refracted, n);
 			scattered_dir = refracted;
@@ -3666,11 +3708,34 @@ extern "C" __global__ void evaluate_materials_dielectric(
 			attenuation = SS(w);
 		}
 		scattered   = true;
+		// Unlike smooth Dielectric above, BOTH lobes here are Fresnel/eta-
+		// dependent (RoughDielectricBxDF's reflection lobe is not eta-
+		// independent the way a perfect mirror's would be), so termination
+		// fires on every dispersive hit regardless of which lobe ends up
+		// sampled - matches CPU rough_dielectric's own already-shipped rule
+		// exactly (material_pbrt.h's scatter(), same reasoning). Deliberately
+		// placed AFTER the wo_z<=0 rejection break above (not right after
+		// rd_ri is computed) - CPU only ever calls TerminateSecondary() once
+		// a scatter event is confirmed (camera.h: `if (!scattered) break;`
+		// precedes it), and this function's own `if (!scattered) { ...
+		// addToFramebuffer(...); return; }` tail converts already-accumulated
+		// `radiance` (weighted under the OLD, un-terminated pdfs from earlier
+		// bounces) to XYZ using whatever `swl` state is current - collapsing
+		// it before a possible rejection would bias that flush's per-channel
+		// weights (one channel ~4x too high, three dropped) for a code path
+		// that never actually reaches a dispersive event at all.
+		if (matIsDispersive) swl.TerminateSecondary();
 
 		if (!rd_dist.EffectivelySmooth()) {
 			is_specular = false;
 			matEta = rd_ri;
-			RoughDielectricBxDF<float> rd_bxdf{ mat.ior, rd_alpha, rd_alpha };
+			// rd_bxdf's own .ior member is dead for .pdf() (eta is the
+			// explicit rd_ri runtime parameter below, matching CPU
+			// rough_dielectric's identical "the BxDF's stored ior field is
+			// never read by f()/pdf()/sample_local()" pattern) - set it to
+			// dispersiveIor anyway so nothing here still displays the flat,
+			// non-dispersive value.
+			RoughDielectricBxDF<float> rd_bxdf{ dispersiveIor, rd_alpha, rd_alpha };
 			brdf_pdf_override = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, wo_x, wo_y, wo_z);
 			phaseWo = wi_w;
 		} else {

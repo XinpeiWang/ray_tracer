@@ -56,7 +56,7 @@ numbered sections below for the narrative detail behind any row.
 | Materials | Hair (Marschner/Chiang) | Y / Y / Y | N/A |
 | Materials | Measured (`.bsdf` tensor) | Y / Y / Y | Unresolved filename → falls back to Lambertian (same gate on both backends) |
 | Materials | Principled | Y / Y / Y | N/A |
-| Materials | Dispersion (`dielectric`, `rough_dielectric`) | CPU only | GPU request → falls back to flat, non-dispersive IOR, silently (no warning — not a scene-load failure) |
+| Materials | Dispersion (`dielectric`, `rough_dielectric`) | CPU + GPU-wavefront / GPU-recursive falls back | GPU-recursive request → falls back to flat, non-dispersive IOR, silently (no warning — not a scene-load failure) |
 | Materials | Unrecognized pbrt `Material` kind | N | Falls back to flat Lambertian using base color, warned by name |
 | Textures | Procedural (checker/noise/marble/windy/dots/etc.) | Y | N/A |
 | Textures | Image textures + mipmap/EWA filter | Y | N/A |
@@ -150,18 +150,37 @@ eval on all three backends), `principled`, `diffuse_light`, `isotropic`
 (medium phase-function material), normal/bump mapping wrappers.
 
 **Dispersion** (wavelength-dependent IOR): both `dielectric` and
-`rough_dielectric`, via the same two-term Cauchy formula
-(`dielectric::make_dispersive(eta_d, abbe_number)` /
+`rough_dielectric`, on **CPU and GPU-wavefront**. CPU: same two-term Cauchy
+formula for both (`dielectric::make_dispersive(eta_d, abbe_number)` /
 `rough_dielectric::make_dispersive(eta_d, abbe_number, roughness)`,
-`material_simple.h` / `material_pbrt.h`) — **CPU only**, and only reachable
-through `--spectral`. `rough_dielectric`'s dispersive path is real NEE/MIS,
-not an approximation reusing the smooth material's specular-only shortcut:
-a delta light (point/spot/distant) is reachable only via NEE, never by
-chance through BSDF sampling, so `scattering_pdf()` itself had to become
+`material_simple.h` / `material_pbrt.h`), reachable through `--spectral`.
+`rough_dielectric`'s CPU dispersive path is real NEE/MIS, not an
+approximation reusing the smooth material's specular-only shortcut: a delta
+light (point/spot/distant) is reachable only via NEE, never by chance
+through BSDF sampling, so `scattering_pdf()` itself had to become
 wavelength-aware too (`scattering_pdf_dispersive()`), not just the initial
-`scatter()`. See `B24` (Frosted Prism Dispersion, Materials category) for
-the demo, a frosted sibling of `B23`'s smooth dispersive prism. **Gap**: no
-dispersion anywhere on GPU (recursive or wavefront).
+`scatter()`. GPU-wavefront: `gpu/optix/scene_builder.cpp`'s
+`add_dispersive_dielectric()`/`add_dispersive_rough_dielectric()` derive the
+same Cauchy coefficients at scene-build time and store them in
+`MaterialData`'s `dispersive_extra` union slot (`optix_types.h`);
+`wavefront_kernels.cu`'s `evaluate_materials_dielectric()` resolves the
+per-hit ior via `CauchyEta()` at the path's hero wavelength when dispersive,
+for both its `Dielectric` and `RoughDielectric` cases, reusing wavefront's
+own always-on `SampledWavelengths<4>` hero-wavelength pipeline (no new
+wavelength-tracking infrastructure needed - unlike GPU-recursive, wavefront
+already threads hero wavelengths through every path for its internal
+spectral-upsampling pipeline). See `B23`/`B24` (Glass/Frosted Prism
+Dispersion, Materials category) - both `gpu_compatible=true`, verified
+against CPU's `--spectral` reference render on both GPU backends. Fixed a
+real, pre-existing wavefront bug found while verifying this: the smooth
+`Dielectric` case re-derived entering/exiting from
+`dot(rayDir, normal) < 0` against the already-front-face-flipped `normal`
+(always false-negative, always took the "entering" branch) instead of the
+correctly-tracked `h.frontFace` the `RoughDielectric` case next to it
+already used - harmless-looking for a single-bounce sphere (A1) but visibly
+wrong for the prism's many internal total-internal-reflection bounces. **Gap**:
+no dispersion at all on GPU-recursive (would need its own wavelength-
+tracking apparatus built from scratch - see §9).
 
 **Not a gap, just a scope note**: `--spectral`'s own material whitelist
 (`cpu_interface.cpp`'s `spectral_scan_hittable()`, via the `spectral_scan_material()`
@@ -307,12 +326,13 @@ Two independent, non-interacting spectral code paths exist:
 - **CPU `--spectral`**: opt-in flag, default path tracer only, 6-material
   whitelist (fails closed on anything else), hero-wavelength Monte Carlo,
   reduced to RGB once per sample (not accumulated into a real spectral
-  film). Only source of dispersion in the whole codebase (`dielectric`
-  only). See §2.
+  film). Supports dispersion (`dielectric` and `rough_dielectric`). See §2.
 - **GPU-wavefront's internal spectral pipeline**: always-on, not a flag,
   not user-togglable — this is simply how the wavefront integrator itself
   is implemented internally (CIE tables + D65 + sRGB-upsampling table on
-  device). No dispersion.
+  device). Also supports dispersion now (`dielectric` and
+  `rough_dielectric`, piggybacking on this same always-on hero-wavelength
+  pipeline) — see §2.
 
 **Gap**: no real accumulating spectral film/sensor. `PixelSensor`
 (`src/shared/pixel_sensor.h`) and `SpectralFilm` (`src/shared/film.h`) are
@@ -324,9 +344,9 @@ and reducing once at the end (pbrt-v4's own architecture).
 
 **Gap**: GPU-recursive has no spectral path at all (RGB only).
 
-**Gap**: no dispersion on GPU (see §2) — CPU dispersion now covers both
-`dielectric` and `rough_dielectric`, GPU (recursive or wavefront) has
-neither.
+**Gap**: no dispersion on GPU-recursive (see §2) — GPU-wavefront now has it
+(both `dielectric` and `rough_dielectric`, matching CPU); GPU-recursive has
+no wavelength-tracking apparatus at all to build it on.
 
 ## 10. Acceleration Structures
 
@@ -392,9 +412,11 @@ relative to it specifically).
    reduces to RGB every sample instead of accumulating spectral radiance
    pbrt-v4-style; the dead `PixelSensor`/`SpectralFilm` classes suggest
    this was planned and abandoned partway.
-3. **No GPU dispersion** (§2, §9) — CPU dispersion now covers both smooth
-   (`dielectric`) and rough (`rough_dielectric`) glass; GPU (recursive or
-   wavefront) has neither.
+3. **No GPU-recursive dispersion** (§2, §9) — GPU-wavefront now has real
+   dispersion (both `dielectric` and `rough_dielectric`, matching CPU);
+   GPU-recursive has none, and would need its own wavelength-tracking
+   apparatus built from scratch (no `SampledWavelengths` anywhere in that
+   backend today, unlike wavefront's always-on hero-wavelength pipeline).
 4. **No motion blur anywhere, camera or object** (§6) — verified this isn't
    just a loader gap: `AnimatedTransform` (`src/shared/animated_transform.h`)
    is complete and unit-tested but wired into nothing; no backend's camera
@@ -460,9 +482,10 @@ all of them, and it's worth knowing which is which before relying on one.
 - A `Shape` type this loader can't build (e.g. a non-cubic/non-Bezier
   `curve`) → dropped with a "shape not supported" warning; nothing is
   rendered in its place.
-- Dispersion on GPU (either backend) → no approximate dispersion; it's just
-  flat, non-dispersive IOR, silently (no warning, since this isn't a
-  scene-loading failure — it's simply a code path that was never built).
+- Dispersion on GPU-recursive → no approximate dispersion; it's just flat,
+  non-dispersive IOR, silently (no warning, since this isn't a scene-loading
+  failure — it's simply a code path that was never built). GPU-wavefront now
+  has real dispersion (both `dielectric` and `rough_dielectric`) — see §2.
 - The orphaned scaffolding (§11: `UniformLightSampler`, `BVHLightSampler2`,
   `ExhaustiveLightSampler`, ReSTIR, `PixelSensor`/`SpectralFilm`) — these
   aren't fallbacks *for* anything and don't *have* fallbacks either; they're

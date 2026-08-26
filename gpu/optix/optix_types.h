@@ -807,6 +807,22 @@ struct MaterialData {
 		// probability of B winning at any given shading point, matching CPU's
 		// mix_material/pbrt_flatten::Material::mixWeight convention exactly).
 		struct { float mixMaterialAIdx, mixMaterialBIdx, mixWeight; } mix_extra;
+		// Dielectric/RoughDielectric: two-term Cauchy dispersion coefficients
+		// (n(lambda) = cauchy_A + cauchy_B/lambda^2 - see src/shared/fresnel.h's
+		// CauchyEta()/CauchyCoefficientsFromAbbe()), matching CPU's already-
+		// shipped dielectric::make_dispersive()/rough_dielectric::
+		// make_dispersive(). cauchy_A > 0.0f means "this material is
+		// dispersive" - a real Cauchy A coefficient is always ~1.4-1.9, so 0
+		// (the union's zero-initialized default) is a safe sentinel for "not
+		// dispersive, use the flat .ior above", no separate bool needed. Note
+		// this is a different shape than every other slot in this union
+		// (eta_c/hair_extra/.../mix_extra above): those are selected purely
+		// by MaterialType, with no secondary in-union value test - this is
+		// the first one where MaterialType alone (Dielectric/RoughDielectric)
+		// isn't enough and a runtime float comparison also has to fire. If a
+		// future Dielectric/RoughDielectric variant ever needs cauchy_A <= 0
+		// to be meaningful, this sentinel needs to become a real tag instead.
+		struct { float cauchy_A, cauchy_B, _dispersive_pad; } dispersive_extra;
 	};
 
 	union {

@@ -896,8 +896,8 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         },
         {
             "B23", 131, SceneNames::GlassPrismDispersion, SceneCategories::Materials,
-            "A real glass prism splitting a parallel white light into a visible chromatic fan (--spectral only - see dielectric's dispersive constructor, material_simple.h)",
-            "Medium", 200, false, false,
+            "A real glass prism splitting a parallel white light into a visible chromatic fan (CPU --spectral or GPU --wavefront; GPU-recursive stays flat/non-dispersive - see dielectric's dispersive constructor, material_simple.h)",
+            "Medium", 200, false, true,
             kPrismCamera,
             build_prism_dispersion,
             no_lights,
@@ -910,8 +910,8 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             // (scenes_materials.h) for why this exercises rough_dielectric's
             // real NEE/MIS path, not just its initial scatter.
             "B24", 136, SceneNames::FrostedPrismDispersion, SceneCategories::Materials,
-            "The same glass prism as B23, frosted (rough_dielectric) instead of smooth - same chromatic fan, blurred by the roughness (--spectral only)",
-            "Medium", 200, false, false,
+            "The same glass prism as B23, frosted (rough_dielectric) instead of smooth - same chromatic fan, blurred by the roughness (CPU --spectral or GPU --wavefront; GPU-recursive stays flat/non-dispersive)",
+            "Medium", 200, false, true,
             kPrismCamera,
             build_prism_dispersion_rough,
             no_lights,
