@@ -396,25 +396,33 @@ void MainWindow::processQueueIfIdle() {
 	startRenderJob(job);
 }
 
+QString MainWindow::integratorSuffixTag(IntegratorMode mode) {
+	switch (mode) {
+		case IntegratorMode::Default: return QString();
+		case IntegratorMode::Sppm: return tr(" · SPPM");
+		case IntegratorMode::Bdpt: return tr(" · BDPT");
+		case IntegratorMode::Mlt: return tr(" · MLT");
+		case IntegratorMode::RandomWalk: return tr(" · RandomWalk");
+		case IntegratorMode::Ao: return tr(" · AO");
+		case IntegratorMode::SimplePath: return tr(" · SimplePath");
+		case IntegratorMode::SimpleVolPath: return tr(" · SimpleVolPath");
+		case IntegratorMode::LightPath: return tr(" · LightPath");
+	}
+	return QString();
+}
+
+QString MainWindow::rendererLabel(bool useGPU, bool useWavefront) {
+	return useGPU ? (useWavefront ? tr("GPU-WF") : tr("GPU")) : tr("CPU");
+}
+
 QString MainWindow::describeRenderJob(const RenderJob &job) {
-	const QString renderer = job.useGPU ? (job.useWavefront ? tr("GPU-WF") : tr("GPU")) : tr("CPU");
+	const QString renderer = rendererLabel(job.useGPU, job.useWavefront);
 	const QString modeSuffix = job.videoMode ? tr(" · Video (%1f)").arg(job.videoFrames) : QString();
 	// A queued/current job's integrator materially changes both algorithm
 	// and render time - worth a short tag here even though it's blank for
 	// the common (Default) case, same as modeSuffix above being blank
 	// outside Video mode.
-	QString integratorSuffix;
-	switch (job.integratorOptions.mode) {
-		case IntegratorMode::Default: break;
-		case IntegratorMode::Sppm: integratorSuffix = tr(" · SPPM"); break;
-		case IntegratorMode::Bdpt: integratorSuffix = tr(" · BDPT"); break;
-		case IntegratorMode::Mlt: integratorSuffix = tr(" · MLT"); break;
-		case IntegratorMode::RandomWalk: integratorSuffix = tr(" · RandomWalk"); break;
-		case IntegratorMode::Ao: integratorSuffix = tr(" · AO"); break;
-		case IntegratorMode::SimplePath: integratorSuffix = tr(" · SimplePath"); break;
-		case IntegratorMode::SimpleVolPath: integratorSuffix = tr(" · SimpleVolPath"); break;
-		case IntegratorMode::LightPath: integratorSuffix = tr(" · LightPath"); break;
-	}
+	const QString integratorSuffix = integratorSuffixTag(job.integratorOptions.mode);
 	return tr("%1 — %2×%3 · %4spp · %5%6%7")
 		.arg(job.displayTitle)
 		.arg(job.width).arg(job.height)
@@ -968,6 +976,7 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 						addImagePreviewTab(finishedJob.displayTitle, finishedJob.sceneDescription,
 											pixmap, infoText, outputPath, pngPath);
 						saveRecentRender(finishedJob, pngPath, /*isVideo=*/false);
+						refreshRecentRendersList();
 						if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
 					} else {
 						m_statusLabel->setText(tr("✅ Render complete (%1s)").arg(totalTime, 0, 'f', 2));
@@ -1500,6 +1509,7 @@ void MainWindow::assembleVideoAutomatically(const QString &baseOutputPath, const
 		.arg(frameFiles.count());
 	addVideoPreviewTab(title, job.sceneDescription, videoPath, infoText);
 	saveRecentRender(job, videoPath, /*isVideo=*/true, title);
+	refreshRecentRendersList();
 	if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
 
 	onLogMessage(tr("Playing video inline: %1").arg(videoPath));

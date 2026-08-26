@@ -1262,6 +1262,12 @@ private:
 	                       const QString &displayTitleOverride = QString()) const;
 	QList<RecentRenderEntry> loadRecentRenders() const;
 	QString describeRecentRenderEntry(const RecentRenderEntry &entry) const;
+	// Rebuilds m_recentRendersList (creating it on first use if this is the
+	// very first entry the app has ever recorded) from a fresh
+	// loadRecentRenders() call. Called after every saveRecentRender() and
+	// after closePreviewSubTab(), so a render completed - or a tab closed -
+	// earlier this session shows up without needing an app restart.
+	void refreshRecentRendersList();
 
 	// Language selection and persistence - same shape as the theme menu just
 	// above, except switching still needs a fresh process under the hood
@@ -1686,11 +1692,10 @@ private:
 	// currentPreviewProperty()/updatePreviewSidebarForActiveTab().
 	SplitPreviewTabs *m_previewSubTabs = nullptr;
 	// Recent Renders list, inserted into m_previewSubTabs' empty-state
-	// prompt (SplitPreviewTabs::addToEmptyState()) at construction time -
-	// see createPreviewTab(). Never rebuilt after that (a render started
-	// and finished in the same session already gets its own live tab via
-	// the normal addImagePreviewTab()/addVideoPreviewTab() path, not by
-	// refreshing this list).
+	// prompt (SplitPreviewTabs::addToEmptyState()) - see createPreviewTab(),
+	// which builds it via the first refreshRecentRendersList() call. Null
+	// until the app has recorded at least one entry (see
+	// refreshRecentRendersList()'s own comment).
 	QListWidget *m_recentRendersList = nullptr;
 	QWidget *m_previewSidebar = nullptr; // Info/buttons pane; hidden while there are no sub-tabs - see updatePreviewSidebarForActiveTab()
 	QLabel *m_previewInfoLabel;         // Filename / resolution / size / render time - reflects whichever sub-tab is active
@@ -1764,6 +1769,11 @@ private:
 	void processQueueIfIdle();                // Dequeues and starts the front job if nothing is running
 	void refreshQueuePanel();                 // Rebuilds m_queueListWidget from m_renderQueue
 	static QString describeRenderJob(const RenderJob &job); // One-line queue-row summary
+	// Shared by describeRenderJob(), describeRecentRenderEntry()
+	// (recent_renders.cpp), and refreshStatusBarInfo() (mainwindow_actions.cpp) -
+	// previously identical switch/ternary logic copy-pasted in all three.
+	static QString integratorSuffixTag(IntegratorMode mode); // " · SPPM" etc., blank for Default
+	static QString rendererLabel(bool useGPU, bool useWavefront); // "CPU"/"GPU"/"GPU-WF"
 
 	// Elapsed render timer
 	QTimer *m_elapsedTimer;             // fires every second during render

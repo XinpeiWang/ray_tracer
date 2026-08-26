@@ -196,17 +196,7 @@ void MainWindow::refreshStatusBarInfo() {
 	// configuration" as those.
 	if (m_integratorCombo) {
 		const auto integrator = static_cast<IntegratorMode>(m_integratorCombo->currentData().toInt());
-		switch (integrator) {
-			case IntegratorMode::Default: break;
-			case IntegratorMode::Sppm: deviceText += tr(" · SPPM"); break;
-			case IntegratorMode::Bdpt: deviceText += tr(" · BDPT"); break;
-			case IntegratorMode::Mlt: deviceText += tr(" · MLT"); break;
-			case IntegratorMode::RandomWalk: deviceText += tr(" · RandomWalk"); break;
-			case IntegratorMode::Ao: deviceText += tr(" · AO"); break;
-			case IntegratorMode::SimplePath: deviceText += tr(" · SimplePath"); break;
-			case IntegratorMode::SimpleVolPath: deviceText += tr(" · SimpleVolPath"); break;
-			case IntegratorMode::LightPath: deviceText += tr(" · LightPath"); break;
-		}
+		deviceText += integratorSuffixTag(integrator);
 	}
 	m_statusDevice->setText(deviceText);
 	if (m_widthSpinBox && m_heightSpinBox && m_samplesSpinBox) {

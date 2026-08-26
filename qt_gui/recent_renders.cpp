@@ -2,9 +2,12 @@
 #include "scene_metadata_client.h"
 #include "settings_keys.h"
 
+#include <QAbstractItemView>
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
+#include <QListWidget>
+#include <QPixmap>
 #include <QSet>
 #include <QSettings>
 
@@ -206,10 +209,10 @@ void MainWindow::saveRecentRender(const RenderJob &job, const QString &previewPa
 	settings.endArray();
 }
 
-// Same renderer/integrator-suffix shape as describeRenderJob()
-// (mainwindow_slots.cpp) - reused as a template, not called directly,
-// since RecentRenderEntry isn't a RenderJob - plus a relative-time suffix
-// no other row format here needs.
+// Shares renderer/integrator-suffix formatting with describeRenderJob()
+// (mainwindow_slots.cpp) via rendererLabel()/integratorSuffixTag()
+// (mainwindow.h) - plus a relative-time suffix no other row format here
+// needs.
 QString MainWindow::describeRecentRenderEntry(const RecentRenderEntry &entry) const {
 	const qint64 secsAgo = QDateTime::currentDateTime().toSecsSinceEpoch() - entry.timestampEpochSecs;
 	QString whenText;
@@ -229,20 +232,9 @@ QString MainWindow::describeRecentRenderEntry(const RecentRenderEntry &entry) co
 			.arg(whenText);
 	}
 
-	const QString renderer = entry.useGPU ? (entry.useWavefront ? tr("GPU-WF") : tr("GPU")) : tr("CPU");
+	const QString renderer = rendererLabel(entry.useGPU, entry.useWavefront);
 	const QString modeSuffix = entry.isVideo ? tr(" · Video") : QString();
-	QString integratorSuffix;
-	switch (entry.integratorMode) {
-		case IntegratorMode::Default: break;
-		case IntegratorMode::Sppm: integratorSuffix = tr(" · SPPM"); break;
-		case IntegratorMode::Bdpt: integratorSuffix = tr(" · BDPT"); break;
-		case IntegratorMode::Mlt: integratorSuffix = tr(" · MLT"); break;
-		case IntegratorMode::RandomWalk: integratorSuffix = tr(" · RandomWalk"); break;
-		case IntegratorMode::Ao: integratorSuffix = tr(" · AO"); break;
-		case IntegratorMode::SimplePath: integratorSuffix = tr(" · SimplePath"); break;
-		case IntegratorMode::SimpleVolPath: integratorSuffix = tr(" · SimpleVolPath"); break;
-		case IntegratorMode::LightPath: integratorSuffix = tr(" · LightPath"); break;
-	}
+	const QString integratorSuffix = integratorSuffixTag(entry.integratorMode);
 
 	return tr("%1 — %2×%3 · %4spp · %5%6%7 — %8")
 		.arg(entry.displayTitle)
@@ -250,4 +242,55 @@ QString MainWindow::describeRecentRenderEntry(const RecentRenderEntry &entry) co
 		.arg(entry.samples)
 		.arg(renderer, modeSuffix, integratorSuffix)
 		.arg(whenText);
+}
+
+// Rebuilds m_recentRendersList from a fresh loadRecentRenders() call - see
+// createPreviewTab() (mainwindow_tabs.cpp), which calls this once to build
+// the list initially, and the saveRecentRender() call sites
+// (mainwindow_slots.cpp) / closePreviewSubTab() (mainwindow_tabs.cpp),
+// which call it again so a render completed - or a tab closed - earlier
+// this session shows up without an app restart. Text-only rows, no
+// thumbnail decode - the real image only loads on demand, on double-click,
+// same as the initial build did.
+void MainWindow::refreshRecentRendersList() {
+	if (!m_previewSubTabs) return;
+	const QList<RecentRenderEntry> recents = loadRecentRenders();
+
+	if (recents.isEmpty()) {
+		if (m_recentRendersList) m_recentRendersList->clear();
+		return;
+	}
+
+	if (!m_recentRendersList) {
+		m_recentRendersList = new QListWidget();
+		m_recentRendersList->setSelectionMode(QAbstractItemView::SingleSelection);
+		m_recentRendersList->setMaximumHeight(200);
+		m_recentRendersList->viewport()->installEventFilter(new ListEmptyAreaDeselectFilter(m_recentRendersList));
+		m_previewSubTabs->addToEmptyState(m_recentRendersList);
+	}
+
+	m_recentRendersList->clear();
+	// The double-click handler captures `recents` by value, so it's rewired
+	// fresh on every refresh - disconnect the previous refresh's connection
+	// first, or double-clicking an item would fire once per past refresh
+	// with an increasingly stale `recents` list each time.
+	disconnect(m_recentRendersList, &QListWidget::itemDoubleClicked, this, nullptr);
+	for (int i = 0; i < recents.size(); ++i) {
+		QListWidgetItem *item = new QListWidgetItem(describeRecentRenderEntry(recents[i]), m_recentRendersList);
+		item->setData(Qt::UserRole, i);
+	}
+	connect(m_recentRendersList, &QListWidget::itemDoubleClicked, this, [this, recents](QListWidgetItem *item) {
+		const RecentRenderEntry &entry = recents[item->data(Qt::UserRole).toInt()];
+		if (entry.isVideo) {
+			addVideoPreviewTab(entry.displayTitle, entry.sceneDescription, entry.previewPath,
+			                    describeRecentRenderEntry(entry));
+		} else {
+			QPixmap pixmap(entry.previewPath);
+			if (!pixmap.isNull()) {
+				addImagePreviewTab(entry.displayTitle, entry.sceneDescription, pixmap,
+				                    describeRecentRenderEntry(entry), entry.outputPath, entry.previewPath);
+			}
+		}
+		if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
+	});
 }
