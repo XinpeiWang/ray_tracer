@@ -47,7 +47,35 @@ void writeEntry(QSettings &settings, const RecentRenderEntry &entry) {
 	settings.setValue("samples", entry.samples);
 	settings.setValue("useGPU", entry.useGPU);
 	settings.setValue("useWavefront", entry.useWavefront);
-	settings.setValue("integratorMode", static_cast<int>(entry.integratorMode));
+	settings.setValue("integratorMode", static_cast<int>(entry.integratorOptions.mode));
+	// IntegratorOptions sub-fields - only the ones RenderController::start()
+	// (mainwindow.cpp) would actually emit differently-from-default matter
+	// for describeRecentRenderEntry()/renderTechniqueHtml(), but all are
+	// persisted (not just the non-default ones) since reading a plain
+	// value back is simpler than reconstructing "was this key omitted
+	// because it was default, or never written at all" on read.
+	settings.setValue("sppmIterations", entry.integratorOptions.sppmIterations);
+	settings.setValue("sppmPhotons", entry.integratorOptions.sppmPhotons);
+	settings.setValue("bdptMaxDepth", entry.integratorOptions.bdptMaxDepth);
+	settings.setValue("mltBootstrap", entry.integratorOptions.mltBootstrap);
+	settings.setValue("mltMutations", entry.integratorOptions.mltMutations);
+	settings.setValue("mltMaxDepth", entry.integratorOptions.mltMaxDepth);
+	settings.setValue("aoMaxDist", entry.integratorOptions.aoMaxDist);
+	settings.setValue("aoUniform", entry.integratorOptions.aoUniform);
+	settings.setValue("aoIllumScale", entry.integratorOptions.aoIllumScale);
+	settings.setValue("aoIllumR", entry.integratorOptions.aoIllumR);
+	settings.setValue("aoIllumG", entry.integratorOptions.aoIllumG);
+	settings.setValue("aoIllumB", entry.integratorOptions.aoIllumB);
+	settings.setValue("simplepathNoLights", entry.integratorOptions.simplepathNoLights);
+	settings.setValue("simplepathNoBsdf", entry.integratorOptions.simplepathNoBsdf);
+	// AdvancedRenderFlags.
+	settings.setValue("denoise", entry.advancedFlags.denoise);
+	settings.setValue("stats", entry.advancedFlags.stats);
+	settings.setValue("optixValidate", entry.advancedFlags.optixValidate);
+	settings.setValue("exposure", entry.advancedFlags.exposure);
+	settings.setValue("sampler", entry.advancedFlags.sampler);
+	settings.setValue("spectral", entry.advancedFlags.spectral);
+	settings.setValue("tonemap", entry.advancedFlags.tonemap);
 	settings.setValue("timestampEpochSecs", entry.timestampEpochSecs);
 	settings.setValue("metadataKnown", entry.metadataKnown);
 }
@@ -104,7 +132,35 @@ RecentRenderEntry readEntry(QSettings &settings) {
 	entry.samples = settings.value("samples").toInt();
 	entry.useGPU = settings.value("useGPU").toBool();
 	entry.useWavefront = settings.value("useWavefront").toBool();
-	entry.integratorMode = static_cast<IntegratorMode>(settings.value("integratorMode").toInt());
+	entry.integratorOptions.mode = static_cast<IntegratorMode>(settings.value("integratorMode").toInt());
+	// Guarded by contains(), not settings.value(key, <literal default>):
+	// `entry.integratorOptions`/`entry.advancedFlags` are already
+	// default-constructed to the correct struct defaults above (matching
+	// mainwindow.h's own member-initializers, no duplicated literals to
+	// drift out of sync) - an entry saved before these keys existed
+	// should keep those defaults, not read back a fabricated 0/false/
+	// empty-string from a missing QVariant.
+	if (settings.contains("sppmIterations")) entry.integratorOptions.sppmIterations = settings.value("sppmIterations").toInt();
+	if (settings.contains("sppmPhotons")) entry.integratorOptions.sppmPhotons = settings.value("sppmPhotons").toInt();
+	if (settings.contains("bdptMaxDepth")) entry.integratorOptions.bdptMaxDepth = settings.value("bdptMaxDepth").toInt();
+	if (settings.contains("mltBootstrap")) entry.integratorOptions.mltBootstrap = settings.value("mltBootstrap").toInt();
+	if (settings.contains("mltMutations")) entry.integratorOptions.mltMutations = settings.value("mltMutations").toLongLong();
+	if (settings.contains("mltMaxDepth")) entry.integratorOptions.mltMaxDepth = settings.value("mltMaxDepth").toInt();
+	if (settings.contains("aoMaxDist")) entry.integratorOptions.aoMaxDist = settings.value("aoMaxDist").toDouble();
+	if (settings.contains("aoUniform")) entry.integratorOptions.aoUniform = settings.value("aoUniform").toBool();
+	if (settings.contains("aoIllumScale")) entry.integratorOptions.aoIllumScale = settings.value("aoIllumScale").toDouble();
+	if (settings.contains("aoIllumR")) entry.integratorOptions.aoIllumR = settings.value("aoIllumR").toDouble();
+	if (settings.contains("aoIllumG")) entry.integratorOptions.aoIllumG = settings.value("aoIllumG").toDouble();
+	if (settings.contains("aoIllumB")) entry.integratorOptions.aoIllumB = settings.value("aoIllumB").toDouble();
+	if (settings.contains("simplepathNoLights")) entry.integratorOptions.simplepathNoLights = settings.value("simplepathNoLights").toBool();
+	if (settings.contains("simplepathNoBsdf")) entry.integratorOptions.simplepathNoBsdf = settings.value("simplepathNoBsdf").toBool();
+	if (settings.contains("denoise")) entry.advancedFlags.denoise = settings.value("denoise").toBool();
+	if (settings.contains("stats")) entry.advancedFlags.stats = settings.value("stats").toBool();
+	if (settings.contains("optixValidate")) entry.advancedFlags.optixValidate = settings.value("optixValidate").toBool();
+	if (settings.contains("exposure")) entry.advancedFlags.exposure = settings.value("exposure").toDouble();
+	if (settings.contains("sampler")) entry.advancedFlags.sampler = settings.value("sampler").toString();
+	if (settings.contains("spectral")) entry.advancedFlags.spectral = settings.value("spectral").toBool();
+	if (settings.contains("tonemap")) entry.advancedFlags.tonemap = settings.value("tonemap").toString();
 	entry.timestampEpochSecs = settings.value("timestampEpochSecs").toLongLong();
 	// Default true (not the QVariant-invalid-default false) when the key
 	// is absent - an entry saved by a version of this app before
@@ -190,7 +246,8 @@ void MainWindow::saveRecentRender(const RenderJob &job, const QString &previewPa
 	entry.samples = job.samples;
 	entry.useGPU = job.useGPU;
 	entry.useWavefront = job.useWavefront;
-	entry.integratorMode = job.integratorOptions.mode;
+	entry.integratorOptions = job.integratorOptions;
+	entry.advancedFlags = job.advancedFlags;
 	entry.timestampEpochSecs = QDateTime::currentDateTime().toSecsSinceEpoch();
 
 	// Full rewrite rather than a partial update - simplest correct approach
@@ -234,7 +291,7 @@ QString MainWindow::describeRecentRenderEntry(const RecentRenderEntry &entry) co
 
 	const QString renderer = rendererLabel(entry.useGPU, entry.useWavefront);
 	const QString modeSuffix = entry.isVideo ? tr(" · Video") : QString();
-	const QString integratorSuffix = integratorSuffixTag(entry.integratorMode);
+	const QString integratorSuffix = integratorSuffixTag(entry.integratorOptions.mode);
 
 	return tr("%1 — %2×%3 · %4spp · %5%6%7 — %8")
 		.arg(entry.displayTitle)
@@ -281,14 +338,22 @@ void MainWindow::refreshRecentRendersList() {
 	}
 	connect(m_recentRendersList, &QListWidget::itemDoubleClicked, this, [this, recents](QListWidgetItem *item) {
 		const RecentRenderEntry &entry = recents[item->data(Qt::UserRole).toInt()];
+		// A scanned/best-effort entry (metadataKnown == false) never had
+		// real settings recorded - leave techniqueHtml empty rather than
+		// building one from fabricated default-constructed struct values,
+		// same reasoning as describeRecentRenderEntry()'s own metadataKnown
+		// branch above.
+		const PreviewTechniqueInfo technique{
+			entry.sceneId,
+			entry.metadataKnown ? renderTechniqueHtml(entry.integratorOptions, entry.advancedFlags) : QString()};
 		if (entry.isVideo) {
 			addVideoPreviewTab(entry.displayTitle, entry.sceneDescription, entry.previewPath,
-			                    describeRecentRenderEntry(entry), entry.sceneId);
+			                    describeRecentRenderEntry(entry), technique);
 		} else {
 			QPixmap pixmap(entry.previewPath);
 			if (!pixmap.isNull()) {
 				addImagePreviewTab(entry.displayTitle, entry.sceneDescription, pixmap,
-				                    describeRecentRenderEntry(entry), entry.outputPath, entry.previewPath, entry.sceneId);
+				                    describeRecentRenderEntry(entry), entry.outputPath, entry.previewPath, technique);
 			}
 		}
 		if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);

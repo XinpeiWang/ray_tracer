@@ -1018,13 +1018,17 @@ void MainWindow::styleCheckBox(QCheckBox *box) {
 // first so a "<" or "&" in the explanation text itself can't be misread as
 // markup. A MainWindow member rather than file-local, so mainwindow_tabs.cpp
 // can reuse it instead of hand-rolling a second HTML-wrapping helper.
-QString MainWindow::wrapTooltipHtml(const QString &plainText) {
+QString MainWindow::plainTextToHtmlParagraphs(const QString &plainText) {
 	QStringList paragraphs = plainText.split("\n\n", Qt::SkipEmptyParts);
 	QString body;
 	for (const QString &para : paragraphs) {
 		body += "<p>" + para.toHtmlEscaped() + "</p>";
 	}
-	return "<html><body style=\"width:320px;\">" + body + "</body></html>";
+	return body;
+}
+
+QString MainWindow::wrapTooltipHtml(const QString &plainText) {
+	return "<html><body style=\"width:320px;\">" + plainTextToHtmlParagraphs(plainText) + "</body></html>";
 }
 
 // A small, flat, icon-only "(i)" mark - the beginner-facing explanation
@@ -1203,5 +1207,84 @@ QString MainWindow::integratorDescription(IntegratorMode mode) {
 			break;
 	}
 	return text;
+}
+
+// Mirrors RenderController::start()'s own "only emit if it differs from
+// default" conditions (mainwindow.cpp ~line 205-211) field-for-field, so
+// a displayed setting can never contradict what was actually passed to
+// the CLI for this render. Keep both in sync if either gains/loses a
+// field.
+QString MainWindow::advancedFlagsSummary(const AdvancedRenderFlags &flags) {
+	QStringList parts;
+	if (flags.denoise) parts << tr("Denoiser: on");
+	if (flags.stats) parts << tr("Stats: on");
+	if (flags.optixValidate) parts << tr("OptiX validation: on");
+	if (flags.exposure != 1.0) parts << tr("Exposure: %1").arg(flags.exposure);
+	if (!flags.sampler.isEmpty()) parts << tr("Sampler: %1").arg(flags.sampler);
+	if (flags.spectral) parts << tr("Spectral: on");
+	if (!flags.tonemap.isEmpty()) parts << tr("Tonemap: %1").arg(flags.tonemap);
+	return parts.join(" · ");
+}
+
+// Same "only if non-default" mirroring as advancedFlagsSummary() above,
+// against RenderController::start()'s switch(m_integratorOptions.mode)
+// (mainwindow.cpp ~line 143-198) - keep both in sync.
+QString MainWindow::integratorSettingsSummary(const IntegratorOptions &opts) {
+	QStringList parts;
+	switch (opts.mode) {
+		case IntegratorMode::Sppm:
+			if (opts.sppmIterations != 100) parts << tr("Iterations: %1").arg(opts.sppmIterations);
+			if (opts.sppmPhotons != 5000) parts << tr("Photons/iter: %1").arg(opts.sppmPhotons);
+			break;
+		case IntegratorMode::Bdpt:
+			if (opts.bdptMaxDepth != 5) parts << tr("Max depth: %1").arg(opts.bdptMaxDepth);
+			break;
+		case IntegratorMode::Mlt:
+			if (opts.mltBootstrap != 100000) parts << tr("Bootstrap: %1").arg(opts.mltBootstrap);
+			if (opts.mltMutations != 4000000) parts << tr("Mutations: %1").arg(opts.mltMutations);
+			if (opts.mltMaxDepth != 5) parts << tr("Max depth: %1").arg(opts.mltMaxDepth);
+			break;
+		case IntegratorMode::Ao:
+			// 'f', 2: same precision choice as start()'s own CLI-arg
+			// formatting, for the same reason (default 'g' formatting can
+			// silently round a large aoMaxDist value).
+			if (opts.aoMaxDist != 1.0e10) parts << tr("Max distance: %1").arg(opts.aoMaxDist, 0, 'f', 2);
+			if (opts.aoUniform) parts << tr("Uniform-hemisphere sampling");
+			if (opts.aoIllumScale != 1.0) parts << tr("Illumination scale: %1").arg(opts.aoIllumScale);
+			if (opts.aoIllumR != 1.0 || opts.aoIllumG != 1.0 || opts.aoIllumB != 1.0)
+				parts << tr("Occlusion color: (%1, %2, %3)").arg(opts.aoIllumR).arg(opts.aoIllumG).arg(opts.aoIllumB);
+			break;
+		case IntegratorMode::SimplePath:
+			if (opts.simplepathNoLights) parts << tr("NEE disabled");
+			if (opts.simplepathNoBsdf) parts << tr("BSDF importance sampling disabled");
+			break;
+		case IntegratorMode::Default:
+		case IntegratorMode::RandomWalk:
+		case IntegratorMode::SimpleVolPath:
+		case IntegratorMode::LightPath:
+			break;
+	}
+	return parts.join(" · ");
+}
+
+// The Preview tab's technique-box HTML (see updatePreviewSidebarForActiveTab(),
+// mainwindow_tabs.cpp) - the integrator's own description, plus whichever
+// settings were actually customized for this specific render. Computed
+// once per tab at creation time (see PreviewTechniqueInfo, mainwindow.h),
+// not live, since a completed render's settings never change afterward.
+QString MainWindow::renderTechniqueHtml(const IntegratorOptions &integratorOptions, const AdvancedRenderFlags &advancedFlags) {
+	QString html = tr("<b>Rendering technique</b><br>%1")
+		.arg(plainTextToHtmlParagraphs(integratorDescription(integratorOptions.mode)));
+
+	QStringList settingsParts;
+	const QString flagsSummary = advancedFlagsSummary(advancedFlags);
+	if (!flagsSummary.isEmpty()) settingsParts << flagsSummary;
+	const QString integratorSummary = integratorSettingsSummary(integratorOptions);
+	if (!integratorSummary.isEmpty()) settingsParts << integratorSummary;
+
+	if (!settingsParts.isEmpty()) {
+		html += tr("<br><br><b>Settings used</b><br>%1").arg(settingsParts.join(" · "));
+	}
+	return html;
 }
 

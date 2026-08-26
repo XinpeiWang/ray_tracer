@@ -1049,7 +1049,15 @@ struct RecentRenderEntry {
 	QString sceneDescription;
 	int width = 0, height = 0, samples = 0;
 	bool useGPU = false, useWavefront = false;
-	IntegratorMode integratorMode = IntegratorMode::Default;
+	// Full structs (not just the mode enum) so a reopened entry can show
+	// the same technique-box settings summary a fresh completion does -
+	// see MainWindow::renderTechniqueHtml(). Persisted via new QSettings
+	// keys in recent_renders.cpp's writeEntry()/readEntry(), guarded by
+	// settings.contains() on read so an entry saved before these fields
+	// existed keeps its correct struct defaults instead of reading back
+	// fabricated zeros.
+	IntegratorOptions integratorOptions;
+	AdvancedRenderFlags advancedFlags;
 	qint64 timestampEpochSecs = 0;
 	// False for a best-effort entry backfilled by scanning the default
 	// output folder for pre-existing render_*.png/*_video.mp4 files this
@@ -1060,6 +1068,16 @@ struct RecentRenderEntry {
 	// describeRecentRenderEntry() omits the rest rather than showing
 	// fabricated zeros.
 	bool metadataKnown = true;
+};
+
+// Bundled rather than more bare QString parameters on
+// addImagePreviewTab()/addVideoPreviewTab(). techniqueHtml is
+// pre-formatted (see MainWindow::renderTechniqueHtml()) and left empty
+// when there's nothing meaningful to report (a scanned/best-effort
+// Recent Renders entry - see RecentRenderEntry::metadataKnown).
+struct PreviewTechniqueInfo {
+	QString sceneId;
+	QString techniqueHtml;
 };
 
 // ============================================================================
@@ -1336,6 +1354,12 @@ private:
 	QToolButton* createInfoIcon(const QString &helpText);
 	QWidget* labelWithInfo(const QString &labelText, const QString &helpText);
 	QWidget* checkboxWithInfo(QCheckBox *checkBox, const QString &helpText);
+	// Escapes and wraps plain, blank-line-separated paragraphs into `<p>`
+	// tags - the shared core of wrapTooltipHtml() below and the Preview
+	// tab's technique box (renderTechniqueHtml()/updatePreviewSidebarForActiveTab(),
+	// mainwindow_tabs.cpp), which need the same paragraph handling without
+	// the fixed tooltip-width body wrapper.
+	QString plainTextToHtmlParagraphs(const QString &plainText);
 	// Wraps plain, blank-line-separated paragraphs into width-constrained HTML
 	// for a rich-text tooltip - see its own definition (mainwindow_style.cpp)
 	// for the full rationale. Shared rather than file-local so both the
@@ -1360,6 +1384,21 @@ private:
 	// Plain-text description of `mode` - used by createBasicTab()'s
 	// per-item combo tooltips (each Integrator dropdown row's own "(i)").
 	QString integratorDescription(IntegratorMode mode);
+	// " · "-joined list of only the AdvancedRenderFlags/IntegratorOptions
+	// fields that differ from their default - mirrors
+	// RenderController::start()'s own emission conditions (mainwindow.cpp
+	// ~line 143-211) field-for-field, so a displayed setting never
+	// contradicts what was actually passed to the CLI. Keep both in sync
+	// if either gains/loses a field. Empty string when everything's
+	// default. Used by renderTechniqueHtml() below.
+	QString advancedFlagsSummary(const AdvancedRenderFlags &flags);
+	QString integratorSettingsSummary(const IntegratorOptions &opts);
+	// Combines integratorDescription() with the two settings summaries
+	// above into the Preview tab's technique-box HTML (see
+	// updatePreviewSidebarForActiveTab(), mainwindow_tabs.cpp) - computed
+	// once per tab at creation time (see PreviewTechniqueInfo below), not
+	// live, since a completed render's own settings never change.
+	QString renderTechniqueHtml(const IntegratorOptions &integratorOptions, const AdvancedRenderFlags &advancedFlags);
 	// A subtle "elevated card" drop shadow (QSS alone cannot do box-shadow) -
 	// neutral black at low alpha rather than theme-tinted, the same choice
 	// every real elevation system (Material, Fluent, CSS itself) makes,
@@ -1409,9 +1448,9 @@ private:
 	// hover since the tab bar itself only has room for a short title.
 	void addImagePreviewTab(const QString &title, const QString &tooltip, const QPixmap &pixmap,
 							 const QString &infoText, const QString &outputPath, const QString &previewPath,
-							 const QString &sceneId);
+							 const PreviewTechniqueInfo &technique);
 	void addVideoPreviewTab(const QString &title, const QString &tooltip, const QString &videoPath,
-							 const QString &infoText, const QString &sceneId);
+							 const QString &infoText, const PreviewTechniqueInfo &technique);
 	// First use of a title returns it unchanged; each repeat appends " (N)".
 	QString uniquePreviewTabTitle(const QString &baseTitle);
 	// Reads a property (see m_previewSubTabs's comment) off the currently

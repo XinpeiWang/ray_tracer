@@ -61,7 +61,7 @@
     </message>
     <message>
         <location filename="../mainwindow.cpp" line="821"/>
-        <location filename="../mainwindow_slots.cpp" line="1348"/>
+        <location filename="../mainwindow_slots.cpp" line="1349"/>
         <source>START &amp;RENDER</source>
         <translation>开始渲染(&amp;R)</translation>
     </message>
@@ -142,7 +142,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="99"/>
-        <location filename="../mainwindow_tabs.cpp" line="1930"/>
+        <location filename="../mainwindow_tabs.cpp" line="1939"/>
         <source>&amp;Save Log…</source>
         <translation>保存日志(&amp;S)…</translation>
     </message>
@@ -153,7 +153,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="110"/>
-        <location filename="../mainwindow_tabs.cpp" line="1935"/>
+        <location filename="../mainwindow_tabs.cpp" line="1944"/>
         <source>C&amp;lear Log</source>
         <translation>清空日志(&amp;L)</translation>
     </message>
@@ -482,155 +482,155 @@
         <translation>%1  •  %2×%3  •  %4 KB  •  %5s  •  %6spp · %7%8</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="985"/>
-        <location filename="../mainwindow_slots.cpp" line="994"/>
+        <location filename="../mainwindow_slots.cpp" line="986"/>
+        <location filename="../mainwindow_slots.cpp" line="995"/>
         <source>✅ Render complete (%1s)</source>
         <translation>✅ 渲染完成（%1 秒）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="986"/>
+        <location filename="../mainwindow_slots.cpp" line="987"/>
         <source>Warning: preview image failed to load at %1</source>
         <translation>警告：预览图像加载失败，位置 %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="995"/>
+        <location filename="../mainwindow_slots.cpp" line="996"/>
         <source>Warning: output file not found at %1</source>
         <translation>警告：未在 %1 找到输出文件</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1009"/>
+        <location filename="../mainwindow_slots.cpp" line="1010"/>
         <source>❌ %1</source>
         <translation>❌ %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1013"/>
-        <location filename="../mainwindow_slots.cpp" line="1471"/>
+        <location filename="../mainwindow_slots.cpp" line="1014"/>
+        <location filename="../mainwindow_slots.cpp" line="1472"/>
         <source>Render Failed</source>
         <translation>渲染失败</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1032"/>
+        <location filename="../mainwindow_slots.cpp" line="1033"/>
         <source>Stopped - %1 more queued (click Start Render to resume)</source>
         <translation>已停止 - 另有 %1 个排队中（点击“开始渲染”继续）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1154"/>
+        <location filename="../mainwindow_slots.cpp" line="1155"/>
         <source>Rendering  ·  %1%  ·  elapsed %2</source>
         <translation>正在渲染  ·  %1%  ·  已用时 %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1164"/>
+        <location filename="../mainwindow_slots.cpp" line="1165"/>
         <source>  ·  %1 %/s</source>
         <translation>  ·  %1 %/秒</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1172"/>
+        <location filename="../mainwindow_slots.cpp" line="1173"/>
         <source>  ·  ETA %1</source>
         <translation>  ·  预计剩余 %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1175"/>
+        <location filename="../mainwindow_slots.cpp" line="1176"/>
         <source>  ·  ETA --:--</source>
         <translation>  ·  预计剩余 --:--</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1198"/>
+        <location filename="../mainwindow_slots.cpp" line="1199"/>
         <source>Render complete</source>
         <translation>渲染完成</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1199"/>
+        <location filename="../mainwindow_slots.cpp" line="1200"/>
         <source>Render stopped</source>
         <translation>渲染已停止</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1199"/>
+        <location filename="../mainwindow_slots.cpp" line="1200"/>
         <source>Render failed</source>
         <translation>渲染失败</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1201"/>
+        <location filename="../mainwindow_slots.cpp" line="1202"/>
         <source>Finished in %1 seconds</source>
         <translation>耗时 %1 秒完成</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1216"/>
+        <location filename="../mainwindow_slots.cpp" line="1217"/>
         <source>%1 – %2</source>
         <translation>%1 – %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1225"/>
+        <location filename="../mainwindow_slots.cpp" line="1226"/>
         <source>[DEBUG] No system tray available; skipping completion notification</source>
         <translation>[调试] 系统托盘不可用，跳过完成通知</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1229"/>
+        <location filename="../mainwindow_slots.cpp" line="1230"/>
         <source>[DEBUG] System tray does not support messages; skipping notification</source>
         <translation>[调试] 系统托盘不支持消息通知，跳过通知</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1343"/>
+        <location filename="../mainwindow_slots.cpp" line="1344"/>
         <source>START VIDEO &amp;RENDER</source>
         <translation>开始视频渲染(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1346"/>
+        <location filename="../mainwindow_slots.cpp" line="1347"/>
         <source>Ready to render video frames</source>
         <translation>已就绪，可渲染视频帧</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1351"/>
-        <location filename="../mainwindow_tabs.cpp" line="1841"/>
+        <location filename="../mainwindow_slots.cpp" line="1352"/>
+        <location filename="../mainwindow_tabs.cpp" line="1850"/>
         <source>Ready to render</source>
         <translation>已就绪，可开始渲染</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1355"/>
+        <location filename="../mainwindow_slots.cpp" line="1356"/>
         <source>Mode changed to: %1</source>
         <translation>模式已切换为：%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1355"/>
+        <location filename="../mainwindow_slots.cpp" line="1356"/>
         <source>Video Generation</source>
         <translation>视频生成</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1355"/>
+        <location filename="../mainwindow_slots.cpp" line="1356"/>
         <source>Single Image</source>
         <translation>单张图像</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1406"/>
+        <location filename="../mainwindow_slots.cpp" line="1407"/>
         <source>Integrator changed to: %1</source>
         <translation>积分器已切换为: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1452"/>
+        <location filename="../mainwindow_slots.cpp" line="1453"/>
         <source>⚠️ Video file not found, checking for frames...</source>
         <translation>⚠️ 未找到视频文件，正在检查帧序列…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1453"/>
+        <location filename="../mainwindow_slots.cpp" line="1454"/>
         <source>WARNING: Video file not found at any of the expected locations</source>
         <translation>警告：在所有预期位置均未找到视频文件</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1462"/>
+        <location filename="../mainwindow_slots.cpp" line="1463"/>
         <source>⚠️ Found %1 frames but no video file</source>
         <translation>⚠️ 找到 %1 帧，但没有视频文件</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1463"/>
+        <location filename="../mainwindow_slots.cpp" line="1464"/>
         <source>Frames were rendered (%1 files) but video assembly may have failed.</source>
         <translation>帧序列已渲染完成（%1 个文件），但视频合成可能已失败。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1464"/>
+        <location filename="../mainwindow_slots.cpp" line="1465"/>
         <source>Video Not Created</source>
         <translation>视频未生成</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1465"/>
+        <location filename="../mainwindow_slots.cpp" line="1466"/>
         <source>Frames were rendered successfully (%1 files), but the video file was not created.
 
 Expected video at: %2
@@ -643,17 +643,17 @@ Please check the render log for ffmpeg errors.</source>
 请检查渲染日志中的 ffmpeg 错误信息。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1469"/>
+        <location filename="../mainwindow_slots.cpp" line="1470"/>
         <source>❌ No frames or video found</source>
         <translation>❌ 未找到帧序列或视频</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1470"/>
+        <location filename="../mainwindow_slots.cpp" line="1471"/>
         <source>ERROR: No frames or video file found</source>
         <translation>错误：未找到帧序列或视频文件</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1472"/>
+        <location filename="../mainwindow_slots.cpp" line="1473"/>
         <source>Neither frames nor video file were created.
 
 Please check the render log for errors.</source>
@@ -662,22 +662,22 @@ Please check the render log for errors.</source>
 请检查渲染日志中的错误信息。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1475"/>
+        <location filename="../mainwindow_slots.cpp" line="1476"/>
         <source>❌ Frames directory not found</source>
         <translation>❌ 未找到帧目录</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1476"/>
+        <location filename="../mainwindow_slots.cpp" line="1477"/>
         <source>ERROR: Frames directory not found: %1</source>
         <translation>错误：未找到帧目录：%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1477"/>
+        <location filename="../mainwindow_slots.cpp" line="1478"/>
         <source>Directory Not Found</source>
         <translation>未找到目录</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1478"/>
+        <location filename="../mainwindow_slots.cpp" line="1479"/>
         <source>Frames directory not found:
 %1
 
@@ -688,27 +688,27 @@ The render may have failed to create output.</source>
 渲染可能未能成功生成输出。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1484"/>
+        <location filename="../mainwindow_slots.cpp" line="1485"/>
         <source>✅ Video created successfully!</source>
         <translation>✅ 视频生成成功！</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1485"/>
+        <location filename="../mainwindow_slots.cpp" line="1486"/>
         <source>✅ Video assembled successfully: %1</source>
         <translation>✅ 视频合成成功：%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1486"/>
+        <location filename="../mainwindow_slots.cpp" line="1487"/>
         <source>Video size: %1 MB</source>
         <translation>视频大小：%1 MB</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1507"/>
+        <location filename="../mainwindow_slots.cpp" line="1508"/>
         <source>%1 (Video)</source>
         <translation>%1（视频）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1509"/>
+        <location filename="../mainwindow_slots.cpp" line="1510"/>
         <source>%1  •  %2 MB  •  %3 frames  •  %4spp · %5%6</source>
         <translation>%1  •  %2 MB  •  %3 帧  •  %4spp · %5%6</translation>
     </message>
@@ -717,7 +717,7 @@ The render may have failed to create output.</source>
         <translation type="vanished">%1  •  %2 MB  •  %3 帧</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1520"/>
+        <location filename="../mainwindow_slots.cpp" line="1522"/>
         <source>Playing video inline: %1</source>
         <translation>正在内嵌播放视频：%1</translation>
     </message>
@@ -1338,7 +1338,7 @@ Each extra bounce lets light travel one more surface before giving up, which is 
     </message>
     <message>
         <location filename="../mainwindow_tabs.cpp" line="944"/>
-        <location filename="../mainwindow_tabs.cpp" line="2049"/>
+        <location filename="../mainwindow_tabs.cpp" line="2058"/>
         <source>Preset:</source>
         <translation>预设:</translation>
     </message>
@@ -1808,105 +1808,105 @@ Grayed out? This is GPU-only - switch Renderer to GPU on the Basic Settings tab 
         <translation>预览</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1635"/>
+        <location filename="../mainwindow_tabs.cpp" line="1639"/>
         <source>&lt;b&gt;Why it looks this way&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;b&gt;为什么看起来是这样&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1723"/>
-        <location filename="../mainwindow_tabs.cpp" line="1736"/>
+        <location filename="../mainwindow_tabs.cpp" line="1731"/>
+        <location filename="../mainwindow_tabs.cpp" line="1744"/>
         <source>Pause</source>
         <translation>暂停</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1736"/>
+        <location filename="../mainwindow_tabs.cpp" line="1744"/>
         <source>Play</source>
         <translation>播放</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1746"/>
+        <location filename="../mainwindow_tabs.cpp" line="1754"/>
         <source>Video playback error (%1): %2</source>
         <translation>视频播放错误 (%1):%2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1824"/>
-        <location filename="../mainwindow_tabs.cpp" line="1896"/>
+        <location filename="../mainwindow_tabs.cpp" line="1833"/>
+        <location filename="../mainwindow_tabs.cpp" line="1905"/>
         <source>Progress</source>
         <translation>进度</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1864"/>
+        <location filename="../mainwindow_tabs.cpp" line="1873"/>
         <source>Render Queue</source>
         <translation>渲染队列</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1876"/>
+        <location filename="../mainwindow_tabs.cpp" line="1885"/>
         <source>Re&amp;move Selected</source>
         <translation>移除所选(&amp;M)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1877"/>
+        <location filename="../mainwindow_tabs.cpp" line="1886"/>
         <source>Remove the selected job from the render queue</source>
         <translation>从渲染队列中移除所选任务</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1882"/>
+        <location filename="../mainwindow_tabs.cpp" line="1891"/>
         <source>Clear &amp;Queue</source>
         <translation>清空队列(&amp;Q)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1884"/>
+        <location filename="../mainwindow_tabs.cpp" line="1893"/>
         <source>Remove every job from the render queue</source>
         <translation>从渲染队列中移除所有任务</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1925"/>
-        <location filename="../mainwindow_tabs.cpp" line="1979"/>
+        <location filename="../mainwindow_tabs.cpp" line="1934"/>
+        <location filename="../mainwindow_tabs.cpp" line="1988"/>
         <source>&amp;Copy All</source>
         <translation>全部复制(&amp;C)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1946"/>
+        <location filename="../mainwindow_tabs.cpp" line="1955"/>
         <source>Log Output</source>
         <translation>日志输出</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1963"/>
+        <location filename="../mainwindow_tabs.cpp" line="1972"/>
         <source>Click &quot;Run Diagnostics&quot; to check GPU/CUDA/OptiX availability, CPU/RAM, disk space, and scene asset availability.</source>
         <translation>点击“运行诊断”以检查 GPU/CUDA/OptiX 可用性、CPU/内存、磁盘空间以及场景资源的可用性。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1974"/>
+        <location filename="../mainwindow_tabs.cpp" line="1983"/>
         <source>&amp;Run Diagnostics</source>
         <translation>运行诊断(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1984"/>
+        <location filename="../mainwindow_tabs.cpp" line="1993"/>
         <source>&amp;Save Report…</source>
         <translation>保存报告(&amp;S)…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1995"/>
+        <location filename="../mainwindow_tabs.cpp" line="2004"/>
         <source>Diagnostics</source>
         <translation>诊断</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2014"/>
+        <location filename="../mainwindow_tabs.cpp" line="2023"/>
         <source>⚠ These settings only take effect when Output Mode (Basic Settings tab) is set to &quot;Generate Video&quot;.</source>
         <translation>⚠ 只有当“基本设置”标签页中的输出模式设为“生成视频”时,这些设置才会生效。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2022"/>
+        <location filename="../mainwindow_tabs.cpp" line="2031"/>
         <source>Video Generation Settings</source>
         <translation>视频生成设置</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2035"/>
+        <location filename="../mainwindow_tabs.cpp" line="2044"/>
         <source>(custom - choose settings below)</source>
         <translation>(自定义——请在下方选择设置)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2041"/>
+        <location filename="../mainwindow_tabs.cpp" line="2050"/>
         <source>Famous ray-tracing reference scenes and motions, pre-tuned so you don&apos;t
 have to set the scene, camera path, frame count, fps, and speed by hand.
 Selecting one changes the scene on the Basic tab too. Choosing any of the
@@ -1918,7 +1918,7 @@ the preset, the same as if you had built the same settings by hand.</source>
 它们只是不再与该预设匹配,就好比这些设置本就是你手动配置的一样。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2050"/>
+        <location filename="../mainwindow_tabs.cpp" line="2059"/>
         <source>A ready-made bundle of scene + camera path + frame count + fps + speed, tuned so the resulting video actually looks good without hand-picking every setting yourself.
 
 Picking one fills in every field below (and the scene on the Basic tab) - you can still change anything afterward, it just stops matching the preset once you do.</source>
@@ -1927,27 +1927,27 @@ Picking one fills in every field below (and the scene on the Basic tab) - you ca
 选择其中一项会自动填好下方的所有字段(以及“基本设置”标签页中的场景)——之后你仍可以随意更改任意项,只是一旦更改就不再与该预设匹配。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2060"/>
+        <location filename="../mainwindow_tabs.cpp" line="2069"/>
         <source>Orbit (Circular rotation)</source>
         <translation>环绕(圆周旋转)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2061"/>
+        <location filename="../mainwindow_tabs.cpp" line="2070"/>
         <source>Linear (Straight path)</source>
         <translation>直线(直线路径)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2062"/>
+        <location filename="../mainwindow_tabs.cpp" line="2071"/>
         <source>Figure-8 (Lemniscate)</source>
         <translation>8 字形(双纽线)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2063"/>
+        <location filename="../mainwindow_tabs.cpp" line="2072"/>
         <source>Spiral (Zoom-in)</source>
         <translation>螺旋(推近)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2065"/>
+        <location filename="../mainwindow_tabs.cpp" line="2074"/>
         <source>How the camera moves over the frame sequence:
   Orbit     — full circle around the scene, always looking at its centre
   Linear    — straight sweep past the scene
@@ -1962,12 +1962,12 @@ Every path starts from the camera position on the Advanced tab.</source>
 所有路径均从“高级设置”标签页中的相机位置开始。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2073"/>
+        <location filename="../mainwindow_tabs.cpp" line="2082"/>
         <source>Camera Path:</source>
         <translation>相机路径:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2074"/>
+        <location filename="../mainwindow_tabs.cpp" line="2083"/>
         <source>How the camera moves across the sequence of frames.
 
 Orbit circles fully around the scene, always facing its center - the classic &quot;turntable&quot; shot. Linear sweeps past in a straight line. Figure-8 traces a lemniscate, crossing back through the middle. Spiral orbits while steadily moving closer. Every path starts from wherever the camera is positioned on the Advanced tab.</source>
@@ -1976,17 +1976,17 @@ Orbit circles fully around the scene, always facing its center - the classic &qu
 “环绕”会绕场景转满一整圈,始终面朝中心——这是经典的“转台”式镜头。“直线”沿一条直线掠过场景。“8 字形”描出一条双纽线,反复穿过场景中部。“螺旋”则一边环绕一边持续靠近。所有路径都从“高级设置”标签页中设定的相机位置开始。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2087"/>
+        <location filename="../mainwindow_tabs.cpp" line="2096"/>
         <source> frames</source>
         <translation> 帧</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2089"/>
+        <location filename="../mainwindow_tabs.cpp" line="2098"/>
         <source>Frame Count:</source>
         <translation>帧数:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2090"/>
+        <location filename="../mainwindow_tabs.cpp" line="2099"/>
         <source>How many individual images make up the video - each one is a full, independent render, so this multiplies total render time directly (100 frames takes roughly 100x as long as one image at the same settings).
 
 Paired with Frames Per Second below to determine the video&apos;s total length in seconds.</source>
@@ -1995,17 +1995,17 @@ Paired with Frames Per Second below to determine the video&apos;s total length i
 与下方的“每秒帧数”配合,共同决定视频的总时长(秒)。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2102"/>
+        <location filename="../mainwindow_tabs.cpp" line="2111"/>
         <source> fps</source>
         <translation> fps</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2104"/>
+        <location filename="../mainwindow_tabs.cpp" line="2113"/>
         <source>Frames Per Second:</source>
         <translation>每秒帧数:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2105"/>
+        <location filename="../mainwindow_tabs.cpp" line="2114"/>
         <source>How many of the rendered frames play per second of video.
 
 Doesn&apos;t change how many frames get rendered (that&apos;s Frame Count above) - only how fast they play back, and therefore how many seconds long the finished video is (Frame Count divided by FPS).</source>
@@ -2014,17 +2014,17 @@ Doesn&apos;t change how many frames get rendered (that&apos;s Frame Count above)
 不会改变渲染的帧数(那由上方的“帧数”决定)——只影响播放速度,进而决定最终视频的时长(秒数 = 帧数 ÷ 帧率)。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2125"/>
+        <location filename="../mainwindow_tabs.cpp" line="2134"/>
         <source>x</source>
         <translation>x</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2127"/>
+        <location filename="../mainwindow_tabs.cpp" line="2136"/>
         <source>Movement Speed:</source>
         <translation>移动速度:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2128"/>
+        <location filename="../mainwindow_tabs.cpp" line="2137"/>
         <source>A multiplier on how many frames the camera&apos;s full path is spread across - not a change to the path itself, which always completes the same full sweep.
 
 Speed 0.5x renders twice as many frames to cover the same journey more slowly and smoothly; speed 2x renders half as many frames, covering the same journey faster.</source>
@@ -2033,47 +2033,47 @@ Speed 0.5x renders twice as many frames to cover the same journey more slowly an
 速度为 0.5x 时会渲染两倍的帧数,让同样的路程走得更慢、更平滑;速度为 2x 时渲染的帧数减半,让同样的路程走得更快。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2157"/>
+        <location filename="../mainwindow_tabs.cpp" line="2166"/>
         <source>%1 frames</source>
         <translation>%1 帧</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2158"/>
+        <location filename="../mainwindow_tabs.cpp" line="2167"/>
         <source>%1 frames (base %2 × 1/%3x speed)%4</source>
         <translation>%1 帧(基础 %2 × 1/%3x 速度)%4</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2160"/>
+        <location filename="../mainwindow_tabs.cpp" line="2169"/>
         <source> - capped at 5000</source>
         <translation> ——上限为 5000</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2162"/>
+        <location filename="../mainwindow_tabs.cpp" line="2171"/>
         <source>&lt;b&gt;Video Duration:&lt;/b&gt; %1 seconds (%2)&lt;br&gt;&lt;b&gt;Camera Path:&lt;/b&gt; %3, always completes its full sweep regardless of speed&lt;br&gt;&lt;b&gt;Output:&lt;/b&gt; Frames will be saved to &lt;code&gt;output/frames/&lt;/code&gt;</source>
         <translation>&lt;b&gt;视频时长:&lt;/b&gt; %1 秒(%2)&lt;br&gt;&lt;b&gt;相机路径:&lt;/b&gt; %3,无论速度如何都会完整走完全程&lt;br&gt;&lt;b&gt;输出:&lt;/b&gt; 帧图像将保存到 &lt;code&gt;output/frames/&lt;/code&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2180"/>
+        <location filename="../mainwindow_tabs.cpp" line="2189"/>
         <source>ℹ️ Requirements</source>
         <translation>ℹ️ 依赖要求</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2185"/>
+        <location filename="../mainwindow_tabs.cpp" line="2194"/>
         <source>&lt;b&gt;Requires ffmpeg:&lt;/b&gt; Video encoding uses ffmpeg (libx264), which must be installed and on your PATH.&lt;br&gt;&lt;small&gt;Get it from &lt;a href=&quot;https://ffmpeg.org/download.html&quot;&gt;ffmpeg.org&lt;/a&gt; if the render log reports it&apos;s missing.&lt;/small&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;Automatic Assembly:&lt;/b&gt; After rendering all frames, the video will be automatically assembled and opened.</source>
         <translation>&lt;b&gt;需要 ffmpeg:&lt;/b&gt; 视频编码使用 ffmpeg(libx264),必须已安装并配置到 PATH 中。&lt;br&gt;&lt;small&gt;如果渲染日志提示缺失,请前往 &lt;a href=&quot;https://ffmpeg.org/download.html&quot;&gt;ffmpeg.org&lt;/a&gt; 获取。&lt;/small&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;自动合成:&lt;/b&gt; 所有帧渲染完成后,视频会被自动合成并打开。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2197"/>
+        <location filename="../mainwindow_tabs.cpp" line="2206"/>
         <source>Usage Instructions</source>
         <translation>使用说明</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2202"/>
+        <location filename="../mainwindow_tabs.cpp" line="2211"/>
         <source>&lt;b&gt;Step 1:&lt;/b&gt; Configure video settings (camera path, frames, FPS)&lt;br&gt;&lt;b&gt;Step 2:&lt;/b&gt; Configure quality settings in Basic/Advanced tabs&lt;br&gt;&lt;b&gt;Step 3:&lt;/b&gt; Click START VIDEO RENDER and wait&lt;br&gt;&lt;b&gt;Step 4:&lt;/b&gt; Video automatically assembles and opens when done!&lt;br&gt;&lt;br&gt;&lt;b&gt;Tips:&lt;/b&gt;&lt;br&gt;• Use GPU mode for faster rendering&lt;br&gt;• Lower samples/pixel for quick previews (10-50)&lt;br&gt;• Higher samples/pixel for production quality (100-500)&lt;br&gt;• Typical render time: 1-5 minutes (GPU), 15-60 minutes (CPU)</source>
         <translation>&lt;b&gt;第 1 步:&lt;/b&gt; 配置视频设置(相机路径、帧数、帧率)&lt;br&gt;&lt;b&gt;第 2 步:&lt;/b&gt; 在“基本设置”/“高级设置”标签页中配置画质设置&lt;br&gt;&lt;b&gt;第 3 步:&lt;/b&gt; 点击“开始视频渲染”并等待&lt;br&gt;&lt;b&gt;第 4 步:&lt;/b&gt; 完成后视频会自动合成并打开!&lt;br&gt;&lt;br&gt;&lt;b&gt;小贴士:&lt;/b&gt;&lt;br&gt;• 使用 GPU 模式可加快渲染速度&lt;br&gt;• 快速预览可降低每像素样本数(10-50)&lt;br&gt;• 正式成片可提高每像素样本数(100-500)&lt;br&gt;• 典型渲染时间:1-5 分钟(GPU)、15-60 分钟(CPU)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="2233"/>
+        <location filename="../mainwindow_tabs.cpp" line="2242"/>
         <source>Video Settings</source>
         <translation>视频设置</translation>
     </message>
@@ -2123,7 +2123,7 @@ Speed 0.5x renders twice as many frames to cover the same journey more slowly an
         <translation>字体(&amp;O)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1125"/>
+        <location filename="../mainwindow_style.cpp" line="1129"/>
         <source>The general-purpose importance-sampled path tracer used everywhere else in this app - next-event estimation plus BSDF importance sampling, combined via the power heuristic (MIS). The well-tested default; start here unless you have a specific reason not to.
 
 The alternates below trade that generality for a specific technique - photon mapping, bidirectional/Metropolis light transport, or a handful of unbiased reference and debug integrators. All are CPU-only except SPPM, and none can be combined with Generate Video mode. Sampler/Spectral/Exposure/Tonemap/Stats above only affect this default Path Tracer.</source>
@@ -2132,7 +2132,7 @@ The alternates below trade that generality for a specific technique - photon map
 下方的备选项以牺牲这种通用性为代价换取特定技术——光子映射、双向/Metropolis 光传输,或若干无偏的参考/调试积分器。除 SPPM 外均仅限 CPU,且都无法与生成视频模式组合使用。上方的采样器/光谱/曝光/色调映射/统计信息仅对默认路径追踪器生效。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1138"/>
+        <location filename="../mainwindow_style.cpp" line="1142"/>
         <source>Stochastic Progressive Photon Mapping (pbrt-v4 style). Best for hard caustic/glass scenes ordinary path tracing struggles to resolve.
 
 CPU: verified end-to-end on the Cornell Rough Glass scene; other scenes are unverified and only support lambertian + delta-BSDF materials.
@@ -2145,7 +2145,7 @@ CPU:已在康奈尔毛玻璃场景上完成端到端验证;其他场景尚未验
 GPU:按场景逐一检查支持能力——支持 Lambertian/DiffuseLight、RoughDielectric、Metal、Dielectric、Conductor、RoughMetal 以及 DiffuseTransmission(仅限面光源);不受支持的场景会回退为报错——此时请改用 CPU 版 SPPM。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1151"/>
+        <location filename="../mainwindow_style.cpp" line="1155"/>
         <source>Bidirectional Path Tracing - traces subpaths from both the camera and the light source and connects every pair, better for some difficult lighting configurations path tracing alone struggles with.
 
 CPU only. Area lights only (no punctual/sky-light NEE yet). Verified end-to-end on the Cornell Box scene only; other scenes are unverified.</source>
@@ -2154,7 +2154,7 @@ CPU only. Area lights only (no punctual/sky-light NEE yet). Verified end-to-end 
 仅限 CPU。仅支持面光源(尚不支持点光源/天空光的 NEE)。仅在康奈尔盒场景上完成端到端验证;其他场景尚未验证。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1160"/>
+        <location filename="../mainwindow_style.cpp" line="1164"/>
         <source>Metropolis Light Transport, built directly on BDPT&apos;s subpath machinery - uses a Markov chain to concentrate samples on light paths that already contribute, useful for scenes with hard-to-find bright paths.
 
 CPU only. Same area-lights-only scope and single-scene (Cornell Box) verification as BDPT.</source>
@@ -2163,7 +2163,7 @@ CPU only. Same area-lights-only scope and single-scene (Cornell Box) verificatio
 仅限 CPU。与 BDPT 相同,仅支持面光源,且仅在康奈尔盒单一场景上完成验证。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1168"/>
+        <location filename="../mainwindow_style.cpp" line="1172"/>
         <source>pbrt-v4&apos;s unbiased reference path tracer - uniform-sphere sampling, no next-event estimation or multiple importance sampling. Simpler and noisier than the default path tracer; useful as a ground-truth reference to check other integrators against.
 
 CPU only.</source>
@@ -2172,7 +2172,7 @@ CPU only.</source>
 仅限 CPU。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1176"/>
+        <location filename="../mainwindow_style.cpp" line="1180"/>
         <source>A visualization/debug mode, not a lit render - measures how occluded each point is by nearby geometry, ignoring material color and indirect lighting entirely.
 
 CPU only.</source>
@@ -2181,7 +2181,7 @@ CPU only.</source>
 仅限 CPU。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1182"/>
+        <location filename="../mainwindow_style.cpp" line="1186"/>
         <source>pbrt-v4&apos;s canonical reference path tracer - optional next-event estimation and optional BSDF importance sampling, both on by default (see the toggles below).
 
 CPU only. NEE, when enabled, is area-lights-only, the same scope as BDPT/MLT.</source>
@@ -2190,7 +2190,7 @@ CPU only. NEE, when enabled, is area-lights-only, the same scope as BDPT/MLT.</s
 仅限 CPU。启用时的 NEE 仅支持面光源,与 BDPT/MLT 的范围相同。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1189"/>
+        <location filename="../mainwindow_style.cpp" line="1193"/>
         <source>pbrt-v4&apos;s simplest volumetric path tracer - pure delta tracking, no NEE/MIS/surface BSDFs.
 
 Reachable but medium-free in this integration, so it renders mostly black on ordinary solid-geometry scenes except where a camera ray lands directly on a light - matches pbrt-v4&apos;s own upstream behavior on medium-free scenes.
@@ -2203,7 +2203,7 @@ CPU only.</source>
 仅限 CPU。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1198"/>
+        <location filename="../mainwindow_style.cpp" line="1202"/>
         <source>A pure light tracer - the opposite direction of every other integrator here: every sample starts at a light and splats camera-connection contributions into the film, instead of starting at the camera.
 
 CPU only. Area lights only.</source>
@@ -2212,38 +2212,139 @@ CPU only. Area lights only.</source>
 仅限 CPU。仅支持面光源。</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="219"/>
+        <location filename="../mainwindow_style.cpp" line="1219"/>
+        <source>Denoiser: on</source>
+        <translation>降噪器: 开启</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_style.cpp" line="1220"/>
+        <source>Stats: on</source>
+        <translation>统计信息: 开启</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_style.cpp" line="1221"/>
+        <source>OptiX validation: on</source>
+        <translation>OptiX 校验: 开启</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_style.cpp" line="1222"/>
+        <source>Exposure: %1</source>
+        <translation>曝光: %1</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_style.cpp" line="1223"/>
+        <source>Sampler: %1</source>
+        <translation>采样器: %1</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_style.cpp" line="1224"/>
+        <source>Spectral: on</source>
+        <translation>光谱: 开启</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_style.cpp" line="1225"/>
+        <source>Tonemap: %1</source>
+        <translation>色调映射: %1</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_style.cpp" line="1236"/>
+        <source>Iterations: %1</source>
+        <translation>迭代次数: %1</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_style.cpp" line="1237"/>
+        <source>Photons/iter: %1</source>
+        <translation>每次迭代光子数: %1</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_style.cpp" line="1240"/>
+        <location filename="../mainwindow_style.cpp" line="1245"/>
+        <source>Max depth: %1</source>
+        <translation>最大深度: %1</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_style.cpp" line="1243"/>
+        <source>Bootstrap: %1</source>
+        <translation>引导采样数: %1</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_style.cpp" line="1244"/>
+        <source>Mutations: %1</source>
+        <translation>变异次数: %1</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_style.cpp" line="1251"/>
+        <source>Max distance: %1</source>
+        <translation>最大距离: %1</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_style.cpp" line="1252"/>
+        <source>Uniform-hemisphere sampling</source>
+        <translation>均匀半球采样</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_style.cpp" line="1253"/>
+        <source>Illumination scale: %1</source>
+        <translation>照明强度倍率: %1</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_style.cpp" line="1255"/>
+        <source>Occlusion color: (%1, %2, %3)</source>
+        <translation>遮蔽颜色: (%1, %2, %3)</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_style.cpp" line="1258"/>
+        <source>NEE disabled</source>
+        <translation>已禁用 NEE</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_style.cpp" line="1259"/>
+        <source>BSDF importance sampling disabled</source>
+        <translation>已禁用 BSDF 重要性采样</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_style.cpp" line="1276"/>
+        <source>&lt;b&gt;Rendering technique&lt;/b&gt;&lt;br&gt;%1</source>
+        <translation>&lt;b&gt;渲染技术&lt;/b&gt;&lt;br&gt;%1</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_style.cpp" line="1286"/>
+        <source>&lt;br&gt;&lt;br&gt;&lt;b&gt;Settings used&lt;/b&gt;&lt;br&gt;%1</source>
+        <translation>&lt;br&gt;&lt;br&gt;&lt;b&gt;使用的设置&lt;/b&gt;&lt;br&gt;%1</translation>
+    </message>
+    <message>
+        <location filename="../recent_renders.cpp" line="276"/>
         <source>just now</source>
         <translation>just now</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="220"/>
+        <location filename="../recent_renders.cpp" line="277"/>
         <source>%1 min ago</source>
         <translation>%1 分钟前</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="221"/>
+        <location filename="../recent_renders.cpp" line="278"/>
         <source>%1 hr ago</source>
         <translation>%1 小时前</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="222"/>
+        <location filename="../recent_renders.cpp" line="279"/>
         <source>%1 days ago</source>
         <translation>%1 天前</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="229"/>
+        <location filename="../recent_renders.cpp" line="286"/>
         <source>%1%2 — %3</source>
         <translation>%1%2 — %3</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="231"/>
-        <location filename="../recent_renders.cpp" line="236"/>
+        <location filename="../recent_renders.cpp" line="288"/>
+        <location filename="../recent_renders.cpp" line="293"/>
         <source> · Video</source>
         <translation> · 视频</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="239"/>
+        <location filename="../recent_renders.cpp" line="296"/>
         <source>%1 — %2×%3 · %4spp · %5%6%7 — %8</source>
         <translation>%1 — %2×%3 · %4spp · %5%6%7 — %8</translation>
     </message>

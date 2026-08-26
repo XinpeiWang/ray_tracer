@@ -977,7 +977,8 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 							.arg(rendererLabel(finishedJob.useGPU, finishedJob.useWavefront),
 								 integratorSuffixTag(finishedJob.integratorOptions.mode));
 						addImagePreviewTab(finishedJob.displayTitle, finishedJob.sceneDescription,
-											pixmap, infoText, outputPath, pngPath, finishedJob.sceneId);
+											pixmap, infoText, outputPath, pngPath,
+											{finishedJob.sceneId, renderTechniqueHtml(finishedJob.integratorOptions, finishedJob.advancedFlags)});
 						saveRecentRender(finishedJob, pngPath, /*isVideo=*/false);
 						refreshRecentRendersList();
 						if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
@@ -1512,7 +1513,8 @@ void MainWindow::assembleVideoAutomatically(const QString &baseOutputPath, const
 		.arg(frameFiles.count())
 		.arg(job.samples)
 		.arg(rendererLabel(job.useGPU, job.useWavefront), integratorSuffixTag(job.integratorOptions.mode));
-	addVideoPreviewTab(title, job.sceneDescription, videoPath, infoText, job.sceneId);
+	addVideoPreviewTab(title, job.sceneDescription, videoPath, infoText,
+						{job.sceneId, renderTechniqueHtml(job.integratorOptions, job.advancedFlags)});
 	saveRecentRender(job, videoPath, /*isVideo=*/true, title);
 	refreshRecentRendersList();
 	if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
