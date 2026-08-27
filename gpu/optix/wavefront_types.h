@@ -195,6 +195,28 @@ struct HitWorkItem {
 	float  brdf_pdf;
 };
 
+#if defined(__CUDACC__) || defined(OPTIX_RENDERER_AVAILABLE)
+// Copies the RayWorkItem fields that a genuine pass-through (no real scatter
+// event - e.g. MaterialType::Interface) carries UNCHANGED from the hit that
+// produced it, rather than recomputing them the way a real scatter event
+// does (wf_finish_material_scatter(), wavefront_kernels.cu, sets these same
+// 7 field names to NEW values instead - depth+1, a freshly sampled
+// specular_bounce/brdf_pdf, etc. - so it does not call this). Callers still
+// set origin/direction/seed/throughput/radiance/wavelengths/wavelength_pdfs/
+// tMin/tMax themselves; this only covers the fields a pass-through leaves
+// untouched, so a future field added to both structs only needs updating
+// here instead of at every hand-rolled pass-through call site.
+__device__ __forceinline__ void wf_carry_ray_state(RayWorkItem& next, const HitWorkItem& h) {
+	next.pixelIndex      = h.pixelIndex;
+	next.depth           = h.depth;
+	next.specular_bounce = h.specular_bounce;
+	next.any_nonspecular = h.any_nonspecular;
+	next.etaScale        = h.etaScale;
+	next.filterWeight    = h.filterWeight;
+	next.brdf_pdf        = h.brdf_pdf;
+}
+#endif
+
 // A shadow ray: if it reaches tMax unoccluded, Ld is added to the framebuffer.
 struct ShadowRayWorkItem {
 	float3 origin;

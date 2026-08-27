@@ -120,6 +120,12 @@ CPU_GPU void SimpleVolPathLi(
 
 	// Scattering depth counter
 	int depth = 0;
+	// A medium-boundary surface pass-through doesn't advance `depth` below,
+	// so it needs its own bounded safety cap. kMaxMediumBoundaryCrossings
+	// (cpu_gpu.h) is the one shared bound every integrator that supports
+	// this uses (a degenerate/self-intersecting scene shouldn't be able to
+	// hang this loop).
+	int medium_boundary_crossings = 0;
 
 	constexpr T kInfinity = std::numeric_limits<T>::max();
 
@@ -241,6 +247,7 @@ CPU_GPU void SimpleVolPathLi(
 		if (hit.is_medium_boundary) {
 			// Skip medium-boundary primitives -- mirrors pbrt-v4
 			// SkipIntersection -> SpawnRay(ray.d) -> OffsetRayOrigin.
+			if (++medium_boundary_crossings > kMaxMediumBoundaryCrossings) return;
 			scene.SpawnRay(hit, dir, org, dir);
 			continue;
 		}

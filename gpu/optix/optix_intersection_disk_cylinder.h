@@ -162,7 +162,7 @@ extern "C" __global__ void __closesthit__disk() {
 		optixSetPayload_6(__float_as_uint(scattered_dir.x));
 		optixSetPayload_7(__float_as_uint(scattered_dir.y));
 		optixSetPayload_8(__float_as_uint(scattered_dir.z));
-		optixSetPayload_10(bssrdf_exit ? 3 : (is_medium_boundary ? 4 : 1));
+		optixSetPayload_10(pack_scatter_flag(bssrdf_exit, is_medium_boundary));  // scattered (see pack_scatter_flag's own comment)
 		optixSetPayload_11(__float_as_uint(t_hit));
 		optixSetPayload_12(__float_as_uint(brdf_pdf_out));
 		if (bssrdf_exit) {
@@ -411,7 +411,7 @@ extern "C" __global__ void __closesthit__cylinder() {
 		optixSetPayload_6(__float_as_uint(scattered_dir.x));
 		optixSetPayload_7(__float_as_uint(scattered_dir.y));
 		optixSetPayload_8(__float_as_uint(scattered_dir.z));
-		optixSetPayload_10(bssrdf_exit ? 3 : (is_medium_boundary ? 4 : 1));
+		optixSetPayload_10(pack_scatter_flag(bssrdf_exit, is_medium_boundary));  // scattered (see pack_scatter_flag's own comment)
 		optixSetPayload_11(__float_as_uint(t_hit));
 		optixSetPayload_12(__float_as_uint(brdf_pdf_out));
 		if (bssrdf_exit) {

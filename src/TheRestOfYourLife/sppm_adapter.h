@@ -531,9 +531,9 @@ inline void sppm_camera_pass_with_sky(std::vector<SPPMPixel<double>>& pixels,
 				double beta[3] = { 1.0, 1.0, 1.0 };
 				// A medium-boundary crossing doesn't consume `depth` (see the
 				// branch below), so nothing else bounds how many a single
-				// camera ray can take - same rationale/bound as camera.h's
-				// own kMaxMediumBoundaryCrossings.
-				constexpr int kMaxMediumBoundaryCrossings = 32;
+				// camera ray can take. kMaxMediumBoundaryCrossings
+				// (cpu_gpu.h) is the one shared bound every integrator that
+				// supports this uses.
 				int mediumBoundaryCrossings = 0;
 
 				for (int depth = 0; depth < maxDepth; ++depth) {
@@ -560,6 +560,18 @@ inline void sppm_camera_pass_with_sky(std::vector<SPPMPixel<double>>& pixels,
 					// (org = hit.p directly, relying on the next Intersect()
 					// call's own t_min=0.001) - this adapter has no
 					// SpawnRay() of its own to offset through instead.
+					//
+					// No `beta *= attenuation` here (unlike camera.h's/GPU's
+					// own medium-boundary branches): BDPTHit carries no
+					// attenuation for this crossing, and interface_material::
+					// scatter() (material_simple.h) hardcodes
+					// srec.attenuation = color(1,1,1) with no way to
+					// configure anything else today, so multiplying by it
+					// would be a no-op. If interface_material ever grows a
+					// real (non-white) attenuation, BDPTHit needs a field for
+					// it and this site (plus its photon-pass twin below, and
+					// both GPU SPPM raygens in sppm_programs.cu) all need
+					// updating together.
 					if (hit.is_medium_boundary) {
 						if (++mediumBoundaryCrossings > kMaxMediumBoundaryCrossings) break;
 						org[0] = hit.p[0]; org[1] = hit.p[1]; org[2] = hit.p[2];
@@ -674,7 +686,6 @@ inline void sppm_photon_pass_mt(std::vector<SPPMPixel<double>>& pixels,
 			double org[3] = { les.ray_o[0], les.ray_o[1], les.ray_o[2] };
 			double dir[3] = { les.ray_d[0], les.ray_d[1], les.ray_d[2] };
 			// See sppm_camera_pass_with_sky()'s own comment.
-			constexpr int kMaxMediumBoundaryCrossings = 32;
 			int mediumBoundaryCrossings = 0;
 
 			for (int depth = 0; depth < maxDepth; ++depth) {
@@ -690,7 +701,8 @@ inline void sppm_photon_pass_mt(std::vector<SPPMPixel<double>>& pixels,
 				// this the deposit gate below would wrongly try to deposit a
 				// photon against a material with no real BSDF response.
 				// Advances straight through in the same direction, doesn't
-				// consume `depth`.
+				// consume `depth`. See the camera pass's own comment on why
+				// there's no `beta *= attenuation` here either.
 				if (hit.is_medium_boundary) {
 					if (++mediumBoundaryCrossings > kMaxMediumBoundaryCrossings) break;
 					org[0] = hit.p[0]; org[1] = hit.p[1]; org[2] = hit.p[2];

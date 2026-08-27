@@ -51,3 +51,15 @@
 #    define CPU_GPU_CONST static constexpr
 #  endif
 #endif
+
+// Shared safety cap for "advance through a medium-boundary/null-BSDF hit
+// (interface_material / MaterialType::Interface - a real pbrt-v4 "no BSDF"
+// pass-through) without consuming the path's depth/bounce budget". Every
+// integrator that supports this (CPU default path tracer, BDPT, SPPM, the
+// debug light/simple/simple-vol path integrators, and all 3 GPU backends)
+// needs its OWN loop-local crossing counter, since each has its own loop
+// state - but they should all bound it against the same value, so a
+// degenerate/self-intersecting scene can't hang one integrator while every
+// other integrator stays safely bounded. Named "Crossings" not "Skips" -
+// use this spelling everywhere for grep-ability.
+CPU_GPU_CONST int kMaxMediumBoundaryCrossings = 32;

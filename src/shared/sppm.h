@@ -276,11 +276,26 @@ void SPPMCameraPass(std::vector<SPPMPixel<T>>& pixels,
 			T org[3] = { cam_p[0], cam_p[1], cam_p[2] };
 			T dir[3] = { ray_d[0], ray_d[1], ray_d[2] };
 			T beta[3] = { T(1), T(1), T(1) };
+			// A medium-boundary crossing doesn't consume `depth` below, so
+			// nothing else bounds how many a single camera ray can take.
+			// kMaxMediumBoundaryCrossings (cpu_gpu.h) is the one shared
+			// bound every integrator that supports this uses.
+			int mediumBoundaryCrossings = 0;
 
 			for (int depth = 0; depth < maxDepth; ++depth) {
 				BDPTHit<T> hit{};
 				if (!scene.Intersect(org, dir, std::numeric_limits<T>::max(), hit))
 					break;
+
+				// True pass-through (interface_material) - nothing actually
+				// scattered here: no visible point recorded, doesn't count
+				// against maxDepth. Mirrors sppm_adapter.h's own branch.
+				if (hit.is_medium_boundary) {
+					if (++mediumBoundaryCrossings > kMaxMediumBoundaryCrossings) break;
+					org[0] = hit.p[0]; org[1] = hit.p[1]; org[2] = hit.p[2];
+					--depth; // this crossing doesn't count as a bounce
+					continue;
+				}
 
 				// Accumulate emission from hit surface (area light)
 				pixel.Ld[0] += beta[0] * hit.area_Le[0];
@@ -363,11 +378,26 @@ void SPPMPhotonPass(std::vector<SPPMPixel<T>>& pixels,
 
 		T org[3] = { les.ray_o[0], les.ray_o[1], les.ray_o[2] };
 		T dir[3] = { les.ray_d[0], les.ray_d[1], les.ray_d[2] };
+		// See SPPMCameraPass()'s own comment.
+		int mediumBoundaryCrossings = 0;
 
 		for (int depth = 0; depth < maxDepth; ++depth) {
 			BDPTHit<T> hit{};
 			if (!scene.Intersect(org, dir, std::numeric_limits<T>::max(), hit))
 				break;
+
+			// True pass-through (interface_material) - no real BSDF to
+			// deposit against or sample from. Checked before the deposit
+			// gate below: hit.is_delta_bsdf is false for a medium boundary
+			// (neither delta nor non-delta), so without this the gate below
+			// would wrongly try to deposit a photon against a material with
+			// no real BSDF response. Doesn't consume `depth`.
+			if (hit.is_medium_boundary) {
+				if (++mediumBoundaryCrossings > kMaxMediumBoundaryCrossings) break;
+				org[0] = hit.p[0]; org[1] = hit.p[1]; org[2] = hit.p[2];
+				--depth;
+				continue;
+			}
 
 			if (depth > 0 && !hit.is_delta_bsdf) {
 				// Look up the hash grid bucket for this photon position

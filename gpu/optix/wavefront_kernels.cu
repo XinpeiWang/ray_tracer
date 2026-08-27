@@ -3337,18 +3337,12 @@ extern "C" __global__ void evaluate_materials(
 		// iteration count, independent of any individual ray's own depth
 		// field, so a degenerate scene can't hang this backend either way.
 		RayWorkItem next;
-		next.origin           = hit_point + 0.001f * scattered_dir;
-		next.direction         = normalize(scattered_dir);
-		next.seed              = seed;
-		next.pixelIndex        = h.pixelIndex;
-		next.depth             = h.depth;
-		next.specular_bounce   = h.specular_bounce;
-		next.any_nonspecular   = h.any_nonspecular;
-		next.etaScale          = h.etaScale;
-		next.filterWeight      = h.filterWeight;
-		next.brdf_pdf          = h.brdf_pdf;
-		next.tMin              = 0.001f;
-		next.tMax              = 1e30f;
+		next.origin    = hit_point + 0.001f * scattered_dir;
+		next.direction = normalize(scattered_dir);
+		next.seed      = seed;
+		wf_carry_ray_state(next, h);  // pixelIndex/depth/specular_bounce/any_nonspecular/etaScale/filterWeight/brdf_pdf, unchanged
+		next.tMin      = 0.001f;
+		next.tMax      = 1e30f;
 		for (int i = 0; i < kWFNWavelengths; ++i) {
 			next.throughput[i]      = throughput[i] * attenuation[i];
 			next.radiance[i]        = radiance[i];

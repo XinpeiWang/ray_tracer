@@ -41,6 +41,7 @@
 // what's documented at each MaterialType branch below.
 
 #include <optix.h>
+#include "../../src/shared/cpu_gpu.h"  // kMaxMediumBoundaryCrossings
 #include "sppm_types.h"
 #include "optix_types.h"
 #include "optix_math_helpers.h"
@@ -683,8 +684,9 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 		- org);
 
 	float3 beta = make_float3(1.0f, 1.0f, 1.0f);
-	unsigned int mediumBoundaryCrossings = 0;
-	constexpr unsigned int kMaxMediumBoundaryCrossings = 32;
+	// kMaxMediumBoundaryCrossings (src/shared/cpu_gpu.h) is the one shared
+	// bound every integrator that supports this uses.
+	int mediumBoundaryCrossings = 0;
 
 	for (unsigned int depth = 0; depth < sppm_params.maxDepth; ++depth) {
 		SPPMHitPayload payload;
@@ -719,6 +721,12 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 			// the `--depth` relies on the SAME well-defined unsigned wraparound
 			// this codebase already uses for this exact purpose (see
 			// optix_raygen.h's own comment on its medium-boundary branch).
+			// No `throughput *= attenuation` here (unlike the recursive/
+			// wavefront GPU backends' own medium-boundary branches): this
+			// material is always MaterialType::Interface with a hardcoded
+			// (1,1,1) response (no MaterialData field encodes anything else
+			// for it today), so it would be a no-op - see sppm_adapter.h's
+			// identical CPU-side note.
 			org = payload.hitPoint;
 			if (++mediumBoundaryCrossings > kMaxMediumBoundaryCrossings) break;
 			--depth;
@@ -892,8 +900,9 @@ extern "C" __global__ void __raygen__sppm_photon_pass() {
 
 	float3 org = p + 0.001f * n_light;
 	float3 dir_cur = dir;
-	unsigned int mediumBoundaryCrossings = 0;
-	constexpr unsigned int kMaxMediumBoundaryCrossings = 32;
+	// kMaxMediumBoundaryCrossings (src/shared/cpu_gpu.h) is the one shared
+	// bound every integrator that supports this uses.
+	int mediumBoundaryCrossings = 0;
 
 	for (unsigned int depth = 0; depth < sppm_params.maxDepth; ++depth) {
 		SPPMHitPayload payload;

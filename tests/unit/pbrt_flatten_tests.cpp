@@ -1124,15 +1124,20 @@ TEST(FlattenMaterialTest, ConstantTextureRgbValueResolvesReflectance) {
 
 TEST(FlattenMaterialTest, ConstantTextureFloatValueBroadcastsToReflectance) {
 	// A float-typed constant texture feeding an RGB-consuming parameter -
-	// broadcasts to RGB, matching pbrt-v4's own convention.
+	// broadcasts to RGB, matching pbrt-v4's own convention. Deliberately NOT
+	// 0.5: Material::color's own in-class default is {0.5,0.5,0.5}, so that
+	// value would pass this test even if the broadcast silently failed and
+	// getVec3() fell back to the default - which is exactly what happened
+	// before this was fixed (the rewrite wrote a 1-element numbers vector,
+	// getVec3() requires >=3 and returned its default unnoticed).
 	const FlatScene s = flattenSource(
-		"Texture \"c\" \"float\" \"constant\" \"float value\" [ .5 ]\n"
+		"Texture \"c\" \"float\" \"constant\" \"float value\" [ .2 ]\n"
 		"Material \"diffuse\" \"texture reflectance\" [ \"c\" ]\n"
 		+ std::string(kQuadMesh));
 	ASSERT_EQ(s.materials.size(), 1u);
-	EXPECT_DOUBLE_EQ(s.materials[0].color[0], 0.5);
-	EXPECT_DOUBLE_EQ(s.materials[0].color[1], 0.5);
-	EXPECT_DOUBLE_EQ(s.materials[0].color[2], 0.5);
+	EXPECT_DOUBLE_EQ(s.materials[0].color[0], 0.2);
+	EXPECT_DOUBLE_EQ(s.materials[0].color[1], 0.2);
+	EXPECT_DOUBLE_EQ(s.materials[0].color[2], 0.2);
 }
 
 TEST(FlattenMaterialTest, ConstantTextureBoundToKResolvesOnConductor) {

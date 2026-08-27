@@ -1,6 +1,7 @@
 // optix_programs.cu -- OptiX device programs (top-level).
 // Split into logical units; this file includes them all.
 
+#include "../../src/shared/cpu_gpu.h"  // kMaxMediumBoundaryCrossings, used by optix_raygen.h
 #include "optix_disk_cylinder_helpers.h"
 #include "optix_device_helpers.h"
 #include "optix_intersection_sphere.h"

@@ -320,6 +320,17 @@ __device__ __forceinline__ float mis_power_heuristic(float pdf_a, float pdf_b) {
 	return PowerHeuristic(pdf_a, pdf_b);
 }
 
+// Packs shade_material()'s two boolean out-params into the single outgoing
+// payload flag every closest-hit program sends back via optixSetPayload_10:
+// 1 = ordinary scattered bounce, 3 = scattered w/ explicit origin override
+// (Subsurface probe exit), 4 = interface pass-through (MaterialType::
+// Interface - real medium-boundary, no BSDF). Called identically from all 6
+// closest-hit programs across the 5 optix_intersection_*.h files - kept as
+// one shared function so a future 5th flag value only needs editing here.
+__device__ __forceinline__ unsigned int pack_scatter_flag(bool bssrdf_exit, bool is_medium_boundary) {
+	return bssrdf_exit ? 3 : (is_medium_boundary ? 4 : 1);
+}
+
 // Cosine-weighted hemisphere sampling PDF
 __device__ __forceinline__ float cosine_pdf(const float3& direction, const float3& normal) {
 	float cosine = dot(normalize(direction), normal);

@@ -908,7 +908,7 @@ extern "C" __global__ void __closesthit__sphere() {
 		// way triangle/quad/bilinear-patch do for consistency - see
 		// optix_intersection_quad.h's p0-p15 layout comment. flag==4:
 		// MaterialType::Interface - see optix_raygen.h's own flag==4 branch.
-		optixSetPayload_10(bssrdf_exit ? 3 : (is_medium_boundary ? 4 : 1));  // scattered
+		optixSetPayload_10(pack_scatter_flag(bssrdf_exit, is_medium_boundary));  // scattered (see pack_scatter_flag's own comment)
 		optixSetPayload_11(__float_as_uint(t_hit));
 		optixSetPayload_12(__float_as_uint(brdf_pdf_out));
 		if (bssrdf_exit) {

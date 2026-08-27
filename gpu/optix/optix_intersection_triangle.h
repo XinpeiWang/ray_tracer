@@ -299,7 +299,7 @@ extern "C" __global__ void __closesthit__triangle() {
 		// originate there, not at hit_point (see optix_raygen.h's flag==3
 		// handling and shade_material()'s own out_bssrdf_exit comment).
 		// flag 4: MaterialType::Interface - see optix_raygen.h's flag==4 branch.
-		optixSetPayload_10(bssrdf_exit ? 3 : (is_medium_boundary ? 4 : 1));
+		optixSetPayload_10(pack_scatter_flag(bssrdf_exit, is_medium_boundary));  // scattered (see pack_scatter_flag's own comment)
 		optixSetPayload_11(__float_as_uint(t_hit));
 		optixSetPayload_12(__float_as_uint(brdf_pdf_out));
 		if (bssrdf_exit) {

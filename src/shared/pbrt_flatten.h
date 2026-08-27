@@ -1276,11 +1276,17 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				p.type = "rgb";
 				p.numbers = {valueP->numbers[0], valueP->numbers[1], valueP->numbers[2]};
 			} else if (valueP->numbers.size() == 1) {
-				// "float value" form - broadcast to RGB, same convention
-				// pbrt-v4 itself uses feeding a float texture into an RGB
-				// parameter.
-				p.type = "float";
-				p.numbers = {valueP->numbers[0]};
+				// "float value" form - broadcast to RGB (3 identical
+				// numbers), same convention pbrt-v4 itself uses feeding a
+				// float texture into an RGB parameter. Must actually
+				// produce 3 numbers, not 1: getVec3() (pbrt_scene.h)
+				// requires numbers.size() >= 3 and silently returns its
+				// caller's default otherwise - a getFloat() consumer reads
+				// numbers[0] regardless of size, so broadcasting to 3 stays
+				// correct for both kinds of downstream reader.
+				p.type = "rgb";
+				const double v = valueP->numbers[0];
+				p.numbers = {v, v, v};
 			}
 		}
 

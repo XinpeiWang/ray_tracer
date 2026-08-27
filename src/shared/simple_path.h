@@ -144,6 +144,11 @@ CPU_GPU void SimplePathLi(
 	// (mirrors pbrt-v4 SimplePathIntegrator: avoid double-counting from NEE).
 	bool specular_bounce = true;
 	int  depth           = 0;
+	// A true medium-boundary pass-through (interface_material) doesn't
+	// consume the depth budget below, so it needs its own bounded safety
+	// cap instead. kMaxMediumBoundaryCrossings (cpu_gpu.h) is the one
+	// shared bound every integrator that supports this uses.
+	int  medium_boundary_crossings = 0;
 
 	while (true) {
 		// --- Terminate if throughput is zero ---
@@ -178,20 +183,24 @@ CPU_GPU void SimplePathLi(
 			out_L[2] += beta[2] * Le[2];
 		}
 
-		// --- Terminate at maximum depth ---
-		if (depth++ == max_depth)
-			break;
-
-		// --- Skip medium boundaries (no BSDF) ---
+		// --- Skip medium boundaries (no BSDF) --- checked before the
+		// depth/max_depth accounting below: a true pass-through must not
+		// consume the depth budget, and specular_bounce is left exactly as
+		// it was (mirrors camera.h's own is_medium_boundary branch) so the
+		// NEXT emitter hit's NEE-vs-full-Le choice reflects the last REAL
+		// vertex, not this crossing.
 		if (hit.is_medium_boundary) {
-			// Advance ray past the boundary without changing direction
-			specular_bounce = true;
+			if (++medium_boundary_crossings > kMaxMediumBoundaryCrossings) break;
 			T new_o[3], new_d[3];
 			scene.SpawnRay(hit, dir, new_o, new_d);
 			org[0] = new_o[0]; org[1] = new_o[1]; org[2] = new_o[2];
 			dir[0] = new_d[0]; dir[1] = new_d[1]; dir[2] = new_d[2];
 			continue;
 		}
+
+		// --- Terminate at maximum depth ---
+		if (depth++ == max_depth)
+			break;
 
 		// --- NEE: sample direct illumination ---
 		T wo[3] = { -dir[0], -dir[1], -dir[2] };

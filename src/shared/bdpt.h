@@ -588,11 +588,12 @@ int BDPTRandomWalk(const T ray_o[3], const T ray_d[3],
 	int bounces = 0;
 	bool anyNonSpecular = false;
 	// A medium-boundary crossing is free - doesn't consume `bounces` - so
-	// nothing else bounds how many a single walk can take. Matches
-	// shadow_ray.h's own kMaxTransmissiveSkips bound and rationale: a
-	// degenerate scene shouldn't be able to hang this loop.
-	constexpr int kMaxMediumBoundarySkips = 32;
-	int mediumBoundarySkips = 0;
+	// nothing else bounds how many a single walk can take.
+	// kMaxMediumBoundaryCrossings (cpu_gpu.h) is the one shared bound every
+	// integrator that supports this uses, matching shadow_ray.h's own
+	// kMaxTransmissiveSkips bound and rationale: a degenerate scene
+	// shouldn't be able to hang this loop.
+	int mediumBoundaryCrossings = 0;
 
 	while (true) {
 		BDPTHit<T> hit{};
@@ -623,7 +624,7 @@ int BDPTRandomWalk(const T ray_o[3], const T ray_d[3],
 		// self-intersect the same surface again (see BDPTSceneAdapter::
 		// SpawnRay's own comment, bdpt_adapter.h).
 		if (hit.is_medium_boundary) {
-			if (++mediumBoundarySkips > kMaxMediumBoundarySkips) break;
+			if (++mediumBoundaryCrossings > kMaxMediumBoundaryCrossings) break;
 			T new_o[3], new_d[3];
 			scene.SpawnRay(hit, dir, new_o, new_d);
 			org[0] = new_o[0]; org[1] = new_o[1]; org[2] = new_o[2];

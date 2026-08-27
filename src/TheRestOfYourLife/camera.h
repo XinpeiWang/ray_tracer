@@ -15,6 +15,7 @@
 #include "pdf.h"
 #include <cmath>
 #include "material.h"
+#include "../shared/cpu_gpu.h"  // kMaxMediumBoundaryCrossings
 #include "../shared/tone_map.h"
 #include "sky_light.h"
 #include "punctual_light_objects.h"
@@ -1067,9 +1068,10 @@ class camera {
         // consume bounces_left or an RR trial (see the branch below) - so
         // nothing else bounds how many a single path can take. A degenerate
         // scene (self-intersecting/near-zero-thickness interface geometry)
-        // could otherwise hang the path entirely; this mirrors shadow_ray.h's
-        // own kMaxTransmissiveSkips bound for the identical reason.
-        constexpr int kMaxMediumBoundaryCrossings = 32;
+        // could otherwise hang the path entirely; kMaxMediumBoundaryCrossings
+        // (src/shared/cpu_gpu.h) is the one shared bound every integrator
+        // that supports this uses, mirroring shadow_ray.h's own
+        // kMaxTransmissiveSkips bound for the identical reason.
 
         while (bounces_left > 0) {
             // One iteration = one traced ray (the primary ray on the first
@@ -1454,7 +1456,6 @@ class camera {
             return out;
         };
         // See ray_color()'s own kMaxMediumBoundaryCrossings comment.
-        constexpr int kMaxMediumBoundaryCrossings = 32;
 
         while (bounces_left > 0) {
             if (render_stats::enabled())

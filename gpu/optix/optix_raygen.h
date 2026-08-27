@@ -130,10 +130,10 @@ extern "C" __global__ void __raygen__rg() {
 		float  eta_scale = 1.0f;
 		// A MaterialType::Interface crossing (flag==4 below) is free - it
 		// doesn't consume the depth loop or an RR trial - so nothing else
-		// bounds how many a single path can take. Matches CPU camera.h's
-		// own kMaxMediumBoundaryCrossings bound and rationale.
-		unsigned int mediumBoundaryCrossings = 0;
-		constexpr unsigned int kMaxMediumBoundaryCrossings = 32;
+		// bounds how many a single path can take. kMaxMediumBoundaryCrossings
+		// (src/shared/cpu_gpu.h) is the one shared bound every integrator
+		// that supports this uses.
+		int mediumBoundaryCrossings = 0;
 
 		for (unsigned int depth = 0; depth < params.maxDepth; ++depth) {
 			// --stats: one traced ray per iteration (primary on depth==0, a
@@ -266,7 +266,14 @@ extern "C" __global__ void __raygen__rg() {
 				// branch exactly.
 				throughput = throughput * payload.attenuation;
 				float3 hit_point = ray_origin + t_hit * ray_direction;
-				ray_origin = hit_point + 0.001f * ray_direction;
+				// 0.01f, not 0.001f: matches the normal-scatter continuation
+				// ray's own offset below - a smaller epsilon here previously
+				// caused reproducible self-intersection/illegal-memory-access
+				// crashes on dense geometry elsewhere in this codebase (see
+				// wavefront_kernels.cu's shadow-ray epsilon comment), so this
+				// new pass-through ray uses the same, already-fixed value
+				// rather than reintroducing a smaller one.
+				ray_origin = hit_point + 0.01f * ray_direction;
 				// ray_direction is left unchanged - real pass-through.
 				seed = payload.seed;
 				if (++mediumBoundaryCrossings > kMaxMediumBoundaryCrossings) break;

@@ -242,6 +242,12 @@ CPU_GPU void LightPathTrace(
 	T org[3] = { les.ray_o[0], les.ray_o[1], les.ray_o[2] };
 	T dir[3] = { les.ray_d[0], les.ray_d[1], les.ray_d[2] };
 	int depth = 0;
+	// A null-BSDF/medium-boundary skip doesn't consume `depth` below, so it
+	// needs its own bounded safety cap. kMaxMediumBoundaryCrossings
+	// (cpu_gpu.h) is the one shared bound every integrator that supports
+	// this uses (a degenerate/self-intersecting scene shouldn't be able to
+	// hang this loop).
+	int medium_boundary_crossings = 0;
 
 	while (true) {
 		// Intersect current ray with scene
@@ -252,6 +258,7 @@ CPU_GPU void LightPathTrace(
 		// Skip null BSDF / medium boundaries
 		// mirrors: "if (!bsdf) { isect.SkipIntersection(&ray, tHit); continue; }"
 		if (scene.BSDFIsNull(hit.bsdf_id)) {
+			if (++medium_boundary_crossings > kMaxMediumBoundaryCrossings) break;
 			T new_o[3], new_d[3];
 			scene.SpawnRay(hit, dir, new_o, new_d);
 			org[0] = new_o[0]; org[1] = new_o[1]; org[2] = new_o[2];
