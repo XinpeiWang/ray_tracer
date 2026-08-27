@@ -495,6 +495,24 @@ static std::string sppm_gpu_unsupported_reason(const SceneData& scene) {
 			       " (material index " + std::to_string(i) + ") -- sppm_programs.cu's "
 			       "camera/photon passes don't implement a BSDF sampler for it yet";
 		}
+		// RoughDielectric with a texture-bound roughness (MaterialData::
+		// textureIdx's own comment, optix_types.h) - real support would need
+		// UV threaded through SPPMHitPayload and both shape intersection
+		// programs (sppm_programs.cu has neither today; unlike the
+		// recursive/wavefront backends, GPU SPPM's payload carries no UV at
+		// all), a materially bigger lift than this check. Without this
+		// rejection, sppm_sample_rough_dielectric() would silently read the
+		// zero-initialized d.fuzz/d.roughness fallback (never populated for
+		// a texture-bound material - see pbrt_gpu_builder.h's own comment)
+		// and render a perfectly smooth dielectric everywhere, discarding
+		// the texture with no warning - reject loudly instead, matching
+		// every other unsupported combination in this function.
+		if (t == MaterialType::RoughDielectric && scene.materials[i].textureIdx >= 0) {
+			return "uses a texture-bound \"roughness\" on a rough dielectric (material index " +
+			       std::to_string(i) + ") -- GPU SPPM's payload carries no UV data to sample "
+			       "it with; use the default path tracer instead if the texture matters for "
+			       "this render";
+		}
 	}
 	return "";
 }

@@ -345,7 +345,20 @@ class rough_dielectric : public material, public dispersive_material {
     }
 
     BxDF get_bxdf(const MaterialContext<double>& ctx) const {
-        return BxDF{ ior, alpha_x, alpha_y };
+        // Mirrors coated_diffuse::get_bxdf()'s own identical texture lookup
+        // (its own comment explains why: no CPU-only tex pointer differs
+        // from scatter()'s real per-point sample, and nothing in this
+        // codebase actually calls rough_dielectric::get_bxdf() today -
+        // grepped, only referenced in this comment - so this is a best-
+        // effort mirror of true_alpha()'s real per-hit logic, not a
+        // load-bearing path). Without this, a texture-bound instance would
+        // silently return alpha_x/alpha_y's 0.0 default (perfectly smooth)
+        // regardless of what the texture says, since those fields are only
+        // ever populated for the flat-value constructors.
+        if (!roughness_tex_) return BxDF{ ior, alpha_x, alpha_y };
+        const color c = roughness_tex_->value(ctx.u, ctx.v, point3(ctx.px, ctx.py, ctx.pz));
+        const double a = roughness_or_alpha(c.x(), remap_roughness_);
+        return BxDF{ ior, a, a };
     }
 
     // Real NEE/MIS below the roughness threshold (see rough_metal's own
@@ -407,6 +420,12 @@ class rough_dielectric : public material, public dispersive_material {
     bool is_dispersive() const { return dispersive_; }
 
     double get_ior()       const { return ior; }
+    // Meaningless (always 0.0) for a texture-bound instance - this method
+    // takes no hit_record/MaterialContext, so unlike get_bxdf() above it has
+    // no per-point sample to fall back to. No live caller anywhere in this
+    // codebase today (grepped), so this is a documented, not-yet-load-bearing
+    // limitation rather than a fix - a future caller needing a real answer
+    // should use true_alpha() (via a hit_record) or get_bxdf() instead.
     double get_roughness() const { return alpha_x * alpha_x; }
 
     // Non-null only when constructed via the texture-roughness overload
@@ -436,20 +455,52 @@ class rough_dielectric : public material, public dispersive_material {
     // is what stops that exact bug from being able to recur here.
     bool is_delta_bsdf() const override { return effectively_smooth(); }
 
+    // Per-hit-aware override (material::is_delta_bsdf(const hit_record&)'s
+    // own comment) - SPPM's and BDPT/MLT's Intersect() already have a real
+    // hit_record at the point they classify a hit, so for a texture-bound
+    // instance this gives them the SAME precise per-hit answer scatter_impl/
+    // scattering_pdf_impl below use, instead of the conservative "never
+    // delta" the no-arg override above has to fall back to. Fixes a real
+    // correctness bug (not just an efficiency one): without this, SPPM's
+    // camera pass classified every texture-bound hit as non-delta BEFORE
+    // calling scatter(), so it would permanently stop and record a visible
+    // point at a hit whose texture-sampled roughness was actually near
+    // enough to zero for scatter_impl() to take the specular branch instead
+    // - the ray never continued through the glass the way scatter_impl()
+    // itself would have handled it, a visibly wrong image, not merely a
+    // less-efficient one.
+    bool is_delta_bsdf(const hit_record& rec) const override {
+        if (!roughness_tex_) return effectively_smooth();
+        double ax, ay;
+        true_alpha(rec, ax, ay);
+        return is_smooth(ax, ay);
+    }
+
   private:
+    // Single shared expression for "is this alpha pair smooth" - every
+    // caller (effectively_smooth() below, is_delta_bsdf(rec) above,
+    // scatter_impl()'s own per-hit branch) goes through this one static
+    // helper instead of each re-deriving TrowbridgeReitz<double>(ax,ay).
+    // EffectivelySmooth() independently, so a future change to the
+    // smoothness threshold/wrapper type only needs one edit.
+    static bool is_smooth(double ax, double ay) {
+        return TrowbridgeReitz<double>(ax, ay).EffectivelySmooth();
+    }
+
     // The ONE place this class decides smooth-vs-glossy for is_delta_bsdf()
     // (no hit_record available there) - see rough_metal::effectively_smooth()'s
     // own comment. roughness_tex_ set means the true answer varies per-hit
     // (can't be known without a hit_record), so this conservatively answers
     // "never delta" rather than guessing from an arbitrary representative
-    // alpha - SPPM/BDPT/MLT then always take the real NEE/MIS glossy path
-    // for this material everywhere, correct (if not maximally efficient) at
-    // every point regardless of what the texture actually says there.
+    // alpha - callers with no hit_record (the bare is_delta_bsdf() override
+    // above) fall back to this; callers WITH one (is_delta_bsdf(rec) above,
+    // scatter_impl/scattering_pdf_impl below) get the real per-hit answer
+    // via true_alpha() instead.
     // scatter_impl/scattering_pdf_impl below make the real, per-hit
     // smooth-vs-glossy decision instead, via true_alpha()'s own per-hit
     // sample.
     bool effectively_smooth() const {
-        return !roughness_tex_ && TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth();
+        return !roughness_tex_ && is_smooth(alpha_x, alpha_y);
     }
 
     // Real per-hit roughness for MaterialKind::Dielectric's own "texture
@@ -464,6 +515,19 @@ class rough_dielectric : public material, public dispersive_material {
     // roughness_tex_ is unset, just returns the flat alpha_x/alpha_y
     // already fixed at construction - identical cost and behavior to
     // before this overload existed.
+    //
+    // Known, accepted inefficiency when roughness_tex_ IS set: camera.h's
+    // NEE queries scattering_pdf() once per active light-sampling strategy
+    // against the SAME hit (area/portal/sky/each punctual light, all with
+    // identical rec.u/rec.v/rec.p), so this resamples the texture that many
+    // times per hit instead of once. Not fixed here: caching the sampled
+    // value on the instance would be a data race (material instances are
+    // shared across render threads, not per-hit copies), and threading a
+    // pre-sampled alpha through camera.h's NEE call sites the way the GPU
+    // backends' glossyAlphaForNEE does would mean restructuring shared
+    // integrator code well beyond this class - a materially bigger change
+    // than this feature's own current scope (no bundled scene uses
+    // texture-bound dielectric roughness yet).
     void true_alpha(const hit_record& rec, double& ax, double& ay) const {
         if (!roughness_tex_) { ax = alpha_x; ay = alpha_y; return; }
         const color c = roughness_tex_->value(rec.u, rec.v, rec.p);
@@ -520,8 +584,9 @@ class rough_dielectric : public material, public dispersive_material {
         // Uses ax/ay directly (not the class-level effectively_smooth(),
         // which conservatively answers "never smooth" when roughness_tex_
         // is set, since IT has no hit_record to sample from - this call
-        // site does, so it makes the real per-hit decision instead).
-        if (TrowbridgeReitz<double>(ax, ay).EffectivelySmooth()) {
+        // site does, so it makes the real per-hit decision instead, via
+        // the same shared is_smooth() helper is_delta_bsdf(rec) above uses).
+        if (is_smooth(ax, ay)) {
             auto res = bxdf.sample_local(wi_x, wi_y, wi_z, eta,
                                          random_double(), random_double(), random_double());
             if (!res.valid) return false;

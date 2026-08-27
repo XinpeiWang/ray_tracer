@@ -165,6 +165,21 @@ class material {
     // this to a fixed `true`.
     virtual bool is_delta_bsdf() const { return false; }
 
+    // Per-hit-aware variant of is_delta_bsdf() above, for the rare material
+    // whose real answer varies by SURFACE POINT rather than being a fixed
+    // property of the instance - e.g. rough_dielectric with a texture-bound
+    // roughness (material_pbrt.h), where a scratch-free/near-mirror texel
+    // is genuinely delta at that point even though other texels on the same
+    // instance are not, and the no-arg is_delta_bsdf() (with no hit_record
+    // to sample the texture from) has no way to know that. Default
+    // implementation just forwards to the no-arg version, so every existing
+    // override (whose answer never varies by hit point) needs no change.
+    // SPPM's and BDPT/MLT's own Intersect() (sppm_adapter.h, bdpt_adapter.h)
+    // already resolve a real hit_record before classifying a hit, so they
+    // call this overload instead of the bare one for a materially more
+    // precise answer - see bsdf_bridge.h's sppm_is_delta_material().
+    virtual bool is_delta_bsdf(const hit_record& rec) const { (void)rec; return is_delta_bsdf(); }
+
     // True only for interface_material (material_simple.h) - pbrt-v4's real
     // "no BSDF" interface material. A THIRD classification alongside
     // is_delta_bsdf()'s true/false: not a real delta surface (no NEE, but a

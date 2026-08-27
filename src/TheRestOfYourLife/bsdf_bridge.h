@@ -60,7 +60,7 @@ struct SPPMShadingContext {
 };
 
 // True when this material instance's scatter() sets srec.skip_pdf=true --
-// delegates to material::is_delta_bsdf() (material_base.h) rather than a
+// delegates to material::is_delta_bsdf(rec) (material_base.h) rather than a
 // per-class dynamic_cast list, since that's no longer a static, per-class
 // property: rough_metal/conductor/rough_dielectric/coated_diffuse/
 // coated_conductor all branch on their own runtime roughness
@@ -73,6 +73,20 @@ struct SPPMShadingContext {
 // even though the default path tracer already rendered them correctly via
 // real NEE/MIS. metal/dielectric/thin_dielectric have no roughness
 // parameter at all and remain unconditionally delta.
+//
+// Takes a hit_record (both call sites - sppm_adapter.h's and
+// bdpt_adapter.h's own Intersect() - already have one at classification
+// time) and calls the per-hit-aware is_delta_bsdf(rec) overload, not the
+// bare no-arg one: rough_dielectric with a texture-bound roughness
+// (material_pbrt.h) needs a real hit point to know whether THIS specific
+// texel is smooth, and the no-arg version can only conservatively answer
+// "never delta" for such an instance. Using the bare version here was a
+// real correctness bug (not just a missed optimization): SPPM's camera
+// pass classifies a hit BEFORE calling scatter(), so a conservative
+// "never delta" answer made it permanently stop and record a visible
+// point at a hit whose real per-hit roughness was actually near enough to
+// zero for scatter_impl() to take the specular branch instead - the ray
+// never continued through the glass, a visibly wrong image.
 //
 // Both SPPM's own algorithm (sppm.h's SPPMCameraPass/SPPMPhotonPass) and
 // BDPT/MLT's (bdpt.h's BDPTRandomWalk, via hit.is_delta_bsdf) branch on
@@ -87,8 +101,8 @@ struct SPPMShadingContext {
 // concrete sub-material first (see sppm_resolve_material() below), so by
 // the time anything in this file classifies or evaluates a material, it's
 // always one of the real, concrete classes checked below.
-inline bool sppm_is_delta_material(const material* m) {
-	return m && m->is_delta_bsdf();
+inline bool sppm_is_delta_material(const material* m, const hit_record& rec) {
+	return m && m->is_delta_bsdf(rec);
 }
 
 // Same null-safe bridge shape as sppm_is_delta_material() above, forwarding

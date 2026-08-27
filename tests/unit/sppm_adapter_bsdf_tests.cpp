@@ -37,22 +37,26 @@
 
 TEST(SppmIsDeltaMaterial, LambertianIsNotDelta) {
 	lambertian m(color(0.5, 0.5, 0.5));
-	EXPECT_FALSE(sppm_is_delta_material(&m));
+	hit_record rec;
+	EXPECT_FALSE(sppm_is_delta_material(&m, rec));
 }
 
 TEST(SppmIsDeltaMaterial, MetalIsDelta) {
 	metal m(color(0.8, 0.8, 0.8), 0.0);
-	EXPECT_TRUE(sppm_is_delta_material(&m));
+	hit_record rec;
+	EXPECT_TRUE(sppm_is_delta_material(&m, rec));
 }
 
 TEST(SppmIsDeltaMaterial, DielectricIsDelta) {
 	dielectric m(1.5);
-	EXPECT_TRUE(sppm_is_delta_material(&m));
+	hit_record rec;
+	EXPECT_TRUE(sppm_is_delta_material(&m, rec));
 }
 
 TEST(SppmIsDeltaMaterial, DiffuseLightIsNotDelta) {
 	diffuse_light m(color(4, 4, 4));
-	EXPECT_FALSE(sppm_is_delta_material(&m));
+	hit_record rec;
+	EXPECT_FALSE(sppm_is_delta_material(&m, rec));
 }
 
 // ============================================================================
@@ -509,7 +513,8 @@ TEST(SppmResolveMaterial, ResolvedDeltaSubMaterialIsClassifiedAsDelta) {
 
 	auto resolved = sppm_resolve_material(mix, 0.0, 0.0, point3(0, 0, 0));
 	EXPECT_EQ(resolved.get(), met.get());
-	EXPECT_TRUE(sppm_is_delta_material(resolved.get()));
+	hit_record rec;
+	EXPECT_TRUE(sppm_is_delta_material(resolved.get(), rec));
 }
 
 TEST(SppmResolveMaterial, ResolvedNonDeltaSubMaterialIsClassifiedAsNonDelta) {
@@ -519,5 +524,6 @@ TEST(SppmResolveMaterial, ResolvedNonDeltaSubMaterialIsClassifiedAsNonDelta) {
 
 	auto resolved = sppm_resolve_material(mix, 0.0, 0.0, point3(0, 0, 0));
 	EXPECT_EQ(resolved.get(), lam.get());
-	EXPECT_FALSE(sppm_is_delta_material(resolved.get()));
+	hit_record rec;
+	EXPECT_FALSE(sppm_is_delta_material(resolved.get(), rec));
 }

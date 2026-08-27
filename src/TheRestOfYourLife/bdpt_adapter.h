@@ -342,7 +342,7 @@ class BDPTSceneAdapter {
 		hit.area_Le[0] = Le.x(); hit.area_Le[1] = Le.y(); hit.area_Le[2] = Le.z();
 		hit.t_hit = rec.t;
 		hit.is_medium_boundary = resolved_mat ? sppm_is_medium_boundary(resolved_mat.get()) : false;
-		hit.is_delta_bsdf = resolved_mat ? sppm_is_delta_material(resolved_mat.get()) : false;
+		hit.is_delta_bsdf = resolved_mat ? sppm_is_delta_material(resolved_mat.get(), rec) : false;
 		hit.bsdf_id = nEmitters_ + pool_idx;
 		hit.light_id = -1;   // unused by bdpt.h's own BDPTVertex construction (see class comment)
 		return true;
