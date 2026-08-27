@@ -1084,6 +1084,73 @@ TEST(FlattenMaterialTest, DielectricEtaIsReadAsIor) {
 	EXPECT_DOUBLE_EQ(s.materials[0].ior, 1.33);
 }
 
+TEST(FlattenMaterialTest, InterfaceMaterialNoneMapsToNearInvisibleDielectric) {
+	// pbrt-v4's real interface-material idiom (a shape bounding a
+	// participating medium with no BSDF response of its own) - previously
+	// fell to MaterialKind::Unsupported (opaque flat Lambertian, plus a
+	// warning). eta is forced to 1.001, not read from any "eta" param -
+	// see flatten()'s own FrDielectric() grazing-incidence comment.
+	const FlatScene s = flattenSource(
+		"Material \"none\"\n" + std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].kind, MaterialKind::Interface);
+	EXPECT_DOUBLE_EQ(s.materials[0].ior, 1.001);
+	EXPECT_FALSE(warnedAbout(s, "none"));
+}
+
+TEST(FlattenMaterialTest, InterfaceMaterialEmptyStringAlsoMapsToInterface) {
+	// pbrt-v4 also accepts a bare empty type string for the same idiom.
+	const FlatScene s = flattenSource(
+		"Material \"\"\n" + std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].kind, MaterialKind::Interface);
+	EXPECT_DOUBLE_EQ(s.materials[0].ior, 1.001);
+}
+
+TEST(FlattenMaterialTest, ConstantTextureRgbValueResolvesReflectance) {
+	// A real scene author's indirection for a colour reused across several
+	// materials - previously fell through to the generic "texture not
+	// supported" warning, and worse, to the WRONG fallback colour (the
+	// pre-loop getVec3() read the raw texture-typed "reflectance" param,
+	// which has no numbers, silently returning the generic default).
+	const FlatScene s = flattenSource(
+		"Texture \"c\" \"spectrum\" \"constant\" \"rgb value\" [ .2 .4 .6 ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"c\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].color[0], 0.2);
+	EXPECT_DOUBLE_EQ(s.materials[0].color[1], 0.4);
+	EXPECT_DOUBLE_EQ(s.materials[0].color[2], 0.6);
+	EXPECT_FALSE(warnedAbout(s, "diffuse"));
+}
+
+TEST(FlattenMaterialTest, ConstantTextureFloatValueBroadcastsToReflectance) {
+	// A float-typed constant texture feeding an RGB-consuming parameter -
+	// broadcasts to RGB, matching pbrt-v4's own convention.
+	const FlatScene s = flattenSource(
+		"Texture \"c\" \"float\" \"constant\" \"float value\" [ .5 ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"c\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].color[0], 0.5);
+	EXPECT_DOUBLE_EQ(s.materials[0].color[1], 0.5);
+	EXPECT_DOUBLE_EQ(s.materials[0].color[2], 0.5);
+}
+
+TEST(FlattenMaterialTest, ConstantTextureBoundToKResolvesOnConductor) {
+	// Deliberately not gated on material kind - conductor's "k" needs the
+	// same resolution as diffuse-family "reflectance".
+	const FlatScene s = flattenSource(
+		"Texture \"c\" \"spectrum\" \"constant\" \"rgb value\" [ .9 .8 .1 ]\n"
+		"Material \"conductor\" \"texture k\" [ \"c\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].color[0], 0.9);
+	EXPECT_DOUBLE_EQ(s.materials[0].color[1], 0.8);
+	EXPECT_DOUBLE_EQ(s.materials[0].color[2], 0.1);
+	EXPECT_FALSE(warnedAbout(s, "conductor"));
+}
+
 TEST(FlattenMaterialTest, RoughnessFallsBackToUOrVRoughnessWhenIsotropicIsAbsent) {
 	// A scene that only gives the anisotropic pair has no "roughness" key to
 	// find, and without a fallback chain that silently reads as 0 - a

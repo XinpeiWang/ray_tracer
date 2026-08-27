@@ -119,6 +119,11 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 				m.conductorK[0], m.conductorK[1], m.conductorK[2],
 				m.roughness_u, m.roughness_v, m.remapRoughness);
 		return std::make_shared<metal>(albedo, m.roughness);
+	// Pass-through "interface" material (pbrt-v4's Material "none"/"" -
+	// see MaterialKind::Interface's own comment). flatten() already forced
+	// m.ior to 1.001 for this kind, so this shares Dielectric's exact
+	// build path with no special-casing needed here.
+	case pbrt_flatten::MaterialKind::Interface:
 	case pbrt_flatten::MaterialKind::Dielectric:
 		// A nonzero "roughness"/"uroughness"/"vroughness" (m.roughness_u/
 		// m.roughness_v - see flatten()'s own fallback-chain comment) means

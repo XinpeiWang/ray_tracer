@@ -566,6 +566,12 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 			d.type = MaterialType::Metal;
 		}
 		break;
+	// Pass-through "interface" material (pbrt-v4's Material "none"/"" -
+	// see MaterialKind::Interface's own comment). flatten() already forced
+	// m.ior to 1.001 for this kind, and d.ior is already assigned
+	// generically from m.ior above, so this shares Dielectric's exact
+	// build path with no special-casing needed here.
+	case pbrt_flatten::MaterialKind::Interface:
 	case pbrt_flatten::MaterialKind::Dielectric:
 		// A nonzero "roughness"/"uroughness"/"vroughness" (m.roughness,
 		// already copied into d.roughness above generically) means the scene

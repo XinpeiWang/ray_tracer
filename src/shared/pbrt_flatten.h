@@ -308,6 +308,16 @@ enum class MaterialKind {
 	// pbrt-v4's HairMaterial::Create exactly) and Material::betaM/betaN/
 	// alphaDeg's own comments for the remaining parameters.
 	Hair,
+	// pbrt-v4's real "interface material" idiom (`Material "none"` or
+	// `Material ""`) - a shape that bounds a participating medium with no
+	// BSDF response of its own; the ray passes straight through, only the
+	// medium changes. Built on both backends by sharing MaterialKind::
+	// Dielectric's exact build path with eta forced to 1.001 (flatten()'s
+	// own comment on why not exactly 1.0) - the same near-invisible
+	// substitute this project's own bundled cloud/rgbgrid/uniformgrid
+	// medium scenes already hand-author via a plain `dielectric` material,
+	// now recognized automatically for any scene using the real directive.
+	Interface,
 	Unsupported,
 };
 
@@ -1131,6 +1141,7 @@ inline MaterialKind materialKindFor(const std::string &type) {
 	if (type == "measured")            return MaterialKind::Measured;
 	if (type == "mix")                 return MaterialKind::Mix;
 	if (type == "hair")                return MaterialKind::Hair;
+	if (type == "none" || type.empty()) return MaterialKind::Interface;
 	return MaterialKind::Unsupported;
 }
 
@@ -1261,6 +1272,38 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// references) still just warns.
 		for (const pbrt_scene::Param &p : md.params.items) {
 			if (p.type != "texture") continue;
+			// "constant" is pbrt-v4's literal-value texture class - a real
+			// scene author's indirection for a colour reused across several
+			// materials. Resolve it here to the exact plain colour the
+			// non-texture-bound "reflectance"/"k" parameter already gets
+			// (the pre-loop m.color assignment above), instead of falling
+			// through to the generic warning below with the WRONG fallback
+			// (that pre-loop getVec3() read the raw texture-typed param,
+			// which has no `numbers`, so it silently used the generic
+			// default colour, not even an approximation of the real one).
+			// Not gated on `kind` - needed for conductor's "k" too, not
+			// just diffuse-family "reflectance".
+			if ((p.name == "reflectance" || p.name == "k") && !p.strings.empty()) {
+				const pbrt_scene::TextureDecl *constTex = nullptr;
+				for (const pbrt_scene::TextureDecl &t : scene.textures)
+					if (t.name == p.strings[0]) constTex = &t;
+				if (constTex && constTex->cls == "constant") {
+					const pbrt_scene::Param *valueP = constTex->params.find("value");
+					if (valueP && valueP->numbers.size() >= 3) {
+						m.color[0] = valueP->numbers[0];
+						m.color[1] = valueP->numbers[1];
+						m.color[2] = valueP->numbers[2];
+						continue;
+					} else if (valueP && valueP->numbers.size() == 1) {
+						// "float value" form - broadcast to RGB, same
+						// convention pbrt-v4 itself uses feeding a float
+						// texture into an RGB parameter.
+						const double f = valueP->numbers[0];
+						m.color[0] = m.color[1] = m.color[2] = f;
+						continue;
+					}
+				}
+			}
 			if ((m.kind == MaterialKind::Diffuse || m.kind == MaterialKind::CoatedDiffuse ||
 				 m.kind == MaterialKind::DiffuseTransmission) &&
 				p.name == "reflectance" && !p.strings.empty()) {
@@ -1489,6 +1532,17 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		m.remapRoughness = md.params.getBool("remaproughness", true);
 		// "eta" is pbrt's name for index of refraction on dielectrics.
 		m.ior = md.params.getFloat("eta", md.params.getFloat("ior", 1.5));
+		if (m.kind == MaterialKind::Interface) {
+			// eta=1.0 exactly makes FrDielectric() (src/shared/fresnel.h)
+			// divide 0/0 at grazing incidence (r_parl/r_perp's shared
+			// numerator AND denominator both hit exactly 0 there) - 1.001
+			// is the same near-invisible value this project's own bundled
+			// cloud/rgbgrid/uniformgrid medium scenes already hand-author
+			// as a workaround for this exact gap (see materialKindFor()'s
+			// own comment), now applied automatically for any scene using
+			// the real pbrt-v4 directive.
+			m.ior = 1.001;
+		}
 
 		// Conductor OR CoatedConductor: pbrt describes a conductor's complex
 		// IOR via "spectrum eta"/"spectrum k" bound to a NAMED spectrum
