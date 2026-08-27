@@ -1408,7 +1408,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	float filterWeight,
 	const float3& normal, const float3& hit_point,
 	// World-space surface tangent (dp/du) at this shading point - real
-	// per-shape value from the caller (see HitWorkItem::objNormal's own
+	// per-shape value from the caller (see HitWorkItem::objDpdu's own
 	// comment), used ONLY by evalGlossyF's UV-aligned frame construction
 	// below for the 4 anisotropy-capable material kinds (RoughMetal and
 	// every non-glossy matType ignore it, keeping the arbitrary frame -
@@ -2602,7 +2602,7 @@ extern "C" __global__ void evaluate_materials(
 		glossyAlphaVForNEE = c_alpha_y;
 		float3 cn = normal;
 		float3 ctan, cbitan;
-		BuildDpduTangentFrame(cn.x, cn.y, cn.z, h.objNormal.x, h.objNormal.y, h.objNormal.z,
+		BuildDpduTangentFrame(cn.x, cn.y, cn.z, h.objDpdu.x, h.objDpdu.y, h.objDpdu.z,
 		                       ctan.x, ctan.y, ctan.z, cbitan.x, cbitan.y, cbitan.z);
 		float3 cwi = -normalize(h.rayDir);
 		float cwi_x = dot(cwi, ctan), cwi_y = dot(cwi, cbitan), cwi_z = dot(cwi, cn);
@@ -2704,7 +2704,7 @@ extern "C" __global__ void evaluate_materials(
 		glossyAlphaVForNEE = cd_alpha_y;
 		float3 cdn = normal;
 		float3 cdtan, cdbitan;
-		BuildDpduTangentFrame(cdn.x, cdn.y, cdn.z, h.objNormal.x, h.objNormal.y, h.objNormal.z,
+		BuildDpduTangentFrame(cdn.x, cdn.y, cdn.z, h.objDpdu.x, h.objDpdu.y, h.objDpdu.z,
 		                       cdtan.x, cdtan.y, cdtan.z, cdbitan.x, cdbitan.y, cdbitan.z);
 		float3 cdwi = -normalize(h.rayDir);
 		float cdwi_x = dot(cdwi, cdtan), cdwi_y = dot(cdwi, cdbitan), cdwi_z = dot(cdwi, cdn);
@@ -2819,7 +2819,7 @@ extern "C" __global__ void evaluate_materials(
 		glossyAlphaVForNEE = cc_alpha_y;
 		float3 ccn = normal;
 		float3 cctan, ccbitan;
-		BuildDpduTangentFrame(ccn.x, ccn.y, ccn.z, h.objNormal.x, h.objNormal.y, h.objNormal.z,
+		BuildDpduTangentFrame(ccn.x, ccn.y, ccn.z, h.objDpdu.x, h.objDpdu.y, h.objDpdu.z,
 		                       cctan.x, cctan.y, cctan.z, ccbitan.x, ccbitan.y, ccbitan.z);
 		float3 ccwi = -normalize(h.rayDir);
 		float ccwi_x = dot(ccwi, cctan), ccwi_y = dot(ccwi, ccbitan), ccwi_z = dot(ccwi, ccn);
@@ -3199,16 +3199,16 @@ extern "C" __global__ void evaluate_materials(
 		//
 		// Fiber tangent: a bilinear patch (geomType==2, the tessellated-curve
 		// GPU path - see pbrt_gpu_builder.h/curve_tessellate.h) carries its
-		// own genuine dpdu in h.objNormal (see that field's own comment,
+		// own genuine dpdu in h.objDpdu (see that field's own comment,
 		// __closesthit__wf_bilinear_patch) - the real fiber axis, unlike
 		// `normal` (perpendicular to the tube). Every other geomType falls
 		// back to the shading-normal proxy, matching hair_material.h's own
-		// default (tangent_is_dpdu=false) exactly. h.objNormal is stored
+		// default (tangent_is_dpdu=false) exactly. h.objDpdu is stored
 		// UNNORMALIZED (see __closesthit__wf_bilinear_patch's own comment) -
 		// normalized here, the only reader, with the same degenerate-dpdu
 		// fallback hair_material.h's CPU-side fiber_tangent() uses.
-		const bool hasCurveTangent = (h.geomType == 2) && (dot(h.objNormal, h.objNormal) > 1e-12f);
-		const float3 hairTangent = hasCurveTangent ? normalize(h.objNormal) : normal;
+		const bool hasCurveTangent = (h.geomType == 2) && (dot(h.objDpdu, h.objDpdu) > 1e-12f);
+		const float3 hairTangent = hasCurveTangent ? normalize(h.objDpdu) : normal;
 		float3 sdir, atten;
 		if (wf_sample_hair_material(h.rayDir, hairTangent, mat, seed, sdir, atten)) {
 			scattered_dir = sdir;
@@ -3282,7 +3282,7 @@ extern "C" __global__ void evaluate_materials(
 		// Lambertian with a perturbed shading normal from a tangent-space
 		// RGB normal-map texture - mirrors optix_intersection_sphere.h's
 		// (spheres) / optix_intersection_triangle.h's (triangles) closesthit
-		// cases. h.objNormal now carries a real, ready-to-use (world-space)
+		// cases. h.objDpdu now carries a real, ready-to-use (world-space)
 		// dpdu for EVERY geomType (sphere/quad/triangle/disk/cylinder all
 		// populate it at intersection time - see each __closesthit__wf_*'s
 		// own comment; bilinear patch's is left unnormalized, matching Hair's
@@ -3290,7 +3290,7 @@ extern "C" __global__ void evaluate_materials(
 		// every other geometry derived an approximate cross(world_up,
 		// raw_normal) tangent instead, which is also what the 4 anisotropy-
 		// capable material kinds below now rely on this same field for.
-		const float3 dpdu = h.objNormal;
+		const float3 dpdu = h.objDpdu;
 
 		// Decode the tangent-space normal from the map texture: 2*RGB-1,
 		// normalize (fallback (0,0,1) i.e. "no perturbation" if degenerate) -
@@ -3400,7 +3400,7 @@ extern "C" __global__ void evaluate_materials(
 
 	// eventEta was set above only on a genuine transmission (DielectricMedium's
 	// entry/exit surfaces) - see this function's own eventEta local comment.
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, glossyAlphaVForNEE, h.etaScale * eventEta * eventEta, h.filterWeight, normal, hit_point, h.objNormal, seed,
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, glossyAlphaVForNEE, h.etaScale * eventEta * eventEta, h.filterWeight, normal, hit_point, h.objDpdu, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -3569,7 +3569,7 @@ extern "C" __global__ void evaluate_materials_simple(
 
 	// Lambertian/Metal never transmit - h.etaScale passes through unchanged
 	// (see RayWorkItem::etaScale's own comment).
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, glossyAlphaVForNEE, h.etaScale, h.filterWeight, normal, hit_point, h.objNormal, seed,
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, glossyAlphaVForNEE, h.etaScale, h.filterWeight, normal, hit_point, h.objDpdu, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -3768,7 +3768,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		float rd_ri = rd_front_face ? (1.0f / dispersiveIor) : dispersiveIor;
 		float3 n = normal;
 		float3 tan_v, bitan;
-		BuildDpduTangentFrame(n.x, n.y, n.z, h.objNormal.x, h.objNormal.y, h.objNormal.z,
+		BuildDpduTangentFrame(n.x, n.y, n.z, h.objDpdu.x, h.objDpdu.y, h.objDpdu.z,
 		                       tan_v.x, tan_v.y, tan_v.z, bitan.x, bitan.y, bitan.z);
 		float3 wi_w = normalize(-h.rayDir);
 		float wi_x = dot(wi_w, tan_v), wi_y = dot(wi_w, bitan), wi_z = dot(wi_w, n);
@@ -3856,7 +3856,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	// eventEta was set above only on a genuine transmission (Dielectric or
 	// RoughDielectric's refract branch) - see this function's own eventEta
 	// local comment.
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, glossyAlphaVForNEE, h.etaScale * eventEta * eventEta, h.filterWeight, normal, hit_point, h.objNormal, seed,
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, glossyAlphaVForNEE, h.etaScale * eventEta * eventEta, h.filterWeight, normal, hit_point, h.objDpdu, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,

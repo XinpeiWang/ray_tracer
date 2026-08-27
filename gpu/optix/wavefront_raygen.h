@@ -57,7 +57,7 @@ extern "C" __global__ void __raygen__wf_intersect() {
 		h.geomType    = payload.geomType;
 		h.mediumTFar  = payload.mediumTFar;
 		h.frontFace   = payload.frontFace;
-		h.objNormal   = payload.objNormal;
+		h.objDpdu     = payload.objDpdu;
 		h.uv_u        = payload.uv_u;
 		h.uv_v        = payload.uv_v;
 		h.rayOrigin   = ray.origin;

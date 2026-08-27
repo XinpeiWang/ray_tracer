@@ -145,11 +145,11 @@ extern "C" __global__ void __closesthit__wf_bilinear_patch() {
 	// computed the real values).
 	payload->uv_u        = u;
 	payload->uv_v        = v;
-	// See WfHitPayload::objNormal's own comment - the bilinear-patch use,
+	// See WfHitPayload::objDpdu's own comment - the bilinear-patch use,
 	// only meaningful for MaterialType::Hair. Stored UNNORMALIZED - the
 	// normalize() (sqrt + 3 divides) is deferred to evaluate_materials()'s
 	// own Hair case, the only reader, so every non-Hair bilinear-patch hit
 	// (most of them - see that field's own comment) doesn't pay for it.
-	payload->objNormal   = dpdu;
+	payload->objDpdu     = dpdu;
 }
 

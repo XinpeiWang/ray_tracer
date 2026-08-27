@@ -212,7 +212,7 @@ struct WfHitPayload {
 	bool   hit;
 	float  mediumTFar; // MaterialType::Medium/DielectricMedium only - see HitWorkItem::mediumTFar
 	int    frontFace;  // see HitWorkItem::frontFace
-	// Dual-purpose carrier - see HitWorkItem::objNormal's own comment for the
+	// Dual-purpose carrier - see HitWorkItem::objDpdu's own comment for the
 	// sphere/triangle uses this mirrors. Bilinear patch (geomType==2) is a
 	// third use: the patch's own dpdu ("along the tube's length" for a
 	// tessellated curve - curve_tessellate.h's own Quad corner convention),
@@ -220,7 +220,7 @@ struct WfHitPayload {
 	// normalizes it) - the genuine fiber tangent this primitive has, unlike
 	// its own `normal` (perpendicular to the tube) - see hair_material.h's
 	// tangent_is_dpdu comment for the identical CPU-side reasoning.
-	float3 objNormal;
+	float3 objDpdu;
 	float  uv_u, uv_v; // see HitWorkItem::uv_u/uv_v
 };
 

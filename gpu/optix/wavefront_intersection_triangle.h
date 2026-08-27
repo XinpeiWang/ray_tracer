@@ -175,8 +175,7 @@ extern "C" __global__ void __closesthit__wf_triangle() {
 	}
 
 	// Real UV-derived tangent (dpdu), for MaterialType::NormalMappedLambertian
-	// - stashed in objNormal (sphere-only field otherwise left zero for
-	// triangle hits, see HitWorkItem::objNormal's own comment) since
+	// - stashed in objDpdu (see HitWorkItem::objDpdu's own comment) since
 	// WfHitPayload/HitWorkItem carry no per-vertex position/UV data of their
 	// own to recompute this from later. Solves the standard 2x2 system
 	// relating edge vectors to UV deltas (pbrt-v4 Triangle::Intersect),
@@ -216,7 +215,7 @@ extern "C" __global__ void __closesthit__wf_triangle() {
 	// initialization here. RoughDielectric OBJ meshes (e.g. glass triangles)
 	// are the case this actually affects.
 	payload->frontFace   = front_face ? 1 : 0;
-	payload->objNormal   = tri_dpdu;
+	payload->objDpdu     = tri_dpdu;
 	payload->uv_u        = uv_u;
 	payload->uv_v        = uv_v;
 }

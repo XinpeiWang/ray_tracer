@@ -194,28 +194,30 @@ extern "C" __global__ void __closesthit__triangle() {
 	// switch to its default: scattered=false, i.e. every normal-mapped
 	// triangle silently absorbed all light) - this is what actually wires
 	// the material type into triangle shading for the first time.
-	// Real tangent (dp/du) from the standard pbrt-v4 Triangle::Intersect
-	// technique (solve the 2x2 system relating edge vectors to UV deltas) -
-	// computed unconditionally now (not just for NormalMappedLambertian's
-	// own normal-map basis below) since shade_material()'s 4 anisotropy-
-	// capable material kinds also need a real, UV-aligned tangent to build
-	// their shading frame from (see BuildDpduTangentFrame's own comment,
-	// microfacet.h) instead of GPU's previous always-arbitrary frame.
-	const float3 e1 = tri.p1 - tri.p0;
-	const float3 e2 = tri.p2 - tri.p0;
-	const float du1 = tri.uv1.x - tri.uv0.x, dv1 = tri.uv1.y - tri.uv0.y;
-	const float du2 = tri.uv2.x - tri.uv0.x, dv2 = tri.uv2.y - tri.uv0.y;
-	const float det = du1 * dv2 - dv1 * du2;
-	float3 tri_dpdu;
-	if (fabsf(det) > 1e-12f) {
-		const float invDet = 1.0f / det;
-		tri_dpdu = (dv2 * invDet) * e1 - (dv1 * invDet) * e2;
-		const float dpdu_len = length(tri_dpdu);
-		tri_dpdu = (dpdu_len > 1e-8f) ? (tri_dpdu / dpdu_len) : normalize(e1);
-	} else {
-		tri_dpdu = normalize(e1);
+	//
+	// Also needed by shade_material()'s 4 anisotropy-capable material kinds
+	// for their own UV-aligned shading frame (see BuildDpduTangentFrame's
+	// own comment, microfacet.h) - gated on material_needs_dpdu() so the
+	// 2x2 solve + normalize is skipped entirely for every other material
+	// kind (Lambertian, Metal, Dielectric, DiffuseLight, etc. - the
+	// overwhelming common case), which never reads it.
+	float3 tri_dpdu = make_float3(0.0f, 0.0f, 0.0f);
+	if (material_needs_dpdu(mat.type)) {
+		const float3 e1 = tri.p1 - tri.p0;
+		const float3 e2 = tri.p2 - tri.p0;
+		const float du1 = tri.uv1.x - tri.uv0.x, dv1 = tri.uv1.y - tri.uv0.y;
+		const float du2 = tri.uv2.x - tri.uv0.x, dv2 = tri.uv2.y - tri.uv0.y;
+		const float det = du1 * dv2 - dv1 * du2;
+		if (fabsf(det) > 1e-12f) {
+			const float invDet = 1.0f / det;
+			tri_dpdu = (dv2 * invDet) * e1 - (dv1 * invDet) * e2;
+			const float dpdu_len = length(tri_dpdu);
+			tri_dpdu = (dpdu_len > 1e-8f) ? (tri_dpdu / dpdu_len) : normalize(e1);
+		} else {
+			tri_dpdu = normalize(e1);
+		}
+		if (instBase >= 0) tri_dpdu = normalize(optixTransformVectorFromObjectToWorldSpace(tri_dpdu));
 	}
-	if (instBase >= 0) tri_dpdu = normalize(optixTransformVectorFromObjectToWorldSpace(tri_dpdu));
 
 	float3 shade_normal = final_normal;
 	MaterialData shade_mat = mat;

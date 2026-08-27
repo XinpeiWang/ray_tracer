@@ -185,7 +185,7 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 	// the poles (sin_theta -> 0, a real parametric singularity, not a bug):
 	// falls back to cross(world_up, obj_normal) rescaled to the same
 	// vanishing magnitude, exactly as CPU does. This REPLACES the previous
-	// approximate cross(world_up, objNormal) tangent evaluate_materials()
+	// approximate cross(world_up, objDpdu) tangent evaluate_materials()
 	// used to derive from this field for NormalMappedLambertian - the field
 	// now carries the real thing directly, matching triangle/bilinear-patch's
 	// own convention below, and is also the tangent the 4 anisotropy-
@@ -214,7 +214,7 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 	payload->hit         = true;
 	payload->mediumTFar  = 0.0f;
 	payload->frontFace   = front_face ? 1 : 0;
-	payload->objNormal   = sphere_dpdu;
+	payload->objDpdu     = sphere_dpdu;
 	payload->uv_u        = sphere_phi / (2.0f * 3.14159265358979323846f);
 	payload->uv_v        = sphere_theta / 3.14159265358979323846f;
 

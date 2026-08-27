@@ -66,7 +66,7 @@ extern "C" __global__ void __closesthit__wf_quad() {
 	// q.u (the quad's own edge vector, already world-space) IS exactly
 	// CPU's quad.h dpdu (rec.dpdu = u) - no new math needed, matching the
 	// recursive backend's identical use of quad.u (optix_intersection_quad.h).
-	payload->objNormal   = q.u;
+	payload->objDpdu     = q.u;
 	// Real UV (alpha,beta - same planar-decomposition formula the recursive
 	// backend's __closesthit__quad recomputes from hit_point, and matching
 	// CPU quad.h's own rec.u=alpha,rec.v=beta convention) - was previously

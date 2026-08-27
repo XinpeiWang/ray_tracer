@@ -102,9 +102,13 @@ extern "C" __global__ void __closesthit__disk() {
 	// this hit's object-space position, already computed above as
 	// obj_hit_uv), carried to world space via the o2w matrix as a genuine
 	// tangent VECTOR (dc_apply_vector, NOT the inverse-transpose normal
-	// transform dc_apply_normal_from_w2o uses above).
-	const float3 disk_dpdu = dc_apply_vector(disk.o2w,
-		make_float3(-disk.phiMax * obj_hit_uv.y, disk.phiMax * obj_hit_uv.x, 0.0f));
+	// transform dc_apply_normal_from_w2o uses above). Gated on
+	// material_needs_dpdu() - only NormalMappedLambertian and the 4
+	// anisotropic material kinds ever read this.
+	const float3 disk_dpdu = material_needs_dpdu(mat.type)
+		? dc_apply_vector(disk.o2w,
+			make_float3(-disk.phiMax * obj_hit_uv.y, disk.phiMax * obj_hit_uv.x, 0.0f))
+		: make_float3(0.0f, 0.0f, 0.0f);
 
 	float3 emission = material_emission(mat, front_face, uv_u, uv_v, hit_point);
 
@@ -296,9 +300,12 @@ extern "C" __global__ void __closesthit__cylinder() {
 	// Real analytic dpdu, matching CPU's disk_cylinder_hittable.h exactly -
 	// same phi-tangent form as disk (the axis (z) doesn't affect the
 	// azimuthal tangent direction), carried to world space via o2w as a
-	// genuine tangent vector.
-	const float3 cyl_dpdu = dc_apply_vector(cyl.o2w,
-		make_float3(-cyl.phiMax * obj_hit.y, cyl.phiMax * obj_hit.x, 0.0f));
+	// genuine tangent vector. Gated on material_needs_dpdu() - same
+	// reasoning as disk's own identical gate above.
+	const float3 cyl_dpdu = material_needs_dpdu(mat.type)
+		? dc_apply_vector(cyl.o2w,
+			make_float3(-cyl.phiMax * obj_hit.y, cyl.phiMax * obj_hit.x, 0.0f))
+		: make_float3(0.0f, 0.0f, 0.0f);
 
 	float3 emission = material_emission(mat, front_face, uv_u, uv_v, hit_point);
 

@@ -343,11 +343,15 @@ extern "C" __global__ void __closesthit__sphere() {
 	// the same vanishing magnitude, exactly as CPU does, rather than
 	// substituting an unrelated magnitude that would size-jump discontinuously
 	// right at the fallback threshold.
-	float3 sphere_dpdu;
-	{
-		const float sin_theta = sinf(sphere_theta), cos_theta_ = cosf(sphere_theta);
+	// Gated on material_needs_dpdu() - only NormalMappedLambertian and the 4
+	// anisotropic material kinds ever read this; every other kind (the
+	// overwhelming common case - Lambertian, Metal, Dielectric, DiffuseLight,
+	// etc.) skips the trig/pole-fallback/transform work entirely rather than
+	// computing a value it never uses.
+	float3 sphere_dpdu = make_float3(0.0f, 0.0f, 0.0f);
+	if (material_needs_dpdu(mat.type)) {
+		const float sin_theta = sinf(sphere_theta);
 		const float sin_phi = sinf(sphere_phi), cos_phi = cosf(sphere_phi);
-		(void)cos_theta_;
 		sphere_dpdu = make_float3(sin_theta * sin_phi, 0.0f, sin_theta * cos_phi)
 			* (sphere_radius * 2.0f * 3.14159265358979323846f);
 		if (dot(sphere_dpdu, sphere_dpdu) < 1e-14f) {
@@ -357,8 +361,8 @@ extern "C" __global__ void __closesthit__sphere() {
 			const float3 dir = (tlen > 1e-6f) ? (t / tlen) : make_float3(1.0f, 0.0f, 0.0f);
 			sphere_dpdu = dir * (sphere_radius * 2.0f * 3.14159265358979323846f * sin_theta);
 		}
+		if (instBase >= 0) sphere_dpdu = normalize(optixTransformVectorFromObjectToWorldSpace(sphere_dpdu));
 	}
-	if (instBase >= 0) sphere_dpdu = normalize(optixTransformVectorFromObjectToWorldSpace(sphere_dpdu));
 
 	// Unpack payload from registers
 	float3 attenuation_in = make_float3(

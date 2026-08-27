@@ -124,9 +124,11 @@ struct HitWorkItem {
 	// every material that doesn't branch on it.
 	int    frontFace;
 
-	// Dual-purpose carrier for a real surface tangent (dpdu), since neither
-	// this struct nor WfHitPayload otherwise carries per-vertex position/UV
-	// data to recompute one later. Used by MaterialType::NormalMappedLambertian
+	// Dual-purpose carrier for a real surface tangent (dpdu) - named objDpdu
+	// (not objNormal, its name before this field stopped ever holding a
+	// normal for any geomType) since neither this struct nor WfHitPayload
+	// otherwise carries per-vertex position/UV data to recompute one later.
+	// Used by MaterialType::NormalMappedLambertian
 	// (its normal-map basis) and by the 4 anisotropy-capable material kinds
 	// (Conductor/RoughDielectric/CoatedDiffuse/CoatedConductor - their
 	// UV-aligned shading frame, see BuildDpduTangentFrame's own comment,
@@ -152,10 +154,11 @@ struct HitWorkItem {
 	//     to evaluate_materials()'s own Hair case, the only reader that
 	//     currently exists for this geomType, so the (much more common)
 	//     non-Hair bilinear-patch hit doesn't pay for it.
-	float3 objNormal;
+	float3 objDpdu;
 
 	// Surface texture coordinates. Sphere: standard spherical (theta,phi)
-	// mapping, computed in __closesthit__wf_sphere from objNormal, matching
+	// mapping, computed in __closesthit__wf_sphere from the object-space
+	// normal (a local, not this struct's own objDpdu field), matching
 	// CPU's get_sphere_uv() and optix_intersection_sphere.h's sphere_uv_u/v.
 	// Triangle: barycentric-interpolated from TriangleData::uv0/1/2 when
 	// tri.hasUVs (matches optix_intersection_triangle.h), else 0. Quad: no

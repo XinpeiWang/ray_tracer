@@ -2819,6 +2819,29 @@ __device__ __forceinline__ bool material_requires_sphere_only_handling(MaterialT
 	}
 }
 
+// Whether shade_material()'s dpdu parameter is ever actually read for this
+// material type - NormalMappedLambertian (its normal-map tangent basis) and
+// the 4 anisotropy-capable kinds (their UV-aligned shading frame, see
+// BuildDpduTangentFrame's own comment, microfacet.h). Every OTHER material
+// kind (Lambertian, Metal, Dielectric, DiffuseLight, RoughMetal, the
+// Medium family, etc.) never touches dpdu at all, so each intersection
+// file's own dpdu computation is gated on this - matching
+// material_requires_sphere_only_handling()'s own switch-based dispatch
+// style - rather than paying for trig/solve/transform work on every hit
+// regardless of whether the material can ever use the result.
+__device__ __forceinline__ bool material_needs_dpdu(MaterialType type) {
+	switch (type) {
+		case MaterialType::NormalMappedLambertian:
+		case MaterialType::Conductor:
+		case MaterialType::RoughDielectric:
+		case MaterialType::CoatedDiffuse:
+		case MaterialType::CoatedConductor:
+			return true;
+		default:
+			return false;
+	}
+}
+
 // Realistic multi-element lens camera (pbrt-v4 RealisticCamera, src/shared/
 // cameras.h). Host-side precompute (focus-adjusted lens table + exit-pupil
 // bounds table) happens once in scene_builder.cpp by directly constructing a
