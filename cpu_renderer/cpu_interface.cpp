@@ -448,6 +448,19 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 			cam.sky = scene_desc->build_sky();
 		if (scene_desc->build_portal)
 			cam.portal = scene_desc->build_portal();
+		// cam.sky/cam.portal are documented as mutually exclusive (see
+		// BuildResult::portal's own comment) - pbrt_cpu_builder.h enforces
+		// that for pbrt-loaded scenes, but nothing stops a future hand-
+		// authored SceneDescriptor (scene_registry.h) from setting both
+		// build_sky and build_portal by mistake. camera.h's "if (portal)
+		// else if (sky)" branches would then silently drop the sky light
+		// with no warning, so check for it here where both are populated.
+		if (cam.sky && cam.portal) {
+			std::cerr << "Warning: scene '" << scene_id << "' has both a plain sky light and a "
+			             "portal light configured - only the portal will be used, the sky light "
+			             "is being dropped (this scene's descriptor should only set one).\n";
+			cam.sky.reset();
+		}
 		if (scene_desc->build_punct)
 			cam.punct_lights = scene_desc->build_punct();
 		// Apply optional alternate camera model from scene descriptor
@@ -636,6 +649,12 @@ extern "C" int cpu_render_main_sppm(int width, int height, int iterations, int p
 		// than silently doing something wrong.
 		if (scene_desc->build_sky)
 			cam.sky = scene_desc->build_sky();
+		if (scene_desc->build_portal) {
+			std::cerr << "Warning: scene '" << scene_id << "' has a portal (windowed) infinite "
+						 "light, which is not supported under --sppm - it will not contribute "
+						 "any light (rendering black through the window); use the default path "
+						 "tracer instead if the portal light matters for this render.\n";
+		}
 		if (scene_desc->build_punct)
 			cam.punct_lights = scene_desc->build_punct();
 		if (scene_desc->setup_camera)

@@ -122,6 +122,12 @@ const SceneDescriptor* build_scene_for_bdpt(const char* scene_id, int width, int
 	// --bdpt/--mlt rather than silently mishandling it.
 	if (scene_desc->build_sky)
 		out_cam.sky = scene_desc->build_sky();
+	if (scene_desc->build_portal) {
+		std::cerr << "Warning: scene '" << scene_id << "' has a portal (windowed) infinite "
+		             "light, which is not supported under --bdpt/--mlt - it will not contribute "
+		             "any light (rendering black through the window); use the default path "
+		             "tracer instead if the portal light matters for this render.\n";
+	}
 	if (scene_desc->build_punct)
 		out_cam.punct_lights = scene_desc->build_punct();
 

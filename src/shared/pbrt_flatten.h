@@ -2045,7 +2045,8 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// render space here (matching every other point-valued light
 			// param in this loop) since PortalImageInfiniteLightData itself
 			// applies no further transform - see InfiniteLight::portal's
-			// own comment.
+			// own comment. Reset unconditionally first, like every other field above -
+			out.infiniteLight.hasPortal = false;
 			if (const pbrt_scene::Param *portal = ld.params.find("portal")) {
 				if (portal->numbers.size() >= 12) {
 					out.infiniteLight.hasPortal = true;
