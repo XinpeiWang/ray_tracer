@@ -865,7 +865,13 @@ struct MaterialData {
 	// MaterialType::Subsurface's own comment for why this reuse is safe
 	// (never a real texture for this material kind) and why the wavefront
 	// backend's own Subsurface fallback case must NOT read this field as a
-	// texture index.
+	// texture index. RoughDielectric reuses it again, as its own
+	// texture-bound "roughness" (pbrt-v4 "texture roughness" on a
+	// Dielectric) - >= 0 means sample this texture's red/x channel as the
+	// scalar isotropic roughness at each hit instead of reading d.roughness
+	// (see each GPU shading kernel's own RoughDielectric case), unambiguous
+	// the same way NormalMappedLambertian's/Subsurface's reuse above is
+	// (RoughDielectric never has a real albedo texture to conflict with).
 	int textureIdx = -1;
 
 	// Index into LaunchParams::textures for an opacity/alpha-cutout mask

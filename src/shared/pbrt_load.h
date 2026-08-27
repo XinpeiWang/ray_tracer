@@ -440,6 +440,24 @@ inline LoadResult loadFile(const std::string &path) {
 		m.transmittanceTextureFilename = resolved;
 	}
 
+	// Dielectric's own imagemap "roughness" texture (Material::
+	// roughnessTextureFilename - see that field's own comment). Same
+	// resolution convention as textureFilename above.
+	for (pbrt_flatten::Material &m : r.scene.materials) {
+		if (m.roughnessTextureFilename.empty()) continue;
+
+		const std::string resolved = resolveExistingPath(sceneDir, m.roughnessTextureFilename);
+		if (resolved.empty()) {
+			r.scene.warnings.push_back(
+				{0, path, "material's roughness texture image '" + m.roughnessTextureFilename +
+					"' could not be found; falling back to a constant roughness instead"});
+			m.roughnessTextureFilename.clear();
+			continue;
+		}
+
+		m.roughnessTextureFilename = resolved;
+	}
+
 	// Shape "alpha" cutout masks (Material::alphaTextureFilename - see that
 	// field's own comment). Same resolution convention as textureFilename
 	// just above; decoding is likewise left to the CPU/GPU builders.

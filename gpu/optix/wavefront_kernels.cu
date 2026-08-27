@@ -3760,8 +3760,23 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		break;
 	}
 	case MaterialType::RoughDielectric: {
-		float rd_alpha_x = wf_glossy_alpha(mat, (bool)h.any_nonspecular);
-		float rd_alpha_y = wf_glossy_alpha_v(mat, (bool)h.any_nonspecular);
+		// mat.textureIdx>=0 means "roughness" was texture-bound (pbrt-v4
+		// "texture roughness" on a Dielectric - see MaterialData::
+		// textureIdx's own comment) - sample the image's red/x channel as
+		// the scalar isotropic roughness at THIS hit instead of the flat
+		// mat.fuzz, matching optix_device_helpers.h's identical recursive-
+		// backend branch and CPU's rough_dielectric::true_alpha()
+		// (material_pbrt.h). do_regularize still applies via
+		// RegularizeAlpha, same as the non-textured wf_glossy_alpha() path.
+		float rd_alpha_x, rd_alpha_y;
+		if (mat.textureIdx >= 0) {
+			const float rd_rough = wf_sample_texture(textures, texturePixels, mat.textureIdx, h.uv_u, h.uv_v, hit_point).x;
+			const float rd_a = mat.remapRoughness ? sqrtf(rd_rough) : rd_rough;
+			rd_alpha_x = rd_alpha_y = h.any_nonspecular ? RegularizeAlpha(rd_a) : rd_a;
+		} else {
+			rd_alpha_x = wf_glossy_alpha(mat, (bool)h.any_nonspecular);
+			rd_alpha_y = wf_glossy_alpha_v(mat, (bool)h.any_nonspecular);
+		}
 		glossyAlphaForNEE = rd_alpha_x;
 		glossyAlphaVForNEE = rd_alpha_y;
 		bool rd_front_face = h.frontFace != 0;

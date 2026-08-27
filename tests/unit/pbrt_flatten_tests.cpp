@@ -1289,6 +1289,53 @@ TEST(FlattenMaterialTest, DiffuseTransmissionReflectanceScaleWrappedImagemapStil
 	EXPECT_TRUE(warnedAbout(s, "diffusetransmission"));
 }
 
+TEST(FlattenMaterialTest, DielectricRoughnessImagemapIsThreadedThrough) {
+	// pbrt-v4 "texture roughness" on a Dielectric bound to a bare
+	// imagemap - see Material::roughnessTextureFilename's own comment.
+	// Bare imagemap only, same scope as DiffuseTransmission's own
+	// transmittance texture-binding above.
+	const FlatScene s = flattenSource(
+		"Texture \"scratch\" \"float\" \"imagemap\" \"string filename\" [ \"scratch.png\" ]\n"
+		"Material \"dielectric\" \"texture roughness\" [ \"scratch\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].roughnessTextureFilename, "scratch.png");
+	EXPECT_FALSE(warnedAbout(s, "dielectric"));
+}
+
+TEST(FlattenMaterialTest, DielectricRoughnessConstantTextureResolvesToFlatNumber) {
+	// The generic constant-texture rewrite pre-pass (flatten()'s own
+	// comment, runs before any per-kind logic) is kind-agnostic - a
+	// "texture roughness" bound to a "constant" Texture already resolves
+	// to a real flat number here with NO dedicated Dielectric-roughness
+	// code needed, unlike the imagemap case above which needed real
+	// wiring. Regression guard confirming that pre-pass really does cover
+	// this param on this material kind.
+	const FlatScene s = flattenSource(
+		"Texture \"fixedRough\" \"float\" \"constant\" \"float value\" [ 0.3 ]\n"
+		"Material \"dielectric\" \"texture roughness\" [ \"fixedRough\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].roughness, 0.3);
+	EXPECT_TRUE(s.materials[0].roughnessTextureFilename.empty());
+	EXPECT_FALSE(warnedAbout(s, "dielectric"));
+}
+
+TEST(FlattenMaterialTest, DielectricRoughnessScaleWrappedImagemapStillWarns) {
+	// Deliberate scope cut, same shape as DiffuseTransmissionReflectance
+	// ScaleWrappedImagemapStillWarns above: no "scale"-wrap support for
+	// Dielectric's own roughness texture-binding.
+	const FlatScene s = flattenSource(
+		"Texture \"scratch\" \"float\" \"imagemap\" \"string filename\" [ \"scratch.png\" ]\n"
+		"Texture \"scratch-scaled\" \"float\" \"scale\" \"texture tex\" [ \"scratch\" ] "
+		"\"float scale\" [ 0.5 ]\n"
+		"Material \"dielectric\" \"texture roughness\" [ \"scratch-scaled\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].roughnessTextureFilename.empty());
+	EXPECT_TRUE(warnedAbout(s, "dielectric"));
+}
+
 TEST(FlattenMaterialTest, TrianglemeshWithMediumInterfaceWarnsMediumIsDropped) {
 	// Triangle has no `medium` field (unlike Sphere/Disk/Cylinder), so a
 	// mesh-bounded medium boundary - the most common real pbrt-v4 authoring

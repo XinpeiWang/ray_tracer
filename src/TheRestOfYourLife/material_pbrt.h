@@ -318,6 +318,17 @@ class rough_dielectric : public material, public dispersive_material {
           alpha_x(roughness_or_alpha(u_roughness, remap_roughness)),
           alpha_y(roughness_or_alpha(v_roughness, remap_roughness)) {}
 
+    // Isotropic roughness bound to a texture (pbrt-v4 "texture roughness"
+    // on a Dielectric - e.g. a scratched/frosted-glass mask), sampled fresh
+    // at each hit rather than fixed at construction - see resolve_alpha()'s
+    // own comment for how. alpha_x/alpha_y stay at their default 0.0 here
+    // (never read when roughness_tex_ is set - effectively_smooth() and
+    // resolve_alpha() both branch on roughness_tex_ first).
+    rough_dielectric(double refraction_index, shared_ptr<texture> roughness_tex,
+                      bool remap_roughness = true)
+        : ior(refraction_index), roughness_tex_(std::move(roughness_tex)),
+          remap_roughness_(remap_roughness) {}
+
     // Named factory for dispersive (wavelength-dependent IOR) frosted glass -
     // same artist-facing (eta_d, Abbe number) pair and Cauchy-coefficient
     // derivation as dielectric::make_dispersive() (material_simple.h).
@@ -398,6 +409,11 @@ class rough_dielectric : public material, public dispersive_material {
     double get_ior()       const { return ior; }
     double get_roughness() const { return alpha_x * alpha_x; }
 
+    // Non-null only when constructed via the texture-roughness overload
+    // above. Test/inspection accessor, same shape as coated_diffuse's own
+    // get_texture() (material_pbrt.h).
+    shared_ptr<texture> get_roughness_texture() const { return roughness_tex_; }
+
     // See material::is_shadow_transmissive()'s comment - matches
     // optix_anyhit_shadow.h's MaterialType::RoughDielectric skip.
     bool is_shadow_transmissive(const hit_record&) const override { return true; }
@@ -421,9 +437,39 @@ class rough_dielectric : public material, public dispersive_material {
     bool is_delta_bsdf() const override { return effectively_smooth(); }
 
   private:
-    // The ONE place this class decides smooth-vs-glossy - see
-    // rough_metal::effectively_smooth()'s own comment.
-    bool effectively_smooth() const { return TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth(); }
+    // The ONE place this class decides smooth-vs-glossy for is_delta_bsdf()
+    // (no hit_record available there) - see rough_metal::effectively_smooth()'s
+    // own comment. roughness_tex_ set means the true answer varies per-hit
+    // (can't be known without a hit_record), so this conservatively answers
+    // "never delta" rather than guessing from an arbitrary representative
+    // alpha - SPPM/BDPT/MLT then always take the real NEE/MIS glossy path
+    // for this material everywhere, correct (if not maximally efficient) at
+    // every point regardless of what the texture actually says there.
+    // scatter_impl/scattering_pdf_impl below make the real, per-hit
+    // smooth-vs-glossy decision instead, via true_alpha()'s own per-hit
+    // sample.
+    bool effectively_smooth() const {
+        return !roughness_tex_ && TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth();
+    }
+
+    // Real per-hit roughness for MaterialKind::Dielectric's own "texture
+    // roughness" case (roughness_tex_ set) - resolves the SAME conversion
+    // roughness_or_alpha() applies once at construction for the flat-value
+    // constructors above, but freshly at every hit since a texture's
+    // sampled roughness varies by point. Isotropic only (the texture's own
+    // red/x channel becomes both ax and ay) - matches this codebase's
+    // established single-image-texture scope for Diffuse/CoatedDiffuse/
+    // DiffuseTransmission's own reflectance/transmittance texture-binding
+    // (no separate uroughness/vroughness texture support). When
+    // roughness_tex_ is unset, just returns the flat alpha_x/alpha_y
+    // already fixed at construction - identical cost and behavior to
+    // before this overload existed.
+    void true_alpha(const hit_record& rec, double& ax, double& ay) const {
+        if (!roughness_tex_) { ax = alpha_x; ay = alpha_y; return; }
+        const color c = roughness_tex_->value(rec.u, rec.v, rec.p);
+        const double a = roughness_or_alpha(c.x(), remap_roughness_);
+        ax = ay = a;
+    }
 
     // Disambiguates the dispersive constructor below from the public
     // (double, double, double, bool=true) constructor above: a bare 3-double
@@ -456,8 +502,10 @@ class rough_dielectric : public material, public dispersive_material {
     bool scatter_impl(const ray& r_in, const hit_record& rec, scatter_record& srec,
                        bool do_regularize, double ior_value) const {
         auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
-        double ex = do_regularize ? regularize_alpha(alpha_x) : alpha_x;
-        double ey = do_regularize ? regularize_alpha(alpha_y) : alpha_y;
+        double ax, ay;
+        true_alpha(rec, ax, ay);
+        double ex = do_regularize ? regularize_alpha(ax) : ax;
+        double ey = do_regularize ? regularize_alpha(ay) : ay;
         BxDF bxdf{ ior_value, ex, ey };
         auto frame = ShadingFrame<double>::from_dpdu(ctx.dpdu_x, ctx.dpdu_y, ctx.dpdu_z, ctx.nx, ctx.ny, ctx.nz);
 
@@ -467,9 +515,13 @@ class rough_dielectric : public material, public dispersive_material {
         frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
         if (wi_z < 0.0) { wi_z = -wi_z; wi_x = -wi_x; wi_y = -wi_y; }
 
-        // Branch on the TRUE (unregularized) roughness -- see rough_metal's
-        // own comment on why scattering_pdf() forces this.
-        if (effectively_smooth()) {
+        // Branch on the TRUE (unregularized), per-hit roughness -- see
+        // rough_metal's own comment on why scattering_pdf() forces this.
+        // Uses ax/ay directly (not the class-level effectively_smooth(),
+        // which conservatively answers "never smooth" when roughness_tex_
+        // is set, since IT has no hit_record to sample from - this call
+        // site does, so it makes the real per-hit decision instead).
+        if (TrowbridgeReitz<double>(ax, ay).EffectivelySmooth()) {
             auto res = bxdf.sample_local(wi_x, wi_y, wi_z, eta,
                                          random_double(), random_double(), random_double());
             if (!res.valid) return false;
@@ -487,7 +539,7 @@ class rough_dielectric : public material, public dispersive_material {
 
         srec.attenuation     = color(1.0, 1.0, 1.0);
         srec.pdf_ptr          = make_shared<ggx_dielectric_pdf>(
-            rec.normal, vec3(ctx.wo_x, ctx.wo_y, ctx.wo_z), eta, alpha_x, alpha_y);
+            rec.normal, vec3(ctx.wo_x, ctx.wo_y, ctx.wo_z), eta, ax, ay);
         srec.skip_pdf         = false;
         srec.eta              = eta;
         srec.is_transmission  = true;
@@ -508,13 +560,20 @@ class rough_dielectric : public material, public dispersive_material {
         double wo_x, wo_y, wo_z;
         frame.to_local(dir.x(), dir.y(), dir.z(), wo_x, wo_y, wo_z);
 
-        BxDF bxdf{ ior_value, alpha_x, alpha_y };
+        double ax, ay;
+        true_alpha(rec, ax, ay);
+        BxDF bxdf{ ior_value, ax, ay };
         double f_val = bxdf.f(wi_x, wi_y, wi_z, eta, wo_x, wo_y, wo_z);
         return f_val * std::fabs(wo_z);
     }
 
     double ior;
-    double alpha_x, alpha_y;
+    double alpha_x = 0.0, alpha_y = 0.0;
+    // Set only by the texture constructor above; nullptr (the common case)
+    // means alpha_x/alpha_y are real, fixed-at-construction values and
+    // true_alpha()/effectively_smooth() take their fast, texture-free path.
+    shared_ptr<texture> roughness_tex_ = nullptr;
+    bool remap_roughness_ = true;
     bool dispersive_ = false;
     double cauchy_A_ = 0.0, cauchy_B_ = 0.0;
 };

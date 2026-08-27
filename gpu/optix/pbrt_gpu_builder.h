@@ -596,6 +596,29 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		d.type = MaterialType::Interface;
 		break;
 	case pbrt_flatten::MaterialKind::Dielectric:
+		// m.roughnessTextureFilename (Material::roughnessTextureFilename
+		// own comment, pbrt_flatten.h) - checked FIRST, same priority
+		// pbrt_cpu_builder.h's identical branch gives it. d.textureIdx is
+		// otherwise unused/free for RoughDielectric (unlike Conductor/
+		// CoatedDiffuse/DiffuseTransmission above, which reuse it for their
+		// own texture-bound reflectance), so reusing it here for "sample
+		// this texture for roughness instead of d.roughness" doesn't
+		// collide with anything. A -1 from getOrBuildPbrtImageTexture
+		// (corrupt-but-present file) falls through to the flat-roughness
+		// check below instead of forcing RoughDielectric with an unusable
+		// texture index - m.roughness_u/m.roughness_v are both still 0.0
+		// here (flatten() never sets them when a texture was bound), so
+		// that degrades to smooth Dielectric, same "falls back to a
+		// constant/default value" convention every other texture-decode
+		// failure in this codebase gets.
+		if (!m.roughnessTextureFilename.empty()) {
+			const int roughTexIdx = getOrBuildPbrtImageTexture(m.roughnessTextureFilename, out, imageTextureCache);
+			if (roughTexIdx >= 0) {
+				d.type = MaterialType::RoughDielectric;
+				d.textureIdx = roughTexIdx;
+				break;
+			}
+		}
 		// A nonzero "roughness"/"uroughness"/"vroughness" means the scene
 		// asked for a GGX microfacet dielectric (pbrt-v4 DielectricBxDF's
 		// rough path) - matches pbrt_cpu_builder.h's identical

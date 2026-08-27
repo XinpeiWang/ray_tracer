@@ -445,6 +445,19 @@ struct Material {
 	// image cache).
 	std::string transmittanceTextureFilename;
 
+	// Dielectric only: an "imagemap" Texture bound to "roughness" (e.g. a
+	// scratched/frosted-glass mask), same "raw as written, resolved later
+	// by pbrt_load.h" convention as textureFilename above - bare imagemap
+	// only, no "scale"-wrap or procedural (checkerboard/fbm/marble/mix)
+	// support, matching transmittanceTextureFilename's identical scope
+	// narrowing. No bundled scene needs this (added for texture-parity
+	// with Diffuse/CoatedDiffuse/DiffuseTransmission's own reflectance/
+	// transmittance texture-binding, not a specific scene's requirement) -
+	// the image's own red/x channel becomes the scalar roughness at each
+	// hit; see rough_dielectric::true_alpha()'s own comment (material_pbrt.h)
+	// for why this is isotropic-only, sampled per-hit rather than once.
+	std::string roughnessTextureFilename;
+
 	// A Diffuse material's "reflectance" bound to a "checkerboard" Texture
 	// instead of an "imagemap" one (e.g. named-material-and-texture.pbrt's
 	// "floor-check": Texture "floor-check" "spectrum" "checkerboard"
@@ -1340,7 +1353,10 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// Diffuse material ONLY (hasCheckerReflectance etc. - no bundled
 		// scene binds any of these to a CoatedDiffuse or DiffuseTransmission
 		// reflectance, so this scope stays narrower than the imagemap case),
-		// and "displacement" bound to an imagemap (optionally wrapped in a
+		// "roughness" bound to a bare imagemap on Dielectric ONLY
+		// (roughnessTextureFilename - no bundled scene needs this, added for
+		// texture-parity with reflectance/transmittance above), and
+		// "displacement" bound to an imagemap (optionally wrapped in a
 		// "scale" texture) on ANY material kind (displacementTextureFilename).
 		// Every other texture binding (other parameters/kinds, "mix" bound
 		// directly to reflectance without a wrapping scale, or a
@@ -1508,6 +1524,21 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					const std::string filename = tex->params.getString("filename", "");
 					if (!filename.empty()) {
 						m.transmittanceTextureFilename = filename;
+						continue;   // resolved to an image, not a "not supported" warning
+					}
+				}
+			}
+			// Dielectric's own "roughness" - bare imagemap only (see
+			// Material::roughnessTextureFilename's own comment); no
+			// "scale"-wrap or procedural (checkerboard/fbm/marble/mix)
+			// support, same scope narrowing as transmittance above.
+			if (m.kind == MaterialKind::Dielectric &&
+				p.name == "roughness" && !p.strings.empty()) {
+				const pbrt_scene::TextureDecl *tex = findTexture(scene, p.strings[0]);
+				if (tex && tex->cls == "imagemap") {
+					const std::string filename = tex->params.getString("filename", "");
+					if (!filename.empty()) {
+						m.roughnessTextureFilename = filename;
 						continue;   // resolved to an image, not a "not supported" warning
 					}
 				}

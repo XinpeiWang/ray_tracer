@@ -579,6 +579,25 @@ TEST(PbrtCpuBuildTest, CoatedDiffuseReflectanceImagemapBuildsATextureBackedCoate
 		   "texture-backed coated_diffuse, not the flat-colour fallback";
 }
 
+TEST(PbrtCpuBuildTest, DielectricRoughnessImagemapBuildsATextureBackedRoughDielectric) {
+	// pbrt-v4 "texture roughness" on a Dielectric bound to a bare
+	// imagemap - see pbrt_flatten::Material::roughnessTextureFilename's
+	// own comment. Must build a real texture-backed rough_dielectric (not
+	// the flat-roughness overload, and not a plain smooth dielectric).
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Texture \"scratch\" \"float\" \"imagemap\" \"string filename\" [ \"scratch.png\" ]\n"
+		"Material \"dielectric\" \"texture roughness\" [ \"scratch\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *rd = dynamic_cast<rough_dielectric *>(rec.mat.get());
+	ASSERT_NE(rd, nullptr);
+	EXPECT_NE(dynamic_cast<mipmap_texture *>(rd->get_roughness_texture().get()), nullptr)
+		<< "a dielectric material with an imagemap-bound roughness must build a "
+		   "texture-backed rough_dielectric, not the flat-roughness/smooth fallback";
+}
+
 TEST(PbrtCpuBuildTest, CoatedDiffuseReflectanceScaleWrappedImagemapAppliesTheScale) {
 	// barcelona-pavilion's own dominant binding shape (an imagemap wrapped
 	// in a "scale" texture, e.g. materials.pbrt's "concrete-kd") - Material::

@@ -130,6 +130,14 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 	case pbrt_flatten::MaterialKind::Interface:
 		return std::make_shared<interface_material>();
 	case pbrt_flatten::MaterialKind::Dielectric:
+		// m.roughnessTextureFilename (Material::roughnessTextureFilename
+		// own comment) - checked FIRST since a texture-bound roughness
+		// takes priority over m.roughness_u/m.roughness_v below (which
+		// stay at their 0.0 default when the scene bound a texture
+		// instead of a flat number - see flatten()'s own resolution).
+		if (!m.roughnessTextureFilename.empty())
+			return std::make_shared<rough_dielectric>(m.ior,
+				std::make_shared<mipmap_texture>(m.roughnessTextureFilename.c_str()), m.remapRoughness);
 		// A nonzero "roughness"/"uroughness"/"vroughness" (m.roughness_u/
 		// m.roughness_v - see flatten()'s own fallback-chain comment) means
 		// the scene asked for a GGX microfacet dielectric (pbrt-v4

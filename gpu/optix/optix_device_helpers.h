@@ -2133,8 +2133,21 @@ __device__ __forceinline__ void shade_material(
 			// means "isotropic" - see MaterialData::roughnessV's own
 			// comment (optix_types.h) and ResolveAnisotropicAlphaV's own
 			// comment (microfacet.h) for the shared sentinel/remap logic.
-			float rd_alpha_x = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;
-			float rd_alpha_y = ResolveAnisotropicAlphaV(mat.roughnessV, mat.fuzz, mat.remapRoughness);
+			// mat.textureIdx>=0 means "roughness" was texture-bound (pbrt-v4
+			// "texture roughness" on a Dielectric - see MaterialData::
+			// textureIdx's own comment) - sample the image's red/x channel
+			// as the scalar isotropic roughness at THIS hit instead of the
+			// flat mat.fuzz, matching CPU's rough_dielectric::true_alpha()
+			// (material_pbrt.h) exactly, including its isotropic-only scope
+			// (no separate uroughness/vroughness texture support).
+			float rd_alpha_x, rd_alpha_y;
+			if (mat.textureIdx >= 0) {
+				const float rd_rough = sample_texture(mat.textureIdx, uv_u, uv_v, hit_point).x;
+				rd_alpha_x = rd_alpha_y = mat.remapRoughness ? sqrtf(rd_rough) : rd_rough;
+			} else {
+				rd_alpha_x = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;
+				rd_alpha_y = ResolveAnisotropicAlphaV(mat.roughnessV, mat.fuzz, mat.remapRoughness);
+			}
 			float rd_ri    = front_face ? (1.0f / mat.ior) : mat.ior;
 
 			// Local shading frame (n = +Z)
