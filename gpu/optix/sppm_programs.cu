@@ -381,7 +381,11 @@ static __device__ float3 sppm_sample_sphere_light(const SphereData& sph, const f
 static __device__ __forceinline__ bool sppm_sample_rough_dielectric(
 	const float3& dir_in, const float3& n, const MaterialData& mat,
 	unsigned int& seed, float3& out_dir) {
-	float alpha = sqrtf(mat.fuzz);
+	// mat.roughnessV<=0 means "isotropic" - see MaterialData::roughnessV's
+	// own comment (optix_types.h).
+	float alpha_x = sqrtf(mat.fuzz);
+	float raw_v   = (mat.roughnessV > 0.0f) ? mat.roughnessV : mat.fuzz;
+	float alpha_y = sqrtf(raw_v);
 	float3 up_v = (fabsf(n.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
 	float3 tan_v = normalize(cross(up_v, n));
 	float3 bitan = cross(n, tan_v);
@@ -389,7 +393,7 @@ static __device__ __forceinline__ bool sppm_sample_rough_dielectric(
 	float wi_x = dot(wi_w, tan_v), wi_y = dot(wi_w, bitan), wi_z = dot(wi_w, n);
 	if (wi_z <= 0.0f) return false;
 
-	TrowbridgeReitz<float> rd_dist(alpha, alpha);
+	TrowbridgeReitz<float> rd_dist(alpha_x, alpha_y);
 	float wm_x, wm_y, wm_z;
 	rd_dist.Sample_wm(wi_x, wi_y, wi_z, sppm_rand(seed), sppm_rand(seed), wm_x, wm_y, wm_z);
 	float rd_dot = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
@@ -431,9 +435,14 @@ static __device__ __forceinline__ bool sppm_sample_rough_dielectric(
 // exactly like the CPU bug this mirrors and was fixed alongside.
 static __device__ __forceinline__ bool sppm_is_delta_material(const MaterialData& mat) {
 	if (mat.type == MaterialType::Conductor) {
-		float alpha = sqrtf(mat.fuzz);   // same derivation sppm_sample_delta_material's Conductor case already uses
+		// Same derivation sppm_sample_delta_material's Conductor case
+		// already uses, incl. the roughnessV<=0-means-isotropic sentinel
+		// (MaterialData::roughnessV's own comment, optix_types.h).
+		float alpha_x = sqrtf(mat.fuzz);
+		float raw_v   = (mat.roughnessV > 0.0f) ? mat.roughnessV : mat.fuzz;
+		float alpha_y = sqrtf(raw_v);
 		return ConductorBxDF<float>{ mat.eta_c.x, mat.eta_c.y, mat.eta_c.z,
-		                              mat.k_c.x, mat.k_c.y, mat.k_c.z, alpha, alpha }.effectively_smooth();
+		                              mat.k_c.x, mat.k_c.y, mat.k_c.z, alpha_x, alpha_y }.effectively_smooth();
 	}
 	if (mat.type == MaterialType::RoughMetal) {
 		float alpha = sqrtf(mat.fuzz);   // same derivation sppm_sample_delta_material's RoughMetal case already uses
@@ -469,8 +478,12 @@ static __device__ __forceinline__ float3 sppm_bsdf_f(
 		float alpha = sqrtf(mat.fuzz);
 		float fr, fg, fb;
 		if (mat.type == MaterialType::Conductor) {
+			// roughnessV<=0-means-isotropic sentinel - see MaterialData::
+			// roughnessV's own comment (optix_types.h).
+			float raw_v   = (mat.roughnessV > 0.0f) ? mat.roughnessV : mat.fuzz;
+			float alpha_y = sqrtf(raw_v);
 			ConductorBxDF<float> bx{ mat.eta_c.x, mat.eta_c.y, mat.eta_c.z,
-			                          mat.k_c.x, mat.k_c.y, mat.k_c.z, alpha, alpha };
+			                          mat.k_c.x, mat.k_c.y, mat.k_c.z, alpha, alpha_y };
 			bx.f(bxdf_wi_x, bxdf_wi_y, bxdf_wi_z, bxdf_wo_x, bxdf_wo_y, bxdf_wo_z, fr, fg, fb);
 		} else {
 			RoughMetalBxDF<float> bx{ mat.albedo.x, mat.albedo.y, mat.albedo.z, alpha, alpha };
@@ -532,14 +545,18 @@ static __device__ __forceinline__ bool sppm_sample_delta_material(
 		return true;
 	}
 	case MaterialType::Conductor: {
-		float alpha  = sqrtf(mat.fuzz);
+		// mat.roughnessV<=0 means "isotropic" - see MaterialData::
+		// roughnessV's own comment (optix_types.h).
+		float alpha_x = sqrtf(mat.fuzz);
+		float raw_v   = (mat.roughnessV > 0.0f) ? mat.roughnessV : mat.fuzz;
+		float alpha_y = sqrtf(raw_v);
 		float3 up_v  = (fabsf(n.x) > 0.9f) ? make_float3(0, 1, 0) : make_float3(1, 0, 0);
 		float3 tan_v = normalize(cross(up_v, n));
 		float3 bitan = cross(n, tan_v);
 		float3 wi_w  = normalize(-dir_in);
 		float wi_x = dot(wi_w, tan_v), wi_y = dot(wi_w, bitan), wi_z = dot(wi_w, n);
 		if (wi_z <= 0.0f) return false;
-		TrowbridgeReitz<float> dist(alpha, alpha);
+		TrowbridgeReitz<float> dist(alpha_x, alpha_y);
 		float wm_x, wm_y, wm_z;
 		dist.Sample_wm(wi_x, wi_y, wi_z, sppm_rand(seed), sppm_rand(seed), wm_x, wm_y, wm_z);
 		float c_dot = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;

@@ -562,6 +562,19 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 			d.k_c = make_float3(static_cast<float>(m.conductorK[0]),
 								 static_cast<float>(m.conductorK[1]),
 								 static_cast<float>(m.conductorK[2]));
+			// Real independent u/v roughness (matches pbrt_cpu_builder.h's
+			// identical Conductor branch) - d.roughness (set generically
+			// from m.roughness above) is overridden to the u-axis value
+			// specifically, since m.roughness and m.roughness_u only
+			// coincide when a scene doesn't set "uroughness"/"roughness"
+			// to different values (see pbrt_flatten.h's own fallback-chain
+			// comment). d.roughnessV defaults to 0.0f (isotropic) whenever
+			// m.roughness_v resolves to the same value as m.roughness_u
+			// (the overwhelmingly common case) - see MaterialData::
+			// roughnessV's own comment for why that's the correct sentinel,
+			// not a real anisotropic value silently lost.
+			d.roughness  = static_cast<float>(m.roughness_u);
+			d.roughnessV = (m.roughness_v != m.roughness_u) ? static_cast<float>(m.roughness_v) : 0.0f;
 		} else {
 			d.type = MaterialType::Metal;
 		}
@@ -579,17 +592,25 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		d.type = MaterialType::Interface;
 		break;
 	case pbrt_flatten::MaterialKind::Dielectric:
-		// A nonzero "roughness"/"uroughness"/"vroughness" (m.roughness,
-		// already copied into d.roughness above generically) means the scene
+		// A nonzero "roughness"/"uroughness"/"vroughness" means the scene
 		// asked for a GGX microfacet dielectric (pbrt-v4 DielectricBxDF's
-		// rough path) - matches pbrt_cpu_builder.h's identical branch. This
-		// codebase already has a real GPU model for that
+		// rough path) - matches pbrt_cpu_builder.h's identical
+		// `m.roughness_u > 0.0 || m.roughness_v > 0.0` gate exactly (not
+		// just m.roughness, which can miss a scene that sets only
+		// "vroughness" to a nonzero value with no "roughness"/"uroughness"
+		// - see pbrt_flatten.h's own fallback-chain comment on why m.roughness
+		// alone still happens to catch the common cases but not every one).
+		// This codebase already has a real GPU model for that
 		// (MaterialType::RoughDielectric), it just wasn't wired up here.
 		// RoughDielectric doesn't read d.albedo/transmission_filter at all
 		// (see its own field-reuse comment in optix_types.h), so no reset
 		// needed on this branch the way the smooth path needs below.
-		if (m.roughness > 0.0) {
+		if (m.roughness_u > 0.0 || m.roughness_v > 0.0) {
 			d.type = MaterialType::RoughDielectric;
+			// Real independent u/v roughness - see MaterialType::Conductor's
+			// identical-shape override above for the full rationale.
+			d.roughness  = static_cast<float>(m.roughness_u);
+			d.roughnessV = (m.roughness_v != m.roughness_u) ? static_cast<float>(m.roughness_v) : 0.0f;
 			break;
 		}
 		d.type = MaterialType::Dielectric;
@@ -622,6 +643,10 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 			d.textureIdx = getOrBuildPbrtImageTexture(m.textureFilename, out, imageTextureCache);
 			d.emissionScale = static_cast<float>(m.textureScale);
 		}
+		// Real independent u/v coat roughness - see MaterialType::Conductor's
+		// identical-shape override above for the full rationale.
+		d.roughness  = static_cast<float>(m.roughness_u);
+		d.roughnessV = (m.roughness_v != m.roughness_u) ? static_cast<float>(m.roughness_v) : 0.0f;
 		break;
 	case pbrt_flatten::MaterialKind::DiffuseTransmission:
 		d.type = MaterialType::DiffuseTransmission;
@@ -664,6 +689,10 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 			d.eta_c = make_float3(1.0f, 1.0f, 1.0f);
 			d.k_c = reflectanceToConductorK(d.albedo);
 		}
+		// Real independent u/v coat roughness - see MaterialType::Conductor's
+		// identical-shape override above for the full rationale.
+		d.roughness  = static_cast<float>(m.roughness_u);
+		d.roughnessV = (m.roughness_v != m.roughness_u) ? static_cast<float>(m.roughness_v) : 0.0f;
 		break;
 	case pbrt_flatten::MaterialKind::Subsurface:
 		// Real tabulated BSSRDF, on BOTH GPU backends (see optix_types.h's

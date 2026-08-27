@@ -918,10 +918,36 @@ struct MaterialData {
 	// alpha (Conductor/RoughDielectric/CoatedDiffuse/CoatedConductor/
 	// RoughMetal); when false, `roughness` already IS the alpha value.
 	// Defaults to true (the pre-existing unconditional-sqrt behavior), so
-	// no existing call site needed updating. GPU has no anisotropic
-	// roughness yet (see roughness_u/roughness_v's CPU-only status), so
-	// this applies only to the isotropic `roughness` field.
+	// no existing call site needed updating. Applies identically to
+	// roughnessV below (pbrt-v4 remaps both axes together, never one
+	// without the other).
 	bool remapRoughness = true;
+
+	// Second GGX alpha axis (the "v"/bitangent-direction roughness),
+	// consumed ONLY by the 4 material kinds whose pbrt-v4 BxDF is
+	// genuinely anisotropy-capable: RoughDielectric/Conductor/
+	// CoatedDiffuse/CoatedConductor (mirrors pbrt_cpu_builder.h's
+	// identical roughness_u/roughness_v dispatch - RoughMetal/Metal have
+	// no anisotropic variant on CPU either, so they don't read this
+	// field). Defaults to 0.0f, meaning "no real v-roughness was set -
+	// use `roughness` above for both axes" (isotropic); every reading
+	// site treats <=0 this way rather than a literal zero-roughness
+	// v-axis, so every pre-existing brace-init call site (which never
+	// mentions this field) keeps its old isotropic behavior unchanged.
+	// Same authored-vs-alpha convention as `roughness` (remapRoughness
+	// above applies to both).
+	//
+	// The local tangent/bitangent frame these 4 material kinds build on
+	// GPU is an arbitrary (not UV/dpdu-aligned) basis, unlike CPU's
+	// ShadingFrame::from_dpdu - so a nonzero roughnessV produces a real,
+	// physically-correct anisotropic GGX response (elongated highlights,
+	// directional glossy blur), but its ORIENTATION will not generally
+	// match CPU's render of the same anisotropic material. Deliberately
+	// scoped this way; aligning GPU's tangent frame to dpdu is a larger,
+	// separate undertaking (would need dpdu threaded through the
+	// sphere/quad/bilinear-patch intersection programs, not just this
+	// struct).
+	float roughnessV = 0.0f;
 };
 
 // Punctual (delta) light kinds - point/spot/distant. These are evaluated

@@ -221,6 +221,18 @@ __device__ __forceinline__ float wf_glossy_alpha(const MaterialData& mat, bool d
 	return do_regularize ? RegularizeAlpha(a) : a;
 }
 
+// Second (v/bitangent-axis) GGX alpha, mirroring wf_glossy_alpha() above but
+// reading mat.roughnessV instead of mat.fuzz - see MaterialData::roughnessV's
+// own comment (optix_types.h) for the <=0-means-isotropic sentinel and which
+// 4 material kinds (RoughDielectric/Conductor/CoatedDiffuse/CoatedConductor)
+// call this; RoughMetal keeps calling wf_glossy_alpha() alone for both axes,
+// same as CPU's rough_metal has no anisotropic variant either.
+__device__ __forceinline__ float wf_glossy_alpha_v(const MaterialData& mat, bool do_regularize) {
+	float raw = (mat.roughnessV > 0.0f) ? mat.roughnessV : mat.fuzz;
+	float a = mat.remapRoughness ? sqrtf(raw) : raw;
+	return do_regularize ? RegularizeAlpha(a) : a;
+}
+
 // Duplicated from optix_device_helpers.h's material_requires_sphere_only_
 // handling() (with the wf_ prefix), matching this file's existing pattern of
 // not sharing device helpers with the recursive path. See that function's
@@ -1370,6 +1382,16 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// evaluate_materials_simple's Lambertian/Metal, resolve_bssrdf_exit's
 	// NormalizedFresnel) just pass 0.0f.
 	float glossyAlpha,
+	// Second (v/bitangent-axis) GGX alpha, mirroring glossyAlpha above -
+	// see wf_glossy_alpha_v()'s own comment for which 4 material kinds set
+	// this to a real per-call value (Conductor/RoughDielectric/
+	// CoatedDiffuse/CoatedConductor) vs. leave it at the caller's own
+	// declared-but-never-set 0.0f (RoughMetal, and every non-glossy
+	// matType) - <=0 here means "isotropic, use glossyAlpha for both axes"
+	// (see MaterialData::roughnessV's own sentinel convention), handled
+	// below rather than requiring every caller to redundantly pass
+	// glossyAlpha twice.
+	float glossyAlphaV,
 	// pbrt-v4 etaScale for the Russian Roulette test below - already fully
 	// updated for THIS event (incoming RayWorkItem/HitWorkItem::etaScale
 	// times this bounce's own eta^2, or unchanged if this event wasn't a
@@ -1501,6 +1523,10 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// See glossyAlpha's own parameter comment - already regularized by the
 	// caller, not re-derived here.
 	float glossy_alpha = glossyAlpha;
+	// See glossyAlphaV's own parameter comment - <=0 (RoughMetal, or any
+	// non-glossy matType) falls back to glossy_alpha, matching
+	// MaterialData::roughnessV's own isotropic sentinel.
+	float glossy_alpha_v = (glossyAlphaV > 0.0f) ? glossyAlphaV : glossy_alpha;
 	bool glossy_valid = false;
 	if (glossy_isType) {
 		float3 up = (fabsf(normal.x) > 0.9f) ? make_float3(0.0f,1.0f,0.0f) : make_float3(1.0f,0.0f,0.0f);
@@ -1528,7 +1554,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		const MaterialData& fm = materials[matIdx];
 		float fr = 0.0f, fg = 0.0f, fb = 0.0f;
 		if (matType == MaterialType::Conductor) {
-			ConductorBxDF<float> bx{ fm.eta_c.x, fm.eta_c.y, fm.eta_c.z, fm.k_c.x, fm.k_c.y, fm.k_c.z, glossy_alpha, glossy_alpha };
+			ConductorBxDF<float> bx{ fm.eta_c.x, fm.eta_c.y, fm.eta_c.z, fm.k_c.x, fm.k_c.y, fm.k_c.z, glossy_alpha, glossy_alpha_v };
 			bx.f(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, fr, fg, fb);
 			outPdf = bx.pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z);
 		} else if (matType == MaterialType::RoughMetal) {
@@ -1536,7 +1562,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			bx.f(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, fr, fg, fb);
 			outPdf = bx.pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z);
 		} else if (matType == MaterialType::RoughDielectric) {
-			RoughDielectricBxDF<float> bx{ fm.ior, glossy_alpha, glossy_alpha };
+			RoughDielectricBxDF<float> bx{ fm.ior, glossy_alpha, glossy_alpha_v };
 			float v = bx.f(glossy_wi_x, glossy_wi_y, glossy_wi_z, nfEta, wo_x, wo_y, wo_z);
 			fr = fg = fb = v;
 			outPdf = bx.pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, nfEta, wo_x, wo_y, wo_z);
@@ -1549,15 +1575,15 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			const float3 coatedAlbedo = (fm.textureIdx >= 0)
 				? wf_sample_texture(textures, texturePixels, fm.textureIdx, uv_u, uv_v, hit_point) * fm.emissionScale
 				: fm.albedo;
-			CoatedDiffuseBxDF<float> bx{ coatedAlbedo.x, coatedAlbedo.y, coatedAlbedo.z, fm.ior, glossy_alpha, glossy_alpha };
+			CoatedDiffuseBxDF<float> bx{ coatedAlbedo.x, coatedAlbedo.y, coatedAlbedo.z, fm.ior, glossy_alpha, glossy_alpha_v };
 			uint64_t s0, s1; wf_random_seed64_pair(seed, s0, s1);
 			bx.f(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, s0, s1, fr, fg, fb);
-			outPdf = ggx_vndf_reflection_pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, glossy_alpha, glossy_alpha);
+			outPdf = ggx_vndf_reflection_pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, glossy_alpha, glossy_alpha_v);
 		} else {
-			CoatedConductorBxDF<float> bx{ fm.eta_c.x, fm.eta_c.y, fm.eta_c.z, fm.k_c.x, fm.k_c.y, fm.k_c.z, fm.ior, glossy_alpha, glossy_alpha };
+			CoatedConductorBxDF<float> bx{ fm.eta_c.x, fm.eta_c.y, fm.eta_c.z, fm.k_c.x, fm.k_c.y, fm.k_c.z, fm.ior, glossy_alpha, glossy_alpha_v };
 			uint64_t s0, s1; wf_random_seed64_pair(seed, s0, s1);
 			bx.f(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, s0, s1, fr, fg, fb);
-			outPdf = ggx_vndf_reflection_pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, glossy_alpha, glossy_alpha);
+			outPdf = ggx_vndf_reflection_pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, glossy_alpha, glossy_alpha_v);
 		}
 		outF = make_float3(fr, fg, fb);
 		return true;
@@ -2328,6 +2354,7 @@ extern "C" __global__ void evaluate_materials(
 	// Left at 0 (harmless - see that parameter's own comment) for every
 	// non-glossy case.
 	float glossyAlphaForNEE = 0.0f;
+	float glossyAlphaVForNEE = 0.0f;
 
 	// Helper: uplift RGB albedo to SampledSpectrum via device sigmoid polynomial
 	auto albedoSpectrum = [&](float3 rgb) -> SS {
@@ -2552,8 +2579,10 @@ extern "C" __global__ void evaluate_materials(
 	// below will catch the drift loudly instead of silently running stale
 	// unmaintained logic.
 	case MaterialType::Conductor: {
-		float c_alpha = wf_glossy_alpha(mat, (bool)h.any_nonspecular);
-		glossyAlphaForNEE = c_alpha;
+		float c_alpha_x = wf_glossy_alpha(mat, (bool)h.any_nonspecular);
+		float c_alpha_y = wf_glossy_alpha_v(mat, (bool)h.any_nonspecular);
+		glossyAlphaForNEE = c_alpha_x;
+		glossyAlphaVForNEE = c_alpha_y;
 		float3 cn = normal;
 		float3 cup = (fabsf(cn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
 		float3 ctan   = normalize(cross(cup, cn));
@@ -2561,7 +2590,7 @@ extern "C" __global__ void evaluate_materials(
 		float3 cwi = -normalize(h.rayDir);
 		float cwi_x = dot(cwi, ctan), cwi_y = dot(cwi, cbitan), cwi_z = dot(cwi, cn);
 		if (cwi_z <= 0.0f) { scattered = false; break; }
-		TrowbridgeReitz<float> c_dist(c_alpha, c_alpha);
+		TrowbridgeReitz<float> c_dist(c_alpha_x, c_alpha_y);
 		float cwm_x, cwm_y, cwm_z;
 		c_dist.Sample_wm(cwi_x, cwi_y, cwi_z, wf_rand(seed), wf_rand(seed), cwm_x, cwm_y, cwm_z);
 		float c_dot = cwi_x*cwm_x + cwi_y*cwm_y + cwi_z*cwm_z;
@@ -2588,7 +2617,7 @@ extern "C" __global__ void evaluate_materials(
 		// matching evalGlossyF's `wi_world` convention).
 		if (!c_dist.EffectivelySmooth()) {
 			is_specular = false;
-			brdf_pdf_override = ggx_vndf_reflection_pdf(cwi_x, cwi_y, cwi_z, cwo_x, cwo_y, cwo_z, c_alpha, c_alpha);
+			brdf_pdf_override = ggx_vndf_reflection_pdf(cwi_x, cwi_y, cwi_z, cwo_x, cwo_y, cwo_z, c_alpha_x, c_alpha_y);
 			phaseWo = cwi;
 		} else {
 			is_specular = true;
@@ -2652,8 +2681,10 @@ extern "C" __global__ void evaluate_materials(
 		const float3 cd_albedo = (mat.textureIdx >= 0)
 			? wf_sample_texture(textures, texturePixels, mat.textureIdx, h.uv_u, h.uv_v, hit_point) * mat.emissionScale
 			: mat.albedo;
-		float cd_alpha = wf_glossy_alpha(mat, (bool)h.any_nonspecular);
-		glossyAlphaForNEE = cd_alpha;
+		float cd_alpha_x = wf_glossy_alpha(mat, (bool)h.any_nonspecular);
+		float cd_alpha_y = wf_glossy_alpha_v(mat, (bool)h.any_nonspecular);
+		glossyAlphaForNEE = cd_alpha_x;
+		glossyAlphaVForNEE = cd_alpha_y;
 		float3 cdn = normal;
 		float3 cdup = (fabsf(cdn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
 		float3 cdtan   = normalize(cross(cdup, cdn));
@@ -2667,7 +2698,7 @@ extern "C" __global__ void evaluate_materials(
 		// with a degenerate/negative-z local direction instead of
 		// terminating the path like the recursive backend does.
 		if (cdwi_z <= 0.0f) { scattered = false; break; }
-		TrowbridgeReitz<float> cd_dist(cd_alpha, cd_alpha);
+		TrowbridgeReitz<float> cd_dist(cd_alpha_x, cd_alpha_y);
 		float cdwm_x, cdwm_y, cdwm_z;
 		cd_dist.Sample_wm(cdwi_x, cdwi_y, cdwi_z, wf_rand(seed), wf_rand(seed), cdwm_x, cdwm_y, cdwm_z);
 		float cd_dot = cdwi_x*cdwm_x + cdwi_y*cdwm_y + cdwi_z*cdwm_z;
@@ -2731,7 +2762,7 @@ extern "C" __global__ void evaluate_materials(
 			is_specular = false;
 			float swo_x = dot(scattered_dir, cdtan), swo_y = dot(scattered_dir, cdbitan), swo_z = dot(scattered_dir, cdn);
 			brdf_pdf_override = (swo_z > 0.0f)
-				? ggx_vndf_reflection_pdf(cdwi_x, cdwi_y, cdwi_z, swo_x, swo_y, swo_z, cd_alpha, cd_alpha)
+				? ggx_vndf_reflection_pdf(cdwi_x, cdwi_y, cdwi_z, swo_x, swo_y, swo_z, cd_alpha_x, cd_alpha_y)
 				: 0.0f;
 			phaseWo = cdwi;
 		} else {
@@ -2765,8 +2796,10 @@ extern "C" __global__ void evaluate_materials(
 		// viewing direction and skipped both the refraction-into-the-coat
 		// step and the T_in/T_out weighting entirely, making the conductor
 		// visible at full strength as if the coat weren't there.
-		float cc_alpha = wf_glossy_alpha(mat, (bool)h.any_nonspecular);
-		glossyAlphaForNEE = cc_alpha;
+		float cc_alpha_x = wf_glossy_alpha(mat, (bool)h.any_nonspecular);
+		float cc_alpha_y = wf_glossy_alpha_v(mat, (bool)h.any_nonspecular);
+		glossyAlphaForNEE = cc_alpha_x;
+		glossyAlphaVForNEE = cc_alpha_y;
 		float3 ccn = normal;
 		float3 ccup = (fabsf(ccn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
 		float3 cctan   = normalize(cross(ccup, ccn));
@@ -2774,7 +2807,7 @@ extern "C" __global__ void evaluate_materials(
 		float3 ccwi = -normalize(h.rayDir);
 		float ccwi_x = dot(ccwi, cctan), ccwi_y = dot(ccwi, ccbitan), ccwi_z = dot(ccwi, ccn);
 		if (ccwi_z <= 0.0f) { scattered = false; break; }
-		TrowbridgeReitz<float> cc_dist(cc_alpha, cc_alpha);
+		TrowbridgeReitz<float> cc_dist(cc_alpha_x, cc_alpha_y);
 		float ccwm_x, ccwm_y, ccwm_z;
 		cc_dist.Sample_wm(ccwi_x, ccwi_y, ccwi_z, wf_rand(seed), wf_rand(seed), ccwm_x, ccwm_y, ccwm_z);
 		float cc_dot = ccwi_x*ccwm_x + ccwi_y*ccwm_y + ccwi_z*ccwm_z;
@@ -2840,7 +2873,7 @@ extern "C" __global__ void evaluate_materials(
 			is_specular = false;
 			float swo_x = dot(scattered_dir, cctan), swo_y = dot(scattered_dir, ccbitan), swo_z = dot(scattered_dir, ccn);
 			brdf_pdf_override = (swo_z > 0.0f)
-				? ggx_vndf_reflection_pdf(ccwi_x, ccwi_y, ccwi_z, swo_x, swo_y, swo_z, cc_alpha, cc_alpha)
+				? ggx_vndf_reflection_pdf(ccwi_x, ccwi_y, ccwi_z, swo_x, swo_y, swo_z, cc_alpha_x, cc_alpha_y)
 				: 0.0f;
 			phaseWo = ccwi;
 		} else {
@@ -3361,7 +3394,7 @@ extern "C" __global__ void evaluate_materials(
 
 	// eventEta was set above only on a genuine transmission (DielectricMedium's
 	// entry/exit surfaces) - see this function's own eventEta local comment.
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, h.etaScale * eventEta * eventEta, h.filterWeight, normal, hit_point, seed,
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, glossyAlphaVForNEE, h.etaScale * eventEta * eventEta, h.filterWeight, normal, hit_point, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -3484,6 +3517,7 @@ extern "C" __global__ void evaluate_materials_simple(
 	// Left at 0 (harmless - see that parameter's own comment) for every
 	// non-glossy case.
 	float glossyAlphaForNEE = 0.0f;
+	float glossyAlphaVForNEE = 0.0f;
 
 	auto albedoSpectrum = [&](float3 rgb) -> SS {
 		float c0, c1, c2;
@@ -3529,7 +3563,7 @@ extern "C" __global__ void evaluate_materials_simple(
 
 	// Lambertian/Metal never transmit - h.etaScale passes through unchanged
 	// (see RayWorkItem::etaScale's own comment).
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, h.etaScale, h.filterWeight, normal, hit_point, seed,
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, glossyAlphaVForNEE, h.etaScale, h.filterWeight, normal, hit_point, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -3641,6 +3675,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	// Left at 0 (harmless - see that parameter's own comment) for every
 	// non-glossy case.
 	float glossyAlphaForNEE = 0.0f;
+	float glossyAlphaVForNEE = 0.0f;
 	// pbrt-v4 etaScale term for THIS event only - see RayWorkItem::
 	// etaScale's own comment. 1.0f (a no-op) unless a case below sets it on
 	// a genuine transmission; combined with h.etaScale at the call site.
@@ -3719,8 +3754,10 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		break;
 	}
 	case MaterialType::RoughDielectric: {
-		float rd_alpha = wf_glossy_alpha(mat, (bool)h.any_nonspecular);
-		glossyAlphaForNEE = rd_alpha;
+		float rd_alpha_x = wf_glossy_alpha(mat, (bool)h.any_nonspecular);
+		float rd_alpha_y = wf_glossy_alpha_v(mat, (bool)h.any_nonspecular);
+		glossyAlphaForNEE = rd_alpha_x;
+		glossyAlphaVForNEE = rd_alpha_y;
 		bool rd_front_face = h.frontFace != 0;
 		float rd_ri = rd_front_face ? (1.0f / dispersiveIor) : dispersiveIor;
 		float3 n = normal;
@@ -3730,7 +3767,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		float3 wi_w = normalize(-h.rayDir);
 		float wi_x = dot(wi_w, tan_v), wi_y = dot(wi_w, bitan), wi_z = dot(wi_w, n);
 		if (wi_z < 0.0f) { wi_z = -wi_z; wi_x = -wi_x; wi_y = -wi_y; }
-		TrowbridgeReitz<float> rd_dist(rd_alpha, rd_alpha);
+		TrowbridgeReitz<float> rd_dist(rd_alpha_x, rd_alpha_y);
 		float wm_x, wm_y, wm_z;
 		rd_dist.Sample_wm(wi_x, wi_y, wi_z, wf_rand(seed), wf_rand(seed), wm_x, wm_y, wm_z);
 		float rd_dot = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
@@ -3788,7 +3825,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 			// never read by f()/pdf()/sample_local()" pattern) - set it to
 			// dispersiveIor anyway so nothing here still displays the flat,
 			// non-dispersive value.
-			RoughDielectricBxDF<float> rd_bxdf{ dispersiveIor, rd_alpha, rd_alpha };
+			RoughDielectricBxDF<float> rd_bxdf{ dispersiveIor, rd_alpha_x, rd_alpha_y };
 			brdf_pdf_override = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, wo_x, wo_y, wo_z);
 			phaseWo = wi_w;
 		} else {
@@ -3813,7 +3850,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	// eventEta was set above only on a genuine transmission (Dielectric or
 	// RoughDielectric's refract branch) - see this function's own eventEta
 	// local comment.
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, h.etaScale * eventEta * eventEta, h.filterWeight, normal, hit_point, seed,
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, glossyAlphaVForNEE, h.etaScale * eventEta * eventEta, h.filterWeight, normal, hit_point, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -3980,7 +4017,7 @@ extern "C" __global__ void resolve_bssrdf_exit(
 		// any_nonspecular's own comment, wavefront_types.h, for why this item
 		// doesn't carry a real one through).
 		/*do_regularize=*/false,
-		/*glossyAlpha=*/0.0f, // NormalizedFresnel never reaches glossy_isType
+		/*glossyAlpha=*/0.0f, /*glossyAlphaV=*/0.0f, // NormalizedFresnel never reaches glossy_isType
 		// item.etaScale, unchanged - the entry interface's transmission
 		// already folded its eta^2 in (see BssrdfProbeWorkItem::etaScale's
 		// own comment); this exit-surface NormalizedFresnel shading doesn't

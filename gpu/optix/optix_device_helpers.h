@@ -1961,7 +1961,11 @@ __device__ __forceinline__ void shade_material(
 		case MaterialType::CoatedConductor: {
 			// Rough dielectric coat over GGX conductor (pbrt-v4 CoatedConductorBxDF) -- sphere version
 			// coat: ior=mat.ior, roughness=mat.fuzz; conductor: eta_c, k_c per RGB
-			float cc_alpha = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;  // pbrt-v4 remaproughness (see MaterialData::remapRoughness)
+			// mat.roughnessV<=0 means "isotropic" - see MaterialData::
+			// roughnessV's own comment (optix_types.h).
+			float cc_alpha_x = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;
+			float cc_raw_v   = (mat.roughnessV > 0.0f) ? mat.roughnessV : mat.fuzz;
+			float cc_alpha_y = mat.remapRoughness ? sqrtf(cc_raw_v) : cc_raw_v;
 			float3 cc_n   = normal;
 			float3 cc_up  = (fabsf(cc_n.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
 			float3 cc_tan  = normalize(cross(cc_up, cc_n));
@@ -1973,7 +1977,7 @@ __device__ __forceinline__ void shade_material(
 			float cc_wi_z = dot(cc_wi_w, cc_n);
 			if (cc_wi_z <= 0.0f) { scattered = false; break; }
 
-			TrowbridgeReitz<float> cc_dist(cc_alpha, cc_alpha);
+			TrowbridgeReitz<float> cc_dist(cc_alpha_x, cc_alpha_y);
 
 			// Coat top interface: GGX VNDF + FrDielectric
 			float cwm_x, cwm_y, cwm_z;
@@ -2056,10 +2060,10 @@ __device__ __forceinline__ void shade_material(
 				is_specular = false;
 				CoatedConductorBxDF<float> cc_bxdf{ mat.eta_c.x, mat.eta_c.y, mat.eta_c.z,
 													 mat.k_c.x, mat.k_c.y, mat.k_c.z,
-													 mat.ior, cc_alpha, cc_alpha };
+													 mat.ior, cc_alpha_x, cc_alpha_y };
 
 				float swo_x = dot(scattered_dir, cc_tan), swo_y = dot(scattered_dir, cc_bit), swo_z = dot(scattered_dir, cc_n);
-				brdf_pdf_override = (swo_z > 0.0f) ? ggx_vndf_reflection_pdf(cc_wi_x, cc_wi_y, cc_wi_z, swo_x, swo_y, swo_z, cc_alpha, cc_alpha) : 0.0f;
+				brdf_pdf_override = (swo_z > 0.0f) ? ggx_vndf_reflection_pdf(cc_wi_x, cc_wi_y, cc_wi_z, swo_x, swo_y, swo_z, cc_alpha_x, cc_alpha_y) : 0.0f;
 
 				{
 					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
@@ -2069,7 +2073,7 @@ __device__ __forceinline__ void shade_material(
 							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
 							float fr, fg, fb;
 							cc_bxdf.f(cc_wi_x, cc_wi_y, cc_wi_z, llx, lly, llz, ns0, ns1, fr, fg, fb);
-							float brdf_pdf = ggx_vndf_reflection_pdf(cc_wi_x, cc_wi_y, cc_wi_z, llx, lly, llz, cc_alpha, cc_alpha);
+							float brdf_pdf = ggx_vndf_reflection_pdf(cc_wi_x, cc_wi_y, cc_wi_z, llx, lly, llz, cc_alpha_x, cc_alpha_y);
 							float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
 							emission = emission + mis_weight * make_float3(fr, fg, fb) * sampled_light_emission * llz / light_pdf;
 						}
@@ -2099,7 +2103,7 @@ __device__ __forceinline__ void shade_material(
 							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
 							float fr, fg, fb;
 							cc_bxdf.f(cc_wi_x, cc_wi_y, cc_wi_z, skx, sky_y, skz, ns0, ns1, fr, fg, fb);
-							float brdf_pdf_sky = ggx_vndf_reflection_pdf(cc_wi_x, cc_wi_y, cc_wi_z, skx, sky_y, skz, cc_alpha, cc_alpha);
+							float brdf_pdf_sky = ggx_vndf_reflection_pdf(cc_wi_x, cc_wi_y, cc_wi_z, skx, sky_y, skz, cc_alpha_x, cc_alpha_y);
 							float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
 							emission = emission + mis_weight * make_float3(fr, fg, fb) * sky_Le_val * skz / pdf_sky;
 						}
@@ -2114,11 +2118,14 @@ __device__ __forceinline__ void shade_material(
 		case MaterialType::RoughDielectric: {
 			// GGX microfacet BSDF (pbrt-v4 RoughDielectricBxDF)
 			// fuzz field stores GGX roughness; ior = index of refraction
-			float rd_alpha = mat.fuzz;
+			float rd_alpha_x = mat.fuzz;
+			// mat.roughnessV<=0 means "isotropic" - see MaterialData::
+			// roughnessV's own comment (optix_types.h).
+			float rd_alpha_y = (mat.roughnessV > 0.0f) ? mat.roughnessV : mat.fuzz;
 			// RoughnessToAlpha (sqrt), unless pbrt-v4 "remaproughness" is
-			// false (see MaterialData::remapRoughness) - then mat.fuzz
-			// already IS the alpha value.
-			if (mat.remapRoughness) rd_alpha = sqrtf(rd_alpha);
+			// false (see MaterialData::remapRoughness) - then mat.fuzz/
+			// mat.roughnessV already ARE the alpha values.
+			if (mat.remapRoughness) { rd_alpha_x = sqrtf(rd_alpha_x); rd_alpha_y = sqrtf(rd_alpha_y); }
 			float rd_ri    = front_face ? (1.0f / mat.ior) : mat.ior;
 
 			// Local shading frame (n = +Z)
@@ -2139,7 +2146,7 @@ __device__ __forceinline__ void shade_material(
 			bool rd_flip = (wi_z < 0.0f);
 			if (rd_flip) { wi_z=-wi_z; wi_x=-wi_x; wi_y=-wi_y; }
 
-			TrowbridgeReitz<float> rd_dist(rd_alpha, rd_alpha);
+			TrowbridgeReitz<float> rd_dist(rd_alpha_x, rd_alpha_y);
 			float wm_x, wm_y, wm_z;
 			rd_dist.Sample_wm(wi_x, wi_y, wi_z,
 							  random_float(seed), random_float(seed),
@@ -2207,7 +2214,7 @@ __device__ __forceinline__ void shade_material(
 			// interface instead of immediately self-intersecting it.
 			if (!rd_dist.EffectivelySmooth()) {
 				is_specular = false;
-				RoughDielectricBxDF<float> rd_bxdf{ mat.ior, rd_alpha, rd_alpha };
+				RoughDielectricBxDF<float> rd_bxdf{ mat.ior, rd_alpha_x, rd_alpha_y };
 				// wo_local was already derived (above) from the flip-adjusted
 				// wi_x/wi_y/wi_z - it's already in the same mirrored frame as
 				// wi, same as the attenuation-weight G2/G1 computation just
@@ -2268,7 +2275,11 @@ __device__ __forceinline__ void shade_material(
 
 		case MaterialType::Conductor: {
 			// GGX VNDF + complex Fresnel (pbrt-v4 ConductorBxDF) -- sphere version
-			float c_alpha = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;  // pbrt-v4 remaproughness (see MaterialData::remapRoughness)
+			// mat.roughnessV<=0 means "isotropic" - see MaterialData::
+			// roughnessV's own comment (optix_types.h).
+			float c_alpha_x = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;
+			float c_raw_v   = (mat.roughnessV > 0.0f) ? mat.roughnessV : mat.fuzz;
+			float c_alpha_y = mat.remapRoughness ? sqrtf(c_raw_v) : c_raw_v;
 			float3 cn = normal;
 			float3 cup = (fabsf(cn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
 			float3 ctan   = normalize(cross(cup, cn));
@@ -2276,7 +2287,7 @@ __device__ __forceinline__ void shade_material(
 			float3 cwi = normalize(-ray_dir);
 			float cwi_x = dot(cwi, ctan), cwi_y = dot(cwi, cbitan), cwi_z = dot(cwi, cn);
 			if (cwi_z <= 0.0f) { scattered = false; break; }
-			TrowbridgeReitz<float> c_dist(c_alpha, c_alpha);
+			TrowbridgeReitz<float> c_dist(c_alpha_x, c_alpha_y);
 			float cwm_x, cwm_y, cwm_z;
 			c_dist.Sample_wm(cwi_x, cwi_y, cwi_z, random_float(seed), random_float(seed), cwm_x, cwm_y, cwm_z);
 			float c_dot = cwi_x*cwm_x + cwi_y*cwm_y + cwi_z*cwm_z;
@@ -2308,7 +2319,7 @@ __device__ __forceinline__ void shade_material(
 				is_specular = false;
 				ConductorBxDF<float> c_bxdf{ mat.eta_c.x, mat.eta_c.y, mat.eta_c.z,
 											  mat.k_c.x, mat.k_c.y, mat.k_c.z,
-											  c_alpha, c_alpha };
+											  c_alpha_x, c_alpha_y };
 				brdf_pdf_override = c_bxdf.pdf(cwi_x, cwi_y, cwi_z, cwo_x, cwo_y, cwo_z);
 
 				{
@@ -2457,7 +2468,11 @@ __device__ __forceinline__ void shade_material(
 			const float3 cd_albedo = (mat.textureIdx >= 0)
 				? sample_texture(mat.textureIdx, uv_u, uv_v, hit_point) * mat.emissionScale
 				: mat.albedo;
-			float cd_alpha = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;  // pbrt-v4 remaproughness (see MaterialData::remapRoughness)
+			// mat.roughnessV<=0 means "isotropic" - see MaterialData::
+			// roughnessV's own comment (optix_types.h).
+			float cd_alpha_x = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;
+			float cd_raw_v   = (mat.roughnessV > 0.0f) ? mat.roughnessV : mat.fuzz;
+			float cd_alpha_y = mat.remapRoughness ? sqrtf(cd_raw_v) : cd_raw_v;
 			float3 cdn  = normal;
 			float3 cdup = (fabsf(cdn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
 			float3 cdtan = normalize(cross(cdup, cdn));
@@ -2465,7 +2480,7 @@ __device__ __forceinline__ void shade_material(
 			float3 cdwi  = normalize(-ray_dir);
 			float cdwi_x = dot(cdwi, cdtan), cdwi_y = dot(cdwi, cdbit), cdwi_z = dot(cdwi, cdn);
 			if (cdwi_z <= 0.0f) { scattered = false; break; }
-			TrowbridgeReitz<float> cd_dist(cd_alpha, cd_alpha);
+			TrowbridgeReitz<float> cd_dist(cd_alpha_x, cd_alpha_y);
 			float cdwm_x, cdwm_y, cdwm_z;
 			cd_dist.Sample_wm(cdwi_x, cdwi_y, cdwi_z, random_float(seed), random_float(seed), cdwm_x, cdwm_y, cdwm_z);
 			float cd_cosi = cdwi_x*cdwm_x + cdwi_y*cdwm_y + cdwi_z*cdwm_z;
@@ -2556,10 +2571,10 @@ __device__ __forceinline__ void shade_material(
 			// MIS/NEE unbiased, this only affects variance.
 			if (!cd_dist.EffectivelySmooth()) {
 				is_specular = false;
-				CoatedDiffuseBxDF<float> cd_bxdf{ cd_albedo.x, cd_albedo.y, cd_albedo.z, mat.ior, cd_alpha, cd_alpha };
+				CoatedDiffuseBxDF<float> cd_bxdf{ cd_albedo.x, cd_albedo.y, cd_albedo.z, mat.ior, cd_alpha_x, cd_alpha_y };
 
 				float swo_x = dot(scattered_dir, cdtan), swo_y = dot(scattered_dir, cdbit), swo_z = dot(scattered_dir, cdn);
-				brdf_pdf_override = (swo_z > 0.0f) ? ggx_vndf_reflection_pdf(cdwi_x, cdwi_y, cdwi_z, swo_x, swo_y, swo_z, cd_alpha, cd_alpha) : 0.0f;
+				brdf_pdf_override = (swo_z > 0.0f) ? ggx_vndf_reflection_pdf(cdwi_x, cdwi_y, cdwi_z, swo_x, swo_y, swo_z, cd_alpha_x, cd_alpha_y) : 0.0f;
 
 				{
 					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
@@ -2569,7 +2584,7 @@ __device__ __forceinline__ void shade_material(
 							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
 							float fr, fg, fb;
 							cd_bxdf.f(cdwi_x, cdwi_y, cdwi_z, llx, lly, llz, ns0, ns1, fr, fg, fb);
-							float brdf_pdf = ggx_vndf_reflection_pdf(cdwi_x, cdwi_y, cdwi_z, llx, lly, llz, cd_alpha, cd_alpha);
+							float brdf_pdf = ggx_vndf_reflection_pdf(cdwi_x, cdwi_y, cdwi_z, llx, lly, llz, cd_alpha_x, cd_alpha_y);
 							float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
 							emission = emission + mis_weight * make_float3(fr, fg, fb) * sampled_light_emission * llz / light_pdf;
 						}
@@ -2599,7 +2614,7 @@ __device__ __forceinline__ void shade_material(
 							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
 							float fr, fg, fb;
 							cd_bxdf.f(cdwi_x, cdwi_y, cdwi_z, skx, sky_y, skz, ns0, ns1, fr, fg, fb);
-							float brdf_pdf_sky = ggx_vndf_reflection_pdf(cdwi_x, cdwi_y, cdwi_z, skx, sky_y, skz, cd_alpha, cd_alpha);
+							float brdf_pdf_sky = ggx_vndf_reflection_pdf(cdwi_x, cdwi_y, cdwi_z, skx, sky_y, skz, cd_alpha_x, cd_alpha_y);
 							float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
 							emission = emission + mis_weight * make_float3(fr, fg, fb) * sky_Le_val * skz / pdf_sky;
 						}
