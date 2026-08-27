@@ -773,7 +773,7 @@ struct PunctualLight {
 
 	// Goniometric/Projection only: world -> light rotation, row-major 3x3,
 	// recovered from the LightSource directive's CTM by inverting its
-	// upper-left 3x3 (see detail::worldToLightRotation()) - both kinds have
+	// upper-left 3x3 (see flatten_detail::worldToLightRotation()) - both kinds have
 	// no "from"/"to" of their own in pbrt-v4, so a scene aims either one
 	// purely by rotating the CTM before the LightSource directive (e.g.
 	// `Rotate` then `LightSource "projection" ...`). Identity when the CTM
@@ -975,7 +975,14 @@ using MeshResolver = std::function<bool(const std::string &path,
 										std::vector<int> &indices,
 										std::vector<float> &uvs)>;
 
-namespace detail {
+// Named flatten_detail, not the more generic "detail" - a bare "detail"
+// here previously collided with compensated_float.h's own unrelated
+// namespace detail (ambiguous unqualified lookup, MSVC error C2872) in any
+// translation unit that both instantiates InnerProduct() (compensated_float.h,
+// via e.g. square_matrix.h) and does `using namespace pbrt_flatten;` (this
+// header's own established convention for callers, see flatten()'s local
+// using-directive below) - exactly tests/unit/pbrt_flatten_tests.cpp's shape.
+namespace flatten_detail {
 
 // One shape to emit, where to put it, and under which transform. Routing the
 // single shape loop through this is what lets the same code serve three
@@ -1204,11 +1211,11 @@ inline Camera cameraFromWorldToCamera(const pbrt_scene::Matrix4 &w2c) {
 	return c;
 }
 
-} // namespace detail
+} // namespace flatten_detail
 
 inline FlatScene flatten(const pbrt_scene::Scene &scene,
 						 const MeshResolver &meshes = {}) {
-	using namespace detail;
+	using namespace flatten_detail;
 	FlatScene out;
 	out.warnings = scene.warnings;   // carry the parser's own warnings through
 
@@ -2236,7 +2243,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 	//
 	// pbrt declines this case outright ("Area lights not supported with object
 	// instancing"). Baking is cheap enough that we do not have to.
-	std::vector<detail::ShapeWork> work;
+	std::vector<flatten_detail::ShapeWork> work;
 
 	for (const pbrt_scene::ShapeDecl &shape : scene.shapes)
 		work.push_back({&shape, shape.xform, &out.triangles, &out.spheres, &out.bilinearPatches,
@@ -2288,13 +2295,13 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		for (const pbrt_scene::ShapeDecl &shape :
 				 scene.objects[static_cast<std::size_t>(group)].shapes) {
 			if (shape.areaLightIndex < 0) continue;
-			work.push_back({&shape, detail::compose(inst.xform, shape.xform),
+			work.push_back({&shape, flatten_detail::compose(inst.xform, shape.xform),
 							&out.triangles, &out.spheres, &out.bilinearPatches,
 							&out.disks, &out.cylinders, &out.curves});
 		}
 	}
 
-	for (const detail::ShapeWork &w : work) {
+	for (const flatten_detail::ShapeWork &w : work) {
 		const pbrt_scene::ShapeDecl &shape = *w.shape;
 		const pbrt_scene::Matrix4 &xform = w.xform;
 		if (shape.type == "sphere") {

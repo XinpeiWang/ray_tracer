@@ -69,6 +69,7 @@ add_executable(unit_tests
     unit/lowdiscrepancy_tests.cpp
     unit/materials_tests.cpp
     unit/math_tests.cpp
+    unit/measured_bxdf_pbrt_tests.cpp
     unit/measured_bxdf_tests.cpp
     unit/measured_material_tests.cpp
     unit/microfacet_tests.cpp
@@ -83,8 +84,41 @@ add_executable(unit_tests
     unit/path_integrator_tests.cpp
     unit/path_regularization_tests.cpp
     unit/path_sampler_tests.cpp
+    # pbrt_alpha_cutout_tests.cpp is deliberately NOT listed here either
+    # (see the pbrt_gpu_*_tests.cpp comment below) - it #includes
+    # pbrt_gpu_builder.h directly, which transitively #includes <optix.h>.
+    unit/pbrt_cpu_builder_tests.cpp
+    unit/pbrt_discover_tests.cpp
+    # pbrt_example_scenes_tests.cpp is deliberately NOT listed here - it's a
+    # real end-to-end render-smoke test calling cpu_render_main AND
+    # optix_render_main directly (launcher/cpu_interface.cpp, gpu/optix/
+    # optix_interface.cpp), which would need this target to link the full
+    # cpu_renderer + optix_renderer surface (and, transitively, the OptiX
+    # SDK + CUDA Toolkit for the latter) - the same class of dependency the
+    # pbrt_gpu_*_tests.cpp comment below explains staying out of this
+    # portable, SDK-independent target for.
+    unit/pbrt_flatten_tests.cpp
+    # pbrt_gpu_*_tests.cpp (bilinear_light/disk_cylinder/instance_sphere/
+    # light_coverage/mix_material/quad_light/texture/triangle_light) are
+    # deliberately NOT listed here: they transitively #include
+    # gpu/optix/optix_types.h, which unconditionally #includes <optix.h>
+    # and <cuda_runtime.h> - wiring them in would make this entire
+    # portable, SDK-independent unit_tests target require the OptiX SDK +
+    # CUDA Toolkit installed just to build, unlike every other test here.
+    # tests/ray_tracer_tests.vcxproj carries those SDK include paths and
+    # lists these files, but is not currently a working alternative home -
+    # confirmed broken on its own (missing even its gtest include path,
+    # C1083 on gtest/gtest.h before reaching these files at all). These 9
+    # files (this group of 8 plus pbrt_alpha_cutout_tests.cpp above) have no
+    # currently-building target anywhere in the repo - a real gap, tracked
+    # separately from this CMakeLists.txt fix.
     unit/pbrt_hash_tests.cpp
+    unit/pbrt_instance_tests.cpp
+    unit/pbrt_load_tests.cpp
+    unit/pbrt_quadify_tests.cpp
     unit/pbrt_sampling_tests.cpp
+    unit/pbrt_scene_tests.cpp
+    unit/pbrt_subdiv_tests.cpp
     unit/piecewise_dist_tests.cpp
     unit/piecewise_linear_2d_tests.cpp
     unit/pixel_sensor_tests.cpp
@@ -109,6 +143,19 @@ add_executable(unit_tests
     # in scene_metadata/scene_metadata.vcxproj (see its comment) - there is
     # no single shared target providing this dependency to every consumer.
     ${CMAKE_SOURCE_DIR}/../src/data/rgb_spectrum_table_data.cpp
+    # Needed by the newly-added pbrt_*_tests.cpp files above that decode
+    # real image files (measured_bxdf_pbrt/pbrt_cpu_builder/pbrt_instance/
+    # pbrt_load) via pbrt_load.h/pbrt_cpu_builder.h - those only declare
+    # stb_image's/tinyexr's functions, the *_IMPLEMENTATION macro that
+    # actually defines them lives in these two .cpp files (see cpu_renderer/
+    # cpu_renderer.vcxproj's own identical pair for the sibling copy this
+    # mirrors).
+    ${CMAKE_SOURCE_DIR}/../src/external/stb_image_impl.cpp
+    ${CMAKE_SOURCE_DIR}/../src/external/tinyexr_impl.cpp
+    # tinyexr's Pxr24 compression path needs miniz's mz_compress/
+    # mz_compressBound/mz_uncompress - same pairing cpu_renderer.vcxproj
+    # already builds tinyexr_impl.cpp alongside.
+    ${CMAKE_SOURCE_DIR}/../src/external/miniz.c
     unit/rng_tests.cpp
     unit/sample_function_tests.cpp
     unit/sampled_grid_tests.cpp
