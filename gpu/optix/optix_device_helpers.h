@@ -1961,15 +1961,15 @@ __device__ __forceinline__ void shade_material(
 		case MaterialType::CoatedConductor: {
 			// Rough dielectric coat over GGX conductor (pbrt-v4 CoatedConductorBxDF) -- sphere version
 			// coat: ior=mat.ior, roughness=mat.fuzz; conductor: eta_c, k_c per RGB
-			// mat.roughnessV<=0 means "isotropic" - see MaterialData::
+			// mat.roughnessV<0 means "isotropic" - see MaterialData::
 			// roughnessV's own comment (optix_types.h).
 			float cc_alpha_x = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;
-			float cc_raw_v   = (mat.roughnessV > 0.0f) ? mat.roughnessV : mat.fuzz;
-			float cc_alpha_y = mat.remapRoughness ? sqrtf(cc_raw_v) : cc_raw_v;
+			float cc_alpha_y = ResolveAnisotropicAlphaV(mat.roughnessV, mat.fuzz, mat.remapRoughness);
 			float3 cc_n   = normal;
-			float3 cc_up  = (fabsf(cc_n.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
-			float3 cc_tan  = normalize(cross(cc_up, cc_n));
-			float3 cc_bit  = cross(cc_n, cc_tan);
+			float3 cc_tan, cc_bit;
+			BuildArbitraryTangentFrame(cc_n.x, cc_n.y, cc_n.z,
+			                            cc_tan.x, cc_tan.y, cc_tan.z,
+			                            cc_bit.x, cc_bit.y, cc_bit.z);
 
 			float3 cc_wi_w = normalize(-ray_dir);
 			float cc_wi_x = dot(cc_wi_w, cc_tan);
@@ -2118,21 +2118,20 @@ __device__ __forceinline__ void shade_material(
 		case MaterialType::RoughDielectric: {
 			// GGX microfacet BSDF (pbrt-v4 RoughDielectricBxDF)
 			// fuzz field stores GGX roughness; ior = index of refraction
-			float rd_alpha_x = mat.fuzz;
-			// mat.roughnessV<=0 means "isotropic" - see MaterialData::
-			// roughnessV's own comment (optix_types.h).
-			float rd_alpha_y = (mat.roughnessV > 0.0f) ? mat.roughnessV : mat.fuzz;
 			// RoughnessToAlpha (sqrt), unless pbrt-v4 "remaproughness" is
 			// false (see MaterialData::remapRoughness) - then mat.fuzz/
-			// mat.roughnessV already ARE the alpha values.
-			if (mat.remapRoughness) { rd_alpha_x = sqrtf(rd_alpha_x); rd_alpha_y = sqrtf(rd_alpha_y); }
+			// mat.roughnessV already ARE the alpha values. mat.roughnessV<0
+			// means "isotropic" - see MaterialData::roughnessV's own
+			// comment (optix_types.h) and ResolveAnisotropicAlphaV's own
+			// comment (microfacet.h) for the shared sentinel/remap logic.
+			float rd_alpha_x = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;
+			float rd_alpha_y = ResolveAnisotropicAlphaV(mat.roughnessV, mat.fuzz, mat.remapRoughness);
 			float rd_ri    = front_face ? (1.0f / mat.ior) : mat.ior;
 
 			// Local shading frame (n = +Z)
 			float3 n = normal;
-			float3 up_v = (fabsf(n.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
-			float3 tan  = normalize(cross(up_v, n));
-			float3 bitan = cross(n, tan);
+			float3 tan, bitan;
+			BuildArbitraryTangentFrame(n.x, n.y, n.z, tan.x, tan.y, tan.z, bitan.x, bitan.y, bitan.z);
 
 			float3 wi_w = normalize(-ray_dir);
 			float wi_x = dot(wi_w, tan), wi_y = dot(wi_w, bitan), wi_z = dot(wi_w, n);
@@ -2275,15 +2274,13 @@ __device__ __forceinline__ void shade_material(
 
 		case MaterialType::Conductor: {
 			// GGX VNDF + complex Fresnel (pbrt-v4 ConductorBxDF) -- sphere version
-			// mat.roughnessV<=0 means "isotropic" - see MaterialData::
+			// mat.roughnessV<0 means "isotropic" - see MaterialData::
 			// roughnessV's own comment (optix_types.h).
 			float c_alpha_x = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;
-			float c_raw_v   = (mat.roughnessV > 0.0f) ? mat.roughnessV : mat.fuzz;
-			float c_alpha_y = mat.remapRoughness ? sqrtf(c_raw_v) : c_raw_v;
+			float c_alpha_y = ResolveAnisotropicAlphaV(mat.roughnessV, mat.fuzz, mat.remapRoughness);
 			float3 cn = normal;
-			float3 cup = (fabsf(cn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
-			float3 ctan   = normalize(cross(cup, cn));
-			float3 cbitan = cross(cn, ctan);
+			float3 ctan, cbitan;
+			BuildArbitraryTangentFrame(cn.x, cn.y, cn.z, ctan.x, ctan.y, ctan.z, cbitan.x, cbitan.y, cbitan.z);
 			float3 cwi = normalize(-ray_dir);
 			float cwi_x = dot(cwi, ctan), cwi_y = dot(cwi, cbitan), cwi_z = dot(cwi, cn);
 			if (cwi_z <= 0.0f) { scattered = false; break; }
@@ -2468,15 +2465,13 @@ __device__ __forceinline__ void shade_material(
 			const float3 cd_albedo = (mat.textureIdx >= 0)
 				? sample_texture(mat.textureIdx, uv_u, uv_v, hit_point) * mat.emissionScale
 				: mat.albedo;
-			// mat.roughnessV<=0 means "isotropic" - see MaterialData::
+			// mat.roughnessV<0 means "isotropic" - see MaterialData::
 			// roughnessV's own comment (optix_types.h).
 			float cd_alpha_x = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;
-			float cd_raw_v   = (mat.roughnessV > 0.0f) ? mat.roughnessV : mat.fuzz;
-			float cd_alpha_y = mat.remapRoughness ? sqrtf(cd_raw_v) : cd_raw_v;
+			float cd_alpha_y = ResolveAnisotropicAlphaV(mat.roughnessV, mat.fuzz, mat.remapRoughness);
 			float3 cdn  = normal;
-			float3 cdup = (fabsf(cdn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
-			float3 cdtan = normalize(cross(cdup, cdn));
-			float3 cdbit = cross(cdn, cdtan);
+			float3 cdtan, cdbit;
+			BuildArbitraryTangentFrame(cdn.x, cdn.y, cdn.z, cdtan.x, cdtan.y, cdtan.z, cdbit.x, cdbit.y, cdbit.z);
 			float3 cdwi  = normalize(-ray_dir);
 			float cdwi_x = dot(cdwi, cdtan), cdwi_y = dot(cdwi, cdbit), cdwi_z = dot(cdwi, cdn);
 			if (cdwi_z <= 0.0f) { scattered = false; break; }

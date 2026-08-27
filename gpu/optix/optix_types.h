@@ -929,13 +929,24 @@ struct MaterialData {
 	// CoatedDiffuse/CoatedConductor (mirrors pbrt_cpu_builder.h's
 	// identical roughness_u/roughness_v dispatch - RoughMetal/Metal have
 	// no anisotropic variant on CPU either, so they don't read this
-	// field). Defaults to 0.0f, meaning "no real v-roughness was set -
+	// field). Read by all 3 GPU backends (optix_device_helpers.h,
+	// wavefront_kernels.cu), but GPU SPPM (sppm_programs.cu) only
+	// implements 2 of the 4 kinds (Conductor/RoughDielectric - CoatedDiffuse/
+	// CoatedConductor have no SPPM material case at all, unrelated to
+	// anisotropy). Defaults to -1.0f, meaning "no real v-roughness was set -
 	// use `roughness` above for both axes" (isotropic); every reading
-	// site treats <=0 this way rather than a literal zero-roughness
+	// site treats <0 this way rather than a literal zero-roughness
 	// v-axis, so every pre-existing brace-init call site (which never
 	// mentions this field) keeps its old isotropic behavior unchanged.
-	// Same authored-vs-alpha convention as `roughness` (remapRoughness
-	// above applies to both).
+	// A NEGATIVE sentinel (not 0.0f) is deliberate: a real, authored
+	// v-roughness of exactly 0.0 is a legitimate value (e.g. a scene that
+	// sets only "uroughness", leaving "vroughness" to fall back to 0 -
+	// meaning "near-mirror in v, rough in u") and real roughness is never
+	// negative, so -1.0f can't collide with any value a scene could
+	// actually author - unlike a 0.0f sentinel, which would be bitwise
+	// indistinguishable from that legitimate zero and silently collapse
+	// the material to isotropic instead. Same authored-vs-alpha
+	// convention as `roughness` (remapRoughness above applies to both).
 	//
 	// The local tangent/bitangent frame these 4 material kinds build on
 	// GPU is an arbitrary (not UV/dpdu-aligned) basis, unlike CPU's
@@ -946,8 +957,14 @@ struct MaterialData {
 	// scoped this way; aligning GPU's tangent frame to dpdu is a larger,
 	// separate undertaking (would need dpdu threaded through the
 	// sphere/quad/bilinear-patch intersection programs, not just this
-	// struct).
-	float roughnessV = 0.0f;
+	// struct). That arbitrary frame is built via BuildArbitraryTangentFrame()
+	// (src/shared/microfacet.h), a continuous (branchless) construction -
+	// the frame this same 4-kind group used before that fix had a hard
+	// discontinuity at |n.x|=0.9 that was invisible while roughness was
+	// always isotropic (TrowbridgeReitz is rotation-invariant when
+	// alpha_x==alpha_y) but became a real, visible seam once real
+	// anisotropy could make the frame's orientation matter.
+	float roughnessV = -1.0f;
 };
 
 // Punctual (delta) light kinds - point/spot/distant. These are evaluated

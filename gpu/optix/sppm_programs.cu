@@ -381,14 +381,17 @@ static __device__ float3 sppm_sample_sphere_light(const SphereData& sph, const f
 static __device__ __forceinline__ bool sppm_sample_rough_dielectric(
 	const float3& dir_in, const float3& n, const MaterialData& mat,
 	unsigned int& seed, float3& out_dir) {
-	// mat.roughnessV<=0 means "isotropic" - see MaterialData::roughnessV's
-	// own comment (optix_types.h).
-	float alpha_x = sqrtf(mat.fuzz);
-	float raw_v   = (mat.roughnessV > 0.0f) ? mat.roughnessV : mat.fuzz;
-	float alpha_y = sqrtf(raw_v);
-	float3 up_v = (fabsf(n.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
-	float3 tan_v = normalize(cross(up_v, n));
-	float3 bitan = cross(n, tan_v);
+	// mat.roughnessV<0 means "isotropic" - see MaterialData::roughnessV's
+	// own comment (optix_types.h). remapRoughness now gates both axes here
+	// too (previously this function unconditionally sqrt'd regardless of
+	// mat.remapRoughness, unlike optix_device_helpers.h/wavefront_kernels.cu
+	// - a real, pre-existing gap, closed here rather than perpetuated into
+	// the new v-axis code). ResolveAnisotropicAlphaV (microfacet.h) is the
+	// single shared source of truth for the sentinel+remap logic.
+	float alpha_x = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;
+	float alpha_y = ResolveAnisotropicAlphaV(mat.roughnessV, mat.fuzz, mat.remapRoughness);
+	float3 tan_v, bitan;
+	BuildArbitraryTangentFrame(n.x, n.y, n.z, tan_v.x, tan_v.y, tan_v.z, bitan.x, bitan.y, bitan.z);
 	float3 wi_w = -normalize(dir_in);
 	float wi_x = dot(wi_w, tan_v), wi_y = dot(wi_w, bitan), wi_z = dot(wi_w, n);
 	if (wi_z <= 0.0f) return false;
@@ -436,11 +439,11 @@ static __device__ __forceinline__ bool sppm_sample_rough_dielectric(
 static __device__ __forceinline__ bool sppm_is_delta_material(const MaterialData& mat) {
 	if (mat.type == MaterialType::Conductor) {
 		// Same derivation sppm_sample_delta_material's Conductor case
-		// already uses, incl. the roughnessV<=0-means-isotropic sentinel
-		// (MaterialData::roughnessV's own comment, optix_types.h).
-		float alpha_x = sqrtf(mat.fuzz);
-		float raw_v   = (mat.roughnessV > 0.0f) ? mat.roughnessV : mat.fuzz;
-		float alpha_y = sqrtf(raw_v);
+		// already uses, incl. ResolveAnisotropicAlphaV's (microfacet.h)
+		// shared roughnessV<0-means-isotropic sentinel and remapRoughness
+		// gate.
+		float alpha_x = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;
+		float alpha_y = ResolveAnisotropicAlphaV(mat.roughnessV, mat.fuzz, mat.remapRoughness);
 		return ConductorBxDF<float>{ mat.eta_c.x, mat.eta_c.y, mat.eta_c.z,
 		                              mat.k_c.x, mat.k_c.y, mat.k_c.z, alpha_x, alpha_y }.effectively_smooth();
 	}
@@ -464,9 +467,8 @@ static __device__ __forceinline__ bool sppm_is_delta_material(const MaterialData
 static __device__ __forceinline__ float3 sppm_bsdf_f(
 	const MaterialData& mat, const float3& wo, const float3& wi, const float3& n) {
 	if (mat.type == MaterialType::Conductor || mat.type == MaterialType::RoughMetal) {
-		float3 up_v  = (fabsf(n.x) > 0.9f) ? make_float3(0, 1, 0) : make_float3(1, 0, 0);
-		float3 tan_v = normalize(cross(up_v, n));
-		float3 bitan = cross(n, tan_v);
+		float3 tan_v, bitan;
+		BuildArbitraryTangentFrame(n.x, n.y, n.z, tan_v.x, tan_v.y, tan_v.z, bitan.x, bitan.y, bitan.z);
 		// BxDF struct convention in this codebase (see rough_metal::
 		// scattering_pdf(), material_pbrt.h): "wi" params take the FIXED/
 		// view direction, "wo" params take the newly QUERIED direction --
@@ -478,12 +480,14 @@ static __device__ __forceinline__ float3 sppm_bsdf_f(
 		float alpha = sqrtf(mat.fuzz);
 		float fr, fg, fb;
 		if (mat.type == MaterialType::Conductor) {
-			// roughnessV<=0-means-isotropic sentinel - see MaterialData::
-			// roughnessV's own comment (optix_types.h).
-			float raw_v   = (mat.roughnessV > 0.0f) ? mat.roughnessV : mat.fuzz;
-			float alpha_y = sqrtf(raw_v);
+			// ResolveAnisotropicAlphaV (microfacet.h) is the shared
+			// roughnessV<0-means-isotropic sentinel + remapRoughness gate
+			// (Conductor only - RoughMetal below keeps its own
+			// pre-existing unconditional sqrt, untouched).
+			float alpha_x = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;
+			float alpha_y = ResolveAnisotropicAlphaV(mat.roughnessV, mat.fuzz, mat.remapRoughness);
 			ConductorBxDF<float> bx{ mat.eta_c.x, mat.eta_c.y, mat.eta_c.z,
-			                          mat.k_c.x, mat.k_c.y, mat.k_c.z, alpha, alpha_y };
+			                          mat.k_c.x, mat.k_c.y, mat.k_c.z, alpha_x, alpha_y };
 			bx.f(bxdf_wi_x, bxdf_wi_y, bxdf_wi_z, bxdf_wo_x, bxdf_wo_y, bxdf_wo_z, fr, fg, fb);
 		} else {
 			RoughMetalBxDF<float> bx{ mat.albedo.x, mat.albedo.y, mat.albedo.z, alpha, alpha };
@@ -545,14 +549,14 @@ static __device__ __forceinline__ bool sppm_sample_delta_material(
 		return true;
 	}
 	case MaterialType::Conductor: {
-		// mat.roughnessV<=0 means "isotropic" - see MaterialData::
-		// roughnessV's own comment (optix_types.h).
-		float alpha_x = sqrtf(mat.fuzz);
-		float raw_v   = (mat.roughnessV > 0.0f) ? mat.roughnessV : mat.fuzz;
-		float alpha_y = sqrtf(raw_v);
-		float3 up_v  = (fabsf(n.x) > 0.9f) ? make_float3(0, 1, 0) : make_float3(1, 0, 0);
-		float3 tan_v = normalize(cross(up_v, n));
-		float3 bitan = cross(n, tan_v);
+		// ResolveAnisotropicAlphaV (microfacet.h) is the shared
+		// roughnessV<0-means-isotropic sentinel + remapRoughness gate (see
+		// sppm_sample_rough_dielectric's own comment on why the
+		// remapRoughness gate was added here, closing a pre-existing gap).
+		float alpha_x = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;
+		float alpha_y = ResolveAnisotropicAlphaV(mat.roughnessV, mat.fuzz, mat.remapRoughness);
+		float3 tan_v, bitan;
+		BuildArbitraryTangentFrame(n.x, n.y, n.z, tan_v.x, tan_v.y, tan_v.z, bitan.x, bitan.y, bitan.z);
 		float3 wi_w  = normalize(-dir_in);
 		float wi_x = dot(wi_w, tan_v), wi_y = dot(wi_w, bitan), wi_z = dot(wi_w, n);
 		if (wi_z <= 0.0f) return false;

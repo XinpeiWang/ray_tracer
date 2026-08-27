@@ -32,6 +32,57 @@ template<typename T> CPU_GPU T GGX_AbsCosTheta(T x,T y,T z){
 #endif
 }
 
+// Continuous (branchless) orthonormal basis from a unit normal - Duff,
+// Burgess, Christensen, Hery, Kensler, Liani, Villemin, "Building an
+// Orthonormal Basis, Revisited" (JCGT 2017). Used by GPU's arbitrary (not
+// UV/dpdu-aligned - see optix_types.h's MaterialData::roughnessV comment)
+// tangent frame for the 4 anisotropy-capable material kinds
+// (RoughDielectric/Conductor/CoatedDiffuse/CoatedConductor, across all 3
+// GPU device-code files), replacing an earlier per-file "pick whichever of
+// world X/Y is less parallel to n" construction that had a hard
+// discontinuity at |n.x|=0.9 - invisible while roughness was always
+// isotropic (TrowbridgeReitz is rotation-invariant in the shading plane
+// when alpha_x==alpha_y), but a real, visible seam on curved surfaces once
+// real per-axis alpha made the frame's orientation matter. This
+// formulation (using copysign rather than a manual n.z>=0 branch) has no
+// singularity anywhere on the unit sphere, unlike the original 1999 Duff
+// method it improves on.
+template<typename T>
+CPU_GPU void BuildArbitraryTangentFrame(T nx, T ny, T nz,
+                                          T& tx, T& ty, T& tz,
+                                          T& bx, T& by, T& bz) {
+#if defined(__CUDACC__)
+  T sign = copysignf(T(1), nz);
+#else
+  T sign = std::copysign(T(1), nz);
+#endif
+  T a = T(-1) / (sign + nz);
+  T b = nx * ny * a;
+  tx = T(1) + sign * nx * nx * a; ty = sign * b;            tz = -sign * nx;
+  bx = b;                         by = sign + ny * ny * a;  bz = -ny;
+}
+
+// Resolves the v/bitangent-axis GGX alpha for a material whose v-roughness
+// may be "unset" (isotropic - see optix_types.h's MaterialData::roughnessV
+// for the negative-sentinel convention this mirrors: roughnessV<0 means no
+// real v-roughness was authored, fall back to the material's own x-axis raw
+// roughness). Both axes then get the identical remap-or-not treatment
+// (pbrt-v4 "remaproughness"). One shared definition for all 3 GPU device-
+// code files (optix_device_helpers.h, wavefront_kernels.cu's
+// wf_glossy_alpha_v, sppm_programs.cu) that each independently derive a
+// v-axis alpha from a MaterialData - previously duplicated inline at 8+
+// separate call sites.
+template<typename T>
+CPU_GPU T ResolveAnisotropicAlphaV(T roughnessV, T isotropicRoughness, bool remapRoughness) {
+  T raw = (roughnessV >= T(0)) ? roughnessV : isotropicRoughness;
+  if (!remapRoughness) return raw;
+#if defined(__CUDACC__)
+  return sqrtf(raw);
+#else
+  return std::sqrt(raw);
+#endif
+}
+
 // TrowbridgeReitz NDF
 // pbrt-v4 path-regularization clamp (Clamp(2*alpha, 0.1, 0.3)) - widens a
 // near-specular GGX alpha once a path has taken a prior non-specular bounce,

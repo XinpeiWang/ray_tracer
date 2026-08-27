@@ -222,14 +222,14 @@ __device__ __forceinline__ float wf_glossy_alpha(const MaterialData& mat, bool d
 }
 
 // Second (v/bitangent-axis) GGX alpha, mirroring wf_glossy_alpha() above but
-// reading mat.roughnessV instead of mat.fuzz - see MaterialData::roughnessV's
-// own comment (optix_types.h) for the <=0-means-isotropic sentinel and which
-// 4 material kinds (RoughDielectric/Conductor/CoatedDiffuse/CoatedConductor)
-// call this; RoughMetal keeps calling wf_glossy_alpha() alone for both axes,
-// same as CPU's rough_metal has no anisotropic variant either.
+// via the shared ResolveAnisotropicAlphaV() (microfacet.h) - see
+// MaterialData::roughnessV's own comment (optix_types.h) for the
+// <0-means-isotropic sentinel and which 4 material kinds
+// (RoughDielectric/Conductor/CoatedDiffuse/CoatedConductor) call this;
+// RoughMetal keeps calling wf_glossy_alpha() alone for both axes, same as
+// CPU's rough_metal has no anisotropic variant either.
 __device__ __forceinline__ float wf_glossy_alpha_v(const MaterialData& mat, bool do_regularize) {
-	float raw = (mat.roughnessV > 0.0f) ? mat.roughnessV : mat.fuzz;
-	float a = mat.remapRoughness ? sqrtf(raw) : raw;
+	float a = ResolveAnisotropicAlphaV(mat.roughnessV, mat.fuzz, mat.remapRoughness);
 	return do_regularize ? RegularizeAlpha(a) : a;
 }
 
@@ -1523,15 +1523,15 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// See glossyAlpha's own parameter comment - already regularized by the
 	// caller, not re-derived here.
 	float glossy_alpha = glossyAlpha;
-	// See glossyAlphaV's own parameter comment - <=0 (RoughMetal, or any
+	// See glossyAlphaV's own parameter comment - <0 (RoughMetal, or any
 	// non-glossy matType) falls back to glossy_alpha, matching
 	// MaterialData::roughnessV's own isotropic sentinel.
-	float glossy_alpha_v = (glossyAlphaV > 0.0f) ? glossyAlphaV : glossy_alpha;
+	float glossy_alpha_v = (glossyAlphaV >= 0.0f) ? glossyAlphaV : glossy_alpha;
 	bool glossy_valid = false;
 	if (glossy_isType) {
-		float3 up = (fabsf(normal.x) > 0.9f) ? make_float3(0.0f,1.0f,0.0f) : make_float3(1.0f,0.0f,0.0f);
-		glossy_tan = normalize(cross(up, normal));
-		glossy_bit = cross(normal, glossy_tan);
+		BuildArbitraryTangentFrame(normal.x, normal.y, normal.z,
+		                            glossy_tan.x, glossy_tan.y, glossy_tan.z,
+		                            glossy_bit.x, glossy_bit.y, glossy_bit.z);
 		glossy_wi_x = dot(phaseWo, glossy_tan);
 		glossy_wi_y = dot(phaseWo, glossy_bit);
 		glossy_wi_z = dot(phaseWo, normal);
@@ -2584,9 +2584,8 @@ extern "C" __global__ void evaluate_materials(
 		glossyAlphaForNEE = c_alpha_x;
 		glossyAlphaVForNEE = c_alpha_y;
 		float3 cn = normal;
-		float3 cup = (fabsf(cn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
-		float3 ctan   = normalize(cross(cup, cn));
-		float3 cbitan = cross(cn, ctan);
+		float3 ctan, cbitan;
+		BuildArbitraryTangentFrame(cn.x, cn.y, cn.z, ctan.x, ctan.y, ctan.z, cbitan.x, cbitan.y, cbitan.z);
 		float3 cwi = -normalize(h.rayDir);
 		float cwi_x = dot(cwi, ctan), cwi_y = dot(cwi, cbitan), cwi_z = dot(cwi, cn);
 		if (cwi_z <= 0.0f) { scattered = false; break; }
@@ -2686,9 +2685,8 @@ extern "C" __global__ void evaluate_materials(
 		glossyAlphaForNEE = cd_alpha_x;
 		glossyAlphaVForNEE = cd_alpha_y;
 		float3 cdn = normal;
-		float3 cdup = (fabsf(cdn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
-		float3 cdtan   = normalize(cross(cdup, cdn));
-		float3 cdbitan = cross(cdn, cdtan);
+		float3 cdtan, cdbitan;
+		BuildArbitraryTangentFrame(cdn.x, cdn.y, cdn.z, cdtan.x, cdtan.y, cdtan.z, cdbitan.x, cdbitan.y, cdbitan.z);
 		float3 cdwi = -normalize(h.rayDir);
 		float cdwi_x = dot(cdwi, cdtan), cdwi_y = dot(cdwi, cdbitan), cdwi_z = dot(cdwi, cdn);
 		// Grazing/back-facing incoming ray: no valid local frame to sample
@@ -2801,9 +2799,8 @@ extern "C" __global__ void evaluate_materials(
 		glossyAlphaForNEE = cc_alpha_x;
 		glossyAlphaVForNEE = cc_alpha_y;
 		float3 ccn = normal;
-		float3 ccup = (fabsf(ccn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
-		float3 cctan   = normalize(cross(ccup, ccn));
-		float3 ccbitan = cross(ccn, cctan);
+		float3 cctan, ccbitan;
+		BuildArbitraryTangentFrame(ccn.x, ccn.y, ccn.z, cctan.x, cctan.y, cctan.z, ccbitan.x, ccbitan.y, ccbitan.z);
 		float3 ccwi = -normalize(h.rayDir);
 		float ccwi_x = dot(ccwi, cctan), ccwi_y = dot(ccwi, ccbitan), ccwi_z = dot(ccwi, ccn);
 		if (ccwi_z <= 0.0f) { scattered = false; break; }
@@ -3761,9 +3758,8 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		bool rd_front_face = h.frontFace != 0;
 		float rd_ri = rd_front_face ? (1.0f / dispersiveIor) : dispersiveIor;
 		float3 n = normal;
-		float3 up_v = (fabsf(n.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
-		float3 tan_v  = normalize(cross(up_v, n));
-		float3 bitan = cross(n, tan_v);
+		float3 tan_v, bitan;
+		BuildArbitraryTangentFrame(n.x, n.y, n.z, tan_v.x, tan_v.y, tan_v.z, bitan.x, bitan.y, bitan.z);
 		float3 wi_w = normalize(-h.rayDir);
 		float wi_x = dot(wi_w, tan_v), wi_y = dot(wi_w, bitan), wi_z = dot(wi_w, n);
 		if (wi_z < 0.0f) { wi_z = -wi_z; wi_x = -wi_x; wi_y = -wi_y; }

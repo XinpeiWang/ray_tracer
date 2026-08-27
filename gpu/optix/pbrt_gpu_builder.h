@@ -568,13 +568,17 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 			// specifically, since m.roughness and m.roughness_u only
 			// coincide when a scene doesn't set "uroughness"/"roughness"
 			// to different values (see pbrt_flatten.h's own fallback-chain
-			// comment). d.roughnessV defaults to 0.0f (isotropic) whenever
-			// m.roughness_v resolves to the same value as m.roughness_u
-			// (the overwhelmingly common case) - see MaterialData::
-			// roughnessV's own comment for why that's the correct sentinel,
-			// not a real anisotropic value silently lost.
+			// comment). d.roughnessV is always the real m.roughness_v value,
+			// unconditionally - NOT gated on "does it differ from
+			// roughness_u": m.roughness_v is a real, always-present double
+			// (never an ambiguous "unset" state), and MaterialData::
+			// roughnessV's own sentinel is negative (-1.0f), which no real
+			// roughness value can ever equal - so a scene that authors a
+			// legitimate roughness_v of exactly 0.0 (e.g. only "uroughness"
+			// given) stores a real, unambiguous 0.0f here instead of
+			// colliding with the isotropic sentinel.
 			d.roughness  = static_cast<float>(m.roughness_u);
-			d.roughnessV = (m.roughness_v != m.roughness_u) ? static_cast<float>(m.roughness_v) : 0.0f;
+			d.roughnessV = static_cast<float>(m.roughness_v);
 		} else {
 			d.type = MaterialType::Metal;
 		}
@@ -610,7 +614,7 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 			// Real independent u/v roughness - see MaterialType::Conductor's
 			// identical-shape override above for the full rationale.
 			d.roughness  = static_cast<float>(m.roughness_u);
-			d.roughnessV = (m.roughness_v != m.roughness_u) ? static_cast<float>(m.roughness_v) : 0.0f;
+			d.roughnessV = static_cast<float>(m.roughness_v);
 			break;
 		}
 		d.type = MaterialType::Dielectric;
@@ -646,7 +650,7 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		// Real independent u/v coat roughness - see MaterialType::Conductor's
 		// identical-shape override above for the full rationale.
 		d.roughness  = static_cast<float>(m.roughness_u);
-		d.roughnessV = (m.roughness_v != m.roughness_u) ? static_cast<float>(m.roughness_v) : 0.0f;
+		d.roughnessV = static_cast<float>(m.roughness_v);
 		break;
 	case pbrt_flatten::MaterialKind::DiffuseTransmission:
 		d.type = MaterialType::DiffuseTransmission;
@@ -692,7 +696,7 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		// Real independent u/v coat roughness - see MaterialType::Conductor's
 		// identical-shape override above for the full rationale.
 		d.roughness  = static_cast<float>(m.roughness_u);
-		d.roughnessV = (m.roughness_v != m.roughness_u) ? static_cast<float>(m.roughness_v) : 0.0f;
+		d.roughnessV = static_cast<float>(m.roughness_v);
 		break;
 	case pbrt_flatten::MaterialKind::Subsurface:
 		// Real tabulated BSSRDF, on BOTH GPU backends (see optix_types.h's
