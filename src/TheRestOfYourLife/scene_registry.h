@@ -138,6 +138,16 @@ struct SceneDescriptor {
     // deliberately last, same positional-brace-init reason as
     // recommended_integrator's own comment.
     std::string recommended_sampler;
+
+    // LightSource "infinite" "point3 portal[4]" (pbrt-v4's windowed
+    // infinite light, visible only through a finite rectangular window) -
+    // nullptr unless the loaded scene declared a real portal[4] (see
+    // pbrt_cpu_builder.h's BuildResult::portal comment). Deliberately
+    // last, same positional-brace-init reason as recommended_integrator/
+    // recommended_sampler above - every hand-built scene above leaves this
+    // at its default (empty std::function = nullptr), since none of them
+    // are pbrt-loaded portal-light scenes.
+    std::function<std::shared_ptr<PortalImageInfiniteLightData<double>>()> build_portal;
 };
 
 // Dummy sphere light used by scenes that have no explicit light geometry
@@ -255,6 +265,14 @@ namespace pbrt_scene_registry {
         s.build_sky = [ensure]() -> std::shared_ptr<sky_light> {
             pbrt_cpu::BuildResult& b = ensure();
             return b.sky;
+        };
+        // nullptr unless the scene declared LightSource "infinite" with a
+        // real "point3 portal[4]" - see pbrt_cpu_builder.h's build() for
+        // how b.portal gets populated (mutually exclusive with b.sky - see
+        // that field's own comment).
+        s.build_portal = [ensure]() -> std::shared_ptr<PortalImageInfiniteLightData<double>> {
+            pbrt_cpu::BuildResult& b = ensure();
+            return b.portal;
         };
         // nullptr (no punctual lights) unless the file declared LightSource
         // point/spot/distant/goniometric/projection - see

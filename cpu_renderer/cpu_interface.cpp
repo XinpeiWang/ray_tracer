@@ -446,6 +446,8 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		// Apply optional sky light and punctual lights from scene descriptor
 		if (scene_desc->build_sky)
 			cam.sky = scene_desc->build_sky();
+		if (scene_desc->build_portal)
+			cam.portal = scene_desc->build_portal();
 		if (scene_desc->build_punct)
 			cam.punct_lights = scene_desc->build_punct();
 		// Apply optional alternate camera model from scene descriptor
@@ -624,7 +626,14 @@ extern "C" int cpu_render_main_sppm(int width, int height, int iterations, int p
 		// cam.punct_lights; sppm_camera_pass_with_sky() queries cam.sky on a
 		// camera-ray miss - see sppm_adapter.h) - must be wired up here or a
 		// scene like scene 27 "Point Light Cornell" or scene 24 "HDRI Sky"
-		// renders pure black.
+		// renders pure black. cam.portal is deliberately NOT wired here:
+		// sppm_adapter.h's own sky handling only ever calls a direction-only
+		// Le() lookup (matching sky_light's own API), never a position-
+		// dependent one - a portal light's window visibility genuinely
+		// needs the query point, which SPPM's own miss-handling doesn't
+		// carry - so a portal-lit scene rendered with --sppm still renders
+		// pure black (no different from before this feature existed) rather
+		// than silently doing something wrong.
 		if (scene_desc->build_sky)
 			cam.sky = scene_desc->build_sky();
 		if (scene_desc->build_punct)

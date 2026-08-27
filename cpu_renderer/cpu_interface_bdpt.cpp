@@ -115,6 +115,11 @@ const SceneDescriptor* build_scene_for_bdpt(const char* scene_id, int width, int
 	// AFTER setup_camera() above, since BDPTSceneAdapter's constructor reads
 	// cam.sky/cam.punct_lights directly (matching SPPMSceneAdapter's own
 	// precedent) and needs them populated before it's ever built.
+	// out_cam.portal is deliberately NOT wired here either, same reasoning
+	// as cpu_render_main_sppm()'s own comment: BDPTSceneAdapter's light
+	// sampling (SampleLight/SampleLightLe/LightPMF/LightPDFLe) has no
+	// portal-light case, so a portal-lit scene renders pure black under
+	// --bdpt/--mlt rather than silently mishandling it.
 	if (scene_desc->build_sky)
 		out_cam.sky = scene_desc->build_sky();
 	if (scene_desc->build_punct)

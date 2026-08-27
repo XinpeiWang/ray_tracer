@@ -699,6 +699,23 @@ struct InfiniteLight {
 	// not black, but visibly wrong, which is easy to miss without a scene
 	// that actually has a directional feature to check against.
 	pbrt_scene::Matrix4 xform;
+
+	// pbrt-v4's windowed/portal infinite light ("point3 portal[4]"): the
+	// environment map is only visible through this finite rectangular
+	// window instead of the whole sphere - see PortalImageInfiniteLightData
+	// (src/shared/portal_image_infinite_light.h) for the sampling math
+	// this feeds. hasPortal distinguishes a real portal[4] param from the
+	// default-zeroed array (all 12 numbers 0.0 is not a valid rectangle,
+	// but an explicit boolean is clearer than relying on that never
+	// colliding with a real scene). Already transformed into world/render
+	// space via `xform` at parse time (transformPoint(), matching every
+	// other point-valued light param in this file) - the class itself
+	// applies no further transform (see its own constructor comment).
+	// Ordering matches pbrt-v4/this port's own convention: portal[0] is
+	// the origin corner, portal[1]=portal[0]+right, portal[3]=portal[0]+up,
+	// portal[2] the diagonal opposite corner.
+	bool hasPortal = false;
+	double portal[12] = {0.0};
 };
 
 // pbrt-v4's five punctual (delta-distribution) LightSource kinds - "point",
@@ -2023,6 +2040,22 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			out.infiniteLight.scale = ld.params.getFloat("scale", 1.0);
 			out.infiniteLight.imageFile = ld.params.getString("filename", "");
 			out.infiniteLight.xform = ld.xform;
+			// "point3 portal[4]" (pbrt-v4's windowed infinite light) - 4
+			// corner points, 12 numbers total. Transformed into world/
+			// render space here (matching every other point-valued light
+			// param in this loop) since PortalImageInfiniteLightData itself
+			// applies no further transform - see InfiniteLight::portal's
+			// own comment.
+			if (const pbrt_scene::Param *portal = ld.params.find("portal")) {
+				if (portal->numbers.size() >= 12) {
+					out.infiniteLight.hasPortal = true;
+					for (int i = 0; i < 4; ++i) {
+						transformPoint(ld.xform,
+							portal->numbers[i*3+0], portal->numbers[i*3+1], portal->numbers[i*3+2],
+							&out.infiniteLight.portal[i*3]);
+					}
+				}
+			}
 			continue;
 		}
 

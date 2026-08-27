@@ -333,12 +333,25 @@ inline LoadResult loadFile(const std::string &path) {
 				r.scene.warnings.push_back(
 					{0, path, "infinite light image '" + sky.imageFile +
 						"' could not be decoded; using its constant colour instead"});
-			} else {
+			} else if (!sky.hasPortal) {
 				// Bakes the LightSource "infinite" directive's own CTM into
 				// the pixels themselves - see applyInfiniteLightOrientation()'s
 				// own comment for why this is done once here instead of in
-				// either backend's sampling code.
-				applyInfiniteLightOrientation(sky.xform, sky.imagePixels, sky.imageWidth, sky.imageHeight);
+				// either backend's sampling code. Its resample math is
+				// hardcoded for the equirectangular dir_to_uv mapping plain
+				// sky_light/InfiniteLight use - a portal light's image is a
+				// DIFFERENT format (equal-area octahedral, see
+				// PortalImageInfiniteLightData's own comment), which this
+				// would corrupt if applied, so portal images skip it
+				// entirely. Known, pre-existing limitation this inherits
+				// (not introduced here): the portal's geometry (its 4
+				// corners) IS correctly transformed by this same CTM at
+				// parse time (pbrt_flatten.h), but the environment image's
+				// own orientation is not - a rotated portal light's image
+				// renders as if that rotation were identity. Fixing that
+				// would need PortalImageInfiniteLightData itself to accept
+				// a transform, which it currently does not (see its own
+				// constructor comment).
 			}
 		} else {
 			r.scene.warnings.push_back(

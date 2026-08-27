@@ -1627,6 +1627,59 @@ TEST(FlattenInfiniteLightTest, OnlyTheLastInfiniteLightWins) {
 	EXPECT_DOUBLE_EQ(s.infiniteLight.L[2], 7.0);
 }
 
+TEST(FlattenInfiniteLightTest, NoPortalParamLeavesHasPortalFalse) {
+	// The overwhelmingly common case - a plain (non-windowed) infinite
+	// light - must not be misread as having a portal.
+	const FlatScene s = flattenSource(
+		"LightSource \"infinite\" \"rgb L\" [ 1 1 1 ]\n");
+	ASSERT_TRUE(s.infiniteLight.present);
+	EXPECT_FALSE(s.infiniteLight.hasPortal);
+}
+
+TEST(FlattenInfiniteLightTest, PortalParamPopulatesHasPortalAndCorners) {
+	// pbrt-v4's windowed infinite light ("point3 portal[4]") - 4 corners,
+	// ordered p0, p1(=p0+right), p2(=p0+right+up), p3(=p0+up) (matches
+	// PortalImageInfiniteLightData's own ordering comment).
+	const FlatScene s = flattenSource(
+		"LightSource \"infinite\" \"string filename\" [ \"env.exr\" ] "
+		"\"point3 portal\" [ -1 -1 0   1 -1 0   1 1 0   -1 1 0 ]\n");
+	ASSERT_TRUE(s.infiniteLight.present);
+	ASSERT_TRUE(s.infiniteLight.hasPortal);
+	const double expected[12] = { -1,-1,0,  1,-1,0,  1,1,0,  -1,1,0 };
+	for (int i = 0; i < 12; ++i)
+		EXPECT_DOUBLE_EQ(s.infiniteLight.portal[i], expected[i]) << "component " << i;
+}
+
+TEST(FlattenInfiniteLightTest, PortalCornersAreTransformedByTheCTM) {
+	// PortalImageInfiniteLightData itself applies no further transform (see
+	// its own constructor comment) - the loader must bring the corners into
+	// world/render space at parse time, the same way it already does for
+	// point/spot/distant "from"/"to" (see FlattenPunctualLightTest below).
+	const FlatScene s = flattenSource(
+		"Translate 5 0 0\n"
+		"LightSource \"infinite\" \"string filename\" [ \"env.exr\" ] "
+		"\"point3 portal\" [ -1 -1 0   1 -1 0   1 1 0   -1 1 0 ]\n");
+	ASSERT_TRUE(s.infiniteLight.present);
+	ASSERT_TRUE(s.infiniteLight.hasPortal);
+	// Every corner's own x shifts by +5; y/z pass through unchanged.
+	const double expectedX[4] = { 4.0, 6.0, 6.0, 4.0 };
+	for (int i = 0; i < 4; ++i) {
+		EXPECT_DOUBLE_EQ(s.infiniteLight.portal[i*3+0], expectedX[i]) << "corner " << i;
+		EXPECT_DOUBLE_EQ(s.infiniteLight.portal[i*3+1], (i==0||i==1) ? -1.0 : 1.0) << "corner " << i;
+		EXPECT_DOUBLE_EQ(s.infiniteLight.portal[i*3+2], 0.0) << "corner " << i;
+	}
+}
+
+TEST(FlattenInfiniteLightTest, PortalParamWithFewerThanTwelveNumbersIsIgnored) {
+	// A malformed/truncated portal[] (e.g. hand-edited scene file) should
+	// leave the light as an ordinary (non-windowed) infinite light rather
+	// than reading out-of-bounds or half-populating the array.
+	const FlatScene s = flattenSource(
+		"LightSource \"infinite\" \"rgb L\" [ 1 1 1 ] \"point3 portal\" [ -1 -1 0 ]\n");
+	ASSERT_TRUE(s.infiniteLight.present);
+	EXPECT_FALSE(s.infiniteLight.hasPortal);
+}
+
 TEST(FlattenInfiniteLightTest, OtherLightKindsAreStillDroppedWithAWarning) {
 	// point/spot/distant/goniometric/projection all now carry through (see
 	// the FlattenPunctualLightTest section below) - only a genuinely unknown

@@ -18,6 +18,7 @@
 #include "../shared/cpu_gpu.h"  // kMaxMediumBoundaryCrossings
 #include "../shared/tone_map.h"
 #include "sky_light.h"
+#include "../shared/portal_image_infinite_light.h"   // PortalImageInfiniteLightData<double>
 #include "punctual_light_objects.h"
 #include "shadow_ray.h"
 #include "../shared/animated_transform.h"
@@ -142,6 +143,13 @@ class camera {
     bool   exr_output = false;
     color  background;               // Scene background color (used when sky==nullptr)
     shared_ptr<sky_light> sky;               // HDR env map (pbrt-v4 ImageInfiniteLight); nullptr = flat background
+    // pbrt-v4 windowed/portal infinite light ("point3 portal[4]") - visible
+    // only through a finite rectangular window, not the whole sphere.
+    // Mutually exclusive with `sky` above (see pbrt_cpu_builder.h's
+    // BuildResult::portal comment) - every ray_color()/ray_color_spectral()
+    // call site below checks `portal` first, falling through to `sky` only
+    // when this is null.
+    shared_ptr<PortalImageInfiniteLightData<double>> portal;
     shared_ptr<punctual_light_list> punct_lights; // pbrt-v4 PointLight/SpotLight/DistantLight (delta); nullptr = none
 
     double vfov     = 90;              // Vertical view angle (field of view)
@@ -1086,7 +1094,29 @@ class camera {
             // Miss -- query sky (HDR env map) or fall back to flat background.
             // Mirrors pbrt-v4: "Incorporate emission from infinite lights for escaped ray"
             if (!world.hit(current_ray, interval(0.001, infinity), rec)) {
-                if (sky) {
+                if (portal) {
+                    // Windowed/portal infinite light - position-dependent
+                    // (visibility through the finite window depends on the
+                    // ray's OWN origin, unlike sky->Le()'s direction-only
+                    // query), so pass current_ray.origin() as the reference
+                    // point; eval_Le_rgb()/pdf_li() already return
+                    // zero/black on their own when this escaped ray's
+                    // origin can't see the window at all, or the direction
+                    // falls outside it - no separate visibility check
+                    // needed here.
+                    point3 ro = current_ray.origin();
+                    vec3 rd = unit_vector(current_ray.direction());
+                    double lr, lg, lb;
+                    portal->eval_Le_rgb(ro.x(), ro.y(), ro.z(), rd.x(), rd.y(), rd.z(), lr, lg, lb);
+                    color Le(lr, lg, lb);
+                    if (specular_bounce) {
+                        L += beta * Le;
+                    } else {
+                        double p_l = portal->pdf_li(ro.x(), ro.y(), ro.z(), rd.x(), rd.y(), rd.z());
+                        double w_b = mis_power_heuristic(prev_bsdf_pdf, p_l);
+                        L += beta * w_b * Le;
+                    }
+                } else if (sky) {
                     color Le = sky->Le(unit_vector(current_ray.direction()));
                     if (specular_bounce) {
                         // Camera ray or post-specular: full contribution (no MIS needed)
@@ -1263,7 +1293,36 @@ class camera {
             // Strategy A-2: NEE toward sky (pbrt-v4 SampleLd for infinite lights)
             // Uses importance-sampled direction when HDR distribution is available,
             // falling back to uniform sphere for solid-color skies.
-            if (sky) {
+            if (portal) {
+                // Windowed/portal infinite light - sample_li() needs the
+                // shading point (visibility through the finite window is
+                // position-dependent, unlike sky->sample_Le()'s pure
+                // direction sample) and its own explicit (ru,rv) draw
+                // (sample_li() has no internal RNG the way sky_light does).
+                double ru = random_double(), rv = random_double();
+                double wx, wy, wz, pdf_portal;
+                if (portal->sample_li(ru, rv, rec.p.x(), rec.p.y(), rec.p.z(),
+                                       wx, wy, wz, pdf_portal) && pdf_portal > 0.0) {
+                    vec3 portal_dir(wx, wy, wz);
+                    ray  portal_shadow(rec.p, portal_dir, current_ray.time());
+                    double f_pdf = rec.mat->scattering_pdf(current_ray, rec, portal_shadow);
+                    if (f_pdf > 0.0) {
+                        double pdf_b_at_portal = srec.pdf_ptr->value(portal_dir);
+                        double w_portal         = mis_power_heuristic(pdf_portal, pdf_b_at_portal);
+                        hit_record portal_rec;
+                        color trans;
+                        if (render_stats::enabled())
+                            render_stats::shadow_rays().fetch_add(1, std::memory_order_relaxed);
+                        if (!shadow_ray_hit(world, portal_shadow, portal_rec, infinity, &trans)) {
+                            double lr, lg, lb;
+                            portal->eval_Le_rgb(rec.p.x(), rec.p.y(), rec.p.z(), wx, wy, wz, lr, lg, lb);
+                            color Le_portal(lr, lg, lb);
+                            color atten = rec.mat->scattering_attenuation(rec, portal_shadow, srec.attenuation);
+                            L += beta * w_portal * atten * trans * f_pdf * Le_portal / pdf_portal;
+                        }
+                    }
+                }
+            } else if (sky) {
                 SkyLiSample sky_smp = sky->sample_Le();
                 vec3   sky_dir  = sky_smp.direction;
                 double pdf_sky  = sky_smp.pdf;
@@ -1464,7 +1523,22 @@ class camera {
             hit_record rec;
 
             if (!world.hit(current_ray, interval(0.001, infinity), rec)) {
-                if (sky) {
+                if (portal) {
+                    // See ray_color()'s own portal miss-handling comment -
+                    // identical logic, spectral-uplifted via illuminant().
+                    point3 ro = current_ray.origin();
+                    vec3 rd = unit_vector(current_ray.direction());
+                    double lr, lg, lb;
+                    portal->eval_Le_rgb(ro.x(), ro.y(), ro.z(), rd.x(), rd.y(), rd.z(), lr, lg, lb);
+                    SS Le = illuminant(color(lr, lg, lb));
+                    if (specular_bounce) {
+                        L += beta * Le;
+                    } else {
+                        double p_l = portal->pdf_li(ro.x(), ro.y(), ro.z(), rd.x(), rd.y(), rd.z());
+                        double w_b = mis_power_heuristic(prev_bsdf_pdf, p_l);
+                        L += beta * static_cast<float>(w_b) * Le;
+                    }
+                } else if (sky) {
                     SS Le = illuminant(sky->Le(unit_vector(current_ray.direction())));
                     if (specular_bounce) {
                         L += beta * Le;
@@ -1647,7 +1721,34 @@ class camera {
             }
 
             // Strategy A-2: NEE toward sky
-            if (sky) {
+            if (portal) {
+                // See ray_color()'s own portal NEE comment - identical
+                // logic, spectral-uplifted via albedo()/illuminant().
+                double ru = random_double(), rv = random_double();
+                double wx, wy, wz, pdf_portal;
+                if (portal->sample_li(ru, rv, rec.p.x(), rec.p.y(), rec.p.z(),
+                                       wx, wy, wz, pdf_portal) && pdf_portal > 0.0) {
+                    vec3 portal_dir(wx, wy, wz);
+                    ray  portal_shadow(rec.p, portal_dir, current_ray.time());
+                    double f_pdf = scattering_pdf_at(portal_shadow);
+                    if (f_pdf > 0.0) {
+                        double pdf_b_at_portal = srec.pdf_ptr->value(portal_dir);
+                        double w_portal         = mis_power_heuristic(pdf_portal, pdf_b_at_portal);
+                        hit_record portal_rec;
+                        color trans;
+                        if (render_stats::enabled())
+                            render_stats::shadow_rays().fetch_add(1, std::memory_order_relaxed);
+                        if (!shadow_ray_hit(world, portal_shadow, portal_rec, infinity, &trans)) {
+                            double lr, lg, lb;
+                            portal->eval_Le_rgb(rec.p.x(), rec.p.y(), rec.p.z(), wx, wy, wz, lr, lg, lb);
+                            color atten_rgb = rec.mat->scattering_attenuation(rec, portal_shadow, srec.attenuation);
+                            float scale = static_cast<float>(w_portal * f_pdf / pdf_portal);
+                            L += beta * scale * albedo(atten_rgb) * albedo(trans)
+                               * illuminant(color(lr, lg, lb));
+                        }
+                    }
+                }
+            } else if (sky) {
                 SkyLiSample sky_smp = sky->sample_Le();
                 vec3   sky_dir  = sky_smp.direction;
                 double pdf_sky  = sky_smp.pdf;

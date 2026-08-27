@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "../shared/pbrt_flatten.h"
+#include "../shared/portal_image_infinite_light.h"   // PortalImageInfiniteLightData<double> - LightSource "infinite" "point3 portal[4]"
 #include "../external/tinyexr.h"   // LoadEXR() - see decodePunctualLightImageFile()
 
 #include "bvh.h"
@@ -357,6 +358,16 @@ struct BuildResult {
 	std::shared_ptr<hittable_list> world;
 	std::shared_ptr<hittable_list> lights;   // emissive shapes, for NEE
 	std::shared_ptr<sky_light> sky;          // null if the scene has no infinite light
+	// LightSource "infinite" "point3 portal[4]" (pbrt-v4's windowed infinite
+	// light - visible only through a finite rectangular window instead of
+	// the whole sphere) - null unless the scene's infinite light declared a
+	// real portal[4]. Mutually exclusive with `sky` above (see the
+	// sky-construction block below): a portal light needs no separate `sky`
+	// fallback, since PortalImageInfiniteLightData::eval_Le()/sample_li()
+	// already return zero/false outside the window on their own - callers
+	// (camera.h) branch on `portal` first, falling through to `sky` only
+	// when this is null.
+	std::shared_ptr<PortalImageInfiniteLightData<double>> portal;
 	// LightSource point/spot/distant/goniometric/projection - null if the
 	// scene has none (matches camera_t::punct_lights' own "nullptr = none"
 	// convention, which this feeds directly - see scene_registry.h's
@@ -868,7 +879,29 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	// to the scene's constant L otherwise - either it never named an image,
 	// or naming one failed to resolve/decode (a warning was already recorded
 	// for that case).
-	if (scene.infiniteLight.present) {
+	if (scene.infiniteLight.present && scene.infiniteLight.hasPortal &&
+		scene.infiniteLight.imageWidth > 0 && scene.infiniteLight.imageHeight > 0) {
+		// Windowed/portal infinite light (pbrt-v4 "point3 portal[4]") - a
+		// DIFFERENT image format (equal-area octahedral, not the
+		// equirectangular map plain sky_light/InfiniteLight expects - see
+		// PortalImageInfiniteLightData's own comment), so this does NOT
+		// also build a `sky` from the same pixels the way the plain
+		// image-based branch below does - see BuildResult::portal's own
+		// comment for why no separate `sky` fallback is needed either.
+		// PortalImageInfiniteLightData's own Vec3T (src/shared/vec3_frame.h's
+		// global Vec3<T> template) - NOT this codebase's own `vec3` class
+		// (a different, unrelated type; see that header's own comment on
+		// why it's kept separate from this project's vec3/point3/color).
+		std::array<Vec3<double>, 4> corners;
+		for (int i = 0; i < 4; ++i)
+			corners[i] = Vec3<double>(scene.infiniteLight.portal[i*3+0],
+			                          scene.infiniteLight.portal[i*3+1],
+			                          scene.infiniteLight.portal[i*3+2]);
+		out.portal = std::make_shared<PortalImageInfiniteLightData<double>>(
+			scene.infiniteLight.imagePixels.data(),
+			scene.infiniteLight.imageWidth, scene.infiniteLight.imageHeight,
+			scene.infiniteLight.scale, corners);
+	} else if (scene.infiniteLight.present) {
 		if (scene.infiniteLight.imageWidth > 0 && scene.infiniteLight.imageHeight > 0) {
 			out.sky = std::make_shared<sky_light>(
 				scene.infiniteLight.imageWidth, scene.infiniteLight.imageHeight,
