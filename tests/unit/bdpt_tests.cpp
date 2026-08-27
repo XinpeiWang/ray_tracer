@@ -197,13 +197,14 @@ struct SyntheticScene {
 
 	bool CameraSampleWi(const float ref_p[3], const float* /*u2*/,
 						float wi[3], float& pdf, float& importance,
-						float pRaster[2]) const {
+						float pRaster[2], float p_cam[3]) const {
 		float d[3]={kCamPos[0]-ref_p[0],kCamPos[1]-ref_p[1],kCamPos[2]-ref_p[2]};
 		float len=std::sqrt(d[0]*d[0]+d[1]*d[1]+d[2]*d[2]);
 		if(len<1e-6f) return false;
 		wi[0]=d[0]/len; wi[1]=d[1]/len; wi[2]=d[2]/len;
 		pdf = 1.f; importance = 1.f;
 		if(pRaster) { pRaster[0]=pRaster[1]=0.f; }
+		p_cam[0]=kCamPos[0]; p_cam[1]=kCamPos[1]; p_cam[2]=kCamPos[2];
 		return true;
 	}
 

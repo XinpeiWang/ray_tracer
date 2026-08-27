@@ -76,19 +76,18 @@
 //   smaller residual set. cam.background is still honored as a flat
 //   ambient backdrop for camera rays that escape a sky-less scene (see
 //   InfiniteLightLe below).
-// - CameraSampleWi() always returns false (the t==1 "light tracing"
-//   strategy). This is NOT a shortcut this file takes -- BDPTLi() itself
-//   (bdpt.h, see its own doc comment) never adds t==1 contributions to its
-//   output ("t==1 (light tracing) contributions go to film splat, not
-//   returned here"), so a real CameraSampleWi implementation would need a
-//   raster-splat mechanism bdpt_render_with_adapter() below doesn't have
-//   either. Consequence: light paths only reachable by t==1 (e.g. a
-//   caustic seen only by directly connecting a light-subpath vertex to the
-//   camera, never touched by any camera-subpath random walk) are missing
-//   from BDPT output here, same as they would be from calling pbrt-v4's
-//   BDPTIntegrator::Li() directly without its own separate light-image
-//   splat film. Does not affect a directly-viewed area light or ordinary
-//   diffuse/specular transport, which A1 exercises.
+// - CameraSampleWi() implements the t==1 "light tracing" strategy for
+//   real: connects a light-subpath vertex directly to the camera via the
+//   same pinhole-importance math SampleCameraConnection() (LightPath's own
+//   camera connection) already used, shared through cameraConnectionCore().
+//   bdpt_render_with_adapter() below owns a SplatFilm (mirroring
+//   lightpath_render_with_adapter()'s own use of it) that BDPTLi()'s
+//   splat callback writes t==1 contributions into; mlt_render_with_adapter()
+//   reuses its own pre-existing splat lambda via MLTEvalPath() now passing
+//   a real pRaster through to BDPTConnect(). Caustics and other paths only
+//   reachable by directly connecting a light-subpath vertex to the camera
+//   (never touched by any camera-subpath random walk) are no longer
+//   dropped from BDPT/MLT output.
 // - CameraPDFWe() assumes the default perspective camera model (vfov +
 //   focus_dist, matching camera.h's own initialize()) -- alt camera models
 //   (alt_ortho_cam/alt_spherical_cam/alt_realistic_cam) would get a wrong
@@ -547,11 +546,13 @@ class BDPTSceneAdapter {
 		return emitters_[light_id]->pdf_value(P, wi) * emitter_alias_.pmf(light_id);
 	}
 
-	// LightPathTrace's camera-connection sample -- the one piece of real
-	// NEW math here, not a repackaging of an existing method: BDPT/MLT never
-	// needed this (CameraSampleWi() above is intentionally stubbed false --
-	// see its own comment), but light tracing's whole mechanism IS
-	// light-vertex-to-camera connections, so this has to actually work.
+	// Core pinhole-camera importance-sampling math, shared by
+	// SampleCameraConnection() (LightPath's own camera connection, raster-
+	// pixel-index output) and CameraSampleWi() below (BDPT/MLT's t==1
+	// light-tracing connection, normalized [0,1) output) - both need the
+	// identical computation, differing only in what units the resulting
+	// pixel position is reported in (each caller's own established
+	// convention, matching its own splat destination's expectations).
 	//
 	// Re-derives camera.h's own initialize() formulas (viewport_width/
 	// height from vfov/focus_dist/aspect, the u/v/w basis from lookfrom/
@@ -571,15 +572,15 @@ class BDPTSceneAdapter {
 	// We = D^2/(A*cos^4(theta)) and the matching solid-angle pdf
 	// dist^2/cos(theta) (lensArea=1 for a point lens) -- consistent with
 	// CameraPDFWe's own pdfDir = D^2/(A*cos^3(theta)) (We = pdfDir/cosTheta).
-	bool SampleCameraConnection(const BDPTHit<double>& hit, double /*u1*/, double /*u2*/,
-	                             CameraConnection<double>& cc) const {
-		vec3 to_cam = cam_.center - point3(hit.p[0], hit.p[1], hit.p[2]);
+	bool cameraConnectionCore(const double p[3], double& px01, double& py01,
+	                           double wi[3], double& We, double& pdf) const {
+		vec3 to_cam = cam_.center - point3(p[0], p[1], p[2]);
 		double dist = to_cam.length();
 		if (dist < 1e-9) return false;
-		vec3 wi = to_cam / dist;
+		vec3 w = to_cam / dist;
 
 		vec3 forward = unit_vector(cam_.lookat - cam_.lookfrom);
-		vec3 cam_to_p = point3(hit.p[0], hit.p[1], hit.p[2]) - cam_.center;
+		vec3 cam_to_p = point3(p[0], p[1], p[2]) - cam_.center;
 		double t_forward = dot(cam_to_p, forward);
 		double cosTheta = t_forward / dist;   // = dot(cam_to_p/dist, forward)
 		if (cosTheta <= 0.0) return false;   // hit point is behind the camera
@@ -607,15 +608,26 @@ class BDPTSceneAdapter {
 		if (px < 0.0 || px >= 1.0 || py < 0.0 || py >= 1.0) return false;   // off-screen
 
 		double cos4 = cosTheta * cosTheta * cosTheta * cosTheta;
-		double We = (D * D) / (A * cos4);
-		double pdf = (dist * dist) / cosTheta;
-		if (!(We > 0.0) || !(pdf > 0.0)) return false;
+		double We_ = (D * D) / (A * cos4);
+		double pdf_ = (dist * dist) / cosTheta;
+		if (!(We_ > 0.0) || !(pdf_ > 0.0)) return false;
 
+		px01 = px; py01 = py;
+		wi[0] = w.x(); wi[1] = w.y(); wi[2] = w.z();
+		We = We_; pdf = pdf_;
+		return true;
+	}
+
+	// LightPathTrace's camera-connection sample.
+	bool SampleCameraConnection(const BDPTHit<double>& hit, double /*u1*/, double /*u2*/,
+	                             CameraConnection<double>& cc) const {
+		double px01, py01, wi[3], We, pdf;
+		if (!cameraConnectionCore(hit.p, px01, py01, wi, We, pdf)) return false;
 		cc.p_lens[0] = cam_.center.x(); cc.p_lens[1] = cam_.center.y(); cc.p_lens[2] = cam_.center.z();
-		cc.p_raster[0] = px * cam_.image_width;
-		cc.p_raster[1] = py * cam_.image_height;
+		cc.p_raster[0] = px01 * cam_.image_width;
+		cc.p_raster[1] = py01 * cam_.image_height;
 		cc.Wi[0] = cc.Wi[1] = cc.Wi[2] = We;
-		cc.wi[0] = wi.x(); cc.wi[1] = wi.y(); cc.wi[2] = wi.z();
+		cc.wi[0] = wi[0]; cc.wi[1] = wi[1]; cc.wi[2] = wi[2];
 		cc.pdf = pdf;
 		return true;
 	}
@@ -1048,14 +1060,30 @@ class BDPTSceneAdapter {
 		}
 	}
 
-	// t==1 "light tracing" strategy -- intentionally unsupported. See this
-	// class's own file-header comment for why (BDPTLi() itself never uses
-	// this strategy's output either).
-	bool CameraSampleWi(const double* /*ref_p*/, const double* /*u2*/,
-	                     double* /*wi*/, double& pdf, double& importance,
-	                     double* /*pRaster*/) const {
-		pdf = 0.0; importance = 0.0;
-		return false;
+	// t==1 "light tracing" strategy: connects a light-subpath vertex
+	// directly to the camera. Shares its core pinhole-importance math with
+	// SampleCameraConnection() above (see cameraConnectionCore()'s own
+	// comment) but reports pRaster in NORMALIZED [0,1) image coordinates,
+	// not raster pixel-index units -- this is the convention
+	// mlt_render_with_adapter()'s own pre-existing splat lambda expects
+	// (it does its own `px*width`/`py*height` conversion), and BDPT's
+	// caller (bdpt_render_with_adapter()) converts to raster units itself
+	// before handing the result to SplatFilm, so a single normalized
+	// contract here satisfies both callers without either one adapting to
+	// the other's convention.
+	bool CameraSampleWi(const double* ref_p, const double* /*u2*/,
+	                     double* wi, double& pdf, double& importance,
+	                     double* pRaster, double* p_cam) const {
+		double px01, py01, We;
+		if (!cameraConnectionCore(ref_p, px01, py01, wi, We, pdf)) {
+			pdf = 0.0; importance = 0.0;
+			return false;
+		}
+		importance = We;
+		pRaster[0] = px01;
+		pRaster[1] = py01;
+		p_cam[0] = cam_.center.x(); p_cam[1] = cam_.center.y(); p_cam[2] = cam_.center.z();
+		return true;
 	}
 
 	void SceneBoundingSphere(double center[3], double& radius) const {
@@ -1280,6 +1308,55 @@ class BDPTSceneAdapter {
 	}
 };
 
+// ---------------------------------------------------------------------------
+// SplatFilm -- LightPathTrace's Film concept (a single Splat(px,py,L) method),
+// also used by bdpt_render_with_adapter() below for BDPT's own t==1 "light
+// tracing" strategy contributions. Splats land at essentially arbitrary
+// pixels (a light path can connect to the camera from anywhere it happens
+// to walk to), unlike every other driver's own-pixel-only accumulation, so
+// this needs real cross-thread synchronization -- one std::mutex per pixel,
+// the same granularity sppm_adapter.h's own photon pass already uses for
+// its per-pixel splat accumulation (see its pixel_mutexes vector) --
+// coarser (one mutex for the whole image) would serialize every worker
+// thread through a single lock; finer isn't meaningful (a pixel is the
+// atomic unit of accumulation here).
+// ---------------------------------------------------------------------------
+class SplatFilm {
+  public:
+	SplatFilm(int width, int height)
+		: width_(width), height_(height),
+		  buf_(static_cast<size_t>(width) * height * 3, 0.0),
+		  mutexes_(static_cast<size_t>(width) * height) {}
+
+	void Splat(double px, double py, const double L[3]) {
+		int ix = static_cast<int>(px);
+		int iy = static_cast<int>(py);
+		if (ix < 0 || ix >= width_ || iy < 0 || iy >= height_) return;
+		size_t pidx = static_cast<size_t>(iy) * width_ + ix;
+		std::lock_guard<std::mutex> lg(mutexes_[pidx]);
+		for (int c = 0; c < 3; ++c) {
+			double v = L[c];
+			if (!std::isfinite(v) || v < 0.0) v = 0.0;
+			buf_[pidx * 3 + c] += v;
+		}
+	}
+
+	// norm: total samples PER PIXEL across the whole image (spp) -- NOT
+	// divided by pixel count again, since each splat already lands at a
+	// specific pixel; this mirrors pbrt-v4's own LightPathIntegrator film
+	// reconstruction (splat weight accumulates raw, normalized once by the
+	// image's total sample count at the end).
+	void ToRGB(std::vector<double>& out_rgb, double norm) const {
+		out_rgb.resize(buf_.size());
+		for (size_t i = 0; i < buf_.size(); ++i) out_rgb[i] = buf_[i] / norm;
+	}
+
+  private:
+	int width_, height_;
+	std::vector<double> buf_;
+	std::vector<std::mutex> mutexes_;
+};
+
 // ===========================================================================
 // bdpt_render_with_adapter -- row-parallel BDPT render loop
 // ===========================================================================
@@ -1295,15 +1372,27 @@ class BDPTSceneAdapter {
 // BDPTLi's own documented minimum: (maxDepth+2) and (maxDepth+1)
 // respectively) and reused across every pixel/sample that thread handles,
 // avoiding a heap allocation per sample.
+// t==1 contributions land at a DIFFERENT pixel than whichever camera ray
+// produced the current sample (see CameraSampleWi()'s own comment for the
+// normalized-vs-raster unit split), so they can't be added to `sum` below
+// like every other strategy -- they're splatted into a SplatFilm instead
+// (same mechanism lightpath_render_with_adapter() below already uses for
+// LightPath's own pure light-tracing splats) and merged additively into
+// out_rgb once every worker thread has joined.
 inline void bdpt_render_with_adapter(const BDPTSceneAdapter& scene, int width, int height,
                                       int spp, int maxDepth, std::vector<double>& out_rgb) {
 	out_rgb.assign(static_cast<size_t>(width) * height * 3, 0.0);
+	SplatFilm film(width, height);
 	unsigned int nthreads = determine_render_thread_count();
 	std::atomic<int> next_row(0);
 
 	auto worker = [&]() {
 		std::vector<BDPTVertex<double>> cameraVerts(static_cast<size_t>(maxDepth) + 2);
 		std::vector<BDPTVertex<double>> lightVerts(static_cast<size_t>(maxDepth) + 1);
+		auto splat = [&](double px01, double py01, double Lr, double Lg, double Lb) {
+			double L[3] = { Lr, Lg, Lb };
+			film.Splat(px01 * width, py01 * height, L);
+		};
 
 		while (true) {
 			int iy = next_row.fetch_add(1);
@@ -1320,7 +1409,7 @@ inline void bdpt_render_with_adapter(const BDPTSceneAdapter& scene, int width, i
 
 					double L[3];
 					BDPTLi<double>(cam_p, cam_n, ray_d, maxDepth, scene,
-					                cameraVerts.data(), lightVerts.data(), L);
+					                cameraVerts.data(), lightVerts.data(), L, splat);
 
 					for (int c = 0; c < 3; ++c) {
 						double v = L[c];
@@ -1340,6 +1429,10 @@ inline void bdpt_render_with_adapter(const BDPTSceneAdapter& scene, int width, i
 	threads.reserve(nthreads);
 	for (unsigned int t = 0; t < nthreads; ++t) threads.emplace_back(worker);
 	for (auto& th : threads) th.join();
+
+	std::vector<double> splat_rgb;
+	film.ToRGB(splat_rgb, static_cast<double>(spp));
+	for (size_t i = 0; i < out_rgb.size(); ++i) out_rgb[i] += splat_rgb[i];
 }
 
 // Replicates MLTRenderLoop()'s own post-bootstrap Markov-chain loop
@@ -1793,53 +1886,6 @@ inline void simplevolpath_render_with_adapter(const BDPTSceneAdapter& scene, int
 	for (unsigned int t = 0; t < nthreads; ++t) threads.emplace_back(worker);
 	for (auto& th : threads) th.join();
 }
-
-// ---------------------------------------------------------------------------
-// SplatFilm -- LightPathTrace's Film concept (a single Splat(px,py,L) method).
-// Splats land at essentially arbitrary pixels (a light path can connect to
-// the camera from anywhere it happens to walk to), unlike every other driver
-// above's own-pixel-only accumulation, so this needs real cross-thread
-// synchronization -- one std::mutex per pixel, the same granularity
-// sppm_adapter.h's own photon pass already uses for its per-pixel splat
-// accumulation (see its pixel_mutexes vector) -- coarser (one mutex for the
-// whole image) would serialize every worker thread through a single lock;
-// finer isn't meaningful (a pixel is the atomic unit of accumulation here).
-// ---------------------------------------------------------------------------
-class SplatFilm {
-  public:
-	SplatFilm(int width, int height)
-		: width_(width), height_(height),
-		  buf_(static_cast<size_t>(width) * height * 3, 0.0),
-		  mutexes_(static_cast<size_t>(width) * height) {}
-
-	void Splat(double px, double py, const double L[3]) {
-		int ix = static_cast<int>(px);
-		int iy = static_cast<int>(py);
-		if (ix < 0 || ix >= width_ || iy < 0 || iy >= height_) return;
-		size_t pidx = static_cast<size_t>(iy) * width_ + ix;
-		std::lock_guard<std::mutex> lg(mutexes_[pidx]);
-		for (int c = 0; c < 3; ++c) {
-			double v = L[c];
-			if (!std::isfinite(v) || v < 0.0) v = 0.0;
-			buf_[pidx * 3 + c] += v;
-		}
-	}
-
-	// norm: total samples PER PIXEL across the whole image (spp) -- NOT
-	// divided by pixel count again, since each splat already lands at a
-	// specific pixel; this mirrors pbrt-v4's own LightPathIntegrator film
-	// reconstruction (splat weight accumulates raw, normalized once by the
-	// image's total sample count at the end).
-	void ToRGB(std::vector<double>& out_rgb, double norm) const {
-		out_rgb.resize(buf_.size());
-		for (size_t i = 0; i < buf_.size(); ++i) out_rgb[i] = buf_[i] / norm;
-	}
-
-  private:
-	int width_, height_;
-	std::vector<double> buf_;
-	std::vector<std::mutex> mutexes_;
-};
 
 inline void lightpath_render_with_adapter(const BDPTSceneAdapter& scene, int width, int height, int spp,
                                            int maxDepth, std::vector<double>& out_rgb) {

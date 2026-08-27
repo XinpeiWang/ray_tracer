@@ -125,7 +125,7 @@ struct SPPMTestScene {
 	void CameraPDFWe(const float*, const float*, float& pp, float& pd) const { pp=1.f; pd=1.f; }
 
 	bool CameraSampleWi(const float ref_p[3], const float*,
-						float wi[3], float& pdf, float& imp, float* pr) const {
+						float wi[3], float& pdf, float& imp, float* pr, float* p_cam) const {
 		float cp[3]={0.f,0.f,5.f};
 		float d[3]={cp[0]-ref_p[0],cp[1]-ref_p[1],cp[2]-ref_p[2]};
 		float len=std::sqrt(d[0]*d[0]+d[1]*d[1]+d[2]*d[2]);
@@ -133,6 +133,7 @@ struct SPPMTestScene {
 		wi[0]=d[0]/len;wi[1]=d[1]/len;wi[2]=d[2]/len;
 		pdf=1.f;imp=1.f;
 		if(pr){pr[0]=pr[1]=0.f;}
+		if(p_cam){p_cam[0]=cp[0];p_cam[1]=cp[1];p_cam[2]=cp[2];}
 		return true;
 	}
 

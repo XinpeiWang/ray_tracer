@@ -332,8 +332,8 @@ MLTPathResult<T> MLTEvalPath(MLTSampler<T>& sampler, int depth,
 			scene.CameraPDFWe(o, d, pdfPos, pdfDir);
 		}
 		bool CameraSampleWi(const T ref_p[3], const T* u2,
-							T wi[3], T& pdf, T& importance, T pRaster[2]) const {
-			return scene.CameraSampleWi(ref_p, u2, wi, pdf, importance, pRaster);
+							T wi[3], T& pdf, T& importance, T pRaster[2], T p_cam[3]) const {
+			return scene.CameraSampleWi(ref_p, u2, wi, pdf, importance, pRaster, p_cam);
 		}
 		void SceneBoundingSphere(T center[3], T& radius) const {
 			scene.SceneBoundingSphere(center, radius);
@@ -378,7 +378,20 @@ MLTPathResult<T> MLTEvalPath(MLTSampler<T>& sampler, int depth,
 	// Connect -- pbrt-v4: sampler.StartStream(connectionStreamIndex)
 	sampler.StartStream(MLTSampler<T>::kConnectionStream);
 	T L[3];
-	BDPTConnect(lightVerts.data(), cameraVerts.data(), s, t, adapter, L);
+	T pRaster[2] = {T(0), T(0)};
+	BDPTConnect(lightVerts.data(), cameraVerts.data(), s, t, adapter, L,
+				(t == 1) ? pRaster : nullptr);
+
+	// t==1 (light tracing) connects a light-subpath vertex directly to the
+	// camera, landing at pRaster (normalized [0,1) image coordinates - see
+	// Scene::CameraSampleWi()'s own doc comment), NOT at the pixel sampled
+	// above for camera-subpath generation - result.px/py must reflect
+	// where the contribution actually lands, since MLTRenderLoop()'s own
+	// splat callback (its only consumer) uses these verbatim.
+	if (t == 1 && (L[0] || L[1] || L[2])) {
+		result.px = pRaster[0];
+		result.py = pRaster[1];
+	}
 
 	// Scale by nStrategies (pbrt-v4: return ConnectBDPT(...) * nStrategies)
 	result.L[0] = L[0] * (T)nStrategies;

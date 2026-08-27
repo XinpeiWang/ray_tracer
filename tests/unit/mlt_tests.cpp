@@ -134,13 +134,14 @@ struct MLTSyntheticScene {
 
 	void CameraPDFWe(const float*, const float*, float& pp, float& pd) const { pp=1.f; pd=1.f; }
 	bool CameraSampleWi(const float ref_p[3], const float*,
-						float wi[3], float& pdf, float& imp, float* pr) const {
+						float wi[3], float& pdf, float& imp, float* pr, float* p_cam) const {
 		float d[3]={kCamPos[0]-ref_p[0],kCamPos[1]-ref_p[1],kCamPos[2]-ref_p[2]};
 		float len=std::sqrt(d[0]*d[0]+d[1]*d[1]+d[2]*d[2]);
 		if(len<1e-6f) return false;
 		wi[0]=d[0]/len; wi[1]=d[1]/len; wi[2]=d[2]/len;
 		pdf=1.f; imp=1.f;
 		if(pr){pr[0]=pr[1]=0.f;}
+		p_cam[0]=kCamPos[0]; p_cam[1]=kCamPos[1]; p_cam[2]=kCamPos[2];
 		return true;
 	}
 	void InfiniteLightLe(const float[3], float out[3]) const { out[0]=out[1]=out[2]=0.f; }
