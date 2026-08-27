@@ -77,9 +77,10 @@
 //   ambient backdrop for camera rays that escape a sky-less scene (see
 //   InfiniteLightLe below).
 // - CameraSampleWi() implements the t==1 "light tracing" strategy for
-//   real: connects a light-subpath vertex directly to the camera via the
-//   same pinhole-importance math SampleCameraConnection() (LightPath's own
-//   camera connection) already used, shared through cameraConnectionCore().
+//   real: connects a light-subpath vertex directly to the camera (or, when
+//   defocus_angle>0, to a sampled lens point) via the same importance math
+//   SampleCameraConnection() (LightPath's own camera connection) already
+//   used, shared through cameraConnectionCore().
 //   bdpt_render_with_adapter() below owns a SplatFilm (mirroring
 //   lightpath_render_with_adapter()'s own use of it) that BDPTLi()'s
 //   splat callback writes t==1 contributions into; mlt_render_with_adapter()
@@ -151,6 +152,7 @@
 #include <thread>
 #include <atomic>
 #include <mutex>
+#include <optional>
 #include <cmath>
 #include <cstdint>
 #include <fstream>
@@ -185,6 +187,26 @@ class BDPTSceneAdapter {
 	explicit BDPTSceneAdapter(const hittable_list& world, const camera& cam)
 		: world_(world), cam_(cam)
 	{
+		// Camera basis/viewport constants (see this class's own field
+		// comment) - derived once here instead of per-call inside
+		// cameraConnectionCore(). Mirrors camera.h's own initialize()
+		// formulas exactly (viewport_width/height from vfov/focus_dist/
+		// aspect, the u/v/w basis from lookfrom/lookat/vup).
+		camForward_ = unit_vector(cam_.lookat - cam_.lookfrom);
+		camW_       = -camForward_;
+		camRight_   = unit_vector(cross(cam_.vup, camW_));
+		camUp_      = cross(camW_, camRight_);
+		{
+			double theta = degrees_to_radians(cam_.vfov);
+			double h = std::tan(theta / 2.0);
+			viewportHeight_ = 2.0 * h * cam_.focus_dist;
+			viewportWidth_  = viewportHeight_ * (double(cam_.image_width) / double(cam_.image_height));
+			camA_ = viewportWidth_ * viewportHeight_;
+			camD_ = cam_.focus_dist;
+		}
+		if (cam_.defocus_angle > 0.0)
+			defocusRadius_ = cam_.focus_dist * std::tan(degrees_to_radians(cam_.defocus_angle / 2.0));
+
 		std::vector<double> weights;
 		for (auto& obj : world_.objects) {
 			AreaLightSample probe;
@@ -546,84 +568,98 @@ class BDPTSceneAdapter {
 		return emitters_[light_id]->pdf_value(P, wi) * emitter_alias_.pmf(light_id);
 	}
 
-	// Core pinhole-camera importance-sampling math, shared by
-	// SampleCameraConnection() (LightPath's own camera connection, raster-
-	// pixel-index output) and CameraSampleWi() below (BDPT/MLT's t==1
-	// light-tracing connection, normalized [0,1) output) - both need the
-	// identical computation, differing only in what units the resulting
-	// pixel position is reported in (each caller's own established
-	// convention, matching its own splat destination's expectations).
+	// Core camera importance-sampling math, shared by SampleCameraConnection()
+	// (LightPath's own camera connection, raster-pixel-index output) and
+	// CameraSampleWi() below (BDPT/MLT's t==1 light-tracing connection,
+	// normalized [0,1) output) - both need the identical computation,
+	// differing only in what units the resulting pixel position is
+	// reported in (each caller's own established convention, matching its
+	// own splat destination's expectations).
 	//
-	// Re-derives camera.h's own initialize() formulas (viewport_width/
-	// height from vfov/focus_dist/aspect, the u/v/w basis from lookfrom/
-	// lookat/vup, pixel00_loc's mapping from raster to viewport-plane
-	// position) from cam_'s public fields, the same "stay byte-for-byte
-	// consistent with whatever camera.h's own get_ray() actually generates"
-	// approach CameraPDFWe() above already takes -- algebraically inverted
+	// Basis/viewport constants (camForward_/camW_/camRight_/camUp_/
+	// viewportWidth_/viewportHeight_/camA_/camD_/defocusRadius_) are cached
+	// members, computed once in the constructor from cam_'s fields rather
+	// than re-derived here on every call - see this class's own field
+	// comment. Re-derives camera.h's own initialize() formulas (pixel00_loc's
+	// mapping from raster to viewport-plane position) algebraically inverted
 	// (viewport position -> raster position instead of raster -> ray)
-	// rather than duplicating camera.h's private u_/v_/w_/pixel00_loc_
-	// members directly.
+	// rather than duplicating camera.h's private pixel00_loc_ member
+	// directly.
 	//
-	// Ignores lens sampling (defocus_angle) -- treats the camera as a
-	// single pinhole at cam_.center for this connection, same simplification
-	// CameraPDFWe's own pdfDir already makes (only pdfPos there picks up a
-	// lens-area factor, and that value is documented dead -- see its own
-	// comment). Wi/pdf use the standard pinhole importance response
+	// Lens sampling (defocus_angle>0): samples a point on the lens disk from
+	// (u1,u2) via the same sqrt/polar uniform-disk mapping camera.h's own
+	// random_in_unit_disk() achieves via rejection sampling (both give a
+	// uniform sample over the unit disk; a closed-form mapping is used here
+	// instead of rejection sampling so a FIXED (u1,u2) pair - required for
+	// MLT's primary-sample-space reproducibility, see bdpt.h's own
+	// scene.RandFloat() call sites - always produces exactly one lens
+	// point). Wi/pdf use the standard thin-lens importance response
 	// We = D^2/(A*cos^4(theta)) and the matching solid-angle pdf
-	// dist^2/cos(theta) (lensArea=1 for a point lens) -- consistent with
-	// CameraPDFWe's own pdfDir = D^2/(A*cos^3(theta)) (We = pdfDir/cosTheta).
-	bool cameraConnectionCore(const double p[3], double& px01, double& py01,
-	                           double wi[3], double& We, double& pdf) const {
-		vec3 to_cam = cam_.center - point3(p[0], p[1], p[2]);
+	// dist^2/(lensArea*cos(theta)); however We/pdf's lensArea factor always
+	// cancels in the only place a caller uses them together
+	// (importance/pdf, see bdpt.h's Le_cam), so it's deliberately omitted
+	// from both formulas below rather than introduced and cancelled by the
+	// caller - the formulas are therefore identical to the pinhole case
+	// (lensArea=1), correct for a lens camera too, not just simpler.
+	bool cameraConnectionCore(const double p[3], double u1, double u2, double& px01, double& py01,
+	                           double wi[3], double& We, double& pdf, double& dist_out) const {
+		point3 p_lens = cam_.center;
+		if (defocusRadius_ > 0.0) {
+			double r = std::sqrt(u1);
+			double theta_disk = 2.0 * pi * u2;
+			double lx = r * std::cos(theta_disk);
+			double ly = r * std::sin(theta_disk);
+			p_lens = cam_.center + (lx * defocusRadius_) * camRight_ + (ly * defocusRadius_) * camUp_;
+		}
+
+		vec3 to_cam = p_lens - point3(p[0], p[1], p[2]);
 		double dist = to_cam.length();
 		if (dist < 1e-9) return false;
 		vec3 w = to_cam / dist;
 
-		vec3 forward = unit_vector(cam_.lookat - cam_.lookfrom);
-		vec3 cam_to_p = point3(p[0], p[1], p[2]) - cam_.center;
-		double t_forward = dot(cam_to_p, forward);
-		double cosTheta = t_forward / dist;   // = dot(cam_to_p/dist, forward)
+		vec3 lens_to_p = point3(p[0], p[1], p[2]) - p_lens;
+		double t_forward = dot(lens_to_p, camForward_);
+		double cosTheta = t_forward / dist;   // = dot(lens_to_p/dist, camForward_)
 		if (cosTheta <= 0.0) return false;   // hit point is behind the camera
 
-		double theta = degrees_to_radians(cam_.vfov);
-		double h = std::tan(theta / 2.0);
-		double viewport_height = 2.0 * h * cam_.focus_dist;
-		double viewport_width  = viewport_height * (double(cam_.image_width) / double(cam_.image_height));
-		double A = viewport_width * viewport_height;
-		double D = cam_.focus_dist;
-		if (A <= 0.0 || D <= 0.0) return false;
+		if (camA_ <= 0.0 || camD_ <= 0.0) return false;
 
-		vec3 w_cam = -forward;   // camera.h's own w = lookfrom-lookat direction
-		vec3 right = unit_vector(cross(cam_.vup, w_cam));
-		vec3 up    = cross(w_cam, right);
-
-		vec3 plane_point = cam_.center + cam_to_p * (D / t_forward);
-		vec3 viewport_center = cam_.center - D * w_cam;
+		// Focus plane is a fixed property of the camera (independent of
+		// which lens point was sampled) - anchored at cam_.center, not
+		// p_lens, matching camera.h's own viewport_upper_left derivation.
+		vec3 plane_point = p_lens + lens_to_p * (camD_ / t_forward);
+		vec3 viewport_center = cam_.center - camD_ * camW_;
 		vec3 offset = plane_point - viewport_center;
-		double su = dot(offset, right);
-		double sv = dot(offset, up);
+		double su = dot(offset, camRight_);
+		double sv = dot(offset, camUp_);
 
-		double px = 0.5 + su / viewport_width;
-		double py = 0.5 - sv / viewport_height;
+		double px = 0.5 + su / viewportWidth_;
+		double py = 0.5 - sv / viewportHeight_;
 		if (px < 0.0 || px >= 1.0 || py < 0.0 || py >= 1.0) return false;   // off-screen
 
 		double cos4 = cosTheta * cosTheta * cosTheta * cosTheta;
-		double We_ = (D * D) / (A * cos4);
+		double We_ = (camD_ * camD_) / (camA_ * cos4);
 		double pdf_ = (dist * dist) / cosTheta;
 		if (!(We_ > 0.0) || !(pdf_ > 0.0)) return false;
 
 		px01 = px; py01 = py;
 		wi[0] = w.x(); wi[1] = w.y(); wi[2] = w.z();
 		We = We_; pdf = pdf_;
+		dist_out = dist;
 		return true;
 	}
 
 	// LightPathTrace's camera-connection sample.
-	bool SampleCameraConnection(const BDPTHit<double>& hit, double /*u1*/, double /*u2*/,
+	bool SampleCameraConnection(const BDPTHit<double>& hit, double u1, double u2,
 	                             CameraConnection<double>& cc) const {
-		double px01, py01, wi[3], We, pdf;
-		if (!cameraConnectionCore(hit.p, px01, py01, wi, We, pdf)) return false;
-		cc.p_lens[0] = cam_.center.x(); cc.p_lens[1] = cam_.center.y(); cc.p_lens[2] = cam_.center.z();
+		double px01, py01, wi[3], We, pdf, dist;
+		if (!cameraConnectionCore(hit.p, u1, u2, px01, py01, wi, We, pdf, dist)) return false;
+		// p_lens = hit.p + dist*wi (exact by construction of wi/dist above)
+		// rather than always cam_.center - the sampled lens point genuinely
+		// varies per-call once defocus_angle>0.
+		cc.p_lens[0] = hit.p[0] + dist * wi[0];
+		cc.p_lens[1] = hit.p[1] + dist * wi[1];
+		cc.p_lens[2] = hit.p[2] + dist * wi[2];
 		cc.p_raster[0] = px01 * cam_.image_width;
 		cc.p_raster[1] = py01 * cam_.image_height;
 		cc.Wi[0] = cc.Wi[1] = cc.Wi[2] = We;
@@ -1049,8 +1085,12 @@ class BDPTSceneAdapter {
 		// above ever reaches a real MIS weight. Computed correctly anyway
 		// (rather than left as the pinhole placeholder) so this value is
 		// right by construction if a future change ever does start using
-		// it (e.g. wiring up CameraSampleWi's t==1 light-tracing strategy),
-		// instead of silently inheriting a wrong assumption from here.
+		// it. CameraSampleWi's own t==1 light-tracing strategy (see
+		// cameraConnectionCore()) now DOES support lens sampling, but
+		// deliberately never reads pdfPos either - its lensArea factor
+		// always cancels in the only place it would be used
+		// (importance/pdf), so introducing it there would just be
+		// cancelled straight back out, not a missing correction.
 		if (cam_.defocus_angle > 0.0) {
 			const double lens_radius = cam_.focus_dist * std::tan(degrees_to_radians(cam_.defocus_angle / 2.0));
 			const double lens_area = pi * lens_radius * lens_radius;
@@ -1061,28 +1101,37 @@ class BDPTSceneAdapter {
 	}
 
 	// t==1 "light tracing" strategy: connects a light-subpath vertex
-	// directly to the camera. Shares its core pinhole-importance math with
-	// SampleCameraConnection() above (see cameraConnectionCore()'s own
-	// comment) but reports pRaster in NORMALIZED [0,1) image coordinates,
-	// not raster pixel-index units -- this is the convention
-	// mlt_render_with_adapter()'s own pre-existing splat lambda expects
-	// (it does its own `px*width`/`py*height` conversion), and BDPT's
-	// caller (bdpt_render_with_adapter()) converts to raster units itself
-	// before handing the result to SplatFilm, so a single normalized
-	// contract here satisfies both callers without either one adapting to
-	// the other's convention.
-	bool CameraSampleWi(const double* ref_p, const double* /*u2*/,
+	// directly to the camera (or, when defocus_angle>0, to a sampled lens
+	// point - see cameraConnectionCore()'s own comment). Shares its core
+	// importance math with SampleCameraConnection() above but reports
+	// pRaster in NORMALIZED [0,1) image coordinates, not raster pixel-index
+	// units -- this is the convention mlt_render_with_adapter()'s own
+	// pre-existing splat lambda expects (it does its own `px*width`/
+	// `py*height` conversion), and BDPT's caller (bdpt_render_with_adapter())
+	// converts to raster units itself before handing the result to
+	// SplatFilm, so a single normalized contract here satisfies both
+	// callers without either one adapting to the other's convention.
+	//
+	// Returns `dist` (the distance from ref_p to the sampled camera point)
+	// rather than the camera point itself: the caller already has ref_p and
+	// the returned wi, and p_cam = ref_p + dist*wi is an exact vector
+	// identity regardless of camera model (pinhole or lens) - narrower than
+	// widening this duck-typed interface with a 3-vector every implementer
+	// (including test scenes that never exercise lens sampling) would have
+	// to carry.
+	bool CameraSampleWi(const double* ref_p, const double* u2,
 	                     double* wi, double& pdf, double& importance,
-	                     double* pRaster, double* p_cam) const {
+	                     double* pRaster, double& dist) const {
 		double px01, py01, We;
-		if (!cameraConnectionCore(ref_p, px01, py01, wi, We, pdf)) {
+		double u1v = u2 ? u2[0] : 0.5;
+		double u2v = u2 ? u2[1] : 0.5;
+		if (!cameraConnectionCore(ref_p, u1v, u2v, px01, py01, wi, We, pdf, dist)) {
 			pdf = 0.0; importance = 0.0;
 			return false;
 		}
 		importance = We;
 		pRaster[0] = px01;
 		pRaster[1] = py01;
-		p_cam[0] = cam_.center.x(); p_cam[1] = cam_.center.y(); p_cam[2] = cam_.center.z();
 		return true;
 	}
 
@@ -1186,6 +1235,17 @@ class BDPTSceneAdapter {
 	bool       hasSky_ = false;
 	double     sceneCenter_[3] = {0.0, 0.0, 0.0};
 	double     sceneRadius_ = 1.0;
+
+	// Camera basis/viewport constants used by cameraConnectionCore() below -
+	// derived once here (constructor) from cam_'s fields (vfov/focus_dist/
+	// image dimensions/lookfrom/lookat/vup/defocus_angle), all of which are
+	// fixed for the adapter's lifetime, rather than re-derived (std::tan +
+	// several vector ops) on every camera-connection call. defocusRadius_
+	// is 0 when defocus_angle<=0 (pinhole - cameraConnectionCore treats
+	// that as "no lens sampling").
+	vec3   camForward_, camW_, camRight_, camUp_;
+	double viewportWidth_ = 0.0, viewportHeight_ = 0.0, camA_ = 0.0, camD_ = 0.0;
+	double defocusRadius_ = 0.0;
 
 	// Fixed-capacity, thread-local ring buffer of shading contexts. Unlike
 	// SPPMSceneAdapter's durable_ctx_/transient_ctx_ split, BDPT/MLT need
@@ -1382,7 +1442,22 @@ class SplatFilm {
 inline void bdpt_render_with_adapter(const BDPTSceneAdapter& scene, int width, int height,
                                       int spp, int maxDepth, std::vector<double>& out_rgb) {
 	out_rgb.assign(static_cast<size_t>(width) * height * 3, 0.0);
-	SplatFilm film(width, height);
+
+	// SplatFilm (one std::mutex + 3 doubles per pixel - hundreds of MB at
+	// 4K+) is constructed lazily, on the first t==1 light-tracing
+	// contribution that actually occurs, instead of unconditionally at the
+	// top of every --bdpt render: many renders (e.g. --bdpt-max-depth 0,
+	// where t==1 can structurally never fire, or any scene where no
+	// light-subpath vertex ever has an unoccluded camera connection) would
+	// otherwise pay this allocation for zero benefit. std::call_once
+	// guards the one-time construction race across worker threads.
+	std::optional<SplatFilm> film;
+	std::once_flag film_once;
+	auto ensure_film = [&]() -> SplatFilm& {
+		std::call_once(film_once, [&]() { film.emplace(width, height); });
+		return *film;
+	};
+
 	unsigned int nthreads = determine_render_thread_count();
 	std::atomic<int> next_row(0);
 
@@ -1391,7 +1466,7 @@ inline void bdpt_render_with_adapter(const BDPTSceneAdapter& scene, int width, i
 		std::vector<BDPTVertex<double>> lightVerts(static_cast<size_t>(maxDepth) + 1);
 		auto splat = [&](double px01, double py01, double Lr, double Lg, double Lb) {
 			double L[3] = { Lr, Lg, Lb };
-			film.Splat(px01 * width, py01 * height, L);
+			ensure_film().Splat(px01 * width, py01 * height, L);
 		};
 
 		while (true) {
@@ -1430,9 +1505,11 @@ inline void bdpt_render_with_adapter(const BDPTSceneAdapter& scene, int width, i
 	for (unsigned int t = 0; t < nthreads; ++t) threads.emplace_back(worker);
 	for (auto& th : threads) th.join();
 
-	std::vector<double> splat_rgb;
-	film.ToRGB(splat_rgb, static_cast<double>(spp));
-	for (size_t i = 0; i < out_rgb.size(); ++i) out_rgb[i] += splat_rgb[i];
+	if (film) {
+		std::vector<double> splat_rgb;
+		film->ToRGB(splat_rgb, static_cast<double>(spp));
+		for (size_t i = 0; i < out_rgb.size(); ++i) out_rgb[i] += splat_rgb[i];
+	}
 }
 
 // Replicates MLTRenderLoop()'s own post-bootstrap Markov-chain loop

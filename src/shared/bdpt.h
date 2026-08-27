@@ -52,17 +52,20 @@
 //                      T& pdfPos, T& pdfDir) const;
 //
 //     // Camera importance sampling from a reference point (the t==1 light-
-//     // tracing strategy). pRaster is filled in NORMALIZED [0,1) image
-//     // coordinates, not raster pixel-index units - callers that need
-//     // pixel indices (e.g. a SplatFilm) convert themselves. p_cam is
-//     // filled with the sampled point ON THE CAMERA (its lens/pinhole
-//     // position) - needed as the position of the "sampled" camera vertex
-//     // BDPTConnect's t==1 case builds, since that vertex's later PDF()/
-//     // ConvertDensity() calls need a real point-to-point distance to
-//     // ref_p, not ref_p itself.
+//     // tracing strategy). u2 drives lens-point sampling for a thin-lens
+//     // camera (ignored by a pinhole implementation) - draw it via
+//     // RandFloat() (see BDPTConnect's own t==1 call site), not raw
+//     // randomness, so MLT's primary-sample-space reproducibility isn't
+//     // bypassed. pRaster is filled in NORMALIZED [0,1) image coordinates,
+//     // not raster pixel-index units - callers that need pixel indices
+//     // (e.g. a SplatFilm) convert themselves. dist is the distance from
+//     // ref_p to the sampled camera/lens point - the caller reconstructs
+//     // that point itself as ref_p + dist*wi (exact by construction,
+//     // regardless of pinhole vs. lens camera) rather than this interface
+//     // returning the point directly.
 //     bool CameraSampleWi(const T ref_p[3], const T u2[2],
 //                         T wi[3], T& pdf, T& importance,
-//                         T pRaster[2], T p_cam[3]) const;
+//                         T pRaster[2], T& dist) const;
 //
 //     // Scene bounding sphere for infinite-light PDF.
 //     void SceneBoundingSphere(T center[3], T& radius) const;
@@ -196,6 +199,16 @@ template<typename T>
 inline T absdot3(const T a[3], const T b[3]) {
 	return std::abs(dot3(a,b));
 }
+
+// Default SplatFn for BDPTLi() below - lets callers that don't want t==1
+// light-tracing contributions (e.g. unit tests exercising a single
+// strategy directly) omit the splat argument entirely via BDPTLi's own
+// defaulted template/function argument, instead of needing a second,
+// separately-maintained overload with a duplicated signature.
+struct NoOpSplat {
+	template<typename T>
+	void operator()(T, T, T, T, T) const {}
+};
 
 } // namespace bdpt_detail
 
@@ -943,9 +956,17 @@ void BDPTConnect(BDPTVertex<T>* lightVerts, BDPTVertex<T>* cameraVerts,
 		// Light tracing: importance-sample the camera
 		const BDPTVertex<T>& qs = lightVerts[s-1];
 		if (qs.IsConnectible()) {
-			T wi[3], importance, raster[2], p_cam[3];
-			T pdf_we;
-			if (scene.CameraSampleWi(qs.p(), nullptr, wi, pdf_we, importance, raster, p_cam) &&
+			T wi[3], importance, raster[2];
+			T pdf_we, dist;
+			// u2 drives CameraSampleWi's lens-point sampling (a no-op when
+			// the camera is a pinhole, defocus_angle<=0) - drawn via
+			// scene.RandFloat() rather than raw randomness so this
+			// correctly routes through MLT's primary-sample-space stream
+			// (MLTSceneAdapter::RandFloat() -> sampler.Get1D()) exactly
+			// like every other random draw in this function, instead of
+			// bypassing MLT's reproducibility model.
+			T u2[2] = { scene.RandFloat(), scene.RandFloat() };
+			if (scene.CameraSampleWi(qs.p(), u2, wi, pdf_we, importance, raster, dist) &&
 				pdf_we > T(0) && importance > T(0)) {
 				T cam_n[3] = {T(0), T(0), T(0)};
 				// pdf_we is already CameraSampleWi's own solid-angle pdf at
@@ -959,12 +980,16 @@ void BDPTConnect(BDPTVertex<T>* lightVerts, BDPTVertex<T>* cameraVerts,
 				// infinity. CameraSampleWi already did this pdf conversion
 				// correctly (see BDPTSceneAdapter::cameraConnectionCore()).
 				T Le_cam[3] = { importance/pdf_we, importance/pdf_we, importance/pdf_we };
-				// p_cam (the real camera lens/pinhole position, NOT qs.p())
-				// matters here: this "sampled" vertex's later PDF()/
-				// ConvertDensity() calls (in BDPTMISWeight) derive a real
-				// direction+distance from qs.p() to this vertex's own
+				// The sampled vertex's position must be the real camera/
+				// lens point (NOT qs.p()) - this "sampled" vertex's later
+				// PDF()/ConvertDensity() calls (in BDPTMISWeight) derive a
+				// real direction+distance from qs.p() to this vertex's own
 				// p() - using qs.p() itself would zero that distance and
-				// silently corrupt the light-subpath's reverse-pdf MIS term.
+				// silently corrupt the light-subpath's reverse-pdf MIS
+				// term. p_cam = qs.p() + dist*wi is exact by construction
+				// of wi/dist (see CameraSampleWi's own comment) regardless
+				// of pinhole vs. lens-sampled camera.
+				T p_cam[3] = { qs.p()[0] + dist*wi[0], qs.p()[1] + dist*wi[1], qs.p()[2] + dist*wi[2] };
 				sampled = BDPTVertex<T>::MakeCamera(p_cam, cam_n, Le_cam, pdf_we);
 
 				T f_qs[3];
@@ -1028,13 +1053,18 @@ void BDPTConnect(BDPTVertex<T>* lightVerts, BDPTVertex<T>* cameraVerts,
 // connection), so it can't be added into L_out the way every other
 // strategy is. The caller is expected to accumulate these into a
 // film-wide splat buffer (see SplatFilm below) rather than the per-pixel
-// sample loop's own running sum.
-template<typename T, typename Scene, typename SplatFn>
+// sample loop's own running sum. `splat` defaults to a no-op (via
+// SplatFn's own default template argument) for callers that don't want
+// t==1 contributions at all (e.g. unit tests exercising a single strategy
+// directly) - a single definition with a defaulted callback, rather than a
+// second overload duplicating this whole signature just to supply that
+// default.
+template<typename T, typename Scene, typename SplatFn = bdpt_detail::NoOpSplat>
 void BDPTLi(const T cam_p[3], const T cam_n[3], const T ray_d[3],
 			 int maxDepth, const Scene& scene,
 			 BDPTVertex<T>* cameraVerts, // (maxDepth+2) elements
 			 BDPTVertex<T>* lightVerts,  // (maxDepth+1) elements
-			 T L_out[3], SplatFn splat) {
+			 T L_out[3], SplatFn splat = SplatFn{}) {
 	L_out[0] = L_out[1] = L_out[2] = T(0);
 
 	int nCamera = BDPTGenerateCameraSubpath(cam_p, cam_n, ray_d,
@@ -1060,17 +1090,4 @@ void BDPTLi(const T cam_p[3], const T cam_n[3], const T ray_d[3],
 			}
 		}
 	}
-}
-
-// Backward-compatible overload for every existing caller that doesn't want
-// t==1 light-tracing contributions (e.g. the unit tests exercising a single
-// strategy directly) - matches this function's own original contract
-// exactly (t==1 silently discarded).
-template<typename T, typename Scene>
-void BDPTLi(const T cam_p[3], const T cam_n[3], const T ray_d[3],
-			 int maxDepth, const Scene& scene,
-			 BDPTVertex<T>* cameraVerts, BDPTVertex<T>* lightVerts,
-			 T L_out[3]) {
-	BDPTLi(cam_p, cam_n, ray_d, maxDepth, scene, cameraVerts, lightVerts, L_out,
-		   [](T, T, T, T, T) {});
 }

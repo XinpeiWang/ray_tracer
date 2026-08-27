@@ -332,8 +332,8 @@ MLTPathResult<T> MLTEvalPath(MLTSampler<T>& sampler, int depth,
 			scene.CameraPDFWe(o, d, pdfPos, pdfDir);
 		}
 		bool CameraSampleWi(const T ref_p[3], const T* u2,
-							T wi[3], T& pdf, T& importance, T pRaster[2], T p_cam[3]) const {
-			return scene.CameraSampleWi(ref_p, u2, wi, pdf, importance, pRaster, p_cam);
+							T wi[3], T& pdf, T& importance, T pRaster[2], T& dist) const {
+			return scene.CameraSampleWi(ref_p, u2, wi, pdf, importance, pRaster, dist);
 		}
 		void SceneBoundingSphere(T center[3], T& radius) const {
 			scene.SceneBoundingSphere(center, radius);
