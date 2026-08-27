@@ -50,21 +50,32 @@
 // SampleLightLe/PixelToRay logic closely, adapted to the (s,t)-connection
 // math BDPT needs instead of SPPM's own DirectLight() NEE call.
 //
-// Scope (v1, mirrors SPPM's own incremental scoping precedent)
+// Scope (v2 -- area + point/spot/distant + sky, still mirrors SPPM's own
+// incremental scoping precedent for what's left out)
 // --------------------------------------------------------------
-// - Area lights ONLY. Punctual (point/spot/distant) lights and sky/infinite
-//   lights are NOT wired into SampleLight/SampleLightLe here (unlike
-//   SPPMSceneAdapter, which supports both) -- BDPT's SampleLight has to
-//   pick from a SINGLE unified light distribution shared with
-//   SampleLightLe/LightPMF/LightPDFLe for its MIS math to stay internally
-//   consistent, and combining three fundamentally different light
-//   "shapes" (area/delta-position/delta-direction/infinite) into one
-//   sampler is real, separate work. Scene A1 (Cornell Box, this
-//   integration's target end-to-end scene) only has an area light, so this
-//   doesn't block verification here. cam.background is still honored as a
-//   flat ambient backdrop for camera rays that escape the scene (see
-//   InfiniteLightLe below) -- for a black-background scene like A1 this is
-//   a no-op, not a missing feature.
+// - Area lights, point/spot/distant punctual lights, AND a real sky/
+//   infinite light (cam.sky) all share ONE unified, power-weighted light
+//   distribution (unifiedAlias_ below) that SampleLight/SampleLightLe/
+//   LightPMF/LightPDFLe all draw from consistently -- required for BDPT's
+//   MIS math to stay internally consistent (see this class's own
+//   SampleLight()/SampleLightLe() comments for the combined-index-space
+//   and per-kind-pdf derivation). Delta lights (point/spot/distant) are
+//   marked is_delta on their BDPTLightSample/BDPTLightLeSample; the sky is
+//   marked is_infinite instead, mirroring bdpt.h's own BDPTVertex::
+//   IsDeltaLight()/IsInfiniteLight() split -- both correctly restrict
+//   longer (s>1) BDPT connections through that vertex the same way
+//   pbrt-v4's own Vertex::IsConnectible() does.
+//   Still NOT wired in: goniometric and projection lights (both delta-
+//   position, image-modulated) -- punctual_light_objects.h's own
+//   goniometric_light_obj/projection_light_obj have no SampleLe (light-
+//   subpath-emission) implementation yet, unlike point/spot (spot already
+//   had one, see SpotLightData::sample_le) or distant/sky (straightforward
+//   disk-sampling around the scene's bounding sphere, added here). A scene
+//   whose ONLY light is goniometric or projection still renders black
+//   under --bdpt/--mlt, same honestly-scoped limitation as before, just a
+//   smaller residual set. cam.background is still honored as a flat
+//   ambient backdrop for camera rays that escape a sky-less scene (see
+//   InfiniteLightLe below).
 // - CameraSampleWi() always returns false (the t==1 "light tracing"
 //   strategy). This is NOT a shortcut this file takes -- BDPTLi() itself
 //   (bdpt.h, see its own doc comment) never adds t==1 contributions to its
@@ -135,6 +146,7 @@
 #include "../shared/simple_path.h"          // SimplePathLi
 #include "../shared/simple_vol_path.h"      // SimpleVolPathLi, VolPathMediumProps
 #include "../shared/light_path.h"           // LightPathTrace, LightEmissionSample, CameraConnection
+#include "../shared/sampling_helpers.h"     // SampleUniformDiskConcentric -- distant/sky emission-position sampling
 
 #include <vector>
 #include <thread>
@@ -192,18 +204,100 @@ class BDPTSceneAdapter {
 			weights.push_back(std::max(power, 1e-9));
 		}
 		nEmitters_ = (int)emitters_.size();
+		// Area-only table: unchanged from before, still exactly what
+		// SampleLightEmission() (LightPathTrace's own emission sample -
+		// still area-light-only, see its own comment) draws from.
 		emitter_alias_ = AliasTable(weights.empty() ? std::vector<double>{1.0} : weights);
+
+		// Scene bounding sphere, needed to place a well-defined (if
+		// artificial) "position" for a delta-direction/infinite light's
+		// NEE sample (see SampleLight()'s own comment) and as the emission
+		// disk radius for distant/sky light-subpath sampling (see
+		// SampleLightLe()). Computed once here rather than per-sample -
+		// same box-based formula as SceneBoundingSphere() below, just
+		// cached.
+		{
+			aabb box = world_.bounding_box();
+			sceneCenter_[0] = (box.x.min + box.x.max) * 0.5;
+			sceneCenter_[1] = (box.y.min + box.y.max) * 0.5;
+			sceneCenter_[2] = (box.z.min + box.z.max) * 0.5;
+			double dx = box.x.max - sceneCenter_[0], dy = box.y.max - sceneCenter_[1], dz = box.z.max - sceneCenter_[2];
+			sceneRadius_ = std::sqrt(dx*dx + dy*dy + dz*dz);
+			if (!(sceneRadius_ > 0.0)) sceneRadius_ = 1.0;
+		}
+
+		// Unified distribution: area lights (weights already collected
+		// above) followed by point/spot/distant punctual lights, followed
+		// by the sky (if present) - see SampleLight()'s own comment for
+		// the resulting combined index space. Goniometric/projection
+		// punctual lights are deliberately NOT included here (see class
+		// Scope comment).
+		punctBase_ = nEmitters_;
+		int nPoint = 0, nSpot = 0, nDistant = 0;
+		if (cam_.punct_lights) {
+			nPoint    = (int)cam_.punct_lights->points.size();
+			nSpot     = (int)cam_.punct_lights->spots.size();
+			nDistant  = (int)cam_.punct_lights->distants.size();
+			for (const auto& L : cam_.punct_lights->points)   weights.push_back(std::max(L.power(), 1e-9));
+			for (const auto& L : cam_.punct_lights->spots)    weights.push_back(std::max(L.power(), 1e-9));
+			for (const auto& L : cam_.punct_lights->distants) weights.push_back(std::max(L.power(), 1e-9));
+		}
+		spotBase_ = punctBase_ + nPoint;
+		distBase_ = spotBase_ + nSpot;
+		skyIdx_   = distBase_ + nDistant;
+
+		// Sky/infinite light power: this codebase has no analytic total-
+		// power formula for an arbitrary HDR environment map the way it
+		// does for area/punctual lights (their power() methods above), so
+		// estimate one via importance-sampled Monte Carlo integration of
+		// its own Le/pdf - an unbiased estimator of the radiance integral
+		// over the sphere, since sample_Le() already draws directions
+		// proportional to luminance (sky_light.h's own comment). Only
+		// affects how OFTEN the sky gets chosen relative to other lights,
+		// not correctness - any positive finite weight keeps the estimator
+		// unbiased, this just keeps it well-behaved (a bright HDR sky
+		// competes fairly with a bright area light instead of being
+		// drowned out or dominating by construction).
+		hasSky_ = static_cast<bool>(cam_.sky);
+		if (hasSky_) {
+			constexpr int kSkyPowerSamples = 256;
+			double sum = 0.0;
+			int nValid = 0;
+			for (int i = 0; i < kSkyPowerSamples; ++i) {
+				SkyLiSample s = cam_.sky->sample_Le();
+				if (s.pdf <= 0.0) continue;
+				color Le = cam_.sky->Le(unit_vector(s.direction));
+				double lum = 0.2126*Le.x() + 0.7152*Le.y() + 0.0722*Le.z();
+				sum += lum / s.pdf;
+				++nValid;
+			}
+			double skyPower = (nValid > 0) ? (sum / nValid) * (4.0 * pi) : 0.0;
+			weights.push_back(std::max(skyPower, 1e-9));
+			nTotal_ = skyIdx_ + 1;
+		} else {
+			nTotal_ = skyIdx_;
+		}
+		unifiedAlias_ = AliasTable(weights.empty() ? std::vector<double>{1.0} : weights);
 	}
 
-	// Number of real (diffuse_light) area emitters this adapter found in
-	// `world` - zero means SampleLight/SampleLightLe will unconditionally
-	// return false (see their own `if (nEmitters_ == 0) return false;`
-	// checks below), so BDPT/MLT will render a flat/black image with no
-	// error. Exposed so callers (bdpt_render_core()/mlt_render_core()) can
-	// warn about that up front instead of leaving it silent - see this
-	// class's own "Scope (v1)" comment for why area lights are the only
-	// kind sampled at all.
-	int EmitterCount() const { return nEmitters_; }
+	// Total light count across every kind this adapter samples from (area +
+	// point/spot/distant + sky - see class Scope comment) - zero means
+	// SampleLight/SampleLightLe will unconditionally return false (see
+	// their own `if (nTotal_ == 0) return false;` checks below), so BDPT/
+	// MLT/SimplePath/LightPath will render a flat/black image with no
+	// error. Exposed so callers (bdpt_render_core()/mlt_render_core()/etc.)
+	// can warn about that up front instead of leaving it silent.
+	int EmitterCount() const { return nTotal_; }
+
+	// Area lights only - SampleLightEmission()/LightSurfaceLe() (LightPath's
+	// own emission sample, still area-light-only, see that method's own
+	// comment) draw from emitters_/emitter_alias_ exclusively, not the
+	// unified distribution above, so a caller that only exercises THAT path
+	// (lightpath_render_core) needs this narrower count instead of
+	// EmitterCount() - a scene lit only by a point/spot/distant/sky light
+	// still can't drive LightPathTrace, even though it now can drive
+	// BDPT/MLT/SimplePath via EmitterCount()/SampleLight() above.
+	int AreaEmitterCount() const { return nEmitters_; }
 
 	// ------------------------------------------------------------------
 	// Intersect / BSDFf / BSDFSampleF / BSDFPdf
@@ -571,118 +665,342 @@ class BDPTSceneAdapter {
 	// `u` is unused (see SampleLightLe's own note below on why this
 	// codebase's material/light interfaces don't thread caller-supplied
 	// randomness -- same limitation, same reasoning, applies here).
+	//
+	// Unified index space (matches unifiedAlias_'s own internal numbering):
+	//   [0, nEmitters_)                 area lights (unchanged from before)
+	//   [nEmitters_, spotBase_)         point lights
+	//   [spotBase_, distBase_)          spot lights
+	//   [distBase_, skyIdx_)            distant lights
+	//   skyIdx_ (only if hasSky_)       the sky/infinite light
+	// ls.light_id/les.light_id are NOT this raw index directly for anything
+	// past an area light - toLightId() below offsets it clear of
+	// Intersect()'s own bsdf_id space (which also starts at nEmitters_), so
+	// resolve_emitter_index() can tell "a punctual/sky light was chosen"
+	// apart from "this bsdf_id happens to belong to an emissive surface"
+	// unambiguously. See toLightId()'s own comment.
 	bool SampleLight(double /*u*/, const double ref_p[3], BDPTLightSample<double>& ls) const {
-		if (nEmitters_ == 0) return false;
-		int idx = emitter_alias_.sample(random_double());
-		const auto& light = emitters_[idx];
-
-		AreaLightSample as;
-		if (!light->sample_area(random_double(), random_double(), as)) return false;
-
+		if (nTotal_ == 0) return false;
+		int idx = unifiedAlias_.sample(random_double());
+		double pmf = unifiedAlias_.pmf(idx);
 		point3 P(ref_p[0], ref_p[1], ref_p[2]);
-		vec3 to_light = as.p - P;
-		double dist = to_light.length();
-		if (dist < 1e-9) return false;
-		vec3 wi = to_light / dist;
 
-		// quad/sphere's own pdf_value() intersects from either side (no
-		// backface culling), so a one-sided light needs an explicit check
-		// here to match diffuse_light::emitted()'s own front-face gate --
-		// otherwise NEE would light points sitting behind a one-sided
-		// emitter's declared normal. Two-sided lights need no such gate.
-		if (!emitter_dl_[idx]->is_two_sided() && dot(wi, as.n) >= 0.0) return false;
+		if (idx < nEmitters_) {
+			const auto& light = emitters_[idx];
 
-		// light->pdf_value() already performs the area->solid-angle Jacobian
-		// conversion for THIS one shape (quad.h/sphere.h's own pdf_value()
-		// implementations) -- multiplying by the light-selection PMF gives
-		// the full combined solid-angle density, reusing tested code
-		// instead of re-deriving the area/solid-angle conversion here.
-		double pdf_solid_angle = light->pdf_value(P, wi) * emitter_alias_.pmf(idx);
-		if (pdf_solid_angle <= 0.0) return false;
+			AreaLightSample as;
+			if (!light->sample_area(random_double(), random_double(), as)) return false;
 
-		color Le = emitter_dl_[idx]->get_texture()->value(as.u, as.v, as.p);
+			vec3 to_light = as.p - P;
+			double dist = to_light.length();
+			if (dist < 1e-9) return false;
+			vec3 wi = to_light / dist;
 
-		ls.p_light[0]=as.p.x(); ls.p_light[1]=as.p.y(); ls.p_light[2]=as.p.z();
-		ls.n_light[0]=as.n.x(); ls.n_light[1]=as.n.y(); ls.n_light[2]=as.n.z();
+			// quad/sphere's own pdf_value() intersects from either side (no
+			// backface culling), so a one-sided light needs an explicit check
+			// here to match diffuse_light::emitted()'s own front-face gate --
+			// otherwise NEE would light points sitting behind a one-sided
+			// emitter's declared normal. Two-sided lights need no such gate.
+			if (!emitter_dl_[idx]->is_two_sided() && dot(wi, as.n) >= 0.0) return false;
+
+			// light->pdf_value() already performs the area->solid-angle
+			// Jacobian conversion for THIS one shape (quad.h/sphere.h's own
+			// pdf_value() implementations) -- multiplying by the (unified)
+			// light-selection PMF gives the full combined solid-angle
+			// density, reusing tested code instead of re-deriving the
+			// area/solid-angle conversion here.
+			double pdf_solid_angle = light->pdf_value(P, wi) * pmf;
+			if (pdf_solid_angle <= 0.0) return false;
+
+			color Le = emitter_dl_[idx]->get_texture()->value(as.u, as.v, as.p);
+
+			ls.p_light[0]=as.p.x(); ls.p_light[1]=as.p.y(); ls.p_light[2]=as.p.z();
+			ls.n_light[0]=as.n.x(); ls.n_light[1]=as.n.y(); ls.n_light[2]=as.n.z();
+			ls.L[0]=Le.x(); ls.L[1]=Le.y(); ls.L[2]=Le.z();
+			ls.pdf = pdf_solid_angle;
+			ls.wi[0]=wi.x(); ls.wi[1]=wi.y(); ls.wi[2]=wi.z();
+			ls.is_delta = false;
+			ls.is_infinite = false;
+			ls.light_id = idx;
+			return true;
+		}
+
+		// Punctual/sky: none of these have a real, finite extended surface,
+		// so a delta light's p_light is placed exactly at its own true
+		// position (point/spot - reconstructed from wi*dist, both exact),
+		// and a delta-DIRECTION/infinite light's p_light is placed far
+		// enough past `P` (2x the scene's bounding-sphere diameter, plus
+		// P's own offset from the sphere's center so this clears regardless
+		// of where P sits) that Unoccluded()'s shadow ray still correctly
+		// clears all real scene geometry before "arriving" - this value is
+		// otherwise unused (a delta/infinite light vertex's own pdf math
+		// never reads distance-to-p_light, only ls.wi/ls.pdf; see
+		// LightPDFLe's own comment).
+		double farDist = 2.0 * sceneRadius_
+			+ (P - point3(sceneCenter_[0], sceneCenter_[1], sceneCenter_[2])).length();
+
+		if (idx < spotBase_) {                                    // point
+			const point_light_obj& L = cam_.punct_lights->points[idx - punctBase_];
+			PunctualLiSample s = L.sample_direct(P);
+			if (!(s.Li.x()>0.0 || s.Li.y()>0.0 || s.Li.z()>0.0)) return false;
+			point3 pl = P + s.wi * s.t_max;
+			ls.p_light[0]=pl.x(); ls.p_light[1]=pl.y(); ls.p_light[2]=pl.z();
+			ls.n_light[0]=ls.n_light[1]=ls.n_light[2]=0.0;
+			ls.L[0]=s.Li.x(); ls.L[1]=s.Li.y(); ls.L[2]=s.Li.z();
+			ls.pdf = pmf;   // delta position: within-light density is 1
+			ls.wi[0]=s.wi.x(); ls.wi[1]=s.wi.y(); ls.wi[2]=s.wi.z();
+			ls.is_delta = true; ls.is_infinite = false; ls.light_id = toLightId(idx);
+			return true;
+		}
+		if (idx < distBase_) {                                    // spot
+			const spot_light_obj& L = cam_.punct_lights->spots[idx - spotBase_];
+			PunctualLiSample s = L.sample_direct(P);
+			if (!(s.Li.x()>0.0 || s.Li.y()>0.0 || s.Li.z()>0.0)) return false;
+			point3 pl = P + s.wi * s.t_max;
+			ls.p_light[0]=pl.x(); ls.p_light[1]=pl.y(); ls.p_light[2]=pl.z();
+			ls.n_light[0]=ls.n_light[1]=ls.n_light[2]=0.0;
+			ls.L[0]=s.Li.x(); ls.L[1]=s.Li.y(); ls.L[2]=s.Li.z();
+			ls.pdf = pmf;
+			ls.wi[0]=s.wi.x(); ls.wi[1]=s.wi.y(); ls.wi[2]=s.wi.z();
+			ls.is_delta = true; ls.is_infinite = false; ls.light_id = toLightId(idx);
+			return true;
+		}
+		if (idx < skyIdx_) {                                      // distant
+			const distant_light_obj& L = cam_.punct_lights->distants[idx - distBase_];
+			PunctualLiSample s = L.sample_direct(P);   // t_max = infinity
+			point3 pl = P + s.wi * farDist;
+			ls.p_light[0]=pl.x(); ls.p_light[1]=pl.y(); ls.p_light[2]=pl.z();
+			ls.n_light[0]=ls.n_light[1]=ls.n_light[2]=0.0;
+			ls.L[0]=s.Li.x(); ls.L[1]=s.Li.y(); ls.L[2]=s.Li.z();
+			ls.pdf = pmf;
+			ls.wi[0]=s.wi.x(); ls.wi[1]=s.wi.y(); ls.wi[2]=s.wi.z();
+			ls.is_delta = true; ls.is_infinite = false; ls.light_id = toLightId(idx);
+			return true;
+		}
+		// Sky (idx == skyIdx_, only reachable when hasSky_) -- NOT a delta
+		// light: sample_Le() draws a real, continuous direction from the
+		// image's own importance distribution, exactly like the main path
+		// tracer's own NEE-toward-sky strategy (camera.h's "Strategy A-2").
+		SkyLiSample sm = cam_.sky->sample_Le();
+		if (sm.pdf <= 0.0) return false;
+		color Le = cam_.sky->Le(unit_vector(sm.direction));
+		if (!(Le.x()>0.0 || Le.y()>0.0 || Le.z()>0.0)) return false;
+		point3 pl = P + sm.direction * farDist;
+		ls.p_light[0]=pl.x(); ls.p_light[1]=pl.y(); ls.p_light[2]=pl.z();
+		ls.n_light[0]=ls.n_light[1]=ls.n_light[2]=0.0;
 		ls.L[0]=Le.x(); ls.L[1]=Le.y(); ls.L[2]=Le.z();
-		ls.pdf = pdf_solid_angle;
-		ls.wi[0]=wi.x(); ls.wi[1]=wi.y(); ls.wi[2]=wi.z();
-		ls.is_delta = false;
-		ls.light_id = idx;
+		ls.pdf = sm.pdf * pmf;   // real solid-angle density, combined w/ light choice
+		ls.wi[0]=sm.direction.x(); ls.wi[1]=sm.direction.y(); ls.wi[2]=sm.direction.z();
+		ls.is_delta = false; ls.is_infinite = true; ls.light_id = toLightId(idx);
 		return true;
 	}
 
-	// Light subpath emission -- near-identical to SPPMSceneAdapter's own
-	// SampleLightLe (same power-weighted-emitter, uniform-area-position,
-	// cosine-weighted-direction scheme), duplicated rather than shared
-	// because SPPMSceneAdapter owns its own separate emitters_/
-	// emitter_alias_ built the same way but not exposed for reuse (and, per
-	// this file's own header comment, this adapter deliberately does not
-	// depend on sppm_adapter.h at all).
+	// Light subpath emission. Area-light case is near-identical to
+	// SPPMSceneAdapter's own SampleLightLe (same power-weighted-emitter,
+	// uniform-area-position, cosine-weighted-direction scheme), duplicated
+	// rather than shared for the same reason SampleLight()'s own area-light
+	// branch is (see this file's header comment on why this adapter
+	// deliberately does not depend on sppm_adapter.h at all). Punctual/sky
+	// cases are new (see class Scope comment) - each places the emitted
+	// ray's origin exactly on the light for point/spot (real, delta
+	// positions) or on a disk covering the scene's bounding sphere,
+	// perpendicular to the emission direction, for distant/sky (mirrors
+	// pbrt-v4's own DistantLight::SampleLe/ImageInfiniteLight::SampleLe -
+	// the standard technique for launching a light-subpath ray from a
+	// light with no finite position).
 	bool SampleLightLe(double /*u1*/, const double /*u2a*/[2], const double /*u2b*/[2],
 	                    BDPTLightLeSample<double>& les) const {
-		if (nEmitters_ == 0) return false;
-		int idx = emitter_alias_.sample(random_double());
-		const auto& light = emitters_[idx];
+		if (nTotal_ == 0) return false;
+		int idx = unifiedAlias_.sample(random_double());
+		double pmf = unifiedAlias_.pmf(idx);
 
-		AreaLightSample as;
-		if (!light->sample_area(random_double(), random_double(), as)) return false;
+		if (idx < nEmitters_) {
+			const auto& light = emitters_[idx];
 
-		// Two-sided lights emit from either face with equal probability --
-		// see SampleLightEmission()'s own comment on the matching side_pdf
-		// halving above.
-		const bool two_sided = emitter_dl_[idx]->is_two_sided();
-		vec3 n_emit = as.n;
-		double side_pdf = 1.0;
-		if (two_sided) {
-			if (random_double() < 0.5) n_emit = -as.n;
-			side_pdf = 0.5;
+			AreaLightSample as;
+			if (!light->sample_area(random_double(), random_double(), as)) return false;
+
+			// Two-sided lights emit from either face with equal probability --
+			// see SampleLightEmission()'s own comment on the matching side_pdf
+			// halving above.
+			const bool two_sided = emitter_dl_[idx]->is_two_sided();
+			vec3 n_emit = as.n;
+			double side_pdf = 1.0;
+			if (two_sided) {
+				if (random_double() < 0.5) n_emit = -as.n;
+				side_pdf = 0.5;
+			}
+			onb uvw(n_emit);
+			vec3 dir = uvw.transform(random_cosine_direction());
+			double cos_theta = dot(dir, n_emit);
+			if (cos_theta <= 0.0) return false;   // degenerate onb edge case
+
+			color Le = emitter_dl_[idx]->get_texture()->value(as.u, as.v, as.p);
+
+			les.ray_o[0]=as.p.x(); les.ray_o[1]=as.p.y(); les.ray_o[2]=as.p.z();
+			les.ray_d[0]=dir.x();  les.ray_d[1]=dir.y();  les.ray_d[2]=dir.z();
+			les.p_on_light[0]=as.p.x(); les.p_on_light[1]=as.p.y(); les.p_on_light[2]=as.p.z();
+			les.n_on_light[0]=as.n.x(); les.n_on_light[1]=as.n.y(); les.n_on_light[2]=as.n.z();
+			les.L[0]=Le.x(); les.L[1]=Le.y(); les.L[2]=Le.z();
+			les.pdf_pos = as.pdf_pos * pmf;   // combined light-choice * position pdf
+			les.pdf_dir = side_pdf * cos_theta / pi;   // cosine_pdf's own value() formula, halved for two-sided
+			les.abs_cos_theta = cos_theta;
+			les.is_on_surface = true;
+			les.is_infinite = false;
+			les.is_delta_dir = false;
+			les.light_id = idx;
+			return true;
 		}
-		onb uvw(n_emit);
-		vec3 dir = uvw.transform(random_cosine_direction());
-		double cos_theta = dot(dir, n_emit);
-		if (cos_theta <= 0.0) return false;   // degenerate onb edge case
 
-		color Le = emitter_dl_[idx]->get_texture()->value(as.u, as.v, as.p);
-
-		les.ray_o[0]=as.p.x(); les.ray_o[1]=as.p.y(); les.ray_o[2]=as.p.z();
-		les.ray_d[0]=dir.x();  les.ray_d[1]=dir.y();  les.ray_d[2]=dir.z();
-		les.p_on_light[0]=as.p.x(); les.p_on_light[1]=as.p.y(); les.p_on_light[2]=as.p.z();
-		les.n_on_light[0]=as.n.x(); les.n_on_light[1]=as.n.y(); les.n_on_light[2]=as.n.z();
+		if (idx < spotBase_) {                                    // point
+			const point_light_obj& L = cam_.punct_lights->points[idx - punctBase_];
+			vec3 dir = random_unit_vector();   // isotropic: uniform sphere, pdf = 1/(4*pi)
+			color Le = L.intensity();
+			point3 p = L.position();
+			les.ray_o[0]=p.x(); les.ray_o[1]=p.y(); les.ray_o[2]=p.z();
+			les.ray_d[0]=dir.x(); les.ray_d[1]=dir.y(); les.ray_d[2]=dir.z();
+			les.p_on_light[0]=p.x(); les.p_on_light[1]=p.y(); les.p_on_light[2]=p.z();
+			les.n_on_light[0]=les.n_on_light[1]=les.n_on_light[2]=0.0;
+			les.L[0]=Le.x(); les.L[1]=Le.y(); les.L[2]=Le.z();
+			les.pdf_pos = pmf;   // delta position
+			les.pdf_dir = 1.0 / (4.0 * pi);
+			les.abs_cos_theta = 1.0;   // no surface normal at a point source to weight against - pbrt-v4's own convention
+			les.is_on_surface = true;
+			les.is_infinite = false;
+			les.is_delta_dir = true;
+			les.light_id = toLightId(idx);
+			return true;
+		}
+		if (idx < distBase_) {                                    // spot
+			const spot_light_obj& L = cam_.punct_lights->spots[idx - spotBase_];
+			vec3 dir; double pdf_dir;
+			L.sample_le(random_double(), random_double(), random_double(), dir, pdf_dir);
+			if (pdf_dir <= 0.0) return false;
+			color Le = L.peak_intensity() * L.falloff(dir);
+			point3 p = L.position();
+			les.ray_o[0]=p.x(); les.ray_o[1]=p.y(); les.ray_o[2]=p.z();
+			les.ray_d[0]=dir.x(); les.ray_d[1]=dir.y(); les.ray_d[2]=dir.z();
+			les.p_on_light[0]=p.x(); les.p_on_light[1]=p.y(); les.p_on_light[2]=p.z();
+			les.n_on_light[0]=les.n_on_light[1]=les.n_on_light[2]=0.0;
+			les.L[0]=Le.x(); les.L[1]=Le.y(); les.L[2]=Le.z();
+			les.pdf_pos = pmf;
+			les.pdf_dir = pdf_dir;
+			les.abs_cos_theta = 1.0;
+			les.is_on_surface = true;
+			les.is_infinite = false;
+			les.is_delta_dir = true;
+			les.light_id = toLightId(idx);
+			return true;
+		}
+		if (idx < skyIdx_) {                                      // distant
+			const distant_light_obj& L = cam_.punct_lights->distants[idx - distBase_];
+			vec3 wiToLight = L.direction();
+			vec3 rayDir = -wiToLight;   // photon travels the opposite way from "toward the light"
+			onb frame(rayDir);
+			double dx, dy;
+			SampleUniformDiskConcentric(random_double(), random_double(), dx, dy);
+			point3 center(sceneCenter_[0], sceneCenter_[1], sceneCenter_[2]);
+			point3 origin = center + sceneRadius_ * wiToLight + sceneRadius_ * frame.transform(vec3(dx, dy, 0.0));
+			color Le = L.radiance();
+			les.ray_o[0]=origin.x(); les.ray_o[1]=origin.y(); les.ray_o[2]=origin.z();
+			les.ray_d[0]=rayDir.x(); les.ray_d[1]=rayDir.y(); les.ray_d[2]=rayDir.z();
+			les.p_on_light[0]=origin.x(); les.p_on_light[1]=origin.y(); les.p_on_light[2]=origin.z();
+			les.n_on_light[0]=les.n_on_light[1]=les.n_on_light[2]=0.0;
+			les.L[0]=Le.x(); les.L[1]=Le.y(); les.L[2]=Le.z();
+			les.pdf_pos = pmf / (pi * sceneRadius_ * sceneRadius_);   // uniform disk, combined w/ light choice
+			les.pdf_dir = 1.0;   // delta direction
+			les.abs_cos_theta = 1.0;   // disk is perpendicular to rayDir by construction
+			les.is_on_surface = true;
+			les.is_infinite = false;
+			les.is_delta_dir = true;
+			les.light_id = toLightId(idx);
+			return true;
+		}
+		// Sky - same disk technique as distant, but the direction is drawn
+		// from the image's own importance distribution (sample_Le() below)
+		// instead of being fixed, and is_on_surface=false routes
+		// BDPTGenerateLightSubpath to MakeLightInfinite instead of
+		// MakeLightSurface (see that function's own dispatch).
+		SkyLiSample sm = cam_.sky->sample_Le();
+		if (sm.pdf <= 0.0) return false;
+		vec3 w = sm.direction;        // "arrival" convention, same as SampleLight()'s own sky branch
+		vec3 rayDir = -w;             // photon travel direction
+		color Le = cam_.sky->Le(unit_vector(w));
+		onb frame(rayDir);
+		double dx, dy;
+		SampleUniformDiskConcentric(random_double(), random_double(), dx, dy);
+		point3 center(sceneCenter_[0], sceneCenter_[1], sceneCenter_[2]);
+		point3 origin = center + sceneRadius_ * w + sceneRadius_ * frame.transform(vec3(dx, dy, 0.0));
+		les.ray_o[0]=origin.x(); les.ray_o[1]=origin.y(); les.ray_o[2]=origin.z();
+		les.ray_d[0]=rayDir.x(); les.ray_d[1]=rayDir.y(); les.ray_d[2]=rayDir.z();
+		les.p_on_light[0]=les.p_on_light[1]=les.p_on_light[2]=0.0;
+		les.n_on_light[0]=les.n_on_light[1]=les.n_on_light[2]=0.0;
 		les.L[0]=Le.x(); les.L[1]=Le.y(); les.L[2]=Le.z();
-		les.pdf_pos = as.pdf_pos * emitter_alias_.pmf(idx);   // combined light-choice * position pdf
-		les.pdf_dir = side_pdf * cos_theta / pi;               // cosine_pdf's own value() formula, halved for two-sided
-		les.abs_cos_theta = cos_theta;
-		les.is_on_surface = true;
-		les.is_infinite = false;
+		les.pdf_pos = pmf / (pi * sceneRadius_ * sceneRadius_);
+		les.pdf_dir = sm.pdf;   // raw solid-angle density at w - matches SampleLight()'s own sky pdf convention
+		les.abs_cos_theta = 1.0;
+		les.is_on_surface = false;
+		les.is_infinite = true;
 		les.is_delta_dir = false;
-		les.light_id = idx;
+		les.light_id = toLightId(idx);
 		return true;
 	}
 
-	// id may be EITHER a light index (< nEmitters_, from SampleLight/
-	// SampleLightLe's own light_id) OR a bsdf_id (>= nEmitters_, from a
-	// Surface vertex whose hit happened to be emissive -- see this class's
-	// own header comment on why bdpt.h reuses si.bsdf_id as a light
-	// identifier for that case). resolve_emitter_index() disambiguates.
+	// id may be EITHER a unified light index (from SampleLight/
+	// SampleLightLe's own light_id, offset via toLightId() for anything
+	// past an area light) OR a bsdf_id (from a Surface vertex whose hit
+	// happened to be emissive -- see this class's own header comment on why
+	// bdpt.h reuses si.bsdf_id as a light identifier for that case).
+	// resolve_emitter_index() disambiguates and returns the resolved index
+	// into unifiedAlias_'s own 0..nTotal_-1 numbering either way.
 	double LightPMF(int id) const {
 		int k = resolve_emitter_index(id);
-		return (k >= 0) ? emitter_alias_.pmf(k) : 0.0;
+		return (k >= 0) ? unifiedAlias_.pmf(k) : 0.0;
 	}
 
-	// p is unused (our uniform-area emitters have position-independent
-	// pdf_pos = 1/area; a spatially-varying emitter would need it, but
-	// none of this codebase's diffuse_light shapes are). n is the light's
-	// own geometric normal at the point in question (nullptr only for
-	// non-surface/infinite lights, which never reach this adapter -- see
-	// class comment); w is the direction FROM the light.
+	// k (already resolved to unifiedAlias_'s own numbering by
+	// resolve_emitter_index()) determines which light kind's pdf formula
+	// applies:
+	//   - area  (k < nEmitters_): p/n identify the specific surface point,
+	//     pdf_pos is that shape's own precomputed 1/area, pdf_dir is the
+	//     cosine-weighted emission density.
+	//   - point/spot (delta position): pdf_pos = 1 (a delta has no real
+	//     positional density; SampleLight/SampleLightLe's own combined pdfs
+	//     already fold the light-choice pmf into the field that DOES carry
+	//     real information for that light instead - see their own
+	//     comments), pdf_dir = the real emission-direction density (spot's
+	//     own cone-importance-sampled pdf_le(); point's isotropic 1/(4*pi)).
+	//   - distant/sky (delta direction / infinite): pdf_pos = the disk-
+	//     sampling density 1/(pi*r^2) (this IS real spatial information -
+	//     see SampleLightLe's own comment on why distant/sky's roles are
+	//     the mirror image of point/spot's), pdf_dir = 1 for distant
+	//     (delta), or the sky's own real solid-angle density for sky.
+	// p is only used by the area case (unused parameter name kept for
+	// documentation - not renamed to avoid an unused-parameter warning
+	// diverging from every other kind's own signature).
 	void LightPDFLe(int id, const double* /*p*/, const double* n, const double* w,
 	                 double& pdfPos, double& pdfDir) const {
 		int k = resolve_emitter_index(id);
 		if (k < 0) { pdfPos = 0.0; pdfDir = 0.0; return; }
-		pdfPos = emitter_pdf_pos_[k];
-		double cosTheta = n ? (w[0]*n[0] + w[1]*n[1] + w[2]*n[2]) : 1.0;
-		pdfDir = (cosTheta > 0.0) ? cosTheta / pi : 0.0;
+		if (k < nEmitters_) {
+			pdfPos = emitter_pdf_pos_[k];
+			double cosTheta = n ? (w[0]*n[0] + w[1]*n[1] + w[2]*n[2]) : 1.0;
+			pdfDir = (cosTheta > 0.0) ? cosTheta / pi : 0.0;
+			return;
+		}
+		if (k < spotBase_) {                    // point
+			pdfPos = 1.0;
+			pdfDir = 1.0 / (4.0 * pi);
+			return;
+		}
+		if (k < distBase_) {                    // spot
+			pdfPos = 1.0;
+			pdfDir = cam_.punct_lights->spots[k - spotBase_].pdf_le(vec3(w[0], w[1], w[2]));
+			return;
+		}
+		// distant or sky - identical positional density (both use the
+		// same bounding-sphere disk), differ only in directional density.
+		pdfPos = 1.0 / (pi * sceneRadius_ * sceneRadius_);
+		pdfDir = (k < skyIdx_) ? 1.0 : cam_.sky->pdf_Li(vec3(w[0], w[1], w[2]));
 	}
 
 	// ------------------------------------------------------------------
@@ -765,31 +1083,52 @@ class BDPTSceneAdapter {
 	}
 
 	void SceneBoundingSphere(double center[3], double& radius) const {
-		aabb box = world_.bounding_box();
-		double cx = (box.x.min + box.x.max) * 0.5;
-		double cy = (box.y.min + box.y.max) * 0.5;
-		double cz = (box.z.min + box.z.max) * 0.5;
-		center[0] = cx; center[1] = cy; center[2] = cz;
-		double dx = box.x.max - cx, dy = box.y.max - cy, dz = box.z.max - cz;
-		radius = std::sqrt(dx*dx + dy*dy + dz*dz);
-		if (!(radius > 0.0)) radius = 1.0;
+		center[0] = sceneCenter_[0]; center[1] = sceneCenter_[1]; center[2] = sceneCenter_[2];
+		radius = sceneRadius_;
 	}
 
-	// No real infinite/sky light in this v1 (see class comment) -- treated
-	// as a flat backdrop of cam_.background, matching what a plain camera
-	// ray miss already renders as everywhere else in this codebase (see
-	// camera.h's own ray_color(), which returns `background` on a miss).
-	// For scene A1 (background = black) this is exactly zero, i.e. a no-op.
-	void InfiniteLightLe(const double* /*dir*/, double out[3]) const {
+	// A real sky (cam_.sky) returns its actual per-direction radiance,
+	// exactly matching the main path tracer's own miss handling
+	// (camera.h's `sky->Le(unit_vector(current_ray.direction()))`) - `dir`
+	// here is the escaping camera ray's own direction (BDPTVertex::Le()'s
+	// call convention, see its own comment: "neg_w" there is the direction
+	// FROM the light TOWARD the previous vertex, which for a camera ray
+	// escaping to infinity is exactly the ray's own travel direction).
+	// Falls back to cam_.background when there's no sky, matching what a
+	// plain camera ray miss already renders as everywhere else in this
+	// codebase - for a black-background, sky-less scene this is exactly
+	// zero, i.e. a no-op.
+	void InfiniteLightLe(const double* dir, double out[3]) const {
+		if (hasSky_) {
+			color Le = cam_.sky->Le(unit_vector(vec3(dir[0], dir[1], dir[2])));
+			out[0] = Le.x(); out[1] = Le.y(); out[2] = Le.z();
+			return;
+		}
 		out[0] = cam_.background.x(); out[1] = cam_.background.y(); out[2] = cam_.background.z();
 	}
 
-	// A flat backdrop has no associated sampling strategy (SampleLightLe
-	// never emits an is_infinite=true sample here), so its origin-pdf
-	// contribution to any OTHER strategy's MIS weight is correctly zero --
-	// see PDFLightOrigin's IsInfiniteLight() branch in bdpt.h, the only
-	// caller of this method.
-	double InfiniteLightDensity(const double* /*dir*/) const { return 0.0; }
+	// PDFLightOrigin's own IsInfiniteLight() branch (bdpt.h) calls this with
+	// `w` = the direction FROM the sky vertex TOWARD some other vertex it's
+	// reasoning about - the same "arrival" convention SampleLight()'s own
+	// sky branch and sky_light.h's pdf_Li() use, so this can pass `dir`
+	// straight through with no sign flip. (BDPTGenerateLightSubpath's own
+	// call site passes les.ray_d - the EMISSION direction, i.e. the
+	// opposite sign convention - for a symmetric/near-symmetric HDR
+	// environment this makes no practical difference; for a strongly
+	// asymmetric one it's a known, narrow imprecision affecting only a
+	// light subpath's own pdfFwd when it happens to originate at the sky,
+	// not the primary NEE-toward-sky contribution that makes a sky-lit
+	// scene visible under BDPT/MLT at all - not fixed here since that call
+	// site is bdpt.h's own, pre-existing, and out of scope for this
+	// adapter.) A flat (sky-less) backdrop has no associated sampling
+	// strategy (SampleLightLe never emits an is_infinite=true sample when
+	// !hasSky_), so its origin-pdf contribution to any OTHER strategy's MIS
+	// weight is correctly zero.
+	double InfiniteLightDensity(const double* dir) const {
+		if (!hasSky_) return 0.0;
+		double pmf = unifiedAlias_.pmf(skyIdx_);
+		return cam_.sky->pdf_Li(vec3(dir[0], dir[1], dir[2])) * pmf;
+	}
 
 	double RandFloat() const { return random_double(); }
 
@@ -837,8 +1176,19 @@ class BDPTSceneAdapter {
 	std::vector<shared_ptr<hittable>>      emitters_;
 	std::vector<shared_ptr<diffuse_light>> emitter_dl_;
 	std::vector<double>                    emitter_pdf_pos_;  // 1/area per emitter, parallel to emitters_
-	AliasTable                             emitter_alias_;
+	AliasTable                             emitter_alias_;    // area lights only - SampleLightEmission()'s own table
 	int                                    nEmitters_ = 0;
+
+	// Unified area+point+spot+distant+sky distribution and the index-range
+	// bookkeeping SampleLight()/SampleLightLe()/LightPDFLe() dispatch on -
+	// see SampleLight()'s own comment for the layout. sceneCenter_/
+	// sceneRadius_ are the scene's bounding sphere, computed once in the
+	// constructor (see its own comment).
+	AliasTable unifiedAlias_;
+	int        punctBase_ = 0, spotBase_ = 0, distBase_ = 0, skyIdx_ = 0, nTotal_ = 0;
+	bool       hasSky_ = false;
+	double     sceneCenter_[3] = {0.0, 0.0, 0.0};
+	double     sceneRadius_ = 1.0;
 
 	// Fixed-capacity, thread-local ring buffer of shading contexts. Unlike
 	// SPPMSceneAdapter's durable_ctx_/transient_ctx_ split, BDPT/MLT need
@@ -879,11 +1229,35 @@ class BDPTSceneAdapter {
 		return &ctx_pool_[pool_idx];
 	}
 
-	// Disambiguates the two numbering spaces LightPMF/LightPDFLe can be
-	// called with -- see their own doc comments and this class's leading
-	// bsdf_id-space comment above Intersect().
+	// Real bsdf_ids (Intersect()'s hit.bsdf_id = nEmitters_ + pool_idx)
+	// occupy [nEmitters_, nEmitters_+kCtxPoolCapacity). A punctual/sky
+	// light's own light_id needs to live OUTSIDE that whole range so
+	// resolve_emitter_index() below can tell the two apart by numeric range
+	// alone, with no ambiguity regardless of how full ctx_pool_ currently
+	// is - offsetting by kCtxPoolCapacity (not just past nEmitters_, which
+	// a real bsdf_id can also reach) is what guarantees that. Called by
+	// SampleLight()/SampleLightLe() for every kind past an area light; area
+	// lights keep using their raw unifiedAlias_ index directly (identity
+	// here) since that numbering was already established, pre-existing
+	// contract before this class supported anything else.
+	int toLightId(int aliasIdx) const {
+		return (aliasIdx < nEmitters_) ? aliasIdx : (aliasIdx + (int)kCtxPoolCapacity);
+	}
+
+	// Disambiguates the numbering spaces LightPMF/LightPDFLe can be called
+	// with -- an area-light index (< nEmitters_, used as-is), a punctual/
+	// sky light_id (>= nEmitters_+kCtxPoolCapacity, see toLightId() above -
+	// unwrapped back to unifiedAlias_'s own numbering), or a bsdf_id (from
+	// a Surface vertex whose hit happened to be emissive -- see this
+	// class's own header comment on why bdpt.h reuses si.bsdf_id as a light
+	// identifier for that case). Returns the resolved index into
+	// unifiedAlias_'s own 0..nTotal_-1 numbering, or -1.
 	int resolve_emitter_index(int id) const {
 		if (id >= 0 && id < nEmitters_) return id;
+		if (id >= nEmitters_ + (int)kCtxPoolCapacity) {
+			int k = id - (int)kCtxPoolCapacity;
+			return (k < nTotal_) ? k : -1;
+		}
 		const SPPMShadingContext* ctx = context_for(id);
 		if (!ctx || !ctx->mat) return -1;
 		const material* m = ctx->mat.get();

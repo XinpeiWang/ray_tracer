@@ -101,12 +101,21 @@ struct BDPTHit {
 // BDPTLightSample<T>: result of Scene::SampleLight (direct illumination)
 template<typename T>
 struct BDPTLightSample {
-	T p_light[3];    // sampled point on the light
-	T n_light[3];    // normal at that point (zero for point lights)
+	T p_light[3];    // sampled point on the light (ignored if is_infinite)
+	T n_light[3];    // normal at that point (zero for point/infinite lights)
 	T L[3];          // emitted radiance / intensity
 	T pdf;           // solid-angle or position pdf
 	T wi[3];         // direction from ref_p towards light
-	bool is_delta;   // true for point/directional lights
+	bool is_delta;   // true for point/spot/directional lights
+	// True for an environment/sky light -- mirrors BDPTLightLeSample::
+	// is_infinite below. A position-less light has no real p_light to build
+	// a Vertex::CreateLight-style surface endpoint from (pbrt-v4 derives
+	// this from the light object's own Type() at every use site; this
+	// ported Scene concept instead threads it explicitly through the
+	// sample, since a Vertex here is built once, by value, not kept
+	// attached to a light pointer). See ConnectBDPT's s==1 case, the only
+	// reader.
+	bool is_infinite;
 	int light_id;
 };
 
@@ -346,13 +355,25 @@ struct BDPTVertex {
 	template<typename Scene>
 	void Le(const BDPTVertex& next, const Scene& scene, T out[3]) const {
 		if (!IsLight()) { out[0]=out[1]=out[2]=T(0); return; }
+		// An infinite-light vertex has no real position (p() is zeroed by
+		// MakeLightInfinite), so deriving a direction from next.p()-p() the
+		// way every other case below does is meaningless - the ONLY call
+		// site (BDPTLi's s==0 strategy) reaches this exclusively via
+		// BDPTRandomWalk's own camera-ray-escapes-to-infinity vertex
+		// (bdpt.h, see its "Escaped -- add environment light vertex on
+		// camera paths" comment), which already computed ei.Le correctly
+		// via scene.InfiniteLightLe(dir, ...) using the REAL escaping ray
+		// direction at vertex-construction time - just return that,
+		// unconditionally, same as the plain-delta-light else branch below
+		// already does for the identical reason.
+		if (IsInfiniteLight()) {
+			out[0]=ei.Le[0]; out[1]=ei.Le[1]; out[2]=ei.Le[2];
+			return;
+		}
 		T w[3] = { next.p()[0]-p()[0], next.p()[1]-p()[1], next.p()[2]-p()[2] };
 		if (bdpt_detail::len2_3(w) == T(0)) { out[0]=out[1]=out[2]=T(0); return; }
 		bdpt_detail::norm3(w);
-		if (IsInfiniteLight()) {
-			T neg_w[3] = { -w[0], -w[1], -w[2] };
-			scene.InfiniteLightLe(neg_w, out);
-		} else if (type == BDPTVertexType::Surface) {
+		if (type == BDPTVertexType::Surface) {
 			// area light on surface: L only if w is on same side as geo_n
 			if (bdpt_detail::dot3(w, si.geo_n) > T(0)) {
 				out[0]=si.area_Le[0]; out[1]=si.area_Le[1]; out[2]=si.area_Le[2];
@@ -798,10 +819,19 @@ void BDPTConnect(BDPTVertex<T>* lightVerts, BDPTVertex<T>* cameraVerts,
 			T u2[2]  = { scene.RandFloat(), scene.RandFloat() };
 			if (scene.SampleLight(uLight, pt.p(), ls) &&
 				ls.pdf > T(0) && (ls.L[0]||ls.L[1]||ls.L[2])) {
-				// Create light vertex
+				// Create light vertex. An infinite (environment/sky) light
+				// has no real p_light/n_light to build a surface endpoint
+				// from - MakeLightInfinite matches what GenerateLightSubpath
+				// builds for the SAME light kind (see its own dispatch on
+				// les.is_on_surface), so PDFLight/PDFLightOrigin's own
+				// IsInfiniteLight() branches (the correct disk-based density,
+				// not a solid-angle-to-area conversion using an arbitrary
+				// fake distance) apply here too.
 				T Le_scaled[3] = { ls.L[0]/(ls.pdf), ls.L[1]/(ls.pdf), ls.L[2]/(ls.pdf) };
-				sampled = BDPTVertex<T>::MakeLightSurface(ls.p_light, ls.n_light,
-														  ls.L, ls.pdf, ls.light_id, ls.is_delta);
+				sampled = ls.is_infinite
+					? BDPTVertex<T>::MakeLightInfinite(ls.L, ls.pdf, ls.light_id)
+					: BDPTVertex<T>::MakeLightSurface(ls.p_light, ls.n_light,
+													  ls.L, ls.pdf, ls.light_id, ls.is_delta);
 				sampled.beta[0]=Le_scaled[0]; sampled.beta[1]=Le_scaled[1]; sampled.beta[2]=Le_scaled[2];
 				sampled.pdfFwd = sampled.template PDFLightOrigin<Scene>(pt, scene);
 

@@ -39,10 +39,13 @@
 namespace {
 
 // Shared by both entry points below -- builds world + configures cam
-// exactly like cpu_render_main_sppm() does, minus the sky/punctual-light
-// wiring (BDPT/MLT are area-lights-only in this v1 -- see bdpt_adapter.h's
-// own "Scope (v1)" comment). Returns nullptr on success, or an ErrorInfo
-// error code (via out_err) on failure.
+// exactly like cpu_render_main_sppm() does, INCLUDING the sky/punctual-
+// light wiring below (BDPTSceneAdapter now samples all of them - see
+// bdpt_adapter.h's own "Scope" comment; previously skipped here when this
+// was v1/area-lights-only, which is why every scene lit only by a
+// point/spot/distant/sky light used to render black under --bdpt/--mlt
+// even though the scene itself had a real light). Returns nullptr on
+// success, or an ErrorInfo error code (via out_err) on failure.
 const SceneDescriptor* build_scene_for_bdpt(const char* scene_id, int width, int height,
                                              double cam_x, double cam_y, double cam_z,
                                              int force_camera_override,
@@ -103,13 +106,19 @@ const SceneDescriptor* build_scene_for_bdpt(const char* scene_id, int width, int
 	// transparently via camera::get_ray() inside BDPTSceneAdapter::
 	// PixelToRay() -- but BDPTSceneAdapter::CameraPDFWe() itself assumes the
 	// default perspective vfov/focus_dist model (see bdpt_adapter.h's own
-	// "Scope (v1)" comment), so alt-camera scenes are unverified under
-	// --bdpt/--mlt even though they won't crash. Sky/punctual lights are
-	// v1-out-of-scope (area lights only -- same comment), so build_sky()/
-	// build_punct() are deliberately NOT wired into out_cam here, unlike
-	// cpu_render_main_sppm.
+	// "Scope" comment), so alt-camera scenes are unverified under
+	// --bdpt/--mlt even though they won't crash.
 	if (scene_desc->setup_camera)
 		scene_desc->setup_camera(out_cam);
+
+	// Same wiring as cpu_render_main_sppm() (cpu_interface.cpp) -- must run
+	// AFTER setup_camera() above, since BDPTSceneAdapter's constructor reads
+	// cam.sky/cam.punct_lights directly (matching SPPMSceneAdapter's own
+	// precedent) and needs them populated before it's ever built.
+	if (scene_desc->build_sky)
+		out_cam.sky = scene_desc->build_sky();
+	if (scene_desc->build_punct)
+		out_cam.punct_lights = scene_desc->build_punct();
 
 	return scene_desc;
 }
@@ -128,20 +137,18 @@ int bdpt_render_core(const hittable_list& world, camera& cam,
 		std::cout << "[TECH] -- Render Technique Summary --------------------------" << std::endl;
 		std::cout << "[TECH] Integrator     : Bidirectional Path Tracing (pbrt-v4 BDPTIntegrator style)" << std::endl;
 		std::cout << "[TECH] MIS            : Balanced multi-strategy weight over all (s,t) connections" << std::endl;
-		std::cout << "[TECH] Light coverage : area lights only (v1 -- see bdpt_adapter.h's Scope comment)" << std::endl;
+		std::cout << "[TECH] Light coverage : area + point/spot/distant + sky (see bdpt_adapter.h's Scope comment; goniometric/projection still unsupported)" << std::endl;
 		std::cout << "[TECH] BSDF coverage  : lambertian/normalized_fresnel/diffuse_transmission (full) + 8 delta materials (resampled)" << std::endl;
 		std::cout << "[TECH] Threading      : " << std::thread::hardware_concurrency() << " logical cores, row-parallel" << std::endl;
 		std::cout << "[TECH] -------------------------------------------------------" << std::endl;
 
 		BDPTSceneAdapter adapter(world, cam);
 		if (adapter.EmitterCount() == 0) {
-			std::cerr << "[bdpt_render_core] WARNING: this scene has no area-light emitters "
-			             "(diffuse_light shapes) - BDPT only samples area lights (v1, see "
-			             "bdpt_adapter.h's Scope comment), so this render will be entirely "
-			             "black even though it will report success. If this scene's only "
-			             "lighting is punctual (point/spot/distant) or sky/infinite, that is "
-			             "not yet supported by --bdpt/--mlt; use the default path tracer or "
-			             "--sppm instead." << std::endl;
+			std::cerr << "[bdpt_render_core] WARNING: this scene has no light BDPT can sample "
+			             "(no area/point/spot/distant/sky light - see bdpt_adapter.h's Scope "
+			             "comment; a goniometric or projection light alone still isn't enough), "
+			             "so this render will be entirely black even though it will report "
+			             "success." << std::endl;
 		}
 		std::vector<double> out_rgb;
 		bdpt_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, bdpt_max_depth, out_rgb);
@@ -189,20 +196,18 @@ int mlt_render_core(const hittable_list& world, camera& cam,
 		std::cout << "[TECH] Integrator     : Metropolis Light Transport (pbrt-v4 MLTIntegrator style)" << std::endl;
 		std::cout << "[TECH] Sampler        : Primary-sample-space Markov chain (bootstrap + small/large steps)" << std::endl;
 		std::cout << "[TECH] sigma=" << kSigma << "  largeStepProb=" << kLargeStepProb << std::endl;
-		std::cout << "[TECH] Light coverage : area lights only (v1 -- see bdpt_adapter.h's Scope comment)" << std::endl;
+		std::cout << "[TECH] Light coverage : area + point/spot/distant + sky (see bdpt_adapter.h's Scope comment; goniometric/projection still unsupported)" << std::endl;
 		std::cout << "[TECH] Threading      : " << std::thread::hardware_concurrency()
 		           << " independent Markov chains (see mlt_render_with_adapter())" << std::endl;
 		std::cout << "[TECH] -------------------------------------------------------" << std::endl;
 
 		BDPTSceneAdapter adapter(world, cam);
 		if (adapter.EmitterCount() == 0) {
-			std::cerr << "[mlt_render_core] WARNING: this scene has no area-light emitters "
-			             "(diffuse_light shapes) - MLT only samples area lights (v1, see "
-			             "bdpt_adapter.h's Scope comment), so this render will be entirely "
-			             "black even though it will report success. If this scene's only "
-			             "lighting is punctual (point/spot/distant) or sky/infinite, that is "
-			             "not yet supported by --bdpt/--mlt; use the default path tracer or "
-			             "--sppm instead." << std::endl;
+			std::cerr << "[mlt_render_core] WARNING: this scene has no light MLT can sample "
+			             "(no area/point/spot/distant/sky light - see bdpt_adapter.h's Scope "
+			             "comment; a goniometric or projection light alone still isn't enough), "
+			             "so this render will be entirely black even though it will report "
+			             "success." << std::endl;
 		}
 		std::vector<double> out_rgb;
 		mlt_render_with_adapter(adapter, cam.image_width, cam.image_height,
@@ -309,10 +314,11 @@ int simplepath_render_core(const hittable_list& world, camera& cam, int spp, int
 		           << " sample_bsdf=" << sample_bsdf << ")" << std::endl;
 		BDPTSceneAdapter adapter(world, cam);
 		if (sample_lights && adapter.EmitterCount() == 0) {
-			std::cerr << "[simplepath_render_core] WARNING: this scene has no area-light emitters - "
-			             "NEE (sample_lights=1) only samples area lights (v1, see bdpt_adapter.h's "
-			             "Scope comment), so direct lighting will contribute nothing even though "
-			             "this render will report success." << std::endl;
+			std::cerr << "[simplepath_render_core] WARNING: this scene has no light NEE can sample "
+			             "(no area/point/spot/distant/sky light - see bdpt_adapter.h's Scope "
+			             "comment; a goniometric or projection light alone still isn't enough), so "
+			             "direct lighting will contribute nothing even though this render will "
+			             "report success." << std::endl;
 		}
 		std::vector<double> out_rgb;
 		simplepath_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, max_depth,
@@ -377,11 +383,12 @@ int lightpath_render_core(const hittable_list& world, camera& cam, int spp, int 
 		std::cout << "[TECH] Integrator: LightPath (light-traced, film-splat -- see bdpt_adapter.h's "
 		             "SampleCameraConnection() comment)" << std::endl;
 		BDPTSceneAdapter adapter(world, cam);
-		if (adapter.EmitterCount() == 0) {
+		if (adapter.AreaEmitterCount() == 0) {
 			std::cerr << "[lightpath_render_core] WARNING: this scene has no area-light emitters - "
-			             "LightPath only samples area lights (v1, see bdpt_adapter.h's Scope "
-			             "comment), so this render will be entirely black even though it will "
-			             "report success." << std::endl;
+			             "LightPath only samples area lights (its own SampleLightEmission() is not "
+			             "part of the area+point/spot/distant+sky unification BDPT/MLT/SimplePath "
+			             "now share - see bdpt_adapter.h's Scope comment), so this render will be "
+			             "entirely black even though it will report success." << std::endl;
 		}
 		std::vector<double> out_rgb;
 		lightpath_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, max_depth, out_rgb);

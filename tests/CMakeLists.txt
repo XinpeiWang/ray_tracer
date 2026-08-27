@@ -19,6 +19,7 @@ add_executable(unit_tests
     unit/animated_transform_tests.cpp
     unit/anisotropic_ggx_tests.cpp
     unit/area_lights_tests.cpp
+    unit/bdpt_adapter_punctual_sky_tests.cpp
     unit/bdpt_adapter_two_sided_tests.cpp
     unit/bdpt_tests.cpp
     unit/bilinear_patch_tests.cpp

@@ -68,6 +68,13 @@ class point_light_obj {
 
 	double power() const { return data.power(); }
 
+	// Fixed world-space position and intrinsic (already scale-applied)
+	// intensity -- for a caller that needs to emit a ray FROM the light
+	// (light-subpath generation) rather than evaluate incident radiance
+	// AT a shading point, which sample_direct() above is scoped to.
+	point3 position() const { return point3(data.pos_x, data.pos_y, data.pos_z); }
+	color  intensity() const { return color(data.ir, data.ig, data.ib) * data.scale; }
+
   private:
 	PointLightData<double> data;
 };
@@ -113,6 +120,28 @@ class spot_light_obj {
 
 	double power() const { return data.power(); }
 
+	// Fixed world-space position -- see point_light_obj::position()'s own
+	// comment.
+	point3 position() const { return point3(data.pos_x, data.pos_y, data.pos_z); }
+
+	// Forwards SpotLightData::sample_le()/pdf_le() (real cone-importance-
+	// sampled emission direction, already implemented there) for light-
+	// subpath generation.
+	void sample_le(double ru, double rv0, double rv1,
+	               vec3& dir, double& pdf_dir) const {
+		double wx, wy, wz;
+		data.sample_le(ru, rv0, rv1, wx, wy, wz, pdf_dir);
+		dir = vec3(wx, wy, wz);
+	}
+	double pdf_le(const vec3& dir) const { return data.pdf_le(dir.x(), dir.y(), dir.z()); }
+
+	// Peak (on-axis) intensity, already scale-applied -- SampleLe's emitted
+	// radiance is this times the same falloff() SampleLi's eval_Li applies,
+	// evaluated at the sampled direction instead of a shading-point-derived
+	// one.
+	color peak_intensity() const { return color(data.ir, data.ig, data.ib) * data.scale; }
+	double falloff(const vec3& w) const { return data.falloff(w.x(), w.y(), w.z()); }
+
   private:
 	SpotLightData<double> data;
 };
@@ -144,6 +173,13 @@ class distant_light_obj {
 	}
 
 	double power() const { return data.power(); }
+
+	// Fixed direction FROM any scene point TOWARD the light (the "wi"
+	// convention DistantLightData::dir_x/y/z and sample_wi() already use) --
+	// a light-subpath photon leaving this light travels the opposite way,
+	// -direction().
+	vec3  direction() const { return vec3(data.dir_x, data.dir_y, data.dir_z); }
+	color radiance() const { return color(data.ir, data.ig, data.ib) * data.scale; }
 
   private:
 	DistantLightData<double> data;

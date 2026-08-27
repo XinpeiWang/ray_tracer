@@ -284,9 +284,11 @@ int cpu_render_main_ao(
 /// @brief Render a scene using SimplePathIntegrator -- pbrt-v4's canonical
 /// reference path tracer with optional NEE and optional BSDF importance
 /// sampling. See src/shared/simple_path.h's own file comment. CPU only.
-/// Area lights only for NEE (same "Scope v1" as --bdpt/--mlt -- see
-/// bdpt_adapter.h's own comment); with sample_lights=0 this restriction is
-/// moot (no light sampling happens at all).
+/// NEE samples area + point/spot/distant + sky lights (same unified
+/// distribution as --bdpt/--mlt -- see bdpt_adapter.h's own "Scope"
+/// comment; goniometric/projection lights still aren't wired in); with
+/// sample_lights=0 this restriction is moot (no light sampling happens at
+/// all).
 /// @param width/height    Image dimensions in pixels
 /// @param spp             Samples per pixel
 /// @param max_depth       Maximum path length
@@ -356,7 +358,10 @@ int cpu_render_main_simplevolpath(
 /// opposite direction of every other integrator this project has, which
 /// all start at the camera). See src/shared/light_path.h's own file
 /// comment. CPU only. Area lights only (SampleLightEmission only samples
-/// this adapter's diffuse_light emitters -- same v1 scope as --bdpt/--mlt).
+/// this adapter's diffuse_light emitters -- unlike SampleLight/SampleLightLe,
+/// which --bdpt/--mlt/--simplepath now also draw from point/spot/distant/
+/// sky lights, this method was not extended -- see bdpt_adapter.h's own
+/// "Scope" comment and AreaEmitterCount()).
 ///
 /// Uses BDPTSceneAdapter's importance-transport BSDF hooks
 /// (BSDFfImportance/BSDFSampleFImportance), which do not apply the eta^2
