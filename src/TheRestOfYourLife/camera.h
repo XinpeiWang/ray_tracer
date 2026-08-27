@@ -1040,6 +1040,7 @@ class camera {
         bool   specular_bounce    = true;
         bool   any_nonspecular    = false;  // pbrt-v4: anyNonSpecularBounces
         point3 prev_surface_p     = r.origin(); // pbrt-v4: prevIntrCtx shading point
+        int    medium_boundary_crossings = 0;
 
         // Russian roulette below only fires when a path's throughput has
         // dropped under 1.0 - it terminates/reweights *dim* paths, but does
@@ -1062,6 +1063,13 @@ class camera {
                          std::min(c.y(), kMaxPathThroughput),
                          std::min(c.z(), kMaxPathThroughput));
         };
+        // A medium-boundary crossing (interface_material) is free - doesn't
+        // consume bounces_left or an RR trial (see the branch below) - so
+        // nothing else bounds how many a single path can take. A degenerate
+        // scene (self-intersecting/near-zero-thickness interface geometry)
+        // could otherwise hang the path entirely; this mirrors shadow_ray.h's
+        // own kMaxTransmissiveSkips bound for the identical reason.
+        constexpr int kMaxMediumBoundaryCrossings = 32;
 
         while (bounces_left > 0) {
             // One iteration = one traced ray (the primary ray on the first
@@ -1146,6 +1154,22 @@ class camera {
             scatter_record srec;
             if (!rec.mat->scatter(current_ray, rec, srec, any_nonspecular))
                 break;
+
+            // True pass-through (interface_material - pbrt-v4's real "no
+            // BSDF" interface material, SkipIntersection in pbrt-v4 itself):
+            // nothing actually scattered here, so specular_bounce/
+            // prev_bsdf_pdf/prev_surface_p are left exactly as they were -
+            // the NEXT emitter hit's MIS weight should reflect whatever the
+            // last REAL vertex was, not this crossing. Doesn't consume
+            // bounces_left or an RR trial either, matching pbrt-v4's own
+            // free SkipIntersection. Checked before the BSSRDF branch below
+            // since interface_material never has a subsurface profile.
+            if (srec.is_medium_boundary) {
+                beta = clamp_throughput(beta * srec.attenuation);
+                current_ray = srec.skip_pdf_ray;
+                if (++medium_boundary_crossings > kMaxMediumBoundaryCrossings) break;
+                continue;
+            }
 
             // BSSRDF subsurface branch: an entry-interface specular
             // transmission into a material with a real diffusion profile
@@ -1418,6 +1442,7 @@ class camera {
         bool   specular_bounce    = true;
         bool   any_nonspecular    = false;
         point3 prev_surface_p     = r.origin();
+        int    medium_boundary_crossings = 0;
 
         // See ray_color()'s own kMaxPathThroughput comment - identical
         // ceiling, applied per spectral channel instead of per RGB channel.
@@ -1428,6 +1453,8 @@ class camera {
                 if (out[i] > kMaxPathThroughput) out[i] = kMaxPathThroughput;
             return out;
         };
+        // See ray_color()'s own kMaxMediumBoundaryCrossings comment.
+        constexpr int kMaxMediumBoundaryCrossings = 32;
 
         while (bounces_left > 0) {
             if (render_stats::enabled())
@@ -1515,6 +1542,17 @@ class camera {
                 : rec.mat->scatter(current_ray, rec, srec, any_nonspecular);
             if (!scattered)
                 break;
+
+            // True pass-through (interface_material) - see ray_color()'s own
+            // identical branch for the full rationale. `disp` is always
+            // nullptr for interface_material (no dispersion), so this can't
+            // interact with the TerminateSecondary() gate below either way.
+            if (srec.is_medium_boundary) {
+                beta = clamp_throughput(beta * albedo(srec.attenuation));
+                current_ray = srec.skip_pdf_ray;
+                if (++medium_boundary_crossings > kMaxMediumBoundaryCrossings) break;
+                continue;
+            }
 
             // Collapse to the hero wavelength once a REAL dispersive
             // refraction happened - see TerminateSecondary()'s own comment

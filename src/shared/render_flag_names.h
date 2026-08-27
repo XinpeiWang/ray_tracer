@@ -39,8 +39,8 @@ namespace render_flags {
 	constexpr const char* kTonemap       = "--tonemap";
 	constexpr const char* kDiagnose      = "--diagnose";
 
-	// Alternate integrators (Integrator combo, Basic Settings tab) and
-	// their sub-flags (Integrator Options group, Render Options tab) -
+	// Alternate integrators and their sub-flags (both in the Integrator
+	// group, Render Options tab) -
 	// verified byte-for-byte against launcher/launcher_args.h's own
 	// `arg == "..."` parsing.
 	constexpr const char* kSppm               = "--sppm";

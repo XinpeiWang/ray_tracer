@@ -182,6 +182,17 @@ struct HitWorkItem {
 	// Carried from RayWorkItem::filterWeight (see its own comment) -
 	// multiplied into every radiance contribution this hit produces.
 	float  filterWeight;
+	// Carried from RayWorkItem::brdf_pdf (see its own comment) - the BRDF
+	// pdf of the ray that arrived at THIS hit. Not read by the DiffuseLight
+	// early-exit above (that gate is specular_bounce/depth==0 only, no real
+	// MIS blend - see evaluate_materials()'s own comment), only added here
+	// so MaterialType::Interface's pass-through case can propagate it
+	// unchanged into the NEXT RayWorkItem it pushes directly (bypassing
+	// wf_finish_material_scatter's own recompute) - without this, a path
+	// that crosses an interface boundary and then escapes to the sky on
+	// its very next segment would lose its real MIS pdf and get treated as
+	// a specular bounce (full weight, no MIS) instead.
+	float  brdf_pdf;
 };
 
 // A shadow ray: if it reaches tMax unoccluded, Ld is added to the framebuffer.

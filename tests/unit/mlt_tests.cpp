@@ -51,6 +51,15 @@ struct MLTSyntheticScene {
 		return true;
 	}
 
+	// Never actually reached (Intersect() above always sets
+	// is_medium_boundary=false) - but mlt.h's MLTSceneAdapter forwards
+	// SpawnRay() unconditionally in its own source, so it needs to exist to
+	// compile.
+	void SpawnRay(const BDPTHit<float>& hit, const float dir[3], float new_o[3], float new_d[3]) const {
+		new_o[0] = hit.p[0]; new_o[1] = hit.p[1]; new_o[2] = hit.p[2];
+		new_d[0] = dir[0]; new_d[1] = dir[1]; new_d[2] = dir[2];
+	}
+
 	bool Unoccluded(const float p0[3], const float p1[3]) const {
 		float dir[3]={p1[0]-p0[0],p1[1]-p0[1],p1[2]-p0[2]};
 		float len=std::sqrt(dir[0]*dir[0]+dir[1]*dir[1]+dir[2]*dir[2]);

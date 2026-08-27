@@ -490,7 +490,25 @@ enum class MaterialType : int {
 	// own entry in material_requires_sphere_only_handling()/wf_material_
 	// requires_sphere_only_handling(), since resolution always happens
 	// before those checks see the (by-then-real) resolved type.
-	Mix = 22
+	Mix = 22,
+	// pbrt-v4's real "no BSDF" interface material (Material "none"/"" -
+	// pbrt_flatten::MaterialKind::Interface) - a shape that bounds a
+	// participating medium with literally no surface response of its own.
+	// The ray passes straight through completely unperturbed: no Fresnel
+	// reflection, no refraction, no critical angle (unlike the earlier
+	// approach of routing this through Dielectric with eta forced to
+	// 1.001). shade_material()'s new case sets out_is_medium_boundary=true
+	// instead of out_is_specular - a distinct signal from "real specular
+	// bounce" every closest-hit program packs into flag==4 (not flag==1),
+	// so optix_raygen.h can skip both the depth/RR accounting AND the
+	// specular_bounce/prev_brdf_pdf MIS-state update for the crossing,
+	// exactly like the CPU integrators' equivalent scatter_record::
+	// is_medium_boundary branch (camera.h, bdpt.h, sppm_adapter.h). Sphere/
+	// disk/cylinder only, matching CPU's own shape support (Triangle/
+	// BilinearPatch have no `medium` field - see pbrt_flatten.h's own
+	// comment on the trianglemesh-medium gap this doesn't attempt to
+	// close). No MaterialData fields needed at all.
+	Interface = 23
 };
 
 // The single canonical list of MaterialTypes GPU SPPM's camera/photon-pass
@@ -521,6 +539,7 @@ inline bool sppm_gpu_material_supported(MaterialType t) {
 	case MaterialType::Conductor:
 	case MaterialType::RoughMetal:
 	case MaterialType::DiffuseTransmission:
+	case MaterialType::Interface:
 		return true;
 	default:
 		return false;

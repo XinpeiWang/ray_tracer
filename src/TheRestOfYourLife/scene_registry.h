@@ -1758,7 +1758,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             // RoughDielectric, so --sppm --gpu works here too, not just
             // plain --sppm.
             "I5", 139, SceneNames::SppmCausticsEducation, SceneCategories::Education,
-            "Same Cornell box as B3, with a rough-dielectric (frosted glass) sphere: render once with the default Path Tracer, once with SPPM (Integrator dropdown, Basic Settings tab), and compare how much faster the floor caustic cleans up - SPPM's photon mapping is built for exactly this case.",
+            "Same Cornell box as B3, with a rough-dielectric (frosted glass) sphere: render once with the default Path Tracer, once with SPPM (Integrator dropdown, Render Options tab), and compare how much faster the floor caustic cleans up - SPPM's photon mapping is built for exactly this case.",
             "Medium", 200, false, true,
             kCornellBoxCamera,
             build_cornell_rough_glass,
@@ -1772,7 +1772,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             // no GPU implementation at all (CPU only, unconditionally; see
             // main.cpp's own --gpu-ignored warning under either flag).
             "I6", 140, SceneNames::BdptMltEducation, SceneCategories::Education,
-            "Same Cornell box as A1: try BDPT or MLT (Integrator dropdown, Basic Settings tab) instead of the default Path Tracer - both trace light paths from the camera AND the light source and connect them, which can converge differently than the default on scenes with indirect lighting like this one.",
+            "Same Cornell box as A1: try BDPT or MLT (Integrator dropdown, Render Options tab) instead of the default Path Tracer - both trace light paths from the camera AND the light source and connect them, which can converge differently than the default on scenes with indirect lighting like this one.",
             "Medium", 100, false, true,
             kCornellBoxCamera,
             build_cornell_box,

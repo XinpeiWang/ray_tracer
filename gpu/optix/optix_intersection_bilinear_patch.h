@@ -150,6 +150,7 @@ extern "C" __global__ void __closesthit__bilinear_patch() {
 	float3 scattered_dir;
 	bool scattered = false;
 	bool is_specular = false;  // pbrt-v4 specularBounce: MIS is skipped for specular events
+	bool is_medium_boundary = false;  // MaterialType::Interface - see optix_types.h
 	float brdf_pdf_override = -1.0f;  // if >= 0, overrides cosine_pdf in payload packing
 	bool bssrdf_exit = false;
 	float3 bssrdf_exit_pos = make_float3(0.0f, 0.0f, 0.0f);
@@ -185,7 +186,7 @@ extern "C" __global__ void __closesthit__bilinear_patch() {
 		}
 
 		shade_material(mat, matIdx, final_normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
-			attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
+			attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
 			bssrdf_exit, bssrdf_exit_pos, out_eta);
 	}
 
@@ -220,7 +221,7 @@ extern "C" __global__ void __closesthit__bilinear_patch() {
 		optixSetPayload_6(__float_as_uint(scattered_dir.x));
 		optixSetPayload_7(__float_as_uint(scattered_dir.y));
 		optixSetPayload_8(__float_as_uint(scattered_dir.z));
-		optixSetPayload_10(bssrdf_exit ? 3 : 1);  // scattered (3 = explicit origin override)
+		optixSetPayload_10(bssrdf_exit ? 3 : (is_medium_boundary ? 4 : 1));  // scattered (3 = explicit origin override, 4 = interface pass-through)
 		optixSetPayload_11(__float_as_uint(t_hit));
 		optixSetPayload_12(__float_as_uint(brdf_pdf_out));
 		if (bssrdf_exit) {

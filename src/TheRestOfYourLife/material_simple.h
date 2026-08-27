@@ -86,6 +86,46 @@ class metal : public material {
 };
 
 
+// pbrt-v4's real "interface material" (Material "none"/"" -
+// pbrt_flatten::MaterialKind::Interface): a shape that bounds a
+// participating medium with literally no BSDF response of its own. The ray
+// passes straight through completely unperturbed - no Fresnel reflection,
+// no refraction, no critical angle (unlike routing this through `dielectric`
+// with some near-1 eta, the earlier approach: any nonzero eta departure from
+// exactly 1 has a real critical angle at grazing incidence, and even at
+// exactly 1 still spends a Fresnel evaluation on a surface that pbrt-v4
+// treats as not existing at all).
+class interface_material : public material {
+  public:
+    bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
+                 bool do_regularize = false) const override {
+        (void)do_regularize;
+        srec.attenuation     = color(1, 1, 1);
+        srec.pdf_ptr         = nullptr;
+        srec.skip_pdf        = true;
+        srec.skip_pdf_ray    = ray(rec.p, r_in.direction(), r_in.time());
+        srec.eta             = 1.0;
+        srec.is_transmission = false;
+        srec.is_medium_boundary = true;
+        return true;
+    }
+
+    // Not a real delta surface (is_medium_boundary() is the correct
+    // classification instead - see that method's own comment) - SPPM/BDPT/
+    // MLT must skip this vertex entirely, not treat it as a connectible
+    // delta bounce.
+    bool is_delta_bsdf() const override { return false; }
+    bool is_medium_boundary() const override { return true; }
+
+    // Real pass-through, not just "transmissive like glass" - matches
+    // dielectric's own is_shadow_transmissive() override (and
+    // optix_anyhit_shadow.h's identical GPU-side skip list) so a shadow ray
+    // isn't wrongly occluded by a medium boundary. shadow_transmittance()'s
+    // base-class default (no attenuation at all) is exactly right here.
+    bool is_shadow_transmissive(const hit_record&) const override { return true; }
+};
+
+
 // Also implements dispersive_material (material_base.h) - the interface
 // camera.h's ray_color_spectral() dispatches through for every dispersive
 // material kind via one shared hook (material::as_dispersive()), rather

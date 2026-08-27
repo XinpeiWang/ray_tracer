@@ -242,7 +242,7 @@ class BDPTSceneAdapter {
 		hit.uv[0] = rec.u; hit.uv[1] = rec.v;
 		hit.area_Le[0] = Le.x(); hit.area_Le[1] = Le.y(); hit.area_Le[2] = Le.z();
 		hit.t_hit = rec.t;
-		hit.is_medium_boundary = false;   // constant_medium scenes out of scope, matching SPPMSceneAdapter
+		hit.is_medium_boundary = resolved_mat ? sppm_is_medium_boundary(resolved_mat.get()) : false;
 		hit.is_delta_bsdf = resolved_mat ? sppm_is_delta_material(resolved_mat.get()) : false;
 		hit.bsdf_id = nEmitters_ + pool_idx;
 		hit.light_id = -1;   // unused by bdpt.h's own BDPTVertex construction (see class comment)
@@ -289,11 +289,16 @@ class BDPTSceneAdapter {
 		out[0] = hit.area_Le[0]; out[1] = hit.area_Le[1]; out[2] = hit.area_Le[2];
 	}
 
-	// No medium-boundary primitives in this adapter's scope (Intersect()
-	// always sets is_medium_boundary=false -- "constant_medium scenes out
-	// of scope, matching SPPMSceneAdapter" per its own comment above), so
-	// every real hit has a real BSDF.
-	bool BSDFIsNull(int /*bsdf_id*/) const { return false; }
+	// True for a real interface_material hit (Intersect() classifies it via
+	// sppm_is_medium_boundary() above) - light_path.h's own skip predicate,
+	// consulted the same way bdpt.h's BDPTRandomWalk consults
+	// hit.is_medium_boundary directly. Looks the classification back up from
+	// the shading-context pool since this only gets a bsdf_id, not the hit
+	// itself - same lookup BSDFf()/BSDFSampleF()/BSDFPdf() already do.
+	bool BSDFIsNull(int bsdf_id) const {
+		const SPPMShadingContext* ctx = context_for(bsdf_id);
+		return ctx && sppm_is_medium_boundary(ctx->mat.get());
+	}
 
 	// Offsets along the geometric normal, SIGNED by which side `dir` exits
 	// on -- unlike the unit tests' own SpawnRay mocks (which always offset

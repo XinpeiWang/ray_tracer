@@ -997,6 +997,55 @@ TEST(PbrtCpuBuildTest, RoughDielectricRoughnessBuildsTheRealRoughDielectricClass
 }
 
 // ---------------------------------------------------------------------------
+// Material "none" (pbrt-v4's real interface-material idiom)
+//
+// Must build the dedicated interface_material class, not a near-invisible
+// dielectric - real pass-through, no Fresnel/refraction, and a distinct
+// classification (is_medium_boundary()=true, is_delta_bsdf()=false) the
+// integrators use to skip the crossing entirely instead of treating it as a
+// specular bounce.
+// ---------------------------------------------------------------------------
+
+TEST(PbrtCpuBuildTest, InterfaceMaterialBuildsTheDedicatedClass) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Material \"none\"\n" + std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	ASSERT_NE(dynamic_cast<interface_material *>(rec.mat.get()), nullptr)
+		<< "Material \"none\" must build the dedicated interface_material "
+		   "class, not a near-invisible dielectric";
+	EXPECT_FALSE(rec.mat->is_delta_bsdf())
+		<< "not a real delta surface - is_medium_boundary() is the correct "
+		   "classification instead";
+	EXPECT_TRUE(rec.mat->is_medium_boundary());
+	EXPECT_TRUE(rec.mat->is_shadow_transmissive(rec));
+}
+
+TEST(PbrtCpuBuildTest, InterfaceMaterialScatterIsAnExactPassThrough) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Material \"none\"\n" + std::string(kQuad));
+	hit_record rec;
+	const vec3 in_dir(0.05, -0.03, 1.0);  // slightly oblique, stays inside the [0,1]x[0,1] quad from z=-5
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), unit_vector(in_dir)),
+							 interval(0.001, infinity), rec));
+	scatter_record srec;
+	ASSERT_TRUE(rec.mat->scatter(ray(point3(0.5, 0.5, -5), unit_vector(in_dir)), rec, srec));
+	EXPECT_TRUE(srec.skip_pdf);
+	EXPECT_TRUE(srec.is_medium_boundary);
+	EXPECT_DOUBLE_EQ(srec.attenuation.x(), 1.0);
+	EXPECT_DOUBLE_EQ(srec.attenuation.y(), 1.0);
+	EXPECT_DOUBLE_EQ(srec.attenuation.z(), 1.0);
+	// Exact same direction as the incoming ray - no Fresnel reflection, no
+	// refraction, no critical angle.
+	vec3 out_dir = unit_vector(srec.skip_pdf_ray.direction());
+	vec3 expected = unit_vector(in_dir);
+	EXPECT_NEAR(out_dir.x(), expected.x(), 1e-12);
+	EXPECT_NEAR(out_dir.y(), expected.y(), 1e-12);
+	EXPECT_NEAR(out_dir.z(), expected.z(), 1e-12);
+}
+
+// ---------------------------------------------------------------------------
 // Material "conductor"
 //
 // pbrt describes a conductor's complex IOR via "spectrum eta"/"spectrum k"

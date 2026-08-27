@@ -172,7 +172,7 @@ class SPPMSceneAdapter {
 		hit.uv[0] = rec.u; hit.uv[1] = rec.v;
 		hit.area_Le[0] = Le.x(); hit.area_Le[1] = Le.y(); hit.area_Le[2] = Le.z();
 		hit.t_hit = rec.t;
-		hit.is_medium_boundary = false;   // constant_medium scenes out of scope for v1
+		hit.is_medium_boundary = resolved_mat ? sppm_is_medium_boundary(resolved_mat.get()) : false;
 		hit.is_delta_bsdf = resolved_mat ? sppm_is_delta_material(resolved_mat.get()) : false;
 		hit.bsdf_id = kTransientId;
 		hit.light_id = -1;   // unused by SPPM's own algorithm
@@ -529,6 +529,12 @@ inline void sppm_camera_pass_with_sky(std::vector<SPPMPixel<double>>& pixels,
 				double org[3] = { cam_p[0], cam_p[1], cam_p[2] };
 				double dir[3] = { ray_d[0], ray_d[1], ray_d[2] };
 				double beta[3] = { 1.0, 1.0, 1.0 };
+				// A medium-boundary crossing doesn't consume `depth` (see the
+				// branch below), so nothing else bounds how many a single
+				// camera ray can take - same rationale/bound as camera.h's
+				// own kMaxMediumBoundaryCrossings.
+				constexpr int kMaxMediumBoundaryCrossings = 32;
+				int mediumBoundaryCrossings = 0;
 
 				for (int depth = 0; depth < maxDepth; ++depth) {
 					BDPTHit<double> hit{};
@@ -541,6 +547,24 @@ inline void sppm_camera_pass_with_sky(std::vector<SPPMPixel<double>>& pixels,
 							pixel.Ld[2] += beta[2] * le[2];
 						}
 						break;
+					}
+
+					// True pass-through (interface_material) - nothing
+					// actually scattered here: no emission to add (an
+					// interface material is never an emitter in a sensible
+					// scene, but skip before touching Ld regardless, for the
+					// same reason camera.h's own medium-boundary branch runs
+					// before its emitter-hit check), no visible point
+					// recorded, doesn't count against maxDepth. Mirrors the
+					// is_delta_bsdf branch below's own no-offset advance
+					// (org = hit.p directly, relying on the next Intersect()
+					// call's own t_min=0.001) - this adapter has no
+					// SpawnRay() of its own to offset through instead.
+					if (hit.is_medium_boundary) {
+						if (++mediumBoundaryCrossings > kMaxMediumBoundaryCrossings) break;
+						org[0] = hit.p[0]; org[1] = hit.p[1]; org[2] = hit.p[2];
+						--depth; // this crossing doesn't count as a bounce
+						continue;
 					}
 
 					pixel.Ld[0] += beta[0] * hit.area_Le[0];
@@ -649,11 +673,30 @@ inline void sppm_photon_pass_mt(std::vector<SPPMPixel<double>>& pixels,
 
 			double org[3] = { les.ray_o[0], les.ray_o[1], les.ray_o[2] };
 			double dir[3] = { les.ray_d[0], les.ray_d[1], les.ray_d[2] };
+			// See sppm_camera_pass_with_sky()'s own comment.
+			constexpr int kMaxMediumBoundaryCrossings = 32;
+			int mediumBoundaryCrossings = 0;
 
 			for (int depth = 0; depth < maxDepth; ++depth) {
 				BDPTHit<double> hit{};
 				if (!scene.Intersect(org, dir, std::numeric_limits<double>::max(), hit))
 					break;
+
+				// True pass-through (interface_material) - no real BSDF to
+				// deposit against or sample from. Checked before the deposit
+				// gate below: hit.is_delta_bsdf is false for a medium
+				// boundary (it's neither delta nor non-delta - see
+				// material::is_medium_boundary()'s own comment), so without
+				// this the deposit gate below would wrongly try to deposit a
+				// photon against a material with no real BSDF response.
+				// Advances straight through in the same direction, doesn't
+				// consume `depth`.
+				if (hit.is_medium_boundary) {
+					if (++mediumBoundaryCrossings > kMaxMediumBoundaryCrossings) break;
+					org[0] = hit.p[0]; org[1] = hit.p[1]; org[2] = hit.p[2];
+					--depth;
+					continue;
+				}
 
 				if (depth > 0 && !hit.is_delta_bsdf) {
 					int h = grid.Bucket(hit.p[0], hit.p[1], hit.p[2]);

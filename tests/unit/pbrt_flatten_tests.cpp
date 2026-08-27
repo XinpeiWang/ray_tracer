@@ -1084,17 +1084,16 @@ TEST(FlattenMaterialTest, DielectricEtaIsReadAsIor) {
 	EXPECT_DOUBLE_EQ(s.materials[0].ior, 1.33);
 }
 
-TEST(FlattenMaterialTest, InterfaceMaterialNoneMapsToNearInvisibleDielectric) {
+TEST(FlattenMaterialTest, InterfaceMaterialNoneMapsToInterfaceKind) {
 	// pbrt-v4's real interface-material idiom (a shape bounding a
 	// participating medium with no BSDF response of its own) - previously
 	// fell to MaterialKind::Unsupported (opaque flat Lambertian, plus a
-	// warning). eta is forced to 1.001, not read from any "eta" param -
-	// see flatten()'s own FrDielectric() grazing-incidence comment.
+	// warning). Built as a real, dedicated pass-through material (CPU's
+	// interface_material) - m.ior is irrelevant to it and no longer forced.
 	const FlatScene s = flattenSource(
 		"Material \"none\"\n" + std::string(kQuadMesh));
 	ASSERT_EQ(s.materials.size(), 1u);
 	EXPECT_EQ(s.materials[0].kind, MaterialKind::Interface);
-	EXPECT_DOUBLE_EQ(s.materials[0].ior, 1.001);
 	EXPECT_FALSE(warnedAbout(s, "none"));
 }
 
@@ -1104,7 +1103,6 @@ TEST(FlattenMaterialTest, InterfaceMaterialEmptyStringAlsoMapsToInterface) {
 		"Material \"\"\n" + std::string(kQuadMesh));
 	ASSERT_EQ(s.materials.size(), 1u);
 	EXPECT_EQ(s.materials[0].kind, MaterialKind::Interface);
-	EXPECT_DOUBLE_EQ(s.materials[0].ior, 1.001);
 }
 
 TEST(FlattenMaterialTest, ConstantTextureRgbValueResolvesReflectance) {
@@ -1149,6 +1147,43 @@ TEST(FlattenMaterialTest, ConstantTextureBoundToKResolvesOnConductor) {
 	EXPECT_DOUBLE_EQ(s.materials[0].color[1], 0.8);
 	EXPECT_DOUBLE_EQ(s.materials[0].color[2], 0.1);
 	EXPECT_FALSE(warnedAbout(s, "conductor"));
+}
+
+TEST(FlattenMaterialTest, ConstantTextureReflectanceWinsOverConstantTextureK) {
+	// Both bound to constant textures - the pre-existing "reflectance wins
+	// over k" precedence (materials.pbrt's own rule) must still hold
+	// regardless of which param happens to be declared later in the file.
+	// This is the general Param-rewrite pre-pass's whole point: reflectance/
+	// k precedence is decided ONCE, by the same code whether the values
+	// came from plain numbers or a resolved constant texture - not
+	// re-decided by declaration order in a separate texture-handling branch.
+	const FlatScene s = flattenSource(
+		"Texture \"refl\" \"spectrum\" \"constant\" \"rgb value\" [ .9 .9 .9 ]\n"
+		"Texture \"kk\" \"spectrum\" \"constant\" \"rgb value\" [ 3.9 2.4 1.7 ]\n"
+		"Material \"conductor\" \"texture reflectance\" [ \"refl\" ] \"texture k\" [ \"kk\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].color[0], 0.9);
+	EXPECT_DOUBLE_EQ(s.materials[0].color[1], 0.9);
+	EXPECT_DOUBLE_EQ(s.materials[0].color[2], 0.9);
+}
+
+TEST(FlattenMaterialTest, ConstantTextureEtaAndKResolveRealConductorModel) {
+	// Both eta and k texture-bound with real (>1) copper-like values - the
+	// rewrite pre-pass must make the explicit-RGB conductor path (which
+	// needs BOTH eta and k as real numbers to activate, see the "eta"/"k"
+	// resolution block just below the reflectance/k precedence) trigger
+	// correctly, instead of falling to the generic metal(albedo) path with
+	// an un-clamped, energy-gaining (>1) albedo.
+	const FlatScene s = flattenSource(
+		"Texture \"cueta\" \"spectrum\" \"constant\" \"rgb value\" [ 0.2 0.92 1.1 ]\n"
+		"Texture \"cuk\" \"spectrum\" \"constant\" \"rgb value\" [ 3.9 2.45 2.14 ]\n"
+		"Material \"conductor\" \"texture eta\" [ \"cueta\" ] \"texture k\" [ \"cuk\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].hasConductorPreset);
+	EXPECT_DOUBLE_EQ(s.materials[0].conductorEta[0], 0.2);
+	EXPECT_DOUBLE_EQ(s.materials[0].conductorK[0], 3.9);
 }
 
 TEST(FlattenMaterialTest, RoughnessFallsBackToUOrVRoughnessWhenIsotropicIsAbsent) {
@@ -1247,6 +1282,36 @@ TEST(FlattenMaterialTest, DiffuseTransmissionReflectanceScaleWrappedImagemapStil
 	ASSERT_EQ(s.materials.size(), 1u);
 	EXPECT_TRUE(s.materials[0].textureFilename.empty());
 	EXPECT_TRUE(warnedAbout(s, "diffusetransmission"));
+}
+
+TEST(FlattenMaterialTest, TrianglemeshWithMediumInterfaceWarnsMediumIsDropped) {
+	// Triangle has no `medium` field (unlike Sphere/Disk/Cylinder), so a
+	// mesh-bounded medium boundary - the most common real pbrt-v4 authoring
+	// pattern for one - silently loses its medium. This must warn instead of
+	// going quiet, especially now that Material "none" itself no longer
+	// warns (MaterialKind::Interface, not Unsupported).
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
+		"AttributeBegin\n"
+		"  Material \"none\"\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Shape \"trianglemesh\" \"integer indices\" [ 0 1 2  0 2 3 ]\n"
+		"    \"point3 P\" [ -1 -1 0   1 -1 0   1 1 0   -1 1 0 ]\n"
+		"AttributeEnd\n");
+	EXPECT_TRUE(warnedAbout(s, "MediumInterface"));
+}
+
+TEST(FlattenMaterialTest, SphereMediumInterfaceDoesNotWarn) {
+	// Regression guard: the new trianglemesh warning must not fire for the
+	// shape kinds that DO support an attached medium.
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
+		"AttributeBegin\n"
+		"  Material \"none\"\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Shape \"sphere\"\n"
+		"AttributeEnd\n");
+	EXPECT_FALSE(warnedAbout(s, "MediumInterface"));
 }
 
 TEST(FlattenMaterialTest, UnsupportedMaterialIsFlaggedNotSilentlySubstituted) {

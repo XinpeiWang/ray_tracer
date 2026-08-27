@@ -2293,6 +2293,12 @@ extern "C" __global__ void evaluate_materials(
 	SS     attenuation(0.f);   // spectral BSDF * cos / pdf
 	bool   scattered        = false;
 	bool   is_specular      = false;
+	// True only for MaterialType::Interface - handled specially right
+	// after this switch, bypassing wf_finish_material_scatter() (NEE/RR/
+	// depth+specular_bounce+brdf_pdf recompute) entirely, since nothing
+	// actually scattered here. See MaterialType::Interface's own comment
+	// (optix_types.h).
+	bool   is_medium_boundary = false;
 	float  brdf_pdf_override = -1.0f;
 	// Only set by MaterialType::DielectricMedium's medium-interior
 	// phase-scatter sub-case (see that case below) - passed through to
@@ -2485,6 +2491,21 @@ extern "C" __global__ void evaluate_materials(
 			scattered = false;
 		}
 		is_specular = true;
+		break;
+	}
+	case MaterialType::Interface: {
+		// Real pass-through - exact same direction as the incoming ray, no
+		// Fresnel/refraction math at all. `scattered`/`attenuation`/
+		// `scattered_dir` are still set (mirroring every other case) so the
+		// `if (!scattered)` absorbed-path check right after this switch
+		// doesn't misclassify this as absorption - but is_medium_boundary
+		// (checked BEFORE that absorbed check) routes this to its own
+		// direct RayWorkItem push instead of falling into
+		// wf_finish_material_scatter().
+		scattered_dir      = h.rayDir;
+		attenuation         = SS(1.f);
+		scattered           = true;
+		is_medium_boundary  = true;
 		break;
 	}
 	case MaterialType::Dielectric: {
@@ -3298,6 +3319,44 @@ extern "C" __global__ void evaluate_materials(
 		printf("[EVAL-MATERIALS] unhandled MaterialType %d\n", (int)mat.type);
 		__trap();
 	}
+	}
+
+	if (is_medium_boundary) {
+		// True pass-through (MaterialType::Interface) - nothing actually
+		// scattered here, so this bypasses wf_finish_material_scatter()
+		// entirely (no NEE, no RR, no depth/specular_bounce/brdf_pdf
+		// recompute) and pushes the next RayWorkItem directly, preserving
+		// h's own depth/specular_bounce/any_nonspecular/etaScale/brdf_pdf
+		// exactly as they arrived - the NEXT real hit's MIS state should
+		// reflect whatever the last REAL vertex was, not this crossing.
+		// Matches CPU camera.h's/the recursive backend's own is_medium_
+		// boundary branch exactly. No separate crossing-count safety cap is
+		// needed here (unlike those two, which loop internally per-ray):
+		// the outer host-side bounce loop (wavefront_path_tracer.cpp) is
+		// already a fixed `for (depth = 0; depth < max_depth; ++depth)`
+		// iteration count, independent of any individual ray's own depth
+		// field, so a degenerate scene can't hang this backend either way.
+		RayWorkItem next;
+		next.origin           = hit_point + 0.001f * scattered_dir;
+		next.direction         = normalize(scattered_dir);
+		next.seed              = seed;
+		next.pixelIndex        = h.pixelIndex;
+		next.depth             = h.depth;
+		next.specular_bounce   = h.specular_bounce;
+		next.any_nonspecular   = h.any_nonspecular;
+		next.etaScale          = h.etaScale;
+		next.filterWeight      = h.filterWeight;
+		next.brdf_pdf          = h.brdf_pdf;
+		next.tMin              = 0.001f;
+		next.tMax              = 1e30f;
+		for (int i = 0; i < kWFNWavelengths; ++i) {
+			next.throughput[i]      = throughput[i] * attenuation[i];
+			next.radiance[i]        = radiance[i];
+			next.wavelengths[i]     = swl.lambda[i];
+			next.wavelength_pdfs[i] = swl.pdf[i];
+		}
+		nextRayQueue.push(next);
+		return;
 	}
 
 	if (!scattered) {

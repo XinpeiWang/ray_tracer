@@ -571,7 +571,13 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 	// m.ior to 1.001 for this kind, and d.ior is already assigned
 	// generically from m.ior above, so this shares Dielectric's exact
 	// build path with no special-casing needed here.
+	// Real, dedicated pass-through material (MaterialType::Interface) - see
+	// its own comment (optix_types.h). No Fresnel/refraction math, no
+	// MaterialData fields needed, so this is its own case, not a Dielectric
+	// fallthrough.
 	case pbrt_flatten::MaterialKind::Interface:
+		d.type = MaterialType::Interface;
+		break;
 	case pbrt_flatten::MaterialKind::Dielectric:
 		// A nonzero "roughness"/"uroughness"/"vroughness" (m.roughness,
 		// already copied into d.roughness above generically) means the scene

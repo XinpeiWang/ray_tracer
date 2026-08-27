@@ -33,7 +33,7 @@ IDC           = idc
 IDL           = midl
 ZIP           = zip -r -9
 DEF_FILE      = 
-RES_FILE      = 
+RES_FILE      = app_icon_res.o
 SED           = $(QMAKE) -install sed
 MOVE          = move
 SUBTARGETS    =  \
@@ -281,6 +281,7 @@ Makefile: ../RayTracerGUI.pro C:/Qt/6.11.1/mingw_64/mkspecs/win32-g++/qmake.conf
 		C:/Qt/6.11.1/mingw_64/mkspecs/features/qt_config.prf \
 		C:/Qt/6.11.1/mingw_64/mkspecs/win32-g++/qmake.conf \
 		C:/Qt/6.11.1/mingw_64/mkspecs/features/spec_post.prf \
+		.qmake.stash \
 		C:/Qt/6.11.1/mingw_64/mkspecs/features/exclusive_builds.prf \
 		C:/Qt/6.11.1/mingw_64/mkspecs/features/toolchain.prf \
 		C:/Qt/6.11.1/mingw_64/mkspecs/features/default_pre.prf \
@@ -288,6 +289,7 @@ Makefile: ../RayTracerGUI.pro C:/Qt/6.11.1/mingw_64/mkspecs/win32-g++/qmake.conf
 		C:/Qt/6.11.1/mingw_64/mkspecs/features/resolve_config.prf \
 		C:/Qt/6.11.1/mingw_64/mkspecs/features/exclusive_builds_post.prf \
 		C:/Qt/6.11.1/mingw_64/mkspecs/features/default_post.prf \
+		C:/Qt/6.11.1/mingw_64/mkspecs/features/lrelease.prf \
 		C:/Qt/6.11.1/mingw_64/mkspecs/features/precompile_header.prf \
 		C:/Qt/6.11.1/mingw_64/mkspecs/features/warn_on.prf \
 		C:/Qt/6.11.1/mingw_64/mkspecs/features/permissions.prf \
@@ -305,12 +307,18 @@ Makefile: ../RayTracerGUI.pro C:/Qt/6.11.1/mingw_64/mkspecs/win32-g++/qmake.conf
 		C:/Qt/6.11.1/mingw_64/mkspecs/features/yacc.prf \
 		C:/Qt/6.11.1/mingw_64/mkspecs/features/lex.prf \
 		../RayTracerGUI.pro \
+		C:/Qt/6.11.1/mingw_64/lib/Qt6MultimediaWidgets.prl \
 		C:/Qt/6.11.1/mingw_64/lib/Qt6Widgets.prl \
+		C:/Qt/6.11.1/mingw_64/lib/Qt6Svg.prl \
+		C:/Qt/6.11.1/mingw_64/lib/Qt6Multimedia.prl \
 		C:/Qt/6.11.1/mingw_64/lib/Qt6Gui.prl \
+		C:/Qt/6.11.1/mingw_64/lib/Qt6Network.prl \
 		C:/Qt/6.11.1/mingw_64/lib/Qt6Core.prl \
 		C:/Qt/6.11.1/mingw_64/lib/Qt6EntryPoint.prl \
-		.qmake.stash \
-		C:/Qt/6.11.1/mingw_64/mkspecs/features/build_pass.prf
+		C:/Qt/6.11.1/mingw_64/mkspecs/features/build_pass.prf \
+		../resources.qrc \
+		release/qmake_qmake_qm_files.qrc \
+		debug/qmake_qmake_qm_files.qrc
 	$(QMAKE) -o Makefile ..\RayTracerGUI.pro "CONFIG+=release"
 C:/Qt/6.11.1/mingw_64/mkspecs/features/spec_pre.prf:
 C:/Qt/6.11.1/mingw_64/mkspecs/features/device_config.prf:
@@ -523,6 +531,7 @@ C:/Qt/6.11.1/mingw_64/mkspecs/features/qt_functions.prf:
 C:/Qt/6.11.1/mingw_64/mkspecs/features/qt_config.prf:
 C:/Qt/6.11.1/mingw_64/mkspecs/win32-g++/qmake.conf:
 C:/Qt/6.11.1/mingw_64/mkspecs/features/spec_post.prf:
+.qmake.stash:
 C:/Qt/6.11.1/mingw_64/mkspecs/features/exclusive_builds.prf:
 C:/Qt/6.11.1/mingw_64/mkspecs/features/toolchain.prf:
 C:/Qt/6.11.1/mingw_64/mkspecs/features/default_pre.prf:
@@ -530,6 +539,7 @@ C:/Qt/6.11.1/mingw_64/mkspecs/features/win32/default_pre.prf:
 C:/Qt/6.11.1/mingw_64/mkspecs/features/resolve_config.prf:
 C:/Qt/6.11.1/mingw_64/mkspecs/features/exclusive_builds_post.prf:
 C:/Qt/6.11.1/mingw_64/mkspecs/features/default_post.prf:
+C:/Qt/6.11.1/mingw_64/mkspecs/features/lrelease.prf:
 C:/Qt/6.11.1/mingw_64/mkspecs/features/precompile_header.prf:
 C:/Qt/6.11.1/mingw_64/mkspecs/features/warn_on.prf:
 C:/Qt/6.11.1/mingw_64/mkspecs/features/permissions.prf:
@@ -547,12 +557,18 @@ C:/Qt/6.11.1/mingw_64/mkspecs/features/exceptions.prf:
 C:/Qt/6.11.1/mingw_64/mkspecs/features/yacc.prf:
 C:/Qt/6.11.1/mingw_64/mkspecs/features/lex.prf:
 ../RayTracerGUI.pro:
+C:/Qt/6.11.1/mingw_64/lib/Qt6MultimediaWidgets.prl:
 C:/Qt/6.11.1/mingw_64/lib/Qt6Widgets.prl:
+C:/Qt/6.11.1/mingw_64/lib/Qt6Svg.prl:
+C:/Qt/6.11.1/mingw_64/lib/Qt6Multimedia.prl:
 C:/Qt/6.11.1/mingw_64/lib/Qt6Gui.prl:
+C:/Qt/6.11.1/mingw_64/lib/Qt6Network.prl:
 C:/Qt/6.11.1/mingw_64/lib/Qt6Core.prl:
 C:/Qt/6.11.1/mingw_64/lib/Qt6EntryPoint.prl:
-.qmake.stash:
 C:/Qt/6.11.1/mingw_64/mkspecs/features/build_pass.prf:
+../resources.qrc:
+release/qmake_qmake_qm_files.qrc:
+debug/qmake_qmake_qm_files.qrc:
 qmake: FORCE
 	@$(QMAKE) -o Makefile ..\RayTracerGUI.pro "CONFIG+=release"
 

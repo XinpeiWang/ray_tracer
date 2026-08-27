@@ -66,7 +66,8 @@ extern "C" __global__ void __anyhit__shadow_sphere() {
 		mat.type == MaterialType::Medium ||
 		mat.type == MaterialType::CloudMedium ||
 		mat.type == MaterialType::RgbGridMedium ||
-		mat.type == MaterialType::DielectricMedium) {
+		mat.type == MaterialType::DielectricMedium ||
+		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();  // continue traversal (not an occluder)
 		return;
 	}
@@ -100,7 +101,8 @@ extern "C" __global__ void __anyhit__shadow_quad() {
 	if (mat.type == MaterialType::Dielectric ||
 		mat.type == MaterialType::RoughDielectric ||
 		mat.type == MaterialType::ThinDielectric ||
-		mat.type == MaterialType::DiffuseTransmission) {
+		mat.type == MaterialType::DiffuseTransmission ||
+		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();  // continue traversal (not an occluder)
 		return;
 	}
@@ -129,7 +131,8 @@ extern "C" __global__ void __anyhit__shadow_bilinear_patch() {
 	if (mat.type == MaterialType::Dielectric ||
 		mat.type == MaterialType::RoughDielectric ||
 		mat.type == MaterialType::ThinDielectric ||
-		mat.type == MaterialType::DiffuseTransmission) {
+		mat.type == MaterialType::DiffuseTransmission ||
+		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;
 	}
@@ -161,7 +164,8 @@ extern "C" __global__ void __anyhit__shadow_disk() {
 	if (mat.type == MaterialType::Dielectric ||
 		mat.type == MaterialType::RoughDielectric ||
 		mat.type == MaterialType::ThinDielectric ||
-		mat.type == MaterialType::DiffuseTransmission) {
+		mat.type == MaterialType::DiffuseTransmission ||
+		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;
 	}
@@ -200,7 +204,8 @@ extern "C" __global__ void __anyhit__shadow_cylinder() {
 		mat.type == MaterialType::RoughDielectric ||
 		mat.type == MaterialType::ThinDielectric ||
 		mat.type == MaterialType::DiffuseTransmission ||
-		mat.type == MaterialType::Medium) {
+		mat.type == MaterialType::Medium ||
+		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;
 	}
@@ -272,7 +277,8 @@ extern "C" __global__ void __anyhit__shadow_triangle() {
 		mat.type == MaterialType::RoughDielectric ||
 		mat.type == MaterialType::ThinDielectric ||
 		mat.type == MaterialType::DiffuseTransmission ||
-		mat.type == MaterialType::Subsurface) {
+		mat.type == MaterialType::Subsurface ||
+		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;
 	}

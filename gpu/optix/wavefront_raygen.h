@@ -75,6 +75,7 @@ extern "C" __global__ void __raygen__wf_intersect() {
 		h.any_nonspecular = ray.any_nonspecular;
 		h.etaScale        = ray.etaScale;
 		h.filterWeight    = ray.filterWeight;
+		h.brdf_pdf        = ray.brdf_pdf;
 		// Resolve Mix HERE, once, before routing - not in each consumer
 		// kernel. h.materialIdx is overwritten with the RESOLVED index, so
 		// evaluate_materials()/_simple()/_dielectric() (wavefront_kernels.cu)

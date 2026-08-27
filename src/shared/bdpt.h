@@ -587,6 +587,12 @@ int BDPTRandomWalk(const T ray_o[3], const T ray_d[3],
 
 	int bounces = 0;
 	bool anyNonSpecular = false;
+	// A medium-boundary crossing is free - doesn't consume `bounces` - so
+	// nothing else bounds how many a single walk can take. Matches
+	// shadow_ray.h's own kMaxTransmissiveSkips bound and rationale: a
+	// degenerate scene shouldn't be able to hang this loop.
+	constexpr int kMaxMediumBoundarySkips = 32;
+	int mediumBoundarySkips = 0;
 
 	while (true) {
 		BDPTHit<T> hit{};
@@ -607,12 +613,21 @@ int BDPTRandomWalk(const T ray_o[3], const T ray_d[3],
 			break;
 		}
 
-		// Skip medium boundaries (e.g. glass boundary without shading)
+		// Skip medium boundaries (a real interface_material hit - no BSDF,
+		// nothing actually scattered) - advance through via the same
+		// side-signed-normal SpawnRay() every other skip site in this
+		// codebase uses (path_integrator.h, light_path.h,
+		// simple_vol_path.h), not a raw offset along `dir`: a dielectric
+		// surface can hand back a `dir` that transmits through the surface,
+		// and offsetting into the wrong side would immediately
+		// self-intersect the same surface again (see BDPTSceneAdapter::
+		// SpawnRay's own comment, bdpt_adapter.h).
 		if (hit.is_medium_boundary) {
-			// advance ray through boundary
-			org[0] = hit.p[0] + dir[0]*T(1e-4);
-			org[1] = hit.p[1] + dir[1]*T(1e-4);
-			org[2] = hit.p[2] + dir[2]*T(1e-4);
+			if (++mediumBoundarySkips > kMaxMediumBoundarySkips) break;
+			T new_o[3], new_d[3];
+			scene.SpawnRay(hit, dir, new_o, new_d);
+			org[0] = new_o[0]; org[1] = new_o[1]; org[2] = new_o[2];
+			dir[0] = new_d[0]; dir[1] = new_d[1]; dir[2] = new_d[2];
 			continue;
 		}
 

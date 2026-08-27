@@ -1333,7 +1333,9 @@ void MainWindow::onModeChanged(int index) {
 	// toggled from onIntegratorChanged() below, since either control can
 	// create or resolve the conflict.
 	const auto currentIntegrator = static_cast<IntegratorMode>(m_integratorCombo->currentData().toInt());
-	m_integratorVideoWarningLabel->setVisible(m_videoMode && currentIntegrator != IntegratorMode::Default);
+	const bool showIntegratorVideoWarning = m_videoMode && currentIntegrator != IntegratorMode::Default;
+	m_integratorVideoWarningLabel->setVisible(showIntegratorVideoWarning);
+	m_integratorVideoWarningLabelBasic->setVisible(showIntegratorVideoWarning);
 
 	// Update render button text based on mode
 	if (m_videoMode) {
@@ -1402,7 +1404,9 @@ void MainWindow::onIntegratorChanged(int) {
 
 	// See onModeChanged()'s own comment - either control can create or
 	// resolve the --video + non-Default-integrator conflict.
-	m_integratorVideoWarningLabel->setVisible(m_videoMode && integrator != IntegratorMode::Default);
+	const bool showIntegratorVideoWarning = m_videoMode && integrator != IntegratorMode::Default;
+	m_integratorVideoWarningLabel->setVisible(showIntegratorVideoWarning);
+	m_integratorVideoWarningLabelBasic->setVisible(showIntegratorVideoWarning);
 
 	refreshStatusBarInfo();
 	onLogMessage(tr("Integrator changed to: %1").arg(m_integratorCombo->currentText()));

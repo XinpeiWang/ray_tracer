@@ -415,6 +415,7 @@ static const char* sppm_gpu_material_type_name(MaterialType t) {
 	case MaterialType::NormalizedFresnel:   return "NormalizedFresnel";
 	case MaterialType::Medium:              return "Medium";
 	case MaterialType::Hair:                return "Hair";
+	case MaterialType::Interface:           return "Interface";
 	default:                                return "<other>";
 	}
 }

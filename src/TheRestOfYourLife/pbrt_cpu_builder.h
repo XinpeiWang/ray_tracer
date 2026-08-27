@@ -120,10 +120,14 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 				m.roughness_u, m.roughness_v, m.remapRoughness);
 		return std::make_shared<metal>(albedo, m.roughness);
 	// Pass-through "interface" material (pbrt-v4's Material "none"/"" -
-	// see MaterialKind::Interface's own comment). flatten() already forced
-	// m.ior to 1.001 for this kind, so this shares Dielectric's exact
-	// build path with no special-casing needed here.
+	// see MaterialKind::Interface's own comment and interface_material's
+	// own comment, material_simple.h). A real dedicated class, not routed
+	// through Dielectric - no Fresnel/refraction math at all, so no
+	// critical angle, and it carries a genuine "nothing happened here"
+	// signal (scatter_record::is_medium_boundary) the integrators use to
+	// preserve MIS state and skip the bounce budget across the crossing.
 	case pbrt_flatten::MaterialKind::Interface:
+		return std::make_shared<interface_material>();
 	case pbrt_flatten::MaterialKind::Dielectric:
 		// A nonzero "roughness"/"uroughness"/"vroughness" (m.roughness_u/
 		// m.roughness_v - see flatten()'s own fallback-chain comment) means

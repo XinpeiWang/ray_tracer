@@ -518,6 +518,17 @@ void MainWindow::createBasicTab() {
 			this, &MainWindow::onModeChanged);
 	renderLayout->addRow(tr("Output Mode:"), m_modeCombo);
 
+	// See m_integratorVideoWarningLabelBasic's own comment (mainwindow.h) -
+	// a second copy of the Render Options tab's warning, here next to the
+	// control (Output Mode) that actually triggers the conflict.
+	m_integratorVideoWarningLabelBasic = new QLabel(
+		tr("⚠ Generate Video cannot be combined with an alternate integrator - "
+		"switch back to Path Tracer, or to Single Image output."), basicTab);
+	m_integratorVideoWarningLabelBasic->setObjectName("statusWarning");
+	m_integratorVideoWarningLabelBasic->setWordWrap(true);
+	m_integratorVideoWarningLabelBasic->setVisible(false);
+	renderLayout->addRow(QString(), m_integratorVideoWarningLabelBasic);
+
 	m_modeCombo->setToolTip(
 		tr("Single Image renders one frame.\n"
 		"Generate Video renders a camera path frame by frame and assembles an MP4."));

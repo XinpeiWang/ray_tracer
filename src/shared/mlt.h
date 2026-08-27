@@ -314,6 +314,9 @@ MLTPathResult<T> MLTEvalPath(MLTSampler<T>& sampler, int depth,
 		bool Unoccluded(const T p0[3], const T p1[3]) const {
 			return scene.Unoccluded(p0, p1);
 		}
+		void SpawnRay(const BDPTHit<T>& hit, const T dir[3], T new_o[3], T new_d[3]) const {
+			scene.SpawnRay(hit, dir, new_o, new_d);
+		}
 		bool SampleLight(T u, const T ref_p[3], BDPTLightSample<T>& ls) const {
 			return scene.SampleLight(u, ref_p, ls);
 		}

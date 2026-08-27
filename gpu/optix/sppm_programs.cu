@@ -683,6 +683,8 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 		- org);
 
 	float3 beta = make_float3(1.0f, 1.0f, 1.0f);
+	unsigned int mediumBoundaryCrossings = 0;
+	constexpr unsigned int kMaxMediumBoundaryCrossings = 32;
 
 	for (unsigned int depth = 0; depth < sppm_params.maxDepth; ++depth) {
 		SPPMHitPayload payload;
@@ -707,6 +709,21 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 		if (!payload.hit) break;  // no sky in Phase 1 -- ray escapes, contributes nothing
 
 		const MaterialData& mat = sppm_params.materials[payload.materialIdx];
+
+		if (mat.type == MaterialType::Interface) {
+			// pbrt-v4 "Material none"/"" (see interface_material,
+			// src/TheRestOfYourLife/material_simple.h): no BSDF response at
+			// all, a pure medium-boundary pass-through. Continue straight
+			// through in the same direction without spending a bounce (mirrors
+			// CPU's sppm_camera_pass_with_sky() skip arm, sppm_adapter.h) -
+			// the `--depth` relies on the SAME well-defined unsigned wraparound
+			// this codebase already uses for this exact purpose (see
+			// optix_raygen.h's own comment on its medium-boundary branch).
+			org = payload.hitPoint;
+			if (++mediumBoundaryCrossings > kMaxMediumBoundaryCrossings) break;
+			--depth;
+			continue;
+		}
 
 		if (mat.type == MaterialType::DiffuseLight) {
 			pixel.Ld = pixel.Ld + beta * mat.emission;
@@ -875,6 +892,8 @@ extern "C" __global__ void __raygen__sppm_photon_pass() {
 
 	float3 org = p + 0.001f * n_light;
 	float3 dir_cur = dir;
+	unsigned int mediumBoundaryCrossings = 0;
+	constexpr unsigned int kMaxMediumBoundaryCrossings = 32;
 
 	for (unsigned int depth = 0; depth < sppm_params.maxDepth; ++depth) {
 		SPPMHitPayload payload;
@@ -895,6 +914,16 @@ extern "C" __global__ void __raygen__sppm_photon_pass() {
 		if (!payload.hit) break;
 
 		const MaterialData& mat = sppm_params.materials[payload.materialIdx];
+
+		if (mat.type == MaterialType::Interface) {
+			// Medium-boundary pass-through (see the camera pass's identical
+			// branch above for the full rationale) - no flux deposit, no
+			// depth spent, straight through in the same direction.
+			org = payload.hitPoint;
+			if (++mediumBoundaryCrossings > kMaxMediumBoundaryCrossings) break;
+			--depth;
+			continue;
+		}
 
 		// Deposit flux at nearby visible points -- depth>0 mirrors CPU (the
 		// first bounce is left for the camera pass's own NEE, avoiding

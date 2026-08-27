@@ -311,12 +311,13 @@ enum class MaterialKind {
 	// pbrt-v4's real "interface material" idiom (`Material "none"` or
 	// `Material ""`) - a shape that bounds a participating medium with no
 	// BSDF response of its own; the ray passes straight through, only the
-	// medium changes. Built on both backends by sharing MaterialKind::
-	// Dielectric's exact build path with eta forced to 1.001 (flatten()'s
-	// own comment on why not exactly 1.0) - the same near-invisible
-	// substitute this project's own bundled cloud/rgbgrid/uniformgrid
-	// medium scenes already hand-author via a plain `dielectric` material,
-	// now recognized automatically for any scene using the real directive.
+	// medium changes. Built on both backends as a real, dedicated pass-
+	// through material (CPU's interface_material, material_simple.h;
+	// GPU's MaterialType::Interface) - no Fresnel/refraction math, no
+	// critical angle, and a real "nothing happened here" signal every
+	// integrator (default path tracer, BDPT/MLT, SPPM, both backends)
+	// uses to skip the crossing entirely rather than treating it as a
+	// specular bounce.
 	Interface,
 	Unsupported,
 };
@@ -984,6 +985,19 @@ using MeshResolver = std::function<bool(const std::string &path,
 // using-directive below) - exactly tests/unit/pbrt_flatten_tests.cpp's shape.
 namespace flatten_detail {
 
+// Resolves a Texture by name against the scene's declared list - pbrt's own
+// "last declaration wins" rule (a later `Texture "name" ...` shadows an
+// earlier one with the same name), so this deliberately doesn't `break` on
+// the first match. Centralizes what used to be 8 independent, hand-rolled
+// copies of this exact scan scattered through flatten()'s material loop.
+inline const pbrt_scene::TextureDecl *findTexture(const pbrt_scene::Scene &scene,
+													const std::string &name) {
+	const pbrt_scene::TextureDecl *tex = nullptr;
+	for (const pbrt_scene::TextureDecl &t : scene.textures)
+		if (t.name == name) tex = &t;
+	return tex;
+}
+
 // One shape to emit, where to put it, and under which transform. Routing the
 // single shape loop through this is what lets the same code serve three
 // callers - scene geometry, an instance definition's object-space geometry,
@@ -1237,7 +1251,39 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		if (!scene.materials[i].name.empty())
 			namedMaterialIndex[scene.materials[i].name] = static_cast<int>(i);
 
-	for (const pbrt_scene::MaterialDecl &md : scene.materials) {
+	for (const pbrt_scene::MaterialDecl &mdSrc : scene.materials) {
+		// Mutable copy: any "texture"-typed param bound to a Texture of
+		// class "constant" (pbrt-v4's literal-value texture - a scene
+		// author's indirection for a colour reused across several
+		// materials) gets rewritten IN PLACE to its real numeric value
+		// below, before anything else in this loop iteration reads it. That
+		// means every reader further down - the reflectance-vs-k precedence
+		// just below, the conductor eta/k complex-IOR resolution, roughness,
+		// transmittance, mix amount, etc - sees real numbers exactly like a
+		// plain numeric param would, with no per-parameter special-casing
+		// needed anywhere else in this function. p.strings is left alone,
+		// so a param whose rewrite doesn't apply (no "value" found, or the
+		// texture isn't "constant") still correctly reads as texture-bound
+		// for the generic "not supported" warning below.
+		pbrt_scene::MaterialDecl md = mdSrc;
+		for (pbrt_scene::Param &p : md.params.items) {
+			if (p.type != "texture" || p.strings.empty()) continue;
+			const pbrt_scene::TextureDecl *constTex = findTexture(scene, p.strings[0]);
+			if (!constTex || constTex->cls != "constant") continue;
+			const pbrt_scene::Param *valueP = constTex->params.find("value");
+			if (!valueP) continue;
+			if (valueP->numbers.size() >= 3) {
+				p.type = "rgb";
+				p.numbers = {valueP->numbers[0], valueP->numbers[1], valueP->numbers[2]};
+			} else if (valueP->numbers.size() == 1) {
+				// "float value" form - broadcast to RGB, same convention
+				// pbrt-v4 itself uses feeding a float texture into an RGB
+				// parameter.
+				p.type = "float";
+				p.numbers = {valueP->numbers[0]};
+			}
+		}
+
 		Material m;
 		m.pbrtType = md.type;
 		m.kind = materialKindFor(md.type);
@@ -1279,44 +1325,10 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// references) still just warns.
 		for (const pbrt_scene::Param &p : md.params.items) {
 			if (p.type != "texture") continue;
-			// "constant" is pbrt-v4's literal-value texture class - a real
-			// scene author's indirection for a colour reused across several
-			// materials. Resolve it here to the exact plain colour the
-			// non-texture-bound "reflectance"/"k" parameter already gets
-			// (the pre-loop m.color assignment above), instead of falling
-			// through to the generic warning below with the WRONG fallback
-			// (that pre-loop getVec3() read the raw texture-typed param,
-			// which has no `numbers`, so it silently used the generic
-			// default colour, not even an approximation of the real one).
-			// Not gated on `kind` - needed for conductor's "k" too, not
-			// just diffuse-family "reflectance".
-			if ((p.name == "reflectance" || p.name == "k") && !p.strings.empty()) {
-				const pbrt_scene::TextureDecl *constTex = nullptr;
-				for (const pbrt_scene::TextureDecl &t : scene.textures)
-					if (t.name == p.strings[0]) constTex = &t;
-				if (constTex && constTex->cls == "constant") {
-					const pbrt_scene::Param *valueP = constTex->params.find("value");
-					if (valueP && valueP->numbers.size() >= 3) {
-						m.color[0] = valueP->numbers[0];
-						m.color[1] = valueP->numbers[1];
-						m.color[2] = valueP->numbers[2];
-						continue;
-					} else if (valueP && valueP->numbers.size() == 1) {
-						// "float value" form - broadcast to RGB, same
-						// convention pbrt-v4 itself uses feeding a float
-						// texture into an RGB parameter.
-						const double f = valueP->numbers[0];
-						m.color[0] = m.color[1] = m.color[2] = f;
-						continue;
-					}
-				}
-			}
 			if ((m.kind == MaterialKind::Diffuse || m.kind == MaterialKind::CoatedDiffuse ||
 				 m.kind == MaterialKind::DiffuseTransmission) &&
 				p.name == "reflectance" && !p.strings.empty()) {
-				const pbrt_scene::TextureDecl *tex = nullptr;
-				for (const pbrt_scene::TextureDecl &t : scene.textures)
-					if (t.name == p.strings[0]) tex = &t;
+				const pbrt_scene::TextureDecl *tex = findTexture(scene, p.strings[0]);
 				// "reflectance" bound to a "scale"-class Texture wrapping an
 				// imagemap (barcelona-pavilion's own dominant pattern, e.g.
 				// materials.pbrt's "concrete-kd": Texture "concrete-kd"
@@ -1350,11 +1362,8 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				if (m.kind == MaterialKind::CoatedDiffuse && imgTex && imgTex->cls == "scale") {
 					texScale = imgTex->params.getFloat("scale", 1.0);
 					const pbrt_scene::Param *inner = imgTex->params.find("tex");
-					imgTex = nullptr;
-					if (inner && inner->type == "texture" && !inner->strings.empty()) {
-						for (const pbrt_scene::TextureDecl &t : scene.textures)
-							if (t.name == inner->strings[0]) imgTex = &t;
-					}
+					imgTex = (inner && inner->type == "texture" && !inner->strings.empty())
+						? findTexture(scene, inner->strings[0]) : nullptr;
 				}
 				if (imgTex && imgTex->cls == "imagemap") {
 					const std::string filename = imgTex->params.getString("filename", "");
@@ -1381,9 +1390,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					// (imagemap first, something else later) would silently
 					// resolve to the STALE earlier declaration instead of
 					// correctly falling through to the generic warning.
-					const pbrt_scene::TextureDecl *found = nullptr;
-					for (const pbrt_scene::TextureDecl &t : scene.textures)
-						if (t.name == p->strings[0]) found = &t;
+					const pbrt_scene::TextureDecl *found = findTexture(scene, p->strings[0]);
 					if (found && found->cls == "imagemap")
 						return found->params.getString("filename", "");
 					return std::string();
@@ -1473,9 +1480,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// a plain imagemap to both "reflectance" and "transmittance".
 			if (m.kind == MaterialKind::DiffuseTransmission &&
 				p.name == "transmittance" && !p.strings.empty()) {
-				const pbrt_scene::TextureDecl *tex = nullptr;
-				for (const pbrt_scene::TextureDecl &t : scene.textures)
-					if (t.name == p.strings[0]) tex = &t;
+				const pbrt_scene::TextureDecl *tex = findTexture(scene, p.strings[0]);
 				if (tex && tex->cls == "imagemap") {
 					const std::string filename = tex->params.getString("filename", "");
 					if (!filename.empty()) {
@@ -1491,18 +1496,13 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// "scale"-class texture (its own "texture tex" naming the real
 			// imagemap, its "float scale" becoming displacementScale).
 			if (p.name == "displacement" && !p.strings.empty()) {
-				const pbrt_scene::TextureDecl *tex = nullptr;
-				for (const pbrt_scene::TextureDecl &t : scene.textures)
-					if (t.name == p.strings[0]) tex = &t;
+				const pbrt_scene::TextureDecl *tex = findTexture(scene, p.strings[0]);
 				double scale = 1.0;
 				if (tex && tex->cls == "scale") {
 					scale = tex->params.getFloat("scale", 1.0);
 					const pbrt_scene::Param *inner = tex->params.find("tex");
-					tex = nullptr;
-					if (inner && inner->type == "texture" && !inner->strings.empty()) {
-						for (const pbrt_scene::TextureDecl &t : scene.textures)
-							if (t.name == inner->strings[0]) tex = &t;
-					}
+					tex = (inner && inner->type == "texture" && !inner->strings.empty())
+						? findTexture(scene, inner->strings[0]) : nullptr;
 				}
 				if (tex && tex->cls == "imagemap") {
 					const std::string filename = tex->params.getString("filename", "");
@@ -1539,17 +1539,10 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		m.remapRoughness = md.params.getBool("remaproughness", true);
 		// "eta" is pbrt's name for index of refraction on dielectrics.
 		m.ior = md.params.getFloat("eta", md.params.getFloat("ior", 1.5));
-		if (m.kind == MaterialKind::Interface) {
-			// eta=1.0 exactly makes FrDielectric() (src/shared/fresnel.h)
-			// divide 0/0 at grazing incidence (r_parl/r_perp's shared
-			// numerator AND denominator both hit exactly 0 there) - 1.001
-			// is the same near-invisible value this project's own bundled
-			// cloud/rgbgrid/uniformgrid medium scenes already hand-author
-			// as a workaround for this exact gap (see materialKindFor()'s
-			// own comment), now applied automatically for any scene using
-			// the real pbrt-v4 directive.
-			m.ior = 1.001;
-		}
+		// MaterialKind::Interface (pbrt's Material "none"/"") ignores m.ior
+		// entirely - see interface_material's own comment
+		// (material_simple.h) for why it's a real pass-through, not a
+		// near-1-eta Dielectric.
 
 		// Conductor OR CoatedConductor: pbrt describes a conductor's complex
 		// IOR via "spectrum eta"/"spectrum k" bound to a NAMED spectrum
@@ -2354,6 +2347,13 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		}
 
 		if (shape.type == "bilinearmesh") {
+			// Same medium-drop gap as trianglemesh/plymesh/loopsubdiv above -
+			// BilinearPatch has no `medium` field either.
+			if (shape.insideMedium >= 0) {
+				warn("shape '" + shape.type + "' has a MediumInterface, but "
+					 "this loader only supports an attached medium on sphere/"
+					 "disk/cylinder shapes - the medium will be dropped");
+			}
 			// Single-patch form only (see BilinearPatch's own comment) - a
 			// bare "point3 P" with exactly 4 points, no "integer indices".
 			// Anything else (the multi-patch form, or an instanced/object-
@@ -2375,6 +2375,20 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 
 		if (shape.type == "trianglemesh" || shape.type == "plymesh"
 				|| shape.type == "loopsubdiv") {
+			// A MediumInterface on a mesh shape is silently dropped - Triangle
+			// (unlike Sphere/Disk/Cylinder) has no `medium` field to carry it,
+			// and neither CPU's addMediumIfPresent() nor GPU's sphere-only
+			// MaterialType::Medium can attach one to a mesh. This used to be
+			// loud (Material "none" fell to Unsupported and warned by name);
+			// now that "none"/"" resolves to the real MaterialKind::Interface
+			// with no warning of its own, a mesh-bounded medium boundary would
+			// otherwise go silent - warn here instead, so the gap stays
+			// visible even though real mesh-medium support isn't implemented.
+			if (shape.insideMedium >= 0) {
+				warn("shape '" + shape.type + "' has a MediumInterface, but "
+					 "this loader only supports an attached medium on sphere/"
+					 "disk/cylinder shapes - the medium will be dropped");
+			}
 			// "texture alpha" - an alpha-cutout mask authored per-Shape (see
 			// Material::alphaTextureFilename's own comment for why it lands
 			// on the Shape's resolved material rather than a new per-
@@ -2390,11 +2404,8 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 						 "resolved material to attach the cutout mask to; the "
 						 "shape will render fully opaque");
 				} else {
-					const pbrt_scene::TextureDecl *tex = nullptr;
-					if (pa->type == "texture" && !pa->strings.empty()) {
-						for (const pbrt_scene::TextureDecl &t : scene.textures)
-							if (t.name == pa->strings[0]) tex = &t;
-					}
+					const pbrt_scene::TextureDecl *tex = (pa->type == "texture" && !pa->strings.empty())
+						? findTexture(scene, pa->strings[0]) : nullptr;
 					const std::string filename = (tex && tex->cls == "imagemap")
 						? tex->params.getString("filename", "") : std::string();
 					if (filename.empty()) {

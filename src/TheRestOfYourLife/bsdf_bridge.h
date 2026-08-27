@@ -91,6 +91,19 @@ inline bool sppm_is_delta_material(const material* m) {
 	return m && m->is_delta_bsdf();
 }
 
+// Same null-safe bridge shape as sppm_is_delta_material() above, forwarding
+// to material::is_medium_boundary() instead - true only for
+// interface_material (material_simple.h), pbrt-v4's real "no BSDF"
+// interface material. A vertex classified this way is neither a real delta
+// bounce nor a real non-delta one: it should be skipped entirely (no vertex
+// recorded, no bounce consumed), the same "is_medium_boundary" concept
+// src/shared/bdpt.h's BDPTHit and the templated Scene-concept integrators
+// already use, now reachable from real Material-based geometry via
+// bdpt_adapter.h/sppm_adapter.h.
+inline bool sppm_is_medium_boundary(const material* m) {
+	return m && m->is_medium_boundary();
+}
+
 // Resolves a mix_material down to a concrete, non-mix sub-material, matching
 // mix_material::scatter()'s own stochastic weight draw exactly (same
 // weight_tex lookup, same `random_double() >= w` comparison) -- recurses to

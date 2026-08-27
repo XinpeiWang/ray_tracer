@@ -128,6 +128,12 @@ extern "C" __global__ void __raygen__rg() {
 		// pbrt-v4 etaScale: product of eta^2 over every transmission event
 		// so far - see PathTracingPayload::eta's own comment.
 		float  eta_scale = 1.0f;
+		// A MaterialType::Interface crossing (flag==4 below) is free - it
+		// doesn't consume the depth loop or an RR trial - so nothing else
+		// bounds how many a single path can take. Matches CPU camera.h's
+		// own kMaxMediumBoundaryCrossings bound and rationale.
+		unsigned int mediumBoundaryCrossings = 0;
+		constexpr unsigned int kMaxMediumBoundaryCrossings = 32;
 
 		for (unsigned int depth = 0; depth < params.maxDepth; ++depth) {
 			// --stats: one traced ray per iteration (primary on depth==0, a
@@ -246,8 +252,27 @@ extern "C" __global__ void __raygen__rg() {
 				normal_sum = normal_sum + payload.normal;
 			}
 
-			// Decode flag: 0=absorbed, 1=scattered, 2=hit_light
-			if (flag == 2) {
+			// Decode flag: 0=absorbed, 1=scattered, 2=hit_light, 3=scattered
+			// w/ explicit origin (Subsurface probe exit), 4=medium boundary
+			// (MaterialType::Interface - real pass-through, see its own
+			// comment in optix_types.h).
+			if (flag == 4) {
+				// True pass-through - nothing actually scattered here.
+				// prev_brdf_pdf/eta_scale are left exactly as they were (the
+				// NEXT emitter hit's MIS weight should reflect whatever the
+				// last REAL vertex was, not this crossing), and this doesn't
+				// consume the depth loop or an RR trial either - a free
+				// crossing, matching CPU camera.h's own is_medium_boundary
+				// branch exactly.
+				throughput = throughput * payload.attenuation;
+				float3 hit_point = ray_origin + t_hit * ray_direction;
+				ray_origin = hit_point + 0.001f * ray_direction;
+				// ray_direction is left unchanged - real pass-through.
+				seed = payload.seed;
+				if (++mediumBoundaryCrossings > kMaxMediumBoundaryCrossings) break;
+				--depth;
+				continue;
+			} else if (flag == 2) {
 				// Hit an emissive surface via a BRDF-sampled bounce.
 				// Apply MIS weight (pbrt-v4 PathIntegrator pattern):
 				//   w_b = PowerHeuristic(p_b, p_l)  where:

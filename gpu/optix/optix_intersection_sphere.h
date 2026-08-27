@@ -349,6 +349,9 @@ extern "C" __global__ void __closesthit__sphere() {
 	float3 scattered_dir;
 	bool scattered = false;
 	bool is_specular = false;  // pbrt-v4 specularBounce: MIS is skipped for specular events
+	// True only for MaterialType::Interface - see its own comment
+	// (optix_types.h) and shade_material()'s out_is_medium_boundary.
+	bool is_medium_boundary = false;
 	float brdf_pdf_override = -1.0f;  // if >= 0, overrides cosine_pdf in payload packing
 	bool is_medium = false;    // MaterialType::Medium: t_hit below must use medium_t_hit,
 	float medium_t_hit = 0.0f; // not optixGetRayTmax() (which is just the sphere's entry surface)
@@ -836,7 +839,7 @@ extern "C" __global__ void __closesthit__sphere() {
 			effective.type = MaterialType::Lambertian;
 			effective.textureIdx = -1;
 			shade_material(effective, matIdx, perturbed_normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, seed,
-				attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
+				attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
 				bssrdf_exit, bssrdf_exit_pos, out_eta);
 	} else if (mat.type == MaterialType::Principled) {
 			// Disney/pbrt-v4 multi-lobe BSDF - see sample_principled_material's
@@ -848,7 +851,7 @@ extern "C" __global__ void __closesthit__sphere() {
 			is_specular = true;
 	} else {
 		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, seed,
-			attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
+			attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
 			bssrdf_exit, bssrdf_exit_pos, out_eta);
 	}
 
@@ -903,8 +906,9 @@ extern "C" __global__ void __closesthit__sphere() {
 		// MaterialType::Subsurface (and therefore bssrdf_exit) never applies
 		// to spheres in this loader, but flag 3 / p13-15 are packed the same
 		// way triangle/quad/bilinear-patch do for consistency - see
-		// optix_intersection_quad.h's p0-p15 layout comment.
-		optixSetPayload_10(bssrdf_exit ? 3 : 1);  // scattered
+		// optix_intersection_quad.h's p0-p15 layout comment. flag==4:
+		// MaterialType::Interface - see optix_raygen.h's own flag==4 branch.
+		optixSetPayload_10(bssrdf_exit ? 3 : (is_medium_boundary ? 4 : 1));  // scattered
 		optixSetPayload_11(__float_as_uint(t_hit));
 		optixSetPayload_12(__float_as_uint(brdf_pdf_out));
 		if (bssrdf_exit) {

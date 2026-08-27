@@ -214,8 +214,8 @@ namespace SceneCategories {
     constexpr const char* Models     = "Models";       // single imported meshes
     constexpr const char* LargeScene = "Large Scenes"; // full textured environments
     // Curated demos of the Render Options tab's own controls (Sampler,
-    // Spectral rendering, Exposure, Tone mapping, OptiX AI denoiser) and the
-    // Basic Settings tab's Integrator selector (SPPM/BDPT/MLT) - each entry
+    // Spectral rendering, Exposure, Tone mapping, OptiX AI denoiser) and its
+    // Integrator selector (SPPM/BDPT/MLT) - each entry
     // reuses an existing scene's geometry (same technique B23/F3 already use
     // to share content with another entry) rather than being new content in
     // its own right, so the description/technique-note is the point: which

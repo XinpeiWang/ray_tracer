@@ -1635,6 +1635,7 @@ __device__ __forceinline__ void shade_material(
 	float3& out_scattered_dir,
 	bool& out_scattered,
 	bool& out_is_specular,
+	bool& out_is_medium_boundary,
 	float& out_brdf_pdf_override,
 	float3& emission,
 	bool& out_bssrdf_exit,
@@ -1645,6 +1646,10 @@ __device__ __forceinline__ void shade_material(
 	float3 scattered_dir;
 	bool scattered = false;
 	bool is_specular = false;  // pbrt-v4 specularBounce: MIS is skipped for specular events
+	// True only for MaterialType::Interface - a real "nothing happened
+	// here" signal, distinct from is_specular (a genuine delta/specular
+	// BSDF event). See MaterialType::Interface's own comment (optix_types.h).
+	bool is_medium_boundary = false;
 	float brdf_pdf_override = -1.0f;  // if >= 0, overrides cosine_pdf in payload packing
 	bool bssrdf_exit = false;
 	float3 bssrdf_exit_pos = make_float3(0.0f, 0.0f, 0.0f);
@@ -1815,6 +1820,17 @@ __device__ __forceinline__ void shade_material(
 			// transmission event (matches CPU material_simple.h's
 			// `res.eta = ri` only in the refract branch, `T(1)` otherwise).
 			if (is_transmission) eta = front_face ? (1.0f / mat.ior) : mat.ior;
+			break;
+		}
+
+		case MaterialType::Interface: {
+			// Real pass-through - exact same direction as the incoming ray,
+			// no Fresnel/refraction math at all. See MaterialType::
+			// Interface's own comment (optix_types.h).
+			scattered_dir = ray_dir;
+			attenuation = make_float3(1.0f, 1.0f, 1.0f);
+			scattered = true;
+			is_medium_boundary = true;
 			break;
 		}
 
@@ -2683,6 +2699,7 @@ __device__ __forceinline__ void shade_material(
 	out_scattered_dir = scattered_dir;
 	out_scattered = scattered;
 	out_is_specular = is_specular;
+	out_is_medium_boundary = is_medium_boundary;
 	out_brdf_pdf_override = brdf_pdf_override;
 	out_bssrdf_exit = bssrdf_exit;
 	out_bssrdf_exit_pos = bssrdf_exit_pos;

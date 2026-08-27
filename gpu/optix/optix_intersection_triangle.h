@@ -178,6 +178,7 @@ extern "C" __global__ void __closesthit__triangle() {
 	float3 scattered_dir;
 	bool scattered = false;
 	bool is_specular = false;
+	bool is_medium_boundary = false;  // MaterialType::Interface - see optix_types.h
 	float brdf_pdf_override = -1.0f;
 	bool bssrdf_exit = false;
 	float3 bssrdf_exit_pos = make_float3(0.0f, 0.0f, 0.0f);
@@ -260,7 +261,7 @@ extern "C" __global__ void __closesthit__triangle() {
 	float out_eta = 1.0f;
 	if (mat.type != MaterialType::Hair) {
 		shade_material(shade_mat, matIdx, shade_normal, ray_dir, hit_point, front_face, uv_u, uv_v, seed,
-			attenuation, scattered_dir, scattered, is_specular, brdf_pdf_override, emission,
+			attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
 			bssrdf_exit, bssrdf_exit_pos, out_eta);
 	}
 
@@ -297,7 +298,8 @@ extern "C" __global__ void __closesthit__triangle() {
 		// exit point off to the side of this ray - the next ray must
 		// originate there, not at hit_point (see optix_raygen.h's flag==3
 		// handling and shade_material()'s own out_bssrdf_exit comment).
-		optixSetPayload_10(bssrdf_exit ? 3 : 1);
+		// flag 4: MaterialType::Interface - see optix_raygen.h's flag==4 branch.
+		optixSetPayload_10(bssrdf_exit ? 3 : (is_medium_boundary ? 4 : 1));
 		optixSetPayload_11(__float_as_uint(t_hit));
 		optixSetPayload_12(__float_as_uint(brdf_pdf_out));
 		if (bssrdf_exit) {

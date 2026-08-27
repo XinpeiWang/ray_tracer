@@ -1556,6 +1556,15 @@ private:
 	// label adds a non-blocking heads-up before that happens, toggled by
 	// both onModeChanged() and onIntegratorChanged().
 	QLabel *m_integratorVideoWarningLabel;
+	// Second copy of the same warning, on Basic Settings directly under
+	// m_modeCombo (Output Mode) - that's the control that actually
+	// triggers the conflict, but it's on a different tab from
+	// m_integratorVideoWarningLabel above (which lives in the Integrator
+	// group, Render Options tab, next to the OTHER control that can
+	// trigger it). Whichever tab the user is looking at when the conflict
+	// is created, they see it there - both kept in sync by the same
+	// onModeChanged()/onIntegratorChanged() toggle.
+	QLabel *m_integratorVideoWarningLabelBasic;
 	// No isEnabled() gating needed on these in captureRenderJob() - only
 	// the currently-selected integrator's own fields are ever read by
 	// RenderController::start()'s switch, so a stale value from a hidden

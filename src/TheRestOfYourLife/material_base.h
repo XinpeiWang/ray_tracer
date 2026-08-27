@@ -51,6 +51,23 @@ class scatter_record {
     // corrupted path and rendered correctly).
     double eta = 1.0;             // IOR ratio (1.0 unless refraction; pbrt-v4 bs->eta)
     bool is_transmission = false; // true when a refraction occurred (drives etaScale in integrator)
+    // True only for interface_material's scatter() (material_simple.h) -
+    // pbrt-v4's real "no BSDF" interface material (Material "none"/"" -
+    // bounds a participating medium with no surface response of its own).
+    // Distinct from skip_pdf (which this ALSO sets, since there's no pdf to
+    // importance-sample against): skip_pdf alone means "a real specular
+    // event happened here, don't NEE, but count it and update MIS state as
+    // a specular bounce" - that's wrong for a true pass-through, where
+    // nothing actually happened. camera.h's ray_color()/ray_color_spectral()
+    // check this FIRST, before the generic skip_pdf branch, to preserve
+    // specular_bounce/prev_bsdf_pdf/prev_surface_p exactly as they were and
+    // skip the bounce-budget/Russian-Roulette accounting too - mirroring
+    // pbrt-v4's own SurfaceInteraction::SkipIntersection, and the same
+    // "is_medium_boundary" concept src/shared/bdpt.h's BDPTHit and the
+    // templated Scene-concept integrators (path_integrator.h, light_path.h)
+    // already use, now finally reachable from real Material-based geometry
+    // via material::is_medium_boundary() below.
+    bool is_medium_boundary = false;
 };
 
 
@@ -147,6 +164,16 @@ class material {
     // dielectric, thin_dielectric) are unconditionally delta and override
     // this to a fixed `true`.
     virtual bool is_delta_bsdf() const { return false; }
+
+    // True only for interface_material (material_simple.h) - pbrt-v4's real
+    // "no BSDF" interface material. A THIRD classification alongside
+    // is_delta_bsdf()'s true/false: not a real delta surface (no NEE, but a
+    // genuine specular event that should count as a bounce and update MIS
+    // state) and not a real non-delta surface (real NEE/photon deposit) -
+    // this hit should be skipped entirely, as if it never happened. Mirrors
+    // is_delta_bsdf()'s own shape exactly; see bsdf_bridge.h's
+    // sppm_is_medium_boundary() for the same null-safe bridge pattern.
+    virtual bool is_medium_boundary() const { return false; }
 
     // The attenuation color to pair with scattering_pdf(..., scattered) for
     // THAT specific direction - defaults to srec_attenuation (the value
