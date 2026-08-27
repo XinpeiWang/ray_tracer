@@ -224,7 +224,12 @@ int cpu_render_main_mlt(
 /// production render mode. See src/shared/utility_integrators.h's own file
 /// comment. CPU only. Works on any scene (no light-sampling dependency,
 /// unlike --bdpt/--mlt/--lightpath -- an emissive surface only contributes
-/// when a bounce happens to hit it directly).
+/// when a bounce happens to hit it directly). A bounce that escapes the
+/// scene entirely shows the real cam.sky environment map when the scene
+/// defines one (matching what every other integrator's own miss handling
+/// shows), not a forced flat background - punctual (point/spot/distant)
+/// lights remain invisible here regardless, since a uniform-sphere bounce
+/// can never hit a light with no real geometry.
 /// @param width/height    Image dimensions in pixels
 /// @param spp             Samples per pixel
 /// @param max_depth       Maximum bounce depth
@@ -328,9 +333,11 @@ int cpu_render_main_simplepath(
 /// terminates at the first surface hit, adding only that surface's own
 /// area emission (SimpleVolPathIntegrator has no surface BSDF support at
 /// all, matching upstream) -- so most scenes render mostly black except
-/// where camera rays land directly on a light. Full participating-media
-/// support (constant_medium.h/cloud_medium.h/rgb_grid_medium.h) is future
-/// work.
+/// where camera rays land directly on a light, or (if the scene defines
+/// one) escape to the real cam.sky environment map on a miss - matching
+/// every other integrator's own miss handling, not a forced flat
+/// background. Full participating-media support (constant_medium.h/
+/// cloud_medium.h/rgb_grid_medium.h) is future work.
 /// @param width/height    Image dimensions in pixels
 /// @param spp             Samples per pixel
 /// @param max_depth       Maximum scattering-event depth (medium scenes only)

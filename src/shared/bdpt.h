@@ -213,6 +213,22 @@ struct BDPTEndpointData {
 	bool is_infinite; // true for environment map lights
 	bool is_delta;    // true for point/directional lights
 	int light_id;    // -1 for camera
+	// Only meaningful when is_infinite: the real direction this vertex
+	// represents, "arrival" convention (from the one real, adjacent vertex
+	// this was captured relative to, TOWARD the infinite light) - an
+	// infinite light has no real position (p() is zeroed by
+	// MakeLightInfinite below), so every function that would otherwise
+	// derive "the direction toward/from this vertex" via `next.p()-p()`
+	// (f(), PDF(), PDFLight(), PDFLightOrigin() - Le() no longer needs
+	// this, see its own comment) uses this instead
+	// whenever the other side of that subtraction is an infinite-light
+	// vertex. Populated once, at vertex-creation time, from whichever real
+	// direction was actually known there (the escaping camera ray's
+	// direction in BDPTRandomWalk, the sampled emission direction in
+	// GenerateLightSubpath, or the NEE sample's own wi in ConnectBDPT's
+	// s==1 strategy) - see each MakeLightInfinite call site's own comment
+	// for the sign it passes.
+	T dir[3];
 };
 
 template<typename T>
@@ -262,9 +278,14 @@ struct BDPTVertex {
 		return v;
 	}
 
-	// Factory: light endpoint from environment light (infinite, non-surface)
+	// Factory: light endpoint from environment light (infinite, non-surface).
+	// `dir` is the real "arrival" direction this vertex represents (from
+	// the one real, adjacent vertex it was captured relative to, TOWARD
+	// the light) - see BDPTEndpointData::dir's own comment. Every caller
+	// must pass a real, meaningful direction here now (not a placeholder);
+	// see each call site's own comment for its derivation.
 	static BDPTVertex MakeLightInfinite(const T Le[3], T pdf_pos,
-										 int light_id) {
+										 int light_id, const T dir[3]) {
 		BDPTVertex v;
 		v.type = BDPTVertexType::Light;
 		v.beta[0]=Le[0]; v.beta[1]=Le[1]; v.beta[2]=Le[2];
@@ -273,6 +294,7 @@ struct BDPTVertex {
 		v.ei.pdf_pos = pdf_pos;
 		v.ei.is_infinite = true;
 		v.ei.light_id = light_id;
+		v.ei.dir[0]=dir[0]; v.ei.dir[1]=dir[1]; v.ei.dir[2]=dir[2];
 		std::memset(v.ei.p, 0, sizeof(v.ei.p));
 		std::memset(v.ei.n, 0, sizeof(v.ei.n));
 		return v;
@@ -386,9 +408,20 @@ struct BDPTVertex {
 	// ---------- f: BSDF / phase evaluation toward 'next' ----------
 	template<typename Scene>
 	void f(const BDPTVertex& next, const Scene& scene, T out[3]) const {
-		T wn[3] = { next.p()[0]-p()[0], next.p()[1]-p()[1], next.p()[2]-p()[2] };
-		if (bdpt_detail::len2_3(wn) == T(0)) { out[0]=out[1]=out[2]=T(0); return; }
-		bdpt_detail::norm3(wn);
+		// An infinite-light `next` has no real position (p() is zeroed by
+		// MakeLightInfinite) - next.p()-p() would derive a bogus direction
+		// from `this` vertex's own absolute world position instead of the
+		// real arrival direction. next.ei.dir already IS that direction
+		// (arrival convention: from `this` toward the light) - see
+		// BDPTEndpointData::dir's own comment.
+		T wn[3];
+		if (next.IsInfiniteLight()) {
+			wn[0]=next.ei.dir[0]; wn[1]=next.ei.dir[1]; wn[2]=next.ei.dir[2];
+		} else {
+			wn[0] = next.p()[0]-p()[0]; wn[1] = next.p()[1]-p()[1]; wn[2] = next.p()[2]-p()[2];
+			if (bdpt_detail::len2_3(wn) == T(0)) { out[0]=out[1]=out[2]=T(0); return; }
+			bdpt_detail::norm3(wn);
+		}
 		if (type == BDPTVertexType::Surface) {
 			scene.BSDFf(si.bsdf_id, si.wo, wn, si.shading_n, out);
 		} else {
@@ -417,10 +450,20 @@ struct BDPTVertex {
 		if (type == BDPTVertexType::Light)
 			return PDFLight(next, scene);
 
-		T wn[3] = { next.p()[0]-p()[0], next.p()[1]-p()[1], next.p()[2]-p()[2] };
-		if (bdpt_detail::len2_3(wn) == T(0)) return T(0);
-		bdpt_detail::norm3(wn);
+		// See f()'s own comment on why an infinite `next` needs its stored
+		// ei.dir instead of a next.p()-p() derivation.
+		T wn[3];
+		if (next.IsInfiniteLight()) {
+			wn[0]=next.ei.dir[0]; wn[1]=next.ei.dir[1]; wn[2]=next.ei.dir[2];
+		} else {
+			wn[0] = next.p()[0]-p()[0]; wn[1] = next.p()[1]-p()[1]; wn[2] = next.p()[2]-p()[2];
+			if (bdpt_detail::len2_3(wn) == T(0)) return T(0);
+			bdpt_detail::norm3(wn);
+		}
 
+		// `prev` is always a real, positioned vertex in practice - an
+		// infinite-light vertex can only ever be lightVerts[0] (the first
+		// vertex of a light subpath), which never has a `prev` of its own.
 		T wp[3] = {T(0),T(0),T(0)};
 		if (prev) {
 			wp[0]=prev->p()[0]-p()[0]; wp[1]=prev->p()[1]-p()[1]; wp[2]=prev->p()[2]-p()[2];
@@ -439,12 +482,27 @@ struct BDPTVertex {
 	}
 
 	// ---------- PDFLight ----------
+	// `this` is the light vertex; `v` is the other (real) vertex being
+	// reasoned about.
 	template<typename Scene>
 	T PDFLight(const BDPTVertex& v, const Scene& scene) const {
-		T w[3] = { v.p()[0]-p()[0], v.p()[1]-p()[1], v.p()[2]-p()[2] };
-		T inv_dist2 = T(1) / bdpt_detail::len2_3(w);
-		T wn[3] = { w[0], w[1], w[2] };
-		bdpt_detail::norm3(wn);
+		T wn[3];
+		T inv_dist2 = T(0);
+		if (IsInfiniteLight()) {
+			// this->ei.dir is "arrival" convention (from v toward the
+			// light, since v is the one real vertex this was captured
+			// relative to - see BDPTEndpointData::dir's own comment); the
+			// direction FROM the light TOWARD v needed below is its
+			// negation. inv_dist2 is unused by the IsInfiniteLight()
+			// branch below (no distance term in a planar-disk density), so
+			// it's left at its dummy 0 - only the else branch reads it.
+			wn[0]=-ei.dir[0]; wn[1]=-ei.dir[1]; wn[2]=-ei.dir[2];
+		} else {
+			T w[3] = { v.p()[0]-p()[0], v.p()[1]-p()[1], v.p()[2]-p()[2] };
+			inv_dist2 = T(1) / bdpt_detail::len2_3(w);
+			wn[0]=w[0]; wn[1]=w[1]; wn[2]=w[2];
+			bdpt_detail::norm3(wn);
+		}
 		T pdf;
 		if (IsInfiniteLight()) {
 			// planar sampling density for env lights
@@ -465,14 +523,19 @@ struct BDPTVertex {
 	}
 
 	// ---------- PDFLightOrigin ----------
+	// `this` is the light vertex; `v` is the other (real) vertex.
 	template<typename Scene>
 	T PDFLightOrigin(const BDPTVertex& v, const Scene& scene) const {
-		T w[3] = { v.p()[0]-p()[0], v.p()[1]-p()[1], v.p()[2]-p()[2] };
-		if (bdpt_detail::len2_3(w) == T(0)) return T(0);
-		bdpt_detail::norm3(w);
 		if (IsInfiniteLight()) {
-			return scene.InfiniteLightDensity(w);
+			// this->ei.dir is already the "arrival" (v-toward-light)
+			// direction InfiniteLightDensity() expects - see
+			// BDPTEndpointData::dir's own comment. v.p()-p() would derive
+			// a bogus direction from p()==0.
+			return scene.InfiniteLightDensity(ei.dir);
 		} else {
+			T w[3] = { v.p()[0]-p()[0], v.p()[1]-p()[1], v.p()[2]-p()[2] };
+			if (bdpt_detail::len2_3(w) == T(0)) return T(0);
+			bdpt_detail::norm3(w);
 			int lid = (type==BDPTVertexType::Light) ? ei.light_id : si.bsdf_id;
 			T pdf_pos, pdf_dir;
 			scene.LightPDFLe(lid, IsOnSurface() ? p() : nullptr,
@@ -623,10 +686,15 @@ int BDPTRandomWalk(const T ray_o[3], const T ray_d[3],
 		if (!found) {
 			// Escaped -- add environment light vertex on camera paths
 			if (camera_mode) {
-				// Create a virtual infinite-light vertex using the escape direction
+				// Create a virtual infinite-light vertex using the escape direction.
+				// `dir` (the escaping ray's own travel direction) already IS the
+				// "arrival" convention BDPTEndpointData::dir expects (the same
+				// direction argument scene.InfiniteLightLe() just used above) -
+				// no negation needed, since the ray travels FROM the previous
+				// real vertex TOWARD the light, exactly what "arrival" means.
 				T Le[3] = {T(0), T(0), T(0)};
 				scene.InfiniteLightLe(dir, Le);
-				path[bounces] = BDPTVertex<T>::MakeLightInfinite(Le, pdfFwd, -1);
+				path[bounces] = BDPTVertex<T>::MakeLightInfinite(Le, pdfFwd, -1, dir);
 				path[bounces].beta[0] = beta[0];
 				path[bounces].beta[1] = beta[1];
 				path[bounces].beta[2] = beta[2];
@@ -753,7 +821,12 @@ int BDPTGenerateLightSubpath(int maxDepth, const Scene& scene,
 												   les.L, p_l, les.light_id,
 												   les.is_delta_dir);
 	} else {
-		path[0] = BDPTVertex<T>::MakeLightInfinite(les.L, p_l, les.light_id);
+		// les.ray_d is the EMISSION direction (the photon's own travel
+		// direction, FROM the light INTO the scene) - "arrival" convention
+		// (FROM the first real vertex this walk reaches, TOWARD the light)
+		// is the opposite, -les.ray_d.
+		T arrivalDir[3] = { -les.ray_d[0], -les.ray_d[1], -les.ray_d[2] };
+		path[0] = BDPTVertex<T>::MakeLightInfinite(les.L, p_l, les.light_id, arrivalDir);
 	}
 
 	T cos_theta = les.abs_cos_theta;
@@ -775,8 +848,11 @@ int BDPTGenerateLightSubpath(int maxDepth, const Scene& scene,
 			T dn[3] = { les.ray_d[0], les.ray_d[1], les.ray_d[2] };
 			path[1].pdfFwd *= bdpt_detail::absdot3(path[1].ng(), dn);
 		}
-		// pdfFwd for the infinite-light vertex uses InfiniteLightDensity
-		path[0].pdfFwd = scene.InfiniteLightDensity(les.ray_d);
+		// pdfFwd for the infinite-light vertex uses InfiniteLightDensity,
+		// which expects the "arrival" convention (path[0].ei.dir, set just
+		// above) - NOT les.ray_d directly, which is the opposite-signed
+		// emission direction (see the arrivalDir comment above).
+		path[0].pdfFwd = scene.InfiniteLightDensity(path[0].ei.dir);
 	}
 	return nWalk + 1;
 }
@@ -827,9 +903,11 @@ void BDPTConnect(BDPTVertex<T>* lightVerts, BDPTVertex<T>* cameraVerts,
 				// IsInfiniteLight() branches (the correct disk-based density,
 				// not a solid-angle-to-area conversion using an arbitrary
 				// fake distance) apply here too.
+				// ls.wi (direction from pt toward the light) is already the
+				// "arrival" convention BDPTEndpointData::dir expects.
 				T Le_scaled[3] = { ls.L[0]/(ls.pdf), ls.L[1]/(ls.pdf), ls.L[2]/(ls.pdf) };
 				sampled = ls.is_infinite
-					? BDPTVertex<T>::MakeLightInfinite(ls.L, ls.pdf, ls.light_id)
+					? BDPTVertex<T>::MakeLightInfinite(ls.L, ls.pdf, ls.light_id, ls.wi)
 					: BDPTVertex<T>::MakeLightSurface(ls.p_light, ls.n_light,
 													  ls.L, ls.pdf, ls.light_id, ls.is_delta);
 				sampled.beta[0]=Le_scaled[0]; sampled.beta[1]=Le_scaled[1]; sampled.beta[2]=Le_scaled[2];

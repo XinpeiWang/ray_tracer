@@ -246,33 +246,17 @@ class BDPTSceneAdapter {
 		distBase_ = spotBase_ + nSpot;
 		skyIdx_   = distBase_ + nDistant;
 
-		// Sky/infinite light power: this codebase has no analytic total-
-		// power formula for an arbitrary HDR environment map the way it
-		// does for area/punctual lights (their power() methods above), so
-		// estimate one via importance-sampled Monte Carlo integration of
-		// its own Le/pdf - an unbiased estimator of the radiance integral
-		// over the sphere, since sample_Le() already draws directions
-		// proportional to luminance (sky_light.h's own comment). Only
-		// affects how OFTEN the sky gets chosen relative to other lights,
-		// not correctness - any positive finite weight keeps the estimator
-		// unbiased, this just keeps it well-behaved (a bright HDR sky
-		// competes fairly with a bright area light instead of being
-		// drowned out or dominating by construction).
+		// Sky/infinite light power: only affects how OFTEN the sky gets
+		// chosen relative to other lights, not correctness - any positive
+		// finite weight keeps the estimator unbiased, this just keeps it
+		// well-behaved (a bright HDR sky competes fairly with a bright area
+		// light instead of being drowned out or dominating by
+		// construction). See sky_light::power_estimate()'s own comment for
+		// the derivation - deterministic and reuses the sky's own
+		// already-built importance distribution, no fresh sampling needed.
 		hasSky_ = static_cast<bool>(cam_.sky);
 		if (hasSky_) {
-			constexpr int kSkyPowerSamples = 256;
-			double sum = 0.0;
-			int nValid = 0;
-			for (int i = 0; i < kSkyPowerSamples; ++i) {
-				SkyLiSample s = cam_.sky->sample_Le();
-				if (s.pdf <= 0.0) continue;
-				color Le = cam_.sky->Le(unit_vector(s.direction));
-				double lum = 0.2126*Le.x() + 0.7152*Le.y() + 0.0722*Le.z();
-				sum += lum / s.pdf;
-				++nValid;
-			}
-			double skyPower = (nValid > 0) ? (sum / nValid) * (4.0 * pi) : 0.0;
-			weights.push_back(std::max(skyPower, 1e-9));
+			weights.push_back(std::max(cam_.sky->power_estimate(), 1e-9));
 			nTotal_ = skyIdx_ + 1;
 		} else {
 			nTotal_ = skyIdx_;
@@ -782,7 +766,7 @@ class BDPTSceneAdapter {
 		// tracer's own NEE-toward-sky strategy (camera.h's "Strategy A-2").
 		SkyLiSample sm = cam_.sky->sample_Le();
 		if (sm.pdf <= 0.0) return false;
-		color Le = cam_.sky->Le(unit_vector(sm.direction));
+		color Le = cam_.sky->Le(sm.direction);   // already unit-length (sample_Le()'s own guarantee)
 		if (!(Le.x()>0.0 || Le.y()>0.0 || Le.z()>0.0)) return false;
 		point3 pl = P + sm.direction * farDist;
 		ls.p_light[0]=pl.x(); ls.p_light[1]=pl.y(); ls.p_light[2]=pl.z();
@@ -894,12 +878,8 @@ class BDPTSceneAdapter {
 		if (idx < skyIdx_) {                                      // distant
 			const distant_light_obj& L = cam_.punct_lights->distants[idx - distBase_];
 			vec3 wiToLight = L.direction();
+			point3 origin = diskEmissionOrigin(wiToLight);
 			vec3 rayDir = -wiToLight;   // photon travels the opposite way from "toward the light"
-			onb frame(rayDir);
-			double dx, dy;
-			SampleUniformDiskConcentric(random_double(), random_double(), dx, dy);
-			point3 center(sceneCenter_[0], sceneCenter_[1], sceneCenter_[2]);
-			point3 origin = center + sceneRadius_ * wiToLight + sceneRadius_ * frame.transform(vec3(dx, dy, 0.0));
 			color Le = L.radiance();
 			les.ray_o[0]=origin.x(); les.ray_o[1]=origin.y(); les.ray_o[2]=origin.z();
 			les.ray_d[0]=rayDir.x(); les.ray_d[1]=rayDir.y(); les.ray_d[2]=rayDir.z();
@@ -922,14 +902,10 @@ class BDPTSceneAdapter {
 		// MakeLightSurface (see that function's own dispatch).
 		SkyLiSample sm = cam_.sky->sample_Le();
 		if (sm.pdf <= 0.0) return false;
-		vec3 w = sm.direction;        // "arrival" convention, same as SampleLight()'s own sky branch
+		vec3 w = sm.direction;        // "arrival" convention, same as SampleLight()'s own sky branch - already unit-length (sample_Le()'s own guarantee)
+		point3 origin = diskEmissionOrigin(w);
 		vec3 rayDir = -w;             // photon travel direction
-		color Le = cam_.sky->Le(unit_vector(w));
-		onb frame(rayDir);
-		double dx, dy;
-		SampleUniformDiskConcentric(random_double(), random_double(), dx, dy);
-		point3 center(sceneCenter_[0], sceneCenter_[1], sceneCenter_[2]);
-		point3 origin = center + sceneRadius_ * w + sceneRadius_ * frame.transform(vec3(dx, dy, 0.0));
+		color Le = cam_.sky->Le(w);
 		les.ray_o[0]=origin.x(); les.ray_o[1]=origin.y(); les.ray_o[2]=origin.z();
 		les.ray_d[0]=rayDir.x(); les.ray_d[1]=rayDir.y(); les.ray_d[2]=rayDir.z();
 		les.p_on_light[0]=les.p_on_light[1]=les.p_on_light[2]=0.0;
@@ -1107,23 +1083,16 @@ class BDPTSceneAdapter {
 		out[0] = cam_.background.x(); out[1] = cam_.background.y(); out[2] = cam_.background.z();
 	}
 
-	// PDFLightOrigin's own IsInfiniteLight() branch (bdpt.h) calls this with
-	// `w` = the direction FROM the sky vertex TOWARD some other vertex it's
-	// reasoning about - the same "arrival" convention SampleLight()'s own
-	// sky branch and sky_light.h's pdf_Li() use, so this can pass `dir`
-	// straight through with no sign flip. (BDPTGenerateLightSubpath's own
-	// call site passes les.ray_d - the EMISSION direction, i.e. the
-	// opposite sign convention - for a symmetric/near-symmetric HDR
-	// environment this makes no practical difference; for a strongly
-	// asymmetric one it's a known, narrow imprecision affecting only a
-	// light subpath's own pdfFwd when it happens to originate at the sky,
-	// not the primary NEE-toward-sky contribution that makes a sky-lit
-	// scene visible under BDPT/MLT at all - not fixed here since that call
-	// site is bdpt.h's own, pre-existing, and out of scope for this
-	// adapter.) A flat (sky-less) backdrop has no associated sampling
-	// strategy (SampleLightLe never emits an is_infinite=true sample when
-	// !hasSky_), so its origin-pdf contribution to any OTHER strategy's MIS
-	// weight is correctly zero.
+	// Every caller (bdpt.h's PDFLightOrigin() and BDPTGenerateLightSubpath())
+	// now passes the "arrival" convention (direction FROM the one real
+	// vertex a sky vertex was captured relative to, TOWARD the sky) -
+	// BDPTEndpointData::dir's own comment (bdpt.h) documents this, and both
+	// call sites derive it consistently (BDPTGenerateLightSubpath negates
+	// les.ray_d, its own emission-direction sample, before storing it). A
+	// flat (sky-less) backdrop has no associated sampling strategy
+	// (SampleLightLe never emits an is_infinite=true sample when !hasSky_),
+	// so its origin-pdf contribution to any OTHER strategy's MIS weight is
+	// correctly zero.
 	double InfiniteLightDensity(const double* dir) const {
 		if (!hasSky_) return 0.0;
 		double pmf = unifiedAlias_.pmf(skyIdx_);
@@ -1213,6 +1182,23 @@ class BDPTSceneAdapter {
 	// parity and does nothing either, for a different reason.
 	static constexpr size_t kCtxPoolCapacity = 1u << 16;  // 65536 slots/thread
 	static inline thread_local std::vector<SPPMShadingContext> ctx_pool_;
+
+	// The numeric offset toLightId()/resolve_emitter_index() use to keep a
+	// punctual/sky light_id from ever colliding with a real bsdf_id (which
+	// occupies [nEmitters_, nEmitters_+kCtxPoolCapacity)) - a SEPARATE,
+	// independently-sized constant from kCtxPoolCapacity above, even though
+	// it happens to reuse the same value today: kCtxPoolCapacity is sized
+	// purely for the ring buffer's own wraparound-avoidance (see its own
+	// comment) and could legitimately shrink or grow for that reason alone
+	// in the future, with no relation to how many light_ids need disjoint
+	// numbering. Keeping them as two named constants (with the static_assert
+	// below enforcing the one relationship that actually matters - this
+	// offset must never be smaller than the bsdf_id range) means a future
+	// change to one can't silently break the other by coincidence.
+	static constexpr int kLightIdOffset = 1 << 16;
+	static_assert(kLightIdOffset >= (int)kCtxPoolCapacity,
+	              "kLightIdOffset must stay >= kCtxPoolCapacity, or a real "
+	              "bsdf_id could be numerically reinterpreted as a light_id");
 	static inline thread_local uint64_t ctx_write_pos_ = 0;
 
 	int push_context(SPPMShadingContext ctx) const {
@@ -1234,19 +1220,36 @@ class BDPTSceneAdapter {
 	// light's own light_id needs to live OUTSIDE that whole range so
 	// resolve_emitter_index() below can tell the two apart by numeric range
 	// alone, with no ambiguity regardless of how full ctx_pool_ currently
-	// is - offsetting by kCtxPoolCapacity (not just past nEmitters_, which
-	// a real bsdf_id can also reach) is what guarantees that. Called by
-	// SampleLight()/SampleLightLe() for every kind past an area light; area
-	// lights keep using their raw unifiedAlias_ index directly (identity
-	// here) since that numbering was already established, pre-existing
-	// contract before this class supported anything else.
+	// is - offsetting by kLightIdOffset (see its own comment for why this
+	// is a dedicated constant, not kCtxPoolCapacity reused directly) is
+	// what guarantees that. Called by SampleLight()/SampleLightLe() for
+	// every kind past an area light; area lights keep using their raw
+	// unifiedAlias_ index directly (identity here) since that numbering
+	// was already established, pre-existing contract before this class
+	// supported anything else.
 	int toLightId(int aliasIdx) const {
-		return (aliasIdx < nEmitters_) ? aliasIdx : (aliasIdx + (int)kCtxPoolCapacity);
+		return (aliasIdx < nEmitters_) ? aliasIdx : (aliasIdx + kLightIdOffset);
+	}
+
+	// Samples a point on a disk of radius sceneRadius_, centered on the
+	// scene's bounding sphere and displaced by sceneRadius_ along axisDir,
+	// with the disk's own plane perpendicular to axisDir - the standard
+	// technique for launching a light-subpath ray from a light with no
+	// finite position (mirrors pbrt-v4's DistantLight::SampleLe/
+	// ImageInfiniteLight::SampleLe). Shared by SampleLightLe()'s distant
+	// and sky branches, which otherwise differ only in how axisDir/the
+	// emitted radiance are obtained.
+	point3 diskEmissionOrigin(const vec3& axisDir) const {
+		onb frame(axisDir);
+		double dx, dy;
+		SampleUniformDiskConcentric(random_double(), random_double(), dx, dy);
+		point3 center(sceneCenter_[0], sceneCenter_[1], sceneCenter_[2]);
+		return center + sceneRadius_ * axisDir + sceneRadius_ * frame.transform(vec3(dx, dy, 0.0));
 	}
 
 	// Disambiguates the numbering spaces LightPMF/LightPDFLe can be called
 	// with -- an area-light index (< nEmitters_, used as-is), a punctual/
-	// sky light_id (>= nEmitters_+kCtxPoolCapacity, see toLightId() above -
+	// sky light_id (>= nEmitters_+kLightIdOffset, see toLightId() above -
 	// unwrapped back to unifiedAlias_'s own numbering), or a bsdf_id (from
 	// a Surface vertex whose hit happened to be emissive -- see this
 	// class's own header comment on why bdpt.h reuses si.bsdf_id as a light
@@ -1254,8 +1257,8 @@ class BDPTSceneAdapter {
 	// unifiedAlias_'s own 0..nTotal_-1 numbering, or -1.
 	int resolve_emitter_index(int id) const {
 		if (id >= 0 && id < nEmitters_) return id;
-		if (id >= nEmitters_ + (int)kCtxPoolCapacity) {
-			int k = id - (int)kCtxPoolCapacity;
+		if (id >= nEmitters_ + kLightIdOffset) {
+			int k = id - kLightIdOffset;
 			return (k < nTotal_) ? k : -1;
 		}
 		const SPPMShadingContext* ctx = context_for(id);

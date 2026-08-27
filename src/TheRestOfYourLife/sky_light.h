@@ -126,6 +126,28 @@ class sky_light {
     // Uniform sphere sample -- backward-compatible
     vec3   sample_Li() const { return random_unit_vector(); }
     bool   has_importance_sampling() const { return has_dist; }
+
+    // A representative "total emitted power" estimate - not a physical
+    // quantity in absolute units, only meaningful relative to another
+    // light's own power estimate (e.g. for weighing this sky against area/
+    // punctual lights in a power-weighted light sampler, see
+    // BDPTSceneAdapter's own unified light distribution). For an HDR sky
+    // with importance sampling, reuses `dist`'s own already-computed
+    // integral (deterministic, zero extra cost - dist was already built at
+    // construction time) rather than a fresh Monte-Carlo estimate: dOmega =
+    // sin(theta)*2*pi^2*du*dv (this file's own header comment), and dist's
+    // per-pixel weights are already lum*sin(theta) (see the HDR
+    // constructor above), so 2*pi^2*Marginal().integral() is exactly
+    // scale*(integral of L over solid angle) once the `scale` factor Le()
+    // applies is folded back in. For the non-HDR (flat-color/plain-texture)
+    // fallback, Le() is direction-independent, so a single sample times the
+    // full sphere's solid angle (4*pi) is exact, not an estimate.
+    double power_estimate() const {
+        if (has_dist) return scale * 2.0 * pi * pi * dist.Marginal().integral();
+        color c = Le(vec3(0, 1, 0));
+        double lum = 0.2126*c.x() + 0.7152*c.y() + 0.0722*c.z();
+        return lum * 4.0 * pi;
+    }
   private:
     shared_ptr<texture>  env_tex;
     double               scale = 1.0;
