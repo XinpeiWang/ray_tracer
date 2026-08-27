@@ -97,6 +97,15 @@ extern "C" __global__ void __closesthit__disk() {
 		? 1.0f - (uv_dist - disk.innerRadius) / (disk.radius - disk.innerRadius)
 		: 0.0f;
 
+	// Real analytic dpdu, matching CPU's disk_cylinder_hittable.h exactly:
+	// object-space dpdu = phiMax * (-hy, hx, 0) (the azimuthal tangent at
+	// this hit's object-space position, already computed above as
+	// obj_hit_uv), carried to world space via the o2w matrix as a genuine
+	// tangent VECTOR (dc_apply_vector, NOT the inverse-transpose normal
+	// transform dc_apply_normal_from_w2o uses above).
+	const float3 disk_dpdu = dc_apply_vector(disk.o2w,
+		make_float3(-disk.phiMax * obj_hit_uv.y, disk.phiMax * obj_hit_uv.x, 0.0f));
+
 	float3 emission = material_emission(mat, front_face, uv_u, uv_v, hit_point);
 
 	float3 attenuation;
@@ -135,7 +144,7 @@ extern "C" __global__ void __closesthit__disk() {
 			__trap();
 		}
 
-		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, uv_u, uv_v, seed,
+		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, uv_u, uv_v, disk_dpdu, seed,
 			attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
 			bssrdf_exit, bssrdf_exit_pos, out_eta);
 	}
@@ -284,6 +293,13 @@ extern "C" __global__ void __closesthit__cylinder() {
 		? (obj_hit.z - cyl.zMin) / (cyl.zMax - cyl.zMin)
 		: 0.0f;
 
+	// Real analytic dpdu, matching CPU's disk_cylinder_hittable.h exactly -
+	// same phi-tangent form as disk (the axis (z) doesn't affect the
+	// azimuthal tangent direction), carried to world space via o2w as a
+	// genuine tangent vector.
+	const float3 cyl_dpdu = dc_apply_vector(cyl.o2w,
+		make_float3(-cyl.phiMax * obj_hit.y, cyl.phiMax * obj_hit.x, 0.0f));
+
 	float3 emission = material_emission(mat, front_face, uv_u, uv_v, hit_point);
 
 	float3 attenuation;
@@ -380,7 +396,7 @@ extern "C" __global__ void __closesthit__cylinder() {
 			__trap();
 		}
 
-		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, uv_u, uv_v, seed,
+		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, uv_u, uv_v, cyl_dpdu, seed,
 			attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
 			bssrdf_exit, bssrdf_exit_pos, out_eta);
 	}

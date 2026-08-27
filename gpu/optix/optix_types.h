@@ -948,22 +948,29 @@ struct MaterialData {
 	// the material to isotropic instead. Same authored-vs-alpha
 	// convention as `roughness` (remapRoughness above applies to both).
 	//
-	// The local tangent/bitangent frame these 4 material kinds build on
-	// GPU is an arbitrary (not UV/dpdu-aligned) basis, unlike CPU's
-	// ShadingFrame::from_dpdu - so a nonzero roughnessV produces a real,
-	// physically-correct anisotropic GGX response (elongated highlights,
-	// directional glossy blur), but its ORIENTATION will not generally
-	// match CPU's render of the same anisotropic material. Deliberately
-	// scoped this way; aligning GPU's tangent frame to dpdu is a larger,
-	// separate undertaking (would need dpdu threaded through the
-	// sphere/quad/bilinear-patch intersection programs, not just this
-	// struct). That arbitrary frame is built via BuildArbitraryTangentFrame()
-	// (src/shared/microfacet.h), a continuous (branchless) construction -
-	// the frame this same 4-kind group used before that fix had a hard
-	// discontinuity at |n.x|=0.9 that was invisible while roughness was
-	// always isotropic (TrowbridgeReitz is rotation-invariant when
-	// alpha_x==alpha_y) but became a real, visible seam once real
-	// anisotropy could make the frame's orientation matter.
+	// The local tangent/bitangent frame these 4 material kinds build is
+	// now UV/dpdu-aligned on the recursive and wavefront backends, matching
+	// CPU's ShadingFrame::from_dpdu exactly - built via BuildDpduTangentFrame()
+	// (src/shared/microfacet.h), which projects each shape's real per-shape
+	// dpdu (analytic for sphere/disk/cylinder, UV-gradient-solved for
+	// triangle, the shape's own edge/patch tangent for quad/bilinear-patch -
+	// see each intersection file's own dpdu comment) onto the tangent plane
+	// via Gram-Schmidt, falling back to the older arbitrary (non-aligned)
+	// frame - BuildArbitraryTangentFrame(), a continuous/branchless
+	// construction that replaced an even earlier hard-discontinuous one -
+	// only at genuine parametrization poles (e.g. a sphere's dpdu vanishing
+	// at theta=0/pi) where dpdu itself is degenerate. So a nonzero
+	// roughnessV now produces both the correct anisotropic GGX response
+	// AND the correct highlight orientation, matching CPU's render of the
+	// same material almost everywhere (RoughMetal is the one exception -
+	// it has no anisotropic variant on CPU either, so it's excluded from
+	// this and keeps its own separate, isotropic-only frame construction).
+	// GPU SPPM (sppm_programs.cu) was deliberately NOT converted - it would
+	// need dpdu threaded through its own separate camera/photon-pass
+	// intersection code and its own per-pixel persisted state, a materially
+	// bigger lift for a backend that already only implements 2 of these 4
+	// material kinds - so it still uses BuildArbitraryTangentFrame() and
+	// will still show CPU-orientation-mismatched anisotropic highlights.
 	float roughnessV = -1.0f;
 };
 

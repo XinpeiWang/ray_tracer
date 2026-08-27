@@ -98,6 +98,15 @@ extern "C" __global__ void __closesthit__wf_disk() {
 		payload->uv_v = (disk.radius > disk.innerRadius)
 			? 1.0f - (uv_dist - disk.innerRadius) / (disk.radius - disk.innerRadius)
 			: 0.0f;
+		// Real analytic dpdu, matching CPU's disk_cylinder_hittable.h and
+		// the recursive backend's identical derivation (optix_intersection_
+		// disk_cylinder.h) - object-space dpdu = phiMax*(-hy,hx,0), carried
+		// to world space via o2w as a genuine tangent VECTOR (wf_dc_apply_
+		// vector, NOT the inverse-transpose normal transform outward_normal
+		// above uses). Matches quad/sphere's identical use of this "dual-
+		// purpose carrier" field.
+		payload->objNormal = wf_dc_apply_vector(disk.o2w,
+			make_float3(-disk.phiMax * obj_hit_uv.y, disk.phiMax * obj_hit_uv.x, 0.0f));
 	}
 }
 
@@ -191,6 +200,12 @@ extern "C" __global__ void __closesthit__wf_cylinder() {
 			? (obj_hit.z - cyl.zMin) / (cyl.zMax - cyl.zMin)
 			: 0.0f;
 	}
+	// Real analytic dpdu, matching disk's identical phi-tangent form (the
+	// axis doesn't affect the azimuthal tangent direction) and the
+	// recursive backend's identical derivation (optix_intersection_
+	// disk_cylinder.h).
+	payload->objNormal = wf_dc_apply_vector(cyl.o2w,
+		make_float3(-cyl.phiMax * obj_hit.y, cyl.phiMax * obj_hit.x, 0.0f));
 
 	// MaterialType::Medium: override with the entry (near) / exit (far)
 	// roots, matching __closesthit__wf_sphere's own needsNearFar block and

@@ -62,6 +62,43 @@ CPU_GPU void BuildArbitraryTangentFrame(T nx, T ny, T nz,
   bx = b;                         by = sign + ny * ny * a;  bz = -ny;
 }
 
+// UV/dpdu-aligned tangent frame - mirrors CPU's ShadingFrame::from_dpdu
+// (shading_frame.h) exactly: project dpdu onto the tangent plane
+// (Gram-Schmidt against the normal), normalize it into the tangent, and
+// take the bitangent as cross(n, t) (pbrt's Frame::FromXZ). dpdu need not
+// be unit length or already orthogonal to n. Falls back to the arbitrary
+// (non-UV-aligned) frame above when the projected tangent is degenerate
+// (near-zero length - a parametrization pole, e.g. a sphere's dpdu at
+// theta=0/pi, or a genuinely zero dpdu from a shape that never computed
+// one), exactly as CPU's from_dpdu does. This is the GPU-side half of
+// closing the anisotropic-highlight-orientation gap documented on
+// MaterialData::roughnessV (optix_types.h) - CPU's from_dpdu was always
+// real-dpdu-aligned; GPU previously always used the arbitrary frame above
+// regardless of the shape's actual UV parametrization.
+template<typename T>
+CPU_GPU void BuildDpduTangentFrame(T nx, T ny, T nz,
+                                     T dpdu_x, T dpdu_y, T dpdu_z,
+                                     T& tx, T& ty, T& tz,
+                                     T& bx, T& by, T& bz) {
+  T d = dpdu_x * nx + dpdu_y * ny + dpdu_z * nz;
+  T px = dpdu_x - d * nx, py = dpdu_y - d * ny, pz = dpdu_z - d * nz;
+  T len2 = px * px + py * py + pz * pz;
+  if (len2 < T(1e-12)) {
+    BuildArbitraryTangentFrame(nx, ny, nz, tx, ty, tz, bx, by, bz);
+    return;
+  }
+#if defined(__CUDACC__)
+  T inv_len = T(1) / sqrtf(len2);
+#else
+  T inv_len = T(1) / std::sqrt(len2);
+#endif
+  tx = px * inv_len; ty = py * inv_len; tz = pz * inv_len;
+  // b = cross(n, t)
+  bx = ny * tz - nz * ty;
+  by = nz * tx - nx * tz;
+  bz = nx * ty - ny * tx;
+}
+
 // Resolves the v/bitangent-axis GGX alpha for a material whose v-roughness
 // may be "unset" (isotropic - see optix_types.h's MaterialData::roughnessV
 // for the negative-sentinel convention this mirrors: roughnessV<0 means no

@@ -142,7 +142,10 @@ extern "C" __global__ void __closesthit__quad() {
 			__trap();
 		}
 
-		shade_material(mat, matIdx, final_normal, ray_dir, hit_point, front_face, uv_u, uv_v, seed,
+		// quad.u (the quad's own edge vector, already world-space) IS
+		// exactly CPU's quad.h dpdu (rec.dpdu = u) - no new math needed,
+		// unlike sphere/disk/cylinder's analytic derivations.
+		shade_material(mat, matIdx, final_normal, ray_dir, hit_point, front_face, uv_u, uv_v, quad.u, seed,
 			attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
 			bssrdf_exit, bssrdf_exit_pos, out_eta);
 	}

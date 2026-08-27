@@ -185,7 +185,9 @@ extern "C" __global__ void __closesthit__bilinear_patch() {
 			__trap();
 		}
 
-		shade_material(mat, matIdx, final_normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, seed,
+		// dpdu (already computed above for dpdv/geom_normal) is the real,
+		// world-space patch tangent - no new math needed here.
+		shade_material(mat, matIdx, final_normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, dpdu, seed,
 			attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
 			bssrdf_exit, bssrdf_exit_pos, out_eta);
 	}

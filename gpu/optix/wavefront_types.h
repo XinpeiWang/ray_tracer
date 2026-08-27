@@ -124,28 +124,34 @@ struct HitWorkItem {
 	// every material that doesn't branch on it.
 	int    frontFace;
 
-	// Dual-purpose carrier for MaterialType::NormalMappedLambertian's
-	// tangent (dpdu), since neither this struct nor WfHitPayload otherwise
-	// carries per-vertex position/UV data to recompute one later:
-	//   - Sphere: OBJECT-space (never transformed to world, even for an
-	//     instanced placement - mirrors optix_intersection_sphere.h's
-	//     obj_normal) raw outward normal, BEFORE the front-face flip that
-	//     produced `normal` above. wavefront_kernels.cu derives dpdu from
-	//     this via a world-up cross product, matching the recursive path.
-	//   - Triangle: the ALREADY-COMPUTED, WORLD-space dpdu tangent itself
-	//     (solved from the UV-gradient 2x2 system in
-	//     __closesthit__wf_triangle, mirroring optix_intersection_triangle.h)
-	//     - wavefront_kernels.cu uses it directly, no further derivation.
-	//   - Bilinear patch: also an already-computed, world-space dpdu (the
-	//     patch's own tangent) - see __closesthit__wf_bilinear_patch. Stored
-	//     UNNORMALIZED (unlike the sphere/triangle uses above) - the
-	//     normalize() is deferred to evaluate_materials()'s own Hair case,
-	//     the only reader, so the (much more common) non-Hair bilinear-patch
-	//     hit doesn't pay for it. Only meaningful for MaterialType::Hair (the
-	//     tessellated-curve GPU path's fiber tangent - see hair_material.h's
-	//     tangent_is_dpdu comment for the identical CPU-side reasoning).
-	// Zero for quad hits and for any sphere/triangle/bilinear-patch material
-	// that doesn't read it.
+	// Dual-purpose carrier for a real surface tangent (dpdu), since neither
+	// this struct nor WfHitPayload otherwise carries per-vertex position/UV
+	// data to recompute one later. Used by MaterialType::NormalMappedLambertian
+	// (its normal-map basis) and by the 4 anisotropy-capable material kinds
+	// (Conductor/RoughDielectric/CoatedDiffuse/CoatedConductor - their
+	// UV-aligned shading frame, see BuildDpduTangentFrame's own comment,
+	// microfacet.h). Every geomType now populates this with a real,
+	// ready-to-use WORLD-space dpdu at intersection time - no per-consumer
+	// derivation needed, unlike this field's earlier sphere-only "raw
+	// object-space normal, derive an approximate cross-product tangent
+	// later" convention:
+	//   - Sphere: real analytic dpdu (theta/phi parametric derivative,
+	//     matching CPU's sphere.h exactly - see __closesthit__wf_sphere's
+	//     own comment). Previously this held the raw outward normal instead,
+	//     with dpdu only approximated (cross(world_up, normal)) by whichever
+	//     consumer read it.
+	//   - Quad: q.u (the quad's own edge vector) - already exactly CPU's
+	//     quad.h dpdu, no derivation needed.
+	//   - Triangle: the UV-gradient-solved real dpdu (see
+	//     __closesthit__wf_triangle).
+	//   - Disk/Cylinder: real analytic phi-tangent dpdu (see each
+	//     __closesthit__wf_*'s own comment, matching CPU's
+	//     disk_cylinder_hittable.h). Previously left zero entirely.
+	//   - Bilinear patch: the patch's own real dpdu, left UNNORMALIZED
+	//     (unlike every other geomType above) - the normalize() is deferred
+	//     to evaluate_materials()'s own Hair case, the only reader that
+	//     currently exists for this geomType, so the (much more common)
+	//     non-Hair bilinear-patch hit doesn't pay for it.
 	float3 objNormal;
 
 	// Surface texture coordinates. Sphere: standard spherical (theta,phi)

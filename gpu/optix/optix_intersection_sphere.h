@@ -329,6 +329,37 @@ extern "C" __global__ void __closesthit__sphere() {
 	const float sphere_uv_u = sphere_phi / (2.0f * 3.14159265358979323846f);
 	const float sphere_uv_v = sphere_theta / 3.14159265358979323846f;
 
+	// Real analytic dpdu (tangent), matching CPU's sphere.h exactly
+	// (theta=pi*v, phi=2*pi*u; differentiate the sphere's own p(theta,phi)
+	// parametrization w.r.t. phi/theta, chain-rule through u/v) - computed
+	// in OBJECT space from obj_normal/sphere_theta/sphere_phi (same
+	// convention the UV computation above already uses), then carried to
+	// world space as a genuine tangent VECTOR transform (NOT the inverse-
+	// transpose normal transform used for outward_normal above - see
+	// optix_intersection_triangle.h's own dpdu for the same distinction).
+	// Degenerate at the poles (sin_theta -> 0 - a real parametric
+	// singularity, not a bug, same as lines of longitude converging at
+	// Earth's poles): falls back to cross(world_up, obj_normal) rescaled to
+	// the same vanishing magnitude, exactly as CPU does, rather than
+	// substituting an unrelated magnitude that would size-jump discontinuously
+	// right at the fallback threshold.
+	float3 sphere_dpdu;
+	{
+		const float sin_theta = sinf(sphere_theta), cos_theta_ = cosf(sphere_theta);
+		const float sin_phi = sinf(sphere_phi), cos_phi = cosf(sphere_phi);
+		(void)cos_theta_;
+		sphere_dpdu = make_float3(sin_theta * sin_phi, 0.0f, sin_theta * cos_phi)
+			* (sphere_radius * 2.0f * 3.14159265358979323846f);
+		if (dot(sphere_dpdu, sphere_dpdu) < 1e-14f) {
+			const float3 world_up = make_float3(0.0f, 1.0f, 0.0f);
+			const float3 t = cross(world_up, obj_normal);
+			const float tlen = length(t);
+			const float3 dir = (tlen > 1e-6f) ? (t / tlen) : make_float3(1.0f, 0.0f, 0.0f);
+			sphere_dpdu = dir * (sphere_radius * 2.0f * 3.14159265358979323846f * sin_theta);
+		}
+	}
+	if (instBase >= 0) sphere_dpdu = normalize(optixTransformVectorFromObjectToWorldSpace(sphere_dpdu));
+
 	// Unpack payload from registers
 	float3 attenuation_in = make_float3(
 		__uint_as_float(optixGetPayload_0()),
@@ -801,18 +832,13 @@ extern "C" __global__ void __closesthit__sphere() {
 			}
 			scattered   = true;
 	} else if (mat.type == MaterialType::NormalMappedLambertian) {
-			// Tangent (dpdu): CPU's sphere.h computes this from the RAW
-			// outward_normal (matching sphere_uv_u/v's own convention
-			// above), not the front-face-corrected one - cross with world
-			// up, fallback to (1,0,0) at the poles where that cross
-			// product degenerates.
-			float3 dpdu;
-			{
-				const float3 world_up = make_float3(0.0f, 1.0f, 0.0f);
-				const float3 t = cross(world_up, outward_normal);
-				const float tlen = length(t);
-				dpdu = (tlen > 1e-6f) ? (t / tlen) : make_float3(1.0f, 0.0f, 0.0f);
-			}
+			// Real analytic dpdu, computed once above (sphere_dpdu) and
+			// shared with the anisotropic-material path below - previously
+			// this branch had its own separate, approximate cross(world_up,
+			// normal) tangent; now uses the same real one CPU's sphere.h
+			// computes, which also fixes this branch's normal-map basis to
+			// match CPU exactly rather than an approximation.
+			const float3& dpdu = sphere_dpdu;
 
 			// Decode the tangent-space normal from the map texture exactly
 			// like CPU's normal_map_material::apply(): 2*RGB-1, normalize
@@ -838,7 +864,7 @@ extern "C" __global__ void __closesthit__sphere() {
 			MaterialData effective = mat;
 			effective.type = MaterialType::Lambertian;
 			effective.textureIdx = -1;
-			shade_material(effective, matIdx, perturbed_normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, seed,
+			shade_material(effective, matIdx, perturbed_normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, dpdu, seed,
 				attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
 				bssrdf_exit, bssrdf_exit_pos, out_eta);
 	} else if (mat.type == MaterialType::Principled) {
@@ -850,7 +876,7 @@ extern "C" __global__ void __closesthit__sphere() {
 			scattered   = sample_principled_material(ray_dir, normal, mat, seed, scattered_dir, attenuation);
 			is_specular = true;
 	} else {
-		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, seed,
+		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, sphere_dpdu, seed,
 			attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
 			bssrdf_exit, bssrdf_exit_pos, out_eta);
 	}

@@ -1641,6 +1641,15 @@ __device__ __forceinline__ void shade_material(
 	const float3& hit_point,
 	bool front_face,
 	float uv_u, float uv_v,
+	// World-space (unnormalized ok) surface tangent, i.e. the shape's own
+	// dp/du at this point - real per-shape analytic/UV-derived value from
+	// every caller (see each intersection file's own computation), used
+	// ONLY by the 4 anisotropy-capable material kinds below to build a
+	// UV-aligned shading frame via BuildDpduTangentFrame (matches CPU's
+	// ShadingFrame::from_dpdu - see MaterialData::roughnessV's own comment
+	// on why GPU previously used an arbitrary, non-UV-aligned frame
+	// instead). Every other material kind ignores this parameter.
+	const float3& dpdu,
 	unsigned int& seed,
 	float3& out_attenuation,
 	float3& out_scattered_dir,
@@ -1967,9 +1976,9 @@ __device__ __forceinline__ void shade_material(
 			float cc_alpha_y = ResolveAnisotropicAlphaV(mat.roughnessV, mat.fuzz, mat.remapRoughness);
 			float3 cc_n   = normal;
 			float3 cc_tan, cc_bit;
-			BuildArbitraryTangentFrame(cc_n.x, cc_n.y, cc_n.z,
-			                            cc_tan.x, cc_tan.y, cc_tan.z,
-			                            cc_bit.x, cc_bit.y, cc_bit.z);
+			BuildDpduTangentFrame(cc_n.x, cc_n.y, cc_n.z, dpdu.x, dpdu.y, dpdu.z,
+			                       cc_tan.x, cc_tan.y, cc_tan.z,
+			                       cc_bit.x, cc_bit.y, cc_bit.z);
 
 			float3 cc_wi_w = normalize(-ray_dir);
 			float cc_wi_x = dot(cc_wi_w, cc_tan);
@@ -2131,7 +2140,7 @@ __device__ __forceinline__ void shade_material(
 			// Local shading frame (n = +Z)
 			float3 n = normal;
 			float3 tan, bitan;
-			BuildArbitraryTangentFrame(n.x, n.y, n.z, tan.x, tan.y, tan.z, bitan.x, bitan.y, bitan.z);
+			BuildDpduTangentFrame(n.x, n.y, n.z, dpdu.x, dpdu.y, dpdu.z, tan.x, tan.y, tan.z, bitan.x, bitan.y, bitan.z);
 
 			float3 wi_w = normalize(-ray_dir);
 			float wi_x = dot(wi_w, tan), wi_y = dot(wi_w, bitan), wi_z = dot(wi_w, n);
@@ -2280,7 +2289,7 @@ __device__ __forceinline__ void shade_material(
 			float c_alpha_y = ResolveAnisotropicAlphaV(mat.roughnessV, mat.fuzz, mat.remapRoughness);
 			float3 cn = normal;
 			float3 ctan, cbitan;
-			BuildArbitraryTangentFrame(cn.x, cn.y, cn.z, ctan.x, ctan.y, ctan.z, cbitan.x, cbitan.y, cbitan.z);
+			BuildDpduTangentFrame(cn.x, cn.y, cn.z, dpdu.x, dpdu.y, dpdu.z, ctan.x, ctan.y, ctan.z, cbitan.x, cbitan.y, cbitan.z);
 			float3 cwi = normalize(-ray_dir);
 			float cwi_x = dot(cwi, ctan), cwi_y = dot(cwi, cbitan), cwi_z = dot(cwi, cn);
 			if (cwi_z <= 0.0f) { scattered = false; break; }
@@ -2471,7 +2480,7 @@ __device__ __forceinline__ void shade_material(
 			float cd_alpha_y = ResolveAnisotropicAlphaV(mat.roughnessV, mat.fuzz, mat.remapRoughness);
 			float3 cdn  = normal;
 			float3 cdtan, cdbit;
-			BuildArbitraryTangentFrame(cdn.x, cdn.y, cdn.z, cdtan.x, cdtan.y, cdtan.z, cdbit.x, cdbit.y, cdbit.z);
+			BuildDpduTangentFrame(cdn.x, cdn.y, cdn.z, dpdu.x, dpdu.y, dpdu.z, cdtan.x, cdtan.y, cdtan.z, cdbit.x, cdbit.y, cdbit.z);
 			float3 cdwi  = normalize(-ray_dir);
 			float cdwi_x = dot(cdwi, cdtan), cdwi_y = dot(cdwi, cdbit), cdwi_z = dot(cdwi, cdn);
 			if (cdwi_z <= 0.0f) { scattered = false; break; }

@@ -174,6 +174,38 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 	const float sphere_theta = acosf(-obj_normal.y);
 	const float sphere_phi = atan2f(-obj_normal.z, obj_normal.x) + 3.14159265358979323846f;
 
+	// Real analytic dpdu (tangent), matching CPU's sphere.h and
+	// optix_intersection_sphere.h's identical derivation exactly (theta=
+	// pi*v, phi=2*pi*u; differentiate w.r.t. phi/theta, chain-rule through
+	// u/v) - computed in OBJECT space from obj_normal/sphere_theta/
+	// sphere_phi (same convention the UV above uses), then carried to
+	// world space as a genuine tangent VECTOR transform
+	// (optixTransformVectorFromObjectToWorldSpace, NOT the inverse-
+	// transpose normal transform outward_normal above uses). Degenerate at
+	// the poles (sin_theta -> 0, a real parametric singularity, not a bug):
+	// falls back to cross(world_up, obj_normal) rescaled to the same
+	// vanishing magnitude, exactly as CPU does. This REPLACES the previous
+	// approximate cross(world_up, objNormal) tangent evaluate_materials()
+	// used to derive from this field for NormalMappedLambertian - the field
+	// now carries the real thing directly, matching triangle/bilinear-patch's
+	// own convention below, and is also the tangent the 4 anisotropy-
+	// capable material kinds need for a UV-aligned shading frame.
+	float3 sphere_dpdu;
+	{
+		const float sin_theta = sinf(sphere_theta);
+		const float sin_phi = sinf(sphere_phi), cos_phi = cosf(sphere_phi);
+		sphere_dpdu = make_float3(sin_theta * sin_phi, 0.0f, sin_theta * cos_phi)
+			* (sph.radius * 2.0f * 3.14159265358979323846f);
+		if (dot(sphere_dpdu, sphere_dpdu) < 1e-14f) {
+			const float3 world_up = make_float3(0.0f, 1.0f, 0.0f);
+			const float3 tangent = cross(world_up, obj_normal);
+			const float tlen = length(tangent);
+			const float3 dir = (tlen > 1e-6f) ? (tangent / tlen) : make_float3(1.0f, 0.0f, 0.0f);
+			sphere_dpdu = dir * (sph.radius * 2.0f * 3.14159265358979323846f * sin_theta);
+		}
+	}
+	if (instBase >= 0) sphere_dpdu = normalize(optixTransformVectorFromObjectToWorldSpace(sphere_dpdu));
+
 	payload->hitPoint    = hit_point;
 	payload->normal      = normal;
 	payload->t           = t_hit;
@@ -182,7 +214,7 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 	payload->hit         = true;
 	payload->mediumTFar  = 0.0f;
 	payload->frontFace   = front_face ? 1 : 0;
-	payload->objNormal   = outward_normal;
+	payload->objNormal   = sphere_dpdu;
 	payload->uv_u        = sphere_phi / (2.0f * 3.14159265358979323846f);
 	payload->uv_v        = sphere_theta / 3.14159265358979323846f;
 

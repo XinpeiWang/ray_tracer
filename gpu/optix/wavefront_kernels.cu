@@ -1407,6 +1407,13 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// the pushed next RayWorkItem's own filterWeight.
 	float filterWeight,
 	const float3& normal, const float3& hit_point,
+	// World-space surface tangent (dp/du) at this shading point - real
+	// per-shape value from the caller (see HitWorkItem::objNormal's own
+	// comment), used ONLY by evalGlossyF's UV-aligned frame construction
+	// below for the 4 anisotropy-capable material kinds (RoughMetal and
+	// every non-glossy matType ignore it, keeping the arbitrary frame -
+	// matches optix_device_helpers.h's identical RoughMetal exclusion).
+	const float3& dpdu,
 	unsigned int& seed,
 	const SampledSpectrum<kWFNWavelengths>& throughput,
 	const SampledSpectrum<kWFNWavelengths>& radiance,
@@ -1529,9 +1536,19 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	float glossy_alpha_v = (glossyAlphaV >= 0.0f) ? glossyAlphaV : glossy_alpha;
 	bool glossy_valid = false;
 	if (glossy_isType) {
-		BuildArbitraryTangentFrame(normal.x, normal.y, normal.z,
-		                            glossy_tan.x, glossy_tan.y, glossy_tan.z,
-		                            glossy_bit.x, glossy_bit.y, glossy_bit.z);
+		// RoughMetal stays on the arbitrary frame (isotropic-only, no
+		// anisotropic variant exists - matches optix_device_helpers.h's
+		// identical RoughMetal exclusion); the other 4 glossy kinds get the
+		// real, UV-aligned frame.
+		if (matType == MaterialType::RoughMetal) {
+			BuildArbitraryTangentFrame(normal.x, normal.y, normal.z,
+			                            glossy_tan.x, glossy_tan.y, glossy_tan.z,
+			                            glossy_bit.x, glossy_bit.y, glossy_bit.z);
+		} else {
+			BuildDpduTangentFrame(normal.x, normal.y, normal.z, dpdu.x, dpdu.y, dpdu.z,
+			                       glossy_tan.x, glossy_tan.y, glossy_tan.z,
+			                       glossy_bit.x, glossy_bit.y, glossy_bit.z);
+		}
 		glossy_wi_x = dot(phaseWo, glossy_tan);
 		glossy_wi_y = dot(phaseWo, glossy_bit);
 		glossy_wi_z = dot(phaseWo, normal);
@@ -2585,7 +2602,8 @@ extern "C" __global__ void evaluate_materials(
 		glossyAlphaVForNEE = c_alpha_y;
 		float3 cn = normal;
 		float3 ctan, cbitan;
-		BuildArbitraryTangentFrame(cn.x, cn.y, cn.z, ctan.x, ctan.y, ctan.z, cbitan.x, cbitan.y, cbitan.z);
+		BuildDpduTangentFrame(cn.x, cn.y, cn.z, h.objNormal.x, h.objNormal.y, h.objNormal.z,
+		                       ctan.x, ctan.y, ctan.z, cbitan.x, cbitan.y, cbitan.z);
 		float3 cwi = -normalize(h.rayDir);
 		float cwi_x = dot(cwi, ctan), cwi_y = dot(cwi, cbitan), cwi_z = dot(cwi, cn);
 		if (cwi_z <= 0.0f) { scattered = false; break; }
@@ -2686,7 +2704,8 @@ extern "C" __global__ void evaluate_materials(
 		glossyAlphaVForNEE = cd_alpha_y;
 		float3 cdn = normal;
 		float3 cdtan, cdbitan;
-		BuildArbitraryTangentFrame(cdn.x, cdn.y, cdn.z, cdtan.x, cdtan.y, cdtan.z, cdbitan.x, cdbitan.y, cdbitan.z);
+		BuildDpduTangentFrame(cdn.x, cdn.y, cdn.z, h.objNormal.x, h.objNormal.y, h.objNormal.z,
+		                       cdtan.x, cdtan.y, cdtan.z, cdbitan.x, cdbitan.y, cdbitan.z);
 		float3 cdwi = -normalize(h.rayDir);
 		float cdwi_x = dot(cdwi, cdtan), cdwi_y = dot(cdwi, cdbitan), cdwi_z = dot(cdwi, cdn);
 		// Grazing/back-facing incoming ray: no valid local frame to sample
@@ -2800,7 +2819,8 @@ extern "C" __global__ void evaluate_materials(
 		glossyAlphaVForNEE = cc_alpha_y;
 		float3 ccn = normal;
 		float3 cctan, ccbitan;
-		BuildArbitraryTangentFrame(ccn.x, ccn.y, ccn.z, cctan.x, cctan.y, cctan.z, ccbitan.x, ccbitan.y, ccbitan.z);
+		BuildDpduTangentFrame(ccn.x, ccn.y, ccn.z, h.objNormal.x, h.objNormal.y, h.objNormal.z,
+		                       cctan.x, cctan.y, cctan.z, ccbitan.x, ccbitan.y, ccbitan.z);
 		float3 ccwi = -normalize(h.rayDir);
 		float ccwi_x = dot(ccwi, cctan), ccwi_y = dot(ccwi, ccbitan), ccwi_z = dot(ccwi, ccn);
 		if (ccwi_z <= 0.0f) { scattered = false; break; }
@@ -3262,26 +3282,15 @@ extern "C" __global__ void evaluate_materials(
 		// Lambertian with a perturbed shading normal from a tangent-space
 		// RGB normal-map texture - mirrors optix_intersection_sphere.h's
 		// (spheres) / optix_intersection_triangle.h's (triangles) closesthit
-		// cases. dpdu comes from h.objNormal, whose meaning depends on which
-		// geometry was hit - see HitWorkItem::objNormal's own comment.
-		float3 dpdu;
-		if (h.geomType == 3) {
-			// Triangle: h.objNormal already IS the real, world-space,
-			// UV-derived tangent (see HitWorkItem::objNormal's own comment
-			// and __closesthit__wf_triangle) - use directly. Previously
-			// this branch didn't exist, so every triangle fell through to
-			// the sphere-only cross-product path below; since objNormal is
-			// never populated for triangle hits (stays zero), that always
-			// degenerated to the (1,0,0) fallback regardless of the
-			// triangle's real surface orientation - a silently wrong (not
-			// crashing) shading tangent for every normal-mapped triangle.
-			dpdu = h.objNormal;
-		} else {
-			const float3 world_up = make_float3(0.0f, 1.0f, 0.0f);
-			const float3 t = cross(world_up, h.objNormal);
-			const float tlen = length(t);
-			dpdu = (tlen > 1e-6f) ? (t / tlen) : make_float3(1.0f, 0.0f, 0.0f);
-		}
+		// cases. h.objNormal now carries a real, ready-to-use (world-space)
+		// dpdu for EVERY geomType (sphere/quad/triangle/disk/cylinder all
+		// populate it at intersection time - see each __closesthit__wf_*'s
+		// own comment; bilinear patch's is left unnormalized, matching Hair's
+		// own reader) - previously this was only true for triangle, and
+		// every other geometry derived an approximate cross(world_up,
+		// raw_normal) tangent instead, which is also what the 4 anisotropy-
+		// capable material kinds below now rely on this same field for.
+		const float3 dpdu = h.objNormal;
 
 		// Decode the tangent-space normal from the map texture: 2*RGB-1,
 		// normalize (fallback (0,0,1) i.e. "no perturbation" if degenerate) -
@@ -3391,7 +3400,7 @@ extern "C" __global__ void evaluate_materials(
 
 	// eventEta was set above only on a genuine transmission (DielectricMedium's
 	// entry/exit surfaces) - see this function's own eventEta local comment.
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, glossyAlphaVForNEE, h.etaScale * eventEta * eventEta, h.filterWeight, normal, hit_point, seed,
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, glossyAlphaVForNEE, h.etaScale * eventEta * eventEta, h.filterWeight, normal, hit_point, h.objNormal, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -3560,7 +3569,7 @@ extern "C" __global__ void evaluate_materials_simple(
 
 	// Lambertian/Metal never transmit - h.etaScale passes through unchanged
 	// (see RayWorkItem::etaScale's own comment).
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, glossyAlphaVForNEE, h.etaScale, h.filterWeight, normal, hit_point, seed,
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, glossyAlphaVForNEE, h.etaScale, h.filterWeight, normal, hit_point, h.objNormal, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -3759,7 +3768,8 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		float rd_ri = rd_front_face ? (1.0f / dispersiveIor) : dispersiveIor;
 		float3 n = normal;
 		float3 tan_v, bitan;
-		BuildArbitraryTangentFrame(n.x, n.y, n.z, tan_v.x, tan_v.y, tan_v.z, bitan.x, bitan.y, bitan.z);
+		BuildDpduTangentFrame(n.x, n.y, n.z, h.objNormal.x, h.objNormal.y, h.objNormal.z,
+		                       tan_v.x, tan_v.y, tan_v.z, bitan.x, bitan.y, bitan.z);
 		float3 wi_w = normalize(-h.rayDir);
 		float wi_x = dot(wi_w, tan_v), wi_y = dot(wi_w, bitan), wi_z = dot(wi_w, n);
 		if (wi_z < 0.0f) { wi_z = -wi_z; wi_x = -wi_x; wi_y = -wi_y; }
@@ -3846,7 +3856,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	// eventEta was set above only on a genuine transmission (Dielectric or
 	// RoughDielectric's refract branch) - see this function's own eventEta
 	// local comment.
-	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, glossyAlphaVForNEE, h.etaScale * eventEta * eventEta, h.filterWeight, normal, hit_point, seed,
+	wf_finish_material_scatter(mat.type, matEta, h.materialIdx, (bool)h.any_nonspecular, glossyAlphaForNEE, glossyAlphaVForNEE, h.etaScale * eventEta * eventEta, h.filterWeight, normal, hit_point, h.objNormal, seed,
 		throughput, radiance, swl, attenuation, scattered_dir, is_specular, brdf_pdf_override,
 		phaseWo, phaseG,
 		h.pixelIndex, h.depth,
@@ -4020,7 +4030,9 @@ extern "C" __global__ void resolve_bssrdf_exit(
 		// add another factor, matching CPU camera.h's entry_eta convention.
 		item.etaScale,
 		item.filterWeight,
-		item.exitNormal, item.exitPos, seed,
+		item.exitNormal, item.exitPos,
+		/*dpdu=*/make_float3(0.0f, 0.0f, 0.0f),  // never reaches glossy_isType - see glossyAlpha comment above
+		seed,
 		weightedThroughput, radiance, swl, attenuation, scattered_dir,
 		/*is_specular=*/false, brdf_pdf_override,
 		/*phaseWo=*/make_float3(0.0f, 0.0f, 0.0f), /*phaseG=*/0.0f,
