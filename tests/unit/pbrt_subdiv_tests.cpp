@@ -238,12 +238,17 @@ TEST(PbrtDroppedTest, CheckerboardWithExplicitColoursOverridesTheDefaults) {
 }
 
 TEST(PbrtDroppedTest, CheckerboardOnANonDiffuseMaterialStillWarns) {
-	// Matches ATextureBoundToAMaterialIsReportedWithItsParameterName's own
-	// scope cut for imagemap: reflectance-texture resolution (of any class)
-	// is gated on MaterialKind::Diffuse.
+	// Checkerboard/fbm/marble/mix reflectance resolution used to be gated on
+	// MaterialKind::Diffuse only (coateddiffuse warned here); now also
+	// resolved for CoatedDiffuse (see pbrt_flatten_tests.cpp's own
+	// CoatedDiffuseReflectanceCheckerboardResolvesToAProceduralTexture), so
+	// this regression guard moved to diffusetransmission - a kind that
+	// genuinely still stays excluded (matches
+	// ATextureBoundToAMaterialIsReportedWithItsParameterName's own scope
+	// cut for imagemap).
 	const FlatScene s = build(
 		"Texture \"chk\" \"spectrum\" \"checkerboard\"\n"
-		"Material \"coateddiffuse\" \"texture reflectance\" [ \"chk\" ]\n"
+		"Material \"diffusetransmission\" \"texture reflectance\" [ \"chk\" ]\n"
 		"Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ]\n"
 		"  \"point3 P\" [ 0 0 0  1 0 0  0 1 0 ]\n");
 	EXPECT_TRUE(warned(s, "reflectance"));

@@ -416,10 +416,10 @@ struct Material {
 	// cases, and scoping to reflectance/transmittance on these three kinds
 	// keeps this addition bounded rather than building a general
 	// procedural-texture pipeline in one pass - checkerboard/fbm/marble/mix
-	// stay Diffuse-only (hasCheckerReflectance etc. below), and the "scale"
-	// unwrap stays Diffuse/CoatedDiffuse-only (see textureScale below),
-	// since no bundled scene needs DiffuseTransmission's own reflectance
-	// scale-wrapped.
+	// (hasCheckerReflectance etc. below) and the "scale" unwrap (see
+	// textureScale below) both stay Diffuse/CoatedDiffuse-only, since no
+	// bundled scene needs DiffuseTransmission's own reflectance bound to
+	// either.
 	std::string textureFilename;
 
 	// A "scale"-class Texture's own "float scale" when textureFilename came
@@ -1352,8 +1352,8 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// imagemap on DiffuseTransmission ONLY
 		// (transmittanceTextureFilename), "reflectance" bound to a
 		// flat-colour "checkerboard"/"fbm"/"marble"/"mix" texture on a
-		// Diffuse material ONLY (hasCheckerReflectance etc. - no bundled
-		// scene binds any of these to a CoatedDiffuse or DiffuseTransmission
+		// Diffuse OR CoatedDiffuse material (hasCheckerReflectance etc. -
+		// no bundled scene binds any of these to a DiffuseTransmission
 		// reflectance, so this scope stays narrower than the imagemap case),
 		// "roughness" bound to a bare imagemap on Dielectric ONLY
 		// (roughnessTextureFilename - no bundled scene needs this, added for
@@ -1439,7 +1439,8 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 						return found->params.getString("filename", "");
 					return std::string();
 				};
-				if (m.kind == MaterialKind::Diffuse && tex && tex->cls == "checkerboard") {
+				if ((m.kind == MaterialKind::Diffuse || m.kind == MaterialKind::CoatedDiffuse) &&
+					tex && tex->cls == "checkerboard") {
 					const pbrt_scene::Param *tex1p = tex->params.find("tex1");
 					const pbrt_scene::Param *tex2p = tex->params.find("tex2");
 					const bool tex1IsNested = tex1p && tex1p->type == "texture";
@@ -1469,13 +1470,15 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 						continue;   // resolved to a procedural checker, not a "not supported" warning
 					}
 				}
-				if (m.kind == MaterialKind::Diffuse && tex && tex->cls == "fbm") {
+				if ((m.kind == MaterialKind::Diffuse || m.kind == MaterialKind::CoatedDiffuse) &&
+					tex && tex->cls == "fbm") {
 					m.fbmOctaves = tex->params.getInt("octaves", 8);
 					m.fbmRoughness = tex->params.getFloat("roughness", 0.5);
 					m.hasFbmReflectance = true;
 					continue;   // resolved to procedural fbm noise, not a "not supported" warning
 				}
-				if (m.kind == MaterialKind::Diffuse && tex && tex->cls == "marble") {
+				if ((m.kind == MaterialKind::Diffuse || m.kind == MaterialKind::CoatedDiffuse) &&
+					tex && tex->cls == "marble") {
 					m.marbleOctaves = tex->params.getInt("octaves", 8);
 					m.marbleRoughness = tex->params.getFloat("roughness", 0.5);
 					m.marbleScale = tex->params.getFloat("scale", 1.0);
@@ -1483,7 +1486,8 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					m.hasMarbleReflectance = true;
 					continue;   // resolved to procedural marble, not a "not supported" warning
 				}
-				if (m.kind == MaterialKind::Diffuse && tex && tex->cls == "mix") {
+				if ((m.kind == MaterialKind::Diffuse || m.kind == MaterialKind::CoatedDiffuse) &&
+					tex && tex->cls == "mix") {
 					// See hasMixReflectance's own comment - tex1/tex2 each
 					// support one level of bare-imagemap nesting like
 					// checkerboard's own tex1/tex2 above; "amount" ITSELF

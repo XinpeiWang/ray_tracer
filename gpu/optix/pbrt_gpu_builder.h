@@ -670,6 +670,67 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 			d.textureIdx = getOrBuildPbrtImageTexture(m.textureFilename, out, imageTextureCache);
 			d.emissionScale = static_cast<float>(m.textureScale);
 		}
+		// m.hasCheckerReflectance/hasFbmReflectance/hasMarbleReflectance/
+		// hasMixReflectance (Material's own comments) - same procedural-not-
+		// file, append-one-TextureData pattern as the Diffuse case below,
+		// now also resolved for CoatedDiffuse (previously Diffuse-only).
+		// sample_texture() (optix_device_helpers.h) dispatches purely on
+		// TextureData::kind, not on MaterialType, so pointing d.textureIdx
+		// at a procedural entry works identically for CoatedDiffuse's own
+		// "reflectance" read as it already does for Lambertian's.
+		else if (m.hasCheckerReflectance) {
+			TextureData tex{};
+			tex.kind = TextureKind::UVChecker;
+			tex.color1 = make_float3(static_cast<float>(m.checkerColor1[0]),
+									 static_cast<float>(m.checkerColor1[1]),
+									 static_cast<float>(m.checkerColor1[2]));
+			tex.color2 = make_float3(static_cast<float>(m.checkerColor2[0]),
+									 static_cast<float>(m.checkerColor2[1]),
+									 static_cast<float>(m.checkerColor2[2]));
+			tex.uScale = static_cast<float>(m.checkerUScale);
+			tex.vScale = static_cast<float>(m.checkerVScale);
+			if (!m.checkerTex1Filename.empty())
+				tex.tex1ImageIdx = getOrBuildPbrtImageTexture(m.checkerTex1Filename, out, imageTextureCache);
+			if (!m.checkerTex2Filename.empty())
+				tex.tex2ImageIdx = getOrBuildPbrtImageTexture(m.checkerTex2Filename, out, imageTextureCache);
+			d.textureIdx = static_cast<int>(out.textures.size());
+			out.textures.push_back(tex);
+		}
+		else if (m.hasFbmReflectance) {
+			TextureData tex{};
+			tex.kind = TextureKind::FBm;
+			tex.omega = static_cast<float>(m.fbmRoughness);
+			tex.octaves = m.fbmOctaves;
+			d.textureIdx = static_cast<int>(out.textures.size());
+			out.textures.push_back(tex);
+		}
+		else if (m.hasMarbleReflectance) {
+			TextureData tex{};
+			tex.kind = TextureKind::Marble;
+			tex.omega = static_cast<float>(m.marbleRoughness);
+			tex.octaves = m.marbleOctaves;
+			tex.marbleScale = static_cast<float>(m.marbleScale);
+			tex.marbleVariation = static_cast<float>(m.marbleVariation);
+			d.textureIdx = static_cast<int>(out.textures.size());
+			out.textures.push_back(tex);
+		}
+		else if (m.hasMixReflectance) {
+			TextureData tex{};
+			tex.kind = TextureKind::Mix;
+			tex.color1 = make_float3(static_cast<float>(m.mixColor1[0]),
+									 static_cast<float>(m.mixColor1[1]),
+									 static_cast<float>(m.mixColor1[2]));
+			tex.color2 = make_float3(static_cast<float>(m.mixColor2[0]),
+									 static_cast<float>(m.mixColor2[1]),
+									 static_cast<float>(m.mixColor2[2]));
+			tex.mixAmount = static_cast<float>(m.mixAmount);
+			if (!m.mixTex1Filename.empty())
+				tex.tex1ImageIdx = getOrBuildPbrtImageTexture(m.mixTex1Filename, out, imageTextureCache);
+			if (!m.mixTex2Filename.empty())
+				tex.tex2ImageIdx = getOrBuildPbrtImageTexture(m.mixTex2Filename, out, imageTextureCache);
+			d.textureIdx = static_cast<int>(out.textures.size());
+			out.textures.push_back(tex);
+		}
 		// Real independent u/v coat roughness - see MaterialType::Conductor's
 		// identical-shape override above for the full rationale.
 		d.roughness  = static_cast<float>(m.roughness_u);

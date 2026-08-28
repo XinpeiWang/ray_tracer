@@ -242,11 +242,15 @@ per-`MaterialKind` behavior.)
   field on GPU, `scaled_texture` on CPU — see `Material::textureScale`) —
   `DiffuseTransmission` still falls back to a flat colour with a warning for
   the scale-wrapped case, since none of its own consumer code (CPU or GPU)
-  applies a reflectance scale factor at all. `Diffuse` additionally supports
-  `"checkerboard"`/`"fbm"`/`"marble"`/`"mix"` procedural textures (flat-literal
-  `tex1`/`tex2` only, no nested texture references) — `CoatedDiffuse` does
-  not, since no bundled scene binds any of those to a `coateddiffuse`
-  reflectance. pbrt's own `ganesha` example scene (a `coateddiffuse` statue,
+  applies a reflectance scale factor at all. `Diffuse`/`CoatedDiffuse` (not
+  `DiffuseTransmission`, same scope as the `"scale"`-wrap above) additionally
+  support `"checkerboard"`/`"fbm"`/`"marble"`/`"mix"` procedural textures
+  (flat-literal `tex1`/`tex2` only, no nested texture references) — on GPU
+  this needed no shading-code changes at all, since `sample_texture()`/
+  `wf_sample_texture()` already dispatch purely on the resolved
+  `TextureData::kind`, not on the consuming `MaterialType`; only the material
+  builder needed a `CoatedDiffuse`-side branch to populate `d.textureIdx`
+  with one. pbrt's own `ganesha` example scene (a `coateddiffuse` statue,
   bare imagemap) and `barcelona-pavilion`/`contemporary-bathroom` (many
   `coateddiffuse` surfaces, mostly scale-wrapped) are the motivating cases and
   now render with real per-point texture data instead of a flat fallback

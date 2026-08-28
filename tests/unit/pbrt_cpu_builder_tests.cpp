@@ -619,6 +619,49 @@ TEST(PbrtCpuBuildTest, CoatedDiffuseReflectanceScaleWrappedImagemapAppliesTheSca
 		   "wrapping the real mipmap_texture, not just the bare image";
 }
 
+TEST(PbrtCpuBuildTest, CoatedDiffuseReflectanceCheckerboardBuildsAUVCheckerBackedCoatedDiffuse) {
+	// checkerboard/fbm/marble/mix used to be Diffuse-only; now also resolved
+	// for CoatedDiffuse (mirrors DiffuseReflectanceCheckerboardBuildsA
+	// UVCheckerBackedLambertian above, just via coated_diffuse's own
+	// texture-taking constructor).
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Texture \"chk\" \"spectrum\" \"checkerboard\" "
+		"\"rgb tex1\" [ 1 0 0 ] \"rgb tex2\" [ 0 0 1 ] "
+		"\"float uscale\" [ 1 ] \"float vscale\" [ 1 ]\n"
+		"Material \"coateddiffuse\" \"texture reflectance\" [ \"chk\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.25, 0.25, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *cd = dynamic_cast<coated_diffuse *>(rec.mat.get());
+	ASSERT_NE(cd, nullptr);
+	auto *chk = dynamic_cast<uv_checker_texture *>(cd->get_texture().get());
+	ASSERT_NE(chk, nullptr)
+		<< "a coateddiffuse material with a checkerboard-bound reflectance must "
+		   "build a uv_checker_texture-backed coated_diffuse";
+	const color c00 = chk->value(0.25, 0.25, rec.p);
+	const color c10 = chk->value(1.25, 0.25, rec.p);
+	EXPECT_NE(c00.x(), c10.x())
+		<< "adjacent UV checker cells (one uscale apart) must differ";
+}
+
+TEST(PbrtCpuBuildTest, CoatedDiffuseReflectanceMixBuildsAMixBackedCoatedDiffuse) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Texture \"dirt\" \"spectrum\" \"mix\" \"rgb tex1\" [ 1 0 0 ] "
+		"\"rgb tex2\" [ 0 0 1 ] \"float amount\" [ 0.25 ]\n"
+		"Material \"coateddiffuse\" \"texture reflectance\" [ \"dirt\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *cd = dynamic_cast<coated_diffuse *>(rec.mat.get());
+	ASSERT_NE(cd, nullptr);
+	auto *mix = dynamic_cast<mix_texture *>(cd->get_texture().get());
+	ASSERT_NE(mix, nullptr)
+		<< "a coateddiffuse material with a mix-bound reflectance must build a "
+		   "mix_texture-backed coated_diffuse, not the flat-colour fallback";
+}
+
 TEST(PbrtCpuBuildTest, DiffuseReflectanceScaleWrappedImagemapAppliesTheScale) {
 	// barcelona-pavilion's own dominant binding shape, now also supported for
 	// plain diffuse surfaces (not just coateddiffuse) - Material::

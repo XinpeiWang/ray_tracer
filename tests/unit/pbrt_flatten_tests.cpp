@@ -1060,19 +1060,33 @@ TEST(FlattenMaterialTest, DiffuseReflectanceScaleWrappedImagemapCarriesTheScale)
 	EXPECT_FALSE(warnedAbout(s, "diffuse"));
 }
 
-TEST(FlattenMaterialTest, CoatedDiffuseReflectanceCheckerboardStillWarns) {
-	// Deliberate scope cut (Material::textureFilename's own comment): only
-	// imagemap (optionally scale-wrapped) is wired up for CoatedDiffuse - no
-	// bundled scene binds a checkerboard/fbm/marble/mix to a coateddiffuse
-	// reflectance, so those stay Diffuse-only and this must still warn
-	// rather than silently building an unintended procedural pattern.
+TEST(FlattenMaterialTest, CoatedDiffuseReflectanceCheckerboardResolvesToAProceduralTexture) {
+	// checkerboard/fbm/marble/mix used to be Diffuse-only (a documented
+	// scope cut); now also resolved for CoatedDiffuse, same as the "scale"
+	// unwrap and bare-imagemap cases already were - see
+	// hasCheckerReflectance's own comment.
 	const FlatScene s = flattenSource(
 		"Texture \"chk\" \"spectrum\" \"checkerboard\"\n"
 		"Material \"coateddiffuse\" \"texture reflectance\" [ \"chk\" ]\n"
 		+ std::string(kQuadMesh));
 	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].hasCheckerReflectance);
+	EXPECT_FALSE(warnedAbout(s, "coateddiffuse"));
+}
+
+TEST(FlattenMaterialTest, DiffuseTransmissionReflectanceCheckerboardStillWarns) {
+	// Regression guard for the Diffuse->CoatedDiffuse procedural-texture
+	// broadening above: DiffuseTransmission must stay excluded (no bundled
+	// scene binds a checkerboard/fbm/marble/mix to a diffusetransmission
+	// reflectance), so this must still warn rather than the broadened OR
+	// condition accidentally picking it up too.
+	const FlatScene s = flattenSource(
+		"Texture \"chk\" \"spectrum\" \"checkerboard\"\n"
+		"Material \"diffusetransmission\" \"texture reflectance\" [ \"chk\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
 	EXPECT_FALSE(s.materials[0].hasCheckerReflectance);
-	EXPECT_TRUE(warnedAbout(s, "coateddiffuse"));
+	EXPECT_TRUE(warnedAbout(s, "diffusetransmission"));
 }
 
 TEST(FlattenMaterialTest, DiffuseReflectanceScaleWrappingACheckerboardStillWarns) {

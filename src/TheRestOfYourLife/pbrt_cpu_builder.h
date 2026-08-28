@@ -57,6 +57,20 @@ inline color reflectanceToConductorK(const color& r) {
 	return color(k1(r.x()), k1(r.y()), k1(r.z()));
 }
 
+// A checkerboard/mix texture's own tex1/tex2 slot: a bare imagemap filename
+// (one-level-nested texture reference already resolved by pbrt_flatten.h -
+// see Material::checkerTex1Filename/mixTex1Filename's own comments) when
+// present, otherwise the flat literal RGB colour flatten() resolved into the
+// paired colour array. Shared by hasCheckerReflectance's and
+// hasMixReflectance's own tex1/tex2 slots, on both the Diffuse and (since
+// CoatedDiffuse gained the same procedural-texture support) CoatedDiffuse
+// cases below - four call sites for what used to be identical inline logic.
+inline shared_ptr<texture> checkerOrMixSlot(const std::string &filename, const double color3[3]) {
+	return filename.empty()
+		? std::static_pointer_cast<texture>(std::make_shared<solid_color>(color(color3[0], color3[1], color3[2])))
+		: std::static_pointer_cast<texture>(std::make_shared<mipmap_texture>(filename.c_str()));
+}
+
 // pbrt's material names already match ours (see pbrt_flatten.h), so this is
 // construction rather than interpretation. An Unsupported material becomes
 // diffuse - flatten() has already warned about it by name, so failing here
@@ -179,6 +193,34 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 				tex = std::make_shared<scaled_texture>(tex, m.textureScale);
 			return std::make_shared<coated_diffuse>(tex, m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
 		}
+		// m.hasCheckerReflectance/hasFbmReflectance/hasMarbleReflectance/
+		// hasMixReflectance (Material's own comments) - same procedural-not-
+		// file pattern as the Diffuse case below, now also resolved for
+		// CoatedDiffuse (previously Diffuse-only): the identical resolved
+		// fields, just plugged into coated_diffuse's own texture-taking
+		// constructor instead of lambertian's.
+		if (m.hasCheckerReflectance) {
+			shared_ptr<texture> tex1 = checkerOrMixSlot(m.checkerTex1Filename, m.checkerColor1);
+			shared_ptr<texture> tex2 = checkerOrMixSlot(m.checkerTex2Filename, m.checkerColor2);
+			return std::make_shared<coated_diffuse>(
+				std::make_shared<uv_checker_texture>(m.checkerUScale, m.checkerVScale, tex1, tex2),
+				m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
+		}
+		if (m.hasFbmReflectance)
+			return std::make_shared<coated_diffuse>(
+				std::make_shared<fbm_texture>(1.0, m.fbmOctaves, m.fbmRoughness),
+				m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
+		if (m.hasMarbleReflectance)
+			return std::make_shared<coated_diffuse>(
+				std::make_shared<marble_texture>(m.marbleScale, m.marbleOctaves, m.marbleRoughness, m.marbleVariation),
+				m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
+		if (m.hasMixReflectance) {
+			shared_ptr<texture> tex1 = checkerOrMixSlot(m.mixTex1Filename, m.mixColor1);
+			shared_ptr<texture> tex2 = checkerOrMixSlot(m.mixTex2Filename, m.mixColor2);
+			return std::make_shared<coated_diffuse>(
+				std::make_shared<mix_texture>(tex1, tex2, m.mixAmount),
+				m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
+		}
 		return std::make_shared<coated_diffuse>(albedo, m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
 	case pbrt_flatten::MaterialKind::CoatedConductor: {
 		// A recognized named conductor spectrum or an explicit "rgb eta"/
@@ -295,12 +337,8 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		// field's own comment) - a mipmap_texture per nested slot instead of
 		// the flat solid_color the plain literal case still uses.
 		if (m.hasCheckerReflectance) {
-			shared_ptr<texture> tex1 = m.checkerTex1Filename.empty()
-				? std::static_pointer_cast<texture>(std::make_shared<solid_color>(color(m.checkerColor1[0], m.checkerColor1[1], m.checkerColor1[2])))
-				: std::static_pointer_cast<texture>(std::make_shared<mipmap_texture>(m.checkerTex1Filename.c_str()));
-			shared_ptr<texture> tex2 = m.checkerTex2Filename.empty()
-				? std::static_pointer_cast<texture>(std::make_shared<solid_color>(color(m.checkerColor2[0], m.checkerColor2[1], m.checkerColor2[2])))
-				: std::static_pointer_cast<texture>(std::make_shared<mipmap_texture>(m.checkerTex2Filename.c_str()));
+			shared_ptr<texture> tex1 = checkerOrMixSlot(m.checkerTex1Filename, m.checkerColor1);
+			shared_ptr<texture> tex2 = checkerOrMixSlot(m.checkerTex2Filename, m.checkerColor2);
 			return std::make_shared<lambertian>(std::make_shared<uv_checker_texture>(
 				m.checkerUScale, m.checkerVScale, tex1, tex2));
 		}
@@ -321,12 +359,8 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		if (m.hasMixReflectance) {
 			// Same one-level-nested-imagemap support as checkerboard above,
 			// via mix_texture's own new polymorphic constructor.
-			shared_ptr<texture> tex1 = m.mixTex1Filename.empty()
-				? std::static_pointer_cast<texture>(std::make_shared<solid_color>(color(m.mixColor1[0], m.mixColor1[1], m.mixColor1[2])))
-				: std::static_pointer_cast<texture>(std::make_shared<mipmap_texture>(m.mixTex1Filename.c_str()));
-			shared_ptr<texture> tex2 = m.mixTex2Filename.empty()
-				? std::static_pointer_cast<texture>(std::make_shared<solid_color>(color(m.mixColor2[0], m.mixColor2[1], m.mixColor2[2])))
-				: std::static_pointer_cast<texture>(std::make_shared<mipmap_texture>(m.mixTex2Filename.c_str()));
+			shared_ptr<texture> tex1 = checkerOrMixSlot(m.mixTex1Filename, m.mixColor1);
+			shared_ptr<texture> tex2 = checkerOrMixSlot(m.mixTex2Filename, m.mixColor2);
 			return std::make_shared<lambertian>(std::make_shared<mix_texture>(tex1, tex2, m.mixAmount));
 		}
 		break;
