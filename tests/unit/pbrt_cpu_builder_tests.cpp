@@ -619,6 +619,28 @@ TEST(PbrtCpuBuildTest, CoatedDiffuseReflectanceScaleWrappedImagemapAppliesTheSca
 		   "wrapping the real mipmap_texture, not just the bare image";
 }
 
+TEST(PbrtCpuBuildTest, DiffuseReflectanceScaleWrappedImagemapAppliesTheScale) {
+	// barcelona-pavilion's own dominant binding shape, now also supported for
+	// plain diffuse surfaces (not just coateddiffuse) - Material::
+	// textureScale's own comment.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Texture \"tmap\" \"spectrum\" \"imagemap\" \"string filename\" [ \"t.png\" ]\n"
+		"Texture \"tmap-scaled\" \"spectrum\" \"scale\" \"texture tex\" [ \"tmap\" ] "
+		"\"float scale\" [ 0.5 ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"tmap-scaled\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *lam = dynamic_cast<lambertian *>(rec.mat.get());
+	ASSERT_NE(lam, nullptr);
+	auto *scaled = dynamic_cast<scaled_texture *>(lam->get_texture().get());
+	ASSERT_NE(scaled, nullptr)
+		<< "a scale-wrapped imagemap reflectance on a plain diffuse material must "
+		   "build a scaled_texture wrapping the real mipmap_texture, not just the "
+		   "bare image";
+}
+
 TEST(PbrtCpuBuildTest, DiffuseReflectanceCheckerboardBuildsAUVCheckerBackedLambertian) {
 	// Round 5 Phase 2: hasCheckerReflectance must make it all the way to a
 	// uv_checker_texture-backed lambertian, and that texture must actually

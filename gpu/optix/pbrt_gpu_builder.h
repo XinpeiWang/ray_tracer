@@ -688,7 +688,7 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		// pbrt_flatten.h) - barcelona-pavilion's foliage binds both
 		// "reflectance" and "transmittance" to the SAME bare imagemap; bare
 		// imagemap only, no "scale"-wrap (see textureScale's own comment,
-		// CoatedDiffuse only). d.textureIdx covers reflectance (falls back
+		// Diffuse/CoatedDiffuse only). d.textureIdx covers reflectance (falls back
 		// to d.albedo, already assigned above), d.transmittanceTextureIdx
 		// covers transmittance (falls back to d.transmittance just above).
 		if (!m.textureFilename.empty())
@@ -769,10 +769,16 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		// (optix_device_helpers.h) falls through to solid_color-equivalent
 		// behaviour reading `d.albedo` - same degrade-to-flat-colour the
 		// Diffuse/Unsupported fallback below already gives every other
-		// material without a texture.
+		// material without a texture. d.emissionScale (reused, not a
+		// dedicated field - see its own comment in optix_types.h and
+		// CoatedDiffuse's identical-shape case below) carries a "scale"-
+		// class wrapper's multiplier (barcelona-pavilion's own dominant
+		// pattern); stays at its 1.0 no-op default for a bare imagemap.
 		d.type = MaterialType::Lambertian;
-		if (!m.textureFilename.empty())
+		if (!m.textureFilename.empty()) {
 			d.textureIdx = getOrBuildPbrtImageTexture(m.textureFilename, out, imageTextureCache);
+			d.emissionScale = static_cast<float>(m.textureScale);
+		}
 		// m.hasCheckerReflectance (Material::hasCheckerReflectance's own
 		// comment) - a procedural pbrt-v4 checkerboard, appended directly to
 		// out.textures as a TextureKind::UVChecker entry (no cache/dedup:

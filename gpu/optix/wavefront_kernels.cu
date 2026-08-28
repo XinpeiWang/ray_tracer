@@ -2423,7 +2423,7 @@ extern "C" __global__ void evaluate_materials(
 		scattered_dir = normalize(normal + wf_rand_unit(seed));
 		if (wf_near_zero(scattered_dir)) scattered_dir = normal;
 		const float3 lambertianColor = (mat.textureIdx >= 0)
-			? wf_sample_texture(textures, texturePixels, mat.textureIdx, h.uv_u, h.uv_v, hit_point)
+			? wf_sample_texture(textures, texturePixels, mat.textureIdx, h.uv_u, h.uv_v, hit_point) * mat.emissionScale
 			: mat.albedo;
 		attenuation = albedoSpectrum(lambertianColor);
 		scattered   = true;
@@ -3542,7 +3542,7 @@ extern "C" __global__ void evaluate_materials_simple(
 		scattered_dir = normalize(normal + wf_rand_unit(seed));
 		if (wf_near_zero(scattered_dir)) scattered_dir = normal;
 		const float3 lambertianColor = (mat.textureIdx >= 0)
-			? wf_sample_texture(textures, texturePixels, mat.textureIdx, h.uv_u, h.uv_v, hit_point)
+			? wf_sample_texture(textures, texturePixels, mat.textureIdx, h.uv_u, h.uv_v, hit_point) * mat.emissionScale
 			: mat.albedo;
 		attenuation = albedoSpectrum(lambertianColor);
 		scattered   = true;

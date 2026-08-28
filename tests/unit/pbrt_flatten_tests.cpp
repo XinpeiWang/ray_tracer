@@ -1044,6 +1044,22 @@ TEST(FlattenMaterialTest, CoatedDiffuseReflectanceScaleWrappedImagemapCarriesThe
 	EXPECT_DOUBLE_EQ(s.materials[0].textureScale, 0.7);
 }
 
+TEST(FlattenMaterialTest, DiffuseReflectanceScaleWrappedImagemapCarriesTheScale) {
+	// barcelona-pavilion's own dominant binding shape, now also supported for
+	// plain "diffuse" surfaces, not just "coateddiffuse" - see
+	// Material::textureScale's own comment.
+	const FlatScene s = flattenSource(
+		"Texture \"tmap\" \"spectrum\" \"imagemap\" \"string filename\" [ \"concrete.png\" ]\n"
+		"Texture \"tmap-scaled\" \"spectrum\" \"scale\" \"texture tex\" [ \"tmap\" ] "
+		"\"float scale\" [ 0.7 ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"tmap-scaled\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].textureFilename, "concrete.png");
+	EXPECT_DOUBLE_EQ(s.materials[0].textureScale, 0.7);
+	EXPECT_FALSE(warnedAbout(s, "diffuse"));
+}
+
 TEST(FlattenMaterialTest, CoatedDiffuseReflectanceCheckerboardStillWarns) {
 	// Deliberate scope cut (Material::textureFilename's own comment): only
 	// imagemap (optionally scale-wrapped) is wired up for CoatedDiffuse - no

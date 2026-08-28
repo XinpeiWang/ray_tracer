@@ -274,9 +274,17 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		// present file (mip_ stays null) degrades to mipmap_texture's own
 		// cyan debug colour rather than a silent flat-colour fallback - rare
 		// enough (pbrt_load.h already validated the file opens) not to be
-		// worth a second probe-and-fallback dance here.
-		if (!m.textureFilename.empty())
-			return std::make_shared<lambertian>(std::make_shared<mipmap_texture>(m.textureFilename.c_str()));
+		// worth a second probe-and-fallback dance here. m.textureScale
+		// (default 1.0, a no-op) wraps a "scale"-class Texture's own
+		// multiplier when reflectance was bound to one wrapping an imagemap
+		// (barcelona-pavilion's own dominant pattern, same as CoatedDiffuse's
+		// identical-shape case below).
+		if (!m.textureFilename.empty()) {
+			shared_ptr<texture> tex = std::make_shared<mipmap_texture>(m.textureFilename.c_str());
+			if (m.textureScale != 1.0)
+				tex = std::make_shared<scaled_texture>(tex, m.textureScale);
+			return std::make_shared<lambertian>(tex);
+		}
 		// m.hasCheckerReflectance (Material::hasCheckerReflectance's own
 		// comment) - a procedural pbrt-v4 checkerboard, not an image file,
 		// so uv_checker_texture (texture.h) is built directly from the

@@ -237,11 +237,12 @@ per-`MaterialKind` behavior.)
   imagemap, the motivating (and only bundled) case; no `"scale"`-wrap support
   for either parameter on this kind, since no bundled scene needs it. A
   `"scale"`-wrapped `"imagemap"` (`barcelona-pavilion`'s own dominant pattern
-  for `coateddiffuse`) is supported for `CoatedDiffuse` ONLY (scale folded
-  into the reused `emissionScale` field, see `Material::textureScale`) —
-  `Diffuse` still falls back to a flat colour with a warning for the
-  scale-wrapped case, since none of its own consumer code (CPU or GPU) applies
-  a reflectance scale factor at all. `Diffuse` additionally supports
+  for both `coateddiffuse` and plain `diffuse` surfaces) is supported for
+  `Diffuse`/`CoatedDiffuse` (scale folded into the reused `emissionScale`
+  field on GPU, `scaled_texture` on CPU — see `Material::textureScale`) —
+  `DiffuseTransmission` still falls back to a flat colour with a warning for
+  the scale-wrapped case, since none of its own consumer code (CPU or GPU)
+  applies a reflectance scale factor at all. `Diffuse` additionally supports
   `"checkerboard"`/`"fbm"`/`"marble"`/`"mix"` procedural textures (flat-literal
   `tex1`/`tex2` only, no nested texture references) — `CoatedDiffuse` does
   not, since no bundled scene binds any of those to a `coateddiffuse`

@@ -1688,7 +1688,9 @@ __device__ __forceinline__ void shade_material(
 				scattered_dir = normal;
 			}
 			scattered_dir = normalize(scattered_dir);
-			attenuation = (mat.textureIdx >= 0) ? sample_texture(mat.textureIdx, uv_u, uv_v, hit_point) : mat.albedo;
+			attenuation = (mat.textureIdx >= 0)
+				? sample_texture(mat.textureIdx, uv_u, uv_v, hit_point) * mat.emissionScale
+				: mat.albedo;
 			scattered = true;
 
 			// Add direct lighting via explicit light sampling (Next Event Estimation)

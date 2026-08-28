@@ -402,22 +402,24 @@ struct Material {
 	// pbrt_load.h" convention as measuredFilename above (see that field's
 	// own comment). Empty means either no texture was bound, the bound
 	// texture wasn't an imagemap (or a "scale" wrapping one - see
-	// textureScale below, CoatedDiffuse only), or (after pbrt_load.h's pass)
-	// the file could not be found - any of which falls back to `color` as a
-	// flat reflectance, same as today. Only "reflectance" is handled (not
-	// every texture-bindable parameter on every material kind): pbrt's own
-	// ganesha scene (a CoatedDiffuse statue whose reflectance is an
-	// imagemap), barcelona-pavilion's CoatedDiffuse surfaces (mostly
-	// reflectance bound to a "scale" texture wrapping an imagemap - see the
-	// warning loop below) and barcelona-pavilion's own foliage
-	// (DiffuseTransmission, "texture reflectance"/"texture transmittance"
-	// both bound to the SAME bare imagemap - see transmittanceTextureFilename
-	// below) are the motivating cases, and scoping to reflectance/
-	// transmittance on these three kinds keeps this addition bounded rather
-	// than building a general procedural-texture pipeline in one pass -
-	// checkerboard/fbm/marble/mix stay Diffuse-only (hasCheckerReflectance
-	// etc. below), and the "scale" unwrap stays CoatedDiffuse-only (see
-	// textureScale below), since no bundled scene needs either beyond that.
+	// textureScale below, Diffuse/CoatedDiffuse only), or (after
+	// pbrt_load.h's pass) the file could not be found - any of which falls
+	// back to `color` as a flat reflectance, same as today. Only
+	// "reflectance" is handled (not every texture-bindable parameter on
+	// every material kind): pbrt's own ganesha scene (a CoatedDiffuse statue
+	// whose reflectance is an imagemap), barcelona-pavilion's CoatedDiffuse
+	// AND plain-Diffuse surfaces (mostly reflectance bound to a "scale"
+	// texture wrapping an imagemap - see the warning loop below) and
+	// barcelona-pavilion's own foliage (DiffuseTransmission, "texture
+	// reflectance"/"texture transmittance" both bound to the SAME bare
+	// imagemap - see transmittanceTextureFilename below) are the motivating
+	// cases, and scoping to reflectance/transmittance on these three kinds
+	// keeps this addition bounded rather than building a general
+	// procedural-texture pipeline in one pass - checkerboard/fbm/marble/mix
+	// stay Diffuse-only (hasCheckerReflectance etc. below), and the "scale"
+	// unwrap stays Diffuse/CoatedDiffuse-only (see textureScale below),
+	// since no bundled scene needs DiffuseTransmission's own reflectance
+	// scale-wrapped.
 	std::string textureFilename;
 
 	// A "scale"-class Texture's own "float scale" when textureFilename came
@@ -425,13 +427,13 @@ struct Material {
 	// Texture whose "texture tex" names the real imagemap - barcelona-
 	// pavilion's own dominant pattern for reflectance, already unwrapped the
 	// identical way for "displacement" below, see displacementScale's own
-	// comment). CoatedDiffuse only - neither Diffuse's nor
-	// DiffuseTransmission's own consumer code applies a reflectance scale
-	// factor, so a scale-wrapped reflectance on either of those still falls
-	// back to the generic "not supported" warning instead of resolving
-	// unscaled (see the warning loop's own CoatedDiffuse-only gate). 1.0 (a
-	// no-op multiply) when textureFilename came from a bare imagemap with no
-	// wrapping "scale", or when textureFilename is empty.
+	// comment). Diffuse/CoatedDiffuse only - DiffuseTransmission's own
+	// consumer code applies no reflectance scale factor, so a scale-wrapped
+	// reflectance there still falls back to the generic "not supported"
+	// warning instead of resolving unscaled (see the warning loop's own
+	// kind gate). 1.0 (a no-op multiply) when textureFilename came from a
+	// bare imagemap with no wrapping "scale", or when textureFilename is
+	// empty.
 	double textureScale = 1.0;
 
 	// DiffuseTransmission only: an "imagemap" Texture bound to
@@ -1345,8 +1347,8 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// The cases actually wired up below (each field's own comment has
 		// the detail): "reflectance" bound to a bare "imagemap" on a Diffuse,
 		// CoatedDiffuse, OR DiffuseTransmission material, optionally further
-		// wrapped in a "scale" texture for CoatedDiffuse only (Material::
-		// textureFilename/textureScale), "transmittance" bound to a bare
+		// wrapped in a "scale" texture for Diffuse/CoatedDiffuse only
+		// (Material::textureFilename/textureScale), "transmittance" bound to a bare
 		// imagemap on DiffuseTransmission ONLY
 		// (transmittanceTextureFilename), "reflectance" bound to a
 		// flat-colour "checkerboard"/"fbm"/"marble"/"mix" texture on a
@@ -1375,20 +1377,22 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				// "displacement" below, applied here too so reflectance gets
 				// the same real-scene coverage rather than falling through
 				// to the generic warning for every scale-wrapped case.
-				// CoatedDiffuse ONLY: both builders apply m.textureScale for
-				// CoatedDiffuse (scaled_texture on CPU, MaterialData::
-				// emissionScale on GPU), but the Diffuse/Lambertian case in
-				// BOTH builders never reads m.textureScale at all - unwrapping
-				// "scale" for Diffuse too would silently resolve to an image
-				// and then render it at full (unscaled) brightness instead of
-				// the scene's requested scale, a real regression from the
-				// pre-existing "warn and fall back to flat colour" behavior a
-				// scale-wrapped Diffuse reflectance correctly got before this
-				// gate existed. No bundled scene needs Diffuse+scale+imagemap
-				// (only CoatedDiffuse's barcelona-pavilion/contemporary-
-				// bathroom materials do), so this stays narrower than the
-				// bare-imagemap case just below, which both kinds already
-				// handle correctly.
+				// Diffuse/CoatedDiffuse ONLY: both builders apply
+				// m.textureScale for these two kinds (scaled_texture on CPU,
+				// MaterialData::emissionScale reused on GPU), but
+				// DiffuseTransmission's consumer code never reads
+				// m.textureScale at all - unwrapping "scale" for it too would
+				// silently resolve to an image and then render it at full
+				// (unscaled) brightness instead of the scene's requested
+				// scale, a real regression from the pre-existing "warn and
+				// fall back to flat colour" behavior a scale-wrapped
+				// DiffuseTransmission reflectance correctly got before this
+				// gate existed. No bundled scene needs
+				// DiffuseTransmission+scale+imagemap (only barcelona-
+				// pavilion's foliage binds DiffuseTransmission's reflectance,
+				// to a bare imagemap with no wrapping scale), so this stays
+				// narrower than the bare-imagemap case just below, which all
+				// three kinds already handle correctly.
 				// Unwrapped into a SEPARATE variable (imgTex), not reassigned
 				// into `tex` itself: the checkerboard/fbm/marble/mix branches
 				// below must still see the ORIGINAL (possibly "scale") decl
@@ -1398,7 +1402,8 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				// bare checkerboard instead.
 				const pbrt_scene::TextureDecl *imgTex = tex;
 				double texScale = 1.0;
-				if (m.kind == MaterialKind::CoatedDiffuse && imgTex && imgTex->cls == "scale") {
+				if ((m.kind == MaterialKind::Diffuse || m.kind == MaterialKind::CoatedDiffuse) &&
+					imgTex && imgTex->cls == "scale") {
 					texScale = imgTex->params.getFloat("scale", 1.0);
 					const pbrt_scene::Param *inner = imgTex->params.find("tex");
 					imgTex = (inner && inner->type == "texture" && !inner->strings.empty())

@@ -904,18 +904,18 @@ struct MaterialData {
 	// updating.
 	bool twoSided = false;
 
-	// DiffuseLight or CoatedDiffuse, and only meaningful when textureIdx >=
-	// 0: a flat scalar multiplier applied to the sampled texel at lookup
-	// time (mirrors CPU's scaled_texture wrapper - see that class's own
-	// comment). A flat-color DiffuseLight already bakes "scale" into
-	// `emission` directly at build time and never reads this field.
-	// CoatedDiffuse reuses this same field (not a dedicated one) for its own
-	// "reflectance" bound to a "scale"-class Texture wrapping an imagemap
-	// (barcelona-pavilion's own dominant pattern - see pbrt_flatten::
-	// Material::textureScale's own comment) - same "a per-material scalar
-	// multiplier over a sampled texture" concept, just read by a different
-	// material kind's own shading code. Defaults to a no-op multiply so no
-	// existing call site needed updating.
+	// DiffuseLight, Lambertian, or CoatedDiffuse, and only meaningful when
+	// textureIdx >= 0: a flat scalar multiplier applied to the sampled texel
+	// at lookup time (mirrors CPU's scaled_texture wrapper - see that
+	// class's own comment). A flat-color DiffuseLight already bakes "scale"
+	// into `emission` directly at build time and never reads this field.
+	// Lambertian and CoatedDiffuse each reuse this same field (not a
+	// dedicated one) for their own "reflectance" bound to a "scale"-class
+	// Texture wrapping an imagemap (barcelona-pavilion's own dominant
+	// pattern - see pbrt_flatten::Material::textureScale's own comment) -
+	// same "a per-material scalar multiplier over a sampled texture"
+	// concept, just read by a different material kind's own shading code.
+	// Defaults to a no-op multiply so no existing call site needed updating.
 	float emissionScale = 1.0f;
 
 	// pbrt-v4's "remaproughness" (default true): when true, `roughness`
