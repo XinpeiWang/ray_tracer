@@ -662,6 +662,41 @@ TEST(PbrtCpuBuildTest, CoatedDiffuseReflectanceMixBuildsAMixBackedCoatedDiffuse)
 		   "mix_texture-backed coated_diffuse, not the flat-colour fallback";
 }
 
+TEST(PbrtCpuBuildTest, CoatedDiffuseReflectanceFbmBuildsAnFbmBackedCoatedDiffuse) {
+	// Mirrors DiffuseReflectanceFbmBuildsAnFbmBackedLambertian below, for
+	// CoatedDiffuse's own separate branch (previously untested - checkerboard
+	// and mix were covered above, but fbm/marble were not).
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Texture \"cloud\" \"float\" \"fbm\" \"integer octaves\" [ 4 ]\n"
+		"Material \"coateddiffuse\" \"texture reflectance\" [ \"cloud\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *cd = dynamic_cast<coated_diffuse *>(rec.mat.get());
+	ASSERT_NE(cd, nullptr);
+	EXPECT_NE(dynamic_cast<fbm_texture *>(cd->get_texture().get()), nullptr)
+		<< "a coateddiffuse material with an fbm-bound reflectance must build an "
+		   "fbm_texture-backed coated_diffuse, not the flat-colour fallback";
+}
+
+TEST(PbrtCpuBuildTest, CoatedDiffuseReflectanceMarbleBuildsAMarbleBackedCoatedDiffuse) {
+	// Mirrors DiffuseReflectanceMarbleBuildsAMarbleBackedLambertian below,
+	// for CoatedDiffuse's own separate branch.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Texture \"stone\" \"spectrum\" \"marble\"\n"
+		"Material \"coateddiffuse\" \"texture reflectance\" [ \"stone\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *cd = dynamic_cast<coated_diffuse *>(rec.mat.get());
+	ASSERT_NE(cd, nullptr);
+	EXPECT_NE(dynamic_cast<marble_texture *>(cd->get_texture().get()), nullptr)
+		<< "a coateddiffuse material with a marble-bound reflectance must build a "
+		   "marble_texture-backed coated_diffuse, not the flat-colour fallback";
+}
+
 TEST(PbrtCpuBuildTest, DiffuseReflectanceScaleWrappedImagemapAppliesTheScale) {
 	// barcelona-pavilion's own dominant binding shape, now also supported for
 	// plain diffuse surfaces (not just coateddiffuse) - Material::

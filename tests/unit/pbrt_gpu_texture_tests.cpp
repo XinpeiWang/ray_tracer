@@ -420,3 +420,121 @@ TEST(PbrtGpuTextureTest, MixReflectanceBuildsAMixTexture) {
 	EXPECT_FLOAT_EQ(tex.color2.z, 1.0f);
 	EXPECT_FLOAT_EQ(tex.mixAmount, 0.25f);
 }
+
+// The four tests below mirror CheckerReflectanceBuildsAUVCheckerTexture/
+// FbmReflectanceBuildsAnFBmTexture/MarbleReflectanceBuildsAMarbleTexture/
+// MixReflectanceBuildsAMixTexture above exactly, just for
+// MaterialKind::CoatedDiffuse instead of Diffuse - checkerboard/fbm/marble/
+// mix reflectance textures used to be Diffuse-only (a documented scope cut),
+// now also resolved for CoatedDiffuse (pbrt_gpu_builder.h's own CoatedDiffuse
+// case gained the identical 4 branches the Diffuse case already had). These
+// exist as a SEPARATE switch arm in pbrt_gpu_builder.h's makeMaterial(), not
+// shared code with the Diffuse case above, so the Diffuse-side tests give no
+// coverage for a field-population mistake (e.g. a swapped colour/scale
+// argument) made only in the CoatedDiffuse branches.
+
+TEST(PbrtGpuTextureTest, CoatedDiffuseCheckerReflectanceBuildsAUVCheckerTexture) {
+	pbrt_flatten::Material m;
+	m.kind = pbrt_flatten::MaterialKind::CoatedDiffuse;
+	m.hasCheckerReflectance = true;
+	m.checkerColor1[0] = 1.0; m.checkerColor1[1] = 0.0; m.checkerColor1[2] = 0.0;
+	m.checkerColor2[0] = 0.0; m.checkerColor2[1] = 0.0; m.checkerColor2[2] = 1.0;
+	m.checkerUScale = 4.0;
+	m.checkerVScale = 8.0;
+	pbrt_flatten::FlatScene flat;
+	flat.materials.push_back(m);
+	pbrt_flatten::Triangle tri{};
+	tri.material = 0;
+	tri.areaLight = -1;
+	flat.triangles.push_back(tri);
+
+	SceneData scene;
+	pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(scene.materials.size(), 1u);
+	EXPECT_EQ(scene.materials[0].type, MaterialType::CoatedDiffuse);
+	ASSERT_GE(scene.materials[0].textureIdx, 0);
+	const TextureData &tex = scene.textures[static_cast<std::size_t>(scene.materials[0].textureIdx)];
+	EXPECT_EQ(tex.kind, TextureKind::UVChecker);
+	EXPECT_FLOAT_EQ(tex.color1.x, 1.0f);
+	EXPECT_FLOAT_EQ(tex.color2.z, 1.0f);
+	EXPECT_FLOAT_EQ(tex.uScale, 4.0f);
+	EXPECT_FLOAT_EQ(tex.vScale, 8.0f);
+}
+
+TEST(PbrtGpuTextureTest, CoatedDiffuseFbmReflectanceBuildsAnFBmTexture) {
+	pbrt_flatten::Material m;
+	m.kind = pbrt_flatten::MaterialKind::CoatedDiffuse;
+	m.hasFbmReflectance = true;
+	m.fbmOctaves = 4;
+	m.fbmRoughness = 0.3;
+	pbrt_flatten::FlatScene flat;
+	flat.materials.push_back(m);
+	pbrt_flatten::Triangle tri{};
+	tri.material = 0;
+	tri.areaLight = -1;
+	flat.triangles.push_back(tri);
+
+	SceneData scene;
+	pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(scene.materials.size(), 1u);
+	EXPECT_EQ(scene.materials[0].type, MaterialType::CoatedDiffuse);
+	ASSERT_GE(scene.materials[0].textureIdx, 0);
+	const TextureData &tex = scene.textures[static_cast<std::size_t>(scene.materials[0].textureIdx)];
+	EXPECT_EQ(tex.kind, TextureKind::FBm);
+	EXPECT_EQ(tex.octaves, 4);
+	EXPECT_FLOAT_EQ(tex.omega, 0.3f);
+}
+
+TEST(PbrtGpuTextureTest, CoatedDiffuseMarbleReflectanceBuildsAMarbleTexture) {
+	pbrt_flatten::Material m;
+	m.kind = pbrt_flatten::MaterialKind::CoatedDiffuse;
+	m.hasMarbleReflectance = true;
+	m.marbleOctaves = 6;
+	m.marbleRoughness = 0.4;
+	m.marbleScale = 2.0;
+	m.marbleVariation = 0.3;
+	pbrt_flatten::FlatScene flat;
+	flat.materials.push_back(m);
+	pbrt_flatten::Triangle tri{};
+	tri.material = 0;
+	tri.areaLight = -1;
+	flat.triangles.push_back(tri);
+
+	SceneData scene;
+	pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(scene.materials.size(), 1u);
+	EXPECT_EQ(scene.materials[0].type, MaterialType::CoatedDiffuse);
+	ASSERT_GE(scene.materials[0].textureIdx, 0);
+	const TextureData &tex = scene.textures[static_cast<std::size_t>(scene.materials[0].textureIdx)];
+	EXPECT_EQ(tex.kind, TextureKind::Marble);
+	EXPECT_EQ(tex.octaves, 6);
+	EXPECT_FLOAT_EQ(tex.omega, 0.4f);
+	EXPECT_FLOAT_EQ(tex.marbleScale, 2.0f);
+	EXPECT_FLOAT_EQ(tex.marbleVariation, 0.3f);
+}
+
+TEST(PbrtGpuTextureTest, CoatedDiffuseMixReflectanceBuildsAMixTexture) {
+	pbrt_flatten::Material m;
+	m.kind = pbrt_flatten::MaterialKind::CoatedDiffuse;
+	m.hasMixReflectance = true;
+	m.mixColor1[0] = 1.0; m.mixColor1[1] = 0.0; m.mixColor1[2] = 0.0;
+	m.mixColor2[0] = 0.0; m.mixColor2[1] = 0.0; m.mixColor2[2] = 1.0;
+	m.mixAmount = 0.25;
+	pbrt_flatten::FlatScene flat;
+	flat.materials.push_back(m);
+	pbrt_flatten::Triangle tri{};
+	tri.material = 0;
+	tri.areaLight = -1;
+	flat.triangles.push_back(tri);
+
+	SceneData scene;
+	pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(scene.materials.size(), 1u);
+	EXPECT_EQ(scene.materials[0].type, MaterialType::CoatedDiffuse);
+	ASSERT_GE(scene.materials[0].textureIdx, 0);
+	const TextureData &tex = scene.textures[static_cast<std::size_t>(scene.materials[0].textureIdx)];
+	EXPECT_EQ(tex.kind, TextureKind::Mix);
+	EXPECT_FLOAT_EQ(tex.color1.x, 1.0f);
+	EXPECT_FLOAT_EQ(tex.color2.z, 1.0f);
+	EXPECT_FLOAT_EQ(tex.mixAmount, 0.25f);
+}

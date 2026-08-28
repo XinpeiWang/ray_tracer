@@ -1074,6 +1074,33 @@ TEST(FlattenMaterialTest, CoatedDiffuseReflectanceCheckerboardResolvesToAProcedu
 	EXPECT_FALSE(warnedAbout(s, "coateddiffuse"));
 }
 
+TEST(FlattenMaterialTest, CoatedDiffuseReflectanceFbmResolvesToAProceduralTexture) {
+	// Same broadening as checkerboard above, for fbm specifically - the fbm
+	// gate at MaterialKind::Diffuse|CoatedDiffuse was previously untested for
+	// CoatedDiffuse at this level.
+	const FlatScene s = flattenSource(
+		"Texture \"cloud\" \"float\" \"fbm\" \"integer octaves\" [ 4 ]\n"
+		"Material \"coateddiffuse\" \"texture reflectance\" [ \"cloud\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].hasFbmReflectance);
+	EXPECT_EQ(s.materials[0].fbmOctaves, 4);
+	EXPECT_FALSE(warnedAbout(s, "coateddiffuse"));
+}
+
+TEST(FlattenMaterialTest, CoatedDiffuseReflectanceMarbleResolvesToAProceduralTexture) {
+	// Same broadening as checkerboard above, for marble specifically - the
+	// marble gate at MaterialKind::Diffuse|CoatedDiffuse was previously
+	// untested for CoatedDiffuse at this level.
+	const FlatScene s = flattenSource(
+		"Texture \"stone\" \"spectrum\" \"marble\"\n"
+		"Material \"coateddiffuse\" \"texture reflectance\" [ \"stone\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].hasMarbleReflectance);
+	EXPECT_FALSE(warnedAbout(s, "coateddiffuse"));
+}
+
 TEST(FlattenMaterialTest, DiffuseTransmissionReflectanceCheckerboardStillWarns) {
 	// Regression guard for the Diffuse->CoatedDiffuse procedural-texture
 	// broadening above: DiffuseTransmission must stay excluded (no bundled
