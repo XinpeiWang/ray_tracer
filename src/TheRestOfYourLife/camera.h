@@ -629,6 +629,19 @@ class camera {
         crop_y0 = std::clamp(crop_y0, 0, image_height);
         crop_y1 = std::clamp(crop_y1, 0, image_height);
         if (crop_x1 <= crop_x0 || crop_y1 <= crop_y0) {
+            // A crop that was a valid, non-degenerate NDC-fraction rectangle
+            // in pbrt_flatten.h (which already warns on ITS OWN degenerate
+            // case - see that function's own comment) can still collapse to
+            // a degenerate PIXEL range here: std::lround() rounds two
+            // distinct fractions to the same pixel index at a small enough
+            // actual render resolution (exactly the low-res preview use
+            // case this feature exists for - see crop_x0's own comment on
+            // why the fraction is resolved against the ACTUAL resolution,
+            // not the scene's declared one). Warn here too, or a real crop
+            // request silently vanishes with zero diagnostic anywhere.
+            std::cerr << "Warning: Film \"cropwindow\"/\"pixelbounds\" resolved to an "
+                         "empty pixel range at this render resolution (" << image_width
+                      << "x" << image_height << "); rendering the full frame instead.\n";
             crop_x0 = 0; crop_x1 = image_width;
             crop_y0 = 0; crop_y1 = image_height;
         }

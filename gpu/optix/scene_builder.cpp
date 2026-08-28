@@ -4259,8 +4259,8 @@ static bool build_loaded_pbrt_scene(
 	if (out_camera_extra) out_camera_extra->regularize = loaded.scene.regularize ? 1 : 0;
 
 	// Film "cropwindow"/"pixelbounds" - unlike PixelFilter/regularize above,
-	// neither GPU backend implements this yet (CPU-only this round, see
-	// docs/PBRT_SUPPORT.md's Integrator table); nothing reads
+	// neither GPU backend implements this yet (default-CPU-path-tracer-only
+	// this round, see docs/PBRT_SUPPORT.md's Film table); nothing reads
 	// FlatScene::cropX0/X1/Y0/Y1 here. Warn once at scene-load time so a
 	// scene that explicitly asked for a crop doesn't silently render the
 	// full frame under --gpu with no diagnostic (same "cheap warning for a

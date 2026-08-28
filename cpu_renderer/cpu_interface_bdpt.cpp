@@ -111,6 +111,21 @@ const SceneDescriptor* build_scene_for_bdpt(const char* scene_id, int width, int
 	if (scene_desc->setup_camera)
 		scene_desc->setup_camera(out_cam);
 
+	// Film "cropwindow"/"pixelbounds" (camera.h's crop_x0/x1/y0/y1, set by
+	// setup_camera() just above) is only honored by the default path
+	// tracer's own render() loop - same "one integrator gets it, the rest
+	// silently don't" shape as the animated-camera/portal-light warnings
+	// above, so it gets the same warn-rather-than-silently-ignore
+	// treatment. crop_x1/crop_y1 still carry their "-1 = unset" sentinel
+	// here (initialize() hasn't run yet on this object), so an explicit
+	// crop request is any crop_x1/crop_y1 >= 0.
+	if (out_cam.crop_x1 >= 0 || out_cam.crop_y1 >= 0) {
+		std::cerr << "Warning: scene '" << scene_id << "' requests a Film "
+		             "\"cropwindow\"/\"pixelbounds\" - not supported under --bdpt/--mlt/"
+		             "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
+		             "(only the default path tracer honors it); rendering the full frame.\n";
+	}
+
 	// Same wiring as cpu_render_main_sppm() (cpu_interface.cpp) -- must run
 	// AFTER setup_camera() above, since BDPTSceneAdapter's constructor reads
 	// cam.sky/cam.punct_lights directly (matching SPPMSceneAdapter's own

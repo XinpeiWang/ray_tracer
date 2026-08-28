@@ -3030,15 +3030,16 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 	// see FlatScene::cropX0's own comment on why fractions, not pixels,
 	// are what's stored).
 	{
-		double x0 = 0.0, x1 = 1.0;
-		double y0 = 0.0, y1 = 1.0;
-
-		const double cwx0 = std::clamp(std::min(scene.cropWindow[0], scene.cropWindow[1]), 0.0, 1.0);
-		const double cwx1 = std::clamp(std::max(scene.cropWindow[0], scene.cropWindow[1]), 0.0, 1.0);
-		const double cwy0 = std::clamp(std::min(scene.cropWindow[2], scene.cropWindow[3]), 0.0, 1.0);
-		const double cwy1 = std::clamp(std::max(scene.cropWindow[2], scene.cropWindow[3]), 0.0, 1.0);
-		x0 = std::max(x0, cwx0); x1 = std::min(x1, cwx1);
-		y0 = std::max(y0, cwy0); y1 = std::min(y1, cwy1);
+		// cropwindow is the starting rectangle, not an intersection against
+		// some other range - clamping each bound to [0,1] independently
+		// (rather than max/min-ing against a running x0/x1/y0/y1 that
+		// starts at exactly {0,1,0,1}, which would be a no-op restating
+		// the same clamp) is all that's needed here. pixelbounds below IS
+		// a real intersection, against this already-narrowed rectangle.
+		double x0 = std::clamp(std::min(scene.cropWindow[0], scene.cropWindow[1]), 0.0, 1.0);
+		double x1 = std::clamp(std::max(scene.cropWindow[0], scene.cropWindow[1]), 0.0, 1.0);
+		double y0 = std::clamp(std::min(scene.cropWindow[2], scene.cropWindow[3]), 0.0, 1.0);
+		double y1 = std::clamp(std::max(scene.cropWindow[2], scene.cropWindow[3]), 0.0, 1.0);
 
 		if (scene.hasPixelBounds && scene.xResolution > 0 && scene.yResolution > 0) {
 			const double pbx0 = std::clamp(std::min(scene.pixelBounds[0], scene.pixelBounds[1]) /

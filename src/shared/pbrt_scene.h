@@ -943,6 +943,8 @@ private:
 					s_.cropWindow[1] = cw->numbers[1];
 					s_.cropWindow[2] = cw->numbers[2];
 					s_.cropWindow[3] = cw->numbers[3];
+				} else {
+					warn(line, "Film \"cropwindow\" needs 4 numbers (x0 x1 y0 y1); ignored");
 				}
 			}
 			if (const Param *pb = p.find("pixelbounds")) {
@@ -952,6 +954,8 @@ private:
 					s_.pixelBounds[2] = static_cast<int>(pb->numbers[2]);
 					s_.pixelBounds[3] = static_cast<int>(pb->numbers[3]);
 					s_.hasPixelBounds = true;
+				} else {
+					warn(line, "Film \"pixelbounds\" needs 4 numbers (x0 x1 y0 y1); ignored");
 				}
 			}
 			return true;
