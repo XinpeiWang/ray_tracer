@@ -145,7 +145,10 @@ extern "C" __global__ void __closesthit__quad() {
 		// quad.u (the quad's own edge vector, already world-space) IS
 		// exactly CPU's quad.h dpdu (rec.dpdu = u) - no new math needed,
 		// unlike sphere/disk/cylinder's analytic derivations.
-		shade_material(mat, matIdx, final_normal, ray_dir, hit_point, front_face, uv_u, uv_v, quad.u, seed,
+		// Integrator "bool regularize" - see shade_material()'s own
+		// do_regularize parameter comment.
+		const bool do_regularize = params.camera.regularize != 0 && optixGetPayload_23() != 0u;
+		shade_material(mat, matIdx, final_normal, ray_dir, hit_point, front_face, uv_u, uv_v, quad.u, do_regularize, seed,
 			attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
 			bssrdf_exit, bssrdf_exit_pos, out_eta);
 	}

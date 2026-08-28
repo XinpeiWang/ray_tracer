@@ -128,6 +128,19 @@ extern "C" __global__ void __raygen__rg() {
 		// pbrt-v4 etaScale: product of eta^2 over every transmission event
 		// so far - see PathTracingPayload::eta's own comment.
 		float  eta_scale = 1.0f;
+		// pbrt-v4 anyNonSpecularBounces: true once any bounce so far in this
+		// path was NOT a specular/delta event - tracked unconditionally
+		// regardless of Integrator "bool regularize"'s value (only the
+		// alpha-WIDENING at shade_material()'s 4 rough-material call sites
+		// is gated on regularize && this flag - see that function's own
+		// do_regularize parameter comment), matching CPU camera.h's
+		// any_nonspecular and GPU-wavefront's h.any_nonspecular exactly.
+		// scatter_brdf_pdf > 0.0f (below) is this codebase's own existing
+		// proxy for "was the arriving bounce non-specular" - the same
+		// convention CPU's prev_bsdf_pdf==0 <=> specular already relies on,
+		// so no new is_specular signal needs threading out of the closest-
+		// hit programs just for this.
+		bool   any_nonspecular = false;
 		// A MaterialType::Interface crossing (flag==4 below) is free - it
 		// doesn't consume the depth loop or an RR trial - so nothing else
 		// bounds how many a single path can take. kMaxMediumBoundaryCrossings
@@ -193,6 +206,14 @@ extern "C" __global__ void __raygen__rg() {
 			// __miss__ms - only the closest-hit branches that produce a real
 			// transmission event ever call optixSetPayload_22.
 			unsigned int p22 = __float_as_uint(1.0f);
+			// p23: anyNonSpecularBounces-so-far, an INPUT to the closest-hit
+			// programs (read via optixGetPayload_23() to compute
+			// do_regularize for shade_material() - see that function's own
+			// parameter comment), same "closest-hit only WRITES p12"-style
+			// convention as prev_brdf_pdf but mirrored: this register is
+			// only ever READ by closest-hit programs, never written by
+			// them, so it isn't part of the "unpack payload" section below.
+			unsigned int p23 = any_nonspecular ? 1u : 0u;
 
 			optixTrace(
 				params.traversable,     // Acceleration structure
@@ -207,7 +228,7 @@ extern "C" __global__ void __raygen__rg() {
 				RAY_TYPE_COUNT,         // SBT stride
 				RAY_TYPE_RADIANCE,      // missSBTIndex
 				p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15,
-				p16, p17, p18, p19, p20, p21, p22
+				p16, p17, p18, p19, p20, p21, p22, p23
 			);
 
 			// Unpack payload (16 registers)
@@ -351,6 +372,16 @@ extern "C" __global__ void __raygen__rg() {
 
 				// Carry BRDF PDF of the new scatter direction for MIS at the next bounce
 				prev_brdf_pdf = scatter_brdf_pdf;
+				// pbrt-v4 anyNonSpecularBounces |= !bs->IsSpecular() - reuses
+				// this same scatter_brdf_pdf>0 proxy prev_brdf_pdf already
+				// relies on (0 <=> shade_material() set is_specular=true,
+				// including for flag==3's Subsurface exit, whose
+				// NormalizedFresnel re-sample always produces is_specular=
+				// false and a real positive brdf_pdf_override - see
+				// shade_material()'s Subsurface case), so no separate
+				// is_specular payload signal is needed. Never reset to
+				// false once true, matching CPU/wavefront exactly.
+				any_nonspecular = any_nonspecular || (scatter_brdf_pdf > 0.0f);
 
 				ray_origin = scatter_origin;
 				ray_direction = normalize(payload.scatterDir);  // MUST normalize!

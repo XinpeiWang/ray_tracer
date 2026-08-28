@@ -148,7 +148,10 @@ extern "C" __global__ void __closesthit__disk() {
 			__trap();
 		}
 
-		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, uv_u, uv_v, disk_dpdu, seed,
+		// Integrator "bool regularize" - see shade_material()'s own
+		// do_regularize parameter comment.
+		const bool do_regularize = params.camera.regularize != 0 && optixGetPayload_23() != 0u;
+		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, uv_u, uv_v, disk_dpdu, do_regularize, seed,
 			attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
 			bssrdf_exit, bssrdf_exit_pos, out_eta);
 	}
@@ -403,7 +406,10 @@ extern "C" __global__ void __closesthit__cylinder() {
 			__trap();
 		}
 
-		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, uv_u, uv_v, cyl_dpdu, seed,
+		// Integrator "bool regularize" - see shade_material()'s own
+		// do_regularize parameter comment.
+		const bool do_regularize = params.camera.regularize != 0 && optixGetPayload_23() != 0u;
+		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, uv_u, uv_v, cyl_dpdu, do_regularize, seed,
 			attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
 			bssrdf_exit, bssrdf_exit_pos, out_eta);
 	}

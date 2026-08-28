@@ -356,8 +356,12 @@ bool OptiXRenderer::createModule() {
 	// normal(3) = 6 more (p16-p21, see PathTracingPayload::albedo/normal's
 	// comment in optix_types.h) = 22, plus eta(1) for pbrt-v4's Russian
 	// Roulette etaScale correction (p22, see PathTracingPayload::eta's
-	// comment) = 23 total. Comfortably under OptiX's 32-register hard limit.
-	pipelineCompileOptions_.numPayloadValues = 23;
+	// comment) = 23, plus anyNonSpecularBounces(1) for Integrator "bool
+	// regularize" (p23, an INPUT-only register - see optix_raygen.h's own
+	// comment on p23, same convention as p12's prev_brdf_pdf for
+	// __miss__ms) = 24 total. Comfortably under OptiX's 32-register hard
+	// limit.
+	pipelineCompileOptions_.numPayloadValues = 24;
 	pipelineCompileOptions_.numAttributeValues = 4;  // Sphere: center.xyz + radius (4 attrs)
 	pipelineCompileOptions_.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
 	pipelineCompileOptions_.pipelineLaunchParamsVariableName = "params";

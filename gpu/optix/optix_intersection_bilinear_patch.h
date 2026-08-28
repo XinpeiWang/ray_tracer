@@ -187,7 +187,12 @@ extern "C" __global__ void __closesthit__bilinear_patch() {
 
 		// dpdu (already computed above for dpdv/geom_normal) is the real,
 		// world-space patch tangent - no new math needed here.
-		shade_material(mat, matIdx, final_normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, dpdu, seed,
+		// Integrator "bool regularize" - see shade_material()'s own
+		// do_regularize parameter comment. optixGetPayload_23() carries
+		// anyNonSpecularBounces-so-far in from optix_raygen.h (an INPUT
+		// register, same convention as p12's prev_brdf_pdf for __miss__ms).
+		const bool do_regularize = params.camera.regularize != 0 && optixGetPayload_23() != 0u;
+		shade_material(mat, matIdx, final_normal, ray_dir, hit_point, front_face, 0.0f, 0.0f, dpdu, do_regularize, seed,
 			attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
 			bssrdf_exit, bssrdf_exit_pos, out_eta);
 	}

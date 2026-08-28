@@ -868,7 +868,11 @@ extern "C" __global__ void __closesthit__sphere() {
 			MaterialData effective = mat;
 			effective.type = MaterialType::Lambertian;
 			effective.textureIdx = -1;
-			shade_material(effective, matIdx, perturbed_normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, dpdu, seed,
+			// Integrator "bool regularize" - see shade_material()'s own
+			// do_regularize parameter comment. Inert here (Lambertian has
+			// no alpha to widen) but every call site must still supply it.
+			const bool do_regularize_normalmap = params.camera.regularize != 0 && optixGetPayload_23() != 0u;
+			shade_material(effective, matIdx, perturbed_normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, dpdu, do_regularize_normalmap, seed,
 				attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
 				bssrdf_exit, bssrdf_exit_pos, out_eta);
 	} else if (mat.type == MaterialType::Principled) {
@@ -880,7 +884,10 @@ extern "C" __global__ void __closesthit__sphere() {
 			scattered   = sample_principled_material(ray_dir, normal, mat, seed, scattered_dir, attenuation);
 			is_specular = true;
 	} else {
-		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, sphere_dpdu, seed,
+		// Integrator "bool regularize" - see shade_material()'s own
+		// do_regularize parameter comment.
+		const bool do_regularize = params.camera.regularize != 0 && optixGetPayload_23() != 0u;
+		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, sphere_dpdu, do_regularize, seed,
 			attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
 			bssrdf_exit, bssrdf_exit_pos, out_eta);
 	}

@@ -1654,6 +1654,16 @@ __device__ __forceinline__ void shade_material(
 	// on why GPU previously used an arbitrary, non-UV-aligned frame
 	// instead). Every other material kind ignores this parameter.
 	const float3& dpdu,
+	// Integrator "bool regularize" (pbrt-v4 default false) - already the
+	// caller's "params.camera.regularize && anyNonSpecularBounces-so-far"
+	// AND, matching CPU camera.h's `regularize && any_nonspecular` and
+	// GPU-wavefront's `regularize && (bool)h.any_nonspecular` (see
+	// wavefront_kernels.cu's own wf_glossy_alpha comment) exactly - only
+	// the alpha-WIDENING at the 4 rough-material call sites below reads
+	// this; anyNonSpecularBounces itself is tracked unconditionally in
+	// optix_raygen.h's bounce loop regardless of this flag's value, per
+	// pbrt-v4's own real semantics (only the widening-at-use-time gates).
+	bool do_regularize,
 	unsigned int& seed,
 	float3& out_attenuation,
 	float3& out_scattered_dir,
@@ -1980,6 +1990,10 @@ __device__ __forceinline__ void shade_material(
 			// roughnessV's own comment (optix_types.h).
 			float cc_alpha_x = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;
 			float cc_alpha_y = ResolveAnisotropicAlphaV(mat.roughnessV, mat.fuzz, mat.remapRoughness);
+			if (do_regularize) {
+				cc_alpha_x = RegularizeAlpha(cc_alpha_x);
+				cc_alpha_y = RegularizeAlpha(cc_alpha_y);
+			}
 			float3 cc_n   = normal;
 			float3 cc_tan, cc_bit;
 			BuildDpduTangentFrame(cc_n.x, cc_n.y, cc_n.z, dpdu.x, dpdu.y, dpdu.z,
@@ -2154,6 +2168,10 @@ __device__ __forceinline__ void shade_material(
 				rd_alpha_x = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;
 				rd_alpha_y = ResolveAnisotropicAlphaV(mat.roughnessV, mat.fuzz, mat.remapRoughness);
 			}
+			if (do_regularize) {
+				rd_alpha_x = RegularizeAlpha(rd_alpha_x);
+				rd_alpha_y = RegularizeAlpha(rd_alpha_y);
+			}
 			float rd_ri    = front_face ? (1.0f / mat.ior) : mat.ior;
 
 			// Local shading frame (n = +Z)
@@ -2306,6 +2324,10 @@ __device__ __forceinline__ void shade_material(
 			// roughnessV's own comment (optix_types.h).
 			float c_alpha_x = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;
 			float c_alpha_y = ResolveAnisotropicAlphaV(mat.roughnessV, mat.fuzz, mat.remapRoughness);
+			if (do_regularize) {
+				c_alpha_x = RegularizeAlpha(c_alpha_x);
+				c_alpha_y = RegularizeAlpha(c_alpha_y);
+			}
 			float3 cn = normal;
 			float3 ctan, cbitan;
 			BuildDpduTangentFrame(cn.x, cn.y, cn.z, dpdu.x, dpdu.y, dpdu.z, ctan.x, ctan.y, ctan.z, cbitan.x, cbitan.y, cbitan.z);
@@ -2497,6 +2519,10 @@ __device__ __forceinline__ void shade_material(
 			// roughnessV's own comment (optix_types.h).
 			float cd_alpha_x = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;
 			float cd_alpha_y = ResolveAnisotropicAlphaV(mat.roughnessV, mat.fuzz, mat.remapRoughness);
+			if (do_regularize) {
+				cd_alpha_x = RegularizeAlpha(cd_alpha_x);
+				cd_alpha_y = RegularizeAlpha(cd_alpha_y);
+			}
 			float3 cdn  = normal;
 			float3 cdtan, cdbit;
 			BuildDpduTangentFrame(cdn.x, cdn.y, cdn.z, dpdu.x, dpdu.y, dpdu.z, cdtan.x, cdtan.y, cdtan.z, cdbit.x, cdbit.y, cdbit.z);

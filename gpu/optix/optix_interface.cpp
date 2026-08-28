@@ -223,22 +223,6 @@ extern "C" int optix_render_main(
 						 "(wavefront backend does not support denoising) - rendering without it.\n";
 		}
 
-		// GPU-recursive never implemented path regularization at all (see
-		// docs/PBRT_SUPPORT.md's Integrator table) - a scene that explicitly
-		// declares "bool regularize" [true] to reduce caustic fireflies
-		// silently renders unregularized here, same silent-gap shape as the
-		// existing GPU-recursive dispersion gap, but that one has no CLI
-		// combination to warn about (dispersion isn't gated by a flag this
-		// launcher reads) whereas this IS a plain --gpu-vs-scene-request
-		// mismatch this warn-and-continue convention already covers for
-		// --denoise/--sampler/--spectral above - so it gets the same
-		// treatment rather than staying silent.
-		if (cameraExtra.regularize && !(wfEnv && std::string(wfEnv) == "1")) {
-			std::cerr << "[OptiX] Warning: scene requests \"bool regularize\" [true] but "
-						 "GPU-recursive does not implement path regularization - rendering "
-						 "without it. Use --wavefront or --cpu to honor this request.\n";
-		}
-
 		// Allocate float framebuffer
 		size_t pixelCount = image_width * image_height;
 		std::vector<float> framebuffer(pixelCount * 3);
