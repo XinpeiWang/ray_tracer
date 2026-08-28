@@ -915,6 +915,37 @@ struct Camera {
 	// would have to for real pbrt.
 	bool hasScreenWindow = false;
 	double screenWindow[4] = {-1.0, 1.0, -1.0, 1.0};  // xmin, xmax, ymin, ymax
+
+	// pbrt-v4's real camera-motion-blur idiom: ActiveTransform "StartTime"/
+	// "EndTime" around two LookAt/Transform blocks before Camera/WorldBegin
+	// (see pbrt_scene::Scene::cameraIsAnimated()'s own comment) - true only
+	// when the scene actually authored two DIFFERENT keyframes, not merely
+	// declared ActiveTransform. lookfrom1/lookat1 are the end-time keyframe
+	// (extracted from Scene::worldToCameraEnd the same way lookfrom/lookat
+	// above come from worldToCamera); there is deliberately no separate
+	// `up1` - src/TheRestOfYourLife/camera.h's own CameraConfig has no such
+	// field either (its own comment: "roll during the exposure isn't
+	// supported by this simplified two-keyframe setup"), so the single
+	// `up` above is reused for both keyframes, matching that existing,
+	// already-tested CPU design exactly rather than inventing a richer one
+	// this round doesn't need.
+	bool isAnimated = false;
+	double lookfrom1[3] = {0, 0, -1};
+	double lookat1[3] = {0, 0, -2};
+
+	// pbrt-v4's real Camera "float shutteropen"/"float shutterclose"
+	// parameters (defaults match pbrt-v4's own: 0.0/1.0). CPU's own
+	// CameraConfig (camera.h) uses this SAME pair as BOTH the shutter's
+	// random-sampling window AND the two keyframes' own AnimatedTransform
+	// start/end times (its own build_cam_to_world() call passes
+	// shutter_open/shutter_close directly as those times) - there is no
+	// independent notion of "keyframe time" distinct from "shutter window"
+	// in this codebase's existing camera implementation, so
+	// TransformTimes' own distinct value (when it differs from
+	// shutteropen/shutterclose) has no effect - see the warning this round
+	// adds in flatten() for that case.
+	double shutterOpen = 0.0;
+	double shutterClose = 1.0;
 };
 
 // The focus distance to actually give a camera, which is NOT camera.focusDistance.
@@ -2325,6 +2356,37 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				warn("a realistic camera has no \"lensfile\"; rendering with a "
 					 "perspective camera instead");
 				out.camera.type = "perspective";
+			}
+		}
+
+		// Camera motion blur (pbrt-v4's real ActiveTransform "StartTime"/
+		// "EndTime" idiom - see Camera::isAnimated's own comment). shutteropen/
+		// shutterclose are read unconditionally (harmless when the camera
+		// turns out not to be animated - CPU's own camera.h never consults
+		// them unless camera_is_animated is set).
+		out.camera.shutterOpen = scene.cameraParams.getFloat("shutteropen", out.camera.shutterOpen);
+		out.camera.shutterClose = scene.cameraParams.getFloat("shutterclose", out.camera.shutterClose);
+		out.camera.isAnimated = scene.cameraIsAnimated();
+		if (out.camera.isAnimated) {
+			const Camera endCam = cameraFromWorldToCamera(scene.worldToCameraEnd);
+			for (int i = 0; i < 3; ++i) {
+				out.camera.lookfrom1[i] = endCam.lookfrom[i];
+				out.camera.lookat1[i] = endCam.lookat[i];
+			}
+			// TransformTimes's own distinct value has no effect (see
+			// Camera::shutterOpen's own comment on why) - loud, not silent,
+			// when a scene actually asked for one, so a scene author relying
+			// on TransformTimes differing from shutteropen/shutterclose (an
+			// unusual, but real pbrt-v4 combination) finds out rather than
+			// silently getting shutteropen/shutterclose's own timing instead.
+			if (scene.transformTimeStart != out.camera.shutterOpen ||
+				scene.transformTimeEnd != out.camera.shutterClose) {
+				warn("scene declares TransformTimes [" + std::to_string(scene.transformTimeStart) +
+					 ", " + std::to_string(scene.transformTimeEnd) + "] distinct from the camera's own "
+					 "shutteropen/shutterclose [" + std::to_string(out.camera.shutterOpen) + ", " +
+					 std::to_string(out.camera.shutterClose) + "] - this renderer's camera motion blur "
+					 "uses shutteropen/shutterclose for both the keyframe times and the shutter "
+					 "sampling window, so TransformTimes's own distinct value has no effect");
 			}
 		}
 	}

@@ -244,7 +244,19 @@ namespace pbrt_scene_registry {
             pbrt_flatten::defocusAngleDegreesFor(d.camera, pbrt_flatten::focusDistanceFor(d.camera)),
             // NOT d.camera.focusDistance - see focusDistanceFor()'s comment.
             // Passing pbrt's raw default here made near geometry vanish.
-            pbrt_flatten::focusDistanceFor(d.camera)
+            pbrt_flatten::focusDistanceFor(d.camera),
+            // Camera motion blur (pbrt-v4's real ActiveTransform "StartTime"/
+            // "EndTime" idiom - see pbrt_flatten::Camera::isAnimated's own
+            // comment). Routed through CameraConfig itself, not just
+            // setup_camera below, so cpu_scene_camera_is_animated_by_id()
+            // (cpu_interface.cpp) - which reads exactly CameraConfig::animated
+            // - and main.cpp's --video + animated-camera rejection guard both
+            // see a pbrt-authored animated camera the same way they already
+            // see the native-demo (D13) one.
+            d.camera.isAnimated,
+            d.camera.lookfrom1[0], d.camera.lookfrom1[1], d.camera.lookfrom1[2],
+            d.camera.lookat1[0],   d.camera.lookat1[1],   d.camera.lookat1[2],
+            d.camera.shutterOpen, d.camera.shutterClose
         };
 
         // A failed load yields an empty world rather than a crash - the
@@ -313,6 +325,18 @@ namespace pbrt_scene_registry {
             cam.filter_C     = pfilter.C;
             cam.filter_sigma = pfilter.sigma;
             cam.filter_tau   = pfilter.tau;
+
+            // Camera motion blur (pbrt-v4's real ActiveTransform "StartTime"/
+            // "EndTime" idiom) is wired through CameraConfig itself now (see
+            // this scene's own s.camera brace-init above) rather than here -
+            // applyCameraConfig() (cpu_interface.cpp) already sets
+            // cam.camera_is_animated/lookfrom1/lookat1/shutter_open/close
+            // from CameraConfig, and runs before setup_camera at every call
+            // site, so duplicating that wiring here would just be two places
+            // to keep in sync. Kept in CameraConfig alone so
+            // cpu_scene_camera_is_animated_by_id() sees it too (see that
+            // brace-init's own comment for why that matters).
+
             if (pcam.type == "perspective") return;
 
             Mat4<double> ctw = make_look_at<double>(

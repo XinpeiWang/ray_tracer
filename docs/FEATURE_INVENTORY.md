@@ -88,7 +88,7 @@ numbered sections below for the narrative detail behind any row.
 | Cameras | Realistic (lens-file simulation) | Y / Y / Y | Missing/unreadable lens file → falls back to perspective, warned |
 | Cameras | Motion blur (camera, default perspective camera) | Y (CPU) | GPU falls back to a static frame at the first keyframe |
 | Cameras | Motion blur (object; or camera, alt camera models) | N | No fallback — static transform only |
-| Cameras | `ActiveTransform`/`TransformTimes` (`.pbrt`-authored animated camera/object) | N | Directive skipped with a warning |
+| Cameras | `ActiveTransform`/`TransformTimes` (`.pbrt`-authored animated CAMERA) | Y (CPU) | Real directives now; GPU falls back to a static frame at the start keyframe. Object motion blur via the same directives still N (Shape/Material/... only ever read the "StartTime" CTM slot) |
 | Samplers | Sobol / Z-Sobol / padded Sobol / stratified / PMJ02BN / Halton | Y (CPU) | N/A |
 | Samplers | Blue noise (bonus, non-pbrt-v4) | Y (CPU) | N/A |
 | Samplers | Independent | Y (CPU) | N/A |
@@ -275,28 +275,54 @@ the per-pixel viewport geometry (`pixel00_loc`/`pixel_delta_u/v`/
 ray's sampled shutter time picks a camera-to-world transform interpolated
 between two keyframes (`lookfrom`/`lookat` at `shutter_open`,
 `lookfrom1`/`lookat1` at `shutter_close`) — see `D13` (Cameras category) for
-a demo. Static cameras (`camera_is_animated=false`, every pre-existing
-scene) are a true no-op — the existing world-space fast path is untouched.
-SPPM's blur is real but visually subtle compared to the default path
-tracer's obvious streaking on the same scene — confirmed via debug tracing
-(the visible point genuinely swings across the full keyframe range per
-iteration) and a controlled crop comparison against a static SPPM render
-(D13's sphere silhouette is measurably softer than A1's) — SPPM's own
+a native demo. Static cameras (`camera_is_animated=false`, every scene that
+doesn't author motion blur) are a true no-op — the existing world-space fast
+path is untouched. SPPM's blur is real but visually subtle compared to the
+default path tracer's obvious streaking on the same scene — confirmed via
+debug tracing (the visible point genuinely swings across the full keyframe
+range per iteration) and a controlled crop comparison against a static SPPM
+render (D13's sphere silhouette is measurably softer than A1's) — SPPM's own
 photon-density smoothing partially masks the directional blur signal, not
 a bug.
+
+**Real `.pbrt` authoring, not just the native demo**: `ActiveTransform`
+`"StartTime"`/`"EndTime"`/`"All"` and `TransformTimes` are now real,
+recognized directives (`src/shared/pbrt_scene.h`) - `GraphicsState` carries a
+second ("EndTime") CTM slot alongside the existing one, gated by
+`activeTransformBits`, so a scene's own two `LookAt`/`Transform` blocks
+(pbrt-v4's real authoring idiom) resolve into two genuinely different
+`worldToCamera`/`worldToCameraEnd` matrices at `WorldBegin`, threaded through
+`pbrt_flatten::Camera` (`isAnimated`/`lookfrom1`/`lookat1`/`shutterOpen`/
+`shutterClose`, the last two read from the Camera directive's own real
+`"shutteropen"`/`"shutterclose"` parameters, previously unparsed entirely)
+and wired into a real `camera_is_animated` CPU camera by
+`scene_registry.h`'s `setup_camera` hook. `TransformTimes`'s own two floats
+are read for real but have no separate effect from `shutteropen`/
+`shutterclose` — this codebase's own `AnimatedTransform` construction uses
+ONE pair of times for both the keyframes' own timestamps and the shutter's
+random-sampling window (unlike real pbrt-v4, which keeps them conceptually
+distinct), so a scene declaring `TransformTimes` with a value different from
+`shutteropen`/`shutterclose` gets a loud warning rather than silently
+following the wrong one. Verified end-to-end via a real `.pbrt` scene
+(`ActiveTransform`-authored camera pan): CPU shows genuine motion-blur
+streaking; GPU (below) cleanly falls back to a sharp static frame at the
+start keyframe, no warning, no error.
 
 **Gap**: motion blur is otherwise still absent. Not wired: GPU-recursive or
 GPU-wavefront (deferred — camera motion blur specifically; see §2/§9's own
 notes on how far behind CPU's wavelength-tracking apparatus GPU-recursive
-is for an analogous reason); the three **alternate** camera models
+is for an analogous reason - a `.pbrt`-authored animated camera now renders
+correctly on GPU too, just as a static frame at the start keyframe, same as
+D13's own documented GPU fallback); the three **alternate** camera models
 (`src/shared/cameras.h`'s Orthographic/Spherical/Realistic classes still
 have a static `camera_to_world`, unaffected by this - "No motion blur" is
 still literally true for those three); and **object/shape** motion blur
-(`pbrt_scene.h`'s `ShapeDecl::xform` is still a single static `Matrix4`,
-`AttributeBegin`/`ObjectBegin`-scoped in real pbrt-v4). `ActiveTransform`/
-`TransformTimes` remain unrecognized `.pbrt` directives (skipped with a
-warning) — this session's camera motion blur is native-scene-API only, no
-existing `.pbrt` scene in this repo's corpus uses those directives anyway.
+(`pbrt_scene.h`'s `ShapeDecl::xform` is still a single static `Matrix4` -
+`ActiveTransform`'s own new "EndTime" CTM slot is deliberately consumed by
+Camera's own `WorldBegin` capture ONLY, not by Shape/Material/LightSource/...,
+which still only ever read the "StartTime" slot - `AttributeBegin`/
+`ObjectBegin`-scoped object motion blur, real pbrt-v4 syntax, stays
+unsupported).
 
 No other camera gap.
 
@@ -477,10 +503,11 @@ all of them, and it's worth knowing which is which before relying on one.
   integrator → the flag is silently dropped with a warning; you still get
   an ordinary render on whatever backend/mode you asked for.
 - A `.pbrt` directive this loader doesn't recognize at all (`Accelerator`,
-  `ActiveTransform`, etc.) → warned and skipped; the rest of the scene still
-  loads. (`CoordinateSystem`/`CoordSysTransform`/`ColorSpace` are now real,
-  recognized directives — see the "Loader-only" rows in the feature table
-  above.)
+  etc.) → warned and skipped; the rest of the scene still loads.
+  (`CoordinateSystem`/`CoordSysTransform`/`ColorSpace`/`ActiveTransform`/
+  `TransformTimes` are now real, recognized directives — see the
+  "Loader-only" rows in the feature table above and §6's own camera-motion-
+  blur entry for `ActiveTransform`/`TransformTimes` specifically.)
 - A `ColorSpace` directive naming something other than `srgb`/`dci-p3`/
   `rec2020`/`aces2065-1` → warned, the scene's working color space stays
   whatever it already was (`srgb` if never set).

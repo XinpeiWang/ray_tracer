@@ -320,7 +320,19 @@ struct Scene {
 	// Pre-world state.
 	std::string cameraType = "perspective";
 	ParamList cameraParams;
-	Matrix4 worldToCamera;      // the CTM at WorldBegin
+	Matrix4 worldToCamera;      // the CTM (StartTime slot) at WorldBegin
+	// The CTM's EndTime slot at WorldBegin - pbrt-v4's real camera-motion-
+	// blur idiom (see GraphicsState::ctmEnd/the ActiveTransform directive's
+	// own comments). Numerically identical to worldToCamera unless the
+	// scene actually used ActiveTransform "StartTime"/"EndTime" to author
+	// two different keyframes before WorldBegin - cameraIsAnimated() below
+	// is the real test for that, not just "this field is non-default".
+	Matrix4 worldToCameraEnd;
+	// TransformTimes directive's own two floats - pbrt-v4's real defaults
+	// (almost every real scene either omits this directive or writes [0,1]
+	// explicitly; read for real rather than assumed either way).
+	double transformTimeStart = 0.0;
+	double transformTimeEnd = 1.0;
 	// Whether a Camera directive was actually seen, as opposed to cameraType/
 	// cameraParams/worldToCamera just sitting at their defaults. Distinguishes
 	// a real top-level scene from a fragment (a MakeNamedMaterial/geometry
@@ -375,6 +387,20 @@ struct Scene {
 	std::vector<Warning> warnings;
 
 	double cameraFov() const { return cameraParams.getFloat("fov", 90.0); }
+	// True only if the scene actually used ActiveTransform to author two
+	// DIFFERENT camera keyframes (worldToCamera/worldToCameraEnd stay
+	// byte-identical - both are copy-assigned from the same GraphicsState
+	// transform ops whenever activeTransformBits never diverged - for every
+	// scene that never declares ActiveTransform at all). Real inequality,
+	// not just "ActiveTransform appeared somewhere", correctly treats a
+	// scene that declares ActiveTransform but happens to author the same
+	// transform for both endpoints as non-animated too - there is no motion
+	// to blur either way.
+	bool cameraIsAnimated() const {
+		for (int i = 0; i < 16; ++i)
+			if (worldToCamera.m[i] != worldToCameraEnd.m[i]) return true;
+		return false;
+	}
 };
 
 struct ParseResult {
@@ -526,6 +552,20 @@ inline bool looksLikeDirective(const Token &t) {
 
 struct GraphicsState {
 	Matrix4 ctm;
+	// The "EndTime" CTM counterpart to `ctm` above (the "StartTime" one),
+	// for pbrt-v4's real `ActiveTransform "StartTime"/"EndTime"/"All"`
+	// idiom - see that directive's own comment in dispatch(). Numerically
+	// identical to `ctm` at every point unless a scene actually declares
+	// ActiveTransform (activeTransformBits below), so every existing
+	// consumer that only ever reads `ctm` (Shape/Material/LightSource/...)
+	// is unaffected; only Camera's own worldToCamera/worldToCameraEnd
+	// capture at WorldBegin reads this field.
+	Matrix4 ctmEnd;
+	// Bit 0 = StartTime active, bit 1 = EndTime active - which of ctm/
+	// ctmEnd the transform-mutating directives above currently write to.
+	// 3 ("All", both) is pbrt-v4's own default and this parser's, so a
+	// scene that never declares ActiveTransform keeps ctm/ctmEnd in lockstep.
+	int activeTransformBits = 3;
 	int materialIndex = -1;
 	int areaLightIndex = -1;
 	int insideMedium = -1;      // set by MediumInterface, inherited by Shape
@@ -598,6 +638,20 @@ private:
 	int curLine() const {
 		if (pos_ < t_.size()) return t_[pos_].line;
 		return t_.empty() ? 0 : t_.back().line;
+	}
+
+	// Shared by every transform-mutating directive (Identity/Translate/
+	// Scale/Rotate/LookAt/Transform/ConcatTransform): writes whichever of
+	// ctm/ctmEnd GraphicsState::activeTransformBits currently selects (see
+	// ActiveTransform's own comment in dispatch()), replacing rather than
+	// composing when `replace` is set (Identity and Transform's own "sets
+	// the CTM outright" semantics, vs. Translate/Scale/.../ConcatTransform's
+	// "compose with the current CTM" semantics). One place for this pattern
+	// means a scope divergence between the two slots can't be introduced by
+	// a future directive forgetting one of the two bit checks.
+	void applyCTM(const Matrix4& m, bool replace) {
+		if (gs_.activeTransformBits & 1) gs_.ctm    = replace ? m : gs_.ctm * m;
+		if (gs_.activeTransformBits & 2) gs_.ctmEnd = replace ? m : gs_.ctmEnd * m;
 	}
 
 	// Errors and warnings name the file they came from. Without it, "line 12"
@@ -687,15 +741,24 @@ private:
 		const int line = t_[pos_].line;
 		++pos_;
 
-		if (d == "Identity")     { gs_.ctm = Matrix4::identity(); return true; }
+		// Identity/Translate/Scale/Rotate/LookAt/Transform/ConcatTransform all
+		// write whichever of ctm/ctmEnd GraphicsState::activeTransformBits
+		// currently selects (see ActiveTransform's own comment below) - both
+		// by default (a scene that never declares ActiveTransform keeps
+		// ctm/ctmEnd numerically identical always, so nothing downstream,
+		// which only ever reads gs_.ctm, changes behavior).
+		if (d == "Identity")     { applyCTM(Matrix4::identity(), true); return true; }
 		if (d == "Translate")    { double v[3]; if (!readNumbers(3, v, d)) return false;
-								   gs_.ctm = gs_.ctm * Matrix4::translate(v[0], v[1], v[2]); return true; }
+								   applyCTM(Matrix4::translate(v[0], v[1], v[2]), false);
+								   return true; }
 		if (d == "Scale")        { double v[3]; if (!readNumbers(3, v, d)) return false;
-								   gs_.ctm = gs_.ctm * Matrix4::scale(v[0], v[1], v[2]); return true; }
+								   applyCTM(Matrix4::scale(v[0], v[1], v[2]), false);
+								   return true; }
 		if (d == "Rotate")       { double v[4]; if (!readNumbers(4, v, d)) return false;
-								   gs_.ctm = gs_.ctm * Matrix4::rotate(v[0], v[1], v[2], v[3]); return true; }
+								   applyCTM(Matrix4::rotate(v[0], v[1], v[2], v[3]), false);
+								   return true; }
 		if (d == "LookAt")       { double v[9]; if (!readNumbers(9, v, d)) return false;
-								   gs_.ctm = gs_.ctm * Matrix4::lookAt(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8]);
+								   applyCTM(Matrix4::lookAt(v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8]), false);
 								   return true; }
 		if (d == "Transform" || d == "ConcatTransform") {
 			// Optionally bracketed; pbrt writes these column-major.
@@ -707,12 +770,55 @@ private:
 			Matrix4 m;
 			for (int c = 0; c < 4; ++c)
 				for (int r = 0; r < 4; ++r) m.m[r * 4 + c] = v[c * 4 + r];
-			gs_.ctm = (d == "Transform") ? m : gs_.ctm * m;
+			applyCTM(m, d == "Transform");
+			return true;
+		}
+		if (d == "ActiveTransform") {
+			// pbrt-v4's real idiom for authoring a camera-motion-blur pair:
+			// two LookAt/Transform blocks, one gated to each time endpoint -
+			// e.g. `ActiveTransform StartTime` ... `LookAt ...` ...
+			// `ActiveTransform EndTime` ... `LookAt ...` ... `ActiveTransform
+			// All` (back to the default before Camera/WorldBegin). Only
+			// Camera's own worldToCamera/worldToCameraEnd capture at
+			// WorldBegin below actually reads ctmEnd - every other directive
+			// (Shape/Material/LightSource/CoordSysTransform/...) still only
+			// ever reads gs_.ctm (the StartTime slot), so object/shape motion
+			// blur via this same directive is deliberately NOT supported
+			// (see this round's own scope note - CPU camera motion blur
+			// only).
+			// The state keyword is UNQUOTED in real pbrt-v4 syntax (confirmed
+			// against pbrt-v4's own file format documentation), unlike
+			// Camera/Sampler/Film's own quoted TYPE strings just below -
+			// ActiveTransform's argument is one of exactly 3 fixed keywords,
+			// not a free-form name, so it doesn't follow that convention.
+			// `.text` is read regardless of `.quoted` so a scene that quotes
+			// it anyway (not real pbrt-v4 syntax, but harmless to accept)
+			// still works.
+			if (pos_ >= t_.size())
+				return (result_ = fail(line, "ActiveTransform: expected a state (StartTime/EndTime/All)")), false;
+			const std::string state = t_[pos_].text; ++pos_;
+			if (state == "StartTime")      gs_.activeTransformBits = 1;
+			else if (state == "EndTime")   gs_.activeTransformBits = 2;
+			else if (state == "All")       gs_.activeTransformBits = 3;
+			else { warn(line, "ActiveTransform \"" + state + "\": unrecognized state, ignored"); }
+			return true;
+		}
+		if (d == "TransformTimes") {
+			// pbrt-v4's real "float shutterStart, float shutterEnd" pair -
+			// almost always [0,1] (real pbrt-v4 scenes rarely use anything
+			// else), but read for real rather than assumed. Scene-level, not
+			// GraphicsState-scoped (pbrt-v4's own semantics: exactly one pair
+			// per scene, a pre-WorldBegin "options block" directive like
+			// Sampler/Integrator/Film above).
+			double v[2]; if (!readNumbers(2, v, d)) return false;
+			s_.transformTimeStart = v[0];
+			s_.transformTimeEnd = v[1];
 			return true;
 		}
 
 		if (d == "WorldBegin") {
 			s_.worldToCamera = gs_.ctm;
+			s_.worldToCameraEnd = gs_.ctmEnd;
 			// pbrt resets the CTM (and the world-local pieces of graphics
 			// state - current material/area light/medium/orientation, which
 			// only ever make sense inside the world block) to their defaults
@@ -939,12 +1045,20 @@ private:
 			return true;
 		}
 		if (d == "CoordinateSystem") {
+			// Snapshots only the StartTime slot (gs_.ctm), never gs_.ctmEnd -
+			// see the ActiveTransform comment above for why. Real pbrt-v4
+			// usage of this directive (naming a coordinate system to
+			// position a light relative to, e.g. "camera"/"world" above) is
+			// unrelated to camera motion blur, so this is a narrow, unlikely
+			// scope gap rather than a real-world limitation.
 			std::string name;
 			if (pos_ < t_.size() && t_[pos_].quoted) { name = t_[pos_].text; ++pos_; }
 			namedCoordinateSystems_.push_back({name, gs_.ctm});
 			return true;
 		}
 		if (d == "CoordSysTransform") {
+			// Restores only the StartTime slot (gs_.ctm), leaving gs_.ctmEnd
+			// untouched - same scope boundary as CoordinateSystem above.
 			std::string name;
 			if (pos_ < t_.size() && t_[pos_].quoted) { name = t_[pos_].text; ++pos_; }
 			int found = -1;

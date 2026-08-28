@@ -1003,6 +1003,70 @@ TEST(FlattenCameraTest, RealisticCameraWithNoLensfileFallsBackToPerspective) {
 }
 
 // ===========================================================================
+// Camera motion blur (ActiveTransform / TransformTimes / shutteropen /
+// shutterclose)
+// ===========================================================================
+
+TEST(FlattenCameraTest, StaticSceneCameraIsNotAnimated) {
+	const FlatScene s = flattenSource(
+		"LookAt 0 0 -5   0 0 0   0 1 0\n"
+		"Camera \"perspective\"\n"
+		"WorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_FALSE(s.camera.isAnimated);
+	EXPECT_DOUBLE_EQ(s.camera.shutterOpen, 0.0);
+	EXPECT_DOUBLE_EQ(s.camera.shutterClose, 1.0);
+}
+
+TEST(FlattenCameraTest, AnimatedCameraCarriesTheEndKeyframeAndShutterWindow) {
+	const FlatScene s = flattenSource(
+		"ActiveTransform \"StartTime\"\n"
+		"LookAt 0 0 -5   0 0 0   0 1 0\n"
+		"ActiveTransform \"EndTime\"\n"
+		"LookAt 3 0 -5   0 0 0   0 1 0\n"
+		"ActiveTransform \"All\"\n"
+		"Camera \"perspective\" \"float shutteropen\" [ 0.1 ] \"float shutterclose\" [ 0.9 ]\n"
+		"WorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_TRUE(s.camera.isAnimated);
+	EXPECT_NEAR(s.camera.lookfrom[0], 0.0, 1e-9);    // start keyframe, unchanged
+	EXPECT_NEAR(s.camera.lookfrom1[0], 3.0, 1e-9);   // end keyframe
+	EXPECT_DOUBLE_EQ(s.camera.shutterOpen, 0.1);
+	EXPECT_DOUBLE_EQ(s.camera.shutterClose, 0.9);
+}
+
+TEST(FlattenCameraTest, TransformTimesDistinctFromShutterWindowWarns) {
+	// This codebase's own camera implementation uses shutteropen/
+	// shutterclose for BOTH the keyframe times and the shutter sampling
+	// window (Camera::shutterOpen's own comment) - a scene relying on
+	// TransformTimes differing from them must find out, not silently get
+	// the wrong timing.
+	const FlatScene s = flattenSource(
+		"TransformTimes 0.25 0.75\n"
+		"ActiveTransform \"StartTime\"\n"
+		"LookAt 0 0 -5   0 0 0   0 1 0\n"
+		"ActiveTransform \"EndTime\"\n"
+		"LookAt 3 0 -5   0 0 0   0 1 0\n"
+		"ActiveTransform \"All\"\n"
+		"Camera \"perspective\"\n"
+		"WorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_TRUE(s.camera.isAnimated);
+	EXPECT_TRUE(warnedAbout(s, "TransformTimes"));
+}
+
+TEST(FlattenCameraTest, TransformTimesMatchingShutterWindowDoesNotWarn) {
+	const FlatScene s = flattenSource(
+		"TransformTimes 0 1\n"
+		"ActiveTransform \"StartTime\"\n"
+		"LookAt 0 0 -5   0 0 0   0 1 0\n"
+		"ActiveTransform \"EndTime\"\n"
+		"LookAt 3 0 -5   0 0 0   0 1 0\n"
+		"ActiveTransform \"All\"\n"
+		"Camera \"perspective\"\n"
+		"WorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_TRUE(s.camera.isAnimated);
+	EXPECT_FALSE(warnedAbout(s, "TransformTimes"));
+}
+
+// ===========================================================================
 // Materials and emission
 // ===========================================================================
 

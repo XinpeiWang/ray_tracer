@@ -241,6 +241,111 @@ TEST(PbrtStateTest, WorldBeginCapturesTheCameraTransformAndResetsTheCtm) {
 	EXPECT_NE(s.worldToCamera.m[11], 0.0);
 	EXPECT_DOUBLE_EQ(s.shapes[0].xform.m[3], 0.0);
 	EXPECT_DOUBLE_EQ(s.shapes[0].xform.m[0], 1.0);
+	// worldToCameraEnd defaults to worldToCamera too when the scene never
+	// declares ActiveTransform - see cameraIsAnimated()'s own comment.
+	EXPECT_FALSE(s.cameraIsAnimated());
+}
+
+// ===========================================================================
+// Camera motion blur: ActiveTransform / TransformTimes
+// ===========================================================================
+
+TEST(PbrtCameraMotionBlurTest, ActiveTransformStartEndProducesTwoDistinctKeyframes) {
+	// pbrt-v4's real camera-motion-blur idiom - two LookAt blocks, one gated
+	// to each time endpoint.
+	const Scene s = parseOk(
+		"ActiveTransform \"StartTime\"\n"
+		"LookAt 0 0 -5   0 0 0   0 1 0\n"
+		"ActiveTransform \"EndTime\"\n"
+		"LookAt 3 0 -5   0 0 0   0 1 0\n"
+		"ActiveTransform \"All\"\n"
+		"WorldBegin\n"
+		"Shape \"sphere\"\n");
+	EXPECT_TRUE(s.cameraIsAnimated());
+	// StartTime's own LookAt must be unaffected by EndTime's later one.
+	// m[11] (not m[3]/m[7]) is the component guaranteed to differ here -
+	// both LookAt calls target the world origin, so the mapped origin's
+	// camera-space x/y (m[3]/m[7]) is always exactly 0 by construction
+	// (the target always lies on the camera's own forward/z axis) - only
+	// the eye-to-target DISTANCE (m[11], the z component) differs between
+	// eye=(0,0,-5) (distance 5) and eye=(3,0,-5) (distance sqrt(34)).
+	EXPECT_NE(s.worldToCamera.m[11], s.worldToCameraEnd.m[11])
+		<< "the two keyframes' own eye-to-target distances must differ";
+}
+
+TEST(PbrtCameraMotionBlurTest, ActiveTransformDefaultsToAllAffectingBothSlots) {
+	// A scene that never declares ActiveTransform at all keeps EVERY
+	// transform directive affecting both slots identically (activeTransform
+	// Bits defaults to 3, "All") - the common, non-animated case.
+	const Scene s = parseOk(
+		"Translate 1 2 3\n"
+		"LookAt 0 0 -5   0 0 0   0 1 0\n"
+		"WorldBegin\n"
+		"Shape \"sphere\"\n");
+	EXPECT_FALSE(s.cameraIsAnimated());
+	for (int i = 0; i < 16; ++i)
+		EXPECT_DOUBLE_EQ(s.worldToCamera.m[i], s.worldToCameraEnd.m[i]);
+}
+
+TEST(PbrtCameraMotionBlurTest, ActiveTransformStartTimeAloneLeavesEndTimeAtItsPriorValue) {
+	// Regression guard: while ActiveTransform "StartTime" is active, ONLY
+	// the start-time slot should move - the end-time slot must stay exactly
+	// where it was (identity, since nothing moved it yet), not silently pick
+	// up the start-time-only transform too.
+	const Scene s = parseOk(
+		"ActiveTransform \"StartTime\"\n"
+		"Translate 5 0 0\n"
+		"ActiveTransform \"All\"\n"
+		"WorldBegin\n"
+		"Shape \"sphere\"\n");
+	EXPECT_DOUBLE_EQ(s.worldToCamera.m[3], 5.0);
+	EXPECT_DOUBLE_EQ(s.worldToCameraEnd.m[3], 0.0);
+	EXPECT_TRUE(s.cameraIsAnimated());
+}
+
+TEST(PbrtCameraMotionBlurTest, UnrecognizedActiveTransformStateWarnsAndIsIgnored) {
+	const Scene s = parseOk(
+		"ActiveTransform \"Bogus\"\n"
+		"LookAt 0 0 -5   0 0 0   0 1 0\n"
+		"WorldBegin\n"
+		"Shape \"sphere\"\n");
+	EXPECT_TRUE(hasWarningContaining(s, "ActiveTransform"));
+	// activeTransformBits must stay at its default (both slots still move
+	// together), not get left in some partial/undefined state.
+	EXPECT_FALSE(s.cameraIsAnimated());
+}
+
+TEST(PbrtCameraMotionBlurTest, TransformTimesIsParsedIntoSceneFields) {
+	const Scene s = parseOk("TransformTimes 0.25 0.75\nWorldBegin\nShape \"sphere\"\n");
+	EXPECT_DOUBLE_EQ(s.transformTimeStart, 0.25);
+	EXPECT_DOUBLE_EQ(s.transformTimeEnd, 0.75);
+}
+
+TEST(PbrtCameraMotionBlurTest, TransformTimesDefaultsToZeroOne) {
+	const Scene s = parseOk("WorldBegin\nShape \"sphere\"\n");
+	EXPECT_DOUBLE_EQ(s.transformTimeStart, 0.0);
+	EXPECT_DOUBLE_EQ(s.transformTimeEnd, 1.0);
+}
+
+TEST(PbrtCameraMotionBlurTest, ActiveTransformAcceptsRealPbrtV4UnquotedStateKeyword) {
+	// Real pbrt-v4 syntax is UNQUOTED - `ActiveTransform StartTime`, not
+	// `ActiveTransform "StartTime"` - confirmed against pbrt-v4's own file
+	// format documentation. The quoted form (exercised by the tests above)
+	// is accepted too, defensively, but every actual downloaded/authored
+	// .pbrt scene uses this unquoted form, so it needs its own direct
+	// regression coverage - a prior version of this parser required
+	// `.quoted`, which meant a real pbrt-v4 scene using this exact idiom
+	// would hit a fatal parse error rather than working at all.
+	const Scene s = parseOk(
+		"ActiveTransform StartTime\n"
+		"LookAt 0 0 -5   0 0 0   0 1 0\n"
+		"ActiveTransform EndTime\n"
+		"LookAt 3 0 -5   0 0 0   0 1 0\n"
+		"ActiveTransform All\n"
+		"WorldBegin\n"
+		"Shape \"sphere\"\n");
+	EXPECT_TRUE(s.cameraIsAnimated());
+	EXPECT_NE(s.worldToCamera.m[11], s.worldToCameraEnd.m[11]);
 }
 
 // ===========================================================================

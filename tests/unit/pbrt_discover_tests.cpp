@@ -109,6 +109,35 @@ TEST(PbrtDiscover, CarriesTheUpVectorThroughBecauseCameraConfigCannotHoldIt) {
 		<< d.camera.up[0] << "," << d.camera.up[1] << "," << d.camera.up[2];
 }
 
+TEST(PbrtDiscover, SurfacesActiveTransformCameraMotionBlurForSceneRegistryToConsume) {
+	// scene_registry.h's wire_pbrt_backed_scene() reads exactly these fields
+	// (d.camera.isAnimated/lookfrom1/lookat1/shutterOpen/shutterClose) to
+	// populate CameraConfig::animated/lookfrom_t1_*/lookat_t1_*/shutter_open/
+	// shutter_close - which cpu_scene_camera_is_animated_by_id() and main.cpp's
+	// --video + animated-camera rejection guard both key off of. This
+	// confirms the discovery layer actually surfaces them for a real
+	// ActiveTransform-authored scene, the same idiom the CPU-render-level
+	// FlattenCameraTest suite (pbrt_flatten_tests.cpp) exercises one layer
+	// down.
+	const char *kAnimatedCamera = R"PBRT(
+ActiveTransform StartTime
+LookAt 0 0 -5   0 0 0   0 1 0
+ActiveTransform EndTime
+LookAt 3 0 -5   0 0 0   0 1 0
+ActiveTransform All
+Camera "perspective" "float fov" [ 40 ] "float shutteropen" [ 0 ] "float shutterclose" [ 1 ]
+WorldBegin
+)PBRT";
+	const pbrt_discover::Discovered d =
+		pbrt_discover::describe("scenes/animated-camera.pbrt", kAnimatedCamera);
+	ASSERT_TRUE(d.ok) << d.error;
+	EXPECT_TRUE(d.camera.isAnimated);
+	EXPECT_NEAR(d.camera.lookfrom1[0], 3.0, 1e-9);
+	EXPECT_NEAR(d.camera.lookfrom1[2], -5.0, 1e-9);
+	EXPECT_NEAR(d.camera.shutterOpen, 0.0, 1e-9);
+	EXPECT_NEAR(d.camera.shutterClose, 1.0, 1e-9);
+}
+
 TEST(PbrtDiscover, SucceedsEvenThoughTheWorldReferencesFilesThatDoNotExist) {
 	// The reason this layer exists. Everything after WorldBegin is discarded,
 	// so a missing include or .ply cannot make a scene un-listable, and no
