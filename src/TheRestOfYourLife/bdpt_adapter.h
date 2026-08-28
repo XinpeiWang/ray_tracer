@@ -129,6 +129,8 @@
 #include "rtweekend.h"
 #include "hittable.h"
 #include "hittable_list.h"
+#include "bvh.h"
+#include "emitter_discovery.h"
 #include "aabb.h"
 #include "material.h"
 #include "onb.h"
@@ -166,10 +168,14 @@
 // ===========================================================================
 class BDPTSceneAdapter {
   public:
-	// world: flat scene geometry (a scene_registry build_world() closure's
-	//        result directly -- NOT BVH-wrapped, matching SPPMSceneAdapter's
-	//        own precedent; hittable_list::hit() is a fine linear scan at
-	//        Cornell-box scale).
+	// world: scene geometry (a scene_registry build_world() closure's result
+	//        directly). Native scenes' worlds stay flat, matching
+	//        SPPMSceneAdapter's own precedent (hittable_list::hit() is a
+	//        fine linear scan at Cornell-box scale); a pbrt-loaded scene's
+	//        world is instead a single bvh_node (pbrt_cpu::build() wraps it
+	//        for real-ray-tracing performance) - the constructor's own
+	//        emitter scan sees through either shape via
+	//        collectEmitterCandidates() (emitter_discovery.h).
 	// cam:   camera used for image_width/image_height/vfov/focus_dist/
 	//        lookfrom/lookat/get_ray()/background; caller must have already
 	//        called cam.initialize().
@@ -209,7 +215,9 @@ class BDPTSceneAdapter {
 			defocusRadius_ = cam_.focus_dist * std::tan(degrees_to_radians(cam_.defocus_angle / 2.0));
 
 		std::vector<double> weights;
-		for (auto& obj : world_.objects) {
+		std::vector<shared_ptr<hittable>> emitterCandidates;
+		for (const auto& obj : world_.objects) collectEmitterCandidates(obj, emitterCandidates);
+		for (auto& obj : emitterCandidates) {
 			AreaLightSample probe;
 			if (!obj->sample_area(0.5, 0.5, probe)) continue;   // not an area-samplable shape
 			shared_ptr<material> m = hittable_material(obj);
@@ -1358,7 +1366,7 @@ class BDPTSceneAdapter {
 		return -1;
 	}
 
-	// quad/sphere/sphere_clipped_hittable expose get_material(); mirrors
+	// quad/sphere/sphere_clipped_hittable/triangle expose get_material(); mirrors
 	// SPPMSceneAdapter's own identically-named private helper (duplicated
 	// rather than shared -- see this file's own header comment on why this
 	// adapter avoids depending on sppm_adapter.h).
@@ -1366,8 +1374,10 @@ class BDPTSceneAdapter {
 		if (auto q = std::dynamic_pointer_cast<quad>(h)) return q->get_material();
 		if (auto s = std::dynamic_pointer_cast<sphere>(h)) return s->get_material();
 		if (auto sc = std::dynamic_pointer_cast<sphere_clipped_hittable>(h)) return sc->get_material();
+		if (auto t = std::dynamic_pointer_cast<triangle>(h)) return t->get_material();
 		return nullptr;
 	}
+
 };
 
 // ---------------------------------------------------------------------------

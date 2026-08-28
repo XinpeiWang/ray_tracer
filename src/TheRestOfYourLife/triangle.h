@@ -277,6 +277,52 @@ class triangle : public hittable {
 		return pt - origin;
 	}
 
+	// sample_area: uniform sample of this triangle's own surface,
+	// independent of any reference point (needed for light emission/photon
+	// tracing - BDPT's SampleLightEmission/SPPM's photon-emission pass -
+	// as opposed to random()'s solid-angle sample toward a viewer). Uniform-
+	// area barycentric sampling (Shirley & Chiu 1997 / pbrt-v4's own
+	// SampleUniformTriangle): b0=1-sqrt(u1), b1=u2*sqrt(u1) gives a point
+	// uniformly distributed over the triangle's AREA, not its (u1,u2)
+	// parameter domain (a naive b0=u1,b1=u2*(1-u1) would bias samples
+	// toward one vertex).
+	bool sample_area(double u1, double u2, AreaLightSample& out) const override {
+		const int* idx = &mesh->indices[3 * tri_idx];
+		const point3& p0 = mesh->positions[idx[0]];
+		const point3& p1 = mesh->positions[idx[1]];
+		const point3& p2 = mesh->positions[idx[2]];
+
+		const double su1 = std::sqrt(u1);
+		const double b0 = 1.0 - su1;
+		const double b1 = u2 * su1;
+		const double b2 = 1.0 - b0 - b1;
+
+		out.p = b0*p0 + b1*p1 + b2*p2;
+
+		if (mesh->has_normals()) {
+			out.n = unit_vector(
+				b0 * mesh->normals[idx[0]] +
+				b1 * mesh->normals[idx[1]] +
+				b2 * mesh->normals[idx[2]]);
+		} else {
+			out.n = geom_normal;
+		}
+
+		if (mesh->has_uvs()) {
+			double uv0u = mesh->uvs[2*idx[0]], uv0v = mesh->uvs[2*idx[0]+1];
+			double uv1u = mesh->uvs[2*idx[1]], uv1v = mesh->uvs[2*idx[1]+1];
+			double uv2u = mesh->uvs[2*idx[2]], uv2v = mesh->uvs[2*idx[2]+1];
+			out.u = b0*uv0u + b1*uv1u + b2*uv2u;
+			out.v = b0*uv0v + b1*uv1v + b2*uv2v;
+		} else {
+			out.u = b1;   // barycentric fallback, matching hit()'s own
+			out.v = b2;
+		}
+
+		out.pdf_pos = (area > 0.0) ? 1.0 / area : 0.0;
+		return true;
+	}
+
 	// Accessors
 	double get_area() const { return area; }
 	vec3   get_geom_normal() const { return geom_normal; }

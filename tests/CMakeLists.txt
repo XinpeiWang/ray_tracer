@@ -21,6 +21,7 @@ add_executable(unit_tests
     unit/area_lights_tests.cpp
     unit/bdpt_adapter_punctual_sky_tests.cpp
     unit/bdpt_adapter_two_sided_tests.cpp
+    unit/bdpt_sppm_bvh_world_tests.cpp
     unit/bdpt_tests.cpp
     unit/bilinear_patch_tests.cpp
     unit/bilinear_sampling_tests.cpp

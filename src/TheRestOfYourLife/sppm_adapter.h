@@ -28,6 +28,8 @@
 
 #include "hittable.h"
 #include "hittable_list.h"
+#include "bvh.h"
+#include "emitter_discovery.h"
 #include "material.h"
 #include "pdf.h"
 #include "onb.h"
@@ -68,12 +70,16 @@
 // not needed here.
 class SPPMSceneAdapter {
   public:
-	// world:      flat scene geometry (as returned directly by a
-	//             scene_registry build_world() closure, e.g.
-	//             build_cornell_rough_glass() -- NOT the power_light_list
-	//             "lights" object, and not BVH-wrapped; hittable_list::hit()
-	//             is a fine linear scan for the Cornell-scale scenes this
-	//             first targets).
+	// world:      scene geometry (as returned directly by a scene_registry
+	//             build_world() closure, e.g. build_cornell_rough_glass() --
+	//             NOT the power_light_list "lights" object). Native scenes'
+	//             worlds stay flat (hittable_list::hit() is a fine linear
+	//             scan for the Cornell-scale scenes this first targets); a
+	//             pbrt-loaded scene's world is instead a single bvh_node
+	//             (pbrt_cpu::build() wraps it for real-ray-tracing
+	//             performance) - the constructor's own emitter scan sees
+	//             through either shape via collectEmitterCandidates()
+	//             (emitter_discovery.h).
 	// nee_lights: NEE importance-sampling geometry (e.g.
 	//             build_cornell_box_lights()'s output, or a power_light_list
 	//             built from it) -- used only to bias shadow-ray direction
@@ -96,7 +102,9 @@ class SPPMSceneAdapter {
 		  durable_ctx_(static_cast<size_t>(cam.image_width) * static_cast<size_t>(cam.image_height))
 	{
 		std::vector<double> weights;
-		for (auto& obj : world_.objects) {
+		std::vector<shared_ptr<hittable>> emitterCandidates;
+		for (const auto& obj : world_.objects) collectEmitterCandidates(obj, emitterCandidates);
+		for (auto& obj : emitterCandidates) {
 			AreaLightSample probe;
 			if (!obj->sample_area(0.5, 0.5, probe)) continue;   // not an area-samplable shape
 			shared_ptr<material> m = hittable_material(obj);
@@ -455,15 +463,17 @@ class SPPMSceneAdapter {
 	// same thread is harmless.
 	static inline thread_local SPPMShadingContext transient_ctx_{};
 
-	// quad/sphere/sphere_clipped_hittable expose get_material(); this is the
+	// quad/sphere/sphere_clipped_hittable/triangle expose get_material(); this is the
 	// one place that needs to know that concretely, since `hittable` itself
 	// has no material accessor.
 	static shared_ptr<material> hittable_material(const shared_ptr<hittable>& h) {
 		if (auto q = std::dynamic_pointer_cast<quad>(h)) return q->get_material();
 		if (auto s = std::dynamic_pointer_cast<sphere>(h)) return s->get_material();
 		if (auto sc = std::dynamic_pointer_cast<sphere_clipped_hittable>(h)) return sc->get_material();
+		if (auto t = std::dynamic_pointer_cast<triangle>(h)) return t->get_material();
 		return nullptr;
 	}
+
 };
 
 

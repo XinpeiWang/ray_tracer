@@ -236,3 +236,59 @@ TEST(TriangleRandom, SampledDirectionHits) {
 	// Nearly all samples should hit (solid-angle sampling is exact)
 	EXPECT_GE(hits, N * 95 / 100);
 }
+
+// ---------------------------------------------------------------------------
+// 13. sample_area: area-uniform light-emission sampling (BDPT/SPPM emitter
+//     discovery - see emitter_discovery.h - relies on this returning true and
+//     producing correct world-space points/normals for a real mesh light).
+// ---------------------------------------------------------------------------
+TEST(TriangleSampleArea, SampledPointLiesOnTheTriangle) {
+	auto tri = make_tri({0,0,0}, {1,0,0}, {0,1,0});
+	for (int i = 1; i < 8; ++i) {
+		for (int j = 1; j < 6; ++j) {
+			AreaLightSample s;
+			ASSERT_TRUE(tri->sample_area(i / 8.0, j / 6.0, s));
+			// On the z=0 plane, inside the right triangle: x>=0, y>=0, x+y<=1.
+			EXPECT_NEAR(s.p.z(), 0.0, 1e-9);
+			EXPECT_GE(s.p.x(), -1e-9);
+			EXPECT_GE(s.p.y(), -1e-9);
+			EXPECT_LE(s.p.x() + s.p.y(), 1.0 + 1e-9);
+		}
+	}
+}
+
+TEST(TriangleSampleArea, PdfPosIsOneOverArea) {
+	auto tri = make_tri({0,0,0}, {1,0,0}, {0,1,0});   // area = 0.5
+	ASSERT_NEAR(tri->get_area(), 0.5, 1e-9);
+	AreaLightSample s;
+	ASSERT_TRUE(tri->sample_area(0.3, 0.7, s));
+	EXPECT_NEAR(s.pdf_pos, 1.0 / tri->get_area(), 1e-9);
+}
+
+TEST(TriangleSampleArea, NormalMatchesGeometricNormalWithNoVertexNormals) {
+	auto tri = make_tri({0,0,0}, {1,0,0}, {0,1,0});
+	AreaLightSample s;
+	ASSERT_TRUE(tri->sample_area(0.4, 0.6, s));
+	EXPECT_NEAR(s.n.x(), tri->get_geom_normal().x(), 1e-9);
+	EXPECT_NEAR(s.n.y(), tri->get_geom_normal().y(), 1e-9);
+	EXPECT_NEAR(s.n.z(), tri->get_geom_normal().z(), 1e-9);
+}
+
+TEST(TriangleSampleArea, SamplesAreUniformOverAreaNotParameterDomain) {
+	// The right triangle's true centroid is (1/3, 1/3, 0). A naive (non-
+	// sqrt) barycentric mapping (b0=u1, b1=u2*(1-u1)) would bias the mean
+	// toward vertex p0 (the origin) instead - the real area-uniform
+	// (b0=1-sqrt(u1)) sampling this implements should converge to the true
+	// centroid, not a biased one.
+	auto tri = make_tri({0,0,0}, {1,0,0}, {0,1,0});
+	double sumx = 0.0, sumy = 0.0;
+	const int N = 20000;
+	for (int i = 0; i < N; ++i) {
+		AreaLightSample s;
+		ASSERT_TRUE(tri->sample_area(random_double(), random_double(), s));
+		sumx += s.p.x();
+		sumy += s.p.y();
+	}
+	EXPECT_NEAR(sumx / N, 1.0 / 3.0, 0.02);
+	EXPECT_NEAR(sumy / N, 1.0 / 3.0, 0.02);
+}
