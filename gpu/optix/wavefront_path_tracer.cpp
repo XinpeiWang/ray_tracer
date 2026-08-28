@@ -1373,6 +1373,13 @@ bool WavefrontPathTracer::render(
 {
 	const int numPixels = width * height;
 
+	// Integrator "bool regularize" - camera.regularize is stored as int
+	// (GpuCameraParams is __constant__-safe, see that struct's own comment),
+	// converted once here and reused at both launchEvaluateMaterials*() call
+	// sites below rather than re-converting the same fixed-for-this-render
+	// value at each site.
+	const bool regularize = camera.regularize != 0;
+
 	// Render-time instrumentation (pbrt-v4 STAT_COUNTER-inspired, see this
 	// project's own plan for why wavefront is the one backend that gets
 	// this for free: every field here is already a real, host-visible
@@ -1546,7 +1553,7 @@ bool WavefrontPathTracer::render(
 			// Phase 3: Evaluate materials (fills shadowQueue + nextRayQueue)
 			// ------------------------------------------------------------------
 			launchEvaluateMaterials(
-				numHits, max_depth, camera.regularize != 0,
+				numHits, max_depth, regularize,
 				reinterpret_cast<const SphereData*>(d_spheres), num_spheres,
 				reinterpret_cast<const QuadData*>(d_quads),     num_quads,
 				reinterpret_cast<const TriangleData*>(d_triangles), num_triangles,
@@ -1603,7 +1610,7 @@ bool WavefrontPathTracer::render(
 			// alongside simpleMaterialStream_ before numMiss/numShadow are read.
 			// ------------------------------------------------------------------
 			launchEvaluateMaterialsDielectric(
-				numDielectricHits, max_depth, camera.regularize != 0,
+				numDielectricHits, max_depth, regularize,
 				reinterpret_cast<const SphereData*>(d_spheres), num_spheres,
 				reinterpret_cast<const QuadData*>(d_quads),     num_quads,
 				reinterpret_cast<const TriangleData*>(d_triangles), num_triangles,

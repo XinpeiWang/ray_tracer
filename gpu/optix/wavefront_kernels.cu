@@ -2229,6 +2229,13 @@ extern "C" __global__ void evaluate_materials(
 	const HitWorkItem& h = hitQueue.items[idx];
 	const MaterialData& mat = materials[h.materialIdx];
 
+	// Hoisted once and reused by every glossy-alpha call site below - both
+	// operands are fixed for the rest of this thread's execution (regularize
+	// is a per-launch kernel parameter, h is a const reference never
+	// reassigned after this point), so recomputing the AND at each site would
+	// be pure duplication, not a different value.
+	const bool do_regularize = regularize && (bool)h.any_nonspecular;
+
 	// Mirrors optix_intersection_disk_cylinder.h's own trap: the pbrt loader
 	// never assigns these material types to a disk/cylinder (see
 	// pbrt_gpu_builder.h's disk/cylinder loop), so this is unreachable
@@ -2619,8 +2626,8 @@ extern "C" __global__ void evaluate_materials(
 	// below will catch the drift loudly instead of silently running stale
 	// unmaintained logic.
 	case MaterialType::Conductor: {
-		float c_alpha_x = wf_glossy_alpha(mat, regularize && (bool)h.any_nonspecular);
-		float c_alpha_y = wf_glossy_alpha_v(mat, regularize && (bool)h.any_nonspecular);
+		float c_alpha_x = wf_glossy_alpha(mat, do_regularize);
+		float c_alpha_y = wf_glossy_alpha_v(mat, do_regularize);
 		glossyAlphaForNEE = c_alpha_x;
 		glossyAlphaVForNEE = c_alpha_y;
 		float3 cn = normal;
@@ -2670,7 +2677,7 @@ extern "C" __global__ void evaluate_materials(
 		// FrConductorRGB (RoughMetalBxDF has no real Fresnel model). NOT the
 		// same material as MaterialType::Metal (fuzz-perturbed mirror, a
 		// different model - CPU's plain `metal` class).
-		float rm_alpha = wf_glossy_alpha(mat, regularize && (bool)h.any_nonspecular);
+		float rm_alpha = wf_glossy_alpha(mat, do_regularize);
 		glossyAlphaForNEE = rm_alpha;
 		float3 rmn = normal;
 		float3 rmup = (fabsf(rmn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
@@ -2721,8 +2728,8 @@ extern "C" __global__ void evaluate_materials(
 		const float3 cd_albedo = (mat.textureIdx >= 0)
 			? wf_sample_texture(textures, texturePixels, mat.textureIdx, h.uv_u, h.uv_v, hit_point) * mat.emissionScale
 			: mat.albedo;
-		float cd_alpha_x = wf_glossy_alpha(mat, regularize && (bool)h.any_nonspecular);
-		float cd_alpha_y = wf_glossy_alpha_v(mat, regularize && (bool)h.any_nonspecular);
+		float cd_alpha_x = wf_glossy_alpha(mat, do_regularize);
+		float cd_alpha_y = wf_glossy_alpha_v(mat, do_regularize);
 		glossyAlphaForNEE = cd_alpha_x;
 		glossyAlphaVForNEE = cd_alpha_y;
 		float3 cdn = normal;
@@ -2836,8 +2843,8 @@ extern "C" __global__ void evaluate_materials(
 		// viewing direction and skipped both the refraction-into-the-coat
 		// step and the T_in/T_out weighting entirely, making the conductor
 		// visible at full strength as if the coat weren't there.
-		float cc_alpha_x = wf_glossy_alpha(mat, regularize && (bool)h.any_nonspecular);
-		float cc_alpha_y = wf_glossy_alpha_v(mat, regularize && (bool)h.any_nonspecular);
+		float cc_alpha_x = wf_glossy_alpha(mat, do_regularize);
+		float cc_alpha_y = wf_glossy_alpha_v(mat, do_regularize);
 		glossyAlphaForNEE = cc_alpha_x;
 		glossyAlphaVForNEE = cc_alpha_y;
 		float3 ccn = normal;
@@ -3663,6 +3670,10 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	const HitWorkItem& h = hitQueue.items[idx];
 	const MaterialData& mat = materials[h.materialIdx];
 
+	// See evaluate_materials()'s own identical hoist just above its `h` load -
+	// same reasoning: both operands are fixed for the rest of this thread.
+	const bool do_regularize = regularize && (bool)h.any_nonspecular;
+
 	float3 normal    = h.normal;
 	float3 hit_point = h.hitPoint;
 	unsigned int seed = h.seed;
@@ -3800,11 +3811,11 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		if (mat.textureIdx >= 0) {
 			const float rd_rough = wf_sample_texture(textures, texturePixels, mat.textureIdx, h.uv_u, h.uv_v, hit_point).x;
 			const float rd_a = mat.remapRoughness ? sqrtf(rd_rough) : rd_rough;
-			rd_alpha_x = rd_alpha_y = (regularize && (bool)h.any_nonspecular)
+			rd_alpha_x = rd_alpha_y = do_regularize
 				? RegularizeAlpha(rd_a) : rd_a;
 		} else {
-			rd_alpha_x = wf_glossy_alpha(mat, regularize && (bool)h.any_nonspecular);
-			rd_alpha_y = wf_glossy_alpha_v(mat, regularize && (bool)h.any_nonspecular);
+			rd_alpha_x = wf_glossy_alpha(mat, do_regularize);
+			rd_alpha_y = wf_glossy_alpha_v(mat, do_regularize);
 		}
 		glossyAlphaForNEE = rd_alpha_x;
 		glossyAlphaVForNEE = rd_alpha_y;
