@@ -243,6 +243,18 @@ extern "C" __global__ void __raygen__rg() {
 			payload.scatterDir.z = __uint_as_float(p8);
 			payload.seed = p9;
 			unsigned int flag = p10;
+			// bit 3 (value 8) of p10 carries shade_material()'s real
+			// is_specular for this bounce - see pack_scatter_flag()'s own
+			// comment (optix_device_helpers.h) for why this rides along in
+			// the same register rather than being re-derived from
+			// scatter_brdf_pdf==0.0f below (a proxy that a legitimately
+			// non-specular but numerically-underflowed-to-zero pdf could
+			// misclassify - matches CPU camera.h/GPU-wavefront's own use of
+			// a real is_specular boolean rather than a derived one). Masked
+			// back off immediately so every existing `flag == N` comparison
+			// below is unaffected - base values (0/1/2/3/4) are all < 8.
+			bool bounce_is_specular = (flag & 8u) != 0u;
+			flag &= 7u;
 			float t_hit = __uint_as_float(p11);
 			float scatter_brdf_pdf = __uint_as_float(p12);  // BRDF PDF of the new scatter direction
 			// Explicit next-ray origin (flag==3 only - MaterialType::
@@ -372,16 +384,17 @@ extern "C" __global__ void __raygen__rg() {
 
 				// Carry BRDF PDF of the new scatter direction for MIS at the next bounce
 				prev_brdf_pdf = scatter_brdf_pdf;
-				// pbrt-v4 anyNonSpecularBounces |= !bs->IsSpecular() - reuses
-				// this same scatter_brdf_pdf>0 proxy prev_brdf_pdf already
-				// relies on (0 <=> shade_material() set is_specular=true,
-				// including for flag==3's Subsurface exit, whose
-				// NormalizedFresnel re-sample always produces is_specular=
-				// false and a real positive brdf_pdf_override - see
-				// shade_material()'s Subsurface case), so no separate
-				// is_specular payload signal is needed. Never reset to
+				// pbrt-v4 anyNonSpecularBounces |= !bs->IsSpecular() - uses
+				// bounce_is_specular (the real signal unpacked from p10's
+				// bit 3 above), not a scatter_brdf_pdf>0 proxy: a
+				// legitimately non-specular bounce can still pack an exact
+				// 0.0f brdf_pdf at extreme grazing angles (TrowbridgeReitz::D()'s
+				// own cos^2(theta)<1e-16 clamp, microfacet.h), which a
+				// pdf-based proxy would misclassify as specular - matching
+				// CPU camera.h/GPU-wavefront's own use of a real is_specular
+				// boolean rather than one derived from pdf. Never reset to
 				// false once true, matching CPU/wavefront exactly.
-				any_nonspecular = any_nonspecular || (scatter_brdf_pdf > 0.0f);
+				any_nonspecular = any_nonspecular || !bounce_is_specular;
 
 				ray_origin = scatter_origin;
 				ray_direction = normalize(payload.scatterDir);  // MUST normalize!

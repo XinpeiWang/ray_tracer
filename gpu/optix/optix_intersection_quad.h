@@ -145,9 +145,9 @@ extern "C" __global__ void __closesthit__quad() {
 		// quad.u (the quad's own edge vector, already world-space) IS
 		// exactly CPU's quad.h dpdu (rec.dpdu = u) - no new math needed,
 		// unlike sphere/disk/cylinder's analytic derivations.
-		// Integrator "bool regularize" - see shade_material()'s own
-		// do_regularize parameter comment.
-		const bool do_regularize = params.camera.regularize != 0 && optixGetPayload_23() != 0u;
+		// Integrator "bool regularize" - see current_do_regularize()'s own
+		// comment (optix_device_helpers.h).
+		const bool do_regularize = current_do_regularize();
 		shade_material(mat, matIdx, final_normal, ray_dir, hit_point, front_face, uv_u, uv_v, quad.u, do_regularize, seed,
 			attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
 			bssrdf_exit, bssrdf_exit_pos, out_eta);
@@ -197,7 +197,7 @@ extern "C" __global__ void __closesthit__quad() {
 		optixSetPayload_6(__float_as_uint(scattered_dir.x));  // Scatter direction
 		optixSetPayload_7(__float_as_uint(scattered_dir.y));
 		optixSetPayload_8(__float_as_uint(scattered_dir.z));
-		optixSetPayload_10(pack_scatter_flag(bssrdf_exit, is_medium_boundary));  // scattered (see pack_scatter_flag's own comment)
+		optixSetPayload_10(pack_scatter_flag(bssrdf_exit, is_medium_boundary, is_specular));  // scattered (see pack_scatter_flag's own comment)
 		optixSetPayload_11(__float_as_uint(t_hit));
 		optixSetPayload_12(__float_as_uint(brdf_pdf_out));
 		if (bssrdf_exit) {

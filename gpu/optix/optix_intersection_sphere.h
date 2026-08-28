@@ -402,6 +402,11 @@ extern "C" __global__ void __closesthit__sphere() {
 	// dielectric_scatter() calls (entry/exit, not routed through
 	// shade_material()) set this directly.
 	float out_eta = 1.0f;
+	// Integrator "bool regularize" - see current_do_regularize()'s own
+	// comment (optix_device_helpers.h). Computed once here and reused by
+	// both shade_material() call sites below, rather than re-reading the
+	// same launch-constant/payload pair twice in one closest-hit program.
+	const bool do_regularize = current_do_regularize();
 
 	if (mat.type == MaterialType::Medium) {
 			// Homogeneous participating medium - see MaterialType::Medium's
@@ -870,9 +875,10 @@ extern "C" __global__ void __closesthit__sphere() {
 			effective.textureIdx = -1;
 			// Integrator "bool regularize" - see shade_material()'s own
 			// do_regularize parameter comment. Inert here (Lambertian has
-			// no alpha to widen) but every call site must still supply it.
-			const bool do_regularize_normalmap = params.camera.regularize != 0 && optixGetPayload_23() != 0u;
-			shade_material(effective, matIdx, perturbed_normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, dpdu, do_regularize_normalmap, seed,
+			// no alpha to widen) but every call site must still supply it -
+			// reuses the same do_regularize hoisted above rather than
+			// re-reading it, even though this branch never consumes it.
+			shade_material(effective, matIdx, perturbed_normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, dpdu, do_regularize, seed,
 				attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
 				bssrdf_exit, bssrdf_exit_pos, out_eta);
 	} else if (mat.type == MaterialType::Principled) {
@@ -885,8 +891,7 @@ extern "C" __global__ void __closesthit__sphere() {
 			is_specular = true;
 	} else {
 		// Integrator "bool regularize" - see shade_material()'s own
-		// do_regularize parameter comment.
-		const bool do_regularize = params.camera.regularize != 0 && optixGetPayload_23() != 0u;
+		// do_regularize parameter comment (reuses the value hoisted above).
 		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, sphere_dpdu, do_regularize, seed,
 			attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
 			bssrdf_exit, bssrdf_exit_pos, out_eta);
@@ -945,7 +950,7 @@ extern "C" __global__ void __closesthit__sphere() {
 		// way triangle/quad/bilinear-patch do for consistency - see
 		// optix_intersection_quad.h's p0-p15 layout comment. flag==4:
 		// MaterialType::Interface - see optix_raygen.h's own flag==4 branch.
-		optixSetPayload_10(pack_scatter_flag(bssrdf_exit, is_medium_boundary));  // scattered (see pack_scatter_flag's own comment)
+		optixSetPayload_10(pack_scatter_flag(bssrdf_exit, is_medium_boundary, is_specular));  // scattered (see pack_scatter_flag's own comment)
 		optixSetPayload_11(__float_as_uint(t_hit));
 		optixSetPayload_12(__float_as_uint(brdf_pdf_out));
 		if (bssrdf_exit) {

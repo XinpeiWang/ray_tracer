@@ -148,9 +148,9 @@ extern "C" __global__ void __closesthit__disk() {
 			__trap();
 		}
 
-		// Integrator "bool regularize" - see shade_material()'s own
-		// do_regularize parameter comment.
-		const bool do_regularize = params.camera.regularize != 0 && optixGetPayload_23() != 0u;
+		// Integrator "bool regularize" - see current_do_regularize()'s own
+		// comment (optix_device_helpers.h).
+		const bool do_regularize = current_do_regularize();
 		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, uv_u, uv_v, disk_dpdu, do_regularize, seed,
 			attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
 			bssrdf_exit, bssrdf_exit_pos, out_eta);
@@ -178,7 +178,7 @@ extern "C" __global__ void __closesthit__disk() {
 		optixSetPayload_6(__float_as_uint(scattered_dir.x));
 		optixSetPayload_7(__float_as_uint(scattered_dir.y));
 		optixSetPayload_8(__float_as_uint(scattered_dir.z));
-		optixSetPayload_10(pack_scatter_flag(bssrdf_exit, is_medium_boundary));  // scattered (see pack_scatter_flag's own comment)
+		optixSetPayload_10(pack_scatter_flag(bssrdf_exit, is_medium_boundary, is_specular));  // scattered (see pack_scatter_flag's own comment)
 		optixSetPayload_11(__float_as_uint(t_hit));
 		optixSetPayload_12(__float_as_uint(brdf_pdf_out));
 		if (bssrdf_exit) {
@@ -406,9 +406,9 @@ extern "C" __global__ void __closesthit__cylinder() {
 			__trap();
 		}
 
-		// Integrator "bool regularize" - see shade_material()'s own
-		// do_regularize parameter comment.
-		const bool do_regularize = params.camera.regularize != 0 && optixGetPayload_23() != 0u;
+		// Integrator "bool regularize" - see current_do_regularize()'s own
+		// comment (optix_device_helpers.h).
+		const bool do_regularize = current_do_regularize();
 		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, uv_u, uv_v, cyl_dpdu, do_regularize, seed,
 			attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
 			bssrdf_exit, bssrdf_exit_pos, out_eta);
@@ -440,7 +440,7 @@ extern "C" __global__ void __closesthit__cylinder() {
 		optixSetPayload_6(__float_as_uint(scattered_dir.x));
 		optixSetPayload_7(__float_as_uint(scattered_dir.y));
 		optixSetPayload_8(__float_as_uint(scattered_dir.z));
-		optixSetPayload_10(pack_scatter_flag(bssrdf_exit, is_medium_boundary));  // scattered (see pack_scatter_flag's own comment)
+		optixSetPayload_10(pack_scatter_flag(bssrdf_exit, is_medium_boundary, is_specular));  // scattered (see pack_scatter_flag's own comment)
 		optixSetPayload_11(__float_as_uint(t_hit));
 		optixSetPayload_12(__float_as_uint(brdf_pdf_out));
 		if (bssrdf_exit) {

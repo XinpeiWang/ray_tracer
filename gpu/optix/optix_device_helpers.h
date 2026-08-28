@@ -320,15 +320,34 @@ __device__ __forceinline__ float mis_power_heuristic(float pdf_a, float pdf_b) {
 	return PowerHeuristic(pdf_a, pdf_b);
 }
 
-// Packs shade_material()'s two boolean out-params into the single outgoing
+// Packs shade_material()'s boolean out-params into the single outgoing
 // payload flag every closest-hit program sends back via optixSetPayload_10:
 // 1 = ordinary scattered bounce, 3 = scattered w/ explicit origin override
 // (Subsurface probe exit), 4 = interface pass-through (MaterialType::
-// Interface - real medium-boundary, no BSDF). Called identically from all 6
-// closest-hit programs across the 5 optix_intersection_*.h files - kept as
-// one shared function so a future 5th flag value only needs editing here.
-__device__ __forceinline__ unsigned int pack_scatter_flag(bool bssrdf_exit, bool is_medium_boundary) {
-	return bssrdf_exit ? 3 : (is_medium_boundary ? 4 : 1);
+// Interface - real medium-boundary, no BSDF), with bit 3 (value 8) OR'd in
+// when the bounce was specular (pbrt-v4 specularBounce). Called identically
+// from all 6 closest-hit programs across the 5 optix_intersection_*.h files -
+// kept as one shared function so a future flag value only needs editing here.
+// The is_specular bit rides along in this same register rather than being
+// re-derived from brdf_pdf_out==0.0f in optix_raygen.h (see that file's own
+// bounce_is_specular comment) - a real boolean, not a proxy that a
+// legitimately non-specular but numerically-underflowed-to-zero pdf could
+// misclassify. Base values (1/3/4) stay < 8, so masking with `& 7` recovers
+// the original flag unchanged for every existing flag==N comparison.
+__device__ __forceinline__ unsigned int pack_scatter_flag(bool bssrdf_exit, bool is_medium_boundary, bool is_specular) {
+	return (bssrdf_exit ? 3 : (is_medium_boundary ? 4 : 1)) | (is_specular ? 8 : 0);
+}
+
+// Integrator "bool regularize" gate for THIS bounce, read fresh by each
+// closest-hit program right before its shade_material() call - same
+// "called identically from all closest-hit programs across the 5
+// optix_intersection_*.h files, kept as one shared function" shape as
+// pack_scatter_flag() just above. params.camera.regularize is a per-launch
+// constant; optixGetPayload_23() carries anyNonSpecularBounces-so-far in
+// from optix_raygen.h's bounce loop (an INPUT register, never written by
+// any closest-hit program - see that file's own p23 comment).
+__device__ __forceinline__ bool current_do_regularize() {
+	return params.camera.regularize != 0 && optixGetPayload_23() != 0u;
 }
 
 // Cosine-weighted hemisphere sampling PDF
@@ -2426,6 +2445,7 @@ __device__ __forceinline__ void shade_material(
 			// (a fuzz-perturbed mirror, a different model entirely - CPU's
 			// plain `metal` class).
 			float rm_alpha = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;  // pbrt-v4 remaproughness (see MaterialData::remapRoughness)
+			if (do_regularize) rm_alpha = RegularizeAlpha(rm_alpha);
 			float3 rmn = normal;
 			float3 rmup = (fabsf(rmn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
 			float3 rmtan   = normalize(cross(rmup, rmn));
