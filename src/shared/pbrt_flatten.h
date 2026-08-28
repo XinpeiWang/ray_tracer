@@ -1073,6 +1073,20 @@ struct FlatScene {
 	// would want to casually override between a preview and a final
 	// render.
 	bool regularize = false;
+	// Film "float[4] cropwindow" / "integer[4] pixelbounds", resolved to a
+	// single NDC-fraction rectangle [cropX0,cropX1) x [cropY0,cropY1) in
+	// [0,1] - see flatten()'s own computation for the exact rule. Kept as
+	// fractions rather than resolved to pixel indices here because
+	// xResolution/yResolution are only advisory in this codebase (like
+	// maxDepth/samplerType - a CLI width/height arg wins, see
+	// scene_registry.h): a fraction stays correct however the actual
+	// render resolution ends up differing from the scene's own declared
+	// one, where absolute pixel indices resolved against the WRONG
+	// resolution would not. Applied unconditionally like PixelFilter/
+	// regularize above (not CLI-overridable, matching that same
+	// "genuine scene-authored behavior" precedent); no directive at all
+	// resolves to the full frame {0, 1, 0, 1}.
+	double cropX0 = 0.0, cropX1 = 1.0, cropY0 = 0.0, cropY1 = 1.0;
 	std::vector<pbrt_scene::Warning> warnings;
 
 	bool empty() const {
@@ -3005,6 +3019,50 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 	out.filter.tau = scene.filterParams.getFloat("tau", out.filter.tau);
 
 	out.regularize = scene.regularize;
+
+	// Film "float[4] cropwindow" / "integer[4] pixelbounds" -> a single
+	// NDC-fraction rectangle. pbrt-v4's own rule: start from the full
+	// frame, then intersect with cropwindow (defaults to {0,1,0,1}, a
+	// no-op when absent) and with pixelbounds/xResolution/yResolution if
+	// given - both may apply together, each independently narrowing the
+	// region. pixelbounds is converted to a fraction using the SCENE's
+	// own declared resolution (the only resolution known at this layer;
+	// see FlatScene::cropX0's own comment on why fractions, not pixels,
+	// are what's stored).
+	{
+		double x0 = 0.0, x1 = 1.0;
+		double y0 = 0.0, y1 = 1.0;
+
+		const double cwx0 = std::clamp(std::min(scene.cropWindow[0], scene.cropWindow[1]), 0.0, 1.0);
+		const double cwx1 = std::clamp(std::max(scene.cropWindow[0], scene.cropWindow[1]), 0.0, 1.0);
+		const double cwy0 = std::clamp(std::min(scene.cropWindow[2], scene.cropWindow[3]), 0.0, 1.0);
+		const double cwy1 = std::clamp(std::max(scene.cropWindow[2], scene.cropWindow[3]), 0.0, 1.0);
+		x0 = std::max(x0, cwx0); x1 = std::min(x1, cwx1);
+		y0 = std::max(y0, cwy0); y1 = std::min(y1, cwy1);
+
+		if (scene.hasPixelBounds && scene.xResolution > 0 && scene.yResolution > 0) {
+			const double pbx0 = std::clamp(std::min(scene.pixelBounds[0], scene.pixelBounds[1]) /
+											static_cast<double>(scene.xResolution), 0.0, 1.0);
+			const double pbx1 = std::clamp(std::max(scene.pixelBounds[0], scene.pixelBounds[1]) /
+											static_cast<double>(scene.xResolution), 0.0, 1.0);
+			const double pby0 = std::clamp(std::min(scene.pixelBounds[2], scene.pixelBounds[3]) /
+											static_cast<double>(scene.yResolution), 0.0, 1.0);
+			const double pby1 = std::clamp(std::max(scene.pixelBounds[2], scene.pixelBounds[3]) /
+											static_cast<double>(scene.yResolution), 0.0, 1.0);
+			x0 = std::max(x0, pbx0); x1 = std::min(x1, pbx1);
+			y0 = std::max(y0, pby0); y1 = std::min(y1, pby1);
+		}
+
+		if (x1 <= x0 || y1 <= y0) {
+			warn("Film \"cropwindow\"/\"pixelbounds\" resolve to an empty pixel "
+				 "range; rendering the full frame instead");
+			x0 = 0.0; x1 = 1.0;
+			y0 = 0.0; y1 = 1.0;
+		}
+
+		out.cropX0 = x0; out.cropX1 = x1;
+		out.cropY0 = y0; out.cropY1 = y1;
+	}
 
 	return out;
 }

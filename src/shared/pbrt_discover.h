@@ -52,6 +52,13 @@ struct Discovered {
 	// explains why: a genuine scene-authored behavior toggle, not a
 	// CLI-overridable perf knob like maxDepth/samplesPerPixel below).
 	bool regularize = false;
+	// Film "cropwindow"/"pixelbounds", resolved to a single NDC-fraction
+	// rectangle in [0,1] - same "already resolved by flatten(), IS
+	// applied at render time" shape as filter/regularize above. See
+	// pbrt_flatten::FlatScene::cropX0's own comment for why this is kept
+	// as a fraction (resolution-independent) rather than a pixel range.
+	// No directive at all resolves to the full frame {0, 1, 0, 1}.
+	double cropX0 = 0.0, cropX1 = 1.0, cropY0 = 0.0, cropY1 = 1.0;
 	int samplesPerPixel = 16;
 	int xResolution = 1280;
 	int yResolution = 720;
@@ -192,6 +199,8 @@ inline Discovered describe(const std::string &path, const std::string &text) {
 	d.camera = flat.camera;
 	d.filter = flat.filter;
 	d.regularize = flat.regularize;
+	d.cropX0 = flat.cropX0; d.cropX1 = flat.cropX1;
+	d.cropY0 = flat.cropY0; d.cropY1 = flat.cropY1;
 	d.ok = true;
 	return d;
 }

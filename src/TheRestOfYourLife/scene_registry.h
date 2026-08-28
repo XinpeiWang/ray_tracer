@@ -25,6 +25,7 @@
 #include "../shared/pbrt_discover.h"
 #include "../shared/pbrt_load.h"
 #include <algorithm>
+#include <cmath>
 #include <deque>
 #include <filesystem>
 #include <functional>
@@ -315,7 +316,9 @@ namespace pbrt_scene_registry {
         const pbrt_flatten::Camera pcam = d.camera;
         const pbrt_flatten::PixelFilter pfilter = d.filter;
         const bool pregularize = d.regularize;
-        s.setup_camera = [ux, uy, uz, pcam, pfilter, pregularize, path](camera_t& cam) {
+        const double pcropX0 = d.cropX0, pcropX1 = d.cropX1;
+        const double pcropY0 = d.cropY0, pcropY1 = d.cropY1;
+        s.setup_camera = [ux, uy, uz, pcam, pfilter, pregularize, pcropX0, pcropX1, pcropY0, pcropY1, path](camera_t& cam) {
             cam.vup = vec3(ux, uy, uz);
             // PixelFilter - see that struct's own comment (pbrt_flatten.h)
             // for why this is applied unconditionally (unlike sampler_kind)
@@ -331,6 +334,19 @@ namespace pbrt_scene_registry {
             // shape as PixelFilter above (see pbrt_discover::Discovered::
             // regularize's own comment).
             cam.regularize = pregularize;
+
+            // Film "cropwindow"/"pixelbounds" - pcropX0/X1/Y0/Y1 are NDC
+            // fractions (see pbrt_discover::Discovered::cropX0's own comment
+            // on why fractions, not scene-relative pixel indices); converted
+            // here against cam.image_width/image_height, which by this point
+            // already hold the ACTUAL render resolution (cpu_interface.cpp
+            // sets both before calling setup_camera - see camera::crop_x0's
+            // own comment) - correct even when a CLI width/height argument
+            // overrides what the scene itself declared.
+            cam.crop_x0 = static_cast<int>(std::lround(pcropX0 * cam.image_width));
+            cam.crop_x1 = static_cast<int>(std::lround(pcropX1 * cam.image_width));
+            cam.crop_y0 = static_cast<int>(std::lround(pcropY0 * cam.image_height));
+            cam.crop_y1 = static_cast<int>(std::lround(pcropY1 * cam.image_height));
 
             // Camera motion blur (pbrt-v4's real ActiveTransform "StartTime"/
             // "EndTime" idiom) is wired through CameraConfig itself now (see

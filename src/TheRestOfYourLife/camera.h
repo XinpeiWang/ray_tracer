@@ -13,6 +13,7 @@
 
 #include "hittable.h"
 #include "pdf.h"
+#include <algorithm>
 #include <cmath>
 #include "material.h"
 #include "../shared/cpu_gpu.h"  // kMaxMediumBoundaryCrossings
@@ -144,6 +145,22 @@ class camera {
     // - unlike max_depth/samples_per_pixel, this is a genuine scene-authored
     // behavior toggle, not a perf knob meant to be freely CLI-overridden.
     bool regularize = false;
+
+    // pbrt-v4's real Film "cropwindow"/"pixelbounds" - restricts which
+    // pixels actually get traced to a rectangle of the frame; same
+    // "auto-applied from a loaded pbrt scene's own directive" shape as
+    // filter_kind/regularize above. Set in PIXEL coordinates against
+    // this camera's own image_width/image_height by scene_registry.h
+    // (which converts pbrt_flatten::FlatScene's resolution-independent
+    // NDC fractions using the ACTUAL render resolution, not the scene's
+    // own declared one - see that conversion's own comment for why).
+    // Defaults to the full frame, so a scene/native build with no crop
+    // request renders unchanged. A pixel outside [crop_x0,crop_x1) x
+    // [crop_y0,crop_y1) is written black rather than shrinking the
+    // output image - see render()'s own comment on why this is an
+    // approximation of real pbrt-v4 (which writes a smaller file).
+    int crop_x0 = 0, crop_x1 = -1, crop_y0 = 0, crop_y1 = -1;
+
     // When set, render() writes a linear (pre-tonemap), full-float EXR
     // instead of the tonemapped/quantized PPM it writes by default - see
     // exr_writer.h. Set by cpu_interface.cpp when the caller's requested
@@ -354,6 +371,13 @@ class camera {
                 for (int i = 0; i < image_width; i++) {
                     color  weighted_color(0,0,0);
                     double weight_sum = 0.0;
+                    // Film "cropwindow"/"pixelbounds" (crop_x0/x1/y0/y1,
+                    // resolved in initialize()): a pixel outside the crop
+                    // rectangle is left at weight_sum=0, which the existing
+                    // normalization below already turns into black - so
+                    // skipping the whole sampling loop here is both the
+                    // compute-saving and the correctness fix in one place.
+                    const bool in_crop = i >= crop_x0 && i < crop_x1 && j >= crop_y0 && j < crop_y1;
                     // Reconstruction filter (pbrt-v4 style), shape driven by
                     // filter_kind/filter_B/filter_C/filter_sigma/filter_tau -
                     // see PixelFilterDispatch's own comment (filter.h) for
@@ -361,6 +385,7 @@ class camera {
                     // film buffer for cross-pixel splatting) regardless of
                     // which shape was requested.
                     const PixelFilterDispatch filter(filter_kind, filter_B, filter_C, filter_sigma, filter_tau);
+                    if (in_crop)
                     for (int s_j = 0; s_j < sqrt_spp; s_j++) {
                             for (int s_i = 0; s_i < sqrt_spp; s_i++) {
                                 // Sample index for Halton: unique per (s_i, s_j) stratum
@@ -591,6 +616,22 @@ class camera {
     void initialize() {
         image_height = int(image_width / aspect_ratio);
         image_height = (image_height < 1) ? 1 : image_height;
+
+        // Resolve crop_x1/crop_y1's "-1 = unset" sentinel now that
+        // image_width/image_height are final - scene_registry.h sets these
+        // (when it sets them at all) before initialize() runs, in the same
+        // pixel space this function just computed, so no rescaling is
+        // needed here.
+        if (crop_x1 < 0) crop_x1 = image_width;
+        if (crop_y1 < 0) crop_y1 = image_height;
+        crop_x0 = std::clamp(crop_x0, 0, image_width);
+        crop_x1 = std::clamp(crop_x1, 0, image_width);
+        crop_y0 = std::clamp(crop_y0, 0, image_height);
+        crop_y1 = std::clamp(crop_y1, 0, image_height);
+        if (crop_x1 <= crop_x0 || crop_y1 <= crop_y0) {
+            crop_x0 = 0; crop_x1 = image_width;
+            crop_y0 = 0; crop_y1 = image_height;
+        }
 
         sqrt_spp = int(std::sqrt(samples_per_pixel));
         pixel_samples_scale = 1.0 / (sqrt_spp * sqrt_spp);

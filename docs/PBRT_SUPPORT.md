@@ -12,7 +12,7 @@ code together, and because two real CPU/GPU divergences this codebase hit
 scene's `lensradius` at all) were exactly the shape of gap this table exists
 to make visible before it turns into a rendering bug.
 
-Four tiers, used consistently across all four tables below:
+Four tiers, used consistently across all five tables below:
 
 - **Full** — matches pbrt-v4 semantics on that backend.
 - **Approx** — a documented, deliberate simplification. The Note column
@@ -88,6 +88,17 @@ loaded pbrt scenes. GPU: `gpu/optix/scene_builder.cpp`'s
 | `spherical` — equirectangular | Full | Full | `"environment"` accepted as an alias for `"spherical"` on both. |
 | `spherical` — equalarea | Full | Full | Both do the real pbrt-v4 concentric-octahedral equal-area mapping (`EqualAreaSquareToSphere`); GPU keeps a small local device-side copy of the math on each backend rather than including the CPU header (same pattern as the rest of this codebase's device helpers). |
 | `realistic` (lens file) | Full | Full | Both parse the same lens-file format and build a real multi-element lens simulation (GPU reuses the same host-side `RealisticCamera` and flattens it to device buffers); both fall back to perspective with a warning if the lens file is missing/unreadable. |
+
+## Film
+
+CPU: `src/TheRestOfYourLife/camera.h` (`crop_x0`/`crop_x1`/`crop_y0`/`crop_y1`,
+resolved by `initialize()`; the render loop's `in_crop` gate). GPU: neither
+backend reads this yet - `gpu/optix/scene_builder.cpp` warns at scene-load
+time instead.
+
+| pbrt param | CPU | GPU | Note |
+|---|---|---|---|
+| `"float[4] cropwindow"` / `"integer[4] pixelbounds"` | Approx | Unsupported | Restricts rendering to a sub-rectangle of the frame - pbrt-v4 allows both together (cropwindow as an NDC fraction, pixelbounds in pixel space), each independently narrowing the region via intersection; both resolve here to one NDC-fraction rectangle (`pbrt_flatten::FlatScene::cropX0`/`X1`/`Y0`/`Y1`) rather than pixel indices, since `xresolution`/`yresolution` are only advisory in this codebase (a CLI width/height argument wins, same as `maxdepth`/`Sampler` type above) - a pixel-space bound resolved against the wrong resolution would be wrong, where a fraction stays correct. **Approx, not Full, on CPU**: real pbrt-v4 writes a smaller *output image* sized to just the crop rectangle; this codebase instead still writes the full `xresolution`×`yresolution` frame, with every pixel outside the crop rectangle traced as black rather than sampled (the existing per-pixel filter-weight-sum-of-zero path already produces this for free, so no separate blit/composite step was needed) - a real, deliberate simplification chosen to avoid rippling a genuinely different output image size through the PPM/EXR writers, the PNG conversion step, and the Qt GUI's preview, all of which currently assume the output image is `image_width`×`image_height`. GPU (both backends) doesn't read this at all yet - a scene that declares a non-full crop gets a console warning at scene-load time and renders the full frame regardless of `--gpu`/`--wavefront`. |
 
 ## Integrator
 

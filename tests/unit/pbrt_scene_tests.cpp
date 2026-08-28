@@ -486,6 +486,39 @@ TEST(PbrtSettingsTest, IntegratorRegularizeFalseIsReadExplicitly) {
 	EXPECT_FALSE(s.regularize);
 }
 
+TEST(PbrtSettingsTest, CropWindowDefaultsToFullFrame) {
+	const Scene s = parseOk("WorldBegin\nShape \"sphere\"\n");
+	EXPECT_DOUBLE_EQ(s.cropWindow[0], 0.0);
+	EXPECT_DOUBLE_EQ(s.cropWindow[1], 1.0);
+	EXPECT_DOUBLE_EQ(s.cropWindow[2], 0.0);
+	EXPECT_DOUBLE_EQ(s.cropWindow[3], 1.0);
+	EXPECT_FALSE(s.hasPixelBounds);
+}
+
+TEST(PbrtSettingsTest, FilmCropWindowIsRead) {
+	const Scene s = parseOk(
+		"Film \"rgb\" \"float cropwindow\" [ 0.25 0.75 0.1 0.9 ]\n"
+		"WorldBegin\n"
+		"Shape \"sphere\"\n");
+	EXPECT_DOUBLE_EQ(s.cropWindow[0], 0.25);
+	EXPECT_DOUBLE_EQ(s.cropWindow[1], 0.75);
+	EXPECT_DOUBLE_EQ(s.cropWindow[2], 0.1);
+	EXPECT_DOUBLE_EQ(s.cropWindow[3], 0.9);
+}
+
+TEST(PbrtSettingsTest, FilmPixelBoundsIsRead) {
+	const Scene s = parseOk(
+		"Film \"rgb\" \"integer xresolution\" [ 800 ] \"integer yresolution\" [ 600 ] "
+		"\"integer pixelbounds\" [ 100 700 50 550 ]\n"
+		"WorldBegin\n"
+		"Shape \"sphere\"\n");
+	EXPECT_TRUE(s.hasPixelBounds);
+	EXPECT_EQ(s.pixelBounds[0], 100);
+	EXPECT_EQ(s.pixelBounds[1], 700);
+	EXPECT_EQ(s.pixelBounds[2], 50);
+	EXPECT_EQ(s.pixelBounds[3], 550);
+}
+
 TEST(PbrtSettingsTest, SamplerDefaultsToSobolWithNoDirective) {
 	const Scene s = parseOk(
 		"WorldBegin\n"

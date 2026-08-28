@@ -342,6 +342,17 @@ struct Scene {
 	int xResolution = 1280;
 	int yResolution = 720;
 	std::string filmFilename;
+	// Film "float[4] cropwindow" (NDC fraction [x0 x1 y0 y1], default the
+	// whole frame - a {0,1,0,1} default is a no-op intersection so no
+	// separate "was it given" flag is needed the way pixelBounds needs
+	// hasPixelBounds below) and "integer[4] pixelbounds" (pixel-space
+	// [x0 x1 y0 y1], no meaningful default - absent means "don't further
+	// restrict"). pbrt-v4 allows both together, each independently
+	// narrowing the render region; resolved to concrete integer pixel
+	// bounds in pbrt_flatten.h once xResolution/yResolution are final.
+	double cropWindow[4] = {0.0, 1.0, 0.0, 1.0};
+	int pixelBounds[4] = {0, 0, 0, 0};
+	bool hasPixelBounds = false;
 	std::string integrator = "volpath";
 	// Sampler directive's type name (e.g. "sobol", "zsobol", "halton") -
 	// like `integrator` above, purely informational: nothing in this parser
@@ -926,6 +937,23 @@ private:
 			s_.xResolution = p.getInt("xresolution", s_.xResolution);
 			s_.yResolution = p.getInt("yresolution", s_.yResolution);
 			s_.filmFilename = p.getString("filename", s_.filmFilename);
+			if (const Param *cw = p.find("cropwindow")) {
+				if (cw->numbers.size() >= 4) {
+					s_.cropWindow[0] = cw->numbers[0];
+					s_.cropWindow[1] = cw->numbers[1];
+					s_.cropWindow[2] = cw->numbers[2];
+					s_.cropWindow[3] = cw->numbers[3];
+				}
+			}
+			if (const Param *pb = p.find("pixelbounds")) {
+				if (pb->numbers.size() >= 4) {
+					s_.pixelBounds[0] = static_cast<int>(pb->numbers[0]);
+					s_.pixelBounds[1] = static_cast<int>(pb->numbers[1]);
+					s_.pixelBounds[2] = static_cast<int>(pb->numbers[2]);
+					s_.pixelBounds[3] = static_cast<int>(pb->numbers[3]);
+					s_.hasPixelBounds = true;
+				}
+			}
 			return true;
 		}
 		if (d == "Sampler") {

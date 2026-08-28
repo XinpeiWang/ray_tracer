@@ -4258,6 +4258,21 @@ static bool build_loaded_pbrt_scene(
 	// as PixelFilter just above. See GpuCameraParams::regularize's own comment.
 	if (out_camera_extra) out_camera_extra->regularize = loaded.scene.regularize ? 1 : 0;
 
+	// Film "cropwindow"/"pixelbounds" - unlike PixelFilter/regularize above,
+	// neither GPU backend implements this yet (CPU-only this round, see
+	// docs/PBRT_SUPPORT.md's Integrator table); nothing reads
+	// FlatScene::cropX0/X1/Y0/Y1 here. Warn once at scene-load time so a
+	// scene that explicitly asked for a crop doesn't silently render the
+	// full frame under --gpu with no diagnostic (same "cheap warning for a
+	// real, currently-unimplemented backend gap" pattern as the regularize
+	// GPU-recursive warning in optix_interface.cpp).
+	if (loaded.scene.cropX0 > 0.0 || loaded.scene.cropX1 < 1.0 ||
+		loaded.scene.cropY0 > 0.0 || loaded.scene.cropY1 < 1.0) {
+		std::cerr << "[OptiX] Warning: scene requests a Film \"cropwindow\"/"
+					 "\"pixelbounds\" but GPU rendering does not implement it - "
+					 "rendering the full frame. Use --cpu to honor this request.\n";
+	}
+
 	// Reported, not warned about: these are sampled properly now (as
 	// GpuLightKind::Triangle), so the only thing worth saying is that they
 	// took the per-triangle path rather than the cheaper merged-quad one.

@@ -313,6 +313,92 @@ TEST(CameraTest, MaximumParameters) {
 }
 
 /**
+ * Film "cropwindow"/"pixelbounds" - crop_x1/crop_y1 default to -1 (unset),
+ * which initialize() must resolve to the full frame when nothing set them.
+ */
+TEST(CameraTest, CropDefaultsToFullFrameWhenUnset) {
+	camera cam;
+	cam.lookfrom = point3(0, 0, 0);
+	cam.lookat = point3(0, 0, 1);
+	cam.vfov = 40;
+	cam.image_width = 100;
+	cam.aspect_ratio = 2.0;  // image_height = 50
+
+	cam.initialize();
+
+	EXPECT_EQ(cam.crop_x0, 0);
+	EXPECT_EQ(cam.crop_x1, cam.image_width);
+	EXPECT_EQ(cam.crop_y0, 0);
+	EXPECT_EQ(cam.crop_y1, cam.image_height);
+}
+
+/**
+ * A caller (scene_registry.h) sets crop_x0/x1/y0/y1 in pixel space before
+ * initialize() runs - those explicit values must survive unchanged when
+ * they're already within bounds.
+ */
+TEST(CameraTest, ExplicitCropIsPreservedWhenWithinBounds) {
+	camera cam;
+	cam.lookfrom = point3(0, 0, 0);
+	cam.lookat = point3(0, 0, 1);
+	cam.vfov = 40;
+	cam.image_width = 200;
+	cam.aspect_ratio = 2.0;  // image_height = 100
+	cam.crop_x0 = 50; cam.crop_x1 = 150;
+	cam.crop_y0 = 20; cam.crop_y1 = 80;
+
+	cam.initialize();
+
+	EXPECT_EQ(cam.crop_x0, 50);
+	EXPECT_EQ(cam.crop_x1, 150);
+	EXPECT_EQ(cam.crop_y0, 20);
+	EXPECT_EQ(cam.crop_y1, 80);
+}
+
+/**
+ * An out-of-bounds explicit crop (e.g. from a rounding edge case) is
+ * clamped to the actual frame rather than left invalid.
+ */
+TEST(CameraTest, CropOutOfBoundsIsClamped) {
+	camera cam;
+	cam.lookfrom = point3(0, 0, 0);
+	cam.lookat = point3(0, 0, 1);
+	cam.vfov = 40;
+	cam.image_width = 100;
+	cam.aspect_ratio = 2.0;  // image_height = 50
+	cam.crop_x0 = -10; cam.crop_x1 = 500;
+	cam.crop_y0 = -5;  cam.crop_y1 = 500;
+
+	cam.initialize();
+
+	EXPECT_EQ(cam.crop_x0, 0);
+	EXPECT_EQ(cam.crop_x1, cam.image_width);
+	EXPECT_EQ(cam.crop_y0, 0);
+	EXPECT_EQ(cam.crop_y1, cam.image_height);
+}
+
+/**
+ * A degenerate crop (x1 <= x0) falls back to the full frame rather than
+ * rendering zero pixels.
+ */
+TEST(CameraTest, DegenerateCropFallsBackToFullFrame) {
+	camera cam;
+	cam.lookfrom = point3(0, 0, 0);
+	cam.lookat = point3(0, 0, 1);
+	cam.vfov = 40;
+	cam.image_width = 100;
+	cam.aspect_ratio = 2.0;  // image_height = 50
+	cam.crop_x0 = 60; cam.crop_x1 = 40;  // inverted -> degenerate
+
+	cam.initialize();
+
+	EXPECT_EQ(cam.crop_x0, 0);
+	EXPECT_EQ(cam.crop_x1, cam.image_width);
+	EXPECT_EQ(cam.crop_y0, 0);
+	EXPECT_EQ(cam.crop_y1, cam.image_height);
+}
+
+/**
  * Test camera when lookfrom equals lookat (degenerate case)
  */
 TEST(CameraTest, DegenerateLookFromEqualsLookAt) {

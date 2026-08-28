@@ -1164,6 +1164,64 @@ TEST(FlattenTest, RegularizeIsCarriedThroughFromTheIntegratorDirective) {
 	EXPECT_TRUE(s.regularize);
 }
 
+TEST(FlattenTest, CropWindowDefaultsToFullFrame) {
+	const FlatScene s = flattenSource(
+		"Camera \"perspective\"\nWorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_DOUBLE_EQ(s.cropX0, 0.0);
+	EXPECT_DOUBLE_EQ(s.cropX1, 1.0);
+	EXPECT_DOUBLE_EQ(s.cropY0, 0.0);
+	EXPECT_DOUBLE_EQ(s.cropY1, 1.0);
+}
+
+TEST(FlattenTest, FilmCropWindowIsCarriedThroughAsAFraction) {
+	const FlatScene s = flattenSource(
+		"Film \"rgb\" \"float cropwindow\" [ 0.25 0.75 0.1 0.9 ]\n"
+		"Camera \"perspective\"\nWorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_DOUBLE_EQ(s.cropX0, 0.25);
+	EXPECT_DOUBLE_EQ(s.cropX1, 0.75);
+	EXPECT_DOUBLE_EQ(s.cropY0, 0.1);
+	EXPECT_DOUBLE_EQ(s.cropY1, 0.9);
+}
+
+TEST(FlattenTest, FilmPixelBoundsIsConvertedToAFractionOfTheScenesOwnResolution) {
+	const FlatScene s = flattenSource(
+		"Film \"rgb\" \"integer xresolution\" [ 800 ] \"integer yresolution\" [ 400 ] "
+		"\"integer pixelbounds\" [ 200 600 100 300 ]\n"
+		"Camera \"perspective\"\nWorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_DOUBLE_EQ(s.cropX0, 200.0 / 800.0);
+	EXPECT_DOUBLE_EQ(s.cropX1, 600.0 / 800.0);
+	EXPECT_DOUBLE_EQ(s.cropY0, 100.0 / 400.0);
+	EXPECT_DOUBLE_EQ(s.cropY1, 300.0 / 400.0);
+}
+
+TEST(FlattenTest, FilmCropWindowAndPixelBoundsBothIntersect) {
+	// pixelbounds (in [0,800]) restricts x to [0.25,0.75]; cropwindow
+	// independently restricts y to [0.2,0.8] - both apply together.
+	const FlatScene s = flattenSource(
+		"Film \"rgb\" \"integer xresolution\" [ 800 ] \"integer yresolution\" [ 400 ] "
+		"\"float cropwindow\" [ 0.0 1.0 0.2 0.8 ] "
+		"\"integer pixelbounds\" [ 200 600 0 400 ]\n"
+		"Camera \"perspective\"\nWorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_DOUBLE_EQ(s.cropX0, 0.25);
+	EXPECT_DOUBLE_EQ(s.cropX1, 0.75);
+	EXPECT_DOUBLE_EQ(s.cropY0, 0.2);
+	EXPECT_DOUBLE_EQ(s.cropY1, 0.8);
+}
+
+TEST(FlattenTest, FilmCropWindowEmptyIntersectionFallsBackToFullFrameWithWarning) {
+	const FlatScene s = flattenSource(
+		"Film \"rgb\" \"float cropwindow\" [ 0.6 0.6 0.0 1.0 ]\n"
+		"Camera \"perspective\"\nWorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_DOUBLE_EQ(s.cropX0, 0.0);
+	EXPECT_DOUBLE_EQ(s.cropX1, 1.0);
+	EXPECT_DOUBLE_EQ(s.cropY0, 0.0);
+	EXPECT_DOUBLE_EQ(s.cropY1, 1.0);
+	bool sawWarning = false;
+	for (const auto &w : s.warnings)
+		if (w.message.find("cropwindow") != std::string::npos) sawWarning = true;
+	EXPECT_TRUE(sawWarning);
+}
+
 TEST(FlattenCameraTest, StaticSceneCameraIsNotAnimated) {
 	const FlatScene s = flattenSource(
 		"LookAt 0 0 -5   0 0 0   0 1 0\n"
