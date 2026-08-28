@@ -216,6 +216,150 @@ TEST(FlattenTest, NonUniformScaleOnASphereIsReportedNotSilentlyRounded) {
 	EXPECT_DOUBLE_EQ(s.spheres[0].radius, 5.0) << "largest axis is used";
 }
 
+TEST(FlattenTest, SphereWithNoClippingParamsIsNotMarkedClipped) {
+	// Every existing scene must leave Sphere::clipped false - the CPU builder
+	// keys off exactly this to keep using the plain baked center/radius path.
+	const FlatScene s = flattenSource("Shape \"sphere\" \"float radius\" [ 1 ]\n");
+	ASSERT_EQ(s.spheres.size(), 1u);
+	EXPECT_FALSE(s.spheres[0].clipped);
+}
+
+TEST(FlattenTest, SphereZMinZMaxMarksItClippedAndCarriesObjectSpaceValues) {
+	const FlatScene s = flattenSource(
+		"Translate 1 2 3\n"
+		"Shape \"sphere\" \"float radius\" [ 2 ] \"float zmin\" [ -1 ] \"float zmax\" [ 1 ]\n");
+	ASSERT_EQ(s.spheres.size(), 1u);
+	EXPECT_TRUE(s.spheres[0].clipped);
+	EXPECT_DOUBLE_EQ(s.spheres[0].radiusLocal, 2.0)
+		<< "object-space, matching the declared radius directly - not scaled";
+	EXPECT_DOUBLE_EQ(s.spheres[0].zMin, -1.0);
+	EXPECT_DOUBLE_EQ(s.spheres[0].zMax, 1.0);
+	// The object-to-world transform (needed once clipping breaks rotation
+	// invariance) must carry the real translation, not identity.
+	EXPECT_DOUBLE_EQ(s.spheres[0].xform[3], 1.0);
+	EXPECT_DOUBLE_EQ(s.spheres[0].xform[11], 3.0);
+}
+
+TEST(FlattenTest, SphereZMinZMaxAreReorderedWhenAuthoredSwapped) {
+	// Real pbrt-v4 tolerates zmin/zmax given in either order (Sphere::Create
+	// does Clamp(min(zmin,zmax),-r,r)/Clamp(max(zmin,zmax),-r,r)) - a scene
+	// (or a converter) that writes them swapped must still produce the same
+	// cap, not an empty [zMin,zMax] range that clips away the entire sphere.
+	const FlatScene s = flattenSource(
+		"Shape \"sphere\" \"float radius\" [ 1 ] \"float zmin\" [ 1 ] \"float zmax\" [ -1 ]\n");
+	ASSERT_EQ(s.spheres.size(), 1u);
+	EXPECT_FALSE(s.spheres[0].clipped)
+		<< "reordered to (-1,1), which exactly matches the full-sphere default";
+	EXPECT_DOUBLE_EQ(s.spheres[0].zMin, -1.0);
+	EXPECT_DOUBLE_EQ(s.spheres[0].zMax, 1.0);
+}
+
+TEST(FlattenTest, SphereZMinZMaxAreClampedToTheRadius) {
+	// A scene that writes an out-of-range zmax (e.g. authored against the
+	// wrong radius after an edit) must not produce a [zMin,zMax] wider than
+	// the sphere itself - real pbrt-v4 clamps to [-r,r].
+	const FlatScene s = flattenSource(
+		"Shape \"sphere\" \"float radius\" [ 1 ] \"float zmax\" [ 5 ]\n");
+	ASSERT_EQ(s.spheres.size(), 1u);
+	EXPECT_FALSE(s.spheres[0].clipped) << "clamped to 1.0, matching the full-sphere default";
+	EXPECT_DOUBLE_EQ(s.spheres[0].zMax, 1.0);
+}
+
+TEST(FlattenTest, SpherePhiMaxAloneAlsoMarksItClipped) {
+	const FlatScene s = flattenSource(
+		"Shape \"sphere\" \"float radius\" [ 1 ] \"float phimax\" [ 90 ]\n");
+	ASSERT_EQ(s.spheres.size(), 1u);
+	EXPECT_TRUE(s.spheres[0].clipped);
+	EXPECT_DOUBLE_EQ(s.spheres[0].phiMaxDeg, 90.0);
+	EXPECT_DOUBLE_EQ(s.spheres[0].zMin, -1.0) << "zmin/zmax keep their pbrt defaults";
+	EXPECT_DOUBLE_EQ(s.spheres[0].zMax, 1.0);
+}
+
+TEST(FlattenTest, SphereZMinZMaxMatchingTheFullSphereIsNotMarkedClipped) {
+	// A scene that spells out the pbrt defaults explicitly (zmin=-radius,
+	// zmax=radius, phimax=360) is still a full sphere - the equality check
+	// must treat this the same as omitting the params entirely.
+	const FlatScene s = flattenSource(
+		"Shape \"sphere\" \"float radius\" [ 3 ] \"float zmin\" [ -3 ] "
+		"\"float zmax\" [ 3 ] \"float phimax\" [ 360 ]\n");
+	ASSERT_EQ(s.spheres.size(), 1u);
+	EXPECT_FALSE(s.spheres[0].clipped);
+}
+
+TEST(FlattenTest, ClippedSphereWithMediumInterfaceWarnsButKeepsTheMediumFieldForGpu) {
+	// A clipped sphere is an open shell (a hole where the clip cut it away),
+	// which CPU's constant_medium can't bound (requires a watertight
+	// boundary - two ordered hits per ray) - see sphere_clipped_hittable.h's
+	// own comment. But GPU always renders every sphere (clipped or not) as
+	// the same full, closed, baked-radius shape, which HAS no such problem
+	// - so `medium` itself must stay the real resolved index (for GPU's own
+	// independent read of it); only the new, CPU-only
+	// `cpuMediumUnsupported` flag records the CPU-specific limitation,
+	// consulted by pbrt_cpu_builder.h alone.
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
+		"  \"rgb sigma_a\" [ 0.1 0.2 0.3 ] \"rgb sigma_s\" [ 1 2 3 ]\n"
+		"AttributeBegin\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 1 ] \"float zmin\" [ 0 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(s.spheres.size(), 1u);
+	EXPECT_TRUE(s.spheres[0].clipped);
+	EXPECT_EQ(s.spheres[0].medium, 0) << "GPU still needs the real index";
+	EXPECT_TRUE(s.spheres[0].cpuMediumUnsupported);
+	EXPECT_TRUE(warnedAbout(s, "clipped sphere"));
+}
+
+TEST(FlattenTest, UnclippedSphereWithMediumInterfaceStillWorksNormally) {
+	// Regression guard for the fix above: the new clipped-specific gate must
+	// not accidentally catch the ordinary, already-working unclipped case.
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
+		"  \"rgb sigma_a\" [ 0.1 0.2 0.3 ] \"rgb sigma_s\" [ 1 2 3 ]\n"
+		"AttributeBegin\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 1 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(s.spheres.size(), 1u);
+	EXPECT_FALSE(s.spheres[0].clipped);
+	EXPECT_EQ(s.spheres[0].medium, 0);
+	EXPECT_FALSE(s.spheres[0].cpuMediumUnsupported);
+	EXPECT_FALSE(warnedAbout(s, "clipped sphere"));
+}
+
+TEST(FlattenTest, NonUniformScaleWarningDistinguishesTheClippedCpuExactPathFromGpu) {
+	// The old, unconditional "would be an ellipsoid" wording is only true
+	// for the baked (GPU) path - a clipped sphere's CPU rendering carries
+	// the real transform and handles non-uniform scale exactly, so it needs
+	// its own, differently-worded warning rather than the misleading one.
+	const FlatScene clipped = flattenSource(
+		"Scale 1 5 1\nShape \"sphere\" \"float radius\" [ 1 ] \"float zmin\" [ 0 ]\n");
+	ASSERT_EQ(clipped.spheres.size(), 1u);
+	EXPECT_TRUE(clipped.spheres[0].clipped);
+	EXPECT_FALSE(warnedAbout(clipped, "ellipsoid"))
+		<< "the ellipsoid/largest-radius wording is false for CPU's exact clipped path";
+	EXPECT_TRUE(warnedAbout(clipped, "non-uniform scale"));
+
+	const FlatScene unclipped = flattenSource(
+		"Scale 1 5 1\nShape \"sphere\" \"float radius\" [ 1 ]\n");
+	EXPECT_TRUE(warnedAbout(unclipped, "ellipsoid"))
+		<< "unclipped spheres keep the original wording unchanged";
+}
+
+TEST(FlattenTest, ClippedSphereKeepsItsBakedCenterAndRadiusToo) {
+	// GPU deliberately keeps rendering a clipped sphere as its full,
+	// unclipped shape (OptiX's hardware sphere primitive has no clipping
+	// support) - it reads center/radius exactly like an unclipped sphere,
+	// so those must stay populated and correct even when clipped is true.
+	const FlatScene s = flattenSource(
+		"Translate 0 0 10\n"
+		"Shape \"sphere\" \"float radius\" [ 2 ] \"float zmin\" [ 0 ]\n");
+	ASSERT_EQ(s.spheres.size(), 1u);
+	EXPECT_TRUE(s.spheres[0].clipped);
+	EXPECT_DOUBLE_EQ(s.spheres[0].center[2], 10.0);
+	EXPECT_DOUBLE_EQ(s.spheres[0].radius, 2.0);
+}
+
 // ===========================================================================
 // Disks / Cylinders
 // ===========================================================================

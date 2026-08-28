@@ -80,6 +80,36 @@ struct Sphere {
 	// medium-bearing shape it accepts, rather than accepting shapes GPU
 	// would just drop.
 	int medium = -1;
+	// Partial-sphere clipping (pbrt-v4's real "float zmin"/"float zmax"/
+	// "float phimax" on Shape "sphere" - caps/wedges/hemispheres, e.g. a
+	// domed skylight cutout). Unlike a full sphere (rotation-invariant, so
+	// baked straight to center/radius above), a CLIPPED sphere is
+	// orientation-dependent, so CPU renders it with the real object-to-world
+	// transform instead - radiusLocal/zMin/zMax/xform below are in OBJECT
+	// space (pbrt-v4's own convention, matching Disk/Cylinder's own xform
+	// fields just below) and are only populated/read when clipped is true.
+	// GPU deliberately keeps using center/radius above regardless (renders
+	// a clipped sphere as its full, unclipped shape) - GPU spheres use
+	// OptiX's hardware sphere primitive, which has no clipping support, and
+	// Disk/Cylinder's own custom-intersection-program precedent for real
+	// GPU clipping was scoped out of this round; a real but rare, deliberate
+	// gap, matching this codebase's own camera-motion-blur precedent.
+	bool clipped = false;
+	double radiusLocal = 1.0;
+	double zMin = -1.0, zMax = 1.0;   // object-space, matches radiusLocal's units
+	double phiMaxDeg = 360.0;
+	double xform[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
+	// True only when clipped AND medium>=0: CPU's own clipped-sphere hittable
+	// (sphere_clipped_hittable.h) is an open shell (a hole where zmin/zmax/
+	// phimax cut it away), which constant_medium's watertight-boundary
+	// requirement can't handle - a CPU-only rendering-technique limitation,
+	// NOT something GPU shares (GPU always renders every sphere, clipped or
+	// not, as the same full closed shape `medium` above already works for).
+	// `medium` above is therefore left fully populated regardless - this
+	// flag exists purely so pbrt_cpu_builder.h can skip wrapping ITS OWN
+	// hittable in constant_medium without also blinding GPU's independent
+	// read of the same `medium` field.
+	bool cpuMediumUnsupported = false;
 };
 
 // Shape "disk" / "cylinder" - unlike Sphere (rotation-invariant, so baked
@@ -1227,6 +1257,17 @@ inline void axisScales(const pbrt_scene::Matrix4 &m, double *out) {
 		const double a = m.m[0 + c], b = m.m[4 + c], d = m.m[8 + c];
 		out[c] = std::sqrt(a * a + b * b + d * d);
 	}
+}
+
+// Sphere/Disk/Cylinder/InstancePlacement each carry their object-to-world
+// (or, for InstancePlacement, instance-placement) transform as a flat
+// double[16] rather than pbrt_scene::Matrix4 directly, since this header is
+// deliberately kept free of renderer types (see this file's own top
+// comment) while pbrt_scene::Matrix4 is itself a shared, non-renderer type
+// - this collapses the 4 independent copies of that flattening loop into
+// one.
+inline void fromMatrix4(const pbrt_scene::Matrix4 &m, double (&out)[16]) {
+	for (int i = 0; i < 16; ++i) out[i] = m.m[i];
 }
 
 inline MaterialKind materialKindFor(const std::string &type) {
@@ -2452,7 +2493,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 
 		Instance placed;
 		placed.group = group;
-		for (int i = 0; i < 16; ++i) placed.xform[i] = inst.xform.m[i];
+		fromMatrix4(inst.xform, placed.xform);
 		out.instances.push_back(placed);
 
 		// Emissive shapes in the definition, baked into world space for this
@@ -2474,18 +2515,78 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			Sphere s;
 			transformPoint(xform, 0.0, 0.0, 0.0, s.center);
 
+			// Partial-sphere clipping (pbrt-v4's real zmin/zmax/phimax) -
+			// see Sphere's own field comments for why this needs a second,
+			// object-space representation once any of these differ from a
+			// full sphere. Defaults (-r/+r/360) exactly reproduce a full
+			// sphere, so an unclipped scene never sets `clipped`. Computed
+			// before the non-uniform-scale check below, since that warning's
+			// wording depends on whether this sphere took the clipped path.
+			//
+			// zmin/zmax are reordered and both clamped to [-r,r], and phimax
+			// clamped to [0,360], matching real pbrt-v4's own tolerant
+			// Sphere::Create (Clamp(min(zmin,zmax),-r,r)/Clamp(max(...))/
+			// Clamp(phimax,0,360)) - a scene with e.g. zmin/zmax swapped (a
+			// plausible authoring or converter typo) is valid, rendering
+			// input to real pbrt-v4, not something this loader should turn
+			// into a silently-invisible sphere by feeding the clip test an
+			// empty [zMin,zMax] range.
+			const double zMinRaw = shape.params.getFloat("zmin", -r);
+			const double zMaxRaw = shape.params.getFloat("zmax", r);
+			const double zMinP = std::clamp(std::fmin(zMinRaw, zMaxRaw), -r, r);
+			const double zMaxP = std::clamp(std::fmax(zMinRaw, zMaxRaw), -r, r);
+			const double phiMaxP = std::clamp(shape.params.getFloat("phimax", 360.0), 0.0, 360.0);
+			const double epsR = 1e-9 * std::fmax(1.0, r);
+			if (std::fabs(zMinP - (-r)) > epsR || std::fabs(zMaxP - r) > epsR ||
+				std::fabs(phiMaxP - 360.0) > 1e-9) {
+				s.clipped = true;
+				s.radiusLocal = r;
+				s.zMin = zMinP;
+				s.zMax = zMaxP;
+				s.phiMaxDeg = phiMaxP;
+				fromMatrix4(xform, s.xform);
+			}
+
 			double sc[3];
 			axisScales(xform, sc);
 			const double lo = std::fmin(sc[0], std::fmin(sc[1], sc[2]));
 			const double hi = std::fmax(sc[0], std::fmax(sc[1], sc[2]));
 			if (hi - lo > 1e-6 * std::fmax(1.0, hi)) {
-				warn("a sphere carries a non-uniform scale and would be an "
-					 "ellipsoid; emitted with its largest radius instead");
+				// CPU's clipped path (sphere_clipped_hittable.h) carries the
+				// real object-to-world transform and handles non-uniform
+				// scale EXACTLY for intersection - "would be an ellipsoid"
+				// is only true for GPU, which still renders every sphere
+				// (clipped or not) from this baked center/radius.
+				warn(s.clipped
+					? "a clipped sphere carries a non-uniform scale - CPU "
+					  "renders it exactly (real transform), but GPU still "
+					  "renders it as a full sphere using its largest "
+					  "radius, so the two backends will not match here"
+					: "a sphere carries a non-uniform scale and would be an "
+					  "ellipsoid; emitted with its largest radius instead");
 			}
 			s.radius = r * hi;
+
 			s.material = shape.materialIndex;
 			s.areaLight = shape.areaLightIndex;
+			// `medium` is populated unconditionally, regardless of clipping
+			// - GPU always renders every sphere (clipped or not) as this
+			// same full, closed, baked-radius shape, which has no problem
+			// bounding a medium, so GPU's own independent read of this
+			// field must see the real index. Only CPU's OWN clipped-path
+			// hittable (sphere_clipped_hittable.h, an open shell once
+			// zmin/zmax/phimax cut it) can't honor it - cpuMediumUnsupported
+			// carries that CPU-only fact separately (see its own comment),
+			// consulted only by pbrt_cpu_builder.h.
 			s.medium = shape.insideMedium;
+			if (s.clipped && s.medium >= 0) {
+				s.cpuMediumUnsupported = true;
+				warn("a clipped sphere (zmin/zmax/phimax) has a MediumInterface, "
+					 "but its open-shell boundary can't bound a participating "
+					 "medium correctly on CPU - CPU will drop it (GPU, which "
+					 "renders every sphere as a full closed shape regardless "
+					 "of clipping, keeps it)");
+			}
 			w.spheres->push_back(s);
 			continue;
 		}
@@ -2496,7 +2597,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			d.radius = shape.params.getFloat("radius", 1.0);
 			d.innerRadius = shape.params.getFloat("innerradius", 0.0);
 			d.phiMaxDeg = shape.params.getFloat("phimax", 360.0);
-			for (int i = 0; i < 16; ++i) d.xform[i] = xform.m[i];
+			fromMatrix4(xform, d.xform);
 			d.material = shape.materialIndex;
 			d.areaLight = shape.areaLightIndex;
 			d.medium = shape.insideMedium;
@@ -2510,7 +2611,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			c.zMin = shape.params.getFloat("zmin", -1.0);
 			c.zMax = shape.params.getFloat("zmax", 1.0);
 			c.phiMaxDeg = shape.params.getFloat("phimax", 360.0);
-			for (int i = 0; i < 16; ++i) c.xform[i] = xform.m[i];
+			fromMatrix4(xform, c.xform);
 			c.material = shape.materialIndex;
 			c.areaLight = shape.areaLightIndex;
 			c.medium = shape.insideMedium;
@@ -2523,8 +2624,9 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// BilinearPatch has no `medium` field either.
 			if (shape.insideMedium >= 0) {
 				warn("shape '" + shape.type + "' has a MediumInterface, but "
-					 "this loader only supports an attached medium on sphere/"
-					 "disk/cylinder shapes - the medium will be dropped");
+					 "this loader only supports an attached medium on an "
+					 "unclipped sphere/disk/cylinder shape - the medium will "
+					 "be dropped");
 			}
 			// Single-patch form only (see BilinearPatch's own comment) - a
 			// bare "point3 P" with exactly 4 points, no "integer indices".
@@ -2558,8 +2660,9 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// visible even though real mesh-medium support isn't implemented.
 			if (shape.insideMedium >= 0) {
 				warn("shape '" + shape.type + "' has a MediumInterface, but "
-					 "this loader only supports an attached medium on sphere/"
-					 "disk/cylinder shapes - the medium will be dropped");
+					 "this loader only supports an attached medium on an "
+					 "unclipped sphere/disk/cylinder shape - the medium will "
+					 "be dropped");
 			}
 			// "texture alpha" - an alpha-cutout mask authored per-Shape (see
 			// Material::alphaTextureFilename's own comment for why it lands

@@ -427,7 +427,13 @@ struct SphereShape {
 		T frame_z_x = cx - ctx.px;
 		T frame_z_y = cy - ctx.py;
 		T frame_z_z = cz - ctx.pz;
-		normalize3(frame_z_x, frame_z_y, frame_z_z);
+		// Qualified: a TU that also pulls in bxdfs_base.h's own global
+		// normalize3<T> (e.g. via a material header) sees both that one and
+		// this file's `using namespace shapes_detail;` version, which is
+		// ambiguous for an unqualified call - SphereShape<T> was never
+		// actually instantiated in such a TU until sphere_clipped_hittable.h
+		// started using it, so this was latent rather than previously dead.
+		shapes_detail::normalize3(frame_z_x, frame_z_y, frame_z_z);
 
 		ShadingFrame<T> frame = ShadingFrame<T>::from_normal(frame_z_x, frame_z_y, frame_z_z);
 
@@ -507,7 +513,8 @@ struct SphereShape {
 		T frame_z_x = cx - ctx.px;
 		T frame_z_y = cy - ctx.py;
 		T frame_z_z = cz - ctx.pz;
-		normalize3(frame_z_x, frame_z_y, frame_z_z);
+		// Qualified - see sample_from()'s identical fix above for why.
+		shapes_detail::normalize3(frame_z_x, frame_z_y, frame_z_z);
 
 		T cos_wi = dot3(wix,wiy,wiz, frame_z_x,frame_z_y,frame_z_z);
 		if (cos_wi < cos_theta_max) return T(0);
@@ -1096,10 +1103,14 @@ struct TriangleShape {
 			nnx = b0*n0x + b1*n1x + b2*n2x;
 			nny = b0*n0y + b1*n1y + b2*n2y;
 			nnz = b0*n0z + b1*n1z + b2*n2z;
-			normalize3(nnx, nny, nnz);
+			// Qualified - see SphereShape<T>::sample_from()'s identical fix
+			// (this file, above) for why an unqualified call here is a
+			// latent ambiguity risk once this branch is ever instantiated
+			// in a TU that also pulls in bxdfs_base.h's own global normalize3<T>.
+			shapes_detail::normalize3(nnx, nny, nnz);
 		} else {
 			geometric_normal(nnx, nny, nnz);
-			normalize3(nnx, nny, nnz);
+			shapes_detail::normalize3(nnx, nny, nnz);
 		}
 
 		T pdf_val = (sa_out > T(0)) ? T(1) / sa_out : T(0);

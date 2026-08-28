@@ -188,6 +188,144 @@ TEST(PbrtCpuBuildTest, SphereIsBuiltAtItsTransformedCentreAndRadius) {
 	EXPECT_NEAR(t, 8.0, 1e-6);
 }
 
+TEST(PbrtCpuBuildTest, SphereZMaxClipsAwayTheTopCap) {
+	// A horizontal ray through the removed cap band (z=0.9, above zmax=0.5)
+	// crosses where the full sphere's surface would be (both roots land at
+	// z=0.9 since the ray never changes z) but the clipped sphere has no
+	// surface left there at all.
+	const pbrt_cpu::BuildResult full = buildFrom(
+		"Shape \"sphere\" \"float radius\" [ 1 ]\n");
+	double t = 0.0;
+	ASSERT_TRUE(castRay(full, point3(-5, 0, 0.9), vec3(1, 0, 0), t))
+		<< "sanity check: the full sphere's belt at z=0.9 is really there";
+
+	const pbrt_cpu::BuildResult clipped = buildFrom(
+		"Shape \"sphere\" \"float radius\" [ 1 ] \"float zmax\" [ 0.5 ]\n");
+	EXPECT_FALSE(castRay(clipped, point3(-5, 0, 0.9), vec3(1, 0, 0), t))
+		<< "zmax=0.5 removes the whole z=0.9 band, so this ray should miss entirely";
+}
+
+TEST(PbrtCpuBuildTest, SphereZMinFallsThroughToTheFarRootWhenTheNearOneIsClipped) {
+	// zmin=0 keeps only the upper hemisphere. A ray straight up through the
+	// centre hits the (clipped-away) bottom pole first on a full sphere, but
+	// must fall through to the (kept) top pole on the clipped one.
+	const pbrt_cpu::BuildResult full = buildFrom(
+		"Shape \"sphere\" \"float radius\" [ 1 ]\n");
+	double tFull = 0.0;
+	ASSERT_TRUE(castRay(full, point3(0, 0, -5), vec3(0, 0, 1), tFull));
+	EXPECT_NEAR(tFull, 4.0, 1e-6) << "hits the near (bottom) pole at z=-1";
+
+	const pbrt_cpu::BuildResult clipped = buildFrom(
+		"Shape \"sphere\" \"float radius\" [ 1 ] \"float zmin\" [ 0 ]\n");
+	double tClipped = 0.0;
+	ASSERT_TRUE(castRay(clipped, point3(0, 0, -5), vec3(0, 0, 1), tClipped));
+	EXPECT_NEAR(tClipped, 6.0, 1e-6)
+		<< "bottom pole is clipped away, so this must fall through to the top pole at z=1";
+}
+
+TEST(PbrtCpuBuildTest, SpherePhiMaxClipsAnAzimuthalWedgeFallingThroughToTheFarRoot) {
+	// phimax=90 keeps only phi in [0,90] degrees (pbrt-v4's atan2(y,x)
+	// convention). A ray through the centre along X hits phi=180 (rejected)
+	// on the near side and phi=0 (kept, boundary-inclusive) on the far side.
+	const pbrt_cpu::BuildResult clipped = buildFrom(
+		"Shape \"sphere\" \"float radius\" [ 1 ] \"float phimax\" [ 90 ]\n");
+	double t = 0.0;
+	ASSERT_TRUE(castRay(clipped, point3(-5, 0, 0), vec3(1, 0, 0), t));
+	EXPECT_NEAR(t, 6.0, 1e-6)
+		<< "phi=180 near root clipped away, falls through to phi=0 at x=1";
+}
+
+TEST(PbrtCpuBuildTest, ClippedSphereUnderRotationHitsAtTheExactTransformedPosition) {
+	// Mirrors DiskUnderRotationHitsAtTheExactTransformedPosition below: a
+	// clipped sphere is no longer rotation-invariant (see pbrt_flatten::
+	// Sphere's own comment), so this proves the real object-to-world
+	// transform - not just the plain baked centre/radius approximation - is
+	// what the clipped path actually uses.
+	//
+	// zmin=0 keeps local z>=0 (the "north" hemisphere). Rotate 90 degrees
+	// about X maps local (0,0,1) (kept) to world (0,-1,0), and local
+	// (0,0,-1) (clipped away) to world (0,1,0).
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Rotate 90 1 0 0\n"
+		"Shape \"sphere\" \"float radius\" [ 1 ] \"float zmin\" [ 0 ]\n");
+	double t = 0.0;
+	// A ray from world (0,5,0) toward -Y hits world (0,1,0) first - the
+	// image of the CLIPPED-away south pole - so it must fall through to the
+	// far root at world (0,-1,0), the image of the kept north pole.
+	ASSERT_TRUE(castRay(b, point3(0, 5, 0), vec3(0, -1, 0), t));
+	EXPECT_NEAR(t, 6.0, 1e-6)
+		<< "if rotation weren't applied to the clip test, this would either "
+		   "hit at t=4 (clip ignored) or miss entirely (wrong hemisphere clipped)";
+}
+
+TEST(PbrtCpuBuildTest, ClippedSphereDpdvDoesNotVanishAtThePole) {
+	// phimax=90 clips azimuthally only, leaving both poles reachable - a ray
+	// straight down onto the north pole exercises sphere_clipped_hittable's
+	// degenerate-pole fallback. Only dpdu has a genuine coordinate
+	// singularity there (like longitude lines converging at a globe's
+	// pole); dpdv (a line of latitude/theta) has a well-defined, nonzero
+	// length-rate right at the pole and must not collapse toward zero.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Shape \"sphere\" \"float radius\" [ 1 ] \"float phimax\" [ 90 ]\n");
+	const ray r(point3(0, 0, 5), vec3(0, 0, -1));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(r, interval(0.001, infinity), rec));
+	EXPECT_NEAR(rec.t, 4.0, 1e-6) << "sanity check: this ray really lands on the pole";
+	EXPECT_GT(rec.dpdv.length(), 0.5)
+		<< "dpdv should have magnitude ~(thetaZMax-thetaZMin)*radius, not vanish";
+}
+
+TEST(PbrtCpuBuildTest, ClippedSphereSampleAreaLandsOnlyOnTheVisibleCap) {
+	// zmin=0 keeps only the upper (z>=0) hemisphere. sample_area() is used
+	// directly as a light EMISSION point (not re-intersected), so a sample
+	// landing on the clipped-away z<0 region would be a real bias under
+	// --bdpt/--sppm, not just wasted noise.
+	//
+	// b.lights (unlike b.world, which build() wraps in a bvh_node - see
+	// pbrt_cpu_builder.h's own comment on that) stays a flat, unaccelerated
+	// list, exactly matching how bdpt_adapter.h/sppm_adapter.h's own
+	// real emitter-scan loops reach individual shapes' sample_area()
+	// directly - so this needs a real AreaLightSource to land there at all.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Material \"diffuse\" \"rgb reflectance\" [ 0 0 0 ]\n"
+		"AreaLightSource \"diffuse\" \"rgb L\" [ 1 1 1 ]\n"
+		"Shape \"sphere\" \"float radius\" [ 1 ] \"float zmin\" [ 0 ]\n");
+	ASSERT_EQ(b.lights->objects.size(), 1u);
+	for (double u1 = 0.0; u1 <= 1.0; u1 += 0.1) {
+		for (double u2 = 0.0; u2 <= 1.0; u2 += 0.1) {
+			AreaLightSample s;
+			ASSERT_TRUE(b.lights->objects[0]->sample_area(u1, u2, s));
+			EXPECT_GE(s.p.z(), -1e-9)
+				<< "u1=" << u1 << " u2=" << u2 << " landed outside the kept z>=0 hemisphere";
+		}
+	}
+	AreaLightSample lo, hi;
+	ASSERT_TRUE(b.lights->objects[0]->sample_area(0.0, 0.0, lo));
+	ASSERT_TRUE(b.lights->objects[0]->sample_area(1.0, 0.0, hi));
+	EXPECT_NEAR(lo.p.z(), 0.0, 1e-6) << "u1=0 should land at zmin";
+	EXPECT_NEAR(hi.p.z(), 1.0, 1e-6) << "u1=1 should land at zmax";
+}
+
+TEST(PbrtCpuBuildTest, ClippedSphereWithMediumInterfaceSkipsTheMediumWrapperButStaysReachable) {
+	// Like MediumInterfaceWrapsTheSphereInAParticipatingMedium below, the
+	// precise structural claim (s.medium stays the real index for GPU;
+	// s.cpuMediumUnsupported gates CPU's own wrapper) lives in
+	// pbrt_flatten_tests.cpp - this only confirms pbrt_cpu_builder.h's
+	// cpuMediumUnsupported check doesn't skip building/registering the
+	// clipped sphere itself, just its constant_medium wrapper.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
+		"  \"rgb sigma_a\" [ 0.1 0.1 0.1 ] \"rgb sigma_s\" [ 2 2 2 ]\n"
+		"AttributeBegin\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 1 ] \"float zmin\" [ 0 ]\n"
+		"AttributeEnd\n");
+	EXPECT_EQ(b.sphereCount, 1u);
+	double t = 0.0;
+	EXPECT_TRUE(castRay(b, point3(0, 0, -5), vec3(0, 0, 1), t))
+		<< "the clipped sphere itself must still be there, medium wrapper or not";
+}
+
 TEST(PbrtCpuBuildTest, DiskIsBuiltAtItsTransformedPositionAndRadius) {
 	const pbrt_cpu::BuildResult b = buildFrom(
 		"Translate 0 0 10\n"

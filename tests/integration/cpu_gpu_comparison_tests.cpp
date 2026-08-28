@@ -32,6 +32,7 @@
 
 #include "scene_registry.h"
 #include "disk_cylinder_hittable.h"
+#include "sphere_clipped_hittable.h"
 
 extern "C" {
 	#include "cpu_interface.h"
@@ -344,6 +345,8 @@ static int count_cpu_emissive_lights(const std::shared_ptr<hittable>& h) {
 		return std::dynamic_pointer_cast<diffuse_light>(d->get_material()) ? 1 : 0;
 	if (auto c = std::dynamic_pointer_cast<cylinder_hittable>(h))
 		return std::dynamic_pointer_cast<diffuse_light>(c->get_material()) ? 1 : 0;
+	if (auto sc = std::dynamic_pointer_cast<sphere_clipped_hittable>(h))
+		return std::dynamic_pointer_cast<diffuse_light>(sc->get_material()) ? 1 : 0;
 	return 0;
 }
 

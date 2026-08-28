@@ -134,6 +134,7 @@
 #include "onb.h"
 #include "quad.h"
 #include "sphere.h"
+#include "sphere_clipped_hittable.h"
 #include "camera.h"
 #include "color.h"
 #include "shadow_ray.h"
@@ -1357,13 +1358,14 @@ class BDPTSceneAdapter {
 		return -1;
 	}
 
-	// Only quad/sphere currently expose get_material() (both predate this
-	// file); mirrors SPPMSceneAdapter's own identically-named private
-	// helper (duplicated rather than shared -- see this file's own header
-	// comment on why this adapter avoids depending on sppm_adapter.h).
+	// quad/sphere/sphere_clipped_hittable expose get_material(); mirrors
+	// SPPMSceneAdapter's own identically-named private helper (duplicated
+	// rather than shared -- see this file's own header comment on why this
+	// adapter avoids depending on sppm_adapter.h).
 	static shared_ptr<material> hittable_material(const shared_ptr<hittable>& h) {
 		if (auto q = std::dynamic_pointer_cast<quad>(h)) return q->get_material();
 		if (auto s = std::dynamic_pointer_cast<sphere>(h)) return s->get_material();
+		if (auto sc = std::dynamic_pointer_cast<sphere_clipped_hittable>(h)) return sc->get_material();
 		return nullptr;
 	}
 };

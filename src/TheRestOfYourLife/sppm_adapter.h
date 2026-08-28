@@ -33,6 +33,7 @@
 #include "onb.h"
 #include "quad.h"
 #include "sphere.h"
+#include "sphere_clipped_hittable.h"
 #include "camera.h"
 #include "power_light_sampler.h"
 #include "color.h"
@@ -454,12 +455,13 @@ class SPPMSceneAdapter {
 	// same thread is harmless.
 	static inline thread_local SPPMShadingContext transient_ctx_{};
 
-	// Only quad/sphere currently expose get_material() (both predate this
-	// file); this is the one place that needs to know that concretely,
-	// since `hittable` itself has no material accessor.
+	// quad/sphere/sphere_clipped_hittable expose get_material(); this is the
+	// one place that needs to know that concretely, since `hittable` itself
+	// has no material accessor.
 	static shared_ptr<material> hittable_material(const shared_ptr<hittable>& h) {
 		if (auto q = std::dynamic_pointer_cast<quad>(h)) return q->get_material();
 		if (auto s = std::dynamic_pointer_cast<sphere>(h)) return s->get_material();
+		if (auto sc = std::dynamic_pointer_cast<sphere_clipped_hittable>(h)) return sc->get_material();
 		return nullptr;
 	}
 };

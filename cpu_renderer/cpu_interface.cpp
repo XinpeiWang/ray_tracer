@@ -31,6 +31,7 @@
 #include "../src/TheRestOfYourLife/bvh.h"
 #include "../src/TheRestOfYourLife/triangle.h"
 #include "../src/TheRestOfYourLife/disk_cylinder_hittable.h"
+#include "../src/TheRestOfYourLife/sphere_clipped_hittable.h"
 #include "../src/TheRestOfYourLife/constant_medium.h"
 #include "../src/TheRestOfYourLife/mesh.h"
 #include "../src/TheRestOfYourLife/transform_instance.h"
@@ -168,6 +169,7 @@ static bool spectral_scan_hittable(const hittable* h, std::string& error_out) {
 	else if (const auto* tr = dynamic_cast<const triangle*>(h)) mat = tr->get_material();
 	else if (const auto* d = dynamic_cast<const disk_hittable*>(h)) mat = d->get_material();
 	else if (const auto* c = dynamic_cast<const cylinder_hittable*>(h)) mat = c->get_material();
+	else if (const auto* sc = dynamic_cast<const sphere_clipped_hittable*>(h)) mat = sc->get_material();
 	else {
 		error_out = std::string("an unrecognized hittable wrapper/primitive type (") +
 			typeid(*h).name() + ") - add support to the --spectral material-scan "

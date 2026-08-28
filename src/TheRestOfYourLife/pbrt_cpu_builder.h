@@ -28,6 +28,7 @@
 #include "material.h"
 #include "rtw_stb_image.h"     // stbi_load() - see alphaMaskFor()'s own comment
 #include "scenes_advanced.h"   // bilinear_patch_hittable
+#include "sphere_clipped_hittable.h"
 #include "sky_light.h"
 #include "sphere.h"
 #include "triangle.h"
@@ -492,6 +493,17 @@ inline rtw_image decodePunctualLightImageFile(const std::string &resolvedPath) {
 	return rtw_image(resolvedPath.c_str());
 }
 
+// Sphere/Disk/Cylinder each carry their object-to-world transform as a flat
+// double[16] (pbrt_flatten.h) rather than pbrt_scene::Matrix4 directly, since
+// that header is deliberately kept free of renderer types (see its own file
+// comment) - this converts back at the one point each of the 3 shape kinds
+// below needs a real Matrix4 to hand to its *_hittable constructor.
+inline pbrt_scene::Matrix4 toMatrix4(const double (&m)[16]) {
+	pbrt_scene::Matrix4 xform;
+	for (int i = 0; i < 16; ++i) xform.m[i] = m[i];
+	return xform;
+}
+
 // Turns flattened geometry into a BVH-accelerated world plus the light list
 // the integrator samples. Materials are created once per (material, emission)
 // pair rather than per primitive - a million-triangle mesh with one material
@@ -785,11 +797,26 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	// ---- spheres ---------------------------------------------------------
 	for (const pbrt_flatten::Sphere &s : sphs) {
 		auto mat = cachedMaterial(s.material, s.areaLight);
-		auto sp = std::make_shared<sphere>(point3(s.center[0], s.center[1], s.center[2]),
+		std::shared_ptr<hittable> sp;
+		if (s.clipped) {
+			// Real zmin/zmax/phimax clipping - see pbrt_flatten::Sphere's
+			// own comment for why this needs the real object-to-world
+			// transform (sphere_clipped_hittable.h), unlike the plain
+			// baked center/radius path below.
+			sp = std::make_shared<sphere_clipped_hittable>(
+				s.radiusLocal, s.zMin, s.zMax, degrees_to_radians(s.phiMaxDeg), toMatrix4(s.xform), mat);
+		} else {
+			sp = std::make_shared<sphere>(point3(s.center[0], s.center[1], s.center[2]),
 										   s.radius, mat);
+		}
 		world.add(sp);
 		if (s.areaLight >= 0) lights.add(sp);
-		addMediumIfPresent(sp, s.medium);
+		// cpuMediumUnsupported (pbrt_flatten::Sphere's own comment) is a
+		// CPU-only limitation - GPU keeps using s.medium directly and
+		// unaffected, since its own sphere rendering never clips. flatten()
+		// already warned; here we just honor it by not wrapping this
+		// specific hittable in constant_medium.
+		if (!s.cpuMediumUnsupported) addMediumIfPresent(sp, s.medium);
 	}
 	out.sphereCount += sphs.size();
 
@@ -801,10 +828,8 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	// object instancing.
 	for (const pbrt_flatten::Disk &d : disks) {
 		auto mat = cachedMaterial(d.material, d.areaLight);
-		pbrt_scene::Matrix4 xform;
-		for (int i = 0; i < 16; ++i) xform.m[i] = d.xform[i];
 		auto disk = std::make_shared<disk_hittable>(
-			d.radius, d.innerRadius, d.height, degrees_to_radians(d.phiMaxDeg), xform, mat);
+			d.radius, d.innerRadius, d.height, degrees_to_radians(d.phiMaxDeg), toMatrix4(d.xform), mat);
 		world.add(disk);
 		if (d.areaLight >= 0) lights.add(disk);
 		addMediumIfPresent(disk, d.medium);
@@ -813,10 +838,8 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 
 	for (const pbrt_flatten::Cylinder &c : cylinders) {
 		auto mat = cachedMaterial(c.material, c.areaLight);
-		pbrt_scene::Matrix4 xform;
-		for (int i = 0; i < 16; ++i) xform.m[i] = c.xform[i];
 		auto cyl = std::make_shared<cylinder_hittable>(
-			c.radius, c.zMin, c.zMax, degrees_to_radians(c.phiMaxDeg), xform, mat);
+			c.radius, c.zMin, c.zMax, degrees_to_radians(c.phiMaxDeg), toMatrix4(c.xform), mat);
 		world.add(cyl);
 		if (c.areaLight >= 0) lights.add(cyl);
 		addMediumIfPresent(cyl, c.medium);

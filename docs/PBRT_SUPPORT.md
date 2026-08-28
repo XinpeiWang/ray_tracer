@@ -172,6 +172,29 @@ loader and no longer match the code:
   homogeneous medium's entry/exit pair to bound, so this is structurally
   not meaningful, not merely unimplemented, and isn't planned.
 
+- `Shape "sphere"`'s `"float zmin"`/`"float zmax"`/`"float phimax"`
+  (partial-sphere clipping - caps, wedges, hemispheres, e.g. a domed
+  skylight cutout) are now supported on **CPU only**. A full (unclipped)
+  sphere is rotation-invariant, so `pbrt_flatten.h` keeps baking it straight
+  to a world-space center+radius; a clipped one is orientation-dependent, so
+  CPU instead carries the real object-to-world transform and intersects in
+  object space against `SphereShape<T>`'s existing clipping math
+  (`sphere_clipped_hittable.h`) - exactly `disk_hittable`/`cylinder_hittable`'s
+  own technique, including their identical "exact under rotation, approximate
+  NEE weighting" character. **GPU still renders a clipped sphere as its
+  full, unclipped shape** - GPU spheres use OptiX's hardware sphere
+  primitive, which has no clipping support at all (unlike disk/cylinder,
+  which already use a custom software intersection program on GPU and could
+  in principle grow clipping the same way CPU just did); adding that is a
+  real, deliberately deferred follow-up, not an oversight. Solid-angle NEE
+  sampling of a clipped sphere used as an `AreaLightSource` (`random()`/
+  `pdf_value()`, forwarded to `SphereShape<T>::sample_from()`/`pdf_from()`)
+  samples over the FULL sphere's subtended cone, not just the visible cap -
+  a pre-existing property of that shared template, not something this
+  support adds - so this combination gets extra sampling noise (some
+  proposed light directions land on the clipped-away part and contribute
+  nothing) rather than bias; a narrow, rare combination in practice.
+
 - `Shape "curve"` (a cubic Bezier hair/fiber strand) is supported on CPU
   (`src/shared/shapes.h`'s `CurveShape<T>`, wrapped by
   `curve_shape_hittable.h` - real ray-Bezier recursive-subdivision
