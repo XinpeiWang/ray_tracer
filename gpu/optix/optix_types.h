@@ -726,6 +726,12 @@ struct TextureData {
 	// cut), so no cycle/depth guarding is needed on GPU.
 	int tex1ImageIdx = -1;
 	int tex2ImageIdx = -1;
+	// Mix only: index into LaunchParams::textures for a ONE-LEVEL-nested
+	// bare imagemap Texture bound to "amount" instead of the flat mixAmount
+	// scalar above (pbrt_flatten::Material::mixAmountTextureFilename's own
+	// comment), or -1 (the default) to use mixAmount directly. Same
+	// one-level, non-recursive scope as tex1ImageIdx/tex2ImageIdx.
+	int amountImageIdx = -1;
 };
 
 // Material data (packed for SBT).

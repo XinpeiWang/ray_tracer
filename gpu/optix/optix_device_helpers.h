@@ -1325,12 +1325,16 @@ __device__ __forceinline__ float3 sample_texture(int textureIdx, float u, float 
 	} else if (tex.kind == TextureKind::Marble) {
 		return sample_marble_texture(tex, p);
 	} else if (tex.kind == TextureKind::Mix) {
-		// Matches mix_texture::value() (texture.h) exactly: flat lerp, no
+		// Matches mix_texture::value() (texture.h) exactly: lerp, no
 		// footprint/UV dependence. tex1ImageIdx/tex2ImageIdx - see
-		// UVChecker's own identical comment just above.
+		// UVChecker's own identical comment just above. amountImageIdx (-1
+		// by default) lets "amount" itself be a one-level-nested bare
+		// imagemap instead of the flat tex.mixAmount scalar - only its .x
+		// channel is read, matching mix_texture's own amount_tex convention.
 		const float3 c1 = (tex.tex1ImageIdx >= 0) ? sampleImage(params.textures[tex.tex1ImageIdx]) : tex.color1;
 		const float3 c2 = (tex.tex2ImageIdx >= 0) ? sampleImage(params.textures[tex.tex2ImageIdx]) : tex.color2;
-		return (1.0f - tex.mixAmount) * c1 + tex.mixAmount * c2;
+		const float amt = (tex.amountImageIdx >= 0) ? sampleImage(params.textures[tex.amountImageIdx]).x : tex.mixAmount;
+		return (1.0f - amt) * c1 + amt * c2;
 	} else {
 		// Matches noise_texture::value() (texture.h:127-129) exactly:
 		// color(.5,.5,.5) * (1 + sin(scale*p.z + 10*turb(p,7))), where

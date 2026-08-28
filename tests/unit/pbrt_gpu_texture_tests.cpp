@@ -421,6 +421,38 @@ TEST(PbrtGpuTextureTest, MixReflectanceBuildsAMixTexture) {
 	EXPECT_FLOAT_EQ(tex.mixAmount, 0.25f);
 }
 
+TEST(PbrtGpuTextureTest, MixAmountImagemapBuildsAnAmountImageIdx) {
+	// pbrt-v4's real "amount" bound to a Texture (Material::
+	// mixAmountTextureFilename - see that field's own comment) must build a
+	// REAL decoded image entry and set TextureData::amountImageIdx to it,
+	// leaving tex.mixAmount unused. Uses the same real bundled image
+	// CheckerNestedImagemapTex1BuildsATex1ImageIdx above already proves
+	// decodes successfully from the repo root.
+	pbrt_flatten::Material m;
+	m.kind = pbrt_flatten::MaterialKind::Diffuse;
+	m.hasMixReflectance = true;
+	m.mixColor1[0] = 1.0; m.mixColor1[1] = 0.0; m.mixColor1[2] = 0.0;
+	m.mixColor2[0] = 0.0; m.mixColor2[1] = 0.0; m.mixColor2[2] = 1.0;
+	m.mixAmountTextureFilename = "pbrt_scenes/ganesha/textures/ganesha.png";
+	pbrt_flatten::FlatScene flat;
+	flat.materials.push_back(m);
+	pbrt_flatten::Triangle tri{};
+	tri.material = 0;
+	tri.areaLight = -1;
+	flat.triangles.push_back(tri);
+
+	SceneData scene;
+	pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(scene.materials.size(), 1u);
+	ASSERT_GE(scene.materials[0].textureIdx, 0);
+	const TextureData &tex = scene.textures[static_cast<std::size_t>(scene.materials[0].textureIdx)];
+	EXPECT_EQ(tex.kind, TextureKind::Mix);
+	ASSERT_GE(tex.amountImageIdx, 0) << "amount must resolve to a real decoded image entry";
+	const TextureData &amountImg = scene.textures[static_cast<std::size_t>(tex.amountImageIdx)];
+	EXPECT_EQ(amountImg.kind, TextureKind::Image);
+	EXPECT_GT(amountImg.width, 0);
+}
+
 // The four tests below mirror CheckerReflectanceBuildsAUVCheckerTexture/
 // FbmReflectanceBuildsAnFBmTexture/MarbleReflectanceBuildsAMarbleTexture/
 // MixReflectanceBuildsAMixTexture above exactly, just for
@@ -537,4 +569,33 @@ TEST(PbrtGpuTextureTest, CoatedDiffuseMixReflectanceBuildsAMixTexture) {
 	EXPECT_FLOAT_EQ(tex.color1.x, 1.0f);
 	EXPECT_FLOAT_EQ(tex.color2.z, 1.0f);
 	EXPECT_FLOAT_EQ(tex.mixAmount, 0.25f);
+}
+
+TEST(PbrtGpuTextureTest, CoatedDiffuseMixAmountImagemapBuildsAnAmountImageIdx) {
+	// Mirrors MixAmountImagemapBuildsAnAmountImageIdx above, for
+	// CoatedDiffuse's own separate branch.
+	pbrt_flatten::Material m;
+	m.kind = pbrt_flatten::MaterialKind::CoatedDiffuse;
+	m.hasMixReflectance = true;
+	m.mixColor1[0] = 1.0; m.mixColor1[1] = 0.0; m.mixColor1[2] = 0.0;
+	m.mixColor2[0] = 0.0; m.mixColor2[1] = 0.0; m.mixColor2[2] = 1.0;
+	m.mixAmountTextureFilename = "pbrt_scenes/ganesha/textures/ganesha.png";
+	pbrt_flatten::FlatScene flat;
+	flat.materials.push_back(m);
+	pbrt_flatten::Triangle tri{};
+	tri.material = 0;
+	tri.areaLight = -1;
+	flat.triangles.push_back(tri);
+
+	SceneData scene;
+	pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(scene.materials.size(), 1u);
+	EXPECT_EQ(scene.materials[0].type, MaterialType::CoatedDiffuse);
+	ASSERT_GE(scene.materials[0].textureIdx, 0);
+	const TextureData &tex2 = scene.textures[static_cast<std::size_t>(scene.materials[0].textureIdx)];
+	EXPECT_EQ(tex2.kind, TextureKind::Mix);
+	ASSERT_GE(tex2.amountImageIdx, 0) << "amount must resolve to a real decoded image entry";
+	const TextureData &amountImg = scene.textures[static_cast<std::size_t>(tex2.amountImageIdx)];
+	EXPECT_EQ(amountImg.kind, TextureKind::Image);
+	EXPECT_GT(amountImg.width, 0);
 }

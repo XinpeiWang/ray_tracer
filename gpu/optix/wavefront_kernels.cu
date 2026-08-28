@@ -430,9 +430,14 @@ __device__ __forceinline__ float3 wf_sample_texture(
 	} else if (tex.kind == TextureKind::Marble) {
 		return wf_sample_marble_texture(tex, p);
 	} else if (tex.kind == TextureKind::Mix) {
+		// Matches optix_device_helpers.h's sample_texture() Mix branch (and
+		// mix_texture::value(), texture.h) exactly, including
+		// amountImageIdx's one-level-nested bare imagemap support for
+		// "amount" itself.
 		const float3 c1 = (tex.tex1ImageIdx >= 0) ? sampleImage(textures[tex.tex1ImageIdx]) : tex.color1;
 		const float3 c2 = (tex.tex2ImageIdx >= 0) ? sampleImage(textures[tex.tex2ImageIdx]) : tex.color2;
-		return (1.0f - tex.mixAmount) * c1 + tex.mixAmount * c2;
+		const float amt = (tex.amountImageIdx >= 0) ? sampleImage(textures[tex.amountImageIdx]).x : tex.mixAmount;
+		return (1.0f - amt) * c1 + amt * c2;
 	} else {
 		const float turb = turbulence_simple<float>(p.x, p.y, p.z, 0.5f, 7);
 		const float s = 0.5f * (1.0f + sinf(tex.noiseScale * p.z + 10.0f * turb));

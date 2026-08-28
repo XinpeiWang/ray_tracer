@@ -357,8 +357,19 @@ class mix_texture : public texture {
     mix_texture(const color& c1, const color& c2, double amount)
         : mix_texture(make_shared<solid_color>(c1), make_shared<solid_color>(c2), amount) {}
 
+    // pbrt-v4's real "amount" bound to its own FloatTexture (e.g. an
+    // fbm-driven dirt/wear mask), instead of a flat scalar - a genuine
+    // per-point spatially-varying blend fraction rather than the same ratio
+    // everywhere. `amount` (above) stays at its 0.5 default and is unused
+    // when amount_tex is set; amount_tex's own .x() channel is read as the
+    // blend fraction, matching this codebase's established float-texture-
+    // via-.x() convention (e.g. rough_dielectric's texture-bound roughness).
+    mix_texture(shared_ptr<texture> tex1, shared_ptr<texture> tex2, shared_ptr<texture> amount_tex)
+        : tex1(tex1), tex2(tex2), amount(0.5), amount_tex(std::move(amount_tex)) {}
+
     color value(double u, double v, const point3& p) const override {
-        return (1.0 - amount) * tex1->value(u, v, p) + amount * tex2->value(u, v, p);
+        const double a = amount_tex ? amount_tex->value(u, v, p).x() : amount;
+        return (1.0 - a) * tex1->value(u, v, p) + a * tex2->value(u, v, p);
     }
 
     // Forwards the caller's real UV footprint to BOTH slots before blending
@@ -366,16 +377,24 @@ class mix_texture : public texture {
     // now that tex1/tex2 can be a real mipmap_texture, not just
     // solid_color). Unlike uv_checker_texture's single-winning-cell case,
     // mix blends both every time regardless of footprint, so both slots
-    // need the real differential lookup, not just one.
+    // need the real differential lookup, not just one. amount_tex itself is
+    // NOT looked up via value_diff() here - only its scalar blend fraction
+    // is needed, not mip-filtered colour, and a plain value() lookup avoids
+    // a third redundant differential-footprint computation on this path.
     color value_diff(double u, double v, const point3& p,
                       double dudx, double dvdx, double dudy, double dvdy) const override {
-        return (1.0 - amount) * tex1->value_diff(u, v, p, dudx, dvdx, dudy, dvdy)
-             + amount * tex2->value_diff(u, v, p, dudx, dvdx, dudy, dvdy);
+        const double a = amount_tex ? amount_tex->value(u, v, p).x() : amount;
+        return (1.0 - a) * tex1->value_diff(u, v, p, dudx, dvdx, dudy, dvdy)
+             + a * tex2->value_diff(u, v, p, dudx, dvdx, dudy, dvdy);
     }
+
+    // Accessor for testability, mirroring rough_dielectric::get_roughness_texture().
+    shared_ptr<texture> get_amount_texture() const { return amount_tex; }
 
   private:
     shared_ptr<texture> tex1, tex2;
     double amount;
+    shared_ptr<texture> amount_tex = nullptr;
 };
 
 

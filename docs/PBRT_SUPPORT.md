@@ -272,13 +272,19 @@ per-`MaterialKind` behavior.)
   read by both `sample_texture()` (recursive backend) and
   `wf_sample_texture()` (wavefront); CPU's `uv_checker_texture` already had
   a polymorphic tex1/tex2 constructor (previously unused by this loader),
-  and `mix_texture` gained one to match. `mix`'s own `"amount"` bound to a
-  texture, or a SECOND level of nesting (tex1/tex2 naming a Texture that is
-  itself a checkerboard/fbm/marble/mix, not a bare imagemap), still falls
-  back to the generic "not supported" warning — a documented scope cut, not
-  a new limitation: no bundled scene needs either, and going further would
-  need real cycle/recursion-depth guarding on GPU that a single level
-  doesn't.
+  and `mix_texture` gained one to match. `mix`'s own `"amount"` parameter is
+  ALSO now supported bound to a bare `"imagemap"` `Texture`, same one-level
+  scope as `tex1`/`tex2` — a real per-point spatially-varying blend fraction
+  (`Material::mixAmountTextureFilename`, GPU `TextureData::amountImageIdx`,
+  CPU `mix_texture`'s own texture-taking amount constructor), not a flat
+  scalar; `barcelona-pavilion`'s own `materials.pbrt` has a commented-out
+  `"float amount"` override on several `Mix` declarations, hinting the
+  original scene author considered exactly this. A SECOND level of nesting
+  (any of tex1/tex2/amount naming a Texture that is itself a checkerboard/
+  fbm/marble/mix, not a bare imagemap) still falls back to the generic "not
+  supported" warning — a documented scope cut, not a new limitation: no
+  bundled scene needs it, and going further would need real cycle/
+  recursion-depth guarding on GPU that a single level doesn't.
   **Update**: `Shape "trianglemesh"`'s own per-vertex `"point2 uv"` data
   (`"st"` is not a pbrt-v4 alias for it - confirmed against pbrt-v4 source,
   only `"uv"` is read) is now threaded through `pbrt_flatten::Triangle`

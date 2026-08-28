@@ -728,6 +728,13 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 				tex.tex1ImageIdx = getOrBuildPbrtImageTexture(m.mixTex1Filename, out, imageTextureCache);
 			if (!m.mixTex2Filename.empty())
 				tex.tex2ImageIdx = getOrBuildPbrtImageTexture(m.mixTex2Filename, out, imageTextureCache);
+			// m.mixAmountTextureFilename (Material::mixAmountTextureFilename's
+			// own comment) - a real per-point spatially-varying blend when
+			// "amount" itself nested a bare imagemap; tex.mixAmount (above)
+			// stays at its resolved flat value and is unused by
+			// sample_texture()/wf_sample_texture() when amountImageIdx >= 0.
+			if (!m.mixAmountTextureFilename.empty())
+				tex.amountImageIdx = getOrBuildPbrtImageTexture(m.mixAmountTextureFilename, out, imageTextureCache);
 			d.textureIdx = static_cast<int>(out.textures.size());
 			out.textures.push_back(tex);
 		}
@@ -905,6 +912,13 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 				tex.tex1ImageIdx = getOrBuildPbrtImageTexture(m.mixTex1Filename, out, imageTextureCache);
 			if (!m.mixTex2Filename.empty())
 				tex.tex2ImageIdx = getOrBuildPbrtImageTexture(m.mixTex2Filename, out, imageTextureCache);
+			// m.mixAmountTextureFilename (Material::mixAmountTextureFilename's
+			// own comment) - a real per-point spatially-varying blend when
+			// "amount" itself nested a bare imagemap; tex.mixAmount (above)
+			// stays at its resolved flat value and is unused by
+			// sample_texture()/wf_sample_texture() when amountImageIdx >= 0.
+			if (!m.mixAmountTextureFilename.empty())
+				tex.amountImageIdx = getOrBuildPbrtImageTexture(m.mixAmountTextureFilename, out, imageTextureCache);
 			d.textureIdx = static_cast<int>(out.textures.size());
 			out.textures.push_back(tex);
 		}

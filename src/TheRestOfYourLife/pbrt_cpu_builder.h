@@ -217,9 +217,16 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		if (m.hasMixReflectance) {
 			shared_ptr<texture> tex1 = checkerOrMixSlot(m.mixTex1Filename, m.mixColor1);
 			shared_ptr<texture> tex2 = checkerOrMixSlot(m.mixTex2Filename, m.mixColor2);
-			return std::make_shared<coated_diffuse>(
-				std::make_shared<mix_texture>(tex1, tex2, m.mixAmount),
-				m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
+			// m.mixAmountTextureFilename (Material::mixAmountTextureFilename's
+			// own comment) - a real per-point spatially-varying blend when
+			// "amount" itself nested a bare imagemap, via mix_texture's own
+			// texture-taking amount constructor; the flat-scalar constructor
+			// otherwise.
+			shared_ptr<texture> mix = m.mixAmountTextureFilename.empty()
+				? std::make_shared<mix_texture>(tex1, tex2, m.mixAmount)
+				: std::make_shared<mix_texture>(tex1, tex2,
+					std::make_shared<mipmap_texture>(m.mixAmountTextureFilename.c_str()));
+			return std::make_shared<coated_diffuse>(mix, m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
 		}
 		return std::make_shared<coated_diffuse>(albedo, m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
 	case pbrt_flatten::MaterialKind::CoatedConductor: {
@@ -361,7 +368,14 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 			// via mix_texture's own new polymorphic constructor.
 			shared_ptr<texture> tex1 = checkerOrMixSlot(m.mixTex1Filename, m.mixColor1);
 			shared_ptr<texture> tex2 = checkerOrMixSlot(m.mixTex2Filename, m.mixColor2);
-			return std::make_shared<lambertian>(std::make_shared<mix_texture>(tex1, tex2, m.mixAmount));
+			// m.mixAmountTextureFilename (Material::mixAmountTextureFilename's
+			// own comment) - a real per-point spatially-varying blend when
+			// "amount" itself nested a bare imagemap.
+			shared_ptr<texture> mix = m.mixAmountTextureFilename.empty()
+				? std::make_shared<mix_texture>(tex1, tex2, m.mixAmount)
+				: std::make_shared<mix_texture>(tex1, tex2,
+					std::make_shared<mipmap_texture>(m.mixAmountTextureFilename.c_str()));
+			return std::make_shared<lambertian>(mix);
 		}
 		break;
 	case pbrt_flatten::MaterialKind::Unsupported:

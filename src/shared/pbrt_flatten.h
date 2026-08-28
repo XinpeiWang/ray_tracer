@@ -515,13 +515,18 @@ struct Material {
 	// A Diffuse material's "reflectance" bound to a "mix" Texture (pbrt-v4
 	// SpectrumMixTexture - lerp between two colours by "amount"). tex1/tex2
 	// support the SAME one-level bare-imagemap nesting as checkerboard's own
-	// tex1/tex2 above (mixTex1Filename/mixTex2Filename below) - "amount"
+	// tex1/tex2 above (mixTex1Filename/mixTex2Filename below). "amount"
 	// ITSELF bound to a texture (e.g. driven by an fbm pattern for a dirt/
-	// wear mask, pbrt-v4's most common real use of "mix") stays unsupported
-	// and falls through to the generic "not supported" warning: that would
-	// need per-point luminance extraction from an image rather than a colour
-	// sample, real new machinery this one-level nesting pass doesn't add -
-	// no bundled scene needs it either. Defaults match pbrt-v4's
+	// wear mask, pbrt-v4's most common real use of "mix" - barcelona-
+	// pavilion's own materials.pbrt has a commented-out "float amount"
+	// override on several Mix declarations, hinting the original scene
+	// author considered exactly this) is ALSO supported now, with the same
+	// one-level-nested-bare-imagemap scope as tex1/tex2 (mixAmountTexture
+	// Filename below) - a real per-point scalar sample, not a colour, so
+	// consumer code reads only its .x() channel (mix_texture's own
+	// comment). A nested amount that resolves to anything other than a bare
+	// imagemap (procedural, or nested further) still falls through to the
+	// generic "not supported" warning. Defaults match pbrt-v4's
 	// SpectrumMixTexture exactly (tex1 black, tex2 white, amount 0.5).
 	bool hasMixReflectance = false;
 	double mixColor1[3] = {0.0, 0.0, 0.0};
@@ -529,6 +534,7 @@ struct Material {
 	std::string mixTex1Filename;  // set instead of mixColor1 when tex1 nests a bare imagemap
 	std::string mixTex2Filename;  // set instead of mixColor2 when tex2 nests a bare imagemap
 	double mixAmount = 0.5;
+	std::string mixAmountTextureFilename;  // set instead of mixAmount when "amount" nests a bare imagemap
 
 	// A pbrt Shape's own "alpha" parameter (bound to a "float"/"imagemap"
 	// Texture - e.g. barcelona-pavilion's foliage, "Shape \"plymesh\"
@@ -1488,11 +1494,12 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				}
 				if ((m.kind == MaterialKind::Diffuse || m.kind == MaterialKind::CoatedDiffuse) &&
 					tex && tex->cls == "mix") {
-					// See hasMixReflectance's own comment - tex1/tex2 each
-					// support one level of bare-imagemap nesting like
-					// checkerboard's own tex1/tex2 above; "amount" ITSELF
-					// bound to a texture stays unsupported (falls through to
-					// the generic warning below) regardless.
+					// See hasMixReflectance's own comment - tex1/tex2/amount
+					// each support one level of bare-imagemap nesting like
+					// checkerboard's own tex1/tex2 above; a nested amount
+					// that ISN'T a bare imagemap (procedural, or nested
+					// further) still falls through to the generic warning
+					// below, same as tex1/tex2's own scope.
 					const pbrt_scene::Param *tex1p = tex->params.find("tex1");
 					const pbrt_scene::Param *tex2p = tex->params.find("tex2");
 					const pbrt_scene::Param *amountp = tex->params.find("amount");
@@ -1501,8 +1508,9 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					const bool amountIsNested = amountp && amountp->type == "texture";
 					const std::string tex1Img = tex1IsNested ? resolveNestedImagemap(tex1p) : std::string();
 					const std::string tex2Img = tex2IsNested ? resolveNestedImagemap(tex2p) : std::string();
-					if (!amountIsNested &&
-						(!tex1IsNested || !tex1Img.empty()) && (!tex2IsNested || !tex2Img.empty())) {
+					const std::string amountImg = amountIsNested ? resolveNestedImagemap(amountp) : std::string();
+					if ((!tex1IsNested || !tex1Img.empty()) && (!tex2IsNested || !tex2Img.empty()) &&
+						(!amountIsNested || !amountImg.empty())) {
 						if (tex1IsNested) {
 							m.mixTex1Filename = tex1Img;
 						} else {
@@ -1515,7 +1523,11 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 							const pbrt_scene::Vec3 c2 = tex->params.getVec3("tex2", {1.0, 1.0, 1.0});
 							m.mixColor2[0] = c2.x; m.mixColor2[1] = c2.y; m.mixColor2[2] = c2.z;
 						}
-						m.mixAmount = tex->params.getFloat("amount", 0.5);
+						if (amountIsNested) {
+							m.mixAmountTextureFilename = amountImg;
+						} else {
+							m.mixAmount = tex->params.getFloat("amount", 0.5);
+						}
 						m.hasMixReflectance = true;
 						continue;   // resolved to a procedural mix, not a "not supported" warning
 					}

@@ -835,6 +835,51 @@ TEST(PbrtCpuBuildTest, DiffuseReflectanceMixBuildsAMixBackedLambertian) {
 	EXPECT_NEAR(c.z(), 0.25, 1e-9);  // (1-0.25)*0 + 0.25*1
 }
 
+TEST(PbrtCpuBuildTest, DiffuseReflectanceMixAmountImagemapBuildsATextureBackedBlend) {
+	// pbrt-v4's real "amount" bound to a Texture (e.g. an fbm-driven dirt/
+	// wear mask) - previously unsupported, now resolved the same one-level
+	// nested-bare-imagemap way as tex1/tex2 (Material::
+	// mixAmountTextureFilename's own comment). Must build a REAL
+	// mipmap_texture-backed amount, not the flat-scalar fallback.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Texture \"wear\" \"float\" \"imagemap\" \"string filename\" [ \"wear.png\" ]\n"
+		"Texture \"dirt\" \"spectrum\" \"mix\" \"rgb tex1\" [ 1 0 0 ] "
+		"\"rgb tex2\" [ 0 0 1 ] \"texture amount\" [ \"wear\" ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"dirt\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *lam = dynamic_cast<lambertian *>(rec.mat.get());
+	ASSERT_NE(lam, nullptr);
+	auto *mix = dynamic_cast<mix_texture *>(lam->get_texture().get());
+	ASSERT_NE(mix, nullptr);
+	EXPECT_NE(dynamic_cast<mipmap_texture *>(mix->get_amount_texture().get()), nullptr)
+		<< "a mix reflectance with a texture-bound amount must build a "
+		   "texture-backed blend fraction, not the flat-scalar fallback";
+}
+
+TEST(PbrtCpuBuildTest, CoatedDiffuseReflectanceMixAmountImagemapBuildsATextureBackedBlend) {
+	// Same as DiffuseReflectanceMixAmountImagemapBuildsATextureBackedBlend
+	// above, for CoatedDiffuse's own separate branch.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Texture \"wear\" \"float\" \"imagemap\" \"string filename\" [ \"wear.png\" ]\n"
+		"Texture \"dirt\" \"spectrum\" \"mix\" \"rgb tex1\" [ 1 0 0 ] "
+		"\"rgb tex2\" [ 0 0 1 ] \"texture amount\" [ \"wear\" ]\n"
+		"Material \"coateddiffuse\" \"texture reflectance\" [ \"dirt\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *cd = dynamic_cast<coated_diffuse *>(rec.mat.get());
+	ASSERT_NE(cd, nullptr);
+	auto *mix = dynamic_cast<mix_texture *>(cd->get_texture().get());
+	ASSERT_NE(mix, nullptr);
+	EXPECT_NE(dynamic_cast<mipmap_texture *>(mix->get_amount_texture().get()), nullptr)
+		<< "a mix reflectance with a texture-bound amount must build a "
+		   "texture-backed blend fraction, not the flat-scalar fallback";
+}
+
 TEST_F(CpuBuilderTempTree, DisplacementWithARealGrayscaleBumpMapWrapsInBumpMapMaterial) {
 	// Round 5 Phase 1: Material::displacementTextureFilename (see that
 	// field's own comment) must reach the CPU builder's materialFor()

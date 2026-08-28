@@ -1101,6 +1101,43 @@ TEST(FlattenMaterialTest, CoatedDiffuseReflectanceMarbleResolvesToAProceduralTex
 	EXPECT_FALSE(warnedAbout(s, "coateddiffuse"));
 }
 
+TEST(FlattenMaterialTest, MixAmountImagemapCarriesTheTextureFilename) {
+	// pbrt-v4's real "amount" bound to its own Texture (e.g. an fbm-driven
+	// dirt/wear mask) - previously always fell through to the generic "not
+	// supported" warning; now resolved the same one-level-nested-bare-
+	// imagemap way as tex1/tex2 - see Material::mixAmountTextureFilename's
+	// own comment.
+	const FlatScene s = flattenSource(
+		"Texture \"wear\" \"float\" \"imagemap\" \"string filename\" [ \"wear.png\" ]\n"
+		"Texture \"dirt\" \"spectrum\" \"mix\" \"rgb tex1\" [ 1 0 0 ] \"rgb tex2\" [ 0 0 1 ] "
+		"\"texture amount\" [ \"wear\" ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"dirt\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_TRUE(s.materials[0].hasMixReflectance);
+	EXPECT_EQ(s.materials[0].mixAmountTextureFilename, "wear.png");
+	EXPECT_FALSE(warnedAbout(s, "diffuse"));
+}
+
+TEST(FlattenMaterialTest, MixAmountBoundToACheckerboardStillWarns) {
+	// Regression guard for the "amount" nesting added alongside tex1/tex2's
+	// own: "amount" naming a Texture that is itself NOT a bare imagemap
+	// (here, a checkerboard - a second procedural texture, not a colour
+	// sample) must still fall through to the generic warning, same scope
+	// tex1/tex2 already had (see resolveNestedImagemap's own comment on why
+	// this stays one level only).
+	const FlatScene s = flattenSource(
+		"Texture \"chk\" \"spectrum\" \"checkerboard\"\n"
+		"Texture \"dirt\" \"spectrum\" \"mix\" \"rgb tex1\" [ 1 0 0 ] \"rgb tex2\" [ 0 0 1 ] "
+		"\"texture amount\" [ \"chk\" ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"dirt\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_FALSE(s.materials[0].hasMixReflectance);
+	EXPECT_TRUE(s.materials[0].mixAmountTextureFilename.empty());
+	EXPECT_TRUE(warnedAbout(s, "diffuse"));
+}
+
 TEST(FlattenMaterialTest, DiffuseTransmissionReflectanceCheckerboardStillWarns) {
 	// Regression guard for the Diffuse->CoatedDiffuse procedural-texture
 	// broadening above: DiffuseTransmission must stay excluded (no bundled
