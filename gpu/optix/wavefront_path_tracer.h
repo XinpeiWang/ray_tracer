@@ -161,7 +161,7 @@ private:
     void freeQueues();
     void launchGenerateCameraRays(int width, int height, int sampleIdx,
         const GpuCameraParams& camera, float* d_weightBuffer);
-    void launchEvaluateMaterials(int numHits, int maxDepth,
+    void launchEvaluateMaterials(int numHits, int maxDepth, bool regularize,
         const SphereData* d_spheres, unsigned int numSpheres,
         const QuadData* d_quads, unsigned int numQuads,
         const TriangleData* d_triangles, unsigned int numTriangles,
@@ -196,7 +196,7 @@ private:
     // wavefront_kernels.cu's evaluate_materials_dielectric()). No texture or
     // scene-medium/measured-BRDF params at all - neither material type ever
     // reads them.
-    void launchEvaluateMaterialsDielectric(int numHits, int maxDepth,
+    void launchEvaluateMaterialsDielectric(int numHits, int maxDepth, bool regularize,
         const SphereData* d_spheres, unsigned int numSpheres,
         const QuadData* d_quads, unsigned int numQuads,
         const TriangleData* d_triangles, unsigned int numTriangles,

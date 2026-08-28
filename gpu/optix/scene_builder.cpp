@@ -4254,6 +4254,10 @@ static bool build_loaded_pbrt_scene(
 		out_camera_extra->filterTau = static_cast<float>(pf.tau);
 	}
 
+	// Integrator "bool regularize" - same unconditional-from-the-scene shape
+	// as PixelFilter just above. See GpuCameraParams::regularize's own comment.
+	if (out_camera_extra) out_camera_extra->regularize = loaded.scene.regularize ? 1 : 0;
+
 	// Reported, not warned about: these are sampled properly now (as
 	// GpuLightKind::Triangle), so the only thing worth saying is that they
 	// took the per-triangle path rather than the cheaper merged-quad one.

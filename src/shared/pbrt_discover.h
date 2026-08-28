@@ -47,6 +47,11 @@ struct Discovered {
 	// this one IS applied at render time (see PixelFilter's own comment,
 	// pbrt_flatten.h), not just advisory.
 	pbrt_flatten::PixelFilter filter;
+	// Integrator "bool regularize" - same "IS applied at render time" shape
+	// as filter above (pbrt_flatten::FlatScene::regularize's own comment
+	// explains why: a genuine scene-authored behavior toggle, not a
+	// CLI-overridable perf knob like maxDepth/samplesPerPixel below).
+	bool regularize = false;
 	int samplesPerPixel = 16;
 	int xResolution = 1280;
 	int yResolution = 720;
@@ -186,6 +191,7 @@ inline Discovered describe(const std::string &path, const std::string &text) {
 	const pbrt_flatten::FlatScene flat = pbrt_flatten::flatten(parsed.scene);
 	d.camera = flat.camera;
 	d.filter = flat.filter;
+	d.regularize = flat.regularize;
 	d.ok = true;
 	return d;
 }

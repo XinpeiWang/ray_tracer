@@ -353,6 +353,16 @@ struct Scene {
 	std::string samplerType = "sobol";
 	int samplesPerPixel = 16;
 	int maxDepth = 5;
+	// pbrt-v4's real Integrator "bool regularize" - defaults to false
+	// (confirmed against pbrt-v4's own integrators.cpp:
+	// parameters.GetOneBool("regularize", false)). Widens a rough BSDF's
+	// GGX alpha after the path's first non-specular bounce (reduces
+	// caustics fireflies at the cost of some blur) - see
+	// src/shared/microfacet.h's RegularizeAlpha() for the actual formula,
+	// already correctly implemented and threaded through every material's
+	// scatter() as a do_regularize parameter; this field is what was
+	// missing to gate it, rather than applying it unconditionally.
+	bool regularize = false;
 	// PixelFilter directive's type name (pbrt-v4's real default is
 	// "gaussian" - confirmed against pbrt-v4/src/pbrt/scene.cpp's own
 	// SceneEntity default, NOT "box"/"triangle"/"mitchell") plus its raw
@@ -930,7 +940,9 @@ private:
 		}
 		if (d == "Integrator") {
 			if (pos_ < t_.size() && t_[pos_].quoted) { s_.integrator = t_[pos_].text; ++pos_; }
-			s_.maxDepth = readParams().getInt("maxdepth", s_.maxDepth);
+			const ParamList p = readParams();
+			s_.maxDepth = p.getInt("maxdepth", s_.maxDepth);
+			s_.regularize = p.getBool("regularize", s_.regularize);
 			return true;
 		}
 

@@ -55,7 +55,7 @@ extern "C" void wf_launch_evaluate_materials(
 	const GpuGridMedium*, const float*,
 	const GpuMeasuredTable*, unsigned int,
 	const float*, const float*, const float*, const float*,
-	float3, float, GpuSkyDistribution,
+	float3, float, GpuSkyDistribution, bool,
 	cudaStream_t);
 extern "C" void wf_launch_evaluate_materials_simple(
 	WorkQueue<HitWorkItem>, int,
@@ -89,7 +89,7 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 	const PunctualLightGPU*, unsigned int,
 	const TextureData*, const unsigned char*,
 	int,
-	float3, float, GpuSkyDistribution,
+	float3, float, GpuSkyDistribution, bool,
 	cudaStream_t);
 extern "C" void wf_launch_accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, GpuSkyDistribution, cudaStream_t);
 extern "C" void wf_launch_accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*, cudaStream_t);
@@ -1090,7 +1090,7 @@ void WavefrontPathTracer::launchGenerateCameraRays(
 }
 
 void WavefrontPathTracer::launchEvaluateMaterials(
-	int numHits, int maxDepth,
+	int numHits, int maxDepth, bool regularize,
 	const SphereData*    d_spheres,   unsigned int numSpheres,
 	const QuadData*      d_quads,     unsigned int numQuads,
 	const TriangleData*  d_triangles, unsigned int numTriangles,
@@ -1152,7 +1152,7 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		reinterpret_cast<const float*>(d_measuredData_),
 		reinterpret_cast<const float*>(d_measuredMcdf_),
 		reinterpret_cast<const float*>(d_measuredCcdf_),
-		skyColor, shadowRayEpsilon, skyDist,
+		skyColor, shadowRayEpsilon, skyDist, regularize,
 		stream_);
 }
 
@@ -1214,7 +1214,7 @@ void WavefrontPathTracer::launchEvaluateMaterialsSimple(
 // dielectricHitQueue comment. No texture params - neither material type reads
 // mat.textureIdx.
 void WavefrontPathTracer::launchEvaluateMaterialsDielectric(
-	int numHits, int maxDepth,
+	int numHits, int maxDepth, bool regularize,
 	const SphereData*    d_spheres,   unsigned int numSpheres,
 	const QuadData*      d_quads,     unsigned int numQuads,
 	const TriangleData*  d_triangles, unsigned int numTriangles,
@@ -1258,7 +1258,7 @@ void WavefrontPathTracer::launchEvaluateMaterialsDielectric(
 		reinterpret_cast<const TextureData*>(d_textures_),
 		reinterpret_cast<const unsigned char*>(d_texturePixels_),
 		maxDepth,
-		skyColor, shadowRayEpsilon, skyDist,
+		skyColor, shadowRayEpsilon, skyDist, regularize,
 		dielectricMaterialStream_);
 }
 
@@ -1546,7 +1546,7 @@ bool WavefrontPathTracer::render(
 			// Phase 3: Evaluate materials (fills shadowQueue + nextRayQueue)
 			// ------------------------------------------------------------------
 			launchEvaluateMaterials(
-				numHits, max_depth,
+				numHits, max_depth, camera.regularize != 0,
 				reinterpret_cast<const SphereData*>(d_spheres), num_spheres,
 				reinterpret_cast<const QuadData*>(d_quads),     num_quads,
 				reinterpret_cast<const TriangleData*>(d_triangles), num_triangles,
@@ -1603,7 +1603,7 @@ bool WavefrontPathTracer::render(
 			// alongside simpleMaterialStream_ before numMiss/numShadow are read.
 			// ------------------------------------------------------------------
 			launchEvaluateMaterialsDielectric(
-				numDielectricHits, max_depth,
+				numDielectricHits, max_depth, camera.regularize != 0,
 				reinterpret_cast<const SphereData*>(d_spheres), num_spheres,
 				reinterpret_cast<const QuadData*>(d_quads),     num_quads,
 				reinterpret_cast<const TriangleData*>(d_triangles), num_triangles,

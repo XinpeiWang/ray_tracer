@@ -218,6 +218,13 @@ __device__ __forceinline__ float wf_glossy_alpha(const MaterialData& mat, bool d
 	// remapRoughness's own comment) - skipping sqrtf() here matches
 	// material_pbrt.h's CPU-side roughness_or_alpha().
 	float a = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;
+	// do_regularize is the caller's already-AND'd "Integrator bool
+	// regularize (a per-launch constant) && h.any_nonspecular (per-path
+	// history)" - this file has no accessible __constant__ params global
+	// (a deliberate wavefront-architecture choice, unlike the recursive
+	// backend - see evaluate_materials()'s own `regularize` parameter for
+	// where the per-launch half of this AND comes from), so the gating
+	// happens at each call site instead of in here.
 	return do_regularize ? RegularizeAlpha(a) : a;
 }
 
@@ -230,6 +237,8 @@ __device__ __forceinline__ float wf_glossy_alpha(const MaterialData& mat, bool d
 // CPU's rough_metal has no anisotropic variant either.
 __device__ __forceinline__ float wf_glossy_alpha_v(const MaterialData& mat, bool do_regularize) {
 	float a = ResolveAnisotropicAlphaV(mat.roughnessV, mat.fuzz, mat.remapRoughness);
+	// See wf_glossy_alpha()'s own comment just above - do_regularize is
+	// already the caller's "regularize && any_nonspecular" AND.
 	return do_regularize ? RegularizeAlpha(a) : a;
 }
 
@@ -2203,7 +2212,16 @@ extern "C" __global__ void evaluate_materials(
 	// exact kernel-launch boundary (generate_camera_rays). height<=0 (the
 	// default when the scene has no image sky) makes every sky-NEE/miss call
 	// site below fall back to skyColor + uniform-sphere sampling, unchanged.
-	GpuSkyDistribution skyDist
+	GpuSkyDistribution skyDist,
+	// Integrator "bool regularize" (defaults false, matching pbrt-v4's own
+	// real default) - a single scalar pulled out of GpuCameraParams and
+	// passed independently, same established pattern as shadowRayEpsilon
+	// above (this kernel doesn't otherwise need the whole struct). A
+	// per-launch constant, unlike h.any_nonspecular (per-path history) -
+	// AND'd together at each glossy-alpha call site below (see
+	// wf_glossy_alpha()'s own comment for why the gate lives at the call
+	// sites rather than inside that shared helper).
+	bool regularize
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
@@ -2601,8 +2619,8 @@ extern "C" __global__ void evaluate_materials(
 	// below will catch the drift loudly instead of silently running stale
 	// unmaintained logic.
 	case MaterialType::Conductor: {
-		float c_alpha_x = wf_glossy_alpha(mat, (bool)h.any_nonspecular);
-		float c_alpha_y = wf_glossy_alpha_v(mat, (bool)h.any_nonspecular);
+		float c_alpha_x = wf_glossy_alpha(mat, regularize && (bool)h.any_nonspecular);
+		float c_alpha_y = wf_glossy_alpha_v(mat, regularize && (bool)h.any_nonspecular);
 		glossyAlphaForNEE = c_alpha_x;
 		glossyAlphaVForNEE = c_alpha_y;
 		float3 cn = normal;
@@ -2652,7 +2670,7 @@ extern "C" __global__ void evaluate_materials(
 		// FrConductorRGB (RoughMetalBxDF has no real Fresnel model). NOT the
 		// same material as MaterialType::Metal (fuzz-perturbed mirror, a
 		// different model - CPU's plain `metal` class).
-		float rm_alpha = wf_glossy_alpha(mat, (bool)h.any_nonspecular);
+		float rm_alpha = wf_glossy_alpha(mat, regularize && (bool)h.any_nonspecular);
 		glossyAlphaForNEE = rm_alpha;
 		float3 rmn = normal;
 		float3 rmup = (fabsf(rmn.x) > 0.9f) ? make_float3(0,1,0) : make_float3(1,0,0);
@@ -2703,8 +2721,8 @@ extern "C" __global__ void evaluate_materials(
 		const float3 cd_albedo = (mat.textureIdx >= 0)
 			? wf_sample_texture(textures, texturePixels, mat.textureIdx, h.uv_u, h.uv_v, hit_point) * mat.emissionScale
 			: mat.albedo;
-		float cd_alpha_x = wf_glossy_alpha(mat, (bool)h.any_nonspecular);
-		float cd_alpha_y = wf_glossy_alpha_v(mat, (bool)h.any_nonspecular);
+		float cd_alpha_x = wf_glossy_alpha(mat, regularize && (bool)h.any_nonspecular);
+		float cd_alpha_y = wf_glossy_alpha_v(mat, regularize && (bool)h.any_nonspecular);
 		glossyAlphaForNEE = cd_alpha_x;
 		glossyAlphaVForNEE = cd_alpha_y;
 		float3 cdn = normal;
@@ -2818,8 +2836,8 @@ extern "C" __global__ void evaluate_materials(
 		// viewing direction and skipped both the refraction-into-the-coat
 		// step and the T_in/T_out weighting entirely, making the conductor
 		// visible at full strength as if the coat weren't there.
-		float cc_alpha_x = wf_glossy_alpha(mat, (bool)h.any_nonspecular);
-		float cc_alpha_y = wf_glossy_alpha_v(mat, (bool)h.any_nonspecular);
+		float cc_alpha_x = wf_glossy_alpha(mat, regularize && (bool)h.any_nonspecular);
+		float cc_alpha_y = wf_glossy_alpha_v(mat, regularize && (bool)h.any_nonspecular);
 		glossyAlphaForNEE = cc_alpha_x;
 		glossyAlphaVForNEE = cc_alpha_y;
 		float3 ccn = normal;
@@ -3634,7 +3652,10 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	int maxDepth,
 	float3 skyColor,
 	float shadowRayEpsilon,
-	GpuSkyDistribution skyDist
+	GpuSkyDistribution skyDist,
+	// Integrator "bool regularize" - see evaluate_materials()'s own
+	// identical parameter comment above.
+	bool regularize
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
@@ -3779,10 +3800,11 @@ extern "C" __global__ void evaluate_materials_dielectric(
 		if (mat.textureIdx >= 0) {
 			const float rd_rough = wf_sample_texture(textures, texturePixels, mat.textureIdx, h.uv_u, h.uv_v, hit_point).x;
 			const float rd_a = mat.remapRoughness ? sqrtf(rd_rough) : rd_rough;
-			rd_alpha_x = rd_alpha_y = h.any_nonspecular ? RegularizeAlpha(rd_a) : rd_a;
+			rd_alpha_x = rd_alpha_y = (regularize && (bool)h.any_nonspecular)
+				? RegularizeAlpha(rd_a) : rd_a;
 		} else {
-			rd_alpha_x = wf_glossy_alpha(mat, (bool)h.any_nonspecular);
-			rd_alpha_y = wf_glossy_alpha_v(mat, (bool)h.any_nonspecular);
+			rd_alpha_x = wf_glossy_alpha(mat, regularize && (bool)h.any_nonspecular);
+			rd_alpha_y = wf_glossy_alpha_v(mat, regularize && (bool)h.any_nonspecular);
 		}
 		glossyAlphaForNEE = rd_alpha_x;
 		glossyAlphaVForNEE = rd_alpha_y;

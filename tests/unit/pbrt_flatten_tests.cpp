@@ -1151,6 +1151,19 @@ TEST(FlattenCameraTest, RealisticCameraWithNoLensfileFallsBackToPerspective) {
 // shutterclose)
 // ===========================================================================
 
+TEST(FlattenTest, RegularizeDefaultsToFalse) {
+	const FlatScene s = flattenSource(
+		"Camera \"perspective\"\nWorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_FALSE(s.regularize);
+}
+
+TEST(FlattenTest, RegularizeIsCarriedThroughFromTheIntegratorDirective) {
+	const FlatScene s = flattenSource(
+		"Integrator \"volpath\" \"bool regularize\" [ true ]\n"
+		"Camera \"perspective\"\nWorldBegin\n" + std::string(kQuadMesh));
+	EXPECT_TRUE(s.regularize);
+}
+
 TEST(FlattenCameraTest, StaticSceneCameraIsNotAnimated) {
 	const FlatScene s = flattenSource(
 		"LookAt 0 0 -5   0 0 0   0 1 0\n"

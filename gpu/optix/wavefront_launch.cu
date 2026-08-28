@@ -27,7 +27,7 @@ extern "C" __global__ void evaluate_materials(
 	const GpuGridMedium*, const float*,
 	const GpuMeasuredTable*, unsigned int,
 	const float*, const float*, const float*, const float*,
-	float3, float, GpuSkyDistribution);
+	float3, float, GpuSkyDistribution, bool);
 extern "C" __global__ void evaluate_materials_simple(
 	WorkQueue<HitWorkItem>, int,
 	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
@@ -49,7 +49,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	const PunctualLightGPU*, unsigned int,
 	const TextureData*, const unsigned char*,
 	int,
-	float3, float, GpuSkyDistribution);
+	float3, float, GpuSkyDistribution, bool);
 extern "C" __global__ void accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, GpuSkyDistribution);
 extern "C" __global__ void accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*);
 extern "C" __global__ void resolve_bssrdf_exit(
@@ -119,6 +119,7 @@ extern "C" void wf_launch_evaluate_materials(
 	float3                       skyColor,
 	float                        shadowRayEpsilon,
 	GpuSkyDistribution           skyDist,
+	bool                         regularize,
 	cudaStream_t                     stream)
 {
 	if (numHits == 0) return;
@@ -137,7 +138,7 @@ extern "C" void wf_launch_evaluate_materials(
 		d_gridMediums, d_gridData,
 		d_measuredTables, numMeasuredTables,
 		d_measuredParamValues, d_measuredData, d_measuredMcdf, d_measuredCcdf,
-		skyColor, shadowRayEpsilon, skyDist);
+		skyColor, shadowRayEpsilon, skyDist, regularize);
 }
 
 extern "C" void wf_launch_evaluate_materials_simple(
@@ -206,6 +207,7 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 	float3                       skyColor,
 	float                        shadowRayEpsilon,
 	GpuSkyDistribution           skyDist,
+	bool                         regularize,
 	cudaStream_t                     stream)
 {
 	if (numHits == 0) return;
@@ -220,7 +222,7 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 		numLights, d_punctualLights, numPunctualLights,
 		d_textures, d_texturePixels,
 		maxDepth,
-		skyColor, shadowRayEpsilon, skyDist);
+		skyColor, shadowRayEpsilon, skyDist, regularize);
 }
 
 extern "C" void wf_launch_accumulate_miss(

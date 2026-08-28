@@ -1065,6 +1065,14 @@ struct FlatScene {
 
 	Camera camera;
 	PixelFilter filter;
+	// Integrator "bool regularize" - see pbrt_scene::Scene::regularize's
+	// own comment. Applied unconditionally from the scene's own
+	// declaration (matching PixelFilter's precedent, not maxDepth/
+	// samplerType's "advisory only, CLI wins" one) since this is a
+	// genuine scene-authored behavior toggle, not a perf knob a user
+	// would want to casually override between a preview and a final
+	// render.
+	bool regularize = false;
 	std::vector<pbrt_scene::Warning> warnings;
 
 	bool empty() const {
@@ -2995,6 +3003,8 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 	out.filter.C = scene.filterParams.getFloat("C", out.filter.C);
 	out.filter.sigma = scene.filterParams.getFloat("sigma", out.filter.sigma);
 	out.filter.tau = scene.filterParams.getFloat("tau", out.filter.tau);
+
+	out.regularize = scene.regularize;
 
 	return out;
 }

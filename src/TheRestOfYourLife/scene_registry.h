@@ -314,7 +314,8 @@ namespace pbrt_scene_registry {
         const double ux = d.camera.up[0], uy = d.camera.up[1], uz = d.camera.up[2];
         const pbrt_flatten::Camera pcam = d.camera;
         const pbrt_flatten::PixelFilter pfilter = d.filter;
-        s.setup_camera = [ux, uy, uz, pcam, pfilter, path](camera_t& cam) {
+        const bool pregularize = d.regularize;
+        s.setup_camera = [ux, uy, uz, pcam, pfilter, pregularize, path](camera_t& cam) {
             cam.vup = vec3(ux, uy, uz);
             // PixelFilter - see that struct's own comment (pbrt_flatten.h)
             // for why this is applied unconditionally (unlike sampler_kind)
@@ -325,6 +326,11 @@ namespace pbrt_scene_registry {
             cam.filter_C     = pfilter.C;
             cam.filter_sigma = pfilter.sigma;
             cam.filter_tau   = pfilter.tau;
+
+            // Integrator "bool regularize" - same "applied unconditionally"
+            // shape as PixelFilter above (see pbrt_discover::Discovered::
+            // regularize's own comment).
+            cam.regularize = pregularize;
 
             // Camera motion blur (pbrt-v4's real ActiveTransform "StartTime"/
             // "EndTime" idiom) is wired through CameraConfig itself now (see

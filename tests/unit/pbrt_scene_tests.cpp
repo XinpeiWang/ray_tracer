@@ -464,6 +464,28 @@ TEST(PbrtSettingsTest, CameraFilmSamplerAndIntegratorAreRead) {
 	EXPECT_EQ(s.maxDepth, 12);
 }
 
+TEST(PbrtSettingsTest, RegularizeDefaultsToFalseMatchingPbrtV4) {
+	const Scene s = parseOk("WorldBegin\nShape \"sphere\"\n");
+	EXPECT_FALSE(s.regularize);
+}
+
+TEST(PbrtSettingsTest, IntegratorRegularizeIsRead) {
+	const Scene s = parseOk(
+		"Integrator \"volpath\" \"integer maxdepth\" [ 8 ] \"bool regularize\" [ true ]\n"
+		"WorldBegin\n"
+		"Shape \"sphere\"\n");
+	EXPECT_EQ(s.maxDepth, 8);
+	EXPECT_TRUE(s.regularize);
+}
+
+TEST(PbrtSettingsTest, IntegratorRegularizeFalseIsReadExplicitly) {
+	const Scene s = parseOk(
+		"Integrator \"volpath\" \"bool regularize\" [ false ]\n"
+		"WorldBegin\n"
+		"Shape \"sphere\"\n");
+	EXPECT_FALSE(s.regularize);
+}
+
 TEST(PbrtSettingsTest, SamplerDefaultsToSobolWithNoDirective) {
 	const Scene s = parseOk(
 		"WorldBegin\n"

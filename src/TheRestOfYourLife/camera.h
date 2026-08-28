@@ -135,6 +135,15 @@ class camera {
     double filter_C          = 1.0 / 3.0;
     double filter_sigma      = 0.5;
     double filter_tau        = 3.0;
+
+    // pbrt-v4's real Integrator "bool regularize" (defaults false, matching
+    // pbrt-v4's own default) - widens a rough BSDF's GGX alpha after the
+    // path's first non-specular bounce (see src/shared/microfacet.h's
+    // RegularizeAlpha()). Same "auto-applied from a loaded pbrt scene's own
+    // directive" shape as filter_kind above (scene_registry.h's setup_camera)
+    // - unlike max_depth/samples_per_pixel, this is a genuine scene-authored
+    // behavior toggle, not a perf knob meant to be freely CLI-overridden.
+    bool regularize = false;
     // When set, render() writes a linear (pre-tonemap), full-float EXR
     // instead of the tonemapped/quantized PPM it writes by default - see
     // exr_writer.h. Set by cpu_interface.cpp when the caller's requested
@@ -1181,10 +1190,12 @@ class camera {
             }
 
             // No scatter (pure emitter / absorber).
-            // Pass any_nonspecular as do_regularize so rough materials widen their GGX
-            // lobe on a thread-local copy -- mirrors pbrt-v4 "Possibly regularize the BSDF".
+            // do_regularize = regularize && any_nonspecular so rough materials widen
+            // their GGX lobe on a thread-local copy -- mirrors pbrt-v4's own
+            // "Possibly regularize the BSDF" gate exactly (regularize is a per-
+            // Integrator directive default false; any_nonspecular alone isn't enough).
             scatter_record srec;
-            if (!rec.mat->scatter(current_ray, rec, srec, any_nonspecular))
+            if (!rec.mat->scatter(current_ray, rec, srec, regularize && any_nonspecular))
                 break;
 
             // True pass-through (interface_material - pbrt-v4's real "no
@@ -1613,8 +1624,8 @@ class camera {
             double dispersive_eta = 0.0;
             bool scattered = disp
                 ? disp->scatter_dispersive(current_ray, rec, srec, static_cast<float>(swl.lambda[0]),
-                                            any_nonspecular, dispersive_eta)
-                : rec.mat->scatter(current_ray, rec, srec, any_nonspecular);
+                                            regularize && any_nonspecular, dispersive_eta)
+                : rec.mat->scatter(current_ray, rec, srec, regularize && any_nonspecular);
             if (!scattered)
                 break;
 

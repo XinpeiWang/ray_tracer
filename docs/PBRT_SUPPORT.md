@@ -12,7 +12,7 @@ code together, and because two real CPU/GPU divergences this codebase hit
 scene's `lensradius` at all) were exactly the shape of gap this table exists
 to make visible before it turns into a rendering bug.
 
-Four tiers, used consistently across all three tables below:
+Four tiers, used consistently across all four tables below:
 
 - **Full** — matches pbrt-v4 semantics on that backend.
 - **Approx** — a documented, deliberate simplification. The Note column
@@ -88,6 +88,18 @@ loaded pbrt scenes. GPU: `gpu/optix/scene_builder.cpp`'s
 | `spherical` — equirectangular | Full | Full | `"environment"` accepted as an alias for `"spherical"` on both. |
 | `spherical` — equalarea | Full | Full | Both do the real pbrt-v4 concentric-octahedral equal-area mapping (`EqualAreaSquareToSphere`); GPU keeps a small local device-side copy of the math on each backend rather than including the CPU header (same pattern as the rest of this codebase's device helpers). |
 | `realistic` (lens file) | Full | Full | Both parse the same lens-file format and build a real multi-element lens simulation (GPU reuses the same host-side `RealisticCamera` and flattens it to device buffers); both fall back to perspective with a warning if the lens file is missing/unreadable. |
+
+## Integrator
+
+CPU: `src/TheRestOfYourLife/camera.h` (`ray_color()`/`ray_color_spectral()`).
+GPU: `gpu/optix/wavefront_kernels.cu` (`evaluate_materials`/
+`evaluate_materials_dielectric`) for `--wavefront`; not implemented on the
+recursive backend (`gpu/optix/optix_device_helpers.h`).
+
+| pbrt param | CPU | GPU (recursive) | GPU (wavefront) | Note |
+|---|---|---|---|---|
+| `"integer maxdepth"` | Approx | Approx | Approx | Advisory only — the scene's own request has no automatic effect; the `--max_depth` CLI arg always wins, with only a console warning printed on mismatch. Same for `Sampler`'s own type (`--sampler` CLI arg wins) and the top-level `Integrator` type string itself (`--bdpt`/`--sppm`/`--mlt`/default CLI flags win) — none of the three is applied unconditionally from the scene, unlike `PixelFilter` and `regularize` below. |
+| `"bool regularize"` | Full | Unsupported | Full | pbrt-v4 defaults this `false` and, when `true`, widens a rough BSDF's GGX alpha (`RegularizeAlpha()`, `src/shared/microfacet.h`) after the first non-specular bounce on a path, reducing caustic fireflies at the cost of some bias — applied unconditionally from the scene's own declaration (same shape as `PixelFilter`, not `maxdepth`'s CLI-overridable shape), since it's a genuine scene-authored rendering-behavior toggle, not a perf knob. CPU gates all 3 real `scatter()` call sites in `camera.h`. GPU-wavefront threads it as an explicit parameter through both material-evaluation kernels (`evaluate_materials`, `evaluate_materials_dielectric`) and their host-side launch chains, since this backend has no accessible global `params` the way the recursive backend does. GPU-recursive never implemented path regularization at all — a scene explicitly requesting `"bool regularize" [true]` silently renders unregularized (fireflies un-reduced) on this one backend, an accepted, narrow, already-precedented asymmetry (matching the existing GPU-recursive-dispersion gap). BDPT/MLT/SPPM (all CPU-only) never apply regularization on any backend — a separate, pre-existing characteristic unrelated to this flag, already correctly matching pbrt-v4's off-by-default semantics with no code path to gate. |
 
 ## Stale comments corrected while building this table
 

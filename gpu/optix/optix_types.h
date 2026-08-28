@@ -1262,6 +1262,19 @@ struct GpuCameraParams {
 	// splatting - see that class's own comment for why).
 	int   filterKind;   // 0=gaussian 1=box 2=triangle 3=mitchell 4=sinc
 	float filterB, filterC, filterSigma, filterTau;
+
+	// pbrt-v4 Integrator "bool regularize" - defaults false via zero-init
+	// (matching pbrt-v4's own real default), same "no in-class initializer"
+	// convention as filterKind above and for the identical reason
+	// (__constant__ zero-initialization). Gates whether h.any_nonspecular
+	// (wavefront_types.h) actually widens a rough BSDF's GGX alpha
+	// (RegularizeAlpha(), src/shared/microfacet.h) - any_nonspecular's own
+	// path-history TRACKING stays unconditional either way (matches
+	// pbrt-v4's anyNonSpecularBounces, which is also tracked regardless of
+	// the regularize flag's value - only the widening at USE time is
+	// gated), so this is read only at wf_glossy_alpha()/RegularizeAlpha()
+	// call sites, never at the any_nonspecular propagation site itself.
+	int regularize;
 };
 
 // Launch parameters (passed to all OptiX programs)
