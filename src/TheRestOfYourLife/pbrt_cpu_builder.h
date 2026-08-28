@@ -181,12 +181,11 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		// relies on. m.textureScale (default 1.0, a no-op) wraps a
 		// scale-class Texture's own multiplier when reflectance was bound to
 		// one wrapping an imagemap (barcelona-pavilion's dominant pattern) -
-		// scaled_texture has no value_diff() override (falls back to its
-		// base's non-differential value()), so a scale-wrapped
-		// coateddiffuse texture loses mipmap_texture's own mip-level
-		// filtering under minification; an accepted quality tradeoff, same
-		// scope scaled_texture's own header comment already documents for
-		// its original AreaLightSource caller.
+		// scaled_texture has a real value_diff() override forwarding to the
+		// inner mipmap_texture's own EWA filtering (see that class's own
+		// header comment), so a scale-wrapped coateddiffuse texture keeps
+		// real mip-level filtering under minification, not just its
+		// original AreaLightSource caller's point-sampled use.
 		if (!m.textureFilename.empty()) {
 			shared_ptr<texture> tex = std::make_shared<mipmap_texture>(m.textureFilename.c_str());
 			if (m.textureScale != 1.0)
@@ -247,15 +246,22 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 	case pbrt_flatten::MaterialKind::DiffuseTransmission: {
 		// m.textureFilename/m.transmittanceTextureFilename (own comments in
 		// pbrt_flatten.h) - barcelona-pavilion's foliage binds both
-		// "reflectance" and "transmittance" to the SAME bare imagemap; bare
-		// imagemap only, no "scale"-wrap (see textureScale's own comment).
+		// "reflectance" and "transmittance" to the SAME bare imagemap; each
+		// optionally further wrapped in its own independent "scale" texture
+		// (m.textureScale/m.transmittanceTextureScale's own comments),
+		// same scaled_texture-wrap pattern as CoatedDiffuse's identical-
+		// shape case above.
 		const color transmittance(m.transmittance[0], m.transmittance[1], m.transmittance[2]);
 		if (m.textureFilename.empty() && m.transmittanceTextureFilename.empty())
 			return std::make_shared<diffuse_transmission>(albedo, transmittance);
 		shared_ptr<texture> rTex = m.textureFilename.empty()
 			? nullptr : std::make_shared<mipmap_texture>(m.textureFilename.c_str());
+		if (rTex && m.textureScale != 1.0)
+			rTex = std::make_shared<scaled_texture>(rTex, m.textureScale);
 		shared_ptr<texture> tTex = m.transmittanceTextureFilename.empty()
 			? nullptr : std::make_shared<mipmap_texture>(m.transmittanceTextureFilename.c_str());
+		if (tTex && m.transmittanceTextureScale != 1.0)
+			tTex = std::make_shared<scaled_texture>(tTex, m.transmittanceTextureScale);
 		return std::make_shared<diffuse_transmission>(albedo, transmittance, rTex, tTex);
 	}
 	case pbrt_flatten::MaterialKind::Subsurface:

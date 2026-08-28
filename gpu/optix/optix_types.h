@@ -903,6 +903,16 @@ struct MaterialData {
 	// site needs updating.
 	int transmittanceTextureIdx = -1;
 
+	// DiffuseTransmission only, paired with transmittanceTextureIdx above
+	// the same way emissionScale (below) pairs with textureIdx for that
+	// same material's own reflectance - a "scale"-class wrapper's
+	// multiplier applied to the sampled transmittance texel (pbrt_flatten::
+	// Material::transmittanceTextureScale's own comment). A separate field
+	// from emissionScale rather than reused, since a DiffuseTransmission's
+	// reflectance and transmittance can each be wrapped in independently-
+	// valued "scale" textures. Defaults to a no-op multiply.
+	float transmittanceScale = 1.0f;
+
 	// DiffuseLight only (matches CPU's diffuse_light::is_two_sided()): when
 	// true, material_emission()/its wavefront equivalent emit from both
 	// faces instead of gating on front_face. false (the default) preserves

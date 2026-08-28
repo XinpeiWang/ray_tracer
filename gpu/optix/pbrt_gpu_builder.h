@@ -754,15 +754,24 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 									  static_cast<float>(m.transmittance[2]));
 		// m.textureFilename/m.transmittanceTextureFilename (own comments in
 		// pbrt_flatten.h) - barcelona-pavilion's foliage binds both
-		// "reflectance" and "transmittance" to the SAME bare imagemap; bare
-		// imagemap only, no "scale"-wrap (see textureScale's own comment,
-		// Diffuse/CoatedDiffuse only). d.textureIdx covers reflectance (falls back
-		// to d.albedo, already assigned above), d.transmittanceTextureIdx
-		// covers transmittance (falls back to d.transmittance just above).
-		if (!m.textureFilename.empty())
+		// "reflectance" and "transmittance" to the SAME bare imagemap, each
+		// optionally further wrapped in its own independent "scale" texture
+		// (m.textureScale/m.transmittanceTextureScale's own comments).
+		// d.textureIdx covers reflectance (falls back to d.albedo, already
+		// assigned above), d.emissionScale reused for its scale (same
+		// reuse Lambertian/CoatedDiffuse's own reflectance already uses);
+		// d.transmittanceTextureIdx covers transmittance (falls back to
+		// d.transmittance just above), d.transmittanceScale (a dedicated
+		// field, not reused - see its own comment in optix_types.h) covers
+		// its independent scale.
+		if (!m.textureFilename.empty()) {
 			d.textureIdx = getOrBuildPbrtImageTexture(m.textureFilename, out, imageTextureCache);
-		if (!m.transmittanceTextureFilename.empty())
+			d.emissionScale = static_cast<float>(m.textureScale);
+		}
+		if (!m.transmittanceTextureFilename.empty()) {
 			d.transmittanceTextureIdx = getOrBuildPbrtImageTexture(m.transmittanceTextureFilename, out, imageTextureCache);
+			d.transmittanceScale = static_cast<float>(m.transmittanceTextureScale);
+		}
 		break;
 	case pbrt_flatten::MaterialKind::CoatedConductor:
 		// A recognized named conductor spectrum or an explicit "rgb eta"/

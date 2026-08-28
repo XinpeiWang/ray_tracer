@@ -1125,6 +1125,11 @@ class diffuse_transmission : public material {
     color get_reflectance()   const { return R; }
     color get_transmittance() const { return T; }
 
+    // Accessors for testability, mirroring coated_diffuse::get_texture()/
+    // rough_dielectric::get_roughness_texture().
+    shared_ptr<texture> get_reflectance_texture()   const { return rTex; }
+    shared_ptr<texture> get_transmittance_texture() const { return tTex; }
+
     // See material::is_shadow_transmissive()'s comment - matches
     // optix_anyhit_shadow.h's MaterialType::DiffuseTransmission skip.
     // Unconditional, not weighted by R vs T, matching that same GPU

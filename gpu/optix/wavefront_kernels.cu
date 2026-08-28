@@ -2934,9 +2934,11 @@ extern "C" __global__ void evaluate_materials(
 		// mat.albedo/mat.emission fallback - mirrors optix_device_helpers.h's
 		// identical recursive-backend case.
 		float3 R = (mat.textureIdx >= 0)
-			? wf_sample_texture(textures, texturePixels, mat.textureIdx, h.uv_u, h.uv_v, hit_point) : mat.albedo;
+			? wf_sample_texture(textures, texturePixels, mat.textureIdx, h.uv_u, h.uv_v, hit_point) * mat.emissionScale
+			: mat.albedo;
 		float3 T_col = (mat.transmittanceTextureIdx >= 0)
-			? wf_sample_texture(textures, texturePixels, mat.transmittanceTextureIdx, h.uv_u, h.uv_v, hit_point) : mat.emission;
+			? wf_sample_texture(textures, texturePixels, mat.transmittanceTextureIdx, h.uv_u, h.uv_v, hit_point) * mat.transmittanceScale
+			: mat.emission;
 		float pr = fmaxf(R.x, fmaxf(R.y, R.z));
 		float pt = fmaxf(T_col.x, fmaxf(T_col.y, T_col.z));
 		if (pr + pt <= 0.0f) { scattered = false; break; }

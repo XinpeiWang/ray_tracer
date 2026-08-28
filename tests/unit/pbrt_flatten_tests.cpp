@@ -1367,11 +1367,10 @@ TEST(FlattenMaterialTest, DiffuseTransmissionReflectanceAndTransmittanceUseDisti
 	EXPECT_EQ(s.materials[0].transmittanceTextureFilename, "leaf-t.png");
 }
 
-TEST(FlattenMaterialTest, DiffuseTransmissionReflectanceScaleWrappedImagemapStillWarns) {
-	// Deliberate scope cut (Material::textureScale's own comment): the
-	// "scale"-unwrap stays CoatedDiffuse-only, since neither Diffuse's nor
-	// DiffuseTransmission's own consumer code applies a reflectance scale
-	// factor - no bundled scene needs it here either.
+TEST(FlattenMaterialTest, DiffuseTransmissionReflectanceScaleWrappedImagemapCarriesTheScale) {
+	// "scale"-unwrap used to be CoatedDiffuse-only; now also resolved for
+	// DiffuseTransmission's own reflectance - see Material::textureScale's
+	// own comment.
 	const FlatScene s = flattenSource(
 		"Texture \"leaf\" \"spectrum\" \"imagemap\" \"string filename\" [ \"leaf.png\" ]\n"
 		"Texture \"leaf-scaled\" \"spectrum\" \"scale\" \"texture tex\" [ \"leaf\" ] "
@@ -1379,8 +1378,32 @@ TEST(FlattenMaterialTest, DiffuseTransmissionReflectanceScaleWrappedImagemapStil
 		"Material \"diffusetransmission\" \"texture reflectance\" [ \"leaf-scaled\" ]\n"
 		+ std::string(kQuadMesh));
 	ASSERT_EQ(s.materials.size(), 1u);
-	EXPECT_TRUE(s.materials[0].textureFilename.empty());
-	EXPECT_TRUE(warnedAbout(s, "diffusetransmission"));
+	EXPECT_EQ(s.materials[0].textureFilename, "leaf.png");
+	EXPECT_DOUBLE_EQ(s.materials[0].textureScale, 0.5);
+	EXPECT_FALSE(warnedAbout(s, "diffusetransmission"));
+}
+
+TEST(FlattenMaterialTest, DiffuseTransmissionTransmittanceScaleWrappedImagemapCarriesItsOwnScale) {
+	// Same broadening, for transmittance specifically - and with a
+	// DIFFERENT scale value than reflectance's own, to confirm the two are
+	// resolved independently (Material::transmittanceTextureScale's own
+	// comment) rather than accidentally sharing one scale.
+	const FlatScene s = flattenSource(
+		"Texture \"leaf-r\" \"spectrum\" \"imagemap\" \"string filename\" [ \"leaf-r.png\" ]\n"
+		"Texture \"leaf-r-scaled\" \"spectrum\" \"scale\" \"texture tex\" [ \"leaf-r\" ] "
+		"\"float scale\" [ 0.5 ]\n"
+		"Texture \"leaf-t\" \"spectrum\" \"imagemap\" \"string filename\" [ \"leaf-t.png\" ]\n"
+		"Texture \"leaf-t-scaled\" \"spectrum\" \"scale\" \"texture tex\" [ \"leaf-t\" ] "
+		"\"float scale\" [ 0.8 ]\n"
+		"Material \"diffusetransmission\" \"texture reflectance\" [ \"leaf-r-scaled\" ] "
+		"\"texture transmittance\" [ \"leaf-t-scaled\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].textureFilename, "leaf-r.png");
+	EXPECT_DOUBLE_EQ(s.materials[0].textureScale, 0.5);
+	EXPECT_EQ(s.materials[0].transmittanceTextureFilename, "leaf-t.png");
+	EXPECT_DOUBLE_EQ(s.materials[0].transmittanceTextureScale, 0.8);
+	EXPECT_FALSE(warnedAbout(s, "diffusetransmission"));
 }
 
 TEST(FlattenMaterialTest, DielectricRoughnessImagemapIsThreadedThrough) {
@@ -1416,9 +1439,10 @@ TEST(FlattenMaterialTest, DielectricRoughnessConstantTextureResolvesToFlatNumber
 }
 
 TEST(FlattenMaterialTest, DielectricRoughnessScaleWrappedImagemapStillWarns) {
-	// Deliberate scope cut, same shape as DiffuseTransmissionReflectance
-	// ScaleWrappedImagemapStillWarns above: no "scale"-wrap support for
-	// Dielectric's own roughness texture-binding.
+	// Deliberate scope cut: no "scale"-wrap support for Dielectric's own
+	// roughness texture-binding (unlike Diffuse/CoatedDiffuse/
+	// DiffuseTransmission's own reflectance/transmittance, which all got
+	// this above).
 	const FlatScene s = flattenSource(
 		"Texture \"scratch\" \"float\" \"imagemap\" \"string filename\" [ \"scratch.png\" ]\n"
 		"Texture \"scratch-scaled\" \"float\" \"scale\" \"texture tex\" [ \"scratch\" ] "

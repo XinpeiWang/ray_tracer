@@ -2659,9 +2659,11 @@ __device__ __forceinline__ void shade_material(
 			// already in scope in this function (same pattern CoatedDiffuse's
 			// own case a few switch-arms away uses).
 			float3 R = (mat.textureIdx >= 0)
-				? sample_texture(mat.textureIdx, uv_u, uv_v, hit_point) : mat.albedo;
+				? sample_texture(mat.textureIdx, uv_u, uv_v, hit_point) * mat.emissionScale
+				: mat.albedo;
 			float3 T_col = (mat.transmittanceTextureIdx >= 0)
-				? sample_texture(mat.transmittanceTextureIdx, uv_u, uv_v, hit_point) : mat.emission;
+				? sample_texture(mat.transmittanceTextureIdx, uv_u, uv_v, hit_point) * mat.transmittanceScale
+				: mat.emission;
 			// `emission` (the OUT parameter, not T_col above) is already
 			// zero on entry - the caller reads it via material_emission(),
 			// which guards the mat.emission union-slot read behind

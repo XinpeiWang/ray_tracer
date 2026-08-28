@@ -286,6 +286,43 @@ TEST(MixTextureDifferentials, ValueDiffForwardsFootprintToNestedMipmapTexture) {
     EXPECT_LT(blurred_extremeness, 0.15);
 }
 
+TEST(ScaledTextureDifferentials, ValueDiffForwardsFootprintToInnerMipmapTexture) {
+    // Same regression guard as UvCheckerTextureDifferentials/MixTexture
+    // Differentials above, for scaled_texture's own value_diff() override -
+    // needed since a scale-wrapped reflectance/transmittance (CoatedDiffuse/
+    // Diffuse/DiffuseTransmission's own "scale"-class Texture support) wraps
+    // a real mipmap_texture, not just diffuse_light's original point-sampled
+    // AreaLightSource use.
+    const int w = 32, h = 32;
+    std::vector<float> pixels(w * h * 3);
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) {
+            bool black = ((x/4 + y/4) % 2) == 0;
+            float v = black ? 0.0f : 1.0f;
+            int idx = (y * w + x) * 3;
+            pixels[idx+0] = v; pixels[idx+1] = v; pixels[idx+2] = v;
+        }
+    rtw_image img(w, h, pixels.data());
+    ASSERT_GT(img.height(), 0);
+    auto mip = std::make_shared<mipmap_texture>(std::move(img));
+
+    scaled_texture scaled(mip, 0.5);
+
+    color point_sample = scaled.value_diff(0.3, 0.3, point3(0, 0, 0), 0, 0, 0, 0);
+    double point_extremeness = std::fabs(point_sample.x() - 0.25);   // 0.5 * |0 or 1 - 0.5|
+
+    color blurred = scaled.value_diff(0.3, 0.3, point3(0, 0, 0), 1.0, 0.0, 0.0, 1.0);
+    double blurred_extremeness = std::fabs(blurred.x() - 0.25);
+
+    EXPECT_LT(blurred_extremeness, point_extremeness);
+    EXPECT_LT(blurred_extremeness, 0.075);   // half of UvCheckerTextureDifferentials's own 0.15 bound, matching the 0.5 scale
+
+    // The scale itself must still apply under a real footprint, not just a
+    // point sample - confirms value_diff() multiplies by `scale`, not just
+    // forwarding the inner texture's own unscaled value_diff() result.
+    EXPECT_NEAR(blurred.x(), 0.5 * mip->value_diff(0.3, 0.3, point3(0, 0, 0), 1.0, 0.0, 0.0, 1.0).x(), 1e-9);
+}
+
 TEST(TextureBaseClass, ValueDiffDefaultsToValueForNonImageTextures) {
     solid_color tex(color(0.2, 0.4, 0.6));
     color v  = tex.value(0.1, 0.2, point3(0,0,0));

@@ -234,17 +234,18 @@ per-`MaterialKind` behavior.)
   (`MaterialData::transmittanceTextureIdx`, a separate field — see
   `Material::transmittanceTextureFilename`) — `barcelona-pavilion`'s foliage
   binds both `"reflectance"` and `"transmittance"` to the identical bare
-  imagemap, the motivating (and only bundled) case; no `"scale"`-wrap support
-  for either parameter on this kind, since no bundled scene needs it. A
-  `"scale"`-wrapped `"imagemap"` (`barcelona-pavilion`'s own dominant pattern
-  for both `coateddiffuse` and plain `diffuse` surfaces) is supported for
-  `Diffuse`/`CoatedDiffuse` (scale folded into the reused `emissionScale`
-  field on GPU, `scaled_texture` on CPU — see `Material::textureScale`) —
-  `DiffuseTransmission` still falls back to a flat colour with a warning for
-  the scale-wrapped case, since none of its own consumer code (CPU or GPU)
-  applies a reflectance scale factor at all. `Diffuse`/`CoatedDiffuse` (not
-  `DiffuseTransmission`, same scope as the `"scale"`-wrap above) additionally
-  support `"checkerboard"`/`"fbm"`/`"marble"`/`"mix"` procedural textures
+  imagemap, the motivating (and only bundled) case. A `"scale"`-wrapped
+  `"imagemap"` (`barcelona-pavilion`'s own dominant pattern for both
+  `coateddiffuse` and plain `diffuse` surfaces) is supported for `Diffuse`/
+  `CoatedDiffuse`/`DiffuseTransmission` alike now — reflectance's scale
+  folded into the reused `emissionScale` field on GPU, `scaled_texture` on
+  CPU (`Material::textureScale`); `DiffuseTransmission`'s own transmittance
+  gets an INDEPENDENT scale (`MaterialData::transmittanceScale`, a
+  dedicated GPU field rather than reused, since a scene can wrap
+  reflectance and transmittance in two differently-valued `"scale"`
+  textures — `Material::transmittanceTextureScale` on CPU). `Diffuse`/
+  `CoatedDiffuse` (not `DiffuseTransmission`, still) additionally support
+  `"checkerboard"`/`"fbm"`/`"marble"`/`"mix"` procedural textures
   (flat-literal `tex1`/`tex2` only, no nested texture references) — on GPU
   this needed no shading-code changes at all, since `sample_texture()`/
   `wf_sample_texture()` already dispatch purely on the resolved

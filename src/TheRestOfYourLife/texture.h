@@ -326,11 +326,17 @@ class marble_texture : public texture {
 // filename-backed light builds a mipmap_texture directly rather than going
 // through pbrt_flatten::Material::color the way flat-L lights do, so there
 // is no existing place to fold the multiply in - this wraps any inner
-// texture with one. No value_diff() override: its only caller
-// (diffuse_light) always uses point-sampled emission for this wrapper (see
-// diffuse_light's own point_sample comment), so the base class's
-// value_diff()->value() default already does the right thing and stays
-// reachable, unlike a dedicated override would be.
+// texture with one. Real value_diff() override forwarding the caller's
+// footprint to the inner texture then scaling the result - this wrapper's
+// original only caller (diffuse_light) never needed it (always
+// point-sampled, see that class's own point_sample comment), but later
+// callers do (coated_diffuse/diffuse_transmission's own scale-wrapped
+// reflectance/transmittance, each read via value_diff() with real
+// screen-space derivatives) - without this override, wrapping a
+// mipmap_texture in scaled_texture would have silently dropped its EWA
+// anisotropic mip filtering for every one of those callers, falling back to
+// a single point sample and visibly aliasing on a minified/grazing-angle
+// scale-wrapped texture.
 // ---------------------------------------------------------------------------
 class scaled_texture : public texture {
   public:
@@ -339,6 +345,12 @@ class scaled_texture : public texture {
     color value(double u, double v, const point3& p) const override {
         if (scale == 0.0) return color(0,0,0);   // skip the inner lookup entirely -- "scale" 0 disables a light
         return scale * inner->value(u, v, p);
+    }
+
+    color value_diff(double u, double v, const point3& p,
+                      double dudx, double dvdx, double dudy, double dvdy) const override {
+        if (scale == 0.0) return color(0,0,0);   // same short-circuit as value() above
+        return scale * inner->value_diff(u, v, p, dudx, dvdx, dudy, dvdy);
     }
 
   private:

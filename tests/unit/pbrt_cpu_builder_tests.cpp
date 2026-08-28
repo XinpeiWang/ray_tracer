@@ -921,6 +921,53 @@ TEST(PbrtCpuBuildTest, DiffuseTransmissionBuildsTheRealMaterialNotLambertian) {
 		   "diffuse_transmission class, not silently fall back to lambertian";
 }
 
+TEST(PbrtCpuBuildTest, DiffuseTransmissionReflectanceScaleWrappedImagemapAppliesTheScale) {
+	// "scale"-unwrap used to be CoatedDiffuse-only; now also resolved for
+	// DiffuseTransmission's own reflectance - Material::textureScale's own
+	// comment.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Texture \"leaf\" \"spectrum\" \"imagemap\" \"string filename\" [ \"leaf.png\" ]\n"
+		"Texture \"leaf-scaled\" \"spectrum\" \"scale\" \"texture tex\" [ \"leaf\" ] "
+		"\"float scale\" [ 0.5 ]\n"
+		"Material \"diffusetransmission\" \"texture reflectance\" [ \"leaf-scaled\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *dt = dynamic_cast<diffuse_transmission *>(rec.mat.get());
+	ASSERT_NE(dt, nullptr);
+	auto *scaled = dynamic_cast<scaled_texture *>(dt->get_reflectance_texture().get());
+	ASSERT_NE(scaled, nullptr)
+		<< "a scale-wrapped imagemap reflectance must build a scaled_texture "
+		   "wrapping the real mipmap_texture, not just the bare image";
+}
+
+TEST(PbrtCpuBuildTest, DiffuseTransmissionTransmittanceScaleWrappedImagemapAppliesItsOwnScale) {
+	// Same as the reflectance test above, for transmittance's own
+	// independent scale (Material::transmittanceTextureScale's own
+	// comment) - a DIFFERENT scale value than reflectance's own, to catch
+	// the two scales being accidentally cross-applied.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"Texture \"leaf-r\" \"spectrum\" \"imagemap\" \"string filename\" [ \"leaf-r.png\" ]\n"
+		"Texture \"leaf-t\" \"spectrum\" \"imagemap\" \"string filename\" [ \"leaf-t.png\" ]\n"
+		"Texture \"leaf-t-scaled\" \"spectrum\" \"scale\" \"texture tex\" [ \"leaf-t\" ] "
+		"\"float scale\" [ 0.5 ]\n"
+		"Material \"diffusetransmission\" \"texture reflectance\" [ \"leaf-r\" ] "
+		"\"texture transmittance\" [ \"leaf-t-scaled\" ]\n"
+		+ std::string(kQuad));
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
+							 interval(0.001, infinity), rec));
+	auto *dt = dynamic_cast<diffuse_transmission *>(rec.mat.get());
+	ASSERT_NE(dt, nullptr);
+	EXPECT_EQ(dynamic_cast<scaled_texture *>(dt->get_reflectance_texture().get()), nullptr)
+		<< "reflectance was bound to a bare (unscaled) imagemap, must not be scaled_texture-wrapped";
+	auto *scaled = dynamic_cast<scaled_texture *>(dt->get_transmittance_texture().get());
+	ASSERT_NE(scaled, nullptr)
+		<< "a scale-wrapped imagemap transmittance must build a scaled_texture "
+		   "wrapping the real mipmap_texture, not just the bare image";
+}
+
 // ---------------------------------------------------------------------------
 // LightSource point/spot/distant/goniometric/projection
 //
