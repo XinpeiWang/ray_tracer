@@ -348,7 +348,8 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		// both pbrt-v4's own real default AND this project's own prior
 		// hardcoded choice, so an empty --lightsampler reports/behaves the
 		// same as before this option existed.
-		if (options.lightsampler == nullptr || options.lightsampler[0] == '\0') {
+		const bool has_explicit_lightsampler = options.lightsampler != nullptr && options.lightsampler[0] != '\0';
+		if (!has_explicit_lightsampler) {
 			if (!scene_desc->recommended_light_sampler.empty() && scene_desc->recommended_light_sampler != "bvh") {
 				std::cerr << "Warning: scene '" << scene_id << "' requests Integrator lightsampler \""
 						  << scene_desc->recommended_light_sampler
@@ -357,8 +358,7 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 						  << " explicitly if that's what the scene wants.\n";
 			}
 		}
-		const std::string light_sampler_choice =
-			(options.lightsampler && options.lightsampler[0] != '\0') ? options.lightsampler : "bvh";
+		const std::string light_sampler_choice = has_explicit_lightsampler ? options.lightsampler : "bvh";
 
 		// For Cornell box scenes use explicitly-weighted light sampling
 		// (pbrt-v4 Â§12.6's bounding-cone importance sampler for "bvh", or
@@ -379,6 +379,13 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		// takes `const hittable&`, and each choice is a different concrete
 		// type) rather than a stack object, since which type gets
 		// constructed is now a runtime choice, not compile-time.
+		// cpu_render_main_sppm() below has its own, structurally simpler copy
+		// of this same "A1"/"B2" check (it can't express a --lightsampler
+		// choice at all - SPPM's own light object is hard-typed to
+		// bvh_light_sampler, so it never had a reason to grow past a plain
+		// 2-way branch). If --lightsampler support is ever added to SPPM,
+		// that copy needs the same is_cornell_box_scene/power/bvh treatment
+		// this one has - grep this file for "A1") == 0" to find it.
 		std::unique_ptr<hittable> lights_ptr;
 		const bool is_cornell_box_scene = std::strcmp(scene_id, "A1") == 0 || std::strcmp(scene_id, "B2") == 0;
 		if (light_sampler_choice == "uniform") {
@@ -392,7 +399,6 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 				? std::make_unique<bvh_light_sampler>(build_cornell_box_bvh_lights())
 				: std::make_unique<bvh_light_sampler>(lights_raw);
 		}
-		const hittable& lights = *lights_ptr;
 
 			// Validate that scene was built successfully
 			if (world.objects.size() == 0) {
@@ -524,7 +530,18 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		std::cout << "[TECH] Sampler        : Stratified grid + Halton LDS (base-2/3, per-pixel decorrelated) + Sobol-Owen per bounce" << std::endl;
 		std::cout << "[TECH] Reconstruction : Mitchell-Netravali filter  B=1/3  C=1/3  radius=0.5 px" << std::endl;
 		std::cout << "[TECH] Acceleration   : SAH BVH  |  12 buckets  |  max 4 prims/leaf  |  C_trav=1  C_isect=2" << std::endl;
-		std::cout << "[TECH] Light sampling : Bounding-cone BVH (pbrt-v4 sec. 12.6)  phi = area * Le * pi" << std::endl;
+		// Reflects the actual light_sampler_choice made above, not a fixed
+		// string - before Integrator "string lightsampler" existed this was
+		// always bvh_light_sampler, so a hardcoded line was accurate; now
+		// --lightsampler uniform/power select real, differently-behaved
+		// samplers and the summary needs to say which one actually ran.
+		if (light_sampler_choice == "uniform") {
+			std::cout << "[TECH] Light sampling : Uniform (flat equal-weight, no importance sampling)" << std::endl;
+		} else if (light_sampler_choice == "power") {
+			std::cout << "[TECH] Light sampling : Power-weighted alias table  phi = Le * area" << std::endl;
+		} else {
+			std::cout << "[TECH] Light sampling : Bounding-cone BVH (pbrt-v4 sec. 12.6)  phi = area * Le * pi" << std::endl;
+		}
 		std::cout << "[TECH] MIS            : Power heuristic  beta=2  (BSDF sample + NEE light sample)" << std::endl;
 		std::cout << "[TECH] Path termination: Russian Roulette per-bounce, etaScale-aware" << std::endl;
 		std::cout << "[TECH] Firefly guard  : NaN / Inf samples clamped to 0" << std::endl;
@@ -539,7 +556,7 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		// location (OneDrive/Desktop). We'll copy the file afterward.
 
 		std::cout << "[cpu_interface] Starting render..." << std::endl;
-		cam.render(world, lights);
+		cam.render(world, *lights_ptr);
 
 		// ====================================================================
 		// Output File Copy
@@ -642,6 +659,13 @@ extern "C" int cpu_render_main_sppm(int width, int height, int iterations, int p
 		hittable_list world      = scene_desc->build_world();
 		hittable_list lights_raw = scene_desc->build_lights();
 
+		// SPPM has no --lightsampler of its own (see main.cpp's "has no
+		// effect under ... --sppm ..." warning) - `lights` stays hard-typed
+		// to bvh_light_sampler, so this "A1"/"B2" check stays a plain 2-way
+		// branch rather than growing the uniform/power/bvh x cornell-or-not
+		// matrix cpu_render_main() above has. If --lightsampler support is
+		// ever added here too, mirror that function's own treatment of this
+		// same check.
 		bvh_light_sampler lights;
 		if (std::strcmp(scene_id, "A1") == 0 || std::strcmp(scene_id, "B2") == 0) {
 			lights = build_cornell_box_bvh_lights();
