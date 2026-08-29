@@ -34,10 +34,11 @@ extern "C" __global__ void __anyhit__shadow_sphere() {
 	// non-occluding (light passes straight through) rather than wrongly
 	// blocking NEE entirely - a reasonable simplification matching how
 	// this file already approximates other volumetric-adjacent cases.
-	// CloudMedium's and RgbGridMedium's trigger spheres get the same
-	// treatment for the same reason - without this, every shadow ray toward
-	// a light on the far side of one of these bounding spheres would be
-	// wrongly treated as fully occluded, rather than just passing through
+	// CloudMedium's, RgbGridMedium's, and GridMedium's trigger spheres get
+	// the same treatment for the same reason - without this, every shadow
+	// ray toward a light on the far side of one of these bounding spheres
+	// would be wrongly treated as fully occluded, rather than just passing
+	// through
 	// unattenuated.
 	//
 	// MaterialType::DielectricMedium belongs in this list for the identical
@@ -58,7 +59,12 @@ extern "C" __global__ void __anyhit__shadow_sphere() {
 	// to graze it too - was wrongly reported occluded. This alone made the
 	// phase-scatter NEE fix above measure as a no-op (every one of its
 	// shadow rays died right here, at the medium's own boundary, before
-	// ever reaching the light).
+	// ever reaching the light). MaterialType::GridMedium had the IDENTICAL
+	// bug at the same time, for the same reason - the round that added real
+	// NEE to Medium/CloudMedium/RgbGridMedium/GridMedium's own phase-scatter
+	// cases updated this list for the other three but missed GridMedium,
+	// caught by a follow-up review pass; a code-review lesson worth
+	// repeating here since it already happened once for DielectricMedium.
 	if (mat.type == MaterialType::Dielectric ||
 		mat.type == MaterialType::RoughDielectric ||
 		mat.type == MaterialType::ThinDielectric ||
@@ -66,6 +72,7 @@ extern "C" __global__ void __anyhit__shadow_sphere() {
 		mat.type == MaterialType::Medium ||
 		mat.type == MaterialType::CloudMedium ||
 		mat.type == MaterialType::RgbGridMedium ||
+		mat.type == MaterialType::GridMedium ||
 		mat.type == MaterialType::DielectricMedium ||
 		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();  // continue traversal (not an occluder)

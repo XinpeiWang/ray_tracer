@@ -383,6 +383,27 @@ loader and no longer match the code:
   (`"nanovdb"`) remain out of scope regardless (still fall back to
   homogeneous, see the `MakeNamedMedium` entry above) — this fix applies
   to every medium type this loader can actually build on GPU today.
+  **GPU SPPM** (`sppm_programs.cu`, a third, independently-duplicated
+  render loop neither of the two backends above shares — see this same
+  file's earlier note on GPU SPPM's own separate architecture) is **not**
+  covered by this fix and never was: its material dispatch has no case for
+  any of these 5 medium types at all, so a medium's trigger sphere renders
+  as an ordinary opaque surface under `--sppm --gpu` rather than
+  participating-medium transport of any kind — not "no NEE", genuinely no
+  medium scattering. Pre-existing, unaffected either way by this round,
+  matching this file's own established pattern of scoping SPPM out of a
+  GPU medium/shape feature round rather than silently implying parity.
+  A follow-up review pass also caught and fixed two bugs this same round
+  introduced: `MaterialType::GridMedium` was missing from both backends'
+  shadow-ray non-occluding list (`optix_anyhit_shadow.h`/`wavefront_
+  anyhit_shadow.h`), the exact class of bug that already once made
+  `DielectricMedium`'s own NEE measure as a no-op — every GridMedium NEE
+  shadow ray was dying at the medium's own trigger-sphere boundary before
+  reaching a light; and the wavefront backend's punctual-light (point/
+  spot/distant) NEE loop never checked the extended `isPhase` gate at all,
+  so a punctual light at a phase-scatter event was weighted by a bogus
+  `dot(wi, normal)` cull and a flat Lambertian `1/π` BSDF value instead of
+  the real HG phase value and the medium's own albedo — both now fixed.
 
 (The `dielectric roughness` and `conductor` routing gaps once listed here were
 fixed — see the Materials table above, which is the source of truth for

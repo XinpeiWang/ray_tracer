@@ -640,6 +640,8 @@ extern "C" __global__ void __closesthit__sphere() {
 			bool has_seg = maj_it.next(segMin, segMax, sigma_maj);
 
 			bool did_scatter = false;
+			float3 medium_point = make_float3(0.0f, 0.0f, 0.0f);
+			const float3 wo = -unit_dir3;
 			if (has_seg && sigma_maj > 0.0f) {
 				if (segMin < 0.0f) segMin = 0.0f;
 				float tt = segMin;
@@ -658,10 +660,12 @@ extern "C" __global__ void __closesthit__sphere() {
 					if (random_float(seed) < sigma_s_local / sigma_maj) {
 						did_scatter = true;
 						medium_t_hit  = tt;
-						// See the Medium branch above's comment: `wo` must be
-						// the negated (outgoing) direction to match CPU's
-						// hg_phase_material convention.
-						scattered_dir = sample_henyey_greenstein(-unit_dir3, mat.fuzz, seed);
+						medium_point  = p;  // capture the real scatter point directly,
+						                    // not a recomputation from medium_t_hit after
+						                    // the loop - see `wo`'s own comment above.
+						// `wo` must be the negated (outgoing) direction to match
+						// CPU's hg_phase_material convention.
+						scattered_dir = sample_henyey_greenstein(wo, mat.fuzz, seed);
 						attenuation   = mat.albedo;
 					}
 				}
@@ -675,11 +679,6 @@ extern "C" __global__ void __closesthit__sphere() {
 			if (did_scatter) {
 				// Real NEE+MIS at the phase-function scatter event - see
 				// medium_phase_nee_mis()'s own comment (optix_device_helpers.h).
-				// medium_point recomputed from medium_t_hit (== `tt` at the
-				// scatter iteration above) rather than keeping that loop-local
-				// `p` alive past the loop.
-				float3 wo = -unit_dir3;
-				float3 medium_point = ray_orig + medium_t_hit * unit_dir3;
 				emission = emission + medium_phase_nee_mis(
 					medium_point, wo, mat.fuzz, attenuation, scattered_dir, seed, brdf_pdf_override);
 				is_specular = false;

@@ -23,8 +23,9 @@
 //     directly went black under --wavefront while the recursive path
 //     rendered them correctly lit.
 //   - Dielectric/RoughDielectric/ThinDielectric/DiffuseTransmission (and
-//     Medium/CloudMedium, sphere-only - see optix_anyhit_shadow.h's own
-//     comment) let light through rather than blocking NEE outright.
+//     Medium/CloudMedium/RgbGridMedium/GridMedium/DielectricMedium,
+//     sphere-only - see optix_anyhit_shadow.h's own comment) let light
+//     through rather than blocking NEE outright.
 extern "C" __global__ void __anyhit__wf_shadow_sphere() {
 	const int instBase = wf_instance_base();
 	const SphereData& sph = wf_params.spheres[wf_prim_base(instBase) + optixGetPrimitiveIndex()];
@@ -46,10 +47,13 @@ extern "C" __global__ void __anyhit__wf_shadow_sphere() {
 		return;
 	}
 	// MaterialType::DielectricMedium belongs here for the same reason as
-	// Medium/CloudMedium/RgbGridMedium just above - see optix_anyhit_shadow.h's
-	// __anyhit__shadow_sphere for the full comment (that omission was a real
-	// bug, found while adding real NEE to this material's medium-interior
-	// phase-scatter case in wavefront_kernels.cu / optix_intersection_sphere.h).
+	// Medium/CloudMedium/RgbGridMedium/GridMedium just above - see
+	// optix_anyhit_shadow.h's __anyhit__shadow_sphere for the full comment
+	// (that omission was a real bug, found while adding real NEE to this
+	// material's medium-interior phase-scatter case in wavefront_kernels.cu /
+	// optix_intersection_sphere.h). GridMedium itself had the identical bug
+	// here too - missing from this list at the same time DielectricMedium
+	// was added, caught by a follow-up review pass.
 	if (mat.type == MaterialType::Dielectric ||
 		mat.type == MaterialType::RoughDielectric ||
 		mat.type == MaterialType::ThinDielectric ||
@@ -57,6 +61,7 @@ extern "C" __global__ void __anyhit__wf_shadow_sphere() {
 		mat.type == MaterialType::Medium ||
 		mat.type == MaterialType::CloudMedium ||
 		mat.type == MaterialType::RgbGridMedium ||
+		mat.type == MaterialType::GridMedium ||
 		mat.type == MaterialType::DielectricMedium) {
 		optixIgnoreIntersection();
 		return;

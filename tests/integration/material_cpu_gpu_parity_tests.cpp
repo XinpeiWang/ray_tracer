@@ -40,12 +40,11 @@
  *     efficiency-per-sample reasoning (that test used 100 CPU / 500 GPU at
  *     80x80).
  *   - Volumes scenes (E1-E4) get both higher SPP AND a separately-justified
- *     55% ceiling (not just higher SPP against the standard 30%): a
- *     measured run of E1 (HomogeneousMedium) hit gaps up to 46.8% (B
- *     channel, CPU vs GPU-wavefront) even at 300/900 SPP, fully explained by
- *     a confirmed, deliberate, documented backend gap (see below) that SPP
- *     alone can't close without an impractically slow test - see
- *     kVolumeRelTolerance's own comment.
+ *     55% ceiling (not just higher SPP against the standard 30%), originally
+ *     calibrated against a real 46.8% measured gap caused by a confirmed,
+ *     deliberate backend gap (GPU medium scattering had no NEE/MIS) that has
+ *     SINCE BEEN FIXED and this ceiling now needs re-measuring - see
+ *     kVolumeRelTolerance's own comment for the full, current status.
  *   - IMPORTANT - B1 (RoughMetalSpheres) and B13 (SubsurfaceSlab) are
  *     deliberately NOT given a wider tolerance despite both failing at the
  *     standard 30%, and are left FAILING intentionally - that failure IS
@@ -154,20 +153,18 @@
  *     is therefore a genuine CPU-vs-GPU numerical discrepancy, not this
  *     (stale, no-longer-applicable) fallback.
  *
- *   - MaterialType::Medium / CloudMedium / RgbGridMedium / interior
- *     dielectric-medium scattering (relevant to E1-E4 and the dielectric-
- *     medium showcase): both GPU backends set is_specular=true for volume-
- *     scattering events (gpu/optix/optix_intersection_sphere.h ~line 303,
- *     317-318; wavefront_kernels.cu ~line 1837, 2043), i.e. neither GPU
- *     backend does next-event-estimation/MIS for in-medium scattering,
- *     while the CPU backend's hg_phase_material (constant_medium.h) does
- *     real Henyey-Greenstein-phase NEE+MIS (skip_pdf=false). This is a
- *     variance/efficiency difference, not a bias: naive vs NEE-based
- *     in-medium scattering are both unbiased Monte Carlo estimators of the
- *     same integral, so given enough samples they still converge to the
- *     same expected brightness - it just takes more GPU samples to get
- *     there tightly, which is why Volumes scenes get bumped SPP above
- *     rather than a hard-coded skip.
+ *   - MaterialType::Medium / CloudMedium / RgbGridMedium / GridMedium /
+ *     interior dielectric-medium scattering (relevant to E1-E4 and the
+ *     dielectric-medium showcase): STALE, SUPERSEDED - this used to say both
+ *     GPU backends set is_specular=true for every volume-scattering event
+ *     (no NEE/MIS at all, naive-vs-NEE unbiased-but-noisier estimator, not a
+ *     bias). Both GPU backends now do real Henyey-Greenstein-phase NEE+MIS
+ *     at these events (medium_phase_nee_mis(), gpu/optix/optix_device_
+ *     helpers.h; the equivalent isPhase-gated path in wavefront_kernels.cu's
+ *     wf_finish_material_scatter()), matching CPU's own hg_phase_material
+ *     (constant_medium.h, skip_pdf=false) - see kVolumeRelTolerance's own
+ *     comment for why the 55% ceiling below is now very likely looser than
+ *     necessary but hasn't been re-measured yet.
  *
  *   - MaterialType::RgbGridMedium specifically also uses a single global
  *     delta-tracking majorant on GPU vs CPU's real per-voxel DDA majorant
@@ -321,18 +318,32 @@ constexpr float kRelTolerance = 0.30f;
 // just applied per-comparison instead of skipping the whole test.
 constexpr float kMinComparableValue = 0.004f;
 
-// Volumes scenes (E1-E4) get a wider tolerance than kRelTolerance, calibrated
-// against real measured data, not guessed: an empirical run of E1
-// (HomogeneousMedium) at this file's SPP settings measured gaps up to 46.8%
-// (B channel, CPU vs GPU-wavefront) that are fully explained by a confirmed,
-// deliberate, documented backend difference (see this file's header comment
-// for the "no NEE for in-medium scattering on either GPU backend" finding,
-// citing gpu/optix/optix_intersection_sphere.h and wavefront_kernels.cu) -
-// not a bug. Brute-forcing this down to kRelTolerance via SPP alone would
-// need an impractical sample count (in-medium scattering without NEE
-// converges far slower than surface BSDFs), so this category gets its own,
-// separately-justified ceiling instead - the same pattern this file's header
-// comment describes for handling a confirmed, deliberate backend gap.
+// Volumes scenes (E1-E4) get a wider tolerance than kRelTolerance. The 46.8%
+// (B channel, CPU vs GPU-wavefront) gap this 0.55 ceiling was originally
+// calibrated against was fully explained by a confirmed, deliberate backend
+// difference: neither GPU backend did real NEE/MIS for an in-medium
+// Henyey-Greenstein phase-function scatter event (MaterialType::Medium/
+// CloudMedium/RgbGridMedium/GridMedium all treated it as specular) - only
+// lucky HG-sampled random walks that happened to escape the medium and hit a
+// light picked up any illumination at all, converging far slower than a
+// surface BSDF would.
+// STALE, NEEDS RE-CALIBRATION: that gap was since closed - both GPU backends
+// now do real NEE+MIS at these events (medium_phase_nee_mis(),
+// gpu/optix/optix_device_helpers.h; the equivalent isPhase-gated path in
+// wavefront_kernels.cu's wf_finish_material_scatter()) - and a real render
+// comparison at the time of that fix showed E1 dramatically brighter/better-
+// converged on GPU at the same SPP than before, the expected NEE signature.
+// This 0.55 ceiling is very likely now much looser than the real post-fix
+// gap requires, but this file could not be rebuilt/re-run in the environment
+// that landed the fix (tests/ray_tracer_tests.vcxproj has a pre-existing,
+// unrelated broken gtest include path - confirmed unrelated: the same error
+// occurs on ~40 test files untouched by that change) to measure a real
+// replacement number, so the tolerance itself was deliberately left
+// unchanged (safe - a looser-than-necessary ceiling can't cause a false
+// failure, only reduced sensitivity) rather than guessed at. Whoever next
+// gets a working build of this test should re-run E1-E4 in isolation (same
+// per-scene-isolated methodology as the B1/B13 findings below) and tighten
+// this back down to whatever the real post-fix gap turns out to be.
 constexpr float kVolumeRelTolerance = 0.55f;
 
 // B13 (SubsurfaceSlab) specifically - NOT a Volumes-category scene, but its
