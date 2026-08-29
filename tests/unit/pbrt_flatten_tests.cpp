@@ -690,6 +690,48 @@ TEST(FlattenTest, MediumInterfaceAttachesTheNamedMediumToTheSphere) {
 	EXPECT_DOUBLE_EQ(s.media[0].sigma_s[2], 6.0);
 }
 
+TEST(FlattenTest, HomogeneousMediumLeAndLescaleAreThreadedThrough) {
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"fire\" \"string type\" \"homogeneous\"\n"
+		"  \"rgb Le\" [ 1 0.5 0.1 ] \"float Lescale\" [ 2 ]\n"
+		"AttributeBegin\n"
+		"  MediumInterface \"fire\" \"\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 1 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(s.media.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.media[0].Le[0], 2.0);
+	EXPECT_DOUBLE_EQ(s.media[0].Le[1], 1.0);
+	EXPECT_DOUBLE_EQ(s.media[0].Le[2], 0.2);
+}
+
+TEST(FlattenTest, HomogeneousMediumDefaultsToNoEmission) {
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"fog\" \"string type\" \"homogeneous\"\n"
+		"AttributeBegin\n"
+		"  MediumInterface \"fog\" \"\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 1 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(s.media.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.media[0].Le[0], 0.0);
+	EXPECT_DOUBLE_EQ(s.media[0].Le[1], 0.0);
+	EXPECT_DOUBLE_EQ(s.media[0].Le[2], 0.0);
+}
+
+TEST(FlattenTest, CloudMediumLeIsDroppedAndWarns) {
+	// Only "homogeneous" supports emission this round (Medium::Le's own
+	// comment) - cloud/rgbgrid/uniformgrid's real per-voxel emission is a
+	// separate, deferred feature.
+	const FlatScene s = flattenSource(
+		"MakeNamedMedium \"puff\" \"string type\" [ \"cloud\" ]\n"
+		"  \"rgb Le\" [ 1 1 1 ]\n"
+		"AttributeBegin\n"
+		"  MediumInterface \"puff\" \"\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 1 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(s.media.size(), 1u);
+	EXPECT_TRUE(warnedAbout(s, "Le"));
+}
+
 TEST(FlattenTest, SphereWithNoMediumInterfaceIsVacuum) {
 	const FlatScene s = flattenSource("Shape \"sphere\" \"float radius\" [ 1 ]\n");
 	ASSERT_EQ(s.spheres.size(), 1u);

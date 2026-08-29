@@ -4306,6 +4306,22 @@ static bool build_loaded_pbrt_scene(
 		break;
 	}
 
+	// MakeNamedMedium's own "rgb Le"/"float Lescale" (pbrt-v4) - same
+	// "cheap warning for a real, currently-unimplemented backend gap"
+	// pattern as the two warnings above. GPU's own MaterialType::Medium
+	// shading (optix_intersection_sphere.h) has no emission concept at all
+	// - see pbrt_flatten::Medium::Le's own comment - CPU-only this round.
+	for (const pbrt_flatten::Medium& med : loaded.scene.media) {
+		if (med.Le[0] > 1e-9 || med.Le[1] > 1e-9 || med.Le[2] > 1e-9) {
+			std::cerr << "[OptiX] Warning: scene requests a MakeNamedMedium "
+						 "\"Le\"/\"Lescale\" (a self-emitting medium) but GPU "
+						 "rendering does not implement medium emission - the "
+						 "medium will scatter/absorb but not glow. "
+						 "Use --cpu to honor this request.\n";
+			break;
+		}
+	}
+
 	// Reported, not warned about: these are sampled properly now (as
 	// GpuLightKind::Triangle), so the only thing worth saying is that they
 	// took the per-triangle path rather than the cheaper merged-quad one.

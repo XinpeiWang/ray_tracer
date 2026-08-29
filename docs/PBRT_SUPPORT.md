@@ -267,6 +267,31 @@ loader and no longer match the code:
   are worked examples of all three. Any other `"type"` value (e.g.
   `"nanovdb"`) still falls back to homogeneous with a warning.
 
+- `MakeNamedMedium`'s own `"rgb Le"`/`"float Lescale"` (pbrt-v4) — a real
+  self-emitting medium (fire/plasma/glowing fog) — is now decoded on
+  **CPU only**, for `"homogeneous"` media only (`Medium::Le` in
+  `pbrt_flatten.h`; `"cloud"`/`"rgbgrid"`/`"uniformgrid"` still drop a
+  nonzero `"Le"` with a warning — their own real pbrt-v4 emission is a
+  per-voxel grid, a separate, deferred feature, not this flat colour).
+  `Lescale` is baked into `Le` at flatten time. The emission contributes via
+  `hg_phase_material::emitted()` (`constant_medium.h`), weighted by
+  `sigma_a / sigma_t` at the CPU builder (`pbrt_cpu_builder.h`'s
+  `addMediumIfPresent`) — the collision-probability weighting pbrt-v4's own
+  real volumetric estimator uses, collapsed into this codebase's existing
+  "every collision continues, weighted by albedo" simplification for
+  scattering. Because `emitted()` is dispatched generically by every
+  integrator that reads `hit_record::mat` (the same mechanism surface-area
+  lights use), this is picked up by BDPT and SPPM's own material-emission
+  reads too, without integrator-specific wiring — **not independently
+  verified for correctness there** (BDPT's own MIS-weighted vertex
+  connections in particular could treat a now-emissive medium-scatter
+  vertex differently than intended; flagged here as an open question for a
+  future review pass, not confirmed broken). GPU (both backends) does not
+  implement medium emission at all — `MaterialType::Medium`'s own shading
+  (`optix_intersection_sphere.h`) has no emission concept — `scene_builder
+  .cpp` warns once at scene-load time if any medium declares a nonzero
+  `"Le"`.
+
 (The `dielectric roughness` and `conductor` routing gaps once listed here were
 fixed — see the Materials table above, which is the source of truth for
 per-`MaterialKind` behavior.)

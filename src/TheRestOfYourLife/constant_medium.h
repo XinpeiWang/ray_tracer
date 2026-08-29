@@ -81,9 +81,34 @@ class hg_phase_material : public material {
     // nullptr means "no real attenuation available" - falls back to
     // material::shadow_transmittance()'s own default (fully transmissive),
     // same behavior as before this feature existed.
+    // emission: MakeNamedMedium's own "rgb Le"/"float Lescale" (pbrt-v4),
+    // already weighted by sigma_a/sigma_t at the call site (see
+    // pbrt_cpu_builder.h's addMediumIfPresent) - the per-collision emission
+    // contribution added by emitted() below. (0,0,0) (the default) means
+    // "no emission", matching every OTHER medium constructor in this class
+    // that doesn't pass one.
     hg_phase_material(const color& albedo, double g,
-                       std::function<color(const ray&, double)> transmittance_fn = nullptr)
-        : albedo(albedo), phase(g), transmittance_fn_(std::move(transmittance_fn)) {}
+                       std::function<color(const ray&, double)> transmittance_fn = nullptr,
+                       const color& emission = color(0, 0, 0))
+        : albedo(albedo), phase(g), transmittance_fn_(std::move(transmittance_fn)),
+          emission_(emission) {}
+
+    // MakeNamedMedium's own "rgb Le"/"float Lescale" (pbrt-v4) - see
+    // pbrt_cpu_builder.h's addMediumIfPresent for the sigma_a/sigma_t
+    // weighting this already carries. camera.h's ray_color()/
+    // ray_color_spectral() call this unconditionally on every hit_record
+    // (the same generic "Le on any material" dispatch surface-area lights
+    // use), so a medium-scatter hit_record (constant_medium::hit(), below)
+    // contributes emission through the EXACT SAME MIS-aware accumulation
+    // surface lights do - correctly full-weight (beta*Le) when arriving via
+    // a specular_bounce and correctly power-heuristic-MIS-weighted
+    // otherwise, with pdf_l naturally 0 (this medium is never a member of
+    // `lights`, so it can't be NEE-sampled), matching pbrt-v4's own
+    // volumetric-emission treatment of never explicitly next-event-
+    // estimating a medium's own Le.
+    color emitted(const ray&, const hit_record&, double, double, const point3&) const override {
+        return emission_;
+    }
 
     bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
                  bool /*do_regularize*/ = false) const override {
@@ -135,6 +160,7 @@ class hg_phase_material : public material {
     color albedo;
     HenyeyGreensteinPhaseFunction<double> phase;
     std::function<color(const ray&, double)> transmittance_fn_;
+    color emission_;
 };
 
 
@@ -171,10 +197,18 @@ class constant_medium : public hittable {
             [this](const ray& r, double t_max) { return shadow_transmittance_impl(r, t_max); });
     }
 
-    // Full pbrt-v4-style constructor: separate absorption and scattering coefficients.
+    // Full pbrt-v4-style constructor: separate absorption and scattering
+    // coefficients, plus MakeNamedMedium's own "rgb Le"/"float Lescale"
+    // (pbrt-v4) - see hg_phase_material::emitted()'s own comment for how
+    // this reaches the render. Already weighted by sigma_a/sigma_t at the
+    // caller (pbrt_cpu_builder.h's addMediumIfPresent), so it's threaded
+    // straight through unchanged; (0,0,0) (the default) means "no
+    // emission", matching every native (non-pbrt) scene that doesn't pass
+    // this argument at all.
     constant_medium(shared_ptr<hittable> boundary,
                     double sigma_a, double sigma_s,
-                    const color& albedo, double g = 0.0)
+                    const color& albedo, double g = 0.0,
+                    const color& emission = color(0, 0, 0))
         : boundary(boundary) {
         med = HomogeneousMediumData<double>(sigma_a, sigma_s, g);
         // Single-scattering albedo for the phase material
@@ -184,7 +218,8 @@ class constant_medium : public hittable {
                                                          sigma_s / sigma_t)
                                         : color(0,0,0);
         phase_mat = make_shared<hg_phase_material>(ss_albedo, g,
-            [this](const ray& r, double t_max) { return shadow_transmittance_impl(r, t_max); });
+            [this](const ray& r, double t_max) { return shadow_transmittance_impl(r, t_max); },
+            emission);
     }
 
     bool hit(const ray& r, interval ray_t, hit_record& rec) const override {

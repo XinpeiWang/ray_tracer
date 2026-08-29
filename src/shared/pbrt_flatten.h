@@ -157,6 +157,21 @@ struct Medium {
 	double sigma_s[3] = {1.0, 1.0, 1.0};
 	double g = 0.0;    // Henyey-Greenstein asymmetry
 
+	// MakeNamedMedium's own "rgb Le"/"float Lescale" (pbrt-v4) - a
+	// self-emitting medium (fire/plasma/glowing fog). Lescale is baked into
+	// Le at flatten time (matches this loader's own "scale" texture / area-
+	// light "scale" precedent), so downstream consumers read one resolved
+	// RGB triple. "homogeneous" ONLY this round (see the flatten() loop's
+	// own warning for cloud/rgbgrid/uniformgrid) - those types' own real
+	// pbrt-v4 emission is a genuinely separate per-voxel feature (their own
+	// "Le"/"LeScale" GRIDS, not a flat colour), a materially bigger lift
+	// deferred to a later round, matching this loader's own "close the
+	// homogeneous case first" precedent for other medium params. CPU-only:
+	// see hg_phase_material::emitted() (constant_medium.h) for how this
+	// flows into the render; GPU (both backends) doesn't read this field at
+	// all yet - scene_builder.cpp warns once if it's nonzero.
+	double Le[3] = {0.0, 0.0, 0.0};
+
 	// "homogeneous" (default, uses sigma_a/sigma_s/g above only), "cloud",
 	// "rgbgrid", or "uniformgrid" - a real, genuinely different medium type
 	// each, with a real implementation on both backends (src/shared/
@@ -2155,6 +2170,16 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		medium.sigma_s[0] = ss.x * scale; medium.sigma_s[1] = ss.y * scale; medium.sigma_s[2] = ss.z * scale;
 		medium.g = md.params.getFloat("g", 0.0);
 
+		// "rgb Le"/"float Lescale" - see Medium::Le's own comment on why
+		// this round is homogeneous-only. Read unconditionally (harmless
+		// for the other 3 types, matching this loop's own "one shared
+		// block" convention for sigma_a/sigma_s above) but only ever
+		// nonzero-and-warned for cloud/rgbgrid/uniformgrid, never silently
+		// dropped.
+		const pbrt_scene::Vec3 le = md.params.getVec3("Le", pbrt_scene::Vec3{0,0,0});
+		const double leScale = md.params.getFloat("Lescale", 1.0);
+		medium.Le[0] = le.x * leScale; medium.Le[1] = le.y * leScale; medium.Le[2] = le.z * leScale;
+
 		if (isCloud || isRgbGrid || isUniformGrid) {
 			// Medium-space bounds (pbrt-v4's own "p0"/"p1", default unit
 			// cube - matches CloudMedium::Create/RGBGridMedium::Create's
@@ -2203,6 +2228,17 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				}
 			}
 			for (int a = 0; a < 3; ++a) { medium.worldMin[a] = worldMin[a]; medium.worldMax[a] = worldMax[a]; }
+
+			// "Le"/"Lescale" (Medium::Le's own comment) - homogeneous only
+			// this round; cloud/rgbgrid/uniformgrid's real pbrt-v4 emission
+			// is a per-voxel grid, not this flat colour, so it's silently
+			// meaningless for them - warn rather than let a scene author
+			// believe it did something.
+			if (medium.Le[0] > 1e-9 || medium.Le[1] > 1e-9 || medium.Le[2] > 1e-9) {
+				warn("medium '" + md.name + "' (\"" + md.type + "\") has a nonzero \"Le\", "
+					 "but only \"homogeneous\" media support emission in this loader; "
+					 "the emission is dropped");
+			}
 		}
 
 		if (isCloud) {

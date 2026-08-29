@@ -467,6 +467,27 @@ TEST(PbrtCpuBuildTest, MediumInterfaceWrapsTheSphereInAParticipatingMedium) {
 		<< "a ray toward the medium-wrapped sphere should still hit something";
 }
 
+TEST(PbrtCpuBuildTest, EmissiveMediumWrapsTheSphereAndStaysReachable) {
+	// "rgb Le"/"float Lescale" - same "builds, geometry stays reachable"
+	// bar as MediumInterfaceWrapsTheSphereInAParticipatingMedium above; the
+	// precise Le/Lescale resolution lives in pbrt_flatten_tests.cpp, and the
+	// actual per-collision emission contribution (hg_phase_material::
+	// emitted()) is verified by a real render, not a unit test.
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"MakeNamedMedium \"fire\" \"string type\" \"homogeneous\"\n"
+		"  \"rgb sigma_a\" [ 0.5 0.5 0.5 ] \"rgb sigma_s\" [ 0.5 0.5 0.5 ]\n"
+		"  \"rgb Le\" [ 5 2 0.5 ]\n"
+		"AttributeBegin\n"
+		"  MediumInterface \"fire\" \"\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 1 ]\n"
+		"AttributeEnd\n");
+	EXPECT_EQ(b.sphereCount, 1u);
+
+	double t = 0.0;
+	EXPECT_TRUE(castRay(b, point3(0, 0, -5), vec3(0, 0, 1), t))
+		<< "a ray toward the emissive-medium-wrapped sphere should still hit something";
+}
+
 TEST(PbrtCpuBuildTest, UnknownMediumInterfaceNameIsTreatedAsVacuum) {
 	// No MakeNamedMedium declares "ghost" - the parser should warn and fall
 	// back to insideMedium=-1 (vacuum) rather than crash or misindex. See

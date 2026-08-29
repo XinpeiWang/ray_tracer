@@ -809,7 +809,21 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		const color albedo = (sig_s > 1e-9)
 			? color(md.sigma_s[0] / sig_s, md.sigma_s[1] / sig_s, md.sigma_s[2] / sig_s)
 			: color(1, 1, 1);
-		world.add(std::make_shared<constant_medium>(shape, sig_a, sig_s, albedo, md.g));
+		// "rgb Le"/"float Lescale" (pbrt_flatten::Medium::Le's own comment) -
+		// the fraction of collisions that would have been absorption (rather
+		// than scattering) events, sig_a/sig_t, is exactly the fraction of
+		// this medium's real-collision realizations that emit rather than
+		// scatter (pbrt-v4's own VolPathIntegrator collision-estimator, its
+		// sigma_a/sigma_maj term - with a homogeneous majorant, sigma_maj IS
+		// sig_t here, so the two cancel to this simple ratio). Chromatic Le
+		// stays a real RGB triple even though sig_a/sig_s are already
+		// luminance-collapsed scalars above - the emission's COLOR still
+		// varies per-channel, only its overall probability weight doesn't.
+		const double sig_t = sig_a + sig_s;
+		const color emission = (sig_t > 1e-9)
+			? color(md.Le[0], md.Le[1], md.Le[2]) * (sig_a / sig_t)
+			: color(0, 0, 0);
+		world.add(std::make_shared<constant_medium>(shape, sig_a, sig_s, albedo, md.g, emission));
 	};
 
 	// ---- spheres ---------------------------------------------------------
