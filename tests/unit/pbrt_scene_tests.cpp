@@ -519,6 +519,19 @@ TEST(PbrtSettingsTest, FilmPixelBoundsIsRead) {
 	EXPECT_EQ(s.pixelBounds[3], 550);
 }
 
+TEST(PbrtSettingsTest, LightSamplerDefaultsToBvhWithNoDirective) {
+	const Scene s = parseOk("WorldBegin\nShape \"sphere\"\n");
+	EXPECT_EQ(s.lightSamplerType, "bvh");
+}
+
+TEST(PbrtSettingsTest, IntegratorLightSamplerIsRead) {
+	const Scene s = parseOk(
+		"Integrator \"volpath\" \"string lightsampler\" [ \"power\" ]\n"
+		"WorldBegin\n"
+		"Shape \"sphere\"\n");
+	EXPECT_EQ(s.lightSamplerType, "power");
+}
+
 TEST(PbrtSettingsTest, SamplerDefaultsToSobolWithNoDirective) {
 	const Scene s = parseOk(
 		"WorldBegin\n"

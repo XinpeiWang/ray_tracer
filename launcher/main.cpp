@@ -70,6 +70,7 @@ static RenderOptions render_options_from_args(const LaunchArgs& args) {
     RenderOptions render_opts;
     render_opts.exposure = args.exposure;
     render_opts.sampler = args.sampler.empty() ? nullptr : args.sampler.c_str();
+    render_opts.lightsampler = args.lightsampler.empty() ? nullptr : args.lightsampler.c_str();
     render_opts.spectral = args.spectral;
     render_opts.tonemap = args.tonemap.empty() ? nullptr : args.tonemap.c_str();
     render_opts.denoise = args.denoise;
@@ -404,6 +405,11 @@ int main(int argc, char** argv) {
     // no warning at all, unlike the identical combination without --video.
     if (!args.sampler.empty() && (use_gpu || use_bdpt || use_mlt || use_sppm || use_debug_integrator)) {
         std::cerr << "Warning: --sampler has no effect under --gpu/--bdpt/--mlt/--sppm/"
+                     "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
+                     "(only the CPU default path tracer supports it) - ignoring.\n";
+    }
+    if (!args.lightsampler.empty() && (use_gpu || use_bdpt || use_mlt || use_sppm || use_debug_integrator)) {
+        std::cerr << "Warning: --lightsampler has no effect under --gpu/--bdpt/--mlt/--sppm/"
                      "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
                      "(only the CPU default path tracer supports it) - ignoring.\n";
     }

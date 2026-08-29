@@ -98,6 +98,10 @@ struct LaunchArgs {
 	// sampler-selection exists yet, and BDPT/MLT/SPPM each have their own
 	// sampling scheme already).
 	std::string sampler     = "";
+	// pbrt-v4 Integrator "string lightsampler" - one of "uniform"/"power"/
+	// "bvh". Empty (default) means "use bvh", pbrt-v4's own real default -
+	// same "CPU default path tracer only" scope cut as sampler above.
+	std::string lightsampler = "";
 	// Real hero-wavelength spectral rendering (camera.h's ray_color_spectral(),
 	// see its own comment) instead of the default flat-RGB ray_color() -
 	// CPU default path tracer only, same scope cut as exposure/sampler
@@ -283,6 +287,20 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 			} else {
 				std::cerr << "Invalid --sampler \"" << argv[i + 1] << "\", using default (sobol). "
 							 "Valid: sobol, zsobol, paddedsobol, stratified, pmj02bn, halton, independent\n";
+			}
+			consumed_args.insert(i);
+			consumed_args.insert(i + 1);
+			++i;
+		} else if (arg == "--lightsampler" && i + 1 < argc) {
+			std::string name = argv[i + 1];
+			std::transform(name.begin(), name.end(), name.begin(),
+							[](unsigned char c) { return std::tolower(c); });
+			static const std::set<std::string> kValidLightSamplers = {"uniform", "power", "bvh"};
+			if (kValidLightSamplers.count(name)) {
+				out.lightsampler = name;
+			} else {
+				std::cerr << "Invalid --lightsampler \"" << argv[i + 1] << "\", using default (bvh). "
+							 "Valid: uniform, power, bvh\n";
 			}
 			consumed_args.insert(i);
 			consumed_args.insert(i + 1);
@@ -511,6 +529,11 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "               One of sobol, zsobol, paddedsobol, stratified, pmj02bn, halton,\n"
 					  << "               independent.\n"
 					  << "               CPU default path tracer only.\n"
+					  << "  --lightsampler NAME: pbrt-v4 Integrator \"string lightsampler\" - which light\n"
+					  << "               sampler picks the next-event-estimation light to sample\n"
+					  << "               (default bvh, pbrt-v4's own real default). One of uniform,\n"
+					  << "               power, bvh. Affects convergence/variance, not the converged\n"
+					  << "               image. CPU default path tracer only.\n"
 					  << "  " << render_flags::kSpectral << " : Real hero-wavelength spectral rendering instead of flat RGB.\n"
 					  << "               CPU default path tracer only. Only lambertian, metal,\n"
 					  << "               dielectric, rough_dielectric, conductor, and diffuse_light\n"

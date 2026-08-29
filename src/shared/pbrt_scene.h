@@ -374,6 +374,19 @@ struct Scene {
 	// scatter() as a do_regularize parameter; this field is what was
 	// missing to gate it, rather than applying it unconditionally.
 	bool regularize = false;
+	// Integrator "string lightsampler" (pbrt-v4's real default is "bvh" -
+	// confirmed against pbrt-v4's own integrators.cpp:
+	// parameters.GetOneString("lightsampler", "bvh")). Same "purely
+	// informational" shape as samplerType/integrator above, not regularize's
+	// "actually applied" one - which of this project's own light-sampler
+	// classes (bvh_light_sampler/power_light_list/a uniform hittable_list)
+	// gets constructed is a --lightsampler CLI choice (cpu_render_main only),
+	// matching --sampler's own "scene requests, CLI decides, warn on
+	// mismatch" precedent - a light sampler's choice affects convergence/
+	// variance, not the converged image, so it's a perf/quality knob like
+	// Sampler's own type, not a genuine rendering-behavior toggle like
+	// regularize/PixelFilter.
+	std::string lightSamplerType = "bvh";
 	// PixelFilter directive's type name (pbrt-v4's real default is
 	// "gaussian" - confirmed against pbrt-v4/src/pbrt/scene.cpp's own
 	// SceneEntity default, NOT "box"/"triangle"/"mitchell") plus its raw
@@ -975,6 +988,7 @@ private:
 			const ParamList p = readParams();
 			s_.maxDepth = p.getInt("maxdepth", s_.maxDepth);
 			s_.regularize = p.getBool("regularize", s_.regularize);
+			s_.lightSamplerType = p.getString("lightsampler", s_.lightSamplerType);
 			return true;
 		}
 

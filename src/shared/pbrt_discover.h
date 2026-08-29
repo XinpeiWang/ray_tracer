@@ -75,6 +75,11 @@ struct Discovered {
 	// pbrt_scene::Scene's own default, informational only" shape as
 	// integrator above; see SceneDescriptor::recommended_sampler's comment.
 	std::string samplerType = "sobol";
+	// The file's own Integrator "string lightsampler" - same "matches
+	// pbrt_scene::Scene's own default, informational only" shape as
+	// samplerType above; see SceneDescriptor::recommended_light_sampler's
+	// comment.
+	std::string lightSamplerType = "bvh";
 	bool ok = false;
 	std::string error;
 	// Whether the file itself declared a Camera directive (see
@@ -190,6 +195,7 @@ inline Discovered describe(const std::string &path, const std::string &text) {
 	d.maxDepth = parsed.scene.maxDepth;
 	d.integrator = parsed.scene.integrator;
 	d.samplerType = parsed.scene.samplerType;
+	d.lightSamplerType = parsed.scene.lightSamplerType;
 
 	// flatten() with no mesh resolver still derives the camera - that comes
 	// from the world-to-camera matrix and the fov, neither of which needs a

@@ -38,6 +38,7 @@
 #include "../src/shared/exr_writer.h"
 #include <iostream>
 #include <fstream>
+#include <memory>
 #include <filesystem>
 #include <cmath>
 #include <cstring>
@@ -339,26 +340,59 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		hittable_list world      = scene_desc->build_world();
 		hittable_list lights_raw = scene_desc->build_lights();
 
-		// For Cornell box scenes use explicitly-weighted BVH light sampling
-		// (pbrt-v4 Â§12.6's bounding-cone importance sampler, replacing the
-		// flat power_light_list this used to build - same power weights,
-		// but now picked with spatial/directional locality instead of a
-		// single global PMF; see bvh_light_sampler.h); for all others wrap
-		// uniformly (equal weights = same as old hittable_list).
-		// Scene 7 (Cornell Smoke) used to be included here too, but its light
-		// is a different size/color than build_cornell_box_power_lights()
-		// assumes and it has no glass sphere - the uniform-weight path below
-		// (scene_desc->build_lights() -> build_cornell_smoke_lights(), a
-		// single correctly-sized light) is both correct and, with only one
-		// light in the list, equivalent to power weighting anyway.
-		// "A1"/"B2" are scene 0 (Cornell Box) / scene 10 (Cornell Rough Metal)
-		// under the old flat numbering - see scene_registry.h's SceneDescriptor::id.
-		bvh_light_sampler lights;
-		if (std::strcmp(scene_id, "A1") == 0 || std::strcmp(scene_id, "B2") == 0) {
-			lights = build_cornell_box_bvh_lights();
-		} else {
-			lights = bvh_light_sampler(lights_raw);
+		// pbrt-v4 Integrator "string lightsampler" - advisory only, same
+		// "CLI always decides, scene's own request only feeds a mismatch
+		// warning" shape as maxdepth/samplerType above (a light sampler's
+		// choice affects convergence/variance, not the converged image -
+		// see pbrt_scene::Scene::lightSamplerType's own comment). "bvh" is
+		// both pbrt-v4's own real default AND this project's own prior
+		// hardcoded choice, so an empty --lightsampler reports/behaves the
+		// same as before this option existed.
+		if (options.lightsampler == nullptr || options.lightsampler[0] == '\0') {
+			if (!scene_desc->recommended_light_sampler.empty() && scene_desc->recommended_light_sampler != "bvh") {
+				std::cerr << "Warning: scene '" << scene_id << "' requests Integrator lightsampler \""
+						  << scene_desc->recommended_light_sampler
+						  << "\" but no --lightsampler was passed, so this render uses bvh - "
+							 "pass --lightsampler " << scene_desc->recommended_light_sampler
+						  << " explicitly if that's what the scene wants.\n";
+			}
 		}
+		const std::string light_sampler_choice =
+			(options.lightsampler && options.lightsampler[0] != '\0') ? options.lightsampler : "bvh";
+
+		// For Cornell box scenes use explicitly-weighted light sampling
+		// (pbrt-v4 Â§12.6's bounding-cone importance sampler for "bvh", or
+		// the matching hand-tuned power-weighted variant for "power" - see
+		// bvh_light_sampler.h/power_light_sampler.h); for all others (and
+		// for "uniform" even on Cornell scenes) wrap lights_raw directly
+		// (equal weights = same as old hittable_list).
+		// Scene 7 (Cornell Smoke) used to be included in the Cornell-box
+		// special case too, but its light is a different size/color than
+		// build_cornell_box_power_lights() assumes and it has no glass
+		// sphere - the general path below (scene_desc->build_lights() ->
+		// build_cornell_smoke_lights(), a single correctly-sized light) is
+		// both correct and, with only one light in the list, equivalent to
+		// power weighting anyway.
+		// "A1"/"B2" are scene 0 (Cornell Box) / scene 10 (Cornell Rough
+		// Metal) under the old flat numbering - see scene_registry.h's
+		// SceneDescriptor::id. Held as a `hittable*` (cam.render() below
+		// takes `const hittable&`, and each choice is a different concrete
+		// type) rather than a stack object, since which type gets
+		// constructed is now a runtime choice, not compile-time.
+		std::unique_ptr<hittable> lights_ptr;
+		const bool is_cornell_box_scene = std::strcmp(scene_id, "A1") == 0 || std::strcmp(scene_id, "B2") == 0;
+		if (light_sampler_choice == "uniform") {
+			lights_ptr = std::make_unique<hittable_list>(lights_raw);
+		} else if (light_sampler_choice == "power") {
+			lights_ptr = is_cornell_box_scene
+				? std::make_unique<power_light_list>(build_cornell_box_power_lights())
+				: std::make_unique<power_light_list>(lights_raw);
+		} else {
+			lights_ptr = is_cornell_box_scene
+				? std::make_unique<bvh_light_sampler>(build_cornell_box_bvh_lights())
+				: std::make_unique<bvh_light_sampler>(lights_raw);
+		}
+		const hittable& lights = *lights_ptr;
 
 			// Validate that scene was built successfully
 			if (world.objects.size() == 0) {

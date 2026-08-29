@@ -22,6 +22,13 @@ struct RenderOptions {
 	// nullptr/empty/unrecognized all fall back to "sobol". CPU default
 	// path tracer only.
 	const char* sampler = nullptr;
+	// pbrt-v4 Integrator "string lightsampler" - which of this project's
+	// own light-sampler classes selects the next-event-estimation light to
+	// sample - one of "uniform"/"power"/"bvh"; nullptr/empty/unrecognized
+	// all fall back to "bvh" (pbrt-v4's own real default). CPU default
+	// path tracer only - affects convergence/variance, not the converged
+	// image, same perf/quality-knob shape as `sampler` above.
+	const char* lightsampler = nullptr;
 	// Real hero-wavelength spectral rendering instead of flat RGB. CPU
 	// default path tracer only, 6-material whitelist (see camera.h's
 	// ray_color_spectral()'s own comment).

@@ -149,6 +149,16 @@ struct SceneDescriptor {
     // at its default (empty std::function = nullptr), since none of them
     // are pbrt-loaded portal-light scenes.
     std::function<std::shared_ptr<PortalImageInfiniteLightData<double>>()> build_portal;
+
+    // Integrator "string lightsampler" - same "empty for every hand-built
+    // scene; not auto-applied; cpu_interface.cpp warns rather than
+    // switches samplers" shape as recommended_sampler above. Deliberately
+    // LAST (after build_portal, not next to recommended_sampler) - same
+    // positional-brace-init fragility reasoning as every other field
+    // added here after the struct's own initial fields: appending keeps
+    // every existing hand-built scene's positional initializer list
+    // referring to the same members it always did.
+    std::string recommended_light_sampler;
 };
 
 // Dummy sphere light used by scenes that have no explicit light geometry
@@ -232,6 +242,7 @@ namespace pbrt_scene_registry {
         s.recommended_max_depth = d.maxDepth;
         s.recommended_integrator = d.integrator;
         s.recommended_sampler = d.samplerType;
+        s.recommended_light_sampler = d.lightSamplerType;
         s.camera = CameraConfig{
             d.camera.vfov,
             d.camera.lookfrom[0], d.camera.lookfrom[1], d.camera.lookfrom[2],
