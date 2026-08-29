@@ -1275,6 +1275,20 @@ struct GpuCameraParams {
 	// gated), so this is read only at wf_glossy_alpha()/RegularizeAlpha()
 	// call sites, never at the any_nonspecular propagation site itself.
 	int regularize;
+
+	// Film "cropwindow"/"pixelbounds" (pbrt-v4), resolved to PIXEL bounds
+	// [cropX0,cropX1) x [cropY0,cropY1) at scene-build time (scene_builder.cpp,
+	// where the render's real width/height are already known - unlike CPU's
+	// camera class, which resolves the same NDC-fraction FlatScene::cropX0..Y1
+	// fields lazily in its own initialize(), GPU has no equivalent lazy
+	// resolution step, so this struct always carries the final, concrete
+	// pixel bounds, never the raw fractions). cropX1<=0 (the zero-init
+	// default - same "no in-class initializer" __constant__ constraint as
+	// filterKind/regularize above) means "no crop requested" - gpu_in_crop()
+	// (optix_device_helpers.h) treats that as "every pixel is in bounds",
+	// exactly matching every scene (hand-built or pbrt-loaded-without-a-
+	// cropwindow) that never sets these fields at all.
+	int cropX0, cropX1, cropY0, cropY1;
 };
 
 // Launch parameters (passed to all OptiX programs)

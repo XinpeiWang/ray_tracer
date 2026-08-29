@@ -10,6 +10,20 @@ extern "C" __global__ void __raygen__rg() {
 
 	if (px >= params.width || py >= params.height) return;
 
+	// Film "cropwindow"/"pixelbounds" (pbrt-v4) - a pixel outside the crop
+	// rectangle is written explicit black (matching CPU camera.h's own
+	// in_crop-gated normalization) rather than left unwritten: the
+	// framebuffer is cudaMalloc'd, not zero-initialized, so skipping the
+	// write here without an explicit black store would leave stale/garbage
+	// device memory in the final image outside the crop instead of black.
+	if (!gpu_in_crop(params.camera, static_cast<int>(px), static_cast<int>(py))) {
+		const unsigned int idx_flat = py * params.width + px;
+		params.framebuffer[idx_flat] = make_float3(0.0f, 0.0f, 0.0f);
+		if (params.albedoBuffer) params.albedoBuffer[idx_flat] = make_float3(0.0f, 0.0f, 0.0f);
+		if (params.normalBuffer) params.normalBuffer[idx_flat] = make_float3(0.0f, 0.0f, 0.0f);
+		return;
+	}
+
 	//Accumulate samples
 	float3 pixel_color = make_float3(0.0f, 0.0f, 0.0f);
 	// Sum of this pixel's per-sample filter weights (see gpu_filter_evaluate()'s

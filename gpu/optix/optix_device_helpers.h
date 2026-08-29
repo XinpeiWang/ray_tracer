@@ -95,6 +95,18 @@ __device__ __forceinline__ float gpu_filter_evaluate(
 	}
 }
 
+// Film "cropwindow"/"pixelbounds" (pbrt-v4) - device-side gate matching
+// CPU's own camera.h `in_crop` skip-the-sampling-loop check. cam.cropX1<=0
+// (GpuCameraParams::cropX0's own comment) means no crop was requested -
+// every pixel is in bounds, exactly the pre-cropwindow-support behavior.
+// Shared by both GPU backends (optix_raygen.h, wavefront_kernels.cu's
+// generate_camera_rays), same "shared helper" convention as
+// gpu_filter_evaluate() just above.
+__device__ __forceinline__ bool gpu_in_crop(const GpuCameraParams& cam, int px, int py) {
+	if (cam.cropX1 <= 0) return true;
+	return px >= cam.cropX0 && px < cam.cropX1 && py >= cam.cropY0 && py < cam.cropY1;
+}
+
 __device__ __forceinline__ float3 random_float3(unsigned int& seed) {
 	return make_float3(random_float(seed), random_float(seed), random_float(seed));
 }

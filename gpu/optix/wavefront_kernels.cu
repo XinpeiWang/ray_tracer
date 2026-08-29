@@ -115,6 +115,16 @@ __device__ __forceinline__ float gpu_filter_evaluate(
 	}
 }
 
+// Film "cropwindow"/"pixelbounds" (pbrt-v4) - matches optix_device_helpers.h's
+// identical gpu_in_crop() exactly (own definition here, same "duplicate
+// rather than share across a .cpp/.h boundary" convention gpu_filter_evaluate
+// just above already uses). cam.cropX1<=0 (GpuCameraParams::cropX0's own
+// comment) means no crop was requested - every pixel is in bounds.
+__device__ __forceinline__ bool gpu_in_crop(const GpuCameraParams& cam, int px, int py) {
+	if (cam.cropX1 <= 0) return true;
+	return px >= cam.cropX0 && px < cam.cropX1 && py >= cam.cropY0 && py < cam.cropY1;
+}
+
 // Matches optix_intersection_sphere.h's gpu_rgb_grid_at/gpu_rgb_grid_
 // trilinear exactly - see that copy's comment for why this is a from-
 // scratch reimplementation rather than a call into RGBGridMediumData<T>/
@@ -1248,6 +1258,15 @@ extern "C" __global__ void generate_camera_rays(
 	int px = blockIdx.x * blockDim.x + threadIdx.x;
 	int py = blockIdx.y * blockDim.y + threadIdx.y;
 	if (px >= (int)width || py >= (int)height) return;
+
+	// Film "cropwindow"/"pixelbounds" (pbrt-v4) - simply never enqueue a ray
+	// (or touch weightBuffer) for an out-of-crop pixel, on every sample-index
+	// launch. Unlike the recursive backend's own raygen, there's no explicit
+	// black-write needed here: normalize_framebuffer already turns a
+	// zero-weight pixel (never incremented by this kernel for any sample) into
+	// black (its own `w > 0.0f` guard), the exact same mechanism that already
+	// exists for a pathological zero-weight filter parameterization.
+	if (!gpu_in_crop(camera, px, py)) return;
 
 	int pixelIdx = py * (int)width + px;
 	unsigned int seed = wf_pcg(wf_pcg(pixelIdx + sampleIdx * width * height) ^ frameNumber);

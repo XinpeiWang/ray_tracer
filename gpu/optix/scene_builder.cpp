@@ -4258,19 +4258,39 @@ static bool build_loaded_pbrt_scene(
 	// as PixelFilter just above. See GpuCameraParams::regularize's own comment.
 	if (out_camera_extra) out_camera_extra->regularize = loaded.scene.regularize ? 1 : 0;
 
-	// Film "cropwindow"/"pixelbounds" - unlike PixelFilter/regularize above,
-	// neither GPU backend implements this yet (default-CPU-path-tracer-only
-	// this round, see docs/PBRT_SUPPORT.md's Film table); nothing reads
-	// FlatScene::cropX0/X1/Y0/Y1 here. Warn once at scene-load time so a
-	// scene that explicitly asked for a crop doesn't silently render the
-	// full frame under --gpu with no diagnostic (same "cheap warning for a
-	// real, currently-unimplemented backend gap" pattern as the regularize
-	// GPU-recursive warning in optix_interface.cpp).
-	if (loaded.scene.cropX0 > 0.0 || loaded.scene.cropX1 < 1.0 ||
-		loaded.scene.cropY0 > 0.0 || loaded.scene.cropY1 < 1.0) {
-		std::cerr << "[OptiX] Warning: scene requests a Film \"cropwindow\"/"
-					 "\"pixelbounds\" but GPU rendering does not implement it - "
-					 "rendering the full frame. Use --cpu to honor this request.\n";
+	// Film "cropwindow"/"pixelbounds" - resolved to concrete PIXEL bounds
+	// here (image_width/image_height, this function's own params, are
+	// already the render's real resolution - unlike CPU's camera class,
+	// GPU has no lazy "resolve once width/height are known" step of its
+	// own, so this IS that step). Same std::lround(fraction * resolution)
+	// + clamp + degenerate-collapses-to-empty-range fallback as CPU's own
+	// camera::initialize() (camera.h) - see that function's own comment for
+	// why a valid NDC-fraction rectangle can still collapse to an empty
+	// pixel range at a small enough actual render resolution.
+	if (out_camera_extra) {
+		int x0 = static_cast<int>(std::lround(loaded.scene.cropX0 * image_width));
+		int x1 = static_cast<int>(std::lround(loaded.scene.cropX1 * image_width));
+		int y0 = static_cast<int>(std::lround(loaded.scene.cropY0 * image_height));
+		int y1 = static_cast<int>(std::lround(loaded.scene.cropY1 * image_height));
+		x0 = std::clamp(x0, 0, image_width);
+		x1 = std::clamp(x1, 0, image_width);
+		y0 = std::clamp(y0, 0, image_height);
+		y1 = std::clamp(y1, 0, image_height);
+		if (x1 <= x0 || y1 <= y0) {
+			if (loaded.scene.cropX0 > 0.0 || loaded.scene.cropX1 < 1.0 ||
+				loaded.scene.cropY0 > 0.0 || loaded.scene.cropY1 < 1.0) {
+				std::cerr << "[OptiX] Warning: Film \"cropwindow\"/\"pixelbounds\" "
+							 "resolved to an empty pixel range at this render "
+							 "resolution (" << image_width << "x" << image_height
+						  << "); rendering the full frame instead.\n";
+			}
+			x0 = 0; x1 = image_width;
+			y0 = 0; y1 = image_height;
+		}
+		out_camera_extra->cropX0 = x0;
+		out_camera_extra->cropX1 = x1;
+		out_camera_extra->cropY0 = y0;
+		out_camera_extra->cropY1 = y1;
 	}
 
 	// Texture "imagemap" "string encoding"/"string wrap"/"bool invert" -
