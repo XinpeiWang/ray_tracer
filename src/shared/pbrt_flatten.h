@@ -466,6 +466,33 @@ struct Material {
 	// no wrapping "scale", or when textureFilename is empty.
 	double textureScale = 1.0;
 
+	// Texture "imagemap"'s own "string encoding"/"string wrap"/"bool
+	// invert" (pbrt-v4), resolved for textureFilename above ONLY - not
+	// threaded to transmittanceTextureFilename/roughnessTextureFilename/
+	// alphaTextureFilename/displacementTextureFilename below, a deliberate,
+	// documented scope cut (see docs/PBRT_SUPPORT.md's own note on this)
+	// matching this codebase's own established "close the reflectance slot
+	// first, other slots later if a real scene needs it" precedent (e.g.
+	// textureScale itself started reflectance-only before
+	// transmittanceTextureScale existed). textureGamma: resolved from
+	// "encoding" to an actual gamma exponent - "linear" -> 1.0 (no decode,
+	// pbrt-v4's own real intent for a roughness/normal/displacement map
+	// bound this way), "gamma <value>" -> that value, "sRGB" or absent ->
+	// 2.2 (this codebase's own long-standing default for every 8-bit
+	// texture - an approximation of pbrt-v4's real sRGB curve, not its
+	// exact piecewise-linear-toe formula, matching this loader's existing
+	// "close enough, not bit-exact" precedent for other approximated
+	// features). See src/TheRestOfYourLife/rtw_stb_image.h's rtw_image
+	// constructor for what this value actually does downstream.
+	double textureGamma = 2.2;
+	// "repeat" (pbrt-v4's own real default)/"clamp"/"black" - unlike
+	// mipmap.h's own MipMapOptions::wrap field default (Clamp, kept
+	// unchanged there deliberately so native/non-pbrt scenes are
+	// unaffected - see that field's own comment), THIS field's default is
+	// pbrt-v4's real one, applied explicitly per pbrt-loaded texture.
+	std::string textureWrap = "repeat";
+	bool textureInvert = false;
+
 	// DiffuseTransmission only: an "imagemap" Texture bound to
 	// "transmittance", same "raw as written, resolved later by
 	// pbrt_load.h" convention as textureFilename above - bare imagemap,
@@ -1129,6 +1156,25 @@ inline const pbrt_scene::TextureDecl *findTexture(const pbrt_scene::Scene &scene
 	return tex;
 }
 
+// Resolves an "imagemap" Texture's own "string encoding" param to an actual
+// gamma exponent - see Material::textureGamma's own comment for the mapping
+// rationale (linear->1.0, gamma <value>->that value, sRGB/absent->2.2, this
+// codebase's existing default). pbrt-v4 also accepts a literal filename
+// (e.g. "encoding" "srgb8.icc") for a real ICC profile - this loader has no
+// ICC support at all, so any value not recognized as "linear"/"sRGB"/
+// starting with "gamma " falls back to the 2.2 default rather than
+// misinterpreting it, matching this codebase's "approximate, never silently
+// wrong" precedent for other unrecognized-string params.
+inline double resolveTextureGamma(const pbrt_scene::TextureDecl &imgTex) {
+	const std::string encoding = imgTex.params.getString("encoding", "");
+	if (encoding.empty() || encoding == "sRGB" || encoding == "srgb") return 2.2;
+	if (encoding == "linear") return 1.0;
+	if (encoding.rfind("gamma ", 0) == 0) {
+		try { return std::stod(encoding.substr(6)); } catch (...) { return 2.2; }
+	}
+	return 2.2;
+}
+
 // One shape to emit, where to put it, and under which transform. Routing the
 // single shape loop through this is what lets the same code serve three
 // callers - scene geometry, an instance definition's object-space geometry,
@@ -1519,6 +1565,9 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					if (!filename.empty()) {
 						m.textureFilename = filename;
 						m.textureScale = texScale;
+						m.textureGamma = resolveTextureGamma(*imgTex);
+						m.textureWrap = imgTex->params.getString("wrap", "repeat");
+						m.textureInvert = imgTex->params.getBool("invert", false);
 						continue;   // resolved to an image, not a "not supported" warning
 					}
 				}

@@ -72,6 +72,24 @@ inline shared_ptr<texture> checkerOrMixSlot(const std::string &filename, const d
 		: std::static_pointer_cast<texture>(std::make_shared<mipmap_texture>(filename.c_str()));
 }
 
+// Builds the MipMapOptions for m.textureFilename specifically (the ONLY
+// slot pbrt_flatten.h resolves textureGamma/textureWrap/textureInvert for -
+// see Material::textureGamma's own comment on why the other texture-
+// filename slots aren't threaded this round). Every other mipmap_texture
+// construction in this file (roughness/mix-amount/checker/emission/etc.)
+// deliberately keeps using the default-constructed MipMapOptions{} (gamma
+// 2.2, Clamp, no invert) - this codebase's pre-existing behavior for those
+// slots is unchanged.
+inline MipMapOptions imageMapOptionsFor(const pbrt_flatten::Material &m) {
+	MipMapOptions opts;
+	opts.gamma = m.textureGamma;
+	opts.invert = m.textureInvert;
+	if (m.textureWrap == "black") opts.wrap = MipWrapMode::Black;
+	else if (m.textureWrap == "clamp") opts.wrap = MipWrapMode::Clamp;
+	else opts.wrap = MipWrapMode::Repeat;   // pbrt-v4's own real default
+	return opts;
+}
+
 // pbrt's material names already match ours (see pbrt_flatten.h), so this is
 // construction rather than interpretation. An Unsupported material becomes
 // diffuse - flatten() has already warned about it by name, so failing here
@@ -188,7 +206,7 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		// real mip-level filtering under minification, not just its
 		// original AreaLightSource caller's point-sampled use.
 		if (!m.textureFilename.empty()) {
-			shared_ptr<texture> tex = std::make_shared<mipmap_texture>(m.textureFilename.c_str());
+			shared_ptr<texture> tex = std::make_shared<mipmap_texture>(m.textureFilename.c_str(), imageMapOptionsFor(m));
 			if (m.textureScale != 1.0)
 				tex = std::make_shared<scaled_texture>(tex, m.textureScale);
 			return std::make_shared<coated_diffuse>(tex, m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
@@ -256,7 +274,7 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		if (m.textureFilename.empty() && m.transmittanceTextureFilename.empty())
 			return std::make_shared<diffuse_transmission>(albedo, transmittance);
 		shared_ptr<texture> rTex = m.textureFilename.empty()
-			? nullptr : std::make_shared<mipmap_texture>(m.textureFilename.c_str());
+			? nullptr : std::make_shared<mipmap_texture>(m.textureFilename.c_str(), imageMapOptionsFor(m));
 		if (rTex && m.textureScale != 1.0)
 			rTex = std::make_shared<scaled_texture>(rTex, m.textureScale);
 		shared_ptr<texture> tTex = m.transmittanceTextureFilename.empty()
@@ -336,7 +354,7 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		// (barcelona-pavilion's own dominant pattern, same as CoatedDiffuse's
 		// identical-shape case below).
 		if (!m.textureFilename.empty()) {
-			shared_ptr<texture> tex = std::make_shared<mipmap_texture>(m.textureFilename.c_str());
+			shared_ptr<texture> tex = std::make_shared<mipmap_texture>(m.textureFilename.c_str(), imageMapOptionsFor(m));
 			if (m.textureScale != 1.0)
 				tex = std::make_shared<scaled_texture>(tex, m.textureScale);
 			return std::make_shared<lambertian>(tex);

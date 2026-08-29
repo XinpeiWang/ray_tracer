@@ -72,7 +72,25 @@ class rtw_image {
         return *this;
     }
 
-    rtw_image(const char* image_filename) {
+    // gamma: the power-law decode exponent applied to an LDR (8-bit) source
+    // file's raw bytes before this class ever sees them - stb_image's own
+    // stbi_loadf() applies `pow(byte/255, gamma)` internally whenever the
+    // file isn't already HDR (see stbi__ldr_to_hdr in stb_image.h); its own
+    // process-global default is 2.2, not 1.0 (a fixed gamma-2.2 decode is
+    // this codebase's own long-standing default behavior for every 8-bit
+    // texture, close to but not identical to pbrt-v4's real sRGB default -
+    // see pbrt_flatten::Material::textureGamma's own comment for how a
+    // scene's Texture "imagemap" "string encoding" maps onto this
+    // parameter). A source file that's ALREADY float/HDR (EXR via a
+    // separate decode path, or .hdr/.pic via stb_image's own real HDR
+    // reader) is unaffected regardless of this value - the gamma decode
+    // stb_image applies here only ever triggers for genuinely 8-bit
+    // sources. Mutates stb_image's process-global gamma state for the
+    // duration of this one load() call, then restores it - safe only
+    // because texture loading happens during single-threaded scene
+    // construction (before camera::render()'s worker threads start), never
+    // concurrently with another load() call.
+    rtw_image(const char* image_filename, float gamma = 2.2f) : gamma_(gamma) {
         // Loads image data from the specified file. If the RTW_IMAGES environment variable is
         // defined, looks only in that directory for the image file. If the image was not found,
         // searches for the specified image file first from the current directory, then in the
@@ -126,14 +144,28 @@ class rtw_image {
     }
 
     bool load(const std::string& filename) {
-        // Loads the linear (gamma=1) image data from the given file name. Returns true if the
-        // load succeeded. The resulting data buffer contains the three [0.0, 1.0]
-        // floating-point values for the first pixel (red, then green, then blue). Pixels are
-        // contiguous, going left to right for the width of the image, followed by the next row
+        // Loads the image data from the given file name, gamma-decoded per
+        // gamma_ (2.2 by default, this codebase's own long-standing
+        // behavior - see the constructor's own comment; NOT actually
+        // linear/gamma=1 despite what this comment used to claim). Returns
+        // true if the load succeeded. The resulting data buffer contains
+        // the three [0.0, 1.0] floating-point values for the first pixel
+        // (red, then green, then blue). Pixels are contiguous, going left
+        // to right for the width of the image, followed by the next row
         // below, for the full height of the image.
 
         auto n = bytes_per_pixel; // Dummy out parameter: original components per pixel
+        // stbi_ldr_to_hdr_gamma is process-global mutable state (see the
+        // constructor's own comment on why mutating it here is safe) -
+        // reset back to stb_image's own real default (2.2) immediately
+        // after this one load, not left at whatever gamma_ this particular
+        // rtw_image happened to want, so an UNRELATED later load that
+        // constructs its rtw_image the old way (relying on the default
+        // parameter) still gets stb_image's genuine default rather than
+        // silently inheriting this call's override.
+        stbi_ldr_to_hdr_gamma(gamma_);
         fdata = stbi_loadf(filename.c_str(), &image_width, &image_height, &n, bytes_per_pixel);
+        stbi_ldr_to_hdr_gamma(2.2f);
         if (fdata == nullptr) return false;
 
         bytes_per_scanline = image_width * bytes_per_pixel;
@@ -169,6 +201,10 @@ class rtw_image {
 
   private:
     const int      bytes_per_pixel = 3;
+    // gamma_'s only job is being remembered from the constructor's default
+    // argument until load() runs (it's needed there, not here) - see
+    // load()'s own comment for what it actually does.
+    const float    gamma_ = 2.2f;
     float         *fdata = nullptr;         // Linear floating point pixel data
     unsigned char *bdata = nullptr;         // Linear 8-bit pixel data
     int            image_width = 0;         // Loaded image width

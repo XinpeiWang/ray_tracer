@@ -423,7 +423,7 @@ class mipmap_texture : public texture {
     mipmap_texture(const char* filename,
                    MipMapOptions opts = MipMapOptions{})
     {
-        rtw_image img(filename);
+        rtw_image img(filename, opts.gamma);
         build_from(std::move(img), opts);
     }
 
@@ -438,8 +438,8 @@ class mipmap_texture : public texture {
     // Basic interface: trilinear with zero derivatives (LOD 0)
     color value(double u, double v, const point3& /*p*/) const override {
         if (!mip_) return color(0,1,1);  // cyan debug
-        u = std::max(0.0, std::min(1.0, u));
-        v = 1.0 - std::max(0.0, std::min(1.0, v));  // flip V
+        u = wide_clamp(u);
+        v = 1.0 - wide_clamp(v);  // flip V
         return mip_->filter((float)u, (float)v, 0,0, 0,0);
     }
 
@@ -459,8 +459,8 @@ class mipmap_texture : public texture {
                     double ds_dx, double dt_dx,
                     double ds_dy, double dt_dy) const {
         if (!mip_) return color(0,1,1);
-        u = std::max(0.0, std::min(1.0, u));
-        v = 1.0 - std::max(0.0, std::min(1.0, v));
+        u = wide_clamp(u);
+        v = 1.0 - wide_clamp(v);
         // v is flipped above (v_mip = 1-v), so d(v_mip)/dx = -dv/dx: negate
         // dt_dx/dt_dy to match, or the EWA ellipse's cross term (mipmap.h's
         // ewa(), built from ds*dt sums) gets the wrong sign for any sheared/
@@ -475,14 +475,27 @@ class mipmap_texture : public texture {
     // LOD-explicit lookup (e.g. supplied by ray differentials)
     color value_lod(double u, double v, double lod) const {
         if (!mip_) return color(0,1,1);
-        u = std::max(0.0, std::min(1.0, u));
-        v = 1.0 - std::max(0.0, std::min(1.0, v));
+        u = wide_clamp(u);
+        v = 1.0 - wide_clamp(v);
         return mip_->filter_lod((float)u, (float)v, (float)lod);
     }
 
     int mip_levels() const { return mip_ ? mip_->levels() : 0; }
 
   private:
+    // Defensive bound for real UV tiling (Texture "imagemap"'s "wrap"
+    // finally has somewhere to matter now that u/v aren't force-clamped to
+    // [0,1] above - see value()/value_ewa()/value_lod()'s own comments) -
+    // texel()'s modulo-based Repeat wrap (mipmap.h) is correct for any
+    // finite integer x/y, but bilerp()'s `(int)std::floor(s*w)` isn't safe
+    // for a truly unbounded s (int overflow on a pathological/huge UV, e.g.
+    // a degenerate procedural UV generator). 1024 repeats in either
+    // direction is far beyond anything a real scene would tile a texture,
+    // so this is a safety rail, not a real limit on authored content.
+    static double wide_clamp(double x) {
+        return std::max(-1024.0, std::min(1024.0, x));
+    }
+
     void build_from(rtw_image&& img, MipMapOptions opts) {
         if (img.height() <= 0) return;  // load failed — mip_ stays nullptr
 
@@ -492,7 +505,18 @@ class mipmap_texture : public texture {
         for (int j = 0; j < h; ++j)
             for (int i = 0; i < w; ++i) {
                 const unsigned char* p = img.pixel_data(i, j);
-                pixels[j * w + i] = color(p[0]*scale, p[1]*scale, p[2]*scale);
+                color c(p[0]*scale, p[1]*scale, p[2]*scale);
+                // Texture "imagemap" "bool invert" (pbrt-v4) - 1-v per
+                // channel; clamped at 0 even though bdata is already [0,1]
+                // here (defensive, matches the general invert-a-linear-
+                // value formula rather than assuming this specific byte-
+                // sourced range).
+                if (opts.invert) {
+                    c = color(std::max(0.0, 1.0 - c.x()),
+                              std::max(0.0, 1.0 - c.y()),
+                              std::max(0.0, 1.0 - c.z()));
+                }
+                pixels[j * w + i] = c;
             }
         mip_ = std::make_shared<mipmap>(pixels, w, h, opts);
     }

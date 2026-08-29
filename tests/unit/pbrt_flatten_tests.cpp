@@ -1339,6 +1339,51 @@ TEST(FlattenMaterialTest, DiffuseReflectanceScaleWrappedImagemapCarriesTheScale)
 	EXPECT_FALSE(warnedAbout(s, "diffuse"));
 }
 
+TEST(FlattenMaterialTest, ReflectanceImagemapDefaultsToSRGBGammaRepeatWrapNoInvert) {
+	// No "encoding"/"wrap"/"invert" params at all - Material::textureGamma/
+	// textureWrap/textureInvert's own comments on why these particular
+	// defaults (2.2, "repeat", false) were chosen.
+	const FlatScene s = flattenSource(
+		"Texture \"tmap\" \"spectrum\" \"imagemap\" \"string filename\" [ \"statue.png\" ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"tmap\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].textureGamma, 2.2);
+	EXPECT_EQ(s.materials[0].textureWrap, "repeat");
+	EXPECT_FALSE(s.materials[0].textureInvert);
+}
+
+TEST(FlattenMaterialTest, ReflectanceImagemapLinearEncodingResolvesToGammaOne) {
+	const FlatScene s = flattenSource(
+		"Texture \"tmap\" \"spectrum\" \"imagemap\" \"string filename\" [ \"rough.png\" ] "
+		"\"string encoding\" [ \"linear\" ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"tmap\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].textureGamma, 1.0);
+}
+
+TEST(FlattenMaterialTest, ReflectanceImagemapExplicitGammaEncodingResolvesToThatValue) {
+	const FlatScene s = flattenSource(
+		"Texture \"tmap\" \"spectrum\" \"imagemap\" \"string filename\" [ \"scan.png\" ] "
+		"\"string encoding\" [ \"gamma 1.8\" ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"tmap\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].textureGamma, 1.8);
+}
+
+TEST(FlattenMaterialTest, ReflectanceImagemapExplicitWrapAndInvertAreThreadedThrough) {
+	const FlatScene s = flattenSource(
+		"Texture \"tmap\" \"spectrum\" \"imagemap\" \"string filename\" [ \"tile.png\" ] "
+		"\"string wrap\" [ \"black\" ] \"bool invert\" [ true ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"tmap\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].textureWrap, "black");
+	EXPECT_TRUE(s.materials[0].textureInvert);
+}
+
 TEST(FlattenMaterialTest, CoatedDiffuseReflectanceCheckerboardResolvesToAProceduralTexture) {
 	// checkerboard/fbm/marble/mix used to be Diffuse-only (a documented
 	// scope cut); now also resolved for CoatedDiffuse, same as the "scale"

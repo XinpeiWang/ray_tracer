@@ -35,7 +35,20 @@
 // ---------------------------------------------------------------------------
 // Wrap mode
 // ---------------------------------------------------------------------------
-enum class MipWrapMode { Clamp, Repeat };
+// pbrt-v4's real wrap modes for Texture "imagemap" (WrapMode in pbrt-v4's
+// own image.h): Repeat (its own real default), Clamp, and Black (texel()
+// below returns color(0,0,0) for any out-of-bounds lookup). This struct's
+// own `wrap` field default stays Clamp - not Repeat - deliberately: it's
+// this codebase's own C++-level default for every caller that doesn't
+// specify one, including native (non-pbrt) scenes already built against
+// it, and changing THIS default would silently change their rendered
+// output too. Loaded pbrt scenes get pbrt-v4's real Repeat default
+// explicitly at the loader level instead - see pbrt_scene::Scene::
+// TextureDecl's own "wrap" parsing and pbrt_flatten.h's Material::
+// textureWrap, which resolves to "repeat" absent an explicit request and
+// is threaded into a fresh MipMapOptions per pbrt-loaded texture, never
+// relying on this struct's own default.
+enum class MipWrapMode { Clamp, Repeat, Black };
 
 // ---------------------------------------------------------------------------
 // Filter mode  (matches pbrt-v4 FilterFunction)
@@ -49,6 +62,20 @@ struct MipMapOptions {
 	MipFilter   filter         = MipFilter::EWA;
 	float       max_anisotropy = 8.0f;
 	MipWrapMode wrap           = MipWrapMode::Clamp;
+	// Texture "imagemap" "bool invert" (pbrt-v4) - not really a mip-
+	// filtering option, but threaded through this same options bag since
+	// it's already carried end-to-end from the loader into
+	// mipmap_texture's constructor; applied once per texel at load time
+	// (mipmap_texture::build_from(), src/TheRestOfYourLife/texture.h), not
+	// here in mipmap.h itself.
+	bool        invert         = false;
+	// Texture "imagemap" "string encoding" (pbrt-v4), resolved to a gamma
+	// exponent - see rtw_stb_image.h's rtw_image constructor for what this
+	// actually does. 2.2 (this codebase's own long-standing default
+	// behavior for every 8-bit texture, not touched by this option unless
+	// a scene explicitly asks for something else) matches the mipmap_texture
+	// constructor's own file-loading rtw_image call passing no override.
+	float       gamma          = 2.2f;
 };
 
 // ---------------------------------------------------------------------------
@@ -258,6 +285,8 @@ private:
 		if (opts_.wrap == MipWrapMode::Repeat) {
 			x = ((x % w) + w) % w;
 			y = ((y % h) + h) % h;
+		} else if (opts_.wrap == MipWrapMode::Black) {
+			if (x < 0 || x >= w || y < 0 || y >= h) return color(0, 0, 0);
 		} else { // Clamp
 			x = std::max(0, std::min(x, w - 1));
 			y = std::max(0, std::min(y, h - 1));

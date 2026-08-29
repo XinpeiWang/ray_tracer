@@ -364,3 +364,49 @@ per-`MaterialKind` behavior.)
   barycentric UV fallback (small enough triangles that it varied usefully
   across them), so this closes a latent accuracy gap rather than a visible
   regression.
+
+- A `Texture "imagemap"`'s own `"string encoding"` / `"string wrap"` /
+  `"bool invert"` params (previously never parsed at all — every 8-bit
+  texture was silently gamma-2.2-decoded via `stbi_loadf()`'s own process-
+  global default, `wrap` was scaffolded in `MipWrapMode` but structurally
+  inert, and `invert` didn't exist) are now read and honored on **CPU only**,
+  for the primary `"reflectance"` slot (`Material::textureFilename`) of
+  `Diffuse`/`CoatedDiffuse`/`DiffuseTransmission` — the other four texture-
+  filename slots (`transmittanceTextureFilename`/`roughnessTextureFilename`/
+  `alphaTextureFilename`/`displacementTextureFilename`) still get this
+  codebase's long-standing gamma-2.2/Clamp/no-invert defaults regardless of
+  what the scene's own `imagemap` declares, a deliberate scope cut matching
+  this loader's own "close the reflectance slot first" precedent (see
+  `Material::textureGamma`/`textureWrap`/`textureInvert`'s own comments,
+  `pbrt_flatten.h`). `"encoding"`: `"linear"` → gamma 1.0 (no decode — the
+  real use case is a roughness/normal/displacement map bound as reflectance
+  on a stand-in material for inspection, or a genuinely-linear photo source);
+  `"gamma <value>"` → that exact exponent; `"sRGB"`/absent → 2.2 (this
+  codebase's pre-existing default, an approximation of pbrt-v4's real
+  piecewise sRGB EOTF, not a change). `"wrap"`: `"repeat"` (pbrt-v4's own
+  real default, and now this loader's resolved default too — see below),
+  `"clamp"`, or `"black"`. `"invert"`: per-texel `1-c` at load time.
+  **Behavior changes**, both deliberate and both gated on the same user
+  decision to fix `wrap` for real rather than ship an inert flag a second
+  time: (1) UV tiling now actually works — `mipmap_texture::value()`/
+  `value_ewa()`/`value_lod()` (`texture.h`) used to hard-clamp `u`/`v` to
+  `[0,1]` *before* `MipWrapMode` ever saw them, so `"wrap" "repeat"` on a
+  UV>1 scene was a structural no-op; the clamp is now a much wider
+  `wide_clamp([-1024,1024])` (still bounding `bilerp()`'s integer texel math
+  against a pathological UV, just no longer defeating real tiling). (2) The
+  loader's own resolved `wrap` default is now `"repeat"` (pbrt-v4's real
+  one) rather than the prior de-facto `Clamp` every image texture got by
+  simply never reaching a non-default wrap mode — a scene that authors UV
+  coordinates outside `[0,1]` on an image-textured surface with no explicit
+  `"wrap"` param will now visibly tile where it previously clamped to the
+  edge pixel. `MipMapOptions::wrap`'s own C++ struct default (`mipmap.h`)
+  deliberately stays `Clamp` — only the pbrt loader path resolves to
+  `"repeat"` explicitly, so this doesn't affect this codebase's own native
+  (non-pbrt) scenes. GPU (both backends) implements none of this —
+  `getOrBuildPbrtImageTexture()` (`gpu/optix/pbrt_gpu_builder.h`) always
+  decodes at this codebase's original gamma-2.2/Clamp/no-invert defaults
+  regardless of what the scene requests; `scene_builder.cpp`'s scene-load
+  warns once, by the same "cheap warning for a currently-unimplemented
+  backend gap" pattern as the `Film "cropwindow"` warning above, when any
+  material's primary reflectance texture requests a non-default encoding,
+  wrap, or invert.

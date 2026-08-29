@@ -4273,6 +4273,26 @@ static bool build_loaded_pbrt_scene(
 					 "rendering the full frame. Use --cpu to honor this request.\n";
 	}
 
+	// Texture "imagemap" "string encoding"/"string wrap"/"bool invert" -
+	// same "cheap warning for a real, currently-unimplemented backend gap"
+	// pattern as cropwindow above. getOrBuildPbrtImageTexture() (this file)
+	// decodes m.textureFilename with none of these three requests honored
+	// (always this codebase's own long-standing gamma-2.2/Clamp/no-invert
+	// defaults - CPU-only support this round, see docs/PBRT_SUPPORT.md).
+	// Checked once across every material rather than per-material-use since
+	// a single warning is enough to point a user at --cpu; the exact
+	// material/texture at fault is secondary to the fact GPU can't honor it.
+	for (const pbrt_flatten::Material& m : loaded.scene.materials) {
+		if (m.textureFilename.empty()) continue;
+		if (m.textureGamma == 2.2 && m.textureWrap == "repeat" && !m.textureInvert) continue;
+		std::cerr << "[OptiX] Warning: scene requests a Texture \"imagemap\" "
+					 "\"encoding\"/\"wrap\"/\"invert\" but GPU rendering does not "
+					 "implement any of them - using this codebase's default "
+					 "gamma-2.2 decode, repeat-wrap tiling with no inversion. "
+					 "Use --cpu to honor this request.\n";
+		break;
+	}
+
 	// Reported, not warned about: these are sampled properly now (as
 	// GpuLightKind::Triangle), so the only thing worth saying is that they
 	// took the per-triangle path rather than the cheaper merged-quad one.
