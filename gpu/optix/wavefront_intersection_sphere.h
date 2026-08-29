@@ -79,6 +79,72 @@ extern "C" __global__ void __intersection__wf_sphere() {
 	const float  ray_tmin = optixGetRayTmin();
 	const float  ray_tmax = optixGetRayTmax();
 
+	if (sphere.shapeKind == GpuMediumShapeKind::ClippedSphere) {
+		// Partial sphere (z-slab + phi-wedge clip) - wavefront-native mirror
+		// of optix_intersection_sphere.h's own ClippedSphere branch (same
+		// reason wf_sphere/wf_quad/wf_triangle are duplicated rather than
+		// shared - see this file's header comment). This shape carries its
+		// own object<->world affine (sphere.o2w/w2o), same as Disk/Cylinder,
+		// so the ray is read in WORLD space and transformed in by hand via
+		// wf_dc_apply_point/wf_dc_apply_vector rather than via ray_orig/
+		// ray_dir above (those stay OBJECT-space via the OptiX instance
+		// transform, for the plain-Sphere/Box branches only).
+		const float3 ray_orig_w = optixGetWorldRayOrigin();
+		const float3 ray_dir_w  = optixGetWorldRayDirection();
+		const float3 oro = wf_dc_apply_point(sphere.w2o, ray_orig_w);
+		const float3 ord = wf_dc_apply_vector(sphere.w2o, ray_dir_w);
+		const float r = sphere.radiusLocal;
+
+		const float qa = dot(ord, ord);
+		const float qb = 2.0f * dot(oro, ord);
+		const float qc = dot(oro, oro) - r * r;
+		const float disc = qb * qb - 4.0f * qa * qc;
+		if (disc < 0.0f) return;
+		const float sqrt_disc = sqrtf(disc);
+		const float q = (qb < 0.0f) ? -0.5f * (qb - sqrt_disc) : -0.5f * (qb + sqrt_disc);
+		float t0 = q / qa;
+		float t1 = qc / q;
+		if (t0 > t1) { float tmp = t0; t0 = t1; t1 = tmp; }
+		if (t0 > ray_tmax || t1 < ray_tmin) return;
+
+		float t_hit = (t0 >= ray_tmin) ? t0 : t1;
+		if (t_hit > ray_tmax) return;
+
+		float hx = oro.x + t_hit * ord.x, hy = oro.y + t_hit * ord.y, hz = oro.z + t_hit * ord.z;
+		float len = sqrtf(hx*hx + hy*hy + hz*hz);
+		if (len > 0.0f) { hx *= r/len; hy *= r/len; hz *= r/len; }
+
+		if (hz < sphere.zMin || hz > sphere.zMax) {
+			t_hit = (t_hit == t0) ? t1 : t0;
+			if (t_hit < ray_tmin || t_hit > ray_tmax) return;
+			hx = oro.x + t_hit * ord.x; hy = oro.y + t_hit * ord.y; hz = oro.z + t_hit * ord.z;
+			len = sqrtf(hx*hx + hy*hy + hz*hz);
+			if (len > 0.0f) { hx *= r/len; hy *= r/len; hz *= r/len; }
+			if (hz < sphere.zMin || hz > sphere.zMax) return;
+		}
+
+		float phi = atan2f(hy, hx);
+		if (phi < 0.0f) phi += 2.0f * 3.14159265358979323846f;
+		if (phi > sphere.phiMax) {
+			float t_other = (t_hit == t0) ? t1 : t0;
+			if (t_other < ray_tmin || t_other > ray_tmax) return;
+			hx = oro.x + t_other * ord.x; hy = oro.y + t_other * ord.y; hz = oro.z + t_other * ord.z;
+			len = sqrtf(hx*hx + hy*hy + hz*hz);
+			if (len > 0.0f) { hx *= r/len; hy *= r/len; hz *= r/len; }
+			phi = atan2f(hy, hx);
+			if (phi < 0.0f) phi += 2.0f * 3.14159265358979323846f;
+			if (hz < sphere.zMin || hz > sphere.zMax || phi > sphere.phiMax) return;
+			t_hit = t_other;
+		}
+
+		// No attributes packed - __closesthit__wf_sphere's own ClippedSphere
+		// branch recomputes the object-space hit point from scratch via
+		// sphere.w2o, same "cheaper to recompute than widen attributes"
+		// choice the recursive backend's __closesthit__sphere makes.
+		optixReportIntersection(t_hit, 0, 0, 0, 0, 0);
+		return;
+	}
+
 	if (sphere.shapeKind == GpuMediumShapeKind::Box) {
 		// See optix_intersection_sphere.h's own box branch - identical dual-
 		// root selection, attributes unused (box bounds are static, re-read
@@ -151,18 +217,35 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 	// static, so re-read directly from `sph` rather than needing any
 	// motion-interpolated attribute.
 	const bool is_box = (sph.shapeKind == GpuMediumShapeKind::Box);
+	// See __intersection__wf_sphere's own ClippedSphere comment: this shape
+	// carries its own object<->world affine (sph.o2w/w2o) rather than an
+	// OptiX instance transform, same as Disk/Cylinder - so its object-space
+	// hit point/normal/dpdu below are derived through that affine directly,
+	// never through instBase/optixTransform*FromWorldToObjectSpace (which
+	// stay meaningful only for the plain-Sphere/Box branches).
+	const bool is_clipped = (sph.shapeKind == GpuMediumShapeKind::ClippedSphere);
+
 	float3 obj_hit = hit_point;
-	if (instBase >= 0) obj_hit = optixTransformPointFromWorldToObjectSpace(hit_point);
-	// Kept OBJECT-space (never transformed) for UV purposes, matching
-	// optix_intersection_sphere.h's own obj_normal/outward_normal split - a
-	// texture stays pinned to the geometry as a placement rotates it, which a
-	// world-space UV wouldn't. outward_normal below is the (possibly
-	// world-transformed) copy used for shading/dpdu.
-	const float3 obj_normal = is_box
-		? wf_box_face_normal(obj_hit, sph.boxMin, sph.boxMax)
-		: normalize(obj_hit - sph.center);
+	float3 obj_normal;
+	if (is_clipped) {
+		obj_hit = wf_dc_apply_point(sph.w2o, hit_point);
+		const float rl = sph.radiusLocal;
+		obj_normal = (rl > 0.0f) ? (obj_hit / rl) : make_float3(0.0f, 0.0f, 1.0f);
+	} else {
+		if (instBase >= 0) obj_hit = optixTransformPointFromWorldToObjectSpace(hit_point);
+		// Kept OBJECT-space (never transformed) for UV purposes, matching
+		// optix_intersection_sphere.h's own obj_normal/outward_normal split -
+		// a texture stays pinned to the geometry as a placement rotates it,
+		// which a world-space UV wouldn't. outward_normal below is the
+		// (possibly world-transformed) copy used for shading/dpdu.
+		obj_normal = is_box
+			? wf_box_face_normal(obj_hit, sph.boxMin, sph.boxMax)
+			: normalize(obj_hit - sph.center);
+	}
 	float3 outward_normal = obj_normal;
-	if (instBase >= 0)
+	if (is_clipped)
+		outward_normal = normalize(wf_dc_apply_normal_from_w2o(sph.w2o, obj_normal));
+	else if (instBase >= 0)
 		outward_normal = normalize(optixTransformNormalFromObjectToWorldSpace(outward_normal));
 	// Flip to face the ray
 	bool front_face = dot(ray_dir, outward_normal) < 0.0f;
@@ -171,8 +254,31 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 	// Sphere UV - matches CPU's get_sphere_uv() / optix_intersection_sphere.h
 	// exactly (uses the raw, un-flipped obj_normal - UV is a property of the
 	// surface point, independent of which side the ray hit from).
-	const float sphere_theta = acosf(-obj_normal.y);
-	const float sphere_phi = atan2f(-obj_normal.z, obj_normal.x) + 3.14159265358979323846f;
+	//
+	// ClippedSphere uses pbrt-v4's own Z-pole convention (theta from the
+	// object-space Z coordinate, phi=atan2(y,x)) instead of this codebase's
+	// RTIOW-style Y-pole one below - see optix_intersection_sphere.h's
+	// identical branch for why (zMin/zMax/phiMax are themselves defined in
+	// the Z-pole convention).
+	float sphere_theta, sphere_phi;
+	float clipped_uv_u = 0.0f, clipped_uv_v = 0.0f;
+	if (is_clipped) {
+		const float pi = 3.14159265358979323846f;
+		const float rl = sph.radiusLocal;
+		const float cosTheta = fminf(1.0f, fmaxf(-1.0f, (rl > 0.0f) ? (obj_hit.z / rl) : 0.0f));
+		sphere_theta = acosf(cosTheta);
+		sphere_phi = atan2f(obj_hit.y, obj_hit.x);
+		if (sphere_phi < 0.0f) sphere_phi += 2.0f * pi;
+		const float thZMin = fminf(1.0f, fmaxf(-1.0f, (rl > 0.0f) ? (sph.zMin / rl) : -1.0f));
+		const float thZMax = fminf(1.0f, fmaxf(-1.0f, (rl > 0.0f) ? (sph.zMax / rl) : 1.0f));
+		const float thetaZMin = acosf(thZMax);
+		const float thetaZMax = acosf(thZMin);
+		clipped_uv_u = (sph.phiMax > 1e-8f) ? (sphere_phi / sph.phiMax) : 0.0f;
+		clipped_uv_v = (thetaZMax > thetaZMin) ? (sphere_theta - thetaZMin) / (thetaZMax - thetaZMin) : 0.0f;
+	} else {
+		sphere_theta = acosf(-obj_normal.y);
+		sphere_phi = atan2f(-obj_normal.z, obj_normal.x) + 3.14159265358979323846f;
+	}
 
 	// Real analytic dpdu (tangent), matching CPU's sphere.h and
 	// optix_intersection_sphere.h's identical derivation exactly (theta=
@@ -191,7 +297,19 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 	// own convention below, and is also the tangent the 4 anisotropy-
 	// capable material kinds need for a UV-aligned shading frame.
 	float3 sphere_dpdu;
-	{
+	if (is_clipped) {
+		// pbrt-v4 Sphere dpdu = phiMax * (-pHit.y, pHit.x, 0) - see
+		// optix_intersection_sphere.h's identical ClippedSphere dpdu branch.
+		sphere_dpdu = make_float3(-obj_hit.y, obj_hit.x, 0.0f) * sph.phiMax;
+		if (dot(sphere_dpdu, sphere_dpdu) < 1e-14f) {
+			const float3 zAxis = make_float3(0.0f, 0.0f, 1.0f);
+			const float3 tangent = cross(zAxis, obj_normal);
+			const float tlen = length(tangent);
+			const float3 dir = (tlen > 1e-6f) ? (tangent / tlen) : make_float3(1.0f, 0.0f, 0.0f);
+			sphere_dpdu = dir * (sph.phiMax * sph.radiusLocal * sinf(sphere_theta));
+		}
+		sphere_dpdu = normalize(wf_dc_apply_vector(sph.o2w, sphere_dpdu));
+	} else {
 		const float sin_theta = sinf(sphere_theta);
 		const float sin_phi = sinf(sphere_phi), cos_phi = cosf(sphere_phi);
 		sphere_dpdu = make_float3(sin_theta * sin_phi, 0.0f, sin_theta * cos_phi)
@@ -203,8 +321,8 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 			const float3 dir = (tlen > 1e-6f) ? (tangent / tlen) : make_float3(1.0f, 0.0f, 0.0f);
 			sphere_dpdu = dir * (sph.radius * 2.0f * 3.14159265358979323846f * sin_theta);
 		}
+		if (instBase >= 0) sphere_dpdu = normalize(optixTransformVectorFromObjectToWorldSpace(sphere_dpdu));
 	}
-	if (instBase >= 0) sphere_dpdu = normalize(optixTransformVectorFromObjectToWorldSpace(sphere_dpdu));
 
 	payload->hitPoint    = hit_point;
 	payload->normal      = normal;
@@ -215,8 +333,8 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 	payload->mediumTFar  = 0.0f;
 	payload->frontFace   = front_face ? 1 : 0;
 	payload->objDpdu     = sphere_dpdu;
-	payload->uv_u        = sphere_phi / (2.0f * 3.14159265358979323846f);
-	payload->uv_v        = sphere_theta / 3.14159265358979323846f;
+	payload->uv_u        = is_clipped ? clipped_uv_u : (sphere_phi / (2.0f * 3.14159265358979323846f));
+	payload->uv_v        = is_clipped ? clipped_uv_v : (sphere_theta / 3.14159265358979323846f);
 
 	// MaterialType::Medium (always) and MaterialType::DielectricMedium (exit
 	// surface only, front_face false - its entry surface just refracts/

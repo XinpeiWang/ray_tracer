@@ -327,18 +327,20 @@ TEST(FlattenTest, UnclippedSphereWithMediumInterfaceStillWorksNormally) {
 	EXPECT_FALSE(warnedAbout(s, "clipped sphere"));
 }
 
-TEST(FlattenTest, NonUniformScaleWarningDistinguishesTheClippedCpuExactPathFromGpu) {
-	// The old, unconditional "would be an ellipsoid" wording is only true
-	// for the baked (GPU) path - a clipped sphere's CPU rendering carries
-	// the real transform and handles non-uniform scale exactly, so it needs
-	// its own, differently-worded warning rather than the misleading one.
+TEST(FlattenTest, NonUniformScaleOnAClippedSphereNeedsNoWarningOnEitherBackend) {
+	// Both CPU (sphere_clipped_hittable.h) and GPU (pbrt_gpu_builder.h's
+	// ClippedSphere branch) now carry a clipped sphere's real object<->world
+	// transform and handle non-uniform scale exactly - unlike an unclipped
+	// sphere, which both backends still bake down to a single world-space
+	// center+radius and so still need the "would be an ellipsoid" warning.
 	const FlatScene clipped = flattenSource(
 		"Scale 1 5 1\nShape \"sphere\" \"float radius\" [ 1 ] \"float zmin\" [ 0 ]\n");
 	ASSERT_EQ(clipped.spheres.size(), 1u);
 	EXPECT_TRUE(clipped.spheres[0].clipped);
 	EXPECT_FALSE(warnedAbout(clipped, "ellipsoid"))
-		<< "the ellipsoid/largest-radius wording is false for CPU's exact clipped path";
-	EXPECT_TRUE(warnedAbout(clipped, "non-uniform scale"));
+		<< "the ellipsoid/largest-radius wording is false for both backends' exact clipped path";
+	EXPECT_FALSE(warnedAbout(clipped, "non-uniform scale"))
+		<< "no warning is needed at all once both backends handle it exactly";
 
 	const FlatScene unclipped = flattenSource(
 		"Scale 1 5 1\nShape \"sphere\" \"float radius\" [ 1 ]\n");
@@ -347,10 +349,15 @@ TEST(FlattenTest, NonUniformScaleWarningDistinguishesTheClippedCpuExactPathFromG
 }
 
 TEST(FlattenTest, ClippedSphereKeepsItsBakedCenterAndRadiusToo) {
-	// GPU deliberately keeps rendering a clipped sphere as its full,
-	// unclipped shape (OptiX's hardware sphere primitive has no clipping
-	// support) - it reads center/radius exactly like an unclipped sphere,
-	// so those must stay populated and correct even when clipped is true.
+	// A clipped sphere's real hit-testing shape lives in radiusLocal/zMin/
+	// zMax/phiMax/xform now (both backends honor the clip), but center/
+	// radius stay populated too - GPU's ClippedSphere branch (pbrt_gpu_
+	// builder.h) reuses them purely so the pre-existing full-sphere-cone NEE
+	// machinery has a cone to sample when this sphere is also an
+	// AreaLightSource, without any new clip-aware sampling code (the same
+	// accepted approximation CPU's own sphere_clipped_hittable.h already
+	// documents for this combination) - so those must stay populated and
+	// correct even when clipped is true.
 	const FlatScene s = flattenSource(
 		"Translate 0 0 10\n"
 		"Shape \"sphere\" \"float radius\" [ 2 ] \"float zmin\" [ 0 ]\n");

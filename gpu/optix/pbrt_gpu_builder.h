@@ -1294,8 +1294,69 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		return idx;
 	};
 
+	// Shared by clipped spheres (below) and disk/cylinder (further down,
+	// which originally declared these) - a generic "flatten a row-major 4x4
+	// affine to the 3x4 device convention" helper and the degrees->radians
+	// constant every pbrt-v4 shape's own "phimax"-style angle param needs
+	// converted once, host-side, before reaching the GPU.
+	const auto flattenTransform = [](const double xform[16], float out12[12]) {
+		for (int row = 0; row < 3; ++row)
+			for (int col = 0; col < 4; ++col)
+				out12[row * 4 + col] = static_cast<float>(xform[row * 4 + col]);
+	};
+	const double kDiskCylDegToRad = 3.14159265358979323846 / 180.0;
+
 	// ---- spheres ---------------------------------------------------------
 	for (const pbrt_flatten::Sphere &s : scene.spheres) {
+		if (s.clipped) {
+			// Real zmin/zmax/phimax clipping (pbrt_flatten::Sphere::clipped's
+			// own comment on the history of this gap) - a clipped sphere
+			// carries its own object<->world transform (like Disk/Cylinder)
+			// rather than being baked to world-space center/radius the way
+			// every OTHER sphere in this loop is, since clipping breaks
+			// rotation-invariance. medium/motion-blur are not combined with
+			// clipping (pbrt_flatten::Sphere::cpuMediumUnsupported's own
+			// comment on the medium side; motion blur was never threaded
+			// into the clipped path on either backend).
+			pbrt_scene::Matrix4 o2w;
+			for (int i = 0; i < 16; ++i) o2w.m[i] = s.xform[i];
+			pbrt_scene::Matrix4 w2o;
+			if (!o2w.inverseAffine(w2o)) continue;  // singular - drop, matching sphere_clipped_hittable's own valid_ guard
+
+			SphereData sd = {};
+			sd.shapeKind = GpuMediumShapeKind::ClippedSphere;
+			sd.materialIdx = materialIndex(s.material, s.areaLight);
+			sd.radiusLocal = static_cast<float>(s.radiusLocal);
+			sd.zMin = static_cast<float>(s.zMin);
+			sd.zMax = static_cast<float>(s.zMax);
+			sd.phiMax = static_cast<float>(s.phiMaxDeg * kDiskCylDegToRad);
+			flattenTransform(o2w.m, sd.o2w);
+			flattenTransform(w2o.m, sd.w2o);
+			// center/center1/radius are otherwise unused for this shapeKind
+			// (see GpuMediumShapeKind::ClippedSphere's own comment) - populated
+			// here anyway, from the same world-space center + baked "largest
+			// axis" radius pbrt_flatten.h already computes for every sphere
+			// regardless of clipping, purely so the EXISTING full-sphere NEE
+			// machinery (sample_area_light_by_kind, __closesthit__sphere's
+			// DiffuseLight solid-angle-pdf branch) has a real cone to sample
+			// when this sphere is also an AreaLightSource, without any new
+			// clip-aware sampling code. Sampling/weighting over the full
+			// (unclipped) cone rather than the true visible cap is the exact
+			// same accepted approximation CPU's sphere_clipped_hittable.h
+			// already documents for this identical narrow case (extra NEE
+			// noise from proposed directions landing on the clipped-away
+			// region, not bias - real hit-testing above still only uses
+			// radiusLocal/o2w/w2o and correctly refuses those directions).
+			sd.center = f3(s.center);
+			sd.center1 = sd.center;
+			sd.radius = static_cast<float>(s.radius);
+			if (s.areaLight >= 0) {
+				out.lightIndices.push_back(static_cast<int>(out.spheres.size()));
+				out.lightKinds.push_back(GpuLightKind::Sphere);
+			}
+			out.spheres.push_back(sd);
+			continue;
+		}
 		SphereData sd = {};
 		sd.center = f3(s.center);
 		sd.center1 = sd.center;          // static; see SphereData's comment
@@ -1414,12 +1475,8 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 	// docs/PBRT_SUPPORT.md: a zero-thickness plane has no "inside" volume for
 	// a homogeneous medium's entry/exit pair, so wrapping one in
 	// MediumInterface is structurally not meaningful and is not planned.
-	const auto flattenTransform = [](const double xform[16], float out12[12]) {
-		for (int row = 0; row < 3; ++row)
-			for (int col = 0; col < 4; ++col)
-				out12[row * 4 + col] = static_cast<float>(xform[row * 4 + col]);
-	};
-	const double kDiskCylDegToRad = 3.14159265358979323846 / 180.0;
+	// flattenTransform/kDiskCylDegToRad are declared earlier now, shared
+	// with the clipped-sphere loop above (see that loop's own comment).
 
 	for (const pbrt_flatten::Disk &d : scene.disks) {
 		pbrt_scene::Matrix4 o2w;

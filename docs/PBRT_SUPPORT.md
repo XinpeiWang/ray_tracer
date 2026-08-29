@@ -202,26 +202,47 @@ loader and no longer match the code:
 
 - `Shape "sphere"`'s `"float zmin"`/`"float zmax"`/`"float phimax"`
   (partial-sphere clipping - caps, wedges, hemispheres, e.g. a domed
-  skylight cutout) are now supported on **CPU only**. A full (unclipped)
-  sphere is rotation-invariant, so `pbrt_flatten.h` keeps baking it straight
-  to a world-space center+radius; a clipped one is orientation-dependent, so
-  CPU instead carries the real object-to-world transform and intersects in
-  object space against `SphereShape<T>`'s existing clipping math
-  (`sphere_clipped_hittable.h`) - exactly `disk_hittable`/`cylinder_hittable`'s
-  own technique, including their identical "exact under rotation, approximate
-  NEE weighting" character. **GPU still renders a clipped sphere as its
-  full, unclipped shape** - GPU spheres use OptiX's hardware sphere
-  primitive, which has no clipping support at all (unlike disk/cylinder,
-  which already use a custom software intersection program on GPU and could
-  in principle grow clipping the same way CPU just did); adding that is a
-  real, deliberately deferred follow-up, not an oversight. Solid-angle NEE
-  sampling of a clipped sphere used as an `AreaLightSource` (`random()`/
-  `pdf_value()`, forwarded to `SphereShape<T>::sample_from()`/`pdf_from()`)
-  samples over the FULL sphere's subtended cone, not just the visible cap -
-  a pre-existing property of that shared template, not something this
-  support adds - so this combination gets extra sampling noise (some
-  proposed light directions land on the clipped-away part and contribute
-  nothing) rather than bias; a narrow, rare combination in practice.
+  skylight cutout) are supported on **CPU and both GPU backends**
+  (recursive + wavefront). A full (unclipped) sphere is rotation-invariant,
+  so `pbrt_flatten.h` keeps baking it straight to a world-space
+  center+radius on every backend; a clipped one is orientation-dependent, so
+  all three backends instead carry the real object-to-world transform and
+  intersect in object space against pbrt-v4's own dual-root z/phi
+  clip-rejection algorithm (`SphereShape<T>::intersect()`,
+  `src/shared/shapes.h`, wrapped by `sphere_clipped_hittable.h` on CPU;
+  hand-duplicated free device functions in `optix_intersection_sphere.h`/
+  `wavefront_intersection_sphere.h` on GPU, following the same
+  `SphereData::o2w`/`w2o` pattern `DiskData`/`CylinderData` already use) -
+  exactly `disk_hittable`/`cylinder_hittable`'s own technique, including
+  their identical "exact under rotation, approximate NEE weighting"
+  character. GPU intersection is a custom software program (not OptiX's
+  hardware sphere primitive) and was already capable of this; the earlier
+  belief that GPU spheres couldn't clip was a stale assumption, not a real
+  hardware limit. Solid-angle NEE sampling of a clipped sphere used as an
+  `AreaLightSource` (`random()`/`pdf_value()` on CPU, forwarded to
+  `SphereShape<T>::sample_from()`/`pdf_from()`; `sample_sphere_light()`/
+  `wf_sample_sphere_light()` on GPU, using a baked full-sphere center+radius
+  populated for exactly this purpose) samples over the FULL sphere's
+  subtended cone on every backend, not just the visible cap - a pre-existing
+  property of the shared CPU template, deliberately mirrored on GPU rather
+  than fixed - so this combination gets extra sampling noise (some proposed
+  light directions land on the clipped-away part and contribute nothing)
+  rather than bias; a narrow, rare combination in practice. A clipped sphere
+  combined with a `MediumInterface` is unsupported on **both** backends now
+  (an open shell can't bound a participating medium correctly; previously
+  GPU alone got away with it by always rendering every sphere as a full
+  closed shape regardless of clipping) - loudly warned, not silently
+  dropped. Two further, narrower scope cuts: an **instanced** clipped sphere
+  (`ObjectInstance`) still renders as its full, unclipped shape on GPU only
+  (the instanced-sphere build loop in `pbrt_gpu_builder.h` wasn't extended -
+  CPU has no such gap); and **GPU SPPM** (`sppm_programs.cu`, a third,
+  independently-duplicated intersection/closest-hit program neither GPU
+  backend above shares) also still renders every sphere as its full,
+  unclipped shape, matching this file's own established pattern of scoping
+  SPPM out of a GPU feature round when its separate architecture would need
+  its own dedicated pass (see the `Film "cropwindow"` entry above for the
+  identical precedent) - both are real, deliberately deferred follow-ups,
+  not oversights.
 
 - `Shape "curve"` (a cubic Bezier hair/fiber strand) is supported on CPU
   (`src/shared/shapes.h`'s `CurveShape<T>`, wrapped by

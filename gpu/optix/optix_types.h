@@ -95,7 +95,28 @@ struct ShadowPayload {
 // SBT/instancing/shadow-ray machinery, ...) - only the geometric test
 // changes. center/center1/radius are unused (left zero) when shapeKind==Box;
 // boxMin/boxMax are unused (left zero) when shapeKind==Sphere.
-enum class GpuMediumShapeKind : int { Sphere = 0, Box = 1 };
+// ClippedSphere (2): pbrt-v4's real "float zmin"/"float zmax"/"float phimax"
+// on Shape "sphere" (caps/wedges/hemispheres, e.g. a domed skylight cutout) -
+// previously silently dropped on GPU (rendered as the full unclipped
+// sphere), matching CPU's own now-fixed gap (see pbrt_flatten::Sphere::
+// clipped's own comment for the history). Unlike Sphere/Box above, a
+// ClippedSphere is NOT rotation-invariant, so it carries its own object<->
+// world affine transform (SphereData::o2w/w2o below) exactly the way
+// Disk/Cylinder already do (see DiskData's own comment) - boxMin/boxMax are
+// unused (left zero) for this kind; the real hit-testing object-space
+// geometry lives in radiusLocal/zMin/zMax/phiMax instead, and motion blur is
+// not supported in combination with clipping (CPU doesn't support it either
+// - a clipped sphere is never also a moving one in this loader's own
+// pbrt_flatten.h). center/center1/radius ARE populated for this kind too (a
+// real world-space center + baked "largest axis" full-sphere radius, same
+// as every other sphere) but ONLY for the pre-existing full-sphere-cone NEE
+// machinery (sample_area_light_by_kind, DiffuseLight solid-angle pdf) to
+// reuse unmodified when this sphere is also an AreaLightSource - the exact
+// same accepted CPU approximation documented in sphere_clipped_hittable.h's
+// own header comment (noise, not bias: some sampled directions land on the
+// clipped-away region and contribute nothing, since real hit-testing still
+// only consults radiusLocal/o2w/w2o and correctly rejects them).
+enum class GpuMediumShapeKind : int { Sphere = 0, Box = 1, ClippedSphere = 2 };
 
 // Sphere geometry data (custom primitive)
 struct SphereData {
@@ -127,6 +148,21 @@ struct SphereData {
 	// to corner `b`. Unused (left zero) for shapeKind==Sphere.
 	float3 boxMin;
 	float3 boxMax;
+
+	// ClippedSphere (shapeKind==ClippedSphere) only - object-space partial-
+	// sphere parameters, matching pbrt_flatten::Sphere::radiusLocal/zMin/
+	// zMax/phiMaxDeg (radians here, converted host-side) exactly, plus the
+	// object<->world affine transform (row-major 3x4, same convention as
+	// DiskData::o2w/w2o - see that struct's own comment for the full
+	// rationale) computed once host-side from pbrt_flatten::Sphere::xform.
+	// Unused (left zero) for shapeKind==Sphere/Box. (center/center1/radius
+	// above ARE used for ClippedSphere too, but only by NEE sampling, not
+	// hit-testing - see GpuMediumShapeKind::ClippedSphere's own comment.)
+	float radiusLocal;
+	float zMin, zMax;
+	float phiMax;
+	float o2w[12];
+	float w2o[12];
 };
 
 // Quad geometry data (custom primitive)

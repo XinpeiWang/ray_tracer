@@ -2765,40 +2765,43 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			const double lo = std::fmin(sc[0], std::fmin(sc[1], sc[2]));
 			const double hi = std::fmax(sc[0], std::fmax(sc[1], sc[2]));
 			if (hi - lo > 1e-6 * std::fmax(1.0, hi)) {
-				// CPU's clipped path (sphere_clipped_hittable.h) carries the
-				// real object-to-world transform and handles non-uniform
-				// scale EXACTLY for intersection - "would be an ellipsoid"
-				// is only true for GPU, which still renders every sphere
-				// (clipped or not) from this baked center/radius.
-				warn(s.clipped
-					? "a clipped sphere carries a non-uniform scale - CPU "
-					  "renders it exactly (real transform), but GPU still "
-					  "renders it as a full sphere using its largest "
-					  "radius, so the two backends will not match here"
-					: "a sphere carries a non-uniform scale and would be an "
-					  "ellipsoid; emitted with its largest radius instead");
+				// CPU's clipped path (sphere_clipped_hittable.h) and GPU's
+				// ClippedSphere path (pbrt_gpu_builder.h - carries the real
+				// per-sphere o2w/w2o affine, not this baked center/radius)
+				// both handle non-uniform scale EXACTLY for a clipped
+				// sphere, so no warning is needed there. "Would be an
+				// ellipsoid; emitted with its largest radius instead" only
+				// applies to an UNCLIPPED sphere, where both backends still
+				// bake down to this single center/s.radius value.
+				if (!s.clipped) {
+					warn("a sphere carries a non-uniform scale and would be an "
+						 "ellipsoid; emitted with its largest radius instead");
+				}
 			}
 			s.radius = r * hi;
 
 			s.material = shape.materialIndex;
 			s.areaLight = shape.areaLightIndex;
-			// `medium` is populated unconditionally, regardless of clipping
-			// - GPU always renders every sphere (clipped or not) as this
-			// same full, closed, baked-radius shape, which has no problem
-			// bounding a medium, so GPU's own independent read of this
-			// field must see the real index. Only CPU's OWN clipped-path
-			// hittable (sphere_clipped_hittable.h, an open shell once
-			// zmin/zmax/phimax cut it) can't honor it - cpuMediumUnsupported
-			// carries that CPU-only fact separately (see its own comment),
-			// consulted only by pbrt_cpu_builder.h.
+			// `medium` is populated unconditionally, regardless of clipping -
+			// an unclipped sphere has no problem bounding a medium on either
+			// backend, so both need the real index for that case.
+			// cpuMediumUnsupported/the warn() below cover the clipped case:
+			// an open shell (zmin/zmax/phimax cut it) can't bound a
+			// participating medium correctly, on EITHER backend now that
+			// GPU also renders a clipped sphere as a real open shell
+			// (pbrt_gpu_builder.h's ClippedSphere branch - it resolves this
+			// sphere's material via materialIndex(), never
+			// mediumMaterialIndex(), for exactly this reason) rather than
+			// the old always-full-closed-sphere approximation that used to
+			// let GPU alone get away with keeping it.
 			s.medium = shape.insideMedium;
 			if (s.clipped && s.medium >= 0) {
 				s.cpuMediumUnsupported = true;
 				warn("a clipped sphere (zmin/zmax/phimax) has a MediumInterface, "
 					 "but its open-shell boundary can't bound a participating "
-					 "medium correctly on CPU - CPU will drop it (GPU, which "
-					 "renders every sphere as a full closed shape regardless "
-					 "of clipping, keeps it)");
+					 "medium correctly - both CPU and GPU drop it, rendering "
+					 "the clipped shell with its regular surface material "
+					 "instead");
 			}
 			w.spheres->push_back(s);
 			continue;

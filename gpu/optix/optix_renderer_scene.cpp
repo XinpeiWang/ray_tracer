@@ -732,6 +732,36 @@ bool OptiXRenderer::buildScene(
 			aabb.maxX = s.boxMax.x;
 			aabb.maxY = s.boxMax.y;
 			aabb.maxZ = s.boxMax.z;
+		} else if (s.shapeKind == GpuMediumShapeKind::ClippedSphere) {
+			// Object-space box [-radiusLocal,radiusLocal] x [-radiusLocal,
+			// radiusLocal] x [zMin,zMax] - a conservative bound on the
+			// clipped surface (the same one CPU's own
+			// affine_transform::transformed_bbox(o2w_, -radius,radius,
+			// -radius,radius,z_min,z_max) computes, sphere_clipped_
+			// hittable.h) - transformed to world space by the 8 corners,
+			// since o2w may rotate/shear/non-uniformly-scale, unlike the
+			// plain-sphere case above where center+-radius is exact.
+			// Looser than a tight per-clip-region bound would be (no
+			// correctness cost - __intersection__sphere's own zMin/zMax/
+			// phiMax rejection is what actually enforces the real, tighter
+			// clipped shape; a loose AABB only means testing a few more
+			// candidate rays than strictly necessary).
+			const float r = s.radiusLocal;
+			float minX = 1e30f, minY = 1e30f, minZ = 1e30f;
+			float maxX = -1e30f, maxY = -1e30f, maxZ = -1e30f;
+			for (int c = 0; c < 8; ++c) {
+				const float ox = (c & 1) ? r : -r;
+				const float oy = (c & 2) ? r : -r;
+				const float oz = (c & 4) ? s.zMax : s.zMin;
+				const float wx = s.o2w[0]*ox + s.o2w[1]*oy + s.o2w[2]*oz  + s.o2w[3];
+				const float wy = s.o2w[4]*ox + s.o2w[5]*oy + s.o2w[6]*oz  + s.o2w[7];
+				const float wz = s.o2w[8]*ox + s.o2w[9]*oy + s.o2w[10]*oz + s.o2w[11];
+				minX = fminf(minX, wx); maxX = fmaxf(maxX, wx);
+				minY = fminf(minY, wy); maxY = fmaxf(maxY, wy);
+				minZ = fminf(minZ, wz); maxZ = fmaxf(maxZ, wz);
+			}
+			aabb.minX = minX; aabb.minY = minY; aabb.minZ = minZ;
+			aabb.maxX = maxX; aabb.maxY = maxY; aabb.maxZ = maxZ;
 		} else {
 			aabb.minX = s.center.x - s.radius;
 			aabb.minY = s.center.y - s.radius;
@@ -822,6 +852,30 @@ bool OptiXRenderer::buildScene(
 				aabb.maxX = s.boxMax.x;
 				aabb.maxY = s.boxMax.y;
 				aabb.maxZ = s.boxMax.z;
+			} else if (s.shapeKind == GpuMediumShapeKind::ClippedSphere) {
+				// No scene combines motion blur with a clipped sphere either
+				// (GpuMediumShapeKind::ClippedSphere's own comment) - static,
+				// same bounds at both motion keys, same reasoning as Box
+				// above. Recomputing the 8-corner transform here (rather
+				// than indexing back into `aabbs`) keeps this branch self-
+				// contained and matches this loop's own existing style of
+				// deriving each key1 entry directly from `s`.
+				const float r = s.radiusLocal;
+				float minX = 1e30f, minY = 1e30f, minZ = 1e30f;
+				float maxX = -1e30f, maxY = -1e30f, maxZ = -1e30f;
+				for (int c = 0; c < 8; ++c) {
+					const float ox = (c & 1) ? r : -r;
+					const float oy = (c & 2) ? r : -r;
+					const float oz = (c & 4) ? s.zMax : s.zMin;
+					const float wx = s.o2w[0]*ox + s.o2w[1]*oy + s.o2w[2]*oz  + s.o2w[3];
+					const float wy = s.o2w[4]*ox + s.o2w[5]*oy + s.o2w[6]*oz  + s.o2w[7];
+					const float wz = s.o2w[8]*ox + s.o2w[9]*oy + s.o2w[10]*oz + s.o2w[11];
+					minX = fminf(minX, wx); maxX = fmaxf(maxX, wx);
+					minY = fminf(minY, wy); maxY = fmaxf(maxY, wy);
+					minZ = fminf(minZ, wz); maxZ = fmaxf(maxZ, wz);
+				}
+				aabb.minX = minX; aabb.minY = minY; aabb.minZ = minZ;
+				aabb.maxX = maxX; aabb.maxY = maxY; aabb.maxZ = maxZ;
 			} else {
 				aabb.minX = s.center1.x - s.radius;
 				aabb.minY = s.center1.y - s.radius;
