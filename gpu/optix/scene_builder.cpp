@@ -4287,38 +4287,16 @@ static bool build_loaded_pbrt_scene(
 		out_camera_extra->cropY1 = bounds.y1;
 	}
 
-	// Texture "imagemap" "string encoding"/"string wrap"/"bool invert" -
-	// same "cheap warning for a real, currently-unimplemented backend gap"
-	// pattern as cropwindow above. getOrBuildPbrtImageTexture()/
-	// sampleImage() (this file / optix_device_helpers.h) decode
-	// m.textureFilename with none of these three requests honored - GPU
-	// ALWAYS hard-clamps u/v to [0,1] (sampleImage()'s own
-	// fminf(fmaxf(...)) - no wrap mode exists on GPU at all) and always
-	// gamma-2.2-decodes with no inversion. So the "no divergence" case is
-	// wrap == "clamp" specifically, NOT "repeat" - pbrt_flatten.h now
-	// resolves an UNSET "wrap" param to pbrt-v4's real default "repeat"
-	// (see Material::textureWrap's own comment), meaning the common case of
-	// an ordinary scene with no explicit "wrap" at all now DOES diverge
-	// from GPU's real (clamp-only) behavior whenever a mesh's UV leaves
-	// [0,1], and must warn - checking against "repeat" here would silently
-	// skip the warning for exactly that common case while spuriously firing
-	// for a scene that explicitly asked for "clamp" (which GPU already
-	// matches). Checked once across every material rather than per-
-	// material-use since a single warning is enough to point a user at
-	// --cpu; the exact material/texture at fault is secondary to the fact
-	// GPU can't honor it.
-	for (const pbrt_flatten::Material& m : loaded.scene.materials) {
-		if (m.textureFilename.empty()) continue;
-		if (m.textureGamma == pbrt_flatten::kDefaultTextureGamma &&
-			m.textureWrap == "clamp" && !m.textureInvert) continue;
-		std::cerr << "[OptiX] Warning: scene requests a Texture \"imagemap\" "
-					 "\"encoding\"/\"wrap\"/\"invert\" but GPU rendering does not "
-					 "implement any of them - always gamma-2.2-decoding and "
-					 "hard-clamping UVs to the texture edge, with no inversion "
-					 "(no wrap/repeat/tiling support on GPU at all). "
-					 "Use --cpu to honor this request.\n";
-		break;
-	}
+	// Texture "imagemap" "string encoding"/"string wrap"/"bool invert" - GPU
+	// now implements all three for the primary "reflectance" slot of
+	// Diffuse/CoatedDiffuse/DiffuseTransmission (getOrBuildPbrtImageTexture()/
+	// sampleImage() in this file / optix_device_helpers.h - gpuWrapModeFor(),
+	// TextureData::wrapMode/GpuWrapMode), matching CPU's own scope exactly
+	// (imageMapOptionsFor(), pbrt_cpu_builder.h) - Material::textureFilename
+	// is never populated for any OTHER material kind (verified: both
+	// builders' only 3 read sites are exactly these kinds), so this closes
+	// the divergence the old warning here used to flag entirely, not just
+	// narrow it.
 
 	// MakeNamedMedium's own "rgb Le"/"float Lescale" (pbrt-v4) - same
 	// "cheap warning for a real, currently-unimplemented backend gap"

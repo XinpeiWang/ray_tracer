@@ -710,6 +710,19 @@ struct GpuGridMedium {
 	float phase_g;       // Henyey-Greenstein asymmetry
 };
 
+// Texture "imagemap"'s own "string wrap" (pbrt-v4) - matches CPU's
+// MipWrapMode (src/shared/mipmap.h) exactly, same enumerator order/values,
+// so pbrt_gpu_builder.h's resolution of Material::textureWrap ("repeat"/
+// "clamp"/"black" - already parsed by pbrt_flatten.h) can mirror
+// imageMapOptionsFor()'s (pbrt_cpu_builder.h) identical if/else chain
+// verbatim. Clamp=0 is TextureData::wrapMode's zero-init default (every
+// pre-existing `TextureData tex{}` call site, and image-texture-table
+// entries never built through the GPU imagemap-with-options path below -
+// e.g. roughness/transmittance/displacement/checker/mix), matching this
+// codebase's pre-existing hard-clamp GPU behavior exactly for every one of
+// those slots, unchanged by this addition.
+enum class GpuWrapMode : int { Clamp = 0, Repeat = 1, Black = 2 };
+
 // Texture kinds - see TextureData below. Matches CPU texture classes in
 // src/TheRestOfYourLife/texture.h: image_texture, noise_texture,
 // checker_texture, uv_checker_texture, fbm_texture, marble_texture, and
@@ -749,6 +762,14 @@ struct TextureData {
 	int pixelOffset;   // Image: byte offset into texturePixels. Unused otherwise.
 	int width;         // Image: pixel width. Unused otherwise.
 	int height;        // Image: pixel height. Unused otherwise.
+	// Image (and UVChecker/Mix's own tex1ImageIdx/tex2ImageIdx - see their
+	// own comment below, both of which resolve to another Image-kind
+	// TextureData and share sampleImage()'s one lookup path) only - see
+	// GpuWrapMode's own comment above for what this does and why every
+	// OTHER Image entry (checker/mix/roughness/transmittance/displacement)
+	// stays at the zero-init Clamp default regardless of what the scene's
+	// own imagemap "wrap" declares.
+	GpuWrapMode wrapMode = GpuWrapMode::Clamp;
 	float noiseScale;  // Noise: scale param. Checker: 1/scale (checker_texture's own inv_scale). Unused otherwise.
 	float3 color1;     // Checker/UVChecker: "even"/tex1 cell color. Mix: tex1. Unused otherwise.
 	float3 color2;     // Checker/UVChecker: "odd"/tex2 cell color. Mix: tex2. Unused otherwise.

@@ -449,16 +449,21 @@ per-`MaterialKind` behavior.)
   `"bool invert"` params (previously never parsed at all — every 8-bit
   texture was silently gamma-2.2-decoded via `stbi_loadf()`'s own process-
   global default, `wrap` was scaffolded in `MipWrapMode` but structurally
-  inert, and `invert` didn't exist) are now read and honored on **CPU only**,
-  for the primary `"reflectance"` slot (`Material::textureFilename`) of
-  `Diffuse`/`CoatedDiffuse`/`DiffuseTransmission` — the other four texture-
-  filename slots (`transmittanceTextureFilename`/`roughnessTextureFilename`/
+  inert, and `invert` didn't exist) are now read and honored on **CPU and
+  both GPU backends**, for the primary `"reflectance"` slot
+  (`Material::textureFilename`) of `Diffuse`/`CoatedDiffuse`/
+  `DiffuseTransmission` — the other four texture-filename slots
+  (`transmittanceTextureFilename`/`roughnessTextureFilename`/
   `alphaTextureFilename`/`displacementTextureFilename`) still get this
   codebase's long-standing gamma-2.2/Clamp/no-invert defaults regardless of
   what the scene's own `imagemap` declares, a deliberate scope cut matching
   this loader's own "close the reflectance slot first" precedent (see
   `Material::textureGamma`/`textureWrap`/`textureInvert`'s own comments,
-  `pbrt_flatten.h`). `"encoding"`: `"linear"` → gamma 1.0 (no decode — the
+  `pbrt_flatten.h`) — `Material::textureFilename` is never populated for any
+  other material kind on either backend (verified directly: both
+  `pbrt_cpu_builder.h` and `gpu/optix/pbrt_gpu_builder.h` each have exactly
+  3 read sites for it, all 3 of these kinds), so this is the entire gap, not
+  a narrowed one. `"encoding"`: `"linear"` → gamma 1.0 (no decode — the
   real use case is a roughness/normal/displacement map bound as reflectance
   on a stand-in material for inspection, or a genuinely-linear photo source);
   `"gamma <value>"` → that exact exponent; `"sRGB"`/absent → 2.2 (this
@@ -468,48 +473,51 @@ per-`MaterialKind` behavior.)
   `"clamp"`, or `"black"`. `"invert"`: per-texel `1-c` at load time.
   **Behavior changes**, both deliberate and both gated on the same user
   decision to fix `wrap` for real rather than ship an inert flag a second
-  time: (1) UV tiling now actually works — `mipmap_texture::value()`/
-  `value_ewa()`/`value_lod()` (`texture.h`) used to hard-clamp `u`/`v` to
-  `[0,1]` *before* `MipWrapMode` ever saw them, so `"wrap" "repeat"` on a
-  UV>1 scene was a structural no-op; the clamp is now a much wider
-  `wide_clamp([-1024,1024])` (still bounding `bilerp()`'s integer texel math
-  against a pathological UV, just no longer defeating real tiling). (2) The
-  loader's own resolved `wrap` default is now `"repeat"` (pbrt-v4's real
-  one) rather than the prior de-facto `Clamp` every image texture got by
-  simply never reaching a non-default wrap mode — a scene that authors UV
-  coordinates outside `[0,1]` on an image-textured surface with no explicit
-  `"wrap"` param will now visibly tile where it previously clamped to the
-  edge pixel. `MipMapOptions::wrap`'s own C++ struct default (`mipmap.h`)
+  time: (1) UV tiling now actually works on both CPU and GPU —
+  `mipmap_texture::value()`/`value_ewa()`/`value_lod()` (`texture.h`) used
+  to hard-clamp `u`/`v` to `[0,1]` *before* `MipWrapMode` ever saw them, and
+  GPU's own `sampleImage()` (`gpu/optix/optix_device_helpers.h`,
+  `gpu/optix/wavefront_kernels.cu`) did the identical hard `[0,1]` clamp, so
+  `"wrap" "repeat"` on a UV>1 scene was a structural no-op on both; the
+  clamp is now a much wider `wide_clamp([-1024,1024])` on CPU (still
+  bounding `bilerp()`'s integer texel math against a pathological UV, just
+  no longer defeating real tiling) and the matching `[-1024,1024]` wide
+  clamp before wrapping the integer pixel index on GPU (both backends,
+  `GpuWrapMode`/`TextureData::wrapMode`). (2) The loader's own resolved
+  `wrap` default is now `"repeat"` (pbrt-v4's real one) rather than the
+  prior de-facto `Clamp` every image texture got by simply never reaching a
+  non-default wrap mode — a scene that authors UV coordinates outside
+  `[0,1]` on an image-textured surface with no explicit `"wrap"` param will
+  now visibly tile where it previously clamped to the edge pixel, on every
+  backend. `MipMapOptions::wrap`'s own C++ struct default (`mipmap.h`)
   deliberately stays `Clamp` — only the pbrt loader path resolves to
   `"repeat"` explicitly, so this doesn't affect this codebase's own native
-  (non-pbrt) scenes. GPU (both backends) implements none of this —
-  `getOrBuildPbrtImageTexture()`/`sampleImage()` (`gpu/optix/
-  pbrt_gpu_builder.h`, `gpu/optix/optix_device_helpers.h`) always
-  hard-clamps UVs to `[0,1]` and decodes at gamma-2.2 with no inversion,
-  regardless of what the scene requests — there is no wrap-mode concept on
-  GPU at all, so its real, only behavior is `Clamp`, not the CPU loader's
-  now-resolved-to-`"repeat"` default. `scene_builder.cpp`'s scene-load
-  warns once, by the same "cheap warning for a currently-unimplemented
-  backend gap" pattern as the `Film "cropwindow"` warning above, whenever a
-  material's primary reflectance texture resolves to anything other than
-  GPU's real behavior (gamma 2.2, `"clamp"`, no invert) — since the CPU
-  loader's default is now `"repeat"`, this means the warning fires for the
-  *common* case of a scene with no explicit `"wrap"` param at all (a real,
-  now-correctly-flagged CPU/GPU divergence whenever such a scene's UVs
-  leave `[0,1]`), not only for scenes explicitly requesting a non-default
-  value. An earlier version of this warning's skip-condition checked
-  against `"repeat"` instead of `"clamp"` and had this backwards — fixed
-  after a code-review pass caught it.
-  A `"string encoding"` value this loader doesn't recognize (not `"linear"`/
-  `"sRGB"`/absent/`"gamma <value>"` — e.g. a real pbrt-v4 ICC-profile
-  filename) falls back to gamma 2.2 WITH a warning (`resolveTextureGamma()`,
-  `pbrt_flatten.h`), not silently — same for a `"gamma <value>"` that parses
-  to something unusable as a decode exponent (non-finite, e.g. `"gamma nan"`/
-  `"gamma inf"` — `std::stod` accepts these without throwing per `strtod`
-  semantics — or `<= 0`). An unrecognized `"string wrap"` value (a typo or
-  wrong case, e.g. `"Clamp"`) similarly falls back to `"repeat"` WITH a
-  warning rather than silently. Binding `"encoding"`/`"wrap"`/`"invert"` to
-  one of the 4 non-primary texture-filename slots (transmittance/roughness/
-  alpha/displacement) also warns that the request is ignored there — those
-  slots still only ever get this codebase's original gamma-2.2/Clamp/
-  no-invert defaults, regardless of what the scene's own imagemap declares.
+  (non-pbrt) scenes; `TextureData::wrapMode`'s own C++ struct default
+  (`optix_types.h`) deliberately stays `Clamp` for the identical reason —
+  every OTHER GPU texture-table entry (checker/mix tex1/tex2/amount,
+  roughness/transmittance/displacement) is still built without threading
+  these options through at all, so those stay byte-for-byte at GPU's
+  original hard-clamp/gamma-2.2/no-invert behavior, unaffected by this
+  change. Gamma and invert are baked into the decoded pixel bytes once at
+  scene-load time on GPU (`getOrBuildPbrtImageTexture()`,
+  `gpu/optix/pbrt_gpu_builder.h`, via `stbi_ldr_to_hdr_gamma()` - the same
+  process-global stb_image mechanism `rtw_stb_image.h`'s `rtw_image`
+  constructor uses on CPU) rather than at sample time, matching CPU's own
+  gamma/invert-at-load vs. wrap-at-sample split exactly; a file shared by
+  more than one material with different `encoding`/`wrap`/`invert` requests
+  gets a separate, independently-decoded texture-table entry per distinct
+  option combination (a small cache-key extension, not a new limitation) so
+  the two don't collide. A `"string encoding"` value this loader doesn't
+  recognize (not `"linear"`/`"sRGB"`/absent/`"gamma <value>"` — e.g. a real
+  pbrt-v4 ICC-profile filename) falls back to gamma 2.2 WITH a warning
+  (`resolveTextureGamma()`, `pbrt_flatten.h`), not silently — same for a
+  `"gamma <value>"` that parses to something unusable as a decode exponent
+  (non-finite, e.g. `"gamma nan"`/`"gamma inf"` — `std::stod` accepts these
+  without throwing per `strtod` semantics — or `<= 0`). An unrecognized
+  `"string wrap"` value (a typo or wrong case, e.g. `"Clamp"`) similarly
+  falls back to `"repeat"` WITH a warning rather than silently. Binding
+  `"encoding"`/`"wrap"`/`"invert"` to one of the 4 non-primary texture-
+  filename slots (transmittance/roughness/alpha/displacement) also warns
+  that the request is ignored there — those slots still only ever get this
+  codebase's original gamma-2.2/Clamp/no-invert defaults on either backend,
+  regardless of what the scene's own imagemap declares.

@@ -408,13 +408,25 @@ __device__ __forceinline__ float3 wf_sample_texture(
 	// tex1ImageIdx/tex2ImageIdx (a one-level-nested bare imagemap - see
 	// TextureData's own comment and optix_device_helpers.h's identical
 	// sampleImage lambda) - factored out so both call sites in THIS
-	// duplicated copy share one instance too.
+	// duplicated copy share one instance too. See optix_device_helpers.h's
+	// own sampleImage comment for the full wide-clamp/wrap-mode rationale -
+	// mirrored here verbatim (same cross-module duplication reason every
+	// other wf_ helper in this file is duplicated rather than shared).
 	auto sampleImage = [&](const TextureData& t) -> float3 {
 		if (t.width <= 0 || t.height <= 0) return make_float3(0.0f, 1.0f, 1.0f);
-		const float uc = fminf(fmaxf(u, 0.0f), 1.0f);
-		const float vc = 1.0f - fminf(fmaxf(v, 0.0f), 1.0f);
-		const int i = min(static_cast<int>(uc * t.width), t.width - 1);
-		const int j = min(static_cast<int>(vc * t.height), t.height - 1);
+		const float uw = fminf(fmaxf(u, -1024.0f), 1024.0f);
+		const float vw = fminf(fmaxf(1.0f - v, -1024.0f), 1024.0f);
+		int i = static_cast<int>(floorf(uw * t.width));
+		int j = static_cast<int>(floorf(vw * t.height));
+		if (t.wrapMode == GpuWrapMode::Repeat) {
+			i = ((i % t.width) + t.width) % t.width;
+			j = ((j % t.height) + t.height) % t.height;
+		} else if (t.wrapMode == GpuWrapMode::Black) {
+			if (i < 0 || i >= t.width || j < 0 || j >= t.height) return make_float3(0.0f, 0.0f, 0.0f);
+		} else {  // Clamp
+			i = min(max(i, 0), t.width - 1);
+			j = min(max(j, 0), t.height - 1);
+		}
 		const unsigned char* px = texturePixels + t.pixelOffset + (j * t.width + i) * 3;
 		constexpr float kColorScale = 1.0f / 255.0f;
 		return make_float3(px[0] * kColorScale, px[1] * kColorScale, px[2] * kColorScale);
