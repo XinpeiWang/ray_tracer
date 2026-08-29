@@ -293,11 +293,27 @@ extern "C" __global__ void __closesthit__wf_probe_sphere() {
 	const float  t        = optixGetRayTmax();
 	const float3 hit_point = ray_orig + t * ray_dir;
 
+	// ClippedSphere carries its own per-shape o2w/w2o (see GpuMediumShapeKind's
+	// comment in optix_types.h) independent of any OptiX instance transform,
+	// so the naive world-space `obj_hit - sphere.center` radial normal below
+	// is only correct under a rigid+uniform-scale transform - wrong for a
+	// non-uniformly-scaled clipped sphere, whose real (transform-exact)
+	// intersection lives in __closesthit__wf_sphere via wf_dc_apply_point/
+	// wf_dc_apply_normal_from_w2o. Mirrored here the same way.
+	const bool is_clipped = (sphere.shapeKind == GpuMediumShapeKind::ClippedSphere);
 	float3 obj_hit = hit_point;
-	if (instBase >= 0) obj_hit = optixTransformPointFromWorldToObjectSpace(hit_point);
-	const float3 obj_normal = normalize(obj_hit - sphere.center);
+	float3 obj_normal;
+	if (is_clipped) {
+		obj_hit = wf_dc_apply_point(sphere.w2o, hit_point);
+		const float rl = sphere.radiusLocal;
+		obj_normal = (rl > 0.0f) ? (obj_hit / rl) : make_float3(0.0f, 0.0f, 1.0f);
+	} else {
+		if (instBase >= 0) obj_hit = optixTransformPointFromWorldToObjectSpace(hit_point);
+		obj_normal = normalize(obj_hit - sphere.center);
+	}
 	float3 outward_normal = obj_normal;
-	if (instBase >= 0) outward_normal = normalize(optixTransformNormalFromObjectToWorldSpace(outward_normal));
+	if (is_clipped) outward_normal = normalize(wf_dc_apply_normal_from_w2o(sphere.w2o, obj_normal));
+	else if (instBase >= 0) outward_normal = normalize(optixTransformNormalFromObjectToWorldSpace(outward_normal));
 	const bool front_face = dot(ray_dir, outward_normal) < 0.0f;
 	const float3 normal = front_face ? outward_normal : -outward_normal;
 

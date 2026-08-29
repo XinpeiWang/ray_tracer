@@ -611,6 +611,11 @@ __device__ __forceinline__ void wf_xyz_to_linear_rgb(float X, float Y, float Z,
 	XYZToLinearRGBMatrix(X, Y, Z, r, g, b);
 }
 
+// Forward-declared: defined further down alongside wf_dc_apply_vector/
+// wf_dc_apply_normal_from_w2o (this function's own header comment there),
+// needed here by wf_sample_sphere_light's ClippedSphere UV branch below.
+__device__ __forceinline__ float3 wf_dc_apply_point(const float m[12], const float3& p);
+
 // Sample a point on a sphere light; returns direction, sets geom_pdf, and
 // sets maxDist to the distance to the ACTUAL sampled point on the sphere's
 // surface (via ray-sphere intersection along the sampled direction) - not
@@ -666,10 +671,34 @@ __device__ float3 wf_sample_sphere_light(const SphereData& sph, const float3& hi
 	const float3 point = hit + maxDist * dir;
 	const float3 local = (point - sph.center) / r;
 	out_normal = local;
-	const float sphere_theta = acosf(fmaxf(-1.0f, fminf(1.0f, -local.y)));
-	const float sphere_phi = atan2f(-local.z, local.x) + 3.14159265358979323846f;
-	out_u = sphere_phi / (2.0f * 3.14159265358979323846f);
-	out_v = sphere_theta / 3.14159265358979323846f;
+
+	// UV convention must match the DIRECT-hit closest-hit program for this
+	// same shapeKind, or a "filename"-textured light samples a different
+	// texel via NEE than a camera ray hitting it directly - a ClippedSphere's
+	// direct hit uses pbrt-v4's Z-pole convention (__closesthit__wf_sphere's
+	// own comment), not this function's plain-sphere Y-pole one below, since
+	// zMin/zMax/phiMax are themselves Z-pole-defined. `local`/sph.center/
+	// sph.radius above stay the full-sphere-cone approximation (this
+	// function's own established, accepted geometric/pdf simplification) -
+	// only the UV derivation is shapeKind-aware, via the real object-space
+	// affine, purely to keep the (u,v) direct-hit-consistent.
+	if (sph.shapeKind == GpuMediumShapeKind::ClippedSphere) {
+		const float3 objPt = wf_dc_apply_point(sph.w2o, point);
+		const float rl = sph.radiusLocal;
+		const float cosTheta = fminf(1.0f, fmaxf(-1.0f, (rl > 0.0f) ? (objPt.z / rl) : 0.0f));
+		const float theta = acosf(cosTheta);
+		float phi = atan2f(objPt.y, objPt.x);
+		if (phi < 0.0f) phi += 2.0f * 3.14159265358979323846f;
+		// thetaZMin/thetaZMax are host-precomputed (SphereData's own comment).
+		out_u = (sph.phiMax > 1e-8f) ? (phi / sph.phiMax) : 0.0f;
+		out_v = (sph.thetaZMax > sph.thetaZMin)
+			? (theta - sph.thetaZMin) / (sph.thetaZMax - sph.thetaZMin) : 0.0f;
+	} else {
+		const float sphere_theta = acosf(fmaxf(-1.0f, fminf(1.0f, -local.y)));
+		const float sphere_phi = atan2f(-local.z, local.x) + 3.14159265358979323846f;
+		out_u = sphere_phi / (2.0f * 3.14159265358979323846f);
+		out_v = sphere_theta / 3.14159265358979323846f;
+	}
 
 	return dir;
 }

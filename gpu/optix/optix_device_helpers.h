@@ -431,10 +431,35 @@ __device__ __forceinline__ float3 sample_sphere_light(
 	float3 local = (point - sphere.center) / sphere.radius;
 	out_normal = local;
 
-	const float sphere_theta = acosf(fmaxf(-1.0f, fminf(1.0f, -local.y)));
-	const float sphere_phi = atan2f(-local.z, local.x) + 3.14159265358979323846f;
-	out_u = sphere_phi / (2.0f * 3.14159265358979323846f);
-	out_v = sphere_theta / 3.14159265358979323846f;
+	// UV convention must match whatever the DIRECT-hit closest-hit program
+	// uses for this same shapeKind, or a "filename"-textured light samples a
+	// different texel via NEE than a camera ray hitting it directly (a real,
+	// visible mismatch, not just noise) - a ClippedSphere's direct hit uses
+	// pbrt-v4's Z-pole convention (__closesthit__sphere's own comment), not
+	// this function's plain-sphere Y-pole one, since zMin/zMax/phiMax are
+	// themselves Z-pole-defined. `local`/`sphere.center`/`sphere.radius`
+	// above stay the full-sphere-cone approximation (this function's own
+	// established, accepted geometric/pdf simplification - see
+	// SphereData::center's comment) - only the UV derivation below is
+	// shapeKind-aware, by transforming the sampled point through the real
+	// object-space affine purely to get a real, direct-hit-consistent (u,v).
+	if (sphere.shapeKind == GpuMediumShapeKind::ClippedSphere) {
+		const float3 objPt = dc_apply_point(sphere.w2o, point);
+		const float rl = sphere.radiusLocal;
+		const float cosTheta = fminf(1.0f, fmaxf(-1.0f, (rl > 0.0f) ? (objPt.z / rl) : 0.0f));
+		const float theta = acosf(cosTheta);
+		float phi = atan2f(objPt.y, objPt.x);
+		if (phi < 0.0f) phi += 2.0f * 3.14159265358979323846f;
+		// thetaZMin/thetaZMax are host-precomputed (SphereData's own comment).
+		out_u = (sphere.phiMax > 1e-8f) ? (phi / sphere.phiMax) : 0.0f;
+		out_v = (sphere.thetaZMax > sphere.thetaZMin)
+			? (theta - sphere.thetaZMin) / (sphere.thetaZMax - sphere.thetaZMin) : 0.0f;
+	} else {
+		const float sphere_theta = acosf(fmaxf(-1.0f, fminf(1.0f, -local.y)));
+		const float sphere_phi = atan2f(-local.z, local.x) + 3.14159265358979323846f;
+		out_u = sphere_phi / (2.0f * 3.14159265358979323846f);
+		out_v = sphere_theta / 3.14159265358979323846f;
+	}
 
 	return direction;
 }

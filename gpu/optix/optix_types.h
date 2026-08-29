@@ -163,6 +163,15 @@ struct SphereData {
 	float phiMax;
 	float o2w[12];
 	float w2o[12];
+	// thetaZMin/thetaZMax: acos(clamp(zMax/radiusLocal))/acos(clamp(zMin/
+	// radiusLocal)) - the v-coordinate normalization bounds SphereShape<T>::
+	// intersect() (src/shared/shapes.h) derives from zMin/zMax/radiusLocal
+	// every call. Depends only on those three host-constant fields, so it's
+	// computed once here (pbrt_gpu_builder.h) instead of by every closest-hit
+	// program/NEE sample against this primitive - see __closesthit__sphere's
+	// own v-coordinate comment for why re-deriving it per-hit was flagged as
+	// wasted work.
+	float thetaZMin, thetaZMax;
 };
 
 // Quad geometry data (custom primitive)

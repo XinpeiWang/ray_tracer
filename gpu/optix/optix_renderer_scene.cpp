@@ -569,7 +569,20 @@ bool OptiXRenderer::buildScene(
 				const MaterialData& m = materials[s.materialIdx];
 				emission = m.emission;
 				twoSided = m.twoSided;
-				area = 4.0f * 3.14159265f * s.radius * s.radius;  // surface area of sphere
+				// A ClippedSphere's true emitting area is the visible cap/
+				// wedge, not the full sphere s.radius still carries (that
+				// field is deliberately the baked full-sphere radius, kept
+				// only for the NEE-sampling cone approximation - see
+				// SphereData's own comment). Using the full area here would
+				// over-select a small clipped cap in this power-weighted
+				// alias table far more often than its real contribution
+				// warrants - matches pbrt-v4's own Sphere::Area() (phiMax *
+				// r * (zMax-zMin), src/shared/shapes.h's SphereShape<T>::
+				// area()), reducing to the ordinary 4*pi*r^2 sphere area
+				// when phiMax=2*pi and zMax-zMin=2*r (an unclipped sphere).
+				area = (s.shapeKind == GpuMediumShapeKind::ClippedSphere)
+					? s.phiMax * s.radiusLocal * (s.zMax - s.zMin)
+					: 4.0f * 3.14159265f * s.radius * s.radius;  // surface area of sphere
 			} else if (lightKinds[i] == GpuLightKind::Triangle) {
 				// Indexes `triangles`, not `quads` - and note this is the
 				// SCENE's triangle array, which is what lightIndices was built
@@ -840,7 +853,8 @@ bool OptiXRenderer::buildScene(
 	std::vector<OptixAabb> aabbsKey1;
 	if (sceneHasMotion_) {
 		aabbsKey1.reserve(totalAabbGeoms);
-		for (const auto& s : spheres) {
+		for (size_t sphIdx = 0; sphIdx < spheres.size(); ++sphIdx) {
+			const auto& s = spheres[sphIdx];
 			OptixAabb aabb;
 			if (s.shapeKind == GpuMediumShapeKind::Box) {
 				// No scene combines motion blur with a box medium boundary -
@@ -856,26 +870,12 @@ bool OptiXRenderer::buildScene(
 				// No scene combines motion blur with a clipped sphere either
 				// (GpuMediumShapeKind::ClippedSphere's own comment) - static,
 				// same bounds at both motion keys, same reasoning as Box
-				// above. Recomputing the 8-corner transform here (rather
-				// than indexing back into `aabbs`) keeps this branch self-
-				// contained and matches this loop's own existing style of
-				// deriving each key1 entry directly from `s`.
-				const float r = s.radiusLocal;
-				float minX = 1e30f, minY = 1e30f, minZ = 1e30f;
-				float maxX = -1e30f, maxY = -1e30f, maxZ = -1e30f;
-				for (int c = 0; c < 8; ++c) {
-					const float ox = (c & 1) ? r : -r;
-					const float oy = (c & 2) ? r : -r;
-					const float oz = (c & 4) ? s.zMax : s.zMin;
-					const float wx = s.o2w[0]*ox + s.o2w[1]*oy + s.o2w[2]*oz  + s.o2w[3];
-					const float wy = s.o2w[4]*ox + s.o2w[5]*oy + s.o2w[6]*oz  + s.o2w[7];
-					const float wz = s.o2w[8]*ox + s.o2w[9]*oy + s.o2w[10]*oz + s.o2w[11];
-					minX = fminf(minX, wx); maxX = fmaxf(maxX, wx);
-					minY = fminf(minY, wy); maxY = fmaxf(maxY, wy);
-					minZ = fminf(minZ, wz); maxZ = fmaxf(maxZ, wz);
-				}
-				aabb.minX = minX; aabb.minY = minY; aabb.minZ = minZ;
-				aabb.maxX = maxX; aabb.maxY = maxY; aabb.maxZ = maxZ;
+				// above. Unlike Box (which re-derives its trivial bound
+				// inline), this reuses the t=0 loop's already-computed 8-
+				// corner transform via `aabbs[sphIdx]` (both loops iterate
+				// `spheres` in the same order) rather than redoing that
+				// transform a second time for a value that can't differ.
+				aabb = aabbs[sphIdx];
 			} else {
 				aabb.minX = s.center1.x - s.radius;
 				aabb.minY = s.center1.y - s.radius;

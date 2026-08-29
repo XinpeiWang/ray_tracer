@@ -1332,6 +1332,16 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 			sd.phiMax = static_cast<float>(s.phiMaxDeg * kDiskCylDegToRad);
 			flattenTransform(o2w.m, sd.o2w);
 			flattenTransform(w2o.m, sd.w2o);
+			// v-coordinate normalization bounds - see SphereData::thetaZMin/
+			// thetaZMax's own comment for why this is precomputed once here
+			// rather than by every closest-hit/NEE-sample call site.
+			{
+				const double r = s.radiusLocal;
+				const double thZMin = std::clamp(r > 0.0 ? s.zMin / r : -1.0, -1.0, 1.0);
+				const double thZMax = std::clamp(r > 0.0 ? s.zMax / r : 1.0, -1.0, 1.0);
+				sd.thetaZMin = static_cast<float>(std::acos(thZMax));
+				sd.thetaZMax = static_cast<float>(std::acos(thZMin));
+			}
 			// center/center1/radius are otherwise unused for this shapeKind
 			// (see GpuMediumShapeKind::ClippedSphere's own comment) - populated
 			// here anyway, from the same world-space center + baked "largest

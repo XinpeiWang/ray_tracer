@@ -595,6 +595,29 @@ extern "C" int optix_render_main_sppm(
 			             "rendering the full frame.\n";
 		}
 
+		// Shape "sphere" "float zmin"/"zmax"/"phimax" clipping - same
+		// "warn, don't hard-reject" treatment as the cropwindow check just
+		// above: sppm_programs.cu's own sphere intersection/closest-hit
+		// never checks SphereData::shapeKind at all (unlike the recursive/
+		// wavefront backends' real ClippedSphere support), so it silently
+		// renders every sphere as its full, unclipped shape - not a crash or
+		// a garbage render, just an unfaithful one, matching this file's own
+		// distinction between "genuinely unsupported" (hard reject, see
+		// sppm_gpu_unsupported_reason()'s disk/cylinder case) and "supported
+		// elsewhere but a real gap here" (soft warning). See docs/
+		// PBRT_SUPPORT.md's own note on this being a deliberately deferred,
+		// not overlooked, scope cut.
+		for (const auto& s : scene.spheres) {
+			if (s.shapeKind == GpuMediumShapeKind::ClippedSphere) {
+				std::cerr << "[OptiX] Warning: scene '" << scene_id << "' has a clipped "
+				             "sphere (\"float zmin\"/\"zmax\"/\"phimax\") but GPU SPPM does "
+				             "not implement clipping (only --gpu's recursive and "
+				             "--gpu --wavefront backends do); rendering it as a full, "
+				             "unclipped sphere.\n";
+				break;
+			}
+		}
+
 		// Dynamic capability check (see sppm_gpu_unsupported_reason()'s own
 		// comment for the full "what changed from Phase 1's blunt B3-only
 		// guard, and why" story) -- must happen after build_scene() (not

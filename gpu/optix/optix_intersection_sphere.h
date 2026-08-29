@@ -438,12 +438,12 @@ extern "C" __global__ void __closesthit__sphere() {
 		sphere_theta = acosf(cosTheta);
 		sphere_phi = atan2f(obj_hit.y, obj_hit.x);
 		if (sphere_phi < 0.0f) sphere_phi += 2.0f * pi;
-		const float thZMin = fminf(1.0f, fmaxf(-1.0f, (rl > 0.0f) ? (sphere.zMin / rl) : -1.0f));
-		const float thZMax = fminf(1.0f, fmaxf(-1.0f, (rl > 0.0f) ? (sphere.zMax / rl) : 1.0f));
-		const float thetaZMin = acosf(thZMax);
-		const float thetaZMax = acosf(thZMin);
+		// thetaZMin/thetaZMax are host-precomputed (SphereData's own comment)
+		// from zMin/zMax/radiusLocal, which never change for this primitive -
+		// reading them here avoids 2 redundant acosf() calls on every hit.
 		sphere_uv_u = (sphere.phiMax > 1e-8f) ? (sphere_phi / sphere.phiMax) : 0.0f;
-		sphere_uv_v = (thetaZMax > thetaZMin) ? (sphere_theta - thetaZMin) / (thetaZMax - thetaZMin) : 0.0f;
+		sphere_uv_v = (sphere.thetaZMax > sphere.thetaZMin)
+			? (sphere_theta - sphere.thetaZMin) / (sphere.thetaZMax - sphere.thetaZMin) : 0.0f;
 	} else {
 		sphere_theta = acosf(-obj_normal.y);
 		sphere_phi = atan2f(-obj_normal.z, obj_normal.x) + 3.14159265358979323846f;

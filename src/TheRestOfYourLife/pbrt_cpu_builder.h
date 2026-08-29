@@ -839,11 +839,12 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		}
 		world.add(sp);
 		if (s.areaLight >= 0) lights.add(sp);
-		// cpuMediumUnsupported (pbrt_flatten::Sphere's own comment) is a
-		// CPU-only limitation - GPU keeps using s.medium directly and
-		// unaffected, since its own sphere rendering never clips. flatten()
-		// already warned; here we just honor it by not wrapping this
-		// specific hittable in constant_medium.
+		// cpuMediumUnsupported (pbrt_flatten::Sphere's own comment): an open
+		// shell can't bound a participating medium correctly, on GPU now
+		// either (its own ClippedSphere branch drops the medium too) - not a
+		// CPU-only limitation anymore. flatten() already warned; here we
+		// just honor it by not wrapping this specific hittable in
+		// constant_medium.
 		if (!s.cpuMediumUnsupported) addMediumIfPresent(sp, s.medium);
 	}
 	out.sphereCount += sphs.size();

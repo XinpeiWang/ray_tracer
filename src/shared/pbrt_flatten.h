@@ -88,27 +88,37 @@ struct Sphere {
 	// transform instead - radiusLocal/zMin/zMax/xform below are in OBJECT
 	// space (pbrt-v4's own convention, matching Disk/Cylinder's own xform
 	// fields just below) and are only populated/read when clipped is true.
-	// GPU deliberately keeps using center/radius above regardless (renders
-	// a clipped sphere as its full, unclipped shape) - GPU spheres use
-	// OptiX's hardware sphere primitive, which has no clipping support, and
-	// Disk/Cylinder's own custom-intersection-program precedent for real
-	// GPU clipping was scoped out of this round; a real but rare, deliberate
-	// gap, matching this codebase's own camera-motion-blur precedent.
+	// GPU also renders a clipped sphere with its real transform now (not
+	// baked to center/radius) - gpu/optix/pbrt_gpu_builder.h's ClippedSphere
+	// branch carries radiusLocal/zMin/zMax/xform (below) through to
+	// SphereData::radiusLocal/zMin/zMax/o2w/w2o, and both GPU backends
+	// intersect it in object space via a custom software program, following
+	// Disk/Cylinder's own precedent (GPU sphere intersection was already a
+	// custom program, not OptiX's hardware primitive, despite this comment's
+	// own earlier claim otherwise). center/radius above stay populated for
+	// every sphere regardless of clipping - for a clipped one they're used
+	// only by the pre-existing full-sphere-cone NEE approximation (see
+	// GpuMediumShapeKind::ClippedSphere's comment, optix_types.h), never for
+	// hit-testing.
 	bool clipped = false;
 	double radiusLocal = 1.0;
 	double zMin = -1.0, zMax = 1.0;   // object-space, matches radiusLocal's units
 	double phiMaxDeg = 360.0;
 	double xform[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
-	// True only when clipped AND medium>=0: CPU's own clipped-sphere hittable
-	// (sphere_clipped_hittable.h) is an open shell (a hole where zmin/zmax/
-	// phimax cut it away), which constant_medium's watertight-boundary
-	// requirement can't handle - a CPU-only rendering-technique limitation,
-	// NOT something GPU shares (GPU always renders every sphere, clipped or
-	// not, as the same full closed shape `medium` above already works for).
-	// `medium` above is therefore left fully populated regardless - this
-	// flag exists purely so pbrt_cpu_builder.h can skip wrapping ITS OWN
-	// hittable in constant_medium without also blinding GPU's independent
-	// read of the same `medium` field.
+	// True only when clipped AND medium>=0: an open shell (a hole where
+	// zmin/zmax/phimax cut it away) can't bound a participating medium
+	// correctly - CPU's clipped-sphere hittable (sphere_clipped_hittable.h)
+	// can't handle constant_medium's watertight-boundary requirement, and
+	// (now that GPU also renders a clipped sphere as a real open shell
+	// rather than the old always-full-closed-sphere approximation) neither
+	// can GPU - see gpu/optix/pbrt_gpu_builder.h's ClippedSphere branch,
+	// which resolves this sphere's material via materialIndex(), never
+	// mediumMaterialIndex(), for exactly this reason. `medium` above is
+	// still left fully populated regardless (an unclipped sphere has no
+	// problem bounding a medium on either backend) - this flag exists
+	// purely so pbrt_cpu_builder.h can skip wrapping ITS OWN hittable in
+	// constant_medium without disturbing the shared `medium` field GPU
+	// reads independently.
 	bool cpuMediumUnsupported = false;
 };
 

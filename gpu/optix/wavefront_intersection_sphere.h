@@ -64,6 +64,26 @@ __device__ __forceinline__ float3 wf_box_face_normal(const float3& p, const floa
 	return n;
 }
 
+// Wavefront-native duplicate of optix_device_helpers.h's material_needs_dpdu()
+// (same reason every other wf_ helper in this file is duplicated rather than
+// shared - see this file's own header comment) - only these material kinds
+// ever read objDpdu (NormalMappedLambertian's tangent-space basis, or the 4
+// anisotropic BxDFs' UV-aligned frame), so every other kind (the overwhelming
+// common case - Lambertian, Metal, Dielectric, DiffuseLight, etc.) can skip
+// the dpdu trig/pole-fallback/transform work below entirely.
+__device__ __forceinline__ bool wf_material_needs_dpdu(MaterialType type) {
+	switch (type) {
+		case MaterialType::NormalMappedLambertian:
+		case MaterialType::Conductor:
+		case MaterialType::RoughDielectric:
+		case MaterialType::CoatedDiffuse:
+		case MaterialType::CoatedConductor:
+			return true;
+		default:
+			return false;
+	}
+}
+
 extern "C" __global__ void __intersection__wf_sphere() {
 	const unsigned int primIdx = optixGetPrimitiveIndex();
 	const SphereData& sphere = wf_params.spheres[wf_prim_base(wf_instance_base()) + primIdx];
@@ -269,12 +289,12 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 		sphere_theta = acosf(cosTheta);
 		sphere_phi = atan2f(obj_hit.y, obj_hit.x);
 		if (sphere_phi < 0.0f) sphere_phi += 2.0f * pi;
-		const float thZMin = fminf(1.0f, fmaxf(-1.0f, (rl > 0.0f) ? (sph.zMin / rl) : -1.0f));
-		const float thZMax = fminf(1.0f, fmaxf(-1.0f, (rl > 0.0f) ? (sph.zMax / rl) : 1.0f));
-		const float thetaZMin = acosf(thZMax);
-		const float thetaZMax = acosf(thZMin);
+		// thetaZMin/thetaZMax are host-precomputed (SphereData's own comment)
+		// from zMin/zMax/radiusLocal, which never change for this primitive -
+		// reading them here avoids 2 redundant acosf() calls on every hit.
 		clipped_uv_u = (sph.phiMax > 1e-8f) ? (sphere_phi / sph.phiMax) : 0.0f;
-		clipped_uv_v = (thetaZMax > thetaZMin) ? (sphere_theta - thetaZMin) / (thetaZMax - thetaZMin) : 0.0f;
+		clipped_uv_v = (sph.thetaZMax > sph.thetaZMin)
+			? (sphere_theta - sph.thetaZMin) / (sph.thetaZMax - sph.thetaZMin) : 0.0f;
 	} else {
 		sphere_theta = acosf(-obj_normal.y);
 		sphere_phi = atan2f(-obj_normal.z, obj_normal.x) + 3.14159265358979323846f;
@@ -296,32 +316,42 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 	// now carries the real thing directly, matching triangle/bilinear-patch's
 	// own convention below, and is also the tangent the 4 anisotropy-
 	// capable material kinds need for a UV-aligned shading frame.
-	float3 sphere_dpdu;
-	if (is_clipped) {
-		// pbrt-v4 Sphere dpdu = phiMax * (-pHit.y, pHit.x, 0) - see
-		// optix_intersection_sphere.h's identical ClippedSphere dpdu branch.
-		sphere_dpdu = make_float3(-obj_hit.y, obj_hit.x, 0.0f) * sph.phiMax;
-		if (dot(sphere_dpdu, sphere_dpdu) < 1e-14f) {
-			const float3 zAxis = make_float3(0.0f, 0.0f, 1.0f);
-			const float3 tangent = cross(zAxis, obj_normal);
-			const float tlen = length(tangent);
-			const float3 dir = (tlen > 1e-6f) ? (tangent / tlen) : make_float3(1.0f, 0.0f, 0.0f);
-			sphere_dpdu = dir * (sph.phiMax * sph.radiusLocal * sinf(sphere_theta));
+	// Material fetched here (rather than at its previous, later site in this
+	// function) so the dpdu block below can gate on it - matches
+	// optix_intersection_sphere.h's __closesthit__sphere, which skips this
+	// same trig/pole-fallback/transform work entirely for the overwhelming
+	// common case (Lambertian, Metal, Dielectric, DiffuseLight, etc). This
+	// backend had no such gate before (every material paid for it, clipped
+	// or not); gating both branches here closes that parity gap.
+	const MaterialData& sph_mat = wf_params.materials[sph.materialIdx];
+	float3 sphere_dpdu = make_float3(0.0f, 0.0f, 0.0f);
+	if (wf_material_needs_dpdu(sph_mat.type)) {
+		if (is_clipped) {
+			// pbrt-v4 Sphere dpdu = phiMax * (-pHit.y, pHit.x, 0) - see
+			// optix_intersection_sphere.h's identical ClippedSphere dpdu branch.
+			sphere_dpdu = make_float3(-obj_hit.y, obj_hit.x, 0.0f) * sph.phiMax;
+			if (dot(sphere_dpdu, sphere_dpdu) < 1e-14f) {
+				const float3 zAxis = make_float3(0.0f, 0.0f, 1.0f);
+				const float3 tangent = cross(zAxis, obj_normal);
+				const float tlen = length(tangent);
+				const float3 dir = (tlen > 1e-6f) ? (tangent / tlen) : make_float3(1.0f, 0.0f, 0.0f);
+				sphere_dpdu = dir * (sph.phiMax * sph.radiusLocal * sinf(sphere_theta));
+			}
+			sphere_dpdu = normalize(wf_dc_apply_vector(sph.o2w, sphere_dpdu));
+		} else {
+			const float sin_theta = sinf(sphere_theta);
+			const float sin_phi = sinf(sphere_phi), cos_phi = cosf(sphere_phi);
+			sphere_dpdu = make_float3(sin_theta * sin_phi, 0.0f, sin_theta * cos_phi)
+				* (sph.radius * 2.0f * 3.14159265358979323846f);
+			if (dot(sphere_dpdu, sphere_dpdu) < 1e-14f) {
+				const float3 world_up = make_float3(0.0f, 1.0f, 0.0f);
+				const float3 tangent = cross(world_up, obj_normal);
+				const float tlen = length(tangent);
+				const float3 dir = (tlen > 1e-6f) ? (tangent / tlen) : make_float3(1.0f, 0.0f, 0.0f);
+				sphere_dpdu = dir * (sph.radius * 2.0f * 3.14159265358979323846f * sin_theta);
+			}
+			if (instBase >= 0) sphere_dpdu = normalize(optixTransformVectorFromObjectToWorldSpace(sphere_dpdu));
 		}
-		sphere_dpdu = normalize(wf_dc_apply_vector(sph.o2w, sphere_dpdu));
-	} else {
-		const float sin_theta = sinf(sphere_theta);
-		const float sin_phi = sinf(sphere_phi), cos_phi = cosf(sphere_phi);
-		sphere_dpdu = make_float3(sin_theta * sin_phi, 0.0f, sin_theta * cos_phi)
-			* (sph.radius * 2.0f * 3.14159265358979323846f);
-		if (dot(sphere_dpdu, sphere_dpdu) < 1e-14f) {
-			const float3 world_up = make_float3(0.0f, 1.0f, 0.0f);
-			const float3 tangent = cross(world_up, obj_normal);
-			const float tlen = length(tangent);
-			const float3 dir = (tlen > 1e-6f) ? (tangent / tlen) : make_float3(1.0f, 0.0f, 0.0f);
-			sphere_dpdu = dir * (sph.radius * 2.0f * 3.14159265358979323846f * sin_theta);
-		}
-		if (instBase >= 0) sphere_dpdu = normalize(optixTransformVectorFromObjectToWorldSpace(sphere_dpdu));
 	}
 
 	payload->hitPoint    = hit_point;
@@ -345,8 +375,8 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 	// the intersection program found valid, which is the FAR root when this
 	// ray already starts inside the sphere (e.g. continuing after a prior
 	// in-medium scatter). Recomputing both roots here handles that re-entry
-	// case the same way the recursive path does.
-	const MaterialData& sph_mat = wf_params.materials[sph.materialIdx];
+	// case the same way the recursive path does. (sph_mat itself was already
+	// fetched above, ahead of the dpdu block it now also gates.)
 	const bool needsNearFar = (sph_mat.type == MaterialType::Medium) ||
 		(sph_mat.type == MaterialType::DielectricMedium && !front_face);
 	if (needsNearFar) {

@@ -49,20 +49,33 @@ extern "C" __global__ void __closesthit__probe_sphere() {
 
 	// See GpuMediumShapeKind's comment in optix_types.h / optix_intersection_
 	// sphere.h's own __closesthit__sphere for why box bounds are re-read
-	// directly rather than via attributes. No scene currently combines a
-	// Subsurface probe walk with a box-shaped medium boundary (Subsurface
-	// never applies to spheres in this loader at all), so this branch is
-	// unreachable today, but kept consistent with the radiance closest-hit
-	// above rather than left silently wrong.
+	// directly rather than via attributes, and why a ClippedSphere is
+	// recomputed via sphere.w2o rather than via attributes (the ClippedSphere
+	// intersection program packs none) - using the attribute-derived
+	// sphere_center/sphere_radius above for it would divide by the zero
+	// sphere_radius attribute, producing a NaN normal. Subsurface DOES apply
+	// to spheres in this loader (see e.g. pbrt_scenes/layered-materials.pbrt's
+	// "Material \"subsurface\"" sphere, and src/shared/video_preset.h), so
+	// this branch - and the ClippedSphere one below it - are genuinely
+	// reachable, not dead code kept only for consistency.
 	const bool is_box = (sphere.shapeKind == GpuMediumShapeKind::Box);
+	const bool is_clipped = (sphere.shapeKind == GpuMediumShapeKind::ClippedSphere);
 
 	float3 obj_hit = hit_point;
-	if (instBase >= 0) obj_hit = optixTransformPointFromWorldToObjectSpace(hit_point);
-	const float3 obj_normal = is_box
-		? box_face_normal(obj_hit, sphere.boxMin, sphere.boxMax)
-		: (obj_hit - sphere_center) / sphere_radius;
+	float3 obj_normal;
+	if (is_clipped) {
+		obj_hit = dc_apply_point(sphere.w2o, hit_point);
+		const float rl = sphere.radiusLocal;
+		obj_normal = (rl > 0.0f) ? (obj_hit / rl) : make_float3(0.0f, 0.0f, 1.0f);
+	} else {
+		if (instBase >= 0) obj_hit = optixTransformPointFromWorldToObjectSpace(hit_point);
+		obj_normal = is_box
+			? box_face_normal(obj_hit, sphere.boxMin, sphere.boxMax)
+			: (obj_hit - sphere_center) / sphere_radius;
+	}
 	float3 outward_normal = obj_normal;
-	if (instBase >= 0) outward_normal = normalize(optixTransformNormalFromObjectToWorldSpace(obj_normal));
+	if (is_clipped) outward_normal = normalize(dc_apply_normal_from_w2o(sphere.w2o, obj_normal));
+	else if (instBase >= 0) outward_normal = normalize(optixTransformNormalFromObjectToWorldSpace(obj_normal));
 	const bool front_face = dot(ray_dir, outward_normal) < 0.0f;
 	const float3 normal = front_face ? outward_normal : -outward_normal;
 
