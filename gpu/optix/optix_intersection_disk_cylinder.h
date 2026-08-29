@@ -402,6 +402,12 @@ extern "C" __global__ void __closesthit__cylinder() {
 			float3 medium_point = ray_orig + medium_t_hit * ray_dir;
 			emission = emission + medium_phase_nee_mis(
 				medium_point, wo, mat.fuzz, attenuation, scattered_dir, seed, brdf_pdf_override);
+			// MakeNamedMedium's own "rgb Le"/"float Lescale" (pbrt-v4) - see
+			// optix_intersection_sphere.h's identical fix for the full
+			// derivation and MaterialData::medium_emission's own comment
+			// (optix_types.h) for the sigma_a/sigma_t weighting already baked
+			// in at build time.
+			emission = emission + mat.medium_emission;
 			is_specular = false;
 		} else {
 			medium_t_hit = t_far;

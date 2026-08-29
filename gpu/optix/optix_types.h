@@ -868,6 +868,18 @@ struct MaterialData {
 		// backend's Subsurface fallback case reads - see MaterialType::
 		// Subsurface's own comment in optix_types.h.
 		float3 bssrdf_sigma_a;
+		// Medium (homogeneous only - see pbrt_flatten::Medium::Le's own
+		// comment): MakeNamedMedium's own "rgb Le"/"float Lescale" (pbrt-v4),
+		// already weighted by sigma_a/sigma_t at build time (pbrt_gpu_
+		// builder.h's mediumMaterialIndex()), matching CPU's hg_phase_
+		// material::emitted() exactly - see each backend's own Medium
+		// closest-hit case (optix_intersection_sphere.h/optix_intersection_
+		// disk_cylinder.h/wavefront_kernels.cu) for where this is added,
+		// unconditionally, only on a genuine phase-scatter collision (never
+		// on the straight-through no-interaction sub-case). Zero (the
+		// aggregate-init default) for every Medium built without a nonzero
+		// "Le" and for every other material kind that reuses this slot.
+		float3 medium_emission;
 	};
 
 	// Conductor complex IOR real part is this union's own, unambiguous

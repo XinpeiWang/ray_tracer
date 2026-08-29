@@ -1370,6 +1370,16 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		d.medium_albedo = albedo;
 		d.g = static_cast<float>(md.g);
 		d.sigma_t = static_cast<float>(sig_a + sig_s);
+		// MakeNamedMedium's own "rgb Le"/"float Lescale" (pbrt-v4) - same
+		// sigma_a/sigma_t collision-probability weighting as CPU's
+		// constant_medium constructor (src/TheRestOfYourLife/constant_
+		// medium.h) applies to the identical raw md.Le, so the two backends
+		// agree on the exact weighted value, not just which color to use.
+		const float leWeight = (d.sigma_t > 1e-9f) ? static_cast<float>(sig_a) / d.sigma_t : 0.0f;
+		d.medium_emission = make_float3(
+			static_cast<float>(md.Le[0]) * leWeight,
+			static_cast<float>(md.Le[1]) * leWeight,
+			static_cast<float>(md.Le[2]) * leWeight);
 		const int idx = static_cast<int>(out.materials.size());
 		out.materials.push_back(d);
 		mediumCache.emplace(medIdx, idx);

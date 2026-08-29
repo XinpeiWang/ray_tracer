@@ -293,10 +293,10 @@ loader and no longer match the code:
   `"nanovdb"`) still falls back to homogeneous with a warning.
 
 - `MakeNamedMedium`'s own `"rgb Le"`/`"float Lescale"` (pbrt-v4) — a real
-  self-emitting medium (fire/plasma/glowing fog) — is now decoded on
-  **CPU only**, for `"homogeneous"` media only (`Medium::Le` in
-  `pbrt_flatten.h`; `"cloud"`/`"rgbgrid"`/`"uniformgrid"` still drop a
-  nonzero `"Le"` with a warning — their own real pbrt-v4 emission is a
+  self-emitting medium (fire/plasma/glowing fog) — is decoded for
+  `"homogeneous"` media only (`Medium::Le` in `pbrt_flatten.h`;
+  `"cloud"`/`"rgbgrid"`/`"uniformgrid"` still drop a nonzero `"Le"` with a
+  warning on both CPU and GPU — their own real pbrt-v4 emission is a
   per-voxel grid, a separate, deferred feature, not this flat colour).
   `"blackbody Le"` (real Kelvin-to-RGB, the same conversion already used for
   every light's own `"L"`/`"I"` — see `resolveEmissionColor()`) is
@@ -336,16 +336,30 @@ loader and no longer match the code:
   absent under `--sppm` (nearby surfaces receive no bounce light from it).
   Not fixed this round; a real fix needs media to seed real photons, a
   materially bigger feature.
-  GPU (both backends) does not implement medium emission at all —
-  `MaterialType::Medium`'s own shading (`optix_intersection_sphere.h`) has
-  no emission concept — `scene_builder.cpp` warns once at scene-load time
-  if any medium declares a nonzero `"Le"`. A future implementation should
-  reuse `MaterialData`'s existing `emission` union slot and
-  `material_emission()` accessor (`optix_device_helpers.h`), built for
-  exactly this kind of extension — but it needs a real-collision gate
-  first (see `scene_builder.cpp`'s own warning comment for why a naive
-  wire-up would add emission on every ray-medium intersection test, not
-  just a real sampled collision).
+  GPU (both backends) now implements it too, for `MaterialType::Medium`
+  (homogeneous) on both the sphere and cylinder shapes — `MaterialData::
+  medium_emission` (`optix_types.h`) carries the same sigma_a/sigma_t-
+  weighted value CPU's `constant_medium` constructor computes, baked in at
+  build time (`pbrt_gpu_builder.h`'s `mediumMaterialIndex()`). Reading it
+  is gated on a genuine sampled collision, not just a ray-medium
+  intersection *test* — each backend's own Medium closest-hit case only
+  adds it inside the real-scatter branch (the same branch the volume-
+  scattering NEE/MIS fix above added `medium_phase_nee_mis()` to), never
+  the straight-through no-interaction sub-case, matching CPU's own
+  `constant_medium::hit()` (a homogeneous medium's "hit" is by construction
+  a real collision, never a null one). Added unconditionally, with no MIS
+  weighting — this medium is never a member of either backend's light list,
+  so its own `Le` can never be NEE-sampled, matching CPU's unconditional
+  `hg_phase_material::emitted()` call and pbrt-v4's own volumetric-emission
+  convention. `CloudMedium`/`RgbGridMedium`/`GridMedium` remain unsupported
+  on GPU too, matching CPU's identical `"homogeneous"`-only scope —
+  `scene_builder.cpp` still warns once at scene-load time if one of those
+  three declares a nonzero `"Le"`. Also out of scope on GPU: `DielectricMedium`
+  (a fused dielectric-surface-plus-interior-medium material) — the pbrt
+  loader never actually builds this `MaterialType` for a `.pbrt` scene at
+  all (see `pbrt_gpu_builder.h`'s own comment on why; it's reachable only
+  from this codebase's hand-built native scenes, which don't parse `"Le"`),
+  so there is no live gap to close there.
 
 - A phase-function scatter event inside a participating medium (any of
   `MaterialType::Medium`/`CloudMedium`/`RgbGridMedium`/`GridMedium`, on

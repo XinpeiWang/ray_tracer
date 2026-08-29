@@ -2440,6 +2440,24 @@ extern "C" __global__ void evaluate_materials(
 		atomicAdd(&framebuffer[pixIdx].z, b);
 	};
 
+	// Uplift an RGB illuminant (a light's own emitted color - unbounded,
+	// D65-weighted, NOT a reflectance) to spectral - same technique as
+	// wf_finish_material_scatter's own liftEmission (a different function,
+	// out of scope here), shared by DiffuseLight's direct-hit emission below
+	// and MaterialType::Medium's own "rgb Le" (see that case's own comment).
+	auto liftEmissionRGB = [&](float3 le) -> SS {
+		float m_le = le.x > le.y ? (le.x > le.z ? le.x : le.z) : (le.y > le.z ? le.y : le.z);
+		float sc = 2.f * m_le;
+		if (sc <= 0.f) return SS(0.f);
+		float c0, c1, c2;
+		dev_srgb_to_coeffs(le.x/sc, le.y/sc, le.z/sc, c0, c1, c2);
+		RGBSigmoidPolynomial emitPoly(c0, c1, c2);
+		SS emitS(0.f);
+		for (int i = 0; i < kWFNWavelengths; ++i)
+			emitS[i] = sc * emitPoly(swl.lambda[i]) * dev_sample_d65(swl.lambda[i]);
+		return emitS;
+	};
+
 	// -------------------------------------------------------------------------
 	// Emissive: add emission term, path terminates (no scatter).
 	// pbrt-v4 alignment: only add emissive if depth==0 or specular_bounce==1
@@ -2461,8 +2479,6 @@ extern "C" __global__ void evaluate_materials(
 			// scene asked for, only surfaced now by testing twosided=false
 			// end-to-end.
 			if (mat.twoSided || h.frontFace) {
-				// Uplift RGB emission to spectrum via device sRGB table
-				// (deferred: emissionSpectrum helper is declared below; use inline here)
 				// A real map_Ke texture (Gallery's painted-canvas glow) or a
 				// pbrt AreaLightSource "filename" image is sampled at the hit
 				// UV instead of the flat mat.emission - see add_diffuse_light()'s
@@ -2477,22 +2493,7 @@ extern "C" __global__ void evaluate_materials(
 					le.y *= mat.emissionScale;
 					le.z *= mat.emissionScale;
 				}
-				float m_le = le.x > le.y ? (le.x > le.z ? le.x : le.z)
-										  : (le.y > le.z ? le.y : le.z);
-				float sc = 2.f * m_le;
-				if (sc > 0.f) {
-					float c0, c1, c2;
-					dev_srgb_to_coeffs(le.x/sc, le.y/sc, le.z/sc, c0, c1, c2);
-					RGBSigmoidPolynomial emitPoly(c0, c1, c2);
-					SS emitS(0.f);
-					// D65 illuminant factor -- see liftEmission's own comment
-					// above (this is the same "light RGB is an illuminant,
-					// not a bare unbounded spectrum" uplift, just for a
-					// directly-hit emissive surface instead of an NEE sample).
-					for (int i = 0; i < kWFNWavelengths; ++i)
-						emitS[i] = sc * emitPoly(swl.lambda[i]) * dev_sample_d65(swl.lambda[i]);
-					radiance = radiance + throughput * emitS;
-				}
+				radiance = radiance + throughput * liftEmissionRGB(le);
 			}
 		}
 		addToFramebuffer(h.pixelIndex, radiance * h.filterWeight);
@@ -3166,6 +3167,19 @@ extern "C" __global__ void evaluate_materials(
 			scattered_dir = wf_sample_phase_scatter(unit_dir, mat.fuzz, seed, phaseWo, phaseG, brdf_pdf_override);
 			attenuation   = albedoSpectrum(mat.albedo);
 			is_specular   = false;
+			// MakeNamedMedium's own "rgb Le"/"float Lescale" (pbrt-v4) - see
+			// MaterialData::medium_emission's own comment (optix_types.h) for
+			// the sigma_a/sigma_t weighting already baked in at build time.
+			// Added unconditionally (no specular_bounce/depth==0 MIS gate,
+			// unlike DiffuseLight's own direct-hit emission above) - this
+			// medium is never a member of the light list and so can never be
+			// NEE-sampled, matching CPU's own unconditional hg_phase_
+			// material::emitted() call. throughput here is deliberately the
+			// PRE-collision value (this event's own attenuation is folded in
+			// later, at wf_finish_material_scatter's new_throughput), matching
+			// CPU's beta timing at a medium-emission vertex exactly.
+			if (mat.medium_emission.x > 0.0f || mat.medium_emission.y > 0.0f || mat.medium_emission.z > 0.0f)
+				radiance = radiance + throughput * liftEmissionRGB(mat.medium_emission);
 		} else {
 			hit_point     = h.rayOrigin + t_far * unit_dir;
 			scattered_dir = unit_dir;  // straight through, no interaction

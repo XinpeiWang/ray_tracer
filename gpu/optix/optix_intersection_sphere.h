@@ -607,6 +607,14 @@ extern "C" __global__ void __closesthit__sphere() {
 				float3 medium_point = ray_orig + medium_t_hit * unit_dir;
 				emission = emission + medium_phase_nee_mis(
 					medium_point, wo, mat.fuzz, attenuation, scattered_dir, seed, brdf_pdf_override);
+				// MakeNamedMedium's own "rgb Le"/"float Lescale" (pbrt-v4) -
+				// see MaterialData::medium_emission's own comment (optix_types.h)
+				// for the sigma_a/sigma_t weighting already baked in at build
+				// time. Added unconditionally (no MIS weighting, unlike the NEE
+				// contribution just above) - this medium is never a member of
+				// the light list and so can never be NEE-sampled, matching
+				// CPU's own unconditional hg_phase_material::emitted() call.
+				emission = emission + mat.medium_emission;
 				is_specular = false;
 			} else {
 				medium_t_hit = t_far;

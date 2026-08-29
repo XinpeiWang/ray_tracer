@@ -4298,31 +4298,25 @@ static bool build_loaded_pbrt_scene(
 	// the divergence the old warning here used to flag entirely, not just
 	// narrow it.
 
-	// MakeNamedMedium's own "rgb Le"/"float Lescale" (pbrt-v4) - same
-	// "cheap warning for a real, currently-unimplemented backend gap"
-	// pattern as the two warnings above. GPU's own MaterialType::Medium
-	// shading (optix_intersection_sphere.h) has no emission concept at all
-	// - see pbrt_flatten::Medium::Le's own comment - CPU-only this round.
-	// A future implementation should reuse MaterialData's existing
-	// `emission` union slot and material_emission() accessor
-	// (optix_device_helpers.h) rather than adding a new field - that
-	// mechanism was already built for exactly this kind of extension. It is
-	// NOT, however, a drop-in wire-up: material_emission() is called at
-	// optix_intersection_sphere.h's Medium branch BEFORE that branch
-	// decides real-collision vs. straight-pass-through (the free-path
-	// sample vs. dist_inside comparison) - populating `emission` generically
-	// there would add the contribution on every ray-medium intersection
-	// TEST, not just a real sampled collision the way CPU's
-	// constant_medium::hit() does (emitted() is only ever called on a
-	// hit_record from a real collision - see hg_phase_material's own
-	// comment, constant_medium.h). A correct GPU version needs a similar
-	// real-collision gate before reading `emission`.
+	// MakeNamedMedium's own "rgb Le"/"float Lescale" (pbrt-v4) - now
+	// implemented on both GPU backends for "homogeneous" media (MaterialType::
+	// Medium) only, matching CPU's own scope exactly (pbrt_flatten::Medium::
+	// Le's own comment - CPU never decodes Le for cloud/rgbgrid/uniformgrid
+	// either). See MaterialData::medium_emission's own comment (optix_types.h)
+	// for the sigma_a/sigma_t-weighted value baked in at build time
+	// (pbrt_gpu_builder.h's mediumMaterialIndex()) and each backend's own
+	// Medium closest-hit case for the real-collision gate (added only on a
+	// genuine phase-scatter event, never the straight-through sub-case) -
+	// same "cheap warning for a real, currently-unimplemented backend gap"
+	// pattern as the warning above, narrowed to the 3 heterogeneous types
+	// that still don't decode Le on either backend.
 	for (const pbrt_flatten::Medium& med : loaded.scene.media) {
-		if (pbrt_flatten::isNonzeroRGB(med.Le)) {
+		if (med.type != "homogeneous" && pbrt_flatten::isNonzeroRGB(med.Le)) {
 			std::cerr << "[OptiX] Warning: scene requests a MakeNamedMedium "
-						 "\"Le\"/\"Lescale\" (a self-emitting medium) but GPU "
-						 "rendering does not implement medium emission - the "
-						 "medium will scatter/absorb but not glow. "
+						 "\"Le\"/\"Lescale\" (a self-emitting medium) on a \""
+					  << med.type << "\" medium, but GPU rendering only "
+						 "implements medium emission for \"homogeneous\" media - "
+						 "this medium will scatter/absorb but not glow. "
 						 "Use --cpu to honor this request.\n";
 			break;
 		}
