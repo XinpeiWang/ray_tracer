@@ -1255,17 +1255,36 @@ extern "C" __global__ void generate_camera_rays(
 	// zeroed once per render before the sample loop starts.
 	float* weightBuffer
 ) {
-	int px = blockIdx.x * blockDim.x + threadIdx.x;
-	int py = blockIdx.y * blockDim.y + threadIdx.y;
+	// Film "cropwindow"/"pixelbounds" (pbrt-v4) - the HOST launcher
+	// (wf_launch_generate_camera_rays, wavefront_launch.cu) already sizes
+	// this kernel's own launch grid to just the crop rectangle (not the
+	// full frame) when one is active, offsetting thread index 0 to
+	// cropX0/cropY0 rather than pixel (0,0) - unlike the recursive
+	// backend's single whole-render launch, THIS kernel launches once per
+	// sample-index (many times per render), so a cropped-out pixel's
+	// thread genuinely never gets scheduled at all here, not just an
+	// early-return - real, not just cosmetic, launch-overhead savings at
+	// high sample counts. cropX0/cropY0 default to 0 (gpu_in_crop's own
+	// cropX1<=0 "no crop" sentinel) so an unmodified/native scene launches
+	// over the full frame exactly as before this feature existed.
+	const int cropX0 = (camera.cropX1 > 0) ? camera.cropX0 : 0;
+	const int cropY0 = (camera.cropY1 > 0) ? camera.cropY0 : 0;
+	int px = cropX0 + blockIdx.x * blockDim.x + threadIdx.x;
+	int py = cropY0 + blockIdx.y * blockDim.y + threadIdx.y;
 	if (px >= (int)width || py >= (int)height) return;
 
-	// Film "cropwindow"/"pixelbounds" (pbrt-v4) - simply never enqueue a ray
-	// (or touch weightBuffer) for an out-of-crop pixel, on every sample-index
-	// launch. Unlike the recursive backend's own raygen, there's no explicit
-	// black-write needed here: normalize_framebuffer already turns a
-	// zero-weight pixel (never incremented by this kernel for any sample) into
-	// black (its own `w > 0.0f` guard), the exact same mechanism that already
-	// exists for a pathological zero-weight filter parameterization.
+	// Still needed even with the crop-sized launch grid above: 16x16 block
+	// rounding can overshoot past cropX1/cropY1 (the crop rectangle's own
+	// far edge) the same way it already overshoots past width/height for
+	// an ordinary uncropped render - this is that same, pre-existing
+	// "last block is partially out of bounds" case, just at the crop's own
+	// boundary instead of the frame's. Simply never enqueue a ray (or touch
+	// weightBuffer) for an out-of-crop pixel: unlike the recursive
+	// backend's own raygen, there's no explicit black-write needed here -
+	// normalize_framebuffer already turns a zero-weight pixel (never
+	// incremented by this kernel for any sample) into black (its own
+	// `w > 0.0f` guard), the exact same mechanism that already exists for
+	// a pathological zero-weight filter parameterization.
 	if (!gpu_in_crop(camera, px, py)) return;
 
 	int pixelIdx = py * (int)width + px;

@@ -75,8 +75,23 @@ extern "C" void wf_launch_generate_camera_rays(
 	float* d_weightBuffer,
 	cudaStream_t stream)
 {
+	// Film "cropwindow"/"pixelbounds" - size the launch grid to just the
+	// crop rectangle, not the full frame, when one is active (see
+	// generate_camera_rays' own comment, wavefront_kernels.cu, for why this
+	// matters more here than on the recursive backend: this kernel
+	// launches once per SAMPLE, so a cropped-out pixel's thread would
+	// otherwise be scheduled - just to immediately early-return - on every
+	// one of samplesPerPixel launches, not once). cropX1<=0 (gpu_in_crop's
+	// own "no crop" sentinel) falls back to the full [0,width)x[0,height)
+	// grid, matching this launcher's own pre-existing behavior exactly.
+	const bool hasCrop = camera.cropX1 > 0;
+	const int cropX0 = hasCrop ? camera.cropX0 : 0;
+	const int cropX1 = hasCrop ? camera.cropX1 : width;
+	const int cropY0 = hasCrop ? camera.cropY0 : 0;
+	const int cropY1 = hasCrop ? camera.cropY1 : height;
 	dim3 block(16, 16);
-	dim3 grid((width + 15) / 16, (height + 15) / 16);
+	dim3 grid((unsigned int)((cropX1 - cropX0 + 15) / 16),
+	          (unsigned int)((cropY1 - cropY0 + 15) / 16));
 	generate_camera_rays<<<grid, block, 0, (cudaStream_t)stream>>>(
 		rq, (unsigned int)width, (unsigned int)height,
 		camera,

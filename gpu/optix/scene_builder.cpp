@@ -4262,35 +4262,29 @@ static bool build_loaded_pbrt_scene(
 	// here (image_width/image_height, this function's own params, are
 	// already the render's real resolution - unlike CPU's camera class,
 	// GPU has no lazy "resolve once width/height are known" step of its
-	// own, so this IS that step). Same std::lround(fraction * resolution)
-	// + clamp + degenerate-collapses-to-empty-range fallback as CPU's own
-	// camera::initialize() (camera.h) - see that function's own comment for
-	// why a valid NDC-fraction rectangle can still collapse to an empty
-	// pixel range at a small enough actual render resolution.
+	// own, so this IS that step) via the shared resolve_crop_pixel_bounds()
+	// (src/shared/cameras.h - see its own comment for why CPU's own
+	// camera::initialize() doesn't call it too). A degenerate collapse
+	// warns unconditionally, matching CPU's own initialize() shape exactly -
+	// image_width/image_height are already validated nonzero well before
+	// this point (this function can't be reached otherwise), so the only
+	// way to resolve to a degenerate range is a genuinely tiny non-full
+	// crop rectangle, never the trivial "no cropwindow at all" default.
 	if (out_camera_extra) {
-		int x0 = static_cast<int>(std::lround(loaded.scene.cropX0 * image_width));
-		int x1 = static_cast<int>(std::lround(loaded.scene.cropX1 * image_width));
-		int y0 = static_cast<int>(std::lround(loaded.scene.cropY0 * image_height));
-		int y1 = static_cast<int>(std::lround(loaded.scene.cropY1 * image_height));
-		x0 = std::clamp(x0, 0, image_width);
-		x1 = std::clamp(x1, 0, image_width);
-		y0 = std::clamp(y0, 0, image_height);
-		y1 = std::clamp(y1, 0, image_height);
-		if (x1 <= x0 || y1 <= y0) {
-			if (loaded.scene.cropX0 > 0.0 || loaded.scene.cropX1 < 1.0 ||
-				loaded.scene.cropY0 > 0.0 || loaded.scene.cropY1 < 1.0) {
-				std::cerr << "[OptiX] Warning: Film \"cropwindow\"/\"pixelbounds\" "
-							 "resolved to an empty pixel range at this render "
-							 "resolution (" << image_width << "x" << image_height
-						  << "); rendering the full frame instead.\n";
-			}
-			x0 = 0; x1 = image_width;
-			y0 = 0; y1 = image_height;
+		const CropPixelBounds bounds = resolve_crop_pixel_bounds(
+			loaded.scene.cropX0, loaded.scene.cropX1,
+			loaded.scene.cropY0, loaded.scene.cropY1,
+			image_width, image_height);
+		if (bounds.wasDegenerate) {
+			std::cerr << "[OptiX] Warning: Film \"cropwindow\"/\"pixelbounds\" "
+						 "resolved to an empty pixel range at this render "
+						 "resolution (" << image_width << "x" << image_height
+					  << "); rendering the full frame instead.\n";
 		}
-		out_camera_extra->cropX0 = x0;
-		out_camera_extra->cropX1 = x1;
-		out_camera_extra->cropY0 = y0;
-		out_camera_extra->cropY1 = y1;
+		out_camera_extra->cropX0 = bounds.x0;
+		out_camera_extra->cropX1 = bounds.x1;
+		out_camera_extra->cropY0 = bounds.y0;
+		out_camera_extra->cropY1 = bounds.y1;
 	}
 
 	// Texture "imagemap" "string encoding"/"string wrap"/"bool invert" -

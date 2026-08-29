@@ -24,6 +24,47 @@
 #include <algorithm>
 #include "sampling.h"           // SampleUniformDiskConcentric, EqualAreaSquareToSphere, WrapEqualAreaSquare
 
+// ---------------------------------------------------------------------------
+// Film "cropwindow"/"pixelbounds" (pbrt-v4) - NDC-fraction bounds resolved
+// to concrete PIXEL bounds [x0,x1) x [y0,y1) at the render's actual
+// resolution. Shared home for logic both CPU and GPU need: this header is
+// already included by both src/TheRestOfYourLife/camera.h and
+// gpu/optix/scene_builder.cpp for their own camera-model needs.
+//
+// gpu/optix/scene_builder.cpp calls this directly. src/TheRestOfYourLife/
+// camera.h's own initialize() still performs the identical arithmetic
+// inline (split across its own crop_x0/x1/y0/y1 member fields and a
+// separate "-1 = unset" sentinel convention tied to its class's lazy-
+// initialization design) rather than calling this - left as its own,
+// pre-existing, already-tested implementation rather than risked for a
+// pure duplication cleanup; if the two ever need to be unified, this is the
+// natural target to migrate camera.h's own copy onto.
+//
+// Returns wasDegenerate=true when the resolved rectangle collapsed to
+// empty (x1<=x0 or y1<=y0) - a valid NDC-fraction rectangle from
+// pbrt_flatten.h can still round to an empty pixel range at a small enough
+// actual render resolution - and DOES fall back to the full frame in that
+// case, but leaves it to the caller to decide whether/how to warn about it
+// (CPU and GPU want different message text/prefixes).
+// ---------------------------------------------------------------------------
+struct CropPixelBounds { int x0, x1, y0, y1; bool wasDegenerate; };
+
+inline CropPixelBounds resolve_crop_pixel_bounds(double fracX0, double fracX1,
+                                                  double fracY0, double fracY1,
+                                                  int width, int height) {
+	int x0 = static_cast<int>(std::lround(fracX0 * width));
+	int x1 = static_cast<int>(std::lround(fracX1 * width));
+	int y0 = static_cast<int>(std::lround(fracY0 * height));
+	int y1 = static_cast<int>(std::lround(fracY1 * height));
+	x0 = std::clamp(x0, 0, width);
+	x1 = std::clamp(x1, 0, width);
+	y0 = std::clamp(y0, 0, height);
+	y1 = std::clamp(y1, 0, height);
+	const bool degenerate = (x1 <= x0 || y1 <= y0);
+	if (degenerate) { x0 = 0; x1 = width; y0 = 0; y1 = height; }
+	return CropPixelBounds{x0, x1, y0, y1, degenerate};
+}
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
