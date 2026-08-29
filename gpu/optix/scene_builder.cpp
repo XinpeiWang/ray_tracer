@@ -4311,8 +4311,22 @@ static bool build_loaded_pbrt_scene(
 	// pattern as the two warnings above. GPU's own MaterialType::Medium
 	// shading (optix_intersection_sphere.h) has no emission concept at all
 	// - see pbrt_flatten::Medium::Le's own comment - CPU-only this round.
+	// A future implementation should reuse MaterialData's existing
+	// `emission` union slot and material_emission() accessor
+	// (optix_device_helpers.h) rather than adding a new field - that
+	// mechanism was already built for exactly this kind of extension. It is
+	// NOT, however, a drop-in wire-up: material_emission() is called at
+	// optix_intersection_sphere.h's Medium branch BEFORE that branch
+	// decides real-collision vs. straight-pass-through (the free-path
+	// sample vs. dist_inside comparison) - populating `emission` generically
+	// there would add the contribution on every ray-medium intersection
+	// TEST, not just a real sampled collision the way CPU's
+	// constant_medium::hit() does (emitted() is only ever called on a
+	// hit_record from a real collision - see hg_phase_material's own
+	// comment, constant_medium.h). A correct GPU version needs a similar
+	// real-collision gate before reading `emission`.
 	for (const pbrt_flatten::Medium& med : loaded.scene.media) {
-		if (med.Le[0] > 1e-9 || med.Le[1] > 1e-9 || med.Le[2] > 1e-9) {
+		if (pbrt_flatten::isNonzeroRGB(med.Le)) {
 			std::cerr << "[OptiX] Warning: scene requests a MakeNamedMedium "
 						 "\"Le\"/\"Lescale\" (a self-emitting medium) but GPU "
 						 "rendering does not implement medium emission - the "

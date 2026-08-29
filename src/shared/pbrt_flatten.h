@@ -145,6 +145,18 @@ struct Cylinder {
 	int medium = -1;
 };
 
+// "Is this RGB triple effectively nonzero" - the same per-channel epsilon
+// threshold used at 4 sites across this file and gpu/optix/scene_builder.cpp
+// (2 pre-existing sigma_a-dropped warnings for cloud/uniformgrid, Medium::
+// Le's own "dropped for non-homogeneous" warning below, and the GPU-side
+// "scene requests Le but GPU can't honor it" warning) - named once here,
+// at namespace (not flatten_detail) scope, so scene_builder.cpp can call it
+// too without reaching into flatten()'s own internals.
+inline bool isNonzeroRGB(const double v[3]) {
+	constexpr double kEps = 1e-9;
+	return v[0] > kEps || v[1] > kEps || v[2] > kEps;
+}
+
 // MakeNamedMedium "homogeneous" - a constant-density participating medium.
 // pbrt-v4's real HomogeneousMedium is per-channel RGB sigma_a/sigma_s; both
 // builders' actual medium primitive (src/TheRestOfYourLife/constant_medium.h,
@@ -159,10 +171,21 @@ struct Medium {
 
 	// MakeNamedMedium's own "rgb Le"/"float Lescale" (pbrt-v4) - a
 	// self-emitting medium (fire/plasma/glowing fog). Lescale is baked into
-	// Le at flatten time (matches this loader's own "scale" texture / area-
-	// light "scale" precedent), so downstream consumers read one resolved
-	// RGB triple. "homogeneous" ONLY this round (see the flatten() loop's
-	// own warning for cloud/rgbgrid/uniformgrid) - those types' own real
+	// Le at flatten time - UNLIKE textureScale/Emission::scale elsewhere in
+	// this file, which stay separate fields because they have multiple
+	// independent downstream consumers with different needs (CPU's
+	// scaled_texture wrapper, GPU's own emissionScale field). Le has
+	// exactly one consumer (pbrt_cpu_builder.h's addMediumIfPresent, which
+	// immediately multiplies it by sigma_a/sigma_t and discards the
+	// unscaled value) with nothing GPU-side reading it yet, so there is
+	// currently no real downstream need for the unscaled value - baking it
+	// in here is a genuine simplification for THIS field's actual usage,
+	// not an application of the scale-texture precedent. Revisit (keep
+	// Lescale as a separate field) if a future consumer - e.g. a GPU
+	// implementation, see scene_builder.cpp's own warning comment - turns
+	// out to need the unscaled Le. "homogeneous" ONLY this round (see the
+	// flatten() loop's own warning for cloud/rgbgrid/uniformgrid) - those
+	// types' own real
 	// pbrt-v4 emission is a genuinely separate per-voxel feature (their own
 	// "Le"/"LeScale" GRIDS, not a flat colour), a materially bigger lift
 	// deferred to a later round, matching this loader's own "close the
@@ -2175,8 +2198,19 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// for the other 3 types, matching this loop's own "one shared
 		// block" convention for sigma_a/sigma_s above) but only ever
 		// nonzero-and-warned for cloud/rgbgrid/uniformgrid, never silently
-		// dropped.
-		const pbrt_scene::Vec3 le = md.params.getVec3("Le", pbrt_scene::Vec3{0,0,0});
+		// dropped. Uses resolveEmissionColor() (this same file, used by
+		// every light's own "L"/"I"), not a plain getVec3 - pbrt-v4 also
+		// accepts "blackbody Le" [<kelvin>] (a single number, real Kelvin-
+		// to-RGB conversion) for physically-plausible fire/plasma color,
+		// which a plain getVec3 (needs >=3 numbers) would silently read as
+		// "absent" and default to zero with no diagnostic. Uses the
+		// default sRGB working color space (RGBColorSpace::sRGB(),
+		// resolveEmissionColor()'s own default) rather than a per-medium
+		// ColorSpace capture the way LightDecl::colorSpaceName gives every
+		// light - MediumDecl has no equivalent field, and no bundled scene
+		// combines a non-default ColorSpace directive with an emissive
+		// medium; a real scope cut, not an oversight.
+		const pbrt_scene::Vec3 le = resolveEmissionColor(md.params, "Le", pbrt_scene::Vec3{0,0,0});
 		const double leScale = md.params.getFloat("Lescale", 1.0);
 		medium.Le[0] = le.x * leScale; medium.Le[1] = le.y * leScale; medium.Le[2] = le.z * leScale;
 
@@ -2228,17 +2262,19 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 				}
 			}
 			for (int a = 0; a < 3; ++a) { medium.worldMin[a] = worldMin[a]; medium.worldMax[a] = worldMax[a]; }
+		}
 
-			// "Le"/"Lescale" (Medium::Le's own comment) - homogeneous only
-			// this round; cloud/rgbgrid/uniformgrid's real pbrt-v4 emission
-			// is a per-voxel grid, not this flat colour, so it's silently
-			// meaningless for them - warn rather than let a scene author
-			// believe it did something.
-			if (medium.Le[0] > 1e-9 || medium.Le[1] > 1e-9 || medium.Le[2] > 1e-9) {
-				warn("medium '" + md.name + "' (\"" + md.type + "\") has a nonzero \"Le\", "
-					 "but only \"homogeneous\" media support emission in this loader; "
-					 "the emission is dropped");
-			}
+		// "Le"/"Lescale" (Medium::Le's own comment) - homogeneous only this
+		// round; cloud/rgbgrid/uniformgrid's real pbrt-v4 emission is a
+		// per-voxel grid, not this flat colour, so it's silently meaningless
+		// for them - warn rather than let a scene author believe it did
+		// something. Grouped with the sigma_a-dropped warnings just below
+		// (same "parameter X is meaningless for type Y" shape), not folded
+		// into the AABB-computation block above.
+		if ((isCloud || isRgbGrid || isUniformGrid) && isNonzeroRGB(medium.Le)) {
+			warn("medium '" + md.name + "' (\"" + md.type + "\") has a nonzero \"Le\", "
+				 "but only \"homogeneous\" media support emission in this loader; "
+				 "the emission is dropped");
 		}
 
 		if (isCloud) {
@@ -2255,7 +2291,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// unlike most of this loader's approximations, this one can't
 			// be inferred from the render (a too-bright cloud looks like a
 			// lighting choice, not a dropped parameter).
-			if (medium.sigma_a[0] > 1e-9 || medium.sigma_a[1] > 1e-9 || medium.sigma_a[2] > 1e-9) {
+			if (isNonzeroRGB(medium.sigma_a)) {
 				warn("cloud medium '" + md.name + "' has a nonzero sigma_a; "
 					 "cloud media only model scattering (sigma_a is forced to 0)");
 			}
@@ -2323,7 +2359,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// same convention/reason as cloud above (see that block's own
 			// comment) - so a scene that gave a real absorption coefficient
 			// silently loses it.
-			if (medium.sigma_a[0] > 1e-9 || medium.sigma_a[1] > 1e-9 || medium.sigma_a[2] > 1e-9) {
+			if (isNonzeroRGB(medium.sigma_a)) {
 				warn("uniformgrid medium '" + md.name + "' has a nonzero sigma_a; "
 					 "uniformgrid media only model scattering (sigma_a is forced to 0)");
 			}

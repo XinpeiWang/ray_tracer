@@ -151,6 +151,12 @@ class hg_phase_material : public material {
     // shadow_transmittance()'s job below, not this one's.
     bool is_shadow_transmissive(const hit_record&) const override { return true; }
 
+    // See material::is_medium_scatter()'s own comment - lets bdpt_adapter.h
+    // tell this hit apart from a real emissive surface and suppress its new
+    // emitted() there this round, rather than feeding it through BDPT's
+    // surface-light vertex machinery incorrectly.
+    bool is_medium_scatter() const override { return true; }
+
     color shadow_transmittance(const ray& r, double t_max) const override {
         return transmittance_fn_ ? transmittance_fn_(r, t_max)
                                   : material::shadow_transmittance(r, t_max);
@@ -198,25 +204,32 @@ class constant_medium : public hittable {
     }
 
     // Full pbrt-v4-style constructor: separate absorption and scattering
-    // coefficients, plus MakeNamedMedium's own "rgb Le"/"float Lescale"
+    // coefficients, plus MakeNamedMedium's own raw (unweighted) "rgb Le"
     // (pbrt-v4) - see hg_phase_material::emitted()'s own comment for how
-    // this reaches the render. Already weighted by sigma_a/sigma_t at the
-    // caller (pbrt_cpu_builder.h's addMediumIfPresent), so it's threaded
-    // straight through unchanged; (0,0,0) (the default) means "no
-    // emission", matching every native (non-pbrt) scene that doesn't pass
-    // this argument at all.
+    // the WEIGHTED result reaches the render. Weighted by sigma_a/sigma_t
+    // right here (not at the caller, pbrt_cpu_builder.h's
+    // addMediumIfPresent) so this constructor's own pre-existing sigma_t
+    // computation just below (needed for ss_albedo regardless) is computed
+    // once and reused for both, rather than the caller separately deriving
+    // an already-weighted emission color from its own independent copy of
+    // sigma_a/sigma_t. (0,0,0) (the default) means "no emission", matching
+    // every native (non-pbrt) scene that doesn't pass this argument at all.
     constant_medium(shared_ptr<hittable> boundary,
                     double sigma_a, double sigma_s,
                     const color& albedo, double g = 0.0,
-                    const color& emission = color(0, 0, 0))
+                    const color& Le = color(0, 0, 0))
         : boundary(boundary) {
         med = HomogeneousMediumData<double>(sigma_a, sigma_s, g);
-        // Single-scattering albedo for the phase material
+        // Single-scattering albedo for the phase material, and the
+        // collision-probability weight (sigma_a/sigma_t) for emission -
+        // see hg_phase_material::emitted()'s own comment for the physical
+        // derivation of the latter.
         double sigma_t = sigma_a + sigma_s;
         color ss_albedo = (sigma_t > 0) ? albedo * color(sigma_s / sigma_t,
                                                          sigma_s / sigma_t,
                                                          sigma_s / sigma_t)
                                         : color(0,0,0);
+        color emission = (sigma_t > 0) ? Le * (sigma_a / sigma_t) : color(0, 0, 0);
         phase_mat = make_shared<hg_phase_material>(ss_albedo, g,
             [this](const ray& r, double t_max) { return shadow_transmittance_impl(r, t_max); },
             emission);

@@ -190,6 +190,20 @@ class material {
     // sppm_is_medium_boundary() for the same null-safe bridge pattern.
     virtual bool is_medium_boundary() const { return false; }
 
+    // True only for hg_phase_material (constant_medium.h) - a real
+    // participating-medium scatter event. Exists so BDPT/MLT's own vertex
+    // abstraction (src/shared/bdpt.h) can tell a medium-scatter hit apart
+    // from a real surface hit: that abstraction treats any Surface vertex
+    // with nonzero emission as a registered-light-connectable vertex (real
+    // front-face normal, a light-origin pdf it can query), neither of which
+    // a medium scatter point actually has (constant_medium::hit() sets an
+    // arbitrary placeholder normal, and media are never registered in the
+    // light list) - see bdpt_adapter.h's own use of this for why medium
+    // emission is deliberately suppressed there this round rather than
+    // rendered incorrectly. The default path tracer (camera.h) has no such
+    // vertex abstraction and needs no equivalent check.
+    virtual bool is_medium_scatter() const { return false; }
+
     // The attenuation color to pair with scattering_pdf(..., scattered) for
     // THAT specific direction - defaults to srec_attenuation (the value
     // scatter() already stored in scatter_record for the direction IT

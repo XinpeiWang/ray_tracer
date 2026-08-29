@@ -470,9 +470,7 @@ TEST(PbrtCpuBuildTest, MediumInterfaceWrapsTheSphereInAParticipatingMedium) {
 TEST(PbrtCpuBuildTest, EmissiveMediumWrapsTheSphereAndStaysReachable) {
 	// "rgb Le"/"float Lescale" - same "builds, geometry stays reachable"
 	// bar as MediumInterfaceWrapsTheSphereInAParticipatingMedium above; the
-	// precise Le/Lescale resolution lives in pbrt_flatten_tests.cpp, and the
-	// actual per-collision emission contribution (hg_phase_material::
-	// emitted()) is verified by a real render, not a unit test.
+	// precise Le/Lescale resolution lives in pbrt_flatten_tests.cpp.
 	const pbrt_cpu::BuildResult b = buildFrom(
 		"MakeNamedMedium \"fire\" \"string type\" \"homogeneous\"\n"
 		"  \"rgb sigma_a\" [ 0.5 0.5 0.5 ] \"rgb sigma_s\" [ 0.5 0.5 0.5 ]\n"
@@ -486,6 +484,69 @@ TEST(PbrtCpuBuildTest, EmissiveMediumWrapsTheSphereAndStaysReachable) {
 	double t = 0.0;
 	EXPECT_TRUE(castRay(b, point3(0, 0, -5), vec3(0, 0, 1), t))
 		<< "a ray toward the emissive-medium-wrapped sphere should still hit something";
+}
+
+TEST(PbrtCpuBuildTest, EmissiveMediumBakesLeWeightedBySigmaAOverSigmaT) {
+	// Unlike the reachability test above, this deterministically verifies
+	// the ACTUAL emission value addMediumIfPresent (pbrt_cpu_builder.h)
+	// computes and bakes into hg_phase_material - not just that something
+	// built. sigma_a/sigma_s are astronomically large (not a realistic
+	// scene value) so free_path (Beer-Lambert-sampled) is essentially
+	// always far shorter than the sphere's own diameter - constant_medium's
+	// stochastic collision test (hit(), constant_medium.h) resolves to a
+	// real collision on effectively every ray, sidestepping the
+	// "stochastic, don't assert specifics" caveat every other medium test
+	// in this file carries (P(no collision) = exp(-sigma_t*diameter) =
+	// exp(-2000) - not just unlikely, unrepresentable in a double).
+	// Expected: sigma_a=800, sigma_s=200 (sigma_t=1000), Le=[5,2,0.5],
+	// Lescale=1 -> emission = Le * (sigma_a/sigma_t) = Le * 0.8
+	// = [4, 1.6, 0.4].
+	// Material "none" (Interface) is essential here, not cosmetic - with no
+	// Material directive the sphere gets pbrt's own default (opaque)
+	// surface material, and the ray would hit THAT solid boundary first
+	// (rec.mat = the default surface material, emitted() = black) rather
+	// than ever reaching the medium's own internal stochastic collision -
+	// exactly the scene-authoring pitfall documented in docs/PBRT_SUPPORT.md
+	// (a medium boundary material must be near-invisible, not opaque).
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"MakeNamedMedium \"fire\" \"string type\" \"homogeneous\"\n"
+		"  \"rgb sigma_a\" [ 800 800 800 ] \"rgb sigma_s\" [ 200 200 200 ]\n"
+		"  \"rgb Le\" [ 5 2 0.5 ]\n"
+		"AttributeBegin\n"
+		"  Material \"none\"\n"
+		"  MediumInterface \"fire\" \"\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 1 ]\n"
+		"AttributeEnd\n");
+	ASSERT_EQ(b.sphereCount, 1u);
+
+	// addMediumIfPresent (pbrt_cpu_builder.h) unconditionally adds BOTH the
+	// raw sphere (its own hittable, carrying the Interface material) AND a
+	// SEPARATE constant_medium wrapping the same sphere as its boundary -
+	// so a single hit() call always finds the raw sphere's own (closer, at
+	// the boundary entry t) surface first, same as the real path tracer's
+	// first bounce would. The real integrator (camera.h) recognizes
+	// is_medium_boundary() and CONTINUES the same ray from just past that
+	// point for its next bounce, which is when it actually reaches the
+	// medium's own internal stochastic collision - mirrored here with a
+	// second hit() call starting just past the first hit, rather than
+	// asserting on the first hit_record directly.
+	const ray r(point3(0, 0, -5), vec3(0, 0, 1));
+	hit_record entryRec;
+	ASSERT_TRUE(b.world->hit(r, interval(0.001, infinity), entryRec))
+		<< "a ray toward the emissive-medium-wrapped sphere should hit its boundary";
+	ASSERT_TRUE(entryRec.mat != nullptr);
+	ASSERT_TRUE(entryRec.mat->is_medium_boundary())
+		<< "the boundary hit should be the Interface material, not an opaque surface";
+
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(r, interval(entryRec.t + 1e-4, infinity), rec))
+		<< "continuing past the boundary should reach the medium's own internal collision";
+	ASSERT_TRUE(rec.mat != nullptr);
+
+	const color Le = rec.mat->emitted(r, rec, rec.u, rec.v, rec.p);
+	EXPECT_NEAR(Le.x(), 4.0, 1e-9);
+	EXPECT_NEAR(Le.y(), 1.6, 1e-9);
+	EXPECT_NEAR(Le.z(), 0.4, 1e-9);
 }
 
 TEST(PbrtCpuBuildTest, UnknownMediumInterfaceNameIsTreatedAsVacuum) {

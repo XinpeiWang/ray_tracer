@@ -273,24 +273,54 @@ loader and no longer match the code:
   `pbrt_flatten.h`; `"cloud"`/`"rgbgrid"`/`"uniformgrid"` still drop a
   nonzero `"Le"` with a warning — their own real pbrt-v4 emission is a
   per-voxel grid, a separate, deferred feature, not this flat colour).
-  `Lescale` is baked into `Le` at flatten time. The emission contributes via
+  `"blackbody Le"` (real Kelvin-to-RGB, the same conversion already used for
+  every light's own `"L"`/`"I"` — see `resolveEmissionColor()`) is
+  supported too, not just a literal `"rgb Le"` triple. `Lescale` is baked
+  into `Le` at flatten time. The emission contributes via
   `hg_phase_material::emitted()` (`constant_medium.h`), weighted by
-  `sigma_a / sigma_t` at the CPU builder (`pbrt_cpu_builder.h`'s
-  `addMediumIfPresent`) — the collision-probability weighting pbrt-v4's own
+  `sigma_a / sigma_t` — the collision-probability weighting pbrt-v4's own
   real volumetric estimator uses, collapsed into this codebase's existing
   "every collision continues, weighted by albedo" simplification for
-  scattering. Because `emitted()` is dispatched generically by every
-  integrator that reads `hit_record::mat` (the same mechanism surface-area
-  lights use), this is picked up by BDPT and SPPM's own material-emission
-  reads too, without integrator-specific wiring — **not independently
-  verified for correctness there** (BDPT's own MIS-weighted vertex
-  connections in particular could treat a now-emissive medium-scatter
-  vertex differently than intended; flagged here as an open question for a
-  future review pass, not confirmed broken). GPU (both backends) does not
-  implement medium emission at all — `MaterialType::Medium`'s own shading
-  (`optix_intersection_sphere.h`) has no emission concept — `scene_builder
-  .cpp` warns once at scene-load time if any medium declares a nonzero
-  `"Le"`.
+  scattering.
+  Default CPU path tracer only: `camera.h`'s generic `hit_record::mat->
+  emitted()` dispatch (the same mechanism surface-area lights use) picks
+  this up correctly with no integrator-specific wiring. **BDPT/MLT do
+  not** — a review pass found that treating a medium-scatter vertex as a
+  real emissive Surface vertex (the same machinery an actual area light
+  uses) produces two real bugs: BDPT's own front-face `Le()` gate zeroes
+  the contribution for half of all exit directions, since
+  `constant_medium::hit()` has no real geometric normal to give it
+  (`rec.normal` is an arbitrary placeholder); and BDPT's MIS weight
+  computation misapplies its delta-distribution `remap0()` fallback to a
+  legitimately-zero (not delta) light-origin pdf, since the medium is never
+  a registered light — inflating the MIS denominator and dimming the s=0
+  strategy's contribution. Rather than render a biased/dimmed glow, BDPT
+  (and MLT, which reuses BDPT's own connection machinery) deliberately
+  **suppress** medium emission this round — `material::is_medium_scatter()`
+  (`material_base.h`), overridden by `hg_phase_material`, lets
+  `bdpt_adapter.h`'s `Intersect()` exclude it before it ever reaches BDPT's
+  vertex classification, restoring BDPT's exact pre-this-feature behavior
+  for media. A real light-connectable vertex representation for medium
+  emission is deferred to a future round.
+  **SPPM** partially supports it: the camera pass reads emission
+  unconditionally at every hit (same generic dispatch as the default path
+  tracer), so DIRECT visibility of a glowing medium renders correctly; but
+  the photon pass seeds photons exclusively from the registered light list
+  (`SampleLightLe()`), which a `constant_medium` is never added to — so
+  INDIRECT/bounce illumination from the medium's own glow is silently
+  absent under `--sppm` (nearby surfaces receive no bounce light from it).
+  Not fixed this round; a real fix needs media to seed real photons, a
+  materially bigger feature.
+  GPU (both backends) does not implement medium emission at all —
+  `MaterialType::Medium`'s own shading (`optix_intersection_sphere.h`) has
+  no emission concept — `scene_builder.cpp` warns once at scene-load time
+  if any medium declares a nonzero `"Le"`. A future implementation should
+  reuse `MaterialData`'s existing `emission` union slot and
+  `material_emission()` accessor (`optix_device_helpers.h`), built for
+  exactly this kind of extension — but it needs a real-collision gate
+  first (see `scene_builder.cpp`'s own warning comment for why a naive
+  wire-up would add emission on every ray-medium intersection test, not
+  just a real sampled collision).
 
 (The `dielectric roughness` and `conductor` routing gaps once listed here were
 fixed — see the Materials table above, which is the source of truth for

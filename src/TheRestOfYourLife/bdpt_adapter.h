@@ -334,7 +334,22 @@ class BDPTSceneAdapter {
 		// Emission read from the raw (possibly mix_material) hit, same as
 		// SPPMSceneAdapter::Intersect() -- see its own comment on why
 		// mix_material's emitted() should be evaluated before resolution.
-		color Le = rec.mat ? rec.mat->emitted(r, rec, rec.u, rec.v, rec.p) : color(0, 0, 0);
+		// A medium-scatter hit (hg_phase_material, constant_medium.h) is
+		// EXCLUDED here even though it can now carry real emission
+		// (MakeNamedMedium "rgb Le") - BDPT's own vertex abstraction
+		// (src/shared/bdpt.h) treats any emissive Surface vertex as a real,
+		// light-connectable emitter with a genuine front-face normal and a
+		// queryable light-origin pdf, neither of which a medium-scatter
+		// point actually has (constant_medium::hit() sets an arbitrary
+		// placeholder normal, and media are never registered in the light
+		// list) - feeding it through unsuppressed produces a directionally-
+		// biased, MIS-mis-weighted glow rather than a correct one. The
+		// default path tracer (camera.h) has no such vertex abstraction and
+		// renders medium emission correctly without this exclusion -
+		// BDPT/MLT medium-emission support is deferred to a future round
+		// that gives it a real light-connectable vertex representation.
+		color Le = (rec.mat && !sppm_is_medium_scatter(rec.mat.get()))
+			? rec.mat->emitted(r, rec, rec.u, rec.v, rec.p) : color(0, 0, 0);
 
 		shared_ptr<material> resolved_mat = rec.mat
 			? sppm_resolve_material(rec.mat, rec.u, rec.v, rec.p)

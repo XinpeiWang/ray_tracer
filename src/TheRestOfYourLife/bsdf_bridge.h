@@ -118,6 +118,18 @@ inline bool sppm_is_medium_boundary(const material* m) {
 	return m && m->is_medium_boundary();
 }
 
+// Same null-safe bridge shape as sppm_is_delta_material()/
+// sppm_is_medium_boundary() above, forwarding to material::
+// is_medium_scatter() - true only for hg_phase_material
+// (constant_medium.h), a real participating-medium scatter event. Despite
+// the "sppm_" prefix (kept for naming consistency with this file's other
+// bridges, all shared by both adapters), this is used by bdpt_adapter.h to
+// suppress a medium-scatter hit's emission before it reaches BDPT's own
+// surface-light vertex classification - see that call site's own comment.
+inline bool sppm_is_medium_scatter(const material* m) {
+	return m && m->is_medium_scatter();
+}
+
 // Resolves a mix_material down to a concrete, non-mix sub-material, matching
 // mix_material::scatter()'s own stochastic weight draw exactly (same
 // weight_tex lookup, same `random_double() >= w` comparison) -- recurses to
