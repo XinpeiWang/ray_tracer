@@ -26,10 +26,12 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <map>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -316,31 +318,46 @@ inline int getOrBuildPbrtImageTexture(const std::string& resolvedPath, SceneData
 									  float gamma = kGpuImagemapDefaultGamma,
 									  GpuWrapMode wrap = GpuWrapMode::Clamp,
 									  bool invert = false) {
-	// Cache key stays the plain path for the overwhelmingly common (default-
-	// options) case - byte-identical to every pre-existing call site's own
-	// cache behavior, so none of them needed updating. Only a call passing
-	// non-default options (the 3 reflectance-slot call sites below) builds a
-	// composite key, so a file shared with default options elsewhere in the
-	// same scene still gets its own, separately-decoded (gamma/invert-baked)
-	// entry rather than incorrectly reusing pixel bytes built for different
-	// options.
-	const bool isDefault = (gamma == kGpuImagemapDefaultGamma) && (wrap == GpuWrapMode::Clamp) && !invert;
-	const std::string cacheKey = isDefault
-		? resolvedPath
-		: resolvedPath + "|g" + std::to_string(gamma) + "|w" + std::to_string(static_cast<int>(wrap)) +
-			"|i" + (invert ? "1" : "0");
+	// Always a composite key - `cache` is a fresh std::map local to one
+	// buildPbrtMaterials() call and never read/written anywhere but this
+	// function, so there's no external reader relying on a plain-path key
+	// for the default-options case; always including gamma/wrap/invert here
+	// costs a few extra bytes per key and nothing else, while guaranteeing a
+	// file shared with different options across materials always gets its
+	// own, separately-decoded (gamma/invert-baked) entry.
+	//
+	// gamma is encoded via its exact IEEE-754 bit pattern, not
+	// std::to_string(gamma) (fixed 6 decimal digits) - two distinct-but-close
+	// requested gamma values could otherwise format identically and
+	// collide, silently sharing pixel bytes baked for the wrong exponent.
+	std::uint32_t gammaBits;
+	std::memcpy(&gammaBits, &gamma, sizeof(gammaBits));
+	const std::string cacheKey = resolvedPath + "|g" + std::to_string(gammaBits) + "|w" +
+		std::to_string(static_cast<int>(wrap)) + "|i" + (invert ? "1" : "0");
 	const auto it = cache.find(cacheKey);
 	if (it != cache.end()) return it->second;
 
 	// stbi_ldr_to_hdr_gamma is process-global mutable state (see rtw_stb_
 	// image.h's identical CPU-side use for the full rationale) - mutated for
-	// the duration of this one stbi_loadf() call, then restored, safe only
-	// because scene building is single-threaded (before any render worker
-	// starts).
-	stbi_ldr_to_hdr_gamma(gamma);
+	// the duration of this one stbi_loadf() call, then restored. Real GPU
+	// scene building is single-threaded today (no concurrent caller of this
+	// function exists anywhere in this codebase), but that used to be an
+	// unenforced assumption rather than a guarantee - this mutex actually
+	// closes the gap for the realistic future case (a batch/preview mode
+	// building more than one GPU scene concurrently within one process): it
+	// doesn't extend to CPU's own identical mutation in rtw_stb_image.h (a
+	// genuinely cross-module race would need a mutex shared with that file
+	// too, out of scope for a GPU-side fix), but no such CPU/GPU-concurrent
+	// scene-building path exists in this codebase either.
+	static std::mutex gammaMutex;
 	int width = 0, height = 0, channels = 0;
-	float* fdata = stbi_loadf(resolvedPath.c_str(), &width, &height, &channels, 3);
-	stbi_ldr_to_hdr_gamma(kGpuImagemapDefaultGamma);
+	float* fdata = nullptr;
+	{
+		std::lock_guard<std::mutex> lock(gammaMutex);
+		stbi_ldr_to_hdr_gamma(gamma);
+		fdata = stbi_loadf(resolvedPath.c_str(), &width, &height, &channels, 3);
+		stbi_ldr_to_hdr_gamma(kGpuImagemapDefaultGamma);
+	}
 	if (!fdata) {
 		cache.emplace(cacheKey, -1);
 		return -1;
@@ -357,9 +374,22 @@ inline int getOrBuildPbrtImageTexture(const std::string& resolvedPath, SceneData
 	out.texturePixels.resize(out.texturePixels.size() + total);
 	unsigned char* dst = out.texturePixels.data() + tex.pixelOffset;
 	for (std::size_t i = 0; i < total; ++i) {
-		float v = fdata[i];
-		if (invert) v = 1.0f - v;
-		dst[i] = (v <= 0.0f) ? 0 : (v >= 1.0f ? 255 : static_cast<unsigned char>(256.0f * v));
+		const float v = fdata[i];
+		unsigned char q = (v <= 0.0f) ? 0 : (v >= 1.0f ? 255 : static_cast<unsigned char>(256.0f * v));
+		// Matches CPU's own quantize-then-invert order exactly
+		// (mipmap_texture::build_from(), texture.h): CPU reads the ALREADY-
+		// quantized byte back via rtw_image::pixel_data(), reconstructs a
+		// [0,1] value via /255 (not /256 - see build_from()'s own `scale`),
+		// and only then applies invert (1-c, clamped at 0) - inverting the
+		// raw pre-quantization float here instead (as an earlier version of
+		// this code did) diverges from CPU by 1 LSB whenever the decoded
+		// value lands exactly on a multiple of 1/256.
+		if (invert) {
+			const float reconstructed = q / 255.0f;
+			const float inverted = fmaxf(0.0f, 1.0f - reconstructed);
+			q = (inverted <= 0.0f) ? 0 : (inverted >= 1.0f ? 255 : static_cast<unsigned char>(256.0f * inverted));
+		}
+		dst[i] = q;
 	}
 	stbi_image_free(fdata);
 
@@ -367,16 +397,6 @@ inline int getOrBuildPbrtImageTexture(const std::string& resolvedPath, SceneData
 	out.textures.push_back(tex);
 	cache.emplace(cacheKey, idx);
 	return idx;
-}
-
-// Resolves Material::textureWrap ("repeat"/"clamp"/"black" - already parsed
-// and defaulted to pbrt-v4's real "repeat" by pbrt_flatten.h) to a
-// GpuWrapMode, for getOrBuildPbrtImageTexture()'s `wrap` parameter - mirrors
-// pbrt_cpu_builder.h's imageMapOptionsFor() identical if/else chain.
-inline GpuWrapMode gpuWrapModeFor(const std::string& textureWrap) {
-	if (textureWrap == "black") return GpuWrapMode::Black;
-	if (textureWrap == "clamp") return GpuWrapMode::Clamp;
-	return GpuWrapMode::Repeat;  // pbrt-v4's own real default
 }
 
 // A representative average color for an already-built Image texture (see
@@ -727,7 +747,7 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		d.type = MaterialType::CoatedDiffuse;
 		if (!m.textureFilename.empty()) {
 			d.textureIdx = getOrBuildPbrtImageTexture(m.textureFilename, out, imageTextureCache,
-				static_cast<float>(m.textureGamma), gpuWrapModeFor(m.textureWrap), m.textureInvert);
+				static_cast<float>(m.textureGamma), static_cast<GpuWrapMode>(m.textureWrapIndex), m.textureInvert);
 			d.emissionScale = static_cast<float>(m.textureScale);
 		}
 		// m.hasCheckerReflectance/hasFbmReflectance/hasMarbleReflectance/
@@ -826,7 +846,7 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		// its independent scale.
 		if (!m.textureFilename.empty()) {
 			d.textureIdx = getOrBuildPbrtImageTexture(m.textureFilename, out, imageTextureCache,
-				static_cast<float>(m.textureGamma), gpuWrapModeFor(m.textureWrap), m.textureInvert);
+				static_cast<float>(m.textureGamma), static_cast<GpuWrapMode>(m.textureWrapIndex), m.textureInvert);
 			d.emissionScale = static_cast<float>(m.textureScale);
 		}
 		if (!m.transmittanceTextureFilename.empty()) {
@@ -915,7 +935,7 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		d.type = MaterialType::Lambertian;
 		if (!m.textureFilename.empty()) {
 			d.textureIdx = getOrBuildPbrtImageTexture(m.textureFilename, out, imageTextureCache,
-				static_cast<float>(m.textureGamma), gpuWrapModeFor(m.textureWrap), m.textureInvert);
+				static_cast<float>(m.textureGamma), static_cast<GpuWrapMode>(m.textureWrapIndex), m.textureInvert);
 			d.emissionScale = static_cast<float>(m.textureScale);
 		}
 		// m.hasCheckerReflectance (Material::hasCheckerReflectance's own

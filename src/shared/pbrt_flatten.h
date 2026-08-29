@@ -550,6 +550,17 @@ struct Material {
 	// unaffected - see that field's own comment), THIS field's default is
 	// pbrt-v4's real one, applied explicitly per pbrt-loaded texture.
 	std::string textureWrap = "repeat";
+	// The same resolved value as textureWrap above, as an ordinal
+	// (Clamp=0/Repeat=1/Black=2) instead of a string - matches both CPU's
+	// MipWrapMode (src/shared/mipmap.h) and GPU's GpuWrapMode (gpu/optix/
+	// optix_types.h) enumerator values exactly by construction (both were
+	// defined to mirror this ordering), so either backend's own builder can
+	// just `static_cast` this into its own enum type instead of
+	// re-implementing the same wrap-string validation/fallback logic this
+	// struct's own resolution code (below, in flatten()) already owns.
+	// textureWrap itself is kept alongside this (not replaced) since it's
+	// still useful as a human-readable value for anything that wants one.
+	int textureWrapIndex = 1;  // Repeat, matching textureWrap's own default
 	bool textureInvert = false;
 
 	// DiffuseTransmission only: an "imagemap" Texture bound to
@@ -1681,6 +1692,11 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 									 "\"black\"); using \"repeat\" instead");
 								m.textureWrap = "repeat";
 							}
+							// See Material::textureWrapIndex's own comment - kept in
+							// sync with textureWrap above, the single resolution
+							// point for both.
+							m.textureWrapIndex = (m.textureWrap == "clamp") ? 0
+								: (m.textureWrap == "black") ? 2 : 1;
 						}
 						m.textureInvert = imgTex->params.getBool("invert", false);
 						continue;   // resolved to an image, not a "not supported" warning

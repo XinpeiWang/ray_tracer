@@ -416,16 +416,27 @@ __device__ __forceinline__ float3 wf_sample_texture(
 		if (t.width <= 0 || t.height <= 0) return make_float3(0.0f, 1.0f, 1.0f);
 		const float uw = fminf(fmaxf(u, -1024.0f), 1024.0f);
 		const float vw = fminf(fmaxf(1.0f - v, -1024.0f), 1024.0f);
-		int i = static_cast<int>(floorf(uw * t.width));
-		int j = static_cast<int>(floorf(vw * t.height));
-		if (t.wrapMode == GpuWrapMode::Repeat) {
+		// double, not float - see optix_device_helpers.h's identical
+		// sampleImage comment for why (matches CPU's own bilerp() promotion,
+		// mipmap.h - guards against float's 2^24 exact-integer limit for a
+		// wide-tiled UV times a large texture width).
+		int i = static_cast<int>(floor((double)uw * t.width));
+		int j = static_cast<int>(floor((double)vw * t.height));
+		// No `default:` case, deliberately - see optix_device_helpers.h's
+		// identical comment for why (lets the compiler flag a future
+		// unhandled GpuWrapMode enumerator here too).
+		switch (t.wrapMode) {
+		case GpuWrapMode::Repeat:
 			i = ((i % t.width) + t.width) % t.width;
 			j = ((j % t.height) + t.height) % t.height;
-		} else if (t.wrapMode == GpuWrapMode::Black) {
+			break;
+		case GpuWrapMode::Black:
 			if (i < 0 || i >= t.width || j < 0 || j >= t.height) return make_float3(0.0f, 0.0f, 0.0f);
-		} else {  // Clamp
+			break;
+		case GpuWrapMode::Clamp:
 			i = min(max(i, 0), t.width - 1);
 			j = min(max(j, 0), t.height - 1);
+			break;
 		}
 		const unsigned char* px = texturePixels + t.pixelOffset + (j * t.width + i) * 3;
 		constexpr float kColorScale = 1.0f / 255.0f;

@@ -76,10 +76,31 @@ __device__ __forceinline__ bool wf_passes_alpha_cutout(int alphaMaskTexIdx, floa
 	if (alphaMaskTexIdx < 0) return true;
 	const TextureData& tex = wf_params.textures[alphaMaskTexIdx];
 	if (tex.width <= 0 || tex.height <= 0) return true;
-	const float uc = fminf(fmaxf(u, 0.0f), 1.0f);
-	const float vc = 1.0f - fminf(fmaxf(v, 0.0f), 1.0f);
-	const int i = min(static_cast<int>(uc * tex.width), tex.width - 1);
-	const int j = min(static_cast<int>(vc * tex.height), tex.height - 1);
+	// Wrap-mode-aware, matching wavefront_kernels.cu's own sampleImage lambda
+	// - currently a no-op in practice (alpha-mask textures are built via
+	// getOrBuildPbrtAlphaMaskTexture(), pbrt_gpu_builder.h, which never sets
+	// a non-default wrap), kept in sync so this copy doesn't silently
+	// diverge - including from the RECURSIVE backend's own equivalent
+	// passes_alpha_cutout() (optix_device_helpers.h), which already inherits
+	// wrap-awareness for free by calling the shared sample_texture() - if
+	// wrap support is ever extended to alpha-cutout textures.
+	const float uw = fminf(fmaxf(u, -1024.0f), 1024.0f);
+	const float vw = fminf(fmaxf(1.0f - v, -1024.0f), 1024.0f);
+	int i = static_cast<int>(floor((double)uw * tex.width));
+	int j = static_cast<int>(floor((double)vw * tex.height));
+	switch (tex.wrapMode) {
+	case GpuWrapMode::Repeat:
+		i = ((i % tex.width) + tex.width) % tex.width;
+		j = ((j % tex.height) + tex.height) % tex.height;
+		break;
+	case GpuWrapMode::Black:
+		if (i < 0 || i >= tex.width || j < 0 || j >= tex.height) return false;  // alpha 0 -> cut out
+		break;
+	case GpuWrapMode::Clamp:
+		i = min(max(i, 0), tex.width - 1);
+		j = min(max(j, 0), tex.height - 1);
+		break;
+	}
 	const unsigned char* px = wf_params.texturePixels + tex.pixelOffset + (j * tex.width + i) * 3;
 	constexpr float kAlphaCutoutThreshold = 0.5f;
 	return (px[0] * (1.0f / 255.0f)) >= kAlphaCutoutThreshold;

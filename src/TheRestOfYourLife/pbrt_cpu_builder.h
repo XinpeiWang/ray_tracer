@@ -84,9 +84,12 @@ inline MipMapOptions imageMapOptionsFor(const pbrt_flatten::Material &m) {
 	MipMapOptions opts;
 	opts.gamma = m.textureGamma;
 	opts.invert = m.textureInvert;
-	if (m.textureWrap == "black") opts.wrap = MipWrapMode::Black;
-	else if (m.textureWrap == "clamp") opts.wrap = MipWrapMode::Clamp;
-	else opts.wrap = MipWrapMode::Repeat;   // pbrt-v4's own real default
+	// m.textureWrapIndex is the single, already-validated resolution of
+	// m.textureWrap (Material::textureWrapIndex's own comment, pbrt_flatten.h)
+	// - MipWrapMode's own enumerator values (Clamp=0/Repeat=1/Black=2) match
+	// it by construction, so this just recovers the enum rather than
+	// re-parsing the string a second time.
+	opts.wrap = static_cast<MipWrapMode>(m.textureWrapIndex);
 	return opts;
 }
 

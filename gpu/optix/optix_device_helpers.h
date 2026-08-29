@@ -717,10 +717,29 @@ __device__ __forceinline__ float3 nee_light_texture_emission(const MaterialData&
 	if (lm.textureIdx < 0) return lm.emission;
 	const TextureData& dtex = params.textures[lm.textureIdx];
 	if (dtex.kind == TextureKind::Image && dtex.width > 0 && dtex.height > 0) {
-		const float uc = fminf(fmaxf(lu, 0.0f), 1.0f);
-		const float vc = 1.0f - fminf(fmaxf(lv, 0.0f), 1.0f);
-		const int ti = min(static_cast<int>(uc * dtex.width), dtex.width - 1);
-		const int tj = min(static_cast<int>(vc * dtex.height), dtex.height - 1);
+		// Wrap-mode-aware, matching sample_texture()'s own sampleImage lambda
+		// (this file) - currently a no-op in practice (an emission texture is
+		// always built with the default Clamp wrap, see getOrBuildPbrtImage
+		// Texture()'s own call sites, pbrt_gpu_builder.h), but kept in sync so
+		// this copy doesn't silently diverge if wrap support is ever extended
+		// to AreaLightSource "filename" textures too.
+		const float uw = fminf(fmaxf(lu, -1024.0f), 1024.0f);
+		const float vw = fminf(fmaxf(1.0f - lv, -1024.0f), 1024.0f);
+		int ti = static_cast<int>(floor((double)uw * dtex.width));
+		int tj = static_cast<int>(floor((double)vw * dtex.height));
+		switch (dtex.wrapMode) {
+		case GpuWrapMode::Repeat:
+			ti = ((ti % dtex.width) + dtex.width) % dtex.width;
+			tj = ((tj % dtex.height) + dtex.height) % dtex.height;
+			break;
+		case GpuWrapMode::Black:
+			if (ti < 0 || ti >= dtex.width || tj < 0 || tj >= dtex.height) return make_float3(0.0f, 0.0f, 0.0f);
+			break;
+		case GpuWrapMode::Clamp:
+			ti = min(max(ti, 0), dtex.width - 1);
+			tj = min(max(tj, 0), dtex.height - 1);
+			break;
+		}
 		const unsigned char* px = params.texturePixels + dtex.pixelOffset + (tj * dtex.width + ti) * 3;
 		constexpr float kCS = 1.0f / 255.0f;
 		return make_float3(px[0]*kCS*lm.emissionScale, px[1]*kCS*lm.emissionScale, px[2]*kCS*lm.emissionScale);
@@ -811,13 +830,36 @@ __device__ __forceinline__ float3 sample_area_light_by_kind(
 		if (lm.textureIdx >= 0) {
 			const TextureData& dtex = params.textures[lm.textureIdx];
 			if (dtex.kind == TextureKind::Image && dtex.width > 0 && dtex.height > 0) {
-				const float uc = fminf(fmaxf(lu, 0.0f), 1.0f);
-				const float vc = 1.0f - fminf(fmaxf(lv, 0.0f), 1.0f);
-				const int ti = min(static_cast<int>(uc * dtex.width), dtex.width - 1);
-				const int tj = min(static_cast<int>(vc * dtex.height), dtex.height - 1);
-				const unsigned char* px = params.texturePixels + dtex.pixelOffset + (tj * dtex.width + ti) * 3;
-				constexpr float kCS = 1.0f / 255.0f;
-				emission = make_float3(px[0]*kCS*lm.emissionScale, px[1]*kCS*lm.emissionScale, px[2]*kCS*lm.emissionScale);
+				// Wrap-mode-aware, matching sample_texture()'s own sampleImage
+				// lambda and nee_light_texture_emission()'s identical fix
+				// above (this file) - see that one's own comment for why this
+				// is currently a no-op (emission textures always resolve to
+				// Clamp) kept in sync for the future rather than a live bug.
+				const float uw = fminf(fmaxf(lu, -1024.0f), 1024.0f);
+				const float vw = fminf(fmaxf(1.0f - lv, -1024.0f), 1024.0f);
+				int ti = static_cast<int>(floor((double)uw * dtex.width));
+				int tj = static_cast<int>(floor((double)vw * dtex.height));
+				bool blackWrap = false;
+				switch (dtex.wrapMode) {
+				case GpuWrapMode::Repeat:
+					ti = ((ti % dtex.width) + dtex.width) % dtex.width;
+					tj = ((tj % dtex.height) + dtex.height) % dtex.height;
+					break;
+				case GpuWrapMode::Black:
+					blackWrap = (ti < 0 || ti >= dtex.width || tj < 0 || tj >= dtex.height);
+					break;
+				case GpuWrapMode::Clamp:
+					ti = min(max(ti, 0), dtex.width - 1);
+					tj = min(max(tj, 0), dtex.height - 1);
+					break;
+				}
+				if (blackWrap) {
+					emission = make_float3(0.0f, 0.0f, 0.0f);
+				} else {
+					const unsigned char* px = params.texturePixels + dtex.pixelOffset + (tj * dtex.width + ti) * 3;
+					constexpr float kCS = 1.0f / 255.0f;
+					emission = make_float3(px[0]*kCS*lm.emissionScale, px[1]*kCS*lm.emissionScale, px[2]*kCS*lm.emissionScale);
+				}
 			} else {
 				emission = make_float3(0.0f, 1.0f, 1.0f);
 			}
@@ -1342,16 +1384,31 @@ __device__ __forceinline__ float3 sample_texture(int textureIdx, float u, float 
 		if (t.width <= 0 || t.height <= 0) return make_float3(0.0f, 1.0f, 1.0f);
 		const float uw = fminf(fmaxf(u, -1024.0f), 1024.0f);
 		const float vw = fminf(fmaxf(1.0f - v, -1024.0f), 1024.0f);
-		int i = static_cast<int>(floorf(uw * t.width));
-		int j = static_cast<int>(floorf(vw * t.height));
-		if (t.wrapMode == GpuWrapMode::Repeat) {
+		// double, not float, for the multiply - matches CPU's own bilerp()
+		// (src/shared/mipmap.h), which promotes to double for this exact
+		// computation: a wide-tiled UV (now possible here too, via the
+		// +-1024 clamp above) times a large texture width can exceed
+		// float's exact-integer range (2^24), losing sub-texel precision
+		// right before floor() picks the pixel index.
+		int i = static_cast<int>(floor((double)uw * t.width));
+		int j = static_cast<int>(floor((double)vw * t.height));
+		// No `default:` case, deliberately - this is what lets the compiler
+		// (-Wswitch/MSVC's equivalent) flag a future 4th GpuWrapMode
+		// enumerator left unhandled here, in BOTH this copy and
+		// wavefront_kernels.cu's own duplicate, instead of both silently
+		// falling through to Clamp behavior with no diagnostic anywhere.
+		switch (t.wrapMode) {
+		case GpuWrapMode::Repeat:
 			i = ((i % t.width) + t.width) % t.width;
 			j = ((j % t.height) + t.height) % t.height;
-		} else if (t.wrapMode == GpuWrapMode::Black) {
+			break;
+		case GpuWrapMode::Black:
 			if (i < 0 || i >= t.width || j < 0 || j >= t.height) return make_float3(0.0f, 0.0f, 0.0f);
-		} else {  // Clamp
+			break;
+		case GpuWrapMode::Clamp:
 			i = min(max(i, 0), t.width - 1);
 			j = min(max(j, 0), t.height - 1);
+			break;
 		}
 		const unsigned char* px = params.texturePixels + t.pixelOffset + (j * t.width + i) * 3;
 		constexpr float kColorScale = 1.0f / 255.0f;
