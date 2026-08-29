@@ -1524,15 +1524,16 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	const SampledWavelengths<kWFNWavelengths>& swl,
 	const SampledSpectrum<kWFNWavelengths>& attenuation,
 	const float3& scattered_dir, bool is_specular, float brdf_pdf_override,
-	// Only meaningful when matType == MaterialType::DielectricMedium AND
-	// is_specular == false - the one sub-case (medium-interior phase-function
-	// scatter, see evaluate_materials()'s DielectricMedium case) that reaches
-	// this function's NEE block with that material type at all (its other two
-	// sub-cases, the entry/exit dielectric-surface refractions, are genuinely
-	// specular and never clear the `if (!is_specular)` gate below). phaseWo is
-	// the direction back toward where the ray came from (-incoming ray dir,
-	// matching CPU hg_phase_pdf's own `wo`); phaseG is the material's HG
-	// asymmetry (mat.fuzz). ALSO reused (same "-incoming ray dir" meaning) as
+	// Only meaningful when isPhase (below) is true and is_specular == false -
+	// a genuine medium-interior phase-function scatter event, reached by
+	// MaterialType::Medium/CloudMedium/RgbGridMedium/GridMedium (always) or
+	// DielectricMedium's own interior sub-case only (its other two
+	// sub-cases, the entry/exit dielectric-surface refractions, are
+	// genuinely specular and never clear the `if (!is_specular)` gate
+	// below). phaseWo is the direction back toward where the ray came from
+	// (-incoming ray dir, matching CPU hg_phase_pdf's own `wo`); phaseG is
+	// the medium's HG asymmetry (mat.fuzz, or grid.phase_g for the two grid
+	// medium types). ALSO reused (same "-incoming ray dir" meaning) as
 	// `wi_world` by the Conductor/RoughDielectric/CoatedDiffuse/CoatedConductor
 	// glossy branches above to rebuild their local shading frame - harmless/
 	// unused for every other material type.
@@ -1574,10 +1575,18 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	using SS = SampledSpectrum<kWFNWavelengths>;
 
 	// See phaseWo/phaseG's own parameter comment above - matType alone
-	// unambiguously identifies the medium-interior phase-scatter sub-case
-	// here, since DielectricMedium's other two (specular) sub-cases never
-	// reach this NEE block at all.
-	const bool isPhase = (matType == MaterialType::DielectricMedium);
+	// unambiguously identifies a medium-interior phase-scatter event here:
+	// DielectricMedium's other two (specular) sub-cases never reach this NEE
+	// block at all (is_specular stays true for those), and Medium/
+	// CloudMedium/RgbGridMedium/GridMedium's own "no interaction, straight
+	// pass-through" sub-case is likewise still is_specular=true - only a
+	// genuine scatter event for any of these 5 material types clears the
+	// caller's `if (!is_specular)` gate and reaches here.
+	const bool isPhase = (matType == MaterialType::DielectricMedium ||
+						   matType == MaterialType::Medium ||
+						   matType == MaterialType::CloudMedium ||
+						   matType == MaterialType::RgbGridMedium ||
+						   matType == MaterialType::GridMedium);
 
 	auto addToFramebuffer = [&](int pixIdx, const SS& L) {
 		auto xyz = SampledSpectrumToXYZ(L, swl, d_cie_x, d_cie_y, d_cie_z,
@@ -2463,10 +2472,12 @@ extern "C" __global__ void evaluate_materials(
 	// (optix_types.h).
 	bool   is_medium_boundary = false;
 	float  brdf_pdf_override = -1.0f;
-	// Only set by MaterialType::DielectricMedium's medium-interior
-	// phase-scatter sub-case (see that case below) - passed through to
-	// wf_finish_material_scatter's NEE block for real phase-function NEE+MIS.
-	// Unused (harmless zero) for every other material type.
+	// Set by MaterialType::Medium/CloudMedium/RgbGridMedium/GridMedium (on a
+	// genuine scatter, not the no-interaction pass-through sub-case) and by
+	// DielectricMedium's own medium-interior phase-scatter sub-case (see
+	// each case below) - passed through to wf_finish_material_scatter's NEE
+	// block for real phase-function NEE+MIS. Unused (harmless zero) for
+	// every other material type.
 	float3 phaseWo = make_float3(0.0f, 0.0f, 0.0f);
 	// wf_finish_material_scatter's `nfEta` slot - mat.ior by default
 	// (correct for MaterialType::NormalizedFresnel); MaterialType::
@@ -3085,8 +3096,7 @@ extern "C" __global__ void evaluate_materials(
 		// recomputed in __closesthit__wf_sphere and handed over via h.t (near)
 		// and h.mediumTFar (far); here we sample the free-path distance and
 		// either scatter inside via the HG phase function or pass straight
-		// through to the exit point, matching the recursive path's
-		// is_specular=true (no NEE/MIS for volume scattering, not yet implemented).
+		// through to the exit point.
 		float t_near = h.t;
 		float t_far  = h.mediumTFar;
 		float dist_inside = fmaxf(0.0f, t_far - t_near);
@@ -3096,15 +3106,36 @@ extern "C" __global__ void evaluate_materials(
 		if (free_path < dist_inside) {
 			float medium_t = t_near + free_path;
 			hit_point     = h.rayOrigin + medium_t * unit_dir;
-			scattered_dir = wf_sample_henyey_greenstein(unit_dir, mat.fuzz, seed);
+			// wf_sample_henyey_greenstein's own `wo` parameter (matching
+			// optix_device_helpers.h's identical sample_henyey_greenstein -
+			// this is a hand-duplicated copy, not an independent convention)
+			// wants the OUTGOING direction (toward where the ray came from),
+			// not the forward travel direction - passing the un-negated
+			// unit_dir here inverted the g>0/g<0 forward/back-scatter bias
+			// for any anisotropic medium, same class of bug the recursive
+			// backend's own identical call site already had fixed.
+			phaseWo = -unit_dir;
+			phaseG  = mat.fuzz;
+			scattered_dir = wf_sample_henyey_greenstein(phaseWo, phaseG, seed);
 			attenuation   = albedoSpectrum(mat.albedo);
+			// Real NEE+MIS at the phase-function scatter event, matching
+			// CPU's hg_phase_material (skip_pdf=false) - see
+			// optix_intersection_sphere.h's identical fix for the full
+			// root-cause derivation. This backend defers the actual light
+			// sampling/shadow-ray tracing to wf_finish_material_scatter()
+			// (below) rather than tracing inline - handing off phaseWo/
+			// phaseG and flipping is_specular is all this case needs to do
+			// (see DielectricMedium's own interior sub-case, same file, for
+			// the identical mechanism already wired up).
+			brdf_pdf_override = wf_hg_phase_value(dot(phaseWo, scattered_dir), phaseG);
+			is_specular = false;
 		} else {
 			hit_point     = h.rayOrigin + t_far * unit_dir;
 			scattered_dir = unit_dir;  // straight through, no interaction
 			attenuation   = SS(1.f);
+			is_specular   = true;  // no interaction - a free/non-scattering pass-through
 		}
 		scattered   = true;
-		is_specular = true;
 		break;
 	}
 	case MaterialType::CloudMedium: {
@@ -3145,7 +3176,12 @@ extern "C" __global__ void evaluate_materials(
 				if (wf_rand(seed) < sigma_s_local / sigma_maj) {
 					did_scatter = true;
 					medium_t      = tt;
-					scattered_dir = wf_sample_henyey_greenstein(unit_dir, mat.fuzz, seed);
+					// See MaterialType::Medium's identical fix above for why
+					// this negates unit_dir (wf_sample_henyey_greenstein's own
+					// `wo` convention).
+					phaseWo = -unit_dir;
+					phaseG  = mat.fuzz;
+					scattered_dir = wf_sample_henyey_greenstein(phaseWo, phaseG, seed);
 					attenuation   = albedoSpectrum(mat.albedo);
 				}
 			}
@@ -3153,13 +3189,18 @@ extern "C" __global__ void evaluate_materials(
 		} else {
 			medium_t = h.t;  // missed the medium's own AABB - pass straight through
 		}
-		if (!did_scatter) {
+		hit_point = h.rayOrigin + medium_t * unit_dir;
+		if (did_scatter) {
+			// Real NEE+MIS at the phase-function scatter event - see
+			// MaterialType::Medium's identical fix above.
+			brdf_pdf_override = wf_hg_phase_value(dot(phaseWo, scattered_dir), phaseG);
+			is_specular = false;
+		} else {
 			scattered_dir = unit_dir;
 			attenuation   = SS(1.f);
+			is_specular   = true;  // no interaction - a free/non-scattering pass-through
 		}
-		hit_point   = h.rayOrigin + medium_t * unit_dir;
 		scattered   = true;
-		is_specular = true;
 		break;
 	}
 
@@ -3224,7 +3265,11 @@ extern "C" __global__ void evaluate_materials(
 				if (wf_rand(seed) < sigma_t_local / grid.sigma_maj) {
 					did_scatter = true;
 					medium_t      = tt;
-					scattered_dir = wf_sample_henyey_greenstein(unit_dir, grid.phase_g, seed);
+					// See MaterialType::Medium's identical fix above for why
+					// this negates unit_dir.
+					phaseWo = -unit_dir;
+					phaseG  = grid.phase_g;
+					scattered_dir = wf_sample_henyey_greenstein(phaseWo, phaseG, seed);
 					float maxc = fmaxf(sr, fmaxf(sg, fmaxf(sb, 1e-6f)));
 					attenuation = albedoSpectrum(make_float3(sr/maxc, sg/maxc, sb/maxc));
 				}
@@ -3233,13 +3278,18 @@ extern "C" __global__ void evaluate_materials(
 		} else {
 			medium_t = h.t;
 		}
-		if (!did_scatter) {
+		hit_point = h.rayOrigin + medium_t * unit_dir;
+		if (did_scatter) {
+			// Real NEE+MIS at the phase-function scatter event - see
+			// MaterialType::Medium's identical fix above.
+			brdf_pdf_override = wf_hg_phase_value(dot(phaseWo, scattered_dir), phaseG);
+			is_specular = false;
+		} else {
 			scattered_dir = unit_dir;
 			attenuation   = SS(1.f);
+			is_specular   = true;  // no interaction - a free/non-scattering pass-through
 		}
-		hit_point   = h.rayOrigin + medium_t * unit_dir;
 		scattered   = true;
-		is_specular = true;
 		break;
 	}
 	case MaterialType::GridMedium: {
@@ -3296,7 +3346,11 @@ extern "C" __global__ void evaluate_materials(
 				if (wf_rand(seed) < sigma_t_local / grid.sigma_maj) {
 					did_scatter = true;
 					medium_t      = tt;
-					scattered_dir = wf_sample_henyey_greenstein(unit_dir, grid.phase_g, seed);
+					// See MaterialType::Medium's identical fix above for why
+					// this negates unit_dir.
+					phaseWo = -unit_dir;
+					phaseG  = grid.phase_g;
+					scattered_dir = wf_sample_henyey_greenstein(phaseWo, phaseG, seed);
 					attenuation   = albedoSpectrum(mat.albedo);  // no per-voxel colour - see grid_medium_hittable.h's own comment
 				}
 			}
@@ -3304,13 +3358,18 @@ extern "C" __global__ void evaluate_materials(
 		} else {
 			medium_t = h.t;
 		}
-		if (!did_scatter) {
+		hit_point = h.rayOrigin + medium_t * unit_dir;
+		if (did_scatter) {
+			// Real NEE+MIS at the phase-function scatter event - see
+			// MaterialType::Medium's identical fix above.
+			brdf_pdf_override = wf_hg_phase_value(dot(phaseWo, scattered_dir), phaseG);
+			is_specular = false;
+		} else {
 			scattered_dir = unit_dir;
 			attenuation   = SS(1.f);
+			is_specular   = true;  // no interaction - a free/non-scattering pass-through
 		}
-		hit_point   = h.rayOrigin + medium_t * unit_dir;
 		scattered   = true;
-		is_specular = true;
 		break;
 	}
 	case MaterialType::Hair: {
@@ -3372,7 +3431,15 @@ extern "C" __global__ void evaluate_materials(
 				float medium_t = t_near + free_path;
 				hit_point     = h.rayOrigin + medium_t * unit_dir;
 				float g       = mat.fuzz;
-				scattered_dir = wf_sample_henyey_greenstein(unit_dir, g, seed);
+				// wf_sample_henyey_greenstein's own `wo` parameter wants the
+				// OUTGOING direction, not the forward travel direction -
+				// passing the un-negated unit_dir here (as this call used to)
+				// inverted the g>0/g<0 forward/back-scatter bias for any
+				// anisotropic medium - see MaterialType::Medium's identical
+				// fix above for the same class of bug.
+				phaseWo = -unit_dir;
+				phaseG  = g;
+				scattered_dir = wf_sample_henyey_greenstein(phaseWo, phaseG, seed);
 				attenuation   = albedoSpectrum(mat.albedo);
 				// Real NEE+MIS at the phase-function scatter event, matching
 				// CPU's hg_phase_material (skip_pdf=false) - see
@@ -3382,8 +3449,6 @@ extern "C" __global__ void evaluate_materials(
 				// this path's shadow rays are queued (wf_finish_material_
 				// scatter, below) rather than traced inline, so all this case
 				// needs to do is hand off phaseWo/phaseG and flip is_specular.
-				phaseWo = -unit_dir;
-				phaseG  = g;
 				brdf_pdf_override = wf_hg_phase_value(dot(phaseWo, scattered_dir), g);
 				is_specular = false;
 			} else {

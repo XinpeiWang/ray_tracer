@@ -1071,6 +1071,92 @@ __device__ __forceinline__ bool trace_shadow_ray(
 	return (occluded == 0);
 }
 
+// Real NEE+MIS at a Henyey-Greenstein phase-function scatter event inside a
+// participating medium - the volumetric counterpart of a diffuse/glossy
+// BSDF's own NEE block, reused by every medium-interior scatter case in this
+// module (MaterialType::Medium/CloudMedium/RgbGridMedium/GridMedium, and
+// MaterialType::DielectricMedium's own interior sub-case) rather than
+// duplicating this ~40-line block once per medium type. Matches CPU's
+// hg_phase_material (src/TheRestOfYourLife/constant_medium.h, skip_pdf=false,
+// routed through hg_phase_pdf) exactly - see the DielectricMedium branch this
+// was originally written for (optix_intersection_sphere.h) for the full
+// root-cause derivation of why this matters (B13/SubsurfaceSlab's ~32-38%
+// CPU-brighter gap without it): without NEE, the only way a phase-scattered
+// ray picks up light is a lucky HG-sampled random walk eventually escaping
+// the medium AND hitting a light before the path's depth budget runs out -
+// unbiased in the limit, but nowhere near converged at any real sample count
+// for a dense/room-filling medium.
+//
+// `medium_point`: the world-space scatter location (NOT a surface point - no
+// meaningful geometric normal exists here, so callers must not offset it
+// along one; trace_shadow_ray()'s own shadow_eps offset is already applied
+// along the ray direction instead, which is safe for an interior point too).
+// `wo`: direction back toward where the ray came from (-incoming ray
+// direction, matching CPU hg_phase_pdf's own `wo` convention - get this
+// backwards and an anisotropic medium's forward/back-scatter bias inverts).
+// `g`: the medium's Henyey-Greenstein asymmetry parameter. `attenuation`:
+// the medium's own scattering albedo at this event (already resolved by the
+// caller - single RGB for Medium/CloudMedium/GridMedium, per-voxel RGB for
+// RgbGridMedium). `scattered_dir`: the already phase-function-sampled
+// continuation direction (used only to compute the outgoing brdf_pdf_override
+// for the NEXT bounce's own MIS, not to sample here). Returns the direct
+// lighting contribution to add to this event's emission; also writes
+// brdf_pdf_override (the phase value at the sampled continuation direction),
+// which every caller must pass through to shade_material()-style payload
+// packing instead of the surface cosine_pdf default.
+__device__ __forceinline__ float3 medium_phase_nee_mis(
+	const float3& medium_point, const float3& wo, float g,
+	const float3& attenuation, const float3& scattered_dir,
+	unsigned int& seed, float& brdf_pdf_override)
+{
+	float3 medium_emission = make_float3(0.0f, 0.0f, 0.0f);
+	if (params.numLights > 0) {
+		int light_idx;
+		float selection_pdf;
+		if (params.aliasTable) {
+			int slot = int(random_float(seed) * float(params.numLights));
+			if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
+			const GpuAliasEntry& entry = params.aliasTable[slot];
+			light_idx = (random_float(seed) < entry.q) ? slot : entry.alias;
+			selection_pdf = params.aliasTable[light_idx].pdf;
+		} else {
+			light_idx = int(random_float(seed) * float(params.numLights));
+			if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
+			selection_pdf = 1.0f / float(params.numLights);
+		}
+		float geom_pdf = 0.0f, max_dist = 0.0f;
+		float3 sampled_light_emission = make_float3(0.0f, 0.0f, 0.0f);
+		float3 to_light = sample_area_light_by_kind(
+			light_idx, medium_point, seed, geom_pdf, max_dist, sampled_light_emission);
+		float light_pdf = selection_pdf * geom_pdf;
+		if (light_pdf > 1e-6f) {
+			float phase_val = hg_phase_value(dot(wo, to_light), g);
+			if (trace_shadow_ray(medium_point, to_light, max_dist)) {
+				float mis_weight = mis_power_heuristic(light_pdf, phase_val);
+				medium_emission = medium_emission +
+					(mis_weight * phase_val / light_pdf) * attenuation * sampled_light_emission;
+			}
+		}
+	}
+	{
+		const float3& skyColor = params.camera.backgroundColor;
+		if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
+			float3 sky_dir, sky_Le_val; float pdf_sky;
+			sample_sky_nee(seed, skyColor, sky_dir, pdf_sky, sky_Le_val);
+			if (pdf_sky > 0.0f) {
+				float phase_val_sky = hg_phase_value(dot(wo, sky_dir), g);
+				if (trace_shadow_ray(medium_point, sky_dir, 1e30f)) {
+					float mis_weight = mis_power_heuristic(pdf_sky, phase_val_sky);
+					medium_emission = medium_emission +
+						(mis_weight * phase_val_sky / pdf_sky) * attenuation * sky_Le_val;
+				}
+			}
+		}
+	}
+	brdf_pdf_override = hg_phase_value(dot(wo, scattered_dir), g);
+	return medium_emission;
+}
+
 // Result of one RAY_TYPE_PROBE trace - see trace_probe_ray() below and
 // optix_probe_hit.h's own payload-layout comment.
 struct ProbeHit {

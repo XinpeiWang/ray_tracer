@@ -599,15 +599,22 @@ extern "C" __global__ void __closesthit__sphere() {
 				// convention - passing the un-negated forward travel
 				// direction here inverted the g>0/g<0 forward/back-scatter
 				// bias for any anisotropic medium.
-				scattered_dir = sample_henyey_greenstein(-unit_dir, mat.fuzz, seed);
+				float3 wo = -unit_dir;
+				scattered_dir = sample_henyey_greenstein(wo, mat.fuzz, seed);
 				attenuation = mat.albedo;
+				// Real NEE+MIS at the phase-function scatter event - see
+				// medium_phase_nee_mis()'s own comment (optix_device_helpers.h).
+				float3 medium_point = ray_orig + medium_t_hit * unit_dir;
+				emission = emission + medium_phase_nee_mis(
+					medium_point, wo, mat.fuzz, attenuation, scattered_dir, seed, brdf_pdf_override);
+				is_specular = false;
 			} else {
 				medium_t_hit = t_far;
 				scattered_dir = unit_dir;  // straight through, no interaction
 				attenuation = make_float3(1.0f, 1.0f, 1.0f);
+				is_specular = true;  // no interaction - a free/non-scattering pass-through
 			}
 			scattered    = true;
-			is_specular  = true;  // no NEE/MIS for volume scattering (not yet implemented)
 			is_medium    = true;
 	} else if (mat.type == MaterialType::CloudMedium) {
 			// Heterogeneous, procedural Perlin-noise cloud - see
@@ -620,9 +627,9 @@ extern "C" __global__ void __closesthit__sphere() {
 			// device-side (CPU_GPU-tagged, compiles as-is - see
 			// optix_types.h's cloud_medium.h include comment). Matches
 			// src/TheRestOfYourLife/cloud_medium_hittable.h's CPU
-			// delta-tracking loop exactly. Like Medium above, no NEE/MIS for
-			// volume scattering (not yet implemented on GPU for either
-			// medium type) - specular-style bounce.
+			// delta-tracking loop exactly. Real NEE+MIS at a genuine scatter
+			// event, like Medium above - see medium_phase_nee_mis()'s own
+			// comment (optix_device_helpers.h).
 			const CloudMedium<float>& cloud = params.cloudMediums[(int)mat.cloud_medium_extra.cloudMediumIdx];
 			float3 unit_dir3 = normalize(ray_dir);
 			float ray_o3[3] = { ray_orig.x, ray_orig.y, ray_orig.z };
@@ -665,12 +672,23 @@ extern "C" __global__ void __closesthit__sphere() {
 				// expected case, not an error. Pass straight through.
 				medium_t_hit = t;
 			}
-			if (!did_scatter) {
+			if (did_scatter) {
+				// Real NEE+MIS at the phase-function scatter event - see
+				// medium_phase_nee_mis()'s own comment (optix_device_helpers.h).
+				// medium_point recomputed from medium_t_hit (== `tt` at the
+				// scatter iteration above) rather than keeping that loop-local
+				// `p` alive past the loop.
+				float3 wo = -unit_dir3;
+				float3 medium_point = ray_orig + medium_t_hit * unit_dir3;
+				emission = emission + medium_phase_nee_mis(
+					medium_point, wo, mat.fuzz, attenuation, scattered_dir, seed, brdf_pdf_override);
+				is_specular = false;
+			} else {
 				scattered_dir = unit_dir3;  // straight through, no interaction
 				attenuation   = make_float3(1.0f, 1.0f, 1.0f);
+				is_specular   = true;  // no interaction - a free/non-scattering pass-through
 			}
 			scattered    = true;
-			is_specular  = true;
 			is_medium    = true;
 	} else if (mat.type == MaterialType::RgbGridMedium) {
 			// Heterogeneous per-voxel R/G/B scattering grid - see
@@ -753,12 +771,20 @@ extern "C" __global__ void __closesthit__sphere() {
 				// trigger sphere is a loose bound, same as CloudMedium above.
 				medium_t_hit = t;
 			}
-			if (!did_scatter) {
+			if (did_scatter) {
+				// Real NEE+MIS at the phase-function scatter event - see
+				// medium_phase_nee_mis()'s own comment (optix_device_helpers.h).
+				float3 wo = -unit_dir3;
+				float3 medium_point = ray_orig + medium_t_hit * unit_dir3;
+				emission = emission + medium_phase_nee_mis(
+					medium_point, wo, grid.phase_g, attenuation, scattered_dir, seed, brdf_pdf_override);
+				is_specular = false;
+			} else {
 				scattered_dir = unit_dir3;
 				attenuation   = make_float3(1.0f, 1.0f, 1.0f);
+				is_specular   = true;  // no interaction - a free/non-scattering pass-through
 			}
 			scattered    = true;
-			is_specular  = true;
 			is_medium    = true;
 	} else if (mat.type == MaterialType::GridMedium) {
 			// Heterogeneous single-channel scalar density grid - single-
@@ -820,12 +846,20 @@ extern "C" __global__ void __closesthit__sphere() {
 			} else {
 				medium_t_hit = t;
 			}
-			if (!did_scatter) {
+			if (did_scatter) {
+				// Real NEE+MIS at the phase-function scatter event - see
+				// medium_phase_nee_mis()'s own comment (optix_device_helpers.h).
+				float3 wo = -unit_dir3;
+				float3 medium_point = ray_orig + medium_t_hit * unit_dir3;
+				emission = emission + medium_phase_nee_mis(
+					medium_point, wo, grid.phase_g, attenuation, scattered_dir, seed, brdf_pdf_override);
+				is_specular = false;
+			} else {
 				scattered_dir = unit_dir3;
 				attenuation   = make_float3(1.0f, 1.0f, 1.0f);
+				is_specular   = true;  // no interaction - a free/non-scattering pass-through
 			}
 			scattered    = true;
-			is_specular  = true;
 			is_medium    = true;
 	} else if (mat.type == MaterialType::Hair) {
 			// Marschner/Chiang fiber scattering - see sample_hair_material's
@@ -880,97 +914,30 @@ extern "C" __global__ void __closesthit__sphere() {
 					medium_t_hit  = t_near + free_path;
 					float3 medium_point = ray_orig + medium_t_hit * unit_dir;
 					float g = mat.fuzz;  // Medium/DielectricMedium: HG asymmetry
-					// See the Medium branch's comment above: `wo` must be the
-					// negated (outgoing) direction to match CPU's
-					// hg_phase_material convention - this also makes the
-					// sampled scattered_dir self-consistent with the `wo`
-					// computed just below for this same event's NEE/MIS.
-					scattered_dir = sample_henyey_greenstein(-unit_dir, g, seed);
+					// wo = -unit_dir: direction back toward where this ray came
+					// from, matching CPU's `-r_in.direction()` convention
+					// (hg_phase_pdf's own `wo`) - also makes the sampled
+					// scattered_dir self-consistent with the `wo`
+					// medium_phase_nee_mis() uses below for this same event's
+					// NEE/MIS.
+					float3 wo = -unit_dir;
+					scattered_dir = sample_henyey_greenstein(wo, g, seed);
 					attenuation   = mat.albedo;
 					is_medium     = true;
 
-					// Real NEE+MIS at the phase-function scatter event - this is
-					// what CPU's hg_phase_material (constant_medium.h) already does
-					// (skip_pdf=false, routed through hg_phase_pdf) and what this
-					// branch used to skip entirely (is_specular=true, "no NEE/MIS
-					// for volume scattering"). B13 (SubsurfaceSlab)'s wax slab and
-					// jade sphere are a LARGE, room-filling, fairly dense medium
-					// (mean free path 1/sigma_t = 25/16.7 units across a
-					// 200-470-unit box) sitting behind an outer dielectric shell -
-					// without NEE, the only way a scattered ray ever picks up light
-					// is by a lucky HG-sampled random walk eventually escaping the
-					// slab AND hitting the small ceiling light before the path's
-					// depth budget runs out, which at this test's SPP/depth makes
-					// the GPU estimator's sample mean read consistently darker than
-					// CPU's NEE-boosted one (still technically unbiased in the
-					// limit, but nowhere near converged at finite N) - exactly the
-					// ~32-38% CPU-brighter gap this scene showed. The two OTHER
-					// DielectricMedium sub-cases (the entry/exit dielectric-surface
-					// refractions just above/below) are genuinely specular (a
-					// Dirac-delta BSDF) and correctly stay is_specular=true - only
-					// this interior phase-function event is smooth/continuous like
-					// a diffuse BRDF and benefits from NEE the same way (see
-					// hg_phase_material::scatter()'s own comment on the CPU side
-					// for the identical reasoning when that fix landed there).
-					//
-					// wo = -unit_dir: direction back toward where this ray came
-					// from, matching CPU's `-r_in.direction()` convention
-					// (hg_phase_pdf's own `wo`).
-					float3 wo = -unit_dir;
-					float3 medium_emission = make_float3(0.0f, 0.0f, 0.0f);
-					if (params.numLights > 0) {
-						int light_idx;
-						float selection_pdf;
-						if (params.aliasTable) {
-							int slot = int(random_float(seed) * float(params.numLights));
-							if (slot >= int(params.numLights)) slot = int(params.numLights) - 1;
-							const GpuAliasEntry& entry = params.aliasTable[slot];
-							light_idx = (random_float(seed) < entry.q) ? slot : entry.alias;
-							selection_pdf = params.aliasTable[light_idx].pdf;
-						} else {
-							light_idx = int(random_float(seed) * float(params.numLights));
-							if (light_idx >= int(params.numLights)) light_idx = int(params.numLights) - 1;
-							selection_pdf = 1.0f / float(params.numLights);
-						}
-						float geom_pdf = 0.0f, max_dist = 0.0f;
-						float3 sampled_light_emission = make_float3(0.0f, 0.0f, 0.0f);
-						float3 to_light = sample_area_light_by_kind(
-							light_idx, medium_point, seed, geom_pdf, max_dist, sampled_light_emission);
-						float light_pdf = selection_pdf * geom_pdf;
-						if (light_pdf > 1e-6f) {
-							float phase_val = hg_phase_value(dot(wo, to_light), g);
-							if (trace_shadow_ray(medium_point, to_light, max_dist)) {
-								float mis_weight = mis_power_heuristic(light_pdf, phase_val);
-								medium_emission = medium_emission +
-									(mis_weight * phase_val / light_pdf) * attenuation * sampled_light_emission;
-							}
-						}
-					}
-					{
-						const float3& skyColor = params.camera.backgroundColor;
-						if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
-							float3 sky_dir, sky_Le_val; float pdf_sky;
-							sample_sky_nee(seed, skyColor, sky_dir, pdf_sky, sky_Le_val);
-							if (pdf_sky > 0.0f) {
-								float phase_val_sky = hg_phase_value(dot(wo, sky_dir), g);
-								if (trace_shadow_ray(medium_point, sky_dir, 1e30f)) {
-									float mis_weight = mis_power_heuristic(pdf_sky, phase_val_sky);
-									medium_emission = medium_emission +
-										(mis_weight * phase_val_sky / pdf_sky) * attenuation * sky_Le_val;
-								}
-							}
-						}
-					}
-					emission = emission + medium_emission;
-
-					// Phase value of the BSDF(HG)-sampled continuation direction,
-					// for MIS if the next bounce directly hits a light - mirrors
-					// Lambertian's cosine_pdf(scattered_dir, normal) role. No
-					// `normal` exists at an interior medium point (the sphere's
-					// own surface normal, computed above, is meaningless here), so
-					// this always goes through brdf_pdf_override rather than the
-					// payload-packing default.
-					brdf_pdf_override = hg_phase_value(dot(wo, scattered_dir), g);
+					// Real NEE+MIS at the phase-function scatter event - see
+					// medium_phase_nee_mis()'s own comment (optix_device_helpers.h)
+					// for the full root-cause derivation of why this matters (this
+					// is the branch it was originally written for: B13/
+					// SubsurfaceSlab's ~32-38% CPU-brighter gap without it). The
+					// two OTHER DielectricMedium sub-cases (the entry/exit
+					// dielectric-surface refractions just above/below) are
+					// genuinely specular (a Dirac-delta BSDF) and correctly stay
+					// is_specular=true - only this interior phase-function event
+					// is smooth/continuous like a diffuse BRDF and benefits from
+					// NEE the same way.
+					emission = emission + medium_phase_nee_mis(
+						medium_point, wo, g, attenuation, scattered_dir, seed, brdf_pdf_override);
 					is_specular = false;
 				} else {
 					attenuation = make_float3(1.0f, 1.0f, 1.0f);

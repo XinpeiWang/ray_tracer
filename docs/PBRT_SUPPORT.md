@@ -347,6 +347,43 @@ loader and no longer match the code:
   wire-up would add emission on every ray-medium intersection test, not
   just a real sampled collision).
 
+- A phase-function scatter event inside a participating medium (any of
+  `MaterialType::Medium`/`CloudMedium`/`RgbGridMedium`/`GridMedium`, on
+  both GPU backends, both the sphere and cylinder shapes) now does real
+  next-event-estimation with MIS, matching CPU's `hg_phase_material`
+  (`skip_pdf=false`, routed through `hg_phase_pdf`) exactly — previously
+  every one of these GPU scatter events was treated as a specular bounce
+  (`is_specular=true`), meaning the only way a scattered ray picked up
+  light at all was a lucky Henyey-Greenstein-sampled random walk eventually
+  escaping the medium and hitting a light before the path's depth budget
+  ran out. Still technically unbiased in the limit, but nowhere near
+  converged at any real sample count for a dense or room-filling medium —
+  a real, previously undocumented CPU/GPU quality divergence for every
+  fog/smoke/cloud/nebula scene rendered on GPU (this was never called out
+  in this file; only visible from the `is_specular=true` comments in the
+  source itself). Fixed via one shared device function,
+  `medium_phase_nee_mis()` (`optix_device_helpers.h`, recursive backend;
+  the same NEE/shadow-ray/MIS-weight logic deferred to
+  `wf_finish_material_scatter()`'s existing `isPhase` path on the
+  wavefront backend, which already had this machinery for
+  `MaterialType::DielectricMedium`'s own interior scatter sub-case — the
+  fix here was extending that existing gate to the other 4 medium types,
+  not building new infrastructure). The ray-passes-straight-through
+  ("no interaction this event") sub-case every one of these medium types
+  also has stays `is_specular=true` — a free crossing, not a real
+  scattering event, matching pbrt-v4's own `SampleLd` semantics. Fixing
+  this also surfaced and fixed a real, separate pre-existing bug on the
+  wavefront backend only: `wf_sample_henyey_greenstein()`'s `wo` parameter
+  (the outgoing direction, i.e. `-`ray direction) was being passed the
+  un-negated forward travel direction at every one of its call sites
+  (including the pre-existing `DielectricMedium` one), inverting the
+  `g>0`/`g<0` forward/back-scatter bias for any anisotropic medium on that
+  backend — the recursive backend's own identical call sites already had
+  this fixed from an earlier round. NanoVDB heterogeneous media
+  (`"nanovdb"`) remain out of scope regardless (still fall back to
+  homogeneous, see the `MakeNamedMedium` entry above) — this fix applies
+  to every medium type this loader can actually build on GPU today.
+
 (The `dielectric roughness` and `conductor` routing gaps once listed here were
 fixed — see the Materials table above, which is the source of truth for
 per-`MaterialKind` behavior.)

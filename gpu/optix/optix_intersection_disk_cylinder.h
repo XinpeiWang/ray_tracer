@@ -389,15 +389,27 @@ extern "C" __global__ void __closesthit__cylinder() {
 		float3 unit_dir = normalize(ray_dir);
 		if (free_path < dist_inside) {
 			medium_t_hit = t_near + free_path;
-			scattered_dir = sample_henyey_greenstein(-unit_dir, mat.fuzz, seed);
+			float3 wo = -unit_dir;
+			scattered_dir = sample_henyey_greenstein(wo, mat.fuzz, seed);
 			attenuation = mat.albedo;
+			// Real NEE+MIS at the phase-function scatter event - see
+			// medium_phase_nee_mis()'s own comment (optix_device_helpers.h).
+			// medium_t_hit is parametrized against the RAW (not renormalized)
+			// ray_dir - matches this file's own "t needs no rescaling between
+			// object/world space" convention (dc_apply_vector isn't
+			// renormalized, see file header comment) - so the world-space
+			// point must scale by ray_dir here too, NOT unit_dir.
+			float3 medium_point = ray_orig + medium_t_hit * ray_dir;
+			emission = emission + medium_phase_nee_mis(
+				medium_point, wo, mat.fuzz, attenuation, scattered_dir, seed, brdf_pdf_override);
+			is_specular = false;
 		} else {
 			medium_t_hit = t_far;
 			scattered_dir = unit_dir;
 			attenuation = make_float3(1.0f, 1.0f, 1.0f);
+			is_specular = true;  // no interaction - a free/non-scattering pass-through
 		}
 		scattered   = true;
-		is_specular = true;  // no NEE/MIS for volume scattering (not yet implemented)
 		is_medium   = true;
 	} else {
 		if (material_requires_sphere_only_handling(mat.type) ||
