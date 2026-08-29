@@ -1384,6 +1384,68 @@ TEST(FlattenMaterialTest, ReflectanceImagemapExplicitWrapAndInvertAreThreadedThr
 	EXPECT_TRUE(s.materials[0].textureInvert);
 }
 
+TEST(FlattenMaterialTest, ReflectanceImagemapNonFiniteGammaEncodingFallsBackAndWarns) {
+	// "gamma nan"/"gamma inf" parse successfully via std::stod's own
+	// strtod semantics (no exception) - resolveTextureGamma must reject
+	// these explicitly rather than letting a NaN/Inf gamma reach
+	// stbi_ldr_to_hdr_gamma() and corrupt every texel with no diagnostic.
+	const FlatScene s = flattenSource(
+		"Texture \"tmap\" \"spectrum\" \"imagemap\" \"string filename\" [ \"x.png\" ] "
+		"\"string encoding\" [ \"gamma nan\" ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"tmap\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].textureGamma, 2.2);
+	EXPECT_TRUE(warnedAbout(s, "encoding"));
+}
+
+TEST(FlattenMaterialTest, ReflectanceImagemapNegativeGammaEncodingFallsBackAndWarns) {
+	const FlatScene s = flattenSource(
+		"Texture \"tmap\" \"spectrum\" \"imagemap\" \"string filename\" [ \"x.png\" ] "
+		"\"string encoding\" [ \"gamma -1.0\" ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"tmap\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].textureGamma, 2.2);
+	EXPECT_TRUE(warnedAbout(s, "encoding"));
+}
+
+TEST(FlattenMaterialTest, ReflectanceImagemapUnrecognizedEncodingFallsBackAndWarns) {
+	const FlatScene s = flattenSource(
+		"Texture \"tmap\" \"spectrum\" \"imagemap\" \"string filename\" [ \"x.png\" ] "
+		"\"string encoding\" [ \"srgb8.icc\" ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"tmap\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.materials[0].textureGamma, 2.2);
+	EXPECT_TRUE(warnedAbout(s, "encoding"));
+}
+
+TEST(FlattenMaterialTest, ReflectanceImagemapUnrecognizedWrapFallsBackToRepeatAndWarns) {
+	const FlatScene s = flattenSource(
+		"Texture \"tmap\" \"spectrum\" \"imagemap\" \"string filename\" [ \"x.png\" ] "
+		"\"string wrap\" [ \"Clamp\" ]\n"  // wrong case - not the recognized "clamp"
+		"Material \"diffuse\" \"texture reflectance\" [ \"tmap\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].textureWrap, "repeat");
+	EXPECT_TRUE(warnedAbout(s, "wrap"));
+}
+
+TEST(FlattenMaterialTest, RoughnessImagemapEncodingIsIgnoredAndWarns) {
+	// Only the primary reflectance slot resolves encoding/wrap/invert - a
+	// scene binding them to a non-primary slot (roughness here) must be
+	// warned that the request is silently dropped for that slot.
+	const FlatScene s = flattenSource(
+		"Texture \"rmap\" \"float\" \"imagemap\" \"string filename\" [ \"rough.png\" ] "
+		"\"string encoding\" [ \"linear\" ]\n"
+		"Material \"dielectric\" \"texture roughness\" [ \"rmap\" ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].roughnessTextureFilename, "rough.png");
+	EXPECT_TRUE(warnedAbout(s, "roughness"));
+}
+
 TEST(FlattenMaterialTest, CoatedDiffuseReflectanceCheckerboardResolvesToAProceduralTexture) {
 	// checkerboard/fbm/marble/mix used to be Diffuse-only (a documented
 	// scope cut); now also resolved for CoatedDiffuse, same as the "scale"

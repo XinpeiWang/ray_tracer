@@ -352,6 +352,17 @@ enum class MaterialKind {
 	Unsupported,
 };
 
+// This codebase's own long-standing default gamma-decode exponent for
+// every 8-bit texture (matches src/shared/mipmap.h's own
+// kDefaultImagemapGamma / src/TheRestOfYourLife/rtw_stb_image.h's own
+// kDefaultGamma conceptually - not referenced directly, since this header
+// deliberately stays free of those renderer-layer headers, see the top-of-
+// file comment on pbrt_flatten.h/pbrt_scene.h being testable without a
+// filesystem or renderer types). Named once here so Material::textureGamma
+// and resolveTextureGamma() (flatten_detail, below) share one literal
+// instead of 3 independent copies of `2.2`.
+constexpr double kDefaultTextureGamma = 2.2;
+
 struct Material {
 	MaterialKind kind = MaterialKind::Diffuse;
 	std::string pbrtType;              // as written, for diagnostics
@@ -484,7 +495,7 @@ struct Material {
 	// "close enough, not bit-exact" precedent for other approximated
 	// features). See src/TheRestOfYourLife/rtw_stb_image.h's rtw_image
 	// constructor for what this value actually does downstream.
-	double textureGamma = 2.2;
+	double textureGamma = kDefaultTextureGamma;
 	// "repeat" (pbrt-v4's own real default)/"clamp"/"black" - unlike
 	// mipmap.h's own MipMapOptions::wrap field default (Clamp, kept
 	// unchanged there deliberately so native/non-pbrt scenes are
@@ -1163,16 +1174,51 @@ inline const pbrt_scene::TextureDecl *findTexture(const pbrt_scene::Scene &scene
 // (e.g. "encoding" "srgb8.icc") for a real ICC profile - this loader has no
 // ICC support at all, so any value not recognized as "linear"/"sRGB"/
 // starting with "gamma " falls back to the 2.2 default rather than
-// misinterpreting it, matching this codebase's "approximate, never silently
-// wrong" precedent for other unrecognized-string params.
-inline double resolveTextureGamma(const pbrt_scene::TextureDecl &imgTex) {
+// misinterpreting it - `warn` is called in that case (and when a "gamma "
+// value fails to parse, or parses to something not usable as a decode
+// exponent: non-finite or <= 0) so the fallback is never silent, matching
+// this codebase's "approximate, but never silently wrong" precedent for
+// other unrecognized-string params. The empty/"sRGB"/"srgb" case is the
+// ordinary "no encoding requested, or explicitly the default" case and
+// does NOT warn - it is not a fallback from something the scene asked for.
+inline double resolveTextureGamma(const pbrt_scene::TextureDecl &imgTex,
+								   const std::function<void(const std::string&)> &warn) {
 	const std::string encoding = imgTex.params.getString("encoding", "");
-	if (encoding.empty() || encoding == "sRGB" || encoding == "srgb") return 2.2;
+	if (encoding.empty() || encoding == "sRGB" || encoding == "srgb") return kDefaultTextureGamma;
 	if (encoding == "linear") return 1.0;
 	if (encoding.rfind("gamma ", 0) == 0) {
-		try { return std::stod(encoding.substr(6)); } catch (...) { return 2.2; }
+		double value = 0.0;
+		bool parsed = true;
+		try { value = std::stod(encoding.substr(6)); } catch (...) { parsed = false; }
+		if (parsed && std::isfinite(value) && value > 0.0) return value;
+		warn("Texture \"imagemap\" \"string encoding\" \"" + encoding +
+			 "\" is not a usable gamma value; using the default gamma 2.2 instead");
+		return kDefaultTextureGamma;
 	}
-	return 2.2;
+	warn("Texture \"imagemap\" \"string encoding\" \"" + encoding +
+		 "\" is not recognized (expected \"linear\", \"sRGB\", or \"gamma <value>\"); "
+		 "using the default gamma 2.2 instead");
+	return kDefaultTextureGamma;
+}
+
+// The 4 non-primary texture-filename slots (transmittance/roughness/alpha/
+// displacement, each set right after a call to this) never read
+// "encoding"/"wrap"/"invert" at all - Material::textureGamma's own comment
+// on why that's a deliberate, documented scope cut (only the primary
+// reflectance slot resolves them). That cut is otherwise silent: a scene
+// author binding one of those params to a non-primary slot's imagemap gets
+// it dropped with no diagnostic anywhere (CPU or GPU). Called at each of
+// those 4 resolution sites right after a bare/scale-wrapped imagemap is
+// found, so the warning names the slot it was ignored for.
+inline void warnIfImagemapOptionsIgnored(const pbrt_scene::TextureDecl &imgTex,
+										  const char *slotName,
+										  const std::function<void(const std::string&)> &warn) {
+	if (imgTex.params.find("encoding") || imgTex.params.find("wrap") || imgTex.params.find("invert")) {
+		warn(std::string("Texture \"imagemap\" bound to \"") + slotName +
+			 "\" declares \"encoding\"/\"wrap\"/\"invert\", but this loader only "
+			 "honors those on a material's primary reflectance texture - the "
+			 "request is ignored for this slot");
+	}
 }
 
 // One shape to emit, where to put it, and under which transform. Routing the
@@ -1565,8 +1611,29 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					if (!filename.empty()) {
 						m.textureFilename = filename;
 						m.textureScale = texScale;
-						m.textureGamma = resolveTextureGamma(*imgTex);
-						m.textureWrap = imgTex->params.getString("wrap", "repeat");
+						m.textureGamma = resolveTextureGamma(*imgTex, warn);
+						// "string wrap": validated against the 3 real values
+						// this loader understands, so m.textureWrap is
+						// guaranteed to always be "repeat"/"clamp"/"black" by
+						// construction below - imageMapOptionsFor()
+						// (pbrt_cpu_builder.h) relies on that guarantee for
+						// its own else-defaults-to-Repeat mapping. An
+						// unrecognized value (typo, wrong case, e.g.
+						// "Clamp") falls back to "repeat" (pbrt-v4's real
+						// default) WITH a warning, rather than silently
+						// resolving to the opposite of what may have been
+						// intended.
+						{
+							const std::string wrapStr = imgTex->params.getString("wrap", "repeat");
+							if (wrapStr == "repeat" || wrapStr == "clamp" || wrapStr == "black") {
+								m.textureWrap = wrapStr;
+							} else {
+								warn("Texture \"imagemap\" \"string wrap\" \"" + wrapStr +
+									 "\" is not recognized (expected \"repeat\", \"clamp\", or "
+									 "\"black\"); using \"repeat\" instead");
+								m.textureWrap = "repeat";
+							}
+						}
 						m.textureInvert = imgTex->params.getBool("invert", false);
 						continue;   // resolved to an image, not a "not supported" warning
 					}
@@ -1706,6 +1773,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					if (!filename.empty()) {
 						m.transmittanceTextureFilename = filename;
 						m.transmittanceTextureScale = texScale;
+						warnIfImagemapOptionsIgnored(*imgTex, "transmittance", warn);
 						continue;   // resolved to an image, not a "not supported" warning
 					}
 				}
@@ -1721,6 +1789,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					const std::string filename = tex->params.getString("filename", "");
 					if (!filename.empty()) {
 						m.roughnessTextureFilename = filename;
+						warnIfImagemapOptionsIgnored(*tex, "roughness", warn);
 						continue;   // resolved to an image, not a "not supported" warning
 					}
 				}
@@ -1745,6 +1814,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 					if (!filename.empty()) {
 						m.displacementTextureFilename = filename;
 						m.displacementScale = scale;
+						warnIfImagemapOptionsIgnored(*tex, "displacement", warn);
 						continue;   // resolved to an image, not a "not supported" warning
 					}
 				}
@@ -2777,6 +2847,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 								 "processed will actually be used");
 						}
 						mat.alphaTextureFilename = filename;
+						warnIfImagemapOptionsIgnored(*tex, "alpha", warn);
 					}
 				}
 			}

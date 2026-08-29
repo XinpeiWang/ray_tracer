@@ -30,6 +30,17 @@
 
 class rtw_image {
   public:
+    // stb_image's own process-global default gamma-decode exponent (see
+    // the file-path constructor's own comment) - named once here so the
+    // constructor's default argument, the member's own in-class default,
+    // and load()'s post-load reset-to-stb's-real-default call all read
+    // from the same value instead of 3 independent `2.2f` literals that
+    // could silently drift apart. Same conceptual default as src/shared/
+    // mipmap.h's own kDefaultImagemapGamma (not referenced directly here -
+    // this is a leaf image-loading header with no dependency on mipmap.h's
+    // own, heavier rtweekend.h-based include chain).
+    static constexpr float kDefaultGamma = 2.2f;
+
     rtw_image() {}
 
     // Owns two heap buffers (bdata/fdata) freed in ~rtw_image() -- copying
@@ -90,7 +101,7 @@ class rtw_image {
     // because texture loading happens during single-threaded scene
     // construction (before camera::render()'s worker threads start), never
     // concurrently with another load() call.
-    rtw_image(const char* image_filename, float gamma = 2.2f) : gamma_(gamma) {
+    rtw_image(const char* image_filename, float gamma = kDefaultGamma) : gamma_(gamma) {
         // Loads image data from the specified file. If the RTW_IMAGES environment variable is
         // defined, looks only in that directory for the image file. If the image was not found,
         // searches for the specified image file first from the current directory, then in the
@@ -165,7 +176,7 @@ class rtw_image {
         // silently inheriting this call's override.
         stbi_ldr_to_hdr_gamma(gamma_);
         fdata = stbi_loadf(filename.c_str(), &image_width, &image_height, &n, bytes_per_pixel);
-        stbi_ldr_to_hdr_gamma(2.2f);
+        stbi_ldr_to_hdr_gamma(kDefaultGamma);
         if (fdata == nullptr) return false;
 
         bytes_per_scanline = image_width * bytes_per_pixel;
@@ -204,7 +215,7 @@ class rtw_image {
     // gamma_'s only job is being remembered from the constructor's default
     // argument until load() runs (it's needed there, not here) - see
     // load()'s own comment for what it actually does.
-    const float    gamma_ = 2.2f;
+    const float    gamma_ = kDefaultGamma;
     float         *fdata = nullptr;         // Linear floating point pixel data
     unsigned char *bdata = nullptr;         // Linear 8-bit pixel data
     int            image_width = 0;         // Loaded image width

@@ -14,6 +14,7 @@
 #include "perlin.h"
 #include "rtw_stb_image.h"
 #include "../shared/mipmap.h"
+#include "../shared/scalar_math.h"   // Clamp() - see mipmap_texture::wide_clamp()
 
 
 class texture {
@@ -439,7 +440,7 @@ class mipmap_texture : public texture {
     color value(double u, double v, const point3& /*p*/) const override {
         if (!mip_) return color(0,1,1);  // cyan debug
         u = wide_clamp(u);
-        v = 1.0 - wide_clamp(v);  // flip V
+        v = wide_clamp(1.0 - v);  // flip V, then clamp the flipped value
         return mip_->filter((float)u, (float)v, 0,0, 0,0);
     }
 
@@ -460,7 +461,7 @@ class mipmap_texture : public texture {
                     double ds_dy, double dt_dy) const {
         if (!mip_) return color(0,1,1);
         u = wide_clamp(u);
-        v = 1.0 - wide_clamp(v);
+        v = wide_clamp(1.0 - v);  // flip V, then clamp the flipped value
         // v is flipped above (v_mip = 1-v), so d(v_mip)/dx = -dv/dx: negate
         // dt_dx/dt_dy to match, or the EWA ellipse's cross term (mipmap.h's
         // ewa(), built from ds*dt sums) gets the wrong sign for any sheared/
@@ -476,7 +477,7 @@ class mipmap_texture : public texture {
     color value_lod(double u, double v, double lod) const {
         if (!mip_) return color(0,1,1);
         u = wide_clamp(u);
-        v = 1.0 - wide_clamp(v);
+        v = wide_clamp(1.0 - v);  // flip V, then clamp the flipped value
         return mip_->filter_lod((float)u, (float)v, (float)lod);
     }
 
@@ -492,8 +493,11 @@ class mipmap_texture : public texture {
     // a degenerate procedural UV generator). 1024 repeats in either
     // direction is far beyond anything a real scene would tile a texture,
     // so this is a safety rail, not a real limit on authored content.
+    // Callers apply this to u and to the ALREADY-FLIPPED v (1-v), not to
+    // v before the flip, so the value actually reaching mip_->filter() is
+    // symmetrically bounded to [-1024,1024] for both axes.
     static double wide_clamp(double x) {
-        return std::max(-1024.0, std::min(1024.0, x));
+        return Clamp(x, -1024.0, 1024.0);
     }
 
     void build_from(rtw_image&& img, MipMapOptions opts) {

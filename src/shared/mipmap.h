@@ -55,6 +55,14 @@ enum class MipWrapMode { Clamp, Repeat, Black };
 // ---------------------------------------------------------------------------
 enum class MipFilter { Point, Bilinear, Trilinear, EWA };
 
+// This codebase's own long-standing default gamma-decode exponent applied
+// to every 8-bit texture (stb_image's own process-global default too - see
+// rtw_stb_image.h's rtw_image constructor). Named once here and reused by
+// both MipMapOptions::gamma's own default below and rtw_image's own
+// constructor default/reset value, rather than the same literal `2.2f`
+// living independently in both files.
+constexpr float kDefaultImagemapGamma = 2.2f;
+
 // ---------------------------------------------------------------------------
 // MipMap options
 // ---------------------------------------------------------------------------
@@ -71,11 +79,11 @@ struct MipMapOptions {
 	bool        invert         = false;
 	// Texture "imagemap" "string encoding" (pbrt-v4), resolved to a gamma
 	// exponent - see rtw_stb_image.h's rtw_image constructor for what this
-	// actually does. 2.2 (this codebase's own long-standing default
-	// behavior for every 8-bit texture, not touched by this option unless
-	// a scene explicitly asks for something else) matches the mipmap_texture
-	// constructor's own file-loading rtw_image call passing no override.
-	float       gamma          = 2.2f;
+	// actually does. kDefaultImagemapGamma (not touched by this option
+	// unless a scene explicitly asks for something else) matches the
+	// mipmap_texture constructor's own file-loading rtw_image call passing
+	// no override.
+	float       gamma          = kDefaultImagemapGamma;
 };
 
 // ---------------------------------------------------------------------------
@@ -299,14 +307,21 @@ private:
 	// -----------------------------------------------------------------------
 	color bilerp(int level, float s, float t) const {
 		if (level >= levels()) level = levels() - 1;
-		float w = (float)level_widths_[level];
-		float h = (float)level_heights_[level];
+		// s*w/t*h computed in double, not float: with a wide UV tiling range
+		// (Texture "imagemap"'s "wrap" "repeat" - see texture.h's
+		// wide_clamp(), which allows s/t up to ~1024) a large texture (tens
+		// of thousands of texels wide) times a large s/t can exceed float's
+		// exact-integer range (2^24), losing sub-texel precision right
+		// before the floor() that picks x0/y0 - a double keeps this exact
+		// for any realistic texture size and tiling range.
+		double w = (double)level_widths_[level];
+		double h = (double)level_heights_[level];
 
-		float x = s * w - 0.5f;
-		float y = t * h - 0.5f;
+		double x = (double)s * w - 0.5;
+		double y = (double)t * h - 0.5;
 		int x0 = (int)std::floor(x), x1 = x0 + 1;
 		int y0 = (int)std::floor(y), y1 = y0 + 1;
-		float fx = x - x0, fy = y - y0;
+		float fx = (float)(x - x0), fy = (float)(y - y0);
 
 		color c00 = texel(level, x0, y0);
 		color c10 = texel(level, x1, y0);
