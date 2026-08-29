@@ -602,19 +602,16 @@ extern "C" __global__ void __closesthit__sphere() {
 				float3 wo = -unit_dir;
 				scattered_dir = sample_henyey_greenstein(wo, mat.fuzz, seed);
 				attenuation = mat.albedo;
-				// Real NEE+MIS at the phase-function scatter event - see
-				// medium_phase_nee_mis()'s own comment (optix_device_helpers.h).
+				// Real NEE+MIS at the phase-function scatter event, plus
+				// MakeNamedMedium's own "rgb Le" self-emission (folded into
+				// medium_phase_nee_mis()'s own return value now - see that
+				// function's own comment, optix_device_helpers.h, and
+				// MaterialData::medium_emission's own comment, optix_types.h,
+				// for the sigma_a/sigma_t weighting already baked in at build
+				// time).
 				float3 medium_point = ray_orig + medium_t_hit * unit_dir;
 				emission = emission + medium_phase_nee_mis(
-					medium_point, wo, mat.fuzz, attenuation, scattered_dir, seed, brdf_pdf_override);
-				// MakeNamedMedium's own "rgb Le"/"float Lescale" (pbrt-v4) -
-				// see MaterialData::medium_emission's own comment (optix_types.h)
-				// for the sigma_a/sigma_t weighting already baked in at build
-				// time. Added unconditionally (no MIS weighting, unlike the NEE
-				// contribution just above) - this medium is never a member of
-				// the light list and so can never be NEE-sampled, matching
-				// CPU's own unconditional hg_phase_material::emitted() call.
-				emission = emission + mat.medium_emission;
+					medium_point, wo, mat.fuzz, attenuation, scattered_dir, seed, brdf_pdf_override, mat.medium_emission);
 				is_specular = false;
 			} else {
 				medium_t_hit = t_far;
@@ -687,8 +684,11 @@ extern "C" __global__ void __closesthit__sphere() {
 			if (did_scatter) {
 				// Real NEE+MIS at the phase-function scatter event - see
 				// medium_phase_nee_mis()'s own comment (optix_device_helpers.h).
+				// mat.medium_emission is always zero here (CloudMedium never
+				// sets it - "rgb Le" support is homogeneous-Medium only), so
+				// this is a pure no-op self-emission term, not a new feature.
 				emission = emission + medium_phase_nee_mis(
-					medium_point, wo, mat.fuzz, attenuation, scattered_dir, seed, brdf_pdf_override);
+					medium_point, wo, mat.fuzz, attenuation, scattered_dir, seed, brdf_pdf_override, mat.medium_emission);
 				is_specular = false;
 			} else {
 				scattered_dir = unit_dir3;  // straight through, no interaction
@@ -781,10 +781,13 @@ extern "C" __global__ void __closesthit__sphere() {
 			if (did_scatter) {
 				// Real NEE+MIS at the phase-function scatter event - see
 				// medium_phase_nee_mis()'s own comment (optix_device_helpers.h).
+				// mat.medium_emission is always zero here (RgbGridMedium never
+				// sets it - "rgb Le" support is homogeneous-Medium only), so
+				// this is a pure no-op self-emission term, not a new feature.
 				float3 wo = -unit_dir3;
 				float3 medium_point = ray_orig + medium_t_hit * unit_dir3;
 				emission = emission + medium_phase_nee_mis(
-					medium_point, wo, grid.phase_g, attenuation, scattered_dir, seed, brdf_pdf_override);
+					medium_point, wo, grid.phase_g, attenuation, scattered_dir, seed, brdf_pdf_override, mat.medium_emission);
 				is_specular = false;
 			} else {
 				scattered_dir = unit_dir3;
@@ -856,10 +859,13 @@ extern "C" __global__ void __closesthit__sphere() {
 			if (did_scatter) {
 				// Real NEE+MIS at the phase-function scatter event - see
 				// medium_phase_nee_mis()'s own comment (optix_device_helpers.h).
+				// mat.medium_emission is always zero here (GridMedium never
+				// sets it - "rgb Le" support is homogeneous-Medium only), so
+				// this is a pure no-op self-emission term, not a new feature.
 				float3 wo = -unit_dir3;
 				float3 medium_point = ray_orig + medium_t_hit * unit_dir3;
 				emission = emission + medium_phase_nee_mis(
-					medium_point, wo, grid.phase_g, attenuation, scattered_dir, seed, brdf_pdf_override);
+					medium_point, wo, grid.phase_g, attenuation, scattered_dir, seed, brdf_pdf_override, mat.medium_emission);
 				is_specular = false;
 			} else {
 				scattered_dir = unit_dir3;
@@ -942,9 +948,13 @@ extern "C" __global__ void __closesthit__sphere() {
 					// genuinely specular (a Dirac-delta BSDF) and correctly stay
 					// is_specular=true - only this interior phase-function event
 					// is smooth/continuous like a diffuse BRDF and benefits from
-					// NEE the same way.
+					// NEE the same way. mat.medium_emission is always zero here
+					// (DielectricMedium never sets it - "rgb Le" support is
+					// homogeneous-Medium only, and this MaterialType isn't even
+					// reachable from the pbrt loader - see pbrt_gpu_builder.h's
+					// own comment), so this is a pure no-op self-emission term.
 					emission = emission + medium_phase_nee_mis(
-						medium_point, wo, g, attenuation, scattered_dir, seed, brdf_pdf_override);
+						medium_point, wo, g, attenuation, scattered_dir, seed, brdf_pdf_override, mat.medium_emission);
 					is_specular = false;
 				} else {
 					attenuation = make_float3(1.0f, 1.0f, 1.0f);

@@ -2305,6 +2305,15 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	nextRayQueue.push(next);
 }
 
+// Forward-declared so evaluate_materials() below can call it directly rather
+// than re-implementing its own copy of the same D65-illuminant RGB->spectral
+// uplift - see wf_lift_rgb_to_spectrum's own definition and comment further
+// down this file for the full derivation; it's only declared this late in
+// the file (rather than moved) to keep it next to its other two call sites
+// (resolve_bssrdf_exit, accumulate_miss).
+__device__ __forceinline__ SampledSpectrum<kWFNWavelengths> wf_lift_rgb_to_spectrum(
+	float3 rgb, const SampledWavelengths<kWFNWavelengths>& swl, bool isIlluminant = false);
+
 extern "C" __global__ void evaluate_materials(
 	WorkQueue<HitWorkItem>       hitQueue,
 	int                          numHits,
@@ -2440,24 +2449,6 @@ extern "C" __global__ void evaluate_materials(
 		atomicAdd(&framebuffer[pixIdx].z, b);
 	};
 
-	// Uplift an RGB illuminant (a light's own emitted color - unbounded,
-	// D65-weighted, NOT a reflectance) to spectral - same technique as
-	// wf_finish_material_scatter's own liftEmission (a different function,
-	// out of scope here), shared by DiffuseLight's direct-hit emission below
-	// and MaterialType::Medium's own "rgb Le" (see that case's own comment).
-	auto liftEmissionRGB = [&](float3 le) -> SS {
-		float m_le = le.x > le.y ? (le.x > le.z ? le.x : le.z) : (le.y > le.z ? le.y : le.z);
-		float sc = 2.f * m_le;
-		if (sc <= 0.f) return SS(0.f);
-		float c0, c1, c2;
-		dev_srgb_to_coeffs(le.x/sc, le.y/sc, le.z/sc, c0, c1, c2);
-		RGBSigmoidPolynomial emitPoly(c0, c1, c2);
-		SS emitS(0.f);
-		for (int i = 0; i < kWFNWavelengths; ++i)
-			emitS[i] = sc * emitPoly(swl.lambda[i]) * dev_sample_d65(swl.lambda[i]);
-		return emitS;
-	};
-
 	// -------------------------------------------------------------------------
 	// Emissive: add emission term, path terminates (no scatter).
 	// pbrt-v4 alignment: only add emissive if depth==0 or specular_bounce==1
@@ -2493,7 +2484,15 @@ extern "C" __global__ void evaluate_materials(
 					le.y *= mat.emissionScale;
 					le.z *= mat.emissionScale;
 				}
-				radiance = radiance + throughput * liftEmissionRGB(le);
+				// Guarded (not unconditional): a zero/negative `le` must leave
+				// `radiance` completely untouched, not just add a zero spectrum -
+				// wf_lift_rgb_to_spectrum's own internal sc<=0 early-out makes the
+				// uplift itself a no-op either way, but `throughput * SS(0.f)` is
+				// NOT provably `SS(0.f)` if `throughput` were ever NaN/Inf (IEEE-754
+				// 0*NaN=NaN), so skip the multiply entirely rather than rely on
+				// multiplying by zero to cancel it out.
+				if (le.x > 0.0f || le.y > 0.0f || le.z > 0.0f)
+					radiance = radiance + throughput * wf_lift_rgb_to_spectrum(le, swl, /*isIlluminant=*/true);
 			}
 		}
 		addToFramebuffer(h.pixelIndex, radiance * h.filterWeight);
@@ -3170,16 +3169,22 @@ extern "C" __global__ void evaluate_materials(
 			// MakeNamedMedium's own "rgb Le"/"float Lescale" (pbrt-v4) - see
 			// MaterialData::medium_emission's own comment (optix_types.h) for
 			// the sigma_a/sigma_t weighting already baked in at build time.
-			// Added unconditionally (no specular_bounce/depth==0 MIS gate,
-			// unlike DiffuseLight's own direct-hit emission above) - this
-			// medium is never a member of the light list and so can never be
-			// NEE-sampled, matching CPU's own unconditional hg_phase_
-			// material::emitted() call. throughput here is deliberately the
-			// PRE-collision value (this event's own attenuation is folded in
-			// later, at wf_finish_material_scatter's new_throughput), matching
-			// CPU's beta timing at a medium-emission vertex exactly.
+			// Added unconditionally with respect to MIS (no specular_bounce/
+			// depth==0 gate, unlike DiffuseLight's own direct-hit emission
+			// above) - this medium is never a member of the light list and so
+			// can never be NEE-sampled, matching CPU's own unconditional
+			// hg_phase_material::emitted() call. throughput here is
+			// deliberately the PRE-collision value (this event's own
+			// attenuation is folded in later, at wf_finish_material_scatter's
+			// new_throughput), matching CPU's beta timing at a medium-emission
+			// vertex exactly.
+			//
+			// The `if` below is a SEPARATE, purely-performance zero-check (not
+			// the MIS gate the comment above describes) - it skips the
+			// dev_srgb_to_coeffs/per-wavelength-loop spectral uplift entirely
+			// for the common case of a plain fog Medium with no "Le" at all.
 			if (mat.medium_emission.x > 0.0f || mat.medium_emission.y > 0.0f || mat.medium_emission.z > 0.0f)
-				radiance = radiance + throughput * liftEmissionRGB(mat.medium_emission);
+				radiance = radiance + throughput * wf_lift_rgb_to_spectrum(mat.medium_emission, swl, /*isIlluminant=*/true);
 		} else {
 			hit_point     = h.rayOrigin + t_far * unit_dir;
 			scattered_dir = unit_dir;  // straight through, no interaction
@@ -4105,19 +4110,25 @@ extern "C" __global__ void evaluate_materials_dielectric(
 }
 
 // Uplift a flat RGB color to a spectral sample at the given hero
-// wavelengths. Standalone copy of the `liftEmission` lambda used inside
-// evaluate_materials below (that one captures its `swl` by reference from
-// its own hit context; accumulate_miss needs the same math against a
-// MissWorkItem's own wavelengths instead).
+// wavelengths. A standalone (non-capturing) copy of the `liftEmission`
+// lambda inside wf_finish_material_scatter (a genuinely separate function -
+// CUDA/C++ lambdas can't cross function boundaries, so that one can't be
+// called from here). This one, by contrast, IS shared across every other
+// call site in this file that needs the same uplift and can reach it:
+// evaluate_materials's own DiffuseLight direct-hit emission and
+// MaterialType::Medium "rgb Le" cases (forward-declared above this file's
+// evaluate_materials, since both call sites come before this definition),
+// plus resolve_bssrdf_exit and accumulate_miss below.
 //
-// isIlluminant: true for a light-source colour (background/sky radiance in
-// accumulate_miss below), which needs the D65 illuminant factor -- see
-// liftEmission's own comment above for why. false (default) for an
+// isIlluminant: true for a light-source colour (DiffuseLight/medium Le
+// above, background/sky radiance in accumulate_miss below), which needs the
+// D65 illuminant factor -- see liftEmission's own comment (inside
+// wf_finish_material_scatter) for why. false (default) for an
 // already-computed reflectance-like weight (e.g. resolve_bssrdf_exit's Sp
 // spatial term), which must NOT get an extra illuminant multiply -- it's
 // not a colour being lit, it's already a throughput.
 __device__ __forceinline__ SampledSpectrum<kWFNWavelengths> wf_lift_rgb_to_spectrum(
-	float3 rgb, const SampledWavelengths<kWFNWavelengths>& swl, bool isIlluminant = false
+	float3 rgb, const SampledWavelengths<kWFNWavelengths>& swl, bool isIlluminant
 ) {
 	using SS = SampledSpectrum<kWFNWavelengths>;
 	float m = rgb.x > rgb.y ? (rgb.x > rgb.z ? rgb.x : rgb.z) : (rgb.y > rgb.z ? rgb.y : rgb.z);

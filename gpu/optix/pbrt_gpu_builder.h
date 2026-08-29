@@ -1376,10 +1376,7 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		// medium.h) applies to the identical raw md.Le, so the two backends
 		// agree on the exact weighted value, not just which color to use.
 		const float leWeight = (d.sigma_t > 1e-9f) ? static_cast<float>(sig_a) / d.sigma_t : 0.0f;
-		d.medium_emission = make_float3(
-			static_cast<float>(md.Le[0]) * leWeight,
-			static_cast<float>(md.Le[1]) * leWeight,
-			static_cast<float>(md.Le[2]) * leWeight);
+		d.medium_emission = f3(md.Le) * leWeight;
 		const int idx = static_cast<int>(out.materials.size());
 		out.materials.push_back(d);
 		mediumCache.emplace(medIdx, idx);

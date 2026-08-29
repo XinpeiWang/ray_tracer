@@ -1099,17 +1099,29 @@ __device__ __forceinline__ bool trace_shadow_ray(
 // caller - single RGB for Medium/CloudMedium/GridMedium, per-voxel RGB for
 // RgbGridMedium). `scattered_dir`: the already phase-function-sampled
 // continuation direction (used only to compute the outgoing brdf_pdf_override
-// for the NEXT bounce's own MIS, not to sample here). Returns the direct
-// lighting contribution to add to this event's emission; also writes
+// for the NEXT bounce's own MIS, not to sample here). `self_emission`: the
+// medium's own directly-visible "rgb Le" (MakeNamedMedium's own emission,
+// MaterialData::medium_emission's own comment in optix_types.h) - folded
+// into this function's return value rather than added separately at each
+// call site, so a call site can never add real NEE without also picking up
+// whatever self-emission the material carries (previously these were two
+// independent lines at each call site, an easy one to forget for a future
+// medium type). Every caller not yet wired for emission (CloudMedium/
+// RgbGridMedium/GridMedium/DielectricMedium's own interior sub-case) passes
+// mat.medium_emission too - safe because that field is documented to be
+// zero for every material kind that doesn't explicitly set it, so this is a
+// pure no-op there today and "just works" the moment any of those types
+// gains real Le support. Returns the direct lighting contribution PLUS this
+// self-emission, to add to this event's emission; also writes
 // brdf_pdf_override (the phase value at the sampled continuation direction),
 // which every caller must pass through to shade_material()-style payload
 // packing instead of the surface cosine_pdf default.
 __device__ __forceinline__ float3 medium_phase_nee_mis(
 	const float3& medium_point, const float3& wo, float g,
 	const float3& attenuation, const float3& scattered_dir,
-	unsigned int& seed, float& brdf_pdf_override)
+	unsigned int& seed, float& brdf_pdf_override, const float3& self_emission)
 {
-	float3 medium_emission = make_float3(0.0f, 0.0f, 0.0f);
+	float3 medium_emission = self_emission;
 	if (params.numLights > 0) {
 		int light_idx;
 		float selection_pdf;

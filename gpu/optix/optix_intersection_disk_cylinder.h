@@ -392,8 +392,12 @@ extern "C" __global__ void __closesthit__cylinder() {
 			float3 wo = -unit_dir;
 			scattered_dir = sample_henyey_greenstein(wo, mat.fuzz, seed);
 			attenuation = mat.albedo;
-			// Real NEE+MIS at the phase-function scatter event - see
-			// medium_phase_nee_mis()'s own comment (optix_device_helpers.h).
+			// Real NEE+MIS at the phase-function scatter event, plus
+			// MakeNamedMedium's own "rgb Le" self-emission (folded into
+			// medium_phase_nee_mis()'s own return value - see that function's
+			// own comment, optix_device_helpers.h, and MaterialData::
+			// medium_emission's own comment, optix_types.h, for the
+			// sigma_a/sigma_t weighting already baked in at build time).
 			// medium_t_hit is parametrized against the RAW (not renormalized)
 			// ray_dir - matches this file's own "t needs no rescaling between
 			// object/world space" convention (dc_apply_vector isn't
@@ -401,13 +405,7 @@ extern "C" __global__ void __closesthit__cylinder() {
 			// point must scale by ray_dir here too, NOT unit_dir.
 			float3 medium_point = ray_orig + medium_t_hit * ray_dir;
 			emission = emission + medium_phase_nee_mis(
-				medium_point, wo, mat.fuzz, attenuation, scattered_dir, seed, brdf_pdf_override);
-			// MakeNamedMedium's own "rgb Le"/"float Lescale" (pbrt-v4) - see
-			// optix_intersection_sphere.h's identical fix for the full
-			// derivation and MaterialData::medium_emission's own comment
-			// (optix_types.h) for the sigma_a/sigma_t weighting already baked
-			// in at build time.
-			emission = emission + mat.medium_emission;
+				medium_point, wo, mat.fuzz, attenuation, scattered_dir, seed, brdf_pdf_override, mat.medium_emission);
 			is_specular = false;
 		} else {
 			medium_t_hit = t_far;
