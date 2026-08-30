@@ -359,9 +359,15 @@ bool OptiXRenderer::createModule() {
 	// comment) = 23, plus anyNonSpecularBounces(1) for Integrator "bool
 	// regularize" (p23, an INPUT-only register - see optix_raygen.h's own
 	// comment on p23, same convention as p12's prev_brdf_pdf for
-	// __miss__ms) = 24 total. Comfortably under OptiX's 32-register hard
-	// limit.
-	pipelineCompileOptions_.numPayloadValues = 24;
+	// __miss__ms) = 24, plus rgbChannel(1) for dispersive-dielectric
+	// wavelength tracking (p24, a genuinely PERSISTENT in/out register -
+	// unlike p22/p23, closest-hit programs both READ it via
+	// optixGetPayload_24() and WRITE it back via optixSetPayload_24() so it
+	// survives across bounces - see optix_raygen.h's own rgbChannel comment
+	// and shade_material()'s inout_rgb_channel parameter comment,
+	// optix_device_helpers.h) = 25 total. Comfortably under OptiX's
+	// 32-register hard limit.
+	pipelineCompileOptions_.numPayloadValues = 25;
 	pipelineCompileOptions_.numAttributeValues = 4;  // Sphere: center.xyz + radius (4 attrs)
 	pipelineCompileOptions_.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
 	pipelineCompileOptions_.pipelineLaunchParamsVariableName = "params";

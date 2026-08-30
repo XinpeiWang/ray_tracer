@@ -125,6 +125,11 @@ extern "C" __global__ void __closesthit__quad() {
 	// it into the pbrt loader for real, so trapping it here used to be dead
 	// code, not a real regression risk.
 	float out_eta = 1.0f;
+	// See PathTracingPayload's own p24/rgbChannel comment (optix_renderer_init.cpp)
+	// and shade_material()'s inout_rgb_channel parameter comment - read
+	// unconditionally so a channel already chosen by an earlier bounce
+	// still survives unchanged through this one.
+	unsigned int rgbChannel = optixGetPayload_24();
 	if (mat.type == MaterialType::Hair) {
 		scattered   = sample_hair_material(ray_dir, final_normal, mat, seed, scattered_dir, attenuation);
 		is_specular = true;
@@ -150,7 +155,7 @@ extern "C" __global__ void __closesthit__quad() {
 		const bool do_regularize = current_do_regularize();
 		shade_material(mat, matIdx, final_normal, ray_dir, hit_point, front_face, uv_u, uv_v, quad.u, do_regularize, seed,
 			attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
-			bssrdf_exit, bssrdf_exit_pos, out_eta);
+			bssrdf_exit, bssrdf_exit_pos, out_eta, rgbChannel);
 	}
 			// Pack updated payload back into registers
 			// p0-p2: surface attenuation (BRDF albedo - raygen multiplies with throughput)
@@ -181,6 +186,7 @@ extern "C" __global__ void __closesthit__quad() {
 		pack_aov_payload(albedoAov, final_normal);
 	}
 	optixSetPayload_22(__float_as_uint(out_eta));  // pbrt-v4 etaScale - see PathTracingPayload::eta
+	optixSetPayload_24(rgbChannel);  // dispersion channel - see shade_material()'s inout_rgb_channel comment
 
 	if (scattered) {
 		// Return surface attenuation ONLY (raygen will multiply with throughput)

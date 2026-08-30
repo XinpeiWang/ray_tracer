@@ -138,6 +138,15 @@ extern "C" __global__ void __raygen__rg() {
 		// ordinary sample counts.
 		float3 throughput = make_float3(cam_weight, cam_weight, cam_weight);
 		float3 radiance = make_float3(0.0f, 0.0f, 0.0f);
+		// pbrt-v4 dispersion (Cauchy formula), recursive backend's simplified
+		// 3-representative-wavelength scheme - see shade_material()'s own
+		// inout_rgb_channel parameter comment (optix_device_helpers.h) for
+		// the full rationale. Fresh per SAMPLE (like `seed` above - each
+		// sample independently rolls its own channel if/when it hits a
+		// dispersive Dielectric), persists across every BOUNCE of this one
+		// sample via payload register p24 (packed/unpacked each trace call
+		// below, same convention as `throughput`/`radiance` themselves).
+		unsigned int rgbChannel = kRgbChannelUnset;
 		float  prev_brdf_pdf = 0.0f;  // BRDF PDF of the ray that arrived at this bounce (0 = primary)
 		// pbrt-v4 etaScale: product of eta^2 over every transmission event
 		// so far - see PathTracingPayload::eta's own comment.
@@ -228,6 +237,13 @@ extern "C" __global__ void __raygen__rg() {
 			// only ever READ by closest-hit programs, never written by
 			// them, so it isn't part of the "unpack payload" section below.
 			unsigned int p23 = any_nonspecular ? 1u : 0u;
+			// p24: rgbChannel - see this function's own rgbChannel comment
+			// above and shade_material()'s inout_rgb_channel parameter
+			// comment. Genuinely IN/OUT (unlike p22/p23): every closest-hit
+			// program reads the incoming value via optixGetPayload_24()
+			// AND writes it back (unchanged if this bounce wasn't the
+			// path's first dispersive hit), so it persists correctly.
+			unsigned int p24 = rgbChannel;
 
 			optixTrace(
 				params.traversable,     // Acceleration structure
@@ -242,7 +258,7 @@ extern "C" __global__ void __raygen__rg() {
 				RAY_TYPE_COUNT,         // SBT stride
 				RAY_TYPE_RADIANCE,      // missSBTIndex
 				p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15,
-				p16, p17, p18, p19, p20, p21, p22, p23
+				p16, p17, p18, p19, p20, p21, p22, p23, p24
 			);
 
 			// Unpack payload (16 registers)
@@ -283,6 +299,30 @@ extern "C" __global__ void __raygen__rg() {
 			payload.normal.y = __uint_as_float(p20);
 			payload.normal.z = __uint_as_float(p21);
 			payload.eta = __uint_as_float(p22);
+
+			// Dispersion (see this function's own rgbChannel comment above):
+			// if THIS bounce is the path's first-ever dispersive hit (was
+			// unset going in, a closest-hit program just chose one), confine
+			// `throughput` to that one RGB channel with a compensating 3x
+			// weight - a standard stochastic-channel-selection estimator
+			// (unbiased: each of the 3 equally-likely channels, averaged
+			// over many samples, reconstructs the full-RGB expectation).
+			// Applying this to `throughput` itself (rather than each
+			// `radiance +=` site separately) is sufficient and correct: it's
+			// a ONE-TIME multiply that every later radiance contribution
+			// this sample naturally inherits through throughput's own
+			// ongoing multiplication chain, and a path that never hits a
+			// dispersive material (rgbChannel stays kRgbChannelUnset for
+			// the whole sample) never pays this at all - zero extra
+			// variance for every non-dispersive scene/path.
+			unsigned int newRgbChannel = p24;
+			if (rgbChannel == kRgbChannelUnset && newRgbChannel != kRgbChannelUnset) {
+				float3 channelMask = make_float3(newRgbChannel == 0u ? 3.0f : 0.0f,
+				                                  newRgbChannel == 1u ? 3.0f : 0.0f,
+				                                  newRgbChannel == 2u ? 3.0f : 0.0f);
+				throughput = throughput * channelMask;
+			}
+			rgbChannel = newRgbChannel;
 
 			// Denoiser guide-layer AOVs only matter on the primary ray -
 			// capture this sample's depth==0 hit regardless of which branch

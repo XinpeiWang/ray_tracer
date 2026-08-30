@@ -131,6 +131,11 @@ extern "C" __global__ void __closesthit__disk() {
 	// been a genuine regression from "falls back to Lambertian", not the
 	// unreachable-defensive-code every other trapped type here still is.
 	float out_eta = 1.0f;
+	// See PathTracingPayload's own p24/rgbChannel comment (optix_renderer_init.cpp)
+	// and shade_material()'s inout_rgb_channel parameter comment - read
+	// unconditionally so a channel already chosen by an earlier bounce
+	// still survives unchanged through this one.
+	unsigned int rgbChannel = optixGetPayload_24();
 	if (mat.type == MaterialType::Hair) {
 		scattered   = sample_hair_material(ray_dir, normal, mat, seed, scattered_dir, attenuation);
 		is_specular = true;
@@ -153,7 +158,7 @@ extern "C" __global__ void __closesthit__disk() {
 		const bool do_regularize = current_do_regularize();
 		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, uv_u, uv_v, disk_dpdu, do_regularize, seed,
 			attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
-			bssrdf_exit, bssrdf_exit_pos, out_eta);
+			bssrdf_exit, bssrdf_exit_pos, out_eta, rgbChannel);
 	}
 
 	optixSetPayload_3(__float_as_uint(emission.x));
@@ -166,6 +171,7 @@ extern "C" __global__ void __closesthit__disk() {
 		pack_aov_payload(albedoAov, normal);
 	}
 	optixSetPayload_22(__float_as_uint(out_eta));  // pbrt-v4 etaScale - see PathTracingPayload::eta
+	optixSetPayload_24(rgbChannel);  // dispersion channel - see shade_material()'s inout_rgb_channel comment
 
 	if (scattered) {
 		float t_hit = optixGetRayTmax();
@@ -330,6 +336,12 @@ extern "C" __global__ void __closesthit__cylinder() {
 	// Real Hair support on cylinder geometry - see __closesthit__disk's
 	// identical branch (this file, above) for why this moved out of the trap.
 	float out_eta = 1.0f;
+	// See PathTracingPayload's own p24/rgbChannel comment (optix_renderer_init.cpp)
+	// and shade_material()'s inout_rgb_channel parameter comment - read
+	// unconditionally so a channel already chosen by an earlier bounce
+	// still survives unchanged through this one, regardless of which
+	// branch below (Hair/Medium/shade_material) actually runs.
+	unsigned int rgbChannel = optixGetPayload_24();
 	if (mat.type == MaterialType::Hair) {
 		scattered   = sample_hair_material(ray_dir, normal, mat, seed, scattered_dir, attenuation);
 		is_specular = true;
@@ -427,7 +439,7 @@ extern "C" __global__ void __closesthit__cylinder() {
 		const bool do_regularize = current_do_regularize();
 		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, uv_u, uv_v, cyl_dpdu, do_regularize, seed,
 			attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
-			bssrdf_exit, bssrdf_exit_pos, out_eta);
+			bssrdf_exit, bssrdf_exit_pos, out_eta, rgbChannel);
 	}
 
 	optixSetPayload_3(__float_as_uint(emission.x));
@@ -440,6 +452,7 @@ extern "C" __global__ void __closesthit__cylinder() {
 		pack_aov_payload(albedoAov, normal);
 	}
 	optixSetPayload_22(__float_as_uint(out_eta));  // pbrt-v4 etaScale - see PathTracingPayload::eta
+	optixSetPayload_24(rgbChannel);  // dispersion channel - see shade_material()'s inout_rgb_channel comment
 
 	if (scattered) {
 		// Medium: the scatter/exit point is not the cylinder's entry root

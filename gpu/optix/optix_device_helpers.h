@@ -39,6 +39,19 @@ __device__ __forceinline__ float random_float(unsigned int& seed) {
 	return float(seed) / 4294967296.0f;
 }
 
+// Recursive backend's simplified 3-representative-wavelength dispersion
+// scheme - see shade_material()'s own inout_rgb_channel parameter comment
+// for the full rationale versus CPU/wavefront's real continuous
+// SampledWavelengths<4> spectral integration. kRgbChannelUnset (3) means
+// "no dispersive event yet, this path stays full RGB" - payload register
+// p24 (optix_raygen.h) is initialized to this and only ever changes to
+// 0/1/2 the first time the path hits a dispersive MaterialType::Dielectric.
+// kRgbChannelWavelengthNm are the sRGB primaries' own commonly-cited
+// dominant wavelengths (not importance-sampled - a fixed, representative
+// value per channel), used as CauchyEta()'s lambda_nm input.
+static constexpr unsigned int kRgbChannelUnset = 3u;
+__device__ __constant__ float kRgbChannelWavelengthNm[3] = { 611.0f, 549.0f, 464.0f };
+
 // Pixel reconstruction filter weight for a sample at sub-pixel offset
 // (ox, oy) in [-0.5, 0.5] - device-side port of src/shared/filter.h's
 // PixelFilterDispatch::evaluate(), same 5 shapes, same hardcoded radius=0.5
@@ -1901,7 +1914,36 @@ __device__ __forceinline__ void shade_material(
 	float3& emission,
 	bool& out_bssrdf_exit,
 	float3& out_bssrdf_exit_pos,
-	float& out_eta
+	float& out_eta,
+	// pbrt-v4 dispersion (Cauchy formula): which of R/G/B this PATH is
+	// confined to for its remaining lifetime, or kRgbChannelUnset (3) if no
+	// dispersive event has happened yet. IN: whatever a PRIOR bounce's
+	// dispersive hit already chose (persists via payload register p24 -
+	// see optix_raygen.h's own rgbChannel comment). OUT: unchanged unless
+	// THIS hit is the material's own FIRST dispersive event (a
+	// MaterialType::Dielectric with mat.dispersive_extra.cauchy_A > 0 - see
+	// that field's own comment, optix_types.h), in which case a channel is
+	// picked here (once) and threaded back out. This is a deliberately
+	// SIMPLER technique than CPU/wavefront's real 4-hero-wavelength
+	// SampledWavelengths<4> Monte Carlo spectral integration (src/shared/
+	// sampled_spectrum.h): rather than a continuous importance-sampled
+	// wavelength + a full CIE-XYZ uplift at path end (which would need a
+	// new device-constant-memory upload of the CIE tables into THIS
+	// backend's own separate OptiX module/pipeline - recursive and
+	// wavefront don't share device memory, see wavefront_kernels.cu's own
+	// "separate module" precedent), this stochastically confines the WHOLE
+	// path to exactly one of 3 fixed representative wavelengths (one per
+	// RGB channel - see kRgbChannelWavelengthNm below) with a compensating
+	// 3x reweight (optix_raygen.h), a coarser but far cheaper approximation
+	// - no new device-memory uploads, one new payload register instead of
+	// eight. Scoped to smooth MaterialType::Dielectric only this round
+	// (matching CPU dispersion's own original, deliberately-narrower scope
+	// before a later round extended it to RoughDielectric too) -
+	// RoughDielectric's real NEE/MIS
+	// (rd_bxdf.pdf()/f() calls just below, this same switch) would need the
+	// SAME resolved dispersive ior threaded into THOSE too for a consistent
+	// result, a real follow-up-sized piece of work, not attempted here.
+	unsigned int& inout_rgb_channel
 ) {
 	float3 attenuation;
 	float3 scattered_dir;
@@ -2062,7 +2104,28 @@ __device__ __forceinline__ void shade_material(
 		}
 
 		case MaterialType::Dielectric: {
-			scattered_dir = dielectric_scatter(ray_dir, normal, front_face, mat.ior, seed);
+			// pbrt-v4 dispersion (Cauchy formula) - see shade_material()'s
+			// own inout_rgb_channel parameter comment for the full
+			// rationale/scope (smooth Dielectric only this round). Picks a
+			// channel ONCE per path, lazily, at the FIRST dispersive hit -
+			// every later dispersive hit along the SAME path (e.g. entering
+			// then exiting the same glass object, or a second glass object)
+			// reuses that already-chosen channel instead of re-rolling,
+			// matching CPU/wavefront's own "one hero wavelength persists
+			// for the whole path" convention. mat.dispersive_extra.cauchy_A
+			// > 0.0f is the established sentinel (see that field's own
+			// comment, optix_types.h) - 0 (the default) means "not
+			// dispersive, use the flat mat.ior below".
+			float dielectric_ior = mat.ior;
+			if (mat.dispersive_extra.cauchy_A > 0.0f) {
+				if (inout_rgb_channel == kRgbChannelUnset) {
+					inout_rgb_channel = static_cast<unsigned int>(random_float(seed) * 3.0f);
+					if (inout_rgb_channel > 2u) inout_rgb_channel = 2u;  // 3.0f*u can hit exactly 3.0f
+				}
+				dielectric_ior = CauchyEta(kRgbChannelWavelengthNm[inout_rgb_channel],
+				                           mat.dispersive_extra.cauchy_A, mat.dispersive_extra.cauchy_B);
+			}
+			scattered_dir = dielectric_scatter(ray_dir, normal, front_face, dielectric_ior, seed);
 			// `normal` here always satisfies dot(ray_dir, normal) < 0 (flipped
 			// to face the incoming ray - see the front_face/final_normal
 			// convention at each closesthit's call site). A reflected
@@ -2082,7 +2145,10 @@ __device__ __forceinline__ void shade_material(
 			// PathTracingPayload::eta's own comment), only on a genuine
 			// transmission event (matches CPU material_simple.h's
 			// `res.eta = ri` only in the refract branch, `T(1)` otherwise).
-			if (is_transmission) eta = front_face ? (1.0f / mat.ior) : mat.ior;
+			// Uses dielectric_ior (the dispersive-resolved value when
+			// applicable), not the flat mat.ior, so RR's etaScale correction
+			// stays consistent with the direction actually sampled above.
+			if (is_transmission) eta = front_face ? (1.0f / dielectric_ior) : dielectric_ior;
 			break;
 		}
 

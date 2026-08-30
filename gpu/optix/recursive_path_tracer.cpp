@@ -26,14 +26,15 @@ bool RecursivePathTracer::initialize(
 	// Initialize pipeline compile options
 	pipelineCompileOptions_.usesMotionBlur = false;
 	pipelineCompileOptions_.traversableGraphFlags = OPTIX_TRAVERSABLE_GRAPH_FLAG_ALLOW_SINGLE_GAS;
-	// 24 = 16 (base PathTracingPayload) + 6 (albedo/normal denoiser guide-
+	// 25 = 16 (base PathTracingPayload) + 6 (albedo/normal denoiser guide-
 	// layer AOVs, p16-p21) + 1 (eta, p22, pbrt-v4 etaScale RR correction) +
-	// 1 (anyNonSpecularBounces, p23, Integrator "bool regularize") -
+	// 1 (anyNonSpecularBounces, p23, Integrator "bool regularize") + 1
+	// (rgbChannel, p24, dispersive-dielectric wavelength tracking) -
 	// see optix_renderer.cpp's own numPayloadValues for the authoritative
 	// count/breakdown; kept in sync here since this class shares the same
 	// optix_raygen.h/closest-hit headers, which now unconditionally pack
-	// all 24 registers regardless of which pipeline compiled them).
-	pipelineCompileOptions_.numPayloadValues = 24;
+	// all 25 registers regardless of which pipeline compiled them).
+	pipelineCompileOptions_.numPayloadValues = 25;
 	pipelineCompileOptions_.numAttributeValues = 4;  // Custom intersection attributes
 	pipelineCompileOptions_.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
 	pipelineCompileOptions_.pipelineLaunchParamsVariableName = "params";

@@ -545,6 +545,13 @@ extern "C" __global__ void __closesthit__sphere() {
 	// dielectric_scatter() calls (entry/exit, not routed through
 	// shade_material()) set this directly.
 	float out_eta = 1.0f;
+	// See PathTracingPayload's own p24/rgbChannel comment (optix_renderer_init.cpp)
+	// and shade_material()'s inout_rgb_channel parameter comment - read
+	// unconditionally so a channel already chosen by an earlier bounce
+	// still survives unchanged through this one. Computed once here and
+	// reused by both shade_material() call sites below, matching out_eta's
+	// own "read/declared once" convention just above.
+	unsigned int rgbChannel = optixGetPayload_24();
 	// Integrator "bool regularize" - see current_do_regularize()'s own
 	// comment (optix_device_helpers.h). Computed once here and reused by
 	// both shade_material() call sites below, rather than re-reading the
@@ -1007,7 +1014,7 @@ extern "C" __global__ void __closesthit__sphere() {
 			// re-reading it, even though this branch never consumes it.
 			shade_material(effective, matIdx, perturbed_normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, dpdu, do_regularize, seed,
 				attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
-				bssrdf_exit, bssrdf_exit_pos, out_eta);
+				bssrdf_exit, bssrdf_exit_pos, out_eta, rgbChannel);
 	} else if (mat.type == MaterialType::Principled) {
 			// Disney/pbrt-v4 multi-lobe BSDF - see sample_principled_material's
 			// comment in optix_device_helpers.h. Matches principled_material.h's
@@ -1021,7 +1028,7 @@ extern "C" __global__ void __closesthit__sphere() {
 		// do_regularize parameter comment (reuses the value hoisted above).
 		shade_material(mat, matIdx, normal, ray_dir, hit_point, front_face, sphere_uv_u, sphere_uv_v, sphere_dpdu, do_regularize, seed,
 			attenuation, scattered_dir, scattered, is_specular, is_medium_boundary, brdf_pdf_override, emission,
-			bssrdf_exit, bssrdf_exit_pos, out_eta);
+			bssrdf_exit, bssrdf_exit_pos, out_eta, rgbChannel);
 	}
 
 	// Pack updated payload back into registers
@@ -1052,6 +1059,7 @@ extern "C" __global__ void __closesthit__sphere() {
 		pack_aov_payload(albedoAov, normal);
 	}
 	optixSetPayload_22(__float_as_uint(out_eta));  // pbrt-v4 etaScale - see PathTracingPayload::eta
+	optixSetPayload_24(rgbChannel);  // dispersion channel - see shade_material()'s inout_rgb_channel comment
 
 	if (scattered) {
 		// Return surface attenuation ONLY (raygen will multiply with throughput)

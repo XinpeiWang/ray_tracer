@@ -982,7 +982,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         },
         {
             "B23", 131, SceneNames::GlassPrismDispersion, SceneCategories::Materials,
-            "A real glass prism splitting a parallel white light into a visible chromatic fan (CPU --spectral or GPU --wavefront; GPU-recursive stays flat/non-dispersive - see dielectric's dispersive constructor, material_simple.h)",
+            "A real glass prism splitting a parallel white light into a visible chromatic fan (CPU --spectral, GPU --wavefront: real continuous spectral integration; GPU-recursive (--gpu, no --wavefront): a simplified 3-representative-wavelength RGB-channel approximation, same qualitative fan, see shade_material()'s inout_rgb_channel comment, optix_device_helpers.h - see dielectric's dispersive constructor, material_simple.h)",
             "Medium", 200, false, true,
             kPrismCamera,
             build_prism_dispersion,
