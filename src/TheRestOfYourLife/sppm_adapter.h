@@ -516,15 +516,27 @@ class SPPMSceneAdapter {
 inline void sppm_camera_pass_with_sky(std::vector<SPPMPixel<double>>& pixels,
                                        int width, int height, int maxDepth,
                                        const SPPMSceneAdapter& scene,
-                                       unsigned int nthreads) {
+                                       unsigned int nthreads,
+                                       int cropX0 = 0, int cropX1 = -1, int cropY0 = 0, int cropY1 = -1) {
+	if (cropX1 < 0) cropX1 = width;
+	if (cropY1 < 0) cropY1 = height;
 	std::atomic<int> next_row(0);
 
 	auto worker = [&]() {
 		while (true) {
 			int iy = next_row.fetch_add(1);
 			if (iy >= height) break;
+			// Film "cropwindow"/"pixelbounds" - a pixel outside the crop
+			// rect is simply never given a camera-pass touch, on ANY
+			// iteration (this function runs once per SPPM iteration) - its
+			// pixel.vp_valid/Ld stay at their pre-render-start zero default
+			// forever, which SPPMFinalImage() already reconstructs as pure
+			// black (px.radius stays nonzero at its initial value even for
+			// an untouched pixel, so there's no divide-by-zero risk either).
+			if (iy < cropY0 || iy >= cropY1) continue;
 
 			for (int ix = 0; ix < width; ++ix) {
+				if (ix < cropX0 || ix >= cropX1) continue;
 				int idx = iy * width + ix;
 				SPPMPixel<double>& pixel = pixels[idx];
 				pixel.px = ix;
@@ -901,7 +913,8 @@ inline void sppm_hash_grid_build_mt(sppm_detail::HashGrid<double>& hg,
 // all of these invariants only have to be gotten right in one place.
 inline void sppm_render_with_adapter(const SPPMSceneAdapter& scene, int width, int height,
                                       int nIterations, int nPhotons, int maxDepth,
-                                      double initialRadius, std::vector<double>& out_rgb) {
+                                      double initialRadius, std::vector<double>& out_rgb,
+                                      int cropX0 = 0, int cropX1 = -1, int cropY0 = 0, int cropY1 = -1) {
 	int nPixels = width * height;
 	std::vector<SPPMPixel<double>> pixels(nPixels);
 	for (int i = 0; i < nPixels; ++i) {
@@ -917,7 +930,8 @@ inline void sppm_render_with_adapter(const SPPMSceneAdapter& scene, int width, i
 	int64_t totalPhotonPaths = 0;
 	for (int iter = 0; iter < nIterations; ++iter) {
 		scene.BeginIteration();
-		sppm_camera_pass_with_sky(pixels, width, height, maxDepth, scene, nthreads);
+		sppm_camera_pass_with_sky(pixels, width, height, maxDepth, scene, nthreads,
+		                           cropX0, cropX1, cropY0, cropY1);
 
 		sppm_detail::HashGrid<double> hashGrid;
 		sppm_hash_grid_build_mt(hashGrid, pixels, bucket_mutexes, nthreads);

@@ -674,6 +674,23 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 	const unsigned int width  = sppm_params.width;
 	const unsigned int height = sppm_params.height;
 	if (idx.x >= width || idx.y >= height) return;
+	// Film "cropwindow"/"pixelbounds" - sppm_params.camera is a direct copy
+	// of the same GpuCameraParams the recursive/wavefront backends already
+	// honor (see sppm_path_tracer.cpp's own params.camera = camera; wiring),
+	// so cropX0/X1/Y0/Y1 are already correctly resolved here - this file
+	// just never read them. Mirrors optix_device_helpers.h's gpu_in_crop()
+	// inline (a separate translation unit - this file's own established
+	// convention, see its file header) rather than writing black: unlike
+	// the other two backends' framebuffer (raw cudaMalloc, needs an
+	// explicit black write), this pixel's own SPPMPixelGPU is zero-
+	// initialized ONCE by the host before iteration 0 and never touched
+	// again for a skipped pixel (see this kernel's own vp_valid comment
+	// below), which sppm_final_image_kernel already reconstructs as black.
+	const GpuCameraParams& cropCam = sppm_params.camera;
+	const bool inCrop = cropCam.cropX1 <= 0 ||
+		((int)idx.x >= cropCam.cropX0 && (int)idx.x < cropCam.cropX1 &&
+		 (int)idx.y >= cropCam.cropY0 && (int)idx.y < cropCam.cropY1);
+	if (!inCrop) return;
 	const unsigned int pixelIdx = idx.y * width + idx.x;
 
 	unsigned int seed = sppm_pcg(sppm_pcg(pixelIdx) ^ 0x9E3779B9u);

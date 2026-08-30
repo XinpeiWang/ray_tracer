@@ -1410,8 +1410,21 @@ class BDPTSceneAdapter {
 // ---------------------------------------------------------------------------
 class SplatFilm {
   public:
-	SplatFilm(int width, int height)
+	// cropX0/X1/Y0/Y1: pbrt-v4 Film "cropwindow"/"pixelbounds", already
+	// resolved to concrete pixel bounds by the caller (camera::initialize()'s
+	// crop_x0/x1/y0/y1) - see bdpt_render_with_adapter()'s/
+	// lightpath_render_with_adapter()'s own comment on why gating splats
+	// (rather than skipping trace generation, which BDPT's t==1/LightPath
+	// have no per-pixel loop to skip) is this class's own share of honoring
+	// a crop request. Defaulted to "-1 = unset" (full frame), matching
+	// camera.h's own sentinel convention, so every pre-existing call site
+	// (tests, any caller with no crop request) compiles and behaves
+	// unchanged.
+	SplatFilm(int width, int height,
+	          int cropX0 = 0, int cropX1 = -1, int cropY0 = 0, int cropY1 = -1)
 		: width_(width), height_(height),
+		  cropX0_(cropX0), cropX1_(cropX1 < 0 ? width : cropX1),
+		  cropY0_(cropY0), cropY1_(cropY1 < 0 ? height : cropY1),
 		  buf_(static_cast<size_t>(width) * height * 3, 0.0),
 		  mutexes_(static_cast<size_t>(width) * height) {}
 
@@ -1419,6 +1432,7 @@ class SplatFilm {
 		int ix = static_cast<int>(px);
 		int iy = static_cast<int>(py);
 		if (ix < 0 || ix >= width_ || iy < 0 || iy >= height_) return;
+		if (ix < cropX0_ || ix >= cropX1_ || iy < cropY0_ || iy >= cropY1_) return;
 		size_t pidx = static_cast<size_t>(iy) * width_ + ix;
 		std::lock_guard<std::mutex> lg(mutexes_[pidx]);
 		for (int c = 0; c < 3; ++c) {
@@ -1440,6 +1454,7 @@ class SplatFilm {
 
   private:
 	int width_, height_;
+	int cropX0_, cropX1_, cropY0_, cropY1_;
 	std::vector<double> buf_;
 	std::vector<std::mutex> mutexes_;
 };
@@ -1467,8 +1482,11 @@ class SplatFilm {
 // LightPath's own pure light-tracing splats) and merged additively into
 // out_rgb once every worker thread has joined.
 inline void bdpt_render_with_adapter(const BDPTSceneAdapter& scene, int width, int height,
-                                      int spp, int maxDepth, std::vector<double>& out_rgb) {
+                                      int spp, int maxDepth, std::vector<double>& out_rgb,
+                                      int cropX0 = 0, int cropX1 = -1, int cropY0 = 0, int cropY1 = -1) {
 	out_rgb.assign(static_cast<size_t>(width) * height * 3, 0.0);
+	if (cropX1 < 0) cropX1 = width;
+	if (cropY1 < 0) cropY1 = height;
 
 	// SplatFilm (one std::mutex + 3 doubles per pixel - hundreds of MB at
 	// 4K+) is constructed lazily, on the first t==1 light-tracing
@@ -1481,7 +1499,7 @@ inline void bdpt_render_with_adapter(const BDPTSceneAdapter& scene, int width, i
 	std::optional<SplatFilm> film;
 	std::once_flag film_once;
 	auto ensure_film = [&]() -> SplatFilm& {
-		std::call_once(film_once, [&]() { film.emplace(width, height); });
+		std::call_once(film_once, [&]() { film.emplace(width, height, cropX0, cropX1, cropY0, cropY1); });
 		return *film;
 	};
 
@@ -1499,8 +1517,16 @@ inline void bdpt_render_with_adapter(const BDPTSceneAdapter& scene, int width, i
 		while (true) {
 			int iy = next_row.fetch_add(1);
 			if (iy >= height) break;
+			// Film "cropwindow"/"pixelbounds" - a row entirely outside the
+			// crop rect contributes nothing via t>=2 connections (this loop)
+			// AND generates no light-subpath samples to splat from either,
+			// so skipping the whole row is correct, not just an
+			// optimization - see the `splat` lambda's own SplatFilm crop
+			// gate above for the t==1 half of this feature.
+			if (iy < cropY0 || iy >= cropY1) continue;
 
 			for (int ix = 0; ix < width; ++ix) {
+				if (ix < cropX0 || ix >= cropX1) continue;
 				double sum[3] = { 0.0, 0.0, 0.0 };
 				for (int s = 0; s < spp; ++s) {
 					double px = (ix + random_double()) / width;
@@ -1668,8 +1694,11 @@ inline void mlt_run_depth_chain(int depth, double b, int64_t nMutationsRun, int6
 inline void mlt_render_with_adapter(const BDPTSceneAdapter& scene, int width, int height,
                                      int nBootstrap, int64_t nMutations, int maxDepth,
                                      double sigma, double largeStepProb,
-                                     std::vector<double>& out_rgb) {
+                                     std::vector<double>& out_rgb,
+                                     int cropX0 = 0, int cropX1 = -1, int cropY0 = 0, int cropY1 = -1) {
 	out_rgb.assign(static_cast<size_t>(width) * height * 3, 0.0);
+	if (cropX1 < 0) cropX1 = width;
+	if (cropY1 < 0) cropY1 = height;
 	unsigned int nthreads = determine_render_thread_count();
 	if (nthreads < 1) nthreads = 1;
 
@@ -1721,6 +1750,16 @@ inline void mlt_render_with_adapter(const BDPTSceneAdapter& scene, int width, in
 			int iy = static_cast<int>(py * height);
 			if (ix < 0) ix = 0; if (ix >= width)  ix = width - 1;
 			if (iy < 0) iy = 0; if (iy >= height) iy = height - 1;
+			// Film "cropwindow"/"pixelbounds" - MLT has no per-pixel loop to
+			// skip (the Markov chain visits essentially arbitrary (px,py)
+			// via its own mutation strategy, not a pixel iteration), so
+			// gating the splat itself is this integrator's only handle on a
+			// crop request. Each accepted splat still carries its own
+			// correct invNorm weight regardless of how many OTHER splats
+			// were dropped here, so no renormalization is needed - see
+			// mlt_run_depth_chain()'s own comment for that weight's
+			// derivation.
+			if (ix < cropX0 || ix >= cropX1 || iy < cropY0 || iy >= cropY1) return;
 			int idx = (iy * width + ix) * 3;
 			buf[idx + 0] += Lr; buf[idx + 1] += Lg; buf[idx + 2] += Lb;
 		};
@@ -1837,8 +1876,11 @@ inline bool bdpt_write_exr(const std::string& path, int width, int height,
 // ===========================================================================
 
 inline void randomwalk_render_with_adapter(const BDPTSceneAdapter& scene, int width, int height,
-                                            int spp, int maxDepth, std::vector<double>& out_rgb) {
+                                            int spp, int maxDepth, std::vector<double>& out_rgb,
+                                            int cropX0 = 0, int cropX1 = -1, int cropY0 = 0, int cropY1 = -1) {
 	out_rgb.assign(static_cast<size_t>(width) * height * 3, 0.0);
+	if (cropX1 < 0) cropX1 = width;
+	if (cropY1 < 0) cropY1 = height;
 	unsigned int nthreads = determine_render_thread_count();
 	std::atomic<int> next_row(0);
 	auto worker = [&]() {
@@ -1846,7 +1888,9 @@ inline void randomwalk_render_with_adapter(const BDPTSceneAdapter& scene, int wi
 		while (true) {
 			int iy = next_row.fetch_add(1);
 			if (iy >= height) break;
+			if (iy < cropY0 || iy >= cropY1) continue;
 			for (int ix = 0; ix < width; ++ix) {
+				if (ix < cropX0 || ix >= cropX1) continue;
 				double sum[3] = {0.0, 0.0, 0.0};
 				for (int s = 0; s < spp; ++s) {
 					double px = (ix + random_double()) / width;
@@ -1876,8 +1920,11 @@ inline void randomwalk_render_with_adapter(const BDPTSceneAdapter& scene, int wi
 
 inline void ao_render_with_adapter(const BDPTSceneAdapter& scene, int width, int height, int spp,
                                     double maxDist, bool cosSample, double illumScale, const double illumRgb[3],
-                                    std::vector<double>& out_rgb) {
+                                    std::vector<double>& out_rgb,
+                                    int cropX0 = 0, int cropX1 = -1, int cropY0 = 0, int cropY1 = -1) {
 	out_rgb.assign(static_cast<size_t>(width) * height * 3, 0.0);
+	if (cropX1 < 0) cropX1 = width;
+	if (cropY1 < 0) cropY1 = height;
 	unsigned int nthreads = determine_render_thread_count();
 	std::atomic<int> next_row(0);
 	auto worker = [&]() {
@@ -1885,7 +1932,9 @@ inline void ao_render_with_adapter(const BDPTSceneAdapter& scene, int width, int
 		while (true) {
 			int iy = next_row.fetch_add(1);
 			if (iy >= height) break;
+			if (iy < cropY0 || iy >= cropY1) continue;
 			for (int ix = 0; ix < width; ++ix) {
+				if (ix < cropX0 || ix >= cropX1) continue;
 				double sum[3] = {0.0, 0.0, 0.0};
 				for (int s = 0; s < spp; ++s) {
 					double px = (ix + random_double()) / width;
@@ -1915,8 +1964,11 @@ inline void ao_render_with_adapter(const BDPTSceneAdapter& scene, int width, int
 
 inline void simplepath_render_with_adapter(const BDPTSceneAdapter& scene, int width, int height, int spp,
                                             int maxDepth, bool sampleLights, bool sampleBsdf,
-                                            std::vector<double>& out_rgb) {
+                                            std::vector<double>& out_rgb,
+                                            int cropX0 = 0, int cropX1 = -1, int cropY0 = 0, int cropY1 = -1) {
 	out_rgb.assign(static_cast<size_t>(width) * height * 3, 0.0);
+	if (cropX1 < 0) cropX1 = width;
+	if (cropY1 < 0) cropY1 = height;
 	unsigned int nthreads = determine_render_thread_count();
 	std::atomic<int> next_row(0);
 	auto worker = [&]() {
@@ -1925,7 +1977,9 @@ inline void simplepath_render_with_adapter(const BDPTSceneAdapter& scene, int wi
 		while (true) {
 			int iy = next_row.fetch_add(1);
 			if (iy >= height) break;
+			if (iy < cropY0 || iy >= cropY1) continue;
 			for (int ix = 0; ix < width; ++ix) {
+				if (ix < cropX0 || ix >= cropX1) continue;
 				double sum[3] = {0.0, 0.0, 0.0};
 				for (int s = 0; s < spp; ++s) {
 					double px = (ix + random_double()) / width;
@@ -1955,15 +2009,20 @@ inline void simplepath_render_with_adapter(const BDPTSceneAdapter& scene, int wi
 }
 
 inline void simplevolpath_render_with_adapter(const BDPTSceneAdapter& scene, int width, int height, int spp,
-                                               int maxDepth, std::vector<double>& out_rgb) {
+                                               int maxDepth, std::vector<double>& out_rgb,
+                                               int cropX0 = 0, int cropX1 = -1, int cropY0 = 0, int cropY1 = -1) {
 	out_rgb.assign(static_cast<size_t>(width) * height * 3, 0.0);
+	if (cropX1 < 0) cropX1 = width;
+	if (cropY1 < 0) cropY1 = height;
 	unsigned int nthreads = determine_render_thread_count();
 	std::atomic<int> next_row(0);
 	auto worker = [&]() {
 		while (true) {
 			int iy = next_row.fetch_add(1);
 			if (iy >= height) break;
+			if (iy < cropY0 || iy >= cropY1) continue;
 			for (int ix = 0; ix < width; ++ix) {
+				if (ix < cropX0 || ix >= cropX1) continue;
 				double sum[3] = {0.0, 0.0, 0.0};
 				for (int s = 0; s < spp; ++s) {
 					double px = (ix + random_double()) / width;
@@ -1992,8 +2051,17 @@ inline void simplevolpath_render_with_adapter(const BDPTSceneAdapter& scene, int
 }
 
 inline void lightpath_render_with_adapter(const BDPTSceneAdapter& scene, int width, int height, int spp,
-                                           int maxDepth, std::vector<double>& out_rgb) {
-	SplatFilm film(width, height);
+                                           int maxDepth, std::vector<double>& out_rgb,
+                                           int cropX0 = 0, int cropX1 = -1, int cropY0 = 0, int cropY1 = -1) {
+	// Film "cropwindow"/"pixelbounds" - LightPath has no per-pixel loop
+	// either (see mlt_render_with_adapter()'s splat lambda's own comment for
+	// the identical reasoning) - SplatFilm's own crop gate (see its
+	// constructor's comment) is this integrator's only handle on a crop
+	// request. total_paths below stays spp*width*height either way (not
+	// shrunk to the crop's own pixel count) - simpler, and every path this
+	// budget doesn't spend on a crop-rect pixel would otherwise have been
+	// wasted on an out-of-crop one anyway.
+	SplatFilm film(width, height, cropX0, cropX1, cropY0, cropY1);
 	unsigned int nthreads = determine_render_thread_count();
 	long long total_paths = static_cast<long long>(spp) * width * height;
 	std::atomic<long long> next_path(0);

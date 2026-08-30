@@ -112,19 +112,12 @@ const SceneDescriptor* build_scene_for_bdpt(const char* scene_id, int width, int
 		scene_desc->setup_camera(out_cam);
 
 	// Film "cropwindow"/"pixelbounds" (camera.h's crop_x0/x1/y0/y1, set by
-	// setup_camera() just above) is only honored by the default path
-	// tracer's own render() loop - same "one integrator gets it, the rest
-	// silently don't" shape as the animated-camera/portal-light warnings
-	// above, so it gets the same warn-rather-than-silently-ignore
-	// treatment. crop_x1/crop_y1 still carry their "-1 = unset" sentinel
-	// here (initialize() hasn't run yet on this object), so an explicit
-	// crop request is any crop_x1/crop_y1 >= 0.
-	if (out_cam.crop_x1 >= 0 || out_cam.crop_y1 >= 0) {
-		std::cerr << "Warning: scene '" << scene_id << "' requests a Film "
-		             "\"cropwindow\"/\"pixelbounds\" - not supported under --bdpt/--mlt/"
-		             "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
-		             "(only the default path tracer honors it); rendering the full frame.\n";
-	}
+	// setup_camera() just above) is now honored here too - see each
+	// *_render_core()'s own call into its *_render_with_adapter() driver,
+	// which reads out_cam.crop_x0/x1/y0/y1 AFTER cam.initialize() resolves
+	// them to concrete pixel bounds (this function runs before that, so
+	// nothing to do here beyond letting setup_camera() populate the raw
+	// request as it already does).
 
 	// Same wiring as cpu_render_main_sppm() (cpu_interface.cpp) -- must run
 	// AFTER setup_camera() above, since BDPTSceneAdapter's constructor reads
@@ -177,7 +170,8 @@ int bdpt_render_core(const hittable_list& world, camera& cam,
 			             "success." << std::endl;
 		}
 		std::vector<double> out_rgb;
-		bdpt_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, bdpt_max_depth, out_rgb);
+		bdpt_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, bdpt_max_depth, out_rgb,
+		                          cam.crop_x0, cam.crop_x1, cam.crop_y0, cam.crop_y1);
 
 		if (is_exr_output_path(output_path)) {
 			std::string exr_error;
@@ -238,7 +232,8 @@ int mlt_render_core(const hittable_list& world, camera& cam,
 		std::vector<double> out_rgb;
 		mlt_render_with_adapter(adapter, cam.image_width, cam.image_height,
 		                         mlt_bootstrap, mlt_mutations, mlt_max_depth,
-		                         kSigma, kLargeStepProb, out_rgb);
+		                         kSigma, kLargeStepProb, out_rgb,
+		                         cam.crop_x0, cam.crop_x1, cam.crop_y0, cam.crop_y1);
 
 		if (is_exr_output_path(output_path)) {
 			std::string exr_error;
@@ -278,7 +273,8 @@ int randomwalk_render_core(const hittable_list& world, camera& cam, int spp, int
 		std::cout << "[TECH] Integrator: RandomWalk (pbrt-v4 reference, unbiased, no NEE/MIS)" << std::endl;
 		BDPTSceneAdapter adapter(world, cam);
 		std::vector<double> out_rgb;
-		randomwalk_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, max_depth, out_rgb);
+		randomwalk_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, max_depth, out_rgb,
+		                                cam.crop_x0, cam.crop_x1, cam.crop_y0, cam.crop_y1);
 		if (is_exr_output_path(output_path)) {
 			std::string exr_error;
 			if (!bdpt_write_exr(output_path, cam.image_width, cam.image_height, out_rgb, exr_error)) {
@@ -309,7 +305,8 @@ int ao_render_core(const hittable_list& world, camera& cam, int spp, double max_
 		BDPTSceneAdapter adapter(world, cam);
 		std::vector<double> out_rgb;
 		ao_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, max_dist, cos_sample,
-		                        illum_scale, illum_rgb, out_rgb);
+		                        illum_scale, illum_rgb, out_rgb,
+		                        cam.crop_x0, cam.crop_x1, cam.crop_y0, cam.crop_y1);
 		if (is_exr_output_path(output_path)) {
 			std::string exr_error;
 			if (!bdpt_write_exr(output_path, cam.image_width, cam.image_height, out_rgb, exr_error)) {
@@ -348,7 +345,8 @@ int simplepath_render_core(const hittable_list& world, camera& cam, int spp, int
 		}
 		std::vector<double> out_rgb;
 		simplepath_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, max_depth,
-		                                sample_lights, sample_bsdf, out_rgb);
+		                                sample_lights, sample_bsdf, out_rgb,
+		                                cam.crop_x0, cam.crop_x1, cam.crop_y0, cam.crop_y1);
 		if (is_exr_output_path(output_path)) {
 			std::string exr_error;
 			if (!bdpt_write_exr(output_path, cam.image_width, cam.image_height, out_rgb, exr_error)) {
@@ -379,7 +377,8 @@ int simplevolpath_render_core(const hittable_list& world, camera& cam, int spp, 
 		             "cpu_interface.h's cpu_render_main_simplevolpath() doc comment)" << std::endl;
 		BDPTSceneAdapter adapter(world, cam);
 		std::vector<double> out_rgb;
-		simplevolpath_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, max_depth, out_rgb);
+		simplevolpath_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, max_depth, out_rgb,
+		                                   cam.crop_x0, cam.crop_x1, cam.crop_y0, cam.crop_y1);
 		if (is_exr_output_path(output_path)) {
 			std::string exr_error;
 			if (!bdpt_write_exr(output_path, cam.image_width, cam.image_height, out_rgb, exr_error)) {
@@ -417,7 +416,8 @@ int lightpath_render_core(const hittable_list& world, camera& cam, int spp, int 
 			             "entirely black even though it will report success." << std::endl;
 		}
 		std::vector<double> out_rgb;
-		lightpath_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, max_depth, out_rgb);
+		lightpath_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, max_depth, out_rgb,
+		                               cam.crop_x0, cam.crop_x1, cam.crop_y0, cam.crop_y1);
 		if (is_exr_output_path(output_path)) {
 			std::string exr_error;
 			if (!bdpt_write_exr(output_path, cam.image_width, cam.image_height, out_rgb, exr_error)) {

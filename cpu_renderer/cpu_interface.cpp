@@ -721,19 +721,9 @@ extern "C" int cpu_render_main_sppm(int width, int height, int iterations, int p
 			scene_desc->setup_camera(cam);
 
 		// Film "cropwindow"/"pixelbounds" (cam.crop_x0/x1/y0/y1, just set by
-		// setup_camera() above) is only honored by the default path
-		// tracer's own render() loop - same "one integrator gets it, the
-		// rest silently don't" shape as the portal-light warning above, so
-		// it gets the same warn-rather-than-silently-ignore treatment.
-		// Checked BEFORE initialize() (below) resolves the "-1 = unset"
-		// sentinel to a real pixel value, since after that point an
-		// explicit crop is indistinguishable from "no crop requested".
-		if (cam.crop_x1 >= 0 || cam.crop_y1 >= 0) {
-			std::cerr << "Warning: scene '" << scene_id << "' requests a Film "
-			             "\"cropwindow\"/\"pixelbounds\" - not supported under --sppm "
-			             "(only the default path tracer honors it); rendering the full frame.\n";
-		}
-
+		// setup_camera() above) is now honored under --sppm too - see the
+		// sppm_render_with_adapter() call below, which reads
+		// cam.crop_x0/x1/y0/y1 after initialize() resolves them.
 		cam.initialize();
 
 		std::filesystem::path out_fs_path(output_path);
@@ -753,7 +743,8 @@ extern "C" int cpu_render_main_sppm(int width, int height, int iterations, int p
 		std::vector<double> out_rgb;
 		sppm_render_with_adapter(adapter, cam.image_width, cam.image_height,
 								   iterations, photons, max_depth,
-								   /*initialRadius=*/10.0, out_rgb);
+								   /*initialRadius=*/10.0, out_rgb,
+								   cam.crop_x0, cam.crop_x1, cam.crop_y0, cam.crop_y1);
 
 		if (is_exr_output_path(output_path)) {
 			std::string exr_error;

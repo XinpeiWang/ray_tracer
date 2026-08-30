@@ -572,28 +572,12 @@ extern "C" int optix_render_main_sppm(
 		// Film "cropwindow"/"pixelbounds" - build_scene() (for a pbrt-loaded
 		// scene) already resolved this into cameraExtra.cropX0/X1/Y0/Y1
 		// exactly the way scene_builder.cpp's own recursive/wavefront-facing
-		// code does (see that file's own comment) - but GPU SPPM's raygen
-		// (sppm_programs.cu) never reads these fields at all, unlike the
-		// other two GPU backends this same round wired up. Since a crop was
-		// resolved but this backend can't honor it, warn - same "cheap
-		// warning for a real, currently-unimplemented gap" pattern CPU SPPM
-		// already uses (cpu_interface.cpp's own crop_x1>=0 check) and the
-		// prior version of this warning used to give GPU SPPM too, before
-		// scene_builder.cpp's resolution logic replaced it with real
-		// support for the OTHER two backends. cropX1<=0 means "no crop at
-		// all" (native scenes, which never touch these fields); an exact
-		// (0,width,0,height) match means the scene either declared no real
-		// crop or scene_builder.cpp already collapsed a degenerate one back
-		// to full-frame (and already warned about THAT there) - neither
-		// case needs a second warning here.
-		if (cameraExtra.cropX1 > 0 &&
-			(cameraExtra.cropX0 != 0 || cameraExtra.cropX1 != image_width ||
-			 cameraExtra.cropY0 != 0 || cameraExtra.cropY1 != image_height)) {
-			std::cerr << "[OptiX] Warning: scene '" << scene_id << "' requests a Film "
-			             "\"cropwindow\"/\"pixelbounds\" but GPU SPPM does not implement it "
-			             "(only --gpu's recursive and --gpu --wavefront backends do); "
-			             "rendering the full frame.\n";
-		}
+		// code does (see that file's own comment). GPU SPPM's raygen
+		// (sppm_programs.cu's __raygen__sppm_camera_pass) now reads these
+		// fields too - camera_params (passed to buildScene()/SPPMPathTracer
+		// below) already carries them, since it's the same GpuCameraParams
+		// the other two backends use, so no separate warning is needed here
+		// any more.
 
 		// Shape "sphere" "float zmin"/"zmax"/"phimax" clipping - same
 		// "warn, don't hard-reject" treatment as the cropwindow check just
