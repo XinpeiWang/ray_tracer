@@ -559,13 +559,33 @@ enum class MaterialType : int {
 // The single canonical list of MaterialTypes GPU SPPM's camera/photon-pass
 // raygens (gpu/optix/sppm_programs.cu) actually implement BSDF sampling for
 // - Lambertian/DiffuseLight handled directly, RoughDielectric/Metal/
-// Dielectric/Conductor via sppm_is_delta_material()/
-// sppm_sample_delta_material()'s explicit dispatch. Any MaterialType NOT in
-// this list falls through sppm_programs.cu's own "treat as Lambertian"
-// default, silently reading that material's (possibly unset) albedo union
-// slot - which is exactly the class of bug gpu/optix/optix_interface.cpp's
-// sppm_gpu_unsupported_reason() exists to reject a scene for BEFORE it can
-// happen, rather than let it render silently wrong.
+// Dielectric/Conductor/RoughMetal/DiffuseTransmission via
+// sppm_is_delta_material()/sppm_sample_delta_material()'s explicit dispatch,
+// Mix via sppm_resolve_mix_material() (resolved to one of the other entries
+// in this list before any dispatch runs - a Mix instance itself never
+// reaches sppm_is_delta_material()/sppm_bsdf_f(), so it needs no case of its
+// own in either). Any MaterialType NOT in this list falls through
+// sppm_programs.cu's own "treat as Lambertian" default, silently reading
+// that material's (possibly unset) albedo union slot - which is exactly the
+// class of bug gpu/optix/optix_interface.cpp's sppm_gpu_unsupported_reason()
+// exists to reject a scene for BEFORE it can happen, rather than let it
+// render silently wrong.
+//
+// CoatedDiffuse/CoatedConductor/Hair/Subsurface/Measured are deliberately
+// NOT in this list despite CPU and both other GPU backends supporting all
+// five - see sppm_is_delta_material()'s own comment (sppm_programs.cu) for
+// why each is out of scope: CoatedDiffuse/CoatedConductor were investigated
+// and real support was built (the shared CoatedDiffuseBxDF/
+// CoatedConductorBxDF::f()/sample_local(), src/shared/bxdfs_layered.h) but
+// pulled back out after real-render verification showed it severely too
+// dark - a real architecture mismatch (SPPM's single-NEE-sample-per-
+// visible-point design vs. this material's largely-specular-coat
+// reflectance), not a simple bug. Hair only ever renders on tessellated-
+// curve (bilinear-patch) geometry and Subsurface needs a whole separate
+// BSSRDF probe-walk raygen pass, both permanently rejected by
+// sppm_gpu_unsupported_reason()'s own geometry checks regardless of
+// material-dispatch support; Measured's tabulated-BRDF tables aren't wired
+// into SPPMLaunchParams at all.
 //
 // Defined here, next to MaterialType's own definition, and used by both
 // sppm_gpu_unsupported_reason() (host-side rejection check,
@@ -585,6 +605,7 @@ inline bool sppm_gpu_material_supported(MaterialType t) {
 	case MaterialType::RoughMetal:
 	case MaterialType::DiffuseTransmission:
 	case MaterialType::Interface:
+	case MaterialType::Mix:
 		return true;
 	default:
 		return false;

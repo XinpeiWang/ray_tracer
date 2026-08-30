@@ -20,10 +20,17 @@
 // material dispatch to also cover Lambertian+Metal+Dielectric+Conductor
 // scenes built purely from spheres/quads with area lights, so this file now
 // also renders A1 (CornellBox, smooth Dielectric glass) and B4
-// (CornellConductor, GGX conductor) end-to-end, and the old "reject anything
-// but B3" test was replaced with one that rejects a scene using a
-// MaterialType genuinely still unsupported (B5 CornellCoatedDiffuse) --
-// see that test's own comment.
+// (CornellConductor, GGX conductor) end-to-end.
+//
+// CoatedDiffuse/CoatedConductor real layered-material support (the shared
+// src/shared/bxdfs_layered.h CoatedDiffuseBxDF/CoatedConductorBxDF struct)
+// was investigated and built here, but pulled back out after real-render
+// verification found it severely too dark on B5/B7 vs. every other backend
+// - see sppm_is_delta_material()'s own comment (sppm_programs.cu) for the
+// full root-cause writeup. RejectsSceneWithUnsupportedMaterial below now
+// anchors on B11 (HairFibers) rather than B5, since B11 is permanently
+// out of scope for an unrelated, structural reason (no bilinear-patch
+// geometry support at all) rather than a "not yet ported" one.
 #include <gtest/gtest.h>
 #include <cmath>
 #include <cstdio>
@@ -168,26 +175,33 @@ TEST_F(SppmGpuFirstSliceTest, CornellConductorProducesFiniteNonBlackImage) {
 	EXPECT_GT(nonzero_count, 0) << "Rendered image is entirely black";
 }
 
-// Scope guard, updated for the post-generalization rule set: GPU SPPM must
-// still cleanly reject (not crash, not silently mis-render) a scene using a
-// MaterialType its camera/photon-pass dispatch genuinely has no BSDF sampler
-// for. B5 (CornellCoatedDiffuse) is a good example -- pure sphere/quad
-// geometry (so it isn't rejected for the unrelated triangle-mesh reason),
-// but its sphere/box use MaterialType::CoatedDiffuse, which is intentionally
-// NOT in sppm_is_delta_material()'s covered set (see that function's own
-// comment on why: CPU's own coated_diffuse handling involves a multi-bounce
-// coat-escape random walk this GPU port hasn't ported yet) -- so this locks
-// in real, current out-of-scope behavior rather than an arbitrary
-// placeholder id.
+// Scope guard, updated for the post-generalization rule set (see this file's
+// own top comment): GPU SPPM must still cleanly reject (not crash, not
+// silently mis-render) a scene using a MaterialType its camera/photon-pass
+// dispatch genuinely has no BSDF sampler for. B11 (HairFibers) is a good
+// example -- Hair is permanently out of scope for GPU SPPM regardless of
+// material-dispatch support: it only ever renders on tessellated-curve
+// (bilinear-patch) geometry, which optix_interface.cpp's
+// sppm_gpu_unsupported_reason() rejects for an entirely separate, permanent
+// reason (GPU SPPM's hash-grid SBT has no hit-group records for bilinear
+// patches at all) -- so this locks in real, current out-of-scope behavior
+// rather than an arbitrary placeholder id. (Chosen over B5/CornellCoatedDiffuse,
+// the original anchor for this guard: real support for that material was
+// investigated and built, then pulled back out after it proved severely
+// too dark in real-render verification -- see this file's own top comment
+// and sppm_is_delta_material()'s own comment in sppm_programs.cu. B5 is
+// still rejected today, but for that reason rather than "no sampler at
+// all," which B11 demonstrates more clearly.)
 TEST_F(SppmGpuFirstSliceTest, RejectsSceneWithUnsupportedMaterial) {
-	const char* path = "sppm_gpu_first_slice_test_b5.ppm";
+	const char* path = "sppm_gpu_first_slice_test_b11.ppm";
 	outputFiles_.push_back(path);
 
 	int result = optix_render_main_sppm(
 		32, 32, /*iterations=*/5, /*photons=*/500, /*max_depth=*/5,
-		path, /*scene_id=*/"B5",
+		path, /*scene_id=*/"B11",
 		278.0, 278.0, -800.0, 1);
-	EXPECT_NE(result, 0) << "GPU SPPM should reject scene B5 (CoatedDiffuse has no GPU SPPM BSDF sampler)";
+	EXPECT_NE(result, 0) << "GPU SPPM should reject scene B11 (Hair needs bilinear-patch geometry, "
+	                      << "which GPU SPPM's hash-grid SBT has no hit-group records for)";
 }
 
 // Regression guard: the real multi-iteration SPPM path (renderSPPM(),

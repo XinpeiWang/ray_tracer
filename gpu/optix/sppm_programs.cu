@@ -246,10 +246,49 @@ static __device__ __forceinline__ bool sppm_is_transmissive_material(MaterialTyp
 	       t == MaterialType::DiffuseTransmission;
 }
 
+// Deterministic [0,1) hash from a world-space point -- direct copy of
+// wavefront_kernels.cu's wf_mix_branch_hash01 (identical algorithm, sppm_
+// prefix), matching CPU's branch_hash01() (src/TheRestOfYourLife/
+// material_pbrt.h) exactly, NOT a fresh random draw -- so a radiance hit and
+// its later shadow ray agree on which sub-material a Mix resolved to.
+static __device__ __forceinline__ float sppm_mix_branch_hash01(const float3& p) {
+	float h = sinf(p.x * 127.1f + p.y * 311.7f + p.z * 74.7f) * 43758.5453f;
+	return h - floorf(h);
+}
+
+// Resolves a (possibly MaterialType::Mix) MaterialData to a real, non-Mix
+// MaterialData -- direct copy of wavefront_kernels.cu's wf_resolve_mix_material
+// (identical algorithm, sppm_ prefix, same "don't share device helpers
+// across backends" convention as this file's other sppm_-prefixed ports).
+// Looping (not recursing) while the result is itself another Mix -- see
+// MaterialType::Mix's own comment (optix_types.h). `outMatIdx` receives the
+// resolved index into sppm_params.materials.
+static __device__ __forceinline__ MaterialData sppm_resolve_mix_material(
+	MaterialData mat, int matIdx, const float3& hit_point, int& outMatIdx) {
+	constexpr int kMaxMixDepth = 8;
+	for (int depth = 0; mat.type == MaterialType::Mix && depth < kMaxMixDepth; ++depth) {
+		const float w = mat.mix_extra.mixWeight;
+		const float h = sppm_mix_branch_hash01(hit_point);
+		const int subIdx = (h >= w) ? static_cast<int>(mat.mix_extra.mixMaterialAIdx)
+		                             : static_cast<int>(mat.mix_extra.mixMaterialBIdx);
+		matIdx = subIdx;
+		mat = sppm_params.materials[subIdx];
+	}
+	outMatIdx = matIdx;
+	return mat;
+}
+
 extern "C" __global__ void __anyhit__sppm_shadow_sphere() {
 	const unsigned int primIdx = optixGetPrimitiveIndex();
 	const SphereData& sphere = sppm_params.spheres[primIdx];
-	const MaterialData& mat = sppm_params.materials[sphere.materialIdx];
+	// Resolved to a real, non-Mix material before any mat.type check below --
+	// see sppm_resolve_mix_material()'s own comment. The shadow ray's OWN hit
+	// point (not the primary hit that spawned it) picks the branch, matching
+	// wavefront_anyhit_shadow.h's __anyhit__wf_shadow_sphere exactly.
+	int matIdx = sphere.materialIdx;
+	const float shadow_t = optixGetRayTmax();
+	const float3 shadow_hit_point = optixGetWorldRayOrigin() + shadow_t * optixGetWorldRayDirection();
+	const MaterialData mat = sppm_resolve_mix_material(sppm_params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
 
 	if (mat.type == MaterialType::DiffuseLight) {
 		optixSetPayload_0(0);
@@ -267,7 +306,12 @@ extern "C" __global__ void __anyhit__sppm_shadow_sphere() {
 extern "C" __global__ void __anyhit__sppm_shadow_quad() {
 	const unsigned int primIdx = optixGetPrimitiveIndex();
 	const QuadData& quad = sppm_params.quads[primIdx];
-	const MaterialData& mat = sppm_params.materials[quad.materialIdx];
+	// Resolved to a real, non-Mix material -- see the sphere any-hit's
+	// identical comment just above.
+	int matIdx = quad.materialIdx;
+	const float shadow_t = optixGetRayTmax();
+	const float3 shadow_hit_point = optixGetWorldRayOrigin() + shadow_t * optixGetWorldRayDirection();
+	const MaterialData mat = sppm_resolve_mix_material(sppm_params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
 
 	if (mat.type == MaterialType::DiffuseLight) {
 		optixSetPayload_0(0);
@@ -426,7 +470,24 @@ static __device__ __forceinline__ bool sppm_sample_rough_dielectric(
 // optix_interface.cpp's scene-capability check, which rejects any scene
 // using a MaterialType not covered by this function or by the Lambertian
 // fallback below) rather than silently mis-scattered through that
-// fallback.
+// fallback. CoatedDiffuse/CoatedConductor were investigated (real support
+// via the shared CoatedDiffuseBxDF/CoatedConductorBxDF::f()/sample_local(),
+// src/shared/bxdfs_layered.h) but pulled back out: real-render verification
+// showed the glossy-regime NEE this port would rely on (SPPM's camera pass
+// records exactly one visible point per pixel and gets ALL of that point's
+// direct light from one NEE sample, unlike a full path tracer whose own
+// BSDF-sampled continuation independently picks up the coat's specular
+// highlight and further indirect bounces) produces a severely too-dark
+// render vs. every other backend on B5/B7 - a real architecture mismatch
+// between SPPM's single-NEE-sample-per-visible-point design and this
+// material's largely-specular-coat reflectance distribution, not a simple
+// bug fixable in this pass. Hair/Subsurface/Measured remain out of scope
+// entirely for unrelated reasons: hair only ever renders on tessellated-
+// curve (bilinear-patch) geometry and subsurface needs a whole separate
+// BSSRDF probe-walk raygen pass, both permanently rejected by
+// optix_interface.cpp's sppm_gpu_unsupported_reason() regardless of
+// material-dispatch support; measured's tabulated-BRDF tables aren't wired
+// into SPPMLaunchParams at all.
 //
 // Conductor/RoughMetal are NOT a fixed answer per MaterialType the way
 // Metal/Dielectric/DiffuseTransmission are: like their CPU material
@@ -756,7 +817,13 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 
 		if (!payload.hit) break;  // no sky in Phase 1 -- ray escapes, contributes nothing
 
-		const MaterialData& mat = sppm_params.materials[payload.materialIdx];
+		// Resolved to a real, non-Mix material before any mat.type check
+		// below -- see sppm_resolve_mix_material()'s own comment. Overwrites
+		// payload.materialIdx with the resolved index so every later read in
+		// this function (including pixel.vp_materialIdx below) sees the
+		// concrete material, never a stale MaterialType::Mix index.
+		const MaterialData mat = sppm_resolve_mix_material(
+			sppm_params.materials[payload.materialIdx], payload.materialIdx, payload.hitPoint, payload.materialIdx);
 
 		if (mat.type == MaterialType::Interface) {
 			// pbrt-v4 "Material none"/"" (see interface_material,
@@ -968,7 +1035,10 @@ extern "C" __global__ void __raygen__sppm_photon_pass() {
 			p0, p1);
 		if (!payload.hit) break;
 
-		const MaterialData& mat = sppm_params.materials[payload.materialIdx];
+		// Resolved to a real, non-Mix material -- see the camera pass's
+		// identical resolution just above for the full rationale.
+		const MaterialData mat = sppm_resolve_mix_material(
+			sppm_params.materials[payload.materialIdx], payload.materialIdx, payload.hitPoint, payload.materialIdx);
 
 		if (mat.type == MaterialType::Interface) {
 			// Medium-boundary pass-through (see the camera pass's identical
