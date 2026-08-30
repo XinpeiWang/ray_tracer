@@ -2222,6 +2222,20 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 	for (const pbrt_scene::MediumDecl &md : scene.media) {
 		Medium medium;
 		const bool isCloud = (md.type == "cloud");
+		// isRgbGrid is checked 3 separate times below - the flat-"Le"-field
+		// skip (this loop, ~10 lines down), the cloud/uniformgrid-only
+		// "Le is meaningless" warning condition, and that warning's own
+		// hardcoded "homogeneous\"/\"rgbgrid\"" supported-types string -
+		// each answers a genuinely different question (does this type use
+		// the flat field at all / should THIS type's flat value warn if
+		// nonzero / what to tell the user is actually supported), so a
+		// code-review finding on this round's own rgbgrid-Le change flagged
+		// the duplication risk but a single shared boolean would be a false
+		// unification: forcing these into one flag would either be wrong
+		// for one of the 3 questions or add an indirection with no real
+		// payoff. Kept as 3 explicit sites instead, each now cross-
+		// referencing the others by name so a future 4th emissive medium
+		// type can't update one without being pointed at the rest.
 		const bool isRgbGrid = (md.type == "rgbgrid");
 		const bool isUniformGrid = (md.type == "uniformgrid");
 		if (!isCloud && !isRgbGrid && !isUniformGrid && md.type != "homogeneous") {
@@ -2248,7 +2262,9 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// "rgb Le"/"float Lescale" - see Medium::Le's own comment on why
 		// this round is homogeneous-only, and Medium::Le_r/g/b's own
 		// comment for why "rgbgrid" is now ALSO supported, but through a
-		// separate, array-shaped field, not this one. Skipped entirely for
+		// separate, array-shaped field, not this one. This is site 1 of 3
+		// where isRgbGrid is checked for this reason (see isRgbGrid's own
+		// declaration comment above for the other 2). Skipped entirely for
 		// isRgbGrid (handled below instead) - reading it here too would
 		// misinterpret that type's own per-voxel "Le" array as a flat
 		// colour (see Medium::Le_r's own comment for why). Read
@@ -2329,9 +2345,11 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// grid, not this flat colour, so it's silently meaningless for them
 		// - warn rather than let a scene author believe it did something.
 		// rgbgrid is deliberately EXCLUDED here now (Medium::Le_r's own
-		// comment) - it gets its own real per-voxel "Le" support below, so
-		// this check would otherwise fire a misleading "dropped" warning
-		// for a scene whose emission this loader now actually honors.
+		// comment; this is site 2 of 3, see isRgbGrid's own declaration
+		// comment above) - it gets its own real per-voxel "Le" support
+		// below, so this check would otherwise fire a misleading "dropped"
+		// warning for a scene whose emission this loader now actually
+		// honors. The warning message just below is site 3 of 3.
 		// Grouped with the sigma_a-dropped warnings just below (same
 		// "parameter X is meaningless for type Y" shape), not folded into
 		// the AABB-computation block above.
@@ -2415,8 +2433,35 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			// 1.0 when omitted, matching pbrt-v4's spec exactly; only an
 			// explicit "Lescale" of 0 (or omitting "Le" entirely, leaving
 			// Le_r/g/b empty) turns emission off).
-			deinterleave("Le", medium.Le_r, medium.Le_g, medium.Le_b);
+			// "blackbody Le" (a single Kelvin temperature) is a
+			// homogeneous-only convenience - rgbgrid's own real "Le" is
+			// always a per-voxel RGB array (one triple per voxel), which a
+			// single temperature can't express. Checked explicitly (rather
+			// than falling through to deinterleave()'s own generic
+			// wrong-length warning below) since a code-review pass found
+			// that generic message actively misleading here - it reads
+			// "array has 1 numbers, expected N" which implies "supply more
+			// numbers", not "this syntax isn't supported for rgbgrid".
+			const pbrt_scene::Param *leParam = md.params.find("Le");
+			if (leParam && leParam->type == "blackbody") {
+				warn("medium '" + md.name + "' (\"rgbgrid\") has a \"blackbody Le\", "
+					 "but rgbgrid media only support a per-voxel \"rgb Le\" array, not "
+					 "a single blackbody temperature; the emission is dropped");
+			} else {
+				deinterleave("Le", medium.Le_r, medium.Le_g, medium.Le_b);
+			}
 			medium.Le_scale = md.params.getFloat("Lescale", 1.0);
+			// "Lescale" set but no (valid) "Le" array ended up populated -
+			// silently has no effect otherwise (RGBGridMediumData::
+			// is_emissive() correctly stays false), which a code-review
+			// pass found gives no hint to a scene author who forgot/
+			// mistyped "Le" - warn, matching homogeneous Le's own "nonzero
+			// param with no effect" diagnostic precedent above.
+			if (md.params.find("Lescale") &&
+				medium.Le_r.empty() && medium.Le_g.empty() && medium.Le_b.empty()) {
+				warn("medium '" + md.name + "' (\"rgbgrid\") sets \"Lescale\" but has no "
+					 "valid \"rgb Le\" array; \"Lescale\" has no effect without one");
+			}
 		}
 
 		if (isUniformGrid) {

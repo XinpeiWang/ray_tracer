@@ -91,6 +91,23 @@ class rgb_grid_medium_hittable : public hittable {
                 color emission(0, 0, 0);
                 for (int c = 0; c < 3; ++c) {
                     double sigma_t_c = sa[c] + ss[c];
+                    // `> 1e-9`, not constant_medium.h's plain `> 0` for the
+                    // analogous homogeneous-medium divide guard (that
+                    // file's own hg_phase_material-constructing
+                    // constructor) - a deliberate difference, not drift: sa/
+                    // ss there are exact scene-author-supplied constants
+                    // (sigma_t is either exactly 0.0 or a real chosen
+                    // value), while sa[c]/ss[c] here come from
+                    // grid.sample_point()'s trilinear interpolation of
+                    // per-voxel data, which can leave sigma_t_c a tiny
+                    // nonzero float noise value near a voxel boundary where
+                    // the true density is meant to be zero - dividing le[c]
+                    // by that near-zero value would spike into a bright,
+                    // spurious firefly rather than genuinely produce zero
+                    // emission. A code-review pass flagged the two guards'
+                    // inconsistency; kept apart since they guard against
+                    // different failure modes (exact-zero vs. near-zero
+                    // interpolation noise).
                     if (sigma_t_c > 1e-9) emission[c] = le[c] * (sa[c] / sigma_t_c);
                 }
                 rec.mat = make_shared<hg_phase_material>(albedo, phase_g,

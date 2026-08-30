@@ -4300,18 +4300,39 @@ static bool build_loaded_pbrt_scene(
 
 	// MakeNamedMedium's own "rgb Le"/"float Lescale" (pbrt-v4) - now
 	// implemented on both GPU backends for "homogeneous" media (MaterialType::
-	// Medium) only, matching CPU's own scope exactly (pbrt_flatten::Medium::
-	// Le's own comment - CPU never decodes Le for cloud/rgbgrid/uniformgrid
-	// either). See MaterialData::medium_emission's own comment (optix_types.h)
-	// for the sigma_a/sigma_t-weighted value baked in at build time
-	// (pbrt_gpu_builder.h's mediumMaterialIndex()) and each backend's own
-	// Medium closest-hit case for the real-collision gate (added only on a
-	// genuine phase-scatter event, never the straight-through sub-case) -
-	// same "cheap warning for a real, currently-unimplemented backend gap"
-	// pattern as the warning above, narrowed to the 3 heterogeneous types
-	// that still don't decode Le on either backend.
+	// Medium) only, matching CPU's own scope exactly for GPU (CPU itself now
+	// ALSO decodes "rgbgrid"'s own real per-voxel "Le" - see
+	// pbrt_flatten::Medium::Le_r's own comment - but that support is CPU-only
+	// this round; GPU's MaterialType::RgbGridMedium has no emission concept
+	// at all yet). See MaterialData::medium_emission's own comment
+	// (optix_types.h) for the sigma_a/sigma_t-weighted value baked in at
+	// build time (pbrt_gpu_builder.h's mediumMaterialIndex()) and each
+	// backend's own Medium closest-hit case for the real-collision gate
+	// (added only on a genuine phase-scatter event, never the
+	// straight-through sub-case) - same "cheap warning for a real,
+	// currently-unimplemented backend gap" pattern as the warning above.
+	//
+	// "rgbgrid" needs its own hasLe check here: its real Le lives in the
+	// per-voxel Le_r/Le_g/Le_b arrays now (Medium::Le_r's own comment), not
+	// the flat Le[3] field every OTHER type still uses - the flat field
+	// stays permanently zero for rgbgrid (pbrt_flatten.h's own `if
+	// (!isRgbGrid)` guard around that generic read), so `isNonzeroRGB(med.Le)`
+	// alone can never see a real rgbgrid emission request. A code-review
+	// pass found this exact gap: this warning silently stopped firing for
+	// rgbgrid once CPU started actually honoring its own "Le", since nothing
+	// updated this GPU-side check to look at the new fields too - fixed by
+	// checking Le_r/Le_g/Le_b (gated on Le_scale>0, matching
+	// RGBGridMediumData::is_emissive()'s own "Le_grids && Le_scale>0"
+	// convention) whenever the medium is rgbgrid specifically.
 	for (const pbrt_flatten::Medium& med : loaded.scene.media) {
-		if (med.type != "homogeneous" && pbrt_flatten::isNonzeroRGB(med.Le)) {
+		bool hasLe = pbrt_flatten::isNonzeroRGB(med.Le);
+		if (med.type == "rgbgrid" && !hasLe && med.Le_scale > 0.0) {
+			const auto anyNonzero = [](const std::vector<double>& v) {
+				return std::any_of(v.begin(), v.end(), [](double x) { return x > 1e-9; });
+			};
+			hasLe = anyNonzero(med.Le_r) || anyNonzero(med.Le_g) || anyNonzero(med.Le_b);
+		}
+		if (med.type != "homogeneous" && hasLe) {
 			std::cerr << "[OptiX] Warning: scene requests a MakeNamedMedium "
 						 "\"Le\"/\"Lescale\" (a self-emitting medium) on a \""
 					  << med.type << "\" medium, but GPU rendering only "
