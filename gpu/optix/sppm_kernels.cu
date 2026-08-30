@@ -100,3 +100,27 @@ extern "C" __global__ void sppm_final_image_kernel(
 	float3 indirect = (denom > 0.0f) ? px.tau * (1.0f / denom) : make_float3(0.0f, 0.0f, 0.0f);
 	framebuffer[i] = px.Ld * invIter + indirect;
 }
+
+// Test-only mirror of sppm_programs.cu's own sppm_mix_branch_hash01() (that
+// file is an OptiX device-program module, not directly host-callable/
+// device-linkable the way this plain-kernel file is - see
+// tests/unit/sppm_gpu_mix_hash_tests.cpp's own top comment for the full
+// rationale). MUST stay byte-for-byte identical to the real function - this
+// is a 5th hand-duplicated copy of the same hash formula (CPU's
+// branch_hash01, the recursive and wavefront backends' own copies, this
+// file's own sppm_programs.cu copy, and now this test-only one), purely to
+// give the `variant`/iteration-decorrelation fix (added to close a
+// real-render-verified bug: a variant-less resolve froze Mix materials to a
+// static per-pixel binary choice for the whole render) automated coverage
+// GPU SPPM had none of before. If sppm_mix_branch_hash01() ever changes,
+// update this copy too.
+extern "C" __global__ void sppm_mix_branch_hash01_test_kernel(
+	const float3* points, const unsigned int* variants, int n, float* outHashes) {
+	int i = blockIdx.x * blockDim.x + threadIdx.x;
+	if (i >= n) return;
+	const float3 p = points[i];
+	const unsigned int variant = variants[i];
+	float h = sinf(p.x * 127.1f + p.y * 311.7f + p.z * 74.7f
+	               + float(variant) * 0.6180339887498949f) * 43758.5453f;
+	outHashes[i] = h - floorf(h);
+}

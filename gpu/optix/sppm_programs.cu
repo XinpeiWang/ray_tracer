@@ -246,49 +246,101 @@ static __device__ __forceinline__ bool sppm_is_transmissive_material(MaterialTyp
 	       t == MaterialType::DiffuseTransmission;
 }
 
-// Deterministic [0,1) hash from a world-space point -- direct copy of
-// wavefront_kernels.cu's wf_mix_branch_hash01 (identical algorithm, sppm_
-// prefix), matching CPU's branch_hash01() (src/TheRestOfYourLife/
-// material_pbrt.h) exactly, NOT a fresh random draw -- so a radiance hit and
-// its later shadow ray agree on which sub-material a Mix resolved to.
-static __device__ __forceinline__ float sppm_mix_branch_hash01(const float3& p) {
-	float h = sinf(p.x * 127.1f + p.y * 311.7f + p.z * 74.7f) * 43758.5453f;
+// Deterministic [0,1) hash from a world-space point plus a decorrelation
+// term -- CORE ALGORITHM matches wavefront_kernels.cu's wf_mix_branch_hash01
+// / CPU's branch_hash01() (src/TheRestOfYourLife/material_pbrt.h) exactly
+// (`variant`==0 reproduces their formula byte-for-byte). The `variant`
+// parameter is a REAL, deliberate divergence from those two, not drift -
+// see sppm_resolve_mix_material_index()'s own comment for why GPU SPPM
+// specifically needs one and the other backends don't. A code-review pass
+// on this file's own earlier, variant-less version confirmed (via a
+// dedicated verifier agent tracing the actual launch code in
+// sppm_path_tracer.cpp) that a Mix material rendered as a frozen, static
+// per-pixel binary choice for the ENTIRE render rather than the intended
+// converging stochastic blend - this is the fix for that finding.
+// MAINTENANCE NOTE: this hash formula (sin/floor magic constants) is
+// hand-duplicated a 4th time here (CPU's branch_hash01, the recursive
+// backend's mix_branch_hash01 in optix_device_helpers.h, wavefront's
+// wf_mix_branch_hash01 in wavefront_common.h, and this one) - if the
+// formula itself (not this file's own `variant` extension) ever needs a
+// correctness fix, check and update all four.
+static __device__ __forceinline__ float sppm_mix_branch_hash01(const float3& p, unsigned int variant) {
+	float h = sinf(p.x * 127.1f + p.y * 311.7f + p.z * 74.7f
+	               + float(variant) * 0.6180339887498949f) * 43758.5453f;
 	return h - floorf(h);
 }
 
-// Resolves a (possibly MaterialType::Mix) MaterialData to a real, non-Mix
-// MaterialData -- direct copy of wavefront_kernels.cu's wf_resolve_mix_material
-// (identical algorithm, sppm_ prefix, same "don't share device helpers
-// across backends" convention as this file's other sppm_-prefixed ports).
-// Looping (not recursing) while the result is itself another Mix -- see
-// MaterialType::Mix's own comment (optix_types.h). `outMatIdx` receives the
-// resolved index into sppm_params.materials.
-static __device__ __forceinline__ MaterialData sppm_resolve_mix_material(
-	MaterialData mat, int matIdx, const float3& hit_point, int& outMatIdx) {
+// Resolves a (possibly MaterialType::Mix) material index to a real, non-Mix
+// index, looping (not recursing) while the entry is itself another Mix -
+// kMaxMixDepth mirrors the identical cap in pbrt_gpu_builder.h (host-side
+// build) and both other GPU backends' own resolve loops (a 4th independent
+// copy of this specific constant too - see this function's neighbor
+// sppm_mix_branch_hash01's own maintenance note). Returns the resolved
+// INDEX rather than a MaterialData copy so callers can go back to a plain
+// `sppm_params.materials[idx]` reference read afterward - the same
+// zero-copy shape every non-Mix call site already had before Mix support
+// existed, rather than materializing a struct copy on every hit regardless
+// of whether it was ever a Mix.
+//
+// `iterationSeed`: GPU SPPM's camera pass traces a FIXED, unjittered
+// primary ray per pixel (no antialiasing at Phase 1 - see
+// __raygen__sppm_camera_pass's own comment) with an NEE seed that is a
+// pure function of pixelIdx, so a given pixel's hit point on any surface is
+// bit-identical on every SPPM iteration. Since sppm_mix_branch_hash01() is
+// a pure function of that hit point, a variant-less resolve would pick the
+// SAME sub-material for that pixel on every iteration, for the whole
+// render - and since photon deposits key off the visible point's own
+// frozen vp_materialIdx (not a fresh per-photon resolve), so would ALL
+// indirect light too. Passing sppm_params.photonSeedBase (already set to
+// the current SPPM iteration index by SPPMPathTracer::render(), before
+// EVERY launch that iteration including the camera pass - not just its own
+// photon pass) into the hash decorrelates repeat evaluations at the same
+// point across iterations, restoring real convergence toward the intended
+// per-point stochastic blend. CPU/wavefront/recursive don't need this: their
+// own primary rays ARE jittered per sample, so their hit points - and thus
+// their Mix resolution - already vary sample to sample for free.
+static __device__ __forceinline__ int sppm_resolve_mix_material_index(
+	int materialIdx, const float3& hit_point, unsigned int iterationSeed) {
+	MaterialData mat = sppm_params.materials[materialIdx];
 	constexpr int kMaxMixDepth = 8;
 	for (int depth = 0; mat.type == MaterialType::Mix && depth < kMaxMixDepth; ++depth) {
 		const float w = mat.mix_extra.mixWeight;
-		const float h = sppm_mix_branch_hash01(hit_point);
+		const float h = sppm_mix_branch_hash01(hit_point, iterationSeed);
 		const int subIdx = (h >= w) ? static_cast<int>(mat.mix_extra.mixMaterialAIdx)
 		                             : static_cast<int>(mat.mix_extra.mixMaterialBIdx);
-		matIdx = subIdx;
+		materialIdx = subIdx;
 		mat = sppm_params.materials[subIdx];
 	}
-	outMatIdx = matIdx;
-	return mat;
+	return materialIdx;
+}
+
+// Shared by both shadow any-hit programs below: resolves `matIdx` (updated
+// in place) to a real, non-Mix material, computing the shadow ray's own hit
+// point ONLY when the hit is actually Mix-typed (a cheap `mat.type` peek
+// first, rather than unconditionally paying for optixGetRayTmax()/
+// optixGetWorldRayOrigin()/optixGetWorldRayDirection() plus the FMA on
+// every shadow-ray any-hit invocation - the overwhelming common case, even
+// in a scene that uses Mix somewhere). optixGetRayTmax() and the world-ray
+// accessors are valid to call from any __device__ function inside an
+// any-hit program's call tree, not just the entry point itself, so hoisting
+// this into a shared helper (rather than duplicating it per geometry type,
+// as an earlier version of this file did) is safe. Returns a REFERENCE,
+// matching every other material lookup in this file's own established
+// zero-copy convention.
+static __device__ __forceinline__ const MaterialData& sppm_resolve_shadow_hit_material(int& matIdx) {
+	if (sppm_params.materials[matIdx].type == MaterialType::Mix) {
+		const float shadow_t = optixGetRayTmax();
+		const float3 shadow_hit_point = optixGetWorldRayOrigin() + shadow_t * optixGetWorldRayDirection();
+		matIdx = sppm_resolve_mix_material_index(matIdx, shadow_hit_point, sppm_params.photonSeedBase);
+	}
+	return sppm_params.materials[matIdx];
 }
 
 extern "C" __global__ void __anyhit__sppm_shadow_sphere() {
 	const unsigned int primIdx = optixGetPrimitiveIndex();
 	const SphereData& sphere = sppm_params.spheres[primIdx];
-	// Resolved to a real, non-Mix material before any mat.type check below --
-	// see sppm_resolve_mix_material()'s own comment. The shadow ray's OWN hit
-	// point (not the primary hit that spawned it) picks the branch, matching
-	// wavefront_anyhit_shadow.h's __anyhit__wf_shadow_sphere exactly.
 	int matIdx = sphere.materialIdx;
-	const float shadow_t = optixGetRayTmax();
-	const float3 shadow_hit_point = optixGetWorldRayOrigin() + shadow_t * optixGetWorldRayDirection();
-	const MaterialData mat = sppm_resolve_mix_material(sppm_params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
+	const MaterialData& mat = sppm_resolve_shadow_hit_material(matIdx);
 
 	if (mat.type == MaterialType::DiffuseLight) {
 		optixSetPayload_0(0);
@@ -306,12 +358,8 @@ extern "C" __global__ void __anyhit__sppm_shadow_sphere() {
 extern "C" __global__ void __anyhit__sppm_shadow_quad() {
 	const unsigned int primIdx = optixGetPrimitiveIndex();
 	const QuadData& quad = sppm_params.quads[primIdx];
-	// Resolved to a real, non-Mix material -- see the sphere any-hit's
-	// identical comment just above.
 	int matIdx = quad.materialIdx;
-	const float shadow_t = optixGetRayTmax();
-	const float3 shadow_hit_point = optixGetWorldRayOrigin() + shadow_t * optixGetWorldRayDirection();
-	const MaterialData mat = sppm_resolve_mix_material(sppm_params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
+	const MaterialData& mat = sppm_resolve_shadow_hit_material(matIdx);
 
 	if (mat.type == MaterialType::DiffuseLight) {
 		optixSetPayload_0(0);
@@ -818,12 +866,16 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 		if (!payload.hit) break;  // no sky in Phase 1 -- ray escapes, contributes nothing
 
 		// Resolved to a real, non-Mix material before any mat.type check
-		// below -- see sppm_resolve_mix_material()'s own comment. Overwrites
+		// below -- see sppm_resolve_mix_material_index()'s own comment,
+		// including for `sppm_params.photonSeedBase` here (the current SPPM
+		// iteration index, despite the name - see that comment for why the
+		// camera pass needs it too, not just the photon pass). Overwrites
 		// payload.materialIdx with the resolved index so every later read in
 		// this function (including pixel.vp_materialIdx below) sees the
 		// concrete material, never a stale MaterialType::Mix index.
-		const MaterialData mat = sppm_resolve_mix_material(
-			sppm_params.materials[payload.materialIdx], payload.materialIdx, payload.hitPoint, payload.materialIdx);
+		payload.materialIdx = sppm_resolve_mix_material_index(
+			payload.materialIdx, payload.hitPoint, sppm_params.photonSeedBase);
+		const MaterialData& mat = sppm_params.materials[payload.materialIdx];
 
 		if (mat.type == MaterialType::Interface) {
 			// pbrt-v4 "Material none"/"" (see interface_material,
@@ -1036,9 +1088,12 @@ extern "C" __global__ void __raygen__sppm_photon_pass() {
 		if (!payload.hit) break;
 
 		// Resolved to a real, non-Mix material -- see the camera pass's
-		// identical resolution just above for the full rationale.
-		const MaterialData mat = sppm_resolve_mix_material(
-			sppm_params.materials[payload.materialIdx], payload.materialIdx, payload.hitPoint, payload.materialIdx);
+		// identical resolution just above for the full rationale, including
+		// why photonSeedBase must feed this call too, not just the photon
+		// walk's own RNG seed below.
+		payload.materialIdx = sppm_resolve_mix_material_index(
+			payload.materialIdx, payload.hitPoint, sppm_params.photonSeedBase);
+		const MaterialData& mat = sppm_params.materials[payload.materialIdx];
 
 		if (mat.type == MaterialType::Interface) {
 			// Medium-boundary pass-through (see the camera pass's identical

@@ -561,10 +561,17 @@ enum class MaterialType : int {
 // - Lambertian/DiffuseLight handled directly, RoughDielectric/Metal/
 // Dielectric/Conductor/RoughMetal/DiffuseTransmission via
 // sppm_is_delta_material()/sppm_sample_delta_material()'s explicit dispatch,
-// Mix via sppm_resolve_mix_material() (resolved to one of the other entries
-// in this list before any dispatch runs - a Mix instance itself never
-// reaches sppm_is_delta_material()/sppm_bsdf_f(), so it needs no case of its
-// own in either). Any MaterialType NOT in this list falls through
+// Mix via sppm_resolve_mix_material_index() (resolved to one of the other
+// entries in this list before any dispatch runs - a Mix instance itself
+// never reaches sppm_is_delta_material()/sppm_bsdf_f(), so it needs no case
+// of its own in either). Mix's own resolution needs the current SPPM
+// iteration index folded into its branch-selection hash (GPU SPPM's camera
+// pass traces an unjittered primary ray, unlike the other two backends -
+// see sppm_resolve_mix_material_index()'s own comment, sppm_programs.cu,
+// for the full rationale and the real-render-verified bug this fixes: a
+// variant-less resolve rendered Mix as a frozen per-pixel binary choice for
+// the whole render, not the intended converging stochastic blend). Any
+// MaterialType NOT in this list falls through
 // sppm_programs.cu's own "treat as Lambertian" default, silently reading
 // that material's (possibly unset) albedo union slot - which is exactly the
 // class of bug gpu/optix/optix_interface.cpp's sppm_gpu_unsupported_reason()

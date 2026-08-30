@@ -45,3 +45,16 @@ extern "C" void sppm_launch_final_image(
 	sppm_final_image_kernel<<<grid, block, 0, stream>>>(
 		d_pixels, numPixels, nIterations, totalPhotonPaths, d_framebuffer);
 }
+
+extern "C" __global__ void sppm_mix_branch_hash01_test_kernel(
+	const float3*, const unsigned int*, int, float*);
+
+extern "C" void sppm_launch_mix_branch_hash01_test(
+	const float3* d_points, const unsigned int* d_variants, int n, float* d_outHashes,
+	cudaStream_t stream) {
+	if (n == 0) return;
+	dim3 block(256);
+	dim3 grid((n + 255) / 256);
+	sppm_mix_branch_hash01_test_kernel<<<grid, block, 0, stream>>>(
+		d_points, d_variants, n, d_outHashes);
+}
