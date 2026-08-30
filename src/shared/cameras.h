@@ -65,6 +65,24 @@ inline CropPixelBounds resolve_crop_pixel_bounds(double fracX0, double fracX1,
 	return CropPixelBounds{x0, x1, y0, y1, degenerate};
 }
 
+// Shared "is (ix,iy) inside [x0,x1) x [y0,y1)" crop-bounds predicate - the
+// single test every CPU crop-gated integrator needs (src/TheRestOfYourLife/
+// bdpt_adapter.h's row-parallel drivers/SplatFilm/MLT's own splat lambda,
+// sppm_adapter.h's camera pass), factored out here after a code-review pass
+// found the same 4-comparison expression hand-duplicated at 9 separate call
+// sites with no shared helper. Deliberately just the PREDICATE, not a
+// shared "skip this pixel" control-flow helper: bdpt_render_with_adapter's
+// own loop must NOT skip work for an out-of-crop pixel (see that function's
+// own comment - doing so would shrink BDPT's t==1 light-tracing splat
+// sample budget while SplatFilm::ToRGB()'s normalizer stays fixed, silently
+// darkening the image) even though it still needs this same boolean to
+// gate its own final per-pixel write - a caller that wrapped this in
+// `if (!in_crop_rect(...)) continue;` for every caller would silently
+// reintroduce that bug for BDPT specifically.
+inline bool in_crop_rect(int ix, int iy, int x0, int x1, int y0, int y1) {
+	return ix >= x0 && ix < x1 && iy >= y0 && iy < y1;
+}
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif

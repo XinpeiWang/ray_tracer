@@ -1420,20 +1420,29 @@ class SplatFilm {
 	// camera.h's own sentinel convention, so every pre-existing call site
 	// (tests, any caller with no crop request) compiles and behaves
 	// unchanged.
+	// buf_/mutexes_ are sized to the CROP rect, not the full width*height -
+	// a code-review pass found them still full-frame-sized despite the crop
+	// bounds being available right here, wasting the "hundreds of MB at 4K+"
+	// this class's own Splat()/ToRGB() comments already warn about even for
+	// a crop covering a small fraction of the frame (exactly the case a
+	// crop rect is normally used for - fast iteration on a small region).
 	SplatFilm(int width, int height,
 	          int cropX0 = 0, int cropX1 = -1, int cropY0 = 0, int cropY1 = -1)
 		: width_(width), height_(height),
 		  cropX0_(cropX0), cropX1_(cropX1 < 0 ? width : cropX1),
 		  cropY0_(cropY0), cropY1_(cropY1 < 0 ? height : cropY1),
-		  buf_(static_cast<size_t>(width) * height * 3, 0.0),
-		  mutexes_(static_cast<size_t>(width) * height) {}
+		  buf_(static_cast<size_t>(cropX1_ - cropX0_) * (cropY1_ - cropY0_) * 3, 0.0),
+		  mutexes_(static_cast<size_t>(cropX1_ - cropX0_) * (cropY1_ - cropY0_)) {}
 
 	void Splat(double px, double py, const double L[3]) {
 		int ix = static_cast<int>(px);
 		int iy = static_cast<int>(py);
 		if (ix < 0 || ix >= width_ || iy < 0 || iy >= height_) return;
-		if (ix < cropX0_ || ix >= cropX1_ || iy < cropY0_ || iy >= cropY1_) return;
-		size_t pidx = static_cast<size_t>(iy) * width_ + ix;
+		if (!in_crop_rect(ix, iy, cropX0_, cropX1_, cropY0_, cropY1_)) return;
+		// Crop-local index - buf_/mutexes_ are sized to the crop rect only,
+		// so a full-frame (ix,iy) must be rebased against (cropX0_,cropY0_)
+		// before indexing into them.
+		size_t pidx = static_cast<size_t>(iy - cropY0_) * (cropX1_ - cropX0_) + (ix - cropX0_);
 		std::lock_guard<std::mutex> lg(mutexes_[pidx]);
 		for (int c = 0; c < 3; ++c) {
 			double v = L[c];
@@ -1442,14 +1451,29 @@ class SplatFilm {
 		}
 	}
 
+	// Adds this film's splats (converted to RGB via /norm) into `out_rgb`, a
+	// FULL-FRAME width*height*3 buffer already sized/zero-initialized by the
+	// caller - NOT a same-shape return the way this used to work before
+	// buf_ became crop-sized (see this class's own constructor comment);
+	// each crop-local bucket is rebased back to its full-frame pixel offset
+	// on write, since the caller's own out_rgb still spans the whole image
+	// (a cropped-out pixel there just never receives a += from here).
+	//
 	// norm: total samples PER PIXEL across the whole image (spp) -- NOT
 	// divided by pixel count again, since each splat already lands at a
 	// specific pixel; this mirrors pbrt-v4's own LightPathIntegrator film
 	// reconstruction (splat weight accumulates raw, normalized once by the
 	// image's total sample count at the end).
-	void ToRGB(std::vector<double>& out_rgb, double norm) const {
-		out_rgb.resize(buf_.size());
-		for (size_t i = 0; i < buf_.size(); ++i) out_rgb[i] = buf_[i] / norm;
+	void AddToRGB(std::vector<double>& out_rgb, double norm) const {
+		const int cropWidth = cropX1_ - cropX0_;
+		const int cropHeight = cropY1_ - cropY0_;
+		for (int ly = 0; ly < cropHeight; ++ly) {
+			for (int lx = 0; lx < cropWidth; ++lx) {
+				const size_t localIdx = (static_cast<size_t>(ly) * cropWidth + lx) * 3;
+				const size_t fullIdx = (static_cast<size_t>(cropY0_ + ly) * width_ + (cropX0_ + lx)) * 3;
+				for (int c = 0; c < 3; ++c) out_rgb[fullIdx + c] += buf_[localIdx + c] / norm;
+			}
+		}
 	}
 
   private:
@@ -1517,16 +1541,33 @@ inline void bdpt_render_with_adapter(const BDPTSceneAdapter& scene, int width, i
 		while (true) {
 			int iy = next_row.fetch_add(1);
 			if (iy >= height) break;
-			// Film "cropwindow"/"pixelbounds" - a row entirely outside the
-			// crop rect contributes nothing via t>=2 connections (this loop)
-			// AND generates no light-subpath samples to splat from either,
-			// so skipping the whole row is correct, not just an
-			// optimization - see the `splat` lambda's own SplatFilm crop
-			// gate above for the t==1 half of this feature.
-			if (iy < cropY0 || iy >= cropY1) continue;
 
 			for (int ix = 0; ix < width; ++ix) {
-				if (ix < cropX0 || ix >= cropX1) continue;
+				// Film "cropwindow"/"pixelbounds" - unlike every OTHER
+				// per-pixel driver in this file, BDPT's own t==1 light-
+				// tracing splats (the `splat` lambda above) are generated as
+				// a SIDE EFFECT of this same per-pixel/per-sample loop and
+				// normalized by SplatFilm::ToRGB() against a FIXED `spp`
+				// (see that function's own comment: the total sample count
+				// the whole image's splat buffer is implicitly assumed to
+				// have been fed by, independent of how many pixels actually
+				// ran). Skipping this loop body entirely for an out-of-crop
+				// pixel would shrink that total sample count in proportion
+				// to the crop's own area while `spp` stays fixed, silently
+				// DARKENING every t==1 contribution inside the crop rather
+				// than merely rendering a smaller region - a real
+				// correctness bug, not just a missed optimization (found by
+				// code review). MLT's/LightPath's own splat mechanisms
+				// don't have this problem because they already preserve
+				// their full sample/mutation budget unconditionally and
+				// gate only the splat DESTINATION (see their own crop-check
+				// comments) - so BDPT does the same here: every pixel still
+				// runs its full `spp` budget (feeding `splat` at the same
+				// rate as an uncropped render), and only the FINAL
+				// out_rgb write below is skipped for an out-of-crop pixel
+				// (SplatFilm's own crop gate already keeps t==1 energy from
+				// ever landing outside the crop rect either).
+				const bool inCrop = in_crop_rect(ix, iy, cropX0, cropX1, cropY0, cropY1);
 				double sum[3] = { 0.0, 0.0, 0.0 };
 				for (int s = 0; s < spp; ++s) {
 					double px = (ix + random_double()) / width;
@@ -1539,12 +1580,14 @@ inline void bdpt_render_with_adapter(const BDPTSceneAdapter& scene, int width, i
 					BDPTLi<double>(cam_p, cam_n, ray_d, maxDepth, scene,
 					                cameraVerts.data(), lightVerts.data(), L, splat);
 
+					if (!inCrop) continue;   // still ran BDPTLi (feeds `splat`), just don't keep its own t>=2 estimate
 					for (int c = 0; c < 3; ++c) {
 						double v = L[c];
 						if (!std::isfinite(v) || v < 0.0) v = 0.0;   // firefly/NaN guard, matches cpu_interface's path tracer
 						sum[c] += v;
 					}
 				}
+				if (!inCrop) continue;
 				int idx = (iy * width + ix) * 3;
 				out_rgb[idx + 0] = sum[0] / spp;
 				out_rgb[idx + 1] = sum[1] / spp;
@@ -1559,9 +1602,7 @@ inline void bdpt_render_with_adapter(const BDPTSceneAdapter& scene, int width, i
 	for (auto& th : threads) th.join();
 
 	if (film) {
-		std::vector<double> splat_rgb;
-		film->ToRGB(splat_rgb, static_cast<double>(spp));
-		for (size_t i = 0; i < out_rgb.size(); ++i) out_rgb[i] += splat_rgb[i];
+		film->AddToRGB(out_rgb, static_cast<double>(spp));
 	}
 }
 
@@ -1759,7 +1800,7 @@ inline void mlt_render_with_adapter(const BDPTSceneAdapter& scene, int width, in
 			// were dropped here, so no renormalization is needed - see
 			// mlt_run_depth_chain()'s own comment for that weight's
 			// derivation.
-			if (ix < cropX0 || ix >= cropX1 || iy < cropY0 || iy >= cropY1) return;
+			if (!in_crop_rect(ix, iy, cropX0, cropX1, cropY0, cropY1)) return;
 			int idx = (iy * width + ix) * 3;
 			buf[idx + 0] += Lr; buf[idx + 1] += Lg; buf[idx + 2] += Lb;
 		};
@@ -1890,7 +1931,7 @@ inline void randomwalk_render_with_adapter(const BDPTSceneAdapter& scene, int wi
 			if (iy >= height) break;
 			if (iy < cropY0 || iy >= cropY1) continue;
 			for (int ix = 0; ix < width; ++ix) {
-				if (ix < cropX0 || ix >= cropX1) continue;
+				if (!in_crop_rect(ix, iy, cropX0, cropX1, cropY0, cropY1)) continue;
 				double sum[3] = {0.0, 0.0, 0.0};
 				for (int s = 0; s < spp; ++s) {
 					double px = (ix + random_double()) / width;
@@ -1934,7 +1975,7 @@ inline void ao_render_with_adapter(const BDPTSceneAdapter& scene, int width, int
 			if (iy >= height) break;
 			if (iy < cropY0 || iy >= cropY1) continue;
 			for (int ix = 0; ix < width; ++ix) {
-				if (ix < cropX0 || ix >= cropX1) continue;
+				if (!in_crop_rect(ix, iy, cropX0, cropX1, cropY0, cropY1)) continue;
 				double sum[3] = {0.0, 0.0, 0.0};
 				for (int s = 0; s < spp; ++s) {
 					double px = (ix + random_double()) / width;
@@ -1979,7 +2020,7 @@ inline void simplepath_render_with_adapter(const BDPTSceneAdapter& scene, int wi
 			if (iy >= height) break;
 			if (iy < cropY0 || iy >= cropY1) continue;
 			for (int ix = 0; ix < width; ++ix) {
-				if (ix < cropX0 || ix >= cropX1) continue;
+				if (!in_crop_rect(ix, iy, cropX0, cropX1, cropY0, cropY1)) continue;
 				double sum[3] = {0.0, 0.0, 0.0};
 				for (int s = 0; s < spp; ++s) {
 					double px = (ix + random_double()) / width;
@@ -2022,7 +2063,7 @@ inline void simplevolpath_render_with_adapter(const BDPTSceneAdapter& scene, int
 			if (iy >= height) break;
 			if (iy < cropY0 || iy >= cropY1) continue;
 			for (int ix = 0; ix < width; ++ix) {
-				if (ix < cropX0 || ix >= cropX1) continue;
+				if (!in_crop_rect(ix, iy, cropX0, cropX1, cropY0, cropY1)) continue;
 				double sum[3] = {0.0, 0.0, 0.0};
 				for (int s = 0; s < spp; ++s) {
 					double px = (ix + random_double()) / width;
@@ -2080,5 +2121,6 @@ inline void lightpath_render_with_adapter(const BDPTSceneAdapter& scene, int wid
 	for (unsigned int t = 0; t < nthreads; ++t) threads.emplace_back(worker);
 	for (auto& th : threads) th.join();
 
-	film.ToRGB(out_rgb, static_cast<double>(spp));
+	out_rgb.assign(static_cast<size_t>(width) * height * 3, 0.0);
+	film.AddToRGB(out_rgb, static_cast<double>(spp));
 }

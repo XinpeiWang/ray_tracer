@@ -666,6 +666,20 @@ static __device__ float3 sppm_sample_sphere_area(const SphereData& sph, unsigned
 	return sph.center + sph.radius * out_n;
 }
 
+// Film "cropwindow"/"pixelbounds" (pbrt-v4) - matches optix_device_helpers.h's
+// identical gpu_in_crop() (and wavefront_kernels.cu's own duplicate of it)
+// exactly - own definition here, same "duplicate rather than share across a
+// .cpp/.h boundary" convention this file's other small device helpers
+// already use. cam.cropX1<=0 (GpuCameraParams::cropX0's own comment) means
+// no crop was requested - every pixel is in bounds. A code-review pass found
+// this SPPM copy previously written as an unnamed inline boolean instead of
+// this same named/shaped function, unlike the other two GPU backends -
+// fixed so a future crop-semantics change stays grep-able across all three.
+__device__ __forceinline__ bool gpu_in_crop(const GpuCameraParams& cam, int px, int py) {
+	if (cam.cropX1 <= 0) return true;
+	return px >= cam.cropX0 && px < cam.cropX1 && py >= cam.cropY0 && py < cam.cropY1;
+}
+
 // ============================================================================
 // __raygen__sppm_camera_pass (sub-phase 1b) -- see file header comment.
 // ============================================================================
@@ -678,19 +692,13 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 	// of the same GpuCameraParams the recursive/wavefront backends already
 	// honor (see sppm_path_tracer.cpp's own params.camera = camera; wiring),
 	// so cropX0/X1/Y0/Y1 are already correctly resolved here - this file
-	// just never read them. Mirrors optix_device_helpers.h's gpu_in_crop()
-	// inline (a separate translation unit - this file's own established
-	// convention, see its file header) rather than writing black: unlike
-	// the other two backends' framebuffer (raw cudaMalloc, needs an
-	// explicit black write), this pixel's own SPPMPixelGPU is zero-
-	// initialized ONCE by the host before iteration 0 and never touched
-	// again for a skipped pixel (see this kernel's own vp_valid comment
-	// below), which sppm_final_image_kernel already reconstructs as black.
-	const GpuCameraParams& cropCam = sppm_params.camera;
-	const bool inCrop = cropCam.cropX1 <= 0 ||
-		((int)idx.x >= cropCam.cropX0 && (int)idx.x < cropCam.cropX1 &&
-		 (int)idx.y >= cropCam.cropY0 && (int)idx.y < cropCam.cropY1);
-	if (!inCrop) return;
+	// just never read them, unlike the other two backends' framebuffer (raw
+	// cudaMalloc, needs an explicit black write): this pixel's own
+	// SPPMPixelGPU is zero-initialized ONCE by the host before iteration 0
+	// and never touched again for a skipped pixel (see this kernel's own
+	// vp_valid comment below), which sppm_final_image_kernel already
+	// reconstructs as black.
+	if (!gpu_in_crop(sppm_params.camera, (int)idx.x, (int)idx.y)) return;
 	const unsigned int pixelIdx = idx.y * width + idx.x;
 
 	unsigned int seed = sppm_pcg(sppm_pcg(pixelIdx) ^ 0x9E3779B9u);

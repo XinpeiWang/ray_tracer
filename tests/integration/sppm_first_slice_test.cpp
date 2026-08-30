@@ -300,3 +300,54 @@ TEST(SppmFirstSlice, MixMaterialSphereRendersFiniteNonNegativeImage) {
 	}
 	EXPECT_GT(nonzero_count, 0) << "mix_material sphere rendered pure black under --sppm";
 }
+
+// ============================================================================
+// Film "cropwindow"/"pixelbounds"
+// ============================================================================
+// End-to-end coverage - see tests/integration/bdpt_first_render_test.cpp's
+// identical test for why this was added by a code-review pass. Exercises
+// sppm_camera_pass_with_sky()'s own crop skip, the third and final distinct
+// crop-gating mechanism this feature uses (per-pixel loop skip, same family
+// as BDPT/RandomWalk/AO/SimplePath/SimpleVolPath, but on SPPM's own
+// iteration-based accumulation - a pixel that's never touched by ANY
+// iteration's camera pass must still reconstruct as pure black, not NaN/
+// garbage, via SPPMFinalImage()'s own radius-based denominator).
+TEST(SppmFirstSlice, CropRestrictsRenderToRightHalf) {
+	hittable_list world = build_cornell_rough_glass();
+	hittable_list lights_raw = build_cornell_box_lights();
+	power_light_list lights(lights_raw);
+
+	camera cam;
+	cam.aspect_ratio = 1.0;
+	cam.image_width = 32;
+	cam.samples_per_pixel = 1;
+	cam.max_depth = 5;
+	cam.vup = vec3(0, 1, 0);
+	cam.vfov = 40;
+	cam.background = color(0, 0, 0);
+	cam.lookfrom = point3(278, 278, -800);
+	cam.lookat = point3(278, 278, 278);
+	cam.initialize();
+
+	SPPMSceneAdapter adapter(world, lights, cam);
+
+	std::vector<double> out_rgb;
+	const int cropX0 = cam.image_width / 2;
+	sppm_render_with_adapter(adapter, cam.image_width, cam.image_height,
+	         /*nIterations=*/20, /*nPhotons=*/2000, /*maxDepth=*/5,
+	         /*initialRadius=*/10.0, out_rgb,
+	         cropX0, cam.image_width, 0, cam.image_height);
+
+	ASSERT_EQ((int)out_rgb.size(), cam.image_width * cam.image_height * 3);
+
+	double left_sum = 0.0, right_sum = 0.0;
+	for (int y = 0; y < cam.image_height; ++y) {
+		for (int x = 0; x < cam.image_width; ++x) {
+			int idx = (y * cam.image_width + x) * 3;
+			double px_sum = out_rgb[idx] + out_rgb[idx + 1] + out_rgb[idx + 2];
+			if (x < cropX0) left_sum += px_sum; else right_sum += px_sum;
+		}
+	}
+	EXPECT_EQ(left_sum, 0.0) << "pixels outside the crop rect were not left black under SPPM";
+	EXPECT_GT(right_sum, 0.0) << "pixels inside the crop rect received no light at all under SPPM";
+}

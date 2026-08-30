@@ -536,7 +536,7 @@ inline void sppm_camera_pass_with_sky(std::vector<SPPMPixel<double>>& pixels,
 			if (iy < cropY0 || iy >= cropY1) continue;
 
 			for (int ix = 0; ix < width; ++ix) {
-				if (ix < cropX0 || ix >= cropX1) continue;
+				if (!in_crop_rect(ix, iy, cropX0, cropX1, cropY0, cropY1)) continue;
 				int idx = iy * width + ix;
 				SPPMPixel<double>& pixel = pixels[idx];
 				pixel.px = ix;

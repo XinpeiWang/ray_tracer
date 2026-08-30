@@ -132,3 +132,42 @@ TEST(BdptFirstRender, WallsReceiveIndirectLight) {
 	}
 	EXPECT_GT(left_sum, 0.0) << "Cornell box side wall received no indirect light under BDPT";
 }
+
+// Film "cropwindow"/"pixelbounds" end-to-end - added by a code-review pass
+// that found the whole crop-on-BDPT/MLT/RandomWalk/AO/SimplePath/
+// SimpleVolPath/LightPath/SPPM feature had zero automated coverage across
+// its entire multi-commit history (only camera::initialize()'s own
+// crop_x0/x1/y0/y1 resolution ARITHMETIC was tested, never an integrator's
+// actual CONSUMPTION of it). Restricts to the right half of the frame only
+// (opposite of this session's own manual scratch-scene verification, purely
+// so this test's "left column receives light" assertion above and this
+// one's own "left half is black" assertion can't accidentally both pass on
+// a crop that silently did nothing). Also exercises BDPT's own t==1
+// light-tracing splat path (SplatFilm), not just the per-pixel t>=2 loop -
+// see bdpt_render_with_adapter()'s own comment on why that path needed its
+// own, separate fix during this same review round.
+TEST(BdptFirstRender, CropRestrictsRenderToRightHalf) {
+	hittable_list world = build_cornell_box();
+	camera cam = make_cornell_camera(32);
+
+	BDPTSceneAdapter adapter(world, cam);
+
+	std::vector<double> out_rgb;
+	const int cropX0 = cam.image_width / 2;
+	bdpt_render_with_adapter(adapter, cam.image_width, cam.image_height,
+	                          /*spp=*/4, /*maxDepth=*/5, out_rgb,
+	                          cropX0, cam.image_width, 0, cam.image_height);
+
+	ASSERT_EQ((int)out_rgb.size(), cam.image_width * cam.image_height * 3);
+
+	double left_sum = 0.0, right_sum = 0.0;
+	for (int y = 0; y < cam.image_height; ++y) {
+		for (int x = 0; x < cam.image_width; ++x) {
+			int idx = (y * cam.image_width + x) * 3;
+			double px_sum = out_rgb[idx] + out_rgb[idx + 1] + out_rgb[idx + 2];
+			if (x < cropX0) left_sum += px_sum; else right_sum += px_sum;
+		}
+	}
+	EXPECT_EQ(left_sum, 0.0) << "pixels outside the crop rect were not left black";
+	EXPECT_GT(right_sum, 0.0) << "pixels inside the crop rect received no light at all";
+}

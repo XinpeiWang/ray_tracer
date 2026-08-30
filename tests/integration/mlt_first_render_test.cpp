@@ -124,3 +124,36 @@ TEST(MltFirstRender, BootstrapFindsNonzeroWeight) {
 	EXPECT_GT(b, 0.0) << "MLTBootstrap found no light-carrying paths at all in a lit Cornell box";
 	EXPECT_TRUE(std::isfinite(b));
 }
+
+// Film "cropwindow"/"pixelbounds" end-to-end - see bdpt_first_render_test.cpp's
+// identical test for why this coverage was added. MLT has no per-pixel loop
+// at all (its own Markov chain visits essentially arbitrary (px,py) via
+// mutation, not pixel iteration - see mlt_render_with_adapter()'s own splat
+// lambda comment), so this specifically exercises the inline crop check on
+// that lambda, a mechanism neither of BDPT's/SPPM's own crop tests reach.
+TEST(MltFirstRender, CropRestrictsRenderToRightHalf) {
+	hittable_list world = build_cornell_box();
+	camera cam = make_cornell_camera(24);
+
+	BDPTSceneAdapter adapter(world, cam);
+
+	std::vector<double> out_rgb;
+	const int cropX0 = cam.image_width / 2;
+	mlt_render_with_adapter(adapter, cam.image_width, cam.image_height,
+	                         /*nBootstrap=*/500, /*nMutations=*/60000, /*maxDepth=*/3,
+	                         /*sigma=*/0.01, /*largeStepProb=*/0.3, out_rgb,
+	                         cropX0, cam.image_width, 0, cam.image_height);
+
+	ASSERT_EQ((int)out_rgb.size(), cam.image_width * cam.image_height * 3);
+
+	double left_sum = 0.0, right_sum = 0.0;
+	for (int y = 0; y < cam.image_height; ++y) {
+		for (int x = 0; x < cam.image_width; ++x) {
+			int idx = (y * cam.image_width + x) * 3;
+			double px_sum = out_rgb[idx] + out_rgb[idx + 1] + out_rgb[idx + 2];
+			if (x < cropX0) left_sum += px_sum; else right_sum += px_sum;
+		}
+	}
+	EXPECT_EQ(left_sum, 0.0) << "pixels outside the crop rect were not left black under MLT";
+	EXPECT_GT(right_sum, 0.0) << "pixels inside the crop rect received no light at all under MLT";
+}
