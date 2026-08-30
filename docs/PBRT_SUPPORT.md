@@ -295,16 +295,33 @@ loader and no longer match the code:
 
 - `MakeNamedMedium`'s own `"rgb Le"`/`"float Lescale"` (pbrt-v4) — a real
   self-emitting medium (fire/plasma/glowing fog) — is decoded for
-  `"homogeneous"` media only (`Medium::Le` in `pbrt_flatten.h`;
-  `"cloud"`/`"rgbgrid"`/`"uniformgrid"` still drop a nonzero `"Le"` with a
-  warning on both CPU and GPU — their own real pbrt-v4 emission is a
-  per-voxel grid, a separate, deferred feature, not this flat colour).
-  `"blackbody Le"` (real Kelvin-to-RGB, the same conversion already used for
-  every light's own `"L"`/`"I"` — see `resolveEmissionColor()`) is
-  supported too, not just a literal `"rgb Le"` triple. `Lescale` is baked
-  into `Le` at flatten time. The emission contributes via
-  `hg_phase_material::emitted()` (`constant_medium.h`), weighted by
-  `sigma_a / sigma_t` — the collision-probability weighting pbrt-v4's own
+  `"homogeneous"` media (`Medium::Le` in `pbrt_flatten.h`) **and now for
+  `"rgbgrid"` too, on CPU**: pbrt-v4's own per-voxel `"Le"` array (same
+  shape/convention as `"rgb sigma_a"`/`"rgb sigma_s"` — one RGB triple per
+  voxel, de-interleaved into `Medium::Le_r`/`Le_g`/`Le_b`) plus a scalar
+  `"Lescale"`, both threaded unbaked into `RGBGridMediumData<T>`'s
+  pre-existing `Le_grids`/`Le_scale`/`sample_point()` machinery (built for
+  exactly this, previously unused — `rgb_grid_medium_hittable.h` used to
+  compute and discard the per-point `le[]` value at every scatter event).
+  Weighted by sigma_a/sigma_t at the actual scatter point, matching
+  homogeneous `Le`'s own collision-probability convention exactly.
+  **`"cloud"`/`"uniformgrid"` still drop a nonzero `"Le"` with a warning on
+  both CPU and GPU** — pbrt-v4 gives them no equivalent `"Le"` parameter at
+  all (only `rgbgrid`'s does), so this isn't a scope gap, just a
+  non-feature for those two types. **`rgbgrid`'s own new `"Le"` support is
+  CPU-only this round** — GPU's `MaterialType::RgbGridMedium` has no
+  emission concept yet (a real, deferred follow-up, same shape as
+  homogeneous `Le`'s own earlier CPU-then-GPU staging).
+  For `"homogeneous"` media specifically, `"blackbody Le"` (real
+  Kelvin-to-RGB, the same conversion already used for every light's own
+  `"L"`/`"I"` — see `resolveEmissionColor()`) is supported too, not just a
+  literal `"rgb Le"` triple, and `Lescale` is baked into `Le` at flatten
+  time (`rgbgrid`'s own per-voxel `"Le"`/`"Lescale"` stay unbaked instead —
+  see above — since `RGBGridMediumData::sample_point()` is already the
+  real consumer that applies the scale). The homogeneous emission
+  contributes via `hg_phase_material::emitted()` (`constant_medium.h`),
+  weighted by `sigma_a / sigma_t` — the collision-probability weighting
+  pbrt-v4's own
   real volumetric estimator uses, collapsed into this codebase's existing
   "every collision continues, weighted by albedo" simplification for
   scattering.

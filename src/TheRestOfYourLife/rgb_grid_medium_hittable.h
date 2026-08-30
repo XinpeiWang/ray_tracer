@@ -75,8 +75,27 @@ class rgb_grid_medium_hittable : public hittable {
 
                 double maxc = std::max({ ss[0], ss[1], ss[2], 1e-6 });
                 color albedo(ss[0]/maxc, ss[1]/maxc, ss[2]/maxc);
+                // Real per-voxel "rgb Le"/"float Lescale" (pbrt-v4's own
+                // RGBGridMedium::LeGrid/LeScale) - le[] is already the
+                // fully-resolved (Le_scale-multiplied) emission at this
+                // exact scatter point, from the SAME grid.sample_point()
+                // call this branch already made for sa/ss above. Weighted
+                // by sigma_a/sigma_t here, matching constant_medium.h's own
+                // homogeneous-medium convention exactly (hg_phase_
+                // material::emitted()'s own comment has the full physical
+                // derivation) - a real collision here is either an
+                // absorption or a scattering event with probability
+                // sa[c]/(sa[c]+ss[c]) each, and only the absorption
+                // fraction contributes emission (pbrt-v4's own collision-
+                // probability weighting for volumetric emission).
+                color emission(0, 0, 0);
+                for (int c = 0; c < 3; ++c) {
+                    double sigma_t_c = sa[c] + ss[c];
+                    if (sigma_t_c > 1e-9) emission[c] = le[c] * (sa[c] / sigma_t_c);
+                }
                 rec.mat = make_shared<hg_phase_material>(albedo, phase_g,
-                    [this](const ray& sr, double t_max) { return shadow_transmittance_impl(sr, t_max); });
+                    [this](const ray& sr, double t_max) { return shadow_transmittance_impl(sr, t_max); },
+                    emission);
                 got_hit = true;
                 return true;  // real scatter event: stop marching
             }

@@ -257,6 +257,32 @@ struct Medium {
 	std::vector<double> sigma_a_r, sigma_a_g, sigma_a_b;
 	std::vector<double> sigma_s_r, sigma_s_g, sigma_s_b;
 
+	// "rgbgrid" only - pbrt-v4's own real per-voxel emission: a flat "Le"
+	// array (one RGB triple per voxel, same shape/convention as sigma_a/
+	// sigma_s above) plus a scalar "Lescale" multiplier applied at SAMPLE
+	// time by RGBGridMediumData<T>::sample_point(), not baked in here (see
+	// that function's own `Le_out[c] = Le_scale * le;` - this struct passes
+	// Le_scale through unbaked to match). Deliberately a SEPARATE field
+	// from this struct's own `Le[3]`/homogeneous-only scalar emission
+	// above - the top-level "Le"/"Lescale" params this file's own flatten()
+	// loop reads are only ever a flat colour for `homogeneous`; for
+	// `rgbgrid` those same two param NAMES mean this per-voxel array
+	// instead (pbrt-v4's own directive reuse), so reading them through the
+	// generic getVec3()/resolveEmissionColor() path used for homogeneous
+	// would silently misinterpret a per-voxel array as a single flat
+	// colour (getVec3 only requires numbers.size()>=3, not ==3, so it
+	// would happily read voxel 0's own RGB and ignore the rest) - flatten()
+	// skips that generic read entirely for rgbgrid and parses "Le" as an
+	// array here instead, the same way it already does for "sigma_a"/
+	// "sigma_s". Empty (all three channels) means no emission, matching
+	// RGBGridMediumData::build()'s own "empty vector = channel absent"
+	// convention. `cloud`/`uniformgrid` still don't support any emission
+	// at all (real pbrt-v4 support exists for `rgbgrid` specifically here;
+	// the other two would need their own, differently-shaped per-voxel Le
+	// grid a future round could add the identical way).
+	std::vector<double> Le_r, Le_g, Le_b;
+	double Le_scale = 0.0;
+
 	// "uniformgrid" only - pbrt-v4's own "float density" (a REQUIRED flat
 	// scalar array, length nx*ny*nz, one per-voxel density multiplier -
 	// NOT the same field as this struct's own scalar `density` above, which
@@ -2220,15 +2246,21 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		medium.g = md.params.getFloat("g", 0.0);
 
 		// "rgb Le"/"float Lescale" - see Medium::Le's own comment on why
-		// this round is homogeneous-only. Read unconditionally (harmless
-		// for the other 3 types, matching this loop's own "one shared
-		// block" convention for sigma_a/sigma_s above) but only ever
-		// nonzero-and-warned for cloud/rgbgrid/uniformgrid, never silently
-		// dropped. Uses resolveEmissionColor() (this same file, used by
-		// every light's own "L"/"I"), not a plain getVec3 - pbrt-v4 also
-		// accepts "blackbody Le" [<kelvin>] (a single number, real Kelvin-
-		// to-RGB conversion) for physically-plausible fire/plasma color,
-		// which a plain getVec3 (needs >=3 numbers) would silently read as
+		// this round is homogeneous-only, and Medium::Le_r/g/b's own
+		// comment for why "rgbgrid" is now ALSO supported, but through a
+		// separate, array-shaped field, not this one. Skipped entirely for
+		// isRgbGrid (handled below instead) - reading it here too would
+		// misinterpret that type's own per-voxel "Le" array as a flat
+		// colour (see Medium::Le_r's own comment for why). Read
+		// unconditionally for the remaining types (harmless for cloud/
+		// uniformgrid, matching this loop's own "one shared block"
+		// convention for sigma_a/sigma_s above) but only ever
+		// nonzero-and-warned for those two, never silently dropped. Uses
+		// resolveEmissionColor() (this same file, used by every light's
+		// own "L"/"I"), not a plain getVec3 - pbrt-v4 also accepts
+		// "blackbody Le" [<kelvin>] (a single number, real Kelvin-to-RGB
+		// conversion) for physically-plausible fire/plasma color, which a
+		// plain getVec3 (needs >=3 numbers) would silently read as
 		// "absent" and default to zero with no diagnostic. Uses the
 		// default sRGB working color space (RGBColorSpace::sRGB(),
 		// resolveEmissionColor()'s own default) rather than a per-medium
@@ -2236,9 +2268,11 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// light - MediumDecl has no equivalent field, and no bundled scene
 		// combines a non-default ColorSpace directive with an emissive
 		// medium; a real scope cut, not an oversight.
-		const pbrt_scene::Vec3 le = resolveEmissionColor(md.params, "Le", pbrt_scene::Vec3{0,0,0});
-		const double leScale = md.params.getFloat("Lescale", 1.0);
-		medium.Le[0] = le.x * leScale; medium.Le[1] = le.y * leScale; medium.Le[2] = le.z * leScale;
+		if (!isRgbGrid) {
+			const pbrt_scene::Vec3 le = resolveEmissionColor(md.params, "Le", pbrt_scene::Vec3{0,0,0});
+			const double leScale = md.params.getFloat("Lescale", 1.0);
+			medium.Le[0] = le.x * leScale; medium.Le[1] = le.y * leScale; medium.Le[2] = le.z * leScale;
+		}
 
 		if (isCloud || isRgbGrid || isUniformGrid) {
 			// Medium-space bounds (pbrt-v4's own "p0"/"p1", default unit
@@ -2291,15 +2325,19 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		}
 
 		// "Le"/"Lescale" (Medium::Le's own comment) - homogeneous only this
-		// round; cloud/rgbgrid/uniformgrid's real pbrt-v4 emission is a
-		// per-voxel grid, not this flat colour, so it's silently meaningless
-		// for them - warn rather than let a scene author believe it did
-		// something. Grouped with the sigma_a-dropped warnings just below
-		// (same "parameter X is meaningless for type Y" shape), not folded
-		// into the AABB-computation block above.
-		if ((isCloud || isRgbGrid || isUniformGrid) && isNonzeroRGB(medium.Le)) {
+		// round; cloud/uniformgrid's real pbrt-v4 emission is a per-voxel
+		// grid, not this flat colour, so it's silently meaningless for them
+		// - warn rather than let a scene author believe it did something.
+		// rgbgrid is deliberately EXCLUDED here now (Medium::Le_r's own
+		// comment) - it gets its own real per-voxel "Le" support below, so
+		// this check would otherwise fire a misleading "dropped" warning
+		// for a scene whose emission this loader now actually honors.
+		// Grouped with the sigma_a-dropped warnings just below (same
+		// "parameter X is meaningless for type Y" shape), not folded into
+		// the AABB-computation block above.
+		if ((isCloud || isUniformGrid) && isNonzeroRGB(medium.Le)) {
 			warn("medium '" + md.name + "' (\"" + md.type + "\") has a nonzero \"Le\", "
-				 "but only \"homogeneous\" media support emission in this loader; "
+				 "but only \"homogeneous\"/\"rgbgrid\" media support emission in this loader; "
 				 "the emission is dropped");
 		}
 
@@ -2358,6 +2396,27 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			};
 			deinterleave("sigma_a", medium.sigma_a_r, medium.sigma_a_g, medium.sigma_a_b);
 			deinterleave("sigma_s", medium.sigma_s_r, medium.sigma_s_g, medium.sigma_s_b);
+
+			// "rgb Le"/"float Lescale" - real per-voxel emission, pbrt-v4's
+			// own RGBGridMedium::LeGrid/LeScale - see Medium::Le_r's own
+			// comment for why this is parsed separately from the
+			// homogeneous-only flat "Le" above. Lescale is NOT baked into
+			// the array here (unlike homogeneous's own medium.Le, which
+			// bakes its scale in at parse time) - RGBGridMediumData<T>::
+			// sample_point() applies Le_scale at sample time itself
+			// (`Le_out[c] = Le_scale * le;`), matching how sigma_scale
+			// (this same struct's "scale" param, applied inside
+			// RGBGridMediumData::build() too) already works for sigma_a/
+			// sigma_s. Defaults to 0.0 (matches RGBGridMediumData::
+			// Le_scale's own default and pbrt-v4's real "Lescale" default
+			// of 1 - but see is_emissive()'s own `Le_scale > 0` gate: a
+			// scene that sets a real "Le" array but never touches
+			// "Lescale" at all should still glow, so the DEFAULT here is
+			// 1.0 when omitted, matching pbrt-v4's spec exactly; only an
+			// explicit "Lescale" of 0 (or omitting "Le" entirely, leaving
+			// Le_r/g/b empty) turns emission off).
+			deinterleave("Le", medium.Le_r, medium.Le_g, medium.Le_b);
+			medium.Le_scale = md.params.getFloat("Lescale", 1.0);
 		}
 
 		if (isUniformGrid) {

@@ -773,11 +773,17 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		}
 		if (md.type == "rgbgrid") {
 			const Bounds3<double> bounds(md.p0[0], md.p0[1], md.p0[2], md.p1[0], md.p1[1], md.p1[2]);
+			// Real per-voxel "rgb Le"/"float Lescale" (pbrt-v4's own
+			// RGBGridMedium::LeGrid/LeScale) - see pbrt_flatten::Medium::
+			// Le_r's own comment for the full derivation. md.Le_scale is
+			// passed through UNBAKED (matches md.Le_r/g/b staying raw too) -
+			// RGBGridMediumData::build()/sample_point() are already the
+			// consumers that apply it at sample time.
 			const auto grid = RGBGridMediumData<double>::build(
 				md.sigma_a_r, md.sigma_a_g, md.sigma_a_b,
 				md.sigma_s_r, md.sigma_s_g, md.sigma_s_b,
-				{}, {}, {},   // no Le (emission) - not parsed from pbrt yet
-				md.nx, md.ny, md.nz, bounds, /*sigma_scale=*/1.0, /*Le_scale=*/0.0, md.g);
+				md.Le_r, md.Le_g, md.Le_b,
+				md.nx, md.ny, md.nz, bounds, /*sigma_scale=*/1.0, md.Le_scale, md.g);
 			const point3 world_min(md.worldMin[0], md.worldMin[1], md.worldMin[2]);
 			const point3 world_max(md.worldMax[0], md.worldMax[1], md.worldMax[2]);
 			world.add(std::make_shared<rgb_grid_medium_hittable>(
