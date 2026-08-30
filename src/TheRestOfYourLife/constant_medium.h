@@ -25,6 +25,7 @@
 #include "texture.h"
 #include "../shared/volume_scattering.h"
 #include "pdf.h"
+#include "disk_cylinder_hittable.h"   // cylinder_hittable::volume_bounds() - see hit()'s own comment
 #include <functional>
 
 
@@ -182,7 +183,13 @@ class constant_medium : public hittable {
     // with existing scenes (no absorption, albedo = albedo param).
     constant_medium(shared_ptr<hittable> boundary, double density,
                     shared_ptr<texture> tex, double g = 0.0)
-        : boundary(boundary) {
+        : boundary(boundary),
+          // Cached once, not re-derived per hit()/shadow_transmittance_impl()
+          // call - null for every boundary shape except cylinder_hittable
+          // (nullptr for sphere/disk/box, whose closed-boundary hit()/hit()
+          // pattern is already correct - see hit()'s own comment for why
+          // only an OPEN shape like cylinder needs this).
+          cylinder_boundary_(std::dynamic_pointer_cast<cylinder_hittable>(boundary)) {
         // albedo from texture (sampled at center, stored for material)
         // sigma_t = density, sigma_s = density (no absorption)
         med = HomogeneousMediumData<double>(/*sa=*/0.0, /*ss=*/density, g);
@@ -197,7 +204,13 @@ class constant_medium : public hittable {
 
     constant_medium(shared_ptr<hittable> boundary, double density,
                     const color& albedo, double g = 0.0)
-        : boundary(boundary) {
+        : boundary(boundary),
+          // Cached once, not re-derived per hit()/shadow_transmittance_impl()
+          // call - null for every boundary shape except cylinder_hittable
+          // (nullptr for sphere/disk/box, whose closed-boundary hit()/hit()
+          // pattern is already correct - see hit()'s own comment for why
+          // only an OPEN shape like cylinder needs this).
+          cylinder_boundary_(std::dynamic_pointer_cast<cylinder_hittable>(boundary)) {
         med = HomogeneousMediumData<double>(/*sa=*/0.0, /*ss=*/density, g);
         phase_mat = make_shared<hg_phase_material>(albedo, g,
             [this](const ray& r, double t_max) { return shadow_transmittance_impl(r, t_max); });
@@ -218,7 +231,13 @@ class constant_medium : public hittable {
                     double sigma_a, double sigma_s,
                     const color& albedo, double g = 0.0,
                     const color& Le = color(0, 0, 0))
-        : boundary(boundary) {
+        : boundary(boundary),
+          // Cached once, not re-derived per hit()/shadow_transmittance_impl()
+          // call - null for every boundary shape except cylinder_hittable
+          // (nullptr for sphere/disk/box, whose closed-boundary hit()/hit()
+          // pattern is already correct - see hit()'s own comment for why
+          // only an OPEN shape like cylinder needs this).
+          cylinder_boundary_(std::dynamic_pointer_cast<cylinder_hittable>(boundary)) {
         med = HomogeneousMediumData<double>(sigma_a, sigma_s, g);
         // Single-scattering albedo for the phase material, and the
         // collision-probability weight (sigma_a/sigma_t) for emission -
@@ -236,25 +255,49 @@ class constant_medium : public hittable {
     }
 
     bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
-        hit_record rec1, rec2;
+        double t0, t1;
 
-        if (!boundary->hit(r, interval::universe, rec1))
+        // A code-review pass found the generic "two sequential hit() calls"
+        // path below is WRONG for an open (uncapped) cylinder boundary -
+        // see cylinder_hittable::volume_bounds()'s own comment for the full
+        // derivation (it can silently miss real medium extent, e.g. a ray
+        // entering/exiting through the cylinder's open ends rather than its
+        // lateral wall, biasing this medium systematically DIMMER than a
+        // correct render - confirmed as the root cause of a real CPU/GPU
+        // brightness parity test failure, tests/integration/
+        // material_cpu_gpu_parity_tests.cpp's Scene112/E6 case). Every other
+        // boundary shape this class wraps (sphere, disk-as-a-degenerate-
+        // case, a closed mesh) is topologically closed, where hit()/hit()'s
+        // first-then-next-crossing pattern IS correct, so only the cylinder
+        // case is special-cased here rather than replacing the generic path
+        // entirely.
+        if (cylinder_boundary_) {
+            if (!cylinder_boundary_->volume_bounds(r, t0, t1))
+                return false;
+        } else {
+            hit_record rec1, rec2;
+
+            if (!boundary->hit(r, interval::universe, rec1))
+                return false;
+
+            if (!boundary->hit(r, interval(rec1.t + 0.0001, infinity), rec2))
+                return false;
+
+            t0 = rec1.t;
+            t1 = rec2.t;
+        }
+
+        if (t0 < ray_t.min) t0 = ray_t.min;
+        if (t1 > ray_t.max) t1 = ray_t.max;
+
+        if (t0 >= t1)
             return false;
 
-        if (!boundary->hit(r, interval(rec1.t + 0.0001, infinity), rec2))
-            return false;
-
-        if (rec1.t < ray_t.min) rec1.t = ray_t.min;
-        if (rec2.t > ray_t.max) rec2.t = ray_t.max;
-
-        if (rec1.t >= rec2.t)
-            return false;
-
-        if (rec1.t < 0)
-            rec1.t = 0;
+        if (t0 < 0)
+            t0 = 0;
 
         double ray_length          = r.direction().length();
-        double distance_inside     = (rec2.t - rec1.t) * ray_length;
+        double distance_inside     = (t1 - t0) * ray_length;
 
         // pbrt-v4 delta-tracking free-path sample: t = -log(1-u) / sigma_t
         // med.sample_free_path(u) returns this value directly.
@@ -263,7 +306,7 @@ class constant_medium : public hittable {
         if (hit_distance > distance_inside)
             return false;
 
-        rec.t = rec1.t + hit_distance / ray_length;
+        rec.t = t0 + hit_distance / ray_length;
         rec.p = r.at(rec.t);
 
         rec.normal    = vec3(1, 0, 0);  // arbitrary (volume has no surface normal)
@@ -297,12 +340,22 @@ class constant_medium : public hittable {
     // doesn't actually cross the boundary - defensive only, shadow_ray.h
     // only calls this once it already knows this material was hit.
     color shadow_transmittance_impl(const ray& r, double t_max) const {
-        hit_record rec1, rec2;
-        if (!boundary->hit(r, interval::universe, rec1)) return color(1, 1, 1);
-        if (!boundary->hit(r, interval(rec1.t + 0.0001, infinity), rec2)) return color(1, 1, 1);
+        double raw_t0, raw_t1;
 
-        double t0 = rec1.t < 0 ? 0 : rec1.t;
-        double t1 = std::min(rec2.t, t_max);
+        // Same cylinder special-case as hit() above - see that function's
+        // own comment.
+        if (cylinder_boundary_) {
+            if (!cylinder_boundary_->volume_bounds(r, raw_t0, raw_t1)) return color(1, 1, 1);
+        } else {
+            hit_record rec1, rec2;
+            if (!boundary->hit(r, interval::universe, rec1)) return color(1, 1, 1);
+            if (!boundary->hit(r, interval(rec1.t + 0.0001, infinity), rec2)) return color(1, 1, 1);
+            raw_t0 = rec1.t;
+            raw_t1 = rec2.t;
+        }
+
+        double t0 = raw_t0 < 0 ? 0 : raw_t0;
+        double t1 = std::min(raw_t1, t_max);
         if (t0 >= t1) return color(1, 1, 1);
 
         double ray_length      = r.direction().length();
@@ -311,6 +364,7 @@ class constant_medium : public hittable {
     }
 
     shared_ptr<hittable>         boundary;
+    shared_ptr<cylinder_hittable> cylinder_boundary_;   // see constructors' own comment
     HomogeneousMediumData<double> med;
     shared_ptr<hg_phase_material> phase_mat;
 };

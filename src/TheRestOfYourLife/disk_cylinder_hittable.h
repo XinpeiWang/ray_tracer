@@ -195,6 +195,84 @@ class cylinder_hittable : public hittable {
 
 	shared_ptr<material> get_material() const { return mat_; }
 
+	// Volumetric near/far entry-exit for a MediumInterface-attached fog
+	// cylinder (constant_medium's own boundary use, not surface rendering) -
+	// a code-review pass found constant_medium::hit()'s generic "two
+	// sequential hit() calls" pattern (correct for a CLOSED boundary like a
+	// sphere) can silently miss real medium extent on this OPEN (uncapped)
+	// shape: a ray traveling near-axially through the open top/bottom
+	// crosses no lateral wall within [z_min,z_max] at all, and even when it
+	// does, the tube quadric's own two roots don't necessarily correspond to
+	// "this ray's real entry/exit through this open shape" the way a closed
+	// shape's hit()/hit() pair does - hit() only ever models the lateral
+	// wall, since an uncapped cylinder has no surface at its flat ends.
+	// Mirrors GPU's own identical fix (gpu/optix/optix_intersection_disk_
+	// cylinder.h's MaterialType::Medium branch, dc_solve_tube_quadratic)
+	// exactly: solve the (infinite) tube's own quadratic, intersect that
+	// interval with the z-slab's own [z_min,z_max] interval taken directly
+	// from the z-planes - correct whether the ray's real entry/exit is
+	// through the wall or the open ends, and GPU's own confirmed-correct
+	// reference implementation for this exact shape/use case.
+	//
+	// r is the real WORLD-space ray (this method carries it into object
+	// space itself, matching hit()'s own apply_point/apply_vector
+	// convention - NOT renormalized, so t stays in the same units as every
+	// other method here, i.e. divide by r.direction().length() to convert
+	// to true world distance, same as hit()'s own rec.t consumers already
+	// do). Returns false when this object is invalid, or the tube and
+	// z-slab intervals don't overlap at all (no medium extent along this
+	// ray) - out_t0/out_t1 are still written in that case but meaningless,
+	// the caller must check the return value first. When true, out_t0/
+	// out_t1 are otherwise left UNCLAMPED (may be negative, e.g. an origin
+	// already inside the medium) - matching hit()'s own rec1.t/rec2.t, the
+	// caller is responsible for the same ray_t.min/max clamping it already
+	// does for other boundary shapes.
+	bool volume_bounds(const ray& r, double& out_t0, double& out_t1) const {
+		if (!valid_) return false;
+		using namespace affine_transform;
+		const point3 ro = apply_point(w2o_, r.origin());
+		const vec3   rd = apply_vector(w2o_, r.direction());   // NOT normalised - see file comment
+
+		double tube_t0 = -infinity, tube_t1 = infinity;
+		bool hasTube;
+		const double a = rd.x() * rd.x() + rd.y() * rd.y();
+		if (a == 0.0) {
+			hasTube = ro.x() * ro.x() + ro.y() * ro.y() <= shape_.radius * shape_.radius;
+		} else {
+			const double b = 2.0 * (ro.x() * rd.x() + ro.y() * rd.y());
+			const double c = ro.x() * ro.x() + ro.y() * ro.y() - shape_.radius * shape_.radius;
+			const double f = b / (2.0 * a);
+			const double vx = ro.x() - f * rd.x(), vy = ro.y() - f * rd.y();
+			const double len_v = std::sqrt(vx * vx + vy * vy);
+			const double discrim = 4.0 * a * (shape_.radius + len_v) * (shape_.radius - len_v);
+			if (discrim < 0.0) {
+				hasTube = false;
+			} else {
+				const double sqrt_disc = std::sqrt(discrim);
+				const double q = (b < 0.0) ? -0.5 * (b - sqrt_disc) : -0.5 * (b + sqrt_disc);
+				tube_t0 = q / a;
+				tube_t1 = c / q;
+				if (tube_t0 > tube_t1) std::swap(tube_t0, tube_t1);
+				hasTube = true;
+			}
+		}
+
+		double z_t0 = -infinity, z_t1 = infinity;
+		bool hasZSlab = true;
+		if (rd.z() == 0.0) {
+			hasZSlab = (ro.z() >= shape_.z_min && ro.z() <= shape_.z_max);
+		} else {
+			const double za = (shape_.z_min - ro.z()) / rd.z();
+			const double zb = (shape_.z_max - ro.z()) / rd.z();
+			z_t0 = std::min(za, zb);
+			z_t1 = std::max(za, zb);
+		}
+
+		out_t0 = std::max(tube_t0, z_t0);
+		out_t1 = std::min(tube_t1, z_t1);
+		return hasTube && hasZSlab && out_t0 < out_t1;
+	}
+
   private:
 	CylinderShape<double> shape_;
 	shared_ptr<material> mat_;
