@@ -48,9 +48,16 @@ __device__ __forceinline__ float random_float(unsigned int& seed) {
 // 0/1/2 the first time the path hits a dispersive MaterialType::Dielectric.
 // kRgbChannelWavelengthNm are the sRGB primaries' own commonly-cited
 // dominant wavelengths (not importance-sampled - a fixed, representative
-// value per channel), used as CauchyEta()'s lambda_nm input.
+// value per channel), used as CauchyEta()'s lambda_nm input. Deliberately
+// the SAME values as this codebase's own pre-existing "3 fixed
+// representative wavelengths" convention (src/TheRestOfYourLife/
+// material_pbrt.h's `measured` class kLambdaR/G/B, mirrored on GPU at
+// gpu/optix/optix_measured_bxdf.h's own `lambda[3]` local) - a code-review
+// pass on this feature's own first version found it had hand-picked a
+// near-duplicate, off-by-1nm table (611/464 vs the established 612/465)
+// instead of matching the one already in use for the identical purpose.
 static constexpr unsigned int kRgbChannelUnset = 3u;
-__device__ __constant__ float kRgbChannelWavelengthNm[3] = { 611.0f, 549.0f, 464.0f };
+__device__ __constant__ float kRgbChannelWavelengthNm[3] = { 612.0f, 549.0f, 465.0f };
 
 // Pixel reconstruction filter weight for a sample at sub-pixel offset
 // (ox, oy) in [-0.5, 0.5] - device-side port of src/shared/filter.h's

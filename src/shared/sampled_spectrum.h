@@ -30,6 +30,20 @@
 // Dependencies:
 //   scalar_math.h            -- Clamp, SafeSqrt, FastExp, Lerp
 //   sampling_distributions.h -- SampleVisibleWavelengths, VisibleWavelengthsPDF
+//
+// NOT used by every renderer that implements pbrt-v4 dispersion in this
+// codebase: CPU (camera.h's ray_color_spectral()) and the GPU "wavefront"
+// backend (wavefront_kernels.cu) both build real SampledWavelengths<4>
+// per-path spectral state via this class, but the GPU "recursive" backend's
+// own dispersive-dielectric support (gpu/optix/optix_device_helpers.h's
+// shade_material() Dielectric case) deliberately does NOT - it uses a
+// simpler, coarser 3-fixed-representative-wavelength stochastic-channel
+// scheme instead (no continuous importance sampling, no CIE-XYZ uplift),
+// to avoid needing a device-constant-memory CIE-table upload into that
+// backend's own separate OptiX module. See that case's own
+// inout_rgb_channel parameter comment for the full rationale - don't
+// assume "GPU dispersion" means real spectral data sampled via this class
+// without checking which backend produced it.
 // ---------------------------------------------------------------------------
 
 #ifndef __CUDACC__

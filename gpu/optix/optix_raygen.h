@@ -426,6 +426,25 @@ extern "C" __global__ void __raygen__rg() {
 				// else reweight (the raw throughput, matching CPU/pbrt-v4:
 				// only the SURVIVAL test uses rrBeta, the actual reweight
 				// stays in throughput's own units).
+				//
+				// Interacts with the dispersion channel-mask above: `throughput`
+				// read here can already be 3x-boosted-in-one-channel/zeroed-in-
+				// the-other-two for a dispersive path, so rr_max reflects only
+				// the chosen channel's own (reweighted) magnitude, not the
+				// path's true pre-split color. Still unbiased (each of the 3
+				// equally-likely channels' own RR decision is itself a correct,
+				// unbiased survival test for THAT channel's contribution) but
+				// can read noisier for a dispersive path with strongly-colored
+				// throughput arriving from an earlier bounce - a real,
+				// deliberate cost of this backend's simplified per-channel
+				// scheme (see shade_material()'s inout_rgb_channel comment,
+				// optix_device_helpers.h) versus CPU/wavefront's own continuous
+				// multi-wavelength integration, which never splits throughput
+				// into a single channel this way. Not fixed here: decoupling
+				// RR's survival test from the channel mask would need tracking
+				// a second, pre-mask throughput value through the whole bounce
+				// loop for a narrow, already-approximate feature - a bigger
+				// change than this variance characteristic warrants.
 				if (depth > 1) {
 					float3 rr_beta = throughput * eta_scale;
 					float rr_max = fmaxf(rr_beta.x, fmaxf(rr_beta.y, rr_beta.z));
