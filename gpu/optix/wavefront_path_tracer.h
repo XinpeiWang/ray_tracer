@@ -153,6 +153,16 @@ public:
         haveInstancedSpheres_ = haveSpheres;
     }
 
+    /// Whether this render() call should also run the OptiX AI denoiser
+    /// (mirrors OptiXRenderer::enableDenoise() - see that method's own
+    /// comment). Same setter-not-render()-parameter pattern as
+    /// setInstancePrimBase()/setTextures()/etc above, for the same reason.
+    /// Set per render() call by OptiXRenderer::render() right before
+    /// delegating here, so a scene/mode switch never leaves a stale value
+    /// wired in. false (the default) is every scene's prior behavior -
+    /// --denoise previously had no effect under --wavefront at all.
+    void setDenoiseEnabled(bool enabled) { denoiseEnabled_ = enabled; }
+
 private:
     bool loadModule();
     void destroyProgramGroups();
@@ -172,7 +182,8 @@ private:
         const int* d_lightIndices, const GpuLightKind* d_lightKinds,
         const GpuAliasEntry* d_aliasTable, unsigned int numLights,
         const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
-        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist);
+        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist,
+        float3* d_albedoBuffer, float3* d_normalBuffer);
     // Twin of launchEvaluateMaterials() above, scoped to simpleHitQueue's
     // Lambertian/Metal hits (see wavefront_types.h's WavefrontQueues::
     // simpleHitQueue and wavefront_kernels.cu's evaluate_materials_simple()).
@@ -189,7 +200,8 @@ private:
         const int* d_lightIndices, const GpuLightKind* d_lightKinds,
         const GpuAliasEntry* d_aliasTable, unsigned int numLights,
         const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
-        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist);
+        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist,
+        float3* d_albedoBuffer, float3* d_normalBuffer);
     // Twin of launchEvaluateMaterialsSimple() above, scoped to
     // dielectricHitQueue's Dielectric/RoughDielectric hits (see
     // wavefront_types.h's WavefrontQueues::dielectricHitQueue and
@@ -207,10 +219,12 @@ private:
         const int* d_lightIndices, const GpuLightKind* d_lightKinds,
         const GpuAliasEntry* d_aliasTable, unsigned int numLights,
         const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
-        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist);
+        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist,
+        float3* d_albedoBuffer, float3* d_normalBuffer);
     // Not a launchX-style param above deliberately - see setTextures()'s
     // comment for why textures travel via member state instead.
-    void launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor, GpuSkyDistribution skyDist);
+    void launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor, GpuSkyDistribution skyDist,
+        float3* d_albedoBuffer, float3* d_normalBuffer);
     void launchAccumulateShadow(int numShadow, const bool* d_occluded, float3* d_framebuffer);
     void launchResolveBssrdfExit(int numExit,
         const MaterialData* d_materials, unsigned int numMaterials,
@@ -225,8 +239,31 @@ private:
         const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
         float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist);
     void launchNormalizeFramebuffer(unsigned int numPixels, const float* d_weightBuffer, float3* d_framebuffer);
+    // Denoiser guide-layer AOV normalization (--denoise only) - plain mean
+    // over samplesPerPixel, not filter-weighted like launchNormalizeFramebuffer()
+    // above. See normalize_aov_buffers()'s own comment (wavefront_kernels.cu).
+    void launchNormalizeAovBuffers(unsigned int numPixels, float3* d_albedoBuffer,
+        float3* d_normalBuffer, unsigned int samplesPerPixel);
     int  readQueueSize(int* d_counter);
     void resetQueueCounter(int* d_counter);
+
+    // OptiX AI denoiser (--denoise, this backend's own copy) - duplicated
+    // from OptiXRenderer::denoise()/ensureAovBuffers()/destroyDenoiser()/
+    // destroyAovBuffers() (optix_renderer_render.cpp) rather than shared:
+    // WavefrontPathTracer is a sibling PathTracingStrategy, self-contained
+    // and pluggable by design (see that interface's own header comment),
+    // already has its own context_/stream_ (PathTracingStrategy's protected
+    // members) with no back-reference to the owning OptiXRenderer - adding
+    // one just to reach a handful of denoiser calls would couple two
+    // classes that are otherwise deliberately independent. See that
+    // original implementation's own comments for the full "why" behind
+    // each step; this mirrors it exactly, just against this class's own
+    // context_/stream_/state.
+    bool denoise(CUdeviceptr d_buffer, unsigned int width, unsigned int height,
+        CUdeviceptr d_albedo, CUdeviceptr d_normal);
+    void destroyDenoiser() noexcept;
+    void ensureAovBuffers(unsigned int width, unsigned int height);
+    void destroyAovBuffers() noexcept;
 
     OptixModule wfModule_ = nullptr;
     OptixPipelineCompileOptions pipelineCompileOptions_ = {};
@@ -357,6 +394,27 @@ private:
     unsigned int numDisks_ = 0;
     unsigned int numCylinders_ = 0;
     unsigned int frameNumber_ = 0;
+
+    // --denoise support (see setDenoiseEnabled()/denoise()) - own copy of
+    // OptiXRenderer's exact same denoiser/AOV-buffer member set, persisted
+    // across render() calls (recreated only on a resolution change) for
+    // the same reason OptiXRenderer's own copy is: avoids re-running
+    // denoiser create/setup/3-allocations on every one of video mode's
+    // hundreds of same-resolution per-frame render() calls.
+    bool         denoiseEnabled_ = false;
+    OptixDenoiser denoiser_ = nullptr;
+    CUdeviceptr  denoiserState_ = 0;
+    CUdeviceptr  denoiserScratch_ = 0;
+    CUdeviceptr  denoiserIntensity_ = 0;
+    size_t       denoiserStateSizeInBytes_ = 0;
+    size_t       denoiserScratchSizeInBytes_ = 0;
+    size_t       denoiserComputeIntensitySizeInBytes_ = 0;
+    unsigned int denoiserWidth_ = 0;
+    unsigned int denoiserHeight_ = 0;
+    CUdeviceptr  d_albedoAov_ = 0;
+    CUdeviceptr  d_normalAov_ = 0;
+    unsigned int aovWidth_ = 0;
+    unsigned int aovHeight_ = 0;
 };
 
 } // namespace optix_renderer

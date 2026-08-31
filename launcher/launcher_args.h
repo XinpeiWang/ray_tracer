@@ -60,11 +60,13 @@ struct LaunchArgs {
 	// per-launch cost) - see OptiXRenderer::createContext()'s own comment.
 	// Ignored under --cpu/--sppm.
 	bool optix_validate     = false;
-	// GPU-only, recursive backend only: run the OptiX AI denoiser on the
-	// finished render - see OptiXRenderer::enableDenoise()'s comment
-	// (albedo/normal-guided AOV denoising). Silently has no effect under
-	// --wavefront (see optix_render_main()'s own comment); ignored under
-	// --cpu/--sppm/--bdpt/--mlt like use_wavefront/optix_validate above.
+	// GPU-only: run the OptiX AI denoiser on the finished render - see
+	// OptiXRenderer::enableDenoise()'s comment (albedo/normal-guided AOV
+	// denoising). Real support on both GPU backends (recursive and
+	// wavefront - WavefrontPathTracer has its own independent denoiser
+	// implementation, see that class's setDenoiseEnabled() comment);
+	// ignored under --cpu/--sppm/--bdpt/--mlt like use_wavefront/
+	// optix_validate above.
 	bool denoise            = false;
 	// Print a small end-of-render stats block (rays cast, bounces, shadow
 	// rays, samples/sec) - see main.cpp's own block right after "RENDER
@@ -514,9 +516,9 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out) {
 					  << "               real per-launch cost - for debugging, not routine use).\n"
 					  << "               GPU-only, ignored under --cpu/--sppm.\n"
 					  << "  " << render_flags::kDenoise << "  : Run the OptiX AI denoiser on the finished render, guided by\n"
-					  << "               albedo + normal AOV buffers. GPU-only, recursive backend only -\n"
-					  << "               silently has no effect under --wavefront; ignored under\n"
-					  << "               --cpu/--sppm.\n"
+					  << "               albedo + normal AOV buffers. GPU-only, both backends\n"
+					  << "               (recursive and wavefront each have their own denoiser);\n"
+					  << "               ignored under --cpu/--sppm.\n"
 					  << "  " << render_flags::kStats << "    : Print a small end-of-render stats block (rays cast, bounces,\n"
 					  << "               shadow rays, samples/sec) after the normal RENDER TIME output.\n"
 					  << "               Observation-only - never changes the rendered image.\n"

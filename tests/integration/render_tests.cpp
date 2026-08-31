@@ -511,9 +511,16 @@ TEST(RenderIntegrationTest, GpuExrOutputWritesAValidExrFile) {
  * --denoise + a ".exr" output must also emit "<stem>_albedo.exr"/
  * "<stem>_normal.exr" AOV siblings, reusing the exact buffers the denoiser
  * guide layer already computes (OptiXRenderer::readAovBuffers()) rather
- * than a separate device-side computation. GPU-recursive only, matching
- * this project's own established denoise-is-recursive-only scope (see
- * OptiXRenderer::enableDenoise()'s comment) - no --wavefront here.
+ * than a separate device-side computation. GPU-recursive only - NOT because
+ * denoising itself is recursive-only anymore (WavefrontPathTracer has its
+ * own independent denoiser now, see setDenoiseEnabled()'s comment,
+ * wavefront_path_tracer.h, and WavefrontRenderTest.DenoiseReducesNoise,
+ * tests/unit/wavefront_tests.cpp, for that side), but because this specific
+ * AOV-export bonus feature reads OptiXRenderer's own d_albedoAov_/
+ * d_normalAov_ members, which the wavefront backend's own denoise pass
+ * never populates - see optix_interface.cpp's own comment at this export
+ * block's `!wfEnv` guard for why that's a deliberately deferred gap, not an
+ * oversight.
  */
 TEST(RenderIntegrationTest, GpuExrDenoiseWritesAlbedoAndNormalAovs) {
 	if (!optix_is_available()) {

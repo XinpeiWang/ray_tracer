@@ -209,19 +209,12 @@ extern "C" int optix_render_main(
 		// call above and g_uploaded_scene_id's own comment) - called
 		// unconditionally, same reasoning as enableWavefront(): this render's
 		// own `options.denoise` must be what decides the mode, not whatever
-		// an earlier call in this process happened to request.
+		// an earlier call in this process happened to request. Now propagates
+		// to the wavefront backend too (OptiXRenderer::render()'s own
+		// wavefrontTracer_->setDenoiseEnabled() call) - --wavefront --denoise
+		// used to be a silent (later, warned) no-op; WavefrontPathTracer now
+		// has its own real denoiser support.
 		g_renderer->enableDenoise(options.denoise);
-
-		// enableDenoise(true) has no effect under wavefront mode (render()
-		// delegates to wavefrontTracer_->render() and returns before ever
-		// reaching the denoise step - see OptiXRenderer::render()'s own
-		// comment and enableDenoise()'s doc comment for why). Without this,
-		// a user combining --wavefront --denoise gets a normal, undenoised
-		// render with nothing telling them why.
-		if (options.denoise && wfEnv && std::string(wfEnv) == "1") {
-			std::cerr << "[OptiX] Warning: --denoise has no effect under --wavefront "
-						 "(wavefront backend does not support denoising) - rendering without it.\n";
-		}
 
 		// Allocate float framebuffer
 		size_t pixelCount = image_width * image_height;
@@ -301,6 +294,15 @@ extern "C" int optix_render_main(
 			// skipped rather than escalating into ERR_GPU_EXCEPTION for a
 			// render whose actual requested output (the beauty EXR above)
 			// already succeeded.
+			//
+			// Still gated to non-wavefront here even though WavefrontPathTracer
+			// now denoises too (setDenoiseEnabled(), optix_renderer_render.cpp)
+			// - its AOV buffers are that class's own private members, not
+			// exposed through this OptiXRenderer's readAovBuffers(). Real gap
+			// (wavefront --denoise --exr never gets _albedo.exr/_normal.exr
+			// siblings), deliberately left for a follow-up: this export path
+			// is a bonus on top of denoising, not part of the "--denoise
+			// actually denoises under --wavefront" fix itself.
 			if (options.denoise && !(wfEnv && std::string(wfEnv) == "1")) {
 				try {
 					std::vector<float> albedo, normal;

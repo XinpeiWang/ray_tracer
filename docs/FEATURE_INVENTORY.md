@@ -99,7 +99,7 @@ numbered sections below for the narrative detail behind any row.
 | Integrators | BDPT | CPU only | `--gpu` request → forced onto CPU, warned, not an error |
 | Integrators | MLT | CPU only | Same — forced onto CPU, warned |
 | Integrators | RandomWalk / AO / SimplePath / SimpleVolPath / LightPath (debug) | CPU only | N/A (no GPU variant is ever attempted) |
-| Integrators | `--denoise` (OptiX AI denoiser) | GPU-recursive only | Silently a no-op under `--wavefront` |
+| Integrators | `--denoise` (OptiX AI denoiser) | GPU-recursive and GPU-wavefront | Wavefront has its own independent denoiser/AOV-buffer implementation (WavefrontPathTracer::denoise(), not shared with OptiXRenderer's) - real support now, previously a silent (then warned) no-op |
 | Spectral | `--spectral` (hero-wavelength Monte Carlo) | CPU, default path tracer only | Combined with GPU/SPPM/BDPT/MLT/debug → flag silently dropped, warned; render proceeds without it |
 | Spectral | GPU-wavefront's internal spectral pipeline | Always-on, GPU-wavefront | N/A (not a flag, not togglable — this is just how the integrator works) |
 | Spectral | Real accumulating spectral film/sensor (`PixelSensor`/`SpectralFilm`) | N, dead code | N/A — not a fallback scenario, simply unused; every spectral computation reduces to RGB per-sample instead |

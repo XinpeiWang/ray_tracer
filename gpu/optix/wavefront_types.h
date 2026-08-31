@@ -259,6 +259,14 @@ struct MissWorkItem {
 	// sky-NEE strategy (evaluate_materials's own sky-NEE block), mirroring
 	// optix_miss.h's recursive-backend equivalent.
 	float  brdf_pdf;
+	// Carried from RayWorkItem::depth - accumulate_miss's own denoiser guide-
+	// layer AOV write (albedoBuffer/normalBuffer) needs this to gate on
+	// "was this the primary ray", the same depth==0 check evaluate_materials()/
+	// evaluate_materials_simple()/evaluate_materials_dielectric() use. Can't
+	// reuse brdf_pdf==0 for this: that sentinel also fires for a LATER
+	// specular-bounce miss (see brdf_pdf's own comment), which would be a
+	// real bounce, not the primary ray.
+	int    depth;
 };
 
 // A MaterialType::Subsurface entry hit that transmitted through the entry

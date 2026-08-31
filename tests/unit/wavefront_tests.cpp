@@ -469,4 +469,57 @@ TEST_F(WavefrontRenderTest, DifferentSPPProducesDifferentOutput) {
 		<< "(avg_diff=" << avg_diff << "); random sampling should differ";
 }
 
+// --denoise on the wavefront backend (WavefrontPathTracer's own independent
+// denoiser - see setDenoiseEnabled()'s comment, wavefront_path_tracer.h) -
+// closes a real gap: --wavefront --denoise used to be a silent (then
+// warned) no-op. Renders the SAME low-spp scene with and without --denoise
+// and asserts the denoised version is measurably smoother - a real,
+// automatable proxy for "did the OptiX AI denoiser actually run", using
+// total variation (sum of |adjacent-pixel differences|) as the noise
+// metric: a noisy low-spp render has high pixel-to-pixel variance from
+// independent per-pixel sampling error, while a denoised render is smooth
+// except at genuine scene edges, which both images share equally - so any
+// large drop in total variation has to come from denoising, not from the
+// scene itself.
+TEST_F(WavefrontRenderTest, DenoiseReducesNoise) {
+	auto noisy = renderWF("wf_test_denoise_off.ppm", 150, 150, 8, 8);
+	ASSERT_TRUE(noisy.valid) << "Non-denoised wavefront render failed";
+
+	files_.push_back("wf_test_denoise_on.ppm");
+	RenderOptions opts;
+	opts.denoise = true;
+	ASSERT_EQ(optix_render_main(150, 150, 8, 8, "wf_test_denoise_on.ppm", "A1",
+								 278, 278, -800, /*force_camera_override=*/0, opts), 0)
+		<< "Denoised wavefront render failed (--denoise --wavefront)";
+	auto denoised = wf_load_ppm("wf_test_denoise_on.ppm");
+	ASSERT_TRUE(denoised.valid) << "Failed to load denoised wavefront PPM";
+	ASSERT_EQ(denoised.width, noisy.width);
+	ASSERT_EQ(denoised.height, noisy.height);
+
+	auto totalVariation = [](const WFPPMImage& img) -> float {
+		float tv = 0.0f;
+		for (int y = 0; y < img.height; ++y) {
+			for (int x = 0; x < img.width - 1; ++x) {
+				for (int c = 0; c < 3; ++c) {
+					int i0 = (y * img.width + x) * 3 + c;
+					int i1 = (y * img.width + x + 1) * 3 + c;
+					tv += std::abs(img.pixels[i0] - img.pixels[i1]);
+				}
+			}
+		}
+		return tv;
+	};
+
+	float tvNoisy = totalVariation(noisy);
+	float tvDenoised = totalVariation(denoised);
+
+	// Empirically the denoised render's total variation lands well under
+	// half the noisy one's at this spp/resolution - 0.6 is a comfortable
+	// margin above that, well below "coincidentally similar."
+	EXPECT_LT(tvDenoised, tvNoisy * 0.6f)
+		<< "Denoised wavefront render is not measurably smoother than the "
+		<< "noisy one (tvNoisy=" << tvNoisy << ", tvDenoised=" << tvDenoised
+		<< ") - --wavefront --denoise may have regressed to a no-op";
+}
+
 #endif // OPTIX_RENDERER_AVAILABLE

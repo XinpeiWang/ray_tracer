@@ -2406,13 +2406,41 @@ extern "C" __global__ void evaluate_materials(
 	// AND'd together at each glossy-alpha call site below (see
 	// wf_glossy_alpha()'s own comment for why the gate lives at the call
 	// sites rather than inside that shared helper).
-	bool regularize
+	bool regularize,
+	// Denoiser guide-layer AOVs (null unless --denoise was requested - same
+	// convention as the recursive backend's LaunchParams::albedoBuffer/
+	// normalBuffer, optix_types.h). Accumulated (atomicAdd, then divided by
+	// samplesPerPixel - see launchNormalizeAovBuffers()) across every
+	// sample's own primary-ray hit, mirroring optix_raygen.h's albedo_sum/
+	// normal_sum - that backend can average in a plain per-thread local
+	// since one thread owns a whole pixel's samples sequentially; this
+	// backend processes one sample per kernel launch, so accumulation has
+	// to persist across launches instead.
+	float3* albedoBuffer,
+	float3* normalBuffer
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
 
 	const HitWorkItem& h = hitQueue.items[idx];
 	const MaterialData& mat = materials[h.materialIdx];
+
+	// Denoiser guide-layer AOV - primary-ray hits only (depth==0), matching
+	// optix_intersection_sphere.h's own "mat.albedo is the safe always-valid
+	// fallback" choice: unlike the recursive backend, this kernel doesn't
+	// have easy access to the eventual scatter attenuation at this point
+	// (computed later, per material case, in spectral form) - mat.albedo is
+	// a plain RGB field available uniformly for every material kind, a
+	// simplification that trades a little guide-layer precision for not
+	// needing a spectral-to-RGB conversion of the scatter weight here.
+	if (albedoBuffer && h.depth == 0) {
+		atomicAdd(&albedoBuffer[h.pixelIndex].x, mat.albedo.x);
+		atomicAdd(&albedoBuffer[h.pixelIndex].y, mat.albedo.y);
+		atomicAdd(&albedoBuffer[h.pixelIndex].z, mat.albedo.z);
+		atomicAdd(&normalBuffer[h.pixelIndex].x, h.normal.x);
+		atomicAdd(&normalBuffer[h.pixelIndex].y, h.normal.y);
+		atomicAdd(&normalBuffer[h.pixelIndex].z, h.normal.z);
+	}
 
 	// Hoisted once and reused by every glossy-alpha call site below - both
 	// operands are fixed for the rest of this thread's execution (regularize
@@ -3713,13 +3741,25 @@ extern "C" __global__ void evaluate_materials_simple(
 	int maxDepth,
 	float3 skyColor,
 	float shadowRayEpsilon,
-	GpuSkyDistribution skyDist
+	GpuSkyDistribution skyDist,
+	// Denoiser guide-layer AOVs - see evaluate_materials()'s own comment.
+	float3* albedoBuffer,
+	float3* normalBuffer
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
 
 	const HitWorkItem& h = hitQueue.items[idx];
 	const MaterialData& mat = materials[h.materialIdx];
+
+	if (albedoBuffer && h.depth == 0) {
+		atomicAdd(&albedoBuffer[h.pixelIndex].x, mat.albedo.x);
+		atomicAdd(&albedoBuffer[h.pixelIndex].y, mat.albedo.y);
+		atomicAdd(&albedoBuffer[h.pixelIndex].z, mat.albedo.z);
+		atomicAdd(&normalBuffer[h.pixelIndex].x, h.normal.x);
+		atomicAdd(&normalBuffer[h.pixelIndex].y, h.normal.y);
+		atomicAdd(&normalBuffer[h.pixelIndex].z, h.normal.z);
+	}
 
 	float3 normal    = h.normal;
 	float3 hit_point = h.hitPoint;
@@ -3878,13 +3918,25 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	GpuSkyDistribution skyDist,
 	// Integrator "bool regularize" - see evaluate_materials()'s own
 	// identical parameter comment above.
-	bool regularize
+	bool regularize,
+	// Denoiser guide-layer AOVs - see evaluate_materials()'s own comment.
+	float3* albedoBuffer,
+	float3* normalBuffer
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numHits) return;
 
 	const HitWorkItem& h = hitQueue.items[idx];
 	const MaterialData& mat = materials[h.materialIdx];
+
+	if (albedoBuffer && h.depth == 0) {
+		atomicAdd(&albedoBuffer[h.pixelIndex].x, mat.albedo.x);
+		atomicAdd(&albedoBuffer[h.pixelIndex].y, mat.albedo.y);
+		atomicAdd(&albedoBuffer[h.pixelIndex].z, mat.albedo.z);
+		atomicAdd(&normalBuffer[h.pixelIndex].x, h.normal.x);
+		atomicAdd(&normalBuffer[h.pixelIndex].y, h.normal.y);
+		atomicAdd(&normalBuffer[h.pixelIndex].z, h.normal.z);
+	}
 
 	// See evaluate_materials()'s own identical hoist just above its `h` load -
 	// same reasoning: both operands are fixed for the rest of this thread.
@@ -4337,7 +4389,10 @@ extern "C" __global__ void accumulate_miss(
 	float3                  backgroundColor,
 	// Real importance-sampled HDR sky - see evaluate_materials's own
 	// GpuSkyDistribution parameter comment.
-	GpuSkyDistribution      skyDist
+	GpuSkyDistribution      skyDist,
+	// Denoiser guide-layer AOVs - see evaluate_materials()'s own comment.
+	float3*                 albedoBuffer,
+	float3*                 normalBuffer
 ) {
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numMiss) return;
@@ -4366,6 +4421,22 @@ extern "C" __global__ void accumulate_miss(
 	// at the previous hit. `backgroundColor` still gates "does this scene
 	// have a sky at all" below, matching prior behavior exactly.
 	float3 color = wf_sky_radiance(skyDist, m.rayDir, backgroundColor);
+
+	// Denoiser guide-layer AOV, primary-ray misses only (depth==0) - mirrors
+	// optix_miss.h's pack_aov_payload(color, -rayDir) for the recursive
+	// backend exactly (background color as "albedo", the incoming ray's
+	// reverse direction as a placeholder "normal" for a surface that isn't
+	// there). Unconditional on whether L below ends up non-empty - the AOV
+	// write is independent of the radiance contribution.
+	if (albedoBuffer && m.depth == 0) {
+		atomicAdd(&albedoBuffer[m.pixelIndex].x, color.x);
+		atomicAdd(&albedoBuffer[m.pixelIndex].y, color.y);
+		atomicAdd(&albedoBuffer[m.pixelIndex].z, color.z);
+		atomicAdd(&normalBuffer[m.pixelIndex].x, -m.rayDir.x);
+		atomicAdd(&normalBuffer[m.pixelIndex].y, -m.rayDir.y);
+		atomicAdd(&normalBuffer[m.pixelIndex].z, -m.rayDir.z);
+	}
+
 	float3 weightedBackground = color;
 	if (m.brdf_pdf > 0.0f && (backgroundColor.x > 0.0f || backgroundColor.y > 0.0f || backgroundColor.z > 0.0f)) {
 		const float pdf_sky = wf_sky_pdf_for_mis(skyDist, m.rayDir);
@@ -4466,4 +4537,23 @@ extern "C" __global__ void normalize_framebuffer(
 	if (idx >= numPixels) return;
 	float w = weightBuffer[idx];
 	framebuffer[idx] = (w > 0.0f) ? (framebuffer[idx] * (1.0f / w)) : make_float3(0.0f, 0.0f, 0.0f);
+}
+
+// Denoiser guide-layer AOV normalization (--denoise only, null buffers
+// otherwise - see evaluate_materials()'s own accumulation comment). Plain
+// arithmetic mean over samplesPerPixel, NOT filter-weighted like
+// normalize_framebuffer() above - matches the recursive backend's own
+// `albedo_sum / samplesPerPixel` (optix_raygen.h), which also averages
+// unweighted by the reconstruction filter.
+extern "C" __global__ void normalize_aov_buffers(
+	float3*      albedoBuffer,
+	float3*      normalBuffer,
+	unsigned int numPixels,
+	unsigned int samplesPerPixel
+) {
+	unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	if (idx >= numPixels) return;
+	float inv = 1.0f / float(samplesPerPixel);
+	albedoBuffer[idx] = albedoBuffer[idx] * inv;
+	normalBuffer[idx] = normalBuffer[idx] * inv;
 }

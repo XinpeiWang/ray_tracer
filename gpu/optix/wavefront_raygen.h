@@ -117,6 +117,7 @@ extern "C" __global__ void __raygen__wf_intersect() {
 		m.rayDir      = ray.direction;
 		m.pixelIndex  = ray.pixelIndex;
 		m.brdf_pdf    = ray.brdf_pdf;
+		m.depth       = ray.depth;
 		wf_params.missQueue.push(m);
 	}
 }

@@ -809,7 +809,9 @@ int main(int argc, char** argv) {
     // plain path-tracer entry points) - BDPT/MLT/SPPM (CPU and GPU) have no
     // exposure parameter at all, so the flag would otherwise be silently
     // swallowed with zero indication why. Same warn-instead-of-silently-
-    // drop pattern as --denoise's own --wavefront warning below.
+    // drop pattern this codebase uses elsewhere for a flag/mode combination
+    // that doesn't apply (--denoise --wavefront used to warn here too,
+    // before WavefrontPathTracer gained its own real denoiser support).
     if (args.exposure != 1.0 && (use_bdpt || use_mlt || use_sppm || use_debug_integrator)) {
         std::cerr << "Warning: --exposure has no effect under --bdpt/--mlt/--sppm/"
                      "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "

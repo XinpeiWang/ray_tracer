@@ -56,6 +56,7 @@ extern "C" void wf_launch_evaluate_materials(
 	const GpuMeasuredTable*, unsigned int,
 	const float*, const float*, const float*, const float*,
 	float3, float, GpuSkyDistribution, bool,
+	float3*, float3*,
 	cudaStream_t);
 extern "C" void wf_launch_evaluate_materials_simple(
 	WorkQueue<HitWorkItem>, int,
@@ -73,6 +74,7 @@ extern "C" void wf_launch_evaluate_materials_simple(
 	const TextureData*, const unsigned char*,
 	int,
 	float3, float, GpuSkyDistribution,
+	float3*, float3*,
 	cudaStream_t);
 extern "C" void wf_launch_evaluate_materials_dielectric(
 	WorkQueue<HitWorkItem>, int,
@@ -90,8 +92,9 @@ extern "C" void wf_launch_evaluate_materials_dielectric(
 	const TextureData*, const unsigned char*,
 	int,
 	float3, float, GpuSkyDistribution, bool,
+	float3*, float3*,
 	cudaStream_t);
-extern "C" void wf_launch_accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, GpuSkyDistribution, cudaStream_t);
+extern "C" void wf_launch_accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, GpuSkyDistribution, float3*, float3*, cudaStream_t);
 extern "C" void wf_launch_accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*, cudaStream_t);
 extern "C" void wf_launch_resolve_bssrdf_exit(
 	WorkQueue<BssrdfExitWorkItem>, int,
@@ -110,6 +113,7 @@ extern "C" void wf_launch_resolve_bssrdf_exit(
 	float3, float, GpuSkyDistribution,
 	cudaStream_t);
 extern "C" void wf_launch_normalize_framebuffer(unsigned int, const float*, float3*, cudaStream_t);
+extern "C" void wf_launch_normalize_aov_buffers(unsigned int, float3*, float3*, unsigned int, cudaStream_t);
 extern "C" void wf_reset_queue_counter(int*, cudaStream_t);
 extern "C" void wf_upload_cie_tables(const float*, const float*, const float*, int);
 extern "C" void wf_upload_srgb_table(const float*, const float*, int);
@@ -1102,7 +1106,7 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 	const GpuAliasEntry* d_aliasTable,  unsigned int numLights,
 	const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
 	float3*              d_framebuffer, float3 skyColor, float shadowRayEpsilon,
-	GpuSkyDistribution skyDist)
+	GpuSkyDistribution skyDist, float3* d_albedoBuffer, float3* d_normalBuffer)
 {
 	if (numHits == 0) return;
 
@@ -1153,6 +1157,7 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		reinterpret_cast<const float*>(d_measuredMcdf_),
 		reinterpret_cast<const float*>(d_measuredCcdf_),
 		skyColor, shadowRayEpsilon, skyDist, regularize,
+		d_albedoBuffer, d_normalBuffer,
 		stream_);
 }
 
@@ -1172,7 +1177,7 @@ void WavefrontPathTracer::launchEvaluateMaterialsSimple(
 	const GpuAliasEntry* d_aliasTable,  unsigned int numLights,
 	const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
 	float3*              d_framebuffer, float3 skyColor, float shadowRayEpsilon,
-	GpuSkyDistribution skyDist)
+	GpuSkyDistribution skyDist, float3* d_albedoBuffer, float3* d_normalBuffer)
 {
 	if (numHits == 0) return;
 
@@ -1205,6 +1210,7 @@ void WavefrontPathTracer::launchEvaluateMaterialsSimple(
 		reinterpret_cast<const unsigned char*>(d_texturePixels_),
 		maxDepth,
 		skyColor, shadowRayEpsilon, skyDist,
+		d_albedoBuffer, d_normalBuffer,
 		simpleMaterialStream_);
 }
 
@@ -1226,7 +1232,7 @@ void WavefrontPathTracer::launchEvaluateMaterialsDielectric(
 	const GpuAliasEntry* d_aliasTable,  unsigned int numLights,
 	const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
 	float3*              d_framebuffer, float3 skyColor, float shadowRayEpsilon,
-	GpuSkyDistribution skyDist)
+	GpuSkyDistribution skyDist, float3* d_albedoBuffer, float3* d_normalBuffer)
 {
 	if (numHits == 0) return;
 
@@ -1259,11 +1265,12 @@ void WavefrontPathTracer::launchEvaluateMaterialsDielectric(
 		reinterpret_cast<const unsigned char*>(d_texturePixels_),
 		maxDepth,
 		skyColor, shadowRayEpsilon, skyDist, regularize,
+		d_albedoBuffer, d_normalBuffer,
 		dielectricMaterialStream_);
 }
 
 void WavefrontPathTracer::launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor,
-												GpuSkyDistribution skyDist) {
+												GpuSkyDistribution skyDist, float3* d_albedoBuffer, float3* d_normalBuffer) {
 	if (numMiss == 0) return;
 
 	WorkQueue<MissWorkItem> mq;
@@ -1271,7 +1278,7 @@ void WavefrontPathTracer::launchAccumulateMiss(int numMiss, float3* d_framebuffe
 	mq.counter  = reinterpret_cast<int*>(d_missCounter_);
 	mq.capacity = queueCapacity_;
 
-	wf_launch_accumulate_miss(mq, numMiss, d_framebuffer, backgroundColor, skyDist, stream_);
+	wf_launch_accumulate_miss(mq, numMiss, d_framebuffer, backgroundColor, skyDist, d_albedoBuffer, d_normalBuffer, stream_);
 }
 
 void WavefrontPathTracer::launchAccumulateShadow(
@@ -1339,6 +1346,146 @@ void WavefrontPathTracer::launchNormalizeFramebuffer(
 	unsigned int numPixels, const float* d_weightBuffer, float3* d_framebuffer)
 {
 	wf_launch_normalize_framebuffer(numPixels, d_weightBuffer, d_framebuffer, stream_);
+}
+
+void WavefrontPathTracer::launchNormalizeAovBuffers(
+	unsigned int numPixels, float3* d_albedoBuffer, float3* d_normalBuffer, unsigned int samplesPerPixel)
+{
+	wf_launch_normalize_aov_buffers(numPixels, d_albedoBuffer, d_normalBuffer, samplesPerPixel, stream_);
+}
+
+// ============================================================================
+// --denoise support - own copy of OptiXRenderer's denoiser/AOV-buffer
+// lifecycle (optix_renderer_render.cpp) - see setDenoiseEnabled()'s own
+// comment (wavefront_path_tracer.h) for why this isn't shared instead.
+// ============================================================================
+
+void WavefrontPathTracer::ensureAovBuffers(unsigned int width, unsigned int height) {
+	if (d_albedoAov_ && d_normalAov_ && width == aovWidth_ && height == aovHeight_) {
+		return;  // already sized correctly - video mode's steady-state per-frame call
+	}
+	destroyAovBuffers();
+	size_t fbSize = static_cast<size_t>(width) * height * sizeof(float3);
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_albedoAov_), fbSize));
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_normalAov_), fbSize));
+	aovWidth_ = width;
+	aovHeight_ = height;
+}
+
+void WavefrontPathTracer::destroyAovBuffers() noexcept {
+	if (d_albedoAov_) { cudaFree(reinterpret_cast<void*>(d_albedoAov_)); d_albedoAov_ = 0; }
+	if (d_normalAov_) { cudaFree(reinterpret_cast<void*>(d_normalAov_)); d_normalAov_ = 0; }
+	aovWidth_ = 0;
+	aovHeight_ = 0;
+}
+
+void WavefrontPathTracer::destroyDenoiser() noexcept {
+	if (denoiserIntensity_) { cudaFree(reinterpret_cast<void*>(denoiserIntensity_)); denoiserIntensity_ = 0; }
+	if (denoiserScratch_)   { cudaFree(reinterpret_cast<void*>(denoiserScratch_));   denoiserScratch_ = 0; }
+	if (denoiserState_)     { cudaFree(reinterpret_cast<void*>(denoiserState_));     denoiserState_ = 0; }
+	if (denoiser_)          { optixDenoiserDestroy(denoiser_); denoiser_ = nullptr; }
+	denoiserWidth_ = 0;
+	denoiserHeight_ = 0;
+}
+
+// See OptiXRenderer::denoise() (optix_renderer_render.cpp) for the full
+// "why" behind every step here - this is a byte-for-byte mirror against
+// this class's own context_/stream_ instead.
+bool WavefrontPathTracer::denoise(CUdeviceptr d_buffer, unsigned int width, unsigned int height,
+	CUdeviceptr d_albedo, CUdeviceptr d_normal) {
+	auto fail = [&](const char* what, OptixResult res) {
+		std::cerr << "[Wavefront] Denoiser " << what << " failed (code " << res << ")\n";
+		destroyDenoiser();
+		return false;
+	};
+
+	if (!denoiser_ || width != denoiserWidth_ || height != denoiserHeight_) {
+		destroyDenoiser();
+
+		OptixDenoiserOptions options = {};
+		options.guideAlbedo = d_albedo ? 1 : 0;
+		options.guideNormal = d_normal ? 1 : 0;
+		options.denoiseAlpha = OPTIX_DENOISER_ALPHA_MODE_COPY;
+
+		OptixResult res = optixDenoiserCreate(context_, OPTIX_DENOISER_MODEL_KIND_AOV, &options, &denoiser_);
+		if (res != OPTIX_SUCCESS) return fail("create", res);
+
+		OptixDenoiserSizes sizes = {};
+		res = optixDenoiserComputeMemoryResources(denoiser_, width, height, &sizes);
+		if (res != OPTIX_SUCCESS) return fail("computeMemoryResources", res);
+
+		denoiserStateSizeInBytes_ = sizes.stateSizeInBytes;
+		denoiserScratchSizeInBytes_ = sizes.withoutOverlapScratchSizeInBytes;
+		denoiserComputeIntensitySizeInBytes_ = sizes.computeIntensitySizeInBytes;
+		size_t scratchAllocSize = denoiserScratchSizeInBytes_;
+		if (denoiserComputeIntensitySizeInBytes_ > scratchAllocSize)
+			scratchAllocSize = denoiserComputeIntensitySizeInBytes_;
+
+		if (cudaMalloc(reinterpret_cast<void**>(&denoiserState_), denoiserStateSizeInBytes_) != cudaSuccess)
+			return fail("state alloc", OPTIX_ERROR_INTERNAL_ERROR);
+		if (cudaMalloc(reinterpret_cast<void**>(&denoiserScratch_), scratchAllocSize) != cudaSuccess)
+			return fail("scratch alloc", OPTIX_ERROR_INTERNAL_ERROR);
+		if (cudaMalloc(reinterpret_cast<void**>(&denoiserIntensity_), sizeof(float)) != cudaSuccess)
+			return fail("intensity alloc", OPTIX_ERROR_INTERNAL_ERROR);
+
+		res = optixDenoiserSetup(denoiser_, stream_, width, height,
+			denoiserState_, denoiserStateSizeInBytes_, denoiserScratch_, denoiserScratchSizeInBytes_);
+		if (res != OPTIX_SUCCESS) return fail("setup", res);
+
+		denoiserWidth_ = width;
+		denoiserHeight_ = height;
+	}
+
+	OptixImage2D image = {};
+	image.data = d_buffer;
+	image.width = width;
+	image.height = height;
+	image.rowStrideInBytes = width * sizeof(float3);
+	image.pixelStrideInBytes = sizeof(float3);
+	image.format = OPTIX_PIXEL_FORMAT_FLOAT3;
+
+	OptixResult res = optixDenoiserComputeIntensity(denoiser_, stream_, &image, denoiserIntensity_,
+		denoiserScratch_, denoiserComputeIntensitySizeInBytes_);
+	if (res != OPTIX_SUCCESS) return fail("computeIntensity", res);
+
+	OptixDenoiserParams params = {};
+	params.hdrIntensity = denoiserIntensity_;
+	params.blendFactor = 0.0f;
+
+	OptixDenoiserGuideLayer guideLayer = {};
+	if (d_albedo) {
+		guideLayer.albedo.data = d_albedo;
+		guideLayer.albedo.width = width;
+		guideLayer.albedo.height = height;
+		guideLayer.albedo.rowStrideInBytes = width * sizeof(float3);
+		guideLayer.albedo.pixelStrideInBytes = sizeof(float3);
+		guideLayer.albedo.format = OPTIX_PIXEL_FORMAT_FLOAT3;
+	}
+	if (d_normal) {
+		guideLayer.normal.data = d_normal;
+		guideLayer.normal.width = width;
+		guideLayer.normal.height = height;
+		guideLayer.normal.rowStrideInBytes = width * sizeof(float3);
+		guideLayer.normal.pixelStrideInBytes = sizeof(float3);
+		guideLayer.normal.format = OPTIX_PIXEL_FORMAT_FLOAT3;
+	}
+
+	OptixDenoiserLayer layer = {};
+	layer.input = image;
+	layer.output = image;
+	layer.type = OPTIX_DENOISER_AOV_TYPE_BEAUTY;
+
+	res = optixDenoiserInvoke(denoiser_, stream_, &params,
+		denoiserState_, denoiserStateSizeInBytes_,
+		&guideLayer, &layer, 1,
+		0, 0,
+		denoiserScratch_, denoiserScratchSizeInBytes_);
+	if (res != OPTIX_SUCCESS) return fail("invoke", res);
+
+	if (cudaStreamSynchronize(stream_) != cudaSuccess)
+		return fail("sync", OPTIX_ERROR_INTERNAL_ERROR);
+
+	return true;
 }
 
 // ============================================================================
@@ -1418,6 +1565,24 @@ bool WavefrontPathTracer::render(
 	CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_weight), 0,
 							   numPixels * sizeof(float), stream_));
 	float* d_weightPtr = reinterpret_cast<float*>(d_weight);
+
+	// Denoiser guide-layer AOV buffers (--denoise only) - persisted across
+	// render() calls via ensureAovBuffers() (same resolution-keyed recreate-
+	// on-change pattern as the recursive backend's own copy, optix_renderer_
+	// render.cpp), zeroed fresh each render() call since they accumulate
+	// (atomicAdd) across every sample - see evaluate_materials()'s own
+	// accumulation comment, wavefront_kernels.cu.
+	float3* d_albedoAovPtr = nullptr;
+	float3* d_normalAovPtr = nullptr;
+	if (denoiseEnabled_) {
+		ensureAovBuffers((unsigned int)width, (unsigned int)height);
+		d_albedoAovPtr = reinterpret_cast<float3*>(d_albedoAov_);
+		d_normalAovPtr = reinterpret_cast<float3*>(d_normalAov_);
+		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_albedoAov_), 0,
+								   numPixels * sizeof(float3), stream_));
+		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_normalAov_), 0,
+								   numPixels * sizeof(float3), stream_));
+	}
 
 	// Build WavefrontLaunchParams template (queue pointers filled per phase)
 	WavefrontLaunchParams lp = {};
@@ -1567,7 +1732,8 @@ bool WavefrontPathTracer::render(
 				num_lights,
 				reinterpret_cast<const PunctualLightGPU*>(d_punctual_lights),
 				num_punctual_lights,
-				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist);
+				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist,
+				d_albedoAovPtr, d_normalAovPtr);
 
 			// ------------------------------------------------------------------
 			// Phase 3b: Evaluate simple materials (Lambertian/Metal hits
@@ -1599,7 +1765,8 @@ bool WavefrontPathTracer::render(
 				num_lights,
 				reinterpret_cast<const PunctualLightGPU*>(d_punctual_lights),
 				num_punctual_lights,
-				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist);
+				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist,
+				d_albedoAovPtr, d_normalAovPtr);
 
 			// ------------------------------------------------------------------
 			// Phase 3c: Evaluate dielectric materials (Dielectric/RoughDielectric
@@ -1624,12 +1791,14 @@ bool WavefrontPathTracer::render(
 				num_lights,
 				reinterpret_cast<const PunctualLightGPU*>(d_punctual_lights),
 				num_punctual_lights,
-				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist);
+				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist,
+				d_albedoAovPtr, d_normalAovPtr);
 
 			// ------------------------------------------------------------------
 			// Phase 4: Accumulate miss (escaped rays → background)
 			// ------------------------------------------------------------------
-			launchAccumulateMiss(numMiss, d_fbPtr, camera.backgroundColor, camera.skyDist);
+			launchAccumulateMiss(numMiss, d_fbPtr, camera.backgroundColor, camera.skyDist,
+				d_albedoAovPtr, d_normalAovPtr);
 
 			CUDA_CHECK(cudaStreamSynchronize(stream_));
 			CUDA_CHECK(cudaStreamSynchronize(simpleMaterialStream_));
@@ -1767,6 +1936,21 @@ bool WavefrontPathTracer::render(
 	launchNormalizeFramebuffer((unsigned int)numPixels, d_weightPtr, d_fbPtr);
 	CUDA_CHECK(cudaStreamSynchronize(stream_));
 
+	// Optional OptiX AI denoiser post-process (--denoise, this backend's own
+	// support - see setDenoiseEnabled()'s own comment). Normalizes the
+	// accumulated albedo/normal AOV buffers first (plain mean over
+	// samples_per_pixel - see launchNormalizeAovBuffers()'s own comment),
+	// then runs on-device, in place, before the framebuffer is downloaded to
+	// host memory below. A failure here is logged (inside denoise() itself)
+	// and otherwise ignored - the already-valid noisy render is still a
+	// correct result, matching the recursive backend's own precedent.
+	if (denoiseEnabled_) {
+		launchNormalizeAovBuffers((unsigned int)numPixels, d_albedoAovPtr, d_normalAovPtr,
+			(unsigned int)samples_per_pixel);
+		CUDA_CHECK(cudaStreamSynchronize(stream_));
+		denoise(d_fb, (unsigned int)width, (unsigned int)height, d_albedoAov_, d_normalAov_);
+	}
+
 	CUDA_CHECK(cudaMemcpy(framebuffer, reinterpret_cast<void*>(d_fb),
 						  numPixels * sizeof(float3), cudaMemcpyDeviceToHost));
 
@@ -1844,6 +2028,8 @@ void WavefrontPathTracer::cleanup() {
 	destroySBT();
 	destroyProgramGroups();
 	freeQueues();
+	destroyDenoiser();
+	destroyAovBuffers();
 
 	if (intersectPipeline_) { optixPipelineDestroy(intersectPipeline_); intersectPipeline_ = nullptr; }
 	if (shadowPipeline_)    { optixPipelineDestroy(shadowPipeline_);    shadowPipeline_    = nullptr; }

@@ -67,7 +67,12 @@ bool OptiXRenderer::render(
 	// Delegate to WavefrontPathTracer if enabled
 	if (useWavefront_ && wavefrontTracer_) {
 		// Set per render rather than once at enable time, so a scene switch
-		// cannot leave a previous scene's table wired in.
+		// cannot leave a previous scene's table wired in - same reasoning
+		// as this backend's own enableDenoise()'s comment. WavefrontPathTracer
+		// has its own, independent denoiser/AOV-buffer implementation (see
+		// that class's own setDenoiseEnabled() comment for why it's not
+		// shared with this class's denoise()).
+		wavefrontTracer_->setDenoiseEnabled(denoiseEnabled_);
 		wavefrontTracer_->setInstancePrimBase(d_instanceBase_);
 		wavefrontTracer_->setTextures(d_textures_, d_texturePixels_);
 		wavefrontTracer_->setCloudMediums(d_cloudMediums_, numCloudMediums_);
