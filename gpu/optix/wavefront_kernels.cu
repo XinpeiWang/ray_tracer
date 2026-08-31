@@ -2113,7 +2113,18 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		float  cos_l   = isPhase ? 1.0f
 			: (matType == MaterialType::RoughDielectric) ? fabsf(raw_cos)
 			: raw_cos;
-		if (isPhase || matType == MaterialType::RoughDielectric || cos_l > 0.0f) {
+		// pdf_sky > 0.0f is REQUIRED here, not just an optimization: a
+		// portal-light NEE sample (wf_sample_sky_nee() -> gpu_portal_sample_Li())
+		// returns pdf_sky == 0.0f with sky_Le_val == (0,0,0) whenever the
+		// portal window subtends zero area from hit_point (a routine outcome
+		// for most points not facing the window, not a rare edge case) -
+		// without this guard, `isPhase`/RoughDielectric (which bypass the
+		// cos_l gate entirely) unconditionally divide by pdf_sky below and
+		// produce NaN (0.0f/0.0f). Mirrors CPU's own
+		// `if (portal->sample_li(...) && pdf_portal > 0.0)` guard
+		// (src/TheRestOfYourLife/camera.h) and this file's own
+		// medium_phase_nee_mis()-equivalent pattern elsewhere.
+		if (pdf_sky > 0.0f && (isPhase || matType == MaterialType::RoughDielectric || cos_l > 0.0f)) {
 			float bsdf_val = 1.0f / 3.14159265f; // Lambertian default
 			// See the area-light block above: attenuation == albedoSpectrum(mat.albedo)
 			// for Lambertian (direction-independent BRDF, safe to reuse here);

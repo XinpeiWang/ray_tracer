@@ -1712,7 +1712,7 @@ __device__ __forceinline__ void shade_normalized_fresnel(
 			float3 sky_dir, sky_Le_val; float pdf_sky;
 			sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 			float  cos_sky = dot(sky_dir, normal);
-			if (cos_sky > 0.0f) {
+			if (cos_sky > 0.0f && pdf_sky > 0.0f) {
 				if (trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
 					float fr_sky       = FrDielectric(cos_sky, nf_eta);
 					float brdf_val_sky = (1.0f - fr_sky) / (nf_c * 3.14159265358979323846f);
@@ -2059,7 +2059,21 @@ __device__ __forceinline__ void shade_material(
 					float3 sky_dir, sky_Le_val; float pdf_sky;
 					sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 					float  cos_sky = dot(sky_dir, normal);
-					if (cos_sky > 0.0f) {
+					// pdf_sky > 0.0f is REQUIRED, not just an optimization: a
+					// portal-light NEE sample (sample_sky_nee() -> gpu_portal_
+					// sample_Li()) returns pdf_sky == 0.0f with sky_Le_val ==
+					// (0,0,0) whenever the portal window subtends zero area
+					// from hit_point (a routine outcome for most points not
+					// facing the window, not a rare edge case) - without this
+					// check, `.../pdf_sky` below divides 0.0f by 0.0f, a real
+					// NaN, not just a wasted no-op. Every other sky-NEE block
+					// in this switch (and wf_finish_material_scatter's own
+					// identical block, wavefront_kernels.cu) needs the exact
+					// same guard - mirrors CPU's own
+					// `if (portal->sample_li(...) && pdf_portal > 0.0)` gate
+					// (src/TheRestOfYourLife/camera.h) and medium_phase_nee_
+					// mis()'s own pdf_sky>0.0f check just above in this file.
+					if (cos_sky > 0.0f && pdf_sky > 0.0f) {
 						if (trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
 							float brdf_pdf_sky = cosine_pdf(sky_dir, normal);
 							float mis_weight    = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
@@ -2427,7 +2441,7 @@ __device__ __forceinline__ void shade_material(
 						float3 sky_dir, sky_Le_val; float pdf_sky;
 						sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 						float skx = dot(sky_dir, cc_tan), sky_y = dot(sky_dir, cc_bit), skz = dot(sky_dir, cc_n);
-						if (skz > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
+						if (skz > 0.0f && pdf_sky > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
 							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
 							float fr, fg, fb;
 							cc_bxdf.f(cc_wi_x, cc_wi_y, cc_wi_z, skx, sky_y, skz, ns0, ns1, fr, fg, fb);
@@ -2638,7 +2652,7 @@ __device__ __forceinline__ void shade_material(
 						sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 						float skx = dot(sky_dir, tan), sky_y = dot(sky_dir, bitan), skz = dot(sky_dir, n);
 						if (rd_flip) { skx=-skx; sky_y=-sky_y; skz=-skz; }
-						if (skz != 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
+						if (skz != 0.0f && pdf_sky > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
 							float fval = rd_bxdf.f(wi_x, wi_y, wi_z, rd_ri, skx, sky_y, skz);
 							float brdf_pdf_sky = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, skx, sky_y, skz);
 							float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
@@ -2735,7 +2749,7 @@ __device__ __forceinline__ void shade_material(
 						float3 sky_dir, sky_Le_val; float pdf_sky;
 						sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 						float skx = dot(sky_dir, ctan), sky_y = dot(sky_dir, cbitan), skz = dot(sky_dir, cn);
-						if (skz > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
+						if (skz > 0.0f && pdf_sky > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
 							float fr, fg, fb;
 							c_bxdf.f(cwi_x, cwi_y, cwi_z, skx, sky_y, skz, fr, fg, fb);
 							float brdf_pdf_sky = c_bxdf.pdf(cwi_x, cwi_y, cwi_z, skx, sky_y, skz);
@@ -2823,7 +2837,7 @@ __device__ __forceinline__ void shade_material(
 						float3 sky_dir, sky_Le_val; float pdf_sky;
 						sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 						float skx = dot(sky_dir, rmtan), sky_y = dot(sky_dir, rmbitan), skz = dot(sky_dir, rmn);
-						if (skz > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
+						if (skz > 0.0f && pdf_sky > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
 							float fr, fg, fb;
 							rm_bxdf.f(rmwi_x, rmwi_y, rmwi_z, skx, sky_y, skz, fr, fg, fb);
 							float brdf_pdf_sky = rm_bxdf.pdf(rmwi_x, rmwi_y, rmwi_z, skx, sky_y, skz);
@@ -2994,7 +3008,7 @@ __device__ __forceinline__ void shade_material(
 						float3 sky_dir, sky_Le_val; float pdf_sky;
 						sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 						float skx = dot(sky_dir, cdtan), sky_y = dot(sky_dir, cdbit), skz = dot(sky_dir, cdn);
-						if (skz > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
+						if (skz > 0.0f && pdf_sky > 0.0f && trace_shadow_ray(hit_point, sky_dir, 1e30f)) {
 							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
 							float fr, fg, fb;
 							cd_bxdf.f(cdwi_x, cdwi_y, cdwi_z, skx, sky_y, skz, ns0, ns1, fr, fg, fb);

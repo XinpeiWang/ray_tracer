@@ -488,6 +488,23 @@ bool OptiXRenderer::buildScene(
 		std::cout << "[OptiX] Uploaded " << measuredTables.size() << " measured-BRDF table(s) ("
 			<< measuredData.size() << " data floats) to GPU\n";
 
+	// Shared by both the sky distribution and portal-light uploads just
+	// below: free any previously-uploaded buffer, then malloc+memcpy the new
+	// one (skipped entirely for an empty source, leaving dst null - matches
+	// GpuSkyDistribution::height<=0/GpuPortalLight::height<=0's own "absent"
+	// convention). Templated (not float-only) so it also serves
+	// portalSatSum's double precision (SummedAreaTable's own comment on why
+	// that one stays double, not narrowed to float like every other GPU
+	// buffer here).
+	const auto uploadGpuBuf = [&](const auto& src, CUdeviceptr& dst) {
+		using ElemT = typename std::remove_reference<decltype(src)>::type::value_type;
+		if (dst) { cudaFree(reinterpret_cast<void*>(dst)); dst = 0; }
+		if (src.empty()) return;
+		const size_t bytes = src.size() * sizeof(ElemT);
+		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dst), bytes));
+		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(dst), src.data(), bytes, cudaMemcpyHostToDevice));
+	};
+
 	// Real importance-sampled HDR sky distribution (LightSource "infinite"
 	// with an image - see optix_types.h's GpuSkyDistribution comment). Same
 	// upload shape as the BSSRDF/measured-BRDF tables just above, minus the
@@ -499,19 +516,12 @@ bool OptiXRenderer::buildScene(
 	skyScale_ = skyScale;
 	skyMarginalFuncInt_ = skyMarginalFuncInt;
 
-	const auto uploadSkyFloats = [&](const std::vector<float>& src, CUdeviceptr& dst) {
-		if (dst) { cudaFree(reinterpret_cast<void*>(dst)); dst = 0; }
-		if (src.empty()) return;
-		const size_t bytes = src.size() * sizeof(float);
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dst), bytes));
-		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(dst), src.data(), bytes, cudaMemcpyHostToDevice));
-	};
-	uploadSkyFloats(skyImagePixels, d_skyImagePixels_);
-	uploadSkyFloats(skyMarginalCdf, d_skyMarginalCdf_);
-	uploadSkyFloats(skyMarginalFunc, d_skyMarginalFunc_);
-	uploadSkyFloats(skyConditionalCdf, d_skyConditionalCdf_);
-	uploadSkyFloats(skyConditionalFunc, d_skyConditionalFunc_);
-	uploadSkyFloats(skyConditionalFuncInt, d_skyConditionalFuncInt_);
+	uploadGpuBuf(skyImagePixels, d_skyImagePixels_);
+	uploadGpuBuf(skyMarginalCdf, d_skyMarginalCdf_);
+	uploadGpuBuf(skyMarginalFunc, d_skyMarginalFunc_);
+	uploadGpuBuf(skyConditionalCdf, d_skyConditionalCdf_);
+	uploadGpuBuf(skyConditionalFunc, d_skyConditionalFunc_);
+	uploadGpuBuf(skyConditionalFuncInt, d_skyConditionalFuncInt_);
 
 	if (skyHeight_ > 0)
 		std::cout << "[OptiX] Uploaded real HDR sky distribution (" << skyWidth_ << "x" << skyHeight_
@@ -520,26 +530,16 @@ bool OptiXRenderer::buildScene(
 	// pbrt-v4 "portal" (windowed) infinite light - see GpuPortalLight's own
 	// comment (optix_types.h). Mutually exclusive with the sky distribution
 	// just above (matches CPU) - same "flat buffers, no per-table metadata"
-	// upload shape, plus a templated version of uploadSkyFloats above for
-	// portalSatSum's double precision (SummedAreaTable's own comment on why
-	// it stays double, not narrowed to float like every other GPU buffer).
+	// upload shape.
 	portalWidth_ = portalWidth;
 	portalHeight_ = portalHeight;
 	portalScale_ = portalScale;
 	portalFrameX_ = portalFrameX; portalFrameY_ = portalFrameY; portalFrameZ_ = portalFrameZ;
 	portalP0_ = portalP0; portalP2_ = portalP2;
 
-	const auto uploadPortalBuf = [&](const auto& src, CUdeviceptr& dst) {
-		using ElemT = typename std::remove_reference<decltype(src)>::type::value_type;
-		if (dst) { cudaFree(reinterpret_cast<void*>(dst)); dst = 0; }
-		if (src.empty()) return;
-		const size_t bytes = src.size() * sizeof(ElemT);
-		CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&dst), bytes));
-		CUDA_CHECK(cudaMemcpy(reinterpret_cast<void*>(dst), src.data(), bytes, cudaMemcpyHostToDevice));
-	};
-	uploadPortalBuf(portalRectifiedImage, d_portalRectifiedImage_);
-	uploadPortalBuf(portalDistFunc, d_portalDistFunc_);
-	uploadPortalBuf(portalSatSum, d_portalSatSum_);
+	uploadGpuBuf(portalRectifiedImage, d_portalRectifiedImage_);
+	uploadGpuBuf(portalDistFunc, d_portalDistFunc_);
+	uploadGpuBuf(portalSatSum, d_portalSatSum_);
 
 	if (portalHeight_ > 0)
 		std::cout << "[OptiX] Uploaded real portal infinite light (" << portalWidth_ << "x" << portalHeight_

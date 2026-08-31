@@ -33,8 +33,7 @@ __device__ __forceinline__ void sample_sky_nee(unsigned int& seed, const float3&
 	const GpuPortalLight& p = params.camera.portalLight;
 	if (p.height > 0 && p.width > 0) {
 		const float ru = random_float(seed), rv = random_float(seed);
-		if (gpu_portal_sample_Li(p, shadingPoint, ru, rv, dir_out, pdf_out)) {
-			Le_out = gpu_portal_Le(p, shadingPoint, dir_out);
+		if (gpu_portal_sample_Li(p, shadingPoint, ru, rv, dir_out, pdf_out, Le_out)) {
 			return;
 		}
 		// Portal window subtends zero area from here (e.g. shading point

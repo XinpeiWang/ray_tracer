@@ -135,11 +135,20 @@ __device__ __forceinline__ float gpu_portal_sat_integral(const double* satSum, i
 	return (float)fmax(s / (double)(width * height), 0.0);
 }
 
+// gpu_portal_uv_to_cell() -- clamp a normalized (u,v) in [0,1) into a valid
+// (ix,iy) pixel/cell index. Shared by every nearest-neighbour lookup below
+// (gpu_portal_dist_eval, gpu_portal_Le, gpu_portal_sample_Li's own Le lookup)
+// so the rounding/clamp convention can only drift in one place.
+__device__ __forceinline__ void gpu_portal_uv_to_cell(int width, int height, float u, float v, int& ix, int& iy) {
+	ix = min((int)(u * (float)width),  width  - 1);
+	iy = min((int)(v * (float)height), height - 1);
+}
+
 // gpu_portal_dist_eval() -- nearest-neighbour lookup of the raw distribution
 // value at (x,y). Mirrors WindowedPiecewiseConstant2D::Eval() exactly.
 __device__ __forceinline__ float gpu_portal_dist_eval(const float* distFunc, int width, int height, float x, float y) {
-	int ix = min((int)(x * (float)width),  width  - 1);
-	int iy = min((int)(y * (float)height), height - 1);
+	int ix, iy;
+	gpu_portal_uv_to_cell(width, height, x, y, ix, iy);
 	return distFunc[iy * width + ix];
 }
 
@@ -171,8 +180,8 @@ __device__ __forceinline__ float3 gpu_portal_Le(const GpuPortalLight& d, const f
 	if (!gpu_portal_image_bounds(d, origin, bMinU, bMinV, bMaxU, bMaxV)) return make_float3(0.0f, 0.0f, 0.0f);
 	if (u < bMinU || u > bMaxU || v < bMinV || v > bMaxV) return make_float3(0.0f, 0.0f, 0.0f);
 
-	int ix = min((int)(u * (float)d.width),  d.width  - 1);
-	int iy = min((int)(v * (float)d.height), d.height - 1);
+	int ix, iy;
+	gpu_portal_uv_to_cell(d.width, d.height, u, v, ix, iy);
 	const float* px = d.rectifiedImage + (iy * d.width + ix) * 3;
 	return d.scale * make_float3(px[0], px[1], px[2]);
 }
@@ -203,10 +212,20 @@ __device__ __forceinline__ float gpu_portal_pdf_Li(const GpuPortalLight& d, cons
 // gpu_sky_sample_Li() - see that file's header comment). Mirrors sample_li()
 // exactly (WindowedPiecewiseConstant2D::Sample() inlined: marginal-in-x then
 // conditional-in-y bisection search against the SAT integral).
+//
+// Also returns Le_out directly (unlike CPU's sample_li(), which only
+// returns direction+pdf and expects the caller to make a SEPARATE eval_Le_rgb()
+// call) - the sampled (sx,sy) here is already known to be inside the
+// window's own [bMinU,bMaxU]x[bMinV,bMaxV] bounds by construction of the
+// bisection search above, so this reads the rectified image directly rather
+// than making every caller re-derive u/v from dir_out and redo the exact
+// same ImageFromRender()+ImageBounds() work gpu_portal_Le() would otherwise
+// repeat - real, measurable redundant work on every accepted NEE sample.
 // ---------------------------------------------------------------------------
 __device__ __forceinline__ bool gpu_portal_sample_Li(const GpuPortalLight& d, const float3& p,
 													   float ru, float rv,
-													   float3& dir_out, float& pdf_out) {
+													   float3& dir_out, float& pdf_out, float3& Le_out) {
+	Le_out = make_float3(0.0f, 0.0f, 0.0f);
 	float bMinU, bMinV, bMaxU, bMaxV;
 	if (!gpu_portal_image_bounds(d, p, bMinU, bMinV, bMaxU, bMaxV)) return false;
 
@@ -242,5 +261,16 @@ __device__ __forceinline__ bool gpu_portal_sample_Li(const GpuPortalLight& d, co
 
 	dir_out = wRender;
 	pdf_out = mapPDF / duv_dw;
+
+	// Direct rectified-image lookup at the already-known-valid (sx,sy) -
+	// see this function's own header comment for why this skips gpu_portal_
+	// Le()'s redundant re-derivation. Mirrors gpu_portal_Le()'s own nearest-
+	// lookup + scale exactly (PortalImageInfiniteLightData::eval_Le_rgb()'s
+	// lookup_nearest(), not the bilinear sample the image's construction
+	// used).
+	int ix, iy;
+	gpu_portal_uv_to_cell(d.width, d.height, sx, sy, ix, iy);
+	const float* px = d.rectifiedImage + (iy * d.width + ix) * 3;
+	Le_out = d.scale * make_float3(px[0], px[1], px[2]);
 	return true;
 }

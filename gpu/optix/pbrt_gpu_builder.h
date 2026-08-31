@@ -1826,71 +1826,31 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 	stats.instancePlacements = out.instancePlacements.size();
 
 	// ---- infinite/sky light, flat-colour GPU approximation ----------------
-	if (scene.infiniteLight.present && scene.infiniteLight.hasPortal) {
-		// pbrt-v4 "portal" (windowed) infinite light - see GpuPortalLight's
-		// own comment (optix_types.h). Mirrors src/TheRestOfYourLife/
-		// pbrt_cpu_builder.h's own portal-construction block exactly,
-		// including its "fails closed" behavior: hasPortal but no valid
-		// image means no light at all (not even the flat-colour fallback
-		// the plain-sky branch below would take) - matches CPU's own
-		// BuildResult::portal staying null with no out.sky fallback either.
+	if (scene.infiniteLight.present) {
 		const auto &sky = scene.infiniteLight;
-		if (sky.imageWidth > 0 && sky.imageHeight > 0 && !sky.imagePixels.empty()) {
-			std::array<pil_detail::Vec3<double>, 4> corners;
-			for (int i = 0; i < 4; ++i) {
-				corners[i] = pil_detail::Vec3<double>(
-					sky.portal[i*3+0], sky.portal[i*3+1], sky.portal[i*3+2]);
-			}
-			// Real host-side construction (equal-area rectification + SAT
-			// build) - see PortalImageInfiniteLightData::rectified()/
-			// distribution()'s own comment (portal_image_infinite_light.h)
-			// for why this is a real instance of the exact class CPU uses,
-			// not a from-scratch GPU reimplementation of the same math.
-			PortalImageInfiniteLightData<double> portalData(
-				sky.imagePixels.data(), sky.imageWidth, sky.imageHeight, sky.scale, corners);
+		const bool hasImage = sky.imageWidth > 0 && sky.imageHeight > 0 && !sky.imagePixels.empty();
 
-			out.portalRectifiedImage = portalData.rectified();
-			const Array2D<float>& func = portalData.distribution().func();
-			out.portalDistFunc = func.data();
-			out.portalSatSum = portalData.distribution().sat().sum().data();
-			out.portalWidth = portalData.width();
-			out.portalHeight = portalData.height();
-			out.portalScale = static_cast<float>(portalData.scale());
-
-			// Portal frame - mirrors PortalImageInfiniteLightData's own ctor
-			// (FrameT::FromXY(p03, p01), p01=normalize(portal[1]-portal[0]),
-			// p03=normalize(portal[3]-portal[0])) in float rather than
-			// double, recomputed here rather than exposing the CPU class's
-			// Frame<double> member directly (this codebase's GPU structs are
-			// float3-based throughout, see optix_types.h). Frame::FromXY's
-			// own algorithm (vec3_frame.h): nx=normalize(vx),
-			// nz=normalize(cross(nx,vy)), ny=cross(nz,nx).
-			auto toF3 = [&](int i) {
-				return make_float3(static_cast<float>(sky.portal[i*3+0]),
-									static_cast<float>(sky.portal[i*3+1]),
-									static_cast<float>(sky.portal[i*3+2]));
-			};
-			const float3 p0f = toF3(0), p1f = toF3(1), p2f = toF3(2), p3f = toF3(3);
-			const float3 p01 = normalize(p1f - p0f);
-			const float3 p03 = normalize(p3f - p0f);
-			const float3 nx = normalize(p03);
-			const float3 nz = normalize(cross(nx, p01));
-			const float3 ny = cross(nz, nx);
-			out.portalFrameX = nx; out.portalFrameY = ny; out.portalFrameZ = nz;
-			out.portalP0 = p0f; out.portalP2 = p2f;
-
-			// Every NEE/miss call site on both GPU backends gates on
-			// "skyColor/backgroundColor != 0" BEFORE even checking whether a
-			// real distribution (sky OR portal) is present (see e.g.
-			// optix_device_helpers.h's Lambertian sky-NEE block) - a leftover
-			// zero backgroundColor here would make the portal light
-			// completely unreachable despite portalWidth/Height being set.
-			// The portal path never actually uses this value as radiance
-			// (gpu_portal_Le() looks up the rectified image directly), so
-			// any nonzero placeholder works; reusing the same mean-of-pixels
-			// approximation the plain-sky branch below computes for its own
-			// (real) flat-colour fallback keeps this at least a plausible
-			// representative brightness rather than an arbitrary constant.
+		// Mean of every decoded pixel, scaled - shared by the portal and
+		// plain-sky branches below since both need it: the plain-sky branch
+		// uses it as a real approximate flat-colour fallback (no directional
+		// detail at all, unlike the CPU path's real importance-sampled image
+		// - see pbrt_flatten.h's InfiniteLight comment for why that stays
+		// CPU-only), while the portal branch uses it PURELY to satisfy the
+		// "any infinite light present" gate every NEE/miss call site on both
+		// GPU backends checks via "skyColor/backgroundColor != 0" BEFORE
+		// even looking at whether a real distribution (sky OR portal) is
+		// present (see e.g. optix_device_helpers.h's Lambertian sky-NEE
+		// block) - gpu_portal_Le() never actually reads this value as
+		// radiance, so any nonzero placeholder works, but a leftover zero
+		// here would make the portal light completely unreachable despite
+		// portalWidth/Height being set. Floored to a small nonzero epsilon
+		// rather than left at whatever the raw mean computes to, for exactly
+		// that reason: a portal (or plain sky) image whose overall content
+		// happens to average out near-black (a real, unremarkable
+		// composition - e.g. a mostly-dark photo/exr with one bright window)
+		// must not silently zero out this gate and disable the entire light
+		// with no diagnostic.
+		const auto meanPixelColor = [&]() -> float3 {
 			double r = 0.0, g = 0.0, b = 0.0;
 			const std::size_t n = static_cast<std::size_t>(sky.imageWidth) * sky.imageHeight;
 			for (std::size_t i = 0; i < n; ++i) {
@@ -1898,31 +1858,69 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 				g += sky.imagePixels[i * 3 + 1];
 				b += sky.imagePixels[i * 3 + 2];
 			}
-			stats.backgroundColor = make_float3(
-				static_cast<float>(r / n * sky.scale),
-				static_cast<float>(g / n * sky.scale),
-				static_cast<float>(b / n * sky.scale));
-		}
-	} else if (scene.infiniteLight.present) {
-		const auto &sky = scene.infiniteLight;
-		if (sky.imageWidth > 0 && sky.imageHeight > 0 && !sky.imagePixels.empty()) {
-			// Mean of every decoded pixel - a crude approximation of the real
-			// environment map's overall brightness/tint (no directional
-			// detail at all, unlike the CPU path's real importance-sampled
-			// image - see pbrt_flatten.h's InfiniteLight comment for why
-			// that stays CPU-only), but far closer than treating an
-			// environment-lit scene as a flat colour the scene never named.
-			double r = 0.0, g = 0.0, b = 0.0;
-			const std::size_t n = static_cast<std::size_t>(sky.imageWidth) * sky.imageHeight;
-			for (std::size_t i = 0; i < n; ++i) {
-				r += sky.imagePixels[i * 3 + 0];
-				g += sky.imagePixels[i * 3 + 1];
-				b += sky.imagePixels[i * 3 + 2];
+			constexpr float kMinGateBrightness = 1e-4f;
+			return make_float3(
+				std::max(kMinGateBrightness, static_cast<float>(r / n * sky.scale)),
+				std::max(kMinGateBrightness, static_cast<float>(g / n * sky.scale)),
+				std::max(kMinGateBrightness, static_cast<float>(b / n * sky.scale)));
+		};
+
+		if (sky.hasPortal) {
+			// pbrt-v4 "portal" (windowed) infinite light - see GpuPortalLight's
+			// own comment (optix_types.h). Mirrors src/TheRestOfYourLife/
+			// pbrt_cpu_builder.h's own portal-construction block exactly,
+			// including its "fails closed" behavior: hasPortal but no valid
+			// image means no light at all (not even the flat-colour fallback
+			// the plain-sky branch below would take) - matches CPU's own
+			// BuildResult::portal staying null with no out.sky fallback either.
+			if (hasImage) {
+				std::array<pil_detail::Vec3<double>, 4> corners;
+				for (int i = 0; i < 4; ++i) {
+					corners[i] = pil_detail::Vec3<double>(
+						sky.portal[i*3+0], sky.portal[i*3+1], sky.portal[i*3+2]);
+				}
+				// Real host-side construction (equal-area rectification + SAT
+				// build) - see PortalImageInfiniteLightData::rectified()/
+				// distribution()'s own comment (portal_image_infinite_light.h)
+				// for why this is a real instance of the exact class CPU uses,
+				// not a from-scratch GPU reimplementation of the same math.
+				PortalImageInfiniteLightData<double> portalData(
+					sky.imagePixels.data(), sky.imageWidth, sky.imageHeight, sky.scale, corners);
+
+				out.portalRectifiedImage = portalData.rectified();
+				const Array2D<float>& func = portalData.distribution().func();
+				out.portalDistFunc = func.data();
+				out.portalSatSum = portalData.distribution().sat().sum().data();
+				out.portalWidth = portalData.width();
+				out.portalHeight = portalData.height();
+				out.portalScale = static_cast<float>(portalData.scale());
+
+				// Portal frame - mirrors PortalImageInfiniteLightData's own ctor
+				// (FrameT::FromXY(p03, p01), p01=normalize(portal[1]-portal[0]),
+				// p03=normalize(portal[3]-portal[0])) in float rather than
+				// double, recomputed here rather than exposing the CPU class's
+				// Frame<double> member directly (this codebase's GPU structs are
+				// float3-based throughout, see optix_types.h). Frame::FromXY's
+				// own algorithm (vec3_frame.h): nx=normalize(vx),
+				// nz=normalize(cross(nx,vy)), ny=cross(nz,nx).
+				auto toF3 = [&](int i) {
+					return make_float3(static_cast<float>(sky.portal[i*3+0]),
+										static_cast<float>(sky.portal[i*3+1]),
+										static_cast<float>(sky.portal[i*3+2]));
+				};
+				const float3 p0f = toF3(0), p1f = toF3(1), p2f = toF3(2), p3f = toF3(3);
+				const float3 p01 = normalize(p1f - p0f);
+				const float3 p03 = normalize(p3f - p0f);
+				const float3 nx = normalize(p03);
+				const float3 nz = normalize(cross(nx, p01));
+				const float3 ny = cross(nz, nx);
+				out.portalFrameX = nx; out.portalFrameY = ny; out.portalFrameZ = nz;
+				out.portalP0 = p0f; out.portalP2 = p2f;
+
+				stats.backgroundColor = meanPixelColor();
 			}
-			stats.backgroundColor = make_float3(
-				static_cast<float>(r / n * sky.scale),
-				static_cast<float>(g / n * sky.scale),
-				static_cast<float>(b / n * sky.scale));
+		} else if (hasImage) {
+			stats.backgroundColor = meanPixelColor();
 
 			// Real importance-sampled HDR sky (GpuSkyDistribution - see
 			// optix_types.h's own comment): the SAME PiecewiseConstant2D

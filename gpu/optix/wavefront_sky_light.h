@@ -30,8 +30,7 @@ __device__ __forceinline__ void wf_sample_sky_nee(const GpuSkyDistribution& sky,
 													 float3& dir_out, float& pdf_out, float3& Le_out) {
 	if (portal.height > 0 && portal.width > 0) {
 		const float ru = wf_rand(seed), rv = wf_rand(seed);
-		if (gpu_portal_sample_Li(portal, shadingPoint, ru, rv, dir_out, pdf_out)) {
-			Le_out = gpu_portal_Le(portal, shadingPoint, dir_out);
+		if (gpu_portal_sample_Li(portal, shadingPoint, ru, rv, dir_out, pdf_out, Le_out)) {
 			return;
 		}
 		// Portal window subtends zero area from here - see optix_sky_light.h's
