@@ -13,6 +13,7 @@
 // "C" struct with no CUDA/OptiX types in it, safe to pull in here; no cycle
 // (optix_interface.h doesn't include this header).
 #include "optix_interface.h"
+#include "optix_denoiser.h"  // DenoiserResources - shared with WavefrontPathTracer
 #include <optix_stubs.h>
 #include <vector>
 #include <string>
@@ -278,32 +279,14 @@ private:
 	bool useWavefront_ = false;  ///< If true, render() delegates to wavefrontTracer_
 
 	// -------------------------------------------------------------------
-	// OptiX AI Denoiser (optional post-process, recursive backend only)
+	// OptiX AI Denoiser (optional post-process, recursive backend)
 	// -------------------------------------------------------------------
 	bool denoiseEnabled_ = false;  ///< See enableDenoise()
 	// Persisted across render() calls rather than created/destroyed fresh
-	// each time - see denoise()'s own comment. Recreated only when the
-	// requested width/height differ from denoiserWidth_/denoiserHeight_
-	// (0/0 initially, so the first denoise() call always (re)creates).
-	OptixDenoiser denoiser_ = nullptr;
-	CUdeviceptr denoiserState_ = 0;
-	CUdeviceptr denoiserScratch_ = 0;
-	CUdeviceptr denoiserIntensity_ = 0;
-	size_t denoiserStateSizeInBytes_ = 0;
-	size_t denoiserScratchSizeInBytes_ = 0;
-	size_t denoiserComputeIntensitySizeInBytes_ = 0;
-	unsigned int denoiserWidth_ = 0;
-	unsigned int denoiserHeight_ = 0;
-
-	// Albedo/normal AOV guide-layer buffers for the denoiser above -
-	// persisted across render() calls (same resolution-keyed recreate-on-
-	// change pattern as denoiser_ itself, see ensureAovBuffers()) rather
-	// than cudaMalloc/cudaFree'd fresh every call, which was wasted work
-	// on video mode's hundreds of same-resolution per-frame render() calls.
-	CUdeviceptr d_albedoAov_ = 0;
-	CUdeviceptr d_normalAov_ = 0;
-	unsigned int aovWidth_ = 0;
-	unsigned int aovHeight_ = 0;
+	// each time - see denoise()'s own comment. Shared with
+	// WavefrontPathTracer's identical member (optix_denoiser.h) - each
+	// backend owns its own instance, keyed to its own context_/stream_.
+	DenoiserResources denoiserResources_;
 
 	// -------------------------------------------------------------------
 	// SPPM path tracer (Phase 1 GPU port, see renderSPPMTrivial())
@@ -554,11 +537,11 @@ private:
 	/// @brief Release all GPU resources
 	void cleanup() noexcept;
 
-	/// @brief Run the OptiX AI denoiser on an in-device float3 buffer,
-	///        in place. The denoiser (and its state/scratch buffers) is
-	///        persisted across calls (denoiser_ etc. below) and only
-	///        (re)created when the resolution changes - see denoise()'s own
-	///        comment.
+	/// @brief Run the OptiX AI denoiser on an in-device float3 buffer, in
+	///        place. Thin wrapper over the shared runDenoiser() (see
+	///        optix_denoiser.h for the full "why" behind every step),
+	///        passing this backend's own denoiserResources_/context_/
+	///        stream_.
 	/// @param d_buffer Device float3 RGB buffer, width*height, already
 	///        accumulated/averaged (same layout as LaunchParams::framebuffer).
 	/// @param d_albedo Optional device float3 albedo guide-layer buffer,
@@ -574,24 +557,20 @@ private:
 	bool denoise(CUdeviceptr d_buffer, unsigned int width, unsigned int height,
 		CUdeviceptr d_albedo = 0, CUdeviceptr d_normal = 0);
 
-	/// @brief Free the persisted denoiser and its device buffers (see
-	///        denoiser_'s own comment). Safe to call when nothing is
-	///        allocated (every member checked before freeing). Called from
+	/// @brief Free the persisted denoiser and its device buffers - thin
+	///        wrapper over destroyDenoiserResources(denoiserResources_).
+	///        Safe to call when nothing is allocated. Called from
 	///        cleanup() and from denoise() itself when the requested
-	///        resolution no longer matches denoiserWidth_/denoiserHeight_.
+	///        resolution no longer matches denoiserResources_'s own.
 	void destroyDenoiser() noexcept;
 
-	/// @brief (Re)allocate d_albedoAov_/d_normalAov_ for the given
-	///        resolution, only if not yet allocated or the resolution
-	///        changed since the last call (same pattern as denoise()'s own
-	///        denoiser_ recreate-on-resolution-change check) - a no-op on
-	///        repeat calls at a steady resolution (e.g. video mode's per-
-	///        frame render() calls). Frees and reallocates on a genuine
-	///        resolution change.
+	/// @brief (Re)allocate denoiserResources_'s AOV buffers for the given
+	///        resolution - thin wrapper over
+	///        ensureAovBuffers(denoiserResources_, ...).
 	void ensureAovBuffers(unsigned int width, unsigned int height);
 
-	/// @brief Free d_albedoAov_/d_normalAov_ (see their own comment). Safe
-	///        to call when nothing is allocated. Called from cleanup().
+	/// @brief Free denoiserResources_'s AOV buffers - thin wrapper over
+	///        destroyAovBuffers(denoiserResources_). Called from cleanup().
 	void destroyAovBuffers() noexcept;
 
 	/// @brief Load PTX shader code from file

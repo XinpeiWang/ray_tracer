@@ -126,6 +126,28 @@ __device__ __forceinline__ bool gpu_in_crop(const GpuCameraParams& cam, int px, 
 	return px >= cam.cropX0 && px < cam.cropX1 && py >= cam.cropY0 && py < cam.cropY1;
 }
 
+// Denoiser guide-layer AOV accumulation - primary-ray hits only (depth==0
+// checked by the caller), matching optix_intersection_sphere.h's own
+// "mat.albedo is the safe always-valid fallback" choice: unlike the
+// recursive backend, evaluate_materials()/_simple()/_dielectric() don't have
+// easy access to the eventual scatter attenuation at this point (computed
+// later, per material case, in spectral form) - mat.albedo is a plain RGB
+// field available uniformly for every material kind, a simplification that
+// trades a little guide-layer precision for not needing a spectral-to-RGB
+// conversion of the scatter weight here. Shared by all three hit-evaluation
+// kernels (identical accumulation, only the caller's queue/material type
+// differs) - accumulate_miss() below has its own AOV write instead, since a
+// miss has no MaterialData/HitWorkItem::normal to read from.
+__device__ __forceinline__ void wf_accumulate_aov(float3* albedoBuffer, float3* normalBuffer,
+													int pixelIndex, float3 albedo, float3 normal) {
+	atomicAdd(&albedoBuffer[pixelIndex].x, albedo.x);
+	atomicAdd(&albedoBuffer[pixelIndex].y, albedo.y);
+	atomicAdd(&albedoBuffer[pixelIndex].z, albedo.z);
+	atomicAdd(&normalBuffer[pixelIndex].x, normal.x);
+	atomicAdd(&normalBuffer[pixelIndex].y, normal.y);
+	atomicAdd(&normalBuffer[pixelIndex].z, normal.z);
+}
+
 // Matches optix_intersection_sphere.h's gpu_rgb_grid_at/gpu_rgb_grid_
 // trilinear exactly - see that copy's comment for why this is a from-
 // scratch reimplementation rather than a call into RGBGridMediumData<T>/
@@ -2425,21 +2447,10 @@ extern "C" __global__ void evaluate_materials(
 	const HitWorkItem& h = hitQueue.items[idx];
 	const MaterialData& mat = materials[h.materialIdx];
 
-	// Denoiser guide-layer AOV - primary-ray hits only (depth==0), matching
-	// optix_intersection_sphere.h's own "mat.albedo is the safe always-valid
-	// fallback" choice: unlike the recursive backend, this kernel doesn't
-	// have easy access to the eventual scatter attenuation at this point
-	// (computed later, per material case, in spectral form) - mat.albedo is
-	// a plain RGB field available uniformly for every material kind, a
-	// simplification that trades a little guide-layer precision for not
-	// needing a spectral-to-RGB conversion of the scatter weight here.
+	// Denoiser guide-layer AOV - primary-ray hits only (depth==0). See
+	// wf_accumulate_aov()'s own comment (above gpu_in_crop()) for why.
 	if (albedoBuffer && h.depth == 0) {
-		atomicAdd(&albedoBuffer[h.pixelIndex].x, mat.albedo.x);
-		atomicAdd(&albedoBuffer[h.pixelIndex].y, mat.albedo.y);
-		atomicAdd(&albedoBuffer[h.pixelIndex].z, mat.albedo.z);
-		atomicAdd(&normalBuffer[h.pixelIndex].x, h.normal.x);
-		atomicAdd(&normalBuffer[h.pixelIndex].y, h.normal.y);
-		atomicAdd(&normalBuffer[h.pixelIndex].z, h.normal.z);
+		wf_accumulate_aov(albedoBuffer, normalBuffer, h.pixelIndex, mat.albedo, h.normal);
 	}
 
 	// Hoisted once and reused by every glossy-alpha call site below - both
@@ -3753,12 +3764,7 @@ extern "C" __global__ void evaluate_materials_simple(
 	const MaterialData& mat = materials[h.materialIdx];
 
 	if (albedoBuffer && h.depth == 0) {
-		atomicAdd(&albedoBuffer[h.pixelIndex].x, mat.albedo.x);
-		atomicAdd(&albedoBuffer[h.pixelIndex].y, mat.albedo.y);
-		atomicAdd(&albedoBuffer[h.pixelIndex].z, mat.albedo.z);
-		atomicAdd(&normalBuffer[h.pixelIndex].x, h.normal.x);
-		atomicAdd(&normalBuffer[h.pixelIndex].y, h.normal.y);
-		atomicAdd(&normalBuffer[h.pixelIndex].z, h.normal.z);
+		wf_accumulate_aov(albedoBuffer, normalBuffer, h.pixelIndex, mat.albedo, h.normal);
 	}
 
 	float3 normal    = h.normal;
@@ -3930,12 +3936,7 @@ extern "C" __global__ void evaluate_materials_dielectric(
 	const MaterialData& mat = materials[h.materialIdx];
 
 	if (albedoBuffer && h.depth == 0) {
-		atomicAdd(&albedoBuffer[h.pixelIndex].x, mat.albedo.x);
-		atomicAdd(&albedoBuffer[h.pixelIndex].y, mat.albedo.y);
-		atomicAdd(&albedoBuffer[h.pixelIndex].z, mat.albedo.z);
-		atomicAdd(&normalBuffer[h.pixelIndex].x, h.normal.x);
-		atomicAdd(&normalBuffer[h.pixelIndex].y, h.normal.y);
-		atomicAdd(&normalBuffer[h.pixelIndex].z, h.normal.z);
+		wf_accumulate_aov(albedoBuffer, normalBuffer, h.pixelIndex, mat.albedo, h.normal);
 	}
 
 	// See evaluate_materials()'s own identical hoist just above its `h` load -
@@ -4553,6 +4554,11 @@ extern "C" __global__ void normalize_aov_buffers(
 ) {
 	unsigned int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx >= numPixels) return;
+	if (samplesPerPixel == 0) {
+		albedoBuffer[idx] = make_float3(0.0f, 0.0f, 0.0f);
+		normalBuffer[idx] = make_float3(0.0f, 0.0f, 0.0f);
+		return;
+	}
 	float inv = 1.0f / float(samplesPerPixel);
 	albedoBuffer[idx] = albedoBuffer[idx] * inv;
 	normalBuffer[idx] = normalBuffer[idx] * inv;

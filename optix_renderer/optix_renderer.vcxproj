@@ -111,12 +111,14 @@
     <ClInclude Include="..\gpu\optix\optix_renderer.h" />
     <ClInclude Include="..\gpu\optix\optix_interface.h" />
     <ClInclude Include="..\gpu\optix\optix_types.h" />
+    <ClInclude Include="..\gpu\optix\optix_denoiser.h" />
     <ClInclude Include="..\gpu\optix\scene_builder.h" />
     <ClInclude Include="..\gpu\optix\renderer_config.h" />
     <ClInclude Include="..\gpu\optix\path_tracing_strategy.h" />
     <ClInclude Include="..\gpu\optix\recursive_path_tracer.h" />
     <ClInclude Include="..\gpu\optix\wavefront_path_tracer.h" />
     <ClInclude Include="..\gpu\optix\wavefront_types.h" />
+    <ClInclude Include="..\gpu\optix\wavefront_launch.h" />
     <ClInclude Include="..\gpu\optix\sppm_path_tracer.h" />
     <ClInclude Include="..\gpu\optix\sppm_types.h" />
   </ItemGroup>

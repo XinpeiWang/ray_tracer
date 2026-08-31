@@ -418,6 +418,15 @@ int main(int argc, char** argv) {
                      "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
                      "(only the CPU default path tracer supports it) - ignoring.\n";
     }
+    // --denoise reaches OptiXRenderer's recursive/wavefront post-process
+    // step; GPU SPPM (use_sppm && use_gpu) takes a separate render entry
+    // point that never runs a denoiser pass at all, so today the flag is a
+    // silent no-op there - same warn-instead-of-silently-drop shape as
+    // --sampler/--lightsampler/--spectral above.
+    if (args.denoise && use_sppm && use_gpu) {
+        std::cerr << "Warning: --denoise has no effect under --sppm --gpu "
+                     "(GPU SPPM does not support the OptiX AI denoiser) - ignoring.\n";
+    }
 
     if (video_mode) {
         std::cout << "\n========================================" << std::endl;

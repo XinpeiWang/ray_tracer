@@ -1517,8 +1517,9 @@ private:
 	// Render Options tab (createRenderOptionsTab()) - one widget per CLI
 	// flag RenderController::start() can emit; see setAdvancedFlags()'s own
 	// comment. m_samplerCombo/m_spectralCheck are CPU-default-path-tracer
-	// only; m_denoiseCheck/m_optixValidateCheck are GPU-only (m_denoiseCheck
-	// further disabled under wavefront); m_exposureSpin/m_tonemapCombo/
+	// only; m_denoiseCheck/m_optixValidateCheck are GPU-only (both GPU
+	// backends have their own real denoiser - see WavefrontPathTracer::
+	// denoise()); m_exposureSpin/m_tonemapCombo/
 	// m_statsCheck are default-path-tracer-only (inert, not rejected,
 	// under any alternate integrator). Enabled state kept in sync with
 	// m_renderModeCombo/m_gpuBackendCombo/m_integratorCombo by
@@ -1530,7 +1531,7 @@ private:
 	QDoubleSpinBox *m_exposureSpin;     // --exposure (default path tracer only)
 	QComboBox *m_tonemapCombo;          // --tonemap (default path tracer only)
 	QCheckBox *m_statsCheck;            // --stats (default path tracer only)
-	QCheckBox *m_denoiseCheck;          // --denoise (GPU recursive backend only)
+	QCheckBox *m_denoiseCheck;          // --denoise (GPU only, both backends)
 	QCheckBox *m_optixValidateCheck;    // --optix-validate (GPU only)
 
 	// "Integrator" group (createRenderOptionsTab()): the algorithm selector

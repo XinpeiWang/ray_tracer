@@ -5,6 +5,7 @@
 #include "path_tracing_strategy.h"
 #include "wavefront_types.h"
 #include "optix_types.h"
+#include "optix_denoiser.h"  // DenoiserResources - shared with OptiXRenderer
 #include <optix.h>
 #include <cuda_runtime.h>
 #include <cuda.h>
@@ -182,8 +183,7 @@ private:
         const int* d_lightIndices, const GpuLightKind* d_lightKinds,
         const GpuAliasEntry* d_aliasTable, unsigned int numLights,
         const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
-        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist,
-        float3* d_albedoBuffer, float3* d_normalBuffer);
+        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist);
     // Twin of launchEvaluateMaterials() above, scoped to simpleHitQueue's
     // Lambertian/Metal hits (see wavefront_types.h's WavefrontQueues::
     // simpleHitQueue and wavefront_kernels.cu's evaluate_materials_simple()).
@@ -200,8 +200,7 @@ private:
         const int* d_lightIndices, const GpuLightKind* d_lightKinds,
         const GpuAliasEntry* d_aliasTable, unsigned int numLights,
         const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
-        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist,
-        float3* d_albedoBuffer, float3* d_normalBuffer);
+        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist);
     // Twin of launchEvaluateMaterialsSimple() above, scoped to
     // dielectricHitQueue's Dielectric/RoughDielectric hits (see
     // wavefront_types.h's WavefrontQueues::dielectricHitQueue and
@@ -219,12 +218,12 @@ private:
         const int* d_lightIndices, const GpuLightKind* d_lightKinds,
         const GpuAliasEntry* d_aliasTable, unsigned int numLights,
         const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
-        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist,
-        float3* d_albedoBuffer, float3* d_normalBuffer);
-    // Not a launchX-style param above deliberately - see setTextures()'s
-    // comment for why textures travel via member state instead.
-    void launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor, GpuSkyDistribution skyDist,
-        float3* d_albedoBuffer, float3* d_normalBuffer);
+        float3* d_framebuffer, float3 skyColor, float shadowRayEpsilon, GpuSkyDistribution skyDist);
+    // Neither this nor launchAccumulateMiss() below take the AOV guide
+    // buffers as launchX-style params - like textures (see setTextures()'s
+    // comment), they travel via denoiserResources_ member state instead,
+    // read directly inside each kernel-launch method's own body.
+    void launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor, GpuSkyDistribution skyDist);
     void launchAccumulateShadow(int numShadow, const bool* d_occluded, float3* d_framebuffer);
     void launchResolveBssrdfExit(int numExit,
         const MaterialData* d_materials, unsigned int numMaterials,
@@ -247,18 +246,15 @@ private:
     int  readQueueSize(int* d_counter);
     void resetQueueCounter(int* d_counter);
 
-    // OptiX AI denoiser (--denoise, this backend's own copy) - duplicated
-    // from OptiXRenderer::denoise()/ensureAovBuffers()/destroyDenoiser()/
-    // destroyAovBuffers() (optix_renderer_render.cpp) rather than shared:
-    // WavefrontPathTracer is a sibling PathTracingStrategy, self-contained
-    // and pluggable by design (see that interface's own header comment),
-    // already has its own context_/stream_ (PathTracingStrategy's protected
-    // members) with no back-reference to the owning OptiXRenderer - adding
-    // one just to reach a handful of denoiser calls would couple two
-    // classes that are otherwise deliberately independent. See that
-    // original implementation's own comments for the full "why" behind
-    // each step; this mirrors it exactly, just against this class's own
-    // context_/stream_/state.
+    // OptiX AI denoiser (--denoise, this backend's own instance) - thin
+    // wrappers over the shared runDenoiser()/destroyDenoiserResources()/
+    // ensureAovBuffers()/destroyAovBuffers() free functions (optix_denoiser.h),
+    // also used by OptiXRenderer (optix_renderer_render.cpp). No shared base
+    // class or back-reference to the owning OptiXRenderer needed:
+    // WavefrontPathTracer already has its own context_/stream_
+    // (PathTracingStrategy's protected members), and the free functions take
+    // those as explicit parameters against this class's own
+    // denoiserResources_ instance.
     bool denoise(CUdeviceptr d_buffer, unsigned int width, unsigned int height,
         CUdeviceptr d_albedo, CUdeviceptr d_normal);
     void destroyDenoiser() noexcept;
@@ -395,26 +391,14 @@ private:
     unsigned int numCylinders_ = 0;
     unsigned int frameNumber_ = 0;
 
-    // --denoise support (see setDenoiseEnabled()/denoise()) - own copy of
-    // OptiXRenderer's exact same denoiser/AOV-buffer member set, persisted
-    // across render() calls (recreated only on a resolution change) for
-    // the same reason OptiXRenderer's own copy is: avoids re-running
-    // denoiser create/setup/3-allocations on every one of video mode's
-    // hundreds of same-resolution per-frame render() calls.
-    bool         denoiseEnabled_ = false;
-    OptixDenoiser denoiser_ = nullptr;
-    CUdeviceptr  denoiserState_ = 0;
-    CUdeviceptr  denoiserScratch_ = 0;
-    CUdeviceptr  denoiserIntensity_ = 0;
-    size_t       denoiserStateSizeInBytes_ = 0;
-    size_t       denoiserScratchSizeInBytes_ = 0;
-    size_t       denoiserComputeIntensitySizeInBytes_ = 0;
-    unsigned int denoiserWidth_ = 0;
-    unsigned int denoiserHeight_ = 0;
-    CUdeviceptr  d_albedoAov_ = 0;
-    CUdeviceptr  d_normalAov_ = 0;
-    unsigned int aovWidth_ = 0;
-    unsigned int aovHeight_ = 0;
+    // --denoise support (see setDenoiseEnabled()/denoise()) - own instance
+    // of the shared DenoiserResources (optix_denoiser.h), persisted across
+    // render() calls (recreated only on a resolution change) for the same
+    // reason OptiXRenderer's own instance is: avoids re-running denoiser
+    // create/setup/3-allocations on every one of video mode's hundreds of
+    // same-resolution per-frame render() calls.
+    bool             denoiseEnabled_ = false;
+    DenoiserResources denoiserResources_;
 };
 
 } // namespace optix_renderer

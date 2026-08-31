@@ -1397,11 +1397,11 @@ void MainWindow::createRenderOptionsTab() {
 		"Purely informational: it never changes the rendered image, "
 		"just tells you what the renderer actually did.")));
 
-	m_denoiseCheck = new QCheckBox(tr("OptiX AI denoiser (GPU recursive only)"), optionsTab);
+	m_denoiseCheck = new QCheckBox(tr("OptiX AI denoiser (GPU only)"), optionsTab);
 	m_denoiseCheck->setToolTip(
 		tr("Run the OptiX AI denoiser on the finished render, guided by\n"
-		"albedo + normal buffers. GPU recursive backend only - silently\n"
-		"has no effect under the wavefront backend."));
+		"albedo + normal buffers. GPU only, both backends (recursive\n"
+		"and wavefront each have their own denoiser)."));
 	styleCheckBox(m_denoiseCheck);
 	outputLayout->addRow(checkboxWithInfo(m_denoiseCheck,
 		tr("Ray tracing is noisy by nature - low sample counts leave a "
@@ -1465,7 +1465,6 @@ void MainWindow::createRenderOptionsTab() {
 // onIntegratorChanged() - mainwindow.cpp/mainwindow_slots.cpp).
 void MainWindow::updateRenderOptionsEnabled() {
 	const bool gpuSelected = m_renderModeCombo->currentData().toBool();
-	const bool wavefrontSelected = gpuSelected && m_gpuBackendCombo && m_gpuBackendCombo->currentData().toBool();
 	const auto integrator = static_cast<IntegratorMode>(m_integratorCombo->currentData().toInt());
 	const bool isDefault = (integrator == IntegratorMode::Default);
 
@@ -1475,7 +1474,10 @@ void MainWindow::updateRenderOptionsEnabled() {
 	m_exposureSpin->setEnabled(isDefault);
 	m_tonemapCombo->setEnabled(isDefault);
 	m_statsCheck->setEnabled(isDefault);
-	m_denoiseCheck->setEnabled(isDefault && gpuSelected && !wavefrontSelected);
+	// Both GPU backends have their own real denoiser now (WavefrontPathTracer::
+	// denoise(), gpu/optix/wavefront_path_tracer.cpp) - no longer gated on
+	// !wavefrontSelected.
+	m_denoiseCheck->setEnabled(isDefault && gpuSelected);
 	m_optixValidateCheck->setEnabled(isDefault && gpuSelected);
 }
 

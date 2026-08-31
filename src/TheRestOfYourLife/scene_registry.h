@@ -1816,7 +1816,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             // gpu/optix/scene_builder.cpp's case 135 (a near-verbatim copy
             // of case 0, A1's own GPU case).
             "I4", 135, SceneNames::DenoiserComparison, SceneCategories::Education,
-            "Cornell box at a deliberately low 32 spp - render once with the OptiX AI denoiser (Render Options tab, GPU recursive only) off, once on, and compare. The neighboring OptiX validation mode checkbox has no visual effect either way - it only adds debugging checks.",
+            "Cornell box at a deliberately low 32 spp - render once with the OptiX AI denoiser (Render Options tab, GPU only - both the recursive and wavefront backends have their own denoiser) off, once on, and compare. The neighboring OptiX validation mode checkbox has no visual effect either way - it only adds debugging checks.",
             "Fast", 32, false, true,
             kCornellBoxCamera,
             build_cornell_box,

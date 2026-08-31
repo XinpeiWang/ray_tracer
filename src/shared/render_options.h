@@ -37,7 +37,9 @@ struct RenderOptions {
 	// "aces"/"reinhard"/"none"; nullptr/empty/unrecognized all fall back
 	// to "aces". Both backends, default path tracer only.
 	const char* tonemap = nullptr;
-	// Run the OptiX AI denoiser on the finished render. GPU recursive
-	// backend only - silently has no effect under the wavefront backend.
+	// Run the OptiX AI denoiser on the finished render. GPU only - both the
+	// recursive and wavefront backends have their own denoiser. No effect
+	// under GPU SPPM (launcher/main.cpp warns on --denoise --sppm --gpu)
+	// or any CPU-only integrator.
 	bool denoise = false;
 };

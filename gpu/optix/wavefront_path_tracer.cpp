@@ -31,93 +31,12 @@
 #include <stdexcept>
 #include <cstdlib>
 
-// Forward declarations for wavefront_launch.cu C wrappers (no <<<>>> in .cpp)
-extern "C" void wf_launch_generate_camera_rays(
-	WorkQueue<RayWorkItem>, int, int, int,
-	GpuCameraParams, unsigned int, float*, cudaStream_t);
-extern "C" void wf_launch_evaluate_materials(
-	WorkQueue<HitWorkItem>, int,
-	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>, WorkQueue<BssrdfProbeWorkItem>,
-	float3*,
-	const SphereData*, unsigned int,
-	const QuadData*, unsigned int,
-	const TriangleData*, unsigned int,
-	const BilinearPatchData*, unsigned int,
-	const DiskData*, unsigned int,
-	const CylinderData*, unsigned int,
-	const MaterialData*, unsigned int,
-	const int*, const GpuLightKind*, const GpuAliasEntry*, unsigned int,
-	const PunctualLightGPU*, unsigned int,
-	const TextureData*, const unsigned char*,
-	int,
-	const CloudMedium<float>*, unsigned int,
-	const GpuRgbGridMedium*, const float*,
-	const GpuGridMedium*, const float*,
-	const GpuMeasuredTable*, unsigned int,
-	const float*, const float*, const float*, const float*,
-	float3, float, GpuSkyDistribution, bool,
-	float3*, float3*,
-	cudaStream_t);
-extern "C" void wf_launch_evaluate_materials_simple(
-	WorkQueue<HitWorkItem>, int,
-	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
-	float3*,
-	const SphereData*, unsigned int,
-	const QuadData*, unsigned int,
-	const TriangleData*, unsigned int,
-	const BilinearPatchData*, unsigned int,
-	const DiskData*, unsigned int,
-	const CylinderData*, unsigned int,
-	const MaterialData*, unsigned int,
-	const int*, const GpuLightKind*, const GpuAliasEntry*, unsigned int,
-	const PunctualLightGPU*, unsigned int,
-	const TextureData*, const unsigned char*,
-	int,
-	float3, float, GpuSkyDistribution,
-	float3*, float3*,
-	cudaStream_t);
-extern "C" void wf_launch_evaluate_materials_dielectric(
-	WorkQueue<HitWorkItem>, int,
-	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
-	float3*,
-	const SphereData*, unsigned int,
-	const QuadData*, unsigned int,
-	const TriangleData*, unsigned int,
-	const BilinearPatchData*, unsigned int,
-	const DiskData*, unsigned int,
-	const CylinderData*, unsigned int,
-	const MaterialData*, unsigned int,
-	const int*, const GpuLightKind*, const GpuAliasEntry*, unsigned int,
-	const PunctualLightGPU*, unsigned int,
-	const TextureData*, const unsigned char*,
-	int,
-	float3, float, GpuSkyDistribution, bool,
-	float3*, float3*,
-	cudaStream_t);
-extern "C" void wf_launch_accumulate_miss(WorkQueue<MissWorkItem>, int, float3*, float3, GpuSkyDistribution, float3*, float3*, cudaStream_t);
-extern "C" void wf_launch_accumulate_shadow(WorkQueue<ShadowRayWorkItem>, int, const bool*, float3*, cudaStream_t);
-extern "C" void wf_launch_resolve_bssrdf_exit(
-	WorkQueue<BssrdfExitWorkItem>, int,
-	WorkQueue<RayWorkItem>, WorkQueue<ShadowRayWorkItem>,
-	float3*,
-	const SphereData*, unsigned int,
-	const QuadData*, unsigned int,
-	const TriangleData*, unsigned int,
-	const BilinearPatchData*, unsigned int,
-	const DiskData*, unsigned int,
-	const CylinderData*, unsigned int,
-	const MaterialData*, unsigned int,
-	const int*, const GpuLightKind*, const GpuAliasEntry*, unsigned int,
-	const PunctualLightGPU*, unsigned int,
-	const TextureData*, const unsigned char*,
-	float3, float, GpuSkyDistribution,
-	cudaStream_t);
-extern "C" void wf_launch_normalize_framebuffer(unsigned int, const float*, float3*, cudaStream_t);
-extern "C" void wf_launch_normalize_aov_buffers(unsigned int, float3*, float3*, unsigned int, cudaStream_t);
-extern "C" void wf_reset_queue_counter(int*, cudaStream_t);
-extern "C" void wf_upload_cie_tables(const float*, const float*, const float*, int);
-extern "C" void wf_upload_srgb_table(const float*, const float*, int);
-extern "C" void wf_upload_d65_table(const float*, int);
+// Declarations for wavefront_launch.cu's C wrappers (no <<<>>> in .cpp) -
+// shared with wavefront_launch.cu itself via wavefront_launch.h, rather than
+// hand-typed separately in each file (extern "C" linkage isn't type-checked
+// across translation units, so two independently-typed copies could drift
+// out of sync silently).
+#include "wavefront_launch.h"
 
 namespace optix_renderer {
 
@@ -1106,7 +1025,7 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 	const GpuAliasEntry* d_aliasTable,  unsigned int numLights,
 	const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
 	float3*              d_framebuffer, float3 skyColor, float shadowRayEpsilon,
-	GpuSkyDistribution skyDist, float3* d_albedoBuffer, float3* d_normalBuffer)
+	GpuSkyDistribution skyDist)
 {
 	if (numHits == 0) return;
 
@@ -1157,7 +1076,8 @@ void WavefrontPathTracer::launchEvaluateMaterials(
 		reinterpret_cast<const float*>(d_measuredMcdf_),
 		reinterpret_cast<const float*>(d_measuredCcdf_),
 		skyColor, shadowRayEpsilon, skyDist, regularize,
-		d_albedoBuffer, d_normalBuffer,
+		reinterpret_cast<float3*>(denoiserResources_.albedoAov),
+		reinterpret_cast<float3*>(denoiserResources_.normalAov),
 		stream_);
 }
 
@@ -1177,7 +1097,7 @@ void WavefrontPathTracer::launchEvaluateMaterialsSimple(
 	const GpuAliasEntry* d_aliasTable,  unsigned int numLights,
 	const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
 	float3*              d_framebuffer, float3 skyColor, float shadowRayEpsilon,
-	GpuSkyDistribution skyDist, float3* d_albedoBuffer, float3* d_normalBuffer)
+	GpuSkyDistribution skyDist)
 {
 	if (numHits == 0) return;
 
@@ -1210,7 +1130,8 @@ void WavefrontPathTracer::launchEvaluateMaterialsSimple(
 		reinterpret_cast<const unsigned char*>(d_texturePixels_),
 		maxDepth,
 		skyColor, shadowRayEpsilon, skyDist,
-		d_albedoBuffer, d_normalBuffer,
+		reinterpret_cast<float3*>(denoiserResources_.albedoAov),
+		reinterpret_cast<float3*>(denoiserResources_.normalAov),
 		simpleMaterialStream_);
 }
 
@@ -1232,7 +1153,7 @@ void WavefrontPathTracer::launchEvaluateMaterialsDielectric(
 	const GpuAliasEntry* d_aliasTable,  unsigned int numLights,
 	const PunctualLightGPU* d_punctualLights, unsigned int numPunctualLights,
 	float3*              d_framebuffer, float3 skyColor, float shadowRayEpsilon,
-	GpuSkyDistribution skyDist, float3* d_albedoBuffer, float3* d_normalBuffer)
+	GpuSkyDistribution skyDist)
 {
 	if (numHits == 0) return;
 
@@ -1265,12 +1186,13 @@ void WavefrontPathTracer::launchEvaluateMaterialsDielectric(
 		reinterpret_cast<const unsigned char*>(d_texturePixels_),
 		maxDepth,
 		skyColor, shadowRayEpsilon, skyDist, regularize,
-		d_albedoBuffer, d_normalBuffer,
+		reinterpret_cast<float3*>(denoiserResources_.albedoAov),
+		reinterpret_cast<float3*>(denoiserResources_.normalAov),
 		dielectricMaterialStream_);
 }
 
 void WavefrontPathTracer::launchAccumulateMiss(int numMiss, float3* d_framebuffer, float3 backgroundColor,
-												GpuSkyDistribution skyDist, float3* d_albedoBuffer, float3* d_normalBuffer) {
+												GpuSkyDistribution skyDist) {
 	if (numMiss == 0) return;
 
 	WorkQueue<MissWorkItem> mq;
@@ -1278,7 +1200,10 @@ void WavefrontPathTracer::launchAccumulateMiss(int numMiss, float3* d_framebuffe
 	mq.counter  = reinterpret_cast<int*>(d_missCounter_);
 	mq.capacity = queueCapacity_;
 
-	wf_launch_accumulate_miss(mq, numMiss, d_framebuffer, backgroundColor, skyDist, d_albedoBuffer, d_normalBuffer, stream_);
+	wf_launch_accumulate_miss(mq, numMiss, d_framebuffer, backgroundColor, skyDist,
+		reinterpret_cast<float3*>(denoiserResources_.albedoAov),
+		reinterpret_cast<float3*>(denoiserResources_.normalAov),
+		stream_);
 }
 
 void WavefrontPathTracer::launchAccumulateShadow(
@@ -1361,131 +1286,24 @@ void WavefrontPathTracer::launchNormalizeAovBuffers(
 // ============================================================================
 
 void WavefrontPathTracer::ensureAovBuffers(unsigned int width, unsigned int height) {
-	if (d_albedoAov_ && d_normalAov_ && width == aovWidth_ && height == aovHeight_) {
-		return;  // already sized correctly - video mode's steady-state per-frame call
-	}
-	destroyAovBuffers();
-	size_t fbSize = static_cast<size_t>(width) * height * sizeof(float3);
-	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_albedoAov_), fbSize));
-	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_normalAov_), fbSize));
-	aovWidth_ = width;
-	aovHeight_ = height;
+	::ensureAovBuffers(denoiserResources_, width, height);
 }
 
 void WavefrontPathTracer::destroyAovBuffers() noexcept {
-	if (d_albedoAov_) { cudaFree(reinterpret_cast<void*>(d_albedoAov_)); d_albedoAov_ = 0; }
-	if (d_normalAov_) { cudaFree(reinterpret_cast<void*>(d_normalAov_)); d_normalAov_ = 0; }
-	aovWidth_ = 0;
-	aovHeight_ = 0;
+	::destroyAovBuffers(denoiserResources_);
 }
 
 void WavefrontPathTracer::destroyDenoiser() noexcept {
-	if (denoiserIntensity_) { cudaFree(reinterpret_cast<void*>(denoiserIntensity_)); denoiserIntensity_ = 0; }
-	if (denoiserScratch_)   { cudaFree(reinterpret_cast<void*>(denoiserScratch_));   denoiserScratch_ = 0; }
-	if (denoiserState_)     { cudaFree(reinterpret_cast<void*>(denoiserState_));     denoiserState_ = 0; }
-	if (denoiser_)          { optixDenoiserDestroy(denoiser_); denoiser_ = nullptr; }
-	denoiserWidth_ = 0;
-	denoiserHeight_ = 0;
+	destroyDenoiserResources(denoiserResources_);
 }
 
-// See OptiXRenderer::denoise() (optix_renderer_render.cpp) for the full
-// "why" behind every step here - this is a byte-for-byte mirror against
-// this class's own context_/stream_ instead.
+// See optix_denoiser.h's runDenoiser() for the full "why" behind every
+// step - this backend just supplies its own denoiserResources_/context_/
+// stream_, same as OptiXRenderer::denoise() (optix_renderer_render.cpp).
 bool WavefrontPathTracer::denoise(CUdeviceptr d_buffer, unsigned int width, unsigned int height,
 	CUdeviceptr d_albedo, CUdeviceptr d_normal) {
-	auto fail = [&](const char* what, OptixResult res) {
-		std::cerr << "[Wavefront] Denoiser " << what << " failed (code " << res << ")\n";
-		destroyDenoiser();
-		return false;
-	};
-
-	if (!denoiser_ || width != denoiserWidth_ || height != denoiserHeight_) {
-		destroyDenoiser();
-
-		OptixDenoiserOptions options = {};
-		options.guideAlbedo = d_albedo ? 1 : 0;
-		options.guideNormal = d_normal ? 1 : 0;
-		options.denoiseAlpha = OPTIX_DENOISER_ALPHA_MODE_COPY;
-
-		OptixResult res = optixDenoiserCreate(context_, OPTIX_DENOISER_MODEL_KIND_AOV, &options, &denoiser_);
-		if (res != OPTIX_SUCCESS) return fail("create", res);
-
-		OptixDenoiserSizes sizes = {};
-		res = optixDenoiserComputeMemoryResources(denoiser_, width, height, &sizes);
-		if (res != OPTIX_SUCCESS) return fail("computeMemoryResources", res);
-
-		denoiserStateSizeInBytes_ = sizes.stateSizeInBytes;
-		denoiserScratchSizeInBytes_ = sizes.withoutOverlapScratchSizeInBytes;
-		denoiserComputeIntensitySizeInBytes_ = sizes.computeIntensitySizeInBytes;
-		size_t scratchAllocSize = denoiserScratchSizeInBytes_;
-		if (denoiserComputeIntensitySizeInBytes_ > scratchAllocSize)
-			scratchAllocSize = denoiserComputeIntensitySizeInBytes_;
-
-		if (cudaMalloc(reinterpret_cast<void**>(&denoiserState_), denoiserStateSizeInBytes_) != cudaSuccess)
-			return fail("state alloc", OPTIX_ERROR_INTERNAL_ERROR);
-		if (cudaMalloc(reinterpret_cast<void**>(&denoiserScratch_), scratchAllocSize) != cudaSuccess)
-			return fail("scratch alloc", OPTIX_ERROR_INTERNAL_ERROR);
-		if (cudaMalloc(reinterpret_cast<void**>(&denoiserIntensity_), sizeof(float)) != cudaSuccess)
-			return fail("intensity alloc", OPTIX_ERROR_INTERNAL_ERROR);
-
-		res = optixDenoiserSetup(denoiser_, stream_, width, height,
-			denoiserState_, denoiserStateSizeInBytes_, denoiserScratch_, denoiserScratchSizeInBytes_);
-		if (res != OPTIX_SUCCESS) return fail("setup", res);
-
-		denoiserWidth_ = width;
-		denoiserHeight_ = height;
-	}
-
-	OptixImage2D image = {};
-	image.data = d_buffer;
-	image.width = width;
-	image.height = height;
-	image.rowStrideInBytes = width * sizeof(float3);
-	image.pixelStrideInBytes = sizeof(float3);
-	image.format = OPTIX_PIXEL_FORMAT_FLOAT3;
-
-	OptixResult res = optixDenoiserComputeIntensity(denoiser_, stream_, &image, denoiserIntensity_,
-		denoiserScratch_, denoiserComputeIntensitySizeInBytes_);
-	if (res != OPTIX_SUCCESS) return fail("computeIntensity", res);
-
-	OptixDenoiserParams params = {};
-	params.hdrIntensity = denoiserIntensity_;
-	params.blendFactor = 0.0f;
-
-	OptixDenoiserGuideLayer guideLayer = {};
-	if (d_albedo) {
-		guideLayer.albedo.data = d_albedo;
-		guideLayer.albedo.width = width;
-		guideLayer.albedo.height = height;
-		guideLayer.albedo.rowStrideInBytes = width * sizeof(float3);
-		guideLayer.albedo.pixelStrideInBytes = sizeof(float3);
-		guideLayer.albedo.format = OPTIX_PIXEL_FORMAT_FLOAT3;
-	}
-	if (d_normal) {
-		guideLayer.normal.data = d_normal;
-		guideLayer.normal.width = width;
-		guideLayer.normal.height = height;
-		guideLayer.normal.rowStrideInBytes = width * sizeof(float3);
-		guideLayer.normal.pixelStrideInBytes = sizeof(float3);
-		guideLayer.normal.format = OPTIX_PIXEL_FORMAT_FLOAT3;
-	}
-
-	OptixDenoiserLayer layer = {};
-	layer.input = image;
-	layer.output = image;
-	layer.type = OPTIX_DENOISER_AOV_TYPE_BEAUTY;
-
-	res = optixDenoiserInvoke(denoiser_, stream_, &params,
-		denoiserState_, denoiserStateSizeInBytes_,
-		&guideLayer, &layer, 1,
-		0, 0,
-		denoiserScratch_, denoiserScratchSizeInBytes_);
-	if (res != OPTIX_SUCCESS) return fail("invoke", res);
-
-	if (cudaStreamSynchronize(stream_) != cudaSuccess)
-		return fail("sync", OPTIX_ERROR_INTERNAL_ERROR);
-
-	return true;
+	return runDenoiser(denoiserResources_, context_, stream_, d_buffer, width, height,
+		d_albedo, d_normal, "[Wavefront]");
 }
 
 // ============================================================================
@@ -1576,11 +1394,11 @@ bool WavefrontPathTracer::render(
 	float3* d_normalAovPtr = nullptr;
 	if (denoiseEnabled_) {
 		ensureAovBuffers((unsigned int)width, (unsigned int)height);
-		d_albedoAovPtr = reinterpret_cast<float3*>(d_albedoAov_);
-		d_normalAovPtr = reinterpret_cast<float3*>(d_normalAov_);
-		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_albedoAov_), 0,
+		d_albedoAovPtr = reinterpret_cast<float3*>(denoiserResources_.albedoAov);
+		d_normalAovPtr = reinterpret_cast<float3*>(denoiserResources_.normalAov);
+		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(denoiserResources_.albedoAov), 0,
 								   numPixels * sizeof(float3), stream_));
-		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(d_normalAov_), 0,
+		CUDA_CHECK(cudaMemsetAsync(reinterpret_cast<void*>(denoiserResources_.normalAov), 0,
 								   numPixels * sizeof(float3), stream_));
 	}
 
@@ -1732,8 +1550,7 @@ bool WavefrontPathTracer::render(
 				num_lights,
 				reinterpret_cast<const PunctualLightGPU*>(d_punctual_lights),
 				num_punctual_lights,
-				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist,
-				d_albedoAovPtr, d_normalAovPtr);
+				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist);
 
 			// ------------------------------------------------------------------
 			// Phase 3b: Evaluate simple materials (Lambertian/Metal hits
@@ -1765,8 +1582,7 @@ bool WavefrontPathTracer::render(
 				num_lights,
 				reinterpret_cast<const PunctualLightGPU*>(d_punctual_lights),
 				num_punctual_lights,
-				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist,
-				d_albedoAovPtr, d_normalAovPtr);
+				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist);
 
 			// ------------------------------------------------------------------
 			// Phase 3c: Evaluate dielectric materials (Dielectric/RoughDielectric
@@ -1791,14 +1607,12 @@ bool WavefrontPathTracer::render(
 				num_lights,
 				reinterpret_cast<const PunctualLightGPU*>(d_punctual_lights),
 				num_punctual_lights,
-				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist,
-				d_albedoAovPtr, d_normalAovPtr);
+				d_fbPtr, camera.backgroundColor, camera.shadowRayEpsilon, camera.skyDist);
 
 			// ------------------------------------------------------------------
 			// Phase 4: Accumulate miss (escaped rays → background)
 			// ------------------------------------------------------------------
-			launchAccumulateMiss(numMiss, d_fbPtr, camera.backgroundColor, camera.skyDist,
-				d_albedoAovPtr, d_normalAovPtr);
+			launchAccumulateMiss(numMiss, d_fbPtr, camera.backgroundColor, camera.skyDist);
 
 			CUDA_CHECK(cudaStreamSynchronize(stream_));
 			CUDA_CHECK(cudaStreamSynchronize(simpleMaterialStream_));
@@ -1948,7 +1762,8 @@ bool WavefrontPathTracer::render(
 		launchNormalizeAovBuffers((unsigned int)numPixels, d_albedoAovPtr, d_normalAovPtr,
 			(unsigned int)samples_per_pixel);
 		CUDA_CHECK(cudaStreamSynchronize(stream_));
-		denoise(d_fb, (unsigned int)width, (unsigned int)height, d_albedoAov_, d_normalAov_);
+		denoise(d_fb, (unsigned int)width, (unsigned int)height,
+			denoiserResources_.albedoAov, denoiserResources_.normalAov);
 	}
 
 	CUDA_CHECK(cudaMemcpy(framebuffer, reinterpret_cast<void*>(d_fb),

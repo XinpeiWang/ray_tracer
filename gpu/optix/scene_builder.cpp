@@ -158,6 +158,17 @@ namespace {
 		m.type = MaterialType::RoughDielectric;
 		m.roughness = roughness;
 		m.ior = ior;
+		// Not a physical property (RoughDielectric has no true diffuse
+		// albedo) - only populated so the GPU-wavefront denoiser's guide
+		// layer (evaluate_materials_dielectric(), wavefront_kernels.cu,
+		// which writes mat.albedo uniformly for every material kind since
+		// it has no cheap access to the real per-hit scatter attenuation
+		// in spectral form) sees a bright, near-white hint instead of the
+		// zero-initialized hard black MaterialData{} would otherwise leave
+		// here - a glass surface reads as mostly bright (reflection +
+		// transmission), never as a black hole, so a mid-bright grey is a
+		// much better denoiser guide than silent zero.
+		m.albedo = make_float3(0.9f, 0.9f, 0.9f);
 		scene.materials.push_back(m);
 		return idx;
 	}
@@ -185,6 +196,20 @@ namespace {
 		m.roughness = roughness;
 		m.eta_c = eta;
 		m.k_c = k;
+		// Real normal-incidence Fresnel reflectance (FrComplex per channel,
+		// src/shared/fresnel.h - the same exact-Fresnel evaluation the
+		// shading path itself uses per-hit) as a stand-in for a diffuse
+		// albedo this material doesn't have. Only used as the GPU-
+		// wavefront denoiser's guide-layer hint (see MaterialType::
+		// RoughDielectric's own comment above, add_rough_dielectric() -
+		// same reasoning applies here) - without this, a chrome/gold
+		// sphere would tell the denoiser it's pure black instead of a
+		// bright metallic highlight. (FrConductorRGB itself is gated to
+		// __CUDACC__ in fresnel.h and unavailable in this host-compiled
+		// .cpp, so the three FrComplex calls are inlined here instead.)
+		m.albedo = make_float3(FrComplex(1.0f, eta.x, k.x),
+								FrComplex(1.0f, eta.y, k.y),
+								FrComplex(1.0f, eta.z, k.z));
 		scene.materials.push_back(m);
 		return idx;
 	}
@@ -219,6 +244,12 @@ namespace {
 		MaterialData m{};
 		m.type = MaterialType::ThinDielectric;
 		m.ior = ior;
+		// Same reasoning as MaterialType::RoughDielectric above
+		// (add_rough_dielectric()) - a thin-glass panel has no true diffuse
+		// albedo either, and reads as mostly bright (reflection +
+		// transmission), so this is a better denoiser guide-layer hint than
+		// the zero-initialized hard black MaterialData{} would leave here.
+		m.albedo = make_float3(0.9f, 0.9f, 0.9f);
 		scene.materials.push_back(m);
 		return idx;
 	}

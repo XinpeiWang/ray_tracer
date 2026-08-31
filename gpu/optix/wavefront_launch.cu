@@ -6,6 +6,8 @@
 #define SPECTRAL_DEVICE_IMPL   // owns the __constant__ symbol definitions
 #include "spectral_device.h"
 #include "optix_types.h"
+#include "wavefront_launch.h"  // declares the wf_launch_*/wf_upload_*/wf_reset_queue_counter
+                                // signatures the definitions below are checked against
 #include <cuda_runtime.h>
 
 // ---- forward declarations of kernels from wavefront_kernels.cu ----
